@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="duration" content="10000">
+<title>The layered architecture</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+:root{--T:10s}
+.layer{position:absolute;left:240px;width:700px;height:84px;border-radius:14px;background:var(--panel);border:2px solid var(--line);display:flex;align-items:center;gap:18px;padding:0 22px}
+.layer .n{font-size:22px;font-weight:800;width:44px;text-align:center;color:var(--muted)}
+.layer .t{font-size:18px;font-weight:700} .layer .t small{display:block;font-size:14px;color:var(--muted);font-weight:500;margin-top:2px}
+#l1{top:150px;border-color:rgba(245,165,36,.6)} #l2{top:250px;border-color:rgba(167,139,250,.6)} #l3{top:350px} #l4{top:450px;border-color:rgba(45,212,191,.6)}
+.side{position:absolute;font-size:15px;font-weight:700;width:190px}
+.side small{display:block;font-weight:500;color:var(--muted);font-size:13px}
+#sa{left:970px;top:170px;color:var(--llm)} #sb{left:970px;top:470px;color:var(--onto)}
+.ball{position:absolute;left:190px;top:170px;width:26px;height:26px;border-radius:50%;background:var(--llm);box-shadow:0 0 16px var(--llm);animation-name:ball}
+@keyframes ball{0%,44%{top:170px;opacity:0;background:#f5a524}46%,50%{top:170px;opacity:1}54%,58%{top:270px}62%,66%{top:370px}70%,74%{top:470px;background:#f5a524}76%,78%{top:470px;background:#4ade80;box-shadow:0 0 16px #4ade80}86%,100%{top:170px;background:#4ade80;box-shadow:0 0 16px #4ade80;opacity:1}}
+.blabel{position:absolute;left:60px;width:120px;text-align:right;font-size:13px;color:var(--muted)}
+.tagline{position:absolute;left:0;right:0;bottom:60px;text-align:center;font-size:26px;font-weight:800}
+.tagline .p{color:var(--llm)} .tagline .l{color:var(--onto)}
+</style></head><body><div class="stage">
+<div class="title">The layered architecture</div>
+<div class="sub">Each layer does one job. The probabilistic part proposes; the deterministic part decides what is allowed to happen.</div>
+<div class="layer" id="l1" data-in="4"><div class="n">1</div><div class="t">LLM<small>interprets intent, proposes actions · probabilistic</small></div></div>
+<div class="layer" id="l2" data-in="12"><div class="n">2</div><div class="t">Typed interface · Pydantic / JSON schema<small>constrains inputs: structure, types, required fields</small></div></div>
+<div class="layer" id="l3" data-in="20"><div class="n">3</div><div class="t">Tools<small>perform execution · the side effects live here</small></div></div>
+<div class="layer" id="l4" data-in="28"><div class="n">4</div><div class="t">Ontology + reasoner<small>checks domain consistency before an outcome is accepted · deterministic</small></div></div>
+<div class="side" id="sa" data-in="36">Probabilistic<small>inside the model</small></div>
+<div class="side" id="sb" data-in="40">Logical guardrails<small>outside the model</small></div>
+<div class="ball a"></div>
+<div class="blabel" style="top:172px" data-in="46" data-out="52" data-fx="fade">proposal</div>
+<div class="blabel" style="top:272px" data-in="54" data-out="60" data-fx="fade">well-formed?</div>
+<div class="blabel" style="top:372px" data-in="62" data-out="68" data-fx="fade">prepared</div>
+<div class="blabel" style="top:472px" data-in="70" data-out="84" data-fx="fade">true &amp; allowed?</div>
+<div class="blabel" style="top:172px" data-in="88" data-fx="fade">accepted ✓</div>
+<div class="tagline" data-in="90"><span class="p">Probabilistic reasoning inside.</span> <span class="l">Logical guardrails outside.</span></div>
+<div class="foot">Why Agentic Systems Need Ontologies · Frank Coyle, UC Berkeley</div>
+</div><script src="_shared.js"></script></body></html>

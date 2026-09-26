@@ -1,0 +1,47 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="duration" content="9000">
+<title>Hallucination is a feature, not a bug</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+:root{--T:9s}
+.prompt{position:absolute;left:56px;top:140px;font-family:var(--mono);font-size:19px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;width:520px}
+.prompt .cur{display:inline-block;width:10px;height:22px;background:var(--llm);vertical-align:-4px;animation-name:blink}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.15}}
+.rows{position:absolute;left:56px;top:220px;width:520px}
+.row{position:relative;height:56px;display:flex;align-items:center;gap:14px}
+.row .lab{width:170px;font-family:var(--mono);font-size:17px;text-align:right;color:var(--text)}
+.row .bar{height:26px;border-radius:6px;background:linear-gradient(90deg,#f5a524,#f7c15b);width:0;animation-name:none}
+.row .pct{font-size:14px;color:var(--muted)}
+.row .frame{position:absolute;left:-10px;right:-10px;top:4px;bottom:4px;border:2px solid var(--llm);border-radius:10px;opacity:0;animation-name:pick}
+@keyframes pick{0%,29%{opacity:0;transform:translateY(0)}31%,34%{opacity:1;transform:translateY(0)}36%,38%{opacity:1;transform:translateY(56px)}40%,42%{opacity:1;transform:translateY(224px)}44%,46%{opacity:1;transform:translateY(168px)}48%,50%{opacity:1;transform:translateY(112px);border-color:var(--llm)}52%,100%{opacity:1;transform:translateY(112px);border-color:var(--bad)}}
+#b1{animation-name:g1}#b2{animation-name:g2}#b3{animation-name:g3}#b4{animation-name:g4}#b5{animation-name:g5}
+@keyframes g1{0%,6%{width:0}18%,100%{width:400px}}
+@keyframes g2{0%,8%{width:0}20%,100%{width:322px}}
+@keyframes g3{0%,10%{width:0}22%,100%{width:137px}}
+@keyframes g4{0%,12%{width:0}24%,100%{width:88px}}
+@keyframes g5{0%,14%{width:0}26%,100%{width:30px}}
+.out{position:absolute;left:660px;top:150px;width:490px}
+.out .card{position:static;margin-bottom:14px}
+.out .val{font-family:var(--mono);font-size:19px;color:var(--llm)}
+.stamp{position:absolute;left:990px;top:400px;width:130px;height:130px;border:6px solid var(--bad);border-radius:50%;color:var(--bad);font-size:88px;font-weight:800;display:flex;align-items:center;justify-content:center;transform:rotate(-12deg);box-shadow:0 0 30px rgba(248,113,113,.35)}
+.cap{position:absolute;left:56px;bottom:60px;font-size:20px;max-width:1080px}.cap b{color:var(--onto)}
+</style></head><body><div class="stage">
+<div class="title">Hallucination is a <span style="color:var(--llm)">feature</span>, not a bug</div>
+<div class="sub">An LLM is a next-token sampler. Imagining plausible continuations is what it is for.</div>
+<div class="prompt">Order_123 · hasStatus: <span class="cur a"></span></div>
+<div class="rows">
+  <div class="row"><div class="frame a"></div><div class="lab">shipped</div><div class="bar a" id="b1"></div><div class="pct">41%</div></div>
+  <div class="row"><div class="lab">paid</div><div class="bar a" id="b2"></div><div class="pct">33%</div></div>
+  <div class="row"><div class="lab">probably shipped</div><div class="bar a" id="b3"></div><div class="pct">14%</div></div>
+  <div class="row"><div class="lab">refunded</div><div class="bar a" id="b4"></div><div class="pct">9%</div></div>
+  <div class="row"><div class="lab">pineapple</div><div class="bar a" id="b5"></div><div class="pct">3%</div></div>
+</div>
+<div class="out">
+  <div class="card" data-in="54"><h3>Sampled output</h3><div class="val">hasStatus: "probably shipped"</div></div>
+  <div class="card" data-in="62" style="border-color:rgba(248,113,113,.5)"><h3 style="color:var(--bad)">Not a real status</h3><p>Allowed values: <span class="mono">Paid · Shipped · Refunded</span>. Nothing in the model knows that. It only knows what usually comes next.</p></div>
+</div>
+<div class="stamp" data-in="82" data-fx="pop" data-ramp="2">✕</div>
+<div class="cap" data-in="2" data-out="50">When an agent issues a duplicate refund it is not malfunctioning. It is generating the most probable next tokens.</div>
+<div class="cap" data-in="54" data-out="78">A prompt can say "only use valid statuses". A sampler can still sample something else.</div>
+<div class="cap" data-in="82" data-out="98">The fix is not a longer prompt. It is a <b>layer outside the model</b> that can say no.</div>
+<div class="foot">Why Agentic Systems Need Ontologies · Frank Coyle, UC Berkeley</div>
+</div><script src="_shared.js"></script></body></html>

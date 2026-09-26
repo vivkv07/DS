@@ -1,0 +1,63 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="duration" content="12000">
+<title>An ontology is data as graphs</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+:root{--T:12s}
+.triples{position:absolute;left:56px;top:150px;font-family:var(--mono);font-size:16px;line-height:44px}
+.triples div{white-space:pre}
+.s{color:var(--text)} .p{color:var(--violet)} .o{color:var(--onto)} .cls{color:var(--llm)}
+svg{position:absolute;left:0;top:0}
+.node circle{fill:#111a2c;stroke:#8b9bb4;stroke-width:2}
+.node.cls circle{stroke:#2dd4bf;stroke-dasharray:6 5;fill:rgba(45,212,191,.08)}
+.node.val circle{stroke:#a78bfa}
+.node text{fill:#e6edf7;font-size:14px;text-anchor:middle;dominant-baseline:middle;font-weight:600}
+.node.cls text{fill:#2dd4bf}
+.edge{stroke:#8b9bb4;stroke-width:2;fill:none}
+.edge.type{stroke:#2dd4bf;stroke-dasharray:5 5}
+.lbl{fill:#a78bfa;font-size:13px;text-anchor:middle;paint-order:stroke;stroke:#0b1220;stroke-width:6px}
+.lbl.type{fill:#2dd4bf}
+.band{position:absolute;left:560px;width:600px;border-radius:14px;padding:8px 14px;font-size:14px;font-weight:700;letter-spacing:.06em}
+#b-onto{top:112px;height:135px;border:2px solid rgba(45,212,191,.6);color:var(--onto);background:rgba(45,212,191,.06)}
+#b-data{top:290px;height:330px;display:flex;align-items:flex-end;border:2px solid rgba(245,165,36,.6);color:var(--llm);background:rgba(245,165,36,.05)}
+.cap{position:absolute;left:56px;bottom:60px;font-size:17px;max-width:470px;line-height:1.4}
+</style></head><body><div class="stage">
+<div class="title">An ontology is <span style="color:var(--onto)">data as graphs</span></div>
+<div class="sub">Every fact is a triple: subject → predicate → object. Triples compose into a knowledge graph.</div>
+<div class="triples">
+  <div data-in="3"><span class="s">:Alice</span>      <span class="p">a</span>          <span class="cls">:Customer</span></div>
+  <div data-in="12"><span class="s">:Order_123</span>  <span class="p">a</span>          <span class="cls">:Order</span></div>
+  <div data-in="21"><span class="s">:Order_123</span>  <span class="p">:placedBy</span>  <span class="o">:Alice</span></div>
+  <div data-in="30"><span class="s">:Order_123</span>  <span class="p">:hasStatus</span> <span class="o">:Shipped</span></div>
+  <div data-in="39"><span class="s">:Refund_9</span>   <span class="p">a</span>          <span class="cls">:Refund</span></div>
+  <div data-in="48"><span class="s">:Refund_9</span>   <span class="p">:refunds</span>   <span class="o">:Order_123</span></div>
+  <div data-in="57"><span class="s">:Refund_9</span>   <span class="p">:paidTo</span>    <span class="o">:Alice</span></div>
+  <div data-in="66"><span class="s">:Bob</span>        <span class="p">a</span>          <span class="cls">:SupportRep</span></div>
+</div>
+<div class="band" id="b-onto" data-in="78" data-fx="fade">ONTOLOGY · classes, properties, rules</div>
+<div class="band" id="b-data" data-in="78" data-fx="fade">DATA · instances as triples</div>
+<svg width="1200" height="675">
+  <!-- class nodes -->
+  <g class="node cls" data-in="3" data-fx="fade"><circle cx="640" cy="195" r="38"/><text x="640" y="195">Customer</text></g>
+  <g class="node cls" data-in="12" data-fx="fade"><circle cx="800" cy="195" r="38"/><text x="800" y="195">Order</text></g>
+  <g class="node cls" data-in="39" data-fx="fade"><circle cx="960" cy="195" r="38"/><text x="960" y="195">Refund</text></g>
+  <g class="node cls" data-in="66" data-fx="fade"><circle cx="1110" cy="195" r="38"/><text x="1110" y="195">SupportRep</text></g>
+  <!-- instance nodes -->
+  <g class="node" data-in="3" data-fx="fade"><circle cx="640" cy="470" r="36"/><text x="640" y="470">Alice</text></g>
+  <g class="node" data-in="12" data-fx="fade"><circle cx="800" cy="340" r="40"/><text x="800" y="340">Order_123</text></g>
+  <g class="node val" data-in="30" data-fx="fade"><circle cx="960" cy="420" r="34"/><text x="960" y="420">Shipped</text></g>
+  <g class="node" data-in="39" data-fx="fade"><circle cx="880" cy="560" r="38"/><text x="880" y="560">Refund_9</text></g>
+  <g class="node" data-in="66" data-fx="fade"><circle cx="1110" cy="470" r="34"/><text x="1110" y="470">Bob</text></g>
+  <!-- type edges -->
+  <line class="edge type" x1="640" y1="434" x2="640" y2="235" data-fx="draw" data-in="5"/><text class="lbl type" x="655" y="330" data-in="5" data-fx="fade">a</text>
+  <line class="edge type" x1="800" y1="300" x2="800" y2="235" data-fx="draw" data-in="14"/><text class="lbl type" x="815" y="265" data-in="14" data-fx="fade">a</text>
+  <line class="edge type" x1="900" y1="522" x2="955" y2="235" data-fx="draw" data-in="41"/><text class="lbl type" x="945" y="380" data-in="41" data-fx="fade">a</text>
+  <line class="edge type" x1="1110" y1="436" x2="1110" y2="235" data-fx="draw" data-in="68"/><text class="lbl type" x="1125" y="330" data-in="68" data-fx="fade">a</text>
+  <!-- property edges -->
+  <line class="edge" x1="770" y1="366" x2="668" y2="448" data-fx="draw" data-in="23"/><text class="lbl" x="700" y="395" data-in="23" data-fx="fade">placedBy</text>
+  <line class="edge" x1="832" y1="364" x2="936" y2="398" data-fx="draw" data-in="32"/><text class="lbl" x="885" y="370" data-in="32" data-fx="fade">hasStatus</text>
+  <line class="edge" x1="866" y1="524" x2="812" y2="380" data-fx="draw" data-in="50"/><text class="lbl" x="870" y="455" data-in="50" data-fx="fade">refunds</text>
+  <line class="edge" x1="843" y1="548" x2="675" y2="484" data-fx="draw" data-in="59"/><text class="lbl" x="760" y="535" data-in="59" data-fx="fade">paidTo</text>
+</svg>
+<div class="cap" data-in="80">The <span style="color:var(--onto)">schema</span> (classes, properties, constraints) is the ontology. The <span style="color:var(--llm)">instances</span> are the data. Standards: RDF · RDFS · OWL · SPARQL.</div>
+<div class="foot">Why Agentic Systems Need Ontologies · Frank Coyle, UC Berkeley</div>
+</div><script src="_shared.js"></script></body></html>

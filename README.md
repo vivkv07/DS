@@ -1,5 +1,9 @@
 # Data Science Tutorials
 
+## Visual explainers
+
+- **[Why Agentic Systems Need Ontologies](ontologies-for-agents/)** — an infographic and nine looping motion graphics (HTML + GIF + MP4) recreating Frank Coyle's AI Engineer World's Fair talk on ontologies as logical guardrails for LLM agents. Start with [`ontologies-for-agents/infographic.png`](ontologies-for-agents/infographic.png) or the [content brief](ontologies-for-agents/CONTENT_BRIEF.md).
+
 MUST READ ARTICLES FOR DATA SCIENCE ENTHUSIAST.
 ==============================================
 1) Every Intro to Data Science Course on the Internet, Ranked.

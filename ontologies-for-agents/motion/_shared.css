@@ -1,0 +1,48 @@
+/* Shared design tokens + layout for the motion graphics.
+   Every animation on a page runs on ONE timeline: duration = --T, linear, infinite.
+   Choreography is done with keyframe percentages, so the page loops cleanly in a
+   browser and can be scrubbed deterministically by tools/render.mjs. */
+:root {
+  --T: 10s;
+  --bg: #0b1220;
+  --panel: #111a2c;
+  --line: #24304a;
+  --text: #e6edf7;
+  --muted: #8b9bb4;
+  --llm: #f5a524;      /* probabilistic / neural */
+  --onto: #2dd4bf;     /* symbolic / ontology */
+  --bad: #f87171;
+  --ok: #4ade80;
+  --violet: #a78bfa;
+  --font: "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); }
+.stage {
+  position: relative; width: 1200px; height: 675px; overflow: hidden;
+  background:
+    radial-gradient(900px 500px at 15% -10%, rgba(45,212,191,.10), transparent 60%),
+    radial-gradient(800px 500px at 90% 110%, rgba(245,165,36,.10), transparent 60%),
+    var(--bg);
+}
+.title { position: absolute; left: 56px; top: 40px; font-size: 34px; font-weight: 700; letter-spacing: -.01em; }
+.sub   { position: absolute; left: 56px; top: 86px; font-size: 18px; color: var(--muted); }
+.foot  { position: absolute; left: 56px; bottom: 28px; font-size: 14px; color: var(--muted); }
+.tag   { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: .02em; }
+.tag.llm  { background: rgba(245,165,36,.15); color: var(--llm);  border: 1px solid rgba(245,165,36,.4); }
+.tag.onto { background: rgba(45,212,191,.15); color: var(--onto); border: 1px solid rgba(45,212,191,.4); }
+.tag.bad  { background: rgba(248,113,113,.15); color: var(--bad); border: 1px solid rgba(248,113,113,.4); }
+.tag.ok   { background: rgba(74,222,128,.15); color: var(--ok);  border: 1px solid rgba(74,222,128,.4); }
+.mono { font-family: var(--mono); }
+.card {
+  position: absolute; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 14px; padding: 16px 18px; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+.card h3 { margin: 0 0 6px; font-size: 18px; }
+.card p  { margin: 0; font-size: 15px; color: var(--muted); line-height: 1.4; }
+
+/* every animated element uses the shared timeline */
+.a { animation-duration: var(--T); animation-timing-function: linear; animation-iteration-count: infinite; animation-fill-mode: both; }
+svg text { font-family: var(--font); }
+svg .mono { font-family: var(--mono); }

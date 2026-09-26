@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Why Agentic Systems Need Ontologies</title>
+<style>
+:root{--bg:#0b1220;--panel:#111a2c;--line:#24304a;--text:#e6edf7;--muted:#8b9bb4;--llm:#f5a524;--onto:#2dd4bf;--bad:#f87171;--ok:#4ade80;--violet:#a78bfa;
+ --font:"Inter","SF Pro Text","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;--mono:"JetBrains Mono","SF Mono",Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);line-height:1.45}
+.page{width:1200px;margin:0 auto;padding:0 0 60px}
+section{padding:44px 64px;border-top:1px solid var(--line)}
+h1{font-size:54px;line-height:1.05;letter-spacing:-.02em;margin:0 0 14px}
+h2{font-size:30px;letter-spacing:-.01em;margin:0 0 6px}
+h3{font-size:18px;margin:0 0 6px}
+.kicker{font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.lead{font-size:18px;color:var(--muted);max-width:900px;margin:0 0 26px}
+.mono{font-family:var(--mono)}
+.llm{color:var(--llm)}.onto{color:var(--onto)}.bad{color:var(--bad)}.ok{color:var(--ok)}.violet{color:var(--violet)}
+.grid{display:grid;gap:18px}.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr 1fr 1fr}.g4{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+.tag{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:700;letter-spacing:.03em;margin:2px 4px 2px 0}
+.tag.llm{background:rgba(245,165,36,.14);color:var(--llm);border:1px solid rgba(245,165,36,.4)}
+.tag.onto{background:rgba(45,212,191,.14);color:var(--onto);border:1px solid rgba(45,212,191,.4)}
+.tag.bad{background:rgba(248,113,113,.14);color:var(--bad);border:1px solid rgba(248,113,113,.4)}
+.tag.violet{background:rgba(167,139,250,.14);color:var(--violet);border:1px solid rgba(167,139,250,.4)}
+.tag.ok{background:rgba(74,222,128,.14);color:var(--ok);border:1px solid rgba(74,222,128,.4)}
+.hero{padding:70px 64px 50px;background:radial-gradient(900px 500px at 10% -10%,rgba(45,212,191,.14),transparent 60%),radial-gradient(900px 500px at 95% 110%,rgba(245,165,36,.14),transparent 60%);border-top:0}
+.hero .by{font-size:17px;color:var(--muted);margin-bottom:26px}
+.thesis{display:inline-block;padding:16px 24px;border-radius:14px;background:var(--panel);border:1px solid var(--line);font-size:26px;font-weight:800;letter-spacing:-.01em}
+.thesis .l{color:var(--llm)} .thesis .r{color:var(--onto)}
+.stat{padding:20px 22px}
+.stat .big{font-size:34px;font-weight:800;letter-spacing:-.02em;line-height:1.1;margin-bottom:6px}
+.code{background:#0b1220;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-family:var(--mono);font-size:13.5px;line-height:1.55;white-space:pre;overflow:hidden}
+.code .k{color:var(--violet)}.code .c{color:var(--muted)}.code .s{color:var(--onto)}
+.timeline{position:relative;padding-left:22px;border-left:2px solid var(--line)}
+.timeline .ev{position:relative;margin-bottom:14px}
+.timeline .ev::before{content:"";position:absolute;left:-29px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--bg);border:3px solid currentColor}
+.timeline .yr{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.timeline b{display:block;font-size:16px}
+.timeline span{font-size:14px;color:var(--muted)}
+table{width:100%;border-collapse:separate;border-spacing:0;background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden;font-size:14.5px}
+th,td{padding:12px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+th{font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:#0e1626}
+td .mono{font-size:13px;color:var(--onto)}
+.layers{display:flex;flex-direction:column;gap:10px}
+.layer{display:flex;align-items:center;gap:16px;padding:14px 18px;border-radius:14px;background:var(--panel);border:2px solid var(--line)}
+.layer .n{font-size:22px;font-weight:800;color:var(--muted);width:30px}
+.layer b{display:block;font-size:17px}.layer span{font-size:14px;color:var(--muted)}
+.layer.l1{border-color:rgba(245,165,36,.6)}.layer.l2{border-color:rgba(167,139,250,.6)}.layer.l4{border-color:rgba(45,212,191,.6)}
+.take{counter-reset:t;list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.take li{counter-increment:t;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px 16px 62px;position:relative;font-size:15px}
+.take li::before{content:counter(t);position:absolute;left:18px;top:14px;width:30px;height:30px;border-radius:50%;background:rgba(45,212,191,.14);color:var(--onto);border:1px solid rgba(45,212,191,.4);font-weight:800;display:flex;align-items:center;justify-content:center}
+.take li b{display:block;font-size:16px;margin-bottom:2px}
+svg text{font-family:var(--font)} svg .mono{font-family:var(--mono)}
+.foot{padding:30px 64px 0;font-size:13px;color:var(--muted)}
+.foot a{color:var(--onto);text-decoration:none}
+</style></head><body><div class="page">
+
+<section class="hero">
+  <div class="kicker">Talk recap · AI Engineer World's Fair 2026</div>
+  <h1>Why Agentic Systems<br>Need <span class="onto">Ontologies</span></h1>
+  <div class="by">Frank Coyle · Professor of Computer Science, UC Berkeley · 20-minute talk, visualized</div>
+  <div class="thesis"><span class="l">Probabilistic reasoning inside.</span> <span class="r">Logical guardrails outside.</span></div>
+</section>
+
+<section>
+  <div class="kicker">01 · The problem</div>
+  <h2>An agent is an LLM, some tools and a loop. That loop has almost no brakes.</h2>
+  <p class="lead">Most agent failures, from brittle tools to fragile handoffs, drift and infinite loops, are symptoms of one missing layer: an explicit model of the domain sitting <em>outside</em> the model.</p>
+  <div class="grid g3">
+    <div class="card stat"><div class="big llm">Turing-complete</div><p>The loop can do anything, including never stop. No type checker fully covers a program that writes its own next step.</p></div>
+    <div class="card stat"><div class="big llm">Probabilistic</div><p>Every step is a sample, not a decision. Hallucination is a feature: imagining plausible continuations is what a next-token model is for.</p></div>
+    <div class="card stat"><div class="big bad">One JSON check</div><p>Between "the model proposed a tool call" and "the tool ran" there is usually nothing but a schema check on the arguments.</p></div>
+  </div>
+  <div class="grid g2" style="margin-top:18px;align-items:start">
+    <div class="code"><span class="k">while</span> True:
+    resp = llm(messages, tools)
+    <span class="k">if</span> resp.stop_reason == <span class="s">"end_turn"</span>: <span class="k">break</span>
+    <span class="k">for</span> call <span class="k">in</span> resp.tool_calls:
+        validate(call.args)      <span class="c"># JSON schema only</span>
+        result = execute(call)   <span class="c"># side effects happen here</span>
+        messages.append(result)</div>
+    <div class="card"><h3>When an agent issues a duplicate refund, it is not malfunctioning</h3><p>It is doing exactly what it was built to do: generate the most probable next sequence of tokens. A paragraph of instructions ("only use valid statuses") cannot reliably stop a sampler from sampling something else. The fix is a layer that can say <b class="bad">no</b>.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">02 · Two old traditions</div>
+  <h2>Agentic systems are where <span class="llm">agents</span> meet <span class="onto">ontologies</span></h2>
+  <p class="lead">Agents perceive, decide and act. Ontologies describe the entities, categories and relationships in a domain. Both ideas are older than the transformer.</p>
+  <div class="grid g2">
+    <div class="card"><h3 class="llm">Agents · perceive → decide → act</h3>
+      <div class="timeline llm" style="margin-top:12px">
+        <div class="ev"><div class="yr">1940s–50s</div><b>Cybernetics</b><span>feedback loops that sense and act</span></div>
+        <div class="ev"><div class="yr">1970s–80s</div><b>Symbolic AI &amp; expert systems</b><span>hand-coded rules: precise, but hard to scale</span></div>
+        <div class="ev"><div class="yr">1990s–2010s</div><b>Reinforcement learning</b><span>agents that learn by acting</span></div>
+        <div class="ev"><div class="yr">2023 →</div><b>LLM tool loops</b><span>perceive, decide and act with language</span></div>
+      </div></div>
+    <div class="card"><h3 class="onto">Ontologies · what exists and how it relates</h3>
+      <div class="timeline onto" style="margin-top:12px">
+        <div class="ev"><div class="yr">~350 BC</div><b>Aristotle, Categories</b><span>what kinds of things there are</span></div>
+        <div class="ev"><div class="yr">1948</div><b>Quine</b><span>"to be is to be the value of a variable"</span></div>
+        <div class="ev"><div class="yr">1993</div><b>Gruber</b><span>"an explicit specification of a conceptualization"</span></div>
+        <div class="ev"><div class="yr">2000s</div><b>Semantic Web</b><span>RDF · RDFS · OWL · SPARQL · Schema.org · FOAF</span></div>
+      </div></div>
+  </div>
+  <div class="card" style="margin-top:18px;border-color:rgba(167,139,250,.5)"><h3 class="violet">Neuro-symbolic AI</h3><p>Neural networks tied into symbolic systems: rule-based reasoning and the knowledge graphs we are assembling. The probabilistic side proposes; the symbolic side constrains.</p></div>
+</section>
+
+<section>
+  <div class="kicker">03 · What an ontology is</div>
+  <h2>"Data as graphs": every fact is a triple</h2>
+  <p class="lead">Subject → predicate → object. Triples compose into a knowledge graph. The schema layer (classes, properties, constraints) is the ontology; the instance layer is your data.</p>
+  <div class="grid g2" style="align-items:center">
+    <div class="code" style="font-size:14.5px">:Alice      a           :Customer
+:Order_123  a           :Order
+:Order_123  :placedBy   :Alice
+:Order_123  :hasStatus  :Shipped
+:Refund_9   a           :Refund
+:Refund_9   :refunds    :Order_123
+:Refund_9   :paidTo     :Alice
+:Bob        a           :SupportRep</div>
+    <svg viewBox="0 0 540 370" width="540" height="370">
+      <rect x="10" y="8" width="520" height="92" rx="12" fill="rgba(45,212,191,.06)" stroke="rgba(45,212,191,.5)" stroke-width="1.5"/>
+      <text x="22" y="28" fill="#2dd4bf" font-size="11" font-weight="700" letter-spacing="1">ONTOLOGY · classes, properties, rules</text>
+      <rect x="10" y="118" width="520" height="244" rx="12" fill="rgba(245,165,36,.05)" stroke="rgba(245,165,36,.5)" stroke-width="1.5"/>
+      <text x="22" y="352" fill="#f5a524" font-size="11" font-weight="700" letter-spacing="1">DATA · instances</text>
+      <g stroke="#2dd4bf" stroke-width="1.5" stroke-dasharray="4 4"><line x1="80" y1="234" x2="80" y2="96"/><line x1="220" y1="158" x2="220" y2="96"/><line x1="340" y1="260" x2="340" y2="96"/><line x1="480" y1="236" x2="480" y2="96"/></g>
+      <g fill="#2dd4bf" font-size="10.5" paint-order="stroke" stroke="#0b1220" stroke-width="4"><text x="86" y="168">a</text><text x="226" y="130">a</text><text x="346" y="180">a</text><text x="486" y="168">a</text></g>
+      <g fill="rgba(45,212,191,.08)" stroke="#2dd4bf" stroke-width="1.5" stroke-dasharray="5 4">
+        <circle cx="80" cy="62" r="34"/><circle cx="220" cy="62" r="34"/><circle cx="340" cy="62" r="34"/><circle cx="480" cy="62" r="34"/></g>
+      <g fill="#2dd4bf" font-size="10.5" font-weight="700" text-anchor="middle"><text x="80" y="66">Customer</text><text x="220" y="66">Order</text><text x="340" y="66">Refund</text><text x="480" y="66">SupportRep</text></g>
+      <g stroke="#8b9bb4" stroke-width="1.8" fill="none"><line x1="196" y1="210" x2="100" y2="248"/><line x1="220" y1="222" x2="220" y2="274"/><line x1="318" y1="270" x2="246" y2="212"/><path d="M 314 306 Q 210 352 104 282"/></g>
+      <g fill="#111a2c" stroke="#8b9bb4" stroke-width="2"><circle cx="80" cy="262" r="28"/><circle cx="220" cy="190" r="32"/><circle cx="220" cy="300" r="26" stroke="#a78bfa"/><circle cx="340" cy="290" r="30"/><circle cx="480" cy="262" r="26"/></g>
+      <g fill="#e6edf7" font-size="11.5" font-weight="700" text-anchor="middle"><text x="80" y="266">Alice</text><text x="220" y="194">Order_123</text><text x="220" y="304">Shipped</text><text x="340" y="294">Refund_9</text><text x="480" y="266">Bob</text></g>
+      <g fill="#a78bfa" font-size="10.5" text-anchor="middle" paint-order="stroke" stroke="#0b1220" stroke-width="4"><text x="132" y="218">placedBy</text><text x="256" y="252">hasStatus</text><text x="302" y="232">refunds</text><text x="208" y="342">paidTo</text></g>
+    </svg>
+  </div>
+  <div style="margin-top:16px"><span class="tag onto">RDF · the triple data model</span><span class="tag onto">RDFS · classes, subclasses, domain / range</span><span class="tag onto">OWL · transitive, functional, disjoint, cardinality</span><span class="tag onto">SPARQL · query the graph</span><span class="tag onto">Schema.org / FOAF · public vocabularies</span></div>
+</section>
+
+<section>
+  <div class="kicker">04 · The toolkit</div>
+  <h2>A few declarations turn a graph into a rule-checker</h2>
+  <p class="lead">RDFS gives you inference for free. OWL adds the constraints that catch real business errors. None of it is new: it is W3C-standard tooling.</p>
+  <table>
+    <tr><th style="width:170px">Feature</th><th style="width:330px">Rule</th><th>Example</th><th style="width:270px">What it catches in an agent</th></tr>
+    <tr><td><b>RDFS domain / range</b></td><td>declaring what a property connects lets a reasoner type both ends</td><td><span class="mono">:teaches domain :Teacher, range :Student</span><br>assert <span class="mono">:Bob :teaches :Scooter</span> → infer Bob is a Teacher, Scooter is a Student</td><td>Untyped or mistyped entities coming out of a tool call</td></tr>
+    <tr><td><b>OWL transitive</b></td><td>if A→B and B→C then A→C</td><td><span class="mono">:ancestorOf</span>: Sue→Mary→Ann ⇒ Sue is Ann's ancestor</td><td>Org charts, part-of hierarchies, delegation and approval chains</td></tr>
+    <tr><td><b>OWL functional</b></td><td>a property has at most one value</td><td><span class="mono">:hasFather</span> with two different values ⇒ the two "fathers" are the same entity (owl:sameAs), or the data is wrong</td><td>Duplicate entities, entity resolution</td></tr>
+    <tr><td><b>OWL disjoint classes</b></td><td>an individual cannot belong to both</td><td><span class="mono">:Customer owl:disjointWith :SupportRep</span></td><td>A payout routed to the support rep instead of the buyer</td></tr>
+    <tr><td><b>Enumerated / constrained values</b></td><td>a value must come from a fixed set</td><td><span class="mono">:hasStatus ∈ {Paid, Shipped, Refunded}</span></td><td>An invented status like "probably shipped"</td></tr>
+    <tr><td><b>Cardinality</b></td><td>at most N values of a property per subject</td><td><span class="mono">:refunds</span> max 1 per order</td><td>A second refund on the same order</td></tr>
+  </table>
+</section>
+
+<section>
+  <div class="kicker">05 · The pattern</div>
+  <h2><span class="violet">Pydantic at the door</span>, <span class="onto">ontology at the ledger</span></h2>
+  <p class="lead">Two different checks for two different problems. Type checking answers "is this well-formed?". The ontology answers "is this true and allowed in our world?".</p>
+  <svg viewBox="0 -26 1072 216" width="1072" height="216">
+    <line x1="60" y1="70" x2="1010" y2="70" stroke="#24304a" stroke-width="2"/>
+    <g font-size="15" font-weight="700" fill="#e6edf7" text-anchor="middle">
+      <rect x="10" y="34" width="180" height="72" rx="12" fill="#111a2c" stroke="rgba(245,165,36,.6)" stroke-width="2"/><text x="100" y="66">LLM</text><text x="100" y="88" font-size="12" font-weight="500" fill="#8b9bb4">proposes a tool call</text>
+      <rect x="230" y="34" width="180" height="72" rx="12" fill="#111a2c" stroke="rgba(167,139,250,.7)" stroke-width="2"/><text x="320" y="66">Door · Pydantic</text><text x="320" y="88" font-size="12" font-weight="500" fill="#8b9bb4">types, required fields</text>
+      <rect x="450" y="34" width="180" height="72" rx="12" fill="#111a2c" stroke="#24304a" stroke-width="2"/><text x="540" y="66">Tool</text><text x="540" y="88" font-size="12" font-weight="500" fill="#8b9bb4">prepares the action</text>
+      <rect x="670" y="34" width="180" height="72" rx="12" fill="#111a2c" stroke="rgba(45,212,191,.7)" stroke-width="2"/><text x="760" y="66">Ledger · ontology</text><text x="760" y="88" font-size="12" font-weight="500" fill="#8b9bb4">domain rules, graph state</text>
+      <rect x="890" y="34" width="172" height="72" rx="12" fill="#111a2c" stroke="rgba(74,222,128,.6)" stroke-width="2"/><text x="976" y="66">Commit</text><text x="976" y="88" font-size="12" font-weight="500" fill="#8b9bb4">side effect happens</text>
+    </g>
+    <g font-size="13" text-anchor="middle" fill="#a78bfa"><text x="320" y="140">"Is it well-formed?"</text><text x="320" y="160" fill="#8b9bb4" font-size="12">structure · types · required fields</text></g>
+    <g font-size="13" text-anchor="middle" fill="#2dd4bf"><text x="760" y="140">"Is it true and allowed here?"</text><text x="760" y="160" fill="#8b9bb4" font-size="12">domain / range · disjoint · cardinality · graph state</text></g>
+    <path d="M 850 40 C 900 -16 300 -16 290 30" fill="none" stroke="#f87171" stroke-width="2" stroke-dasharray="6 5"/>
+    <text x="570" y="-10" font-size="12" fill="#f87171" text-anchor="middle">rejected → back to the model with the reason</text>
+  </svg>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card" style="border-color:rgba(248,113,113,.5)"><span class="tag bad">caught by the ledger</span><h3 style="margin-top:8px">Duplicate refund</h3><p><span class="mono onto">:Refund_9 :refunds :Order_123</span> already exists. A second refund violates the cardinality rule. Pydantic sees two perfectly valid calls.</p></div>
+    <div class="card" style="border-color:rgba(248,113,113,.5)"><span class="tag bad">caught by the ledger</span><h3 style="margin-top:8px">Misdirected payout</h3><p>The payee is typed <span class="mono onto">:SupportRep</span>. Customer and SupportRep are disjoint. A payout to the rep is a logical violation, not a style issue.</p></div>
+    <div class="card" style="border-color:rgba(248,113,113,.5)"><span class="tag bad">caught by the ledger</span><h3 style="margin-top:8px">Invented status</h3><p><span class="mono onto">"probably shipped"</span> is a fine string and a valid JSON value. It is not in the enumerated range of <span class="mono onto">:hasStatus</span>, so it is rejected.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">06 · Building it</div>
+  <h2>Top-down <em>and</em> bottom-up</h2>
+  <div class="grid g3">
+    <div class="card"><h3 class="onto">Top-down</h3><p>Domain experts define the core classes, properties and rules up front. Precise and explicit. Also exactly what 1980s expert systems did, and hand-building everything did not scale.</p></div>
+    <div class="card"><h3 class="llm">Bottom-up</h3><p>Extract entities and relationships from real data (tickets, documents, customer interactions) with named-entity recognition and relation extraction, increasingly with LLMs doing the extracting.</p></div>
+    <div class="card" style="border-color:rgba(167,139,250,.5)"><h3 class="violet">In practice: both</h3><p>Experts seed the business concepts. Observed interactions keep revealing new entities and relations, and the schema is revised as new kinds of things show up.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">07 · The architecture</div>
+  <h2>Four layers, one job each</h2>
+  <div class="grid g2" style="align-items:center">
+    <div class="layers">
+      <div class="layer l1"><div class="n">1</div><div><b>LLM</b><span>interprets intent, proposes actions · <span class="llm">probabilistic</span></span></div></div>
+      <div class="layer l2"><div class="n">2</div><div><b>Typed interface · Pydantic / JSON schema</b><span>constrains inputs: structure, types, required fields</span></div></div>
+      <div class="layer"><div class="n">3</div><div><b>Tools</b><span>perform execution · the side effects live here</span></div></div>
+      <div class="layer l4"><div class="n">4</div><div><b>Ontology + reasoner</b><span>checks domain consistency before an outcome is accepted · <span class="onto">deterministic</span></span></div></div>
+    </div>
+    <div class="card"><h3>Why the split works</h3><p>The probabilistic part is allowed to be creative: it interprets messy intent and proposes. The deterministic part never has to be creative: it only has to check a proposal against an explicit model of what exists and what is allowed. Neither can do the other's job.</p><p style="margin-top:12px">Start small. A handful of classes, a few domain/range declarations, one disjoint pair and one cardinality rule already catch the expensive mistakes.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">08 · Takeaways</div>
+  <h2>Five things to remember</h2>
+  <ol class="take">
+    <li><b>Most agent failures share one cause.</b> Brittle tools, fragile handoffs, drift and loops are symptoms of a missing explicit domain model outside the model.</li>
+    <li><b>Hallucination is a feature.</b> A sampler samples. Do not fight it with longer prompts; wrap it with a layer that can refuse.</li>
+    <li><b>Ontologies are old and standardized.</b> Aristotle to W3C. RDF, RDFS, OWL and SPARQL already exist; you do not have to invent the tooling.</li>
+    <li><b>Pydantic at the door, ontology at the ledger.</b> Type-check inputs; semantically check outcomes before any side effect is committed.</li>
+    <li><b>Build it both ways.</b> Experts seed the schema, data grows the graph, and the schema is revised as the world turns out to be bigger than the spec.</li>
+  </ol>
+</section>
+
+<div class="foot">Visual recap of "Why Agentic Systems Need Ontologies" by Frank Coyle (UC Berkeley), AI Engineer World's Fair 2026 · <a href="https://www.youtube.com/watch?v=Sir59K8ZDPU">watch the talk</a> · Examples (Bob teaches Scooter, ancestor chains, duplicate refunds, misrouted payouts, invented statuses) follow the talk; the diagrams and phrasing are original.</div>
+</div></body></html>

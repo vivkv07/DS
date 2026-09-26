@@ -1,0 +1,59 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="duration" content="12000">
+<title>Top-down and bottom-up ontology building</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+:root{--T:12s}
+.col{position:absolute;top:130px;width:520px;height:440px}
+#td{left:56px}#bu{left:624px}
+.col h2{margin:0;font-size:22px}
+#td h2{color:var(--onto)}#bu h2{color:var(--llm)}
+.col .lead{font-size:14px;color:var(--muted);margin:4px 0 12px}
+.expert{display:inline-flex;gap:10px;align-items:center;padding:8px 14px;border-radius:999px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.5);font-weight:700;font-size:15px}
+.tree{position:relative;margin-top:14px;font-family:var(--mono);font-size:14px;line-height:1.5}
+.tree>div{display:flex;gap:12px;align-items:flex-start;margin-bottom:6px}
+.tree .cls{display:inline-block;flex:none;padding:6px 12px;border-radius:10px;background:var(--panel);border:1px solid rgba(45,212,191,.5);color:var(--onto);font-weight:700;margin:0}
+.tree .prop{color:var(--muted);font-size:13.5px;line-height:1.5;padding-top:6px}
+.tree .prop b{color:var(--violet);font-weight:500}
+.ticket{position:relative;margin-top:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;line-height:1.6}
+.ticket .h{font-size:12px;color:var(--muted);letter-spacing:.05em;font-weight:700;margin-bottom:4px}
+.ticket mark{color:inherit;border-radius:4px;padding:0 3px;background:transparent}
+.ticket mark.e{background-color:rgba(245,165,36,0)}
+svg{position:absolute;left:0;top:0}
+.node circle{fill:#111a2c;stroke:#f5a524;stroke-width:2}
+.node text{fill:#e6edf7;font-size:13px;text-anchor:middle;dominant-baseline:middle;font-weight:600}
+.edge{stroke:#f5a524;stroke-width:2;fill:none}
+.lbl{font-size:12px;fill:#a78bfa;text-anchor:middle;paint-order:stroke;stroke:#0b1220;stroke-width:5px}
+.merge{position:absolute;left:0;right:0;bottom:52px;text-align:center}
+.merge .box{display:inline-block;padding:10px 22px;border-radius:14px;border:2px solid var(--violet);background:rgba(167,139,250,.12);color:var(--violet);font-weight:800;font-size:20px}
+.merge p{margin:6px 0 0;font-size:15px;color:var(--muted)}
+.note{font-size:13.5px;color:var(--muted);margin-top:10px;line-height:1.4}
+</style></head><body><div class="stage">
+<div class="title">Build the ontology <span style="color:var(--onto)">top-down</span> and <span style="color:var(--llm)">bottom-up</span></div>
+<div class="sub">Experts seed the core concepts. Real interactions keep revealing new entities and relations.</div>
+<div class="col" id="td"><h2>Top-down</h2><div class="lead">Domain experts define classes, properties and rules up front.</div>
+  <div class="expert" data-in="4"><span style="font-size:20px">◉</span> Domain experts</div>
+  <div class="tree">
+    <div data-in="10"><span class="cls">Order</span><span class="prop"><b>placedBy</b> → Customer · <b>hasStatus</b> ∈ {Paid, Shipped, Refunded}</span></div>
+    <div data-in="16"><span class="cls">Customer</span><span class="prop">disjointWith <b>SupportRep</b></span></div>
+    <div data-in="22"><span class="cls">Refund</span><span class="prop"><b>refunds</b> → Order (max 1 per order) · <b>paidTo</b> → Customer</span></div>
+  </div>
+  <div class="note" data-in="28">Precise and explicit. Also exactly what 1980s expert systems did, and hand-building everything did not scale.</div>
+</div>
+<div class="col" id="bu"><h2>Bottom-up</h2><div class="lead">Extract entities and relations from real data with NER and LLM extraction.</div>
+  <div class="ticket" data-in="36"><div class="h">SUPPORT TICKET #8841</div>
+    Customer <mark class="e" data-fx="hlwarm" data-in="42" data-ramp="2">Alice</mark> asked for a <mark class="e" data-fx="hlwarm" data-in="46" data-ramp="2">refund</mark> on <mark class="e" data-fx="hlwarm" data-in="50" data-ramp="2">order 123</mark>, which shipped to <mark class="e" data-fx="hlwarm" data-in="54" data-ramp="2">Austin</mark> with carrier <mark class="e" data-fx="hlwarm" data-in="58" data-ramp="2">FastShip</mark>.</div>
+  <svg width="520" height="200" style="top:250px">
+    <g class="node" data-in="60" data-fx="fade"><circle cx="70" cy="60" r="26"/><text x="70" y="60">Alice</text></g>
+    <g class="node" data-in="62" data-fx="fade"><circle cx="200" cy="60" r="26"/><text x="200" y="60">Refund</text></g>
+    <g class="node" data-in="64" data-fx="fade"><circle cx="330" cy="60" r="30"/><text x="330" y="60">Order 123</text></g>
+    <g class="node" data-in="66" data-fx="fade"><circle cx="330" cy="150" r="26"/><text x="330" y="150">Austin</text></g>
+    <g class="node" data-in="68" data-fx="fade" style="color:#a78bfa"><circle cx="460" cy="150" r="28" style="stroke:#a78bfa"/><text x="460" y="150">FastShip</text></g>
+    <line class="edge" x1="96" y1="60" x2="174" y2="60" data-fx="draw" data-in="63"/><text class="lbl" x="135" y="50" data-in="64" data-fx="fade">requested</text>
+    <line class="edge" x1="226" y1="60" x2="300" y2="60" data-fx="draw" data-in="65"/><text class="lbl" x="263" y="50" data-in="66" data-fx="fade">refunds</text>
+    <line class="edge" x1="330" y1="90" x2="330" y2="124" data-fx="draw" data-in="67"/><text class="lbl" x="362" y="110" data-in="68" data-fx="fade">shipTo</text>
+    <line class="edge" x1="356" y1="150" x2="432" y2="150" data-fx="draw" data-in="69" style="stroke:#a78bfa"/><text class="lbl" x="394" y="140" data-in="70" data-fx="fade">carrier</text>
+    <text x="430" y="195" fill="#a78bfa" font-size="12" text-anchor="middle" data-in="72" data-fx="fade">new class discovered: Carrier</text>
+  </svg>
+</div>
+<div class="merge"><div class="box" data-in="80" data-fx="pop">In practice: both</div><p data-in="86">Experts seed the business concepts. Observed interactions grow the graph, and the schema is revised as new kinds of things show up.</p></div>
+</div><script src="_shared.js"></script></body></html>

@@ -1,0 +1,46 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="duration" content="10000">
+<title>RDFS domain and range</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+:root{--T:10s}
+svg{position:absolute;left:0;top:0}
+.node circle{fill:#111a2c;stroke:#8b9bb4;stroke-width:2.5}
+.node text{fill:#e6edf7;font-size:17px;text-anchor:middle;dominant-baseline:middle;font-weight:700}
+.node.cls circle{stroke:#2dd4bf;stroke-dasharray:7 5;fill:rgba(45,212,191,.08)} .node.cls text{fill:#2dd4bf}
+.edge{stroke:#e6edf7;stroke-width:3;fill:none}
+.edge.inf{stroke:#2dd4bf;stroke-dasharray:6 6}
+.lbl{font-size:15px;text-anchor:middle;paint-order:stroke;stroke:#0b1220;stroke-width:6px;fill:#e6edf7;font-weight:600}
+.lbl.inf{fill:#2dd4bf}
+.decl{position:absolute;left:800px;top:150px;width:350px}
+.decl .card{position:static;margin-bottom:12px;font-family:var(--mono);font-size:15px}
+.decl .card b{display:block;font-family:var(--font);font-size:13px;color:var(--muted);margin-bottom:4px;font-weight:600;letter-spacing:.05em}
+.chip{position:absolute;left:355px;top:300px}
+.itag{position:absolute;font-size:13px}
+.cap{position:absolute;left:56px;bottom:60px;font-size:20px;max-width:1080px}
+.cap b{color:var(--onto)}
+</style></head><body><div class="stage">
+<div class="title">RDFS: <span style="color:var(--onto)">domain</span> and <span style="color:var(--onto)">range</span> give you inference for free</div>
+<div class="sub">Declare what a property connects. Assert one fact. The reasoner fills in the rest.</div>
+<div class="decl">
+  <div class="card" data-in="4"><b>DECLARE</b>:teaches  rdfs:domain  :Teacher</div>
+  <div class="card" data-in="14"><b>DECLARE</b>:teaches  rdfs:range   :Student</div>
+  <div class="card" data-in="26" style="border-color:rgba(245,165,36,.5)"><b style="color:var(--llm)">ASSERT (one fact)</b>:Bob  :teaches  :Scooter</div>
+  <div class="card" data-in="52" style="border-color:rgba(45,212,191,.6)"><b style="color:var(--onto)">INFERRED (zero extra code)</b>:Bob      a  :Teacher<br>:Scooter  a  :Student</div>
+</div>
+<svg width="1200" height="675">
+  <g class="node cls" data-in="4" data-fx="fade"><circle cx="250" cy="190" r="48"/><text x="250" y="190">Teacher</text></g>
+  <g class="node cls" data-in="14" data-fx="fade"><circle cx="600" cy="190" r="48"/><text x="600" y="190">Student</text></g>
+  <g class="node" data-in="26" data-fx="fade"><circle cx="250" cy="440" r="44"/><text x="250" y="440">Bob</text></g>
+  <g class="node" data-in="26" data-fx="fade"><circle cx="600" cy="440" r="44"/><text x="600" y="440">Scooter</text></g>
+  <line class="edge" x1="298" y1="440" x2="552" y2="440" data-fx="draw" data-in="30" data-ramp="6"/>
+  <text class="lbl" x="425" y="428" data-in="34" data-fx="fade">teaches</text>
+  <line class="edge inf" x1="250" y1="392" x2="250" y2="242" data-fx="draw" data-in="50" data-ramp="6"/>
+  <line class="edge inf" x1="600" y1="392" x2="600" y2="242" data-fx="draw" data-in="50" data-ramp="6"/>
+  <text class="lbl inf" x="285" y="320" data-in="56" data-fx="fade">a (inferred)</text>
+  <text class="lbl inf" x="645" y="320" data-in="56" data-fx="fade">a (inferred)</text>
+</svg>
+<div class="chip tag onto" data-in="44" data-fx="pop">reasoner running…</div>
+<div class="cap" data-in="60" data-out="80"><b>One asserted fact. Two inferred facts.</b> Nobody had to write them.</div>
+<div class="cap" data-in="82">Assert something that contradicts them and the reasoner notices. That is the beginning of a guardrail.</div>
+<div class="foot">Why Agentic Systems Need Ontologies · Frank Coyle, UC Berkeley</div>
+</div><script src="_shared.js"></script></body></html>

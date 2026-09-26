@@ -1,0 +1,39 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="duration" content="12000">
+<title>Two traditions converge</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+:root{--T:12s}
+.col{position:absolute;top:135px;width:440px}
+#agents{left:80px} #onto{left:680px}
+.col h2{margin:0 0 10px;font-size:20px;white-space:nowrap}
+#agents h2{color:var(--llm)} #onto h2{color:var(--onto)}
+.item{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+.item .yr{font-family:var(--mono);font-size:13px;color:var(--muted);width:92px;flex:none;padding-top:3px}
+.item .t{font-size:15px;line-height:1.35}
+.item .t b{display:block;font-size:16px}
+svg{position:absolute;left:0;top:0}
+.center{position:absolute;left:200px;top:536px;width:800px;text-align:center}
+.center .box{display:inline-block;padding:12px 22px;border-radius:14px;border:2px solid var(--violet);background:rgba(167,139,250,.12);font-size:24px;font-weight:800;color:var(--violet)}
+.center p{margin:8px 0 0;font-size:15px;color:var(--muted)}
+</style></head><body><div class="stage">
+<div class="title">Two old traditions converge</div>
+<div class="sub">Agentic systems are where <span style="color:var(--llm)">agents</span> that perceive, decide and act meet <span style="color:var(--onto)">ontologies</span> that describe the world they act in.</div>
+<div class="col" id="agents"><h2>Agents · perceive → decide → act</h2>
+  <div class="item" data-in="4"><div class="yr">1940s–50s</div><div class="t"><b>Cybernetics</b>feedback loops that sense and act</div></div>
+  <div class="item" data-in="14"><div class="yr">1970s–80s</div><div class="t"><b>Symbolic AI & expert systems</b>hand-coded rules; precise, hard to scale</div></div>
+  <div class="item" data-in="24"><div class="yr">1990s–2010s</div><div class="t"><b>Reinforcement learning</b>agents that learn by acting</div></div>
+  <div class="item" data-in="34"><div class="yr">2023 →</div><div class="t"><b>LLM tool loops</b>perceive, decide, act with language</div></div>
+</div>
+<div class="col" id="onto"><h2>Ontologies · what exists, how it relates</h2>
+  <div class="item" data-in="9"><div class="yr">~350 BC</div><div class="t"><b>Aristotle, Categories</b>what kinds of things there are</div></div>
+  <div class="item" data-in="19"><div class="yr">1948</div><div class="t"><b>Quine</b>"to be is to be the value of a variable"</div></div>
+  <div class="item" data-in="29"><div class="yr">1993</div><div class="t"><b>Gruber</b>"an explicit specification of a conceptualization"</div></div>
+  <div class="item" data-in="39"><div class="yr">2000s</div><div class="t"><b>Semantic Web</b>RDF · RDFS · OWL · SPARQL · Schema.org</div></div>
+</div>
+<svg width="1200" height="675">
+  <path d="M 300 500 C 300 570 540 560 560 566" fill="none" stroke="#f5a524" stroke-width="4" stroke-linecap="round" data-fx="draw" data-in="50" data-ramp="10"/>
+  <path d="M 900 520 C 900 580 660 560 640 566" fill="none" stroke="#2dd4bf" stroke-width="4" stroke-linecap="round" data-fx="draw" data-in="50" data-ramp="10"/>
+</svg>
+<div class="center"><div class="box" data-in="62" data-fx="pop">Neuro-symbolic AI</div><p data-in="70">neural networks tied into symbolic systems: rules and knowledge graphs</p></div>
+<div class="foot">Why Agentic Systems Need Ontologies · Frank Coyle, UC Berkeley</div>
+</div><script src="_shared.js"></script></body></html>

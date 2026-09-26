@@ -1,0 +1,67 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="duration" content="15000">
+<title>OWL properties that catch business errors</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+:root{--T:15s}
+.panel{position:absolute;top:130px;width:350px;height:470px;padding:14px 16px}
+#p1{left:56px}#p2{left:425px}#p3{left:794px}
+.panel h3{font-size:19px;margin-bottom:2px}
+.panel .rule{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-bottom:6px}
+.panel svg{display:block}
+.node circle{fill:#0b1220;stroke:#8b9bb4;stroke-width:2}
+.node text{fill:#e6edf7;font-size:13px;text-anchor:middle;dominant-baseline:middle;font-weight:600}
+.edge{stroke:#e6edf7;stroke-width:2.5;fill:none}
+.edge.inf{stroke:#2dd4bf;stroke-dasharray:6 6}
+.lbl{font-size:12px;fill:#a78bfa;text-anchor:middle;paint-order:stroke;stroke:#111a2c;stroke-width:5px}
+.lbl.inf{fill:#2dd4bf}
+.res{position:absolute;left:16px;right:16px;bottom:14px;font-size:14px;line-height:1.35}
+.res b{display:block;font-size:13px;letter-spacing:.05em}
+#f1,#f2{animation-name:merge1}#f3,#f4{animation-name:merge2}
+@keyframes merge1{0%,48%{transform:translateX(0)}54%,100%{transform:translateX(88px)}}
+@keyframes merge2{0%,48%{transform:translateX(0)}54%,100%{transform:translateX(-88px)}}
+#bob{animation-name:bobmove}
+@keyframes bobmove{0%,74%{transform:translate(0,0)}80%,100%{transform:translate(-55px,0)}}
+.active{animation-name:act}
+@keyframes act{0%{box-shadow:0 0 0 0 transparent;border-color:#24304a}}
+</style></head><body><div class="stage">
+<div class="title">OWL: the constraints that catch <span style="color:var(--bad)">real business errors</span></div>
+<div class="sub">A few property declarations turn a graph into a rule-checker.</div>
+
+<div class="card panel" id="p1" data-fx="dim" data-in="0" data-out="33"><h3>Transitive</h3><div class="rule">:ancestorOf a owl:TransitiveProperty</div>
+<svg width="316" height="300" viewBox="0 0 316 300">
+  <g class="node" data-in="2" data-fx="fade"><circle cx="60" cy="50" r="28"/><text x="60" y="50">Sue</text></g>
+  <g class="node" data-in="2" data-fx="fade"><circle cx="158" cy="150" r="28"/><text x="158" y="150">Mary</text></g>
+  <g class="node" data-in="2" data-fx="fade"><circle cx="256" cy="250" r="28"/><text x="256" y="250">Ann</text></g>
+  <line class="edge" x1="80" y1="70" x2="138" y2="130" data-fx="draw" data-in="5" data-ramp="4"/><text class="lbl" x="92" y="112" data-in="8" data-fx="fade">ancestorOf</text>
+  <line class="edge" x1="178" y1="170" x2="236" y2="230" data-fx="draw" data-in="10" data-ramp="4"/><text class="lbl" x="190" y="212" data-in="13" data-fx="fade">ancestorOf</text>
+  <path class="edge inf" d="M 88 40 C 220 20 270 120 262 220" data-fx="draw" data-in="17" data-ramp="6"/><text class="lbl inf" x="235" y="100" data-in="22" data-fx="fade">ancestorOf (inferred)</text>
+</svg>
+<div class="res" data-in="25"><b style="color:var(--onto)">CHAINS AUTOMATICALLY</b>If A→B and B→C then A→C. Org charts, part-of hierarchies, delegation chains.</div></div>
+
+<div class="card panel" id="p2" data-fx="dim" data-in="33" data-out="66"><h3>Functional</h3><div class="rule">:hasFather a owl:FunctionalProperty</div>
+<svg width="316" height="300" viewBox="0 0 316 300">
+  <g class="node" data-in="35" data-fx="fade"><circle cx="158" cy="50" r="28"/><text x="158" y="50">Alice</text></g>
+  <g class="node a" id="f1" data-in="35" data-fx="fade"><circle cx="70" cy="210" r="34"/><text x="70" y="206">John</text><text x="70" y="222">Smith</text></g>
+  <g class="node a" id="f3" data-in="35" data-out="50" data-fx="fade"><circle cx="246" cy="210" r="34"/><text x="246" y="206">J.</text><text x="246" y="222">Smith</text></g>
+  <line class="edge a" id="f2" x1="140" y1="72" x2="86" y2="178" data-fx="draw" data-in="38" data-ramp="4"/>
+  <line class="edge a" id="f4" x1="176" y1="72" x2="230" y2="178" data-fx="draw" data-in="41" data-ramp="4"/>
+  <text class="lbl" x="158" y="140" data-in="42" data-fx="fade">hasFather ×2 ?</text>
+  <text class="lbl inf" x="158" y="270" data-in="55" data-fx="fade">owl:sameAs → one entity</text>
+</svg>
+<div class="res" data-in="57"><b style="color:var(--onto)">AT MOST ONE VALUE</b>Two "fathers" means they are the same person, or the data is wrong. Free duplicate detection.</div></div>
+
+<div class="card panel" id="p3" data-fx="dim" data-in="66"><h3>Disjoint classes</h3><div class="rule">:Customer owl:disjointWith :SupportRep</div>
+<svg width="316" height="300" viewBox="0 0 316 300">
+  <circle cx="78" cy="200" r="66" fill="rgba(245,165,36,.08)" stroke="#f5a524" stroke-width="2" stroke-dasharray="6 5" data-in="68" data-fx="fade"/>
+  <text x="78" y="288" fill="#f5a524" font-size="13" text-anchor="middle" font-weight="700" data-in="68" data-fx="fade">Customer</text>
+  <circle cx="238" cy="200" r="66" fill="rgba(167,139,250,.08)" stroke="#a78bfa" stroke-width="2" stroke-dasharray="6 5" data-in="68" data-fx="fade"/>
+  <text x="238" y="288" fill="#a78bfa" font-size="13" text-anchor="middle" font-weight="700" data-in="68" data-fx="fade">SupportRep</text>
+  <g class="node" data-in="70" data-fx="fade"><circle cx="158" cy="40" r="26"/><text x="158" y="40">Refund</text></g>
+  <path class="edge" d="M 170 64 C 200 110 230 140 236 170" data-fx="draw" data-in="72" data-ramp="5" style="stroke:#f87171"/>
+  <text class="lbl" x="268" y="108" data-in="75" data-fx="fade" style="fill:#f87171">paidTo</text>
+  <g class="node a" id="bob" data-in="70" data-fx="fade"><circle cx="238" cy="200" r="26" style="stroke:#a78bfa"/><text x="238" y="200">Bob</text></g>
+  <text x="146" y="200" fill="#f87171" font-size="34" font-weight="800" text-anchor="middle" dominant-baseline="middle" data-in="82" data-fx="fade">✕</text>
+</svg>
+<div class="res" data-in="84"><b style="color:var(--bad)">VIOLATION</b>Bob is a SupportRep. A payee must be a Customer. Bob cannot be both, so the payout is rejected.</div></div>
+<div class="foot">Why Agentic Systems Need Ontologies · Frank Coyle, UC Berkeley</div>
+</div><script src="_shared.js"></script></body></html>

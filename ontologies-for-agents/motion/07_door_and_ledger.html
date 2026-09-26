@@ -1,0 +1,64 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="duration" content="12000">
+<title>Pydantic at the door, ontology at the ledger</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+:root{--T:12s}
+.st{position:absolute;top:300px;width:170px;height:96px;border-radius:14px;background:var(--panel);border:2px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-weight:700;font-size:16px}
+.st small{font-weight:500;font-size:12.5px;color:var(--muted);margin-top:3px}
+#s1{left:40px;color:var(--llm)} #s2{left:270px;color:var(--violet)} #s3{left:500px} #s4{left:730px;color:var(--onto)} #s5{left:960px;color:var(--ok)}
+.st span{color:var(--text)}
+.rail{position:absolute;left:210px;top:347px;width:750px;height:2px;background:var(--line)}
+.pkt{position:absolute;top:196px;left:40px;width:190px;padding:10px 12px;border-radius:12px;background:#0b1220;border:2px solid var(--llm);font-family:var(--mono);font-size:13px;line-height:1.35;animation-name:move;box-shadow:0 8px 20px rgba(0,0,0,.4)}
+@keyframes move{
+ 0%,6%{left:40px;opacity:1;border-color:#f5a524}
+ 12%,18%{left:260px}
+ 24%,28%{left:490px}
+ 34%,40%{left:720px}
+ 45%,47%{left:950px;opacity:1}
+ 48%{left:950px;opacity:0}
+ 49%{left:40px;opacity:0}
+ 51%,56%{left:40px;opacity:1;border-color:#f5a524}
+ 62%,68%{left:260px}
+ 72%,76%{left:490px}
+ 80%,86%{left:720px;border-color:#f5a524}
+ 88%{left:735px;border-color:#f87171}
+ 90%{left:705px;border-color:#f87171}
+ 92%{left:720px;border-color:#f87171}
+ 100%{left:40px;border-color:#f87171;opacity:1}}
+.chk{position:absolute;top:282px;z-index:3;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800}
+.ok{background:rgba(74,222,128,.15);color:var(--ok);border:2px solid var(--ok)} .no{background:rgba(248,113,113,.15);color:var(--bad);border:2px solid var(--bad)}
+.under{position:absolute;top:412px;width:230px;font-size:13.5px;color:var(--muted);text-align:center}
+.ledger{position:absolute;left:700px;top:455px;width:460px;height:120px}
+.ledger .row{display:flex;gap:10px;align-items:center;font-family:var(--mono);font-size:13px;margin-bottom:6px}
+.cap{position:absolute;left:56px;bottom:56px;font-size:19px;max-width:1080px}
+.cap b{color:var(--onto)}
+</style></head><body><div class="stage">
+<div class="title"><span style="color:var(--violet)">Pydantic at the door</span>, <span style="color:var(--onto)">ontology at the ledger</span></div>
+<div class="sub">Type-check what goes in. Check the meaning of what comes out before any side effect is committed.</div>
+<div class="rail"></div>
+<div class="st" id="s1"><span>LLM</span><small>proposes a tool call</small></div>
+<div class="st" id="s2"><span>Door · Pydantic</span><small>types, required fields</small></div>
+<div class="st" id="s3"><span>Tool</span><small>prepares the action</small></div>
+<div class="st" id="s4"><span>Ledger · ontology</span><small>domain rules, graph state</small></div>
+<div class="st" id="s5"><span>Commit</span><small>side effect happens</small></div>
+<div class="under" style="left:240px" data-in="14" data-fx="fade">"Is it well-formed?"</div>
+<div class="under" style="left:700px" data-in="36" data-fx="fade">"Is it true and allowed here?"</div>
+<div class="pkt a">refund(<br>&nbsp;order="Order_123",<br>&nbsp;amount=49.00)</div>
+<!-- scenario A checks -->
+<div class="chk ok" style="left:418px" data-in="14" data-out="47" data-fx="pop">✓</div>
+<div class="chk ok" style="left:878px" data-in="37" data-out="47" data-fx="pop">✓</div>
+<div class="chk ok" style="left:1108px" data-in="44" data-out="49" data-fx="pop">✓</div>
+<!-- scenario B checks -->
+<div class="chk ok" style="left:418px" data-in="64" data-out="86" data-fx="pop">✓</div>
+<div class="chk no" style="left:878px" data-in="84" data-fx="pop">✕</div>
+<div class="ledger">
+  <div class="row" style="color:var(--muted)">graph state · Order_123</div>
+  <div class="row" data-in="0"><span class="tag onto" style="font-size:11px">fact</span> :Order_123 :hasStatus :Shipped</div>
+  <div class="row" data-in="45"><span class="tag onto" style="font-size:11px">fact</span> :Refund_9 :refunds :Order_123</div>
+  <div class="row" data-in="84" style="color:var(--bad)"><span class="tag bad" style="font-size:11px">rule</span> :refunds max cardinality 1 per order → violated</div>
+</div>
+<div class="cap" data-in="2" data-out="46">First refund: the types check out, and the ledger has no refund on Order_123 yet. <b>Commit.</b></div>
+<div class="cap" data-in="52" data-out="82">Second, identical call: the types still check out. Pydantic has no idea a refund already exists.</div>
+<div class="cap" data-in="86">The ledger knows. <b>Rejected: duplicate refund.</b> Sent back to the model with the reason.</div>
+<div class="foot">Why Agentic Systems Need Ontologies · Frank Coyle, UC Berkeley</div>
+</div><script src="_shared.js"></script></body></html>

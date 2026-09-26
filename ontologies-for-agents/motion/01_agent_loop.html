@@ -1,0 +1,47 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="duration" content="10000">
+<title>The agent loop is Turing-complete and probabilistic</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+:root{--T:10s}
+.loop{position:absolute;left:40px;top:130px;width:600px;height:500px}
+.node{position:absolute;z-index:2;width:170px;height:86px;border-radius:16px;background:var(--panel);border:2px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:700;font-size:17px;text-align:center;color:var(--text)}
+.node small{font-weight:500;color:var(--muted);font-size:13px;margin-top:3px}
+#n-llm{left:215px;top:0;color:var(--llm)} #n-llm span{color:var(--text)}
+#n-tool{left:405px;top:300px;color:var(--bad)} #n-tool span{color:var(--text)}
+#n-msg{left:25px;top:300px;color:var(--violet)} #n-msg span{color:var(--text)}
+.gate{position:absolute;left:442px;top:84px;z-index:2;width:156px;padding:8px 10px;border-radius:10px;background:rgba(167,139,250,.12);border:1px dashed var(--violet);color:var(--violet);font-size:13px;font-weight:600;text-align:center}
+.dot{position:absolute;z-index:1;width:20px;height:20px;border-radius:50%;background:var(--llm);box-shadow:0 0 18px var(--llm);
+  offset-path:path("M 300 40 A 210 210 0 1 1 300 460 A 210 210 0 1 1 300 40");animation-name:travel}
+@keyframes travel{0%,20%{offset-distance:0%}22%,30%{offset-distance:16%}32%,55%{offset-distance:32%}58%,75%{offset-distance:68%}100%{offset-distance:100%}}
+.code{position:absolute;left:690px;top:150px;width:470px;font-family:var(--mono);font-size:16px;line-height:30px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 16px;white-space:pre}
+.code .hl{position:absolute;left:0;right:0;height:30px;top:12px;background:rgba(245,165,36,.16);border-left:3px solid var(--llm);animation-name:hl}
+@keyframes hl{0%,20%{transform:translateY(30px)}22%,30%{transform:translateY(150px)}32%,55%{transform:translateY(180px)}58%,75%{transform:translateY(210px)}78%,94%{transform:translateY(0)}96%,100%{transform:translateY(30px)}}
+.code .c{color:var(--muted)} .code .k{color:var(--violet)} .code .s{color:var(--onto)}
+.cap{position:absolute;left:56px;bottom:60px;font-size:20px;max-width:1080px}
+.cap b{color:var(--llm)}
+.badge{position:absolute;left:640px;top:440px}
+</style></head><body><div class="stage">
+<div class="title">The agent loop is <span style="color:var(--llm)">Turing-complete</span> and <span style="color:var(--llm)">probabilistic</span></div>
+<div class="sub">An agent = an LLM + tools + a loop. Every trip around it is sampled, and it can run forever.</div>
+<div class="loop">
+  <svg width="600" height="500" style="position:absolute;left:0;top:0"><circle cx="300" cy="250" r="210" fill="none" stroke="#24304a" stroke-width="3" stroke-dasharray="6 8"/></svg>
+  <div class="node" id="n-llm" data-fx="glow" data-in="0" data-out="20"><span>LLM</span><small>proposes a tool call</small></div>
+  <div class="gate" data-fx="glow" data-in="22" data-out="30">JSON-schema check<br><span style="font-weight:500;opacity:.8">the only gate</span></div>
+  <div class="node" id="n-tool" data-fx="glow" data-in="32" data-out="55"><span>Tool executes</span><small>side effects happen here</small></div>
+  <div class="node" id="n-msg" data-fx="glow" data-in="58" data-out="75"><span>Result appended</span><small>back into the context</small></div>
+  <div class="dot a"></div>
+</div>
+<div class="code"><div class="hl a"></div><span class="k">while</span> True:
+    resp = llm(messages, tools)
+    <span class="k">if</span> resp.stop_reason == <span class="s">"end_turn"</span>:
+        <span class="k">break</span>
+    <span class="k">for</span> call <span class="k">in</span> resp.tool_calls:
+        validate(call.args)     <span class="c"># schema only</span>
+        result = execute(call)  <span class="c"># side effects!</span>
+        messages.append(result)</div>
+<div class="badge tag bad" data-in="34" data-out="55" data-fx="pop">refund issued · payout sent · email fired</div>
+<div class="cap" data-in="2" data-out="30"><b>Turing-complete:</b> it can do anything, including never stop.</div>
+<div class="cap" data-in="34" data-out="62"><b>Probabilistic:</b> every step is a sample, not a decision.</div>
+<div class="cap" data-in="66" data-out="96"><b>Between a proposal and a side effect</b> today: nothing but a JSON-schema check.</div>
+<div class="foot">Why Agentic Systems Need Ontologies · Frank Coyle, UC Berkeley · AI Engineer World's Fair</div>
+</div><script src="_shared.js"></script></body></html>
