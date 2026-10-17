@@ -1016,10 +1016,10 @@
 
     function tensionStep(S, k, dt, inPech) {
       if (k.pull) {
-        k.T += (inPech ? 0.62 : 0.95) * dt;
+        k.T += (inPech ? 0.46 : 0.95) * dt;
         if (!inPech && k.T > 0.9) k.T = Math.max(0.9, k.T - 1.2 * dt);
         if (S.gust > 0) k.T += 0.55 * dt; // a gust yanks a taut line
-      } else k.T -= (inPech ? 0.72 : 0.85) * dt;
+      } else k.T -= (inPech ? 0.55 : 0.85) * dt;
       if (k.T < 0.08) k.T = 0.08;
     }
     function quality(T) {
@@ -1277,6 +1277,9 @@
           P.you = you; P.rival = rival;
           P.P += (you - rival) * 0.95 * dt;
           if (S.rasp) S.rasp.set(0.02 + 0.05 * Math.min(1, you + rival) * (me.pull ? 1 : 0.5), 1800 + me.T * 2000);
+          // the manja creaks when it is about to snap
+          S.creakT = (S.creakT || 0) - dt;
+          if (me.T > 0.92 && S.creakT <= 0) { S.creakT = 0.16; g.tone(1400 + me.T * 900, 0.05, { type: 'sawtooth', vol: 0.035 }); }
           const pp = toPx(S, P.pt.x, P.pt.y);
           if (g.rng.next() < 0.6) g.burst(pp.x, pp.y, 1, { colors: ['#fff6c8', '#ffd84a', '#ff9a4a'], kind: 'spark', speed: 140, grav: 200, life: 0.35, size: 2.2 });
           if (me.T > 1) {
@@ -1541,7 +1544,7 @@
       ctx.fillStyle = '#2a2234'; ctx.fillRect(gx, gy, gw, gh);
       const yOf = (t) => gy + gh - (t / 1.1) * gh;
       ctx.fillStyle = 'rgba(111,191,90,0.85)'; ctx.fillRect(gx, yOf(SWEET1), gw, yOf(SWEET0) - yOf(SWEET1));
-      ctx.fillStyle = 'rgba(226,72,58,0.85)'; ctx.fillRect(gx, gy, gw, yOf(1) - gy);
+      ctx.fillStyle = me.T > 0.92 && Math.floor(g.rt * 10) % 2 ? 'rgba(255,120,100,1)' : 'rgba(226,72,58,0.85)'; ctx.fillRect(gx, gy, gw, yOf(1) - gy);
       const T = Math.min(1.1, me.T);
       ctx.fillStyle = me.T > 1 ? '#ff4a3a' : me.T > SWEET1 ? '#ffb04a' : me.T >= SWEET0 ? '#d8ffd0' : '#eaf2ff';
       ctx.fillRect(gx + gw * 0.3, yOf(T), gw * 0.4, gy + gh - yOf(T));
