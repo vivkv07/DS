@@ -598,6 +598,7 @@ def uv_atlas_weighted(ob, boost=None, under=0.45, margin=0.005):
     bpy.ops.object.mode_set(mode='OBJECT')
     boost = boost or {}
     names = [m.name if m else '' for m in me.materials]
+    nobake = [bool(m is not None and not m.get('nos_bake', True)) for m in me.materials]
     bm = bmesh.new()
     bm.from_mesh(me)
     bm.faces.ensure_lookup_table()
@@ -606,6 +607,7 @@ def uv_atlas_weighted(ob, boost=None, under=0.45, margin=0.005):
     for isl in _islands(bm, lay):
         fac = 1.0
         down = 0
+        glass = 0
         for f in isl:
             nm = names[f.material_index] if f.material_index < len(names) else ''
             for k, s in boost.items():
@@ -613,7 +615,11 @@ def uv_atlas_weighted(ob, boost=None, under=0.45, margin=0.005):
                     fac = max(fac, s)
             if f.normal.z < -0.75:
                 down += 1
-        if fac == 1.0 and under and down == len(isl):
+            if f.material_index < len(nobake) and nobake[f.material_index]:
+                glass += 1
+        if glass == len(isl):
+            fac = 0.03          # glass is not baked: (almost) no atlas space
+        elif fac == 1.0 and under and down == len(isl):
             fac = under
         if fac == 1.0:
             continue
@@ -765,7 +771,20 @@ def finish_vehicle(A, ob, tex=512, orm=256, emit=256, ao_samples=24, albedo_samp
         kit.save_png(e, epath, srgb=True, name=A.id + '_emit')
     M = vehicle_material('M_%s@night' % A.id if epath else 'M_' + A.id, bpath, opath, epath)
     kit.drop_uv([ob], 'SignUV')
-    kit.assign(ob, M)
+    slots = list(ob.data.materials)
+    keep = [m for m in slots if m is not None and not m.get('nos_bake', True)]
+    if not keep:
+        kit.assign(ob, M)
+    else:
+        # baked faces -> M; glass keeps its own constant (transparent) material M_<id>_glass
+        newmats = [M] + [kit.glass_material(A.id, m) for m in keep]
+        idx_map = {i: (0 if (m is None or m.get('nos_bake', True)) else 1 + keep.index(m)) for i, m in enumerate(slots)}
+        fidx = [idx_map.get(p.material_index, 0) for p in ob.data.polygons]
+        ob.data.materials.clear()
+        for m in newmats:
+            ob.data.materials.append(m)
+        for p, i in zip(ob.data.polygons, fidx):
+            p.material_index = i
     for p in (bpath, opath, epath):
         if p:
             A.textures.append(p)
