@@ -1,0 +1,123 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 42736,
+ "clips": {
+  "lie": {
+   "duration": 4.0,
+   "fps": 60,
+   "frames": 240,
+   "loco": false,
+   "loop": true
+  },
+  "run": {
+   "duration": 0.1333,
+   "duty": 0.3,
+   "footfall": {
+    "FL": 0.52,
+    "FR": 0.42,
+    "HL": 0.0,
+    "HR": 0.1
+   },
+   "fps": 60,
+   "frames": 8,
+   "gait": "rotary gallop",
+   "loco": true,
+   "loop": true,
+   "nominal": 65.0,
+   "phase0": "LH strike",
+   "stride": 8.667
+  },
+  "sit": {
+   "duration": 3.0,
+   "fps": 60,
+   "frames": 180,
+   "loco": false,
+   "loop": true
+  },
+  "walk": {
+   "duration": 0.1667,
+   "duty": 0.56,
+   "footfall": {
+    "FL": 0.56,
+    "FR": 0.06,
+    "HL": 0.0,
+    "HR": 0.5
+   },
+   "fps": 60,
+   "frames": 10,
+   "gait": "trot-walk",
+   "loco": true,
+   "loop": true,
+   "nominal": 22.0,
+   "phase0": "LH strike",
+   "stride": 3.667
+  }
+ },
+ "family": "prop",
+ "file": "dog.glb",
+ "front": "-Y",
+ "id": "dog",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 41.7,
+ "kit": 1,
+ "materials": [
+  "M_dog"
+ ],
+ "max": [
+  0.6,
+  2.273,
+  4.3
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "body",
+   "chest",
+   "neck",
+   "head",
+   "tail1",
+   "leg_FL_upper",
+   "leg_FL_lower",
+   "leg_FR_upper",
+   "leg_FR_lower",
+   "leg_HL_upper",
+   "leg_HL_lower",
+   "leg_HR_upper",
+   "leg_HR_lower"
+  ],
+  "breed": "indian_pariah",
+  "doubleSided": false,
+  "height": 3.0,
+  "idleClip": "sit",
+  "kind": "animal",
+  "length": 4.6,
+  "loco": {
+   "run": 65.0,
+   "walk": 22.0
+  },
+  "restClip": "lie",
+  "runClip": "run",
+  "species": "dog",
+  "walkClip": "walk"
+ },
+ "min": [
+  -0.6,
+  -3.226,
+  -0.033
+ ],
+ "notes": [],
+ "script": "props_fauna",
+ "size": [
+  1.2,
+  5.499,
+  4.333
+ ],
+ "tint": null,
+ "tris": 417,
+ "units": "u",
+ "up": "Z"
+}

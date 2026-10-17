@@ -1,0 +1,96 @@
+{
+ "anchors": {
+  "wire_L1": [
+   -0.5211,
+   -3.1,
+   42.31
+  ],
+  "wire_L2": [
+   -0.5211,
+   0.0,
+   42.31
+  ],
+  "wire_L3": [
+   -0.5211,
+   3.1,
+   42.31
+  ],
+  "wire_N": [
+   0.0,
+   -1.2553,
+   37.4
+  ],
+  "wire_cable": [
+   1.0944,
+   0.1,
+   27.95
+  ],
+  "wire_lamp": [
+   0.0,
+   -8.5,
+   31.75
+  ],
+  "wire_service": [
+   0.0,
+   1.2633,
+   35.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 21376,
+ "clips": {},
+ "family": "prop",
+ "file": "pole_streetlight.glb",
+ "front": "-Y",
+ "id": "pole_streetlight",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 20.9,
+ "kit": 1,
+ "materials": [
+  "M_pole_streetlight",
+  "M_pole_streetlight_sodium_lens@night"
+ ],
+ "max": [
+  1.094,
+  3.6,
+  45.0
+ ],
+ "meta": {
+  "doubleSided": false,
+  "height": 45.0,
+  "kind": "pole",
+  "light": {
+   "anchor": "wire_lamp",
+   "color": "#ffb050"
+  },
+  "variant": "streetlight",
+  "wires": [
+   "wire_L1",
+   "wire_L2",
+   "wire_L3",
+   "wire_N",
+   "wire_service",
+   "wire_lamp",
+   "wire_cable"
+  ]
+ },
+ "min": [
+  -1.021,
+  -9.6,
+  0.0
+ ],
+ "notes": [],
+ "script": "props_poles",
+ "size": [
+  2.116,
+  13.2,
+  45.0
+ ],
+ "tint": null,
+ "tris": 329,
+ "units": "u",
+ "up": "Z"
+}

@@ -1,0 +1,110 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 43348,
+ "clips": {},
+ "family": "prop",
+ "file": "tree_neem.glb",
+ "front": "-Y",
+ "id": "tree_neem",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 42.3,
+ "kit": 1,
+ "materials": [
+  "M_tree_neem_imp",
+  "M_tree_neem"
+ ],
+ "max": [
+  118.447,
+  15.415,
+  40.608
+ ],
+ "meta": {
+  "crown": [
+   28.705,
+   28.151
+  ],
+  "doubleSided": true,
+  "height": 40.608,
+  "impostor": {
+   "billboard": "cylindrical",
+   "from": 800,
+   "h": 40.71,
+   "node": "tree_neem_IMPOSTOR",
+   "offset": [
+    105.031,
+    0,
+    0
+   ],
+   "w": 28.705,
+   "x0": -15.289,
+   "z0": -0.102
+  },
+  "kind": "neem",
+  "lods": [
+   {
+    "from": 0,
+    "lod": 0,
+    "node": "tree_neem_LOD0",
+    "offset": [
+     0.0,
+     0,
+     0
+    ],
+    "tris": 600
+   },
+   {
+    "from": 180,
+    "lod": 1,
+    "node": "tree_neem_LOD1",
+    "offset": [
+     35.01,
+     0,
+     0
+    ],
+    "tris": 136
+   },
+   {
+    "from": 420,
+    "lod": 2,
+    "node": "tree_neem_LOD2",
+    "offset": [
+     70.021,
+     0,
+     0
+    ],
+    "tris": 76
+   }
+  ],
+  "tree": true,
+  "wind": {
+   "a": "spare (1)",
+   "attribute": "_WIND",
+   "b": "flutter mask (1 = leaf)",
+   "g": "flutter phase 0..1",
+   "r": "bend 0 (trunk base) -> 1 (tips)",
+   "scale": 255,
+   "three": "_wind"
+  }
+ },
+ "min": [
+  -15.289,
+  -14.108,
+  -0.103
+ ],
+ "notes": [],
+ "script": "props_trees",
+ "size": [
+  133.736,
+  29.523,
+  40.711
+ ],
+ "tint": null,
+ "tris": 814,
+ "units": "u",
+ "up": "Z"
+}

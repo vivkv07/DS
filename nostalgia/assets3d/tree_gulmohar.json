@@ -1,0 +1,110 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 42296,
+ "clips": {},
+ "family": "prop",
+ "file": "tree_gulmohar.glb",
+ "front": "-Y",
+ "id": "tree_gulmohar",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 41.3,
+ "kit": 1,
+ "materials": [
+  "M_tree_gulmohar_imp",
+  "M_tree_gulmohar"
+ ],
+ "max": [
+  119.709,
+  12.932,
+  29.515
+ ],
+ "meta": {
+  "crown": [
+   28.566,
+   22.226
+  ],
+  "doubleSided": true,
+  "height": 29.515,
+  "impostor": {
+   "billboard": "cylindrical",
+   "from": 800,
+   "h": 29.621,
+   "node": "tree_gulmohar_IMPOSTOR",
+   "offset": [
+    104.552,
+    0,
+    0
+   ],
+   "w": 28.566,
+   "x0": -13.409,
+   "z0": -0.107
+  },
+  "kind": "gulmohar",
+  "lods": [
+   {
+    "from": 0,
+    "lod": 0,
+    "node": "tree_gulmohar_LOD0",
+    "offset": [
+     0.0,
+     0,
+     0
+    ],
+    "tris": 472
+   },
+   {
+    "from": 180,
+    "lod": 1,
+    "node": "tree_gulmohar_LOD1",
+    "offset": [
+     34.851,
+     0,
+     0
+    ],
+    "tris": 192
+   },
+   {
+    "from": 420,
+    "lod": 2,
+    "node": "tree_gulmohar_LOD2",
+    "offset": [
+     69.702,
+     0,
+     0
+    ],
+    "tris": 76
+   }
+  ],
+  "tree": true,
+  "wind": {
+   "a": "spare (1)",
+   "attribute": "_WIND",
+   "b": "flutter mask (1 = leaf)",
+   "g": "flutter phase 0..1",
+   "r": "bend 0 (trunk base) -> 1 (tips)",
+   "scale": 255,
+   "three": "_wind"
+  }
+ },
+ "min": [
+  -13.409,
+  -15.556,
+  -0.107
+ ],
+ "notes": [],
+ "script": "props_trees",
+ "size": [
+  133.118,
+  28.488,
+  29.621
+ ],
+ "tint": null,
+ "tris": 742,
+ "units": "u",
+ "up": "Z"
+}
