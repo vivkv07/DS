@@ -47,6 +47,7 @@ async function snap() {
       lf: N.missions.lastFailed && N.missions.lastFailed.id, ask: !!document.querySelector('.hud-ask.show'),
       p: { x: Math.round(N.player.x), y: Math.round(N.player.y), lvl: N.player.level, veh: N.player.vehicle && N.player.vehicle.type },
       clock: N.calendar.osd(), wanted: N.wanted ? N.wanted.level : 0,
+      dlg: N.state.mode === 'dialogue' && N.dialogue && N.dialogue.current ? JSON.stringify(N.dialogue.current, (k, v) => (typeof v === 'string' ? v.slice(0, 50) : k === 'portrait' || k === 'el' ? undefined : v)).slice(0, 300) : undefined,
     };
   });
 }

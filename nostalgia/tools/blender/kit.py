@@ -1526,7 +1526,14 @@ def finish_tiled(A, objs, tile=16.0, tex=512, ao_samples=64, ao_strength=0.8, ao
         arr[:, 2] = k * (1 - 0.1 * (1 - k))
         arr[:, 3] = 1.0
         ca.data.foreach_set('color', arr.ravel())
-    # tile textures + final materials (one per library material)
+    # tile textures + final materials (one per library material); small-area materials get small tiles
+    area = {}
+    for o in objs:
+        for p in o.data.polygons:
+            m = o.data.materials[p.material_index] if p.material_index < len(o.data.materials) else None
+            if m is not None:
+                area[m.name] = area.get(m.name, 0.0) + p.area
+    tot_area = sum(area.values()) or 1.0
     finals = {}
     for o in objs:
         uv_box(o, tile)
@@ -1540,7 +1547,9 @@ def finish_tiled(A, objs, tile=16.0, tex=512, ao_samples=64, ao_strength=0.8, ao
                 continue
             if m.name not in finals:
                 spec = json.loads(m.get('nos', '{}'))
-                p = tile_texture(m, tex, tile)
+                share = area.get(m.name, 0.0) / tot_area
+                size_m = tex if share > 0.08 else (max(64, tex // 4) if share > 0.01 else 64)
+                p = tile_texture(m, size_m, tile)
                 fm = baked_material('M_%s_%s' % (A.id, m.get('nos_key', m.name)), p, None, rough=float(spec.get('rough', 0.8)), metal=float(spec.get('metal', 0)), vcol='AO')
                 if m.name.endswith('@night'):
                     fm.name = fm.name + '@night'
@@ -1890,6 +1899,7 @@ def run_asset(aid, previews=True, quick=False):
     t0 = time.time()
     reset()
     MATS.clear()
+    GLASS_CACHE.clear()
     A = AssetContext(ent)
     A.quick = quick
     log('building', aid, '(%s)' % ent['family'])

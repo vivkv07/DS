@@ -48,3 +48,48 @@ ERROR MeshOptimizer is not available because library could not be found at /home
 16:31:25 | INFO: Data are loaded, start creating Blender stuff
 16:31:25 | INFO: Blender create Mesh node kid_chinnu
 16:31:25 | INFO: glTF import finished in 0.26s
+04:31.377  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_04.png'
+[kit] preview kid_chinnu_sheet_04.png (160px, 10 spp) in 8.9s
+16:31:34 | INFO: Data are loaded, start creating Blender stuff
+16:31:34 | INFO: Blender create Mesh node kid_chinnu
+16:31:35 | INFO: glTF import finished in 0.36s
+04:39.592  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_05.png'
+[kit] preview kid_chinnu_sheet_05.png (160px, 10 spp) in 7.6s
+16:31:43 | INFO: Data are loaded, start creating Blender stuff
+16:31:43 | INFO: Blender create Mesh node kid_chinnu
+16:31:43 | INFO: glTF import finished in 0.26s
+04:50.031  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_06.png'
+[kit] preview kid_chinnu_sheet_06.png (160px, 10 spp) in 9.6s
+16:31:53 | INFO: Data are loaded, start creating Blender stuff
+16:31:53 | INFO: Blender create Mesh node kid_chinnu
+16:31:54 | INFO: glTF import finished in 0.68s
+04:59.772  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_07.png'
+[kit] preview kid_chinnu_sheet_07.png (160px, 10 spp) in 8.5s
+16:32:03 | INFO: Data are loaded, start creating Blender stuff
+16:32:03 | INFO: Blender create Mesh node kid_chinnu
+16:32:03 | INFO: glTF import finished in 0.26s
+05:12.643  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_08.png'
+[kit] preview kid_chinnu_sheet_08.png (160px, 10 spp) in 12.0s
+16:32:16 | INFO: Data are loaded, start creating Blender stuff
+16:32:16 | INFO: Blender create Mesh node kid_chinnu
+16:32:16 | INFO: glTF import finished in 0.60s
+05:25.048  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_09.png'
+[kit] preview kid_chinnu_sheet_09.png (160px, 10 spp) in 11.4s
+16:32:28 | INFO: Data are loaded, start creating Blender stuff
+16:32:28 | INFO: Blender create Mesh node kid_chinnu
+16:32:28 | INFO: glTF import finished in 0.53s
+05:37.475  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_10.png'
+[kit] preview kid_chinnu_sheet_10.png (160px, 10 spp) in 11.7s
+16:32:40 | INFO: Data are loaded, start creating Blender stuff
+16:32:40 | INFO: Blender create Mesh node kid_chinnu
+16:32:41 | INFO: glTF import finished in 0.89s
+05:50.591  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_11.png'
+[kit] preview kid_chinnu_sheet_11.png (160px, 10 spp) in 12.0s
+16:32:53 | INFO: Data are loaded, start creating Blender stuff
+16:32:53 | INFO: Blender create Mesh node kid_chinnu
+16:32:54 | INFO: glTF import finished in 0.49s
+06:04.701  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_12.png'
+[kit] preview kid_chinnu_sheet_12.png (160px, 10 spp) in 13.5s
+16:33:09 | INFO: Data are loaded, start creating Blender stuff
+16:33:09 | INFO: Blender create Mesh node kid_chinnu
+16:33:09 | INFO: glTF import finished in 0.52s
