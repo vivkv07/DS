@@ -244,7 +244,7 @@ def win_mat(name, base='#3b3226', emit='#ffcf80'):
 @kit.asset('high_court', 'landmark', landmark='high_court', face='s', footprint=[168, 62], height=71.5, fit='footprint', floodlit=True)
 def high_court(A):
     M = C.mats(
-        red=('sandstone', dict(base='#b0533d', var=0.1, grain=0.06, grime=0.35, dirt='#5a2a1e')),
+        red=('sandstone', dict(base='#c4705a', var=0.1, grain=0.06, grime=0.35, dirt='#7a3a2c')),
         white=('whitewash', dict(base='#efe6d6', var=0.05, grain=0.04, streaks=0.2)),
         dark=('granite_grey', dict(base='#2c2522', var=0.05, grain=0.03, specks=0.0, grime=0.0)),
     )
@@ -259,6 +259,16 @@ def high_court(A):
     for (z0, z1) in ((1.8, 2.5), (8.0, 8.6), (14.0, 14.8), (27.2, 28.2)):
         parts.append(band(-XW, XW, YF, YB, z0, z1, white, 0.14))
     parts.append(band(-XW, XW, YF, YB, HR, HR + 2.2, white, 0.3, 'parapet'))
+    # dense white stripes (flat decals) on the front wings, the pavilion front and the pishtaq
+    def stripes(fc, spans, zs, off=0.06):
+        for z in zs:
+            for (u0, u1) in spans:
+                rect_panel(P, fc, white, u0, u1, z, z + 0.55, off)
+    ZST = [3.5 + 3.0 * i for i in range(9)]
+    stripes(Face('S', YF), [(-74.0, -24.0), (24.0, 74.0)], ZST)
+    stripes(Face('S', -28.5), [(-24.0, -13.5), (13.5, 24.0)], ZST)
+    stripes(Face('S', -31.5), [(-13.5, -8.3), (8.3, 13.5)], ZST)
+    stripes(Face('S', -31.5), [(-13.5, 13.5)], (31.0, 33.8, 37.6, 42.6), off=0.06)
     # chajjas (deep white sunshades) along the front and back
     for fc in (Face('S', YF), Face('N', YB)):
         parts.append(fc.slab(-XW, XW, 14.0, 14.6, 1.8, white, name='chajja'))
@@ -323,7 +333,7 @@ def high_court(A):
     for sx in (-1, 1):
         mx, my = sx * 24.5, -29.0
         parts.append(kit.cylinder('shaft', 2.5, 46.0, (mx, my, 0), seg=8, mat=red, r2=2.0, cap=False))
-        for zb in (12.0, 24.0, 36.0):
+        for zb in (4.0, 8.0, 12.0, 16.0, 20.0, 24.0, 28.0, 32.0, 36.0, 40.0):
             rb = 2.5 - 0.5 * zb / 46.0 + 0.1
             parts.append(kit.cylinder('shaftb', rb, 1.0, (mx, my, zb), seg=8, mat=white, cap=False))
         for zb in (46.0,):
@@ -336,7 +346,7 @@ def high_court(A):
     parts.append(lathe('drum_top', [(12.4, 47.6), (12.4, 48.5), (10.9, 48.5)], seg=16, mat=white, loc=(dx, dy, 0), close_bottom=False, close_top=False))
     ring_panels(P, dark, dx, dy, 8, 11.32, 41.4, 2.6, 3.4, 1.6, phase=math.pi / 8)
     DR, DH, DZ = 11.0, 17.0, 48.5
-    parts.append(big_dome(dx, dy, DZ, DR, DH, red, seg=16, n=7))
+    parts.append(big_dome(dx, dy, DZ, DR, DH, white, seg=16, n=7))
     parts.append(finial(dx, dy, DZ + DH * 1.08, 1.2, M['gold']))
     # ---- side domes on the wings and roofline chhatris / pinnacles
     for sx in (-1, 1):
@@ -394,7 +404,7 @@ def kiosk(x, y, z, r, h, wall, dome, dark=None, P=None, seg=8):
 @kit.asset('osmania_hospital', 'landmark', landmark='osmania_hospital', face='s', footprint=[194, 76], height=100.0, fit='footprint', floodlit=True)
 def osmania_hospital(A):
     M = C.mats(
-        buff=('lime_plaster', dict(base='#d8ccb2', var=0.1, grain=0.06, grime=0.45, streaks=0.55, dirt='#7a7058')),
+        buff=('lime_plaster', dict(base='#dcc9a0', var=0.1, grain=0.06, grime=0.45, streaks=0.55, dirt='#7a7058')),
         trim=('lime_plaster', dict(base='#e6dcc8', var=0.07, grain=0.05, grime=0.4, streaks=0.4, dirt='#7a7058')),
         dark=('granite_grey', dict(base='#2a2724', var=0.05, grain=0.03, specks=0.0, grime=0.0)),
         jaali=('granite_grey', dict(base='#5e574c', var=0.06, grain=0.1, specks=0.0, grime=0.0)),
@@ -440,9 +450,9 @@ def osmania_hospital(A):
         # domed corner turret on the pavilion's front
         tx, ty = cx, -24.0
         parts.append(kit.cylinder('pdrum', 5.0, 4.0, (tx, ty, 53.6), seg=10, mat=buff, cap=False))
-        parts.append(big_dome(tx, ty, 57.6, 4.9, 8.0, trim, seg=10, n=5))
+        parts.append(big_dome(tx, ty, 57.6, 6.0, 9.6, trim, seg=10, n=5))
     # ---- central tower block with the great porch
-    TX, TY0, TY1, TH = 16.0, -38.0, 22.0, 70.0
+    TX, TY0, TY1, TH = 16.0, -38.0, 22.0, 84.0
     tower = blk(-TX, TX, TY0, TY1, 0, TH, buff, 'tower')
     kit.boolean(tower, prism_from_outline('porch', arch_outline(14.0, 14.0, 9.0, 'pointed', n=6), 12.0, center=(0, TY0, 1.8)))
     parts.append(tower)
@@ -467,15 +477,15 @@ def osmania_hospital(A):
         for z in (47.0, 59.4):
             arch_win(P, fc, uu, z, 3.2, 5.0, 1.8, dark, None, off=0.2, n=2)
     # tower top: corner chhatris, drum, big dome
-    for qx in (-TX + 2.6, TX - 2.6):
-        for qy in (TY0 + 2.6, TY1 - 2.6):
-            parts += kiosk(qx, qy, TH + 2.6, 2.2, 7.0, buff, trim)
+    for qx in (-TX + 2.9, TX - 2.9):
+        for qy in (TY0 + 2.9, TY1 - 2.9):
+            parts += kiosk(qx, qy, TH + 2.6, 2.8, 8.0, buff, trim)
     dx, dy = 0.0, (TY0 + TY1) / 2
-    parts.append(kit.cylinder('drum', 10.0, 7.0, (dx, dy, TH + 2.6), seg=16, mat=buff, cap=False))
-    ring_panels(P, dark, dx, dy, 8, 10.1, TH + 3.6, 2.4, 3.0, 1.4, phase=-math.pi / 2)
-    parts.append(lathe('drum_top', [(11.2, TH + 9.6), (11.2, TH + 10.4), (9.8, TH + 10.4)], seg=16, mat=trim, loc=(dx, dy, 0), close_bottom=True, close_top=False))
-    parts.append(big_dome(dx, dy, TH + 10.4, 9.8, 14.0, trim, seg=16, n=7))
-    parts.append(finial(dx, dy, TH + 10.4 + 14.0 * 1.08, 1.0, M['gold']))
+    parts.append(kit.cylinder('drum', 12.0, 7.0, (dx, dy, TH + 2.6), seg=16, mat=buff, cap=False))
+    ring_panels(P, dark, dx, dy, 8, 12.1, TH + 3.6, 2.6, 3.0, 1.5, phase=-math.pi / 2)
+    parts.append(lathe('drum_top', [(13.3, TH + 9.6), (13.3, TH + 10.4), (12.0, TH + 10.4)], seg=16, mat=trim, loc=(dx, dy, 0), close_bottom=True, close_top=False))
+    parts.append(big_dome(dx, dy, TH + 10.4, 12.0, 18.0, trim, seg=16, n=7))
+    parts.append(finial(dx, dy, TH + 10.4 + 18.0 * 1.08, 1.2, M['gold']))
     # ---- wing windows: ground-floor arcade, two floors of arched windows with chajjas
     NB, STEP, U0 = 7, 9.75, 16.0
     fF, fB = Face('S', YF), Face('N', YB)
@@ -516,7 +526,7 @@ def balustrade(P, face, u0, u1, z0, z1, gap, post, step=2.0, off=0.05):
 @kit.asset('state_central_library', 'landmark', landmark='state_central_library', face='s', footprint=[100, 62], height=58.0, fit='footprint', floodlit=True)
 def state_central_library(A):
     M = C.mats(
-        cream=('lime_plaster', dict(base='#ead39c', var=0.08, grain=0.05, grime=0.45, streaks=0.4, dirt='#7a6844')),
+        cream=('lime_plaster', dict(base='#e8cf95', var=0.08, grain=0.05, grime=0.45, streaks=0.4, dirt='#7a6844')),
         trim=('lime_plaster', dict(base='#f7ecd2', var=0.05, grain=0.04, grime=0.35, streaks=0.3, dirt='#7a6c50')),
         dark=('granite_grey', dict(base='#2c2722', var=0.05, grain=0.03, specks=0.0, grime=0.0)),
     )
@@ -540,10 +550,10 @@ def state_central_library(A):
     # ---- the frontispiece with the great arched portal
     fx, fy0, fy1, fh = 15.0, -31.0, -21.9, 46.0
     fr = blk(-fx, fx, fy0, fy1, 0, fh, cream, 'frontis')
-    kit.boolean(fr, prism_from_outline('portal', arch_outline(16.0, 19.0, 12.0, 'pointed', n=7), 12.0, center=(0, fy0, 2.4)))
+    kit.boolean(fr, prism_from_outline('portal', arch_outline(19.0, 21.0, 14.0, 'pointed', n=7), 12.0, center=(0, fy0, 2.4)))
     parts.append(fr)
-    av = prism_from_outline('archivolt', arch_outline(19.0, 18.0, 14.2, 'pointed', n=7), 0.7, center=(0, fy0 - 0.35, 2.4), mat=trim)
-    kit.boolean(av, prism_from_outline('av_cut', arch_outline(16.0, 19.0, 12.0, 'pointed', n=7), 3.0, center=(0, fy0 - 0.35, 1.0)))
+    av = prism_from_outline('archivolt', arch_outline(22.0, 20.0, 16.2, 'pointed', n=7), 0.7, center=(0, fy0 - 0.35, 2.4), mat=trim)
+    kit.boolean(av, prism_from_outline('av_cut', arch_outline(19.0, 21.0, 14.0, 'pointed', n=7), 3.0, center=(0, fy0 - 0.35, 1.0)))
     parts.append(av)
     parts.append(band(-fx, fx, fy0, fy1, 2.4, 3.0, trim, 0.15))
     parts.append(band(-fx, fx, fy0, fy1, fh - 3.0, fh - 1.8, trim, 0.6, 'fr_cornice'))
@@ -665,12 +675,12 @@ def arc_ring(name, cy, r0, r1, a0, a1, n, z0, z1, mat, faces='fbt'):
 
 
 # =========================================================================== Salar Jung Museum
-@kit.asset('salar_jung_museum', 'landmark', landmark='salar_jung_museum', face='s', footprint=[150, 76], height=52.0, fit='footprint', floodlit=False)
+@kit.asset('salar_jung_museum', 'landmark', landmark='salar_jung_museum', face='s', footprint=[150, 76], height=60.0, fit='footprint', floodlit=False)
 def salar_jung_museum(A):
     M = C.mats(
         buff=('lime_plaster', dict(base='#ead9b6', var=0.07, grain=0.05, grime=0.4, streaks=0.35, dirt='#7a6c50')),
         trim=('lime_plaster', dict(base='#f6eedc', var=0.05, grain=0.04, grime=0.3, streaks=0.25, dirt='#7a6c50')),
-        dark=('granite_grey', dict(base='#2e2a26', var=0.05, grain=0.03, specks=0.0, grime=0.0)),
+        dark=('granite_grey', dict(base='#1c1a17', var=0.04, grain=0.03, specks=0.0, grime=0.0)),
     )
     buff, trim, dark, gran = M['buff'], M['trim'], M['dark'], M['granite']
     lit = win_mat('sjm_win', base='#3c3428', emit='#ffd890')
@@ -680,13 +690,13 @@ def salar_jung_museum(A):
     RF, RB, CY = 109.2, 127.2, -117.2
     TH = math.asin(75.0 / RB)
     NS, H1, H2 = 14, 18.0, 36.0
-    parts.append(arc_ring('wall', CY, RF, RB, -TH, TH, NS, 0, H2, buff, 'fbte'))
+    parts.append(arc_ring('wall', CY, RF, RB, -TH, TH, NS, 0, H2 + 2.4, buff, 'fbte'))
     parts.append(arc_ring('plinth', CY, RF - 1.5, RB + 1.0, -TH - 0.01, TH + 0.01, NS, 0, 2.0, gran, 'fbte'))
     for (z0, z1, pr) in ((2.0, 2.7, 0.15), (H1 - 0.6, H1 + 0.4, 0.3)):
         parts.append(arc_ring('band', CY, RF - pr, RF, -TH, TH, NS, z0, z1, trim, 'f'))
     parts.append(arc_ring('chajja', CY, RF - 1.8, RF, -TH, TH, NS, H1 - 2.2, H1 - 1.7, trim, 'ft'))
     parts.append(arc_ring('cornice', CY, RF - 1.2, RF, -TH, TH, NS, H2 - 1.6, H2 - 0.6, trim, 'ft'))
-    parts.append(arc_ring('parapet', CY, RF - 0.3, RF + 0.6, -TH, TH, NS, H2, H2 + 3.0, trim, 'fte'))
+    parts.append(arc_ring('parapet', CY, RF - 0.3, RF + 0.6, -TH, TH, NS, H2, H2 + 3.0, trim, 'ft'))
     # windows / arcade / pierced parapet along the curve (skipping the entrance block)
     for i in range(NS):
         a0 = -TH + 2 * TH * i / NS
@@ -701,8 +711,8 @@ def salar_jung_museum(A):
         seg_len = 2 * RF * math.sin((a1 - a0) / 2)
         for k in (-1, 1):
             u = k * seg_len / 4
-            arch_win(P, fc, u, 2.7, 4.6, 8.0, 2.8, dark, trim, f=0.45, off=0.25)
-            arch_win(P, fc, u, H1 + 1.6, 3.6, 8.4, 2.2, lit if (i + k) % 5 == 0 else dark, None, off=0.25)
+            arch_win(P, fc, u, 2.7, 5.5, 9.6, 3.3, dark, trim, f=0.5, off=0.25)
+            arch_win(P, fc, u, H1 + 1.4, 4.3, 10.0, 2.6, lit if (i + k) % 5 == 0 else dark, None, off=0.25)
         # pierced parapet: dark strip with posts
         balustrade(P, fc, -seg_len / 2 + 0.3, seg_len / 2 - 0.3, H2 + 0.4, H2 + 2.6, dark, trim, step=seg_len / 4, off=0.95)
         # back face: one row of windows
@@ -716,7 +726,7 @@ def salar_jung_museum(A):
     for u in (-22.0, -11.0, 0.0, 11.0, 22.0):
         arch_win(P, frh, u, H1 + 1.6, 3.4, 8.0, 2.0, dark, None, off=0.2, n=1)
     # ---- the central entrance block and its arcaded portico
-    EX, EY0, EY1, EH = 17.0, -29.0, 8.0, 46.0
+    EX, EY0, EY1, EH = 17.0, -29.0, 8.0, 54.0
     parts.append(blk(-EX, EX, EY0, EY1, 0, EH, buff, 'centre'))
     for (z0, z1) in ((2.0, 2.7), (H1 - 0.6, H1 + 0.4), (H2 - 1.6, H2 - 0.6)):
         parts.append(band(-EX, EX, EY0, EY1, z0, z1, trim, 0.2))
@@ -724,32 +734,35 @@ def salar_jung_museum(A):
     fe = Face('S', EY0)
     balustrade(P, fe, -EX + 1.0, EX - 1.0, EH - 1.0, EH + 1.2, dark, trim, step=3.6, off=0.55)
     for u in (-9.0, 0.0, 9.0):
-        arch_win(P, fe, u, 25.0, 4.2, 9.0, 2.6, lit if u == 0 else dark, trim, f=0.45, off=0.2)
+        arch_win(P, fe, u, 30.0, 5.0, 11.0, 3.0, lit if u == 0 else dark, trim, f=0.5, off=0.2)
     for fc in (Face('E', EX), Face('W', -EX)):
         for u in (-24.0, -14.0):
             uu = u if fc.side == 'E' else -u
             arch_win(P, fc, uu, H2 + 0.2, 3.0, 5.0, 1.6, dark, None, off=0.2, n=2)
-    por = blk(-15.0, 15.0, -38.0, EY0 + 0.01, 0, 22.0, buff, 'wall')
-    cut = kit.join([prism_from_outline('pc', arch_outline(6.4, 9.0, 4.4, 'pointed', n=5), 16.0, center=(u, -38.0, 2.0)) for u in (-9.0, 0.0, 9.0)], 'pcut')
+    por = blk(-16.0, 16.0, -39.0, EY0 + 0.01, 0, 26.0, buff, 'wall')
+    cut = kit.join([prism_from_outline('pc', arch_outline(7.4, 11.0, 5.0, 'pointed', n=5), 16.0, center=(u, -39.0, 2.0)) for u in (-10.0, 0.0, 10.0)], 'pcut')
     kit.boolean(por, cut)
     parts.append(por)
-    side = kit.join([prism_from_outline('ps', arch_outline(4.4, 8.0, 3.4, 'pointed', n=4), 34.0, axis='X', center=(0, -33.5, 2.0))], 'pside')
+    side = kit.join([prism_from_outline('ps', arch_outline(5.4, 9.5, 4.0, 'pointed', n=4), 36.0, axis='X', center=(0, -34.0, 2.0))], 'pside')
     kit.boolean(por, side)
-    parts.append(band(-15.0, 15.0, -38.0, EY0, 2.0, 2.6, trim, 0.15))
-    parts.append(band(-15.0, 15.0, -38.0, EY0, 15.4, 16.2, trim, 0.4, 'por_cornice'))
-    parts.append(band(-15.0, 15.0, -38.0, EY0, 21.4, 22.6, trim, 0.3, 'por_cap'))
+    parts.append(band(-16.0, 16.0, -39.0, EY0, 2.0, 2.6, trim, 0.15))
+    parts.append(band(-16.0, 16.0, -39.0, EY0, 18.4, 19.2, trim, 0.4, 'por_cornice'))
+    parts.append(band(-16.0, 16.0, -39.0, EY0, 24.6, 26.8, trim, 0.5, 'por_cap'))
+    fpo = Face('S', -39.0)
+    for u in (-15.0, -5.0, 5.0, 15.0):
+        parts.append(fpo.slab(u - 0.9, u + 0.9, 2.6, 24.6, 0.6, trim, name='por_pil'))
     fp = Face('S', -38.0)
-    fin = Face('S', -30.0)
+    fin = Face('S', -31.0)
     arch_win(P, fin, 0, 2.0, 5.0, 8.0, 3.0, dark, None, off=0.05)
-    for u in (-9.0, 9.0):
+    for u in (-10.0, 10.0):
         arch_win(P, fin, u, 2.0, 3.6, 7.0, 2.0, dark, None, off=0.05)
     # the name, painted plainly on the portico's front above the arches
-    parts.append(kit.signboard('sjm_sign', 'SALAR JUNG MUSEUM', 24.0, 2.6, (0, -38.5, 17.6), depth=0.3,
+    parts.append(kit.signboard('sjm_sign', 'SALAR JUNG MUSEUM', 26.0, 2.8, (0, -39.7, 20.0), depth=0.3,
                                fg='#6a1a14', bg='#f6eedc', frame_mat=trim, px=512))
     for sx in (-1, 1):
         parts += kiosk(sx * (EX - 2.4), EY0 + 2.4, EH + 1.6, 2.0, 6.0, buff, trim, dark, P)
     # entrance steps
-    parts.append(kit.stairs('steps', 26.0, 1.2, 0.7, 3, (0, -40.4, 0), gran))
+    parts.append(kit.stairs('steps', 28.0, 1.2, 0.7, 3, (0, -41.4, 0), gran))
     parts += P.objects('sjm_panels')
     strip_bottoms(parts)
     dice_walls(parts)
@@ -854,10 +867,10 @@ def _pyramid(name, poly, z0, apex, mat):
     return kit.obj_from_bm(bm, name, mat)
 
 
-@kit.asset('puranapul_arches', 'landmark', landmark='puranapul_arches', footprint=[44, 150], height=10.0, fit='footprint', floodlit=False)
+@kit.asset('puranapul_arches', 'landmark', landmark='puranapul_arches', footprint=[44, 150], height=14.4, fit='footprint', floodlit=False)
 def puranapul_arches(A):
     M = C.mats(
-        stone=('granite_grey', dict(base='#9b948a', var=0.12, grain=0.1, grime=0.5, dirt='#4e4a44', specks=0.5)),
+        stone=('granite_grey', dict(base='#7d776e', var=0.12, grain=0.1, grime=0.5, dirt='#46423c', specks=0.5)),
         lime=('lime_plaster', dict(base='#cfc6b4', var=0.1, grain=0.06, grime=0.5, streaks=0.5, dirt='#6e6858')),
         dark=('granite_grey', dict(base='#24221f', var=0.05, grain=0.03, specks=0.0, grime=0.0)),
     )
@@ -865,9 +878,9 @@ def puranapul_arches(A):
     parts = []
     L, NA = 150.0, 22
     step = L / NA
-    AW, ASP, AR = 4.5, 1.6, 2.9            # arch width, springing, rise (apex 4.5 above the water)
+    AW, ASP, AR = 6.0, 3.4, 3.8            # arch width, springing, rise (apex 7.2 above the water)
     XI, XO = PP_HALF, PP_HALF + 3.0         # inner (deck edge) and outer face of the side walls
-    ZS, ZP, ZC = 5.4, 7.4, 7.9              # string course, parapet top, coping top
+    ZS, ZP, ZC = 8.8, 10.6, 11.1             # string course, parapet top, coping top
     for sx in (-1, 1):
         x0, x1 = (XI, XO) if sx > 0 else (-XO, -XI)
         # core wall (deck side up to the parapet), the arcade layer in front of it, dark arch backs
@@ -883,17 +896,17 @@ def puranapul_arches(A):
         parts.append(blk(x0 + (0.0 if sx > 0 else 0.4), x1 - (0.4 if sx > 0 else 0.0), -L / 2, L / 2, ZS + 0.5, ZP, lime, 'parapet'))
         parts.append(blk(x0 - 0.2, x1 + 0.2, -L / 2, L / 2, ZP, ZC, stone, 'coping'))
         # piers: upstream (-X) triangular cutwaters, downstream (+X) flat buttresses
-        pw = step - AW
+        pw = max(step - AW + 0.6, 1.6)
         for i in range(1, NA):
             y = -L / 2 + step * i
             if sx < 0:
                 poly = [(-XO, y + pw / 2), (-XO - 2.8, y), (-XO, y - pw / 2)]
-                parts.append(_prism_sides('cutwater', poly, 0, 3.4, stone, skip_first=True, top=False))
-                parts.append(_pyramid('cw_cap', poly, 3.4, (-XO, y, 4.8), stone))
+                parts.append(_prism_sides('cutwater', poly, 0, 6.0, stone, skip_first=True, top=False))
+                parts.append(_pyramid('cw_cap', poly, 6.0, (-XO, y, 7.6), stone))
             else:
                 poly = [(XO, y - pw / 2 + 0.2), (XO + 1.1, y - pw / 2 + 0.2), (XO + 1.1, y + pw / 2 - 0.2), (XO, y + pw / 2 - 0.2)]
-                parts.append(_prism_sides('buttress', poly, 0, 3.6, stone, skip_first=True, top=False))
-                parts.append(_pyramid('bt_cap', [poly[0], poly[1], poly[2], poly[3]], 3.6, (XO, y, 4.9), stone))
+                parts.append(_prism_sides('buttress', poly, 0, 6.0, stone, skip_first=True, top=False))
+                parts.append(_pyramid('bt_cap', [poly[0], poly[1], poly[2], poly[3]], 6.0, (XO, y, 7.4), stone))
         # refuges: half-octagon bays over three piers, rising to the parapet
         for i in (5, 11, 17):
             y = -L / 2 + step * i
@@ -910,10 +923,10 @@ def puranapul_arches(A):
         # end pillars (abutments) at both ends
         for ye in (-L / 2, L / 2):
             cxp = sx * (XO - 0.6)
-            parts.append(blk(cxp - 1.9, cxp + 1.9, ye - 1.9, ye + 1.9, 0, 9.2, stone, 'pillar'))
+            parts.append(blk(cxp - 1.9, cxp + 1.9, ye - 1.9, ye + 1.9, 0, 12.6, stone, 'pillar'))
             sq = [(cxp - 2.2, ye - 2.2), (cxp + 2.2, ye - 2.2), (cxp + 2.2, ye + 2.2), (cxp - 2.2, ye + 2.2), (cxp - 2.2, ye - 2.2)]
-            parts.append(blk(cxp - 2.2, cxp + 2.2, ye - 2.2, ye + 2.2, 9.2, 9.8, stone, 'pillar_cap'))
-            parts.append(_pyramid('pillar_top', sq, 9.8, (cxp, ye, 11.0), lime))
+            parts.append(blk(cxp - 2.2, cxp + 2.2, ye - 2.2, ye + 2.2, 12.6, 13.2, stone, 'pillar_cap'))
+            parts.append(_pyramid('pillar_top', sq, 13.2, (cxp, ye, 14.4), lime))
     # COL proxies (side walls only; the deck stays free), built in the same local frame
     cols = [C.col_box('pp_w', (XO - XI, L, ZP), ((XI + XO) / 2, 0, 0)), C.col_box('pp_e', (XO - XI, L, ZP), (-(XI + XO) / 2, 0, 0))]
     # turn the bridge onto the road's straight span

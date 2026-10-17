@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 150924,
+ "bytes": 147604,
  "clips": {},
  "family": "landmark",
  "file": "mecca_masjid.glb",
@@ -13,21 +13,23 @@
   "image/webp",
   "image/webp",
   "image/webp",
+  "image/webp",
   "image/webp"
  ],
- "kb": 147.4,
+ "kb": 144.1,
  "kit": 1,
  "materials": [
   "M_mecca_masjid_granite_grey",
   "M_mecca_masjid_granite_grey.001",
   "M_mecca_masjid_granite_grey.002",
   "M_mecca_masjid_lime_plaster_shadow",
+  "M_mecca_masjid_whitewash",
   "M_mecca_masjid_gold_leaf"
  ],
  "max": [
   66.53,
   45.0,
-  84.09
+  84.64
  ],
  "meta": {
   "face": "e",
@@ -50,7 +52,7 @@
  "size": [
   133.06,
   90.6,
-  84.09
+  84.64
  ],
  "tint": null,
  "tris": 2439,

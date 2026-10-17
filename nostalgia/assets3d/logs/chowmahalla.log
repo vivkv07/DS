@@ -1,32 +1,24 @@
-00:00.053  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.028  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building chowmahalla (landmark)
-[kit] baked AO to vertex colours (32 samples) in 0.4s
+[kit] baked AO to vertex colours (32 samples) in 0.2s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (1 samples) in 0.1s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 64x64 (1 samples) in 0.0s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (1 samples) in 0.1s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 64x64 (1 samples) in 0.0s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (1 samples) in 0.0s
 ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
 ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
-20:15:45 | INFO: Starting glTF 2.0 export
-20:15:45 | INFO: Extracting primitive: chowmahalla_body
-20:15:45 | INFO: Primitives created: 9
-20:15:45 | INFO: Extracting primitive: COL_chowmahalla
-20:15:45 | INFO: Primitives created: 1
-20:15:45 | INFO: Finished glTF 2.0 export in 0.1082916259765625 s
+20:38:57 | INFO: Starting glTF 2.0 export
+20:38:57 | INFO: Extracting primitive: chowmahalla_body
+20:38:57 | INFO: Primitives created: 11
+20:38:57 | INFO: Extracting primitive: COL_chowmahalla
+20:38:57 | INFO: Primitives created: 1
+20:38:57 | INFO: Finished glTF 2.0 export in 0.15548324584960938 s
 
-[kit] chowmahalla: 2143 tris (budget 20000) ok, 149.3 KB, clips [], anchors 0
-20:15:45 | INFO: Data are loaded, start creating Blender stuff
-20:15:45 | INFO: Blender create Mesh node chowmahalla_body
-20:15:45 | INFO: Blender create Mesh node COL_chowmahalla
-20:15:45 | INFO: glTF import finished in 0.04s
-00:05.189  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/chowmahalla.png'
-[kit] preview chowmahalla.png (384px, 20 spp) in 3.2s
-20:15:48 | INFO: Data are loaded, start creating Blender stuff
-20:15:48 | INFO: Blender create Mesh node chowmahalla_body
-20:15:48 | INFO: Blender create Mesh node COL_chowmahalla
-20:15:48 | INFO: glTF import finished in 0.04s
-00:06.759  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/chowmahalla_back.png'
-[kit] preview chowmahalla_back.png (320px, 14 spp) in 1.5s
-20:15:50 | INFO: Data are loaded, start creating Blender stuff
-20:15:50 | INFO: Blender create Mesh node chowmahalla_body
-20:15:50 | INFO: Blender create Mesh node COL_chowmahalla
-20:15:50 | INFO: glTF import finished in 0.04s
-00:08.432  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/chowmahalla_gate.png'
-[kit] preview chowmahalla_gate.png (320px, 14 spp) in 1.6s
-[kit] done chowmahalla in 7.6s
+[kit] chowmahalla: 2175 tris (budget 20000) ok, 154.4 KB, clips [], anchors 0
+[kit] done chowmahalla in 1.3s

@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 153984,
+ "bytes": 150320,
  "clips": {},
  "family": "landmark",
  "file": "falaknuma.glb",
@@ -18,7 +18,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 150.4,
+ "kb": 146.8,
  "kit": 1,
  "materials": [
   "M_falaknuma_granite_grey",
@@ -33,7 +33,7 @@
  "max": [
   54.5,
   84.291,
-  65.5
+  72.6
  ],
  "meta": {
   "face": "e",
@@ -43,7 +43,7 @@
    110,
    170
   ],
-  "height": 56.0,
+  "height": 76.0,
   "landmark": "falaknuma_palace"
  },
  "min": [
@@ -56,10 +56,10 @@
  "size": [
   109.0,
   169.791,
-  67.27
+  74.37
  ],
  "tint": null,
- "tris": 2149,
+ "tris": 2045,
  "units": "u",
  "up": "Z"
 }

@@ -62585,12 +62585,24 @@ body.reduced-motion .pg-hud.show { animation: none; }
     stoneCols: ['#55636f', '#c9a77c', '#4b5763', '#dcc7a2', '#66737f', '#b88f62', '#7e8b97'],
     lineDist: 30,
     throwSpeed: 160, powerSpeed: 214, aiSpeed: [138, 180], passSpeed: 115,
-    lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.5, stackT: 0.75, threatR: 34, scatter: 0.8, aiErr: [0.2, 0.11], stackErr: [0.17, 0.11], dodge: [0.25, 0.55], windup: [0.7, 0.42] },
-    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8 },
-    aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130 },
+    lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.75, stackT: 1.1, threatR: 34, scatter: 0.8, aiErr: [0.2, 0.11], stackErr: [0.17, 0.11], dodge: [0.25, 0.55], windup: [0.7, 0.42],
+      // Chinnu's own hands: a pick-up and a careful placing take a moment (he stands still, a sitting duck)
+      myPickT: 0.35, myStackT: 0.65, knockMul: 1.3, stoneFric: 95, passMe: 0.55 },
+    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 34 },
+    // the line throw: the aim starts a little off the stack (straighten it), accuracy drops with power
+    aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130, startOff: [0.06, 0.2], err: 0.026, errPow: 0.075 },
     pay: { win: 200, win3: 300, daily: 3 },
     ambient: { r: 640, far: 820, rest: 5, barkGap: [3.5, 7.5], kids: 6 },
-    clockRate: 0.25, zoom: [1, 1.8], zoomPad: 110, leaveR: 70, leaveT: 5, catchWin: 0.32,
+    clockRate: 0.25, zoom: [1, 1.8], zoomPad: 110, leaveR: 70, leaveT: 5,
+    // catching (maram pitti): ACTION raises the hands for catchWin s (x1.4 with Assist / touch), then a short cooldown
+    catchWin: 0.42, catchCD: 0.75,
+    // after a throw the thrower may not pick his own ball up again for relock s (somebody else's turn);
+    // a ball that hits a kid pops off sideways (deflect: speed range, up speed) so there is a scramble for it
+    relock: 1.4, deflect: { sp: [26, 44], vz: 19 },
+    // the AI leads a target by its velocity smoothed over leadTau s (a late sidestep beats the lead)
+    leadTau: 0.35,
+    // a free ball nobody can reach comes back onto the ground ("Ball la, ra!")
+    freeMax: { lingocha: 9, marampitti: 6, outside: 3.5 },
     heat: { adult: 15, window: 30 },
   };
   const TEAM_COL = ['#f2c230', '#e2483a'];
@@ -62894,7 +62906,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   const AMB = { S: null, t: 0, force: null, off: false, cool: {} };
   const BUSY = new Set();      // places_art decor sort keys of grounds taken by our games
 
-  function newBall() { return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, state: 'rest', holder: null, thrower: null, live: false, pass: false, passTo: null, bounced: 1, releaseT: -9, seq: 0, hitSet: null }; }
+  function newBall() { return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, state: 'rest', holder: null, thrower: null, live: false, pass: false, passTo: null, bounced: 1, releaseT: -9, seq: 0, hitSet: null, lockP: null, lockT: 0 }; }
   function diffFor(params) {
     const MG = N.minigames, T = (MG && MG.TUNE) || {};
     const st = settings();
@@ -62921,6 +62933,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
       t: 0, rng: U.rng(seed), seed, d: df.d, assist: df.assist,
       parts: [], me: null, ball: newBall(), pops: [], log: [], phase: 'setup', phaseT: 0,
       ended: false, hiddenNpcs: [], auto: null, tele: null, aimTarget: null, barkT: 2, startT: now(),
+      // a game a mission started (m.minigame) survives that mission's start; a free-roam one does not
+      byMission: !!(!o.ambient && N.missions && N.missions.active),
       aim: { ang: 0, p: 0, dir: 1, charging: false, holdT: 0, drag: null, yaw: null },
       ui: { label: '', prompt: '' }, title: params.title || G.title,
       stats: { hits: 0, outs: 0, catches: 0, stacked: 0, fouls: 0, tries: 0 },
@@ -63004,11 +63018,17 @@ body.reduced-motion .pg-hud.show { animation: none; }
     return ev;
   }
   function pop(S, x, y, h, text, col, big) {
-    S.pops.push({ x, y, h: h || 9, text, col: col || '#f4ead8', t: 0, life: big ? 1.6 : 1.1, big: !!big, el: null });
+    h = h || 9;
+    // stack pops that land on the same spot at the same moment ("THWACK!" then "OUT!")
+    for (const q of S.pops) if (q.t < 0.6 && Math.abs(q.x - x) < 8 && Math.abs(q.y - y) < 8 && Math.abs(q.h - h) < 4) h = q.h + 5;
+    S.pops.push({ x, y, h, text, col: col || '#f4ead8', t: 0, life: big ? 1.6 : 1.1, big: !!big, el: null });
     if (S.pops.length > 8) { const o = S.pops.shift(); if (o.el) o.el.remove(); }
   }
   function bark(S, P, text, o) {
     if (!P || !P.e || !text) return;
+    // one voice at a time on the ground (the big moments always get through)
+    if (!(o && o.force) && S.t - (S.barkAt || -9) < 0.9) return;
+    S.barkAt = S.t;
     if (S.ambient) {
       const p = N.player;
       if (!p || hyp(p.x - P.e.x, p.y - P.e.y) > 220) return;
@@ -63062,6 +63082,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       e.x = c.x; e.y = c.y;
     }
     const sp = hyp(e.vx, e.vy);
+    smoothVel(P, e.vx, e.vy, dt);
     if (e.down) { e.anim.speed = 0; return; }
     if (P.face != null && sp < 20) e.angle += adiff(e.angle, P.face) * Math.min(1, dt * 12);
     else if (sp > 3) e.angle += adiff(e.angle, Math.atan2(e.vy, e.vx)) * Math.min(1, dt * 12);
@@ -63070,8 +63091,23 @@ body.reduced-motion .pg-hud.show { animation: none; }
     else { e.anim.speed = 0; e.anim.run = false; e.anim.phase *= 0.85; }
     if (e.emoteSt) { e.emoteSt.t += dt; if (e.emoteSt.t > e.emoteSt.secs) e.emoteSt = null; }
   }
+  /** velocity smoothed over TUNE.leadTau (what a thrower reads from your run; a late sidestep fools it) */
+  function smoothVel(P, vx, vy, dt) {
+    const k = 1 - Math.exp(-dt / TUNE.leadTau);
+    P.svx = (P.svx || 0) + (vx - (P.svx || 0)) * k;
+    P.svy = (P.svy || 0) + (vy - (P.svy || 0)) * k;
+  }
   function separate(S) {
     const L = S.parts;
+    // ambient games: the kids make way for Chinnu walking through their game
+    if (S.ambient && N.player && !N.player.vehicle) {
+      const p = N.player;
+      for (const a of L) {
+        if (!a.e || a.e.alive === false) continue;
+        const dx = a.e.x - p.x, dy = a.e.y - p.y, d = hyp(dx, dy), m = a.e.r + p.r - 0.6;
+        if (d < m && d > 1e-4) moveBy(a, (dx / d) * (m - d), (dy / d) * (m - d));
+      }
+    }
     for (let i = 0; i < L.length; i++) {
       const a = L[i];
       if (!a.e || a.e.alive === false || (a.out && !a.isPlayer)) continue;
@@ -63102,6 +63138,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const b = S.ball;
     for (const Q of S.parts) Q.hold = false;
     b.state = 'held'; b.holder = P; b.thrower = null; b.live = false; b.pass = false; b.passTo = null; b.bounced = 1;
+    b.lockP = null; b.lockT = 0; S.freeT = 0;
     P.hold = true; P.holdT = 0; P.windT = 0;
     const h = holdPos(P); b.x = h.x; b.y = h.y; b.z = h.z; b.vx = b.vy = b.vz = 0;
   }
@@ -63117,6 +63154,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const e = P.e;
     b.state = 'air'; b.holder = null; b.thrower = P; b.live = !o.pass && !o.dead; b.pass = !!o.pass; b.passTo = o.passTo || null;
     b.bounced = 0; b.releaseT = S.t; b.seq++; b.hitSet = new Set(); b.kind = o.kind || 'throw';
+    // somebody else's turn next: the thrower may not grab his own throw straight back
+    if (!o.pass && (o.kind || 'throw') === 'throw') { b.lockP = P; b.lockT = S.t + TUNE.relock; } else { b.lockP = null; b.lockT = 0; }
     b.x = e.x + Math.cos(ang) * 2.4; b.y = e.y + Math.sin(ang) * 2.4; b.z = TUNE.hand;
     b.vx = Math.cos(ang) * speed; b.vy = Math.sin(ang) * speed; b.vz = vz;
     if (!P.isPlayer) { e.angle = ang; } else { e.angle = e.facing = ang; }
@@ -63130,7 +63169,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
       if (Q.isPlayer || Q === P) continue;
       Q.react = S.t + lerp(0.34, 0.12, S.d) * (0.8 + S.rng.next() * 0.5);
       Q.dodgeRoll = S.real && PG.debug.assist.noDodge ? 0 : S.rng.next() < lerp(TUNE.lingocha.dodge[0], TUNE.lingocha.dodge[1], S.d) ? 1 : 0;
-      Q.catchRoll = S.id === 'marampitti' && !(S.real && PG.debug.assist.noDodge) && S.rng.next() < 0.08 + 0.1 * S.d;
+      // a point-blank throw is hard to catch; a long one gives time to get the hands up
+      const flight = hyp(Q.e.x - e.x, Q.e.y - e.y) / Math.max(40, speed);
+      Q.catchRoll = S.id === 'marampitti' && !(S.real && PG.debug.assist.noDodge) && S.rng.next() < (0.08 + 0.1 * S.d) * clamp((flight - 0.09) / 0.16, 0, 1.2);
       if (Q === b.target && b.live && !Q.out && Q.downT <= 0) {
         // busy hands (picking / stacking) drop the job to duck only some of the time
         if (Q.act && Q.dodgeRoll && S.rng.next() < 0.55) { Q.act = null; Q.actStone = null; juke(S, Q, P); }
@@ -63163,6 +63204,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (S.id === 'marampitti') return b.state !== 'air' || b.bounced > 0;   // must bounce first
     return b.state !== 'air' || (!b.live && b.z < 3.5);
   }
+  /** P has just thrown it: not his turn to pick it up again yet */
+  function lockedOut(S, P) { const b = S.ball; return b.lockP === P && S.t < b.lockT; }
+  function canGrabP(S, b, P) { return canGrab(S, b) && !lockedOut(S, P); }
   /** where a ball in the air comes down */
   function landing(b) {
     const g = TUNE.g, vz = b.vz, z = Math.max(0, b.z);
@@ -63620,7 +63664,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       L.shouted = true;
       const who = P || LING.seekers(S).find((q) => !q.out) || LING.seekers(S)[0];
       pop(S, L.base.x, L.base.y, 14, 'LINGOCHAAA!', '#f2c230', true);
-      if (who) bark(S, who, pick(S, BARK.lingocha), { secs: 2.2 });
+      if (who) bark(S, who, pick(S, BARK.lingocha), { secs: 2.2, force: true });
       sfx('crowd_cheer', { x: L.base.x, y: L.base.y, vol: S.real ? 1 : 0.5 }); sfx('kids', { x: L.base.x, y: L.base.y, vol: 0.8 });
       if (S.real) {
         sfx('applause', { ui: true, vol: 0.7, delay: 0.3 });
@@ -64594,6 +64638,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       S.G.update(S, dt);
       if (S.ended) return;
       for (const P of S.parts) moveKid(S, P, dt);
+      if (S.me && N.player) smoothVel(S.me, N.player.vx || 0, N.player.vy || 0, dt);
       separate(S);
       ballStep(S, dt);
       for (const pp of S.pops) pp.t += dt;
@@ -65236,6 +65281,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       /** a live ball from `from` (default: a kid of the other side) that hits the player on the body now */
       hitPlayer(z) {
         const S = current; if (!S || !S.me) return false;
+        S.me.safeT = 0; S.me.safeCD = 3; S.me.catchT = -9;
         const p = N.player, from = S.parts.find((P) => !P.isPlayer && !P.out && (S.id !== 'lingocha' || P.team !== S.me.team)) || S.parts.find((P) => !P.isPlayer);
         if (!from) return false;
         release(S, from, Math.atan2(p.y - from.e.y, p.x - from.e.x), 150, 0, { quiet: true });
@@ -71070,8 +71116,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
  *    colony lanes, sandy-edged Old City lanes).
  *  - VECTOR MARKINGS computed in the shader from (along u, across v) road coordinates, anti-aliased with
  *    fwidth and pre-filtered with distance (never aliased or blurry): dashed centre lines, lane lines and
- *    solid edge lines on arterials, ZEBRA CROSSINGS + stop lines at junction approaches (same rules and
- *    stand-off as the 2D map), all stopping cleanly at junctions; yellow bus-bay outlines at bus stops.
+ *    solid edge lines on arterials, all stopping cleanly at junctions; ZEBRA CROSSINGS + stop lines as
+ *    worn paint decals exactly where the 2D map paints them (same rules and stand-off); yellow bus-bay
+ *    outlines at bus stops.
  *  - REAL 3D KERBS (chamfered) along arterials / streets / the bund, painted black-and-yellow where the
  *    2D map paints them; raised footpaths with procedural worn paver slabs; raised medians with painted
  *    kerbs and shrubs on divided roads; railway ballast beds with sleepers; dirt paths.
@@ -71123,11 +71170,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
   const DAGE = { oldcity: 0.22, market: 0.12, colony: 0.08, rocky: 0.1, colonial: 0.0, cantonment: -0.05, posh: -0.1, hitec: -0.25 };
   const FOOTCOL = { arterial: '#a8a090', street: '#ada290', bund: '#b6ab96' };
   const KERBCOL = '#c9c2b4';
-  const DUSTCOL = '#9a8564';
   const YARD = '#c2a882';
   const PARKSOIL = { ground: '#b38c62', rock: '#a28468' };
 
-  const Q = () => (I ? I.Q : V.quality);
   let THREE = null, I = null;            // three.js + engine internals (attach)
 
   /* ================================================================ small math */
@@ -71246,7 +71291,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function hash1(x, y) { let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
 
   /* ================================================================ road network analysis (global) */
-  const NET = { built: false, worldKey: null, pieces: [], juncs: [], paths: [], rails: [], bays: [], buckets: new Map(), ms: 0, roadPieces: new Map() };
+  const NET = { built: false, pieces: [], juncs: [], paths: [], rails: [], bays: [], buckets: new Map(), ms: 0, roadPieces: new Map() };
   const bkey = (ci, cj) => cj * 64 + ci;
   function bucket(kind, obj, x0, y0, x1, y1) {
     const i0 = Math.max(0, Math.floor(x0 / CHS)), i1 = Math.max(0, Math.floor(x1 / CHS));
@@ -71309,7 +71354,12 @@ body.reduced-motion .pg-hud.show { animation: none; }
         } else if (ph === 3) { zebras(); AN.phase = 4; }
         else if (ph === 4) { // buckets
           for (const P of NET.pieces) { const bb = bboxOf(P.pts, P.hw + P.fp + 4); P.bb = bb; bucket('pieces', P, bb[0], bb[1], bb[2], bb[3]); }
-          for (const J of NET.juncs) { if (!J.poly) continue; const bb = bboxOf(J.poly.concat(J.extraPts || []), 14); J.bb = bb; bucket('juncs', J, bb[0], bb[1], bb[2], bb[3]); }
+          for (const J of NET.juncs) {
+            if (!J.poly && !J.decals) continue;
+            const pts = (J.poly || [[J.x, J.y]]).concat(J.extraPts || []);
+            if (J.decals) for (const d of J.decals) pts.push([d.x, d.y]);
+            const bb = bboxOf(pts, 30); J.bb = bb; bucket('juncs', J, bb[0], bb[1], bb[2], bb[3]);
+          }
           AN.phase = 5;
         } else if (ph === 5) { // paths + rails
           for (const r of D.roads || []) {
@@ -71610,13 +71660,16 @@ body.reduced-motion .pg-hud.show { animation: none; }
         if (L < R + 24) continue;
         if (seen.some((d) => d[0] * ux + d[1] * uy > 0.95)) continue;
         seen.push([ux, uy]);
+        // the 2D map's zebra: centred widest.w / 2 + 6 from the node along the edge, stripes 8 long x
+        // 2.4 wide every 4.5 from -w/2 + 3 while t <= w/2 - 4 (decal quads at exactly that spot)
+        const off = widest.w / 2 + 6;
+        const zx = n.x + ux * off, zy = n.y + uy * off;
+        (J.decals || (J.decals = [])).push({ t: 'zebra', x: zx, y: zy, ux, uy, w: e.w });
+        // stop line on the inbound half (traffic keeps left: inbound = left of -u = +n side), behind the zebra
+        const sx = zx + ux * 6.6, sy = zy + uy * 6.6, nx = -uy, ny = ux;
+        J.decals.push({ t: 'stop', x: sx + nx * (e.w / 4), y: sy + ny * (e.w / 4), ux, uy, w: e.w / 2 - 1.2 });
         const arm = J.arms.find((a) => a.edge === e) || J.arms.slice().sort((p, q) => (q.d[0] * ux + q.d[1] * uy) - (p.d[0] * ux + p.d[1] * uy))[0];
-        if (!arm) continue;
-        const P = arm.piece, end = arm.end, other = P.ends[arm.start ? 1 : 0];
-        const z = Math.max(widest.w / 2 + 6, end.trim + 4.6);
-        const lim = P.L - (other.zebra ? other.zebra + 12 : other.trim + 2);
-        if (z + 10 > lim) continue;
-        end.zebra = z;
+        if (arm) arm.end.zebra = Math.max(off, 1); // markings (dashes, medians) start behind it
       }
     }
   }
@@ -72163,7 +72216,31 @@ body.reduced-motion .pg-hud.show { animation: none; }
   }
 
   /** junction surface + kerb corners + footpath corners + straight connectors */
+  const ZEBRA = [0.80, 0.79, 0.74];
+  /** a flat painted rectangle (decal): centre, unit direction along its length, length x width */
+  function paintRect(B, c, x, y, ux, uy, len, wid) {
+    const hl = len / 2, hw = wid / 2, nx = -uy, ny = ux;
+    pv(x - ux * hl - nx * hw, Y_DECAL, y - uy * hl - ny * hw, 0, 1, 0, 0, 0);
+    pv(x + ux * hl - nx * hw, Y_DECAL, y + uy * hl - ny * hw, 0, 1, 0, len, 0);
+    pv(x + ux * hl + nx * hw, Y_DECAL, y + uy * hl + ny * hw, 0, 1, 0, len, 1);
+    pv(x - ux * hl + nx * hw, Y_DECAL, y - uy * hl + ny * hw, 0, 1, 0, 0, 1);
+    flush(B, c);
+  }
+  function emitDecals(B, J) {
+    const age = J.dom ? J.dom.st.age : 0.4;
+    const c = cst(ZEBRA, LY.PAINT, { age });
+    for (const d of J.decals) {
+      if (d.t === 'zebra') {
+        const nx = -d.uy, ny = d.ux;
+        for (let t = -d.w / 2 + 3; t <= d.w / 2 - 4; t += 4.5) {
+          const m = t + 1.2; // stripe [t, t + 2.4] across the road
+          paintRect(B, c, d.x + nx * m, d.y + ny * m, d.ux, d.uy, 8, 2.4);
+        }
+      } else if (d.t === 'stop') paintRect(B, c, d.x, d.y, -d.uy, d.ux, d.w, 1.1);
+    }
+  }
   function emitJunction(B, J) {
+    if (J.decals && !EMIT_LOD) emitDecals(B, J);
     if (!J.tris || !J.dom) return;
     const st = J.dom.st;
     const jc = cst(st.c, LY.JUNC, { p1: st.wear, age: st.age });
@@ -72636,6 +72713,7 @@ if (ngShine > 0.01) {
   // along the same view ray (screen position unchanged), so they draw above the terrain and below
   // anything standing on the road, while keeping their real shape for shading.
   const POT_DEPTH = `
+\tif (aSt.x > 4.5 && aSt.x < 6.5) gl_Position.z -= 3e-6 * gl_Position.w; // decals (paint, tar patches): never z-fight
 \tif (aSt.w > 0.001 && uCamPos.y > ${Y_ROAD.toFixed(3)} + 0.05) {
 \t\tfloat ngK = (uCamPos.y - ${Y_ROAD.toFixed(3)}) / max(uCamPos.y - vWP.y, 1e-3);
 \t\tvec4 ngC = projectionMatrix * viewMatrix * vec4(uCamPos + (vWP - uCamPos) * ngK, 1.0);
@@ -72732,18 +72810,7 @@ if (layer < 1.5) {
     if (ngBit(bits, 1.0) > 0.5) m = max(m, ngBand(v, 0.0, 0.42, fv) * ngDash(uA - clrA, 17.0, 8.0, fu) * mid);
     if (ngBit(bits, 2.0) > 0.5) m = max(m, ngBand(av, med + (hw - med) * 0.5, 0.36, fv) * ngDash(uA - clrA, 20.0, 9.0, fu) * mid);
     if (ngBit(bits, 4.0) > 0.5) m = max(m, ngBand(av, hw - 1.3, 0.3, fv) * midE);
-    // zebra crossings (2D: 8 long, stripes 2.4 wide every 4.5 from -hw + 3) + stop lines (inbound half)
-    float zx = v + hw - 3.0;
-    float zk = floor(zx / 4.5);
-    float zs = ngDash(zx, 4.5, 2.4, fv) * step(0.0, zx) * step(-hw + 3.0 + 4.5 * zk, hw - 4.0 + 0.001);
-    if (zA > 0.0) {
-      m = max(m, ngBand(uA, zA, 4.0, fu) * zs);
-      m = max(m, ngBand(uA, zA + 5.7, 0.6, fu) * clamp((v - max(med, 0.4)) / fv + 0.5, 0.0, 1.0) * clamp((hw - 0.8 - v) / fv + 0.5, 0.0, 1.0));
-    }
-    if (zB > 0.0) {
-      m = max(m, ngBand(uB, zB, 4.0, fu) * zs);
-      m = max(m, ngBand(uB, zB + 5.7, 0.6, fu) * clamp((-v - max(med, 0.4)) / fv + 0.5, 0.0, 1.0) * clamp((hw - 0.8 + v) / fv + 0.5, 0.0, 1.0));
-    }
+    // (zebra crossings + stop lines are decal quads placed exactly where the 2D map paints them)
     float paintWear = mix(1.0, smoothstep(0.2, 0.62, ngF(P * 0.8, fw * 0.8) * 0.7 + ngF(P * 3.1, fw * 3.1) * 0.3), 0.25 + 0.55 * age);
     col = mix(col, vec3(0.80, 0.79, 0.74), m * paintWear * 0.94);
   } else {
@@ -72809,8 +72876,10 @@ if (layer < 1.5) {
   float g = ngF(P * 0.9, fw * 0.9), g2 = ngF(P * 3.3, fw * 3.3);
   col = mix(base * (0.8 + 0.4 * g), vec3(0.09, 0.15, 0.04) * (0.7 + 0.6 * g2), smoothstep(0.5, 0.75, g * 0.6 + g2 * 0.4));
 } else if (layer < 5.5) {
-  float wn = ngF(P * 1.2, fw * 1.2);
-  col = mix(vec3(0.2, 0.19, 0.18), base, smoothstep(0.25, 0.5, wn + 0.3 - age * 0.3));
+  // road paint decal (zebra, stop line, bus bay): worn in patches, asphalt grain shows through
+  float wn = ngF(P * 0.9, fw * 0.9) * 0.7 + ngF(P * 3.3, fw * 3.3) * 0.3;
+  vec3 asp = ngAsphalt(P, vec3(0.05, 0.05, 0.055), age, fw);
+  col = mix(asp, base * (0.92 + 0.12 * ngF(P * 2.0, fw * 2.0)), smoothstep(0.18, 0.42, wn + 0.32 - age * 0.32));
 } else if (layer < 6.5) {
   // tar patch: fresher, darker asphalt with a seam
   col = ngAsphalt(P, base, 0.1, fw);
