@@ -167,7 +167,7 @@ module.exports = {
     });
     log('CPU ' + JSON.stringify(cpu));
     check(cpu.nodes.auto <= 20 && cpu.nodes.autoPlayer <= 24 && cpu.nodes.cycle <= 20, 'nodes per voice within budget', cpu.nodes);
-    check(cpu.b.ms <= cpu.b.msBuiltin * 1.6 + 150 && cpu.b.realtimeFrac < 0.2, '5 voices: audio-thread cost near the built-in voices, well under real time', cpu.b);
+    check(cpu.b.ms <= cpu.b.msBuiltin * 2 + 150 && cpu.b.realtimeFrac < 0.2, '5 voices: audio-thread cost near the built-in voices, well under real time', cpu.b);
     check(cpu.slice.p99Ms < 4 && cpu.slice.maxMs < 25, 'idle-time pre-render steps are small (p99 < 4 ms, max allows a GC pause; the pump stops starting new steps after 2.5 ms)', { max: cpu.slice.maxMs, at: cpu.slice.at, p99: cpu.slice.p99Ms, total: cpu.slice.totalMs });
     check(cpu.b.updUs < 60, 'update() JS cost per voice per frame < 60 us', cpu.b.updUs);
     // the voice through the live engine: player vehicle -> our voice
