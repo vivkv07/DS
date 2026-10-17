@@ -120,6 +120,8 @@ async function installHooks() {
     N.on('walkman:play', () => { window.__wm++; });
     N.on('minigame:start', (d) => { const P = (d && d.params) || {}; window.__mg.push({ id: d && d.id, lb: !!N.flags.lb_match, mission: N.missions.active && N.missions.active.id, home: P.home && (P.home.name || P.home), away: P.away && (P.away.name || P.away), intro: P.intro || null, title: P.title || null, place: P.place || null, at: N.calendar.osd() }); });
     N.on('minigame:end', (d) => { const r = (d && d.result) || {}; window.__mgEnd.push({ id: d && d.id, win: r.win, quit: r.quit, aborted: r.aborted, at: N.calendar.osd() }); });
+    window.__shops = [];
+    N.on('shop:open', (d) => { window.__shops.push({ place: d && d.place, kind: d && d.kind, mission: (N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || null, at: N.calendar.osd() }); });
     N.on('story2:ending', (d) => window.__s2ev.push(d.phase));
     N.on('story2:epilogue', (d) => { const c = N.places.charminar; window.__s2ev.push('epi:' + d.phase + ':' + Math.round(Math.hypot(N.player.x - c.x, N.player.y - c.y))); });
     const bad = (s) => typeof s === 'string' && (/\bChinnu\b|\bCHINNU\b|\bSrikanth\b|\bSRIKANTH\b|\{nick\}|\{full\}|\{FULL\}|\{NICK\}/.test(s));
@@ -234,6 +236,7 @@ async function snap1() {
       lf: N.missions.lastFailed && N.missions.lastFailed.id, ask: !!document.querySelector('.hud-ask.show'),
       p: { x: Math.round(N.player.x), y: Math.round(N.player.y), lvl: N.player.level, veh: N.player.vehicle && N.player.vehicle.type },
       clock: N.calendar.osd(), wanted: N.wanted ? N.wanted.level : 0,
+      dlg: N.state.mode === 'dialogue' && N.dialogue && N.dialogue.current ? { s: N.dialogue.current.speaker || N.dialogue.current.s || null, t: String(N.dialogue.current.text || N.dialogue.current.t || '').slice(0, 80), ch: N.dialogue.current.choices || null, typing: !!N.dialogue.current.typing, open: N.dialogue.isOpen ? N.dialogue.isOpen() : null, skip: N.dialogue.skip, stack: N.state.stack } : (N.state.mode === 'dialogue' ? { none: true, open: N.dialogue && N.dialogue.isOpen ? N.dialogue.isOpen() : null, stack: N.state.stack } : undefined),
     };
   });
 }
@@ -266,8 +269,26 @@ async function autopilot1(id, o) {
     if (Date.now() - t0 > (o.timeout || 600000)) return { ok: false, timeout: true, s };
     const key = JSON.stringify([s.mode, s.obj, s.st.step, s.p]);
     if (key === last) same++; else { same = 0; last = key; if (process.env.VERBOSE) console.log('     ·', s.mode, '|', s.obj, '|', s.st.step, '|', JSON.stringify(s.p), s.clock); }
-    if (Date.now() - (o.hb || t0) > 60000) { o.hb = Date.now(); log('   … ' + id + ': ' + s.mode + ' | ' + s.obj + ' | step ' + s.st.step + ' | ' + JSON.stringify(s.p) + ' tgt ' + JSON.stringify(s.tgt) + ' | ' + s.clock + (s.st.queue ? ' | queue ' + JSON.stringify(s.st.queue) : '')); }
+    if (Date.now() - (o.hb || t0) > 60000) { o.hb = Date.now(); log('   … ' + id + ': ' + s.mode + ' | ' + s.obj + ' | step ' + s.st.step + ' | ' + JSON.stringify(s.p) + ' tgt ' + JSON.stringify(s.tgt) + ' | ' + s.clock + (s.st.queue ? ' | queue ' + JSON.stringify(s.st.queue) : '') + (s.dlg ? ' | dlg ' + JSON.stringify(s.dlg) : '')); }
     if (s.rec && s.rec.phase === 'prompt' && s.mode === 'play') { await pressKey('KeyE'); tally('E on ● REC'); await sleep(250); continue; }
+    // a shop / auto card (shops.js pushes the 'dialogue' state) opened under the autopilot: a player presses Escape
+    if (s.mode === 'dialogue' && await ev(() => !!(N.shops && N.shops.isOpen && N.shops.isOpen()))) {
+      const what = await ev(() => (window.__shops || []).slice(-1)[0] || null);
+      log('   (' + id + ': a shop/auto card opened mid-mission: ' + JSON.stringify(what) + ' -> Escape)');
+      await pressKey('Escape'); await ev(() => { try { if (N.shops.isOpen()) N.shops.close(); } catch (e) { /* ignore */ } }); await sleep(300); continue;
+    }
+    if (s.mode === 'dialogue') {
+      o.dlgSince = o.dlgSince || Date.now();
+      // a dialogue that E does not close for 20 s: log it (it would be a game bug), screenshot, then try what a
+      // player would: Enter, a click on the box, Escape
+      if (Date.now() - o.dlgSince > 20000 && !o.dlgLogged) {
+        o.dlgLogged = true;
+        log('   !! ' + id + ': dialogue stuck: ' + JSON.stringify(s.dlg));
+        await shot('stuck_dialogue_' + id);
+        check(false, id + ': a dialogue box did not close on E for 20 s', s.dlg);
+        await pressKey('Enter'); await page.click('#ui .dlg, .dlg', { timeout: 1500 }).catch(() => {}); await pressKey('Escape');
+      }
+    } else { o.dlgSince = 0; o.dlgLogged = false; }
     if (s.mode === 'dialogue' && same > 6) { await pressKey('KeyE'); same = 0; continue; }
     if (s.mode !== 'play') { await sleep(220); continue; }
     if (o.hook && await o.hook(s)) continue;

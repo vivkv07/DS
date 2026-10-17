@@ -73330,7 +73330,7 @@ if (ngShine > 0.01) {
     M.kit = kit(THREE.FrontSide, 'lm3d-kit', [1.0, 0.80, 0.56]);
     M.kit2 = kit(THREE.DoubleSide, 'lm3d-kit2', [1.0, 0.80, 0.56]);
     // festive nights: Charminar's floodlights turn green (same program as M.kit, its own uniform)
-    M.kitFest = kit(THREE.FrontSide, 'lm3d-kit', [0.50, 1.0, 0.60]);
+    M.kitFest = kit(THREE.FrontSide, 'lm3d-kit', [0.30, 1.0, 0.45]);
     M.water = new THREE.MeshPhongMaterial({ color: '#3a8a93', specular: '#bfe2ea', shininess: 70, transparent: true, opacity: 0.9 });
     const gmap = H.materials.glow && H.materials.glow.map;
     const pts = (size) => new THREE.PointsMaterial({ size, map: gmap, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true, opacity: 0 });

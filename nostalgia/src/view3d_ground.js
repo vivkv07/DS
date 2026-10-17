@@ -251,7 +251,12 @@
         } else if (ph === 3) { zebras(); AN.phase = 4; }
         else if (ph === 4) { // buckets
           for (const P of NET.pieces) { const bb = bboxOf(P.pts, P.hw + P.fp + 4); P.bb = bb; bucket('pieces', P, bb[0], bb[1], bb[2], bb[3]); }
-          for (const J of NET.juncs) { if (!J.poly) continue; const bb = bboxOf(J.poly.concat(J.extraPts || []), 14); J.bb = bb; bucket('juncs', J, bb[0], bb[1], bb[2], bb[3]); }
+          for (const J of NET.juncs) {
+            if (!J.poly && !J.decals) continue;
+            const pts = (J.poly || [[J.x, J.y]]).concat(J.extraPts || []);
+            if (J.decals) for (const d of J.decals) pts.push([d.x, d.y]);
+            const bb = bboxOf(pts, 30); J.bb = bb; bucket('juncs', J, bb[0], bb[1], bb[2], bb[3]);
+          }
           AN.phase = 5;
         } else if (ph === 5) { // paths + rails
           for (const r of D.roads || []) {
@@ -552,13 +557,16 @@
         if (L < R + 24) continue;
         if (seen.some((d) => d[0] * ux + d[1] * uy > 0.95)) continue;
         seen.push([ux, uy]);
+        // the 2D map's zebra: centred widest.w / 2 + 6 from the node along the edge, stripes 8 long x
+        // 2.4 wide every 4.5 from -w/2 + 3 while t <= w/2 - 4 (decal quads at exactly that spot)
+        const off = widest.w / 2 + 6;
+        const zx = n.x + ux * off, zy = n.y + uy * off;
+        (J.decals || (J.decals = [])).push({ t: 'zebra', x: zx, y: zy, ux, uy, w: e.w });
+        // stop line on the inbound half (traffic keeps left: inbound = left of -u = +n side), behind the zebra
+        const sx = zx + ux * 6.6, sy = zy + uy * 6.6, nx = -uy, ny = ux;
+        J.decals.push({ t: 'stop', x: sx + nx * (e.w / 4), y: sy + ny * (e.w / 4), ux, uy, w: e.w / 2 - 1.2 });
         const arm = J.arms.find((a) => a.edge === e) || J.arms.slice().sort((p, q) => (q.d[0] * ux + q.d[1] * uy) - (p.d[0] * ux + p.d[1] * uy))[0];
-        if (!arm) continue;
-        const P = arm.piece, end = arm.end, other = P.ends[arm.start ? 1 : 0];
-        const z = Math.max(widest.w / 2 + 6, end.trim + 4.6);
-        const lim = P.L - (other.zebra ? other.zebra + 12 : other.trim + 2);
-        if (z + 10 > lim) continue;
-        end.zebra = z;
+        if (arm) arm.end.zebra = Math.max(off, 1); // markings (dashes, medians) start behind it
       }
     }
   }
@@ -1105,7 +1113,31 @@
   }
 
   /** junction surface + kerb corners + footpath corners + straight connectors */
+  const ZEBRA = [0.80, 0.79, 0.74];
+  /** a flat painted rectangle (decal): centre, unit direction along its length, length x width */
+  function paintRect(B, c, x, y, ux, uy, len, wid) {
+    const hl = len / 2, hw = wid / 2, nx = -uy, ny = ux;
+    pv(x - ux * hl - nx * hw, Y_DECAL, y - uy * hl - ny * hw, 0, 1, 0, 0, 0);
+    pv(x + ux * hl - nx * hw, Y_DECAL, y + uy * hl - ny * hw, 0, 1, 0, len, 0);
+    pv(x + ux * hl + nx * hw, Y_DECAL, y + uy * hl + ny * hw, 0, 1, 0, len, 1);
+    pv(x - ux * hl + nx * hw, Y_DECAL, y - uy * hl + ny * hw, 0, 1, 0, 0, 1);
+    flush(B, c);
+  }
+  function emitDecals(B, J) {
+    const age = J.dom ? J.dom.st.age : 0.4;
+    const c = cst(ZEBRA, LY.PAINT, { age });
+    for (const d of J.decals) {
+      if (d.t === 'zebra') {
+        const nx = -d.uy, ny = d.ux;
+        for (let t = -d.w / 2 + 3; t <= d.w / 2 - 4; t += 4.5) {
+          const m = t + 1.2; // stripe [t, t + 2.4] across the road
+          paintRect(B, c, d.x + nx * m, d.y + ny * m, d.ux, d.uy, 8, 2.4);
+        }
+      } else if (d.t === 'stop') paintRect(B, c, d.x, d.y, -d.uy, d.ux, d.w, 1.1);
+    }
+  }
   function emitJunction(B, J) {
+    if (J.decals && !EMIT_LOD) emitDecals(B, J);
     if (!J.tris || !J.dom) return;
     const st = J.dom.st;
     const jc = cst(st.c, LY.JUNC, { p1: st.wear, age: st.age });
@@ -1578,6 +1610,7 @@ if (ngShine > 0.01) {
   // along the same view ray (screen position unchanged), so they draw above the terrain and below
   // anything standing on the road, while keeping their real shape for shading.
   const POT_DEPTH = `
+\tif (aSt.x > 4.5 && aSt.x < 6.5) gl_Position.z -= 3e-6 * gl_Position.w; // decals (paint, tar patches): never z-fight
 \tif (aSt.w > 0.001 && uCamPos.y > ${Y_ROAD.toFixed(3)} + 0.05) {
 \t\tfloat ngK = (uCamPos.y - ${Y_ROAD.toFixed(3)}) / max(uCamPos.y - vWP.y, 1e-3);
 \t\tvec4 ngC = projectionMatrix * viewMatrix * vec4(uCamPos + (vWP - uCamPos) * ngK, 1.0);
@@ -1674,18 +1707,7 @@ if (layer < 1.5) {
     if (ngBit(bits, 1.0) > 0.5) m = max(m, ngBand(v, 0.0, 0.42, fv) * ngDash(uA - clrA, 17.0, 8.0, fu) * mid);
     if (ngBit(bits, 2.0) > 0.5) m = max(m, ngBand(av, med + (hw - med) * 0.5, 0.36, fv) * ngDash(uA - clrA, 20.0, 9.0, fu) * mid);
     if (ngBit(bits, 4.0) > 0.5) m = max(m, ngBand(av, hw - 1.3, 0.3, fv) * midE);
-    // zebra crossings (2D: 8 long, stripes 2.4 wide every 4.5 from -hw + 3) + stop lines (inbound half)
-    float zx = v + hw - 3.0;
-    float zk = floor(zx / 4.5);
-    float zs = ngDash(zx, 4.5, 2.4, fv) * step(0.0, zx) * step(-hw + 3.0 + 4.5 * zk, hw - 4.0 + 0.001);
-    if (zA > 0.0) {
-      m = max(m, ngBand(uA, zA, 4.0, fu) * zs);
-      m = max(m, ngBand(uA, zA + 5.7, 0.6, fu) * clamp((v - max(med, 0.4)) / fv + 0.5, 0.0, 1.0) * clamp((hw - 0.8 - v) / fv + 0.5, 0.0, 1.0));
-    }
-    if (zB > 0.0) {
-      m = max(m, ngBand(uB, zB, 4.0, fu) * zs);
-      m = max(m, ngBand(uB, zB + 5.7, 0.6, fu) * clamp((-v - max(med, 0.4)) / fv + 0.5, 0.0, 1.0) * clamp((hw - 0.8 + v) / fv + 0.5, 0.0, 1.0));
-    }
+    // (zebra crossings + stop lines are decal quads placed exactly where the 2D map paints them)
     float paintWear = mix(1.0, smoothstep(0.2, 0.62, ngF(P * 0.8, fw * 0.8) * 0.7 + ngF(P * 3.1, fw * 3.1) * 0.3), 0.25 + 0.55 * age);
     col = mix(col, vec3(0.80, 0.79, 0.74), m * paintWear * 0.94);
   } else {
@@ -1751,8 +1773,10 @@ if (layer < 1.5) {
   float g = ngF(P * 0.9, fw * 0.9), g2 = ngF(P * 3.3, fw * 3.3);
   col = mix(base * (0.8 + 0.4 * g), vec3(0.09, 0.15, 0.04) * (0.7 + 0.6 * g2), smoothstep(0.5, 0.75, g * 0.6 + g2 * 0.4));
 } else if (layer < 5.5) {
-  float wn = ngF(P * 1.2, fw * 1.2);
-  col = mix(vec3(0.2, 0.19, 0.18), base, smoothstep(0.25, 0.5, wn + 0.3 - age * 0.3));
+  // road paint decal (zebra, stop line, bus bay): worn in patches, asphalt grain shows through
+  float wn = ngF(P * 0.9, fw * 0.9) * 0.7 + ngF(P * 3.3, fw * 3.3) * 0.3;
+  vec3 asp = ngAsphalt(P, vec3(0.05, 0.05, 0.055), age, fw);
+  col = mix(asp, base * (0.92 + 0.12 * ngF(P * 2.0, fw * 2.0)), smoothstep(0.18, 0.42, wn + 0.32 - age * 0.32));
 } else if (layer < 6.5) {
   // tar patch: fresher, darker asphalt with a seam
   col = ngAsphalt(P, base, 0.1, fw);

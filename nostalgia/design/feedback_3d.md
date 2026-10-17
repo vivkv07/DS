@@ -34,3 +34,18 @@ final Charminar model):
 5. **Clock faces** (added 1889) sit centred above each great arch. Colour: warm lime-plaster
    cream with grey weathering streaks, darker at the base. Proportions: height of the arch
    crown ≈ half the minaret height; the block's top ≈ 0.6 of the minaret height.
+
+Round 3 (user request, binding for the Blender props/animals artist and the runtime):
+6. **Trees in Blender, with wind.** Model the city's trees properly: coconut palms (curved,
+   ringed trunks, drooping pinnate fronds, coconut clusters), neem (dense rounded crown,
+   fine leaves), banyan (wide crown, aerial roots, buttressed trunk), gulmohar (umbrella
+   crown, flame-red flowers in summer), ashoka (tall columnar), mango, tamarind, and roadside
+   palms; 2-3 LODs each plus a camera-facing far impostor. **Bake wind weights** into a
+   vertex colour channel (0 at the trunk base → 1 at frond/branch tips, plus a second channel
+   for leaf flutter phase) so the runtime animates wind cheaply in a vertex shader (no
+   skeletal rigs for trees). Coconut fronds must sway and flutter visibly; neem crowns
+   breathe; banyan roots swing slightly.
+7. **Birds.** Blender models with flap/glide/perch clips (or vertex-animation-friendly
+   parts): pigeons, crows, black kites (cheel) that soar in circles, rose-ringed parakeets,
+   egrets/cormorants for Hussain Sagar, mynas, and bats for dusk. Small, cheap, instancing-
+   friendly.

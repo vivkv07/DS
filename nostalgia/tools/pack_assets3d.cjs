@@ -249,7 +249,10 @@ function main() {
   console.log('  total ' + kb(bytes) + ' KB of ' + kb(MAX_BYTES) + ' KB budget -> ' + path.relative(ROOT, OUT));
   if (bytes > MAX_BYTES) { console.error('pack: OVER the 8 MB pack budget'); fail = true; }
   if (fail) { console.error('pack: budget check failed (nothing written)'); process.exit(1); }
-  fs.writeFileSync(OUT, body);
+  // write-then-rename: pages and tests running in parallel never read a half-written pack
+  const tmp = OUT + '.' + process.pid + '.tmp';
+  fs.writeFileSync(tmp, body);
+  fs.renameSync(tmp, OUT);
   console.log('pack: wrote ' + path.relative(ROOT, OUT) + ' (digest ' + digest + ')');
 }
 main();

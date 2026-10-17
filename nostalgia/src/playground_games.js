@@ -512,11 +512,17 @@
     return ev;
   }
   function pop(S, x, y, h, text, col, big) {
-    S.pops.push({ x, y, h: h || 9, text, col: col || '#f4ead8', t: 0, life: big ? 1.6 : 1.1, big: !!big, el: null });
+    h = h || 9;
+    // stack pops that land on the same spot at the same moment ("THWACK!" then "OUT!")
+    for (const q of S.pops) if (q.t < 0.6 && Math.abs(q.x - x) < 8 && Math.abs(q.y - y) < 8 && Math.abs(q.h - h) < 4) h = q.h + 5;
+    S.pops.push({ x, y, h, text, col: col || '#f4ead8', t: 0, life: big ? 1.6 : 1.1, big: !!big, el: null });
     if (S.pops.length > 8) { const o = S.pops.shift(); if (o.el) o.el.remove(); }
   }
   function bark(S, P, text, o) {
     if (!P || !P.e || !text) return;
+    // one voice at a time on the ground (the big moments always get through)
+    if (!(o && o.force) && S.t - (S.barkAt || -9) < 0.9) return;
+    S.barkAt = S.t;
     if (S.ambient) {
       const p = N.player;
       if (!p || hyp(p.x - P.e.x, p.y - P.e.y) > 220) return;
@@ -1128,7 +1134,7 @@
       L.shouted = true;
       const who = P || LING.seekers(S).find((q) => !q.out) || LING.seekers(S)[0];
       pop(S, L.base.x, L.base.y, 14, 'LINGOCHAAA!', '#f2c230', true);
-      if (who) bark(S, who, pick(S, BARK.lingocha), { secs: 2.2 });
+      if (who) bark(S, who, pick(S, BARK.lingocha), { secs: 2.2, force: true });
       sfx('crowd_cheer', { x: L.base.x, y: L.base.y, vol: S.real ? 1 : 0.5 }); sfx('kids', { x: L.base.x, y: L.base.y, vol: 0.8 });
       if (S.real) {
         sfx('applause', { ui: true, vol: 0.7, delay: 0.3 });

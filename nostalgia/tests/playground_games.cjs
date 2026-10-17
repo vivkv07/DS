@@ -393,25 +393,27 @@ async function three() {
     const v = await waitFor(page, () => N.view3d && N.view3d.active, null, 180000);
     check(v, '3D view is on');
     if (!v) { await context.close(); return; }
-    await page.evaluate(() => { N.view3d.setQuality({ pixelRatio: 0.6, adaptive: false }); });
+    // SwiftShader frames are slow (headless only ticks rAF steadily around screenshots): a small pixel ratio
+    await page.evaluate(() => { N.view3d.setQuality({ pixelRatio: 0.4, adaptive: false }); });
     await startResult(page, 'lingocha', { place: 'playground_1', seed: 5 });
-    await waitPhase(page, 'aim', 180000);
-    await sleep(1500);
+    const frames = async (n) => { const f0 = await page.evaluate(() => N.time.frame); return waitFor(page, (f) => N.time.frame >= f, f0 + n, 240000); };
+    await waitPhase(page, 'aim', 240000);
+    await frames(4);
+    await shot(page, '3d_lingocha_aim');
     const L = await page.evaluate(() => { const V = N.playgroundGames.debug.v3; return { ok: V.ok, vis: !!(V.grp && V.grp.visible), stones: V.stones.filter((m) => m.visible).length, chalk: !!(V.chalk && V.chalk.visible), arrow: !!(V.arrow && V.arrow.visible), rings: V.rings.filter((m) => m.visible).length }; });
     check(L.ok && L.vis && L.stones === 7 && L.chalk && L.rings >= 6, 'the 3D layer: 7 stones, chalk line + ring, team rings (' + JSON.stringify(L) + ')');
     check(L.arrow, 'the aim arrow lies on the ground in front of Chinnu');
-    await shot(page, '3d_lingocha_aim');
     await page.evaluate(() => { N.playgroundGames.debug.knock(); });
-    await waitPhase(page, 'live', 60000);
-    await sleep(2500);
+    await waitPhase(page, 'live', 120000);
+    await frames(20);
     await shot(page, '3d_lingocha_live');
     await page.evaluate(() => N.playgroundGames.abort('test'));
     await result(page, 20000);
     await page.evaluate(() => { const f = N.playgroundGames.fieldFor('playground_2'); N.debug.teleport(f.centre.x, f.centre.y + 30); });
     await sleep(1500);
     await startResult(page, 'marampitti', { place: 'playground_2', seed: 2 });
-    await waitPhase(page, 'play', 180000);
-    await sleep(3000);
+    await waitPhase(page, 'play', 240000);
+    await frames(10);
     const M = await page.evaluate(() => { const V = N.playgroundGames.debug.v3; return { ball: !!(V.ball && V.ball.visible), stones: V.stones.filter((m) => m.visible).length }; });
     check(M.ball && M.stones === 0, 'maram pitti in 3D: the ball, no stones');
     await shot(page, '3d_maram');
