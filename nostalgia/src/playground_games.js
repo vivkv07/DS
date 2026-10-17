@@ -1701,18 +1701,16 @@
         me.dashT = S.t; log(S, 'dodge');
       }
       if (me.hold) { holderControl(S, dt, I, MARAM.alive(S).filter((Q) => Q !== me)); return; }
-      // a ball coming at me: CATCH
-      if (b.state === 'air' && b.live && b.thrower !== me) {
-        const rx = p.x - b.x, ry = p.y - b.y, vv = b.vx * b.vx + b.vy * b.vy;
-        const t = vv > 1 ? (rx * b.vx + ry * b.vy) / vv : -1;
-        if (t > 0 && t < 0.6 && hyp(rx - b.vx * t, ry - b.vy * t) < 6.5) {
-          offer(S, 'CATCH!');
-          if (I.pressed('action')) { me.catchT = S.t; log(S, 'catch_try'); }
-          I.consume('action');
-          return;
-        }
+      // the red line points at me (a wind-up) or a ball is coming: hands up to CATCH — time it with the throw
+      if (MARAM.threatened(S)) {
+        const ready = S.t - me.catchT > TUNE.catchCD;
+        offer(S, ready ? 'CATCH!' : '');
+        if (I.pressed('action') && ready) { me.catchT = S.t; log(S, 'catch_try', { tele: !!(S.tele && S.tele.to === me) }); sfx('pickup', { ui: true, vol: 0.25, pitch: 1.5 }); }
+        I.consume('action');
+        return;
       }
       const d = hyp(b.x - p.x, b.y - p.y);
+      if (!b.holder && d < 7.5 && lockedOut(S, me) && canGrab(S, b)) { offer(S, ''); I.consume('action'); return; }
       if (!b.holder && d < 7.5) {
         offer(S, 'Grab ball');
         if (I.pressed('action')) {
