@@ -388,8 +388,8 @@
 
   /* ================================================================ flags (data, both views) */
   const FLAG_KINDS = {
-    temple: { color: '#f2861e', color2: '#e0601a', h: 34, len: 9, wid: 5.5, tri: true },
-    dargah: { color: '#2f8a3a', color2: '#1f6a2a', h: 28, len: 8, wid: 5, tri: false },
+    temple: { color: '#f2861e', color2: '#d8561a', h: 34, len: 14, wid: 7, tri: true },
+    dargah: { color: '#2f8a3a', color2: '#1f6a2a', h: 28, len: 12, wid: 6, tri: false },
   };
   function buildFlags() {
     FX.flags.length = 0;

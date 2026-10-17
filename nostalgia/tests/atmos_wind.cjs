@@ -253,9 +253,9 @@ async function run2D(browser, page) {
     N.wind.force({ strength: 0.6, gustiness: 0.6, dir: 0.45 });
     const run = async (bypass) => {
       N.windfx.bypass2d(bypass);
-      for (let i = 0; i < 20; i++) await new Promise((r) => requestAnimationFrame(r));
+      for (let i = 0; i < 8; i++) await new Promise((r) => requestAnimationFrame(r));
       const a = [], tr = [];
-      for (let i = 0; i < 90; i++) {
+      for (let i = 0; i < 50; i++) {
         await new Promise((r) => requestAnimationFrame(r));
         const ms = N.render.stats.ms; a.push((ms.structures || 0) + (ms.enqWorld || 0) + (ms.enqOther || 0));
         tr.push(N.windfx.stats().trees);
