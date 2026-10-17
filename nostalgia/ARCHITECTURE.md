@@ -1503,3 +1503,21 @@ the conventions below; anything else needs a change here first.
   feet on 0.1 s frame strips + dense slow-motion sole sampling while walking / running, vehicle
   parts, the proto flag, tinting, pack-missing and corrupt-model fallbacks, the dist build, zero
   console errors; screenshots `tests/out/models3d_*.png`).
+- **Props family (`src/models3d_props.js`, props artist; `tools/blender/props_*.py`, helper
+  `props_kit.py`):** family `prop` models are **not** parsed at start-up (models3d.js skips them);
+  `N.models3d.parse(id)` / `N.models3d.props.ensure(ids)` parse on demand. API `N.models3d.props`:
+  `ready, ensure, instance, animated(id)` (mixer + `play(clip)`), `wires(id)` (pole `wire_*` points in
+  the GLB frame), `windMaterial(src, {height, impostor})`, `windUniforms`, `stats()`.
+  **Ownership split (agreed with the atmosphere layer):** models3d_props.js owns the Blender trees —
+  `registerStructure('tree')`, per-chunk instancing, per-instance LOD switching (`<id>_LOD0/1/2`) and
+  the camera-facing `<id>_IMPOSTOR` — and also `'rock'` / `'podium'` and the cart / booth / shelter /
+  playground landmark draw ids when those models exist. The atmosphere layer (`N.wind`, wind.js) owns
+  the wind state and uniforms, the procedural-tree sway, wires and bird flocks. The tree shader shares
+  `N.wind.uniforms(THREE)` (`uWind` = dx, dz, strength, gustiness; `uWindWave` = 1 / wavelength,
+  gust front, time) when present. **Wind data (binding):** tree vertices carry `_WIND` (three
+  `_wind`, unsigned byte 0..255): R = bend 0 at the trunk base → 1 at frond / branch tips, G =
+  flutter phase, B = flutter mask (1 = leaf), A spare. Tree GLBs spread their LOD nodes along +X for
+  the preview line-up; the runtime recentres them and shows only LOD0, so a plain `instance()` is one
+  tree. Poles: front −Y faces the road, conductors run along ±X, empties `wire_L1 wire_L2 wire_L3
+  wire_N wire_cable wire_service` (+ `wire_lamp`). Birds: `bird_pigeon bird_crow bird_kite …` with
+  clips `flap glide perch`. Test: `node tests/models3d_props.cjs`.
