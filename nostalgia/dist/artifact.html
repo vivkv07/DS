@@ -62585,12 +62585,24 @@ body.reduced-motion .pg-hud.show { animation: none; }
     stoneCols: ['#55636f', '#c9a77c', '#4b5763', '#dcc7a2', '#66737f', '#b88f62', '#7e8b97'],
     lineDist: 30,
     throwSpeed: 160, powerSpeed: 214, aiSpeed: [138, 180], passSpeed: 115,
-    lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.5, stackT: 0.75, threatR: 34, scatter: 0.8, aiErr: [0.2, 0.11], stackErr: [0.17, 0.11], dodge: [0.25, 0.55], windup: [0.7, 0.42] },
-    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8 },
-    aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130 },
+    lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.75, stackT: 1.1, threatR: 34, scatter: 0.8, aiErr: [0.2, 0.11], stackErr: [0.17, 0.11], dodge: [0.25, 0.55], windup: [0.7, 0.42],
+      // Chinnu's own hands: a pick-up and a careful placing take a moment (he stands still, a sitting duck)
+      myPickT: 0.35, myStackT: 0.65, knockMul: 1.3, stoneFric: 95, passMe: 0.55 },
+    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46 },
+    // the line throw: the aim starts a little off the stack (straighten it), accuracy drops with power
+    aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130, startOff: [0.06, 0.2], err: 0.026, errPow: 0.075 },
     pay: { win: 200, win3: 300, daily: 3 },
     ambient: { r: 640, far: 820, rest: 5, barkGap: [3.5, 7.5], kids: 6 },
-    clockRate: 0.25, zoom: [1, 1.8], zoomPad: 110, leaveR: 70, leaveT: 5, catchWin: 0.32,
+    clockRate: 0.25, zoom: [1, 1.8], zoomPad: 110, leaveR: 70, leaveT: 5,
+    // catching (maram pitti): ACTION raises the hands for catchWin s (x1.4 with Assist / touch), then a short cooldown
+    catchWin: 0.42, catchCD: 0.75,
+    // after a throw the thrower may not pick his own ball up again for relock s (somebody else's turn);
+    // a ball that hits a kid pops off sideways (deflect: speed range, up speed) so there is a scramble for it
+    relock: 1.4, deflect: { sp: [26, 44], vz: 19 },
+    // the AI leads a target by its velocity smoothed over leadTau s (a late sidestep beats the lead)
+    leadTau: 0.35,
+    // a free ball nobody can reach comes back onto the ground ("Ball la, ra!")
+    freeMax: { lingocha: 9, marampitti: 6, outside: 3.5 },
     heat: { adult: 15, window: 30 },
   };
   const TEAM_COL = ['#f2c230', '#e2483a'];
@@ -62894,7 +62906,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   const AMB = { S: null, t: 0, force: null, off: false, cool: {} };
   const BUSY = new Set();      // places_art decor sort keys of grounds taken by our games
 
-  function newBall() { return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, state: 'rest', holder: null, thrower: null, live: false, pass: false, passTo: null, bounced: 1, releaseT: -9, seq: 0, hitSet: null }; }
+  function newBall() { return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, state: 'rest', holder: null, thrower: null, live: false, pass: false, passTo: null, bounced: 1, releaseT: -9, seq: 0, hitSet: null, lockP: null, lockT: 0 }; }
   function diffFor(params) {
     const MG = N.minigames, T = (MG && MG.TUNE) || {};
     const st = settings();
@@ -62921,6 +62933,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
       t: 0, rng: U.rng(seed), seed, d: df.d, assist: df.assist,
       parts: [], me: null, ball: newBall(), pops: [], log: [], phase: 'setup', phaseT: 0,
       ended: false, hiddenNpcs: [], auto: null, tele: null, aimTarget: null, barkT: 2, startT: now(),
+      // a game a mission started (m.minigame) survives that mission's start; a free-roam one does not
+      byMission: !!(!o.ambient && N.missions && N.missions.active),
       aim: { ang: 0, p: 0, dir: 1, charging: false, holdT: 0, drag: null, yaw: null },
       ui: { label: '', prompt: '' }, title: params.title || G.title,
       stats: { hits: 0, outs: 0, catches: 0, stacked: 0, fouls: 0, tries: 0 },
@@ -63004,11 +63018,17 @@ body.reduced-motion .pg-hud.show { animation: none; }
     return ev;
   }
   function pop(S, x, y, h, text, col, big) {
-    S.pops.push({ x, y, h: h || 9, text, col: col || '#f4ead8', t: 0, life: big ? 1.6 : 1.1, big: !!big, el: null });
+    h = h || 9;
+    // stack pops that land on the same spot at the same moment ("THWACK!" then "OUT!")
+    for (const q of S.pops) if (q.t < 0.6 && Math.abs(q.x - x) < 8 && Math.abs(q.y - y) < 8 && Math.abs(q.h - h) < 4) h = q.h + 5;
+    S.pops.push({ x, y, h, text, col: col || '#f4ead8', t: 0, life: big ? 1.6 : 1.1, big: !!big, el: null });
     if (S.pops.length > 8) { const o = S.pops.shift(); if (o.el) o.el.remove(); }
   }
   function bark(S, P, text, o) {
     if (!P || !P.e || !text) return;
+    // one voice at a time on the ground (the big moments always get through)
+    if (!(o && o.force) && S.t - (S.barkAt || -9) < 0.9) return;
+    S.barkAt = S.t;
     if (S.ambient) {
       const p = N.player;
       if (!p || hyp(p.x - P.e.x, p.y - P.e.y) > 220) return;
@@ -63062,6 +63082,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       e.x = c.x; e.y = c.y;
     }
     const sp = hyp(e.vx, e.vy);
+    smoothVel(P, e.vx, e.vy, dt);
     if (e.down) { e.anim.speed = 0; return; }
     if (P.face != null && sp < 20) e.angle += adiff(e.angle, P.face) * Math.min(1, dt * 12);
     else if (sp > 3) e.angle += adiff(e.angle, Math.atan2(e.vy, e.vx)) * Math.min(1, dt * 12);
@@ -63070,8 +63091,23 @@ body.reduced-motion .pg-hud.show { animation: none; }
     else { e.anim.speed = 0; e.anim.run = false; e.anim.phase *= 0.85; }
     if (e.emoteSt) { e.emoteSt.t += dt; if (e.emoteSt.t > e.emoteSt.secs) e.emoteSt = null; }
   }
+  /** velocity smoothed over TUNE.leadTau (what a thrower reads from your run; a late sidestep fools it) */
+  function smoothVel(P, vx, vy, dt) {
+    const k = 1 - Math.exp(-dt / TUNE.leadTau);
+    P.svx = (P.svx || 0) + (vx - (P.svx || 0)) * k;
+    P.svy = (P.svy || 0) + (vy - (P.svy || 0)) * k;
+  }
   function separate(S) {
     const L = S.parts;
+    // ambient games: the kids make way for Chinnu walking through their game
+    if (S.ambient && N.player && !N.player.vehicle) {
+      const p = N.player;
+      for (const a of L) {
+        if (!a.e || a.e.alive === false) continue;
+        const dx = a.e.x - p.x, dy = a.e.y - p.y, d = hyp(dx, dy), m = a.e.r + p.r - 0.6;
+        if (d < m && d > 1e-4) moveBy(a, (dx / d) * (m - d), (dy / d) * (m - d));
+      }
+    }
     for (let i = 0; i < L.length; i++) {
       const a = L[i];
       if (!a.e || a.e.alive === false || (a.out && !a.isPlayer)) continue;
@@ -63102,7 +63138,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const b = S.ball;
     for (const Q of S.parts) Q.hold = false;
     b.state = 'held'; b.holder = P; b.thrower = null; b.live = false; b.pass = false; b.passTo = null; b.bounced = 1;
-    P.hold = true; P.holdT = 0; P.windT = 0;
+    b.lockP = null; b.lockT = 0; S.freeT = 0;
+    P.hold = true; P.holdT = 0; P.windT = 0; P.passRoll = S.rng.next();
     const h = holdPos(P); b.x = h.x; b.y = h.y; b.z = h.z; b.vx = b.vy = b.vz = 0;
   }
   function drop(S, P) {
@@ -63117,6 +63154,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const e = P.e;
     b.state = 'air'; b.holder = null; b.thrower = P; b.live = !o.pass && !o.dead; b.pass = !!o.pass; b.passTo = o.passTo || null;
     b.bounced = 0; b.releaseT = S.t; b.seq++; b.hitSet = new Set(); b.kind = o.kind || 'throw';
+    // somebody else's turn next: the thrower may not grab his own throw straight back
+    if (!o.pass && (o.kind || 'throw') === 'throw') { b.lockP = P; b.lockT = S.t + TUNE.relock; } else { b.lockP = null; b.lockT = 0; }
     b.x = e.x + Math.cos(ang) * 2.4; b.y = e.y + Math.sin(ang) * 2.4; b.z = TUNE.hand;
     b.vx = Math.cos(ang) * speed; b.vy = Math.sin(ang) * speed; b.vz = vz;
     if (!P.isPlayer) { e.angle = ang; } else { e.angle = e.facing = ang; }
@@ -63130,7 +63169,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
       if (Q.isPlayer || Q === P) continue;
       Q.react = S.t + lerp(0.34, 0.12, S.d) * (0.8 + S.rng.next() * 0.5);
       Q.dodgeRoll = S.real && PG.debug.assist.noDodge ? 0 : S.rng.next() < lerp(TUNE.lingocha.dodge[0], TUNE.lingocha.dodge[1], S.d) ? 1 : 0;
-      Q.catchRoll = S.id === 'marampitti' && !(S.real && PG.debug.assist.noDodge) && S.rng.next() < 0.08 + 0.1 * S.d;
+      // a point-blank throw is hard to catch; a long one gives time to get the hands up
+      const flight = hyp(Q.e.x - e.x, Q.e.y - e.y) / Math.max(40, speed);
+      Q.catchRoll = S.id === 'marampitti' && !(S.real && PG.debug.assist.noDodge) && S.rng.next() < (0.08 + 0.1 * S.d) * clamp((flight - 0.09) / 0.16, 0, 1.2);
       if (Q === b.target && b.live && !Q.out && Q.downT <= 0) {
         // busy hands (picking / stacking) drop the job to duck only some of the time
         if (Q.act && Q.dodgeRoll && S.rng.next() < 0.55) { Q.act = null; Q.actStone = null; juke(S, Q, P); }
@@ -63163,6 +63204,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (S.id === 'marampitti') return b.state !== 'air' || b.bounced > 0;   // must bounce first
     return b.state !== 'air' || (!b.live && b.z < 3.5);
   }
+  /** P has just thrown it: not his turn to pick it up again yet */
+  function lockedOut(S, P) { const b = S.ball; return b.lockP === P && S.t < b.lockT; }
+  function canGrabP(S, b, P) { return canGrab(S, b) && !lockedOut(S, P); }
   /** where a ball in the air comes down */
   function landing(b) {
     const g = TUNE.g, vz = b.vz, z = Math.max(0, b.z);
@@ -63174,7 +63218,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const b = S.ball;
     if (b.holder) b.holder.hold = false;
     const tx = P.e.x, ty = P.e.y, d = Math.max(2, hyp(tx - x, ty - y)), t = clamp(d / 70, 0.45, 1.1);
-    Object.assign(b, { state: 'air', holder: null, thrower: null, live: false, pass: true, passTo: P, bounced: 1, x, y, z: Math.max(1, b.z), hitSet: new Set() });
+    Object.assign(b, { state: 'air', holder: null, thrower: null, live: false, pass: true, passTo: P, bounced: 1, x, y, z: Math.max(1, b.z), hitSet: new Set(), lockP: null, lockT: 0 });
     b.vx = (tx - x) / t; b.vy = (ty - y) / t; b.vz = (3.5 - b.z) / t + 0.5 * TUNE.g * t;
   }
   function solidCell(x, y) {
@@ -63316,8 +63360,10 @@ body.reduced-motion .pg-hud.show { animation: none; }
       try { if (N.render && N.render.shake && !document.body.classList.contains('reduced-motion')) N.render.shake(0.18, 0.15); } catch (e2) { /* ignore */ }
       const p = N.player, s = hyp(b.vx, b.vy) || 1; p.vx += (b.vx / s) * 40; p.vy += (b.vy / s) * 40;
     }
-    // the ball pops off the kid
-    b.vx *= -0.22; b.vy *= -0.22; b.vz = 16; b.live = false; b.z = Math.max(b.z, 2);
+    // the ball pops off the kid sideways (not back into the thrower's hands): a scramble for it
+    const D = TUNE.deflect, a = Math.atan2(b.vy, b.vx) + (S.rng.next() < 0.5 ? -1 : 1) * (1.25 + S.rng.next() * 0.9);
+    const v = lerp(D.sp[0], D.sp[1], S.rng.next());
+    b.vx = Math.cos(a) * v; b.vy = Math.sin(a) * v; b.vz = D.vz * (0.8 + S.rng.next() * 0.4); b.live = false; b.z = Math.max(b.z, 2);
   }
   function sitSpot(S, P) {
     if (!P.sit) P.sit = edgeSpot(S.F, P.e.x, P.e.y, 4);
@@ -63335,6 +63381,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (P.hold) { drop(S, P); }
     if (P.carry) { const st = P.carry; P.carry = null; st.state = 'loose'; st.by = null; st.claim = null; st.x = P.e.x; st.y = P.e.y; st.z = 0; }
     S.stats.outs += P.isPlayer ? 1 : 0;
+    // Chinnu out in lingocha: he walks to the side and watches (the round goes on)
+    if (P.isPlayer && S.real && S.id === 'lingocha' && N.player) { const q = sitSpot(S, P); S.auto = { x: q.x, y: q.y, t: 0, face: Math.atan2(S.F.cy - q.y, S.F.cx - q.x), out: true }; }
     if (by && by.isPlayer && S.real) S.stats.hits++;
     if (by) by.hits++;
     pop(S, P.e.x, P.e.y, 13, 'OUT!', '#ff7a6a', true);
@@ -63369,6 +63417,13 @@ body.reduced-motion .pg-hud.show { animation: none; }
         L.seek = p.seekFirst === false ? 1 : 0;
       }
       LING.startRound(S);
+    },
+    /** the line throw starts pointing a little off the stack (Chinnu straightens it with ←/→, the stick or the mouse) */
+    aimStart(S) {
+      const L = S.L, A = S.aim, T = L.thrower, x = T && T.e ? T.e.x : L.line.x, y = T && T.e ? T.e.y : L.line.y;
+      const off = TUNE.aim.startOff, side = S.rng.next() < 0.5 ? -1 : 1;
+      A.ang = Math.atan2(L.base.y - y, L.base.x - x) + (T && T.isPlayer && !PG.debug.assist.aim ? side * lerp(off[0], off[1], S.rng.next()) : 0);
+      A.yaw = null;
     },
     liveTime(S) { return S.params.liveTime > 0 ? +S.params.liveTime : lerp(TUNE.lingocha.live[0], TUNE.lingocha.live[1], S.d); },
     seekers(S) { return S.parts.filter((P) => P.team === S.L.seek); },
@@ -63425,7 +63480,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
           if ((ready && !S.auto && S.phaseT > 1.2) || late) {
             if (late && S.auto) S.auto = null;
             S.phase = 'aim'; S.phaseT = 0; S.aim.charging = false; S.aim.p = 0; S.aim.yaw = null;
-            S.aim.ang = Math.atan2(L.base.y - L.line.y, L.base.x - L.line.x);
+            LING.aimStart(S);
           }
           break;
         }
@@ -63469,7 +63524,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
             const far = hyp(T.e.x - L.line.x, T.e.y - L.line.y) > 4;
             if (far && T.isPlayer) S.auto = { x: L.line.x, y: L.line.y, t: 0, face: Math.atan2(L.base.y - L.line.y, L.base.x - L.line.x) };
             S.phase = far ? 'setup' : 'aim'; S.phaseT = 0;
-            if (!far) S.aim.ang = Math.atan2(L.base.y - L.line.y, L.base.x - L.line.x);
+            if (!far) LING.aimStart(S);
           }
           break;
         }
@@ -63542,7 +63597,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       L.stack.forEach((st, i) => {
         st.state = 'fly'; st.claim = null; st.by = null;
         st.x = L.base.x + (S.rng.next() - 0.5); st.y = L.base.y + (S.rng.next() - 0.5); st.z = i * TUNE.stoneH;
-        const a = ba + gauss(S.rng) * 0.85, v = clamp(sp * (0.3 + 0.45 * S.rng.next()) * (0.65 + 0.07 * i), 25, 150);
+        const a = ba + gauss(S.rng) * 0.85, v = clamp(sp * (0.3 + 0.45 * S.rng.next()) * (0.65 + 0.07 * i) * TUNE.lingocha.knockMul, 30, 185);
         st.vx = Math.cos(a) * v; st.vy = Math.sin(a) * v; st.vz = 10 + S.rng.next() * 16 + i * 2;
       });
       L.stack = [];
@@ -63567,7 +63622,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
       let nx = st.x + st.vx * dt, ny = st.y + st.vy * dt;
       if (solidCell(nx, st.y)) { st.vx = -st.vx * 0.4; nx = st.x; }
       if (solidCell(nx, ny)) { st.vy = -st.vy * 0.4; ny = st.y; }
-      const m = TUNE.kerbM;
+      // the stones stay on the open ground (the kerb at its edge): every stone is reachable in a straight line
+      const m = 1.5;
       if (inRect(F, st.x, st.y, m)) {
         if ((nx < F.x0 - m && st.vx < 0) || (nx > F.x1 + m && st.vx > 0)) { st.vx = -st.vx * 0.35; nx = st.x; }
         if ((ny < F.y0 - m && st.vy < 0) || (ny > F.y1 + m && st.vy > 0)) { st.vy = -st.vy * 0.35; ny = st.y; }
@@ -63576,9 +63632,10 @@ body.reduced-motion .pg-hud.show { animation: none; }
       if (st.z <= 0) {
         st.z = 0;
         if (st.vz < -20) { st.vz = -st.vz * 0.3; st.vx *= 0.6; st.vy *= 0.6; sfx('marble', { x: st.x, y: st.y, vol: 0.35, pitch: 0.6 + st.i * 0.06 }); }
-        else { st.vz = 0; const s = hyp(st.vx, st.vy), dec = 110 * dt; if (s <= dec) { st.vx = st.vy = 0; st.state = 'loose'; } else { st.vx *= (s - dec) / s; st.vy *= (s - dec) / s; } }
+        else { st.vz = 0; const s = hyp(st.vx, st.vy), dec = TUNE.lingocha.stoneFric * dt; if (s <= dec) { st.vx = st.vy = 0; st.state = 'loose'; } else { st.vx *= (s - dec) / s; st.vy *= (s - dec) / s; } }
       }
-      if (st.state === 'fly' && !walk(st.x, st.y)) { const f = spotNear(st.x, st.y, 1, 9); st.x = f.x; st.y = f.y; }
+      if (st.state === 'fly' && !walk(st.x, st.y)) { const f = spotNear(st.x, st.y, 1, 9, F); st.x = f.x; st.y = f.y; }
+      if (st.state === 'loose' && (!inRect(F, st.x, st.y, 0) || !walk(st.x, st.y))) { const q = clampIn(F, st.x, st.y, 2.5); const f = spotNear(q.x, q.y, 1.5, 12, F); st.x = f.x; st.y = f.y; }
     },
     /** a seeker who touches a hitter is SAFE for a moment */
     touches(S) {
@@ -63620,7 +63677,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       L.shouted = true;
       const who = P || LING.seekers(S).find((q) => !q.out) || LING.seekers(S)[0];
       pop(S, L.base.x, L.base.y, 14, 'LINGOCHAAA!', '#f2c230', true);
-      if (who) bark(S, who, pick(S, BARK.lingocha), { secs: 2.2 });
+      if (who) bark(S, who, pick(S, BARK.lingocha), { secs: 2.2, force: true });
       sfx('crowd_cheer', { x: L.base.x, y: L.base.y, vol: S.real ? 1 : 0.5 }); sfx('kids', { x: L.base.x, y: L.base.y, vol: 0.8 });
       if (S.real) {
         sfx('applause', { ui: true, vol: 0.7, delay: 0.3 });
@@ -63793,21 +63850,25 @@ body.reduced-motion .pg-hud.show { animation: none; }
           if (P.windT <= 0) LING.aiThrowAt(S, P, T);
           return;
         }
-        // pass to a teammate who is much closer to the target
+        // pass to a teammate who is much closer to the target (Chinnu too, some of the time: "Chinnu, catch!")
         if (d > 50 && P.holdT > 0.4) {
           let mate = null, md = d - 18;
-          for (const Q of LING.hitters(S)) { if (Q === P || Q.out || Q.isPlayer) continue; const dq = pdist(Q, T); if (dq < md) { md = dq; mate = Q; } }
-          if (mate && S.rng.next() < 0.7) { launchAt(S, P, mate.e.x, mate.e.y, 4, TUNE.passSpeed, 0.03, { pass: true, passTo: mate }); return; }
+          for (const Q of LING.hitters(S)) { if (Q === P || Q.out || (Q.isPlayer && !(P.passRoll < TUNE.lingocha.passMe))) continue; const dq = pdist(Q, T); if (dq < md) { md = dq; mate = Q; } }
+          if (mate && S.rng.next() < 0.7) {
+            launchAt(S, P, mate.e.x, mate.e.y, 4, TUNE.passSpeed, 0.03, { pass: true, passTo: mate });
+            if (mate.isPlayer) bark(S, P, pick(S, ['Chinnu, catch!', 'Le, Chinnu! *Maar*!', 'Pass, ra, catch!']), { force: true });
+            return;
+          }
         }
         const range = lerp(30, 42, S.d);
         if (d < range || P.holdT > TUNE.lingocha.holdMax - 0.6) { P.windT = lerp(TUNE.lingocha.windup[0], TUNE.lingocha.windup[1], S.d) * (S.real && PG.debug.assist.weakAI ? 1.6 : 1); halt(P); return; }
         goTo(P, T.e.x, T.e.y, speedOf(S, P, false), 2);
         return;
       }
-      // fetch the loose ball (the two nearest hitters go)
-      if (!b.holder && canGrab(S, b) && rectDist(S.F, b.x, b.y) < 80) {
+      // fetch the loose ball (the two nearest hitters go; not the one who just threw it)
+      if (!b.holder && canGrabP(S, b, P) && rectDist(S.F, b.x, b.y) < 80) {
         let rank = 0; const my = hyp(b.x - e.x, b.y - e.y);
-        for (const Q of LING.hitters(S)) if (Q !== P && !Q.out && hyp(b.x - Q.e.x, b.y - Q.e.y) < my) rank++;
+        for (const Q of LING.hitters(S)) if (Q !== P && !Q.out && !lockedOut(S, Q) && hyp(b.x - Q.e.x, b.y - Q.e.y) < my) rank++;
         if (rank < 2) {
           const d = goTo(P, b.x, b.y, run, 0.5);
           if (d < 4.2 && b.state !== 'held') give(S, P);
@@ -63834,7 +63895,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
       const weak = S.real && PG.debug.assist.weakAI && T.isPlayer;
       const sp = lerp(TUNE.aiSpeed[0], TUNE.aiSpeed[1], S.d) * (0.92 + S.rng.next() * 0.16);
       const d = pdist(P, T), t = d / sp, lead = 0.5 + 0.4 * S.d;
-      const tx = T.e.x + (T.e.vx || 0) * t * lead, ty = T.e.y + (T.e.vy || 0) * t * lead;
+      // he reads your run, not a last-moment sidestep (smoothed velocity)
+      const vx = T.svx != null ? T.svx : T.e.vx || 0, vy = T.svy != null ? T.svy : T.e.vy || 0;
+      const tx = T.e.x + vx * t * lead, ty = T.e.y + vy * t * lead;
       const errA = weak ? 0.45 : lerp(TUNE.lingocha.aiErr[0], TUNE.lingocha.aiErr[1], S.d);
       const tz = clamp(2.4 + gauss(S.rng) * (1.1 - 0.5 * S.d), 0.8, 6.5);
       launchAt(S, P, tx, ty, tz, sp, errA, { target: T });
@@ -63869,22 +63932,43 @@ body.reduced-motion .pg-hud.show { animation: none; }
         if (S.phase === 'roundEnd' || ((S.phase === 'flight' || S.phase === 'return') && L.thrower === me)) { zeroMove(I); I.consume('run'); }
         return;
       }
-      if (me.out) { offer(S, ''); I.consume('action'); return; }
+      if (me.out) { me.act = null; offer(S, ''); I.consume('action'); return; }
       const seeker = me.team === L.seek;
       if (seeker) {
+        // busy hands: picking a stone up / placing it on the stack takes a moment (standing still: dodge first!)
+        if (me.act) {
+          zeroMove(I); I.consume('run');
+          offer(S, me.act === 'stack' ? 'Placing…' : 'Picking up…');
+          I.consume('action');
+          me.actT -= dt;
+          if (me.actT <= 0) {
+            if (me.act === 'pick') LING.pickStone(S, me, me.actStone);
+            else if (L.stack.length < 7) LING.stackStone(S, me);
+            me.act = null; me.actStone = null;
+          }
+          return;
+        }
         if (me.carry) {
           const d = hyp(L.base.x - p.x, L.base.y - p.y);
-          if (d < 10) {
+          const other = S.parts.find((Q) => Q !== me && Q.act === 'stack' && !Q.out);
+          if (d < 10 && other) offer(S, 'Wait — ' + other.name + ' is stacking');
+          else if (d < 10) {
             offer(S, L.stack.length === 6 ? 'Stack + LINGOCHA!' : 'Stack it (' + (L.stack.length + 1) + '/7)');
-            if (I.pressed('action')) { LING.stackStone(S, me); }
+            if (I.pressed('action')) { me.act = 'stack'; me.actT = me.actT0 = TUNE.lingocha.myStackT; sfx('pickup', { ui: true, vol: 0.3, pitch: 0.8 }); }
           } else offer(S, '');
           I.consume('action');
           return;
         }
         let st = null, sd = 6.5;
         for (const s of L.stones) { if (s.state !== 'loose') continue; const d = hyp(s.x - p.x, s.y - p.y); if (d < sd) { sd = d; st = s; } }
-        if (st) { offer(S, 'Pick up stone'); if (I.pressed('action')) { if (st.claim && st.claim !== me) { st.claim.stone = null; } LING.pickStone(S, me, st); } }
-        else offer(S, '');
+        if (st) {
+          offer(S, 'Pick up stone');
+          if (I.pressed('action')) {
+            if (st.claim && st.claim !== me) { st.claim.stone = null; }
+            st.claim = me; me.stone = st;
+            me.act = 'pick'; me.actStone = st; me.actT = me.actT0 = TUNE.lingocha.myPickT;
+          }
+        } else offer(S, '');
         I.consume('action');
         // running into the loose ball kicks it away
         if ((b.state === 'rest' || b.state === 'roll') && hyp(b.x - p.x, b.y - p.y) < p.r + TUNE.ballR + 0.6 && hyp(p.vx, p.vy) > 35) kick(S, me);
@@ -63908,10 +63992,12 @@ body.reduced-motion .pg-hud.show { animation: none; }
       if (S.phase === 'roundEnd') return '';
       if (me.out) return 'OUT! Sit at the side — cheer for your team';
       if (me.team === L.seek) {
+        if (me.act) return me.act === 'stack' ? 'Placing the stone… hold still!' : 'Picking it up…';
         if (me.carry) return 'Carry it to the stack and press ' + a + ' · dodge the ball!';
         return 'Grab a stone (' + a + ') and restack · touch a hitter = SAFE · run into the ball to kick it';
       }
       if (me.hold) return a + ': throw at ' + (S.aimTarget ? S.aimTarget.name : 'a seeker') + ' · hold for a hard one';
+      if (!S.ball.holder && lockedOut(S, me)) return 'Not twice in a row — a teammate gets this one';
       return 'Get the ball (' + a + ') and hit the seekers before they restack';
     },
   };
@@ -63961,6 +64047,19 @@ body.reduced-motion .pg-hud.show { animation: none; }
       bark(S, T, '*Ek… do… teen!*');
     },
     alive(S) { return S.parts.filter((P) => !P.out); },
+    /** Chinnu is the target of a wind-up (the red line) or a live ball is on its way to him */
+    threatened(S) {
+      const me = S.me, b = S.ball, p = N.player;
+      if (!me || me.out || S.phase !== 'play') return false;
+      if (S.tele && S.tele.to === me && S.tele.from && S.tele.from.windT > 0) return true;
+      if (b.state === 'air' && b.live && b.thrower && b.thrower !== me) {
+        const rx = p.x - b.x, ry = p.y - b.y, vv = b.vx * b.vx + b.vy * b.vy;
+        const t = vv > 1 ? (rx * b.vx + ry * b.vy) / vv : -1;
+        return t > 0 && t < 0.6 && hyp(rx - b.vx * t, ry - b.vy * t) < 6.5;
+      }
+      return false;
+    },
+    catching(S, P) { return !!P && P.isPlayer && S.t - P.catchT < TUNE.catchWin * (S.assist || isTouch() ? 1.4 : 1); },
     update(S, dt) {
       const M = S.M, b = S.ball;
       S.phaseT += dt;
@@ -63996,7 +64095,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       const T = b.thrower;
       if (S.phase !== 'play' || !T) return false;
       // a catch on the full: the thrower is out
-      const caught = (P.isPlayer && S.t - P.catchT < TUNE.catchWin * (S.assist ? 1.5 : 1)) || (!P.isPlayer && P.catchRoll && hyp(b.vx, b.vy) < 190 && P.downT <= 0);
+      const caught = MARAM.catching(S, P) || (!P.isPlayer && P.catchRoll && hyp(b.vx, b.vy) < 190 && P.downT <= 0);
       if (caught) {
         give(S, P); P.catches++; if (P.isPlayer) S.stats.catches++;
         pop(S, P.e.x, P.e.y, 11, 'CAUGHT!', '#7fe0ff', true);
@@ -64058,9 +64157,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
         return;
       }
       // the loose ball: the nearest two go for it (after the bounce); before the bounce they wait
-      if (!b.holder && rectDist(S.F, b.x, b.y) < 70) {
+      if (!b.holder && rectDist(S.F, b.x, b.y) < 70 && !lockedOut(S, P)) {
         const my = hyp(b.x - e.x, b.y - e.y);
-        let rank = 0; for (const Q of S.parts) if (Q !== P && !Q.out && hyp(b.x - Q.e.x, b.y - Q.e.y) < my) rank++;
+        let rank = 0; for (const Q of S.parts) if (Q !== P && !Q.out && !lockedOut(S, Q) && hyp(b.x - Q.e.x, b.y - Q.e.y) < my) rank++;
         if (rank < 2 || my < 22) {
           if (canGrab(S, b)) { const d = goTo(P, b.x, b.y, run, 0.5); if (d < 4.2) { give(S, P); log(S, 'grab', { name: P.name, bounced: b.bounced }); } return; }
           if (b.state === 'air' && !b.live) { // wait for the bounce near the landing spot
@@ -64073,7 +64172,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       }
       // keep away from the holder; drift about
       const H = b.holder;
-      if (H && H !== P && pdist(P, H) < 52) {
+      if (H && H !== P && pdist(P, H) < TUNE.maram.keepAway) {
         let ax = e.x - H.e.x, ay = e.y - H.e.y; const l = hyp(ax, ay) || 1; ax /= l; ay /= l;
         // stay on the ground: pull back towards the middle near the edges
         const ex = (c.x - e.x) / Math.max(20, S.F.w * 0.5), ey = (c.y - e.y) / Math.max(20, S.F.h * 0.5);
@@ -64115,18 +64214,16 @@ body.reduced-motion .pg-hud.show { animation: none; }
         me.dashT = S.t; log(S, 'dodge');
       }
       if (me.hold) { holderControl(S, dt, I, MARAM.alive(S).filter((Q) => Q !== me)); return; }
-      // a ball coming at me: CATCH
-      if (b.state === 'air' && b.live && b.thrower !== me) {
-        const rx = p.x - b.x, ry = p.y - b.y, vv = b.vx * b.vx + b.vy * b.vy;
-        const t = vv > 1 ? (rx * b.vx + ry * b.vy) / vv : -1;
-        if (t > 0 && t < 0.6 && hyp(rx - b.vx * t, ry - b.vy * t) < 6.5) {
-          offer(S, 'CATCH!');
-          if (I.pressed('action')) { me.catchT = S.t; log(S, 'catch_try'); }
-          I.consume('action');
-          return;
-        }
+      // the red line points at me (a wind-up) or a ball is coming: hands up to CATCH — time it with the throw
+      if (MARAM.threatened(S)) {
+        const ready = S.t - me.catchT > TUNE.catchCD;
+        offer(S, ready ? 'CATCH!' : '');
+        if (I.pressed('action') && ready) { me.catchT = S.t; log(S, 'catch_try', { tele: !!(S.tele && S.tele.to === me) }); sfx('pickup', { ui: true, vol: 0.25, pitch: 1.5 }); }
+        I.consume('action');
+        return;
       }
       const d = hyp(b.x - p.x, b.y - p.y);
+      if (!b.holder && d < 7.5 && lockedOut(S, me) && canGrab(S, b)) { offer(S, ''); I.consume('action'); return; }
       if (!b.holder && d < 7.5) {
         offer(S, 'Grab ball');
         if (I.pressed('action')) {
@@ -64148,7 +64245,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
       if (me.out) return 'OUT!';
       if (S.phase === 'toss') return 'Wait for the bounce… then grab it (' + a + ')';
       if (me.hold) return a + ': throw at ' + (S.aimTarget ? S.aimTarget.name : 'someone') + ' (below the head!) · hold for a hard one · ' + Math.max(0, TUNE.maram.holdMax - me.holdT).toFixed(1) + 's';
-      if (b.state === 'air' && b.live && b.thrower !== me) return 'Incoming! ' + r + ' to dodge · ' + a + ' to CATCH';
+      if (MARAM.threatened(S)) return (b.state === 'air' ? 'Incoming! ' : (S.tele.from.name || 'He') + ' is aiming at you! ') + r + ' = dodge · ' + a + ' = CATCH as he throws';
+      if (!b.holder && lockedOut(S, me)) return 'Not twice in a row — let somebody else get the ball';
       return 'Grab the ball after it bounces (' + a + ') · tap ' + r + ' to dodge';
     },
   };
@@ -64200,7 +64298,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const me = S.me, b = S.ball, p = N.player;
     if (!me.hold) {
       const d = hyp(b.x - p.x, b.y - p.y);
-      if (!b.holder && d < 7.5 && canGrab(S, b)) {
+      if (!b.holder && d < 7.5 && canGrab(S, b) && lockedOut(S, me)) offer(S, '');
+      else if (!b.holder && d < 7.5 && canGrab(S, b)) {
         offer(S, 'Pick up ball');
         if (I.pressed('action')) { give(S, me); sfx('pickup', { ui: true, vol: 0.5 }); log(S, 'grab', { name: me.name, me: true, bounced: b.bounced }); }
       } else offer(S, '');
@@ -64250,8 +64349,10 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const L = S.L, A = S.aim, p = N.player, me = S.me;
     const toStack = Math.atan2(L.base.y - p.y, L.base.x - p.x);
     const mv = I.rawMove || I.move;
-    // aim input: stick (analog) points, keys rotate, the mouse points (2D), the camera looks (3D)
-    if (I.analog && hyp(I.move.x, I.move.y) > 0.35) A.ang = A.ang + adiff(A.ang, Math.atan2(I.move.y, I.move.x)) * Math.min(1, dt * 10);
+    // aim input: stick (analog) points, keys rotate, the mouse points (2D), the camera looks (3D). In 3D the move
+    // vector is camera-relative (pointing the stick would chase the camera round): there left / right turn the aim.
+    if (is3D()) { if (Math.abs(mv.x) > 0.2) A.ang += mv.x * TUNE.aim.rotKey * dt; }
+    else if (I.analog && hyp(I.move.x, I.move.y) > 0.35) A.ang = A.ang + adiff(A.ang, Math.atan2(I.move.y, I.move.x)) * Math.min(1, dt * 10);
     else if (Math.abs(mv.x) > 0.2) { A.ang += Math.sign(mv.x) * TUNE.aim.rotKey * dt; PTR.mouseT = 0; }
     if (!is3D() && PTR.mouseT > 0 && performance.now() - PTR.mouseT < 2000 && PTR.wx != null && !PTR.drag) A.ang = Math.atan2(PTR.wy - p.y, PTR.wx - p.x);
     if (is3D() && N.view) {
@@ -64278,7 +64379,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (PTR.drag && !PTR.drag.done) {
       const dg = PTR.drag, len = hyp(dg.dx, dg.dy);
       if (len > 6) { A.ang = Math.atan2(-dg.wy, -dg.wx); A.p = clamp(len / TUNE.aim.drag, 0.05, 1); A.charging = false; A.dragging = true; }
-      offer(S, 'Let go to throw'); I.consume('action');
+      offer(S, 'Let go!'); I.consume('action');
       return;
     }
     A.dragging = false;
@@ -64291,15 +64392,16 @@ body.reduced-motion .pg-hud.show { animation: none; }
       const rel = I.released('action') || PTR.releasedClick || (!I.down('action') && !PTR.down && A.holdT > 0.05);
       PTR.releasedClick = false;
       if (rel) { A.charging = false; throwAtStack(S, A.ang, A.p); offer(S, ''); I.consume('action'); return; }
-      offer(S, 'Let go to throw!');
-    } else offer(S, 'Hold to throw (' + (S.L.tries + 1) + '/' + TUNE.lingocha.tries + ')');
+      offer(S, 'Let go!');
+    } else offer(S, isTouch() ? 'THROW ' + (S.L.tries + 1) + '/' + TUNE.lingocha.tries : 'Hold to throw (' + (S.L.tries + 1) + '/' + TUNE.lingocha.tries + ')');
     I.consume('action');
     void me;
   }
   function throwAtStack(S, ang, p) {
     const L = S.L, me = S.me;
     if (PG.debug.assist.aim) { ang = Math.atan2(L.base.y - N.player.y, L.base.x - N.player.x); if (PG.debug.assist.power == null) p = 0.55; }
-    else ang += gauss(S.rng) * (S.assist || isTouch() ? 0.012 : 0.022);
+    // a hard throw is a wild throw: the spread grows with the power (Assist / touch: a steadier hand)
+    else ang += gauss(S.rng) * (TUNE.aim.err + TUNE.aim.errPow * p * p) * (S.assist || isTouch() ? 0.7 : 1);
     if (PG.debug.assist.power != null) p = PG.debug.assist.power;
     log(S, 'player_throw', { ang: +ang.toFixed(3), p: +p.toFixed(2) });
     LING.stackThrow(S, me, ang, p);
@@ -64594,6 +64696,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       S.G.update(S, dt);
       if (S.ended) return;
       for (const P of S.parts) moveKid(S, P, dt);
+      if (S.me && N.player) smoothVel(S.me, N.player.vx || 0, N.player.vy || 0, dt);
       separate(S);
       ballStep(S, dt);
       for (const pp of S.pops) pp.t += dt;
@@ -64639,16 +64742,22 @@ body.reduced-motion .pg-hud.show { animation: none; }
   /** a ball lost in a drain / the lake / behind a house comes back: "Ball la, ra!" */
   function ballRescue(S, dt) {
     const b = S.ball;
+    // a free ball nobody manages to pick up (behind a wall, in a corner the kids can't path into): it is
+    // fetched back onto the open ground. Counted only while the game is live (not the line throws / tosses).
+    const live = (S.id === 'lingocha' && S.phase === 'live') || (S.id === 'marampitti' && S.phase === 'play');
+    if (live && !b.holder && !b.hiddenBall) S.freeT = (S.freeT || 0) + dt; else S.freeT = 0;
     if (b.hiddenBall || b.state === 'held' || b.state === 'air') { S.ballOutT = 0; return; }
-    if (b.lost || rectDist(S.F, b.x, b.y) > 24 || !walk(b.x, b.y)) {
+    const off = rectDist(S.F, b.x, b.y);
+    const stuck = live && (S.freeT > (TUNE.freeMax[S.id] || 8) || (off > 2 && S.freeT > TUNE.freeMax.outside));
+    if (b.lost || off > 24 || !walk(b.x, b.y) || stuck) {
       S.ballOutT = (S.ballOutT || 0) + dt;
-      if (S.ballOutT > 2.5) {
-        const q = edgeSpot(S.F, b.x, b.y, -5);
-        Object.assign(b, { x: q.x, y: q.y, z: 0, vx: 0, vy: 0, vz: 0, state: 'rest', lost: false, live: false, bounced: 1 });
-        S.ballOutT = 0;
+      if (S.ballOutT > 2.5 || stuck) {
+        const c = clampIn(S.F, b.x, b.y, 6), q = spotNear(c.x, c.y, 3, 14, S.F);
+        Object.assign(b, { x: q.x, y: q.y, z: 0, vx: 0, vy: 0, vz: 0, state: 'rest', lost: false, live: false, bounced: 1, lockP: null, lockT: 0 });
+        S.ballOutT = 0; S.freeT = 0;
         const k = S.parts.find((Q) => !Q.isPlayer && !Q.out);
         if (k) bark(S, k, 'Ball *la*, ra!');
-        log(S, 'ball_back');
+        log(S, 'ball_back', { stuck: !!stuck });
       }
     } else S.ballOutT = 0;
   }
@@ -65236,6 +65345,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       /** a live ball from `from` (default: a kid of the other side) that hits the player on the body now */
       hitPlayer(z) {
         const S = current; if (!S || !S.me) return false;
+        S.me.safeT = 0; S.me.safeCD = 3; S.me.catchT = -9;
         const p = N.player, from = S.parts.find((P) => !P.isPlayer && !P.out && (S.id !== 'lingocha' || P.team !== S.me.team)) || S.parts.find((P) => !P.isPlayer);
         if (!from) return false;
         release(S, from, Math.atan2(p.y - from.e.y, p.x - from.e.x), 150, 0, { quiet: true });
@@ -71070,8 +71180,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
  *    colony lanes, sandy-edged Old City lanes).
  *  - VECTOR MARKINGS computed in the shader from (along u, across v) road coordinates, anti-aliased with
  *    fwidth and pre-filtered with distance (never aliased or blurry): dashed centre lines, lane lines and
- *    solid edge lines on arterials, ZEBRA CROSSINGS + stop lines at junction approaches (same rules and
- *    stand-off as the 2D map), all stopping cleanly at junctions; yellow bus-bay outlines at bus stops.
+ *    solid edge lines on arterials, all stopping cleanly at junctions; ZEBRA CROSSINGS + stop lines as
+ *    worn paint decals exactly where the 2D map paints them (same rules and stand-off); yellow bus-bay
+ *    outlines at bus stops.
  *  - REAL 3D KERBS (chamfered) along arterials / streets / the bund, painted black-and-yellow where the
  *    2D map paints them; raised footpaths with procedural worn paver slabs; raised medians with painted
  *    kerbs and shrubs on divided roads; railway ballast beds with sleepers; dirt paths.
@@ -71123,11 +71234,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
   const DAGE = { oldcity: 0.22, market: 0.12, colony: 0.08, rocky: 0.1, colonial: 0.0, cantonment: -0.05, posh: -0.1, hitec: -0.25 };
   const FOOTCOL = { arterial: '#a8a090', street: '#ada290', bund: '#b6ab96' };
   const KERBCOL = '#c9c2b4';
-  const DUSTCOL = '#9a8564';
   const YARD = '#c2a882';
   const PARKSOIL = { ground: '#b38c62', rock: '#a28468' };
 
-  const Q = () => (I ? I.Q : V.quality);
   let THREE = null, I = null;            // three.js + engine internals (attach)
 
   /* ================================================================ small math */
@@ -71246,7 +71355,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function hash1(x, y) { let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
 
   /* ================================================================ road network analysis (global) */
-  const NET = { built: false, worldKey: null, pieces: [], juncs: [], paths: [], rails: [], bays: [], buckets: new Map(), ms: 0, roadPieces: new Map() };
+  const NET = { built: false, pieces: [], juncs: [], paths: [], rails: [], bays: [], buckets: new Map(), ms: 0, roadPieces: new Map() };
   const bkey = (ci, cj) => cj * 64 + ci;
   function bucket(kind, obj, x0, y0, x1, y1) {
     const i0 = Math.max(0, Math.floor(x0 / CHS)), i1 = Math.max(0, Math.floor(x1 / CHS));
@@ -71309,7 +71418,12 @@ body.reduced-motion .pg-hud.show { animation: none; }
         } else if (ph === 3) { zebras(); AN.phase = 4; }
         else if (ph === 4) { // buckets
           for (const P of NET.pieces) { const bb = bboxOf(P.pts, P.hw + P.fp + 4); P.bb = bb; bucket('pieces', P, bb[0], bb[1], bb[2], bb[3]); }
-          for (const J of NET.juncs) { if (!J.poly) continue; const bb = bboxOf(J.poly.concat(J.extraPts || []), 14); J.bb = bb; bucket('juncs', J, bb[0], bb[1], bb[2], bb[3]); }
+          for (const J of NET.juncs) {
+            if (!J.poly && !J.decals) continue;
+            const pts = (J.poly || [[J.x, J.y]]).concat(J.extraPts || []);
+            if (J.decals) for (const d of J.decals) pts.push([d.x, d.y]);
+            const bb = bboxOf(pts, 30); J.bb = bb; bucket('juncs', J, bb[0], bb[1], bb[2], bb[3]);
+          }
           AN.phase = 5;
         } else if (ph === 5) { // paths + rails
           for (const r of D.roads || []) {
@@ -71610,13 +71724,16 @@ body.reduced-motion .pg-hud.show { animation: none; }
         if (L < R + 24) continue;
         if (seen.some((d) => d[0] * ux + d[1] * uy > 0.95)) continue;
         seen.push([ux, uy]);
+        // the 2D map's zebra: centred widest.w / 2 + 6 from the node along the edge, stripes 8 long x
+        // 2.4 wide every 4.5 from -w/2 + 3 while t <= w/2 - 4 (decal quads at exactly that spot)
+        const off = widest.w / 2 + 6;
+        const zx = n.x + ux * off, zy = n.y + uy * off;
+        (J.decals || (J.decals = [])).push({ t: 'zebra', x: zx, y: zy, ux, uy, w: e.w });
+        // stop line on the inbound half (traffic keeps left: inbound = left of -u = +n side), behind the zebra
+        const sx = zx + ux * 6.6, sy = zy + uy * 6.6, nx = -uy, ny = ux;
+        J.decals.push({ t: 'stop', x: sx + nx * (e.w / 4), y: sy + ny * (e.w / 4), ux, uy, w: e.w / 2 - 1.2 });
         const arm = J.arms.find((a) => a.edge === e) || J.arms.slice().sort((p, q) => (q.d[0] * ux + q.d[1] * uy) - (p.d[0] * ux + p.d[1] * uy))[0];
-        if (!arm) continue;
-        const P = arm.piece, end = arm.end, other = P.ends[arm.start ? 1 : 0];
-        const z = Math.max(widest.w / 2 + 6, end.trim + 4.6);
-        const lim = P.L - (other.zebra ? other.zebra + 12 : other.trim + 2);
-        if (z + 10 > lim) continue;
-        end.zebra = z;
+        if (arm) arm.end.zebra = Math.max(off, 1); // markings (dashes, medians) start behind it
       }
     }
   }
@@ -72163,7 +72280,31 @@ body.reduced-motion .pg-hud.show { animation: none; }
   }
 
   /** junction surface + kerb corners + footpath corners + straight connectors */
+  const ZEBRA = [0.80, 0.79, 0.74];
+  /** a flat painted rectangle (decal): centre, unit direction along its length, length x width */
+  function paintRect(B, c, x, y, ux, uy, len, wid) {
+    const hl = len / 2, hw = wid / 2, nx = -uy, ny = ux;
+    pv(x - ux * hl - nx * hw, Y_DECAL, y - uy * hl - ny * hw, 0, 1, 0, 0, 0);
+    pv(x + ux * hl - nx * hw, Y_DECAL, y + uy * hl - ny * hw, 0, 1, 0, len, 0);
+    pv(x + ux * hl + nx * hw, Y_DECAL, y + uy * hl + ny * hw, 0, 1, 0, len, 1);
+    pv(x - ux * hl + nx * hw, Y_DECAL, y - uy * hl + ny * hw, 0, 1, 0, 0, 1);
+    flush(B, c);
+  }
+  function emitDecals(B, J) {
+    const age = J.dom ? J.dom.st.age : 0.4;
+    const c = cst(ZEBRA, LY.PAINT, { age });
+    for (const d of J.decals) {
+      if (d.t === 'zebra') {
+        const nx = -d.uy, ny = d.ux;
+        for (let t = -d.w / 2 + 3; t <= d.w / 2 - 4; t += 4.5) {
+          const m = t + 1.2; // stripe [t, t + 2.4] across the road
+          paintRect(B, c, d.x + nx * m, d.y + ny * m, d.ux, d.uy, 8, 2.4);
+        }
+      } else if (d.t === 'stop') paintRect(B, c, d.x, d.y, -d.uy, d.ux, d.w, 1.1);
+    }
+  }
   function emitJunction(B, J) {
+    if (J.decals && !EMIT_LOD) emitDecals(B, J);
     if (!J.tris || !J.dom) return;
     const st = J.dom.st;
     const jc = cst(st.c, LY.JUNC, { p1: st.wear, age: st.age });
@@ -72636,6 +72777,7 @@ if (ngShine > 0.01) {
   // along the same view ray (screen position unchanged), so they draw above the terrain and below
   // anything standing on the road, while keeping their real shape for shading.
   const POT_DEPTH = `
+\tif (aSt.x > 4.5 && aSt.x < 6.5) gl_Position.z -= 3e-6 * gl_Position.w; // decals (paint, tar patches): never z-fight
 \tif (aSt.w > 0.001 && uCamPos.y > ${Y_ROAD.toFixed(3)} + 0.05) {
 \t\tfloat ngK = (uCamPos.y - ${Y_ROAD.toFixed(3)}) / max(uCamPos.y - vWP.y, 1e-3);
 \t\tvec4 ngC = projectionMatrix * viewMatrix * vec4(uCamPos + (vWP - uCamPos) * ngK, 1.0);
@@ -72732,18 +72874,7 @@ if (layer < 1.5) {
     if (ngBit(bits, 1.0) > 0.5) m = max(m, ngBand(v, 0.0, 0.42, fv) * ngDash(uA - clrA, 17.0, 8.0, fu) * mid);
     if (ngBit(bits, 2.0) > 0.5) m = max(m, ngBand(av, med + (hw - med) * 0.5, 0.36, fv) * ngDash(uA - clrA, 20.0, 9.0, fu) * mid);
     if (ngBit(bits, 4.0) > 0.5) m = max(m, ngBand(av, hw - 1.3, 0.3, fv) * midE);
-    // zebra crossings (2D: 8 long, stripes 2.4 wide every 4.5 from -hw + 3) + stop lines (inbound half)
-    float zx = v + hw - 3.0;
-    float zk = floor(zx / 4.5);
-    float zs = ngDash(zx, 4.5, 2.4, fv) * step(0.0, zx) * step(-hw + 3.0 + 4.5 * zk, hw - 4.0 + 0.001);
-    if (zA > 0.0) {
-      m = max(m, ngBand(uA, zA, 4.0, fu) * zs);
-      m = max(m, ngBand(uA, zA + 5.7, 0.6, fu) * clamp((v - max(med, 0.4)) / fv + 0.5, 0.0, 1.0) * clamp((hw - 0.8 - v) / fv + 0.5, 0.0, 1.0));
-    }
-    if (zB > 0.0) {
-      m = max(m, ngBand(uB, zB, 4.0, fu) * zs);
-      m = max(m, ngBand(uB, zB + 5.7, 0.6, fu) * clamp((-v - max(med, 0.4)) / fv + 0.5, 0.0, 1.0) * clamp((hw - 0.8 + v) / fv + 0.5, 0.0, 1.0));
-    }
+    // (zebra crossings + stop lines are decal quads placed exactly where the 2D map paints them)
     float paintWear = mix(1.0, smoothstep(0.2, 0.62, ngF(P * 0.8, fw * 0.8) * 0.7 + ngF(P * 3.1, fw * 3.1) * 0.3), 0.25 + 0.55 * age);
     col = mix(col, vec3(0.80, 0.79, 0.74), m * paintWear * 0.94);
   } else {
@@ -72809,8 +72940,10 @@ if (layer < 1.5) {
   float g = ngF(P * 0.9, fw * 0.9), g2 = ngF(P * 3.3, fw * 3.3);
   col = mix(base * (0.8 + 0.4 * g), vec3(0.09, 0.15, 0.04) * (0.7 + 0.6 * g2), smoothstep(0.5, 0.75, g * 0.6 + g2 * 0.4));
 } else if (layer < 5.5) {
-  float wn = ngF(P * 1.2, fw * 1.2);
-  col = mix(vec3(0.2, 0.19, 0.18), base, smoothstep(0.25, 0.5, wn + 0.3 - age * 0.3));
+  // road paint decal (zebra, stop line, bus bay): worn in patches, asphalt grain shows through
+  float wn = ngF(P * 0.9, fw * 0.9) * 0.7 + ngF(P * 3.3, fw * 3.3) * 0.3;
+  vec3 asp = ngAsphalt(P, vec3(0.05, 0.05, 0.055), age, fw);
+  col = mix(asp, base * (0.92 + 0.12 * ngF(P * 2.0, fw * 2.0)), smoothstep(0.18, 0.42, wn + 0.32 - age * 0.32));
 } else if (layer < 6.5) {
   // tar patch: fresher, darker asphalt with a seam
   col = ngAsphalt(P, base, 0.1, fw);

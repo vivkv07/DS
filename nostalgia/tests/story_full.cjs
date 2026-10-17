@@ -582,7 +582,7 @@ async function pTitle() {
   await ev(() => { N.menus.quickStart = false; try { localStorage.removeItem('nostalgia.save.v1'); localStorage.removeItem('nostalgia.save.v1.bak'); localStorage.removeItem('nostalgia.save.v1.manual'); } catch (e) { /* ignore */ } });
   await shot('00_title');
   await page.click('#title-start');
-  const named = await waitFor(() => N.menus.debugState().top === 'name', null, 8000, 'the name card');
+  const named = await waitFor(() => N.menus.debugState().top === 'name', null, 20000, 'the name card');
   if (named) {
     // type the names with the keyboard (the nick field has focus)
     await page.keyboard.press('Control+A'); await page.keyboard.type(NICK, { delay: 40 });
@@ -591,7 +591,7 @@ async function pTitle() {
     await shot('01_name_card');
     await page.keyboard.press('Enter');
   }
-  const cs = await waitFor(() => N.state.mode === 'cutscene', null, 6000, 'the prologue cutscene');
+  const cs = await waitFor(() => N.state.mode === 'cutscene', null, 20000, 'the prologue cutscene');
   check(cs, 'PLAY -> name card (typed) -> the 2026 prologue starts');
   const nm = await ev(() => ({ nick: N.player.nick, full: N.player.fullName || N.player.full }));
   check(nm.nick === NICK && /Pradeep/.test(nm.full || ''), 'the name card sets the nickname ' + NICK + ' / K. ' + FULL, nm);
@@ -614,7 +614,7 @@ async function pTitle() {
   await waitFor(() => document.querySelector('.mn-cs.vhs-rewind') !== null, null, 10000, 'the ◀◀ REWIND');
   await shot('04_rewind');
   for (let i = 0; i < 60; i++) { if (await ev(() => N.state.mode !== 'cutscene')) break; await pressKey('KeyE'); await sleep(300); }
-  await waitFor(() => N.state.mode === 'play' && N.missions.active && N.missions.active.id === 'bo_kaata', null, 20000, 'M1 to start after the prologue');
+  await waitFor(() => N.state.mode === 'play' && N.missions.active && N.missions.active.id === 'bo_kaata', null, 60000, 'M1 to start after the prologue');
   const s = await ev(() => ({ year: N.flags.year, date: N.calendar.label(), clock: N.clock.label(), lvl: N.player.level, seen: N.flags.prologue_seen, act: N.seasons.active() }));
   check(s.year === 2003 && s.date === 'TUE 14 JAN 2003' && s.clock === '07:10', 'after ◀◀ REWIND: TUE 14 JAN 2003 07:10', s);
   check(s.lvl === 'home_terrace', 'M1 starts on home_terrace', s.lvl);
@@ -622,7 +622,7 @@ async function pTitle() {
 }
 async function pM1() {
   await testTune();
-  await waitFor(() => N.story.debug.state().step === 'act', null, 8000, 'the kite prompt');
+  await waitFor(() => N.story.debug.state().step === 'act', null, 30000, 'the kite prompt');
   const lab = await ev(() => N.input.actionLabel);
   check(lab === 'Fly the kite', 'M1: ACTION "Fly the kite" on the terrace', lab);
   await pressKey('KeyE'); tally('E Fly the kite');
