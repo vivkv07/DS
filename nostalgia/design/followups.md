@@ -26,3 +26,13 @@ Other:
 - Cassette pickup 2 s song preview (systems §7.1).
 - Menus settings that other modules must act on: autoAdvance (dialogue), assist (minigames), high-contrast.
 - whole-frame cost is rising as modules land (smoke desktop ~29 ms/frame on a loaded machine): a performance pass is needed.
+
+Map v2 (done; 98.8% of 1,340 real-geography relations pass):
+- World build time regressed: cold build ~1.5 s CPU (v1 0.5 s), 2.9 s in browser with heavy GC; target < 1.0 s.
+- Memory: minimap image (3000x2250, 27 MB) held twice (world.js cache + hud.js graded copy); hud.js should use renderMap(0.2, {fresh:true}).
+- GPS/pathfinding limits too low for the bigger city: vehicles.js (8,000 expansions, linear open list) and wanted.js (6,000) fail long trips (Charminar→Cyber Towers); use the new N.world.roads.route(a, b, {...}) A* instead.
+- Centre stretched E-W (ratio 1.18-1.30); optional local projection fix.
+- Tests with v1 coordinates: menus.cjs (Charminar camera/icon/waypoint), engine_qa.cjs (8000x6000 assertion, 2 boat tests), collectibles C10/C13/G24/F07, Bala Hissar viewpoint.
+- story_part1 got stuck in M6 ammammas_thursday at the walkman step after a retry (check in QA).
+- design/map_plan.md still lists old positions for pathergatti, hotel_madina, madina_building and west-edge signposts.
+- The machine ran at load 25-65 on 4 cores: timing-based checks are flaky; re-run QA on a quieter machine (fewer parallel workflows) and replace wall-clock waits with game-time waits.

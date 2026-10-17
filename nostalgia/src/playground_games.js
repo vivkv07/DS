@@ -637,8 +637,8 @@
     for (const Q of S.parts) {
       if (Q.isPlayer || Q === P) continue;
       Q.react = S.t + lerp(0.34, 0.12, S.d) * (0.8 + S.rng.next() * 0.5);
-      Q.dodgeRoll = S.rng.next() < lerp(TUNE.lingocha.dodge[0], TUNE.lingocha.dodge[1], S.d) ? 1 : 0;
-      Q.catchRoll = S.id === 'marampitti' && S.rng.next() < 0.08 + 0.1 * S.d;
+      Q.dodgeRoll = S.real && PG.debug.assist.noDodge ? 0 : S.rng.next() < lerp(TUNE.lingocha.dodge[0], TUNE.lingocha.dodge[1], S.d) ? 1 : 0;
+      Q.catchRoll = S.id === 'marampitti' && !(S.real && PG.debug.assist.noDodge) && S.rng.next() < 0.08 + 0.1 * S.d;
       if (Q === b.target && b.live && !Q.out && Q.downT <= 0) {
         // busy hands (picking / stacking) drop the job to duck only some of the time
         if (Q.act && Q.dodgeRoll && S.rng.next() < 0.55) { Q.act = null; Q.actStone = null; juke(S, Q, P); }
@@ -2707,7 +2707,7 @@
     ambient: AMB,
     ledger,
     debug: {
-      assist: { aim: false, power: null, weakAI: false, noTimer: false },
+      assist: { aim: false, power: null, weakAI: false, noTimer: false, noDodge: false },
       session(which) { return which === 'ambient' ? AMB.S : current; },
       state(which) {
         const S = which === 'ambient' ? AMB.S : current;

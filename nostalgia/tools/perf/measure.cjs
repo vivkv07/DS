@@ -392,6 +392,7 @@ async function run(browser, server, srvProc, url, runIdx) {
   // all at nice -8). Give this browser tree and the server top priority (nice -20) so wall-clock
   // timings reflect the emulated device rather than the queue; NICE=0 disables this.
   const NICE = process.env.NICE == null ? -20 : +process.env.NICE;
+  const GROUP_NICE = process.env.GROUP_NICE == null ? -10 : +process.env.GROUP_NICE;
   const renice = () => {
     if (!NICE) return;
     const pids = [String(process.pid)];
@@ -401,6 +402,8 @@ async function run(browser, server, srvProc, url, runIdx) {
     for (let grew = true; grew;) { grew = false; for (const p in ppid) if (!desc.has(p) && desc.has(ppid[p])) { desc.add(p); grew = true; } }
     for (const p of desc) pids.push(p);
     try { require('child_process').execFileSync('renice', ['-n', String(NICE), '-p'].concat(pids), { stdio: 'ignore' }); } catch (e) { /* some exited */ }
+    // with sched_autogroup the CPU is first split between session groups: raise this group too
+    for (const p of pids) { try { fs.writeFileSync('/proc/' + p + '/autogroup', String(GROUP_NICE)); } catch (e) { /* not permitted / gone */ } }
     // threads too (renderer main thread, compositor, raster): renice per task id
     for (const p of desc) { try { const tids = fs.readdirSync('/proc/' + p + '/task'); require('child_process').execFileSync('renice', ['-n', String(NICE), '-p'].concat(tids), { stdio: 'ignore' }); } catch (e) { /* gone */ } }
   };
