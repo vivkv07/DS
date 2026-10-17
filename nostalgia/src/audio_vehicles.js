@@ -62,7 +62,7 @@
   function pump() {
     const t0 = performance.now();
     try {
-      while (QUEUE.length && performance.now() - t0 < 3.5) {
+      while (QUEUE.length && performance.now() - t0 < 2.5) {
         const q = QUEUE[0];
         if (DATA.has(q.k)) { QUEUE.shift(); continue; }
         let j = JOBS.get(q.k);
@@ -280,7 +280,7 @@
       }
     }
     yield;
-    for (let i = 0; i < len; i++) nz[i] = (rnd() * 2 - 1) * (0.6 + 0.4 * Math.abs(Math.sin(i / sr * TAU)));
+    for (let i = 0; i < len; i++) { nz[i] = (rnd() * 2 - 1) * (0.6 + 0.4 * Math.abs(Math.sin(i / sr * TAU))); if ((i & 16383) === 16383) yield; }
     yield;
     const w = yield* bandLoop(nz, sr, 3200, 1.2);
     yield;
@@ -813,7 +813,7 @@
     bike: { thud: [105, 52, 0.15, 0.6], dak: [0.08, 88, 48, 0.12, 0.42], body: [550, 0.08, 0.4], rattle: { n: 5, lo: 1500, hi: 3200, v: 0.05, span: 0.18 }, spring: [210, 160, 0.22, 0.07] },
     auto: { thud: [92, 50, 0.17, 0.55], dak: [0.09, 78, 45, 0.14, 0.4], body: [500, 0.08, 0.4], rattle: { n: 9, lo: 1800, hi: 4000, v: 0.055, span: 0.35 }, clank: [420, 0.12, 0.3], spring: [520, 470, 0.12, 0.025] },
     car: { thud: [76, 40, 0.22, 0.55], dak: [0.11, 66, 38, 0.16, 0.45], body: [420, 0.1, 0.45], rattle: { n: 3, lo: 1400, hi: 2600, v: 0.035, span: 0.15 }, clunk: [165, 110, 0.06, 0.25] },
-    heavy: { thud: [56, 30, 0.35, 0.6], dak: [0.16, 50, 28, 0.25, 0.4], body: [320, 0.14, 0.5], rattle: { n: 12, lo: 1200, hi: 3500, v: 0.05, span: 0.6 }, clank: [260, 0.1, 0.4] },
+    heavy: { thud: [56, 30, 0.35, 0.5], dak: [0.16, 50, 28, 0.25, 0.4], body: [320, 0.14, 0.5], rattle: { n: 12, lo: 1200, hi: 3500, v: 0.05, span: 0.6 }, clank: [260, 0.1, 0.4] },
   };
   function potClass(o) {
     const T = o.vtype && VT(o.vtype);
@@ -925,9 +925,10 @@
       const gens = [];
       for (const k of TYPES) for (const w of ['c', 'l']) gens.push([k + ':' + w, renderLoop(sr, Object.assign({ hp: DEF[k].hp }, DEF[k][w]), 1)]);
       gens.push(['ratchet', renderRatchet(sr)], ['crank', renderCrank(sr)], ['grit', renderGrit(sr)], ['bell:hero', renderBell(sr, 'hero', 2)], ['bell:plain', renderBell(sr, 'plain', 2)]);
-      let mx = 0, tot = 0, at = ''; const per = {};
-      for (const [name, g] of gens) { let r, i = 0; do { const t0 = performance.now(); r = g.next(); const d = performance.now() - t0; if (d > mx) { mx = d; at = name + '#' + i; } tot += d; per[name] = +((per[name] || 0) + d).toFixed(1); i++; } while (!r.done); }
-      return { maxMs: +mx.toFixed(2), at, totalMs: Math.round(tot), per };
+      let mx = 0, tot = 0, at = ''; const per = {}, all = [];
+      for (const [name, g] of gens) { let r, i = 0; do { const t0 = performance.now(); r = g.next(); const d = performance.now() - t0; if (d > mx) { mx = d; at = name + '#' + i; } tot += d; all.push(d); per[name] = +((per[name] || 0) + d).toFixed(1); i++; } while (!r.done); }
+      all.sort((x, y) => x - y);
+      return { maxMs: +mx.toFixed(2), at, p99Ms: +all[Math.floor(all.length * 0.99)].toFixed(2), steps: all.length, totalMs: Math.round(tot), per };
     },
     // render cost of n voices for sec seconds offline (audio thread; OfflineAudioContext suspend() is itself slow in Chrome,
     // so no per-frame suspends here) vs the same count of built-in voices, + the JS cost of one update() call (main thread)
