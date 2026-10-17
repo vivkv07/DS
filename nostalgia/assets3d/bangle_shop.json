@@ -1,0 +1,99 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 147448,
+ "clips": {},
+ "family": "landmark",
+ "file": "bangle_shop.glb",
+ "front": "-Y",
+ "id": "bangle_shop",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 144.0,
+ "kit": 1,
+ "materials": [
+  "M_bangle_shop_lime_plaster",
+  "M_bangle_shop_lime_plaster.001",
+  "M_bangle_shop_granite_grey",
+  "M_bangle_shop_whitewash",
+  "M_bangle_shop_lime_plaster_shadow",
+  "M_bangle_shop_wood_raw",
+  "M_bangle_shop_reflector_red",
+  "M_bangle_shop_reflector_red.001",
+  "M_bangle_shop_reflector_red.002",
+  "M_bangle_shop_reflector_red.003",
+  "M_bangle_shop_reflector_red.004",
+  "M_bangle_shop_gold_leaf",
+  "M_bangle_shop_iron_black",
+  "M_bangle_shop_lamp_lens@night",
+  "M_bangle_shop_lamp_lens@night.001",
+  "M_bangle_shop_tin_rusty",
+  "M_bangle_shop_cloth",
+  "M_bangle_shop_cloth.001",
+  "M_bangle_shop_sign_text_abdadb37.png",
+  "M_bangle_shop_sign_text_a9d3c445.png",
+  "M_bangle_shop_lime_plaster_shadow.001",
+  "M_bangle_shop_wood_green",
+  "M_bangle_shop_plastic_black",
+  "M_bangle_shop_steel"
+ ],
+ "max": [
+  11.2,
+  8.02,
+  34.0
+ ],
+ "meta": {
+  "draw": "bangle_shop",
+  "face": "n",
+  "fit": "footprint",
+  "floodlit": false,
+  "footprint": [
+   22,
+   16
+  ],
+  "height": 30.0
+ },
+ "min": [
+  -11.2,
+  -7.864,
+  0.0
+ ],
+ "notes": [
+  "COL_bangle_shop: camera-ray proxy (back block, upper floor, side piers)"
+ ],
+ "script": "oldcity.bazaar",
+ "size": [
+  22.4,
+  15.884,
+  34.0
+ ],
+ "tint": null,
+ "tris": 1526,
+ "units": "u",
+ "up": "Z"
+}

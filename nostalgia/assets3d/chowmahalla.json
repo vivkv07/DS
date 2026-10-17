@@ -1,0 +1,71 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 155452,
+ "clips": {},
+ "family": "landmark",
+ "file": "chowmahalla.glb",
+ "front": "-Y",
+ "id": "chowmahalla",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 151.8,
+ "kit": 1,
+ "materials": [
+  "M_chowmahalla_lime_plaster_shadow",
+  "M_chowmahalla_lime_plaster_shadow.001",
+  "M_chowmahalla_lime_plaster",
+  "M_chowmahalla_wood_raw",
+  "M_chowmahalla_iron_black",
+  "M_chowmahalla_whitewash",
+  "M_chowmahalla_lime_plaster_shadow.002",
+  "M_chowmahalla_lime_plaster.001",
+  "M_chowmahalla_clock_face@night",
+  "M_chowmahalla_red_oxide",
+  "M_chowmahalla_lime_plaster_shadow.003"
+ ],
+ "max": [
+  75.0,
+  85.0,
+  67.6
+ ],
+ "meta": {
+  "face": "n",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   150,
+   170
+  ],
+  "height": 68.0,
+  "landmark": "chowmahalla_palace"
+ },
+ "min": [
+  -75.0,
+  -87.3,
+  0.0
+ ],
+ "notes": [],
+ "script": "oldcity.mosques_palaces",
+ "size": [
+  150.0,
+  172.3,
+  67.6
+ ],
+ "tint": null,
+ "tris": 2133,
+ "units": "u",
+ "up": "Z"
+}

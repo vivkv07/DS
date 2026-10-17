@@ -1,0 +1,269 @@
+{
+ "anchors": {
+  "eye": [
+   0.0,
+   -0.465,
+   8.1694
+  ],
+  "grip_L": [
+   2.76,
+   0.0,
+   5.06
+  ],
+  "grip_R": [
+   -2.76,
+   0.0,
+   5.06
+  ],
+  "head_top": [
+   0.0,
+   0.08,
+   8.9324
+  ],
+  "sole_heel_L": [
+   0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_heel_R": [
+   -0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_toe_L": [
+   0.49,
+   -1.08,
+   -0.0
+  ],
+  "sole_toe_R": [
+   -0.49,
+   -1.08,
+   -0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 4000,
+ "bytes": 282392,
+ "clips": {},
+ "family": "character",
+ "file": "woman_salwar.glb",
+ "front": "-Y",
+ "id": "woman_salwar",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 275.8,
+ "kit": 1,
+ "materials": [
+  "M_woman_salwar"
+ ],
+ "max": [
+  2.963,
+  0.981,
+  8.954
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "shoulder_L",
+   "upperarm_L",
+   "forearm_L",
+   "hand_L",
+   "thigh_L",
+   "shin_L",
+   "foot_L",
+   "toe_L",
+   "shoulder_R",
+   "upperarm_R",
+   "forearm_R",
+   "hand_R",
+   "thigh_R",
+   "shin_R",
+   "foot_R",
+   "toe_R"
+  ],
+  "clips": "clips_adult",
+  "female": true,
+  "height": 8.8,
+  "kinds": [
+   "woman"
+  ],
+  "lazy": true,
+  "look": {
+   "dupatta": "#5a3e8a",
+   "hair": "#1a1412",
+   "kind": "woman",
+   "pants": "#d8c3e8",
+   "shirt": "#d8c3e8",
+   "skin": "#c68b5e"
+  },
+  "npcs": {
+   "ammi": {}
+  },
+  "priority": 0,
+  "regionsUsed": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "pants",
+   "shoes",
+   "dupatta",
+   "headcover",
+   "plait",
+   "bindi",
+   "clothbag"
+  ],
+  "rig": "adult_rig",
+  "role": "people",
+  "variants": {
+   "ammi": {
+    "dupatta": "#5a3e8a",
+    "hair": "#1a1412",
+    "headCover": "#5a3e8a",
+    "kind": "woman",
+    "pants": "#d8c3e8",
+    "shirt": "#d8c3e8",
+    "skin": "#c68b5e"
+   },
+   "college": {
+    "dupatta": "#efe9dc",
+    "hair": "#1a1412",
+    "kind": "woman",
+    "pants": "#2a3a5a",
+    "prop": "notebook",
+    "shirt": "#2a8c82",
+    "skin": "#c68b5e"
+   },
+   "salwar": {
+    "dupatta": "#f2c230",
+    "hair": "#1a1412",
+    "kind": "woman",
+    "pants": "#efe9dc",
+    "shirt": "#e85a7a",
+    "skin": "#c68b5e"
+   }
+  }
+ },
+ "min": [
+  -2.963,
+  -1.268,
+  -0.0
+ ],
+ "notes": [],
+ "script": "characters",
+ "size": [
+  5.926,
+  2.249,
+  8.954
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "fields": {
+   "clothbag": [
+    "bag",
+    "#c8b48a"
+   ],
+   "dupatta": [
+    "dupatta"
+   ],
+   "headcover": [
+    "headCover",
+    "dupatta"
+   ],
+   "pants": [
+    "pants",
+    "salwar"
+   ],
+   "plait": [
+    "hair"
+   ],
+   "shirt": [
+    "kameez",
+    "shirt"
+   ],
+   "shoes": [
+    "shoes",
+    "#5a3a2a"
+   ]
+  },
+  "names": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "shoes",
+   "accent",
+   "dupatta",
+   "headcover",
+   "plait",
+   "bindi",
+   "clothbag"
+  ],
+  "regions": {
+   "bindi": "#b8202a",
+   "clothbag": "#c8b48a",
+   "dupatta": "#dedcd6",
+   "hair": "#3b3735",
+   "headcover": "#dedcd6",
+   "pants": "#dedcd6",
+   "plait": "#3b3735",
+   "shirt": "#c9c7c1",
+   "shoes": "#6e6c68",
+   "skin": "#9e6440"
+  },
+  "show": {
+   "bindi": {
+    "all": [
+     {
+      "not": {
+       "f": "headCover"
+      }
+     },
+     {
+      "f": "_r",
+      "lt": 0.5
+     }
+    ]
+   },
+   "clothbag": {
+    "f": "prop",
+    "in": [
+     "clothbag",
+     "satchel",
+     "notebook"
+    ]
+   },
+   "dupatta": {
+    "all": [
+     {
+      "f": "dupatta"
+     },
+     {
+      "not": {
+       "f": "headCover"
+      }
+     }
+    ]
+   },
+   "headcover": {
+    "f": "headCover"
+   },
+   "plait": {
+    "not": {
+     "f": "headCover"
+    }
+   }
+  }
+ },
+ "tris": 3718,
+ "units": "u",
+ "up": "Z"
+}

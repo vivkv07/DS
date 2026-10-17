@@ -1,0 +1,382 @@
+{
+ "anchors": {
+  "eye": [
+   0.0,
+   -0.485,
+   8.1958
+  ],
+  "grip_L": [
+   2.76,
+   0.0,
+   5.06
+  ],
+  "grip_R": [
+   -2.76,
+   0.0,
+   5.06
+  ],
+  "head_top": [
+   0.0,
+   0.08,
+   8.9868
+  ],
+  "sole_heel_L": [
+   0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_heel_R": [
+   -0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_toe_L": [
+   0.49,
+   -1.08,
+   -0.0
+  ],
+  "sole_toe_R": [
+   -0.49,
+   -1.08,
+   -0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 4000,
+ "bytes": 226464,
+ "clips": {},
+ "family": "character",
+ "file": "police_khaki.glb",
+ "front": "-Y",
+ "id": "police_khaki",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 221.2,
+ "kit": 1,
+ "materials": [
+  "M_police_khaki"
+ ],
+ "max": [
+  2.963,
+  1.315,
+  9.281
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "shoulder_L",
+   "upperarm_L",
+   "forearm_L",
+   "hand_L",
+   "thigh_L",
+   "shin_L",
+   "foot_L",
+   "toe_L",
+   "shoulder_R",
+   "upperarm_R",
+   "forearm_R",
+   "hand_R",
+   "thigh_R",
+   "shin_R",
+   "foot_R",
+   "toe_R"
+  ],
+  "clips": "clips_adult",
+  "height": 9.1,
+  "kinds": [
+   "man",
+   "police"
+  ],
+  "lazy": true,
+  "look": {
+   "cap": "police",
+   "hair": "#1a1412",
+   "kind": "man",
+   "pants": "#a89060",
+   "shirt": "#f4f2ea",
+   "skin": "#7a4a30"
+  },
+  "match": {
+   "any": [
+    {
+     "f": "cap",
+     "in": [
+      "police"
+     ]
+    },
+    {
+     "f": "kind",
+     "in": [
+      "police"
+     ]
+    },
+    {
+     "f": "hat",
+     "in": [
+      "pith",
+      "dhaka"
+     ]
+    }
+   ]
+  },
+  "npcs": {
+   "bahadur": {},
+   "caretaker": {},
+   "pasha": {},
+   "pochaiah": {}
+  },
+  "priority": 5,
+  "regionsUsed": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "pants",
+   "shoes",
+   "moustache",
+   "cap_police",
+   "cap_pith",
+   "cap_topi",
+   "belly",
+   "lathi",
+   "uniform"
+  ],
+  "rig": "adult_rig",
+  "role": "people",
+  "variants": {
+   "bahadur": {
+    "hair": "#1a1412",
+    "hat": "dhaka",
+    "hatColor": "#1d1a1e",
+    "kind": "man",
+    "pants": "#4a4a3a",
+    "prop": "stick",
+    "shirt": "#8a7a4a",
+    "skin": "#d29a6a"
+   },
+   "khaki": {
+    "belly": true,
+    "cap": "police",
+    "hair": "#1a1412",
+    "kind": "man",
+    "pants": "#9a8656",
+    "prop": "lathi",
+    "shirt": "#b8a070",
+    "skin": "#7a4a30"
+   },
+   "pasha": {
+    "belly": true,
+    "hair": "#1a1412",
+    "hat": "pith",
+    "hatColor": "#e8dcc0",
+    "kind": "man",
+    "pants": "#c9b27a",
+    "shirt": "#c9b27a",
+    "skin": "#b97a4f"
+   },
+   "traffic": {
+    "cap": "police",
+    "hair": "#1a1412",
+    "kind": "man",
+    "pants": "#a89060",
+    "shirt": "#f4f2ea",
+    "skin": "#7a4a30"
+   }
+  }
+ },
+ "min": [
+  -2.963,
+  -1.137,
+  -0.0
+ ],
+ "notes": [],
+ "script": "characters",
+ "size": [
+  5.926,
+  2.452,
+  9.281
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "fields": {
+   "belly": [
+    "shirt"
+   ],
+   "cap_pith": [
+    "hatColor",
+    "#e8dcc0"
+   ],
+   "cap_topi": [
+    "hatColor",
+    "#1d1a1e"
+   ],
+   "hair_top": [
+    "hair"
+   ],
+   "moustache": [
+    "moustache",
+    "hair"
+   ],
+   "pants": [
+    "pants",
+    "#9a8656"
+   ],
+   "shirt": [
+    "shirt",
+    "#b8a070"
+   ],
+   "shoes": [
+    "shoes",
+    "#1c1a1a"
+   ]
+  },
+  "names": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "shoes",
+   "accent",
+   "moustache",
+   "cap_police",
+   "cap_pith",
+   "cap_topi",
+   "hair_top",
+   "belly",
+   "lathi",
+   "uniform"
+  ],
+  "regions": {
+   "belly": "#c9c7c1",
+   "cap_pith": "#e8dcc0",
+   "cap_police": "#8a7448",
+   "cap_topi": "#1d1a1e",
+   "hair": "#3b3735",
+   "lathi": "#8a5a2a",
+   "moustache": "#3b3735",
+   "pants": "#8f8d87",
+   "shirt": "#c9c7c1",
+   "shoes": "#2a2828",
+   "skin": "#9e6440",
+   "uniform": "#6a5a3a"
+  },
+  "show": {
+   "belly": {
+    "f": "belly"
+   },
+   "cap_pith": {
+    "f": "hat",
+    "in": [
+     "pith"
+    ]
+   },
+   "cap_police": {
+    "any": [
+     {
+      "f": "cap",
+      "in": [
+       "police"
+      ]
+     },
+     {
+      "f": "kind",
+      "in": [
+       "police"
+      ]
+     }
+    ]
+   },
+   "cap_topi": {
+    "f": "hat",
+    "in": [
+     "dhaka"
+    ]
+   },
+   "hair_top": {
+    "not": {
+     "any": [
+      {
+       "f": "hat"
+      },
+      {
+       "f": "cap"
+      },
+      {
+       "f": "kind",
+       "in": [
+        "police"
+       ]
+      }
+     ]
+    }
+   },
+   "lathi": {
+    "any": [
+     {
+      "f": "prop",
+      "in": [
+       "stick",
+       "lathi",
+       "antenna"
+      ]
+     },
+     {
+      "f": "lathi"
+     }
+    ]
+   },
+   "moustache": {
+    "all": [
+     {
+      "not": {
+       "f": "beard"
+      }
+     },
+     {
+      "not": {
+       "f": "noMoustache"
+      }
+     },
+     {
+      "any": [
+       {
+        "f": "moustache"
+       },
+       {
+        "f": "_r",
+        "lt": 0.85
+       }
+      ]
+     }
+    ]
+   },
+   "uniform": {
+    "any": [
+     {
+      "f": "cap",
+      "in": [
+       "police"
+      ]
+     },
+     {
+      "f": "kind",
+      "in": [
+       "police"
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "tris": 3066,
+ "units": "u",
+ "up": "Z"
+}

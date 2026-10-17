@@ -56,8 +56,9 @@ const NAMED = ['birla_planetarium', 'assembly', 'mozamjahi_market', 'kachiguda_s
   'giant_wheel', 'khairatabad_ganesh', 'doordarshan_kendra', 'nimrah_cafe', 'grand_hotel', 'kirana_3', 'bangle_shop_1', 'banana_cart_1', 'std_1', 'bus_stop_1', 'home', 'water_tank_1', 'purani_haveli', 'madina_building', 'kakatiya_arch_s', 'koti_womens_college', 'school_1'];
 // at / look are offsets from the landmark centre (or from another landmark: rel: '<id>')
 const VIEWS = {
-  // Map v2: the Charminar Kaman stands 140 u due north, so the 'north' view looks from north-north-west
-  charminar: [{ name: 'north', from: -Math.PI / 2 - 0.6, dist: 175, fpsDist: 110 }, { name: 'laad_bazaar', atFn: 'laad', fpsPitch: -0.2 }, { name: 'close', from: -Math.PI / 2 + 0.5, dist: 92, fpsDist: 70, fpsPitch: -0.75 }],
+  // Map v2: the Charminar Kaman stands 140 u due north (its piers are not in the height grid, so the
+  // clear-spot picker cannot see them): the 'north' view is a fixed spot north-north-west, past Nimrah
+  charminar: [{ name: 'north', at: [-75, -112] }, { name: 'laad_bazaar', atFn: 'laad', fpsPitch: -0.2 }, { name: 'close', from: -Math.PI / 2 + 0.5, dist: 92, fpsDist: 70, fpsPitch: -0.75 }],
   lb_stadium: [{ name: 'gate', from: Math.PI, dist: 150 }, { name: 'field', at: [0, 60], look: [0, -110], fpsOnly: true, fpsPitch: -0.05 }],
   birla_mandir: [{ name: 'front', from: Math.PI / 2, dist: 140 }],
   buddha_statue: [{ name: 'bund', atFn: 'bund', fpsPitch: -0.1 }],
@@ -321,6 +322,8 @@ async function main() {
         const P0 = N.places[s[1]] || N.WORLD_DATA.landmarks.find((l) => l.id === s[1]) || { x: 4000, y: 3000 };
         N.player.teleport(P0.x + s[2], P0.y + s[3]); N.debug.setTime(21, 30); N.view.set('tps');
         N.view3d.setCamera({ yaw: s[4], pitch: 0.1, snap: true }); N.view3d.settle(20000);
+        // let the synchronous settle() build and the first uploads pass before sampling
+        for (let i = 0; i < 10; i++) await new Promise((r) => requestAnimationFrame(r));
         const samples = [];
         for (let i = 0; i < 6; i++) { await new Promise((r) => requestAnimationFrame(r)); samples.push(N.view3d.stats()); }
         const avg = (k) => samples.reduce((a, b) => a + b[k], 0) / samples.length;
