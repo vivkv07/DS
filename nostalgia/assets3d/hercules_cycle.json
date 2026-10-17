@@ -58,7 +58,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 6000,
- "bytes": 318392,
+ "bytes": 251532,
  "clips": {},
  "family": "vehicle",
  "file": "hercules_cycle.glb",
@@ -68,7 +68,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 310.9,
+ "kb": 245.6,
  "kit": 1,
  "materials": [
   "M_hercules_cycle"
@@ -127,6 +127,7 @@
    1.226,
    4.9426
   ],
+  "stand": "side",
   "steerAxis": [
    0.0,
    -0.3809,
@@ -148,15 +149,15 @@
  },
  "min": [
   -2.21,
-  -7.222,
-  -0.07
+  -7.32,
+  -0.0
  ],
  "notes": [],
  "script": "vehicles",
  "size": [
   4.419,
-  14.76,
-  6.339
+  14.857,
+  6.269
  ],
  "tint": {
   "attribute": "_REGION",
@@ -175,7 +176,7 @@
    "paint2": "#f4f2ea"
   }
  },
- "tris": 3068,
+ "tris": 2802,
  "units": "u",
  "up": "Z"
 }

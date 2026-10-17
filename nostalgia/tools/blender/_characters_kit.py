@@ -907,13 +907,13 @@ class Head:
         bm.free()
         return self.add(hc)
 
-    def tuft(self, m, base, d, L, r0, name='lock', seg=5, bend=None):
+    def tuft(self, m, base, d, L, r0, name='lock', seg=5, bend=None, tip=0.03):
         base = Vector(base)
         d = Vector(d).normalized()
         mid = base + d * L * 0.5 + (Vector(bend) * L if bend else Vector())
         end = base + d * L + (Vector(bend) * L * 1.6 if bend else Vector())
         return self.add(loft(name, [dict(c=tuple(base - d * 0.06), r=r0 * 0.9, w={'head': 1}, mat=m), dict(c=tuple(mid), r=r0 * 0.72, w={'head': 1}, mat=m),
-                                    dict(c=tuple(end), r=0.03, w={'head': 1}, mat=m)], seg=seg, side=(0, 0, 1)))
+                                    dict(c=tuple(end), r=tip, w={'head': 1}, mat=m)], seg=seg, side=(0, 0, 1)))
 
     def hair(self, style, m, top_m=None, skin_m=None):
         """top_m: material for the parts that stand above the hair cap (quiff, puff, spikes) so
@@ -932,10 +932,10 @@ class Head:
                         continue
                     skf = 1.22 - ring_z * 0.36
                     base = (nx * 0.5 * skf, cy + 0.06 + ny * 0.55 * skf, hz + ring_z + 0.03)
-                    self.tuft(m, base, (nx * kout, ny * kout + kback, kup), L0 * (0.85 + rnd.random() * 0.3), r0, seg=6)
+                    self.tuft(m, base, (nx * kout, ny * kout + kback, kup), L0 * (0.78 + rnd.random() * 0.25), r0 * 1.3, seg=6, tip=0.06)
             for i, x in enumerate((-0.24, 0.0, 0.24)):
                 base = (x, cy - 0.41, hz + 1.03 - abs(x) * 0.15)
-                self.tuft(m, base, (x * 0.6, -0.6, -0.5), 0.27, 0.15, name='fringe', seg=6)
+                self.tuft(m, base, (x * 0.6, -0.6, -0.5), 0.25, 0.19, name='fringe', seg=6, tip=0.06)
             self.tuft(m, (0.06, cy + 0.28, hz + 1.22), (0.15, 0.4, 0.9), 0.36, 0.11, name='cowlick', bend=(0, -0.25, 0), seg=6)
         elif style in ('side', 'oiled', 'crop'):
             off = {'side': 0.045, 'oiled': 0.03, 'crop': 0.025}[style]
@@ -983,12 +983,14 @@ class Head:
 
     def puff(self, m):
         hz, cy = self.hz, self.cy
-        pts = [dict(c=(0.0, cy - 0.30, hz + 1.10), r=(0.42, 0.18)), dict(c=(0.02, cy - 0.12, hz + 1.30), r=(0.52, 0.32)),
-               dict(c=(0.0, cy + 0.15, hz + 1.33), r=(0.5, 0.3)), dict(c=(0.0, cy + 0.38, hz + 1.18), r=(0.38, 0.2))]
+        # a soft, rounded 90s puff: a dome swelling from the forehead, highest over the crown
+        pts = [dict(c=(0.0, cy - 0.42, hz + 1.02), r=(0.30, 0.08)), dict(c=(0.0, cy - 0.34, hz + 1.10), r=(0.47, 0.17)),
+               dict(c=(0.02, cy - 0.18, hz + 1.22), r=(0.58, 0.29)), dict(c=(0.02, cy + 0.04, hz + 1.27), r=(0.62, 0.33)),
+               dict(c=(0.0, cy + 0.26, hz + 1.22), r=(0.58, 0.29)), dict(c=(0.0, cy + 0.44, hz + 1.08), r=(0.44, 0.16)),
+               dict(c=(0.0, cy + 0.5, hz + 1.0), r=(0.2, 0.05))]
         for p in pts:
             p['w'] = {'head': 1}
             p['mat'] = m
-            p['p'] = 2.4
         return self.add(loft('puff', pts, seg=12, side=(1, 0, 0)))
 
     def bun(self, m, jasmine=None):
@@ -1001,8 +1003,8 @@ class Head:
         if jasmine is not None:
             # a strand of jasmine round the bun: little white buds on a string
             pts = []
-            for i in range(14):
-                a = math.radians(-160 + 320 * i / 13)
+            for i in range(10):
+                a = math.radians(-160 + 320 * i / 9)
                 pts.append(Vector((math.cos(a) * 0.27, cy + 0.66 + math.sin(a) * 0.08, hz + 0.62 + math.sin(a) * 0.24)))
             buds = []
             for i, p in enumerate(pts):
@@ -1015,26 +1017,28 @@ class Head:
         return b
 
     def plait(self, m, ribbon=None, side=0.0, length=None, name='plait', w=None):
-        """a braid from the nape down the back (segments of lobes): weighted head -> neck -> chest"""
+        """a braid from the nape down the back: one loft whose rings swell and pinch (the woven lobes,
+        zig-zagging a little), weighted head -> neck -> chest"""
         hz, cy = self.hz, self.cy
         L = length if length is not None else (1.6 if self.shape == 'kid' else 2.6)
-        n = 7 if self.shape != 'kid' else 5
-        objs = []
+        n = 6 if self.shape != 'kid' else 4
+        k = 1.0 if self.shape != 'kid' else 0.85
         x0 = side
-        for i in range(n):
-            t = i / max(1, n - 1)
-            r = 0.13 * (1 - 0.45 * t) * (1.0 if self.shape != 'kid' else 0.85)
-            z = hz + 0.45 - t * L
+        rings = []
+        steps = 2 * n
+        for i in range(steps + 1):
+            t = i / steps
+            lobe = i % 2 == 1
+            r = 0.14 * (1 - 0.45 * t) * k * (1.0 if lobe else 0.72)
+            z = hz + 0.5 - t * L
             y = cy + 0.52 + 0.08 * math.sin(t * math.pi) + (0.12 * t if self.shape != 'kid' else 0.05 * t)
-            lb = kit.lathe('lobe', [(0.0, -r * 1.3), (r * 0.8, -r * 0.9), (r, 0.0), (r * 0.8, r * 0.9), (0.0, r * 1.3)], seg=7, mat=m)
-            lb.rotation_euler = (0, math.radians(18 if i % 2 else -18), 0)
-            lb.location = (x0 + (0.03 if i % 2 else -0.03), y, z)
-            kit.apply_transform(lb)
-            objs.append(lb)
+            zig = (0.035 if lobe else 0.0) * (1 if (i // 2) % 2 else -1)
+            rings.append(dict(c=(x0 + zig, y, z), r=(r * 1.1, r * 0.85), mat=m))
+        rings.append(dict(c=(x0, rings[-1]['c'][1] + 0.01, rings[-1]['c'][2] - 0.08 * k), r=0.025, mat=m))
+        objs = [loft(name + '_braid', rings, seg=5, side=(1, 0, 0))]
         if ribbon is not None:
-            t = 1.0
-            rb = kit.lathe('ribbon', [(0.0, -0.06), (0.1, -0.05), (0.12, 0.0), (0.1, 0.05), (0.0, 0.06)], seg=8, mat=ribbon)
-            rb.location = (x0, cy + 0.52 + 0.12 * t, hz + 0.45 - L * 0.98)
+            rb = kit.lathe('ribbon', [(0.0, -0.06), (0.12, 0.0), (0.0, 0.06)], seg=6, mat=ribbon)
+            rb.location = (x0, cy + 0.52 + 0.12, hz + 0.5 - L * 0.97)
             kit.apply_transform(rb)
             objs.append(rb)
         ob = kit.join(objs, name)
@@ -1231,19 +1235,19 @@ def specs(H, m, kind='round', lens=None, tape=None):
     return H.add(o)
 
 
-def cap(H, m, kind='cricket', brim=None):
+def cap(H, m, kind='cricket', brim=None, seg=None):
     """caps in head space: cricket / backcap (dome + brim), skull (taqiyah), gandhi (boat), irani
     (short round brimless), police (peaked, band + flat top + visor), dhaka (Nepali topi)"""
     hz, cy = H.hz, H.cy
     objs = []
     if kind in ('cricket', 'backcap'):
         prof = [(0.62, 0.0), (0.63, 0.12), (0.6, 0.26), (0.5, 0.42), (0.32, 0.53), (0.0, 0.57)]
-        d = kit.lathe('dome', prof, seg=SEG['cap'], mat=m, close_bottom=False)
+        d = kit.lathe('dome', prof, seg=seg or SEG['cap'], mat=m, close_bottom=False)
         d.location = (0, cy + 0.05, hz + 0.86)
         kit.apply_transform(d)
         objs.append(d)
         bm = brim or m
-        b = kit.lathe('brim', [(0.0, 0.0), (0.52, 0.0), (0.52, 0.04), (0.0, 0.04)], seg=SEG['cap'], mat=bm)
+        b = kit.lathe('brim', [(0.0, 0.0), (0.52, 0.0), (0.52, 0.04), (0.0, 0.04)], seg=seg or SEG['cap'], mat=bm)
         b.scale = (0.95, 0.75, 1.0)
         b.rotation_euler = (math.radians(-12), 0, 0)
         b.location = (0, cy - 0.58, hz + 0.9)
@@ -1484,7 +1488,7 @@ def backpack(B, m, m_strap=None):
     rig, k = B.rig, B.k
     z0, z1 = TORSO[rig][4][0][2] + 0.05, TORSO[rig][8][0][2] - 0.05 * k
     back = body_point(rig, 0, (z0 + z1) / 2, False, 0.0)
-    bag = kit.box('bag', (0.95 * k, 0.42 * k, (z1 - z0)), back + Vector((0, 0.22 * k, 0)), m, bevel=0.1 * k, segments=2)
+    bag = kit.box('bag', (0.95 * k, 0.42 * k, (z1 - z0)), back + Vector((0, 0.22 * k, 0)), m, bevel=0.1 * k, segments=1)
     kit.apply_modifiers(bag)
     flap = kit.box('flap', (0.9 * k, 0.1 * k, (z1 - z0) * 0.45), back + Vector((0, 0.44 * k, (z1 - z0) * 0.22)), m, bevel=0.04 * k, segments=1)
     kit.apply_modifiers(flap)
@@ -1603,6 +1607,21 @@ def stick(B, m, side=-1, length=None, top=None, name='stick'):
     return B.add(o, 'hand_' + S)
 
 
+def basket(B, m, m_rim=None, side=-1):
+    """a woven cane basket carried in one hand by its arched handle (vegetables, flowers)"""
+    J, k = B.J, B.k
+    S = 'L' if side > 0 else 'R'
+    g = Vector(mir(lerp(J['wrist'], J['hand_tip'], 0.6), side))
+    top = g + Vector((0, 0, -0.45 * k))
+    bowl = kit.lathe('basket', [(0.0, -0.38 * k), (0.3 * k, -0.36 * k), (0.42 * k, -0.12 * k), (0.47 * k, 0.0), (0.44 * k, 0.03 * k)], seg=10, mat=m, close_top=False)
+    bowl.scale = (1.0, 0.72, 1.0)
+    bowl.location = top
+    kit.apply_transform(bowl)
+    h = kit.tube('basket_handle', [top + Vector((0.42 * k, 0, 0)), top + Vector((0.3 * k, 0, 0.36 * k)), g + Vector((0, 0, 0.02)), top + Vector((-0.3 * k, 0, 0.36 * k)), top + Vector((-0.42 * k, 0, 0))],
+                  0.035 * k, seg=4, mat=m_rim or m, cap=False)
+    return B.add(kit.join([bowl, h], 'basket'), 'hand_' + S)
+
+
 def charkhi(B, m_wood, m_thread, side=1):
     """a kite-string reel held in one hand: two discs on an axle with handles, thread wound on it"""
     J, k = B.J, B.k
@@ -1659,10 +1678,10 @@ def pallu(B, m, m_border):
            (body_point(rig, 0.28 * k, T[1][0][2] - 0.2 * k, False, 0.14), 0.4)]
     rings = []
     for i, (p, w) in enumerate(pts):
-        rings.append(dict(c=tuple(p), r=(w * k, 0.035), mat=m if i < len(pts) - 2 else m_border))
+        rings.append(dict(c=tuple(p), r=(w * k * 1.45, 0.045), mat=m if i < len(pts) - 2 else m_border))
     o = loft('pallu', rings, seg=6, side=(0, 0, 1))
     # the border stripe along the outer edge (a thin tube along the lower / outer edge of the sash)
-    edge = [p + Vector((0, 0, -w * k * 0.92)) if i < 4 else p + Vector((0.0, 0.0, -w * k * 0.92)) for i, (p, w) in enumerate(pts)]
+    edge = [p + Vector((0, 0, -w * k * 1.38)) for i, (p, w) in enumerate(pts)]
     e = kit.tube('pallu_border', edge, 0.06 * k, seg=5, mat=m_border, cap=False)
 
     def wf(co, rig=rig):
@@ -1694,7 +1713,7 @@ def dupatta(B, m, over_head=False):
     return B.add(o, wf)
 
 
-def bangles(B, m, n=3):
+def bangles(B, m, n=2):
     J, k = B.J, B.k
     objs = []
     for sx in (1, -1):
@@ -1705,10 +1724,10 @@ def bangles(B, m, n=3):
             pts = []
             a0 = d.orthogonal().normalized()
             b0 = d.cross(a0)
-            for j in range(9):
-                a = 2 * math.pi * j / 8
+            for j in range(8):
+                a = 2 * math.pi * j / 7
                 pts.append(c + (a0 * math.cos(a) + b0 * math.sin(a)) * 0.15 * k)
-            objs.append(kit.tube('bangle', pts, 0.02 * k, seg=4, mat=m, cap=False))
+            objs.append(kit.tube('bangle', pts, 0.022 * k, seg=3, mat=m, cap=False))
     o = kit.join(objs, 'bangles')
 
     def wf(co):
@@ -1845,19 +1864,18 @@ def school_shoes(B, m_shoe, m_sock, name='shoes'):
     for sx in (1, -1):
         S = 'L' if sx > 0 else 'R'
         ft, to, sh = 'foot_' + S, 'toe_' + S, 'shin_' + S
-        rings = [dict(c=mir((an[0], an[1] + 0.29 * k, 0.03), sx), r=(0.2 * k, 0.12 * k), w={ft: 1}, mat=m_shoe),
-                 dict(c=mir((an[0], an[1] + 0.27 * k, 0.26 * k), sx), r=(0.18 * k, 0.12 * k), w={ft: 1}, mat=m_shoe),
+        rings = [dict(c=mir((an[0], an[1] + 0.29 * k, 0.12 * k), sx), r=(0.2 * k, 0.14 * k), w={ft: 1}, mat=m_shoe),
                  dict(c=mir((an[0], an[1] + 0.03, 0.33 * k), sx), r=(0.21 * k, 0.21 * k), w={ft: 1}, mat=m_shoe),
                  dict(c=mir((an[0], an[1] - 0.32 * k, 0.25 * k), sx), r=(0.225 * k, 0.16 * k), w={ft: 1}, mat=m_shoe),
                  dict(c=mir((bl[0], bl[1] + 0.05, 0.19 * k), sx), r=(0.225 * k, 0.13 * k), w={ft: 0.5, to: 0.5}, mat=m_shoe),
                  dict(c=mir((tp[0], tp[1] + 0.12 * k, 0.16 * k), sx), r=(0.2 * k, 0.11 * k), w={to: 1}, mat=m_shoe),
                  dict(c=mir((tp[0], tp[1] - 0.05, 0.11 * k), sx), r=(0.1 * k, 0.07 * k), w={to: 1}, mat=m_shoe),
                  dict(c=mir((tp[0], tp[1] - 0.07, 0.03), sx), r=(0.04 * k, 0.03 * k), w={to: 1}, mat=m_shoe)]
-        objs.append(loft(name + '_' + S, rings, seg=SEG['shoe'], side=(1, 0, 0)))
+        objs.append(loft(name + '_' + S, rings, seg=7, side=(1, 0, 0)))
         sock = [dict(c=mir((an[0], an[1] + 0.02, 0.3 * k), sx), r=0.165 * k, w={ft: 1}, mat=m_sock),
                 dict(c=mir((an[0], an[1] + 0.03, 0.6 * k), sx), r=0.15 * k, w={sh: 1}, mat=m_sock),
                 dict(c=mir((an[0], an[1] + 0.03, 0.78 * k), sx), r=0.155 * k, w={sh: 1}, mat=m_sock)]
-        objs.append(loft('sock_' + S, sock, seg=SEG['leg'], side=(1, 0, 0), cap_start=False, cap_end=False))
+        objs.append(loft('sock_' + S, sock, seg=7, side=(1, 0, 0), cap_start=False, cap_end=False))
     return B.add(kit.join(objs, name))
 
 
@@ -1872,9 +1890,9 @@ def cable_coil(B, m, side=-1):
         pts = []
         for i in range(13):
             a = 2 * math.pi * i / 12
-            r = 0.62 * k + 0.05 * j
-            pts.append(c + Vector((math.sin(a) * 0.18 * k * sx, math.cos(a) * r * 0.7, math.sin(a) * r * 0.95)))
-        objs.append(kit.tube('coil', pts, 0.045 * k, seg=5, mat=m, cap=False))
+            r = 0.62 * k + 0.07 * j
+            pts.append(c + Vector((math.sin(a) * 0.22 * k * sx + 0.1 * k * sx, math.cos(a) * r * 0.75, math.sin(a) * r * 0.95)))
+        objs.append(kit.tube('coil', pts, 0.075 * k, seg=5, mat=m, cap=False))
     o = kit.join(objs, 'cable')
     return B.add(o, lambda co, rig=rig: torso_w(rig, co))
 
@@ -1894,7 +1912,7 @@ def ponytails(H, m, band=None, name='ponytails'):
         for r in rings:
             r['w'] = {'head': 1}
             r['mat'] = m
-        objs.append(loft('tail', rings, seg=7, side=(0, 1, 0)))
+        objs.append(loft('tail', rings, seg=6, side=(0, 1, 0)))
         if band is not None:
             b = kit.cylinder('band', 0.115, 0.07, (0, 0, 0), seg=8, mat=band, base=False)
             b.rotation_euler = Vector((0, 0, 1)).rotation_difference(d).to_euler()

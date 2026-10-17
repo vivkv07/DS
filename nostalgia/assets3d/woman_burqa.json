@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 203796,
+ "bytes": 203836,
  "clips": {},
  "family": "character",
  "file": "woman_burqa.glb",
@@ -52,7 +52,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 199.0,
+ "kb": 199.1,
  "kit": 1,
  "materials": [
   "M_woman_burqa"

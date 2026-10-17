@@ -113,7 +113,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 6000,
- "bytes": 393576,
+ "bytes": 352396,
  "clips": {},
  "family": "vehicle",
  "file": "auto_rickshaw.glb",
@@ -124,7 +124,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 384.4,
+ "kb": 344.1,
  "kit": 1,
  "materials": [
   "M_auto_rickshaw@night",
@@ -336,7 +336,7 @@
    "paint2": "#1c1a1c"
   }
  },
- "tris": 4504,
+ "tris": 4312,
  "units": "u",
  "up": "Z"
 }

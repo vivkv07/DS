@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 283864,
+ "bytes": 285164,
  "clips": {},
  "family": "character",
  "file": "man_shirt_pants.glb",
@@ -52,7 +52,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 277.2,
+ "kb": 278.5,
  "kit": 1,
  "materials": [
   "M_man_shirt_pants"

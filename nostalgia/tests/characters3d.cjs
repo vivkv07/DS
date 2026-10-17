@@ -232,7 +232,7 @@ async function main(browser) {
       }
       const g = N.view3d.elevation(p), gap = 6.2;
       const x0 = p.x - (row.length - 1) * gap / 2;
-      window._lineup = row.map((r, i) => { const P = CH.make(r.id, r.look, { _r: 0.8 }); P.object.position.set(x0 + i * gap, g, p.y); P.object.rotation.y = Math.PI / 2; P.update(0.5, 0, 0); return P; });
+      window._lineup = row.map((r, i) => { const P = CH.make(r.id, r.look, { _r: 0.8 }); P.object.position.set(x0 + i * gap, g, p.y); P.object.rotation.y = -Math.PI / 2 + 0.35; P.update(0.5, 0, 0); return P; });   // facing the camera (+z), turned a little
       for (let k = 0; k < 6; k++) { for (const P of window._lineup) P.update(0.05, 0, 0); await CH.raf(1); }
       const lows = window._lineup.map((P) => Math.max(...CH.lows(P, g).map(Math.abs)));
       return { n: row.length, names: row.map((r) => r.id + ':' + r.n), worst: Math.max(...lows), x0, g, span: (row.length - 1) * gap, y: p.y };

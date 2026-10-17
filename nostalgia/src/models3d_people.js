@@ -223,7 +223,8 @@
     if (e.umb || e.balloons || e.cart) return false;           // procedural extras (umbrella, balloons, carts)
     if (e.spotter && e.spotter.stick) return false;
     const L = e.look || {};
-    if (L.prop && (HEAD_LOADS[L.prop] || !(S.idx.props.get(ch.id) || new Set()).has(L.prop))) return false;
+    // head loads change the whole pose (procedural); a small hand prop the model lacks is left out
+    if (L.prop && HEAD_LOADS[L.prop]) return false;
     if (e.constable && !clipOf(ch.id, 'direct')) return false;
     return true;
   }
@@ -356,7 +357,13 @@
       if (!set.length) return 0;
       if (v <= set[0].nominal) set[0].w = 1;
       else if (v >= set[set.length - 1].nominal) set[set.length - 1].w = 1;
-      else for (let i = 0; i < set.length - 1; i++) if (v < set[i + 1].nominal) { const t = (v - set[i].nominal) / (set[i + 1].nominal - set[i].nominal); set[i].w = 1 - t; set[i + 1].w = t; break; }
+      else for (let i = 0; i < set.length - 1; i++) if (v < set[i + 1].nominal) {
+        // blend only through the middle of the gap: two gaits with different stance timing mixed at
+        // one phase let the feet drift, a single gait (its cadence from the distance) never does
+        let t = (v - set[i].nominal) / (set[i + 1].nominal - set[i].nominal);
+        t = t <= 0.3 ? 0 : t >= 0.7 ? 1 : ((x) => x * x * (3 - 2 * x))((t - 0.3) / 0.4);
+        set[i].w = 1 - t; set[i + 1].w = t; break;
+      }
       for (const l of set) S_ += l.w * l.stride;
       return S_;
     }
@@ -484,8 +491,10 @@
         let P;
         try { P = new Person(md, e === N.player ? N.player.look : e.look, ch && ch.id === id ? ch.ctx : {}); } catch (er) { N.err('models3d_people.create:' + id, er); return null; }
         P.object.userData.m3dPerson = P;
+        P.object.userData.m3dChar = P;   // the Character-shaped fields tests/models3d.cjs reads (id, anchors, clip, v, phase)
         if (H && H.quality && !H.quality.shadows) P.object.add(H.blobShadow(e.look && e.look.kind === 'kid' ? 3.8 : 4.6));
         P.st = { t: null, x: e.x, y: e.y, yaw: isFinite(e.facing) && e === N.player ? e.facing : (e.angle || 0), v: 0, hy: 0, ent: e };
+        P.object.userData.m3dState = P.st;
         S.persons.add(P); S.created++;
         return P.object;
       },
