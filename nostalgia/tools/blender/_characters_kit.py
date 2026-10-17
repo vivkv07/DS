@@ -2049,11 +2049,15 @@ def finish_atlas_layered(A, me, size=512, ao_samples=32, albedo_samples=8, ao_st
                     if not free.any():
                         break
                     nb = np.full_like(own, -1)
-                    nb[1:, :] = np.maximum(nb[1:, :], own[:-1, :])
-                    nb[:-1, :] = np.maximum(nb[:-1, :], own[1:, :])
-                    nb[:, 1:] = np.maximum(nb[:, 1:], own[:, :-1])
-                    nb[:, :-1] = np.maximum(nb[:, :-1], own[:, 1:])
-                    own[free] = nb[free]
+                    base_nb = np.zeros(own.shape, dtype=bool)
+                    for a_, b_ in (((slice(1, None), slice(None)), (slice(None, -1), slice(None))), ((slice(None, -1), slice(None)), (slice(1, None), slice(None))),
+                                   ((slice(None), slice(1, None)), (slice(None), slice(None, -1))), ((slice(None), slice(None, -1)), (slice(None), slice(1, None)))):
+                        nb[a_] = np.maximum(nb[a_], own[b_])
+                        base_nb[a_] |= own[b_] == 0
+                    # the base wins ties: its own bake already filled these margin texels
+                    own[free & base_nb] = 0
+                    rest = free & ~base_nb & (nb > 0)
+                    own[rest] = nb[rest]
                 for r, o in slot_obs:
                     m = own == r
                     if not m.any():

@@ -113,7 +113,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 6000,
- "bytes": 558308,
+ "bytes": 457936,
  "clips": {},
  "family": "vehicle",
  "file": "city_bus.glb",
@@ -124,7 +124,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 545.2,
+ "kb": 447.2,
  "kit": 1,
  "materials": [
   "M_city_bus@night",
@@ -303,7 +303,7 @@
    "paint": "#b22b2b"
   }
  },
- "tris": 6048,
+ "tris": 5156,
  "units": "u",
  "up": "Z"
 }
