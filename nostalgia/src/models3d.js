@@ -145,6 +145,7 @@
     if (m.family === 'character') return OPT.player || OPT.kidPeds || OPT.riders;
     if (m.family === 'vehicle') return OPT.vehicles;
     if (m.family === 'landmark' || m.family === 'hero_landmark') return OPT.landmarks && (!meta.proto || useProto);
+    if (m.family === 'prop') return false;   // props are parsed on demand (models3d_props.js / parse(id))
     return true;
   }
   async function parseActive() {
