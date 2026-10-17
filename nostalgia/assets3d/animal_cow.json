@@ -1,0 +1,107 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 74616,
+ "clips": {
+  "lie": {
+   "duration": 4.0,
+   "fps": 60,
+   "frames": 240,
+   "loco": false,
+   "loop": true
+  },
+  "stand": {
+   "duration": 4.0,
+   "fps": 60,
+   "frames": 240,
+   "loco": false,
+   "loop": true
+  },
+  "walk": {
+   "duration": 0.2333,
+   "duty": 0.64,
+   "footfall": {
+    "FL": 0.25,
+    "FR": 0.75,
+    "HL": 0.0,
+    "HR": 0.5
+   },
+   "fps": 60,
+   "frames": 14,
+   "gait": "lateral walk",
+   "loco": true,
+   "loop": true,
+   "nominal": 25.0,
+   "phase0": "LH strike",
+   "stride": 5.833
+  }
+ },
+ "family": "prop",
+ "file": "animal_cow.glb",
+ "front": "-Y",
+ "id": "animal_cow",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 72.9,
+ "kit": 1,
+ "materials": [
+  "M_animal_cow"
+ ],
+ "max": [
+  1.62,
+  4.388,
+  6.96
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "body",
+   "chest",
+   "neck",
+   "head",
+   "jaw",
+   "ear_L",
+   "ear_R",
+   "tail1",
+   "tail2",
+   "leg_FL_upper",
+   "leg_FL_lower",
+   "leg_FR_upper",
+   "leg_FR_lower",
+   "leg_HL_upper",
+   "leg_HL_lower",
+   "leg_HR_upper",
+   "leg_HR_lower"
+  ],
+  "breed": "zebu",
+  "doubleSided": false,
+  "height": 7.0,
+  "idleClip": "stand",
+  "kind": "animal",
+  "length": 11.0,
+  "loco": {
+   "walk": 25.0
+  },
+  "restClip": "lie",
+  "species": "cow",
+  "walkClip": "walk"
+ },
+ "min": [
+  -1.62,
+  -6.449,
+  -0.021
+ ],
+ "notes": [],
+ "script": "props_fauna",
+ "size": [
+  3.24,
+  10.837,
+  6.981
+ ],
+ "tint": null,
+ "tris": 711,
+ "units": "u",
+ "up": "Z"
+}

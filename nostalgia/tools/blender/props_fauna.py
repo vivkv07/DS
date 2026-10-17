@@ -986,7 +986,7 @@ def bird_egret(A):
         bones=dict(neck=((0, -0.5, 2.80), (0, -0.48, 3.95)), head=((0, -0.48, 3.95), (0, -0.78, 4.19)),
                    tail=((0, 0.8, 2.56), (0, 1.15, 2.5)), shoulder=(0.25, -0.2, 2.68), wrist=(0.85, -0.15, 2.72), tip=(2.35, 0.1, 2.76)),
         rest_pose={'neck': qe(1.15, 0, 0), 'head': qe(-1.15, 0, 0)},
-        clip=dict(beat=0.42, amp=0.6, off=0.1, tamp=0.35, bob=0.08, fold=(0.0, 1.62, 1.62, (0.0, 0.0, -0.1)), perch_s=3.0),
+        clip=dict(beat=0.42, amp=0.6, off=0.1, tamp=0.35, bob=0.08, fold=(-0.6, 1.62, 1.62, (0.0, 0.0, -0.1)), perch_s=3.0),
     )
     arm, ob = build_bird(A, S)
     A.meta.update(wingspan=4.7, length=2.5, standHeight=4.4, perchClip='perch', flightClips=['flap', 'glide'],
@@ -1329,7 +1329,7 @@ def animal_cow(A):
         tuft = P.blob('tuft', 0.26, (0, 4.25, 2.35), subdiv=1, noise=0.1, scale=(0.6, 0.6, 1.4), mat=M_['tuft'])
         kit.weights(tuft, 'tail2')
         return out + [hump, dew, tail, tuft]
-    Q = dict(mats=Mt, tex=256, seg=12, seg_neck=10, seg_head=10, torso_mat='hide', neck_mat='hide', head_mat='face', leg_mat='hide',
+    Q = dict(mats=Mt, tex=128, seg=10, seg_neck=8, seg_head=8, seg_leg=5, torso_mat='hide', neck_mat='hide', head_mat='face', leg_mat='hide',
              split=(0.2, -1.0),
              torso=[(3.95, 5.55, 0.65, 0.8, Mt['hide'], None, 2.4), (3.45, 5.3, 1.22, 1.35, Mt['hide'], None, 2.4),
                     (2.4, 5.05, 1.48, 1.55, Mt['hide'], None, 2.4), (0.8, 4.9, 1.62, 1.72, Mt['hide'], None, 2.3),
