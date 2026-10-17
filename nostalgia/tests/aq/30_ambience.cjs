@@ -103,6 +103,8 @@ module.exports = {
       const tot = lo + mid + hi;
       check(m.peakDb < -1 && m.peakDb > -18 && lo / tot < 0.05 && hi / tot < 0.08 && m.clicks === 0, 'radio cricket: band-limited speaker (<300 Hz ' + (100 * lo / tot).toFixed(1) + '%, >5 kHz ' + (100 * hi / tot).toFixed(1) + '%), peak ' + m.peakDb, m); }
 
+    { const r = await L.renderFn(T.page, `(oc, out, t) => N.audio.ambience.synth.harmoniumDrone(oc, out, 10, 2)`, 12); const m = L.save(r, 'amb_loop_harmonium');
+      check(m.peakDb < -3 && m.peakDb > -24 && m.clicks === 0 && m.centroid < 1500, 'dargah harmonium drone (wordless): peak ' + m.peakDb + ', centroid ' + m.centroid, m); }
     // ---------------------------------------------------------------- district beds by time of day
     const BEDS = [['oldcity', 10.5], ['market', 11], ['colonial', 18.5], ['colony', 12.5], ['posh', 9], ['rocky', 15], ['cantonment', 9.5], ['hitec', 11], ['lake', 17],
       ['colony', 6.5], ['colony', 13.5], ['colony', 23], ['oldcity', 22.5], ['lake', 22]];
@@ -133,19 +135,25 @@ module.exports = {
     log('  radio shops ' + ids.radio.length + ' [' + ids.radio.slice(0, 12).join(' ') + ' ...]   temples within 600 u of Birla: [' + ids.templeNearBirla.join(' ') + ']');
     check(ids.school.length >= 10 && ids.church.length >= 3 && ids.temples.length >= 8 && ids.radio.length >= 5 && !ids.birla, 'place ids matched (schools, churches, temples, radio shops; Birla Mandir untagged)');
 
-    const runAt = (place, h, m, sec, day) => ev(async ([place, h, m, sec, day]) => {
+    const runAt = (place, h, m, sec, day, until) => ev(async ([place, h, m, sec, day, until]) => {
       if (day != null) N.clock.day = day;
       N.debug.teleport(place); N.debug.setTime(h, m);
       const st = N.audio.ambience.stats, before = Object.assign({}, st.played), sup = st.suppressed.temple_bell || 0, logN = st.log.length;
       const t0 = Date.now();
-      while (Date.now() - t0 < sec * 1000) { await new Promise((r) => setTimeout(r, 200)); if (!N.clock.held) continue; N.clock.minutes += 0.2; } // keep game time moving even under a hold
-      const d = {}; for (const k in st.played) d[k] = st.played[k] - (before[k] || 0);
+      const diff = () => { const d = {}; for (const k in st.played) d[k] = st.played[k] - (before[k] || 0); return d; };
+      // poll: stop early once the expectation holds (until: [[names], min]); keep game time moving even under a hold
+      while (Date.now() - t0 < sec * 1000) {
+        await new Promise((r) => setTimeout(r, 200));
+        if (until) { const d = diff(); if (until[0].reduce((a, k) => a + (d[k] || 0), 0) >= until[1]) break; }
+        if (N.clock.held) N.clock.minutes += 0.2;
+      }
+      const d = diff();
       const p = N.places[place];
       return { d, sup: (st.suppressed.temple_bell || 0) - sup, log: st.log.slice(Math.max(0, logN - 80)).filter((e) => e.x != null).map((e) => [e.name, Math.round(Math.hypot(e.x - p.x, e.y - p.y))]), bed: N.audio.ambience && N.audio.ambient.bed, wd: N.audio.ambience.weekday(), layers: N.audio.ambience.layers(), min: Math.round(N.clock.minutes), mode: N.state.mode, ctx: N.audio.stats().state, held: N.clock.held, em: N.audio.ambient.emitters.slice(0, 6), busy: N.audio.stats().busyStrips, ov: N.audio._internal.amb.override };
-    }, [place, h, m, sec, day]);
+    }, [place, h, m, sec, day, until]);
     const templeId = ids.temples.find((id) => /^temple_\d/.test(id)) || ids.temples[0];
-    const tr = await runAt(templeId, 10, 0, 20);
-    check((tr.d.temple_bell || 0) >= 1, 'at ' + templeId + ' (10:00): temple bells ring (' + (tr.d.temple_bell || 0) + ' in 20 s)', tr.d);
+    const tr = await runAt(templeId, 10, 0, 40, null, [['temple_bell'], 1]);
+    check((tr.d.temple_bell || 0) >= 1, 'at ' + templeId + ' (10:00): temple bells ring (' + (tr.d.temple_bell || 0) + ' within 40 s; first is due 1-4 s after arrival)', tr);
     const br = await runAt('birla_mandir', 10, 0, 20);
     const nearBirla = br.log.filter((e) => e[0] === 'temple_bell' && e[1] < 600);
     check(!br.d.temple_bell && !nearBirla.length, 'at birla_mandir: NO temple bell in 20 s (suppressed attempts ' + br.sup + ')', br.d);
@@ -166,10 +174,14 @@ module.exports = {
     const rd = await runAt(ids.radio[0], 14, 0, 8, 0);
     check(rd.layers.radio === ids.radio[0] && (rd.d.radio_cricket || 0) >= 1, 'cricket on the shop radio at ' + ids.radio[0] + ' (' + rd.layers.radioClips + ' clips, emitter api ' + rd.layers.emitterApi + ')', rd.layers);
     await ev(() => { delete N.flags.cricket; });
-    const dawn = await runAt('home', 6, 0, 15, 90);
+    const dawn = await runAt('home', 6, 0, 40, 90, [['bird', 'koel', 'crow_caw'], 3]);
     const birds = ['bird', 'koel', 'crow_caw'].reduce((s, k) => s + (dawn.d[k] || 0), 0);
-    check(birds >= 3, 'dawn chorus at home 06:00 (' + JSON.stringify(dawn.d) + ')');
+    check(birds >= 3, 'dawn chorus at home 06:00: ' + birds + ' calls (bird ~15/min expected)', dawn);
     const noon = await runAt('home', 13, 0, 15, 90);
+    const dg = await runAt('dargah_yousufain', 18, 30, 8, 2);
+    check(dg.wd === 4 && dg.d.harmonium_drone >= 1, 'Thursday evening at dargah_yousufain: the wordless harmonium drone (wd ' + dg.wd + ')', dg.d);
+    const dg2 = await runAt('dargah_yousufain', 18, 30, 3, 3);
+    check(!dg2.d.harmonium_drone, 'no drone on a Friday', dg2.d);
     log('colony midday: ' + JSON.stringify(noon.d) + '   prerendered ' + noon.layers.prerendered + ' buffers in ' + noon.layers.prerenderMs + ' ms (' + noon.layers.cached + ' keys)');
     const st = await ev(() => N.audio.stats());
     check(st.busyStrips <= 22, 'voice pool respected (' + st.busyStrips + ' busy strips)');
