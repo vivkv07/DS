@@ -99,3 +99,14 @@ Festivals happen at different times of year, so the story may span several month
 seasons (e.g. chapters from Sankranti and Numaish in January through Bonalu and Ganesh
 immersion to a finale at Charminar on a festive night such as Ramzan). Writers choose,
 but keep the calendar consistent with the chosen year.
+
+## Round 5 (user, binding)
+
+- **Every Irani cafe serves Irani chai and Osmania biscuits.** This is the signature
+  menu at all `irani_cafe_*` places (plus bun maska, samosa, lukmi where fitting). Chai
+  and Osmania biscuits are the classic energy refill, a recurring ritual in the story,
+  and something characters order by habit ("do chai, ek plate Osmania").
+- `osmania_university`: Osmania University, Tarnaka. The grand Arts College building
+  (Indo-Saracenic, grey granite, big arched entrance) in a huge green, rocky campus with
+  tree-lined roads; students on cycles and scooters, canteen chai. Must appear on the map
+  with recognisable art and be used by the story, a side activity or a collectible.
