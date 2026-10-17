@@ -2553,3 +2553,254 @@ def build_clip_library(A, R, rig):
         C['push_cart'] = clip_push_cart(R, scale=scale)
         C['idle_cart'] = clip_idle_cart(R)
     return C
+
+
+# =========================================================================== GLB optimizer (clip libraries)
+_NC = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4, 'MAT2': 4, 'MAT3': 9, 'MAT4': 16}
+_CT = {5126: 'f', 5125: 'I', 5123: 'H', 5122: 'h', 5121: 'B', 5120: 'b'}
+
+
+def _read_glb(path):
+    data = open(path, 'rb').read()
+    jl = struct.unpack('<I', data[12:16])[0]
+    J = json.loads(data[20:20 + jl])
+    off = 20 + jl
+    BIN = b''
+    if off + 8 <= len(data):
+        bl = struct.unpack('<I', data[off:off + 4])[0]
+        BIN = data[off + 8:off + 8 + bl]
+    return J, BIN
+
+
+def _write_glb(path, J, BIN):
+    js = json.dumps(J, separators=(',', ':')).encode('utf8')
+    js += b' ' * ((4 - len(js) % 4) % 4)
+    BIN = BIN + b'\0' * ((4 - len(BIN) % 4) % 4)
+    total = 12 + 8 + len(js) + (8 + len(BIN) if BIN else 0)
+    with open(path, 'wb') as f:
+        f.write(struct.pack('<III', 0x46546C67, 2, total))
+        f.write(struct.pack('<II', len(js), 0x4E4F534A))
+        f.write(js)
+        if BIN:
+            f.write(struct.pack('<II', len(BIN), 0x004E4942))
+            f.write(BIN)
+
+
+def _acc_read(J, BIN, ai):
+    a = J['accessors'][ai]
+    n = _NC[a['type']]
+    fmt = _CT[a['componentType']]
+    size = struct.calcsize(fmt)
+    bv = J['bufferViews'][a['bufferView']]
+    stride = bv.get('byteStride') or n * size
+    o = bv.get('byteOffset', 0) + a.get('byteOffset', 0)
+    return [struct.unpack_from('<%d%s' % (n, fmt), BIN, o + i * stride) for i in range(a['count'])]
+
+
+def optimize_glb(path, resample=None, eps=2e-5):
+    """Shrink an exported clip library in place: animation channels that hold the bone's rest
+    value for the whole clip are dropped (three's mixer blends unanimated bones to their rest
+    state), slow clips can be resampled (resample: {clip: step}: every step-th key + the last),
+    identical key-time arrays are shared and unused data is compacted away. Returns (old, new)
+    byte sizes. Lossless for the runtime except the resampling (linear between kept keys)."""
+    old = os.path.getsize(path)
+    J, BIN = _read_glb(path)
+    nodes = J.get('nodes', [])
+    anims = J.get('animations', [])
+    if not anims:
+        return old, old
+    rest_of = {'translation': (0.0, 0.0, 0.0), 'rotation': (0.0, 0.0, 0.0, 1.0), 'scale': (1.0, 1.0, 1.0)}
+    new_anim_data = []      # (anim index, channels) with python value lists
+    dropped = 0
+    for an in anims:
+        step = (resample or {}).get(an.get('name'), 1)
+        chans = []
+        for ch in an['channels']:
+            sm = an['samplers'][ch['sampler']]
+            path_ = ch['target']['path']
+            node = nodes[ch['target']['node']]
+            rest = tuple(node.get(path_, rest_of[path_]))
+            vals = _acc_read(J, BIN, sm['output'])
+            times = [t[0] for t in _acc_read(J, BIN, sm['input'])]
+            if path_ == 'rotation':
+                same = all(abs(abs(sum(v[i] * rest[i] for i in range(4))) - 1.0) < eps for v in vals)
+            else:
+                same = all(max(abs(v[i] - rest[i]) for i in range(len(rest))) < eps * 10 for v in vals)
+            if same:
+                dropped += 1
+                continue
+            if step > 1 and len(times) > 4 and sm.get('interpolation', 'LINEAR') == 'LINEAR':
+                idx = list(range(0, len(times), step))
+                if idx[-1] != len(times) - 1:
+                    idx.append(len(times) - 1)
+                times = [times[i] for i in idx]
+                vals = [vals[i] for i in idx]
+            chans.append((ch['target'], sm.get('interpolation', 'LINEAR'), times, vals))
+        new_anim_data.append((an, chans))
+    # rebuild: keep non-animation buffer views verbatim, append animation data packed
+    anim_acc = set()
+    for an in anims:
+        for sm in an['samplers']:
+            anim_acc.add(sm['input'])
+            anim_acc.add(sm['output'])
+    acc = J['accessors']
+    keep_acc = [i for i in range(len(acc)) if i not in anim_acc]
+    used_bv = set()
+    for i in keep_acc:
+        if acc[i].get('bufferView') is not None:
+            used_bv.add(acc[i]['bufferView'])
+    for im in J.get('images', []):
+        if im.get('bufferView') is not None:
+            used_bv.add(im['bufferView'])
+    parts, off = [], 0
+
+    def push(b, align=4):
+        nonlocal off
+        pad = (align - off % align) % align
+        if pad:
+            parts.append(b'\0' * pad)
+            off += pad
+        o = off
+        parts.append(b)
+        off += len(b)
+        return o
+    bv_map, new_bvs = {}, []
+    for i, bv in enumerate(J.get('bufferViews', [])):
+        if i not in used_bv:
+            continue
+        src = BIN[bv.get('byteOffset', 0):bv.get('byteOffset', 0) + bv['byteLength']]
+        nb = dict(bv)
+        nb['byteOffset'] = push(src)
+        bv_map[i] = len(new_bvs)
+        new_bvs.append(nb)
+    acc_map, new_acc = {}, []
+    for i in keep_acc:
+        a = dict(acc[i])
+        if a.get('bufferView') is not None:
+            a['bufferView'] = bv_map[a['bufferView']]
+        acc_map[i] = len(new_acc)
+        new_acc.append(a)
+    for im in J.get('images', []):
+        if im.get('bufferView') is not None:
+            im['bufferView'] = bv_map[im['bufferView']]
+    # animation data: one buffer view for key times (deduplicated), one for values
+    tblob, vblob = [], []
+    t_off = v_off = 0
+    t_cache = {}
+    t_acc_specs, v_acc_specs = [], []
+    for an, chans in new_anim_data:
+        an['channels'], an['samplers'] = [], []
+        for target, interp, times, vals in chans:
+            tb = struct.pack('<%df' % len(times), *times)
+            if tb not in t_cache:
+                t_cache[tb] = len(t_acc_specs)
+                t_acc_specs.append((t_off, len(times), min(times), max(times)))
+                tblob.append(tb)
+                t_off += len(tb)
+            n = len(vals[0])
+            flat = [x for v in vals for x in v]
+            vb = struct.pack('<%df' % len(flat), *flat)
+            v_acc_specs.append((v_off, len(vals), n))
+            vblob.append(vb)
+            v_off += len(vb)
+            an['samplers'].append({'input': ('T', t_cache[tb]), 'output': ('V', len(v_acc_specs) - 1), 'interpolation': interp})
+            an['channels'].append({'sampler': len(an['samplers']) - 1, 'target': target})
+    TYPES = {1: 'SCALAR', 3: 'VEC3', 4: 'VEC4'}
+    if tblob:
+        tbv = len(new_bvs)
+        new_bvs.append({'buffer': 0, 'byteOffset': push(b''.join(tblob)), 'byteLength': t_off})
+        vbv = len(new_bvs)
+        new_bvs.append({'buffer': 0, 'byteOffset': push(b''.join(vblob)), 'byteLength': v_off})
+        t_idx = []
+        for o, cnt, mn, mx in t_acc_specs:
+            t_idx.append(len(new_acc))
+            new_acc.append({'bufferView': tbv, 'byteOffset': o, 'componentType': 5126, 'count': cnt, 'type': 'SCALAR', 'min': [mn], 'max': [mx]})
+        v_idx = []
+        for o, cnt, n in v_acc_specs:
+            v_idx.append(len(new_acc))
+            new_acc.append({'bufferView': vbv, 'byteOffset': o, 'componentType': 5126, 'count': cnt, 'type': TYPES[n]})
+        for an, _ in new_anim_data:
+            for sm in an['samplers']:
+                sm['input'] = t_idx[sm['input'][1]]
+                sm['output'] = v_idx[sm['output'][1]]
+    J['animations'] = [an for an, ch in new_anim_data if ch]
+    # remap the other accessor references
+    for m in J.get('meshes', []):
+        for p in m['primitives']:
+            p['attributes'] = {k: acc_map[v] for k, v in p['attributes'].items()}
+            if 'indices' in p:
+                p['indices'] = acc_map[p['indices']]
+            if 'targets' in p:
+                p['targets'] = [{k: acc_map[v] for k, v in t.items()} for t in p['targets']]
+    for s in J.get('skins', []):
+        if 'inverseBindMatrices' in s:
+            s['inverseBindMatrices'] = acc_map[s['inverseBindMatrices']]
+    J['accessors'] = new_acc
+    J['bufferViews'] = new_bvs
+    nbin = b''.join(parts)
+    J['buffers'] = [{'byteLength': len(nbin) + ((4 - len(nbin) % 4) % 4)}]
+    _write_glb(path, J, nbin)
+    new = os.path.getsize(path)
+    kit.log('optimize %s: %d constant channels dropped, %.1f -> %.1f KB' % (os.path.basename(path), dropped, old / 1024, new / 1024))
+    return old, new
+
+
+_kit_export_glb = kit.export_glb
+
+
+def _export_glb_hook(A, path=None):
+    """kit.export_glb + optimize_glb for assets that opt in (A.nos_optimize = {resample: ...});
+    every other asset exports exactly as before"""
+    p = _kit_export_glb(A, path)
+    opt = getattr(A, 'nos_optimize', None)
+    if opt is not None:
+        optimize_glb(p, **opt)
+    return p
+
+
+if not getattr(kit.export_glb, 'nos_hook', False):
+    _export_glb_hook.nos_hook = True
+    kit.export_glb = _export_glb_hook
+
+
+# =========================================================================== previews of clips on a built body
+def clip_sheet(A, body_glb, frames, out_name, size=160, samples=10, view=None, cols=8):
+    """render (clip, frame) poses of an already exported character GLB with the actions of this
+    build (kit.preview_render looks clips up in bpy.data.actions) -> assets3d/previews/<out>.png"""
+    if not os.path.exists(body_glb):
+        kit.log('clip_sheet: %s missing (build the body first)' % body_glb)
+        return None
+    outs = []
+    for j, (clip, fr) in enumerate(frames):
+        p = os.path.join(kit.TMP_DIR, '%s_%s_%02d.png' % (A.id, out_name, j))
+        kit.preview_render(A, body_glb, size=size, samples=samples, view=view, out=p, frame=fr, clip=clip)
+        outs.append(p)
+    out = os.path.join(kit.PREVIEW_DIR, '%s_%s.png' % (A.id, out_name))
+    kit.contact_sheet(outs, out, cols=min(cols, len(outs)), cell=size)
+    kit.log('clip sheet', out)
+    return out
+
+
+def ride_sheet(A, body_glb, vehicle_id, clip, drop=0.0, frames=(0, 8, 16, 24), size=224, samples=10, out_name='ride'):
+    """kit.preview_ride for any riding clip name (ride_cycle, ride_kainchi)"""
+    act = bpy.data.actions.get(clip)
+    if not act:
+        return None
+    keep = bpy.data.actions.get('ride_cycle')
+    if clip != 'ride_cycle':
+        if keep:
+            keep.name = '_keep_ride_cycle'
+        act.name = 'ride_cycle'
+    import types
+    try:
+        p = kit.preview_ride(types.SimpleNamespace(id=A.id), body_glb, vehicle_id, drop, frames=frames, size=size, samples=samples)
+        if p and out_name != 'ride':
+            q = os.path.join(kit.PREVIEW_DIR, '%s_%s.png' % (A.id, out_name))
+            os.replace(p, q)
+            p = q
+    finally:
+        if clip != 'ride_cycle':
+            act.name = clip
+            if keep:
+                keep.name = 'ride_cycle'
+    return p
