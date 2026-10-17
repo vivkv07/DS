@@ -171,6 +171,8 @@ async function desktop(browser) {
   await page.keyboard.up('KeyE');
   check(await waitLog(page, 'player_throw', null, 20000), 'letting go throws');
   check(await waitLog(page, 'knock', { me: true }, 30000), 'the ball knocks the seven stones down');
+  // freeze the AI at once (a screenshot on a loaded machine takes seconds: the hitters would be throwing at Chinnu)
+  await page.evaluate(() => { const D = N.playgroundGames.debug; D.assist.freezeAI = true; D.assist.noTimer = true; });
   const live = await waitPhase(page, 'live', 30000);
   const s2 = await st(page);
   check(live && s2.lingocha.stack <= 1 && s2.lingocha.stones.filter((q) => q.state !== 'stack').length >= 6, 'stones scattered, the live phase begins (timer ' + s2.lingocha.timer + ' s)', s2.lingocha.stones.map((q) => q.state).join(','));
@@ -309,6 +311,8 @@ async function desktop(browser) {
   const victim = await page.evaluate(() => {
     const S = N.playgroundGames.current, p = N.player, T = S.parts.find((q) => !q.isPlayer && !q.out);
     T.e.x = p.x + 22; T.e.y = p.y; p.angle = p.facing = 0;
+    // the others stand well behind Chinnu (out of his aim)
+    let k = 0; for (const q of S.parts) if (!q.isPlayer && q !== T && !q.out) { q.e.x = p.x - 30 - (k % 3) * 8; q.e.y = p.y - 20 + Math.floor(k / 3) * 12; k++; }
     return T.name;
   });
   await page.evaluate(() => { const A = N.playgroundGames.debug.assist; A.aim = true; A.noDodge = true; });
@@ -425,7 +429,8 @@ async function fixes(browser) {
     if (!q) return null;
     p.x = q.x; p.y = q.y; p.vx = p.vy = 0;
     Object.assign(b, { x: q.x + 4, y: q.y, z: 0, vx: 0, vy: 0, vz: 0, state: 'rest', holder: null, live: false, bounced: 1 });
-    S.awayT = 0; S.boundT = 0;
+    // (the ball-rescue timers start afresh: this checks "leaving", not how soon a lost ball is brought back)
+    S.awayT = 0; S.boundT = 0; S.ballOutT = 0; S.freeT = 0;
     return q;
   });
   if (fetchQ) {
@@ -746,7 +751,7 @@ async function phone(browser, name, viewport) {
   check(/Grab/i.test(lab2), 'ACTION button: "' + lab2 + '"');
   await page.tap('.t-btn.t-action');
   check(await waitFor(page, () => N.playgroundGames.debug.state().ball.holderIsMe, null, 8000), 'tap ACTION grabs the ball');
-  const victim = await page.evaluate(() => { const S = N.playgroundGames.current, p = N.player, T = S.parts.find((q) => !q.isPlayer && !q.out); T.e.x = p.x + 22; T.e.y = p.y + 2; p.angle = p.facing = 0; return T.name; });
+  const victim = await page.evaluate(() => { const S = N.playgroundGames.current, p = N.player, T = S.parts.find((q) => !q.isPlayer && !q.out); T.e.x = p.x + 22; T.e.y = p.y + 2; p.angle = p.facing = 0; let k = 0; for (const q of S.parts) if (!q.isPlayer && q !== T && !q.out) { q.e.x = p.x - 30 - (k % 3) * 8; q.e.y = p.y - 20 + Math.floor(k / 3) * 12; k++; } return T.name; });
   await sleep(300);
   const lab3 = await page.evaluate(() => document.querySelector('.t-btn.t-action .t-txt').textContent);
   check(/Throw at/i.test(lab3), 'ACTION button: "' + lab3 + '" (aim assist)');

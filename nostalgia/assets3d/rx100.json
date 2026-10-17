@@ -93,7 +93,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 6000,
- "bytes": 334412,
+ "bytes": 335040,
  "clips": {},
  "family": "vehicle",
  "file": "rx100.glb",
@@ -104,7 +104,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 326.6,
+ "kb": 327.2,
  "kit": 1,
  "materials": [
   "M_rx100@night"
@@ -155,6 +155,7 @@
     "seat": "seat_pillion"
    }
   },
+  "stand": "side",
   "steerAxis": [
    0.0,
    -0.4377,

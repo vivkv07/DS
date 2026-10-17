@@ -58,7 +58,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 6000,
- "bytes": 238676,
+ "bytes": 226236,
  "clips": {},
  "family": "vehicle",
  "file": "kid_cycle.glb",
@@ -68,7 +68,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 233.1,
+ "kb": 220.9,
  "kit": 1,
  "materials": [
   "M_kid_cycle"
@@ -113,6 +113,7 @@
    1.497,
    4.5603
   ],
+  "stand": "side",
   "steerAxis": [
    0.0,
    -0.3809,

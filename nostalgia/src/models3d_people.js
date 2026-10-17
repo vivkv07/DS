@@ -223,7 +223,8 @@
     if (e.umb || e.balloons || e.cart) return false;           // procedural extras (umbrella, balloons, carts)
     if (e.spotter && e.spotter.stick) return false;
     const L = e.look || {};
-    if (L.prop && (HEAD_LOADS[L.prop] || !(S.idx.props.get(ch.id) || new Set()).has(L.prop))) return false;
+    // head loads change the whole pose (procedural); a small hand prop the model lacks is left out
+    if (L.prop && HEAD_LOADS[L.prop]) return false;
     if (e.constable && !clipOf(ch.id, 'direct')) return false;
     return true;
   }

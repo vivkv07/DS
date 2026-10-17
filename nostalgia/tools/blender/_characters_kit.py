@@ -1021,7 +1021,7 @@ class Head:
         zig-zagging a little), weighted head -> neck -> chest"""
         hz, cy = self.hz, self.cy
         L = length if length is not None else (1.6 if self.shape == 'kid' else 2.6)
-        n = 6 if self.shape != 'kid' else 5
+        n = 6 if self.shape != 'kid' else 4
         k = 1.0 if self.shape != 'kid' else 0.85
         x0 = side
         rings = []
@@ -1035,9 +1035,9 @@ class Head:
             zig = (0.035 if lobe else 0.0) * (1 if (i // 2) % 2 else -1)
             rings.append(dict(c=(x0 + zig, y, z), r=(r * 1.1, r * 0.85), mat=m))
         rings.append(dict(c=(x0, rings[-1]['c'][1] + 0.01, rings[-1]['c'][2] - 0.08 * k), r=0.025, mat=m))
-        objs = [loft(name + '_braid', rings, seg=6, side=(1, 0, 0))]
+        objs = [loft(name + '_braid', rings, seg=5, side=(1, 0, 0))]
         if ribbon is not None:
-            rb = kit.lathe('ribbon', [(0.0, -0.06), (0.1, -0.05), (0.12, 0.0), (0.1, 0.05), (0.0, 0.06)], seg=6, mat=ribbon)
+            rb = kit.lathe('ribbon', [(0.0, -0.06), (0.12, 0.0), (0.0, 0.06)], seg=6, mat=ribbon)
             rb.location = (x0, cy + 0.52 + 0.12, hz + 0.5 - L * 0.97)
             kit.apply_transform(rb)
             objs.append(rb)
@@ -1235,19 +1235,19 @@ def specs(H, m, kind='round', lens=None, tape=None):
     return H.add(o)
 
 
-def cap(H, m, kind='cricket', brim=None):
+def cap(H, m, kind='cricket', brim=None, seg=None):
     """caps in head space: cricket / backcap (dome + brim), skull (taqiyah), gandhi (boat), irani
     (short round brimless), police (peaked, band + flat top + visor), dhaka (Nepali topi)"""
     hz, cy = H.hz, H.cy
     objs = []
     if kind in ('cricket', 'backcap'):
         prof = [(0.62, 0.0), (0.63, 0.12), (0.6, 0.26), (0.5, 0.42), (0.32, 0.53), (0.0, 0.57)]
-        d = kit.lathe('dome', prof, seg=SEG['cap'], mat=m, close_bottom=False)
+        d = kit.lathe('dome', prof, seg=seg or SEG['cap'], mat=m, close_bottom=False)
         d.location = (0, cy + 0.05, hz + 0.86)
         kit.apply_transform(d)
         objs.append(d)
         bm = brim or m
-        b = kit.lathe('brim', [(0.0, 0.0), (0.52, 0.0), (0.52, 0.04), (0.0, 0.04)], seg=SEG['cap'], mat=bm)
+        b = kit.lathe('brim', [(0.0, 0.0), (0.52, 0.0), (0.52, 0.04), (0.0, 0.04)], seg=seg or SEG['cap'], mat=bm)
         b.scale = (0.95, 0.75, 1.0)
         b.rotation_euler = (math.radians(-12), 0, 0)
         b.location = (0, cy - 0.58, hz + 0.9)
@@ -1607,6 +1607,21 @@ def stick(B, m, side=-1, length=None, top=None, name='stick'):
     return B.add(o, 'hand_' + S)
 
 
+def basket(B, m, m_rim=None, side=-1):
+    """a woven cane basket carried in one hand by its arched handle (vegetables, flowers)"""
+    J, k = B.J, B.k
+    S = 'L' if side > 0 else 'R'
+    g = Vector(mir(lerp(J['wrist'], J['hand_tip'], 0.6), side))
+    top = g + Vector((0, 0, -0.45 * k))
+    bowl = kit.lathe('basket', [(0.0, -0.38 * k), (0.3 * k, -0.36 * k), (0.42 * k, -0.12 * k), (0.47 * k, 0.0), (0.44 * k, 0.03 * k)], seg=10, mat=m, close_top=False)
+    bowl.scale = (1.0, 0.72, 1.0)
+    bowl.location = top
+    kit.apply_transform(bowl)
+    h = kit.tube('basket_handle', [top + Vector((0.42 * k, 0, 0)), top + Vector((0.3 * k, 0, 0.36 * k)), g + Vector((0, 0, 0.02)), top + Vector((-0.3 * k, 0, 0.36 * k)), top + Vector((-0.42 * k, 0, 0))],
+                  0.035 * k, seg=4, mat=m_rim or m, cap=False)
+    return B.add(kit.join([bowl, h], 'basket'), 'hand_' + S)
+
+
 def charkhi(B, m_wood, m_thread, side=1):
     """a kite-string reel held in one hand: two discs on an axle with handles, thread wound on it"""
     J, k = B.J, B.k
@@ -1849,8 +1864,7 @@ def school_shoes(B, m_shoe, m_sock, name='shoes'):
     for sx in (1, -1):
         S = 'L' if sx > 0 else 'R'
         ft, to, sh = 'foot_' + S, 'toe_' + S, 'shin_' + S
-        rings = [dict(c=mir((an[0], an[1] + 0.29 * k, 0.03), sx), r=(0.2 * k, 0.12 * k), w={ft: 1}, mat=m_shoe),
-                 dict(c=mir((an[0], an[1] + 0.27 * k, 0.26 * k), sx), r=(0.18 * k, 0.12 * k), w={ft: 1}, mat=m_shoe),
+        rings = [dict(c=mir((an[0], an[1] + 0.29 * k, 0.12 * k), sx), r=(0.2 * k, 0.14 * k), w={ft: 1}, mat=m_shoe),
                  dict(c=mir((an[0], an[1] + 0.03, 0.33 * k), sx), r=(0.21 * k, 0.21 * k), w={ft: 1}, mat=m_shoe),
                  dict(c=mir((an[0], an[1] - 0.32 * k, 0.25 * k), sx), r=(0.225 * k, 0.16 * k), w={ft: 1}, mat=m_shoe),
                  dict(c=mir((bl[0], bl[1] + 0.05, 0.19 * k), sx), r=(0.225 * k, 0.13 * k), w={ft: 0.5, to: 0.5}, mat=m_shoe),
@@ -1898,7 +1912,7 @@ def ponytails(H, m, band=None, name='ponytails'):
         for r in rings:
             r['w'] = {'head': 1}
             r['mat'] = m
-        objs.append(loft('tail', rings, seg=7, side=(0, 1, 0)))
+        objs.append(loft('tail', rings, seg=6, side=(0, 1, 0)))
         if band is not None:
             b = kit.cylinder('band', 0.115, 0.07, (0, 0, 0), seg=8, mat=band, base=False)
             b.rotation_euler = Vector((0, 0, 1)).rotation_difference(d).to_euler()

@@ -392,12 +392,15 @@
       const yaw = o.side ? Math.PI / 2 : (P.yaw || 0);
       // root: rest
       W.p.root.copy(R.wp.root); W.q.root.copy(R.wq.root);
-      const lean = P.lean;
-      const Rl = new THREE.Quaternion().setFromAxisAngle(XA, lean * 0.45);
       const Ry = new THREE.Quaternion().setFromAxisAngle(YA, yaw);
+      // reach: lean further / slide forward on the seat until the hands can hold the grips
+      let lean = P.lean, slide = 0;
+      if (o.grips && o.grips[0] && o.grips[1] && !o.side) { const b = this.reachSearch(o, P, k, Ry); lean = b.lean; slide = b.slide; }
+      this.lean = lean; this.slide = slide;
+      const Rl = new THREE.Quaternion().setFromAxisAngle(XA, lean * 0.45);
       const Hq = Ry.clone().multiply(Rl).multiply(R.wq.hips);
       // hip joints above the seat (cycles: a little behind the saddle top too)
-      const mid = new THREE.Vector3().copy(o.seat).add(new THREE.Vector3(0, (P.up || 0.5) * k, -(P.back || 0) * k));
+      const mid = new THREE.Vector3().copy(o.seat).add(new THREE.Vector3(0, (P.up || 0.5) * k, -(P.back || 0) * k + slide));
       let dip = 0;
       for (let pass = 0; pass < 2; pass++) {
         const hipHead = mid.clone().add(new THREE.Vector3(0, -dip, 0)).sub(R.hipOff.clone().applyQuaternion(Hq));
@@ -444,14 +447,49 @@
         const sx = s === 'L' ? 1 : -1;
         this.follow('shoulder_' + s);
         let tgt;
-        if (o.grips && o.grips[s === 'L' ? 0 : 1]) tgt = o.grips[s === 'L' ? 0 : 1].clone().add(new THREE.Vector3(0, 0.08 * k, -0.22 * k));
+        if (o.grips && o.grips[s === 'L' ? 0 : 1]) tgt = this.wristAt(o.grips[s === 'L' ? 0 : 1], k);
         else if (o.hands === 'tiller' && s === 'L' && o.tiller) tgt = o.tiller.clone();
         else tgt = knees[s].clone().add(new THREE.Vector3(sx * 0.1 * k, 0.45 * k, -0.55 * k).applyQuaternion(Ry));
+        // the clavicle reaches a little towards a far target (shoulder forwards / inwards)
+        const sh = W.p['shoulder_' + s], ua = V1.copy(R.lp['upperarm_' + s]).applyQuaternion(W.q['shoulder_' + s]).add(sh);
+        const La = (R['len_arm_' + s][0] + R['len_arm_' + s][1]) * 0.98, dT = ua.distanceTo(tgt);
+        if (dT > La) {
+          const a1 = V2.copy(ua).sub(sh), a2 = V3a.copy(tgt).sub(sh);
+          const ax = V4.crossVectors(a1, a2);
+          if (ax.lengthSq() > 1e-8) { ax.normalize(); this.setW('shoulder_' + s, Q1.setFromAxisAngle(ax, clamp((dT - La) * 0.6, 0, 0.42)).multiply(W.q['shoulder_' + s])); }
+        }
         const pole = new THREE.Vector3(sx * 0.7, -0.45, -0.7).applyQuaternion(Ry);
         this.ik2('upperarm_' + s, 'forearm_' + s, 'hand_' + s, tgt, pole, R['len_arm_' + s]);
         this.follow('hand_' + s);
       }
       return true;
+    }
+    /** where the wrist goes for a grip (the palm closes round it a little ahead of the wrist) */
+    wristAt(g, k) { return g.clone().add(new THREE.Vector3(0, 0.08 * k, -0.22 * k)); }
+    /** the least lean / forward slide that brings both grips within arm's reach */
+    reachSearch(o, P, k, Ry) {
+      const R = this.R;
+      const reach = (R.len_arm_L[0] + R.len_arm_L[1]) * 0.98 + 0.2 * k;
+      const maxSlide = (o.slide != null ? o.slide : 0.9) * k;
+      const tg = [this.wristAt(o.grips[0], k), this.wristAt(o.grips[1], k)];
+      const off = [R.wp.upperarm_L.clone().sub(R.wp.hips), R.wp.upperarm_R.clone().sub(R.wp.hips)];
+      let best = null;
+      const q = new THREE.Quaternion(), hq = new THREE.Quaternion(), mid = new THREE.Vector3(), hip = new THREE.Vector3(), sh = new THREE.Vector3();
+      for (let si = 0; si <= 4; si++) {
+        const sl = maxSlide * si / 4;
+        for (let li = 0; li <= 7; li++) {
+          const lean = P.lean + li * 0.08;
+          hq.copy(Ry).multiply(q.setFromAxisAngle(XA, lean * 0.45)).multiply(R.wq.hips);
+          mid.copy(o.seat).add(V1.set(0, (P.up || 0.5) * k, -(P.back || 0) * k + sl));
+          hip.copy(mid).sub(V2.copy(R.hipOff).applyQuaternion(hq));
+          q.copy(Ry).multiply(Q2.setFromAxisAngle(XA, lean * 0.9));
+          let ex = -1e9;
+          for (let i = 0; i < 2; i++) { sh.copy(off[i]).applyQuaternion(q).add(hip); ex = Math.max(ex, sh.distanceTo(tg[i]) - reach); }
+          const cost = Math.max(0, ex) * 10 + li * 0.08 + sl * 0.12 / k;
+          if (!best || cost < best.cost) best = { lean, slide: sl, cost, ex };
+        }
+      }
+      return best;
     }
     /** ankle target from the ball-of-foot contact point c (anchor): flat on floors, ankling on pedals */
     ankleTarget(s, c, crank, pedal, Ry) {
@@ -683,7 +721,7 @@
       }
       const seat = P.anchorPos(ss.seat || (r.slot === 'driver' ? 'seat_driver' : 'seat_pillion'), new THREE.Vector3());
       if (!seat) continue;
-      const o = { pose: ss.pose || (r.slot === 'driver' ? 'scooter' : 'sit'), seat };
+      const o = { pose: ss.pose || (r.slot === 'driver' ? 'scooter' : 'sit'), seat, slide: ss.slide != null ? ss.slide : (ss.feet === 'pedals' || ss.pose === 'cycle' ? 0.35 : 0.9) };
       if (r.slot === 'driver' && ss.grips) o.grips = ss.grips.map((n) => P.anchorPos(n, new THREE.Vector3()));
       if (ss.grips && ss.grips[0] === 'tiller') { o.hands = 'tiller'; o.tiller = P.anchorPos('tiller', new THREE.Vector3()); o.grips = null; }
       if (ss.feet === 'pedals') { o.pedals = ['pedal_L', 'pedal_R'].map((n) => P.anchorPos(n, new THREE.Vector3())); o.crank = P.state.crank; if (!o.pedals[0] || !o.pedals[1]) o.pedals = null; }

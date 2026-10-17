@@ -76,6 +76,8 @@ nostalgia/
   src/view3d_landmarks.js / src/view3d_actors.js  3D landmark models / people, vehicles, animals (§20)
   src/models3d.js   Blender model runtime (§21): lazily loads GLTFLoader + the pack when 3D starts,
                     instances / characters / vehicle parts, overrides via N.view3d -> N.models3d
+  src/models3d_vehicles.js Blender vehicles at runtime (§21 "Vehicles (runtime)"): wheels / steering /
+                    tint / options / lamps, riders posed by IK on the anchors -> N.models3dVehicles
   src/assets3d_pack.js GENERATED (tools/pack_assets3d.cjs): N.ASSETS3D = base64 GLBs + manifest. NOT
                     in index.html: models3d.js loads it on demand (dist inlines it as text/plain)
   tools/blender/*.py Blender (bpy 5.2) asset scripts: kit.py, build_all.py, characters.py, vehicles.py,
@@ -1517,6 +1519,48 @@ the conventions below; anything else needs a change here first.
   feet on 0.1 s frame strips + dense slow-motion sole sampling while walking / running, vehicle
   parts, the proto flag, tinting, pack-missing and corrupt-model fallbacks, the dist build, zero
   console errors; screenshots `tests/out/models3d_*.png`).
+- **Characters (authoring, `tools/blender/characters.py` + helpers `_characters_kit.py`, characters
+  artist):** a gentle, handmade-toy look (rounded lofted forms, slightly large heads, mitten hands, dark
+  toy eyes with a catch-light, visible hems; baked weave / grime / AO). Models: `kid_chinnu` (the
+  player, role `player`), `kid_immu`, `kid_generic` (colony boys / girls, school uniforms), adults
+  `man_shirt_pants`, `uncle_lungi_banian`, `vendor`, `aunty_saree`, `woman_salwar`, `woman_burqa`,
+  `man_kurta_skullcap`, `police_khaki`, `student` (college youth), `old_man_dhoti`; the named cast are
+  variants of these (`meta.npcs`: cast id -> extra look fields). **Clip libraries** `clips_kid` /
+  `clips_adult` (role `clips`, no mesh) hold every clip of a rig, all clips one after the other in
+  ONE animation (`meta.clipTrack: 'library'`, `clips[name].range = [f0, f1]` at `meta.clipFps`;
+  rotations normalized SHORT); characters name their library in `meta.clips` and carry no clips:
+  models3d.js links the library at parse time (cut with `AnimationUtils.subclip`, bound by bone name;
+  `manifest(id).clips` then lists the library's entries). Clips (both rigs unless noted): `idle
+  idle_look stroll walk run sprint` (+ adults `stroll_f walk_f`, `push_cart idle_cart`, `direct`),
+  `ride_cycle` (kids at Chinnu's saddle drop, + `ride_kainchi` on a full-size Hero), `ride_scooty
+  ride_pillion` (+ adults `ride_pillion_side`), `sit` (bench, hips 2.6 u) `sit_step` (stool / kerb,
+  2.2 u) `sit_ground`, `talk wave clap fall getup pick kite_fly`; locomotion entries keep `{loco,
+  stride, nominal, duty, gait, slip}` (+ `style: 'f'` / `set: 'cart'`). **Accessory slots:** regions
+  8..23 after the 8 tint regions; `tint.show[slot]` is a rule on the look (`{f}` truthy, `{f, in}`,
+  `{f, re}`, `{f, lt | gt}`, `{any}`, `{all}`, `{not}`), `tint.fields[region]` the look fields that
+  colour it (`'shirt'`, `'@saree:0.7'` a shade, `'#hex'` fixed); tintable cloth is baked in neutral
+  greys. The runtime adds `_r` (stable random in [0, 1) per person), `_role` (traffic ped role) and
+  `_cart` to the look the rules see. Baking is slot-aware (`finish_atlas_layered`: the base is baked
+  with every slot hidden, each slot against the base alone). Routing meta: `kinds` (N.people kinds
+  served), `priority` + `match` (rule; e.g. police: cap 'police'), `lazy` (parsed on first use),
+  `posture` (extra spine / neck pitch, old men stoop), `female` (uses the `_f` gaits), `height`,
+  `look` (default), `variants` (preview looks). Budgets: 4k triangles, 256² atlas (512² for the
+  player).
+- **Characters (runtime, `src/models3d_people.js`, after models3d.js):** `N.models3d.people = {options
+  {enabled, player, npcs, peds, max (26 nearest), maxNew (2 new per frame), dist, hyst, posture,
+  headLook}, ready, models(), choose(e) -> {id, ctx} | null, play(e, clip, {loop, hold}), stop(e),
+  person(e), stats(), debug}`. Through `hooks.people` it routes the player (on foot), cast NPCs and
+  peds to `e.view3d = 'm3d:ppl:<id>'` when their look has a model and the state is fully supported
+  (not riding / hidden, no umbrella, balloons, carts, head loads or props the model lacks), nearest
+  first; everything else keeps view3d_actors' procedural renderer. Per person: locomotion blended by
+  speed with the phase driven by the distance travelled (planted feet), idle / idle_look, states
+  cross-faded on top — fall (held) / getup, sit / sit_step on a drawn bench / stool, talk, direct
+  (constables), and `e.clip3d = 'clap' | {name, loop: false | hold: true}` for scripts — head turns
+  to `lookAt` / `lookTarget` (the camera for the player), posture, emotes. `hooks.tint` dresses
+  models3d Characters (riders) with the same 24-region shader (hidden slots collapse in the vertex
+  shader and the shadow pass). Test: `node tests/characters3d.cjs` (`PACK=<pack.js>` to use a test
+  pack): selection, slots, line-up day / night, gait strips + dense sole sampling (player and
+  standalone people), states, the street in tps / fps day / night, frame time, zero errors.
 - **Vehicles (authoring, `tools/blender/vehicles.py` + helpers `_vehicles_kit.py`, vehicles artist):**
   every vehicles.js / traffic.js type has a model: `hero_cycle` (hero_cycle old_cycle chinnu_cycle),
   `hercules_cycle` (+ hercules_gears via `opt_gears`), `bsa_cycle` (cycle bsa_cycle), `ladies_cycle`,

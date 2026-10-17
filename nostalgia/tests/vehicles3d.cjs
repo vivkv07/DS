@@ -125,7 +125,7 @@ const HELPERS = () => {
     /** a clear spot near the player: a row of n slots spaced `gap` along the player's facing-normal */
     clearRow(n, gap) {
       const p = N.player, out = [];
-      for (let i = 0; i < n; i++) out.push({ x: p.x + 40 + (i % 6) * gap, y: p.y - 40 + Math.floor(i / 6) * 34 });
+      for (let i = 0; i < n; i++) out.push({ x: p.x + 40 + (i % 6) * gap, y: p.y - 70 + Math.floor(i / 6) * 80 });
       return out;
     },
     dist(a, b) { return a.distanceTo(b); },
@@ -201,14 +201,15 @@ async function run3d(browser) {
   check((by('hercules_gears').opts || {}).opt_gears === 1, 'Hercules with gears shows the derailleur');
   check((by('pochaiah_luna').opts || {}).opt_beacon === 1 && (by('luna').opts || {}).opt_beacon === 0, "the havaldar's Luna has its light bar");
   if (SHOTS) {
-    const cams = [['vehicles3d_lineup_a.png', 0, 7], ['vehicles3d_lineup_b.png', 6, 13], ['vehicles3d_lineup_c.png', 12, 19], ['vehicles3d_lineup_d.png', 16, 22]];
-    for (const [name, a, b] of cams) {
-      await page.evaluate(([a, b]) => {
+    // rows of six, the vehicles facing +y (south): look at each row from the south-west, a little above
+    const cams = [['vehicles3d_lineup_a.png', 0, 6, 0.5], ['vehicles3d_lineup_b.png', 6, 12, 0.6], ['vehicles3d_lineup_c.png', 12, 18, 0.75], ['vehicles3d_lineup_d.png', 18, 22, 1.0]];
+    for (const [name, a, b, z] of cams) {
+      await page.evaluate(([a, b, z]) => {
         const L = window.__lineup.slice(a, b);
         const cx = L.reduce((s, v) => s + v.x, 0) / L.length, cy = L.reduce((s, v) => s + v.y, 0) / L.length;
-        const span = Math.max(...L.map((v) => v.x)) - Math.min(...L.map((v) => v.x));
-        N.view3dActors.debug.camera([cx - span * 0.25, 22 + span * 0.12, cy + 55 + span * 0.35], [cx, 3, cy], 40);
-      }, [a, b]);
+        const span = Math.max(...L.map((v) => v.x)) - Math.min(...L.map((v) => v.x)) + 30;
+        N.view3dActors.debug.camera([cx - span * 0.35, 10 + span * 0.18 * z, cy + 22 + span * 0.62 * z], [cx + 4, 4, cy + 4], 42);
+      }, [a, b, z]);
       await shot(page, name);
     }
   }
@@ -220,6 +221,7 @@ async function run3d(browser) {
     for (const v of window.__lineup) {
       const P = VT.partsOf(v);
       if (!P) continue;
+      P.set({ dist: 0, steer: 0 });
       const w0 = P.wheels.map((w) => w.node.quaternion.clone()), s0 = P.steers.map((s) => s.node.quaternion.clone());
       P.set({ dist: 6.0, steer: 0.4 });
       const spins = P.wheels.map((w, i) => Math.abs(ang(w0[i], w.node.quaternion) - (6.0 / w.R) % (2 * Math.PI)));
