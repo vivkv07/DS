@@ -39,7 +39,8 @@ const AMBIG = 5; // deg: no compass claim within this of a sector boundary
 
 GEO.init();
 const readJ = (f) => JSON.parse(fs.readFileSync(path.join(ROOT, 'design/geo', f), 'utf8'));
-const PJ = readJ('places.json').places, ROADS = readJ('roads.json').roads, WATER = readJ('water.json'), RAIL = readJ('rail.json');
+const PLACES_FILE = argVal('--places');
+const PJ = (PLACES_FILE ? JSON.parse(fs.readFileSync(PLACES_FILE, 'utf8')) : readJ('places.json')).places, ROADS = readJ('roads.json').roads, WATER = readJ('water.json'), RAIL = readJ('rail.json');
 const DISTJ = readJ('districts.json').districts;
 
 function loadWorld(file) {
@@ -487,6 +488,49 @@ function worldDistrict(x, y) {
   ratioCheck('hussain_sagar_centre', 'begumpet_airport', 'hussain_sagar_centre', 'secunderabad_clock_tower', 'Begumpet airport vs Clock Tower distance from the lake (ratio kept within 35 %)');
 }
 
+// 9. road alignments: the map road follows the real (OSM) line, and the real street exists in the map along it
+{
+  const anchors = Object.values(D.clusters || {}).map((c) => c.anchor).filter(Boolean);
+  const nearCluster = (p) => anchors.some((a) => Math.hypot(a[0] - p[0], a[1] - p[1]) < 300);
+  const allRoads = D.roads;
+  const SH = new G.SegHash(64); for (const r of allRoads) SH.add(r.pts, r);
+  const pct = (a, q) => { if (!a.length) return 0; const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(q * b.length))]; };
+  const ROADSTAT = [];
+  for (const r of ROADS) {
+    const piece = new RegExp('^' + r.id + '(_\\d+|_bridge\\d*)?$');
+    const own = D.roads.filter((w) => piece.test(w.id));
+    if (!own.length) continue;
+    const outside = r.pts.filter((p) => !GEO.inFrame(p[0], p[1])).length;
+    if (outside * 2 > r.pts.length) continue; // mostly beyond the frame: an edge spur
+    if (own.every((w) => w.src === 'cluster')) continue; // hand-made layout moved as a block (by design)
+    const ideal = GEO.projectLine(r.pts, { maxSegM: 10 });
+    const mid = r.pts[Math.floor(r.pts.length / 2)], upm = GEO.scaleAt(mid[0], mid[1]).upm;
+    const ic = G.cum(ideal), L = ic[ic.length - 1];
+    const out = [];
+    for (const w of own) {
+      if (w.src === 'cluster') continue;
+      for (const p of G.resample(w.pts, 10)) {
+        if (nearCluster(p)) continue;
+        const q = G.nearestOnLine(ideal, p[0], p[1], ic);
+        if (q.along < 1 || q.along > L - 1) continue; // past the real end: a join to a neighbour or an estimated continuation
+        out.push(q.d / upm);
+      }
+    }
+    const inn = [];
+    for (const p of G.resample(ideal, 10)) {
+      if (p[0] < 5 || p[1] < 5 || p[0] > D.size[0] - 5 || p[1] > D.size[1] - 5 || nearCluster(p)) continue;
+      const n = SH.nearest(p[0], p[1], 400); inn.push(n ? Math.sqrt(n.q.d2) / upm : 400 / upm);
+    }
+    if (!out.length && !inn.length) continue;
+    const o95 = pct(out, 0.95), oMax = pct(out, 1), i95 = pct(inn, 0.95), iMax = pct(inn, 1);
+    const pass = o95 <= 25 && oMax <= 60 && i95 <= 25 && iMax <= 60;
+    ROADSTAT.push({ id: r.id, o95, oMax, i95, iMax });
+    add('roads', `road:${r.id}`, `${r.name} (\`${r.id}\`, ${r.kind}, ${r.confidence}) follows its real alignment`, pass,
+      `map road off the real line: p95 ${r0(o95)} m, max ${r0(oMax)} m; real line off the map network: p95 ${r0(i95)} m, max ${r0(iMax)} m`);
+  }
+  REL.roadStat = ROADSTAT;
+}
+
 /* ------------------------------------------------------------------ displacement of the well-known places */
 const DISP = [];
 for (const id of WKOK) {
@@ -498,7 +542,7 @@ for (const id of WKOK) {
 DISP.sort((a, b) => b.dm - a.dm);
 
 /* ------------------------------------------------------------------ output */
-const CATS = ['compass', 'closer', 'order', 'bridges', 'stations', 'banks', 'district', 'structure'];
+const CATS = ['compass', 'closer', 'order', 'bridges', 'stations', 'banks', 'district', 'roads', 'structure'];
 const stat = (rels) => { const o = {}; for (const c of CATS) { const r = rels.filter((x) => x.cat === c); o[c] = { n: r.length, pass: r.filter((x) => x.pass).length }; } const n = rels.length, p = rels.filter((x) => x.pass).length; o.all = { n, pass: p }; return o; };
 const S = stat(REL);
 const result = { file: path.relative(ROOT, FILE), generated: new Date().toISOString(), stats: S, relations: REL.map((r) => ({ cat: r.cat, key: r.key, text: r.text, pass: r.pass, detail: r.detail })), displacement: DISP };
@@ -533,7 +577,8 @@ if (REPORT) {
     stations: 'station order along each railway service, the track passes every station, stations stand beside the track',
     banks: 'which bank of the Musi a place is on (places 60-1500 m from the river)',
     district: `which ward-based district a place lies in (${REL.districtSkipped} places within 60 m of a district edge not claimed)`,
-    structure: 'lake, Buddha, Tank Bund, Lower Tank Bund, Necklace Road, the Musi, Charminar district, city-scale distance ratios',
+    roads: 'each curated road (roads.json, OSM) follows its real alignment both ways: p95 within 25 m (half a game road) and max within 60 m (hand-made cluster layouts excluded)',
+    structure: 'lake, Buddha, Tank Bund, Lower Tank Bund, Necklace Road, the Musi, Charminar district, Golconda gate, edge signposts, city-scale distance ratios',
   };
   for (const c of CATS.concat(['all'])) L.push(before ? `| ${c} | ${WHAT[c] || 'all relations'} | ${pct(before.stats[c])} | ${pct(S[c])} |` : `| ${c} | ${WHAT[c] || 'all relations'} | ${pct(S[c])} |`);
   L.push('');
@@ -552,7 +597,7 @@ if (REPORT) {
   L.push('');
   L.push(`Median ${med(DISP.map((d) => d.dm))} m, worst ${DISP[0] ? DISP[0].dm : 0} m over ${DISP.length} well-known places.`);
   L.push('');
-  const TITLES = { compass: 'Compass sectors', closer: 'Which is closer', order: 'Order along roads and corridors', bridges: 'Musi crossings, west to east', stations: 'Railway stations', banks: 'Musi banks', district: 'Districts', structure: 'Structure of the city' };
+  const TITLES = { compass: 'Compass sectors', closer: 'Which is closer', order: 'Order along roads and corridors', bridges: 'Musi crossings, west to east', stations: 'Railway stations', banks: 'Musi banks', district: 'Districts', roads: 'Road alignments', structure: 'Structure of the city' };
   for (const c of CATS) {
     const rs = REL.filter((r) => r.cat === c);
     L.push(`## ${TITLES[c]} (${pct(S[c])})`);
