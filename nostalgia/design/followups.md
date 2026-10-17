@@ -58,3 +58,12 @@ Live site (owner request: "publish with whatever we have, then update on top of 
 - Public at https://vivkv07.github.io/DS/ (GitHub Pages, gh-pages branch of vivkv07/DS; the repo is public now).
 - Deploy: `nostalgia/tools/deploy_site.sh` builds dist/web.html (full page, 3D files lazy) and pushes one new commit to gh-pages. Run it after each verified preview build. `--dry-run` assembles dist/site only.
 - Still a testing build (unlimited pocket money). Launch-plan items (save-on-hide, newer-save guard, offline, own domain) remain open above.
+
+Blender landmarks (merged 970f29d; pack now 7493 KB of the 8192 KB cap — per-model lazy loading #70 is next):
+- Parked owner must-haves, not built/packed yet: Koti bus stand, Imlibun/MGBS, RTC X Roads cinemas, Secretariat, Ravindra Bharathi, Secunderabad clock tower, Paradise, Gokul Chat, park gates, St Joseph's (partial), St Mary's, Wesley, Sai temple, Ujjaini, Lal Darwaza, temple/mosque/church/dargah kits, NTR memorial, airport terminal/ATC/prop plane, OU Arts College, Spanish Mosque, HITEC office. Builders: NOSTALGIA_PARKED=1 (landmarks_centre.py / landmarks_west.py / _lm_hussain.py).
+- Trees are scattered on the lb_stadium_field park and stand on the cricket pitch: exclude it from tree scatter.
+- Night LB matches leave the field dark: add field floodlights when lb_match && night.
+- Procedural Golconda curtain walls (src/landmarks.js ~2226-2244) still use square merlons: switch to Deccani leaf merlons.
+- Bala Hissar at 84x64 doesn't dominate: consider ~140x110 in worlddata.
+- `floodlit` glows the whole atlas (Birla Mandir's granite hill glows like the marble at night): add a floodlit mask.
+- tests/view3d_landmarks.cjs "every landmark was built by view3d_landmarks.js" must accept models3d overrides.
