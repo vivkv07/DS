@@ -722,10 +722,11 @@ def _rekha(name, cx, cy, z0, a0, hb, hg, M, courses=12, lo_rings=5, lo_seg=8):
     st = prof(1.0)
     # beki (neck), amalaka, kalasha
     ra = a0 * st
-    top = [(ra * 0.82, zt), (ra * 0.62, zt + 0.5), (ra * 0.62, zt + 1.3), (ra * 0.95, zt + 1.6), (ra * 1.12, zt + 2.4), (ra * 1.12, zt + 3.0),
-           (ra * 0.95, zt + 3.8), (ra * 0.5, zt + 4.2), (0.0, zt + 4.25)]
+    k = ra / 4.26      # amalaka / kalasha heights follow the tower size (flat ribbed cushions)
+    top = [(ra * 0.82, zt), (ra * 0.62, zt + 0.5 * k), (ra * 0.62, zt + 1.3 * k), (ra * 0.95, zt + 1.6 * k), (ra * 1.12, zt + 2.4 * k), (ra * 1.12, zt + 3.0 * k),
+           (ra * 0.95, zt + 3.8 * k), (ra * 0.5, zt + 4.2 * k), (0.0, zt + 4.25 * k)]
     hi.append(_ribbed(name + '_amalaka', top, 32, 0.07, W, loc=(cx, cy, 0)))
-    kal = [(ra * 0.45, zt + 4.2), (ra * 0.5, zt + 4.9), (ra * 0.42, zt + 5.6), (ra * 0.22, zt + 6.2), (ra * 0.3, zt + 6.6), (ra * 0.08, zt + 7.6), (0.0, zt + 8.6)]
+    kal = [(ra * 0.45, zt + 4.2 * k), (ra * 0.5, zt + 4.9 * k), (ra * 0.42, zt + 5.6 * k), (ra * 0.22, zt + 6.2 * k), (ra * 0.3, zt + 6.6 * k), (ra * 0.08, zt + 7.6 * k), (0.0, zt + 8.6 * k)]
     hi.append(lathe(name + '_kalasha', kal, seg=16, mat=M['bm_gold'], loc=(cx, cy, 0)))
     # ---- shell
     rings = [(z0 - 1.6, _plan_lo(a0 + 1.0, d1, cx, cy)), (z0 + hb, _plan_lo(a0 + 0.2, d1, cx, cy))]
@@ -734,11 +735,11 @@ def _rekha(name, cx, cy, z0, a0, hb, hg, M, courses=12, lo_rings=5, lo_seg=8):
         s = prof(min(1.0, max(0.0, u)))
         rings.append((zg + hg * u, _plan_lo(a0 * s, d1 * s, cx, cy)))
     lo.append(_rings_loft(name + '_lo', rings, cap=False))
-    tp = [(ra * 0.8, zt - 0.2), (ra * 1.12, zt + 1.6), (ra * 1.12, zt + 3.2), (ra * 0.45, zt + 4.4), (ra * 0.3, zt + 6.2), (0.0, zt + 8.6)]
+    tp = [(ra * 0.8, zt - 0.2 * k), (ra * 1.12, zt + 1.6 * k), (ra * 1.12, zt + 3.2 * k), (ra * 0.45, zt + 4.4 * k), (ra * 0.3, zt + 6.2 * k), (0.0, zt + 8.6 * k)]
     if lo_seg < 8:
-        tp = [(ra * 0.8, zt - 0.2), (ra * 1.15, zt + 1.8), (ra * 1.1, zt + 3.3), (ra * 0.35, zt + 5.0), (0.0, zt + 8.6)]
+        tp = [(ra * 0.8, zt - 0.2 * k), (ra * 1.15, zt + 1.8 * k), (ra * 1.1, zt + 3.3 * k), (ra * 0.35, zt + 5.0 * k), (0.0, zt + 8.6 * k)]
     lo.append(lathe(name + '_lo_am', tp, seg=lo_seg, loc=(cx, cy, 0), close_bottom=False))
-    return hi, lo, zt + 8.6
+    return hi, lo, zt + 8.6 * k
 
 
 @kit.asset('birla_planetarium', 'landmark', draw='birla_planetarium', face='s', footprint=[58, 58], height=54.0, fit='footprint', floodlit=True)
@@ -820,21 +821,24 @@ def build_birla_mandir(A):
     M['bm_t'] = kit.material('whitewash', 'bm_marble_trim', base='#f0ece4', rough=0.4, var=0.015, grain=0.01, grime=0.06, streaks=0.02, dirt='#c8c1b4', scale=0.5)
     M['bm_d'] = L.paint('#d6d0c4', 'bm_marble_shade', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
     M['bm_gold'] = L.paint('#d7b45a', 'bm_gold', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
-    ROCK = kit.material('granite_grey', 'naubat_rock', base='#665d54', var=0.05, grain=0.0, specks=0.0, grime=0.2, dirt='#6a6259', scale=0.15)
+    ROCK = kit.material('granite_grey', 'naubat_rock', base='#857d74', var=0.05, grain=0.0, specks=0.0, grime=0.2, dirt='#6a6259', scale=0.15)
+    PINK = kit.material('granite_grey', 'naubat_pink', base='#b89a8f', var=0.05, grain=0.0, specks=0.0, grime=0.2, dirt='#7d6a62', scale=0.15)
+    ASH = L.paint('#9a948a', 'bm_ashlar', var=0.03, grain=0.0, grime=0.15, streaks=0.0)
     SCRUB = L.paint('#6d7a45', 'naubat_scrub', var=0.05, grain=0.0, grime=0.0, streaks=0.0)
     PAVE = kit.material('whitewash', 'bm_pave', base='#e6e2d8', rough=0.5, var=0.02, grain=0.01, grime=0.1, streaks=0.0, scale=0.4)
     DOOR = L.paint('#5e4128', 'bm_door', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
     W, T, D = M['bm_w'], M['bm_t'], M['bm_d']
     hi, lo = [], []
-    ZT = 18.0          # terrace level
+    ZT = 25.0          # terrace level
     TX, TY0, TY1 = 29.5, -10.0, 27.4
     SW = 12.0          # stair width
     # stair profile (y, z): two flights and a landing from the road (y = -28.6) to the terrace
-    RAMP = [(-28.6, 0.0), (-28.6, 0.6), (-20.4, 8.4), (-18.0, 8.4), (-10.0, ZT)]
+    ZL = 12.0          # stair landing
+    RAMP = [(-28.6, 0.0), (-28.6, 0.6), (-20.4, ZL), (-18.0, ZL), (-10.0, ZT)]
     # ---------------- Naubat Pahad: the rocky hillock with a gorge for the stairs
     hill = rock_mound('naubat', 31.5, 27.8, ZT - 0.5, ROCK, seed=11, na=24,
                       prof=[(1.0, None), (1.0, 0.0), (0.98, 0.2), (0.94, 0.5), (0.9, 0.8), (0.82, 1.0)], rough=0.14, zj=0.25, z0=-1.0)
-    gorge = kit.prism_from_outline('gorge', [(-40.0, -0.4), (-28.6, -0.4), (-20.4, 7.8), (-18.0, 7.8), (-10.0, ZT - 0.6), (-10.0, 60.0), (-40.0, 60.0)], SW + 3.0, axis='X')
+    gorge = kit.prism_from_outline('gorge', [(-40.0, -0.4), (-28.6, -0.4), (-20.4, ZL - 0.6), (-18.0, ZL - 0.6), (-10.0, ZT - 0.6), (-10.0, 60.0), (-40.0, 60.0)], SW + 3.0, axis='X')
     kit.boolean(hill, gorge)
     rocks = []
     rnd = random.Random(5)
@@ -843,12 +847,12 @@ def build_birla_mandir(A):
         if 4.3 < a < 5.1:
             continue        # keep the stair approach clear
         rr = 0.9 + 0.08 * rnd.random()
-        rocks.append(boulder('nb_boulder', 2.4 + 1.8 * rnd.random(), (30.0 * rr * math.cos(a), 26.5 * rr * math.sin(a), 0.5 + 6.0 * rnd.random()), ROCK, seed=20 + i, sq=0.6, sub=1))
+        rocks.append(boulder('nb_boulder', 2.4 + 1.8 * rnd.random(), (30.0 * rr * math.cos(a), 26.5 * rr * math.sin(a), 0.5 + 10.0 * rnd.random()), PINK, seed=20 + i, sq=0.6, sub=1))
     for i in range(14):
         a = 2 * PI * rnd.random()
         if 4.2 < a < 5.2:
             continue
-        rocks.append(boulder('nb_scrub', 1.6 + rnd.random(), (29.0 * math.cos(a), 25.6 * math.sin(a), 2.0 + 9.0 * rnd.random()), SCRUB, seed=40 + i, sq=0.5, sub=1))
+        rocks.append(boulder('nb_scrub', 1.6 + rnd.random(), (29.0 * math.cos(a), 25.6 * math.sin(a), 2.0 + 15.0 * rnd.random()), SCRUB, seed=40 + i, sq=0.5, sub=1))
     hill_lo = hill.copy()
     hill_lo.data = hill.data.copy()
     kit.link(hill_lo, A.coll)
@@ -864,9 +868,11 @@ def build_birla_mandir(A):
     hi.append(kit.join([hill] + rocks, 'naubat_hi'))
     lo.append(hill_lo)
     # ---------------- terrace: retaining wall, marble paving, solid carved balustrade on the edge
-    hi.append(box('terrace_wall', (2 * TX, TY1 - TY0, ZT - 8.0), (0, (TY0 + TY1) / 2, 8.0), T, base=True))
+    hi.append(box('terrace_wall', (2 * TX, TY1 - TY0, ZT - 8.0), (0, (TY0 + TY1) / 2, 8.0), ASH, base=True))
+    for zc in (11.0, 14.0, 17.0, 20.0, 23.0):   # ashlar courses
+        hi.append(box('terrace_course', (2 * TX + 0.1, TY1 - TY0 + 0.1, 0.25), (0, (TY0 + TY1) / 2, zc), L.paint('#857f75', 'bm_ashlar_j', var=0.0, grain=0.0, grime=0.0, streaks=0.0), base=True))
     hi.append(box('terrace_pave', (2 * TX - 0.4, TY1 - TY0 - 0.4, 0.3), (0, (TY0 + TY1) / 2, ZT - 0.15), PAVE, base=True))
-    hi.append(box('terrace_band', (2 * TX + 0.5, TY1 - TY0 + 0.5, 0.6), (0, (TY0 + TY1) / 2, ZT - 0.9), W, base=True))
+    hi.append(box('terrace_band', (2 * TX + 0.5, TY1 - TY0 + 0.5, 0.6), (0, (TY0 + TY1) / 2, ZT - 0.9), ASH, base=True))
     BH = 1.9
 
     def balus(x0, y0, x1, y1):
@@ -888,27 +894,28 @@ def build_birla_mandir(A):
     # shell: the terrace block up to the balustrade top (the courtyard paving bakes onto its top)
     lo.append(L.shell_box('terrace_lo', (2 * TX + 0.6, TY1 - TY0 + 0.6, ZT + BH - 8.0), (0, (TY0 + TY1) / 2, 8.0)))
     # ---------------- the broad flights of steps up the front, with a landing and marble parapets
-    n1, n2 = 13, 14
+    n1, n2 = 19, 21
     RISER = L.paint('#a59e92', 'bm_riser', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
-    hi.append(_stairs2('steps1', SW, 8.2 / n1, 7.8 / n1, n1, (0, -24.5, 0.6), W, RISER))
+    hi.append(_stairs2('steps1', SW, 8.2 / n1, (ZL - 0.6) / n1, n1, (0, -24.5, 0.6), W, RISER))
     hi.append(box('steps1_fill', (SW, 8.2, 0.6), (0, -24.5, 0.0), T, base=True))
-    hi.append(box('landing', (SW, 2.6, 8.4), (0, -19.2, 0.0), W, base=True))
-    hi.append(box('landing_pave', (SW + 0.01, 2.6, 0.2), (0, -19.2, 8.3), PAVE, base=True))
-    hi.append(box('steps2_fill', (SW, 8.2, 8.4), (0, -14.0, 0.0), T, base=True))
-    hi.append(_stairs2('steps2', SW, 8.0 / n2, (ZT - 8.4) / n2, n2, (0, -14.0, 8.4), W, RISER))
+    hi.append(box('landing', (SW, 2.6, ZL), (0, -19.2, 0.0), W, base=True))
+    hi.append(box('landing_pave', (SW + 0.01, 2.6, 0.2), (0, -19.2, ZL - 0.1), PAVE, base=True))
+    hi.append(box('steps2_fill', (SW, 8.2, ZL), (0, -14.0, 0.0), T, base=True))
+    hi.append(_stairs2('steps2', SW, 8.0 / n2, (ZT - ZL) / n2, n2, (0, -14.0, ZL), W, RISER))
     par_ol = [(-28.9, 0.0)] + [(y, z + 1.2) for (y, z) in RAMP[1:]] + [(-10.0, 0.0)]
     par_ol[1] = (-28.9, 1.8)
     for s in (-1, 1):
         par = kit.prism_from_outline('stair_par', par_ol, 0.9, axis='X', mat=T)
         hi.append(L.place(par, (s * (SW / 2 + 0.45), 0, 0)))
-        for (yy, zz) in ((-28.5, 0.0), (-19.2, 8.4)):
+        for (yy, zz) in ((-28.5, 0.0), (-19.2, ZL)):
             hi.append(box('stair_post', (1.3, 1.3, 2.8), (s * (SW / 2 + 0.45), yy, zz), T, base=True))
             hi.append(lathe('stair_lamp', [(0.4, 0), (0.55, 0.5), (0.3, 1.2), (0.0, 1.4)], seg=8, mat=T, loc=(s * (SW / 2 + 0.45), yy, zz + 2.8)))
-    lo_ol = [(-29.0, 0.0), (-29.0, 1.9), (-20.4, 9.5), (-18.0, 9.5), (-10.0, ZT + 1.2), (-10.0, 0.0)]
+    lo_ol = [(-29.0, 0.0), (-29.0, 1.9), (-20.4, ZL + 1.1), (-18.0, ZL + 1.1), (-10.0, ZT + 1.2), (-10.0, 0.0)]
     lo.append(kit.prism_from_outline('steps_lo', lo_ol, SW + 2.2, axis='X'))
     # ---------------- entrance gopuram (Dravidian-style gateway tower) on the terrace edge
     GY = -6.5      # centre (front face at y = -10)
     GW, GD = 15.0, 7.0
+    KD = L.paint('#aaa294', 'bm_kuta_dk', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
     gp = [box('gp_base', (GW, GD, 9.0), (0, GY, ZT), W, base=True),
           box('gp_plinth', (GW + 0.8, GD + 0.8, 1.0), (0, GY, ZT), T, base=True),
           box('gp_cornice', (GW + 1.0, GD + 1.0, 0.8), (0, GY, ZT + 9.0), T, base=True)]
@@ -923,7 +930,7 @@ def build_birla_mandir(A):
     for x in (-5.3, 5.3):
         gp.append(box('gp_nich', (1.2, 0.2, 3.0), (x, GY - GD / 2 - 0.05, ZT + 3.2), D, base=True))
     ZG = ZT + 9.8
-    NT, TH = 5, 3.0
+    NT, TH = 5, 3.6
     for i in range(NT):
         w, d, z = GW - 1.0 - 2.0 * i, GD - 0.8 - 0.7 * i, ZG + TH * i
         gp.append(box('gp_tier', (w, d, TH - 0.6), (0, GY, z), W, base=True))
@@ -932,7 +939,7 @@ def build_birla_mandir(A):
         for j in range(nk):
             x = -w / 2 + 0.7 + (w - 1.4) * j / (nk - 1)
             for yy in (GY - d / 2 - 0.05, GY + d / 2 + 0.05):
-                gp.append(box('gp_kuta', (0.9, 0.5, 1.6), (x, yy, z + 0.3), D if j % 2 else T, base=True))
+                gp.append(box('gp_kuta', (0.9, 0.5, 2.0), (x, yy, z + 0.4), KD if j % 2 else T, base=True))
     zs = ZG + TH * NT
     vault = [(-1.7, 0.0), (1.7, 0.0), (1.8, 1.0), (1.4, 2.2), (0.6, 3.0), (0.0, 3.2), (-0.6, 3.0), (-1.4, 2.2), (-1.8, 1.0)]
     sh = kit.prism_from_outline('gp_shala', vault, 6.4, axis='X', mat=W)
