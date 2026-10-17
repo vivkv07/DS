@@ -58,6 +58,11 @@ nostalgia/
   src/story.js      chapter/mission scripts (content) -> N.story
   src/collectibles.js hidden goli/cards/tapes, journal data -> N.collectibles
   src/shops.js      Irani cafe, kirana, STD booth (save), barber (clear meter), video parlour -> N.shops
+  src/streetfood.js (street-food scenes, design/atmosphere.md) the scene director: every food cart / spot (dosa,
+                    samosa, chai, pani puri, bhutta, coconut, banana, flower, ice-gola carts, Gokul Chat, Irani
+                    cafe fronts, the biryani queue, Ramzan haleem bhattis) becomes a living crowd of real 'ped'
+                    entities + an animated vendor, steam / smoke particles, stove glow and lamps in both views;
+                    loaded after sidejobs.js, system 'streetfood' (order 42) -> N.streetfood (hooks: header)
   src/minigames.js  kite fight, Golconda clap, brick game, etc. -> N.minigames
   src/cricket_match.js the LB Stadium match (minigame 'match', TV + FPV cameras) -> N.cricketMatch
   src/playground_games.js Lingocha + Maram Pitti played IN THE WORLD on the colony grounds (minigame ids

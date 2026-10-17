@@ -1,0 +1,72 @@
+00:00.434  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building padmini (vehicle)
+00:07.521  render           | Saved: '/tmp/nostalgia_blender/text_938d1fef.png'
+00:07.698  render           | Saved: '/tmp/nostalgia_blender/text_938d1fef.png'
+[kit] uv: 1334 faces unwrapped along seams, 740 smart-projected
+[kit] uv atlas: 67 islands rescaled
+Info: No active and selected image texture node found in material "glass" (6) for object "padmini"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (6 samples) in 18.4s
+Info: No active and selected image texture node found in material "glass" (6) for object "padmini"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 256x256 (22 samples) in 36.9s
+Info: No active and selected image texture node found in material "glass" (6) for object "padmini"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked orm 128x128 (1 samples) in 1.0s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] finish padmini: tex 512, orm 128, emit True in 76.2s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:43:45 | INFO: Starting glTF 2.0 export
+21:43:45 | INFO: Extracting primitive: padmini
+21:43:46 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+21:43:46 | INFO: Primitives created: 2
+21:43:48 | INFO: Finished glTF 2.0 export in 2.8239238262176514 s
+
+[kit] padmini: 4136 tris (budget 6000) ok, 304.9 KB, clips [], anchors 26
+21:43:48 | INFO: Data are loaded, start creating Blender stuff
+21:43:49 | INFO: Blender create Mesh node padmini
+21:43:49 | INFO: glTF import finished in 0.50s
+03:00.360  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/padmini.png'
+[kit] preview padmini.png (384px, 24 spp) in 90.4s
+21:45:20 | INFO: Data are loaded, start creating Blender stuff
+21:45:20 | INFO: Blender create Mesh node padmini
+21:45:21 | INFO: glTF import finished in 1.41s
+04:00.622  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/padmini_side.png'
+[kit] preview padmini_side.png (320px, 16 spp) in 58.0s
+[kit] done padmini in 236.1s
+21:46:20 | INFO: Data are loaded, start creating Blender stuff
+21:46:20 | INFO: Blender create Mesh node padmini
+21:46:20 | INFO: glTF import finished in 0.69s
+05:28.929  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/padmini.png'
+[kit] render padmini.png (384px, 24 spp) in 87.2s
+21:47:49 | INFO: Data are loaded, start creating Blender stuff
+21:47:49 | INFO: Blender create Mesh node padmini
+21:47:50 | INFO: glTF import finished in 0.68s
+06:33.921  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/padmini_side.png'
+[kit] render padmini_side.png (320px, 16 spp) in 62.6s
+21:48:53 | INFO: Data are loaded, start creating Blender stuff
+21:48:53 | INFO: Blender create Mesh node padmini
+21:48:54 | INFO: glTF import finished in 0.92s
+07:11.437  render           | Saved: '/tmp/nostalgia_blender/padmini_var_0.png'
+[kit] render padmini_var_0.png (256px, 14 spp) in 35.6s
+21:49:31 | INFO: Data are loaded, start creating Blender stuff
+21:49:31 | INFO: Blender create Mesh node padmini
+21:49:33 | INFO: glTF import finished in 1.61s
+07:50.661  render           | Saved: '/tmp/nostalgia_blender/padmini_var_1.png'
+[kit] render padmini_var_1.png (256px, 14 spp) in 36.3s
+21:50:10 | INFO: Data are loaded, start creating Blender stuff
+21:50:10 | INFO: Blender create Mesh node padmini
+21:50:10 | INFO: glTF import finished in 0.47s
+08:31.759  render           | Saved: '/tmp/nostalgia_blender/padmini_var_2.png'
+[kit] render padmini_var_2.png (256px, 14 spp) in 40.4s
+21:50:51 | INFO: Data are loaded, start creating Blender stuff
+21:50:51 | INFO: Blender create Mesh node padmini
+21:50:52 | INFO: glTF import finished in 0.52s
+09:08.171  render           | Saved: '/tmp/nostalgia_blender/padmini_var_3.png'
+[kit] render padmini_var_3.png (256px, 14 spp) in 35.2s
+21:51:28 | INFO: Data are loaded, start creating Blender stuff
+21:51:28 | INFO: Blender create Mesh node padmini
+21:51:29 | INFO: glTF import finished in 0.35s
+10:07.277  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/padmini_night.png'
+[kit] render padmini_night.png (320px, 16 spp) in 57.2s

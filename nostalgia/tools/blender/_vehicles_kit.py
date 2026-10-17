@@ -1262,3 +1262,61 @@ def spring(name, a, b, r, turns, m, wire=0.05, seg=3):
     n = int(turns * 6)
     pts = [a + d * (i / n) + (u * math.cos(2 * math.pi * turns * i / n) + v * math.sin(2 * math.pi * turns * i / n)) * r for i in range(n + 1)]
     return tube(name, pts, wire, seg=seg, mat=m, cap=False)
+
+
+def car_section(hw, z0, z1, rs=0.8, rb=0.5, crown=0.2, bulge=0.15, ns=4, nb=2, nt=3):
+    """a car body cross-section [(x, z)] as a closed loop: a crowned top, rounded shoulders (radius
+    rs) at the belt line, sides bulging out by `bulge` at mid height, rounded bottom corners (rb)"""
+    rs = min(rs, hw * 0.9, (z1 - z0) * 0.6)
+    rb = min(rb, hw * 0.5, (z1 - z0) * 0.3)
+    L = []
+    w = hw - rs
+    for i in range(nt):                      # top, from the centre line out to the shoulder
+        x = w * i / nt
+        u = x / max(1e-3, hw)
+        L.append((x, z1 + crown * (1 - u * u)))
+    for i in range(ns + 1):                  # shoulder arc
+        a = math.pi / 2 * (1 - i / ns)
+        L.append((w + rs * math.cos(a), z1 - rs + rs * math.sin(a) + crown * (1 - (w / max(1e-3, hw)) ** 2) * (i == 0)))
+    zt, zbot = z1 - rs, z0 + rb
+    for t in (0.33, 0.66):                   # side with a bulge
+        z = zt + (zbot - zt) * t
+        L.append((hw + bulge * math.sin(math.pi * t), z))
+    for i in range(nb + 1):                  # bottom corner arc
+        a = -math.pi / 2 * i / nb
+        L.append((hw - rb + rb * math.cos(a), z0 + rb + rb * math.sin(a)))
+    L.append((0.0, z0))
+    R = [(-x, z) for (x, z) in reversed(L[1:-1])]
+    return L + R
+
+
+def section_halfwidth(loop, z):
+    """the largest |x| of a section loop at height z (linear between loop points)"""
+    best = 0.0
+    n = len(loop)
+    for i in range(n):
+        (x0, z0), (x1, z1) = loop[i], loop[(i + 1) % n]
+        if (z0 - z) * (z1 - z) <= 0 and abs(z1 - z0) > 1e-9:
+            t = (z - z0) / (z1 - z0)
+            best = max(best, abs(x0 + (x1 - x0) * t))
+    return best
+
+
+def profile_loft(name, stations, m, cap=True):
+    """a closed body through explicit section loops: stations = [(y, [(x, z) ...])] (same point count,
+    each loop closed implicitly); the ends are capped with n-gons"""
+    bm = bmesh.new()
+    rings = []
+    for (y, loop) in stations:
+        rings.append([bm.verts.new((x, y, z)) for (x, z) in loop])
+    n = len(rings[0])
+    for A_, B_ in zip(rings, rings[1:]):
+        for k in range(n):
+            bm.faces.new((A_[k], A_[(k + 1) % n], B_[(k + 1) % n], B_[k]))
+    if cap:
+        bm.faces.new(list(reversed(rings[0])))
+        bm.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    o = kit.obj_from_bm(bm, name, m)
+    o['nos_smooth'] = 50.0
+    return o

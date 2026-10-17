@@ -1,0 +1,63 @@
+00:00.880  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building lorry (vehicle)
+00:12.750  render           | Saved: '/tmp/nostalgia_blender/text_5c6be245.png'
+00:13.834  render           | Saved: '/tmp/nostalgia_blender/text_33fb5a18.png'
+00:15.527  render           | Saved: '/tmp/nostalgia_blender/text_ecc80b84.png'
+00:16.645  render           | Saved: '/tmp/nostalgia_blender/text_175da3da.png'
+00:17.395  render           | Saved: '/tmp/nostalgia_blender/text_33fb5a18.png'
+[kit] uv: 1617 faces unwrapped along seams, 1297 smart-projected
+[kit] uv atlas: 121 islands rescaled
+Info: No active and selected image texture node found in material "glass" (5) for object "lorry"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (6 samples) in 18.0s
+Info: No active and selected image texture node found in material "glass" (5) for object "lorry"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 256x256 (22 samples) in 41.2s
+Info: No active and selected image texture node found in material "glass" (5) for object "lorry"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked orm 128x128 (1 samples) in 2.2s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] finish lorry: tex 512, orm 128, emit True in 84.4s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:49:17 | INFO: Starting glTF 2.0 export
+21:49:17 | INFO: Extracting primitive: lorry
+21:49:18 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+21:49:19 | INFO: Primitives created: 2
+21:49:19 | INFO: Finished glTF 2.0 export in 1.9018268585205078 s
+
+[kit] lorry: 5766 tris (budget 6000) ok, 463.6 KB, clips [], anchors 21
+21:49:19 | INFO: Data are loaded, start creating Blender stuff
+21:49:19 | INFO: Blender create Mesh node lorry
+21:49:20 | INFO: glTF import finished in 0.62s
+03:26.761  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/lorry.png'
+[kit] preview lorry.png (384px, 24 spp) in 97.7s
+21:50:58 | INFO: Data are loaded, start creating Blender stuff
+21:50:58 | INFO: Blender create Mesh node lorry
+21:50:59 | INFO: glTF import finished in 0.95s
+04:16.033  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/lorry_rear.png'
+[kit] preview lorry_rear.png (320px, 16 spp) in 47.3s
+[kit] done lorry in 249.3s
+21:51:48 | INFO: Data are loaded, start creating Blender stuff
+21:51:48 | INFO: Blender create Mesh node lorry
+21:51:49 | INFO: glTF import finished in 0.98s
+05:39.237  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/lorry.png'
+[kit] render lorry.png (384px, 24 spp) in 81.5s
+21:53:11 | INFO: Data are loaded, start creating Blender stuff
+21:53:11 | INFO: Blender create Mesh node lorry
+21:53:12 | INFO: glTF import finished in 0.71s
+06:19.400  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/lorry_rear.png'
+[kit] render lorry_rear.png (320px, 16 spp) in 38.2s
+21:53:51 | INFO: Data are loaded, start creating Blender stuff
+21:53:51 | INFO: Blender create Mesh node lorry
+21:53:51 | INFO: glTF import finished in 0.36s
+06:51.121  render           | Saved: '/tmp/nostalgia_blender/lorry_var_0.png'
+[kit] render lorry_var_0.png (256px, 14 spp) in 31.1s
+21:54:23 | INFO: Data are loaded, start creating Blender stuff
+21:54:24 | INFO: Blender create Mesh node lorry
+21:54:25 | INFO: glTF import finished in 1.57s
+07:13.881  render           | Saved: '/tmp/nostalgia_blender/lorry_var_1.png'
+[kit] render lorry_var_1.png (256px, 14 spp) in 19.0s
+21:54:45 | INFO: Data are loaded, start creating Blender stuff
+21:54:45 | INFO: Blender create Mesh node lorry
+21:54:46 | INFO: glTF import finished in 0.92s

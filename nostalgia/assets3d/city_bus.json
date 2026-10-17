@@ -1,0 +1,309 @@
+{
+ "anchors": {
+  "door_front": [
+   9.5,
+   -16.4,
+   2.0
+  ],
+  "door_rear": [
+   9.5,
+   10.5,
+   2.0
+  ],
+  "exhaust": [
+   -5.1,
+   31.9,
+   1.7
+  ],
+  "eye_driver": [
+   -5.4,
+   -26.2,
+   14.2
+  ],
+  "foot_L": [
+   -4.9,
+   -29.6,
+   7.3
+  ],
+  "foot_R": [
+   -5.9,
+   -29.6,
+   7.3
+  ],
+  "grip_L": [
+   -6.7509,
+   -29.4034,
+   10.8992
+  ],
+  "grip_R": [
+   -4.0491,
+   -29.4034,
+   10.8992
+  ],
+  "handlebar": [
+   -5.4,
+   -28.6,
+   10.6
+  ],
+  "headlight_L": [
+   6.6,
+   -31.5,
+   3.9
+  ],
+  "headlight_R": [
+   -6.6,
+   -31.5,
+   3.9
+  ],
+  "indicator_FL": [
+   6.6,
+   -31.35,
+   5.1
+  ],
+  "indicator_FR": [
+   -6.6,
+   -31.35,
+   5.1
+  ],
+  "indicator_RL": [
+   7.6,
+   31.35,
+   5.3
+  ],
+  "indicator_RR": [
+   -7.6,
+   31.35,
+   5.3
+  ],
+  "seat_driver": [
+   -5.4,
+   -26.4,
+   9.25
+  ],
+  "taillight_L": [
+   7.6,
+   31.35,
+   4.2
+  ],
+  "taillight_R": [
+   -7.6,
+   31.35,
+   4.2
+  ],
+  "wheel_FL": [
+   7.5,
+   -21.5,
+   3.0
+  ],
+  "wheel_FR": [
+   -7.5,
+   -21.5,
+   3.0
+  ],
+  "wheel_RL": [
+   7.75,
+   17.5,
+   3.0
+  ],
+  "wheel_RR": [
+   -7.75,
+   17.5,
+   3.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 558308,
+ "clips": {},
+ "family": "vehicle",
+ "file": "city_bus.glb",
+ "front": "-Y",
+ "id": "city_bus",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 545.2,
+ "kit": 1,
+ "materials": [
+  "M_city_bus@night",
+  "M_city_bus_glass"
+ ],
+ "max": [
+  11.0,
+  31.875,
+  17.075
+ ],
+ "meta": {
+  "closed": true,
+  "cockpit": {
+   "eye": [
+    -5.4,
+    -26.2,
+    14.2
+   ]
+  },
+  "fps": "cockpit",
+  "height": 19.5,
+  "lamps": {
+   "head": [
+    "headlight_L",
+    "headlight_R"
+   ],
+   "tail": [
+    "taillight_L",
+    "taillight_R"
+   ]
+  },
+  "length": 62.0,
+  "options": [
+   {
+    "bone": "opt_city",
+    "notTypes": [
+     "safari_bus"
+    ]
+   },
+   {
+    "bone": "opt_safari",
+    "types": [
+     "safari_bus"
+    ]
+   },
+   {
+    "bone": "opt_route0",
+    "notTypes": [
+     "safari_bus"
+    ],
+    "route": "127K",
+    "seed": [
+     4,
+     0
+    ]
+   },
+   {
+    "bone": "opt_route1",
+    "notTypes": [
+     "safari_bus"
+    ],
+    "route": "8A",
+    "seed": [
+     4,
+     1
+    ]
+   },
+   {
+    "bone": "opt_route2",
+    "notTypes": [
+     "safari_bus"
+    ],
+    "route": "49M",
+    "seed": [
+     4,
+     2
+    ]
+   },
+   {
+    "bone": "opt_route3",
+    "notTypes": [
+     "safari_bus"
+    ],
+    "route": "5K",
+    "seed": [
+     4,
+     3
+    ]
+   }
+  ],
+  "riders": {
+   "driver": {
+    "clips": [
+     "drive",
+     "sit"
+    ],
+    "feet": [
+     "foot_L",
+     "foot_R"
+    ],
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "car",
+    "seat": "seat_driver"
+   }
+  },
+  "steerBones": {
+   "steer_L": {
+    "axis": [
+     0,
+     0,
+     1
+    ],
+    "k": 1.0
+   },
+   "steer_R": {
+    "axis": [
+     0,
+     0,
+     1
+    ],
+    "k": 1.0
+   },
+   "steer_wheel": {
+    "axis": [
+     0.0,
+     -0.3489,
+     -0.9371
+    ],
+    "k": -3.0
+   }
+  },
+  "tintSrc": {
+   "paint": "color"
+  },
+  "vehicleTypes": [
+   "bus",
+   "safari_bus"
+  ],
+  "wheelR": 3.0,
+  "wheels": {
+   "wheel_FL": 3.0,
+   "wheel_FR": 3.0,
+   "wheel_RL": 3.0,
+   "wheel_RR": 3.0
+  },
+  "width": 18.0
+ },
+ "min": [
+  -11.0,
+  -32.275,
+  -0.0
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  22.0,
+  64.15,
+  17.075
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#b22b2b"
+  }
+ },
+ "tris": 6048,
+ "units": "u",
+ "up": "Z"
+}

@@ -1,0 +1,60 @@
+00:00.120  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building rx100 (vehicle)
+00:04.892  render           | Saved: '/tmp/nostalgia_blender/text_29c9a99c.png'
+00:05.010  render           | Saved: '/tmp/nostalgia_blender/text_29c9a99c.png'
+00:05.150  render           | Saved: '/tmp/nostalgia_blender/text_9b2d6dd5.png'
+[kit] uv: 1553 faces unwrapped along seams, 342 smart-projected
+[kit] uv atlas: 88 islands rescaled
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (6 samples) in 10.6s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 256x256 (20 samples) in 16.8s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked orm 128x128 (1 samples) in 0.8s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] finish rx100: tex 512, orm 128, emit True in 45.2s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:34:48 | INFO: Starting glTF 2.0 export
+21:34:48 | INFO: Extracting primitive: rx100
+21:34:48 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+21:34:48 | INFO: Primitives created: 1
+21:34:48 | INFO: Finished glTF 2.0 export in 0.7402234077453613 s
+
+[kit] rx100: 4038 tris (budget 6000) ok, 326.6 KB, clips [], anchors 18
+21:34:48 | INFO: Data are loaded, start creating Blender stuff
+21:34:48 | INFO: Blender create Mesh node rx100
+21:34:49 | INFO: glTF import finished in 0.07s
+01:43.031  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/rx100.png'
+[kit] preview rx100.png (384px, 24 spp) in 51.0s
+21:35:40 | INFO: Data are loaded, start creating Blender stuff
+21:35:40 | INFO: Blender create Mesh node rx100
+21:35:40 | INFO: glTF import finished in 0.30s
+02:07.482  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/rx100_side.png'
+[kit] preview rx100_side.png (320px, 16 spp) in 23.9s
+[kit] done rx100 in 124.2s
+21:36:04 | INFO: Data are loaded, start creating Blender stuff
+21:36:04 | INFO: Blender create Mesh node rx100
+21:36:04 | INFO: glTF import finished in 0.19s
+02:26.888  render           | Saved: '/tmp/nostalgia_blender/rx100_var_0.png'
+[kit] render rx100_var_0.png (256px, 14 spp) in 18.9s
+21:36:23 | INFO: Data are loaded, start creating Blender stuff
+21:36:23 | INFO: Blender create Mesh node rx100
+21:36:24 | INFO: glTF import finished in 0.06s
+02:40.401  render           | Saved: '/tmp/nostalgia_blender/rx100_var_1.png'
+[kit] render rx100_var_1.png (256px, 14 spp) in 13.4s
+21:36:37 | INFO: Data are loaded, start creating Blender stuff
+21:36:37 | INFO: Blender create Mesh node rx100
+21:36:37 | INFO: glTF import finished in 0.24s
+02:55.165  render           | Saved: '/tmp/nostalgia_blender/rx100_var_2.png'
+[kit] render rx100_var_2.png (256px, 14 spp) in 14.4s
+21:36:52 | INFO: Data are loaded, start creating Blender stuff
+21:36:52 | INFO: Blender create Mesh node rx100
+21:36:52 | INFO: glTF import finished in 0.22s
+03:10.453  render           | Saved: '/tmp/nostalgia_blender/rx100_var_3.png'
+[kit] render rx100_var_3.png (256px, 14 spp) in 14.3s
+21:37:07 | INFO: Data are loaded, start creating Blender stuff
+21:37:07 | INFO: Blender create Mesh node rx100
+21:37:07 | INFO: glTF import finished in 0.15s
+03:29.667  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/rx100_night.png'
+[kit] render rx100_night.png (320px, 16 spp) in 18.8s

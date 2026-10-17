@@ -1,0 +1,304 @@
+{
+ "anchors": {
+  "exhaust": [
+   -2.5,
+   12.5,
+   1.5
+  ],
+  "eye_driver": [
+   -2.4,
+   0.025,
+   7.91
+  ],
+  "foot_L": [
+   -1.85,
+   -3.3,
+   2.0
+  ],
+  "foot_R": [
+   -2.95,
+   -3.3,
+   2.0
+  ],
+  "foot_passenger_F": [
+   2.4,
+   -3.2,
+   2.0
+  ],
+  "foot_passenger_RL": [
+   2.6,
+   -1.8,
+   2.0
+  ],
+  "foot_passenger_RR": [
+   -2.6,
+   -1.8,
+   2.0
+  ],
+  "grip_L": [
+   -3.2443,
+   -3.7195,
+   6.8334
+  ],
+  "grip_R": [
+   -1.5557,
+   -3.7195,
+   6.8334
+  ],
+  "handlebar": [
+   -2.4,
+   -3.3,
+   6.5
+  ],
+  "headlight_L": [
+   3.55,
+   -12.15,
+   4.05
+  ],
+  "headlight_R": [
+   -3.55,
+   -12.15,
+   4.05
+  ],
+  "indicator_FL": [
+   4.7,
+   -12.05,
+   4.05
+  ],
+  "indicator_FR": [
+   -4.7,
+   -12.05,
+   4.05
+  ],
+  "indicator_RL": [
+   4.8,
+   12.15,
+   3.65
+  ],
+  "indicator_RR": [
+   -4.8,
+   12.15,
+   3.65
+  ],
+  "seat_driver": [
+   -2.4,
+   -0.375,
+   4.1
+  ],
+  "seat_passenger_F": [
+   2.4,
+   -0.375,
+   4.1
+  ],
+  "seat_passenger_RL": [
+   2.6,
+   4.45,
+   4.1
+  ],
+  "seat_passenger_RR": [
+   -2.6,
+   4.45,
+   4.1
+  ],
+  "taillight_L": [
+   4.8,
+   12.15,
+   4.35
+  ],
+  "taillight_R": [
+   -4.8,
+   12.15,
+   4.35
+  ],
+  "wheel_FL": [
+   4.9,
+   -7.7,
+   1.95
+  ],
+  "wheel_FR": [
+   -4.9,
+   -7.7,
+   1.95
+  ],
+  "wheel_RL": [
+   4.9,
+   7.7,
+   1.95
+  ],
+  "wheel_RR": [
+   -4.9,
+   7.7,
+   1.95
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 257288,
+ "clips": {},
+ "family": "vehicle",
+ "file": "maruti800.glb",
+ "front": "-Y",
+ "id": "maruti800",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 251.3,
+ "kit": 1,
+ "materials": [
+  "M_maruti800@night",
+  "M_maruti800_glass"
+ ],
+ "max": [
+  6.199,
+  12.5,
+  9.14
+ ],
+ "meta": {
+  "closed": true,
+  "cockpit": {
+   "eye": [
+    -2.4,
+    0.025,
+    7.91
+   ]
+  },
+  "fps": "cockpit",
+  "height": 11.5,
+  "lamps": {
+   "head": [
+    "headlight_L",
+    "headlight_R"
+   ],
+   "tail": [
+    "taillight_L",
+    "taillight_R"
+   ]
+  },
+  "length": 24.0,
+  "riders": {
+   "driver": {
+    "clips": [
+     "drive",
+     "sit"
+    ],
+    "feet": [
+     "foot_L",
+     "foot_R"
+    ],
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "car",
+    "seat": "seat_driver"
+   },
+   "passengers": [
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_F"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_F"
+    },
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_RL"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_RL"
+    },
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_RR"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_RR"
+    }
+   ]
+  },
+  "steerBones": {
+   "steer_L": {
+    "axis": [
+     0,
+     0,
+     1
+    ],
+    "k": 1.0
+   },
+   "steer_R": {
+    "axis": [
+     0,
+     0,
+     1
+    ],
+    "k": 1.0
+   },
+   "steer_wheel": {
+    "axis": [
+     0.0,
+     -0.6222,
+     -0.7828
+    ],
+    "k": -2.6
+   }
+  },
+  "tintSrc": {
+   "paint": "color",
+   "paint2": "color"
+  },
+  "vehicleTypes": [
+   "maruti800"
+  ],
+  "wheelR": 1.95,
+  "wheels": {
+   "wheel_FL": 1.95,
+   "wheel_FR": 1.95,
+   "wheel_RL": 1.95,
+   "wheel_RR": 1.95
+  },
+  "width": 12.0
+ },
+ "min": [
+  -6.199,
+  -12.545,
+  0.0
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  12.399,
+  25.045,
+  9.14
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#f2f0ea",
+   "paint2": "#f2f0ea"
+  }
+ },
+ "tris": 3334,
+ "units": "u",
+ "up": "Z"
+}

@@ -64,7 +64,7 @@ SKIN_A = '#9e6440'
 LIB_KID = 'clips_kid'
 LIB_ADULT = 'clips_adult'
 SLOW = {'idle': 2, 'idle_look': 2, 'talk': 2, 'sit': 3, 'sit_step': 3, 'sit_ground': 3, 'ride_scooty': 3, 'ride_pillion': 3,
-        'ride_pillion_side': 3, 'idle_cart': 2, 'kite_fly': 2}
+        'ride_pillion_side': 3, 'idle_cart': 2, 'kite_fly': 2, 'wave': 2, 'getup': 2, 'pick': 2, 'direct': 2}
 
 
 def faces(M, kid=True, lips='#7c4434'):
@@ -119,7 +119,7 @@ def _library(A, J, rig_name, rig, body_glb):
     ck.build_clip_library(A, R, rig)
     A.meta['bones'] = kit.BONES
     A.meta['clipNames'] = sorted(A.clips.keys())
-    A.nos_optimize = {'resample': SLOW}
+    A.nos_optimize = {'resample': SLOW, 'merge': True}
     A.preview = {'shots': [{'size': 48, 'samples': 1}]}
     import os
     import atexit
@@ -176,7 +176,7 @@ def clips_adult(A):
 CHINNU = {'kind': 'kid', 'skin': '#b97a4f', 'hair': '#1a1412', 'shirt': '#3d6fb0', 'pants': '#8a7a55', 'shoulders': '#f4f0e8', 'walkman': True, 'cowlick': True}
 
 
-@kit.asset('kid_chinnu', 'character', role='player', rig='kid_rig', clips=LIB_KID, height=7.0, people=['player', 'kid'], kinds=['kid'],
+@kit.asset('kid_chinnu', 'character', role='player', rig='kid_rig', clips=LIB_KID, height=7.0, people=['player'], kinds=[],
            npcs={'chinnu': {}}, look=CHINNU)
 def kid_chinnu(A):
     """Chinnu, 11 (bible §2.1): faded blue cricket T-shirt with white shoulder stripes and collar,

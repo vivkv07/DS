@@ -1,0 +1,62 @@
+00:00.183  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building maruti800 (vehicle)
+00:12.051  render           | Saved: '/tmp/nostalgia_blender/text_99d7dffd.png'
+00:12.255  render           | Saved: '/tmp/nostalgia_blender/text_99d7dffd.png'
+[kit] uv: 960 faces unwrapped along seams, 678 smart-projected
+[kit] uv atlas: 74 islands rescaled
+Info: No active and selected image texture node found in material "glass" (5) for object "maruti800"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (6 samples) in 32.0s
+Info: No active and selected image texture node found in material "glass" (5) for object "maruti800"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 256x256 (22 samples) in 44.3s
+Info: No active and selected image texture node found in material "glass" (5) for object "maruti800"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked orm 128x128 (1 samples) in 0.7s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] finish maruti800: tex 512, orm 128, emit True in 110.3s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:44:24 | INFO: Starting glTF 2.0 export
+21:44:24 | INFO: Extracting primitive: maruti800
+21:44:25 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+21:44:25 | INFO: Primitives created: 2
+21:44:25 | INFO: Finished glTF 2.0 export in 1.1528613567352295 s
+
+[kit] maruti800: 3334 tris (budget 6000) ok, 251.3 KB, clips [], anchors 26
+21:44:25 | INFO: Data are loaded, start creating Blender stuff
+21:44:25 | INFO: Blender create Mesh node maruti800
+21:44:26 | INFO: glTF import finished in 0.42s
+04:00.747  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/maruti800.png'
+[kit] preview maruti800.png (384px, 24 spp) in 114.0s
+21:46:20 | INFO: Data are loaded, start creating Blender stuff
+21:46:20 | INFO: Blender create Mesh node maruti800
+21:46:20 | INFO: glTF import finished in 0.17s
+05:12.010  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/maruti800_side.png'
+[kit] preview maruti800_side.png (320px, 16 spp) in 70.9s
+[kit] done maruti800 in 305.7s
+21:47:33 | INFO: Data are loaded, start creating Blender stuff
+21:47:33 | INFO: Blender create Mesh node maruti800
+21:47:33 | INFO: glTF import finished in 0.31s
+06:01.884  render           | Saved: '/tmp/nostalgia_blender/maruti800_var_0.png'
+[kit] render maruti800_var_0.png (256px, 14 spp) in 47.6s
+21:48:21 | INFO: Data are loaded, start creating Blender stuff
+21:48:21 | INFO: Blender create Mesh node maruti800
+21:48:22 | INFO: glTF import finished in 1.31s
+06:48.494  render           | Saved: '/tmp/nostalgia_blender/maruti800_var_1.png'
+[kit] render maruti800_var_1.png (256px, 14 spp) in 45.1s
+21:49:08 | INFO: Data are loaded, start creating Blender stuff
+21:49:08 | INFO: Blender create Mesh node maruti800
+21:49:08 | INFO: glTF import finished in 0.04s
+07:20.977  render           | Saved: '/tmp/nostalgia_blender/maruti800_var_2.png'
+[kit] render maruti800_var_2.png (256px, 14 spp) in 32.1s
+21:49:40 | INFO: Data are loaded, start creating Blender stuff
+21:49:40 | INFO: Blender create Mesh node maruti800
+21:49:40 | INFO: glTF import finished in 0.17s
+07:55.494  render           | Saved: '/tmp/nostalgia_blender/maruti800_var_3.png'
+[kit] render maruti800_var_3.png (256px, 14 spp) in 34.1s
+21:50:16 | INFO: Data are loaded, start creating Blender stuff
+21:50:16 | INFO: Blender create Mesh node maruti800
+21:50:17 | INFO: glTF import finished in 0.76s
+08:53.743  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/maruti800_night.png'
+[kit] render maruti800_night.png (320px, 16 spp) in 55.8s

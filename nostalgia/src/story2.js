@@ -228,6 +228,13 @@
   function follow(key, leader, o) { try { if (N.npcs && N.npcs.follow) N.npcs.follow(key, leader, o || {}); } catch (e) { N.err('story2.follow', e); } }
   function stopNpc(key) { try { if (N.npcs && N.npcs.stop) N.npcs.stop(key); } catch (e) { /* ignore */ } }
   function bark(key, text, o) {
+    // a speech bubble carries the words only: a screenplay direction such as "(level 5, the chappal raised)"
+    // is acted (an emote), not printed
+    if (typeof text === 'string' && /^\(/.test(text)) {
+      const dir = (text.match(/^\(([^)]*)\)/) || [])[1] || '';
+      text = text.replace(/^\([^)]*\)\s*/, '');
+      emote(key, /chappal|angr|shout/.test(dir) ? 'anger' : '*', 1.6);
+    }
     try {
       if (N.npcs && N.npcs.bark && npcGet(key)) return N.npcs.bark(key, text, o);
       if (N.dialogue && N.dialogue.bark) return N.dialogue.bark(key, text, o);
@@ -446,8 +453,23 @@
     try { N.hud.objective(null); N.hud.timer(null); } catch (e) { /* ignore */ }
     if (p) { p.noRun = false; if (sc.locked) p.controlsLocked = false; }
     if (SC.cur === sc) SC.cur = null;
-    if (!SC.cur) F().no_save = false;
+    if (!SC.cur) { F().no_save = false; sceneCalm(false); }
     N.emit('story2:scene', { id: sc.id, on: false, ok: !!ok });
+  }
+  /** The interlude, the ending at Charminar (23:20 to 23:40, past the curfew) and the epilogue are calm scenes:
+   *  no Chappal Meter, no curfew aunties (seen in the playthrough: an uncle pursuer barking "Does your Amma
+   *  know?" while the kites rose over Charminar). */
+  function sceneCalm(on) {
+    const W = N.wanted, f = F();
+    try {
+      if (on) {
+        if (W) { if (has(W, 'clear') && W.locked == null) W.clear('scene'); if (has(W, 'freeze')) W.freeze(true, 'story2:scene'); }
+        if (!f.no_curfew) f.no_curfew = 'scene';
+      } else {
+        if (W && has(W, 'freeze')) W.freeze(false, 'story2:scene');
+        if (f.no_curfew === 'scene') delete f.no_curfew;
+      }
+    } catch (e) { N.err('story2.calm', e); }
   }
   /** Run a sequence; resolves true when it finished, false when it was aborted (quit / load / new game). */
   function runScene(id, fn) {
@@ -455,6 +477,7 @@
     const sc = makeScene(id);
     SC.cur = sc; SC.last = id;
     F().no_save = true; // the interlude, the ending and the epilogue cannot be saved half-way (systems §13.9)
+    sceneCalm(true);
     N.emit('story2:scene', { id, on: true });
     return Promise.resolve().then(() => fn(sc.api)).then(() => { endScene(sc, true); return true; }, (e) => {
       if (!(e && (e.name === 'SceneAbort' || e.name === 'MissionAbort'))) N.err('story2.scene:' + id, e);
@@ -1481,6 +1504,9 @@
       npc(m, 'abba', near('ntr_gardens', 12, 10), { idle: 'stand', talk: false });
       beside('immu', -10, 8);
       let trainP = null;
+      // he parks the cycle at the gate first (shops.trainRide hides the player but leaves a vehicle under him:
+      // the parked cycle would carry an invisible rider round the gardens' gate for the whole ride)
+      if (N.player.vehicle && N.vehicles && N.vehicles.exit) { try { N.vehicles.exit(N.player, true); } catch (e) { /* ignore */ } }
       if (!isFF(m) && N.shops && has(N.shops, 'trainRide')) { trainP = N.shops.trainRide('ntr_gardens', { secs: 40 }); }
       else await m.cutscene([{ type: 'text', lines: ['A seated ride round the gardens: the Machan tree, the waterfall. Chinnu sits one seat behind.'], ms: 2600 }]);
       await talk(m, [

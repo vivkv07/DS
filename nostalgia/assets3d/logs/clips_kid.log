@@ -1,4 +1,4 @@
-00:00.068  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.237  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building clips_kid (character)
 [kit] clip idle_look: 180 frames loop feet z -0.012..0.171
 [kit] clip stroll: stride 4.8 u, duty 0.60, nominal 14 u/s -> 2.92 cycles/s; slip {'max': 0.0255, 'mean': 0.0009, 'pairs': 60, 'step': 0.15, 'ratio': 0.0063, 'low': -0.001}
@@ -21,163 +21,163 @@
 [kit] clip kite_fly: 90 frames loop feet z 0.008..0.012
 ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
 ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
-21:14:49 | INFO: Starting glTF 2.0 export
-21:14:54 | INFO: Finished glTF 2.0 export in 5.429044246673584 s
+21:36:46 | INFO: Starting glTF 2.0 export
+21:37:04 | INFO: Finished glTF 2.0 export in 17.163622617721558 s
 
-[kit] optimize clips_kid.glb: 931 constant channels dropped, 577.1 -> 281.6 KB
-[kit] clips_kid: 0 tris (budget 4000) ok, 281.6 KB, clips ['idle', 'idle_look', 'stroll', 'walk', 'run', 'sprint', 'ride_cycle', 'ride_kainchi', 'ride_scooty', 'ride_pillion', 'sit', 'sit_step', 'sit_ground', 'talk', 'wave', 'clap', 'fall', 'getup', 'pick', 'kite_fly'], anchors 0
-21:14:54 | INFO: Data are loaded, start creating Blender stuff
-21:14:54 | INFO: glTF import finished in 0.13s
-00:11.042  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/clips_kid.png'
-[kit] preview clips_kid.png (48px, 1 spp) in 2.4s
-[kit] done clips_kid in 9.9s
-21:14:57 | INFO: Data are loaded, start creating Blender stuff
-21:14:57 | INFO: Blender create Mesh node kid_chinnu
-21:14:57 | INFO: glTF import finished in 0.18s
-00:13.617  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_00.png'
-[kit] variant render clips_kid walk_00 (2.3s)
-00:16.544  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_01.png'
-[kit] variant render clips_kid walk_01 (2.9s)
-00:19.154  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_02.png'
-[kit] variant render clips_kid walk_02 (2.6s)
-00:21.909  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_03.png'
-[kit] variant render clips_kid walk_03 (2.7s)
-00:25.224  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_04.png'
-[kit] variant render clips_kid walk_04 (3.3s)
-00:27.724  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_05.png'
-[kit] variant render clips_kid walk_05 (2.5s)
-00:30.442  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_06.png'
-[kit] variant render clips_kid walk_06 (2.7s)
-00:33.171  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_07.png'
-[kit] variant render clips_kid walk_07 (2.7s)
-00:35.799  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_08.png'
-[kit] variant render clips_kid run_08 (2.6s)
-00:39.045  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_09.png'
-[kit] variant render clips_kid run_09 (3.2s)
-00:41.247  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_10.png'
-[kit] variant render clips_kid run_10 (2.2s)
-00:43.677  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_11.png'
-[kit] variant render clips_kid run_11 (2.4s)
-00:46.463  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_12.png'
-[kit] variant render clips_kid run_12 (2.8s)
-00:48.903  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_13.png'
-[kit] variant render clips_kid run_13 (2.5s)
-00:51.682  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_14.png'
-[kit] variant render clips_kid run_14 (2.8s)
-00:54.788  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_15.png'
-[kit] variant render clips_kid run_15 (3.1s)
-00:57.687  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_16.png'
-[kit] variant render clips_kid sprint_16 (2.8s)
-01:00.246  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_17.png'
-[kit] variant render clips_kid sprint_17 (2.6s)
-01:02.990  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_18.png'
-[kit] variant render clips_kid sprint_18 (2.7s)
-01:05.671  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_19.png'
-[kit] variant render clips_kid sprint_19 (2.7s)
-01:07.672  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_20.png'
-[kit] variant render clips_kid sprint_20 (2.0s)
-01:10.513  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_21.png'
-[kit] variant render clips_kid sprint_21 (2.8s)
-01:13.913  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_22.png'
-[kit] variant render clips_kid sprint_22 (3.4s)
-01:17.303  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_23.png'
-[kit] variant render clips_kid sprint_23 (3.4s)
+[kit] optimize clips_kid.glb: 931 constant channels dropped, clips merged into one track set, 577.1 -> 146.3 KB
+[kit] clips_kid: 0 tris (budget 4000) ok, 146.3 KB, clips ['idle', 'idle_look', 'stroll', 'walk', 'run', 'sprint', 'ride_cycle', 'ride_kainchi', 'ride_scooty', 'ride_pillion', 'sit', 'sit_step', 'sit_ground', 'talk', 'wave', 'clap', 'fall', 'getup', 'pick', 'kite_fly'], anchors 0
+21:37:04 | INFO: Data are loaded, start creating Blender stuff
+21:37:05 | INFO: glTF import finished in 0.89s
+00:36.770  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/clips_kid.png'
+[kit] preview clips_kid.png (48px, 1 spp) in 5.3s
+[kit] done clips_kid in 33.7s
+21:37:10 | INFO: Data are loaded, start creating Blender stuff
+21:37:10 | INFO: Blender create Mesh node kid_chinnu
+21:37:10 | INFO: glTF import finished in 0.12s
+00:42.010  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_00.png'
+[kit] variant render clips_kid walk_00 (5.0s)
+00:45.632  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_01.png'
+[kit] variant render clips_kid walk_01 (3.6s)
+00:50.194  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_02.png'
+[kit] variant render clips_kid walk_02 (4.5s)
+00:55.085  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_03.png'
+[kit] variant render clips_kid walk_03 (4.9s)
+00:58.776  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_04.png'
+[kit] variant render clips_kid walk_04 (3.7s)
+01:01.547  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_05.png'
+[kit] variant render clips_kid walk_05 (2.8s)
+01:04.926  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_06.png'
+[kit] variant render clips_kid walk_06 (3.4s)
+01:09.572  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_07.png'
+[kit] variant render clips_kid walk_07 (4.6s)
+01:17.033  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_08.png'
+[kit] variant render clips_kid run_08 (7.4s)
+01:24.187  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_09.png'
+[kit] variant render clips_kid run_09 (7.2s)
+01:30.836  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_10.png'
+[kit] variant render clips_kid run_10 (6.6s)
+01:38.680  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_11.png'
+[kit] variant render clips_kid run_11 (7.8s)
+01:46.534  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_12.png'
+[kit] variant render clips_kid run_12 (7.8s)
+01:53.859  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_13.png'
+[kit] variant render clips_kid run_13 (7.3s)
+02:00.641  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_14.png'
+[kit] variant render clips_kid run_14 (6.8s)
+02:07.859  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_15.png'
+[kit] variant render clips_kid run_15 (7.2s)
+02:15.228  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_16.png'
+[kit] variant render clips_kid sprint_16 (7.4s)
+02:22.209  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_17.png'
+[kit] variant render clips_kid sprint_17 (6.9s)
+02:26.444  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_18.png'
+[kit] variant render clips_kid sprint_18 (4.2s)
+02:31.304  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_19.png'
+[kit] variant render clips_kid sprint_19 (4.9s)
+02:37.366  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_20.png'
+[kit] variant render clips_kid sprint_20 (6.0s)
+02:44.981  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_21.png'
+[kit] variant render clips_kid sprint_21 (7.6s)
+02:52.592  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_22.png'
+[kit] variant render clips_kid sprint_22 (7.6s)
+03:02.301  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_23.png'
+[kit] variant render clips_kid sprint_23 (9.7s)
 [kit] variants sheet /home/user/DS/nostalgia/assets3d/previews/clips_kid_gait.png
-21:16:03 | INFO: Data are loaded, start creating Blender stuff
-21:16:03 | INFO: Blender create Mesh node kid_chinnu
-21:16:04 | INFO: glTF import finished in 0.12s
-01:21.693  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_00.png'
-[kit] variant render clips_kid idle_00 (3.7s)
-01:25.850  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_01.png'
-[kit] variant render clips_kid idle_look_01 (4.2s)
-01:29.153  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_02.png'
-[kit] variant render clips_kid talk_02 (3.3s)
-01:31.526  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_03.png'
-[kit] variant render clips_kid wave_03 (2.4s)
-01:33.973  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_04.png'
-[kit] variant render clips_kid clap_04 (2.5s)
-01:36.276  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_05.png'
-[kit] variant render clips_kid kite_fly_05 (2.3s)
-01:38.374  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_06.png'
-[kit] variant render clips_kid pick_06 (2.1s)
-01:40.254  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_07.png'
-[kit] variant render clips_kid pick_07 (1.9s)
-01:42.045  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_08.png'
-[kit] variant render clips_kid fall_08 (1.8s)
-01:44.218  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_09.png'
-[kit] variant render clips_kid fall_09 (2.1s)
-01:46.497  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_10.png'
-[kit] variant render clips_kid fall_10 (2.3s)
-01:48.982  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_11.png'
-[kit] variant render clips_kid getup_11 (2.5s)
-01:51.610  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_12.png'
-[kit] variant render clips_kid getup_12 (2.6s)
-01:54.444  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_13.png'
-[kit] variant render clips_kid sit_13 (2.8s)
-01:59.174  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_14.png'
-[kit] variant render clips_kid sit_step_14 (4.7s)
-02:02.573  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_15.png'
-[kit] variant render clips_kid sit_ground_15 (3.4s)
-02:05.055  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_16.png'
-[kit] variant render clips_kid ride_scooty_16 (2.5s)
-02:08.262  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_17.png'
-[kit] variant render clips_kid ride_pillion_17 (3.2s)
+21:39:37 | INFO: Data are loaded, start creating Blender stuff
+21:39:37 | INFO: Blender create Mesh node kid_chinnu
+21:39:37 | INFO: glTF import finished in 0.05s
+03:16.512  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_00.png'
+[kit] variant render clips_kid idle_00 (13.3s)
+03:28.591  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_01.png'
+[kit] variant render clips_kid idle_look_01 (12.0s)
+03:39.096  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_02.png'
+[kit] variant render clips_kid talk_02 (10.5s)
+03:48.638  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_03.png'
+[kit] variant render clips_kid wave_03 (9.5s)
+03:55.708  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_04.png'
+[kit] variant render clips_kid clap_04 (7.1s)
+04:02.492  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_05.png'
+[kit] variant render clips_kid kite_fly_05 (6.6s)
+04:08.697  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_06.png'
+[kit] variant render clips_kid pick_06 (6.2s)
+04:15.994  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_07.png'
+[kit] variant render clips_kid pick_07 (7.3s)
+04:23.101  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_08.png'
+[kit] variant render clips_kid fall_08 (7.1s)
+04:29.707  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_09.png'
+[kit] variant render clips_kid fall_09 (6.6s)
+04:35.618  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_10.png'
+[kit] variant render clips_kid fall_10 (5.9s)
+04:42.033  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_11.png'
+[kit] variant render clips_kid getup_11 (6.4s)
+04:48.154  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_12.png'
+[kit] variant render clips_kid getup_12 (6.1s)
+04:53.459  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_13.png'
+[kit] variant render clips_kid sit_13 (5.3s)
+04:58.587  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_14.png'
+[kit] variant render clips_kid sit_step_14 (5.0s)
+05:03.571  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_15.png'
+[kit] variant render clips_kid sit_ground_15 (5.0s)
+05:09.714  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_16.png'
+[kit] variant render clips_kid ride_scooty_16 (6.1s)
+05:13.930  render           | Saved: '/tmp/nostalgia_blender/clips_kid_v_17.png'
+[kit] variant render clips_kid ride_pillion_17 (4.1s)
 [kit] variants sheet /home/user/DS/nostalgia/assets3d/previews/clips_kid.png
-21:16:54 | INFO: Data are loaded, start creating Blender stuff
-21:16:54 | INFO: Blender create Mesh node hero_cycle
-21:16:54 | INFO: glTF import finished in 0.05s
-21:16:54 | INFO: Data are loaded, start creating Blender stuff
-21:16:54 | INFO: Blender create Mesh node kid_chinnu
-21:16:54 | INFO: glTF import finished in 0.10s
-02:12.895  render           | Saved: '/tmp/nostalgia_blender/clips_kid_ride_00.png'
-21:16:59 | INFO: Data are loaded, start creating Blender stuff
-21:16:59 | INFO: Blender create Mesh node hero_cycle
-21:16:59 | INFO: glTF import finished in 0.08s
-21:16:59 | INFO: Data are loaded, start creating Blender stuff
-21:16:59 | INFO: Blender create Mesh node kid_chinnu
-21:16:59 | INFO: glTF import finished in 0.26s
-02:17.541  render           | Saved: '/tmp/nostalgia_blender/clips_kid_ride_08.png'
-21:17:03 | INFO: Data are loaded, start creating Blender stuff
-21:17:03 | INFO: Blender create Mesh node hero_cycle
-21:17:03 | INFO: glTF import finished in 0.06s
-21:17:03 | INFO: Data are loaded, start creating Blender stuff
-21:17:03 | INFO: Blender create Mesh node kid_chinnu
-21:17:03 | INFO: glTF import finished in 0.07s
-02:21.642  render           | Saved: '/tmp/nostalgia_blender/clips_kid_ride_16.png'
-21:17:07 | INFO: Data are loaded, start creating Blender stuff
-21:17:07 | INFO: Blender create Mesh node hero_cycle
-21:17:07 | INFO: glTF import finished in 0.10s
-21:17:07 | INFO: Data are loaded, start creating Blender stuff
-21:17:07 | INFO: Blender create Mesh node kid_chinnu
-21:17:08 | INFO: glTF import finished in 0.07s
-02:25.673  render           | Saved: '/tmp/nostalgia_blender/clips_kid_ride_24.png'
+21:41:48 | INFO: Data are loaded, start creating Blender stuff
+21:41:48 | INFO: Blender create Mesh node hero_cycle
+21:41:48 | INFO: glTF import finished in 0.03s
+21:41:48 | INFO: Data are loaded, start creating Blender stuff
+21:41:48 | INFO: Blender create Mesh node kid_chinnu
+21:41:48 | INFO: glTF import finished in 0.04s
+05:18.609  render           | Saved: '/tmp/nostalgia_blender/clips_kid_ride_00.png'
+21:41:52 | INFO: Data are loaded, start creating Blender stuff
+21:41:52 | INFO: Blender create Mesh node hero_cycle
+21:41:52 | INFO: glTF import finished in 0.22s
+21:41:52 | INFO: Data are loaded, start creating Blender stuff
+21:41:52 | INFO: Blender create Mesh node kid_chinnu
+21:41:52 | INFO: glTF import finished in 0.16s
+05:23.625  render           | Saved: '/tmp/nostalgia_blender/clips_kid_ride_08.png'
+21:41:57 | INFO: Data are loaded, start creating Blender stuff
+21:41:57 | INFO: Blender create Mesh node hero_cycle
+21:41:57 | INFO: glTF import finished in 0.06s
+21:41:57 | INFO: Data are loaded, start creating Blender stuff
+21:41:57 | INFO: Blender create Mesh node kid_chinnu
+21:41:57 | INFO: glTF import finished in 0.06s
+05:28.842  render           | Saved: '/tmp/nostalgia_blender/clips_kid_ride_16.png'
+21:42:02 | INFO: Data are loaded, start creating Blender stuff
+21:42:02 | INFO: Blender create Mesh node hero_cycle
+21:42:02 | INFO: glTF import finished in 0.07s
+21:42:02 | INFO: Data are loaded, start creating Blender stuff
+21:42:02 | INFO: Blender create Mesh node kid_chinnu
+21:42:02 | INFO: glTF import finished in 0.08s
+05:37.045  render           | Saved: '/tmp/nostalgia_blender/clips_kid_ride_24.png'
 [kit] ride preview clips_kid_ride.png
-21:17:12 | INFO: Data are loaded, start creating Blender stuff
-21:17:12 | INFO: Blender create Mesh node hero_cycle
-21:17:12 | INFO: glTF import finished in 0.03s
-21:17:12 | INFO: Data are loaded, start creating Blender stuff
-21:17:12 | INFO: Blender create Mesh node kid_chinnu
-21:17:12 | INFO: glTF import finished in 0.09s
-02:29.658  render           | Saved: '/tmp/nostalgia_blender/clips_kid__kainchi_ride_00.png'
-21:17:15 | INFO: Data are loaded, start creating Blender stuff
-21:17:15 | INFO: Blender create Mesh node hero_cycle
-21:17:16 | INFO: glTF import finished in 0.12s
-21:17:16 | INFO: Data are loaded, start creating Blender stuff
-21:17:16 | INFO: Blender create Mesh node kid_chinnu
-21:17:16 | INFO: glTF import finished in 0.07s
-02:33.680  render           | Saved: '/tmp/nostalgia_blender/clips_kid__kainchi_ride_08.png'
-21:17:19 | INFO: Data are loaded, start creating Blender stuff
-21:17:19 | INFO: Blender create Mesh node hero_cycle
-21:17:19 | INFO: glTF import finished in 0.05s
-21:17:19 | INFO: Data are loaded, start creating Blender stuff
-21:17:19 | INFO: Blender create Mesh node kid_chinnu
-21:17:20 | INFO: glTF import finished in 0.04s
-02:38.169  render           | Saved: '/tmp/nostalgia_blender/clips_kid__kainchi_ride_16.png'
-21:17:24 | INFO: Data are loaded, start creating Blender stuff
-21:17:24 | INFO: Blender create Mesh node hero_cycle
-21:17:24 | INFO: glTF import finished in 0.04s
-21:17:24 | INFO: Data are loaded, start creating Blender stuff
-21:17:24 | INFO: Blender create Mesh node kid_chinnu
-21:17:24 | INFO: glTF import finished in 0.06s
-02:41.729  render           | Saved: '/tmp/nostalgia_blender/clips_kid__kainchi_ride_24.png'
+21:42:11 | INFO: Data are loaded, start creating Blender stuff
+21:42:11 | INFO: Blender create Mesh node hero_cycle
+21:42:11 | INFO: glTF import finished in 0.10s
+21:42:11 | INFO: Data are loaded, start creating Blender stuff
+21:42:11 | INFO: Blender create Mesh node kid_chinnu
+21:42:11 | INFO: glTF import finished in 0.15s
+05:47.824  render           | Saved: '/tmp/nostalgia_blender/clips_kid__kainchi_ride_00.png'
+21:42:21 | INFO: Data are loaded, start creating Blender stuff
+21:42:21 | INFO: Blender create Mesh node hero_cycle
+21:42:22 | INFO: glTF import finished in 0.36s
+21:42:22 | INFO: Data are loaded, start creating Blender stuff
+21:42:22 | INFO: Blender create Mesh node kid_chinnu
+21:42:22 | INFO: glTF import finished in 0.18s
+06:00.990  render           | Saved: '/tmp/nostalgia_blender/clips_kid__kainchi_ride_08.png'
+21:42:34 | INFO: Data are loaded, start creating Blender stuff
+21:42:34 | INFO: Blender create Mesh node hero_cycle
+21:42:35 | INFO: glTF import finished in 0.29s
+21:42:35 | INFO: Data are loaded, start creating Blender stuff
+21:42:35 | INFO: Blender create Mesh node kid_chinnu
+21:42:35 | INFO: glTF import finished in 0.38s
+06:15.014  render           | Saved: '/tmp/nostalgia_blender/clips_kid__kainchi_ride_16.png'
+21:42:48 | INFO: Data are loaded, start creating Blender stuff
+21:42:48 | INFO: Blender create Mesh node hero_cycle
+21:42:49 | INFO: glTF import finished in 0.16s
+21:42:49 | INFO: Data are loaded, start creating Blender stuff
+21:42:49 | INFO: Blender create Mesh node kid_chinnu
+21:42:49 | INFO: glTF import finished in 0.25s
+06:26.712  render           | Saved: '/tmp/nostalgia_blender/clips_kid__kainchi_ride_24.png'
 [kit] ride preview clips_kid__kainchi_ride.png

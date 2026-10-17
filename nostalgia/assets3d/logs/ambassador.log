@@ -1,0 +1,72 @@
+00:00.192  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building ambassador (vehicle)
+00:13.668  render           | Saved: '/tmp/nostalgia_blender/text_98e3cbc8.png'
+00:13.824  render           | Saved: '/tmp/nostalgia_blender/text_98e3cbc8.png'
+[kit] uv: 1358 faces unwrapped along seams, 917 smart-projected
+[kit] uv atlas: 81 islands rescaled
+Info: No active and selected image texture node found in material "glass" (6) for object "ambassador"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (6 samples) in 24.7s
+Info: No active and selected image texture node found in material "glass" (6) for object "ambassador"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 256x256 (22 samples) in 44.8s
+Info: No active and selected image texture node found in material "glass" (6) for object "ambassador"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked orm 128x128 (1 samples) in 2.3s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] finish ambassador: tex 512, orm 128, emit True in 96.2s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:44:15 | INFO: Starting glTF 2.0 export
+21:44:15 | INFO: Extracting primitive: ambassador
+21:44:19 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+21:44:19 | INFO: Primitives created: 2
+21:44:20 | INFO: Finished glTF 2.0 export in 4.9235920906066895 s
+
+[kit] ambassador: 4602 tris (budget 6000) ok, 340.2 KB, clips [], anchors 27
+21:44:20 | INFO: Data are loaded, start creating Blender stuff
+21:44:20 | INFO: Blender create Mesh node ambassador
+21:44:20 | INFO: glTF import finished in 0.41s
+03:45.791  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/ambassador.png'
+[kit] preview ambassador.png (384px, 24 spp) in 103.6s
+21:46:05 | INFO: Data are loaded, start creating Blender stuff
+21:46:05 | INFO: Blender create Mesh node ambassador
+21:46:06 | INFO: glTF import finished in 0.62s
+04:39.860  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/ambassador_side.png'
+[kit] preview ambassador_side.png (320px, 16 spp) in 52.7s
+[kit] done ambassador in 272.8s
+21:47:00 | INFO: Data are loaded, start creating Blender stuff
+21:47:00 | INFO: Blender create Mesh node ambassador
+21:47:01 | INFO: glTF import finished in 1.16s
+06:26.433  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/ambassador.png'
+[kit] render ambassador.png (384px, 24 spp) in 104.0s
+21:48:47 | INFO: Data are loaded, start creating Blender stuff
+21:48:47 | INFO: Blender create Mesh node ambassador
+21:48:47 | INFO: glTF import finished in 0.49s
+07:16.532  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/ambassador_side.png'
+[kit] render ambassador_side.png (320px, 16 spp) in 47.8s
+21:49:36 | INFO: Data are loaded, start creating Blender stuff
+21:49:36 | INFO: Blender create Mesh node ambassador
+21:49:38 | INFO: glTF import finished in 1.76s
+07:51.179  render           | Saved: '/tmp/nostalgia_blender/ambassador_var_0.png'
+[kit] render ambassador_var_0.png (256px, 14 spp) in 31.8s
+21:50:10 | INFO: Data are loaded, start creating Blender stuff
+21:50:10 | INFO: Blender create Mesh node ambassador
+21:50:10 | INFO: glTF import finished in 0.28s
+08:32.767  render           | Saved: '/tmp/nostalgia_blender/ambassador_var_1.png'
+[kit] render ambassador_var_1.png (256px, 14 spp) in 40.8s
+21:50:53 | INFO: Data are loaded, start creating Blender stuff
+21:50:53 | INFO: Blender create Mesh node ambassador
+21:50:53 | INFO: glTF import finished in 0.53s
+09:09.817  render           | Saved: '/tmp/nostalgia_blender/ambassador_var_2.png'
+[kit] render ambassador_var_2.png (256px, 14 spp) in 35.0s
+21:51:29 | INFO: Data are loaded, start creating Blender stuff
+21:51:29 | INFO: Blender create Mesh node ambassador
+21:51:29 | INFO: glTF import finished in 0.43s
+09:39.151  render           | Saved: '/tmp/nostalgia_blender/ambassador_var_3.png'
+[kit] render ambassador_var_3.png (256px, 14 spp) in 28.8s
+21:51:58 | INFO: Data are loaded, start creating Blender stuff
+21:51:59 | INFO: Blender create Mesh node ambassador
+21:51:59 | INFO: glTF import finished in 0.40s
+10:34.963  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/ambassador_night.png'
+[kit] render ambassador_night.png (320px, 16 spp) in 54.6s

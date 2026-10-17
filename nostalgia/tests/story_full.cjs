@@ -206,7 +206,7 @@ async function installHooks() {
     const sample = (c0) => {
       try {
         if (!N.player || !N.state || /title|boot/.test(N.state.mode)) return;
-        const c = c0 || (N.missions && N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || null;
+        const c = c0 || (N.missions && N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || window.__exploreCtx || null;
         if (!c) return;
         const p = N.player;
         const at = N.calendar.date.short;
@@ -275,8 +275,10 @@ async function reloadContinue(why) {
   await sleep(3500);
   const auto = await ev(() => N.missions.active && N.missions.active.id);
   check(!auto, 'after CONTINUE no mission starts by itself under the player (' + why + ')', auto);
-  const after = await ev(() => ({ counter: N.tape.counter, tin: N.tape.tin.size, done: N.missions.done.size, money: N.player.money, date: N.calendar.label(), mode: N.state.mode }));
+  const after = await ev(() => ({ counter: N.tape.counter, tin: N.tape.tin.size, done: N.missions.done.size, money: N.player.money, date: N.calendar.label(), mode: N.state.mode, sideOff: !!N.flags.mg_side_off, scene: !!(N.story2 && N.story2.state().scene) }));
   check(after.counter === before.counter && after.tin === before.tin && after.done === before.done, 'reload + CONTINUE restores the tape, the tin and the missions (' + why + ')', { before, after });
+  // the story turns the free-roam side games off while its missions run: a save never carries that switch
+  if (!after.scene) check(!after.sideOff, 'after CONTINUE the free-roam side games are on (no mission-time switch saved) (' + why + ')', after);
   return after;
 }
 
@@ -627,6 +629,12 @@ async function collect(id) {
   if (r.skip) return false;
   await sleep(300);
   if (r.pick === 'walk') await walkKeys(r.x, r.y, 3, 8000);
+  if (r.pick === 'click') {
+    // Nanna's camera: turn to the subject with a tap of the arrow key, then E
+    const f = await ev((id) => { const it = N.collectibles.get(id); return { dx: it.sx - N.player.x, dy: it.sy - N.player.y }; }, id);
+    const k = Math.abs(f.dx) > Math.abs(f.dy) ? (f.dx > 0 ? 'ArrowRight' : 'ArrowLeft') : (f.dy > 0 ? 'ArrowDown' : 'ArrowUp');
+    await page.keyboard.down(k); await sleep(60); await page.keyboard.up(k); await sleep(150);
+  }
   for (let i = 0; i < 6 && !(await ev((id) => N.collectibles.has(id), id)); i++) {
     if (r.pick !== 'walk') { await pressKey('KeyE'); }
     else { await goTo({ x: r.x, y: r.y }); }
@@ -706,6 +714,17 @@ async function pExplore1() {
   const got = [];
   for (const id of ['cassette_1', 'kite_3', 'goli_1']) if (await collect(id)) got.push(id);
   log('  explored: ' + got.join(', '));
+}
+/** Free roam in the monsoon (after M9): a long cycle ride south to Falaknuma for Patang Chacha's last kite
+ *  (K12, "on the hill path below the locked gate"), Ticket Thatha's stage 7 at Secunderabad station (T07) and
+ *  Nanna's camera at the zoo gate (F13): the must-see places the bible leaves to the collectibles. */
+async function pExplore2() {
+  await ev(() => { window.__exploreCtx = 'explore'; });
+  const got = [];
+  for (const id of ['kite_12', 'ticket_7', 'frame_13']) if (await collect(id)) got.push(id);
+  await ev(() => { window.__exploreCtx = null; });
+  log('  explored: ' + got.join(', '));
+  check(got.indexOf('kite_12') >= 0, 'free roam: K12 picked up on the Falaknuma hill path (it rises at Charminar in the ending)', got);
 }
 async function pM2() {
   await testTune();
@@ -958,6 +977,10 @@ async function pSA1() {
     };
     await finish1('pandal_duty', { hook, timeout: 300000 });
     check((await ev(() => N.flags.pandal_nights)) === night, 'SA1 night ' + night + ' done');
+    // the night ends after the 21:30 curfew: the committee's boy walks home without Mummy at the gate
+    await sleep(1500);
+    const g = await ev(() => ({ grace: N.flags.no_curfew || null, lvl: N.wanted ? N.wanted.level | 0 : 0, clock: N.clock.label() }));
+    check(g.lvl === 0 && g.grace === 'pandal', 'SA1 night ' + night + ': after pandal duty (' + g.clock + ') no curfew chase on the way home', g);
   }
   check(await ev(() => !!N.flags.tiger_helps_lorry), 'SA1: four nights done: Tiger\'s gang will push the lorry in M10');
 }
@@ -1069,10 +1092,12 @@ async function pEnding() {
       const ph = await ev(() => window.__s2ev.slice());
       if (ph.indexOf('alaap') >= 0 && end.kites == null) { end.kites = await ev(() => N.story2.state().props.indexOf('s2:kites') >= 0); await sleep(1200); await shot('ending_kites'); }
       if (ph.indexOf('theme') >= 0 && end.atPlaza == null) { end.atPlaza = await ev(() => { const c = N.places.charminar; return { d: Math.round(Math.hypot(N.player.x - c.x, N.player.y - c.y)), t: N.clock.label(), date: N.calendar.label() }; }); await sleep(800); await shot('ending_charminar'); }
+      if ((s.wanted | 0) > (end.maxWanted | 0)) end.maxWanted = s.wanted | 0;
       if (/CLAP/.test(s.offer || '')) { await page.keyboard.press('KeyE'); tally('E CLAP'); await sleep(260); return 'skip'; }
       return null;
     },
   });
+  check(!end.maxWanted, 'the ending is calm: no Chappal Meter, no curfew uncles on the plaza at 23:40', end.maxWanted);
   const ae = await ev(() => ({ ending: N.flags.ending_done, counter: N.tape.counter, phases: window.__s2ev.slice(), kites: N.story2.kitesForEnding(), found: N.collectibles.kitesForEnding ? N.collectibles.kitesForEnding() : null }));
   check(ae.ending && ae.counter === 999, 'the ending played: Side A plays back to 999', ae);
   check(end.atPlaza && end.atPlaza.d < 260 && /27 NOV 2003/.test(end.atPlaza.date), 'THE GAME ENDS AT CHARMINAR: the player is on the plaza (THU 27 NOV 2003, ' + (end.atPlaza && end.atPlaza.t) + ')', end);
@@ -1203,7 +1228,7 @@ function storyRefs(id) {
   return out;
 }
 function coverageReport() {
-  const ctxName = (c) => ({ bo_kaata: 'M1', lost_and_found: 'M2', first_day_first_show: 'M3', last_man_batting: 'M4', right_right: 'M5', ammammas_thursday: 'M6', the_clap: 'M7', drums_for_amma: 'M8', opening_day: 'M9', agle_baras: 'M10', last_bell: 'M11', chand_raat: 'M12', pandal_duty: 'SA1', current_poyindi: 'SA2', sunday_mutton: 'SA3', six_balls: 'SA4', lb_exhibition: 'SA4x', twelve_oclock: 'SA5', bunty_races: 'SA6r1', bunty_races_r2: 'SA6r2', bunty_races_r3: 'SA6r3', bunty_races_r4: 'SA6r4', new_class_old_books: 'SA7', christmas_stars: 'SA8', interlude: 'Interlude', ending: 'Ending', epilogue: 'Epilogue' }[c] || c);
+  const ctxName = (c) => ({ bo_kaata: 'M1', lost_and_found: 'M2', first_day_first_show: 'M3', last_man_batting: 'M4', right_right: 'M5', ammammas_thursday: 'M6', the_clap: 'M7', drums_for_amma: 'M8', opening_day: 'M9', agle_baras: 'M10', last_bell: 'M11', chand_raat: 'M12', pandal_duty: 'SA1', current_poyindi: 'SA2', sunday_mutton: 'SA3', six_balls: 'SA4', lb_exhibition: 'SA4x', twelve_oclock: 'SA5', explore: 'Free roam (collectibles)', bunty_races: 'SA6r1', bunty_races_r2: 'SA6r2', bunty_races_r3: 'SA6r3', bunty_races_r4: 'SA6r4', new_class_old_books: 'SA7', christmas_stars: 'SA8', interlude: 'Interlude', ending: 'Ending', epilogue: 'Epilogue' }[c] || c);
   // where the bible itself uses the places no mission walks to (collectibles, a scene seen from afar, ambience)
   const BIBLE_USE = { falaknuma_palace: 'bible: K12 kite on the hill path, F16 frame (gated palace, seen from afar)', birla_planetarium: 'bible: M11 mentions it at its corner; F05 frame', nehru_zoo: 'bible: F13 frame, G25 goli',
     secunderabad_station: 'bible: T07 ticket', begumpet_airport: 'bible: the ending (the plane light climbing out of Begumpet, seen from Charminar)', lal_darwaza_temple: 'bible: Old City Bonalu ambience (seasons.js)',
@@ -1212,8 +1237,10 @@ function coverageReport() {
   const lines = ['# Story playthrough: place coverage', '', 'Generated by tests/story_full.cjs (' + new Date().toISOString() + '). A place counts when the player was within reach of it while a', 'mission, side activity or story scene was running (passenger rides included; first date per context). "story script" lists',
     'the story files that reference the id (givers, gotos, cameras, props, respect zones); "also used by" the other modules.', '',
     '## Must-have places (places_registry §2)', '', '| id | visited by (mission / side activity / scene, first date) | story script | also used by |', '|---|---|---|---|'].concat(MUST.map(row), ['', '## Festival sites', '', '| id | visited by | story script | also used by |', '|---|---|---|---|'], FESTIVAL.map(row), AMBIENT.map(row), ['', '## Other named places (rounds 5-11)', '', '| id | visited by | story script | also used by |', '|---|---|---|---|'], NAMED.map(row));
-  const pre = PREFIX.map((q) => { const ids = Object.keys(cov).filter((k) => k.indexOf(q) === 0); return '| `' + q + '*` | ' + (ids.length ? ids.length + ': ' + ids.slice(0, 8).join(', ') : '**none**') + ' |'; });
-  lines.push('', '## Everyday elements (registry §3, rounds 2-3)', '', '| prefix | instances visited |', '|---|---|', ...pre);
+  // a prefix is "used" by a module that names one of its ids (or the prefix itself) in its source
+  const prefUses = (q) => { const out = []; for (const f of USE_FILES.concat(['story', 'story2', 'sidejobs', 'world_extras'])) { const src = USE_SRC[f] != null ? USE_SRC[f] : (USE_SRC[f] = (() => { try { return fs.readFileSync(path.join(ROOT, 'src', f + '.js'), 'utf8'); } catch (e) { return ''; } })()); if (src.indexOf("'" + q) >= 0 && out.indexOf(f) < 0) out.push(f); } return out; };
+  const pre = PREFIX.map((q) => { const ids = Object.keys(cov).filter((k) => k.indexOf(q) === 0); return '| `' + q + '*` | ' + (ids.length ? ids.length + ': ' + ids.slice(0, 8).join(', ') : '**none**') + ' | ' + (prefUses(q).join(', ') || '-') + ' |'; });
+  lines.push('', '## Everyday elements (registry §3, rounds 2-3)', '', '| prefix | instances visited by a mission / side activity | named in |', '|---|---|---|', ...pre);
   fs.writeFileSync(path.join(OUT, 'coverage.md'), lines.join('\n') + '\n');
   fs.writeFileSync(path.join(OUT, 'coverage.json'), JSON.stringify(cov, null, 1));
   // registry §2: "Rythu Bazaars (at least 2)": the three ids count as one row that needs two of them
@@ -1259,10 +1286,10 @@ const PHASES = [
   ['title', pTitle], ['m1', pM1], ['explore1', pExplore1], ['m2', pM2], ['reload1', () => reloadContinue('after M2')],
   ['m3', pM3], ['sa3', pSA3], ['m4', pM4], ['reload2', () => reloadContinue('after M4')], ['sa2', pSA2], ['m5', pM5], ['m6', pM6],
   ['sa4', pSA4], ['reload3', () => reloadContinue('after SA4 (STD booth save)')], ['m7', pM7], ['sa7', pSA7], ['sa5', pSA5], ['m8', pM8], ['sa6', pSA6],
-  ['m9', pM9], ['sa1', pSA1], ['m10', pM10], ['interlude', pInterlude], ['m11', pM11], ['m12', pM12], ['ending', pEnding], ['epilogue', pEpilogue],
+  ['m9', pM9], ['explore2', pExplore2], ['sa1', pSA1], ['m10', pM10], ['interlude', pInterlude], ['m11', pM11], ['m12', pM12], ['ending', pEnding], ['epilogue', pEpilogue],
   ['credits', pCredits], ['sa8', pSA8], ['replay', pReplay],
 ];
-const SIDE_PHASES = new Set(['sa3', 'sa2', 'sa4', 'sa7', 'sa5', 'sa6', 'sa1', 'sa8', 'explore1', 'replay']);
+const SIDE_PHASES = new Set(['sa3', 'sa2', 'sa4', 'sa7', 'sa5', 'sa6', 'sa1', 'sa8', 'explore1', 'explore2', 'replay']);
 (async () => {
   const browser = await chromium.launch();
   await openPage(browser);

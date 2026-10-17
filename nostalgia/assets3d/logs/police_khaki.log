@@ -1,0 +1,49 @@
+00:00.051  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building police_khaki (character)
+[kit] tris by part: torso 312, head 248, policecap 188, pith 182, arm_L 172, arm_R 172, leg_L 172, leg_R 172, haircap 150, eye 96, shoe_L 92, shoe_R 92, epaulettes 88, sole 80, belly 76, topi 70, ear 64, hand_L 56, hand_R 56, moustache 56, lid 52, brow 52, nose 52, whistle 48, pocket 44, buckle 44, lathi 38, thumb_L 26, thumb_R 26, mouth 26, glint 24, capband 24, collar_pt 16
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (8 samples) in 2.0s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 128x128 (32 samples) in 2.7s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (8 samples) in 0.6s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (8 samples) in 0.6s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (8 samples) in 0.6s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (8 samples) in 0.3s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (8 samples) in 0.4s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (8 samples) in 0.2s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (8 samples) in 0.3s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 128x128 (21 samples) in 0.1s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 128x128 (21 samples) in 0.5s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 128x128 (21 samples) in 0.2s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 128x128 (21 samples) in 0.3s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 128x128 (21 samples) in 0.4s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 128x128 (21 samples) in 0.2s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 128x128 (21 samples) in 0.2s
+[kit] layered bake: base + 7 slot layer(s)
+[kit] police_khaki: 1758 verts / 3066 tris after the atlas
+[kit] clip walk: stride 13.3 u, duty 0.40, nominal 45 u/s -> 3.38 cycles/s; slip {'max': 0.0404, 'mean': 0.0022, 'pairs': 38, 'step': 0.416, 'ratio': 0.0052, 'low': -0.057}
+[kit] clip run: stride 20.5 u, duty 0.27, nominal 80 u/s -> 3.91 cycles/s; slip {'max': 0.0003, 'mean': 0.0, 'pairs': 24, 'step': 0.64, 'ratio': 0.0, 'low': -0.0}
+[kit] clip ride_cycle: seat z 5.30, crank 1.05, max hip dip 0.00 u
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:45:34 | INFO: Starting glTF 2.0 export
+21:45:34 | INFO: Extracting primitive: police_khaki
+21:45:34 | INFO: Primitives created: 1
+21:45:34 | INFO: Finished glTF 2.0 export in 0.1670980453491211 s
+
+[kit] police_khaki: 3066 tris (budget 4000) ok, 221.2 KB, clips [], anchors 8
+[kit] done police_khaki in 19.5s

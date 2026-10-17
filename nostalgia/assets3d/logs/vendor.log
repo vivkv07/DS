@@ -1,0 +1,88 @@
+00:00.104  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building vendor (character)
+[kit] tris by part: cable 360, torso 274, head 248, skirt_lungi_up 224, headcloth 224, arm_L 172, arm_R 172, haircap 150, strap 112, eye 96, foot_L 80, sole 80, foot_R 80, leg_L 76, leg_R 76, ear 64, hand_L 56, hand_R 56, moustache 56, lid 52, brow 52, nose 52, mouth 46, thumb_L 26, thumb_R 26, glint 24, collar_pt 16
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (8 samples) in 3.3s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 128x128 (32 samples) in 8.4s
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (8 samples) in 3.9s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 128x128 (21 samples) in 0.3s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 128x128 (21 samples) in 0.5s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 128x128 (21 samples) in 0.4s
+[kit] layered bake: base + 3 slot layer(s)
+[kit] vendor: 1634 verts / 2950 tris after the atlas
+[kit] clip walk: stride 13.3 u, duty 0.40, nominal 45 u/s -> 3.38 cycles/s; slip {'max': 0.0404, 'mean': 0.0022, 'pairs': 38, 'step': 0.416, 'ratio': 0.0052, 'low': -0.057}
+[kit] clip run: stride 20.5 u, duty 0.27, nominal 80 u/s -> 3.91 cycles/s; slip {'max': 0.0003, 'mean': 0.0, 'pairs': 24, 'step': 0.64, 'ratio': 0.0, 'low': -0.0}
+[kit] clip ride_cycle: seat z 5.30, crank 1.05, max hip dip 0.00 u
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:44:31 | INFO: Starting glTF 2.0 export
+21:44:31 | INFO: Extracting primitive: vendor
+21:44:31 | INFO: Primitives created: 1
+21:44:32 | INFO: Finished glTF 2.0 export in 1.2957885265350342 s
+
+[kit] vendor: 2950 tris (budget 4000) ok, 224.0 KB, clips [], anchors 8
+21:44:32 | INFO: Data are loaded, start creating Blender stuff
+21:44:33 | INFO: Blender create Mesh node vendor
+21:44:33 | INFO: glTF import finished in 0.13s
+00:50.875  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/vendor.png'
+[kit] preview vendor.png (48px, 1 spp) in 9.0s
+[kit] done vendor in 48.5s
+21:44:42 | INFO: Data are loaded, start creating Blender stuff
+21:44:42 | INFO: Blender create Mesh node vendor
+21:44:42 | INFO: glTF import finished in 0.54s
+01:08.004  render           | Saved: '/tmp/nostalgia_blender/vendor_v_00.png'
+[kit] variant render vendor vendor (15.0s)
+01:23.255  render           | Saved: '/tmp/nostalgia_blender/vendor_v_01.png'
+[kit] variant render vendor cart (15.2s)
+01:36.787  render           | Saved: '/tmp/nostalgia_blender/vendor_v_02.png'
+[kit] variant render vendor babji (13.5s)
+[kit] variants sheet /home/user/DS/nostalgia/assets3d/previews/vendor.png
+21:45:28 | INFO: Data are loaded, start creating Blender stuff
+21:45:28 | INFO: Blender create Mesh node vendor
+21:45:28 | INFO: glTF import finished in 0.24s
+02:11.315  render           | Saved: '/tmp/nostalgia_blender/vendor_v_00.png'
+[kit] variant render vendor vendor (33.6s)
+[kit] variants sheet /home/user/DS/nostalgia/assets3d/previews/vendor_face.png
+21:46:02 | INFO: Data are loaded, start creating Blender stuff
+21:46:02 | INFO: Blender create Mesh node vendor
+21:46:03 | INFO: glTF import finished in 0.27s
+02:24.367  render           | Saved: '/tmp/nostalgia_blender/vendor_v_00.png'
+[kit] variant render vendor walk_00 (12.1s)
+02:32.119  render           | Saved: '/tmp/nostalgia_blender/vendor_v_01.png'
+[kit] variant render vendor walk_01 (7.8s)
+02:48.876  render           | Saved: '/tmp/nostalgia_blender/vendor_v_02.png'
+[kit] variant render vendor walk_02 (16.7s)
+03:01.142  render           | Saved: '/tmp/nostalgia_blender/vendor_v_03.png'
+[kit] variant render vendor walk_03 (12.2s)
+03:13.836  render           | Saved: '/tmp/nostalgia_blender/vendor_v_04.png'
+[kit] variant render vendor walk_04 (12.7s)
+03:25.217  render           | Saved: '/tmp/nostalgia_blender/vendor_v_05.png'
+[kit] variant render vendor walk_05 (11.4s)
+03:39.001  render           | Saved: '/tmp/nostalgia_blender/vendor_v_06.png'
+[kit] variant render vendor walk_06 (13.7s)
+03:53.448  render           | Saved: '/tmp/nostalgia_blender/vendor_v_07.png'
+[kit] variant render vendor walk_07 (14.4s)
+04:07.639  render           | Saved: '/tmp/nostalgia_blender/vendor_v_08.png'
+[kit] variant render vendor run_08 (14.2s)
+04:29.658  render           | Saved: '/tmp/nostalgia_blender/vendor_v_09.png'
+[kit] variant render vendor run_09 (22.0s)
+04:45.559  render           | Saved: '/tmp/nostalgia_blender/vendor_v_10.png'
+[kit] variant render vendor run_10 (15.9s)
+04:55.812  render           | Saved: '/tmp/nostalgia_blender/vendor_v_11.png'
+[kit] variant render vendor run_11 (10.2s)
+05:11.656  render           | Saved: '/tmp/nostalgia_blender/vendor_v_12.png'
+[kit] variant render vendor run_12 (15.8s)
+05:19.680  render           | Saved: '/tmp/nostalgia_blender/vendor_v_13.png'
+[kit] variant render vendor run_13 (8.0s)
+05:32.646  render           | Saved: '/tmp/nostalgia_blender/vendor_v_14.png'
+[kit] variant render vendor run_14 (13.0s)
+05:39.985  render           | Saved: '/tmp/nostalgia_blender/vendor_v_15.png'
+[kit] variant render vendor run_15 (7.3s)
+[kit] variants sheet /home/user/DS/nostalgia/assets3d/previews/vendor_gait.png

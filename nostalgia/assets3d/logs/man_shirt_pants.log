@@ -1,19 +1,110 @@
-00:00.036  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.158  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building man_shirt_pants (character)
-[kit] tris by part: torso 312, specs 300, head 248, camera 176, arm_L 172, arm_R 172, leg_L 172, leg_R 172, haircap 142, skullcap 108, eye 96, lanyard 92, strap 88, iranicap 84, foot_L 80, sole 80, foot_R 80, belly 76, beard 76, towel 68, ear 64, quiff 60, hand_L 56, hand_R 56, moustache 56, heel_strap 52, toe_loop 52, lid 52, brow 52, nose 52, pocket 44, buckle 44, pen 40, thumb_L 26, thumb_R 26, mouth 26, glint 24, collar_pt 16
+[kit] tris by part: torso 312, head 248, specs 220, camera 176, arm_L 172, arm_R 172, leg_L 172, leg_R 172, haircap 142, skullcap 108, eye 96, lanyard 92, strap 88, iranicap 84, foot_L 80, sole 80, foot_R 80, belly 76, beard 76, towel 68, ear 64, quiff 60, hand_L 56, hand_R 56, moustache 56, heel_strap 52, toe_loop 52, lid 52, brow 52, nose 52, pocket 44, buckle 44, pen 40, thumb_L 26, thumb_R 26, mouth 26, glint 24, collar_pt 16
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] baked albedo 256x256 (8 samples) in 5.5s
+[kit] baked albedo 256x256 (8 samples) in 5.2s
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] baked ao 128x128 (32 samples) in 5.4s
+[kit] baked ao 128x128 (32 samples) in 9.3s
+[kit] man_shirt_pants: 1993 verts / 3512 tris after the atlas
 [kit] clip walk: stride 13.3 u, duty 0.40, nominal 45 u/s -> 3.38 cycles/s; slip {'max': 0.0404, 'mean': 0.0022, 'pairs': 38, 'step': 0.416, 'ratio': 0.0052, 'low': -0.057}
 [kit] clip run: stride 20.5 u, duty 0.27, nominal 80 u/s -> 3.91 cycles/s; slip {'max': 0.0003, 'mean': 0.0, 'pairs': 24, 'step': 0.64, 'ratio': 0.0, 'low': -0.0}
 [kit] clip ride_cycle: seat z 5.30, crank 1.05, max hip dip 0.00 u
 ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
 ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
-21:26:03 | INFO: Starting glTF 2.0 export
-21:26:03 | INFO: Extracting primitive: man_shirt_pants
-21:26:03 | INFO: Primitives created: 1
-21:26:03 | INFO: Finished glTF 2.0 export in 0.17607951164245605 s
+21:31:22 | INFO: Starting glTF 2.0 export
+21:31:22 | INFO: Extracting primitive: man_shirt_pants
+21:31:22 | INFO: Primitives created: 1
+21:31:23 | INFO: Finished glTF 2.0 export in 1.1396591663360596 s
 
-[kit] man_shirt_pants: 3592 tris (budget 4000) ok, 280.7 KB, clips [], anchors 8
-[kit] done man_shirt_pants in 18.1s
+[kit] man_shirt_pants: 3512 tris (budget 4000) ok, 277.2 KB, clips [], anchors 8
+21:31:23 | INFO: Data are loaded, start creating Blender stuff
+21:31:23 | INFO: Blender create Mesh node man_shirt_pants
+21:31:23 | INFO: glTF import finished in 0.48s
+00:40.983  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/man_shirt_pants.png'
+[kit] preview man_shirt_pants.png (48px, 1 spp) in 6.4s
+[kit] done man_shirt_pants in 37.5s
+21:31:30 | INFO: Data are loaded, start creating Blender stuff
+21:31:30 | INFO: Blender create Mesh node man_shirt_pants
+21:31:30 | INFO: glTF import finished in 0.45s
+01:02.375  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_00.png'
+[kit] variant render man_shirt_pants man (20.0s)
+01:13.441  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_01.png'
+[kit] variant render man_shirt_pants nanna (11.0s)
+01:30.268  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_02.png'
+[kit] variant render man_shirt_pants abba (16.8s)
+01:45.701  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_03.png'
+[kit] variant render man_shirt_pants faramarz (15.2s)
+01:59.089  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_04.png'
+[kit] variant render man_shirt_pants belly (13.2s)
+[kit] variants sheet /home/user/DS/nostalgia/assets3d/previews/man_shirt_pants.png
+21:32:50 | INFO: Data are loaded, start creating Blender stuff
+21:32:50 | INFO: Blender create Mesh node man_shirt_pants
+21:32:50 | INFO: glTF import finished in 0.41s
+02:22.799  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_00.png'
+[kit] variant render man_shirt_pants man (21.3s)
+[kit] variants sheet /home/user/DS/nostalgia/assets3d/previews/man_shirt_pants_face.png
+21:33:12 | INFO: Data are loaded, start creating Blender stuff
+21:33:12 | INFO: Blender create Mesh node man_shirt_pants
+21:33:13 | INFO: glTF import finished in 0.59s
+02:33.112  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_00.png'
+[kit] variant render man_shirt_pants walk_00 (9.3s)
+02:42.491  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_01.png'
+[kit] variant render man_shirt_pants walk_01 (9.4s)
+02:49.153  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_02.png'
+[kit] variant render man_shirt_pants walk_02 (6.6s)
+02:56.548  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_03.png'
+[kit] variant render man_shirt_pants walk_03 (7.4s)
+03:03.384  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_04.png'
+[kit] variant render man_shirt_pants walk_04 (6.8s)
+03:11.441  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_05.png'
+[kit] variant render man_shirt_pants walk_05 (8.1s)
+03:19.351  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_06.png'
+[kit] variant render man_shirt_pants walk_06 (7.9s)
+03:29.825  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_07.png'
+[kit] variant render man_shirt_pants walk_07 (10.5s)
+03:39.964  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_08.png'
+[kit] variant render man_shirt_pants run_08 (10.2s)
+03:49.287  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_09.png'
+[kit] variant render man_shirt_pants run_09 (9.2s)
+03:55.502  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_10.png'
+[kit] variant render man_shirt_pants run_10 (6.2s)
+03:59.683  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_11.png'
+[kit] variant render man_shirt_pants run_11 (4.2s)
+04:05.366  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_12.png'
+[kit] variant render man_shirt_pants run_12 (5.7s)
+04:08.780  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_13.png'
+[kit] variant render man_shirt_pants run_13 (3.5s)
+04:12.277  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_14.png'
+[kit] variant render man_shirt_pants run_14 (3.4s)
+04:17.519  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_v_15.png'
+[kit] variant render man_shirt_pants run_15 (5.2s)
+[kit] variants sheet /home/user/DS/nostalgia/assets3d/previews/man_shirt_pants_gait.png
+21:35:07 | INFO: Data are loaded, start creating Blender stuff
+21:35:07 | INFO: Blender create Mesh node hero_cycle
+21:35:07 | INFO: glTF import finished in 0.17s
+21:35:07 | INFO: Data are loaded, start creating Blender stuff
+21:35:07 | INFO: Blender create Mesh node man_shirt_pants
+21:35:08 | INFO: glTF import finished in 0.24s
+04:28.963  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_ride_00.png'
+21:35:18 | INFO: Data are loaded, start creating Blender stuff
+21:35:18 | INFO: Blender create Mesh node hero_cycle
+21:35:18 | INFO: glTF import finished in 0.17s
+21:35:18 | INFO: Data are loaded, start creating Blender stuff
+21:35:18 | INFO: Blender create Mesh node man_shirt_pants
+21:35:18 | INFO: glTF import finished in 0.28s
+04:43.719  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_ride_08.png'
+21:35:33 | INFO: Data are loaded, start creating Blender stuff
+21:35:33 | INFO: Blender create Mesh node hero_cycle
+21:35:33 | INFO: glTF import finished in 0.28s
+21:35:33 | INFO: Data are loaded, start creating Blender stuff
+21:35:33 | INFO: Blender create Mesh node man_shirt_pants
+21:35:33 | INFO: glTF import finished in 0.19s
+04:55.334  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_ride_16.png'
+21:35:44 | INFO: Data are loaded, start creating Blender stuff
+21:35:44 | INFO: Blender create Mesh node hero_cycle
+21:35:44 | INFO: glTF import finished in 0.10s
+21:35:44 | INFO: Data are loaded, start creating Blender stuff
+21:35:44 | INFO: Blender create Mesh node man_shirt_pants
+21:35:45 | INFO: glTF import finished in 0.15s
+05:07.363  render           | Saved: '/tmp/nostalgia_blender/man_shirt_pants_ride_24.png'
+[kit] ride preview man_shirt_pants_ride.png

@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 288364,
+ "bytes": 149780,
  "clips": {
   "clap": {
    "duration": 1.3333,
@@ -13,28 +13,44 @@
    "fps": 30,
    "frames": 40,
    "loco": false,
-   "loop": true
+   "loop": true,
+   "range": [
+    0,
+    40
+   ]
   },
   "fall": {
    "duration": 1.3333,
    "fps": 30,
    "frames": 40,
    "loco": false,
-   "loop": false
+   "loop": false,
+   "range": [
+    46,
+    86
+   ]
   },
   "getup": {
    "duration": 1.6,
    "fps": 30,
    "frames": 48,
    "loco": false,
-   "loop": false
+   "loop": false,
+   "range": [
+    92,
+    140
+   ]
   },
   "idle": {
    "duration": 4.0,
    "fps": 30,
    "frames": 120,
    "loco": false,
-   "loop": true
+   "loop": true,
+   "range": [
+    146,
+    266
+   ]
   },
   "idle_look": {
    "duration": 6.0,
@@ -45,7 +61,11 @@
    "fps": 30,
    "frames": 180,
    "loco": false,
-   "loop": true
+   "loop": true,
+   "range": [
+    272,
+    452
+   ]
   },
   "kite_fly": {
    "duration": 3.0,
@@ -56,14 +76,22 @@
    "fps": 30,
    "frames": 90,
    "loco": false,
-   "loop": true
+   "loop": true,
+   "range": [
+    458,
+    548
+   ]
   },
   "pick": {
    "duration": 1.3333,
    "fps": 30,
    "frames": 40,
    "loco": false,
-   "loop": false
+   "loop": false,
+   "range": [
+    554,
+    594
+   ]
   },
   "ride_cycle": {
    "duration": 1.0667,
@@ -73,6 +101,10 @@
    "loco": false,
    "loop": true,
    "phase": "crank angle / 2pi (0 = left crank back)",
+   "range": [
+    600,
+    632
+   ],
    "ride": true,
    "saddleDrop": 0.6,
    "vehicle": "hero_cycle"
@@ -86,6 +118,10 @@
    "loco": false,
    "loop": true,
    "phase": "crank angle / 2pi (0 = left crank back)",
+   "range": [
+    638,
+    670
+   ],
    "ride": true,
    "saddleDrop": 0.0,
    "vehicle": "hero_cycle"
@@ -99,6 +135,10 @@
    "geom": null,
    "loco": false,
    "loop": true,
+   "range": [
+    676,
+    736
+   ],
    "ride": true
   },
   "ride_scooty": {
@@ -131,6 +171,10 @@
    },
    "loco": false,
    "loop": true,
+   "range": [
+    742,
+    802
+   ],
    "ride": true
   },
   "run": {
@@ -143,6 +187,10 @@
    "loop": true,
    "nominal": 80.0,
    "phase0": "left heel strike",
+   "range": [
+    808,
+    840
+   ],
    "slip": {
     "low": -0.0,
     "max": 0.0002,
@@ -161,6 +209,10 @@
    "hip": 2.6,
    "loco": false,
    "loop": true,
+   "range": [
+    846,
+    936
+   ],
    "seat": true,
    "seatTop": 2.22
   },
@@ -171,6 +223,10 @@
    "hip": 0.46,
    "loco": false,
    "loop": true,
+   "range": [
+    942,
+    1032
+   ],
    "seat": "ground"
   },
   "sit_step": {
@@ -184,6 +240,10 @@
    "hip": 2.2,
    "loco": false,
    "loop": true,
+   "range": [
+    1038,
+    1128
+   ],
    "seat": true,
    "seatTop": 1.84
   },
@@ -197,6 +257,10 @@
    "loop": true,
    "nominal": 105.0,
    "phase0": "left heel strike",
+   "range": [
+    1134,
+    1166
+   ],
    "slip": {
     "low": -0.0,
     "max": 0.0,
@@ -218,6 +282,10 @@
    "loop": true,
    "nominal": 14.0,
    "phase0": "left heel strike",
+   "range": [
+    1172,
+    1204
+   ],
    "slip": {
     "low": -0.001,
     "max": 0.0255,
@@ -238,7 +306,11 @@
    "fps": 30,
    "frames": 120,
    "loco": false,
-   "loop": true
+   "loop": true,
+   "range": [
+    1210,
+    1330
+   ]
   },
   "walk": {
    "duration": 1.0667,
@@ -250,6 +322,10 @@
    "loop": true,
    "nominal": 45.0,
    "phase0": "left heel strike",
+   "range": [
+    1336,
+    1368
+   ],
    "slip": {
     "low": -0.048,
     "max": 0.0346,
@@ -270,7 +346,11 @@
    "fps": 30,
    "frames": 60,
    "loco": false,
-   "loop": false
+   "loop": false,
+   "range": [
+    1374,
+    1434
+   ]
   }
  },
  "family": "character",
@@ -278,7 +358,7 @@
  "front": "-Y",
  "id": "clips_kid",
  "images": [],
- "kb": 281.6,
+ "kb": 146.3,
  "kit": 1,
  "materials": [],
  "max": [
@@ -311,6 +391,7 @@
    "foot_R",
    "toe_R"
   ],
+  "clipFps": 30,
   "clipLib": "kid_rig",
   "clipNames": [
    "clap",
@@ -334,6 +415,7 @@
    "walk",
    "wave"
   ],
+  "clipTrack": "library",
   "rig": "kid_rig",
   "role": "clips"
  },

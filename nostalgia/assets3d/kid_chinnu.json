@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 321828,
+ "bytes": 324588,
  "clips": {},
  "family": "character",
  "file": "kid_chinnu.glb",
@@ -52,7 +52,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 314.3,
+ "kb": 317.0,
  "kit": 1,
  "materials": [
   "M_kid_chinnu"

@@ -93,7 +93,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 6000,
- "bytes": 282148,
+ "bytes": 241924,
  "clips": {},
  "family": "vehicle",
  "file": "scooty.glb",
@@ -104,7 +104,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 275.5,
+ "kb": 236.3,
  "kit": 1,
  "materials": [
   "M_scooty@night"
@@ -202,7 +202,7 @@
    "paint": "#e8323c"
   }
  },
- "tris": 3424,
+ "tris": 3090,
  "units": "u",
  "up": "Z"
 }
