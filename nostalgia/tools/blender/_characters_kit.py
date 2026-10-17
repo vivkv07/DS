@@ -1290,6 +1290,14 @@ def cap(H, m, kind='cricket', brim=None):
         d.location = (0, cy + 0.05, hz + 1.0)
         kit.apply_transform(d)
         return H.add(d)
+    if kind == 'pith':
+        # a sola topee (Professor Pasha): a domed crown on a wide, gently sloping brim
+        prof = [(0.98, -0.08), (0.96, -0.03), (0.72, 0.08), (0.64, 0.2), (0.6, 0.38), (0.48, 0.56), (0.28, 0.67), (0.0, 0.7)]
+        d = kit.lathe('pith', prof, seg=SEG['cap'] + 2, mat=m, close_bottom=False)
+        d.scale = (0.95, 1.06, 1.0)
+        d.location = (0, cy + 0.06, hz + 0.92)
+        kit.apply_transform(d)
+        return H.add(d)
     if kind == 'police':
         band = kit.lathe('band', [(0.6, 0.0), (0.61, 0.14), (0.62, 0.22)], seg=SEG['cap'], mat=m, close_bottom=False, close_top=False)
         top = kit.lathe('crown', [(0.62, 0.22), (0.72, 0.36), (0.74, 0.42), (0.6, 0.47), (0.0, 0.5)], seg=SEG['cap'], mat=m, close_bottom=False)
@@ -1758,6 +1766,143 @@ def epaulettes(B, m):
         kit.apply_transform(e)
         objs.append(e)
     return B.add(kit.join(objs, 'epaulettes'), 'chest')
+
+
+# ------------------------------------------------------------------ garment slots (shown by look rules)
+def belly_shell(B, m, bel=1.0, off=0.025, from_level=4, name='belly'):
+    """a pot belly as a shell over the flat torso (slot 'belly': shown when look.belly): the torso
+    rings from `from_level` (4 = above a belt, so the belt stays visible under the overhang) to
+    the chest, bulged like Body.torso(belly=...), weighted like the torso"""
+    rig, k = B.rig, B.k
+    T = TORSO[rig]
+    rings = []
+    for i in range(from_level, 8):
+        (c, r), w = T[i], TORSO_W[i]
+        c = list(c)
+        rx, ry = r
+        f = {'waist_lo': 0.45, 'waist': 0.7, 'waist_hi': 0.85, 'belly': 1.0, 'ribs': 0.55}.get(LEVELS[i], 0.0) * bel
+        ry += 0.30 * f * k
+        rx += 0.08 * f * k
+        c[1] -= 0.18 * f * k
+        o = off * (1.0 if i < 7 else 0.4)
+        rings.append(dict(c=tuple(c), r=(rx + o, ry + o), p=2.25, w=dict(w), mat=m))
+    ob = loft(name, rings, seg=SEG['torso'], side=(1, 0, 0), cap_start=False, cap_end=False)
+    ob = B._thicken_hem(ob, 0.03 * k)
+    return B.add(ob)
+
+
+def jacket(B, m, m_cuff=None, z0=None, open_front=0.2, off=0.07, name='jacket'):
+    """an open jacket over the torso (Bunty-anna's denim jacket): a torso shell open at the front,
+    a collar band and long sleeves over the arms"""
+    rig, k = B.rig, B.k
+    T = TORSO[rig]
+    z0 = z0 if z0 is not None else T[1][0][2] - 0.1 * k
+    objs = [shell(B, z0, T[10][0][2] + 0.02, off, m, name=name, open_front=open_front * k, seg=16)]
+    for sx in (1, -1):
+        objs.append(sleeve_shell(B, sx, m, off * 0.8, t1=1.0, name=name + '_sleeve'))
+    cz = T[10][0][2]
+    pts = []
+    for i in range(9):
+        a = math.radians(-40 + 260 * i / 8)
+        pts.append((math.cos(a) * (T[10][1][0] + 0.12 * k), T[10][0][1] + math.sin(a) * (T[10][1][1] + 0.12 * k), cz + 0.06 + 0.06 * math.sin(a)))
+    objs.append(kit.tube(name + '_collar', pts, 0.07 * k, seg=5, mat=m_cuff or m, cap=True))
+    o = kit.join(objs, name)
+    for v in o.data.vertices:
+        pass
+    return B.add(o, None) if o.vertex_groups else B.add(o, lambda co, rig=rig: torso_w(rig, co))
+
+
+def shirt_over(B, m, z0=None, off=0.06, sleeve_t=0.5, name='shirt_over'):
+    """a half-sleeve shirt worn open-ish over a banian and lungi ('lungi' looks, vendors)"""
+    rig, k = B.rig, B.k
+    T = TORSO[rig]
+    z0 = z0 if z0 is not None else T[1][0][2] - 0.2 * k
+    objs = [shell(B, z0, T[10][0][2] + 0.02, off, m, name=name, open_front=0.0, seg=14, flare=0.06 * k)]
+    for sx in (1, -1):
+        objs.append(sleeve_shell(B, sx, m, off * 0.9, t1=sleeve_t, name=name + '_sleeve'))
+    o = kit.join(objs, name)
+    return B.add(o)
+
+
+def raincoat(B, m, name='raincoat'):
+    """Immu's yellow raincoat for Chand Raat: a long shell from the collar to below the knee,
+    with sleeves (the hood is cap / hood() on the head)"""
+    rig, k = B.rig, B.k
+    T = TORSO[rig]
+    objs = [shell(B, T[3][0][2], T[10][0][2] + 0.02, 0.09 * k, m, name=name, seg=14)]
+    for sx in (1, -1):
+        objs.append(sleeve_shell(B, sx, m, 0.08 * k, t1=1.0, name=name + '_sleeve'))
+    o = kit.join(objs, name)
+    B.add(o)
+    B.skirt('kurta', m=m, hem_z=B.J['knee'][2] - 0.25 * k, flare=1.25, z_top=T[3][0][2] + 0.05, rings_n=4)
+
+
+def school_shoes(B, m_shoe, m_sock, name='shoes'):
+    """black school shoes over white socks (a slot over the chappal feet): the shoe shell is a
+    little larger than the bare foot + sole, the sock a ring up the ankle"""
+    J, k = B.J, B.k
+    an, bl, tp = J['ankle'], J['ball'], J['toe']
+    objs = []
+    for sx in (1, -1):
+        S = 'L' if sx > 0 else 'R'
+        ft, to, sh = 'foot_' + S, 'toe_' + S, 'shin_' + S
+        rings = [dict(c=mir((an[0], an[1] + 0.29 * k, 0.03), sx), r=(0.2 * k, 0.12 * k), w={ft: 1}, mat=m_shoe),
+                 dict(c=mir((an[0], an[1] + 0.27 * k, 0.26 * k), sx), r=(0.18 * k, 0.12 * k), w={ft: 1}, mat=m_shoe),
+                 dict(c=mir((an[0], an[1] + 0.03, 0.33 * k), sx), r=(0.21 * k, 0.21 * k), w={ft: 1}, mat=m_shoe),
+                 dict(c=mir((an[0], an[1] - 0.32 * k, 0.25 * k), sx), r=(0.225 * k, 0.16 * k), w={ft: 1}, mat=m_shoe),
+                 dict(c=mir((bl[0], bl[1] + 0.05, 0.19 * k), sx), r=(0.225 * k, 0.13 * k), w={ft: 0.5, to: 0.5}, mat=m_shoe),
+                 dict(c=mir((tp[0], tp[1] + 0.12 * k, 0.16 * k), sx), r=(0.2 * k, 0.11 * k), w={to: 1}, mat=m_shoe),
+                 dict(c=mir((tp[0], tp[1] - 0.05, 0.11 * k), sx), r=(0.1 * k, 0.07 * k), w={to: 1}, mat=m_shoe),
+                 dict(c=mir((tp[0], tp[1] - 0.07, 0.03), sx), r=(0.04 * k, 0.03 * k), w={to: 1}, mat=m_shoe)]
+        objs.append(loft(name + '_' + S, rings, seg=SEG['shoe'], side=(1, 0, 0)))
+        sock = [dict(c=mir((an[0], an[1] + 0.02, 0.3 * k), sx), r=0.165 * k, w={ft: 1}, mat=m_sock),
+                dict(c=mir((an[0], an[1] + 0.03, 0.6 * k), sx), r=0.15 * k, w={sh: 1}, mat=m_sock),
+                dict(c=mir((an[0], an[1] + 0.03, 0.78 * k), sx), r=0.155 * k, w={sh: 1}, mat=m_sock)]
+        objs.append(loft('sock_' + S, sock, seg=SEG['leg'], side=(1, 0, 0), cap_start=False, cap_end=False))
+    return B.add(kit.join(objs, name))
+
+
+def cable_coil(B, m, side=-1):
+    """Cable Babji's coil of black TV cable over one shoulder and across the chest"""
+    rig, k = B.rig, B.k
+    T = TORSO[rig]
+    sx = side
+    c = Vector((0.55 * k * sx, 0.0, T[8][0][2] - 0.35 * k))
+    objs = []
+    for j in range(3):
+        pts = []
+        for i in range(13):
+            a = 2 * math.pi * i / 12
+            r = 0.62 * k + 0.05 * j
+            pts.append(c + Vector((math.sin(a) * 0.18 * k * sx, math.cos(a) * r * 0.7, math.sin(a) * r * 0.95)))
+        objs.append(kit.tube('coil', pts, 0.045 * k, seg=5, mat=m, cap=False))
+    o = kit.join(objs, 'cable')
+    return B.add(o, lambda co, rig=rig: torso_w(rig, co))
+
+
+def ponytails(H, m, band=None, name='ponytails'):
+    """Chitti's two high 'antenna' ponytails with rubber bands"""
+    hz, cy = H.hz, H.cy
+    objs = []
+    for sx in (1, -1):
+        base = Vector((0.42 * sx, cy + 0.12, hz + 1.12))
+        d = Vector((0.55 * sx, 0.1, 0.55)).normalized()
+        L = 0.62
+        rings = [dict(c=tuple(base), r=0.13), dict(c=tuple(base + d * 0.12), r=0.1),
+                 dict(c=tuple(base + d * L * 0.6 + Vector((0.04 * sx, 0, 0.04))), r=0.15),
+                 dict(c=tuple(base + d * L + Vector((0.12 * sx, 0.02, -0.08))), r=0.07),
+                 dict(c=tuple(base + d * L * 1.15 + Vector((0.2 * sx, 0.02, -0.22))), r=0.02)]
+        for r in rings:
+            r['w'] = {'head': 1}
+            r['mat'] = m
+        objs.append(loft('tail', rings, seg=7, side=(0, 1, 0)))
+        if band is not None:
+            b = kit.cylinder('band', 0.115, 0.07, (0, 0, 0), seg=8, mat=band, base=False)
+            b.rotation_euler = Vector((0, 0, 1)).rotation_difference(d).to_euler()
+            b.location = base + d * 0.1
+            kit.apply_transform(b)
+            objs.append(b)
+    return H.add(kit.join(objs, name))
 
 
 # =========================================================================== finishing

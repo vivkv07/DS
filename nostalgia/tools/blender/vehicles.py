@@ -791,3 +791,147 @@ def auto_rickshaw(A):
                                        {'colours': {'paint': '#f2c230', 'paint2': '#2a4a2a'}, 'hide': ['opt_name', 'opt_slogan0', 'opt_slogan2', 'opt_slogan3']},
                                        {'colours': {'paint': '#f2c230', 'paint2': '#1c1a1c'}, 'hide': ['opt_slogan0', 'opt_slogan1', 'opt_slogan2', 'opt_slogan3'], 'view': {'az': 160, 'el': 16, 'fov': 30}}],
                               'view': {'az': -120, 'el': 20, 'fov': 30}, 'night': {'az': -30, 'el': 12, 'fov': 30}}}
+
+
+# =========================================================================== motor two-wheelers
+# Proportions: heights are human-scale for the 9 u adults (a seat ~4.4-5.4 u up, bars ~5.5-6.9 u), lengths
+# are stretched to the 2D collision length TYPES[t].w (the game's vehicles are long for readability), so
+# wheelbases are long and wheels a little large. Rider anchors: seat_driver (where the hips sit, on the
+# seat top), grip_L/R (steer bone), foot_L/R (floorboard / footpegs), seat_pillion + foot_pillion_L/R.
+MOTO_RIDER = {'driver': {'pose': 'scooter', 'seat': 'seat_driver', 'grips': ['grip_L', 'grip_R'], 'feet': ['foot_L', 'foot_R'], 'clips': ['ride_scooty']},
+              'pillion': {'pose': 'pillion', 'seat': 'seat_pillion', 'feet': ['foot_pillion_L', 'foot_pillion_R'], 'clips': ['sit']}}
+
+
+def moto_rider(pose):
+    r = json_clone(MOTO_RIDER)
+    r['driver']['pose'] = pose
+    return r
+
+
+def json_clone(o):
+    import json as _j
+    return _j.loads(_j.dumps(o))
+
+
+def steer_axis(top, axle):
+    """unit steering axis (down, forwards) through the head-stock top and the front axle"""
+    return (Vector(axle) - Vector(top)).normalized()
+
+
+@kit.asset('scooty', 'vehicle', vehicleTypes=['scooty', 'akka_scooty'], length=14.5, width=5.6, wheelR=1.62, height=7.2,
+           wheels={'wheel_front': 1.62, 'wheel_rear': 1.62}, tintSrc={'paint': 'color'}, riders=moto_rider('scooter'),
+           lamps={'head': ['headlight'], 'tail': ['taillight']}, open=True, fps='bars')
+def scooty(A):
+    """TVS Scooty (2003): a light, narrow step-through scooterette in a bright colour (paint = v.color):
+    the tall curved leg shield, the handlebar cowl with the headlamp and the little speedometer, a
+    flat ribbed floorboard, the rounded rear body over the small rear wheel, a slim black seat, the
+    chrome grab rail, the silver CVT case and the black silencer, 10-inch pressed-steel wheels, side
+    and centre stands; 'TVS SCOOTY' painted in plain letters on a black side strip. 14.5 u long."""
+    P = vk.palette()
+    BODY = vk.paint('scooty_body', '#e8323c', region=vk.R_PAINT, rough=0.28, chips=0.12, under='#9a9a96', grime=0.3, dirt='#4a4034')
+    TRIM = vk.mat('plastic_black', 'trim_black', base='#18181a', rough=0.55, grime=0.35)
+    FLOOR = vk.mat('rubber', 'floor_rubber', base='#232325', rough=0.92, grain=0.12, grime=0.55, dirt='#5a5040')
+    CASE = vk.mat('steel', 'cvt_case', base='#a9acaf', rough=0.5, metal=0.6, grime=0.55, dirt='#3a342c')
+    SEAT = P['seat_black']
+    R = 1.62
+    FA, RA = V(0, -4.75, R), V(0, 4.35, R)
+    S0 = V(0, -3.05, 5.45)                       # head-stock top (under the bar cowl)
+    AXs = steer_axis(S0, FA)
+    Rg = vk.VRig(A)
+    Rg.bone('steer', S0, S0 + AXs * 1.5)
+    Rg.bone('wheel_front', FA, parent='steer')
+    Rg.bone('wheel_rear', RA)
+    Rg.add('wheel_front', vk.disc_wheel('wf', tuple(FA), R, 0.85, P, side=1, seg=16, rim_m=P['alu'], cap_frac=0.3))
+    Rg.add('wheel_rear', vk.disc_wheel('wr', tuple(RA), R, 0.9, P, side=-1, seg=16, rim_m=P['alu'], cap_frac=0.0))
+    body = []
+    # ---------------------------------------------------------------- leg shield (curved apron) + its black back
+    lv = [(1.25, -3.45, 1.32, 0.42), (2.2, -3.4, 1.42, 0.46), (3.3, -3.28, 1.36, 0.44), (4.3, -3.15, 1.2, 0.38), (5.0, -3.05, 0.98, 0.3), (5.35, -2.98, 0.72, 0.22)]
+    ap = vk.shell('apron', vk.apron_rows(lv, n=8), BODY, thick=0.1, inside=(0, 0.0, 3.0))
+    vk.assign_faces(ap, [(lambda c, n: n.y > 0.55, TRIM)])
+    body.append(ap)
+    body.append(tube('apron_edge', [V(1.32, -3.45, 1.25), V(1.42, -3.4, 2.2), V(1.36, -3.28, 3.3), V(1.2, -3.15, 4.3), V(0.98, -3.05, 5.0), V(0.72, -2.98, 5.35),
+                                    V(-0.72, -2.98, 5.35), V(-0.98, -3.05, 5.0), V(-1.2, -3.15, 4.3), V(-1.36, -3.28, 3.3), V(-1.42, -3.4, 2.2), V(-1.32, -3.45, 1.25)],
+                     0.06, seg=4, mat=TRIM))
+    # front 'beak' under the apron (body colour) down to the floor pan
+    body.append(vk.loft_y('beak', [(-3.95, 0.55, 1.0, 1.6, 2.4), (-3.55, 1.0, 0.95, 2.4, 2.6), (-3.1, 1.2, 0.95, 2.6, 2.8)], BODY, seg=10))
+    # indicators on the apron (amber, front)
+    for sx in (1, -1):
+        body += vk.lens_box('ind_f', (0.42, 0.18, 0.26), (sx * 1.0, -3.62, 4.35), P['amber'])
+    # ---------------------------------------------------------------- floor pan + ribbed board
+    body.append(vk.plan_prism('floor_pan', [(1.28, -3.2), (1.3, 0.75), (-1.3, 0.75), (-1.28, -3.2)], 0.85, 1.2, BODY, bevel=0.08, seg=1))
+    body.append(vk.plan_prism('floor_board', [(1.18, -3.0), (1.2, 0.6), (-1.2, 0.6), (-1.18, -3.0)], 1.2, 1.28, FLOOR))
+    for k in range(5):
+        x = -0.9 + k * 0.45
+        body.append(vk.rbox('floor_rib', (0.14, 3.2, 0.07), (x, -1.2, 1.31), FLOOR, bevel=0.0))
+    # ---------------------------------------------------------------- rear body: an open U shell over the rear wheel, closed tail
+    st = [(0.55, 1.12, 1.0, 1.7, 0.45), (1.2, 1.26, 1.0, 2.55, 1.0), (2.1, 1.34, 1.15, 3.05, 0.95), (3.2, 1.36, 1.6, 3.3, 0.82),
+          (4.35, 1.3, 2.1, 3.45, 0.7), (5.35, 1.12, 2.55, 3.5, 0.6), (6.0, 0.86, 2.85, 3.48, 0.5), (6.4, 0.5, 3.05, 3.42, 0.38)]
+    rows = [vk.u_row(y, hw, zs, zc, hh, p=2.8, n=8) for (y, hw, zs, zc, hh) in st]
+    rb = vk.shell('rear_body', rows, BODY, thick=0.1, inside=(0, 3.5, 1.0))
+    body.append(rb)
+    # the tail cap + a black under-tray closing the shell bottom behind the wheel
+    body.append(vk.loft_y('tail_cap', [(6.38, 0.52, 3.0, 3.85, 2.4), (6.62, 0.3, 3.15, 3.7, 2.2)], BODY, seg=10))
+    body.append(vk.plan_prism('under_tray', [(0.9, 5.2), (0.75, 6.4), (-0.75, 6.4), (-0.9, 5.2)], 2.55, 2.65, TRIM))
+    # black side strip with the name in plain letters (does not take the body tint)
+    for sx in (1, -1):
+        body.append(vk.decal('sign_side', 'TVS SCOOTY', 2.6, 0.42, (sx * 1.37, 3.3, 2.75), '+X' if sx > 0 else '-X', fg='#e8e6e0', bg='#1a1a1c', px=256, font=vk.FONT_COND))
+    # tail lamp + rear indicators + plate
+    body += vk.lens_box('tail', (0.9, 0.2, 0.36), (0, 6.66, 3.62), P['tail_lens'])
+    for sx in (1, -1):
+        body += vk.lens_box('ind_r', (0.34, 0.16, 0.22), (sx * 0.72, 6.55, 3.58), P['amber'])
+    body.append(vk.plate('plate_rear', 'AP 09 Q 3187', 1.55, 0.5, (0, 6.6, 2.75), '+Y', bg='#f4f2ea', fg='#141414', px=128))
+    # ---------------------------------------------------------------- seat + grab rail
+    body.append(vk.loft_y('seat', [(-0.25, 0.48, 3.98, 4.2, 2.6), (0.15, 0.68, 3.95, 4.38, 3.0), (1.5, 0.78, 3.98, 4.45, 3.2), (3.2, 0.8, 4.0, 4.5, 3.2),
+                                   (4.6, 0.74, 4.0, 4.48, 3.0), (5.3, 0.58, 3.98, 4.36, 2.6), (5.55, 0.36, 4.0, 4.22, 2.2)], SEAT, seg=12))
+    body.append(tube('seat_piping', [V(0.79, 0.3, 4.1), V(0.8, 3.2, 4.12), V(0.74, 4.6, 4.1), V(0.58, 5.3, 4.08), V(0, 5.6, 4.06), V(-0.58, 5.3, 4.08),
+                                     V(-0.74, 4.6, 4.1), V(-0.8, 3.2, 4.12), V(-0.79, 0.3, 4.1)], 0.04, seg=4, mat=P['chrome']))
+    body.append(tube('grab_rail', [V(0.95, 4.2, 3.6), V(0.98, 5.4, 3.95), V(0.6, 6.1, 4.05), V(-0.6, 6.1, 4.05), V(-0.98, 5.4, 3.95), V(-0.95, 4.2, 3.6)], 0.075, seg=6, mat=P['chrome']))
+    # ---------------------------------------------------------------- CVT case (left) + swing arm, silencer (right), stands, kick lever
+    body.append(vk.loft_y('cvt_case', [(1.3, 0.22, 1.15, 1.9, 2.4, 0.78), (2.0, 0.3, 0.9, 2.25, 2.6, 0.8), (3.6, 0.3, 1.05, 2.15, 2.6, 0.82), (4.45, 0.26, 1.25, 1.98, 2.4, 0.82),
+                                      (4.75, 0.14, 1.4, 1.84, 2.2, 0.8)], CASE, seg=10))
+    body.append(vk.disc_x('cvt_cover', (0.98, 2.4, 1.6), 0.55, 0.08, CASE, seg=12))
+    body.append(vk.loft_y('engine', [(0.7, 0.55, 0.8, 1.9, 2.6), (1.4, 0.62, 0.75, 2.2, 2.8), (2.1, 0.5, 0.95, 2.05, 2.6)], P['engine'], seg=10))
+    body.append(tube('swing_arm_r', [V(-0.5, 2.0, 1.4), V(-0.55, 4.35, R)], 0.12, seg=5, mat=P['black']))
+    body.append(tube('shock', [V(-0.6, 4.1, 1.95), V(-0.75, 4.9, 3.0)], 0.1, seg=5, mat=P['black']))
+    body.append(vk.spring('shock_spring', (-0.6, 4.18, 2.05), (-0.73, 4.82, 2.85), 0.17, 4, P['chrome'], wire=0.035))
+    body.append(tube('exhaust_pipe', [V(-0.25, 0.9, 0.85), V(-0.6, 1.8, 0.8), V(-0.85, 2.9, 1.05)], 0.12, seg=5, mat=P['dark']))
+    body.append(vk.loft_y('silencer', [(2.8, 0.18, 0.88, 1.24, 2.0, -0.92), (3.3, 0.3, 0.75, 1.42, 2.2, -0.95), (5.0, 0.3, 0.95, 1.6, 2.2, -0.95), (5.5, 0.2, 1.1, 1.5, 2.0, -0.95)], P['black'], seg=8))
+    body.append(vk.disc_y('silencer_tip', (-0.95, 5.56, 1.3), 0.11, 0.18, P['chrome'], seg=8))
+    body.append(tube('centre_stand', [V(0.75, 2.4, 1.0), V(0.8, 2.6, 0.05), V(-0.8, 2.6, 0.05), V(-0.75, 2.4, 1.0)], 0.07, seg=4, mat=P['black']))
+    body.append(tube('side_stand', [V(1.05, 0.6, 0.95), V(1.6, 1.3, 0.06)], 0.07, seg=4, mat=P['black']))
+    body.append(tube('kick', [V(0.95, 1.9, 1.75), V(1.15, 1.2, 1.55)], 0.06, seg=4, mat=P['chrome']))
+    body.append(vk.mudguard('hugger', tuple(RA), R, math.radians(60), math.radians(150), TRIM, w=0.8, gap=0.12, thick=0.06, n=5))
+    Rg.add('root', body)
+    # ---------------------------------------------------------------- steering: fork, front guard, bar cowl + headlamp, bars, mirrors
+    stp = []
+    crown = S0 + AXs * 1.55
+    stp.append(tube('stem', [S0 + V(0, 0, 0.25), crown], 0.15, seg=6, mat=P['black']))
+    stp += vk.tele_fork('fork', crown, FA, AXs, 0.48, 0.11, P['black'], lower_m=P['alu'], lower_r=0.14, split=0.5)
+    stp.append(vk.rbox('fork_bridge', (1.15, 0.3, 0.22), tuple(crown), P['black'], bevel=0.04))
+    stp.append(vk.mudguard('guard_front', tuple(FA), R, math.radians(-25), math.radians(122), BODY, w=0.98, gap=0.18, thick=0.07, n=9))
+    cow = vk.loft_y('bar_cowl', [(-3.62, 0.55, 5.18, 5.62, 2.4), (-3.45, 0.95, 5.05, 5.95, 2.8), (-3.0, 1.08, 5.05, 6.02, 3.0), (-2.55, 0.95, 5.12, 5.96, 2.8), (-2.32, 0.62, 5.25, 5.82, 2.4)], BODY, seg=12)
+    stp.append(cow)
+    stp += vk.lens_box('head', (0.95, 0.12, 0.42), (0, -3.63, 5.45), P['head_lens'], bezel_m=P['chrome'])
+    stp.append(vk.rbox('speedo', (0.7, 0.42, 0.12), (0, -2.85, 6.03), P['black'], bevel=0.04))
+    stp.append(vk.rbox('speedo_face', (0.5, 0.3, 0.02), (0, -2.83, 6.1), vk.mat('lamp_lens', 'speedo_dial', base='#e8e4d6', rough=0.2), bevel=0.0))
+    bars, grips = vk.moto_bars('bar', (0, -2.95, 5.62), [(0.9, 0.05, 0.0), (1.45, 0.25, -0.05), (1.85, 0.42, -0.12)], 0.6, P, bar_m=P['black'], grip_m=TRIM, r=0.08, grip_r=0.15)
+    stp += bars
+    stp += vk.mirrors('mirror', [(1.0, -3.0, 5.95), (-1.0, -3.0, 5.95)], 1.0, 0.35, 0.3, P, stalk_m=P['black'])
+    Rg.add('steer', stp)
+    arm, ob = Rg.build(tex=512, orm=128, emit=128, ao_samples=20, albedo_samples=6, ao_strength=0.7, ao_dist=1.6,
+                       boost={'sign_': 2.4, 'plate': 1.8, 'head_lens': 1.4, 'tail_lens': 1.4})
+    hl = grips['L']
+    anchors_from(A, arm, {
+        'seat_driver': ((0, 1.15, 4.45), 'root'), 'seat_pillion': ((0, 3.6, 4.5), 'root'),
+        'foot_L': ((0.7, -1.55, 1.3), 'root'), 'foot_R': ((-0.7, -1.55, 1.3), 'root'),
+        'foot_pillion_L': ((1.15, 1.6, 1.3), 'root'), 'foot_pillion_R': ((-1.15, 1.6, 1.3), 'root'),
+        'handlebar': ((0, -2.95, 5.62), 'steer'), 'grip_L': (tuple(grips['L']), 'steer'), 'grip_R': (tuple(grips['R']), 'steer'),
+        'headlight': ((0, -3.72, 5.45), 'steer'), 'taillight': ((0, 6.78, 3.62), 'root'),
+        'indicator_FL': ((1.0, -3.72, 4.35), 'root'), 'indicator_FR': ((-1.0, -3.72, 4.35), 'root'),
+        'indicator_RL': ((0.72, 6.65, 3.58), 'root'), 'indicator_RR': ((-0.72, 6.65, 3.58), 'root'),
+        'exhaust': ((-0.95, 5.66, 1.3), 'root'), 'wheel_front': (tuple(FA), 'wheel_front'), 'wheel_rear': (tuple(RA), 'wheel_rear'),
+    })
+    A.meta.update({'steerAxis': [round(c, 4) for c in AXs]})
+    A.preview = {'shots': [{'view': {'az': -55, 'el': 14, 'fov': 30}}, {'name': 'side', 'size': 320, 'samples': 16, 'view': {'az': 90, 'el': 3, 'fov': 28}}],
+                 'variants': {'sets': [{'colours': {'paint': '#e8323c'}}, {'colours': {'paint': '#f07aa0'}}, {'colours': {'paint': '#2e9ad8'}}, {'colours': {'paint': '#c6ccd2'}}],
+                              'view': {'az': -130, 'el': 16, 'fov': 30}, 'night': {'az': -30, 'el': 10, 'fov': 30}}}
