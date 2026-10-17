@@ -25,7 +25,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const only = process.env.AQ ? process.env.AQ.split(',') : null;
   const sections = fs.readdirSync(path.join(__dirname, 'aq')).filter((f) => f.endsWith('.cjs') && f !== 'lib.cjs')
     .map((f) => Object.assign({ file: f }, require('./aq/' + f))).filter((s) => s && typeof s.run === 'function' && (!only || only.includes(s.name)))
-    .sort((a, b) => (a.order || 50) - (b.order || 50));
+    .sort((a, b) => (a.order == null ? 50 : a.order) - (b.order == null ? 50 : b.order));
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();

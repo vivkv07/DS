@@ -48,8 +48,8 @@ module.exports = {
       if (id === 'golconda' || id === 'open' || id === 'music') {
         const e = envDb(m, wet.sr, 0.01), at = (s) => e[Math.floor(s / 0.01)];
         let pk = -200, pkT = 0; for (let s = 0.6; s < 1.0; s += 0.01) if (at(s) > pk) { pk = at(s); pkT = s; }
-        const around = []; for (const s of [0.55, 0.58, 0.61, 1.02, 1.05, 1.08]) around.push(at(s));
-        const base = around.sort((a, b) => a - b)[3];
+        // prominence over the tail just before the peak (a decaying tail peaks at the window's start edge: rise < 0)
+        const base = Math.max(at(pkT - 0.06), at(pkT - 0.08));
         const rise = +(pk - base).toFixed(1);
         log(id + ': strongest late peak ' + rise + ' dB over the tail at ' + (pkT - 0.05).toFixed(2) + ' s after the clap');
         if (id === 'golconda') check(rise >= 6 && pkT - 0.05 >= 0.6 && pkT - 0.05 <= 1.0, 'Golconda: a distinct clap echo 0.6-1.0 s after the clap (' + rise + ' dB)', { rise, at: pkT });
