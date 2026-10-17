@@ -141,7 +141,7 @@ module.exports = {
       while (Date.now() - t0 < sec * 1000) { await new Promise((r) => setTimeout(r, 200)); if (!N.clock.held) continue; N.clock.minutes += 0.2; } // keep game time moving even under a hold
       const d = {}; for (const k in st.played) d[k] = st.played[k] - (before[k] || 0);
       const p = N.places[place];
-      return { d, sup: (st.suppressed.temple_bell || 0) - sup, log: st.log.slice(Math.max(0, logN - 80)).filter((e) => e.x != null).map((e) => [e.name, Math.round(Math.hypot(e.x - p.x, e.y - p.y))]), bed: N.audio.ambience && N.audio.ambient.bed, wd: N.audio.ambience.weekday(), layers: N.audio.ambience.layers(), min: Math.round(N.clock.minutes) };
+      return { d, sup: (st.suppressed.temple_bell || 0) - sup, log: st.log.slice(Math.max(0, logN - 80)).filter((e) => e.x != null).map((e) => [e.name, Math.round(Math.hypot(e.x - p.x, e.y - p.y))]), bed: N.audio.ambience && N.audio.ambient.bed, wd: N.audio.ambience.weekday(), layers: N.audio.ambience.layers(), min: Math.round(N.clock.minutes), mode: N.state.mode, ctx: N.audio.stats().state, held: N.clock.held, em: N.audio.ambient.emitters.slice(0, 6), busy: N.audio.stats().busyStrips, ov: N.audio._internal.amb.override };
     }, [place, h, m, sec, day]);
     const templeId = ids.temples.find((id) => /^temple_\d/.test(id)) || ids.temples[0];
     const tr = await runAt(templeId, 10, 0, 20);

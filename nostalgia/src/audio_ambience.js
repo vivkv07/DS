@@ -206,19 +206,24 @@
     }
     return e;
   }
-  function playBuf(ac, out, t, b, o) {
+  function playBuf(ac, out, t, b, o, spread) {
     const s = ac.createBufferSource(); s.buffer = b;
-    const rate = P(o) * rr(0.985, 1.015);
+    const sp0 = spread || 0.015, rate = P(o) * rr(1 - sp0, 1 + sp0); // a different bird / bell / cooker each time
     s.playbackRate.value = rate;
     s.connect(out); s.start(t);
     return t + b.duration / rate;
   }
   // SFX fn that plays a cached pre-render on the live context (synthesises live meanwhile / offline)
-  function cached(name, synth, sec, nVar) {
+  function cached(name, synth, sec, nVar, spread) {
     return (ac, out, t, o) => {
       if (OAC && ac === X.ctx && !o.live) {
         const e = prRequest(prKey(name, o), synth, sec, o, nVar);
-        if (e.bufs.length) return playBuf(ac, out, t, pick(e.bufs), o);
+        if (e.bufs.length) { // never the same variant twice in a row
+          let i = (rnd() * e.bufs.length) | 0;
+          if (e.bufs.length > 1 && i === e.last) i = (i + 1) % e.bufs.length;
+          e.last = i;
+          return playBuf(ac, out, t, e.bufs[i], o, spread);
+        }
       }
       return synth(ac, out, t, o);
     };
@@ -673,6 +678,19 @@
     return L + F;
   }
 
+  // Thursday evening at Dargah Yousufain (systems §12.3): a WORDLESS harmonium drone — no melody, no song, no chant:
+  // Sa, Pa and upper Sa held on paired reeds that beat slowly, breathing with the bellows.
+  function harmoniumDrone(ac, out, L, F) {
+    const g = gain(ac, 0, out), lp = filt(ac, 'lowpass', 2000, 0.6, g);
+    const bel = osc0(ac); bel.frequency.value = 1 / 8; bel.connect(gain(ac, 0.18, g.gain)); // bellows (period divides L)
+    for (const [f, v] of [[146.8, 0.3], [220.2, 0.18], [293.6, 0.14]]) {
+      for (const dt of [-0.7, 0.7]) { const os = ac.createOscillator(); os.setPeriodicWave(wave(ac, 'harmonium')); os.frequency.value = f + dt; os.connect(gain(ac, v / 2, lp)); os.start(0); os.stop(L + F); }
+    }
+    loopFade(g, 0.5, L, F);
+    bel.start(0); bel.stop(L + F);
+    return L + F;
+  }
+
   /* ============================================================ register SFX */
   const birlaGuard = (o) => { // Birla Mandir has no bells (bible; systems §12.1/§12.3): nothing within its respect zone
     const bm = N.places && N.places.birla_mandir;
@@ -681,28 +699,28 @@
     const near = (x, y) => x != null && y != null && Math.hypot(x - bm.x, y - bm.y) < 330;
     return near(o.x, o.y) || (L && near(L.x, L.y));
   };
-  const templeCached = cached('temple_bell', templeSynth, 9, 3);
+  const templeCached = cached('temple_bell', templeSynth, 9, 5, 0.03);
   reg('temple_bell', (ac, out, t, o) => {
     if (ac === X.ctx && birlaGuard(o)) { stats.suppressed.temple_bell = (stats.suppressed.temple_bell || 0) + 1; return t; }
     return templeCached(ac, out, t, o);
   }, { cooldown: 2.5 });
   reg('crow_caw', crow, { cooldown: 0.6 });
-  reg('koel', cached('koel', koel, 7, 3), { cooldown: 4 });
+  reg('koel', cached('koel', koel, 7, 5, 0.04), { cooldown: 4 });
   reg('coo', coo, { cooldown: 1 });
-  reg('pigeons', cached('pigeons', pigeonsSynth, 4, 3), { cooldown: 1.2 });
+  reg('pigeons', cached('pigeons', pigeonsSynth, 4, 4, 0.05), { cooldown: 1.2 });
   reg('bird', bird, { cooldown: 0.15 });
   reg('cheel', cheel, { cooldown: 3 });
   reg('dog_bark', dogBark, { cooldown: 0.8 });
   reg('cow_moo', cowMoo, { cooldown: 2 });
   reg('goat_bleat', goat, { cooldown: 1 });
-  reg('cooker', cached('cooker', cookerSynth, 12, 3), { cooldown: 3 });
-  reg('church_bell', cached('church_bell', churchSynth, 20, 2), { cooldown: 6 });
-  reg('school_bell', cached('school_bell', schoolSynth, 6, 2), { cooldown: 4 });
+  reg('cooker', cached('cooker', cookerSynth, 12, 4, 0.03), { cooldown: 3 });
+  reg('church_bell', cached('church_bell', churchSynth, 20, 3, 0.02), { cooldown: 6 });
+  reg('school_bell', cached('school_bell', schoolSynth, 6, 3, 0.03), { cooldown: 4 });
   reg('vendor_call', vendorCall, { cooldown: 1.5 });
   reg('gossip', gossip, { cooldown: 2 });
   reg('construction', construction, { cooldown: 1.5 });
   reg('boat_putt', boatPutt, { cooldown: 3 });
-  reg('train_pass', cached('train_pass', trainPass, 10, 2), { cooldown: 12 });
+  reg('train_pass', cached('train_pass', trainPass, 10, 2, 0.04), { cooldown: 12 });
   reg('dhobi_slap', dhobi, { cooldown: 1.5 });
   reg('radio_cricket', radioClip, { cooldown: 0.5 });
   for (const k of ['pigeons', 'coo', 'crow_caw', 'goat_bleat', 'construction', 'dhobi_slap', 'boat_putt']) X.DAY_ONLY.add(k);
@@ -915,6 +933,25 @@
     }
   }
 
+  const drone = { em: null, src: null, buf: null, requested: false };
+  function droneUpdate(info, wd) {
+    const ac = X.ctx, dg = N.places && N.places.dargah_yousufain, L = info.L, h = info.hour;
+    const want = !!(dg && L && info.playing && wd === 4 && h >= 17.5 && h < 21 && Math.hypot(dg.x - L.x, dg.y - L.y) < 320);
+    if (want && !drone.buf && !drone.requested) {
+      drone.requested = true;
+      PR.queue.push({ key: 'loop:harmonium', sec: 18, loop: [16, 2], o: {}, synth: (oc, out) => harmoniumDrone(oc, out, 16, 2), done: (b) => { drone.buf = b; } });
+      prPump();
+    }
+    if (want && drone.buf && !drone.em) {
+      drone.em = mkEmitter(ac, 40, 340);
+      drone.src = ac.createBufferSource(); drone.src.buffer = drone.buf; drone.src.loop = true; drone.src.connect(drone.em.input); drone.src.start(ac.currentTime);
+      stats.played.harmonium_drone = (stats.played.harmonium_drone || 0) + 1;
+    }
+    if (!drone.em) return;
+    drone.em.set(dg.x, dg.y, want ? 0.4 : 0);
+    if (!want) { const d0 = drone; const em = d0.em, src = d0.src; d0.em = null; d0.src = null; setTimeout(() => { try { src.stop(); } catch (e) { /* ignore */ } em.dispose(); }, 2500); }
+  }
+
   /* ============================================================ the scheduler */
   const S = { prevMin: null, temple: Object.create(null), recessUntil: -1, warm: false, layT: 0, hush: 1 };
   function fire(name, rate, o, info, dt, at) {
@@ -969,6 +1006,7 @@
     loopUpdate(loops.insects, S.insT || 0, t, dt);
     loopUpdate(loops.frogs, S.frogT || 0, t, dt);
     try { radioUpdate(info, t); } catch (e) { err('radio', e); }
+    try { droneUpdate(info, weekday(day)); } catch (e) { err('drone', e); }
     // 2) clock-scheduled bells (crossings of the minute marks; jumps > 5 game minutes do not ring)
     const prev = S.prevMin;
     S.prevMin = min;
@@ -1062,7 +1100,8 @@
   N.audio.ambience = {
     stats, SCHED, CURVE, BEDS: BEDDEF, CALLS: Object.keys(CALLS), weekday, month, places, renderBed,
     radioShops: () => Object.keys(N.places || {}).filter((id) => RADIO_SHOP.test(id) && hash('radio:' + id) <= 0.55),
-    synth: { insects, frogs, radioClip, voice, syr },
+    synth: { insects, frogs, radioClip, voice, syr, harmoniumDrone },
+    droneOn: () => !!drone.em,
     layers: () => ({ insects: loops.insects.cur, frogs: loops.frogs.cur, insectsReady: !!loops.insects.buf, frogsReady: !!loops.frogs.buf,
       radio: radio.shop, radioClips: radio.clips.length, emitterApi: typeof X.emitter === 'function', prerendered: PR.rendered, prerenderMs: Math.round(PR.ms), cached: PR.cache.size }),
   };
