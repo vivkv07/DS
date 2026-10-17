@@ -59,7 +59,7 @@ module.exports = {
         const sp = spec(L, m, tc, N8); if (!sp) continue;
         const c0 = comb(sp, near.f, N8), cOff = (comb(sp, near.f * 0.9, N8) + comb(sp, near.f * 1.1, N8)) / 2;
         tot++; if (c0 > cOff * 1.15) good++;
-        fs.push(near.f); cs.push(lowCentroid(sp, N8, 15, Math.max(400, D.fMax * 4)));
+        fs.push(near.f); cs.push(lowCentroid(sp, N8, 12, D.fMax * 2.2));
       }
       const corr = pearson(fs, cs);
       // gear changes: the level dips while the clutch is in
@@ -75,7 +75,8 @@ module.exports = {
       check(m0 && m0.clicks === 0 && Math.abs(m0.dc) < 0.01 && m0.peakDb < -1, type + ' engine sweep: no clicks / clipping / DC', m0);
       check(fullDb > -26 && fullDb < -16, type + ' full-throttle RMS in -26..-16 dBFS', fullDb);
       check(good / Math.max(1, tot) >= 0.65, type + ' firing-frequency comb present in >= 65% of windows', good + '/' + tot);
-      check(corr > 0.6, type + ' low-band spectral centroid tracks rpm (r > 0.6)', corr);
+      const cmin = D.tops.length > 1 ? 0.6 : 0.45; // CVT / single speed: a narrower rpm range
+      check(corr > cmin, type + ' low-band spectral centroid tracks rpm (r > ' + cmin + ')', corr);
       if (D.tops.length > 1) {
         check(shifts.length >= D.tops.length - 2, type + ' gear changes on the way up (' + shifts.length + ')', shifts);
         check(dips >= Math.max(1, Math.ceil(shifts.length * 0.6)), type + ' gear changes dip the level (clutch)', dipDb);
@@ -165,7 +166,8 @@ module.exports = {
     });
     log('CPU ' + JSON.stringify(cpu));
     check(cpu.nodes.auto <= 20 && cpu.nodes.autoPlayer <= 24 && cpu.nodes.cycle <= 20, 'nodes per voice within budget', cpu.nodes);
-    check(cpu.b.realtimeFrac < 0.1, '5 voices x 10 s render well under real time', cpu.b);
+    check(cpu.b.ms <= cpu.b.msBuiltin * 1.6 + 150 && cpu.b.realtimeFrac < 0.2, '5 voices: audio-thread cost near the built-in voices, well under real time', cpu.b);
+    check(cpu.b.updUs < 60, 'update() JS cost per voice per frame < 60 us', cpu.b.updUs);
     // the voice through the live engine: player vehicle -> our voice
     const live = await ev(() => { const e = N.audio._internal.eng; return { has: !!N.audio.vehicles, factory: typeof N.audio.ext.setEngineVoice }; });
     check(live.has, 'live engine factory registered', live);

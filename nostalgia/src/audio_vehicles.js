@@ -142,7 +142,7 @@
         rattle: { a: 0.32, lo: 2200, hi: 5200, dec: 0.0025, n: 3, span: 0.85 }, jit: 0.05, ampJit: 0.2, miss: 0.3, missAmp: 0.12, pop: { p: 0.08, a: 0.5 } },
       l: { f0: 46, K: 32, tau: 0.0012, ring: [[700, 0.01, 0.5], [1900, 0.006, 0.4]], nz: { a: 0.85, tau: 0.01, f: 1800, q: 0.7 },
         rattle: { a: 0.26, lo: 2500, hi: 6000, dec: 0.002, n: 2, span: 0.85 }, jit: 0.02, ampJit: 0.18, miss: 0.03 },
-      fIdle: 22, fMax: 72, tops: [0.28, 0.55, 0.8, 1.06], shift: 0.3, lp: [900, 4200], pk: { f: 650, q: 1.2, g: 6 }, vol: 0.5, size: 1, seed: 11,
+      fIdle: 22, fMax: 72, tops: [0.28, 0.55, 0.8, 1.2], shift: 0.3, lp: [900, 4200], pk: { f: 650, q: 1.2, g: 6 }, vol: 0.5, size: 1, seed: 11,
     },
     scooty: {
       c: { f0: 36, K: 24, tau: 0.0009, ring: [[1350, 0.006, 0.45], [2900, 0.004, 0.3]], nz: { a: 0.45, tau: 0.006, f: 2400, q: 1 },
@@ -153,46 +153,46 @@
     luna: {
       c: { f0: 30, K: 20, tau: 0.001, ring: [[1800, 0.004, 0.4], [3600, 0.003, 0.2]], nz: { a: 0.4, tau: 0.005, f: 2600, q: 1.4 }, jit: 0.04, ampJit: 0.2, miss: 0.18, missAmp: 0.25 },
       l: { f0: 62, K: 32, tau: 0.0008, ring: [[1900, 0.004, 0.45]], nz: { a: 0.6, tau: 0.004, f: 3000, q: 1.2 }, jit: 0.02, ampJit: 0.15, miss: 0.04 },
-      fIdle: 30, fMax: 86, tops: [1], cvt: true, lp: [1400, 5200], pk: { f: 1900, q: 2.5, g: 6 }, whine: { f0: 380, f1: 1100, a: 0.02, cvt: true }, vol: 0.3, size: 0.7, hp: 220, seed: 31,
+      fIdle: 30, fMax: 86, tops: [1], cvt: true, lp: [1400, 5200], pk: { f: 1900, q: 2.5, g: 6 }, whine: { f0: 380, f1: 1100, a: 0.02, cvt: true }, vol: 0.45, size: 0.7, hp: 220, seed: 31,
     },
     chetak: {
       c: { f0: 20, K: 16, tau: 0.003, ring: [[340, 0.028, 0.6], [880, 0.012, 0.3]], nz: { a: 0.35, tau: 0.02, f: 700, q: 0.7 }, jit: 0.07, ampJit: 0.22, miss: 0.16, missAmp: 0.2, pop: { p: 0.06, a: 0.45 } },
       l: { f0: 48, K: 32, tau: 0.0022, ring: [[380, 0.02, 0.55], [1000, 0.01, 0.35]], nz: { a: 0.6, tau: 0.012, f: 1100, q: 0.6 }, jit: 0.025, ampJit: 0.15, miss: 0.03 },
-      fIdle: 20, fMax: 78, tops: [0.3, 0.55, 0.8, 1.06], shift: 0.32, lp: [520, 2800], pk: { f: 420, q: 1, g: 4 }, vol: 0.55, size: 0.8, seed: 41,
+      fIdle: 20, fMax: 78, tops: [0.3, 0.55, 0.8, 1.2], shift: 0.32, lp: [520, 2800], pk: { f: 420, q: 1, g: 4 }, vol: 0.55, size: 0.8, seed: 41,
     },
     rx100: {
       c: { f0: 27, K: 20, tau: 0.0007, ring: [[2300, 0.012, 0.35], [3500, 0.009, 0.25], [900, 0.01, 0.3]], nz: { a: 0.5, tau: 0.008, f: 3000, q: 1 }, jit: 0.04, ampJit: 0.2, miss: 0.15, missAmp: 0.2, pop: { p: 0.12, a: 0.7 } },
       l: { f0: 75, K: 40, tau: 0.0005, ring: [[2400, 0.01, 0.4], [3700, 0.007, 0.3], [1000, 0.008, 0.3]], nz: { a: 0.8, tau: 0.006, f: 3600, q: 0.8 }, jit: 0.012, ampJit: 0.12 },
-      fIdle: 27, fMax: 132, tops: [0.2, 0.38, 0.57, 0.78, 1.06], shift: 0.13, lp: [1500, 8000], pk: { f: [500, 1900], q: 3, g: [3, 12], pipeAt: 0.66 }, vol: 0.42, size: 0.8, seed: 51,
+      fIdle: 27, fMax: 132, tops: [0.2, 0.38, 0.57, 0.78, 1.2], shift: 0.13, lp: [1500, 8000], pk: { f: [500, 1900], q: 3, g: [3, 12], pipeAt: 0.66 }, vol: 0.42, size: 0.8, seed: 51,
     },
     ambassador: {
-      c: { f0: 22, K: 32, tau: 0.004, ring: [[160, 0.04, 0.6], [480, 0.015, 0.25]], nz: { a: 0.15, tau: 0.02, f: 500, q: 0.6 }, cyl: [1, 0.82, 0.95, 0.78], jit: 0.01, ampJit: 0.06 },
-      l: { f0: 55, K: 40, tau: 0.003, ring: [[170, 0.03, 0.6], [520, 0.012, 0.3]], nz: { a: 0.3, tau: 0.015, f: 700, q: 0.6 }, cyl: [1, 0.85, 0.95, 0.82], jit: 0.008, ampJit: 0.08 },
-      fIdle: 22, fMax: 105, tops: [0.25, 0.5, 0.76, 1.05], shift: 0.45, lp: [360, 1700], pk: { f: 180, q: 1, g: 5 }, whine: { f0: 250, f1: 900, a: 0.012 }, vol: 0.62, size: 1, seed: 61,
+      c: { f0: 22, K: 32, tau: 0.004, ring: [[160, 0.015, 0.25], [480, 0.015, 0.25]], nz: { a: 0.15, tau: 0.02, f: 500, q: 0.6 }, cyl: [1, 0.82, 0.95, 0.78], jit: 0.01, ampJit: 0.06 },
+      l: { f0: 55, K: 40, tau: 0.003, ring: [[170, 0.012, 0.25], [520, 0.012, 0.3]], nz: { a: 0.3, tau: 0.015, f: 700, q: 0.6 }, cyl: [1, 0.85, 0.95, 0.82], jit: 0.008, ampJit: 0.08 },
+      fIdle: 22, fMax: 105, tops: [0.25, 0.5, 0.76, 1.2], shift: 0.45, lp: [360, 1700], pk: { f: 180, q: 1, g: 5 }, whine: { f0: 250, f1: 900, a: 0.012 }, vol: 0.3, size: 1, seed: 61,
     },
     padmini: {
-      c: { f0: 25, K: 32, tau: 0.0034, ring: [[200, 0.035, 0.55], [600, 0.014, 0.3]], nz: { a: 0.2, tau: 0.018, f: 650, q: 0.6 }, cyl: [1, 0.86, 0.93, 0.8], jit: 0.01, ampJit: 0.07 },
-      l: { f0: 58, K: 40, tau: 0.0026, ring: [[210, 0.028, 0.55], [640, 0.012, 0.32]], nz: { a: 0.36, tau: 0.014, f: 850, q: 0.6 }, cyl: [1, 0.87, 0.94, 0.83], jit: 0.008, ampJit: 0.08 },
-      fIdle: 25, fMax: 112, tops: [0.25, 0.5, 0.76, 1.05], shift: 0.42, lp: [420, 2000], pk: { f: 210, q: 1, g: 4 }, whine: { f0: 280, f1: 1000, a: 0.012 }, vol: 0.58, size: 1, seed: 71,
+      c: { f0: 25, K: 32, tau: 0.0034, ring: [[200, 0.014, 0.25], [600, 0.014, 0.3]], nz: { a: 0.2, tau: 0.018, f: 650, q: 0.6 }, cyl: [1, 0.86, 0.93, 0.8], jit: 0.01, ampJit: 0.07 },
+      l: { f0: 58, K: 40, tau: 0.0026, ring: [[210, 0.012, 0.25], [640, 0.012, 0.32]], nz: { a: 0.36, tau: 0.014, f: 850, q: 0.6 }, cyl: [1, 0.87, 0.94, 0.83], jit: 0.008, ampJit: 0.08 },
+      fIdle: 25, fMax: 112, tops: [0.25, 0.5, 0.76, 1.2], shift: 0.42, lp: [420, 2000], pk: { f: 210, q: 1, g: 4 }, whine: { f0: 280, f1: 1000, a: 0.012 }, vol: 0.45, size: 1, seed: 71,
     },
     maruti800: {
-      c: { f0: 23, K: 30, tau: 0.003, ring: [[230, 0.03, 0.55], [720, 0.012, 0.3]], nz: { a: 0.2, tau: 0.015, f: 650, q: 0.6 }, cyl: [1, 0.62, 0.84], cylT: [0, 0.07, -0.05], jit: 0.01, ampJit: 0.06 },
-      l: { f0: 60, K: 42, tau: 0.0024, ring: [[250, 0.025, 0.55], [780, 0.01, 0.3]], nz: { a: 0.35, tau: 0.012, f: 900, q: 0.6 }, cyl: [1, 0.7, 0.86], cylT: [0, 0.05, -0.03], jit: 0.008, ampJit: 0.08 },
-      fIdle: 23, fMax: 125, tops: [0.22, 0.45, 0.7, 1.05], shift: 0.35, lp: [450, 2400], pk: { f: 240, q: 1.1, g: 4 }, vol: 0.52, size: 0.9, seed: 81,
+      c: { f0: 23, K: 30, tau: 0.003, ring: [[230, 0.012, 0.25], [720, 0.012, 0.3]], nz: { a: 0.2, tau: 0.015, f: 650, q: 0.6 }, cyl: [1, 0.62, 0.84], cylT: [0, 0.07, -0.05], jit: 0.01, ampJit: 0.06 },
+      l: { f0: 60, K: 42, tau: 0.0024, ring: [[250, 0.01, 0.25], [780, 0.01, 0.3]], nz: { a: 0.35, tau: 0.012, f: 900, q: 0.6 }, cyl: [1, 0.7, 0.86], cylT: [0, 0.05, -0.03], jit: 0.008, ampJit: 0.08 },
+      fIdle: 23, fMax: 125, tops: [0.22, 0.45, 0.7, 1.2], shift: 0.35, lp: [450, 2400], pk: { f: 240, q: 1.1, g: 4 }, vol: 0.4, size: 0.9, seed: 81,
     },
     bus: {
-      c: { f0: 28, K: 36, tau: 0.0035, ring: [[115, 0.05, 0.6], [330, 0.02, 0.25]], nz: { a: 0.2, tau: 0.02, f: 400, q: 0.6 },
-        click: { a: 0.42, lo: 1800, hi: 4200, dec: 0.0016, n: 2, at: 0.02 }, rattle: { a: 0.1, lo: 3000, hi: 7000, dec: 0.0012, n: 1, span: 1 }, cyl: [1, 0.9, 0.95, 0.88, 0.97, 0.9], jit: 0.01, ampJit: 0.08 },
+      c: { f0: 28, K: 36, tau: 0.0035, ring: [[115, 0.05, 0.6], [330, 0.02, 0.15]], nz: { a: 0.2, tau: 0.02, f: 400, q: 0.6 },
+        click: { a: 0.3, lo: 1800, hi: 4200, dec: 0.0016, n: 2, at: 0.02 }, rattle: { a: 0.1, lo: 3000, hi: 7000, dec: 0.0012, n: 1, span: 1 }, cyl: [1, 0.9, 0.95, 0.88, 0.97, 0.9], jit: 0.01, ampJit: 0.08 },
       l: { f0: 60, K: 48, tau: 0.003, ring: [[120, 0.04, 0.6], [350, 0.016, 0.3]], nz: { a: 0.4, tau: 0.015, f: 600, q: 0.6 },
-        click: { a: 0.34, lo: 1500, hi: 3800, dec: 0.0014, n: 2, at: 0.02 }, cyl: [1, 0.92, 0.96, 0.9, 0.97, 0.92], jit: 0.008, ampJit: 0.08 },
-      fIdle: 28, fMax: 95, tops: [0.18, 0.36, 0.55, 0.78, 1.05], shift: 0.75, lp: [700, 2600], pk: { f: 120, q: 1, g: 6 }, whine: { f0: 150, f1: 700, a: 0.018 }, vol: 0.66, size: 1.4, heavy: true, seed: 91,
+        click: { a: 0.24, lo: 1500, hi: 3800, dec: 0.0014, n: 2, at: 0.02 }, cyl: [1, 0.92, 0.96, 0.9, 0.97, 0.92], jit: 0.008, ampJit: 0.08 },
+      fIdle: 28, fMax: 95, tops: [0.18, 0.36, 0.55, 0.78, 1.2], shift: 0.75, lp: [1500, 2800], pk: { f: 120, q: 1, g: 6 }, whine: { f0: 150, f1: 700, a: 0.018 }, vol: 0.26, size: 1.4, heavy: true, seed: 91,
     },
     lorry: {
       c: { f0: 25, K: 36, tau: 0.004, ring: [[95, 0.055, 0.6], [290, 0.02, 0.25]], nz: { a: 0.22, tau: 0.02, f: 380, q: 0.6 },
-        click: { a: 0.55, lo: 1600, hi: 3800, dec: 0.0018, n: 2, at: 0.02 }, rattle: { a: 0.14, lo: 2500, hi: 6000, dec: 0.0015, n: 2, span: 1 }, cyl: [1, 0.88, 0.95, 0.86, 0.97, 0.9], jit: 0.012, ampJit: 0.1 },
+        click: { a: 0.4, lo: 1600, hi: 3800, dec: 0.0018, n: 2, at: 0.02 }, rattle: { a: 0.14, lo: 2500, hi: 6000, dec: 0.0015, n: 2, span: 1 }, cyl: [1, 0.88, 0.95, 0.86, 0.97, 0.9], jit: 0.012, ampJit: 0.1 },
       l: { f0: 55, K: 48, tau: 0.0034, ring: [[100, 0.045, 0.6], [310, 0.016, 0.3]], nz: { a: 0.42, tau: 0.015, f: 560, q: 0.6 },
-        click: { a: 0.45, lo: 1400, hi: 3500, dec: 0.0015, n: 2, at: 0.02 }, rattle: { a: 0.1, lo: 2500, hi: 6000, dec: 0.0012, n: 1, span: 1 }, cyl: [1, 0.9, 0.96, 0.88, 0.97, 0.91], jit: 0.01, ampJit: 0.08 },
-      fIdle: 25, fMax: 85, tops: [0.18, 0.36, 0.55, 0.78, 1.05], shift: 0.8, lp: [600, 2300], pk: { f: 100, q: 1, g: 6 }, whine: { f0: 130, f1: 600, a: 0.02 }, vol: 0.68, size: 1.4, heavy: true, seed: 101,
+        click: { a: 0.32, lo: 1400, hi: 3500, dec: 0.0015, n: 2, at: 0.02 }, rattle: { a: 0.1, lo: 2500, hi: 6000, dec: 0.0012, n: 1, span: 1 }, cyl: [1, 0.9, 0.96, 0.88, 0.97, 0.91], jit: 0.01, ampJit: 0.08 },
+      fIdle: 25, fMax: 85, tops: [0.18, 0.36, 0.55, 0.78, 1.2], shift: 0.8, lp: [1300, 2500], pk: { f: 100, q: 1, g: 6 }, whine: { f0: 130, f1: 600, a: 0.02 }, vol: 0.32, size: 1.4, heavy: true, seed: 101,
     },
     boat: {
       c: { f0: 17, K: 16, tau: 0.0025, ring: [[300, 0.03, 0.5], [800, 0.01, 0.3]], nz: { a: 0.4, tau: 0.02, f: 600, q: 0.6 }, jit: 0.06, ampJit: 0.2, miss: 0.12, missAmp: 0.2 },
@@ -212,9 +212,9 @@
     const rnd = prng(7), len = sr, out = new Float32Array(len);
     for (let k = 0; k < 24; k++) {
       const st = Math.round((k + (rnd() - 0.5) * 0.12) / 24 * sr + len) % len, a = 0.7 + 0.3 * rnd();
-      for (const [f, dec, g] of [[3100, 0.0018, 0.6], [4700, 0.0012, 0.5], [7300, 0.0008, 0.35], [1400, 0.003, 0.25]]) {
+      for (const [f, dec, g] of [[3100, 0.0018, 0.6], [4700, 0.0012, 0.45], [6900, 0.0008, 0.18], [1400, 0.003, 0.3]]) {
         const w = TAU * f * (1 + (rnd() - 0.5) * 0.05) / sr, dd = dec * sr;
-        for (let j = 0, n = Math.ceil(dd * 6); j < n; j++) out[(st + j) % len] += a * g * Math.exp(-j / dd) * Math.sin(w * j) * Math.min(1, j / 2);
+        for (let j = 0, n = Math.ceil(dd * 6); j < n; j++) out[(st + j) % len] += a * g * Math.exp(-j / dd) * Math.sin(w * j) * Math.min(1, j / 5);
       }
     }
     return normPeak(hpLoop(out, sr, 400), 0.8);
@@ -388,11 +388,11 @@
       const roll = Math.pow(Math.min(1.1, sf), 1.2) * this.size;
       this.set(this.roadF.frequency, 'rf', R[0] * (0.75 + 0.6 * sf) * dop, 0.15, 0.03, true);
       this.set(this.roadF.Q, 'rq', R[1], 0.2, 0.05, true);
-      this.set(this.roadG.gain, 'rg', R[2] * roll * 1.6, 0.12, 0.002);
+      this.set(this.roadG.gain, 'rg', R[2] * roll * 3.5, 0.12, 0.002);
       if (this.player) {
         this.set(this.grit.playbackRate, 'gr', R[4] * (0.2 + 1.1 * sf) * dop, 0.15, 0.02, true);
         this.set(this.gritF.frequency, 'gf', R[5], 0.2, 0.05, true);
-        this.set(this.gritG.gain, 'gg', R[3] * roll * 0.9, 0.12, 0.002);
+        this.set(this.gritG.gain, 'gg', R[3] * roll * 1.6, 0.12, 0.002);
         // skid: a squeal on tarmac, a scrub on dirt (vehicles.js sets v.skidding / v.slip)
         let sk = 0;
         if (veh && (veh.skidding || (brake && sf > 0.45 && veh.ctl && veh.ctl.brake))) sk = clamp(Math.abs(veh.slip || 0) / 70 + (brake ? 0.4 : 0.2), 0.25, 1) * Math.min(1, sf * 2.5);
@@ -409,14 +409,14 @@
       this.set(this.cG.gain, 'cg', 0.32 * pedalling * Math.min(1, 0.3 + sf * 6), 0.06, 0.003);
       const coast = sf > 0.03 && pedalling < 0.2 ? 1 : 0;
       this.set(this.rat.playbackRate, 'rr', (4 + 52 * Math.min(1.1, sf)) / 24 * k * dop, 0.05, 0.01, true);
-      this.set(this.rG.gain, 'rgn', coast * 0.42 * Math.min(1, sf * 8) * (k < 1 ? 1.15 : 0.9), 0.025, 0.003);
+      this.set(this.rG.gain, 'rgn', coast * 0.3 * Math.min(1, sf * 8) * (k < 1 ? 1.1 : 0.9), 0.025, 0.003);
       this.st = { f: 0, r: sf, gear: 0, shifting: false, load: pedalling };
     }
     engine(sf, ld, brake, dt, R, dop, veh, prevSf) {
       const D = this.D, tops = D.tops, single = tops.length < 2;
       let r;
       if (single) { // CVT / centrifugal clutch: revs flare to the clutch-in point, then track speed
-        r = clamp(Math.min(1, sf) * 0.85 + ld * (0.38 - 0.2 * Math.min(1, sf)), 0, 1.05);
+        r = clamp(Math.min(1, sf) * 0.8 + ld * (0.36 - 0.2 * Math.min(1, sf)), 0, 1);
       } else {
         if (this.shiftT > 0) this.shiftT -= dt;
         else {
@@ -431,7 +431,7 @@
       }
       const shifting = this.shiftT > 0;
       const u = shifting ? 1 - this.shiftT / this.shiftD : 0;
-      const ldT = shifting ? 0 : brake ? 0 : ld;
+      const ldT = shifting ? Math.min(ld, 0.25) : brake ? 0 : ld;
       this.load += (ldT - this.load) * (1 - Math.exp(-dt / (shifting ? 0.03 : 0.08)));
       const L = this.load;
       const f = D.fIdle + (D.fMax - D.fIdle) * r;
@@ -447,7 +447,7 @@
         this.set(this.pk.frequency, 'pf', (D.pk.f[0] + (D.pk.f[1] - D.pk.f[0]) * Math.min(1, r)) * dop, 0.06, 0.02, true);
         this.set(this.pk.gain, 'pg', D.pk.g[0] + (D.pk.g[1] - D.pk.g[0]) * on * on * (3 - 2 * on), 0.06, 0.2);
       } else this.set(this.pk.frequency, 'pf', D.pk.f * dop, 0.1, 0.02, true);
-      const dip = shifting ? 1 - 0.5 * Math.sin(Math.PI * u) : 1;
+      const dip = shifting ? 1 - 0.35 * Math.sin(Math.PI * u) : 1;
       this.set(this.vol.gain, 'v', D.vol * (0.42 + 0.33 * Math.min(1, r) + 0.3 * L) * dip * (brake ? 0.85 : 1), shifting ? 0.03 : 0.06, 0.003);
       if (this.wO) {
         const w = D.whine, x = w.cvt ? Math.min(1.1, sf) : Math.min(1.1, r);
@@ -527,7 +527,7 @@
     const dc = o.variant === 'dc', p = PO(o) * rr(0.98, 1.02), f = (dc ? 410 : 355) * p;
     const n = o.dur ? 1 : 2, d = o.dur || 0.13;
     let end = t;
-    for (let i = 0; i < n; i++) end = hornNote(ac, out, t + i * 0.21, { f, d, duty: dc ? 0.3 : 0.45, drive: dc ? 2 : 4, pre: 0.8, res: [[1250, 2, 8], [2900, 3, 4]], lp: 4800, hp: 220, v: 0.3, a: 0.01, r: 0.035, scoop: 0.93, droop: 0.95, vib: dc ? null : [27, 0.018] });
+    for (let i = 0; i < n; i++) end = hornNote(ac, out, t + i * 0.21, { f, d, duty: dc ? 0.3 : 0.45, drive: dc ? 2 : 4, pre: 0.8, res: [[1250, 2, 8], [2900, 3, 4]], lp: 4800, hp: 220, v: 0.13, a: 0.01, r: 0.035, scoop: 0.93, droop: 0.95, vib: dc ? null : [27, 0.018] });
     return end;
   }, { cooldown: 0.35 });
   X.registerSfx('scooty_horn', (ac, out, t, o) => { // the Scooty's thin, high electric "peep peep"
@@ -538,16 +538,16 @@
   }, { cooldown: 0.35 });
   X.registerSfx('car_horn', (ac, out, t, o) => { // Ambassador: two disc horns a major third apart, each a snapping diaphragm on a resonator
     const d = o.dur || 0.42, p = PO(o) * rr(0.99, 1.01);
-    hornNote(ac, out, t, { f: 405 * p, d, duty: 0.22, drive: 3, pre: 0.8, res: [[1900, 1.6, 6], [3300, 2.5, 3]], lp: 5500, hp: 200, v: 0.24, a: 0.012, r: 0.04, scoop: 0.93, droop: 0.95 });
-    return hornNote(ac, out, t + 0.004, { f: 507 * p, d, duty: 0.2, drive: 3, pre: 0.8, res: [[2100, 1.6, 6], [3500, 2.5, 3]], lp: 5500, hp: 200, v: 0.22, a: 0.012, r: 0.04, scoop: 0.93, droop: 0.95 });
+    hornNote(ac, out, t, { f: 405 * p, d, duty: 0.22, drive: 3, pre: 0.8, res: [[1900, 1.6, 6], [3300, 2.5, 3]], lp: 5500, hp: 200, v: 0.1, a: 0.012, r: 0.04, scoop: 0.93, droop: 0.95 });
+    return hornNote(ac, out, t + 0.004, { f: 507 * p, d, duty: 0.2, drive: 3, pre: 0.8, res: [[2100, 1.6, 6], [3500, 2.5, 3]], lp: 5500, hp: 200, v: 0.09, a: 0.012, r: 0.04, scoop: 0.93, droop: 0.95 });
   }, { cooldown: 0.3 });
   X.registerSfx('bus_horn', (ac, out, t, o) => { // APSRTC air horn: two big trumpets + a third, air pressure builds into a blat, hiss on release
     const d = o.dur || 0.8, p = PO(o);
     let end = t;
-    for (const [f, v, dl] of [[146.8, 0.2, 0], [185, 0.17, 0.012], [220, 0.1, 0.02]]) {
+    for (const [f, v, dl] of [[146.8, 0.065, 0], [185, 0.055, 0.012], [220, 0.033, 0.02]]) {
       end = Math.max(end, hornNote(ac, out, t + dl, { f: f * p * rr(0.995, 1.005), d, duty: 0.33, drive: 3, pre: 0.9, res: [[650, 1.2, 7], [1500, 2, 5]], lp: 4200, hp: 90, v, a: 0.06, r: 0.14, scoop: 0.8, scoopT: 0.09, droop: 0.9, vib: [5.5, 0.004] }));
     }
-    burst(ac, out, t, { ft: 'highpass', f: 2200, a: 0.02, h: 0.05, r: 0.12, v: 0.06 });
+    burst(ac, out, t, { ft: 'highpass', f: 2200, a: 0.02, h: 0.05, r: 0.12, v: 0.04 });
     burst(ac, out, t + d + 0.04, { ft: 'highpass', f: 2600, a: 0.01, h: 0.05, r: 0.25, v: 0.07 });
     return end + 0.1;
   }, { cooldown: 0.5 });
@@ -741,8 +741,8 @@
     cycle: { thud: [150, 75, 0.09, 0.45], dak: [0.06, 125, 65, 0.08, 0.3], body: [800, 0.06, 0.3], rattle: { n: 4, lo: 2500, hi: 4200, v: 0.05, span: 0.12 }, bell: true },
     bike: { thud: [105, 52, 0.15, 0.6], dak: [0.08, 88, 48, 0.12, 0.42], body: [550, 0.08, 0.4], rattle: { n: 5, lo: 1500, hi: 3200, v: 0.05, span: 0.18 }, spring: [210, 160, 0.22, 0.07] },
     auto: { thud: [92, 50, 0.17, 0.55], dak: [0.09, 78, 45, 0.14, 0.4], body: [500, 0.08, 0.4], rattle: { n: 9, lo: 1800, hi: 4000, v: 0.055, span: 0.35 }, clank: [420, 0.12, 0.3], spring: [520, 470, 0.12, 0.025] },
-    car: { thud: [76, 40, 0.22, 0.7], dak: [0.11, 66, 38, 0.16, 0.45], body: [420, 0.1, 0.45], rattle: { n: 3, lo: 1400, hi: 2600, v: 0.035, span: 0.15 }, clunk: [165, 110, 0.06, 0.25] },
-    heavy: { thud: [56, 30, 0.35, 0.8], dak: [0.16, 50, 28, 0.25, 0.5], body: [320, 0.14, 0.5], rattle: { n: 12, lo: 1200, hi: 3500, v: 0.05, span: 0.6 }, clank: [260, 0.1, 0.4] },
+    car: { thud: [76, 40, 0.22, 0.55], dak: [0.11, 66, 38, 0.16, 0.45], body: [420, 0.1, 0.45], rattle: { n: 3, lo: 1400, hi: 2600, v: 0.035, span: 0.15 }, clunk: [165, 110, 0.06, 0.25] },
+    heavy: { thud: [56, 30, 0.35, 0.6], dak: [0.16, 50, 28, 0.25, 0.4], body: [320, 0.14, 0.5], rattle: { n: 12, lo: 1200, hi: 3500, v: 0.05, span: 0.6 }, clank: [260, 0.1, 0.4] },
   };
   function potClass(o) {
     const T = o.vtype && VT(o.vtype);
@@ -766,7 +766,7 @@
     if (C.spring) e = Math.max(e, tone(ac, out, t + 0.03, { type: 'triangle', f: C.spring[0], f2: C.spring[1], glide: C.spring[2], a: 0.004, r: C.spring[2], v: C.spring[3] * v, vib: [11, 6] }));
     if (C.bell) for (let k = 0; k < 3; k++) strike(ac, out, t + 0.02 + k * 0.035, 2350 * rr(0.99, 1.01), BELL, 0.03 * (1 - k * 0.25), 0.25); // the bell jingles
     if (o.variant === 'wet') { // rain-filled: a muddy splash and droplets
-      burst(ac, out, t + 0.01, { ft: 'lowpass', f: 3800, f2: 600, sweep: 0.35, q: 0.7, a: 0.003, r: 0.45, v: 0.55 * v });
+      burst(ac, out, t + 0.01, { ft: 'lowpass', f: 3800, f2: 600, sweep: 0.35, q: 0.7, a: 0.003, r: 0.45, v: 0.4 * v });
       tone(ac, out, t + 0.03, { f: 210, f2: 120, glide: 0.12, a: 0.004, r: 0.12, v: 0.16 * v });
       for (let k = 0; k < 4; k++) { const f = rr(700, 1600); tone(ac, out, t + rr(0.08, 0.45), { f, f2: f * 1.7, glide: 0.04, a: 0.002, r: 0.04, v: 0.05 }); }
       e = Math.max(e, t + 0.6);
@@ -810,7 +810,7 @@
     const veh = { type, x: 0, y: 0, speed: 0, throttle: 0, ctl: { brake: false }, slip: 0, surf: o.surface || 'asphalt' };
     const v = factory(oc, out, type, X.engProfile(type), veh, o.player !== false);
     if (!v) return null;
-    const max = T.maxSpeed || 120, acc = (T.accel || 80) / max, drag = ((T.drag || 28) + 4) / max, brk = (T.brake || 180) / max;
+    const max = T.maxSpeed || 120, acc = (T.accel || 80) / max * (o.accelMul || 0.4), drag = ((T.drag || 28) + 4) / max, brk = (T.brake || 180) / max;
     const log = [];
     const step = (o.frame || 0.0174);
     const q = Math.round(step * oc.sampleRate / 128) * 128 / oc.sampleRate;
@@ -858,24 +858,25 @@
       if (!v) return 0;
       const n = v.nodes; v.stop(); return n;
     },
-    // render n voices for sec seconds offline and time it (vs the same count of built-in voices)
+    // render cost of n voices for sec seconds offline (audio thread; OfflineAudioContext suspend() is itself slow in Chrome,
+    // so no per-frame suspends here) vs the same count of built-in voices, + the JS cost of one update() call (main thread)
     async bench(n, sec) {
+      const kinds = ['auto', 'chetak', 'ambassador', 'bus', 'rx100', 'scooty', 'lorry', 'maruti800'];
       const run = async (mine) => {
-        const oc = new OfflineAudioContext(2, Math.ceil(44100 * sec), 44100), out = oc.destination;
-        const kinds = ['auto', 'chetak', 'ambassador', 'bus', 'rx100', 'scooty', 'lorry', 'maruti800'];
-        const voices = [];
-        for (let i = 0; i < n; i++) {
+        const oc = new OfflineAudioContext(2, Math.ceil(44100 * sec), 44100), out = oc.destination, voices = [];
+        for (let i = 0; mine !== null && i < n; i++) {
           const ty = kinds[i % kinds.length];
-          voices.push(mine ? factory(oc, out, ty, X.engProfile(ty), null, i === 0) : new N.audio._internal.EngineVoice(oc, out, ty));
-        }
-        const q = 2048 / 44100;
-        for (let tt = q, k = 0; tt < sec - 0.05; tt += q, k++) {
-          oc.suspend(tt).then(() => { const sf = 0.5 + 0.45 * Math.sin(tt * 0.9); for (const v of voices) v.update(sf, 0.6, 0.5, 0, { dt: q, dop: 1, spatialized: true }); oc.resume(); });
+          const v = mine ? factory(oc, out, ty, X.engProfile(ty), null, i === 0) : new N.audio._internal.EngineVoice(oc, out, ty);
+          v.update(0.6, 0.6, 0.5, 0, { dt: 0.016, dop: 1, spatialized: true }); voices.push(v);
         }
         const t0 = performance.now(); await oc.startRendering(); return performance.now() - t0;
       };
-      const mine = await run(true), builtin = await run(false);
-      return { n, sec, ms: Math.round(mine), msBuiltin: Math.round(builtin), realtimeFrac: +(mine / (sec * 1000)).toFixed(4) };
+      const base = await run(null), mine = await run(true), builtin = await run(false);
+      const oc = new OfflineAudioContext(1, 4410, 44100), v = factory(oc, oc.destination, 'rx100', X.engProfile('rx100'), null, true);
+      const t0 = performance.now();
+      for (let i = 0; i < 2000; i++) v.update(0.5 + 0.45 * Math.sin(i * 0.01), i % 300 < 200 ? 1 : 0, 1, 0, { dt: 0.016, dop: 1, spatialized: true });
+      const updUs = (performance.now() - t0) / 2000 * 1000;
+      return { n, sec, msEmpty: Math.round(base), ms: Math.round(mine), msBuiltin: Math.round(builtin), realtimeFrac: +(Math.max(0, mine - base) / (sec * 1000)).toFixed(4), updUs: +updUs.toFixed(1) };
     },
   };
   N.audio.vehicles = A;
