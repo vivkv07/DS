@@ -173,7 +173,7 @@
         dealCards(g, S);
         S.meter = { t: 0, speed: T.speed0 + g.diff * T.speed1, zone: Math.min(0.32, (T.zone0 - g.diff * T.zone1) * g.winMul) };
         const hint = S.like === W_.like ? W_.hint : HINTS[S.like];
-        S.bubble = { who: 'him', text: fill(W_.ask, S, g) + ' ' + hint, t: 0 };
+        S.bubble = { who: 'him', text: fill(W_.ask, S, g) + ' ' + hint, t: 0, keep: true }; // the hint stays up until he says something else
         S.kidBubble = null;
         S.leave = 0; S.time = 0; S.deal = false;
         S.sign = S.who === 'auto' ? PLACE_SIGN[p.place] || 'KOTI' : null;
@@ -319,10 +319,10 @@
       if (S.leave > 0) S.leave += dt;
       S.shown += (S.price - S.shown) * Math.min(1, dt * 6);
       if (g.over) return;
-      if (S.stage === 'intro') { if (S.st > 1.6) { S.stage = 'choose'; S.st = 0; } return; }
+      if (S.stage === 'intro') { if (S.st > 1.3) { S.stage = 'choose'; S.st = 0; } return; }
       if (S.stage === 'choose' || S.stage === 'deliver') {
         S.patience -= dt * (T.drain0 + g.diff * T.drain1);
-        if (S.st > 4.5 && S.stage === 'choose' && !S.nag) { S.nag = true; say(S, ['Bolo bolo, jaldi!', 'Haan? Kya?', 'Time nahi hai!'][(g.rng.next() * 3) | 0], 'him'); if (S.who === 'auto') g.sfx('auto_horn', { vol: 0.5 }); }
+        if (S.st > 4.5 && S.stage === 'choose' && !S.nag && S.turns > 0) { S.nag = true; say(S, ['Bolo bolo, jaldi!', 'Haan? Kya?', 'Time nahi hai!'][(g.rng.next() * 3) | 0], 'him'); if (S.who === 'auto') g.sfx('auto_horn', { vol: 0.5 }); }
         if (S.patience <= 0) { leave(g, S); return; }
       }
       if (S.stage === 'choose') {
@@ -455,7 +455,7 @@
       // the kid
       H.kidBack(ctx, L.kidX, L.kidY, L.sc * 1.35, { shirt: '#d8402a', stripes: '#f2c230', pants: '#3b4a6b' });
       // bubbles
-      if (S.bubble && S.bubble.t < 3.5 && !(S.kidBubble && S.stage === 'deliver')) {
+      if (S.bubble && (S.bubble.t < 3.5 || S.bubble.keep) && !(S.kidBubble && S.stage === 'deliver')) {
         const bx = S.who === 'auto' ? L.vx + 10 * L.sc : L.vx, by = L.ground - 150 * L.sc;
         bubble(ctx, g, S.bubble.text, bx, by, S.bubble.t, S.patience < 35 ? '#ffe6dc' : '#fff8e6', 'right');
       }

@@ -111,7 +111,7 @@
   const S = (N.seasons = {
     NAMES, EXTRA, ALL, state,
     get overrides() { const o = {}; for (const k in overrides) o[k] = overrides[k].on; return o; },
-    overlays: {}, quality: 1,
+    overlays: {}, quality: 1, profile: false, prof: {},
     raining: false, mist: false,
     is(name) { return !!state[name]; },
     active() { return ALL.filter((n) => state[n]); },
@@ -410,15 +410,26 @@
     }
     bulbs.n = 0;
   }
-  function flushBulbGlow() { // on the light layer: a soft additive bloom per bulb at night
+  const glowCache = new Map();
+  function glowSprite(col) {
+    let c = glowCache.get(col);
+    if (c) return c;
+    c = N.render.makeCanvas(32, 32);
+    const g = c.getContext('2d'), rgb = U.hexToRgb(col);
+    const gr = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+    gr.addColorStop(0, 'rgba(' + rgb.join(',') + ',0.85)'); gr.addColorStop(0.35, 'rgba(' + rgb.join(',') + ',0.32)'); gr.addColorStop(1, 'rgba(' + rgb.join(',') + ',0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
+    glowCache.set(col, c);
+    return c;
+  }
+  function flushBulbGlow() { // on the light layer: a soft additive bloom per glow point at night
     if (!bulbs.glowN || NIGHT < 0.15) { bulbs.glowN = 0; return; }
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = Math.min(0.9, NIGHT);
+    ctx.globalAlpha = Math.min(0.85, NIGHT);
     for (let i = 0; i < bulbs.glowN; i++) {
       const b = bulbs.glow[i];
-      const k = kh(b.h), X = sxp(b.x, k), Y = syp(b.y, k), r = 2.6 * k;
-      ctx.fillStyle = b.col; ctx.globalAlpha = Math.min(0.5, NIGHT * 0.5);
-      ctx.fillRect(X - r, Y - r, r * 2, r * 2);
+      const k = kh(b.h), X = sxp(b.x, k), Y = syp(b.y, k), r = 7 * k;
+      ctx.drawImage(glowSprite(b.col), X - r, Y - r, r * 2, r * 2);
     }
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
     bulbs.glowN = 0;
@@ -458,37 +469,45 @@
     ctx.globalAlpha = 1;
   }
 
-  // ---- paths along roads (processions): back along the nearest road from a gate
-  function roadPathTo(gx, gy, len, opts) {
-    const W = N.world;
-    if (!W || !W.nearestRoadPoint) return null;
-    const rp = W.nearestRoadPoint(gx, gy, opts && opts.pred);
+  // ---- paths along roads (processions): back along the road network from a temple gate.
+  // Walks away from the gate along the nearest road, hopping onto a connected road at each end,
+  // until `len` u are collected; returns points from the far end to the gate.
+  function roadPathTo(gx, gy, len) {
+    const W = N.world, D = N.WORLD_DATA;
+    if (!W || !W.nearestRoadPoint || !D) return null;
+    const rp = W.nearestRoadPoint(gx, gy, (r) => r.kind !== 'path');
     if (!rp || !rp.road) return null;
-    const pts = rp.road.pts;
-    // walk the road from the nearest point in the direction with more road
-    let lenA = 0, lenB = 0;
-    for (let i = rp.seg; i >= 0; i--) lenA += Math.hypot(pts[i + 1 > pts.length - 1 ? i : i + 1][0] - pts[i][0], pts[i + 1 > pts.length - 1 ? i : i + 1][1] - pts[i][1]);
-    for (let i = rp.seg; i < pts.length - 1; i++) lenB += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
-    const out = [[rp.x, rp.y]];
-    let acc = 0;
-    if ((opts && opts.dir === 'b') || (!(opts && opts.dir === 'a') && lenB >= lenA)) {
-      let px = rp.x, py = rp.y;
-      for (let i = rp.seg + 1; i < pts.length && acc < len; i++) {
+    const out = [[gx, gy], [rp.x, rp.y]];
+    let acc = Math.hypot(rp.x - gx, rp.y - gy);
+    let road = rp.road, pts = road.pts;
+    // pick the direction with more road
+    let la = 0, lb = 0;
+    for (let i = 0; i < rp.seg; i++) la += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+    for (let i = rp.seg + 1; i < pts.length - 1; i++) lb += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+    let dir = lb >= la ? 1 : -1, i = dir > 0 ? rp.seg + 1 : rp.seg;
+    const used = new Set([road.id]);
+    for (let hop = 0; hop < 4 && acc < len; hop++) {
+      let px = out[out.length - 1][0], py = out[out.length - 1][1];
+      for (; i >= 0 && i < pts.length && acc < len; i += dir) {
         const d = Math.hypot(pts[i][0] - px, pts[i][1] - py);
         if (acc + d > len) { const t = (len - acc) / d; out.push([px + (pts[i][0] - px) * t, py + (pts[i][1] - py) * t]); acc = len; break; }
         out.push([pts[i][0], pts[i][1]]); acc += d; px = pts[i][0]; py = pts[i][1];
       }
-    } else {
-      let px = rp.x, py = rp.y;
-      for (let i = rp.seg; i >= 0 && acc < len; i--) {
-        const d = Math.hypot(pts[i][0] - px, pts[i][1] - py);
-        if (acc + d > len) { const t = (len - acc) / d; out.push([px + (pts[i][0] - px) * t, py + (pts[i][1] - py) * t]); acc = len; break; }
-        out.push([pts[i][0], pts[i][1]]); acc += d; px = pts[i][0]; py = pts[i][1];
+      if (acc >= len) break;
+      // continue on another road touching this end (a street or lane, not a highway if possible)
+      let best = null, bd = Infinity;
+      for (const r of D.roads) {
+        if (used.has(r.id) || r.kind === 'path' || r.kind === 'bridge') continue;
+        const q0 = r.pts[0], q1 = r.pts[r.pts.length - 1];
+        for (const [q, d0] of [[q0, 1], [q1, -1]]) {
+          const dd = Math.hypot(q[0] - px, q[1] - py) - (r.kind === 'arterial' ? 0 : 20);
+          if (dd < r.w / 2 + 14 && dd < bd) { bd = dd; best = { r, d0 }; }
+        }
       }
+      if (!best) break;
+      road = best.r; pts = road.pts; used.add(road.id); dir = best.d0; i = dir > 0 ? 1 : pts.length - 2;
     }
-    out.reverse(); // from the far end to the road point...
-    out.push([gx, gy]); // ...then into the gate
-    return out;
+    return out.reverse();
   }
   function polyLen(pts) { let s = 0; for (let i = 1; i < pts.length; i++) s += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return s; }
   function along(pts, d, out) {
@@ -539,7 +558,7 @@
       if (out.length >= maxN || s.t !== 'bldg' || s.roofType !== 'flat' || s.h < 9) return;
       const p = KITE_STYLES[s.style]; if (!p) return;
       const hv = hsh(s.x, s.y);
-      if (hv > 0.34 * p) return;
+      if (hv > 0.5 * p) return;
       out.push(s);
     });
     return out;
@@ -572,9 +591,12 @@
     },
     draw() {
       const q = quality();
-      const anchors = collectAnchors(Math.round(46 * q));
+      const anchors = collectAnchors(Math.round(50 * q));
       // kids on the roofs (after their building), the strings and kites in the sky
+      let kids = 0;
       for (const s of anchors) {
+        if (kids >= 28 * q) break;
+        kids++;
         const ss = s;
         R.queue('structures', R.distKey(s.cx, s.cy), () => {
           frame();
@@ -586,7 +608,7 @@
       }
       R.queue('sky', 2, () => {
         frame();
-        ctx.lineWidth = 0.45; ctx.strokeStyle = 'rgba(255,250,240,0.55)';
+        ctx.lineWidth = 0.7; ctx.strokeStyle = 'rgba(255,250,240,0.7)';
         ctx.beginPath();
         for (const s of anchors) {
           kitePos(s, kp);
@@ -595,20 +617,20 @@
           ctx.moveTo(ax, ay); ctx.quadraticCurveTo((ax + bx) / 2 + 2, (ay + by) / 2 + 6, bx, by);
         }
         ctx.stroke();
-        for (const s of anchors) { kitePos(s, kp); kite(kp.x, kp.y, kp.h, kp.ci, 8.5, kp.tilt, kp.half); }
+        for (const s of anchors) { kitePos(s, kp); kite(kp.x, kp.y, kp.h, kp.ci, 11, kp.tilt, kp.half); }
         // more kites all over the sky (their flyers are out of sight): a world-anchored grid, so
         // they stay put while the camera moves
-        const v = R.view, G = 150;
+        const v = R.view, G = 115;
         const i0 = Math.floor(v.x0 / G) - 1, i1 = Math.floor(v.x1 / G) + 1, j0 = Math.floor(v.y0 / G) - 1, j1 = Math.floor(v.y1 / G) + 1;
         let n = 0;
-        for (let j = j0; j <= j1 && n < 40 * q; j++) for (let i = i0; i <= i1; i++) {
+        for (let j = j0; j <= j1 && n < 70 * q; j++) for (let i = i0; i <= i1; i++) {
           const hv = hsh(i * 3.1, j * 1.7);
-          if (hv > 0.62) continue;
+          if (hv > 0.72) continue;
           n++;
           const x = i * G + hsh(i, j) * G + Math.sin(TIME * 0.4 + hv * 9) * 6, y = j * G + hsh(j, i) * G + Math.cos(TIME * 0.33 + hv * 7) * 5;
-          kite(x, y, 62 + hv * 30, (hv * 991) | 0, 6.5, Math.sin(TIME * 0.9 + hv * 20) * 0.45, hv > 0.4);
+          kite(x, y, 62 + hv * 30, (hv * 991) | 0, 9, Math.sin(TIME * 0.9 + hv * 20) * 0.45, hv > 0.4);
         }
-        for (const c of sank.cut) kite(c.x, c.y, c.h, c.ci, 7, Math.sin(c.t * 3) * 0.9, c.half);
+        for (const c of sank.cut) kite(c.x, c.y, c.h, c.ci, 11, Math.sin(c.t * 3) * 0.9, c.half);
         reset();
       });
       // Patang Bazaar crowd
@@ -628,7 +650,7 @@
     ctx.strokeStyle = 'rgba(250,250,245,0.85)'; ctx.lineWidth = Math.max(0.6, 0.4 * Z);
     const k = Z;
     W().queryStructures(v.x0, v.y0, v.x1, v.y1, (s) => {
-      if (n > 26 || s.t !== 'bldg' || (s.style !== 'colony' && s.style !== 'rocky') || !s.front) return;
+      if (n > 16 || s.t !== 'bldg' || (s.style !== 'colony' && s.style !== 'rocky') || !s.front) return;
       if (hsh(s.cx, s.cy) > 0.45) return;
       const f = s.front, off = 6;
       const x = f === 'W' ? s.x - off : f === 'E' ? s.x + s.w + off : s.cx;
@@ -834,11 +856,16 @@
     const D = N.draw;
     const ca = Math.cos(ang), sa = Math.sin(ang);
     const P = (u, v) => [x + ca * u - sa * v, y + sa * u + ca * v];
-    for (const [u, v] of [[-6, -4], [6, -4], [-6, 4], [6, 4]]) { const p = P(u, v); D.cyl(p[0], p[1], 0.5, 0, 9, { wall: '#a07a4a', grad: false, top: false }); }
-    const c = [P(-8, -6), P(8, -6), P(8, 6), P(-8, 6)];
-    D.poly(c, 9, 10.2, { wall: '#8a6a30', roof: '#b8964a', wallFlat: true });
-    D.box(x - 5, y - 1.5, 10, 3, 2.5, 3.2, { wall: '#7a5a3a', roof: '#9a7a50' });
-    for (let i = 0; i < 3; i++) { const p = P(-3.5 + i * 3.5, 0); D.dome(p[0], p[1], 1.6, 3.2, 6.2, { fill: '#b8502a', steps: 4 }); }
+    for (const [u, v] of [[-8, -5], [8, -5], [-8, 5], [8, 5]]) { const p = P(u, v); D.cyl(p[0], p[1], 0.6, 0, 10, { wall: '#a07a4a', grad: false, top: false }); }
+    const c = [P(-10, -7), P(10, -7), P(10, 7), P(-10, 7)];
+    D.poly(c, 10, 11.4, { wall: '#8a6a30', roof: '#c8a65a', wallFlat: true });
+    for (const q of [P(-3, -3), P(4, 2)]) { const k = kh(11.5); ctx.strokeStyle = 'rgba(110,80,30,0.7)'; ctx.lineWidth = 0.6 * k; ctx.beginPath(); ctx.moveTo(sxp(q[0] - 4, k), syp(q[1], k)); ctx.lineTo(sxp(q[0] + 4, k), syp(q[1] + 1, k)); ctx.stroke(); }
+    D.box(x - 6, y - 2, 12, 4, 2.5, 3.4, { wall: '#7a5a3a', roof: '#9a7a50' });
+    for (let i = 0; i < 4; i++) { const p = P(-4.5 + i * 3, 0); D.dome(p[0], p[1], 1.5, 3.4, 6.4, { fill: '#b8502a', steps: 4 }); }
+    // the painted board: free drinking water
+    const bp = P(0, -7.5);
+    D.box(bp[0] - 8, bp[1] - 1, 16, 2, 6, 11, { wall: '#efe9dc', roof: '#d8402a' });
+    N.draw.pixelText(bp[0], bp[1] - 1, 11, 'CHALIVENDRAM', '#b22b2b');
   }
   ov('summer', {
     draw() {
@@ -849,7 +876,11 @@
           const p = placeXY(id); if (!p) continue;
           // beside the stop, on walkable ground
           let best = null;
-          for (const [dx, dy] of [[18, 0], [-18, 0], [0, 16], [0, -16], [26, 6], [-26, 6]]) { if (N.world.isWalkable(p.x + dx, p.y + dy) && N.world.surfaceAt(p.x + dx, p.y + dy) !== N.SURF.ROAD) { best = [p.x + dx, p.y + dy]; break; } }
+          const ok = (x, y) => N.world.isWalkable(x, y) && N.world.surfaceAt(x, y) !== N.SURF.ROAD;
+          for (const [dx, dy] of [[32, 0], [-32, 0], [0, 30], [0, -30], [36, 10], [-36, 10], [10, 36], [10, -36], [44, 0], [-44, 0]]) {
+            const x = p.x + dx, y = p.y + dy;
+            if (ok(x, y) && ok(x - 10, y - 8) && ok(x + 10, y - 8) && ok(x - 10, y + 8) && ok(x + 10, y + 8)) { best = [x, y]; break; }
+          }
           if (best) summ.sheds.push({ x: best[0], y: best[1], a: hsh(p.x, p.y) * 0.4 });
         }
         summ.mangoes = [];
@@ -912,11 +943,15 @@
       const L = polyLen(path);
       const members = [];
       const tot = b.women + b.poth + b.drums;
+      // drummers lead, Pothurajus dance ahead of the women, the women walk two abreast
       for (let i = 0; i < tot; i++) {
         const kind = i < b.drums ? 'drum' : i < b.drums + b.poth ? 'poth' : 'bonam';
-        members.push({ kind, d: (i / tot) * L * 0.85, side: ((i * 7) % 5 - 2) * 3.2, li: kind === 'drum' ? lookIdx.drummer : kind === 'poth' ? lookIdx.pothuraju : lookIdx['bonam' + (i % 6)], ph: i * 1.3 });
+        const j = i < b.drums + b.poth ? i : b.drums + b.poth + Math.floor((i - b.drums - b.poth) / 2);
+        const side = kind === 'bonam' ? ((i - b.drums - b.poth) % 2 ? 4.5 : -4.5) : ((i * 7) % 5 - 2) * 3;
+        members.push({ kind, d: L - 26 - j * 11, side, li: kind === 'drum' ? lookIdx.drummer : kind === 'poth' ? lookIdx.pothuraju : lookIdx['bonam' + (i % 6)], ph: i * 1.3 });
       }
-      const pr = { id: b.id, path, L, members, thottelu: b.thottelu, festoons: [] };
+      const span = Math.max(L * 0.6, 26 + (b.drums + b.poth + Math.ceil(b.women / 2)) * 11 + 30);
+      const pr = { id: b.id, path, L, members, thottelu: b.thottelu, festoons: [], span };
       // neem festoons across the road every ~40 u near the temple
       for (let d = 20; d < Math.min(L, 200); d += 40) { along(path, L - d, tmpP); pr.festoons.push({ x: tmpP.x, y: tmpP.y, a: tmpP.a }); }
       bon.procs.push(pr);
@@ -930,7 +965,7 @@
       if (!bon.procs) buildBonalu();
       for (const pr of bon.procs) {
         if (!inView(pr.path[pr.path.length - 1][0], pr.path[pr.path.length - 1][1], pr.L + 200)) continue;
-        for (const m of pr.members) { m.d += dt * (m.kind === 'poth' ? 9 : 7); if (m.d > pr.L - 6) m.d -= pr.L * 0.9; m.ph += dt; }
+        for (const m of pr.members) { m.d += dt * 6; if (m.d > pr.L - 6) m.d -= pr.span; m.ph += dt; }
       }
       bon.drumT -= dt;
       if (bon.drumT <= 0 && N.player) {
@@ -961,6 +996,7 @@
           frame();
           ctx.imageSmoothingEnabled = true;
           for (const m of prr.members) {
+            if (m.d < 0) continue;
             along(prr.path, m.d, tmpP);
             const nx = -Math.sin(tmpP.a), ny = Math.cos(tmpP.a);
             let x = tmpP.x + nx * m.side, y = tmpP.y + ny * m.side;
@@ -1049,13 +1085,23 @@
     let best = 0, bd = Infinity;
     for (let d = 0; d < imm.L; d += 8) { along(imm.path, d, tmpP); const dd = (tmpP.x - ip.x) ** 2 + (tmpP.y - ip.y) ** 2; if (dd < bd) { bd = dd; best = d; } }
     imm.craneD = best;
+    // which side of the path is the lake? (normal (-sin a, cos a) * lake points at the water)
+    along(imm.path, best, tmpP);
+    imm.lake = N.world.isWater(tmpP.x - Math.sin(tmpP.a) * 60, tmpP.y + Math.cos(tmpP.a) * 60) ? 1 : -1;
+    imm.w = tb.w;
     for (let i = 0; i < 3; i++) {
-      along(imm.path, best + (i - 1) * 34, tmpP);
-      const nx = Math.sin(tmpP.a), ny = -Math.cos(tmpP.a); // left of travel
-      // which side is the lake? test a point either side
-      const s = N.world.isWater(tmpP.x + nx * 40, tmpP.y + ny * 40) ? 1 : -1;
-      const bx = tmpP.x + nx * s * (tb.w / 2 + 6), by = tmpP.y + ny * s * (tb.w / 2 + 6);
-      imm.cranes.push({ x: bx, y: by, ox: nx * s, oy: ny * s, ph: i * 2.3, t: i * 3, idol: IDOL_COLS[(i * 2) % IDOL_COLS.length], size: 7 + i * 2 });
+      bundAt(best + (i - 1) * 48, tb.w / 2 + 7, bp);
+      imm.cranes.push({ x: bp.x, y: bp.y, ox: bp.nx, oy: bp.ny, ph: i * 2.3, t: i * 5.3, idol: IDOL_COLS[(i * 2) % IDOL_COLS.length], size: 12 + i * 3 });
+    }
+    // spectators: two lines along the bund near the cranes (the parapet and the far footpath)
+    imm.watch = [];
+    makeLooks();
+    for (let d = best - 150; d < best + 150; d += 5.5) for (const side of [1, -1]) {
+      const lat = side > 0 ? tb.w / 2 + 3 + (hsh(d, 1) * 3) : -(tb.w / 2 + 4 + hsh(d, 2) * 4);
+      if (side > 0 && Math.abs(d - best) < 80) continue; // the cranes' working space
+      if (hsh(d, side) > 0.78) continue;
+      bundAt(d, lat, bp);
+      imm.watch.push({ x: bp.x, y: bp.y, a: Math.atan2(-bp.ny * side, -bp.nx * side), li: lookIdx['crowd' + ((hsh(d, side * 3) * 26) | 0)] || 0, ph: hsh(side, d) * 10, sit: hsh(d, 9) < 0.25 });
     }
     RESP.procession('procession_ganesh_tank_bund', imm.path, tb.w / 2 + 2, { name: 'Ganesh immersion procession, Tank Bund' });
     // initial rigs spread along the bund
@@ -1063,7 +1109,14 @@
   }
   function spawnRig(d, i) {
     const kind = i === 4 ? 'giant' : i % 3 === 1 ? 'tractor' : 'lorry';
-    imm.rigs.push({ d, kind, col: ['#e8742a', '#2a5cb8', '#c8202a', '#3a8a3a', '#f2c230'][i % 5], idol: IDOL_COLS[i % IDOL_COLS.length], size: kind === 'giant' ? 24 : kind === 'tractor' ? 6 + (i % 3) : 9 + (i % 4) * 2, has: true, ph: i * 1.7, dancers: 5 + (i % 4) });
+    imm.rigs.push({ d, kind, col: ['#e8742a', '#2a5cb8', '#c8202a', '#3a8a3a', '#f2c230'][i % 5], idol: IDOL_COLS[i % IDOL_COLS.length], size: kind === 'giant' ? 34 : kind === 'tractor' ? 13 + (i % 3) : 16 + (i % 4) * 2, has: true, ph: i * 1.7, dancers: 6 + (i % 4) });
+  }
+  // a point `lat` u to the lake side of the procession path at distance d
+  function bundAt(d, lat, out) {
+    along(imm.path, d, out);
+    const nx = -Math.sin(out.a) * imm.lake, ny = Math.cos(out.a) * imm.lake;
+    out.x += nx * lat; out.y += ny * lat; out.nx = nx; out.ny = ny;
+    return out;
   }
   function drawIdol(x, y, h, a, size, cols) {
     // a seated Ganesh seen from above: lotus base, body, belly, arms, elephant head with ears, trunk, crown
@@ -1079,59 +1132,63 @@
     D.cyl(x, y, 1.6 * s, h + 12 * s, h + 13.4 * s, { wall: cols[1], grad: false });
     D.dome(x, y, 1.5 * s, h + 13.4 * s, h + 16 * s, { fill: cols[1], steps: 3, finial: 1.5 * s }); // crown
   }
+  const bp = { x: 0, y: 0, a: 0, nx: 0, ny: 0 };
   function drawRig(r) {
-    along(imm.path, r.d, tmpP);
-    const a = tmpP.a, ca = Math.cos(a), sa = Math.sin(a);
-    const nx = -sa, ny = ca;
-    // keep left of the bund's centreline
-    const lane = 7;
-    const x = tmpP.x + nx * lane * 0 + sa * lane, y = tmpP.y - ca * lane * 0 - ca * lane * 0 + ny * 0;
+    bundAt(r.d, 11, bp);
+    const x = bp.x, y = bp.y, a = bp.a, ca = Math.cos(a), sa = Math.sin(a), nx = -sa, ny = ca;
     const D = N.draw;
     const box = (u0, v0, u1, v1, h0, h1, st) => { const pts = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]].map(([u, v]) => [x + ca * u + nx * v, y + sa * u + ny * v]); D.poly(pts, h0, h1, st); };
+    let L = 22;
     if (r.kind === 'tractor') {
-      box(4, -3.5, 13, 3.5, 0, 6, { wall: '#3a8a3a', roof: '#4aa04a' });           // tractor
-      box(-12, -5, 3, 5, 1.5, 4, { wall: '#7a5a3a', roof: '#9a7a50' });           // trolley
-      for (const sd of [-1, 1]) { const px = x + ca * 7 + nx * sd * 4.4, py = y + sa * 7 + ny * sd * 4.4; D.cyl(px, py, 2.2, 0, 1.4, { wall: '#2a2a2a', roof: '#3a3a3a', grad: false }); }
-      if (r.has) drawIdol(x - ca * 4.5, y - sa * 4.5, 4, a, r.size, r.idol);
+      box(6, -5, 18, 5, 0, 8, { wall: '#3a8a3a', roof: '#4aa04a' });            // tractor
+      box(-18, -7, 4, 7, 1.5, 5, { wall: '#7a5a3a', roof: '#9a7a50' });           // trolley
+      for (const sd of [-1, 1]) { const px = x + ca * 9 + nx * sd * 6, py = y + sa * 9 + ny * sd * 6; D.cyl(px, py, 3, 0, 1.8, { wall: '#2a2a2a', roof: '#3a3a3a', grad: false }); }
+      if (r.has) drawIdol(x - ca * 7, y - sa * 7, 5, a, r.size, r.idol);
+      L = 20;
     } else if (r.kind === 'giant') {
-      box(-22, -9, 22, 9, 0, 4, { wall: '#5a4a3a', roof: '#8a7a6a' });          // the long trailer
-      box(22, -6, 30, 6, 0, 8, { wall: '#c8202a', roof: '#e8402a' });             // the puller
-      if (r.has) drawIdol(x - ca * 2, y - sa * 2, 4, a, r.size, ['#f0a46a', '#f2c230']);
+      box(-30, -11, 26, 11, 0, 5, { wall: '#5a4a3a', roof: '#8a7a6a' });          // the long trailer
+      box(26, -8, 38, 8, 0, 10, { wall: '#c8202a', roof: '#e8402a' });            // the puller
+      for (const sd of [-1, 1]) for (const u of [-24, -10, 12]) D.cyl(x + ca * u + nx * sd * 11, y + sa * u + ny * sd * 11, 2.6, 0, 2.2, { wall: '#2a2a2a', roof: '#3a3a3a', grad: false });
+      if (r.has) drawIdol(x - ca * 2, y - sa * 2, 5, a, r.size, ['#f0a46a', '#f2c230']);
+      L = 32;
     } else {
-      box(8, -5, 15, 5, 0, 9, { wall: r.col, roof: R.shaded(r.col, 1.1) });        // cab
-      box(-14, -6, 8, 6, 1.5, 4.5, { wall: '#d8c060', roof: '#a08a50' });         // flatbed
-      box(-14, -6, 8, -5.2, 4.5, 7, { wall: '#e83a5a', roof: '#ff8a8a' }); box(-14, 5.2, 8, 6, 4.5, 7, { wall: '#e83a5a', roof: '#ff8a8a' }); // marigold rails
-      if (r.has) drawIdol(x - ca * 3, y - sa * 3, 4.5, a, r.size, r.idol);
+      box(12, -8, 24, 8, 0, 13, { wall: r.col, roof: R.shaded(r.col, 1.1) });        // the lorry's cab
+      box(13, -7.4, 15, 7.4, 13, 15, { wall: '#3a3a40', roof: '#4a4a52' });          // carrier rail on the cab
+      box(-22, -9, 12, 9, 2, 6, { wall: '#d8c060', roof: '#a08a50' });            // flatbed
+      box(-22, -9, 12, -8, 6, 9, { wall: '#e8742a', roof: '#f2a040' }); box(-22, 8, 12, 9, 6, 9, { wall: '#e8742a', roof: '#f2a040' }); // marigold rails
+      for (const sd of [-1, 1]) for (const u of [-16, 18]) D.cyl(x + ca * u + nx * sd * 8.4, y + sa * u + ny * sd * 8.4, 2.6, 0, 2.4, { wall: '#2a2a2a', roof: '#3a3a3a', grad: false });
+      if (r.has) drawIdol(x - ca * 5, y - sa * 5, 6, a, r.size, r.idol);
+      L = 24;
     }
     if (NIGHT > 0.15) { // bulbs round the rig
-      const L = r.kind === 'giant' ? 22 : 14;
-      for (const sd of [-1, 1]) bulbString(x + ca * L + nx * sd * 6, y + sa * L + ny * sd * 6, 7, x - ca * L + nx * sd * 6, y - sa * L + ny * sd * 6, 7, 10, ['#ffe040', '#ff4040', '#40ff80'], 0.5, TIME * 5);
-      light(x, y, 50, '#ffd890', 0.9, 8);
+      for (const sd of [-1, 1]) bulbString(x + ca * L + nx * sd * 9, y + sa * L + ny * sd * 9, 9, x - ca * L + nx * sd * 9, y - sa * L + ny * sd * 9, 9, 12, ['#ffe040', '#ff4040', '#40ff80'], 0.6, TIME * 5);
+      light(x, y, 60, '#ffd890', 0.95, 10);
     }
-    return [x, y, a];
+    return [x, y, a, L];
   }
   function drawCrane(c) {
     const D = N.draw, bx = c.x, by = c.y;
-    // base on the bund edge, a lattice mast, the boom reaching over the water, cable + hook
-    D.box(bx - 5, by - 5, 10, 10, 0, 4, { wall: '#d8a020', roof: '#f2c230' });
-    D.box(bx - 2, by - 2, 4, 4, 4, 30, { wall: '#e0a828', roof: '#f2c230' });
-    const reach = 34, tipX = bx + c.ox * reach, tipY = by + c.oy * reach;
-    const k0 = kh(30), k1 = kh(26);
-    ctx.strokeStyle = '#e8b030'; ctx.lineWidth = Math.max(1, 1.6 * k0);
-    ctx.beginPath(); ctx.moveTo(sxp(bx - c.ox * 6, k0), syp(by - c.oy * 6, k0)); ctx.lineTo(sxp(tipX, k1), syp(tipY, k1)); ctx.stroke();
-    ctx.strokeStyle = 'rgba(120,80,20,0.8)'; ctx.lineWidth = 0.6;
-    ctx.beginPath(); for (let i = 1; i < 8; i++) { const t = i / 8, kk = kh(30 - 4 * t), kd = kh(27 - 4 * t); const px = bx + c.ox * reach * t, py = by + c.oy * reach * t; ctx.moveTo(sxp(px, kk), syp(py, kk)); ctx.lineTo(sxp(px + c.ox * 2, kd), syp(py + c.oy * 2, kd)); } ctx.stroke();
+    // a tall lattice crane on the bund edge, the boom reaching over the water, cable + hook
+    D.box(bx - 6, by - 6, 12, 12, 0, 5, { wall: '#d8a020', roof: '#f2c230' });
+    D.box(bx - 2.2, by - 2.2, 4.4, 4.4, 5, 40, { wall: '#e0a828', roof: '#f2c230' });
+    D.box(bx - 3.4, by - 3.4, 6.8, 6.8, 40, 45, { wall: '#c8901a', roof: '#e8b030' }); // the cabin
+    const reach = 46, tipX = bx + c.ox * reach, tipY = by + c.oy * reach;
+    const k0 = kh(43), k1 = kh(38);
+    ctx.strokeStyle = '#e8b030'; ctx.lineWidth = Math.max(1.2, 2 * k0);
+    ctx.beginPath(); ctx.moveTo(sxp(bx - c.ox * 8, k0), syp(by - c.oy * 8, k0)); ctx.lineTo(sxp(tipX, k1), syp(tipY, k1)); ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,80,20,0.85)'; ctx.lineWidth = 0.7;
+    ctx.beginPath(); for (let i = 1; i < 10; i++) { const t = i / 10, kk = kh(43 - 5 * t), kd = kh(40 - 5 * t); const px = bx + c.ox * reach * t, py = by + c.oy * reach * t; ctx.moveTo(sxp(px, kk), syp(py, kk)); ctx.lineTo(sxp(px + c.ox * 2.4, kd), syp(py + c.oy * 2.4, kd)); } ctx.stroke();
     // the cycle: lift (0-4 s), swing out (4-7), lower into the water (7-12), back (12-16)
     const T = (c.t % 16);
-    const hookH = T < 4 ? 6 + T * 4 : T < 7 ? 22 : T < 12 ? 22 - (T - 7) * 5.2 : 4 + (T - 12) * 4;
-    const out = T < 4 ? 0.35 : T < 7 ? 0.35 + (T - 4) / 3 * 0.6 : T < 12 ? 0.95 : 0.95 - (T - 12) / 4 * 0.6;
+    const hookH = T < 4 ? 8 + T * 5 : T < 7 ? 28 : T < 12 ? 28 - (T - 7) * 6.4 : 4 + (T - 12) * 6;
+    const out = T < 4 ? 0.3 : T < 7 ? 0.3 + ((T - 4) / 3) * 0.65 : T < 12 ? 0.95 : 0.95 - ((T - 12) / 4) * 0.65;
     const hx = bx + c.ox * reach * out, hy = by + c.oy * reach * out;
-    const ktip = kh(27 - 4 * out);
-    ctx.strokeStyle = '#3a3a40'; ctx.lineWidth = 0.6; ctx.beginPath();
+    const ktip = kh(38 - 5 * out);
+    ctx.strokeStyle = '#2a2a30'; ctx.lineWidth = 0.7; ctx.beginPath();
     ctx.moveTo(sxp(hx, ktip), syp(hy, ktip)); const kh2 = kh(Math.max(0, hookH + 2)); ctx.lineTo(sxp(hx, kh2), syp(hy, kh2)); ctx.stroke();
-    if (T < 11.2 && hookH > -6) drawIdol(hx, hy, Math.max(-14, hookH - c.size * 1.3), Math.atan2(c.oy, c.ox), c.size, c.idol);
-    if (T > 10.4 && T < 11.6 && Math.random() < 0.6) for (let i = 0; i < 3; i++) puff(hx, hy, 0, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30, 20 + Math.random() * 15, 0.9, 1.2, '#d8f4ff', 1);
-    if (NIGHT > 0.1) light(bx + c.ox * 20, by + c.oy * 20, 80, '#fff4d0', 1, 26);
+    if (T < 11.4) drawIdol(hx, hy, Math.max(-16, hookH - c.size * 1.4), Math.atan2(c.oy, c.ox), c.size, c.idol);
+    if (T > 10.4 && T < 11.8 && Math.random() < 0.7) for (let i = 0; i < 4; i++) puff(hx, hy, 0, (Math.random() - 0.5) * 34, (Math.random() - 0.5) * 34, 22 + Math.random() * 16, 0.9, 1.3, '#d8f4ff', 1);
+    if (NIGHT > 0.1) light(bx + c.ox * 26, by + c.oy * 26, 90, '#fff4d0', 1, 30);
   }
   ov('ganesh_immersion', {
     on() { makeLooks(); if (!imm.ready) buildImmersion(); },
@@ -1162,35 +1219,49 @@
       if (!imm.path) return;
       const v = R.view;
       for (const r of imm.rigs) {
-        along(imm.path, r.d, tmpP);
-        if (!inView(tmpP.x, tmpP.y, 60)) continue;
+        bundAt(r.d, 11, tmpP);
+        if (!inView(tmpP.x, tmpP.y, 70)) continue;
         const rr = r;
-        R.queue('structures', R.distKey(tmpP.x, tmpP.y), () => {
+        // the teenmaar dancers follow behind the rig (actors layer, under the rig's lean)
+        R.queue('actors', tmpP.y, () => {
           frame();
-          const [x, y, a] = drawRig(rr);
-          flushBulbs();
-          // teenmaar dancers round the rig
+          bundAt(rr.d, 11, bp);
+          const a = bp.a, ca = Math.cos(a), sa = Math.sin(a), L = rr.kind === 'giant' ? 36 : 26;
           ctx.imageSmoothingEnabled = true;
           for (let i = 0; i < rr.dancers; i++) {
-            const t = rr.ph * 2 + i * 1.9, side = i % 2 ? 1 : -1;
-            const u = -18 + (i * 7) % 30, w = side * (11 + Math.sin(t) * 2);
-            const px = x + Math.cos(a) * u - Math.sin(a) * w, py = y + Math.sin(a) * u + Math.cos(a) * w;
-            person(px, py, 0, lookIdx[i % 3 ? 'dancer' : 'dancer2'] || 0, a + Math.sin(t * 2) * 2, 1 + (Math.floor(t * 4) % 4));
+            const t = rr.ph * 2 + i * 1.9;
+            const u = -L - 4 - (i % 3) * 7 + Math.sin(t * 0.7) * 2, w = ((i * 5) % 9 - 4) * 3.4 + Math.sin(t) * 1.5;
+            const px = bp.x + ca * u - sa * w, py = bp.y + sa * u + ca * w;
+            person(px, py, 0, lookIdx[i % 3 ? 'dancer' : 'dancer2'] || 0, a + Math.sin(t * 2) * 2.2, 1 + (Math.floor(t * 4) % 4));
           }
+          // drummers walking beside the rig
+          for (let i = 0; i < 2; i++) { const u = -6 + i * 12, w = (i ? 1 : -1) * 15; person(bp.x + ca * u - sa * w, bp.y + sa * u + ca * w, 0, lookIdx.drummer || 0, a, 1 + (Math.floor(rr.ph * 3 + i) % 4)); }
           ctx.imageSmoothingEnabled = false;
           reset();
         });
+        R.queue('structures', R.distKey(tmpP.x, tmpP.y), () => { frame(); drawRig(rr); flushBulbs(); reset(); });
       }
       for (const c of imm.cranes) {
-        if (!inView(c.x, c.y, 80)) continue;
+        if (!inView(c.x, c.y, 90)) continue;
         const cc = c;
         R.queue('structures', R.distKey(c.x, c.y), () => { frame(); drawCrane(cc); reset(); });
       }
-      // the watching crowd along the lake-side parapet near the cranes
-      if (imm.cranes.length && inView(imm.cranes[1].x, imm.cranes[1].y, 300)) {
-        const c0 = imm.cranes[1];
-        const c = getCrowd('immersion', c0.x - c0.ox * 30, c0.y - c0.oy * 30, 40, 60, { standP: 0.7 });
-        R.queue('actors', c.cy, () => { frame(); drawCrowd(c, Math.round(40 * quality())); });
+      // spectators lining the bund
+      if (imm.watch && imm.watch.length && inView(imm.cranes[1].x, imm.cranes[1].y, 400)) {
+        R.queue('actors', imm.cranes[1].y, () => {
+          frame();
+          const vv = R.view;
+          ctx.imageSmoothingEnabled = true;
+          let n = 0;
+          const cap = Math.round(90 * quality());
+          for (const w of imm.watch) {
+            if (n >= cap) break;
+            if (w.x < vv.x0 - 10 || w.x > vv.x1 + 10 || w.y < vv.y0 - 10 || w.y > vv.y1 + 10) continue;
+            n++;
+            person(w.x, w.y, 0, w.li, w.a + Math.sin(TIME * 0.8 + w.ph) * 0.35, 0);
+          }
+          ctx.imageSmoothingEnabled = false;
+        });
       }
       R.queue('sky', 3, () => { frame(); drawParts(); reset(); });
       void v;
@@ -1217,22 +1288,26 @@
     for (let i = 0; i < 6; i++) spots.push([ch.x - 120 + i * 48, ch.y - 92]);
     for (let i = 0; i < 4; i++) spots.push([ch.x + 104, ch.y - 40 + i * 34]);
     for (let i = 0; i < 4; i++) spots.push([ch.x - 104, ch.y - 30 + i * 34]);
-    spots.forEach((s, i) => { if (N.world.isWalkable(s[0], s[1])) ram.stalls.push({ x: s[0], y: s[1], col: KINDS[i % KINDS.length][0], t: KINDS[i % KINDS.length][1], a: i < 6 ? Math.PI / 2 : i < 10 ? Math.PI : 0 }); });
-    ram.bhattis = [[ch.x + 70, ch.y - 108], [ch.x - 84, ch.y + 96], [3936, 4020]].filter((q) => N.world.isWalkable(q[0], q[1]));
+    const okSpot = (x, y) => N.world.isWalkable(x, y) && N.world.surfaceAt(x, y) !== N.SURF.ROAD && !(N.respect.at(x, y) && N.respect.at(x, y).part === 'compound');
+    spots.forEach((s, i) => { if (okSpot(s[0], s[1])) ram.stalls.push({ x: s[0], y: s[1], col: KINDS[i % KINDS.length][0], t: KINDS[i % KINDS.length][1], a: i < 6 ? Math.PI / 2 : i < 10 ? Math.PI : 0, lit: i % 2 === 0 }); });
+    ram.bhattis = [[ch.x + 70, ch.y - 112], [ch.x - 96, ch.y + 100], [ch.x + 100, ch.y + 104], [3936, 4020]].filter((q) => okSpot(q[0], q[1])).slice(0, 3);
   }
   function drawStall(s) {
-    const D = N.draw, ca = Math.cos(s.a), sa = Math.sin(s.a);
-    const P = (u, v) => [s.x + ca * u - sa * v, s.y + sa * u + ca * v];
-    const c = [P(-5, -7), P(5, -7), P(5, 7), P(-5, 7)];
-    D.poly(c, 0, 4, { wall: '#7a5a3a', roof: '#a07a50' });
+    const D = N.draw, vert = Math.abs(Math.cos(s.a)) < 0.5; // long side along x unless the stall faces e/w
+    const w = vert ? 10 : 14, d = vert ? 14 : 10, x = s.x - w / 2, y = s.y - d / 2;
+    D.box(x, y, w, d, 0, 4, s._st || (s._st = { wall: '#7a5a3a', roof: '#a07a50' }));
     // the goods on the counter
     const k = kh(4.2);
-    for (let i = 0; i < 9; i++) { const p = P(-3 + (i % 3) * 3, -4.5 + Math.floor(i / 3) * 4.5); ctx.fillStyle = i % 2 ? s.col : R.shaded(s.col, 1.25); ctx.beginPath(); ctx.arc(sxp(p[0], k), syp(p[1], k), 1.1 * k, 0, TAU); ctx.fill(); }
-    // striped canopy on poles
-    const cn = [P(-7, -8.5), P(7, -8.5), P(7, 8.5), P(-7, 8.5)];
-    for (const q of cn) D.cyl(q[0], q[1], 0.35, 0, 10, { wall: '#6a6a70', grad: false, top: false });
-    D.poly(cn, 10, 10.6, { wall: '#d8402a', roof: s.col === '#efe9dc' ? '#2a8c82' : '#efe9dc', wallFlat: true });
-    if (NIGHT > 0.15) { const p = P(0, 0); light(p[0], p[1], 34, '#ffe8b0', 0.9, 9); glowAt(p[0], p[1], 9, '#fff0c0'); }
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) { const u = (i % 4) / 3, v = Math.floor(i / 4); const px = x + 2 + u * (w - 4), py = y + 3 + v * (d - 6); ctx.moveTo(sxp(px, k) + 1.1 * k, syp(py, k)); ctx.arc(sxp(px, k), syp(py, k), 1.1 * k, 0, TAU); }
+    ctx.fillStyle = s.col; ctx.fill();
+    // poles (one stroke) and a striped canopy
+    const k0 = kh(0), k1 = kh(10);
+    ctx.strokeStyle = '#5a5a62'; ctx.lineWidth = Math.max(0.8, 0.6 * k0); ctx.beginPath();
+    for (const [px, py] of [[x - 1, y - 1], [x + w + 1, y - 1], [x - 1, y + d + 1], [x + w + 1, y + d + 1]]) { ctx.moveTo(sxp(px, k0), syp(py, k0)); ctx.lineTo(sxp(px, k1), syp(py, k1)); }
+    ctx.stroke();
+    D.box(x - 2, y - 2, w + 4, d + 4, 10, 10.6, s._cst || (s._cst = { wall: s.col, roof: s.col, roofFn: (g, kk, bx, by, bw, bd) => { g.fillStyle = '#efe9dc'; const n = 5; for (let i = 0; i < n; i += 2) { if (bw >= bd) g.fillRect(bx + (i * bw) / n, by, bw / n, bd); else g.fillRect(bx, by + (i * bd) / n, bw, bd / n); } } }));
+    if (NIGHT > 0.15) { if (s.lit) light(s.x, s.y, 30, '#ffe0a0', 0.75, 9); glowAt(s.x, s.y, 8, '#ffd890'); }
   }
   function drawBhatti(x, y) {
     const D = N.draw;
@@ -1323,16 +1398,13 @@
         if (NIGHT > 0.2) drawParts();
         reset();
       });
-      // the new moon over the minarets (screen space, upper sky)
+      // the new moon over the minarets (screen space, upper sky): a cached crescent sprite
       if (NIGHT > 0.3) {
         R.queue('sky', 4, () => {
           frame();
-          const X = R.W * 0.78, Y = R.H * 0.14, r = Math.max(5, R.H * 0.022);
+          const X = R.W * 0.78, Y = R.H * 0.14, r = Math.max(5, Math.round(R.H * 0.022));
           ctx.globalAlpha = Math.min(1, NIGHT);
-          ctx.fillStyle = 'rgba(255,250,220,0.18)'; ctx.beginPath(); ctx.arc(X, Y, r * 2.4, 0, TAU); ctx.fill();
-          ctx.fillStyle = '#fff6d8'; ctx.beginPath(); ctx.arc(X, Y, r, 0, TAU); ctx.fill();
-          ctx.globalCompositeOperation = 'destination-out';
-          ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(X + r * 0.42, Y - r * 0.18, r * 0.92, 0, TAU); ctx.fill();
+          ctx.drawImage(moonSprite(), X - r * 3, Y - r * 3, r * 6, r * 6);
           reset();
         });
       }
@@ -1346,6 +1418,22 @@
       });
     },
   });
+
+  let moonC = null;
+  function moonSprite() {
+    if (moonC) return moonC;
+    moonC = N.render.makeCanvas(60, 60);
+    const g = moonC.getContext('2d'), r = 10;
+    const gr = g.createRadialGradient(30, 30, 0, 30, 30, 30);
+    gr.addColorStop(0, 'rgba(255,250,220,0.30)'); gr.addColorStop(0.4, 'rgba(255,250,220,0.10)'); gr.addColorStop(1, 'rgba(255,250,220,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 60, 60);
+    const m = N.render.makeCanvas(60, 60), mg = m.getContext('2d');
+    mg.fillStyle = '#fff6d8'; mg.beginPath(); mg.arc(30, 30, r, 0, TAU); mg.fill();
+    mg.globalCompositeOperation = 'destination-out';
+    mg.beginPath(); mg.arc(30 + r * 0.45, 30 - r * 0.2, r * 0.9, 0, TAU); mg.fill();
+    g.drawImage(m, 0, 0);
+    return moonC;
+  }
 
   /* ---------------------------------------------------------------- CHRISTMAS */
   const xmas = { cribs: null };
@@ -1369,9 +1457,9 @@
         let n = 0;
         const list = [];
         N.world.queryStructures(v.x0 - 20, v.y0 - 20, v.x1 + 20, v.y1 + 20, (s) => {
-          if (n > 40 || s.t !== 'bldg' || !s.front) return;
+          if (n > 44 || s.t !== 'bldg' || !s.front) return;
           const d = N.world.districtAt(s.cx, s.cy);
-          if (!d || !XMAS_DIST[d.id] || hsh(s.cx, s.cy) > 0.42 * XMAS_DIST[d.id]) return;
+          if (!d || !XMAS_DIST[d.id] || hsh(s.cx, s.cy) > 0.62 * XMAS_DIST[d.id]) return;
           n++; list.push(s);
         });
         for (const s of list) {
@@ -1381,7 +1469,7 @@
             const f = ss.front, x = f === 'W' ? ss.x - 2 : f === 'E' ? ss.x + ss.w + 2 : ss.cx, y = f === 'N' ? ss.y - 2 : f === 'S' ? ss.y + ss.d + 2 : ss.cy;
             const col = ['#f2c230', '#e83a5a', '#40c0ff', '#efe9dc'][(hsh(ss.x, 9) * 4) | 0];
             const h = Math.min(ss.h - 2, 13) + Math.sin(TIME * 1.5 + ss.x) * 0.4;
-            drawStar(x, y, h, col, 3.2);
+            drawStar(x, y, h, col, 4.4);
             if (NIGHT > 0.15) { light(x, y, 26, col, 0.9, h); glowAt(x, y, h, col); }
           });
         }
@@ -1406,7 +1494,14 @@
           D.poly([[cc.x - 7.5, cc.y - 5.5], [cc.x + 7.5, cc.y - 5.5], [cc.x + 7.5, cc.y + 5.5], [cc.x - 7.5, cc.y + 5.5]], 8, 9, { wall: '#8a6a30', roof: '#b8964a', wallFlat: true });
           const k = kh(2.5);
           for (const [u, v, col] of [[-3, 0, '#2a5cb8'], [3, 0, '#8a5a32'], [0, 1.5, '#f4e8c0']]) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(sxp(cc.x + u, k), syp(cc.y + v, k), 1.3 * k, 0, TAU); ctx.fill(); }
-          drawStar(cc.x, cc.y, 13 + Math.sin(TIME * 2) * 0.3, '#ffe060', 2.4);
+          drawStar(cc.x, cc.y, 13 + Math.sin(TIME * 2) * 0.3, '#ffe060', 3.2);
+          // a tall pole with the church's big paper star, and bulb strings down to the gate
+          D.cyl(cc.x + 9, cc.y - 6, 0.5, 0, 26, { wall: '#5a5a62', grad: false, top: false });
+          drawStar(cc.x + 9, cc.y - 6, 27, '#ffe8a0', 5.5);
+          bulbString(cc.x + 9, cc.y - 6, 25, cc.x - 14, cc.y + 6, 6, 10, ['#ff4040', '#40ff80', '#ffe040', '#40a0ff'], 3, TIME * 3);
+          bulbString(cc.x + 9, cc.y - 6, 25, cc.x + 26, cc.y + 8, 6, 10, ['#40a0ff', '#ffe040', '#ff4040', '#40ff80'], 3, TIME * 3);
+          flushBulbs();
+          if (NIGHT > 0.15) { light(cc.x + 9, cc.y - 6, 40, '#ffe8a0', 0.9, 26); glowAt(cc.x + 9, cc.y - 6, 27, '#fff0b0'); }
           if (NIGHT > 0.15) { light(cc.x, cc.y, 34, '#ffe8a0', 1, 6); glowAt(cc.x, cc.y, 13, '#ffe060'); }
           reset();
         });
@@ -1462,13 +1557,17 @@
         ctx.globalAlpha = 0.16; ctx.fillStyle = '#304a6a'; ctx.fillRect(0, 0, R.W, R.H); ctx.globalAlpha = 1;
         const n = Math.round(150 * quality());
         while (rainDrops.length < n) rainDrops.push({ x: Math.random(), y: Math.random(), s: 0.6 + Math.random() * 0.6 });
-        ctx.strokeStyle = 'rgba(200,220,255,0.45)'; ctx.lineWidth = 1; ctx.beginPath();
+        ctx.strokeStyle = 'rgba(215,232,255,0.62)'; ctx.lineWidth = 1; ctx.beginPath();
         for (let i = 0; i < n; i++) {
           const dr = rainDrops[i];
           dr.y += 0.035 * dr.s; dr.x += 0.006 * dr.s; if (dr.y > 1) { dr.y -= 1; dr.x = Math.random(); }
           const X = dr.x * R.W, Y = dr.y * R.H;
-          ctx.moveTo(X, Y); ctx.lineTo(X + 2 * dr.s, Y + 9 * dr.s);
+          ctx.moveTo(X, Y); ctx.lineTo(X + 3 * dr.s, Y + 14 * dr.s);
         }
+        ctx.stroke();
+        // splashes: little rings where drops hit
+        ctx.strokeStyle = 'rgba(220,236,255,0.5)'; ctx.beginPath();
+        for (let i = 0; i < n / 3; i++) { const X = Math.random() * R.W, Y = Math.random() * R.H, r = 1 + Math.random() * 2; ctx.moveTo(X + r, Y); ctx.ellipse(X, Y, r, r * 0.6, 0, 0, TAU); }
         ctx.stroke();
         reset();
       });
@@ -1515,7 +1614,14 @@
       const mode = N.state && N.state.mode;
       if (mode === 'minigame' || mode === 'boot') return;
       frame();
-      for (const n of ALL) { const o = OV[n]; if (o && o.draw && enabled(n)) { try { o.draw(); } catch (e) { N.err('seasons.draw:' + n, e); } } }
+      const q = R.queue;
+      for (const n of ALL) {
+        const o = OV[n];
+        if (!o || !o.draw || !enabled(n)) continue;
+        // S.profile = true: time every queued draw per overlay (S.prof[name] = ms, last frame)
+        if (S.profile) { const nn = n; S.prof[nn] = 0; R.queue = (layer, key, fn) => q.call(R, layer, key, (c) => { const t = performance.now(); try { fn(c); } finally { S.prof[nn] += performance.now() - t; } }); }
+        try { o.draw(); } catch (e) { N.err('seasons.draw:' + n, e); } finally { R.queue = q; }
+      }
       if (state.monsoon || S.mist) drawWeather();
       R.queue('light', 7, () => { frame(); flushBulbGlow(); });
     },

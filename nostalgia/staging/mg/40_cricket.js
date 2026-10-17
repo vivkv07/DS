@@ -13,6 +13,7 @@
 
     const def = {
       id: 'cricket',
+      diffBonus: (p) => (p.bowler === 'ayesha' ? 0.2 : 0), // SA4: Ayesha bowls at d + 0.2 (systems_design §8.4)
       title: 'Gully Cricket',
       sub: 'Tennis ball, three bricks for stumps, and Aunty\'s window on the left.',
       osd: 'COLONY LANE · EVENING',

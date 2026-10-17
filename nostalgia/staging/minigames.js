@@ -288,7 +288,8 @@
   function reducedMotion() {
     try { return document.body.classList.contains('reduced-motion') || !!settings().reducedMotion || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
   }
-  function hasItem(id) { try { const inv = N.player && N.player.inventory; return !!(inv && (inv.has ? inv.has(id) : inv[id])); } catch (e) { return false; } }
+  function hasItem(id) { try { const inv = N.player && N.player.inventory; return !!(inv && (inv.has ? inv.has(id) : inv[id])) || itemCount(id) > 0; } catch (e) { return false; } }
+  function itemCount(id) { try { const p = N.player; return p ? (typeof p.itemCount === 'function' ? p.itemCount(id) : (p.items && p.items[id]) | 0) : 0; } catch (e) { return 0; } }
 
   let cur = null; // the open Game
 
@@ -298,7 +299,7 @@
     stats,
     TUNE,
     helpers: H,
-    hasItem,
+    hasItem, itemCount,
     covering: false,
     register(id, def) {
       if (typeof id === 'object') { def = id; id = def.id; }
@@ -398,7 +399,8 @@
       this.assist = assistOn(params);
       this.winMul = this.assist ? TUNE.assistWindow : 1;           // every timing window x1.5 with Assist
       const base = params.difficulty == null ? 0.4 : +params.difficulty || 0;
-      this.diff = clamp(base + presetOffset() - (this.assist ? TUNE.assistDiff : 0), TUNE.diffMin, TUNE.diffMax);
+      let bonus = 0; try { bonus = (def.diffBonus && +def.diffBonus(params)) || 0; } catch (e) { /* ignore */ }  // e.g. Ayesha bowls +0.2
+      this.diff = clamp(base + bonus + presetOffset() - (this.assist ? TUNE.assistDiff : 0), TUNE.diffMin, TUNE.diffMax);
       this.reduced = reducedMotion();
       const ap = params.autoplay;
       this.auto = ap === true ? 'win' : ap === 'win' || ap === 'lose' ? ap : null;
@@ -1177,7 +1179,9 @@
       setup(g) {
         const S = g.S;
         S.charkhi = !!(g.params.charkhi || MG.hasItem('charkhi'));
-        S.lives = Math.min(T.maxLives, (g.params.lives || T.lives) + (S.charkhi ? 1 : 0)); S.livesMax = S.lives;
+        // +1 patang per spare kite owned (lootna kites), +1 with a charkhi, max 5 (systems_design §8.1)
+        const spare = g.params.lives ? 0 : MG.itemCount('kite') + MG.itemCount('lootna_kite') + MG.itemCount('patang');
+        S.lives = Math.min(T.maxLives, (g.params.lives || T.lives) + spare + (S.charkhi ? 1 : 0)); S.livesMax = S.lives;
         setBand(g);
         S.score = 0; S.cuts = 0; S.lost = 0; S.time = 0; S.left = timeLimit(g); S.target = targetCuts(g); S.redT = 0; S.latch = false;
         S.wind = (g.rng.next() < 0.5 ? -1 : 1) * (3 + g.rng.next() * 3); S.windT = 8 + g.rng.next() * 4;
@@ -3195,6 +3199,7 @@
 
     const def = {
       id: 'cricket',
+      diffBonus: (p) => (p.bowler === 'ayesha' ? 0.2 : 0), // SA4: Ayesha bowls at d + 0.2 (systems_design §8.4)
       title: 'Gully Cricket',
       sub: 'Tennis ball, three bricks for stumps, and Aunty\'s window on the left.',
       osd: 'COLONY LANE · EVENING',
@@ -4957,7 +4962,7 @@
         dealCards(g, S);
         S.meter = { t: 0, speed: T.speed0 + g.diff * T.speed1, zone: Math.min(0.32, (T.zone0 - g.diff * T.zone1) * g.winMul) };
         const hint = S.like === W_.like ? W_.hint : HINTS[S.like];
-        S.bubble = { who: 'him', text: fill(W_.ask, S, g) + ' ' + hint, t: 0 };
+        S.bubble = { who: 'him', text: fill(W_.ask, S, g) + ' ' + hint, t: 0, keep: true }; // the hint stays up until he says something else
         S.kidBubble = null;
         S.leave = 0; S.time = 0; S.deal = false;
         S.sign = S.who === 'auto' ? PLACE_SIGN[p.place] || 'KOTI' : null;
@@ -5103,10 +5108,10 @@
       if (S.leave > 0) S.leave += dt;
       S.shown += (S.price - S.shown) * Math.min(1, dt * 6);
       if (g.over) return;
-      if (S.stage === 'intro') { if (S.st > 1.6) { S.stage = 'choose'; S.st = 0; } return; }
+      if (S.stage === 'intro') { if (S.st > 1.3) { S.stage = 'choose'; S.st = 0; } return; }
       if (S.stage === 'choose' || S.stage === 'deliver') {
         S.patience -= dt * (T.drain0 + g.diff * T.drain1);
-        if (S.st > 4.5 && S.stage === 'choose' && !S.nag) { S.nag = true; say(S, ['Bolo bolo, jaldi!', 'Haan? Kya?', 'Time nahi hai!'][(g.rng.next() * 3) | 0], 'him'); if (S.who === 'auto') g.sfx('auto_horn', { vol: 0.5 }); }
+        if (S.st > 4.5 && S.stage === 'choose' && !S.nag && S.turns > 0) { S.nag = true; say(S, ['Bolo bolo, jaldi!', 'Haan? Kya?', 'Time nahi hai!'][(g.rng.next() * 3) | 0], 'him'); if (S.who === 'auto') g.sfx('auto_horn', { vol: 0.5 }); }
         if (S.patience <= 0) { leave(g, S); return; }
       }
       if (S.stage === 'choose') {
@@ -5239,7 +5244,7 @@
       // the kid
       H.kidBack(ctx, L.kidX, L.kidY, L.sc * 1.35, { shirt: '#d8402a', stripes: '#f2c230', pants: '#3b4a6b' });
       // bubbles
-      if (S.bubble && S.bubble.t < 3.5 && !(S.kidBubble && S.stage === 'deliver')) {
+      if (S.bubble && (S.bubble.t < 3.5 || S.bubble.keep) && !(S.kidBubble && S.stage === 'deliver')) {
         const bx = S.who === 'auto' ? L.vx + 10 * L.sc : L.vx, by = L.ground - 150 * L.sc;
         bubble(ctx, g, S.bubble.text, bx, by, S.bubble.t, S.patience < 35 ? '#ffe6dc' : '#fff8e6', 'right');
       }
@@ -5988,7 +5993,7 @@
   }
   function golis() {
     const C = N.collectibles; if (!C) return 0;
-    try { if (typeof C.count === 'function') { const n = C.count('golis'); if (typeof n === 'number' && isFinite(n)) return n; } } catch (e) { /* ignore */ }
+    try { if (typeof C.count === 'function') for (const k of ['goli', 'golis']) { const n = C.count(k); if (typeof n === 'number' && isFinite(n) && n > 0) return n; } } catch (e) { /* ignore */ }
     try { let n = 0; if (C.found && C.found.forEach) C.found.forEach((id) => { if (/^(g\d|goli)/i.test(String(id))) n++; }); return n; } catch (e) { return 0; }
   }
   function tigerOpen() { return !!(N.flags && N.flags.marbles_tiger) || golis() >= 10; }

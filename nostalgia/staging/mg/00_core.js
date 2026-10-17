@@ -288,7 +288,8 @@
   function reducedMotion() {
     try { return document.body.classList.contains('reduced-motion') || !!settings().reducedMotion || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
   }
-  function hasItem(id) { try { const inv = N.player && N.player.inventory; return !!(inv && (inv.has ? inv.has(id) : inv[id])); } catch (e) { return false; } }
+  function hasItem(id) { try { const inv = N.player && N.player.inventory; return !!(inv && (inv.has ? inv.has(id) : inv[id])) || itemCount(id) > 0; } catch (e) { return false; } }
+  function itemCount(id) { try { const p = N.player; return p ? (typeof p.itemCount === 'function' ? p.itemCount(id) : (p.items && p.items[id]) | 0) : 0; } catch (e) { return 0; } }
 
   let cur = null; // the open Game
 
@@ -298,7 +299,7 @@
     stats,
     TUNE,
     helpers: H,
-    hasItem,
+    hasItem, itemCount,
     covering: false,
     register(id, def) {
       if (typeof id === 'object') { def = id; id = def.id; }
@@ -398,7 +399,8 @@
       this.assist = assistOn(params);
       this.winMul = this.assist ? TUNE.assistWindow : 1;           // every timing window x1.5 with Assist
       const base = params.difficulty == null ? 0.4 : +params.difficulty || 0;
-      this.diff = clamp(base + presetOffset() - (this.assist ? TUNE.assistDiff : 0), TUNE.diffMin, TUNE.diffMax);
+      let bonus = 0; try { bonus = (def.diffBonus && +def.diffBonus(params)) || 0; } catch (e) { /* ignore */ }  // e.g. Ayesha bowls +0.2
+      this.diff = clamp(base + bonus + presetOffset() - (this.assist ? TUNE.assistDiff : 0), TUNE.diffMin, TUNE.diffMax);
       this.reduced = reducedMotion();
       const ap = params.autoplay;
       this.auto = ap === true ? 'win' : ap === 'win' || ap === 'lose' ? ap : null;

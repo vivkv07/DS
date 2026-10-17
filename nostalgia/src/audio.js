@@ -1014,8 +1014,8 @@
   };
   SFX.chappal_whoosh = (ac, out, t, o) => { // the 0.4 s wind-up + flight: a rising whoosh with a little whistle
     const d = o.dur || 0.55;
-    burst(ac, out, t, { kind: 'pink', f: 500, f2: 2600, sweep: d, q: 1.4, a: d * 0.6, h: 0.02, r: 0.12, v: 0.45 });
-    return tone(ac, out, t + d * 0.2, { f: 900 * P(o), f2: 1900, glide: d * 0.8, a: d * 0.4, h: 0.05, r: 0.1, v: 0.06 });
+    burst(ac, out, t, { kind: 'pink', f: 500, f2: 2600, sweep: d, q: 1.4, a: d * 0.6, h: 0.02, r: 0.12, v: 0.85 });
+    return tone(ac, out, t + d * 0.2, { f: 900 * P(o), f2: 1900, glide: d * 0.8, a: d * 0.4, h: 0.05, r: 0.1, v: 0.11 });
   };
   SFX.peel_slip = (ac, out, t, o) => { // a pursuer slips on a peel: slide whistle down, then a soft bump
     tone(ac, out, t, { f: 1500, f2: 300, glide: 0.55, a: 0.02, h: 0.45, r: 0.08, v: 0.16, vib: [9, 12] });
@@ -1057,7 +1057,7 @@
     const f1 = filt(ac, 'bandpass', 700, 5, trem), f2 = filt(ac, 'bandpass', 1800, 6, gain(ac, 0.6, trem));
     os.connect(f1); os.connect(f2);
     const lfo = osc0(ac); lfo.frequency.value = 17; const lg = gain(ac, 0.4, trem.gain); lfo.connect(lg);
-    env.gain.setValueAtTime(0, t); env.gain.linearRampToValueAtTime(0.22, t + 0.04); env.gain.setTargetAtTime(0, t + d - 0.1, 0.06);
+    env.gain.setValueAtTime(0, t); env.gain.linearRampToValueAtTime(0.7, t + 0.04); env.gain.setTargetAtTime(0, t + d - 0.1, 0.06);
     os.start(t); os.stop(t + d + 0.3); lfo.start(t); lfo.stop(t + d + 0.3);
     return t + d + 0.3;
   };
@@ -1085,7 +1085,7 @@
     const d = o.dur || 2.2;
     tone(ac, out, t, { type: 'sawtooth', f: 100, a: 0.2, h: d, r: 0.3, v: 0.018 });
     let e = t;
-    for (let k = 0; k < 3; k++) e = tone(ac, out, t + 0.2 + k * 0.7, { type: 'sawtooth', f: rr(380, 520), f2: rr(260, 340), glide: 0.45, a: 0.08, h: 0.25, r: 0.15, v: 0.03, vib: [23, 18] });
+    for (let k = 0; k < 3; k++) e = tone(ac, out, t + 0.2 + k * 0.7, { type: 'sawtooth', f: rr(380, 520), f2: rr(260, 340), glide: 0.45, a: 0.08, h: 0.25, r: 0.15, v: 0.07, vib: [23, 18] });
     return Math.max(e, t + d + 0.3);
   };
 
@@ -2908,7 +2908,7 @@
   }
   function toast(text, ms) {
     radio.lastText = text;
-    try { if (N.hud && typeof N.hud.toast === 'function') N.hud.toast(text, ms || 4500); } catch (e) { /* ignore */ }
+    try { if (N.hud && typeof N.hud.toast === 'function') N.hud.toast(text, ms || 4500, { key: 'radio' }); } catch (e) { /* ignore */ }
   }
   function radioStartItem(k, startTime, offset) {
     const pl = PLAYLISTS[radio.idx];

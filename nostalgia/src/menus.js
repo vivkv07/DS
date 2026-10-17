@@ -133,13 +133,15 @@
   // "eleven-year-old capitals": letters with small deterministic wobbles
   function kidCaps(text, seed) {
     const r = U.rng(seed || text);
-    let h = '';
-    for (const ch of String(text)) {
-      if (ch === ' ') { h += '<span class="kc sp"> </span>'; continue; }
-      const rot = (r.next() * 2 - 1) * 6, dy = (r.next() * 2 - 1) * 2.2;
-      h += '<span class="kc" style="transform:translateY(' + dy.toFixed(1) + 'px) rotate(' + rot.toFixed(1) + 'deg)">' + esc(ch) + '</span>';
-    }
-    return h;
+    // letters wobble; words never break in the middle (each word is one nowrap span)
+    return String(text).split(' ').map((w) => {
+      let h = '';
+      for (const ch of w) {
+        const rot = (r.next() * 2 - 1) * 6, dy = (r.next() * 2 - 1) * 2.2;
+        h += '<span class="kc" style="transform:translateY(' + dy.toFixed(1) + 'px) rotate(' + rot.toFixed(1) + 'deg)">' + esc(ch) + '</span>';
+      }
+      return '<span class="kw">' + h + '</span>';
+    }).join(' ');
   }
 
   // Handwriting font for the J-card (Google Fonts only; fallbacks in CSS).
@@ -693,7 +695,7 @@
   function attractTarget() {
     const R = N.render, w = window.innerWidth || 1, h = window.innerHeight || 1;
     const wide = w >= h * 1.15;
-    const zoom = wide ? (h < 500 ? 0.86 : 0.96) : 0.98;
+    const zoom = wide ? (h < 500 ? 0.8 : 0.82) : 0.92;
     const vw = (R.W || 640) / zoom, vh = (R.H || 360) / zoom;
     const m = reduced() ? 0 : 1, t = attract.t;
     // wide screens: Charminar right of the J-card; tall screens: above it
@@ -1066,7 +1068,7 @@
       const L = this.dom.list;
       for (const r of SETTINGS_ROWS) {
         if (r.sec) { el('h3', 'st-sec', L).textContent = r.sec; continue; }
-        const row = el('div', 'st-row st-' + r.type, L);
+        const row = el('div', 'st-row st-t-' + r.type, L);
         row.dataset.id = r.id;
         row.dataset.nav = '';
         row.tabIndex = 0;
@@ -1828,13 +1830,13 @@
         '<div class="mp-head"><div class="mp-title"><b>HYDERABAD</b><span>&amp; SECUNDERABAD · CITY GUIDE MAP · 2003</span></div>' +
         '<div class="mp-osd">▶ MAP <span class="mp-clock"></span></div>' +
         '<button type="button" class="mn-x mp-close" data-nav aria-label="Close map">✕</button></div>' +
-        '<div class="mp-view" tabindex="-1"><canvas class="mp-base"></canvas><canvas class="mp-over"></canvas>' +
+        '<div class="mp-body"><div class="mp-view" tabindex="-1"><canvas class="mp-base"></canvas><canvas class="mp-over"></canvas>' +
         '<div class="mp-zoom"><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="me" aria-label="Show me">◎</button></div>' +
         '<button type="button" class="mp-legbtn" aria-expanded="false">LEGEND</button>' +
-        '<div class="mp-legend scroll"></div>' +
         '<div class="mp-card" hidden></div>' +
         '<div class="mp-scale"><i></i><span>1 km</span></div>' +
-        '<p class="mp-hint"></p></div>';
+        '<p class="mp-hint"></p></div>' +
+        '<div class="mp-legend scroll"></div></div>';
       MV.view = e.querySelector('.mp-view'); MV.frame = MV.view;
       MV.base = e.querySelector('.mp-base'); MV.over = e.querySelector('.mp-over');
       MV.bctx = MV.base.getContext('2d'); MV.octx = MV.over.getContext('2d');
@@ -1881,6 +1883,7 @@
       this.el.classList.toggle('leg-open', MV.legendOpen);
       MV.legBtn.setAttribute('aria-expanded', MV.legendOpen ? 'true' : 'false');
       sfx('ui_click');
+      requestAnimationFrame(() => { if (isShown('map')) mapResize(); });
     },
     onOpen(o) {
       MV.icons = buildIcons();
@@ -2842,6 +2845,13 @@
       };
     },
     _mapIcons: () => (MV.icons || buildIcons()).map((i) => ({ id: i.id, kind: i.kind, layer: i.layer, must: i.must })),
+    /** Test hook: client-space position of a drawn map icon (null if not drawn this frame). */
+    _mapHit(id) {
+      const h = MV.hits.find((q) => q.item && q.item.id === id);
+      if (!h || !MV.over) return null;
+      const r = MV.over.getBoundingClientRect();
+      return { x: r.left + h.x, y: r.top + h.y };
+    },
   });
 
   /* ============================================================ system */
@@ -2867,6 +2877,7 @@
               const nick = cleanName(o.nick, 12), full = cleanName(o.full, 20);
               if (nick) profile.nick = nick;
               if (full) profile.full = full;
+              lsSet(PROFILE_KEY, JSON.stringify(profile));
               applyNames();
             },
           });

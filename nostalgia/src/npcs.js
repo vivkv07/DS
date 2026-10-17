@@ -7,6 +7,16 @@
  * never stuck), following the player (on foot or on their own cycle), riding / driving,
  * look-at, emotes, barks, and schedules for the colony regulars.
  *
+ * Character ids (speaker ids = npc ids): chinnu srikanth amma nanna ammamma chitti bunty immu
+ *   imran abba ammi nani ayesha pasha babloo faramarz pochaiah yadagiri ramulu agarwal bahadur
+ *   kite_chacha ticket_thatha salim vimala_maam cable_babji photo_uncle net_uncle flower_aunty
+ *   tiger caretaker aunty aunty_2 aunty_3 + walk-ons (bakery_man gokul_man paradise_man
+ *   bawarchi_man conductor sentry mali watchman guide boatman farmer chemist painter ticket_man
+ *   black_ticket narsimha chappal_man bangle_man attar_man recording_man coconut_man dosa_man
+ *   stationery_man kirana_kid papad_man bird_man book_man bakery_lady meat_man uncle coach guard
+ *   carol_aunty waiter banana_man) + speakers loudspeaker radio crowd chit email immu_tape
+ *   imran_tape. 'you' = chinnu (2003) / srikanth (2026). Unknown ids get a seeded generic look.
+ *
  * API (story.js / story2.js / storycore / wanted / shops call these; all tolerate stubs)
  *   N.npcs.define(id, {name, color, voice, look, portrait, look2026, portrait2026, name2026,
  *       variants: {name: {look, portrait}}, vehicle: type, speed, lines: [...], talkName, side})
@@ -14,10 +24,15 @@
  *   N.npcs.spawn(id, target, {angle, idle: 'stand'|'wander'|'sit'|'work', talk, label, key,
  *       r (wander radius), off: [dx, dy], bench, roof, vehicle (spawn riding), owner}) -> actor
  *     target: place id | [place ids] (first that exists) | landmark id | npc key | 'player' |
- *       {x, y} | [x, y] | entity. A key already spawned is moved instead of duplicated.
+ *       {x, y} | [x, y] | entity. A key already spawned is moved instead of duplicated. An
+ *       unknown target (a place not in the map yet) spawns beside the player (console.warn once).
+ *       A place on a roof zone (home_terrace, friend_terrace, patang_chacha_roof, lootna
+ *       terraces...) or opts.roof = '<roof id>' puts the actor on that roof (N.world.roofs.place).
  *     talk: function(actor, player) | 'line' | [lines | {t, mood}] | false (no ACTION).
- *     The actor: {key, npcId, x, y, angle, look (variant/year aware), alive, despawn(), ...};
- *     it is an entity of kind 'npc'; m.spawn(actor) in a mission makes it auto-despawn.
+ *       Default: one of the character's own lines (or a hint, see below). Label "Talk to Immu".
+ *     The actor: {key, npcId, x, y, angle, look (variant/year aware), alive, despawn(), stats,
+ *       ownVehicle, level (roof id)}; an entity of kind 'npc'; m.spawn(actor) in a mission
+ *       makes it auto-despawn when the mission ends.
  *   N.npcs.despawn(idOrActor), get(key) -> actor | null, all() -> [actors], list {key: actor}
  *   await N.npcs.walkTo(key, target, {run, speed, r, timeout, face}) -> true (arrived) | false
  *     Long walks follow the road graph, short ones a grid A* path, smoothed and re-planned when
@@ -48,7 +63,9 @@
  *     A key the story spawned itself is never moved or removed by a schedule.
  *   N.npcs.applyPlayerLook() — Chinnu's sprite look on N.player (Srikanth in 2026); done on
  *     game:new / load / year change unless N.npcs.keepPlayerLook = true.
- *   N.npcs.planPath(x0, y0, x1, y1) -> [{x, y}] | null (debug / other AI)
+ *   N.npcs.talkTo(key) -> Promise (runs the actor's talk as if the player pressed ACTION)
+ *   N.npcs.displayName(id), variant(id), lastSpeaker (key of the last NPC talked to)
+ *   N.npcs.planPath(x0, y0, x1, y1) -> [{x, y}] | null; gridPath, freeSpot, lineClear (other AI)
  * Events: npc:spawn {key, id, actor}, npc:despawn {key, id}, npc:talk {key, id, actor},
  *   npc:arrive {key, id}. Save section 'npcs' {schedules}.
  * Hints hook (storycore N.hints): Ammamma's default talk shows N.hints.next('home').text, the
@@ -313,7 +330,7 @@
     name: 'Pickle aunty', talkName: 'aunty', label: 'Ask aunty', full: 'Gate aunty (makes pickle)', color: '#e8902a', voice: 1.06, speed: 38,
     look: { kind: 'aunty', skin: '#8d5a3b', hair: '#3a3430', saree: '#f08a24', border: '#7a1f2b' },
     portrait: { kind: 'aunty', skin: '#8d5a3b', saree: '#f08a24', border: '#7a1f2b', hair: '#3a3430', streak: '#c8c4bc', nosestud: '#f0d870' },
-    lines: ['Kamala-garu’s grandson! At this hour!', 'Mango pickle is drying on my terrace. Touch it and see.'],
+    lines: ['Kamala-garu’s grandson! Tell your Ammamma I said hello.', 'Mango pickle is drying on my terrace. Touch it and see.', '*Ayyo*, so thin! *Thinnava?*'],
   });
 
   // ---- walk-on speakers (bible §2.5 list): curated looks so every one has a face
@@ -1391,17 +1408,24 @@
   function removeInteract(a) { if (N.interact && N.interact.remove) N.interact.remove('npc:' + a.key); }
 
   /* ================================================================ spawn / despawn */
+  const warned = new Set();
+  function warnOnce(key, msg) { if (warned.has(key)) return; warned.add(key); try { console.warn('[npcs] ' + msg); } catch (e) { /* ignore */ } }
   function spawn(id, target, opts) {
     opts = opts || {};
-    if (!N.world || !N.world.built) { N.err('npcs.spawn', new Error('world not built yet: ' + id)); return null; }
+    if (!N.world || !N.world.built) { warnOnce('nb:' + id, 'spawn(' + id + ') before the world is built: ignored'); return null; }
     const key = opts.key || id;
     if (!DEFS[id]) {
       const gl = N.people.randomLook(U.rng('npc:' + id));
       DEFS[id] = { id, name: String(id).replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()), color: U.rng('c:' + id).pick(['#f2c230', '#2a8c82', '#d8402a', '#7a3a8a', '#3a8a3a', '#c86a2a']), voice: 1, look: gl, portrait: { kind: gl.kind, skin: gl.skin, hair: gl.hair, shirt: gl.shirt, dupatta: gl.kind === 'woman' ? gl.dupatta : undefined, saree: gl.saree, border: gl.border }, generated: true };
       if (N.dialogue && N.dialogue.define && !(N.dialogue.speakers || {})[id]) N.dialogue.define(id, Object.assign(speakerSpec(id), { _cast: true }));
     }
-    const pos = posOf(target == null ? 'player' : target);
-    if (!pos) { N.err('npcs.spawn', new Error('unknown target for ' + id + ': ' + JSON.stringify(target))); return null; }
+    let pos = posOf(target == null ? 'player' : target);
+    if (!pos) { // a place another module has not added yet: stand beside the player instead of failing the script
+      warnOnce('t:' + JSON.stringify(target), 'spawn(' + id + '): unknown target ' + JSON.stringify(target) + ', spawning beside the player');
+      pos = posOf('player');
+      if (!pos) return null;
+      target = 'player';
+    }
     let x = pos.x, y = pos.y;
     if (target === 'player' || pos.entity === N.player) { const ang = (N.player.angle || 0) + Math.PI * 0.75; x += Math.cos(ang) * 16; y += Math.sin(ang) * 16; }
     if (opts.off) { x += opts.off[0]; y += opts.off[1]; }
@@ -1482,7 +1506,7 @@
     const a = registry.get(key);
     if (!a || !a.alive) return Promise.resolve(false);
     const p = posOf(target);
-    if (!p) return Promise.resolve(false);
+    if (!p) { warnOnce('w:' + JSON.stringify(target), 'walkTo(' + key + '): unknown target ' + JSON.stringify(target)); return Promise.resolve(false); }
     if (a.vehicle) dismount(key);
     if (a.walk) finishWalk(a, false);
     const dynamic = typeof target === 'object' && !Array.isArray(target) && target.kind ? true : (typeof target === 'string' && registry.has(target)) || target === 'player';

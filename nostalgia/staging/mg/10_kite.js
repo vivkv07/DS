@@ -212,7 +212,9 @@
       setup(g) {
         const S = g.S;
         S.charkhi = !!(g.params.charkhi || MG.hasItem('charkhi'));
-        S.lives = Math.min(T.maxLives, (g.params.lives || T.lives) + (S.charkhi ? 1 : 0)); S.livesMax = S.lives;
+        // +1 patang per spare kite owned (lootna kites), +1 with a charkhi, max 5 (systems_design §8.1)
+        const spare = g.params.lives ? 0 : MG.itemCount('kite') + MG.itemCount('lootna_kite') + MG.itemCount('patang');
+        S.lives = Math.min(T.maxLives, (g.params.lives || T.lives) + spare + (S.charkhi ? 1 : 0)); S.livesMax = S.lives;
         setBand(g);
         S.score = 0; S.cuts = 0; S.lost = 0; S.time = 0; S.left = timeLimit(g); S.target = targetCuts(g); S.redT = 0; S.latch = false;
         S.wind = (g.rng.next() < 0.5 ? -1 : 1) * (3 + g.rng.next() * 3); S.windT = 8 + g.rng.next() * 4;

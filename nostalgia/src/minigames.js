@@ -263,13 +263,42 @@
   } catch (e) { /* storage blocked */ }
   function saveStats() { try { window.localStorage && window.localStorage.setItem(STORE, JSON.stringify(stats)); } catch (e) { /* storage blocked */ } }
 
+  // Tunables (systems_design §0.2 / §8 / §14). Each game adds its own block (TUNE.kite, ...).
+  // assist / offset: null = read the settings (N.settings.minigameAssist|assist, N.settings.difficulty
+  // 'relaxed'|'normal'|'hard'); set them here to override.
+  const TUNE = {
+    assist: null, offset: null,
+    assistWindow: 1.5, assistDiff: 0.15, presetOffset: { relaxed: -0.15, aaram: -0.15, easy: -0.15, normal: 0, hard: 0.15, full: 0.15 },
+    diffMin: 0.05, diffMax: 0.95,
+    payCap: 3, // paid free-play wins per minigame per game-day
+  };
+  function settings() { try { return N.settings || (N.menus && N.menus.settings) || {}; } catch (e) { return {}; } }
+  function assistOn(params) {
+    if (params.assist != null) return !!params.assist;
+    if (TUNE.assist != null) return !!TUNE.assist;
+    const s = settings();
+    return !!(s.minigameAssist || s.assist || (N.flags && N.flags.minigame_assist));
+  }
+  function presetOffset() {
+    if (TUNE.offset != null) return +TUNE.offset || 0;
+    const p = settings().difficulty != null ? settings().difficulty : settings().preset;
+    if (typeof p === 'number') return p < 0 ? -0.15 : p > 0 ? 0.15 : 0;
+    return TUNE.presetOffset[String(p || 'normal').toLowerCase()] || 0;
+  }
+  function reducedMotion() {
+    try { return document.body.classList.contains('reduced-motion') || !!settings().reducedMotion || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+  }
+  function hasItem(id) { try { const inv = N.player && N.player.inventory; return !!(inv && (inv.has ? inv.has(id) : inv[id])); } catch (e) { return false; } }
+
   let cur = null; // the open Game
 
   const MG = (N.minigames = {
     VERSION: 1,
     defs,
     stats,
+    TUNE,
     helpers: H,
+    hasItem,
     covering: false,
     register(id, def) {
       if (typeof id === 'object') { def = id; id = def.id; }
@@ -358,13 +387,19 @@
     return false;
   }
   const EMPTY = Object.freeze({});
-  const PAD_CODES = { 0: 'Space', 1: 'KeyX', 2: 'KeyZ', 3: 'KeyC', 9: 'Escape', 12: 'ArrowUp', 13: 'ArrowDown', 14: 'ArrowLeft', 15: 'ArrowRight' };
+  // gamepad (standard mapping) -> key codes the games map: A main (Space), B secondary (KeyX), X (KeyZ),
+  // Y (KeyC), LB/RB (BracketLeft/Right), LT/RT (ShiftLeft/Right), Start = pause, d-pad/stick = arrows
+  const PAD_CODES = { 0: 'Space', 1: 'KeyX', 2: 'KeyZ', 3: 'KeyC', 4: 'BracketLeft', 5: 'BracketRight', 6: 'ShiftLeft', 7: 'ShiftRight', 9: 'Escape', 12: 'ArrowUp', 13: 'ArrowDown', 14: 'ArrowLeft', 15: 'ArrowRight' };
 
   /* ================================================================= Game */
   class Game {
     constructor(def, params, resolve) {
       this.def = def; this.id = def.id; this.params = params; this.resolveFn = resolve;
-      this.diff = clamp(params.difficulty == null ? 0.4 : +params.difficulty || 0, 0, 1);
+      this.assist = assistOn(params);
+      this.winMul = this.assist ? TUNE.assistWindow : 1;           // every timing window x1.5 with Assist
+      const base = params.difficulty == null ? 0.4 : +params.difficulty || 0;
+      this.diff = clamp(base + presetOffset() - (this.assist ? TUNE.assistDiff : 0), TUNE.diffMin, TUNE.diffMax);
+      this.reduced = reducedMotion();
       const ap = params.autoplay;
       this.auto = ap === true ? 'win' : ap === 'win' || ap === 'lose' ? ap : null;
       this.timeScale = +params.timeScale > 0 ? +params.timeScale : this.auto ? 2.5 : 1;
@@ -473,7 +508,7 @@
 
     baseResult() {
       const S = this.S || {};
-      return { id: this.id, win: false, score: Math.round(S.score || 0), stars: 0, quit: false, aborted: false, attempts: this.attempts, time: Math.round(this.playTime * 10) / 10, difficulty: this.diff };
+      return { id: this.id, win: false, score: Math.round(S.score || 0), stars: 0, quit: false, aborted: false, attempts: this.attempts, time: Math.round(this.playTime * 10) / 10, difficulty: Math.round(this.diff * 100) / 100, assist: this.assist };
     }
 
     close(result) {
@@ -534,6 +569,7 @@
       const padH = this.touch && this.padEl.childElementCount ? this.padEl.offsetHeight || 0 : this.hintEl.offsetHeight || 0;
       this.area = { x: 0, y: topH, w: W, h: Math.max(100, Hh - topH - padH) };
       this.topH = topH; this.padH = padH;
+      this.hudKey = null; // refit the stats row on the next HUD tick
       if (this.S) { try { this.def.layout && this.def.layout(this); } catch (e) { N.err('minigame.layout:' + this.id, e); } }
       this.drawnPaused = false;
     }
@@ -681,11 +717,11 @@
       const lines = (h.lines || []).map((l, i) => '<li><span class="mg-num">' + (i + 1) + '</span><span>' + l + '</span></li>').join('');
       const ctrl = this.touch ? h.touch || h.keys || '' : h.keys || h.touch || '';
       const intro = this.params.intro ? '<p class="mg-intro">' + esc(this.params.intro) + '</p>' : '';
-      const best = stats.best[this.id] ? '<span class="mg-best">BEST ' + stats.best[this.id] + '</span>' : '';
+      const best = (stats.best[this.id] ? '<span class="mg-best">BEST ' + stats.best[this.id] + '</span>' : '') + (this.assist ? '<span class="mg-best">ASSIST</span>' : '');
       this.showCard(
         '<div class="mg-howto">' +
-          '<div class="mg-howto-head"><div class="osd-line mg-osd"><span class="rec">&#9654;</span><span>' + esc(d.osd || 'HOW TO PLAY') + '</span>' + best + '</div>' +
-          '<h2>' + esc(this.params.title || d.title) + '</h2>' + (d.sub ? '<p class="mg-sub">' + esc(d.sub) + '</p>' : '') + intro + '</div>' +
+          '<div class="mg-howto-head"><div class="osd-line mg-osd"><span class="rec">&#9654;</span><span>' + esc(h.osd || d.osd || 'HOW TO PLAY') + '</span>' + best + '</div>' +
+          '<h2>' + esc(h.title || this.params.title || d.title) + '</h2>' + ((h.sub || d.sub) ? '<p class="mg-sub">' + esc(h.sub || d.sub) + '</p>' : '') + intro + '</div>' +
           '<div class="mg-howto-body"><ol class="mg-rules">' + lines + '</ol>' +
           (h.goal ? '<div class="mg-goal">' + h.goal + '</div>' : '') +
           (ctrl ? '<div class="mg-ctrl">' + ctrl + '</div>' : '') +
@@ -708,7 +744,7 @@
       this.sfx('ui_click');
       this.showCard(
         '<div class="mg-pause"><div class="osd-line mg-osd"><span class="rec">&#10074;&#10074; PAUSE</span>' + (auto ? '<span>TAB HIDDEN</span>' : '') + '</div>' +
-        '<h2>' + esc(this.params.title || this.def.title) + '</h2>' +
+        '<h2>' + esc(this.nameEl.textContent || this.params.title || this.def.title) + '</h2>' +
         '<div class="mg-actions col"><button type="button" class="sign-btn primary" data-do="resume">Resume</button>' +
         (this.params.noRetry ? '' : '<button type="button" class="sign-btn alt" data-do="retry">Restart</button>') +
         (this.params.noQuit ? '' : '<button type="button" class="sign-btn alt" data-do="quit">Quit</button>') + '</div></div>', 'mg-card-pause');
@@ -828,6 +864,12 @@
       if (!force && key === this.hudKey) return;
       this.hudKey = key;
       this.statsEl.innerHTML = items.map((i) => '<span class="mg-stat' + (i.warn ? ' warn' : '') + (i.good ? ' good' : '') + '">' + (i.k ? esc(i.k) + ' ' : '') + '<b>' + esc(i.v) + '</b></span>').join('');
+      // narrow phones keep the stats on one row: shrink the OSD text to fit rather than clip it
+      const se = this.statsEl; se.style.fontSize = '';
+      if (se.scrollWidth > se.clientWidth + 1 && se.clientWidth > 0) {
+        const fs = parseFloat(getComputedStyle(se).fontSize) || 21;
+        se.style.fontSize = Math.max(12, Math.floor(fs * (se.clientWidth / se.scrollWidth) * 0.97)) + 'px';
+      }
       if (this.topEl.offsetHeight !== this.topH) this.resize(); // the stats row can change the bar height
     }
     render(dt) {
@@ -850,8 +892,8 @@
     }
 
     /* ------------------------------------------------- juice: fx + text */
-    shake(a) { this.shakeA = Math.max(this.shakeA, a); }
-    flash(c, a) { this.flashC = c || '#fff'; this.flashA = a == null ? 0.5 : a; }
+    shake(a) { if (!this.reduced) this.shakeA = Math.max(this.shakeA, a); }
+    flash(c, a) { this.flashC = c || '#fff'; this.flashA = Math.min(this.reduced ? 0.3 : 1, a == null ? 0.5 : a); }
     pop(text, x, y, o) {
       o = o || {};
       this.pops.push({ text, x, y, t: 0, life: o.life || 1.1, color: o.color || '#f2c230', size: o.size || 26, font: o.font || 'display', rise: o.rise == null ? 36 : o.rise, outline: o.outline == null ? 5 : o.outline });
@@ -936,7 +978,15 @@
       { a: '#e8487c', b: '#2f9e5b', pat: 'band', line: '#b8f0c2' },
       { a: '#1a1214', b: '#f2c230', pat: 'chand', line: '#ffe9a8' },
     ];
-    const SWEET0 = 0.62, SWEET1 = 0.86;
+    // systems_design §8.1: green band width (35% - 15%*d) of the gauge (0..1.1), higher kite x1.3,
+    // snap after 0.4 s in the red, gusts every 6-10 s, 3 patangs (+1 charkhi, max 5)
+    const T = (MG.TUNE.kite = Object.assign({ lives: 3, maxLives: 5, band0: 0.35, band1: 0.15, bandCenter: 0.74, charkhiBand: 0.1, highBonus: 1.3, snapGrace: 0.4,
+      gustMin: 6, gustMax: 10, time0: 95, time1: 15, target0: 2, target1: 3, pechRate: 0.95 }, MG.TUNE.kite || {}));
+    let SWEET0 = 0.62, SWEET1 = 0.86;
+    function setBand(g) {
+      const w = (T.band0 - T.band1 * g.diff) * 1.1 * (g.S && g.S.charkhi ? 1 + T.charkhiBand : 1) * (g.assist ? 1.25 : 1);
+      SWEET0 = Math.max(0.3, T.bandCenter - w / 2); SWEET1 = Math.min(0.97, T.bandCenter + w / 2);
+    }
 
     function drawKite(ctx, x, y, s, ang, skin, o) {
       o = o || {};
@@ -1016,10 +1066,10 @@
 
     function tensionStep(S, k, dt, inPech) {
       if (k.pull) {
-        k.T += (inPech ? 0.62 : 0.95) * dt;
+        k.T += (inPech ? 0.46 : 0.95) * dt;
         if (!inPech && k.T > 0.9) k.T = Math.max(0.9, k.T - 1.2 * dt);
         if (S.gust > 0) k.T += 0.55 * dt; // a gust yanks a taut line
-      } else k.T -= (inPech ? 0.72 : 0.85) * dt;
+      } else k.T -= (inPech ? 0.55 : 0.85) * dt;
       if (k.T < 0.08) k.T = 0.08;
     }
     function quality(T) {
@@ -1117,20 +1167,23 @@
           lines: [
             '<b>Turn</b> your patang, then <b>pull</b> to make it dart where its nose points. Let go and it drifts with the hawa.',
             'Fly across a rival\'s manja to start a <b>pech</b>. Then pulse the pull: keep the tension needle in the <b>green</b>.',
-            'Too much pull and your manja <b>snaps</b>. When a gust comes, give it dheel (let go). Higher kite wins more.',
+            'Too much pull (needle in the red) and your manja <b>snaps</b>. When a gust comes, give it dheel (let go). The higher kite cuts faster.' + (g.S.charkhi ? ' Your new <b>charkhi</b> gives an extra patang.' : ''),
           ],
-          goal: 'CUT ' + n + ' KITES &middot; 3 PATANGS &middot; ' + timeLimit(g) + 's',
+          goal: 'CUT ' + n + ' KITE' + (n > 1 ? 'S' : '') + ' &middot; ' + g.S.livesMax + ' PATANGS &middot; ' + timeLimit(g) + 's',
           keys: '<kbd>←</kbd> <kbd>→</kbd> turn &nbsp;·&nbsp; hold <kbd>Space</kbd> to pull',
           touch: 'Tap <b>◀ ▶</b> to turn &nbsp;·&nbsp; hold <b>KHENCH</b> to pull',
         };
       },
       setup(g) {
         const S = g.S;
-        S.score = 0; S.cuts = 0; S.lives = 3; S.lost = 0; S.time = 0; S.left = timeLimit(g); S.target = targetCuts(g);
+        S.charkhi = !!(g.params.charkhi || MG.hasItem('charkhi'));
+        S.lives = Math.min(T.maxLives, (g.params.lives || T.lives) + (S.charkhi ? 1 : 0)); S.livesMax = S.lives;
+        setBand(g);
+        S.score = 0; S.cuts = 0; S.lost = 0; S.time = 0; S.left = timeLimit(g); S.target = targetCuts(g); S.redT = 0; S.latch = false;
         S.wind = (g.rng.next() < 0.5 ? -1 : 1) * (3 + g.rng.next() * 3); S.windT = 8 + g.rng.next() * 4;
-        S.gust = 0; S.gustWarn = 0; S.gustIn = 6 + g.rng.next() * 4; S.gustDir = 1;
+        S.gust = 0; S.gustWarn = 0; S.gustIn = T.gustMin + g.rng.next() * (T.gustMax - T.gustMin); S.gustDir = 1;
         S.rivals = []; S.skinI = 0; S.pech = null; S.respawn = 0; S.lowWarnT = 0; S.over = false; S.banner = null;
-        S.maxRivals = g.diff > 0.6 ? 3 : 2;
+        S.maxRivals = 2 + (g.diff > 0.45 ? 1 : 0) + (g.diff > 0.8 && !g.portrait ? 1 : 0);
         S.decor = []; S.clouds = []; S.birds = [];
         for (let i = 0; i < 16; i++) S.decor.push({ x: g.rng.next(), y: g.rng.next() * 0.55, s: 0.35 + g.rng.next() * 0.5, sk: KITE_SKINS[1 + ((g.rng.next() * 6) | 0)], ph: g.rng.next() * TAU, sp: 0.004 + g.rng.next() * 0.01 });
         for (let i = 0; i < 6; i++) S.clouds.push({ x: g.rng.next(), y: 0.06 + g.rng.next() * 0.4, s: 0.6 + g.rng.next() * 0.9, sp: 0.004 + g.rng.next() * 0.006 });
@@ -1140,6 +1193,7 @@
       },
       layout(g) {
         const S = g.S, A = g.area;
+        setBand(g);
         const U0 = Math.sqrt(A.w * A.h) / 100;
         S.U = U0; S.ox = A.x; S.oy = A.y; S.Wu = A.w / U0; S.Hu = A.h / U0;
         S.roofY = S.Hu * (g.portrait ? 0.8 : 0.76);
@@ -1196,7 +1250,7 @@
           if (S.gustWarn <= 0) { S.gust = 1.7; S.windSave = S.wind; g.sfx('kite_wind', { vol: 1 }); }
         } else if (S.gust <= 0) {
           S.gustIn -= dt;
-          if (S.gustIn <= 0) { S.gustIn = 7.5 + g.rng.next() * 6 - g.diff * 2; S.gustWarn = 1.1; S.gustDir = g.rng.next() < 0.5 ? -1 : 1; }
+          if (S.gustIn <= 0) { S.gustIn = T.gustMin + g.rng.next() * (T.gustMax - T.gustMin); S.gustWarn = 1.1; S.gustDir = g.rng.next() < 0.5 ? -1 : 1; }
         }
         const windNow = S.wind + (S.gust > 0 ? S.gustDir * 15 * Math.sin(Math.min(1, (1.7 - S.gust) / 0.4) * Math.PI * 0.5) : 0);
         const baseWind = S.wind; S.wind = windNow;
@@ -1207,7 +1261,12 @@
 
         // player control
         if (me.state === 'fly' || me.state === 'pech') {
-          me.pull = !g.over && g.down('pull');
+          if (g.assist) { // Assist: a quick tap latches the pull on/off (hold still works)
+            if (g.pressed('pull')) S.pullT = 0;
+            if (g.down('pull')) S.pullT = (S.pullT || 0) + dt;
+            if (g.released('pull') && S.pullT < 0.22) S.latch = !S.latch;
+          }
+          me.pull = !g.over && (g.down('pull') || (g.assist && S.latch));
           me.steer = g.over || me.state === 'pech' ? 0 : (g.down('right') ? 1 : 0) - (g.down('left') ? 1 : 0);
         } else { me.pull = false; me.steer = 0; }
 
@@ -1224,7 +1283,8 @@
             if (!k.me) rivalAI(g, S, k, dt);
             kiteStep(S, k, dt);
             tensionStep(S, k, dt, false);
-            if (k.me && k.T > 1) { // a gust snapped it
+            if (k.me) S.redT = k.T > 1 ? S.redT + dt : 0;
+            if (k.me && S.redT > T.snapGrace) { // a gust snapped it
               S.lives--; S.lost++; cutKite(g, S, k, 'snap');
               g.pop('MANJA TOOT GAYA!', g.W / 2, S.oy + S.roofY * S.U * 0.45, { color: '#ff8a7a', size: 28 });
               g.sfx('kite_cut'); g.shake(6);
@@ -1273,13 +1333,18 @@
           if (P.burst > 0) P.burst -= dt;
           const base = 0.36 + g.diff * 0.36;
           const rival = base * (0.85 + 0.25 * Math.sin(P.t * 2.3 + P.ph)) + (P.burst > 0 ? 0.42 + g.diff * 0.2 : 0);
-          const you = quality(me.T) * (P.above ? 1.22 : 1);
+          const you = quality(me.T) * (P.above ? T.highBonus : 1);
           P.you = you; P.rival = rival;
-          P.P += (you - rival) * 0.95 * dt;
+          P.P += (you - rival) * T.pechRate * dt;
+          S.redT = me.T > 1 ? S.redT + dt : 0;
           if (S.rasp) S.rasp.set(0.02 + 0.05 * Math.min(1, you + rival) * (me.pull ? 1 : 0.5), 1800 + me.T * 2000);
+          // the manja creaks when it is about to snap
+          S.creakT = (S.creakT || 0) - dt;
+          if (me.T > 0.92 && S.creakT <= 0) { S.creakT = 0.16; g.tone(1400 + me.T * 900, 0.05, { type: 'sawtooth', vol: 0.035 }); }
           const pp = toPx(S, P.pt.x, P.pt.y);
           if (g.rng.next() < 0.6) g.burst(pp.x, pp.y, 1, { colors: ['#fff6c8', '#ffd84a', '#ff9a4a'], kind: 'spark', speed: 140, grav: 200, life: 0.35, size: 2.2 });
-          if (me.T > 1) {
+          if (S.redT > T.snapGrace) {
+            S.redT = 0; S.latch = false;
             S.lives--; S.lost++; cutKite(g, S, me, 'snap'); endPech(S, k);
             g.pop('MANJA TOOT GAYA!', pp.x, pp.y - 24, { color: '#ff8a7a', size: 28 });
             g.sfx('kite_cut'); g.shake(7); g.flash('#ff5a3a', 0.25);
@@ -1327,7 +1392,7 @@
         if (S.pech) {
           g.botHold('left', false); g.botHold('right', false);
           if (want === 'lose') { g.botHold('pull', true); return; }
-          if (me.T < 0.68) g.botHold('pull', true); else if (me.T > 0.8) g.botHold('pull', false);
+          if (me.T < (SWEET0 + T.bandCenter) / 2) g.botHold('pull', true); else if (me.T > (T.bandCenter + SWEET1) / 2) g.botHold('pull', false);
           return;
         }
         let best = null, bd = 1e9;
@@ -1422,15 +1487,15 @@
         const S = g.S;
         return {
           title: r.win ? 'Bo kaata!' : r.reason === 'time' ? 'Andhera ho gaya!' : 'Saari patang kat gayi!',
-          line: r.win ? 'The whole colony heard you. Somebody is going to lootna those kites.' : r.reason === 'time' ? 'Amma is calling everyone down from the terrace.' : 'Ammamma says: pull too hard and it snaps. Let it go a little.',
+          line: r.win ? 'The whole colony heard you. Immu is already running to lootna the cut kites.' : r.reason === 'time' ? 'Amma is calling everyone down from the terrace.' : 'Ammamma says: pull too hard and it snaps. Let it go a little.',
           rows: [['Kites cut', S.cuts + ' / ' + S.target], ['Patangs lost', S.lost], ['Score', r.score]],
         };
       },
       stars(g, r) { return r.win ? 1 + (g.S.lost === 0 ? 1 : 0) + (g.S.left > timeLimit(g) * 0.35 ? 1 : 0) : 0; },
       cleanup(g) { if (g.S && g.S.rasp) g.S.rasp.stop(); },
     };
-    function targetCuts(g) { return g.params.target || Math.round(2 + g.diff * 3); }
-    function timeLimit(g) { return g.params.time || Math.round(95 - g.diff * 15); }
+    function targetCuts(g) { return g.params.target || Math.round(T.target0 + g.diff * T.target1); }
+    function timeLimit(g) { return g.params.time || Math.round(T.time0 - g.diff * T.time1); }
     function fmtT(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 
     function cloud(ctx, x, y, s) {
@@ -1541,7 +1606,7 @@
       ctx.fillStyle = '#2a2234'; ctx.fillRect(gx, gy, gw, gh);
       const yOf = (t) => gy + gh - (t / 1.1) * gh;
       ctx.fillStyle = 'rgba(111,191,90,0.85)'; ctx.fillRect(gx, yOf(SWEET1), gw, yOf(SWEET0) - yOf(SWEET1));
-      ctx.fillStyle = 'rgba(226,72,58,0.85)'; ctx.fillRect(gx, gy, gw, yOf(1) - gy);
+      ctx.fillStyle = me.T > 0.92 && Math.floor(g.rt * 10) % 2 ? 'rgba(255,120,100,1)' : 'rgba(226,72,58,0.85)'; ctx.fillRect(gx, gy, gw, yOf(1) - gy);
       const T = Math.min(1.1, me.T);
       ctx.fillStyle = me.T > 1 ? '#ff4a3a' : me.T > SWEET1 ? '#ffb04a' : me.T >= SWEET0 ? '#d8ffd0' : '#eaf2ff';
       ctx.fillRect(gx + gw * 0.3, yOf(T), gw * 0.4, gy + gh - yOf(T));
@@ -1656,40 +1721,79 @@
   }
 
   /* =================================================================== CLAP */
-  // Golconda, Fateh Darwaza. The guide claps a rhythm under the dome ("SUNO"); you clap it back on
-  // the beat ("AB AAP"). Every clean echo climbs the hill and lights the path to Bala Hissar.
+  // Call and echo rhythm (systems_design §8.2). SUNO: the guide claps n notes on an 8/16-slot bar;
+  // 4 count-in ticks; AB AAP: clap the same slots on time. A mistake (miss or extra clap) costs one
+  // of 3 *mauke* and the round replays. Skins: 'golconda' (Fateh Darwaza; each clean round lights a
+  // lamp up to Bala Hissar, the echo comes back), 'drums' (keep step with the Bonalu dappu drummers;
+  // no fail: Amma's bonam wobbles and the round replays), 'doorway' (clap the remembered Golconda
+  // rhythm at the storeroom door; Immu answers from inside).
   {
+    const T = (MG.TUNE.clap = Object.assign({ bpm0: 90, bpm1: 30, perfect: 0.045, good: 0.09, ok: 0.14, chances: 3, echoDelay: 0.35, pts: { perfect: 100, good: 70, ok: 40 } }, MG.TUNE.clap || {}));
+    const SKINS = {
+      golconda: {
+        title: 'Golconda Taali', sub: 'Clap under the Fateh Darwaza dome. They hear it at the very top.', osd: 'GOLCONDA · FATEH DARWAZA', go: 'SUNO!',
+        lines: (g) => [
+          '<b>SUNO</b>: the guide claps a rhythm under the dome. Watch the strip and listen to the beat.',
+          '<b>AB AAP</b>: after the 4 ticks, clap the same rhythm back, on time. Extra claps count as mistakes.',
+          'Every clean echo climbs the hill and lights a lamp on the way to <b>Bala Hissar</b>.' + (hideNotes(g) ? ' At this level the notes hide on your turn: remember them!' : ''),
+        ],
+        win: 'Bala Hissar ne suna!', winLine: 'Your claps climbed 400 years of granite and came back. Immu is waving from the top.',
+        lose: 'Echo kho gaya...', loseLine: 'The guide smiles: "Dome ko sunao, apne aap ko nahi." Listen to the beat, then clap.',
+      },
+      drums: {
+        title: 'Bonalu Dappu', sub: 'Walk with Amma\'s bonam. Keep step with the drums.', osd: 'BONALU · PROCESSION', go: 'SUNO!', noFail: true,
+        lines: (g) => [
+          '<b>SUNO</b>: the dappu drummers play a beat. Watch the strip and feel it.',
+          '<b>AB AAP</b>: after the 4 ticks, step with the same beat, on time.',
+          'Miss a step and Amma\'s bonam wobbles: no harm, the drummers simply play it again.',
+        ],
+        win: 'Ekdum taal mein!', winLine: 'The drummers grin and play louder. Amma\'s bonam never wobbled.',
+        lose: 'Taal toot gaya', loseLine: 'Amma steadies the bonam: "Dheere, kanna. Drums ke saath."',
+      },
+      doorway: {
+        title: 'Darwaza Taali', sub: 'The storeroom door. The Golconda rhythm. Will he answer?', osd: 'THE STOREROOM DOOR', go: 'YAAD HAI?', recall: true,
+        lines: () => [
+          'The strip shows the <b>Golconda rhythm</b> you clapped with Immu. Remember it.',
+          'After the 4 ticks, <b>clap it</b> at the door, on time.',
+          'Clap it right and Immu answers from inside.',
+        ],
+        win: 'Immu ne jawab diya!', winLine: 'Behind the door, the same rhythm comes back. Then the latch.',
+        lose: 'Darwaza band hai', loseLine: 'Silence from the storeroom. Try the rhythm again, slower.',
+      },
+    };
+    const RECALL_SLOTS = [0, 2, 3, 6]; // ta . ta ta . . ta . : the rhythm from Golconda
+
     const def = {
       id: 'clap',
       title: 'Golconda Taali',
-      sub: 'Clap under the Fateh Darwaza dome. They hear it at the very top.',
-      osd: 'GOLCONDA · FATEH DARWAZA',
+      sub: SKINS.golconda.sub,
+      osd: SKINS.golconda.osd,
       place: 'golconda_fateh_darwaza', places: ['golconda_fateh_darwaza', 'golconda_fort'],
       secs: 70,
       goLabel: 'SUNO!',
-      keys: { Space: 'clap', KeyJ: 'clap', KeyF: 'clap', KeyK: 'clap', KeyD: 'clap', ArrowUp: 'clap', ArrowDown: 'clap', Enter: 'clap', NumpadEnter: 'clap' },
-      buttons: () => [{ gap: true }, { a: 'clap', label: 'TAALI', sub: 'TAP TO CLAP', cls: 'big' }, { gap: true }],
-      keyHint: () => '<kbd>Space</kbd> clap (or <kbd>F</kbd> <kbd>J</kbd>, or click) &nbsp; listen first, then echo it on the beat',
+      keys: { Space: 'clap', KeyJ: 'clap', KeyF: 'clap', KeyK: 'clap', KeyD: 'clap', ArrowUp: 'clap', ArrowDown: 'clap', Enter: 'clap', NumpadEnter: 'clap', KeyX: 'clap', KeyZ: 'clap', KeyC: 'clap' },
+      buttons: (g) => [{ gap: true }, { a: 'clap', label: skinOf(g) === SKINS.drums ? 'THAP!' : 'TAALI', sub: skinOf(g) === SKINS.drums ? 'TAP TO STEP' : 'TAP TO CLAP', cls: 'big' }, { gap: true }],
+      keyHint: (g) => '<kbd>Space</kbd> ' + (skinOf(g) === SKINS.drums ? 'step' : 'clap') + ' (or <kbd>F</kbd> <kbd>J</kbd>, or click) &nbsp; listen first, then echo it on the beat',
       howto(g) {
+        const K = skinOf(g), n = rounds(g);
         return {
-          lines: [
-            '<b>SUNO</b>: the guide claps a rhythm under the dome. Watch the strip and listen to the beat.',
-            '<b>AB AAP</b>: after the 4 ticks, clap the same rhythm back, on time. Extra claps count as mistakes.',
-            'Every clean echo climbs the hill and lights a lamp on the way to <b>Bala Hissar</b>.' + (g.diff >= 0.55 ? ' At this level the notes hide on your turn: remember them!' : ''),
-          ],
-          goal: rounds(g) + ' RHYTHMS &middot; 3 MAUKE (CHANCES)',
-          keys: '<kbd>Space</kbd> clap &nbsp;·&nbsp; or click the screen',
-          touch: 'Tap <b>TAALI</b> or anywhere on the screen to clap',
+          title: g.params.title || K.title, sub: K.sub, osd: K.osd,
+          lines: K.lines(g),
+          goal: (K.recall ? 'CLAP THE RHYTHM' : n + ' RHYTHM' + (n > 1 ? 'S' : '')) + ' &middot; ' + (noFail(g) ? 'NO FAIL' : T.chances + ' MAUKE (CHANCES)'),
+          keys: '<kbd>Space</kbd> ' + (K === SKINS.drums ? 'step' : 'clap') + ' &nbsp;·&nbsp; or click the screen',
+          touch: 'Tap <b>' + (K === SKINS.drums ? 'THAP!' : 'TAALI') + '</b> or anywhere on the screen',
         };
       },
       setup(g) {
         const S = g.S;
-        S.score = 0; S.round = 0; S.rounds = rounds(g); S.chances = 3; S.fails = 0; S.perfects = 0; S.notesTotal = 0;
-        S.bpm = Math.round(92 + g.diff * 32);
+        S.K = skinOf(g); S.skin = skinName(g);
+        if (g.nameEl && !g.params.title) g.nameEl.textContent = S.K.title;
+        S.score = 0; S.round = 0; S.rounds = rounds(g); S.chances = T.chances; S.noFail = noFail(g); S.fails = 0; S.perfects = 0; S.notesTotal = 0;
+        S.bpm = Math.round(T.bpm0 + g.diff * T.bpm1);
         S.beat = 60 / S.bpm; S.slot = S.beat / 2;
-        S.winP = 0.05 + (1 - g.diff) * 0.025; S.winG = 0.115 + (1 - g.diff) * 0.05;
-        S.hide = g.diff >= 0.55;
-        S.rings = []; S.orbs = []; S.marks = []; S.lit = 0; S.litT = 0; S.wave = 0; S.guideClap = 0; S.kidClap = 0;
+        S.winP = T.perfect * g.winMul; S.winG = T.good * g.winMul; S.winO = T.ok * g.winMul;
+        S.hide = hideNotes(g) && !g.assist;
+        S.rings = []; S.orbs = []; S.marks = []; S.lit = 0; S.litT = 0; S.wave = 0; S.guideClap = 0; S.kidClap = 0; S.wobble = 0; S.door = 0; S.doorT = 0;
         S.stars = []; for (let i = 0; i < 60; i++) S.stars.push({ x: g.rng.next(), y: g.rng.next() * 0.55, r: 0.5 + g.rng.next() * 1.2, ph: g.rng.next() * TAU });
         S.bats = []; S.msg = null;
         S.clock = 0;
@@ -1701,27 +1805,30 @@
         S.clock += dt;
         const R = S.R;
         const t = S.clock - R.t0;
-        // scheduled sounds: ticks + the guide's demo claps
+        // scheduled sounds: ticks + the guide's notes
         while (R.ev.length && R.ev[0].t <= t) {
           const e = R.ev.shift();
           if (e.k === 'tick') { g.tone(e.acc ? 1560 : 1180, 0.045, { type: 'sine', vol: e.soft ? 0.05 : 0.09 }); g.tone(e.acc ? 3100 : 2400, 0.012, { type: 'square', vol: 0.02 }); S.tickT = 0.12; S.tickAcc = e.acc; }
-          else if (e.k === 'demo') { g.sfx('clap', { pitch: 0.82, vol: 0.9 }); S.guideClap = 0.18; ring(S, 'guide'); R.shown[e.i] = true; }
-          else if (e.k === 'stage') { R.stage = e.s; if (e.s === 'you') S.msg = { text: 'AB AAP!', t: 0, col: '#ffd84a' }; if (e.s === 'listen') S.msg = { text: 'SUNO...', t: 0, col: '#eaf2ff' }; }
+          else if (e.k === 'demo') { guideSound(g, S, false); S.guideClap = 0.18; ring(S, 'guide'); R.shown[e.i] = true; }
+          else if (e.k === 'answer') { guideSound(g, S, true); S.guideClap = 0.18; ring(S, 'guide'); }
+          else if (e.k === 'stage') { R.stage = e.s; if (e.s === 'you') S.msg = { text: S.K === SKINS.drums ? 'AB CHALO!' : 'AB AAP!', t: 0, col: '#ffd84a' }; if (e.s === 'listen') S.msg = { text: S.K.recall ? 'YAAD HAI?' : 'SUNO...', t: 0, col: '#eaf2ff' }; }
+          else if (e.k === 'done') finishRound(g, S);
         }
         // the player's claps
         if (!g.over && g.pressed('clap')) clap(g, S, t);
         // misses: expected notes whose window has passed
         if (R.stage === 'you' || R.stage === 'judge') {
           for (const n of R.notes) {
-            if (n.res || t < R.pB + n.s * S.slot + S.winG) continue;
+            if (n.res || t < R.pB + n.s * S.slot + S.winO) continue;
             n.res = 'miss'; R.errors++;
             mark(g, S, n.s, 'miss');
             g.tone(140, 0.12, { type: 'triangle', vol: 0.06 });
+            if (S.K === SKINS.drums) S.wobble = 1;
           }
         }
-        if (R.stage === 'you' && t > R.pB + R.L * S.slot + S.winG) { R.stage = 'judge'; judge(g, S); }
+        if (R.stage === 'you' && t > R.pB + R.L * S.slot + S.winO) { R.stage = 'judge'; judge(g, S); }
         if (R.stage === 'next' && t > R.nextAt) {
-          if (S.round >= S.rounds) { if (!g.over) { S.score += S.chances * 150; g.finish(true, { rounds: S.round, fails: S.fails, perfects: S.perfects, delay: 1.6 }); } }
+          if (S.round >= S.rounds) { if (!g.over) { S.score += S.chances * 150; g.finish(true, { skin: S.skin, rounds: S.round, fails: S.fails, perfects: S.perfects, delay: 1.6 }); } }
           else newRound(g, S, 0);
         }
         animate(g, S, dt);
@@ -1740,58 +1847,81 @@
       },
       hud(g) {
         const S = g.S;
-        return [{ k: 'TAAL', v: Math.min(S.round, S.rounds) + '/' + S.rounds }, { k: 'MAUKE', v: String(S.chances), warn: S.chances === 1 }, { k: 'SCORE', v: String(S.score) }];
+        return [{ k: S.K === SKINS.drums ? 'TAAL' : 'TAAL', v: Math.min(S.round, S.rounds) + '/' + S.rounds }, S.noFail ? { k: 'GALTI', v: String(S.fails) } : { k: 'MAUKE', v: String(S.chances), warn: S.chances === 1 }, { k: 'SCORE', v: String(S.score) }];
       },
-      draw(g, ctx) { drawClap(g, ctx, g.S); },
+      draw(g, ctx) { const S = g.S; if (S.K === SKINS.drums) drawDrums(g, ctx, S); else if (S.K === SKINS.doorway) drawDoorway(g, ctx, S); else drawClap(g, ctx, S); },
       result(g, r) {
-        const S = g.S;
+        const S = g.S, K = S.K;
         return {
-          title: r.win ? 'Bala Hissar ne suna!' : 'Echo kho gaya...',
-          line: r.win ? 'Your claps climbed 400 years of granite and came back. The guide is impressed.' : 'The guide smiles: "Dome ko sunao, apne aap ko nahi." Listen to the beat, then clap.',
-          rows: [['Rhythms', Math.min(S.round, S.rounds) + ' / ' + S.rounds], ['Perfect claps', S.perfects + ' / ' + S.notesTotal], ['Mistakes', S.fails], ['Score', r.score]],
+          title: r.win ? K.win : K.lose,
+          line: r.win ? K.winLine : K.loseLine,
+          rows: [['Rhythms', Math.min(S.round, S.rounds) + ' / ' + S.rounds], ['Perfect ' + (K === SKINS.drums ? 'steps' : 'claps'), S.perfects + ' / ' + S.notesTotal], ['Mistakes', S.fails], ['Score', r.score]],
         };
       },
       stars(g, r) { const S = g.S; return r.win ? 1 + (S.fails === 0 ? 1 : 0) + (S.perfects >= S.notesTotal * 0.7 ? 1 : 0) : 0; },
     };
-    function rounds(g) { return g.params.rounds || Math.round(4 + g.diff * 2); }
+    function skinName(g) { return SKINS[g.params.skin] ? g.params.skin : 'golconda'; }
+    function skinOf(g) { return SKINS[skinName(g)]; }
+    function noFail(g) { return g.params.noFail != null ? !!g.params.noFail : !!skinOf(g).noFail; }
+    function hideNotes(g) { return g.diff >= 0.55; }
+    function rounds(g) { return g.params.rounds || (skinOf(g).recall ? 1 : Math.round(4 + g.diff * 2)); }
+
+    function guideSound(g, S, answer) {
+      if (S.K === SKINS.drums) { // dappu: a low thump with a skin slap
+        g.tone(96, 0.14, { type: 'sine', vol: 0.2, f2: 58 }); g.noise(0.07, { f: 850, q: 1.2, vol: 0.12 });
+      } else if (S.K === SKINS.doorway && answer) { // Immu's claps, muffled through the door
+        g.sfx('clap', { pitch: 0.7, vol: 0.45, key: 'door' }); g.noise(0.05, { ft: 'lowpass', f: 700, vol: 0.06 });
+      } else g.sfx('clap', { pitch: 0.82, vol: 0.9 });
+    }
+    function playerSound(g, S) {
+      if (S.K === SKINS.drums) { g.noise(0.09, { f: 6200, q: 3, vol: 0.07 }); g.tone(150, 0.06, { type: 'sine', vol: 0.08, f2: 90 }); } // ghungroo + a stamp
+      else g.sfx('clap', { pitch: 1.08 });
+    }
 
     function newRound(g, S, lead) {
       const k = S.round; // 0-based index of this rhythm
-      const n = Math.min(9, 3 + k + (g.diff > 0.7 ? 1 : 0));
-      const L = n >= 6 ? 16 : 8;
-      const slots = new Set([0]);
-      const minGap = g.diff < 0.35 && L === 8 && n <= 4 ? 2 : 1;
-      let guard = 0;
-      while (slots.size < n && guard++ < 200) {
-        const s = (g.rng.next() * L) | 0;
-        let ok = true;
-        for (const o of slots) if (Math.abs(o - s) < minGap) ok = false;
-        if (ok) slots.add(s);
+      let notes, L;
+      if (S.K.recall) { L = 8; notes = RECALL_SLOTS.map((s) => ({ s, res: null })); }
+      else {
+        const n = Math.min(9, 3 + k + (g.diff > 0.7 ? 1 : 0));
+        L = n >= 6 ? 16 : 8;
+        const slots = new Set([0]);
+        const minGap = g.diff < 0.35 && L === 8 && n <= 4 ? 2 : 1;
+        let guard = 0;
+        while (slots.size < n && guard++ < 200) {
+          const s = (g.rng.next() * L) | 0;
+          let ok = true;
+          for (const o of slots) if (Math.abs(o - s) < minGap) ok = false;
+          if (ok) slots.add(s);
+        }
+        notes = Array.from(slots).sort((a, b) => a - b).map((s) => ({ s, res: null }));
       }
-      const notes = Array.from(slots).sort((a, b) => a - b).map((s) => ({ s, res: null }));
       const b = S.beat, sl = S.slot;
       const pA = lead + 4 * b, pB = pA + L * sl + 4 * b;
       const ev = [];
       ev.push({ t: lead - 0.01, k: 'stage', s: 'listen' });
       for (let i = 0; i < 4; i++) ev.push({ t: lead + i * b, k: 'tick', acc: i === 0 });
-      notes.forEach((nn, i) => ev.push({ t: pA + nn.s * sl, k: 'demo', i }));
+      if (S.K.recall) notes.forEach((nn, i) => ev.push({ t: pA + nn.s * sl, k: 'show', i })); // recall: shown, not played
+      else notes.forEach((nn, i) => ev.push({ t: pA + nn.s * sl, k: 'demo', i }));
       if (g.diff < 0.5) for (let i = 0; i < L / 2; i++) ev.push({ t: pA + i * b, k: 'tick', soft: true, acc: i % 4 === 0 });
       ev.push({ t: pA + L * sl - 0.02, k: 'stage', s: 'ready' });
       for (let i = 0; i < 4; i++) ev.push({ t: pA + L * sl + i * b, k: 'tick', acc: i === 0 });
-      ev.push({ t: pB - S.winG, k: 'stage', s: 'you' });
+      ev.push({ t: pB - S.winO, k: 'stage', s: 'you' });
       if (g.diff < 0.75) for (let i = 0; i < L / 2; i++) ev.push({ t: pB + i * b, k: 'tick', soft: true, acc: i % 4 === 0 });
       ev.sort((a, c) => a.t - c.t);
-      S.R = { t0: S.clock, notes, L, pA, pB, ev, stage: 'pre', errors: 0, extras: 0, shown: {}, claps: [] };
+      const shown = {};
+      if (S.K.recall) notes.forEach((nn, i) => { shown[i] = true; });
+      S.R = { t0: S.clock, notes, L, pA, pB, ev, stage: 'pre', errors: 0, extras: 0, shown, claps: [] };
       S.marks = [];
     }
 
     function clap(g, S, t) {
       const R = S.R;
       S.kidClap = 0.16; S.clapsTotal = (S.clapsTotal || 0) + 1;
-      g.sfx('clap', { pitch: 1.08 });
+      playerSound(g, S);
       ring(S, 'kid');
       if (R.stage !== 'you') {
-        if (R.stage === 'listen' || R.stage === 'ready') { S.msg = { text: 'Pehle suno!', t: 0, col: '#ffb4a6', small: true }; }
+        if (R.stage === 'listen' || R.stage === 'ready') { S.msg = { text: S.K.recall ? 'Ruko, ticks ke baad!' : 'Pehle suno!', t: 0, col: '#ffb4a6', small: true }; }
         return;
       }
       // match the nearest unjudged note
@@ -1802,17 +1932,19 @@
         if (d < bd) { bd = d; best = n; }
       }
       const relSlot = (t - R.pB) / S.slot;
-      if (best && bd <= S.winG) {
-        best.res = bd <= S.winP ? 'perfect' : 'good';
+      if (best && bd <= S.winO) {
+        best.res = bd <= S.winP ? 'perfect' : bd <= S.winG ? 'good' : 'ok';
         S.notesTotal++;
-        if (best.res === 'perfect') { S.perfects++; S.score += 100; } else S.score += 50;
+        if (best.res === 'perfect') S.perfects++;
+        S.score += T.pts[best.res];
         mark(g, S, relSlot, best.res);
         S.orbs.push({ t: 0, ok: true });
-        g.sfx('clap', { pitch: 0.9, vol: 0.35, delay: 0.32, key: 'echo' });
+        if (S.K === SKINS.golconda) g.sfx('clap', { pitch: 0.9, vol: 0.35, delay: T.echoDelay, key: 'echo' });
       } else {
         R.extras++; R.errors++;
         mark(g, S, relSlot, 'extra');
         g.tone(180, 0.1, { type: 'triangle', vol: 0.05 });
+        if (S.K === SKINS.drums) S.wobble = 1;
       }
     }
 
@@ -1821,19 +1953,37 @@
       for (const n of R.notes) if (!n.res) { n.res = 'miss'; R.errors++; }
       const ok = R.errors === 0;
       if (ok) {
-        S.round++;
-        S.score += 100 * S.round;
-        S.msg = { text: ['WAAH!', 'SHABASH!', 'ZABARDAST!', 'KYA BAAT!'][(S.round - 1) % 4], t: 0, col: '#b9ffb0', big: true };
-        g.sfx('clap_echo', { delay: 0.15 });
-        S.litTarget = S.round / S.rounds;
-        S.wave = 1.4;
-        if (S.round >= S.rounds) { g.sfx('applause', { delay: 0.5 }); for (let i = 0; i < 8; i++) S.bats.push({ t: -i * 0.08, x: 0, y: 0, vx: (Math.random() - 0.5) * 2, ph: Math.random() * TAU }); }
-      } else {
-        S.chances--; S.fails++;
-        S.msg = { text: S.chances > 0 ? 'PHIR SE SUNO' : 'BAS!', t: 0, col: '#ffb4a6', big: true };
-        g.shake(4);
-        if (S.chances <= 0 && !g.over) { R.stage = 'done'; g.finish(false, { rounds: S.round, fails: S.fails, perfects: S.perfects, delay: 1.4 }); return; }
+        if (S.K.recall) { // Immu answers through the door, then the round is won
+          const b = S.beat, base = S.clock - R.t0 + b * 1.2;
+          R.notes.forEach((nn) => R.ev.push({ t: base + nn.s * S.slot, k: 'answer' }));
+          R.ev.push({ t: base + R.L * S.slot + 0.2, k: 'done' });
+          R.ev.sort((a, c) => a.t - c.t);
+          R.stage = 'answer';
+          S.msg = { text: 'Suno... andar se!', t: 0, col: '#eaf2ff', big: false };
+          return;
+        }
+        finishRound(g, S);
+        return;
       }
+      S.fails++;
+      if (!S.noFail) S.chances--;
+      S.msg = { text: S.noFail ? (S.K === SKINS.drums ? 'Phir se, taal mein!' : 'PHIR SE') : S.chances > 0 ? 'PHIR SE SUNO' : 'BAS!', t: 0, col: '#ffb4a6', big: true };
+      g.shake(4);
+      if (!S.noFail && S.chances <= 0 && !g.over) { R.stage = 'done'; g.finish(false, { skin: S.skin, rounds: S.round, fails: S.fails, perfects: S.perfects, delay: 1.4 }); return; }
+      R.stage = 'next';
+      R.nextAt = S.clock - R.t0 + 1.25;
+    }
+    function finishRound(g, S) {
+      const R = S.R;
+      S.round++;
+      S.score += 100 * S.round;
+      S.msg = { text: S.K.recall ? 'DARWAZA KHULA!' : S.K === SKINS.drums ? ['EKDUM TAAL!', 'WAAH!', 'JHOOM!'][(S.round - 1) % 3] : ['WAAH!', 'SHABASH!', 'ZABARDAST!', 'KYA BAAT!'][(S.round - 1) % 4], t: 0, col: '#b9ffb0', big: true };
+      if (S.K === SKINS.golconda) g.sfx('clap_echo', { delay: 0.15 });
+      else if (S.K === SKINS.drums) { for (let i = 0; i < 6; i++) g.tone(96, 0.12, { type: 'sine', vol: 0.16, f2: 60, delay: i * 0.11 }); }
+      else { g.sfx('door_creak', { vol: 0.8 }); S.doorT = 1; }
+      S.litTarget = S.round / S.rounds;
+      S.wave = 1.4;
+      if (S.round >= S.rounds) { g.sfx('applause', { delay: 0.5, vol: S.K === SKINS.doorway ? 0.3 : 1 }); if (S.K === SKINS.golconda) for (let i = 0; i < 8; i++) S.bats.push({ t: -i * 0.08, x: 0, y: 0, vx: (Math.random() - 0.5) * 2, ph: Math.random() * TAU }); }
       R.stage = 'next';
       R.nextAt = S.clock - R.t0 + 1.25;
     }
@@ -1843,8 +1993,8 @@
       const L = S.lane;
       if (L) {
         const x = L.x + L.pad + (slot / S.R.L) * L.inner;
-        const txt = { perfect: 'PERFECT', good: 'ACCHA', miss: 'MISS', extra: 'EXTRA' }[res];
-        const col = { perfect: '#ffd84a', good: '#eaf2ff', miss: '#ff8a7a', extra: '#ffb04a' }[res];
+        const txt = { perfect: 'PERFECT', good: 'ACCHA', ok: 'THEEK', miss: 'MISS', extra: 'EXTRA' }[res];
+        const col = { perfect: '#ffd84a', good: '#b9ffb0', ok: '#eaf2ff', miss: '#ff8a7a', extra: '#ffb04a' }[res];
         g.pop(txt, U.clamp(x, 40, g.W - 40), L.y - 8, { size: 18, color: col, font: 'osd', outline: 4, rise: 22, life: 0.8 });
       }
     }
@@ -1860,6 +2010,8 @@
       S.guideClap = Math.max(0, S.guideClap - dt); S.kidClap = Math.max(0, S.kidClap - dt);
       S.tickT = Math.max(0, (S.tickT || 0) - dt);
       S.wave = Math.max(0, S.wave - dt);
+      S.wobble = Math.max(0, S.wobble - dt * 0.8);
+      if (S.doorT > 0) S.door = Math.min(1, S.door + dt * 0.7);
       if (S.litTarget != null) S.lit = H.approach(S.lit, S.litTarget, dt * 0.6);
       for (const b of S.bats) b.t += dt;
     }
@@ -2086,11 +2238,15 @@
       drawKidClap(ctx, W / 2 + u * 2, floorY, s, S.kidClap > 0);
       // the beat lane
       drawLane(g, ctx, S);
-      // big message
+      drawMsg(g, ctx, S);
+    }
+
+    function drawMsg(g, ctx, S) {
+      const W = g.W, u = S.G ? S.G.u : Math.min(W, g.area.h * 1.2) / 100;
       if (S.msg && S.msg.t < 1.6) {
         const m = S.msg, k = Math.min(1, m.t / 0.18), a = m.t > 1.2 ? 1 - (m.t - 1.2) / 0.4 : 1;
         const L = S.lane;
-        ctx.save(); ctx.translate(W / 2, L.y - (m.big ? u * 9 : u * 6)); ctx.scale(0.6 + 0.4 * H.ease.outBack(k), 0.6 + 0.4 * H.ease.outBack(k));
+        ctx.save(); ctx.translate(W / 2, S.msgY || L.y - (m.big ? u * 9 : u * 6)); ctx.scale(0.6 + 0.4 * H.ease.outBack(k), 0.6 + 0.4 * H.ease.outBack(k));
         H.text(ctx, m.text, 0, 0, { font: m.small ? 'body' : 'display', weight: m.small ? 700 : null, size: m.big ? Math.max(30, u * 5.5) : Math.max(22, u * 3.8), color: m.col, outline: 6, alpha: a });
         ctx.restore();
       }
@@ -2110,7 +2266,7 @@
         ctx.fillRect(x - (bar ? 1.5 : 1), cy - (bar ? L.h * 0.34 : beat ? L.h * 0.22 : L.h * 0.12), bar ? 3 : 2, bar ? L.h * 0.68 : beat ? L.h * 0.44 : L.h * 0.24);
       }
       // stage label
-      const lab = { pre: 'TAIYAAR', listen: 'SUNO', ready: 'TAIYAAR...', you: 'AB AAP', judge: 'AB AAP', next: '', done: '' }[R.stage] || '';
+      const lab = { pre: 'TAIYAAR', listen: S.K.recall ? 'YAAD KARO' : 'SUNO', ready: 'TAIYAAR...', you: S.K === SKINS.drums ? 'AB CHALO' : 'AB AAP', judge: 'AB AAP', answer: 'SUNO... ANDAR SE', next: '', done: '' }[R.stage] || '';
       H.text(ctx, lab, L.x + 10, L.y - 10, { font: 'osd', size: 20, align: 'left', color: R.stage === 'you' ? '#ffd84a' : '#eaf2ff', outline: 4, stroke: '#120d16' });
       // count-in dots
       const cin = R.stage === 'pre' || R.stage === 'listen' ? (t - (R.pA - 4 * S.beat)) / S.beat : R.stage === 'ready' ? (t - (R.pB - 4 * S.beat)) / S.beat : -1;
@@ -2128,7 +2284,7 @@
         if (R.stage === 'listen' || R.stage === 'ready' || R.stage === 'pre') {
           if (!demoShown) return;
           const age = t - (R.pA + n.s * S.slot);
-          drawPalm(ctx, x, cy, L.h * 0.28 * (age < 0.15 ? 1 + (0.15 - age) * 3 : 1), '#eaf2ff', 1);
+          drawPalm(ctx, x, cy, L.h * 0.28 * (age >= 0 && age < 0.15 ? 1 + (0.15 - age) * 3 : 1), '#eaf2ff', 1);
         } else if (showGhost || n.res) {
           const col = n.res === 'perfect' ? '#ffd84a' : n.res === 'good' ? '#b9ffb0' : n.res === 'miss' ? '#ff6a5a' : 'rgba(234,242,255,0.35)';
           drawPalm(ctx, x, cy, L.h * 0.26, col, n.res ? 1 : 0.6);
@@ -2194,6 +2350,258 @@
       if (clapping) { ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = '#ffd84a'; for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i - 2) * 0.45; ctx.fillRect(Math.cos(a) * 15 - 1, -70 + Math.sin(a) * 15, 2.5, 6); } ctx.restore(); }
     }
 
+
+    /* ------------------------------------------- skin: drums (Bonalu procession) */
+    function laneFor(g) {
+      const A = g.area, W = g.W, P = g.portrait, short = !P && A.h < 420;
+      const lane = { w: Math.min(W - 40, 560), h: Math.max(46, Math.min(70, A.h * (short ? 0.17 : 0.1))) };
+      lane.x = (W - lane.w) / 2; lane.y = P ? A.y + A.h * 0.56 : A.y + A.h * (short ? 0.4 : 0.5); lane.pad = 22; lane.inner = lane.w - lane.pad * 2;
+      return lane;
+    }
+    function personFront(ctx, x, y, h, o) {
+      const s = h / 64;
+      ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+      ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(0, 0, 13, 3.5, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = o.lower || '#e8e2d2'; ctx.fillRect(-9, -28, 8, 28); ctx.fillRect(1, -28, 8, 28);
+      ctx.fillStyle = o.shirt || '#f4efe2'; H.rr(ctx, -11, -54, 22, 28, 6); ctx.fill();
+      if (o.scarf) { ctx.fillStyle = o.scarf; ctx.beginPath(); ctx.moveTo(-11, -52); ctx.lineTo(11, -40); ctx.lineTo(11, -34); ctx.lineTo(-11, -46); ctx.fill(); }
+      ctx.fillStyle = o.skin || '#7a4a2a'; ctx.beginPath(); ctx.arc(0, -61, 8, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#1a1412'; ctx.beginPath(); ctx.arc(0, -63, 8.3, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+      if (o.band) { ctx.fillStyle = o.band; ctx.fillRect(-8, -66, 16, 3); }
+      ctx.fillStyle = '#1a1412'; ctx.fillRect(-4, -62, 2, 2); ctx.fillRect(2, -62, 2, 2);
+      if (o.moustache) ctx.fillRect(-4, -57.5, 8, 1.8);
+      ctx.strokeStyle = o.skin || '#7a4a2a'; ctx.lineWidth = 4.4; ctx.lineCap = 'round';
+      if (o.drum) {
+        // the dappu: a big round frame drum held on the left, a stick in the right hand
+        const hit = o.hit || 0;
+        ctx.beginPath(); ctx.moveTo(-10, -48); ctx.lineTo(-17, -36); ctx.stroke();
+        ctx.fillStyle = '#e8d6a8'; ctx.beginPath(); ctx.ellipse(-16, -34, 14, 16, -0.2, 0, TAU); ctx.fill();
+        ctx.strokeStyle = '#7a4a24'; ctx.lineWidth = 3; ctx.stroke();
+        ctx.fillStyle = 'rgba(178,43,43,0.6)'; ctx.beginPath(); ctx.arc(-16, -34, 5, 0, TAU); ctx.fill();
+        ctx.strokeStyle = o.skin || '#7a4a2a'; ctx.lineWidth = 4.4;
+        const ax = 10 + (1 - hit) * 6, ay = -58 + hit * 20;
+        ctx.beginPath(); ctx.moveTo(10, -48); ctx.lineTo(ax, ay); ctx.stroke();
+        ctx.strokeStyle = '#d9c08a'; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax - 16 + hit * 6, ay + 6 + hit * 6); ctx.stroke();
+        if (hit > 0.5) { ctx.strokeStyle = '#fff6c8'; ctx.lineWidth = 1.5; for (let i = 0; i < 4; i++) { const a = -2.4 + i * 0.4; ctx.beginPath(); ctx.moveTo(-16 + Math.cos(a) * 18, -34 + Math.sin(a) * 20); ctx.lineTo(-16 + Math.cos(a) * 24, -34 + Math.sin(a) * 26); ctx.stroke(); } }
+      } else { ctx.beginPath(); ctx.moveTo(-10, -48); ctx.lineTo(-13, -30); ctx.moveTo(10, -48); ctx.lineTo(13, -30); ctx.stroke(); }
+      ctx.restore();
+    }
+    function ammaBonam(ctx, x, y, h, wob, t) {
+      const s = h / 70;
+      ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+      ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(0, 0, 15, 4, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#2f8a3a'; ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(-11, -46); ctx.lineTo(11, -46); ctx.lineTo(15, 0); ctx.closePath(); ctx.fill(); // green saree (back)
+      ctx.fillStyle = '#f2c230'; ctx.fillRect(-14, -5, 29, 4);
+      ctx.fillStyle = '#d8402a'; H.rr(ctx, -10, -60, 20, 16, 4); ctx.fill();
+      ctx.fillStyle = '#2f8a3a'; ctx.beginPath(); ctx.moveTo(-10, -60); ctx.lineTo(10, -58); ctx.lineTo(12, -36); ctx.lineTo(-2, -40); ctx.fill(); // pallu
+      ctx.fillStyle = '#1a1412'; ctx.beginPath(); ctx.arc(0, -68, 8, 0, TAU); ctx.fill(); ctx.beginPath(); ctx.arc(0, -61, 4.5, 0, TAU); ctx.fill(); // hair + bun
+      ctx.fillStyle = '#ffffff'; for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(-4 + i * 2, -58 + (i % 2), 1.4, 0, TAU); ctx.fill(); } // jasmine
+      // arms up, steadying the bonam
+      ctx.strokeStyle = '#8a5a35'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(-9, -56); ctx.lineTo(-11, -78); ctx.moveTo(9, -56); ctx.lineTo(10, -78); ctx.stroke();
+      // the bonam: brass pot, turmeric + kumkum dots, neem leaves, a small lamp on top
+      const w = Math.sin(t * 14) * wob * 0.25;
+      ctx.save(); ctx.translate(0, -80); ctx.rotate(w);
+      const gr = ctx.createRadialGradient(-4, -10, 1, 0, -8, 14);
+      gr.addColorStop(0, '#ffe08a'); gr.addColorStop(0.6, '#d9a030'); gr.addColorStop(1, '#a8701a');
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.ellipse(0, -8, 12, 10, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#c8901a'; ctx.fillRect(-6, -20, 12, 4);
+      ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.arc(-5, -8, 1.8, 0, TAU); ctx.arc(5, -8, 1.8, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#c8203a'; ctx.beginPath(); ctx.arc(0, -6, 1.8, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#3f7a2a'; for (let i = 0; i < 6; i++) { ctx.save(); ctx.translate(-5 + i * 2, -21); ctx.rotate(-0.8 + i * 0.32); ctx.beginPath(); ctx.ellipse(0, -5, 1.8, 5, 0, 0, TAU); ctx.fill(); ctx.restore(); }
+      ctx.fillStyle = '#e8c070'; ctx.beginPath(); ctx.ellipse(0, -26, 4, 1.6, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ffb030'; ctx.beginPath(); ctx.moveTo(0, -34 - Math.sin(t * 11) * 1.2); ctx.quadraticCurveTo(2.5, -28, 0, -27); ctx.quadraticCurveTo(-2.5, -28, 0, -34 - Math.sin(t * 11) * 1.2); ctx.fill();
+      ctx.restore();
+      ctx.restore();
+    }
+    function paintDrums(g, S) {
+      const W = g.W, Hh = g.H, d = g.dpr, A = g.area;
+      S.bgKey = W + 'x' + Hh + ':' + d + ':' + A.h;
+      const lane = (S.lane = laneFor(g));
+      const u = Math.min(W, A.h * 1.2) / 100;
+      const hor = A.y + A.h * (g.portrait ? 0.3 : 0.26), floorY = A.y + A.h;
+      S.G = { u, hor, charS: (A.h * (g.portrait ? 0.15 : 0.26)) / 70 };
+      const c0 = (S.bg = S.bg || H.canvas(1, 1)); c0.width = Math.round(W * d); c0.height = Math.round(Hh * d);
+      const c = c0.getContext('2d'); c.setTransform(d, 0, 0, d, 0, 0);
+      let gr = c.createLinearGradient(0, 0, 0, hor);
+      gr.addColorStop(0, '#22285a'); gr.addColorStop(0.6, '#7a4a7a'); gr.addColorStop(1, '#e8905a');
+      c.fillStyle = gr; c.fillRect(0, 0, W, Hh);
+      // the street in perspective
+      const vx = W / 2;
+      gr = c.createLinearGradient(0, hor, 0, floorY);
+      gr.addColorStop(0, '#6a5a58'); gr.addColorStop(1, '#3a302e');
+      c.fillStyle = gr; c.fillRect(0, hor, W, Hh - hor);
+      // old-city facades on both sides, converging
+      const rng = U.rng(4141);
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < 6; i++) {
+          const f0 = i / 6, f1 = (i + 1) / 6;
+          const x0 = vx + side * lerp(W * 0.08, W * 0.62, f0 * f0), x1 = vx + side * lerp(W * 0.08, W * 0.62, f1 * f1);
+          const top0 = hor - lerp(u * 6, u * 34, f0 * f0), top1 = hor - lerp(u * 6, u * 34, f1 * f1);
+          const bot0 = hor + lerp(u * 1, u * 40, f0 * f0), bot1 = hor + lerp(u * 1, u * 40, f1 * f1);
+          c.fillStyle = ['#d9c3a0', '#c7b9d6', '#e9c6b6', '#bcd3c4', '#e8d9b5', '#d0a888'][(rng.next() * 6) | 0];
+          c.beginPath(); c.moveTo(x0, top0); c.lineTo(x1, top1); c.lineTo(x1, bot1); c.lineTo(x0, bot0); c.closePath(); c.fill();
+          c.fillStyle = 'rgba(0,0,0,0.12)'; c.fill();
+          // arched doorway
+          const ax = lerp(x0, x1, 0.5), ay = lerp(bot0, bot1, 0.5), ah = (lerp(bot0, bot1, 0.5) - lerp(top0, top1, 0.5)) * 0.45, aw = Math.abs(x1 - x0) * 0.32;
+          c.fillStyle = '#3a2a24'; c.beginPath(); c.moveTo(ax - aw / 2, ay); c.lineTo(ax - aw / 2, ay - ah * 0.7); c.quadraticCurveTo(ax, ay - ah * 1.15, ax + aw / 2, ay - ah * 0.7); c.lineTo(ax + aw / 2, ay); c.fill();
+          c.fillStyle = 'rgba(255,200,120,0.35)'; c.fillRect(ax - aw * 0.3, ay - ah * 0.6, aw * 0.6, ah * 0.6);
+        }
+      }
+      // the temple gopuram at the end of the street (silhouette, respectfully distant)
+      const gx = vx, gy = hor + u * 1, gw = u * 9;
+      c.fillStyle = '#f0e2c8';
+      for (let k = 0; k < 5; k++) { const w = gw * (1 - k * 0.17), h = u * 2.4; c.fillRect(gx - w / 2, gy - u * 4 - k * h, w, h + 1); }
+      c.beginPath(); c.arc(gx, gy - u * 4 - 5 * u * 2.4, gw * 0.12, Math.PI, TAU); c.fill();
+      c.strokeStyle = '#6a5a4a'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(gx, gy - u * 4 - 5 * u * 2.4 - gw * 0.12); c.lineTo(gx, gy - u * 20); c.stroke();
+      c.fillStyle = '#ef8a2a'; c.beginPath(); c.moveTo(gx, gy - u * 20); c.lineTo(gx + u * 2.4, gy - u * 19.2); c.lineTo(gx, gy - u * 18.4); c.fill();
+      c.fillStyle = 'rgba(80,50,40,0.35)'; c.fillRect(gx - gw / 2, gy - u * 4, gw, u * 4);
+      // neem-leaf torans strung across
+      for (let k = 0; k < 3; k++) {
+        const y = hor - u * (12 - k * 4) - k * u * 3, x0 = vx - W * (0.18 + k * 0.17), x1 = vx + W * (0.18 + k * 0.17), sag = u * (2 + k * 1.5);
+        c.strokeStyle = 'rgba(60,40,30,0.6)'; c.lineWidth = 1; c.beginPath(); c.moveTo(x0, y); c.quadraticCurveTo(vx, y + sag * 2, x1, y); c.stroke();
+        for (let i = 1; i < 14; i++) { const f = i / 14, x = lerp(x0, x1, f), yy = y + Math.sin(f * Math.PI) * sag; c.fillStyle = i % 3 ? '#3f7a2a' : '#5a9a3a'; c.beginPath(); c.ellipse(x, yy + u * (0.8 + k * 0.3), u * (0.35 + k * 0.12), u * (0.9 + k * 0.3), 0, 0, TAU); c.fill(); }
+      }
+      // marigold petals on the road
+      for (let i = 0; i < 70; i++) { const y = hor + u * 3 + rng.next() * (Hh - hor), x = rng.next() * W, r = u * (0.2 + (y - hor) / (Hh - hor) * 0.4); c.fillStyle = rng.next() < 0.6 ? '#ef8a2a' : '#f2c230'; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); }
+      S.festoon = [];
+      for (let k = 0; k < 2; k++) S.festoon.push({ y: hor - u * (18 - k * 7), x0: vx - W * (0.3 + k * 0.25), x1: vx + W * (0.3 + k * 0.25), sag: u * (3 + k * 2) });
+    }
+    function drawDrums(g, ctx, S) {
+      const W = g.W, Hh = g.H, A = g.area;
+      if (S.bgKey !== W + 'x' + Hh + ':' + g.dpr + ':' + A.h) paintDrums(g, S);
+      ctx.drawImage(S.bg, 0, 0, W, Hh);
+      const G = S.G, u = G.u;
+      // festoon bulbs twinkling
+      const cols = ['#ff5a4a', '#ffd84a', '#6fdc5a', '#4ac8ff', '#ff7ae0'];
+      for (const f of S.festoon) {
+        ctx.strokeStyle = 'rgba(30,20,20,0.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(f.x0, f.y); ctx.quadraticCurveTo(W / 2, f.y + f.sag * 2, f.x1, f.y); ctx.stroke();
+        for (let i = 1; i < 22; i++) {
+          const k = i / 22, x = lerp(f.x0, f.x1, k), y = f.y + Math.sin(k * Math.PI) * f.sag;
+          const on = (i + Math.floor(S.clock * 4)) % 3 !== 0;
+          ctx.fillStyle = on ? cols[i % cols.length] : 'rgba(80,60,60,0.8)';
+          ctx.beginPath(); ctx.arc(x, y + 2, Math.max(1.5, u * 0.45), 0, TAU); ctx.fill();
+        }
+      }
+      // drummers ahead, facing the procession
+      const dy = G.hor + (S.lane.y - G.hor) * 0.92, dh = A.h * (g.portrait ? 0.13 : 0.22);
+      const hit = Math.min(1, S.guideClap / 0.12);
+      [[-0.22, '#d8402a', '#f2c230'], [0, '#ef8a2a', '#d8402a'], [0.22, '#2a8c82', '#f2c230']].forEach(([fx, sc, band], i) => {
+        personFront(ctx, W / 2 + fx * Math.min(W, 700), dy + (i === 1 ? 4 : 0), dh, { shirt: '#f4efe2', lower: '#e8e2d2', scarf: sc, band, drum: true, hit: i === 1 ? hit : hit * 0.8, moustache: true });
+      });
+      // sound rings from the drums
+      for (const r of S.rings) {
+        const k = r.t / 1.2, cx = W / 2, cy = dy - dh * 0.5;
+        ctx.strokeStyle = r.who === 'guide' ? 'rgba(255,220,160,' + (1 - k) * 0.5 + ')' : 'rgba(255,216,74,' + (1 - k) * 0.6 + ')';
+        ctx.lineWidth = Math.max(1.5, u * 0.5 * (1 - k));
+        ctx.beginPath(); ctx.ellipse(cx, r.who === 'guide' ? cy : Hh - dh * 0.6, u * (3 + k * 34), u * (1.5 + k * 14), 0, 0, TAU); ctx.stroke();
+      }
+      drawLane(g, ctx, S);
+      // the family from behind: Amma with the bonam, Chinnu, Immu with neem branches
+      const fy = A.y + A.h * (g.portrait ? 0.95 : 0.99), s = G.charS;
+      ammaBonam(ctx, W / 2 - 8 * s * 4, fy, 70 * s * 1.15, S.wobble, S.clock);
+      const step = S.kidClap > 0 ? -3 * s : 0;
+      H.kidBack(ctx, W / 2 + 9 * s * 4, fy + step, s * 1.0, { shirt: '#d8402a', stripes: '#f2c230', pants: '#3b4a6b' });
+      H.kidBack(ctx, W / 2 + 26 * s * 4, fy, s * 1.02, { shirt: '#f4efe2', pants: '#2a8c82', skin: '#8a5a35' });
+      ctx.save(); ctx.translate(W / 2 + 26 * s * 4 + 9 * s, fy - 60 * s); ctx.rotate(-0.3 + Math.sin(S.clock * 3) * 0.08);
+      ctx.strokeStyle = '#6a4a2a'; ctx.lineWidth = 2 * s; ctx.beginPath(); ctx.moveTo(0, 20 * s); ctx.lineTo(0, -16 * s); ctx.stroke();
+      ctx.fillStyle = '#3f7a2a'; for (let i = 0; i < 9; i++) { ctx.beginPath(); ctx.ellipse(Math.sin(i * 1.7) * 5 * s, -16 * s + i * 2.2 * s, 1.8 * s, 4.2 * s, Math.sin(i) * 0.9, 0, TAU); ctx.fill(); }
+      ctx.restore();
+      // diyas along the road: one more lit per clean round
+      const n = Math.max(3, S.rounds * 2);
+      for (let i = 0; i < n; i++) {
+        const x = W * (0.08 + (i / (n - 1)) * 0.84), y = A.y + A.h * (g.portrait ? 0.72 : 0.7) + Math.abs(i - (n - 1) / 2) * u * 0.6, on = (i + 1) / n <= S.lit + 0.001;
+        ctx.fillStyle = '#a8582a'; ctx.beginPath(); ctx.ellipse(x, y, u * 1.2, u * 0.5, 0, 0, Math.PI); ctx.fill();
+        if (on) {
+          const gr = ctx.createRadialGradient(x, y - u, 0, x, y - u, u * 3);
+          gr.addColorStop(0, 'rgba(255,220,140,0.9)'); gr.addColorStop(1, 'rgba(255,170,64,0)');
+          ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y - u, u * 3, 0, TAU); ctx.fill();
+          ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.moveTo(x, y - u * 1.6 - Math.sin(S.clock * 9 + i) * u * 0.2); ctx.quadraticCurveTo(x + u * 0.4, y - u * 0.6, x, y - u * 0.4); ctx.quadraticCurveTo(x - u * 0.4, y - u * 0.6, x, y - u * 1.6); ctx.fill();
+        }
+      }
+      drawMsg(g, ctx, S);
+    }
+
+    /* ---------------------------------------------- skin: doorway (the storeroom) */
+    function paintDoorway(g, S) {
+      const W = g.W, Hh = g.H, d = g.dpr, A = g.area;
+      S.bgKey = W + 'x' + Hh + ':' + d + ':' + A.h;
+      const lane = (S.lane = laneFor(g));
+      lane.y = A.y + Math.max(34, A.h * 0.08); // the strip sits above the door, never across it
+      const u = Math.min(W, A.h * 1.2) / 100;
+      S.msgY = lane.y + lane.h + u * 9;
+      const floorY = A.y + A.h * (g.portrait ? 0.78 : 0.82);
+      const dw = Math.min(W * 0.34, A.h * 0.42), dh = Math.min(floorY - (lane.y + lane.h + u * 16), dw * 2.1), dx = W / 2 - dw / 2, dTop = floorY - dh;
+      S.G = { u, floorY, door: { x: dx, y: dTop, w: dw, h: dh }, charS: (A.h * (g.portrait ? 0.15 : 0.26)) / 70 };
+      const c0 = (S.bg = S.bg || H.canvas(1, 1)); c0.width = Math.round(W * d); c0.height = Math.round(Hh * d);
+      const c = c0.getContext('2d'); c.setTransform(d, 0, 0, d, 0, 0);
+      // lime-washed wall with a darker dado, a tube light, red-oxide floor
+      c.fillStyle = '#9cc7d4'; c.fillRect(0, 0, W, Hh);
+      c.fillStyle = '#6a9aae'; c.fillRect(0, floorY - A.h * 0.12, W, A.h * 0.12);
+      c.fillStyle = 'rgba(255,255,255,0.08)'; const rng = U.rng(9); for (let i = 0; i < 40; i++) c.fillRect(rng.next() * W, rng.next() * floorY, 20 + rng.next() * 50, 2);
+      let gr = c.createLinearGradient(0, floorY, 0, Hh); gr.addColorStop(0, '#9a3f2c'); gr.addColorStop(1, '#6a2a1e');
+      c.fillStyle = gr; c.fillRect(0, floorY, W, Hh - floorY);
+      c.fillStyle = 'rgba(255,240,220,0.9)'; H.rr(c, W * 0.06, A.y + A.h * 0.3, 6, A.h * 0.18, 3); c.fill();
+      gr = c.createRadialGradient(W * 0.06, A.y + A.h * 0.39, 0, W * 0.06, A.y + A.h * 0.39, W * 0.5); gr.addColorStop(0, 'rgba(255,250,230,0.3)'); gr.addColorStop(1, 'rgba(255,250,230,0)');
+      c.fillStyle = gr; c.fillRect(0, 0, W, floorY);
+      // the storeroom door frame
+      const D = S.G.door;
+      c.fillStyle = '#5a3a24'; c.fillRect(D.x - u * 1.4, D.y - u * 1.4, D.w + u * 2.8, D.h + u * 1.4);
+      c.fillStyle = '#2a1a14'; c.fillRect(D.x, D.y, D.w, D.h);
+      // flour sacks + a tin trunk beside it
+      for (let i = 0; i < 3; i++) { const sx = D.x + D.w + u * 3 + i * u * 7, sw = u * 7, sh = u * 9; c.fillStyle = '#d9c8a0'; H.rr(c, sx, floorY - sh, sw, sh, u * 2); c.fill(); c.fillStyle = '#b22b2b'; H.text(c, 'ATTA', sx + sw / 2, floorY - sh * 0.5, { font: 'osd', size: u * 2.2, color: '#b22b2b' }); }
+      c.fillStyle = '#7a8a9a'; c.fillRect(D.x - u * 16, floorY - u * 8, u * 13, u * 8); c.fillStyle = '#5a6a7a'; c.fillRect(D.x - u * 16, floorY - u * 8, u * 13, u * 1.4);
+      c.fillStyle = '#c8b070'; c.fillRect(D.x - u * 10, floorY - u * 6.4, u * 1.4, u * 1.6);
+      // a calendar
+      { const cx = W * 0.8, cy = A.y + A.h * 0.32; c.fillStyle = '#f4efe2'; c.fillRect(cx, cy, u * 9, u * 12); c.fillStyle = '#2a8c82'; c.fillRect(cx, cy, u * 9, u * 5); c.fillStyle = '#f2c230'; c.beginPath(); c.arc(cx + u * 4.5, cy + u * 2.5, u * 1.4, 0, TAU); c.fill(); c.fillStyle = 'rgba(40,30,30,0.45)'; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) c.fillRect(cx + u * (1 + j * 2), cy + u * (6.2 + i * 1.4), u * 1.3, u * 0.4); }
+    }
+    function drawDoorway(g, ctx, S) {
+      const W = g.W, Hh = g.H, A = g.area;
+      if (S.bgKey !== W + 'x' + Hh + ':' + g.dpr + ':' + A.h) paintDoorway(g, S);
+      ctx.drawImage(S.bg, 0, 0, W, Hh);
+      const G = S.G, u = G.u, D = G.door;
+      // warm light from inside when Immu answers / the door opens
+      const glow = Math.max(S.guideClap * 4, S.door);
+      // door leaves (they swing open as S.door rises)
+      const open = H.ease.out(S.door), lw = D.w / 2;
+      for (const side of [-1, 1]) {
+        const w = lw * (1 - open * 0.75), x = side < 0 ? D.x : D.x + D.w - w;
+        const gr = ctx.createLinearGradient(x, 0, x + w, 0);
+        gr.addColorStop(0, '#8a5a34'); gr.addColorStop(1, '#6a4024');
+        ctx.fillStyle = gr; ctx.fillRect(x, D.y, w, D.h);
+        ctx.strokeStyle = 'rgba(40,20,10,0.6)'; ctx.lineWidth = 2; ctx.strokeRect(x + 4, D.y + 6, w - 8, D.h * 0.42); ctx.strokeRect(x + 4, D.y + D.h * 0.5, w - 8, D.h * 0.45);
+      }
+      // the gap of light (and Immu's shadow moving in it when he claps)
+      const gapX = D.x + lw * (1 - open * 0.75), gapW = Math.max(3, D.w - 2 * lw * (1 - open * 0.75));
+      const gr = ctx.createLinearGradient(gapX, 0, gapX + gapW, 0);
+      gr.addColorStop(0, 'rgba(255,200,120,' + (0.35 + glow * 0.5) + ')'); gr.addColorStop(0.5, 'rgba(255,230,170,' + (0.55 + glow * 0.45) + ')'); gr.addColorStop(1, 'rgba(255,200,120,' + (0.35 + glow * 0.5) + ')');
+      ctx.fillStyle = gr; ctx.fillRect(gapX, D.y, gapW, D.h);
+      if (S.door > 0.2) personFront(ctx, D.x + D.w / 2, D.y + D.h, D.h * 0.6, { shirt: '#f4efe2', lower: '#2a8c82', skin: '#8a5a35' });
+      else if (S.guideClap > 0) { ctx.fillStyle = 'rgba(40,20,10,0.5)'; ctx.fillRect(gapX + gapW * 0.2, D.y + D.h * 0.3, gapW * 0.6, D.h * 0.5); }
+      // iron latch
+      if (S.door < 0.05) { ctx.fillStyle = '#3a3a40'; ctx.fillRect(D.x + D.w / 2 - u * 2, D.y + D.h * 0.48, u * 4, u * 1.2); }
+      // light spilling onto the floor
+      ctx.fillStyle = 'rgba(255,220,150,' + (0.08 + glow * 0.18) + ')';
+      ctx.beginPath(); ctx.moveTo(gapX, D.y + D.h); ctx.lineTo(gapX + gapW, D.y + D.h); ctx.lineTo(gapX + gapW + u * 10, Hh); ctx.lineTo(gapX - u * 10, Hh); ctx.fill();
+      // rings: the answer comes from the door, your claps from the front
+      for (const r of S.rings) {
+        const k = r.t / 1.2, cy = r.who === 'guide' ? D.y + D.h * 0.45 : A.y + A.h * 0.9;
+        ctx.strokeStyle = r.who === 'guide' ? 'rgba(255,230,170,' + (1 - k) * 0.6 + ')' : 'rgba(255,216,74,' + (1 - k) * 0.6 + ')';
+        ctx.lineWidth = Math.max(1.5, u * 0.5 * (1 - k));
+        ctx.beginPath(); ctx.ellipse(W / 2, cy, u * (3 + k * 30), u * (1.5 + k * 14), 0, 0, TAU); ctx.stroke();
+      }
+      drawLane(g, ctx, S);
+      // Chinnu, from behind, clapping at the door
+      const s = G.charS, fy = A.y + A.h * (g.portrait ? 0.97 : 1.0);
+      ctx.save(); ctx.translate(W / 2 + u * 6, fy); ctx.scale(s, s);
+      ctx.strokeStyle = '#a8703f'; ctx.lineWidth = 4.6; ctx.lineCap = 'round';
+      const k = S.kidClap > 0 ? 0 : 7;
+      ctx.beginPath(); ctx.moveTo(-8, -42); ctx.lineTo(-2 - k, -64); ctx.moveTo(8, -42); ctx.lineTo(2 + k, -64); ctx.stroke();
+      ctx.restore();
+      H.kidBack(ctx, W / 2 + u * 6, fy, s, { shirt: '#d8402a', stripes: '#f2c230', pants: '#3b4a6b' });
+      drawMsg(g, ctx, S);
+    }
+
     MG.register(def);
   }
 
@@ -2203,6 +2611,7 @@
   // the device itself (canvas hit-tested), so the same big buttons work for mouse and touch.
   {
     const COLS = 10, ROWS = 20;
+    const T = (MG.TUNE.brickgame = Object.assign({ linesPerLevel: 5, lives: 3, lines0: 5, lines1: 7, cars0: 22, cars1: 25 }, MG.TUNE.brickgame || {}));
     const LCD_BG = '#9fae8c', LCD_OFF = 'rgba(40,52,30,0.11)', LCD_ON = '#141a10';
     // pieces as cells in a 4x4 (I) or 3x3 box
     const PIECES = {
@@ -2241,7 +2650,7 @@
       duck: 0.12,
       keys: {
         ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowDown: 'down', KeyS: 'down',
-        ArrowUp: 'rotate', KeyW: 'rotate', Space: 'rotate', KeyX: 'rotate', KeyK: 'rotate', Enter: 'start', NumpadEnter: 'start', KeyM: 'sound',
+        ArrowUp: 'rotate', KeyW: 'rotate', Space: 'rotate', KeyZ: 'rotate', KeyK: 'rotate', KeyX: 'down', Enter: 'start', NumpadEnter: 'start', KeyM: 'sound',
       },
       buttons: () => [],
       keyHint: () => '<kbd>←</kbd><kbd>→</kbd> move &nbsp; <kbd>↓</kbd> drop &nbsp; <kbd>↑</kbd>/<kbd>Space</kbd> rotate · turbo &nbsp; <kbd>M</kbd> sound',
@@ -2304,7 +2713,7 @@
         const race = S.mode === 'race';
         return {
           title: r.win ? (race ? 'Finish line!' : 'Line clear!') : (race ? 'Dhadaam!' : 'Bricks to the top!'),
-          line: r.win ? 'Nobody touch it, the high score is still on the screen.' : 'Batteries still good. One more game?',
+          line: r.win ? 'FREE GAME! Nobody touch it, the high score is still on the screen.' : 'Batteries still good. One more game?',
           rows: race ? [['Cars passed', S.cars + ' / ' + S.target], ['Score', r.score]] : [['Lines', S.lines + ' / ' + S.target], ['Speed', S.speed], ['Score', r.score]],
         };
       },
@@ -2315,8 +2724,8 @@
         return 1 + (S.score >= S.target * 180 ? 1 : 0) + (S.maxHeight <= 12 ? 1 : 0);
       },
     };
-    function targetLines(g) { return g.params.mode !== 'race' && g.params.target ? g.params.target : Math.round(5 + g.diff * 7); }
-    function targetCars(g) { return g.params.mode === 'race' && g.params.target ? g.params.target : Math.round(22 + g.diff * 25); }
+    function targetLines(g) { return g.params.mode !== 'race' && g.params.target ? g.params.target : Math.round(T.lines0 + g.diff * T.lines1); }
+    function targetCars(g) { return g.params.mode === 'race' && g.params.target ? g.params.target : Math.round(T.cars0 + g.diff * T.cars1); }
 
     function beep(g, S, f, d, o) { if (S.sound) g.tone(f, d, Object.assign({ type: 'square', vol: 0.045 }, o || {})); }
     function melody(g, S, notes, gap, o) { notes.forEach((f, i) => beep(g, S, f, gap * 0.9, Object.assign({ delay: i * gap }, o || {}))); }
@@ -2331,7 +2740,7 @@
         const garbage = g.diff >= 0.6 ? Math.round((g.diff - 0.5) * 8) : 0;
         for (let r = ROWS - garbage; r < ROWS; r++) { const hole = (g.rng.next() * COLS) | 0; for (let c = 0; c < COLS; c++) if (c !== hole && g.rng.next() < 0.8) S.board[r * COLS + c] = 1; }
       } else {
-        S.target = targetCars(g); S.cars = 0; S.lane = 0; S.enemies = []; S.scroll = 0; S.rowT = 0; S.spawnIn = 2; S.crash = null; S.speed = 1 + Math.round(g.diff * 2); S.lives = 3;
+        S.target = targetCars(g); S.cars = 0; S.lane = 0; S.enemies = []; S.scroll = 0; S.rowT = 0; S.spawnIn = 2; S.crash = null; S.speed = 1 + Math.round(g.diff * 2); S.lives = T.lives;
       }
       melody(g, S, [1568, 1976, 2349, 3136], 0.07);
     }
@@ -2375,7 +2784,7 @@
       for (const r of rows) { S.board.copyWithin(COLS, 0, r * COLS); S.board.fill(0, 0, COLS); }
       S.lines += rows.length;
       S.flash = null;
-      const lvl = 1 + Math.round(g.diff * 3) + Math.floor(S.lines / 4);
+      const lvl = 1 + Math.round(g.diff * 3) + Math.floor(S.lines / T.linesPerLevel);
       if (lvl > S.speed) { S.speed = Math.min(9, lvl); melody(g, S, [2093, 2637], 0.06); }
       if (S.lines >= S.target && !g.over) { S.score += 500; win(g, S); }
     }
@@ -2782,6 +3191,7 @@
     const LWH = 1.9, RWH = 1.05;     // wall heights
     const FAR = 23;                  // the crossroads
     const HIT_Z = 0.25;
+    const T = (MG.TUNE.cricket = Object.assign({ perfect: [0.045, 0.02], good: [0.095, 0.03], edge: [0.15, 0.03], overs: 2, target0: 13, target1: 14, catchFull: [0.62, 0.25], catchTip: [0.45, 0.3], maliPause: 3 }, MG.TUNE.cricket || {}));
 
     const def = {
       id: 'cricket',
@@ -2791,7 +3201,7 @@
       place: 'playground_', places: ['playground_', 'playground_home', 'lb_stadium', 'victory_playground'],
       secs: 75,
       goLabel: 'PLAY!',
-      keys: { ArrowLeft: 'pull', KeyA: 'pull', ArrowUp: 'drive', KeyW: 'drive', Space: 'drive', ArrowRight: 'cut', KeyD: 'cut' },
+      keys: { ArrowLeft: 'pull', KeyA: 'pull', KeyZ: 'pull', ArrowUp: 'drive', KeyW: 'drive', Space: 'drive', ArrowRight: 'cut', KeyD: 'cut', KeyX: 'cut' },
       buttons: () => [
         { a: 'pull', label: '◀ PULL', sub: 'LEFT' },
         { a: 'drive', label: '▲ DRIVE', sub: 'STRAIGHT', cls: 'big' },
@@ -2806,7 +3216,7 @@
             'Play the line: <b>◀ pull</b> balls on the left, <b>cut ▶</b> balls on the right, <b>▲ drive</b> straight ones. Hit a wall hard = <b>four</b>; over the low right wall = <b>six</b>.',
             'House rules: <b>one-tip-one-hand</b> is out, a catch is out, and anything into <b>Aunty\'s compound</b> (left wall) is OUT.',
           ],
-          goal: S.target + ' RUNS IN ' + S.balls + ' BALLS &middot; ' + S.wkts + ' WICKETS',
+          goal: S.target + ' RUNS IN ' + S.balls + ' BALLS &middot; ' + S.wkts + ' WICKET' + (S.wkts > 1 ? 'S' : '') + (S.bowlerName ? ' &middot; AYESHA BOWLS' : '') + (S.trial ? ' &middot; TRIAL BALL' : ''),
           keys: '<kbd>←</kbd> pull &nbsp;·&nbsp; <kbd>↑</kbd> / <kbd>Space</kbd> drive &nbsp;·&nbsp; <kbd>→</kbd> cut',
           touch: 'Tap <b>◀ PULL</b>, <b>▲ DRIVE</b> or <b>CUT ▶</b> as the ball arrives',
         };
@@ -2814,11 +3224,14 @@
       setup(g) {
         const S = g.S, d = g.diff;
         S.score = 0; S.runs = 0;
-        S.overs = g.params.overs || 2;
+        S.overs = g.params.overs || T.overs;
         S.balls = S.overs * 6; S.ballsLeft = S.balls; S.bowled = 0;
         S.wkts = g.params.wickets || (d > 0.75 ? 1 : 2); S.wktsLeft = S.wkts;
-        S.target = g.params.target || Math.round(13 + d * 14);
-        S.winP = 0.045 + (1 - d) * 0.02; S.winG = 0.095 + (1 - d) * 0.03; S.winE = 0.15 + (1 - d) * 0.03;
+        S.target = g.params.target || Math.round(T.target0 + d * T.target1);
+        S.winP = (T.perfect[0] + (1 - d) * T.perfect[1]) * g.winMul; S.winG = (T.good[0] + (1 - d) * T.good[1]) * g.winMul; S.winE = (T.edge[0] + (1 - d) * T.edge[1]) * g.winMul;
+        S.bowlerName = g.params.bowler === 'ayesha' ? 'Ayesha' : null;
+        S.trial = !!(g.params.trialBall != null ? g.params.trialBall : !g.params.story && MG.hasItem('cricket_ball'));
+        S.mali = (g.params.mali || g.params.place === 'public_gardens') ? { at: 2 + ((g.rng.next() * Math.max(1, S.balls - 4)) | 0), t: -1 } : null;
         S.fours = 0; S.sixes = 0; S.log = [];
         S.stage = 'wait'; S.st = 0; S.clock = 0;
         S.ball = null; S.swing = null; S.msg = null; S.aunty = 0; S.bricks = null;
@@ -2931,10 +3344,18 @@
       const b = S.ball;
       if (b) b.done = true;
       let line = '';
+      if (kind === 'out' && S.trial) { // the owner of the ball bats first: the first dismissal is a trial ball
+        S.trial = false;
+        g.sfx('whistle', { vol: 0.5 });
+        S.msg = { text: text, col: '#ffb4a6', t: 0, sub: 'TRIAL BALL! Ball tumhari, toh out nahi.', big: true };
+        S.log.push('T'); S.nextAt = 2.0;
+        return;
+      }
       if (kind === 'out') {
         S.wktsLeft--;
         g.sfx('howzat'); g.shake(5);
         line = S.wktsLeft > 0 ? (S.wktsLeft === 1 ? 'Last man batting!' : '') : '';
+        if (S.bowlerName && text === 'BOWLED!') line = (line ? line + ' ' : '') + 'Ayesha ki yorker!';
       } else if (kind === 'wide') {
         S.runs += 1; S.ballsLeft++;
       } else {
@@ -2958,6 +3379,12 @@
       // input
       if (!g.over) for (const a of ['pull', 'drive', 'cut']) if (g.pressed(a) && (S.stage === 'flight' || S.stage === 'runup')) { swing(g, S, a); break; }
       const bw = S.bowler;
+      if (S.mali && S.mali.t >= 0) {
+        S.mali.t += dt;
+        if (S.mali.t > T.maliPause) { S.mali.t = -2; S.mali.done = true; }
+        return;
+      }
+      if (S.stage === 'wait' && S.mali && !S.mali.done && S.bowled === S.mali.at && S.mali.t === -1) { S.mali.t = 0; g.sfx('whistle', { vol: 0.6 }); return; }
       if (S.stage === 'wait') {
         if (S.st > (S.bowled === 0 ? 0.4 : 0.15)) { S.stage = 'runup'; S.st = 0; bw.z = 20.5; S.swing = null; S.bricks = null; resetFielders(S); }
       } else if (S.stage === 'runup') {
@@ -3058,11 +3485,11 @@
         if (dxz > 0.75 || b.y > 1.75) continue;
         const r = g.rng.next();
         if (b.bounces === 0 && b.t > 0.12) {
-          if (r < 0.62 + g.diff * 0.25) { catchBall(g, S, f, 'CAUGHT!'); return; }
+          if (r < T.catchFull[0] + g.diff * T.catchFull[1]) { catchBall(g, S, f, 'CAUGHT!'); return; }
           dropped(g, S, f); return;
         }
         if (b.bounces === 1 && b.y > 0.15) {
-          if (r < 0.45 + g.diff * 0.3) { catchBall(g, S, f, 'ONE TIP ONE HAND!'); return; }
+          if (r < T.catchTip[0] + g.diff * T.catchTip[1]) { catchBall(g, S, f, 'ONE TIP ONE HAND!'); return; }
           dropped(g, S, f); return;
         }
         if (b.bounces >= 1) { fielded(g, S, f); return; }
@@ -3237,6 +3664,7 @@
       ctx.fillStyle = o.shirt || '#2a8c82'; H.rr(ctx, -10, by, 20, 24, 5); ctx.fill();
       ctx.fillStyle = o.skin || '#8a5a35'; ctx.beginPath(); ctx.arc(0, by - 7, 7.5, 0, TAU); ctx.fill();
       ctx.fillStyle = '#1a1412'; ctx.beginPath(); ctx.arc(0, by - 9, 7.8, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+      if (o.girl) { ctx.fillRect(-9, by - 9, 3, 16); ctx.fillRect(6, by - 9, 3, 16); ctx.fillStyle = '#d24d57'; ctx.fillRect(-9.5, by + 5, 4, 3); ctx.fillRect(5.5, by + 5, 4, 3); ctx.fillStyle = '#1a1412'; }
       ctx.fillStyle = '#1a1412'; ctx.fillRect(-3.5, by - 7.5, 2, 2); ctx.fillRect(1.5, by - 7.5, 2, 2);
       ctx.strokeStyle = o.skin || '#8a5a35'; ctx.lineWidth = 4.2; ctx.lineCap = 'round';
       ctx.beginPath();
@@ -3303,7 +3731,7 @@
       // sprites, far to near
       const spr = [];
       const bw = S.bowler;
-      spr.push({ z: bw.z, f: () => { const p = proj(S, bw.x, 0, bw.z); kid(ctx, p.x, p.y, 1.45 * p.k, { shirt: '#d8402a', pants: '#2b2430', run: S.stage === 'runup', ph: bw.ph, bowl: S.stage === 'flight' || S.stage === 'runup' ? bw.arm : null }); } });
+      spr.push({ z: bw.z, f: () => { const p = proj(S, bw.x, 0, bw.z); kid(ctx, p.x, p.y, 1.45 * p.k, { shirt: S.bowlerName ? '#d24d57' : '#d8402a', pants: S.bowlerName ? '#f4efe2' : '#2b2430', girl: !!S.bowlerName, run: S.stage === 'runup', ph: bw.ph, bowl: S.stage === 'flight' || S.stage === 'runup' ? bw.arm : null }); } });
       S.fielders.forEach((f, i) => spr.push({ z: f.z, f: () => { const p = proj(S, f.x, 0, f.z); kid(ctx, p.x, p.y, 1.35 * p.k, { shirt: ['#2a8c82', '#f2c230', '#7a3db8', '#3b6fc4'][i % 4], pants: '#4a3f35', crouch: !f.run && !f.catch && S.stage !== 'result', run: f.run > 0.5, ph: f.ph, catch: f.catch }); } }));
       // bowler's-end bricks
       spr.push({ z: 13.4, f: () => drawBricks(ctx, S, 13.45, null) });
@@ -3313,11 +3741,17 @@
       for (const s_ of spr) s_.f();
       // the hitting ring at the batter's feet
       if (S.stage === 'flight' && b && !b.hit) {
-        const dtA = b.tArrive - S.clock, near = U.clamp(1 - Math.abs(dtA) / 0.45, 0, 1);
+        const dtA = b.tArrive - S.clock, near = U.clamp(1 - Math.abs(dtA) / (g.assist ? 0.7 : 0.45), 0, 1);
         const p = proj(S, 0.15, 0, HIT_Z);
-        ctx.strokeStyle = 'rgba(255,216,74,' + (0.25 + near * 0.7 * (g.diff < 0.65 ? 1 : 0.4)) + ')';
+        ctx.strokeStyle = 'rgba(255,216,74,' + (0.25 + near * 0.7 * (g.diff < 0.65 || g.assist ? 1 : 0.4)) + ')';
         ctx.lineWidth = 2 + near * 3;
         ctx.beginPath(); ctx.ellipse(p.x, p.y, p.k * (0.75 - near * 0.2), p.k * 0.16, 0, 0, TAU); ctx.stroke();
+      }
+      if (S.mali && S.mali.t >= 0) { // the park mali walks across with his hose
+        const k = Math.min(1, S.mali.t / 0.8), p = proj(S, lerp(5.5, 1.8, k), 0, 6);
+        kid(ctx, p.x, p.y, 1.75 * p.k, { shirt: '#e8e2d2', pants: '#2f6a4a', skin: '#6a3a1a' });
+        ctx.strokeStyle = '#2f8a3a'; ctx.lineWidth = Math.max(2, p.k * 0.08); ctx.beginPath(); ctx.moveTo(p.x + p.k * 0.3, p.y - p.k * 0.8); ctx.quadraticCurveTo(p.x + p.k * 2, p.y, p.x + p.k * 4, p.y - p.k * 0.1); ctx.stroke();
+        H.sign(ctx, Math.max(8, p.x - 90), p.y - p.k * 2.6 - 40, 200, 34, { fill: '#fff8e6', text: 'Ghaas pe nakko khelna!', size: 15, font: 'body', bolts: false, r: 10 });
       }
       drawBatter(ctx, S, g);
       drawBricks(ctx, S, -0.75, S.bricks);
@@ -3376,7 +3810,11 @@
   // hold = turn), the wind pushes it, reflections make false peaks, and crows love to sit on it.
   // Amma shouts from below: "Aaya? Ab? Thoda left! BAS! Wahi rakho!"
   {
-    const LOCK_Q = 0.84;
+    // systems_design §8.5: turn 40 deg/s, 2 deg nudge, 1-2 false peaks at 60-80%, lock = quality >= 85%
+    // for 2.5 s, crows every 8-12 s knock it 5-10 deg off, hints wrong 25% of the time at d > 0.6
+    const T = (MG.TUNE.antenna = Object.assign({ turn: 0.7, nudge: 0.035, lockQ: 0.85, lockTime: 2.5, crowMin: 8, crowMax: 12, crowKick: [0.087, 0.175],
+      falseLo: 0.6, falseHi: 0.8, wrongHint: 0.25, time0: 60, time1: 15 }, MG.TUNE.antenna || {}));
+    const LOCK_Q = T.lockQ;
     const def = {
       id: 'antenna',
       title: 'Antenna Ghumao',
@@ -3395,8 +3833,8 @@
         return {
           lines: [
             '<b>Hold ◀ ▶</b> to turn the rusty antenna; <b>tap</b> for a tiny nudge. Watch the TV and the booster needle downstairs.',
-            'Listen to Amma: <i>"thoda left!", "aaya!"</i>. The tower is a rough guide: reflections from buildings fool you.',
-            'When the picture is clear, <b>hold it</b> till the lock fills. Crows land on the antenna: <b>SHOO</b> them!',
+            'Listen to ' + (g.params.caller === 'babji' ? 'Babji' : 'Amma') + ': <i>"thoda left!", "aaya!"</i>. Reflections off buildings make <b>false peaks</b>: a ghostly picture is not the real thing.',
+            'When the picture is clear, <b>hold it steady</b> for ' + T.lockTime + ' s. Crows land on the antenna and knock it: <b>SHOO</b> them!',
           ],
           goal: 'CLEAR PICTURE BEFORE 11:00 &middot; ' + timeLimit(g) + 's',
           keys: 'hold <kbd>←</kbd> <kbd>→</kbd> turn · tap to nudge · <kbd>Space</kbd> shoo',
@@ -3406,16 +3844,19 @@
       setup(g) {
         const S = g.S, d = g.diff, r = g.rng;
         S.score = 0; S.time = 0; S.limit = timeLimit(g); S.left = S.limit;
-        S.tower = -0.35 + r.next() * 0.7;                    // bearing of the tower (as drawn on the compass)
-        S.best = S.tower + (r.next() < 0.5 ? -1 : 1) * (0.18 + r.next() * 0.22 + d * 0.1); // true best (reflections)
-        S.side = S.best + (r.next() < 0.5 ? -1 : 1) * (1.0 + r.next() * 0.3); // a false peak
+        S.tower = -0.6 + r.next() * 1.2;                     // bearing of the Doordarshan tower: the true peak
+        S.best = S.tower;
+        S.peaks = [];                                          // 1-2 false peaks (reflections off buildings)
+        const nf = d > 0.5 ? 2 : 1;
+        for (let i = 0; i < nf; i++) S.peaks.push({ a: S.best + (i % 2 ? -1 : 1) * (r.next() < 0.5 ? 1 : -1) * (0.9 + r.next() * 0.8), h: T.falseLo + r.next() * (T.falseHi - T.falseLo) });
+        S.caller = g.params.caller === 'babji' ? 'babji' : 'amma';
         S.theta = S.best + Math.PI * (0.55 + r.next() * 0.5) * (r.next() < 0.5 ? -1 : 1); S.theta0 = S.theta;
         S.omega = 0; S.effort = 0; S.holdT = 0; S.lastDir = 0;
-        S.Q = 0; S.Qs = 0; S.lock = 0; S.locked = false; S.holdNeed = 3.4 + d * 2.4;
+        S.Q = 0; S.Qs = 0; S.lock = 0; S.locked = false; S.holdNeed = T.lockTime;
         S.windPh = r.next() * 10; S.gust = 0; S.gustIn = 6 + r.next() * 5; S.gustDir = 1;
-        S.crow = null; S.crowIn = 6 + r.next() * 4 - d * 2; S.shoo = 0; S.crows = 0;
+        S.crow = null; S.crowIn = T.crowMin + r.next() * (T.crowMax - T.crowMin); S.shoo = 0; S.crows = 0;
         S.interf = null; S.interfIn = 9 + r.next() * 6;
-        S.amma = { text: 'Antenna ghumao! Kuch nahi dikh raha!', t: 0, mood: 'cross' }; S.ammaT = 2.6; S.prevBand = 0;
+        S.amma = { text: S.caller === 'babji' ? 'Ghumao bhai, signal dhoondo! Picture saaf chahiye.' : 'Antenna ghumao! Kuch nahi dikh raha!', t: 0, mood: 'cross' }; S.ammaT = 2.6; S.prevBand = 0;
         S.roll = 0; S.wasLocked = false; S.flicker = 0;
         S.hiss = g.loop({ ft: 'highpass', f: 1400, q: 0.4 });
       },
@@ -3443,7 +3884,7 @@
       result(g, r) {
         const S = g.S;
         return {
-          title: r.win ? 'Picture saaf!' : 'Show shuru... sirf barish!',
+          title: r.win ? 'Picture saaf!' : 'Signal gaya!',
           line: r.win ? 'Amma: "Bas! Ab haath mat lagana!" The whole family is in front of the TV.' : 'The title song is playing behind the snow. Next Sunday, start at 10:55.',
           rows: [['Best signal', Math.round(S.bestQ * 100) + '%'], ['Crows shooed', S.crows], ['Time to spare', Math.max(0, Math.ceil(S.left)) + 's'], ['Score', r.score]],
         };
@@ -3451,11 +3892,13 @@
       stars(g, r) { const S = g.S; return r.win ? 1 + (S.left > S.limit * 0.4 ? 1 : 0) + (S.left > S.limit * 0.65 ? 1 : 0) : 0; },
       cleanup(g) { if (g.S && g.S.hiss) g.S.hiss.stop(); },
     };
-    function timeLimit(g) { return g.params.time || Math.round(60 - g.diff * 15); }
+    function timeLimit(g) { return g.params.time || Math.round(T.time0 - g.diff * T.time1); }
 
     function signal(S, th) {
-      const d = U.angleDiff(th, S.best), ds = U.angleDiff(th, S.side), db = U.angleDiff(th, S.best + Math.PI);
-      return Math.min(1, Math.exp(-(d * d) / (2 * 0.17 * 0.17)) + 0.5 * Math.exp(-(ds * ds) / (2 * 0.16 * 0.16)) + 0.3 * Math.exp(-(db * db) / (2 * 0.22 * 0.22)));
+      const d = U.angleDiff(th, S.best), db = U.angleDiff(th, S.best + Math.PI);
+      let q = Math.exp(-(d * d) / (2 * 0.17 * 0.17)) + 0.25 * Math.exp(-(db * db) / (2 * 0.22 * 0.22));
+      for (const p of S.peaks) { const dp = U.angleDiff(th, p.a); q = Math.max(q, p.h * Math.exp(-(dp * dp) / (2 * 0.15 * 0.15))); }
+      return Math.min(1, q);
     }
 
     function say(S, text, mood) { if (S.amma && S.amma.text === text && S.amma.t < 2) return; S.amma = { text, t: 0, mood: mood || 'ok' }; }
@@ -3470,10 +3913,10 @@
         if (dir) {
           S.holdT += dt;
           S.effort += dt;
-          if (S.effort > 0.16) S.omega = H.approach(S.omega, dir * 0.95, 3.2 * dt);
+          if (S.effort > 0.16) S.omega = H.approach(S.omega, dir * T.turn, 3.2 * dt);
           S.lastDir = dir;
         } else {
-          if (S.holdT > 0 && S.holdT < 0.16) { S.theta += S.lastDir * 0.035; g.tone(260, 0.03, { type: 'square', vol: 0.025 }); } // a nudge
+          if (S.holdT > 0 && S.holdT < 0.16) { S.theta += S.lastDir * T.nudge; g.tone(260, 0.03, { type: 'square', vol: 0.025 }); } // a nudge
           S.holdT = 0; S.effort = 0;
           S.omega *= Math.exp(-7 * dt);
         }
@@ -3488,12 +3931,12 @@
       if (S.crow) {
         const c = S.crow;
         c.t += dt;
-        if (c.state === 'in' && c.t > 1.1) { c.state = 'sit'; c.t = 0; g.sfx('crow_caw'); }
-        else if (c.state === 'sit') { S.theta += c.side * 0.09 * dt * (1 + g.diff); if (c.t > 2.5 && Math.random() < dt * 0.5) g.sfx('crow_caw', { vol: 0.5 }); }
+        if (c.state === 'in' && c.t > 1.1) { c.state = 'sit'; c.t = 0; g.sfx('crow_caw'); S.theta += c.side * lerp(T.crowKick[0], T.crowKick[1], Math.random()); } // lands with a thump: 5-10 deg off
+        else if (c.state === 'sit') { S.theta += c.side * 0.02 * dt; if (c.t > 2.5 && Math.random() < dt * 0.5) g.sfx('crow_caw', { vol: 0.5 }); }
         else if (c.state === 'out' && c.t > 1.2) S.crow = null;
       } else if (!g.over) {
         S.crowIn -= dt;
-        if (S.crowIn <= 0) { S.crow = { state: 'in', t: 0, side: Math.random() < 0.5 ? -1 : 1, from: Math.random() < 0.5 ? -1 : 1 }; S.crowIn = 9 + Math.random() * 6 - g.diff * 3; }
+        if (S.crowIn <= 0) { S.crow = { state: 'in', t: 0, side: Math.random() < 0.5 ? -1 : 1, from: Math.random() < 0.5 ? -1 : 1 }; S.crowIn = T.crowMin + Math.random() * (T.crowMax - T.crowMin); }
       }
       if (g.pressed('shoo') && !g.over) {
         S.shoo = 0.5;
@@ -3508,7 +3951,7 @@
       else if (!g.over) { S.interfIn -= dt; if (S.interfIn <= 0) { const k = Math.random() < 0.5 ? 'mixer' : 'plane'; S.interf = { k, t: 0, dur: k === 'mixer' ? 1.6 : 2.2 }; S.interfIn = 10 + Math.random() * 8; if (k === 'plane') g.sfx('airplane', { vol: 0.5 }); else g.noise(1.5, { f: 900, q: 3, vol: 0.05 }); } }
       // --- signal
       let Q = signal(S, S.theta);
-      if (S.crow && S.crow.state === 'sit') Q *= 0.72;
+      if (S.crow && S.crow.state === 'sit') Q *= 0.85;
       const qi = S.interf ? (S.interf.k === 'mixer' ? 0.45 : 0.7) : 1;
       S.Q = Q;
       S.Qs += (Q * qi - S.Qs) * Math.min(1, dt * 6);
@@ -3520,7 +3963,7 @@
           S.lock = Math.min(1, S.lock + dt / S.holdNeed);
           if (!S.wasLocked) { S.wasLocked = true; say(S, ['BAS! BAS! Wahi rakho!', 'Haan! Aaya! Haath mat hilao!', 'Wahi! Ekdum wahi!'][(Math.random() * 3) | 0], 'happy'); g.tone(880, 0.08, { type: 'triangle', vol: 0.05 }); g.tone(1320, 0.12, { type: 'triangle', vol: 0.05, delay: 0.08 }); }
         } else {
-          if (!S.interf) S.lock = Math.max(0, S.lock - dt * 0.22);
+          if (!S.interf) S.lock = Math.max(0, S.lock - dt / S.holdNeed * 1.5); // keep it steady: the hold drains away
           if (S.wasLocked && S.Qs < 0.6) { S.wasLocked = false; say(S, ['Arre! Phir gaya!', 'Gaya gaya gaya!', 'Kya kiya?! Phir se barish!'][(Math.random() * 3) | 0], 'cross'); }
         }
         if (S.lock >= 1) {
@@ -3542,7 +3985,7 @@
         S.ammaT = 2.6 + Math.random() * 1.2;
         const d = U.angleDiff(S.theta, S.best);
         let lr = d < 0 ? 'right' : 'left'; // which way to turn
-        if (g.diff > 0.6 && Math.random() < 0.12) lr = lr === 'left' ? 'right' : 'left';
+        if (g.diff > 0.6 && Math.random() < T.wrongHint) lr = lr === 'left' ? 'right' : 'left';
         const hintOK = g.diff < 0.8 || Math.random() < 0.6;
         const dirTxt = hintOK ? (lr === 'left' ? 'Thoda LEFT!' : 'Thoda RIGHT!') : 'Ghumao!';
         if (S.interf) say(S, S.interf.k === 'mixer' ? 'Padosan ka mixer chal raha!' : 'Hawai jahaz! Ruko zara!', 'ok');
@@ -3705,9 +4148,8 @@
       const cr = Math.max(26, Math.min(T.w, T.h) * 0.1), ccx = T.x + cr + 16, ccy = T.y + cr + 24;
       ctx.fillStyle = 'rgba(18,13,22,0.78)'; ctx.beginPath(); ctx.arc(ccx, ccy, cr + 6, 0, TAU); ctx.fill();
       ctx.strokeStyle = 'rgba(234,242,255,0.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(ccx, ccy, cr, 0, TAU); ctx.stroke();
-      const tA = S.tower - Math.PI / 2;
-      ctx.fillStyle = '#ff6a5a'; ctx.beginPath(); ctx.moveTo(ccx + Math.cos(tA) * (cr - 2), ccy + Math.sin(tA) * (cr - 2)); ctx.lineTo(ccx + Math.cos(tA + 0.12) * (cr - 12), ccy + Math.sin(tA + 0.12) * (cr - 12)); ctx.lineTo(ccx + Math.cos(tA - 0.12) * (cr - 12), ccy + Math.sin(tA - 0.12) * (cr - 12)); ctx.fill();
-      H.text(ctx, 'DD', ccx + Math.cos(tA) * (cr + 14), ccy + Math.sin(tA) * (cr + 14), { font: 'osd', size: 14, color: '#ffb4a6', outline: 3, stroke: '#120d16' });
+      H.text(ctx, 'N', ccx, ccy - cr + 9, { font: 'osd', size: 13, color: '#ffb4a6' });
+      for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; ctx.fillStyle = 'rgba(234,242,255,0.4)'; ctx.fillRect(ccx + Math.cos(a) * (cr - 4) - 1, ccy + Math.sin(a) * (cr - 4) - 1, 2, 2); }
       const aA = S.theta - Math.PI / 2;
       ctx.strokeStyle = '#f2c230'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(ccx - Math.cos(aA) * cr * 0.5, ccy - Math.sin(aA) * cr * 0.5); ctx.lineTo(ccx + Math.cos(aA) * cr * 0.85, ccy + Math.sin(aA) * cr * 0.85); ctx.stroke();
       ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.arc(ccx + Math.cos(aA) * cr * 0.85, ccy + Math.sin(aA) * cr * 0.85, 3.5, 0, TAU); ctx.fill();
@@ -3797,7 +4239,7 @@
       // Amma, by the TV, shouting up the stairs
       const ax = Math.min(tx + tvW + tvW * 0.42, V.x + V.w - 26), ay = V.y + V.h * 0.86;
       const as = Math.max(0.7, V.h * 0.0042);
-      drawAmma(ctx, ax, ay, as, S.amma && S.amma.mood, S.time);
+      if (S.caller === 'babji') drawBabji(ctx, ax, ay, as, S.amma && S.amma.mood, S.time); else drawAmma(ctx, ax, ay, as, S.amma && S.amma.mood, S.time);
       if (S.amma && S.amma.t < 3.2) {
         ctx.font = H.font('body', Math.max(13, Math.min(18, V.w * 0.035)), 700);
         const maxW = Math.min(V.w * 0.62, 260);
@@ -3831,6 +4273,20 @@
       if (mood === 'happy') { ctx.beginPath(); ctx.moveTo(-8, -62); ctx.lineTo(-14, -80 + Math.sin(t * 12) * 3); ctx.moveTo(8, -62); ctx.lineTo(14, -80 - Math.sin(t * 12) * 3); ctx.stroke(); }
       else if (mood === 'cross') { ctx.beginPath(); ctx.moveTo(-8, -62); ctx.lineTo(-14, -52); ctx.lineTo(-8, -48); ctx.moveTo(8, -62); ctx.lineTo(10, -84); ctx.stroke(); }
       else { ctx.beginPath(); ctx.moveTo(-8, -62); ctx.lineTo(-13, -45); ctx.moveTo(8, -62); ctx.lineTo(11, -82 + Math.sin(t * 4) * 2); ctx.stroke(); }
+      ctx.restore();
+    }
+
+    function drawBabji(ctx, x, y, s, mood, t) { // Cable Babji: checked shirt, a coil of cable on the shoulder
+      ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(0, 0, 15, 4, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#3b4a6b'; ctx.fillRect(-9, -34, 8, 34); ctx.fillRect(1, -34, 8, 34);
+      ctx.fillStyle = '#c8402a'; H.rr(ctx, -12, -66, 24, 34, 6); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; for (let i = -10; i < 12; i += 5) { ctx.beginPath(); ctx.moveTo(i, -66); ctx.lineTo(i, -33); ctx.stroke(); }
+      ctx.fillStyle = '#7a4a2a'; ctx.beginPath(); ctx.arc(0, -75, 8.5, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#1a1412'; ctx.beginPath(); ctx.arc(0, -78, 8.8, Math.PI, TAU); ctx.fill(); ctx.fillRect(-5, -71, 10, 2);
+      ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.ellipse(-8, -58, 7, 10, 0.3, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = '#7a4a2a'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(8, -62); ctx.lineTo(mood === 'happy' ? 14 : 11, mood === 'happy' ? -84 + Math.sin(t * 12) * 3 : -82); ctx.moveTo(-8, -62); ctx.lineTo(-12, -46); ctx.stroke();
       ctx.restore();
     }
 
@@ -3911,10 +4367,13 @@
   // meter; say "NAKKO" to skip them. Brown meetha ones cool you down. Two puris piled up already?
   // The oldest goes soggy and breaks.
   {
+    // systems_design §8.6: a puri every 1.6 - 0.6*d s (and bhaiya speeds up as you go), teekha +34
+    // spice, meetha -25, spice falls 6/s, 100 = "PAANI!" (a miss, reset to 50), 3 misses = out
+    const T = (MG.TUNE.panipuri = Object.assign({ base: 1.6, perD: 0.6, speedUp: 0.3, minGap: 0.62, teekha: 34, meetha: -25, normal: 6, fall: 6, reset: 50, misses: 3, crunch: 0.62, life: 1.55, target0: 18, target1: 12 }, MG.TUNE.panipuri || {}));
     const TYPES = {
-      normal: { fill: '#5fa04a', spice: 6, pts: 10, label: '' },
-      teekha: { fill: '#d8402a', spice: 27, pts: 22, label: 'TEEKHA' },
-      meetha: { fill: '#8a4a24', spice: -16, pts: 8, label: 'MEETHA' },
+      normal: { fill: '#5fa04a', spice: T.normal, pts: 10, label: '' },
+      teekha: { fill: '#d8402a', spice: T.teekha, pts: 22, label: 'TEEKHA' },
+      meetha: { fill: '#8a4a24', spice: T.meetha, pts: 8, label: 'MEETHA' },
       sukha: { fill: '#f2c230', spice: 0, pts: 60, label: 'SUKHA!' },
     };
     const def = {
@@ -3981,7 +4440,7 @@
       },
       stars(g, r) { const S = g.S; return r.win ? 1 + (S.misses === 0 ? 1 : 0) + (S.crunches >= S.eaten * 0.75 ? 1 : 0) : 0; },
     };
-    function target(g) { return g.params.target || Math.round(18 + g.diff * 12); }
+    function target(g) { return g.params.target || Math.round(T.target0 + g.diff * T.target1); }
 
     function bhaiyaSay(S, t) { S.bh.say = t; S.bh.sayT = 1.6; }
 
@@ -3992,12 +4451,12 @@
       if (S.served > 6 && g.rng.next() < 0.05) return 'sukha';
       return 'normal';
     }
-    function interval(g, S) { const prog = S.eaten / S.target; return Math.max(0.62, 1.55 - prog * 0.62 - g.diff * 0.28); }
+    function interval(g, S) { const prog = S.eaten / S.target; return Math.max(T.minGap, (T.base - T.perD * g.diff) * (1 - T.speedUp * prog)); }
 
     function miss(g, S, why) {
       S.misses++; S.combo = 0;
       g.shake(5); g.tone(160, 0.15, { type: 'triangle', vol: 0.06 });
-      if (S.misses >= 3 && !g.over) g.finish(false, { eaten: S.eaten, reason: why, delay: 1.4 });
+      if (S.misses >= T.misses && !g.over) g.finish(false, { eaten: S.eaten, reason: why, delay: 1.4 });
     }
 
     function step(g, S, dt) {
@@ -4006,7 +4465,7 @@
       if (S.bh.sayT > 0) S.bh.sayT -= dt;
       S.face.chew = Math.max(0, S.face.chew - dt); S.face.gasp = Math.max(0, S.face.gasp - dt);
       S.water = Math.max(0, S.water - dt);
-      S.spice = Math.max(0, S.spice - dt * (S.water > 0 ? 30 : 3.5));
+      S.spice = Math.max(0, S.spice - dt * (S.water > 0 ? 30 : T.fall));
       S.face.red += (S.spice / 100 - S.face.red) * Math.min(1, dt * 4);
       // serving
       if (!g.over) {
@@ -4027,7 +4486,7 @@
       if (S.fly) {
         S.fly.t += dt / 0.32;
         if (S.fly.t >= 1) {
-          const life = interval(g, S) * 1.55;
+          const life = interval(g, S) * T.life * (g.assist ? 1.3 : 1);
           S.dona.push({ type: S.fly.type, age: 0, life, wob: Math.random() * TAU });
           S.fly = null;
           g.tone(420, 0.03, { type: 'sine', vol: 0.03 });
@@ -4064,7 +4523,7 @@
     function eat(g, S, p) {
       const T = TYPES[p.type], L = S.L;
       const fresh = p.age / p.life;
-      const crunch = fresh < 0.62;
+      const crunch = fresh < T.crunch * (g.assist ? 1.2 : 1);
       S.eaten++;
       S.face.chew = 0.45;
       if (crunch) { S.combo++; S.crunches++; } else S.combo = 0;
@@ -4080,7 +4539,7 @@
       const txt = p.type === 'sukha' ? 'SUKHA! +' + pts : crunch ? (S.combo >= 3 ? 'CRUNCH x' + S.combo : 'CRUNCH!') : 'soggy...';
       g.pop(txt, L.donaX + (Math.random() - 0.5) * 30, L.donaY - L.donaR * 1.7, { size: crunch ? 26 : 19, color: p.type === 'teekha' ? '#ff6a4a' : crunch ? '#ffd84a' : '#d8d0c0', font: crunch ? 'display' : 'body' });
       if (S.spice >= 100) {
-        S.spice = 55; S.water = 1.6; S.face.gasp = 1.6;
+        S.spice = T.reset; S.water = 1.6; S.face.gasp = 1.6;
         g.pop('PAANI! PAANI!', g.W / 2, L.faceY - L.faceR * 1.6, { size: 34, color: '#7ac8ff', life: 1.6 });
         g.flash('#ff3a2a', 0.35); g.sfx('sip', { delay: 0.3 });
         bhaiyaSay(S, 'Arre, paani do isko!');
@@ -4325,129 +4784,183 @@
   }
 
   /* ================================================================ BARGAIN */
-  // Mol-bhaav. Haggle the auto driver (or the banana / flower vendor) down to a fair price before
-  // his patience (SABR) runs out. Pick a line (each person likes different kinds of talk: read his
-  // first line for a hint), then deliver it with confidence: press when the needle is in the green.
+  // Mol-bhaav (systems_design §8.7). Haggle the seller down to the target price before his patience
+  // (SABR) runs out. Pick a line (each seller likes one kind of talk, hinted by his first line), then
+  // say it with confidence: press when the needle is in the green. Skins (params.who): auto, banana,
+  // flower, kite (M1), farmer (M7), books (SA7); anything else falls back to 'auto'.
   {
+    const T = (MG.TUNE.bargain = Object.assign({
+      drain0: 2.2, drain1: 1.8,          // patience drain per second = drain0 + drain1 * d
+      frac: 0.2, likedFrac: 0.45,        // share of (price - floor) a line cuts: any type / the liked type
+      grade: { green: 1, yellow: 0.5, red: 0 }, redPatience: -10,
+      walkNear: 2, walkFail: -38,        // JAATA HOON works within Rs 2 of his floor, else -38 patience
+      speed0: 1.6, speed1: 1.4, zone0: 0.2, zone1: 0.07, // the confidence needle
+    }, MG.TUNE.bargain || {}));
     const CATS = {
-      logic: { name: 'LOGIC', col: '#3b6fc4', frac: 0.25, pat: -7 },
-      charm: { name: 'PYAAR', col: '#e8487c', frac: 0.22, pat: 2 },
-      local: { name: 'APNAPAN', col: '#2a8c82', frac: 0.25, pat: 3 },
-      filmy: { name: 'FILMY', col: '#7a3db8', frac: 0.27, pat: -2 },
-      walk: { name: 'JAATA HOON', col: '#5a5560', frac: 0, pat: 0 },
-      offer: { name: 'OFFER', col: '#2f8a3a', frac: 0, pat: 0 },
+      logic: { name: 'LOGIC', col: '#3b6fc4', pat: -7 },
+      charm: { name: 'PYAAR', col: '#e8487c', pat: 2 },
+      local: { name: 'APNAPAN', col: '#2a8c82', pat: 3 },
+      filmy: { name: 'FILMY', col: '#7a3db8', pat: -2 },
+      walk: { name: 'JAATA HOON', col: '#5a5560', pat: 0 },
     };
+    const TYPES = ['logic', 'charm', 'local', 'filmy'];
+    // generic hints, used when params.randomType gives the seller a random taste
+    const HINTS = {
+      logic: 'Hisaab se baat karo, faltu nahi.',
+      charm: 'Meethi baat karo toh sochenge.',
+      local: 'Waise, kaunsi gali ke ho?',
+      filmy: 'Kuch dialogue maaro, hero!',
+    };
+    const PLACE_SIGN = { koti_bus_stand: 'KOTI', rtc_x_roads: 'RTC X ROADS', nampally_station: 'NAMPALLY', kachiguda_station: 'KACHIGUDA', imlibun_bus_station: 'IMLIBUN' };
     const WHO = {
       auto: {
-        title: 'Auto Mol-Bhaav', what: 'Koti to Charminar', start: [38, 45], target: 20, floor: [16, 19], unit: '',
-        types: {
-          grumpy: { intro: 'Charminar? ₹{P}. Meter kharab hai. Baitho ya jao.', m: { logic: 1.35, charm: 0.55, local: 0.9, filmy: 0.4, walk: 1.2 } },
-          filmy: { intro: 'Arre hero! Charminar? ₹{P} mein seedha, gaana bhi bajega!', m: { logic: 0.6, charm: 1.0, local: 0.9, filmy: 1.6, walk: 0.8 } },
-          chatty: { intro: 'Kahan jaana, baba? Charminar? Arre, ₹{P}, bas! Apne log ho.', m: { logic: 0.8, charm: 1.3, local: 1.6, filmy: 1.0, walk: 0.7 } },
-        },
+        title: 'Auto Mol-Bhaav', what: 'the ride', like: 'local',
+        price: (p) => { const m = Math.max(4, Math.round(p.meter || p.target || 20)); return { start: m + 10, target: m, floor: m - 2 }; },
+        ask: '{D}? ₹{P}. Meter nakko, das upar.', hint: 'Waise, kaunsi gali ke ho?',
         lines: {
-          logic: ['Meter pe chalo na, anna.', 'Bus mein toh teen rupaye lagte!', 'Itna door bhi nahi hai, anna!', 'Kal ₹20 mein gaya tha.'],
+          logic: ['Meter pe chalo na, anna.', 'Bus mein toh teen rupaye lagte!', 'Itna door bhi nahi hai, anna!', 'Kal meter se gaya tha.'],
           charm: ['Anna, aap toh apne hi ho!', 'Aap ka auto ekdum mast hai!', 'Thoda kam karo na, please!'],
-          local: ['Mere mamu bhi Koti mein auto chalate!', 'Aap Sultan Bazaar wale ho na?', 'Hum roz isi stand se jaate.'],
+          local: ['Mere mamu bhi Koti mein auto chalate!', 'Hum isi area ke hain, anna!', 'Hum roz isi stand se jaate.'],
           filmy: ['Anna, hero log seedha deal karte!', 'Picture ka time hai, jaldi aur sasta!'],
           walk: ['Chodo, doosra auto le lunga.', 'Rehne do, main bus se jaata.'],
-          offer: ['₹{T} final, anna?'],
         },
-        good: ['Accha... ₹{P} de dena.', 'Theek hai, theek hai. ₹{P}.', 'Hmm. Chalo, ₹{P}.'],
+        good: ['Accha... ₹{P} de dena.', 'Apne log ho. Chalo, ₹{P}.', 'Hmm. Chalo, ₹{P}.'],
         meh: ['Petrol kitna mehenga hai, maloom? ₹{P}.', '₹{P}. Isse kam nahi.'],
         bad: ['Kya bolra baba? ₹{P} hi lagenge.', 'Time waste mat karo!'],
         walkWin: 'Arre ruko ruko! Chalo, ₹{P}!', walkLose: 'Jao jao! Bahut auto hai.',
         deal: 'Chalo, baitho! ₹{P}, meter nakko.', leave: 'Chal hatt! Mera time kharab kiya.',
-        offerNo: 'Nahi baba, ₹{P} final. Petrol bhi dekho.',
       },
       banana: {
-        title: 'Kele ka Mol-Bhaav', what: 'one dozen bananas', catNames: { filmy: 'EXTRA' }, start: [15, 18], target: 10, floor: [7, 9], unit: '/dozen',
-        types: {
-          busy: { intro: 'Chakkarkeli! Ekdum meethe! ₹{P} darjan. Lena hai toh lo, jaldi.', m: { logic: 1.35, charm: 0.6, local: 1.0, filmy: 0.5, walk: 1.3 } },
-          soft: { intro: 'Aao beta, ekdum taaze kele! ₹{P} darjan, Amma ke liye?', m: { logic: 0.75, charm: 1.4, local: 1.5, filmy: 0.9, walk: 0.6 } },
-        },
+        title: 'Kele ka Mol-Bhaav', what: 'one dozen bananas', like: 'charm', unit: '/dozen',
+        price: (p, r) => ({ start: ri(r, 15, 18), target: 10, floor: ri(r, 8, 11) }),
+        ask: 'Chakkarakeli! ₹{P} darjan.', hint: 'Meethi baat karo, meethe kele lo!',
         lines: {
           logic: ['Rythu Bazaar mein ₹10 hai!', 'Ye toh chhote chhote hain!', 'Do darjan lunga, kam karo.'],
-          charm: ['Amma bolti aap ke kele best hain!', 'Aap ke kele sabse meethe!'],
+          charm: ['Amma bolti aap ke kele best hain!', 'Aap ke kele sabse meethe!', 'Aap ki muskaan bhi meethi, uncle!'],
           local: ['Hum roz aap se hi lete hain.', 'Main woh peeli building wala!'],
-          filmy: ['Ek kela phokat dedo na!'],
+          filmy: ['Uncle, kele khaake hi hero bante!', 'Ek kela phokat, hero ke liye?'],
           walk: ['Chalo, aage wale se lete.', 'Rehne do, kal lunga.'],
-          offer: ['₹{T} mein do na?'],
         },
-        good: ['Accha, ₹{P} de do.', 'Chalo, aap ke liye ₹{P}.'],
+        good: ['Hehe, accha. ₹{P} de do.', 'Chalo, aap ke liye ₹{P}.'],
         meh: ['Mandi mein bhi mehenga hai, beta. ₹{P}.'],
         bad: ['Nahi hoga, ₹{P}.', 'Bhaav mat karo, beta!'],
         walkWin: 'Arre ruko! ₹{P}, le jao!', walkLose: 'Jao, aage wala bhi itna hi lega.',
         deal: 'Lo, ₹{P}. Ek extra bhi daal diya!', leave: 'Agla customer! Chalo, hato.',
-        offerNo: 'Nahi beta, ₹{P} se kam nahi.',
       },
       flower: {
-        title: 'Phoolon ka Mol-Bhaav', what: 'a jasmine and marigold garland', catNames: { filmy: 'EXTRA' }, start: [20, 24], target: 12, floor: [9, 11], unit: '',
-        types: {
-          strict: { intro: 'Mallepoolu, genda! Thursday hai, haar ₹{P}. Bheed hai, jaldi bolo.', m: { logic: 1.3, charm: 0.7, local: 1.0, filmy: 0.4, walk: 1.2 } },
-          kind: { intro: 'Aao beta, taaze phool! Haar ₹{P}. Ammamma ke liye?', m: { logic: 0.8, charm: 1.3, local: 1.6, filmy: 0.8, walk: 0.6 } },
-        },
+        title: 'Phoolon ka Mol-Bhaav', what: 'a jasmine and marigold garland', like: 'charm',
+        price: (p, r) => ({ start: ri(r, 20, 24), target: 12, floor: ri(r, 10, 13) }),
+        ask: 'Mallepoolu, genda! Haar ₹{P}.', hint: 'Dekho na, kitna sundar banaya!',
         lines: {
           logic: ['Kal toh ₹12 tha!', 'Aadhe phool toh band hain!', 'Andar bhi milta hai.'],
-          charm: ['Aap ke phool sabse fresh hain!', 'Kitna sundar haar banaya!'],
-          local: ['Ammamma ke liye hai, har Thursday aate.', 'Hum isi gali mein rehte.'],
-          filmy: ['Ek gulab bhi daal do na!'],
+          charm: ['Aap ke phool sabse fresh hain!', 'Kitna sundar haar banaya, aunty!'],
+          local: ['Har Thursday hum aap se hi lete.', 'Hum isi gali mein rehte.'],
+          filmy: ['Aunty, ye haar toh picture mein bhi nahi dekha!', 'Ek gulab, hero ke liye?'],
           walk: ['Rehne do, doosri jagah lete.', 'Kal le lunga.'],
-          offer: ['₹{T} chalega?'],
         },
-        good: ['Accha, ₹{P} de do.', 'Chalo, Ammamma ke liye ₹{P}.'],
+        good: ['Aww. Accha, ₹{P} de do.', 'Chalo, aap ke liye ₹{P}.'],
         meh: ['Phool mehenge hain aaj. ₹{P}.'],
         bad: ['₹{P} se kam nahi.', 'Mol-bhaav nahi, beta.'],
         walkWin: 'Ruko! ₹{P}, le lo.', walkLose: 'Theek hai, jao.',
         deal: 'Lo beta, ₹{P}. Ammamma ko pranaam bolna.', leave: 'Agla! Bheed hai, beta.',
-        offerNo: 'Nahi beta, ₹{P}. Itna toh lagega.',
+      },
+      kite: {
+        title: 'Patang ka Mol-Bhaav', what: 'five kites and a charkhi', like: 'filmy',
+        price: (p, r) => ({ start: 30, target: 20, floor: ri(r, 18, 20) }),
+        ask: 'Paanch patang, ek charkhi? ₹{P}, mian.', hint: 'Aaj Sankranti hai. Aaj toh hawa bhi extra charge karti!',
+        lines: {
+          logic: ['Chacha, charkhi pe saddi aadhi hai!', 'Kal ₹20 mein bech rahe the!', 'Paanch patang hi toh hain.'],
+          charm: ['Chacha, aap ki patang sabse oonchi udti!', 'Aap ke haath ka kaam, first class!'],
+          local: ['Hum Charminar ke paas hi rehte!', 'Har Sankranti aap se hi lete, Chacha.'],
+          filmy: ['Chacha, hawa bhi aapki, patang bhi aapki, dil bhi aapka!', 'Aaj ka hero main, aaj ka bhaav bhi mera!', 'Hero ki patang kabhi nahi katti, Chacha!'],
+          walk: ['Chalo, aage wali dukaan dekhte.', 'Rehne do, Chacha.'],
+        },
+        good: ['Hehe! Baaton mein toh hero ho. ₹{P}.', 'Wah mian, wah! ₹{P}.'],
+        meh: ['Saddi mehengi hai, beta. ₹{P}.', 'Hmm. ₹{P}.'],
+        bad: ['Na mian, ₹{P} hi.', 'Aaj Sankranti hai, beta!'],
+        walkWin: 'Arre ruko, mian! Chalo, ₹{P}.', walkLose: 'Jao, har dukaan mein yahi bhaav.',
+        deal: 'Theek hai. ₹{P}. Aur glass manja nahi, haan? Cotton only.', leave: 'Bas mian, bheed hai. Baad mein aana.',
+      },
+      farmer: {
+        title: 'Rythu Bazaar Bhaav', what: 'Amma\'s list', like: 'logic',
+        price: (p) => { const l = Math.max(4, Math.round(p.list || p.target || 36)); return { start: Math.round(l * 1.25), target: l, floor: Math.round(l * 0.9) }; },
+        ask: 'Tamata kilo aaru! Poora list ₹{P}, babu.', hint: 'Hisaab pakka hai, babu. Gin ke dekho.',
+        lines: {
+          logic: ['Erragadda mein kilo ek rupaya kam hai!', 'Poora list ek saath le raha hoon, aunty.', 'Ye tamatar thode dabbe hue hain.', 'Board pe toh kam likha hai!'],
+          charm: ['Aunty, aap ki sabzi sabse taazi!', 'Aap ke tamatar ekdum laal!'],
+          local: ['Amma hamesha aap se hi leti, aunty.', 'Hum Mehdipatnam ke hi hain!'],
+          filmy: ['Aunty, aap ke tamatar picture mein aane chahiye!', 'Hero ki Amma ki list hai, aunty!'],
+          walk: ['Chalo, agle stall pe dekhte.', 'Rehne do aunty, Erragadda jaate.'],
+        },
+        good: ['Sare, babu. Hisaab theek. ₹{P}.', 'Smart boy. ₹{P} ivvu.'],
+        meh: ['Mandi mein bhi rate hai, babu. ₹{P}.'],
+        bad: ['Ledu babu, ₹{P}.', 'Rate fixed hai, babu!'],
+        walkWin: 'Ruko babu! ₹{P}, sare.', walkLose: 'Jao, Erragadda ka auto ₹10 hai!',
+        deal: 'Sare! ₹{P}. Kosaru bhi daal diya, Amma ko bolna.', leave: 'Babu, line lagi hai. Agla!',
+      },
+      books: {
+        title: 'Kitaabon ka Mol-Bhaav', what: 'the class VII set', like: 'local',
+        price: (p, r) => ({ start: 90, target: 60, floor: 55 }),
+        ask: 'Seventh class, full set, ₹{P}. Half price!', hint: 'Kaunse school ke ho? Idhar ke ho?',
+        lines: {
+          logic: ['Ye toh pichle saal ka edition hai!', 'Cover phata hua hai, uncle.', 'Guide nahi chahiye, sirf books.'],
+          charm: ['Uncle, aap ke paas sab milta hai!', 'Aap toh Koti ki library ho!'],
+          local: ['Main yahin paas ke school mein padhta!', 'Bhaiyya bhi aap se hi lete the!', 'Hum Koti ke hi hain, uncle.'],
+          filmy: ['Uncle, padhai ka hero banna hai, help karo!', 'Half price ka half price, uncle?'],
+          walk: ['Chalo, agla stall.', 'Rehne do, uncle.'],
+        },
+        good: ['Apne area ka ho? Accha, ₹{P}.', 'Padhne wale ho. ₹{P}.'],
+        meh: ['Books bhaari hain, beta. ₹{P}.'],
+        bad: ['Na beta, ₹{P}.', 'Half price already hai!'],
+        walkWin: 'Arre ruko! ₹{P}, le jao.', walkLose: 'Jao, Abids mein bhi yahi rate.',
+        deal: 'Lo, ₹{P}. Achhe se cover karna, haan!', leave: 'Beta, aur customer hain. Kal aana.',
       },
     };
+    function ri(r, a, b) { return a + Math.floor(r.next() * (b - a + 1)); }
 
     const def = {
       id: 'bargain',
       title: 'Mol-Bhaav',
       sub: 'Never pay the first price. Every 90s kid learnt this from Amma.',
       osd: 'HAGGLE',
-      place: 'koti_bus_stand', places: ['koti_bus_stand', 'banana_cart_', 'flower_cart_', 'rtc_x_roads', 'dilsukhnagar_sai_temple'],
+      place: 'koti_bus_stand', places: ['koti_bus_stand', 'banana_cart_', 'flower_cart_', 'kite_stall_1', 'rythu_bazaar_', 'koti_book_bazaar', 'rtc_x_roads'],
       secs: 50,
       goLabel: 'BOLO!',
       keys: { Digit1: 'c1', Digit2: 'c2', Digit3: 'c3', Numpad1: 'c1', Numpad2: 'c2', Numpad3: 'c3', ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'left', ArrowDown: 'right', KeyA: 'left', KeyD: 'right', Space: 'ok', Enter: 'ok', NumpadEnter: 'ok', KeyE: 'ok' },
       buttons: () => [],
       keyHint: () => 'pick a line: <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> or <kbd>←</kbd><kbd>→</kbd> + <kbd>Space</kbd> &nbsp; then <kbd>Space</kbd> when the needle is green',
       howto(g) {
-        const W_ = WHO[who(g)];
+        const w = who(g), W_ = WHO[w], pr = prices(g, w, U.rng(1));
         return {
           lines: [
-            'He starts high. Get him down to <b>₹' + W_.target + '</b> for ' + W_.what + ' before his <b>SABR</b> (patience) runs out.',
-            'Pick a line: <b>LOGIC</b>, <b>PYAAR</b> (charm), <b>APNAPAN</b> (we\'re local), <b>FILMY</b>... Each person likes different talk. His first line is a hint.',
-            'Then say it with confidence: press when the needle is <b style="color:#2f8a3a">green</b>. <b>JAATA HOON</b> (walk away) works only when he\'s close to his lowest price.',
+            'He starts high. Get him down to <b>₹' + pr.target + '</b> for ' + (g.params.what || W_.what) + ' before his <b>SABR</b> (patience) runs out.',
+            'Pick a line: <b>LOGIC</b>, <b>PYAAR</b> (charm), <b>APNAPAN</b> (we\'re local), <b>FILMY</b>. He likes one kind more: <b>his first line is the hint</b>.',
+            'Say it with confidence: press when the needle is <b style="color:#2f8a3a">green</b> (yellow does half, red annoys him). <b>JAATA HOON</b> (walk away) works only when he\'s close to his lowest price.',
           ],
-          goal: 'PRICE ≤ ₹' + W_.target + ' &middot; DON\'T LET HIM LEAVE',
+          goal: 'PRICE ≤ ₹' + pr.target + ' &middot; DON\'T LET HIM LEAVE',
           keys: '<kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> pick · <kbd>Space</kbd> say it',
           touch: 'Tap a line, then tap the screen when the needle is <b>green</b>',
         };
       },
       setup(g) {
-        const S = g.S, r = g.rng;
+        const S = g.S, r = g.rng, p = g.params;
         S.who = who(g); const W_ = (S.W = WHO[S.who]);
-        if (g.nameEl && !g.params.title) g.nameEl.textContent = W_.title;
-        const types = Object.keys(W_.types);
-        S.type = types[(r.next() * types.length) | 0];
-        S.start = g.params.start || Math.round(lerp(W_.start[0], W_.start[1], r.next()));
-        S.target = g.params.target || W_.target;
-        S.floor = Math.min(S.target, Math.round(lerp(W_.floor[0], W_.floor[1], r.next()) + g.diff * 1.2)); // his real minimum (never above fair)
+        if (g.nameEl && !p.title) g.nameEl.textContent = W_.title;
+        S.like = p.like && CATS[p.like] && p.like !== 'walk' ? p.like : p.randomType ? TYPES[(r.next() * TYPES.length) | 0] : W_.like;
+        const pr = prices(g, S.who, r);
+        S.start = pr.start; S.target = pr.target; S.floor = pr.floor;
         S.price = S.start; S.shown = S.start; S.history = [S.start];
         S.patience = 100; S.score = 0;
         S.used = {}; S.turns = 0;
         S.stage = 'intro'; S.st = 0; S.sel = 0;
         S.cards = [];
         dealCards(g, S);
-        S.meter = { t: 0, speed: 1.6 + g.diff * 1.4, zone: 0.2 - g.diff * 0.07 };
-        S.bubble = { who: 'him', text: fill(W_.types[S.type].intro, S), t: 0 };
+        S.meter = { t: 0, speed: T.speed0 + g.diff * T.speed1, zone: Math.min(0.32, (T.zone0 - g.diff * T.zone1) * g.winMul) };
+        const hint = S.like === W_.like ? W_.hint : HINTS[S.like];
+        S.bubble = { who: 'him', text: fill(W_.ask, S, g) + ' ' + hint, t: 0, keep: true }; // the hint stays up until he says something else
         S.kidBubble = null;
         S.leave = 0; S.time = 0; S.deal = false;
-        S.nameSet = false;
+        S.sign = S.who === 'auto' ? PLACE_SIGN[p.place] || 'KOTI' : null;
       },
       layout(g) { g.S.bgKey = null; lay(g, g.S); },
       update(g, dt) { step(g, g.S, dt); },
@@ -4467,16 +4980,14 @@
         if (S.stage === 'choose') {
           let best = 0, bs = -1e9;
           S.cards.forEach((c, i) => {
-            let sc = (S.W.types[S.type].m[c.cat] || 1) * (CATS[c.cat].frac || 0.2) / (1 + (S.used[c.cat] || 0));
-            if (c.cat === 'offer') sc = S.floor <= S.target && S.price - S.floor <= 4 ? 10 : -1;
-            if (c.cat === 'walk') sc = S.price - S.floor <= 3 ? 5 : -5;
-            if (want === 'lose') sc = c.cat === 'walk' ? 10 : -sc;
+            let sc = c.cat === 'walk' ? (S.price - S.floor <= T.walkNear ? 9 : -9) : (c.cat === S.like ? 4 : 1) + CATS[c.cat].pat * 0.05;
+            if (want === 'lose') sc = c.cat === 'walk' ? 10 : c.cat === 'logic' ? 5 : -sc;
             if (sc > bs) { bs = sc; best = i; }
           });
           g.botPress(['c1', 'c2', 'c3'][best]); S.botT = 0.4;
         } else if (S.stage === 'deliver') {
-          const v = needle(S), inG = Math.abs(v - 0.5) < S.meter.zone * 0.4;
-          if (want === 'lose' ? Math.abs(v - 0.5) > 0.4 : inG) { g.botPress('ok'); S.botT = 0.3; }
+          const v = needle(S), off = Math.abs(v - 0.5);
+          if (want === 'lose' ? off > 0.4 : off < S.meter.zone * 0.35) { g.botPress('ok'); S.botT = 0.3; }
         }
       },
       hud(g) {
@@ -4485,29 +4996,39 @@
       },
       draw(g, ctx) { drawBargain(g, ctx, g.S); },
       result(g, r) {
-        const S = g.S;
+        const S = g.S, ride = S.who === 'auto';
         return {
-          title: r.win ? (S.who === 'auto' ? 'Chalo, baitho!' : 'Deal pakki!') : (S.who === 'auto' ? 'Auto chala gaya!' : 'Woh toh mud gaye!'),
-          line: r.win ? 'Saved ₹' + (S.start - S.price) + '. Amma will be proud (and will ask for the change).' : 'Next time read him first: ' + hintFor(S.type) + '.',
+          title: r.win ? (ride ? 'Chalo, baitho!' : 'Deal pakki!') : (ride ? 'Auto chala gaya!' : 'Woh toh mud gaye!'),
+          line: r.win ? 'Saved ₹' + (S.start - S.price) + '. Amma will be proud (and will ask for the change).' : 'Next time read him first: ' + hintFor(S.like) + '.',
           rows: [['First price', '₹' + S.start], ['Final price', '₹' + S.price], ['Saved', '₹' + Math.max(0, S.start - S.price)], ['Lines used', S.turns], ['Score', r.score]],
         };
       },
       stars(g, r) { const S = g.S; return r.win ? 1 + (S.price <= S.target - 2 ? 1 : 0) + (S.patience >= 40 ? 1 : 0) : 0; },
     };
     function who(g) { return WHO[g.params.who] ? g.params.who : 'auto'; }
-    function fill(t, S) { return t.replace('{P}', S.price).replace('{T}', S.target); }
-    function hintFor(type) { return { grumpy: 'the grumpy ones respect logic', filmy: 'a filmy one wants style', chatty: 'a chatty one loves apnapan', busy: 'a busy one wants logic, fast', soft: 'a soft one melts for charm and apnapan', strict: 'a strict one respects logic', kind: 'a kind one loves apnapan' }[type] || 'listen to his first line'; }
+    /** start / target / floor for this seller; explicit params win. The floor never sits above the target. */
+    function prices(g, w, r) {
+      const p = g.params, d = WHO[w].price(p, r);
+      if (p.target != null) d.target = Math.max(1, Math.round(p.target));
+      if (p.start != null) d.start = Math.round(p.start);
+      if (p.floor != null) d.floor = Math.round(p.floor);
+      d.start = Math.max(d.start, d.target + 2);
+      d.floor = Math.max(1, Math.min(d.floor, d.target));
+      return d;
+    }
+    function fill(t, S, g) { return t.replace('{P}', S.price).replace('{T}', S.target).replace('{D}', (g && g.params.dest) || 'Charminar'); }
+    function hintFor(like) { return { logic: 'this one wanted plain logic', charm: 'this one melts for pyaar', local: 'this one loves apnapan', filmy: 'this one wanted filmy style' }[like] || 'listen to his first line'; }
     function needle(S) { return 0.5 + 0.5 * Math.sin(S.meter.t * S.meter.speed * Math.PI); }
 
     function dealCards(g, S) {
       const W_ = S.W, r = g.rng;
-      const pool = ['logic', 'charm', 'local', 'filmy'];
       const cats = [];
-      while (cats.length < 2) { const c = pool[(r.next() * pool.length) | 0]; if (!cats.includes(c)) cats.push(c); }
-      const near = S.price - S.target <= 6;
-      cats.push(near && r.next() < 0.6 ? 'offer' : r.next() < 0.45 ? 'walk' : pool.find((c) => !cats.includes(c)));
+      while (cats.length < 2) { const c = TYPES[(r.next() * TYPES.length) | 0]; if (!cats.includes(c)) cats.push(c); }
+      cats.push(S.price - S.floor <= T.walkNear + 2 || r.next() < 0.4 ? 'walk' : TYPES.find((c) => !cats.includes(c)));
+      // Assist: his favourite kind of line is always in the hand
+      if (g.assist && !cats.includes(S.like)) cats[cats[0] === 'walk' ? 1 : 0] = S.like;
       for (let i = cats.length - 1; i > 0; i--) { const j = (r.next() * (i + 1)) | 0; [cats[i], cats[j]] = [cats[j], cats[i]]; }
-      S.cards = cats.map((cat) => { const L = W_.lines[cat]; return { cat, text: fill(L[(r.next() * L.length) | 0], S) }; });
+      S.cards = cats.map((cat) => { const L = W_.lines[cat]; return { cat, text: fill(L[(r.next() * L.length) | 0], S, g) }; });
       S.sel = Math.min(S.sel, 2);
     }
 
@@ -4529,49 +5050,50 @@
     }
 
     function react(g, S, card, grade) {
-      const W_ = S.W, T = W_.types[S.type], cat = card.cat;
+      const W_ = S.W, cat = card.cat, k = T.grade[grade];
       S.turns++;
-      const tm = grade === 'green' ? 1.35 : grade === 'yellow' ? 1 : 0.5;
       const L = S.Lay;
       g.pop(grade === 'green' ? 'JAMKE BOLA!' : grade === 'yellow' ? 'theek' : 'atak gaya...', L ? L.kidX : g.W * 0.2, L ? L.kidY - 120 : g.H * 0.6, { size: grade === 'green' ? 22 : 17, color: grade === 'green' ? '#b9ffb0' : grade === 'yellow' ? '#fff' : '#ffb4a6', font: grade === 'green' ? 'display' : 'body' });
-      if (grade === 'red') S.patience -= 10;
-      let prev = S.price, text;
-      if (cat === 'walk') {
-        if (S.price - S.floor <= 3 || (S.price - S.floor <= 5 && grade === 'green')) { S.price = Math.max(S.floor, Math.min(S.price, S.target)); text = W_.walkWin; g.sfx('ui_select'); }
-        else { S.patience -= 38 / (T.m.walk || 1); text = W_.walkLose; S.walked = true; }
-      } else if (cat === 'offer') {
-        if (S.floor <= S.target && S.price - S.floor <= (grade === 'green' ? 4 : 3)) { S.price = S.target; text = W_.deal; }
-        else { S.price = Math.max(S.floor, S.price - 2); S.patience -= 8; text = W_.offerNo; }
+      const prev = S.price;
+      let text;
+      if (grade === 'red') {
+        // no effect, and he is annoyed
+        S.patience += T.redPatience;
+        const pool = W_.bad; text = pool[(g.rng.next() * pool.length) | 0];
+      } else if (cat === 'walk') {
+        if (S.price - S.floor <= T.walkNear) { S.price = S.floor; text = W_.walkWin; g.sfx('ui_select'); }
+        else { S.patience += T.walkFail; text = W_.walkLose; S.walked = true; }
       } else {
-        const m = (T.m[cat] || 1) * tm / (1 + (S.used[cat] || 0) * 0.7);
+        const liked = cat === S.like;
         S.used[cat] = (S.used[cat] || 0) + 1;
         const gap = S.price - S.floor;
-        let drop = Math.round(gap * CATS[cat].frac * m);
-        if (m >= 0.75 && drop < 1 && gap > 0) drop = 1;
-        S.price = Math.max(S.floor, S.price - Math.max(0, drop));
-        S.patience += CATS[cat].pat + (m >= 1.1 ? 7 : m < 0.75 ? -15 : -3);
-        const pool = m >= 1.1 ? W_.good : m >= 0.75 ? W_.meh : W_.bad;
+        let drop = Math.round(gap * (liked ? T.likedFrac : T.frac) * k);
+        if (drop < 1 && gap > 0) drop = 1;
+        S.price = Math.max(S.floor, S.price - drop);
+        S.patience += CATS[cat].pat * k;
+        const pool = liked && grade === 'green' ? W_.good : W_.meh;
         text = pool[(g.rng.next() * pool.length) | 0];
+        if (liked) S.likedHits = (S.likedHits || 0) + 1;
       }
       S.patience = Math.min(100, S.patience);
       if (S.price < prev) { S.history.push(S.price); g.sfx('coin', { vol: 0.6 }); }
       S.stage = 'react'; S.st = 0;
       if (S.price <= S.target) {
         S.deal = true;
-        say(S, fill(W_.deal, S), 'him');
+        say(S, fill(W_.deal, S, g), 'him');
         S.score = (S.start - S.price) * 30 + Math.round(S.patience) * 3 + Math.max(0, 8 - S.turns) * 20;
-        g.finish(true, { price: S.price, start: S.start, saved: S.start - S.price, savedPaise: (S.start - S.price) * 100, who: S.who, delay: 2.0 });
+        g.finish(true, { price: S.price, start: S.start, target: S.target, saved: S.start - S.price, savedPaise: (S.start - S.price) * 100, pricePaise: S.price * 100, who: S.who, like: S.like, delay: 2.0 });
         g.sfx('cash');
         return;
       }
       if (S.patience <= 0) { leave(g, S); return; }
-      say(S, fill(text, S), 'him');
+      say(S, fill(text, S, g), 'him');
     }
     function leave(g, S) {
       S.patience = 0; S.leave = 0.001; S.stage = 'gone';
       say(S, S.W.leave, 'him');
       if (S.who === 'auto') { g.sfx('auto_start'); g.sfx('auto_horn', { delay: 0.6 }); }
-      g.finish(false, { price: S.price, start: S.start, who: S.who, delay: 2.2 });
+      g.finish(false, { price: S.price, start: S.start, target: S.target, pricePaise: S.price * 100, who: S.who, like: S.like, delay: 2.2 });
     }
 
     function step(g, S, dt) {
@@ -4583,8 +5105,8 @@
       if (g.over) return;
       if (S.stage === 'intro') { if (S.st > 1.3) { S.stage = 'choose'; S.st = 0; } return; }
       if (S.stage === 'choose' || S.stage === 'deliver') {
-        S.patience -= dt * (1.6 + g.diff * 1.4);
-        if (S.st > 4.5 && S.stage === 'choose' && !S.nag) { S.nag = true; say(S, ['Bolo bolo, jaldi!', 'Haan? Kya?', 'Time nahi hai!'][(g.rng.next() * 3) | 0], 'him'); if (S.who === 'auto') g.sfx('auto_horn', { vol: 0.5 }); }
+        S.patience -= dt * (T.drain0 + g.diff * T.drain1);
+        if (S.st > 4.5 && S.stage === 'choose' && !S.nag && S.turns > 0) { S.nag = true; say(S, ['Bolo bolo, jaldi!', 'Haan? Kya?', 'Time nahi hai!'][(g.rng.next() * 3) | 0], 'him'); if (S.who === 'auto') g.sfx('auto_horn', { vol: 0.5 }); }
         if (S.patience <= 0) { leave(g, S); return; }
       }
       if (S.stage === 'choose') {
@@ -4638,11 +5160,55 @@
         for (let i = 0; i < 6; i++) { c.fillStyle = '#3a3a4a'; c.fillRect(bx + 10 + i * (bw - 20) / 6, by + 8, (bw - 20) / 6 - 8, bh * 0.3); }
         c.fillStyle = '#1a1214'; c.beginPath(); c.arc(bx + bw * 0.2, by + bh, bh * 0.16, 0, TAU); c.arc(bx + bw * 0.8, by + bh, bh * 0.16, 0, TAU); c.fill();
         H.text(c, '8A  CHARMINAR', bx + bw * 0.5, by + bh * 0.49, { font: 'osd', size: Math.max(10, bh * 0.12), color: '#b22b2b' });
-        H.sign(c, W * 0.05, A.y + 14, Math.min(W * 0.32, 170), Math.max(26, Math.min(48, L.sceneH * 0.13)), { fill: '#f2c230', text: 'KOTI', size: Math.max(16, Math.min(32, L.sceneH * 0.09)) });
+        H.sign(c, W * 0.05, A.y + 14, Math.min(W * 0.32, 170), Math.max(26, Math.min(48, L.sceneH * 0.13)), { fill: '#f2c230', text: S.sign || 'KOTI', size: Math.max(16, Math.min(32, L.sceneH * 0.09)) });
       } else if (S.who === 'banana') {
-        // a colony market lane: shop shutters + a Rythu Bazaar-ish shed
+        // a colony market lane: shop shutters
         for (let x = 0; x < W; ) { const w = 60 + rng.next() * 60, h = L.sceneH * (0.6 + rng.next() * 0.3); c.fillStyle = ['#e8d9b5', '#c7b9d6', '#bcd3c4', '#e9c6b6'][(rng.next() * 4) | 0]; c.fillRect(x, gy - h, w, h); c.fillStyle = '#7a7a80'; c.fillRect(x + 6, gy - h * 0.45, w - 12, h * 0.45); c.strokeStyle = 'rgba(0,0,0,0.2)'; for (let yy = gy - h * 0.45; yy < gy; yy += 5) { c.beginPath(); c.moveTo(x + 6, yy); c.lineTo(x + w - 6, yy); c.stroke(); } x += w + 4; }
-        H.sign(c, W * 0.05, A.y + 14, Math.min(W * 0.4, 220), Math.max(24, Math.min(44, L.sceneH * 0.12)), { fill: '#2f8a3a', text: 'RYTHU BAZAAR', color: '#fff', size: Math.max(13, Math.min(26, L.sceneH * 0.07)) });
+        H.sign(c, W * 0.05, A.y + 14, Math.min(W * 0.4, 220), Math.max(24, Math.min(44, L.sceneH * 0.12)), { fill: '#f2c230', text: 'TAAZE KELE', size: Math.max(13, Math.min(26, L.sceneH * 0.07)) });
+      } else if (S.who === 'kite') {
+        // Gulzar Houz on Sankranti: a big stone arch, a sky full of kites, strings of kites over the stall
+        gr = c.createLinearGradient(0, A.y, 0, gy); gr.addColorStop(0, '#7fc3e8'); gr.addColorStop(1, '#f7e2b0');
+        c.fillStyle = gr; c.fillRect(0, 0, W, gy);
+        for (let i = 0; i < 14; i++) {
+          const kx = rng.next() * W, ky = A.y + 10 + rng.next() * L.sceneH * 0.45, ks = 4 + rng.next() * 6;
+          c.fillStyle = ['#e2483a', '#f2c230', '#2a8c82', '#7a3db8', '#e8487c'][i % 5];
+          c.beginPath(); c.moveTo(kx, ky - ks); c.lineTo(kx + ks * 0.75, ky); c.lineTo(kx, ky + ks); c.lineTo(kx - ks * 0.75, ky); c.fill();
+        }
+        const aw = Math.min(W * 0.9, L.sceneH * 1.6), ax = W * 0.5 - aw / 2, ah = L.sceneH * 0.78, top = gy - ah;
+        c.fillStyle = '#e4cfa6'; c.fillRect(ax, top, aw, ah);
+        c.fillStyle = '#c9ae80'; c.fillRect(ax, top, aw, ah * 0.08);
+        // the arch opening (pointed) showing the lane beyond
+        const ow = aw * 0.42, ox = W * 0.5 - ow / 2, oh = ah * 0.8;
+        c.fillStyle = '#9fc6d8'; c.beginPath(); c.moveTo(ox, gy); c.lineTo(ox, gy - oh * 0.62); c.quadraticCurveTo(ox, gy - oh * 0.95, W * 0.5, gy - oh); c.quadraticCurveTo(ox + ow, gy - oh * 0.95, ox + ow, gy - oh * 0.62); c.lineTo(ox + ow, gy); c.fill();
+        c.strokeStyle = '#a88a5c'; c.lineWidth = 4; c.stroke();
+        for (let i = 0; i < 2; i++) { const nx = ax + aw * (i ? 0.84 : 0.08), nw = aw * 0.08; c.fillStyle = '#c9ae80'; c.beginPath(); c.moveTo(nx, top + ah * 0.6); c.lineTo(nx, top + ah * 0.3); c.quadraticCurveTo(nx + nw / 2, top + ah * 0.16, nx + nw, top + ah * 0.3); c.lineTo(nx + nw, top + ah * 0.6); c.fill(); }
+        H.sign(c, W * 0.05, A.y + 14, Math.min(W * 0.42, 230), Math.max(24, Math.min(44, L.sceneH * 0.12)), { fill: '#ef8a2a', text: 'GULZAR HOUZ', size: Math.max(13, Math.min(26, L.sceneH * 0.07)) });
+      } else if (S.who === 'farmer') {
+        // Rythu Bazaar: a long green shed, price board, rows of stalls
+        c.fillStyle = '#dfe6d2'; c.fillRect(0, gy - L.sceneH * 0.66, W, L.sceneH * 0.66);
+        c.fillStyle = '#3c7a4a'; c.beginPath(); c.moveTo(0, gy - L.sceneH * 0.66); c.lineTo(W, gy - L.sceneH * 0.66); c.lineTo(W, gy - L.sceneH * 0.8); c.lineTo(0, gy - L.sceneH * 0.8); c.fill();
+        c.strokeStyle = 'rgba(0,0,0,0.18)'; c.lineWidth = 2; for (let x = 0; x < W; x += 12) { c.beginPath(); c.moveTo(x, gy - L.sceneH * 0.8); c.lineTo(x, gy - L.sceneH * 0.66); c.stroke(); }
+        for (let x = 30; x < W; x += 110) { c.fillStyle = '#5a6a5a'; c.fillRect(x, gy - L.sceneH * 0.66, 6, L.sceneH * 0.66); }
+        for (let i = 0; i < 6; i++) { const x = W * (0.04 + i * 0.17); c.fillStyle = ['#c84a3a', '#b88a5a', '#6a3a7a', '#4f8a3a'][i % 4]; c.beginPath(); c.ellipse(x, gy - L.sceneH * 0.12, 26, 10, 0, Math.PI, TAU); c.fill(); }
+        const bw = Math.min(W * 0.3, 150), bh = Math.min(L.sceneH * 0.3, 70), bx = W - bw - 16, by = gy - L.sceneH * 0.6;
+        c.fillStyle = '#1e3a2a'; c.fillRect(bx, by, bw, bh); c.strokeStyle = '#8a6a3a'; c.lineWidth = 3; c.strokeRect(bx, by, bw, bh);
+        ['TOMATO 6', 'ONION 8', 'BRINJAL 7'].forEach((t, i) => H.text(c, t, bx + bw / 2, by + bh * (0.22 + i * 0.28), { font: 'osd', size: Math.max(10, bh * 0.2), color: '#f4efe2', maxW: bw - 10 }));
+        H.sign(c, W * 0.05, A.y + 14, Math.min(W * 0.46, 240), Math.max(24, Math.min(44, L.sceneH * 0.12)), { fill: '#2f8a3a', text: 'RYTHU BAZAAR', color: '#fff', size: Math.max(13, Math.min(26, L.sceneH * 0.07)) });
+      } else if (S.who === 'books') {
+        // the Koti footpath book bazaar: an old wall with tuition posters
+        c.fillStyle = '#d8c8a8'; c.fillRect(0, gy - L.sceneH * 0.72, W, L.sceneH * 0.72);
+        c.fillStyle = '#b8a888'; for (let y = gy - L.sceneH * 0.72; y < gy; y += 14) c.fillRect(0, y, W, 1.5);
+        const posters = ['TUITION', 'ADMISSIONS', 'EAMCET', 'TYPING', 'SPOKEN ENGLISH', 'ABACUS'];
+        for (let i = 0; i < 7; i++) {
+          const pw = Math.min(70, W * 0.16), ph = pw * 1.3, px = W * 0.03 + i * W * 0.15 + (rng.next() - 0.5) * 8, py = gy - L.sceneH * 0.66 + rng.next() * 10;
+          c.save(); c.translate(px + pw / 2, py + ph / 2); c.rotate((rng.next() - 0.5) * 0.12);
+          c.fillStyle = ['#f4efe2', '#f2d84a', '#e9c6b6', '#c8e0f0'][i % 4]; c.fillRect(-pw / 2, -ph / 2, pw, ph);
+          c.fillStyle = ['#b22b2b', '#2a4a8a', '#1a1214'][i % 3]; c.fillRect(-pw / 2 + 5, -ph / 2 + 6, pw - 10, ph * 0.18);
+          for (let k = 0; k < 4; k++) c.fillRect(-pw / 2 + 6, -ph / 2 + ph * (0.36 + k * 0.13), (pw - 12) * (0.5 + ((i + k) % 3) * 0.2), 2.5);
+          H.text(c, posters[i % posters.length], 0, -ph / 2 + 6 + ph * 0.09, { font: 'osd', size: Math.max(8, pw * 0.13), color: '#fff', maxW: pw - 12 });
+          c.restore();
+        }
+        H.sign(c, W * 0.05, A.y + 14, Math.min(W * 0.46, 240), Math.max(24, Math.min(44, L.sceneH * 0.12)), { fill: '#2a4a8a', text: 'KOTI · OLD BOOKS', color: '#fff', size: Math.max(13, Math.min(26, L.sceneH * 0.07)) });
       } else {
         // outside a temple on a Thursday: whitewashed wall with a saffron band, a few devotees
         c.fillStyle = '#f4efe2'; c.fillRect(0, gy - L.sceneH * 0.7, W, L.sceneH * 0.7);
@@ -4667,15 +5233,15 @@
       ctx.drawImage(S.bg, 0, 0, W, Hh);
       const L = S.Lay;
       // the other party
-      if (S.who === 'auto') drawAuto(ctx, S, L, g); else drawCart(ctx, S, L, g);
+      if (S.who === 'auto') drawAuto(ctx, S, L, g); else if (S.who === 'banana' || S.who === 'flower') drawCart(ctx, S, L, g); else drawStall(ctx, S, L, g);
       // price slate
       drawSlate(ctx, S, L, g);
       // the kid
       H.kidBack(ctx, L.kidX, L.kidY, L.sc * 1.35, { shirt: '#d8402a', stripes: '#f2c230', pants: '#3b4a6b' });
       // bubbles
-      if (S.bubble && S.bubble.t < 3.5 && !(S.kidBubble && S.stage === 'deliver')) {
+      if (S.bubble && (S.bubble.t < 3.5 || S.bubble.keep) && !(S.kidBubble && S.stage === 'deliver')) {
         const bx = S.who === 'auto' ? L.vx + 10 * L.sc : L.vx, by = L.ground - 150 * L.sc;
-        bubble(ctx, g, S.bubble.text, bx, by, S.bubble.t, S.type === 'grumpy' || S.type === 'busy' || S.type === 'strict' ? '#ffe6dc' : '#fff8e6', 'right');
+        bubble(ctx, g, S.bubble.text, bx, by, S.bubble.t, S.patience < 35 ? '#ffe6dc' : '#fff8e6', 'right');
       }
       if (S.kidBubble) bubble(ctx, g, S.kidBubble.text, L.kidX + 30 * L.sc, L.kidY - 90 * L.sc, S.kidBubble.t, '#e8f4ff', 'left');
       // patience meter (SABR) with a face
@@ -4734,7 +5300,7 @@
     function drawCards(ctx, S, L, g) {
       const W = g.W, P = g.portrait;
       S.cardRects = [];
-      if (!(S.stage === 'choose' || S.stage === 'deliver' || S.stage === 'intro')) return;
+      if (!(S.stage === 'choose' || S.stage === 'deliver' || S.stage === 'intro' || S.stage === 'react')) return;
       const n = S.cards.length, pad = 12;
       for (let i = 0; i < n; i++) {
         let x, y, w, h;
@@ -4742,7 +5308,7 @@
         else { w = (Math.min(W, 900) - pad * (n + 1)) / n; h = L.cardsH - pad * 2; x = (W - Math.min(W, 900)) / 2 + pad + i * (w + pad); y = L.cardsY + pad; }
         S.cardRects.push({ x, y, w, h });
         const c = S.cards[i], C = CATS[c.cat];
-        const chosen = S.stage === 'deliver' && S.pick === c, dim = (S.stage === 'deliver' && !chosen) || S.stage === 'intro';
+        const chosen = S.stage === 'deliver' && S.pick === c, dim = (S.stage === 'deliver' && !chosen) || S.stage === 'intro' || S.stage === 'react';
         const hi = S.stage === 'choose' && i === S.sel && !g.touch;
         ctx.globalAlpha = dim ? 0.35 : 1;
         H.sign(ctx, x, y + (hi ? -3 : 0), w, h, { fill: chosen ? '#fff6c8' : '#f4ead8', edge: hi || chosen ? '#f2c230' : '#1a1214', bolts: false, r: 8, shadow: 'rgba(0,0,0,0.5)' });
@@ -4767,11 +5333,17 @@
       ctx.fillStyle = '#2a3428'; ctx.fillRect(sx, sy, w, h);
       // struck-through history
       const hist = S.history.slice(-3, -1);
-      hist.forEach((p, i) => {
-        const tx = sx + 10 + i * w * 0.28, ty = sy + h * 0.24;
-        H.text(ctx, '₹' + p, tx, ty, { font: 'osd', size: h * 0.26, color: 'rgba(255,255,255,0.55)', align: 'left' });
-        ctx.strokeStyle = '#ff8a7a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(tx - 2, ty + 2); ctx.lineTo(tx + h * 0.4, ty - 4); ctx.stroke();
-      });
+      let tx = sx + 8;
+      const ty = sy + h * 0.24, hs = h * 0.26;
+      for (const p of hist) {
+        const s = '₹' + p;
+        ctx.font = H.font('osd', hs);
+        const tw = ctx.measureText(s).width;
+        if (tx + tw > sx + w - 4) break;
+        H.text(ctx, s, tx, ty, { font: 'osd', size: hs, color: 'rgba(255,255,255,0.55)', align: 'left' });
+        ctx.strokeStyle = '#ff8a7a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(tx - 2, ty + 3); ctx.lineTo(tx + tw + 2, ty - 4); ctx.stroke();
+        tx += tw + 8;
+      }
       const cur = Math.round(S.shown);
       H.text(ctx, '₹' + cur + (S.W.unit || ''), sx + w / 2, sy + h * 0.66, { font: 'osd', size: h * 0.5, color: S.price <= S.target ? '#b9ffb0' : '#fff', maxW: w - 10 });
     }
@@ -4859,16 +5431,99 @@
       ctx.restore();
     }
 
+    /** a seller from the waist up, in the cart's local units (head r 12 at y-48 above the shoulders at y). */
+    function vendorFig(ctx, x, y, o) {
+      const sk = o.skin || '#8a5a35';
+      ctx.fillStyle = o.shirt || '#e8e2d2'; H.rr(ctx, x - 15, y - 36, 30, 40, 7); ctx.fill();
+      if (o.drape) { ctx.fillStyle = o.drape; ctx.beginPath(); ctx.moveTo(x - 15, y - 34); ctx.lineTo(x - 6, y - 36); ctx.lineTo(x + 15, y + 2); ctx.lineTo(x + 4, y + 4); ctx.closePath(); ctx.fill(); }
+      ctx.fillStyle = sk; ctx.beginPath(); ctx.arc(x, y - 48, 12, 0, TAU); ctx.fill();
+      ctx.fillStyle = o.hair || '#1a1412';
+      if (o.back) { ctx.beginPath(); ctx.arc(x, y - 48, 12.5, 0, TAU); ctx.fill(); }
+      else { ctx.beginPath(); ctx.arc(x, y - 52, 12.5, Math.PI, TAU); ctx.fill(); }
+      if (o.bun) { ctx.beginPath(); ctx.arc(x + 10, y - 56, 6, 0, TAU); ctx.fill(); }
+      if (o.cap) { ctx.fillStyle = o.cap; ctx.beginPath(); ctx.arc(x, y - 54, 12, Math.PI, TAU); ctx.fill(); ctx.fillRect(x - 12, y - 55, 24, 3); }
+      if (o.back) return;
+      if (o.beard) { ctx.fillStyle = o.beard; ctx.beginPath(); ctx.arc(x, y - 44, 10, 0.1, Math.PI - 0.1); ctx.fill(); }
+      ctx.fillStyle = '#1a1412'; ctx.fillRect(x - 5, y - 51, 3, 3); ctx.fillRect(x + 3, y - 51, 3, 3);
+      if (o.glasses) { ctx.strokeStyle = '#1a1412'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(x - 3.5, y - 49.5, 3.6, 0, TAU); ctx.moveTo(x + 8.1, y - 49.5); ctx.arc(x + 4.5, y - 49.5, 3.6, 0, TAU); ctx.moveTo(x - 0.1, y - 50); ctx.lineTo(x + 0.9, y - 50); ctx.stroke(); }
+      if (o.moustache) { ctx.fillStyle = o.beard || '#1a1412'; ctx.beginPath(); ctx.moveTo(x - 7, y - 43); ctx.quadraticCurveTo(x, y - 47, x + 7, y - 43); ctx.quadraticCurveTo(x, y - 40, x - 7, y - 43); ctx.fill(); }
+      else if (!o.beard) { ctx.strokeStyle = '#4a2a1a'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y - 45, 3.5, 0.3, Math.PI - 0.3); ctx.stroke(); }
+      if (o.bindi) { ctx.fillStyle = '#c8202a'; ctx.beginPath(); ctx.arc(x, y - 56, 1.6, 0, TAU); ctx.fill(); }
+    }
+
+    // kite stall (Gulzar Houz), vegetable heaps (Rythu Bazaar), footpath books (Koti)
+    function drawStall(ctx, S, L, g) {
+      const sc = L.sc, x = L.vx, y = L.ground, t = S.time;
+      const back = S.leave > 0.35;
+      ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(0, 2, 92, 7, 0, 0, TAU); ctx.fill();
+      if (S.who === 'kite') {
+        // a string of kites over the stall
+        ctx.strokeStyle = '#4a3a2a'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(-100, -170); ctx.quadraticCurveTo(0, -150, 100, -170); ctx.stroke();
+        const cols = ['#e2483a', '#f2c230', '#2a8c82', '#7a3db8', '#e8487c', '#3b6fc4', '#ef8a2a'];
+        for (let i = 0; i < 7; i++) {
+          const kx = -84 + i * 28, ky = -158 + Math.abs(i - 3) * -2.4 + 18, sw = Math.sin(t * 1.6 + i) * 0.12;
+          ctx.save(); ctx.translate(kx, ky - 16); ctx.rotate(sw);
+          ctx.fillStyle = cols[i]; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(11, 15); ctx.lineTo(0, 32); ctx.lineTo(-11, 15); ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = 'rgba(40,30,20,0.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 32); ctx.moveTo(-11, 15); ctx.quadraticCurveTo(0, 9, 11, 15); ctx.stroke();
+          ctx.fillStyle = cols[(i + 3) % 7]; ctx.beginPath(); ctx.moveTo(0, 32); ctx.lineTo(4, 40); ctx.lineTo(-4, 40); ctx.fill();
+          ctx.restore();
+        }
+        vendorFig(ctx, -8, -56, { shirt: '#f4efe2', cap: '#ffffff', beard: '#e4e0d8', moustache: true, skin: '#8a5a35', back });
+        // the table: kites fanned out, charkhis of cotton saddi
+        ctx.fillStyle = '#8a5a34'; ctx.fillRect(-82, -42, 164, 12); ctx.fillStyle = '#6a3a24'; ctx.fillRect(-76, -30, 7, 30); ctx.fillRect(69, -30, 7, 30);
+        for (let i = 0; i < 5; i++) { ctx.save(); ctx.translate(-50, -44); ctx.rotate(-0.5 + i * 0.25); ctx.fillStyle = cols[(i + 1) % 7]; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(10, -14); ctx.lineTo(0, -30); ctx.lineTo(-10, -14); ctx.closePath(); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1; ctx.stroke(); ctx.restore(); }
+        for (let i = 0; i < 3; i++) {
+          const cx = 22 + i * 20, cy = -54;
+          ctx.fillStyle = '#c89a5a'; ctx.fillRect(cx - 8, cy - 2, 16, 14); ctx.fillStyle = ['#e8487c', '#f4efe2', '#e2483a'][i]; ctx.fillRect(cx - 7, cy + 1, 14, 8);
+          ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.8; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(cx - 7, cy + 2 + k * 2); ctx.lineTo(cx + 7, cy + 2 + k * 2); ctx.stroke(); }
+          ctx.fillStyle = '#6a3a24'; ctx.fillRect(cx - 2, cy + 12, 4, 6);
+        }
+      } else if (S.who === 'farmer') {
+        vendorFig(ctx, 10, -30, { shirt: '#2f8a3a', drape: '#ef8a2a', bun: true, bindi: true, skin: '#7a4a2a', back });
+        // a hand scale hanging from the shed
+        ctx.strokeStyle = '#4a4450'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(62, -120); ctx.lineTo(62, -98); ctx.moveTo(46, -98); ctx.lineTo(78, -98 + Math.sin(t * 2) * 1.5); ctx.moveTo(48, -98); ctx.lineTo(48, -84); ctx.moveTo(76, -98); ctx.lineTo(76, -84); ctx.stroke();
+        ctx.fillStyle = '#9aa0a8'; ctx.beginPath(); ctx.ellipse(48, -82, 8, 2.5, 0, 0, TAU); ctx.ellipse(76, -82, 8, 2.5, 0, 0, TAU); ctx.fill();
+        // gunny sack + heaps
+        ctx.fillStyle = '#b89a6a'; H.rr(ctx, -96, -22, 192, 22, 4); ctx.fill();
+        ctx.strokeStyle = 'rgba(80,60,30,0.35)'; ctx.lineWidth = 1; for (let k = -92; k < 92; k += 6) { ctx.beginPath(); ctx.moveTo(k, -22); ctx.lineTo(k + 3, 0); ctx.stroke(); }
+        const heap = (hx, n, r, col, shine) => { let k = 0; for (let row = 0; row < n; row++) for (let j = 0; j < n - row; j++) { const px = hx + (j - (n - row - 1) / 2) * r * 1.8, py = -24 - row * r * 1.5; ctx.fillStyle = col[(k++) % col.length]; ctx.beginPath(); ctx.arc(px, py, r, 0, TAU); ctx.fill(); if (shine) { ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.arc(px - r * 0.35, py - r * 0.35, r * 0.25, 0, TAU); ctx.fill(); } } };
+        heap(-64, 4, 6, ['#d8302a', '#c8282a', '#e2483a'], true);
+        heap(-18, 4, 5.5, ['#c06a8a', '#b25a7a', '#d08aa0'], false);
+        for (let i = 0; i < 5; i++) { const bx = 24 + (i % 3) * 13, by = -28 - ((i / 3) | 0) * 9; ctx.fillStyle = '#5a2a6a'; ctx.beginPath(); ctx.ellipse(bx, by, 7, 4.5, 0.3, 0, TAU); ctx.fill(); ctx.fillStyle = '#3c7a3a'; ctx.beginPath(); ctx.arc(bx - 6, by - 2, 2.5, 0, TAU); ctx.fill(); }
+        for (let i = 0; i < 4; i++) { ctx.fillStyle = i % 2 ? '#3c8a3a' : '#4fa04a'; ctx.beginPath(); ctx.ellipse(76 + i * 4, -30 - (i % 2) * 4, 6, 9, -0.3 + i * 0.2, 0, TAU); ctx.fill(); }
+      } else {
+        // books: the book man on his stool, stacks on a blue tarp
+        ctx.fillStyle = '#6a4a2a'; ctx.fillRect(40, -24, 4, 24); ctx.fillRect(58, -24, 4, 24); ctx.fillRect(36, -28, 30, 5);
+        vendorFig(ctx, 50, -34, { shirt: '#c8d8e8', glasses: true, moustache: true, hair: '#4a4a4a', skin: '#8a5a35', back });
+        ctx.fillStyle = '#2a5a9a'; ctx.beginPath(); ctx.moveTo(-104, 0); ctx.lineTo(34, 0); ctx.lineTo(28, -16); ctx.lineTo(-96, -16); ctx.closePath(); ctx.fill();
+        const spines = ['#b22b2b', '#2a8c82', '#f2c230', '#3b6fc4', '#e8e2d2', '#7a3db8', '#ef8a2a', '#4f7a3a'];
+        for (let s = 0; s < 5; s++) {
+          const n = 4 + ((s * 3) % 4), bx = -90 + s * 24;
+          for (let k = 0; k < n; k++) { const w = 20 - ((s + k) % 3) * 2, h = 5; ctx.fillStyle = spines[(s * 5 + k * 3) % spines.length]; ctx.fillRect(bx + ((k * 7) % 3) - 1, -8 - (k + 1) * h, w, h - 0.8); ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(bx + 3, -8 - (k + 1) * h + 1.5, w * 0.4, 1); }
+        }
+        ctx.fillStyle = '#f4efe2'; ctx.save(); ctx.translate(-20, -60); ctx.rotate(-0.08); ctx.fillRect(-18, -9, 36, 18); ctx.strokeStyle = '#1a1214'; ctx.lineWidth = 1; ctx.strokeRect(-18, -9, 36, 18);
+        H.text(ctx, '½ PRICE', 0, 0.5, { font: 'osd', size: 10, color: '#b22b2b', maxW: 32 }); ctx.restore();
+      }
+      ctx.restore();
+    }
+
     MG.register(def);
   }
 
   /* ================================================================ MARBLES */
-  // Goli / kanche, ring game, in the colony playground. Take turns with Pappu flicking your striker
-  // from outside the ring: every marble knocked out of the ring is yours. Knock one out and stay in
-  // the ring = shoot again from there. First to more than half the goli wins. The big swirl is the
-  // jackpot (worth 3).
+  // Goli / kanche (systems_design §8.8), ring game, in the colony playground. Take turns with Pappu
+  // (or Tiger, params.rival:'tiger') flicking your striker from outside the ring: every marble knocked
+  // out of the ring is yours. Knock one out and stay in the ring = shoot again from there. First to
+  // floor(total/2)+1 wins. The big swirl is the jackpot (worth 3). With the raja_goli (inventory or
+  // params.rajaGoli) your striker is 25% heavier and the aim guide 30% longer.
   {
-    const R = 16, MR = 1.0, SR = 1.3, FRIC = 9, DRAG = 0.5;
+    const R = 16, MR = 1.0, SR = 1.3, FRIC = 9, DRAG = 0.5, SM = 1.9;
+    const T = (MG.TUNE.marbles = Object.assign({ count: 9, shots: 9, rivalErr: 0.11, rivalErrDiff: 0.6, tigerErr: 0.055, powerJitter: 0.3, tigerJitter: 0.16, rajaMass: 1.25, rajaGuide: 1.3 }, MG.TUNE.marbles || {}));
+    const RIVALS = {
+      pappu: { name: 'Pappu', shirt: '#2a8c82' },
+      tiger: { name: 'Tiger', shirt: '#1a1a2a', cap: '#d8302a', tiger: true },
+    };
     const GLASS = ['#3fa0e0', '#e0483a', '#3ac06a', '#f2c230', '#9a5ae0', '#ef7d1a', '#2ac0c0', '#e85a9a'];
     const def = {
       id: 'marbles',
@@ -4878,15 +5533,18 @@
       place: 'playground_', places: ['playground_', 'playground_home', 'school_'],
       secs: 80,
       goLabel: 'MAARO!',
-      keys: { KeyA: 'mleft', KeyD: 'mright', ArrowUp: 'mleft', ArrowDown: 'mright', ArrowLeft: 'aleft', ArrowRight: 'aright', Space: 'shoot', Enter: 'shoot' },
+      keys: { KeyA: 'mleft', KeyD: 'mright', ArrowUp: 'mleft', ArrowDown: 'mright', BracketLeft: 'mleft', BracketRight: 'mright', ArrowLeft: 'aleft', ArrowRight: 'aright', Space: 'shoot', Enter: 'shoot' },
       buttons: () => [],
       keyHint: () => '<kbd>A</kbd>/<kbd>D</kbd> move round the ring &nbsp; <kbd>←</kbd><kbd>→</kbd> aim &nbsp; hold <kbd>Space</kbd>, let go to flick &nbsp; (or drag with the mouse)',
       howto(g) {
+        const rv = rival(g), raja = hasRaja(g);
         return {
+          title: rv.tiger ? 'Goli vs Tiger' : undefined,
+          sub: rv.tiger ? 'Tiger is thirteen, wears his cap backwards and never misses. Almost never.' : undefined,
           lines: [
             '<b>Drag back</b> from anywhere and let go to flick your striker (like a slingshot). Tap outside the ring to move your shooting spot.',
             'Knock goli <b>out of the ring</b> to win them. Knock one out and stay inside = <b>shoot again</b> from there.',
-            'Take turns with Pappu. The big swirly <b>jackpot</b> is worth 3. First to ' + need(g) + ' wins.',
+            'Take turns with ' + rv.name + '. The big swirly <b>jackpot</b> is worth 3. First to ' + need(g) + ' wins.' + (raja ? ' <b>RAJA GOLI</b>: your striker hits harder and the aim line is longer.' : ''),
           ],
           goal: 'FIRST TO ' + need(g) + ' GOLI &middot; ' + total(g) + ' IN THE RING',
           keys: '<kbd>A</kbd>/<kbd>D</kbd> move · <kbd>←</kbd> <kbd>→</kbd> aim · hold <kbd>Space</kbd> + release · or drag the mouse',
@@ -4897,7 +5555,9 @@
         const S = g.S, r = g.rng;
         S.score = 0; S.me = 0; S.rival = 0; S.need = need(g); S.total = total(g);
         S.balls = [];
-        const n = (g.params.count || 9);
+        S.rv = rival(g); S.raja = hasRaja(g);
+        if (g.nameEl && S.rv.tiger && !g.params.title) g.nameEl.textContent = 'Goli vs Tiger';
+        const n = count(g);
         // a cross + a few strays around the centre, the jackpot in the middle
         S.balls.push({ x: 0, y: 0, vx: 0, vy: 0, r: MR * 1.35, m: 1.8, col: '#ffffff', jack: true, val: 3, rot: 0 });
         const spots = [[3.2, 0], [-3.2, 0], [0, 3.2], [0, -3.2], [6.2, 0], [-6.2, 0], [0, 6.2], [0, -6.2], [4.5, 4.5], [-4.5, -4.5], [4.5, -4.5], [-4.5, 4.5]];
@@ -4947,20 +5607,24 @@
       },
       hud(g) {
         const S = g.S;
-        return [{ k: 'TUM', v: S.me + '/' + S.need, good: S.me > S.rival }, { k: 'PAPPU', v: S.rival + '/' + S.need, warn: S.rival >= S.need - 1 }, { k: 'SHOTS', v: String(Math.max(0, 9 - S.myTurns)), warn: S.myTurns >= 7 }];
+        return [{ k: 'TUM', v: S.me + '/' + S.need, good: S.me > S.rival }, { k: S.rv.name.toUpperCase(), v: S.rival + '/' + S.need, warn: S.rival >= S.need - 1 }, { k: 'SHOTS', v: String(Math.max(0, T.shots - S.myTurns)), warn: S.myTurns >= T.shots - 2 }];
       },
       draw(g, ctx) { drawMarbles(g, ctx, g.S); },
       result(g, r) {
-        const S = g.S;
+        const S = g.S, nm = S.rv.name;
         return {
-          title: r.win ? 'Saari goli meri!' : r.draw ? 'Barabar!' : 'Pappu jeet gaya!',
-          line: r.win ? 'Your pocket clinks all the way home. Pappu wants a rematch tomorrow.' : 'Pappu grins and pockets the jackpot. Kal phir khelenge.',
-          rows: [['Your goli', S.me], ["Pappu's goli", S.rival], ['Shots', S.myTurns], ['Score', r.score]],
+          title: r.win ? (S.rv.tiger ? 'Tiger ko haraya!' : 'Saari goli meri!') : r.draw ? 'Barabar!' : nm + ' jeet gaya!',
+          line: r.win ? (S.rv.tiger ? 'Tiger turns his cap round the right way, just for a second. "Not bad. Not bad at all."' : 'Your pocket clinks all the way home. ' + nm + ' wants a rematch tomorrow.')
+            : (S.rv.tiger ? 'Tiger pockets the jackpot. "Practise, then come back." Kal phir.' : nm + ' grins and pockets the jackpot. Kal phir khelenge.'),
+          rows: [['Your goli', S.me], [nm + "'s goli", S.rival], ['Shots', S.myTurns], ['Score', r.score]],
         };
       },
       stars(g, r) { const S = g.S; return r.win ? 1 + (S.rival <= 2 ? 1 : 0) + (S.myTurns <= 6 ? 1 : 0) : 0; },
     };
-    function total(g) { return (g.params.count || 9) - 1 + 3; }
+    function rival(g) { const k = String(g.params.rival || 'pappu').toLowerCase(); const rv = Object.assign({}, RIVALS[k] || RIVALS.pappu); if (g.params.rivalName) rv.name = String(g.params.rivalName); return rv; }
+    function hasRaja(g) { return g.params.rajaGoli != null ? !!g.params.rajaGoli : MG.hasItem('raja_goli'); }
+    function count(g) { return Math.max(2, Math.min(13, Math.round(g.params.count || T.count))); }
+    function total(g) { return count(g) - 1 + 3; }
     function need(g) { return Math.floor(total(g) / 2) + 1; }
 
     function lay(g, S) {
@@ -4974,7 +5638,8 @@
     }
     function placeStriker(S, who) {
       const a = who === 'me' ? S.pos : S.rpos;
-      S.striker = { x: Math.cos(a) * (R + 2.2), y: Math.sin(a) * (R + 2.2), vx: 0, vy: 0, r: SR, m: 1.9, col: who === 'me' ? '#f4efe2' : '#2a2a3a', striker: who, rot: 0 };
+      const raja = who === 'me' && !!S.raja;
+      S.striker = { x: Math.cos(a) * (R + 2.2), y: Math.sin(a) * (R + 2.2), vx: 0, vy: 0, r: SR, m: raja ? SM * T.rajaMass : SM, col: who === 'me' ? '#f4efe2' : '#2a2a3a', striker: who, raja, rot: 0 };
       if (who === 'me') S.aim = Math.atan2(-S.striker.y, -S.striker.x);
     }
 
@@ -5058,14 +5723,14 @@
       if (S.me >= S.need || S.rival >= S.need || S.balls.length === 0 || (S.sudden && S.me !== S.rival)) { end(g, S); return; }
       if (got > 0 && inside) {
         S.again = true;
-        S.msg = { text: who === 'me' ? 'PHIR SE MAARO!' : 'Pappu phir se!', t: 0 };
+        S.msg = { text: who === 'me' ? 'PHIR SE MAARO!' : S.rv.name + ' phir se!', t: 0 };
         if (who === 'me') { S.stage = 'aim'; S.aim = Math.atan2(-st.y, -st.x); } else { S.stage = 'rival'; S.st = 0; }
         return;
       }
       S.again = false;
-      if (got === 0) S.msg = { text: who === 'me' ? 'Khaali gaya!' : 'Pappu chuk gaya!', t: 0 };
+      if (got === 0) S.msg = { text: who === 'me' ? 'Khaali gaya!' : S.rv.name + ' chuk gaya!', t: 0 };
       S.turn = who === 'me' ? 'rival' : 'me';
-      if (S.myTurns >= 9 && S.turn === 'me') {
+      if (S.myTurns >= T.shots && S.turn === 'me') {
         if (S.me !== S.rival) { end(g, S); return; }
         if (!S.sudden) { S.sudden = true; S.msg = { text: 'BARABAR! Agli goli jeetegi!', t: 0 }; }
       }
@@ -5076,8 +5741,8 @@
       if (g.over) return;
       S.stage = 'done';
       const win = S.me > S.rival;
-      S.score = S.me * 100 + (win ? 300 : 0) + Math.max(0, 9 - S.myTurns) * 30;
-      g.finish(win, { mine: S.me, rival: S.rival, draw: S.me === S.rival, delay: 1.4 });
+      S.score = S.me * 100 + (win ? 300 : 0) + Math.max(0, T.shots - S.myTurns) * 30 + (win && S.rv.tiger ? 200 : 0);
+      g.finish(win, { mine: S.me, rival: S.rival, draw: S.me === S.rival, opponent: S.rv.tiger ? 'tiger' : 'pappu', raja: !!S.raja, delay: 1.4 });
     }
 
     // stopping distance from speed v under decel (FRIC + DRAG v), and the speed needed for a distance
@@ -5105,7 +5770,7 @@
           const bu = b.x * ux + b.y * uy, disc = bu * bu - (b.x * b.x + b.y * b.y - R * R);
           const e = -bu + Math.sqrt(Math.max(0, disc)) + b.r + 1.2;
           const vt = speedFor(e);
-          const mS = 1.9, vi = (vt * (mS + b.m)) / (mS * 1.9);
+          const mS = S.striker ? S.striker.m : SM, vi = (vt * (mS + b.m)) / (mS * 1.9);
           const v0 = launchFor(Math.max(0, al - SR - b.r), vi);
           const power = (v0 - 6) / 36;
           const ok = power <= 1;
@@ -5135,9 +5800,10 @@
           S.rplan = planShot(S, S.again ? null : 'rival');
           if (S.rplan && !S.again) { S.rpos = S.rplan.pos; placeStriker(S, 'rival'); }
           else if (!S.rplan) { S.rpos = -Math.PI / 2; placeStriker(S, 'rival'); S.rplan = { tx: 0, ty: 0, power: 0.6 }; }
-          const sd = 0.11 * (1 - g.diff * 0.6) * (g.auto === 'win' ? 5 : 1);
+          const sd = (S.rv.tiger ? T.tigerErr : T.rivalErr) * (1 - g.diff * T.rivalErrDiff) * (g.auto === 'win' ? 5 : 1);
+          const pj = S.rv.tiger ? T.tigerJitter : T.powerJitter;
           S.rplan.aim = (S.rplan ? Math.atan2(S.rplan.ty - S.striker.y, S.rplan.tx - S.striker.x) : Math.PI / 2) + (g.rng.next() + g.rng.next() - 1) * sd;
-          S.rplan.power = U.clamp((S.rplan.power || 0.6) * (0.85 + g.rng.next() * 0.3), 0.2, 1);
+          S.rplan.power = U.clamp((S.rplan.power || 0.6) * (1 - pj / 2 + g.rng.next() * pj), 0.2, 1);
         }
         if (S.st > 1.2) shoot(g, S, S.rplan.aim, S.rplan.power);
       } else if (S.stage === 'roll') {
@@ -5181,7 +5847,8 @@
     function marble(ctx, x, y, r, b) {
       ctx.fillStyle = 'rgba(40,15,5,0.35)'; ctx.beginPath(); ctx.ellipse(x + r * 0.25, y + r * 0.35, r, r * 0.8, 0, 0, TAU); ctx.fill();
       let gr = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
-      if (b.striker) { gr.addColorStop(0, b.striker === 'me' ? '#ffffff' : '#7a7a90'); gr.addColorStop(1, b.striker === 'me' ? '#c8c0b0' : '#1a1a2a'); }
+      if (b.raja) { gr.addColorStop(0, '#fff6c8'); gr.addColorStop(0.6, '#f2c230'); gr.addColorStop(1, '#a8781a'); }
+      else if (b.striker) { gr.addColorStop(0, b.striker === 'me' ? '#ffffff' : '#7a7a90'); gr.addColorStop(1, b.striker === 'me' ? '#c8c0b0' : '#1a1a2a'); }
       else if (b.jack) { gr.addColorStop(0, '#ffffff'); gr.addColorStop(1, '#c8d8e8'); }
       else { gr.addColorStop(0, H.shade(b.col, 1.6)); gr.addColorStop(0.6, b.col); gr.addColorStop(1, H.shade(b.col, 0.55)); }
       ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
@@ -5208,7 +5875,7 @@
       // Pappu crouching at the top of the ring, you at the bottom (top-down: head + shoulders + hands)
       const ra = S.rpos != null && S.turn === 'rival' ? S.rpos : g.portrait ? -Math.PI / 2 : 0;
       const rp = toS(S, Math.cos(ra) * (R + 6), Math.sin(ra) * (R + 6));
-      kidTop(ctx, rp.x, rp.y, s, '#2a8c82', Math.atan2(L.cy - rp.y, L.cx - rp.x), S.turn === 'rival' && S.stage === 'roll' && S.st < 0.2);
+      kidTop(ctx, rp.x, rp.y, s, S.rv.shirt, Math.atan2(L.cy - rp.y, L.cx - rp.x), S.turn === 'rival' && S.stage === 'roll' && S.st < 0.2, S.rv.cap);
       if (S.turn === 'me' && S.striker && S.striker.striker === 'me') {
         const a = Math.atan2(S.striker.y, S.striker.x), mp = toS(S, Math.cos(a) * (R + 6.5), Math.sin(a) * (R + 6.5));
         if (!S.again) kidTop(ctx, mp.x, mp.y, s, '#d8402a', Math.atan2(L.cy - mp.y, L.cx - mp.x), S.stage === 'roll' && S.st < 0.2);
@@ -5216,7 +5883,7 @@
       // aim + power (yours) / Pappu's faint aim
       if (S.stage === 'aim' && S.turn === 'me' && S.striker) {
         const p = toS(S, S.striker.x, S.striker.y);
-        const len = (6 + S.power * 18 + 6) * s;
+        const len = (6 + S.power * 18 + 6) * s * (S.raja ? T.rajaGuide : 1);
         ctx.strokeStyle = 'rgba(255,246,200,0.85)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
         ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + Math.cos(S.aim) * len, p.y + Math.sin(S.aim) * len); ctx.stroke(); ctx.setLineDash([]);
         const ex = p.x + Math.cos(S.aim) * len, ey = p.y + Math.sin(S.aim) * len;
@@ -5245,7 +5912,7 @@
       drawPile(ctx, g, S, 'me', S.me); drawPile(ctx, g, S, 'rival', S.rival);
       // turn banner + message
       const ty = g.portrait ? L.cy + (R + 10) * s : g.area.y + g.area.h - 18;
-      H.text(ctx, S.turn === 'me' ? (S.again ? 'PHIR SE! Wahi se maaro' : S.sudden ? 'SUDDEN DEATH: TUMHARI BAARI' : 'TUMHARI BAARI') : 'PAPPU KI BAARI...', W / 2, Math.min(ty, g.area.y + g.area.h - 16), { font: 'osd', size: 22, color: S.turn === 'me' ? '#ffd84a' : '#eaf2ff', outline: 4 });
+      H.text(ctx, S.turn === 'me' ? (S.again ? 'PHIR SE! Wahi se maaro' : S.sudden ? 'SUDDEN DEATH: TUMHARI BAARI' : 'TUMHARI BAARI') : S.rv.name.toUpperCase() + ' KI BAARI...', W / 2, Math.min(ty, g.area.y + g.area.h - 16), { font: 'osd', size: 22, color: S.turn === 'me' ? '#ffd84a' : '#eaf2ff', outline: 4 });
       if (S.msg && S.msg.t < 1.4) { const a = S.msg.t > 1 ? 1 - (S.msg.t - 1) / 0.4 : 1; H.text(ctx, S.msg.text, L.cx, L.cy - (R + 4) * s, { font: 'display', size: Math.max(24, s * 3.4), color: '#fff6c8', outline: 6, alpha: a }); }
       if (S.stage === 'aim' && S.turn === 'me' && !S.again && S.st < 4 && S.myTurns === 0) H.text(ctx, g.touch ? 'drag back + let go · tap outside to move' : 'drag back + let go (or Space) · click outside to move', W / 2, L.cy + (R + 4.5) * s + (g.portrait ? 24 : 0), { font: 'body', weight: 700, size: 14, color: '#fff', outline: 4, alpha: 0.85 });
     }
@@ -5257,15 +5924,20 @@
     }
     function drawPile(ctx, g, S, who, n) {
       const p0 = pileXY(g, S, who, 1);
-      H.text(ctx, who === 'me' ? 'TUM ' + n : 'PAPPU ' + n, p0.x + (who === 'me' ? 20 : -20), p0.y + (g.portrait ? -28 : -50), { font: 'display', size: 20, color: who === 'me' ? '#ffd84a' : '#eaf2ff', outline: 4, align: who === 'me' ? 'left' : 'right' });
+      H.text(ctx, who === 'me' ? 'TUM ' + n : S.rv.name.toUpperCase() + ' ' + n, p0.x + (who === 'me' ? 20 : -20), p0.y + (g.portrait ? -28 : -50), { font: 'display', size: 20, color: who === 'me' ? '#ffd84a' : '#eaf2ff', outline: 4, align: who === 'me' ? 'left' : 'right' });
       for (let i = 1; i <= n; i++) { const p = pileXY(g, S, who, i); marble(ctx, p.x, p.y, 6, { col: GLASS[i % GLASS.length], rot: i }); }
     }
-    function kidTop(ctx, x, y, s, shirt, face, flick) {
+    function kidTop(ctx, x, y, s, shirt, face, flick, cap) {
       ctx.save(); ctx.translate(x, y); ctx.rotate(face - Math.PI / 2);
       const k = s * 0.9;
       ctx.fillStyle = 'rgba(40,15,5,0.3)'; ctx.beginPath(); ctx.ellipse(1.5 * k, 2 * k, 4.4 * k, 3.4 * k, 0, 0, TAU); ctx.fill();
       ctx.fillStyle = shirt; H.rr(ctx, -4.2 * k, -2.6 * k, 8.4 * k, 5 * k, 2 * k); ctx.fill();
       ctx.fillStyle = '#1a1412'; ctx.beginPath(); ctx.arc(0, -0.4 * k, 2.2 * k, 0, TAU); ctx.fill();
+      if (cap) { // a cap worn backwards: the brim points away from the ring
+        ctx.fillStyle = cap; ctx.beginPath(); ctx.arc(0, -0.4 * k, 2.25 * k, 0, TAU); ctx.fill();
+        ctx.fillStyle = H.shade(cap, 0.7); H.rr(ctx, -1.6 * k, -3.9 * k, 3.2 * k, 1.8 * k, 0.8 * k); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, -0.4 * k, 0.45 * k, 0, TAU); ctx.fill();
+      }
       ctx.strokeStyle = '#a8703f'; ctx.lineWidth = 1.1 * k; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(2.8 * k, 1.5 * k); ctx.lineTo(2 * k, (flick ? 6.5 : 5) * k); ctx.moveTo(-2.8 * k, 1.5 * k); ctx.lineTo(-3.4 * k, 4.2 * k); ctx.stroke();
       ctx.restore();
@@ -5275,23 +5947,104 @@
   }
 
   /* ======================================================= side activities */
-  // Free-roam access to the minigames at the must-have places, before/alongside the story.
-  // Story interactions win over these (priority -1). Turn off with N.minigames.side(false) or
+  // Free-roam access to the minigames at the must-have places (systems_design §2.4, §8). Story
+  // interactions win over these (priority -1). Turn off with N.minigames.side(false) or
   // N.flags.mg_side_off = true. match: exact place ids, or prefixes ending with '_'.
+  // Money: at most 3 paid wins per minigame per game-day; cricket ₹2 (₹5 for 3 stars), marbles ₹2
+  // (₹5 against Tiger), kite ₹2 a cut (max ₹10 a day), brick game refunds its ₹1 on a win, pani puri
+  // gives a free plate (tummy +15), antenna / clap / bargain pay nothing. A lost free-roam bargain
+  // closes that seller for 10 game minutes.
   const SIDE = (MG.SIDE = [
-    { id: 'kite', match: ['home_terrace', 'gulzar_houz'], label: 'Fly a patang', params: { difficulty: 0.35 }, reward: 300 },
-    { id: 'antenna', match: ['home', 'friend_home'], label: 'Fix the TV antenna', params: { difficulty: 0.35 }, reward: 200, dx: 14 },
-    { id: 'clap', match: ['golconda_fateh_darwaza'], label: 'Clap under the dome', params: { difficulty: 0.4 }, reward: 300 },
-    { id: 'brickgame', match: ['video_parlour_'], label: 'Brick game (₹1)', cost: 100, params: { difficulty: 0.4 }, reward: 300 },
-    { id: 'cricket', match: ['playground_', 'victory_playground'], label: 'Join gully cricket', params: { difficulty: 0.4 }, reward: 300 },
-    { id: 'marbles', match: ['playground_', 'victory_playground'], label: 'Play goli', params: { difficulty: 0.4 }, reward: 200, dx: 22 },
-    { id: 'panipuri', match: ['gokul_chat'], label: 'Pani puri challenge (₹5)', cost: 500, params: { difficulty: 0.4 }, reward: 0 },
-    { id: 'bargain', match: ['koti_bus_stand', 'rtc_x_roads', 'nampally_station', 'kachiguda_station', 'imlibun_bus_station'], label: 'Haggle with an auto', params: { who: 'auto' }, reward: 0, dx: -18 },
-    { id: 'bargain', match: ['banana_cart_'], label: 'Haggle for bananas', params: { who: 'banana' }, reward: 0 },
-    { id: 'bargain', match: ['flower_cart_'], label: 'Haggle for flowers', params: { who: 'flower' }, reward: 0 },
+    { id: 'kite', match: ['home_terrace', 'gulzar_houz'], label: 'Fly a patang', params: { difficulty: 0.35 }, when: kiteOpen },
+    { id: 'antenna', match: ['home', 'friend_home'], label: 'Fix the TV antenna', params: { difficulty: 0.35 }, dx: 14 },
+    { id: 'clap', match: ['golconda_fateh_darwaza'], label: 'Clap under the dome', params: { difficulty: 0.4, skin: 'golconda' }, when: () => between(9 * 60, 17 * 60 + 30) },
+    { id: 'brickgame', match: ['video_parlour_'], label: 'Brick game (₹1)', cost: 100, params: { difficulty: 0.4 } },
+    { id: 'cricket', match: ['playground_', 'victory_playground', 'musi_riverbed'], label: 'Join gully cricket', params: { difficulty: 0.4 }, when: cricketOpen },
+    { id: 'marbles', match: ['playground_', 'victory_playground'], label: 'Play goli', params: { difficulty: 0.4 }, dx: 22 },
+    { id: 'marbles', match: ['playground_14'], label: 'Goli vs Tiger', params: { difficulty: 0.5, rival: 'tiger' }, dx: -22, when: tigerOpen },
+    { id: 'panipuri', match: ['gokul_chat'], label: 'Pani puri challenge (₹5)', cost: 500, params: { difficulty: 0.4 } },
+    { id: 'bargain', match: ['koti_bus_stand', 'rtc_x_roads', 'nampally_station', 'kachiguda_station', 'imlibun_bus_station'], label: 'Haggle with an auto', params: { who: 'auto' }, dx: -18 },
+    { id: 'bargain', match: ['banana_cart_'], label: 'Haggle for bananas', params: { who: 'banana' } },
+    { id: 'bargain', match: ['flower_cart_'], label: 'Haggle for flowers', params: { who: 'flower' } },
+    { id: 'bargain', match: ['rythu_bazaar_'], label: 'Haggle at the stall', params: { who: 'farmer' }, dx: 16 },
   ]);
+  const PAY = (MG.TUNE.pay = Object.assign({ cricket: 200, cricket3: 500, marbles: 200, tiger: 500, kiteCut: 200, kiteDay: 1000, dailyWins: 3, bargainOff: 10, panipuriTummy: 15 }, MG.TUNE.pay || {}));
+  // the day ledger (saved with the game, not in localStorage)
+  const ledger = (MG.ledger = { day: null, paid: {}, kite: 0, off: {} });
+
+  /* ---------------------------------------------------------- time rules */
+  function cal() { return N.calendar && N.calendar.inRange ? N.calendar : null; }
+  function minutes() { return N.clock && isFinite(N.clock.minutes) ? N.clock.minutes : 12 * 60; }
+  function between(a, b) { const m = minutes(); return m >= a && m <= b; }
+  function absMin() { return ((N.clock && N.clock.day) || 0) * 1440 + minutes(); }
+  function kiteOpen() {
+    if (N.flags && N.flags.sankranti) return true;
+    const C = cal(); if (!C) return true;
+    try { return C.inRange('01-13', '01-15') || (C.inRange('01-01', '02-29') && between(16 * 60 + 30, 18 * 60 + 30)); } catch (e) { return true; }
+  }
+  function cricketOpen() {
+    const C = cal(); if (!C || !C.isSchoolDay) return true;
+    try { return C.isSchoolDay() ? between(16 * 60, 18 * 60 + 30) : between(8 * 60, 18 * 60 + 30); } catch (e) { return true; }
+  }
+  function golis() {
+    const C = N.collectibles; if (!C) return 0;
+    try { if (typeof C.count === 'function') for (const k of ['goli', 'golis']) { const n = C.count(k); if (typeof n === 'number' && isFinite(n) && n > 0) return n; } } catch (e) { /* ignore */ }
+    try { let n = 0; if (C.found && C.found.forEach) C.found.forEach((id) => { if (/^(g\d|goli)/i.test(String(id))) n++; }); return n; } catch (e) { return 0; }
+  }
+  function tigerOpen() { return !!(N.flags && N.flags.marbles_tiger) || golis() >= 10; }
+
+  /* --------------------------------------------------------------- money */
+  function today() {
+    const d = (N.clock && N.clock.day) || 0;
+    if (ledger.day !== d) { ledger.day = d; ledger.paid = {}; ledger.kite = 0; }
+    return ledger;
+  }
+  function give(paise, why) {
+    const pl = N.player; if (!pl || !(paise > 0)) return 0;
+    pl.money = (pl.money || 0) + paise;
+    try { N.emit('money', { delta: paise, total: pl.money, why }); } catch (e) { /* ignore */ }
+    return paise;
+  }
+  function toast(t) { try { if (N.hud && N.hud.toast) N.hud.toast(t, 2600); } catch (e) { /* ignore */ } }
+  /** Pay out a free-roam result (systems_design §2.4). Returns the paise paid. */
+  function pay(s, r, place) {
+    if (!r || r.aborted || r.error) return 0;
+    const L = today(), title = (defs[s.id] && defs[s.id].title) || s.id;
+    if (s.id === 'bargain') {
+      if (r.win) { if (r.savedPaise) toast('Saved ' + U.fmtMoney(r.savedPaise) + '!'); }
+      else if (!r.quit) L.off[sideKey(s, place)] = absMin() + PAY.bargainOff;
+      return 0;
+    }
+    if (s.id === 'clap') { if (r.win) toast('Golconda heard you.'); return 0; }
+    if (s.id === 'panipuri') {
+      if (r.win) { try { N.player && N.player.feed && N.player.feed(PAY.panipuriTummy); } catch (e) { /* ignore */ } toast('Free plate! ' + (r.eaten || r.score || '') + ' puris, Bhaiya is impressed.'); }
+      return 0;
+    }
+    if (s.id === 'brickgame') { if (r.win && s.cost) { give(s.cost, 'brickgame'); toast('FREE GAME! ' + U.fmtMoney(s.cost) + ' back'); } return 0; }
+    if (s.id === 'kite') {
+      const cuts = Math.max(0, r.cuts | 0); if (!cuts) return 0;
+      const amt = Math.min(cuts * PAY.kiteCut, Math.max(0, PAY.kiteDay - L.kite));
+      if (amt <= 0) { toast('Bo kaata! (no more prize money today)'); return 0; }
+      L.kite += amt; give(amt, 'kite'); toast('+' + U.fmtMoney(amt) + ' · ' + cuts + ' cut' + (cuts > 1 ? 's' : ''));
+      return amt;
+    }
+    if (!r.win) return 0;
+    let amt = 0;
+    if (s.id === 'cricket') amt = r.stars >= 3 ? PAY.cricket3 : PAY.cricket;
+    else if (s.id === 'marbles') amt = r.opponent === 'tiger' ? PAY.tiger : PAY.marbles;
+    if (!amt) return 0;
+    const n = L.paid[s.id] || 0;
+    if (n >= PAY.dailyWins) { toast(title + ': no more prize money today. Play for fun!'); return 0; }
+    L.paid[s.id] = n + 1;
+    give(amt, s.id); toast('+' + U.fmtMoney(amt) + ' · ' + title);
+    return amt;
+  }
+  MG.pay = pay;
+
+  /* --------------------------------------------------------------- install */
   const sideIds = [];
   function placeMatches(id, m) { return m.slice(-1) === '_' ? id.indexOf(m) === 0 : id === m; }
+  function sideKey(s, place) { return s.id + ':' + ((s.params && s.params.who) || '') + ':' + place; }
   MG.side = function (on) {
     const I = N.interact;
     for (const k of sideIds) { try { I && I.remove(k); } catch (e) { /* ignore */ } }
@@ -5318,14 +6071,15 @@
         I.add(key, {
           x: p.x + (s.dx || 0), y: p.y + (s.dy || 0), r: Math.max(14, Math.min(26, (p.r || 20) * 0.6)), priority: -1,
           label: s.label,
-          enabled: (pl) => !N.flags.mg_side_off && !cur && !(s.cost && (pl.money || 0) < s.cost),
+          enabled: (pl) => {
+            if (N.flags.mg_side_off || cur || (s.cost && ((pl && pl.money) || 0) < s.cost)) return false;
+            const off = ledger.off[sideKey(s, id)]; if (off && absMin() < off) return false;
+            try { return !s.when || !!s.when(); } catch (e) { return true; }
+          },
           use: (pl) => {
             if (s.cost) { pl.money -= s.cost; N.emit('money', { delta: -s.cost, total: pl.money }); }
-            MG.play(s.id, Object.assign({ reward: s.reward || 0, place: id }, s.params || {})).then((r) => {
-              try {
-                if (r && r.win && s.reward && N.hud && N.hud.toast) N.hud.toast('+' + U.fmtMoney(s.reward) + ' · ' + (defs[s.id].title || s.id), 2500);
-                if (r && r.win && r.savedPaise && N.hud && N.hud.toast) N.hud.toast('Saved ' + U.fmtMoney(r.savedPaise) + '!', 2500);
-              } catch (e) { /* ignore */ }
+            MG.play(s.id, Object.assign({ place: id, side: true }, s.params || {})).then((r) => {
+              try { pay(s, r, id); } catch (e) { N.err('minigames.pay', e); }
             });
           },
         });
@@ -5339,8 +6093,13 @@
     try {
       if (N.save && N.save.register) {
         N.save.register('minigames', {
-          serialize: () => JSON.parse(JSON.stringify(stats)),
-          deserialize: (o) => { if (o && typeof o === 'object') for (const k of ['best', 'plays', 'wins']) if (o[k]) Object.assign(stats[k], o[k]); },
+          serialize: () => Object.assign(JSON.parse(JSON.stringify(stats)), { ledger: JSON.parse(JSON.stringify(ledger)) }),
+          deserialize: (o) => {
+            if (!o || typeof o !== 'object') return;
+            for (const k of ['best', 'plays', 'wins']) if (o[k] && typeof o[k] === 'object') Object.assign(stats[k], o[k]);
+            const l = o.ledger;
+            if (l && typeof l === 'object') { ledger.day = l.day == null ? null : l.day; ledger.paid = Object.assign({}, l.paid); ledger.kite = +l.kite || 0; ledger.off = Object.assign({}, l.off); }
+          },
         });
       }
     } catch (e) { N.err('minigames.save', e); }

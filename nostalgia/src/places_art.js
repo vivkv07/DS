@@ -372,7 +372,7 @@
     const tries = [words, words.filter((w) => !FILLER.has(w))];
     if (words.length > 1 && !noDrop) {
       const core = words.filter((w) => !FILLER.has(w));
-      if (core.length > 2) tries.push(core.slice(1), core.slice(0, -1));
+      if (core.length > 2) tries.push(core.slice(0, -1), core.slice(1));
       for (const w of core) if (!KEYWORDS.has(w)) tries.push([w]); // the distinctive name first
       for (const w of core) if (KEYWORDS.has(w)) tries.push([w]);  // then what the shop is
     }
@@ -1692,7 +1692,6 @@
     const vb = -D + 1.2;
     // back panel with a painted advert
     fbox(F, -L / 2 + 1, L / 2 - 1, vb - 0.5, vb + 0.5, 0, 9, wall, sh(wall, 1.05));
-    if (!camFront(F) === false) { /* advert seen from the road side */ }
     // posts
     for (const u of [-L / 2 + 1.2, L / 2 - 1.2]) { const x = fxp(F, u, -0.6), y = fyp(F, u, -0.6); pole(x, y, 0, 11.4, '#5a5a5a', 0.6); }
     // bench
@@ -2081,11 +2080,9 @@
       const rng = rngOf(lm, 'cin');
       const F0 = frontOf(lm);
       const pd = clamp(F0.D * 0.28, 12, 20);
-      const hall = { id: lm.id, x: 0, y: 0, w: lm.w, d: lm.d, face: lm.face };
       // hall = footprint minus the porch strip at the front
       const r = frect(F0, -F0.L / 2, F0.L / 2, -F0.D, -pd);
       const hallLm = { id: lm.id, x: r[0] + r[2] / 2, y: r[1] + r[3] / 2, w: r[2], d: r[3], h: lm.h, face: lm.face };
-      void hall;
       const A = baseState(hallLm, { wall: V.wall || pickR(rng, ['#efe6d4', '#e8e0d8', '#f0dcc8', '#e0e4e8']), acc: V.acc || '#b22b2b', front: FAC.blank, side: FAC.hall, win: '#3a3040', roofPlan: { line: false, cot: false, mumty: false } });
       A.F0 = F0; A.pd = pd; A.V = V;
       A.r3.mumty = null;
@@ -2152,10 +2149,9 @@
       abox(cc[0], cc[1], cc[2], cc[3], 8.6, 9.6, A.st.acc, sh(A.st.acc, 1.1));
       // the hall (twin halls for Sandhya)
       if (A.V.twin) {
-        const r = A.rr, F = A.F;
+        const F = A.F;
         const half = frect(F, -F.L / 2, -1.5, -F.D, 0).slice(), half2 = frect(F, 1.5, F.L / 2, -F.D, 0).slice();
         if (K.box) { K.box(half[0], half[1], half[2], half[3], 0, A.h, A.st); K.box(half2[0], half2[1], half2[2], half2[3], 0, A.h - 6, A.st); }
-        void r;
       } else building(A);
       // projection room + exhaust fans on the roof
       const p = A.proj;
@@ -2306,7 +2302,8 @@
       // booth for the controller
       A.booth = horiz ? [s[0] + s[2] - 10, s[1] + (into > 0 ? s[3] + 2 : -12), 9, 9] : [s[0] + (into > 0 ? s[2] + 2 : -12), s[1] + s[3] - 10, 9, 9];
       const F = { cx: cxS, cy: cyS, ax: horiz ? 1 : 0, ay: horiz ? 0 : 1, ox: horiz ? 0 : into, oy: horiz ? into : 0 };
-      crowdAround(A, rng, F, 14, -s[2 - (horiz ? 0 : 1)] / 2 * 0 - (horiz ? s[2] : s[3]) / 2 + 4, (horiz ? s[2] : s[3]) / 2 - 4, 6, 12, ['man', 'student', 'woman', 'aunty', 'any', 'uncle', 'burqa', 'saree'], horiz ? (into > 0 ? Math.PI / 2 : -Math.PI / 2) : (into > 0 ? 0 : Math.PI));
+      const half = (horiz ? s[2] : s[3]) / 2;
+      crowdAround(A, rng, F, 14, -half + 4, half - 4, 6, 12, ['man', 'student', 'woman', 'aunty', 'any', 'uncle', 'burqa', 'saree'], horiz ? (into > 0 ? Math.PI / 2 : -Math.PI / 2) : (into > 0 ? 0 : Math.PI));
       // a conductor with his leather bag near each bus door
       for (const b of A.buses) A.people.push(person('man', 61, b.x + Math.cos(b.a + Math.PI / 2) * 12, b.y + Math.sin(b.a + Math.PI / 2) * 12, b.a, { sway: 0.5, look: { shirt: '#c8b48a', pants: '#8a7a5a' } }));
       A.count = () => (S.min < 300 || S.min > 1410 ? 2 : A.people.length);

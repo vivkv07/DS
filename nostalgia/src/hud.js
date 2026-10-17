@@ -380,7 +380,7 @@
       const q = state.tq.shift();
       const e = el('div', 'hud-toast', dom.toasts);
       e.textContent = q.text;
-      state.toasts.push({ el: e, text: q.text, ms: q.ms, left: q.ms, shown: false });
+      state.toasts.push({ el: e, text: q.text, ms: q.ms, left: q.ms, shown: false, key: q.key });
     }
   }
   function pumpBanner(dt) {
@@ -546,7 +546,7 @@
     for (const c of state.caps) if (c.text === text && now - c.t0 < (o.dedupe || 1500)) { c.left = Math.max(c.left, o.ms || 1600); return c; }
     while (state.caps.length >= 3) { const c = state.caps.shift(); c.el.remove(); }
     const e = el('div', 'hud-cap kind-' + (o.kind || 'sound'), dom.caps);
-    let arrow = '', left = 50, top = 72;
+    let arrow = '', left = 50, top = o.kind === 'tape' ? 70 : 82;
     const p = N.player;
     if (o.x != null && o.y != null && p && isFinite(o.x) && isFinite(o.y)) {
       const dx = o.x - p.x, dy = o.y - p.y;
@@ -596,15 +596,22 @@
       if (changed) N.emit('hud:objective', text);
     },
     /** Queue a short message (top-centre). One shows at a time; duplicates are merged. */
-    toast(text, ms) {
+    toast(text, ms, opts) {
       if (!dom.toasts || !text) return;
       text = String(text).replace(/\*([^*]+)\*/g, '$1');
       ms = ms || 2800;
+      const key = opts && opts.key;
       const cur = state.toasts[0];
       if (cur && cur.text === text) { cur.left = Math.max(cur.left, Math.min(ms, 2000)); return; }
+      // a keyed toast (e.g. 'radio') replaces the older one with the same key instead of queueing behind it
+      if (key) {
+        if (cur && cur.key === key && cur.shown) { cur.text = text; cur.el.textContent = text; cur.left = ms; return; }
+        const q = state.tq.find((x) => x.key === key);
+        if (q) { q.text = text; q.ms = ms; return; }
+      }
       const dup = state.tq.find((q) => q.text === text);
       if (dup) { dup.ms = Math.max(dup.ms, ms); return; }
-      state.tq.push({ text, ms });
+      state.tq.push({ text, ms, key });
       while (state.tq.length > 6) state.tq.shift();
     },
     /** Messages waiting + showing (tests / debugging). */

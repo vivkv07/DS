@@ -360,6 +360,22 @@ async function desktop(browser) {
     await walk('long (RTC X Roads → Public Gardens)', 'pochaiah', 'rtc_x_roads', 'public_gardens', { speed: 140 }, 4);
     await walk('across the colony (school_1 → playground_14)', 'vimala_maam', 'school_1', 'playground_14', { speed: 120 }, 3);
     await walk('Old City lanes (Laad Bazaar → Gulzar Houz)', 'bangle_man', 'laad_bazaar', 'gulzar_houz', {}, 2);
+    // driveTo: Yadagiri drives his auto along the roads
+    const dr = await page.evaluate(async () => {
+      const P = N.places;
+      N.debug.teleport(P.koti_bus_stand.x + 40, P.koti_bus_stand.y + 40);
+      const a = N.npcs.spawn('yadagiri', 'koti_bus_stand', { idle: 'stand' });
+      const v = N.npcs.ride('yadagiri');
+      N.render.follow = v; N.render.snapCamera();
+      N.time.scale = 3;
+      const t0 = performance.now();
+      const res = await Promise.race([N.npcs.driveTo('yadagiri', 'sultan_bazaar', { r: 40 }), new Promise((r) => setTimeout(() => r('timeout'), 40000))]);
+      N.time.scale = 1; N.render.follow = null;
+      const out = { res, ms: Math.round(performance.now() - t0), type: v && v.type, label: v && v.label, left: Math.round(Math.hypot(v.x - P.sultan_bazaar.x, v.y - P.sultan_bazaar.y)), hops: a.stats.hops };
+      N.npcs.despawn(a); if (v && v.alive) N.vehicles.remove(v);
+      return out;
+    });
+    if (dr.res !== true || dr.hops) fail('driveTo: ' + JSON.stringify(dr)); else ok('driveTo: Yadagiri drives his ' + dr.type + ' (' + dr.label + ') Koti → Sultan Bazaar in ' + dr.ms + 'ms (x3), stops ' + dr.left + 'u from the place');
     // a mission that ends rejects the walk with a MissionAbort (the script never runs on)
     const ab = await page.evaluate(async () => {
       if (!N.missions || !N.missions.register) return { skipped: true };
@@ -491,7 +507,8 @@ async function desktop(browser) {
       await new Promise((r) => setTimeout(r, 500));
       return { n: document.querySelectorAll('#barks .bark').length, txt: Array.from(document.querySelectorAll('#barks .bark-text')).map((e) => e.textContent), vis: Array.from(document.querySelectorAll('#barks .bark')).map((e) => e.style.visibility !== 'hidden' && e.getBoundingClientRect().width > 20) };
     });
-    if (b.n !== 3 || b.vis.some((v) => !v) || b.txt[0].indexOf('Agent Chinnu') !== 0) fail('barks: ' + JSON.stringify(b)); else ok('barks shown over their speakers: ' + b.txt.join(' | '));
+    const wantB = ['Agent Chinnu! Red kite, two o’clock. Over!', 'Do chai, ek plate Osmania!', 'Mummy ki cheppesta!'];
+    if (wantB.some((t) => b.txt.indexOf(t) < 0) || b.vis.some((v) => !v)) fail('barks: ' + JSON.stringify(b)); else ok('barks shown over their speakers: ' + b.txt.join(' | '));
     await shot('barks_emotes');
     await page.evaluate(() => { N.render.camOverride = null; N.dialogue.clearBarks(); for (const a of N.npcs.all()) if (!/^sched:/.test(a.owner)) N.npcs.despawn(a); });
   }
@@ -536,7 +553,7 @@ async function lineFit(browser, V, tag) {
     await sleep(450);
     await page.screenshot({ path: path.join(OUT, tag + '_' + n + '.png') });
   };
-  await shotLine(lines.find((l) => l.s === tallest.s && l.t === tallest.t) || tallest, 'tallest_line');
+  await shotLine(lines.concat(CHOICES).find((l) => l.s === tallest.s && l.t === tallest.t), 'tallest_line');
   const tc = res.out.filter((r) => r.c).sort((a, b) => b.h - a.h)[0];
   await shotLine(CHOICES.find((c) => c.t === tc.t), 'tallest_choice');
   await shotLine({ s: 'chinnu', t: 'Ammamma... can I record here? There’s no bell.' }, 'chinnu_right');

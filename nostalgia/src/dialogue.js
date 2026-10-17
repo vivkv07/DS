@@ -15,7 +15,10 @@
  *       style: 'tape'|'radio'|'chit'|'email'|null, name2026, look2026, color2026})
  *     look may be an object or a function returning one (variants); name may hold tokens.
  *   N.dialogue.speakers[id]  (plain assignment {name, color, portrait} also works)
- *   N.dialogue.cancel() / advance() / isOpen() / current / skip (debug) / textSpeed
+ *   N.dialogue.cancel() / advance() / isOpen() / skip (debug) / textSpeed
+ *   N.dialogue.current -> {speaker (the id the script used), as (resolved id), text (names
+ *       substituted), typing, choices, selected, mood} | null
+ *   N.dialogue.speakerName(id) -> the name plate text; clearBarks(); barkCount(); moods
  *   N.dialogue.filter(text) (alias subst)  {nick} {NICK} {full} {FULL} + the bible's global rename rule:
  *       "Chinnu" -> nickname, "chinnu_" (email ids) -> lower-case nickname, "Srikanth" -> full
  *       name. Names come from N.player.nick / N.player.full (menus' name card), falling back to
@@ -33,8 +36,13 @@
  *       N.seasons.is('year2026')): speakers with look2026/name2026 switch automatically.
  * Moods: neutral happy laugh angry sad surprised shout worried wink tired
  *        (aliases grin→happy, sulk→sad, shock→surprised, cross→angry, smug→wink, proud→happy).
- * Events: dialogue:open|close, dialogue:line {speaker, text, choices}, dialogue:char {speaker,
- *   pitch}, dialogue:choice {speaker, index, text}, dialogue:bark {speaker, text}.
+ * Events: dialogue:open|close, dialogue:line {speaker, as, text, choices, mood}, dialogue:char
+ *   {speaker, pitch}, dialogue:choice {speaker, index, text}, dialogue:bark {speaker, text, target},
+ *   names:change {nick, full, ...} (from setNames; portraits/name plates refresh).
+ * Layout: the hero (chinnu / srikanth / you) speaks from the right, everybody else from the left;
+ *   speakers with style 'tape' (immu_tape) / 'radio' / 'chit' / 'email' get their own box skin.
+ *   Every line of the story bible (and its choices) fits a 390x844 phone and 844x390 landscape
+ *   (tests/npcs.cjs measures all of them).
  * Speaker ids 'you' -> 'chinnu' (2003) / 'srikanth' (2026) when those are defined (npcs.js
  * defines the whole cast from the story bible §2 and registers every one here).
  */
@@ -810,7 +818,7 @@
         dom.choices.appendChild(b);
       });
     }
-    N.emit('dialogue:line', { speaker: spk.id, text: shownText, choices: line.choices || null, mood });
+    N.emit('dialogue:line', { speaker: line.s || spk.id, as: spk.id, text: shownText, choices: line.choices || null, mood });
     if (D.skip) { finishTyping(); }
   }
 
@@ -842,7 +850,7 @@
   function pick(i) {
     const line = cur;
     if (!line || !line.choices || line.typing) return;
-    N.emit('dialogue:choice', { speaker: line.spk.id, index: i, text: line.choices[i] });
+    N.emit('dialogue:choice', { speaker: line.s || line.spk.id, index: i, text: line.choices[i] });
     done(i);
   }
   function done(result) {
@@ -1038,7 +1046,7 @@
     /** Prompt + options; resolves with the chosen index. opts: {mood, default, side} */
     choice(speakerId, prompt, options, opts) {
       opts = opts || {};
-      const list = (options || []).map(String);
+      const list = Array.isArray(options) ? options.map(String) : [];
       if (!list.length) return D.say(speakerId, prompt, opts).then(() => 0);
       return enqueue({ s: speakerId, t: prompt, choices: list, def: opts.default || 0, mood: opts.mood, side: opts.side, style: opts.style });
     },
@@ -1065,7 +1073,8 @@
     /** Programmatic ACTION (tests, cutscenes). */
     advance() { poke(); },
     isOpen: () => open,
-    get current() { return cur ? { speaker: cur.spk && cur.spk.id, text: cur.shownText != null ? cur.shownText : cur.t, typing: cur.typing, choices: cur.choices || null, selected: cur.sel, mood: normMood(cur.mood) } : null; },
+    /** the line on screen: speaker = the id the script used ('you' stays 'you'), as = the resolved speaker */
+    get current() { return cur ? { speaker: cur.s || (cur.spk && cur.spk.id), as: cur.spk && cur.spk.id, text: cur.shownText != null ? cur.shownText : cur.t, typing: cur.typing, choices: cur.choices || null, selected: cur.sel, mood: normMood(cur.mood) } : null; },
   });
 
   /* ============================================================== system */

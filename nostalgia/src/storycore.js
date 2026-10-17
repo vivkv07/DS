@@ -84,7 +84,7 @@
     const s = N.settings || (N.menus && N.menus.settings) || null;
     return s && s[key] != null ? s[key] : def;
   }
-  function toast(text, ms) { try { if (N.hud && N.hud.toast) N.hud.toast(text, ms); } catch (e) { N.err('storycore.toast', e); } }
+  function toast(text, ms, key) { try { if (N.hud && N.hud.toast) N.hud.toast(text, ms, key ? { key } : undefined); } catch (e) { N.err('storycore.toast', e); } }
   function sfx(name, o) { try { return N.audio && N.audio.sfx ? N.audio.sfx(name, o || { ui: true }) : false; } catch (e) { N.err('storycore.sfx', e); return false; } }
   function nick() { return (N.flags && N.flags.nick) || (N.player && N.player.nick) || 'Chinnu'; }
   /** {nick} / {full} / {FULL} substitution (dialogue.js / npcs.js may provide their own). */
@@ -572,13 +572,13 @@
       const c = CASSETTES[s.id];
       sfx('tape_click', { ui: true });
       wk.playing = { kind: 'memo', id: s.id, title: c ? c.title : s.id, sub: 'Immu, over' };
-      if (!quiet && c) toast('▶ ' + c.title + ' — "' + subst(c.text) + '"', 6500);
+      if (!quiet && c) toast('▶ ' + c.title + ' — "' + subst(c.text) + '"', 6500, 'radio');
       wk.memoT = 7;
     } else {
       try { if (N.audio && N.audio.walkman) N.audio.walkman.play(s.id); } catch (e) { N.err('walkman.play', e); }
       const c = cassetteOfSong(s.id);
       wk.playing = { kind: 'tape', id: s.id, title: SONG_TITLES[s.id] || s.id, sub: c ? 'C' + pad2(c.n) : 'Side A' };
-      if (!quiet && c && c.text) setTimeout(() => { if (wk.playing && wk.playing.id === s.id) toast('Farmaish: ' + subst(c.text), 5200); }, 3400);
+      if (!quiet && c && c.text) setTimeout(() => { if (wk.playing && wk.playing.id === s.id) toast('Farmaish: ' + subst(c.text), 5200, 'farmaish'); }, 3400);
     }
     wk.lastAudio = s;
     N.emit('walkman:play', { kind: wk.playing.kind, id: wk.playing.id });
@@ -589,7 +589,7 @@
     stopAudio();
     const was = wk.playing;
     wk.playing = null; wk.pausedFor = null;
-    if (!quiet && was) toast('■ Walkman off', 1400);
+    if (!quiet && was) toast('■ Walkman off', 1400, 'radio');
     N.emit('walkman:stop', {});
     return true;
   }

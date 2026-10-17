@@ -7,9 +7,10 @@
  * bhattis, Chand Raat bangles, Sankranti kites, summer ice-gola carts), at noon and at night.
  * Screenshots go to tests/out/places/<id>[_variant]_<noon|night>.png plus contact sheets
  * tests/out/places/sheet_<n>.png. Exits 1 on any page error, console error or N.errors entry,
- * or when a draw id of the places_art catalogue (design/map_plan.md §4b) has no art.
+ * or when a draw id of the places_art catalogue (design/map_plan.md §4b) has no art. It also lays
+ * out every N.placesArt.drawProp kind on the Parade Grounds (props_noon.png) and checks the API.
  *
- * Usage: node tests/places_gallery.cjs [--all] [--close] [--no-night] [--no-sheets] [--no-variants]
+ * Usage: node tests/places_gallery.cjs [--all] [--close] [--no-night] [--no-sheets] [--no-variants] [--no-props] [--props-only]
  *   env IDS=gokul_chat,koti_bus_stand    only these landmark / place ids
  *   env DRAWS=kirana,cinema              only these draw ids
  *   env TIMES=12:00,21:00                times to shoot (default noon + night)
@@ -102,9 +103,10 @@ const VARIANTS = [
     list = all.filter((l) => SHOWCASE.includes(l.id) || (seen.has(l.draw) ? false : seen.add(l.draw)));
     // one decoration per kind
   }
+  if (has('--props-only')) list = [];
   const shots = [];
   for (const l of list) shots.push({ lm: l, label: '', fx: null });
-  if (!has('--no-variants') && !ids && !draws) {
+  if (!has('--no-variants') && !ids && !draws && !has('--props-only')) {
     for (const [label, fx, vids] of VARIANTS) for (const id of vids) { const l = all.find((q) => q.id === id); if (l) shots.push({ lm: l, label, fx }); }
   } else if (ids && !has('--no-variants')) {
     for (const [label, fx, vids] of VARIANTS) for (const id of vids) { if (!ids.includes(id)) continue; const l = all.find((q) => q.id === id); if (l) shots.push({ lm: l, label, fx }); }
@@ -154,6 +156,31 @@ const VARIANTS = [
     }
   }
   process.stdout.write('\n');
+  // N.placesArt.drawProp catalogue: every prop kind laid out on an open ground, drawn by a
+  // temporary system through queueProp (checks the public API end to end)
+  if (!ids && !draws && !has('--no-props')) {
+    const res = await page.evaluate(async () => {
+      const pl = N.places.parade_grounds || N.places.exhibition_grounds || { x: 5000, y: 600 };
+      const kinds = N.placesArt.PROPS.slice(), cols = 9, gap = 46;
+      const ox = pl.x - ((cols - 1) * gap) / 2, oy = pl.y - 60;
+      let fails = 0;
+      N.addSystem({ id: 'placesGalleryProps', order: 99, runIn: ['*'], draw() {
+        kinds.forEach((k, i) => N.placesArt.queueProp(k, ox + (i % cols) * gap, oy + Math.floor(i / cols) * gap, 0.3, { sign: 'TEST', film: 'JAI HYDERABAD' }));
+      } });
+      const R = N.render;
+      const p = N.world.findFree(pl.x + 500, pl.y + 300, 'walk', 60) || pl; N.player.teleport(p.x, p.y);
+      R.camOverride = { x: pl.x, y: oy + 2.5 * gap, zoom: 0.8, snap: true };
+      N.debug.setTime(12, 0); R.warmChunks(pl.x, oy + 2.5 * gap, 700);
+      await new Promise((r) => setTimeout(r, 400));
+      for (const k of kinds) { let ok = false; R.queue('fx', 0, () => { ok = N.placesArt.drawProp(k, pl.x, pl.y, 0); }); await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); if (!ok) fails++; }
+      return { n: kinds.length, fails };
+    });
+    await page.screenshot({ path: path.join(OUT, 'props_noon.png') });
+    await page.evaluate(() => { N.addSystem({ id: 'placesGalleryProps', order: 99, runIn: ['*'] }); });
+    files.push(['props_noon.png', 'drawProp catalogue (' + res.n + ')']);
+    if (res.fails) errs.push('drawProp returned false for ' + res.fails + ' kinds');
+    console.log('drawProp kinds:', res.n, 'failures:', res.fails);
+  }
   await page.evaluate(() => { for (const k of Object.keys(N.placesArt.fx)) N.placesArt.fx[k] = null; });
   if (perf.length) for (const [n, m] of perf) console.log('perf', n.padEnd(44), 'frame draw', m[0], 'ms  queued', m[1], ' structures layer', m[2], 'ms  places_art', m[3], 'ms');
   const st = await page.evaluate(() => N.debug.state());
