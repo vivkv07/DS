@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 151036,
+ "bytes": 155116,
  "clips": {},
  "family": "landmark",
  "file": "salar_jung_museum.glb",
@@ -16,7 +16,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 147.5,
+ "kb": 151.5,
  "kit": 1,
  "materials": [
   "M_salar_jung_museum_lime_plaster",
@@ -29,7 +29,7 @@
  "max": [
   76.621,
   38.35,
-  54.9
+  62.9
  ],
  "meta": {
   "face": "s",
@@ -39,12 +39,12 @@
    150,
    76
   ],
-  "height": 52.0,
+  "height": 60.0,
   "landmark": "salar_jung_museum"
  },
  "min": [
   -76.621,
-  -42.2,
+  -43.2,
   0.0
  ],
  "notes": [
@@ -53,11 +53,11 @@
  "script": "oldcity.civic",
  "size": [
   153.243,
-  80.55,
-  54.9
+  81.55,
+  62.9
  ],
  "tint": null,
- "tris": 2476,
+ "tris": 2526,
  "units": "u",
  "up": "Z"
 }

@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 156892,
+ "bytes": 156240,
  "clips": {},
  "family": "landmark",
  "file": "high_court.glb",
@@ -16,7 +16,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 153.2,
+ "kb": 152.6,
  "kit": 1,
  "materials": [
   "M_high_court_granite_grey",
@@ -57,7 +57,7 @@
   71.45
  ],
  "tint": null,
- "tris": 2939,
+ "tris": 2855,
  "units": "u",
  "up": "Z"
 }

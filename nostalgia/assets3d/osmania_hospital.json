@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 156028,
+ "bytes": 156156,
  "clips": {},
  "family": "landmark",
  "file": "osmania_hospital.glb",
@@ -18,7 +18,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 152.4,
+ "kb": 152.5,
  "kit": 1,
  "materials": [
   "M_osmania_hospital_granite_grey",
@@ -33,7 +33,7 @@
  "max": [
   97.4,
   36.0,
-  99.3
+  118.7
  ],
  "meta": {
   "face": "s",
@@ -43,7 +43,7 @@
    194,
    76
   ],
-  "height": 100.0,
+  "height": 118.0,
   "landmark": "osmania_hospital"
  },
  "min": [
@@ -58,7 +58,7 @@
  "size": [
   194.8,
   76.0,
-  99.3
+  118.7
  ],
  "tint": null,
  "tris": 2656,

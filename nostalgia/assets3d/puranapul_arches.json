@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 139932,
+ "bytes": 135148,
  "clips": {},
  "family": "landmark",
  "file": "puranapul_arches.glb",
@@ -13,7 +13,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 136.7,
+ "kb": 132.0,
  "kit": 1,
  "materials": [
   "M_puranapul_arches_granite_grey",
@@ -23,7 +23,7 @@
  "max": [
   44.394,
   78.582,
-  11.0
+  14.4
  ],
  "meta": {
   "fit": "footprint",
@@ -32,7 +32,7 @@
    44,
    150
   ],
-  "height": 10.0,
+  "height": 14.4,
   "landmark": "puranapul_arches"
  },
  "min": [
@@ -48,7 +48,7 @@
  "size": [
   88.787,
   161.164,
-  11.0
+  14.4
  ],
  "tint": null,
  "tris": 2021,

@@ -256,7 +256,7 @@ def high_court(A):
     # ---- plinth + main block + bands (red with white stripes)
     parts.append(blk(-82, 82, -24, 31, 0, 1.8, gran, 'plinth'))
     parts.append(blk(-XW, XW, YF, YB, 0, HR, red, 'main'))
-    for (z0, z1) in ((1.8, 2.5), (8.0, 8.6), (14.0, 14.8), (27.2, 28.2)):
+    for (z0, z1) in ((1.8, 2.5), (14.0, 14.8), (27.2, 28.2)):
         parts.append(band(-XW, XW, YF, YB, z0, z1, white, 0.14))
     parts.append(band(-XW, XW, YF, YB, HR, HR + 2.2, white, 0.3, 'parapet'))
     # dense white stripes (flat decals) on the front wings, the pavilion front and the pishtaq
@@ -264,7 +264,7 @@ def high_court(A):
         for z in zs:
             for (u0, u1) in spans:
                 rect_panel(P, fc, white, u0, u1, z, z + 0.55, off)
-    ZST = [3.5 + 3.0 * i for i in range(9)]
+    ZST = [3.5 + 3.0 * i for i in range(8)]
     stripes(Face('S', YF), [(-74.0, -24.0), (24.0, 74.0)], ZST)
     stripes(Face('S', -28.5), [(-24.0, -13.5), (13.5, 24.0)], ZST)
     stripes(Face('S', -31.5), [(-13.5, -8.3), (8.3, 13.5)], ZST)
@@ -290,7 +290,9 @@ def high_court(A):
             for fc in fs:
                 uc = cy if fc.side in 'EW' else cx
                 uc = uc if fc.side in 'SE' else -uc
-                nn = 3 if fc.side in 'SN' else 2
+                if fc.side not in 'SN':
+                    continue
+                nn = 3
                 arch_win(P, fc, uc, 3.2, 3.6, 6.0, 2.4, dark, None, off=0.2, n=nn)
                 arch_win(P, fc, uc, 16.6, 3.0, 5.4, 2.0, lit, None, off=0.2, n=nn)
     # ---- central pavilion (projecting), its pishtaq and the great portal
@@ -302,19 +304,15 @@ def high_court(A):
     kit.boolean(pav, cut1)
     kit.boolean(fr, cut2)
     parts += [pav, fr]
-    for (z0, z1) in ((1.8, 2.5), (14.0, 14.8), (27.2, 28.2), (32.6, 33.2)):
+    for (z0, z1) in ((1.8, 2.5), (27.2, 28.2)):
         parts.append(band(-24, 24, -28.5, 24, z0, z1, white, 0.14))
     parts.append(band(-24, 24, -28.5, 24, 38.0, 39.4, white, 0.3, 'pav_parapet'))
-    for (z0, z1) in ((35.4, 36.0), (40.0, 40.6)):
-        parts.append(band(-13.5, 13.5, -31.5, -28.0, z0, z1, white, 0.14))
     parts.append(band(-13.5, 13.5, -31.5, -28.0, 45.0, 46.2, white, 0.3))
     # white archivolt round the portal + spandrel roundels
     ring = prism_from_outline('archivolt', arch_outline(AW + 2.6, AS - 0.8, AR + 2.2, 'pointed', n=5), 0.6, center=(0, -31.8, 1.0), mat=white)
     kit.boolean(ring, prism_from_outline('av_cut', arch_outline(AW, AS, AR, 'pointed', n=7), 3.0, center=(0, -31.8, 0.5)))
     parts.append(ring)
     fp = Face('S', -31.5)
-    for su in (-1, 1):
-        rect_panel(P, fp, white, su * 12.6 - 1.4, su * 12.6 + 1.4, 30.0, 33.4, 0.1)
     # inside the portal: door, fanlight, gallery windows
     fin = Face('S', -24.0 + 4.5 - 4.5)   # recess back face: the cutter reaches y = -24.5
     fin = Face('S', -24.5)
@@ -333,10 +331,10 @@ def high_court(A):
     for sx in (-1, 1):
         mx, my = sx * 24.5, -29.0
         parts.append(kit.cylinder('shaft', 2.5, 46.0, (mx, my, 0), seg=8, mat=red, r2=2.0, cap=False))
-        for zb in (4.0, 8.0, 12.0, 16.0, 20.0, 24.0, 28.0, 32.0, 36.0, 40.0):
+        for zb in (5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0):
             rb = 2.5 - 0.5 * zb / 46.0 + 0.1
-            parts.append(kit.cylinder('shaftb', rb, 1.0, (mx, my, zb), seg=8, mat=white, cap=False))
-        for zb in (46.0,):
+            parts.append(kit.cylinder('shaftb', rb + 0.1, 1.0, (mx, my, zb), seg=8, mat=white, cap=False))
+        for zb in ():
             parts.append(lathe('balcony', [(2.2, zb - 0.9), (3.1, zb - 0.1), (3.1, zb + 0.5), (2.0, zb + 0.5)], seg=8, mat=white, loc=(mx, my, 0), close_bottom=False, close_top=True))
         parts.append(kit.cylinder('mkiosk', 1.7, 2.6, (mx, my, 46.5), seg=8, mat=red, cap=False))
         parts.append(small_dome(mx, my, 49.5, 1.8, 3.0, white, seg=8))
@@ -346,14 +344,13 @@ def high_court(A):
     parts.append(lathe('drum_top', [(12.4, 47.6), (12.4, 48.5), (10.9, 48.5)], seg=16, mat=white, loc=(dx, dy, 0), close_bottom=False, close_top=False))
     ring_panels(P, dark, dx, dy, 8, 11.32, 41.4, 2.6, 3.4, 1.6, phase=math.pi / 8)
     DR, DH, DZ = 11.0, 17.0, 48.5
-    parts.append(big_dome(dx, dy, DZ, DR, DH, white, seg=16, n=7))
+    parts.append(big_dome(dx, dy, DZ, DR, DH, white, seg=16, n=6))
     parts.append(finial(dx, dy, DZ + DH * 1.08, 1.2, M['gold']))
     # ---- side domes on the wings and roofline chhatris / pinnacles
     for sx in (-1, 1):
         x = sx * 50.0
         parts.append(kit.cylinder('sdrum', 5.6, 4.0, (x, 3.0, HR + 2.2), seg=10, mat=red, cap=False))
-        parts.append(lathe('sdrum_top', [(6.4, HR + 6.2), (6.4, HR + 7.0), (5.4, HR + 7.0)], seg=10, mat=white, loc=(x, 3.0, 0), close_bottom=False, close_top=False))
-        parts.append(big_dome(x, 3.0, HR + 7.0, 5.6, 9.0, white, seg=10, n=5))
+        parts.append(big_dome(x, 3.0, HR + 6.2, 5.6, 9.0, white, seg=10, n=5))
     # pinnacles on the parapet piers (front and back)
     # ---- wing facades: ground-floor arcade, first-floor windows, top lights
     NB, STEP, U0 = 8, 6.25, 24.0
@@ -362,7 +359,7 @@ def high_court(A):
             for su in (-1, 1):
                 u = su * (U0 + STEP * (k + 0.5))
                 if front:
-                    arch_win(P, fc, u, 2.5, 4.6, 6.6, 3.0, dark, white, off=0.2)
+                    arch_win(P, fc, u, 2.5, 4.6, 6.6, 3.0, dark, white, off=0.2, n=2)
                     arch_win(P, fc, u, 16.4, 3.0, 5.6, 2.0, lit if k % 2 == 0 else dark, None, off=0.2)
         # pilasters between bays (front only)
         if front:
@@ -401,7 +398,7 @@ def kiosk(x, y, z, r, h, wall, dome, dark=None, P=None, seg=8):
 
 
 # =========================================================================== Osmania General Hospital
-@kit.asset('osmania_hospital', 'landmark', landmark='osmania_hospital', face='s', footprint=[194, 76], height=100.0, fit='footprint', floodlit=True)
+@kit.asset('osmania_hospital', 'landmark', landmark='osmania_hospital', face='s', footprint=[194, 76], height=118.0, fit='footprint', floodlit=True)
 def osmania_hospital(A):
     M = C.mats(
         buff=('lime_plaster', dict(base='#dcc9a0', var=0.1, grain=0.06, grime=0.45, streaks=0.55, dirt='#7a7058')),
@@ -523,7 +520,7 @@ def balustrade(P, face, u0, u1, z0, z1, gap, post, step=2.0, off=0.05):
 
 
 # =========================================================================== State Central Library
-@kit.asset('state_central_library', 'landmark', landmark='state_central_library', face='s', footprint=[100, 62], height=58.0, fit='footprint', floodlit=True)
+@kit.asset('state_central_library', 'landmark', landmark='state_central_library', face='s', footprint=[100, 62], height=72.0, fit='footprint', floodlit=True)
 def state_central_library(A):
     M = C.mats(
         cream=('lime_plaster', dict(base='#e8cf95', var=0.08, grain=0.05, grime=0.45, streaks=0.4, dirt='#7a6844')),
@@ -576,12 +573,13 @@ def state_central_library(A):
     # wide entrance steps
     parts.append(kit.stairs('steps', 30.0, 1.4, 0.8, 3, (0, -35.5, 0), gran))
     # ---- the dome behind the portal
-    dx, dy = 0.0, 0.0
-    parts.append(kit.cylinder('drum', 8.6, 6.0, (dx, dy, HR), seg=14, mat=cream, cap=False))
-    ring_panels(P, dark, dx, dy, 7, 8.7, HR + 1.2, 2.2, 2.4, 1.3, phase=-math.pi / 2)
-    parts.append(lathe('drum_top', [(9.6, HR + 6.0), (9.6, HR + 6.8), (8.4, HR + 6.8)], seg=14, mat=trim, loc=(dx, dy, 0), close_bottom=True, close_top=False))
-    parts.append(big_dome(dx, dy, HR + 6.8, 8.4, 11.0, trim, seg=14, n=7, neck=1.0, bulge=1.05, tip=0.06))
-    parts.append(finial(dx, dy, HR + 6.8 + 11.0 * 1.08, 0.8, M['gold']))
+    dx, dy, DZ = 0.0, 2.0, HR + 14.8      # a tall drum lifts the dome clear of the frontispiece
+    parts.append(kit.cylinder('drum', 8.6, 14.0, (dx, dy, HR), seg=14, mat=cream, cap=False))
+    parts.append(lathe_ring(dx, dy, HR + 6.0, 8.6, 0.6, 0.2, trim, seg=14))
+    ring_panels(P, dark, dx, dy, 7, 8.7, HR + 7.4, 2.4, 3.6, 1.4, phase=-math.pi / 2)
+    parts.append(lathe('drum_top', [(9.6, DZ - 0.8), (9.6, DZ), (8.4, DZ)], seg=14, mat=trim, loc=(dx, dy, 0), close_bottom=True, close_top=False))
+    parts.append(big_dome(dx, dy, DZ, 8.4, 11.0, trim, seg=14, n=7, neck=1.0, bulge=1.05, tip=0.06))
+    parts.append(finial(dx, dy, DZ + 11.0 * 1.08, 0.8, M['gold']))
     # corner chhatris
     for qx in (-XW + 2.4, XW - 2.4):
         for qy in (YF + 2.4, YB - 2.4):
@@ -615,7 +613,7 @@ def state_central_library(A):
     C.finish(A, parts, tile=10.0, tex=256, ao_samples=32, ao_dist=8.0, ground_dirt=5.0)
     cols = [C.col_box('scl_main', (2 * XW, YB - YF, HR + 3), (0, (YF + YB) / 2, 0)),
             C.col_box('scl_fr', (2 * fx, fy1 - fy0, fh), (0, (fy0 + fy1) / 2, 0)),
-            C.col_box('scl_dome', (18, 18, 20), (0, 0, HR))]
+            C.col_box('scl_dome', (18, 18, 28), (0, 2.0, HR))]
     C.col_join(cols, 'state_central_library')
     A.notes.append('COL_state_central_library: camera-ray proxy boxes (main block, frontispiece, dome)')
     A.preview = C.shots(front_az=-30, el=12, fov=34, extra=[
@@ -769,7 +767,7 @@ def salar_jung_museum(A):
     C.finish(A, parts, tile=10.0, tex=256, ao_samples=32, ao_dist=8.0, ground_dirt=5.0)
     cols = [C.col_box('sjm_centre', (2 * EX, EY1 - EY0, EH), (0, (EY0 + EY1) / 2, 0)),
             C.col_box('sjm_rear', (60, 30, 32), (0, 23.0, 0)),
-            C.col_box('sjm_por', (30, 9, 22), (0, -33.5, 0))]
+            C.col_box('sjm_por', (32, 10, 26), (0, -34.0, 0))]
     for i in range(6):
         a = -TH + 2 * TH * (i + 0.5) / 6
         r = (RF + RB) / 2
