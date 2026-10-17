@@ -445,7 +445,7 @@ def _tusk(name, base, top, height, r0, r1, mat, n=7, seg=8, bow=0.0):
     return ellipse_loft(name, rings, mat, seg=seg)
 
 
-@kit.asset('ntr_memorial', 'landmark', draw='ntr_memorial', face='s', footprint=[40, 28], height=27.0, fit='footprint', floodlit=True)
+# parked (pack budget, see landmarks_centre.py): @kit.asset('ntr_memorial', 'landmark', draw='ntr_memorial', face='s', footprint=[40, 28], height=27.0, fit='footprint', floodlit=True)
 def build_ntr_memorial(A):
     M = _nometal(L.mats())
     PAVE = kit.material('granite_grey', 'ntr_paving', base='#cfc7b8', specks=0.3, grime=0.4, scale=0.9)

@@ -280,3 +280,140 @@ def shots(A, az=-35, el=14, fov=32, extra=None, samples=14, size=320):
         e.setdefault('size', 256)
         s.append(e)
     A.preview = {'shots': s}
+
+
+# =========================================================================== proxy bake (the budget path)
+def finish_proxy(A, hi, lo=None, keep=None, size=512, lo_tris=None, cage=1.2, ray=6.0, ao_samples=32,
+                 ao_strength=0.8, ao_dist=None, albedo_samples=4, variants=None):
+    """Bake the detailed model onto a simple shell (selected-to-active): the shipped mesh is `lo`
+    (a few hundred triangles: the silhouette only), all the detail (window recesses, arches,
+    mouldings, carvings, crevice AO) lives in one albedo x AO atlas of `size`².
+      hi        detailed objects with library materials (deleted after the bake)
+      lo        low-poly shell objects (no materials needed); None -> an automatic decimated copy
+                of hi (planar dissolve + collapse to `lo_tris`)
+      keep      objects exported as they are (unbaked glass / @night lamps, tiny props)
+      variants  {name: (hi_objs, lo_objs_or_None)} baked into the same atlas, exported as var_<name>
+    Returns the exported low objects."""
+    import numpy as np
+    sc = bpy.context.scene
+    groups = [('body', [o for o in hi if o], lo)]
+    for vn, (vh, vl) in (variants or {}).items():
+        groups.append(('var_' + vn, [o for o in vh if o], vl))
+    los = []
+    his = []
+    for gname, gh, gl in groups:
+        for o in gh:
+            kit.apply_modifiers(o)
+        h = kit.join(gh, '_hi_' + gname) if len(gh) > 1 else gh[0]
+        if gl:
+            l = kit.join([o for o in gl if o], (A.id + '_body') if gname == 'body' else gname)
+            for s in list(l.data.materials):
+                pass
+            l.data.materials.clear()
+        else:
+            l = h.copy()
+            l.data = h.data.copy()
+            kit.link(l, A.coll)
+            l.name = (A.id + '_body') if gname == 'body' else gname
+            l.data.materials.clear()
+            _auto_lo(l, lo_tris or 800)
+        l.name = (A.id + '_body') if gname == 'body' else gname
+        kit.apply_transform(l)
+        los.append(l)
+        his.append(h)
+    # one atlas over every low object
+    for l in los:
+        for uvl in list(l.data.uv_layers):
+            l.data.uv_layers.remove(uvl)
+        for ca in list(l.data.color_attributes):
+            l.data.color_attributes.remove(ca)
+    kit.uv_atlas(los, margin=0.006, angle=66.0)
+    if ao_dist:
+        sc.world.light_settings.distance = ao_dist
+    hi_mats = []
+    for h in his:
+        for m in h.data.materials:
+            if m and m not in hi_mats and m.get('nos_bake', True):
+                hi_mats.append(m)
+
+    def bake(mode, img_size, samples):
+        img = kit._img('_px_' + mode, img_size)
+        tm = bpy.data.materials.get('_px_target') or bpy.data.materials.new('_px_target')
+        tm.use_nodes = True
+        tn = tm.node_tree.nodes.get('_px_img') or tm.node_tree.nodes.new('ShaderNodeTexImage')
+        tn.name = '_px_img'
+        tn.image = img
+        tm.node_tree.nodes.active = tn
+        for l in los:
+            l.data.materials.clear()
+            l.data.materials.append(tm)
+        dummy = kit._img('_px_dummy', 8)
+        info = kit._bake_setup(hi_mats, dummy, 'albedo' if mode == 'albedo' else 'ao')
+        rb = sc.render.bake
+        sc.cycles.samples = samples
+        rb.use_selected_to_active = True
+        rb.use_cage = False
+        rb.cage_extrusion = cage
+        rb.max_ray_distance = ray
+        rb.margin = 4
+        rb.margin_type = 'EXTEND'
+        rb.use_clear = True
+        rb.target = 'IMAGE_TEXTURES'
+        t0 = __import__('time').time()
+        for h, l in zip(his, los):
+            kit.select_only([h, l], l)
+            bpy.ops.object.bake(type='EMIT' if mode == 'albedo' else 'AO', use_selected_to_active=True,
+                                cage_extrusion=cage, max_ray_distance=ray, margin=4, use_clear=(l is los[0]))
+        rb.use_selected_to_active = False
+        kit._bake_restore(info)
+        kit.log('proxy-baked %s %d² in %.1fs' % (mode, img_size, __import__('time').time() - t0))
+        return kit.img_array(img)
+    alb = bake('albedo', size, albedo_samples)
+    ao = bake('ao', max(64, size // 2), ao_samples)
+    ao = kit.resize_bilinear(ao, size, size)
+    base = alb.copy()
+    k = kit.ao_curve(ao[..., 0], ao_strength)
+    for c in range(3):
+        base[..., c] *= k
+    base[..., 3] = 1.0
+    import os
+    bpath = os.path.join(kit.TMP_DIR, A.id + '_base.png')
+    kit.save_png(base, bpath, srgb=True, name=A.id + '_base')
+    M = kit.baked_material('M_' + A.id, bpath, None, rough=0.82)
+    for l in los:
+        l.data.materials.clear()
+        l.data.materials.append(M)
+        kit.smooth(l, 40)
+    A.textures.append(bpath)
+    for h in his:
+        d = h.data
+        bpy.data.objects.remove(h)
+        if d.users == 0:
+            bpy.data.meshes.remove(d)
+    for o in keep or []:
+        if o is None:
+            continue
+        kit.apply_modifiers(o)
+        mm = list(o.data.materials)
+        o.data.materials.clear()
+        for m in mm:
+            o.data.materials.append(kit.glass_material(A.id, m) if (m is not None and not m.get('nos_bake', True)) else m)
+    return los
+
+
+def _auto_lo(ob, max_tris):
+    """planar dissolve + collapse decimation (automatic shell for organic / rocky parts)"""
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.05)
+    bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(4), verts=bm.verts, edges=bm.edges)
+    bm.to_mesh(ob.data)
+    bm.free()
+    if kit.tri_count([ob]) > max_tris:
+        kit.decimate_to(ob, max_tris)
+
+
+def shell_box(name, size, loc=(0, 0, 0)):
+    """a plain box shell (base at loc) for finish_proxy lo lists"""
+    return box(name, size, loc, None, base=True)
