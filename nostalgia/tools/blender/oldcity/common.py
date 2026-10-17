@@ -167,6 +167,12 @@ def finish(A, objs, tile=10.0, tex=512, dice_edge=0, ao_samples=32, ao_dist=8.0,
     kit.smooth(body, smooth_angle)
     out = kit.finish_tiled(A, [body], tile=tile, tex=tex, ao_samples=ao_samples, ao_strength=ao_strength, ao_dist=ao_dist, dice_edge=dice_edge, ground_dirt=ground_dirt)
     uv_by_normal(body, tile)
+    # kit.signboard creates 'SignUV' first; once finish_tiled drops it no UV layer is active and the
+    # exporter writes texCoord -1 for every texture: make 'UVMap' the active / render layer again
+    uvl = body.data.uv_layers.get('UVMap')
+    if uvl is not None:
+        body.data.uv_layers.active = uvl
+        uvl.active_render = True
     return out
 
 

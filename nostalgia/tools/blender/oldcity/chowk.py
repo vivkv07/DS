@@ -180,9 +180,9 @@ def kaman_build(A, rotate=False):
         x = -20.0 + 40.0 * (i + 0.5) / n_g
         skin.append(plate('gal', niche_outline(3.0, 7.2, 0.58, 2), (x, yf - 0.47, 60.3), 'y-', NI))
     # chajja brackets
-    nb = 7
+    nb = 6
     for i in range(nb):
-        x = -30.0 + 60.0 * i / (nb - 1)
+        x = -27.5 + 55.0 * i / (nb - 1)
         skin.append(front_slab('brk', (0.8, 1.4, 1.9), (x, yf - 0.7 + 0.02, 67.9), PH, drop_top=True))
     hard += common.rot_copies(skin, 2)
     # granite plinth (full depth) under each pier
@@ -198,7 +198,7 @@ def kaman_build(A, rotate=False):
     hard.append(box('frieze', (L - 0.4, T + 0.3, 2.45), (0, 0, 70.55), P, base=True))
     for sy in (-1, 1):
         hard.append(box('par', (L - 2.0, 0.9, 2.6), (0, sy * (FY - 0.45), CORE_TOP), P, base=True))
-        m = crest('mer', 61.0, 15, 3.6, 0.6, PH)
+        m = crest('mer', 61.0, 12, 4.0, 0.6, PH)
         m.location = (0, sy * (FY - 0.45), CORE_TOP + 2.6)
         kit.apply_transform(m)
         hard.append(m)
@@ -207,14 +207,14 @@ def kaman_build(A, rotate=False):
 
     # ---- corner turrets: engaged octagonal shafts with ring mouldings, a little balcony, onion domes
     r = TUR_R
-    prof = [(r + 0.5, 0.0), (r + 0.5, 3.4), (r, 3.8), (r, 69.6), (r + 0.5, 70.2), (r + 0.5, 71.0), (r, 71.3),
+    prof = [(r + 0.5, 0.0), (r + 0.5, 3.4), (r, 3.8), 
             (r, 77.6), (r + 0.75, 78.2), (r + 0.75, 78.9), (r - 0.4, 78.9), (r - 0.4, 82.8), (r - 0.75, 83.6)]
     for sx in (-1, 1):
         for sy in (-1, 1):
             loc = (sx * TUR_X, sy * TUR_Y, 0)
             sh = lathe('turret', prof, seg=8, mat=P, loc=loc, close_bottom=False)
             soft.append(cull_inside(sh, (-L / 2 + 0.05, -FY + 0.05, -1), (L / 2 - 0.05, FY - 0.05, CORE_TOP + 2.5)))
-            soft.append(lathe('tdome', onion_profile(r - 0.4, 3.7, neck=0.85, bulge=1.12, n=7, base_z=83.6), seg=8, mat=PH, loc=loc, close_bottom=False))
+            soft.append(lathe('tdome', onion_profile(r - 0.4, 3.7, neck=0.85, bulge=1.12, n=5, base_z=83.6), seg=8, mat=PH, loc=loc, close_bottom=False))
             soft.append(cylinder('tfin', 0.16, 1.5, (loc[0], loc[1], 83.6 + 3.7 * 1.3), seg=4, mat=M['gold'], r2=0.02, cap=False))
             # four little arched openings on the drum (dark plates)
             rr = (r - 0.45) * math.cos(math.pi / 8) + 0.03
@@ -231,7 +231,7 @@ def kaman_build(A, rotate=False):
 
     if rotate:
         common.rot_z(hard + soft + cols, math.pi / 2)
-    lean_finish(A, hard, soft, tile=10.0, dice_edge=18.0, ao_dist=5.0, ground_dirt=6.0, ao_strength=0.65)
+    lean_finish(A, hard, soft, tile=10.0, dice_edge=0, ao_dist=4.0, ground_dirt=6.0, ao_strength=0.55)
     az0 = 90 if rotate else 0
     A.preview = common.shots(front_az=az0 - 35, el=12, extra=[
         {'name': 'arch', 'size': 320, 'samples': 14, 'view': {'az': az0 - 12, 'el': 3, 'fov': 40, 'pad': 0.5}}])

@@ -1,0 +1,39 @@
+00:00.027  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building gulzar_houz (landmark)
+[kit] baked AO to vertex colours (32 samples) in 0.4s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (1 samples) in 0.4s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+19:21:36 | INFO: Starting glTF 2.0 export
+19:21:36 | INFO: Extracting primitive: COL_gulzar_houz
+19:21:36 | INFO: Primitives created: 1
+19:21:36 | INFO: Extracting primitive: gulzar_houz_hard
+19:21:36 | INFO: Primitives created: 5
+19:21:36 | INFO: Extracting primitive: gulzar_houz_soft
+19:21:36 | INFO: Primitives created: 2
+19:21:36 | INFO: Finished glTF 2.0 export in 0.21533751487731934 s
+
+[kit] gulzar_houz: 1568 tris (budget 20000) ok, 94.5 KB, clips [], anchors 0
+19:21:36 | INFO: Data are loaded, start creating Blender stuff
+19:21:36 | INFO: Blender create Mesh node COL_gulzar_houz
+19:21:36 | INFO: Blender create Mesh node gulzar_houz_hard
+19:21:36 | INFO: Blender create Mesh node gulzar_houz_soft
+19:21:36 | INFO: glTF import finished in 0.03s
+00:10.188  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/gulzar_houz.png'
+[kit] preview gulzar_houz.png (384px, 20 spp) in 8.0s
+19:21:44 | INFO: Data are loaded, start creating Blender stuff
+19:21:44 | INFO: Blender create Mesh node COL_gulzar_houz
+19:21:44 | INFO: Blender create Mesh node gulzar_houz_hard
+19:21:44 | INFO: Blender create Mesh node gulzar_houz_soft
+19:21:44 | INFO: glTF import finished in 0.04s
+00:13.902  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/gulzar_houz_back.png'
+[kit] preview gulzar_houz_back.png (320px, 14 spp) in 3.7s
+19:21:48 | INFO: Data are loaded, start creating Blender stuff
+19:21:48 | INFO: Blender create Mesh node COL_gulzar_houz
+19:21:48 | INFO: Blender create Mesh node gulzar_houz_hard
+19:21:48 | INFO: Blender create Mesh node gulzar_houz_soft
+19:21:48 | INFO: glTF import finished in 0.04s
+00:17.407  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/gulzar_houz_close.png'
+[kit] preview gulzar_houz_close.png (320px, 14 spp) in 3.4s
+[kit] done gulzar_houz in 16.9s

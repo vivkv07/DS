@@ -1,0 +1,37 @@
+00:00.028  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building kaman (landmark)
+[kit] baked AO to vertex colours (32 samples) in 0.9s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+19:23:14 | INFO: Starting glTF 2.0 export
+19:23:14 | INFO: Extracting primitive: COL_kaman
+19:23:14 | INFO: Primitives created: 1
+19:23:14 | INFO: Extracting primitive: kaman_hard
+19:23:14 | INFO: Primitives created: 4
+19:23:14 | INFO: Extracting primitive: kaman_soft
+19:23:14 | INFO: Primitives created: 3
+19:23:14 | INFO: Finished glTF 2.0 export in 0.11064863204956055 s
+
+[kit] kaman: 2392 tris (budget 20000) ok, 133.6 KB, clips [], anchors 0
+19:23:14 | INFO: Data are loaded, start creating Blender stuff
+19:23:14 | INFO: Blender create Mesh node COL_kaman
+19:23:14 | INFO: Blender create Mesh node kaman_hard
+19:23:14 | INFO: Blender create Mesh node kaman_soft
+19:23:14 | INFO: glTF import finished in 0.03s
+00:10.438  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kaman.png'
+[kit] preview kaman.png (384px, 20 spp) in 8.2s
+19:23:23 | INFO: Data are loaded, start creating Blender stuff
+19:23:23 | INFO: Blender create Mesh node COL_kaman
+19:23:23 | INFO: Blender create Mesh node kaman_hard
+19:23:23 | INFO: Blender create Mesh node kaman_soft
+19:23:23 | INFO: glTF import finished in 0.03s
+00:14.865  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kaman_back.png'
+[kit] preview kaman_back.png (320px, 14 spp) in 4.4s
+19:23:27 | INFO: Data are loaded, start creating Blender stuff
+19:23:27 | INFO: Blender create Mesh node COL_kaman
+19:23:27 | INFO: Blender create Mesh node kaman_hard
+19:23:27 | INFO: Blender create Mesh node kaman_soft
+19:23:27 | INFO: glTF import finished in 0.04s
+00:19.831  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kaman_arch.png'
+[kit] preview kaman_arch.png (320px, 14 spp) in 4.9s
+[kit] done kaman in 19.3s

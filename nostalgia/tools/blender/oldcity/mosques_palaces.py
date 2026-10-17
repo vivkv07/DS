@@ -121,30 +121,30 @@ def bal(name, length, z, h, mat, depth=1.0, dark=None, n=None, fy=0.0, pitch=2.6
         ps = []
         for i in range(n):
             x = -length / 2 + step * (i + 0.5)
-            w = step * 0.5
+            w = step * 0.3
             yy = fy - depth / 2 - 0.06
-            ps.append([(x - w / 2, yy, z + h * 0.2), (x + w / 2, yy, z + h * 0.2), (x + w / 2, yy, z + h * 0.74), (x - w / 2, yy, z + h * 0.74)])
+            ps.append([(x - w / 2, yy, z + h * 0.26), (x + w / 2, yy, z + h * 0.26), (x + w / 2, yy, z + h * 0.72), (x - w / 2, yy, z + h * 0.72)])
         out.append(planes(name + '_gaps', ps, dark, facing=(0, -1, 0)))
     return out
 
 
-def bal_ring(name, x0, y0, x1, y1, z, h, mat, dark=None, depth=0.9, sides='nsew'):
+def bal_ring(name, x0, y0, x1, y1, z, h, mat, dark=None, depth=0.9, sides='nsew', pitch=2.6):
     """balustrades along the edges of a rectangle (roof parapet)"""
     out = []
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     W, D = x1 - x0, y1 - y0
     for s in sides:
         if s == 's':      # -Y edge
-            ob = bal(name + 's', W, z, h, mat, depth, dark)
+            ob = bal(name + 's', W, z, h, mat, depth, dark, pitch=pitch)
             out += place(ob, 0, (cx, y0 + depth / 2, 0))
         elif s == 'n':
-            ob = bal(name + 'n', W, z, h, mat, depth, dark)
+            ob = bal(name + 'n', W, z, h, mat, depth, dark, pitch=pitch)
             out += place(ob, math.pi, (cx, y1 - depth / 2, 0))
         elif s == 'w':
-            ob = bal(name + 'w', D - 2 * depth, z, h, mat, depth, dark)
+            ob = bal(name + 'w', D - 2 * depth, z, h, mat, depth, dark, pitch=pitch)
             out += place(ob, -math.pi / 2, (x0 + depth / 2, cy, 0))
         elif s == 'e':
-            ob = bal(name + 'e', D - 2 * depth, z, h, mat, depth, dark)
+            ob = bal(name + 'e', D - 2 * depth, z, h, mat, depth, dark, pitch=pitch)
             out += place(ob, math.pi / 2, (x1 - depth / 2, cy, 0))
     return out
 
@@ -177,12 +177,12 @@ def window_row(n, span, z, w, h, shape='rect', gap=0.12, x0=0.0):
         elif shape == 'seg':
             o = seg_arch(w, h)
         else:
-            o = arch(w, h, shape, n=4, spring=0.68 if shape == 'round' else 0.62)
+            o = arch(w, h, shape, n=3, spring=0.68 if shape == 'round' else 0.62)
         out.append(fpoly(o, x, z, -gap))
     return out
 
 
-def comb(name, length, z, h, n, w, mat, y0, y1, cap=True, leaf=False):
+def comb(name, length, z, h, n, w, mat, y0, y1, cap=True, leaf=False, back=True):
     """a crenellated parapet top (merlons) as a front comb plane at y0, a back one at y1 and the
     merlon tops: cheap silhouettes (no side faces between merlons)"""
     out = []
@@ -198,7 +198,8 @@ def comb(name, length, z, h, n, w, mat, y0, y1, cap=True, leaf=False):
     outline.append((length / 2, -0.3))
     outline.append((-length / 2, -0.3))
     out.append(planes(name + '_f', [[(x, y0, z + zz) for (x, zz) in outline]], mat, facing=(0, -1, 0)))
-    out.append(planes(name + '_b', [[(x, y1, z + zz) for (x, zz) in outline]], mat, facing=(0, 1, 0)))
+    if back:
+        out.append(planes(name + '_b', [[(x, y1, z + zz) for (x, zz) in outline]], mat, facing=(0, 1, 0)))
     if cap and not leaf:
         tops = []
         for i in range(n):
@@ -280,10 +281,10 @@ def mecca_masjid(A):
     """Mecca Masjid prayer hall: grey Deccan granite, five great pointed arches on the east front,
     cornice and arcaded gallery, flat roof with parapet, two octagonal minaret-towers."""
     M = {
-        'granite': kit.material('granite_grey', 'granite', base='#7f7a73', var=0.13, grain=0.12, specks=0.7, grime=0.5, dirt='#3e3a36'),
-        'granite_hi': kit.material('granite_grey', 'granite_hi', base='#a39d94', var=0.1, specks=0.5),
+        'granite': kit.material('granite_grey', 'granite', base='#9d978e', var=0.13, grain=0.12, specks=0.7, grime=0.5, dirt='#3e3a36'),
+        'granite_hi': kit.material('granite_grey', 'granite_hi', base='#bdb6aa', var=0.1, specks=0.5),
         'dark': kit.material('lime_plaster_shadow', 'mm_dark', base='#36322e', streaks=0.0, var=0.05, grime=0.2),
-        'recess': kit.material('granite_grey', 'mm_recess', base='#5f5a54', var=0.12, specks=0.5),
+        'recess': kit.material('granite_grey', 'mm_recess', base='#6c6760', var=0.12, specks=0.5),
         'gold': kit.material('gold_leaf', 'finial', base='#a08a52', metal=0.3, rough=0.55),
     }
     g, gh, dk = M['granite'], M['granite_hi'], M['dark']
@@ -298,14 +299,14 @@ def mecca_masjid(A):
     # side and back walls: blind arcades (recessed-looking darker granite decals)
     for (rot, length, off) in ((math.pi / 2, MM_D - (hall_y0 + MM_D / 2) - 1.0, (MM_W / 2 - 3, (hall_y0 + MM_D / 2 - 1.0) / 2)),
                                (-math.pi / 2, MM_D - (hall_y0 + MM_D / 2) - 1.0, (-MM_W / 2 + 3, (hall_y0 + MM_D / 2 - 1.0) / 2)),
-                               (math.pi, MM_W - 22, (0, MM_D / 2 - 1.5))):
+                               (math.pi, MM_W - 22, (0, MM_D / 2 - 1.0))):
         n = max(3, int(round(length / 12.0)))
         o = planes('mm_blind', window_row(n, length - 4, 7.0, (length - 4) / n * 0.6, 26.0, 'pointed', 0.1), M['recess'], facing=(0, -1, 0))
         parts += place([o], rot, (off[0], off[1], 0))
     parts.append(hall)
     # ---- the verandah: arch screen in front of the hall with the five great arches cut through
     scr_w = 2 * MIN_X - 2 * 6.0
-    scr = box('mm_screen', (scr_w, 6.0, MM_H - 2.0), (0, fy + 3.0, 2.0), g, base=True)
+    scr = box('mm_screen', (scr_w, 6.0, 38.6), (0, fy + 3.0, 2.0), g, base=True)
     step = scr_w / 5.3
     cutters = []
     for i in range(5):
@@ -320,7 +321,7 @@ def mecca_masjid(A):
     # side walls of the verandah (between the screen and the hall) + its roof
     for s in (-1, 1):
         parts.append(box('mm_vside', (5.0, hall_y0 - fy - 6.0, MM_H - 2.0), (s * (scr_w / 2 - 2.5), (fy + 6.0 + hall_y0) / 2, 2.0), g, base=True))
-    parts.append(box('mm_vroof', (scr_w, hall_y0 - fy, 4.0), (0, (fy + hall_y0) / 2, MM_H - 6.0), g, base=True))
+    parts.append(box('mm_vroof', (scr_w - 0.2, hall_y0 - fy - 3.2, 8.0), (0, (fy + 3.2 + hall_y0) / 2, MM_H - 8.0), g, base=True))
     # the hall's front wall seen through the arches: dark with inner arched doorways (decals)
     inner = []
     for i in range(5):
@@ -350,8 +351,8 @@ def mecca_masjid(A):
     # ---- cornice (chajja) + the arcaded gallery above it + the parapet
     parts.append(box('mm_cornice', (scr_w + 1.0, 3.2, 1.2), (0, fy + 0.4, 39.4), gh, base=True))
     parts.append(box('mm_cornice2', (scr_w + 0.4, 1.4, 0.8), (0, fy + 0.4, 38.6), g, base=True))
-    parts.append(box('mm_gallery', (scr_w, 3.0, 7.0), (0, fy + 1.5, 40.6), g, base=True))
-    parts.append(planes('mm_galarc', window_row(21, scr_w - 3.0, 41.3, (scr_w - 3.0) / 21 * 0.6, 5.4, 'pointed', 0.12), dk, facing=(0, -1, 0)))
+    parts.append(box('mm_gallery', (scr_w, 3.0, 7.0), (0, fy + 1.5, 40.6), gh, base=True))
+    parts.append(planes('mm_galarc', window_row(21, scr_w - 3.0, 41.3, (scr_w - 3.0) / 21 * 0.48, 5.2, 'pointed', 0.12 - fy), dk, facing=(0, -1, 0)))
     parts.append(box('mm_galtop', (scr_w + 0.6, 3.6, 1.0), (0, fy + 1.5, 47.6), gh, base=True))
     # front parapet: low solid with block merlons
     parts += comb('mm_mer', scr_w - 2, 48.6, 2.4, 17, 2.6, g, fy + 0.6, fy + 2.4)
@@ -406,7 +407,7 @@ def palace_block(M, name, x0, y0, x1, y1, h, storeys=2, sides='nsew', arcade_sid
                     x = -(L - 3) / 2 + st * i
                     tr.append(fpoly(rect(0.9, sh * 0.86), x, k * sh + sh * 0.06, -0.08))
             else:
-                loc += window_row(n, L - 4, z + sh * 0.12, 2.6, sh * 0.55, 'seg', 0.14)
+                loc += window_row(n, L - 4, z + sh * 0.12, 2.6, sh * 0.55, 'rect', 0.14)
         if loc:
             dec += place([planes(name + '_op', loc, dk, facing=(0, -1, 0))], rot, (cx, cy, 0))
         if tr:
@@ -418,7 +419,7 @@ def palace_block(M, name, x0, y0, x1, y1, h, storeys=2, sides='nsew', arcade_sid
             continue
         z = k * sh - (0.9 if k == storeys else 0.5)
         out.append(box(name + '_cor', (x1 - x0 + 1.4, y1 - y0 + 1.4, 0.9 if k == storeys else 0.6), ((x0 + x1) / 2, (y0 + y1) / 2, z), hi, base=True))
-    out += bal_ring(name + '_bal', x0, y0, x1, y1, h, 3.0, hi, dark=dk, sides=bal_sides)
+    out += bal_ring(name + '_bal', x0, y0, x1, y1, h, 3.0, hi, dark=M['gap'], sides=bal_sides, pitch=4.4)
     if pediment:
         (pw, ph) = pediment
         cy = y0
@@ -433,10 +434,11 @@ def chowmahalla(A):
     """Chowmahalla compound from the street: north gate with the Khilwat clock tower, crenellated
     compound wall, palace blocks (Khilwat Mubarak, Afzal / Mahtab Mahal style) above the wall."""
     M = {
-        'plaster': kit.material('lime_plaster', 'ch_plaster', base='#e9d39c', var=0.07, grain=0.04, streaks=0.45),
-        'wall': kit.material('lime_plaster_shadow', 'ch_wall', base='#d9bf8a', var=0.1, grain=0.05, streaks=0.55, grime=0.65),
+        'plaster': kit.material('lime_plaster', 'ch_plaster', base='#f2dfae', var=0.07, grain=0.04, streaks=0.45),
+        'wall': kit.material('lime_plaster_shadow', 'ch_wall', base='#e8d3a2', var=0.1, grain=0.05, streaks=0.55, grime=0.65),
         'trim': kit.material('whitewash', 'ch_trim', base='#f4eedf'),
-        'recess': kit.material('lime_plaster_shadow', 'ch_recess', base='#bfa173', var=0.1, streaks=0.5),
+        'recess': kit.material('lime_plaster_shadow', 'ch_recess', base='#cdb283', var=0.1, streaks=0.5),
+        'gap': kit.material('lime_plaster_shadow', 'ch_gap', base='#8c7a5c', streaks=0.0),
         'dark': kit.material('lime_plaster_shadow', 'ch_dark', base='#3a3128', streaks=0.0, var=0.05, grime=0.2),
         'door': kit.material('wood_raw', 'ch_door', base='#5a3a22'),
         'iron': kit.material('iron_black', 'ch_iron'),
@@ -455,16 +457,15 @@ def chowmahalla(A):
         for (a, b) in segs:
             ln = b - a
             mid = (a + b) / 2
-            o = [box('ch_wall', (ln, t, CH_WALL), (mid, 0, 0), wl, base=True),
-                 box('ch_coping', (ln, t + 0.6, 0.6), (mid, 0, CH_WALL - 0.2), hi, base=True)]
-            mer = comb('ch_mer', ln - 1.0, CH_WALL + 0.4, 2.6, max(2, int(ln / 7.0)), 3.0, wl, -t / 2 + 0.2, t / 2 - 0.2, leaf=True)
+            o = [box('ch_wall', (ln, t, CH_WALL), (mid, 0, 0), wl, base=True)]
+            mer = comb('ch_mer', ln - 1.0, CH_WALL, 2.8, max(2, int(ln / 10.0)), 3.6, wl, -t / 2 + 0.3, t / 2 - 0.3, leaf=True, back=False)
             for m_ in mer:
                 m_.location.x += mid
                 kit.apply_transform(m_)
             o += mer
             # blind arch recess decals along the outside (street) face (not on the back)
-            if nm != 'back':
-                n = max(1, int(ln / 16.0))
+            if nm == 'front':
+                n = max(1, int(ln / 14.0))
                 o.append(planes('ch_wallarc', window_row(n, ln - 4, 2.5, 6.0, 9.5, 'pointed', t / 2 + 0.06, mid), M['recess'], facing=(0, -1, 0)))
             parts += place(o, rot, (cx, cy, 0))
     # ---- the north gate tower (Khilwat gate) with the clock tower above
@@ -477,10 +478,10 @@ def chowmahalla(A):
     # the closed doors (recessed) with iron studs and a dark frame
     parts.append(planes('ch_doors', [fpoly(arch_outline(11.8, 12.0, 7.4, 'pointed', n=7), 0, 0, fy + 1.4)], M['door'], facing=(0, -1, 0)))
     studs = []
-    for i in range(3):
+    for i in range(2):
         for j in range(4):
             for s in (-1, 1):
-                x = s * (1.2 + i * 1.6)
+                x = s * (1.5 + i * 2.2)
                 z = 2.0 + j * 2.9
                 studs.append([(x - 0.18, fy + 1.3, z - 0.18), (x + 0.18, fy + 1.3, z - 0.18), (x + 0.18, fy + 1.3, z + 0.18), (x - 0.18, fy + 1.3, z + 0.18)])
     studs.append([(-0.12, fy + 1.3, 0), (0.12, fy + 1.3, 0), (0.12, fy + 1.3, 18.5), (-0.12, fy + 1.3, 18.5)])
@@ -504,20 +505,23 @@ def chowmahalla(A):
     parts.append(box('ch_gcor2', (GW + 0.8, GD + 0.8, 0.6), (0, gy, 17.0), hi, base=True))
     for (rot, L, off) in ((0.0, GW, (0, gy - GD / 2 + 0.6)), (math.pi, GW, (0, gy + GD / 2 - 0.6)),
                           (-math.pi / 2, GD - 1.2, (-GW / 2 + 0.6, gy)), (math.pi / 2, GD - 1.2, (GW / 2 - 0.6, gy))):
-        parts += place(comb('ch_gmer', L - 5.0, GH, 2.6, max(2, int(L / 3.0)), 1.9, pl, -0.4, 0.4, leaf=True), rot, (off[0], off[1], 0))
+        parts += place(comb('ch_gmer', L - 5.0, GH, 2.6, max(2, int(L / 4.0)), 2.2, pl, -0.4, 0.4, leaf=True), rot, (off[0], off[1], 0))
     # corner chhatris on the gate tower
     for sx in (-1, 1):
         for sy in (-1, 1):
             x, y = sx * (GW / 2 - 2.0), gy + sy * (GD / 2 - 2.0)
-            parts.append(lathe('ch_chh', [(1.5, GH), (1.5, GH + 4.0), (2.1, GH + 4.3), (2.1, GH + 4.8), (1.6, GH + 5.0), (1.4, GH + 6.4),
-                                          (0.8, GH + 7.4), (0.0, GH + 8.8)], seg=6, mat=hi, loc=(x, y, 0), close_bottom=False))
+            parts.append(lathe('ch_chh', [(1.5, GH), (1.5, GH + 4.0), (2.1, GH + 4.5), (1.4, GH + 5.4),
+                                          (0.0, GH + 8.6)], seg=8, mat=hi, loc=(x, y, 0), close_bottom=False))
             ops = []
-            for k in range(6):
-                a_ = TAU * k / 6 + math.pi / 6
-                o_ = planes('ch_chop', [fpoly(arch(1.0, 3.0, 'pointed', n=2), 0, GH + 0.6, -1.5 * math.cos(math.pi / 6) - 0.06)], dk, facing=(0, -1, 0))
+            for k in range(8):
+                a_ = TAU * k / 8 + math.pi / 8
+                if math.sin(a_) > -0.1 or sy > 0:
+                    continue
+                o_ = planes('ch_chop', [fpoly(arch(0.8, 3.0, 'pointed', n=2), 0, GH + 0.6, -1.5 * math.cos(math.pi / 8) - 0.06)], dk, facing=(0, -1, 0))
                 place([o_], a_ + math.pi / 2, (x, y, 0))
                 ops.append(o_)
-            parts.append(kit.join(ops, 'ch_chops'))
+            if ops:
+                parts.append(kit.join(ops, 'ch_chops'))
     # clock tower stage above the gate: square tower, clock dial on the front, cornice, dome
     ct_w = 10.0
     CT0, CT1 = GH, GH + 15.0
@@ -555,14 +559,14 @@ def chowmahalla(A):
                                      (2.9, CT1 + 7.0), (1.4, CT1 + 8.8), (0.0, CT1 + 11.6)], seg=10, mat=pl, loc=(0, gy, 0), close_bottom=False))
     # ---- the palaces inside (glimpsed over the wall)
     # Khilwat Mubarak: the great durbar hall (tall, at the back)
-    parts += palace_block(M, 'ch_khilwat', -36, 30, 36, 66, 34, storeys=2, sides='nswe', arcade_sides='s', pediment=(24, 6), min_z=CH_WALL)
+    parts += palace_block(M, 'ch_khilwat', -36, 30, 36, 66, 34, storeys=2, sides='swe', arcade_sides='s', pediment=(24, 6), min_z=CH_WALL)
     # its gently pitched roof behind the balustrade
     roof = prism_from_outline('ch_kroof', [(-17, 0), (17, 0), (0, 4.5)], 70.0, axis='X', center=(0, 48, 34), mat=M['iron'])
     parts.append(roof)
     # two neoclassical mahals (Afzal / Mahtab Mahal style) either side of the long courtyard
     for s in (-1, 1):
         x0, x1 = (s * 16, s * 62) if s > 0 else (s * 62, s * 16)
-        parts += palace_block(M, 'ch_mahal%d' % (s + 1), x0, -46, x1, 4, 26, storeys=2, sides='nswe', arcade_sides=('e' if s < 0 else 'w') + 's',
+        parts += palace_block(M, 'ch_mahal%d' % (s + 1), x0, -46, x1, 4, 26, storeys=2, sides='swe', arcade_sides=('e' if s < 0 else 'w') + 's',
                               pediment=None, min_z=CH_WALL)
         # portico pediment on the courtyard side
         tri = prism_from_outline('ch_mped', [(-8, 0), (8, 0), (0, 4.0)], 1.4, center=(0, 0, 26.0), mat=hi)
@@ -632,29 +636,24 @@ def mound(M, seed=7):
     return ob
 
 
-def fk_block(M, name, L, D, h, storeys=2, front_arcade=False, lit=()):
-    """a straight palace block centred at the origin, length L along X, depth D along Y, facing -Y
-    (both long faces get windows / verandah decals); returns objects (place them afterwards)."""
+def fk_block(M, name, L, D, h, storeys=2, front_arcade=False, lit=(), ends=True, bal_sides='nsew', urns=0, back=True, pitch=3.0):
+    """a straight palace block centred at the origin, length L along X, depth D along Y, facing -Y:
+    tall dark window decals on the long faces (verandah arches on the front when front_arcade),
+    optional end windows, top cornice, balustrade (gaps outside) and `urns` urns along the front."""
     pl, hi, dk = M['plaster'], M['trim'], M['dark']
     out = [box(name, (L, D, h), (0, 0, 0), pl, base=True)]
     sh = h / storeys
     n = max(2, int(L / 6.2))
-    for side in (0, 1):
-        ops, trs, lits = [], [], []
+    for side in ((0, 1) if back else (0,)):
+        ops, lits = [], []
         for k in range(storeys):
             z = k * sh + sh * 0.16
             if front_arcade and side == 0:
-                ops += window_row(n, L - 2, k * sh + 0.4, (L - 2) / n * 0.7, sh * 0.82, 'round', 0.14)
-                st = (L - 2) / n
-                for i in range(n + 1):
-                    trs.append(fpoly(rect(0.8, sh * 0.9), -(L - 2) / 2 + st * i, k * sh, -0.08))
+                ops += window_row(n, L - 2, k * sh + 0.4, (L - 2) / n * 0.66, sh * 0.8, 'round', 0.14)
             else:
-                for i, p in enumerate(window_row(n, L - 3, z, 2.2, sh * 0.6, 'round', 0.14)):
+                for i, p in enumerate(window_row(n, L - 3, z, 2.2, sh * 0.62, 'round', 0.14)):
                     (lits if (k, i, side) in lit else ops).append(p)
-                st = (L - 3) / n
-                for i in range(n):
-                    trs.append(fpoly(rect(3.2, sh * 0.72), -(L - 3) / 2 + st * (i + 0.5), z - sh * 0.04, -0.08))
-        objs = [planes(name + '_op', ops, dk, facing=(0, -1, 0)), planes(name + '_tr', trs, hi, facing=(0, -1, 0))]
+        objs = [planes(name + '_op', ops, dk, facing=(0, -1, 0))]
         if lits:
             objs.append(planes(name + '_lit', lits, M['lit'], facing=(0, -1, 0)))
         for o in objs:
@@ -663,24 +662,17 @@ def fk_block(M, name, L, D, h, storeys=2, front_arcade=False, lit=()):
             else:
                 place([o], math.pi, (0, D / 2, 0))
         out += objs
-    # end faces: one window column each
-    for s in (-1, 1):
-        ops = []
-        for k in range(storeys):
-            ops.append(fpoly(arch(2.2, sh * 0.6, 'round', n=4), 0, k * sh + sh * 0.16, -0.14))
-        o = planes(name + '_end', ops, dk, facing=(0, -1, 0))
-        place([o], s * math.pi / 2, (s * L / 2, 0, 0))
-        out.append(o)
-    for k in range(1, storeys + 1):
-        th = 1.0 if k == storeys else 0.55
-        out.append(box(name + '_cor', (L + 1.2, D + 1.2, th), (0, 0, k * sh - th), hi, base=True))
-    out += bal_ring(name + '_bal', -L / 2, -D / 2, L / 2, D / 2, h, 2.8, hi, dark=dk, sides='nsew')
-    # urns on the balustrade (front + back), cheap lathes
-    nu = max(2, int(L / 9))
-    for i in range(nu + 1):
-        x = -L / 2 + L * i / nu
-        for y in (-D / 2 + 0.45, D / 2 - 0.45):
-            out.append(lathe(name + '_urn', [(0.5, h + 2.8), (0.75, h + 3.4), (0.45, h + 4.3), (0.6, h + 4.7), (0.0, h + 5.2)], seg=5, mat=hi, loc=(x, y, 0), close_bottom=False))
+    if ends:
+        for s in (-1, 1):
+            ops = [fpoly(arch(2.2, sh * 0.62, 'round', n=3), 0, k * sh + sh * 0.16, -0.14) for k in range(storeys)]
+            o = planes(name + '_end', ops, dk, facing=(0, -1, 0))
+            place([o], s * math.pi / 2, (s * L / 2, 0, 0))
+            out.append(o)
+    out.append(box(name + '_cor', (L + 1.2, D + 1.2, 1.0), (0, 0, h - 1.0), hi, base=True))
+    out += bal_ring(name + '_bal', -L / 2, -D / 2, L / 2, D / 2, h, 2.6, hi, dark=M['gap'], sides=bal_sides, pitch=pitch)
+    for i in range(urns):
+        x = -L / 2 + L * i / max(1, urns - 1)
+        out.append(lathe(name + '_urn', [(0.55, h + 2.6), (0.8, h + 3.5), (0.0, h + 4.8)], seg=4, mat=hi, loc=(x, -D / 2 + 0.45, 0), close_bottom=False))
     return out
 
 
@@ -693,9 +685,10 @@ def falaknuma(A):
     M = {
         'plaster': kit.material('lime_plaster', 'fk_white', base='#efe9dc', var=0.05, grain=0.03, streaks=0.35, grime=0.45),
         'trim': kit.material('whitewash', 'fk_trim', base='#fbf8f0'),
+        'gap': kit.material('lime_plaster_shadow', 'fk_gap', base='#8e8a82', streaks=0.0),
         'dark': kit.material('lime_plaster_shadow', 'fk_glass', base='#2c3034', streaks=0.0, var=0.05, grime=0.15),
         'lit': kit.material('clock_face', 'window@night', base='#3a2a18', emit='#ffcf80', emit_strength=0.0),
-        'rock': kit.material('granite_grey', 'fk_rock', base='#8f8579', var=0.16, grain=0.14, specks=0.5, grime=0.5),
+        'rock': kit.material('granite_grey', 'fk_rock', base='#7a6d60', var=0.16, grain=0.14, specks=0.5, grime=0.5),
         'pave': kit.material('sandstone', 'fk_pave', base='#cbbfa8', var=0.06),
         'iron': kit.material('iron_black', 'fk_iron'),
     }
@@ -703,17 +696,17 @@ def falaknuma(A):
     B = FK_BASE
     parts = [mound(M)]
     # boulders on the slopes
-    parts += rocks('fk_boulder', [(-50, -40, 4.0), (49, -55, 3.4), (-47, 30, 3.6), (50, 60, 4.2), (-30, -70, 3.0), (33, -72, 2.6), (-50, 72, 3.2)], M['rock'], seed=3)
+    parts += rocks('fk_boulder', [(-50, -40, 4.0), (49, -55, 3.4), (-47, 30, 3.6), (33, -72, 2.6)], M['rock'], seed=3)
     # ---- palace on the terrace
     pal = []
     # central main block (two tall storeys) + portico of tall columns with a pediment
     CB_W, CB_D, CB_H = 40.0, 30.0, 32.0
     cy0 = -16.0                          # main block front face
-    main = fk_block(M, 'fk_main', CB_W, CB_D, CB_H, 2, lit={(0, 1, 1), (1, 4, 0)})
+    main = fk_block(M, 'fk_main', CB_W, CB_D, CB_H, 2, lit={(0, 1, 1), (1, 4, 0)}, urns=6)
     place(main, 0, (0, cy0 + CB_D / 2, B))
     pal += main
     # attic storey over the centre (higher, gives the central mass)
-    att = fk_block(M, 'fk_attic', 22.0, 18.0, 8.0, 1)
+    att = fk_block(M, 'fk_attic', 22.0, 18.0, 8.0, 1, ends=False, back=False, bal_sides='s', urns=3)
     place(att, 0, (0, cy0 + 12.0, B + CB_H))
     pal += att
     # portico: 6 columns full height, entablature, pediment
@@ -721,7 +714,7 @@ def falaknuma(A):
     col_h = CB_H - 4.0
     for i in range(6):
         x = (i - 2.5) * 5.0
-        pal.append(lathe('fk_col', [(1.25, B + 1.2), (1.05, B + 2.0), (1.0, B + col_h - 2.0), (1.15, B + col_h - 1.4), (1.6, B + col_h - 0.4), (1.6, B + col_h)],
+        pal.append(lathe('fk_col', [(1.2, B + 1.2), (1.0, B + col_h - 2.0), (1.65, B + col_h - 0.2), (1.65, B + col_h)],
                          seg=8, mat=hi, loc=(x, py, 0), close_bottom=False))
     pal.append(box('fk_pstep', (34.0, 12.0, 1.2), (0, py + 2.0, B), hi, base=True))
     pal.append(box('fk_pent', (32.0, 11.0, 3.0), (0, py + 3.5, B + col_h), hi, base=True))
@@ -731,33 +724,33 @@ def falaknuma(A):
     pal.append(planes('fk_tymp', [fpoly([(-12.5, 0.8), (12.5, 0.8), (0, 5.4)], 0, B + col_h + 3.0, py - 0.82)], M['plaster'], facing=(0, -1, 0)))
     for x in (-17, 0, 17):
         pal.append(lathe('fk_acro', [(0.6, B + col_h + 3.0 + (7.0 if x == 0 else 0)), (0.85, B + col_h + 3.6 + (7.0 if x == 0 else 0)), (0.5, B + col_h + 4.8 + (7.0 if x == 0 else 0)), (0.0, B + col_h + 5.6 + (7.0 if x == 0 else 0))],
-                         seg=5, mat=hi, loc=(x, py - 0.5, 0), close_bottom=False))
+                         seg=4, mat=hi, loc=(x, py - 0.5, 0), close_bottom=False))
     # flanking two-storey blocks with arcaded verandahs
     for s in (-1, 1):
-        fl = fk_block(M, 'fk_flank', 16.0, 24.0, 26.0, 2, front_arcade=True)
+        fl = fk_block(M, 'fk_flank', 16.0, 24.0, 26.0, 2, front_arcade=True, back=False, urns=3)
         place(fl, 0, (s * (CB_W / 2 + 8.0), cy0 + 14.0, B))
         pal += fl
     # the curved wings (claws) sweeping back on both sides: segments along an arc
-    wing_pts = [(36.0, -2.0), (44.0, 12.0), (46.5, 30.0), (43.5, 47.0), (35.0, 60.0)]
+    wing_pts = [(35.0, -2.0), (43.0, 18.0), (42.5, 40.0), (33.0, 58.0)]
     for s in (-1, 1):
         for k in range(len(wing_pts) - 1):
             (xa, ya), (xb, yb) = wing_pts[k], wing_pts[k + 1]
             xa, xb = s * xa, s * xb
             L = math.hypot(xb - xa, yb - ya) + 1.2
             ang = math.atan2(yb - ya, xb - xa)
-            seg = fk_block(M, 'fk_wing', L, 10.0, 24.0, 2, front_arcade=False, lit={(1, 1, 0)} if (k == 2 and s > 0) else ())
+            seg = fk_block(M, 'fk_wing', L, 10.0, 24.0, 2, front_arcade=False, lit={(1, 1, 0)} if (k == 1 and s > 0) else (), ends=False, bal_sides='s', pitch=3.4, back=False)
             # outward face (-Y of the block) must look away from the courtyard
             rot = ang + (math.pi if s > 0 else 0.0)
             place(seg, rot, ((xa + xb) / 2, (ya + yb) / 2, B))
             pal += seg
     # the tail: a long rear wing on the axis, ending in a rounded pavilion
-    tail = fk_block(M, 'fk_tail', 44.0, 12.0, 22.0, 2)
+    tail = fk_block(M, 'fk_tail', 44.0, 12.0, 22.0, 2, ends=False, bal_sides='ns', pitch=3.4)
     place(tail, math.pi / 2, (0, 24.0 + 22.0, B))
     pal += tail
     pal.append(lathe('fk_tailend', [(8.0, B), (8.0, B + 22.0), (8.6, B + 22.2), (8.6, B + 23.2), (0, B + 23.2)], seg=12, mat=pl, loc=(0, 68.0, 0), close_bottom=False))
     # small domed belvedere over the main block's back (the silhouette's crown)
-    pal.append(lathe('fk_cupola', [(4.2, B + CB_H + 8.0), (4.2, B + CB_H + 11.5), (4.8, B + CB_H + 12.0), (4.0, B + CB_H + 12.4), (3.8, B + CB_H + 14.0),
-                                   (2.9, B + CB_H + 16.0), (1.4, B + CB_H + 17.4), (0.3, B + CB_H + 17.8), (0.0, B + CB_H + 19.5)], seg=12, mat=hi, loc=(0, cy0 + 12.0, 0), close_bottom=False))
+    pal.append(lathe('fk_cupola', [(4.2, B + CB_H + 8.0), (4.2, B + CB_H + 11.5), (4.8, B + CB_H + 12.0), (3.8, B + CB_H + 12.6),
+                                   (2.9, B + CB_H + 15.6), (1.2, B + CB_H + 17.4), (0.0, B + CB_H + 19.5)], seg=12, mat=hi, loc=(0, cy0 + 12.0, 0), close_bottom=False))
     parts += pal
     # ---- approach ramp up the front slope + the closed gate at the foot
     parts.append(ramp_strip(M, B))
@@ -768,7 +761,10 @@ def falaknuma(A):
         gate.append(box('fk_gcap', (5.0, 5.0, 1.0), (s * 9.5, gy, 15.0), hi, base=True))
         gate.append(lathe('fk_gdome', [(1.8, 16.0), (1.9, 17.0), (1.4, 18.6), (0.5, 19.6), (0.0, 20.6)], seg=8, mat=pl, loc=(s * 9.5, gy, 0), close_bottom=False))
         gate.append(box('fk_gwall', (FK_W / 2 - 13.0, 1.6, 5.0), (s * (11.5 + (FK_W / 2 - 13.0) / 2), gy + 1.0, 0), pl, base=True))
-    gate.append(kit.grill('fk_ggrill', 15.0, 11.0, bars=13, r=0.16, frame=0.3, loc=(0, gy, 0.6), mat=M['iron']))
+    bars = [[(x - 0.18, 0, 0.4), (x + 0.18, 0, 0.4), (x + 0.18, 0, 12.6), (x - 0.18, 0, 12.6)] for x in [(-7.0 + i * 14.0 / 12) for i in range(13)]]
+    bars += [[(-7.5, 0, z), (7.5, 0, z), (7.5, 0, z + 0.5), (-7.5, 0, z + 0.5)] for z in (1.6, 6.0, 11.4)]
+    for (yy, f) in ((-0.05, -1), (0.05, 1)):
+        gate.append(planes('fk_gbars', [[(x, gy + yy, z) for (x, _, z) in b] for b in bars], M['iron'], facing=(0, f, 0)))
     parts += gate
     debug_parts(parts)
     common.finish(A, parts, tile=10.0, tex=256, ao_dist=9.0, ground_dirt=4.0)
@@ -780,12 +776,14 @@ def falaknuma(A):
 
 
 def ramp_strip(M, B):
-    """sloped approach road from the gate (front foot) to the terrace edge"""
-    y0, y1 = -FK_D / 2 + 4.0, -50.0
-    bm = bmesh.new()
+    """sloped approach road from the gate (front foot) up the front slope to the terrace edge,
+    kept just above the mound's jittered rings"""
+    prof = [(-FK_D / 2 + 3.0, 0.25), (-74.0, 5.6), (-64.0, 10.8), (-54.0, B + 0.6), (-49.0, B + 0.2)]
     w = 7.0
-    vs = [bm.verts.new(p) for p in ((-w / 2, y0, 0.2), (w / 2, y0, 0.2), (w / 2, y1, B + 0.15), (-w / 2, y1, B + 0.15))]
-    bm.faces.new(vs)
+    bm = bmesh.new()
+    rows = [(bm.verts.new((-w / 2, y, z)), bm.verts.new((w / 2, y, z))) for (y, z) in prof]
+    for (a, b), (c, d) in zip(rows, rows[1:]):
+        bm.faces.new((a, b, d, c))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     ob = kit.obj_from_bm(bm, 'fk_road', M['pave'])
     for f in ob.data.polygons:
@@ -843,7 +841,7 @@ def ph_block(M, name, x0, y0, x1, y1, h, faces):
     # floor band and cornice
     out.append(box(name + '_band', (x1 - x0 + 0.8, y1 - y0 + 0.8, 0.6), ((x0 + x1) / 2, (y0 + y1) / 2, (h - 1.0) / 2 - 0.3), hi, base=True))
     out.append(box(name + '_cor', (x1 - x0 + 1.4, y1 - y0 + 1.4, 1.0), ((x0 + x1) / 2, (y0 + y1) / 2, h - 1.0), hi, base=True))
-    out += bal_ring(name + '_bal', x0 - 0.2, y0 - 0.2, x1 + 0.2, y1 + 0.2, h, 2.8, hi, dark=dk)
+    out += bal_ring(name + '_bal', x0 - 0.2, y0 - 0.2, x1 + 0.2, y1 + 0.2, h, 2.8, hi, dark=M['gap'])
     return out
 
 
@@ -857,6 +855,7 @@ def purani_haveli(A):
     M = {
         'plaster': kit.material('lime_plaster', 'ph_plaster', base='#e8cf96', var=0.07, grain=0.04, streaks=0.45),
         'trim': kit.material('whitewash', 'ph_trim', base='#f6f0e0'),
+        'gap': kit.material('lime_plaster_shadow', 'ph_gap', base='#8c7a5c', streaks=0.0),
         'dark': kit.material('lime_plaster_shadow', 'ph_dark', base='#3b3328', streaks=0.0, var=0.05, grime=0.2),
         'green': kit.material('wood_green', 'ph_green', base='#3d6b4a'),
         'iron': kit.material('iron_black', 'ph_iron'),
@@ -878,7 +877,7 @@ def purani_haveli(A):
     ent = ph_facade(M, 'ph_entf', 17.0, H + 5.0, 2, 'verandah')
     parts += place(ent, 0, (0, ey0, 0))
     parts.append(box('ph_entcor', (19.4, 1.6, 1.0), (0, ey0 + 0.5, H + 6.0), hi, base=True))
-    parts += place(bal('ph_entbal', 18.6, H + 7.0, 2.8, hi, 0.9, M['dark']), 0, (0, ey0 + 0.45, 0))
+    parts += place(bal('ph_entbal', 18.6, H + 7.0, 2.8, hi, 0.9, M['gap']), 0, (0, ey0 + 0.45, 0))
     parts.append(prism_from_outline('ph_entped', [(-6, 0), (6, 0), (0, 3.6)], 1.0, center=(0, ey0 + 0.5, H + 9.8), mat=hi))
     for s in (-1, 1):
         parts.append(lathe('ph_entfin', [(0.8, H + 9.8), (0.8, H + 11.2), (1.0, H + 11.6), (0.0, H + 13.2)], seg=6, mat=hi, loc=(s * 8.6, ey0 + 0.5, 0), close_bottom=False))

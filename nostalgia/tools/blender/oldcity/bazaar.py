@@ -295,6 +295,7 @@ def build(A):
         steel=('steel', dict(base='#8c9096')),
         tank=('plastic_black', dict(base='#1d1d20')),
     )
+    M['plaster'] = material('lime_plaster', 'plaster_wash', base='#efdcb6', var=0.08, streaks=0.45)
     M['bulbs@night'] = material('lamp_lens', 'bulbs@night', base='#ffd070', emit='#ffb040')
     M['tube@night'] = material('lamp_lens', 'tubelight@night', base='#eef4f0', emit='#e6f2ff')
     B = bangle_mats()
@@ -317,7 +318,7 @@ def build(A):
     objs.append(bx('pier_c', -0.55, 0.55, FY, BACK, 0, GF, M['plaster']))
     objs.append(bx('pilaster_c', -0.8, 0.8, FY - 0.3, FY + 0.1, 0, GF, M['plaster_hi']))
     for x in (-W, W):
-        objs.append(bx('pilaster_e', x - 0.15 if x > 0 else x - 0.15, x + 0.15, FY - 0.3, FY + 0.1, 0, ROOF, M['plaster_hi']))
+        objs.append(wall_quad('pilaster_e', x - 0.5 * (x > 0), x + 0.5 * (x < 0), 0.8, ROOF, FY - 0.04, M['plaster_hi']))
     # lintel beam with the shutter boxes, plinth step
     objs.append(bx('lintel', -W - 0.1, W + 0.1, FY - 0.35, FY + 0.05, GF - 1.4, GF, M['plaster_hi']))
     objs.append(bx('step', -W, W, -D + 0.3, FY, 0, 0.8, M['granite']))
@@ -378,7 +379,7 @@ def build(A):
     wins = [(-5.4, 16.8, 3.4, 3.8, 2.2, 'pointed'), (5.4, 16.8, 3.4, 3.8, 2.2, 'pointed')]
     kit.boolean(up, recess_cutters(wins, 0.9, FY))
     for (x, z0, w, sp, ri, kd) in wins:
-        objs.append(arch_panel('winback', x, z0, w, sp, ri, FY + 0.85, M['dark'], kd))
+        objs.append(common.decal('winback', [(x + px, z0 + pz) for (px, pz) in arch_outline(w, sp, ri, kd, n=5)], M['dark'], FY + 0.85))
         objs.append(arch_ring('winframe', x, z0, w, sp, ri, FY - 0.06, M['plaster_hi'], kd, border=0.55))
         objs.append(bx('sill', x - w / 2 - 0.6, x + w / 2 + 0.6, FY - 0.45, FY, z0 - 0.6, z0, M['plaster_hi']))
     # left: wooden jharokha balcony (green painted) on brackets
@@ -392,7 +393,7 @@ def build(A):
     objs.append(flat_grill('grill', 3.75, 7.05, 16.8, 20.6, FY - 0.3, M['iron'], bars=5, rails=3))
     # sloped tin chajja over the upper floor + cornice + parapet
     objs.append(strip('chajja', -W - 0.2, W + 0.2, (FY + 0.1, 25.4), (FY - 1.5, 24.6), 0.22, M['plaster_hi']))
-    objs.append(bx('cornice', -W - 0.15, W + 0.15, FY - 0.45, D, ROOF - 0.5, ROOF, M['plaster_hi']))
+    objs.append(bx('cornice', -W - 0.15, W + 0.15, FY - 0.45, FY + 0.5, ROOF - 0.5, ROOF + 0.1, M['plaster_hi']))
     objs.append(bx('par_f', -W, W, FY, FY + 0.6, ROOF, TOP - 0.4, M['plaster']))
     objs.append(bx('par_l', -W, -W + 0.6, FY, D, ROOF, TOP - 0.4, M['plaster']))
     objs.append(bx('par_r', W - 0.6, W, FY, D, ROOF, TOP - 0.4, M['plaster']))
@@ -416,3 +417,272 @@ def build(A):
     A.notes.append('COL_bangle_shop: camera-ray proxy (back block, upper floor, side piers)')
     A.preview = common.shots(front_az=-30, el=10, fov=34, extra=[
         {'name': 'close', 'size': 320, 'samples': 16, 'view': {'az': -12, 'el': 4, 'fov': 22, 'pad': 0.55}}])
+
+
+# =========================================================================== Pathergatti
+@kit.asset('pathergatti_arcade', 'landmark', landmark='pathergatti_arcade_w', face='e', footprint=[32, 44], height=39.0, fit='footprint', floodlit=True)
+def build_pathergatti(A):
+    """Pathergatti stone arcade (X -16..16 = lm.d, Y -22..22 = lm.w, front -Y = east), ~39 u."""
+    M = common.mats(
+        stone=('granite_grey', dict(base='#b6aaa2', var=0.12, grime=0.45)),
+        stone_dk=('granite_grey', dict(base='#968a82', var=0.1, grime=0.5)),
+        stone_pink=('granite_pink', dict(base='#bca498')),
+        dark=('lime_plaster_shadow', dict(base='#221d1a', var=0.05, grime=0.1)),
+        shop_in=('lime_plaster_shadow', dict(base='#6e5a48', var=0.1)),
+        c1=('cloth', dict(base='#c8202a', region=0)), c2=('cloth', dict(base='#2a5cd8', region=0)),
+        c3=('cloth', dict(base='#f2c230', region=0)), c4=('cloth', dict(base='#e85a9a', region=0)),
+        c5=('cloth', dict(base='#2a8a4a', region=0)), c6=('cloth', dict(base='#f4f0e6', region=0)),
+        board_g=('wood_green', dict(base='#1f6a4a', chips=0.2)), board_m=('red_oxide', dict(base='#7a1a3a')),
+    )
+    M['shoplight@night'] = material('lamp_lens', 'shoplight@night', base='#f4ecd0', emit='#ffd890')
+    CL = [M['c1'], M['c2'], M['c3'], M['c4'], M['c5'], M['c6']]
+    rng = random.Random(2002)
+    W, D = 16.0, 22.0
+    FY = -D                  # arcade front
+    AW = 1.4                 # arcade wall thickness
+    SF = -15.0               # shop front plane
+    G0 = 0.9                 # walkway floor
+    G1 = 15.5                # top of the ground storey
+    TOP = 31.0               # roof
+    n = 5
+    step = 2 * W / n
+    objs = []
+    # ---- ground storey: arcade wall with pointed arches on square piers, walkway, shops
+    arc = bx('arcade', -W, W, FY, FY + AW, 0, G1, M['stone_pink'])
+    kit.boolean(arc, common.arcade_cutter(n, 2 * W, -0.4, 13.2, 2.0, FY + AW / 2, kind='pointed', wfrac=0.72, spring_frac=0.6))
+    objs.append(arc)
+    objs.append(bx('walk', -W, W, FY - 0.5, SF, 0, G0, M['stone_pink']))
+    objs.append(bx('ceiling', -W, W, FY + AW, SF, 13.4, G1, M['stone']))
+    # pier plinths + impost bands on the arcade front
+    for k in range(n + 1):
+        x = -W + k * step
+        x0, x1 = max(-W, x - 1.25), min(W, x + 1.25)
+        objs.append(wall_quad('pier_base', x0, x1, 0, G0 + 1.4, FY - 0.06, M['stone_pink']))
+    objs.append(bx('impost', -W, W, FY - 0.25, FY + 0.1, 12.9, 13.6, M['stone_pink']))
+    body = bx('body', -W, W, SF, D, 0, TOP, M['stone'])
+    cut = []
+    for k in range(n):
+        xc = -W + (k + 0.5) * step
+        cut.append(bx('shopcut', xc - 2.3, xc + 2.3, SF - 1, SF + 4.0, G0, 10.2, None))
+    kit.boolean(body, kit.join(cut, 'shopcuts'))
+    objs.append(body)
+    signs = {0: 'SAREE KENDRA', 2: 'NOOR CLOTH HOUSE', 4: 'DECCAN SILKS'}
+    for k in range(n):
+        xc = -W + (k + 0.5) * step
+        yb = SF + 3.95
+        objs.append(common.decal('shopback', [(xc - 2.3, G0), (xc + 2.3, G0), (xc + 2.3, 10.2), (xc - 2.3, 10.2)], M['shop_in'], yb))
+        # cloth bolts stacked on shelves (two columns of coloured bands) + a counter
+        bands = [(1.4, CL[rng.randrange(len(CL))]) for _ in range(5)]
+        objs.append(sawtooth_column('bolts', xc - 2.1, xc + 2.1, yb - 0.05, G0 + 2.4, bands, lean=0.5))
+        objs.append(shelf('counter', xc - 2.1, xc + 2.1, SF + 1.2, SF + 2.2, G0, G0 + 2.4, M['wood']))
+        objs.append(wall_quad('tl', xc - 1.6, xc + 1.6, 9.5, 9.8, SF + 1.0, M['shoplight@night']))
+        objs.append(wall_quad('shutter', xc - 2.35, xc + 2.35, 10.1, 11.4, SF - 0.15, M['tin']))
+        if k in signs:
+            objs.append(kit.signboard('sign', signs[k], 5.2, 1.6, (xc, SF - 0.2, 12.3), depth=0.2, fg='#fff4d8', bg=['#1f6a4a', '#7a1a3a', '#1d4e8a'][k // 2], frame_mat=M['wood'], px=256))
+        else:
+            objs.append(bx('board', xc - 2.6, xc + 2.6, SF - 0.3, SF - 0.1, 11.5, 13.1, M['board_g'] if k == 1 else M['board_m']))
+    # ---- upper storey: dressed granite with pilasters, chajja, pairs of pointed arched windows
+    objs.append(bx('upper', -W, W, FY + 0.4, SF, G1, TOP, M['stone']))
+    UF = FY + 0.4
+    objs.append(strip('chajja1', -W - 0.1, W + 0.1, (UF + 0.1, G1 + 0.9), (FY - 1.4, G1 + 0.1), 0.35, M['stone_pink']))
+    for k in range(n + 1):
+        x = -W + k * step
+        x0, x1 = max(-W, x - 0.7), min(W, x + 0.7)
+        objs.append(bx('pilaster', x0, x1, UF - 0.35, UF, G1 + 0.6, 29.2, M['stone_pink']))
+    for k in range(n):
+        xc = -W + (k + 0.5) * step
+        objs.append(arch_ring('hood', xc, 18.0, 4.4, 3.8, 2.4, UF - 0.05, M['stone_pink'], 'pointed', border=0.45))
+        objs.append(common.decal('hoodfill', [(xc - 2.2, 18.0), (xc + 2.2, 18.0), (xc + 2.2, 18.6), (xc - 2.2, 18.6)], M['stone_pink'], UF - 0.04))
+        for s in (-1, 1):
+            wx = xc + s * 1.05
+            ol = [(wx + px, 18.6 + pz) for (px, pz) in arch_outline(1.5, 2.9, 1.3, 'pointed', n=4)]
+            objs.append(common.decal('win', ol, M['dark'], UF - 0.06))
+            objs.append(flat_grill('jaali', wx - 0.75, wx + 0.75, 18.9, 21.4, UF - 0.1, M['stone_pink'], bars=2, bw=0.14, rails=2))
+        # mezzanine: small square ventilators
+        for s in (-1, 1):
+            objs.append(common.decal('vent', [(xc + s * 1.2 - 0.6, 25.6), (xc + s * 1.2 + 0.6, 25.6), (xc + s * 1.2 + 0.6, 27.0), (xc + s * 1.2 - 0.6, 27.0)], M['dark'], UF - 0.05))
+    objs.append(bx('band', -W - 0.05, W + 0.05, UF - 0.4, UF, 24.4, 24.9, M['stone_pink']))
+    objs.append(strip('chajja2', -W - 0.2, W + 0.2, (UF + 0.1, 29.6), (FY - 1.3, 28.6), 0.3, M['stone_pink']))
+    objs.append(bx('cornice', -W - 0.1, W + 0.1, UF - 0.3, UF + 1.2, 30.3, TOP + 0.25, M['stone_pink']))
+    # parapet with leaf merlons, pier finials and two domed corner chhatris
+    objs.append(bx('parapet', -W, W, UF, UF + 0.6, TOP, TOP + 1.6, M['stone']))
+    nm, mw, mh = 9, 1.7, 2.0
+    for i in range(nm):
+        x = -(W - 3.0) + (2 * W - 6.0) * (i + 0.5) / nm
+        leaf = [(-mw / 2, 0), (mw / 2, 0), (mw / 2, mh * 0.45), (mw * 0.18, mh * 0.8), (0, mh), (-mw * 0.18, mh * 0.8), (-mw / 2, mh * 0.45)]
+        objs.append(common.decal('merlon', [(x + u, TOP + 1.6 + v) for (u, v) in leaf], M['stone'], UF - 0.01))
+    for k in range(1, n):
+        x = -W + k * step
+        objs.append(cylinder('fin', 0.5, 3.0, (x, UF + 0.3, TOP + 1.6), seg=4, mat=M['stone_pink'], r2=0.42))
+        objs.append(cylinder('fin_d', 0.62, 2.2, (x, UF + 0.3, TOP + 4.6), seg=6, mat=M['stone'], r2=0.0))
+    for sx in (-1, 1):
+        objs += chhatri('chhatri', sx * (W - 1.6), UF + 1.4, TOP, 1.5, 7.6, M, M['stone_pink'], M['stone'], seg=8)
+    # sides / back: plain granite + plaster rear with a few windows
+    for sx in (-1, 1):
+        for y in (-6.0, 4.0, 14.0):
+            ol = [(y + px, 18.6 + pz) for (px, pz) in arch_outline(1.8, 3.0, 1.4, 'pointed', n=4)]
+            if sx > 0:
+                pts = [(sx * W + 0.05, u, z) for (u, z) in ol]
+            else:
+                pts = [(sx * W - 0.05, u, z) for (u, z) in reversed(ol)]
+            objs.append(quad('sidewin', pts, M['dark']))
+    for x in (-9.0, 0.0, 9.0):
+        objs.append(wall_quad('backwin', x - 1.2, x + 1.2, 18.0, 22.5, D + 0.05, M['dark'], facing=1))
+    objs.append(cylinder('tank', 1.6, 2.8, (8.0, 12.0, TOP), seg=8, mat=M['iron']))
+    finish(A, objs, tile=10.0, tex=256, ao_dist=7.0, ground_dirt=4.0, smooth_angle=50.0)
+    cols = [col_box('body', (2 * W, D - SF, TOP), (0, (D + SF) / 2, 0)),
+            col_box('upper', (2 * W, SF - FY, TOP - 13.4), (0, (SF + FY) / 2, 13.4))]
+    for k in range(n + 1):
+        x = -W + k * step
+        cols.append(col_box('pier', (1.6, AW, 13.4), (max(-W + 0.8, min(W - 0.8, x)), FY + AW / 2, 0)))
+    col_join(cols, 'pathergatti')
+    A.notes.append('COL_pathergatti: camera-ray proxy (shop block, upper storey, arcade piers; the walkway stays open)')
+    A.preview = common.shots(front_az=-32, el=10, fov=34, extra=[
+        {'name': 'arcade', 'size': 320, 'samples': 16, 'view': {'az': -18, 'el': 2, 'fov': 24, 'pad': 0.55}}])
+
+
+# =========================================================================== Madina Building
+def _arch_decal(name, x, z0, w, spring, rise, y, mat, n=4):
+    return common.decal(name, [(x + px, z0 + pz) for (px, pz) in arch_outline(w, spring, rise, 'pointed', n=n)], mat, y)
+
+
+def _side_arch(name, y, z0, w, spring, rise, x, mat, facing, n=3):
+    """an arch-shaped flat panel on a side wall (YZ plane at x), facing +X (facing=1) or -X"""
+    ol = arch_outline(w, spring, rise, 'pointed', n=n)
+    if facing > 0:
+        pts = [(x, y + u, z0 + v) for (u, v) in ol]
+    else:
+        pts = [(x, y - u, z0 + v) for (u, v) in ol]
+    return quad(name, pts, mat)
+
+
+@kit.asset('madina_building', 'landmark', landmark='madina_building', face='w', footprint=[44, 80], height=42.0, fit='footprint', floodlit=True)
+def build_madina(A):
+    """Madina Building (X -22..22 = lm.d, Y -40..40 = lm.w, front -Y = west), ~42 u + turrets."""
+    M = common.mats(
+        cream=('lime_plaster', dict(base='#eadcbc', var=0.08, grime=0.6, streaks=0.5)),
+        trim=('lime_plaster', dict(base='#f6eedc', var=0.05, grime=0.45, streaks=0.3)),
+        dark=('lime_plaster_shadow', dict(base='#221d1a', var=0.05, grime=0.1)),
+        shop_in=('lime_plaster_shadow', dict(base='#6e5a48', var=0.1)),
+        shutter=('wood_green', dict(base='#2f6b48')),
+        c1=('cloth', dict(base='#c8202a', region=0)), c2=('cloth', dict(base='#2a5cd8', region=0)),
+        c3=('cloth', dict(base='#f2c230', region=0)), c4=('cloth', dict(base='#e85a9a', region=0)),
+        c5=('cloth', dict(base='#f4f0e6', region=0)),
+        board=('red_oxide', dict(base='#1d4e8a')),
+    )
+    M['win@night'] = material('clock_face', 'madina_win@night', base='#2a2218', emit='#5a4020')
+    CL = [M['c1'], M['c2'], M['c3'], M['c4'], M['c5']]
+    rng = random.Random(3003)
+    W, D = 22.0, 40.0
+    FY = -D
+    AW = 1.2
+    SF = -34.0
+    G0 = 0.8
+    F1, F2, ROOF = 14.0, 27.0, 38.0
+    UF = FY + 0.8            # upper facade plane
+    n = 7
+    step = 2 * W / n
+    objs = []
+    # ---- ground storey: arcade of pointed arches in front of the shops
+    arc = bx('arcade', -W, W, FY, FY + AW, 0, F1, M['cream'])
+    kit.boolean(arc, common.arcade_cutter(n, 2 * W, -0.4, 11.6, 2.0, FY + AW / 2, kind='pointed', wfrac=0.7, spring_frac=0.6))
+    objs.append(arc)
+    objs.append(bx('walk', -W, W, FY - 0.4, SF, 0, G0, M['granite']))
+    objs.append(bx('ceiling', -W, W, FY + AW, SF, 12.0, F1, M['trim']))
+    objs.append(bx('body', -W, W, SF, D, 0, ROOF, M['cream']))
+    objs.append(bx('upper', -W, W, UF, SF, F1, ROOF, M['cream']))
+    shop_signs = {1: ('MADINA CLOTH STORES', '#7a1a3a'), 4: ('SAREE CENTRE', '#1f6a4a')}
+    for k in range(n):
+        xc = -W + (k + 0.5) * step
+        objs.append(wall_quad('shop', xc - 2.5, xc + 2.5, G0, 9.6, SF - 0.03, M['shop_in']))
+        bands = [(1.3, CL[rng.randrange(len(CL))]) for _ in range(5)]
+        objs.append(sawtooth_column('bolts', xc - 2.3, xc + 2.3, SF - 0.06, G0 + 2.4, bands, lean=0.6))
+        objs.append(wall_quad('shutter', xc - 2.55, xc + 2.55, 9.6, 10.7, SF - 0.1, M['tin']))
+        if k in shop_signs:
+            t, bg = shop_signs[k]
+            objs.append(kit.signboard('sign', t, 5.8, 1.2, (xc, SF - 0.2, 11.3), depth=0.15, fg='#fff4d8', bg=bg, frame_mat=M['wood'], px=320))
+        else:
+            objs.append(wall_quad('board', xc - 2.8, xc + 2.8, 10.75, 11.9, SF - 0.12, M['board'] if k % 2 else M['red_oxide']))
+    # ---- cornice bands round the whole block
+    for z, h in ((F1, 0.9), (F2, 0.7), (ROOF - 0.6, 1.0)):
+        objs.append(bx('band', -W - 0.3, W + 0.3, FY - 0.3, D + 0.3, z - h / 2, z + h / 2, M['trim']))
+    # ---- upper floors: arched windows with green shutters, balconies, pilasters
+    for k in range(n):
+        xc = -W + (k + 0.5) * step
+        if k == n // 2:
+            continue
+        for (z0, w, sp, ri, ring) in ((F1 + 2.4, 2.6, 4.4, 1.8, True), (F2 + 2.0, 2.4, 3.8, 1.5, False)):
+            lit = rng.random() < 0.35
+            objs.append(_arch_decal('win', xc, z0, w, sp, ri, UF - 0.04, M['win@night'] if lit else M['dark']))
+            if ring:
+                objs.append(arch_ring('frame', xc, z0, w, sp, ri, UF - 0.05, M['trim'], border=0.4, n=4))
+            for s in (-1, 1):
+                x0 = xc + s * (w / 2 + 0.15)
+                x1 = xc + s * (w / 2 + 1.25)
+                objs.append(wall_quad('leaf', min(x0, x1), max(x0, x1), z0, z0 + sp, UF - 0.05, M['shutter']))
+        if k in (1, 5):
+            bw = 4.6
+            objs.append(bx('balc', xc - bw / 2, xc + bw / 2, UF - 1.7, UF, F1 + 1.5, F1 + 2.0, M['trim']))
+            objs.append(wall_quad('rail', xc - bw / 2, xc + bw / 2, F1 + 2.0, F1 + 4.2, UF - 1.65, M['iron']))
+            objs.append(flat_grill('rail_bars', xc - bw / 2, xc + bw / 2, F1 + 2.0, F1 + 4.2, UF - 1.7, M['iron'], bars=1, bw=0.01, rails=2))
+    for k in range(1, n):
+        x = -W + k * step
+        if abs(x) < 4:
+            continue
+        objs.append(wall_quad('pil', x - 0.5, x + 0.5, F1 + 0.5, ROOF - 1.1, UF - 0.06, M['trim']))
+    # HOTEL MADINA board across bays 5-6 between the floors
+    objs.append(kit.signboard('hotel', 'HOTEL MADINA', 10.0, 1.8, (W - step * 1.0, UF - 0.25, F2 - 2.0), depth=0.2, fg='#b22b2b', bg='#f4f0e2', frame_mat=M['iron'], px=384))
+    # ---- central bay: projecting, taller, with an arched gable and a plaque
+    CF = FY - 0.2
+    objs.append(bx('cbay', -3.6, 3.6, CF, UF, F1, ROOF + 3.0, M['trim']))
+    objs.append(_arch_decal('cwin1', 0, F1 + 2.0, 3.4, 6.0, 2.4, CF - 0.04, M['dark']))
+    objs.append(arch_ring('cframe1', 0, F1 + 2.0, 3.4, 6.0, 2.4, CF - 0.05, M['cream'], border=0.5, n=4))
+    objs.append(_arch_decal('cwin2', 0, F2 + 1.8, 3.0, 4.2, 1.8, CF - 0.04, M['dark']))
+    objs.append(arch_ring('cframe2', 0, F2 + 1.8, 3.0, 4.2, 1.8, CF - 0.05, M['cream'], border=0.45, n=4))
+    objs.append(bx('cbalc', -3.0, 3.0, CF - 1.8, CF, F1 + 1.5, F1 + 2.0, M['trim']))
+    objs.append(wall_quad('crail', -3.0, 3.0, F1 + 2.0, F1 + 4.2, CF - 1.75, M['iron']))
+    objs.append(kit.signboard('plaque', 'MADINA BUILDING', 6.4, 1.3, (0, CF - 0.12, ROOF + 1.3), depth=0.12, fg='#1f4a3a', bg='#f4ecd8', frame_mat=M['trim'], px=320))
+    gable = prism_from_outline('gable', arch_outline(7.2, 0.0, 5.2, 'pointed', n=5), 1.0, center=(0, (CF + UF) / 2, ROOF + 3.0), mat=M['trim'])
+    objs.append(gable)
+    objs.append(_arch_decal('gwin', 0, ROOF + 3.6, 1.6, 1.2, 1.4, CF - 0.04, M['dark'], n=3))
+    objs.append(dome('gdome', 0.7, 1.8, (0, (CF + UF) / 2, ROOF + 8.0), M['trim'], seg=6))
+    # ---- parapet with merlons, domed corner turrets
+    objs.append(bx('parapet', -W, W, UF, UF + 0.5, ROOF, ROOF + 1.8, M['cream']))
+    for sx in (-1, 1):
+        objs.append(bx('par_side', sx * W - 0.25, sx * W + 0.25, UF, D, ROOF, ROOF + 1.8, M['cream']))
+    nm = 16
+    for i in range(nm):
+        x = -W + 2.6 + (2 * W - 5.2) * (i + 0.5) / nm
+        if abs(x) < 4.2:
+            continue
+        mw, mh = 1.3, 1.6
+        leaf = [(-mw / 2, 0), (mw / 2, 0), (mw / 2, mh * 0.45), (0, mh), (-mw / 2, mh * 0.45)]
+        objs.append(common.decal('merlon', [(x + u, ROOF + 1.8 + v) for (u, v) in leaf], M['cream'], UF - 0.01))
+    for sx in (-1, 1):
+        tx, ty = sx * (W - 1.2), FY + 1.4
+        objs.append(cylinder('turret', 1.7, ROOF + 3.4 - F1, (tx, ty, F1), seg=8, mat=M['trim'], cap=False))
+        objs.append(cylinder('turret_ring', 2.1, 0.6, (tx, ty, ROOF + 3.4), seg=8, mat=M['cream']))
+        objs.append(dome('turret_d', 1.8, 3.2, (tx, ty, ROOF + 4.0), M['trim'], seg=8))
+    # ---- sides (80 u long, on the road): shops below, two rows of arched windows
+    ys = [FY + 8 + i * (2 * D - 12) / 6 for i in range(7)]
+    for sx in (-1, 1):
+        x = sx * (W + 0.03)
+        for y in ys:
+            objs.append(_side_arch('sshop', y, G0 - 0.8, 4.0, 7.4, 1.6, x, M['shop_in'], sx))
+            objs.append(_side_arch('swin1', y, F1 + 2.4, 2.4, 4.2, 1.6, x, M['dark'], sx))
+            objs.append(_side_arch('swin2', y, F2 + 2.0, 2.2, 3.6, 1.4, x, M['dark'], sx))
+    for xb in (-14, -5, 5, 14):
+        objs.append(wall_quad('backwin', xb - 1.2, xb + 1.2, F1 + 3, F1 + 8, D + 0.03, M['dark'], facing=1))
+        objs.append(wall_quad('backwin', xb - 1.2, xb + 1.2, F2 + 2, F2 + 7, D + 0.03, M['dark'], facing=1))
+    objs.append(cylinder('tank', 1.6, 2.8, (10.0, 20.0, ROOF), seg=8, mat=M['iron']))
+    objs.append(cylinder('tank2', 1.6, 2.8, (-12.0, 8.0, ROOF), seg=8, mat=M['iron']))
+    finish(A, objs, tile=10.0, tex=256, ao_dist=8.0, ground_dirt=4.0, smooth_angle=50.0)
+    cols = [col_box('body', (2 * W, D - SF, ROOF), (0, (D + SF) / 2, 0)),
+            col_box('upper', (2 * W, SF - FY, ROOF - 12.0), (0, (SF + FY) / 2, 12.0))]
+    for k in range(n + 1):
+        x = -W + k * step
+        cols.append(col_box('pier', (1.6, AW, 12.0), (max(-W + 0.8, min(W - 0.8, x)), FY + AW / 2, 0)))
+    col_join(cols, 'madina')
+    A.notes.append('COL_madina: camera-ray proxy (shop block, upper floors, arcade piers; the walkway stays open)')
+    A.preview = common.shots(front_az=-30, el=10, fov=34, extra=[
+        {'name': 'front', 'size': 320, 'samples': 16, 'view': {'az': -8, 'el': 4, 'fov': 26, 'pad': 0.6}}])
