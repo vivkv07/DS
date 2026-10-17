@@ -232,12 +232,18 @@ async function gameplay(browser) {
     const p = N.player;
     N.debug.teleport('giver_himayatnagar');
     const lanes = N.world.potholes.list.filter((q) => q.kind === 'lane' && q.wet && q.r > 3.5).sort((a, b) => (b.style === 'colony') - (a.style === 'colony') || Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
+    let tries = 0;
     for (const q of lanes) {
       for (let a = 0; a < 6.28; a += 0.8) {
         const x = q.x + Math.cos(a) * (q.r + 5), y = q.y + Math.sin(a) * (q.r + 5);
         if (!N.world.isWalkable(x, y)) continue;
         N.debug.teleport(x, y);
-        if (Math.hypot(p.x - x, p.y - y) < 1 && N.weather2d.boatSpot()) return { x, y, q: { x: q.x, y: q.y, r: q.r, id: q.id } };
+        if (!(Math.hypot(p.x - x, p.y - y) < 1 && N.weather2d.boatSpot())) continue;
+        // a shop / stall right by the puddle wins ACTION: look for a spot where the boat is the offer
+        await new Promise((r) => setTimeout(r, 450));
+        const cur = N.interact.current;
+        if (cur && cur.label === 'Float a paper boat') return { x, y, q: { x: q.x, y: q.y, r: q.r, id: q.id }, tries };
+        if (++tries > 40) return null;
       }
     }
     return null;
