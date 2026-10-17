@@ -71,7 +71,7 @@ module.exports = {
     }`, 8.5);
     const ms = L.save(stress, 'mix_stress_master');
     log('stress render: ' + JSON.stringify(ms));
-    check(ms.peakDb <= -0.3 && isFinite(ms.rmsDb), 'master limiter + soft clip: stress render never exceeds -0.3 dBFS (peak ' + ms.peakDb + ')', ms);
+    check(ms.peakDb <= -1 && isFinite(ms.rmsDb), 'master limiter + soft clip: stress render never exceeds -1 dBFS (peak ' + ms.peakDb + ')', ms);
     check(ms.dc < 0.01, 'master: no DC', ms.dc);
     // ---- below threshold the master chain is linear (the trim cancels the limiter's automatic make-up gain)
     const tone = (v) => `(oc, out, t, X) => { const g = N.audio._internal.buildGraph(oc, out); return X.P.tone(oc, g.ui, t, { f: 440, a: 0.01, h: 0.6, r: 0.1, v: ${v} }); }`;
@@ -125,9 +125,9 @@ module.exports = {
         const t0 = performance.now(); let mt = 0, me = 0;
         while (performance.now() - t0 < ms) { if (v) v.throttle = 1; await w(100); const s = A.stats(); mt = Math.max(mt, s.traffic); me = Math.max(me, s.hrtf); }
         const P = A._profile; let tot = 0, n = 0, worst = 0; const per = {};
-        for (const k in P) { tot += P[k].tot; n = Math.max(n, P[k].n); per[k] = +(P[k].tot / P[k].n).toFixed(3); }
+        for (const k in P) { tot += P[k].tot; n = Math.max(n, P[k].n); per[k] = +(P[k].tot / P[k].n).toFixed(3); if (P[k].max > worst) worst = P[k].max; }
         A._profile = null;
-        return { frames: n, msPerFrame: +(tot / n).toFixed(3), per, traffic: mt, hrtf: me };
+        return { frames: n, msPerFrame: +(tot / n).toFixed(3), per, pumpMax: P.pump ? +P.pump.max.toFixed(2) : 0, worstStage: +worst.toFixed(2), traffic: mt, hrtf: me };
       };
       const top = await run(8000);
       A._internal.setPose({ follow: true, is3D: true, yaw: 0, hq: true });

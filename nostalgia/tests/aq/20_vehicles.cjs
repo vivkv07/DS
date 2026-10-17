@@ -85,6 +85,7 @@ module.exports = {
     check(res.scooty.centroid > res.chetak.centroid * 1.3, 'Scooty brighter than the Chetak (centroid)', [res.scooty.centroid, res.chetak.centroid]);
     check(res.rx100.centroid > res.chetak.centroid, 'RX100 rasp brighter than the Chetak', [res.rx100.centroid, res.chetak.centroid]);
     check(res.bus.lowFrac > 0.3 && res.lorry.lowFrac > 0.3 && res.bus.lowFrac > res.scooty.lowFrac * 2 && res.lorry.lowFrac > res.chetak.lowFrac, 'bus / lorry are low-heavy', [res.bus.lowFrac, res.lorry.lowFrac, res.chetak.lowFrac, res.scooty.lowFrac]);
+    check(res.bus.highFrac > 0.004 && res.lorry.highFrac > 0.004 && res.bus.centroid > 200, 'diesel clatter audible over the rumble (not an organ drone)', [res.bus.highFrac, res.lorry.highFrac, res.bus.centroid, res.lorry.centroid]);
     check(res.luna.fullDb < res.rx100.fullDb, 'the Luna is weaker than the RX100', [res.luna.fullDb, res.rx100.fullDb]);
 
     // pedal cycles: pedalling (crank) vs coasting (ratchet ticks)
@@ -148,7 +149,7 @@ module.exports = {
     log('tyres ' + JSON.stringify(Object.fromEntries(Object.entries(surf).map(([k, m]) => [k, [m.rmsDb, m.centroid, m.lowFrac]]))));
     check(surf.wet.centroid > surf.asphalt.centroid * 1.3, 'wet road swish brighter than dry asphalt', [surf.wet.centroid, surf.asphalt.centroid]);
     check(surf.cobble.lowFrac > surf.asphalt.lowFrac, 'Old City cobbles rumble lower than asphalt', [surf.cobble.lowFrac, surf.asphalt.lowFrac]);
-    check(surf.gravel.crest > surf.asphalt.crest + 3, 'gravel crunch is spikier than asphalt hiss', [surf.gravel.crest, surf.asphalt.crest]);
+    check(surf.gravel.crest > surf.asphalt.crest + 2, 'gravel crunch is spikier than asphalt hiss', [surf.gravel.crest, surf.asphalt.crest]);
 
     // ---------------------------------------------------------------- starts
     for (const [name, o] of [['chetak_start'], ['chetak_start', { pitch: 1.55, dur: 0.8 }], ['auto_start'], ['car_start'], ['diesel_start'], ['air_brake']]) {

@@ -205,7 +205,8 @@
     // music: a smooth, dense plate/hall (no discrete echoes) so the score never gets the station's ring
     music: { len: 2.3, rt: 1.9, pre: 0.016, build: 0.035, lp0: 9000, lp1: 3500, hp: 160, wet: 0.17, width: 1 },
   };
-  function genIRData(sr, Z) {
+  // generator: yields every ~8k samples so live builds run in <= ~4 ms idle slices (irAsync); genIRData runs it whole
+  function* genIR(sr, Z) {
     const len = Math.max(64, Math.floor(sr * Z.len));
     const out = [new Float32Array(len), new Float32Array(len)];
     let seed = 0x9e3779b9 ^ Math.floor(Z.rt * 1000 + Z.len * 7919);
@@ -226,6 +227,7 @@
         const y = hpA * (hpY + lp - hpX); hpX = lp; hpY = y;
         d[i] = y * env * (i - pre < build ? (i - pre) / build : 1);
         env *= kEnv;
+        if (((i - pre) & 8191) === 8191) yield;
       }
       // a grain = a few ms of filtered noise with a fast decay (a wall reflection, not a digital click)
       const grain = (t0, g, lpHz, spread) => {
@@ -244,7 +246,7 @@
         for (const r of Z.ring) {
           const w = TAU * r[0] / sr, rr2 = Math.exp(-Math.PI * r[0] / (r[1] * sr)), a1 = 2 * rr2 * Math.cos(w), a2 = -rr2 * rr2;
           let y1 = 0, y2 = 0;
-          for (let i = 0; i < len; i++) { const y = src[i] * (1 - rr2) + a1 * y1 + a2 * y2; y2 = y1; y1 = y; d[i] += y * r[2] * 3; }
+          for (let i = 0; i < len; i++) { const y = src[i] * (1 - rr2) + a1 * y1 + a2 * y2; y2 = y1; y1 = y; d[i] += y * r[2] * 3; if ((i & 16383) === 16383) yield; }
         }
       }
       // fade the very end so the buffer stops at silence
@@ -254,20 +256,52 @@
     // stereo width: mid/side blend (width 1 = fully decorrelated)
     const w = Z.width == null ? 0.85 : Z.width;
     if (w < 1) for (let i = 0; i < len; i++) { const m = (out[0][i] + out[1][i]) * 0.5, s0 = (out[0][i] - out[1][i]) * 0.5 * w; out[0][i] = m + s0; out[1][i] = m - s0; }
+    yield;
     let e = 0;
     for (const d of out) for (let i = 0; i < len; i++) e += d[i] * d[i];
+    yield;
     const k = 1 / Math.sqrt(Math.max(1e-12, e));
     for (const d of out) for (let i = 0; i < len; i++) d[i] *= k;
     return out;
   }
-  function zoneIR(ac, id) {
-    const Z = IRZ[id] || IRZ.open, key = ac.sampleRate + ':' + (IRZ[id] ? id : 'open');
-    let b = IRS.get(key);
-    if (b) return b;
-    const data = genIRData(ac.sampleRate, Z);
-    b = ac.createBuffer(2, data[0].length, ac.sampleRate);
+  function genIRData(sr, Z) { const it = genIR(sr, Z); let r = it.next(); while (!r.done) r = it.next(); return r.value; }
+  function irBuffer(ac, data) {
+    const b = ac.createBuffer(2, data[0].length, ac.sampleRate);
     for (let ch = 0; ch < 2; ch++) { if (b.copyToChannel) b.copyToChannel(data[ch], ch); else b.getChannelData(ch).set(data[ch]); }
-    IRS.set(key, b);
+    return b;
+  }
+  // live: generate an IR across idle slices (<= ~4 ms each), then cb(buffer). Jobs run one at a time, FIFO.
+  const IRQ = [];
+  let irPumping = false;
+  function irAsync(ac, id, cb) {
+    const key = ac.sampleRate + ':' + (IRZ[id] ? id : 'open');
+    const have = IRS.get(key);
+    if (have) { if (cb) cb(have); return; }
+    const job = IRQ.find((j) => j.key === key);
+    if (job) { if (cb) job.cbs.push(cb); return; }
+    IRQ.push({ key, ac, gen: genIR(ac.sampleRate, IRZ[id] || IRZ.open), cbs: cb ? [cb] : [] });
+    if (!irPumping) { irPumping = true; irRic(irPump); }
+  }
+  const irRic = (fn) => (window.requestIdleCallback ? window.requestIdleCallback(fn, { timeout: 250 }) : setTimeout(() => fn({ timeRemaining: () => 4 }), 16));
+  function irPump(dl) {
+    const t0 = performance.now(), budget = Math.min(4, Math.max(1.5, dl && dl.timeRemaining ? dl.timeRemaining() : 4));
+    try {
+      while (IRQ.length && performance.now() - t0 < budget) {
+        const j = IRQ[0], r = j.gen.next();
+        if (!r.done) continue;
+        IRQ.shift();
+        const b = irBuffer(j.ac, r.value);
+        IRS.set(j.key, b);
+        for (const cb of j.cbs) { try { cb(b); } catch (e) { N.err('audio.ir', e); } }
+        break; // the AudioBuffer copy + callbacks used this slice
+      }
+    } catch (e) { N.err('audio.ir', e); IRQ.shift(); }
+    if (IRQ.length) irRic(irPump); else irPumping = false;
+  }
+  function zoneIR(ac, id) { // synchronous (offline renders / tests); live code uses irAsync
+    const key = ac.sampleRate + ':' + (IRZ[id] ? id : 'open');
+    let b = IRS.get(key);
+    if (!b) { b = irBuffer(ac, genIRData(ac.sampleRate, IRZ[id] || IRZ.open)); IRS.set(key, b); }
     return b;
   }
 
@@ -1796,7 +1830,7 @@
         if (cfg.pan) pn.pan.value = cfg.pan;
         pg.connect(pn);
         if (cfg.rev && o.revIn) { const sg = gain(ac, cfg.rev, o.revIn); pn.connect(sg); }
-        this.parts[k] = { cfg, g: pg, st: {}, pn };
+        this.parts[k] = { cfg, g: pg, st: { live: !!o.live }, pn }; // st.live: scheduled in real time (INST: never render inline)
       }
       this.step = o.offsetStep || 0;
       this.t0 = t - this.c.times[this.step];
@@ -2310,8 +2344,13 @@
   // Master limiter: DynamicsCompressor (brick-wall-ish: 6 ms look-ahead, 1 ms attack, ratio 20) after a trim that
   // cancels the compressor's automatic make-up gain (Chrome/WebKit/Gecko apply (1/fullRangeGain)^0.6), then a
   // static soft clipper (linear up to -1 dBFS, tanh knee into a -0.3 dBFS ceiling) as the very last stage.
-  const LIM = { thr: -2, ratio: 20, ceil: Math.pow(10, -0.3 / 20), knee0: Math.pow(10, -1 / 20) };
+  // Every WebAudio DynamicsCompressor adds automatic make-up gain ((1/fullRangeGain)^0.6, Chrome/WebKit/Gecko); both
+  // compressors here get it cancelled by a trim so the chain is unity gain below threshold (no hidden +4 dB, no pumping
+  // of quiet material). The world glue (measured make-up +4.395 dB at -16 dB / knee 8 / 2.5:1) only sees sfx + ambience:
+  // the score is never pumped by a horn or by its own kick drum; only the final limiter is shared.
+  const LIM = { thr: -3, ratio: 20, ceil: Math.pow(10, -1 / 20), knee0: Math.pow(10, -2.5 / 20), glueMakeupDb: 4.395 };
   LIM.trim = Math.pow(10, -((-LIM.thr - -LIM.thr / LIM.ratio) * 0.6) / 20);
+  LIM.glueTrim = Math.pow(10, -LIM.glueMakeupDb / 20);
   function clipCurve() {
     let c = CURVES.get('clip');
     if (c) return c;
@@ -2321,33 +2360,37 @@
       const x = ((i / (c.length - 1)) * 2 - 1) * 2, a = Math.abs(x);
       c[i] = Math.sign(x) * (a <= T ? a : T + (C - T) * Math.tanh((a - T) / (C - T)));
     }
-    CURVES.set('clip', c);
+    CURVES.set('clip', c); // -1 dBFS ceiling: inter-sample safety after DACs / lossy encoders
     return c;
   }
   // one convolver per reverb zone (built on demand, see zones below); its send input fades, the output keeps ringing
-  function mkZoneNode(ac, g, id) {
-    const conv = ac.createConvolver(); conv.normalize = false; conv.buffer = zoneIR(ac, id);
+  function mkZoneNode(ac, g, id, lazy) { // lazy (live graph): the IR is generated in idle slices, then assigned once
+    const conv = ac.createConvolver(); conv.normalize = false;
+    if (lazy) irAsync(ac, id, (b) => { if (!conv.buffer) conv.buffer = b; }); else conv.buffer = zoneIR(ac, id);
     const inG = gain(ac, 0); g.revIn.connect(inG); inG.connect(conv);
     const outG = gain(ac, (IRZ[id] || IRZ.open).wet, g.revOut); conv.connect(outG);
     const z = { id, conv, inG, outG, quietAt: 0, used: 0 };
     g.zones.set(id, z);
     return z;
   }
-  function buildGraph(ac, dest) {
+  function buildGraph(ac, dest, lazy) {
     const g = {};
     g.master = gain(ac, 1);
-    // master chain: glue compressor -> trim -> limiter -> soft clip -> out
-    const comp = ac.createDynamicsCompressor();
-    comp.threshold.value = -14; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = 0.005; comp.release.value = 0.25;
+    // master chain: trim -> limiter -> soft clip (-1 dBFS) -> out
     const lim = ac.createDynamicsCompressor();
     lim.threshold.value = LIM.thr; lim.knee.value = 0; lim.ratio.value = LIM.ratio; lim.attack.value = 0.001; lim.release.value = 0.08;
-    g.glue = comp; g.limiter = lim;
+    g.limiter = lim;
     g.trim = gain(ac, LIM.trim);
     g.clip = ac.createWaveShaper(); g.clip.curve = clipCurve();
     const clipIn = gain(ac, 0.5);
-    g.master.connect(comp); comp.connect(g.trim); g.trim.connect(lim); lim.connect(clipIn); clipIn.connect(g.clip); g.clip.connect(dest);
+    g.master.connect(g.trim); g.trim.connect(lim); lim.connect(clipIn); clipIn.connect(g.clip); g.clip.connect(dest);
+    // world glue (sfx + ambience + world reverb only): gentle 2.5:1 above -16 dBFS, make-up cancelled
+    const comp = ac.createDynamicsCompressor();
+    comp.threshold.value = -16; comp.knee.value = 8; comp.ratio.value = 2.5; comp.attack.value = 0.01; comp.release.value = 0.25;
+    g.glue = comp;
+    const glueOut = gain(ac, LIM.glueTrim, g.master); comp.connect(glueOut);
     // world (sfx + ambient): pause muffle + duck; per-bus ducks (dialogue dips ambience more than sfx)
-    g.worldDuck = gain(ac, 1, g.master);
+    g.worldDuck = gain(ac, 1, comp);
     g.worldLP = filt(ac, 'lowpass', 20000, 0.5, g.worldDuck);
     g.sfxDuck = gain(ac, 1, g.worldLP);
     g.ambDuck = gain(ac, 1, g.worldLP);
@@ -2359,19 +2402,23 @@
     g.revIn = gain(ac, 1);
     g.revOut = gain(ac, 1, g.worldLP);
     g.zones = new Map();
-    mkZoneNode(ac, g, 'open').inG.gain.value = 1;
+    mkZoneNode(ac, g, 'open', lazy).inG.gain.value = 1;
     g.zone = 'open';
     g.engPlayer = gain(ac, 1, g.engine);          // the player's own engine (head-locked) + a little room
     g.engSend = gain(ac, 0.06, g.revIn); g.engPlayer.connect(g.engSend);
     // music (+ walkman): duck -> tape wow/flutter delay -> tape lowpass -> master
-    g.musicFade = gain(ac, 1, g.master);
+    // music level trim: the old master glue added ~+4 dB of make-up to everything; the score keeps +3 dB of it as a
+    // clean, linear gain (no pumping); peaks above -3 dBFS meet only the shared limiter
+    g.musicTrim = gain(ac, Math.pow(10, 3 / 20), g.master);
+    g.musicFade = gain(ac, 1, g.musicTrim);
     g.tapeLP = filt(ac, 'lowpass', 20000, 0.5, g.musicFade);
     g.tape = ac.createDelay(2.5); g.tape.delayTime.value = 0.012; g.tape.connect(g.tapeLP);
     g.musicDuck = gain(ac, 1, g.tape);
     g.music = gain(ac, 1, g.musicDuck);
     // the score's own fixed, musical reverb (a smooth plate/hall): it never takes the station's echo
     g.musicRevIn = gain(ac, 1);
-    const mconv = ac.createConvolver(); mconv.normalize = false; mconv.buffer = zoneIR(ac, 'music');
+    const mconv = ac.createConvolver(); mconv.normalize = false;
+    if (lazy) irAsync(ac, 'music', (b) => { if (!mconv.buffer) mconv.buffer = b; }); else mconv.buffer = zoneIR(ac, 'music');
     g.musicRevIn.connect(mconv); g.musicRevOut = gain(ac, IRZ.music.wet, g.music); mconv.connect(g.musicRevOut);
     g.walkDuck = gain(ac, 1, g.tape);           // the walkman has its own duck (systems §3.5)
     g.walk = gain(ac, 1, g.walkDuck);
@@ -2836,14 +2883,14 @@
   function requestZone(id) {
     if (!IRZ[id] || rv.building.has(id) || (G && G.zones.has(id))) return;
     rv.building.add(id);
-    ric(() => {
+    irAsync(ctx, id, () => ric(() => {
       rv.building.delete(id);
       if (!ctx || !G || G.zones.has(id)) return;
       const t0 = performance.now();
       try { mkZoneNode(ctx, G, id).used = ctx.currentTime; } catch (e) { N.err('audio.reverb', e); return; }
       rv.buildMs = performance.now() - t0;
       pruneZones();
-    }, 400);
+    }, 400));
   }
   function pruneZones() {
     while (G.zones.size > 4 && pruneOne());
@@ -3875,7 +3922,7 @@
       'r_chandni', 'r_barish', 'r_baraat', 'r_neon', 'r_pager', 'id_vani', 'id_band', 'id_pop'];
     const jobs = [];
     const seen = new Set();
-    for (const z of ZONE_IDS) jobs.push(() => { if (ctx) zoneIR(ctx, z); }); // reverb IRs (JS only; convolvers are built on approach)
+    for (const z of ZONE_IDS) irAsync(ctx, z); // reverb IRs in idle slices (convolvers are built on approach)
     for (const id of order) {
       jobs.push(() => {
         const c = compile(id);
@@ -3902,7 +3949,7 @@
 
   function initContext() {
     try { ctx = new AC({ latencyHint: 'interactive' }); } catch (e) { ctx = new AC(); }
-    G = buildGraph(ctx, ctx.destination);
+    G = buildGraph(ctx, ctx.destination, true);
     applyVolumes();
     amb.L = buildAmbient();
     timer = setInterval(pump, TICK_MS);
@@ -4162,7 +4209,8 @@
   //                                  crowd wave curve pulseCurve kr mtof rr pick rnd clamp ksPlay ksBuffer drumHit
   //                                  BELL BIGBELL METAL CERAMIC VOW WAVES (mutable) TAU
   //   ext.registerSfx(name, fn(ac, out, t, o) -> endTime, {cooldown, gain, ui, caption, capMax})   (replaces same name)
-  //   ext.registerInst(name, fn(ac, out, t, notes, dur, vel, ev, st))   ext.registerKs(name, def)   ext.registerKit(name, strokes)
+  //   ext.registerInst(name, fn(ac, out, t, notes, dur, vel, ev, st))   st = per-part state of the Seq; st.live === true when
+  //                                  scheduled in real time (never render a buffer inline then: fall back to a cached one)   ext.registerKs(name, def)   ext.registerKit(name, strokes)
   //   ext.registerScale(name, semis[])   ext.registerTrack(id, def)  (replaces; recompiles; music.TRACKS updated)
   //   ext.registerStation(i, station)    ext.registerSong(id, {title, artist, station})
   //   ext.registerEngine(type, profile)  ext.setEngineVoice(factory(ac, dest, type, profile, vehicle, isPlayer) -> voice|null)
