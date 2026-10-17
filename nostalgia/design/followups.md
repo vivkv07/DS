@@ -53,3 +53,8 @@ Old City worlddata (reported by the blender-oldcity session with Charminar v3, c
 - Mecca Masjid, Chowmahalla, Falaknuma, Purani Haveli and Pathergatti are hemmed in by procedural filler lots; clear a forecourt around each.
 - puranapul_arches is axis-aligned but the road there runs ~16.8° off axis; rotate the structure to match.
 - Charminar v3: street-level view reads right; the 3/4 overview still looks a little tall for its width. Revisit after the integration pass.
+
+Live site (owner request: "publish with whatever we have, then update on top of it"):
+- Public at https://vivkv07.github.io/DS/ (GitHub Pages, gh-pages branch of vivkv07/DS; the repo is public now).
+- Deploy: `nostalgia/tools/deploy_site.sh` builds dist/web.html (full page, 3D files lazy) and pushes one new commit to gh-pages. Run it after each verified preview build. `--dry-run` assembles dist/site only.
+- Still a testing build (unlimited pocket money). Launch-plan items (save-on-hide, newer-save guard, offline, own domain) remain open above.
