@@ -87,6 +87,7 @@
     b = ac.createBuffer(1, d.length, sr);
     b.getChannelData(0).set(d);
     m.set(k, b);
+    if (isLive(ac)) DATA.delete(k); // the live AudioBuffer holds it now (offline renders re-render on demand)
     return b;
   }
   // RBJ bandpass (0 dB peak) run twice round a loop so the seam is continuous
@@ -143,20 +144,21 @@
       if (d.miss && rnd() < d.miss) a *= (d.missAmp || 0.15) * (0.5 + rnd());
       const st = Math.round((k + (cylT[k % cylT.length] || 0) + (rnd() - 0.5) * 2 * (d.jit || 0)) * T + len) % len;
       for (let j = 0; j < n2; j++) out[(st + j) % len] += a * pulse[j];
-      for (const r of ring) {
+      if (d.bake) for (const r of ring) { // pipe resonances normally live in fixed live filters (no glide with playbackRate)
         const f = r[0] * (1 + (rnd() - 0.5) * 0.04), dec = r[1] * sr;
         dsin(out, len, st, Math.ceil(dec * 6), a * r[2], dec, TAU * f / sr, rnd() * 0.6, 6);
       }
       if (d.nz) { const dec = d.nz.tau * sr; dnoise(nz, len, st, Math.ceil(dec * 6), Math.pow(Math.max(0, a), 1.3) * d.nz.a, dec, rnd, 8); }
       if (d.click) for (let c = 0; c < d.click.n; c++) {
-        const f = d.click.lo + rnd() * (d.click.hi - d.click.lo), dec = d.click.dec * sr * (0.7 + rnd() * 0.6);
+        // diesel knock: a broadband crack (no pitch to glide with rpm); the live filters give it its metal colour
+        const dec = d.click.dec * sr * (0.5 + rnd() * 0.4);
         const s0 = st + Math.round((d.click.at + c * 0.04 + rnd() * 0.01) * T);
-        dsin(out, len, s0, Math.ceil(dec * 6), d.click.a * (0.6 + 0.4 * Math.abs(a)) * (c ? 0.5 : 1), dec, TAU * f / sr, 0, 3);
+        dnoise(out, len, s0, Math.ceil(dec * 6), d.click.a * 2 * (0.6 + 0.4 * Math.abs(a)) * (c ? 0.5 : 1), dec, rnd, 2);
       }
       if (d.rattle) for (let c = 0; c < d.rattle.n; c++) {
-        const f = d.rattle.lo + rnd() * (d.rattle.hi - d.rattle.lo), dec = d.rattle.dec * sr * (0.6 + rnd() * 0.8);
+        const dec = d.rattle.dec * sr * (0.4 + rnd() * 0.5);
         const s0 = st + Math.round(rnd() * d.rattle.span * T);
-        dsin(out, len, s0, Math.ceil(dec * 6), d.rattle.a * (0.3 + 0.7 * rnd()) * (0.5 + 0.5 * Math.abs(a)), dec, TAU * f / sr, 0, 3);
+        dnoise(out, len, s0, Math.ceil(dec * 6), d.rattle.a * 1.6 * (0.3 + 0.7 * rnd()) * (0.5 + 0.5 * Math.abs(a)), dec, rnd, 2);
       }
       if (d.pop && rnd() < d.pop.p) { // off-throttle pop: a sharp crack in the pipe + a little thump
         const s0 = st + Math.round((0.3 + rnd() * 0.4) * T), dec = 0.0025 * sr, aa = d.pop.a * (0.6 + 0.4 * rnd());
@@ -166,7 +168,7 @@
       }
     }
     yield;
-    const nzf = d.nz ? yield* bandLoop(nz, sr, d.nz.f, d.nz.q) : nz;
+    const nzf = d.nz ? yield* bandLoop(nz, sr, d.nz.f, Math.min(0.6, d.nz.q)) : nz;
     yield;
     for (let i = 0; i < len; i++) out[i] += nzf[i] * 2.2;
     yield* hpLoop(out, sr, d.hp || 18);
@@ -189,7 +191,7 @@
       c: { f0: 36, K: 24, tau: 0.0009, ring: [[1350, 0.006, 0.45], [2900, 0.004, 0.3]], nz: { a: 0.45, tau: 0.006, f: 2400, q: 1 },
         jit: 0.03, ampJit: 0.15, miss: 0.12, missAmp: 0.2, pop: { p: 0.05, a: 0.35 } },
       l: { f0: 80, K: 40, tau: 0.0007, ring: [[1500, 0.005, 0.5], [3200, 0.003, 0.35]], nz: { a: 0.7, tau: 0.005, f: 3000, q: 0.9 }, jit: 0.01, ampJit: 0.12 },
-      fIdle: 36, fMax: 118, tops: [1], cvt: true, lp: [1700, 7000], pk: { f: 1700, q: 1.5, g: 5 }, whine: { f0: 260, f1: 1500, a: 0.035, cvt: true }, vol: 0.34, size: 0.7, hp: 160, seed: 21,
+      fIdle: 36, fMax: 118, tops: [1], cvt: true, lp: [1700, 7000], pk: { f: 1700, q: 1.5, g: 5 }, whine: { f0: 260, f1: 1500, a: 0.035, cvt: true }, vol: 0.4, size: 0.7, hp: 160, seed: 21,
     },
     luna: {
       c: { f0: 30, K: 20, tau: 0.001, ring: [[1800, 0.004, 0.4], [3600, 0.003, 0.2]], nz: { a: 0.4, tau: 0.005, f: 2600, q: 1.4 }, jit: 0.04, ampJit: 0.2, miss: 0.18, missAmp: 0.25 },
@@ -207,9 +209,9 @@
       fIdle: 27, fMax: 132, tops: [0.2, 0.38, 0.57, 0.78, 1.2], shift: 0.13, lp: [1500, 8000], pk: { f: [500, 1900], q: 3, g: [3, 12], pipeAt: 0.66 }, vol: 0.42, size: 0.8, seed: 51,
     },
     ambassador: {
-      c: { f0: 22, K: 32, tau: 0.004, ring: [[160, 0.015, 0.25], [480, 0.015, 0.25]], nz: { a: 0.15, tau: 0.02, f: 500, q: 0.6 }, cyl: [1, 0.82, 0.95, 0.78], jit: 0.01, ampJit: 0.06 },
-      l: { f0: 55, K: 40, tau: 0.003, ring: [[170, 0.012, 0.25], [520, 0.012, 0.3]], nz: { a: 0.3, tau: 0.015, f: 700, q: 0.6 }, cyl: [1, 0.85, 0.95, 0.82], jit: 0.008, ampJit: 0.08 },
-      fIdle: 22, fMax: 105, tops: [0.25, 0.5, 0.76, 1.2], shift: 0.45, lp: [360, 1700], pk: { f: 180, q: 1, g: 5 }, whine: { f0: 250, f1: 900, a: 0.012 }, vol: 0.3, size: 1, seed: 61,
+      c: { f0: 22, K: 32, tau: 0.004, ring: [[160, 0.015, 0.25], [480, 0.015, 0.25]], nz: { a: 0.3, tau: 0.02, f: 700, q: 0.6 }, cyl: [1, 0.82, 0.95, 0.78], jit: 0.01, ampJit: 0.06 },
+      l: { f0: 55, K: 40, tau: 0.003, ring: [[170, 0.012, 0.25], [520, 0.012, 0.3]], nz: { a: 0.5, tau: 0.015, f: 900, q: 0.6 }, cyl: [1, 0.85, 0.95, 0.82], jit: 0.008, ampJit: 0.08 },
+      fIdle: 22, fMax: 105, tops: [0.25, 0.5, 0.76, 1.2], shift: 0.45, lp: [650, 2800], pk: { f: 180, q: 1, g: 5 }, whine: { f0: 250, f1: 900, a: 0.012 }, vol: 0.3, size: 1, seed: 61,
     },
     padmini: {
       c: { f0: 25, K: 32, tau: 0.0034, ring: [[200, 0.014, 0.25], [600, 0.014, 0.3]], nz: { a: 0.2, tau: 0.018, f: 650, q: 0.6 }, cyl: [1, 0.86, 0.93, 0.8], jit: 0.01, ampJit: 0.07 },
@@ -223,29 +225,34 @@
     },
     bus: {
       c: { f0: 28, K: 36, tau: 0.0035, ring: [[115, 0.05, 0.6], [330, 0.02, 0.15]], nz: { a: 0.2, tau: 0.02, f: 400, q: 0.6 },
-        click: { a: 0.3, lo: 1800, hi: 4200, dec: 0.0016, n: 2, at: 0.02 }, rattle: { a: 0.1, lo: 3000, hi: 7000, dec: 0.0012, n: 1, span: 1 }, cyl: [1, 0.9, 0.95, 0.88, 0.97, 0.9], jit: 0.01, ampJit: 0.08 },
+        click: { a: 1.2, lo: 1800, hi: 4200, dec: 0.0016, n: 2, at: 0.02 }, rattle: { a: 0.1, lo: 3000, hi: 7000, dec: 0.0012, n: 1, span: 1 }, cyl: [1, 0.9, 0.95, 0.88, 0.97, 0.9], jit: 0.01, ampJit: 0.08 },
       l: { f0: 60, K: 48, tau: 0.003, ring: [[120, 0.04, 0.6], [350, 0.016, 0.3]], nz: { a: 0.4, tau: 0.015, f: 600, q: 0.6 },
-        click: { a: 0.24, lo: 1500, hi: 3800, dec: 0.0014, n: 2, at: 0.02 }, cyl: [1, 0.92, 0.96, 0.9, 0.97, 0.92], jit: 0.008, ampJit: 0.08 },
-      fIdle: 28, fMax: 95, tops: [0.18, 0.36, 0.55, 0.78, 1.2], shift: 0.75, lp: [1500, 2800], pk: { f: 120, q: 1, g: 6 }, whine: { f0: 150, f1: 700, a: 0.018 }, vol: 0.26, size: 1.4, heavy: true, seed: 91,
+        click: { a: 0.9, lo: 1500, hi: 3800, dec: 0.0014, n: 2, at: 0.02 }, cyl: [1, 0.92, 0.96, 0.9, 0.97, 0.92], jit: 0.008, ampJit: 0.08 },
+      fIdle: 28, fMax: 95, tops: [0.18, 0.36, 0.55, 0.78, 1.2], shift: 0.75, lp: [3800, 5500], pk: { f: 120, q: 1, g: 2 }, whine: { f0: 150, f1: 700, a: 0.018 }, vol: 0.26, size: 1.4, heavy: true, seed: 91,
     },
     lorry: {
       c: { f0: 25, K: 36, tau: 0.004, ring: [[95, 0.055, 0.6], [290, 0.02, 0.25]], nz: { a: 0.22, tau: 0.02, f: 380, q: 0.6 },
-        click: { a: 0.4, lo: 1600, hi: 3800, dec: 0.0018, n: 2, at: 0.02 }, rattle: { a: 0.14, lo: 2500, hi: 6000, dec: 0.0015, n: 2, span: 1 }, cyl: [1, 0.88, 0.95, 0.86, 0.97, 0.9], jit: 0.012, ampJit: 0.1 },
+        click: { a: 1.3, lo: 1600, hi: 3800, dec: 0.0018, n: 2, at: 0.02 }, rattle: { a: 0.14, lo: 2500, hi: 6000, dec: 0.0015, n: 2, span: 1 }, cyl: [1, 0.88, 0.95, 0.86, 0.97, 0.9], jit: 0.012, ampJit: 0.1 },
       l: { f0: 55, K: 48, tau: 0.0034, ring: [[100, 0.045, 0.6], [310, 0.016, 0.3]], nz: { a: 0.42, tau: 0.015, f: 560, q: 0.6 },
-        click: { a: 0.32, lo: 1400, hi: 3500, dec: 0.0015, n: 2, at: 0.02 }, rattle: { a: 0.1, lo: 2500, hi: 6000, dec: 0.0012, n: 1, span: 1 }, cyl: [1, 0.9, 0.96, 0.88, 0.97, 0.91], jit: 0.01, ampJit: 0.08 },
-      fIdle: 25, fMax: 85, tops: [0.18, 0.36, 0.55, 0.78, 1.2], shift: 0.8, lp: [1300, 2500], pk: { f: 100, q: 1, g: 6 }, whine: { f0: 130, f1: 600, a: 0.02 }, vol: 0.32, size: 1.4, heavy: true, seed: 101,
+        click: { a: 1.0, lo: 1400, hi: 3500, dec: 0.0015, n: 2, at: 0.02 }, rattle: { a: 0.1, lo: 2500, hi: 6000, dec: 0.0012, n: 1, span: 1 }, cyl: [1, 0.9, 0.96, 0.88, 0.97, 0.91], jit: 0.01, ampJit: 0.08 },
+      fIdle: 25, fMax: 85, tops: [0.18, 0.36, 0.55, 0.78, 1.2], shift: 0.8, lp: [3500, 5000], pk: { f: 100, q: 1, g: 2 }, whine: { f0: 130, f1: 600, a: 0.02 }, vol: 0.32, size: 1.4, heavy: true, seed: 101,
     },
     boat: {
-      c: { f0: 17, K: 16, tau: 0.0025, ring: [[300, 0.03, 0.5], [800, 0.01, 0.3]], nz: { a: 0.4, tau: 0.02, f: 600, q: 0.6 }, jit: 0.03, ampJit: 0.15, miss: 0.05, missAmp: 0.3 },
+      c: { f0: 17, K: 16, tau: 0.0025, ring: [[300, 0.03, 0.5], [800, 0.01, 0.3]], nz: { a: 0.25, tau: 0.02, f: 600, q: 0.6 }, jit: 0.03, ampJit: 0.15, miss: 0.05, missAmp: 0.3 },
       l: { f0: 40, K: 24, tau: 0.002, ring: [[320, 0.025, 0.5], [850, 0.01, 0.3]], nz: { a: 0.6, tau: 0.014, f: 900, q: 0.6 }, jit: 0.02, ampJit: 0.15 },
       fIdle: 17, fMax: 54, tops: [1], cvt: true, lp: [500, 2000], pk: { f: 300, q: 1, g: 4 }, vol: 0.5, size: 1, water: true, seed: 111,
     },
   };
   const TYPES = Object.keys(DEF);
   const loopKey = (key, which) => 'eng:' + key + ':' + which;
+  // >= 128 firings in the idle/coast loop (5-7 s: the misfire pattern never audibly repeats), >= 64 under load
+  const loopSpec = (k, w) => Object.assign({ hp: DEF[k].hp }, DEF[k][w], { K: Math.max(DEF[k][w].K, w === 'c' ? 128 : 64) });
+  // the pipe / muffler / body resonance as a fixed live peaking filter: [Hz, Q, dB] from the type's ring list (one that the
+  // exhaust peak `pk` does not already cover)
+  const ringFilters = (D) => (D.c.ring || []).filter((r) => Array.isArray(D.pk.f) || Math.abs(Math.log(r[0] / D.pk.f)) > 0.3).slice(0, 1).map((r) => [r[0], clamp(Math.PI * r[0] * r[1], 1.2, 5), clamp(3 + 10 * r[2], 3, 8)]);
   function engBuf(ac, key, which, lazy) {
     const D = DEF[key];
-    return buf(ac, loopKey(key, which), (sr) => renderLoop(sr, Object.assign({ hp: D.hp }, D[which]), D.seed + (which === 'l' ? 7 : 0)), lazy);
+    return buf(ac, loopKey(key, which), (sr) => renderLoop(sr, loopSpec(key, which), D.seed + (which === 'l' ? 7 : 0)), lazy);
   }
 
   /* ---- small loops: freewheel ratchet, crank (pedal), road grit */
@@ -362,7 +369,9 @@
         this.vol = mk(gain(ac, 0, this.mix));
         this.pk = mk(filt(ac, 'peaking', Array.isArray(D.pk.f) ? D.pk.f[0] : D.pk.f, D.pk.q, this.vol));
         this.pk.gain.value = Array.isArray(D.pk.g) ? D.pk.g[0] : D.pk.g;
-        this.lp = mk(filt(ac, 'lowpass', D.lp[0], 0.7, this.pk));
+        let tail = this.pk; this.rings = [];
+        for (const r of ringFilters(D).reverse()) { const f = mk(filt(ac, 'peaking', r[0], r[1], tail)); f.gain.value = r[2]; this.rings.push([f, r[0]]); tail = f; }
+        this.lp = mk(filt(ac, 'lowpass', D.lp[0], 0.7, tail));
         this.gC = mk(gain(ac, 1, this.lp)); this.gL = mk(gain(ac, 0, this.lp));
         this.sC = src(engBuf(ac, key, 'c'), D.fIdle / D.c.f0); this.sC.connect(this.gC);
         this.sL = src(engBuf(ac, key, 'l'), D.fIdle / D.l.f0); this.sL.connect(this.gL);
@@ -493,6 +502,7 @@
         this.set(this.pk.frequency, 'pf', (D.pk.f[0] + (D.pk.f[1] - D.pk.f[0]) * Math.min(1, r)) * dop, 0.06, 0.02, true);
         this.set(this.pk.gain, 'pg', D.pk.g[0] + (D.pk.g[1] - D.pk.g[0]) * on * on * (3 - 2 * on), 0.06, 0.2);
       } else this.set(this.pk.frequency, 'pf', D.pk.f * dop, 0.1, 0.02, true);
+      for (let i = 0; i < this.rings.length; i++) this.set(this.rings[i][0].frequency, 'ri' + i, this.rings[i][1] * dop, 0.1, 0.02, true);
       const dip = shifting ? 1 - 0.2 * Math.sin(Math.PI * u) : 1;
       this.set(this.vol.gain, 'v', D.vol * (0.42 + 0.33 * Math.min(1, r) + 0.3 * L) * dip * (brake ? 0.85 : 1), shifting ? 0.03 : 0.06, 0.003);
       if (this.wO) {
@@ -733,7 +743,9 @@
     for (let i = 1; i < gcurve.length; i++) g.gain.linearRampToValueAtTime(gcurve[i][1], gcurve[i][0]);
     const lp = filt(ac, 'lowpass', lpHz || D.lp[0] * 1.6, 0.7, g);
     const pk = filt(ac, 'peaking', Array.isArray(D.pk.f) ? D.pk.f[0] : D.pk.f, D.pk.q, lp); pk.gain.value = Array.isArray(D.pk.g) ? D.pk.g[0] : D.pk.g;
-    s.connect(pk);
+    let tail = pk;
+    for (const r of ringFilters(D)) { const f = filt(ac, 'peaking', r[0], r[1], tail); f.gain.value = r[2]; tail = f; }
+    s.connect(tail);
     const end = gcurve[gcurve.length - 1][0];
     s.start(gcurve[0][0], Math.random() * 0.2); s.stop(end + 0.05);
     return end;
@@ -850,10 +862,10 @@
   function warmAll(ac) { // most common first; each item renders in idle slices (pump)
     const sr = ac.sampleRate;
     const order = ['auto', 'chetak', 'scooty', 'ambassador', 'bus'].concat(TYPES.filter((k) => !/^(auto|chetak|scooty|ambassador|bus)$/.test(k)));
-    order.slice(0, 5).forEach((k) => { for (const w of ['c', 'l']) want(loopKey(k, w), sr, (r) => renderLoop(r, Object.assign({ hp: DEF[k].hp }, DEF[k][w]), DEF[k].seed + (w === 'l' ? 7 : 0))); });
+    order.slice(0, 5).forEach((k) => { for (const w of ['c', 'l']) want(loopKey(k, w), sr, (r) => renderLoop(r, loopSpec(k, w), DEF[k].seed + (w === 'l' ? 7 : 0))); });
     want('ratchet', sr, renderRatchet); want('crank', sr, renderCrank); want('grit', sr, renderGrit);
     for (const v of ['plain', 'hero', 'hercules']) { want('bell:' + v + ':2', sr, (r) => renderBell(r, v, 2)); want('bell:' + v + ':1', sr, (r) => renderBell(r, v, 1)); }
-    order.slice(5).forEach((k) => { for (const w of ['c', 'l']) want(loopKey(k, w), sr, (r) => renderLoop(r, Object.assign({ hp: DEF[k].hp }, DEF[k][w]), DEF[k].seed + (w === 'l' ? 7 : 0))); });
+    order.slice(5).forEach((k) => { for (const w of ['c', 'l']) want(loopKey(k, w), sr, (r) => renderLoop(r, loopSpec(k, w), DEF[k].seed + (w === 'l' ? 7 : 0))); });
   }
   X.onUpdate('vehicles', (dt, mode, info) => {
     env.bed = info.bed; env.t -= dt;
@@ -923,7 +935,7 @@
     sliceMax(sr) {
       sr = sr || 48000;
       const gens = [];
-      for (const k of TYPES) for (const w of ['c', 'l']) gens.push([k + ':' + w, renderLoop(sr, Object.assign({ hp: DEF[k].hp }, DEF[k][w]), 1)]);
+      for (const k of TYPES) for (const w of ['c', 'l']) gens.push([k + ':' + w, renderLoop(sr, loopSpec(k, w), 1)]);
       gens.push(['ratchet', renderRatchet(sr)], ['crank', renderCrank(sr)], ['grit', renderGrit(sr)], ['bell:hero', renderBell(sr, 'hero', 2)], ['bell:plain', renderBell(sr, 'plain', 2)]);
       let mx = 0, tot = 0, at = ''; const per = {}, all = [];
       for (const [name, g] of gens) { let r, i = 0; do { const t0 = performance.now(); r = g.next(); const d = performance.now() - t0; if (d > mx) { mx = d; at = name + '#' + i; } tot += d; all.push(d); per[name] = +((per[name] || 0) + d).toFixed(1); i++; } while (!r.done); }
