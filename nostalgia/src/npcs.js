@@ -84,6 +84,7 @@
     name: '{nick}', full: 'Chinnu (K. {full}), 11', color: '#f2c230', voice: 1.32, side: 'right', speed: 50, vehicle: 'cycle', vehicleColor: '#2f6a3a',
     look: { kind: 'kid', skin: '#b97a4f', hair: '#1a1412', shirt: '#3d6fb0', pants: '#8a7a55', shoulders: '#f4f0e8', walkman: true, cowlick: true },
     portrait: { age: 'kid', hairStyle: 'spiky', skin: '#b97a4f', shirt: '#3d6fb0', shoulderStripes: '#f4f0e8', walkman: true, bg: '#2a2034' },
+    name2026: 'K. {full}', look2026: null, portrait2026: null, // filled from srikanth below (an old save or a script may still say 'chinnu' in 2026)
     variants: {
       camera: { look: { camera: true }, portrait: { camera: true } },
       school: { look: { shirt: '#f4f2ea', pants: '#24305a', shoulders: null, tieDot: '#24305a', walkman: true }, portrait: { shirt: '#f4f2ea', shoulderStripes: null, tie: '#1d2a5a', tieStripe: '#c03030', lanyard: '#c03030', walkman: false } },
@@ -93,9 +94,11 @@
   C('srikanth', {
     name: 'K. {full}', full: 'K. {full}, 34 (2026)', color: '#f2c230', voice: 1.0, side: 'right', speed: 45,
     look: { kind: 'man', skin: '#b97a4f', hair: '#2a1e18', shirt: '#7a8fa8', pants: '#6a6a70', specs: true, belly: true, cowlick: true },
-    portrait: { age: 'adult', hairStyle: 'thin', skin: '#b97a4f', hair: '#2a1e18', shirt: '#7a8fa8', stripes: '#8fa3ba', checks: true, specs: 'thin', collar: 'v', bg: '#2a2638' },
+    portrait: { age: 'adult', hairStyle: 'thin', skin: '#b97a4f', hair: '#2a1e18', shirt: '#7a8fa8', stripes: '#a8bcd0', checks: true, specs: 'thin', collar: 'v', bg: '#2a2638' },
     lines: ['The knees remember 2003. The rest of me doesn’t.'],
   });
+  DEFS.chinnu.look2026 = Object.assign({}, DEFS.srikanth.look, { walkman: false, shoulders: null });
+  DEFS.chinnu.portrait2026 = Object.assign({}, DEFS.srikanth.portrait, { walkman: false, shoulderStripes: null, bg: '#2a2638' });
   // ---- 2.2 Chinnu's family
   C('amma', {
     name: 'Amma', talkName: 'Mummy', full: 'Amma, “Mummy” (Padma), 38', color: '#d24d57', voice: 1.12, speed: 46, vehicle: null,

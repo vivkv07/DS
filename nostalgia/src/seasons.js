@@ -345,6 +345,8 @@
     const g = c.getContext('2d');
     g.translate(12, 12);
     const col = KCOL[ci % KCOL.length], col2 = KCOL[(ci + 3) % KCOL.length];
+    g.fillStyle = 'rgba(30,20,20,0.55)';
+    g.beginPath(); g.moveTo(0, -11.5); g.lineTo(9.5, 0); g.lineTo(0, 11.5); g.lineTo(-9.5, 0); g.closePath(); g.fill();
     g.fillStyle = col;
     g.beginPath(); g.moveTo(0, -10); g.lineTo(8, 0); g.lineTo(0, 10); g.lineTo(-8, 0); g.closePath(); g.fill();
     if (half) { g.fillStyle = col2; g.beginPath(); g.moveTo(0, -10); g.lineTo(8, 0); g.lineTo(0, 10); g.closePath(); g.fill(); }
@@ -543,11 +545,11 @@
     return out;
   }
   function kitePos(s, out) {
-    const hv = hsh(s.y, s.x), L = 50 + hv * 70, ph = hv * 40;
+    const hv = hsh(s.y, s.x), L = 26 + hv * 44, ph = hv * 40;
     out.ax = s.x + s.w * (0.3 + 0.4 * hv); out.ay = s.y + s.d * (0.35 + 0.3 * hsh(s.x, 3));
     out.x = out.ax + sank.wx * L + Math.sin(TIME * (0.6 + hv * 0.5) + ph) * (5 + hv * 6);
     out.y = out.ay + sank.wy * L + Math.cos(TIME * (0.45 + hv * 0.4) + ph) * 4;
-    out.h = s.h + 46 + hv * 64 + Math.sin(TIME * 0.8 + ph) * 3;
+    out.h = Math.min(78, s.h + 22 + hv * 30) + Math.sin(TIME * 0.8 + ph) * 2;
     out.ci = (hv * 997) | 0; out.half = hv > 0.6; out.tilt = Math.sin(TIME * 1.3 + ph) * 0.35;
     return out;
   }
@@ -593,13 +595,18 @@
           ctx.moveTo(ax, ay); ctx.quadraticCurveTo((ax + bx) / 2 + 2, (ay + by) / 2 + 6, bx, by);
         }
         ctx.stroke();
-        for (const s of anchors) { kitePos(s, kp); kite(kp.x, kp.y, kp.h, kp.ci, 7, kp.tilt, kp.half); }
-        // high far kites all over the sky
-        const v = R.view, n = Math.round(22 * q);
-        for (let i = 0; i < n; i++) {
-          const gx = Math.floor(v.x0 / 240) * 240 + (i % 6) * 240 + hsh(i, 7) * 160, gy = Math.floor(v.y0 / 240) * 240 + Math.floor(i / 6) * 240 + hsh(7, i) * 160;
-          const x = gx + Math.sin(TIME * 0.4 + i) * 6, y = gy + Math.cos(TIME * 0.33 + i * 2) * 5;
-          kite(x, y, 150 + hsh(i, i) * 60, i, 4.2, Math.sin(TIME + i) * 0.4, i % 3 === 0);
+        for (const s of anchors) { kitePos(s, kp); kite(kp.x, kp.y, kp.h, kp.ci, 8.5, kp.tilt, kp.half); }
+        // more kites all over the sky (their flyers are out of sight): a world-anchored grid, so
+        // they stay put while the camera moves
+        const v = R.view, G = 150;
+        const i0 = Math.floor(v.x0 / G) - 1, i1 = Math.floor(v.x1 / G) + 1, j0 = Math.floor(v.y0 / G) - 1, j1 = Math.floor(v.y1 / G) + 1;
+        let n = 0;
+        for (let j = j0; j <= j1 && n < 40 * q; j++) for (let i = i0; i <= i1; i++) {
+          const hv = hsh(i * 3.1, j * 1.7);
+          if (hv > 0.62) continue;
+          n++;
+          const x = i * G + hsh(i, j) * G + Math.sin(TIME * 0.4 + hv * 9) * 6, y = j * G + hsh(j, i) * G + Math.cos(TIME * 0.33 + hv * 7) * 5;
+          kite(x, y, 62 + hv * 30, (hv * 991) | 0, 6.5, Math.sin(TIME * 0.9 + hv * 20) * 0.45, hv > 0.4);
         }
         for (const c of sank.cut) kite(c.x, c.y, c.h, c.ci, 7, Math.sin(c.t * 3) * 0.9, c.half);
         reset();

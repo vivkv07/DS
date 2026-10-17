@@ -693,7 +693,7 @@
   function attractTarget() {
     const R = N.render, w = window.innerWidth || 1, h = window.innerHeight || 1;
     const wide = w >= h * 1.15;
-    const zoom = wide ? (h < 500 ? 1.0 : 1.18) : 1.05;
+    const zoom = wide ? (h < 500 ? 0.86 : 0.96) : 0.98;
     const vw = (R.W || 640) / zoom, vh = (R.H || 360) / zoom;
     const m = reduced() ? 0 : 1, t = attract.t;
     // wide screens: Charminar right of the J-card; tall screens: above it

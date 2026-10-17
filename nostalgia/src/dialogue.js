@@ -279,7 +279,11 @@
       E(24, 50, bodyRx, 16, shirt);
       E(24, 50, bodyRx, 16, shade(shirt, 0.82), 44, 48);
       if (look.floral) for (let y = 37; y < 48; y += 3) for (let x = 7 + ((y / 3) & 1) * 2; x < 42; x += 5) R(x, y, 2, 1, look.floral);
-      if (look.stripes) { const sc = look.stripes === true ? shade(shirt, 0.72) : look.stripes; for (let y = 37; y < 48; y += 3) R(6, y, 36, 1, sc); if (look.checks) for (let x = 8; x < 42; x += 4) R(x, 36, 1, 12, sc); }
+      if (look.stripes) {
+        const sc = look.stripes === true ? shade(shirt, 0.72) : look.stripes;
+        if (look.checks) { ctx.globalAlpha = 0.55; for (let y = 38; y < 48; y += 4) R(6, y, 36, 1, sc); for (let x = 9; x < 42; x += 5) R(x, 36, 1, 12, sc); ctx.globalAlpha = 1; }
+        else for (let y = 37; y < 48; y += 3) R(6, y, 36, 1, sc);
+      }
       if (look.shoulderStripes) { R(10, 37, 6, 1, look.shoulderStripes); R(32, 37, 6, 1, look.shoulderStripes); R(9, 39, 6, 1, look.shoulderStripes); R(33, 39, 6, 1, look.shoulderStripes); }
     }
     if (kind === 'uncle' && !look.shirt && !look.vest && !look.jacket) { E(24, 50, 20, 16, '#f2efe6'); R(16, 34, 2, 14, '#dcd6c8'); R(30, 34, 2, 14, '#dcd6c8'); }
@@ -326,6 +330,9 @@
     if (look.walkman) { Ln(21, 35, 23.5, 41, '#f4f0e8', 0.8); Ln(27, 35, 24.5, 41, '#f4f0e8', 0.8); R(21, 41, 7, 6, '#f2c230'); R(22, 42, 5, 2, '#3a3020'); R(22, 45, 1, 1, '#c03030'); }
     if (look.camera) { Ln(13, 34, 35, 47, '#141414', 1.6); R(31, 41, 11, 7, '#1d1d20'); E(36.5, 44.5, 2.4, 2.4, '#5a6a7a'); R(36, 44, 1, 1, '#d8e4f0'); R(39, 42, 2, 1, '#c9c9c4'); }
     if (look.neem) for (let k = 0; k < 6; k++) { E(14 + k * 4, 37 + (k & 1) * 2, 2, 1.2, '#3a7a2a'); }
+    if (look.crew) { const c = '#f4f0e8'; R(18, 40, 2, 3, c); R(18, 40, 3, 1, c); R(18, 42, 3, 1, c); R(22, 40, 1, 3, c); R(22, 40, 2, 1, c); R(26, 40, 2, 1, c); R(26, 41, 1, 1, c); R(26, 42, 2, 1, c); R(29, 40, 1, 3, c); R(30, 42, 1, 1, c); R(31, 40, 1, 3, c); }
+    if (look.coil) { ctx.strokeStyle = '#141414'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.ellipse(36, 39, 7, 4, -0.3, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(36, 39, 5, 2.6, -0.3, 0, Math.PI * 2); ctx.stroke(); }
+    if (look.keys) { ctx.strokeStyle = '#c9c9c4'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(33, 44, 3, 0, Math.PI * 2); ctx.stroke(); R(31, 46, 1, 2, '#c9a227'); R(34, 46, 1, 2, '#c9c9c4'); R(36, 45, 1, 2, '#c9a227'); }
     // neck
     R(hx - 4, hy + 8, 8, 7, shade(skin, 0.86));
     if (look.saree || kind === 'aunty' || look.mangalsutra) Ln(20, 35, 24, 40, '#c9a227', 0.6), Ln(28, 35, 24, 40, '#c9a227', 0.6);
@@ -389,6 +396,8 @@
     facialHair();
     specs();
     if (look.earPen) { Ln(hx + hrx - 1, top + 6, hx + hrx + 4, top + 12, look.earPen, 1.4); }
+    if (look.flourDust) for (const p of [[hx - 6, top + 8], [hx + 4, top + 5], [hx + 6, hy + 4], [hx - 3, hy + 6], [14, 40], [30, 43], [22, 46], [33, 38]]) R(p[0], p[1], 1, 1, 'rgba(255,255,255,0.7)');
+    if (look.headphones) { ctx.strokeStyle = '#2a2a30'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(hx, hy - 1, hrx + 1.5, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke(); R(hx - hrx - 3, hy - 2, 4, 6, '#2a2a30'); R(hx + hrx - 1, hy - 2, 4, 6, '#2a2a30'); R(hx - hrx - 2, hy - 1, 2, 4, '#c03030'); R(hx + hrx, hy - 1, 2, 4, '#c03030'); }
 
     // ------------------------------------------------------------- headwear
     const capC = look.capColor;
@@ -548,7 +557,8 @@
     'bindaas|Hi|Carefree', 'chillar|Hi|Loose change', 'galli|Hi|Lane, alley', 'pilla|Te|Kid', 'chacha|Hi|Uncle', 'gaadi|Hi|Vehicle', 'kiraaya|Hi|Rent, fare',
     'kirkiri|Dk|Hassle, irritation', 'maidan|Hi|Open ground', 'chai bandi|Hi|Tea cart', 'bole to|Hi|Meaning…', 'poriya|Te|Boy (Telugu slang)', 'akka|Te|Elder sister',
     'lena|Hi|Want to take it?', 'kya|Hi|What?', 'coolie coolie|IE|Porter? Porter? (railway porters calling)', 'ganpati bappa|Hi|“Lord Ganesh” (festival cry)',
-    'oye|Hi|Hey you!', 'namaste|Hi|A respectful greeting (palms together)',
+    'oye|Hi|Hey you!', 'namaste|Hi|A respectful greeting (palms together)', 'gaya / gayi|Hi|Gone (“current gaya”: the power’s gone)',
+    'utro anyway|Dk|Get off anyway', 'kosaru kaavala|Te|Want a little extra, free?',
   ];
   function normKey(s) {
     return String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')

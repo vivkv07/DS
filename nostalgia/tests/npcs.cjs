@@ -112,7 +112,7 @@ async function desktop(browser) {
   const { context, page, errors } = await openPage(browser, { viewport: { width: 1280, height: 720 } });
   const shot = (n) => page.screenshot({ path: path.join(OUT, n + '.png') });
   const lines = bibleLines();
-  const usedIds = Array.from(new Set(lines.map((l) => l.s)));
+  const usedIds = Array.from(new Set(lines.map((l) => l.s))).filter((id) => ['gnapakalu'].indexOf(id) < 0);
 
   /* ---------------------------------------------------------- data */
   if (want('data')) {
@@ -150,7 +150,7 @@ async function desktop(browser) {
     // every *slang* in the bible lines has a gloss
     const miss = await page.evaluate((ls) => {
       const out = new Set();
-      for (const l of ls) { const t = N.dialogue.filter(l.t); const re = /\*([^*]+)\*/g; let m; while ((m = re.exec(t))) if (!N.dialogue.gloss(m[1]) && !/^[A-Z !?.]+$/.test(m[1])) out.add(m[1]); }
+      for (const l of ls) { const t = N.dialogue.filter(l.t); const re = /\*([^*]+)\*/g; let m; while ((m = re.exec(t))) if (!N.dialogue.gloss(m[1]) && !/^[A-Z !?.●]+$/.test(m[1])) out.add(m[1]); }
       return Array.from(out);
     }, lines);
     if (miss.length > 4) fail('slang without a gloss (' + miss.length + '): ' + miss.slice(0, 20).join(' | '));
@@ -167,7 +167,8 @@ async function desktop(browser) {
         const D = N.dialogue;
         const wrap = document.createElement('div');
         wrap.id = '__sheet';
-        wrap.style.cssText = 'position:fixed;left:0;top:0;width:1320px;z-index:9999;background:#120d16;display:grid;grid-template-columns:repeat(' + (opts.cols || 8) + ',156px);gap:8px;padding:12px;font-family:Baloo 2,sans-serif;color:#f4ead8';
+        const cw = opts.cw || 156;
+        wrap.style.cssText = 'position:fixed;left:0;top:0;width:' + ((opts.cols || 8) * (cw + 8) + 24) + 'px;z-index:9999;background:#120d16;display:grid;grid-template-columns:repeat(' + (opts.cols || 8) + ',' + cw + 'px);gap:8px;padding:12px;font-family:Baloo 2,sans-serif;color:#f4ead8';
         const title = document.createElement('div');
         title.style.cssText = 'grid-column:1/-1;font:22px VT323,monospace;color:#eaf2ff;letter-spacing:2px';
         title.textContent = opts.title;
@@ -184,10 +185,10 @@ async function desktop(browser) {
           if (src) g.drawImage(src, 0, 0, 96, 96); else { g.fillStyle = '#2a2034'; g.fillRect(0, 0, 96, 96); g.fillStyle = '#b9aa92'; g.font = '14px VT323'; g.fillText('no portrait', 12, 50); }
           row.appendChild(pc);
           if (!opts.noSprite && N.npcs.defs[id]) {
-            const sc = document.createElement('canvas'); sc.width = 48; sc.height = 96; sc.style.cssText = 'width:48px;height:96px;background:#b5a17e;border:2px solid #1a1214';
+            const sc = document.createElement('canvas'); sc.width = 48; sc.height = 96; sc.style.cssText = 'width:48px;height:96px;background:#b5a17e;border:2px solid #1a1214;image-rendering:pixelated';
             const s = sc.getContext('2d');
             s.fillStyle = '#c9b48e'; s.fillRect(0, 48, 48, 48);
-            for (const [y, ang] of [[24, Math.PI / 2], [72, 0]]) { s.save(); s.translate(24, y); s.rotate(ang); s.scale(2.6, 2.6); N.people.draw(s, N.npcs.look(id), { phase: ang ? 0 : 0.9, speed: ang ? 0 : 0.7 }); s.restore(); }
+            for (const [y, ang] of [[24, Math.PI / 2], [72, 0]]) { s.save(); s.translate(24, y); s.rotate(ang); s.scale(3.3, 3.3); N.people.draw(s, N.npcs.look(id), { phase: ang ? 0 : 0.9, speed: ang ? 0 : 0.7 }); s.restore(); }
             row.appendChild(sc);
           }
           card.appendChild(row);
@@ -201,7 +202,8 @@ async function desktop(browser) {
         document.body.appendChild(wrap);
         return wrap.scrollHeight;
       }, { ids, opts });
-      await page.setViewportSize({ width: 1344, height: Math.min(4000, h + 4) });
+      const ww = await page.evaluate(() => document.getElementById('__sheet').scrollWidth);
+      await page.setViewportSize({ width: Math.max(1000, ww), height: Math.min(4000, h + 4) });
       await sleep(120);
       await page.screenshot({ path: path.join(OUT, name + '.png') });
       await page.evaluate(() => { const s = document.getElementById('__sheet'); if (s) s.remove(); delete N.flags.year; });
@@ -215,7 +217,7 @@ async function desktop(browser) {
     const moods = ['neutral', 'happy', 'laugh', 'angry', 'sad', 'surprised', 'shout', 'worried', 'wink', 'tired'];
     const mm = [];
     for (const id of ['chinnu', 'immu', 'amma', 'faramarz', 'ammamma', 'pasha']) for (const m of moods) mm.push({ id, mood: m });
-    await sheet('cast_moods', mm, { title: 'MOODS · neutral happy laugh angry sad surprised shout worried wink tired', cols: 10, noSprite: true });
+    await sheet('cast_moods', mm, { title: 'MOODS · neutral happy laugh angry sad surprised shout worried wink tired', cols: 10, cw: 112, noSprite: true });
     // variants
     await page.evaluate(() => { N.npcs.setVariant('chinnu', 'school'); N.npcs.setVariant('immu', 'raincoat'); N.npcs.setVariant('amma', 'night'); N.npcs.setVariant('ramulu', 'pothuraju'); N.npcs.setVariant('abba', 'chandraat'); N.npcs.setVariant('bunty', 'committee'); });
     await sheet('cast_variants', ['chinnu', 'immu', 'amma', 'ramulu', 'abba', 'bunty'], { title: 'VARIANTS · school · raincoat (Chand Raat) · night · Pothuraju (Bonalu) · Chand Raat cap · committee', cols: 6 });

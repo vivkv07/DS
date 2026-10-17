@@ -12,8 +12,8 @@
  *  - Energy bar with the tummy notch (bar dimmed above N.player.tummy) and a chai-glass icon that
  *    blinks when hungry; a quick-item slot (best edible; click/tap eats one).
  *  - Walkman now-playing strip on the minimap; dashed hint search circles: searchCircle(id, {x, y, r}|null).
- *  - Sound captions: caption(text, {x, y, ms, kind}) or the 'caption' event; "[whistle ↗]" at the
- *    screen edge towards the sound (setting `captions`, default on).
+ *  - Sound captions: caption(text, {x, y, ms, kind, always}) or the 'caption' event; "[whistle ↗]"
+ *    towards the sound (N.settings.captions, off by default; kind 'tape' story lines always show).
  *  - One centre message at a time: toasts queue (one visible, deduped, compressed when busy) and are
  *    held while a banner / J-card / ask card / dialogue is up; the district card waits for banners.
  *  - jcard(spec | null): the mission J-card prompt card (missions.js drives it).
@@ -536,10 +536,12 @@
 
   /* -------------------------------------------------------- sound captions */
   const ARROWS = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
-  function captionsOn() { const s = N.settings || (N.menus && N.menus.settings) || null; return !(s && s.captions === false); }
+  function captionsOn() { const s = N.settings || (N.menus && N.menus.settings) || null; return !!(s && s.captions); }
   function addCaption(text, o) {
     o = o || {};
-    if (!dom.caps || !text || !captionsOn()) return null;
+    if (!dom.caps || !text) return null;
+    // sound captions follow the setting; story lines (Side A playback: kind 'tape') always show
+    if (!captionsOn() && !(o.always || o.kind === 'tape')) return null;
     const now = performance.now();
     for (const c of state.caps) if (c.text === text && now - c.t0 < (o.dedupe || 1500)) { c.left = Math.max(c.left, o.ms || 1600); return c; }
     while (state.caps.length >= 3) { const c = state.caps.shift(); c.el.remove(); }

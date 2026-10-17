@@ -410,7 +410,8 @@ async function testHud(browser) {
     await sleep(3200);
     const after = await page.evaluate(() => ({ dist: document.querySelector('.hud-district').classList.contains('show'), name: document.querySelector('.hud-district .d-name').textContent }));
     check(after.dist && after.name === 'Basheerbagh', V.name + ': the district card shows after the banner', after);
-    // sound captions
+    // sound captions (a setting, off by default: switch it on)
+    await page.evaluate(() => { if (N.settings && typeof N.settings.set === 'function') N.settings.set('captions', true); else (N.settings = N.settings || {}).captions = true; });
     await page.evaluate(() => { const p = N.player; N.audio.sfx('whistle', { x: p.x + 200, y: p.y - 120 }); N.audio.sfx('chappal_whoosh', { x: p.x - 90, y: p.y + 30 }); N.hud.caption('● REC', { kind: 'rec' }); });
     await sleep(300);
     const caps = await page.evaluate(() => Array.from(document.querySelectorAll('.hud-cap.show')).map((e) => e.textContent));
@@ -600,7 +601,7 @@ async function testSave(browser) {
     const A = N.hints.active; A; // nudges: fast-forward the timer
     N.hud.objective('Every capsule needs a box.');
     const sys = N.systems.get('storycore');
-    for (let i = 0; i < 60; i++) sys.update(3.1);
+    for (let i = 0; i < 300; i++) sys.update(3.1);
     out.obj = N.hud.objectiveText;
     out.circles = N.hud.circles.size;
     out.nudge = N.hints.active.nudge;
