@@ -157,10 +157,12 @@ async function installHooks() {
         return CS.apply(null, arguments);
       };
     } catch (e) { /* menus stub */ }
-    setInterval(() => {
+    // sampled 5x a second, and on every objective change, dialogue line and MISSION PASSED (a short stop such
+    // as SA3's bakery can open and close between two samples)
+    const sample = (c0) => {
       try {
         if (!N.player || !N.state || /title|boot/.test(N.state.mode)) return;
-        const c = (N.missions && N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || null;
+        const c = c0 || (N.missions && N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || null;
         if (!c) return;
         const p = N.player;
         const at = N.calendar.date.short;
@@ -177,7 +179,11 @@ async function installHooks() {
         // district-sized places: being anywhere in the district counts (HITEC City is the IT district round Cyber Towers)
         try { const d = N.world.districtAt(p.x, p.y); const did = d && (d.id || d); if (did === 'hitec') hit('hitec_city'); } catch (e) { /* ignore */ }
       } catch (e) { /* the tracker never breaks the run */ }
-    }, 200);
+    };
+    setInterval(() => sample(), 200);
+    N.on('hud:objective', () => sample());
+    N.on('dialogue:line', () => sample());
+    N.on('mission:pass', (d) => sample(d && d.id));
     void nick; void full;
   }, { track: TRACK, prefix: PREFIX, nick: NICK, full: FULL });
 }
@@ -736,7 +742,29 @@ async function pM5() {
   await testTune();
   if (!check(await startFromGiver('right_right'), 'M5 starts from Amma at home')) return;
   await atStart('right_right', 'TUE 01 APR 2003');
-  await finish1('right_right');
+  // this playthrough dawdles: the 240 s "AMMA COMES OUT" timer runs out on the way to Koti (debug: expire the
+  // soft timer instead of waiting four minutes), so the bible's late branch plays: Chappal Meter 3, "{FULL}! I
+  // came out and the step was EMPTY!", escape or be caught, and the mission still passes. The real Chappal
+  // Meter runs the chase (level 3 is Havaldar Pochaiah, systems §4); the player stands still and is caught.
+  const late = { expired: false, branch: null, caught: false, line: false, t: 0 };
+  await ev(() => { window.__busted = []; N.on('busted', (d) => { window.__busted.push(d && d.by); }); });
+  await finish1('right_right', { hook: async (s) => {
+    if (!late.expired && /red bus from Koti/.test(s.obj || '')) { late.expired = await ev(() => N.story.debug.expire() > 0); return false; }
+    if (/Escape Mummy/.test(s.obj || '')) {
+      if (!late.branch) {
+        late.branch = await ev(() => ({ wanted: N.wanted ? N.wanted.level : 0, policy: !!(N.wanted && N.wanted.policy) }));
+        late.line = await ev((full) => (window.__lines || []).some((l) => l[0] === 'amma' && /I came out and the step was EMPTY/.test(l[1]) && l[1].indexOf(full.toUpperCase()) >= 0), FULL);
+        late.t = Date.now();
+        await shot('m5_late_chase');
+      }
+      if (!late.caught) late.caught = await ev(() => window.__busted[0] || false);
+      if (!late.caught && Date.now() - late.t < 60000) { await sleep(300); return true; } // stand still: the chaser comes
+      return false; // (not caught within a minute: walk back to the step, "face her at the step")
+    }
+    return false;
+  } });
+  check(late.expired && late.branch && late.branch.wanted >= 3 && late.line, 'M5 late: the timer ran out, Chappal Meter ' + (late.branch && late.branch.wanted) + ', Amma: "' + FULL.toUpperCase() + '! I came out and the step was EMPTY!"', late);
+  check(late.caught || !(late.branch && late.branch.policy), 'M5 late: the real Chappal Meter chase catches him (PAKDA GAYA by ' + late.caught + ') and the mission goes on', late);
   await afterMain('right_right', 'WED 02 APR 2003');
   const v = await ev(() => ({ bus: N.flags.bus_unlocked || N.flags.unlock_bus, tickets: N.collectibles.unlocked('tickets') }));
   check(v.bus && v.tickets, 'M5: bus travel and Ticket Thatha\'s tickets unlocked', v);
@@ -1100,11 +1128,23 @@ function usesOf(id) {
   }
   return out;
 }
+/** Static uses of a place id in the story scripts themselves (a giver, a goto, a camera, a scene prop, a respect
+ *  zone the chase keeps out of, the ending's plane): story.js -> 'story', story2.js -> 'story2'. */
+const STORY_SRC = {};
+function storyRefs(id) {
+  const out = [];
+  for (const f of ['story', 'story2']) {
+    if (STORY_SRC[f] == null) { try { STORY_SRC[f] = fs.readFileSync(path.join(ROOT, 'src', f + '.js'), 'utf8'); } catch (e) { STORY_SRC[f] = ''; } }
+    if (STORY_SRC[f].indexOf("'" + id + "'") >= 0) out.push(f + '.js');
+  }
+  return out;
+}
 function coverageReport() {
   const ctxName = (c) => ({ bo_kaata: 'M1', lost_and_found: 'M2', first_day_first_show: 'M3', last_man_batting: 'M4', right_right: 'M5', ammammas_thursday: 'M6', the_clap: 'M7', drums_for_amma: 'M8', opening_day: 'M9', agle_baras: 'M10', last_bell: 'M11', chand_raat: 'M12', pandal_duty: 'SA1', current_poyindi: 'SA2', sunday_mutton: 'SA3', six_balls: 'SA4', lb_exhibition: 'SA4x', twelve_oclock: 'SA5', bunty_races: 'SA6r1', bunty_races_r2: 'SA6r2', bunty_races_r3: 'SA6r3', bunty_races_r4: 'SA6r4', new_class_old_books: 'SA7', christmas_stars: 'SA8', interlude: 'Interlude', ending: 'Ending', epilogue: 'Epilogue' }[c] || c);
-  const row = (id) => { const o = cov[id]; return '| `' + id + '` | ' + (o ? Object.keys(o).map((c) => (/~cam$/.test(c) ? ctxName(c.slice(0, -4)) + ' (camera, ' + o[c] + ')' : ctxName(c) + ' (' + o[c] + ')')).join(', ') : '**not visited**') + ' | ' + (usesOf(id).join(', ') || '-') + ' |'; };
-  const lines = ['# Story playthrough: place coverage', '', 'Generated by tests/story_full.cjs (' + new Date().toISOString() + '). A place counts when the player was within reach of it while a', 'mission, side activity or story scene was running (passenger rides included; first date per context).', '',
-    '## Must-have places (places_registry §2)', '', '| id | visited by (mission / side activity / scene, first date) | also used by |', '|---|---|---|'].concat(MUST.map(row), ['', '## Festival sites', '', '| id | visited by | also used by |', '|---|---|---|'], FESTIVAL.map(row), AMBIENT.map(row), ['', '## Other named places (rounds 5-11)', '', '| id | visited by | also used by |', '|---|---|---|'], NAMED.map(row));
+  const row = (id) => { const o = cov[id]; return '| `' + id + '` | ' + (o ? Object.keys(o).map((c) => (/~cam$/.test(c) ? ctxName(c.slice(0, -4)) + ' (camera, ' + o[c] + ')' : ctxName(c) + ' (' + o[c] + ')')).join(', ') : '**not visited**') + ' | ' + (storyRefs(id).join(', ') || '-') + ' | ' + (usesOf(id).join(', ') || '-') + ' |'; };
+  const lines = ['# Story playthrough: place coverage', '', 'Generated by tests/story_full.cjs (' + new Date().toISOString() + '). A place counts when the player was within reach of it while a', 'mission, side activity or story scene was running (passenger rides included; first date per context). "story script" lists',
+    'the story files that reference the id (givers, gotos, cameras, props, respect zones); "also used by" the other modules.', '',
+    '## Must-have places (places_registry §2)', '', '| id | visited by (mission / side activity / scene, first date) | story script | also used by |', '|---|---|---|---|'].concat(MUST.map(row), ['', '## Festival sites', '', '| id | visited by | story script | also used by |', '|---|---|---|---|'], FESTIVAL.map(row), AMBIENT.map(row), ['', '## Other named places (rounds 5-11)', '', '| id | visited by | story script | also used by |', '|---|---|---|---|'], NAMED.map(row));
   const pre = PREFIX.map((q) => { const ids = Object.keys(cov).filter((k) => k.indexOf(q) === 0); return '| `' + q + '*` | ' + (ids.length ? ids.length + ': ' + ids.slice(0, 8).join(', ') : '**none**') + ' |'; });
   lines.push('', '## Everyday elements (registry §3, rounds 2-3)', '', '| prefix | instances visited |', '|---|---|', ...pre);
   fs.writeFileSync(path.join(OUT, 'coverage.md'), lines.join('\n') + '\n');

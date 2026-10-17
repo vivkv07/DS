@@ -30,7 +30,8 @@ import bmesh
 from mathutils import Vector, Matrix, Euler
 import kit
 
-REGION_NAMES = ['none', 'paint', 'paint2', 'paint3', 'r4', 'r5', 'r6', 'r7']
+REGION_NAMES = ['none', 'paint', 'paint2', 'paint3', 'head', 'tail', 'indicator', 'beacon']
+R_NONE, R_PAINT, R_PAINT2, R_PAINT3, R_HEAD, R_TAIL, R_IND, R_BEACON = range(8)
 FONT_BOLD = next((p for p in ('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
                               '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf') if os.path.exists(p)), None)
 FONT_COND = next((p for p in ('/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf', '/usr/share/fonts/truetype/liberation/LiberationSansNarrow-Bold.ttf') if os.path.exists(p)), FONT_BOLD)
@@ -51,7 +52,9 @@ def mat(key, name, region=0, **kw):
 
 
 def palette():
-    """the vehicle material palette (each call returns the cached materials of this scene)"""
+    """the vehicle material palette (each call returns the cached materials of this scene). Lamp
+    lenses carry their lamp group as tint region (4 head, 5 tail / brake, 6 indicators, 7 beacon):
+    the runtime switches each group's baked emission on and off."""
     return {
         'chrome': mat('chrome', 'chrome'),
         'steel': mat('steel', 'steel'),
@@ -60,10 +63,12 @@ def palette():
         'tyre': mat('rubber', 'tyre', base='#1e1e20', rough=0.9, grime=0.25, dirt='#6a604f', ground=1.2),
         'black': mat('paint_black', 'black_trim', base='#1a1a1c', rough=0.55, chips=0.1),
         'plastic': mat('plastic_black', 'plastic', base='#1c1c1e', rough=0.5),
-        'glass': mat('paint_black', 'glass_dark', base='#26323a', rough=0.06, var=0.03, grain=0.0, chips=0.0, grime=0.2, dirt='#6a6a60'),
-        'head_lens': mat('lamp_lens', 'head_lens', base='#eae6d4', rough=0.1, emit='#fff1cc'),
-        'tail_lens': mat('reflector_red', 'tail_lens', base='#a0141a', rough=0.15, emit='#ff3020'),
-        'amber': mat('reflector_red', 'amber_lens', base='#d07a10', rough=0.18),
+        'glass_dark': mat('paint_black', 'glass_dark', base='#26323a', rough=0.06, var=0.03, grain=0.0, chips=0.0, grime=0.2, dirt='#6a6a60'),
+        'glass': mat('glass', 'glass', base='#5a6c72', rough=0.04, alpha=0.38, bake=False),
+        'head_lens': mat('lamp_lens', 'head_lens', region=R_HEAD, base='#eae6d4', rough=0.1, emit='#fff1cc'),
+        'tail_lens': mat('reflector_red', 'tail_lens', region=R_TAIL, base='#a0141a', rough=0.15, emit='#ff3020'),
+        'amber': mat('reflector_red', 'amber_lens', region=R_IND, base='#d07a10', rough=0.18, emit='#ffa020'),
+        'beacon': mat('reflector_red', 'beacon_lens', region=R_BEACON, base='#c41a12', rough=0.15, emit='#ff2a10'),
         'reflector': mat('reflector_red', 'reflector'),
         'seat_black': mat('leather_brown', 'rexine_black', base='#1e1b1b', rough=0.45, grime=0.4),
         'seat_red': mat('leather_brown', 'rexine_red', base='#6e1e1c', rough=0.45, grime=0.4),
@@ -72,6 +77,8 @@ def palette():
         'wood': mat('wood_raw', 'wood'),
         'engine': mat('steel', 'engine_alu', base='#8c8f92', rough=0.6, metal=0.55, grime=0.75, dirt='#2e2a26'),
         'dark': mat('paint_black', 'underbody', base='#202020', rough=0.8, chips=0.0, grime=0.5, dirt='#3a3228'),
+        'interior': mat('cloth', 'interior', base='#5a4a3e', rough=0.9, var=0.05, grain=0.06, weave=0.05, grime=0.3, dirt='#2a2018', scale=3.0),
+        'headliner': mat('cloth', 'headliner', base='#cfc6b2', rough=0.95, var=0.04, grain=0.05, weave=0.04, grime=0.25, dirt='#7a7060', scale=3.0),
     }
 
 
@@ -361,6 +368,79 @@ def shell(name, rows, m, thick=0.08, closed=False, inside=None):
         sm.use_even_offset = True
         kit.apply_modifiers(o)
     return o
+
+
+def loft_z(name, stations, m, seg=16, cap_start=True, cap_end=True):
+    """A shell built from horizontal superellipse sections stacked along Z (an auto's front cowl,
+    a scooter's leg shield): stations [(z, y_centre, x_half_width, y_half_depth, power)]."""
+    rings = [dict(c=(0.0, yc, z), r=(hw, hd), p=pw) for (z, yc, hw, hd, pw) in stations]
+    return kit.loft(name, rings, seg=seg, side=(1, 0, 0), mat=m, cap_start=cap_start, cap_end=cap_end)
+
+
+def mirror_x(objs, suffix='_R'):
+    """mirrored copies (x -> -x) of objects (built on the left, +X), normals fixed"""
+    out = []
+    for o in (objs if isinstance(objs, (list, tuple)) else [objs]):
+        c = o.copy()
+        c.data = o.data.copy()
+        c.name = o.name + suffix
+        kit.link(c)
+        c.data.transform(Matrix.Scale(-1, 4, (1, 0, 0)))
+        bm = bmesh.new()
+        bm.from_mesh(c.data)
+        bmesh.ops.reverse_faces(bm, faces=bm.faces)
+        bm.to_mesh(c.data)
+        bm.free()
+        out.append(c)
+    return out
+
+
+def assign_faces(ob, rules):
+    """per-face material reassignment: rules = [(predicate(centre, normal) -> bool, material)], the
+    first matching rule wins (stripes on a canopy, glass in a cabin shell, two-tone paint)."""
+    me = ob.data
+    idx = {}
+    for (_, m) in rules:
+        if m.name not in [x.name for x in me.materials if x]:
+            me.materials.append(m)
+    names = [x.name if x else '' for x in me.materials]
+    for p in me.polygons:
+        c, n = p.center, p.normal
+        for (fn, m) in rules:
+            if fn(c, n):
+                p.material_index = names.index(m.name)
+                break
+    return ob
+
+
+def inner_shell(src, name, m, inset=0.12, keep=None):
+    """a copy of (part of) a closed shell pushed inwards by `inset` with flipped normals: the inside
+    of a car's cabin (headliner, door cards) seen from the first-person eye. keep(centre, normal)
+    selects the faces to copy."""
+    c = src.copy()
+    c.data = src.data.copy()
+    c.name = name
+    kit.link(c)
+    bm = bmesh.new()
+    bm.from_mesh(c.data)
+    bm.normal_update()
+    if keep is not None:
+        kill = [f for f in bm.faces if not keep(f.calc_center_median(), f.normal)]
+        bmesh.ops.delete(bm, geom=kill, context='FACES')
+    bm.normal_update()
+    for v in bm.verts:
+        if v.link_faces:
+            n = Vector((0, 0, 0))
+            for f in v.link_faces:
+                n += f.normal
+            if n.length > 1e-6:
+                v.co -= n.normalized() * inset
+    bmesh.ops.reverse_faces(bm, faces=bm.faces)
+    bm.to_mesh(c.data)
+    bm.free()
+    c.data.materials.clear()
+    c.data.materials.append(m)
+    return c
 
 
 def arc_row(y, hw, z_side, z_shoulder, r, z_crown=0.0, n_side=2, n_corner=4, n_top=3, x_off=0.0):

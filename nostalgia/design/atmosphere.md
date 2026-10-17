@@ -62,3 +62,29 @@ nights, birds flying."
 - Life on the wires: crows and pigeons perch on them (and take off when disturbed); after
   Sankranti, torn kites and manja hang tangled on the wires and poles for weeks; the odd
   pair of old chappals thrown over a wire.
+
+## Street-food scenes (user request, binding)
+"How can we make dosa bandis real scenes, like people gathering around carts and steam coming
+out?" Every food cart and food spot becomes a living scene in both views:
+- **Dosa bandi:** the vendor ladles batter, spreads it in circles on the big tawa, drizzles oil,
+  flips and folds; steam and smoke rise from the tawa (thicker when batter hits the pan); the
+  stove glows at night under a bulb or petromax lamp; steel buckets of chutney and sambar;
+  4-10 customers gather in a loose half-ring, some waiting, some eating from steel plates or
+  leaf plates standing up, a couple of scooters and cycles parked beside; busiest at morning
+  tiffin (06:30-10:00) and late night (21:00-01:00).
+- **Samosa / mirchi bajji bandi:** a kadai of bubbling oil with rising steam, fresh batches
+  tipped into a tray, evening rush (16:00-20:00), paper-cone servings.
+- **Chai bandi:** kettle steam, the long tea-pour from height, small glasses, men standing and
+  chatting at all hours with morning and evening peaks.
+- **Pani puri cart:** a tight crowd around the vendor handing out puris one by one, evenings.
+- **Bhutta cart:** charcoal glow, smoke and sparks fanned by a hand fan, on Necklace Road and
+  Tank Bund in the evening breeze.
+- **Coconut, ice-gola, banana and flower carts:** smaller groups; the coconut seller's machete
+  chop.
+- **Gokul Chat, Irani café fronts, Paradise queue, Ramzan haleem bhattis:** bigger crowds
+  with their own rhythms.
+- Steam and smoke drift with `N.wind`, fade in rain (people crowd under the cart's tarpaulin
+  or an awning with umbrellas). Sizzle, clink and chatter sounds; Hyderabadi barks
+  ("Ek plain dosa, anna!", "Thoda karam kam", "Do chai").
+- Crowd members are real pedestrians (so the 3D view renders them too); the player can walk
+  into the crowd and buy (shops.js handles purchases). Only active near the player; pooled.

@@ -79,8 +79,8 @@
 
   /* ================================================================ options + stats */
   const DBG = { cam: null, track: null, rec: null, riderNext: false }; // tests: camera override {pos, look, fov}; track(entity) records its pose
-  const OPT = { glows: true, decals: true, seasons: true, blobs: true, pools: true };
-  const ST = { people: 0, peopleFar: 0, vehicles: 0, wheels: 0, glows: 0, pools: 0, decals: 0, animals: 0, birds: 0, markers: 0, kites: 0, ms: 0, msAvg: 0, frame: 0, culled: 0 };
+  const OPT = { glows: true, decals: true, seasons: true, blobs: true, pools: true, fx: true };
+  const ST = { people: 0, peopleFar: 0, vehicles: 0, wheels: 0, glows: 0, pools: 0, decals: 0, animals: 0, birds: 0, markers: 0, kites: 0, skids: 0, puffs: 0, ms: 0, msAvg: 0, frame: 0, culled: 0 };
   let tFrame0 = 0;
 
   /* ================================================================ colour helpers */
@@ -212,7 +212,7 @@
       const ax = P[o1] - P[o0], ay = P[o1 + 1] - P[o0 + 1], az = P[o1 + 2] - P[o0 + 2];
       const bx = P[o2] - P[o0], by = P[o2 + 1] - P[o0 + 1], bz = P[o2 + 2] - P[o0 + 2];
       const cx = ay * bz - az * by, cy = az * bx - ax * bz, cz = ax * by - ay * bx;
-      const flip = (cx * this.n[o0] + cy * this.n[o0 + 1] + cz * this.n[o0 + 2]) > 0;
+      const flip = (cx * this.n[o0] + cy * this.n[o0 + 1] + cz * this.n[o0 + 2]) < 0; // (a, b, c) faces against the normal
       for (let i = 0; i < seg; i++) {
         const a = base + i * 2, b = a + 1, c = a + 2, d = a + 3;
         if (flip) { this.tri(a, c, b); this.tri(b, c, d); } else { this.tri(a, b, c); this.tri(b, d, c); }
@@ -995,8 +995,16 @@
     if (bend > 0) { out[oi] = base + A; out[oi + 1] = -(Math.PI - B); } else { out[oi] = base - A; out[oi + 1] = Math.PI - B; }
   }
   const IKO = [0, 0];
-  /** arms to hand targets (template coords, already relative to the person root) with torso lean */
-  function armsTo(j, lean, lx, ly, lz, rx, ry, rz) {
+  /** arms to hand targets (template coords, already relative to the person root) with torso lean;
+   *  maxLean: lean further forward (up to it) until both hands reach their targets (a kid on an
+   *  adult's cycle or an auto stretches over the handlebar instead of grabbing at the air) */
+  const ARM_REACH = (UARM + FARM) * 0.985;
+  function armNeed(lean, x, y, z) {
+    const c = Math.cos(lean), s = Math.sin(lean), qy = y - HIP_Y;
+    return Math.hypot(x * c - qy * s, x * s + qy * c + HIP_Y - SH_Y, Math.max(0, Math.abs(z) - SH_Z) * 0.8);
+  }
+  function armsTo(j, lean, lx, ly, lz, rx, ry, rz, maxLean) {
+    if (maxLean > lean) for (let k = 0; k < 16 && lean < maxLean && Math.max(armNeed(lean, lx, ly, lz), armNeed(lean, rx, ry, rz)) > ARM_REACH; k++) lean = Math.min(maxLean, lean + 0.05);
     const c = Math.cos(lean), s = Math.sin(lean);
     const un = (x, y) => { const qx = x, qy = y - HIP_Y; return [qx * c - qy * s, qx * s + qy * c + HIP_Y]; }; // undo the forward lean
     const L = un(lx, ly), R = un(rx, ry);
@@ -1570,7 +1578,8 @@
     P2(b).box(-11.62, 6.0, -6.15, -11.5, 6.6, 6.15);
     GL(b).box(-11.62, 7.9, -2.6, -11.55, 9.5, 2.6);
     FX(b, BLACK).box(6.3, 10.0, -5.4, 7.2, 10.7, 5.4).box(6.85, 6.1, -4.9, 7.25, 6.4, 4.9).box(6.85, 6.2, -0.08, 7.2, 10.1, 0.08);
-    FX(b, '#5a6a72').box(6.88, 6.4, -4.7, 6.98, 10.0, 4.7);
+    GL(b).box(6.88, 6.4, -4.7, 6.98, 10.0, 4.7); // the windscreen (translucent: the road shows through in first person)
+    FX(b, BLACK).tube([7.0, 6.5, -0.4], [7.05, 9.3, -2.6], 0.07, 4); // the single wiper
     TL(b).box(-11.3, 3.2, -5.4, -11.05, 3.9, -4.4).box(-11.3, 3.2, 4.4, -11.05, 3.9, 5.4);
     // handlebar (steering column at x 6.0)
     b.part(1, [6.0, 0, 0]);
@@ -2150,7 +2159,7 @@
         }
         T(lx, gy, A0); T(rx, gy, A1);
       }
-      armsTo(J, lean, A0[0], A0[1], (lz - hz) / sc, A1[0], A1[1], (rz - hz) / sc);
+      armsTo(J, lean, A0[0], A0[1], (lz - hz) / sc, A1[0], A1[1], (rz - hz) / sc, pose === 'car' ? 0.32 : pose === 'cycle' || pose === 'moto' ? 0.8 : 0.62);
       if (md.crank && pose === 'cycle') {
         const c = o.crank || 0, R = md.crank[2], bx = md.crank[0] * sx, by = md.crank[1];
         const pxr = bx + Math.cos(c) * R, pyr = by + Math.sin(c) * R, pxl = bx - Math.cos(c) * R, pyl = by - Math.sin(c) * R;
@@ -2214,7 +2223,11 @@
     if (j > 0) { const ph = (1 - j) * Math.PI * 3.2, big = md.bike ? 1 : 0.7; yOff += -Math.sin(ph) * j * 0.8 * big; pitch += Math.sin(ph * 1.3) * j * 0.05 * big; roll += Math.sin(ph * 1.7) * j * 0.04 * (v.joltSide || 1); }
     if (md.boat) { const ph = t + ((v.seed | 0) % 100); yOff = 0.15 + Math.sin(ph * 1.3) * 0.22; roll = Math.sin(ph * 0.9) * 0.035; pitch = Math.sin(ph * 1.1 + 1) * 0.02 - clamp((v.speed || 0) / 600, -0.02, 0.06); }
     FR.set(v.x, yOff, v.y, -(v.angle || 0), roll, pitch);
-    if (!visible(v.x, md.H * 0.5, v.y, md.L * 0.55 * sx + 3)) return;
+    vehicleFx(v, T, md);
+    if (!visible(v.x, md.H * 0.5, v.y, md.L * 0.55 * sx + 3)) {
+      if (DBG.track === v) DBG.rec = { kind: 'vehicle', model: md.key, spin: -((v.wheelPhase || 0) * 2) / (md.rearR || 2), culled: true, frame: ST.frame };
+      return;
+    }
     ST.vehicles++;
     const night = H.night;
     const sp = Math.abs(v.speed || 0);
@@ -2222,7 +2235,8 @@
     const on = !!(T && (T.lights || dyn) && (v.driver || v.controller || v.lightsOn));
     const ctl = v.ctl || {};
     const braking = on && (ctl.throttle < -0.1 || ctl.brake || ctl.handbrake) ? 1 : 0;
-    const steerVis = (v.steerVis || 0) * (md.bike ? 0.8 : 0.9);
+    // A3: a kid on a Scooty near top speed: the handlebar shakes with v.wobble (the lean already follows it)
+    const steerVis = ((v.steerVis || 0) + (md.bike ? (v.wobble || 0) * 0.45 : 0)) * (md.bike ? 0.8 : 0.9);
     const R0 = md.rearR || 2;
     const spin = -((v.wheelPhase || 0) * 2) / R0;
     const crank = md.crank ? spin * R0 / (md.crank[2] * 2.4) : 0;
@@ -2535,14 +2549,18 @@
   const SEATED_J = new Float32Array([1.35, 1.35, -1.4, -1.4, 0.6, 0.6, 0.6, 0.6, 0.1, 0.1, 0.08, 0, 0, 0, 0, 0]);
   const ease = (k) => k * k * (3 - 2 * k);
   function wrapA(a) { return Math.atan2(Math.sin(a), Math.cos(a)); }
+  /** simulation seconds since the last frame (0 while paused; slow motion slows it) */
+  function simDt() {
+    if (SIM.frame !== ST.frame) { const t = nowS(); SIM.dt = clamp(t - SIM.last, 0, 0.1); SIM.last = t; SIM.frame = ST.frame; }
+    return SIM.dt;
+  }
   function personEntity(e, dt) {
     if (e.hidden || e.vehicle) return;
     const p = N.player, isP = e === p;
     const look = e.look;
     if (!look) return;
     // simulation time of this frame (slow motion / pause freeze the gait with the sim)
-    if (SIM.frame !== ST.frame) { const now = (N.time && N.time.now) || 0; SIM.dt = clamp(now - SIM.last, 0, 0.1); SIM.last = now; SIM.frame = ST.frame; }
-    dt = SIM.dt;
+    dt = simDt();
     let el = H.elev(e);
     if (!el && e.roofH) el = e.roofH * VS;
     const face = isFinite(e.facing) && isP ? e.facing : (e.angle || 0);
@@ -3233,6 +3251,153 @@
     }
   }
 
+  /* ================================================================ skid marks, dust, exhaust smoke, wake foam
+   * 3D parity of vehicles.js's private 2D decals / particles (not exposed): skid marks follow the
+   * rear-wheel points vehicles.js itself tracks while a vehicle skids (v.skidding, v.skL / v.skR)
+   * and fade over 40 s of game time; puffs mirror its effects() rules: two-stroke blue smoke from
+   * autos, diesel soot from buses and lorries, dust behind fast wheels on dirt / sand / grass, tyre
+   * smoke when skidding on tarmac, foam behind boats. Two draw calls in all. */
+  const SK_MAX = 720, PT_MAX = 384, SK_LIFE = 40;
+  const FXS = { sk: null, skHead: 0, skN: 0, skDirty: false, pt: null, ptHead: 0, live: 0, E: { x: 0, y: 0 } };
+  const PCOL3 = {};
+  function fxCol(hex) { let c = PCOL3[hex]; if (!c) { const k = parseInt(hex.slice(1), 16); c = PCOL3[hex] = [(k >> 16 & 255) / 255, (k >> 8 & 255) / 255, (k & 255) / 255]; } return c; }
+  function initFx() {
+    // skid marks: a ring of ground quads, faded by age in the shader
+    const g = new THREE.BufferGeometry();
+    const pos = new Float32Array(SK_MAX * 12), birth = new Float32Array(SK_MAX * 4).fill(-1e9), idx = new Uint16Array(SK_MAX * 6);
+    for (let i = 0; i < SK_MAX; i++) { const v = i * 4, o = i * 6; idx[o] = v; idx[o + 1] = v + 2; idx[o + 2] = v + 1; idx[o + 3] = v + 1; idx[o + 4] = v + 2; idx[o + 5] = v + 3; }
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('aBirth', new THREE.BufferAttribute(birth, 1).setUsage(THREE.DynamicDrawUsage));
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
+    const m = new THREE.ShaderMaterial({
+      uniforms: { uNow: { value: 0 } }, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
+      vertexShader: 'attribute float aBirth; uniform float uNow; varying float vA; void main(){ float age = uNow - aBirth; vA = (age < 0.0 || age > ' + SK_LIFE.toFixed(1) + ') ? 0.0 : 0.5 * (1.0 - smoothstep(' + (SK_LIFE * 0.5).toFixed(1) + ', ' + SK_LIFE.toFixed(1) + ', age)); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'varying float vA; void main(){ if (vA < 0.004) discard; gl_FragColor = vec4(0.06, 0.05, 0.055, vA); }',
+    });
+    const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; mesh.renderOrder = 2; mesh.name = 'actors:skids'; mesh.visible = false;
+    ROOT.add(mesh);
+    FXS.sk = { g, pos, birth, mesh, mat: m };
+    // puffs: soft points with normal blending (smoke / dust / foam), simulated on the CPU
+    const pg = new THREE.BufferGeometry();
+    const P = { x: new Float32Array(PT_MAX), h: new Float32Array(PT_MAX), y: new Float32Array(PT_MAX), vx: new Float32Array(PT_MAX), vh: new Float32Array(PT_MAX), vy: new Float32Array(PT_MAX),
+      t: new Float32Array(PT_MAX).fill(1e9), life: new Float32Array(PT_MAX).fill(1), r: new Float32Array(PT_MAX), a: new Float32Array(PT_MAX), c: new Float32Array(PT_MAX * 3) };
+    P.pos = new Float32Array(PT_MAX * 3); P.col = new Float32Array(PT_MAX * 4); P.size = new Float32Array(PT_MAX);
+    pg.setAttribute('position', new THREE.BufferAttribute(P.pos, 3).setUsage(THREE.DynamicDrawUsage));
+    pg.setAttribute('pCol', new THREE.BufferAttribute(P.col, 4).setUsage(THREE.DynamicDrawUsage));
+    pg.setAttribute('pSize', new THREE.BufferAttribute(P.size, 1).setUsage(THREE.DynamicDrawUsage));
+    pg.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
+    const pm = new THREE.ShaderMaterial({
+      uniforms: { map: { value: H.materials.glow.map }, uScale: { value: 400 }, uFogNear: { value: 400 }, uFogFar: { value: 1500 } }, transparent: true, depthWrite: false,
+      vertexShader: 'attribute vec4 pCol; attribute float pSize; uniform float uScale; uniform float uFogNear; uniform float uFogFar; varying vec4 vC; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv; float d = max(1.0, -mv.z); gl_PointSize = clamp(pSize * uScale / d, 0.0, 260.0); vC = vec4(pCol.rgb, pCol.a * (1.0 - smoothstep(uFogNear, uFogFar, d))); }',
+      fragmentShader: 'uniform sampler2D map; varying vec4 vC; void main(){ float a = texture2D(map, gl_PointCoord).r; a = a * a * vC.a; if (a < 0.004) discard; gl_FragColor = vec4(vC.rgb, a); }',
+    });
+    const pts = new THREE.Points(pg, pm); pts.frustumCulled = false; pts.renderOrder = 6; pts.name = 'actors:puffs'; pts.visible = false;
+    ROOT.add(pts);
+    P.g = pg; P.pts = pts; P.mat = pm;
+    FXS.pt = P;
+  }
+  function skidSeg(x0, y0, x1, y1, w, t) {
+    const S = FXS.sk; if (!S) return;
+    const L = Math.hypot(x1 - x0, y1 - y0) || 1, px = -(y1 - y0) / L * w / 2, py = (x1 - x0) / L * w / 2;
+    FXS.E.x = x0; FXS.E.y = y0; const h0 = (V3.elevation ? V3.elevation(FXS.E) : 0) + 0.07;
+    FXS.E.x = x1; FXS.E.y = y1; const h1 = (V3.elevation ? V3.elevation(FXS.E) : 0) + 0.07;
+    const i = FXS.skHead, o = i * 12;
+    const q = S.pos;
+    q[o] = x0 - px; q[o + 1] = h0; q[o + 2] = y0 - py;
+    q[o + 3] = x0 + px; q[o + 4] = h0; q[o + 5] = y0 + py;
+    q[o + 6] = x1 - px; q[o + 7] = h1; q[o + 8] = y1 - py;
+    q[o + 9] = x1 + px; q[o + 10] = h1; q[o + 11] = y1 + py;
+    S.birth[i * 4] = S.birth[i * 4 + 1] = S.birth[i * 4 + 2] = S.birth[i * 4 + 3] = t;
+    FXS.skHead = (i + 1) % SK_MAX; if (FXS.skN < SK_MAX) FXS.skN++;
+    FXS.skDirty = true; ST.skids++;
+  }
+  function puff(x, h, y, vx, vh, vy, life, r, hex, a) {
+    const P = FXS.pt; if (!P) return;
+    const i = FXS.ptHead; FXS.ptHead = (i + 1) % PT_MAX;
+    P.x[i] = x; P.h[i] = h; P.y[i] = y; P.vx[i] = vx; P.vh[i] = vh; P.vy[i] = vy; P.t[i] = 0; P.life[i] = life; P.r[i] = r; P.a[i] = a;
+    const c = fxCol(hex); P.c[i * 3] = c[0]; P.c[i * 3 + 1] = c[1]; P.c[i * 3 + 2] = c[2];
+  }
+  /** per vehicle, every frame (also off screen, so marks and smoke stay continuous) */
+  function vehicleFx(v, T, md) {
+    if (!FXS.pt || OPT.fx === false || !T) return;
+    if (camDist(v.x, 3, v.y) > 320) { v._sk3 = null; return; }
+    const tnow = nowS();
+    // skid marks along vehicles.js's own rear-wheel track points
+    if (v.skidding && (v.skL || v.skR) && T.mode !== 'boat') {
+      const st = v._sk3 || (v._sk3 = { L: null, R: null });
+      const w = T.cls === 'bike' ? 0.9 : T.cls === 'heavy' ? 2.3 : 1.7;
+      for (let k = 0; k < 2; k++) {
+        const p = k ? v.skR : v.skL, q = k ? st.R : st.L;
+        if (!p) { if (k) st.R = null; else st.L = null; continue; }
+        if (q && Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.8) continue;
+        if (q && Math.hypot(p[0] - q[0], p[1] - q[1]) < 30) skidSeg(q[0], q[1], p[0], p[1], w, tnow);
+        const n2 = [p[0], p[1]]; if (k) st.R = n2; else st.L = n2;
+      }
+    } else if (v._sk3) v._sk3 = null;
+    const dt = simDt(); if (!(dt > 0)) return;
+    const sp = Math.abs(v.speed || 0), c = Math.cos(v.angle || 0), s = Math.sin(v.angle || 0);
+    const len = T.w || md.L, wd = T.d || md.W;
+    const rearX = v.x - c * len * 0.5, rearY = v.y - s * len * 0.5;
+    if (md.boat || T.mode === 'boat') {
+      if (sp > 8 && Math.random() < dt * (6 + sp * 0.25)) {
+        const sd = Math.random() < 0.5 ? -1 : 1;
+        puff(rearX + s * sd * 2, 0.35, rearY - c * sd * 2, -c * 8 + s * sd * 10, 0.4, -s * 8 - c * sd * 10, 1.6 + Math.random(), 2.2 + Math.random() * 1.6, '#e8f6f4', 0.8);
+      }
+      return;
+    }
+    if (T.smoke && v.driver && !v.fallen) {
+      v._smk3 = (v._smk3 || 0) - dt * (0.6 + Math.abs(v.throttle || 0) * 2.2 + sp / 90);
+      if (v._smk3 <= 0) {
+        v._smk3 = T.smoke === 'diesel' ? 0.32 : T.smoke === 'light' ? 0.6 : 0.4;
+        const hex = T.smoke === 'diesel' ? '#4a4648' : T.smoke === '2t' ? '#b8c4d4' : '#d0d4dc';
+        const ex = v.x - c * (len * 0.5 + 1) + s * (wd * 0.22), ey = v.y - s * (len * 0.5 + 1) - c * (wd * 0.22);
+        const heavy = T.cls === 'heavy';
+        puff(ex, heavy ? 2.6 : 1.4, ey, -c * 10 + (Math.random() - 0.5) * 6, 3 + Math.random() * 2, -s * 10 + (Math.random() - 0.5) * 6, 0.9 + Math.random() * 0.6, heavy ? 4.2 : 2.4, hex, T.smoke === 'diesel' ? 0.55 : 0.42);
+      }
+    }
+    let surf = null; try { surf = N.world.surfaceAt(v.x, v.y); } catch (e) { surf = null; }
+    const S = N.SURF || {};
+    const dirt = surf != null && (surf === S.GROUND || surf === S.SAND || surf === S.GRASS);
+    if ((dirt && sp > 35) || v.skidding) {
+      if (Math.random() < dt * (dirt ? 4 + sp * 0.12 : 18)) {
+        const hex = surf === S.SAND ? '#d8c49a' : surf === S.GRASS ? '#a8b88a' : dirt ? '#c4a07a' : '#d6d2d0';
+        puff(rearX + (Math.random() - 0.5) * wd, 0.9, rearY + (Math.random() - 0.5) * wd, -(v.vx || 0) * 0.15 + (Math.random() - 0.5) * 10, 3.5 + Math.random() * 2.5, -(v.vy || 0) * 0.15 + (Math.random() - 0.5) * 10, 0.9 + Math.random() * 0.6, 3.6, hex, dirt ? 0.5 : 0.38);
+      }
+    }
+  }
+  function commitFx() {
+    const S = FXS.sk, P = FXS.pt; if (!S || !P) return;
+    const tnow = nowS();
+    S.mat.uniforms.uNow.value = tnow;
+    if (FXS.skDirty) { S.g.attributes.position.needsUpdate = true; S.g.attributes.aBirth.needsUpdate = true; FXS.skDirty = false; }
+    S.mesh.visible = FXS.skN > 0 && OPT.fx !== false;
+    // puffs: drift, rise, grow, fade (game time)
+    const dt = simDt(), night = H.night || 0, lit = 1 - 0.72 * night;
+    const dr = Math.exp(-dt * 2.5), dh = Math.exp(-dt * 1.2);
+    let n = 0;
+    for (let i = 0; i < PT_MAX; i++) {
+      if (P.t[i] >= P.life[i]) continue;
+      P.t[i] += dt;
+      const f = P.t[i] / P.life[i]; if (f >= 1) continue;
+      P.x[i] += P.vx[i] * dt; P.h[i] += P.vh[i] * dt; P.y[i] += P.vy[i] * dt;
+      P.vx[i] *= dr; P.vy[i] *= dr; P.vh[i] *= dh;
+      const o = n * 3, q = n * 4;
+      P.pos[o] = P.x[i]; P.pos[o + 1] = P.h[i]; P.pos[o + 2] = P.y[i];
+      P.col[q] = P.c[i * 3] * lit; P.col[q + 1] = P.c[i * 3 + 1] * lit; P.col[q + 2] = P.c[i * 3 + 2] * lit;
+      P.col[q + 3] = P.a[i] * (1 - f) * Math.min(1, f * 8 + 0.2);
+      P.size[n] = P.r[i] * (1 + f * 2.2);
+      n++;
+    }
+    P.g.setDrawRange(0, n);
+    P.pts.visible = n > 0 && OPT.fx !== false;
+    if (n) for (const k of ['position', 'pCol', 'pSize']) { const a = P.g.attributes[k]; a.needsUpdate = true; a.updateRange.offset = 0; a.updateRange.count = n * a.itemSize; }
+    P.mat.uniforms.uScale.value = GLOW.mat ? GLOW.mat.uniforms.uScale.value : 400;
+    const fog = H.scene.fog; if (fog) { P.mat.uniforms.uFogNear.value = fog.near; P.mat.uniforms.uFogFar.value = fog.far; }
+    FXS.live = n; ST.puffs = n;
+  }
+
   /* ================================================================ init, frame commit, registration */
   let FAILED = false;
   function initDecals() {
@@ -3268,7 +3433,7 @@
       for (const m of [VEH_MAT, WHEEL_MAT, ANIMAL_MAT, ANIMAL_DEPTH]) m.userData.shared = true;
       initPeople();
       WHEELS = { spoke: new Pool('wheelSpoke', buildWheel('spoke'), WHEEL_MAT, 32, {}, { cast: true, max: 2048 }), solid: new Pool('wheelSolid', buildWheel('solid'), WHEEL_MAT, 48, {}, { cast: true, max: 2048 }) };
-      initGlows(); initLightPools(); initDecals(); initMarkers(); initGlints();
+      initGlows(); initLightPools(); initDecals(); initMarkers(); initGlints(); initFx();
       READY = true;
     } catch (e) {
       FAILED = true;
@@ -3319,13 +3484,14 @@
       try { flushExtras(); } catch (e) { N.err('view3d_actors.extras', e); }
       if (SEA.strings) { const S = SEA.strings; S.geo.setDrawRange(0, S.n); S.obj.visible = S.n > 0; if (S.n) { S.geo.attributes.position.needsUpdate = true; S.geo.attributes.color.needsUpdate = true; } }
       for (const P of POOLS) P.commit();
+      try { commitFx(); } catch (e) { N.err('view3d_actors.fx', e); }
       commitGlows();
       ROOT.visible = !OPT.hidden;
       if (DEC.dirty) { DEC.tex.needsUpdate = true; DEC.dirty = false; }
       const ms = tFrame0 ? now() - tFrame0 : 0;
       ST.ms = ms; ST.msAvg += (ms - ST.msAvg) * 0.05;
       LAST = Object.assign({}, ST);
-      ST.people = ST.peopleFar = ST.vehicles = ST.wheels = ST.decals = ST.animals = ST.birds = ST.markers = ST.kites = ST.culled = 0;
+      ST.people = ST.peopleFar = ST.vehicles = ST.wheels = ST.decals = ST.animals = ST.birds = ST.markers = ST.kites = ST.culled = ST.skids = 0;
       ST.frame++; tFrame0 = 0;
     },
   });
@@ -3359,6 +3525,8 @@
       /** instance counts per pool (name -> count) of the last committed frame */
       counts() { const o = {}; for (const P of POOLS) if (P.mesh && P.mesh.count) o[P.name] = P.mesh.count; o.glows = LAST.glows; return o; },
       glints() { return GL2.geo ? GL2.geo.drawRange.count : 0; },
+      /** live skid-mark quads (fading over 40 s of game time) and smoke / dust puffs */
+      fx() { return { skids: FXS.skN, puffs: FXS.live }; },
       feet: (r) => feetOf(r || DBG.rec),
     },
   };
