@@ -403,7 +403,7 @@ def build_tank_bund_statue(A):
         for dx in (-1.4, 0.0, 1.4):
             hz = 14.0 - (0.6 if dx else 0.0)
             keep.append(cylinder('tb_lantern', 0.45, 1.3, (x + dx, y, hz + 0.05), seg=3, mat=M['lamp'], r2=0.55, cap=False))
-    parts.append(L.railing('rail', 29.2, 3.2, M, loc=(0, 4.5, 0.0), posts=4))
+    parts.append(L.railing('rail', 29.2, 3.2, M, loc=(0, 4.5, 0.0), posts=3))
 
     def rail_lo(cx, cy, ln, n):
         for z in (3.0,):
@@ -411,7 +411,7 @@ def build_tank_bund_statue(A):
         for i in range(n):
             xx = cx - ln / 2 + ln * i / (n - 1)
             lo.append(cylinder('post_lo', 0.3, 3.2, (xx, cy, 0.0), seg=3, cap=False))
-    rail_lo(0.0, 4.5, 29.2, 4)
+    rail_lo(0.0, 4.5, 29.2, 3)
     z0 = 24.6
     variants = {pose: ([_tb_figure(pose, BZ, z0)], _tb_figure_lo(pose, z0)) for pose in ('scholar', 'poet', 'warrior', 'saint')}
     trim(lo)
