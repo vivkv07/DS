@@ -208,6 +208,20 @@ async function desktop(browser) {
   check(perf.callsMax <= 320, 'draw calls in dense Old City <= ~300 (' + perf.callsMax + ')');
   check(perf.js - perf.work <= 9, 'JS per frame (excluding streaming) ' + (perf.js - perf.work).toFixed(1) + ' ms (SwiftShader GL; ~6 ms budget on hardware)');
 
+  // ---- a long trip across the city keeps GPU memory bounded (far chunks are freed / downgraded)
+  await setLowRes(page, true);
+  const trip = await page.evaluate(() => {
+    const out = [];
+    for (const [x, y] of [[430, 600], [1100, 3300], [3900, 4500], [5200, 1000], [7400, 3600], [4473, 2671]]) {
+      N.debug.teleport(x, y); N.view3d.settle(15000);
+      const s = N.view3d.stats(); out.push([s.chunks, s.groundTextures, s.textures, s.geometries]);
+    }
+    return out;
+  });
+  const maxTex = Math.max(...trip.map((r) => r[2])), maxGeo = Math.max(...trip.map((r) => r[3]));
+  check(maxTex < 180 && maxGeo < 700, 'long trip (6 far teleports): GPU memory bounded (max ' + maxTex + ' textures, ' + maxGeo + ' geometries; chunks ' + trip.map((r) => r[0]).join('/') + ')');
+  report.push('long trip textures per stop: ' + trip.map((r) => r[2]).join(', ') + '; geometries: ' + trip.map((r) => r[3]).join(', '));
+
   // ---- repeated toggles do not leak (baseline after one full cycle, then 12 more toggles)
   await setLowRes(page, true);
   const meas = () => page.evaluate(() => { N.view.set('tps'); N.view3d.settle(8000); const s = N.view3d.stats(); return [s.geometries - s.actors * 2, s.textures, s.chunks, s.actors]; });

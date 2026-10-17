@@ -572,6 +572,7 @@
     const conc = L < 0.5 ? '#b8b2a6' : U.mix('#b8b2a6', '#6a6e7c', (L - 0.5) * 1.6);
     const concD = U.shade(conc, 0.78), concL = U.shade(conc, 1.08);
     const R0 = 9, R1 = 19, R2 = 21, R3 = 32;
+    const nightA = clamp((L - 0.5) / 0.5, 0, 1) * 0.42; // the stands sit outside the floodlights' pool
     const H0 = 1.6, H1 = 7.5, H2 = 8.6, H3 = 17;
     const wave = S.clock || 0;
     for (const s of order) {
@@ -599,6 +600,7 @@
       if (quadPath(ctx, c, X(sx0, R2), H2, Z(cz0, R2), X(sx1, R2), H2, Z(cz1, R2), X(sx1, R3), H3, Z(cz1, R3), X(sx0, R3), H3, Z(cz0, R3))) ctx.fill();
       texQuad(ctx, c, tex, u0, 0, 128, 128, X(sx1, R3), H3, Z(cz1, R3), X(sx0, R3), H3, Z(cz0, R3), X(sx1, R2), H2, Z(cz1, R2));
       resetT(ctx);
+      if (nightA > 0.02) { ctx.fillStyle = 'rgba(8,10,28,' + (nightA * 1.1).toFixed(3) + ')'; if (quadPath(ctx, c, X(sx0, R2), H2, Z(cz0, R2), X(sx1, R2), H2, Z(cz1, R2), X(sx1, R3), H3, Z(cz1, R3), X(sx0, R3), H3, Z(cz0, R3))) ctx.fill(); }
       // walkway wall between tiers
       ctx.fillStyle = s.pav ? '#e8e2d2' : concL;
       if (quadPath(ctx, c, X(sx0, R1), H1, Z(cz0, R1), X(sx1, R1), H1, Z(cz1, R1), X(sx1, R2), H2, Z(cz1, R2), X(sx0, R2), H2, Z(cz0, R2))) ctx.fill();
@@ -607,6 +609,7 @@
       if (quadPath(ctx, c, X(sx0, R0), H0, Z(cz0, R0), X(sx1, R0), H0, Z(cz1, R0), X(sx1, R1), H1, Z(cz1, R1), X(sx0, R1), H1, Z(cz0, R1))) ctx.fill();
       texQuad(ctx, c, tex, (u0 + 384) % 1024, 0, 128, 128, X(sx1, R1), H1, Z(cz1, R1), X(sx0, R1), H1, Z(cz0, R1), X(sx1, R0), H0, Z(cz1, R0));
       resetT(ctx);
+      if (nightA > 0.02) { ctx.fillStyle = 'rgba(8,10,28,' + (nightA * 0.8).toFixed(3) + ')'; if (quadPath(ctx, c, X(sx0, R0), H0, Z(cz0, R0), X(sx1, R0), H0, Z(cz1, R0), X(sx1, R1), H1, Z(cz1, R1), X(sx0, R1), H1, Z(cz0, R1))) ctx.fill(); }
       // front wall, painted stripe
       ctx.fillStyle = s.pav ? '#2a8c82' : (s.i % 2 ? '#d8cfbd' : '#cfc6b3');
       if (quadPath(ctx, c, X(sx0, R0), 0, Z(cz0, R0), X(sx1, R0), 0, Z(cz1, R0), X(sx1, R0), H0, Z(cz1, R0), X(sx0, R0), H0, Z(cz0, R0))) ctx.fill();
@@ -1350,7 +1353,8 @@
     S.run = { done: 0, p: 0, active: false, T: RUN_T[0], queued: false, startDelay: 0, auto: false };
     S.out = { runs: 0, wide: false, nb: false, wicket: null, boundary: 0, shot: null };
     S.calls = null; S.catchPrompt = null; S.timing = null; S.deadT = 0; S.evt = null; S.rp = null;
-    S.rec = []; S.recAcc = 0; S.ballClock = 0; S.thr = null; S.noIcept = false;
+    S.rec = []; S.recAcc = 0; S.ballClock = 0; S.thr = null; S.noIcept = false; S.gatherPos = null; S.res = null;
+    S.forceRuns = 0; S.forceRunOut = false; S.forceCatch = false; S.catchChance = false;
     S.forceNow = null; S.lastIcept = null;
     S.ball = newBallObj();
     S.stumps = [newStumps(0), newStumps(PITCH)];
@@ -1458,7 +1462,7 @@
     if (r.next() < wideP || f === 'wide') { ax = r.next() < 0.6 ? -(WIDE_X + 0.3 + r.next() * 0.3) : WIDE_X + 0.25 + r.next() * 0.3; legWide = ax > 0; }
     if (f === 'bowled') { ax = (r.next() - 0.5) * 0.08; ay = 0.45; }
     if (f === 'dot') ax = -0.55;
-    if (f === 'four' || f === 'six' || f === 'caught' || f === 'single' || f === 'runout') { kind = 'good'; bz = 5.5; ay = 0.55; ax = -0.1; }
+    if (f === 'four' || f === 'six' || f === 'caught' || f === 'single' || f === 'runout' || f === 'house') { kind = 'good'; bz = 5.5; ay = 0.55; ax = -0.1; }
     const turn = spin ? bw.spin * R(0.12, 0.42) * (kind === 'quicker' ? 0.2 : 1) : R(-0.07, 0.07);
     const vBase = spin ? 15 + sk * 2.4 + d * 1.6 : 21.5 + sk * 4 + d * 3.5;
     const v = vBase * (kind === 'quicker' ? 1.25 : kind === 'yorker' ? 1.03 : 1) + R(-0.6, 0.6);
@@ -1486,7 +1490,7 @@
     if (f === 'bowled') { x = 0.02; z = 6; }
     else if (f === 'wide') x = 1.5;
     else if (f === 'dot') { x = -0.62; z = 6; }
-    else if (f && /^(four|six|caught|single|runout)$/.test(f)) { x = -0.1; z = 5.5; }
+    else if (f && /^(four|six|caught|single|runout|house)$/.test(f)) { x = -0.1; z = 5.5; }
     const spin = type === 'spin' || (bw.type === 'spin' && type !== 'bouncer' && type !== 'yorker');
     let v = spin ? 15.2 + bw.bowl * 2.6 : 21 + bw.bowl * 5;
     if (type === 'yorker') v *= 1.02;
@@ -1556,7 +1560,7 @@
     const ae = e < 0 ? -e : e * 2;
     S.timing = { e, label: ae <= W.p ? 'PERFECT' : ae <= W.g ? (e < 0 ? 'GOOD · EARLY' : 'GOOD · LATE') : ae <= W.e ? (e < 0 ? 'EARLY' : 'LATE') : e < 0 ? 'TOO EARLY' : 'TOO LATE', t: 0, ok: ae <= W.g };
     const f = S.forceNow;
-    if (f && /^(four|six|caught|single|runout)$/.test(f)) { S.pendHit = { dir: f === 'single' ? 'block' : dir === 'block' ? 'straight' : dir, loft: f === 'six' || f === 'caught', q: 'perfect', e: 0, forced: f }; schedulePend(S); return; }
+    if (f && /^(four|six|caught|single|runout|house)$/.test(f)) { S.pendHit = { dir: f === 'single' ? 'block' : dir === 'block' ? 'straight' : dir, loft: f === 'six' || f === 'caught', q: 'perfect', e: 0, forced: f }; schedulePend(S); return; }
     if (f === 'bowled' || f === 'dot' || f === 'wide') { S.missed = 'forced'; return; }
     if (ae > W.e) { S.missed = e < 0 ? 'early' : 'late'; return; }
     const q = ae <= W.p ? 'perfect' : ae <= W.g ? 'good' : 'edge';
@@ -1607,6 +1611,7 @@
     }
     // forced test outcomes
     if (h.forced === 'six') { th = R(-0.25, 0.25); v = 31; el = 0.62; kind = 'loft'; S.noIcept = true; }
+    if (h.forced === 'house') { th = -1.25; v = 26; el = 0.6; kind = 'loft'; S.noIcept = true; }
     if (h.forced === 'four') { th = gapAngle(S); v = 34; el = 0.06; kind = 'ground'; S.noIcept = true; }
     if (h.forced === 'single') { th = gapAngle(S) * 0.6; v = 8.5; el = 0.03; kind = 'block'; S.forceRuns = 1; }
     if (h.forced === 'runout') { const f = nearestFielderInFront(S); th = Math.atan2(f.x, f.z - HIT_Z); v = Math.max(9, Math.hypot(f.x, f.z) * 0.55); el = 0.04; kind = 'ground'; S.forceRunOut = true; }
@@ -1657,7 +1662,7 @@
     const plan = { act: 'shot', dir: 'straight', loft: false, q: 'good', e: 0 };
     if (f) {
       if (f === 'bowled' || f === 'wide' || f === 'dot') return { act: f === 'bowled' ? 'miss' : 'leave', e: 0.2 };
-      if (/^(four|six|caught|single|runout)$/.test(f)) return { act: 'shot', dir: 'straight', loft: f === 'six' || f === 'caught', q: 'perfect', e: 0, forced: f };
+      if (/^(four|six|caught|single|runout|house)$/.test(f)) return { act: 'shot', dir: 'straight', loft: f === 'six' || f === 'caught' || f === 'house', q: 'perfect', e: 0, forced: f };
     }
     if (del.wide) return r.next() < 0.8 ? { act: 'leave' } : { act: 'shot', dir: del.A.x < 0 ? 'off' : 'leg', loft: false, q: r.next() < 0.5 ? 'edge' : 'good', e: 0.05 };
     // aggression
@@ -1835,6 +1840,7 @@
       return;
     }
     b.st = 'held'; b.holder = f; b.vx = b.vy = b.vz = 0; b.y = 0.9;
+    S.gatherPos = { x: b.x, z: b.z };
     f.pose = 'stand'; f.tx = null;
     S.holdT = f.close || f.role === 'keeper' ? 0.18 : 0.36;
     planRunning(S, false);
@@ -2033,7 +2039,7 @@
           if (pos.bounced && !b.bounced) { b.bounced = true; g.tone(170, 0.04, { type: 'sine', vol: 0.05 }); }
           b.x = pos.x; b.y = pos.y; b.z = pos.z;
           if (!playerBats(S)) aiBatUpdate(S);
-          else if (S.forceNow && /^(four|six|caught|single|runout)$/.test(S.forceNow) && !S.swung && t >= del.tA - 0.002) { S.swung = true; startSwing(S, 'straight'); S.pendHit = { dir: S.forceNow === 'single' ? 'block' : 'straight', loft: S.forceNow === 'six' || S.forceNow === 'caught', q: 'perfect', e: 0, forced: S.forceNow, at: S.clock }; }
+          else if (S.forceNow && /^(four|six|caught|single|runout|house)$/.test(S.forceNow) && !S.swung && t >= del.tA - 0.002) { S.swung = true; startSwing(S, 'straight'); S.pendHit = { dir: S.forceNow === 'single' ? 'block' : 'straight', loft: S.forceNow === 'six' || S.forceNow === 'caught', q: 'perfect', e: 0, forced: S.forceNow, at: S.clock }; }
           if (S.pendHit && S.clock >= S.pendHit.at) { const h = S.pendHit; S.pendHit = null; launch(S, h); break; }
           if (t >= del.tA) {
             // past the bat: real physics from here
@@ -2172,12 +2178,14 @@
     S.replayWanted = !!(S.out.boundary || S.out.wicket || (S.out.nbSaved));
     if (S.ball.st === 'held' || S.ball.st === 'atEnd' || S.ball.st === 'dead2') S.ball.st = 'dead';
     if (S.out.runs && S.hit && !S.out.shot) {
-      const b = S.ball;
+      const b = S.gatherPos || S.ball;
       S.out.shot = { ang: Math.atan2(b.x, b.z - HIT_Z), dist: clamp(Math.hypot(b.x, b.z - HIT_Z) / Math.hypot(S.V.rx, S.V.rz - 10), 0.1, 1), runs: S.out.runs };
     }
+    commitBall(S);
   }
-  function finishBall(S) {
-    const g = S.g, inn = S.inn, out = S.out;
+  // the ball is dead: put it in the book at once (the score bug updates during the replay)
+  function commitBall(S) {
+    const inn = S.inn, out = S.out;
     // final positions: completed runs decide who is where
     const crossed = (out.boundary ? 0 : S.run.done) % 2 === 1;
     let end0 = crossed ? S.batB.idx : S.batA.idx, end1 = crossed ? S.batA.idx : S.batB.idx;
@@ -2196,8 +2204,14 @@
       field: S.fieldPreset, icept: S.lastIcept || null, forced: S.forceNow || null });
     if (S.ballLog.length > 200) S.ballLog.shift();
     if (ev.nb) { say(S, S.del.nbHigh ? 'noballHigh' : 'noball'); }
-    if (res.wicket && res.wicket.newBat != null && !res.inningsEnd) say(S, 'newBat', { bat: inn.bat.players[res.wicket.newBat].name });
     S.score = scoreOf(S);
+    S.res = res;
+  }
+  // after the dead-ball pause (and any replay): next ball, end of the over or of the innings
+  function finishBall(S) {
+    const inn = S.inn, res = S.res || commitBall(S) || S.res;
+    S.res = null;
+    if (res.wicket && res.wicket.newBat != null && !res.inningsEnd) say(S, 'newBat', { bat: inn.bat.players[res.wicket.newBat].name });
     if (res.inningsEnd) { endInnings(S, res); return; }
     if (res.overEnd) {
       S.overNo++;
@@ -3548,6 +3562,18 @@
     howto(g) {
       const S = g.S, ov = S ? S.overs : 3, wk = S ? S.wickets : 5;
       const gully = S && S.V.gully;
+      if (g.H < 560 || g.W < 420) { // phones: a compact card that fits without scrolling
+        return {
+          lines: [
+            'Call the <b>toss</b>, then bat <b>and</b> bowl: ' + ov + ' over' + (ov > 1 ? 's' : '') + ' a side, ' + wk + ' wickets.',
+            '<b>Bat:</b> ◀ ▲ ▶ (or swipe) as the ball arrives · ▼ block · <b>LOFT</b> = six or caught · <b>RUN</b> on "YES!"',
+            '<b>Bowl:</b> pick a type, aim the wobbling marker, <b>BOWL</b>, release in the green · <b>CAM</b>: TV / FPV',
+          ].concat(gully ? ['Colony rules: <b>one-tip-one-hand</b> is out; into a house on the full is <b>OUT</b>.'] : []),
+          goal: (S ? S.home.short + ' v ' + S.away.short : 'CHIN XI v ASHK XI') + (S && S.mode === 'chase' ? ' · CHASE ' + (S.innings[0] ? S.innings[0].runs + 1 : '') : ''),
+          keys: 'Bat <kbd>←↑→</kbd> <kbd>↓</kbd> <kbd>Shift</kbd> <kbd>R</kbd> · Bowl arrows <kbd>1-4</kbd> <kbd>Space</kbd> <kbd>F</kbd> · <kbd>V</kbd> cam',
+          touch: '',
+        };
+      }
       return {
         lines: [
           'Call the <b>toss</b>, then bat <b>and</b> bowl: ' + ov + ' overs a side, ' + wk + ' wickets. Wides and no-balls give an extra run.',

@@ -334,7 +334,9 @@ async function testPlay(browser) {
   await page.waitForFunction(() => N.player.level === 'home_terrace', null, { timeout: 4000 }).catch(() => null);
   const onRoof = await page.evaluate(() => N.player.level);
   check(onRoof === 'home_terrace', 'climbed to the home terrace by the stairs (' + labUp + ')', onRoof);
-  await waitFree(page); // arriving on the terrace is a viewpoint (radius 400)
+  // arriving on the terrace is a viewpoint (radius 400): it fires after ~1 s up there, then hands back
+  await page.waitForFunction(() => window.__ev.some((e) => e[0] === 'viewpoint' && e[1] === 'home_terrace'), null, { timeout: 4000 }).catch(() => null);
+  await waitFree(page);
   const c13 = await page.evaluate(() => { const it = N.collectibles.get('C13'); return { x: it.x, y: it.y }; });
   await walkTo(page, c13.x, c13.y, { r: 3, ms: 4000 });
   await sleep(150);
@@ -431,6 +433,8 @@ async function testPlay(browser) {
   const vp = await page.evaluate(() => { const p = N.places.golconda_bala_hissar; N.debug.teleport(p.x + 40, p.y + 10); return { x: p.x, y: p.y }; });
   await sleep(200);
   await walkTo(page, vp.x, vp.y, { until: '!!N.render.camOverride', ms: 4000 });
+  // stand there a moment: the camera pulls out after ~1 s
+  await page.waitForFunction(() => !!N.render.camOverride, null, { timeout: 4000 }).catch(() => null);
   await sleep(300);
   s = await page.evaluate(() => ({ cam: N.render.camOverride && N.render.camOverride.zoom, locked: N.player.controlsLocked, ev: window.__ev.filter((e) => e[0] === 'viewpoint').map((e) => e[1]) }));
   await page.screenshot({ path: path.join(OUT, 'viewpoint_bala_hissar.png') });
@@ -549,7 +553,9 @@ async function testSave(browser) {
   check(before.ok, 'saved');
   await page.reload();
   await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 30000 });
-  await page.evaluate(() => N.game.continueGame());
+  console.log('       (after reload: ' + JSON.stringify(await page.evaluate(() => ({ has: N.save.has(), keys: Object.keys(localStorage), keep: sessionStorage.getItem('__keep') }))) + ')');
+  // (the ladder's family line is still waiting and we continue at home: let dialogue run through)
+  await page.evaluate(() => { N.debug.skipDialogue(true); N.game.continueGame(); });
   await page.waitForFunction(() => N.state.mode === 'play', null, { timeout: 8000 });
   await sleep(300);
   const after = await page.evaluate(() => {
@@ -621,10 +627,12 @@ async function testVisual(browser) {
   await newGame(P.page);
   await P.page.evaluate(() => { N.collectibles.unlockSeries('frames', { silent: true }); const it = N.collectibles.get('F12'); N.debug.teleport(it.x, it.y); N.player.angle = N.player.facing = Math.atan2(it.sy - it.y, it.sx - it.x); });
   await sleep(300);
-  await P.page.evaluate(() => N.collectibles.click('F12'));
+  // slow time right down while the (slow, 2x) phone screenshot is taken, so it shows the viewfinder, not the flash
+  await P.page.evaluate(() => { N.time.scale = 0.02; N.collectibles.click('F12'); });
   await sleep(300);
   await P.page.screenshot({ path: path.join(OUT, 'phone_viewfinder.png') });
-  await sleep(1100);
+  await P.page.evaluate(() => { N.time.scale = 1; });
+  await sleep(1300);
   await P.page.screenshot({ path: path.join(OUT, 'phone_after_click.png') });
   const sc = await P.page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth, chip: !!document.querySelector('.cl-chip.show'), f12: N.collectibles.has('F12') }));
   check(sc.sw <= sc.iw && sc.chip && sc.f12, 'phone: frame clicked, counter tin shown, no page scroll', sc);

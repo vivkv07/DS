@@ -13,15 +13,17 @@
  * cassette_1..16, ticket_1..12, frame_1..24 (bible codes 'K3', 'G07', 'C05', 'T12', 'F09' also work).
  *
  *   N.collectibles.SERIES {kites, golis, cassettes, tickets, frames}  meta: {key, one, label, title, total}
- *   items [item...] / byId {id: item} / get(id) -> item | null      (item: {id, series, n, code, name,
- *       hint, place, x, y, h, ax, ay (where you stand), pr (pickup radius), level (roof id), pick
- *       'walk'|'look'|'click', tech, active (now collectable), found})
+ *   items [item...] / byId {id: item} / get(id) -> item | null      (item: {id, series, n, code, name
+ *       (plain), md (with *slang* markup), hint, place, x, y, dh (drawn height), ax, ay (where you stand),
+ *       pr (pickup radius), level (roof id), pick 'walk'|'look'|'click', tech, ok, moved, note; frames
+ *       also sx, sy (the subject)}); isActive(id) = collectable right now (series unlocked + time gate).
  *   unlockSeries(series, {silent}) -> bool        story: M1 step 6 'kites'; end of M1 'golis' + 'frames'
  *       (also given the `camera` item); 'tickets' in M5; 'cassettes' are on while the walkman is owned.
  *       Fallbacks when the story never calls: bo_kaata done -> kites, golis, frames; right_right done or
  *       the bus flags -> tickets. unlocked(series) -> bool. lockSeries(series) (debug only).
  *   has(id) / isFound(id) -> bool        found(id, {silent, develop}) -> bool (marks it, pays rewards;
- *       alias collect). count(series?) -> found in that series (frames: F01-F23 clicked) / all 93.
+ *       alias collect; found.has(id) / found.size / found.ids() also work for Set-style callers).
+ *       count(series?) -> found in that series (frames: F01-F23 clicked) / all 93.
  *       total() -> finds out of 93 (prints need not be developed). max(series) -> 12/30/16/12/23.
  *   nearestUnfound(x, y, series?, {all}) -> item | null (active items only unless all)
  *   posOf(id) -> {x, y} | null    blip(id, opts) / unblip(id)   (story: show K1 in the M1 tutorial)
@@ -451,7 +453,6 @@
     if (spec.off) { x += spec.off[0]; y += spec.off[1]; }
     return { x, y };
   }
-  function surfName(s) { try { return N.debug && N.debug.surfaceName ? N.debug.surfaceName(s) : String(s); } catch (e) { return String(s); } }
   /** a spot where Chinnu can stand: walkable, not water, not a road carriageway, no respect zone */
   function standOK(x, y, o) {
     const w = W();
@@ -466,7 +467,6 @@
     const s = w.surfaceAt(x, y);
     if (s === N.SURF.ROAD || s === N.SURF.WATER || (s === N.SURF.BRIDGE && !(o && o.bridge))) return false;
     if (respectAt(x, y)) return false;
-    if (w.roofs && w.roofs.at && w.roofs.at(x, y) && !(o && o.allowUnderRoof)) { /* ground under a terrace is fine */ }
     // room to stand: the four neighbours walkable too
     let n = 0;
     for (const [dx, dy] of [[4, 0], [-4, 0], [0, 4], [0, -4]]) if (w.isWalkable(x + dx, y + dy)) n++;
@@ -512,13 +512,14 @@
     for (const [x, y] of tries) if (standOK(x, y)) { const q = anchor(spec); return { x, y, d: q ? Math.hypot(x - q.x, y - q.y) : 0 }; }
     return null;
   }
-  let resolved = false, resolveStamp = 0;
+  let resolved = false;
   function resolveItem(it) {
     const spec = it.alt && it.alt.when && safeWhen(it.alt.when) ? Object.assign({}, it, it.alt, { alt: null }) : it;
     it.variant = spec === it ? 0 : 1;
     it.host = spec.host || null;
     it.dh = spec.h || 0;
     it.level = null; it.treeObj = null; it.hostRock = null; it.note = '';
+    it.pr = spec.pick === 'look' ? 8 : spec.series === 'frames' ? 40 : 10;
     if (it.series === 'frames') return resolveFrame(it);
     if (spec.roof) {
       const RFs = W() && W().roofs, roof = RFs && RFs.get && RFs.get(spec.roof);
@@ -594,7 +595,7 @@
   function resolveAll() {
     if (!N.world || !N.world.built) return false;
     for (const it of items) { try { resolveItem(it); } catch (e) { it.ok = false; it.note = 'error ' + e.message; N.err('collectibles.resolve:' + it.id, e); } }
-    resolved = true; resolveStamp = ymd();
+    resolved = true;
     return true;
   }
   const ensure = () => resolved || resolveAll();
@@ -950,8 +951,10 @@
     vpToast(V.v, V.n);
     try { V.res(V.n); } catch (e) { /* ignore */ }
   }
-  function autoViewpoints() {
-    const p = N.player; if (!p || p.vehicle || missionActive() || T.vp || T.click) return;
+  function autoViewpoints(dt) {
+    const p = N.player; if (!p || p.vehicle || missionActive() || T.vp || T.click) { T.dwell = null; return; }
+    try { if (N.hud && N.hud.jcardOpen) { T.dwell = null; return; } } catch (e) { /* stub */ }
+    let here = null;
     for (const id in VIEWPOINTS) {
       const v = VIEWPOINTS[id];
       if (v.shop) continue;
@@ -965,9 +968,14 @@
       const q = vpPos(v); if (!q) continue;
       let n = 0; for (const it of items) if (it.series !== 'frames' && active(it) && Math.hypot(it.x - q.x, it.y - q.y) <= (v.radius || 900)) n++;
       if (!n) continue;
-      viewpoint(id);
-      return;
+      here = id;
+      break;
     }
+    // stand there a moment (passing through does not pull the camera away)
+    if (!here) { T.dwell = null; return; }
+    if (!T.dwell || T.dwell.id !== here) { T.dwell = { id: here, t: 0 }; return; }
+    T.dwell.t += dt || 0.5;
+    if (T.dwell.t >= 1) { T.dwell = null; viewpoint(here); }
   }
 
   /* ================================================================== prefs (glints / beacon) */
@@ -1018,13 +1026,12 @@
     if (!unlocked('frames') || T.click) return;
     const boat = p.vehicle && (p.vehicle.type === 'boat' || (N.vehicles && N.vehicles.TYPES && N.vehicles.TYPES[p.vehicle.type] && N.vehicles.TYPES[p.vehicle.type].cls === 'boat'));
     if (p.vehicle && !boat) return;
-    if (filmUsed() >= 23 && !S.found.has('frame_24')) { /* F24 is kept for Chand Raat */ }
+    if (filmUsed() >= 23) return; // F24 is kept for Chand Raat (the story clicks it)
     const respect = !boat && respectAt(p.x, p.y);
     const face = isFinite(p.facing) ? p.facing : p.angle || 0;
     let best = null, bd = Infinity, near = null;
     for (const it of items) {
       if (it.series !== 'frames' || !active(it)) continue;
-      if (filmUsed() >= 23) break;
       let d;
       if (boat) { if (!it.boat) continue; d = Math.hypot(p.x - it.sx, p.y - it.sy); if (d > it.boat) continue; }
       else {
@@ -1135,7 +1142,7 @@
       variants();
       checkPrints(false);
       homeLines(p);
-      autoViewpoints();
+      autoViewpoints(0.5);
       // keep the ladder's flags honest (a load, or N.flags cleared by a script)
       if (S.ladder.size) ladderCheck(true);
     }
@@ -1499,12 +1506,13 @@
   function pageTickets(el) {
     const on = unlocked('tickets');
     let h = '<div class="cl-pg cl-tickets">' + head('tickets');
+    if (on) h += '<p class="cl-sub">Ticket Thatha hid them behind the painted boards of his old stages: walk round the back of the stop. Each one opens that stop for city buses and has a trivia card on its back.</p>';
     h += '<ul class="cl-tk">';
     for (const it of items.filter((q) => q.series === 'tickets')) {
       const f = S.found.has(it.id), card = TRIVIA['trivia_' + it.code];
       h += '<li class="' + (f ? 'got' : 'miss') + '" style="--r:' + (((it.n * 37) % 7) - 3) + 'deg"><b>' + it.code + ' · ' + esc(STOP_NAMES[it.n - 1]) + '</b>' +
         (on ? '<p class="cl-hint">“' + esc(it.riddle) + '”</p>' : '') +
-        (f && card ? '<p class="cl-fact">' + emph(card.text) + '</p>' : on ? '<p class="cl-sub">Behind the board of the stop. (Back of the ticket: a trivia card.)</p>' : '') + '</li>';
+        (f && card ? '<p class="cl-fact">' + emph(card.text) + '</p>' : '') + '</li>';
     }
     el.innerHTML = h + '</ul></div>';
   }

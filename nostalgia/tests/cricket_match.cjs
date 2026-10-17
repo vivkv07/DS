@@ -75,9 +75,9 @@ function kit(page, V, cdp) {
     async move(x, y, id) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y, id: id || 1 }] }); },
     async up() { await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); },
     async tap(x, y) { await touch.down(x, y); await sleep(50); await touch.up(); },
-    async swipe(x0, y0, x1, y1, ms) { await touch.down(x0, y0); for (let i = 1; i <= 6; i++) { await touch.move(x0 + ((x1 - x0) * i) / 6, y0 + ((y1 - y0) * i) / 6); await sleep(ms / 6); } await touch.up(); },
+    async swipe(x0, y0, x1, y1, ms, steps) { const n = steps || 6; await touch.down(x0, y0); for (let i = 1; i <= n; i++) { await touch.move(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n); await sleep(ms / n); } await touch.up(); },
   };
-  const center = async (sel) => { const b = await page.locator(sel).first().boundingBox(); if (!b) throw new Error('no element ' + sel); return { x: b.x + b.width / 2, y: b.y + b.height / 2, b }; };
+  const center = async (sel) => { await page.locator(sel).first().scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {}); const b = await page.locator(sel).first().boundingBox(); if (!b) throw new Error('no element ' + sel); return { x: b.x + b.width / 2, y: b.y + b.height / 2, b }; };
   const tapSel = async (sel) => { const c = await center(sel); await touch.tap(c.x, c.y); };
   // wait for the next delivery to be in the air, then act exactly as it reaches the bat
   const onArrival = async (lat, fn) => {
@@ -370,14 +370,22 @@ async function testModes(page, V) {
     checkShape(V.name, r, label);
     expect(V.name, r && r.win === (want === 'win'), label + ' -> win ' + (r && r.win));
   }
-  // gully skin
-  await K.start({ venue: 'gully', autoplay: 'win', overs: 1, wickets: 2, timeScale: 4, seed: 9, autoClose: false });
-  await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.phase === 'ball' && s.bp === 'flight'; }, null, 30000);
+  // gully skin + its house rule (a ball into a house on the full is OUT)
+  await K.start({ venue: 'gully', batFirst: true, overs: 1, wickets: 2, skipHowto: true, timeScale: 2, seed: 9 });
+  await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.phase === 'ball' && s.bp === 'setup'; }, null, 30000);
+  let n0 = await K.logLen();
+  await K.force('house');
   await K.shot('gully');
+  expect(V.name, await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.bp === 'live'; }, null, 20000), 'gully: lofted into the off-side houses');
+  await sleep(600);
+  await K.shot('gully_house');
+  await K.ballDone(n0, 40000);
   s = await K.st();
+  const lastG = s.ballLog[s.ballLog.length - 1];
+  expect(V.name, lastG && lastG.wicket === 'house' && s.innings[0].wkts === 1 && s.innings[0].sixes === 0, 'gully rule: into a house on the full = OUT, not six (' + (lastG && lastG.wicket) + ')');
   await page.evaluate(() => N.minigames.abort('test'));
   r = await K.result(5000);
-  expect(V.name, s && s.frame && r && r.aborted, 'gully skin (colony ground) plays');
+  expect(V.name, r && r.aborted, 'gully match aborted cleanly');
   // the 2D world on match day
   const d = await page.evaluate(async () => {
     N.flags.lb_match = true; N.debug.setTime(19, 30); N.debug.teleport(3840, 2600);
@@ -442,7 +450,7 @@ async function testPhone(page, V, cdp) {
     await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.phase === 'ball' && s.bp === 'setup'; }, null, 20000);
     n0 = await K.logLen();
     const fr = (await K.st()).frame;
-    await K.onArrival(140, () => K.touch.swipe(fr.x + fr.w * 0.6, fr.y + fr.h * 0.6, fr.x + fr.w * 0.25, fr.y + fr.h * 0.62, 60));
+    await K.onArrival(260, () => K.touch.swipe(fr.x + fr.w * 0.6, fr.y + fr.h * 0.6, fr.x + fr.w * 0.25, fr.y + fr.h * 0.62, 20, 2));
     await sleep(200);
     await K.shot('swipe');
     await K.ballDone(n0, 40000);

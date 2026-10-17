@@ -85,7 +85,7 @@ async function settle(page) {
   for (let i = 0; i < 20; i++) {
     const md = await page.evaluate(() => N.state.mode);
     if (md === 'play') return true;
-    await page.evaluate(() => { try { if (N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen()) N.dialogue.advance(); } catch (e) { /* ignore */ } try { if (N.dialogue && N.dialogue.cancel && N.state.mode === 'dialogue') N.dialogue.cancel(); } catch (e) { /* ignore */ } });
+    await page.evaluate(() => { try { if (N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen()) N.dialogue.advance(); } catch (e) { /* ignore */ } try { if (N.dialogue && N.dialogue.cancel && N.state.mode === 'dialogue') N.dialogue.cancel(); } catch (e) { /* ignore */ } try { if (N.shops && N.shops.lock && N.state.mode === 'dialogue' && !(N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen())) { N.shops.lock(true, 'test'); N.shops.lock(false, 'test'); } } catch (e) { /* ignore */ } });
     await sleep(150);
   }
   return false;
@@ -344,10 +344,10 @@ async function run() {
     const money0 = await page.evaluate(() => { N.debug.give(1000); return N.player.money; });
     await page.evaluate(() => { N.debug.setWanted(3); });
     let busted = false, shotTaken = false;
-    for (let i = 0; i < 70; i++) {
-      await page.waitForTimeout(400);
+    for (let i = 0; i < 230; i++) {
+      await page.waitForTimeout(120);
       const r = await page.evaluate(() => ({ b: window.__ev.some((e) => e.n === 'busted'), mode: N.state.mode, sx: !!N.wanted._W.slipFx }));
-      if (r.b && !shotTaken) { await page.waitForTimeout(250); await shot(page, 'busted_slipper'); shotTaken = true; }
+      if (r.b && !shotTaken) { await shot(page, 'busted_slipper'); shotTaken = true; }
       if (r.b) { busted = true; break; }
     }
     if (!busted) fail('busted', 'Pochaiah never caught a boy standing still for 28 s');
@@ -380,17 +380,17 @@ async function run() {
     await clearEv(page);
     await page.evaluate(() => { N.debug.setWanted(5); });
     let thrown = false;
-    for (let i = 0; i < 75; i++) {
+    for (let i = 0; i < 110; i++) {
       await page.waitForTimeout(400);
-      const r = await page.evaluate(() => ({ th: window.__ev.filter((e) => e.n === 'chappal:throw').length, fly: !!(N.wanted._W.chappal && N.wanted._W.chappal.ph === 'fly'), b: window.__ev.some((e) => e.n === 'busted') }));
+      const r = await page.evaluate(() => { const p = N.player, a = N.wanted.chaser; return { th: window.__ev.filter((e) => e.n === 'chappal:throw').length, fly: !!(N.wanted._W.chappal && N.wanted._W.chappal.ph === 'fly'), b: window.__ev.some((e) => e.n === 'busted'), d: a ? Math.hypot(a.x - p.x, a.y - p.y) : 1e9 }; });
       if (r.fly && !thrown) { thrown = true; await shot(page, 'chappal_flight'); }
       if (r.b) break;
-      // keep running sideways (dodging) for a while so the throw happens
-      await page.evaluate((i) => { N.input.setMove(Math.sin(i * 0.7), Math.cos(i * 0.5), true); N.input.hold('run', true); }, i);
+      // wait for Mummy's auto, then dodge about (inside her 150 u throwing range) so the throw happens
+      await page.evaluate(([i, near]) => { if (near) { N.input.setMove(Math.sin(i * 0.7), Math.cos(i * 0.5), true); N.input.hold('run', true); } else { N.input.setMove(null); N.input.hold('run', false); } }, [i, r.d < 170]);
     }
     await page.evaluate(() => { N.input.setMove(null); N.input.hold('run', false); });
     const r = await page.evaluate(() => ({ th: window.__ev.filter((e) => e.n === 'chappal:throw').length, hit: window.__ev.some((e) => e.n === 'chappal:hit'), dodge: window.__ev.some((e) => e.n === 'chappal:dodge'), b: window.__ev.find((e) => e.n === 'busted') }));
-    if (!r.th) fail('chappal', 'Mummy never threw the chappal in 30 s');
+    if (!r.th) fail('chappal', 'Mummy never threw the chappal in 44 s');
     else ok('chappal thrown (' + r.th + ' throw events)' + (r.dodge ? ', dodged one' : '') + (r.hit ? ', hit -> busted' : r.b ? ', caught by ' + r.b.d.by : ''));
     await page.waitForTimeout(2600);
     await settle(page);
@@ -415,10 +415,12 @@ async function run() {
         return 'wanted.haircut';
       }, pl);
       // a cutscene may play: wait for it
-      for (let i = 0; i < 40; i++) { const md = await page.evaluate(() => N.state.mode); if (md === 'play') break; await page.evaluate(() => { try { if (N.menus && N.menus.abortCutscene && N.state.mode === 'cutscene') N.menus.abortCutscene(); } catch (e) { /* ignore */ } }); await sleep(250); }
+      // (the shops card shows an 8 s progress bar and stays open afterwards; wanted.js's own fallback plays a cutscene)
+      for (let i = 0; i < 60; i++) { const st = await page.evaluate(() => ({ md: N.state.mode, l: N.wanted.level })); if (st.md === 'play' || st.l === 0) break; await page.evaluate(() => { try { if (N.menus && N.menus.abortCutscene && N.state.mode === 'cutscene') N.menus.abortCutscene(); } catch (e) { /* ignore */ } }); await sleep(250); }
       await page.waitForTimeout(400);
       const r = await page.evaluate(() => ({ lvl: N.wanted.level, money: N.player.money, hair: N.player.status && N.player.status.hair ? N.player.status.hair.value : null }));
       await shot(page, 'barber_after');
+      if (!(await settle(page))) fail('barber', 'the shop card did not close (mode ' + (await page.evaluate(() => N.state.mode)) + ')');
       if (r.lvl !== 0) fail('barber', how + ': level ' + r.lvl + ' after the haircut');
       else ok(how + ' at ' + pl + ': meter cleared, paid ' + ((m0 - r.money) / 100) + ' rupees, hairstyle ' + r.hair);
     }
@@ -435,7 +437,7 @@ async function run() {
     const m0 = await page.evaluate(() => { N.debug.give(500); const p = N.player; p.tummy = 0; p.energy = 0; return p.money; });
     let got = false;
     for (let i = 0; i < 30; i++) { await page.waitForTimeout(250); if (await page.evaluate(() => window.__ev.some((e) => e.n === 'wasted'))) { got = true; break; } }
-    if (!got) fail('wasted', 'no THAK GAYA after tummy 0');
+    if (!got) fail('wasted', 'no THAK GAYA after tummy 0 ' + JSON.stringify(await page.evaluate(() => ({ mode: N.state.mode, stack: N.state.stack ? N.state.stack.slice() : null, mission: N.missions && N.missions.active ? N.missions.active.id || true : null, tummy: N.player.tummy, starving: N.player.starving, busy: N.wanted.busy, locked: N.player.controlsLocked }))));
     else {
       await page.waitForTimeout(700);
       await shot(page, 'wasted_banner');

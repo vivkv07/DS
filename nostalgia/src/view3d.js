@@ -693,8 +693,8 @@
         'float litW = step(hh, vFac.y * (1.0 / 255.0));',
         'float isShop = step(4.5, st) * step(st, 5.5);',
         'float isLamp = step(14.5, st);',
-        'vec3 wcol = mix(vec3(1.0, 0.70, 0.40), vec3(0.78, 0.90, 1.0), step(0.75, fract(hh * 17.0)));',
-        'totalEmissiveRadiance += tE.rgb * ((litW * wcol * 1.35 + isShop * vec3(1.0, 0.72, 0.45) * 1.2) * uNight + uSkyTint * 0.10 * (1.0 - uNight));',
+        'vec3 wcol = mix(vec3(1.0, 0.62, 0.30), vec3(0.62, 0.80, 1.0), step(0.78, fract(hh * 17.0))) * (0.75 + 0.5 * fract(hh * 31.0));',
+        'totalEmissiveRadiance += tE.rgb * ((litW * wcol * 0.8 + isShop * vec3(1.0, 0.68, 0.38) * 1.0) * uNight + uSkyTint * 0.10 * (1.0 - uNight));',
         'totalEmissiveRadiance += isLamp * vColor * (0.1 + 3.2 * uNight);',
         'totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.82, 0.62) * uFlood * uNight;',
       ].join('\n'));
@@ -715,7 +715,7 @@
         '{ float dd = length(cameraPosition - vWP); float amp = (1.0 - smoothstep(25.0, 140.0, dd)) * (1.0 - aux.a);',
         '  if (amp > 0.0) { float dn = gvn(vWP.xz * 0.9) * 0.6 + gvn(vWP.xz * 3.1) * 0.4; diffuseColor.rgb *= 1.0 + (dn - 0.5) * 0.16 * amp; } }',
       ].join('\n'))
-      .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance += diffuseColor.rgb * aux.rgb * (uNight * 2.4);')
+      .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance += diffuseColor.rgb * aux.rgb * (uNight * 3.0);')
       .replace('#include <envmap_fragment>', [
         '#include <envmap_fragment>',
         'float wm = aux.a;',
@@ -1202,6 +1202,7 @@
       const nb = Math.max(1, Math.round(len / (b.winSp || 8)));
       gb.facade(us, gs, lit, seed, floors);
       gb.wall(sg[0], sg[1], sg[2], sg[3], 0, Ht, 0, nb, 0, Ht / FLOOR_H);
+      if (detail && us && len >= 6 && CHAJJA[b.style]) chajjas(gb, sg, len, floors, Ht, b, front && (b.sign || b.awning) ? 2 : 1);
     }
     gb.plain();
     const pitched = b.roofType === 'hip' || b.roofType === 'gable';
@@ -1231,6 +1232,22 @@
       const y = b.yard, f = b.front;
       const gx = f === 'E' ? y.x + y.w : f === 'W' ? y.x : y.x + y.w / 2, gy = f === 'S' ? y.y + y.h : f === 'N' ? y.y : y.y + y.h / 2;
       J.glows.push([gx - ox, 7, gy - oz, 1.0, 0.82, 0.55, 0.7]);
+    }
+  }
+  // projecting sunshade slabs ("chajjas") over each storey's windows: depth and shadow lines
+  const CHAJJA = { oldcity: 1.3, market: 1.2, colony: 1.6, rocky: 1.4, posh: 2.2, colonial: 0.9, cantonment: 0 };
+  function chajjas(gb, sg, len, floors, Ht, b, k0) {
+    const out = CHAJJA[b.style], ux = (sg[2] - sg[0]) / len, uz = (sg[3] - sg[1]) / len, nx = -uz, nz = ux;
+    const ax = sg[0] - ux * 0.3, az = sg[1] - uz * 0.3, bx = sg[2] + ux * 0.3, bz = sg[3] + uz * 0.3;
+    gb.plain(); gb.color(U.shade(b.trim || b.wall, 0.97));
+    const top = b.style === 'colonial' ? 1 : floors;
+    for (let k = b.style === 'colonial' ? 1 : k0 || 1; k <= top; k++) {
+      const y = b.style === 'colonial' ? Ht - 1.2 : k * FLOOR_H - FLOOR_H * 0.22;
+      if (y > Ht - 0.8 && b.style !== 'colonial') break;
+      const t = 0.55, X0 = ax + nx * out, Z0 = az + nz * out, X1 = bx + nx * out, Z1 = bz + nz * out;
+      gb.quad(ax, y + t, az, X0, y + t, Z0, X1, y + t, Z1, bx, y + t, bz); // top (slopes down to the outside)
+      gb.quad(X0, y, Z0, X1, y, Z1, X1, y + t, Z1, X0, y + t, Z0);         // front edge
+      gb.quad(bx, y, bz, X1, y, Z1, X0, y, Z0, ax, y, az);                 // underside
     }
   }
   function addPitched(gb, b, x0, z0, x1, z1, Ht) {
@@ -1644,8 +1661,11 @@
         if (!ch) { if (pass) continue; ch = newChunk(it.ci, it.cj); }
         ch.dist = it.d;
         const w = wantFor(it.d);
-        const needGeom = ch.detail < 0 || ch.dirty || (pass === 1 && w.detail > ch.detail);
-        const needGround = !ch.groundRes || (pass === 1 && (w.res > ch.groundRes || ch.groundStale));
+        // downgrade far chunks again (with hysteresis) so a long trip never piles up hi-res textures
+        const far = it.d > Q.nearDist * 1.8;
+        const downRes = far && ch.groundRes > w.res, downGeo = far && ch.detail > w.detail;
+        const needGeom = ch.detail < 0 || ch.dirty || (pass === 1 && (w.detail > ch.detail || downGeo));
+        const needGround = !ch.groundRes || (pass === 1 && (w.res > ch.groundRes || ch.groundStale || downRes));
         if (!needGeom && !needGround) continue;
         if (now() > deadline) break;
         if (needGeom && (pass === 1 || ch.detail < 0 || ch.dirty)) {
@@ -1656,7 +1676,7 @@
         if (needGround && now() < deadline) {
           // never interleave two paint jobs: finish the current one first
           if (paintJob && paintJob.ch !== ch && chunks.has(paintJob.ch.key)) stepPaint(paintJob.ch, paintJob.res, deadline);
-          else stepPaint(ch, ch.groundRes && !ch.groundStale ? Math.max(w.res, ch.groundRes) : w.res, deadline);
+          else stepPaint(ch, ch.groundRes && !ch.groundStale && !downRes ? Math.max(w.res, ch.groundRes) : w.res, deadline);
         }
       }
       if (now() > deadline) break;
@@ -1925,8 +1945,8 @@
   /* ================================================================ sky, sun, fog, lights */
   // time-of-day keys: minute, zenith, horizon, sun colour, sun intensity, hemi sky, hemi ground, hemi intensity
   const TOD = [
-    [0, '#070c1e', '#1d2544', '#7088c0', 0.2, '#2a3664', '#17120e', 0.4],
-    [290, '#08101f', '#212848', '#7088c0', 0.2, '#2a3664', '#17120e', 0.4],
+    [0, '#070c1e', '#30294a', '#7088c0', 0.2, '#33406e', '#2a1e14', 0.5],
+    [290, '#08101f', '#2c2848', '#7088c0', 0.2, '#33406e', '#2a1e14', 0.5],
     [345, '#29396e', '#d58a8e', '#ff9a70', 0.55, '#5a5a8a', '#3a2a22', 0.6],
     [400, '#4a76c0', '#f2c6a2', '#ffc896', 1.7, '#8aa2c8', '#6a5038', 0.78],
     [480, '#3d78c8', '#d8e2ea', '#fff0dc', 2.5, '#a6bede', '#7a6448', 0.85],
@@ -1936,8 +1956,8 @@
     [1080, '#495c9c', '#fa9c60', '#ff9a52', 1.8, '#8c8cb0', '#7a5030', 0.72],
     [1120, '#33407a', '#de7650', '#ff7a40', 0.9, '#6a6a98', '#4a3426', 0.62],
     [1160, '#1c2350', '#7a4a6a', '#8a7ab0', 0.4, '#3e4270', '#20180f', 0.55],
-    [1220, '#090f24', '#272c50', '#7088c0', 0.2, '#2a3664', '#17120e', 0.4],
-    [1440, '#070c1e', '#1d2544', '#7088c0', 0.2, '#2a3664', '#17120e', 0.4],
+    [1220, '#090f24', '#3a3050', '#7088c0', 0.2, '#33406e', '#2a1e14', 0.5],
+    [1440, '#070c1e', '#30294a', '#7088c0', 0.2, '#33406e', '#2a1e14', 0.5],
   ];
   const SUN = { gx: 0.6, gy: 0.2, elev: 0.5, day: 1, night: 0, dir: null, lightDir: null, moon: false };
   const SKYC = {};

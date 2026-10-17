@@ -991,8 +991,11 @@ overlays). Loaded in index.html after menus.js. Test: `node tests/view3d.cjs`.
   near / 0.5 px/u far, plus an aux texture (4u texels: alpha = water mask for an animated
   water shader with sky reflection and sun glint; rgb = sodium / tube-light pools lit at night);
   **buildings** = one merged mesh per chunk (walls with the facade atlas: per district window
-  style, shop shutters with lit interiors, doors, arcades, glass; lit windows at night;
-  parapets, hip / gable roofs, water tanks, mumtys, antennas, clotheslines, domes, minarets,
+  style, shop shutters with lit interiors, doors, arcades, glass; lit windows at night; what lies
+  outside each wall decides its ground floor: a street gets shops / arcades in bazaar districts, a
+  neighbour gets a blank party wall;
+  parapets, chajja sunshades over each storey on street walls, hip / gable roofs, water tanks,
+  mumtys, antennas, clotheslines, domes, minarets,
   awnings, compound walls, street-lamp poles with emissive heads, bridge parapets, raised
   rails, cranes, podiums, roof-zone terraces and planks); **signboards** = textured quads from a
   shared sign atlas (shop sign text); **trees** (trunks / canopy blobs / palm crowns, wind sway)
@@ -1063,7 +1066,8 @@ N.view3d.registerLayer(id, {init(THREE, H), update(dt, H), dispose(H), order})
 Helpers `H` (`N.view3d.H`): `THREE, VS, FLOOR_H, CHUNK, STYLE` (facade style ids), `scene, camera,
 renderer, layer, quality, night` (0..1), `day` (N.clock.light()), `sunDir` (Vector3 to the
 light), `time` (s), `mode` (view), `uniforms` (shared: uTime, uNight, uSunDir, uSunCol, uZen, uHor),
-`materials` (shared: facade, vc, vcFlat, vcDouble, canopy, rock, glow...), `geo` (shared unit
+`materials` (shared: facade, facadeLit (same, floodlit warm at night: monuments), vc, vcFlat,
+vcDouble, canopy, rock, glow...), `geo` (shared unit
 geometries: trunk, blob, rock, crown, plane), `pos(x, y, h)`, `place(obj, x, y, h, angle)`,
 `yaw(angle)`, `elev(e)`, `heightAt(x, y)`, `builder({facade})` -> GeoBuilder, `merge(geos)`,
 `mat(hex, {emissive, emissiveIntensity, flat, double, transparent, opacity, map, basic})` (cached),
