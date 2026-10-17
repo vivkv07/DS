@@ -116,7 +116,7 @@ def _finish(A, objs, size=512, variants=None, ao_samples=64):
     for g in groups:
         kit.smooth(g, 50)
     import os
-    size = int(os.environ.get('WS_SIZE', size))
+    size = int(os.environ.get('WS_SIZE', 384))
     kit.finish_atlas(A, groups, size=size, ao_samples=ao_samples, ao_strength=0.75, orm=False)
     return groups
 
@@ -414,10 +414,10 @@ def build_st_josephs(A):
     W, D = 70.0, 50.0
     fy = -14.0          # facade plane
     # compound wall + gate pillars with lamps
-    P.append(_compound('sj_wall', W, D, 3.2, 0.8, 16.0, cream))
+    # forecourt gate pillars with lamps (the compound wall itself is left to the street scene)
     for s in (-1, 1):
-        P.append(box('sj_gp', (2.2, 2.2, 5.0), (s * 9.1, -D / 2 + 0.4, 0), cream, base=True))
-        P.append(box('sj_gl', (1.0, 1.0, 1.0), (s * 9.1, -D / 2 + 0.4, 5.0), M['lamp'], base=True))
+        P.append(box('sj_gp', (2.2, 2.2, 5.0), (s * 9.1, -D / 2 + 1.2, 0), cream, base=True))
+        P.append(box('sj_gl', (1.0, 1.0, 1.0), (s * 9.1, -D / 2 + 1.2, 5.0), M['lamp'], base=True))
     # forecourt steps
     P.append(L.steps('sj_steps', 18.0, 1.4, 0.6, 2, (0, fy - 1.4, 0), grey))
     # nave + clerestory, side aisles, apse

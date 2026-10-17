@@ -1,26 +1,3 @@
-00:00.025  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.059  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building st_josephs_cathedral (landmark)
-[kit] cull: dropped 40 hidden faces
-Info: No active and selected image texture node found in material "lamp_ffd9a0@night" (1) for object "st_josephs_cathedral_body"
-Info: Baking map saved to internal image, save it externally or pack it
-[kit] baked albedo 384x384 (8 samples) in 1.1s
-Info: No active and selected image texture node found in material "lamp_ffd9a0@night" (1) for object "st_josephs_cathedral_body"
-Info: Baking map saved to internal image, save it externally or pack it
-[kit] baked ao 192x192 (64 samples) in 5.0s
-ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
-ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
-19:29:09 | INFO: Starting glTF 2.0 export
-19:29:09 | INFO: Extracting primitive: COL_sj
-19:29:09 | INFO: Primitives created: 1
-19:29:09 | INFO: Extracting primitive: st_josephs_cathedral_body
-19:29:09 | INFO: Primitives created: 2
-19:29:09 | INFO: Finished glTF 2.0 export in 0.04239678382873535 s
-
-[kit] st_josephs_cathedral: 857 tris (budget 20000) ok, 65.2 KB, clips [], anchors 0
-19:29:09 | INFO: Data are loaded, start creating Blender stuff
-19:29:09 | INFO: Blender create Mesh node COL_sj
-19:29:09 | INFO: Blender create Mesh node st_josephs_cathedral_body
-19:29:09 | INFO: glTF import finished in 0.01s
-00:13.019  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/st_josephs_cathedral.png'
-[kit] preview st_josephs_cathedral.png (320px, 14 spp) in 3.2s
-[kit] done st_josephs_cathedral in 12.6s
+[kit] cull: dropped 35 hidden faces

@@ -58,6 +58,20 @@ def poly(name, outline, mat, loc=(0, 0, 0), rz=0.0, tilt=0.0):
     return kit.obj_from_bm(bm, name, mat)
 
 
+def _tally(P, extra=None):
+    """log triangle counts per part-name prefix (tuning aid)"""
+    import os
+    if not os.environ.get('GC_TALLY'):
+        return
+    t = {}
+    for o in list(P) + list(extra or []):
+        if o is None:
+            continue
+        k = o.name.split('.')[0].rstrip('0123456789_')
+        t[k] = t.get(k, 0) + kit.tri_count([o])
+    kit.log('TALLY ' + ', '.join('%s=%d' % kv for kv in sorted(t.items(), key=lambda kv: -kv[1])))
+
+
 def up_poly(name, pts, mat):
     """single upward-facing n-gon through 3D points"""
     bm = bmesh.new()
@@ -315,6 +329,7 @@ def build_bala_hissar(A):
     # ---- sound-and-light floodlight heads (glow at night)
     for (x, y, z) in ((-20, -27.0, 12.6), (8, -18.0, 26.2), (-14, -8.5, 38.6), (24, -9, 26.4)):
         P.append(box('flood', (1.2, 0.8, 0.8), (x, y, z), M['lamp'], base=True))
+    _tally(P)
     L.finish(A, P, size=512, ao_dist=6.0)
     L.col_box('bh_hill0', (78, 58, 12), (0, 0, 0))
     L.col_box('bh_hill1', (56, 38, 14), (-3, 3, 12))
@@ -389,6 +404,7 @@ def build_fort_gate(A):
         P.append(cannon('cannon', M, (sx * 12.6, -10.5, 0.0), sx * math.radians(12), s=1.0))
     # warm lamp in the arch soffit (sound and light)
     P.append(box('arch_lamp', (1.2, 1.2, 0.6), (0, 0, AS + AR - 1.6), M['lamp'], base=True))
+    _tally(P)
     L.finish(A, P, size=512, ao_dist=6.0)
     for sx in (-1, 1):
         L.col_box('gate_bastion%d' % (sx > 0), (BR * 2, BR * 2, BH), (sx * BX, -0.6, 0))
@@ -483,6 +499,7 @@ def build_qutb_tomb(A):
     vb += L.rot4(fb)
     # small blind arches on the chamber above the gallery roof
     vb += L.rot4(arcade('ch_arc', CW - 4, 5, CZ + GH + 0.6, TOP - 3.0 - CZ - GH - 0.8, M['shade'], -CW / 2, 0, wfrac=0.55))
+    _tally(P, va + vb)
     L.finish(A, P, size=512, ao_dist=6.0, variants={'a': va, 'b': vb})
     L.col_box('qt_plinth', (PW, PW, PH), (0, 0, 0))
     L.col_box('qt_body', (CW + 6, CW + 6, TOP - PH), (0, 0, PH))

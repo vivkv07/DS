@@ -21,6 +21,33 @@ def _obj(bm, name, mat):
     return kit.obj_from_bm(bm, name, mat)
 
 
+def trim(objs, keep=()):
+    """drop the downward-facing faces (never seen: they sit on the ground or on the part below);
+    objects whose name starts with one in `keep` are left alone (overhangs seen from below)."""
+    for o in objs:
+        if o is None or o.type != 'MESH' or any(o.name.startswith(k) for k in keep):
+            continue
+        kit.apply_modifiers(o)
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        dead = [f for f in bm.faces if f.normal.z < -0.95]
+        if dead and len(dead) < len(bm.faces):
+            bmesh.ops.delete(bm, geom=dead, context='FACES_ONLY')
+            bm.to_mesh(o.data)
+        bm.free()
+    return objs
+
+
+def report(objs):
+    tot = {}
+    for o in objs:
+        if o is None:
+            continue
+        n = o.name.split('.')[0]
+        tot[n] = tot.get(n, 0) + kit.tri_count([o])
+    kit.log('tris by part: ' + ', '.join('%s %d' % kv for kv in sorted(tot.items(), key=lambda kv: -kv[1])))
+
+
 def rock_mound(name, rx, ry, h, mat, seed=1, na=16, prof=None, rough=0.22, zj=0.5, z0=-2.5, cx=0.0, cy=0.0):
     """craggy rock island / hillock: a polar grid of rings (profile [(r_frac, z_frac)] bottom to
     top) with random radial and vertical jitter, closed by a top vertex."""
@@ -188,6 +215,7 @@ def build_buddha(A):
     kit.decimate_to(figure, 1050)
     parts.append(figure)
     A.notes.append('Buddha: %d tris before finish' % kit.tri_count(parts))
+    report(parts)
     L.finish(A, parts, size=512, ao_dist=6.0)
     L.col_box('buddha_rock', (30, 28, 6), (0, 0, -1))
     L.col_box('buddha_fig', (18, 9, 75), (0, 0, 15))
@@ -282,6 +310,7 @@ def build_tank_bund_statue(A):
     parts.append(L.railing('rail_c', 9.0, 3.2, M, loc=(0, 4.6, 0.0), posts=3))
     z0 = 24.6
     variants = {pose: [_tb_figure(pose, BZ, z0)] for pose in ('scholar', 'poet', 'warrior', 'saint')}
+    report(parts)
     L.finish(A, parts, size=256, variants=variants)
     L.col_box('tb_plinth', (7, 7, 24), (0, 0, 0))
     L.shots(A, az=-30, el=10, extra=[{'name': 'poses', 'size': 256, 'view': {'az': -10, 'el': 6, 'fov': 26, 'target': (0, 0, 33), 'dist': 50}}])
@@ -330,6 +359,7 @@ def build_lumbini_jetty(A):
     b = kit.join(boat, 'boat')
     L.place(b, (-9.2, 9.0, 0.0), rz=0.2)
     parts.append(b)
+    report(parts)
     L.finish(A, parts, size=256)
     L.shots(A, az=-35, el=22)
 
@@ -394,6 +424,7 @@ def build_musical_fountain(A):
             else:
                 yy = y
             parts.append(box('lamp', (0.9, 0.9, 0.35), (x, yy, 0.55), L.lamp(cols[(i + (y > 0)) % 3]), base=True))
+    report(parts)
     L.finish(A, parts, size=256)
     L.shots(A, az=-30, el=24)
 
@@ -456,5 +487,6 @@ def build_ntr_memorial(A):
     for s in (-1, 1):
         parts.append(cylinder('trunk', 0.6, 6.0, (s * 16.5, 10.0, 0.6), seg=5, mat=M['wood']))
         parts.append(boulder('crown', 4.2, (s * 16.5, 10.0, 8.4), L.paint('#3f7f34', 'ntr_leaves'), seed=11 + s, sq=0.8, sub=1))
+    report(parts)
     L.finish(A, parts, size=512)
     L.shots(A, az=-30, el=18)
