@@ -194,7 +194,7 @@
       const n = Math.floor(sr * (o.swell || 0.12));
       e = new Float32Array(n);
       let s = 0;
-      for (let i = 0; i < n; i++) { s += (rnd() * 2 - 1 - s) * 0.5; e[i] = s * Math.sin((Math.PI * i) / n) * 0.25; }
+      for (let i = 0; i < n; i++) { s += (rnd() * 2 - 1 - s) * 0.5; e[i] = s * Math.sin((Math.PI * i) / n); }
     } else { // pick (plectrum/mizrab) or soft (finger): one period of shaped noise + displacement bump
       e = new Float32Array(Pn);
       const k = (kind === 'soft' ? 0.18 : 0.45) + 0.45 * (o.bright == null ? 0.5 : o.bright) * (0.6 + 0.4 * vel);
@@ -211,7 +211,7 @@
     for (let i = 0; i < e.length; i++) m += e[i];
     m /= e.length;
     for (let i = 0; i < e.length; i++) e[i] -= m * Math.sin((Math.PI * i) / e.length) * 1.57;
-    const pk = peakOf(e);
+    const pk = peakOf(e) * (kind === 'swell' ? 3 : 1);
     for (let i = 0; i < e.length; i++) e[i] /= pk;
     return e;
   }
@@ -258,16 +258,16 @@
   }
   // Instruments made of strings. strings: [[cents, amp], ...] (courses / polarisations), body: filter list (gourd, box, skin)
   const KSD = {
-    sitar: { dur: 3.0, t60: 4.5, t60k: 0.35, lp: 0.1, disp: -0.18, nd: 2, exc: 'pick', pos: 0.11, bright: 0.55, jaw: 0.4, th: 0.1, jm: 1,
-      body: [['hp', 85, 0.7], ['pk', 185, 1.3, 5], ['pk', 560, 1.6, 2], ['pk', 1250, 2, 4], ['pk', 2900, 1.5, 6], ['pk', 5200, 1.2, 3]], vol: 0.62, mono: true, taraf: 0.24, ring: 1.0 },
+    sitar: { dur: 3.0, t60: 4.5, t60k: 0.35, lp: 0.1, disp: -0.18, nd: 2, exc: 'pick', pos: 0.11, bright: 0.55, jaw: 0.6, th: 0.12, jm: 1,
+      body: [['hp', 85, 0.7], ['pk', 185, 1.3, 5], ['pk', 560, 1.6, 2], ['pk', 1250, 2, 4], ['pk', 2900, 1.5, 6], ['pk', 5200, 1.2, 3]], vol: 0.62, mono: true, taraf: 0.34, ring: 1.0 },
     veena: { dur: 3.0, t60: 3.2, t60k: 0.3, lp: 0.34, disp: -0.1, nd: 1, exc: 'pick', pos: 0.16, bright: 0.45, jaw: 0.6, th: 0.2, jm: 0.6,
       body: [['hp', 50, 0.7], ['pk', 105, 1.1, 6], ['pk', 240, 1.3, 4], ['pk', 650, 1.6, 2], ['lp', 5200, 0.6]], vol: 0.66, mono: true, gamak: 1, taraf: 0.1, ring: 1.2 },
     sarod: { dur: 2.0, t60: 1.5, t60k: 0.4, lp: 0.07, disp: -0.32, nd: 3, exc: 'pick', pos: 0.08, bright: 0.9,
       body: [['hp', 140, 0.7], ['pk', 820, 1.3, 7], ['pk', 2100, 2, 6], ['pk', 4200, 2, 3], ['pk', 300, 1, -3]], vol: 0.6, mono: true, taraf: 0.14, ring: 0.8 },
     santoor: { dur: 2.3, t60: 2.4, t60k: 0.45, lp: 0.12, disp: -0.42, nd: 3, exc: 'hammer', hw: 0.0009, pos: 0.115, strings: [[0, 1], [3.2, 0.85], [-2.4, 0.7]],
       body: [['hp', 120, 0.7], ['pk', 300, 1.4, 3], ['pk', 760, 1.5, 3], ['pk', 2300, 1.6, 2], ['hs', 6000, 0.7, -5]], vol: 0.52, ring: 1.1 },
-    tanpura: { dur: 5.2, t60: 7, t60k: 0.25, lp: 0.1, disp: -0.06, nd: 1, exc: 'soft', pos: 0.21, bright: 0.6, jaw: 0.6, th: 0.03, jm: 1, jawRise: 0.004, strings: [[0, 1], [1.4, 0.75]],
-      body: [['hp', 60, 0.7], ['pk', 150, 1, 5], ['pk', 420, 1.4, 3], ['pk', 1050, 1.3, 3], ['pk', 2600, 1, 4]], vol: 0.5, ring: 3.2 },
+    tanpura: { dur: 5.2, t60: 7, t60k: 0.25, lp: 0.03, disp: -0.06, nd: 1, exc: 'soft', pos: 0.21, bright: 0.6, jaw: 0.9, th: 0.05, jm: 1.5, jawRise: 0.004, strings: [[0, 1], [1.4, 0.75]],
+      body: [['hp', 60, 0.7], ['pk', 150, 1, 5], ['pk', 420, 1.4, 3], ['pk', 1050, 1.3, 3], ['pk', 2600, 1, 6]], vol: 0.5, ring: 3.2 },
     mandolin: { dur: 1.5, t60: 1.1, t60k: 0.3, lp: 0.12, disp: -0.22, nd: 2, exc: 'pick', pos: 0.1, bright: 0.85, strings: [[0, 1], [4, 0.9]],
       body: [['hp', 160, 0.7], ['pk', 360, 1.5, 4], ['pk', 1150, 2, 3], ['pk', 3100, 2, 3]], vol: 0.55, ring: 0.3 },
     guitar: { dur: 2.3, t60: 2.4, t60k: 0.4, lp: 0.26, disp: -0.12, nd: 1, exc: 'pick', pos: 0.17, bright: 0.5,
@@ -277,7 +277,7 @@
     bass: { dur: 1.9, t60: 2.2, t60k: 0.2, lp: 0.55, exc: 'soft', pos: 0.22, bright: 0.3,
       body: [['hp', 35, 0.7], ['pk', 95, 1, 3], ['lp', 2400, 0.7]], vol: 0.72, mono: true, ring: 0.06 },
     // sympathetic (taraf) strings: excited by the bridge, not plucked -> slow swell, long ring, light buzz
-    taraf: { dur: 3.0, t60: 3.6, t60k: 0.2, lp: 0.12, disp: -0.15, nd: 1, exc: 'swell', swell: 0.09, jaw: 0.6, th: 0.03, jm: 1,
+    taraf: { dur: 3.0, t60: 3.6, t60k: 0.2, lp: 0.12, disp: -0.15, nd: 1, exc: 'swell', swell: 0.09, jaw: 0.8, th: 0.12, jm: 1,
       body: [['hp', 200, 0.7], ['pk', 1250, 2, 3], ['pk', 2900, 1.5, 5], ['pk', 5200, 1.2, 3]] },
     taraf2: { dur: 2.6, t60: 3.0, t60k: 0.2, lp: 0.2, exc: 'swell', swell: 0.14, body: [['hp', 200, 0.7], ['pk', 1800, 1.5, 3], ['lp', 6000, 0.7]] },
   };
@@ -623,7 +623,7 @@
       }
       if (dur > c.a * 2) g.setTargetAtTime(pk * c.sus, t + c.a * 1.5, 0.25);
       g.setTargetAtTime(0, t + dur, c.r / 4);
-      if (v.la) { v.la.gain.cancelScheduledValues(t); v.la.gain.setTargetAtTime(dur > 0.3 ? pk * c.vibA : 0, t + 0.2, 0.2); }
+      if (v.la) { v.la.gain.cancelScheduledValues(t); v.la.gain.setTargetAtTime(dur > 0.3 ? pk * c.vibA : 0, t + 0.2, 0.2); v.la.gain.setTargetAtTime(0, t + dur, c.r / 6); }
       if (c.dyn) c.dyn(v, t, f, vel, dur, slur);
       // ---- breath / bow noise (chiff on articulated notes)
       if (v.ng) {
@@ -694,7 +694,7 @@
       const os = osc0(ac); os.setPeriodicWave(P.wave(ac, 'harmonium'));
       os.frequency.value = mtof(m); os.detune.value = r[0] + rr(-1.5, 1.5);
       const g = r[1] === 1 ? lp : gain(ac, r[1], lp);
-      os.connect(g); os.start(t + rr(0, 0.012)); os.stop(end);
+      os.connect(g); os.start(t); os.stop(end);
     }
   };
   // filmi violin section: two players per note (detune drifting), bow attack, shared vibrato, body formants baked in
@@ -711,7 +711,7 @@
       for (const d0 of [-7, 6]) {
         const os = osc0(ac); os.setPeriodicWave(w); os.frequency.value = f;
         os.detune.setValueAtTime(d0 + rr(-3, 3), t); os.detune.linearRampToValueAtTime(d0 * 0.4 + rr(-5, 5), t + dur);
-        vg.connect(os.detune); os.connect(lp); os.start(t + rr(0, 0.025)); os.stop(end);
+        vg.connect(os.detune); os.connect(lp); os.start(t); os.stop(end);
       }
     }
   };
@@ -731,7 +731,7 @@
         const os = osc0(ac); os.setPeriodicWave(vo[0]); os.frequency.value = f;
         os.detune.setValueAtTime(vo[1] - rr(40, 90), t); os.detune.setTargetAtTime(vo[1], t + 0.01, 0.035);
         const g = vo[2] === 1 ? lp : gain(ac, vo[2], lp);
-        os.connect(g); os.start(t + rr(0, 0.018)); os.stop(end);
+        os.connect(g); os.start(t); os.stop(end);
       }
     }
   };
@@ -747,7 +747,7 @@
       [-8, 7].forEach((d0, i) => {
         const os = osc0(ac); os.setPeriodicWave(w); os.frequency.value = f;
         os.detune.setValueAtTime(d0 - 20, t); os.detune.setTargetAtTime(d0, t, 0.08);
-        lfos[i].connect(os.detune); os.connect(lp); os.start(t + rr(0, 0.04)); os.stop(end);
+        lfos[i].connect(os.detune); os.connect(lp); os.start(t); os.stop(end);
       });
     }
   };

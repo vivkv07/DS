@@ -95,7 +95,7 @@
   const T_B_CH = '6:m - 3:m - 4 - 1 - 6:m - 2:m7 - 4 5 5:s4 -';
   const T_CELLO = '3 - - - | 4 - 3 - | 4 - - - | 4 - - - | 3 - 5 - | 6 - - - | 3 - 4 - | 4 - 2 -';
   reg('title', {
-    name: 'Yaadon Ki Gully', bpm: 84, root: 63, scale: 'major', meter: 16, loopTo: 1, gain: 1.0, tape: 0.16,
+    name: 'Yaadon Ki Gully', bpm: 84, root: 63, scale: 'major', meter: 16, loopTo: 1, gain: 0.85, tape: 0.16,
     parts: {
       drone: { inst: 'tanpura', div: 4, oct: -1, vol: 0.5, rev: 0.3, pan: -0.1 },
       mbox: { inst: MBOX, div: 2, oct: 1, vol: 0.55, rev: 0.5, pan: 0.2 },
@@ -127,12 +127,12 @@
   /* ============================================================ flashback: the hook half-remembered */
   // 70% tempo, heavy tape; the hook on sitar with two notes missing (R and D), music-box echoes out of time.
   reg('flashback', {
-    name: 'Purani Cassette', bpm: 59, root: 63, scale: 'major', meter: 16, loopTo: 0, gain: 1.0, tape: 0.6,
+    name: 'Purani Cassette', bpm: 59, root: 63, scale: 'major', meter: 16, loopTo: 0, gain: 1.5, tape: 0.6,
     parts: {
-      drone: { inst: 'tanpura', div: 4, oct: -1, vol: 0.5, rev: 0.45 },
-      pad: { type: 'chord', inst: 'harmonium', div: 16, oct: -1, vol: 0.35, rev: 0.4 },
-      sitar: { inst: 'sitar', div: 2, oct: 0, vol: 0.75, rev: 0.5, pan: -0.15 },
-      mbox: { inst: MBOX, div: 2, oct: 1, vol: 0.4, rev: 0.7, pan: 0.3 },
+      drone: { inst: 'tanpura', div: 4, oct: -1, vol: 0.8, rev: 0.45 },
+      pad: { type: 'chord', inst: 'harmonium', div: 16, oct: -1, vol: 0.6, rev: 0.4 },
+      sitar: { inst: 'sitar', div: 2, oct: 0, vol: 1.0, rev: 0.5, pan: -0.15 },
+      mbox: { inst: MBOX, div: 2, oct: 1, vol: 0.6, rev: 0.7, pan: 0.3 },
     },
     sections: {
       A: { bars: 8, cdiv: 16, chords: '1 4 2:m7 5:s4 1 4 6:m 5:s4', drone: '5 ^1 ^1 1', pad: 'x',
@@ -188,7 +188,7 @@
     const sec = (o, k) => Object.assign(o, P[k]);
     return {
       name: day ? 'Cycle Pe Sawaari' : hi ? 'Cycle Pe Sawaari (Cyber Towers Mix)' : 'Cycle Pe Sawaari (Cantonment Band)',
-      bpm: day ? 104 : hi ? 108 : 100, root: 62, scale: 'major', meter: 16, loopTo: 1, gain: hi ? 0.9 : 0.95, roam: true,
+      bpm: day ? 104 : hi ? 108 : 100, root: 62, scale: 'major', meter: 16, loopTo: 1, gain: hi ? 0.95 : ca ? 0.85 : 0.75, roam: true,
       parts,
       sections: {
         intro: sec({ bars: 2, cdiv: 8, chords: '1 - 5 -', call: '5 6 5 3 . . 5 6 | 5 3 . . 5 6 5 3', bass: 'r . . r . . f .', vol: { call: 1.1 } }, 'intro'),
@@ -226,7 +226,7 @@
   };
   const NSOFT = 'dha . . ge? na . ti na?', NSOFT2 = 'dha . ge? . na ti? na ka?';
   reg('night', {
-    name: 'Chandni Chhat', bpm: 72, root: 57, scale: 'yaman', meter: 16, loopTo: 0, gain: 1.05, roam: true,
+    name: 'Chandni Chhat', bpm: 72, root: 57, scale: 'yaman', meter: 16, loopTo: 0, gain: 0.62, roam: true,
     parts: {
       drone: { inst: 'tanpura', div: 4, oct: -1, vol: 0.5, rev: 0.4 },
       pad: { type: 'chord', inst: 'harmonium', div: 16, oct: -1, vol: 0.3, rev: 0.35 },
@@ -295,7 +295,7 @@
   const MARCH = 'B . S? . B . S . B . S? . B S S? .', MARCH2 = 'B . S? S? B . S . B . S? . B . R .', MFILL = 'B . S S B . S S R R R R R R S! .';
   const TOMS = 't t t t l l l l f f f f t! . . .';
   const chaseDef = (five, tb = (p) => (five ? p : undefined)) => ({
-    name: five ? 'Chappal Meter Full! (Srikanth Special)' : 'Chappal Meter Full!', bpm: 148, root: 62, scale: 'khamaj', meter: 16, loopTo: 0, gain: 0.9,
+    name: five ? 'Chappal Meter Full! (Srikanth Special)' : 'Chappal Meter Full!', bpm: 148, root: 62, scale: 'khamaj', meter: 16, loopTo: 0, gain: five ? 0.78 : 0.82,
     parts: {
       band: { kit: 'band', div: 1, vol: 0.62, rev: 0.12 },
       dhol: { kit: 'dhol', div: 1, vol: 0.5, pan: 0.2 },
@@ -383,7 +383,7 @@
   const EN_LIFT_CH = '1 - 4 6:m 1 - 4 5 6:m - 4 - 2:m7 - 5:s4 - 1 - 4 6:m 2:m7 - 5:s4 -';
   const TIHAI = 'ti ra ki ta dha . dha . dha . . . ti ra ki ta dha . dha . dha . . . ti ra ki ta dha . dha .';
   reg('ending', {
-    name: 'Charminar Ki Chaon', bpm: 76, root: 63, scale: 'major', meter: 16, loop: false, gain: 1.0,
+    name: 'Charminar Ki Chaon', bpm: 76, root: 63, scale: 'major', meter: 16, loop: false, gain: 0.66,
     parts: {
       drone: { inst: 'tanpura', div: 4, oct: -1, vol: 0.5, rev: 0.35, pan: -0.1 },
       sitar: { inst: 'sitar', div: 2, oct: 0, vol: 0.75, rev: 0.45, pan: -0.25 },
@@ -401,7 +401,7 @@
     sections: {
       alaap: { bars: 7, bpm: [46, 40], cdiv: 16, chords: '1:m 1:m 1:m 1:m 4 4 1:m', drone: '5 ^1 ^1 1',
         sitar: '1 - - - - - ~2 - | 1 - - - _7b - _6 - | _7b - 1 - 2 - ~3b - | 2 - - - 1 - - - | 2 - 3b - 4 - ~5 - | 5 - - - ~6 - 5 4 | 3b - - 2 - - 1 -',
-        str: J(R4, R4, R4, R4, 'x - - -', 'x - - -', 'x - - -'), vol: { str: 0.7, sitar: 1.15, drone: 1.2 } },
+        str: J(R4, R4, R4, R4, 'x - - -', 'x - - -', 'x - - -'), vol: { str: 0.95, sitar: 1.85, drone: 1.85 } },
       theme: { bars: 12, cdiv: 8, chords: EN_THEME_CH, drone: '5 ^1 ^1 1', flute: EN_THEME, str: 'x - x -', pad: 'x - x -', bass: 'r - r -',
         santoor: J(rests(R8, 4), rep('r . f . o . f .', 8)), cello: J(rests(R4, 4), T_CELLO),
         tabla: J(rests(R8, 4), 'dha . . . dha . . .', KEH2, KEH, KEHF2, keh(4)), vol: { str: 0.75, tabla: 0.75 } },
@@ -416,7 +416,7 @@
         flute: J('6 - - - 5 - 3 -', '2 - - - - - - -', rests(R8, 6)), str: J('x - - -', 'x - - -', 'x - - -', 'x - - -', 'x - - -', 'x - - -', 'x - x -', 'x - - -'),
         mbox: J(R8, R8, HOOK, R8, '5 - 3 - 2 - - -', '1 - - - - - - -'), bass: J('r - - -', 'r - - -', R4, R4, R4, R4, 'r - r -', 'r - - -'),
         tabla: J('dha . . . . . . .', rests(R8, 7)), choir: J('x x', 'x -', R4.slice(0, 3), R4.slice(0, 3), R4.slice(0, 3), R4.slice(0, 3), R4.slice(0, 3), R4.slice(0, 3)),
-        vol: { str: 0.55, choir: 0.5, flute: 0.8, drone: 1.1, mbox: 1.1 } },
+        vol: { str: 0.75, choir: 0.65, flute: 1.1, drone: 1.5, mbox: 1.65, bass: 1.3 } },
     },
     order: ['alaap', 'theme', 'rise', 'lift', 'coda'],
   });
@@ -455,7 +455,7 @@
   const GA_C = '. . . . . . . . | 6 5 6 ^1 5 - . . | . . . . . . . . | 6 5 6 ^2 ^1 - . . | ^3 - ^2 ^1 6 - 5 - | ^1 - 6 5 3 - 2 - | 3 - 5 - 6 - 7 - | ^1 - - - - - . .';
   const GDH = 'D . t . D t . t D . t . D t t t', GDH2 = 'D . t t? D . t . D . t t? D t . t';
   reg('ganesh', {
-    name: 'Tank Bund Ka Jaloos', bpm: 132, root: 58, scale: 'major', meter: 16, loopTo: 1, gain: 0.95,
+    name: 'Tank Bund Ka Jaloos', bpm: 132, root: 58, scale: 'major', meter: 16, loopTo: 1, gain: 0.82,
     parts: {
       band: { kit: 'band', div: 1, vol: 0.55, rev: 0.12 },
       dhol: { kit: 'dhol', div: 1, vol: 0.62, pan: 0.2 },
@@ -518,7 +518,7 @@
   const KT_B_F = J(R16, '. . . . . . . . . . . . ^1 ^2 ^1 ^2', R16, '. . . . . . . . . . . . 5 6 5 6', R16, '. . . . . . . . . . . . ^3 ^5 ^3 ^5', R16, R16);
   const KDH = 'D . k . t . k k? D . t . t k? t .', KDH2 = 'D . k t? t . k . D k? t . t . t t?';
   reg('kites', {
-    name: 'Patang Ki Pech', bpm: 120, root: 55, scale: 'major', meter: 16, loopTo: 0, gain: 1.0,
+    name: 'Patang Ki Pech', bpm: 120, root: 55, scale: 'major', meter: 16, loopTo: 0, gain: 0.7,
     parts: {
       dholak: { kit: 'dholak', div: 1, vol: 0.6, pan: 0.15 },
       claps: { kit: 'clap', div: 2, vol: 0.45, pan: -0.2, rev: 0.2 },
@@ -542,7 +542,7 @@
   const NU_A_CH = '1 1 5:7 5:7 5:7 5:7 1 1 4 4 1 1 2:7 5:7 1 1';
   const NU_B = '3 - - 2 1 - | 5 - - - - - | 4 - - 3 2 - | 6 - - - - - | 5 - 6 5 4# 5 | ^1 - 7 6 5 - | 4 - 3 2 _7 2 | 1 - - - - -';
   const numaishDef = (close) => ({
-    name: close ? 'Numaish Ka Jhoola (Closing Time)' : 'Numaish Ka Jhoola', bpm: close ? 92 : 128, root: 60, scale: 'major', meter: 12, loopTo: 0, gain: close ? 1.05 : 0.95,
+    name: close ? 'Numaish Ka Jhoola (Closing Time)' : 'Numaish Ka Jhoola', bpm: close ? 92 : 128, root: 60, scale: 'major', meter: 12, loopTo: 0, gain: close ? 1.2 : 0.9,
     parts: {
       lead: { inst: close ? MBOX : CALLIOPE, div: 2, oct: 1, vol: close ? 0.65 : 0.6, rev: 0.3, pan: 0.05 },
       org: { type: 'chord', inst: 'harmonium', div: 4, oct: 0, vol: close ? 0.3 : 0.45, rev: 0.2, pan: -0.2 },
@@ -614,7 +614,7 @@
   const BA_B = '5 - - 5 6 - 5 - | ^1 - - - 6 - - - | 4 - - 4 5 - 4 - | 2 - - - - - . . | 3 - 3 4 5 - 6 - | ^1 - 7 - 6 - 5 - | 4 - 6 - 5 - 2 - | 1 - - - - - . .';
   const BBD = 'B . S? . B B S . B . S . B B S R?', BBD2 = 'B . S . B . S S? B . S . B B S .', BBF = 'B . S S R R R R R R R R B+C . . .';
   reg('r_baraat', {
-    name: 'Baraat Express', bpm: 132, root: 58, scale: 'major', meter: 16, loop: false, gain: 0.95,
+    name: 'Baraat Express', bpm: 132, root: 58, scale: 'major', meter: 16, loop: false, gain: 0.82,
     parts: {
       band: { kit: 'band', div: 1, vol: 0.6, rev: 0.12 },
       dhol: { kit: 'dhol', div: 1, vol: 0.45, pan: 0.25 },
@@ -661,7 +661,7 @@
   const PG_B = '^1 - 6 - 5 - 3 - | 5 - 6 - ^1 - - - | ^2 - ^1 - 6 - 5 - | 3 - - - . . . . | ^1 - 6 - 5 - 3 - | 5 - 6 - ^1 - ^2 - | ^3 - ^2 - ^1 - 6 - | 5 - - - . . . .';
   const PDH = 'D . t . . t D . D . t . D t t .', PDH2 = 'D . t t? . t D . D . t . D t . t';
   reg('r_pager', {
-    name: 'Pager Pe Message', bpm: 124, root: 57, scale: 'major', meter: 16, loop: false, gain: 0.95,
+    name: 'Pager Pe Message', bpm: 124, root: 57, scale: 'major', meter: 16, loop: false, gain: 0.8,
     parts: {
       kit: { kit: MACH.kit, div: 1, vol: 0.55 },
       dhol: { kit: 'dhol', div: 1, vol: 0.6, pan: 0.2 },

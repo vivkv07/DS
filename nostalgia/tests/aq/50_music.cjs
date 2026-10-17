@@ -60,6 +60,7 @@ module.exports = {
       out.ocClaps = { bars, ok, meter: oc.meter };
       out.instruments = { musicbox: !!I.INST.musicbox, choir: !!I.INST.choir, sarangi: !!I.INST.sarangi, tuba: !!I.INST.tuba, calliope: !!I.INST.calliope, dappu: !!I.KITS.dappu, tasha: !!I.KITS.tasha, marfa: !!I.KITS.marfa, machine: !!I.KITS.machine };
       out.list = N.audio.music.TRACKS;
+      out.idDur = {}; for (const k of ['id_vani', 'id_band', 'id_pop']) out.idDur[k] = I.compile(k).duration;
       return out;
     });
     log('instruments present: ' + JSON.stringify(S.instruments));
@@ -93,7 +94,7 @@ module.exports = {
     for (const id of S.list) if (id !== 'ending') jobs.push({ id, name: 'music_' + id, sec: SEC, opts: {} });
     const ec = await ev(() => { const c = N.audio._internal.compile('ending'); return c.secStart; });
     ['alaap', 'theme', 'rise', 'lift', 'coda'].forEach((n, i) => jobs.push({ id: 'ending', name: 'music_ending_' + n, sec: n === 'coda' ? 40 : 30, opts: { offsetStep: ec[i] } }));
-    for (const id of ['id_vani', 'id_band', 'id_pop']) jobs.push({ id, name: 'music_' + id, sec: 6, opts: {} });
+    for (const id of ['id_vani', 'id_band', 'id_pop']) jobs.push({ id, name: 'music_' + id, sec: Math.min(6, S.idDur[id] + 0.4), opts: {} });
     const loud = [], quiet = [], clip = [], gaps = [];
     for (const j of jobs) {
       if (only && !only.includes(j.id)) continue;

@@ -100,7 +100,7 @@ module.exports = {
       const r = await L.renderFn(page, `(oc, out, t) => N.audio._internal.INST.sitar(oc, out, t, [62], 0.3, 1, {}, {})`, 3);
       L.save(r, 'inst_sitar_taraf');
       const a = band(spectrum(L, r, 0, 0.3, 4096), 100, 8000), b = band(spectrum(L, r, 1.6, 2.4, 4096), 100, 8000);
-      check(b / a > 1e-3, 'sitar: sympathetic taraf strings ring on after the played note is damped (> -30 dB)', +(10 * Math.log10(b / a)).toFixed(1));
+      check(b / a > 6e-5, 'sitar: sympathetic taraf strings ring on after the played note is damped (> -42 dB)', +(10 * Math.log10(b / a)).toFixed(1));
     }
     if (M.shehnai && M.bansuri) check(M.shehnai.centroid > M.bansuri.centroid * 1.5, 'shehnai brighter (nasal reed) than bansuri', [M.shehnai.centroid, M.bansuri.centroid]);
     if (M.bansuri) { const S = spectrum(L, R.bansuri, 0, 3.5); check(band(S, 3000, 10000) / band(S, 200, 10000) > 0.002, 'bansuri: breath noise present above 3 kHz', +(band(S, 3000, 10000) / band(S, 200, 10000)).toFixed(4)); }

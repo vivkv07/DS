@@ -1614,7 +1614,7 @@
   /* ============================================================ score notation + compiler */
   // A track = { name, bpm, root (MIDI of Sa/tonic), scale, meter (16ths per bar: 16 = 4/4, 12 = 6/8 or 3/4),
   //   swing, gain, loop (default true), loopTo (index into order), tape, parts: {name: cfg}, sections: {name: sec}, order: [...] }
-  // part cfg = { inst | kit, type: 'note' (default) | 'chord' | 'drums', div (16ths per token), oct, vol, pan, rev, trem }
+  // part cfg = { inst | kit, type: 'note' (default) | 'chord' | 'drums', div (16ths per token), oct, vol, pan, rev, trem, gate, ev: {instrument options} }
   // sec = { bars, bpm (number | [from, to] ritardando), tp (transpose semis), cdiv (chord token div, default 4),
   //   chords: 'tokens', vol: {part: mul}, <partName>: 'tokens' }   (part strings repeat cyclically to fill the section)
   // Tokens (space separated, '|' is just a bar marker):
@@ -1848,7 +1848,9 @@
             const endStep = step + ev.dur;
             const dur = endStep <= c.total ? c.times[endStep] - c.times[step] : sd * ev.dur;
             const fn = INST[p.cfg.inst];
-            if (fn) fn(ac, p.g, t + (p.cfg.type === 'chord' ? 0 : rr(0, 0.006)), ev.notes, dur * (p.cfg.gate || 0.95), vel, ev, p.st);
+            // part cfg `ev` = default instrument options ({gamak, kan, krintan, bend, vib, vowel, stop}); note flags win
+            const e2 = p.cfg.ev ? Object.assign({}, p.cfg.ev, ev) : ev;
+            if (fn) fn(ac, p.g, t + (p.cfg.type === 'chord' ? 0 : rr(0, 0.006)), ev.notes, dur * (p.cfg.gate || 0.95), vel, e2, p.st);
           }
         } catch (e) { N.err('audio.seq.' + this.id, e); }
       }
