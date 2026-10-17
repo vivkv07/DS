@@ -1408,14 +1408,14 @@ tube-light white-green.
 
 | Band | Time | Light | What changes |
 |---|---|---|---|
-| Pre-dawn | 04:30–05:30 | dark blue | milk vans; distant azaan (Fajr) from `mosque_*` emitters; Bahadur ends his round |
+| Pre-dawn | 04:30–05:30 | dark blue | milk vans; a soft pre-dawn hush and pigeons at the `mosque_*` emitters (no synthesised azaan, §12.1); Bahadur ends his round |
 | Dawn | 05:30–06:30 | pink | temple bells (06:00); morning walkers at parks and `fateh_maidan`; paper boy job; winter mist (Dec–Jan) |
 | Morning | 06:30–09:00 | warm | dosa bandis open; school autos 07:30–08:30; milk-packet queues |
 | Day | 09:00–12:00 | neutral | shops open; markets busy |
 | Hot afternoon | 12:00–15:30 | bleached | summer: streets ×0.6, dogs asleep in the shade, summer drain (§2.2) |
 | School's out | 15:30–16:30 | neutral | kids flood colonies; gola and pani-puri carts at `school_*` gates; school bells |
 | Golden hour | 16:30–18:30 | orange, long shadows | gully cricket, kites (Jan), families on `necklace_road` and `tank_bund`; samosa bandis open (16:00) |
-| Lamps on | 18:30 | — | street lights; "home before the street lights" closes; temple aarti bells; Maghrib azaan (distant, gentle) |
+| Lamps on | 18:30 | — | street lights; "home before the street lights" closes; temple bells (not at Birla Mandir); pigeons settle on the mosque domes |
 | Dusk | 18:30–19:45 | dusk blue | rush ×1.3; Lumbini fountain at 19:00 |
 | Evening | 19:45–22:00 | night overlay | shops lit; Numaish glows (in season); Irani cafés full; dogs wake |
 | Late | 22:00–00:00 | night | most shops shut; peds ×0.3; Bahadur patrols; cinemas let out at 00:00 |
@@ -1592,4 +1592,388 @@ Every bark has an **8 s cooldown per ped**, and the same line is never played tw
 | Thursday Sai temple lane | `dilsukhnagar_sai_temple` | the outer queue barricades; respect |
 
 ---
-<!-- CONTINUE -->
+
+## 12. Audio direction (audio.js; everything synthesised)
+
+### 12.1 Rules
+
+- Everything is synthesised with WebAudio (ARCHITECTURE §17). There are no real songs, no lyrics
+  and no samples.
+- **Respect in sound:** no synthesised azaan, chants, hymns or *bhajans*. Prayer times are
+  suggested by a soft evening hush, pigeons and bells only: temple bells (`temple_bell`) at
+  temples **except Birla Mandir, which has none**, and church bells. Inside respect zones the
+  score fades to ambience.
+- **Kid-friendly sound:** bumps and the chappal are comic (cartoon "thup", slide whistles), never
+  painful. Nobody cries out in pain.
+- **Mix priority:** dialogue > story SFX > player SFX > pursuer cues (whistle, whoosh) > music >
+  ambience. Music ducks to 0.32 under dialogue. The radio or walkman replaces the score.
+- At most 22 voices. Per-sound cooldowns. Sounds beyond ~700 u are culled. `N.audio.sfx` takes
+  `x, y` for distance, pan and air absorption.
+
+### 12.2 SFX list
+
+Names marked **NEW** are requests to audio.js. Everything else already exists in `SFX_NAMES`.
+
+| Group | Name | When | Character |
+|---|---|---|---|
+| Feet and bikes | `step` | footsteps per surface (`footstep` event) | dusty pat, pavement tap, grass swish, sand crunch |
+| | `bell` | cycle horn | the classic two-strike "**tring tring**" (double-gong after 5 finds: lower and longer) |
+| | `freewheel` **NEW** | cycle coasting | ratchet "tik-tik-tik" at the wheel speed |
+| | `puncture` **NEW** | flat tyre | a long "psssss", then a rim thud on bumps |
+| | `pothole` **NEW** | a pothole bump | hollow "thunk" plus a spring rattle |
+| Engines | voices `luna`, `chetak`, `rx100`, `auto`, `ambassador`, `padmini`, `maruti800`, `bus`, `lorry`, `boat` | player and nearby vehicles | Luna: thin buzzing moped. Chetak: **2-stroke putt-putt**, a tilt-and-kick start (`chetak_start`). RX100: the snappy "ring-ding" two-stroke whose pitch jumps with each gear. Auto: rattly 2-stroke with a chain clank. Ambassador: soft old petrol burble. Bus and lorry: diesel clatter plus `air_brake` |
+| Horns | `scooter_horn`, `auto_horn`, `car_horn`, `bus_horn`, `lorry_horn` | horn action and traffic | Auto: the rubber-bulb "**pom pom**". Lorry: the musical "Horn OK Please" multi-tone. Bus: a deep two-tone |
+| Impacts | `bump`, `crash`, `skid`, `door`, `door_creak`, `splash`, `water_lap` | physics | crash = a tin-can clatter; skid = a short squeal |
+| Meter | `whistle` | **Havaldar Pochaiah's whistle**: a long shrill blast, then two short ones | heard up to 600 u |
+| | `gurkha` | Bahadur's stick tap + whistle | a wooden tok-tok-tok on the road |
+| | `chappal` | **the chappal slap** on landing | a flat rubbery "**thup**" with a cartoon boing |
+| | `chappal_whoosh` **NEW** | the 0.4 s wind-up and flight | a rising whoosh with a little whistle |
+| | `peel_slip` **NEW** | a pursuer slips on a peel | slide whistle down, then a soft bump |
+| | `wanted_up` / `wanted_down` | level change | two notes up (harmonium) / down |
+| | `busted` | PAKDA GAYA | a brass "wah-wah" sting |
+| | `wasted` | THAK GAYA | a deflating "phwoo" plus a slow sitar pluck |
+| | `pant`, `stomach_growl` **NEW** | exhausted / hungry | panting; a comic gurgle |
+| Pickups and money | `pickup`, `marble`, `tape_click`, `paper`, `keys`, `coin`, `cash`, `coin_drop` | collectibles and money | marble = two glass clicks; tape = a cassette lid snap; ticket = paper and a punch "chk" |
+| Tape and REC | `rec`, `rewind`, `tape_stop` | ● REC, ◀◀ VHS effect, ■ STOP | **the cassette rewind squeal** (high chirp that speeds up), the REC beep, a tape winding down |
+| Camera | `camera_flash` | Frames | shutter, a flash whine, film advance |
+| UI | `ui_click`, `ui_back`, `ui_select`, `type`, `page_flip`, `objective`, `mission_passed`, `mission_failed`, `shop_bell` | menus and HUD | soft harmonium and santoor taps; `type` = the typewriter for dialogue |
+| Phones and machines | `std_ring`, `dialup`, `arcade`, `weigh_machine` **NEW**, `jukebox` **NEW**, `radio_static`, `detector` | booths, internet café, parlours, stations, cafés, tuning, Pasha's antenna | weighing machine: a coin drop, a whirr and a card "chk"; jukebox: a mechanical arm clunk and a crackle |
+| Places and city | `announce` (Numaish loudspeaker), `station_chime`, `train_horn`, `conductor` ("*Right, right!*" double-whistle), `vendor_call`, `kulfi_bell`, `bangles`, `cup_clink`, `plates`, `sizzle`, `chop`, `coconut_chop`, `munch`, `sip`, `flour_mill` (**thump-thump**), `cooker` (pressure cooker, colony lunchtime), `temple_bell`, `church_bell`, `school_bell` (tan-tan-tan), `gong` (Salar Jung clock), `clock_tick`, `airplane` (Begumpet approach), `firework` (festival skies only, distant) | emitters and events | — |
+| Nature | `pigeons`, `coo`, `bird`, `koel` (summer mornings), `crow_caw`, `cheel`, `cow_moo` (pitched down for buffaloes), `dog_bark`, `goat_bleat` **NEW** | ambience | — |
+| Kites and cricket | `kite_wind`, `kite_cut`, `bo_kaata` (a synth whoop, not a voice), `bat_hit`, `howzat` (crowd-like vowel synth), `kids`, `crowd_cheer`, `applause`, `clap`, `clap_echo`, `finger_whistle` | minigames and REC | — |
+| Festival | `dappu` **NEW** | M8's REC; Bonalu processions | a short **teenmaar** roll: dappu frame drum in a 6/8 gallop, rim slaps (bible §12.4; fallback `temple_bell` only outside Birla Mandir) |
+| Lake | `fountain` **NEW** | Lumbini musical fountain | rising spray hiss in time with the `festival`-lite fountain tune |
+| Numaish | `giant_wheel` **NEW** | the wheel turning | a slow metal creak and a bulb hum |
+
+### 12.3 Ambience beds and emitters
+
+The district beds are already in audio.js (`BEDS`: oldcity, market, colonial, colony, posh,
+rocky, cantonment, hitec, lake), and so are the place emitters (`PLACE_SOUNDS`). Additions and
+fixes:
+
+| Emitter | Sound |
+|---|---|
+| `birla_mandir` | **remove `temple_bell`** (it has no bells; bible). Use wind, a distant city hum and soft footsteps on marble |
+| `pindi_girni_*` | `flour_mill` thump-thump at 1.6 Hz; silent during power cuts |
+| `irani_cafe_*` | `cup_clink`, `plates`, chatter, the jukebox when paid; Salim's "*Do pauna!*" at `irani_cafe_7` |
+| `school_*` | `school_bell` at 08:45, 12:30, 15:45 on school days; recess `kids` |
+| `playground_*` | `kids`, `bat_hit`, `howzat` (16:00–18:30) |
+| `std_*` | a faint meter tick and `std_ring` |
+| `video_parlour_*` | `arcade` bleeps |
+| `nampally_station`, `kachiguda_station`, `secunderabad_station` | `station_chime`, `announce` (wordless chime-tones), `train_horn`, porters |
+| `nampally_exhibition` (season) | `announce`, the giant wheel, music bed `numaish` |
+| `lb_stadium` (SA4 dawn) | a coach's whistle, bat and ball |
+| `begumpet_airport` | `airplane` every 4–7 gm, the approach roar over Begumpet |
+| `rythu_bazaar_*` | `vendor_call` (veg variant), scale clanks |
+| `musi_riverbed` | the dhobis' cloth slap on stone (`chop` variant), water trickle |
+| Mosques, dargahs (`mosque_*`, `mecca_masjid`, `dargah_yousufain`) | pigeons and `coo` (as built); on Thursday evenings at `dargah_yousufain`, a **wordless** harmonium drone (no song) |
+
+Weather: a `rain` bed in monsoon showers (from the `wind` and `water` generators), with thunder as
+a low noise burst.
+
+### 12.4 Music moods (original, step-sequenced; ARCHITECTURE §17 TRACKS)
+
+| Track | Where / when | Scale and harmony | Tempo and rhythm | Instruments | Motif (original) |
+|---|---|---|---|---|---|
+| `title` *Yaadon Ki Gully* | title screen, first 40 s of a new game | E♭ major pentatonic (Mohanam: S R G P D) | 84 bpm, slow *keherwa* (8 beats) | music-box santoor, tanpura, tape hiss | a four-note hook rising S-R-G-P, falling to D, ending unresolved on R ("a question") |
+| `flashback` | prologue, interlude, the 2026 VHS frame | the title hook | 70% tempo, detuned | sitar, wow and flutter (`tape(0.6)`) | the hook half-remembered: two notes missing |
+| `day` *Cycle Pe Sawaari* | free roam by day (colony, market, colonial) | D major with a bright Ma (Bilawal flavour) | 104 bpm keherwa | dholak, tabla, mandolin and santoor arpeggios, bansuri lead | a bouncing cycle-bell-like figure (P-D-P-G) |
+| `night` *Chandni Chhat* | free roam at night | Yaman flavour (Lydian ♯4 over a tanpura Sa drone) | 72 bpm, rubato phrases | bansuri, soft harmonium pad, crickets | long bansuri notes leaning on the ♯4, resolving home |
+| `oldcity` *Gulzar Houz Ki Shaam* | Old City districts, Golconda (a fort-cue variant with more echo) | Bhairav-like (Phrygian dominant: ♭2 and ♭6) | 96 bpm *dadra* (6/8) with **qawwali hand-claps** on beats 1 and 4 | harmonium lead, shehnai answers, dholak, claps, a sarangi-like bowed synth | call (harmonium) and response (shehnai), climbing a step each time |
+| `kites` *Patang Ki Pech* | Sankranti days, the kite minigame | G major pentatonic | 120 bpm, brisk | flute trills, mandolin, string stabs on "*khench*" beats | a zig-zag figure like a kite in the wind |
+| `numaish` *Numaish Ka Jhoola* | inside Numaish | C major with chromatic passing notes | 3/4 waltz at 128 bpm | calliope-like synth organ, harmonium, glockenspiel | fairground swirl. A slow "closing music" variant at 22:15 |
+| `festival` *Teenmaar Toofan* | Bonalu, Ganesh processions | Mixolydian, call and response | 140 bpm, **teenmaar** 6/8 | dappu, tasha, marfa drums, shehnai and clarinet riffs | a four-bar riff that doubles in density each loop |
+| `chase` | Chappal Meter ≥ 3 | D Mixolydian | 148 bpm, 2/4 march | **filmi brass band**: trumpets and clarinet in unison, big tom fills | a busy brass run. At level 5 a comic tuba adds the three-note "SRI-KAN-TH!" motif falling a fifth |
+| `tension` | spy beats, Agent tapes, M12 storeroom | whole-tone cluster over a low drone | 60 bpm heartbeat (tabla "dha … dha") | pizzicato strings, low tanpura | sneaky staccato steps |
+| `victory` | mission passed | major | a 6 s fanfare, then a light loop | brass + dhol, then santoor | a rising arpeggio ending on the title hook's first notes |
+| `ending` *Charminar Ki Chaon* | the Charminar finale (5 sections: `alaap`, `theme`, `rise`, `lift`, `coda`) | Kafi (Dorian) alaap → the title hook in full → a key change up a whole tone at `lift` | free time → 76 bpm → building theka | sitar alaap, strings, tabla, choir-like pad (wordless), music box at the coda | the title's unresolved hook finally resolves to Sa at the coda's last note |
+
+**Area mapping** (the music director, ARCHITECTURE §17):
+
+| Area | Day | Night |
+|---|---|---|
+| colony, market, colonial | `day` | `night` |
+| Old City districts and Golconda | `oldcity` | `oldcity` |
+| Hussain Sagar, Necklace Road | `day` (`kites` in Jan) | `night` |
+| hitec | `day` re-voiced for **90s synths** (request a `hitec` mood: square-wave arpeggio, drum machine, same melody) | `night` |
+| cantonment (Secunderabad) | `day` re-voiced for **clarinet and snare** (request a `cantonment` mood: Anglo-Indian band feel) | `night` |
+
+Story cues use `music.play(id)`, and missions may set `music`.
+
+### 12.5 Radio and walkman
+
+Three fictional stations exist (`audio.js` STATIONS; bible §8.5):
+- **Deccan Vani 101.2**, "*Aapki Farmaish*": `r_chandni` (filmi romantic ballad: synth strings,
+  tabla, 88 bpm), `r_barish` (rainy Irani-café ghazal-pop: harmonium and guitar, 76 bpm).
+- **Band Baaja 93.5**, "*Shaadi Special*": `r_baraat` (brass band baraat, 132 bpm), `festival`.
+- **Pop Patang 104.8**, "*Countdown Express*": `r_neon` (Indipop synth, 116 bpm, natural minor),
+  `r_pager` (Telugu-pop dance, 124 bpm, synth bass, a Mohanam hook).
+
+DJ chatter and dedications are text toasts only, never lyrics. The walkman plays the found
+cassette songs in the order found, then the radio band (§3.5).
+
+---
+
+## 13. UI flows
+
+All UI is DOM over the canvas (ARCHITECTURE §10): tin-sign panels, the VHS on-screen display and
+the cassette J-card motif. Fonts: Yatra One (display), Baloo 2 (body), VT323 (OSD).
+
+### 13.1 Title and start
+
+1. **Boot splash** → **title** (bible §1.1): the J-card over Charminar at dusk, OSD `■ STOP  --:--`.
+   Menu: `▶ PLAY` · `▶▶ CONTINUE` (shown only with a save; subtitle = save meta: "TRACK 05 · TUE
+   1 APR 2003 · ₹23") · `SETTINGS` · `CREDITS`.
+2. **▶ PLAY** unlocks audio inside the gesture. If a save exists, it first asks "Record over Side
+   A? Your saved game will be replaced." [Yes / No].
+3. **Name card** (a DOM card, no `prompt()`; bible §2.1): "Your name in the colony" (default
+   Chinnu, max 12 letters) and "Your name on the exam paper" (default Srikanth), then
+   [▶ START]. Letters and spaces only; trimmed; empty means the default. On touch the on-screen
+   keyboard shows.
+4. **Prologue** cutscene (≈ 60 s). Hold ACTION for 1 s or tap "SKIP ▶▶" to skip.
+5. M1 auto-starts on `home_terrace`.
+6. **▶▶ CONTINUE** unlocks audio, runs `N.game.continueGame()`, and resumes at the saved spot with
+   the OSD `▶ PLAY` card for 1.5 s.
+
+### 13.2 HUD (in play)
+
+As ARCHITECTURE §10, plus:
+- **Top-left:** VHS OSD (`▶ PLAY  TUE 14 JAN 2003  07:10`, `↻` while the week loops), the tape
+  counter `SIDE A 083` (greyed `■ PAUSED` in the interlude), and the district name.
+- **Top-right (tin signs):**
+  - money `₹ 12.50`;
+  - the energy bar with the tummy notch and the chai-glass icon;
+  - the **Chappal Meter**: 5 slippers, the next one filling with heat, two sizes on Chand Raat.
+- **Top-centre column:** objective, timer, toasts (never overlapping).
+- **Bottom-left:** minimap with blips (§14.2 shapes) and the quick-item slot.
+- **Context prompt:** desktop "E — Ride Chetak"; touch ACTION label.
+- **Banners:** MISSION PASSED (with the J-card line), MISSION FAILED, PAKDA GAYA!, THAK GAYA!,
+  chapter cards, "SIDE A ▶ RESUMED".
+- **REC prompt:** `● REC` pulsing beside the tape counter.
+
+### 13.3 Pause (Esc / P / PAUSE / Start)
+
+The panel is a cassette deck with buttons:
+**Resume** · **Map** · **Journal** · **Settings** · **Save & quit to title** (free roam only; "Save
+at a booth or finish the mission first" otherwise) · **Quit mission** (during a mission: aborts
+to its marker) · **Quit to title** (warns "Last saved 14 minutes ago").
+
+The clock stops. Audio ducks to 50%.
+
+### 13.4 Full map (M / MAP / Back)
+
+| Feature | Rule |
+|---|---|
+| View | `N.world.renderMap` styled like a 1999 city guide map (paper colour, red arterials, blue lake). District names in English, Telugu and Urdu-style lettering where known |
+| Pan / zoom | drag, arrow keys or WASD; mouse wheel, pinch, or + / −; 3 zoom levels (whole city, district, neighbourhood) |
+| Layers (toggles) | Story (giver and goal), Services (bus hubs, STD, cafés, barbers; all shops with `city_map`), Collectibles (found ones as ticks; hints during viewpoint reveals), Jobs |
+| Place card | tap or ACTION on an icon: name, kind, hours, "Visited ✓", a trivia teaser |
+| Waypoint | right-click, long-press, or ACTION on empty ground: a pink route on the minimap (A* over the road graph). Cleared on arrival or by a second press |
+| Legend | blip shapes with colour-blind-safe outlines (§14.2) |
+| Close | M, Esc, or the ✕ (44 px) |
+
+### 13.5 Journal (J / LB / Pause → Journal)
+
+Tabs come from bible §12.6, plus the systems pages. ←/→ or Q/E switch tabs, ↑/↓ scroll, Esc
+closes. On touch the tabs scroll sideways like cassette spines.
+
+| Tab | Content |
+|---|---|
+| **Story so far** | *Mera Yaadgaar Saal*: the diary lines with Vimala Ma'am's red ink |
+| **Side A** | the track list with J-card lines. **Replay** any finished mission after the credits |
+| **Clues** | the active clue in Immu's hand, hints taken, nudges unlocked |
+| **The Tin** | tokens collected |
+| **The Lock** | the 4 riddles and digits found (`_ 4 _ _`) |
+| **Kites / Golis / Cassettes / Tickets** | per-series lists with hints and found ticks. The cassette page plays songs and memos |
+| **Nanna's album** | developed prints, empty photo corners, captions at 16 |
+| **Trivia cards** | verified facts [V], unlocked by places, tickets, frames and books |
+| **Hyderabadi dictionary** | bible §10 plus §17 here |
+| **Jobs** | levels, best times, earnings |
+| **Stats** | money earned and spent, *udhaar*, times caught (PAKDA GAYA), THAK GAYA count, puris eaten, best brick score, km cycled, cows honked at |
+
+### 13.6 Shop, STD and travel menus
+
+- **Shop menu** (§5.1): a tin-sign list with price and effect icons. Hours show when closed.
+- **STD booth**: a cabin view with a red meter; options per §5.4. Calls play as a short dialogue
+  with the phone's crackle (`radio_static` low).
+- **Bus routes**: the route board at the hub, with unlocked destinations in white paint and
+  locked ones as "?" plus "Find Ticket Thatha's ticket at this stop".
+- **Auto ride**: the destination list (discovered places + objective), then the fare quote with
+  [Pay ₹X] [Bargain] [*Nakko*].
+
+### 13.7 Mission, busted and exhausted flows
+
+As §6 and §4.10–4.11. Banners always come before chapter title cards. `N.hud.ask` cards are big
+(buttons 56 px tall) and keyboard-reachable (ACTION / Esc).
+
+### 13.8 Settings
+
+| Section | Options |
+|---|---|
+| Audio | master, music, SFX, radio, ambience (0–100, persisted by audio.js), mute, mono |
+| Display | reduced motion; VHS effect strength 0–100 (default 60); screen shake on/off; night darkness (night overlay max 0.55 / 0.7 / 0.8); HUD scale 80–130%; minimap rotates with heading on/off; flash reduction |
+| Text | text speed: slow 25 / normal 45 / fast 90 characters per s / instant; auto-advance dialogue off / on (2 s after the line); subtitles for barks on/off; glossary tooltips on/off; large text (+20%) |
+| Controls | touch handedness (right / left); joystick floating or fixed; button size S / M / L; run hold or toggle; vibration on/off; key reminders on the HUD on/off |
+| Gameplay | difficulty preset (§14.1); hint nudges off / normal / fast; collectible beacon on/off; glints on/off; minigame assist on/off; chappal slow-motion assist on/off; "Let Immu do it" offers on/off |
+| Accessibility | colour-blind blips (off / deuteranopia / protanopia / tritanopia; shapes are always on); high-contrast HUD; sound captions on/off |
+| Data | "Erase saved game" (2-step confirm). Shows whether storage is available ("Saves last only this session" when localStorage fails) |
+
+### 13.9 Save and load
+
+- **One slot** + `.bak` (ARCHITECTURE §12).
+- Save points: STD booths, the booth at `irani_cafe_7`, MISSION PASSED, sleeping at home, and
+  "Save & quit".
+- No saves during missions, minigames, cutscenes, dialogue, the interlude, the ending or chases at
+  level ≥ 3.
+- Toast "SIDE A saved ●" with a spinning reel icon.
+- **What is saved** (sections): `player` (position, vehicle, energy, tummy, money, inventory,
+  items, statuses, hair), `clock` (date, time, loop window), `flags`, `missions`, `wanted`,
+  `collectibles`, `shops` (hire state, khaata, daily-use flags, hidden-spot uses, parlour scores),
+  `jobs` (levels, earnings), `minigames` (stats), `journal` (diary, trivia unlocked, hints taken),
+  `settings` (separate key).
+- **Load** validates first, restores, shows the OSD `▶ PLAY` card, and starts the player at the
+  saved spot. If that spot is in a respect zone or in water, he is moved to the nearest valid
+  cell.
+
+### 13.10 Credits
+
+The J-card scroll (bible §9.4), reachable from the title screen at any time and played after the
+epilogue. Hold ACTION to speed up 4x; Esc to leave.
+
+---
+
+## 14. Difficulty and accessibility
+
+### 14.1 Difficulty presets
+
+The default is **Normal**. The preset can be changed at any time in Settings.
+
+| Parameter | *Aaram Se* (relaxed) | Normal | *Full Meter* (hard) |
+|---|---|---|---|
+| Pursuer speed | ×0.85 | ×1 | ×1.1 |
+| Pursuer and spotter sight radius | ×0.8 | ×1 | ×1.15 |
+| Unseen time per level drop | 9 s | 12 s | 15 s |
+| Chappal throw interval | 8 s | 6 s | 5 s |
+| Chappal homing turn rates | ×0.7 | ×1 | ×1.2 |
+| Tummy drain | ×0.7 | ×1 | ×1.2 |
+| Mission timers (W2) | ×1.25 | ×1 | ×0.9 |
+| Cargo damage (W3) | ×0.75 | ×1 | ×1.2 |
+| Minigame difficulty offset | −0.15 | 0 | +0.15 |
+| PAKDA GAYA fine | ₹1 | ₹2 | ₹3 |
+| Hint nudge times | ×0.6 | ×1 | ×1.5 |
+| Prices, rewards | same | same | same |
+
+### 14.2 Accessibility features
+
+| Feature | Rule |
+|---|---|
+| **Reduced motion** | no screen shake; no VHS roll or tracking lines (only a static scanline tint); camera zoom eased over 1.2 s instead of 0.4 s; banners fade instead of sliding; pseudo-3D lean `PERSP` ×0.6; pigeon bursts at half the particles; the clap minigame's lamp flashes become fades |
+| **Flash reduction** | camera flash, lightning and "perfect!" flashes become 0.3 s fades at most 30% white. On by default when reduced motion is on |
+| **Text speed** | §13.8. "Instant" shows whole lines. ACTION always completes a line first |
+| **Colour-blind-safe blips** | every blip has a **unique shape and a dark outline**, never colour alone: giver ◆ diamond (yellow `#f2c230`), goal ◯ ring (pink `#ff5fb0`), shop ■ square (teal `#2a8c82`), STD booth ☎ glyph, bus hub ▭ bar, collectible ★ star, pursuer ▲ triangle (red), spotter ! glyph. Colour-blind modes swap to the Okabe–Ito palette (orange `#E69F00`, sky blue `#56B4E9`, bluish green `#009E73`, vermillion `#D55E00`, reddish purple `#CC79A7`, yellow `#F0E442`) and keep the shapes. The Chappal Meter's slippers fill with a stripe pattern as well as colour |
+| **Big touch targets** | minimum 48 CSS px (default M), L = 64 px buttons and a 96 px ACTION. Menu rows at least 48 px tall. Spacing at least 8 px |
+| **One-handed / left-handed** | mirrored touch layout; run toggle; auto-advance dialogue |
+| **Hold → toggle** | run can be a toggle; held minigame inputs (kite pull, antenna turn) accept a tap-to-toggle in Assist mode |
+| **Sound captions** | important sounds show a caption with a direction arrow at the screen edge: "[whistle ↗]", "[chappal whoosh ←]", "[dog barking ↓]", "[bus horn]", "[● REC]". Required for the chase to be fair without sound |
+| **Subtitles and glossary** | bark subtitles; `*word*` slang tooltips (tap and hold on touch) |
+| **Assists** | minigame assist; chappal slow-motion; "Let Immu do it" after 3 fails; timer +25% after 2 fails |
+| **High contrast** | HUD panels go fully opaque dark with white text; outlines on markers |
+| **Mono audio** | sums panning; the beacon becomes a rate-only cue |
+| **Pause anywhere** | including cutscenes (they hold their position) and minigames |
+
+---
+
+## 15. Reconciliation notes (changes other modules must make)
+
+| # | Module | Change | Why |
+|---|---|---|---|
+| 1 | entities.js | default `money` **1000** (not 2500); add `tummy` (start 80) with drains and the energy cap (§2.2); `feed(n)`; statuses (§2.3); serialize them | bible start ₹10; food must matter |
+| 2 | core.js | `N.clock.baseDate = [2003, 0, 14]` (now 1999); the elastic week loop helper (§10.5); clock frozen outside `play` | bible §12.2 |
+| 3 | hud.js | tummy notch on the energy bar; tape counter; heat-filling slipper; two-size chappals; `↻` loop mark; quick-item slot; sound captions | §13.2, §14.2 |
+| 4 | audio.js | **remove `temple_bell` from the `birla_mandir` emitter** (it has no bells); add the NEW SFX in §12.2; `hitec` and `cantonment` moods; no azaan or chant synthesis | bible §1.5; respect |
+| 5 | minigames (staging) | add `bargain` skins `kite`, `farmer`, `books` (§8.7). Side-list rewards: brickgame **₹0** + refund ₹1 on a win (now pays ₹3 for a ₹1 game: a money printer); kite ₹2 per cut (cap ₹10/day); antenna and clap free play ₹0; cricket ₹2/₹5; marbles ₹2 (₹5 vs Tiger); **max 3 paid wins per minigame per game-day** | §2.4, §8 |
+| 6 | worlddata.js | add NEW ids from the bible: `irani_cafe_19` (+ alias `cafe_noor_e_iran`), `recording_centre_1`, `electronics_shop_1`, `charminar_gallery`; `flower_cart_5`..`8` in the Dilsukhnagar Sai temple lane (the bible uses `flower_cart_5`); rename the `irani_cafe_7` sign to "Café Gulistan"; podium flags on the `junction` places that have a constable; `respect` polygons for every worship compound plus a 30 u forecourt | bible §3, §12 |
+| 7 | world.js / render.js | **roof zones** (walled terraces with stairs; §7.3) for `home_terrace`, the M1 lootna terraces, antenna jobs and Patang Chacha's roof | M1, collectibles |
+| 8 | vehicles.js | `noEnter` for the player on `bus` and `lorry` (debug still works); kid-at-the-wheel factors (§3.1); bike surface factors; falls (§2.6); punctures; story types (§3.2) | tone, §3 |
+| 9 | traffic.js | mix, density and AI (§3.4), peds and animals (§11), "AUTO!" hailing, bus stops and boarding | §3, §11 |
+| 10 | wanted.js | the full §4 | stub today |
+| 11 | shops.js | §5 catalogue, hours, menus, services, hire state, khaata | stub today |
+| 12 | missions.js | the J-card start prompt (§6.1); "Let Immu do it" and timer help (§6.3); `kind: 'side' / 'job'`; meter policies; refuse saves during missions | §6 |
+| 13 | collectibles.js | §7 (series, glints, beacon, viewpoints, the total-finds ladder) | stub today |
+| 14 | menus.js | §13 flows (name card, journal tabs, settings list) | — |
+
+---
+
+## 16. Must-have places → systems (canonical ids)
+
+This complements the bible's story matrix (§3.3). Every row is used by at least one system.
+
+| Must-have | Ids | Systems use (this file) |
+|---|---|---|
+| Koti bus stand | `koti_bus_stand` | bus hub fast travel (§3.6); Ticket Thatha's ticket trade-in (§5.16, §7); auto stand and `bargain who:'auto'`; T01 at `bus_stop_1` |
+| Gokul Chat | `gokul_chat` | chaat shop (§5.10); pani-puri challenge (§8.6); energy refill |
+| Birla temple | `birla_mandir`, `flower_cart_11` | respect zone (§4.8); prasadam (§2.2); viewpoint (§8.14); F04 from the road; K5 at the stair foot; **no bell sound** (§12.3) |
+| Hussain Sagar | `hussain_sagar`, `buddha_statue`, `tank_bund`, `necklace_road`, `lumbini_park`, `lumbini_jetty` | boats (§3.7); races R1, R2 (§8.13); bhutta and coconut carts (§5.9); musical fountain (§5.15); pigeons; water blocks walking (§2.5) |
+| Prasads IMAX | `prasads_imax` | tin fence + K6 gap until 24 Jul; from 25 Jul giant-screen shows ₹50, lobby AC cool-down, viewpoint, food counter (§5.15, §4.6, §8.14) |
+| NTR Gardens | `ntr_gardens` | entry, mini train ride ₹5 as a viewpoint, Machan tree, snacks (§5.15); K7, F08 |
+| Public Gardens | `public_gardens`, `state_museum`, `jawahar_bal_bhavan` | gully cricket with the mali interruption (§8.4); museum ₹2 walk-only (§5.15); SA4; G06 |
+| LB Stadium | `lb_stadium`, `fateh_maidan`, `electronics_shop_1` | SA4 dawn camp; TV-window crowd zone (§11.5); K4 (occlusion), F19 |
+| Rythu Bazaars | `rythu_bazaar_mehdipatnam`, `rythu_bazaar_erragadda`, `rythu_bazaar_saroornagar` | vegetable shop (§5.13); the Rythu list job (§9); `bargain who:'farmer'` |
+| Mozamjahi Market | `mozamjahi_market`, `karachi_bakery`, `famous_ice_cream` | ice-cream cool-down (§4.6, §5.12); bakery tins (§5.8); pigeons; F01, G07 |
+| Nampally station | `nampally_station` | platform-ticket shortcut ₹3; weighing-machine hint; book stall (§5.16); F03; T03 stop |
+| Kachiguda station | `kachiguda_station`, `chappal_bazar` | platform ticket, weighing machine (§5.16); `kotha_chappal` level-5 clear (§4.6, §5.14); F02 |
+| Imlibun bus stand | `imlibun_bus_station` | bus hub (§3.6); enquiry window; Ramoji off-map trip (post-game) |
+| Assembly | `assembly`, `gandhi_statue_assembly`, `gun_park` | the sentry as a constable spotter (§4.4); the rude-choice meter rule (§4.2); F20 |
+| Dilsukhnagar Sai Baba temple | `dilsukhnagar_sai_temple`, `flower_cart_5`..`8`, `banana_cart_8` | respect zone; Thursday crowd ×1.8 and prasadam +15 (§2.2, §11.2); flower and banana carts (§5.9) |
+| RTC X Roads and cinemas | `rtc_x_roads`, `sandhya_theatre`, `sudarshan_theatre`, `odeon_theatre`, `devi_theatre`, `bawarchi` | cinemas: tickets, time skip, meter −2 (§5.15); Pochaiah's home podium (§4.4); queue cages (§8.12); cut-out helper job (§9); Bawarchi biryani (§5.11); T08 |
+| Schools | `school_1`..`school_13` (+ `_ground`) | gate carts (gola, pani puri; §5.9); bell schedule (§12.3); school-hours spotter rule (§10.5); grounds for gully cricket; C15 |
+| Kirana stores | `kirana_1`..`kirana_20` | shop (§5.3); Mango Bite bribe (§4.6); hide behind the sacks (§4.7); khaata; bottle deposits; errands job (§9) |
+| Banana and flower vendors | `banana_cart_1`..`10`, `flower_cart_1`..`12` | snacks and the peel gag (§4.7, §5.9); jasmine for Mummy (§4.6); garlands; `bargain` |
+| Stationery shops | `stationery_1`..`8` | school kit, slam book, brown cover (SA7), the **city map** unlock (§5.14); cut-out job supplies (§9) |
+| Flour mills | `pindi_girni_1`..`7` | girni dabbas job (§9); grinding and atta (§5.14); power-cut silence; chilli-day sneeze |
+| Colony playgrounds | `playground_1`..`16` | gully cricket and league (§8.4, §9); marbles (§8.8); lootna landing zones (§9); SA1 night watch (§8.16); raddi cart; G01, G03–G05 |
+| Irani cafés | `irani_cafe_1`..`19` and aliases | chai and Osmania refills (§5.2); family-room cool-down (§4.6); jukebox; sit-and-wait; THAK GAYA respawn (§4.11); STD save at `irani_cafe_7` |
+| **Charminar** (the ending) | `charminar`, `charminar_plaza`, `charminar_gallery`, `irani_cafe_19`, `gulzar_houz` | M12 chase with its respect rules round the masjids (§4.4, §4.8); Ask the city (§6.5); viewpoint (§8.14); self-timer dash (§8.19); pigeons (§11.3); the `ending` music (§12.4); the 2026 lock dial (§8.20) |
+
+---
+
+## 17. Glossary (words used here that are not yet in bible §10)
+
+Add these to `N.dialogue.glossary` and the Journal's Hyderabadi dictionary.
+
+| Word / phrase | Tag | Meaning |
+|---|---|---|
+| *ab aap* | Hi | "now you" (clap minigame) |
+| *apnapan* | Hi | belonging, "we're from the same place" (a bargaining tactic) |
+| *band* / *band hai* | Hi | closed / it's closed |
+| *bas* | Hi | enough, stop |
+| *champi* | Hi | head massage |
+| *chapak!* | Hi | splash! (sound word) |
+| *dhadaam!* | Hi | crash! thud! (sound word) |
+| *ghanta* | Hi | an hour (also "bell") |
+| *hawa* | Hi | wind |
+| *jaata hoon* | Hi | "I'm leaving" (walking away while bargaining) |
+| *khabri* | Dk | an insider who knows all the news |
+| *khaao* | Hi | eat! |
+| *licence dikhao* | Hi | show your licence |
+| *mauke* | Hi | chances |
+| *mol-bhaav* | Hi | bargaining |
+| *nihari* | Dk | slow-cooked breakfast stew of the Old City |
+| *pandaga dabbulu* | Te | festival money given to children |
+| *pehle Mummy ko sambhalo* | Hi | "first deal with Mummy" |
+| *pet mein chuhe daud rahe hain* | Hi | "rats are running in my stomach": very hungry |
+| *phir se suno* | Hi | listen again |
+| *poora din* | Hi | the whole day |
+| *pyaar* | Hi | love; here, charm |
+| *raddi* / *raddi-wala* | Hi | old newspapers / the man who buys them by weight |
+| *sabr* | Hi | patience |
+| *saans phool gayi* | Hi | out of breath |
+| *shant ho ke aao* | Hi | "come back calm" |
+| *suno* | Hi | listen |
+| *taali* | Hi | a clap |
+| *ustad* | Dk | master, expert |
+| *udhaar chukaya* | Hi | debt repaid |
+| *neend aa rahi hai* | Hi | "I'm getting sleepy" |
+| *gowli* | Dk/Te | traditional milkman |
+| *dhobi* | Hi | washerman |
+
