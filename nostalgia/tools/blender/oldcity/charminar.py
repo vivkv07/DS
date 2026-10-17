@@ -20,16 +20,16 @@ import kit
 from kit import box, lathe, onion_profile, arch_outline, prism_from_outline
 from oldcity import common
 
-S = 24.0          # half side of the block (wall faces)
-MR = 6.6          # minaret radius at the base (engaged into the corners)
-ROOF = 79.0       # roof terrace (top of the second storey)
-PAR = 83.6        # top of the parapet merlons
-ARCH_W = 26.0     # great arch: ~11 m wide
-ARCH_SPRING = 30.0
-ARCH_RISE = 18.0  # crown at 48 u = 20 m
-BAND = 57.5       # balcony band (chajja) underside
-ST1 = (60.6, 69.6)  # first upper storey openings
-ST2 = (71.6, 77.8)  # second upper storey openings
+S = 25.0          # half side of the block (wall faces): broad and squat, not a tower
+MR = 6.6          # minaret radius at the base (thick, engaged into the corners)
+ROOF = 81.5       # roof terrace (~0.6 of the minaret height)
+PAR = 85.8        # top of the parapet merlons
+ARCH_W = 30.0     # great arch: wide (piers either side are narrow, as on the real faces)
+ARCH_SPRING = 36.0
+ARCH_RISE = 22.0  # crown at 58 u (~0.43 of the minaret height)
+BAND = 65.0       # balcony band (chajja) underside
+ST1 = (67.8, 73.6)  # first upper storey openings
+ST2 = (75.2, 79.8)  # second upper storey openings
 TOP = 135.0       # finial tip
 WALL = 2 * (S - MR) + 0.4   # free wall between the minarets on one face
 
@@ -120,26 +120,26 @@ def minaret(M, cx, cy):
             (r0, ST2[0] - 1.4, fd),
             (r0 + 0.45, ST2[0] - 1.1, 0), (r0 + 0.45, ST2[0] - 0.1, 0), (r0 - 0.1, ST2[0] + 0.2, fd),
             (r0 - 0.1, ROOF + 0.5, fd),
-            # free stage 1 (above the roof), slightly tapering
-            (r0 - 0.4, 84.5, fd * 0.9),
-            (r0 - 0.3, 85.0, fd * 0.9), (r0 - 0.45, 99.5, fd * 0.8),
-            (r0 - 0.8, 100.0, fd * 0.7), (r0 - 1.0, 104.0, fd * 0.7),
+            # free stage 1 (above the roof): clearly slimmer than the engaged shaft
+            (r0 - 1.0, 86.5, fd * 0.9),
+            (r0 - 1.1, 87.0, fd * 0.9), (r0 - 1.3, 101.0, fd * 0.8),
+            (r0 - 1.55, 101.5, fd * 0.7), (r0 - 1.7, 105.0, fd * 0.7),
             # free stage 2
-            (r0 - 1.2, 104.5, fd * 0.6), (r0 - 1.35, 113.0, fd * 0.6),
-            (r0 - 0.95, 113.4, 0), (r0 - 0.95, 114.4, 0), (r0 - 1.45, 114.6, 0)]
+            (r0 - 2.0, 105.5, fd * 0.6), (r0 - 2.15, 113.0, fd * 0.6),
+            (r0 - 1.75, 113.4, 0), (r0 - 1.75, 114.4, 0), (r0 - 2.25, 114.6, 0)]
     parts.append(fluted_lathe('minaret_shaft', prof, seg=24, flutes=12, mat=M['plaster']))
     # the two carved balconies on the free part
-    parts += balcony(M, 85.0, r0 - 0.5, r0 + 2.4, 16, rail_h=2.6, corbel_h=3.0)
-    parts += balcony(M, 104.5, r0 - 1.7, r0 + 0.8, 12, rail_h=2.2, corbel_h=2.4)
+    parts += balcony(M, 87.0, r0 - 1.2, r0 + 1.9, 16, rail_h=2.6, corbel_h=3.6)
+    parts += balcony(M, 105.5, r0 - 2.1, r0 + 0.2, 12, rail_h=2.2, corbel_h=2.4)
     # small blind arched niches round the free stages (dark recess panels on the shaft)
-    for (z0, h, n, rr) in ((89.0, 7.5, 8, r0 - 0.55), (106.5, 5.0, 8, r0 - 1.85)):
+    for (z0, h, n, rr) in ((91.0, 7.5, 8, r0 - 1.2), (107.5, 4.6, 8, r0 - 2.1)):
         def niche(h=h, rr=rr):
             w = 2 * math.pi * rr / n * 0.38
             return common.decal('niche', arch_outline(w, h * 0.62, h * 0.38, 'pointed', n=4), M['plaster_shadow'])
         parts.append(ring_of(niche, n, rr + 0.1, z0, phase=math.pi / n))
     # lotus-leaf base (two rows of petals) and the onion dome
     dz = 114.6
-    rd = r0 - 1.45
+    rd = r0 - 2.25
 
     # lotus-leaf base: a flared ring scalloped into 12 petals (fluted lathe), then the onion dome
     parts.append(fluted_lathe('lotus', [(rd - 0.2, dz - 1.2, 0), (rd + 0.5, dz - 0.6, 0.3), (rd + 1.0, dz + 0.3, 0.6), (rd + 1.3, dz + 1.2, 0.9),
@@ -159,7 +159,7 @@ def face_decor(M):
     fy = -S
     # alfiz: the raised rectangular frame round the great arch, with the arch moulding inside it
     fw = ARCH_W + 6.4
-    ftop = ARCH_SPRING + ARCH_RISE + 9.1
+    ftop = BAND - 0.3
     for sx in (-1, 1):
         P.append(box('alfiz_post', (1.3, 0.9, ftop - 1.6), (sx * (fw / 2 - 0.65), fy - 0.3, 1.6), M['plaster_hi'], base=True))
     P.append(box('alfiz_top', (fw, 0.9, 1.3), (0, fy - 0.3, ftop - 1.3), M['plaster_hi'], base=True))
@@ -178,7 +178,7 @@ def face_decor(M):
         kit.apply_transform(boss)
         P += [ros, boss]
     # the clock (1889): a framed dial centred above the arch crown, glowing at night
-    cz = ARCH_SPRING + ARCH_RISE + 4.0
+    cz = ARCH_SPRING + ARCH_RISE + 3.6
     fr = kit.cylinder('clock_frame', 2.75, 0.8, (0, 0, 0), seg=24, mat=M['plaster_hi'], axis='Y', base=False)
     fr.location = (0, fy - 0.7, cz)
     kit.apply_transform(fr)
@@ -350,5 +350,6 @@ def build(A):
         {'name': 'front', 'size': 384, 'samples': 16, 'view': {'az': 0, 'el': 4, 'fov': 30, 'pad': 0.98}},
         {'name': 'arch', 'size': 320, 'samples': 14, 'view': {'az': -8, 'el': 3, 'fov': 42, 'target': (0, -30, 30), 'dist': 66}},
         {'name': 'top', 'size': 320, 'samples': 14, 'view': {'az': 50, 'el': 8, 'fov': 26, 'target': (S, S, 100), 'dist': 85}},
+        {'name': 'street', 'size': 384, 'samples': 16, 'view': {'az': -22, 'el': 6, 'fov': 52, 'target': (0, 0, 62), 'dist': 120}},
         {'name': 'west', 'size': 320, 'samples': 14, 'view': {'az': 90, 'el': 28, 'fov': 30, 'pad': 1.0}},
     ]}

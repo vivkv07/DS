@@ -471,7 +471,7 @@ def chowmahalla(A):
             o += mer
             # blind arch recess decals along the outside (street) face (not on the back)
             if nm == 'front':
-                n = max(1, int(ln / 14.0))
+                n = max(1, int(ln / 18.0))
                 o.append(planes('ch_wallarc', window_row(n, ln - 4, 2.5, 6.0, 9.5, 'pointed', t / 2 + 0.06, mid), M['recess'], facing=(0, -1, 0)))
             parts += place(o, rot, (cx, cy, 0))
     # ---- the north gate tower (Khilwat gate) with the clock tower above
@@ -485,10 +485,10 @@ def chowmahalla(A):
     parts.append(planes('ch_doors', [fpoly(arch_outline(11.8, 12.0, 7.4, 'pointed', n=7), 0, 0, fy + 1.4)], M['door'], facing=(0, -1, 0)))
     studs = []
     for i in range(2):
-        for j in range(4):
+        for j in range(3):
             for s in (-1, 1):
                 x = s * (1.5 + i * 2.2)
-                z = 2.0 + j * 2.9
+                z = 2.4 + j * 3.6
                 studs.append([(x - 0.18, fy + 1.3, z - 0.18), (x + 0.18, fy + 1.3, z - 0.18), (x + 0.18, fy + 1.3, z + 0.18), (x - 0.18, fy + 1.3, z + 0.18)])
     studs.append([(-0.12, fy + 1.3, 0), (0.12, fy + 1.3, 0), (0.12, fy + 1.3, 18.5), (-0.12, fy + 1.3, 18.5)])
     parts.append(planes('ch_studs', studs, M['iron'], facing=(0, -1, 0)))
@@ -521,7 +521,7 @@ def chowmahalla(A):
             ops = []
             for k in range(8):
                 a_ = TAU * k / 8 + math.pi / 8
-                if math.sin(a_) > -0.1 or sy > 0:
+                if math.sin(a_) > -0.5 or sy > 0:
                     continue
                 o_ = planes('ch_chop', [fpoly(arch(0.8, 3.0, 'pointed', n=2), 0, GH + 0.6, -1.5 * math.cos(math.pi / 8) - 0.06)], dk, facing=(0, -1, 0))
                 place([o_], a_ + math.pi / 2, (x, y, 0))

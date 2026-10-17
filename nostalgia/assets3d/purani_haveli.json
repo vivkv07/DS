@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 148740,
+ "bytes": 150076,
  "clips": {},
  "family": "landmark",
  "file": "purani_haveli.glb",
@@ -18,7 +18,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 145.3,
+ "kb": 146.6,
  "kit": 1,
  "materials": [
   "M_purani_haveli_lime_plaster",
@@ -33,7 +33,7 @@
  "max": [
   33.7,
   64.7,
-  37.4
+  42.4
  ],
  "meta": {
   "face": "w",
@@ -43,7 +43,7 @@
    66,
    128
   ],
-  "height": 39.0,
+  "height": 42.0,
   "landmark": "purani_haveli"
  },
  "min": [
@@ -56,10 +56,10 @@
  "size": [
   67.4,
   129.0,
-  37.4
+  42.4
  ],
  "tint": null,
- "tris": 1658,
+ "tris": 1678,
  "units": "u",
  "up": "Z"
 }
