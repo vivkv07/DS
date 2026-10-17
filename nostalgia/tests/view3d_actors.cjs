@@ -272,7 +272,9 @@ async function gait(browser) {
       T3.capBegin({ strip: false, follow: e });
       await T3.raf(10);
       T3.capEnd();
-      await T3.slowmo(0.018); // slow motion: successive rendered frames sample the cycle finely
+      // slow motion: successive rendered frames sample the cycle finely. 0.012 s a frame gives a kid's run
+      // (~4.1 cycles/s) ~20 frames a cycle; at 0.018 it got ~13, too few to see a sole planted in two frames running
+      await T3.slowmo(0.012);
       T3.capBegin({ follow: e });
       for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
       const out = T3.capEnd();
