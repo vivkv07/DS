@@ -3,7 +3,11 @@ Build: /home/user/.venvs/blender/bin/python tools/blender/build_all.py <ids>   (
 The builders live in the part modules imported below (shared helpers in _lmkit.py).
 Pack budget: all of landmarks_centre + landmarks_west share ~900 KB of the 8 MB pack, so only the
 most-seen landmarks are registered; _lm_city.py (bus stands, Secretariat, RTC X Roads cinemas, park
-gates...) is parked (kept as source, not imported) until the pack has room."""
+gates...) is parked: owner must-haves that return once models load lazily per GLB.
+Build them on demand with NOSTALGIA_PARKED=1 (do not pack them yet)."""
 import _lm_hussain  # noqa: F401  Birla Mandir, Buddha, Tank Bund statues, Lumbini jetty + musical fountain
 import _lm_civic    # noqa: F401  Assembly, Public Gardens (Jubilee Hall, State Museum), Nampally, Kachiguda
 import _lm_venues   # noqa: F401  LB Stadium, Prasads IMAX
+import os
+if os.environ.get('NOSTALGIA_PARKED') == '1':
+    import _lm_city  # noqa: F401

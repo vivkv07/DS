@@ -5,3 +5,6 @@ Pack budget: see landmarks_centre.py; _lm_worship.py (churches, temples, neighbo
 (kept as source, not imported) until the pack has room."""
 import _lm_golconda  # noqa: F401  Golconda Fort (Bala Hissar, Fateh/Banjara Darwaza), Qutb Shahi Tombs
 import _lm_modern    # noqa: F401  Cyber Towers
+import os
+if os.environ.get('NOSTALGIA_PARKED') == '1':
+    import _lm_worship  # noqa: F401
