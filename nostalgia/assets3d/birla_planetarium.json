@@ -1,0 +1,51 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 24680,
+ "clips": {},
+ "family": "landmark",
+ "file": "birla_planetarium.glb",
+ "front": "-Y",
+ "id": "birla_planetarium",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 24.1,
+ "kit": 1,
+ "materials": [
+  "M_birla_planetarium"
+ ],
+ "max": [
+  29.1,
+  29.1,
+  37.45
+ ],
+ "meta": {
+  "draw": "birla_planetarium",
+  "face": "s",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   58,
+   58
+  ],
+  "height": 54.0
+ },
+ "min": [
+  -29.1,
+  -29.1,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_hussain",
+ "size": [
+  58.2,
+  58.2,
+  37.45
+ ],
+ "tint": null,
+ "tris": 390,
+ "units": "u",
+ "up": "Z"
+}

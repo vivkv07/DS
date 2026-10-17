@@ -1,35 +1,36 @@
-00:00.039  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.025  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building buddha_statue (hero_landmark)
-[kit] decimated figure: 2178 -> 1028 tris
+[kit] decimated rock_lo: 298 -> 78 tris
+[kit] tris by part: robe_lo 112, lotus_lo 104, head_lo 102, rock_lo 71, l_hand_drape_lo 52, r_fore_lo 44, r_palm_lo 40, l_fore_lo 32, r_upper_lo 28, l_upper_lo 28, r_drape_lo 20, foot_lo 20, plat_steps_lo 14
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] baked albedo 512x512 (8 samples) in 1.5s
+[kit] proxy-baked albedo 384² in 0.6s
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] baked ao 256x256 (24 samples) in 2.2s
+[kit] proxy-baked ao 192² in 2.7s
 ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
 ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
-19:26:09 | INFO: Starting glTF 2.0 export
-19:26:09 | WARNING: Mesh buddha_statue_body is not valid, and may be exported wrongly
-19:26:09 | INFO: Extracting primitive: buddha_statue_body
-19:26:09 | INFO: Primitives created: 1
-19:26:09 | INFO: Extracting primitive: COL_buddha_fig
-19:26:09 | INFO: Primitives created: 1
-19:26:09 | INFO: Extracting primitive: COL_buddha_rock
-19:26:09 | INFO: Primitives created: 1
-19:26:09 | INFO: Finished glTF 2.0 export in 0.08502745628356934 s
+21:42:10 | INFO: Starting glTF 2.0 export
+21:42:10 | WARNING: Mesh buddha_statue_body is not valid, and may be exported wrongly
+21:42:10 | INFO: Extracting primitive: buddha_statue_body
+21:42:10 | INFO: Primitives created: 1
+21:42:10 | INFO: Extracting primitive: COL_buddha_fig
+21:42:10 | INFO: Primitives created: 1
+21:42:10 | INFO: Extracting primitive: COL_buddha_rock
+21:42:10 | INFO: Primitives created: 1
+21:42:10 | INFO: Finished glTF 2.0 export in 0.04275178909301758 s
 
-[kit] buddha_statue: 1994 tris (budget 60000) ok, 134.8 KB, clips [], anchors 0
-19:26:09 | INFO: Data are loaded, start creating Blender stuff
-19:26:09 | INFO: Blender create Mesh node buddha_statue_body
-19:26:09 | INFO: Blender create Mesh node COL_buddha_fig
-19:26:09 | INFO: Blender create Mesh node COL_buddha_rock
-19:26:09 | INFO: glTF import finished in 0.02s
-00:08.506  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/buddha_statue.png'
+[kit] buddha_statue: 689 tris (budget 60000) ok, 55.7 KB, clips [], anchors 0
+21:42:10 | INFO: Data are loaded, start creating Blender stuff
+21:42:10 | INFO: Blender create Mesh node buddha_statue_body
+21:42:10 | INFO: Blender create Mesh node COL_buddha_fig
+21:42:11 | INFO: Blender create Mesh node COL_buddha_rock
+21:42:11 | INFO: glTF import finished in 0.01s
+00:07.075  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/buddha_statue.png'
 [kit] preview buddha_statue.png (320px, 14 spp) in 1.3s
-19:26:10 | INFO: Data are loaded, start creating Blender stuff
-19:26:10 | INFO: Blender create Mesh node buddha_statue_body
-19:26:10 | INFO: Blender create Mesh node COL_buddha_fig
-19:26:10 | INFO: Blender create Mesh node COL_buddha_rock
-19:26:10 | INFO: glTF import finished in 0.01s
-00:09.741  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/buddha_statue_face.png'
-[kit] preview buddha_statue_face.png (320px, 14 spp) in 1.2s
-[kit] done buddha_statue in 9.3s
+21:42:12 | INFO: Data are loaded, start creating Blender stuff
+21:42:12 | INFO: Blender create Mesh node buddha_statue_body
+21:42:12 | INFO: Blender create Mesh node COL_buddha_fig
+21:42:12 | INFO: Blender create Mesh node COL_buddha_rock
+21:42:12 | INFO: glTF import finished in 0.01s
+00:08.618  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/buddha_statue_face.png'
+[kit] preview buddha_statue_face.png (320px, 14 spp) in 1.5s
+[kit] done buddha_statue in 8.2s

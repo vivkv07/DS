@@ -231,6 +231,126 @@ def onion(name, r, h, z, mat, seg=12, loc=(0, 0), neck=0.88, bulge=1.12, n=9):
     return lathe(name, kit.onion_profile(r, h, neck=neck, bulge=bulge, tip=0.1, n=n, base_z=z), seg=seg, mat=mat, loc=(loc[0], loc[1], 0))
 
 
+# =========================================================================== proxy shells
+def wedge(name, w, run, h, y_front, x=0.0):
+    """ramp-shaped shell for a flight of steps: front edge at y_front (toe), top at y_front + run"""
+    return _wedge(name, w, run, h, y_front, x)
+
+
+def _wedge(name, w, run, h, y0, x):
+    bm = bmesh.new()
+    v = [bm.verts.new(p) for p in ((x - w / 2, y0, 0), (x + w / 2, y0, 0), (x + w / 2, y0 + run, h), (x - w / 2, y0 + run, h),
+                                    (x - w / 2, y0 + run, 0), (x + w / 2, y0 + run, 0))]
+    bm.faces.new((v[0], v[1], v[2], v[3]))
+    bm.faces.new((v[0], v[3], v[4]))
+    bm.faces.new((v[1], v[5], v[2]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return kit.obj_from_bm(bm, name)
+
+
+def teeth_outline(span, h, n, base=1.0):
+    """leaf-crest outline [(x, z)] along span (n pointed teeth over a base strip)"""
+    out = [(-span / 2, 0)]
+    step = span / n
+    for i in range(n):
+        x = -span / 2 + step * i
+        out += [(x, base), (x + step * 0.5, h)]
+    out += [(span / 2, base), (span / 2, 0)]
+    return out
+
+
+def crest_shell(name, span, half, z, h, n, two=True, sides=4):
+    """flat leaf-crest cards round a square (outward face, plus an inward face when two)"""
+    out = []
+    ol = teeth_outline(span, h, n)
+    for k in range(sides):
+        rz = k * math.pi / 2
+        F = face_frame(rz, 0)
+        out.append(poly(name, ol, None, F(0, -half - 0.4, z), rz))
+        if two:
+            out.append(poly(name, [(-x, zz) for (x, zz) in ol], None, F(0, -half + 0.4, z), rz + math.pi))
+    return out
+
+
+def pinnacle(name, w, z0, z1, z2, loc):
+    """square shaft z0..z1 with a pyramid to z2 (turret / minaret shell)"""
+    x, y = loc
+    b = L.shell_box(name, (w, w, z1 - z0), (x, y, z0))
+    p = cylinder(name + '_p', w * 0.72, z2 - z1, (0, 0, 0), seg=4, r2=0.0, cap=False)
+    return kit.join([b, L.place(p, (x, y, z1), math.pi / 4)], name)
+
+
+def block_teeth(span, h, n, base=0.0):
+    """battlement outline: n block merlons on a strip"""
+    out = [(-span / 2, 0)]
+    step = span / n
+    for i in range(n):
+        x = -span / 2 + step * i
+        out += [(x + step * 0.2, base), (x + step * 0.2, h), (x + step * 0.8, h), (x + step * 0.8, base)]
+    out += [(span / 2, 0)]
+    return out
+
+
+def bastion_shell(name, r0, r1, h, mh, seg, loc):
+    """tapered round bastion (open bottom) whose top rim alternates up / down (crenellation)"""
+    x, y = loc
+    bm = bmesh.new()
+    n = seg * 2
+    bot = [bm.verts.new((x + r0 * math.cos(2 * math.pi * i / n), y + r0 * math.sin(2 * math.pi * i / n), 0)) for i in range(n)]
+    mid = [bm.verts.new((x + r1 * math.cos(2 * math.pi * i / n), y + r1 * math.sin(2 * math.pi * i / n), h)) for i in range(n)]
+    top = [bm.verts.new((x + r1 * math.cos(2 * math.pi * (i + 0.5) / n), y + r1 * math.sin(2 * math.pi * (i + 0.5) / n), h + mh)) for i in range(0, n, 2)]
+    for i in range(n):
+        j = (i + 1) % n
+        bm.faces.new((bot[i], bot[j], mid[j], mid[i]))
+    for k in range(seg):
+        i = 2 * k
+        bm.faces.new((mid[i], mid[i + 1], top[k]))
+    bm.faces.new(list(mid))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return kit.obj_from_bm(bm, name)
+
+
+def cannon_shell(name, loc, rz, s=1.0):
+    """low shell of cannon(): carriage block + a 5-sided barrel"""
+    br = cylinder(name + '_b', 0.95, 6.5, (0, 0, 0), seg=5, r2=0.8, cap=True, base=False)
+    br.rotation_euler = (math.radians(96), 0, 0)
+    kit.apply_transform(br)
+    br.location = (0, -1.6, 2.3)
+    kit.apply_transform(br)
+    car = L.shell_box(name + '_c', (2.7, 4.8, 2.6), (0, 0.9, 0.0))
+    c = kit.join([br, car], name)
+    return L.place(c, loc, rz, sc=s)
+
+
+def crest_shell_rect(name, c, W, D, z, h, pitch):
+    """block merlon cards (outward + inward) round a W x D roof centred on c"""
+    out = []
+    for (rz, span, half) in ((0, W, D / 2), (math.pi / 2, D, W / 2), (math.pi, W, D / 2), (-math.pi / 2, D, W / 2)):
+        F = face_frame(rz, 0)
+        ol = block_teeth(span, h, max(2, int(span / (pitch * 2))))
+        for (dy, r) in ((-half - 0.1, rz),):
+            x, y, zz = F(0, dy, z)
+            out.append(poly(name, ol if r == rz else [(-a, b) for (a, b) in ol], None, (c[0] + x, c[1] + y, zz), r))
+    return out
+
+
+def apart(objs, dx):
+    """shift objects along X (bake variants far apart so their AO never sees each other)"""
+    for o in objs:
+        if o is not None:
+            o.location.x += dx
+            kit.apply_transform(o)
+    return objs
+
+
+def unapart(los, name, dx):
+    for o in los:
+        if o.name == name:
+            o.location.x -= dx
+            kit.apply_transform(o)
+            return o
+
+
 # =========================================================================== Bala Hissar
 @kit.asset('golconda_bala_hissar', 'landmark', draw='golconda_bala_hissar', face='s', footprint=[84, 64], height=70.0, fit='footprint', floodlit=True)
 def build_bala_hissar(A):
@@ -326,11 +446,33 @@ def build_bala_hissar(A):
     for sx in (-1, 1):
         P.append(lathe('ms_min', [(0.85, z0 + 1.0), (0.85, z0 + 9.5), (1.15, z0 + 9.8), (1.15, z0 + 10.4), (0.75, z0 + 10.6)], seg=6, mat=M['plaster'], loc=(mc[0] + sx * 4.6, mc[1] - 2.9, 0)))
         P.append(onion('ms_dome', 0.8, 1.6, z0 + 10.6, M['plaster'], seg=6, loc=(mc[0] + sx * 4.6, mc[1] - 2.9), n=4))
-    # ---- sound-and-light floodlight heads (glow at night)
-    for (x, y, z) in ((-20, -27.0, 12.6), (8, -18.0, 26.2), (-14, -8.5, 38.6), (24, -9, 26.4)):
-        P.append(box('flood', (1.2, 0.8, 0.8), (x, y, z), M['lamp'], base=True))
     _tally(P)
-    L.finish(A, P, size=512, ao_dist=6.0)
+    # ---- shells. The rock, terraces, walls and the climb get an automatic decimated shell (made
+    # from the solid parts only, not the flat decals); the buildings and cannons get hand shells.
+    AUTO = ('hill', 'rwall', 'swall', 'fl', 'land', 'topgate', 'rock', 'bastion')
+    src = []
+    for o in P:
+        if o.name.startswith(AUTO) and not o.name.startswith('bastion_m'):
+            kit.apply_modifiers(o)
+            c = o.copy()
+            c.data = o.data.copy()
+            kit.link(c, A.coll)
+            src.append(c)
+    auto = kit.join(src, 's_hill')
+    auto.data.materials.clear()
+    L._auto_lo(auto, int(__import__('os').environ.get('BH_TRIS', '420')))
+    lo = [auto]
+    lo.append(L.shell_box('s_bh', (hx + 1.2, hy + 1.2, H + 1.6), (hc[0], hc[1], z0 - 0.3)))
+    lo += crest_shell_rect('s_bhp', hc, hx, hy, zb + H, 2.6, 2.1)
+    lo.append(L.shell_box('s_bht', (10.4, 7.4, 7.0), (hc[0] - 2, hc[1] + 1, zb + H)))
+    lo.append(L.shell_box('s_ms', (9.6, 7.2, 7.6), (mc[0], mc[1], z0 - 0.2)))
+    for sx in (-1, 1):
+        lo.append(pinnacle('s_msm', 2.2, z0 + 1.0, z0 + 10.4, z0 + 12.6, (mc[0] + sx * 4.6, mc[1] - 2.9)))
+    lo.append(cannon_shell('s_can1', (33.5, -16.5, 16.4), math.radians(110), 0.9))
+    lo.append(cannon_shell('s_can2', (31.0, -12.5, 16.4), math.radians(70), 0.8))
+    los = L.finish_proxy(A, P, lo=lo, size=int(__import__('os').environ.get('BH_SIZE', '384')), ao_dist=6.0)
+    for o in los:
+        kit.smooth(o, float(__import__('os').environ.get('BH_SMOOTH', '50')))   # fewer split normals (vertex count = bytes)
     L.col_box('bh_hill0', (78, 58, 12), (0, 0, 0))
     L.col_box('bh_hill1', (56, 38, 14), (-3, 3, 12))
     L.col_box('bh_hill2', (44, 26, 12), (-4, 6, 26))
@@ -403,9 +545,21 @@ def build_fort_gate(A):
     for sx in (-1, 1):
         P.append(cannon('cannon', M, (sx * 12.6, -10.5, 0.0), sx * math.radians(12), s=1.0))
     # warm lamp in the arch soffit (sound and light)
-    P.append(box('arch_lamp', (1.2, 1.2, 0.6), (0, 0, AS + AR - 1.6), M['lamp'], base=True))
     _tally(P)
-    L.finish(A, P, size=512, ao_dist=6.0)
+    # ---- shells: gate wall with the real passage, gallery block, merlon cards, bastions, cannons
+    sw = L.shell_box('s_gw', (30.4, WT + 1.4, WH), (0, 0, 0))
+    kit.boolean(sw, prism_from_outline('s_cut', arch_outline(AW - 0.2, AS, AR, 'pointed', n=4), WT + 6, center=(0, 0, -0.5)))
+    lo = [sw, L.shell_box('s_gal', (20.4, 3.4, 4.2), (0, -WT / 2 - 2.0, 39.4)),
+          poly('s_galc', teeth_outline(20.4, 2.0, 9, base=0.6), None, (0, -WT / 2 - 2.75, 43.6)),
+          poly('s_galc2', [(-x, z) for (x, z) in teeth_outline(20.4, 2.0, 9, base=0.6)], None, (0, -WT / 2 - 1.6, 43.6), math.pi)]
+    for y in (-WT / 2, WT / 2):
+        ol = block_teeth(24.0, 3.2, 7)
+        lo.append(poly('s_wm', ol, None, (0, y - 0.05 if y < 0 else y + 0.05, WH), 0 if y < 0 else math.pi))
+        lo.append(poly('s_wm', [(-x, z) for (x, z) in ol], None, (0, y + 1.3 if y < 0 else y - 1.3, WH), math.pi if y < 0 else 0))
+    for sx in (-1, 1):
+        lo.append(bastion_shell('s_bas', BR + 0.85, BR - 0.1, BH, 3.2, 10, (sx * BX, -0.6)))
+        lo.append(cannon_shell('s_can', (sx * 12.6, -10.5, 0.0), sx * math.radians(12), 1.0))
+    L.finish_proxy(A, P, lo=lo, size=384, ao_dist=6.0)
     for sx in (-1, 1):
         L.col_box('gate_bastion%d' % (sx > 0), (BR * 2, BR * 2, BH), (sx * BX, -0.6, 0))
         L.col_box('gate_pier%d' % (sx > 0), (15 - AW / 2 - 0.2, WT, WH), (sx * (AW / 2 + (15 - AW / 2) / 2 + 0.1), 0, 0))
@@ -435,7 +589,7 @@ def build_qutb_tomb(A):
         stp.append(box('step', (8, 1.3 * (4 - i), PH / 4), (0, -PW / 2 - 1.3 * (4 - i) / 2, PH / 4 * i), G, base=True))
     P.append(kit.join(stp, 'steps'))
     # ---- chamber (common), its chajja and the leaf parapet with corner turrets
-    P.append(box('chamber', (CW, CW, CH), (0, 0, CZ), ST, base=True))
+    chamber = box('chamber', (CW, CW, CH), (0, 0, CZ), ST, base=True)    # per variant (baked onto each variant's shell)
     P.append(box('chajja', (CW + 2.2, CW + 2.2, 0.8), (0, 0, TOP - 2.6), G, base=True))
     crest = []
     nT = 7
@@ -470,7 +624,7 @@ def build_qutb_tomb(A):
     top = DZ + 26.0 * 1.0
     P.append(lathe('finial', [(1.2, top - 0.6), (1.0, top + 0.6), (0.4, top + 1.2), (0.75, top + 2.2), (0.25, top + 3.4), (0.45, top + 4.0), (0.0, top + 7.2)], seg=6, mat=M['brass']))
     # ---- variant a: the plain cube, a great pointed recess on each face, dark doorway in front
-    va = []
+    va = [chamber]
     fa = []
     fa.append(arch_decal('rec', 13.0, 12.0, 8.0, M['shade'], (0, -CW / 2 - 0.06, CZ + 1.0), n=5))
     for sx in (-1, 1):
@@ -481,7 +635,7 @@ def build_qutb_tomb(A):
     for (z, h) in ((CZ + 12.5, 6.5),):
         va.append(arch_decal('jaali', 4.4, h * 0.62, h * 0.38, M['dark'], (0, -CW / 2 - 0.12, z)))
     # ---- variant b: the two-storey arcaded gallery round the chamber (the larger tombs)
-    vb = []
+    vb = [L.copy(chamber, name='chamber_b')]
     GW, GH = 44.0, 21.0
     vb.append(box('gallery', (GW, GW, GH), (0, 0, CZ), ST, base=True))
     vb.append(box('gal_band', (GW + 1.0, GW + 1.0, 0.7), (0, 0, CZ + GH / 2 - 0.35), G, base=True))
@@ -500,7 +654,26 @@ def build_qutb_tomb(A):
     # small blind arches on the chamber above the gallery roof
     vb += L.rot4(arcade('ch_arc', CW - 4, 5, CZ + GH + 0.6, TOP - 3.0 - CZ - GH - 0.8, M['shade'], -CW / 2, 0, wfrac=0.55))
     _tally(P, va + vb)
-    L.finish(A, P, size=512, ao_dist=6.0, variants={'a': va, 'b': vb})
+    # ---- shells (only these ship; the detail above is baked onto them)
+    lo = [L.shell_box('s_plinth', (PW + 0.9, PW + 0.9, PH + 0.05)),
+          wedge('s_steps', 8.4, 5.6, PH, -PW / 2 - 0.4)]
+    lo += crest_shell('s_crest', CW, CW / 2 - 0.35, TOP, 3.6, 4, two=True)
+    for (sx, sy) in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+        x, y = sx * (CW / 2 + 0.3), sy * (CW / 2 + 0.3)
+        lo.append(pinnacle('s_tur', 2.2, CZ, TOP + 2.6, TOP + 7.8, (x, y)))
+    lo.append(lathe('s_drum', [(R + 0.4, TOP - 0.4), (R + 0.4, TOP + 4.0), (R + 1.4, TOP + 6.6), (R * 0.9, TOP + 6.0)], seg=12, close_bottom=False, close_top=True))
+    dp = kit.onion_profile(R * 1.0, 26.0, neck=0.9, bulge=1.13, tip=0.08, n=6, base_z=DZ)[:-3]
+    lo.append(lathe('s_dome', [(r + 0.25, z) for (r, z) in dp] + [(0.9, top), (0.0, top + 7.2)], seg=12, close_bottom=False))
+    lo_a = [L.shell_box('s_ch_a', (CW + 0.2, CW + 0.2, CH - 0.2), (0, 0, CZ))]
+    lo_b = [L.shell_box('s_gal', (GW + 0.2, GW + 0.2, GH + 0.05), (0, 0, CZ))]
+    lo_b += crest_shell('s_gcrest', GW, GW / 2 - 0.3, CZ + GH, 2.6, 5, two=False)
+    lo_b.append(L.shell_box('s_ch_b', (CW + 0.2, CW + 0.2, TOP - CZ - GH - 0.2), (0, 0, CZ + GH)))
+    # bake the two variants far apart (their AO must not see each other), then bring them back
+    apart(va + lo_a, 1000.0)
+    apart(vb + lo_b, 2000.0)
+    los = L.finish_proxy(A, P, lo=lo, size=384, ao_dist=6.0, variants={'a': (va, lo_a), 'b': (vb, lo_b)})
+    unapart(los, 'var_a', 1000.0)
+    unapart(los, 'var_b', 2000.0)
     L.col_box('qt_plinth', (PW, PW, PH), (0, 0, 0))
     L.col_box('qt_body', (CW + 6, CW + 6, TOP - PH), (0, 0, PH))
     L.col_box('qt_dome', (2 * R, 2 * R, 26), (0, 0, DZ))

@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 73056,
+ "bytes": 58688,
  "clips": {},
  "family": "landmark",
  "file": "assembly.glb",
@@ -11,15 +11,15 @@
  "images": [
   "image/webp"
  ],
- "kb": 71.3,
+ "kb": 57.3,
  "kit": 1,
  "materials": [
   "M_assembly"
  ],
  "max": [
-  41.07,
-  36.07,
-  60.133
+  35.15,
+  33.15,
+  66.225
  ],
  "meta": {
   "draw": "assembly",
@@ -33,19 +33,19 @@
   "height": 60.0
  },
  "min": [
-  -41.07,
-  -41.07,
-  0.006
+  -35.15,
+  -33.7,
+  0.0
  ],
  "notes": [],
  "script": "_lm_civic",
  "size": [
-  82.14,
-  77.14,
-  60.127
+  70.3,
+  66.85,
+  66.225
  ],
  "tint": null,
- "tris": 431,
+ "tris": 732,
  "units": "u",
  "up": "Z"
 }

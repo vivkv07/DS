@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 60000,
- "bytes": 138052,
+ "bytes": 57064,
  "clips": {},
  "family": "hero_landmark",
  "file": "buddha_statue.glb",
@@ -11,15 +11,15 @@
  "images": [
   "image/webp"
  ],
- "kb": 134.8,
+ "kb": 55.7,
  "kit": 1,
  "materials": [
   "M_buddha_statue"
  ],
  "max": [
-  19.367,
-  19.307,
-  94.286
+  19.516,
+  19.442,
+  94.4
  ],
  "meta": {
   "draw": "buddha_statue",
@@ -33,21 +33,19 @@
   "height": 90.0
  },
  "min": [
-  -18.426,
-  -19.375,
-  -2.5
+  -18.142,
+  -18.848,
+  -2.575
  ],
- "notes": [
-  "Buddha: 1972 tris before finish"
- ],
+ "notes": [],
  "script": "_lm_hussain",
  "size": [
-  37.793,
-  38.682,
-  96.786
+  37.658,
+  38.29,
+  96.975
  ],
  "tint": null,
- "tris": 1994,
+ "tris": 689,
  "units": "u",
  "up": "Z"
 }

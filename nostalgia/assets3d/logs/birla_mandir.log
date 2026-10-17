@@ -1,0 +1,42 @@
+00:00.028  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building birla_mandir (hero_landmark)
+[kit] decimated naubat_lo: 342 -> 146 tris
+[kit] tris by part: naubat_lo 111, shrine_lo 96, shrine_lo_am 84, deul_lo 80, deul_lo_am 72, jm_lo_crown 40, steps_lo 18, gp_lo_shala 14, terrace_lo 10, gp_lo_base 10, jm_lo 10, jm_lo_roof 10, po_lo 10, gp_lo_tiers 8
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked albedo 512² in 1.6s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked ao 256² in 10.1s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:56:02 | INFO: Starting glTF 2.0 export
+21:56:02 | INFO: Extracting primitive: birla_mandir_body
+21:56:02 | INFO: Primitives created: 1
+21:56:02 | INFO: Extracting primitive: COL_bm_deul
+21:56:02 | INFO: Primitives created: 1
+21:56:02 | INFO: Extracting primitive: COL_bm_hill
+21:56:02 | INFO: Primitives created: 1
+21:56:02 | INFO: Finished glTF 2.0 export in 0.07768011093139648 s
+
+[kit] birla_mandir: 597 tris (budget 60000) ok, 66.7 KB, clips [], anchors 0
+21:56:02 | INFO: Data are loaded, start creating Blender stuff
+21:56:02 | INFO: Blender create Mesh node birla_mandir_body
+21:56:02 | INFO: Blender create Mesh node COL_bm_deul
+21:56:02 | INFO: Blender create Mesh node COL_bm_hill
+21:56:02 | INFO: glTF import finished in 0.01s
+00:18.873  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/birla_mandir.png'
+[kit] preview birla_mandir.png (320px, 14 spp) in 2.9s
+21:56:05 | INFO: Data are loaded, start creating Blender stuff
+21:56:05 | INFO: Blender create Mesh node birla_mandir_body
+21:56:05 | INFO: Blender create Mesh node COL_bm_deul
+21:56:05 | INFO: Blender create Mesh node COL_bm_hill
+21:56:05 | INFO: glTF import finished in 0.01s
+00:21.489  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/birla_mandir_front.png'
+[kit] preview birla_mandir_front.png (320px, 14 spp) in 2.6s
+21:56:07 | INFO: Data are loaded, start creating Blender stuff
+21:56:07 | INFO: Blender create Mesh node birla_mandir_body
+21:56:07 | INFO: Blender create Mesh node COL_bm_deul
+21:56:07 | INFO: Blender create Mesh node COL_bm_hill
+21:56:07 | INFO: glTF import finished in 0.01s
+00:23.177  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/birla_mandir_tower.png'
+[kit] preview birla_mandir_tower.png (320px, 14 spp) in 1.7s
+[kit] done birla_mandir in 22.7s

@@ -1,0 +1,61 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 64936,
+ "clips": {},
+ "family": "landmark",
+ "file": "lb_stadium.glb",
+ "front": "-Y",
+ "id": "lb_stadium",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 63.4,
+ "kit": 1,
+ "materials": [
+  "M_lb_stadium",
+  "lb_flood@night"
+ ],
+ "max": [
+  110.4,
+  99.9,
+  98.8
+ ],
+ "meta": {
+  "draw": "lb_stadium",
+  "face": "w",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   220,
+   198
+  ],
+  "height": 100.0,
+  "variants": {
+   "names": [
+    "quiet",
+    "match"
+   ],
+   "rule": "lb_match"
+  }
+ },
+ "min": [
+  -110.4,
+  -99.6,
+  0.0
+ ],
+ "notes": [
+  "proxy shell; var_match = crowd quads + banners + @night floodlight banks (parented); var_quiet is empty (bare stands are the body)"
+ ],
+ "script": "_lm_venues",
+ "size": [
+  220.8,
+  199.5,
+  98.8
+ ],
+ "tint": null,
+ "tris": 274,
+ "units": "u",
+ "up": "Z"
+}

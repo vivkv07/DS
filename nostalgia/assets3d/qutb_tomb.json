@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 156456,
+ "bytes": 46620,
  "clips": {},
  "family": "landmark",
  "file": "qutb_tomb.glb",
@@ -11,14 +11,14 @@
  "images": [
   "image/webp"
  ],
- "kb": 152.8,
+ "kb": 45.5,
  "kit": 1,
  "materials": [
   "M_qutb_tomb"
  ],
  "max": [
-  26.9,
-  26.9,
+  26.95,
+  26.95,
   72.2
  ],
  "meta": {
@@ -41,8 +41,8 @@
   }
  },
  "min": [
-  -26.9,
-  -31.7,
+  -26.95,
+  -26.95,
   0.0
  ],
  "notes": [
@@ -50,12 +50,12 @@
  ],
  "script": "_lm_golconda",
  "size": [
-  53.8,
-  58.6,
+  53.9,
+  53.9,
   72.2
  ],
  "tint": null,
- "tris": 2540,
+ "tris": 530,
  "units": "u",
  "up": "Z"
 }

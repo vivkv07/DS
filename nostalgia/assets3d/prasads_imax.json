@@ -1,0 +1,59 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 48028,
+ "clips": {},
+ "family": "landmark",
+ "file": "prasads_imax.glb",
+ "front": "-Y",
+ "id": "prasads_imax",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 46.9,
+ "kit": 1,
+ "materials": [
+  "M_prasads_imax",
+  "pr_glass@night"
+ ],
+ "max": [
+  46.2,
+  34.1,
+  76.2
+ ],
+ "meta": {
+  "draw": "prasads_imax",
+  "face": "s",
+  "fit": "footprint",
+  "floodlit": false,
+  "footprint": [
+   78,
+   68
+  ],
+  "height": 72.0,
+  "variants": {
+   "names": [
+    "site",
+    "open"
+   ],
+   "rule": "prasads"
+  }
+ },
+ "min": [
+  -39.1,
+  -36.65,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_venues",
+ "size": [
+  85.3,
+  70.75,
+  76.2
+ ],
+ "tint": null,
+ "tris": 202,
+ "units": "u",
+ "up": "Z"
+}

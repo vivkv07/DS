@@ -1,3 +1,58 @@
-00:00.108  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.025  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building tank_bund_statue (landmark)
-[kit] tris by part: tb_lamp 376, rail 144, tb_lamp_lamps 120, rail_c 60, lamp_base 24, step1 12, step2 12, dado_b 12, dado 12, cornice 12, top 12, plaque 12, plaque2 12
+[kit] tris by part: lamp_lo 36, post_lo 24, lamp_arm_lo 12, plinth_lo1 10, plinth_lo2 10, plinth_lo3 10, rail_lo 6
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked albedo 256² in 0.5s
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked ao 128² in 1.7s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:54:59 | INFO: Starting glTF 2.0 export
+21:54:59 | INFO: Extracting primitive: COL_tb_plinth
+21:54:59 | INFO: Primitives created: 1
+21:54:59 | INFO: Extracting primitive: tank_bund_statue_body
+21:54:59 | INFO: Primitives created: 1
+21:54:59 | INFO: Extracting primitive: tb_lanterns
+21:54:59 | INFO: Primitives created: 1
+21:54:59 | INFO: Extracting primitive: var_poet
+21:54:59 | INFO: Primitives created: 1
+21:54:59 | INFO: Extracting primitive: var_saint
+21:54:59 | INFO: Primitives created: 1
+21:54:59 | INFO: Extracting primitive: var_scholar
+21:54:59 | INFO: Primitives created: 1
+21:54:59 | INFO: Extracting primitive: var_warrior
+21:54:59 | INFO: Primitives created: 1
+21:54:59 | INFO: Finished glTF 2.0 export in 0.04366040229797363 s
+
+[kit] tank_bund_statue: 607 tris (budget 20000) ok, 46.8 KB, clips [], anchors 0
+21:54:59 | INFO: Data are loaded, start creating Blender stuff
+21:54:59 | INFO: Blender create Mesh node COL_tb_plinth
+21:54:59 | INFO: Blender create Mesh node tank_bund_statue_body
+21:54:59 | INFO: Blender create Mesh node tb_lanterns
+21:54:59 | INFO: Blender create Mesh node var_poet
+21:54:59 | INFO: Blender create Mesh node var_saint
+21:54:59 | INFO: Blender create Mesh node var_scholar
+21:54:59 | INFO: Blender create Mesh node var_warrior
+21:54:59 | INFO: glTF import finished in 0.02s
+00:09.345  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/tank_bund_statue.png'
+[kit] preview tank_bund_statue.png (320px, 14 spp) in 3.2s
+21:55:02 | INFO: Data are loaded, start creating Blender stuff
+21:55:02 | INFO: Blender create Mesh node COL_tb_plinth
+21:55:02 | INFO: Blender create Mesh node tank_bund_statue_body
+21:55:02 | INFO: Blender create Mesh node tb_lanterns
+21:55:02 | INFO: Blender create Mesh node var_poet
+21:55:02 | INFO: Blender create Mesh node var_saint
+21:55:02 | INFO: Blender create Mesh node var_scholar
+21:55:02 | INFO: Blender create Mesh node var_warrior
+21:55:02 | INFO: glTF import finished in 0.02s
+00:11.043  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/tank_bund_statue_poses.png'
+[kit] preview tank_bund_statue_poses.png (256px, 14 spp) in 1.7s
+[kit] done tank_bund_statue in 10.5s

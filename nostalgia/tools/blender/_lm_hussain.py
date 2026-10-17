@@ -5,6 +5,7 @@ railing), the Lumbini Park jetty and musical fountain, NTR Ghat, Prasads (site /
 Mandir on Naubat Pahad and the Birla Planetarium. Front = -Y, origin = ground centre, Z up.
 """
 import math
+import os
 import random
 import bmesh
 from mathutils import Vector, Matrix
@@ -76,6 +77,14 @@ def rock_mound(name, rx, ry, h, mat, seed=1, na=16, prof=None, rough=0.22, zj=0.
         bm.faces.new((R[i], R[(i + 1) % na], top))
     bm.faces.new(list(reversed(rings[0])))
     return _obj(bm, name, mat)
+
+
+def _copy_nomat(o, A):
+    c = o.copy()
+    c.data = o.data.copy()
+    kit.link(c, A.coll)
+    c.data.materials.clear()
+    return c
 
 
 def boulder(name, r, loc, mat, seed=1, sq=0.7, sub=0):
@@ -212,11 +221,38 @@ def build_buddha(A):
         o.location = (0, 0, ZF)
         kit.apply_transform(o)
     figure = kit.join(fig, 'figure')
-    kit.decimate_to(figure, 1050)
     parts.append(figure)
-    A.notes.append('Buddha: %d tris before finish' % kit.tri_count(parts))
-    report(parts)
-    L.finish(A, parts, size=512, ao_dist=6.0)
+    # ---------------- the shell: hand-built low lofts following the figure, auto shell for the rock
+    lo = []
+    sub = [0, 4, 8, 10, 11, 12, 13, 14]
+    lf = [ellipse_loft('robe_lo', [(0, body_r[i][3], body_r[i][0], body_r[i][1] + 0.25, body_r[i][2] + 0.3) for i in sub], None, seg=8, cap_start=False, cap_end=False)]
+    lf.append(ellipse_loft('head_lo', [(0, 0.4, 63.9, 2.0, 2.0), (0, 0.15, 66.6, 3.0, 3.1), (0, 0.25, 71.5, 3.6, 3.6),
+                                       (0, 0.35, 75.0, 3.25, 3.25), (0, 0.35, 76.6, 2.1, 2.1), (0, 0.35, 78.4, 1.7, 1.7), (0, 0.35, 79.4, 0.3, 0.3)], None, seg=8, cap_start=False))
+    lf.append(ellipse_loft('r_upper_lo', [(-7.4, 0.2, 61.6, 2.4, 2.4), (-9.2, 0.3, 56.0, 2.2, 2.2), (-9.8, 0.2, 50.0, 2.0, 2.0)], None, seg=6))
+    lf.append(kit.tube('r_fore_lo', [(-9.7, 0.2, 49.6), (-9.8, -2.2, 52.0), (-9.5, -4.4, 55.8), (-9.3, -5.0, 57.6)], 1.6, seg=6))
+    lf.append(ellipse_loft('r_palm_lo', [(-9.0, -5.1, 57.0, 1.6, 0.8), (-9.0, -5.2, 60.6, 1.75, 0.75), (-9.1, -5.25, 63.4, 1.3, 0.6), (-9.25, -5.25, 64.4, 0.4, 0.3)], None, seg=6))
+    d2 = kit.prism_from_outline('r_drape_lo', [(0.7, -0.1), (-1.9, 2.6), (-4.4, 5.0), (-4.8, 7.6), (-0.6, 7.6), (1.7, 3.0)], 1.4, center=(0, 0, 0), axis='X')
+    d2.location = (-10.1, -0.6, 46.5)
+    kit.apply_transform(d2)
+    lf.append(d2)
+    lf.append(ellipse_loft('l_upper_lo', [(7.4, 0.2, 61.6, 2.4, 2.4), (9.2, 0.3, 56.0, 2.2, 2.2), (9.7, 0.3, 50.0, 2.0, 2.0)], None, seg=6))
+    lf.append(kit.tube('l_fore_lo', [(9.6, 0.3, 50.4), (9.5, -0.8, 46.0), (8.8, -2.6, 41.6)], 1.65, seg=6))
+    lf.append(ellipse_loft('l_hand_drape_lo', [(8.6, -2.9, 42.2, 1.6, 1.35), (8.3, -2.6, 38.4, 1.7, 1.5), (7.9, -1.8, 32.0, 2.2, 1.6), (7.5, -0.8, 18.0, 2.7, 1.6), (7.5, -0.5, 6.0, 3.0, 1.5)], None, seg=6))
+    for s_ in (-1, 1):
+        lf.append(ellipse_loft('foot_lo', [(s_ * 2.1, -2.6, 0.0, 1.4, 0.9), (s_ * 2.3, -6.1, 0.1, 1.1, 0.6)], None, seg=4, cap_start=False))
+    for o in lf:
+        o.location = (0, 0, ZF)
+        kit.apply_transform(o)
+    lo += lf
+    lo.append(lathe('lotus_lo', [(10.9, 3.6), (10.9, 6.2), (8.7, 6.2), (8.7, 8.8), (6.6, 9.6), (8.4, 13.6), (7.9, 15.1), (0.0, 15.2)], seg=8, close_bottom=False))
+    lo.append(L.place(kit.prism_from_outline('plat_steps_lo', [(-14.0, 3.2), (-14.0, 4.0), (-10.4, 6.3), (-9.0, 6.3), (-9.0, 3.2)], 5.4, axis='X'), (0, 0, 0)))
+    rk = [o for o in parts if o.name.startswith(('rock', 'bould'))]
+    rock_lo = kit.join([_copy_nomat(o, A) for o in rk], 'rock_lo')
+    L._auto_lo(rock_lo, 80)
+    lo.append(rock_lo)
+    trim(lo)
+    report(lo)
+    L.finish_proxy(A, parts, lo=lo, size=384, ao_dist=6.0, ao_samples=64, ao_strength=0.65)
     L.col_box('buddha_rock', (30, 28, 6), (0, 0, -1))
     L.col_box('buddha_fig', (18, 9, 75), (0, 0, 15))
     L.shots(A, az=-25, el=10, extra=[{'name': 'face', 'size': 320, 'view': {'az': -15, 'el': 4, 'fov': 30, 'target': (0, 0, 78), 'dist': 40}}])
@@ -284,34 +320,93 @@ def _tb_figure(pose, BZ, z0):
     return kit.join(p, 'fig_' + pose)
 
 
+def _tb_figure_lo(pose, z0):
+    """low shell of _tb_figure (5-6 sided lofts)"""
+    p = []
+    if pose == 'saint':
+        p.append(box('seat_lo', (5.6, 4.4, 1.1), (0, 0, 0), None, base=True))
+        p.append(ellipse_loft('legs_lo', [(0, -0.5, 1.0, 3.3, 2.3), (0, -0.3, 3.0, 2.3, 1.7)], None, seg=5, cap_start=False))
+        p.append(ellipse_loft('torso_lo', [(0, 0.1, 2.8, 2.2, 1.6), (0, 0.1, 8.4, 2.4, 1.5), (0, 0.15, 9.6, 1.6, 1.2), (0, 0.1, 10.6, 1.15, 1.25),
+                                           (0, 0.05, 11.8, 1.15, 1.25), (0, 0.1, 12.4, 0.3, 0.3)], None, seg=5, cap_start=False))
+        p.append(cylinder('staff_lo', 0.3, 14.0, (-3.3, -0.9, 0.0), seg=3, cap=False))
+        p.append(kit.tube('r_arm_lo', [(-2.1, 0.1, 9.0), (-2.9, 0.0, 6.6), (-3.2, -0.8, 7.4)], 0.65, seg=3))
+        p.append(kit.tube('l_arm_lo', [(2.1, 0.1, 9.0), (2.6, -0.1, 6.4), (1.6, -1.7, 3.6)], 0.65, seg=3))
+    else:
+        top = 18.3 if pose == 'warrior' else 17.4
+        p.append(ellipse_loft('body_lo', [(0, 0, 0.0, 2.15, 1.65), (0, 0, 9.6, 2.1, 1.5), (0, 0, 13.6, 2.6, 1.45), (0, 0.1, 14.5, 1.0, 0.95),
+                                          (0, 0.0, 15.6, 1.25 if pose != 'warrior' else 1.5, 1.3 if pose != 'warrior' else 1.5),
+                                          (0, 0.0, 16.6, 1.2 if pose != 'warrior' else 1.5, 1.25 if pose != 'warrior' else 1.5), (0, 0.05, top - 0.45, 0.85 if pose != 'warrior' else 1.1, 0.9 if pose != 'warrior' else 1.1), (0, 0.05, top, 0.2, 0.2)], None, seg=5, cap_start=False))
+        if pose == 'scholar':
+            p.append(kit.tube('r_arm_lo', [(-2.2, 0, 13.4), (-2.6, 0.1, 10.6), (-2.5, -0.3, 8.0)], 0.7, seg=3))
+            p.append(kit.tube('l_arm_lo', [(2.2, 0, 13.4), (2.6, 0.1, 10.8), (1.3, -1.5, 11.2)], 0.7, seg=3))
+            bk = box('book_lo', (2.1, 0.75, 2.6), (0, 0, 0), None, base=True)
+            p.append(L.place(bk, (1.0, -1.8, 9.7), rz=0.25))
+        elif pose == 'poet':
+            p.append(kit.tube('r_arm_lo', [(-2.2, 0, 13.4), (-3.3, -1.0, 14.6), (-3.4, -2.0, 17.6)], 0.7, seg=3))
+            p.append(kit.tube('l_arm_lo', [(2.2, 0, 13.4), (2.7, 0.0, 10.6), (2.6, -0.4, 8.2)], 0.7, seg=3))
+        elif pose == 'warrior':
+            p.append(box('blade_lo', (0.5, 0.3, 7.8), (0, -2.1, 0.7), None, base=True))
+            p.append(box('guard_lo', (1.9, 0.5, 0.5), (0, -2.1, 7.9), None, base=True))
+            for s in (-1, 1):
+                p.append(kit.tube('arm_lo', [(s * 2.2, 0, 13.4), (s * 2.6, -0.5, 10.9), (s * 0.45, -2.0, 9.4)], 0.7, seg=3))
+    for o in p:
+        o.location = (0, 0, z0)
+        kit.apply_transform(o)
+    return p
+
+
 @kit.asset('tank_bund_statue', 'landmark', draw='tank_bund_statue', footprint=[8, 8], height=45.0, fit='footprint',
            variants={'rule': 'idx', 'names': ['scholar', 'poet', 'warrior', 'saint']})
 def build_tank_bund_statue(A):
     M = _nometal(L.mats())
-    G = kit.material('granite_grey', 'tb_granite', base='#b9b2a6', var=0.06, grain=0.06, specks=0.4, grime=0.5, scale=0.8)
-    GD = kit.material('granite_grey', 'tb_granite_dk', base='#8e877c', specks=0.5, scale=0.8)
+    G = kit.material('granite_grey', 'tb_granite', base='#b9b2a6', var=0.04, grain=0.03, specks=0.15, grime=0.4, scale=0.8)
+    GD = kit.material('granite_grey', 'tb_granite_dk', base='#8e877c', var=0.04, grain=0.03, specks=0.15, scale=0.8)
     BZ = M['bronze']
-    parts = []
+    IR = M['iron']
+    parts, lo, keep = [], [], []
     # dressed granite plinth: steps, dado, cornice, top block, bronze plaque on the front (road side, -Y)
     parts.append(box('step1', (8.4, 8.4, 1.4), (0, 0, 0), GD, base=True))
     parts.append(box('step2', (7.2, 7.2, 1.2), (0, 0, 1.4), G, base=True))
     parts.append(box('dado_b', (6.4, 6.4, 1.2), (0, 0, 2.6), G, base=True))
     parts.append(box('dado', (5.6, 5.6, 17.6), (0, 0, 3.8), G, base=True))
+    parts.append(box('dado_panel', (4.4, 5.8, 15.0), (0, 0, 5.0), G, base=True))
+    parts.append(box('dado_panel2', (5.8, 4.4, 15.0), (0, 0, 5.0), G, base=True))
     parts.append(box('cornice', (6.6, 6.6, 1.2), (0, 0, 21.4), G, base=True))
     parts.append(box('top', (6.0, 6.0, 2.0), (0, 0, 22.6), GD, base=True))
-    parts.append(box('plaque', (3.4, 0.2, 2.6), (0, -2.85, 10.4), BZ, base=True))
-    parts.append(box('plaque2', (2.4, 0.2, 0.6), (0, -2.85, 14.0), BZ, base=True))
-    # heritage lamp posts (black iron, three globes) either side and the bund railing on the lake side (+Y)
+    parts.append(box('plaque', (3.4, 0.2, 2.6), (0, -2.95, 10.4), BZ, base=True))
+    parts.append(box('plaque2', (2.4, 0.2, 0.6), (0, -2.95, 14.0), BZ, base=True))
+    lo.append(L.shell_box('plinth_lo1', (8.5, 8.5, 2.6), (0, 0, 0)))
+    lo.append(L.shell_box('plinth_lo2', (6.3, 6.3, 18.8), (0, 0, 2.6)))
+    lo.append(L.shell_box('plinth_lo3', (6.7, 6.7, 3.2), (0, 0, 21.4)))
+    # heritage lamp posts (black iron, three lanterns) either side and the bund railing on the lake side (+Y)
     for s in (-1, 1):
-        post, heads = L.lamp_post('tb_lamp', 14.0, M, loc=(s * 11.0, 2.0, 0.0), arms=3)
-        parts += [post, heads]
-        parts.append(box('lamp_base', (1.8, 1.8, 0.8), (s * 11.0, 2.0, 0.0), GD, base=True))
-        parts.append(L.railing('rail', 10.0, 3.2, M, loc=(s * 9.6, 4.4, 0.0), posts=4))
-    parts.append(L.railing('rail_c', 9.0, 3.2, M, loc=(0, 4.6, 0.0), posts=3))
+        x, y = s * 11.0, 2.0
+        post, _heads = L.lamp_post('tb_lamp', 14.0, M, loc=(x, y, 0.0), arms=3)
+        _heads.data.materials.clear()
+        _heads.data.materials.append(IR)
+        parts += [post, _heads, box('lamp_base', (1.8, 1.8, 0.8), (x, y, 0.0), GD, base=True)]
+        pl = lathe('lamp_lo', [(1.5, 0.0), (1.5, 0.8), (0.45, 1.0), (0.22, 15.6)], seg=3, close_bottom=False, close_top=False)
+        lo.append(L.place(pl, (x, y, 0), rz=PI / 4))
+        lo.append(cylinder('lamp_arm_lo', 0.3, 3.4, (x, y, 13.6), seg=3, cap=False, axis='X', base=False))
+        for dx in (-1.4, 0.0, 1.4):
+            hz = 14.0 - (0.6 if dx else 0.0)
+            keep.append(cylinder('tb_lantern', 0.45, 1.3, (x + dx, y, hz + 0.05), seg=3, mat=M['lamp'], r2=0.55, cap=False))
+    parts.append(L.railing('rail', 29.2, 3.2, M, loc=(0, 4.5, 0.0), posts=4))
+
+    def rail_lo(cx, cy, ln, n):
+        for z in (3.0,):
+            lo.append(cylinder('rail_lo', 0.25, ln + 0.3, (cx - ln / 2 - 0.15, cy, z), seg=3, cap=False, axis='X', base=False))
+        for i in range(n):
+            xx = cx - ln / 2 + ln * i / (n - 1)
+            lo.append(cylinder('post_lo', 0.3, 3.2, (xx, cy, 0.0), seg=3, cap=False))
+    rail_lo(0.0, 4.5, 29.2, 4)
     z0 = 24.6
-    variants = {pose: [_tb_figure(pose, BZ, z0)] for pose in ('scholar', 'poet', 'warrior', 'saint')}
-    report(parts)
-    L.finish(A, parts, size=256, variants=variants)
+    variants = {pose: ([_tb_figure(pose, BZ, z0)], _tb_figure_lo(pose, z0)) for pose in ('scholar', 'poet', 'warrior', 'saint')}
+    trim(lo)
+    report(lo)
+    keep = [kit.join(keep, 'tb_lanterns')]
+    for o in L.finish_proxy(A, parts, lo=lo, keep=keep, size=256, variants=variants, ao_samples=48, ao_strength=0.6):
+        kit.smooth(o, 80)
     L.col_box('tb_plinth', (7, 7, 24), (0, 0, 0))
     L.shots(A, az=-30, el=10, extra=[{'name': 'poses', 'size': 256, 'view': {'az': -10, 'el': 6, 'fov': 26, 'target': (0, 0, 33), 'dist': 50}}])
 
@@ -319,48 +414,76 @@ def build_tank_bund_statue(A):
 # =========================================================================== 3. Lumbini Park boat jetty
 @kit.asset('lumbini_jetty', 'landmark', draw='boat_jetty', face='s', footprint=[14, 26], height=6.0, fit='footprint')
 def build_lumbini_jetty(A):
+    """Lumbini Park boating jetty: grey pontoon deck on blue floats, white railings, the blue
+    ticket kiosk at the shore end with a painted BOATING sign, shore steps, tyre fenders and a
+    yellow pedal boat moored alongside."""
     M = _nometal(L.mats())
-    DECK = kit.material('whitewash', 'jetty_deck', base='#a9a49a', rough=0.9, var=0.1, grain=0.1, grime=0.6, streaks=0.0, dirt='#5f594f', scale=0.8)
+    DECK = kit.material('whitewash', 'jetty_deck', base='#a9a49a', rough=0.9, var=0.06, grain=0.04, grime=0.4, streaks=0.0, dirt='#5f594f', scale=0.8)
     BLUE = L.paint('#2f6fa8', 'jetty_blue')
     WHITE = L.paint('#ecebe6', 'jetty_white')
     ORANGE = L.paint('#e8622a', 'ring_orange')
-    RUB = kit.material('rubber', 'tyre')
-    parts = []
+    YEL = L.paint('#e8c42a', 'boat_yellow')
+    RUB = L.paint('#262626', 'tyre_paint')
+    parts, lo = [], []
+    DX, DW, Y0, Y1 = -2.0, 10.0, -9.4, 13.0
+    DC, DL = (Y0 + Y1) / 2, Y1 - Y0
     # pontoon deck on blue floats (z 0 = water level), steel edge
-    parts.append(box('deck', (13.6, 25.6, 0.8), (0, 0, 0.7), DECK, base=True))
-    parts.append(box('edge', (14.0, 26.0, 0.5), (0, 0, 0.4), BLUE, base=True))
-    for x in (-4.5, 0.0, 4.5):
-        parts.append(box('float', (3.6, 24.0, 1.2), (x, 0, -0.7), BLUE, base=True))
-    # railings along both long sides (gaps for boarding on the lake end), white painted steel
-    for s in (-1, 1):
-        parts.append(L.railing('rail_l', 14.0, 3.2, M, loc=(s * 6.6, -5.0, 1.5), rz=PI / 2, posts=5, mat=WHITE))
-    parts.append(L.railing('rail_end', 6.0, 3.2, M, loc=(-3.6, 12.6, 1.5), posts=3, mat=WHITE))
-    # boarding steps down to the water at the lake end (+Y) and at the shore end (-Y) up to the bank
-    parts.append(L.steps('steps_lake', 5.0, 0.7, 0.4, 3, (3.4, 13.6, 0.2), DECK, rz=PI))
-    parts.append(L.steps('steps_shore', 6.0, 0.8, 0.45, 4, (0, -14.6, 0.2), DECK))
+    parts.append(box('deck', (DW - 0.4, DL - 0.4, 0.8), (DX, DC, 0.7), DECK, base=True))
+    parts.append(box('edge', (DW, DL, 0.5), (DX, DC, 0.4), BLUE, base=True))
+    for x in (-3.2, 0.0, 3.2):
+        parts.append(box('float', (2.6, DL - 1.6, 1.2), (DX + x, DC, -0.7), BLUE, base=True))
+    lo.append(L.shell_box('deck_lo', (DW + 0.2, DL + 0.2, 2.2), (DX, DC, -0.7)))
     # tyre fenders on the sides
-    for s in (-1, 1):
-        for y in (-8.0, 0.0, 8.0):
-            parts.append(cylinder('tyre', 0.75, 0.45, (s * 7.2, y, 0.8), seg=8, mat=RUB, axis='X'))
-    # life rings on the railing posts (orange with white bands baked as two-tone)
-    for (x, y) in ((-6.85, 1.0), (6.85, -6.0)):
-        pts = [(x, y + 0.75 * math.cos(2 * PI * i / 8), 3.5 + 0.75 * math.sin(2 * PI * i / 8)) for i in range(9)]
+    for sx in (-1, 1):
+        for y in (-4.0, 3.0, 10.0):
+            parts.append(cylinder('tyre', 0.7, 0.4, (DX + sx * (DW / 2 + 0.1), y, 0.7), seg=8, mat=RUB, axis='X', base=False))
+    # white railings along both long sides and the lake end (open where the boat ties up)
+    RL = 11.0
+    for sx in (-1, 1):
+        parts.append(L.railing('rail_l', RL, 3.0, M, loc=(DX + sx * (DW / 2 - 0.3), Y0 + 2.6 + RL / 2, 1.5), rz=PI / 2, posts=4, mat=WHITE))
+    parts.append(L.railing('rail_end', DW - 0.6, 3.0, M, loc=(DX, Y1 - 0.3, 1.5), posts=3, mat=WHITE))
+    for (x, y) in ((DX - DW / 2 + 0.05, 2.0),):
+        pts = [(x, y + 0.75 * math.cos(2 * PI * i / 8), 3.2 + 0.75 * math.sin(2 * PI * i / 8)) for i in range(9)]
         parts.append(kit.tube('lifering', pts, 0.2, seg=4, mat=ORANGE, cap=False))
-    # ticket kiosk at the shore end with a plain painted sign and a tin roof
-    parts.append(box('kiosk', (4.2, 3.4, 4.2), (-3.6, -9.6, 1.5), WHITE, base=True))
-    parts.append(box('kiosk_win', (2.4, 0.2, 1.4), (-3.6, -11.35, 3.4), M['black'], base=True))
-    parts.append(box('kiosk_sill', (2.8, 0.6, 0.2), (-3.6, -11.5, 3.2), BLUE, base=True))
-    parts.append(box('kiosk_roof', (5.4, 4.6, 0.35), (-3.6, -9.6, 5.7), BLUE, base=True))
-    parts.append(L.sign_panel('kiosk_sign', 'BOATING TICKETS', 5.0, 1.2, (-3.6, -11.9, 6.6), fg='#ffffff', bg='#2a5cb8', px=256))
-    # a pedal boat moored at the lake end
-    boat = [ellipse_loft('boat', [(0, -2.6, 0.0, 1.0, 0.5), (0, -1.6, 0.2, 1.7, 1.0), (0, 1.4, 0.2, 1.7, 1.0), (0, 2.4, 0.0, 1.0, 0.5)], WHITE, seg=6),
-            box('boat_hull', (3.2, 4.4, 0.5), (0, 0, 0.6), L.paint('#e8c42a', 'boat_yellow'), base=True),
-            box('boat_seat', (2.6, 1.0, 0.9), (0, 0.4, 1.1), BLUE, base=True)]
-    b = kit.join(boat, 'boat')
-    L.place(b, (-9.2, 9.0, 0.0), rz=0.2)
-    parts.append(b)
-    report(parts)
-    L.finish(A, parts, size=256)
+
+    def rail_lo(p0, p1, posts):
+        ln = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
+        rz = math.atan2(p1[1] - p0[1], p1[0] - p0[0])
+        r = cylinder('rail_lo', 0.22, ln + 0.3, (0, 0, 0), seg=3, cap=False, axis='X', base=False)
+        lo.append(L.place(r, ((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, 4.4), rz=rz))
+        for i in range(posts):
+            t = i / (posts - 1)
+            lo.append(cylinder('post_lo', 0.26, 3.0, (p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t, 1.5), seg=3, cap=False))
+    for sx in (-1, 1):
+        xx = DX + sx * (DW / 2 - 0.3)
+        rail_lo((xx, Y0 + 2.6), (xx, Y0 + 2.6 + RL), 3)
+    rail_lo((DX - DW / 2 + 0.3, Y1 - 0.3), (DX + DW / 2 - 0.3, Y1 - 0.3), 2)
+    # shore steps up to the bank (-Y)
+    parts.append(L.steps('steps_shore', 5.0, 0.7, 0.45, 4, (DX + 1.5, Y0 - 1.4, 0.2), DECK))
+    lo.append(L.place(kit.prism_from_outline('steps_lo', [(-12.4, 0.0), (-12.4, 0.75), (-9.4, 2.1), (-9.4, 0.0)], 5.2, axis='X'), (DX + 1.5, 0, 0)))
+    # ticket kiosk at the shore end: blue roof, a painted sign
+    KX, KY = DX - 2.4, Y0 + 2.0
+    parts.append(box('kiosk', (4.2, 3.4, 4.2), (KX, KY, 1.5), WHITE, base=True))
+    parts.append(box('kiosk_win', (2.4, 0.2, 1.4), (KX, KY - 1.75, 3.4), M['black'], base=True))
+    parts.append(box('kiosk_sill', (2.8, 0.6, 0.2), (KX, KY - 1.9, 3.2), BLUE, base=True))
+    parts.append(box('kiosk_roof', (5.0, 4.4, 0.4), (KX, KY, 5.7), BLUE, base=True))
+    parts.append(L.sign_panel('kiosk_sign', 'BOATING', 4.6, 1.3, (KX, KY - 1.6, 6.75), fg='#ffffff', bg='#2a5cb8', px=256))
+    lo.append(L.shell_box('kiosk_lo', (5.1, 4.5, 4.6), (KX, KY, 1.5)))
+    lo.append(L.shell_box('kiosk_sign_lo', (4.8, 0.6, 1.4), (KX, KY - 1.6, 6.05)))
+    # a yellow pedal boat moored alongside (+X side)
+    boat = [ellipse_loft('boat', [(0, -2.6, 0.0, 1.0, 0.5), (0, -1.6, 0.2, 1.6, 1.0), (0, 1.4, 0.2, 1.6, 1.0), (0, 2.4, 0.0, 1.0, 0.5)], WHITE, seg=6),
+            box('boat_hull', (3.0, 4.4, 0.5), (0, 0, 0.6), YEL, base=True),
+            box('boat_seat', (2.4, 1.0, 0.9), (0, 0.4, 1.1), BLUE, base=True),
+            box('boat_canopy', (2.8, 2.0, 0.2), (0, 0.6, 2.7), YEL, base=True)]
+    for sx in (-1, 1):
+        boat.append(box('boat_strut', (0.15, 0.15, 1.6), (sx * 1.25, 0.6, 1.1), WHITE, base=True))
+    parts.append(L.place(kit.join(boat, 'boat'), (5.0, 6.0, 0.0)))
+    lo.append(L.shell_box('boat_lo', (3.3, 5.2, 1.6), (5.0, 6.0, 0.0)))
+    lo.append(L.shell_box('boat_top_lo', (2.9, 2.1, 1.3), (5.0, 6.6, 1.6)))
+    trim(lo)
+    report(lo)
+    for o in L.finish_proxy(A, parts, lo=lo, size=256, ao_samples=48, ao_strength=0.6):
+        kit.smooth(o, 80)
     L.shots(A, az=-35, el=22)
 
 
@@ -389,43 +512,43 @@ def _oval_disc(name, rx, ry, z, mat, seg=24):
 
 @kit.asset('musical_fountain', 'landmark', draw='musical_fountain', face='s', footprint=[26, 18], height=9.0, fit='footprint')
 def build_musical_fountain(A):
+    """Lumbini Park musical fountain: an oval granite-rimmed basin of blue water with nozzle
+    manifolds; the frozen water columns (tall centre jet, side jets, leaning fan jets) are
+    @night lamp materials in three colours, so the show glows blue / pink / gold after dark."""
     M = _nometal(L.mats())
-    RIM = kit.material('granite_grey', 'fountain_rim', base='#c9c2b4', specks=0.3, scale=0.8)
-    FLOOR = L.paint('#2e6f86', 'basin_floor')
-    SPRAY = kit.material('glass', 'spray', base='#eef8ff', alpha=0.6, rough=0.1)
-    PIPE = L.paint('#5a5f66', 'nozzle_pipe')
-    parts = []
-    parts.append(_oval_ring('rim', 13.0, 9.0, 11.6, 7.6, 0.0, 1.3, RIM, seg=24))
-    parts.append(_oval_ring('rim_cap', 13.3, 9.3, 12.6, 8.6, 1.3, 1.6, RIM, seg=24))
-    parts.append(_oval_disc('basin', 11.7, 7.7, 0.15, FLOOR, seg=24))
-    parts.append(_oval_disc('water', 11.7, 7.7, 0.85, M['water'], seg=20))
-    # nozzle manifolds (three rows) and the frozen jets
+    RIM = kit.material('granite_grey', 'fountain_rim', base='#c9c2b4', var=0.05, grain=0.03, specks=0.15, scale=0.8)
+    WATER = L.paint('#2f7f98', 'basin_water', var=0.05, grain=0.0, grime=0.0, streaks=0.0)
+    PIPE = L.paint('#3d4a52', 'nozzle_pipe', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
+    FOAM = L.paint('#dff1f7', 'jet_foam', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
+    parts, lo = [], []
+    parts.append(_oval_ring('rim', 13.0, 9.0, 11.6, 7.6, 0.0, 1.3, RIM, seg=32))
+    parts.append(_oval_ring('rim_cap', 13.3, 9.3, 12.6, 8.6, 1.3, 1.6, RIM, seg=32))
+    parts.append(_oval_disc('water', 11.7, 7.7, 0.85, WATER, seg=32))
     for y in (-3.6, 0.0, 3.6):
-        parts.append(box('pipe', (18.0 if y else 20.0, 0.5, 0.5), (0, y, 0.5), PIPE, base=True))
+        parts.append(box('pipe', (18.0 if y else 20.0, 0.5, 0.2), (0, y, 0.86), PIPE, base=True))
+    for (x, r) in ((0, 1.7), (-4.5, 1.2), (4.5, 1.2), (-8.5, 1.1), (8.5, 1.1)):
+        parts.append(_oval_disc('foam', r, r, 0.88, FOAM, seg=12))
+    for y in (-5.6, 5.6):
+        for x in (-10.0, -6.5, -3.0, 0.0, 3.0, 6.5, 10.0):
+            yy = y * 0.55 if abs(x) > 9.5 else y
+            parts.append(box('uw_lamp', (0.7, 0.7, 0.05), (x, yy, 0.86), FOAM, base=True))
+    lo.append(_oval_ring('rim_lo', 13.35, 9.35, 11.55, 7.55, 0.0, 1.62, None, seg=12))
+    lo.append(_oval_disc('water_lo', 11.6, 7.6, 0.9, None, seg=12))
+    # the jets: glowing water columns (three colours), kept unbaked
+    BLUE, PINK, GOLD = L.lamp('#c4e8ff', 'jet_blue'), L.lamp('#ffc4ea', 'jet_pink'), L.lamp('#ffe9a8', 'jet_gold')
     jets = []
-    for (x, h, r) in ((0, 9.0, 0.7), (-4.5, 6.5, 0.5), (4.5, 6.5, 0.5), (-8.5, 4.2, 0.45), (8.5, 4.2, 0.45)):
-        jets.append(cylinder('jet', r, h, (x, 0, 0.85), seg=6, mat=SPRAY, r2=0.12, cap=False))
-        jets.append(cylinder('foam', r * 2.4, 0.5, (x, 0, 0.85), seg=6, mat=SPRAY, r2=r * 1.2, cap=False))
+    for (x, h, r, m) in ((0, 9.0, 0.8, BLUE), (-4.5, 6.5, 0.6, PINK), (4.5, 6.5, 0.6, PINK), (-8.5, 4.2, 0.55, GOLD), (8.5, 4.2, 0.55, GOLD)):
+        jets.append(cylinder('jet', r, h, (x, 0, 0.85), seg=4, mat=m, r2=0.08, cap=False))
     for y in (-3.6, 3.6):
-        for x in (-7.0, -2.4, 2.4, 7.0):
-            # leaning fan jets (tilted outwards)
-            j = cylinder('fan', 0.32, 3.6, (0, 0, 0), seg=5, mat=SPRAY, r2=0.1, cap=False)
+        for i, x in enumerate((-7.0, -2.4, 2.4, 7.0)):
+            j = cylinder('fan', 0.35, 3.6, (0, 0, 0), seg=3, mat=BLUE if i % 2 else GOLD, r2=0.05, cap=False)
             j.rotation_euler = (math.copysign(0.35, -y), 0, 0)
             j.location = (x, y, 0.85)
             kit.apply_transform(j)
             jets.append(j)
-    parts.append(kit.join(jets, 'jets'))
-    # coloured underwater lamps that glow at night
-    cols = ['#40c0ff', '#ff5ab4', '#ffd84a']
-    for i, x in enumerate((-10.0, -6.5, -3.0, 0.0, 3.0, 6.5, 10.0)):
-        for y in (-5.6, 5.6):
-            if abs(x) > 9.5 and abs(y) > 0:
-                yy = y * 0.55
-            else:
-                yy = y
-            parts.append(box('lamp', (0.9, 0.9, 0.35), (x, yy, 0.55), L.lamp(cols[(i + (y > 0)) % 3]), base=True))
-    report(parts)
-    L.finish(A, parts, size=256)
+    keep = [kit.join(jets, 'jets')]
+    report(lo)
+    L.finish_proxy(A, parts, lo=lo, keep=keep, size=256, ao_samples=48, ao_strength=0.6)
     L.shots(A, az=-30, el=24)
 
 
@@ -445,7 +568,6 @@ def _tusk(name, base, top, height, r0, r1, mat, n=7, seg=8, bow=0.0):
     return ellipse_loft(name, rings, mat, seg=seg)
 
 
-# parked (pack budget, see landmarks_centre.py): @kit.asset('ntr_memorial', 'landmark', draw='ntr_memorial', face='s', footprint=[40, 28], height=27.0, fit='footprint', floodlit=True)
 def build_ntr_memorial(A):
     M = _nometal(L.mats())
     PAVE = kit.material('granite_grey', 'ntr_paving', base='#cfc7b8', specks=0.3, grime=0.4, scale=0.9)
@@ -490,3 +612,391 @@ def build_ntr_memorial(A):
     report(parts)
     L.finish(A, parts, size=512)
     L.shots(A, az=-30, el=18)
+
+
+# parked (owner must-have, returns with lazy per-GLB loading): buildable only with NOSTALGIA_PARKED=1, never packed
+if os.environ.get('NOSTALGIA_PARKED') == '1':
+    kit.asset('ntr_memorial', 'landmark', draw='ntr_memorial', face='s', footprint=[40, 28], height=27.0, fit='footprint', floodlit=True)(build_ntr_memorial)
+
+
+# =========================================================================== 6. Birla Mandir (Naubat Pahad)
+def _plan(a, d1, d2, cx=0.0, cy=0.0):
+    """pancha-ratha square plan (Odia rekha deul): corner kanikas, anurathas projecting d1, the
+    central raha projecting d2; CCW outline (36 points)"""
+    side = [(-a, -a), (-0.66 * a, -a), (-0.66 * a, -a - d1), (-0.3 * a, -a - d1), (-0.3 * a, -a - d2),
+            (0.3 * a, -a - d2), (0.3 * a, -a - d1), (0.66 * a, -a - d1), (0.66 * a, -a)]
+    out = []
+    for k in range(4):
+        c, s = math.cos(k * PI / 2), math.sin(k * PI / 2)
+        out += [(cx + x * c - y * s, cy + x * s + y * c) for (x, y) in side]
+    return out
+
+
+def _plan_lo(a, d1, cx=0.0, cy=0.0):
+    """shell plan of _plan: a chamfered square through the anurathas (8 points)"""
+    side = [(-0.7 * a, -a - d1 * 0.9), (0.7 * a, -a - d1 * 0.9)]
+    out = []
+    for k in range(4):
+        c, s = math.cos(k * PI / 2), math.sin(k * PI / 2)
+        out += [(cx + x * c - y * s, cy + x * s + y * c) for (x, y) in side]
+    return out
+
+
+def _rings_loft(name, rings, mat=None, cap=True):
+    """loft through stacked 2D outlines [(z, [(x, y)...])] of equal point counts (no bottom face)"""
+    bm = bmesh.new()
+    R = [[bm.verts.new((x, y, z)) for (x, y) in pts] for (z, pts) in rings]
+    n = len(R[0])
+    for j in range(len(R) - 1):
+        for i in range(n):
+            k = (i + 1) % n
+            bm.faces.new((R[j][i], R[j][k], R[j + 1][k], R[j + 1][i]))
+    if cap:
+        bm.faces.new(R[-1])
+    return _obj(bm, name, mat)
+
+
+def _ribbed(name, prof, seg, rib, mat, loc=(0, 0, 0)):
+    """lathe whose radius alternates by `rib` per segment (amalaka ribs, carved pillars)"""
+    bm = bmesh.new()
+    rings = []
+    for (r, z) in prof:
+        if r < 1e-4:
+            rings.append([bm.verts.new((loc[0], loc[1], loc[2] + z))])
+            continue
+        rings.append([bm.verts.new((loc[0] + r * (1 - rib * (k % 2)) * math.cos(2 * PI * k / seg),
+                                    loc[1] + r * (1 - rib * (k % 2)) * math.sin(2 * PI * k / seg), loc[2] + z)) for k in range(seg)])
+    for j in range(len(rings) - 1):
+        A, B = rings[j], rings[j + 1]
+        for k in range(seg):
+            if len(B) == 1:
+                bm.faces.new((A[k], A[(k + 1) % seg], B[0]))
+            elif len(A) == 1:
+                bm.faces.new((A[0], B[(k + 1) % seg], B[k]))
+            else:
+                bm.faces.new((A[k], A[(k + 1) % seg], B[(k + 1) % seg], B[k]))
+    return _obj(bm, name, mat)
+
+
+def _rekha(name, cx, cy, z0, a0, hb, hg, M, courses=12, lo_rings=5, lo_seg=8):
+    """an Odia rekha deul: pitha (base), bada (wall) with raha niches, the curvilinear ribbed
+    gandi in horizontal courses with bhumi-amalakas on the corners, beki, ribbed amalaka and
+    kalasha. Returns (hi parts, lo parts, top z)."""
+    W, T, D = M['bm_w'], M['bm_t'], M['bm_d']
+    d1, d2 = a0 * 0.1, a0 * 0.2
+    hi, lo = [], []
+
+    def prof(u):
+        return 1.0 - 0.44 * u ** 1.7
+    # pitha: two stepped mouldings
+    hi.append(kit.extrude_polygon(name + '_pitha', _plan(a0 + 1.0, d1, d2, cx, cy), z0 - 1.6, z0 - 0.7, T))
+    hi.append(kit.extrude_polygon(name + '_pitha2', _plan(a0 + 0.6, d1, d2, cx, cy), z0 - 0.7, z0, W))
+    # bada: wall with a base band, a cornice and a recessed niche on each raha
+    hi.append(kit.extrude_polygon(name + '_bada', _plan(a0, d1, d2, cx, cy), z0, z0 + hb, W))
+    hi.append(kit.extrude_polygon(name + '_band', _plan(a0 + 0.25, d1, d2, cx, cy), z0 + hb * 0.12, z0 + hb * 0.2, T))
+    hi.append(kit.extrude_polygon(name + '_band2', _plan(a0 + 0.3, d1, d2, cx, cy), z0 + hb * 0.55, z0 + hb * 0.6, T))
+    hi.append(kit.extrude_polygon(name + '_corn', _plan(a0 + 0.45, d1, d2, cx, cy), z0 + hb - 0.9, z0 + hb, T))
+    for k in range(4):
+        c, s = math.cos(k * PI / 2), math.sin(k * PI / 2)
+        r = a0 + d2
+        nx, ny = cx + r * s, cy - r * c
+        n = box(name + '_niche', (a0 * 0.34, 0.5, hb * 0.28), (0, 0, 0), D, base=True)
+        fr = box(name + '_nfr', (a0 * 0.48, 0.4, hb * 0.36), (0, 0.15, 0), T, base=True)
+        pr = kit.join([fr, n], name + '_niche')
+        L.place(pr, (nx, ny, z0 + hb * 0.24), rz=k * PI / 2)
+        hi.append(pr)
+    # gandi courses
+    zg = z0 + hb
+    for k in range(courses):
+        u0, u1 = k / courses, (k + 1) / courses
+        s = prof((u0 + u1) / 2)
+        za, zb = zg + hg * u0, zg + hg * u1
+        hi.append(kit.extrude_polygon(name + '_c', _plan(a0 * s, d1 * s, d2 * s, cx, cy), za, zb - (zb - za) * 0.22, W))
+        hi.append(kit.extrude_polygon(name + '_g', _plan(a0 * s * 0.97, d1 * s, d2 * s, cx, cy), zb - (zb - za) * 0.22, zb, D if k % 4 == 3 else T))
+        if k % 4 == 3:   # bhumi-amalakas on the four kanikas
+            for (sx, sy) in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+                hi.append(_ribbed(name + '_ba', [(0.3, 0), (a0 * s * 0.24, 0.25), (a0 * s * 0.24, (zb - za) * 0.55), (0.3, (zb - za) * 0.8)], 12, 0.12, T,
+                                  loc=(cx + sx * a0 * s * 0.84, cy + sy * a0 * s * 0.84, zb - (zb - za) * 0.4)))
+    # raha rib: a raised spine up the middle of each face (the central ratha of the gandi)
+    zt = zg + hg
+    st = prof(1.0)
+    # beki (neck), amalaka, kalasha
+    ra = a0 * st
+    top = [(ra * 0.82, zt), (ra * 0.62, zt + 0.5), (ra * 0.62, zt + 1.3), (ra * 0.95, zt + 1.6), (ra * 1.12, zt + 2.4), (ra * 1.12, zt + 3.0),
+           (ra * 0.95, zt + 3.8), (ra * 0.5, zt + 4.2), (0.0, zt + 4.25)]
+    hi.append(_ribbed(name + '_amalaka', top, 32, 0.07, W, loc=(cx, cy, 0)))
+    kal = [(ra * 0.45, zt + 4.2), (ra * 0.5, zt + 4.9), (ra * 0.42, zt + 5.6), (ra * 0.22, zt + 6.2), (ra * 0.3, zt + 6.6), (ra * 0.08, zt + 7.6), (0.0, zt + 8.6)]
+    hi.append(lathe(name + '_kalasha', kal, seg=16, mat=M['bm_gold'], loc=(cx, cy, 0)))
+    # ---- shell
+    rings = [(z0 - 1.6, _plan_lo(a0 + 1.0, d1, cx, cy)), (z0 + hb, _plan_lo(a0 + 0.2, d1, cx, cy))]
+    for i in range(1, lo_rings + 1):
+        u = i / lo_rings
+        s = prof(min(1.0, max(0.0, u)))
+        rings.append((zg + hg * u, _plan_lo(a0 * s, d1 * s, cx, cy)))
+    lo.append(_rings_loft(name + '_lo', rings, cap=False))
+    tp = [(ra * 0.8, zt - 0.2), (ra * 1.12, zt + 1.6), (ra * 1.12, zt + 3.2), (ra * 0.45, zt + 4.4), (ra * 0.3, zt + 6.2), (0.0, zt + 8.6)]
+    if lo_seg < 8:
+        tp = [(ra * 0.8, zt - 0.2), (ra * 1.15, zt + 1.8), (ra * 1.1, zt + 3.3), (ra * 0.35, zt + 5.0), (0.0, zt + 8.6)]
+    lo.append(lathe(name + '_lo_am', tp, seg=lo_seg, loc=(cx, cy, 0), close_bottom=False))
+    return hi, lo, zt + 8.6
+
+
+@kit.asset('birla_planetarium', 'landmark', draw='birla_planetarium', face='s', footprint=[58, 58], height=54.0, fit='footprint', floodlit=True)
+def build_birla_planetarium(A):
+    """B.M. Birla Planetarium (1985) on Naval Pahad: the big white hemispherical dome on a
+    ribbed drum, the entrance portico with the blue BIRLA PLANETARIUM board, and the science
+    museum block behind."""
+    M = L.mats()
+    WH = kit.material('whitewash', 'pl_white', base='#f2f1ec', var=0.02, grain=0.01, grime=0.15, streaks=0.1, scale=0.5)
+    TR = L.paint('#fbfbf8', 'pl_trim', var=0.0, grain=0.0, grime=0.05, streaks=0.0)
+    GL = L.paint('#3a4650', 'pl_glass', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
+    PAVE = L.paint('#b9b4aa', 'pl_pave', var=0.03, grain=0.0, grime=0.1, streaks=0.0)
+    hi, lo = [], []
+    DY, RD, HD = -3.0, 19.0, 14.0
+    hi.append(box('plinth', (58, 58, 0.8), (0, 0, 0), PAVE, base=True))
+    lo.append(L.shell_box('plinth_lo', (58.2, 58.2, 0.85), (0, 0, 0)))
+    # drum with pilasters and a band of dark windows, the cornice, the dome, a small lantern
+    hi.append(cylinder('drum', RD, HD, (0, DY, 0.8), seg=48, mat=WH))
+    for i in range(24):
+        a = 2 * PI * i / 24
+        p = box('pil', (1.2, 0.6, HD - 1.0), (0, 0, 0), TR, base=True)
+        hi.append(L.place(p, ((RD + 0.2) * math.cos(a), DY + (RD + 0.2) * math.sin(a), 0.8), rz=a + PI / 2))
+    hi.append(cylinder('drum_win', RD + 0.05, 2.0, (0, DY, 8.4), seg=48, mat=GL))
+    hi.append(cylinder('cornice', RD + 1.0, 1.0, (0, DY, HD + 0.8), seg=48, mat=TR))
+    zd = HD + 1.8
+    prof = [(RD * math.cos(a), zd + RD * 0.95 * math.sin(a)) for a in [PI / 2 * i / 16 for i in range(16)]] + [(0.0, zd + RD * 0.95)]
+    hi.append(lathe('dome', prof, seg=48, mat=WH, loc=(0, DY, 0)))
+    zt = zd + RD * 0.95
+    hi.append(cylinder('lantern', 1.6, 1.6, (0, DY, zt - 0.4), seg=16, mat=TR))
+    hi.append(lathe('finial', [(0.6, zt + 1.2), (0.9, zt + 1.8), (0.15, zt + 3.2), (0.0, zt + 3.6)], seg=12, mat=M['gold'], loc=(0, DY, 0)))
+    lp = [(RD + 0.25, 0.8), (RD + 0.25, HD + 0.8), (RD + 1.1, HD + 0.8), (RD + 1.1, zd)]
+    for i in range(8):
+        a = PI / 2 * i / 8.6
+        lp.append((RD * math.cos(a) + 0.2, zd + RD * 0.95 * math.sin(a) + 0.1))
+    lp += [(1.8, zt + 0.1), (1.7, zt + 1.3), (0.0, zt + 3.6)]
+    lo.append(lathe('dome_lo', lp, seg=14, loc=(0, DY, 0), close_bottom=False))
+    # science museum block behind
+    BY0, BY1 = 12.0, 28.5
+    hi.append(box('block', (54, BY1 - BY0, 22.0), (0, (BY0 + BY1) / 2, 0.8), WH, base=True))
+    for z in (4.0, 11.0, 18.0):
+        hi.append(box('block_win', (50, BY1 - BY0 + 0.2, 2.6), (0, (BY0 + BY1) / 2, z), GL, base=True))
+    hi.append(box('block_par', (54.6, BY1 - BY0 + 0.6, 1.2), (0, (BY0 + BY1) / 2, 22.8), TR, base=True))
+    lo.append(L.shell_box('block_lo', (54.8, BY1 - BY0 + 0.8, 23.3), (0, (BY0 + BY1) / 2, 0.8)))
+    # entrance portico in front of the drum, with the name board
+    PY0, PY1 = -28.0, -19.0
+    hi.append(box('portico', (20, PY1 - PY0, 0.9), (0, (PY0 + PY1) / 2, 9.0), TR, base=True))
+    for x in (-9.0, -3.0, 3.0, 9.0):
+        hi.append(box('pcol', (1.0, 1.0, 8.2), (x, PY0 + 0.8, 0.8), TR, base=True))
+    hi.append(box('pback', (14, 1.0, 8.2), (0, PY1 + 0.3, 0.8), GL, base=True))
+    hi.append(L.sign_panel('pl_sign', 'BIRLA PLANETARIUM', 18.0, 2.6, (0, PY0 - 0.2, 11.3), fg='#ffffff', bg='#1d4e8a', px=512))
+    lo.append(L.shell_box('portico_lo', (20.4, PY1 - PY0 + 0.8, 9.3), (0, (PY0 + PY1) / 2, 0.8)))
+    lo.append(L.shell_box('sign_lo', (18.4, 0.9, 2.9), (0, PY0 - 0.2, 9.95)))
+    trim(lo)
+    report(lo)
+    for o in L.finish_proxy(A, hi, lo=lo, size=256, ao_samples=48, ao_strength=0.6):
+        kit.smooth(o, 80)
+    L.shots(A, az=-30, el=12)
+
+
+def _stairs2(name, w, run, rise, n, loc, tread, riser):
+    """kit.stairs with a darker riser plate on every step (reads as steps once baked)"""
+    x, y, z = loc
+    p = [kit.stairs(name, w, run, rise, n, (x, y, z), tread)]
+    for i in range(n):
+        yf = y - run * n / 2 + run * i
+        p.append(box(name + '_r', (w - 0.02, 0.08, rise * 0.8), (x, yf - 0.03, z + rise * i), riser, base=True))
+    return kit.join(p, name)
+
+
+@kit.asset('birla_mandir', 'hero_landmark', draw='birla_mandir', face='s', footprint=[64, 56], height=78.0, fit='footprint', floodlit=True)
+def build_birla_mandir(A):
+    """Birla Mandir (Sri Venkateswara, 1976) on Naubat Pahad: all white Rajasthani marble on a
+    rocky hillock. Broad flights of steps up the front to a Dravidian-style entrance gopuram on
+    the terrace edge; behind it the pillared porch and the jagamohana (pidha roof), then the tall
+    curvilinear Utkala rekha shikhara over the sanctum (amalaka + kalasha) dominating everything,
+    with the two smaller shikharas of the Padmavati and Andal shrines either side. No bells."""
+    M = L.mats()
+    M['bm_w'] = kit.material('whitewash', 'bm_marble', base='#f8f6f1', rough=0.4, var=0.015, grain=0.01, grime=0.06, streaks=0.03, dirt='#cfc9bd', scale=0.5)
+    M['bm_t'] = kit.material('whitewash', 'bm_marble_trim', base='#f0ece4', rough=0.4, var=0.015, grain=0.01, grime=0.06, streaks=0.02, dirt='#c8c1b4', scale=0.5)
+    M['bm_d'] = L.paint('#d6d0c4', 'bm_marble_shade', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
+    M['bm_gold'] = L.paint('#d7b45a', 'bm_gold', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
+    ROCK = kit.material('granite_grey', 'naubat_rock', base='#7e756b', var=0.05, grain=0.0, specks=0.0, grime=0.2, dirt='#6a6259', scale=0.15)
+    SCRUB = L.paint('#6d7a45', 'naubat_scrub', var=0.05, grain=0.0, grime=0.0, streaks=0.0)
+    PAVE = kit.material('whitewash', 'bm_pave', base='#e6e2d8', rough=0.5, var=0.02, grain=0.01, grime=0.1, streaks=0.0, scale=0.4)
+    DOOR = L.paint('#5e4128', 'bm_door', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
+    W, T, D = M['bm_w'], M['bm_t'], M['bm_d']
+    hi, lo = [], []
+    ZT = 18.0          # terrace level
+    TX, TY0, TY1 = 29.5, -10.0, 27.4
+    SW = 12.0          # stair width
+    # stair profile (y, z): two flights and a landing from the road (y = -28.6) to the terrace
+    RAMP = [(-28.6, 0.0), (-28.6, 0.6), (-20.4, 8.4), (-18.0, 8.4), (-10.0, ZT)]
+    # ---------------- Naubat Pahad: the rocky hillock with a gorge for the stairs
+    hill = rock_mound('naubat', 31.5, 27.8, ZT - 0.5, ROCK, seed=11, na=24,
+                      prof=[(1.0, None), (1.0, 0.0), (0.98, 0.2), (0.94, 0.5), (0.9, 0.8), (0.82, 1.0)], rough=0.14, zj=0.25, z0=-1.0)
+    gorge = kit.prism_from_outline('gorge', [(-40.0, -0.4), (-28.6, -0.4), (-20.4, 7.8), (-18.0, 7.8), (-10.0, ZT - 0.6), (-10.0, 60.0), (-40.0, 60.0)], SW + 3.0, axis='X')
+    kit.boolean(hill, gorge)
+    rocks = []
+    rnd = random.Random(5)
+    for i in range(18):
+        a = 2 * PI * i / 18 + rnd.random() * 0.25
+        if 4.3 < a < 5.1:
+            continue        # keep the stair approach clear
+        rr = 0.9 + 0.08 * rnd.random()
+        rocks.append(boulder('nb_boulder', 2.4 + 1.8 * rnd.random(), (30.0 * rr * math.cos(a), 26.5 * rr * math.sin(a), 0.5 + 6.0 * rnd.random()), ROCK, seed=20 + i, sq=0.6, sub=1))
+    for i in range(14):
+        a = 2 * PI * rnd.random()
+        if 4.2 < a < 5.2:
+            continue
+        rocks.append(boulder('nb_scrub', 1.6 + rnd.random(), (29.0 * math.cos(a), 25.6 * math.sin(a), 2.0 + 9.0 * rnd.random()), SCRUB, seed=40 + i, sq=0.5, sub=1))
+    hill_lo = hill.copy()
+    hill_lo.data = hill.data.copy()
+    kit.link(hill_lo, A.coll)
+    hill_lo.data.materials.clear()
+    hill_lo.name = 'naubat_lo'
+    L._auto_lo(hill_lo, 150)
+    bm = bmesh.new()      # drop the shell faces hidden inside the terrace block
+    bm.from_mesh(hill_lo.data)
+    dead = [f for f in bm.faces if all(abs(v.co.x) < TX - 0.5 and TY0 + 0.5 < v.co.y < TY1 - 0.5 and v.co.z > 8.5 for v in f.verts)]
+    bmesh.ops.delete(bm, geom=dead, context='FACES')
+    bm.to_mesh(hill_lo.data)
+    bm.free()
+    hi.append(kit.join([hill] + rocks, 'naubat_hi'))
+    lo.append(hill_lo)
+    # ---------------- terrace: retaining wall, marble paving, solid carved balustrade on the edge
+    hi.append(box('terrace_wall', (2 * TX, TY1 - TY0, ZT - 8.0), (0, (TY0 + TY1) / 2, 8.0), T, base=True))
+    hi.append(box('terrace_pave', (2 * TX - 0.4, TY1 - TY0 - 0.4, 0.3), (0, (TY0 + TY1) / 2, ZT - 0.15), PAVE, base=True))
+    hi.append(box('terrace_band', (2 * TX + 0.5, TY1 - TY0 + 0.5, 0.6), (0, (TY0 + TY1) / 2, ZT - 0.9), W, base=True))
+    BH = 1.9
+
+    def balus(x0, y0, x1, y1):
+        ln = math.hypot(x1 - x0, y1 - y0)
+        rz = math.atan2(y1 - y0, x1 - x0)
+        p = [box('bal_wall', (ln, 0.6, 1.4), (0, 0, 0), W, base=True), box('bal_cap', (ln + 0.3, 0.9, 0.35), (0, 0, 1.4), T, base=True)]
+        n = max(2, int(ln / 2.4))
+        for i in range(n + 1):
+            p.append(box('bal_post', (0.7, 0.9, BH), (-ln / 2 + ln * i / n, 0, 0), T, base=True))
+        for i in range(n):
+            p.append(box('bal_panel', (ln / n - 1.3, 0.75, 0.8), (-ln / 2 + ln * (i + 0.5) / n, 0, 0.3), D, base=True))
+        hi.append(L.place(kit.join(p, 'balustrade'), ((x0 + x1) / 2, (y0 + y1) / 2, ZT), rz=rz))
+    e = 0.3
+    balus(-TX + e, TY0 + e, -7.6, TY0 + e)
+    balus(7.6, TY0 + e, TX - e, TY0 + e)
+    balus(TX - e, TY0 + e, TX - e, TY1 - e)
+    balus(-TX + e, TY0 + e, -TX + e, TY1 - e)
+    balus(-TX + e, TY1 - e, TX - e, TY1 - e)
+    # shell: the terrace block up to the balustrade top (the courtyard paving bakes onto its top)
+    lo.append(L.shell_box('terrace_lo', (2 * TX + 0.6, TY1 - TY0 + 0.6, ZT + BH - 8.0), (0, (TY0 + TY1) / 2, 8.0)))
+    # ---------------- the broad flights of steps up the front, with a landing and marble parapets
+    n1, n2 = 13, 14
+    RISER = L.paint('#a59e92', 'bm_riser', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
+    hi.append(_stairs2('steps1', SW, 8.2 / n1, 7.8 / n1, n1, (0, -24.5, 0.6), W, RISER))
+    hi.append(box('steps1_fill', (SW, 8.2, 0.6), (0, -24.5, 0.0), T, base=True))
+    hi.append(box('landing', (SW, 2.6, 8.4), (0, -19.2, 0.0), W, base=True))
+    hi.append(box('landing_pave', (SW + 0.01, 2.6, 0.2), (0, -19.2, 8.3), PAVE, base=True))
+    hi.append(box('steps2_fill', (SW, 8.2, 8.4), (0, -14.0, 0.0), T, base=True))
+    hi.append(_stairs2('steps2', SW, 8.0 / n2, (ZT - 8.4) / n2, n2, (0, -14.0, 8.4), W, RISER))
+    par_ol = [(-28.9, 0.0)] + [(y, z + 1.2) for (y, z) in RAMP[1:]] + [(-10.0, 0.0)]
+    par_ol[1] = (-28.9, 1.8)
+    for s in (-1, 1):
+        par = kit.prism_from_outline('stair_par', par_ol, 0.9, axis='X', mat=T)
+        hi.append(L.place(par, (s * (SW / 2 + 0.45), 0, 0)))
+        for (yy, zz) in ((-28.5, 0.0), (-19.2, 8.4)):
+            hi.append(box('stair_post', (1.3, 1.3, 2.8), (s * (SW / 2 + 0.45), yy, zz), T, base=True))
+            hi.append(lathe('stair_lamp', [(0.4, 0), (0.55, 0.5), (0.3, 1.2), (0.0, 1.4)], seg=8, mat=T, loc=(s * (SW / 2 + 0.45), yy, zz + 2.8)))
+    lo_ol = [(-29.0, 0.0), (-29.0, 1.9), (-20.4, 9.5), (-18.0, 9.5), (-10.0, ZT + 1.2), (-10.0, 0.0)]
+    lo.append(kit.prism_from_outline('steps_lo', lo_ol, SW + 2.2, axis='X'))
+    # ---------------- entrance gopuram (Dravidian-style gateway tower) on the terrace edge
+    GY = -6.5      # centre (front face at y = -10)
+    GW, GD = 15.0, 7.0
+    gp = [box('gp_base', (GW, GD, 9.0), (0, GY, ZT), W, base=True),
+          box('gp_plinth', (GW + 0.8, GD + 0.8, 1.0), (0, GY, ZT), T, base=True),
+          box('gp_cornice', (GW + 1.0, GD + 1.0, 0.8), (0, GY, ZT + 9.0), T, base=True)]
+    cut = box('gp_door_cut', (4.6, 2.4, 7.0), (0, GY - GD / 2, ZT + 1.0), None, base=True)
+    kit.boolean(gp[0], cut)
+    gp.append(box('gp_door', (4.6, 0.3, 7.0), (0, GY - GD / 2 + 1.1, ZT + 1.0), DOOR, base=True))
+    fr = box('gp_door_frame', (6.0, 0.4, 8.2), (0, GY - GD / 2 - 0.15, ZT + 0.95), T, base=True)
+    kit.boolean(fr, box('gp_door_cut2', (4.6, 1.0, 7.0), (0, GY - GD / 2 - 0.15, ZT + 1.0), None, base=True))
+    gp.append(fr)
+    for x in (-6.4, -4.2, 4.2, 6.4):
+        gp.append(box('gp_pil', (0.7, 0.4, 7.6), (x, GY - GD / 2 - 0.1, ZT + 1.0), T, base=True))
+    for x in (-5.3, 5.3):
+        gp.append(box('gp_nich', (1.2, 0.2, 3.0), (x, GY - GD / 2 - 0.05, ZT + 3.2), D, base=True))
+    ZG = ZT + 9.8
+    NT, TH = 5, 3.0
+    for i in range(NT):
+        w, d, z = GW - 1.0 - 2.0 * i, GD - 0.8 - 0.7 * i, ZG + TH * i
+        gp.append(box('gp_tier', (w, d, TH - 0.6), (0, GY, z), W, base=True))
+        gp.append(box('gp_tcor', (w + 0.6, d + 0.6, 0.6), (0, GY, z + TH - 0.6), T, base=True))
+        nk = max(3, int(w / 2.2))
+        for j in range(nk):
+            x = -w / 2 + 0.7 + (w - 1.4) * j / (nk - 1)
+            for yy in (GY - d / 2 - 0.05, GY + d / 2 + 0.05):
+                gp.append(box('gp_kuta', (0.9, 0.5, 1.6), (x, yy, z + 0.3), D if j % 2 else T, base=True))
+    zs = ZG + TH * NT
+    vault = [(-1.7, 0.0), (1.7, 0.0), (1.8, 1.0), (1.4, 2.2), (0.6, 3.0), (0.0, 3.2), (-0.6, 3.0), (-1.4, 2.2), (-1.8, 1.0)]
+    sh = kit.prism_from_outline('gp_shala', vault, 6.4, axis='X', mat=W)
+    gp.append(L.place(sh, (0, GY, zs)))
+    for x in (-2.4, -1.2, 0.0, 1.2, 2.4):
+        gp.append(lathe('gp_kal', [(0.32, 0), (0.45, 0.4), (0.25, 0.9), (0.08, 1.6), (0.0, 1.8)], seg=8, mat=M['bm_gold'], loc=(x, GY, zs + 3.05)))
+    hi += gp
+    tw, td = GW - 1.0 - 2.0 * (NT - 1), GD - 0.8 - 0.7 * (NT - 1)
+    lo.append(L.shell_box('gp_lo_base', (GW + 1.0, GD + 1.0, 9.8), (0, GY, ZT)))
+    lo.append(_rings_loft('gp_lo_tiers', [(ZG, [(-GW / 2 + 0.2, GY - GD / 2 + 0.2), (GW / 2 - 0.2, GY - GD / 2 + 0.2), (GW / 2 - 0.2, GY + GD / 2 - 0.2), (-GW / 2 + 0.2, GY + GD / 2 - 0.2)]),
+                                          (zs, [(-tw / 2 - 0.3, GY - td / 2 - 0.3), (tw / 2 + 0.3, GY - td / 2 - 0.3), (tw / 2 + 0.3, GY + td / 2 + 0.3), (-tw / 2 - 0.3, GY + td / 2 + 0.3)])], cap=False))
+    lsh = kit.prism_from_outline('gp_lo_shala', [(-1.9, 0.0), (1.9, 0.0), (1.6, 2.0), (0.0, 4.6), (-1.6, 2.0)], 6.8, axis='X')
+    lo.append(L.place(lsh, (0, GY, zs - 0.05)))
+    # ---------------- porch (carved pillars) + jagamohana with its stepped pidha roof
+    ZB = ZT + 2.0
+    JY0, JY1 = 3.0, 11.0
+    JC = (JY0 + JY1) / 2
+    hi.append(box('jm_pitha', (21.6, JY1 - JY0 + 0.6, 2.0), (0, JC, ZT), T, base=True))
+    hi.append(box('jm_wall', (20.0, JY1 - JY0, 9.0), (0, JC, ZB), W, base=True))
+    for zz, hh in ((ZB + 1.0, 0.6), (ZB + 5.4, 0.4), (ZB + 8.2, 0.8)):
+        hi.append(box('jm_band', (20.6, JY1 - JY0 + 0.6, hh), (0, JC, zz), T, base=True))
+    for sx in (-1, 1):
+        for yy in (JC - 2.0, JC + 2.0):
+            hi.append(box('jm_win', (0.4, 2.0, 3.8), (sx * 10.05, yy, ZB + 2.2), D, base=True))
+            hi.append(box('jm_winf', (0.3, 2.8, 4.6), (sx * 10.0, yy, ZB + 1.8), T, base=True))
+    zp = ZB + 9.0
+    for i in range(4):
+        w, d = 21.0 - 2.6 * i, (JY1 - JY0 + 1.0) - 1.2 * i
+        hi.append(box('jm_pidha', (w, d, 1.6), (0, JC, zp + 2.2 * i), W, base=True))
+        hi.append(box('jm_pidha_g', (w - 1.0, d - 1.0, 0.6), (0, JC, zp + 2.2 * i + 1.6), D, base=True))
+    zc = zp + 2.2 * 4
+    hi.append(_ribbed('jm_crown', [(3.6, zc), (4.0, zc + 0.7), (3.4, zc + 2.1), (2.3, zc + 3.2), (1.8, zc + 3.7), (2.6, zc + 4.2), (2.7, zc + 4.8), (1.8, zc + 5.3), (0.0, zc + 5.4)], 24, 0.06, W, loc=(0, JC, 0)))
+    hi.append(lathe('jm_kal', [(0.7, zc + 5.3), (0.9, zc + 5.9), (0.45, zc + 6.6), (0.12, zc + 7.5), (0.0, zc + 8.0)], seg=12, mat=M['bm_gold'], loc=(0, JC, 0)))
+    lo.append(L.shell_box('jm_lo', (21.8, JY1 - JY0 + 0.8, zp - ZT + 0.2), (0, JC, ZT)))
+    lo.append(_rings_loft('jm_lo_roof', [(zp + 0.2, [(-10.7, JY0 - 0.7), (10.7, JY0 - 0.7), (10.7, JY1 + 0.7), (-10.7, JY1 + 0.7)]),
+                                         (zc, [(-6.3, JC - 2.1), (6.3, JC - 2.1), (6.3, JC + 2.1), (-6.3, JC + 2.1)])], cap=True))
+    lo.append(lathe('jm_lo_crown', [(4.2, zc - 0.1), (3.2, zc + 2.6), (2.7, zc + 4.6), (0.0, zc + 8.0)], seg=8, loc=(0, JC, 0), close_bottom=False))
+    # porch: carved pillars, deep chajja, parapet; jaali screens on the sides
+    PY0 = -1.6
+    PC = (PY0 + JY0) / 2
+    hi.append(box('po_floor', (18.0, JY0 - PY0 + 0.4, 2.0), (0, PC, ZT), T, base=True))
+    for i in range(6):
+        x = -7.5 + 3.0 * i
+        hi.append(_ribbed('po_pillar', [(0.75, 0), (0.75, 0.8), (0.5, 1.0), (0.5, 2.6), (0.7, 3.0), (0.5, 3.4), (0.45, 5.4), (0.75, 6.0), (0.95, 6.6), (0.95, 7.0)], 12, 0.15, W, loc=(x, PY0 + 0.6, ZB)))
+    for sx in (-1, 1):
+        hi.append(box('po_jaali', (0.5, JY0 - PY0, 7.0), (sx * 8.75, PC, ZB), D, base=True))
+        hi.append(box('po_jaali_f', (0.6, JY0 - PY0, 0.5), (sx * 8.8, PC, ZB + 3.3), T, base=True))
+    hi.append(box('po_door', (4.0, 0.3, 5.8), (0, JY0 - 0.05, ZB), DOOR, base=True))
+    hi.append(box('po_door_f', (5.4, 0.3, 6.6), (0, JY0 - 0.02, ZB - 0.05), T, base=True))
+    hi.append(box('po_roof', (19.4, JY0 - PY0 + 1.6, 0.9), (0, PC - 0.6, ZB + 7.0), T, base=True))
+    hi.append(box('po_par', (18.6, JY0 - PY0 + 0.6, 1.4), (0, PC - 0.3, ZB + 7.9), W, base=True))
+    lo.append(L.shell_box('po_lo', (19.6, JY0 - PY0 + 1.6, 11.3), (0, PC - 0.6, ZT)))
+    # ---------------- the main rekha deul over the sanctum, and the two side shrines
+    h1, l1, _ = _rekha('deul', 0.0, 18.6, ZT + 2.0, 7.6, 12.0, 32.0, M, courses=12, lo_rings=4)
+    hi += h1
+    lo += l1
+    for s in (-1, 1):
+        h2, l2, _ = _rekha('shrine', s * 19.5, 15.5, ZT + 1.6, 4.2, 6.4, 11.0, M, courses=6, lo_rings=2, lo_seg=6)
+        hi += h2
+        lo += l2
+    trim(lo)
+    report(lo)
+    L.finish_proxy(A, hi, lo=lo, size=512, ao_dist=6.0, ao_samples=64, ao_strength=0.6)
+    L.col_box('bm_hill', (58, 50, ZT), (0, 2, 0))
+    L.col_box('bm_deul', (18, 18, 50), (0, 18, ZT))
+    L.shots(A, az=-30, el=12, extra=[{'name': 'front', 'size': 320, 'view': {'az': 0, 'el': 8, 'fov': 32, 'pad': 1.05}},
+                                     {'name': 'tower', 'size': 320, 'view': {'az': -50, 'el': 4, 'fov': 30, 'target': (0, 14, 46), 'dist': 90}}])
