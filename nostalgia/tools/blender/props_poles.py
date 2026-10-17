@@ -81,6 +81,18 @@ def finish(A, objs, size=128, zscale=0.15, angle=75.0, **kw):
         kit.uv_atlas = orig
 
 
+def beam(name, size, loc, mat=None):
+    """Box without its two end caps (along the longest axis) — horizontal arms, channels."""
+    ob = kit.box(name, size, loc, mat=mat)
+    ax = max(range(3), key=lambda i: size[i])
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if abs(f.normal[ax]) > 0.9], context='FACES')
+    bm.to_mesh(ob.data)
+    bm.free()
+    return ob
+
+
 def del_bottom(ob, z=0.01):
     """Delete downward faces lying on the ground (never seen)."""
     bm = bmesh.new()
@@ -102,17 +114,18 @@ def pin_insulator(name, loc, s=1.0, seg=4, lite=False):
     return [ins], V(loc) + V((0, 0, 0.9 * s))
 
 
-def shackle(name, loc, s=1.0, front=(0, -1, 0)):
+def shackle(name, loc, s=1.0, front=(0, -1, 0), lite=False):
     """LT shackle (spool) insulator on a D-iron bracket bolted to the pole face. loc = spool centre.
     The bracket straps run back from the spool along -front. Returns (objs, wire point)."""
     loc = V(loc)
     f = V(front).normalized()
-    spool = rnd(kit.lathe(name, [(0.30 * s, -0.30 * s), (0.18 * s, 0.0), (0.30 * s, 0.30 * s)], seg=4, mat=P.M('porcelain'), loc=loc))
+    prof = [(0.30 * s, -0.30 * s), (0.18 * s, 0.0), (0.30 * s, 0.30 * s)] if not lite else [(0.26 * s, -0.3 * s), (0.26 * s, 0.3 * s)]
+    spool = rnd(kit.lathe(name, prof, seg=4, mat=P.M('porcelain'), loc=loc, close_bottom=not lite, close_top=not lite))
     gal = P.M('galvanised')
     back = loc - f * 0.75 * s
     # D-iron: one flat strap loop (top, back, bottom) as a single thin ribbon
     sts = [rnd(kit.tube(name + '_d%d' % k, [loc + V((0, 0, dz * s)), back + V((0, 0, dz * s))], 0.06 * s, seg=3, mat=gal, cap=False))
-           for k, dz in enumerate((0.36, -0.36))]
+           for k, dz in enumerate((0.36, -0.36) if not lite else (0.36,))]
     return [spool] + sts, loc + f * 0.2 * s
 
 
@@ -120,7 +133,7 @@ def channel_y(name, cx, cz, y0, y1, w=0.34, h=0.42, t=0.07, open_dir=-1, mat=Non
     """Steel C-channel crossarm along Y (outline in XZ), web on the pole side, opening toward
     open_dir (-1 = -X)."""
     # a plain box at game distance (the C profile cost 2x the vertices for no visible gain)
-    return kit.box(name, (w, abs(y1 - y0), h), (cx, (y0 + y1) / 2, cz), mat=mat)
+    return beam(name, (w, abs(y1 - y0), h), (cx, (y0 + y1) / 2, cz), mat=mat)
 
 
 def angle_y(name, cx, cz, y0, y1, w=0.3, t=0.06, mat=None):
@@ -402,7 +415,7 @@ def build_streetlight(A):
     wires(A, W)
     finish(A, objs, size=128, ao_samples=16)
     A.preview = {'shots': [{'view': {'az': -35.0, 'el': 14.0, 'fov': 32.0}},
-                           {'name': 'top', 'view': {'az': -75.0, 'el': 10.0, 'fov': 32.0, 'target': (0.0, -3.6, 36.0), 'dist': 24.0}}]}
+                           {'name': 'top', 'view': {'az': -75.0, 'el': 10.0, 'fov': 32.0, 'target': (0.0, -3.6, 37.0), 'dist': 27.0}}]}
 
 
 # =========================================================================== pole_transformer
@@ -411,145 +424,118 @@ TX_H = 45.0
 
 @kit.asset('pole_transformer', 'prop', kind='pole', variant='transformer', height=TX_H, footprint=(10.0, 5.0))
 def build_transformer(A):
+    """Double-pole (DP) distribution transformer, kept very lean (pack budget ~25 KB)."""
     gal = P.M('galvanised')
     por = P.M('porcelain')
     tx = P.M('transformer')
     blk = P.M('cable_black')
+    con = P.M('concrete', base='#c4bfb2', grime=0.45)
     PX = 4.2
     objs = []
     W = {}
     for s, suf in ((-1, ''), (1, 'b')):
         x = s * PX
-        objs += psc_shaft('p%d' % s, x=x, holes=(10.0, 40.0, 9.0, 1.0))
+        hx0, hy0 = psc_dims(0)
+        hx1, hy1 = psc_dims(TX_H)
+        objs.append(frustum('p%d' % s, 0.0, TX_H, (hx0, hy0), (hx1, hy1), (x, 0), mat=con))
+        objs.append(frustum('m%d' % s, 0.0, 1.3, (hx0 + 0.35, hy0 + 0.35), (hx0 + 0.12, hy0 + 0.12), (x, 0), mat=P.M('concrete_old')))
         za = 41.2
         hx, hy = psc_dims(za)
         ax = x + s * (hx + 0.2)        # crossarms on the outer faces
         objs.append(channel_y('arm%d' % s, ax, za, -3.6, 3.6, mat=gal))
-        objs.append(clamp_band('armc%d' % s, x, za, hx, hy))
         for i, y in enumerate((-3.1, 0.0, 3.1)):
-            o, p = pin_insulator('ins%d_%d' % (s, i), (ax, y, za + 0.21))
+            o, p = pin_insulator('ins%d_%d' % (s, i), (ax, y, za + 0.21), lite=True)
             objs += o
             W['L%d%s' % (i + 1, suf)] = p
         zn = 37.4
         hx, hy = psc_dims(zn)
-        o, p = shackle('neut%d' % s, (x, -hy - 0.78, zn))
+        o, p = shackle('neut%d' % s, (x, -hy - 0.78, zn), lite=True)
         objs += o
         W['N' + suf] = p
-        # earthing strip down the outer face
-        objs.append(bar('earth%d' % s, (x + s * (psc_dims(1.3)[0] + 0.04), 0.0, 1.3), (x + s * (psc_dims(30)[0] + 0.04), 0.0, 30.0), 0.05, mat=gal))
-    # AB switch: channel between the poles (along X) with 3 post insulators + blades + operating rod
+    # AB switch on a channel between the poles: 3 post insulators, jumpers from the -X line
     zab = 35.0
-    zf = 27.0
     hx, hy = psc_dims(zab)
     yab = -hy - 0.2
-    objs.append(kit.box('ab_ch', (2 * PX, 0.35, 0.4), (0.0, yab, zab), mat=gal))
+    objs.append(beam('ab_ch', (2 * PX, 0.35, 0.4), (0.0, yab, zab), mat=gal))
     for i, xx in enumerate((-2.0, 0.0, 2.0)):
-        objs.append(rnd(kit.cylinder('abp%d' % i, 0.16, 1.0, loc=(xx, yab, zab + 0.2), seg=5, mat=por, cap=False)))
-        objs.append(bar('abb%d' % i, (xx, yab + 0.45, zab + 1.25), (xx, yab - 0.45, zab + 1.25), 0.05, mat=gal))
-        src = W['L%d' % (i + 1)]
-        objs.append(rnd(kit.tube('jmp%d' % i, [src + V((0, 0, 0.05)), V((xx * 0.5 - 2.6, yab - 0.3, zab + 4.0)), V((xx, yab, zab + 1.3))], 0.045, seg=3, mat=gal, cap=False)))
-    objs.append(bar('ab_rod', (-PX + 0.7, yab - 0.3, zab), (-PX + 0.7, yab - 0.3, 6.0), 0.06, mat=gal))
-    objs.append(kit.box('ab_handle', (0.3, 0.6, 0.3), (-PX + 0.7, yab - 0.4, 6.0), mat=P.M('paint_red')))
-    # HV drop-out fuses on a lower channel
-    hx, hy = psc_dims(zf)
-    yf = -hy - 0.2
-    objs.append(kit.box('fu_ch', (2 * PX, 0.35, 0.4), (0.0, yf, zf), mat=gal))
-    for i, xx in enumerate((-1.8, 0.0, 1.8)):
-        objs.append(rnd(kit.cylinder('fui%d' % i, 0.18, 0.9, loc=(xx, yf - 0.25, zf + 0.2), seg=5, mat=por, cap=False)))
-        objs.append(bar('fut%d' % i, (xx, yf - 0.3, zf + 1.1), (xx, yf - 0.5, zf + 2.4), 0.09, mat=P.M('sintex_black', base='#3a3a36')))
-        objs.append(rnd(kit.tube('fj%d' % i, [(xx * 0.5 + (i - 1) * 1.0, yab, zab + 1.25), (xx, yf - 0.7, zf + 4.5), (xx, yf - 0.5, zf + 2.4)], 0.04, seg=3, mat=gal, cap=False)))
-    # transformer platform: two channels along X between the poles
+        objs.append(rnd(kit.cylinder('abp%d' % i, 0.17, 1.1, loc=(xx, yab, zab + 0.2), seg=4, mat=por, cap=False)))
+        objs.append(bar('jmp%d' % i, W['L%d' % (i + 1)], (xx, yab, zab + 1.3), 0.05, mat=gal))
+    # platform channels + tank (with cover), radiator banks, conservator, bushings
     zp = 15.0
     for yy in (-1.2, 1.2):
-        objs.append(kit.box('plat%d' % int(yy * 10), (2 * PX + 1.0, 0.3, 0.45), (0.0, yy, zp), mat=gal))
-    # tank, cover, radiator banks, conservator, bushings
+        objs.append(beam('plat%d' % int(yy * 10), (2 * PX + 1.0, 0.3, 0.45), (0.0, yy, zp), mat=gal))
     tz0 = zp + 0.22
     TW, TD, TH = 3.6, 2.4, 4.6
-    objs.append(frustum('tank', tz0, tz0 + TH, (TW / 2, TD / 2), (TW / 2, TD / 2), mat=tx, bottom=True, top=False))
-    objs.append(frustum('cover', tz0 + TH, tz0 + TH + 0.25, (TW / 2 + 0.15, TD / 2 + 0.15), (TW / 2 + 0.15, TD / 2 + 0.15), mat=tx, bottom=True))
+    objs.append(frustum('tank', tz0, tz0 + TH, (TW / 2, TD / 2), (TW / 2 + 0.12, TD / 2 + 0.12), mat=tx, bottom=True))
     for sy in (-1, 1):
-        for k in range(3):
-            xx = -1.15 + k * 1.15
-            objs.append(frustum('fin%d_%d' % (sy, k), tz0 + 0.5, tz0 + TH - 0.4, (0.32, 0.45), (0.32, 0.45), (xx, sy * (TD / 2 + 0.45)), mat=tx, bottom=True))
-    cz = tz0 + TH + 1.0
-    cons = rnd(kit.cylinder('cons', 0.6, 2.6, loc=(0.0, 0.6, cz), seg=7, mat=tx, axis='X', base=False), 50.0)
-    objs.append(cons)
-    objs.append(kit.box('cons_leg', (0.25, 0.25, 0.8), (0.0, 0.6, tz0 + TH + 0.25), mat=tx, base=True))
-    hv_y = -0.7
+        objs.append(frustum('rad%d' % sy, tz0 + 0.5, tz0 + TH - 0.4, (1.5, 0.4), (1.5, 0.4), (0.0, sy * (TD / 2 + 0.4)), mat=P.M('transformer', base='#6e7a74')))
+    objs.append(rnd(kit.cylinder('cons', 0.6, 2.6, loc=(0.0, 0.7, tz0 + TH + 0.9), seg=4, mat=tx, axis='X', base=False), 60.0))
     for i, xx in enumerate((-1.1, 0.0, 1.1)):
-        objs.append(rnd(kit.lathe('hvb%d' % i, [(0.22, 0.0), (0.36, 0.35), (0.16, 0.62), (0.30, 0.95), (0.08, 1.75)],
-                                  seg=6, mat=por, loc=(xx, hv_y, tz0 + TH + 0.25), close_bottom=False)))
-        top = V((xx, hv_y, tz0 + TH + 2.0))
-        objs.append(rnd(kit.tube('hvj%d' % i, [(xx, yf - 0.5, zf + 2.4), (xx * 1.3, -1.6, zf - 3.5), top], 0.045, seg=3, mat=gal, cap=False)))
-    for i, xx in enumerate((-1.2, -0.4, 0.4, 1.2)):
-        objs.append(rnd(kit.lathe('lvb%d' % i, [(0.18, 0.0), (0.2, 0.2), (0.08, 0.65)], seg=5, mat=por, loc=(xx, 0.85, tz0 + TH + 0.25), close_bottom=False)))
-    # LT distribution box below the platform on a bar between the poles, black LT cables
+        b0 = V((xx, -0.7, tz0 + TH))
+        objs.append(rnd(kit.lathe('hvb%d' % i, [(0.32, 0.0), (0.08, 1.6)], seg=4, mat=por, loc=b0, close_bottom=False)))
+        objs.append(bar('hvl%d' % i, ((i - 1) * 2.0, yab, zab - 0.2), b0 + V((0, 0, 1.6)), 0.04, mat=gal))
+    # LT: cable from the LV side down to the distribution box, box on a bar between the poles
     hx, hy = psc_dims(9.0)
-    box_m = P.M('galvanised', base='#78827e', rust=0.4)
-    objs.append(frustum('ltbox', 8.0, 10.2, (1.3, 0.5), (1.3, 0.5), (0.0, -hy - 0.55), mat=box_m, bottom=True, top=False))
-    objs.append(frustum('ltbox_roof', 10.2, 10.35, (1.45, 0.65), (1.45, 0.65), (0.0, -hy - 0.55), mat=box_m, bottom=True))
-    objs.append(kit.box('ltbar', (2 * PX, 0.25, 0.3), (0.0, -hy - 0.1, 9.0), mat=gal))
-    for i, xx in enumerate((-0.6, 0.6)):
-        objs.append(rnd(kit.tube('ltc%d' % i, [(xx * 1.8, 0.85, tz0 + TH + 0.9), (xx * 3.0, 1.9, tz0 + TH - 1.5), (xx * 3.2, 1.4, zp - 1.0),
-                                               (xx, -hy - 0.8, 10.3)], 0.08, seg=4, mat=blk, cap=False)))
-    objs.append(rnd(kit.tube('ltup', [(1.0, -hy - 0.6, 10.3), (PX - 0.6, -0.5, 14.0), (PX - 0.55, 0.0, 30.5)], 0.08, seg=4, mat=blk, cap=False)))
+    objs.append(frustum('ltbox', 8.0, 10.4, (1.3, 0.5), (1.45, 0.62), (0.0, -hy - 0.55), mat=P.M('galvanised', base='#78827e', rust=0.4)))
+    objs.append(rnd(kit.tube('ltc', [(0.6, 0.9, tz0 + TH), (2.4, 1.6, zp - 1.0), (0.8, -hy - 0.6, 10.4)], 0.1, seg=3, mat=blk, cap=False)))
+    # service drop (back, +X pole) and cable-TV bracket (-X pole)
     zs = 31.0
     hx, hy = psc_dims(zs)
-    o, p = shackle('svc', (PX, hy + 0.78, zs), front=(0, 1, 0))
+    o, p = shackle('svc', (PX, hy + 0.78, zs), front=(0, 1, 0), lite=True)
     objs += o
     W['service'] = p
     zc = 28.0
     hx, hy = psc_dims(zc)
     objs.append(bar('cab_br', (-PX - hx, 0.0, zc), (-PX - hx - 0.7, 0.0, zc), 0.07, mat=gal))
     W['cable'] = V((-PX - hx - 0.7, 0.0, zc - 0.05))
-    objs.append(cable_coil('coil', (-PX - hx - 0.2, -hy - 0.1, zc - 1.0)))
-    for s in (-1, 1):
-        objs += danger_board('danger%d' % s, s * PX, -psc_dims(12.5)[1], 12.5)
     for o in objs:
         del_bottom(o)
     wires(A, W)
     A.meta['wire_sides'] = {'-X': ['wire_L1', 'wire_L2', 'wire_L3', 'wire_N', 'wire_cable'],
                             '+X': ['wire_L1b', 'wire_L2b', 'wire_L3b', 'wire_Nb', 'wire_service']}
-    finish(A, objs, size=256, ao_samples=16)
+    finish(A, objs, size=128, ao_samples=16)
     A.preview = {'shots': [{'view': {'az': -35.0, 'el': 14.0, 'fov': 32.0}},
                            {'name': 'top', 'view': {'az': -30.0, 'el': 14.0, 'fov': 32.0, 'target': (0.0, 0.0, 28.0), 'dist': 42.0}}]}
 
 
 # =========================================================================== pole_junction_box
-@kit.asset('pole_junction_box', 'prop', kind='pole', variant='junction_box', height=6.0, footprint=(4.6, 3.0))
+@kit.asset('pole_junction_box', 'prop', kind='pole', variant='junction_box', height=5.85, footprint=(4.6, 3.0))
 def build_junction(A):
+    """LT feeder pillar: grey steel cabinet with a sloped cap on a concrete plinth, door seam +
+    plain danger plate + a faded blank poster on the front, black cable stubs. Lean (~8 KB pack)."""
     gal = P.M('galvanised', base='#7c8480', rust=0.35, grime=0.55, streaks=0.35)
-    objs = []
-    objs.append(frustum('plinth', 0.0, 1.0, (2.3, 1.5), (2.2, 1.4), mat=P.M('concrete_old')))
+    objs = [frustum('plinth', 0.0, 1.0, (2.3, 1.5), (2.2, 1.4), mat=P.M('concrete_old'))]
     BW, BD, BH = 3.8, 1.9, 4.4
     z0 = 1.0
-    objs.append(kit.box('cab', (BW, BD, BH), (0.0, 0.0, z0), mat=gal, base=True))
-    # sloped roof cap with overhang
-    roof = frustum('roof', z0 + BH, z0 + BH + 0.45, (BW / 2 + 0.2, BD / 2 + 0.25), (BW / 2 - 0.1, BD / 2 - 0.1), mat=gal, bottom=True)
-    objs.append(roof)
-    # front doors (slightly proud), handles, hinges, louvres
+    objs.append(frustum('cab', z0, z0 + BH, (BW / 2, BD / 2), (BW / 2, BD / 2), mat=gal, top=False))
+    objs.append(frustum('roof', z0 + BH, z0 + BH + 0.45, (BW / 2 + 0.2, BD / 2 + 0.25), (BW / 2 - 0.1, BD / 2 - 0.1), mat=gal, bottom=True))
+    # front: two door leaves as slightly proud quads (the gap between them reads as the seam)
+    bm = bmesh.new()
+    y = -BD / 2 - 0.02
     for s in (-1, 1):
-        objs.append(kit.box('door%d' % s, (BW / 2 - 0.15, 0.06, BH - 0.4), (s * BW / 4, -BD / 2 - 0.03, z0 + 0.2), mat=gal, base=True))
-        objs.append(kit.box('handle%d' % s, (0.08, 0.1, 0.45), (s * 0.25, -BD / 2 - 0.1, z0 + 2.2), mat=P.M('sintex_black')))
-        for k in range(3):
-            objs.append(kit.box('louv%d_%d' % (s, k), (1.0, 0.1, 0.06), (s * BW / 4, -BD / 2 - 0.08, z0 + 3.4 + k * 0.22), mat=gal))
-    objs += danger_board('danger', -BW / 4, -BD / 2 - 0.06, z0 + 1.4, w=0.9, h=0.75)
-    # a faded, torn poster pasted on the side (plain colour, no text)
-    objs.append(kit.box('poster', (0.04, 1.2, 1.5), (BW / 2 + 0.02, -0.1, z0 + 1.6), mat=P.M('paint_yellow', base='#d8c070', chips=0.7, under='#7c8480'), base=True))
-    # cable stubs (black, armoured): down into the ground at the sides, one riser up the back
+        xa, xb = s * 0.05, s * (BW / 2 - 0.12)
+        q = [(xa, z0 + 0.2), (xb, z0 + 0.2), (xb, z0 + BH - 0.2), (xa, z0 + BH - 0.2)]
+        vs = [bm.verts.new((a, y, b)) for a, b in q]
+        bm.faces.new(vs if s > 0 else list(reversed(vs)))
+    objs.append(kit.obj_from_bm(bm, 'doors', P.M('galvanised', base='#8a928e', rust=0.3, grime=0.5)))
+    objs += danger_board('danger', -BW / 4, y, z0 + 2.9, w=0.9, h=0.75)
+    bm = bmesh.new()
+    vs = [bm.verts.new((BW / 4 + a, y - 0.02, b)) for a, b in ((-0.6, z0 + 0.9), (0.6, z0 + 0.8), (0.65, z0 + 2.4), (-0.55, z0 + 2.45))]
+    bm.faces.new(vs)
+    objs.append(kit.obj_from_bm(bm, 'poster', P.M('paint_yellow', base='#d8c070', chips=0.7, under='#7c8480')))
     blk = P.M('cable_black')
     W = {}
     for s, nm in ((-1, 'cable_in'), (1, 'cable_out')):
         x = s * (BW / 2 - 0.4)
-        pts = [(x, 0.3, z0 + 0.3), (x + s * 0.5, 0.4, 0.9), (x + s * 0.9, 0.5, 0.4), (x + s * 1.3, 0.5, 0.05)]
-        objs.append(kit.tube('stub_' + nm, pts, 0.14, seg=5, mat=blk, cap=False))
+        pts = [(x, 0.3, z0 + 0.3), (x + s * 0.8, 0.45, 0.6), (x + s * 1.3, 0.5, 0.0)]
+        objs.append(rnd(kit.tube('stub_' + nm, pts, 0.14, seg=4, mat=blk, cap=False)))
         W[nm] = V(pts[-1])
-    rp = [(0.6, BD / 2 + 0.05, z0 + 1.0), (0.6, BD / 2 + 0.25, z0 + BH - 0.5), (0.6, BD / 2 + 0.25, z0 + BH + 0.9)]
-    objs.append(kit.tube('riser', rp, 0.1, seg=5, mat=blk))
+    rp = [(0.6, BD / 2 + 0.15, z0 + 1.0), (0.6, BD / 2 + 0.15, z0 + BH + 0.9)]
+    objs.append(rnd(kit.tube('riser', rp, 0.1, seg=4, mat=blk, cap=False)))
     W['cable_up'] = V(rp[-1])
     for o in objs:
         del_bottom(o)
     wires(A, W)
-    finish(A, objs, size=128, ao_samples=16)
+    finish(A, objs, size=64, ao_samples=16, zscale=1.0)
     A.preview = {'shots': [{'view': {'az': -35.0, 'el': 20.0, 'fov': 32.0}},
                            {'name': 'top', 'view': {'az': 30.0, 'el': 30.0, 'fov': 32.0}}]}

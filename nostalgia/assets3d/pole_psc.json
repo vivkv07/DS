@@ -33,7 +33,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 22008,
+ "bytes": 21756,
  "clips": {},
  "family": "prop",
  "file": "pole_psc.glb",
@@ -42,7 +42,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 21.5,
+ "kb": 21.2,
  "kit": 1,
  "materials": [
   "M_pole_psc"
@@ -79,7 +79,7 @@
   45.0
  ],
  "tint": null,
- "tris": 337,
+ "tris": 333,
  "units": "u",
  "up": "Z"
 }

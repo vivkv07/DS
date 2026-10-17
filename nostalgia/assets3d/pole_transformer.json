@@ -3,32 +3,32 @@
   "wire_L1": [
    -4.7211,
    -3.1,
-   42.45
+   42.31
   ],
   "wire_L1b": [
    4.7211,
    -3.1,
-   42.45
+   42.31
   ],
   "wire_L2": [
    -4.7211,
    0.0,
-   42.45
+   42.31
   ],
   "wire_L2b": [
    4.7211,
    0.0,
-   42.45
+   42.31
   ],
   "wire_L3": [
    -4.7211,
    3.1,
-   42.45
+   42.31
   ],
   "wire_L3b": [
    4.7211,
    3.1,
-   42.45
+   42.31
   ],
   "wire_N": [
    -4.2,
@@ -53,23 +53,22 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 207412,
+ "bytes": 27472,
  "clips": {},
  "family": "prop",
  "file": "pole_transformer.glb",
  "front": "-Y",
  "id": "pole_transformer",
  "images": [
-  "image/webp",
   "image/webp"
  ],
- "kb": 202.6,
+ "kb": 26.8,
  "kit": 1,
  "materials": [
   "M_pole_transformer"
  ],
  "max": [
-  5.181,
+  5.221,
   3.6,
   45.0
  ],
@@ -119,12 +118,12 @@
  "notes": [],
  "script": "props_poles",
  "size": [
-  10.476,
+  10.516,
   7.2,
   45.0
  ],
  "tint": null,
- "tris": 2728,
+ "tris": 406,
  "units": "u",
  "up": "Z"
 }

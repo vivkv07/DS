@@ -67,7 +67,7 @@ def add_rings(m, period, col, amount=0.6, sharp=(0.55, 0.9), wobble=0.25):
     return m
 
 
-def leafmat(name, base, specks=0.55, scale=0.2, var=0.2, grain=0.18, dirt=None, rough=0.6, **kw):
+def leafmat(name, base, specks=0.9, scale=0.08, var=0.25, grain=0.5, dirt=None, rough=0.6, **kw):
     """Foliage material: leafy light/dark speckle at roughly leaf-cluster size (survives 256 px)."""
     return P.M('leaf', name=name, base=base, specks=specks, scale=scale, var=var, grain=grain,
                dirt=dirt or kit.shade(base, 0.45), rough=rough, **kw)
@@ -581,50 +581,248 @@ def build_coconut(A):
 
 
 # --------------------------------------------------------------------------- roadside palm (royal palm)
+def shaft_mat():
+    return P.M('leaf', name='palm_shaft', base='#6a9440', var=0.1, grain=0.08, rough=0.35, scale=1.0)
+
+
 @kit.asset('tree_palm', 'prop', kind='palm')
 def build_palm(A):
     T = Tree(A, 2202, zt=33.0, tb=0.22, Rc=14.0)
     rnd = T.rnd
     H = 33.0
-    pts = [V((0.15 * math.sin(i * 0.9), 0.1 * math.cos(i * 0.7), H * i / 9)) for i in range(10)]
+    NP = 6
+    pts = [V((0.15 * math.sin(i * 0.9), 0.1 * math.cos(i * 0.7), H * i / (NP - 1))) for i in range(NP)]
     radii = []
-    for i in range(10):
-        t = i / 9
+    for i in range(NP):
+        t = i / (NP - 1)
         r = 0.95 + 0.25 * math.sin(math.pi * min(1, t * 1.4)) + 0.45 * max(0, 1 - t * 8) ** 1.5
-        radii.append(r * (0.86 if t > 0.75 else 1.0))
-    bark = add_rings(P.M('bark_grey', name='palm_grey', base='#a29c90', var=0.08, grain=0.12, grime=0.4, scale=1.0),
-                     0.9, '#7a746a', amount=0.35, sharp=(0.7, 0.95))
-    T.trunk(pts[:8], radii[:8], seg=7, mat=bark, lods=(0, 0))
-    T.trunk([pts[i] for i in (0, 2, 5, 7)], [radii[i] for i in (0, 2, 5, 7)], seg=6, mat=bark, lods=(1, 1))
-    T.trunk([pts[0], pts[7]], [radii[0], radii[7]], seg=5, mat=bark, lods=(2, 2))
+        radii.append(r * (0.88 if t > 0.8 else 1.0))
+    bark = add_rings(P.M('bark_grey', name='palm_grey', base='#a8a296', var=0.08, grain=0.12, grime=0.4, scale=1.0),
+                     1.2, '#7a746a', amount=0.4, sharp=(0.65, 0.95))
+    T.trunk(pts, radii, seg=6, mat=bark, lods=(0, 0))
+    T.trunk([pts[0], pts[NP - 1]], [radii[0], radii[NP - 1]], seg=5, mat=bark, lods=(1, 1))
+    T.trunk([pts[0], pts[NP - 1] + V((0, 0, 7.0))], [radii[0], 0.5], seg=4, mat=shaft_mat(), lods=(2, 2))
     # glossy green crownshaft
-    shaft = P.M('leaf', name='palm_shaft', base='#5f8a3a', var=0.1, grain=0.08, rough=0.35, scale=1.0)
-    cs = [pts[7], pts[7] + V((0, 0, 3.5)), pts[7] + V((0, 0, 7.0)), pts[7] + V((0, 0, 8.6))]
-    sh = taper(T.name('shaft'), cs, [radii[7] * 0.98, radii[7] * 1.05, radii[7] * 0.85, 0.45], seg=7, mat=shaft, cap_end=True)
+    shaft = shaft_mat()
+    top0 = pts[-1]
+    cs = [top0, top0 + V((0, 0, 4.0)), top0 + V((0, 0, 7.6))]
+    sh = taper(T.name('shaft'), cs, [radii[-1] * 1.0, radii[-1] * 1.02, 0.45], seg=6, mat=shaft, cap_end=False)
+    sh['uvs'] = WOOD_UV
     P.wind(sh, T.bend, 0.0, 0.0)
     T.add(sh, 0, 1)
-    sh2 = taper(T.name('shaft2'), [cs[0], cs[-1]], [radii[7], 0.5], seg=5, mat=shaft, cap_end=False)
-    P.wind(sh2, T.bend, 0.0, 0.0)
-    T.add(sh2, 2, 2)
-    top = cs[-1] - V((0, 0, 0.4))
+    top = cs[-1] - V((0, 0, 0.6))
     gm = [P.M('frond', name='palm_f1', base='#4f8a34', var=0.18, grain=0.18, scale=0.8),
           P.M('frond', name='palm_f2', base='#5e9a3c', var=0.18, grain=0.18, scale=0.8),
           P.M('frond', name='palm_f3', base='#447a2c', var=0.18, grain=0.18, scale=0.8)]
-    N = 15
+    N = 10
     fronds = []
     for k in range(N):
         az = k * math.radians(137.5)
         a = k / (N - 1)
-        fronds.append(dict(az=az, L=rnd.uniform(13.0, 15.0) - 2.0 * (1 - a) ** 2, e0=72 - 62 * a, e1=-20 - 35 * a + rnd.uniform(-6, 6),
-                           dz=-0.9 * a, hang=-12 + 30 * a, nleaf=12, n=7, lods=(0, 0), plume=0.25, leaf_len=3.0, sweep=0.35))
-    lod1 = [dict(az=f['az'], L=f['L'], e0=f['e0'], e1=f['e1'], dz=f['dz'], n=4, w=2.8, hang=5) for f in fronds[:13]]
-    lod2 = [dict(az=f['az'], L=f['L'], e0=f['e0'], e1=f['e1'], dz=f['dz'], n=3, w=3.0, hang=10) for f in fronds[:8]]
+        fronds.append(dict(az=az, L=rnd.uniform(16.5, 18.5) - 2.0 * (1 - a) ** 2, e0=68 - 58 * a, e1=-35 - 35 * a + rnd.uniform(-6, 6),
+                           dz=-0.9 * a, hang=-5 + 30 * a, nleaf=6, lods=(0, 0), plume=0.2, leaf_len=5.2, sweep=0.7, sag=0.08))
+    lod1 = [dict(az=f['az'], L=f['L'], e0=f['e0'], e1=f['e1'], dz=f['dz'], nleaf=3, hang=f['hang'], leaf_len=4.5, sweep=0.5) for f in fronds[:7]]
+    lod2 = [dict(az=f['az'], L=f['L'], e0=f['e0'], e1=f['e1'], dz=f['dz'], nleaf=2, hang=10, leaf_len=5.0, sweep=0.4) for f in fronds[:5]]
     build_palm_crown(T, top, fronds, gm, None, lod1=lod1, lod2=lod2, tb=0.22)
-    T.finish('palm', tex=256)
+    T.finish('palm', tex=128)
+
+
+# --------------------------------------------------------------------------- banana clump
+def banana_leaf(name, base, az, L, W, rise, mat, seed=0, n=4, torn=0.35, hang=12.0):
+    """A big paddle leaf: petiole rising from the stem top, then a long oval blade arching out and
+    down; 3 rows (edge, midrib, edge), jagged widths = wind-torn edges."""
+    rnd = random.Random(seed)
+    f = V((math.cos(az), math.sin(az), 0))
+    pts = [V(base)]
+    p = V(base)
+    step = L / (n - 1)
+    for i in range(1, n):
+        t = i / (n - 1)
+        e = math.radians(rise - (rise + 55) * t ** 1.3)
+        p = p + (f * math.cos(e) + V((0, 0, math.sin(e)))) * step
+        pts.append(p.copy())
+    bm = bmesh.new()
+    rows = []
+    for i, p in enumerate(pts):
+        d = (pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]).normalized()
+        s = d.cross(V((0, 0, 1)))
+        s = s.normalized() if s.length > 1e-6 else V((1, 0, 0))
+        u = s.cross(d).normalized()
+        t = i / (n - 1)
+        w = W * (math.sin(math.pi * min(1.0, 0.08 + t * 0.95)) ** 0.5 if i > 0 else 0.15)
+        a = math.radians(hang)
+        row = []
+        for side in (-1, 0, 1):
+            if side == 0:
+                row.append(bm.verts.new(p))
+                continue
+            ww = w * (1 - torn * rnd.random() * (t > 0.3))
+            row.append(bm.verts.new(p + (s * side * math.cos(a) - u * math.sin(a)) * ww * 0.5))
+        rows.append(row)
+    for i in range(n - 1):
+        bm.faces.new((rows[i][0], rows[i][1], rows[i + 1][1], rows[i + 1][0]))
+        bm.faces.new((rows[i][1], rows[i][2], rows[i + 1][2], rows[i + 1][1]))
+    ob = kit.obj_from_bm(bm, name, mat)
+    ob['uvw'] = 'unwrap'
+    return ob, V(base)
+
+
+@kit.asset('tree_banana', 'prop', kind='banana')
+def build_banana(A):
+    T = Tree(A, 9909, zt=12.0, tb=0.3, Rc=9.0)
+    rnd = T.rnd
+    stem = P.M('leaf', name='ban_stem', base='#7a8a48', var=0.2, grain=0.25, grime=0.4, dirt='#4a3a22', scale=1.5)
+    stem = add_patches(stem, '#6a5034', 0.9, 0.55, 0.65, 0.8)
+    lm = [P.M('frond', name='bana_l1', base='#5e9a3a', var=0.15, grain=0.12, scale=0.9),
+          P.M('frond', name='bana_l2', base='#6aa443', var=0.15, grain=0.12, scale=0.9),
+          add_patches(P.M('frond', name='bana_l3', base='#5a9236', var=0.15, grain=0.12, scale=0.9), '#a89a4a', 0.7, 0.6, 0.7, 0.9)]
+    dry = P.M('frond_dry', name='bana_dry', base='#7a5e36', var=0.2, grain=0.2)
+    stems = [(V((0, 0, 0)), V((0.4, -0.3, 13.0)), 1.0), (V((2.2, 1.2, 0)), V((3.4, 2.0, 10.5)), 0.85), (V((-1.8, 1.6, 0)), V((-2.6, 2.4, 8.5)), 0.7)]
+    for si, (b, t, r) in enumerate(stems):
+        for lv, sg, pp in (((0, 0), 5, [b, b.lerp(t, 0.5), t]), ((1, 2), 4, [b, t])):
+            ob = taper(T.name('stem'), pp, [r, r * 0.62] if len(pp) == 2 else [r, r * 0.8, r * 0.62], seg=sg, mat=stem, cap_end=False)
+            ob['uvs'] = WOOD_UV
+            P.wind(ob, lambda co, i, tz=t.z: 0.3 * min(1.0, max(0.0, co.z) / tz) ** 1.4, 0.0, 0.0)
+            T.add(ob, *lv)
+        nl = (5, 4, 3)[si]
+        for k in range(nl):
+            az = k * 2 * math.pi / nl + si * 0.9 + rnd.uniform(-0.3, 0.3)
+            L = (11.0, 9.5, 8.0)[si] * rnd.uniform(0.85, 1.1)
+            rise = rnd.uniform(45, 70) if k else 80
+            ob, o = banana_leaf(T.name('leaf'), t + V((0, 0, -0.3)), az, L, L * 0.34, rise, lm[(k + si) % 3], seed=rnd.randrange(10 ** 6))
+            ph = rnd.random()
+            P.wind(ob, lambda co, i, o=o, L=L: 0.3 + 0.7 * min(1.0, (co - o).length / L) ** 1.2, ph,
+                   lambda co, i, o=o, L=L: 0.3 + 0.7 * min(1.0, (co - o).length / L))
+            T.add(ob, 0, 0)
+            if k < (3, 2, 2)[si]:
+                ob, o = banana_leaf(T.name('leaf1'), t + V((0, 0, -0.3)), az, L, L * 0.36, rise, lm[(k + si) % 3], seed=rnd.randrange(10 ** 6), n=3, torn=0.0)
+                P.wind(ob, lambda co, i, o=o, L=L: 0.3 + 0.7 * min(1.0, (co - o).length / L) ** 1.2, ph,
+                       lambda co, i, o=o, L=L: 0.3 + 0.7 * min(1.0, (co - o).length / L))
+                T.add(ob, 1, 2 if k < (2, 2, 1)[si] else 1)
+        if si == 0:
+            # a dry leaf hanging down the stem + a bunch with its purple bud
+            ob, o = banana_leaf(T.name('dry'), t + V((0, 0, -1.2)), 2.4, 7.0, 2.0, -60, dry, seed=5, n=4, torn=0.5, hang=40)
+            P.wind(ob, lambda co, i, o=o: 0.3 + 0.4 * min(1.0, (co - o).length / 7.0), rnd.random(), 0.3)
+            T.add(ob, 0, 0)
+            bunch_c = t + V((1.4, -1.6, -2.2))
+            T.clump(bunch_c, 1.1, P.M('mango_fruit', name='bana_bunch', base='#7a9a38', var=0.2), lods=(0, 0), seg=5, rings=3,
+                    scale=(0.9, 0.9, 1.5), noise=0.25, flat=0.0, flutter=0.0)
+            bud = taper(T.name('bud'), [bunch_c + V((0.2, -0.2, -1.4)), bunch_c + V((0.4, -0.4, -3.6))], (0.55, 0.05), seg=4,
+                        mat=P.M('flower_red', name='bana_bud', base='#6a2438', var=0.1), cap_end=False)
+            P.wind(bud, T.bend, 0.2, 0.0)
+            T.add(bud, 0, 0)
+    T.finish('banana', tex=128)
 
 
 # =========================================================================== broadleaf trees
-def crown(T, center, radii, n_big, n_small, mats, r_big, r_small, lod1_n, r_lod1, lod2_n, r_lod2, spray_mat=None,
+def crown(T, c, radii, mats, n0, r0, n_s, r_s, n1, r1, n2, r2, spray_mat=None, sprays=None, flat=0.35, shell=0.55,
+          scale0=(1, 1, 0.8), top_bias=0.25, seg0=(6, 3), seg1=(6, 3), noise0=0.28):
+    """Vertex-lean crown: LOD0 = n0 big lumps (seg0) + n_s small lumps (5x3) + star sprays on the
+    silhouette; LOD1 = n1 masses; LOD2 = n2 masses. Returns the LOD0 big clump centres."""
+    rnd = T.rnd
+    c = V(c)
+    big = scatter(rnd, c, (radii[0] - r0 * 0.7, radii[1] - r0 * 0.7, radii[2] - r0 * 0.6), n0, shell=shell,
+                  top_bias=top_bias, min_d=r0 * 0.9)
+    for p in big:
+        hi = (p.z - c.z) / radii[2]
+        m = mats[min(len(mats) - 1, max(0, int((hi + 1) / 2 * len(mats))))]
+        T.clump(p, r0 * rnd.uniform(0.8, 1.2), m, lods=(0, 0), flat=flat, seg=seg0[0], rings=seg0[1], scale=scale0, noise=noise0)
+    small = scatter(rnd, c, (radii[0] - r_s * 0.5, radii[1] - r_s * 0.5, radii[2] - r_s * 0.4), n_s,
+                    shell=0.85, top_bias=top_bias * 0.5, min_d=r_s * 1.4)
+    for p in small:
+        T.clump(p, r_s * rnd.uniform(0.8, 1.2), mats[rnd.randrange(len(mats))], lods=(0, 0), flat=0.2, seg=5, rings=3,
+                scale=scale0, noise=0.25)
+    if spray_mat is not None and sprays:
+        edge_sprays(T, c, radii, big + small, spray_mat, **sprays)
+    l1 = scatter(rnd, c, (radii[0] - r1 * 0.7, radii[1] - r1 * 0.7, radii[2] - r1 * 0.6), n1, shell=0.45,
+                 top_bias=top_bias, min_d=r1 * 0.8)
+    for i, p in enumerate(l1):
+        T.clump(p, r1 * rnd.uniform(0.9, 1.1), mats[i % len(mats)], lods=(1, 1), flat=flat, seg=seg1[0], rings=seg1[1],
+                noise=0.2, scale=scale0)
+    l2 = scatter(rnd, c, (radii[0] - r2 * 0.75, radii[1] - r2 * 0.75, radii[2] - r2 * 0.6), n2, shell=0.3,
+                 top_bias=top_bias, min_d=r2 * 0.7)
+    for i, p in enumerate(l2):
+        T.clump(p, r2, mats[i % len(mats)], lods=(2, 2), seg=5, rings=3, noise=0.18, flat=flat, scale=scale0)
+    return big
+
+
+def limbs_to(T, fork, targets, r0, r1=0.25, seg=5, mat=None, lods=(0, 1), rise=0.35, n=4):
+    for t in targets:
+        t = V(t)
+        f = V(fork)
+        mid = f.lerp(t, 0.45) + V((0, 0, (t - f).length * rise * 0.3))
+        mid.z = max(mid.z, f.z + (t.z - f.z) * 0.6)
+        T.limb(bez(f, mid, t, n), (r0, r1), seg=seg, mat=mat, lods=lods, phase=T.rnd.random())
+
+
+
+# --------------------------------------------------------------------------- neem
+@kit.asset('tree_neem', 'prop', kind='neem')
+def build_neem(A):
+    T = Tree(A, 3303, zt=10.0, tb=0.22, Rc=13.0)
+    bark = P.M('bark', name='neem_bark', base='#55493f', var=0.14, grain=0.3, grime=0.5, dirt='#221c18', scale=2.5)
+    tp = [V((0, 0, 0)), V((0.3, 0.1, 5)), V((0.6, 0, 10.5))]
+    T.trunk(tp, [1.35, 0.95, 0.8], seg=6, mat=bark, lods=(0, 0), flute_kw=dict(lobes=3, amp=0.12, zmax=2.5, flare=0.35))
+    T.trunk([tp[0], tp[-1]], [1.35, 0.8], seg=4, mat=bark, lods=(1, 2))
+    c = V((0.4, 0, 20.5))
+    radii = (12.0, 11.5, 9.0)
+    mats = [leafmat('neem_l1', '#34602a'), leafmat('neem_l2', '#3f6e2e'), leafmat('neem_l3', '#4e8036')]
+    big = crown(T, c, radii, mats, 13, 4.1, 0, 2.6, 6, 5.6, 3, 7.6,
+                spray_mat=leafmat('neem_spray', '#467630', specks=0.4),
+                sprays=dict(n_per=1, length=3.4, width=0.9, blades=4, droop=0.3, outer=0.85, zmin=c.z - 2),
+                flat=0.35, shell=0.5, scale0=(1, 1, 0.85))
+    tg = sorted(big, key=lambda p: p.z)[:3]
+    limbs_to(T, tp[-1], [p.lerp(c, 0.25) for p in tg], 0.6, 0.2, seg=4, mat=bark, lods=(0, 0), n=3)
+    T.finish('neem', tex=128)
+
+
+# --------------------------------------------------------------------------- gulmohar (shared builder)
+def gulmohar(A, flowering):
+    """One builder, same mesh: flowering = flame-red flower patches (most on the top clumps) + red
+    sprays; green = same geometry with green materials (variant 'green')."""
+    T = Tree(A, 5505, zt=8.5, tb=0.2, Rc=15.0)
+    bark = P.M('bark_grey', name='gul_bark', base='#6e665c', var=0.12, grain=0.22, grime=0.45, scale=2.0)
+    tp = [V((0, 0, 0)), V((0.3, 0.2, 4.2)), V((0.6, 0.1, 8.5))]
+    T.trunk(tp, [1.25, 0.95, 0.85], seg=6, mat=bark, lods=(0, 0), flute_kw=dict(lobes=4, amp=0.12, zmax=2.0, flare=0.35))
+    T.trunk([tp[0], tp[-1]], [1.25, 0.85], seg=4, mat=bark, lods=(1, 2))
+    c = V((0.6, 0, 22.5))
+    radii = (15.0, 14.0, 6.2)
+    if flowering:
+        mats = [add_patches(leafmat('gul_f1', '#5a8a34'), '#d8341a', 0.22, 0.56, 0.62, 1.0, seed=1.0),
+                add_patches(leafmat('gul_f2', '#62903a'), '#e04a1c', 0.22, 0.5, 0.56, 1.0, seed=2.0),
+                add_patches(leafmat('gul_f3', '#6a963c'), '#d83018', 0.22, 0.44, 0.5, 1.0, seed=3.0)]
+        spray = P.M('flower_red', name='gul_flower', base='#e0401c', var=0.15)
+    else:
+        mats = [leafmat('gul_g1', '#4e7e30'), leafmat('gul_g2', '#5c8e36'), leafmat('gul_g3', '#6c9c3e')]
+        spray = leafmat('gul_spray', '#6a9a3c', specks=0.4)
+    crown(T, c, radii, mats, 14, 4.4, 0, 2.6, 6, 6.2, 3, 7.8, spray_mat=spray,
+          sprays=dict(n_per=1, length=3.2, width=1.1, blades=4, droop=0.0, outer=0.85, spread=1.6, zmin=c.z),
+          flat=0.55, shell=0.45, top_bias=0.1, scale0=(1.2, 1.2, 0.72))
+    tg = []
+    for k in range(4):
+        a = k * 2 * math.pi / 4 + 0.5
+        tg.append(c + V((math.cos(a) * 8.5, math.sin(a) * 8.0, -3.0)))
+    limbs_to(T, tp[-1], tg, 0.7, 0.3, seg=4, mat=bark, lods=(0, 0), rise=0.2, n=3)
+    T.finish('gulmohar', tex=128)
+    if not flowering:
+        A.meta['variant'] = 'green'
+
+
+@kit.asset('tree_gulmohar', 'prop', kind='gulmohar')
+def build_gulmohar(A):
+    gulmohar(A, True)
+
+
+@kit.asset('tree_gulmohar_green', 'prop', kind='gulmohar', variant='green')
+def build_gulmohar_green(A):
+    gulmohar(A, False)
+
+
+# =========================================================================== not registered (pack budget)
+# The orchestrator's pack budget left no room for these; the builders are kept (crown() of the first
+# pass, heavier: ~60-90 KB manifest each) but NOT registered, so the runtime falls back for banyan /
+# ashoka / mango / tamarind. Re-register (and slim like neem) if the budget ever allows.
+def crown_v1(T, center, radii, n_big, n_small, mats, r_big, r_small, lod1_n, r_lod1, lod2_n, r_lod2, spray_mat=None,
           sprays=dict(), flat=0.35, shell=0.55, big_kw=None, small_kw=None, top_bias=0.25, limb_to=None):
     """Clumps for LOD0 (big lumps + small outer bumps + edge sprays), LOD1 masses, LOD2 masses.
     Returns the LOD0 big clump centres (for limbs)."""
@@ -654,41 +852,6 @@ def crown(T, center, radii, n_big, n_small, mats, r_big, r_small, lod1_n, r_lod1
     return big
 
 
-def limbs_to(T, fork, targets, r0, r1=0.25, seg=5, mat=None, lods=(0, 1), rise=0.35, n=4):
-    for t in targets:
-        t = V(t)
-        f = V(fork)
-        mid = f.lerp(t, 0.45) + V((0, 0, (t - f).length * rise * 0.3))
-        mid.z = max(mid.z, f.z + (t.z - f.z) * 0.6)
-        T.limb(bez(f, mid, t, n), (r0, r1), seg=seg, mat=mat, lods=lods, phase=T.rnd.random())
-
-
-# --------------------------------------------------------------------------- neem
-@kit.asset('tree_neem', 'prop', kind='neem')
-def build_neem(A):
-    T = Tree(A, 3303, zt=10.0, tb=0.22, Rc=13.0)
-    bark = P.M('bark', name='neem_bark', base='#4e443c', var=0.14, grain=0.3, grime=0.5, dirt='#221c18', scale=2.5)
-    tp = [V((0, 0, 0)), V((0.2, 0.1, 4)), V((0.5, -0.1, 8)), V((0.6, 0, 10.5))]
-    T.trunk(tp, [1.35, 1.0, 0.9, 0.8], seg=7, mat=bark, lods=(0, 2), flute_kw=dict(lobes=4, amp=0.12, zmax=2.5, flare=0.35))
-    c = V((0.4, 0, 20.5))
-    radii = (12.0, 11.5, 9.0)
-    mats = [leafmat('neem_l1', '#36602a', specks=0.6, scale=0.22),
-            leafmat('neem_l2', '#3f6e2e', specks=0.6, scale=0.22),
-            leafmat('neem_l3', '#4c7c34', specks=0.6, scale=0.22)]
-    big = crown(T, c, radii, 7, 9, mats, 5.0, 2.6, 6, 6.2, 4, 7.0,
-                spray_mat=leafmat('neem_spray', '#4a7a30', specks=0.3, scale=0.3),
-                sprays=dict(n_per=1, length=3.2, width=0.9, blades=5, droop=0.3, outer=0.72, zmin=c.z - 4),
-                big_kw=dict(seg=7, rings=5, noise=0.24), flat=0.35)
-    # forked limbs reaching into the lower clumps
-    fork = tp[-1]
-    tg = sorted(big, key=lambda p: p.z)[:4]
-    limbs_to(T, fork, [p.lerp(c, 0.25) for p in tg], 0.62, 0.22, seg=5, mat=bark, lods=(0, 1))
-    limbs_to(T, tp[2], [c + V((-5, 4, -3)), c + V((4, -5, -2.5))], 0.45, 0.18, seg=4, mat=bark, lods=(0, 0))
-    T.finish('neem', tex=256)
-
-
-# --------------------------------------------------------------------------- banyan
-@kit.asset('tree_banyan', 'prop', kind='banyan')
 def build_banyan(A):
     T = Tree(A, 4404, zt=13.0, tb=0.18, Rc=20.0, above=0.4)
     rnd = T.rnd
@@ -702,7 +865,7 @@ def build_banyan(A):
     mats = [leafmat('ban_l1', '#2f5a24', specks=0.55, scale=0.2),
             leafmat('ban_l2', '#3a6a2a', specks=0.55, scale=0.2),
             leafmat('ban_l3', '#4a7a32', specks=0.55, scale=0.2)]
-    big = crown(T, c, radii, 7, 8, mats, 6.0, 3.2, 6, 7.2, 5, 8.5,
+    big = crown_v1(T, c, radii, 7, 8, mats, 6.0, 3.2, 6, 7.2, 5, 8.5,
                 spray_mat=leafmat('ban_spray', '#3e6c2a', specks=0.3, scale=0.3),
                 sprays=dict(n_per=1, length=3.6, width=1.6, blades=4, droop=0.35, outer=0.7, zmin=c.z - 3, spread=1.2),
                 big_kw=dict(seg=7, rings=4, noise=0.22, scale=(1.25, 1.25, 0.7)), flat=0.45, shell=0.35, top_bias=0.1,
@@ -748,52 +911,8 @@ def build_banyan(A):
     T.finish('banyan', tex=256)
 
 
-# --------------------------------------------------------------------------- gulmohar (shared builder)
-def gulmohar(A, flowering):
-    T = Tree(A, 5505, zt=8.5, tb=0.2, Rc=15.0)
-    rnd = T.rnd
-    bark = P.M('bark_grey', name='gul_bark', base='#6e665c', var=0.12, grain=0.22, grime=0.45, scale=2.0)
-    tp = [V((0, 0, 0)), V((0.3, 0.2, 4)), V((0.6, 0.1, 8.5))]
-    T.trunk(tp, [1.25, 0.95, 0.85], seg=7, mat=bark, lods=(0, 2), flute_kw=dict(lobes=4, amp=0.12, zmax=2.0, flare=0.35))
-    c = V((0.6, 0, 23.0))
-    radii = (15.5, 14.5, 4.8)
-    if flowering:
-        mats = [add_patches(leafmat('gul_f1', '#5e8c34', specks=0.4, scale=0.25), '#d8341a', 0.55, 0.42, 0.5, 1.0, seed=1.0),
-                add_patches(leafmat('gul_f2', '#6a9638', specks=0.4, scale=0.25), '#e0501e', 0.6, 0.38, 0.46, 1.0, seed=2.0),
-                add_patches(leafmat('gul_f3', '#5a8632', specks=0.4, scale=0.25), '#cc2a16', 0.5, 0.45, 0.53, 1.0, seed=3.0)]
-        spray = P.M('flower_red', name='gul_flower', base='#dc3a1c', specks=0.4, scale=0.4, var=0.15)
-    else:
-        mats = [leafmat('gul_g1', '#5c8e36', specks=0.5, scale=0.25),
-                leafmat('gul_g2', '#6c9c3e', specks=0.5, scale=0.25),
-                leafmat('gul_g3', '#4e7e30', specks=0.5, scale=0.25)]
-        spray = leafmat('gul_spray', '#6a9a3c', specks=0.3, scale=0.3)
-    big = crown(T, c, radii, 7, 9, mats, 5.0, 2.5, 6, 6.0, 4, 7.2, spray_mat=spray,
-                sprays=dict(n_per=1, length=3.0, width=1.1, blades=5, droop=0.15, outer=0.62, spread=1.6),
-                big_kw=dict(seg=7, rings=4, noise=0.2, scale=(1.3, 1.3, 0.62)), flat=0.5, shell=0.3, top_bias=0.0,
-                small_kw=dict(kind='ico', subdiv=1, noise=0.25, scale=(1.2, 1.2, 0.7)))
-    fork = tp[-1]
-    tg = []
-    for k in range(5):
-        a = k * 2 * math.pi / 5 + 0.5
-        tg.append(c + V((math.cos(a) * 9.5, math.sin(a) * 9.0, -2.5)))
-    limbs_to(T, fork, tg, 0.55, 0.2, seg=5, mat=bark, lods=(0, 1), rise=0.2, n=4)
-    T.finish('gulmohar', tex=256)
-    if not flowering:
-        A.meta['variant'] = 'green'
 
 
-@kit.asset('tree_gulmohar', 'prop', kind='gulmohar')
-def build_gulmohar(A):
-    gulmohar(A, True)
-
-
-@kit.asset('tree_gulmohar_green', 'prop', kind='gulmohar', variant='green')
-def build_gulmohar_green(A):
-    gulmohar(A, False)
-
-
-# --------------------------------------------------------------------------- ashoka (pendula)
-@kit.asset('tree_ashoka', 'prop', kind='ashoka')
 def build_ashoka(A):
     T = Tree(A, 6606, zt=38.0, tb=0.3, Rc=4.5, above=1.0)
     rnd = T.rnd
@@ -836,8 +955,8 @@ def build_ashoka(A):
     T.finish('ashoka', tex=256)
 
 
-# --------------------------------------------------------------------------- mango
-@kit.asset('tree_mango', 'prop', kind='mango')
+
+
 def build_mango(A):
     T = Tree(A, 7707, zt=7.0, tb=0.18, Rc=13.0)
     rnd = T.rnd
@@ -849,7 +968,7 @@ def build_mango(A):
     mats = [leafmat('mango_l1', '#1f4a1c', specks=0.45, scale=0.2, rough=0.45),
             leafmat('mango_l2', '#265420', specks=0.45, scale=0.2, rough=0.45),
             leafmat('mango_l3', '#305e26', specks=0.45, scale=0.2, rough=0.45)]
-    big = crown(T, c, radii, 7, 9, mats, 5.4, 2.8, 6, 6.6, 4, 7.6,
+    big = crown_v1(T, c, radii, 7, 9, mats, 5.4, 2.8, 6, 6.6, 4, 7.6,
                 spray_mat=leafmat('mango_spray', '#2a5a22', specks=0.3, scale=0.3, rough=0.45),
                 sprays=dict(n_per=1, length=3.4, width=1.2, blades=4, droop=0.45, outer=0.75, spread=1.1, zmin=c.z - 6),
                 big_kw=dict(seg=7, rings=5, noise=0.2), flat=0.4, shell=0.5, top_bias=0.35)
@@ -865,8 +984,8 @@ def build_mango(A):
     T.finish('mango', tex=256)
 
 
-# --------------------------------------------------------------------------- tamarind
-@kit.asset('tree_tamarind', 'prop', kind='tamarind')
+
+
 def build_tamarind(A):
     T = Tree(A, 8808, zt=9.0, tb=0.18, Rc=15.0)
     rnd = T.rnd
@@ -883,7 +1002,7 @@ def build_tamarind(A):
     ns = (3, 3, 3)
     allbig = []
     for li, ((c, rr), b, s) in enumerate(zip(lobes, nb, ns)):
-        big = crown(T, c, rr, b, s, mats, 4.6, 2.4, 2, 6.0, 1 if li < 2 else 1, 7.5, spray_mat=spray,
+        big = crown_v1(T, c, rr, b, s, mats, 4.6, 2.4, 2, 6.0, 1 if li < 2 else 1, 7.5, spray_mat=spray,
                     sprays=dict(n_per=1, length=3.0, width=0.8, blades=6, droop=0.3, outer=0.68, spread=1.6, zmin=c.z - 3),
                     big_kw=dict(seg=7, rings=5, noise=0.25), flat=0.35, shell=0.5)
         allbig += big
