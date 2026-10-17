@@ -1368,11 +1368,11 @@ def animal_cow(A):
 
     def fleg(x):
         return dict(P=(x, -2.2, 4.3), K=(x, -2.2, 1.6), F=(x, -2.38, 0.0), flesh=0.9,
-                    pts=[(-2.2, 4.4, 0.5), (-2.25, 3.0, 0.38), (-2.2, 1.6, 0.25), (-2.25, 0.75, 0.19), (-2.3, 0.38, 0.21)], hoof=(0.21, 0.25))
+                    pts=[(-2.2, 4.4, 0.5), (-2.25, 3.0, 0.38), (-2.2, 1.6, 0.25), (-2.3, 0.38, 0.2)], hoof=(0.21, 0.25))
 
     def hleg(x):
         return dict(P=(x, 2.8, 4.6), K=(x, 3.35, 2.05), F=(x, 3.12, 0.0), flesh=1.0, flesh_w=0.55,
-                    pts=[(2.8, 4.7, 0.62), (3.0, 3.3, 0.45), (3.35, 2.05, 0.22), (3.2, 0.9, 0.17), (3.15, 0.38, 0.2)], hoof=(0.2, 0.24))
+                    pts=[(2.8, 4.7, 0.62), (3.0, 3.3, 0.45), (3.35, 2.05, 0.22), (3.15, 0.38, 0.19)], hoof=(0.2, 0.24))
     legs = {'FL': fleg(xL), 'FR': fleg(-xL), 'HL': hleg(xL), 'HR': hleg(-xL)}
     for k, L in legs.items():
         x = L['P'][0]
@@ -1433,7 +1433,6 @@ def animal_cow(A):
 
     def stand(t):
         Pd = {}
-        Pd['root'] = (None, (0, 0, 0.02 * math.sin(TAU * 2 * t)))
         idle_head(Pd, t)
         tail_swish(Pd, t)
         return stand_legs(Sk, Q, Pd)
@@ -1452,19 +1451,14 @@ def animal_cow(A):
 
     def lie(t):
         Pd = {}
-        Pd['root'] = (qe(0, 0.07, 0), (0, 0, -LIE_DROP))
-        # forelegs folded under the chest (carpus forward), hind legs tucked to the left
-        for lg, s in (('FL', 1), ('FR', -1)):
-            Pd['leg_%s_upper' % lg] = (qe(-1.2, 0, 0), None)
-            Pd['leg_%s_lower' % lg] = (qe(2.75, 0, 0), None)
-        Pd['leg_HL_upper'] = (qe(-1.2, 0.5, 0), None)
-        Pd['leg_HL_lower'] = (qe(2.2, 0, 0), None)
-        Pd['leg_HR_upper'] = (qe(-1.3, 0.9, 0.3), None)
-        Pd['leg_HR_lower'] = (qe(2.3, 0, 0), None)
+        Pd['root'] = (qe(0, 0.04, 0), (0, 0, -LIE_DROP))
         idle_head(Pd, t, look=0.45)
-        Pd['neck'] = (qe(0.12, 0, Pd['neck'][0].to_euler().z), None)
-        Pd['tail1'] = (qe(-0.6, 0.9, 0), None)
-        Pd['tail2'] = (qe(-0.4, 0.3 + 0.15 * win(t, 0.5, 0.55, 0.6, 0.66), 0), None)
+        Pd['neck'] = (qe(0.1, 0, Pd['neck'][0].to_euler().z), None)
+        Pd['tail1'] = (qe(-0.5, 0, 1.0 + 0.12 * win(t, 0.5, 0.55, 0.6, 0.66)), None)
+        # forelegs folded under the chest (knee forward), hind legs folded with the hocks out behind
+        for lg, k, dy in (('FL', -1, 0.9), ('FR', -1, 0.8), ('HL', 1, -1.3), ('HR', 1, -1.1)):
+            L = Q['legs'][lg]
+            Sk.leg(Pd, lg, L['F'][1] + dy, 0.12, k)
         return Pd
     mkclip(A, arm, 'lie', 4 * FPS_F, lie)
     check(A, arm, ob, ['stand', 'walk', 'lie'], feet=['leg_%s_lower' % l for l in LEGS])
@@ -1550,46 +1544,36 @@ def animal_dog(A):
                    pitch=0.12, pitchph=0.5, reach={'F': -0.15, 'H': 0.05}),
               extra=run_extra, gait='rotary gallop')
 
-    SIT_P = -0.75
+    SIT_P = -0.5
 
     def sit(t):
         Pd = {}
-        Pd['root'] = (None, (0, 0.25, -0.62))
+        Pd['root'] = (None, (0, 0, -1.3))
         Pd['body'] = (qe(SIT_P, 0, 0), None)
-        Pd['chest'] = (qe(0.1, 0, 0), None)
         look = 0.45 * win(t, 0.25, 0.32, 0.5, 0.58) - 0.35 * win(t, 0.7, 0.76, 0.86, 0.92)
-        Pd['neck'] = (qe(0.5, 0, look), None)
-        Pd['head'] = (qe(0.05 + 0.08 * win(t, 0.6, 0.63, 0.66, 0.7), 0, 0.5 * look), None)
-        LR(Pd, 'ear', qe(0.4 * win(t, 0.1, 0.12, 0.14, 0.17), 0, 0))
-        Pd['jaw'] = (qe(0.12 + 0.06 * math.sin(TAU * 8 * t), 0, 0), None)   # panting
-        Pd['tail1'] = (qe(1.4, 0, 0.3), None)
-        Pd['tail2'] = (qe(0.3, 0, 0.6 + 0.2 * math.sin(TAU * 3 * t)), None)
+        Pd['neck'] = (qe(0.35, 0, look), None)
+        Pd['head'] = (qe(0.1 + 0.08 * win(t, 0.6, 0.63, 0.66, 0.7), 0, 0.5 * look), None)
+        Pd['tail1'] = (qe(1.6, 0, 0.0), None)
+        Pd['tail2'] = (qe(0.4, 0, 0.0), None)
         for lg in ('FL', 'FR'):
-            L = Q['legs'][lg]
-            Sk.leg(Pd, lg, L['F'][1] + 0.15, 0.0, -1)
+            Sk.leg(Pd, lg, Q['legs'][lg]['F'][1] + 0.25, 0.0, -1)
         for lg in ('HL', 'HR'):
-            L = Q['legs'][lg]
-            Sk.leg(Pd, lg, L['F'][1] - 1.0, 0.0, 1)
+            Sk.leg(Pd, lg, 0.55, 0.0, 1)
         return Pd
 
     def lie(t):
         Pd = {}
-        br = 0.03 * math.sin(TAU * 3 * t)
-        Pd['root'] = (qe(0, 0.45, 0), (0.25, 0, -1.48))
-        Pd['body'] = (qe(0, 0, -0.35), None)
-        Pd['chest'] = (qe(0, br, 0.55), None)
-        Pd['neck'] = (qe(0.55, 0, 0.75), None)
-        Pd['head'] = (qe(0.2 - 0.05 * win(t, 0.55, 0.6, 0.7, 0.75), -0.3, 0.3), None)
-        LR(Pd, 'ear', qe(0.9, 0, 0.3))
-        Pd['ear_R'] = (mir(qe(0.9 + 0.5 * win(t, 0.4, 0.42, 0.44, 0.47), 0, 0.3)), None)
-        for lg in ('FL', 'FR'):
-            Pd['leg_%s_upper' % lg] = (qe(-1.35, 0, 0.0), None)
-            Pd['leg_%s_lower' % lg] = (qe(0.6, 0, 0), None)
+        br = 0.02 * math.sin(TAU * 2 * t)
+        Pd['root'] = (None, (0, 0, -1.5 + br))
+        Pd['chest'] = (qe(0, 0, 0.25), None)
+        Pd['neck'] = (qe(0.85, 0, 0.35), None)
+        Pd['head'] = (qe(-0.1 - 0.06 * win(t, 0.55, 0.6, 0.7, 0.75), -0.25, 0.25), None)
+        Pd['tail1'] = (qe(1.9, 0, -0.6), None)
+        for lg, a in (('FL', -1.3), ('FR', -1.15)):
+            Pd['leg_%s_upper' % lg] = (qe(a, 0, 0), None)
+            Pd['leg_%s_lower' % lg] = (qe(0.1, 0, 0), None)
         for lg in ('HL', 'HR'):
-            Pd['leg_%s_upper' % lg] = (qe(-1.4, 0, 0), None)
-            Pd['leg_%s_lower' % lg] = (qe(1.4, 0, 0), None)
-        Pd['tail1'] = (qe(1.5, 0, -0.9), None)
-        Pd['tail2'] = (qe(0.3, 0, -1.2), None)
+            Sk.leg(Pd, lg, 0.8, 0.12, 1)
         return Pd
     mkclip(A, arm, 'sit', 3 * FPS_F, sit)
     mkclip(A, arm, 'lie', 4 * FPS_F, lie)

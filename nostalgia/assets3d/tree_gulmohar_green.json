@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 38344,
+ "bytes": 41552,
  "clips": {},
  "family": "prop",
  "file": "tree_gulmohar_green.glb",
@@ -12,7 +12,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 37.4,
+ "kb": 40.6,
  "kit": 1,
  "materials": [
   "M_tree_gulmohar_green_imp",
@@ -66,7 +66,7 @@
      0,
      0
     ],
-    "tris": 136
+    "tris": 192
    },
    {
     "from": 420,
@@ -105,7 +105,7 @@
   29.621
  ],
  "tint": null,
- "tris": 686,
+ "tris": 742,
  "units": "u",
  "up": "Z"
 }

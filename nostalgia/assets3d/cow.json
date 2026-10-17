@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 48256,
+ "bytes": 44428,
  "clips": {
   "lie": {
    "duration": 4.0,
@@ -44,7 +44,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 47.1,
+ "kb": 43.4,
  "kit": 1,
  "materials": [
   "M_cow"
@@ -97,7 +97,7 @@
   6.981
  ],
  "tint": null,
- "tris": 675,
+ "tris": 635,
  "units": "u",
  "up": "Z"
 }
