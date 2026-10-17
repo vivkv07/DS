@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 60000,
- "bytes": 57320,
+ "bytes": 56580,
  "clips": {},
  "family": "hero_landmark",
  "file": "buddha_statue.glb",
@@ -11,7 +11,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 56.0,
+ "kb": 55.3,
  "kit": 1,
  "materials": [
   "M_buddha_statue"
@@ -35,17 +35,17 @@
  "min": [
   -18.142,
   -18.848,
-  -2.575
+  -2.704
  ],
  "notes": [],
  "script": "_lm_hussain",
  "size": [
   37.658,
   38.29,
-  96.975
+  97.104
  ],
  "tint": null,
- "tris": 689,
+ "tris": 678,
  "units": "u",
  "up": "Z"
 }

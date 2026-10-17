@@ -9,3 +9,50 @@ Info: Baking map saved to internal image, save it externally or pack it
 [kit] proxy-baked albedo 256² in 0.6s
 Info: Baking map saved to internal image, save it externally or pack it
 Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked ao 128² in 2.7s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+22:31:13 | INFO: Starting glTF 2.0 export
+22:31:13 | INFO: Extracting primitive: COL_tb_plinth
+22:31:13 | INFO: Primitives created: 1
+22:31:13 | INFO: Extracting primitive: tank_bund_statue_body
+22:31:13 | INFO: Primitives created: 1
+22:31:13 | INFO: Extracting primitive: tb_lanterns
+22:31:13 | INFO: Primitives created: 1
+22:31:13 | INFO: Extracting primitive: var_poet
+22:31:13 | INFO: Primitives created: 1
+22:31:13 | INFO: Extracting primitive: var_saint
+22:31:13 | INFO: Primitives created: 1
+22:31:13 | INFO: Extracting primitive: var_scholar
+22:31:13 | INFO: Primitives created: 1
+22:31:13 | INFO: Extracting primitive: var_warrior
+22:31:13 | INFO: Primitives created: 1
+22:31:13 | INFO: Finished glTF 2.0 export in 0.051308631896972656 s
+
+[kit] tank_bund_statue: 588 tris (budget 20000) ok, 46.0 KB, clips [], anchors 0
+22:31:13 | INFO: Data are loaded, start creating Blender stuff
+22:31:13 | INFO: Blender create Mesh node COL_tb_plinth
+22:31:13 | INFO: Blender create Mesh node tank_bund_statue_body
+22:31:13 | INFO: Blender create Mesh node tb_lanterns
+22:31:13 | INFO: Blender create Mesh node var_poet
+22:31:13 | INFO: Blender create Mesh node var_saint
+22:31:13 | INFO: Blender create Mesh node var_scholar
+22:31:13 | INFO: Blender create Mesh node var_warrior
+22:31:13 | INFO: glTF import finished in 0.02s
+00:09.290  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/tank_bund_statue.png'
+[kit] preview tank_bund_statue.png (320px, 14 spp) in 1.8s
+22:31:15 | INFO: Data are loaded, start creating Blender stuff
+22:31:15 | INFO: Blender create Mesh node COL_tb_plinth
+22:31:15 | INFO: Blender create Mesh node tank_bund_statue_body
+22:31:15 | INFO: Blender create Mesh node tb_lanterns
+22:31:15 | INFO: Blender create Mesh node var_poet
+22:31:15 | INFO: Blender create Mesh node var_saint
+22:31:15 | INFO: Blender create Mesh node var_scholar
+22:31:15 | INFO: Blender create Mesh node var_warrior
+22:31:15 | INFO: glTF import finished in 0.02s
+00:10.503  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/tank_bund_statue_poses.png'
+[kit] preview tank_bund_statue_poses.png (256px, 14 spp) in 1.2s
+[kit] done tank_bund_statue in 10.0s

@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 17984,
+ "bytes": 17468,
  "clips": {},
  "family": "landmark",
  "file": "musical_fountain.glb",
@@ -11,16 +11,18 @@
  "images": [
   "image/webp"
  ],
- "kb": 17.6,
+ "kb": 17.1,
  "kit": 1,
  "materials": [
-  "M_musical_fountain_lamp_lens@night",
+  "M_musical_fountain_jet_blue@night",
+  "M_musical_fountain_jet_pink@night",
+  "M_musical_fountain_jet_gold@night",
   "M_musical_fountain"
  ],
  "max": [
-  13.35,
-  9.35,
-  9.85
+  13.4,
+  8.94,
+  10.15
  ],
  "meta": {
   "draw": "musical_fountain",
@@ -33,19 +35,19 @@
   "height": 9.0
  },
  "min": [
-  -13.35,
-  -9.35,
+  -13.4,
+  -8.94,
   0.0
  ],
  "notes": [],
  "script": "_lm_hussain",
  "size": [
-  26.7,
-  18.7,
-  9.85
+  26.8,
+  17.88,
+  10.15
  ],
  "tint": null,
- "tris": 170,
+ "tris": 191,
  "units": "u",
  "up": "Z"
 }

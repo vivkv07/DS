@@ -1,25 +1,25 @@
-00:00.029  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.024  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building birla_planetarium (landmark)
-00:01.593  render           | Saved: '/tmp/nostalgia_blender/birla_planetarium_name_board.png'
+00:00.867  render           | Saved: '/tmp/nostalgia_blender/birla_planetarium_name_board.png'
 [kit] tris by part: dome_lo 252, plinth_lo 10, block_lo 10, portico_lo 10, sign_lo 10
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] proxy-baked albedo 224² in 0.4s
+[kit] proxy-baked albedo 224² in 0.2s
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] proxy-baked ao 112² in 1.2s
+[kit] proxy-baked ao 112² in 1.0s
 ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
 ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
-22:27:40 | INFO: Starting glTF 2.0 export
-22:27:40 | INFO: Extracting primitive: birla_planetarium_body
-22:27:40 | INFO: Primitives created: 1
-22:27:40 | INFO: Extracting primitive: name_board
-22:27:40 | INFO: Primitives created: 1
-22:27:40 | INFO: Finished glTF 2.0 export in 0.04613208770751953 s
+22:34:41 | INFO: Starting glTF 2.0 export
+22:34:41 | INFO: Extracting primitive: birla_planetarium_body
+22:34:41 | INFO: Primitives created: 1
+22:34:41 | INFO: Extracting primitive: name_board
+22:34:41 | INFO: Primitives created: 1
+22:34:41 | INFO: Finished glTF 2.0 export in 0.034982919692993164 s
 
-[kit] birla_planetarium: 294 tris (budget 20000) ok, 24.6 KB, clips [], anchors 0
-22:27:40 | INFO: Data are loaded, start creating Blender stuff
-22:27:40 | INFO: Blender create Mesh node birla_planetarium_body
-22:27:40 | INFO: Blender create Mesh node name_board
-22:27:40 | INFO: glTF import finished in 0.01s
-00:08.901  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/birla_planetarium.png'
-[kit] preview birla_planetarium.png (320px, 14 spp) in 2.3s
-[kit] done birla_planetarium in 8.0s
+[kit] birla_planetarium: 294 tris (budget 20000) ok, 24.1 KB, clips [], anchors 0
+22:34:41 | INFO: Data are loaded, start creating Blender stuff
+22:34:41 | INFO: Blender create Mesh node birla_planetarium_body
+22:34:41 | INFO: Blender create Mesh node name_board
+22:34:41 | INFO: glTF import finished in 0.01s
+00:06.824  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/birla_planetarium.png'
+[kit] preview birla_planetarium.png (320px, 14 spp) in 1.8s
+[kit] done birla_planetarium in 6.4s

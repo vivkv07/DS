@@ -251,7 +251,7 @@ def build_buddha(A):
     lo.append(L.place(kit.prism_from_outline('plat_steps_lo', [(-14.0, 3.2), (-14.0, 4.0), (-10.4, 6.3), (-9.0, 6.3), (-9.0, 3.2)], 5.4, axis='X'), (0, 0, 0)))
     rk = [o for o in parts if o.name.startswith(('rock', 'bould'))]
     rock_lo = kit.join([_copy_nomat(o, A) for o in rk], 'rock_lo')
-    L._auto_lo(rock_lo, 80)
+    L._auto_lo(rock_lo, 68)
     lo.append(rock_lo)
     trim(lo)
     report(lo)
@@ -522,6 +522,21 @@ def _oval_disc(name, rx, ry, z, mat, seg=24):
     return kit.obj_from_bm(bm, name, mat)
 
 
+def _night_mat(aid, name, col):
+    """a final (export-ready) unbaked emissive material named '*@night' (finish_proxy keeps it as
+    is, so several lamp colours keep distinct names; kit.glass_material would merge them)"""
+    import bpy
+    m = bpy.data.materials.get('M_%s_%s@night' % (aid, name)) or bpy.data.materials.new('M_%s_%s@night' % (aid, name))
+    m.use_nodes = True
+    m.use_backface_culling = True
+    b = m.node_tree.nodes.get('Principled BSDF')
+    b.inputs['Base Color'].default_value = kit.lin(col)
+    b.inputs['Roughness'].default_value = 0.2
+    b.inputs['Emission Color'].default_value = kit.lin(col)
+    b.inputs['Emission Strength'].default_value = 1.0
+    return m
+
+
 @kit.asset('musical_fountain', 'landmark', draw='musical_fountain', face='s', footprint=[26, 18], height=9.0, fit='footprint')
 def build_musical_fountain(A):
     """Lumbini Park musical fountain: an oval granite-rimmed basin of blue water with nozzle
@@ -544,23 +559,26 @@ def build_musical_fountain(A):
         for x in (-10.0, -6.5, -3.0, 0.0, 3.0, 6.5, 10.0):
             yy = y * 0.55 if abs(x) > 9.5 else y
             parts.append(box('uw_lamp', (0.7, 0.7, 0.05), (x, yy, 0.86), FOAM, base=True))
-    lo.append(_oval_ring('rim_lo', 13.35, 9.35, 11.55, 7.55, 0.0, 1.62, None, seg=12))
-    lo.append(_oval_disc('water_lo', 11.6, 7.6, 0.9, None, seg=12))
+    lo.append(_oval_ring('rim_lo', 13.4, 9.4, 11.5, 7.5, 0.0, 1.62, None, seg=10))
+    lo.append(_oval_disc('water_lo', 11.6, 7.6, 0.9, None, seg=10))
     # the jets: glowing water columns (three colours), kept unbaked
-    BLUE, PINK, GOLD = L.lamp('#9edcff', 'jet_blue'), L.lamp('#ffa0da', 'jet_pink'), L.lamp('#ffdc80', 'jet_gold')
+    BLUE, PINK, GOLD = _night_mat(A.id, 'jet_blue', '#3aa0ff'), _night_mat(A.id, 'jet_pink', '#ff4fb0'), _night_mat(A.id, 'jet_gold', '#ffb21c')
     jets = []
     for (x, h, r, m) in ((0, 9.0, 0.8, BLUE), (-4.5, 6.5, 0.6, PINK), (4.5, 6.5, 0.6, PINK), (-8.5, 4.2, 0.55, GOLD), (8.5, 4.2, 0.55, GOLD)):
-        jets.append(cylinder('jet', r, h, (x, 0, 0.85), seg=4, mat=m, r2=0.08, cap=False))
+        jets.append(lathe('jet', [(0.35 * r / 0.6, 0.85), (0.8 * r / 0.6, 0.85 + h), (0.0, 0.85 + h + 0.3)], seg=5, mat=m, loc=(x, 0, 0), close_bottom=False))
     for y in (-3.6, 3.6):
         for i, x in enumerate((-7.0, -2.4, 2.4, 7.0)):
-            j = cylinder('fan', 0.35, 3.6, (0, 0, 0), seg=3, mat=BLUE if i % 2 else GOLD, r2=0.05, cap=False)
-            j.rotation_euler = (math.copysign(0.35, -y), 0, 0)
+            j = cylinder('fan', 0.25, 3.6, (0, 0, 0), seg=3, mat=BLUE if i % 2 else GOLD, r2=0.55, cap=False)
+            j.rotation_euler = (math.copysign(0.5, -y), 0, 0)
             j.location = (x, y, 0.85)
             kit.apply_transform(j)
             jets.append(j)
-    keep = [kit.join(jets, 'jets')]
+    keep = [kit.smooth(kit.join(jets, 'jets'), 80)]
+    jet_idx = [p_.material_index for p_ in keep[0].data.polygons]
     report(lo)
     L.finish_proxy(A, parts, lo=lo, keep=keep, size=256, ao_samples=48, ao_strength=0.6)
+    for p_, i_ in zip(keep[0].data.polygons, jet_idx):   # finish_proxy's slot reset zeroes the indices: restore them
+        p_.material_index = i_
     L.shots(A, az=-30, el=24)
 
 
@@ -803,7 +821,7 @@ def build_birla_planetarium(A):
     hi.append(box('pback', (14, 1.0, 8.2), (0, PY1 + 0.3, 0.8), GL, base=True))
     hi.append(box('pl_board', (21.0, 0.3, 3.4), (0, PY0 - 0.2, 9.9), L.paint('#1d4e8a', 'pl_board', var=0.0, grain=0.0, grime=0.0, streaks=0.0), base=True))
     from _lm_civic import sign_keep
-    keep = [sign_keep(A.id, 'name_board', 'PLANETARIUM', 20.8, 3.2, (0, PY0 - 0.2 - 0.47, 11.6), fg='#ffffff', bg='#1d4e8a', pw=256, ph=40)]
+    keep = [sign_keep(A.id, 'name_board', 'PLANETARIUM', 20.8, 3.2, (0, PY0 - 0.2 - 0.47, 11.6), fg='#ffffff', bg='#1d4e8a', pw=224, ph=32)]
     lo.append(L.shell_box('portico_lo', (20.4, PY1 - PY0 + 0.8, 9.3), (0, (PY0 + PY1) / 2, 0.8)))
     lo.append(L.shell_box('sign_lo', (21.4, 0.9, 3.7), (0, PY0 - 0.2, 9.85)))
     trim(lo)

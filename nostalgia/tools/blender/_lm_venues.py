@@ -316,7 +316,7 @@ def build_lb_stadium(A):
     LC.append(xf(wall_quad('s_sbm', -20.2, 20.2, 29.0, 33.4, -0.2), PI / 2, sbx + 2.4, 0))
     # the stadium name: its own small text texture (the 512 atlas is too coarse for lettering)
     img = kit.text_image('LAL BAHADUR STADIUM', 256, 40, fg='#ffffff', bg='#1d4e8a', name='lb_signtex')
-    sgn = wall_quad('lb_signq', -22.6, 22.6, 31 - 9.4, 31 - 4.2, -YB + 3.5 - 3.45, kit.baked_material('M_lb_sign', img.filepath_raw, rough=0.6))
+    sgn = wall_quad('lb_signq', -22.6, 22.6, 31 - 9.4, 31 - 4.2, -YB + 3.5 - 3.7, kit.baked_material('M_lb_sign', img.filepath_raw, rough=0.6))
     uvl = sgn.data.uv_layers.new(name='UVMap')
     for li, lp in enumerate(sgn.data.loops):
         co = sgn.data.vertices[lp.vertex_index].co

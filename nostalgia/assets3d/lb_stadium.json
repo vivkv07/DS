@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 63220,
+ "bytes": 63296,
  "clips": {},
  "family": "landmark",
  "file": "lb_stadium.glb",
@@ -12,7 +12,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 61.7,
+ "kb": 61.8,
  "kit": 1,
  "materials": [
   "M_lb_sign",

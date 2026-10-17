@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 48348,
+ "bytes": 47124,
  "clips": {},
  "family": "landmark",
  "file": "tank_bund_statue.glb",
@@ -11,7 +11,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 47.2,
+ "kb": 46.0,
  "kit": 1,
  "materials": [
   "M_tank_bund_statue",
@@ -53,7 +53,7 @@
   42.924
  ],
  "tint": null,
- "tris": 594,
+ "tris": 588,
  "units": "u",
  "up": "Z"
 }
