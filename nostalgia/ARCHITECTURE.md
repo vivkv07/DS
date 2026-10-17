@@ -454,9 +454,9 @@ stick direction, throttle = stick magnitude). RUN button = handbrake in vehicles
 
 ## 9. Input — `N.input`
 
-Actions: `up down left right action run horn map journal pause radio`.
+Actions: `up down left right action run horn map journal pause radio view`.
 Keys: WASD/arrows; action = E, F, Enter; run = Shift; horn = Space; map = M;
-journal = J; pause = Esc/P; radio = Q (or R).
+journal = J; pause = Esc/P; radio = Q (or R); view = V (cycles top-down / 3D / first person, §20).
 ```
 N.input.move → {x, y} (-1..1, normalised; joystick analog)
 N.input.down(a), N.input.pressed(a) (edge this frame), N.input.released(a)
@@ -482,7 +482,10 @@ resets on `lostpointercapture` and on a release anywhere on the page;
 joystick zone = left 52% below the top 64 px; ACTION/RUN/HORN bottom-right; MAP and
 PAUSE pills at the top-right (keep ~120 x 52 px there free on touch). Touch controls only
 show in `play` mode. Gamepad: A action, B horn, X/RB/RT run, Y radio, LB journal, Back
-map, Start pause, d-pad/left stick move. Touch scrolling is blocked except inside `.scroll`.
+map, Start pause, d-pad/left stick move, R3 view, right stick 3D camera look. Touch scrolling is blocked
+except inside `.scroll`. 3D (§20): a VIEW pill above HORN; in 3D views a `.t-look` zone (right 48%,
+mirrored with `touch-left`) turns drags into camera look; mouse drag / pointer lock on `canvas#game3d`;
+`N.input.look`, `takeLook()`, `addLook(dx, dy)`, `rawMove`; in 3D `play`, `N.input.move` is camera-relative.
 
 ## 10. UI (DOM) — HUD, dialogue, menus
 
@@ -934,31 +937,157 @@ jobs (systems §9) via `N.sidejobs.register/start`.
 2026 epilogue, post-credits, SA5-SA8): `N.missions.register(...)` per bible §4, mission ids as
 in the bible, listening to `game:new` for the prologue.
 
-## 20. 3D view mode (alternative to top-down) — `N.view`
+## 20. 3D view mode (alternative to top-down) — `N.view`, `N.view3d`
 
 The user asked for a GTA-5-style 3D option. It is an alternative **renderer and camera**
 over the same simulation: the world, player, vehicles, traffic, missions, dialogue, HUD and
-saves are unchanged. Files: `src/view3d.js` (core), `src/view3d_landmarks.js` (3D models
-of landmarks and places), `src/view3d_actors.js` (people, vehicles, animals, markers,
-collectible glints, season overlays). Loaded in index.html after menus.js.
+saves are unchanged. Files: `src/view3d.js` (core: loader, renderer, city streaming, sky,
+lights, cameras, registries), `src/view3d_landmarks.js` (3D models of landmarks and places),
+`src/view3d_actors.js` (people, vehicles, animals, markers, collectible glints, season
+overlays). Loaded in index.html after menus.js. Test: `node tests/view3d.cjs`.
 
 - **Library:** three.js **0.149.0** UMD, loaded lazily the first time 3D is chosen: first
   `https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js`, then the local fallback
-  `vendor/three/three.min.js` (MIT, LICENSE beside it). If both fail or WebGL is missing,
-  stay in top-down and toast why. The single-file build does not inline three.js.
-- **`N.view`**: `mode` ('top' | 'tps' | 'fps'), `set(mode)`, `cycle()` (key **V**, and a
-  touch button), `is3D()`, `available`, `loading`; persisted in settings; emits `view:change`.
-  Title screen and settings offer "View: Top-down / 3D (third person) / First person".
-- **Rendering:** while 3D is on, main.js skips the 2D world draw (HUD, minimap and DOM UI
-  stay). Ground = the existing 2D ground painter rendered into chunk textures (roads,
-  markings, water, parks for free); buildings = extruded from `N.world` structures with
-  district styles and window textures; landmarks = dedicated low-poly models; trees and
-  lamps instanced; water plane; sky + sun/moon from `N.clock`; fog/draw distance; night
-  lights. Same world units (1 storey ≈ 10u); people drawn ~7u (kids) to ~9u (adults) tall.
-- **Camera/controls:** third person: GTA-5-like orbit camera behind the player (mouse drag
-  or pointer lock on desktop, right-half touch drag on phones, right stick on gamepad),
-  chase camera in vehicles; first person: eye height of an 11-year-old, bike/auto cockpit
-  view. In 3D, `N.input.move` is rotated by the camera yaw so "up" means "forward".
-- **Parity hooks:** missions expose active markers, collectibles expose glint positions,
-  seasons expose overlay data, so the 3D layer can draw them. Missing parity degrades
-  gracefully (never blocks progress).
+  `vendor/three/three.min.js` (then `../vendor/...` for dist/). If both fail or WebGL is missing,
+  the game stays top-down and toasts why (`N.view.available = false`, `N.view.error`). The
+  single-file build does not inline three.js. Tests serve the CDN URL from the vendored file
+  (`page.route`) and launch Chromium with `--use-angle=swiftshader --enable-unsafe-swiftshader
+  --ignore-gpu-blocklist` (software GL: judge perf by JS ms and draw calls, not fps).
+- **`N.view`** (exists at load time, before three.js):
+  `mode` ('top' | 'tps' | 'fps', the *effective* view), `want` (requested; differs while loading),
+  `set(mode)`, `cycle()` (key **V**, gamepad R3, the touch VIEW pill above HORN), `is3D()`,
+  `available` (null untried / true / false), `loading`, `error`, `yaw` (camera forward as a world
+  angle), `pitch` (positive = looking down), `label(mode)`, `noPointerLock`. Persisted in
+  localStorage `nostalgia.view.v1` (try/catch); a saved 3D view loads at boot. Emits
+  `view:change` {mode, prev}, `view:ready`, `view:error` {error}; also follows
+  `settings:change` {key:'view'} (menus: "View: Top-down / 3D (third person) / First person").
+  Body classes `view-3d`, `view-tps`, `view-fps`, `body[data-view]`. Switching is instant once the
+  scene is warm (the first switch keeps the 2D view while the near city builds, ~0.5-2 s); the
+  scene is kept when going back to top-down (no leak on repeated toggles), and works inside
+  vehicles and during missions. WebGL context loss falls back to top-down and rebuilds on restore.
+- **Frame (main.js):** while `N.view3d.active`, main.js calls `R.begin()`,
+  `N.view3d.beginFrame(dt)`, `N.systems.draw()` (HUD minimap, dialogue barks, menus) and
+  `N.view3d.render(dt)` instead of the 2D world / entity draw and `R.flush()`. Hooks view3d
+  installs on render.js (no render.js edits): `R.queue` is dropped while 3D renders;
+  `R.proj / screenToWorld / clientToWorld` project through the 3D camera (barks follow actors);
+  `R.view` is set each 3D frame to a square around the player sized to the 3D near range, so
+  `R.inView` / `R.rectInView` keep "near the player" semantics for despawn / hop logic (in 3D,
+  things farther away are visible: spawners should spawn beyond `N.view3d.quality.nearDist`);
+  `R.night` is computed, `R.lights` drained (they become point-light candidates), `R.fx.flash`
+  decays and `R.fx.fade / flash / vhs` show through the `#fx3d` overlay; `R.shake` offsets the camera.
+  Minigames that cover the screen (`N.minigames.covering`) skip the 3D render.
+- **Coordinates:** three `(x, y, z)` = world `(x, height, y)`: +x east, +z south, +y up, 1 unit
+  = 1 world unit. A model facing world angle `a` (0 = east, +π/2 = south) gets
+  `rotation.y = -a` (`H.place(obj, x, y, h, a)`). **Vertical scale `N.view3d.VS = 1.5`**: static
+  world heights from the data are multiplied by VS (a data storey of 10u is 15u in 3D,
+  `N.view3d.FLOOR_H`), so people (kids ~7u, adults ~9u tall), vehicles (bikes ~7u, autos ~11u,
+  cars ~9u, buses ~17u high) and buildings read at believable proportions. Roofs: an actor on a
+  roof stands at `roof.h * VS` (`N.view3d.elevation(e)`); landmark builders with a walkable roof
+  (WORLD_DATA.roofs `building`) must put the floor at `roof.h * VS`.
+- **City streaming:** 512u chunks (2x2 render.js ground chunks) built nearest-first within a
+  frame budget (high tier 3.5 ms, low 2.5 ms; 18 ms for a few frames after a teleport), disposed
+  beyond the draw distance. Per chunk: **ground** = a plane textured by render.js's own composed
+  chunk painter (world.js + places_art + world_extras rails + landmarks.paintGround) at 2 px/u
+  near / 0.5 px/u far, plus an aux texture (4u texels: alpha = water mask for an animated
+  water shader with sky reflection and sun glint; rgb = sodium / tube-light pools lit at night);
+  **buildings** = one merged mesh per chunk (walls with the facade atlas: per district window
+  style, shop shutters with lit interiors, doors, arcades, glass; lit windows at night;
+  parapets, hip / gable roofs, water tanks, mumtys, antennas, clotheslines, domes, minarets,
+  awnings, compound walls, street-lamp poles with emissive heads, bridge parapets, raised
+  rails, cranes, podiums, roof-zone terraces and planks); **signboards** = textured quads from a
+  shared sign atlas (shop sign text); **trees** (trunks / canopy blobs / palm crowns, wind sway)
+  and **Deccan boulders** = instanced; **lamp glows** = additive points. Chunks are frustum-culled
+  as a whole. Ground cast shadows: high tier uses the real shadow map (ground painted with
+  contact shading only); low tier (phones) bakes shadows from the 3D sun into the ground
+  textures (repainted when the quantised sun moves) and has no shadow map.
+- **Sky / light:** gradient sky dome with sun disc + halo, moon, stars and drifting clouds; one
+  shadow-casting directional light (sun / moon; tight frustum ±190u around the player, texel-
+  snapped; the light never drops below ~27° so shadows stay ≤ 2x height like the 2D sun); a
+  hemisphere light; fog = horizon colour (draw distance 1500u high / 950u low); ACES tone
+  mapping, sRGB output; up to 4 real point lights near the player at night (lamps, `R.lights`,
+  `N.view3d.light()`), everything else lit by emissive heads, glow points and ground pools.
+- **Cameras:** third person: orbit behind the player (mouse drag, or click for pointer lock on
+  desktop — Esc releases; right-half touch drag `.t-look`; gamepad right stick), smoothed,
+  collision-aware against a height grid of buildings / walls / rocks / landmarks (pulls in, eases
+  out), auto-recentre behind when moving, chase camera in vehicles (swings behind the heading,
+  looks ahead with speed, FOV kick at speed, distance by vehicle class), trees and poles right in
+  front of the camera dither out; the cinematic orbit follows `R.cam` while `R.camOverride` is set
+  (cutscenes) and on the title screen. First person: eye height 6.3u (an 11-year-old), subtle head
+  bob (off with reduced motion), cockpit / handlebar view in vehicles (look offset springs back to
+  the heading; the player's own avatar and vehicle are hidden unless their renderer sets `fps`).
+- **Input:** in 3D (`play` mode only) `N.input.move` is rotated by `N.view.yaw` so up = forward
+  (keyboard on foot, joystick, gamepad; `N.input.rawMove` keeps the screen-relative vector).
+  Vehicles keep tank controls on the keyboard; stick point-to-steer becomes camera-relative.
+  Look input: `N.input.look {dx, dy, stickX, stickY, dragging, locked, source}`,
+  `N.input.takeLook()` (consumed by the camera), `N.input.addLook(dx, dy)` (tests).
+- **Performance budget:** desktop ≤ ~6 ms JS per frame and ≤ ~300 draw calls in dense Old City;
+  phones (tier 'low', auto-detected from a coarse pointer): pixel ratio ≤ 1.25 (adaptive down to
+  0.7 when frames are slow), no shadow map, shorter draw distance, no point lights.
+  `N.view3d.stats()` -> {calls, triangles, jsMs, jsAvg, renderMs, workMs, chunks, visChunks,
+  landmarks, actors, geometries, textures, programs, pixelRatio, tier}.
+
+### `N.view3d` API (for view3d_landmarks.js / view3d_actors.js)
+
+Registrations are plain data at load time (three.js is not loaded yet); builders are called later
+with `THREE` and the helper object `H`. Re-registering a key replaces the previous builder (the
+core's temporary avatar / vehicle box / footprint landmarks are only defaults).
+
+```
+N.view3d.registerLandmark(drawId | '#landmarkId', build(THREE, lm, H) -> Object3D | null | false, opts)
+    Called when the landmark comes within the landmark range (~1650u high / 1100u low).
+    Build in LOCAL coordinates: origin at the landmark centre (lm.x, lm.y) on the ground,
+    +x east, +z south, +y up (the core positions it; set obj.userData.worldSpace = true to
+    opt out). Use heights * H.VS. null/undefined -> the generic footprint fallback; false -> draw
+    nothing (e.g. it is part of another landmark's model). opts: {castShadow: true,
+    update(obj, lm, dt, H) (animated: giant wheel, flags), dispose(obj, lm, H)}.
+    Meshes cast / receive shadows automatically (set mesh.userData.noShadow to skip).
+N.view3d.registerActorRenderer(key, {create(e, H) -> Object3D, update(obj, e, dt, H), dispose?(obj, e, H),
+    fps?: true (keep it visible in first person, e.g. a handlebar model), shadow?: false})
+    key resolution per entity: e.view3d, 'player' (N.player), '<kind>:<e.type | e.species |
+    e.npcId | e.role | e.sub>', '<kind>' (ped npc vehicle animal pickup prop), '*'.
+    Entities within the actor range (~620u high / 400u low) of the focus get an object; update()
+    places it in WORLD space every frame: obj.position.set(e.x, H.elev(e), e.y),
+    obj.rotation.y = -e.angle (people: e.facing). Keep each actor to 1-2 draw calls (merge with
+    H.builder()); use H.blobShadow() under actors when !H.quality.shadows; headlights via
+    H.light({x, y, h, color, intensity, r}) each frame.
+N.view3d.registerStructure(t, build(THREE, s, H, gb, job) -> Object3D | void)
+    For N.world structure types the core does not draw (e.g. 'custom'); add merged geometry to
+    the chunk with gb (a facade GeoBuilder in chunk-local coordinates: s.x - job.ox, s.y - job.oz)
+    or return an Object3D in chunk-local coordinates. Core types: bldg wall tree lamp rock rail
+    roofzone crane podium (registering one of these replaces the core version).
+N.view3d.registerLayer(id, {init(THREE, H), update(dt, H), dispose(H), order})
+    Per-frame 3D overlays in world space (mission markers from N.missions.markers(), collectible
+    glints, season overlays, kites, birds). Add objects to H.layer (a Group in the scene).
+```
+
+Helpers `H` (`N.view3d.H`): `THREE, VS, FLOOR_H, CHUNK, STYLE` (facade style ids), `scene, camera,
+renderer, layer, quality, night` (0..1), `day` (N.clock.light()), `sunDir` (Vector3 to the
+light), `time` (s), `mode` (view), `uniforms` (shared: uTime, uNight, uSunDir, uSunCol, uZen, uHor),
+`materials` (shared: facade, vc, vcFlat, vcDouble, canopy, rock, glow...), `geo` (shared unit
+geometries: trunk, blob, rock, crown, plane), `pos(x, y, h)`, `place(obj, x, y, h, angle)`,
+`yaw(angle)`, `elev(e)`, `heightAt(x, y)`, `builder({facade})` -> GeoBuilder, `merge(geos)`,
+`mat(hex, {emissive, emissiveIntensity, flat, double, transparent, opacity, map, basic})` (cached),
+`color(hex)` (cached linear THREE.Color), `tex(key, w, h, paint(ctx, w, h), {premult, repeat, linear})`
+(cached CanvasTexture, sRGB, anisotropic), `signSlot(text, bg, fg, aspect)` (sign atlas UVs),
+`facadeMaterial(), vcMaterial(), blobShadow(w, d), glow(color, size)` (additive sprite),
+`light({x, y, h, color, intensity, r})`, `dispose(obj)` (frees non-shared geometry / materials).
+
+GeoBuilder (`H.builder({facade?})`, merged vertex-coloured geometry, one draw call):
+`color(hex)`, `quad(a, b, c, d (12 numbers, counter-clockwise from the front), uv?)`,
+`wall(ax, az, bx, bz, y0, y1, u0, u1, v0, v1)` (outward normal on the right of A->B seen from
+above), `hquad(x0, z0, x1, z1, y, down?)`, `box(x0, y0, z0, x1, y1, z1, {bottom, top, sides})`,
+`obox(cx, cz, w, d, y0, y1, angle)`, `cyl(cx, y0, cz, r0, r1, h, seg, {top})`,
+`dome(cx, y0, cz, r, h, seg, rings)`, `sphere(cx, cy, cz, rx, ry, rz, seg, rings)`,
+`extrude([[x, z]...], y0, y1, {top})`, `addGeometry(geo, matrix4)`, `build()` -> BufferGeometry,
+`mesh(material?)` -> Mesh (default `H.materials.vc`, facade builders `H.materials.facade`).
+Facade builders also take `facade(upperStyle, groundFloorStyle, lit 0-255, seed, windowRows)` /
+`plain()` before walls: u = window bays across the wall, v = height / FLOOR_H (one row per storey);
+styles `H.STYLE`: plain rect arch grill glass shop door arcade open colonial posh mosque stone
+brick office lamp (lamp = emissive at night in the vertex colour).
+
+Debug / tests: `N.view3d.settle(ms)` (finish pending chunk work now), `setQuality({adaptive,
+pixelRatio, drawDist, ...; before the first switch also antialias, shadows, pointLights, tier})`,
+`setCamera({yaw, pitch, snap})`, `snapCamera()`, `project(x, y, h)` -> CSS px, `rebuild(rect?)`,
+`stats()`, `engine` (internals). Parity hooks still owed by other modules: missions expose active
+markers (`N.missions.markers()`), collectibles expose glint positions, seasons expose overlay data;
+missing parity degrades gracefully (never blocks progress).

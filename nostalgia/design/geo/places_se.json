@@ -1,0 +1,4123 @@
+{
+ "abids": {
+  "name": "Abids Circle",
+  "lat": 17.388271,
+  "lon": 78.476359,
+  "confidence": "medium",
+  "source": "junction in front of the GPO",
+  "note": "Abids circle"
+ },
+ "abids_book_market": {
+  "name": "Abids Sunday book market",
+  "lat": 17.389085,
+  "lon": 78.4765,
+  "confidence": "low",
+  "source": "along Abids Road north of the GPO (Sunday pavement market)",
+  "note": "Sunday book market on the Abids footpaths"
+ },
+ "abids_gpo": {
+  "name": "General Post Office, Abids",
+  "lat": 17.388,
+  "lon": 78.4765,
+  "confidence": "medium",
+  "source": "pin.codes.in Hyderabad G.P.O.",
+  "note": "GPO building (landmark)",
+  "id_kind": "landmark"
+ },
+ "afzalgunj_bridge": {
+  "name": "Afzalgunj Bridge",
+  "lat": 17.37215,
+  "lon": 78.479,
+  "confidence": "low",
+  "source": "on the OSM Musi line between Salar Jung Museum and the State Central Library [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "the Salar Jung / Afzalgunj bridge (game name); exact crossing not verified"
+ },
+ "akkanna_madanna_temple": {
+  "name": "Akkanna Madanna Mahankali Temple",
+  "lat": 17.3545,
+  "lon": 78.4765,
+  "confidence": "low",
+  "source": "listings: Haribowli, near Shalibanda, ~1 km from Charminar; Haribowli on the OSM old-city metro alignment [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Akkanna Madanna Mahankali temple"
+ },
+ "all_india_radio": {
+  "name": "All India Radio, Saifabad",
+  "lat": 17.4055,
+  "lon": 78.465,
+  "confidence": "low",
+  "source": "address: Rocklands, Saifabad 500004; position estimated between Ravindra Bharathi and the Secretariat",
+  "note": "AIR Hyderabad"
+ },
+ "ashok_t1": {
+  "name": "Ashok Nagar terrace (1)",
+  "lat": 17.407362,
+  "lon": 78.488277,
+  "confidence": "low",
+  "source": "Ashok Nagar locality (Wikipedia 17°24'25\"N 78°29'19\"E); terraces are fictional houses in it",
+  "note": "part of ashok_nagar_terraces: anchor 17.407036,78.488691; keep the game offset (dx,dy)=(-22.0, -18.0) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "id_kind": "roof",
+  "anchor": "ashok_nagar_terraces",
+  "anchor_latlon": [
+   17.407036,
+   78.488691
+  ],
+  "anchor_game_u": [
+   4736,
+   2276
+  ],
+  "offset_u": [
+   -22.0,
+   -18.0
+  ],
+  "fictional": true
+ },
+ "ashok_t1_stairs": {
+  "name": "Ashok Nagar terrace (1): stairs",
+  "lat": 17.407362,
+  "lon": 78.487938,
+  "confidence": "low",
+  "source": "Ashok Nagar locality (Wikipedia 17°24'25\"N 78°29'19\"E); terraces are fictional houses in it",
+  "note": "part of ashok_nagar_terraces: anchor 17.407036,78.488691; keep the game offset (dx,dy)=(-40, -18) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "ashok_nagar_terraces",
+  "anchor_latlon": [
+   17.407036,
+   78.488691
+  ],
+  "anchor_game_u": [
+   4736,
+   2276
+  ],
+  "offset_u": [
+   -40,
+   -18
+  ],
+  "fictional": true
+ },
+ "ashok_t2": {
+  "name": "Ashok Nagar terrace (2)",
+  "lat": 17.407362,
+  "lon": 78.488955,
+  "confidence": "low",
+  "source": "Ashok Nagar locality (Wikipedia 17°24'25\"N 78°29'19\"E); terraces are fictional houses in it",
+  "note": "part of ashok_nagar_terraces: anchor 17.407036,78.488691; keep the game offset (dx,dy)=(14.0, -18.0) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "id_kind": "roof",
+  "anchor": "ashok_nagar_terraces",
+  "anchor_latlon": [
+   17.407036,
+   78.488691
+  ],
+  "anchor_game_u": [
+   4736,
+   2276
+  ],
+  "offset_u": [
+   14.0,
+   -18.0
+  ],
+  "fictional": true
+ },
+ "ashok_t2_stairs": {
+  "name": "Ashok Nagar terrace (2): stairs",
+  "lat": 17.407687,
+  "lon": 78.488955,
+  "confidence": "low",
+  "source": "Ashok Nagar locality (Wikipedia 17°24'25\"N 78°29'19\"E); terraces are fictional houses in it",
+  "note": "part of ashok_nagar_terraces: anchor 17.407036,78.488691; keep the game offset (dx,dy)=(14, -36) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "ashok_nagar_terraces",
+  "anchor_latlon": [
+   17.407036,
+   78.488691
+  ],
+  "anchor_game_u": [
+   4736,
+   2276
+  ],
+  "offset_u": [
+   14,
+   -36
+  ],
+  "fictional": true
+ },
+ "ashok_t3": {
+  "name": "Ashok Nagar terrace (3)",
+  "lat": 17.40671,
+  "lon": 78.488955,
+  "confidence": "low",
+  "source": "Ashok Nagar locality (Wikipedia 17°24'25\"N 78°29'19\"E); terraces are fictional houses in it",
+  "note": "part of ashok_nagar_terraces: anchor 17.407036,78.488691; keep the game offset (dx,dy)=(14.0, 18.0) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "id_kind": "roof",
+  "anchor": "ashok_nagar_terraces",
+  "anchor_latlon": [
+   17.407036,
+   78.488691
+  ],
+  "anchor_game_u": [
+   4736,
+   2276
+  ],
+  "offset_u": [
+   14.0,
+   18.0
+  ],
+  "fictional": true
+ },
+ "ashok_t3_stairs": {
+  "name": "Ashok Nagar terrace (3): stairs",
+  "lat": 17.40671,
+  "lon": 78.489294,
+  "confidence": "low",
+  "source": "Ashok Nagar locality (Wikipedia 17°24'25\"N 78°29'19\"E); terraces are fictional houses in it",
+  "note": "part of ashok_nagar_terraces: anchor 17.407036,78.488691; keep the game offset (dx,dy)=(32, 18) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "ashok_nagar_terraces",
+  "anchor_latlon": [
+   17.407036,
+   78.488691
+  ],
+  "anchor_game_u": [
+   4736,
+   2276
+  ],
+  "offset_u": [
+   32,
+   18
+  ],
+  "fictional": true
+ },
+ "ashtalakshmi_temple": {
+  "name": "Ashtalakshmi Temple, Kothapet",
+  "lat": 17.364693,
+  "lon": 78.547896,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) + indianetzone (17°21'53\"N 78°32'52\"E)",
+  "note": "Vasavi Colony, Kothapet"
+ },
+ "assembly": {
+  "name": "Legislative Assembly",
+  "lat": 17.4005,
+  "lon": 78.4695,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Telangana Legislature 17°24'06\"N 78°28'05\"E (flagged as needing citations) and the OSM red-metro \"Assembly\" alignment on the road at lon 78.4706; placed between, on the west side of that road [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Legislative Assembly building"
+ },
+ "badshahi_ashurkhana": {
+  "name": "Badshahi Ashurkhana",
+  "lat": 17.36909,
+  "lon": 78.475726,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) (17°22'09\"N 78°28'33\"E) + mirrors",
+  "note": "on High Court Road near Madina"
+ },
+ "bakery_1": {
+  "name": "Subhan Bakery, Nampally",
+  "lat": 17.3915,
+  "lon": 78.469,
+  "confidence": "low",
+  "source": "estimated: Nampally, near the station (no coordinates found)",
+  "note": "alias of subhan_bakery; Subhan Bakery (1948)"
+ },
+ "bakery_3": {
+  "name": "Golden Bakery",
+  "lat": 17.420989,
+  "lon": 78.495577,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "bakery_4": {
+  "name": "Malakpet Bakery",
+  "lat": 17.371565,
+  "lon": 78.494692,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "banana_cart_1": {
+  "name": "Banana cart",
+  "lat": 17.390527,
+  "lon": 78.499282,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "banana_cart_2": {
+  "name": "Banana cart",
+  "lat": 17.381742,
+  "lon": 78.484702,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "banana_cart_3": {
+  "name": "Banana cart",
+  "lat": 17.383385,
+  "lon": 78.474426,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "banana_cart_8": {
+  "name": "Banana cart (outside the Sai Baba temple lane)",
+  "lat": 17.367499,
+  "lon": 78.526854,
+  "confidence": "low",
+  "source": "outside the temple lane (estimated)",
+  "note": "banana cart"
+ },
+ "banana_cart_9": {
+  "name": "Banana cart",
+  "lat": 17.368646,
+  "lon": 78.480206,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "bangle_shop_1": {
+  "name": "Bangle shop",
+  "lat": 17.361856,
+  "lon": 78.474105,
+  "confidence": "medium",
+  "source": "along Laad Bazaar (Sygic) west of Charminar",
+  "note": "bangle shop in Laad Bazaar",
+  "id_kind": "landmark"
+ },
+ "bangle_shop_2": {
+  "name": "Bangle shop",
+  "lat": 17.361856,
+  "lon": 78.473823,
+  "confidence": "medium",
+  "source": "along Laad Bazaar (Sygic) west of Charminar",
+  "note": "bangle shop in Laad Bazaar",
+  "id_kind": "landmark"
+ },
+ "bangle_shop_3": {
+  "name": "Bangle shop",
+  "lat": 17.361856,
+  "lon": 78.473541,
+  "confidence": "medium",
+  "source": "along Laad Bazaar (Sygic) west of Charminar",
+  "note": "bangle shop in Laad Bazaar",
+  "id_kind": "landmark"
+ },
+ "bangle_shop_4": {
+  "name": "Bangle shop",
+  "lat": 17.361856,
+  "lon": 78.473258,
+  "confidence": "medium",
+  "source": "along Laad Bazaar (Sygic) west of Charminar",
+  "note": "bangle shop in Laad Bazaar",
+  "id_kind": "landmark"
+ },
+ "barber_1": {
+  "name": "Lucky Hair Cutting Saloon",
+  "lat": 17.39751,
+  "lon": 78.484151,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "barber_2": {
+  "name": "Sundar Hair Saloon",
+  "lat": 17.393228,
+  "lon": 78.50418,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "barber_4": {
+  "name": "Famous Saloon",
+  "lat": 17.424499,
+  "lon": 78.489766,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "barber_5": {
+  "name": "Hero Hair Cutting",
+  "lat": 17.367355,
+  "lon": 78.529,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves"
+ },
+ "barber_6": {
+  "name": "Taj Hair Saloon",
+  "lat": 17.351126,
+  "lon": 78.476182,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "barber_7": {
+  "name": "New Style Hair Dressers",
+  "lat": 17.400447,
+  "lon": 78.491453,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(194, -80) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   194,
+   -80
+  ],
+  "fictional": true
+ },
+ "barkas": {
+  "name": "Barkas (the Arab quarter)",
+  "lat": 17.31634,
+  "lon": 78.47499,
+  "confidence": "medium",
+  "source": "centroid of GHMC ward 42 Barkas (DataMeet polygon)",
+  "note": "Barkas neighbourhood centre"
+ },
+ "basheerbagh": {
+  "name": "Basheerbagh",
+  "lat": 17.3998,
+  "lon": 78.477,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Basheerbagh 17.399782,78.476615; Cafe Bahar at the X roads",
+  "note": "Basheerbagh junction"
+ },
+ "bawarchi": {
+  "name": "Bawarchi",
+  "lat": 17.405697,
+  "lon": 78.496377,
+  "confidence": "low",
+  "source": "listing: Plot 44, RTC X Rd, beside Sandhya Theatre, Chikkadpally/New Nallakunta",
+  "note": "Bawarchi (original branch)"
+ },
+ "begum_bazaar": {
+  "name": "Begum Bazaar",
+  "lat": 17.375,
+  "lon": 78.4706,
+  "confidence": "medium",
+  "source": "PIN-500012 geocode 17.37506,78.47057; inside ward Begum Bazar (Wikipedia point 17.3734,78.4738 coincides with Osmania Hospital, not used)",
+  "note": "wholesale market"
+ },
+ "begumpet_station": {
+  "name": "Begumpet station",
+  "lat": 17.43887,
+  "lon": 78.45863,
+  "confidence": "high",
+  "source": "datameet/railways stations.json (CC0) code BMT",
+  "note": "MMTS/railway station (north of my area; included for completeness)",
+  "id_kind": "landmark"
+ },
+ "birla_mandir": {
+  "name": "Birla Mandir",
+  "lat": 17.406188,
+  "lon": 78.469063,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) + Structurae (17°24'22\"N 78°28'09\"E)",
+  "note": "Naubat Pahad"
+ },
+ "birla_planetarium": {
+  "name": "Birla Planetarium & Science Museum",
+  "lat": 17.4047,
+  "lon": 78.4703,
+  "confidence": "low",
+  "source": "listings: Adarsh Nagar, on Naubat Pahad next to Birla Mandir; building position estimated",
+  "note": "Birla Planetarium & Science Museum"
+ },
+ "buddha_statue": {
+  "name": "Buddha Statue",
+  "lat": 17.41556,
+  "lon": 78.475,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Buddha Statue of Hyderabad (17°24'56\"N 78°28'30\"E)",
+  "note": "on Gibraltar Rock in the lake"
+ },
+ "bus_stop_1": {
+  "name": "Koti bus stop",
+  "lat": 17.385126,
+  "lon": 78.482855,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "bus_stop_10": {
+  "name": "Himayatnagar bus stop",
+  "lat": 17.402461,
+  "lon": 78.484405,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "bus_stop_11": {
+  "name": "Dilsukhnagar bus stop",
+  "lat": 17.368185,
+  "lon": 78.529958,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors); then set on the real malakpet_rd alignment (OSM metro line over that road, ODbL) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "generic place beside the real malakpet road"
+ },
+ "bus_stop_12": {
+  "name": "Malakpet bus stop",
+  "lat": 17.373144,
+  "lon": 78.503654,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors); then set on the real malakpet_rd alignment (OSM metro line over that road, ODbL) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "generic place beside the real malakpet road"
+ },
+ "bus_stop_13": {
+  "name": "Charminar bus stop",
+  "lat": 17.360666,
+  "lon": 78.479641,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "bus_stop_14": {
+  "name": "Tank Bund bus stop",
+  "lat": 17.4192,
+  "lon": 78.486,
+  "confidence": "low",
+  "source": "Lower Tank Bund road (estimated)",
+  "note": "Tank Bund bus stop"
+ },
+ "bus_stop_16": {
+  "name": "Tarnaka bus stop",
+  "lat": 17.428744,
+  "lon": 78.534778,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "bus_stop_17": {
+  "name": "Afzalgunj bus stop",
+  "lat": 17.3736,
+  "lon": 78.4752,
+  "confidence": "low",
+  "source": "estimated near Osmania Hospital / Afzalgunj",
+  "note": "Afzalgunj bus stop"
+ },
+ "bus_stop_19": {
+  "name": "Chikkadpally bus stop",
+  "lat": 17.400411,
+  "lon": 78.494769,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors); then set on the real chikkadpally_rd alignment (OSM metro line over that road, ODbL) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "generic place beside the real chikkadpally road"
+ },
+ "bus_stop_2": {
+  "name": "Abids bus stop",
+  "lat": 17.385125,
+  "lon": 78.476511,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "bus_stop_21": {
+  "name": "Uppal bus stop",
+  "lat": 17.398432,
+  "lon": 78.56087,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "bus_stop_22": {
+  "name": "LB Nagar bus stop",
+  "lat": 17.349,
+  "lon": 78.55,
+  "confidence": "low",
+  "source": "beside LB Nagar circle",
+  "note": "LB Nagar bus stop"
+ },
+ "bus_stop_3": {
+  "name": "Nampally bus stop",
+  "lat": 17.38964,
+  "lon": 78.471819,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "bus_stop_4": {
+  "name": "Lakdikapul bus stop",
+  "lat": 17.4032,
+  "lon": 78.4629,
+  "confidence": "low",
+  "source": "beside the Lakdikapul junction",
+  "note": "Lakdikapul bus stop"
+ },
+ "bus_stop_9": {
+  "name": "RTC X Roads bus stop",
+  "lat": 17.404657,
+  "lon": 78.497412,
+  "confidence": "low",
+  "source": "east arm of RTC X Roads (estimated)",
+  "note": "RTC X Roads bus stop"
+ },
+ "cafe_bahar": {
+  "name": "Cafe Bahar",
+  "lat": 17.39983,
+  "lon": 78.47788,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Cafe Bahar (17°23'59\"N 78°28'40\"E)",
+  "note": "Basheerbagh-Hyderguda X roads"
+ },
+ "cafe_noor_e_iran": {
+  "name": "Café Noor-e-Iran (Faramarz uncle)",
+  "lat": 17.36358,
+  "lon": 78.474603,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "alias of irani_cafe_19; generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "cbs_hangar": {
+  "name": "Gowliguda Hangar (City Bus Station)",
+  "lat": 17.3804,
+  "lon": 78.4818,
+  "confidence": "low",
+  "source": "estimated: Gowliguda, north bank opposite MGBS (sources: hangar at Gowliguda; its Wikipedia coords are wrong)",
+  "note": "Gowliguda \"Mississippi\" hangar city bus station (stood until 2018)"
+ },
+ "chaderghat_bridge": {
+  "name": "Chaderghat Bridge",
+  "lat": 17.3792,
+  "lon": 78.488,
+  "confidence": "low",
+  "source": "on the OSM Musi line where the OSM red metro line / Koti-Malakpet road crosses east of MGBS [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Chaderghat (Oliphant) bridge; exact crossing not verified"
+ },
+ "chai_bandi_1": {
+  "name": "Raju's chai bandi",
+  "lat": 17.397155,
+  "lon": 78.489193,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(74, 102) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   74,
+   102
+  ],
+  "fictional": true
+ },
+ "chai_bandi_3": {
+  "name": "OU canteen chai",
+  "lat": 17.4183,
+  "lon": 78.5262,
+  "confidence": "low",
+  "source": "beside the Arts College [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "OU canteen chai; point lies outside the DataMeet GHMC ward polygons (gap/campus/lake), nearest ward Ward 143 Tarnaka at 278 m"
+ },
+ "chai_bandi_4": {
+  "name": "Chai bandi",
+  "lat": 17.360081,
+  "lon": 78.474,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "chai_bandi_5": {
+  "name": "Chai bandi",
+  "lat": 17.357617,
+  "lon": 78.461277,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "chai_bandi_6": {
+  "name": "Bhutta & chai cart",
+  "lat": 17.422185,
+  "lon": 78.484488,
+  "confidence": "low",
+  "source": "on the bund (OSM line) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "bhutta & chai cart"
+ },
+ "chai_bandi_8": {
+  "name": "Chai bandi",
+  "lat": 17.434,
+  "lon": 78.4805,
+  "confidence": "low",
+  "source": "north shore near Sanjeevaiah Park",
+  "note": "chai bandi"
+ },
+ "chappal_bazar": {
+  "name": "Chappal Bazar (by Kachiguda station)",
+  "lat": 17.388746,
+  "lon": 78.498254,
+  "confidence": "low",
+  "source": "beside Kachiguda station (estimated)",
+  "note": "Chappal Bazar"
+ },
+ "charminar": {
+  "name": "Charminar",
+  "lat": 17.36163,
+  "lon": 78.47467,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries); ASI Hyderabad circle gives 17°21'41.5\"N 78°28'28.8\"E (agrees)",
+  "note": "monument centre"
+ },
+ "charminar_gallery": {
+  "name": "Charminar first gallery (viewpoint)",
+  "lat": 17.36163,
+  "lon": 78.47467,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries)",
+  "note": "virtual viewpoint: first-floor gallery of Charminar (same point as the monument)"
+ },
+ "charminar_plaza": {
+  "name": "Charminar Plaza (finale)",
+  "lat": 17.361313,
+  "lon": 78.474999,
+  "confidence": "medium",
+  "source": "offset from Charminar (Wikipedia/Wikidata infobox coordinates (read via web-search summaries))",
+  "note": "finale plaza at the foot of Charminar, ~50 m SE of its centre"
+ },
+ "chermas_abids": {
+  "name": "Cherma's",
+  "lat": 17.389537,
+  "lon": 78.476594,
+  "confidence": "low",
+  "source": "estimated on Abids Road",
+  "note": "Cherma's clothes shop"
+ },
+ "chowmahalla_palace": {
+  "name": "Chowmahalla Palace gate",
+  "lat": 17.359287,
+  "lon": 78.472077,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) palace centroid 17.358247,78.471701 (+latitude.to agree); gate offset estimated",
+  "note": "place is the GATE: put ~120 m NNE of the palace centroid on the Khilwat side; palace centroid itself is high confidence",
+  "palace_centroid": [
+   17.358247,
+   78.471701
+  ]
+ },
+ "church_2": {
+  "name": "CSI Church, Chikkadpally",
+  "lat": 17.404473,
+  "lon": 78.48958,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "church_st_georges": {
+  "name": "St. George's Church",
+  "lat": 17.3905,
+  "lon": 78.48,
+  "confidence": "low",
+  "source": "address 4-1-1111 King Koti Road, Bogulkunta; position estimated",
+  "note": "alias of st_georges_church_abids; St. George's Church"
+ },
+ "church_st_josephs": {
+  "name": "St. Joseph's Cathedral",
+  "lat": 17.395563,
+  "lon": 78.477438,
+  "confidence": "high",
+  "source": "Plus code 7J9W9FWG+6X (GCatholic), decoded",
+  "note": "St. Joseph's Cathedral, Gunfoundry"
+ },
+ "city_central_library": {
+  "name": "City Central Library, Chikkadpally",
+  "lat": 17.4012,
+  "lon": 78.4942,
+  "confidence": "low",
+  "source": "estimated: Chikkadpally on the main road (OSM green-metro alignment) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "City Central Library"
+ },
+ "city_college": {
+  "name": "Government City College",
+  "lat": 17.368588,
+  "lon": 78.469609,
+  "confidence": "medium",
+  "source": "Plus code 9F99+CRQ (admissions listing), decoded",
+  "note": "south bank between Purana Pul and Naya Pul"
+ },
+ "coconut_cart_1": {
+  "name": "Tender coconut cart",
+  "lat": 17.4195,
+  "lon": 78.4652,
+  "confidence": "low",
+  "source": "Necklace Road, west shore",
+  "note": "tender coconut cart"
+ },
+ "coconut_cart_2": {
+  "name": "Tender coconut cart",
+  "lat": 17.43,
+  "lon": 78.463,
+  "confidence": "low",
+  "source": "Necklace Road north-west shore",
+  "note": "tender coconut cart"
+ },
+ "coconut_cart_3": {
+  "name": "Tender coconut cart",
+  "lat": 17.435,
+  "lon": 78.473,
+  "confidence": "low",
+  "source": "Necklace Road north shore",
+  "note": "tender coconut cart"
+ },
+ "coconut_cart_4": {
+  "name": "Tender coconut cart",
+  "lat": 17.419126,
+  "lon": 78.482402,
+  "confidence": "low",
+  "source": "on the bund (OSM line) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "tender coconut cart"
+ },
+ "coconut_cart_6": {
+  "name": "Tender coconut cart",
+  "lat": 17.360561,
+  "lon": 78.536875,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves"
+ },
+ "coconut_cart_7": {
+  "name": "Tender coconut cart",
+  "lat": 17.422,
+  "lon": 78.4872,
+  "confidence": "low",
+  "source": "Lower Tank Bund road (estimated)",
+  "note": "tender coconut cart"
+ },
+ "cycle_rent_1": {
+  "name": "Lakshmi Cycle Stores (on hire)",
+  "lat": 17.406311,
+  "lon": 78.484068,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "cycle_rent_2": {
+  "name": "Mohan Cycle Taxi",
+  "lat": 17.392488,
+  "lon": 78.482319,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "cycle_rent_3": {
+  "name": "Raju Cycle Taxi",
+  "lat": 17.411473,
+  "lon": 78.4915,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "cycle_rent_5": {
+  "name": "Chinna Cycle Taxi",
+  "lat": 17.4007,
+  "lon": 78.488666,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(46, -94) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   46,
+   -94
+  ],
+  "fictional": true
+ },
+ "dargah_yousufain": {
+  "name": "Dargah Yousufain",
+  "lat": 17.3905,
+  "lon": 78.4655,
+  "confidence": "low",
+  "source": "address: Bharat Nagar, Aghapura, Nampally; Aghapura (Wikipedia 17°23'18\"N 78°27'52\"E) is 250 m SW",
+  "note": "Dargah Yousufain"
+ },
+ "devi_theatre": {
+  "name": "Devi 70mm",
+  "lat": 17.404205,
+  "lon": 78.49713,
+  "confidence": "low",
+  "source": "estimated around RTC X Roads (game layout)",
+  "note": "Devi 70mm"
+ },
+ "dhobi_ghat_1": {
+  "name": "Dhobi ghat (washing lines)",
+  "lat": 17.3693,
+  "lon": 78.4645,
+  "confidence": "low",
+  "source": "OSM Musi line [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "washing lines on the riverbed between Purana Pul and Naya Pul",
+  "id_kind": "landmark"
+ },
+ "dhoolpet": {
+  "name": "Dhoolpet (Ganesh idol lanes, manja makers)",
+  "lat": 17.37444,
+  "lon": 78.46083,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Dhoolpet (17°22'28\"N 78°27'39\"E)",
+  "note": "idol-makers' lanes"
+ },
+ "dilsukhnagar": {
+  "name": "Dilsukhnagar",
+  "lat": 17.369,
+  "lon": 78.5247,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Dilsukhnagar 17.368784,78.524652, snapped to the OSM red-metro / NH65 alignment [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Dilsukhnagar junction"
+ },
+ "dilsukhnagar_sai_temple": {
+  "name": "Sai Baba Temple, Dilsukhnagar",
+  "lat": 17.367861,
+  "lon": 78.527278,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Sai Baba Temple, Dilsukhnagar (17°22'04\"N 78°31'38\"E)",
+  "note": "Sai Baba temple"
+ },
+ "doordarshan_kendra": {
+  "name": "Doordarshan Kendra, Ramanthapur",
+  "lat": 17.3955,
+  "lon": 78.533,
+  "confidence": "low",
+  "source": "address: Doordarshan Kendra TV studio, Ramanthapur 500013; Ramanthapur (Wikipedia) 17.3919,78.5384; plot not verified",
+  "note": "DD Kendra studio + tower, Ramanthapur"
+ },
+ "dosa_bandi_1": {
+  "name": "Dosa bandi",
+  "lat": 17.405046,
+  "lon": 78.487955,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "dosa_bandi_2": {
+  "name": "Dosa bandi",
+  "lat": 17.361729,
+  "lon": 78.509065,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "dosa_bandi_3": {
+  "name": "Dosa bandi",
+  "lat": 17.364213,
+  "lon": 78.529102,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves"
+ },
+ "dosa_bandi_4": {
+  "name": "Dosa bandi",
+  "lat": 17.351275,
+  "lon": 78.509242,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "dosa_bandi_5": {
+  "name": "Dosa bandi",
+  "lat": 17.4119,
+  "lon": 78.4665,
+  "confidence": "low",
+  "source": "NTR Marg near Prasads (estimated)",
+  "note": "dosa cart"
+ },
+ "dosa_bandi_7": {
+  "name": "Dosa bandi",
+  "lat": 17.3921,
+  "lon": 78.511548,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "electronics_shop_1": {
+  "name": "Vijaya TV & Radio",
+  "lat": 17.396333,
+  "lon": 78.475699,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "exhibition_grounds": {
+  "name": "Exhibition Grounds",
+  "lat": 17.388,
+  "lon": 78.4695,
+  "confidence": "low",
+  "source": "estimated: 23-acre grounds on Mukarram Jahi Road between Nampally station and Gandhi Bhavan (no coordinates found)",
+  "note": "alias of nampally_exhibition; Numaish / Exhibition Grounds"
+ },
+ "falaknuma_palace": {
+  "name": "Falaknuma Palace gate",
+  "lat": 17.3305,
+  "lon": 78.4675,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) (17°19'50\"N 78°28'03\"E) + NGA GNS 17.331063,78.467039",
+  "note": "palace on the hill; the game place is its gate: the approach road and gate are on the north-east slope (~300 m), not verified"
+ },
+ "famous_ice_cream": {
+  "name": "Famous Ice Cream",
+  "lat": 17.3843,
+  "lon": 78.4737,
+  "confidence": "medium",
+  "source": "in Moazzam Jahi Market",
+  "note": "Famous Ice Cream at MJ Market"
+ },
+ "fateh_maidan": {
+  "name": "Fateh Maidan (LB Stadium field)",
+  "lat": 17.39933,
+  "lon": 78.47333,
+  "confidence": "medium",
+  "source": "AroundUs GPS for LB Stadium (Fateh Maidan is its ground)",
+  "note": "the stadium field"
+ },
+ "flower_cart_1": {
+  "name": "Jasmine & marigold cart",
+  "lat": 17.400031,
+  "lon": 78.486652,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(-61, -57) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   -61,
+   -57
+  ],
+  "fictional": true
+ },
+ "flower_cart_10": {
+  "name": "Flower cart (Lal Darwaza)",
+  "lat": 17.3507,
+  "lon": 78.4786,
+  "confidence": "low",
+  "source": "beside lal_darwaza_temple estimate",
+  "note": "flower cart at the Lal Darwaza temple"
+ },
+ "flower_cart_11": {
+  "name": "Flower cart (Birla Mandir steps)",
+  "lat": 17.4056,
+  "lon": 78.4701,
+  "confidence": "low",
+  "source": "foot of the Birla Mandir steps (estimated)",
+  "note": "flower cart at the temple steps"
+ },
+ "flower_cart_2": {
+  "name": "Flower cart",
+  "lat": 17.404109,
+  "lon": 78.486356,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "flower_cart_3": {
+  "name": "Flower cart",
+  "lat": 17.394949,
+  "lon": 78.512882,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "flower_cart_5": {
+  "name": "Flower cart (Sai Baba temple lane)",
+  "lat": 17.368087,
+  "lon": 78.526854,
+  "confidence": "low",
+  "source": "in the temple lane beside the Sai Baba temple (estimated)",
+  "note": "flower cart"
+ },
+ "flower_cart_6": {
+  "name": "Flower cart (Sai Baba temple lane)",
+  "lat": 17.367951,
+  "lon": 78.526854,
+  "confidence": "low",
+  "source": "in the temple lane beside the Sai Baba temple (estimated)",
+  "note": "flower cart"
+ },
+ "flower_cart_7": {
+  "name": "Flower cart (Sai Baba temple lane)",
+  "lat": 17.367816,
+  "lon": 78.526854,
+  "confidence": "low",
+  "source": "in the temple lane beside the Sai Baba temple (estimated)",
+  "note": "flower cart"
+ },
+ "flower_cart_8": {
+  "name": "Flower cart (Sai Baba temple lane)",
+  "lat": 17.36768,
+  "lon": 78.526854,
+  "confidence": "low",
+  "source": "in the temple lane beside the Sai Baba temple (estimated)",
+  "note": "flower cart"
+ },
+ "friend_home": {
+  "name": "Best friend's house",
+  "lat": 17.398403,
+  "lon": 78.491547,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(199, 33) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   199,
+   33
+  ],
+  "fictional": true
+ },
+ "friend_stairs": {
+  "name": "Immu's terrace: stairs",
+  "lat": 17.398765,
+  "lon": 78.492093,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(228, 13) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   228,
+   13
+  ],
+  "fictional": true
+ },
+ "friend_terrace": {
+  "name": "Immu's terrace",
+  "lat": 17.398403,
+  "lon": 78.492093,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(228.0, 33.0) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "id_kind": "roof",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   228.0,
+   33.0
+  ],
+  "fictional": true
+ },
+ "gaddiannaram_fruit_market": {
+  "name": "Gaddiannaram Fruit Market",
+  "lat": 17.366,
+  "lon": 78.534,
+  "confidence": "low",
+  "source": "estimated: Gaddiannaram APMC fruit market on NH65 between Dilsukhnagar and Kothapet (no coordinates found)",
+  "note": "Kothapet/Gaddiannaram fruit market"
+ },
+ "gandhi_statue_assembly": {
+  "name": "Gandhi statue, Assembly lawn",
+  "lat": 17.4002,
+  "lon": 78.4701,
+  "confidence": "low",
+  "source": "in front of the Assembly",
+  "note": "seated Gandhi statue on the Assembly lawn"
+ },
+ "ganesh_immersion": {
+  "name": "Ganesh Nimajjanam on Tank Bund",
+  "lat": 17.416702,
+  "lon": 78.480524,
+  "confidence": "low",
+  "source": "alias of ganesh_immersion_point",
+  "note": "festival on Tank Bund"
+ },
+ "ganesh_immersion_point": {
+  "name": "Tank Bund immersion cranes",
+  "lat": 17.416702,
+  "lon": 78.480524,
+  "confidence": "low",
+  "source": "on the bund (OSM line); crane spot estimated [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "immersion cranes on Tank Bund"
+ },
+ "giant_wheel": {
+  "name": "Numaish giant wheel",
+  "lat": 17.38809,
+  "lon": 78.468653,
+  "confidence": "low",
+  "source": "within the exhibition grounds estimate",
+  "note": "Numaish giant wheel",
+  "id_kind": "landmark"
+ },
+ "giver_abids": {
+  "name": "Abids: GPO corner",
+  "lat": 17.38809,
+  "lon": 78.476312,
+  "confidence": "medium",
+  "source": "offset from GPO",
+  "note": "GPO corner"
+ },
+ "giver_afzalgunj": {
+  "name": "Afzalgunj: library steps",
+  "lat": 17.37395,
+  "lon": 78.47815,
+  "confidence": "medium",
+  "source": "offset from State Central Library",
+  "note": "library steps"
+ },
+ "giver_amberpet": {
+  "name": "Amberpet",
+  "lat": 17.3906,
+  "lon": 78.5238,
+  "confidence": "low",
+  "source": "Amberpet locality (Wikipedia 17.390941,78.523493)",
+  "note": "Amberpet"
+ },
+ "giver_bahadurpura": {
+  "name": "Bahadurpura: zoo road",
+  "lat": 17.3555,
+  "lon": 78.4545,
+  "confidence": "low",
+  "source": "zoo road outside the gate (estimated)",
+  "note": "zoo road"
+ },
+ "giver_basheerbagh": {
+  "name": "Basheerbagh: Cafe Bahar corner",
+  "lat": 17.3999,
+  "lon": 78.4776,
+  "confidence": "medium",
+  "source": "offset from Cafe Bahar",
+  "note": "Cafe Bahar corner"
+ },
+ "giver_chaderghat": {
+  "name": "Chaderghat: Imlibun gate",
+  "lat": 17.3787,
+  "lon": 78.483,
+  "confidence": "medium",
+  "source": "offset from MGBS",
+  "note": "Imlibun (MGBS) gate"
+ },
+ "giver_chandrayangutta": {
+  "name": "Chandrayangutta",
+  "lat": 17.327,
+  "lon": 78.484,
+  "confidence": "low",
+  "source": "estimated at Chandrayangutta X roads (GHMC ward 43 centroid 17.32421,78.48133) [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "Chandrayangutta"
+ },
+ "giver_charminar": {
+  "name": "Charminar: Laad Bazaar mouth",
+  "lat": 17.36172,
+  "lon": 78.474246,
+  "confidence": "medium",
+  "source": "offset from Charminar",
+  "note": "mouth of Laad Bazaar beside Charminar"
+ },
+ "giver_dabeerpura": {
+  "name": "Purani Haveli gate",
+  "lat": 17.3662,
+  "lon": 78.4818,
+  "confidence": "medium",
+  "source": "offset from Purani Haveli (Wikipedia/Wikidata infobox coordinates (read via web-search summaries))",
+  "note": "Purani Haveli gate, west side"
+ },
+ "giver_dilsukhnagar": {
+  "name": "Dilsukhnagar: Sai Baba temple road",
+  "lat": 17.368089,
+  "lon": 78.534297,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors); then set on the real malakpet_rd alignment (OSM metro line over that road, ODbL) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "generic place beside the real malakpet road"
+ },
+ "giver_falaknuma": {
+  "name": "Falaknuma: palace road",
+  "lat": 17.333484,
+  "lon": 78.469853,
+  "confidence": "low",
+  "source": "offset from Falaknuma Palace",
+  "note": "palace approach road at the hill foot"
+ },
+ "giver_himayatnagar": {
+  "name": "Himayatnagar: outside Café Gulistan",
+  "lat": 17.397089,
+  "lon": 78.485421,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "giver_hussain_sagar": {
+  "name": "Tank Bund: by the statues",
+  "lat": 17.419817,
+  "lon": 78.482816,
+  "confidence": "low",
+  "source": "on the bund (OSM line) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "by the statues"
+ },
+ "giver_kachiguda": {
+  "name": "Kachiguda station road",
+  "lat": 17.389017,
+  "lon": 78.498913,
+  "confidence": "low",
+  "source": "station road (estimated)",
+  "note": "Kachiguda station road"
+ },
+ "giver_koti": {
+  "name": "Koti: by the bus stand",
+  "lat": 17.38525,
+  "lon": 78.4839,
+  "confidence": "low",
+  "source": "beside koti_bus_stand estimate",
+  "note": "by the bus stand"
+ },
+ "giver_lb_nagar": {
+  "name": "LB Nagar circle",
+  "lat": 17.3478,
+  "lon": 78.5515,
+  "confidence": "low",
+  "source": "beside LB Nagar circle",
+  "note": "LB Nagar circle"
+ },
+ "giver_malakpet": {
+  "name": "Malakpet: Hotel Daulat",
+  "lat": 17.371904,
+  "lon": 78.509669,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors); then set on the real malakpet_rd alignment (OSM metro line over that road, ODbL) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "generic place beside the real malakpet road"
+ },
+ "giver_musheerabad": {
+  "name": "Musheerabad",
+  "lat": 17.416,
+  "lon": 78.4988,
+  "confidence": "low",
+  "source": "Musheerabad main road (OSM green-metro alignment passes 17.4160,78.4986) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Musheerabad"
+ },
+ "giver_nampally": {
+  "name": "Nampally: station road",
+  "lat": 17.392411,
+  "lon": 78.467639,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "giver_osmania": {
+  "name": "OU Arts College road",
+  "lat": 17.417,
+  "lon": 78.525,
+  "confidence": "low",
+  "source": "OU main road (gps-latitude-longitude: 17.416488,78.527086) [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "Arts College road; point lies outside the DataMeet GHMC ward polygons (gap/campus/lake), nearest ward Ward 143 Tarnaka at 288 m"
+ },
+ "giver_puranapul": {
+  "name": "Purana Pul: Jumerat Bazaar",
+  "lat": 17.3688,
+  "lon": 78.459,
+  "confidence": "low",
+  "source": "estimated: north end of Purana Pul",
+  "note": "Jumerat Bazaar (Thursday market) at the north end of Purana Pul"
+ },
+ "giver_rtc_x": {
+  "name": "RTC X Roads: under the film hoardings",
+  "lat": 17.405517,
+  "lon": 78.495153,
+  "confidence": "low",
+  "source": "at RTC X Roads",
+  "note": "under the film hoardings"
+ },
+ "giver_saidabad": {
+  "name": "Saidabad",
+  "lat": 17.359234,
+  "lon": 78.510861,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "gokul_chat": {
+  "name": "Gokul Chat",
+  "lat": 17.3858,
+  "lon": 78.4842,
+  "confidence": "low",
+  "source": "listing: Koti Main Rd, opposite Koti Women's College (4-5-158/4 Women's College Road)",
+  "note": "Gokul Chat"
+ },
+ "gowliguda_hangar": {
+  "name": "Gowliguda \"Mississippi\" hangar",
+  "lat": 17.3804,
+  "lon": 78.4818,
+  "confidence": "low",
+  "source": "estimated: Gowliguda, north bank opposite MGBS (sources: hangar at Gowliguda; its Wikipedia coords are wrong)",
+  "note": "alias of cbs_hangar; Gowliguda \"Mississippi\" hangar city bus station (stood until 2018)"
+ },
+ "gpo": {
+  "name": "General Post Office, Abids",
+  "lat": 17.388,
+  "lon": 78.4765,
+  "confidence": "medium",
+  "source": "pin.codes.in Hyderabad G.P.O. (17.387993,78.476520); fits Abids Road south of Gunfoundry",
+  "note": "General Post Office, Abids"
+ },
+ "grand_hotel": {
+  "name": "Grand Hotel",
+  "lat": 17.38791,
+  "lon": 78.476218,
+  "confidence": "low",
+  "source": "estimated beside the GPO on Abids/Mukarram Jahi Road; not verified",
+  "note": "Grand Hotel (1935), Irani cafe"
+ },
+ "grand_hotel_abids": {
+  "name": "Grand Hotel, Abids",
+  "lat": 17.38791,
+  "lon": 78.476218,
+  "confidence": "low",
+  "source": "estimated beside the GPO on Abids/Mukarram Jahi Road; not verified",
+  "note": "alias of grand_hotel; Grand Hotel (1935), Irani cafe"
+ },
+ "gulzar_houz": {
+  "name": "Gulzar Houz",
+  "lat": 17.36333,
+  "lon": 78.475,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) (17°21'48\"N 78°28'30\"E)",
+  "note": "fountain in the Char Kaman square, on the Charminar-Madina road"
+ },
+ "gun_park": {
+  "name": "Gun Park",
+  "lat": 17.4014,
+  "lon": 78.4712,
+  "confidence": "low",
+  "source": "sources: opposite the Assembly / Public Gardens; position estimated",
+  "note": "Gun Park martyrs memorial"
+ },
+ "gurudwara_gowliguda": {
+  "name": "Central Gurudwara Sahib, Gowliguda",
+  "lat": 17.3815,
+  "lon": 78.481,
+  "confidence": "low",
+  "source": "estimated: Gowliguda (no coordinates found)",
+  "note": "Central Gurudwara Sahib, Gowliguda"
+ },
+ "harina_vanasthali": {
+  "name": "Mahavir Harina Vanasthali (deer park)",
+  "lat": 17.34086,
+  "lon": 78.58494,
+  "confidence": "medium",
+  "source": "gps-latitude-longitude.com 17.340863,78.584943 + AroundUs 17.34,78.58583 agree (Wikipedia 17.6,78.78 is an outlier)",
+  "note": "deer park; lies EAST of the planned map edge (78.561E)"
+ },
+ "hide_ashok_nagar_ground": {
+  "name": "Ashok Nagar ground corner",
+  "lat": 17.404985,
+  "lon": 78.485654,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "hide_chaderghat_sand": {
+  "name": "Chaderghat riverbed",
+  "lat": 17.3787,
+  "lon": 78.489,
+  "confidence": "low",
+  "source": "OSM Musi line near Chaderghat bridge [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "riverbed below Chaderghat bridge"
+ },
+ "hide_charminar_corner": {
+  "name": "Charminar plaza, south-east corner",
+  "lat": 17.361223,
+  "lon": 78.475094,
+  "confidence": "medium",
+  "source": "offset from Charminar",
+  "note": "plaza SE corner, ~65 m from the monument centre"
+ },
+ "hide_chowmahalla_wall": {
+  "name": "Chowmahalla outer wall",
+  "lat": 17.357976,
+  "lon": 78.470854,
+  "confidence": "low",
+  "source": "offset from Chowmahalla centroid",
+  "note": "outer compound wall, west side"
+ },
+ "hide_falaknuma_hill": {
+  "name": "Falaknuma hill path",
+  "lat": 17.332037,
+  "lon": 78.467876,
+  "confidence": "low",
+  "source": "offset from Falaknuma Palace",
+  "note": "path on the north slope of the palace hill"
+ },
+ "hide_gulzar_houz_ledge": {
+  "name": "Gulzar Houz, fountain ledge",
+  "lat": 17.36333,
+  "lon": 78.475,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries)",
+  "note": "at the Gulzar Houz fountain"
+ },
+ "hide_home_colony_ground": {
+  "name": "Colony ground, under the slide",
+  "lat": 17.397535,
+  "lon": 78.490699,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(154, 81) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   154,
+   81
+  ],
+  "fictional": true
+ },
+ "hide_home_lane": {
+  "name": "Behind the colony water tank",
+  "lat": 17.40014,
+  "lon": 78.49166,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(205, -63) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   205,
+   -63
+  ],
+  "fictional": true
+ },
+ "hide_indira_rock": {
+  "name": "Indira Park rock garden",
+  "lat": 17.415,
+  "lon": 78.485,
+  "confidence": "low",
+  "source": "inside Indira Park",
+  "note": "rock garden"
+ },
+ "hide_lb_stand": {
+  "name": "LB Stadium, behind the west stand",
+  "lat": 17.39975,
+  "lon": 78.47225,
+  "confidence": "low",
+  "source": "west stand of LB Stadium",
+  "note": "behind the west stand"
+ },
+ "hide_lumbini_hedge": {
+  "name": "Lumbini Park hedge maze corner",
+  "lat": 17.4091,
+  "lon": 78.4724,
+  "confidence": "low",
+  "source": "inside Lumbini Park",
+  "note": "hedge corner"
+ },
+ "hide_mecca_masjid_pigeons": {
+  "name": "Pigeon square by Mecca Masjid",
+  "lat": 17.360736,
+  "lon": 78.473818,
+  "confidence": "medium",
+  "source": "offset from Mecca Masjid",
+  "note": "the pigeon-feeding square in front of Mecca Masjid, toward Charminar"
+ },
+ "hide_mir_alam": {
+  "name": "Mir Alam Tank bank",
+  "lat": 17.346,
+  "lon": 78.4475,
+  "confidence": "low",
+  "source": "NE bank of the OSM Mir Alam Tank polygon, beside the zoo (estimated) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "tank bank by the zoo"
+ },
+ "hide_mj_steps": {
+  "name": "Mozamjahi Market back steps",
+  "lat": 17.3844,
+  "lon": 78.4733,
+  "confidence": "medium",
+  "source": "Moazzam Jahi Market",
+  "note": "back steps of the market"
+ },
+ "hide_nallakunta_ground": {
+  "name": "Nallakunta ground, behind the stumps",
+  "lat": 17.392626,
+  "lon": 78.512698,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "hide_nayapul_sand": {
+  "name": "Under Naya Pul, on the sand",
+  "lat": 17.37045,
+  "lon": 78.4748,
+  "confidence": "medium",
+  "source": "OSM Musi line under Naya Pul [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "on the sand under Naya Pul"
+ },
+ "hide_ntr_lawn": {
+  "name": "NTR Gardens, under the big tree",
+  "lat": 17.4126,
+  "lon": 78.4676,
+  "confidence": "low",
+  "source": "inside NTR Gardens",
+  "note": "under the big tree"
+ },
+ "hide_numaish_corner": {
+  "name": "Numaish grounds, behind the giant wheel",
+  "lat": 17.388271,
+  "lon": 78.468276,
+  "confidence": "low",
+  "source": "within the exhibition grounds estimate",
+  "note": "behind the giant wheel"
+ },
+ "hide_ou_campus": {
+  "name": "OU campus boulder",
+  "lat": 17.415,
+  "lon": 78.53,
+  "confidence": "low",
+  "source": "OU campus rocks (estimated) [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "boulder on the campus; point lies outside the DataMeet GHMC ward polygons (gap/campus/lake), nearest ward Ward 8 Habsiguda at 578 m"
+ },
+ "hide_public_gardens_tree": {
+  "name": "Public Gardens, banyan roots",
+  "lat": 17.3978,
+  "lon": 78.4688,
+  "confidence": "medium",
+  "source": "inside Public Gardens",
+  "note": "banyan roots"
+ },
+ "hide_puranapul_sand": {
+  "name": "Purana Pul riverbed",
+  "lat": 17.3668,
+  "lon": 78.4592,
+  "confidence": "medium",
+  "source": "OSM Musi line beside Purana Pul [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "sand bar just downstream of Purana Pul"
+ },
+ "hide_race_course": {
+  "name": "Malakpet race course rail",
+  "lat": 17.37,
+  "lon": 78.5045,
+  "confidence": "low",
+  "source": "race course rail (estimated)",
+  "note": "race course rail"
+ },
+ "hide_sanjeevaiah_bench": {
+  "name": "Sanjeevaiah Park, last bench",
+  "lat": 17.4348,
+  "lon": 78.479,
+  "confidence": "low",
+  "source": "inside Sanjeevaiah Park",
+  "note": "last bench"
+ },
+ "hide_saroornagar_lake": {
+  "name": "Saroornagar Lake bank",
+  "lat": 17.3545,
+  "lon": 78.5288,
+  "confidence": "medium",
+  "source": "east bank of the OSM lake polygon [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "lake bank; point lies outside the DataMeet GHMC ward polygons (gap/campus/lake), nearest ward Ward 18 Lingojiguda at 223 m"
+ },
+ "hide_vidyanagar_ground": {
+  "name": "Vidyanagar ground corner",
+  "lat": 17.398394,
+  "lon": 78.503934,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "hide_zoo_pond": {
+  "name": "Nehru Zoo, by the pond",
+  "lat": 17.3505,
+  "lon": 78.448,
+  "confidence": "low",
+  "source": "small pond inside the zoo (OSM waterbodies show ponds there) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "zoo pond"
+ },
+ "high_court": {
+  "name": "High Court",
+  "lat": 17.369181,
+  "lon": 78.472039,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) (17°22'09\"N 78°28'19\"E)",
+  "note": "south bank of the Musi"
+ },
+ "hill_fort_palace": {
+  "name": "Hill Fort Palace (locked)",
+  "lat": 17.40333,
+  "lon": 78.47889,
+  "confidence": "low",
+  "source": "Bharatpedia copy of Wikipedia Hill Fort Palace (17°24'12\"N 78°28'44\"E); single source and disputed: other estimates put the palace on the hillock just east of Naubat Pahad (~17.404,78.472)",
+  "note": "Hill Fort Palace (old Ritz); hill not confirmed - prefer a better-sourced value if one exists"
+ },
+ "hoarding_rtc_1": {
+  "name": "Film hoarding",
+  "lat": 17.405471,
+  "lon": 78.495341,
+  "confidence": "low",
+  "source": "at RTC X Roads",
+  "note": "film hoarding",
+  "id_kind": "landmark"
+ },
+ "hoarding_rtc_2": {
+  "name": "Film hoarding",
+  "lat": 17.404657,
+  "lon": 78.496659,
+  "confidence": "low",
+  "source": "at RTC X Roads",
+  "note": "film hoarding",
+  "id_kind": "landmark"
+ },
+ "home": {
+  "name": "Home (Lakshmi Nivas, Lakshmi Nagar Colony)",
+  "lat": 17.399,
+  "lon": 78.4878,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(0, 0) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   0,
+   0
+  ],
+  "fictional": true
+ },
+ "home_stairs": {
+  "name": "Home terrace (Lakshmi Nivas): stairs",
+  "lat": 17.398439,
+  "lon": 78.488252,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(24, 31) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   24,
+   31
+  ],
+  "fictional": true
+ },
+ "home_terrace": {
+  "name": "Home terrace (kites, sleeping under the stars)",
+  "lat": 17.398548,
+  "lon": 78.487687,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(-6, 25) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   -6,
+   25
+  ],
+  "fictional": true
+ },
+ "hotel_madina": {
+  "name": "Hotel Madina",
+  "lat": 17.36711,
+  "lon": 78.474494,
+  "confidence": "low",
+  "source": "in the Madina Building (registry); game alias of pathergatti",
+  "note": "real Hotel Madina is in the Madina building ~200 m north of the Pathergatti arcades"
+ },
+ "hotel_nayaab": {
+  "name": "Hotel Nayaab",
+  "lat": 17.366657,
+  "lon": 78.474118,
+  "confidence": "low",
+  "source": "estimated: Ghansi Bazaar/Madina side; not verified",
+  "note": "Hotel Nayaab, old-city nihari place"
+ },
+ "hotel_niagara": {
+  "name": "Hotel Niagara",
+  "lat": 17.3805,
+  "lon": 78.4885,
+  "confidence": "low",
+  "source": "estimated: Chaderghat, north end of the bridge",
+  "note": "Hotel Niagara, Chaderghat"
+ },
+ "hussain_sagar": {
+  "name": "Hussain Sagar (Lumbini shore)",
+  "lat": 17.4107,
+  "lon": 78.4736,
+  "confidence": "medium",
+  "source": "shore of the OSM Hussain Sagar polygon north of Lumbini Park (lake centroid 17.42402,78.47422) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "the lake seen from the Lumbini shore"
+ },
+ "idol_workshop_1": {
+  "name": "Ganesh idol workshop",
+  "lat": 17.3747,
+  "lon": 78.4604,
+  "confidence": "low",
+  "source": "beside Dhoolpet (Wikipedia/Wikidata infobox coordinates (read via web-search summaries))",
+  "note": "Ganesh idol shed",
+  "id_kind": "landmark"
+ },
+ "idol_workshop_2": {
+  "name": "Ganesh idol workshop",
+  "lat": 17.3741,
+  "lon": 78.4612,
+  "confidence": "low",
+  "source": "beside Dhoolpet (Wikipedia/Wikidata infobox coordinates (read via web-search summaries))",
+  "note": "Ganesh idol shed",
+  "id_kind": "landmark"
+ },
+ "imlibun_bus_station": {
+  "name": "Imlibun Bus Station (MGBS)",
+  "lat": 17.378,
+  "lon": 78.4835,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) MGBS 17°22'41\"N 78°29'02\"E; Structurae/trek.zone differ by 300 m in longitude",
+  "note": "MGBS on the Imlibun island"
+ },
+ "indira_park": {
+  "name": "Indira Park",
+  "lat": 17.4142,
+  "lon": 78.4838,
+  "confidence": "medium",
+  "source": "telangana360 (17°24'53\"N 78°28'59\"E); address Lower Tank Bund Rd, Domalguda",
+  "note": "Indira Park"
+ },
+ "internet_cafe_1": {
+  "name": "Cyber Zone Browsing Centre",
+  "lat": 17.401019,
+  "lon": 78.481911,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "internet_cafe_2": {
+  "name": "Netway Internet Browsing",
+  "lat": 17.384307,
+  "lon": 78.475163,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "internet_cafe_5": {
+  "name": "Campus Net Cafe",
+  "lat": 17.432028,
+  "lon": 78.525458,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "internet_cafe_6": {
+  "name": "Dial-Up Dreams Net Cafe",
+  "lat": 17.365625,
+  "lon": 78.526592,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves"
+ },
+ "irani_cafe_1": {
+  "name": "Nimrah Cafe (facing Charminar)",
+  "lat": 17.361992,
+  "lon": 78.474482,
+  "confidence": "medium",
+  "source": "listings: Charminar Road, steps from Charminar (LBB, EazyDiner)",
+  "note": "alias of nimrah_cafe; Irani cafe facing Charminar; exact frontage not verified"
+ },
+ "irani_cafe_12": {
+  "name": "Cafe Bholakpur",
+  "lat": 17.414995,
+  "lon": 78.497942,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors); then set on the real musheerabad_rd alignment (OSM metro line over that road, ODbL) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "generic place beside the real musheerabad road"
+ },
+ "irani_cafe_13": {
+  "name": "Hotel Daulat",
+  "lat": 17.373491,
+  "lon": 78.50402,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors); then set on the real malakpet_rd alignment (OSM metro line over that road, ODbL) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "generic place beside the real malakpet road"
+ },
+ "irani_cafe_14": {
+  "name": "Cafe Golden Star",
+  "lat": 17.36852,
+  "lon": 78.532795,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors); then set on the real malakpet_rd alignment (OSM metro line over that road, ODbL) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "generic place beside the real malakpet road"
+ },
+ "irani_cafe_15": {
+  "name": "Cafe Gulzar",
+  "lat": 17.363511,
+  "lon": 78.474294,
+  "confidence": "low",
+  "source": "estimated beside Gulzar Houz (its name: Cafe Gulzar)",
+  "note": "generic Irani cafe at the Char Kaman square"
+ },
+ "irani_cafe_19": {
+  "name": "Café Noor-e-Iran",
+  "lat": 17.36358,
+  "lon": 78.474603,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "irani_cafe_2": {
+  "name": "Grand Hotel, Abids",
+  "lat": 17.38791,
+  "lon": 78.476218,
+  "confidence": "low",
+  "source": "estimated beside the GPO on Abids/Mukarram Jahi Road; not verified",
+  "note": "alias of grand_hotel; Grand Hotel (1935), Irani cafe"
+ },
+ "irani_cafe_3": {
+  "name": "Cafe Bahar, Basheerbagh",
+  "lat": 17.39983,
+  "lon": 78.47788,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Cafe Bahar (17°23'59\"N 78°28'40\"E)",
+  "note": "alias of cafe_bahar; Basheerbagh-Hyderguda X roads"
+ },
+ "irani_cafe_4": {
+  "name": "Niloufer Cafe, Lakdikapul",
+  "lat": 17.3995,
+  "lon": 78.4615,
+  "confidence": "low",
+  "source": "estimated: the original small cafe by Niloufer Hospital, Red Hills/Lakdikapul",
+  "note": "alias of niloufer_cafe; Cafe Niloufer"
+ },
+ "irani_cafe_7": {
+  "name": "Café Gulistan",
+  "lat": 17.396539,
+  "lon": 78.485125,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "irani_cafe_8": {
+  "name": "Cafe Shalimar",
+  "lat": 17.402568,
+  "lon": 78.495484,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors); then set on the real chikkadpally_rd alignment (OSM metro line over that road, ODbL) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "generic place beside the real chikkadpally road"
+ },
+ "irani_cafe_9": {
+  "name": "Cafe Kohinoor",
+  "lat": 17.39216,
+  "lon": 78.496315,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "iskcon_abids": {
+  "name": "ISKCON Temple, Abids",
+  "lat": 17.3902,
+  "lon": 78.4718,
+  "confidence": "low",
+  "source": "address: Hare Krishna Land, Nampally Station Road, Abids (5-4-743); position estimated",
+  "note": "ISKCON temple"
+ },
+ "iyengar_bakery_1": {
+  "name": "Sri Krishna Iyengar Bakery",
+  "lat": 17.394788,
+  "lon": 78.495558,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "iyengar_bakery_3": {
+  "name": "Sri Venkateswara Iyengar Bakery",
+  "lat": 17.367006,
+  "lon": 78.52144,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves"
+ },
+ "jama_masjid_charminar": {
+  "name": "Jama Masjid (Charminar)",
+  "lat": 17.3622,
+  "lon": 78.475,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) (17°21'44\"N 78°28'30\"E)",
+  "note": "small mosque NE of Charminar in a lane"
+ },
+ "jawahar_bal_bhavan": {
+  "name": "Jawahar Bal Bhavan",
+  "lat": 17.397,
+  "lon": 78.4698,
+  "confidence": "low",
+  "source": "estimated in the S of Public Gardens (sub-location per registry)",
+  "note": "Jawahar Bal Bhavan"
+ },
+ "jubilee_hall": {
+  "name": "Jubilee Hall",
+  "lat": 17.3995,
+  "lon": 78.468,
+  "confidence": "low",
+  "source": "estimated in the NW of Public Gardens",
+  "note": "Jubilee Hall",
+  "id_kind": "landmark"
+ },
+ "kachiguda_station": {
+  "name": "Kachiguda Station",
+  "lat": 17.38956,
+  "lon": 78.49976,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Kacheguda railway station + datameet/railways stations.json (CC0) KCG agree",
+  "note": "1916 Gothic station"
+ },
+ "kakatiya_arch_s": {
+  "name": "Kakatiya arch (south)",
+  "lat": 17.411837,
+  "lon": 78.477374,
+  "confidence": "low",
+  "source": "south end of the bund (OSM line) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "arch at the south end of Tank Bund (era not verified)",
+  "id_kind": "landmark"
+ },
+ "kaman_charminar": {
+  "name": "Charminar Kaman",
+  "lat": 17.362787,
+  "lon": 78.475,
+  "confidence": "medium",
+  "source": "layout relative to Gulzar Houz",
+  "note": "Charminar Kaman: the arch of the Char Kaman on the Charminar (south) side, ~60 m from the fountain",
+  "id_kind": "landmark"
+ },
+ "kaman_kali": {
+  "name": "Kali Kaman",
+  "lat": 17.36333,
+  "lon": 78.474435,
+  "confidence": "low",
+  "source": "layout relative to Gulzar Houz",
+  "note": "Kali Kaman, side arch (west as in the game; side not verified)",
+  "id_kind": "landmark"
+ },
+ "kaman_machli": {
+  "name": "Machli Kaman",
+  "lat": 17.363873,
+  "lon": 78.475,
+  "confidence": "medium",
+  "source": "layout relative to Gulzar Houz",
+  "note": "Machli Kaman: north arch of the Char Kaman",
+  "id_kind": "landmark"
+ },
+ "kaman_sher_e_batil": {
+  "name": "Sher-e-Batil ki Kaman",
+  "lat": 17.36333,
+  "lon": 78.475565,
+  "confidence": "low",
+  "source": "layout relative to Gulzar Houz",
+  "note": "Sher-e-Batil ki Kaman, side arch (east as in the game; side not verified)",
+  "id_kind": "landmark"
+ },
+ "karachi_bakery": {
+  "name": "Karachi Bakery",
+  "lat": 17.3847,
+  "lon": 78.4732,
+  "confidence": "medium",
+  "source": "in Moazzam Jahi Market (Wikipedia: first outlet in MJ Market)",
+  "note": "original Karachi Bakery"
+ },
+ "karmanghat_hanuman_temple": {
+  "name": "Karmanghat Hanuman Temple",
+  "lat": 17.33972,
+  "lon": 78.52472,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) (17°20'23\"N 78°31'29\"E)",
+  "note": "Karmanghat Hanuman temple"
+ },
+ "katta_maisamma_temple": {
+  "name": "Katta Maisamma Temple",
+  "lat": 17.412,
+  "lon": 78.4795,
+  "confidence": "low",
+  "source": "travel listings: on Lower Tank Bund road near Indira Park, toward the Telugu Talli flyover (south end of the bund); position estimated",
+  "note": "Katta Maisamma temple"
+ },
+ "king_kothi": {
+  "name": "King Kothi Palace (gated)",
+  "lat": 17.3925,
+  "lon": 78.4845,
+  "confidence": "low",
+  "source": "estimated: Nazri Bagh, King Koti (King Koti Rd geocode 17.394407,78.486321)",
+  "note": "King Kothi Palace (gated)"
+ },
+ "king_koti": {
+  "name": "King Koti",
+  "lat": 17.393,
+  "lon": 78.485,
+  "confidence": "low",
+  "source": "King Koti Rd geocode 17.394407,78.486321 (findlatitudeandlongitude); junction estimated",
+  "note": "King Koti junction"
+ },
+ "kirana_1": {
+  "name": "Sri Lakshmi Kirana & General Stores",
+  "lat": 17.399597,
+  "lon": 78.49004,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(119, -33) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   119,
+   -33
+  ],
+  "fictional": true
+ },
+ "kirana_12": {
+  "name": "Ali Kirana & Provisions",
+  "lat": 17.4205,
+  "lon": 78.4956,
+  "confidence": "low",
+  "source": "estimated in Bholakpur/Musheerabad (GHMC ward 88), east of Lower Tank Bund [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "generic kirana, Musheerabad-Bholakpur"
+ },
+ "kirana_15": {
+  "name": "Laxmi Narasimha Kirana",
+  "lat": 17.370197,
+  "lon": 78.496396,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "kirana_16": {
+  "name": "Sri Venkateshwara Kirana",
+  "lat": 17.366436,
+  "lon": 78.528527,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves"
+ },
+ "kirana_17": {
+  "name": "Saidabad Kirana",
+  "lat": 17.3585,
+  "lon": 78.5125,
+  "confidence": "low",
+  "source": "estimated in Saidabad",
+  "note": "generic kirana, Saidabad"
+ },
+ "kirana_18": {
+  "name": "Hyderabad Kirana",
+  "lat": 17.367984,
+  "lon": 78.472527,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "kirana_19": {
+  "name": "Chandrayangutta Kirana",
+  "lat": 17.326,
+  "lon": 78.4825,
+  "confidence": "low",
+  "source": "estimated in Chandrayangutta (GHMC ward 43) [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "generic kirana, Chandrayangutta"
+ },
+ "kirana_2": {
+  "name": "Balaji General Stores",
+  "lat": 17.399662,
+  "lon": 78.48136,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "kirana_20": {
+  "name": "Kothapet Kirana",
+  "lat": 17.363714,
+  "lon": 78.544972,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "kirana_3": {
+  "name": "Ganesh Provisions",
+  "lat": 17.40602,
+  "lon": 78.488301,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "kirana_4": {
+  "name": "Durga Kirana",
+  "lat": 17.398836,
+  "lon": 78.499629,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "kirana_5": {
+  "name": "Annapurna Kirana",
+  "lat": 17.394697,
+  "lon": 78.504822,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "kirana_6": {
+  "name": "Sai Ram Kirana",
+  "lat": 17.395419,
+  "lon": 78.513832,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "kite_stall_1": {
+  "name": "Kite stall",
+  "lat": 17.363556,
+  "lon": 78.475376,
+  "confidence": "low",
+  "source": "estimated beside Gulzar Houz",
+  "note": "kite stall near the Char Kaman square"
+ },
+ "kite_stall_2": {
+  "name": "Kite stall",
+  "lat": 17.363375,
+  "lon": 78.475894,
+  "confidence": "low",
+  "source": "estimated beside Gulzar Houz",
+  "note": "kite stall in the lane east of the Char Kaman square"
+ },
+ "kite_stall_3": {
+  "name": "Kite stall",
+  "lat": 17.363601,
+  "lon": 78.476224,
+  "confidence": "low",
+  "source": "estimated beside Gulzar Houz",
+  "note": "kite stall in the lane east of the Char Kaman square"
+ },
+ "koti": {
+  "name": "Koti",
+  "lat": 17.38564,
+  "lon": 78.48371,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Koti (17°23'08\"N 78°29'01\"E)",
+  "note": "Koti junction"
+ },
+ "koti_book_bazaar": {
+  "name": "Koti pavement book bazaar",
+  "lat": 17.38545,
+  "lon": 78.4832,
+  "confidence": "low",
+  "source": "estimated: Koti footpaths by the bus stop",
+  "note": "pavement book bazaar"
+ },
+ "koti_bus_stand": {
+  "name": "Koti Bus Stand",
+  "lat": 17.3851,
+  "lon": 78.4836,
+  "confidence": "low",
+  "source": "estimated: Koti terminus by the Residency wall, beside Koti junction (Wikipedia/Wikidata infobox coordinates (read via web-search summaries))",
+  "note": "Koti city-bus terminus (exact bays not verified)"
+ },
+ "koti_womens_college": {
+  "name": "Koti Women's College (British Residency)",
+  "lat": 17.383725,
+  "lon": 78.484752,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) British Residency, Hyderabad (17°23'01\"N 78°29'05\"E)",
+  "note": "the old British Residency, now Koti Women's College"
+ },
+ "laad_bazaar": {
+  "name": "Laad Bazaar (Chudi Bazaar)",
+  "lat": 17.3619,
+  "lon": 78.4728,
+  "confidence": "medium",
+  "source": "Sygic travel POI (17°21'42.9\"N 78°28'22.2\"E)",
+  "note": "bangle lane running west from Charminar to Mahboob Chowk"
+ },
+ "lakdikapul": {
+  "name": "Lakdikapul",
+  "lat": 17.4036,
+  "lon": 78.4634,
+  "confidence": "medium",
+  "source": "datameet/railways stations.json (CC0) Lakdikapul station 17.40405,78.46353; OSM red metro line passes the junction [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Lakdikapul junction / bridge"
+ },
+ "lakshmi_t2": {
+  "name": "Reddy-garu's terrace",
+  "lat": 17.398512,
+  "lon": 78.487047,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(-40.0, 27.0) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "id_kind": "roof",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   -40.0,
+   27.0
+  ],
+  "fictional": true
+ },
+ "lakshmi_t2_stairs": {
+  "name": "Reddy-garu's terrace: stairs",
+  "lat": 17.398946,
+  "lon": 78.487047,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(-40, 3) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   -40,
+   3
+  ],
+  "fictional": true
+ },
+ "lakshmi_t3": {
+  "name": "Sharma-ji's terrace",
+  "lat": 17.397788,
+  "lon": 78.48716,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(-34.0, 67.0) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "id_kind": "roof",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   -34.0,
+   67.0
+  ],
+  "fictional": true
+ },
+ "lakshmi_t3_stairs": {
+  "name": "Sharma-ji's terrace: stairs",
+  "lat": 17.397481,
+  "lon": 78.48716,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(-34, 84) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   -34,
+   84
+  ],
+  "fictional": true
+ },
+ "lakshmi_t4": {
+  "name": "the Naidus' terrace",
+  "lat": 17.397788,
+  "lon": 78.4878,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(0.0, 67.0) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "id_kind": "roof",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   0.0,
+   67.0
+  ],
+  "fictional": true
+ },
+ "lakshmi_t4_stairs": {
+  "name": "the Naidus' terrace: stairs",
+  "lat": 17.397481,
+  "lon": 78.4878,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(0, 84) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   0,
+   84
+  ],
+  "fictional": true
+ },
+ "lakshmi_t5": {
+  "name": "Pinto aunty's terrace",
+  "lat": 17.397788,
+  "lon": 78.488402,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(32.0, 67.0) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "id_kind": "roof",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   32.0,
+   67.0
+  ],
+  "fictional": true
+ },
+ "lakshmi_t5_stairs": {
+  "name": "Pinto aunty's terrace: stairs",
+  "lat": 17.397481,
+  "lon": 78.488402,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(32, 84) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   32,
+   84
+  ],
+  "fictional": true
+ },
+ "lakshmi_t6": {
+  "name": "the corner house terrace",
+  "lat": 17.398512,
+  "lon": 78.488515,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(38.0, 27.0) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "id_kind": "roof",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   38.0,
+   27.0
+  ],
+  "fictional": true
+ },
+ "lakshmi_t6_stairs": {
+  "name": "the corner house terrace: stairs",
+  "lat": 17.398946,
+  "lon": 78.488515,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(38, 3) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   38,
+   3
+  ],
+  "fictional": true
+ },
+ "lal_darwaza_temple": {
+  "name": "Lal Darwaza Mahankali Temple",
+  "lat": 17.3505,
+  "lon": 78.479,
+  "confidence": "low",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Lal Darwaza locality (17°21'N 78°29'E, rounded) and Balagunj Rd geocode 17.3475,78.4769; temple placed between",
+  "note": "Simhavahini Mahankali temple, Lal Darwaza (~1.5 km SE of Charminar)"
+ },
+ "lb_nagar": {
+  "name": "LB Nagar",
+  "lat": 17.348426,
+  "lon": 78.550959,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) L. B. Nagar + LB Nagar metro article agree; OSM red line ends 17.3466,78.5508 [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "LB Nagar circle"
+ },
+ "lb_stadium": {
+  "name": "Lal Bahadur Stadium (west gate)",
+  "lat": 17.39933,
+  "lon": 78.4718,
+  "confidence": "medium",
+  "source": "AroundUs stadium GPS 17.39933,78.47333; place is the WEST gate so moved 160 m west to the stadium edge",
+  "note": "LB Stadium west gate (stadium centre 17.39933,78.47333)",
+  "stadium_centre": [
+   17.39933,
+   78.47333
+  ]
+ },
+ "liberty": {
+  "name": "Liberty junction",
+  "lat": 17.404833,
+  "lon": 78.476712,
+  "confidence": "medium",
+  "source": "GHMC EV-charging list: Liberty bus stop, Basheer Bagh Road",
+  "note": "Liberty junction"
+ },
+ "liberty_theatre": {
+  "name": "Liberty Theatre",
+  "lat": 17.4044,
+  "lon": 78.4776,
+  "confidence": "low",
+  "source": "estimated at the Liberty junction",
+  "note": "Liberty cinema"
+ },
+ "lower_tank_bund": {
+  "name": "Lower Tank Bund",
+  "lat": 17.42,
+  "lon": 78.486,
+  "confidence": "low",
+  "source": "road below the bund east of the OSM lake edge (estimated) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Lower Tank Bund Road"
+ },
+ "lumbini_boat": {
+  "name": "Lumbini boat jetty",
+  "lat": 17.4102,
+  "lon": 78.4742,
+  "confidence": "medium",
+  "source": "Lumbini Park edge of the OSM lake polygon [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "alias of lumbini_jetty; boat jetty for the Buddha statue trips"
+ },
+ "lumbini_jetty": {
+  "name": "Lumbini boat jetty",
+  "lat": 17.4102,
+  "lon": 78.4742,
+  "confidence": "medium",
+  "source": "Lumbini Park edge of the OSM lake polygon [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "boat jetty for the Buddha statue trips"
+ },
+ "lumbini_park": {
+  "name": "Lumbini Park",
+  "lat": 17.40954,
+  "lon": 78.47302,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) + Sygic agree (17°24'36\"N 78°28'20\"E)",
+  "note": "SE shore"
+ },
+ "madina_building": {
+  "name": "Madina Building",
+  "lat": 17.3672,
+  "lon": 78.4744,
+  "confidence": "low",
+  "source": "Wikipedia gives only 17°22'N 78°30'E (rounded); placed at Madina circle, N end of Pathergatti, S of Naya Pul",
+  "note": "Madina Building at Madina circle",
+  "id_kind": "landmark"
+ },
+ "mahboob_chowk_clock_tower": {
+  "name": "Mahboob Chowk & Murgi Chowk",
+  "lat": 17.361788,
+  "lon": 78.470953,
+  "confidence": "high",
+  "source": "Plus code 9F6C+P98 (Deccan Archive event listing), decoded",
+  "note": "clock tower at Mahboob Chowk, west end of Laad Bazaar"
+ },
+ "malakpet": {
+  "name": "Malakpet",
+  "lat": 17.377,
+  "lon": 78.4955,
+  "confidence": "medium",
+  "source": "datameet/railways stations.json (CC0) Malakpet station 17.3754,78.49424; OSM red-metro line (Malakpet road) passes 17.37688,78.49579 [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Malakpet junction on the main road"
+ },
+ "malakpet_race_course": {
+  "name": "Malakpet race course",
+  "lat": 17.3685,
+  "lon": 78.506,
+  "confidence": "low",
+  "source": "estimated: Hyderabad Race Club (Masjid Rd, Afzal Nagar, Malakpet), south of the Malakpet-Dilsukhnagar road; outline not verified",
+  "note": "race course"
+ },
+ "maut_ka_kuan": {
+  "name": "Maut ka Kuan (well of death)",
+  "lat": 17.387277,
+  "lon": 78.469312,
+  "confidence": "low",
+  "source": "within the exhibition grounds estimate",
+  "note": "well of death",
+  "id_kind": "landmark"
+ },
+ "meat_shop_1": {
+  "name": "Fresh Chicken & Mutton",
+  "lat": 17.400561,
+  "lon": 78.506894,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "meat_shop_4": {
+  "name": "Malakpet Mutton Shop",
+  "lat": 17.361965,
+  "lon": 78.497844,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "meat_shop_5": {
+  "name": "Kothapet Chicken & Mutton",
+  "lat": 17.367,
+  "lon": 78.5435,
+  "confidence": "low",
+  "source": "estimated in Kothapet (its name) near NH65",
+  "note": "generic chicken & mutton shop, Kothapet"
+ },
+ "meat_shop_6": {
+  "name": "Murgi Chowk Chicken Centre",
+  "lat": 17.362105,
+  "lon": 78.470529,
+  "confidence": "low",
+  "source": "estimated at Murgi Chowk (its name); game had it east of Charminar",
+  "note": "generic chicken centre, placed at Murgi Chowk which it is named after"
+ },
+ "meat_shop_7": {
+  "name": "Bholakpur Chicken Centre",
+  "lat": 17.421723,
+  "lon": 78.492221,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "mecca_masjid": {
+  "name": "Mecca Masjid",
+  "lat": 17.3606,
+  "lon": 78.4733,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) + Structurae agree (17°21'38\"N 78°28'24\"E)",
+  "note": "mosque SW of Charminar"
+ },
+ "medical_shop_1": {
+  "name": "Life Line Medicals",
+  "lat": 17.39659,
+  "lon": 78.483276,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "medical_shop_2": {
+  "name": "Sri Venkateswara Medical Hall",
+  "lat": 17.387061,
+  "lon": 78.485793,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "medical_shop_3": {
+  "name": "Care Medicals",
+  "lat": 17.384112,
+  "lon": 78.476526,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "medical_shop_5": {
+  "name": "Malakpet Medicals",
+  "lat": 17.37275,
+  "lon": 78.506253,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors); then set on the real malakpet_rd alignment (OSM metro line over that road, ODbL) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "generic place beside the real malakpet road"
+ },
+ "medical_shop_6": {
+  "name": "Sri Sai Medicals",
+  "lat": 17.367665,
+  "lon": 78.521447,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves"
+ },
+ "medical_shop_8": {
+  "name": "Sai Medical & General Stores",
+  "lat": 17.39909,
+  "lon": 78.492507,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(250, -5) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   250,
+   -5
+  ],
+  "fictional": true
+ },
+ "mir_alam_tank": {
+  "name": "Mir Alam Tank",
+  "lat": 17.34529,
+  "lon": 78.43907,
+  "confidence": "high",
+  "source": "centroid of the OSM Mir Alam Tank polygon (relation 39024, Wikidata Q6872013) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "Mir Alam Tank; point lies outside the DataMeet GHMC ward polygons (gap/campus/lake), nearest ward Ward 57 Suleman Nagar at 95 m"
+ },
+ "mosque_1": {
+  "name": "Mallepally Masjid",
+  "lat": 17.391755,
+  "lon": 78.461578,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "mosque_10": {
+  "name": "Jama Masjid (Charminar)",
+  "lat": 17.3622,
+  "lon": 78.475,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) (17°21'44\"N 78°28'30\"E)",
+  "note": "alias of jama_masjid_charminar; small mosque NE of Charminar in a lane"
+ },
+ "mosque_3": {
+  "name": "Musheerabad Jama Masjid",
+  "lat": 17.416,
+  "lon": 78.503,
+  "confidence": "low",
+  "source": "estimated in Musheerabad (GHMC ward 86) east of the main road [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "Musheerabad Jama Masjid (neighbourhood mosque)"
+ },
+ "mosque_4": {
+  "name": "Malakpet Masjid",
+  "lat": 17.365171,
+  "lon": 78.497918,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "mosque_5": {
+  "name": "Saidabad Masjid",
+  "lat": 17.3562,
+  "lon": 78.5098,
+  "confidence": "low",
+  "source": "estimated in Saidabad",
+  "note": "neighbourhood mosque, Saidabad"
+ },
+ "mosque_6": {
+  "name": "Shah Ali Banda Masjid",
+  "lat": 17.3505,
+  "lon": 78.4718,
+  "confidence": "low",
+  "source": "estimated in Shah Ali Banda beside the Shah Ali Banda road (OSM old-city metro alignment) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "neighbourhood mosque, Shah Ali Banda"
+ },
+ "mosque_7": {
+  "name": "Falaknuma Masjid",
+  "lat": 17.334995,
+  "lon": 78.476144,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "mosque_8": {
+  "name": "Begum Bazaar Masjid",
+  "lat": 17.375186,
+  "lon": 78.470476,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "mozamjahi_market": {
+  "name": "Mozamjahi Market",
+  "lat": 17.3845,
+  "lon": 78.4735,
+  "confidence": "medium",
+  "source": "crossroads of Jam Bagh, Begum Bazaar and Station Road (heritage listings); the OSM red metro line turns at this crossroads [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "stone clock-tower market"
+ },
+ "murgi_chowk": {
+  "name": "Murgi Chowk market",
+  "lat": 17.361969,
+  "lon": 78.470718,
+  "confidence": "medium",
+  "source": "beside Mahboob Chowk clock tower",
+  "note": "Murgi Chowk market hall adjoining Mahboob Chowk",
+  "id_kind": "landmark"
+ },
+ "musallam_jung_bridge": {
+  "name": "Musallam Jung Bridge",
+  "lat": 17.36965,
+  "lon": 78.4675,
+  "confidence": "low",
+  "source": "on the OSM Musi line; sources say it links the High Court side to Begum Bazar, parallel to Purana Pul [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "exact crossing not verified"
+ },
+ "musi_riverbed": {
+  "name": "Musi riverbed & dhobi ghat",
+  "lat": 17.3703,
+  "lon": 78.4715,
+  "confidence": "medium",
+  "source": "OSM Musi line between Musallam Jung bridge and Naya Pul [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "dry riverbed and dhobi ghat"
+ },
+ "musical_fountain": {
+  "name": "Lumbini musical fountain",
+  "lat": 17.4094,
+  "lon": 78.4728,
+  "confidence": "low",
+  "source": "inside Lumbini Park",
+  "note": "Lumbini musical fountain",
+  "id_kind": "landmark"
+ },
+ "nampally_exhibition": {
+  "name": "Nampally Exhibition (Numaish)",
+  "lat": 17.388,
+  "lon": 78.4695,
+  "confidence": "low",
+  "source": "estimated: 23-acre grounds on Mukarram Jahi Road between Nampally station and Gandhi Bhavan (no coordinates found)",
+  "note": "Numaish / Exhibition Grounds"
+ },
+ "nampally_station": {
+  "name": "Nampally Station (Hyderabad Deccan)",
+  "lat": 17.39336,
+  "lon": 78.46738,
+  "confidence": "high",
+  "source": "datameet/railways stations.json (CC0) code HYB",
+  "note": "Hyderabad Deccan station"
+ },
+ "narayanguda_ymca": {
+  "name": "Narayanguda YMCA (Sadar festival)",
+  "lat": 17.3945,
+  "lon": 78.4905,
+  "confidence": "low",
+  "source": "on the OSM green-metro alignment (Narayanguda road); IndiaMapia Narayanguda 17.3977,78.4856 [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Narayanguda junction / YMCA"
+ },
+ "naya_pul": {
+  "name": "Naya Pul",
+  "lat": 17.3707,
+  "lon": 78.4752,
+  "confidence": "medium",
+  "source": "on the OSM Musi line where the Pathergatti/Madina road crosses to Afzalgunj; Wikipedia Nayapul locality 17.3707,78.4763 [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Naya Pul bridge"
+ },
+ "necklace_road": {
+  "name": "Necklace Road",
+  "lat": 17.4225,
+  "lon": 78.4648,
+  "confidence": "medium",
+  "source": "west shore of the OSM lake polygon beside Necklace Road station (datameet/railways stations.json (CC0) NLRD 17.42334,78.46287) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "middle of Necklace Road"
+ },
+ "nehru_zoo": {
+  "name": "Nehru Zoological Park",
+  "lat": 17.35111,
+  "lon": 78.44972,
+  "confidence": "medium",
+  "source": "Bharatpedia copy of Wikipedia Nehru Zoological Park (17°21'04\"N 78°26'59\"E)",
+  "note": "zoo centre"
+ },
+ "niloufer_cafe": {
+  "name": "Niloufer Cafe",
+  "lat": 17.3995,
+  "lon": 78.4615,
+  "confidence": "low",
+  "source": "estimated: the original small cafe by Niloufer Hospital, Red Hills/Lakdikapul",
+  "note": "Cafe Niloufer"
+ },
+ "nimrah_cafe": {
+  "name": "Nimrah Cafe",
+  "lat": 17.361992,
+  "lon": 78.474482,
+  "confidence": "medium",
+  "source": "listings: Charminar Road, steps from Charminar (LBB, EazyDiner)",
+  "note": "Irani cafe facing Charminar; exact frontage not verified"
+ },
+ "nizam_college": {
+  "name": "Nizam College",
+  "lat": 17.3995,
+  "lon": 78.476,
+  "confidence": "medium",
+  "source": "official address \"opp. LB Stadium, Basheer Bagh\"; between the stadium and the Basheerbagh junction",
+  "note": "Nizam College"
+ },
+ "nizams_museum": {
+  "name": "Nizam's Museum, Purani Haveli",
+  "lat": 17.36649,
+  "lon": 78.48285,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) The Nizam's Museum (17°21'59\"N 78°28'58\"E)",
+  "note": "inside Purani Haveli"
+ },
+ "ntr_gardens": {
+  "name": "NTR Gardens",
+  "lat": 17.4124,
+  "lon": 78.468,
+  "confidence": "medium",
+  "source": "Sygic 17.41232,78.46825 + Tripomatic 17.41275,78.46747 agree; Wikipedia point duplicates Lumbini so not used",
+  "note": "NTR Gardens"
+ },
+ "ntr_memorial": {
+  "name": "NTR Ghat",
+  "lat": 17.4118,
+  "lon": 78.4695,
+  "confidence": "low",
+  "source": "NTR Ghat beside NTR Gardens by the lake (estimated)",
+  "note": "NTR Ghat",
+  "id_kind": "landmark"
+ },
+ "numaish_gate": {
+  "name": "Numaish gate",
+  "lat": 17.387638,
+  "lon": 78.470065,
+  "confidence": "low",
+  "source": "within the exhibition grounds estimate",
+  "note": "Numaish main gate",
+  "id_kind": "landmark"
+ },
+ "numaish_stalls_1": {
+  "name": "Numaish stalls",
+  "lat": 17.387729,
+  "lon": 78.469029,
+  "confidence": "low",
+  "source": "within the exhibition grounds estimate",
+  "note": "stalls",
+  "id_kind": "landmark"
+ },
+ "numaish_stalls_2": {
+  "name": "Numaish stalls",
+  "lat": 17.387367,
+  "lon": 78.468841,
+  "confidence": "low",
+  "source": "within the exhibition grounds estimate",
+  "note": "stalls",
+  "id_kind": "landmark"
+ },
+ "odeon_theatre": {
+  "name": "Odeon",
+  "lat": 17.405562,
+  "lon": 78.494588,
+  "confidence": "low",
+  "source": "estimated around RTC X Roads (game layout)",
+  "note": "Odeon"
+ },
+ "osmania_hospital": {
+  "name": "Osmania General Hospital",
+  "lat": 17.3729,
+  "lon": 78.4735,
+  "confidence": "medium",
+  "source": "latlong.net POI (near Afzal Gunj bus stop)",
+  "note": "north bank"
+ },
+ "osmania_university": {
+  "name": "Osmania University Arts College",
+  "lat": 17.418974,
+  "lon": 78.526596,
+  "confidence": "medium",
+  "source": "latlong.net (University College of Arts & Social Sciences); CC0 Arts College station 650 m W [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "OU Arts College building; point lies outside the DataMeet GHMC ward polygons (gap/campus/lake), nearest ward Ward 143 Tarnaka at 283 m"
+ },
+ "paigah_tombs": {
+  "name": "Paigah Tombs",
+  "lat": 17.3439,
+  "lon": 78.5041,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Paigah Tombs (17°20'38\"N 78°30'15\"E); Pisal Banda article 400 m SW agrees",
+  "note": "Pisal Banda, Santosh Nagar"
+ },
+ "patang_bazaar": {
+  "name": "Patang Bazaar (kite stalls)",
+  "lat": 17.363466,
+  "lon": 78.475659,
+  "confidence": "low",
+  "source": "estimated beside Gulzar Houz",
+  "note": "kite stalls in the lanes off the Char Kaman square; exact lane not verified"
+ },
+ "patang_chacha_roof": {
+  "name": "Patang Chacha's roof",
+  "lat": 17.362679,
+  "lon": 78.47692,
+  "confidence": "low",
+  "source": "Gulzar Houz fountain (Wikipedia); Patang Chacha's roof is a fictional terrace in the kite-market lanes beside it",
+  "note": "part of gulzar_houz_roofs: anchor 17.363330,78.475000; keep the game offset (dx,dy)=(102, 36) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "gulzar_houz_roofs",
+  "anchor_latlon": [
+   17.36333,
+   78.475
+  ],
+  "anchor_game_u": [
+   3900,
+   4120
+  ],
+  "offset_u": [
+   102,
+   36
+  ],
+  "fictional": true
+ },
+ "patang_chacha_stairs": {
+  "name": "Patang Chacha's roof: stairs",
+  "lat": 17.363095,
+  "lon": 78.477184,
+  "confidence": "low",
+  "source": "Gulzar Houz fountain (Wikipedia); Patang Chacha's roof is a fictional terrace in the kite-market lanes beside it",
+  "note": "part of gulzar_houz_roofs: anchor 17.363330,78.475000; keep the game offset (dx,dy)=(116, 13) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "gulzar_houz_roofs",
+  "anchor_latlon": [
+   17.36333,
+   78.475
+  ],
+  "anchor_game_u": [
+   3900,
+   4120
+  ],
+  "offset_u": [
+   116,
+   13
+  ],
+  "fictional": true
+ },
+ "pathergatti": {
+  "name": "Pathergatti & Madina Building",
+  "lat": 17.3652,
+  "lon": 78.4747,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Pathargatti 17°21'48\"N 78°28'30\"E is the south end; arcades run north to Madina",
+  "note": "stone arcades between Gulzar Houz and Madina circle"
+ },
+ "pathergatti_arcade_w": {
+  "name": "Pathergatti arcades",
+  "lat": 17.3652,
+  "lon": 78.474559,
+  "confidence": "medium",
+  "source": "Pathergatti road alignment",
+  "note": "west arcade row of Pathergatti",
+  "id_kind": "landmark"
+ },
+ "photo_studio_1": {
+  "name": "Raj Colour Lab & Studio",
+  "lat": 17.401565,
+  "lon": 78.480811,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "photo_studio_2": {
+  "name": "Studio Lakshmi",
+  "lat": 17.386737,
+  "lon": 78.478016,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "photo_studio_3": {
+  "name": "Prince Photo Studio",
+  "lat": 17.389169,
+  "lon": 78.474249,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "photo_studio_5": {
+  "name": "Tarnaka Photo Studio",
+  "lat": 17.431862,
+  "lon": 78.527947,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "photo_studio_6": {
+  "name": "Colour Lab & Studio",
+  "lat": 17.369271,
+  "lon": 78.518883,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves; nudged 449 m into GHMC Ward 25 Moosarambagh (the neighbourhood it serves)"
+ },
+ "pindi_girni_1": {
+  "name": "Hanuman Pindi Girni",
+  "lat": 17.399597,
+  "lon": 78.492507,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(250, -33) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   250,
+   -33
+  ],
+  "fictional": true
+ },
+ "pindi_girni_2": {
+  "name": "Lakshmi Flour Mill",
+  "lat": 17.401448,
+  "lon": 78.506735,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "pindi_girni_5": {
+  "name": "Noor Atta Chakki",
+  "lat": 17.416097,
+  "lon": 78.491148,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "pindi_girni_6": {
+  "name": "Noor Pindi Girni",
+  "lat": 17.35786,
+  "lon": 78.480288,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "pindi_girni_7": {
+  "name": "Durga Pindi Girni",
+  "lat": 17.362168,
+  "lon": 78.527631,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves"
+ },
+ "pista_house": {
+  "name": "Pista House",
+  "lat": 17.3585,
+  "lon": 78.4752,
+  "confidence": "low",
+  "source": "LBB listing: 20-4-140, opposite Esra Hospital, Shalibanda Road, Charminar",
+  "note": "the Charminar/Shalibanda Pista House (the game had it beside Shah Ghouse)"
+ },
+ "playground_1": {
+  "name": "Lakshmi Nagar colony ground (home)",
+  "lat": 17.39815,
+  "lon": 78.489984,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(116, 47) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   116,
+   47
+  ],
+  "fictional": true
+ },
+ "playground_11": {
+  "name": "Amberpet ground",
+  "lat": 17.387177,
+  "lon": 78.522757,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "playground_13": {
+  "name": "Shah Ali Banda maidan",
+  "lat": 17.350593,
+  "lon": 78.470305,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "playground_14": {
+  "name": "Ashok Nagar ground",
+  "lat": 17.406633,
+  "lon": 78.486446,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "playground_2": {
+  "name": "Vidyanagar colony ground",
+  "lat": 17.398808,
+  "lon": 78.502447,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "playground_3": {
+  "name": "Nallakunta ground",
+  "lat": 17.394291,
+  "lon": 78.510815,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "playground_4": {
+  "name": "Bholakpur ground",
+  "lat": 17.418186,
+  "lon": 78.493184,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "playground_7": {
+  "name": "Chaitanyapuri ground",
+  "lat": 17.364525,
+  "lon": 78.525469,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves"
+ },
+ "playground_8": {
+  "name": "Saidabad maidan",
+  "lat": 17.357,
+  "lon": 78.5118,
+  "confidence": "low",
+  "source": "estimated in Saidabad",
+  "note": "Saidabad maidan (generic)"
+ },
+ "playground_home": {
+  "name": "Lakshmi Nagar colony ground",
+  "lat": 17.39815,
+  "lon": 78.489984,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(116, 47) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   116,
+   47
+  ],
+  "fictional": true
+ },
+ "playground_kit_14": {
+  "name": "Swings & slide",
+  "lat": 17.407976,
+  "lon": 78.487452,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified",
+  "id_kind": "landmark"
+ },
+ "playground_kit_home": {
+  "name": "Swings & slide",
+  "lat": 17.398801,
+  "lon": 78.490624,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(150, 11) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "id_kind": "landmark",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   150,
+   11
+  ],
+  "fictional": true
+ },
+ "prasads_imax": {
+  "name": "Prasads IMAX",
+  "lat": 17.412842,
+  "lon": 78.465879,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Prasads Multiplex (17°24'46\"N 78°27'57\"E)",
+  "note": "opened 2003"
+ },
+ "public_gardens": {
+  "name": "Public Gardens",
+  "lat": 17.3982,
+  "lon": 78.4695,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Public Gardens (17°23'54\"N 78°28'10\"E)",
+  "note": "Bagh-e-Aam"
+ },
+ "purana_pul": {
+  "name": "Purana Pul & Jumerat Bazaar",
+  "lat": 17.36755,
+  "lon": 78.458278,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Purana Pul (17°22'03\"N 78°27'30\"E); on the OSM Musi line [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "1578 bridge"
+ },
+ "puranapul_arches": {
+  "name": "Purana Pul arches",
+  "lat": 17.36745,
+  "lon": 78.45835,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) (Purana Pul)",
+  "note": "the bridge arches",
+  "id_kind": "landmark"
+ },
+ "purani_haveli": {
+  "name": "Purani Haveli (Nizam's Museum)",
+  "lat": 17.365507,
+  "lon": 78.482675,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Purani Haveli (17°21'56\"N 78°28'58\"E)",
+  "note": "palace complex",
+  "id_kind": "landmark"
+ },
+ "ramakrishna_math": {
+  "name": "Ramakrishna Math, Domalguda",
+  "lat": 17.4118,
+  "lon": 78.482,
+  "confidence": "low",
+  "source": "address: Lower Tank Bund Rd, opposite Indira Park, Domalguda; Domalguda (Wikipedia) 17.4088,78.4823",
+  "note": "Ramakrishna Math campus"
+ },
+ "ramakrishna_theatre": {
+  "name": "Ramakrishna 70mm",
+  "lat": 17.3875,
+  "lon": 78.479,
+  "confidence": "low",
+  "source": "listing: Sri Gokul Chat 5-4-48 Abids, \"opposite Ramakrishna Theatre\", Troop Bazaar",
+  "note": "Ramakrishna 70mm, between Abids and Koti"
+ },
+ "ramoji_film_city": {
+  "name": "To Ramoji Film City (bus trip)",
+  "lat": 17.3405,
+  "lon": 78.5612,
+  "confidence": "medium",
+  "source": "NH65 at the planned east map edge (lon 78.561); real Ramoji Film City is ~25 km ESE at about 17.254,78.681 (off-map)",
+  "note": "map-edge bus exit toward Ramoji Film City",
+  "real_site": [
+   17.254,
+   78.681
+  ]
+ },
+ "ravindra_bharathi": {
+  "name": "Ravindra Bharathi",
+  "lat": 17.4033,
+  "lon": 78.4672,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Ravindra Bharathi (17°24'12\"N 78°28'02\"E)",
+  "note": "auditorium, Saifabad"
+ },
+ "recording_centre_1": {
+  "name": "Raag Recording Centre",
+  "lat": 17.361855,
+  "lon": 78.47335,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "rtc_x_roads": {
+  "name": "RTC X Roads",
+  "lat": 17.4052,
+  "lon": 78.496,
+  "confidence": "medium",
+  "source": "on the OSM green-metro alignment (Chikkadpally-Musheerabad road); Wikipedia point 17.403247,78.498641 is shared with the Chikkadpally article so treated as the locality [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "RTC X Roads junction (+/-250 m)"
+ },
+ "rythu_bazaar_saroornagar": {
+  "name": "Rythu Bazaar, Kothapet",
+  "lat": 17.366,
+  "lon": 78.542,
+  "confidence": "low",
+  "source": "estimated: Kothapet rythu bazaar near the NH65 / Kothapet junction (no coordinates found)",
+  "note": "Rythu Bazaar, Kothapet"
+ },
+ "salar_jung_museum": {
+  "name": "Salar Jung Museum",
+  "lat": 17.3714,
+  "lon": 78.4801,
+  "confidence": "high",
+  "source": "latitude.to, Tripomatic, museum listings agree (~17°22'17\"N 78°28'49\"E)",
+  "note": "south bank of the Musi"
+ },
+ "samosa_bandi_1": {
+  "name": "Samosa bandi",
+  "lat": 17.393359,
+  "lon": 78.515742,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "samosa_bandi_3": {
+  "name": "Samosa bandi",
+  "lat": 17.419,
+  "lon": 78.4964,
+  "confidence": "low",
+  "source": "estimated beside the Musheerabad road (OSM green-metro alignment) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "samosa cart, Musheerabad"
+ },
+ "samosa_bandi_5": {
+  "name": "Samosa bandi",
+  "lat": 17.364823,
+  "lon": 78.531005,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves"
+ },
+ "samosa_bandi_6": {
+  "name": "Samosa bandi",
+  "lat": 17.360717,
+  "lon": 78.477234,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "sandhya_theatre": {
+  "name": "Sandhya 70mm & 35mm",
+  "lat": 17.405336,
+  "lon": 78.496329,
+  "confidence": "low",
+  "source": "Yappe listing: Sandhya 70 MM, Chikkadpally Rd, Zamistanpur, ~0.05 km from RTC X Roads metro station; placed on the east side of the junction (OSM green-metro alignment) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Sandhya 70mm & 35mm"
+ },
+ "sanjeevaiah_park": {
+  "name": "Sanjeevaiah Park",
+  "lat": 17.4345,
+  "lon": 78.4775,
+  "confidence": "medium",
+  "source": "between the lake (OSM polygon) and Sanjeevaiah Park station (datameet/railways stations.json (CC0) SJVP 17.43595,78.47569) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Sanjeevaiah Park"
+ },
+ "sanjeevaiah_park_station": {
+  "name": "Sanjeevaiah Park station",
+  "lat": 17.43595,
+  "lon": 78.47569,
+  "confidence": "high",
+  "source": "datameet/railways stations.json (CC0) code SJVP",
+  "note": "MMTS halt",
+  "id_kind": "landmark"
+ },
+ "saroornagar_lake": {
+  "name": "Saroornagar Lake",
+  "lat": 17.35584,
+  "lon": 78.52714,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) + latitude.to; OSM polygon centroid 17.35491,78.52717 agrees [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "Saroornagar Lake; point lies outside the DataMeet GHMC ward polygons (gap/campus/lake), nearest ward Ward 18 Lingojiguda at 176 m"
+ },
+ "school_1": {
+  "name": "Saraswati Vidya Mandir High School",
+  "lat": 17.396573,
+  "lon": 78.479224,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "school_10": {
+  "name": "Malakpet High School",
+  "lat": 17.359249,
+  "lon": 78.504976,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "school_11": {
+  "name": "Dilsukhnagar Public School",
+  "lat": 17.363919,
+  "lon": 78.52284,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves"
+ },
+ "school_12": {
+  "name": "Saidabad Government School",
+  "lat": 17.3578,
+  "lon": 78.5105,
+  "confidence": "low",
+  "source": "estimated in Saidabad (its name; Wikipedia Saidabad 17.3563,78.5116)",
+  "note": "generic government school, Saidabad"
+ },
+ "school_13": {
+  "name": "Government Urdu High School, Shah Ali Banda",
+  "lat": 17.347,
+  "lon": 78.4725,
+  "confidence": "low",
+  "source": "estimated in Shah Ali Banda (GHMC ward 48 Shalibanda) [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "Government Urdu High School, Shah Ali Banda (generic)"
+ },
+ "school_2": {
+  "name": "Vivekananda High School",
+  "lat": 17.399788,
+  "lon": 78.49737,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "school_3": {
+  "name": "Government High School, Kachiguda",
+  "lat": 17.394253,
+  "lon": 78.502534,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "school_7": {
+  "name": "Government High School, Musheerabad",
+  "lat": 17.417,
+  "lon": 78.504,
+  "confidence": "low",
+  "source": "estimated inside GHMC ward 86 Musheerabad (its name), east of the Musheerabad road [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "Government High School, Musheerabad (generic)"
+ },
+ "secretariat": {
+  "name": "Secretariat",
+  "lat": 17.4085,
+  "lon": 78.469,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Secretariat Mosque 17°24'35\"N 78°28'06\"E stands on the old Secretariat site",
+  "note": "old Secretariat complex (demolished 2020)"
+ },
+ "shadab_hotel": {
+  "name": "Hotel Shadab",
+  "lat": 17.367064,
+  "lon": 78.473882,
+  "confidence": "low",
+  "source": "listings: Madina Circle, High Court Road, opposite Madina Building (Yappe, LBB)",
+  "note": "Hotel Shadab on High Court Road"
+ },
+ "shah_ghouse": {
+  "name": "Shah Ghouse Cafe",
+  "lat": 17.34806,
+  "lon": 78.47,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Shah Ghouse Cafe, Shah-Ali-Banda (17°20'53\"N 78°28'12\"E); sits on the OSM Shah Ali Banda road alignment [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "the original Shah Ali Banda Shah Ghouse"
+ },
+ "shankar_mutt_nallakunta": {
+  "name": "Sringeri Shankar Mutt, Nallakunta",
+  "lat": 17.4005,
+  "lon": 78.506,
+  "confidence": "low",
+  "source": "same as temple_3",
+  "note": "Sringeri Shankar Mutt, Nallakunta"
+ },
+ "shanti_theatre": {
+  "name": "Shanti Theatre",
+  "lat": 17.3938,
+  "lon": 78.4895,
+  "confidence": "low",
+  "source": "estimated at Narayanguda (no coordinates found)",
+  "note": "Shanti Theatre"
+ },
+ "st_georges_church_abids": {
+  "name": "St. George's Church",
+  "lat": 17.3905,
+  "lon": 78.48,
+  "confidence": "low",
+  "source": "address 4-1-1111 King Koti Road, Bogulkunta; position estimated",
+  "note": "St. George's Church"
+ },
+ "st_josephs_cathedral": {
+  "name": "St. Joseph's Cathedral",
+  "lat": 17.395563,
+  "lon": 78.477438,
+  "confidence": "high",
+  "source": "Plus code 7J9W9FWG+6X (GCatholic), decoded",
+  "note": "Gunfoundry"
+ },
+ "state_central_library": {
+  "name": "State Central Library",
+  "lat": 17.3742,
+  "lon": 78.4783,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) (17°22'27\"N 78°28'42\"E) + WikiShia",
+  "note": "Asafia library, north bank"
+ },
+ "state_museum": {
+  "name": "State Archaeology Museum",
+  "lat": 17.39925,
+  "lon": 78.47032,
+  "confidence": "medium",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Telangana State Archaeology Museum (17°23'57\"N 78°28'13\"E)",
+  "note": "in Public Gardens"
+ },
+ "stationery_1": {
+  "name": "Vidya Stationery & Book Depot",
+  "lat": 17.397256,
+  "lon": 78.478833,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "stationery_2": {
+  "name": "Navyuga Stationers",
+  "lat": 17.399368,
+  "lon": 78.497777,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "stationery_3": {
+  "name": "Student Book House",
+  "lat": 17.39511,
+  "lon": 78.502996,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "stationery_4": {
+  "name": "Koti textbook stall",
+  "lat": 17.38555,
+  "lon": 78.48305,
+  "confidence": "low",
+  "source": "estimated in the Koti book bazaar",
+  "note": "Koti textbook stall"
+ },
+ "stationery_7": {
+  "name": "Saraswati Book Depot",
+  "lat": 17.365809,
+  "lon": 78.523338,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves"
+ },
+ "stationery_8": {
+  "name": "Sri Sai Stationery",
+  "lat": 17.36289,
+  "lon": 78.505368,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "std_1": {
+  "name": "STD/ISD/PCO",
+  "lat": 17.401424,
+  "lon": 78.4878,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(0, -134) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   0,
+   -134
+  ],
+  "fictional": true
+ },
+ "std_11": {
+  "name": "STD/ISD/PCO",
+  "lat": 17.368619,
+  "lon": 78.528311,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors); then set on the real malakpet_rd alignment (OSM metro line over that road, ODbL) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "generic place beside the real malakpet road"
+ },
+ "std_12": {
+  "name": "STD/ISD/PCO",
+  "lat": 17.354556,
+  "lon": 78.473706,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors); then set on the real shah_ali_banda_rd alignment (OSM metro line over that road, ODbL) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "generic place beside the real shah ali banda road"
+ },
+ "std_13": {
+  "name": "STD/ISD/PCO",
+  "lat": 17.353992,
+  "lon": 78.462226,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "std_2": {
+  "name": "STD/ISD/PCO",
+  "lat": 17.39915,
+  "lon": 78.484461,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "std_3": {
+  "name": "STD/ISD/PCO",
+  "lat": 17.385281,
+  "lon": 78.485033,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "std_4": {
+  "name": "STD/ISD/PCO",
+  "lat": 17.390123,
+  "lon": 78.477234,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "std_5": {
+  "name": "STD/ISD/PCO",
+  "lat": 17.403641,
+  "lon": 78.459263,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "std_6": {
+  "name": "STD/ISD/PCO",
+  "lat": 17.410488,
+  "lon": 78.497786,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors); then set on the real musheerabad_rd alignment (OSM metro line over that road, ODbL) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "generic place beside the real musheerabad road"
+ },
+ "std_7": {
+  "name": "STD/ISD/PCO",
+  "lat": 17.408562,
+  "lon": 78.487241,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "subhan_bakery": {
+  "name": "Subhan Bakery",
+  "lat": 17.3915,
+  "lon": 78.469,
+  "confidence": "low",
+  "source": "estimated: Nampally, near the station (no coordinates found)",
+  "note": "Subhan Bakery (1948)"
+ },
+ "sudarshan_theatre": {
+  "name": "Sudarshan 35mm",
+  "lat": 17.404477,
+  "lon": 78.495341,
+  "confidence": "low",
+  "source": "estimated around RTC X Roads (game layout)",
+  "note": "Sudarshan 35mm"
+ },
+ "sultan_bazaar": {
+  "name": "Sultan Bazaar",
+  "lat": 17.3878,
+  "lon": 78.4842,
+  "confidence": "low",
+  "source": "estimated: lanes north of Koti junction (no coordinates found)",
+  "note": "Sultan Bazaar market lanes"
+ },
+ "taj_mahal_hotel_abids": {
+  "name": "Taj Mahal Hotel, Abids",
+  "lat": 17.39008,
+  "lon": 78.477159,
+  "confidence": "low",
+  "source": "estimated on Abids Road / King Koti Road corner",
+  "note": "Taj Mahal Hotel (veg tiffin)"
+ },
+ "tank_bund": {
+  "name": "Tank Bund",
+  "lat": 17.418886,
+  "lon": 78.482182,
+  "confidence": "medium",
+  "source": "east edge of the OSM Hussain Sagar polygon (the bund) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "middle of Tank Bund"
+ },
+ "tank_bund_statue_1": {
+  "name": "Tank Bund statue",
+  "lat": 17.412723,
+  "lon": 78.477787,
+  "confidence": "low",
+  "source": "evenly spaced along the OSM bund line, south (1) to north (12) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "statue 1 on Tank Bund; individual plinth positions not verified",
+  "id_kind": "landmark"
+ },
+ "tank_bund_statue_10": {
+  "name": "Tank Bund statue",
+  "lat": 17.4217,
+  "lon": 78.48391,
+  "confidence": "low",
+  "source": "evenly spaced along the OSM bund line, south (1) to north (12) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "statue 10 on Tank Bund; individual plinth positions not verified",
+  "id_kind": "landmark"
+ },
+ "tank_bund_statue_11": {
+  "name": "Tank Bund statue",
+  "lat": 17.422698,
+  "lon": 78.48459,
+  "confidence": "low",
+  "source": "evenly spaced along the OSM bund line, south (1) to north (12) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "statue 11 on Tank Bund; individual plinth positions not verified",
+  "id_kind": "landmark"
+ },
+ "tank_bund_statue_12": {
+  "name": "Tank Bund statue",
+  "lat": 17.423695,
+  "lon": 78.48527,
+  "confidence": "low",
+  "source": "evenly spaced along the OSM bund line, south (1) to north (12) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "statue 12 on Tank Bund; individual plinth positions not verified",
+  "id_kind": "landmark"
+ },
+ "tank_bund_statue_2": {
+  "name": "Tank Bund statue",
+  "lat": 17.41372,
+  "lon": 78.478468,
+  "confidence": "low",
+  "source": "evenly spaced along the OSM bund line, south (1) to north (12) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "statue 2 on Tank Bund; individual plinth positions not verified",
+  "id_kind": "landmark"
+ },
+ "tank_bund_statue_3": {
+  "name": "Tank Bund statue",
+  "lat": 17.414718,
+  "lon": 78.479148,
+  "confidence": "low",
+  "source": "evenly spaced along the OSM bund line, south (1) to north (12) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "statue 3 on Tank Bund; individual plinth positions not verified",
+  "id_kind": "landmark"
+ },
+ "tank_bund_statue_4": {
+  "name": "Tank Bund statue",
+  "lat": 17.415715,
+  "lon": 78.479828,
+  "confidence": "low",
+  "source": "evenly spaced along the OSM bund line, south (1) to north (12) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "statue 4 on Tank Bund; individual plinth positions not verified",
+  "id_kind": "landmark"
+ },
+ "tank_bund_statue_5": {
+  "name": "Tank Bund statue",
+  "lat": 17.416713,
+  "lon": 78.480508,
+  "confidence": "low",
+  "source": "evenly spaced along the OSM bund line, south (1) to north (12) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "statue 5 on Tank Bund; individual plinth positions not verified",
+  "id_kind": "landmark"
+ },
+ "tank_bund_statue_6": {
+  "name": "Tank Bund statue",
+  "lat": 17.41771,
+  "lon": 78.481189,
+  "confidence": "low",
+  "source": "evenly spaced along the OSM bund line, south (1) to north (12) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "statue 6 on Tank Bund; individual plinth positions not verified",
+  "id_kind": "landmark"
+ },
+ "tank_bund_statue_7": {
+  "name": "Tank Bund statue",
+  "lat": 17.418708,
+  "lon": 78.481869,
+  "confidence": "low",
+  "source": "evenly spaced along the OSM bund line, south (1) to north (12) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "statue 7 on Tank Bund; individual plinth positions not verified",
+  "id_kind": "landmark"
+ },
+ "tank_bund_statue_8": {
+  "name": "Tank Bund statue",
+  "lat": 17.419705,
+  "lon": 78.482549,
+  "confidence": "low",
+  "source": "evenly spaced along the OSM bund line, south (1) to north (12) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "statue 8 on Tank Bund; individual plinth positions not verified",
+  "id_kind": "landmark"
+ },
+ "tank_bund_statue_9": {
+  "name": "Tank Bund statue",
+  "lat": 17.420703,
+  "lon": 78.483229,
+  "confidence": "low",
+  "source": "evenly spaced along the OSM bund line, south (1) to north (12) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "statue 9 on Tank Bund; individual plinth positions not verified",
+  "id_kind": "landmark"
+ },
+ "tank_bund_statues": {
+  "name": "Tank Bund statues",
+  "lat": 17.418309,
+  "lon": 78.481597,
+  "confidence": "medium",
+  "source": "along the OSM bund line [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "row of statues on the lake side of Tank Bund"
+ },
+ "tarnaka": {
+  "name": "Tarnaka",
+  "lat": 17.4275,
+  "lon": 78.539,
+  "confidence": "low",
+  "source": "estimated: Tarnaka X roads north of OU; OSM blue-metro line passes 17.4194,78.5413 [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Tarnaka junction"
+ },
+ "temple_1": {
+  "name": "Sri Venkateswara Temple",
+  "lat": 17.400791,
+  "lon": 78.486727,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(-57, -99) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   -57,
+   -99
+  ],
+  "fictional": true
+ },
+ "temple_2": {
+  "name": "Hanuman Temple",
+  "lat": 17.404251,
+  "lon": 78.487029,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "temple_3": {
+  "name": "Shankar Mutt",
+  "lat": 17.4005,
+  "lon": 78.506,
+  "confidence": "low",
+  "source": "estimated: Sringeri Shankar Mutt on the Nallakunta/OU road (bus stop named after it); Nallakunta (Wikipedia) 17.3986,78.5080",
+  "note": "Sringeri Shankar Mutt, Nallakunta"
+ },
+ "temple_5": {
+  "name": "Sri Rama Temple, Tarnaka",
+  "lat": 17.429142,
+  "lon": 78.5345,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "temple_7": {
+  "name": "ISKCON Temple, Abids",
+  "lat": 17.3902,
+  "lon": 78.4718,
+  "confidence": "low",
+  "source": "address: Hare Krishna Land, Nampally Station Road, Abids (5-4-743); position estimated",
+  "note": "alias of iskcon_abids; ISKCON temple"
+ },
+ "temple_8": {
+  "name": "Ashtalakshmi Temple, Kothapet",
+  "lat": 17.364693,
+  "lon": 78.547896,
+  "confidence": "high",
+  "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries)",
+  "note": "alias of ashtalakshmi_temple"
+ },
+ "uppal": {
+  "name": "Uppal",
+  "lat": 17.3995,
+  "lon": 78.559,
+  "confidence": "low",
+  "source": "Uppal metro station listing 17.3988,78.5538; OSM blue-metro line passes 17.3953,78.5593; junction estimated [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+  "note": "Uppal X Roads"
+ },
+ "victory_playground": {
+  "name": "Victory Playground (VPG)",
+  "lat": 17.38,
+  "lon": 78.4915,
+  "confidence": "low",
+  "source": "estimated: Chaderghat/Nimboliadda (Wikipedia: \"located at Chaderghat\"; directory: Nimboliadda, Kachiguda)",
+  "note": "Victory Playground"
+ },
+ "video_parlour_1": {
+  "name": "Super Video Games",
+  "lat": 17.393097,
+  "lon": 78.498089,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "video_parlour_2": {
+  "name": "Champion Video Games",
+  "lat": 17.38872,
+  "lon": 78.482773,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified"
+ },
+ "video_parlour_3": {
+  "name": "Rocky Video Games",
+  "lat": 17.365373,
+  "lon": 78.524692,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves"
+ },
+ "vijayawada_highway": {
+  "name": "NH 9 to Vijayawada",
+  "lat": 17.3395,
+  "lon": 78.5612,
+  "confidence": "medium",
+  "source": "NH65 (old NH9) at the planned east map edge",
+  "note": "map-edge exit to Vijayawada"
+ },
+ "water_tank_1": {
+  "name": "Colony water tank",
+  "lat": 17.40061,
+  "lon": 78.492093,
+  "confidence": "low",
+  "source": "fictional colony anchored in a real residential pocket of GHMC ward 79 Himayath Nagar: the wedge between Himayatnagar Main Road and the Narayanguda-Chikkadpally road (OSM green-metro alignment), north of Narayanguda, south of the Hussain Sagar surplus nala [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data] [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "part of lakshmi_nagar_colony: anchor 17.399000,78.487800; keep the game offset (dx,dy)=(228, -89) u from the anchor (converted here at 2.0 m/u, north-up)",
+  "id_kind": "landmark",
+  "anchor": "lakshmi_nagar_colony",
+  "anchor_latlon": [
+   17.399,
+   78.4878
+  ],
+  "anchor_game_u": [
+   4580,
+   2619
+  ],
+  "offset_u": [
+   228,
+   -89
+  ],
+  "fictional": true
+ },
+ "water_tank_2": {
+  "name": "Colony water tank",
+  "lat": 17.402028,
+  "lon": 78.503135,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified",
+  "id_kind": "landmark"
+ },
+ "water_tank_3": {
+  "name": "Colony water tank",
+  "lat": 17.4212,
+  "lon": 78.493,
+  "confidence": "low",
+  "source": "estimated in Bholakpur (GHMC ward 88) [ward polygons: DataMeet Municipal Spatial Data, CC BY 4.0]",
+  "note": "colony water tank, Bholakpur",
+  "id_kind": "landmark"
+ },
+ "water_tank_4": {
+  "name": "Colony water tank",
+  "lat": 17.366483,
+  "lon": 78.499109,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified",
+  "id_kind": "landmark"
+ },
+ "water_tank_5": {
+  "name": "Colony water tank",
+  "lat": 17.366001,
+  "lon": 78.527858,
+  "confidence": "low",
+  "source": "estimated: game position mapped onto real geography by a moving-least-squares similarity warp through 75 verified anchors (local, exact at anchors)",
+  "note": "generic everyday place, kept in the neighbourhood it serves; street frontage not verified; pulled 40% toward the Dilsukhnagar junction to stay in the neighbourhood it serves",
+  "id_kind": "landmark"
+ },
+ "zoo_gate": {
+  "name": "Nehru Zoo gate",
+  "lat": 17.355,
+  "lon": 78.4535,
+  "confidence": "low",
+  "source": "estimated: main gate on the Bahadurpura road north-east of the zoo centre (Bahadurpura PIN geocode 17.3574,78.4617)",
+  "note": "Nehru Zoo main gate",
+  "id_kind": "landmark"
+ }
+}

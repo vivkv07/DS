@@ -1721,7 +1721,10 @@
       if (v.doorT > 0) v.doorT -= dt;
       v.age += dt;
       if (v.fallen) { v.fallen.t += dt; if (v.fallen.t > TUNE.rightAfter && !v.driver) { v.fallen = null; v.wake(); } }
-      if (v.driver === p) {
+      if (v.driver === p && v.autopilot && v.controller) {
+        // the boatman rows / a scripted drive with the player aboard (N.vehicles.driveTo + v.autopilot)
+        try { v.controller(v, dt); } catch (e) { N.err('vehicle.controller', e); v.controller = null; v.autopilot = false; }
+      } else if (v.driver === p) {
         if (mode === 'play' && !p.controlsLocked) playerControl(v); else idleControl(v);
         if (mode === 'play' && v.T.cls === 'bike') bikeHazards(v, dt);
       } else if (v.fallen) {

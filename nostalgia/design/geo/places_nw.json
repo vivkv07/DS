@@ -1,0 +1,2074 @@
+{
+ "aeroplane_1": {
+  "lat": 17.4512,
+  "lon": 78.4655,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "parked plane on the apron west of the terminal (estimated)."
+ },
+ "all_india_radio": {
+  "lat": 17.4046,
+  "lon": 78.4668,
+  "confidence": "low",
+  "source": "newsonair.gov.in: AIR Hyderabad, Saifabad 500004",
+  "note": "All India Radio, Saifabad, estimated beside Ravindra Bharathi."
+ },
+ "alpha_hotel": {
+  "lat": 17.4352,
+  "lon": 78.5004,
+  "confidence": "medium",
+  "source": "LBB listing: 7-1/6/3, opposite Railway Station, Shivaji Nagar; News Minute (near the station entrance, since 1957)",
+  "note": "Alpha Hotel (Irani cafe) opposite the station."
+ },
+ "ameerpet": {
+  "lat": 17.4345,
+  "lon": 78.4457,
+  "confidence": "medium",
+  "source": "OSM rail/metro geometry (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (red/blue metro interchange geometry 17.4344,78.4455) ; Wikipedia station point 17.4348,78.4480",
+  "note": "Ameerpet X roads; on the Ameerpet/Somajiguda ward boundary."
+ },
+ "ameerpet_coaching": {
+  "lat": 17.4364,
+  "lon": 78.44542,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "computer-coaching lane (Aditya Enclave / Mythrivanam side, north-west of the X roads)."
+ },
+ "anand_theatre": {
+  "lat": 17.43434,
+  "lon": 78.50944,
+  "confidence": "low",
+  "source": "News Minute: Sangeet and Anand theatres at Sangeet X Roads",
+  "note": "Anand theatre at Sangeet X Roads (estimated)."
+ },
+ "annapurna_studios": {
+  "lat": 17.429,
+  "lon": 78.4225,
+  "confidence": "low",
+  "source": "listing: Road No. 2 Banjara Hills, ~0.19 km from Jubilee Hills Road No. 5 metro station (OSM blue-line alignment)",
+  "note": "Annapurna Studios (22 acres), north-east of KBR Park."
+ },
+ "apollo_hospital_jubilee_hills": {
+  "lat": 17.415,
+  "lon": 78.4137,
+  "confidence": "medium",
+  "source": "latlong.net (OpenGovernmentData) 17.4149895,78.4136510",
+  "note": "Apollo Hospitals, Jubilee Hills (Road No. 72, Film Nagar)."
+ },
+ "atc_tower": {
+  "lat": 17.45,
+  "lon": 78.469,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "control tower by the terminal apron (estimated)."
+ },
+ "bakery_2": {
+  "lat": 17.43387,
+  "lon": 78.44843,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "bakery east of the X roads."
+ },
+ "bakery_3": {
+  "lat": 17.41759,
+  "lon": 78.49995,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "bakery on Musheerabad main road."
+ },
+ "balkampet_yellamma_temple": {
+  "lat": 17.4475,
+  "lon": 78.4492,
+  "confidence": "medium",
+  "source": "trek.zone 17deg26m51s N 78deg26m57s E (Wikipedia Balkampet locality 17.4450,78.4489 agrees within 300 m)",
+  "note": "Balkampet Yellamma temple."
+ },
+ "banana_cart_10": {
+  "lat": 17.4372,
+  "lon": 78.496,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "banana cart in General Bazaar."
+ },
+ "banana_cart_4": {
+  "lat": 17.3947,
+  "lon": 78.4405,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "banana cart outside the Mehdipatnam Rythu Bazaar."
+ },
+ "banana_cart_5": {
+  "lat": 17.43531,
+  "lon": 78.45135,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "banana cart on the Ameerpet-Begumpet road."
+ },
+ "banana_cart_6": {
+  "lat": 17.45397,
+  "lon": 78.43371,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "banana cart on the main road."
+ },
+ "banana_cart_7": {
+  "lat": 17.4398,
+  "lon": 78.4992,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "banana cart near Wesley Church / Clock Tower."
+ },
+ "banjara_darwaza": {
+  "lat": 17.3885,
+  "lon": 78.4005,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "northern gate of the outer wall, towards the Qutb Shahi tombs (estimated)."
+ },
+ "banjara_hills": {
+  "lat": 17.4138,
+  "lon": 78.4482,
+  "confidence": "low",
+  "source": "researcher knowledge + OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (Banjara Lake 17.41098,78.44821 sits behind Road No. 1)",
+  "note": "Banjara Hills Road No. 1, near the Banjara Lake / Taj Banjara stretch."
+ },
+ "bapu_ghat": {
+  "lat": 17.372,
+  "lon": 78.414,
+  "confidence": "medium",
+  "source": "OSM waterways (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (Musi / Esa confluence at 17.3707,78.4145) + news: Bapu Ghat is at the Musi-Esa confluence, Langar Houz",
+  "note": "Bapu Ghat (Gandhi memorial)."
+ },
+ "barber_3": {
+  "lat": 17.39857,
+  "lon": 78.45949,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "barber shop, AC Guards lanes."
+ },
+ "barber_4": {
+  "lat": 17.42003,
+  "lon": 78.49393,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "barber shop towards Kavadiguda."
+ },
+ "begumpet": {
+  "lat": 17.4385,
+  "lon": 78.4575,
+  "confidence": "medium",
+  "source": "OSM rail/metro geometry (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) + Wikipedia coordinates (Begumpet metro 17.4375,78.4567; Begumpet rail station 17.43871,78.45859)",
+  "note": "Begumpet on the Ameerpet-Secunderabad main road at the railway/metro crossing; on the Ameerpet/Begumpet ward boundary."
+ },
+ "begumpet_airport": {
+  "lat": 17.4485,
+  "lon": 78.4705,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates airport reference point 17.4531,78.4676 (aviation databases agree) + researcher knowledge",
+  "note": "passenger terminal side, south of the runway, off the Begumpet main road; the airfield reference point is 17.4531,78.4676 (runway 09/27)."
+ },
+ "begumpet_station": {
+  "lat": 17.43871,
+  "lon": 78.45859,
+  "confidence": "high",
+  "source": "Wikipedia coordinates + OSM rail/metro geometry (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL)",
+  "note": "Begumpet railway station (Wikipedia 17deg26m19s N 78deg27m31s E, lies on the OSM rail line)."
+ },
+ "birla_mandir": {
+  "lat": 17.40619,
+  "lon": 78.46906,
+  "confidence": "high",
+  "source": "Wikipedia coordinates (17deg24m22s N 78deg28m09s E) + Structurae (agrees within 10 m) + matches prior knowledge (17.4062,78.4691)",
+  "note": "Birla Mandir on Naubat Pahad."
+ },
+ "birla_planetarium": {
+  "lat": 17.4045,
+  "lon": 78.4682,
+  "confidence": "low",
+  "source": "listings: Naubat Pahad, Adarsh Nagar / Ambedkar Colony",
+  "note": "Birla Planetarium & Science Museum at the foot of Naubat Pahad, estimated west of the temple."
+ },
+ "blue_sea_cafe": {
+  "lat": 17.4368,
+  "lon": 78.504,
+  "confidence": "medium",
+  "source": "Yappe listing: St Johns Road, Regimental Bazaar, Shivaji Nagar, ~0.46 km from Secunderabad station; LBB: on the station road",
+  "note": "Blue Sea Tea & Snacks (estimated on St John's Road)."
+ },
+ "bonalu": {
+  "lat": 17.4367,
+  "lon": 78.4911,
+  "confidence": "medium",
+  "source": "Wikipedia infobox coordinates (read via web-search summary, 2026-10)",
+  "note": "alias: Lashkar Bonalu at the Ujjaini Mahankali temple."
+ },
+ "buddha_statue": {
+  "lat": 17.41556,
+  "lon": 78.47506,
+  "confidence": "high",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (Gibraltar Rock = island hole in the Hussain Sagar polygon, centroid 17.41556,78.47506) + Wikipedia (17deg24m56s N 78deg28m30s E) + prior knowledge agree",
+  "note": "monolith on Gibraltar Rock, Hussain Sagar."
+ },
+ "bus_stop_14": {
+  "lat": 17.41776,
+  "lon": 78.48202,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Tank Bund bus stop."
+ },
+ "bus_stop_15": {
+  "lat": 17.39851,
+  "lon": 78.41636,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Tolichowki bus stop on the Mehdipatnam road."
+ },
+ "bus_stop_16": {
+  "lat": 17.42484,
+  "lon": 78.53497,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Tarnaka bus stop."
+ },
+ "bus_stop_18": {
+  "lat": 17.41174,
+  "lon": 78.46129,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Khairatabad bus stop."
+ },
+ "bus_stop_20": {
+  "lat": 17.44931,
+  "lon": 78.38114,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "bus stop on HITEC City main road just south of Cyber Towers."
+ },
+ "bus_stop_4": {
+  "lat": 17.40382,
+  "lon": 78.46422,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Lakdikapul bus stop."
+ },
+ "bus_stop_5": {
+  "lat": 17.3958,
+  "lon": 78.4394,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Mehdipatnam bus stop."
+ },
+ "bus_stop_6": {
+  "lat": 17.43504,
+  "lon": 78.44608,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Ameerpet bus stop on the main road by the X roads."
+ },
+ "bus_stop_7": {
+  "lat": 17.44316,
+  "lon": 78.48624,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Paradise bus stop."
+ },
+ "bus_stop_8": {
+  "lat": 17.43497,
+  "lon": 78.50151,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Secunderabad bus stop on the station road."
+ },
+ "chai_bandi_2": {
+  "lat": 17.45496,
+  "lon": 78.43691,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "chai bandi on the Sanath Nagar road."
+ },
+ "chai_bandi_3": {
+  "lat": 17.41884,
+  "lon": 78.5265,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "OU canteen chai near the Arts College."
+ },
+ "chai_bandi_6": {
+  "lat": 17.42086,
+  "lon": 78.4842,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "bhutta & chai cart on the Tank Bund."
+ },
+ "chai_bandi_7": {
+  "lat": 17.4466,
+  "lon": 78.3795,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "construction-site chai cart near the 2003 building sites (Cyber Gateway / Mindspace plots) south-west of Cyber Towers."
+ },
+ "chai_bandi_8": {
+  "lat": 17.4338,
+  "lon": 78.481,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "chai bandi on the north-east shore road towards James Street."
+ },
+ "chenoy_trade_centre": {
+  "lat": 17.4395,
+  "lon": 78.4915,
+  "confidence": "low",
+  "source": "directory listings: Chenoy Trade Centre, Park Lane, Kalasiguda, near Paradise",
+  "note": "CTC electronics market on Park Lane (estimated)."
+ },
+ "chilkur_balaji": {
+  "lat": 17.37,
+  "lon": 78.34,
+  "confidence": "low",
+  "source": "Wikipedia coordinates (Chilkoor Balaji Temple 17deg21m30s N 78deg17m55s E = 17.3583,78.2986) + researcher knowledge",
+  "note": "edge signpost on the Chilkur road at the A1 west boundary; the temple is outside the world."
+ },
+ "chiran_palace": {
+  "lat": 17.42,
+  "lon": 78.4185,
+  "confidence": "low",
+  "source": "Wikipedia coordinates (palace stands inside KBR Park; no own coordinate)",
+  "note": "Chiran Palace inside KBR Park (position inside the park estimated)."
+ },
+ "church_1": {
+  "lat": 17.447,
+  "lon": 78.5072,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Methodist church, West Marredpally (generic placement)."
+ },
+ "church_holy_trinity": {
+  "lat": 17.51669,
+  "lon": 78.52361,
+  "confidence": "medium",
+  "source": "Wikipedia infobox coordinates (read via web-search summary, 2026-10)",
+  "note": "alias of holy_trinity_church_bolarum. North of A1 bounds."
+ },
+ "church_st_johns": {
+  "lat": 17.43483,
+  "lon": 78.51019,
+  "confidence": "low",
+  "source": "sources (Sangeet Junction, East Marredpally)",
+  "note": "alias of st_johns_church_secunderabad."
+ },
+ "church_st_marys": {
+  "lat": 17.4421,
+  "lon": 78.5022,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates (Basilica of Our Lady of the Assumption 17deg26m32s N 78deg30m08s E; Sarojini Devi Road)",
+  "note": "St. Mary's Church (basilica since 2008)."
+ },
+ "church_wesley": {
+  "lat": 17.4393,
+  "lon": 78.4997,
+  "confidence": "low",
+  "source": "listing: CSI Wesley Church, opposite Sarojini Devi Rd, Clock Tower Second Bazaar area, Shivaji Nagar",
+  "note": "Wesley Church near the Clock Tower (estimated)."
+ },
+ "coaching_1": {
+  "lat": 17.43658,
+  "lon": 78.44551,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "computer coaching centre in the coaching lane."
+ },
+ "coaching_2": {
+  "lat": 17.43658,
+  "lon": 78.44504,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "computer coaching centre in the coaching lane."
+ },
+ "coconut_cart_1": {
+  "lat": 17.4222,
+  "lon": 78.4641,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "tender-coconut cart on Necklace Road (west shore)."
+ },
+ "coconut_cart_2": {
+  "lat": 17.433,
+  "lon": 78.4658,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "tender-coconut cart on the north-west stretch of Necklace Road."
+ },
+ "coconut_cart_3": {
+  "lat": 17.4335,
+  "lon": 78.4755,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "tender-coconut cart at the Sanjeevaiah Park entrance (north shore)."
+ },
+ "coconut_cart_4": {
+  "lat": 17.41862,
+  "lon": 78.4826,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "tender-coconut cart on the Tank Bund."
+ },
+ "coconut_cart_5": {
+  "lat": 17.4232,
+  "lon": 78.4238,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "tender-coconut cart at the KBR Park main gate."
+ },
+ "coconut_cart_7": {
+  "lat": 17.42184,
+  "lon": 78.4849,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "tender-coconut cart near the north end of the Tank Bund."
+ },
+ "cyber_towers": {
+  "lat": 17.4504,
+  "lon": 78.381,
+  "confidence": "medium",
+  "source": "researcher knowledge + Wikivoyage (Shilparamam 17.4515,78.3772 \"across the road from Cyber Towers\") + OSM blue-line alignment",
+  "note": "Cyber Towers (opened Nov 1998) on the east side of HITEC City main road, opposite Shilparamam (Madhapur area; the GHMC ward layer puts this block in Ward 104 Kondapur)."
+ },
+ "cycle_rent_3": {
+  "lat": 17.41126,
+  "lon": 78.49525,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "cycle taxi (hire) shop south of Bholakpur."
+ },
+ "cycle_rent_4": {
+  "lat": 17.44927,
+  "lon": 78.50894,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "cycle hire shop, West Marredpally."
+ },
+ "dosa_bandi_5": {
+  "lat": 17.4122,
+  "lon": 78.467,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "dosa bandi on IMAX road between Prasads and NTR Gardens."
+ },
+ "dosa_bandi_6": {
+  "lat": 17.4322,
+  "lon": 78.4892,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "dosa bandi on MG Road north of Ranigunj."
+ },
+ "durgam_cheruvu": {
+  "lat": 17.4308,
+  "lon": 78.3935,
+  "confidence": "high",
+  "source": "OpenStreetMap waterbody polygon (Lakeer hyderabad-open-gis-data GENERAL LAYERS, (c) OpenStreetMap contributors, ODbL)",
+  "note": "Durgam Cheruvu lake (OSM way 28131043, centroid 17.43031,78.39002, extent 17.4261-17.4367N 78.3860-78.3948E); point = east shore, the Jubilee Hills/Madhapur side a kid would reach."
+ },
+ "erragadda": {
+  "lat": 17.4565,
+  "lon": 78.4338,
+  "confidence": "medium",
+  "source": "OpenStreetMap railway/metro geometry (Lakeer hyderabad-open-gis-data GENERAL LAYERS, (c) OpenStreetMap contributors, ODbL)",
+  "note": "Erragadda junction on the Ameerpet-Kukatpally road (OSM red-line alignment; Wikipedia gives the metro station at 17.4568,78.4304, ~300 m west). Sits on the Erragadda/Sanath Nagar ward boundary."
+ },
+ "errum_manzil": {
+  "lat": 17.41944,
+  "lon": 78.455,
+  "confidence": "medium",
+  "source": "Wikipedia mirror (2016) 17.41944,78.45500; \"on a hillock off the Khairatabad-Panjagutta road\"",
+  "note": "Errum Manzil palace gate."
+ },
+ "film_nagar": {
+  "lat": 17.41472,
+  "lon": 78.40889,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates (Film Nagar 17deg24m53s N 78deg24m32s E)",
+  "note": "Film Nagar locality centre (FNCC / temple area)."
+ },
+ "flower_cart_11": {
+  "lat": 17.4058,
+  "lon": 78.4699,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "flower cart at the foot of the Birla Mandir steps."
+ },
+ "flower_cart_12": {
+  "lat": 17.43047,
+  "lon": 78.40513,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "flower cart at the Peddamma temple gate."
+ },
+ "flower_cart_4": {
+  "lat": 17.43652,
+  "lon": 78.49129,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "flower cart at the Mahankali temple."
+ },
+ "flower_cart_9": {
+  "lat": 17.3961,
+  "lon": 78.4482,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "flower cart at the Ayyappa temple."
+ },
+ "gachibowli_stadium": {
+  "lat": 17.44678,
+  "lon": 78.3447,
+  "confidence": "high",
+  "source": "Wikipedia infobox coordinates (read via web-search summary, 2026-10)",
+  "note": "G.M.C. Balayogi Athletic Stadium (Wikipedia 17.4467833,78.3446972; a third-party listing agrees within 70 m). Built 2002 for the National Games."
+ },
+ "gandipet": {
+  "lat": 17.379,
+  "lon": 78.34,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (Osman Sagar centroid 17.37610,78.29816) + researcher knowledge (Langar Houz - Narsingi - Gandipet road)",
+  "note": "edge signpost on the road west to Gandipet, placed at the A1 west boundary (78.335-78.34E); the lake itself is ~4.5 km further west, outside the world."
+ },
+ "ganesh_immersion": {
+  "lat": 17.41435,
+  "lon": 78.47939,
+  "confidence": "medium",
+  "source": "researcher knowledge + OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL)",
+  "note": "alias of ganesh_immersion_point."
+ },
+ "ganesh_immersion_point": {
+  "lat": 17.41435,
+  "lon": 78.47939,
+  "confidence": "medium",
+  "source": "researcher knowledge (immersion cranes line the Tank Bund every year) + OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL)",
+  "note": "Ganesh Nimajjanam cranes on the Tank Bund (central stretch)."
+ },
+ "garden_cafe": {
+  "lat": 17.44044,
+  "lon": 78.49794,
+  "confidence": "medium",
+  "source": "News Minute / Outlook / Scroll: Garden Cafe stands opposite the Clock Tower on a rounded corner (1940s)",
+  "note": "Garden Cafe, position estimated across the road from the tower."
+ },
+ "general_bazaar": {
+  "lat": 17.4376,
+  "lon": 78.4945,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "General Bazaar market streets between the Clock Tower and the Mahankali temple."
+ },
+ "giver_ameerpet": {
+  "lat": 17.43622,
+  "lon": 78.4457,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Ameerpet coaching lane."
+ },
+ "giver_banjara": {
+  "lat": 17.4142,
+  "lon": 78.4472,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Banjara Hills Road No. 1."
+ },
+ "giver_begumpet": {
+  "lat": 17.4462,
+  "lon": 78.4668,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Begumpet airport road."
+ },
+ "giver_erragadda": {
+  "lat": 17.45532,
+  "lon": 78.43352,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "at the Rythu Bazaar gate."
+ },
+ "giver_golconda": {
+  "lat": 17.3793,
+  "lon": 78.4085,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Fateh Darwaza approach road."
+ },
+ "giver_hitec": {
+  "lat": 17.4504,
+  "lon": 78.38124,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Cyber Towers road, by the gate."
+ },
+ "giver_hussain_sagar": {
+  "lat": 17.4192,
+  "lon": 78.48297,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "on the Tank Bund by the statues."
+ },
+ "giver_jubilee": {
+  "lat": 17.42912,
+  "lon": 78.41278,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Jubilee Hills Check Post."
+ },
+ "giver_khairatabad": {
+  "lat": 17.4103,
+  "lon": 78.463,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Khairatabad Ganesh ground."
+ },
+ "giver_langar_houz": {
+  "lat": 17.3785,
+  "lon": 78.42,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates (Langar Houz 17deg22m42s N 78deg25m15s E)",
+  "note": "Langar Houz main road."
+ },
+ "giver_marredpally": {
+  "lat": 17.449,
+  "lon": 78.5095,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "West Marredpally main road."
+ },
+ "giver_masab_tank": {
+  "lat": 17.40083,
+  "lon": 78.45601,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Masab Tank junction."
+ },
+ "giver_musheerabad": {
+  "lat": 17.4175,
+  "lon": 78.496,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Musheerabad main road."
+ },
+ "giver_osmania": {
+  "lat": 17.41816,
+  "lon": 78.52594,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "OU Arts College road."
+ },
+ "giver_secunderabad": {
+  "lat": 17.44044,
+  "lon": 78.49888,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Clock Tower road."
+ },
+ "giver_tolichowki": {
+  "lat": 17.39733,
+  "lon": 78.42474,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "outside Hotel Sohail."
+ },
+ "golconda_bala_hissar": {
+  "lat": 17.38306,
+  "lon": 78.40111,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates fort coordinate 17deg22m59s N 78deg24m04s E (ASI page 17.383278,78.401058 and NGA 17.3828,78.4020 agree)",
+  "note": "Bala Hissar summit baradari; the commonly cited fort coordinate sits on the citadel hill."
+ },
+ "golconda_fateh_darwaza": {
+  "lat": 17.38,
+  "lon": 78.4075,
+  "confidence": "low",
+  "source": "sources: Fateh Darwaza near the south-eastern corner of the outer enclosure",
+  "note": "outer gate on the road from Langar Houz (estimated)."
+ },
+ "golconda_fort": {
+  "lat": 17.3832,
+  "lon": 78.4042,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates/ASI fort coordinate + researcher knowledge (Bala Hisar gate is at the east foot of the citadel)",
+  "note": "the game place is the fort entrance (Bala Hisar Darwaza, ticket gate) ~330 m east of the citadel point 17.38306,78.40111."
+ },
+ "golconda_jagadamba_temple": {
+  "lat": 17.3837,
+  "lon": 78.4013,
+  "confidence": "low",
+  "source": "news reports: Sri Jagadamba Mahankali temple inside Golconda Fort (first Bonalu)",
+  "note": "temple on the citadel hill near the summit; exact spot not sourced."
+ },
+ "golconda_sound_light": {
+  "lat": 17.383,
+  "lon": 78.4036,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "sound & light show seating just inside the Bala Hisar gate (clapping portico area)."
+ },
+ "golconda_wall_e1": {
+  "lat": 17.3855,
+  "lon": 78.408,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "outer fort wall, east side (north part)."
+ },
+ "golconda_wall_e2": {
+  "lat": 17.3805,
+  "lon": 78.4085,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "outer fort wall, east side (south part)."
+ },
+ "golconda_wall_n": {
+  "lat": 17.3868,
+  "lon": 78.403,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "outer fort wall, north side (estimated; outer wall ~1.2 km across)."
+ },
+ "golconda_wall_s": {
+  "lat": 17.3778,
+  "lon": 78.4015,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "outer fort wall, south side."
+ },
+ "golconda_wall_w": {
+  "lat": 17.3835,
+  "lon": 78.395,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "outer fort wall, west side."
+ },
+ "gymkhana_ground_secunderabad": {
+  "lat": 17.44474,
+  "lon": 78.48923,
+  "confidence": "medium",
+  "source": "lyfskills listing plus code CFVQ+FMX (7J9WCFVQ+FMX decoded = 17.44474,78.48923); one source",
+  "note": "Secunderabad Gymkhana Ground (cricket), near Paradise."
+ },
+ "hide_airport_fence": {
+  "lat": 17.4508,
+  "lon": 78.4735,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "airport perimeter fence east of the terminal."
+ },
+ "hide_banjara_lake": {
+  "lat": 17.4103,
+  "lon": 78.4465,
+  "confidence": "medium",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (Banjara Lake, OSM way 29124351, extent 17.4097-17.4119N 78.4461-78.4495E)",
+  "note": "west edge of Banjara Lake."
+ },
+ "hide_clock_tower_park": {
+  "lat": 17.44094,
+  "lon": 78.49836,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "bench in the Clock Tower park."
+ },
+ "hide_cyber_fountain": {
+  "lat": 17.45026,
+  "lon": 78.38109,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "forecourt fountain in front of Cyber Towers (game hide spot)."
+ },
+ "hide_durgam_rocks": {
+  "lat": 17.4262,
+  "lon": 78.3912,
+  "confidence": "low",
+  "source": "OpenStreetMap waterbody polygon (Lakeer hyderabad-open-gis-data GENERAL LAYERS, (c) OpenStreetMap contributors, ODbL)",
+  "note": "rocks at the south end of Durgam Cheruvu (lake south tip ~17.4261N from OSM)."
+ },
+ "hide_gachibowli": {
+  "lat": 17.44579,
+  "lon": 78.34526,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "stadium car park, south-east of the bowl."
+ },
+ "hide_golconda_bastion": {
+  "lat": 17.3812,
+  "lon": 78.3958,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "a quiet bastion on the west/south-west wall."
+ },
+ "hide_golconda_court": {
+  "lat": 17.3836,
+  "lon": 78.4027,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "inner court on the climb to the citadel."
+ },
+ "hide_indira_rock": {
+  "lat": 17.41421,
+  "lon": 78.4837,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "rock garden inside Indira Park."
+ },
+ "hide_kbr_trail": {
+  "lat": 17.418,
+  "lon": 78.417,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "walking trail inside KBR Park."
+ },
+ "hide_lumbini_hedge": {
+  "lat": 17.4093,
+  "lon": 78.4716,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "hedge corner inside Lumbini Park."
+ },
+ "hide_moula_ali": {
+  "lat": 17.4644,
+  "lon": 78.5578,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "steps up the Moula Ali hill."
+ },
+ "hide_ntr_lawn": {
+  "lat": 17.41249,
+  "lon": 78.46806,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "big tree on the NTR Gardens lawn."
+ },
+ "hide_ou_campus": {
+  "lat": 17.42169,
+  "lon": 78.52923,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "boulder on the OU campus between the Arts College and Tarnaka."
+ },
+ "hide_parade_grounds": {
+  "lat": 17.4485,
+  "lon": 78.4965,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "far (north-west) corner of the Parade Grounds."
+ },
+ "hide_safilguda": {
+  "lat": 17.463,
+  "lon": 78.535,
+  "confidence": "medium",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (Safilguda Lake, OSM way 118650632, centroid 17.46398,78.53632, extent 17.4612-17.4657N 78.5348-78.5385E)",
+  "note": "west bank of Safilguda lake."
+ },
+ "hide_sanjeevaiah_bench": {
+  "lat": 17.4292,
+  "lon": 78.4748,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "last bench at the lake end of Sanjeevaiah Park."
+ },
+ "hide_shilparamam_hut": {
+  "lat": 17.45159,
+  "lon": 78.37786,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "craft hut inside Shilparamam."
+ },
+ "hide_taramati": {
+  "lat": 17.37585,
+  "lon": 78.37821,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Taramati Baradari steps."
+ },
+ "hide_tombs_garden": {
+  "lat": 17.39364,
+  "lon": 78.39554,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "garden between the tombs."
+ },
+ "hide_zoo_pond": {
+  "lat": 17.3505,
+  "lon": 78.45,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "pond inside Nehru Zoological Park (Bahadurpura; zoo lies east of Mir Alam Tank, OSM centroid 17.34529,78.43907). Belongs to the south/Old City area; included because the current map files it under langar_houz."
+ },
+ "hill_fort_palace": {
+  "lat": 17.404,
+  "lon": 78.4722,
+  "confidence": "low",
+  "source": "Bharatpedia mirror gives 17.40333,78.47889 (likely imprecise) + researcher knowledge (hillock beside Naubat Pahad, Adarsh Nagar)",
+  "note": "Hill Fort Palace, position estimated east of Naubat Pahad."
+ },
+ "himayat_sagar": {
+  "lat": 17.34,
+  "lon": 78.37,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (Himayat Sagar centroid 17.31158,78.35294)",
+  "note": "edge signpost on the road south-west to Himayat Sagar, placed near the A1 south-west corner; the reservoir lies just south of the world (17.312N edge)."
+ },
+ "hitec_city": {
+  "lat": 17.4417,
+  "lon": 78.3826,
+  "confidence": "medium",
+  "source": "Wikipedia infobox coordinates (read via web-search summary, 2026-10)",
+  "note": "HITEC City district reference point (Wikipedia 17deg26m30s N 78deg22m58s E); the game place stands for the HITEC City area south of Cyber Towers."
+ },
+ "hitex": {
+  "lat": 17.4717,
+  "lon": 78.375,
+  "confidence": "medium",
+  "source": "tradefairdates.com venue GPS 17.47170,78.37500 (one source); Izzat Nagar, Kondapur",
+  "note": "HITEX Exhibition Centre (opened 2003)."
+ },
+ "holy_trinity_church_bolarum": {
+  "lat": 17.51669,
+  "lon": 78.52361,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates (17deg31m00s N 78deg31m25s E) + Bolarum locality 17.5144,78.5136",
+  "note": "Holy Trinity Church, Bolarum (1847). NORTH of the A1 world bounds (17.475N): clamp to the north edge."
+ },
+ "hussain_sagar": {
+  "lat": 17.4105,
+  "lon": 78.4733,
+  "confidence": "high",
+  "source": "OpenStreetMap waterbody polygon (Lakeer hyderabad-open-gis-data GENERAL LAYERS, (c) OpenStreetMap contributors, ODbL)",
+  "note": "shore point at Lumbini Park (game place \"Hussain Sagar (Lumbini shore)\"). Lake: OSM relation 2833155, centroid 17.42402,78.47422, extent 17.4086-17.4374N 78.4625-78.4868E (Wikipedia 17deg25m29s N 78deg28m24s E)."
+ },
+ "hussain_shah_wali_dargah": {
+  "lat": 17.405,
+  "lon": 78.393,
+  "confidence": "low",
+  "source": "Wikipedia Shaikpet 17deg24m13s N 78deg23m56s E + Deccan Chronicle (\"about 2 km north-west of Golconda\", on the old Golconda-Bidar route with the Shaikpet Sarai)",
+  "note": "Hussain Shah Wali (HS) Dargah and Shaikpet Sarai, Shaikpet; exact spot estimated."
+ },
+ "hyderabad_public_school": {
+  "lat": 17.44419,
+  "lon": 78.4573,
+  "confidence": "high",
+  "source": "two sources agree: biodiversity-records site 17.4441929,78.4572966 and trek.zone 17deg26m39s N 78deg27m26s E",
+  "note": "The Hyderabad Public School, Begumpet."
+ },
+ "indira_park": {
+  "lat": 17.41475,
+  "lon": 78.48305,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates (17deg24m53s N 78deg28m59s E) + researcher knowledge (Domalguda, beside Lower Tank Bund)",
+  "note": "Indira Park."
+ },
+ "internet_cafe_3": {
+  "lat": 17.43586,
+  "lon": 78.44608,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "browsing centre near the coaching lane."
+ },
+ "internet_cafe_4": {
+  "lat": 17.43556,
+  "lon": 78.50765,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "browsing centre between Sangeet and West Marredpally."
+ },
+ "internet_cafe_5": {
+  "lat": 17.42692,
+  "lon": 78.53205,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "browsing centre on the Tarnaka-Mettuguda road."
+ },
+ "irani_cafe_10": {
+  "lat": 17.39724,
+  "lon": 78.42455,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Irani cafe (Hotel Sohail) on the Tolichowki-Mehdipatnam road."
+ },
+ "irani_cafe_11": {
+  "lat": 17.43486,
+  "lon": 78.44881,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Irani cafe on the Ameerpet-Begumpet road."
+ },
+ "irani_cafe_12": {
+  "lat": 17.41641,
+  "lon": 78.49713,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Irani cafe, Bholakpur."
+ },
+ "irani_cafe_16": {
+  "lat": 17.3975,
+  "lon": 78.4428,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Irani cafe on the Mehdipatnam-Masab Tank road."
+ },
+ "irani_cafe_17": {
+  "lat": 17.4368,
+  "lon": 78.504,
+  "confidence": "medium",
+  "source": "Yappe / LBB listings",
+  "note": "alias of blue_sea_cafe."
+ },
+ "irani_cafe_18": {
+  "lat": 17.4128,
+  "lon": 78.4505,
+  "confidence": "low",
+  "source": "LBB listing (Road No. 1, Banjara Hills)",
+  "note": "alias of sarvi."
+ },
+ "irani_cafe_4": {
+  "lat": 17.4025,
+  "lon": 78.4636,
+  "confidence": "low",
+  "source": "listings (Red Hills Road, Lakdikapul)",
+  "note": "alias of niloufer_cafe."
+ },
+ "irani_cafe_5": {
+  "lat": 17.44044,
+  "lon": 78.49794,
+  "confidence": "medium",
+  "source": "News Minute / Outlook (opposite the Clock Tower)",
+  "note": "alias of garden_cafe."
+ },
+ "irani_cafe_6": {
+  "lat": 17.4352,
+  "lon": 78.5004,
+  "confidence": "medium",
+  "source": "LBB listing (opposite Secunderabad station)",
+  "note": "alias of alpha_hotel."
+ },
+ "iyengar_bakery_2": {
+  "lat": 17.4415,
+  "lon": 78.5065,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Iyengar bakery towards West Marredpally."
+ },
+ "iyengar_bakery_4": {
+  "lat": 17.43016,
+  "lon": 78.45013,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Iyengar bakery on the road south towards Panjagutta (Somajiguda ward)."
+ },
+ "james_street_station": {
+  "lat": 17.43345,
+  "lon": 78.48538,
+  "confidence": "high",
+  "source": "OSM rail/metro geometry (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (OSM way 31545065 \"James Street railway station\")",
+  "note": "James Street MMTS halt."
+ },
+ "jntu_kukatpally": {
+  "lat": 17.49665,
+  "lon": 78.39252,
+  "confidence": "medium",
+  "source": "Wikipedia infobox coordinates (read via web-search summary, 2026-10)",
+  "note": "JNTU Hyderabad, Kukatpally (Wikipedia 17deg29m48s N 78deg23m33s E); campus inside Ward 114/115. NORTH of the A1 world bounds (17.475N): clamp to the north edge."
+ },
+ "jubilee_hills": {
+  "lat": 17.4293,
+  "lon": 78.4125,
+  "confidence": "medium",
+  "source": "OSM rail/metro geometry (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (blue-line kink at the check-post junction) + road-point geocode 17.4290,78.4180 + researcher knowledge",
+  "note": "Jubilee Hills Check Post (Road No. 1/36/45 junction). The Wikipedia value 17.4165,78.4382 is the locality centre, not the junction."
+ },
+ "jubilee_hills_check_post": {
+  "lat": 17.4293,
+  "lon": 78.4125,
+  "confidence": "medium",
+  "source": "OSM rail/metro geometry (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) + researcher knowledge",
+  "note": "alias of jubilee_hills."
+ },
+ "kakatiya_arch_n": {
+  "lat": 17.42405,
+  "lon": 78.48633,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "game decoration marking the north end of the Tank Bund (Sailing Club / Kavadiguda end); no verified real arch here."
+ },
+ "kakatiya_arch_s": {
+  "lat": 17.40973,
+  "lon": 78.4761,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "game decoration marking the south end of the Tank Bund (Telugu Talli / Lumbini end); no verified real arch here."
+ },
+ "katta_maisamma_temple": {
+  "lat": 17.4112,
+  "lon": 78.4788,
+  "confidence": "low",
+  "source": "travel sites: on Lower Tank Bund road near Indira Park, towards the Telugu Talli flyover",
+  "note": "position estimated at the south end of Lower Tank Bund road."
+ },
+ "kbr_park": {
+  "lat": 17.4206,
+  "lon": 78.4193,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates (KBR National Park 17deg25m14s N 78deg25m09s E) + researcher knowledge",
+  "note": "KBR (Kasu Brahmananda Reddy) Park; main gate is at the north-east corner near the Road No. 2 / JH check post road."
+ },
+ "khairatabad": {
+  "lat": 17.4112,
+  "lon": 78.4612,
+  "confidence": "medium",
+  "source": "OSM rail/metro geometry (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (red-line alignment on the Khairatabad main road) + researcher knowledge",
+  "note": "Khairatabad junction / flyover."
+ },
+ "khairatabad_ganesh": {
+  "lat": 17.41071,
+  "lon": 78.46373,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates (Khairatabad Ganesh 17deg24m39s N 78deg27m49s E) + researcher knowledge",
+  "note": "site of the giant Khairatabad Ganesh pandal."
+ },
+ "khairatabad_mosque": {
+  "lat": 17.40858,
+  "lon": 78.46328,
+  "confidence": "medium",
+  "source": "Wikipedia \"List of mosques in Telangana\" (17deg24m30.9s N 78deg27m47.8s E; built 1626)",
+  "note": "Khairatabad Mosque."
+ },
+ "khairatabad_station": {
+  "lat": 17.414,
+  "lon": 78.4611,
+  "confidence": "medium",
+  "source": "OpenStreetMap railway/metro geometry (Lakeer hyderabad-open-gis-data GENERAL LAYERS, (c) OpenStreetMap contributors, ODbL)",
+  "note": "Khairatabad MMTS halt on the OSM rail line north of the junction (station point estimated on the line)."
+ },
+ "kirana_10": {
+  "lat": 17.45352,
+  "lon": 78.4355,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "colony kirana, Sanath Nagar side."
+ },
+ "kirana_11": {
+  "lat": 17.444,
+  "lon": 78.4628,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Prakash Nagar Stores, Prakash Nagar (Begumpet), north of the main road."
+ },
+ "kirana_12": {
+  "lat": 17.42148,
+  "lon": 78.49751,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "kirana, Musheerabad north."
+ },
+ "kirana_13": {
+  "lat": 17.44981,
+  "lon": 78.50931,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "general stores, West Marredpally."
+ },
+ "kirana_14": {
+  "lat": 17.43059,
+  "lon": 78.52332,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Railway Colony Stores, Lalaguda."
+ },
+ "kirana_7": {
+  "lat": 17.40038,
+  "lon": 78.45939,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "kirana on the Masab Tank-Lakdikapul road (AC Guards side)."
+ },
+ "kirana_8": {
+  "lat": 17.39643,
+  "lon": 78.42314,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "kirana on the Tolichowki-Mehdipatnam road."
+ },
+ "kirana_9": {
+  "lat": 17.43748,
+  "lon": 78.44259,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "general stores, SR Nagar."
+ },
+ "kphb_colony": {
+  "lat": 17.4845,
+  "lon": 78.3925,
+  "confidence": "low",
+  "source": "GHMC ward polygons (DataMeet Municipal Spatial Data, CC BY 4.0; derived from OSM, ODbL)",
+  "note": "KPHB Colony, Kukatpally: point inside Ward 114 KPHB Colony (centroid 17.4861,78.3837) near the KPHB main road. NORTH of the A1 world bounds (lat max 17.475): merge must clamp/compress to the north edge."
+ },
+ "lakdikapul": {
+  "lat": 17.404,
+  "lon": 78.4645,
+  "confidence": "high",
+  "source": "Wikipedia coordinates (Lakdi-ka-pul metro station 17.4038078,78.4646968) + OSM rail/metro geometry (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (red line passes 17.4038,78.4653)",
+  "note": "Lakdikapul (wooden bridge) junction over the railway."
+ },
+ "lower_tank_bund": {
+  "lat": 17.4195,
+  "lon": 78.4868,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "Lower Tank Bund road, mid-stretch near Kavadiguda (runs parallel to the Tank Bund on its east side)."
+ },
+ "lumbini_boat": {
+  "lat": 17.4103,
+  "lon": 78.4732,
+  "confidence": "medium",
+  "source": "OpenStreetMap waterbody polygon (Lakeer hyderabad-open-gis-data GENERAL LAYERS, (c) OpenStreetMap contributors, ODbL)",
+  "note": "alias of lumbini_jetty."
+ },
+ "lumbini_jetty": {
+  "lat": 17.4103,
+  "lon": 78.4732,
+  "confidence": "medium",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) + Lumbini Park position",
+  "note": "boat jetty on the Lumbini shore (boats to the Buddha statue)."
+ },
+ "lumbini_park": {
+  "lat": 17.41,
+  "lon": 78.4722,
+  "confidence": "high",
+  "source": "Wikipedia coordinates (17.410,78.4722) + Sygic 17.40954,78.47302; south shore of the OSM lake polygon",
+  "note": "Lumbini Park (opened 1994)."
+ },
+ "masab_tank": {
+  "lat": 17.4011,
+  "lon": 78.4561,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates (Masab Tank 17deg24m04s N 78deg27m22s E)",
+  "note": "Masab Tank junction (flyover end of Road No. 1 Banjara Hills)."
+ },
+ "meat_shop_2": {
+  "lat": 17.39634,
+  "lon": 78.42182,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "chicken centre on the Tolichowki-Mehdipatnam road."
+ },
+ "meat_shop_3": {
+  "lat": 17.45442,
+  "lon": 78.43394,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "mutton shop in the lanes south-east of the junction (Sanath Nagar side)."
+ },
+ "meat_shop_7": {
+  "lat": 17.41849,
+  "lon": 78.496,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Bholakpur chicken centre."
+ },
+ "medical_shop_4": {
+  "lat": 17.44954,
+  "lon": 78.51308,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "medical shop, East Marredpally."
+ },
+ "medical_shop_7": {
+  "lat": 17.4168,
+  "lon": 78.4445,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "medical shop on Banjara Hills Road No. 1/2."
+ },
+ "mehdipatnam": {
+  "lat": 17.395,
+  "lon": 78.4398,
+  "confidence": "medium",
+  "source": "GHMC ward tri-point (Nanal Nagar/Mehdipatnam/Vijay Nagar Colony wards meet at 17.39477,78.43954) + latlong.net Rythu Bazar Mehdipatnam 17.3951,78.4411 (next to the junction) + researcher knowledge",
+  "note": "Mehdipatnam junction. Wikipedia locality point 17.3959,78.4312 is the neighbourhood centre, not the junction."
+ },
+ "mehdipatnam_bus_terminus": {
+  "lat": 17.3953,
+  "lon": 78.4388,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "Mehdipatnam bus depot by the junction (estimated)."
+ },
+ "monda_market": {
+  "lat": 17.43417,
+  "lon": 78.49667,
+  "confidence": "high",
+  "source": "Wikipedia coordinates (17deg26m03s N 78deg29m48s E) + geocode of \"Station Rd, Monda Market\" 17.4347,78.4990 (agree within 250 m)",
+  "note": "Monda Market, ~500 m west of the station (the current game puts it north-east of the station)."
+ },
+ "mosque_2": {
+  "lat": 17.39534,
+  "lon": 78.42794,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "neighbourhood masjid off the Tolichowki-Mehdipatnam road."
+ },
+ "mosque_3": {
+  "lat": 17.41696,
+  "lon": 78.49958,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Musheerabad Jama Masjid on Musheerabad main road (estimated)."
+ },
+ "mosque_9": {
+  "lat": 17.40858,
+  "lon": 78.46328,
+  "confidence": "medium",
+  "source": "Wikipedia list of mosques in Telangana",
+  "note": "alias of khairatabad_mosque."
+ },
+ "moula_ali_dargah": {
+  "lat": 17.465,
+  "lon": 78.559,
+  "confidence": "low",
+  "source": "Wikipedia coordinates Moula Ali locality 17deg28m05s N 78deg33m22s E (the Moula Ali hill infobox value is wrong); dargah on the hilltop estimated",
+  "note": "Moula Ali Dargah on the rock hill. Near the A1 east edge (78.561E)."
+ },
+ "mrugavani_park": {
+  "lat": 17.362,
+  "lon": 78.34,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "edge signpost towards Mrugavani deer park (Chilkur, outside the world; park position not sourced)."
+ },
+ "musical_fountain": {
+  "lat": 17.4096,
+  "lon": 78.4725,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "musical fountain inside Lumbini Park."
+ },
+ "necklace_road": {
+  "lat": 17.4235,
+  "lon": 78.464,
+  "confidence": "medium",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) + OSM rail/metro geometry (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (road runs between the MMTS branch and the west shore)",
+  "note": "Necklace Road (PV Marg), west shore, mid-stretch near the Necklace Road MMTS halt."
+ },
+ "necklace_road_station": {
+  "lat": 17.4255,
+  "lon": 78.4625,
+  "confidence": "medium",
+  "source": "OpenStreetMap railway/metro geometry (Lakeer hyderabad-open-gis-data GENERAL LAYERS, (c) OpenStreetMap contributors, ODbL)",
+  "note": "Necklace Road MMTS halt on the Secunderabad-Hyderabad branch along the west shore (position on the OSM rail line; station point not separately sourced)."
+ },
+ "niloufer_cafe": {
+  "lat": 17.4025,
+  "lon": 78.4636,
+  "confidence": "low",
+  "source": "listings: Cafe Niloufer, 11-5-422 Red Hills Road, Lakdikapul, near Niloufer Hospital (founded 1978)",
+  "note": "position estimated on Red Hills Road just south of the Lakdikapul junction."
+ },
+ "nims_hospital": {
+  "lat": 17.4218,
+  "lon": 78.452,
+  "confidence": "high",
+  "source": "Wikipedia coordinates (NIMS 17deg25m19s N 78deg27m07s E) + matches prior knowledge (17.4209,78.4526, Panjagutta)",
+  "note": "NIMS hospital."
+ },
+ "ntr_gardens": {
+  "lat": 17.4124,
+  "lon": 78.4683,
+  "confidence": "medium",
+  "source": "Sygic 17deg24m44s N 78deg28m06s E and Tripomatic 17deg24m46s N 78deg28m03s E (agree); the Wikipedia infobox repeats the Lumbini coordinate so was not used",
+  "note": "NTR Gardens (opened ~2000), south shore between the Secretariat and Prasads."
+ },
+ "ntr_memorial": {
+  "lat": 17.4117,
+  "lon": 78.4699,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "NTR Ghat, at the east end of NTR Gardens towards the Secretariat."
+ },
+ "osmania_university": {
+  "lat": 17.41897,
+  "lon": 78.5266,
+  "confidence": "medium",
+  "source": "latlong.net \"Osmania University College of Arts and Social Sciences\" 17.418974,78.526596 (one source; consistent with the Tarnaka-Adikmet University road)",
+  "note": "OU Arts College (1939). Falls in a gap of the GHMC ward layer (campus), nearest ward Tarnaka/Adikmet."
+ },
+ "panjagutta": {
+  "lat": 17.4265,
+  "lon": 78.4526,
+  "confidence": "high",
+  "source": "OSM rail/metro geometry (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (red-line alignment) + GHMC ward tri-point (Khairatabad/Venkateshwara Colony/Somajiguda meet at 17.42676,78.45243)",
+  "note": "Panjagutta X roads; Wikipedia station coordinate (17.4368,78.4439) duplicates the Khairatabad locality value and was rejected."
+ },
+ "parade_grounds": {
+  "lat": 17.4462,
+  "lon": 78.4985,
+  "confidence": "medium",
+  "source": "researcher knowledge + CWGC: St John the Baptist cemetery (17.44596,78.49422) lies beside the parade ground; SP Road (OSM blue line ~17.4433N) bounds it on the south",
+  "note": "Secunderabad Parade Grounds, north of SP Road."
+ },
+ "paradise": {
+  "lat": 17.4428,
+  "lon": 78.4868,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates Paradise metro station 17deg26m37s N 78deg29m06s E + OSM rail/metro geometry (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (SP Road) + researcher knowledge (restaurant at Paradise Circle, MG Road/SD Road)",
+  "note": "Paradise restaurant, Paradise Circle."
+ },
+ "peddamma_temple": {
+  "lat": 17.43065,
+  "lon": 78.40499,
+  "confidence": "medium",
+  "source": "Wikipedia infobox coordinates (read via web-search summary, 2026-10)",
+  "note": "Sri Peddamma Thalli Temple, Road No. 55 Jubilee Hills (Wikipedia 17.430646,78.404990); sits on the JH check post - HITEC City road (matches OSM blue-line alignment)."
+ },
+ "photo_studio_4": {
+  "lat": 17.43595,
+  "lon": 78.44485,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "photo studio towards SR Nagar."
+ },
+ "photo_studio_5": {
+  "lat": 17.42638,
+  "lon": 78.53309,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "photo studio on the Tarnaka-Mettuguda road."
+ },
+ "pindi_girni_3": {
+  "lat": 17.39947,
+  "lon": 78.45921,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "flour mill, AC Guards lanes."
+ },
+ "pindi_girni_4": {
+  "lat": 17.45089,
+  "lon": 78.43785,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "flour mill in the colony lanes."
+ },
+ "pindi_girni_5": {
+  "lat": 17.41406,
+  "lon": 78.49628,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "atta chakki, Bholakpur lanes."
+ },
+ "playground_10": {
+  "lat": 17.39724,
+  "lon": 78.41815,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Tolichowki maidan."
+ },
+ "playground_12": {
+  "lat": 17.39902,
+  "lon": 78.45422,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Masab Tank ground."
+ },
+ "playground_15": {
+  "lat": 17.45144,
+  "lon": 78.43663,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Erragadda colony ground."
+ },
+ "playground_16": {
+  "lat": 17.4835,
+  "lon": 78.3905,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "KPHB colony ground (generic). North of A1 bounds, clamp with kphb_colony."
+ },
+ "playground_4": {
+  "lat": 17.41714,
+  "lon": 78.49544,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Bholakpur ground."
+ },
+ "playground_5": {
+  "lat": 17.45153,
+  "lon": 78.51609,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Marredpally ground."
+ },
+ "playground_6": {
+  "lat": 17.42951,
+  "lon": 78.52163,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Lalaguda railway ground."
+ },
+ "playground_9": {
+  "lat": 17.4392,
+  "lon": 78.43986,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "SR Nagar park ground."
+ },
+ "playground_kit_15": {
+  "lat": 17.45148,
+  "lon": 78.43681,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "swings & slide in the Erragadda colony ground."
+ },
+ "playground_kit_16": {
+  "lat": 17.4836,
+  "lon": 78.3908,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "swings & slide in the KPHB colony ground. North of A1 bounds."
+ },
+ "prasads_imax": {
+  "lat": 17.41284,
+  "lon": 78.46588,
+  "confidence": "high",
+  "source": "Wikipedia coordinates (Prasads Multiplex 17.412842,78.465879; IMAX Road, near NTR Gardens and Necklace Road) + matches prior knowledge (17.4128,78.4659)",
+  "note": "Prasads IMAX (opened July 2003)."
+ },
+ "qutb_shahi_tombs": {
+  "lat": 17.395,
+  "lon": 78.3961,
+  "confidence": "high",
+  "source": "Wikipedia coordinates (Qutb Shahi tombs 17deg23m42s N 78deg23m46s E, Ibrahim Bagh) + matches prior knowledge (17.3948,78.3958)",
+  "note": "Qutb Shahi Tombs complex (gate side)."
+ },
+ "qutb_tomb_1": {
+  "lat": 17.39572,
+  "lon": 78.39422,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "one of the domed tombs in the complex (individual tombs not sourced; spread ~300 m)."
+ },
+ "qutb_tomb_2": {
+  "lat": 17.3959,
+  "lon": 78.39525,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "domed tomb in the complex."
+ },
+ "qutb_tomb_3": {
+  "lat": 17.39554,
+  "lon": 78.39648,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "domed tomb in the complex."
+ },
+ "qutb_tomb_4": {
+  "lat": 17.39446,
+  "lon": 78.39412,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "domed tomb in the complex."
+ },
+ "qutb_tomb_5": {
+  "lat": 17.39428,
+  "lon": 78.39516,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "domed tomb in the complex."
+ },
+ "qutb_tomb_6": {
+  "lat": 17.39455,
+  "lon": 78.39648,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "domed tomb in the complex."
+ },
+ "raj_bhavan": {
+  "lat": 17.4189,
+  "lon": 78.4602,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates (Lok Bhavan, formerly Raj Bhavan, 17deg25m08s N 78deg27m37s E) + researcher knowledge (Raj Bhavan Road, Somajiguda)",
+  "note": "Raj Bhavan."
+ },
+ "ramanaidu_studios": {
+  "lat": 17.4135,
+  "lon": 78.406,
+  "confidence": "low",
+  "source": "D&B listing: Road No. 79, Jubilee Hills, Film Nagar",
+  "note": "Ramanaidu Studios, position estimated west of the Film Nagar centre."
+ },
+ "ranigunj": {
+  "lat": 17.43,
+  "lon": 78.4885,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "Ranigunj (south end of MG Road, towards the Tank Bund north end)."
+ },
+ "rashtrapati_nilayam": {
+  "lat": 17.511,
+  "lon": 78.51,
+  "confidence": "low",
+  "source": "Wikipedia coordinates Bolarum locality 17deg30m52s N 78deg30m49s E (estate has no own coordinate in the results)",
+  "note": "Rashtrapati Nilayam, Bolarum (gated). North of A1 bounds: clamp to the north edge."
+ },
+ "rathifile_bus_station": {
+  "lat": 17.43497,
+  "lon": 78.50207,
+  "confidence": "low",
+  "source": "Wikipedia / transit listings: Rathifile bus station beside Secunderabad station (foot overbridge to Secunderabad East metro)",
+  "note": "Rathifile city bus station, estimated at the station forecourt."
+ },
+ "ravindra_bharathi": {
+  "lat": 17.4033,
+  "lon": 78.4672,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates (17deg24m12s N 78deg28m02s E) + researcher knowledge (Saifabad, beside Lakdikapul)",
+  "note": "Ravindra Bharathi auditorium."
+ },
+ "rythu_bazaar_erragadda": {
+  "lat": 17.45551,
+  "lon": 78.43342,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "Erragadda Rythu Bazaar on the main road just south of the junction (launched 1999); exact footprint not sourced."
+ },
+ "rythu_bazaar_mehdipatnam": {
+  "lat": 17.3951,
+  "lon": 78.4411,
+  "confidence": "medium",
+  "source": "latlong.net \"Rythu Bazar, Mehdipatnam\" 17.3950776,78.4411300",
+  "note": "Mehdipatnam Rythu Bazaar (launched 1999)."
+ },
+ "samosa_bandi_2": {
+  "lat": 17.39589,
+  "lon": 78.42531,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "samosa bandi, Nanal Nagar."
+ },
+ "samosa_bandi_3": {
+  "lat": 17.4194,
+  "lon": 78.49845,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "samosa bandi on Musheerabad main road."
+ },
+ "samosa_bandi_4": {
+  "lat": 17.44882,
+  "lon": 78.51477,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "samosa bandi, East Marredpally."
+ },
+ "samosa_bandi_7": {
+  "lat": 17.43314,
+  "lon": 78.44612,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "samosa bandi on the Ameerpet-Panjagutta road."
+ },
+ "sangeet_theatre": {
+  "lat": 17.43411,
+  "lon": 78.50995,
+  "confidence": "low",
+  "source": "News Minute: Sangeet and Anand theatres at Sangeet X Roads",
+  "note": "Sangeet 70mm at Sangeet X Roads (junction position estimated ~850 m east of the station on the Mettuguda road)."
+ },
+ "sanjeevaiah_park": {
+  "lat": 17.4305,
+  "lon": 78.4757,
+  "confidence": "medium",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (peninsula on the north shore, ~17.4284-17.4330N 78.4724-78.4787E) + Sanjeevaiah Park station (Wikipedia geohack 17.4356,78.4767)",
+  "note": "Sanjeevaiah Park (92 acres) on the north shore; the Wikipedia park infobox (17.3850,78.4867) is wrong (points at Koti) and was rejected."
+ },
+ "sanjeevaiah_park_station": {
+  "lat": 17.4357,
+  "lon": 78.4764,
+  "confidence": "high",
+  "source": "OSM rail/metro geometry (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) + Wikipedia geohack 17deg26m08s N 78deg28m36s E (agree within 40 m)",
+  "note": "Sanjeevaiah Park MMTS halt."
+ },
+ "sarathi_studios": {
+  "lat": 17.4335,
+  "lon": 78.442,
+  "confidence": "low",
+  "source": "Wikipedia (located in Ameerpet) + business listing (Sarathi Studios Rd, Srinivasa Nagar West)",
+  "note": "position estimated in Srinivasa Nagar West, south-west of the X roads."
+ },
+ "sarojini_devi_eye_hospital": {
+  "lat": 17.3989,
+  "lon": 78.4436,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates (Sarojini Devi Eye Hospital, Mehdipatnam); a latlong.net point 4 km away was rejected",
+  "note": "Sarojini Devi Eye Hospital."
+ },
+ "sarvi": {
+  "lat": 17.4128,
+  "lon": 78.4505,
+  "confidence": "low",
+  "source": "LBB listing: Sarvi, 6-2/626, opposite CARE Hospital, Road No. 1, Banjara Hills",
+  "note": "position estimated on Road No. 1 (CARE Hospital end)."
+ },
+ "school_4": {
+  "lat": 17.3964,
+  "lon": 78.45666,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "school south of Masab Tank (Vijay Nagar Colony side)."
+ },
+ "school_5": {
+  "lat": 17.39589,
+  "lon": 78.41975,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "school off the Tolichowki-Mehdipatnam road (Nanal Nagar side)."
+ },
+ "school_6": {
+  "lat": 17.43956,
+  "lon": 78.44062,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "school in SR Nagar."
+ },
+ "school_7": {
+  "lat": 17.41886,
+  "lon": 78.50212,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Government High School, Musheerabad (Musheerabad ward)."
+ },
+ "school_8": {
+  "lat": 17.44909,
+  "lon": 78.51006,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "convent school, West Marredpally."
+ },
+ "school_9": {
+  "lat": 17.4305,
+  "lon": 78.5205,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Railway High School, Lalaguda (railway colony east of Secunderabad station)."
+ },
+ "secretariat": {
+  "lat": 17.41,
+  "lon": 78.47,
+  "confidence": "high",
+  "source": "Wikipedia coordinates (Telangana Secretariat 17deg24m36s N 78deg28m12s E; new complex on the same 25-acre site as the 2003 Secretariat) + Secretariat Mosque 17deg24m35s N 78deg28m06s E",
+  "note": "A.P. Secretariat (2003 buildings), Saifabad, by NTR Gardens and Lumbini."
+ },
+ "secunderabad_clock_tower": {
+  "lat": 17.4408,
+  "lon": 78.4985,
+  "confidence": "high",
+  "source": "Wikipedia coordinates (17deg26m27s N 78deg29m55s E) + trek.zone and travelprofy agree",
+  "note": "Secunderabad Clock Tower (1896)."
+ },
+ "secunderabad_club": {
+  "lat": 17.4508,
+  "lon": 78.4995,
+  "confidence": "low",
+  "source": "lyfskills listing: 220 Wellington Rd, Picket, West Marredpally, beside Jubilee Bus Station",
+  "note": "Secunderabad Club (1878; present site since 1903), position estimated next to JBS north of the Parade Grounds. Secunderabad Cantonment Board area (not in GHMC wards)."
+ },
+ "secunderabad_ganesh_temple": {
+  "lat": 17.436,
+  "lon": 78.4998,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "Ganesh temple on the road in front of the station (estimated)."
+ },
+ "secunderabad_station": {
+  "lat": 17.4337,
+  "lon": 78.5016,
+  "confidence": "high",
+  "source": "Wikipedia coordinates (17deg26m01s N 78deg30m06s E) + trainstracking 17.4347,78.5009 (agree within 130 m)",
+  "note": "Secunderabad Junction railway station."
+ },
+ "shilparamam": {
+  "lat": 17.4515,
+  "lon": 78.378,
+  "confidence": "high",
+  "source": "Wikivoyage 17.4515,78.3772 + topographic-map.com footprint 17.4497-17.4533N 78.3766-78.3798E (midpoint 17.4515,78.3782)",
+  "note": "crafts village (opened 1998), west side of HITEC City main road."
+ },
+ "shilparamam_gate": {
+  "lat": 17.4508,
+  "lon": 78.3796,
+  "confidence": "medium",
+  "source": "derived from the Shilparamam footprint above",
+  "note": "entrance on the HITEC City main road (east edge of the footprint)."
+ },
+ "shoppers_stop_begumpet": {
+  "lat": 17.444,
+  "lon": 78.464,
+  "confidence": "low",
+  "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon",
+  "note": "fictionalised \"Trendz\" department store; based on the Begumpet main-road department store near Prakash Nagar (position estimated on the OSM blue-line road alignment)."
+ },
+ "spanish_mosque": {
+  "lat": 17.44381,
+  "lon": 78.47262,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates + other sources agree (S.P. Road, Indian Airlines Colony, Paigah palace grounds)",
+  "note": "Spanish Mosque (Masjid Iqbal-ud-Daula, 1906)."
+ },
+ "st_johns_church_secunderabad": {
+  "lat": 17.43483,
+  "lon": 78.51019,
+  "confidence": "low",
+  "source": "sources: St. John's Church (1813) at Sangeet Junction, East Marredpally",
+  "note": "St. John's Church; junction position estimated."
+ },
+ "stationery_5": {
+  "lat": 17.39567,
+  "lon": 78.45798,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "stationery shop near the school."
+ },
+ "stationery_6": {
+  "lat": 17.43943,
+  "lon": 78.44099,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "stationery shop beside the SR Nagar school."
+ },
+ "std_10": {
+  "lat": 17.435,
+  "lon": 78.5038,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "STD booth on the station road, east of the main entrance."
+ },
+ "std_14": {
+  "lat": 17.4212,
+  "lon": 78.4548,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "STD booth on the Panjagutta-Khairatabad road near Errum Manzil."
+ },
+ "std_15": {
+  "lat": 17.43083,
+  "lon": 78.40358,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "STD booth on the road west of Peddamma temple (towards Madhapur)."
+ },
+ "std_16": {
+  "lat": 17.44188,
+  "lon": 78.38284,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "STD booth on the Madhapur-HITEC City road near the HITEC City point."
+ },
+ "std_5": {
+  "lat": 17.40463,
+  "lon": 78.46412,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "STD booth at Lakdikapul."
+ },
+ "std_6": {
+  "lat": 17.41099,
+  "lon": 78.49864,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "STD booth on the Musheerabad - RTC X Roads road."
+ },
+ "std_8": {
+  "lat": 17.39706,
+  "lon": 78.42606,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "STD booth on the Tolichowki-Mehdipatnam road."
+ },
+ "std_9": {
+  "lat": 17.43351,
+  "lon": 78.44589,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "STD booth on the Ameerpet-Panjagutta road."
+ },
+ "tank_bund": {
+  "lat": 17.41687,
+  "lon": 78.48119,
+  "confidence": "high",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (straight east bund edge 17.4108,78.4764 -> 17.4233,78.4857, road offset 25 m outward)",
+  "note": "Tank Bund road midpoint."
+ },
+ "tank_bund_statue_1": {
+  "lat": 17.41071,
+  "lon": 78.47679,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (bund line) ; statue spacing estimated",
+  "note": "statue 1 of 12 along the Tank Bund (south to north, evenly spaced; individual statues not sourced)."
+ },
+ "tank_bund_statue_10": {
+  "lat": 17.42079,
+  "lon": 78.48399,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (bund line) ; statue spacing estimated",
+  "note": "statue 10 of 12 along the Tank Bund (south to north, evenly spaced; individual statues not sourced)."
+ },
+ "tank_bund_statue_11": {
+  "lat": 17.42191,
+  "lon": 78.48479,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (bund line) ; statue spacing estimated",
+  "note": "statue 11 of 12 along the Tank Bund (south to north, evenly spaced; individual statues not sourced)."
+ },
+ "tank_bund_statue_12": {
+  "lat": 17.42303,
+  "lon": 78.48559,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (bund line) ; statue spacing estimated",
+  "note": "statue 12 of 12 along the Tank Bund (south to north, evenly spaced; individual statues not sourced)."
+ },
+ "tank_bund_statue_2": {
+  "lat": 17.41183,
+  "lon": 78.47759,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (bund line) ; statue spacing estimated",
+  "note": "statue 2 of 12 along the Tank Bund (south to north, evenly spaced; individual statues not sourced)."
+ },
+ "tank_bund_statue_3": {
+  "lat": 17.41295,
+  "lon": 78.47839,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (bund line) ; statue spacing estimated",
+  "note": "statue 3 of 12 along the Tank Bund (south to north, evenly spaced; individual statues not sourced)."
+ },
+ "tank_bund_statue_4": {
+  "lat": 17.41407,
+  "lon": 78.47919,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (bund line) ; statue spacing estimated",
+  "note": "statue 4 of 12 along the Tank Bund (south to north, evenly spaced; individual statues not sourced)."
+ },
+ "tank_bund_statue_5": {
+  "lat": 17.41519,
+  "lon": 78.47999,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (bund line) ; statue spacing estimated",
+  "note": "statue 5 of 12 along the Tank Bund (south to north, evenly spaced; individual statues not sourced)."
+ },
+ "tank_bund_statue_6": {
+  "lat": 17.41631,
+  "lon": 78.48079,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (bund line) ; statue spacing estimated",
+  "note": "statue 6 of 12 along the Tank Bund (south to north, evenly spaced; individual statues not sourced)."
+ },
+ "tank_bund_statue_7": {
+  "lat": 17.41743,
+  "lon": 78.48159,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (bund line) ; statue spacing estimated",
+  "note": "statue 7 of 12 along the Tank Bund (south to north, evenly spaced; individual statues not sourced)."
+ },
+ "tank_bund_statue_8": {
+  "lat": 17.41855,
+  "lon": 78.48239,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (bund line) ; statue spacing estimated",
+  "note": "statue 8 of 12 along the Tank Bund (south to north, evenly spaced; individual statues not sourced)."
+ },
+ "tank_bund_statue_9": {
+  "lat": 17.41967,
+  "lon": 78.48319,
+  "confidence": "low",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (bund line) ; statue spacing estimated",
+  "note": "statue 9 of 12 along the Tank Bund (south to north, evenly spaced; individual statues not sourced)."
+ },
+ "tank_bund_statues": {
+  "lat": 17.41757,
+  "lon": 78.48169,
+  "confidence": "medium",
+  "source": "OSM waterbody polygon (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) + researcher knowledge",
+  "note": "the row of statues of Telugu greats (installed late 1980s) along the Tank Bund footpath."
+ },
+ "taramati_baradari": {
+  "lat": 17.37608,
+  "lon": 78.37812,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates (17deg22m34s N 78deg22m41s E) + researcher knowledge (Ibrahim Bagh, on the Musi bank west of Golconda)",
+  "note": "Taramati Baradari."
+ },
+ "tarnaka": {
+  "lat": 17.4252,
+  "lon": 78.5345,
+  "confidence": "medium",
+  "source": "OSM rail/metro geometry (Lakeer GIS repo, (c) OpenStreetMap contributors, ODbL) (blue-line bend at the Tarnaka junction) ; Wikipedia locality/station point 17.4279,78.5360 is ~330 m NNE",
+  "note": "Tarnaka X roads (on the Tarnaka/Habsiguda ward boundary)."
+ },
+ "temple_4": {
+  "lat": 17.45243,
+  "lon": 78.43625,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Pochamma temple in the colony lanes."
+ },
+ "temple_5": {
+  "lat": 17.42583,
+  "lon": 78.53535,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Sri Rama temple, Tarnaka."
+ },
+ "temple_6": {
+  "lat": 17.3962,
+  "lon": 78.4478,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "Ayyappa temple between Masab Tank and Mehdipatnam (Vijay Nagar Colony side)."
+ },
+ "tolichowki": {
+  "lat": 17.3986,
+  "lon": 78.4158,
+  "confidence": "medium",
+  "source": "GHMC ward tri-point (Tolichowki/Nanal Nagar/Shaikpet wards meet at 17.39860,78.41552) + latlong.net Relief Hospital Tolichowki 17.3984,78.4162 + researcher knowledge",
+  "note": "Tolichowki X roads. The Wikipedia Tolichowki coordinate (17.3744,78.4417) points at Karwan and was rejected."
+ },
+ "ujjaini_mahankali_temple": {
+  "lat": 17.4367,
+  "lon": 78.4911,
+  "confidence": "medium",
+  "source": "Wikipedia coordinates (17deg26m12s N 78deg29m28s E; General Bazaar / Kalasiguda, off MG Road)",
+  "note": "Ujjaini Mahankali temple (Lashkar Bonalu)."
+ },
+ "university_of_hyderabad": {
+  "lat": 17.4565,
+  "lon": 78.3345,
+  "confidence": "low",
+  "source": "Wikipedia coordinates campus point 17.4600,78.3319 + researcher knowledge",
+  "note": "main gate estimated on the campus east side along the Gachibowli-Lingampally road; campus centroid per Wikipedia is 17.4600,78.3319 (lon just west of the A1 world edge 78.335)."
+ },
+ "video_parlour_4": {
+  "lat": 17.4383,
+  "lon": 78.44118,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "video parlour, SR Nagar."
+ },
+ "water_tank_3": {
+  "lat": 17.42048,
+  "lon": 78.49656,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "colony water tank."
+ },
+ "water_tank_6": {
+  "lat": 17.45099,
+  "lon": 78.51355,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "colony water tank, Marredpally."
+ },
+ "water_tank_7": {
+  "lat": 17.44137,
+  "lon": 78.4393,
+  "confidence": "low",
+  "source": "generic/fictional everyday place: plausible spot in the neighbourhood it serves (GHMC ward polygon + known streets)",
+  "note": "colony water tank, SR Nagar."
+ }
+}

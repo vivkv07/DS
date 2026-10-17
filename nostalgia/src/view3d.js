@@ -54,7 +54,7 @@
 
   const lsGet = (k) => { try { return window.localStorage.getItem(k); } catch (e) { return null; } };
   const lsSet = (k, v) => { try { window.localStorage.setItem(k, v); } catch (e) { /* storage off: fine */ } };
-  const toast = (t, ms) => { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2600); } catch (e) { /* ignore */ } };
+  const toast = (t, ms) => { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2600, { key: 'view3d' }); } catch (e) { /* ignore */ } };
   const reducedMotion = () => document.body.classList.contains('reduced-motion');
 
   /* ================================================================ N.view */
@@ -179,7 +179,7 @@
   async function startEngine(opts) {
     if (view.loading || E.ready) return;
     view.loading = true; view.error = null;
-    toast('Loading 3D view…', 1600);
+    toast('Loading 3D view…', 1100);
     let T = null;
     try {
       if (!hasWebGL()) throw new Error('WebGL is not available on this device');
@@ -203,6 +203,7 @@
   function warmStep() {
     if (!E.warming) return;
     const f = focus();
+    try { computeSun(); updateSunBake(); } catch (e) { /* first frame */ }
     updateWork(f.x, f.y, 22);
     const done = nearReady(f.x, f.y);
     if (done || now() - E.warmT > 7000) {
@@ -230,6 +231,11 @@
       view.pitch = m === 'fps' ? 0.05 : 0.3;
       CAM.snap = true;
       resize();
+      if (!E.hinted) {
+        E.hinted = true;
+        const dev = N.input && N.input.device;
+        toast(dev === 'touch' ? 'Drag on the right side to look around · VIEW changes the view' : dev === 'gamepad' ? 'Right stick looks around · R3 changes the view' : 'Drag (or click) to look around · V changes the view', 3200);
+      }
     }
     if (m === 'fps' && prev === 'tps') { view.pitch = U.clamp(view.pitch - 0.25, -0.4, 0.6); CAM.fpsOff = 0; }
     if (m === 'tps' && prev === 'fps') { view.pitch = U.clamp(view.pitch + 0.25, 0.05, 0.9); CAM.snap = true; }
@@ -523,7 +529,8 @@
   const STY = { plain: 0, rect: 1, arch: 2, grill: 3, glass: 4, shop: 5, door: 6, arcade: 7, open: 8, colonial: 9, posh: 10, mosque: 11, stone: 12, brick: 13, office: 14, lamp: 15 };
   H.STYLE = STY;
   function paintFacadeAtlas(g) {
-    const S = 64;
+    const S = 64; // painted in 64-unit cells, rasterised at 2x (128 px per bay)
+    g.scale(2, 2);
     g.clearRect(0, 0, 16 * S, 2 * S);
     g.fillStyle = '#000'; g.fillRect(0, S, 16 * S, S); // emissive row: black
     const cell = (i, fnA, fnE) => {
@@ -652,15 +659,16 @@
     shader.uniforms.uNearFade = uni;
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform float uNearFade;\nfloat nfHash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }')
-      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n\tif (uNearFade > 0.0) { float nfd = length(vViewPosition) / uNearFade; if (nfd < 1.0 && nfHash(floor(gl_FragCoord.xy)) > nfd * nfd) discard; }');
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n\tif (uNearFade > 0.0) { float nfd = length(vViewPosition) / uNearFade; if (nfd < 1.0 && nfHash(floor(gl_FragCoord.xy)) > clamp((nfd - 0.45) / 0.55, 0.0, 1.0)) discard; }');
   }
   function facadeCompile(shader) {
     shader.uniforms.uNight = UNI.uNight; shader.uniforms.uSkyTint = UNI.uHor;
+    shader.uniforms.uFlood = { value: (this && this.userData && this.userData.flood) || 0 };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec4 facade;\nvarying vec4 vFac;')
       .replace('#include <uv_vertex>', '#include <uv_vertex>\n\tvFac = facade;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uNight;\nuniform vec3 uSkyTint;\nvarying vec4 vFac;\n' + GLSL_HASH)
+      .replace('#include <common>', '#include <common>\nuniform float uNight;\nuniform float uFlood;\nuniform vec3 uSkyTint;\nvarying vec4 vFac;\n' + GLSL_HASH)
       .replace('#include <map_fragment>', [
         'vec2 cellF = floor(vUv); vec2 fr = fract(vUv);',
         'float codeA = floor(vFac.x + 0.5); float gfS = floor(codeA / 16.0 + 0.01); float upS = codeA - gfS * 16.0;',
@@ -668,7 +676,7 @@
         'if (cellF.y > vFac.w - 0.5) st = 0.0;',
         'vec2 gsc = vec2(0.0546875, 0.4375);',
         'vec2 dX = dFdx(vUv) * gsc, dY = dFdy(vUv) * gsc;',
-        'vec2 lim = vec2(6.0 / 1024.0, 6.0 / 128.0); dX = clamp(dX, -lim, lim); dY = clamp(dY, -lim, lim);',
+        'vec2 lim = vec2(12.0 / 2048.0, 12.0 / 256.0); dX = clamp(dX, -lim, lim); dY = clamp(dY, -lim, lim);',
         'vec2 auv = vec2((st + 0.0625 + fr.x * 0.875) / 16.0, 0.5 + (0.0625 + fr.y * 0.875) * 0.5);',
         'vec4 tA = texture2DGradEXT(map, auv, dX, dY);',
         'vec4 tE = texture2DGradEXT(map, auv - vec2(0.0, 0.5), dX, dY);',
@@ -676,7 +684,9 @@
       .replace('#include <color_fragment>', [
         'vec3 wallC = diffuseColor.rgb * vColor;',
         'float bayV = 0.93 + 0.07 * h12(cellF * 1.7 + vFac.z);',
-        'diffuseColor.rgb = wallC * bayV * (1.0 - tA.a) + tA.rgb;',
+        'float wallH = vUv.y * ' + FLOOR_H.toFixed(1) + ';',
+        'float ao = vFac.w > 0.5 ? mix(0.72, 1.0, smoothstep(0.0, 5.0, wallH)) : 1.0;',
+        'diffuseColor.rgb = (wallC * bayV * (1.0 - tA.a) + tA.rgb) * ao;',
       ].join('\n'))
       .replace('#include <emissivemap_fragment>', [
         'float hh = h12(cellF * vec2(1.13, 7.31) + vFac.z * 0.173);',
@@ -686,6 +696,7 @@
         'vec3 wcol = mix(vec3(1.0, 0.70, 0.40), vec3(0.78, 0.90, 1.0), step(0.75, fract(hh * 17.0)));',
         'totalEmissiveRadiance += tE.rgb * ((litW * wcol * 1.35 + isShop * vec3(1.0, 0.72, 0.45) * 1.2) * uNight + uSkyTint * 0.10 * (1.0 - uNight));',
         'totalEmissiveRadiance += isLamp * vColor * (0.1 + 3.2 * uNight);',
+        'totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.82, 0.62) * uFlood * uNight;',
       ].join('\n'));
   }
   function groundCompile(shader) {
@@ -697,8 +708,13 @@
       .replace('#include <common>', '#include <common>\nvarying vec3 vWP;')
       .replace('#include <project_vertex>', '#include <project_vertex>\n\tvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D auxMap;\nuniform float uNight;\nuniform float uTime;\nuniform vec3 uSunDir;\nuniform vec3 uSunCol;\nuniform vec3 uZen;\nuniform vec3 uHor;\nvarying vec3 vWP;')
-      .replace('#include <map_fragment>', '#include <map_fragment>\n\tvec4 aux = texture2D(auxMap, vUv);')
+      .replace('#include <common>', '#include <common>\nuniform sampler2D auxMap;\nuniform float uNight;\nuniform float uTime;\nuniform vec3 uSunDir;\nuniform vec3 uSunCol;\nuniform vec3 uZen;\nuniform vec3 uHor;\nvarying vec3 vWP;\n' + GLSL_HASH + 'float gvn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h12(i), h12(i + vec2(1.0, 0.0)), f.x), mix(h12(i + vec2(0.0, 1.0)), h12(i + vec2(1.0, 1.0)), f.x), f.y); }')
+      .replace('#include <map_fragment>', [
+        '#include <map_fragment>',
+        'vec4 aux = texture2D(auxMap, vUv);',
+        '{ float dd = length(cameraPosition - vWP); float amp = (1.0 - smoothstep(25.0, 140.0, dd)) * (1.0 - aux.a);',
+        '  if (amp > 0.0) { float dn = gvn(vWP.xz * 0.9) * 0.6 + gvn(vWP.xz * 3.1) * 0.4; diffuseColor.rgb *= 1.0 + (dn - 0.5) * 0.16 * amp; } }',
+      ].join('\n'))
       .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance += diffuseColor.rgb * aux.rgb * (uNight * 2.4);')
       .replace('#include <envmap_fragment>', [
         '#include <envmap_fragment>',
@@ -706,15 +722,18 @@
         'if (wm > 0.003) {',
         '  vec3 Vd = normalize(cameraPosition - vWP);',
         '  vec2 p = vWP.xz; float t = uTime;',
-        '  float n1 = sin(p.x * 0.090 + p.y * 0.050 + t * 1.25) + sin(p.x * -0.060 + p.y * 0.115 + t * 0.95);',
-        '  float n2 = sin(p.x * 0.210 - p.y * 0.170 + t * 2.10) + sin(p.x * 0.150 + p.y * 0.260 - t * 1.70);',
+        '  vec2 q = p + vec2(gvn(p * 0.021 + t * 0.03), gvn(p * 0.019 - t * 0.025)) * 40.0;',
+        '  float n1 = sin(q.x * 0.090 + q.y * 0.050 + t * 1.25) + sin(q.x * -0.060 + q.y * 0.115 + t * 0.95) + (gvn(q * 0.08 + t * 0.2) - 0.5) * 1.6;',
+        '  float n2 = sin(q.x * 0.210 - q.y * 0.170 + t * 2.10) + sin(q.x * 0.150 + q.y * 0.260 - t * 1.70) + (gvn(q * 0.23 - t * 0.3) - 0.5) * 1.4;',
         '  vec3 nrm = normalize(vec3(n1 * 0.05 + n2 * 0.03, 1.0, n2 * 0.045 - n1 * 0.025));',
         '  float fres = 0.04 + 0.96 * pow(1.0 - clamp(dot(nrm, Vd), 0.0, 1.0), 4.0);',
         '  vec3 Rf = reflect(-Vd, nrm);',
-        '  vec3 skyC = mix(uHor, uZen, clamp(Rf.y * 1.6, 0.0, 1.0));',
+        '  vec3 skyC = mix(uHor, uZen, clamp(Rf.y * 2.4 + 0.32, 0.0, 1.0)) * 0.82;',
         '  float sd = max(dot(Rf, uSunDir), 0.0);',
-        '  float sp = pow(sd, 260.0) * 5.0 + pow(sd, 22.0) * 0.16;',
-        '  vec3 wcol = mix(outgoingLight * 0.85, skyC, clamp(0.18 + fres * 0.8, 0.0, 0.88)) + sp * uSunCol;',
+        '  float sp = pow(sd, 260.0) * 5.0 + pow(sd, 22.0) * 0.14;',
+        '  vec3 base = outgoingLight * vec3(0.5, 0.78, 0.82) + vec3(0.004, 0.02, 0.024);',
+        '  float glint = smoothstep(0.82, 1.0, sin(p.x * 0.7 + t * 2.3) * sin(p.y * 0.63 - t * 1.9)) * 0.25;',
+        '  vec3 wcol = mix(base, skyC, clamp(0.08 + fres * 0.62, 0.0, 0.64)) + (sp + glint * sd * sd) * uSunCol;',
         '  outgoingLight = mix(outgoingLight, wcol, wm);',
         '}',
       ].join('\n'));
@@ -744,7 +763,7 @@
     UNI.uMoonDir = { value: new THREE.Vector3(-0.3, 0.8, -0.4).normalize() };
     UNI.uSunVis = { value: 1 };
 
-    TEX.facade = canvasTex(1024, 128, paintFacadeAtlas, { premult: true });
+    TEX.facade = canvasTex(2048, 256, paintFacadeAtlas, { premult: true });
     TEX.facade.wrapS = TEX.facade.wrapT = THREE.ClampToEdgeWrapping;
     TEX.glow = canvasTex(64, 64, (g) => {
       const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -761,6 +780,10 @@
     MAT.facade.onBeforeCompile = facadeCompile;
     MAT.facade.customProgramCacheKey = () => 'nostalgia-facade';
     MAT.facade.extensions = { derivatives: true, shaderTextureLOD: true };
+    // the same facade shader, floodlit at night (monuments, landmark fallbacks)
+    MAT.facadeLit = new THREE.MeshLambertMaterial({ map: TEX.facade, vertexColors: true });
+    MAT.facadeLit.onBeforeCompile = facadeCompile; MAT.facadeLit.customProgramCacheKey = () => 'nostalgia-facade';
+    MAT.facadeLit.extensions = MAT.facade.extensions; MAT.facadeLit.userData.flood = 0.5;
     MAT.vc = new THREE.MeshLambertMaterial({ vertexColors: true });
     MAT.vcFlat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     MAT.vcDouble = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
@@ -835,7 +858,7 @@
   }
 
   /* ---------------------------------------------------- sign atlas (shop boards) */
-  const SIGN = { pages: [], map: new Map(), CW: 512, CHt: 64, cols: 4, rows: 16, max: 6 };
+  const SIGN = { pages: [], map: new Map(), CW: 512, CHt: 64, cols: 4, rows: 16, max: 6 }; // phones: halved (initEngine)
   function signFont() {
     try { if (document.fonts && document.fonts.check && document.fonts.check("40px 'Yatra One'")) return "'Yatra One', 'Baloo 2', sans-serif"; } catch (e) { /* ignore */ }
     return "'Baloo 2', system-ui, sans-serif";
@@ -858,16 +881,18 @@
     }
     const i = page.n++, cx = (i % SIGN.cols) * SIGN.CW, cy = Math.floor(i / SIGN.cols) * SIGN.CHt;
     const w = SIGN.CHt * cls, x = cx + (SIGN.CW - w) / 2, g = page.g;
+    const bw = Math.max(2, SIGN.CHt / 20);
     g.fillStyle = '#2a1a10'; g.fillRect(x, cy, w, SIGN.CHt);
-    g.fillStyle = bg; g.fillRect(x + 3, cy + 3, w - 6, SIGN.CHt - 6);
-    g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 2; g.strokeRect(x + 6, cy + 6, w - 12, SIGN.CHt - 12);
-    let fs = 40;
+    g.fillStyle = bg; g.fillRect(x + bw, cy + bw, w - bw * 2, SIGN.CHt - bw * 2);
+    g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = Math.max(1, bw * 0.6); g.strokeRect(x + bw * 2, cy + bw * 2, w - bw * 4, SIGN.CHt - bw * 4);
+    const k = SIGN.CHt / 64;
+    let fs = Math.round(40 * k);
     g.font = '800 ' + fs + 'px ' + signFont();
     const tw = g.measureText(text).width;
-    if (tw > w - 22) { fs = Math.max(14, Math.floor(fs * (w - 22) / tw)); g.font = '800 ' + fs + 'px ' + signFont(); }
+    if (tw > w - 22 * k) { fs = Math.max(Math.round(14 * k), Math.floor(fs * (w - 22 * k) / tw)); g.font = '800 ' + fs + 'px ' + signFont(); }
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillText(text, x + w / 2 + 1.5, cy + SIGN.CHt / 2 + 3.5);
-    g.fillStyle = fg; g.fillText(text, x + w / 2, cy + SIGN.CHt / 2 + 2);
+    g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillText(text, x + w / 2 + 1.5 * k, cy + SIGN.CHt / 2 + 3.5 * k);
+    g.fillStyle = fg; g.fillText(text, x + w / 2, cy + SIGN.CHt / 2 + 2 * k);
     page.dirty = true;
     const W = page.canvas.width, Ht = page.canvas.height;
     s = { page, u0: x / W, u1: (x + w) / W, v0: 1 - (cy + SIGN.CHt) / Ht, v1: 1 - cy / Ht };
@@ -1158,14 +1183,21 @@
     const gfFront = GFS[b.gf] || up;
     const lit = Math.round(U.clamp(b.lit || 0.4, 0, 1) * 255), seed = (b.seed || 0) & 255;
     if (b.roofType === 'frame') { addFrame(J, b, x0, z0, x1, z1); return; }
-    const party = b.style === 'oldcity' || b.style === 'market';
+    const bazaar = b.style === 'oldcity' || b.style === 'market';
+    const SF = N.SURF, surfAt = N.world.surfaceAt;
     gb.color(b.wall || '#d8cbb0');
     for (let k = 0; k < 4; k++) {
       const f = FACES[k], sg = faceSeg(b, f, x0, z0, x1, z1);
       const len = Math.abs(sg[2] - sg[0]) + Math.abs(sg[3] - sg[1]);
       const front = b.front === f;
-      let us = up, gs = front ? gfFront : (b.gf === 'arches' && !party ? STY.arcade : up);
-      if (party && !front && b.front && ((seed >> k) & 1)) { us = 0; gs = 0; }
+      // what is outside this wall? a neighbour (party wall: blank), a street (shops), a yard
+      const ux = (sg[2] - sg[0]) / (len || 1), uz = (sg[3] - sg[1]) / (len || 1);
+      const mx = (sg[0] + sg[2]) / 2 + ox - uz * 3, mz = (sg[1] + sg[3]) / 2 + oz + ux * 3;
+      const out = surfAt(mx, mz);
+      const street = out === SF.ROAD || out === SF.FOOTPATH || out === SF.PLAZA || out === SF.BRIDGE;
+      let us = up, gs = front ? gfFront : (b.gf === 'arches' && !bazaar ? STY.arcade : up);
+      if (!front && (out === SF.SOLID || out === SF.VOID)) { us = 0; gs = 0; }
+      else if (!front && bazaar && street) { const r = ((seed >> (k * 2)) & 3); gs = r === 0 ? up : r === 1 && b.style === 'oldcity' ? STY.arcade : r === 1 ? STY.door : STY.shop; }
       if (len < 5) { us = gs = 0; }
       const nb = Math.max(1, Math.round(len / (b.winSp || 8)));
       gb.facade(us, gs, lit, seed, floors);
@@ -1685,7 +1717,7 @@
     if (!obj || !obj.isObject3D) obj = fallbackLandmark(lm);
     if (!obj.userData.worldSpace) obj.position.set(lm.x + obj.position.x, obj.position.y, lm.y + obj.position.z);
     const shadow = Q.shadows && !(reg && reg.opts && reg.opts.castShadow === false);
-    obj.traverse((m) => { if (m.isMesh) { if (m.castShadow !== false || shadow) m.castShadow = shadow && m.userData.noShadow !== true; m.receiveShadow = Q.shadows; } });
+    obj.traverse((m) => { if (m.isMesh) { m.castShadow = shadow && m.userData.noShadow !== true; m.receiveShadow = Q.shadows; } });
     obj.name = obj.name || 'lm:' + lm.id;
     obj.updateMatrixWorld(true);
     if (reg && reg.opts && reg.opts.static !== false && !(reg.opts && reg.opts.update)) obj.traverse((m) => { m.matrixAutoUpdate = false; });
@@ -1724,6 +1756,13 @@
     } else if (lm.solids && lm.solids.length > 1) {
       gb.facade(style, style, 70, 7, fl);
       for (const r of lm.solids) gb.box(r[0] - lm.x, 0, r[1] - lm.y, r[0] - lm.x + r[2], h, r[1] - lm.y + r[3]);
+    } else if (Math.max(w, d) <= 24 && (lm.h || 0) * VS > Math.max(w, d) * 1.5) {
+      // statue / pillar: pedestal, column, figure-ish top
+      gb.plain(); gb.color(U.shade(c, 0.92));
+      gb.box(x0, 0, z0, x1, h * 0.28, z1);
+      gb.color(U.shade(c, 1.05)).box(x0 + w * 0.12, h * 0.28, z0 + d * 0.12, x1 - w * 0.12, h * 0.34, z1 - d * 0.12);
+      gb.color(/statue|buddha/.test(name) ? '#9a9890' : c).cyl(0, h * 0.34, 0, Math.min(w, d) * 0.26, Math.min(w, d) * 0.2, h * 0.52, 10);
+      gb.sphere(0, h * 0.92, 0, Math.min(w, d) * 0.18, Math.min(w, d) * 0.22, Math.min(w, d) * 0.18, 8, 6);
     } else if (stone && (lm.h || 0) * VS > Math.max(w, d) * 0.9 && Math.abs(w - d) < Math.max(w, d) * 0.35) {
       // monument: arched body + four corner towers + dome
       const t = Math.min(w, d) * 0.16, bh = h * 0.55;
@@ -1743,7 +1782,7 @@
       const t = 1.1, ph = 3.5;
       gb.box(x0, h, z0, x1, h + ph, z0 + t); gb.box(x0, h, z1 - t, x1, h + ph, z1); gb.box(x0, h, z0 + t, x0 + t, h + ph, z1 - t); gb.box(x1 - t, h, z0 + t, x1, h + ph, z1 - t);
     }
-    const m = gb.mesh(MAT.facade);
+    const m = gb.mesh(stone ? MAT.facadeLit : MAT.facade);
     const g = new THREE.Group(); if (m) g.add(m);
     g.userData.fallback = true;
     return g;
@@ -1823,6 +1862,7 @@
       const kid = e === N.player || look.kind === 'kid' || look.kind === 'student' || look.age === 'kid';
       const m = new THREE.Mesh(personGeo(look, kid), MAT.vc);
       m.name = 'person';
+      if (!Q.shadows) m.add(Hh.blobShadow(kid ? 5 : 6));
       return m;
     },
     update(o, e) {
@@ -1841,7 +1881,7 @@
       const T = e.T || (N.vehicles && N.vehicles.TYPES[e.type]) || { w: 20, d: 10, h: 10, cls: 'car' };
       const gb = new GB(), L = T.w, Wd = T.d, cls = T.cls || 'car', h = VH[cls] || 9, c = e.color || '#c0392b';
       if (cls === 'bike') {
-        gb.color('#1a1a1a').cyl(-L * 0.35, 1.6, 0, 1.6, 1.6, 0.6, 8).cyl(L * 0.35, 1.6, 0, 1.6, 1.6, 0.6, 8);
+        gb.color('#1a1a1a').obox(-L * 0.36, 0, 3.4, 0.7, 0, 3.4, 0).obox(L * 0.36, 0, 3.4, 0.7, 0, 3.4, 0);
         gb.color(c).obox(0, 0, L * 0.7, Wd * 0.45, 2.2, 3.6, 0);
         gb.color('#2a2a2a').obox(-L * 0.1, 0, L * 0.3, Wd * 0.5, 3.6, 4.4, 0);
         gb.color('#888').obox(L * 0.32, 0, 0.5, Wd * 0.9, 4.4, 5.6, 0);
@@ -1855,6 +1895,7 @@
         for (const sx of [-0.32, 0.32]) for (const sz of [-0.5, 0.5]) gb.obox(L * sx, Wd * sz, 3.4, 1.2, 0, 3.0, 0);
       }
       const m = new THREE.Mesh(gb.build(), MAT.vc); m.name = 'vehicle';
+      if (!Q.shadows && cls !== 'boat') { const b = H.blobShadow(L * 1.1, Wd * 1.3); m.add(b); }
       return m;
     },
     update(o, e) { o.position.set(e.x, (e.T && e.T.cls === 'boat') ? 0.6 : 0, e.y); o.rotation.y = -(e.angle || 0); },
@@ -1884,8 +1925,8 @@
   /* ================================================================ sky, sun, fog, lights */
   // time-of-day keys: minute, zenith, horizon, sun colour, sun intensity, hemi sky, hemi ground, hemi intensity
   const TOD = [
-    [0, '#070c1e', '#1d2544', '#7088c0', 0.28, '#2a3664', '#17120e', 0.5],
-    [290, '#08101f', '#212848', '#7088c0', 0.28, '#2a3664', '#17120e', 0.5],
+    [0, '#070c1e', '#1d2544', '#7088c0', 0.2, '#2a3664', '#17120e', 0.4],
+    [290, '#08101f', '#212848', '#7088c0', 0.2, '#2a3664', '#17120e', 0.4],
     [345, '#29396e', '#d58a8e', '#ff9a70', 0.55, '#5a5a8a', '#3a2a22', 0.6],
     [400, '#4a76c0', '#f2c6a2', '#ffc896', 1.7, '#8aa2c8', '#6a5038', 0.78],
     [480, '#3d78c8', '#d8e2ea', '#fff0dc', 2.5, '#a6bede', '#7a6448', 0.85],
@@ -1895,8 +1936,8 @@
     [1080, '#495c9c', '#fa9c60', '#ff9a52', 1.8, '#8c8cb0', '#7a5030', 0.72],
     [1120, '#33407a', '#de7650', '#ff7a40', 0.9, '#6a6a98', '#4a3426', 0.62],
     [1160, '#1c2350', '#7a4a6a', '#8a7ab0', 0.4, '#3e4270', '#20180f', 0.55],
-    [1220, '#090f24', '#272c50', '#7088c0', 0.28, '#2a3664', '#17120e', 0.5],
-    [1440, '#070c1e', '#1d2544', '#7088c0', 0.28, '#2a3664', '#17120e', 0.5],
+    [1220, '#090f24', '#272c50', '#7088c0', 0.2, '#2a3664', '#17120e', 0.4],
+    [1440, '#070c1e', '#1d2544', '#7088c0', 0.2, '#2a3664', '#17120e', 0.4],
   ];
   const SUN = { gx: 0.6, gy: 0.2, elev: 0.5, day: 1, night: 0, dir: null, lightDir: null, moon: false };
   const SKYC = {};
@@ -1942,7 +1983,7 @@
     '  col += uSunCol * smoothstep(0.99935, 0.99965, sd) * 5.0 * uSunVis;',
     '  float md = max(dot(d, uMoonDir), 0.0);',
     '  col += (vec3(0.95, 0.95, 1.0) * smoothstep(0.99945, 0.99968, md) * 1.6 + vec3(0.25, 0.3, 0.45) * pow(md, 30.0) * 0.35) * uNight;',
-    '  if (uNight > 0.02 && h > 0.0) { vec3 q = floor(d * 260.0); float s = h13(q); col += vec3(step(0.9972, s) * (0.55 + 0.45 * sin(uTime * 1.7 + s * 90.0))) * uNight * smoothstep(0.02, 0.3, h); }',
+    '  if (uNight > 0.02 && h > 0.0) { vec3 q = floor(d * 260.0); float s = h13(q); col += vec3(step(0.9984, s) * (0.55 + 0.45 * sin(uTime * 1.7 + s * 90.0))) * uNight * smoothstep(0.02, 0.3, h); }',
     '  if (h > 0.015) {',
     '    vec2 cp = d.xz / (h + 0.1) * 0.9 + vec2(uTime * 0.006, uTime * 0.0025);',
     '    float c = fbm(cp * 1.6); c = smoothstep(0.52, 0.86, c) * smoothstep(0.015, 0.22, h);',
@@ -2065,6 +2106,8 @@
     return (p && p.vehicle) || p;
   }
   function focus() {
+    const R = N.render, m = N.state.mode;
+    if (R.camOverride || m === 'title' || m === 'boot') return { x: R.cam.x, y: R.cam.y }; // cinematic: stream around the 2D camera
     const e = focusEntity();
     if (!e || !isFinite(e.x)) return { x: N.render.cam.x, y: N.render.cam.y };
     return { x: e.x, y: e.y };
@@ -2076,11 +2119,29 @@
     const dx = px - tx, dy = py - ty, dz = pz - tz, L = Math.hypot(dx, dy, dz);
     if (L < 0.5) return L;
     const steps = Math.ceil(L / 1.5);
+    let free = L;
     for (let k = 1; k <= steps; k++) {
       const t = k / steps, x = tx + dx * t, y = ty + dy * t, z = tz + dz * t;
-      if (y < heightAt(x, z) + 1.2) return Math.max(0, L * t - 2.2);
+      if (y < heightAt(x, z) + 1.2) { free = Math.max(0, L * t - 2.2); break; }
     }
-    return L;
+    // landmark models (arbitrary shapes, arches you can walk under): a short ray test
+    if (!CAM.ray) { CAM.ray = new THREE.Raycaster(); CAM.rayO = new THREE.Vector3(); CAM.rayD = new THREE.Vector3(); CAM.near = []; CAM.nearT = 0; }
+    const tn = now();
+    if (tn - CAM.nearT > 250) {
+      CAM.nearT = tn; CAM.near.length = 0;
+      for (const rec of lmRecs.values()) {
+        if (!rec.obj) continue;
+        const lm = rec.lm, r = Math.max(lm.w, lm.d) * 0.75 + 90;
+        if (Math.abs(lm.x - tx) < r && Math.abs(lm.y - tz) < r) CAM.near.push(rec.obj);
+      }
+    }
+    if (CAM.near.length && free > 1) {
+      CAM.rayO.set(tx, ty, tz); CAM.rayD.set(dx / L, dy / L, dz / L);
+      CAM.ray.set(CAM.rayO, CAM.rayD); CAM.ray.near = 0; CAM.ray.far = free;
+      const hits = CAM.ray.intersectObjects(CAM.near, true);
+      for (const h of hits) { if (h.object.isMesh && h.object.visible !== false && !(h.object.material && h.object.material.transparent)) { free = Math.max(0, h.distance - 2); break; } }
+    }
+    return free;
   }
   function updateCamera(dt) {
     const cam = E.camera, I = N.input, p = N.player;
@@ -2179,9 +2240,11 @@
       if (CAM.prevVeh !== veh) { CAM.prevVeh = veh; if (since > 0.5) view.yaw = veh.angle || view.yaw; }
     } else {
       CAM.prevVeh = null;
-      if (since > 2.2 && spd > 25 && p) {
+      // drift back behind the player while they move roughly forward (not while strafing)
+      const face = p ? (isFinite(p.facing) ? p.facing : p.angle) : 0;
+      if (since > 2.2 && spd > 25 && p && Math.abs(wrapA(face - view.yaw)) < 1.0) {
         const k = 1 - Math.exp(-dt * 0.9);
-        view.yaw = approachAngle(view.yaw, isFinite(p.facing) ? p.facing : p.angle, k);
+        view.yaw = approachAngle(view.yaw, face, k);
       }
     }
     const look = veh ? Math.min(26, spd * 0.2) : 0;
@@ -2358,6 +2421,7 @@
         const fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0;
         if (fps < 40) { lowFrames++; highFrames = 0; } else if (fps > 57) { highFrames++; lowFrames = 0; } else { lowFrames = highFrames = 0; }
         if (lowFrames >= 2 && Q.pixelRatio > Q.minPixelRatio) { Q.pixelRatio = Math.max(Q.minPixelRatio, Q.pixelRatio - 0.25); lowFrames = 0; resize(); }
+        else if (lowFrames >= 3 && fps < 30 && Q.drawDist > 650) { Q.drawDist = Math.round(Q.drawDist * 0.85); lowFrames = 0; E.camera.far = Q.drawDist * 1.5; E.camera.updateProjectionMatrix(); lastPlan.t = 0; }
         else if (highFrames >= 4 && Q.pixelRatio < Q.maxPixelRatio) { Q.pixelRatio = Math.min(Q.maxPixelRatio, Q.pixelRatio + 0.25); highFrames = 0; resize(); }
       }
     }
@@ -2414,6 +2478,7 @@
   }
   function initEngine(T) {
     THREE = T; api.THREE = T;
+    if (Q.tier === 'low') { SIGN.CW = 256; SIGN.CHt = 32; SIGN.max = 3; }
     if (THREE.ColorManagement) THREE.ColorManagement.legacyMode = false;
     TV3 = new THREE.Vector3(); TV3b = new THREE.Vector3(); TM3 = new THREE.Matrix3();
     SUN.dir = new THREE.Vector3(); SUN.lightDir = new THREE.Vector3();

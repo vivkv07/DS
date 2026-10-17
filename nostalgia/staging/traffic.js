@@ -33,7 +33,7 @@
  *   clear(pred?), TUNE, stats() -> {vehicles, peds, animals, flocks, ms}, vehicles [], peds [], animals [],
  *   constables [] (podium actors; wanted.js uses them as spotters), claimAuto(x, y, r) -> an empty ambient
  *   auto released from traffic control (shops.js "AUTO!"), release(v) (stop controlling a vehicle),
- *   busAt(x, y, r) -> a bus stopped at a stop near (x, y) | null, spawnVehicle(type, {x, y, angle} | null),
+ *   busAt(x, y, r) -> a bus stopped at a stop near (x, y) | null, spawnVehicle(type, {x, y, angle?, to?} | null),
  *   spawnPed(role?, {x, y, zone?}), bark(ped, text | situation), crowd(placeId) -> zone info,
  *   friendlyDogs() -> fed dogs following the player, closeRoads(id, {x, y, r} | null) (no traffic there),
  *   sense(v) -> nearest obstacle ahead {e, gap, sp} (shared with wanted.js pursuer vehicles),
@@ -101,7 +101,7 @@
     pigeonScare: { speed: 50, r: 40, near: 14, hornR: 80, landAfter: [6, 10] },
     podiumHours: [8 * 60, 21 * 60], podiumPhase: 6, podiumGap: 1,
     // spawn rings are offsets beyond the view's half-diagonal; despawn needs out-of-view AND beyond these
-    ringPed: [24, 200], ringVeh: [40, 300], ringAni: [24, 240], despawnPed: 380, despawnVeh: 560, despawnAni: 420,
+    ringPed: [20, 170], ringVeh: [30, 210], ringAni: [24, 220], despawnPed: 330, despawnVeh: 440, despawnAni: 380,
     spawnPerFrame: 2, fillPerFrame: 8, fillSecs: 0.9,
     // crowd zones: place kind / id -> {n: max wanderers, r, hours [from, to] (minutes), roles}
     zones: {
@@ -574,6 +574,7 @@
     tr.wp.push(wp(p0.x, p0.y));
     tr.i = 1;
     tr.inBox = -1;
+    addStops(v, A, B, e, g, tr.off, clamp(d0, 0, g.L) + 30);
     extend(v);
   }
   /** Append the turn at tr.B onto the next edge (X before the junction, corner, E after it). */
@@ -609,6 +610,10 @@
         }
       }
       if (!K) K = { x: (X.x + E.x) / 2, y: (X.y + E.y) / 2 };
+      if (RI.podium && RI.podium.has(B.id)) { // keep clear of the podium in the middle
+        const kx = K.x - B.x, ky = K.y - B.y, kd = Math.hypot(kx, ky);
+        if (kd < 11) { const f = 11 / (kd || 1); K = { x: B.x + (kd ? kx * f : -g1.uy * 11), y: B.y + (kd ? ky * f : g1.ux * 11) }; }
+      }
       for (const t of [0.34, 0.67]) {
         const a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t;
         tr.wp.push(wp(a * X.x + b * K.x + c * E.x, a * X.y + b * K.y + c * E.y, cl, junc ? B.id : -1, junc ? F_BOX : 0));
@@ -616,23 +621,30 @@
     }
     const crE = cruiseFor(v, e2);
     tr.wp.push(wp(E.x, E.y, crE, junc ? B.id : -1, junc ? F_EXIT : 0, { cr: crE }));
-    // bus stops on this edge (on the left of travel)
-    if (v.type === 'bus' && !tr.pursuit) {
-      const st = RI.stops.get(e2.id);
-      if (st) {
-        const forward = e2.a === B.id;
-        for (const s of st) {
-          const t = forward ? s.t : 1 - s.t, onLeft = forward ? s.leftOfAB : !s.leftOfAB;
-          if (!onLeft) continue;
-          const d = t * g2.L;
-          if (d < r + 8 || d > g2.L - 20) continue;
-          const q = lanePt(B, g2, d, Math.min(e2.w / 2 - v.T.d / 2 + 2, off2 + 4));
-          tr.wp.push(wp(q.x, q.y, 0, -1, F_STOP, { stop: TUNE.busStop, place: s.place.id }));
-        }
-      }
-    }
+    addStops(v, B, C, e2, g2, off2, r + 8);
     tr.A = B; tr.B = C; tr.e = e2; tr.g = g2; tr.off = off2;
     return true;
+  }
+  /** Bus stops on edge A->B on the left of travel, from distance dMin up to short of B's junction mouth. */
+  function addStops(v, A, B, e, g, off, dMin) {
+    const tr = v.tr;
+    if (v.type !== 'bus' || tr.pursuit) return;
+    const st = RI.stops.get(e.id);
+    if (!st) return;
+    const forward = e.a === A.id, dMax = g.L - Math.max(20, Math.min(junctionR(B), g.L * 0.45) + 6);
+    const list = [];
+    for (const s of st) {
+      const t = forward ? s.t : 1 - s.t, onLeft = forward ? s.leftOfAB : !s.leftOfAB;
+      if (!onLeft) continue;
+      const d = t * g.L;
+      if (d < dMin || d > dMax) continue;
+      list.push({ d, s });
+    }
+    list.sort((a, b) => a.d - b.d);
+    for (const { d, s } of list) {
+      const q = lanePt(A, g, d, Math.min(e.w / 2 - v.T.d / 2 + 2, off + 4));
+      tr.wp.push(wp(q.x, q.y, 0, -1, F_STOP, { stop: TUNE.busStop, place: s.place.id }));
+    }
   }
 
   /** Nearest thing ahead of v inside its corridor: {e, gap, sp, ly, er, static}. */
@@ -650,31 +662,47 @@
       const e = near[i];
       if (e === v || !e.alive || e.hidden || e === v.driver) continue;
       let er, elen, esp;
+      let thr = 0;
       if (e.kind === 'vehicle') {
         if (e.T.mode !== T2.mode) continue;
         if (tr && tr.ghost > 0 && e.tr && tr.ghostOf === e) continue;
-        const rel = e.angle - Math.atan2(diry, dirx), ca = Math.abs(Math.cos(rel)), sa = Math.abs(Math.sin(rel));
+        // parked bikes / cars on the footpath are not in the way of road traffic
+        if (!e.tr && e.driver !== N.player && onRoad && (e.asleep || Math.abs(e.speed || 0) < 2) && !roadSurf(N.world.surfaceAt(e.x, e.y))) continue;
+        const rel = U.angleDiff(Math.atan2(diry, dirx), e.angle), ar = Math.abs(rel);
+        const ca = Math.abs(Math.cos(rel)), sa = Math.abs(Math.sin(rel));
         elen = (e.T.w * ca + e.T.d * sa) / 2; er = (e.T.w * sa + e.T.d * ca) / 2;
         esp = e.vx * dirx + e.vy * diry;
+        if (ar > 2.4) thr = (T2.d / 2 + e.T.d / 2) * 0.55;            // oncoming: only a real head-on
+        else if (ar < 0.7) thr = T2.d / 2 + e.T.d / 2 * 0.85 + 0.3;    // same way: the next lane is fine
+        else thr = hw + er;                                               // crossing
       } else if (e.kind === 'ped' || e.kind === 'npc' || e.kind === 'animal') {
         if (e.vehicle) continue;
         if ((e.noCollide || !e.solid) && !e.blocksTraffic) continue;
         if (e.roofH || e.level) continue;
         // people and dogs on the footpath beside the road are not in the way
         if (onRoad && !roadSurf(N.world.surfaceAt(e.x, e.y))) continue;
+        // the constable on a podium stands above the traffic
+        if (onPodium(e)) continue;
         er = (e.r || 4) * (e.kind === 'animal' ? 1 : 0.8); elen = er; esp = (e.vx || 0) * dirx + (e.vy || 0) * diry;
+        thr = hw + er;
       } else continue;
       const dx = e.x - v.x, dy = e.y - v.y;
       const lx = dx * dirx + dy * diry;
-      if (lx <= -1) continue;
+      if (lx <= T2.w * 0.2) continue; // beside or behind: the physics sorts that out
       const ly = -dx * diry + dy * dirx;
-      if (Math.abs(ly) > hw + er) continue;
+      if (Math.abs(ly) > thr) continue;
       const gap = lx - T2.w / 2 - elen;
       if (gap < bg) { bg = gap; best = { e, gap, sp: esp, ly, er, elen, lx }; }
     }
     return best;
   }
   const roadSurf = (s) => s === N.SURF.ROAD || s === N.SURF.BRIDGE;
+  function onPodium(e) {
+    const pods = N.world.podiums;
+    if (!pods) return false;
+    for (let i = 0; i < pods.length; i++) { const p = pods[i]; if (Math.abs(p.x - e.x) < 8 && Math.abs(p.y - e.y) < 8) return true; }
+    return false;
+  }
   function isStatic(e) {
     if (e.kind === 'animal') return e.species === 'cow' ? !e.moving : Math.hypot(e.vx || 0, e.vy || 0) < 4;
     if (e.kind === 'vehicle') return !e.tr && (e.asleep || Math.abs(e.speed || 0) < 2);
@@ -817,7 +845,11 @@
     }
     // ---- following / obstacles
     const dl = Math.hypot(tx - v.x, ty - v.y) || 1;
-    const ob = sense(v, (tx - v.x) / dl, (ty - v.y) / dl);
+    // off-screen (kinematic) vehicles look ahead 4x less often
+    let ob;
+    if (v.kin && tr.senseT > 0) { tr.senseT -= dt; ob = tr.ob; if (ob && !ob.e.alive) ob = null; }
+    else { ob = sense(v, (tx - v.x) / dl, (ty - v.y) / dl); tr.senseT = v.kin ? 0.06 : 0; }
+    tr.ob = ob;
     let blocked = false;
     if (ob) {
       const s0 = TUNE.followGap + asp * 0.2;
@@ -825,8 +857,8 @@
       if (vf < want) { want = Math.max(0, vf); }
       if (ob.gap < 1.2) want = 0;
       blocked = want < 4 && tr.cruise > 10;
-      // two vehicles nose to nose inside the same junction: the lower id goes
-      if (blocked && ob.e.tr && ob.e.tr.inBox >= 0 && ob.e.tr.inBox === tr.inBox && tr.blockT > 1.2 && v.id < ob.e.id) { tr.ghost = 1.5; tr.ghostOf = ob.e; }
+      // two vehicles nose to nose inside the same junction, or tangled after a bump: the lower id goes
+      if (blocked && ob.e.tr && tr.blockT > 1.2 && v.id < ob.e.id && ((ob.e.tr.inBox >= 0 && ob.e.tr.inBox === tr.inBox) || ob.gap < -1.5)) { tr.ghost = 1.5; tr.ghostOf = ob.e; }
       // round a lying cow / parked vehicle / standing person
       if (blocked && !tr.swerve && tr.blockT > TUNE.swerveAfter && isStatic(ob.e)) trySwerve(v, tr, ob, segUx, segUy);
     }
@@ -839,6 +871,8 @@
     }
     if (blocked) {
       tr.blockT += dt;
+      if (tr.blockT > 10 && !N.render.inView(v.x, v.y, 60)) { despawnVehicle(v); return; }
+      if (!tr.swerve && tr.blockT > 4 && ob.e.kind === 'vehicle' && ob.e.tr && ob.e.tr.blockT > 3) trySwerve(v, tr, ob, segUx, segUy);
       if (tr.blockT > TUNE.hornAfter && (ob.e === N.player || ob.e.kind !== 'vehicle' || !ob.e.tr || ob.e.tr.blockT < 0.5)) honk(v, 'blocked');
     } else tr.blockT = Math.max(0, tr.blockT - dt * 2);
     void stopping;
@@ -963,7 +997,7 @@
     if (m >= 23 * 60 || m < 5 * 60) { mix.lorry = (mix.lorry || 0) * 2; mix.cycle *= 0.5; mix.ladiescycle *= 0.3; mix.bus *= 0.2; mix.rickshaw = (mix.rickshaw || 0) * 0.5; }
     if (e.kind === 'lane') { mix.bus = 0; mix.lorry = 0; mix.ambassador = 0; mix.padmini *= 0.3; mix.maruti800 *= 0.4; }
     if (e.kind === 'arterial') { mix.rickshaw = (mix.rickshaw || 0) * 0.4; }
-    for (const ev of activeEvents(x, y)) if (ev.idolLorries) { mix.lorry = (mix.lorry || 0) + 40; }
+    for (const ev of activeEvents(x, y)) if (ev.idolLorries) { if (N.vehicles.TYPES.peacock_lorry) mix.peacock_lorry = (mix.peacock_lorry || 0) + 40; else mix.lorry = (mix.lorry || 0) + 40; }
     const t = wpick(mix) || 'auto';
     return N.vehicles.TYPES[t] ? t : 'auto';
   }
@@ -992,7 +1026,7 @@
     if (force && N.render.inView(pos.x, pos.y, -40) && Math.hypot(pos.x - N.player.x, pos.y - N.player.y) < 90) return null;
     if (closedAt(pos.x, pos.y)) return null;
     if (!N.world.isDrivable(pos.x, pos.y) || N.world.collide(pos.x, pos.y, Ty.d / 2, 'drive').hit) return null;
-    if (N.entities.query(pos.x, pos.y, Ty.w / 2 + 16, (q) => q.kind === 'vehicle' || q === N.player).length) return null;
+    if (N.entities.query(pos.x, pos.y, Ty.w / 2 + 16, (q) => q.kind === 'vehicle' || q === N.player || q.kind === 'animal' || (q.kind === 'ped' && roadSurf(N.world.surfaceAt(q.x, q.y)))).length) return null;
     const look = driverLook(type, style);
     let spawnType = type;
     if (type === 'ambassador' && style === 'colonial' && rnd() < TUNE.govtAmbassador * 6 && N.vehicles.TYPES.govt_ambassador) spawnType = 'govt_ambassador';
@@ -1040,7 +1074,45 @@
     if (tr && tr.pursuit && tr.pursuitCruise) c = tr.pursuitCruise;
     return c;
   }
+  /* Off-screen traffic runs kinematically: it is taken out of N.vehicles.list (so vehicles.js does no
+   * physics / collisions for it) and moved along its route by the same controller with a simple model;
+   * it is handed back to vehicles.js before it can come into view. */
+  const KIN_OUT = 70, KIN_IN = 40;
+  function setKinematic(v, on) {
+    const L = N.vehicles && N.vehicles.list;
+    if (!L || !!v.kin === !!on) return;
+    const i = L.indexOf(v);
+    if (on) { if (i >= 0) L.splice(i, 1); v.kin = true; v.asleep = false; }
+    else { if (i < 0 && v.alive) L.push(v); v.kin = false; v.okX = null; v.asleep = false; v.sleepT = 0; }
+  }
+  function kinStep(v, dt) {
+    const T2 = v.T, ctl = v.ctl;
+    try { trafficCtl(v, dt); } catch (e) { N.err('traffic.kin', e); }
+    if (!v.alive || !v.kin) return;
+    let sp = v.speed || 0;
+    const thr = clamp(+ctl.throttle || 0, -1, 1);
+    if (ctl.brake) sp = Math.max(0, sp - T2.brake * dt);
+    else if (thr > 0.02) sp = Math.min(T2.maxSpeed, sp + T2.accel * thr * dt);
+    else if (thr < -0.02) sp = Math.max(0, sp + T2.brake * thr * dt);
+    else sp = Math.max(0, sp - T2.drag * dt);
+    const turnF = clamp(sp / 30, 0.25, 1);
+    v.angle = U.wrapAngle(v.angle + clamp(+ctl.steer || 0, -1, 1) * T2.turn * turnF * dt);
+    const c = Math.cos(v.angle), s2 = Math.sin(v.angle);
+    v.x += c * sp * dt; v.y += s2 * sp * dt;
+    v.vx = c * sp; v.vy = s2 * sp; v.av = 0; v.speed = sp; v.slip = 0; v.throttle = thr;
+    v.wheelPhase = (v.wheelPhase || 0) + sp * dt * 0.5;
+  }
+  function kinPass(dt) {
+    for (const v of T.vehicles) {
+      if (!v.alive || !v.tr || v.driver === N.player || v.T.mode === 'boat') { if (v.kin) setKinematic(v, false); continue; }
+      if (v.kin) {
+        if (N.render.inView(v.x, v.y, KIN_IN + v.T.w)) setKinematic(v, false);
+        else kinStep(v, dt);
+      } else if (!N.render.inView(v.x, v.y, KIN_OUT + v.T.w) && !v.bumpT) setKinematic(v, true);
+    }
+  }
   function despawnVehicle(v) {
+    if (v.kin) setKinematic(v, false);
     const i = T.vehicles.indexOf(v); if (i >= 0) T.vehicles.splice(i, 1);
     if (v.driver === N.player) return;
     try { N.vehicles.remove(v); } catch (e) { v.alive = false; }
@@ -1048,6 +1120,7 @@
   /** Stop controlling a vehicle (the player borrowed it, a story script wants it, ...). */
   function release(v, opts) {
     if (!v) return v;
+    if (v.kin) setKinematic(v, false);
     const i = T.vehicles.indexOf(v); if (i >= 0) T.vehicles.splice(i, 1);
     const j = T.boats.indexOf(v); if (j >= 0) T.boats.splice(j, 1);
     if (v.controller === trafficCtl) v.controller = null;
@@ -1064,6 +1137,7 @@
   }
   /* ---------------------------------------------------------------- buses at stops */
   function busArrive(v, q) {
+    N.emit('bus:stop', { vehicle: v, place: q.place || null });
     sfx('air_brake', { x: v.x, y: v.y, vol: 0.6 });
     if (rnd() < 0.6) sfx('conductor', { x: v.x, y: v.y });
     // waiting people board, a couple get off
@@ -1145,6 +1219,20 @@
     const dx = tx - p.x, dy = ty - p.y, d = Math.hypot(dx, dy);
     let vx = 0, vy = 0;
     if (d > (arrive || 1.2)) { const s = Math.min(speed, d * 5); vx = (dx / d) * s; vy = (dy / d) * s; }
+    // a vehicle right ahead (a stopped bus, a parked car): wait, then step round it
+    if (vx || vy) {
+      p.vbT = (p.vbT || 0) - dt;
+      if (p.vbT <= 0) {
+        p.vbT = 0.2;
+        const sp = Math.hypot(vx, vy), ax = p.x + (vx / sp) * 7, ay = p.y + (vy / sp) * 7;
+        p.vblock = !!(N.vehicles && N.vehicles.nearest && N.vehicles.nearest(ax, ay, 3.5));
+      }
+      if (p.vblock) {
+        p.waitV = (p.waitV || 0) + dt;
+        if (p.waitV < 1.5) { vx *= 0.05; vy *= 0.05; }
+        else { const s2 = Math.hypot(vx, vy) || 1, side = (p.id & 1) ? 1 : -1; const nx = -vy / s2 * side, ny = vx / s2 * side; vx = nx * speed * 0.8 + vx * 0.2; vy = ny * speed * 0.8 + vy * 0.2; }
+      } else p.waitV = 0;
+    }
     const a = 1 - Math.exp(-dt * 8);
     p.vx += (vx - p.vx) * a; p.vy += (vy - p.vy) * a;
     integrate(p, dt);
@@ -1171,7 +1259,6 @@
     if (p.barkCD > 0) p.barkCD -= dt;
     if (p.lookT > 0) p.lookT -= dt;
     if (p.dust > 0) p.dust -= dt;
-    if (p.hold) { p.vx *= 0.8; p.vy *= 0.8; p.anim.speed = 0; return; }
     // knocked down (vehicles.js sets knockT and a velocity kick on a hit; bumps on foot too)
     if (p.knockT > 0) {
       if (!p.down) { p.down = true; p.dust = 0.6; p.vx = p.vx || 0; p.vy = p.vy || 0; }
@@ -1187,6 +1274,7 @@
       if (p.getupT <= 0) { p.down = false; p.dust = 0.3; afterGetUp(p); }
       return;
     }
+    if (p.hold) { p.vx *= 0.8; p.vy *= 0.8; integrate(p, dt); p.anim.speed = 0; return; }
     if (p.dodgeT > 0) {
       p.dodgeT -= dt;
       p.vx = p.dvx; p.vy = p.dvy;
@@ -1299,6 +1387,7 @@
       const x = z.x + Math.cos(a) * d, y = z.y + Math.sin(a) * d;
       if (!walkSurfOk(x, y, !!z.road)) continue;
       if (N.world.collide(x, y, 3.6, 'walk').hit) continue;
+      if (k < 8 && N.entities.query(x, y, 5.5, (e) => e.kind === 'ped' || e.kind === 'npc').length) continue; // a little personal space
       if (!N.world.raycast(z.x, z.y, x, y, 'walk').hit || k > 6) return { x, y };
     }
     return null;
@@ -2365,6 +2454,7 @@
       const v = T.vehicles[i];
       if (!v.alive) { T.vehicles.splice(i, 1); continue; }
       if (v.driver === N.player || v.controller !== trafficCtl) { // borrowed / taken over
+        if (v.kin) setKinematic(v, false);
         T.vehicles.splice(i, 1); if (v.tr) v.tr = null; v.trafficOwned = false;
         if (v.driver === N.player) { v.wasTraffic = true; T.abandoned.push(v); }
         continue;
@@ -2431,6 +2521,7 @@
     if (T.zoneT <= 0) { T.zoneT = 1.0; refreshZones(); }
     T.cleanT -= dt;
     if (T.cleanT <= 0) { T.cleanT = 0.25; cleanup(); }
+    kinPass(dt);
     holdCows();
     updatePodiums(dt);
     updateFlocks(dt);
@@ -2505,6 +2596,8 @@
   }
   function clearAll(pred) {
     for (const v of T.vehicles.slice()) if (!pred || pred(v)) despawnVehicle(v);
+    const L = N.vehicles && N.vehicles.list;
+    if (L && !pred) for (const v of T.vehicles) if (v.kin) setKinematic(v, false);
     for (const v of T.boats.slice()) if (!pred || pred(v)) { try { N.vehicles.remove(v); } catch (e) { v.alive = false; } T.boats.splice(T.boats.indexOf(v), 1); }
     for (const p of T.peds.slice()) if (!pred || pred(p)) { N.entities.remove(p); T.peds.splice(T.peds.indexOf(p), 1); }
     for (const a of T.animals.slice()) if (!pred || pred(a)) { N.entities.remove(a); T.animals.splice(T.animals.indexOf(a), 1); }
@@ -2550,7 +2643,14 @@
       if (!at) return spawnTrafficVehicle(true);
       const n = N.world.roads.nearestNode(at.x, at.y);
       if (!n || !n.links.length) return null;
-      const B = RI.nodes[n.links[0].to], g = geom(n, B);
+      // head along the link that best matches at.angle (or at.to: a node id), else the first link
+      let lk = n.links[0];
+      if (at.to != null) lk = n.links.find((l) => l.to === at.to) || lk;
+      else if (at.angle != null) {
+        let bd = -2;
+        for (const l of n.links) { const o = RI.nodes[l.to], L = Math.hypot(o.x - n.x, o.y - n.y) || 1, dd = ((o.x - n.x) * Math.cos(at.angle) + (o.y - n.y) * Math.sin(at.angle)) / L; if (dd > bd) { bd = dd; lk = l; } }
+      }
+      const B = RI.nodes[lk.to], g = geom(n, B);
       const v = N.vehicles.spawn(type, at.x, at.y, at.angle != null ? at.angle : Math.atan2(g.uy, g.ux), { driver: { look: driverLook(type, styleOf(districtAt(at.x, at.y))), npc: true } });
       if (!v) return null;
       const d0 = clamp((at.x - n.x) * g.ux + (at.y - n.y) * g.uy, 0, g.L);

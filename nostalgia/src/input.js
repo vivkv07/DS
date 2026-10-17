@@ -400,7 +400,7 @@
   document.addEventListener('touchmove', (e) => { if (!allowScroll(e)) e.preventDefault(); }, { passive: false });
   document.addEventListener('gesturestart', (e) => e.preventDefault());
   document.addEventListener('dblclick', (e) => { if (!allowScroll(e)) e.preventDefault(); });
-  document.addEventListener('contextmenu', (e) => { if (e.target && e.target.closest && e.target.closest('#touch,#game')) e.preventDefault(); });
+  document.addEventListener('contextmenu', (e) => { if (e.target && e.target.closest && e.target.closest('#touch,#game,#game3d')) e.preventDefault(); });
   window.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') setDevice('touch'); }, true);
 
   // Mode classes on <body> so CSS can show/hide controls per state

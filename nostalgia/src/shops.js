@@ -31,7 +31,7 @@
  *     busStops() -> [{id, ticket, found}]
  *     hailAuto({yadagiri, stand}) -> bool (horn on foot near a road does this), autoFare(x0, y0, x1, y1)
  *       -> {meter, ask, dist} (paise), autoRide(destId | {x, y, name}, {price}) -> Promise
- *     callNanna() (STD, 45 finds), travelTo(dest, {mode, minutes}) -> Promise (VHS ▶▶ + teleport)
+ *     callNanna() (STD, 45 finds) / nannaWhy() -> reason|null, travelTo(dest, {mode, minutes}) -> Promise (VHS ▶▶ + teleport)
  *     ffwd(minutes, {ms, label, mid}) -> Promise   pass game time with the VHS ▶▶ look
  *   Services: stdSave(), callHome(), haircut(placeId), trainRide(placeId, {secs}) -> Promise,
  *     viewpoint(id, x, y, {zoom, secs}), fortune(x, y) -> text (weighing machine),
@@ -131,6 +131,7 @@
     return false;
   }
   const pad2 = (n) => (n < 10 ? '0' : '') + n;
+  const mod = (n, m) => ((Math.floor(n) % m) + m) % m;
   const respectAt = (x, y) => { try { return !!(N.respect && typeof N.respect.at === 'function' && N.respect.at(x, y)); } catch (e) { return false; } };
   const reduced = () => !!(document.body && document.body.classList.contains('reduced-motion'));
   function inv(id) { const p = N.player; return !!(p && ((p.inventory && p.inventory.has(id)) || (p.items && p.items[id] > 0))); }
@@ -254,7 +255,7 @@
       S.debts = S.debts.filter((d) => d.paise > 0);
     } finally { repaying = false; }
   }
-  N.on('money', (d) => { if (d && d.delta > 0 && !d.repay && (S.khaata > 0 || S.debts.length)) setTimeout(repay, 0); });
+  N.on('money', (d) => { if (d && d.delta > 0 && !d.repay && d.why !== 'refund' && (S.khaata > 0 || S.debts.length)) repay(); });
 
   /* ================================================================ catalogue */
   // Row fields: id, name, sub, price (paise, or fn(ctx)), house (★, the quick order), feed (n | {tummy,
@@ -928,6 +929,7 @@
     if (K.present) { let here = true; try { here = !!K.present(c); } catch (e) { here = true; } if (!here) return { open: false, reason: 'The cart is not here now', text: 'Not here right now', absent: true }; }
     const H = hoursOf(def);
     if (!H.length) return { open: false, reason: K.closedWhy || 'Closed today', text: K.closedWhy || 'Closed today' };
+    if (H.some((h) => hm(h[0]) === 0 && hm(h[1]) >= 1440)) return { open: true, closes: null, allDay: true, text: 'Open all day' };
     for (const h of H) if (inSpan(m, h[0], h[1])) return { open: true, closes: hm(h[1]) % 1440, text: 'Open till ' + fmtHM(hm(h[1])) };
     let best = null, bd = 1e9;
     for (const h of H) { const A = hm(h[0]); const dd = (A - m + 1440) % 1440; if (dd < bd) { bd = dd; best = A; } }
@@ -956,7 +958,7 @@
     return null;
   }
   function orderedHere(id) { const o = S.lastOrder; return !!(o && o.place === id && o.paise >= 400 && absMin() - o.at <= 2); }
-  function iceFlavour() { const mo = date().m; return mo >= 9 ? 'Sitaphal' : mo === 5 || mo === 6 ? 'Mango' : day() % 2 ? 'Kesar' : 'Vanilla'; }
+  function iceFlavour() { const mo = date().m; return mo >= 9 ? 'Sitaphal' : mo === 5 || mo === 6 ? 'Mango' : mod(day(), 2) ? 'Kesar' : 'Vanilla'; }
   function cassettes() { try { const W = N.walkman; return W && W.cassettes ? (W.cassettes.size || W.cassettes.length || 0) : 0; } catch (e) { return 0; } }
 
   /* ================================================================ interacts */
@@ -1178,7 +1180,8 @@
     const D = UI.dom, def = UI.def, c = UI.ctx, st = statusOf(def), v = UI.view;
     D.card.className = 'shop-card k-' + def.kind + ' i-' + (def.K.icon || 'shop') + (st.open ? '' : ' closed') + (st.fence ? ' fence' : '') + (v ? ' v-' + v.type : '');
     D.name.innerHTML = emph(def.name.replace(/\s*\((on hire|finale|home)\)\s*$/i, ''));
-    D.kind.innerHTML = esc(def.K.title) + ' · ' + (st.open ? '<span class="ok">open till ' + fmtHM(st.closes) + '</span>' : '<span class="no">' + emph(st.text) + '</span>');
+    D.kind.innerHTML = def.virtual || def.K.virtual ? esc(def.K.title) + ' · <span class="ok">at the kerb</span>'
+      : esc(def.K.title) + ' · ' + (st.open ? '<span class="ok">' + (st.allDay ? 'open all day' : 'open till ' + fmtHM(st.closes)) + '</span>' : '<span class="no">' + emph(st.text) + '</span>');
     D.purse.textContent = U.fmtMoney(N.player.money | 0);
     D.who.textContent = UI.who ? UI.who + ':' : '';
     D.line.innerHTML = UI.line ? '“' + emph(UI.line) + '”' : '';
@@ -1348,6 +1351,7 @@
 
   /* ============================================================ services */
   function progress(c, title, secs, text, done, o) {
+    if (!UI.open) { let m = null; try { m = done(); } catch (e) { N.err('shops.progress', e); } return Promise.resolve(m); } // no card (API / quick use): at once
     return new Promise((resolve) => {
       UI.busy = false;
       setView({ type: 'progress', title, text, secs: Math.max(0, secs), t: 0, sfx: o && o.sfx, every: (o && o.every) || 1.4, sT: 0, done: () => { let m = null; try { m = done(); } catch (e) { N.err('shops.progress', e); } resolve(m); } });
@@ -1374,9 +1378,12 @@
     if (W && typeof W.hide === 'function') {
       use('hide:' + c.id);
       closeShop(true);
-      let ok = false;
-      try { ok = W.hide(kind, c.id) !== false; } catch (e) { N.err('shops.hide', e); }
-      return { close: true, msg: ok ? 'Behind the rice sacks. Do not sneeze.' : '' };
+      let r = null;
+      try { r = W.hide(kind, c.id); } catch (e) { N.err('shops.hide', e); }
+      // wanted.hide -> {ok, line} (older stubs return a bool)
+      const ok = r && typeof r === 'object' ? !!r.ok : r !== false;
+      const line = r && typeof r === 'object' && r.line ? r.line : ok ? 'Behind the rice sacks. Do not sneeze.' : '';
+      return { close: true, msg: line };
     }
     return progress(c, 'Hiding', TUNE.hideSecs, 'Behind the rice sacks. It smells of jute and washing powder. Do not sneeze.', () => {
       use('hide:' + c.id);
@@ -1389,7 +1396,7 @@
     use('back:' + c.id);
     const W = N.wanted;
     closeShop(true);
-    if (W && typeof W.hide === 'function') { try { W.hide('backdoor', c.id); } catch (e) { N.err('shops.backdoor', e); } }
+    if (W && typeof W.hide === 'function') { try { W.hide('backdoor', c.id, { teleport: true }); } catch (e) { N.err('shops.backdoor', e); } }
     else {
       const rp = N.world.nearestRoadPoint(c.x, c.y);
       let ax = 0, ay = 1;
@@ -1532,11 +1539,11 @@
     if (C && typeof C.triviaFor === 'function') {
       const ids = Object.keys(vis).sort();
       for (let k = 0; k < ids.length; k++) {
-        const id = ids[(seed + k) % ids.length];
+        const id = ids[mod(seed + k, ids.length)];
         try { const t = C.triviaFor(id); if (t && typeof t === 'string') { if (typeof C.unlockTrivia === 'function') C.unlockTrivia(id); return { place: id, text: t }; } } catch (e) { /* ignore */ }
       }
     }
-    return { place: null, text: TRIVIA[Math.abs(seed) % TRIVIA.length] };
+    return { place: null, text: TRIVIA[mod(seed, TRIVIA.length)] };
   }
   function trivia(c, kind) {
     const f = triviaFact((day() * 7 + (S.stats.buys | 0)) | 0);
@@ -1591,7 +1598,7 @@
   }
   function weigh(c) {
     sfx('weigh_machine');
-    const kg = (30.4 + ((N.player.tummy == null ? 80 : N.player.tummy) / 100) * 1.6 + (day() % 3) * 0.1).toFixed(1);
+    const kg = (30.4 + ((N.player.tummy == null ? 80 : N.player.tummy) / 100) * 1.6 + mod(day(), 3) * 0.1).toFixed(1);
     const f = fortune(c.x, c.y);
     N.emit('shop:service', { place: c.id, service: 'weigh', fortune: f });
     setView({ type: 'info', title: 'Weighing machine', html: '<div class="shop-ticket"><b>WEIGHT ' + kg + ' KG</b><span>' + esc(f) + '</span><i>Thank you. Visit again.</i></div>' });
@@ -1707,7 +1714,7 @@
     let h = null;
     try { if (N.hints && typeof N.hints.next === 'function') h = N.hints.next('std'); } catch (e) { h = null; }
     if (h && h.text) lines.push({ s: 'ammamma', t: h.text });
-    else lines.push({ s: 'ammamma', t: FAMILY[day() % FAMILY.length] });
+    else lines.push({ s: 'ammamma', t: FAMILY[mod(day(), FAMILY.length)] });
     const l = wanted();
     let down = false;
     if (l >= 1 && l <= 2 && !used('callhome')) { use('callhome'); down = true; lines.push({ s: 'you', t: '*Haan Mummy*, I\'m at Immu\'s. Doing homework.' }); }
@@ -1718,7 +1725,7 @@
   function callKurnool() {
     closeShop(true);
     sfx('std_ring');
-    playCall([{ s: 'you', t: 'Trunk call to Kurnool, please. ...Nani? Salaam!' }, { s: 'nani', t: NANI[(day() + (S.stats.buys | 0)) % NANI.length] }]);
+    playCall([{ s: 'you', t: 'Trunk call to Kurnool, please. ...Nani? Salaam!' }, { s: 'nani', t: NANI[mod(day() + (S.stats.buys | 0), NANI.length)] }]);
     return { close: true };
   }
   function callVani() {
@@ -1726,7 +1733,7 @@
     sfx('std_ring');
     let songs = [];
     try { songs = N.walkman && N.walkman.songs ? N.walkman.songs() || [] : []; } catch (e) { songs = []; }
-    const s = songs.length ? songs[day() % songs.length] : null;
+    const s = songs.length ? songs[mod(day(), songs.length)] : null;
     toast('Deccan Vani: "A *farmaish* from {nick} of Lakshmi Nagar! This one is for the whole colony."'.replace('{nick}', (N.player && N.player.name) || 'Chinnu'), 4200);
     if (s && N.walkman && N.walkman.play) { try { N.walkman.play(s.id || s); } catch (e) { N.err('shops.vani', e); } }
     return { close: true };
@@ -1752,7 +1759,7 @@
     if (c.id === 'sandhya_theatre') return d.y === 2003 && (d.m < 2 || (d.m === 2 && d.d < 8)) ? FILMS[4] : FILMS[0];
     if (c.id === 'devi_theatre') return FILMS[1];
     const others = FILMS.slice(2), wk = Math.floor((day() + 3) / 7);
-    return others[(Math.abs(U.strHash(c.id)) + wk) % others.length];
+    return others[mod(U.strHash(c.id) + wk, others.length)];
   }
   function showsToday() { const L = SHOWS.slice(); if (dow() === 5) L.unshift('06:00'); return L; }
   function housefull(c, t) { if (!(dow() === 0 || dow() === 6)) return false; return U.hash2(Math.abs(U.strHash(c.id)) % 1009, day() * 31 + hm(t)) < 0.3; }
@@ -1780,7 +1787,7 @@
       return m;
     } });
   }
-  function docToday() { return DOCS[day() % DOCS.length]; }
+  function docToday() { return DOCS[mod(day(), DOCS.length)]; }
   function watchDoc(c) {
     const f = docToday();
     return showCard(c, { poster: f, minutes: 60, note: 'The giant screen · one hour', after: () => { feed(0, { energy: 20, quiet: true }); N.emit('shop:service', { place: c.id, service: 'imax', film: f.t }); return '*' + f.t + '*: the screen so big it has no edges. Energy +20.'; } });
@@ -1803,6 +1810,7 @@
         });
       },
     };
+    if (!UI.open) { v.go(); return null; } // bought without the card (N.shops.buy): straight in
     setView(v);
     return { keep: true };
   }
@@ -1945,7 +1953,10 @@
     const dist = V && V.roadDistance ? V.roadDistance(p.x, p.y, dest.x, dest.y) : Math.hypot(dest.x - p.x, dest.y - p.y) * 1.3;
     const speed = o.mode === 'bus' ? TUNE.busSpeed : o.mode === 'nanna' ? 128 : TUNE.autoSpeed;
     const minutes = o.minutes != null ? o.minutes : Math.max(2, Math.round(dist / speed));
+    if (UI.open) closeShop(true);
     if (p.vehicle && V) V.exit(p, true);
+    // another ride: an auto (or Nanna) still waiting at the kerb gives up
+    for (const key of ['hail', 'nannaJob']) { const j = S[key]; if (j && !j.riding && j.v !== o.vehicle) autoLeave(j); }
     return ffwd(minutes, { ms: o.mode === 'bus' ? TUNE.busFxMs : TUNE.autoFxMs, label: o.label, mid: () => arrive(dest, o) }).then(() => {
       N.emit('travel', { mode: o.mode || 'auto', to: dest.id || null, minutes });
       return true;
@@ -2062,7 +2073,13 @@
   }
   function autoBargain(job, d, f) {
     closeShop(true);
-    N.minigames.play('bargain', { who: 'auto', meter: Math.round(f.meter / 100), dest: d.name, place: 'auto', what: 'the ride to ' + d.name }).then((r) => {
+    // the scene's stand board: the nearest big stand the minigame knows (it falls back to KOTI)
+    let stand = 'koti_bus_stand', sd = 1e18;
+    for (const id of ['koti_bus_stand', 'rtc_x_roads', 'nampally_station', 'kachiguda_station', 'imlibun_bus_station']) {
+      const P = N.places && N.places[id]; if (!P) continue;
+      const dd = (P.x - N.player.x) ** 2 + (P.y - N.player.y) ** 2; if (dd < sd) { sd = dd; stand = id; }
+    }
+    N.minigames.play('bargain', { who: 'auto', meter: Math.round(f.meter / 100), dest: d.name, place: stand, what: 'the ride to ' + d.name }).then((r) => {
       if (!job || !job.v || !job.v.alive) return;
       if (r && r.win) {
         const price = r.pricePaise || (r.price | 0) * 100 || f.meter;
@@ -2569,13 +2586,13 @@
   }
   function update(dt) {
     const md = N.state.mode;
+    ffTick(dt);
     if (UI.open) {
       if (md === 'dialogue') cardInput(dt);
       else if (md === 'play') closeShop(true); // the state was popped under us (load, script): drop the card
       return;
     }
     if (md !== 'play') return;
-    ffTick(dt);
     rideTick(dt);
     vpTick(dt);
     holdTick(dt);
@@ -2657,6 +2674,7 @@
     busTo, busUnlocked, unlockBus, busStops: () => STAGES.map((s) => ({ id: s.stop, ticket: s.n, found: stageFound(s) })), busDests: (from) => busDests(from || null),
     hailAuto, autoFare, autoRide: (dest, o) => { const d = typeof dest === 'string' ? Object.assign({ id: dest }, N.places[dest]) : dest; if (!d || !isFinite(d.x)) return Promise.resolve(false); if (o && o.price) { const ch = charge(o.price, { why: 'auto' }); if (!ch.ok) return Promise.resolve(false); } return travelTo(d, { mode: 'auto', label: 'AUTO → ' + (d.name || '') }); },
     get autoJob() { return S.hail ? { arrived: S.hail.arrived, yadagiri: S.hail.yada, vehicle: S.hail.v } : null; },
+    nannaWhy: () => nannaWhy(),
     callNanna: () => { if (nannaWhy()) return false; use('nanna'); S.nanna = { t: TUNE.nannaDelay }; return true; },
     get nannaJob() { return S.nannaJob ? { arrived: S.nannaJob.arrived, vehicle: S.nannaJob.v } : S.nanna ? { coming: true } : null; },
     travelTo, ffwd, passMinutes,
@@ -2678,7 +2696,8 @@
       return { spend, earn: earn2, result: earn2 - spend, ok: earn2 >= spend && earn2 - spend < 1000, text: 'Earn ≈ ' + rs(earn2) + ' · spend ≈ ' + rs(spend) + ' · ' + (earn2 >= spend ? 'a little ahead' : 'behind') };
     },
     /** debug / tests */
-    debug: { S, UI, render, activate: (i) => activate(i), setSel, back, statusOf: (id, m) => statusOf(defOf(id), m), hireTick, rideTick, endRide },
+    debug: { S, UI, render, activate: (i) => activate(i), setSel, back, statusOf: (id, m) => statusOf(defOf(id), m), hireTick, rideTick, endRide,
+      finishFF() { const F = S.ff; if (F) { F.t = F.ms; ffTick(0); } }, settle() { if (S.ff) { S.ff.t = S.ff.ms; ffTick(0); } if (S.ride) endRide(); if (S.vp) { S.vp.t = 0; vpTick(0); } } },
   });
 
   N.addSystem({

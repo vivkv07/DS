@@ -68,7 +68,7 @@
   // camera tunables (TV: height, distance behind the bowler's stumps, look-at, focal length in frame heights)
   const TUNE = {
     tv: { x: 0, y: 8.4, back: 52, ty: 0.9, tz: 6.4, f: 6.0 },
-    tvGully: { x: 0, y: 5.2, back: 22, ty: 1.1, tz: 3.0, f: 3.4 },
+    tvGully: { x: 0, y: 6.4, back: 25, ty: 0.7, tz: 5.5, f: 3.7 },
   };
   const VENUES = {
     lb_stadium: {
@@ -353,6 +353,8 @@
     proj(c, ax, ay, az, Q0); if (!Q0.ok || Q0.z < 2.5) return false;
     proj(c, bx, by, bz, Q1); if (!Q1.ok || Q1.z < 2.5) return false;
     proj(c, dx, dy, dz, Q3); if (!Q3.ok || Q3.z < 2.5) return false;
+    // close up, an affine map of a big quad looks wrong: let the plain fill underneath show instead
+    if (Math.abs(Q1.x - Q0.x) + Math.abs(Q3.y - Q0.y) > c.f * 0.9 || Q0.z < 14) return false;
     const a = (Q1.x - Q0.x) / sw, b = (Q1.y - Q0.y) / sw, cc = (Q3.x - Q0.x) / sh, d = (Q3.y - Q0.y) / sh;
     if (Math.abs(a * d - b * cc) < 1e-6) return false;
     const k = TX.s;
@@ -592,7 +594,7 @@
       if (quadPath(ctx, c, X(sx0, R3), H3, Z(cz0, R3), X(sx1, R3), H3, Z(cz1, R3), X(sx1, R3), H3 + 2.4, Z(cz1, R3), X(sx0, R3), H3 + 2.4, Z(cz0, R3))) ctx.fill();
       // upper tier crowd
       const tex = celebrate > 0 || (S.waveOn && Math.sin(s.am * 3 - wave * 5) > 0.55) ? T1 : T0;
-      const u0 = ((s.i * 37) % 7) * 128;
+      const u0 = (s.i * 128) % 1024;
       ctx.fillStyle = conc;
       if (quadPath(ctx, c, X(sx0, R2), H2, Z(cz0, R2), X(sx1, R2), H2, Z(cz1, R2), X(sx1, R3), H3, Z(cz1, R3), X(sx0, R3), H3, Z(cz0, R3))) ctx.fill();
       texQuad(ctx, c, tex, u0, 0, 128, 128, X(sx1, R3), H3, Z(cz1, R3), X(sx0, R3), H3, Z(cz0, R3), X(sx1, R2), H2, Z(cz1, R2));
@@ -603,7 +605,7 @@
       // lower tier crowd
       ctx.fillStyle = conc;
       if (quadPath(ctx, c, X(sx0, R0), H0, Z(cz0, R0), X(sx1, R0), H0, Z(cz1, R0), X(sx1, R1), H1, Z(cz1, R1), X(sx0, R1), H1, Z(cz0, R1))) ctx.fill();
-      texQuad(ctx, c, tex, (u0 + 384) % 896, 0, 128, 128, X(sx1, R1), H1, Z(cz1, R1), X(sx0, R1), H1, Z(cz0, R1), X(sx1, R0), H0, Z(cz1, R0));
+      texQuad(ctx, c, tex, (u0 + 384) % 1024, 0, 128, 128, X(sx1, R1), H1, Z(cz1, R1), X(sx0, R1), H1, Z(cz0, R1), X(sx1, R0), H0, Z(cz1, R0));
       resetT(ctx);
       // front wall, painted stripe
       ctx.fillStyle = s.pav ? '#2a8c82' : (s.i % 2 ? '#d8cfbd' : '#cfc6b3');
@@ -706,7 +708,10 @@
       const a0 = (i / n) * TAU, a1 = ((i + 1) / n) * TAU;
       const x0 = Math.sin(a0) * (V.rx + m), z0 = V.cz + Math.cos(a0) * (V.rz + m), x1 = Math.sin(a1) * (V.rx + m), z1 = V.cz + Math.cos(a1) * (V.rz + m);
       const u = (31 - (i % 32)) * 32;
-      // boards face the field: seen from inside the ground, a growing angle moves left on screen
+      // boards face the field: seen from inside the ground, a growing angle moves left on screen.
+      // From outside (fly-overs) we see their plain backs.
+      const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+      if ((c.x - mx) * (-mx) + (c.z - mz) * (V.cz - mz) < 0) { resetT(ctx); ctx.fillStyle = '#3a3e48'; if (quadPath(ctx, c, x0, 0, z0, x1, 0, z1, x1, h, z1, x0, h, z0)) ctx.fill(); continue; }
       texQuad(ctx, c, T, u, 0, 32, 32, x1, h, z1, x0, h, z0, x1, 0, z1);
     }
     resetT(ctx);
@@ -1204,11 +1209,15 @@
       free.forEach((s, i) => { const d = Math.hypot(s.x - 12, s.z + 25); if (d < bd) { bd = d; bi = i; } });
       chitti.spot = free[bi]; free.splice(bi, 1);
     }
+    let subs = 0;
     for (const a of others) {
       if (a === chitti) continue;
-      a.spot = free.shift() || { key: 'extra', x: (Math.random() - 0.5) * 30, z: 30 };
+      if (free.length) { a.spot = free.shift(); continue; }
+      // more players than spots (the gully skin plays 5 fielders): the rest sit on the wall
+      const e = ellR(S.V, Math.PI * 0.62 + subs * 0.07, 3.5); subs++;
+      a.spot = { key: 'sub', x: e.x, z: e.z, sub: true };
     }
-    for (const a of others) { a.close = a.spot.close; a.role = 'field'; }
+    for (const a of others) { a.close = a.spot.close; a.role = a.spot.sub ? 'sub' : 'field'; }
     S.fieldShown = 1.6;
   }
   function setBowler(S, p) {
@@ -1305,6 +1314,9 @@
     S.overNo = 0; S.lastBowler = null; S.bowlerA = null;
     S.fieldPreset = bowl === S.home ? (S.userField || 'balanced') : aiField(S);
     nextOverBowler(S);
+    S.run = null;
+    placeForBall(S);
+    for (const a of S.actors) if (a.role === 'field' && a.spot) { a.x = a.spot.x; a.z = a.spot.z; a.tx = null; }
     S.phase = 'inn_intro'; S.pt = 0;
     const b1 = bat.players[inn.striker].name, b2 = bat.players[inn.non].name;
     S.banner = { title: bat.name + (target ? ' NEED ' + target : ' TO BAT'), sub: b1 + ' & ' + b2 + ' open · ' + S.bowler.name + ' to bowl', t: 0 };
@@ -1339,11 +1351,17 @@
     S.out = { runs: 0, wide: false, nb: false, wicket: null, boundary: 0, shot: null };
     S.calls = null; S.catchPrompt = null; S.timing = null; S.deadT = 0; S.evt = null; S.rp = null;
     S.rec = []; S.recAcc = 0; S.ballClock = 0; S.thr = null; S.noIcept = false;
-    S.forceNow = S.force || null; S.force = null;
+    S.forceNow = null; S.lastIcept = null;
     S.ball = newBallObj();
     S.stumps = [newStumps(0), newStumps(PITCH)];
     S.missed = null; S.relay = 0;
-    // who is where
+    placeForBall(S);
+    S.ballNo = inn.balls;
+    if (inn.target && inn.balls > 0 && inn.balls % 6 === 0 && inn.over.length === 0) say(S, 'need', vars(S));
+  }
+  // everybody to their places for the next delivery (also used for the innings intro)
+  function placeForBall(S) {
+    const inn = S.inn, V = S.V;
     S.batA.p = inn.bat.players[inn.striker]; S.batB.p = inn.bat.players[inn.non];
     S.batA.look = S.batA.p.look; S.batB.look = S.batB.p.look; S.batA.num = S.batA.p.num; S.batB.num = S.batB.p.num;
     S.batA.idx = inn.striker; S.batB.idx = inn.non;
@@ -1354,14 +1372,13 @@
     k.x = 0; k.z = -S.keepDist; k.tx = null; k.pose = 'keep'; k.u = 0; facing(k, 0, PITCH);
     for (const a of S.actors) {
       if (a.role === 'field') { a.tx = a.spot.x; a.tz = a.spot.z; a.pose = 'stand'; a.catchUp = 0; if (Math.hypot(a.x - a.tx, a.z - a.tz) > 30 || (!a.x && !a.z)) { a.x = a.tx; a.z = a.tz; } }
+      else if (a.role === 'sub' && a.spot) { a.x = a.spot.x; a.z = a.spot.z; a.tx = null; a.pose = 'stand'; facing(a, 0, 10); }
       a.jump = 0; a.sig = null;
     }
     S.batA.x = 0.32; S.batA.z = 1.15; S.batA.pose = 'stand'; S.batA.tx = null; S.batA.batAng = Math.PI * 0.94; S.batA.hand = [-6, -48]; S.batA.swing = null; facing(S.batA, 0, PITCH);
     S.batB.x = 1.75; S.batB.z = PITCH - 1.1; S.batB.pose = 'stand'; S.batB.tx = null; S.batB.batAng = Math.PI * 0.85; S.batB.hand = null; facing(S.batB, 0.6, 0);
-    S.ump1.x = 0.8; S.ump1.z = PITCH + 1.9; S.ump1.pose = 'stand'; S.ump1.tx = null; facing(S.ump1, 0, 0);
+    S.ump1.x = 0.95; S.ump1.z = PITCH + 1.9; S.ump1.pose = 'stand'; S.ump1.tx = null; facing(S.ump1, 0, 0);
     S.ump2.x = V.gully ? 14 : 22; S.ump2.z = 1.2; S.ump2.pose = 'stand'; S.ump2.tx = null; facing(S.ump2, 0, 1.2);
-    S.ballNo = inn.balls;
-    if (inn.target && inn.balls > 0 && inn.balls % 6 === 0 && inn.over.length === 0) say(S, 'need', vars(S));
   }
   function playerBowlsNow(S) { return S.inn && S.inn.bowl === S.home; }
 
@@ -1464,6 +1481,12 @@
     const sc = rel.err <= 1 ? rel.err * 0.22 : 0.22 + (rel.err - 1) * 0.65;
     const a = r.next() * TAU;
     x += Math.cos(a) * sc * 0.7; z += Math.sin(a) * sc * 1.8;
+    // test hooks: a forced outcome overrides the aim
+    const f = S.forceNow;
+    if (f === 'bowled') { x = 0.02; z = 6; }
+    else if (f === 'wide') x = 1.5;
+    else if (f === 'dot') { x = -0.62; z = 6; }
+    else if (f && /^(four|six|caught|single|runout)$/.test(f)) { x = -0.1; z = 5.5; }
     const spin = type === 'spin' || (bw.type === 'spin' && type !== 'bouncer' && type !== 'yorker');
     let v = spin ? 15.2 + bw.bowl * 2.6 : 21 + bw.bowl * 5;
     if (type === 'yorker') v *= 1.02;
@@ -1476,8 +1499,8 @@
     else if (z < 9.7) ay = 0.85 + (z - 7.6) * 0.15;
     else ay = 1.25 + (z - 9.7) * 0.22;
     if (spin) ay *= 0.9;
-    const turn = spin ? bw.spin * (0.16 + r.next() * 0.3) : (r.next() - 0.5) * 0.12;
-    const nb = rel.overstep || S.forceNow === 'noball';
+    const turn = f === 'bowled' || f === 'wide' ? 0 : spin ? bw.spin * (0.16 + r.next() * 0.3) : (r.next() - 0.5) * 0.12;
+    const nb = (rel.overstep && f !== 'bowled' && f !== 'wide') || f === 'noball';
     void d;
     return makeDelivery(S, { type: spin ? 'spin' : 'pace', kind: type, v, ax: x + (z ? turn : 0), ay, bx: x, bz: z, turn, nb, legWide: true });
   }
@@ -1524,12 +1547,13 @@
   function attemptShot(S, dir, loft, who) {
     const del = S.del;
     if (!del || S.swung || (S.bp !== 'flight' && S.bp !== 'past')) return;
-    if (S.bp === 'past' && S.ball.z < 0.05) return;
+    if (S.bp === 'past' && S.ball.z < -1.4) return;
     S.swung = true;
     startSwing(S, dir);
     const e = S.clock - (del.tRel + del.tA);
     const W = windows(S, dir === 'block');
-    const ae = Math.abs(e);
+    // late counts double: ~0.05 s after the hitting point the ball is already at the stumps
+    const ae = e < 0 ? -e : e * 2;
     S.timing = { e, label: ae <= W.p ? 'PERFECT' : ae <= W.g ? (e < 0 ? 'GOOD · EARLY' : 'GOOD · LATE') : ae <= W.e ? (e < 0 ? 'EARLY' : 'LATE') : e < 0 ? 'TOO EARLY' : 'TOO LATE', t: 0, ok: ae <= W.g };
     const f = S.forceNow;
     if (f && /^(four|six|caught|single|runout)$/.test(f)) { S.pendHit = { dir: f === 'single' ? 'block' : dir === 'block' ? 'straight' : dir, loft: f === 'six' || f === 'caught', q: 'perfect', e: 0, forced: f }; schedulePend(S); return; }
@@ -1570,8 +1594,8 @@
       else th = (line === 'leg' ? 0.16 : line === 'off' ? -0.1 : 0) + R(-0.12, 0.12);
       th += clamp(-e / W.g, -1.2, 1.2) * 0.32;
       const pow = (0.88 + 0.24 * bat.bat) * (1 + (del.v - 22) * 0.008);
-      if (q === 'perfect') { if (h.loft) { v = R(26, 30); el = R(0.5, 0.66); kind = 'loft'; } else { v = R(31, 35); el = R(0.05, 0.11); } }
-      else if (q === 'good') { if (h.loft) { v = R(19, 24); el = R(0.5, 0.8); kind = 'loft'; } else { v = R(21, 27); el = R(0.04, 0.14); } }
+      if (q === 'perfect') { if (h.loft) { v = R(26, 30); el = R(0.5, 0.66); kind = 'loft'; } else { v = R(31, 35); el = R(-0.06, 0.02); } }
+      else if (q === 'good') { if (h.loft) { v = R(19, 24); el = R(0.5, 0.8); kind = 'loft'; } else { v = R(21, 27); el = R(-0.04, 0.07); } }
       else {
         kind = 'edge';
         const u = r.next();
@@ -1589,7 +1613,7 @@
     if (h.forced === 'caught') { const f = nearestFielderInFront(S, 14); th = Math.atan2(f.x, f.z - HIT_Z); const dist = Math.hypot(f.x, f.z - HIT_Z); el = 0.75; v = Math.sqrt((dist * G) / Math.sin(2 * el)) * 0.99; kind = 'loft'; S.forceCatch = true; }
     const p = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
     if (b.st === 'del') deliveryPos(del, S.clock - del.tRel, p); else { p.x = b.x; p.y = b.y; p.z = b.z; }
-    b.x = p.x; b.y = Math.max(0.25, p.y); b.z = Math.min(p.z, HIT_Z + 0.2);
+    b.x = p.x; b.y = clamp(p.y, kind === 'ground' || kind === 'block' ? 0.12 : 0.25, kind === 'ground' ? 0.5 : 2); b.z = Math.min(p.z, HIT_Z + 0.2);
     const vh = v * Math.cos(el);
     b.vx = Math.sin(th) * vh; b.vz = Math.cos(th) * vh; b.vy = v * Math.sin(el);
     b.st = 'free'; b.hit = true; b.bounces = 0; b.trail.length = 0;
@@ -1650,15 +1674,18 @@
     plan.loft = r.next() < (easy ? 0.15 + aggr * 0.55 : 0.05 + aggr * 0.3);
     if (D > 0.66 && aggr < 0.55 && r.next() < 0.55) { plan.act = 'block'; plan.dir = 'block'; plan.loft = false; }
     // timing quality
-    const pP = clamp(0.06 + sk * 0.42 - D * 0.3, 0.02, 0.55);
-    const pG = clamp(0.26 + sk * 0.22 - D * 0.12, 0.08, 0.5);
-    const pE = clamp(0.12 + D * 0.22 - sk * 0.08, 0.05, 0.4);
+    const pM = clamp(0.03 + D * 0.18 - sk * 0.12, 0.02, 0.22);
+    const pE = clamp(0.1 + D * 0.15 - sk * 0.05, 0.05, 0.3);
+    const pP = clamp(0.08 + sk * 0.4 - D * 0.2, 0.03, 0.5);
+    const pG = Math.max(0.05, 1 - pM - pE - pP);
     const u = r.next(), sgn = r.next() < 0.5 ? -1 : 1;
     if (u < pP) { plan.q = 'perfect'; plan.e = sgn * r.next() * W.p * 0.9; }
     else if (u < pP + pG) { plan.q = 'good'; plan.e = sgn * lerp(W.p, W.g, r.next()); }
     else if (u < pP + pG + pE) { plan.q = 'edge'; plan.e = sgn * lerp(W.g, W.e, r.next()); }
     else { plan.act = plan.act === 'block' ? 'block_miss' : 'miss'; plan.e = sgn * (W.e * (1.3 + r.next())); }
     if (plan.act === 'block') { plan.q = plan.q === 'perfect' || plan.q === 'good' ? 'good' : plan.q; }
+    // a late AI contact must still beat the ball to the stumps (~HIT_Z / speed after the hit plane)
+    if (plan.act !== 'miss' && plan.act !== 'block_miss') plan.e = Math.min(plan.e, 0.04);
     // a good batter leaves balls well outside off
     if (line === 'off' && del.A.x < -0.55 && !del.wide && r.next() < sk * 0.6 && aggr < 0.5) return { act: 'leave' };
     return plan;
@@ -1710,14 +1737,19 @@
       if (a.role !== 'field' && a.role !== 'keeper' && a.role !== 'bowler') continue;
       const react = (a.role === 'keeper' ? 0.06 : a.close ? 0.14 : 0.3) + (a.role === 'bowler' ? 0.25 : 0) + (delay || 0);
       const spd = (a.role === 'keeper' ? 5 : FIELD_V) * (0.86 + (a.p.field || 0.6) * 0.25) * (a.p.look && a.p.look.small ? 0.8 : 1);
+      let prev = null;
       for (const s of pr.pts) {
+        const sp = prev ? Math.hypot(s.x - prev.x, s.z - prev.z) * 30 : 20;
+        prev = s;
         if (s.t < 0.08) continue;
         const dd = Math.hypot(s.x - a.x, s.z - a.z);
-        const canCatch = s.bn === 0 && s.y > 0.22 && s.y < (a.role === 'keeper' ? 2.1 : 2.45) && S.ball.hit;
+        const canCatch = s.bn === 0 && s.y > 0.32 && s.y < (a.role === 'keeper' ? 2.1 : 2.45) && S.ball.hit;
         const canTip = V.gully && s.bn === 1 && s.y > 0.22 && s.y < 1.7 && S.ball.hit;
         const canStop = s.y < 1.15;
         if (!canCatch && !canTip && !canStop) continue;
-        const reach = canCatch ? (a.close || a.role === 'keeper' ? 1.5 : 1.15) : 0.75;
+        // a hard-hit ball only gets stopped by a fielder who is right in its path
+        const hard = clamp((sp - 12) / 18, 0, 1);
+        const reach = canCatch ? (a.close || a.role === 'keeper' ? 1.5 : 1.15) * (1 - hard * 0.45) : 0.8 - hard * 0.38;
         const need = react + Math.max(0, dd - reach) / spd;
         if (need <= s.t) { cands.push({ f: a, t: s.t, x: s.x, z: s.z, y: s.y, kind: canCatch ? 'catch' : canTip ? 'tip' : 'stop', run: dd, need }); break; }
       }
@@ -1766,6 +1798,7 @@
   }
   function resolveIntercept(S) {
     const c = S.icept, g = S.g, b = S.ball, f = c.f, r = g.rng;
+    S.lastIcept = { kind: c.kind, who: f.p ? f.p.name : '?', spot: f.spot ? f.spot.key : f.role, t: +c.t.toFixed(2), x: +c.x.toFixed(1), z: +c.z.toFixed(1) };
     S.icept = null;
     f.chase = false;
     if (c.kind === 'catch' || c.kind === 'tip') {
@@ -1853,6 +1886,7 @@
   function startRun(S) {
     const R = S.run;
     if (R.active || S.bp !== 'live' || S.out.boundary || S.out.wicket) return false;
+    if (S.ball.st === 'dead2' || S.ball.st === 'atEnd' || S.ball.st === 'dead') return false;
     R.active = true; R.p = 0; R.T = R.done === 0 ? RUN_T[0] : RUN_T[1];
     if (R.done === 0) R.p = -0.08;
     return true;
@@ -1971,7 +2005,7 @@
     const del = S.del;
     switch (S.bp) {
       case 'setup':
-        if (S.bt > 0.85) { S.del = aiDelivery(S); startRunup(S); }
+        if (S.bt > 0.85) { takeForce(S); S.del = aiDelivery(S); startRunup(S); }
         break;
       case 'aim':
         aimUpdate(S, dt);
@@ -1992,7 +2026,7 @@
       case 'flight': case 'past': {
         const bw = S.bowlerA, t = S.clock - del.tRel;
         bw.u = clamp(0.55 + t / 0.5 * 0.45, 0, 1); bw.pose = bw.u < 1 ? 'bowl' : 'walk';
-        if (bw.u >= 1) { bw.tx = -1.8; bw.tz = PITCH - 5; }
+        if (bw.u >= 1) { bw.tx = -2.7; bw.tz = PITCH - 4.5; }
         for (const a of S.actors) if (a.role === 'field') a.pose = 'crouch';
         if (S.bp === 'flight') {
           const pos = deliveryPos(del, t, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 });
@@ -2156,6 +2190,11 @@
     const ev = { runs: out.runs, wide: out.wide, nb: !!(S.del && S.del.nb), boundary: out.boundary, bowler: S.bowler.name, wicket: out.wicket, strikerAfter: end0, nonAfter: end1, shot: out.shot };
     const res = rules.applyBall(inn, ev);
     S.lastKind = S.del ? S.del.kind : null;
+    S.ballLog = S.ballLog || [];
+    S.ballLog.push({ inn: S.innIdx, team: inn.bat.short, sym: res.sym, runs: out.runs, wide: !!out.wide, nb: ev.nb, boundary: out.boundary, wicket: out.wicket && out.wicket.kind,
+      del: S.del && { kind: S.del.kind, len: S.del.len, line: S.del.line, v: +S.del.v.toFixed(1) }, hit: S.hit && { q: S.hit.q, dir: S.hit.dir, kind: S.hit.kind, v: +S.hit.v.toFixed(1), th: +S.hit.th.toFixed(2), name: S.hit.name },
+      field: S.fieldPreset, icept: S.lastIcept || null, forced: S.forceNow || null });
+    if (S.ballLog.length > 200) S.ballLog.shift();
     if (ev.nb) { say(S, S.del.nbHigh ? 'noballHigh' : 'noball'); }
     if (res.wicket && res.wicket.newBat != null && !res.inningsEnd) say(S, 'newBat', { bat: inn.bat.players[res.wicket.newBat].name });
     S.score = scoreOf(S);
@@ -2235,7 +2274,10 @@
     A.wz = A.z + Math.cos(A.t * 1.7) * R * 1.7 + Math.sin(A.t * 4.3) * R * 0.3;
     // the field can be changed between balls
   }
+  // debug.force(kind) applies to the next delivery that is planned (AI) or locked (player)
+  function takeForce(S) { if (S.force) { S.forceNow = S.force; S.force = null; } }
   function aimLock(S) {
+    takeForce(S);
     const A = S.aim;
     A.lx = A.wx; A.lz = A.wz;
     S.bp = 'runup'; S.bt = 0; S.runT = S.bowler.type === 'spin' || A.type === 'spin' ? 1.0 : S.V.gully ? 1.15 : 1.45;
@@ -2316,9 +2358,9 @@
     const ph = S.phase;
     const gully = V.gully;
     if (ph === 'intro' || ph === 'init') {
-      const t = S.intro ? S.intro.t : 0, a = -0.9 + t * 0.22;
-      const R = gully ? 48 : 96;
-      return camLook(out, Math.sin(a) * R, gully ? 16 : 34 - t * 2, V.cz + Math.cos(a) * R, 0, 2, V.cz, fr.h * 1.15);
+      const t = S.intro ? S.intro.t : 0, a = -0.9 + t * 0.2;
+      const R = gully ? 40 : 60;
+      return camLook(out, Math.sin(a) * R, gully ? 14 : 30 - t * 2, V.cz + Math.cos(a) * R * 1.05, 0, 0, V.cz - 6, fr.h * 0.95);
     }
     if (ph === 'toss' || ph === 'toss_flip' || ph === 'toss_choose' || ph === 'toss_done') return camLook(out, 4.6, 1.5, 15.2, 0, 1.25, 9.5, fr.h * 1.05);
     if (ph === 'end') { const t = S.pt; return camLook(out, Math.sin(t * 0.25) * 24, 9 + t * 0.4, V.cz + 26 + Math.cos(t * 0.25) * 6, 0, 1.5, V.cz, fr.h * 1.35); }
@@ -2329,7 +2371,7 @@
       if (playerBowlsNow(S)) {
         const bw = S.bowlerA; const bob = bw.spd > 0.5 || S.bp === 'runup' ? Math.sin(bw.ph * 2) * 0.05 : 0;
         const z = Math.max(bw.z + 0.35, PITCH - 0.6);
-        return camLook(out, bw.x + 0.12, (S.bowler.look && S.bowler.look.small ? 1.25 : 1.52) + bob, z, 0.1, 0.55, 2.5, fr.h * 1.45);
+        return camLook(out, bw.x - 0.2, (S.bowler.look && S.bowler.look.small ? 1.35 : 1.68) + bob, z, 0.1, 0.5, 2.5, fr.h * 1.45);
       }
       return camLook(out, 0.22, 1.62, -0.95, 0, 0.5, 14, fr.h * 1.08);
     }
@@ -2341,12 +2383,13 @@
     const fr = S.fr, V = S.V, b = S.ball;
     const T = S.fieldTgt;
     const behind = S.hit && Math.cos(S.hit.th) < -0.35;
-    const P = behind ? { x: 0, y: V.gully ? 12 : 21, z: V.cz - V.rz - (V.gully ? 6 : 14) } : { x: 0, y: V.gully ? 12 : 23, z: V.cz + V.rz + (V.gully ? 6 : 16) };
-    const tx = T.x, tz = T.z;
+    const P = behind ? { x: 0, y: V.gully ? 12 : 20, z: V.cz - V.rz - (V.gully ? 4 : 4) } : { x: 0, y: V.gully ? 12 : 22, z: V.cz + V.rz + (V.gully ? 4 : 5) };
+    let tx = T.x, tz = T.z;
+    if (!inside(V, tx, tz, -6)) { const a = Math.atan2(tx, tz - V.cz), e = ellR(V, a, -6); tx = e.x; tz = e.z; }
     const d = Math.hypot(tx - P.x, tz - P.z, P.y);
-    const f = clamp(fr.w * d / (V.gully ? 30 : 46), fr.h * 1.0, fr.h * 7);
+    const f = clamp(fr.w * d / (V.gully ? 34 : 58), fr.h * 1.0, fr.h * 5);
     void b;
-    return camLook(out, P.x + tx * 0.12, P.y, P.z, tx, 0.5, tz, f);
+    return camLook(out, P.x + tx * 0.2, P.y, P.z, tx, 0.5, tz, f);
   }
   function replayCam(S, out) {
     const fr = S.fr, rp = S.rp, V = S.V;
@@ -2550,7 +2593,10 @@
     drawPerson(ctx, AP.x, AP.y, hp, o);
     if (o.mirror) ctx.restore();
     // a name tag over the striker/bowler in close views
-    if (hp > 60 && S.phase.indexOf('toss') === 0 && a.p) txt(ctx, a.p.name.toUpperCase() + (a.team ? ' · ' + a.team.short : ''), AP.x, AP.y + Math.min(20, hp * 0.1), { font: 'osd', size: Math.min(20, hp * 0.11), color: '#fff', outline: 3 });
+    if (hp > 60 && S.phase.indexOf('toss') === 0 && a.p && S.tossCaps) {
+      const left = a === S.tossCaps[0];
+      txt(ctx, a.p.name.toUpperCase(), AP.x + (left ? -hp * 0.12 : hp * 0.12), AP.y + Math.min(20, hp * 0.1), { font: 'osd', size: Math.min(20, hp * 0.11), color: left ? '#9fe8dc' : '#ffb4a6', outline: 3, align: left ? 'right' : 'left' });
+    }
   }
   function drawBall(ctx, c, S, b) {
     const p = proj(c, b.x, b.y, b.z, { x: 0, y: 0, k: 0 });
@@ -2623,13 +2669,19 @@
     // the player's aim
     if (playerBowlsNow(S) && (S.bp === 'aim' || S.bp === 'runup')) {
       const A = S.aim, ti = TYPE_INFO[A.type];
-      ctx.fillStyle = A.type === 'bouncer' ? 'rgba(255,90,74,0.16)' : A.type === 'yorker' ? 'rgba(255,216,74,0.18)' : 'rgba(127,216,255,0.13)';
-      if (quadPath(ctx, c, -1.5, 0.012, ti.zone[0], 1.5, 0.012, ti.zone[0], 1.5, 0.012, ti.zone[1], -1.5, 0.012, ti.zone[1])) ctx.fill();
+      const zc = A.type === 'bouncer' ? '255,90,74' : A.type === 'yorker' ? '255,216,74' : A.type === 'spin' ? '197,139,255' : '127,216,255';
+      ctx.fillStyle = 'rgba(' + zc + ',0.22)';
+      if (quadPath(ctx, c, -1.5, 0.012, ti.zone[0], 1.5, 0.012, ti.zone[0], 1.5, 0.012, ti.zone[1], -1.5, 0.012, ti.zone[1])) { ctx.fill(); ctx.strokeStyle = 'rgba(' + zc + ',0.6)'; ctx.lineWidth = 1; ctx.stroke(); }
       const mx = S.bp === 'aim' ? A.wx : A.lx, mz = S.bp === 'aim' ? A.wz : A.lz;
-      ctx.strokeStyle = S.bp === 'aim' ? '#ffd84a' : '#ffffff'; ctx.lineWidth = 2.2;
-      if (groundCircle(ctx, c, mx, mz, 0.24)) ctx.stroke();
-      if (groundCircle(ctx, c, mx, mz, 0.07)) { ctx.fillStyle = ctx.strokeStyle; ctx.fill(); }
-      if (S.bp === 'aim') { ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); if (groundCircle(ctx, c, A.x, A.z, 0.4)) ctx.stroke(); ctx.setLineDash([]); }
+      if (S.bp === 'aim') { ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1.2; ctx.setLineDash([4, 3]); if (groundCircle(ctx, c, A.x, A.z, 0.42)) ctx.stroke(); ctx.setLineDash([]); }
+      const col = S.bp === 'aim' ? '#ffd84a' : '#ffffff';
+      if (groundCircle(ctx, c, mx, mz, 0.3)) { ctx.fillStyle = 'rgba(255,216,74,0.35)'; ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.stroke(); }
+      // a little beacon above the marker so it reads from the TV camera
+      const p0 = proj(c, mx, 0.02, mz, { x: 0, y: 0 }), p1 = proj(c, mx, 0.55, mz, { x: 0, y: 0 });
+      if (p0.ok && p1.ok) {
+        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+        ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(p1.x, p1.y + 2); ctx.lineTo(p1.x - 6, p1.y - 8); ctx.lineTo(p1.x + 6, p1.y - 8); ctx.closePath(); ctx.fill();
+      }
     }
     // the length indicator: where the delivery will pitch
     if (del && del.B && (S.bp === 'flight' || S.bp === 'past')) {
@@ -2655,12 +2707,12 @@
   }
   function drawFpvBat(ctx, S) {
     const fr = S.fr, sw = S.batA.swing;
-    const cx = fr.x + fr.w * 0.6, by = fr.y + fr.h;
-    let ang = -0.35, lift = 0;
+    const cx = fr.x + fr.w * 0.7, by = fr.y + fr.h * 1.04;
+    let ang = -0.45, lift = 0;
     if (S.bp === 'runup' || S.bp === 'flight') lift = 0.35;
     if (sw) { const t = sw.t, k = clamp(t / 0.18, 0, 1); const end = sw.dir === 'off' ? 1.1 : sw.dir === 'leg' ? -1.6 : sw.dir === 'block' ? -0.05 : -0.9; ang = lerp(0.6, end, smooth(k)); lift = 0; }
-    else ang = -0.35 + lift;
-    const L = fr.h * 0.62, W = fr.h * 0.07;
+    else ang = -0.45 + lift;
+    const L = fr.h * 0.56, W = fr.h * 0.07;
     ctx.save(); ctx.translate(cx, by + fr.h * 0.05); ctx.rotate(ang);
     ctx.fillStyle = '#2a1d1a'; ctx.fillRect(-W * 0.18, -L * 0.42, W * 0.36, L * 0.42);
     ctx.fillStyle = '#f4f2ea'; rr(ctx, -W * 0.55, -L * 0.36, W * 1.1, L * 0.12, W * 0.3); ctx.fill();
@@ -2706,8 +2758,8 @@
     if (S.msg && S.msg.t < 1.9 && S.bp !== 'replay') drawMsg(ctx, S, u);
     if (S.thirdUmp && S.thirdUmp.t < 2.6) drawThirdUmp(ctx, S, u);
     if (S.banner && (S.phase === 'inn_intro' || S.phase === 'over_break' || S.phase === 'inn_break' || S.phase === 'end' || S.phase === 'toss_done')) drawBanner(ctx, g, S, u);
-    if (S.fieldShown > 0 && S.phase === 'ball' && !S.panelR) drawFieldMap(ctx, S, fr.x + fr.w - u * 6.2, fr.y + u * 3.2, u * 5.6);
-    drawTicker(ctx, S, u);
+    if (S.fieldShown > 0 && S.phase === 'ball' && !S.panelR) drawFieldMap(ctx, S, fr.x + fr.w - u * 5.2, fr.y + u * 7.2, u * 4.6);
+    if (!(S.barB && S.barB.h >= u * 2.6)) drawTicker(ctx, S, u);
     // the camera pill (also clickable)
     if (S.phase === 'ball' || S.phase === 'inn_intro' || S.phase === 'over_break') {
       const w = u * 4.4, h = u * 1.6, x = fr.x + fr.w - w - u * 0.5, y = fr.y + fr.h - h - u * (S.tickerIn ? 2.6 : 0.5);
@@ -2865,13 +2917,12 @@
       txt(ctx, 'THE TOSS', fr.x + fr.w / 2, fr.y + fr.h * 0.12, { font: 'display', size: u * 2.2, color: '#ffd84a', outline: 5 });
       txt(ctx, S.home.players[0].name + ', call it!', fr.x + fr.w / 2, fr.y + fr.h * 0.12 + u * 2, { font: 'osd', size: u * 1.2, color: '#fff', outline: 3 });
       const bw = Math.min(fr.w * 0.34, u * 9), bh = u * 2.8, by = fr.y + fr.h * 0.74;
-      hitButton(ctx, S, u, cx - bw - u, by, bw, bh, 'HEADS', g.touch ? '' : '← / A', 'left');
-      hitButton(ctx, S, u, cx + u, by, bw, bh, 'TAILS', g.touch ? '' : '→ / D', 'right');
+      if (!g.touch) { hitButton(ctx, S, u, cx - bw - u, by, bw, bh, 'HEADS', '← / A', 'left'); hitButton(ctx, S, u, cx + u, by, bw, bh, 'TAILS', '→ / D', 'right'); }
     } else if (S.phase === 'toss_choose') {
       txt(ctx, 'You won the toss!', fr.x + fr.w / 2, fr.y + fr.h * 0.12, { font: 'display', size: u * 2, color: '#b9ffb0', outline: 5 });
       const bw = Math.min(fr.w * 0.34, u * 9), bh = u * 2.8, by = fr.y + fr.h * 0.74;
-      hitButton(ctx, S, u, cx - bw - u, by, bw, bh, 'BAT', g.touch ? 'first' : '← bat first', 'left', '#f2c230');
-      hitButton(ctx, S, u, cx + u, by, bw, bh, 'BOWL', g.touch ? 'first' : '→ bowl first', 'right', '#7fd8ff');
+      if (!g.touch) { hitButton(ctx, S, u, cx - bw - u, by, bw, bh, 'BAT', '← bat first', 'left', '#f2c230'); hitButton(ctx, S, u, cx + u, by, bw, bh, 'BOWL', '→ bowl first', 'right', '#7fd8ff'); }
+      else txt(ctx, 'Bat first or bowl first?', fr.x + fr.w / 2, fr.y + fr.h * 0.12 + u * 2, { font: 'osd', size: u * 1.2, color: '#fff', outline: 3 });
     } else if (S.phase === 'toss_done' || (S.phase === 'toss_flip' && S.pt > 1.5)) {
       const won = T.won;
       txt(ctx, T.side ? T.side.toUpperCase() + '!' : '', fr.x + fr.w / 2, fr.y + fr.h * 0.12, { font: 'display', size: u * 2.2, color: '#ffd84a', outline: 5 });
@@ -2882,7 +2933,7 @@
     const fr = S.fr, B = S.banner;
     const a = clamp(B.t / 0.25, 0, 1);
     ctx.save(); ctx.globalAlpha = a;
-    const w = Math.min(fr.w * 0.9, u * 32), h = u * (B.over ? 6.6 : 5.2), x = fr.x + (fr.w - w) / 2, y = fr.y + fr.h * (S.phase === 'end' ? 0.28 : 0.34);
+    const w = Math.min(fr.w * 0.9, u * 32), h = u * (B.over ? 6.6 : 5.2), x = fr.x + (fr.w - w) / 2, y = fr.y + fr.h * (S.phase === 'end' ? 0.28 : 0.6) - (S.phase === 'end' ? 0 : h * 0.5);
     ctx.fillStyle = B.win === false ? 'rgba(80,20,24,0.9)' : 'rgba(20,36,106,0.9)'; ctx.fillRect(x, y, w, h);
     ctx.fillStyle = '#f2c230'; ctx.fillRect(x, y, w, u * 0.3); ctx.fillRect(x, y + h - u * 0.3, w, u * 0.3);
     txt(ctx, B.title, x + w / 2, y + u * 1.7, { font: 'display', size: u * 2.0, color: B.win === false ? '#ffb4a6' : '#ffd84a', maxW: w - u, outline: 3 });
@@ -2902,20 +2953,16 @@
   }
   function drawBallUi(ctx, g, S, u) {
     const fr = S.fr, inn = S.inn;
-    // chase strip
-    if (inn && inn.target && S.bp !== 'replay') {
+    // chase strip (in the top letterbox bar when there is one; see drawPanels)
+    if (inn && inn.target && S.bp !== 'replay' && !(S.barT && S.barT.h > u * 2)) {
       const need = rules.need(inn), left = rules.ballsLeft(inn);
-      const s = 'NEED ' + need + ' OFF ' + left;
-      if (S.barT && S.barT.h > u * 2) txt(ctx, s, S.barT.x + S.barT.w / 2, S.barT.y + S.barT.h * 0.38, { font: 'osd', size: u * 1.3, color: need <= 6 ? '#b9ffb0' : '#eaf2ff' });
-      else txt(ctx, s, fr.x + fr.w / 2, fr.y + u * 5.0, { font: 'osd', size: u * 1.1, color: '#eaf2ff', outline: 3 });
+      txt(ctx, 'NEED ' + need + ' OFF ' + left, fr.x + fr.w / 2, fr.y + u * 5.0, { font: 'osd', size: u * 1.1, color: '#eaf2ff', outline: 3 });
     }
-    // this over in the top bar (portrait)
-    if (S.barT && S.barT.h > u * 2 && inn) drawOverBalls(ctx, S, S.barT.x + S.barT.w / 2, S.barT.y + S.barT.h * 0.78, u * 0.9);
     // bowling: type chips, release meter, prompts
     if (playerBowlsNow(S)) {
       if (S.bp === 'aim') {
-        const ty = ['pace', 'spin', 'yorker', 'bouncer'];
-        const cw = Math.min(u * 5.4, (fr.w - u * 2) / 4.3), ch = u * 1.7, y = fr.y + fr.h - ch - u * (S.tickerIn ? 2.8 : 0.8);
+        const ty = g.touch ? [] : ['pace', 'spin', 'yorker', 'bouncer'];
+        const cw = Math.min(u * 5.4, (fr.w - u * 2) / 4.3), ch = g.touch ? 0 : u * 1.7, y = fr.y + fr.h - ch - u * (S.tickerIn ? 2.8 : 0.8);
         ty.forEach((t, i) => {
           const x = fr.x + u * 0.8 + i * (cw + u * 0.3), on = S.aim.type === t;
           ctx.fillStyle = on ? '#f2c230' : 'rgba(10,12,30,0.72)'; rr(ctx, x, y, cw, ch, u * 0.4); ctx.fill();
@@ -3018,6 +3065,14 @@
 
   /* ---------------------------------------------------------------- letterbox panels (desktop / portrait) */
   function drawPanels(ctx, g, S) {
+    const uu = uiScale(S);
+    if (S.barB && S.barB.h >= uu * 2.6) drawTicker(ctx, S, uu);
+    if (S.barT && S.barT.h > uu * 2 && S.phase === 'ball' && S.inn) {
+      const inn = S.inn;
+      if (inn.target) { const need = rules.need(inn), left = rules.ballsLeft(inn); txt(ctx, 'NEED ' + need + ' OFF ' + left, S.barT.x + S.barT.w / 2, S.barT.y + S.barT.h * 0.36, { font: 'osd', size: uu * 1.3, color: need <= 6 ? '#b9ffb0' : '#eaf2ff' }); }
+      else txt(ctx, inn.bat.name + ' · ' + rules.score(inn) + ' · OV ' + oversText(inn.balls) + '/' + S.overs, S.barT.x + S.barT.w / 2, S.barT.y + S.barT.h * 0.36, { font: 'osd', size: uu * 1.1, color: '#eaf2ff', maxW: S.barT.w - uu });
+      drawOverBalls(ctx, S, S.barT.x + S.barT.w / 2 + uu * 2, S.barT.y + S.barT.h * 0.76, uu * 0.85);
+    }
     const u = clamp(S.fr.h / 36, 9, 18);
     if (S.panelL) drawScorecardPanel(ctx, S, S.panelL, u);
     if (S.panelR) drawRightPanel(ctx, g, S, S.panelR, u);
@@ -3066,8 +3121,15 @@
         txt(ctx, v, P.x + u, y + u * 1.05, { font: 'osd', size: u * 1.05, color: '#eaf2ff', align: 'left', maxW: P.w - u * 2 });
         y += u * 2.5;
       }
-      drawOverBalls(ctx, S, P.x + P.w / 2 + u * 2.2, y + u * 0.4, u * 0.78);
-      y += u * 2.2;
+      txt(ctx, 'THIS OVER', P.x + u, y, { font: 'osd', size: u * 0.85, color: '#b9aa92', align: 'left' });
+      const balls = inn.over.slice(-8), r = Math.min(u * 0.78, (P.w - u * 2) / 8 / 2.3);
+      balls.forEach((sy, i) => {
+        const bx = P.x + u + r + i * r * 2.3, by = y + u * 1.4;
+        ctx.fillStyle = sy === 'W' ? '#c0282a' : sy === '4' ? '#2a6ae8' : sy === '6' ? '#7a3db8' : /wd|nb/.test(sy) ? '#5a5e66' : '#f4efe2';
+        ctx.beginPath(); ctx.arc(bx, by, r, 0, TAU); ctx.fill();
+        txt(ctx, sy === '0' ? '•' : sy, bx, by + 1, { font: 'osd', size: sy.length > 2 ? r * 0.7 : r * 1.05, color: /^[0-3]$/.test(sy) ? '#1a1214' : '#fff' });
+      });
+      y += u * 3.2;
     }
     if (!g.touch) {
       const keys = S.ui === 'bowl' ? ['← → ↑ ↓  aim', '1-4  delivery type', 'SPACE  bowl, then release', 'F  change field', 'V  TV / FPV camera'] : S.ui === 'bat' ? ['← ↑ →  play a shot', '↓  block', 'SHIFT (hold)  loft it', 'R  run', 'V  TV / FPV camera'] : [];
@@ -3085,6 +3147,8 @@
     S.g.sfx('ui_click');
   }
   function playerShot(S, screenDir, loft) {
+    (S.inputLog || (S.inputLog = [])).push({ dir: screenDir, bp: S.bp, t: +(S.del ? S.clock - S.del.tRel - S.del.tA : 0).toFixed(3), swung: !!S.swung });
+    if (S.inputLog.length > 30) S.inputLog.shift();
     const fpv = S.camMode === 'fpv';
     let dir = screenDir === 'up' ? 'straight' : screenDir === 'down' ? 'block' : screenDir === 'left' ? (fpv ? 'leg' : 'off') : fpv ? 'off' : 'leg';
     attemptShot(S, dir, loft && dir !== 'block', 'player');
@@ -3478,8 +3542,8 @@
       const S = g.S, ui = S ? S.ui || uiFor(S) : 'toss';
       if (ui === 'toss') return '<kbd>←</kbd> heads · <kbd>→</kbd> tails';
       if (ui === 'choose') return '<kbd>←</kbd> bat first · <kbd>→</kbd> bowl first';
-      if (ui === 'bowl') return '<kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> aim · <kbd>1</kbd>-<kbd>4</kbd> type · <kbd>Space</kbd> bowl, again to release · <kbd>F</kbd> field · <kbd>V</kbd> camera';
-      return '<kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd> shot on time · <kbd>↓</kbd> block · hold <kbd>Shift</kbd> loft · <kbd>R</kbd> run · <kbd>V</kbd> camera';
+      if (ui === 'bowl') return '<kbd>←→↑↓</kbd> aim · <kbd>1-4</kbd> type · <kbd>Space</kbd> bowl / release / catch · <kbd>F</kbd> field · <kbd>V</kbd> cam';
+      return '<kbd>←↑→</kbd> shot · <kbd>↓</kbd> block · <kbd>Shift</kbd> loft · <kbd>R</kbd> run · <kbd>V</kbd> cam';
     },
     howto(g) {
       const S = g.S, ov = S ? S.overs : 3, wk = S ? S.wickets : 5;
@@ -3569,7 +3633,7 @@
       ];
       if (!homeInn.synthetic) rows.push(['Fours · Sixes', homeInn.fours + ' · ' + homeInn.sixes]);
       if (r.topScorer && !homeInn.synthetic) rows.push(['Top scorer', r.topScorer.name + ' ' + r.topScorer.runs + (r.topScorer.out ? '' : '*')]);
-      if (r.oppBestBowler && !awayInn.synthetic) rows.push(['Best bowling', r.oppBestBowler.name + ' ' + r.oppBestBowler.wkts + '/' + r.oppBestBowler.runs]);
+      if (r.bestBowler && !awayInn.synthetic) rows.push(['Best bowling', r.bestBowler.name + ' ' + r.bestBowler.wkts + '/' + r.bestBowler.runs]);
       return { title: r.tie ? 'Match tied!' : r.win ? (S.V.gully ? 'Colony champions!' : 'Champions of Fateh Maidan!') : 'Haar gaye, yaar...', line, rows };
     },
     stars(g, r) {
@@ -3588,6 +3652,7 @@
     rules,
     start(params) {
       params = Object.assign({}, params || {});
+      if (params.autoplay && params.skipHowto == null) params.skipHowto = true;
       if (!N.minigames || !N.minigames.play) return Promise.resolve({ id: 'match', win: false, error: 'no-minigames' });
       if (!N.minigames.has('match')) register();
       return N.minigames.play('match', params).then((r) => {
@@ -3605,7 +3670,7 @@
         const S = g.S, inn = S.inn;
         const card = (i) => i && { team: i.bat.short, runs: i.runs, wkts: i.wkts, balls: i.balls, wd: i.wd, nb: i.nb, fours: i.fours, sixes: i.sixes, target: i.target, done: i.done, endReason: i.endReason, over: i.over.slice(), synthetic: !!i.synthetic, striker: i.bat.players[i.striker].name, non: i.bat.players[i.non].name };
         return { phase: S.phase, bp: S.bp || null, gamePhase: g.phase, camMode: S.camMode, innIdx: S.innIdx, inn: card(inn), innings: S.innings.map(card), playerBats: playerBats(S), playerBowls: playerBowlsNow(S),
-          bowler: S.bowler ? S.bowler.name : null, field: S.fieldPreset, light: S.light, tossWon: S.tossWon, run: S.run ? { done: S.run.done, active: S.run.active } : null, ball: S.ball ? { st: S.ball.st, x: S.ball.x, y: S.ball.y, z: S.ball.z } : null,
+          bowler: S.bowler ? S.bowler.name : null, ballLog: (S.ballLog || []).slice(-40), inputLog: (S.inputLog || []).slice(-10), field: S.fieldPreset, light: S.light, tossWon: S.tossWon, run: S.run ? { done: S.run.done, active: S.run.active } : null, ball: S.ball ? { st: S.ball.st, x: S.ball.x, y: S.ball.y, z: S.ball.z } : null,
           del: S.del ? { tRel: S.del.tRel, tA: S.del.tA, len: S.del.len, line: S.del.line, wide: S.del.wide, nb: S.del.nb, kind: S.del.kind, v: S.del.v } : null, clock: S.clock, evt: S.evt, perf: S.perf ? { draw: +S.perf.draw.toFixed(2), max: +S.perf.max.toFixed(2) } : null, msg: S.msg && S.msg.text, comm: S.comm.text, ui: S.ui, frame: S.fr, bgPaints: S.bgPaints || 0, result: S.result ? { win: S.result.win, tie: S.result.tie, margin: S.result.margin } : null };
       },
       toggleCam() { const g = CUR.g; if (g && g.S) toggleCam(g.S); },
