@@ -1546,9 +1546,11 @@
       const h = hsh(d.y * 13 + d.m, d.d * 7);
       if (h < 0.4) { const start = 14 * 60 + Math.floor(hsh(d.d, d.m) * 240); rain = m >= start && m < start + 120; }
     }
+    let mist = (d.m === 12 || d.m === 1) && m > 5.5 * 60 && m < 7.5 * 60;
+    // [atmosphere hook] the live weather (src/atmosphere.js: schedule, settings, storms) decides when present
+    if (N.weather && typeof N.weather.raining === 'boolean') { rain = N.weather.raining; mist = N.weather.mist > 0.05; }
     if (N.flags && N.flags.rain === true) rain = true;
     if (N.flags && N.flags.rain === false) rain = false;
-    const mist = (d.m === 12 || d.m === 1) && m > 5.5 * 60 && m < 7.5 * 60;
     if (rain !== S.raining || mist !== S.mist) {
       S.raining = rain; S.mist = mist;
       if (N.flags) N.flags.raining = rain;   // read by vehicles.js (wet roads) and audio
@@ -1629,7 +1631,7 @@
         if (S.profile) { const nn = n; S.prof[nn] = 0; R.queue = (layer, key, fn) => q.call(R, layer, key, (c) => { const t = performance.now(); try { fn(c); } finally { S.prof[nn] += performance.now() - t; } }); }
         try { o.draw(); } catch (e) { N.err('seasons.draw:' + n, e); } finally { R.queue = q; }
       }
-      if (state.monsoon || S.mist) drawWeather();
+      if ((state.monsoon || S.mist) && !(N.weather && N.weather.draws2d)) drawWeather(); // [atmosphere hook] weather.js draws the rain
       R.queue('light', 7, () => { frame(); flushBulbGlow(); });
     },
   });
@@ -1675,4 +1677,5 @@
     return out;
   };
   S._debug = { crowds, parts, OV, bon, imm, ram, sank, RX };
+  S._weatherTick = weatherTick; // [atmosphere hook] atmosphere.js re-syncs is('rain') the moment its weather flips
 })();
