@@ -213,21 +213,31 @@ def front_prism(name, prof, y0, y1, m, bevel=0.0, seg=2):
     return o
 
 
-def tyre(name, c, R, w, m, seg=20, tread=True, side_r=None):
-    """a tyre around the X axis: rounded shoulders, a flat tread band (optional groove lines)"""
+def tyre(name, c, R, w, m, seg=20, tread=True, side_r=None, knobs=0.0, depth=None):
+    """a tyre around the X axis: rounded shoulders, a flat tread band; knobs > 0 pushes every other
+    tread segment out by that much (knobbly MTB / tractor-ish tread)"""
     hw = w / 2.0
     sr = side_r if side_r is not None else min(hw * 0.6, R * 0.22)
-    rin = R - min(R * 0.36, max(0.35, w * 0.55))
+    rin = R - (depth if depth is not None else min(R * 0.36, max(0.35, w * 0.55)))
     prof = [(rin, -hw * 0.8), (R - sr, -hw), (R, -hw * 0.5), (R, hw * 0.5), (R - sr, hw), (rin, hw * 0.8)]
-    return lathe_x(name, prof, seg, m, c, closed=True)
+    o = lathe_x(name, prof, seg, m, c, closed=True)
+    if knobs:
+        cc = Vector(c)
+        for v in o.data.vertices:
+            d = Vector((0, v.co.y - cc.y, v.co.z - cc.z))
+            if d.length > R - sr * 0.5:
+                k = int(round(math.atan2(d.z, d.y) / (2 * math.pi / seg))) % seg
+                if k % 2 == 0:
+                    v.co = cc + Vector((v.co.x - cc.x, 0, 0)) + d * ((d.length + knobs) / d.length)
+    return o
 
 
-def spoke_wheel(name, c, R, M, spokes=28, seg=24, tyre_w=0.42, rim_d=0.4, hub_w=0.62, sp_r=0.022, tread_m=None):
+def spoke_wheel(name, c, R, M, spokes=28, seg=24, tyre_w=0.42, rim_d=0.4, hub_w=0.62, sp_r=0.022, tread_m=None, rim_m=None, knobs=0.0, sp_seg=3):
     """a spoked wheel (cycles, Luna, RX100, rickshaw): tyre, chrome rim, hub, crossed spokes"""
-    parts = [tyre(name + '_tyre', c, R, tyre_w, tread_m or M['tyre'], seg=seg)]
+    parts = [tyre(name + '_tyre', c, R, tyre_w, tread_m or M['tyre'], seg=seg, knobs=knobs, depth=min(R * 0.3, tyre_w * 0.9 + 0.1))]
     ri = R - tyre_w * 0.55
     rim = lathe_x(name + '_rim', [(ri - rim_d * 0.6, -0.09), (ri - rim_d * 0.45, -0.12), (ri, -0.1), (ri, 0.1), (ri - rim_d * 0.45, 0.12), (ri - rim_d * 0.6, 0.09)],
-                  seg, M['chrome'], c, closed=True)
+                  seg, rim_m or M['chrome'], c, closed=True)
     parts.append(rim)
     parts.append(disc_x(name + '_hub', c, 0.17, hub_w, M['chrome'], seg=10, cap=False))
     for sx in (1, -1):
@@ -241,8 +251,9 @@ def spoke_wheel(name, c, R, M, spokes=28, seg=24, tyre_w=0.42, rim_d=0.4, hub_w=
         lead = 0.42 * (1 if (i // 2) % 2 == 0 else -1)
         h = Vector((hub_w * 0.38 * side, 0.26 * math.cos(a + lead), 0.26 * math.sin(a + lead)))
         r = Vector((0.03 * side, ri2 * math.cos(a), ri2 * math.sin(a)))
-        sp.append(kit.tube(name + '_spoke%d' % i, [Vector(c) + h, Vector(c) + r], sp_r, seg=3, mat=M['chrome'], cap=False))
-    parts.append(kit.join(sp, name + '_spokes'))
+        sp.append(kit.tube(name + '_spoke%d' % i, [Vector(c) + h, Vector(c) + r], sp_r, seg=sp_seg, mat=M['chrome'], cap=False))
+    if sp:
+        parts.append(kit.join(sp, name + '_spokes'))
     return parts
 
 
@@ -548,7 +559,7 @@ def region_colours(ob):
         if not m:
             continue
         r = int(m.get('nos_region', 0))
-        if r:
+        if r in (R_PAINT, R_PAINT2, R_PAINT3):
             spec = json.loads(m.get('nos', '{}'))
             out.setdefault(REGION_NAMES[r], spec.get('base', '#808080'))
     return out
@@ -976,17 +987,30 @@ def preview_variants(aid, sets, view=None, size=256, samples=14, out_name='varia
 
 
 def after_export(A):
-    """register the variant / night previews to run after kit.run_asset exported the GLB (atexit:
-    the build process exits right after); skipped with --no-preview / --quick"""
+    """register the variant / night previews (A.preview['variants'], read at exit) to run after
+    kit.run_asset exported the GLB (atexit: the build process exits right after); skipped with
+    --no-preview / --quick"""
     import atexit
     import sys
-    pv = A.preview.get('variants')
-    if not pv or '--no-preview' in sys.argv or '--quick' in sys.argv or getattr(A, 'quick', False):
+    if '--no-preview' in sys.argv or '--quick' in sys.argv or getattr(A, 'quick', False):
         return
 
     def run():
+        pv = (A.preview or {}).get('variants')
+        if not pv or not os.path.exists(os.path.join(kit.ASSETS_DIR, A.id + '.glb')):
+            return
         try:
-            preview_variants(A.id, pv.get('sets', []), view=pv.get('view'), size=pv.get('size', 256), samples=pv.get('samples', 14), night_view=pv.get('night'))
+            # the main shots again through the tinted renderer, with the option parts of the first
+            # variant hidden (kit.preview_render shows every option bone's parts at once)
+            sets = pv.get('sets', [])
+            if sets and sets[0].get('hide'):
+                for i, sh in enumerate(A.preview.get('shots') or [{}]):
+                    name = A.id if i == 0 else '%s_%s' % (A.id, sh.get('name', i))
+                    render_glb(os.path.join(kit.ASSETS_DIR, A.id + '.glb'), os.path.join(kit.PREVIEW_DIR, name + '.png'), view=sh.get('view'),
+                               size=sh.get('size', 384), samples=sh.get('samples', 24), colours=sets[0].get('colours'), hide=sets[0].get('hide'))
+            preview_variants(A.id, sets, view=pv.get('view'), size=pv.get('size', 256), samples=pv.get('samples', 14), night_view=pv.get('night'))
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             kit.log('variant previews failed: %s' % e)
     atexit.register(run)

@@ -1830,3 +1830,726 @@ def lookdev_render(A, arm, shots, out_prefix=None, size=320, samples=16):
     kit.log('lookdev sheet', sheet)
     sys.stdout.flush()
     os._exit(0)
+
+
+# =========================================================================== clips (shared skeleton)
+# Every clip is authored on kit.Rig (armature space: +X = the character's left, -Y = forward, Z up)
+# from KEY POSES: a key is a dict of pose parameters (missing ones inherit from the previous key)
+# and the keys are interpolated with C1 Hermite curves (wrapping for loops), so motion flows
+# through the keys instead of stopping at each. Feet are always solved with leg IK on top of the
+# ground (planted feet roll on the heel / ball with kit.roll_foot); hands use FK angles or IK
+# targets (an arm that is IK'd in any key is IK'd in every key: FK keys are converted to their
+# wrist positions first, so switching never pops). Positions are in KID units and scale with the
+# rig (k = hip height / kid hip height, ~1.30 for adults).
+from kit import Rx, Ry, Rz, Raxis, foot_rot, roll_foot   # noqa: E402
+
+LOW = math.radians(40)          # upper-arm Ry from the A-pose down to the side
+
+
+def rig_k(R):
+    return R.hip_z / kit.KID_J['hip'][2]
+
+
+ZERO = dict(hx=0.0, hy=0.0, hz=0.0, hp=0.0, hr=0.0, hyaw=0.0, sp=0.0, sr=0.0, syaw=0.0, cp=0.0, cr=0.0, cyaw=0.0,
+            np=0.0, nr=0.0, nyaw=0.0, xp=0.0, xr=0.0, xyaw=0.0)
+for _S in 'LR':
+    ZERO.update({'sh' + _S: 0.0, 'sf' + _S: 0.0, 'ua' + _S: 0.0, 'uf' + _S: 0.0, 'ut' + _S: 0.0, 'el' + _S: 0.24, 'hd' + _S: 0.14, 'ht' + _S: 0.0,
+                 'fx' + _S: 0.0, 'fy' + _S: 0.0, 'fz' + _S: 0.0, 'ft' + _S: 0.0, 'fw' + _S: 0.08, 'tt' + _S: 0.0, 'g' + _S: 1.0})
+TUPLE_KEYS = ('hL', 'hR', 'pL', 'pR', 'kL', 'kR', 'aL', 'aR')
+
+
+def solve_pose(R, Q):
+    """pose parameters -> kit.Rig pose P (see the section comment for the conventions)
+    hips hx / hy (forward) / hz; pitch p (forward +), roll r (towards the left +), yaw (turn left +)
+    per side S: sh (shrug up), sf (shoulder forward), ua (arm raised sideways from hanging, rad),
+    uf (arm swung forwards), ut (upper-arm twist), el (elbow bend), hd (wrist bend), ht (wrist twist),
+    hS (IK wrist target, kid units) + pS (elbow pole); legs fx (outwards) fy (forward) fz (up) of
+    the ankle, ft (foot pitch, toes up +), fw (toes out), tt (toe bend), gS (1 = grounded: the
+    sole rolls on the ground), aS (absolute ankle target, u) + kS (knee pole)."""
+    k = rig_k(R)
+    J = R.J
+    P = R.pose()
+    R.fk(P, 'root')
+    R.fk(P, 'hips', Rz(Q['hyaw']) @ Ry(Q['hr']) @ Rx(Q['hp']), t=(Q['hx'] * k, -Q['hy'] * k, Q['hz'] * k))
+    R.fk(P, 'spine', Rz(Q['syaw']) @ Ry(Q['sr']) @ Rx(Q['sp']))
+    R.fk(P, 'chest', Rz(Q['cyaw']) @ Ry(Q['cr']) @ Rx(Q['cp']))
+    R.fk(P, 'neck', Rz(Q['nyaw']) @ Ry(Q['nr']) @ Rx(Q['np']))
+    R.fk(P, 'head', Rz(Q['xyaw']) @ Ry(Q['xr']) @ Rx(Q['xp']))
+    for S, sx in (('L', 1), ('R', -1)):
+        ua, fa, hd = 'upperarm_' + S, 'forearm_' + S, 'hand_' + S
+        R.fk(P, 'shoulder_' + S, Rz(-sx * Q['sf' + S]) @ Ry(-sx * Q['sh' + S]))
+        rest_d = (R.head[fa] - R.head[ua]).normalized()
+        hinge = rest_d.cross(Vector((0, -1, 0)))
+        tgt = Q.get('h' + S)
+        if tgt is not None:
+            pole = Q.get('p' + S) or (sx * 0.8, 0.6, -0.3)
+            R.arm_ik(P, S, Vector(tgt) * k, None, pole=pole)
+        else:
+            Rr = Rx(-Q['uf' + S]) @ Ry(sx * (LOW - Q['ua' + S]))
+            if Q['ut' + S]:
+                Rr = Raxis(Rr.to_3x3() @ rest_d, sx * Q['ut' + S]) @ Rr
+            R.fk(P, ua, Rr)
+            R.fk(P, fa, Raxis(hinge, Q['el' + S]))
+        fd = (R.head[hd] - R.head[fa]).normalized()
+        R.fk(P, hd, Raxis(fd, sx * Q['ht' + S]) @ Raxis(hinge, Q['hd' + S]))
+    for S, sx in (('L', 1), ('R', -1)):
+        yaw = sx * Q['fw' + S]
+        th = Q['ft' + S]
+        a = Q.get('a' + S)
+        grounded = Q['g' + S] > 0.5 and a is None
+        if a is not None:
+            ankle = Vector((sx * a[0], J['ankle'][1] - a[1], a[2]))
+        else:
+            x = sx * (J['ankle'][0] + Q['fx' + S] * k)
+            f = Q['fy' + S] * k
+            if grounded:
+                F, z = roll_foot(R, f, th)
+                z += Q['fz' + S] * k
+            else:
+                F, z = f, R.ankle_z + Q['fz' + S] * k
+            ankle = Vector((x, J['ankle'][1] - F, z))
+        fR = foot_rot(th, yaw)
+        tR = foot_rot(0.0, yaw) if (grounded and th < 0 and abs(Q['fz' + S]) < 1e-4) else foot_rot(th + Q['tt' + S], yaw)
+        pole = Q.get('k' + S) or (sx * 0.12, -1, 0)
+        R.leg_ik(P, S, ankle, fR, tR, pole=pole)
+    return P
+
+
+def wrist_of(R, P, S):
+    return P['hand_' + S] @ R.head['hand_' + S]
+
+
+def expand_keys(keys, base=None):
+    out = []
+    cur = dict(base or ZERO)
+    for t, q in keys:
+        cur = dict(cur)
+        cur.update(q)
+        out.append((float(t), cur))
+    return out
+
+
+def _hermite(v0, v1, m0, m1, dt, s):
+    s2, s3 = s * s, s * s * s
+    return (2 * s3 - 3 * s2 + 1) * v0 + (s3 - 2 * s2 + s) * dt * m0 + (-2 * s3 + 3 * s2) * v1 + (s3 - s2) * dt * m1
+
+
+def sample_keys(full, t, loop, ease_ends=True):
+    """C1 interpolation of the expanded keys at t in [0, 1] (Hermite with finite-difference
+    tangents; loops wrap, one-shots ease in / out of the first / last key)"""
+    n = len(full)
+    if n == 1:
+        return dict(full[0][1])
+    ts = [k[0] for k in full]
+    if t <= ts[0]:
+        return dict(full[0][1])
+    if t >= ts[-1]:
+        return dict(full[-1][1])
+    i = max(j for j in range(n - 1) if ts[j] <= t)
+    t0, t1 = ts[i], ts[i + 1]
+    dt = max(1e-6, t1 - t0)
+    s = (t - t0) / dt
+
+    def nb(j):
+        """neighbour key j (wrapped for loops): (time, values)"""
+        if 0 <= j < n:
+            return ts[j], full[j][1]
+        if not loop:
+            return None
+        if j < 0:   # the last key equals the first: step over it
+            return ts[n - 1 + j] - 1.0, full[n - 1 + j][1]
+        return ts[j - n + 1] + 1.0, full[j - n + 1][1]
+    out = {}
+    q0, q1 = full[i][1], full[i + 1][1]
+    prv, nxt = nb(i - 1), nb(i + 2)
+
+    def vec(v):
+        return list(v) if isinstance(v, (tuple, list)) else [v]
+    for key in q0:
+        a, b = q0[key], q1.get(key, q0[key])
+        if a is None or b is None or isinstance(a, str):
+            out[key] = b if s > 0.5 else a
+            continue
+        tup = isinstance(a, (tuple, list))
+        A, B = vec(a), vec(b)
+        pv = prv[1].get(key) if prv else None
+        nv = nxt[1].get(key) if nxt else None
+        PV = vec(pv) if pv is not None and not isinstance(pv, str) else None
+        NV = vec(nv) if nv is not None and not isinstance(nv, str) else None
+        res = []
+        for c in range(len(A)):
+            if PV is not None:
+                m0 = (B[c] - PV[c]) / max(1e-6, t1 - prv[0])
+            else:
+                m0 = 0.0 if ease_ends else (B[c] - A[c]) / dt
+            if NV is not None:
+                m1 = (NV[c] - A[c]) / max(1e-6, nxt[0] - t0)
+            else:
+                m1 = 0.0 if ease_ends else (B[c] - A[c]) / dt
+            res.append(_hermite(A[c], B[c], m0, m1, dt, s))
+        out[key] = tuple(res) if tup else res[0]
+    return out
+
+
+def keyed_clip(R, name, frames, keys, loop=True, extra=None, base=None, entry=None, check_feet=True):
+    """author a clip from key poses; extra(t, Q) adds per-frame motion (breathing, waving...).
+    Returns the manifest entry (+ 'feet': lowest / highest grounded sole point for checks)."""
+    k = rig_k(R)
+    full = expand_keys(keys, base)
+    if loop and full[-1][0] < 1.0:
+        full.append((1.0, dict(full[0][1])))
+    for S in 'LR':
+        if any(q.get('h' + S) is not None for _, q in full):
+            for _, q in full:
+                if q.get('h' + S) is None:
+                    q2 = dict(q)
+                    P = solve_pose(R, q2)
+                    w = wrist_of(R, P, S)
+                    q['h' + S] = tuple(c / k for c in w)
+    act = R.begin(name)
+    lo, hi = 9.0, -9.0
+    for fr in range(frames + 1):
+        t = fr / frames
+        Q = sample_keys(full, t, loop)
+        if extra:
+            extra(t, Q)
+        P = solve_pose(R, Q)
+        R.key(P, fr)
+        if check_feet:
+            so = kit._soles(R, P)
+            for S in 'LR':
+                if Q.get('g' + S, 1) > 0.5 and Q.get('a' + S) is None:
+                    for v in so[S]:
+                        lo, hi = min(lo, v.z), max(hi, v.z)
+    R.end(act, 0, frames, cyclic=loop)
+    e = {'loop': bool(loop), 'loco': False, 'frames': frames, 'fps': kit.FPS, 'duration': round(frames / kit.FPS, 4)}
+    if check_feet and lo < 9:
+        e['feet'] = {'low': round(lo, 3), 'high': round(hi, 3)}
+    if entry:
+        e.update(entry)
+    kit.log('clip %s: %d frames%s%s' % (name, frames, ' loop' if loop else '', (' feet z %.3f..%.3f' % (lo, hi)) if lo < 9 else ''))
+    return e
+
+
+def breathe(amp=1.0, n=3):
+    def f(t, Q):
+        b = math.sin(2 * math.pi * t * n)
+        Q['cp'] -= 0.022 * b * amp
+        Q['sp'] += 0.008 * b * amp
+        Q['shL'] += 0.025 * b * amp
+        Q['shR'] += 0.025 * b * amp
+        Q['xp'] += 0.012 * b * amp
+    return f
+
+
+def chain(*fs):
+    def f(t, Q):
+        for g in fs:
+            if g:
+                g(t, Q)
+    return f
+
+
+# ---------------------------------------------------------------- locomotion variants
+GAITS_X = {
+    'sprint': dict(stride=20.0, duty=0.23, lift=1.8, thH=0.12, thT=0.95, cap=0.50, bob=0.48, lean=0.34, arm=1.15, elbow=1.62, pelvis=0.24, sway=0.02, footx=0.17, run=True, nominal=105.0),
+    'stroll_f': dict(stride=4.4, duty=0.62, lift=0.26, thH=0.24, thT=0.42, cap=0.09, bob=0.0, lean=0.02, arm=0.16, elbow=0.26, pelvis=0.13, sway=0.075, footx=0.17, run=False, nominal=13.0),
+    'walk_f': dict(stride=9.4, duty=0.42, lift=0.46, thH=0.27, thT=0.55, cap=0.23, bob=0.03, lean=0.04, arm=0.30, elbow=0.34, pelvis=0.20, sway=0.06, footx=0.15, run=False, nominal=42.0),
+    'push_cart': dict(stride=6.6, duty=0.52, lift=0.36, thH=0.24, thT=0.62, cap=0.34, bob=0.02, lean=0.30, arm=0.0, elbow=0.0, pelvis=0.08, sway=0.035, footx=0.30, run=False, nominal=22.0),
+}
+
+
+def gait_clip_x(R, name, g, frames=32, scale=1.0, arms=None, torso=None, hands=None, entry=None):
+    """kit.gait_clip with hooks (same planted-foot stance, swing, pelvis and flight solution):
+    arms(P, u, g, R) poses the arms instead of the counter-swing; hands(u) -> {S: (wrist target in
+    root space, kid units), 'pole': ...} IK's them (push a cart); torso(u, g) -> (spine, chest, neck,
+    head) extra pitch. Returns the manifest entry with the slip check."""
+    g = dict(g)
+    if scale != 1.0:
+        for key in ('stride', 'lift', 'footx', 'cap'):
+            g[key] = g[key] * scale
+    S_, beta = g['stride'], g['duty']
+    J = R.J
+    footx = g['footx']
+    L = R.leg
+    k = rig_k(R)
+    act = R.begin(name)
+    lower = math.radians(38)
+    hip_rest = R.hip_z
+
+    def foot_at(u):
+        u = u % 1.0
+        if u < beta:
+            s = u / beta
+            th = 0.0
+            if s < 0.18:
+                th = g['thH'] * (1 - s / 0.18) ** 2
+            elif s > 0.58:
+                th = -g['thT'] * ((s - 0.58) / 0.42) ** 2
+            f = beta * S_ / 2 - S_ * u
+            F, z = roll_foot(R, f, th)
+            return F, z, th, True, s
+        s = (u - beta) / (1 - beta)
+        F0, z0 = roll_foot(R, -beta * S_ / 2, -g['thT'])
+        F1, z1 = roll_foot(R, beta * S_ / 2, g['thH'])
+        m = -S_ * (1 - beta)
+        s2, s3 = s * s, s * s * s
+        F = (2 * s3 - 3 * s2 + 1) * F0 + (s3 - 2 * s2 + s) * m + (-2 * s3 + 3 * s2) * F1 + (s3 - s2) * m
+        lift = g['lift'] * math.sin(math.pi * (s ** 0.75 if g['run'] else s))
+        z = z0 + (z1 - z0) * s + lift
+        e = 0.5 - 0.5 * math.cos(math.pi * s)
+        th = -g['thT'] + (g['thT'] + g['thH']) * e
+        if g['run']:
+            th -= 0.45 * math.sin(math.pi * s) * (1 - s)
+        return F, z, th, False, s
+
+    def hip_limit(F, z, run, s):
+        kk = 0.985 if not run else (0.95 - 0.06 * math.sin(math.pi * s))
+        Lk = L * kk
+        d = min(abs(F), Lk * 0.995)
+        return z + math.sqrt(Lk * Lk - d * d)
+
+    seq = []
+    for fr in range(frames + 1):
+        u = fr / frames
+        P = R.pose()
+        fL = foot_at(u)
+        fR = foot_at(u + 0.5)
+        cap = hip_rest - g['cap']
+        lims = [hip_limit(f[0], f[1], g['run'], f[4]) for f in (fL, fR) if f[3]]
+        if lims:
+            hz = min([cap] + lims)
+        else:
+            h2 = (u * 2) % 1.0
+            q = min(1.0, max(0.0, (h2 * 0.5 - beta) / max(0.01, 0.5 - beta)))
+            Fa, za = roll_foot(R, -beta * S_ / 2, -g['thT'])
+            Fb, zb = roll_foot(R, beta * S_ / 2, g['thH'])
+            a = min(cap, hip_limit(Fa, za, True, 1.0))
+            b = min(cap, hip_limit(Fb, zb, True, 0.0))
+            hz = a + (b - a) * q + 4 * g['bob'] * q * (1 - q)
+        c = math.cos(2 * math.pi * u)
+        sway = g['sway'] * math.cos(2 * math.pi * (u - beta / 2))
+        yaw = -g['pelvis'] * 0.5 * c
+        roll = 0.05 * math.sin(2 * math.pi * u * 2) * (0 if g['run'] else 1)
+        dz = hz - hip_rest
+        R.fk(P, 'root')
+        R.fk(P, 'hips', Rz(yaw) @ Ry(roll), t=(sway, 0, dz))
+        lean = g['lean']
+        ex = torso(u, g) if torso else (0.0, 0.0, 0.0, 0.0)
+        R.fk(P, 'spine', Rx(lean * 0.5 + ex[0]) @ Rz(-yaw * 0.6))
+        R.fk(P, 'chest', Rx(lean * 0.5 + ex[1]) @ Rz(-yaw * 0.9))
+        R.fk(P, 'neck', Rx(-lean * 0.5 + ex[2]) @ Rz(yaw * 0.3))
+        R.fk(P, 'head', Rx(-lean * 0.4 - 0.02 * math.sin(4 * math.pi * u) + ex[3]))
+        if hands:
+            H = hands(u)
+            for s, sx in (('L', 1), ('R', -1)):
+                R.fk(P, 'shoulder_' + s, Rz(-sx * 0.15))
+                T = Vector(H[s]) * k
+                R.arm_ik(P, s, T, None, pole=H.get('pole_' + s, (sx * 0.9, 0.5, -0.4)))
+        elif arms:
+            arms(P, u, g, R)
+        else:
+            for s, sx, ph in (('L', 1, 0.5), ('R', -1, 0.0)):
+                sw = g['arm'] * math.cos(2 * math.pi * (u - ph - 0.04))
+                R.fk(P, 'shoulder_' + s, Rx(-0.12 * sw))
+                R.fk(P, 'upperarm_' + s, Rx(-sw) @ Ry(lower * sx))
+                el = g['elbow'] + (0.25 * max(0.0, math.cos(2 * math.pi * (u - ph))) if not g['run'] else 0.18 * math.cos(2 * math.pi * (u - ph)))
+                ad = (R.head['forearm_' + s] - R.head['upperarm_' + s]).normalized()
+                hinge = ad.cross(Vector((0, -1, 0)))
+                R.fk(P, 'forearm_' + s, Raxis(hinge, el))
+                R.fk(P, 'hand_' + s, Raxis(hinge, 0.12))
+        for s, sx, f in (('L', 1, fL), ('R', -1, fR)):
+            F, z, th, st, _ = f
+            ankle = Vector((sx * footx, -F + J['ankle'][1], z))
+            tR = foot_rot(th)
+            toeR = Matrix.Identity(4) if th < 0 and st else (foot_rot(th * 0.6) if not st else tR)
+            if not st and th < 0:
+                toeR = foot_rot(th * 0.4)
+            R.leg_ik(P, s, ankle, tR, toeR, pole=(sx * 0.12, -1, 0))
+        R.key(P, fr)
+        seq.append(kit._soles(R, P))
+    R.end(act, 0, frames, cyclic=True)
+    slip = kit._slip_report(seq, S_ / frames)
+    e = {'loop': True, 'loco': True, 'frames': frames, 'fps': kit.FPS, 'duration': round(frames / kit.FPS, 4),
+         'stride': round(S_, 4), 'nominal': g['nominal'], 'speed': round(S_ / (frames / kit.FPS), 3), 'duty': beta,
+         'gait': 'run' if g['run'] else 'walk', 'phase0': 'left heel strike', 'slip': slip}
+    if entry:
+        e.update(entry)
+    kit.log('clip %s: stride %.2f u, duty %.2f, nominal %.0f u/s; slip %s' % (name, S_, beta, g['nominal'], slip))
+    return e
+
+
+# ---------------------------------------------------------------- the clip library (both rigs)
+BENCH_HIP = 2.6       # hip-joint height (u) of a person on a bench (= view3d_actors' seated people)
+STEP_HIP = 2.2        # ... on a kerb / step
+BENCH_TOP = 2.22      # seat surfaces the runtime draws under seated models
+STEP_TOP = 1.84
+
+
+def _hz(R, z_abs):
+    """hips translation (kid units) that puts the hip joints at absolute height z_abs"""
+    return (z_abs - R.hip_z) / rig_k(R)
+
+
+def clip_idle_look(R, name='idle_look', frames=180):
+    """standing about: weight shifts, a long look left, up at the sky (kites, pigeons), right,
+    a glance down at the feet (a toe scuffs the dust), a sigh"""
+    keys = [
+        (0.00, dict(hx=0.05, uaL=0.06, uaR=0.06, elL=0.26, elR=0.26)),
+        (0.14, dict(hx=0.08, hr=0.02, nyaw=0.32, xyaw=0.42, cyaw=0.12, syaw=0.04)),
+        (0.28, dict(nyaw=0.22, xyaw=0.28, xp=-0.38, np=-0.14, cp=-0.05, cyaw=0.08)),
+        (0.40, dict(nyaw=0.0, xyaw=0.0, xp=-0.05, np=0.0, cp=0.0, cyaw=0.0, syaw=0.0, hx=0.0, hr=0.0)),
+        (0.54, dict(hx=-0.08, hr=-0.02, nyaw=-0.34, xyaw=-0.42, cyaw=-0.12, syaw=-0.04)),
+        (0.68, dict(nyaw=-0.1, xyaw=-0.06, xp=0.32, np=0.12, cyaw=-0.02, gR=0.0, fyR=0.25, fzR=0.12, ftR=0.15)),
+        (0.74, dict(fyR=0.05, fzR=0.04, ftR=-0.1)),
+        (0.80, dict(gR=1.0, fyR=0.0, fzR=0.0, ftR=0.0, xp=0.05, np=0.0)),
+        (0.90, dict(hx=0.03, nyaw=0.0, xyaw=0.0, cp=-0.06, shL=0.12, shR=0.12, syaw=0.0, cyaw=0.0)),
+    ]
+    return keyed_clip(R, name, frames, keys, loop=True, extra=breathe(1.0, 4))
+
+
+def clip_talk(R, name='talk', frames=120):
+    """chatting: weight on one leg, the right hand explains, palms open, a shrug, the left hand
+    on the hip, nods"""
+    keys = [
+        (0.00, dict(hx=0.06, ufR=0.35, uaR=0.12, elR=1.0, htR=0.3, elL=0.3)),
+        (0.18, dict(ufR=0.85, uaR=0.25, elR=1.65, htR=0.9, xr=0.07, xp=0.04)),
+        (0.33, dict(ufR=0.55, uaR=0.18, elR=1.25, htR=0.5, xr=0.0)),
+        (0.48, dict(ufL=0.5, uaL=0.38, elL=1.05, htL=0.8, ufR=0.6, uaR=0.42, elR=1.1, htR=0.9, shL=0.18, shR=0.18, xp=-0.05, hx=0.02)),
+        (0.60, dict(ufL=0.1, uaL=0.1, elL=0.4, htL=0.0, shL=0.0, shR=0.0, xp=0.0)),
+        (0.72, dict(ufL=-0.18, uaL=0.62, elL=1.95, htL=-0.4, ufR=0.95, uaR=0.15, elR=1.9, htR=0.2, hx=0.07, xr=-0.06)),
+        (0.86, dict(ufR=0.5, elR=1.2, xr=0.0)),
+    ]
+
+    def nod(t, Q):
+        Q['xp'] += 0.05 * math.sin(2 * math.pi * t * 6)
+        Q['xyaw'] += 0.06 * math.sin(2 * math.pi * t * 2 + 0.6)
+    return keyed_clip(R, name, frames, keys, loop=True, extra=chain(breathe(0.8, 4), nod))
+
+
+def clip_wave(R, name='wave', frames=60):
+    """a big friendly wave with the right hand (one-shot, back to the stance)"""
+    keys = [
+        (0.00, {}),
+        (0.16, dict(uaR=2.05, ufR=0.35, elR=1.25, htR=0.5, hr=0.03, xr=0.08, shR=0.15)),
+        (0.84, dict(uaR=2.05, ufR=0.35, elR=1.25, htR=0.5, hr=0.03, xr=0.08, shR=0.15)),
+        (1.00, {}),
+    ]
+
+    def wv(t, Q):
+        if 0.16 < t < 0.84:
+            w = math.sin((t - 0.16) / 0.68 * math.pi * 6)
+            Q['utR'] += 0.42 * w
+            Q['hdR'] += 0.25 * w
+            Q['xyaw'] += 0.04 * w
+    return keyed_clip(R, name, frames, keys, loop=False, extra=wv)
+
+
+def clip_clap(R, name='clap', frames=40):
+    """the Golconda clap: arms up in front of the face, two loud cupped claps per loop"""
+    o = dict(hL=(0.42, -0.95, 5.55), hR=(-0.42, -0.95, 5.55), pL=(1.0, 0.25, -0.6), pR=(-1.0, 0.25, -0.6), xp=-0.18, np=-0.08, cp=-0.04)
+    c = dict(hL=(0.07, -1.18, 5.75), hR=(-0.07, -1.18, 5.75), xp=-0.22, hz=-0.04)
+    keys = [(0.00, o), (0.18, c), (0.30, dict(o)), (0.50, dict(o)), (0.68, dict(c)), (0.80, dict(o))]
+    return keyed_clip(R, name, frames, keys, loop=True, extra=breathe(0.5, 1))
+
+
+def _sit_keys(R, hip, kid_dangle):
+    """bench / step sitting pose: hips at absolute height `hip`; adults (and kids on a low
+    step) plant both feet; a kid on a bench lets them dangle"""
+    k = rig_k(R)
+    J = R.J
+    knee_fwd = (J['hip'][2] - J['knee'][2]) * 0.98   # ~thigh length forwards
+    base = dict(hz=_hz(R, hip), hp=-0.12, sp=0.1, cp=0.04, np=-0.02)
+    if kid_dangle:
+        ank = (J['ankle'][0] + 0.02, knee_fwd + 0.05, hip - (J['knee'][2] - J['ankle'][2]) - 0.05)
+        base.update(aL=ank, aR=ank, kL=(0.1, -1, 0.2), kR=(-0.1, -1, 0.2), ftL=-0.25, ftR=-0.25,
+                    hL=(0.78, -0.25, (hip - 0.36) / k), hR=(-0.78, -0.25, (hip - 0.36) / k),
+                    pL=(0.8, 0.2, -0.5), pR=(-0.8, 0.2, -0.5))
+    else:
+        base.update(gL=1.0, gR=1.0, fyL=(knee_fwd + 0.12) / k, fyR=(knee_fwd + 0.08) / k, fxL=0.06, fxR=0.06,
+                    hL=(0.55, -(knee_fwd * 0.8) / k, (hip + 0.32 * k) / k), hR=(-0.55, -(knee_fwd * 0.8) / k, (hip + 0.32 * k) / k),
+                    pL=(0.9, 0.5, -0.4), pR=(-0.9, 0.5, -0.4), kL=(0.15, -1, 0.3), kR=(-0.15, -1, 0.3))
+    return base
+
+
+def clip_sit(R, name='sit', hip=BENCH_HIP, frames=90, kid=False):
+    k = rig_k(R)
+    J = R.J
+    knee_fwd = (J['hip'][2] - J['knee'][2]) * 0.98
+    dangle = kid and hip > J['knee'][2] + 0.4
+    b = _sit_keys(R, hip, dangle)
+    keys = [(0.0, b), (0.5, dict(b, xyaw=0.15, nyaw=0.08, hx=0.01))]
+
+    def swing(t, Q):
+        if dangle:
+            # a kid swings both legs, alternately, under the bench
+            for S, ph in (('L', 0.0), ('R', 0.5)):
+                a = list(Q['a' + S])
+                s = math.sin(2 * math.pi * (t * 2 + ph))
+                a[1] = knee_fwd + 0.05 + 0.45 * s
+                a[2] = hip - (J['knee'][2] - J['ankle'][2]) * (0.97 - 0.06 * abs(s)) - 0.05 + 0.25 * max(0.0, s)
+                Q['a' + S] = tuple(a)
+    return keyed_clip(R, name, frames, keys, loop=True, extra=chain(breathe(1.0, 3), swing),
+                      entry={'seat': True, 'hip': hip, 'seatTop': BENCH_TOP if hip >= BENCH_HIP - 0.01 else STEP_TOP}, check_feet=not dangle)
+
+
+def clip_sit_ground(R, name='sit_ground', frames=90):
+    """cross-legged on the ground (marbles, kite strings, chai on the pavement)"""
+    k = rig_k(R)
+    hip = 0.46 * k
+    b = dict(hz=_hz(R, hip), hp=-0.25, sp=0.26, cp=0.12, np=-0.12, xp=-0.08,
+             aL=(-0.32 * k, 1.25 * k, 0.30 * k), aR=(-0.36 * k, 0.86 * k, 0.32 * k), fwL=-1.25, fwR=-1.15, ftL=0.25, ftR=0.25,
+             kL=(1.0, -0.5, 0.35), kR=(-1.0, -0.5, 0.35),
+             hL=(1.02, -0.85, 1.05), hR=(-1.02, -0.85, 1.05), pL=(0.6, 0.6, -0.4), pR=(-0.6, 0.6, -0.4))
+    keys = [(0.0, b), (0.5, dict(b, xyaw=0.2, nyaw=0.08, sr=0.03))]
+    return keyed_clip(R, name, frames, keys, loop=True, extra=breathe(1.0, 3), entry={'seat': 'ground', 'hip': round(hip, 3)}, check_feet=False)
+
+
+def fall_end(R):
+    """the comic fall ends here (and getup starts here): on the bottom, legs out, leaning back
+    on both hands, a little dizzy"""
+    k = rig_k(R)
+    return dict(hz=_hz(R, 0.46 * k), hy=-0.1, hp=-0.55, sp=0.05, cp=0.05, np=0.12, xp=0.08, xr=0.1,
+                gL=1.0, gR=1.0, fyL=2.45, fyR=2.2, fxL=0.12, fxR=0.18, ftL=0.95, ftR=0.85, fwL=0.25, fwR=0.3,
+                kL=(0.1, -0.3, 1.0), kR=(-0.1, -0.3, 1.0),
+                hL=(0.86, 0.95, 0.28), hR=(-0.86, 0.95, 0.28), pL=(0.8, 0.6, 0.3), pR=(-0.8, 0.6, 0.3))
+
+
+def clip_fall(R, name='fall', frames=40):
+    """a comic tumble (never hurt): a foot slips, arms windmill, a bounce on the bottom, dazed"""
+    k = rig_k(R)
+    end = fall_end(R)
+    stand = dict(hL=None, hR=None)
+    keys = [
+        (0.00, stand),
+        (0.14, dict(gL=0.0, fyL=0.9, fzL=0.45, ftL=0.6, hp=-0.25, sp=-0.18, xp=-0.2, hz=0.06,
+                    uaL=1.7, uaR=1.5, ufL=0.7, ufR=0.4, elL=0.6, elR=0.5)),
+        (0.32, dict(gL=0.0, gR=0.0, fyL=1.9, fzL=1.25, fyR=1.5, fzR=0.9, ftL=0.8, ftR=0.7, hz=_hz(R, 1.4 * k), hy=-0.25, hp=-0.6,
+                    sp=-0.25, uaL=2.3, uaR=2.2, ufL=0.9, ufR=0.8, elL=0.4, elR=0.4)),
+        (0.48, dict(end, hz=end['hz'] - 0.05, gL=1.0, gR=1.0, fzL=0.0, fzR=0.0)),
+        (0.58, dict(end, hz=end['hz'] + 0.22, gL=0.0, gR=0.0, fzL=0.45, fzR=0.35, hp=-0.7, xp=-0.1)),
+        (0.70, dict(end)),
+        (1.00, dict(end, xr=-0.12, xyaw=-0.15)),
+    ]
+
+    def dizzy(t, Q):
+        if t > 0.7:
+            a = (t - 0.7) / 0.3 * math.pi * 4
+            Q['xr'] += 0.08 * math.sin(a)
+            Q['xyaw'] += 0.1 * math.cos(a)
+    return keyed_clip(R, name, frames, keys, loop=False, extra=dizzy, check_feet=False)
+
+
+def clip_getup(R, name='getup', frames=48):
+    k = rig_k(R)
+    end = fall_end(R)
+    end = dict(end, xr=-0.12, xyaw=-0.15)
+    keys = [
+        (0.00, end),
+        (0.28, dict(fyL=0.75, fyR=0.55, ftL=0.0, ftR=0.0, fwL=0.15, fwR=0.15, hp=0.25, sp=0.5, cp=0.15, xr=0.0, xyaw=0.0, np=0.0, xp=0.1,
+                    hL=(0.95, 0.1, 0.3), hR=(-0.95, 0.15, 0.3), kL=(0.2, -1, 0.4), kR=(-0.2, -1, 0.4))),
+        (0.50, dict(hz=_hz(R, 1.55 * k), hy=0.45, hp=0.75, sp=0.45, cp=0.2, fyL=0.2, fyR=0.05,
+                    hL=(0.55, -0.95, 1.95), hR=(-0.55, -0.95, 1.95), kL=(0.12, -1, 0), kR=(-0.12, -1, 0))),
+        (0.72, dict(hz=-0.15, hy=0.05, hp=0.15, sp=0.08, cp=0.0, fyL=0.0, fyR=0.0, fxL=0.0, fxR=0.0, fwL=0.08, fwR=0.08,
+                    hL=(0.6, 0.55, 3.0), hR=(-0.6, 0.55, 3.0), pL=(0.8, -0.2, -0.3), pR=(-0.8, -0.2, -0.3), xp=0.15)),
+        (0.80, dict(hL=(0.6, 0.66, 2.85), hR=(-0.6, 0.6, 2.95), hz=-0.08)),
+        (0.88, dict(hL=(0.6, 0.55, 3.0), hR=(-0.6, 0.68, 2.85))),
+        (1.00, dict(hz=0.0, hy=0.0, hp=0.0, sp=0.0, xp=0.0, hL=None, hR=None)),
+    ]
+    return keyed_clip(R, name, frames, keys, loop=False, check_feet=False)
+
+
+def clip_pick(R, name='pick', frames=40):
+    """squat, pick something up from the ground with the right hand, stand and look at it"""
+    k = rig_k(R)
+    keys = [
+        (0.00, dict(hL=None, hR=None)),
+        (0.32, dict(hz=_hz(R, 1.72 * k), hy=0.18, hp=0.55, sp=0.42, cp=0.22, np=0.1, xp=0.2, ftL=-0.28, ftR=-0.18, fyL=0.12, fyR=-0.1,
+                    fxL=0.1, fxR=0.1, kL=(0.5, -1, 0), kR=(-0.5, -1, 0),
+                    hR=(-0.28, -1.5, 0.32), pR=(-0.6, 0.4, 0.2), hL=(0.62, -1.15, 2.05), pL=(0.8, 0.5, -0.3))),
+        (0.48, dict(hR=(-0.26, -1.48, 0.28), xp=0.24)),
+        (0.74, dict(hz=-0.05, hy=0.0, hp=0.05, sp=0.05, cp=0.0, np=0.06, xp=0.32, ftL=0.0, ftR=0.0, fyL=0.0, fyR=0.0, fxL=0.0, fxR=0.0,
+                    kL=None, kR=None, hR=(-0.35, -1.05, 4.55), pR=(-0.9, 0.6, -0.3), hL=(0.62, -0.1, 2.95), xr=0.12)),
+        (0.88, dict(hR=(-0.3, -1.0, 4.6), xr=0.16, xyaw=-0.1)),
+        (1.00, dict(hz=0.0, np=0.0, xp=0.0, xr=0.0, xyaw=0.0, hL=None, hR=None)),
+    ]
+    return keyed_clip(R, name, frames, keys, loop=False, check_feet=False)
+
+
+def clip_kite_fly(R, name='kite_fly', frames=90):
+    """flying a patang: feet apart, leaning back, eyes on the sky, the right hand high on the
+    string with three tugs, the charkhi in the left hand at the waist"""
+    up = dict(fxL=0.18, fxR=0.18, fyL=0.25, fyR=-0.2, fwL=0.25, fwR=0.2, hp=-0.06, sp=-0.1, cp=-0.06, np=-0.22, xp=-0.42,
+              hR=(-0.32, -1.25, 6.75), pR=(-1.0, 0.3, -0.2), hL=(0.42, -0.95, 3.85), pL=(0.9, 0.6, -0.3))
+    dn = dict(up, hR=(-0.3, -1.1, 6.05), sp=-0.06, hx=-0.03)
+    keys = [(0.0, up), (0.10, dn), (0.22, dict(up)), (0.33, dict(dn)), (0.45, dict(up)), (0.56, dict(dn)), (0.70, dict(up, xyaw=-0.15, nyaw=-0.06)),
+            (0.85, dict(up, xyaw=0.12, nyaw=0.05))]
+    return keyed_clip(R, name, frames, keys, loop=True, extra=breathe(0.6, 2))
+
+
+def clip_direct(R, name='direct', frames=48):
+    """a traffic constable at a junction: the left arm out (stop), the right arm waves the
+    traffic on, the head turns with it"""
+    a = dict(uaL=1.55, ufL=0.1, elL=0.12, htL=1.3, hdL=-0.5, uaR=0.35, ufR=0.15, elR=1.4, hx=0.03, xyaw=0.25, nyaw=0.1)
+    b = dict(a, ufR=1.35, uaR=0.25, elR=0.45, xyaw=-0.1, nyaw=-0.05)
+    keys = [(0.0, a), (0.5, b)]
+    return keyed_clip(R, name, frames, keys, loop=True, extra=breathe(0.5, 1))
+
+
+CART_HANDS = {'L': (0.62, -1.62, 3.42), 'R': (-0.62, -1.62, 3.42), 'pole_L': (0.9, 0.6, -0.5), 'pole_R': (-0.9, 0.6, -0.5)}
+
+
+def clip_push_cart(R, name='push_cart', scale=1.0):
+    """walking behind a handcart: shorter steps, leaning into the handle, both hands on it (the
+    cart rolls with the root, so the hands are fixed in root space)"""
+    return gait_clip_x(R, name, GAITS_X['push_cart'], frames=32, scale=scale, hands=lambda u: CART_HANDS, entry={'set': 'cart'})
+
+
+def clip_idle_cart(R, name='idle_cart', frames=120):
+    b = dict(hL=CART_HANDS['L'], hR=CART_HANDS['R'], pL=CART_HANDS['pole_L'], pR=CART_HANDS['pole_R'], sp=0.12, cp=0.06, hy=-0.05)
+    keys = [(0.0, b), (0.5, dict(b, xyaw=0.25, nyaw=0.1, hx=0.05))]
+    return keyed_clip(R, name, frames, keys, loop=True, extra=breathe(0.9, 4), entry={'set': 'cart'})
+
+
+def _feet_on_pedals(R, G, th):
+    """ankle targets / foot rotations with the balls of the feet on the pedals (kit.ride_clip)"""
+    J = R.J
+    bb = Vector(G['bb'])
+    cr = G['crank']
+    px = G['pedal_x']
+    out = {}
+    for s, sx, sign in (('L', 1, 1), ('R', -1, -1)):
+        ped = bb + Vector((sx * px, sign * cr * math.cos(th), sign * cr * math.sin(th)))
+        ang = math.atan2(sign * math.sin(th), sign * math.cos(th))
+        pitch = -0.28 - 0.18 * math.sin(ang - 0.6)
+        ball = ped + Vector((0, 0, G.get('pedal_up', 0.12)))
+        Rf = foot_rot(pitch)
+        ball_rest = Vector((sx * J['ball'][0], J['ball'][1], J['ball'][2]))
+        ankle_rest = Vector((sx * J['ankle'][0], J['ankle'][1], J['ankle'][2]))
+        out[s] = (ball + Rf.to_3x3() @ (ankle_rest - ball_rest), Rf)
+    return out
+
+
+def clip_ride_kainchi(R, G, name='ride_kainchi', frames=32):
+    """'kainchi' (scissors): a kid on a full-size Hero cycle cannot reach the saddle, so he stands
+    on the pedals beside the frame (left side) with the right leg through the triangle under the
+    top tube, leaning over to the handlebar. Authored in the cycle's model frame like ride_cycle:
+    one clip cycle = one crank turn (phase 0 = left crank back)."""
+    act = R.begin(name)
+    J = R.J
+    leg = R.leg
+    worst = 0.0
+    for fr in range(frames + 1):
+        th = 2 * math.pi * fr / frames
+        P = R.pose()
+        feet = _feet_on_pedals(R, G, th)
+        side = math.sin(th)
+        hip0 = Vector((1.05, 0.55, 3.98))
+        dip = 0.0
+        for s, sx in (('L', 1), ('R', -1)):
+            hj = hip0 + Vector((sx * R.head['thigh_L'].x, 0, 0))
+            d = (feet[s][0] - hj).length
+            if d > leg * 0.975:
+                dip = max(dip, d - leg * 0.975)
+        dip = min(dip, 0.6)
+        worst = max(worst, dip)
+        # the weight goes onto the pedal that is pushing down (the body bobs and sways with it)
+        t = Vector((hip0.x - 0.08 * side, hip0.y - J['hip'][1], hip0.z - dip - R.hip_z + 0.06 * abs(side)))
+        R.fk(P, 'root')
+        R.fk(P, 'hips', Rz(-0.32) @ Ry(-0.2 + 0.05 * side) @ Rx(0.32), t=tuple(t))
+        R.fk(P, 'spine', Rx(0.3) @ Ry(-0.14) @ Rz(-0.05))
+        R.fk(P, 'chest', Rx(0.22) @ Ry(-0.1) @ Rz(0.06 * side))
+        R.fk(P, 'neck', Rx(-0.42) @ Rz(0.18))
+        R.fk(P, 'head', Rx(-0.3) @ Rz(0.12))
+        for s, sx in (('L', 1), ('R', -1)):
+            R.fk(P, 'shoulder_' + s, Rx(0.08))
+            R.arm_ik(P, s, Vector(G['grip_' + s]), None, pole=(sx * 0.9, 0.5, -0.1))
+        for s, sx in (('L', 1), ('R', -1)):
+            ankle, Rf = feet[s]
+            R.leg_ik(P, s, ankle, Rf, Rf, pole=(sx * 0.25 + (0.35 if s == 'R' else 0.2), -1, 0.3))
+        R.key(P, fr)
+    R.end(act, 0, frames, cyclic=True)
+    kit.log('clip %s: max hip dip %.2f u' % (name, worst))
+    return {'loop': True, 'loco': False, 'ride': True, 'kainchi': True, 'frames': frames, 'fps': kit.FPS, 'duration': round(frames / kit.FPS, 4),
+            'phase': 'crank angle / 2pi (0 = left crank back)', 'vehicle': G.get('vehicle'), 'saddleDrop': G.get('saddleDrop', 0.0), 'hipDip': round(worst, 3)}
+
+
+# Seat-frame riding (scooters, motorcycle pillions): authored with the rider's root at the vehicle's
+# seat anchor (seat_driver / seat_pillion, the seat top centre): the runtime parents the model to
+# that anchor. Feet / hands are relative to the seat (kid units, adults scale with k).
+SCOOTY_KID = {'grip_L': (1.12, -2.55, 1.55), 'grip_R': (-1.12, -2.55, 1.55), 'foot': (0.62, 1.05, -2.05), 'hip': (0.0, 0.18, 0.36)}
+SCOOTY_ADULT = {'grip_L': (1.15, -2.25, 1.3), 'grip_R': (-1.15, -2.25, 1.3), 'foot': (0.62, 1.15, -1.95), 'hip': (0.0, 0.2, 0.34)}
+
+
+def clip_ride_seat(R, name, kind='scooty', frames=60, kid=False):
+    """seated riding in the seat frame: kind 'scooty' (hands on the grips, feet on the floorboard;
+    a kid's feet barely reach: on tiptoe), 'pillion' (astride behind the driver, hands at his
+    waist, feet on the pillion pegs), 'pillion_side' (side-saddle, both legs on the left, the
+    right hand on the driver's shoulder - sarees)"""
+    k = rig_k(R)
+    J = R.J
+    G = SCOOTY_KID if kid else SCOOTY_ADULT
+    hip = Vector(G['hip']) * k
+    base = dict(hz=(hip.z - R.hip_z) / k, hy=-hip.y / k, hp=-0.05, sp=0.18, cp=0.08, np=-0.12, xp=-0.08)
+    if kind == 'scooty':
+        f = G['foot']
+        tip = -0.55 if kid else 0.0
+        base.update(aL=(f[0] * k, f[1] * k, f[2] * k + R.ankle_z + (0.25 * k if kid else 0)), aR=(f[0] * k, f[1] * k, f[2] * k + R.ankle_z + (0.25 * k if kid else 0)),
+                    ftL=tip, ftR=tip, kL=(0.3, -1, 0.3), kR=(-0.3, -1, 0.3),
+                    hL=G['grip_L'], hR=G['grip_R'], pL=(0.9, 0.6, -0.3), pR=(-0.9, 0.6, -0.3), sp=0.3 if kid else 0.22)
+    elif kind == 'pillion':
+        base.update(aL=(0.95 * k, -0.15 * k, -1.85 * k + R.ankle_z), aR=(0.95 * k, -0.15 * k, -1.85 * k + R.ankle_z), ftL=-0.15, ftR=-0.15,
+                    kL=(0.6, -1, 0.3), kR=(-0.6, -1, 0.3),
+                    hL=(0.62, -1.15, (hip.z + 1.25 * k) / k), hR=(-0.62, -1.15, (hip.z + 1.25 * k) / k), pL=(1.0, 0.4, -0.4), pR=(-1.0, 0.4, -0.4), sp=0.28)
+    else:   # side-saddle: hips turned to the left, both feet on the left footrest
+        base.update(hyaw=1.35, syaw=-0.25, cyaw=-0.2, nyaw=-0.35, xyaw=-0.25,
+                    aL=(1.75 * k, -0.35 * k, -1.85 * k + R.ankle_z), aR=(-1.75 * k, 0.2 * k, -1.85 * k + R.ankle_z), ftL=0.0, ftR=0.0,
+                    kL=(1, -0.3, 0.3), kR=(1, -0.3, 0.3),
+                    hR=(-0.35, -1.4, (hip.z + 1.6 * k) / k), pR=(-0.8, 0.4, -0.4), hL=(0.85, -0.55, (hip.z + 0.45 * k) / k), pL=(0.9, 0.3, -0.4))
+    keys = [(0.0, base), (0.5, dict(base, hx=0.03, xyaw=base.get('xyaw', 0.0) + 0.12))]
+
+    def bump(t, Q):
+        Q['hz'] += 0.02 * math.sin(2 * math.pi * t * 4)
+    return keyed_clip(R, name, frames, keys, loop=True, extra=chain(breathe(0.6, 2), bump), check_feet=False,
+                      entry={'ride': True, 'frame': 'seat', 'anchor': 'seat_pillion' if kind != 'scooty' else 'seat_driver', 'geom': {kk: list(v) for kk, v in G.items()} if kind == 'scooty' else None})
+
+
+def build_clip_library(A, R, rig):
+    """every clip of the shared skeleton for `rig` ('kid' | 'adult') -> A.clips"""
+    import vehicles
+    kid = rig == 'kid'
+    k = rig_k(R)
+    scale = 1.0 if kid else R.leg / 3.1
+    C = A.clips
+    C['idle'] = kit.idle_clip(R, 'idle', frames=120)
+    C['idle_look'] = clip_idle_look(R)
+    for g in ('stroll', 'walk', 'run'):
+        C[g] = kit.gait_clip(R, g, kit.GAITS[g], frames=32, scale=scale)
+    C['sprint'] = gait_clip_x(R, 'sprint', GAITS_X['sprint'], frames=32, scale=scale)
+    if not kid:
+        C['stroll_f'] = gait_clip_x(R, 'stroll_f', GAITS_X['stroll_f'], frames=32, scale=scale, entry={'style': 'f', 'base': 'stroll'})
+        C['walk_f'] = gait_clip_x(R, 'walk_f', GAITS_X['walk_f'], frames=32, scale=scale, entry={'style': 'f', 'base': 'walk'})
+    if kid:
+        C['ride_cycle'] = kit.ride_clip(R, vehicles.hero_geom(vehicles.SADDLE_DROP['chinnu_cycle']), 'ride_cycle', frames=32, lean=0.95, hip_back=0.16, hip_up=0.24, rock=0.07)
+        C['ride_kainchi'] = clip_ride_kainchi(R, vehicles.hero_geom(0.0))
+    else:
+        C['ride_cycle'] = kit.ride_clip(R, vehicles.hero_geom(0.0), 'ride_cycle', frames=32, lean=0.8, hip_back=0.2, hip_up=0.3, rock=0.04)
+    C['ride_scooty'] = clip_ride_seat(R, 'ride_scooty', 'scooty', kid=kid)
+    C['ride_pillion'] = clip_ride_seat(R, 'ride_pillion', 'pillion', kid=kid)
+    if not kid:
+        C['ride_pillion_side'] = clip_ride_seat(R, 'ride_pillion_side', 'pillion_side', kid=False)
+    C['sit'] = clip_sit(R, 'sit', BENCH_HIP, kid=kid)
+    C['sit_step'] = clip_sit(R, 'sit_step', STEP_HIP, kid=kid)
+    C['sit_ground'] = clip_sit_ground(R)
+    C['talk'] = clip_talk(R)
+    C['wave'] = clip_wave(R)
+    C['clap'] = clip_clap(R)
+    C['fall'] = clip_fall(R)
+    C['getup'] = clip_getup(R)
+    C['pick'] = clip_pick(R)
+    C['kite_fly'] = clip_kite_fly(R)
+    if not kid:
+        C['direct'] = clip_direct(R)
+        C['push_cart'] = clip_push_cart(R, scale=scale)
+        C['idle_cart'] = clip_idle_cart(R)
+    return C

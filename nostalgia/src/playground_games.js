@@ -189,12 +189,34 @@
     const s = W.surfaceAt(x, y);
     return (s === SU.GROUND || s === SU.GRASS || s === SU.SAND || s === SU.PLAZA) && W.isWalkable(x, y);
   }
-  /** the largest axis-aligned rectangle of open ground inside [x0, y0, x1, y1] (4 u cells), or null */
-  function bestRect(x0, y0, x1, y1) {
+  /** Where the colony regulars sit or stand by schedule (npcs.js: the gate aunties' cement bench at the
+   *  home ground): the game keeps off those spots, so nobody pelts the aunties all afternoon. */
+  function staticSpots() {
+    const out = [];
+    try {
+      const SC = N.npcs && N.npcs.schedules;
+      if (!SC) return out;
+      for (const name in SC) {
+        for (const e of (SC[name] && SC[name].cast) || []) {
+          if (!e || e.counter || e.idle === 'wander' || !e.place) continue;
+          const ids = Array.isArray(e.place) ? e.place : [e.place];
+          let pl = null;
+          for (const id of ids) if (N.places[id]) { pl = N.places[id]; break; }
+          if (!pl) continue;
+          out.push({ x: pl.x + (e.off ? e.off[0] : 0), y: pl.y + (e.off ? e.off[1] : 0), id: e.id });
+        }
+      }
+    } catch (e) { N.err('pg.spots', e); }
+    return out;
+  }
+  /** the largest axis-aligned rectangle of open ground inside [x0, y0, x1, y1] (4 u cells), or null;
+   *  cells within avoid[].r of a regular's spot do not count as open */
+  function bestRect(x0, y0, x1, y1, avoid) {
     const C = 4, nx = Math.max(1, Math.floor((x1 - x0) / C)), ny = Math.max(1, Math.floor((y1 - y0) / C));
     if (nx * ny > 40000) return null;
     const good = new Uint8Array(nx * ny);
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) good[j * nx + i] = openCell(x0 + (i + 0.5) * C, y0 + (j + 0.5) * C) ? 1 : 0;
+    const near = (x, y) => { if (avoid) for (const q of avoid) if (hyp(q.x - x, q.y - y) < q.r) return true; return false; };
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const x = x0 + (i + 0.5) * C, y = y0 + (j + 0.5) * C; good[j * nx + i] = openCell(x, y) && !near(x, y) ? 1 : 0; }
     const minW = 10, minH = 9; // cells (40 x 36 u)
     let best = null, ba = 0;
     const colOk = new Uint8Array(nx);
@@ -272,8 +294,10 @@
     let bb = null;
     if (park && park.poly && park.poly.length >= 3) bb = polyBox(park.poly);
     if (!bb) { const r = Math.max(30, pl.r || 34); bb = [pl.x - r * 1.5, pl.y - r * 1.2, pl.x + r * 1.5, pl.y + r * 1.2]; }
-    // play on the open ground of the park (colony lanes cross some of them), else on the trimmed park
-    const R = bestRect(bb[0] - 4, bb[1] - 4, bb[2] + 4, bb[3] + 4) || trimRect(bb[0] + 3, bb[1] + 3, bb[2] - 3, bb[3] - 3);
+    // play on the open ground of the park (colony lanes cross some of them), else on the trimmed park; keep
+    // 11 u off a regular's bench (the gate aunties sit at the home ground's edge 07-20)
+    const avoid = staticSpots().filter((q) => q.x > bb[0] - 20 && q.x < bb[2] + 20 && q.y > bb[1] - 20 && q.y < bb[3] + 20).map((q) => ({ x: q.x, y: q.y, r: 11 }));
+    const R = (avoid.length ? bestRect(bb[0] - 4, bb[1] - 4, bb[2] + 4, bb[3] + 4, avoid) : null) || bestRect(bb[0] - 4, bb[1] - 4, bb[2] + 4, bb[3] + 4) || trimRect(bb[0] + 3, bb[1] + 3, bb[2] - 3, bb[3] - 3);
     const open = !!(R && R.x1 - R.x0 >= 40);
     const F = Object.assign(R, { key, id: key, ids: [id], name: (N.places[key] || pl).name || pl.name, place: N.places[key] || pl });
     F.w = F.x1 - F.x0; F.h = F.y1 - F.y0; F.cx = (F.x0 + F.x1) / 2; F.cy = (F.y0 + F.y1) / 2;
@@ -1741,7 +1765,20 @@
       // RUN tap: a quick dodge hop (not while holding the ball)
       if (I.pressed('run') && !me.hold && S.t - me.dashT > TUNE.maram.dashCD) {
         let dx = I.move.x, dy = I.move.y, l = hyp(dx, dy);
-        if (l < 0.2 && b.state === 'air' && b.live) { const v = hyp(b.vx, b.vy) || 1; dx = -b.vy / v; dy = b.vx / v; l = 1; }
+        // no direction held (a phone thumb on DODGE alone): sidestep ACROSS the threat — the live ball's line,
+        // else the wind-up line of whoever is about to throw — to the open side of the ground (a hop along
+        // the line, the way Chinnu happens to face, dodges nothing)
+        if (l < 0.2) {
+          let ax = 0, ay = 0;
+          if (b.state === 'air' && b.live && b.thrower !== me) { ax = b.vx; ay = b.vy; }
+          else if (S.tele && S.tele.from && S.tele.from.e && S.tele.from !== me) { ax = p.x - S.tele.from.e.x; ay = p.y - S.tele.from.e.y; }
+          else if (b.holder && b.holder !== me && b.holder.e) { ax = p.x - b.holder.e.x; ay = p.y - b.holder.e.y; }
+          const al = hyp(ax, ay);
+          if (al > 1e-3) {
+            dx = -ay / al; dy = ax / al; l = 1;
+            if ((S.F.cx - p.x) * dx + (S.F.cy - p.y) * dy < 0 || !walk(p.x + dx * 10, p.y + dy * 10)) { dx = -dx; dy = -dy; }
+          }
+        }
         if (l < 0.2) { dx = Math.cos(p.angle); dy = Math.sin(p.angle); l = 1; }
         p.vx += (dx / l) * TUNE.maram.dashV; p.vy += (dy / l) * TUNE.maram.dashV;
         me.dashT = S.t; log(S, 'dodge');
