@@ -87,3 +87,6 @@ ERROR MeshOptimizer is not available because library could not be found at /home
 [kit] variant render aunty_saree run_13 (16.6s)
 06:05.867  render           | Saved: '/tmp/nostalgia_blender/aunty_saree_v_14.png'
 [kit] variant render aunty_saree run_14 (8.0s)
+06:11.658  render           | Saved: '/tmp/nostalgia_blender/aunty_saree_v_15.png'
+[kit] variant render aunty_saree run_15 (5.8s)
+[kit] variants sheet /home/user/DS/nostalgia/assets3d/previews/aunty_saree_gait.png

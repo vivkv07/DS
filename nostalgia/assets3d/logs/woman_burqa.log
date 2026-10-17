@@ -1,0 +1,3 @@
+00:00.436  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building woman_burqa (character)
+[kit] tris by part: torso 250, head 248, skirt_burqa 224, specs 220, arm_L 156, arm_R 156, burqahood 140, jhola 136, eye 96, strap 88, foot_L 80, sole 80, foot_R 80, ear 64, leg_L 60, leg_R 60, hand_L 56, hand_R 56, heel_strap 52, toe_loop 52, lid 52, brow 52, nose 52, thumb_L 26, thumb_R 26, mouth 26, glint 24

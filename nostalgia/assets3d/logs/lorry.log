@@ -61,3 +61,8 @@ ERROR MeshOptimizer is not available because library could not be found at /home
 21:54:45 | INFO: Data are loaded, start creating Blender stuff
 21:54:45 | INFO: Blender create Mesh node lorry
 21:54:46 | INFO: glTF import finished in 0.92s
+07:25.493  render           | Saved: '/tmp/nostalgia_blender/lorry_var_2.png'
+[kit] render lorry_var_2.png (256px, 14 spp) in 10.4s
+21:54:57 | INFO: Data are loaded, start creating Blender stuff
+21:54:57 | INFO: Blender create Mesh node lorry
+21:54:58 | INFO: glTF import finished in 0.66s

@@ -67,3 +67,8 @@ ERROR MeshOptimizer is not available because library could not be found at /home
 21:54:49 | INFO: Data are loaded, start creating Blender stuff
 21:54:49 | INFO: Blender create Mesh node city_bus
 21:54:49 | INFO: glTF import finished in 0.55s
+07:32.983  render           | Saved: '/tmp/nostalgia_blender/city_bus_var_1.png'
+[kit] render city_bus_var_1.png (256px, 14 spp) in 14.3s
+21:55:04 | INFO: Data are loaded, start creating Blender stuff
+21:55:04 | INFO: Blender create Mesh node city_bus
+21:55:04 | INFO: glTF import finished in 0.23s
