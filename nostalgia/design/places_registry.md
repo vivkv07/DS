@@ -342,3 +342,14 @@ shown with respect; founders and owners stay unnamed in game text.
 
 Pending, not in the game until a source confirms they were running in 2000-2003:
 `jubilee_bus_station`, `bhramaramba_mallikarjuna_theatres` (see `research_all_places.md`).
+
+## Round 12 (user, binding): a cricket match at LB Stadium
+
+A full, playable **cricket match at `lb_stadium`** is a must-have story event: Chinnu's
+side plays on the real stadium ground (e.g. the inter-school under-12 final or the colony
+league final that gets its final at LB Stadium), with stands and crowds, floodlight
+towers, the scoreboard, an umpire, fielders, a 90s TV-broadcast look (score bug, replays
+announced in text, Hinglish/Telugu commentary lines, no real players' names) and both
+**batting and bowling**. Ayesha "Bowling" Fatima and Immu should be part of it. It is
+replayable afterwards as an exhibition match. Engine: `src/cricket_match.js`
+(minigame id `match`); the story wires it in (bible M4 or a side activity, writers' call).

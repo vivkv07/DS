@@ -42,7 +42,7 @@
  *     (cement bench at playground_1, 07-20, "Ask aunty" -> N.hints.next('aunty')), faramarz
  *     (irani_cafe_19 / cafe_noor_e_iran, 07-23), kite_chacha (his roof by Patang Bazaar, 07-19),
  *     shopkeepers (Salim, Agarwal-ji, Ramulu, Lakshmamma, Raj-uncle, Net-uncle, Ticket Thatha),
- *     ammamma_swing (home verandah, 06-21, talk -> N.hints.next('ammamma')), bahadur_night,
+ *     ammamma_swing (home verandah, 06-21, talk -> N.hints.next('home')), bahadur_night,
  *     pochaiah_podium (hidden while the Chappal Meter is >= 3), cable_babji, tiger_ground,
  *     vimala_school. Off by default: immu_hangout (post-game, bible §9.5), ayesha_nets.
  *     A key the story spawned itself is never moved or removed by a schedule.
@@ -51,8 +51,10 @@
  *   N.npcs.planPath(x0, y0, x1, y1) -> [{x, y}] | null (debug / other AI)
  * Events: npc:spawn {key, id, actor}, npc:despawn {key, id}, npc:talk {key, id, actor},
  *   npc:arrive {key, id}. Save section 'npcs' {schedules}.
- * Hints hook: Ammamma's and the aunties' default talk call N.hints.next('ammamma' | 'aunty')
- *   when N.hints exists; a falsy / false result (or a throw) falls back to their own lines.
+ * Hints hook (storycore N.hints): Ammamma's default talk shows N.hints.next('home').text, the
+ *   gate aunties' N.hints.next('aunty').text, Old City locals (Patang Chacha, Faramarz, the bangle /
+ *   attar / bird / chappal / papad sellers) N.hints.next('city').text inside the Old City; with no
+ *   active clue (null) they say one of their own lines.
  */
 (() => {
   'use strict';
@@ -356,6 +358,8 @@
   W('immu_tape', 'Immu (tape)', '#2a8c82', 1.3, DEFS.immu.look, Object.assign({}, DEFS.immu.portrait, { tape: true }), { style: 'tape' });
   W('imran_tape', 'Imran (tape)', '#2a8c82', 0.98, IMRAN_LOOK, Object.assign({}, IMRAN_PORTRAIT, { tape: true, tapeLabel: '#f4f0e8' }), { style: 'tape' });
 
+  for (const id of ['kite_chacha', 'faramarz', 'bangle_man', 'attar_man', 'bird_man', 'chappal_man', 'papad_man']) if (DEFS[id]) DEFS[id].cityLocal = true;
+
   /* ================================================== special portraits (functions) */
   const PORTRAIT_FN = {
     radio(ctx, w, h, mood) { // a 2-in-1 radio-cassette with a glowing dial
@@ -450,7 +454,12 @@
     const D = N.dialogue;
     if (!D || !D.define) return 0;
     let n = 0;
-    for (const id in DEFS) { D.define(id, speakerSpec(id)); n++; }
+    for (const id in DEFS) {
+      const ex = D.speakers && D.speakers[id];
+      if (ex && !ex._cast) continue; // story / another module defined this speaker itself: keep theirs
+      D.define(id, Object.assign(speakerSpec(id), { _cast: true }));
+      n++;
+    }
     return n;
   }
 
@@ -818,6 +827,8 @@
       this._shadowFn = () => N.draw.shadow(self.x, self.y, 7, 9, self.angle, 1.5);
       this._skyFn = (ctx) => drawOverhead(ctx, self);
     }
+    /** called by N.world.roofs when this actor stands on a roof (h = floor height) */
+    roofDraw(h) { this.drawH = h; N.draw.sprite(this.x, this.y, this.angle, h + 8, this._paint); }
     get look() { return this._lookOverride || lookOf(this.npcId); }
     set look(v) { this._lookOverride = v || null; }
     get name() { return displayName(this.npcId); }
@@ -1146,7 +1157,7 @@
     const v = a.vehicle;
     const ok = N.vehicles.exit(a, !N.render.inView(v.x, v.y, 20));
     if (!ok) N.vehicles.exit(a, true);
-    v.controller = null; v.noEnter = false;
+    v.controller = null; v.noEnter = !!v.npcOwned;
     a.vehicle = null; a.noCollide = false;
     a.homeX = a.x; a.homeY = a.y;
     return true;
@@ -1259,7 +1270,7 @@
   function drawOverhead(ctx, a) {
     const R = N.render;
     const v = a.vehicle || a;
-    const k = R.k(17 + a.roofH);
+    const k = R.k(17 + (a.level ? a.drawH || 0 : a.roofH));
     const X = Math.round(R.sx(v.x, k)), Y0 = Math.round(R.sy(v.y, k)) - 12;
     const e = a.emoteSt;
     const kind = e ? e.kind : 'talk';
@@ -1344,13 +1355,12 @@
       else if (typeof t === 'string') await N.dialogue.say(id, t);
       else {
         let handled = false;
-        const src = id === 'ammamma' ? 'ammamma' : /^aunty/.test(id) ? 'aunty' : null;
+        const def = DEFS[id] || {};
+        const src = id === 'ammamma' ? 'home' : /^aunty/.test(id) ? 'aunty' : def.cityLocal && inOldCity(a) ? 'city' : null;
         if (src && N.hints && typeof N.hints.next === 'function') {
-          try {
-            let r = N.hints.next(src, { npc: id, actor: a });
-            if (r && typeof r.then === 'function') r = await r;
-            handled = !(r === false || r == null);
-          } catch (e) { N.err('npcs.hints', e); handled = false; }
+          let r = null;
+          try { r = N.hints.next(src, { npc: id, actor: a }); if (r && typeof r.then === 'function') r = await r; } catch (e) { N.err('npcs.hints', e); r = null; }
+          if (r && r.text) { await N.dialogue.say(id, r.text, { mood: r.refused ? 'worried' : r.deflect ? 'wink' : 'neutral' }); handled = true; }
         }
         if (!handled) {
           const line = pickLine(a, false);
@@ -1359,6 +1369,9 @@
       }
     } catch (e) { N.err('npcs.talk:' + id, e); }
     a.talking = false;
+  }
+  function inOldCity(a) {
+    try { const d = N.world.districtAt(a.x, a.y); return !!(d && (d.style === 'oldcity' || d.style === 'market' && /charminar|old|gulzar|laad|pathergatti/.test(d.id || ''))); } catch (e) { return false; }
   }
   function addInteract(a) {
     removeInteract(a);
@@ -1371,7 +1384,7 @@
     };
     N.interact.add('npc:' + a.key, spec);
   }
-  function playerOnRoof(a) { const p = N.player; return !!(p && (p.roofH || p.z || p.h) >= a.roofH - 4); }
+  function playerOnRoof(a) { const p = N.player; return !!(p && p.level); }
   function removeInteract(a) { if (N.interact && N.interact.remove) N.interact.remove('npc:' + a.key); }
 
   /* ================================================================ spawn / despawn */
@@ -1379,17 +1392,31 @@
     opts = opts || {};
     if (!N.world || !N.world.built) { N.err('npcs.spawn', new Error('world not built yet: ' + id)); return null; }
     const key = opts.key || id;
-    if (!DEFS[id]) DEFS[id] = { id, name: String(id).replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()), color: '#f2c230', voice: 1, look: N.people.randomLook(U.rng('npc:' + id)), portrait: null, generated: true };
+    if (!DEFS[id]) {
+      const gl = N.people.randomLook(U.rng('npc:' + id));
+      DEFS[id] = { id, name: String(id).replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()), color: U.rng('c:' + id).pick(['#f2c230', '#2a8c82', '#d8402a', '#7a3a8a', '#3a8a3a', '#c86a2a']), voice: 1, look: gl, portrait: { kind: gl.kind, skin: gl.skin, hair: gl.hair, shirt: gl.shirt, dupatta: gl.kind === 'woman' ? gl.dupatta : undefined, saree: gl.saree, border: gl.border }, generated: true };
+      if (N.dialogue && N.dialogue.define && !(N.dialogue.speakers || {})[id]) N.dialogue.define(id, Object.assign(speakerSpec(id), { _cast: true }));
+    }
     const pos = posOf(target == null ? 'player' : target);
     if (!pos) { N.err('npcs.spawn', new Error('unknown target for ' + id + ': ' + JSON.stringify(target))); return null; }
     let x = pos.x, y = pos.y;
     if (target === 'player' || pos.entity === N.player) { const ang = (N.player.angle || 0) + Math.PI * 0.75; x += Math.cos(ang) * 16; y += Math.sin(ang) * 16; }
     if (opts.off) { x += opts.off[0]; y += opts.off[1]; }
-    const roofH = opts.roof === false ? 0 : (opts.roofH || (opts.roof || (pos.place && (pos.place.roof || pos.place.kind === 'terrace' || pos.place.kind === 'roof')) ? roofHeight(pos.place || { x, y, roof: opts.roof }) : 0));
-    if (!roofH && opts.free !== false) { const f = freeSpot(x, y, 80); if (f) { x = f.x; y = f.y; } }
+    const RFS = N.world.roofs && typeof N.world.roofs.place === 'function' ? N.world.roofs : null;
+    let roofId = null;
+    if (RFS && opts.roof !== false) {
+      if (typeof opts.roof === 'string') roofId = opts.roof;
+      else if (pos.place && pos.place.level && RFS.get(pos.place.level)) roofId = pos.place.level;
+      else if (pos.place && RFS.get(pos.place.id)) roofId = pos.place.id;
+      else { const z = RFS.at(x, y); if (z && z.roof && (opts.roof || (pos.place && (pos.place.kind === 'terrace' || pos.place.kind === 'roof')))) roofId = z.roof.id; }
+    }
+    // without the roof runtime: stand on the place, drawn at roof height (fallback)
+    const roofH = roofId || opts.roof === false ? 0 : (opts.roofH || (opts.roof || (pos.place && (pos.place.roof || pos.place.kind === 'terrace' || pos.place.kind === 'roof')) ? roofHeight(pos.place || { x, y, roof: opts.roof }) : 0));
+    if (!roofH && !roofId && opts.free !== false) { const f = freeSpot(x, y, 80); if (f) { x = f.x; y = f.y; } }
     let a = registry.get(key);
     if (a && a.alive) {
       if (a.vehicle) dismount(key);
+      if (a.level && RFS && RFS.remove) RFS.remove(a, x, y);
       a.x = x; a.y = y; a.vx = a.vy = 0; a.homeX = x; a.homeY = y; a.roofH = roofH;
       if (opts.angle != null) { a.angle = a.baseAngle = opts.angle; }
       if (opts.idle) a.idle = opts.idle;
@@ -1410,6 +1437,10 @@
       addInteract(a);
       N.emit('npc:spawn', { key, id, actor: a });
     }
+    if (roofId && RFS) {
+      if (!RFS.place(a, roofId, x, y)) { const f = freeSpot(x, y, 80); if (f) { a.x = f.x; a.y = f.y; } }
+      a.homeX = a.x; a.homeY = a.y;
+    }
     if (opts.vehicle) ride(key, opts.vehicle === true ? undefined : opts.vehicle);
     if (opts.emote) emote(key, opts.emote);
     return a;
@@ -1428,6 +1459,7 @@
     }
     if (a.ownVehicle && a.ownVehicle.alive && a.ownVehicle.npcOwned && !a.ownVehicle.driver && !N.render.inView(a.ownVehicle.x, a.ownVehicle.y, 20)) N.vehicles.remove(a.ownVehicle);
     a.followSt = null;
+    if (a.level && N.world.roofs && N.world.roofs.remove) { try { N.world.roofs.remove(a); } catch (e) { N.err('npcs.roof', e); } }
     removeInteract(a);
     if (registry.get(key) === a) { registry.delete(key); delete N.npcs.list[key]; }
     if (a.alive) N.entities.remove(a);
@@ -1534,7 +1566,7 @@
       { id: 'net_uncle', place: 'internet_cafe_1', counter: true, idle: 'stand', hours: H(10, 22) },
       { id: 'ticket_thatha', place: 'koti_bus_stand', off: [24, 18], idle: 'sit', bench: true, hours: H(8, 18) },
     ] },
-    ammamma_swing: { on: true, hours: H(6, 21), cast: [{ id: 'ammamma', place: 'home', off: [-16, 4], idle: 'sit', bench: true, angle: Math.PI / 2 }] },
+    ammamma_swing: { on: true, hours: H(6, 21), cast: [{ id: 'ammamma', place: 'home', off: [-30, -2], idle: 'sit', bench: true, angle: Math.PI / 2 }] },
     bahadur_night: { on: true, hours: H(20, 6), cast: [{ id: 'bahadur', place: 'home', off: [70, 14], idle: 'wander', r: 46 }] },
     pochaiah_podium: { on: true, hours: H(8, 20), hideWhen: () => !!(N.wanted && N.wanted.level >= 3), cast: [{ id: 'pochaiah', place: 'rtc_x_roads', idle: 'work', off: [0, 0] }] },
     cable_babji: { on: true, hours: H(17, 20), cast: [{ id: 'cable_babji', place: 'kirana_3', idle: 'wander', r: 70 }] },
@@ -1569,8 +1601,11 @@
     if (!pos) { anchorCache.set(k, null); return null; }
     let out;
     const pl = pos.place;
-    const roofH = pl && (pl.roof || pl.kind === 'terrace' || pl.kind === 'roof') ? roofHeight(pl) : 0;
-    if (roofH) out = { x: pl.x + (e.off ? e.off[0] : 0), y: pl.y + (e.off ? e.off[1] : 0), angle: Math.PI / 2, roofH };
+    const RFS = N.world.roofs && N.world.roofs.get ? N.world.roofs : null;
+    const roofId = pl && RFS ? (pl.level && RFS.get(pl.level) ? pl.level : RFS.get(pl.id) ? pl.id : null) : null;
+    const roofH = !roofId && pl && (pl.roof || pl.kind === 'terrace' || pl.kind === 'roof') ? roofHeight(pl) : 0;
+    if (roofId) out = { x: pl.x + (e.off ? e.off[0] : 0), y: pl.y + (e.off ? e.off[1] : 0), angle: e.angle != null ? e.angle : Math.PI / 2, roofId };
+    else if (roofH) out = { x: pl.x + (e.off ? e.off[0] : 0), y: pl.y + (e.off ? e.off[1] : 0), angle: Math.PI / 2, roofH };
     else if (e.counter && pl) out = counterSpot(pl);
     else { const f = freeSpot(pos.x + (e.off ? e.off[0] : 0), pos.y + (e.off ? e.off[1] : 0), 60) || pos; out = { x: f.x, y: f.y, angle: e.angle != null ? e.angle : Math.PI / 2 }; }
     if (e.angle != null) out.angle = e.angle;
@@ -1608,13 +1643,13 @@
         if (want && an) {
           const d = Math.hypot(p.x - an.x, p.y - an.y);
           if (!a && d < 640) {
-            const r = spawn(e.id, { x: an.x, y: an.y }, { key, idle: e.idle, angle: an.angle, bench: e.bench, r: e.r, owner: 'sched:' + name, free: !an.roofH && !e.counter, roofH: an.roofH || 0, roof: an.roofH ? true : false });
+            const r = spawn(e.id, { x: an.x, y: an.y }, { key, idle: e.idle, angle: an.angle, bench: e.bench, r: e.r, owner: 'sched:' + name, free: !an.roofH && !e.counter, roofH: an.roofH || 0, roof: an.roofId || (an.roofH ? true : false) });
             if (r && e.emote && Math.random() < 0.5) emote(key, e.emote, 3);
           } else if (a && d > 820 && !N.render.inView(a.x, a.y, 40)) despawn(a);
         } else if (a && !N.render.inView(a.x, a.y, 30)) despawn(a);
         else if (a && !want && !a.walk) { // leave walking (off the screen, then gone)
           a.idle = 'stand';
-          if (!a.leaving) { a.leaving = true; const f = N.world.nearestRoadPoint ? N.world.nearestRoadPoint(a.x, a.y) : null; walkTo(key, f ? { x: f.x + 200, y: f.y } : { x: a.x + 200, y: a.y }, { timeout: 30 }).then(() => { if (a.alive && !N.render.inView(a.x, a.y, 30)) despawn(a); }); }
+          if (!a.leaving) { a.leaving = true; const f = N.world.nearestRoadPoint ? N.world.nearestRoadPoint(a.x, a.y) : null; const gone = () => { if (a.alive && !N.render.inView(a.x, a.y, 30)) despawn(a); }; walkTo(key, f ? { x: f.x + 200, y: f.y } : { x: a.x + 200, y: a.y }, { timeout: 30 }).then(gone, gone); }
         }
       }
     }
@@ -1667,6 +1702,7 @@
   };
 
   /* ================================================================ system + lifecycle */
+  let lastYear = null;
   function resetAll() {
     for (const a of Array.from(registry.values())) despawn(a);
     registry.clear();
@@ -1676,7 +1712,6 @@
     anchorCache.clear();
     abortJobsFor(null);
   }
-  N.on('mission:fail', () => abortJobsFor(N.missions && N.missions.active || undefined));
   for (const ev of ['mission:abort', 'mission:complete', 'mission:fail']) N.on(ev, () => { setTimeout(() => { for (const j of Array.from(pendingJobs)) if (!j.done && j.run && N.missions && N.missions.active !== j.run) { pendingJobs.delete(j); for (const a of registry.values()) { if (a.walk === j) a.walk = null; if (a.drive === j) a.drive = null; } settle(j, false); } }, 0); });
   N.on('game:new', () => { applyPlayerLook(); });
   N.on('game:continue', () => applyPlayerLook());
@@ -1697,7 +1732,12 @@
         });
       }
     },
+    draw() {
+      for (const a of registry.values()) if (a.level && a.alive && !a.vehicle && (a.emoteSt || isTalkFocus(a)) && N.render.inView(a.x, a.y, 40)) N.render.queue('sky', 1, a._skyFn);
+    },
     update(dt) {
+      const y = is2026();
+      if (y !== lastYear) { lastYear = y; applyPlayerLook(); }
       if (N.state.mode === 'play') runSchedules(dt);
     },
     reset() { resetAll(); },

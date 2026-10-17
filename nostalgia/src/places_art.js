@@ -1,58 +1,82 @@
 /* NOSTALGIA — places_art.js  (owner: street-life artist)
  *
  * Pseudo-3D art for the civic / transport / market / cinema draw ids of N.WORLD_DATA.landmarks
- * (design/map_plan.md §4b) and the everyday street life of 1990s/2003 Hyderabad: kirana stores,
- * Irani cafes, pindi girnis, stationery shops, pushcarts (banana, flower, samosa, dosa, coconut,
- * chai), STD booths, bus stops, schools, colony playgrounds, cinemas with hand-painted hoardings
- * (fictional films only), Koti bus stand, Imlibun (MGBS), Gokul Chat, Rythu Bazaars, Numaish,
- * Prasads IMAX (fence / opening day / open), NTR Gardens (open / work in progress)...
- * Everything is data driven: a landmark's `draw` id picks its art, `face` its shopfront side,
- * `sign` / `films` / `variant` / `era` / `seasonal` its details; place kinds without a landmark
- * (playground_*, ntr_gardens, street markets) get decorations from N.WORLD_DATA.places.
+ * (design/map_plan.md §4b) and the everyday street life of 2003 Hyderabad: kirana stores, Irani
+ * cafes, pindi girnis, stationery shops, barbers, cycle-rent and video-game parlours, medical and
+ * meat shops, photo studios, internet cafes, bakeries, bangle shops; pushcarts (banana, flower,
+ * samosa, dosa, coconut, chai, kite and book stalls); STD/ISD/PCO booths; bus stops; schools;
+ * the player's home with its terrace; colony playgrounds; cinemas with hand-painted hoardings
+ * (fictional films only); Koti bus stand, Imlibun (MGBS), the Gowliguda hangar; Gokul Chat;
+ * Rythu Bazaars; Numaish (gate, stalls, giant wheel, maut ka kuan); Prasads IMAX (tin fence +
+ * crane / opening day / open); NTR Gardens (open / work in progress); hospitals, GPO, colleges,
+ * library, auditorium, AIR mast, Doordarshan tower, Gachibowli stadium, market halls, film
+ * studios, club, Ameerpet coaching centres, Trendz, HITEX, gates, jetty, musical fountain, dhobi
+ * ghat, Dhoolpet idol workshops, the parked plane at Begumpet and the suburban halts.
  *
- * Loads after src/landmarks.js and registers its draw ids with N.landmarks.register(drawId, def)
- * using the kit-style defs {init, draw, shadow, lights, night, floor, ground} (landmarks.js calls
- * them with its frame state set, reports errors through N.err and falls back to drawDefault).
- * It deliberately does NOT register mozamjahi_market, railway_station, lb_stadium,
- * airport_terminal and control_tower: src/landmarks.js already has fine art for those
- * (agreed split; register them here later to override if needed).
+ * Data driven: a landmark's `draw` id picks its art; `face` = shopfront side; `sign`, `films` /
+ * `film`, `variant` (cinema: sandhya|sudarshan|odeon|devi, school: hps, home_house: friend,
+ * market_hall: fruit, video_parlour: recording|tv_radio), `solids` (bus shelters, MGBS terminal,
+ * hangar walls, rythu bazaar counters, gate piers), `era`, `seasonal`, `sign2` drive the details.
+ * Place kinds without a landmark get decorations from N.WORLD_DATA.places: every playground_*
+ * (pitch + stumps, swings, slide, see-saw, merry-go-round, kids at gully cricket, a Ganesh pandal
+ * in season), ntr_gardens (Machan tree, waterfall, mini train, Nandi statues, flower beds) and
+ * the street markets (patang_bazaar, laad_bazaar, pathergatti, sultan_bazaar, begum_bazaar,
+ * abids_book_market, general_bazaar, chappal_bazar, dhoolpet: stalls placed on free footpath).
+ *
+ * Registration: N.landmarks.register(drawId, kit-style def {init, draw, shadow, lights, night,
+ * floor, ground}); landmarks.js calls them with its frame state set, isolates errors (N.err +
+ * drawDefault fallback) and lazily runs init on first enqueue. This file does NOT register
+ * mozamjahi_market, railway_station, lb_stadium, airport_terminal and control_tower: the
+ * monument artist's src/landmarks.js already has good art for those (agreed split).
  *
  * Hooks added from this file only (no core file is edited):
- *  - a system 'placesArt' (order 43, every mode) animates the mini train, the giant wheel, the
- *    see-saws... and in draw() queues people (vendors, queues, crowds) on the 'actors' layer,
- *    casts shadows, pushes night lights and queues the place-driven decorations (playground
- *    kits, NTR Gardens, street-market stalls, Ganesh pandals) on 'structures' / 'light'.
- *  - wraps N.render.setGroundPainter (composed after world.js's painter, before world_extras.js
- *    rails, same technique as world_extras.js) to paint cricket pitches in colony playgrounds,
- *    the NTR Gardens train loop / flower beds and market floors into the static ground chunks.
- *  - on 'world:built' makes the parked buses in bus termini / MGBS / the CBS hangar solid in the
- *    collision grid (never within 14 u of a place point) so you cannot drive through them.
+ *  - system 'placesArt' (order 43, every mode): update() turns the giant wheel / maut-ka-kuan
+ *    bike; draw() queues people (vendors, queues, crowds, kids; cached sprites drawn with
+ *    N.people.draw) on 'actors', and the place-driven decorations on 'structures' / 'light'
+ *    (with cast shadows and night lights).
+ *  - wraps N.render.setGroundPainter (composed after world.js's painter and inside
+ *    world_extras.js's rails wrapper, same technique) to paint pitches, NTR beds + train loop and
+ *    the NTR construction soil into the static ground chunks (chunks repaint on variant change).
+ *  - on 'world:built': builds the decorations and makes the parked art buses (Koti, Rathifile,
+ *    Mehdipatnam, MGBS, hangar) SOLID in the collision grid, never within 9 u of a place point.
+ *  - walk-under roofs (bus shelters, MGBS canopies, hangar, rythu sheds, halt shelters) fade
+ *    when the player is under them.
  *
  * API: N.placesArt = {
- *   drawProp(kind, x, y, angle, opts)   draw a prop now (call inside a render-queue callback);
- *                                       kinds: see N.placesArt.PROPS (banana_cart, flower_cart,
- *                                       samosa_bandi, dosa_bandi, coconut_cart, chai_bandi,
- *                                       kite_stall, book_stall, std_booth, bus_stop, sintex_tank,
- *                                       antenna, stumps, swing, slide, seesaw, sack, crate,
- *                                       cycle, hoarding, pandal, haleem_bhatti, ice_gola, ...)
- *   queueProp(kind, x, y, angle, opts)  same, queued on 'structures' this frame (+ shadow)
+ *   drawProp(kind, x, y, angle, opts) -> bool   draw a prop now (inside a render-queue callback).
+ *       kinds: N.placesArt.PROPS = carts (banana_cart, flower_cart, samosa_bandi, dosa_bandi,
+ *       coconut_cart, chai_bandi, kite_stall, book_stall; any angle), props (sintex_tank,
+ *       antenna, stumps, swing, slide, seesaw, sack, crate, cycle, bus, hoarding, pandal,
+ *       haleem_bhatti, ice_gola, umbrella, steam, nandi, jcb, tower_crane) and every registered
+ *       draw id (std_booth, bus_stop, kirana, irani_cafe, ...; angle snapped to N/S/E/W).
+ *       opts: {seed, sign, film, livery, route, color, h, w, d, r, c1, c2}
+ *   queueProp(kind, x, y, angle, opts)       same, queued on 'structures' this frame (+ shadow)
  *   fx: { prasads: null|'fence'|'opening'|'open', ntr: null|'open'|'construction',
- *         numaish, ganesh, sankranti, ramzan, chandRaat, summer, worldCup: null(auto)|bool,
+ *         numaish, ganesh, sankranti, ramzan, chandRaat, summer, worldCup: null (auto) | bool,
  *         hitex: null|'construction'|'open' }   story overrides; null = automatic
- *   variant(id)                          current art variant of a landmark/place id
- *   PROPS, version }
- * Automatic switches (when fx.* is null) read N.flags (flag, N.flags.festival === id or
- * N.flags.festivals[]) and the in-game date (N.clock.baseDate + day):
- *   prasads_open / prasads (='fence'|'opening'|'open') / date >= 25 Jul 2003  -> Prasads open,
- *   prasads_opening or 25 Jul 2003 -> opening-day banners + crowd; ntr_construction /
- *   ntr_gardens_construction -> NTR Gardens work in progress (default: open, since 2001);
- *   numaish (or Jan 1 - Feb 15) -> Numaish stalls open, wheel turning; ganesh -> pandals in
- *   playgrounds, idol workshops busy; sankranti -> kites; ramzan -> haleem bhattis at Old City
- *   hotels; chand_raat -> bangle shops lit; summer -> ice-gola carts at school gates;
- *   world_cup -> crowds at shop TVs; hitex_open or date >= 14 Jan 2003 -> HITEX built.
- * Performance: facades use the kit's cached facade geometry; roofs, hoardings, vegetable heaps
- * and people are cached sprites; signs are fitted once per zoom bucket; everything is culled
- * to the view; per-frame work is allocation free in the hot loops.
+ *   switches() -> resolved switches, variant(id) -> current art variant of a landmark/place id,
+ *   decorList(), perf() -> {ms (this module's cost last frame), calls, initMs, sprites},
+ *   prepareAll() (build every landmark's art state now), defs, PROPS, version }
+ * Automatic switches (when fx.* is null) read N.flags (flag, N.flags.festival === id or listed
+ * in N.flags.festivals) and the in-game date (N.clock.baseDate + day), per design/story_bible.md:
+ *   Prasads: N.flags.prasads ('fence'|'opening'|'open'), prasads_opening or 25 Jul 2003 ->
+ *   opening-day banners, balloons + crowd; prasads_open or date >= 25 Jul 2003 -> open; else the
+ *   tin fence "PRASADS / COMING SOON / THE GIANT SCREEN" round a concrete frame and a crane.
+ *   NTR Gardens: open (since Dec 2001) unless ntr_construction / ntr_gardens_construction /
+ *   ntr_gardens === 'construction'. numaish (or 1 Jan - 15 Feb): stalls open, wheel turning,
+ *   bulbs. ganesh* flags (or 31 Aug - 9 Sep 2003): pandals in playgrounds, idol workshops busy.
+ *   sankranti (or 10-16 Jan): kites over the home terrace and on antennas, kite stalls busy.
+ *   ramzan / chand_raat (or 27 Oct - 25 Nov 2003): haleem bhattis at the Old City hotels,
+ *   bangle-shop bulb strings. summer (24 Apr - 11 Jun): ice-gola carts at school gates.
+ *   world_cup (9 Feb - 23 Mar 2003): crowds at the TV shop. hitex_open or >= 14 Jan 2003: HITEX.
+ * Crowds follow the clock: school bells, show times at the cinemas, Sunday-morning queue at the
+ * meat shop, Thursday at the flower carts, morning dosa / evening samosa carts, lunch and dinner
+ * at the biryani houses. Signs are hand-painted boards fitted once with the 3x5 pixel font
+ * (place-name suffix and hyphen splitting, distinctive word before generic word).
+ * Performance: facades use the kit's cached facade geometry; roofs, vegetable heaps, cart loads,
+ * film boards and people are cached sprites; per-frame work is culled to the view. Measured
+ * (N.placesArt.perf, headless desktop): ~0.5-2.5 ms per frame in the densest views (Gulzar Houz
+ * bazaar, Koti, RTC X Roads), ~10 ms one-off at world build.
  */
 (() => {
   'use strict';
@@ -222,7 +246,7 @@
   function peep(p, x, y, a) {
     const k = kh(0.6), c = (Math.cos(a) * k) / PRES, s = (Math.sin(a) * k) / PRES;
     ctx.setTransform(c, s, -s, c, sx(x, k), sy(y, k));
-    ctx.drawImage(p.img, -PSZ / 2, -PSZ / 2);
+    ctx.drawImage(p.img || (p.img = personImg(p.kind, p.i, p.look)), -PSZ / 2, -PSZ / 2);
   }
   function drawPeople(list, n) {
     ctx.imageSmoothingEnabled = true;
@@ -240,7 +264,7 @@
   }
   function person(kind, i, x, y, a, opts) {
     const o = opts || {};
-    return { kind, x, y, a, img: personImg(kind, i, o.look), ph: (i * 1.7 + x * 0.13) % TAU, sway: o.sway == null ? 0.6 : o.sway, sp: o.sp || 1.3, turn: o.turn || 0, t0: o.t0, t1: o.t1, need: o.need || 0 };
+    return { kind, i, look: o.look, x, y, a, img: null, ph: (i * 1.7 + x * 0.13) % TAU, sway: o.sway == null ? 0.6 : o.sway, sp: o.sp || 1.3, turn: o.turn || 0, t0: o.t0, t1: o.t1, need: o.need || 0 };
   }
 
   /* =========================================================== world time / flags */
@@ -282,10 +306,10 @@
     if (!nt) nt = F.ntr_construction || F.ntr_gardens_construction || F.ntr_gardens === 'construction' ? 'construction' : 'open';
     S.ntr = nt;
     S.numaish = fx.numaish != null ? !!fx.numaish : flagOn('numaish') || (F.numaish !== false && md >= 101 && md <= 215);
-    S.ganesh = fx.ganesh != null ? !!fx.ganesh : flagOn('ganesh') || flagOn('ganesh_chaturthi') || flagOn('vinayaka_chavithi') || flagOn('ganesh_immersion');
+    S.ganesh = fx.ganesh != null ? !!fx.ganesh : flagOn('ganesh') || flagOn('ganesh_chaturthi') || flagOn('vinayaka_chavithi') || flagOn('ganesh_immersion') || (F.ganesh !== false && T.ymd >= 20030831 && T.ymd <= 20030909);
     S.sankranti = fx.sankranti != null ? !!fx.sankranti : flagOn('sankranti') || (F.sankranti !== false && md >= 110 && md <= 116);
-    S.ramzan = fx.ramzan != null ? !!fx.ramzan : flagOn('ramzan') || flagOn('chand_raat') || flagOn('ramadan');
-    S.chandRaat = fx.chandRaat != null ? !!fx.chandRaat : flagOn('chand_raat') || flagOn('eid');
+    S.ramzan = fx.ramzan != null ? !!fx.ramzan : flagOn('ramzan') || flagOn('chand_raat') || flagOn('ramadan') || (F.ramzan !== false && T.ymd >= 20031027 && T.ymd <= 20031125);
+    S.chandRaat = fx.chandRaat != null ? !!fx.chandRaat : flagOn('chand_raat') || flagOn('eid') || (F.chand_raat !== false && T.ymd === 20031125);
     S.summer = fx.summer != null ? !!fx.summer : flagOn('summer') || (md >= 424 && md <= 611);
     S.worldCup = fx.worldCup != null ? !!fx.worldCup : flagOn('world_cup') || flagOn('worldcup') || (T.y === 2003 && md >= 209 && md <= 323);
     let hx = fx.hitex;
@@ -300,10 +324,16 @@
   const pw = (s) => N.draw.pixelTextWidth(s);
   const SUFFIX = ['NAGAR', 'GUDA', 'PALLY', 'PALLI', 'PET', 'BAGH', 'PURA', 'ABAD', 'GUNJ', 'CHOWKI', 'CHOWK', 'KUNTA', 'BAZAAR', 'BAZAR',
     'PATNAM', 'PUL', 'STORES', 'KIRANA', 'MEDICALS', 'MEDICAL', 'SALOON', 'STATIONERY', 'STATIONERS', 'BAKERY', 'CHAKKI', 'GIRNI', 'BUND', 'ROADS', 'MANDIR', 'NIVAS'];
-  const FILLER = new Set(['SRI', 'SHRI', 'NEW', 'THE', '&', 'AND', 'HOTEL']);
+  const FILLER = new Set(['SRI', 'SHRI', 'NEW', 'THE', '&', 'AND', 'HOTEL', 'FRESH', 'OF']);
   const KEYWORDS = new Set(['CHICKEN', 'MUTTON', 'KIRANA', 'BAKERY', 'CAFE', 'MEDICALS', 'MEDICAL', 'STORES', 'SALOON', 'STUDIO', 'PHOTO', 'BOOKS', 'GAMES', 'VIDEO', 'BROWSING', 'NET', 'CYCLE', 'CYCLES', 'GIRNI', 'CHAKKI', 'FLOUR', 'STATIONERY', 'STATIONERS', 'PROVISIONS', 'HAIR', 'COLOUR', 'LAB']);
   const fitCache = new Map();
   function splitWord(wd, maxPx) {
+    // after a hyphen (NOOR-E-IRAN -> NOOR-E- / IRAN), then at a known place-name suffix
+    for (let i = wd.length - 2; i > 0; i--) {
+      if (wd[i] !== '-') continue;
+      const a = wd.slice(0, i + 1), b = wd.slice(i + 1);
+      if (pw(a) <= maxPx && pw(b) <= maxPx) return [a, b];
+    }
     for (const s of SUFFIX) {
       if (wd.length > s.length + 2 && wd.endsWith(s)) {
         const a = wd.slice(0, wd.length - s.length);
@@ -316,7 +346,7 @@
     const lines = [];
     let cur = '';
     for (const w of ws) {
-      const t = cur ? cur + ' ' + w : w;
+      const t = cur ? cur + (cur.endsWith('-') ? '' : ' ') + w : w;
       if (pw(t) <= maxPx) cur = t; else { if (cur) lines.push(cur); cur = w; }
     }
     if (cur) lines.push(cur);
@@ -342,10 +372,9 @@
     const tries = [words, words.filter((w) => !FILLER.has(w))];
     if (words.length > 1 && !noDrop) {
       const core = words.filter((w) => !FILLER.has(w));
-      tries.push(core.slice(0, -1), core.slice(1));
-      const kw = core.filter((w) => KEYWORDS.has(w));
-      for (const w of kw) tries.push([w]);
-      for (const w of core) tries.push([w]);
+      if (core.length > 2) tries.push(core.slice(1), core.slice(0, -1));
+      for (const w of core) if (!KEYWORDS.has(w)) tries.push([w]); // the distinctive name first
+      for (const w of core) if (KEYWORDS.has(w)) tries.push([w]);  // then what the shop is
     }
     for (const ws of tries) {
       if (!ws.length) continue;
@@ -680,8 +709,9 @@
     const tries = [[iconName, 1], [null, 1]];
     if (two) tries.push([iconName, 2], [null, 2]);
     let lines = null, useIcon = !!iconName;
-    for (const pass of [true, false]) { // complete text first, then shortened
-      for (const [ic, n] of tries) {
+    for (const pass of [true, false]) { // complete text first, then shortened (two lines before one)
+      const order = pass ? tries : tries.slice().sort((a, b) => b[1] - a[1]);
+      for (const [ic, n] of order) {
         if (n === 1 && ic === null && !iconName && tries[0][0] === null) { /* same as first try */ }
         const avail = (len - (ic ? 9.5 : 1.5)) * k0;
         const l = text ? fitLines(text, avail, n, pass) : null;
@@ -850,9 +880,10 @@
   // per-kind shop recipes: palette, sign, awning, goods painter, people
   const SHOP = {};
   function shopInit(lm, kind) {
-    const R0 = SHOP[kind];
+    const base = SHOP[kind];
+    const R0 = base.variants && lm.variant && base.variants[lm.variant] ? Object.assign({}, base, base.variants[lm.variant]) : base;
     const A = baseState(lm, R0);
-    A.kind = kind;
+    A.kind = kind; A.R0 = R0;
     const rng = U.rng('pa:' + lm.id + ':s');
     const sg = R0.sign || ['#b22b2b', '#fff4d8'];
     const bg = Array.isArray(sg[0]) ? pickR(rng, sg[0]) : sg[0];
@@ -870,7 +901,7 @@
     return A;
   }
   function drawShop(lm, A) {
-    const R0 = SHOP[A.kind];
+    const R0 = A.R0;
     const front = camFront(A.F);
     if (!front && R0.goods) R0.goods(lm, A); // camera behind: goods first, the building leans over them
     building(A);
@@ -880,14 +911,14 @@
     if (front && R0.goods) R0.goods(lm, A);
   }
   function shopLights(lm, A) {
-    const R0 = SHOP[A.kind], F = A.F;
+    const R0 = A.R0, F = A.F;
     const col = R0.glow || '#ffd890';
     light(lm, 0, 2, fxp(F, 0, 3), fyp(F, 0, 3), 3, Math.min(34, 14 + F.L * 0.6), col, 0.85);
     if (R0.lights) R0.lights(lm, A);
   }
   function shopNight(lm, A, a) {
     nightSign(A, A.h, a);
-    const R0 = SHOP[A.kind];
+    const R0 = A.R0;
     // spill of light from the open shutter onto the footpath
     const F = A.F;
     glow(fxp(F, 0, 1.6), fyp(F, 0, 1.6), 2, Math.min(18, 6 + F.L * 0.35), R0.glow || '#ffd890', a * 0.4);
@@ -1128,6 +1159,49 @@
       for (let i = 0; i < 4; i++) add(i % 3 ? 'kid' : 'student', (i * 5 + (rng.next() * 5)) | 0, -A.F.L / 2 + 4 + i * 3, 4 + (i % 2) * 1.5, A.F.ang + Math.PI + (i - 1.5) * 0.3, { sway: 0.9, turn: 0.3 });
     },
     count() { return S.min > 1290 || S.min < 600 ? 1 : 4; },
+    variants: {
+      recording: { // "Audio recording done here": a wall of cassettes, two big speakers, film songs on order
+        walls: ['#e8d8c0', '#d8e0e8'], sign: [['#6a1a6a', '#1a3a7a'], '#ffe23a'], icon: 'film', litCol: '#ffe8c0', glow: '#ffd890',
+        awn: [['#c0306a', '#f2c230']], awnD: 2.4,
+        goods(lm, A) {
+          const F = A.F, L = F.L;
+          // speakers either side of the counter, cassette rack, a hand-written list of songs
+          for (const e of [-1, 1]) { fbox(F, e * (L / 2 - 2.6) - 1.6, e * (L / 2 - 2.6) + 1.6, 0.6, 3, 0, 5.2, '#2a2a30', '#3a3a42'); fdisc(F, e * (L / 2 - 2.6), 1.8, 1, 5.3, '#6a6a72'); }
+          fbox(F, -5, 5, 0.2, 1.8, 0, 3.4, '#7a5030', '#9a6a40');
+          const cc = ['#e83a5a', '#2a5cd8', '#f2c230', '#f4f2ea', '#30b050', '#1a1a1a'];
+          for (let i = 0; i < 9; i++) { const r = frect(F, -4.5 + i * 1.05, -3.7 + i * 1.05, 0.5, 1.5); hrect(r[0], r[1], r[2], r[3], 3.5, cc[i % cc.length]); }
+          // music notes floating out of the shutter
+          for (let i = 0; i < 2; i++) { const t = (TIME * 0.4 + i * 0.5) % 1; puff(fxp(F, -1 + i * 3, 2 + t * 4), fyp(F, -1 + i * 3, 2 + t * 4), 5 + t * 8, 0.7, 0.6 * (1 - t), '#1a1a1a'); }
+          if (lm.sign2) { const k = kh(4); if (pw(lm.sign2) < (L + 6) * k) namePlate(fxp(F, 0, 4.4), fyp(F, 0, 4.4), 4, lm.sign2, '#f2c230', '#1a1416', F.rot); }
+        },
+        people(lm, A, rng, add) { add('man', 21, 0, 0.6, A.F.ang, { sway: 0.5 }); add('student', 22, -2, 5.4, A.F.ang + Math.PI, { sway: 0.6 }); add('kid', 23, 2, 5.8, A.F.ang + Math.PI, { sway: 0.7 }); },
+        count() { return S.min > 1320 || S.min < 570 ? 0 : 3; },
+        night: null,
+      },
+      tv_radio: { // a bunk shop with TVs in the window showing the cricket; a crowd gathers for the score
+        walls: ['#e8e4dc'], sign: [['#1a3a8a'], '#ffffff'], icon: 'crt', litCol: '#c8e8ff', glow: '#c0e0ff', awn: [['#9aa0a6', null]], awnD: 2,
+        goods(lm, A) {
+          const F = A.F, L = F.L;
+          for (let i = 0; i < 3; i++) {
+            const u = -L / 2 + 5 + i * (L - 10) / 2;
+            fbox(F, u - 2.4, u + 2.4, 0.2, 3.4, 0, 4.6, '#c8c0b0', '#d8d0c0');
+            const r = frect(F, u - 1.9, u + 1.9, 0.5, 3.1);
+            hrect(r[0], r[1], r[2], r[3], 4.65, '#2a2a30');
+            const r2 = frect(F, u - 1.6, u + 1.6, 0.8, 2.8);
+            hrect(r2[0], r2[1], r2[2], r2[3], 4.7, Math.sin(TIME * 0.7 + i) > -0.6 ? '#3a9a3a' : '#2a5cd8'); // the pitch (or an ad break)
+            const pk = frect(F, u - 0.2, u + 0.2, 1.2, 2.4); hrect(pk[0], pk[1], pk[2], pk[3], 4.75, '#e8d8a0');
+          }
+          // a transistor radio on the counter, antenna up
+          fbox(F, L / 2 - 3.4, L / 2 - 1, 0.4, 1.6, 0, 1.8, '#8a2a2a', '#a83a3a'); pole(fxp(F, L / 2 - 1.4, 1), fyp(F, L / 2 - 1.4, 1), 1.8, 6, '#c8ccd2', 0.3);
+        },
+        people(lm, A, rng, add) {
+          add('man', 31, 0, -1, A.F.ang, { sway: 0.3 });
+          for (let i = 0; i < 12; i++) add(pickR(rng, ['man', 'kid', 'student', 'uncle', 'man', 'lungi']), 40 + i, -A.F.L / 2 + 2 + (i % 6) * (A.F.L - 4) / 5, 4.4 + Math.floor(i / 6) * 2.6 + rng.next(), A.F.ang + Math.PI + (rng.next() - 0.5) * 0.6, { sway: 0.5, turn: 0.2 });
+        },
+        count() { return S.min < 540 || S.min > 1350 ? 0 : S.worldCup ? 13 : 4; },
+        night(lm, A, a) { const F = A.F; for (let i = 0; i < 3; i++) { const u = -F.L / 2 + 5 + i * (F.L - 10) / 2; glow(fxp(F, u, 1.8), fyp(F, u, 1.8), 4.7, 5, '#9ad8ff', a * 0.7); } },
+      },
+    },
   });
 
   /* ----------------------------------------------------- photo studio */
@@ -3170,9 +3244,10 @@
   }
   regCivic('radio_station', {
     wall: '#e8e4d8', roof: '#d0ccc0', acc: '#2a4a7a', text: 'ALL INDIA RADIO', signCol: ['#2a3a6a', '#fff8e0'],
-    roof3(lm, A) { const r = A.rr; lattice(r.x + 6, r.y + 6, 3, 0.7, A.h, A.h + 46, '#a83028', true); },
-    shadow(lm, A) { castMain(A); N.draw.castPole(A.rr.x + 6, A.rr.y + 6, A.h + 46, 2); },
-    lights(lm, A) { light(lm, 1, 2, A.rr.x + 6, A.rr.y + 6, A.h + 46, 8, '#ff2020', Math.sin(TIME * 3) > 0 ? 1 : 0.2); },
+    init(lm, A) { A.mast = [fxp(A.F, A.F.L / 2 - 6, -A.F.D + 6), fyp(A.F, A.F.L / 2 - 6, -A.F.D + 6)]; },
+    roof3(lm, A) { lattice(A.mast[0], A.mast[1], 3, 0.7, A.h, A.h + 46, '#a83028', true); },
+    shadow(lm, A) { castMain(A); N.draw.castPole(A.mast[0], A.mast[1], A.h + 46, 2); },
+    lights(lm, A) { light(lm, 1, 2, A.mast[0], A.mast[1], A.h + 46, 8, '#ff2020', Math.sin(TIME * 3) > 0 ? 1 : 0.2); },
   });
   reg('tv_tower', {
     init(lm) { return { F: frontOf(lm) }; },
@@ -3510,9 +3585,10 @@
   // (Machan tree, waterfall, mini train, Nandi statues / or work in progress) and street
   // markets (stalls round the place point). Queued by the placesArt system.
   function inView(x0, y0, x1, y1, m) { const v = R.view; return !(x1 < v.x0 - m || x0 > v.x1 + m || y1 < v.y0 - m || y0 > v.y1 + m); }
+  let nearList = null;
   function nearLandmark(x, y, pad) {
-    const D = N.WORLD_DATA;
-    for (const l of D.landmarks) if (Math.abs(x - l.x) < l.w / 2 + pad && Math.abs(y - l.y) < l.d / 2 + pad) return l;
+    const list = nearList || N.WORLD_DATA.landmarks;
+    for (const l of list) if (Math.abs(x - l.x) < l.w / 2 + pad && Math.abs(y - l.y) < l.d / 2 + pad) return l;
     return null;
   }
   // ---------------------------------------------------------------- playgrounds
@@ -3789,24 +3865,26 @@
     const rng = U.rng('mk:' + pl.id);
     const stalls = [];
     const tries = 80;
+    nearList = N.WORLD_DATA.landmarks.filter((l) => Math.abs(l.x - pl.x) < 80 + l.w && Math.abs(l.y - pl.y) < 80 + l.d);
     const okAt = (x, y) => { const q = W.surfaceAt(x, y); return q === SUR.FOOTPATH || q === SUR.PLAZA || q === SUR.GROUND || q === SUR.SAND; };
     for (let t = 0; t < tries && stalls.length < 5; t++) {
       const a = rng.next() * TAU, r = 10 + rng.next() * 30;
       const x = pl.x + Math.cos(a) * r, y = pl.y + Math.sin(a) * r;
       if (!okAt(x, y)) continue;
+      if (Math.hypot(pl.x - x, pl.y - y) < 8) continue;
+      if (stalls.some((q) => Math.hypot(q.x - x, q.y - y) < 13)) continue;
+      if (nearLandmark(x, y, 8)) continue;
       const rp = W.nearestRoadPoint ? W.nearestRoadPoint(x, y) : null;
       const ang = rp ? rp.angle || 0 : 0, ca = Math.cos(ang), sa = Math.sin(ang);
       let ok = true;
       for (const [u, v] of [[-5.5, -3.5], [5.5, -3.5], [5.5, 3.5], [-5.5, 3.5], [0, 6], [0, -6]]) { if (!okAt(x + ca * u - sa * v, y + sa * u + ca * v) || !W.isWalkable(x + ca * u - sa * v, y + sa * u + ca * v)) { ok = false; break; } }
       if (!ok) continue;
-      if (stalls.some((q) => Math.hypot(q.x - x, q.y - y) < 13)) continue;
-      if (Math.hypot(pl.x - x, pl.y - y) < 8) continue;
-      if (nearLandmark(x, y, 8)) continue;
       // which side faces away from the road (the wall side: the vendor stands there)
       let wx = -sa, wy = ca;
       if (rp && (wx * (x - rp.x) + wy * (y - rp.y)) < 0) { wx = -wx; wy = -wy; }
       stalls.push({ x, y, a: ang, ca, sa, wx, wy, seed: (rng.next() * 1e5) | 0, tarp: pickR(rng, [['#2a5cb8', '#2a5cb8'], ['#d8402a', '#f4e8d0'], ['#f2c230', '#e8302a'], ['#2a8c82', '#f4e8d0']]) });
     }
+    nearList = null;
     if (!stalls.length) return null;
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
     for (const s of stalls) { x0 = Math.min(x0, s.x); y0 = Math.min(y0, s.y); x1 = Math.max(x1, s.x); y1 = Math.max(y1, s.y); }
@@ -3989,11 +4067,16 @@
   })();
 
   /* ================================================================ system */
+  let initMs = 0, initParts = null;
   function onBuilt() {
-    try { initAll(); } catch (e) { N.err('placesArt.built', e); }
+    const t0 = now();
+    const t1 = now();
     try { initDecor(); } catch (e) { N.err('placesArt.decor', e); }
+    const t2 = now();
     try { solidBuses(); } catch (e) { N.err('placesArt.buses', e); }
+    initParts = [t1 - t0, t2 - t1, now() - t2];
     for (const it of DECOR) if (it.people && !it.actors) addPeople(null, it);
+    initMs = now() - t0;
   }
   N.addSystem({
     id: 'placesArt', order: 43, runIn: ['*'],
@@ -4023,7 +4106,8 @@
     version: 1, fx, defs: DEFS, S, PROPS: Object.keys(PROPS).concat(PROP_CARTS, Object.keys(DEFS).filter((k) => PROP_CARTS.indexOf(k) < 0)),
     drawProp, queueProp,
     switches() { return sw(); },
-    perf() { return { ms: +PERF.last.toFixed(3), calls: PERF.lastCalls }; },
+    prepareAll() { initAll(); },
+    perf() { return { ms: +PERF.last.toFixed(3), calls: PERF.lastCalls, initMs: +initMs.toFixed(1), initParts: initParts && initParts.map((v) => +v.toFixed(1)), sprites: pImg.size }; },
     decorList() { return DECOR.map((d) => ({ id: d.id, kind: d.kind, x: d.x, y: d.y, w: d.w, d: d.d })); },
     variant(id) {
       sw();

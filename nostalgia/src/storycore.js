@@ -681,16 +681,20 @@
     // the radio action on foot / on bikes (vehicle radios stay with audio.js)
     const I = N.input;
     if (I && md === 'play' && !inRadioVehicle() && !(wk.deck && wk.deck.open)) {
+      // a press starts a gesture; releasing before 0.6 s = next source, holding 0.6 s = off
+      // (a tap can press and release between two steps: pressed is true while down is already false)
       const down = I.down('radio');
-      if (I.pressed('radio')) { wk.holdT = 0; wk.holdFired = false; }
-      if (down) {
-        wk.holdT += dt;
-        if (wk.holdT >= 0.6 && !wk.holdFired) { wk.holdFired = true; walkmanStop(false); }
-      } else if (wk.wasDown && !wk.holdFired) {
-        if (W.owned) W.next(); else toast('No walkman yet.', 1400);
+      if (I.pressed('radio')) { wk.holding = true; wk.holdT = 0; wk.holdFired = false; }
+      if (wk.holding) {
+        if (down) {
+          wk.holdT += dt;
+          if (wk.holdT >= 0.6 && !wk.holdFired) { wk.holdFired = true; wk.holding = false; walkmanStop(false); }
+        } else {
+          wk.holding = false;
+          if (!wk.holdFired) { if (W.owned) W.next(); else toast('No walkman yet.', 1400); }
+        }
       }
-      wk.wasDown = down;
-    } else wk.wasDown = false;
+    } else wk.holding = false;
     // memo "playback" ends by itself
     if (wk.playing && wk.playing.kind === 'memo') { wk.memoT -= dt; if (wk.memoT <= 0) { wk.playing = null; N.emit('walkman:stop', {}); } }
     // the audio walkman auto-advances songs: keep our view in sync (and notice when it stopped)

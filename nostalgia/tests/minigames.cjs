@@ -158,8 +158,30 @@ async function run(browser, V) {
     ids: N.minigames.list().map((d) => d.id),
     has: N.minigames.has('clap') && N.minigames.has('golconda_clap') && !N.minigames.has('nope'),
     fns: ['play', 'start', 'list', 'register', 'abort', 'isOpen', 'has'].every((k) => typeof N.minigames[k] === 'function'),
-    side: (() => { try { let n = 0; for (const p of Object.keys(N.places || {})) void p; const I = N.interact; if (!I || !I.get) return -1; for (const k of ['mg:clap:2:golconda_fateh_darwaza', 'mg:panipuri:6:gokul_chat', 'mg:kite:0:home_terrace']) if (I.get(k)) n++; return n; } catch (e) { return -2; } })(),
+    side: (() => { try { let n = 0; const I = N.interact, SIDE = N.minigames.SIDE || []; if (!I || !I.get) return -1; for (const [gid, pl] of [['clap', 'golconda_fateh_darwaza'], ['panipuri', 'gokul_chat'], ['kite', 'home_terrace'], ['antenna', 'home']]) { const si = SIDE.findIndex((s) => s.id === gid); if (si >= 0 && I.get('mg:' + gid + ':' + si + ':' + pl)) n++; } return n; } catch (e) { return -2; } })(),
+    // free-roam pay rules (systems_design §2.4): 3 paid wins per game per day, kite ₹10/day cap, Tiger ₹5
+    pay: (() => {
+      const MG = N.minigames, pl = N.player;
+      if (!MG.pay || !pl) return null;
+      const m0 = pl.money, S = (id, extra) => Object.assign({ id }, extra || {}), out = {};
+      const led = MG.ledger, keep = JSON.stringify(led);
+      led.day = null;
+      out.cricket = [1, 2, 3, 4].map(() => MG.pay(S('cricket'), { win: true, stars: 2 }, 'playground_1'));
+      out.cricket3 = MG.pay(S('marbles'), { win: true, opponent: 'tiger' }, 'playground_14');
+      out.kite = [MG.pay(S('kite'), { win: true, cuts: 3 }, 'home_terrace'), MG.pay(S('kite'), { win: false, cuts: 3 }, 'home_terrace')];
+      out.loss = MG.pay(S('marbles'), { win: false }, 'playground_1');
+      MG.pay(S('bargain', { params: { who: 'auto' } }), { win: false }, 'koti_bus_stand');
+      out.off = Object.keys(led.off).length;
+      out.delta = pl.money - m0;
+      pl.money = m0; Object.assign(led, JSON.parse(keep));
+      return out;
+    })(),
   }));
+  if (!LAB && api.pay) {
+    const P = api.pay;
+    expect(V.name, P.cricket.join(',') === '200,200,200,0' && P.cricket3 === 500 && P.kite.join(',') === '600,400' && P.loss === 0 && P.off === 1 && P.delta === 600 + 500 + 1000,
+      'pay rules: 3 paid wins/day, Tiger ₹5, kite ₹2/cut capped ₹10/day, bargain loss closes the seller (' + JSON.stringify(P) + ')');
+  }
   expect(V.name, IDS_ALL.every((i) => api.ids.includes(i)), 'list() has all 8 games: ' + api.ids.join(','));
   expect(V.name, api.has && api.fns, 'has()/aliases + API functions present');
   if (!LAB) expect(V.name, api.side >= 2, 'side activities registered on the map (' + api.side + ' sampled)');

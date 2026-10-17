@@ -48,7 +48,7 @@
   let active = null;      // the current Run
   let lastFailed = null;  // {id, cp, record, startPos, attempt}
   let askOpen = false, askT = 0;
-  let giverCooldown = null; // giver id the player must walk out of before it triggers again
+  const giverCooldown = new Set(); // giver ids the player must walk out of before they trigger again
   let runSeq = 0;
 
   const MISSION_COLOR = '#ff5fb0';
@@ -487,6 +487,8 @@
     }
     run.spawned.length = 0;
     if (active === run) active = null;
+    // an aborted (quit / loaded) mission's giver waits until the player steps out of its marker
+    if (result === 'abort' && run.def.giver) giverCooldown.add(run.id);
     if (result === 'abort') N.emit('mission:abort', { id: run.id });
     return true;
   }
@@ -526,7 +528,7 @@
     lastFailed = { id: run.id, cp: run.checkpointData, record: run.record, startPos: run.startPos, attempt: run.attempt };
     if (run.failCause === 'timer') streaks.timer[run.id] = (streaks.timer[run.id] || 0) + 1;
     else if (run.lostGame) { const k = run.id + ':' + run.lostGame; streaks.game[k] = (streaks.game[k] || 0) + 1; lastFailed.game = run.lostGame; }
-    giverCooldown = run.def.giver ? run.id : null;
+    if (run.def.giver) giverCooldown.add(run.id);
     N.hud.banner('MISSION FAILED', reason || '', 3600, { kind: 'fail' });
     N.emit('mission:fail', { id: run.id, reason: reason || '' });
     const myFail = lastFailed;
@@ -629,7 +631,7 @@
       const g = giverPos(d); if (!g) continue;
       const r = (d.giver.r || 14);
       const dist = Math.hypot(p.x - g.x, p.y - g.y);
-      if (giverCooldown === d.id) { if (dist > r + 24) giverCooldown = null; continue; }
+      if (giverCooldown.has(d.id)) { if (dist > r + 24) giverCooldown.delete(d.id); continue; }
       // the open card stays while the player is a step outside the ring (no flicker at the edge)
       const reach = jc && jc.id === d.id ? r + 6 : r;
       if (dist <= reach && (!d.giver.onFoot || !p.vehicle) && dist < cd) { cand = d; cd = dist; }
@@ -885,7 +887,7 @@
     draw,
     reset() {
       if (active) { const r = active; abortRun(r, 'abort'); endRun(r, 'abort'); }
-      done.clear(); lastFailed = null; closeAsk(); giverCooldown = null; closeJcard();
+      done.clear(); lastFailed = null; closeAsk(); giverCooldown.clear(); closeJcard();
       for (const k in streaks.game) delete streaks.game[k];
       for (const k in streaks.timer) delete streaks.timer[k];
       for (const d of giverList) N.hud.unblip('giver:' + d.id);

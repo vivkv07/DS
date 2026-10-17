@@ -698,37 +698,64 @@ scheduler; the context is suspended while the tab is hidden. Test: `node nostalg
 
 ## 18. Minigames — `N.minigames` (minigames.js)
 
-Eight full-screen minigames, each a DOM overlay (`#overlay .mg-screen`, opaque) with its own
-canvas, VHS-OSD top bar, big touch buttons (touch) or a key-hint strip (keyboard), a one-screen
-how-to card, a 3-2-1 countdown, pause (Esc / ‖ pill: Resume · Restart · Quit) and a result card
-("Aage chalo" resolves, "Phir se" retries). Keyboard, mouse, touch and gamepad all work.
+Eight full-screen minigames (systems_design §8), each a DOM overlay (`#overlay .mg-screen`,
+opaque) with its own canvas, VHS-OSD top bar, big touch buttons (touch) or a key-hint strip
+(keyboard), a one-screen how-to card, a 3-2-1 countdown, pause (Esc / ‖ pill: Resume · Restart ·
+Quit) and a result card ("Aage chalo" resolves, "Phir se" retries). Keyboard, mouse, touch and
+gamepad (A=Space, B=X, X=Z, Y=C, LB/RB=[ ], LT/RT=Shift, Start=Esc, d-pad/stick=arrows) work.
+Built from `staging/mg/*.js` by `node staging/build_mg.cjs --install` (one IIFE).
 ```
-N.minigames.play(id, params) -> Promise<result>   (alias start(); never rejects)
+N.minigames.play(id, params) -> Promise<result>   (alias start(); never rejects:
+  unknown id -> {win:false, error:'unknown'}, already open -> {win:false, error:'busy'})
 N.minigames.list() -> [{id, title, sub, place, places, secs}]   has(id), resolve(id) (aliases:
-  golconda_clap, kite_fight, pech, brick_game, gully_cricket, pani_puri, haggle, goli, kanche ...)
+  golconda_clap, kite_fight, pech, brick_game, gully_cricket, pani_puri, gokul_chat, haggle,
+  mol_bhaav, goli, kanche ...)
 N.minigames.abort(reason)   active (id|null)   isOpen()   stats {best, plays, wins}   covering
+N.minigames.TUNE  {assist, offset, assistWindow 1.5, assistDiff 0.15, presetOffset, payCap,
+  kite, clap, brickgame, cricket, antenna, panipuri, bargain, marbles, pay}  (all tunables)
+N.minigames.SIDE (free-roam table)  side(on)  pay(sideEntry, result, placeId)  ledger
 ids: kite clap brickgame cricket antenna panipuri bargain marbles
-params: difficulty 0..1 (default 0.4), seed, noRetry, noQuit, skipHowto, intro (story line on the
-  how-to card), title, reward (paise, paid on a win), autoplay 'win'|'lose' (test bot),
-  timeScale; per game: kite {target, time} · clap {rounds} · brickgame {mode:'blocks'|'race',
-  target} · cricket {target, overs, wickets} · antenna {time} · panipuri {target} ·
-  bargain {who:'auto'|'banana'|'flower', start, target} · marbles {count}
-result: {id, win, score, stars 0..3, quit, aborted, attempts, time, difficulty, ...}
-  kite {cuts, lost, livesLeft} · clap {rounds, fails, perfects} · brickgame {mode, lines, cars}
-  cricket {runs, balls, wickets, reason} · antenna {crows, timeLeft, best} · panipuri {eaten,
-  crunches, bestCombo, reason} · bargain {price, start, saved, savedPaise, who} · marbles
-  {mine, rival, draw}
+params (all games): difficulty 0..1 (default 0.4; + the settings preset offset), assist (bool;
+  default N.settings.minigameAssist: timing windows x1.5, d -0.15), seed, noRetry, noQuit,
+  skipHowto, intro (story line on the how-to card), title, reward (paise, paid on a win),
+  autoplay 'win'|'lose' (test bot), timeScale, place
+per game:
+  kite {target, time, lives, charkhi}          (charkhi also from inventory: +1 life, wider band)
+  clap {skin:'golconda'|'drums'|'doorway', rounds, noFail}
+  brickgame {mode:'blocks'|'race', target}
+  cricket {target, overs, wickets, bowler:'ayesha', trialBall, mali}  (trial ball defaults to
+          free play with cricket_ball in the inventory; mali defaults on in public_gardens)
+  antenna {time, caller:'amma'|'babji'}
+  panipuri {target}
+  bargain {who:'auto'|'banana'|'flower'|'kite'|'farmer'|'books' (else 'auto'), start, target,
+          floor, meter (auto: start meter+10, target meter), list (farmer: list x1.25 -> list),
+          like:'logic'|'charm'|'local'|'filmy', randomType, dest, what}
+  marbles {count (default 9), rival:'pappu'|'tiger', rivalName, rajaGoli (default: inventory
+          raja_goli: striker mass +25%, aim guide +30%)}
+result: {id, win, score, stars 0..3, quit, aborted, attempts, time, difficulty, assist, ...}
+  kite {cuts, lost, livesLeft} · clap {rounds, fails, perfects, skin} · brickgame {mode, lines,
+  cars} · cricket {runs, balls, wickets, reason} · antenna {crows, timeLeft, best} · panipuri
+  {eaten, crunches, bestCombo, reason} · bargain {price, start, target, saved, savedPaise,
+  pricePaise, who, like} · marbles {mine, rival, draw, opponent, raja}
 ```
 While open: state `minigame` is pushed (popped on close; `N.input.clear()`), the overlay owns
 the keyboard (keydowns don't reach the game), the tab-hidden event pauses it, and
-`N.world.draw` / `N.entities.draw` are skipped (wrapped lazily) because the world is covered.
-Events: `minigame:start` {id, params}, `minigame:end` {id, result}, `minigame:event` {id, type}.
-Free-roam side activities are registered with `N.interact` at priority -1 (story wins) on
-`boot`: kite at home_terrace/gulzar_houz, antenna at home, clap at golconda_fateh_darwaza,
-brick game at video_parlour_*, cricket + marbles at playground_*, pani puri at gokul_chat,
-auto haggling at koti_bus_stand/rtc_x_roads/stations, banana/flower haggling at the carts, plus
-any `WORLD_DATA.places[].minigame`. Turn off with `N.minigames.side(false)` or
-`N.flags.mg_side_off = true`. Stats persist in localStorage and `N.save` key `minigames`.
+`N.world.draw` / `N.entities.draw` / `N.render.queue|flush` are skipped (wrapped lazily) while
+the world is covered. Events: `minigame:start` {id, params}, `minigame:end` {id, result},
+`minigame:event` {id, type}. Reduced motion (settings or OS) turns off shakes and flashes.
+
+Free-roam side activities (`MG.SIDE`, registered with `N.interact` at priority -1 so story wins,
+on `boot` / `world:built`): kite at home_terrace/gulzar_houz (Sankranti 13-15 Jan, or Jan-Feb
+16:30-18:30), antenna at home/friend_home, clap at golconda_fateh_darwaza (09:00-17:30), brick
+game at video_parlour_* (₹1), cricket at playground_*/victory_playground/musi_riverbed (16:00-
+18:30 school days, 08:00-18:30 otherwise), marbles at playground_* (and *Goli vs Tiger* at
+playground_14 once 10 golis are found or `N.flags.marbles_tiger`), pani puri at gokul_chat (₹5),
+auto haggling at koti_bus_stand/rtc_x_roads/stations, banana/flower carts, rythu_bazaar_*, plus
+any `WORLD_DATA.places[].minigame`. Pay (systems §2.4): cricket ₹2 (₹5 for 3 stars), marbles ₹2
+(₹5 vs Tiger), max 3 paid wins per game per game-day; kite ₹2 a cut, max ₹10 a day; brick game
+refunds ₹1 on a win; pani puri win = free plate (tummy +15); a lost bargain closes that seller
+for 10 game minutes. Turn off with `N.minigames.side(false)` or `N.flags.mg_side_off = true`.
+Stats persist in localStorage and `N.save` key `minigames` (with the day ledger).
 Test: `node nostalgia/tests/minigames.cjs` (LAB=1 for the staging lab, ONLY=, IDS=, QUICK=1).
 
 ## 19. Story layer (integration contract)
@@ -791,3 +818,32 @@ jobs (systems §9) via `N.sidejobs.register/start`.
 **Story** (story.js: prologue + M1-M6 + SA1-SA4; story2.js: M7-M12, interlude, ending,
 2026 epilogue, post-credits, SA5-SA8): `N.missions.register(...)` per bible §4, mission ids as
 in the bible, listening to `game:new` for the prologue.
+
+## 20. 3D view mode (alternative to top-down) — `N.view`
+
+The user asked for a GTA-5-style 3D option. It is an alternative **renderer and camera**
+over the same simulation: the world, player, vehicles, traffic, missions, dialogue, HUD and
+saves are unchanged. Files: `src/view3d.js` (core), `src/view3d_landmarks.js` (3D models
+of landmarks and places), `src/view3d_actors.js` (people, vehicles, animals, markers,
+collectible glints, season overlays). Loaded in index.html after menus.js.
+
+- **Library:** three.js **0.149.0** UMD, loaded lazily the first time 3D is chosen: first
+  `https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js`, then the local fallback
+  `vendor/three/three.min.js` (MIT, LICENSE beside it). If both fail or WebGL is missing,
+  stay in top-down and toast why. The single-file build does not inline three.js.
+- **`N.view`**: `mode` ('top' | 'tps' | 'fps'), `set(mode)`, `cycle()` (key **V**, and a
+  touch button), `is3D()`, `available`, `loading`; persisted in settings; emits `view:change`.
+  Title screen and settings offer "View: Top-down / 3D (third person) / First person".
+- **Rendering:** while 3D is on, main.js skips the 2D world draw (HUD, minimap and DOM UI
+  stay). Ground = the existing 2D ground painter rendered into chunk textures (roads,
+  markings, water, parks for free); buildings = extruded from `N.world` structures with
+  district styles and window textures; landmarks = dedicated low-poly models; trees and
+  lamps instanced; water plane; sky + sun/moon from `N.clock`; fog/draw distance; night
+  lights. Same world units (1 storey ≈ 10u); people drawn ~7u (kids) to ~9u (adults) tall.
+- **Camera/controls:** third person: GTA-5-like orbit camera behind the player (mouse drag
+  or pointer lock on desktop, right-half touch drag on phones, right stick on gamepad),
+  chase camera in vehicles; first person: eye height of an 11-year-old, bike/auto cockpit
+  view. In 3D, `N.input.move` is rotated by the camera yaw so "up" means "forward".
+- **Parity hooks:** missions expose active markers, collectibles expose glint positions,
+  seasons expose overlay data, so the 3D layer can draw them. Missing parity degrades
+  gracefully (never blocks progress).

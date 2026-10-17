@@ -16,7 +16,7 @@
  *     look may be an object or a function returning one (variants); name may hold tokens.
  *   N.dialogue.speakers[id]  (plain assignment {name, color, portrait} also works)
  *   N.dialogue.cancel() / advance() / isOpen() / current / skip (debug) / textSpeed
- *   N.dialogue.filter(text)  {nick} {NICK} {full} {FULL} + the bible's global rename rule:
+ *   N.dialogue.filter(text) (alias subst)  {nick} {NICK} {full} {FULL} + the bible's global rename rule:
  *       "Chinnu" -> nickname, "chinnu_" (email ids) -> lower-case nickname, "Srikanth" -> full
  *       name. Names come from N.player.nick / N.player.full (menus' name card), falling back to
  *       N.player.name (if not 'You'), N.flags.nick / N.flags.full, then Chinnu / Srikanth.
@@ -989,7 +989,8 @@
       const t = b.target;
       if (!t || !b.el) continue;
       const v = t.vehicle && t.vehicle.alive ? t.vehicle : t;
-      const roofH = t.roofH || 0;
+      let roofH = t.roofH || 0;
+      if (t.level && N.world && N.world.roofs && N.world.roofs.heightAt) { try { roofH = N.world.roofs.heightAt(t.x, t.y) || roofH; } catch (e) { /* ignore */ } }
       if (!Rn.inView(v.x, v.y, 30)) { b.el.style.visibility = 'hidden'; continue; }
       const q = Rn.proj(v.x, v.y, b.h + roofH);
       let X = rect.left + (q.x / Rn.W) * rect.width;
@@ -1006,7 +1007,7 @@
   /* ================================================================= API */
   const D = (N.dialogue = {
     speakers, glossary: GLOSSARY, dictionary: DICTIONARY, skip: false, active: false, textSpeed: 1,
-    define, speaker, paintPortrait, portraitCanvas, filter, names, gloss, bark, is2026,
+    define, speaker, paintPortrait, portraitCanvas, filter, subst: filter, names, gloss, bark, is2026,
     moods: MOODS.slice(),
     speakerName(id) { return speakerName(speaker(id)); },
     setNames(o) {

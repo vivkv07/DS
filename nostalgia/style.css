@@ -971,6 +971,127 @@ body.reduced-motion .dlg-box { animation: none; }
   .dlg-choices { gap: 5px; margin-top: 6px; }
   .dlg-choice { font-size: 15px; padding: 3px 10px 2px 6px; }
 }
+/* cast agent additions: words never split while typing, the hero speaks from the right,
+   mood-reactive portrait frames, tape / radio / chit / email line styles, slang tooltips */
+.dlg-text .w { white-space: nowrap; }
+.dlg.right .dlg-box { flex-direction: row-reverse; padding: 16px 16px 14px 18px; }
+.dlg.right .dlg-face { transform: rotate(2deg); }
+.dlg.right .dlg-name { left: auto; right: 132px; transform: rotate(1.5deg); }
+.dlg.right .dlg-next { right: auto; left: 14px; }
+.dlg.right .dlg-choice.sel { transform: translateX(-6px) rotate(0.6deg); }
+.dlg-text .slang[data-gloss] { position: relative; cursor: help; }
+@media (hover: hover) and (pointer: fine) {
+  .dlg-text .slang[data-gloss]:hover::after {
+    content: attr(data-gloss);
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 6px);
+    z-index: 2;
+    width: max-content;
+    max-width: 280px;
+    padding: 3px 8px 2px;
+    font-family: var(--font-osd);
+    font-size: 17px;
+    font-weight: 400;
+    line-height: 1.1;
+    color: var(--auto-black);
+    white-space: normal;
+    background: var(--auto-yellow);
+    border: 2px solid var(--auto-black);
+    border-radius: 3px;
+    box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+  }
+}
+.dlg.mood-angry .dlg-face, .dlg.mood-shout .dlg-face { animation: dlg-shake 0.32s steps(4, end) 1; }
+.dlg.right.mood-angry .dlg-face, .dlg.right.mood-shout .dlg-face { animation-name: dlg-shake-r; }
+.dlg.mood-surprised .dlg-face { animation: dlg-hop 0.3s ease-out 1; }
+.dlg.mood-happy .dlg-face, .dlg.mood-laugh .dlg-face { box-shadow: 0 0 0 2px var(--spk), 4px 4px 0 2px rgba(0, 0, 0, 0.45), 0 0 14px rgba(242, 194, 48, 0.35); }
+.dlg.mood-sad .dlg-face, .dlg.mood-tired .dlg-face { filter: saturate(0.8) brightness(0.95); }
+@keyframes dlg-shake { 0%, 100% { transform: rotate(-2deg) translateX(0); } 25% { transform: rotate(-3deg) translateX(-3px); } 75% { transform: rotate(-1deg) translateX(3px); } }
+@keyframes dlg-shake-r { 0%, 100% { transform: rotate(2deg) translateX(0); } 25% { transform: rotate(3deg) translateX(3px); } 75% { transform: rotate(1deg) translateX(-3px); } }
+@keyframes dlg-hop { 40% { transform: rotate(-2deg) translateY(-6px); } }
+body.reduced-motion .dlg-face { animation: none !important; }
+/* Immu's spy tapes: a cassette label */
+.dlg.style-tape .dlg-box {
+  background:
+    repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0) 0, rgba(255, 255, 255, 0) 2px, rgba(40, 60, 160, 0.14) 3px),
+    linear-gradient(to bottom, rgba(26, 30, 52, 0.97), rgba(14, 16, 30, 0.97));
+  box-shadow: 0 0 0 3px var(--spk), 0 0 0 7px #f4ead8, 7px 7px 0 7px rgba(0, 0, 0, 0.45);
+}
+.dlg.style-tape .dlg-name::before { content: '\25B6\00a0'; font-family: var(--font-osd); }
+.dlg.style-tape .dlg-text { font-family: var(--font-osd); font-size: 22px; line-height: 1.12; color: var(--osd); text-shadow: 2px 2px 0 var(--osd-shadow), 0 0 6px var(--osd-glow); }
+.dlg.style-radio .dlg-text { font-family: var(--font-osd); font-size: 22px; line-height: 1.12; color: #ffd48a; text-shadow: 0 0 6px rgba(255, 171, 64, 0.5); }
+/* chits and emails: paper and a beige monitor */
+.dlg.style-chit .dlg-box { background: repeating-linear-gradient(to bottom, #f4ead0 0, #f4ead0 23px, #c8d6e8 24px); border-color: #6a5a4a; box-shadow: 0 0 0 3px #c8b89a, 7px 7px 0 3px rgba(0, 0, 0, 0.4); transform: rotate(-0.6deg); }
+.dlg.style-chit .dlg-text { color: #2a2440; text-shadow: none; font-family: var(--font-display); font-weight: 400; letter-spacing: 0.3px; }
+.dlg.style-chit .dlg-text .slang { color: #b0302a; border-bottom-color: rgba(176, 48, 42, 0.5); }
+.dlg.style-chit .dlg-gloss { color: #5a4a40; }
+.dlg.style-email .dlg-box { background: linear-gradient(to bottom, #2a4a8a 0, #2a4a8a 8px, #d8d4c8 8px, #d8d4c8 100%); border-color: #3a3a40; }
+.dlg.style-email .dlg-text { color: #1a1a22; text-shadow: none; font-family: var(--font-osd); font-size: 21px; line-height: 1.1; }
+.dlg.style-email .dlg-gloss { color: #3a3a40; }
+@media (max-width: 600px) {
+  .dlg.right .dlg-box { padding: 15px 10px 12px 12px; }
+  .dlg.right .dlg-name { right: 92px; }
+  .dlg.style-tape .dlg-text, .dlg.style-radio .dlg-text { font-size: 19px; }
+  .dlg.style-email .dlg-text { font-size: 18px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .dlg.right .dlg-name { right: 92px; }
+  .dlg.style-tape .dlg-text, .dlg.style-radio .dlg-text { font-size: 19px; }
+}
+
+/* === npcs === (owned by npcs.js; dialogue.js draws the barks: short speech bubbles placed
+   over a speaker in the world every frame, inside #ui so they never take input) */
+#barks { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 3; }
+#barks.hide { display: none; }
+.bark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: 210px;
+  padding: 4px 9px 5px 8px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.18;
+  color: #1a1214;
+  background: #fff8e6;
+  border: 2px solid #1a1214;
+  border-left: 5px solid var(--spk, #f2c230);
+  border-radius: 7px;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.35);
+  animation: bark-in 0.18s ease-out;
+  will-change: transform;
+  transition: opacity 0.2s;
+}
+.bark::after, .bark::before {
+  content: '';
+  position: absolute;
+  left: var(--tail, 50%);
+  border-style: solid;
+  border-color: transparent;
+  transform: translateX(-50%);
+}
+.bark::before { bottom: -10px; border-width: 9px 6px 0; border-top-color: #1a1214; }
+.bark::after { bottom: -6px; border-width: 6px 4px 0; border-top-color: #fff8e6; }
+.bark-name {
+  display: block;
+  margin-bottom: 1px;
+  font-family: var(--font-osd);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 0.95;
+  letter-spacing: 0.5px;
+  color: #5a4a40;
+  text-transform: uppercase;
+}
+.bark-name::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 4px; background: var(--spk, #f2c230); border: 1px solid #1a1214; vertical-align: 0; }
+.bark-text i { font-style: normal; color: #b0302a; }
+.bark.out { opacity: 0; }
+@keyframes bark-in { from { opacity: 0; margin-top: 6px; } to { opacity: 1; margin-top: 0; } }
+@media (max-width: 600px) { .bark { max-width: 168px; font-size: 13px; padding: 3px 7px 4px 6px; } .bark-name { font-size: 14px; } }
+body.reduced-motion .bark { animation: none; }
 
 /* === minigames === */
 /* Full-screen minigame overlays (src/minigames.js): canvas + VHS OSD top bar + big touch pad +
