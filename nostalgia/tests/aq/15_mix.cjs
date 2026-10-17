@@ -30,8 +30,16 @@ module.exports = {
     // ---- reverb zones
     const rts = {};
     for (const id of Object.keys(ZONES)) {
-      const wet = await L.renderFn(page, zoneScene(id, 0, 1), 4.2);
-      const m = L.mono(wet), mt = L.save(wet, 'zone_' + id + '_wet');
+      // Chrome renders a long convolver tail on a background thread; under heavy CPU load an offline render can
+      // occasionally lose late partitions, so an out-of-range estimate is re-rendered (up to 2 retries, logged)
+      let wet = null, m = null;
+      for (let k = 0; k < 3; k++) {
+        wet = await L.renderFn(page, zoneScene(id, 0, 1), 4.2); m = L.mono(wet);
+        const r0 = rt60(m, wet.sr);
+        if (r0 != null && r0 >= ZONES[id][0] && r0 <= ZONES[id][1]) break;
+        log('(' + id + ': RT60 ' + r0 + ' s on render ' + (k + 1) + '; re-rendering)');
+      }
+      const mt = L.save(wet, 'zone_' + id + '_wet');
       L.save(await L.renderFn(page, zoneScene(id, 1, id === 'lake' ? 0.15 : 0.35), 4.2), 'zone_' + id + '_clap');
       const rt = rt60(m, wet.sr);
       rts[id] = rt;

@@ -396,7 +396,7 @@
     jig.g.gain.setValueAtTime(0, t + 0.55 + d);
     const hs = noiseVoice(ac, out, t, 1.1 + d, 'white', 'bandpass', 1800, 1.1);
     hs.f.frequency.setValueAtTime(1800, t); hs.f.frequency.exponentialRampToValueAtTime(fw * 1.15, t + 0.45);
-    pts(hs.g.gain, t, [[0, 0], [0.4, 0.32], [0.5, 0.18], [0.45 + d, 0.18], [0.6 + d, 0.06], [1.0 + d, 0]]);
+    pts(hs.g.gain, t, [[0, 0], [0.4, 0.26], [0.5, 0.12], [0.45 + d, 0.12], [0.6 + d, 0.04], [1.0 + d, 0]]);
     const ws = t + 0.32;
     const os = osc0(ac); os.setPeriodicWave(wave(ac, 'amb_whistle'));
     pts(os.frequency, ws, [[0, fw * 0.8], [0.18, fw], [d, fw * 1.015], [d + 0.13, fw * 0.88]], true);
@@ -456,7 +456,7 @@
     const base = rr(300, 330) * P(o), bells = [1, 8 / 9, 4 / 5, 3 / 4], rounds = o.n || 3;
     let tt = t;
     for (let r = 0; r < rounds; r++) {
-      for (let b = 0; b < 4; b++) { e = Math.max(e, churchStrike(ac, out, tt + rr(-0.02, 0.02), base * bells[b], 0.16 * rr(0.85, 1))); tt += 0.42; }
+      for (let b = 0; b < 4; b++) { e = Math.max(e, churchStrike(ac, out, Math.max(t, tt + rr(-0.02, 0.02)), base * bells[b], 0.16 * rr(0.85, 1))); tt += 0.42; }
       if (r % 2) tt += 0.42; // handstroke gap
     }
     return e;
@@ -523,9 +523,9 @@
   // A distant motor boat on the lake: 2-stroke putter fading in and out
   function boatPutt(ac, out, t, o) {
     const d = o.dur || rr(3, 4.5);
-    const nv = noiseVoice(ac, out, t, d + 0.2, 'brown', 'lowpass', 520, 1.2);
+    const nv = noiseVoice(ac, filt(ac, 'lowpass', 700, 0.7, out), t, d + 0.2, 'brown', 'lowpass', 520, 1.2);
     const hits = []; for (let x = t; x < t + d; x += 1 / rr(10, 12)) hits.push([x, Math.sin(Math.PI * (x - t) / d)]);
-    pulses(nv.g.gain, hits, 1.3, 0.025);
+    pulses(nv.g.gain, hits, 0.55, 0.025);
     nv.g.gain.setValueAtTime(0, t + d + 0.1);
     return t + d + 0.15;
   }
@@ -582,7 +582,7 @@
     const hs = noiseVoice(ac, lp, t, D + 0.1, 'white', 'bandpass', 3000, 0.7);
     hs.g.gain.setValueAtTime(0.03, t);
     const am = osc0(ac); am.frequency.value = rr(0.3, 0.7); am.connect(gain(ac, 0.02, hs.g.gain)); am.start(t); am.stop(t + D + 0.1);
-    pts(g.gain, t, [[0, 0], [0.3, 0.9], [D - 0.3, 0.9], [D, 0]]);
+    pts(g.gain, t, [[0, 0], [0.3, 0.6], [D - 0.3, 0.6], [D, 0]]);
     return t + D;
   }
 
@@ -724,7 +724,7 @@
     koel: (h, m) => (m >= 2 && m <= 5 ? 1 : 0.12) * band(h, [[5, 10, 2], [10, 17, 0.6], [17, 19, 0.9], [22, 24, 0.15], [0, 4, 0.15]], 0),
     pigeons: (h) => band(h, [[6, 8, 1.5], [8, 18.5, 1]], 0),
     soar: (h) => band(h, [[9, 17, 1]], 0),
-    meal: (h) => band(h, [[6.5, 9, 2], [9, 11.3, 0.4], [11.3, 13.5, 3.5], [13.5, 19, 0.3], [19, 21.3, 3]], 0),
+    meal: (h) => band(h, [[6.5, 9, 1.1], [9, 11.3, 0.4], [11.3, 13.5, 3.5], [13.5, 19, 0.3], [19, 21.3, 3]], 0),
     hawker: (h) => band(h, [[6.5, 11, 1.5], [11, 16, 0.6], [16, 19.5, 1]], 0),
     morning: (h) => band(h, [[5.5, 9, 1.5], [9, 12, 0.3]], 0),
     purani: (h) => band(h, [[10, 16.5, 1]], 0),
@@ -750,7 +750,7 @@
       ['auto_horn', 2.5, 'rush', { far: 1 }], ['cow_moo', 0.3, 'day']],
     colonial: [['crow_caw', 1.2, 'crows'], ['pigeons', 0.8, 'pigeons'], ['bird', 1, 'birds'], ['koel', 0.2, 'koel'], ['bus_horn', 1.2, 'rush', { far: 1 }],
       ['car_horn', 1.5, 'rush', { far: 1 }], ['auto_horn', 1.5, 'rush', { far: 1 }], ['vendor_call', 0.8, 'morning', { variant: 'paper' }], ['vendor_call', 0.4, 'chai', { variant: 'chai' }]],
-    colony: [['bird', 5, 'birds'], ['crow_caw', 2, 'crows'], ['koel', 0.8, 'koel'], ['cooker', 1.2, 'meal'], ['vendor_call', 1, 'hawker', { variant: 'veg' }],
+    colony: [['bird', 5, 'birds'], ['crow_caw', 2, 'crows'], ['koel', 0.8, 'koel'], ['cooker', 0.7, 'meal'], ['vendor_call', 1, 'hawker', { variant: 'veg' }],
       ['vendor_call', 0.7, 'hawker', { variant: 'banana' }], ['vendor_call', 0.6, 'morning', { variant: 'flower' }], ['vendor_call', 0.6, 'kulfi', { variant: 'kulfi' }],
       ['kulfi_bell', 0.6, 'kulfi'], ['vendor_call', 0.5, 'purani', { variant: 'purani' }], ['vendor_call', 0.6, 'morning', { variant: 'paper' }],
       ['vendor_call', 0.4, 'bhutta', { variant: 'bhutta' }], ['kids', 0.8, 'kids'], ['gossip', 0.6, 'gossip'], ['cow_moo', 0.2, 'day'], ['goat_bleat', 0.15, 'day'],
@@ -997,7 +997,7 @@
         if (S.temple[a.id] == null) S.temple[a.id] = t + rr(1.2, 3.5);
         else if (t >= S.temple[a.id]) {
           S.temple[a.id] = t + rr(9, 26) * (aarti ? 0.6 : 1);
-          if (!night) X.play('temple_bell', { x: a.p.x + rr(-10, 10), y: a.p.y + rr(-10, 10), bus: 'amb', vol: 0.8, ref: 70, max: R0.r * 1.6, variant: aarti && rnd() < 0.35 ? 'aarti' : undefined });
+          if (!night && !X.play('temple_bell', { x: a.p.x + rr(-10, 10), y: a.p.y + rr(-10, 10), bus: 'amb', vol: 0.8, ref: 70, max: R0.r * 1.6, variant: aarti && rnd() < 0.35 ? 'aarti' : undefined })) S.temple[a.id] = t + 1; // voice pool busy: retry
         }
       } else if (R0.tag === 'school' && min < S.recessUntil && wd >= 1 && wd <= 6) fire('kids', 6, { vol: 0.7 }, info, dt, a.p);
       else if (MOSQUE.test(a.id) && ((h >= 5.5 && h < 7) || (h >= 17.5 && h < 18.8))) fire('coo', 2, {}, info, dt, a.p);

@@ -3653,7 +3653,7 @@
     const extra = {};
     if (name === 'bell' && VT && VT.bell) extra.variant = VT.bell;           // A3: Hero vs Hercules bells
     if (name === 'scooter_horn' && engProfile(type) === ENGINES.scooty) extra.pitch = 1.35; // the Scooty's thin "peep peep"
-    if (hornOpts) return playSfx(name, Object.assign(pos, hornOpts, { name: undefined, vtype: type }, o && o.dur ? { dur: o.dur } : {}));
+    if (hornOpts) return playSfx(name, Object.assign(pos, { vtype: type }, hornOpts, { name: undefined }, o && o.dur ? { dur: o.dur } : {})); // the object's fields win
     return playSfx(name, Object.assign(pos, type === 'boat' ? { pitch: 0.7 } : {}, extra, { vtype: type }, o && o.dur ? { dur: o.dur } : {}));
   };
   function speakerPitch(id) {
@@ -3664,7 +3664,7 @@
   function onVehicleEnter(v) {
     if (!v || !G) return;
     const type = v.type, pr = engProfile(type);
-    const o = { x: v.x, y: v.y };
+    const o = { x: v.x, y: v.y, vtype: type }; // vtype: the vehicles file picks the exact engine / bell
     const VT = N.vehicles && N.vehicles.TYPES && N.vehicles.TYPES[type];
     if (pr.kind === 'pedal') playSfx('bell', Object.assign({ rings: 1, vol: 0.5, variant: VT && VT.bell }, o));
     else if (type === 'auto') playSfx('auto_start', o);
