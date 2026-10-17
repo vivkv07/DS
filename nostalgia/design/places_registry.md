@@ -30,6 +30,8 @@ anything else in the design docs.
 | `rtc_x_roads` | RTC X Roads | Chikkadpally / Musheerabad | cinema district, hand-painted film hoardings, Bawarchi |
 | `sandhya_theatre`, `sudarshan_theatre`, `odeon_theatre`, `devi_theatre` | RTC X Roads cinemas | RTC X Roads | use fictional film titles on hoardings |
 | `charminar` | Charminar | Old City | **final mission + ending** |
+| `nampally_exhibition` | Nampally Exhibition (Numaish, All India Industrial Exhibition) | Nampally exhibition grounds | Jan-Feb fair: giant wheel, maut ka kuan, Delhi papad, stalls, loudspeaker lost-and-found announcements |
+| `paradise` | Paradise (biryani) | Secunderabad, Paradise circle | the biryani pilgrimage; parcel runs, the queue, the smell from the road |
 
 3. **Everyday elements, many instances across colonies and markets** (ids are
    prefixes; number them, e.g. `irani_cafe_1`):
@@ -40,14 +42,19 @@ anything else in the design docs.
    `playground_*` (small colony playgrounds with dusty cricket pitches, swings, slides),
    `irani_cafe_*` (Irani cafes: chai, Osmania biscuits, bun maska, jukebox-era decor).
 
-## Era note
+## Era note (updated by the user, binding)
 
-The core of the game is the 1990s. Prasads IMAX (2003) and NTR Gardens (about 2000)
-came just after, but the user wants them in, so they are in. Handle it honestly and
-with charm: the story may span the late 90s into the very early 2000s, or show them
-in a present-day or "years later" scene, or as fenced construction sites with
-"coming soon" hoardings that later open. They must still be visitable and recognisable.
-Everything else stays true to the 1990s.
+The protagonist is **11 years old**: a kid who grew up through the 1990s. The user says
+the **early 2000s is good** for the main story, so set the main storyline in the early
+2000s (writers pick one year between 2000 and 2003 and keep every date consistent; 2003
+works well: Prasads IMAX opens on Necklace Road, NTR Gardens is open, the 2003 Cricket
+World Cup fever, Numaish in Jan-Feb). Prasads IMAX and NTR Gardens are therefore open
+and fully visitable (if the chosen year is before Prasads opened, show it opening during
+the story). The kid's memories, toys, TV, games and slang are the 1990s ones they grew up
+with, still around in the early 2000s. Anything that arrived after 2003 (Snow World,
+Hyderabad Central, Inorbit, the PVNR flyover, the metro, the new airport, Eat Street,
+smartphones, etc.) is still an anachronism and must not appear. The research files'
+"anachronism blacklist" is relaxed only up to the chosen year.
 
 ## Additional must-haves (user, round 2, binding)
 
