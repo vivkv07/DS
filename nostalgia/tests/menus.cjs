@@ -196,8 +196,8 @@ async function run(browser, V) {
   if (hit) {
     if (V.touch) await page.touchscreen.tap(hit.x, hit.y); else await page.mouse.click(hit.x, hit.y);
     await sleep(250);
-    const card = await page.evaluate(() => { const c = document.querySelector('.mp-card'); return { shown: !c.hidden, text: c.textContent }; });
-    check(card.shown && /Charminar/.test(card.text), 'tapping a landmark opens its place card', card.text);
+    const card = await page.evaluate(() => { const c = document.querySelector('.mp-card'); return { shown: !c.hidden, title: (c.querySelector('.mc-head b') || {}).textContent, text: c.textContent }; });
+    check(card.shown && card.title === 'Charminar', 'tapping a landmark opens its place card', card.text);
     await shot('06_map_card');
     await tap('.mp-card [data-mc=route]');
     await sleep(150);
@@ -323,6 +323,8 @@ async function run(browser, V) {
   const tc = await page.evaluate(() => ({ cont: !document.querySelector('.trk-cont').hidden, sub: document.querySelector('.cont-sub').textContent }));
   check(tc.cont && /TRACK \d\d · .*2003/.test(tc.sub), '▶▶ CONTINUE shows the save line', tc.sub);
   await sleep(300);
+  const jc2 = await page.evaluate(() => { const b = document.querySelector('.mn-title .jc').getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, tracks: Array.from(document.querySelectorAll('.jc-tracks > li')).filter((li) => !li.hidden).length }; });
+  check(jc2.t >= 0 && jc2.b <= V.viewport.height && jc2.r <= V.viewport.width + 12, 'J-card with ' + jc2.tracks + ' tracks still fits the screen', jc2);
   await shot('13_title_continue');
   if (!V.touch) {
     await page.click('#title-start');

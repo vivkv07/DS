@@ -836,7 +836,7 @@ meter frozen, pursuers stop at the boundary).
 Details (seasons.js header is the reference): `set(name, on|null)` overrides the calendar (an
 override set during a mission ends with it), `autoFor(date)` applies the bible §1.4 calendar and
 keeps overrides on top, `calendarFor(date)`, `active()`, extras `world_cup monsoon eid`, weather
-`raining` / `mist` (`'weather'` event; `N.flags.rain = true|false` forces it), `overlays[name] =
+`raining` / `mist` (`'weather'` event; `N.flags.rain = true|false` forces it; mirrored to `N.flags.raining`, and `is('rain')` / `is('mist')` read it), `overlays[name] =
 false` switches one overlay off, `profile` / `prof` time them. The giant Khairatabad idol leaves its
 pandal on immersion day (`N.landmarks.fx.ganesh` is set false only while it is null).
 `N.respect.at(x, y)` -> `{id, name, kind, place, part: 'compound'|'forecourt', gate, zone}`:

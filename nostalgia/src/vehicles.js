@@ -932,7 +932,7 @@
   function lightsFor(v) {
     const R = N.render, night = R.night || 0;
     const T = v.T;
-    if (night < 0.05 || !T.lights) return;
+    if (night < 0.05 || !(T.lights || (T.id === 'chinnu_cycle' && v.driver && unlocked('dynamo', 20)))) return;
     const on = !!v.driver || v.controller || v.lightsOn;
     const c = Math.cos(v.angle), s = Math.sin(v.angle);
     const fx = v.x + c * T.w / 2, fy = v.y + s * T.w / 2;
@@ -986,6 +986,7 @@
     PX = R.sx(fx0 + fc * lx - fs * ly, k); PY = R.sy(fy0 + fs * lx + fc * ly, k);
   }
   /** Local-coordinate drawing on a horizontal plane at height h (fn draws facing +x). */
+  function topRaw(ctx, h, fn) { top(ctx, h, fn); }
   function top(ctx, h, fn) {
     const R = N.render, k = R.k(h + fz);
     ctx.setTransform(fc * k, fs * k, -fs * k, fc * k, R.sx(fx0, k), R.sy(fy0, k));
@@ -1294,6 +1295,7 @@
       ctx.beginPath(); ctx.arc(PX, PY, 1.5 * N.render.Z, 0, TAU); ctx.fill();
     }
     doorFlap(ctx, v, cx + cl * 0.15, h0 + 0.5, C.cabH - 1, cl * 0.45);
+    kidPlate(ctx, v, h1 + 0.1);
   }
   function greenhouse(T, C) {
     if (T._gh) return T._gh;
@@ -1354,6 +1356,7 @@
       g.fillStyle = blk; g.fillRect(-11, -0.8, 18, 1.6);
       g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(-9, -5.6, 15, 1.1);
     });
+    kidPlate(ctx, v, 14.6);
   }
 
   // ---------------------------------------------------------------- bus
@@ -1472,14 +1475,16 @@
 
   // ------------------------------------------------------- two-wheelers
   function drawBike(ctx, v) {
-    const T = v.T, L = T.w, id = T.id;
+    const T = v.T, L = T.w, id = T.bikeLook || T.id;
     begin(v);
-    const riding = !!v.driver;
+    const lie = !!v.fallen;               // DHADAAM: lying on its side until picked up
+    const riding = !!v.driver && !lie;
     const lean = v.lean || 0;
     const col = v.color;
-    // parked bikes lean on the side stand
-    const tilt = riding ? lean : 0.22;
-    const ox = -Math.sin(tilt) * 2.2; // lateral offset of upper parts (in local y)
+    // parked bikes lean on the side stand; a fallen one lies flat with its parts spilled sideways
+    const tilt = riding ? lean : lie ? 1.25 : 0.22;
+    const ox = -Math.sin(tilt) * (lie ? 4.6 : 2.2); // lateral offset of upper parts (in local y)
+    const top = lie ? (c2, h, fn) => topRaw(c2, Math.min(h, 1.6) * 0.6 + 0.2, fn) : topRaw;
     const rw = L / 2 - 3, fw = L / 2 - 3;
     const steer = v.steerVis * 0.9;
     // wheels (thin dark slabs), the front one turns with the handlebar
@@ -1574,6 +1579,8 @@
       });
     }
     if (riding) drawRider(ctx, v, ox, id === 'cycle' || id === 'ladiescycle' ? -1.4 : id === 'chetak' ? -2.6 : -2.2, T.pedal);
+    if (riding && v.pillion) drawPillion(ctx, v, ox, id === 'cycle' ? -5.6 : -6.4);
+    if (T.id === 'chinnu_cycle' && (unlocked('streamers', 75))) topRaw(ctx, 7, (g) => { g.translate(L / 2 - 4.2, ox); g.strokeStyle = '#ffd84a'; g.lineWidth = 0.5; g.beginPath(); for (const y of [-3.2, 3.2]) { g.moveTo(0, y); g.lineTo(-2.4, y * 1.25); g.moveTo(0, y); g.lineTo(-2.8, y * 0.9); } g.stroke(); });
   }
 
   function riderLook(v) {
@@ -1592,6 +1599,72 @@
       g.translate(at, ox * 1.25);
       N.people.draw(g, look, riderAnim);
     });
+  }
+
+  // a second rider behind the driver (Mummy pillion on Nanna's Chetak; Chinnu behind Nanna)
+  const pillionAnim = { phase: 0, speed: 0, run: false };
+  function drawPillion(ctx, v, ox, at) {
+    const P = v.pillion, look = P && (P.look || P);
+    if (!look || typeof look !== 'object') return;
+    top(ctx, 8.2, (g) => { g.translate(at, ox * 1.25); N.people.draw(g, look, pillionAnim); });
+  }
+
+  // ---------------------------------------------------- story-vehicle extras (systems §3.2)
+  function drawLightBar(ctx, v) { // Pochaiah's Luna: a red-and-blue light-bar decal on the carrier
+    top(ctx, 4.6, (g) => {
+      g.fillStyle = '#efe9dc'; g.fillRect(-8.6, -1.7, 3.4, 3.4);
+      g.fillStyle = '#c8231d'; g.fillRect(-8.4, -1.5, 1.5, 1.4);
+      g.fillStyle = '#2a4ab8'; g.fillRect(-6.9, 0.1, 1.5, 1.4);
+    });
+  }
+  function drawSidecar(ctx, v) { // Pasha's yellow scooter with a sidecar of camera gear (drawn only)
+    const W = v.T.d;
+    const car = [5, W / 2 + 0.8, 5, W / 2 + 7.2, -5.5, W / 2 + 7.2, -6.5, W / 2 + 4, -5.5, W / 2 + 0.8];
+    prism(ctx, car, 1, 4.6, v.color, U.shade(v.color, 1.08), null, (g) => {
+      g.fillStyle = '#2a2628'; g.fillRect(-4.2, W / 2 + 2, 4, 3.6);          // camera case
+      g.fillStyle = '#6a6a70'; g.fillRect(0.8, W / 2 + 2.4, 2.6, 2.4);       // tripod bundle
+      g.strokeStyle = '#d8d8d4'; g.lineWidth = 0.5; g.beginPath(); g.moveTo(0.4, W / 2 + 3.6); g.lineTo(4.6, W / 2 + 3.6); g.stroke();
+    });
+  }
+  function drawPeacock(ctx, v) { // M10: a painted peacock and marigold strings on the idol bed
+    const T = v.T, L = T.w, W = T.d, bx0 = -L / 2, bx1 = L / 2 - 12.5;
+    top(ctx, 16.8, (g) => {
+      g.fillStyle = '#e8a020';
+      for (let x = bx0 + 1.5; x < bx1 - 1; x += 2.2) { g.beginPath(); g.arc(x, -W / 2 + 1, 0.8, 0, TAU); g.arc(x + 1.1, W / 2 - 1, 0.8, 0, TAU); g.fill(); }
+      const cx = (bx0 + bx1) / 2 + 3;
+      for (let i = -3; i <= 3; i++) { // tail fan
+        const a = Math.PI + i * 0.32, ex = cx + Math.cos(a) * 9, ey = Math.sin(a) * 9 * 0.8;
+        g.strokeStyle = '#2a8a5a'; g.lineWidth = 0.9; g.beginPath(); g.moveTo(cx, 0); g.lineTo(ex, ey); g.stroke();
+        g.fillStyle = '#1e5aa8'; g.beginPath(); g.arc(ex, ey, 1.3, 0, TAU); g.fill();
+        g.fillStyle = '#f2c230'; g.beginPath(); g.arc(ex, ey, 0.5, 0, TAU); g.fill();
+      }
+      g.fillStyle = '#1e5aa8'; g.beginPath(); g.ellipse(cx + 1.6, 0, 2.6, 1.4, 0, 0, TAU); g.fill();
+      g.fillStyle = '#2a8c82'; g.beginPath(); g.arc(cx + 4.2, 0, 1, 0, TAU); g.fill();
+    });
+  }
+  function drawTrunks(ctx, v) { // the ending card's taxi: a roof carrier of tin trunks
+    const C = v.T.car;
+    top(ctx, C.cabH + 0.4, (g) => {
+      g.fillStyle = '#f2c230'; g.fillRect(-10, -0.6, 14, 1.2);
+      g.strokeStyle = '#8a8a86'; g.lineWidth = 0.5; g.strokeRect(-9.5, -4.8, 12.5, 9.6);
+      g.fillStyle = '#5a6a7a'; g.fillRect(-9, -4.3, 5.6, 4); g.fillStyle = '#7a3a2a'; g.fillRect(-3, -4.3, 5.4, 3.6); g.fillStyle = '#3a5a3a'; g.fillRect(-8.6, 0.5, 10.6, 3.8);
+      g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(-9, -4.3, 5.6, 0.8); g.fillRect(-8.6, 0.5, 10.6, 0.8);
+    });
+  }
+  function drawCage(ctx, v) { // zoo safari bus: wire mesh over the windows (seen on the roof edge)
+    const T = v.T, L = T.w, W = T.d;
+    top(ctx, T.h + 0.1, (g) => {
+      g.strokeStyle = 'rgba(30,30,30,0.55)'; g.lineWidth = 0.35; g.beginPath();
+      for (let x = -L / 2 + 3; x < L / 2 - 3; x += 2.2) { g.moveTo(x, -W / 2); g.lineTo(x, -W / 2 + 2); g.moveTo(x, W / 2); g.lineTo(x, W / 2 - 2); }
+      g.stroke();
+    });
+  }
+  /** The joke "L" board when the kid drives a car or an auto (systems §3.1). */
+  function kidPlate(ctx, v, h) {
+    if (!v.driver || v.driver !== N.player) return;
+    const T = v.T;
+    if (T.cls !== 'car' && T.cls !== 'auto') return;
+    top(ctx, h, (g) => { g.fillStyle = '#f4f2ec'; g.fillRect(-T.w / 2 + 0.6, -1.8, 2.8, 3.6); g.fillStyle = '#c8231d'; g.fillRect(-T.w / 2 + 1.2, -1.2, 0.6, 2.4); g.fillRect(-T.w / 2 + 1.2, 0.7, 1.6, 0.6); });
   }
 
   // ---------------------------------------------------------------- boat
@@ -1768,17 +1841,22 @@
     };
     for (const id in P) {
       const pl = P[id];
+      // rental cycles and jetty boats belong to their stall: ACTION opens the stall's menu (shops.js)
       if (pl.kind === 'cycle_rent') {
-        put('cycle', pl.x + 10, pl.y + 6, Math.PI / 2 + 0.2, { seed: U.strHash(id) });
-        put('ladiescycle', pl.x + 18, pl.y + 6, Math.PI / 2 + 0.25, { seed: U.strHash(id) + 1 });
+        put('kid_cycle', pl.x + 4, pl.y + 6, Math.PI / 2 + 0.15, { seed: U.strHash(id) + 2, hire: id });
+        put('cycle', pl.x + 12, pl.y + 6, Math.PI / 2 + 0.2, { seed: U.strHash(id), hire: id });
+        put('ladiescycle', pl.x + 20, pl.y + 6, Math.PI / 2 + 0.25, { seed: U.strHash(id) + 1, hire: id });
       } else if (pl.kind === 'jetty' && !/_boat$/.test(id)) {
-        put('boat', pl.x, pl.y, -Math.PI / 2, { seed: U.strHash(id) });
-        put('boat', pl.x + 24, pl.y + 10, -Math.PI / 2 + 0.3, { seed: U.strHash(id) + 7 });
+        put('boat', pl.x, pl.y, -Math.PI / 2, { seed: U.strHash(id), hire: id });
+        put('boat', pl.x + 24, pl.y + 10, -Math.PI / 2 + 0.3, { seed: U.strHash(id) + 7, hire: id });
       }
     }
     const home = (N.WORLD_DATA && N.WORLD_DATA.spawns && N.WORLD_DATA.spawns.home) || null;
     // the family Chetak, parked on the footpath a few doors down (clear of the front door)
-    if (home) put('chetak', home[0] - 58, home[1] + 2, Math.PI / 2, { seed: 1999, color: '#86b9c9', special: 'family' });
+    if (home) put('family_chetak', home[0] - 58, home[1] + 2, Math.PI / 2, { seed: 1999, color: '#7d9ab0', special: 'family' });
+    // Chinnu's own cycle (12 finds) and Nanna's roadster (after M6) wait at home each morning
+    if (home && unlocked('own_cycle', 12)) put('chinnu_cycle', home[0] - 40, home[1] + 4, Math.PI / 2, { seed: 2003, owned: true, label: 'my cycle' });
+    if (home && (N.flags.old_cycle || (N.missions && N.missions.isDone && N.missions.isDone('ammammas_thursday')))) put('old_cycle', home[0] - 76, home[1] + 2, Math.PI / 2, { seed: 1983, owned: true });
   }
   function waterSpot(x, y) {
     for (let r = 0; r < 140; r += 6) {
@@ -1790,9 +1868,174 @@
     return null;
   }
 
+  /* ================================================== NPC drivers (road routes) */
+  // A* over the road graph (every incident edge: scripted drivers may ignore one-way rules).
+  function astar(a, b) {
+    const R = N.world.roads, nodes = R.nodes, edges = R.edges;
+    if (!a || !b) return null;
+    if (a === b) return [a];
+    const g = new Map(), from = new Map(), open = [[0, a.id]], closed = new Set();
+    g.set(a.id, 0);
+    let guard = 0;
+    while (open.length && guard++ < 8000) {
+      let bi = 0;
+      for (let i = 1; i < open.length; i++) if (open[i][0] < open[bi][0]) bi = i;
+      const id = open[bi][1];
+      open[bi] = open[open.length - 1]; open.pop();
+      if (closed.has(id)) continue;
+      if (id === b.id) {
+        const path = [nodes[id]];
+        let c = id;
+        while (from.has(c)) { c = from.get(c); path.push(nodes[c]); }
+        return path.reverse();
+      }
+      closed.add(id);
+      const n = nodes[id], gn = g.get(id);
+      for (const eid of n.inc) {
+        const e = edges[eid], to = e.a === id ? e.b : e.a;
+        if (closed.has(to) || e.kind === 'path') continue;
+        const ng = gn + (e.len || 1);
+        if (ng < (g.has(to) ? g.get(to) : Infinity)) { g.set(to, ng); from.set(to, id); open.push([ng + Math.hypot(nodes[to].x - b.x, nodes[to].y - b.y), to]); }
+      }
+    }
+    return null;
+  }
+  /**
+   * Road route from (x0, y0) to (x1, y1) as a polyline [[x, y], ...] in the left-hand lane
+   * (traffic drives on the left). Falls back to a straight line without a road graph.
+   */
+  function roadPath(x0, y0, x1, y1) {
+    const R = N.world && N.world.roads;
+    if (!R || !R.nodes || !R.nodes.length) return [[x0, y0], [x1, y1]];
+    const a = R.nearestNode(x0, y0), b = R.nearestNode(x1, y1);
+    const nodes = astar(a, b);
+    const pts = [[x0, y0]];
+    if (nodes && nodes.length > 1) {
+      for (let i = 0; i < nodes.length - 1; i++) {
+        const A = nodes[i], B = nodes[i + 1], len = Math.hypot(B.x - A.x, B.y - A.y);
+        if (len < 24) { pts.push([(A.x + B.x) / 2, (A.y + B.y) / 2]); continue; }
+        const p0 = R.lanePoint(A, B, Math.min(0.45, 10 / len), 0), p1 = R.lanePoint(A, B, Math.max(0.55, 1 - 10 / len), 0);
+        pts.push([p0.x, p0.y], [p1.x, p1.y]);
+      }
+    } else if (nodes && nodes.length === 1) pts.push([nodes[0].x, nodes[0].y]);
+    pts.push([x1, y1]);
+    return pts;
+  }
+  function pathLength(pts) { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return L; }
+  /** Road distance between two points (u), for fares and bus times. */
+  function roadDistance(x0, y0, x1, y1) { return pathLength(roadPath(x0, y0, x1, y1)); }
+
+  /**
+   * Drive a vehicle along a road route (or a given polyline) to a target with its own controller.
+   * target: {x, y} | place id | entity | [[x, y], ...] (a path). opts: {speed (cruise u/s, default
+   * 0.6 x top, max 95), r (arrive radius, 16), road (true: route on the road graph), timeout (s),
+   * warp (true: when stuck or late and off-screen, hop along the path), stop (true: brake at the end),
+   * onArrive(v)}. Resolves true on arrival, false on timeout / stop / the vehicle being removed.
+   */
+  function driveTo(v, target, opts) {
+    opts = opts || {};
+    if (!v || !v.alive) return Promise.resolve(false);
+    stopDriving(v);
+    let pts = null;
+    if (Array.isArray(target) && Array.isArray(target[0])) pts = target.map((p) => [p[0], p[1]]);
+    else {
+      const t = typeof target === 'string' ? N.places[target] : target;
+      if (!t || !isFinite(t.x) || !isFinite(t.y)) return Promise.resolve(false);
+      pts = opts.road === false ? [[v.x, v.y], [t.x, t.y]] : roadPath(v.x, v.y, t.x, t.y);
+    }
+    const T = v.T;
+    const cruise = opts.speed || Math.min(95, T.maxSpeed * 0.6);
+    const st = { pts, i: 1, t: 0, chk: 1, x0: v.x, y0: v.y, stuck: 0, rev: 0, done: false };
+    return new Promise((resolve) => {
+      const finish = (ok) => {
+        if (st.done) return; st.done = true;
+        if (v.drive === st) v.drive = null;
+        if (v.controller === ctlFn) v.controller = opts.stop === false ? null : brakeCtl;
+        if (ok && opts.onArrive) { try { opts.onArrive(v); } catch (e) { N.err('vehicles.onArrive', e); } }
+        resolve(ok);
+      };
+      st.finish = finish;
+      const ctlFn = (veh, dt) => {
+        if (!veh.alive) { finish(false); return; }
+        st.t += dt;
+        const ctl = veh.ctl, P = st.pts, end = P[P.length - 1];
+        const dEnd = Math.hypot(end[0] - veh.x, end[1] - veh.y);
+        if (st.i >= P.length - 1 && dEnd < (opts.r || 16)) { ctl.throttle = 0; ctl.brake = true; if (Math.abs(veh.speed) < 10) finish(true); return; }
+        if (opts.timeout && st.t > opts.timeout) {
+          if (opts.warp !== false && !N.render.inView(end[0], end[1], 30)) { warpTo(veh, end, P); finish(true); } else finish(false);
+          return;
+        }
+        // advance the target point (pure pursuit with a speed-dependent look-ahead)
+        const look = Math.max(14, Math.abs(veh.speed) * 0.4);
+        while (st.i < P.length - 1 && Math.hypot(P[st.i][0] - veh.x, P[st.i][1] - veh.y) < look) st.i++;
+        const tx = P[st.i][0], ty = P[st.i][1];
+        const diff = U.angleDiff(veh.angle, Math.atan2(ty - veh.y, tx - veh.x));
+        let want = cruise;
+        if (Math.abs(diff) > 1.2) want = Math.min(want, 26); else if (Math.abs(diff) > 0.5) want = Math.min(want, 55);
+        want = Math.min(want, Math.sqrt(2 * T.brake * 0.45 * Math.max(0, dEnd - 6)) + 6);
+        if (st.rev > 0) { st.rev -= dt; ctl.brake = false; ctl.handbrake = false; ctl.throttle = -0.7; ctl.steer = U.clamp(-diff * 2, -1, 1); return; }
+        ctl.steer = U.clamp(diff * 2.5, -1, 1); ctl.handbrake = false;
+        const sp = veh.speed || 0;
+        if (sp < want - 4) { ctl.throttle = U.clamp((want - sp) / 30, 0.3, 1); ctl.brake = false; }
+        else if (sp > want + 10) { ctl.throttle = 0; ctl.brake = true; }
+        else { ctl.throttle = 0.15; ctl.brake = false; }
+        st.chk -= dt;
+        if (st.chk <= 0) {
+          st.chk = 1;
+          const moved = Math.hypot(veh.x - st.x0, veh.y - st.y0); st.x0 = veh.x; st.y0 = veh.y;
+          if (moved < 4 && want > 10) {
+            st.stuck++; st.rev = 0.7;
+            if (st.stuck >= 3 && opts.warp !== false && !N.render.inView(veh.x, veh.y, 30)) { const q = P[Math.min(P.length - 1, st.i + 1)]; warpTo(veh, q, P, st.i + 1); st.stuck = 0; st.i = Math.min(P.length - 1, st.i + 1); }
+          } else st.stuck = 0;
+        }
+      };
+      v.drive = st;
+      v.controller = ctlFn;
+      v.wake();
+    });
+  }
+  function warpTo(v, p, P, i) {
+    const f = N.world.findFree(p[0], p[1], 'drive', 20);
+    if (!f || N.world.collide(f.x, f.y, v.T.cr + 0.5, 'drive').hit) return false;
+    const nx = P && i != null && P[i + 1] ? P[i + 1] : null;
+    v.x = f.x; v.y = f.y; v.okX = null; v.vx = v.vy = v.av = 0; v.speed = 0;
+    if (nx) v.angle = Math.atan2(nx[1] - f.y, nx[0] - f.x);
+    return true;
+  }
+  function brakeCtl(v) { v.ctl.throttle = 0; v.ctl.steer = 0; v.ctl.brake = true; v.ctl.handbrake = false; }
+  function stopDriving(v) { const st = v && v.drive; if (st && st.finish) st.finish(false); if (v) v.drive = null; }
+
   const V = (N.vehicles = {
-    TYPES, list, Vehicle, define, spawn, remove, enter, exit, exitSpot, distTo,
+    TYPES, list, Vehicle, define, spawn, remove, enter, exit, exitSpot, distTo, TUNE,
     autoSeed: true, seedParked,
+    /** debug: let the player drive buses and lorries through the normal ACTION offer */
+    allowHeavy: false,
+    finds, unlocked,
+    roadPath, roadDistance, pathLength, driveTo, stopDriving,
+    /** An NPC (Actor) gets on as the driver: no borrow, no meter (N.npcs uses enter too). */
+    board(actor, v) { if (!actor || !v || (v.driver && v.driver !== actor)) return false; return enter(actor, v, { quiet: true }); },
+    alight(actor, instant) { return exit(actor, instant); },
+    /** A second rider drawn behind the driver on a bike: setPillion(v, actor | look | null). */
+    setPillion(v, who) { if (v) v.pillion = who || null; return v; },
+    /** Kid at the wheel (systems §3.1): is the player driving a car / auto right now? */
+    kidAtWheel(v) { v = v || (N.player && N.player.vehicle); return !!(v && v.driver === N.player && (v.T.cls === 'car' || v.T.cls === 'auto')); },
+    nakko: nakkoFor,
+    /** Flat tyre (systems §5.6): top speed x0.55 until fixed at a cycle shop (N.shops: ₹2). */
+    puncture(v) {
+      if (!v || v.flat) return false;
+      v.flat = true;
+      if (N.audio && N.audio.sfx) N.audio.sfx('puncture', { x: v.x, y: v.y });
+      if (v.driver === N.player && N.hud) { N.hud.toast('Puncture! *Psssss...* Any cycle shop fixes it for ₹2.', 2800); N.emit('caption', { text: 'tyre hisses', kind: 'self', ms: 1600 }); }
+      N.emit('vehicle:puncture', { vehicle: v });
+      return true;
+    },
+    fixPuncture(v) { if (!v || !v.flat) return false; v.flat = false; N.emit('vehicle:fixed', { vehicle: v }); return true; },
+    /** The player's own / last ridden pedal cycle within r of (x, y) (for the puncture fix). */
+    nearestCycle(x, y, r, pred) {
+      let best = null, bd = r == null ? 40 : r;
+      for (const v of list) { if (!v.alive || !v.T.pedal || (pred && !pred(v))) continue; const d = distTo(v, x, y); if (d < bd) { bd = d; best = v; } }
+      return best;
+    },
     /** Nearest vehicle within r of (x, y) by footprint distance (pred optional). */
     nearest(x, y, r, pred) {
       let best = null, bd = r == null ? 30 : r;

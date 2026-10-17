@@ -8,6 +8,7 @@
  *   NAMES   sankranti numaish summer bonalu ganesh ganesh_immersion ramzan chand_raat christmas
  *           prasads_open year2026  (+ extras world_cup monsoon eid, read by places_art / landmarks)
  *   is(name) -> bool                    state {name: bool}            active() -> [names]
+ *                                       (is('rain') / is('mist') report the weather below)
  *   set(name, on)                       override the calendar (true / false); set(name, null) drops the
  *                                       override. Overrides set while a mission runs end with that mission.
  *   autoFor(date)                       apply the calendar of `date` ({y, m (1-12), d} | Date | 'YYYY-MM-DD'
@@ -114,7 +115,7 @@
     get overrides() { const o = {}; for (const k in overrides) o[k] = overrides[k].on; return o; },
     overlays: {}, quality: 1, profile: false, prof: {},
     raining: false, mist: false,
-    is(name) { return !!state[name]; },
+    is(name) { if (name === 'rain' || name === 'raining') return !!S.raining; if (name === 'mist') return !!S.mist; return !!state[name]; },
     active() { return ALL.filter((n) => state[n]); },
     calendarFor,
     date() { return toDate(lastDate); },
@@ -1548,7 +1549,11 @@
     if (N.flags && N.flags.rain === true) rain = true;
     if (N.flags && N.flags.rain === false) rain = false;
     const mist = (d.m === 12 || d.m === 1) && m > 5.5 * 60 && m < 7.5 * 60;
-    if (rain !== S.raining || mist !== S.mist) { S.raining = rain; S.mist = mist; N.emit('weather', { rain, mist }); }
+    if (rain !== S.raining || mist !== S.mist) {
+      S.raining = rain; S.mist = mist;
+      if (N.flags) N.flags.raining = rain;   // read by vehicles.js (wet roads) and audio
+      N.emit('weather', { rain, mist });
+    }
   }
   const rainDrops = [];
   function drawWeather() {

@@ -630,7 +630,9 @@
       if (man) this.dom.loadSub.textContent = saveLine(man);
       const V = N.view, hasView = !!(V && (typeof V.cycle === 'function' || typeof V.set === 'function'));
       this.dom.view.hidden = !hasView;
-      if (hasView) this.dom.viewSub.textContent = ({ top: 'top-down', tps: '3D · third person', fps: 'first person' })[V.mode] || String(V.mode || 'top-down');
+      const vm = V && (V.want || V.mode);
+      this.dom.tracks.classList.toggle('many', Array.from(this.dom.tracks.children).filter((li) => !li.hidden).length >= 5);
+      if (hasView) this.dom.viewSub.textContent = (V.loading ? 'loading 3D… ' : '') + (({ top: 'top-down', tps: '3D · third person', fps: 'first person' })[vm] || String(vm || 'top-down'));
     },
     back() {
       if (!this.dom.confirm.hidden) { this.dom.confirm.hidden = true; this.dom.tracks.hidden = false; focusFirst(this); }
@@ -1055,7 +1057,7 @@
   function viewRow() {
     const V = N.view;
     if (!V || typeof V.set !== 'function') return null;
-    return { id: 'view', label: 'View', type: 'seg', opts: SEG([['top', 'Top-down'], ['tps', '3D'], ['fps', 'First person']]), help: 'The same city, seen from above or from behind {nick}.', get: () => V.mode || 'top', set: (v) => { try { V.set(v); } catch (e) { N.err('menus.view', e); } } };
+    return { id: 'view', label: 'View', type: 'seg', opts: SEG([['top', 'Top-down'], ['tps', '3D'], ['fps', 'First person']]), help: 'The same city, seen from above or from behind {nick}.', get: () => V.want || V.mode || 'top', set: (v) => { try { V.set(v); } catch (e) { N.err('menus.view', e); } } };
   }
   function settingsRows() {
     const rows = SETTINGS_ROWS.slice();
@@ -1835,9 +1837,14 @@
     sfx('page_flip');
   }
   function hideCard() { if (MV.card && !MV.card.hidden) { MV.card.hidden = true; MV.sel = null; focusEl(MV.frame); } }
+  // the icon nearest to the finger wins (ties: the one drawn on top)
   function hitAt(px, py, extra) {
-    for (let i = MV.hits.length - 1; i >= 0; i--) { const h = MV.hits[i]; if (Math.hypot(h.x - px, h.y - py) <= h.r + (extra || 0)) return h.item; }
-    return null;
+    let best = null, bd = Infinity;
+    for (let i = MV.hits.length - 1; i >= 0; i--) {
+      const h = MV.hits[i], d = Math.hypot(h.x - px, h.y - py);
+      if (d <= h.r + (extra || 0) && d < bd - 0.5) { best = h.item; bd = d; }
+    }
+    return best;
   }
   function waypointAt(px, py) {
     if (waypoint) { const p = w2s(waypoint.x, waypoint.y); if (Math.hypot(p[0] - px, p[1] - py) < 26) { setWaypoint(null); sfx('ui_back'); return; } }

@@ -631,9 +631,10 @@
      */
     jcard(spec) {
       if (!dom.jcard) return;
-      if (!spec) { state.jc = null; dom.jcard.className = 'hud-jcard'; dom.jcard.innerHTML = ''; return; }
+      if (!spec) { state.jc = null; state.jcSig = ''; dom.jcard.className = 'hud-jcard'; dom.jcard.innerHTML = ''; return; }
       const same = state.jc && state.jc.key === (spec.key || spec.title);
       state.jc = Object.assign({}, spec, { key: spec.key || spec.title });
+      if (!same && dom.district) dom.district.classList.remove('show'); // the card owns the centre now
       if (!same) {
         dom.jcard.innerHTML =
           '<div class="jc-tape"><span class="jc-head"></span><span class="jc-reels"><i></i><i></i></span></div>' +
@@ -642,6 +643,10 @@
           '<div class="jc-bar"><b></b></div>';
         dom.jcard.querySelector('.jc-play').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); const j = state.jc; if (j && j.onPlay) { try { j.onPlay(); } catch (er) { N.err('hud.jcard', er); } } });
       }
+      const sig = [spec.head, spec.title, spec.sub, spec.line, spec.cancelLabel, spec.playLabel, spec.canPlay, spec.kind].join('|');
+      const bar = Math.round(U.clamp(spec.progress || 0, 0, 1) * 100) + '%';
+      if (same && sig === state.jcSig) { const b = dom.jcard.querySelector('.jc-bar b'); if (b.style.width !== bar) b.style.width = bar; return; }
+      state.jcSig = sig;
       dom.jcard.querySelector('.jc-head').textContent = spec.head || '';
       dom.jcard.querySelector('.jc-title').textContent = spec.title || '';
       dom.jcard.querySelector('.jc-sub').textContent = spec.sub || '';
@@ -650,7 +655,7 @@
       const pb = dom.jcard.querySelector('.jc-play');
       pb.lastChild.textContent = ' ' + (spec.playLabel || '▶ PLAY');
       pb.classList.toggle('hide', spec.canPlay === false);
-      dom.jcard.querySelector('.jc-bar b').style.width = Math.round(U.clamp(spec.progress || 0, 0, 1) * 100) + '%';
+      dom.jcard.querySelector('.jc-bar b').style.width = bar;
       dom.jcard.className = 'hud-jcard interactive show kind-' + (spec.kind || 'main');
     },
     get jcardOpen() { return !!state.jc; },

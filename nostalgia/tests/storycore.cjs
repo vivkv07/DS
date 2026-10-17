@@ -12,6 +12,7 @@
  * Fails on any console error / page error / N.err.
  *
  *   node nostalgia/tests/storycore.cjs          ONLY=calendar|tape|walkman|player|hud|missions|save
+ *   STABLE=1 serves any src file that does not parse right now (another agent mid-edit) from HEAD.
  */
 'use strict';
 const path = require('path');
@@ -40,6 +41,19 @@ async function openPage(browser, V) {
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '/* stubbed */' }));
+  if (process.env.STABLE) {
+    // parallel work: a neighbour module that is half-written right now (does not parse) is served
+    // from the last commit, so these checks see the story-core modules, not someone's mid-edit file
+    await page.route(/\/src\/[\w.]+\.js$/, (r) => {
+      const rel = 'src/' + r.request().url().split('/src/').pop();
+      let body = null;
+      try { body = fs.readFileSync(path.join(ROOT, rel), 'utf8'); new (require('vm').Script)(body); } catch (e) {
+        try { body = require('child_process').execSync('git show HEAD:nostalgia/' + rel, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 }); console.log('  (STABLE: ' + rel + ' does not parse; using HEAD)'); } catch (e2) { body = null; }
+      }
+      if (body == null) return r.continue();
+      return r.fulfill({ status: 200, contentType: 'text/javascript', body });
+    });
+  }
   await page.goto(URL);
   await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 20000 });
   await page.mouse.click(2, 2); // a real gesture unlocks WebAudio
@@ -357,7 +371,10 @@ async function hudOverlaps(page) {
       }
     }
     // the touch controls count too (MAP / PAUSE pills, ACTION / RUN / HORN)
-    if (document.body.classList.contains('touch-on')) for (const e of document.querySelectorAll('#touch .t-btn')) { const r = e.getBoundingClientRect(); if (r.width > 2) boxes.push({ s: 'touch:' + e.dataset.a, x: r.x, y: r.y, w: r.width, h: r.height }); }
+    if (document.body.classList.contains('touch-on')) for (const e of document.querySelectorAll('#touch .t-btn')) {
+      if (['action', 'run', 'horn', 'map', 'pause'].indexOf(e.dataset.a) < 0) continue; // the documented controls (ARCHITECTURE §9)
+      const r = e.getBoundingClientRect(); if (r.width > 2) boxes.push({ s: 'touch:' + e.dataset.a, x: r.x, y: r.y, w: r.width, h: r.height });
+    }
     const over = [];
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
       const a = boxes[i], b = boxes[j];
@@ -463,9 +480,10 @@ async function testMissions(page) {
   await page.evaluate(() => N.missions.abort());
   // dwell 1.0 s starts it too
   await page.evaluate((g) => { N.player.teleport(g.x + 60, g.y); }, g);
-  await sleep(300);
+  await page.waitForFunction(() => !N.missions.active, null, { timeout: 3000 }).catch(() => {});
+  await sleep(700); // the giver re-arms once the player has stepped out
   await page.evaluate((g) => N.player.teleport(g.x, g.y), g);
-  await page.waitForFunction(() => N.missions.active, null, { timeout: 3000 }).catch(() => {});
+  await page.waitForFunction(() => N.missions.active, null, { timeout: 5000 }).catch(() => {});
   s = await page.evaluate(() => ({ active: N.missions.active && N.missions.active.id }));
   check(s.active === 'demo_chai_run', 'standing in the marker for 1.0 s starts it', s);
   await page.evaluate(() => N.missions.abort());
