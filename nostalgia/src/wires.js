@@ -1219,7 +1219,7 @@
     let extrasN = 0;
     for (const cell of cells) {
       for (const pl of cell.poles) {
-        const sc = pl.kind === 'rail' ? [0.62, 0.72] : pl.kind === 'tube' ? [0.8, 0.8] : [1.05, 0.7];
+        const sc = pl.kind === 'rail' ? [0.45, 0.55] : pl.kind === 'tube' ? [0.6, 0.6] : [0.78, 0.52];
         pushM(out.pole, pl.x, 0, pl.y, pl.ang, sc[0], pl.h * vs + 0.6, sc[1]);
         pushC(out.poleC, POLE_COL3[pl.kind]);
         for (const hh of [pl.hHT, pl.hLT]) if (hh) pushM(out.head, pl.x + pl.onx * pl.shift, hh * vs, pl.y + pl.ony * pl.shift, pl.ang, 1, 1, 1);

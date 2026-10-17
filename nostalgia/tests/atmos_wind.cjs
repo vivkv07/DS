@@ -57,7 +57,7 @@ async function openPage(browser) {
     const d = document.getElementById('debug'); if (d) d.style.display = 'none';
     N.weather.force({ rain: 0, storm: 0, mist: 0, cloud: 0 });
     // keep the streets quiet so frame differences measure the wind, not the traffic
-    if (N.traffic && N.traffic.setDensity) N.traffic.setDensity(0);
+    if (N.traffic) { if (N.traffic.setDensity) N.traffic.setDensity(0); N.traffic.enabled = false; if (N.traffic.clear) N.traffic.clear(); }
   });
   return { context, page, errors };
 }
@@ -203,11 +203,11 @@ async function logicChecks(page) {
 
 /* ------------------------------------------------------------------ 2D */
 const SCENES_2D = [
-  { name: 'palms_barkas', at: 'barkas', h: 11, cam: [0, 0, 1.25] },
-  { name: 'dense_ramakrishna', at: 'ramakrishna_math', h: 10 },
-  { name: 'lumbini_tankbund', at: 'lumbini_park', h: 16 },
-  { name: 'temple_flag', at: 'flag', h: 9, cam: [0, 0, 1.6] },
-  { name: 'colony_clothes', at: 'clothes', h: 12, cam: [0, 0, 1.6] },
+  { name: 'palms_barkas', at: 'barkas', h: 11, cam: [0, 0, 2.2] },
+  { name: 'dense_ramakrishna', at: 'ramakrishna_math', h: 10, cam: [0, 0, 2] },
+  { name: 'lumbini_tankbund', at: 'lumbini_park', h: 16, cam: [0, 0, 2] },
+  { name: 'temple_flag', at: 'flag', h: 9, cam: [0, 0, 3] },
+  { name: 'colony_clothes', at: 'clothes', h: 12, cam: [0, 0, 3] },
 ];
 async function resolveAt(page, at) {
   if (at === 'flag') return page.evaluate(() => { const f = N.windfx.flags.find((q) => q.zone === 'lal_darwaza_temple') || N.windfx.flags[0]; return [f.x - 10, f.y + 22]; });
@@ -223,7 +223,7 @@ async function run2D(browser, page) {
   await page.evaluate(() => { N.view.set('top'); });
   for (const S of SCENES_2D) {
     const at = await resolveAt(page, S.at);
-    const clip = S.cam && S.cam[2] > 1.3 ? { x: VW / 2 - 240, y: VH / 2 - 150, width: 480, height: 300 } : null;
+    const clip = { x: VW / 2 - 300, y: VH / 2 - 170, width: 600, height: 340 };
     const shots = [];
     for (const w of ['calm', 'breeze', 'storm']) {
       await place(page, at, S.h, WINDS[w], { cam: S.cam, storm: w === 'storm' && S.name === 'palms_barkas' });

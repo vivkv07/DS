@@ -1639,13 +1639,13 @@
     for (const f of active) if (f.sp === 'pigeon' || f.sp === 'crow') pending.push({ t: (e.delay || 0.5) + rnd() * 0.3, x: f.cx, y: f.cy, r: 120 });
   });
   N.on('world:built', () => { staticSites = null; for (let i = active.length - 1; i >= 0; i--) releaseFlock(active[i]); });
-  N.on('game:new', () => { for (let i = active.length - 1; i >= 0; i--) releaseFlock(active[i]); for (const s of staticSites || []) { s.dead = false; } tickT = 0; });
+  N.on('game:new', () => { if (enabled) takeover(); for (let i = active.length - 1; i >= 0; i--) releaseFlock(active[i]); for (const s of staticSites || []) { s.dead = false; } tickT = 0; });
 
   N.addSystem({
     id: 'birds', order: 44, runIn: ['play', 'dialogue', 'cutscene', 'title', 'gameover', 'minigame'],
     update(dt) { update(dt); },
     draw() { try { draw(); } catch (e) { N.err('birds.draw', e); } },
-    reset() { for (let i = active.length - 1; i >= 0; i--) releaseFlock(active[i]); tickT = 0; pending.length = 0; },
+    reset() { for (let i = active.length - 1; i >= 0; i--) releaseFlock(active[i]); tickT = 0; pending.length = 0; if (enabled) takeover(); },
   });
 
   /* ================================================================ API */
