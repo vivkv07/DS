@@ -1,0 +1,23 @@
+00:00.104  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building bsa_cycle (vehicle)
+00:05.269  render           | Saved: '/tmp/nostalgia_blender/text_df7992b6.png'
+[kit] uv atlas: 72 islands rescaled
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (6 samples) in 6.8s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 256x256 (24 samples) in 13.7s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked orm 256x256 (1 samples) in 0.6s
+[kit] finish bsa_cycle: tex 512, orm 256, emit False in 31.8s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+20:36:42 | INFO: Starting glTF 2.0 export
+20:36:42 | INFO: Extracting primitive: bsa_cycle
+20:36:43 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+20:36:43 | INFO: Primitives created: 1
+20:36:43 | INFO: Finished glTF 2.0 export in 0.7341053485870361 s
+
+[kit] bsa_cycle: 3792 tris (budget 6000) ok, 371.6 KB, clips [], anchors 11
+20:36:43 | INFO: Data are loaded, start creating Blender stuff
+20:36:43 | INFO: Blender create Mesh node bsa_cycle
+20:36:43 | INFO: glTF import finished in 0.10s

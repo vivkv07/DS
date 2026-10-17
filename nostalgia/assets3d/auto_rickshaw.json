@@ -1,0 +1,342 @@
+{
+ "anchors": {
+  "exhaust": [
+   -3.35,
+   11.6,
+   1.45
+  ],
+  "foot_L": [
+   0.95,
+   -5.2,
+   2.46
+  ],
+  "foot_R": [
+   -0.95,
+   -5.2,
+   2.46
+  ],
+  "foot_passenger_C": [
+   0.0,
+   1.9,
+   2.46
+  ],
+  "foot_passenger_L": [
+   2.8,
+   1.9,
+   2.46
+  ],
+  "foot_passenger_R": [
+   -2.8,
+   1.9,
+   2.46
+  ],
+  "grip_L": [
+   2.275,
+   -4.6525,
+   7.0225
+  ],
+  "grip_R": [
+   -2.275,
+   -4.6525,
+   7.0225
+  ],
+  "handlebar": [
+   -0.0,
+   -5.6,
+   7.1
+  ],
+  "headlight": [
+   0.0,
+   -10.95,
+   4.6
+  ],
+  "indicator_L": [
+   3.4,
+   -10.15,
+   5.9
+  ],
+  "indicator_R": [
+   -3.4,
+   -10.15,
+   5.9
+  ],
+  "meter": [
+   5.4,
+   -6.7,
+   8.05
+  ],
+  "seat_driver": [
+   0.0,
+   -2.0,
+   4.85
+  ],
+  "seat_passenger_C": [
+   0.0,
+   6.4,
+   5.25
+  ],
+  "seat_passenger_L": [
+   3.0,
+   6.4,
+   5.25
+  ],
+  "seat_passenger_R": [
+   -3.0,
+   6.4,
+   5.25
+  ],
+  "taillight_L": [
+   4.7,
+   11.3,
+   4.05
+  ],
+  "taillight_R": [
+   -4.7,
+   11.3,
+   4.05
+  ],
+  "wheel_RL": [
+   5.3,
+   6.4,
+   1.65
+  ],
+  "wheel_RR": [
+   -5.3,
+   6.4,
+   1.65
+  ],
+  "wheel_front": [
+   0.0,
+   -8.3,
+   1.6
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 393576,
+ "clips": {},
+ "family": "vehicle",
+ "file": "auto_rickshaw.glb",
+ "front": "-Y",
+ "id": "auto_rickshaw",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 384.4,
+ "kit": 1,
+ "materials": [
+  "M_auto_rickshaw@night",
+  "M_auto_rickshaw_glass"
+ ],
+ "max": [
+  6.19,
+  11.58,
+  12.22
+ ],
+ "meta": {
+  "fps": "open",
+  "height": 12.0,
+  "lamps": {
+   "head": [
+    "headlight"
+   ],
+   "tail": [
+    "taillight_L",
+    "taillight_R"
+   ]
+  },
+  "length": 22.0,
+  "open": true,
+  "options": [
+   {
+    "bone": "opt_name",
+    "types": [
+     "yadagiri_auto"
+    ]
+   },
+   {
+    "bone": "opt_slogan0",
+    "notTypes": [
+     "yadagiri_auto"
+    ],
+    "seed": [
+     4,
+     0
+    ]
+   },
+   {
+    "bone": "opt_slogan1",
+    "notTypes": [
+     "yadagiri_auto"
+    ],
+    "seed": [
+     4,
+     1
+    ]
+   },
+   {
+    "bone": "opt_slogan2",
+    "notTypes": [
+     "yadagiri_auto"
+    ],
+    "seed": [
+     4,
+     2
+    ]
+   },
+   {
+    "bone": "opt_slogan3",
+    "notTypes": [
+     "yadagiri_auto"
+    ],
+    "seed": [
+     4,
+     3
+    ]
+   }
+  ],
+  "ride": {
+   "foot_L": [
+    0.95,
+    -5.2,
+    2.46
+   ],
+   "foot_R": [
+    -0.95,
+    -5.2,
+    2.46
+   ],
+   "grip_L": [
+    2.2750000953674316,
+    -4.652500152587891,
+    7.022500038146973
+   ],
+   "grip_R": [
+    -2.2750000953674316,
+    -4.652500152587891,
+    7.022500038146973
+   ],
+   "pose": "auto",
+   "seat": [
+    0.0,
+    -2.0,
+    4.849999904632568
+   ]
+  },
+  "riders": {
+   "driver": {
+    "clips": [
+     "ride_auto",
+     "ride_scooty"
+    ],
+    "feet": [
+     "foot_L",
+     "foot_R"
+    ],
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "lean": 0.12,
+    "pose": "auto",
+    "seat": "seat_driver"
+   },
+   "passengers": [
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_L"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_L"
+    },
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_R"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_R"
+    },
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_C"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_C"
+    }
+   ]
+  },
+  "steerAxis": [
+   0.0,
+   -0.361,
+   -0.9326
+  ],
+  "steerBones": {
+   "steer": {
+    "axis": [
+     0.0,
+     -0.3609941005706787,
+     -0.9325680732727051
+    ],
+    "k": 1.0
+   }
+  },
+  "tintSrc": {
+   "paint": "color",
+   "paint2": "color2"
+  },
+  "vehicleTypes": [
+   "auto",
+   "yadagiri_auto"
+  ],
+  "wheelR": 1.62,
+  "wheels": {
+   "wheel_RL": 1.65,
+   "wheel_RR": 1.65,
+   "wheel_front": 1.6
+  },
+  "width": 13.0
+ },
+ "min": [
+  -6.175,
+  -10.818,
+  0.0
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  12.365,
+  22.398,
+  12.22
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#f2c230",
+   "paint2": "#1c1a1c"
+  }
+ },
+ "tris": 4504,
+ "units": "u",
+ "up": "Z"
+}

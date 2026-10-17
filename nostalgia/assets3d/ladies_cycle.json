@@ -1,0 +1,164 @@
+{
+ "anchors": {
+  "bell": [
+   0.45,
+   -3.1203,
+   6.3845
+  ],
+  "grip_L": [
+   1.4875,
+   -1.6953,
+   6.2225
+  ],
+  "grip_R": [
+   -1.4875,
+   -1.6953,
+   6.2225
+  ],
+  "handlebar": [
+   0.0,
+   -3.0803,
+   6.1845
+  ],
+  "pedal_L": [
+   0.95,
+   1.55,
+   2.4007
+  ],
+  "pedal_R": [
+   -0.95,
+   -0.45,
+   2.4007
+  ],
+  "reflector": [
+   0.0,
+   7.805,
+   3.975
+  ],
+  "seat_driver": [
+   -0.0,
+   1.3583,
+   5.0761
+  ],
+  "seat_pillion": [
+   0.0,
+   4.4067,
+   6.2873
+  ],
+  "wheel_front": [
+   0.0,
+   -4.6,
+   2.9
+  ],
+  "wheel_rear": [
+   0.0,
+   4.6,
+   2.9
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 402596,
+ "clips": {},
+ "family": "vehicle",
+ "file": "ladies_cycle.glb",
+ "front": "-Y",
+ "id": "ladies_cycle",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 393.2,
+ "kit": 1,
+ "materials": [
+  "M_ladies_cycle"
+ ],
+ "max": [
+  1.64,
+  7.804,
+  6.515
+ ],
+ "meta": {
+  "bb": [
+   0.0,
+   0.55,
+   2.3007
+  ],
+  "crankR": 1.0,
+  "gear": 2.4,
+  "length": 15.0,
+  "pedal": true,
+  "pedalX": 0.95,
+  "riders": {
+   "driver": {
+    "clips": [
+     "ride_cycle"
+    ],
+    "feet": "pedals",
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "cycle",
+    "seat": "seat_driver"
+   }
+  },
+  "saddleTube": [
+   0.0,
+   0.3707,
+   0.9287
+  ],
+  "seat": [
+   0.0,
+   1.3583,
+   5.0761
+  ],
+  "steerAxis": [
+   0.0,
+   -0.3809,
+   -0.9246
+  ],
+  "tintSrc": {
+   "paint": "color"
+  },
+  "vehicleTypes": [
+   "ladiescycle"
+  ],
+  "wheelR": 2.9,
+  "wheels": {
+   "wheel_front": 2.9,
+   "wheel_rear": 2.9
+  }
+ },
+ "min": [
+  -1.64,
+  -7.796,
+  -0.0
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  3.279,
+  15.599,
+  6.515
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#8a2a4a"
+  }
+ },
+ "tris": 4052,
+ "units": "u",
+ "up": "Z"
+}
