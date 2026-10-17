@@ -49,3 +49,8 @@ Round 3 (user request, binding for the Blender props/animals artist and the runt
    parts): pigeons, crows, black kites (cheel) that soar in circles, rose-ringed parakeets,
    egrets/cormorants for Hussain Sagar, mynas, and bats for dusk. Small, cheap, instancing-
    friendly.
+8. **Electric poles (Blender, props artist):** PSC concrete pole and old steel-rail pole with
+   crossarm and porcelain insulators, a pole-mounted transformer variant, a street-light arm
+   variant, a junction box; instancing-friendly, with named attachment points for wires
+   (`wire_*`) so the runtime can string catenary wires between poles (spec in
+   design/atmosphere.md).

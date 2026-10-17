@@ -42,3 +42,23 @@ nights, birds flying."
 - 2D: small animated sprites with soft ground shadows; 3D: the Blender bird models.
 - Sound: cawing, cooing, parakeet screeches, kite whistles, wing flaps on take-off.
 - Performance: pooled and instanced, only near the camera, LOD by distance.
+
+## Electric poles and overhead wires (user request, binding)
+- Streets get electric poles with wires strung between them, the way every Hyderabad street
+  looked: concrete (PSC) and old steel-rail poles on the footpath edge at regular spacing,
+  crossarms with white porcelain insulators, sagging catenary wires between poles (more
+  sag on long spans), pole-mounted transformers at some junctions, street-light arms on
+  some poles, service wires fanning off to houses, and the early-2000s tangle of black cable
+  TV and phone wires looping between buildings and poles (denser in the Old City and
+  colonies, tidier on arterials, almost none on new HITEC roads).
+- Derived procedurally from the road data (`N.world` roads/footpaths) with a deterministic
+  seed, so they line up with the map in both views; wires never cross through buildings and
+  stay above vehicle height (buses and lorries pass under).
+- 2D top-down: poles drawn with height (they lean outward like the buildings), wires as
+  thin dark lines at height with faint ground shadows.
+- 3D: Blender pole models (instanced) and wires as thin sagging ribbons/lines that sway
+  slightly in the wind (`N.wind`), with insulators catching the light; at night a few
+  sodium lamps on poles.
+- Life on the wires: crows and pigeons perch on them (and take off when disturbed); after
+  Sankranti, torn kites and manja hang tangled on the wires and poles for weeks; the odd
+  pair of old chappals thrown over a wire.
