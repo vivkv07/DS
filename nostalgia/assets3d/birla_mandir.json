@@ -1,0 +1,51 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 60000,
+ "bytes": 65504,
+ "clips": {},
+ "family": "hero_landmark",
+ "file": "birla_mandir.glb",
+ "front": "-Y",
+ "id": "birla_mandir",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 64.0,
+ "kit": 1,
+ "materials": [
+  "M_birla_mandir"
+ ],
+ "max": [
+  32.79,
+  28.373,
+  79.592
+ ],
+ "meta": {
+  "draw": "birla_mandir",
+  "face": "s",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   64,
+   56
+  ],
+  "height": 78.0
+ },
+ "min": [
+  -31.79,
+  -29.0,
+  -1.118
+ ],
+ "notes": [],
+ "script": "_lm_hussain",
+ "size": [
+  64.581,
+  57.373,
+  80.71
+ ],
+ "tint": null,
+ "tris": 590,
+ "units": "u",
+ "up": "Z"
+}

@@ -1,0 +1,51 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 34412,
+ "clips": {},
+ "family": "landmark",
+ "file": "state_museum.glb",
+ "front": "-Y",
+ "id": "state_museum",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 33.6,
+ "kit": 1,
+ "materials": [
+  "M_state_museum"
+ ],
+ "max": [
+  29.15,
+  20.1,
+  39.25
+ ],
+ "meta": {
+  "face": "n",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   58,
+   40
+  ],
+  "height": 36.0,
+  "landmark": "state_museum"
+ },
+ "min": [
+  -29.15,
+  -21.3,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_civic",
+ "size": [
+  58.3,
+  41.4,
+  39.25
+ ],
+ "tint": null,
+ "tris": 434,
+ "units": "u",
+ "up": "Z"
+}

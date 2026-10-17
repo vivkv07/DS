@@ -1,0 +1,53 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 39160,
+ "clips": {},
+ "family": "landmark",
+ "file": "golconda_fort_gate.glb",
+ "front": "-Y",
+ "id": "golconda_fort_gate",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 38.2,
+ "kit": 1,
+ "materials": [
+  "M_golconda_fort_gate"
+ ],
+ "max": [
+  31.05,
+  9.85,
+  53.6
+ ],
+ "meta": {
+  "draw": "fort_gate",
+  "face": "s",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   60,
+   22
+  ],
+  "height": 58.0
+ },
+ "min": [
+  -31.05,
+  -11.05,
+  0.0
+ ],
+ "notes": [
+  "COL_gate_*: bastions, piers and the mass over the arch (the passage itself is clear)"
+ ],
+ "script": "_lm_golconda",
+ "size": [
+  62.1,
+  20.9,
+  53.6
+ ],
+ "tint": null,
+ "tris": 417,
+ "units": "u",
+ "up": "Z"
+}

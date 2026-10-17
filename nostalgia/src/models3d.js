@@ -689,10 +689,48 @@
           const ns = !lm.face || lm.face === 'n' || lm.face === 's' || isFinite(lm.faceAngle);
           inst.scale.set((ns ? lm.w : lm.d) / fp[0], 1, (ns ? lm.d : lm.w) / fp[1]);
         }
+        // meta.fitHeight: one model for landmarks of different data heights (Qutb Shahi tombs)
+        if (md.meta.fitHeight && md.meta.dataH && lm.h) inst.scale.y = lm.h / md.meta.dataH;
+        if (md.meta.variants) { g.userData.vars = variantNodes(inst); showVariant(g, md, lm); }
         g.add(inst);
         g.userData.m3d = id;
         return g;
       } catch (e) { N.err('models3d.landmark:' + id, e); return fallbackLandmark(md, lm); }
+    };
+  }
+  /* landmark variants (meta.variants = {rule, names}): top-level GLB nodes named var_<name>, one of
+   * them shown. Rules: 'idx' (lm.idx), 'hash' (lm.id), 'prasads' (site until it opens, like
+   * view3d_landmarks), 'lb_match' (match-day crowds + floodlight banks). Dynamic rules re-check
+   * a few times a second through the landmark update hook. */
+  const VARIANT_RULES = {
+    idx: (lm, names) => names[(((lm.idx | 0) % names.length) + names.length) % names.length],
+    hash: (lm, names) => { let h = 7; for (const ch of String(lm.id)) h = (h * 31 + ch.charCodeAt(0)) | 0; return names[Math.abs(h) % names.length]; },
+    prasads: () => {
+      let v = N.placesArt && N.placesArt.variant ? N.placesArt.variant('prasads_imax') : null;
+      if (!v) v = N.flags && N.flags.prasads_open ? 'open' : 'fence';
+      return v === 'open' || v === 'opening' ? 'open' : 'site';
+    },
+    lb_match: () => (N.flags && (N.flags.lb_match || N.flags.lb_match_day) ? 'match' : 'quiet'),
+  };
+  const DYNAMIC_RULES = { prasads: true, lb_match: true };
+  function variantNodes(inst) {
+    const out = [];
+    inst.traverse((o) => { if (/^var_/.test(o.name) && !(o.parent && /^var_/.test(o.parent.name))) out.push(o); });
+    return out;
+  }
+  function showVariant(g, md, lm) {
+    const V = md.meta.variants, rule = VARIANT_RULES[V.rule];
+    const want = 'var_' + (rule ? rule(lm, V.names || []) : (V.names || [])[0]);
+    if (g.userData.variant === want) return;
+    g.userData.variant = want;
+    for (const o of g.userData.vars || []) o.visible = o.name === want;
+  }
+  function updateLandmark(id) {
+    return (obj, lm) => {
+      const md = S.models.get(id);
+      if (!md || !obj || !obj.userData.vars) return;
+      if ((obj.userData.vt = (obj.userData.vt || 0) + 1) % 15) return;
+      showVariant(obj, md, lm);
     };
   }
   /** the procedural model again (core API when present; else the object it had built before) */
@@ -715,7 +753,8 @@
         const grp = E && E.lmGroup;
         if (grp) for (const ch of grp.children) if (ch.name === 'lm3d:' + lmId || ch.name === 'lm:' + lmId) { S.prevLandmark.set(lmId, ch); break; }
       }
-      V3.registerLandmark(key, buildLandmark(id), { castShadow: true });
+      const vr = md.meta.variants;
+      V3.registerLandmark(key, buildLandmark(id), vr && DYNAMIC_RULES[vr.rule] ? { castShadow: true, update: updateLandmark(id) } : { castShadow: true });
       S.landmarkKeys.set(key, id);
     } else if (!on && have) {
       if (typeof V3.unregisterLandmark === 'function') V3.unregisterLandmark(key);

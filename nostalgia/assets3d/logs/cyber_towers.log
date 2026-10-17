@@ -1,0 +1,35 @@
+00:00.028  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building cyber_towers (landmark)
+00:01.268  render           | Saved: '/tmp/nostalgia_blender/text_a6007fe4.png'
+00:01.327  render           | Saved: '/tmp/nostalgia_blender/ct_signtex.png'
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked albedo 384² in 0.9s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked ao 192² in 2.8s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+22:27:00 | INFO: Starting glTF 2.0 export
+22:27:00 | INFO: Extracting primitive: ct_lit
+22:27:00 | INFO: Primitives created: 1
+22:27:00 | INFO: Extracting primitive: ct_signq
+22:27:00 | INFO: Primitives created: 1
+22:27:00 | INFO: Extracting primitive: cyber_towers_body
+22:27:00 | INFO: Primitives created: 1
+22:27:00 | INFO: Finished glTF 2.0 export in 0.05272245407104492 s
+
+[kit] cyber_towers: 300 tris (budget 20000) ok, 46.3 KB, clips [], anchors 0
+22:27:00 | INFO: Data are loaded, start creating Blender stuff
+22:27:00 | INFO: Blender create Mesh node ct_lit
+22:27:00 | INFO: Blender create Mesh node ct_signq
+22:27:00 | INFO: Blender create Mesh node cyber_towers_body
+22:27:00 | INFO: glTF import finished in 0.02s
+00:09.728  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/cyber_towers.png'
+[kit] preview cyber_towers.png (320px, 14 spp) in 3.1s
+22:27:04 | INFO: Data are loaded, start creating Blender stuff
+22:27:04 | INFO: Blender create Mesh node ct_lit
+22:27:04 | INFO: Blender create Mesh node ct_signq
+22:27:04 | INFO: Blender create Mesh node cyber_towers_body
+22:27:04 | INFO: glTF import finished in 0.01s
+00:11.849  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/cyber_towers_front.png'
+[kit] preview cyber_towers_front.png (256px, 14 spp) in 2.1s
+[kit] done cyber_towers in 11.4s

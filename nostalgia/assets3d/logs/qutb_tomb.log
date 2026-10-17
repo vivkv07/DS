@@ -1,0 +1,39 @@
+00:00.027  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building qutb_tomb (landmark)
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked albedo 384² in 0.8s
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked ao 192² in 1.7s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+22:26:26 | INFO: Starting glTF 2.0 export
+22:26:26 | INFO: Extracting primitive: COL_qt_body
+22:26:26 | INFO: Primitives created: 1
+22:26:26 | INFO: Extracting primitive: COL_qt_dome
+22:26:26 | INFO: Primitives created: 1
+22:26:26 | INFO: Extracting primitive: COL_qt_plinth
+22:26:26 | INFO: Primitives created: 1
+22:26:26 | INFO: Extracting primitive: qutb_tomb_body
+22:26:26 | INFO: Primitives created: 1
+22:26:26 | INFO: Extracting primitive: var_a
+22:26:26 | INFO: Primitives created: 1
+22:26:26 | INFO: Extracting primitive: var_b
+22:26:26 | INFO: Primitives created: 1
+22:26:26 | INFO: Finished glTF 2.0 export in 0.05213212966918945 s
+
+[kit] qutb_tomb: 530 tris (budget 20000) ok, 45.5 KB, clips [], anchors 0
+22:26:26 | INFO: Data are loaded, start creating Blender stuff
+22:26:26 | INFO: Blender create Mesh node COL_qt_body
+22:26:26 | INFO: Blender create Mesh node COL_qt_dome
+22:26:26 | INFO: Blender create Mesh node COL_qt_plinth
+22:26:26 | INFO: Blender create Mesh node qutb_tomb_body
+22:26:26 | INFO: Blender create Mesh node var_a
+22:26:26 | INFO: Blender create Mesh node var_b
+22:26:26 | INFO: glTF import finished in 0.01s
+00:11.653  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/qutb_tomb.png'
+[kit] preview qutb_tomb.png (320px, 14 spp) in 1.7s
+[kit] done qutb_tomb in 11.1s

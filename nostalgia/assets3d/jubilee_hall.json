@@ -1,0 +1,51 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 31940,
+ "clips": {},
+ "family": "landmark",
+ "file": "jubilee_hall.glb",
+ "front": "-Y",
+ "id": "jubilee_hall",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 31.2,
+ "kit": 1,
+ "materials": [
+  "M_jubilee_hall"
+ ],
+ "max": [
+  17.1,
+  24.0,
+  34.6
+ ],
+ "meta": {
+  "draw": "jubilee_hall",
+  "face": "e",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   34,
+   48
+  ],
+  "height": 33.0
+ },
+ "min": [
+  -17.1,
+  -24.8,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_civic",
+ "size": [
+  34.2,
+  48.8,
+  34.6
+ ],
+ "tint": null,
+ "tris": 484,
+ "units": "u",
+ "up": "Z"
+}
