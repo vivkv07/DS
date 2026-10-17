@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 64936,
+ "bytes": 64992,
  "clips": {},
  "family": "landmark",
  "file": "lb_stadium.glb",
@@ -11,11 +11,11 @@
  "images": [
   "image/webp"
  ],
- "kb": 63.4,
+ "kb": 63.5,
  "kit": 1,
  "materials": [
   "M_lb_stadium",
-  "lb_flood@night"
+  "M_lb_stadium_lamp_lens@night"
  ],
  "max": [
   110.4,

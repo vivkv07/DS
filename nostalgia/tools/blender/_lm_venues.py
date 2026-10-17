@@ -313,13 +313,12 @@ def build_lb_stadium(A):
     LC.append(wall_quad('s_ban2', -17.2, 17.2, 2.7, 7.3, 66.75))
     HC.append(xf(L.sign_panel('sbm', 'U-12 FINAL  HYD 112/3', 40, 4.2, (0, 0, 31.2), fg='#ffb020', bg='#141414', px=512), PI / 2, sbx + 2.4, 0))
     LC.append(xf(wall_quad('s_sbm', -20.2, 20.2, 29.0, 33.4, -0.2), PI / 2, sbx + 2.4, 0))
-    apart(HC + LC, 2000.0)
-    los = L.finish_proxy(A, HB, lo=LB, size=512, ao_dist=5.0, variants={'match': (HC, LC)})
-    unapart(los, 'var_match', 2000.0)
     # the lamp-bank glow quads belong to the match variant (one small @night material)
     lit = kit.join(lamps, 'lb_lamps')
     lit.data.materials.append(L.lamp('#fff6e0', 'lb_flood'))
-    vm = [o for o in los if o.name == 'var_match'][0]
+    apart(HC + LC, 2000.0)
+    los = L.finish_proxy(A, HB, lo=LB, keep=[lit], size=512, ao_dist=5.0, variants={'match': (HC, LC)})
+    vm = unapart(los, 'var_match', 2000.0)
     lit.parent = vm
     A.notes.append('proxy shell; var_match = crowd quads + banners + @night floodlight banks (parented); var_quiet is empty (bare stands are the body)')
     L.shots(A, az=-35, el=22, extra=[{'name': 'field', 'view': {'az': 180, 'el': 8, 'fov': 60, 'target': (0, -85, 18), 'dist': 85}}, {'name': 'pav', 'view': {'az': 0, 'el': 8, 'fov': 60, 'target': (0, 85, 22), 'dist': 85}}])
@@ -491,17 +490,15 @@ def build_prasads(A):
     LO.append(quad('s_fc', [(-hx + 1, gy - 6.5, 0.3), (hx - 1, gy - 6.5, 0.3), (hx - 1, gy + 0.2, 0.3), (-hx + 1, gy + 0.2, 0.3)]))
     for sx in (-1, 1):
         LO.append(cylinder('s_ccol', 0.5, 9.6, (sx * 15, gy - 7.2, 0), seg=3, cap=False))
-    apart(HS + LS, 2000.0)
-    apart(HO + LO, 4000.0)
-    los = L.finish_proxy(A, HB, lo=LB, size=512, ao_dist=8.0, variants={'site': (HS, LS), 'open': (HO, LO)})
-    unapart(los, 'var_site', 2000.0)
-    unapart(los, 'var_open', 4000.0)
     # lit glass front at night (open only): one @night material parented to var_open
-    lit = kit.join([wall_quad('lit', gx0 + 0.5, gx1 - 0.5, zz + 0.8, zz + 6.5, gy - 0.7) for zz in (0.0, 9.6, 18.6)] +
+    lit = kit.join([wall_quad('lit', gx0 + 0.5, gx1 - 0.5, zz + 3.0, zz + 6.0, gy - 0.7) for zz in (0.0, 9.6, 18.6)] +
                    [wall_quad('lit', -15, 15, 11.2, 12.0, gy - 8.6)], 'pr_lit')
     lit.data.materials.append(lit_mat())
-    vo = [o for o in los if o.name == 'var_open'][0]
-    lit.parent = vo
+    apart(HS + LS, 2000.0)
+    apart(HO + LO, 4000.0)
+    los = L.finish_proxy(A, HB, lo=LB, keep=[lit], size=512, ao_dist=8.0, variants={'site': (HS, LS), 'open': (HO, LO)})
+    unapart(los, 'var_site', 2000.0)
+    lit.parent = unapart(los, 'var_open', 4000.0)
     L.shots(A, az=-30, el=12)
 
 

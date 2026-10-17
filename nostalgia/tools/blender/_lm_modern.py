@@ -223,11 +223,11 @@ def build_cyber_towers(A):
     white = L.paint('#eceeed', 'ct_white', rough=0.8, streaks=0.15, grime=0.3)
     endm = facade('ct_end', base='#eceeed', glass='#2f6f80', period=FL, z0=Z0, z1=ZT - 1.0, band=(0.0, 3.8), rows=(6.3, 2.2), streaks=0.15)
     ring_out = facade('ct_glass_out', base='#e9ecec', glass='#2f6f80', glass2='#7fb4c0', period=FL, z0=Z0, z1=ZT - 1.0,
-                      band=(0.0, 3.8), mull=(3.4, 0.35, '#1d3f4a'), horiz='radial', R=RO, streaks=0.1, grime=0.25)
+                      band=(0.0, 3.8), mull=(6.8, 0.5, '#1d3f4a'), horiz='radial', R=RO, streaks=0.0, grime=0.1)
     ring_in = facade('ct_glass_in', base='#e4e8e8', glass='#2a6474', glass2='#6aa0ae', period=FL, z0=Z0, z1=ZT - 1.0,
-                     band=(0.0, 3.8), mull=(3.0, 0.35, '#1d3f4a'), horiz='radial', R=RI, streaks=0.1, grime=0.25)
+                     band=(0.0, 3.8), mull=(6.0, 0.5, '#1d3f4a'), horiz='radial', R=RI, streaks=0.0, grime=0.1)
     core_m = facade('ct_core', base='#dfe4e6', glass='#356f7e', glass2='#8cbcc6', period=FL, z0=Z0, z1=ZT + 12,
-                    band=(0.0, 1.4), mull=(2.6, 0.3, '#1d3f4a'), horiz='radial', R=12.0, streaks=0.1, grime=0.25)
+                    band=(0.0, 1.4), mull=(5.2, 0.45, '#1d3f4a'), horiz='radial', R=12.0, streaks=0.0, grime=0.1)
     roof = L.paint('#b9bcbc', 'ct_roof', rough=0.8)
     lampw = lit('ct_office', day='#2f6f80', night='#fff0c8')
     parts = []
@@ -261,16 +261,14 @@ def build_cyber_towers(A):
     for x in (-8.5, 8.5):
         for y in (-28.5, -16):
             parts.append(cylinder('ct_col', 0.5, 10.5, (x, y, Z0), seg=6, mat=white))
-    parts.append(L.sign_panel('ct_sign', 'CYBER TOWERS', 28, 5.0, (-30, -45.6, 0.8), fg='#1d4e8a', bg='#f4f6f6', px=512, frame=frame_mat()))
-    parts.append(box('ct_signwall', (29, 1.2, 0.9), (-30, -45.0, 0), M['granite'], base=True))
     parts.append(L.sign_panel('ct_sign2', 'CYBER TOWERS', 18, 2.4, (0, -30.3, Z0 + 10.6), fg='#ffffff', bg='#1d4e8a', px=384, frame=frame_mat()))
     # lit offices (night): a few window bands on the outer / inner glass and the core (unbaked
     # @night quads, kept out of the bake; they sit just outside the shell surfaces)
     lits = []
     for f in range(NF):
         zb = Z0 + f * FL + 4.6
-        for j in range(2):
-            if hrand(f * 7 + j) < 0.35:
+        for j in range(1):
+            if hrand(f * 7 + j) < 0.2:
                 continue
             i0 = int(hrand(f * 7 + j, 3) * (SEG - 4))
             span = 2 + int(hrand(f, j) * 3)
@@ -290,13 +288,13 @@ def build_cyber_towers(A):
         lits.append(arc_strip('ct_lit_c', 12.25, -PI / 2 - 0.5, -PI / 2 + 0.5, zb, zb + 7.5, 2, lampw))
     lit_ob = kit.join(lits, 'ct_lit')
     # ---- shells (only these ship; facades, crown, belt, roof, porch and signs are baked onto them)
-    SS = 16
-    lo = [lathe('s_podium', [(47.6, 0), (47.6, Z0 + 0.05)], seg=14, close_bottom=False),
+    SS = 13
+    lo = [lathe('s_podium', [(47.6, 0), (47.6, Z0 + 0.05)], seg=12, close_bottom=False),
           sector('s_ring', RO + 0.05, RI - 0.05, a0, a1, Z0, ZT + 2.6, SS, None, inner=True, caps=True),
-          lathe('s_core', [(12.1, Z0), (12.1, ZC + 2.0)], seg=12, close_bottom=False),
+          lathe('s_core', [(12.1, Z0), (12.1, ZC + 2.0)], seg=10, close_bottom=False),
           cylinder('s_cap', 13.3, 2.6, (0, 0, ZC + 2.0), seg=12, r2=6.0, cap=False),
           cylinder('s_mast', 0.6, 12.0, (0, 0, ZC + 4.6), seg=3, r2=0.1, cap=False),
-          L.shell_box('s_sign', (28.4, 0.9, 6.0), (-30, -45.3, 0)),
+          L.shell_box('s_sign', (29.4, 1.8, 6.7), (-30, -45.0, 0)),
           L.shell_box('s_canopy', (20.4, 16.4, 1.6), (0, -22, Z0 + 10.3)),
           prism_from_outline('s_steps', [(-54.7, 0), (-46.3, 0), (-46.3, 4.7)], 26.4, axis='X')]
     for s_ in (-1, 1):
@@ -306,6 +304,15 @@ def build_cyber_towers(A):
     for x in (-8.5, 8.5):
         for y in (-28.5, -16):
             lo.append(cylinder('s_col', 0.7, 10.5, (x, y, Z0), seg=3, cap=False))
-    L.finish_proxy(A, parts, lo=lo, keep=[lit_ob], size=int(__import__('os').environ.get('CT_SIZE', '384')), ao_dist=12.0)
+    # the name board: its own small text texture (the atlas is too coarse for lettering)
+    img = kit.text_image('CYBER TOWERS', 256, 48, fg='#1d4e8a', bg='#f4f6f6', name='ct_signtex')
+    sgn = quad('ct_signq', [(-44, -46.0, 1.0), (-16, -46.0, 1.0), (-16, -46.0, 6.2), (-44, -46.0, 6.2)], kit.baked_material('M_ct_sign', img.filepath_raw, rough=0.6))
+    uvl = sgn.data.uv_layers.new(name='UVMap')
+    for poly_ in sgn.data.polygons:
+        for li in poly_.loop_indices:
+            co = sgn.data.vertices[sgn.data.loops[li].vertex_index].co
+            uvl.data[li].uv = ((co.x + 44) / 28.0, (co.z - 1.0) / 5.2)
+    parts.append(box('ct_signwall', (29, 1.6, 6.6), (-30, -45.0, 0), M['granite'], base=True))
+    L.finish_proxy(A, parts, lo=lo, keep=[lit_ob, sgn], size=int(__import__('os').environ.get('CT_SIZE', '384')), ao_dist=12.0)
     A.notes.append('proxy shell + baked facade atlas; %d lit office strips (@night)' % len(lits))
     L.shots(A, az=-30, el=12, extra=[{'name': 'front', 'view': {'az': 0, 'el': 6, 'fov': 36, 'pad': 1.0}}])

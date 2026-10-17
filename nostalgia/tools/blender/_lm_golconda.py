@@ -25,8 +25,8 @@ def gmats():
     m = kit.material
     return {
         # Deccan granite: grey-brown, weathered (roughness kept at 0.8 / 0.9 so no ORM map is baked)
-        'fort': m('granite_grey', 'gc_fort', base='#9a8c77', rough=0.8, var=0.14, grain=0.12, grime=0.5, dirt='#4f463a', specks=0.5),
-        'fort_lt': m('granite_grey', 'gc_fort_lt', base='#ab9e88', rough=0.8, var=0.12, grain=0.10, grime=0.45, dirt='#5a5042', specks=0.45),
+        'fort': m('granite_grey', 'gc_fort', base='#93897a', rough=0.8, var=0.2, grain=0.14, grime=0.75, dirt='#3d3a30', specks=0.6, streaks=0.6),
+        'fort_lt': m('granite_grey', 'gc_fort_lt', base='#a39886', rough=0.8, var=0.16, grain=0.12, grime=0.6, dirt='#4a4a3a', specks=0.5, streaks=0.45),
         'rock': m('granite_grey', 'gc_rock', base='#8e857a', rough=0.8, var=0.22, grain=0.14, grime=0.6, dirt='#463f36', specks=0.7, scale=0.35),
         'rock_dk': m('granite_grey', 'gc_rock_dk', base='#77706a', rough=0.8, var=0.2, grain=0.14, grime=0.6, dirt='#3a342e', specks=0.7, scale=0.35),
         'scrub': m('granite_grey', 'gc_scrub', base='#7d7a58', rough=0.9, var=0.25, grain=0.2, grime=0.4, dirt='#3d3a26', specks=0.2, scale=0.5),
@@ -191,7 +191,7 @@ def crenel_wall(name, p0, p1, z0, h, t, mat, mmat=None, mw=1.5, mh=2.2, gap=None
         if ruin and rnd.random() < ruin:
             continue
         x = -Ln / 2 + step * (i + 0.5)
-        parts.append(box(name + '_m', (mw, t * 0.9, mh), (x, 0, h - 0.05), mmat or mat, base=True))
+        parts.append(L.place(leaf_merlon(name + '_m', mw, t * 0.9, mh * 1.2, mmat or mat), (x, 0, h - 0.05)))
     w = kit.join(parts, name)
     return L.place(w, ((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, z0), a)
 
@@ -200,7 +200,7 @@ def merlon_ring(name, r, z, n, mat, w=1.6, h=2.6, d=1.4, cx=0.0, cy=0.0, arc=Non
     out = []
     for i in range(n):
         a = (arc[0] + (arc[1] - arc[0]) * (i + 0.5) / n) if arc else 2 * math.pi * i / n
-        o = box(name, (w, d, h), (0, 0, 0), mat, base=True)
+        o = leaf_merlon(name, w, d, h, mat)
         out.append(L.place(o, (cx + r * math.cos(a), cy + r * math.sin(a), z), a + math.pi / 2))
     return kit.join(out, name)
 
@@ -302,9 +302,13 @@ def bastion_shell(name, r0, r1, h, mh, seg, loc):
     for i in range(n):
         j = (i + 1) % n
         bm.faces.new((bot[i], bot[j], mid[j], mid[i]))
-    for k in range(seg):
-        i = 2 * k
-        bm.faces.new((mid[i], mid[i + 1], top[k]))
+    if mh > 0:
+        for k in range(seg):
+            i = 2 * k
+            bm.faces.new((mid[i], mid[i + 1], top[k]))
+    else:
+        for v in top:
+            bm.verts.remove(v)
     bm.faces.new(list(mid))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     return kit.obj_from_bm(bm, name)
@@ -327,7 +331,7 @@ def crest_shell_rect(name, c, W, D, z, h, pitch):
     out = []
     for (rz, span, half) in ((0, W, D / 2), (math.pi / 2, D, W / 2), (math.pi, W, D / 2), (-math.pi / 2, D, W / 2)):
         F = face_frame(rz, 0)
-        ol = block_teeth(span, h, max(2, int(span / (pitch * 2))))
+        ol = leaf_teeth(span, h, max(2, int(span / pitch)), fill=0.65)
         for (dy, r) in ((-half - 0.1, rz),):
             x, y, zz = F(0, dy, z)
             out.append(poly(name, ol if r == rz else [(-a, b) for (a, b) in ol], None, (c[0] + x, c[1] + y, zz), r))
@@ -349,6 +353,34 @@ def unapart(los, name, dx):
             o.location.x -= dx
             kit.apply_transform(o)
             return o
+
+
+def leaf_teeth(span, h, n, base=0.0, fill=0.7):
+    """outline of n Deccani leaf merlons (straight sides, pointed-ogee top) standing on y = 0"""
+    out = [(-span / 2, 0)]
+    step = span / n
+    for i in range(n):
+        x = -span / 2 + step * (i + 0.5)
+        w = step * fill / 2
+        out += [(x - w, 0), (x - w, h * 0.55), (x, h), (x + w, h * 0.55), (x + w, 0)]
+    out += [(span / 2, 0)]
+    return [(x, z + base) for (x, z) in out]
+
+
+def leaf_ring(name, r, z, n, w, h, loc):
+    """n leaf-merlon cards round a circle (outward faces), for round bastion shells"""
+    out = []
+    ol = [(-w / 2, 0), (w / 2, 0), (w / 2, h * 0.5), (w * 0.27, h * 0.82), (0, h), (-w * 0.27, h * 0.82), (-w / 2, h * 0.5)]
+    for i in range(n):
+        a = 2 * math.pi * i / n          # same angles as merlon_ring()
+        out.append(poly(name, ol, None, (loc[0] + (r + 0.4) * math.cos(a), loc[1] + (r + 0.4) * math.sin(a), z), a + math.pi / 2))
+    return out
+
+
+def leaf_merlon(name, w, d, h, mat):
+    """one solid leaf merlon (prism), base at z 0, centred"""
+    ol = [(-w / 2, 0), (w / 2, 0), (w / 2, h * 0.5), (w * 0.27, h * 0.82), (0, h), (-w * 0.27, h * 0.82), (-w / 2, h * 0.5)]
+    return prism_from_outline(name, ol, d, mat=mat)
 
 
 # =========================================================================== Bala Hissar
@@ -414,7 +446,7 @@ def build_bala_hissar(A):
     P.append(box('bh_cornice', (hx + 1.0, hy + 1.0, 0.9), (hc[0], hc[1], zb + H - 0.9), M['fort'], base=True))
     for (rz, span, d, n) in ((0, hx, hy / 2, 7), (math.pi, hx, hy / 2, 7), (math.pi / 2, hy, hx / 2, 3), (-math.pi / 2, hy, hx / 2, 3)):
         for k in range(2):
-            for o in arcade('bh_arc', span - 1.5, n, zb + 1.0 + k * H / 2, H / 2 - 2.4, M['dark'], -d, rz, wfrac=0.6):
+            for o in arcade('bh_arc', span - 1.5, max(2, n - 1), zb + 1.0 + k * H / 2, H / 2 - 3.0, M['dark'], -d, rz, wfrac=0.7):
                 o.location = (hc[0], hc[1], 0)
                 kit.apply_transform(o)
                 P.append(o)
@@ -449,7 +481,7 @@ def build_bala_hissar(A):
     _tally(P)
     # ---- shells. The rock, terraces, walls and the climb get an automatic decimated shell (made
     # from the solid parts only, not the flat decals); the buildings and cannons get hand shells.
-    AUTO = ('hill', 'rwall', 'swall', 'fl', 'land', 'topgate', 'rock', 'bastion')
+    AUTO = ('hill', 'rwall', 'swall', 'fl', 'land', 'rock', 'bastion')
     src = []
     for o in P:
         if o.name.startswith(AUTO) and not o.name.startswith('bastion_m'):
@@ -461,16 +493,16 @@ def build_bala_hissar(A):
     auto = kit.join(src, 's_hill')
     auto.data.materials.clear()
     L._auto_lo(auto, int(__import__('os').environ.get('BH_TRIS', '420')))
-    lo = [auto]
+    lo = [auto, L.shell_box('s_tg', (7.4, 2.0, 7.8), (19.5, -14.2, 38.1))]
     lo.append(L.shell_box('s_bh', (hx + 1.2, hy + 1.2, H + 1.6), (hc[0], hc[1], z0 - 0.3)))
-    lo += crest_shell_rect('s_bhp', hc, hx, hy, zb + H, 2.6, 2.1)
+    lo += crest_shell_rect('s_bhp', hc, hx, hy, zb + H, 2.4, 2.94)
     lo.append(L.shell_box('s_bht', (10.4, 7.4, 7.0), (hc[0] - 2, hc[1] + 1, zb + H)))
     lo.append(L.shell_box('s_ms', (9.6, 7.2, 7.6), (mc[0], mc[1], z0 - 0.2)))
     for sx in (-1, 1):
         lo.append(pinnacle('s_msm', 2.2, z0 + 1.0, z0 + 10.4, z0 + 12.6, (mc[0] + sx * 4.6, mc[1] - 2.9)))
     lo.append(cannon_shell('s_can1', (33.5, -16.5, 16.4), math.radians(110), 0.9))
     lo.append(cannon_shell('s_can2', (31.0, -12.5, 16.4), math.radians(70), 0.8))
-    los = L.finish_proxy(A, P, lo=lo, size=int(__import__('os').environ.get('BH_SIZE', '384')), ao_dist=6.0)
+    los = L.finish_proxy(A, P, lo=lo, size=int(__import__('os').environ.get('BH_SIZE', '384')), ao_dist=6.0, cage=2.5, ray=9.0)
     for o in los:
         kit.smooth(o, float(__import__('os').environ.get('BH_SMOOTH', '50')))   # fewer split normals (vertex count = bytes)
     L.col_box('bh_hill0', (78, 58, 12), (0, 0, 0))
@@ -489,76 +521,63 @@ def build_fort_gate(A):
     AW, AS, AR = 16.0, 21.0, 13.0        # arch width, spring, rise (apex 34)
     WT = 13.0                            # gate-wall thickness
     WH = 46.0
-    # gate wall between the bastions, the passage cut through
+    # gate wall between the bastions, the passage cut through (Deccani two-centred pointed arch)
     wall = box('gw', (30, WT, WH), (0, 0, 0), M['fort'], base=True)
     cut = prism_from_outline('gw_cut', arch_outline(AW, AS, AR, 'pointed', n=8), WT + 4, center=(0, 0, -0.5))
     kit.boolean(wall, cut)
     P.append(wall)
-    # raised arch frame (lighter dressed granite) + recessed panel round it
-    fr = prism_from_outline('gw_frame', arch_outline(AW + 3.6, AS, AR + 2.2, 'pointed', n=8), 0.8, center=(0, -WT / 2 - 0.3, 0), mat=M['fort_lt'])
-    kit.boolean(fr, prism_from_outline('gw_fcut', arch_outline(AW, AS, AR, 'pointed', n=8), 3, center=(0, -WT / 2 - 0.3, -0.5)))
+    # shallow recessed rectangular frame round the arch (dressed granite border, recessed field)
+    fr = box('gw_frame', (AW + 7.0, 0.7, AS + AR + 4.0), (0, -WT / 2 - 0.3, 0), M['fort_lt'], base=True)
+    kit.boolean(fr, box('gw_fcut', (AW + 4.4, 3, AS + AR + 2.6), (0, -WT / 2 - 0.3, -0.5), None, base=True))
     P.append(fr)
-    P.append(rect_decal('gw_panel', 22, 3.2, M['shade'], (0, -WT / 2 - 0.06, 37.6)))
-    # small arched niches either side of the arch (two tiers) and on the back face
-    for sx in (-1, 1):
-        for (z, h) in ((4.0, 8.0), (16.0, 7.0), (27.0, 7.0)):
-            P.append(arch_decal('niche', 2.6, h * 0.62, h * 0.38, M['dark'], (sx * 11.6, -WT / 2 - 0.06, z)))
-        P.append(arch_decal('niche_b', 3.0, 5, 3, M['dark'], (sx * 11.6, WT / 2 + 0.06, 20), math.pi))
-    # guard-chamber gallery over the arch: projecting balcony on corbels + merlons + three openings
+    P.append(rect_decal('gw_rec', AW + 4.4, AS + AR + 2.0, M['shade'], (0, -WT / 2 - 0.04, 0.0)))
+    # plain lime-plaster panel over the arch
+    P.append(rect_decal('gw_panel', 14, 3.0, M['plaster'], (0, -WT / 2 - 0.08, AS + AR + 4.6)))
+    # guard gallery over the arch: projecting balcony on corbels, small square openings, leaf merlons
     P.append(box('gc_floor', (20, 2.6, 1.0), (0, -WT / 2 - 1.3, 39.6), M['fort_lt'], base=True))
     for x in (-8.5, -3, 3, 8.5):
         P.append(prism_from_outline('gc_corbel', [(-0.6, 0), (0.6, 0), (0.6, 1.2), (-0.6, 1.2)], 2.4, center=(x, -WT / 2 - 1.2, 37.4), mat=M['fort']))
     P.append(box('gc_wall', (20, 0.9, 3.0), (0, -WT / 2 - 2.2, 40.6), M['fort_lt'], base=True))
-    for o in arcade('gc_win', 12, 3, 41.2, 4.4, M['dark'], -WT / 2 - 0.0, 0, wfrac=0.5):
-        P.append(o)
-    P.append(L.place(kit.merlons('gc_crest', 20, 0, 0.9, 1.8, n=9, w=1.3, mat=M['fort_lt'], kind='leaf'), (0, -WT / 2 - 2.2, 43.6)))
-    # wall-top merlons (front and back edge)
+    for x in (-6, 0, 6):
+        P.append(rect_decal('gc_win', 1.4, 1.6, M['dark'], (x, -WT / 2 - 2.7, 41.4)))
+    P.append(L.place(kit.merlons('gc_crest', 20, 0, 0.9, 2.0, n=9, w=1.5, mat=M['fort_lt'], kind='leaf'), (0, -WT / 2 - 2.2, 43.6)))
+    # wall-top leaf merlons (front and back edge)
     for y in (-WT / 2 + 0.6, WT / 2 - 0.6):
-        P.append(L.place(kit.merlons('gw_m', 24, 0, 1.2, 3.2, n=7, w=2.0, mat=M['fort_lt'], kind='block'), (0, y, WH)))
-    # two massive round bastions with merlons and arrow slits
+        P.append(L.place(kit.merlons('gw_m', 24, 0, 1.2, 3.6, n=7, w=2.4, mat=M['fort_lt'], kind='leaf'), (0, y, WH)))
+    # two huge rounded bastions: leaf merlons, a few small slits, lichen-streaked granite
     BR, BX, BH = 9.6, 20.6, 50.0
     for sx in (-1, 1):
         cx = sx * BX
         P.append(lathe('bastion', [(BR + 0.8, 0), (BR + 0.3, 3), (BR, 3.4), (BR - 0.7, BH - 2.0), (BR - 0.2, BH - 1.6), (BR - 0.2, BH), (0, BH)], seg=14, mat=M['fort'], loc=(cx, -0.6, 0)))
-        P.append(merlon_ring('bastion_m', BR - 1.0, BH - 0.05, 11, M['fort_lt'], w=2.0, h=3.2, d=1.4, cx=cx, cy=-0.6))
-        # arrow slits facing front / outward
-        for (ang, z) in [(a, z) for z in (14.0, 30.0) for a in (-0.5, 0.0, 0.5)] + [(sx * 1.2, 22.0)]:
+        P.append(merlon_ring('bastion_m', BR - 0.6, BH - 0.05, 9, M['fort_lt'], w=2.6, h=3.6, d=1.4, cx=cx, cy=-0.6))
+        for (ang, z) in ((-0.3, 18.0), (sx * 0.9, 34.0)):
             a = -math.pi / 2 + ang
             r = BR - 0.55 * (z / BH) + 0.08
-            px, py = cx + r * math.cos(a), -0.6 + r * math.sin(a)
-            P.append(rect_decal('slit', 0.7, 3.4, M['dark'], (px, py, z), a + math.pi / 2))
+            P.append(rect_decal('slit', 0.6, 1.8, M['dark'], (cx + r * math.cos(a), -0.6 + r * math.sin(a), z), a + math.pi / 2))
         P.append(rect_decal('lime', 5, 6, M['plaster'], (cx - sx * 2.5, -0.6 - BR + 0.15, 6.0), sx * 0.25))
-    # the great teak doors standing open against the passage walls, iron spikes against elephants
+    # the great teak doors standing open against the passage walls: long iron anti-elephant spikes
     for sx in (-1, 1):
         xd = sx * (AW / 2 - 0.5)
         P.append(box('door', (0.9, 9.0, 24.0), (xd, -1.0, 0.1), M['wood'], base=True))
         for z in (3.0, 11.0, 19.0):
             P.append(box('door_band', (1.05, 9.0, 0.5), (xd, -1.0, z), M['ironp'], base=True))
-        for z in (5.5, 9.0, 13.5, 17.0, 21.0):
+        for z in (6.0, 10.0, 14.0, 18.0, 22.0):
             for y in (-4.0, -1.0, 2.0):
-                sp = cylinder('spike', 0.42, 1.4, (0, 0, 0), seg=4, mat=M['ironp'], r2=0.0, axis='X', base=False)
-                if sx > 0:
-                    sp.rotation_euler = (0, 0, math.pi)
-                L.place(sp, (xd - sx * 1.1, y, z), sp.rotation_euler.z)
+                sp = cylinder('spike', 0.4, 2.6, (0, 0, 0), seg=4, mat=M['ironp'], r2=0.0, axis='X', base=False)
+                L.place(sp, (xd - sx * 1.6, y, z), 0.0 if sx < 0 else math.pi)
                 P.append(sp)
-    # two old cannons on carriages in front, either side of the approach
-    for sx in (-1, 1):
-        P.append(cannon('cannon', M, (sx * 12.6, -10.5, 0.0), sx * math.radians(12), s=1.0))
-    # warm lamp in the arch soffit (sound and light)
     _tally(P)
-    # ---- shells: gate wall with the real passage, gallery block, merlon cards, bastions, cannons
+    # ---- shells: gate wall with the real passage, gallery block, leaf-merlon cards, bastions
     sw = L.shell_box('s_gw', (30.4, WT + 1.4, WH), (0, 0, 0))
     kit.boolean(sw, prism_from_outline('s_cut', arch_outline(AW - 0.2, AS, AR, 'pointed', n=4), WT + 6, center=(0, 0, -0.5)))
     lo = [sw, L.shell_box('s_gal', (20.4, 3.4, 4.2), (0, -WT / 2 - 2.0, 39.4)),
-          poly('s_galc', teeth_outline(20.4, 2.0, 9, base=0.6), None, (0, -WT / 2 - 2.75, 43.6)),
-          poly('s_galc2', [(-x, z) for (x, z) in teeth_outline(20.4, 2.0, 9, base=0.6)], None, (0, -WT / 2 - 1.6, 43.6), math.pi)]
+          poly('s_galc', leaf_teeth(20.4, 2.0, 9, base=0.0), None, (0, -WT / 2 - 2.75, 43.6))]
     for y in (-WT / 2, WT / 2):
-        ol = block_teeth(24.0, 3.2, 7)
+        ol = leaf_teeth(24.0, 3.6, 7)
         lo.append(poly('s_wm', ol, None, (0, y - 0.05 if y < 0 else y + 0.05, WH), 0 if y < 0 else math.pi))
-        lo.append(poly('s_wm', [(-x, z) for (x, z) in ol], None, (0, y + 1.3 if y < 0 else y - 1.3, WH), math.pi if y < 0 else 0))
     for sx in (-1, 1):
-        lo.append(bastion_shell('s_bas', BR + 0.85, BR - 0.1, BH, 3.2, 10, (sx * BX, -0.6)))
-        lo.append(cannon_shell('s_can', (sx * 12.6, -10.5, 0.0), sx * math.radians(12), 1.0))
+        lo.append(bastion_shell('s_bas', BR + 0.85, BR - 0.1, BH, 0.0, 6, (sx * BX, -0.6)))
+        lo += leaf_ring('s_bm', BR - 0.1, BH, 9, 2.6, 3.6, (sx * BX, -0.6))
     L.finish_proxy(A, P, lo=lo, size=384, ao_dist=6.0)
     for sx in (-1, 1):
         L.col_box('gate_bastion%d' % (sx > 0), (BR * 2, BR * 2, BH), (sx * BX, -0.6, 0))

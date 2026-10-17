@@ -2,24 +2,26 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 45092,
+ "bytes": 47400,
  "clips": {},
  "family": "landmark",
  "file": "cyber_towers.glb",
  "front": "-Y",
  "id": "cyber_towers",
  "images": [
+  "image/webp",
   "image/webp"
  ],
- "kb": 44.0,
+ "kb": 46.3,
  "kit": 1,
  "materials": [
   "M_cyber_towers_lamp_lens@night",
+  "M_ct_sign",
   "M_cyber_towers"
  ],
  "max": [
   47.6,
-  46.407,
+  47.6,
   148.6
  ],
  "meta": {
@@ -39,16 +41,16 @@
   0.0
  ],
  "notes": [
-  "proxy shell + baked facade atlas; 18 lit office strips (@night)"
+  "proxy shell + baked facade atlas; 14 lit office strips (@night)"
  ],
  "script": "_lm_modern",
  "size": [
   95.2,
-  101.107,
+  102.3,
   148.6
  ],
  "tint": null,
- "tris": 342,
+ "tris": 300,
  "units": "u",
  "up": "Z"
 }

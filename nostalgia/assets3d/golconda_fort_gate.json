@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 40972,
+ "bytes": 39520,
  "clips": {},
  "family": "landmark",
  "file": "golconda_fort_gate.glb",
@@ -11,7 +11,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 40.0,
+ "kb": 38.6,
  "kit": 1,
  "materials": [
   "M_golconda_fort_gate"
@@ -19,7 +19,7 @@
  "max": [
   31.05,
   9.85,
-  53.2
+  53.6
  ],
  "meta": {
   "draw": "fort_gate",
@@ -34,7 +34,7 @@
  },
  "min": [
   -31.05,
-  -15.41,
+  -11.05,
   0.0
  ],
  "notes": [
@@ -43,11 +43,11 @@
  "script": "_lm_golconda",
  "size": [
   62.1,
-  25.26,
-  53.2
+  20.9,
+  53.6
  ],
  "tint": null,
- "tris": 470,
+ "tris": 401,
  "units": "u",
  "up": "Z"
 }

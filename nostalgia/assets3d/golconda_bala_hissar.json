@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 77664,
+ "bytes": 80844,
  "clips": {},
  "family": "landmark",
  "file": "golconda_bala_hissar.glb",
@@ -11,7 +11,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 75.8,
+ "kb": 78.9,
  "kit": 1,
  "materials": [
   "M_golconda_bala_hissar"
@@ -47,7 +47,7 @@
   66.456
  ],
  "tint": null,
- "tris": 580,
+ "tris": 658,
  "units": "u",
  "up": "Z"
 }
