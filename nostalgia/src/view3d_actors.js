@@ -585,6 +585,8 @@
       GLSL_UNPACK, GLSL_ROT,
       'float pFeat(float f){ if (f < 0.5) return 1.0; float i = f - 1.0; float w = floor(i / 20.0 + 0.0001); float b = i - w * 20.0;',
       '  float m = w < 0.5 ? iFlags.x : (w < 1.5 ? iFlags.y : (w < 2.5 ? iFlags.z : iFlags.w)); return aBit(m, b); }',
+      // two angles packed in one float (12 bits each, 1/1000 rad, +-2.048): head yaw / pitch, leg abduction
+      'vec2 pUnp2(float v){ if (v < 0.5) return vec2(0.0); float hi = floor(v / 4096.0 + 0.00001); return vec2((hi - 2048.0) / 1000.0, (v - hi * 4096.0 - 2048.0) / 1000.0); }',
       'void pAnim(inout vec3 p, inout vec3 n){',
       '  float part = aSP.y;',
       '  if (pFeat(aSP.z) < 0.5 || (part > 8.5 && part < 9.5 && aBit(iFlags.w, ' + BIT_FPS + '.0) > 0.5)) { p = vec3(0.0, -60.0, 0.0); return; }',
@@ -596,6 +598,9 @@
       '      p = aRotZ(p, vec2(0.0, ' + ANK_Y.toFixed(3) + '), ank); n = aRotZ(n, vec2(0.0), ank); }',
       '    if (part > 2.5) { p = aRotZ(p, vec2(0.0, ' + KNEE_Y.toFixed(3) + '), knee); n = aRotZ(n, vec2(0.0), knee); }',
       '    p = aRotZ(p, vec2(0.0, ' + HIP_Y.toFixed(3) + '), hip); n = aRotZ(n, vec2(0.0), hip);',
+      // hip abduction (+ = the leg swings out sideways), about the forward axis through the hip joint
+      '    vec2 abd2 = pUnp2(iJ3.y); float abd = side < 0.0 ? abd2.x : abd2.y;',
+      '    if (abs(abd) > 0.0005) { p = aRotX(p, vec2(' + HIP_Y.toFixed(3) + ', side * ' + HIP_Z.toFixed(3) + '), -side * abd); n = aRotX(n, vec2(0.0), -side * abd); }',
       '  } else if (part > 4.5 && part < 8.5) {',
       '    float side = (part < 5.5 || (part > 6.5 && part < 7.5)) ? -1.0 : 1.0;',
       '    float sh = side < 0.0 ? iJ1.x : iJ1.y; float el = side < 0.0 ? iJ1.z : iJ1.w; float ab = side < 0.0 ? iJ2.x : iJ2.y;',
@@ -608,8 +613,9 @@
       '    p = aRotAx(p - sp, ax, -side * ab) + sp; n = aRotAx(n, ax, -side * ab);',
       '  } else if (part > 8.5 && part < 9.5) {',
       '    if (aBit(iFlags.w, ' + BIT_KID + '.0) > 0.5) { p.xy = (p.xy - vec2(0.05, ' + NECK_Y.toFixed(3) + ')) * 1.16 + vec2(0.05, ' + NECK_Y.toFixed(3) + '); p.z *= 1.16; }',
-      '    p = aRotY(p, vec2(0.05, 0.0), iJ3.x); n = aRotY(n, vec2(0.0), iJ3.x);',
-      '    p = aRotZ(p, vec2(0.05, ' + NECK_Y.toFixed(3) + '), iJ3.y); n = aRotZ(n, vec2(0.0), iJ3.y);',
+      '    vec2 hpy = pUnp2(iJ3.x);',
+      '    p = aRotY(p, vec2(0.05, 0.0), hpy.x); n = aRotY(n, vec2(0.0), hpy.x);',
+      '    p = aRotZ(p, vec2(0.05, ' + NECK_Y.toFixed(3) + '), hpy.y); n = aRotZ(n, vec2(0.0), hpy.y);',
       '  }',
       // wraps / skirts / tunics: each side of the hem follows its leg (the cloth strides with the legs)
       '  if (part < 0.5 && aSP.z > 2.5 && aSP.z < 5.5 && p.y < ' + HIP_Y.toFixed(3) + ') {',
@@ -978,8 +984,9 @@
   }
 
   /* ---------------------------------------------------------------- poses (joint angles) */
-  // J: [hipL, hipR, kneeL, kneeR, shL, shR, elL, elR, abL, abR, lean, bob, headYaw, headPitch, breathe, -]
-  const J = new Float32Array(16);
+  // J: [hipL, hipR, kneeL, kneeR, shL, shR, elL, elR, abL, abR, lean, bob, headYaw, headPitch, breathe,
+  //     ankles (packed), legAbdL, legAbdR]; the instance packs head yaw + pitch and the two leg abductions
+  const J = new Float32Array(18);
   function poseRest(j) { j.fill(0); j[8] = j[9] = 0.07; j[6] = j[7] = 0.12; return j; }
   /** lowest point of a foot sole (template y) for hip angle h and knee angle k (feet planting) */
   function soleMin(h, k) {
@@ -1050,7 +1057,7 @@
     const k = clamp((v - 0.3) / 0.22, 0, 1);
     return k * k * (3 - 2 * k);
   }
-  const JH = new Float32Array(16);
+  const JH = new Float32Array(18);
   function habitArms(j, hab, s, t, seed) {
     const belly = !!s.belly;
     const fx = belly ? 1.12 : 0.8, bx = s.wrap || belly ? -0.98 : -0.84;
@@ -1148,7 +1155,7 @@
   }
   /** full-body gait pose for cycle position ph (cycles) */
   function gaitPose(j, ph, P, wrapK) {
-    j[12] = j[13] = j[14] = 0;
+    j[12] = j[13] = j[14] = j[16] = j[17] = 0;
     const uL = ph - Math.floor(ph), uR = (ph + 0.5) - Math.floor(ph + 0.5);
     footAt(uL, P, FA); footAt(uR, P, FB);
     let hy;
@@ -1184,11 +1191,12 @@
     j[15] = encAnk(-j[0] - j[2], -j[1] - j[3]);
     return j;
   }
-  const JS = new Float32Array(16);
+  const JS = new Float32Array(18);
   /** blend everything but the packed ankles (re-derived so feet stay flat) */
   function blendPose(j, from, k) {
     const af = decAnk(from[15]), aj = decAnk(j[15]);
     for (let i = 0; i < 15; i++) j[i] = from[i] + (j[i] - from[i]) * k;
+    j[16] = (from[16] || 0) + ((j[16] || 0) - (from[16] || 0)) * k; j[17] = (from[17] || 0) + ((j[17] || 0) - (from[17] || 0)) * k;
     j[15] = encAnk(af[0] + (aj[0] - af[0]) * k, af[1] + (aj[1] - af[1]) * k);
   }
 
@@ -1234,7 +1242,7 @@
     fr.write(pool.M, i * 16, lx, ly, lz, o && o.yaw || 0, o && o.roll || 0, o && o.pitch || 0, sc * s.wide, sc, sc * s.wide);
     const A = pool.A;
     const a0 = A.iJ0.array, a1 = A.iJ1.array, a2 = A.iJ2.array, a3 = A.iJ3.array, fl = A.iFlags.array, ca = A.iColA.array, cb = A.iColB.array, k = i * 4;
-    a3[k] = j[12]; a3[k + 1] = j[13]; a3[k + 2] = j[14]; a3[k + 3] = j[15] || 0;
+    a3[k] = encAnk(j[12], j[13]); a3[k + 1] = encAnk(j[16] || 0, j[17] || 0); a3[k + 2] = j[14]; a3[k + 3] = j[15] || 0;
     a0[k] = j[0]; a0[k + 1] = j[1]; a0[k + 2] = j[2]; a0[k + 3] = j[3];
     a1[k] = j[4]; a1[k + 1] = j[5]; a1[k + 2] = j[6]; a1[k + 3] = j[7];
     a2[k] = j[8]; a2[k + 1] = j[9]; a2[k + 2] = j[10]; a2[k + 3] = j[11];
@@ -2226,6 +2234,57 @@
     return v._x3d[k];
   }
   /** seat a person (look) on a vehicle in the vehicle frame FR */
+  /* KAINCHI ("scissors"): a kid too small for an adult's roadster rides standing on the pedals beside
+   * the frame, the right leg through the triangle to the far pedal, both hands on the bar, the cycle
+   * leaning away to the right so the body stays upright over the wheels, rising and falling with the
+   * stroke (vehicles.js draws the same in 2D). The numbers come from an offline search over the Hero
+   * geometry for a kid (every crank angle reachable, the right hip ~0.7 u under the top tube, the
+   * grips reachable with a forward lean). Writes J (legs by IK + hip abduction, arms to the grips);
+   * returns the person root [x, y, z, yaw, roll] in the vehicle frame. */
+  const KAINCHI = { dx: 1.0, hy: 3.85, bob: 0.1, hz: -1.0, yaw: -0.05, roll: -0.2, pz: 0.88, tilt: 0.2 };
+  const KF = new Frame(), KQ = [0, 0, 0], KR = [0, 0, 0, 0, 0], KL = [0, 0, 0, 0];
+  const KAI_J = new WeakMap(); // actor -> its last kainchi pose (getting off blends from it)
+  function kainchiPose(md, seat, sc, sx, o) {
+    const K = KAINCHI, c = o.crank || 0, Rk = md.crank[2], bxk = md.crank[0] * sx, byk = md.crank[1];
+    KF.set(0, 0, 0, K.yaw, K.roll, 0);
+    const m = KF.m, hx = bxk + K.dx, hz = K.hz;
+    let hy = K.hy + K.bob * Math.cos(2 * c), rx = 0, ry = 0, rz = 0;
+    const loc = (x, y, z) => { // vehicle frame -> the person's template coordinates
+      const dx = x - rx, dy = y - ry, dz = z - rz;
+      KQ[0] = (m[0] * dx + m[3] * dy + m[6] * dz) / sc; KQ[1] = (m[1] * dx + m[4] * dy + m[7] * dz) / sc; KQ[2] = (m[2] * dx + m[5] * dy + m[8] * dz) / sc;
+      return KQ;
+    };
+    for (let it = 0; it < 3; it++) { // root (feet point) from the hip centre; drop the hips if the low pedal is out of reach
+      KF.apply(0, HIP_Y * sc, 0, P3); rx = hx - P3[0]; ry = hy - P3[1]; rz = hz - P3[2];
+      let over = 0;
+      for (const sd of [-1, 1]) {
+        loc(bxk + sd * Math.cos(c) * Rk - 0.25, byk + sd * Math.sin(c) * Rk + 0.18 + ANK_Y * sc, sd * K.pz);
+        const dx = KQ[0], dy = KQ[1] - HIP_Y, dz = KQ[2] - sd * HIP_Z, k = sd < 0 ? 0 : 1;
+        KL[k * 2] = dx; KL[k * 2 + 1] = HIP_Y - Math.hypot(dy, dz);
+        J[16 + k] = Math.atan2(sd * dz, -dy); // the right leg swings out through the frame, the left one in
+        over = Math.max(over, Math.hypot(dx, dy, dz) - LEG * 0.975);
+      }
+      if (over <= 0) break;
+      hy -= over * sc;
+    }
+    legsTo(J, KL[0], KL[1], KL[2], KL[3]);
+    flatFeet(J, -0.1 + 0.15 * Math.sin(c), -0.1 - 0.15 * Math.sin(c));
+    // hands on the grips, turned with the bar
+    const gx = seat.grip ? seat.grip[0] * sx : bxk + 3.2, gy = seat.grip ? seat.grip[1] : 5.9, gz = seat.grip ? seat.grip[2] : 1.75;
+    let lx = gx, lz = -gz, gxr = gx, rz2 = gz;
+    const st = o.steer || 0;
+    if (st && md.steerX != null) {
+      const px = md.steerX * sx, cs = Math.cos(st), sn = Math.sin(st);
+      lx = px + (gx - px) * cs + gz * sn; lz = (gx - px) * sn - gz * cs;
+      gxr = px + (gx - px) * cs - gz * sn; rz2 = (gx - px) * sn + gz * cs;
+    }
+    loc(lx, gy, lz); const qx = KQ[0], qy = KQ[1], qz = KQ[2];
+    loc(gxr, gy, rz2);
+    armsTo(J, 0.35, qx, qy, qz, KQ[0], KQ[1], KQ[2], 0.95, -0.9);
+    J[13] = J[10] * 0.7; // eyes up the road past the bar
+    KR[0] = rx; KR[1] = ry; KR[2] = rz; KR[3] = K.yaw; KR[4] = K.roll;
+    return KR;
+  }
   function submitRider(md, seat, look, seed, sx, o) {
     if (!look || !seat) return;
     const s = lookSpec(look, seed), sc = s.size;
@@ -2233,10 +2292,14 @@
     const hx = seat.x * sx, hz = seat.z || 0;
     const rootY = hy - HIP_Y * sc;
     const T = (x, y, out) => { out[0] = (x - hx) / sc; out[1] = (y - rootY) / sc; return out; };
-    let yaw2 = 0, seated = true;
+    let yaw2 = 0, roll2 = 0, seated = true, tx = hx, ty = rootY, tz = hz;
     poseRest(J);
     const pose = seat.pose;
-    if (pose === 'cycle' || pose === 'scooter' || pose === 'moto' || pose === 'auto' || pose === 'car') {
+    if (pose === 'cycle' && o.kainchi && md.crank) {
+      const K = kainchiPose(md, seat, sc, sx, o);
+      tx = K[0]; ty = K[1]; tz = K[2]; yaw2 = K[3]; roll2 = K[4]; seated = false;
+      if (o.actor) { let kj = KAI_J.get(o.actor); if (!kj) { kj = new Float32Array(18); KAI_J.set(o.actor, kj); } kj.set(J); }
+    } else if (pose === 'cycle' || pose === 'scooter' || pose === 'moto' || pose === 'auto' || pose === 'car') {
       const lean = pose === 'cycle' ? 0.3 : pose === 'moto' ? 0.38 : pose === 'scooter' ? 0.08 : pose === 'auto' ? 0.12 : 0.06;
       let gx = seat.grip ? seat.grip[0] * sx : hx + 3, gy = seat.grip ? seat.grip[1] : hy + 1.5, gz = seat.grip ? seat.grip[2] : 1.2;
       let lx = gx, lz = hz - gz, rx = gx, rz = hz + gz; // grips either side of the seat's centre line
@@ -2280,7 +2343,7 @@
       T(-14.0 * sx, seat.y + 0.4, A0); armsTo(J, 0.05, 0.6, 5.0, -0.9, A0[0], A0[1], 0.9);
     }
     // getting on: from standing beside the vehicle (its left side) onto the seat
-    let rx = hx, ry = rootY, rz = hz;
+    let rx = tx, ry = ty, rz = tz;
     const m = o.actor ? MOUNT.get(o.actor) : null;
     if (m && m.on) {
       const k = (nowS() - m.t0) / MOUNT_S;
@@ -2290,13 +2353,13 @@
         blendPose(J, sj, 1 - q);
         J[12] = sj[12]; J[13] = sj[13]; J[14] = sj[14];
         const sideZ = -(md.W / 2 + 2.2);
-        rx = hx; rz = sideZ + (hz - sideZ) * q;
-        ry = (-FR.y) * (1 - q) + rootY * q + Math.sin(q * Math.PI) * 1.0;
-        seated = q > 0.5;
+        rx = tx; rz = sideZ + (tz - sideZ) * q;
+        ry = (-FR.y) * (1 - q) + ty * q + Math.sin(q * Math.PI) * 1.0;
+        seated = seated && q > 0.5; roll2 *= q; yaw2 *= q;
       } else MOUNT.delete(o.actor);
     }
-    if (DBG.riderNext && DBG.rec) { DBG.rec.riders = DBG.rec.riders || []; DBG.rec.riders.push({ pose, J: Array.from(J), seated, fpsHide: !!o.fpsHide, kid: s.kid }); }
-    submitPerson(look, seed, FR, rx, ry, rz, J, { yaw: yaw2, fpsHide: o.fpsHide, noBlob: true, near: o.near, seated });
+    if (DBG.riderNext && DBG.rec) { DBG.rec.riders = DBG.rec.riders || []; DBG.rec.riders.push({ pose: o.kainchi && pose === 'cycle' ? 'kainchi' : pose, J: Array.from(J), seated, fpsHide: !!o.fpsHide, kid: s.kid, root: [rx, ry, rz], yaw: yaw2, roll: roll2, size: sc }); }
+    submitPerson(look, seed, FR, rx, ry, rz, J, { yaw: yaw2, roll: roll2, fpsHide: o.fpsHide, noBlob: true, near: o.near, seated });
   }
   const SW = [0, 0, 0, 0, 0, 0];
   function vehicleEntity(v) {
@@ -2307,9 +2370,13 @@
     const sx = T && T.w ? T.w / md.L : 1, sz = T && T.d && md.W ? clamp(T.d / md.W, 0.7, 1.4) : 1;
     const t = H.time;
     let roll = 0, pitch = 0, yOff = 0;
+    const dLook = v.driver ? (v.driver === pl ? pl.look : riderLookOf(v)) : null;
+    const kainchi = !!(dLook && md.crank && md.pedal && T && T.kainchi && !v.fallen && lookSpec(dLook, v.driver === pl ? 7 : v.seed).kid);
     if (md.bike) {
       if (v.fallen) { roll = -1.3; yOff = 0.5; } else if (!v.driver) roll = -(md.standLean || 0); else roll = clamp(v.lean || 0, -0.6, 0.6);
+      if (kainchi) roll += KAINCHI.tilt; // the cycle leans away from the kid hanging off its left side
     }
+    if (kainchi) v._kainchi = true; else if (v._kainchi && v.driver) v._kainchi = false;
     const j = v.jolt || 0;
     if (j > 0) { const ph = (1 - j) * Math.PI * 3.2, big = md.bike ? 1 : 0.7; yOff += -Math.sin(ph) * j * 0.8 * big; pitch += Math.sin(ph * 1.3) * j * 0.05 * big; roll += Math.sin(ph * 1.7) * j * 0.04 * (v.joltSide || 1); }
     if (md.boat) { const ph = t + ((v.seed | 0) % 100); yOff = 0.15 + Math.sin(ph * 1.3) * 0.22; roll = Math.sin(ph * 0.9) * 0.035; pitch = Math.sin(ph * 1.1 + 1) * 0.02 - clamp((v.speed || 0) / 600, -0.02, 0.06); }
@@ -2376,8 +2443,7 @@
     if (md.show || fps || seeIn) {
       const seats = md.seats;
       if (v.driver && seats[0] && !v.fallen && !cockpit) {
-        const look = v.driver === pl ? pl.look : riderLookOf(v);
-        submitRider(md, seats[0], look, v.driver === pl ? 7 : v.seed, sx, { steer: steerVis, crank, fpsHide: fps && (v.driver === pl || mine), near, actor: v.driver.look ? v.driver : null });
+        submitRider(md, seats[0], dLook, v.driver === pl ? 7 : v.seed, sx, { steer: steerVis, crank, fpsHide: fps && (v.driver === pl || mine), near, actor: v.driver.look ? v.driver : null, kainchi });
       }
       const pil = v.pillion;
       if (pil && seats[1] && !v.fallen) submitRider(md, seats[1], pil.look || pil, pil === pl ? 7 : (v.seed | 0) + 3, sx, { fpsHide: fps && pil === pl, near, actor: pil.look ? pil : null });
@@ -2637,11 +2703,13 @@
       if (!v || !a || !READY) return;
       const md = model(modelKeyFor(v.T)), seat = md.seats[d.passenger && md.seats[1] ? 1 : 0];
       if (!seat) return;
-      const c = Math.cos(v.angle || 0), sn = Math.sin(v.angle || 0), lz = seat.z || 0;
-      MOUNT.set(a, { t0: nowS(), on: false, x: v.x + c * seat.x - sn * lz, y: v.y + sn * seat.x + c * lz, hip: seat.y, yaw: -(v.angle || 0), show: md.show });
+      const c = Math.cos(v.angle || 0), sn = Math.sin(v.angle || 0);
+      const kj = !d.passenger && v._kainchi ? KAI_J.get(a) : null; // stepping off a kainchi ride: from that pose
+      const sxk = kj && md.crank ? md.crank[0] * ((v.T && v.T.w) ? v.T.w / md.L : 1) + KAINCHI.dx : seat.x, lz = kj ? KAINCHI.hz : (seat.z || 0);
+      MOUNT.set(a, { t0: nowS(), on: false, x: v.x + c * sxk - sn * lz, y: v.y + sn * sxk + c * lz, hip: kj ? KAINCHI.hy : seat.y, yaw: -(v.angle || 0), show: md.show, kj });
     } catch (e) { /* no blend */ }
   });
-  const SEATED_J = new Float32Array([1.35, 1.35, -1.4, -1.4, 0.6, 0.6, 0.6, 0.6, 0.1, 0.1, 0.08, 0, 0, 0, 0, 0]);
+  const SEATED_J = new Float32Array([1.35, 1.35, -1.4, -1.4, 0.6, 0.6, 0.6, 0.6, 0.1, 0.1, 0.08, 0, 0, 0, 0, 0, 0, 0]);
   const ease = (k) => k * k * (3 - 2 * k);
   function wrapA(a) { return Math.atan2(Math.sin(a), Math.cos(a)); }
   /** simulation seconds since the last frame (0 while paused; slow motion slows it) */
@@ -2752,7 +2820,7 @@
       const k = (nowS() - m.t0) / MOUNT_S;
       if (k < 1) {
         const q = ease(Math.max(0, k));
-        blendPose(J, SEATED_J, q);
+        blendPose(J, m.kj || SEATED_J, q);
         bx = m.x + (x - m.x) * q; by = m.y + (y - m.y) * q;
         rootY = (m.hip - HIP_Y * s.size) * (1 - q) + rootY * q + Math.sin(q * Math.PI) * 0.8;
         yaw = m.yaw + wrapA(yaw - m.yaw) * q;

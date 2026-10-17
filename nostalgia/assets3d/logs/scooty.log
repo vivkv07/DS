@@ -5,3 +5,56 @@
 00:04.506  render           | Saved: '/tmp/nostalgia_blender/text_0ddcb91d.png'
 [kit] uv: 1092 faces unwrapped along seams, 622 smart-projected
 [kit] uv atlas: 44 islands rescaled
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (6 samples) in 6.9s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 256x256 (20 samples) in 10.0s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked orm 128x128 (1 samples) in 0.3s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] finish scooty: tex 512, orm 128, emit True in 22.8s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:21:08 | INFO: Starting glTF 2.0 export
+21:21:08 | INFO: Extracting primitive: scooty
+21:21:08 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+21:21:08 | INFO: Primitives created: 1
+21:21:08 | INFO: Finished glTF 2.0 export in 0.36554718017578125 s
+
+[kit] scooty: 3424 tris (budget 6000) ok, 275.5 KB, clips [], anchors 18
+21:21:08 | INFO: Data are loaded, start creating Blender stuff
+21:21:08 | INFO: Blender create Mesh node scooty
+21:21:08 | INFO: glTF import finished in 0.14s
+00:47.629  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/scooty.png'
+[kit] preview scooty.png (384px, 24 spp) in 19.3s
+21:21:28 | INFO: Data are loaded, start creating Blender stuff
+21:21:28 | INFO: Blender create Mesh node scooty
+21:21:28 | INFO: glTF import finished in 0.04s
+01:00.280  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/scooty_side.png'
+[kit] preview scooty_side.png (320px, 16 spp) in 12.6s
+[kit] done scooty in 58.4s
+21:21:40 | INFO: Data are loaded, start creating Blender stuff
+21:21:40 | INFO: Blender create Mesh node scooty
+21:21:40 | INFO: glTF import finished in 0.09s
+01:07.987  render           | Saved: '/tmp/nostalgia_blender/scooty_var_0.png'
+[kit] render scooty_var_0.png (256px, 14 spp) in 7.6s
+21:21:48 | INFO: Data are loaded, start creating Blender stuff
+21:21:48 | INFO: Blender create Mesh node scooty
+21:21:48 | INFO: glTF import finished in 0.08s
+01:16.966  render           | Saved: '/tmp/nostalgia_blender/scooty_var_1.png'
+[kit] render scooty_var_1.png (256px, 14 spp) in 8.8s
+21:21:57 | INFO: Data are loaded, start creating Blender stuff
+21:21:57 | INFO: Blender create Mesh node scooty
+21:21:57 | INFO: glTF import finished in 0.10s
+01:25.382  render           | Saved: '/tmp/nostalgia_blender/scooty_var_2.png'
+[kit] render scooty_var_2.png (256px, 14 spp) in 8.2s
+21:22:05 | INFO: Data are loaded, start creating Blender stuff
+21:22:05 | INFO: Blender create Mesh node scooty
+21:22:05 | INFO: glTF import finished in 0.06s
+01:32.668  render           | Saved: '/tmp/nostalgia_blender/scooty_var_3.png'
+[kit] render scooty_var_3.png (256px, 14 spp) in 7.1s
+21:22:13 | INFO: Data are loaded, start creating Blender stuff
+21:22:13 | INFO: Blender create Mesh node scooty
+21:22:13 | INFO: glTF import finished in 0.05s
+01:49.261  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/scooty_night.png'
+[kit] render scooty_night.png (320px, 16 spp) in 16.4s

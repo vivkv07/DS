@@ -860,9 +860,9 @@ def scooty(A):
     # ---------------------------------------------------------------- floor pan + ribbed board
     body.append(vk.plan_prism('floor_pan', [(1.28, -3.2), (1.3, 0.75), (-1.3, 0.75), (-1.28, -3.2)], 0.85, 1.2, BODY, bevel=0.08, seg=1))
     body.append(vk.plan_prism('floor_board', [(1.18, -3.0), (1.2, 0.6), (-1.2, 0.6), (-1.18, -3.0)], 1.2, 1.28, FLOOR))
-    for k in range(5):
-        x = -0.9 + k * 0.45
-        body.append(vk.rbox('floor_rib', (0.14, 3.2, 0.07), (x, -1.2, 1.31), FLOOR, bevel=0.0))
+    for k in range(3):
+        x = -0.7 + k * 0.7
+        body.append(vk.rbox('floor_rib', (0.16, 3.2, 0.07), (x, -1.2, 1.31), FLOOR, bevel=0.0))
     # ---------------------------------------------------------------- rear body: an open U shell over the rear wheel, closed tail
     st = [(0.55, 1.12, 1.0, 1.7, 0.45), (1.2, 1.26, 1.0, 2.55, 1.0), (2.1, 1.34, 1.15, 3.05, 0.95), (3.2, 1.36, 1.6, 3.3, 0.82),
           (4.35, 1.3, 2.1, 3.45, 0.7), (5.35, 1.12, 2.55, 3.5, 0.6), (6.0, 0.86, 2.85, 3.48, 0.5), (6.4, 0.5, 3.05, 3.42, 0.38)]
@@ -893,7 +893,7 @@ def scooty(A):
     body.append(vk.loft_y('engine', [(0.7, 0.55, 0.8, 1.9, 2.6), (1.4, 0.62, 0.75, 2.2, 2.8), (2.1, 0.5, 0.95, 2.05, 2.6)], P['engine'], seg=10))
     body.append(tube('swing_arm_r', [V(-0.5, 2.0, 1.4), V(-0.55, 4.35, R)], 0.12, seg=5, mat=P['black']))
     body.append(tube('shock', [V(-0.6, 4.1, 1.95), V(-0.75, 4.9, 3.0)], 0.1, seg=5, mat=P['black']))
-    body.append(vk.spring('shock_spring', (-0.6, 4.18, 2.05), (-0.73, 4.82, 2.85), 0.17, 4, P['chrome'], wire=0.035))
+    body.append(vk.spring('shock_spring', (-0.6, 4.18, 2.05), (-0.73, 4.82, 2.85), 0.17, 2.5, P['chrome'], wire=0.035))
     body.append(tube('exhaust_pipe', [V(-0.25, 0.9, 0.85), V(-0.6, 1.8, 0.8), V(-0.85, 2.9, 1.05)], 0.12, seg=5, mat=P['dark']))
     body.append(vk.loft_y('silencer', [(2.8, 0.18, 0.88, 1.24, 2.0, -0.92), (3.3, 0.3, 0.75, 1.42, 2.2, -0.95), (5.0, 0.3, 0.95, 1.6, 2.2, -0.95), (5.5, 0.2, 1.1, 1.5, 2.0, -0.95)], P['black'], seg=8))
     body.append(vk.disc_y('silencer_tip', (-0.95, 5.56, 1.3), 0.11, 0.18, P['chrome'], seg=8))
@@ -907,12 +907,12 @@ def scooty(A):
     crown = S0 + AXs * 1.55
     stp.append(tube('stem', [S0 + V(0, 0, 0.25), crown], 0.15, seg=6, mat=P['black']))
     stp += vk.tele_fork('fork', crown, FA, AXs, 0.48, 0.11, P['black'], lower_m=P['alu'], lower_r=0.14, split=0.5)
-    stp.append(vk.rbox('fork_bridge', (1.15, 0.3, 0.22), tuple(crown), P['black'], bevel=0.04))
+    stp.append(vk.rbox('fork_bridge', (1.15, 0.3, 0.22), tuple(crown), P['black'], bevel=0.0))
     stp.append(vk.mudguard('guard_front', tuple(FA), R, math.radians(-25), math.radians(122), BODY, w=0.98, gap=0.18, thick=0.07, n=9))
     cow = vk.loft_y('bar_cowl', [(-3.62, 0.55, 5.18, 5.62, 2.4), (-3.45, 0.95, 5.05, 5.95, 2.8), (-3.0, 1.08, 5.05, 6.02, 3.0), (-2.55, 0.95, 5.12, 5.96, 2.8), (-2.32, 0.62, 5.25, 5.82, 2.4)], BODY, seg=12)
     stp.append(cow)
     stp += vk.lens_box('head', (0.95, 0.12, 0.42), (0, -3.63, 5.45), P['head_lens'], bezel_m=P['chrome'])
-    stp.append(vk.rbox('speedo', (0.7, 0.42, 0.12), (0, -2.85, 6.03), P['black'], bevel=0.04))
+    stp.append(vk.rbox('speedo', (0.7, 0.42, 0.12), (0, -2.85, 6.03), P['black'], bevel=0.0))
     stp.append(vk.rbox('speedo_face', (0.5, 0.3, 0.02), (0, -2.83, 6.1), vk.mat('lamp_lens', 'speedo_dial', base='#e8e4d6', rough=0.2), bevel=0.0))
     bars, grips = vk.moto_bars('bar', (0, -2.95, 5.62), [(0.9, 0.05, 0.0), (1.45, 0.25, -0.05), (1.85, 0.42, -0.12)], 0.6, P, bar_m=P['black'], grip_m=TRIM, r=0.08, grip_r=0.15)
     stp += bars

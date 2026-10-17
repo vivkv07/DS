@@ -617,12 +617,24 @@ class VRig:
         if os.environ.get('NOS_TRIS'):
             # authoring aid: triangle cost per part (NOS_TRIS=1 build_all.py <id> --one ...)
             cost = {}
+            vcost = {}
             for o in meshes:
                 k = o.name.split('.')[0]
                 cost[k] = cost.get(k, 0) + sum(len(p.vertices) - 2 for p in o.data.polygons)
-            for k, n in sorted(cost.items(), key=lambda kv: -kv[1])[:40]:
-                kit.log('  tris %-22s %5d' % (k, n))
-            kit.log('  tris total %d' % sum(cost.values()))
+                # exported vertices (lower bound: normal splits only; UV seams add more)
+                me = o.data
+                try:
+                    cn = me.corner_normals
+                    seen = set()
+                    for li, lp in enumerate(me.loops):
+                        n = cn[li].vector
+                        seen.add((lp.vertex_index, round(n.x, 2), round(n.y, 2), round(n.z, 2)))
+                    vcost[k] = vcost.get(k, 0) + len(seen)
+                except Exception:
+                    vcost[k] = vcost.get(k, 0) + len(me.vertices)
+            for k, n in sorted(cost.items(), key=lambda kv: -vcost.get(kv[0], 0))[:45]:
+                kit.log('  tris %-22s %5d  verts %5d' % (k, n, vcost.get(k, 0)))
+            kit.log('  tris total %d, verts >= %d' % (sum(cost.values()), sum(vcost.values())))
         ob = kit.join(meshes, A.id)
         A.tint = {'attribute': '_REGION', 'names': REGION_NAMES, 'regions': region_colours(ob)}
         kit.write_regions(ob)
@@ -1203,7 +1215,7 @@ def moto_bars(name, centre, pts_left, grip_len, M, bar_m=None, grip_m=None, r=0.
             side = Vector((0, -1, 0))
             l0 = g0 - d * 0.1 + Vector((0, -0.12, 0.05))
             parts.append(tube(name + '_lever', [l0, l0 + d * (grip_len * 0.75) + side * 0.35 + Vector((0, 0, -0.05))], 0.045, seg=4, mat=lever_m or M['chrome']))
-            parts.append(rbox(name + '_perch', (0.22, 0.28, 0.22), tuple(g0 - d * 0.12), lever_m or M['black'], bevel=0.0))
+            parts.append(rbox(name + '_perch', (0.22, 0.28, 0.22), tuple(g0 - d * 0.12), M['black'], bevel=0.0))
     return parts, grips
 
 
@@ -1231,12 +1243,12 @@ def lens_box(name, size, loc, m, bezel_m=None, facing='-Y', bezel=0.06):
     sx, sy, sz = size
     if facing in ('-Y', '+Y'):
         s = 1 if facing == '+Y' else -1
-        parts.append(rbox(name + '_lens', (sx, sy, sz), loc, m, bevel=min(0.05, sz * 0.2)))
+        parts.append(rbox(name + '_lens', (sx, sy, sz), loc, m, bevel=0.0))
         if bezel_m is not None:
             l = Vector(loc)
             parts.append(rbox(name + '_bezel', (sx + bezel * 2, sy * 0.7, sz + bezel * 2), tuple(l - Vector((0, s * sy * 0.3, 0))), bezel_m, bevel=0.0))
     else:
-        parts.append(rbox(name + '_lens', (sx, sy, sz), loc, m, bevel=min(0.05, sz * 0.2)))
+        parts.append(rbox(name + '_lens', (sx, sy, sz), loc, m, bevel=0.0))
     return parts
 
 

@@ -1875,6 +1875,7 @@
     let late = false;
     const T = softTimer(240, 'AMMA COMES OUT', { onExpire: () => { late = true; } });
     void T;
+    m.toast('Back on this step before Amma comes out.', 3200); // the bible's line for the 240 s timer
     follow('immu', true, { dist: 14 });
     // 2. Gokul Chat: pani-puri challenge, Nani's parcel
     npc(m, 'gokul_man', spot('gokul_chat', 0, -6, 16), { idle: 'work' });
@@ -2586,6 +2587,28 @@
     if (S.tickFns) for (const fn of S.tickFns) { try { fn(dt); } catch (e) { N.err('story.tickFn', e); } }
     if (S.dark) S.dark.t += dt;
     if (mode() === 'play') { giversTick(dt); powerCutTick(dt); mountGuard(); }
+    rings3d();
+  }
+  /** The roof rings (terrace goals: M1's kite and lootna, SA2's candles, the antenna...) are drawn by storyDraw in
+   *  the top-down view only. In the 3D view (V) the mission's own markers are placed at roof height by
+   *  view3d_actors, so each ring gets a real mission marker while 3D is on (removed again in 2D, where a ground
+   *  marker would sit hidden under the building). */
+  const ring3d = new Map(); // ring -> {run, id}
+  function rings3d() {
+    const r = run();
+    const on = !!(N.view3d && N.view3d.active) && !!r && !r.ended && !!r.markers;
+    for (const [rg, o] of ring3d) {
+      if (on && S.rings.has(rg) && o.run === r) continue;
+      try { if (o.run && o.run.markers) o.run.markers.delete(o.id); } catch (e) { /* ignore */ }
+      ring3d.delete(rg);
+    }
+    if (!on) return;
+    for (const rg of S.rings) {
+      if (ring3d.has(rg)) continue;
+      const id = 'st:ring3d:' + (++seq);
+      r.markers.set(id, { target: rg.target, r: rg.r || 16, color: rg.color || '#ff5fb0', label: '' });
+      ring3d.set(rg, { run: r, id });
+    }
   }
   /** A mission cycle / Scooty waiting to be mounted beside a shop: ACTION must get on it, not open the shop card
    *  (shops sit at priority 3 over a parked vehicle's 0: Nanna's cycle at the girni is 20 u from the chemist,

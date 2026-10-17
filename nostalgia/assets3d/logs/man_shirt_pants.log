@@ -1,0 +1,19 @@
+00:00.036  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building man_shirt_pants (character)
+[kit] tris by part: torso 312, specs 300, head 248, camera 176, arm_L 172, arm_R 172, leg_L 172, leg_R 172, haircap 142, skullcap 108, eye 96, lanyard 92, strap 88, iranicap 84, foot_L 80, sole 80, foot_R 80, belly 76, beard 76, towel 68, ear 64, quiff 60, hand_L 56, hand_R 56, moustache 56, heel_strap 52, toe_loop 52, lid 52, brow 52, nose 52, pocket 44, buckle 44, pen 40, thumb_L 26, thumb_R 26, mouth 26, glint 24, collar_pt 16
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (8 samples) in 5.5s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 128x128 (32 samples) in 5.4s
+[kit] clip walk: stride 13.3 u, duty 0.40, nominal 45 u/s -> 3.38 cycles/s; slip {'max': 0.0404, 'mean': 0.0022, 'pairs': 38, 'step': 0.416, 'ratio': 0.0052, 'low': -0.057}
+[kit] clip run: stride 20.5 u, duty 0.27, nominal 80 u/s -> 3.91 cycles/s; slip {'max': 0.0003, 'mean': 0.0, 'pairs': 24, 'step': 0.64, 'ratio': 0.0, 'low': -0.0}
+[kit] clip ride_cycle: seat z 5.30, crank 1.05, max hip dip 0.00 u
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:26:03 | INFO: Starting glTF 2.0 export
+21:26:03 | INFO: Extracting primitive: man_shirt_pants
+21:26:03 | INFO: Primitives created: 1
+21:26:03 | INFO: Finished glTF 2.0 export in 0.17607951164245605 s
+
+[kit] man_shirt_pants: 3592 tris (budget 4000) ok, 280.7 KB, clips [], anchors 8
+[kit] done man_shirt_pants in 18.1s

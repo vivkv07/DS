@@ -1224,6 +1224,7 @@
       dbgTarget(null);
       // 7. back to the depot by 19:30 (no fail: being late changes the lines)
       music(m, 'day');
+      m.objective('Back to the Mehdipatnam depot by 19:30.');
       await ride(m, 'mehdipatnam_bus_terminus', { mode: 'bus', label: 'BUS 66G → MEHDIPATNAM DEPOT', after: () => beside('immu') });
       const late = N.clock.minutes > TUNE.depotBy || N.clock.minutes < 6 * 60;
       npc(m, 'bunty', near('mehdipatnam_bus_terminus', 20, 12, 'drive'), { vehicle: 'bunty_rx100', talk: false });
@@ -2247,6 +2248,7 @@
       await m.say('photo_uncle', 'Laughing boys, ready. Eight copies. Four each?');
       m.give('passport_photos', { name: 'Eight passport photos (two boys laughing)' });
       // 1. Laad Bazaar with both families
+      m.objective('Go to Laad Bazaar with both families.');
       await ride(m, 'laad_bazaar', { mode: 'nanna', label: 'NANNA\'S CHETAK + YADAGIRI-ANNA\'S AUTO → LAAD BAZAAR', minutes: 30 });
       N.clock.set(19, 30);
       m.checkpoint('laad_bazaar');

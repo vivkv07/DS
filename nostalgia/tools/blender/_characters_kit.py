@@ -1805,11 +1805,10 @@ def jacket(B, m, m_cuff=None, z0=None, open_front=0.2, off=0.07, name='jacket'):
     for i in range(9):
         a = math.radians(-40 + 260 * i / 8)
         pts.append((math.cos(a) * (T[10][1][0] + 0.12 * k), T[10][0][1] + math.sin(a) * (T[10][1][1] + 0.12 * k), cz + 0.06 + 0.06 * math.sin(a)))
-    objs.append(kit.tube(name + '_collar', pts, 0.07 * k, seg=5, mat=m_cuff or m, cap=True))
-    o = kit.join(objs, name)
-    for v in o.data.vertices:
-        pass
-    return B.add(o, None) if o.vertex_groups else B.add(o, lambda co, rig=rig: torso_w(rig, co))
+    col = kit.tube(name + '_collar', pts, 0.07 * k, seg=5, mat=m_cuff or m, cap=True)
+    kit.weights(col, {'chest': 0.7, 'neck': 0.3})
+    objs.append(col)
+    return B.add(kit.join(objs, name))
 
 
 def shirt_over(B, m, z0=None, off=0.06, sleeve_t=0.5, name='shirt_over'):
