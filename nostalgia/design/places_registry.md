@@ -145,3 +145,54 @@ but keep the calendar consistent with the chosen year.
 |---|---|---|
 | `falaknuma_palace` | Falaknuma Palace | the Nizam's scorpion-shaped Italianate palace on a hill south of the Old City, "mirror of the sky". In the early 2000s it was closed to the public (restoration started around 2000; it reopened only in 2010), so for a kid it is a mysterious, gated palace on the hilltop seen from afar: perfect for legends, a view-point clue, or a secret. Do not show it as a hotel |
 | `salar_jung_museum` | Salar Jung Museum | on the south bank of the Musi near Afzalgunj; the school-trip classic: the famous musical clock where a little figure comes out and strikes the gong on the hour (crowds gather at 12 o'clock), the Veiled Rebecca marble statue, the double-sided wooden figure. Good for a timed mission (be there when the clock strikes), clues and trivia cards (verified facts only) |
+
+## Round 11 (user, binding): Birla Planetarium, Nehru Zoo, and all other important places
+
+| id | Place | Notes |
+|---|---|---|
+| `birla_planetarium` | Birla Planetarium + Birla Science Museum | on Naubat Pahad next to `birla_mandir`; the white dome, sky shows in the dark dome, the dinosaur/science museum; school-trip staple |
+| `nehru_zoo` | Nehru Zoological Park | Bahadurpura, south-west of the Old City by Mir Alam tank; lion safari bus, toy train, the elephant, peacocks, the natural history museum, Sunday family picnics |
+
+The user wants **all other important places** of the era too. The list below is the
+baseline (a completeness sweep will extend it in `research_all_places.md`). Each needs a
+canonical id on the map, recognisable art for the big ones, and a use (story, side
+activity, shop, clue, collectible or ambience). Era status matters (story is early 2000s).
+
+| id | Place | Era status / notes |
+|---|---|---|
+| `laad_bazaar` | Laad Bazaar (Chudi Bazaar) | bangles lane from Charminar; glittering lac bangles |
+| `chowmahalla_palace` | Chowmahalla Palace | closed to the public until 2005: show gated in the early 2000s |
+| `gulzar_houz` | Gulzar Houz fountain | north of Charminar |
+| `pathergatti` | Pathergatti / Madina building | stone arcades, shops |
+| `purana_pul` | Purana Pul (old bridge, 1578) + Jumerat Bazaar (Thursday flea market) | |
+| `naya_pul`, `chaderghat_bridge`, `afzalgunj_bridge` | Musi bridges | |
+| `osmania_hospital`, `high_court`, `state_central_library` | Afzalgunj Indo-Saracenic trio on the Musi | |
+| `abids` | Abids circle, GPO, the Sunday book market | |
+| `sultan_bazaar` | Sultan Bazaar (Koti) | clothes, bangles, school-shopping crowds |
+| `koti_womens_college` | Koti Women's College (old British Residency) | |
+| `begum_bazaar` | Begum Bazaar | wholesale market |
+| `secunderabad_clock_tower`, `secunderabad_station`, `parade_grounds`, `monda_market`, `general_bazaar`, `alpha_hotel` | Secunderabad | |
+| `ujjaini_mahankali_temple`, `lal_darwaza_temple`, `khairatabad_ganesh` | festival sites (see Festivals) | |
+| `begumpet_airport` | Begumpet Airport | the city's working airport in the early 2000s (until 2008): planes landing over the city, the terminal, families seeing people off to America |
+| `spanish_mosque` | Spanish Mosque, Begumpet | |
+| `sanjeevaiah_park` | Sanjeevaiah Park | by the lake |
+| `indira_park`, `lower_tank_bund` | Indira Park / Lower Tank Bund | |
+| `ravindra_bharathi` | Ravindra Bharathi auditorium, Saifabad | culture shows, school annual days |
+| `secretariat`, `raj_bhavan` | Secretariat / Raj Bhavan (exteriors only) | |
+| `gun_park` | Gun Park (Martyrs' memorial) near the Assembly | |
+| `fateh_maidan`, `nizam_college` | Basheerbagh | |
+| `cafe_bahar` | Café Bahar, Basheerbagh | Irani cafe/biryani |
+| `bawarchi` | Bawarchi, RTC X Roads | |
+| `ameerpet_coaching` | Ameerpet computer-coaching centres | early-2000s "learn Java/Oracle" boards everywhere |
+| `kbr_park`, `film_nagar`, `annapurna_studios`, `peddamma_temple` | Banjara/Jubilee Hills | film shootings, rocks, Chiran palace in KBR |
+| `shilparamam` | Shilparamam crafts village (1992) | near HITEC City |
+| `durgam_cheruvu` | Durgam Cheruvu, the "secret lake" | hidden among rocks near HITEC City: perfect for a hidden collectible |
+| `gachibowli_stadium` | Gachibowli stadium (2002, National Games 2002 / Afro-Asian Games 2003) | |
+| `gandipet` | Gandipet (Osman Sagar) | picnic lake at the far west edge |
+| `doordarshan_kendra` | Doordarshan Kendra, Ramanthapur (tower) | ties to the antenna minigame |
+| `all_india_radio` | All India Radio, Saifabad | ties to the radio |
+| `ramoji_film_city` | Ramoji Film City (1996) | far east, beyond the map edge: reachable as a bus-trip scene from `imlibun_bus_station` or `koti_bus_stand` |
+| `nizams_museum` | Nizam's Museum, Purani Haveli (opened 2000) | |
+| `taramati_baradari`, `moula_ali_dargah` | heritage sites (exteriors) | |
+| cinemas | `ramakrishna_theatre` (Abids), `shanti_theatre` (Narayanguda), `sangeet_theatre` (Secunderabad), `liberty_theatre` (Basheerbagh) plus the RTC X Roads four | hand-painted fictional film hoardings |
+| food landmarks | `nimrah_cafe` (facing Charminar), `shah_ghouse`, `pista_house` (haleem), `shadab_hotel`, `hotel_niagara`, `alpha_hotel` | generic depiction, Irani chai + Osmania biscuits at Irani cafes |
