@@ -1270,6 +1270,23 @@
     };
     return b.quadO(P(iu0, iv0), P(iu1, iv0), P(iu1, iv1), P(iu0, iv1), n[0], n[1], n[2]);
   }
+  /** a quad face A B C D (u along A->B, v along A->D) minus rectangular holes [[u0, u1, v0, v1]], both sides */
+  function frameFace(b, A, B, C, D, holes) {
+    const P = (u, v) => {
+      const x0 = A[0] + (B[0] - A[0]) * u, y0 = A[1] + (B[1] - A[1]) * u, z0 = A[2] + (B[2] - A[2]) * u;
+      const x1 = D[0] + (C[0] - D[0]) * u, y1 = D[1] + (C[1] - D[1]) * u, z1 = D[2] + (C[2] - D[2]) * u;
+      return [x0 + (x1 - x0) * v, y0 + (y1 - y0) * v, z0 + (z1 - z0) * v];
+    };
+    const us = [0, 1], vs = [0, 1];
+    for (const h of holes) { us.push(h[0], h[1]); vs.push(h[2], h[3]); }
+    const U = [...new Set(us)].sort((p, q) => p - q), V = [...new Set(vs)].sort((p, q) => p - q);
+    for (let i = 0; i + 1 < U.length; i++) for (let j = 0; j + 1 < V.length; j++) {
+      const mu = (U[i] + U[i + 1]) / 2, mv = (V[j] + V[j + 1]) / 2;
+      if (holes.some((h) => mu > h[0] && mu < h[1] && mv > h[2] && mv < h[3])) continue;
+      b.quad2(P(U[i], V[j]), P(U[i + 1], V[j]), P(U[i + 1], V[j + 1]), P(U[i], V[j + 1]));
+    }
+    return b;
+  }
   function faceN(A, B, D) {
     const ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2], wx = D[0] - A[0], wy = D[1] - A[1], wz = D[2] - A[2];
     let nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx; const l = Math.hypot(nx, ny, nz) || 1;
@@ -1586,15 +1603,37 @@
     // greenhouse: pillars + roof in paint, glass panels on each face
     const g = o.gh;
     const c = [[g.x0, g.y0, -g.w0], [g.x1, g.y0, -g.w0], [g.x1, g.y0, g.w0], [g.x0, g.y0, g.w0], [g.rx0, g.y1, -g.w1], [g.rx1, g.y1, -g.w1], [g.rx1, g.y1, g.w1], [g.rx0, g.y1, g.w1]];
-    P1(b, 0.98).hexa(c, { top: false });
+    // pillars and frames only (double-sided): the cabin is hollow behind the translucent glass
+    const bp = g.bp || 0.5;
+    P1(b, 0.98);
+    frameFace(b, c[1], c[2], c[6], c[5], [[0.07, 0.93, 0.06, 0.92]]);
+    frameFace(b, c[3], c[0], c[4], c[7], [[0.1, 0.9, 0.12, 0.9]]);
+    frameFace(b, c[0], c[1], c[5], c[4], [[0.06, bp - 0.035, 0.1, 0.9], [bp + 0.035, 0.93, 0.1, 0.9]]);
+    frameFace(b, c[2], c[3], c[7], c[6], [[0.07, 1 - bp - 0.035, 0.1, 0.9], [1 - bp + 0.035, 0.94, 0.1, 0.9]]);
     if (o.roofP2) P2(b); else P1(b, 1.04);
     b.quad(c[4], c[7], c[6], c[5]);
+    FX(b, '#cfc6b4').quad(c[4], c[5], c[6], c[7]); // headliner
+    // interior seen through the glass: dashboard, seat backs, steering wheel (right-hand drive)
+    const sy = Math.min(o.seatY, g.y1 - 5.5), dz = hw * 0.36;
+    const dashX = g.x1 - 0.3 - (g.x1 - g.rx1) * 0.8 / (g.y1 - g.y0); // behind the raked windscreen
+    FX(b, '#2a2420').box(dashX - 2.0, g.y0 - 0.4, -g.w0 + 0.35, dashX, g.y0 + 0.7, g.w0 - 0.35);
+    FX(b, '#4a2a22');
+    for (const sd of [-1, 1]) b.box(o.seatX - 1.45, g.y0 - 0.6, sd * dz - 1.35, o.seatX - 0.75, sy + 3.2, sd * dz + 1.35).box(o.seatX - 1.25, sy + 3.2, sd * dz - 0.7, o.seatX - 0.85, sy + 4.0, sd * dz + 0.7);
+    const rxw = g.x0 + (g.rx0 - g.x0) * (2.3 / (g.y1 - g.y0)); // the raked rear window at the bench-back top
+    b.box(rxw + 0.2, g.y0 - 0.6, -g.w0 + 0.5, rxw + 0.9, g.y0 + 2.3, g.w0 - 0.5);
+    FX(b, '#5a4638').quad([g.x0 + 0.1, g.y0 + 0.03, g.w0 - 0.1], [dashX, g.y0 + 0.03, g.w0 - 0.1], [dashX, g.y0 + 0.03, -g.w0 + 0.1], [g.x0 + 0.1, g.y0 + 0.03, -g.w0 + 0.1]); // the cabin tub
+    {
+      const ca = Math.cos(0.5), sa = Math.sin(0.5), cx = o.seatX + 3.1, cy = sy + 1.65, R = 1.1;
+      const P = (f) => [cx + R * Math.sin(f) * sa, cy + R * Math.sin(f) * ca, dz + R * Math.cos(f)];
+      FX(b, '#1a1816');
+      for (let k = 0; k < 10; k++) b.tube(P(k / 10 * TAU), P((k + 1) / 10 * TAU), 0.12, 4);
+      b.tube([cx, cy, dz], [cx + 1.6, cy - 0.9, dz], 0.12, 4);
+    }
     if (o.gutter !== false) { CH(b); b.box(g.rx0, g.y1 - 0.08, -g.w1 - 0.06, g.rx1, g.y1 + 0.02, -g.w1 + 0.06).box(g.rx0, g.y1 - 0.08, g.w1 - 0.06, g.rx1, g.y1 + 0.02, g.w1 + 0.06); }
     GL(b);
     const cc = [(g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2, 0];
     let n = faceN(c[1], c[2], c[5]); panel(b, c[1], c[2], c[6], c[5], 0.07, 0.93, 0.06, 0.92, 0.05, n, cc);
     n = faceN(c[3], c[0], c[7]); panel(b, c[3], c[0], c[4], c[7], 0.1, 0.9, 0.12, 0.9, 0.05, n, cc);
-    const bp = g.bp || 0.5;
     n = faceN(c[0], c[1], c[4]); panel(b, c[0], c[1], c[5], c[4], 0.06, bp - 0.035, 0.1, 0.9, 0.05, n, cc); panel(b, c[0], c[1], c[5], c[4], bp + 0.035, 0.93, 0.1, 0.9, 0.05, n, cc);
     n = faceN(c[2], c[3], c[6]); panel(b, c[2], c[3], c[7], c[6], 0.07, 1 - bp - 0.035, 0.1, 0.9, 0.05, n, cc); panel(b, c[2], c[3], c[7], c[6], 1 - bp + 0.035, 0.94, 0.1, 0.9, 0.05, n, cc);
     // bumpers, grille, lamps, rubbing strip, door seams + handles, mirrors
@@ -1620,7 +1659,7 @@
     const meta = {
       L, W, H: g.y1 + 0.2, show: false, cockpit: o.cockpit || 'car', rearR: o.wheels[0].r,
       wheels: o.wheels.flatMap((w) => [{ x: w.x, z: -(hw - w.w / 2 + 0.12), r: w.r, w: w.w, kind: 'solid', front: !!w.front }, { x: w.x, z: hw - w.w / 2 + 0.12, r: w.r, w: w.w, kind: 'solid', front: !!w.front }]),
-      seats: [{ x: o.seatX, y: o.seatY, z: hw * 0.36, pose: 'car', foot: [o.seatX + 4, 2.4] }, { x: o.seatX, y: o.seatY, z: -hw * 0.36, pose: 'bench', foot: [o.seatX + 3.5, 2.4] }],
+      seats: [{ x: o.seatX, y: sy, z: dz, pose: 'car', foot: [o.seatX + 4, 2.4], grip: [o.seatX + 3.05, sy + 1.62, 1.05] }, { x: o.seatX, y: sy, z: -dz, pose: 'bench', foot: [o.seatX + 3.5, 2.4] }],
       lamps: { head: [[fx + 0.15, o.lampY, -o.lampZ], [fx + 0.15, o.lampY, o.lampZ]], tail: [[-fx - 0.15, o.tailY, -(hw - 1.5)], [-fx - 0.15, o.tailY, hw - 1.5]] },
       decals, gh: g, hoodY: o.hoodY, dash: o.dash,
     };
@@ -2100,7 +2139,7 @@
     if (pose === 'cycle' || pose === 'scooter' || pose === 'moto' || pose === 'auto' || pose === 'car') {
       const lean = pose === 'cycle' ? 0.3 : pose === 'moto' ? 0.38 : pose === 'scooter' ? 0.08 : pose === 'auto' ? 0.12 : 0.06;
       let gx = seat.grip ? seat.grip[0] * sx : hx + 3, gy = seat.grip ? seat.grip[1] : hy + 1.5, gz = seat.grip ? seat.grip[2] : 1.2;
-      let lx = gx, lz = -gz, rx = gx, rz = gz;
+      let lx = gx, lz = hz - gz, rx = gx, rz = hz + gz; // grips either side of the seat's centre line
       if (o.grips) { lx = o.grips[0]; gy = o.grips[1]; lz = o.grips[2]; rx = o.grips[3]; rz = o.grips[5]; T(lx, gy, A0); T(rx, o.grips[4], A1); }
       else {
         const st = o.steer || 0;
@@ -2223,7 +2262,9 @@
     }
     // riders: driver, pillion, passengers
     const near = mine;
-    if (md.show || fps) {
+    // closed cars: seen through the translucent glass when the camera is close enough to tell
+    const seeIn = !md.show && !!md.glassIndex && !cockpit && md.seats.length > 0 && camDist(v.x, 6, v.y) < 170;
+    if (md.show || fps || seeIn) {
       const seats = md.seats;
       if (v.driver && seats[0] && !v.fallen && !cockpit) {
         const look = v.driver === pl ? pl.look : riderLookOf(v);
@@ -2232,7 +2273,7 @@
       const pil = v.pillion;
       if (pil && seats[1] && !v.fallen) submitRider(md, seats[1], pil.look || pil, pil === pl ? 7 : (v.seed | 0) + 3, sx, { fpsHide: fps && pil === pl, near, actor: pil.look ? pil : null });
       const pass = v.passenger;
-      if (pass && pass !== pil && seats[1] && !v.fallen && (md.show || pass === pl)) submitRider(md, seats[1], pass.look || pass, pass === pl ? 7 : (v.seed | 0) + 5, sx, { fpsHide: fps && pass === pl, near, actor: pass.look ? pass : null });
+      if (pass && pass !== pil && seats[1] && !v.fallen && (md.show || seeIn || pass === pl)) submitRider(md, seats[1], pass.look || pass, pass === pl ? 7 : (v.seed | 0) + 5, sx, { fpsHide: fps && pass === pl, near, actor: pass.look ? pass : null });
       // ambient passengers in traffic autos / rickshaws (3D life; the 2D sprite shows the canopy)
       if ((md.key === 'auto' || md.key === 'rickshaw') && v.driver && !pass && !mine && ((v.seed | 0) % 3 === 0)) {
         const n = 1 + ((v.seed | 0) % 2);

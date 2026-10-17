@@ -96,7 +96,8 @@
     lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.75, stackT: 1.1, threatR: 34, scatter: 0.8, aiErr: [0.2, 0.11], stackErr: [0.17, 0.11], dodge: [0.25, 0.55], windup: [0.7, 0.42],
       // Chinnu's own hands: a pick-up and a careful placing take a moment (he stands still, a sitting duck)
       myPickT: 0.35, myStackT: 0.65, knockMul: 1.3, stoneFric: 95, passMe: 0.55 },
-    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46 },
+    // with the ball you only shuffle (holdWalk x walk): you throw from about where you picked it up
+    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46, holdWalk: 0.22, look: [0.55, 1.3], range: [44, 56] },
     // the line throw: the aim starts a little off the stack (straighten it), accuracy drops with power
     aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130, startOff: [0.06, 0.2], err: 0.026, errPow: 0.075 },
     pay: { win: 200, win3: 300, daily: 3 },
@@ -109,6 +110,8 @@
     relock: 1.4, deflect: { sp: [26, 44], vz: 19 },
     // the AI leads a target by its velocity smoothed over leadTau s (a late sidestep beats the lead)
     leadTau: 0.35,
+    // a throw is live for its target's distance + overshoot u (the red wind-up line shows that much past him too)
+    overshoot: 24,
     // a free ball nobody can reach comes back onto the ground ("Ball la, ra!")
     freeMax: { lingocha: 9, marampitti: 6, outside: 3.5 },
     heat: { adult: 15, window: 30 },
@@ -370,7 +373,9 @@
       while (away.length < n) away.push(genericSpec(rng, used, rng.next() < 0.3, F));
       return { homeName: 'Chinnu XI', awayName, home, away };
     }
-    const n = clamp((o.kids | 0) || TUNE.maram.kids, 6, 10) - 1;
+    // default ring size follows the ground: 6 kids on a small ground (nowhere to hide), 8 on a big one
+    const auto = clamp(Math.round(4 + (F.w * F.h) / 1500), 6, TUNE.maram.kids);
+    const n = clamp((o.kids | 0) || auto, 6, 10) - 1;
     const list = [];
     const named = F.home ? ['immu', 'ayesha', 'babloo'] : ashok ? ['tiger', 'immu'] : ['immu'];
     for (const f of named) if (list.length < n) list.push(friendSpec(f));
@@ -556,7 +561,7 @@
     let sp = run ? TUNE.kidRun + TUNE.kidRunD * S.d : TUNE.kidWalk;
     if (P.dood) sp *= 0.72;
     if (P.carry) sp = Math.min(sp, TUNE.kidWalk * 1.1) * TUNE.carryMul;
-    if (P.hold) sp = Math.min(sp, TUNE.kidWalk * TUNE.holdWalk);
+    if (P.hold) sp = Math.min(sp, TUNE.kidWalk * (S.id === 'marampitti' ? TUNE.maram.holdWalk : TUNE.holdWalk));
     return sp;
   }
   function goTo(P, x, y, sp, arrive) {
@@ -636,6 +641,15 @@
   function px(P) { return P.e.x; }
   function py(P) { return P.e.y; }
   function pdist(A, B) { return hyp(A.e.x - B.e.x, A.e.y - B.e.y); }
+  /** the wind-up telegraph: thrower a -> target b, and on past him by TUNE.overshoot (e) */
+  function teleLine(S) {
+    const a = S.tele.from.e, b = S.tele.to.e, l = hyp(b.x - a.x, b.y - a.y) || 1;
+    return { ax: a.x, ay: a.y, bx: b.x, by: b.y, ex: b.x + ((b.x - a.x) / l) * TUNE.overshoot, ey: b.y + ((b.y - a.y) / l) * TUNE.overshoot, l };
+  }
+  function segDist(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy || 1, t = clamp(((px - ax) * dx + (py - ay) * dy) / L, 0, 1);
+    return hyp(px - ax - dx * t, py - ay - dy * t);
+  }
 
   /* ================================================================ the ball */
   function holdPos(P) {
@@ -647,7 +661,7 @@
     for (const Q of S.parts) Q.hold = false;
     b.state = 'held'; b.holder = P; b.thrower = null; b.live = false; b.pass = false; b.passTo = null; b.bounced = 1;
     b.lockP = null; b.lockT = 0; S.freeT = 0;
-    P.hold = true; P.holdT = 0; P.windT = 0; P.passRoll = S.rng.next();
+    P.hold = true; P.holdT = 0; P.windT = 0; P.passRoll = S.rng.next(); P.lookT = null;
     const h = holdPos(P); b.x = h.x; b.y = h.y; b.z = h.z; b.vx = b.vy = b.vz = 0;
   }
   function drop(S, P) {
@@ -673,6 +687,8 @@
     // every kid gets a reaction time to this throw (AI dodging) and a catch roll; the kid it was aimed at
     // may have read the wind-up and jukes at once (the thrower led the old run)
     b.target = o.target || null;
+    // a throw stays live a little past its mark (overshoot), then it is a dying ball: no random hits across the ground
+    b.rx = b.x; b.ry = b.y; b.liveDist = b.target && b.target.e ? hyp(b.target.e.x - e.x, b.target.e.y - e.y) + TUNE.overshoot : 70;
     for (const Q of S.parts) {
       if (Q.isPlayer || Q === P) continue;
       Q.react = S.t + lerp(0.34, 0.12, S.d) * (0.8 + S.rng.next() * 0.5);
@@ -806,6 +822,7 @@
     }
     if (S.G.ballStack) S.G.ballStack(S, b);
     if (b.state !== 'air') return;
+    if (b.live && b.liveDist && hyp(b.x - b.rx, b.y - b.ry) > b.liveDist) b.live = false;
     if (b.live) {
       for (const P of S.parts) {
         if (P === b.thrower || P.out || !P.e || P.e.alive === false || b.hitSet.has(P)) continue;
@@ -1559,7 +1576,12 @@
     threatened(S) {
       const me = S.me, b = S.ball, p = N.player;
       if (!me || me.out || S.phase !== 'play') return false;
-      if (S.tele && S.tele.to === me && S.tele.from && S.tele.from.windT > 0) return true;
+      if (S.tele && S.tele.from && S.tele.from.windT > 0 && S.tele.from !== me && S.tele.to && S.tele.to.e) {
+        if (S.tele.to === me) return true;
+        // standing on the line past his mark: a miss comes your way
+        const tl = teleLine(S);
+        if (segDist(p.x, p.y, tl.ax, tl.ay, tl.ex, tl.ey) < 5.5 && hyp(p.x - tl.ax, p.y - tl.ay) > 8) return true;
+      }
       if (b.state === 'air' && b.live && b.thrower && b.thrower !== me) {
         const rx = p.x - b.x, ry = p.y - b.y, vv = b.vx * b.vx + b.vy * b.vy;
         const t = vv > 1 ? (rx * b.vx + ry * b.vy) / vv : -1;
@@ -1650,9 +1672,10 @@
         const al = MARAM.alive(S).filter((Q) => Q !== P);
         if (!al.length) { halt(P); return; }
         if (!P.tgt || P.tgt.out || S.t > P.tgtT) {
+          // the nearest kid, rather one who is not running (an easier mark)
           let best = null, bs = Infinity;
-          for (const Q of al) { const s = pdist(P, Q) * (0.75 + 0.5 * S.rng.next()); if (s < bs) { bs = s; best = Q; } }
-          P.tgt = best; P.tgtT = S.t + 1.4;
+          for (const Q of al) { const s = pdist(P, Q) * (0.75 + 0.5 * S.rng.next()) * (1 + Math.min(1, hyp(Q.svx || 0, Q.svy || 0) / 90) * 0.35); if (s < bs) { bs = s; best = Q; } }
+          P.tgt = best; P.tgtT = S.t + 1.1;
         }
         const T = P.tgt, d = pdist(P, T);
         if (P.windT > 0) {
@@ -1660,7 +1683,9 @@
           if (P.windT <= 0) LING.aiThrowAt(S, P, T);
           return;
         }
-        if (d < lerp(28, 40, S.d) || P.holdT > TUNE.maram.holdMax - 0.6) { P.windT = lerp(TUNE.lingocha.windup[0], TUNE.lingocha.windup[1], S.d) * (S.real && PG.debug.assist.weakAI && T.isPlayer ? 1.6 : 1); halt(P); return; }
+        // a look round first (the others scatter), then a throw from where he stands
+        if (P.lookT == null) P.lookT = lerp(TUNE.maram.look[1], TUNE.maram.look[0], S.d) * (0.8 + 0.4 * S.rng.next());
+        if ((P.holdT > P.lookT && d < lerp(TUNE.maram.range[0], TUNE.maram.range[1], S.d)) || P.holdT > TUNE.maram.holdMax - 0.6) { P.lookT = null; P.windT = lerp(TUNE.lingocha.windup[0], TUNE.lingocha.windup[1], S.d) * (S.real && PG.debug.assist.weakAI && T.isPlayer ? 1.6 : 1); halt(P); return; }
         goTo(P, T.e.x, T.e.y, speedOf(S, P, false), 2);
         return;
       }
@@ -1753,7 +1778,7 @@
       if (me.out) return 'OUT!';
       if (S.phase === 'toss') return 'Wait for the bounce… then grab it (' + a + ')';
       if (me.hold) return a + ': throw at ' + (S.aimTarget ? S.aimTarget.name : 'someone') + ' (below the head!) · hold for a hard one · ' + Math.max(0, TUNE.maram.holdMax - me.holdT).toFixed(1) + 's';
-      if (MARAM.threatened(S)) return (b.state === 'air' ? 'Incoming! ' : (S.tele.from.name || 'He') + ' is aiming at you! ') + r + ' = dodge · ' + a + ' = CATCH as he throws';
+      if (MARAM.threatened(S)) return (b.state === 'air' || !S.tele ? 'Incoming! ' : (S.tele.from.name || 'He') + (S.tele.to === me ? ' is aiming at you! ' : ' is throwing your way! ')) + r + ' = dodge · ' + a + ' = CATCH as he throws';
       if (!b.holder && lockedOut(S, me)) return 'Not twice in a row — let somebody else get the ball';
       return 'Grab the ball after it bounces (' + a + ') · tap ' + r + ' to dodge';
     },
@@ -1818,7 +1843,8 @@
     me.holdT += dt;
     // no running with the ball in your hand
     I.consume('run');
-    I.move.x *= 0.72; I.move.y *= 0.72;
+    const hw = S.id === 'marampitti' ? TUNE.maram.holdWalk : 0.72;
+    I.move.x *= hw; I.move.y *= hw;
     S.aimTarget = chooseTarget(S, cands);
     const T = S.aimTarget;
     offer(S, T ? 'Throw at ' + T.name : 'Throw');
@@ -2415,10 +2441,13 @@
       }
       // the wind-up telegraph: a dashed red line on the ground from the thrower to the target
       if (S.tele && S.tele.from.e && S.tele.to.e && !done) {
-        const a = S.tele.from.e, b = S.tele.to.e;
+        const tl = teleLine(S);
         R.queue('ground', 6, () => D.flat((ctx) => {
           ctx.globalAlpha = 0.55; ctx.strokeStyle = '#ff5a4a'; ctx.lineWidth = 0.7; ctx.setLineDash([2.2, 2.2]);
-          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+          ctx.beginPath(); ctx.moveTo(tl.ax, tl.ay); ctx.lineTo(tl.bx, tl.by); ctx.stroke();
+          // ... and on past him (where a miss goes): fainter
+          ctx.globalAlpha = 0.25; ctx.beginPath(); ctx.moveTo(tl.bx, tl.by); ctx.lineTo(tl.ex, tl.ey); ctx.stroke();
+          ctx.setLineDash([]); ctx.globalAlpha = 1;
         }));
       }
       // the ball (and its shadow)
@@ -2687,10 +2716,11 @@
     const tl = S.tele;
     V3L.tele.visible = !!(tl && tl.from.e && tl.to.e && !S.ended);
     if (V3L.tele.visible) {
-      const a = tl.from.e, c = tl.to.e, l = hyp(c.x - a.x, c.y - a.y);
+      const q = teleLine(S), l = q.l + TUNE.overshoot * 0.6;
+      const cx = q.ax + (q.ex - q.ax) * (l / (q.l + TUNE.overshoot)) * 0.5, cy = q.ay + (q.ey - q.ay) * (l / (q.l + TUNE.overshoot)) * 0.5;
       V3L.tele.scale.set(l, 1, 1);
-      V3L.tele.position.set((a.x + c.x) / 2, hAt(a.x, a.y) + 0.09, (a.y + c.y) / 2);
-      V3L.tele.rotation.set(-Math.PI / 2, 0, -Math.atan2(c.y - a.y, c.x - a.x));
+      V3L.tele.position.set(cx, hAt(cx, cy) + 0.09, cy);
+      V3L.tele.rotation.set(-Math.PI / 2, 0, -Math.atan2(q.by - q.ay, q.bx - q.ax));
     }
     void dt;
   }

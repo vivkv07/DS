@@ -1,0 +1,300 @@
+{
+ "anchors": {
+  "exhaust": [
+   -3.4,
+   11.6,
+   1.5
+  ],
+  "foot_L": [
+   0.95,
+   -5.0,
+   2.58
+  ],
+  "foot_R": [
+   -0.95,
+   -5.0,
+   2.58
+  ],
+  "foot_passenger_C": [
+   0.0,
+   1.8,
+   2.58
+  ],
+  "foot_passenger_L": [
+   2.6,
+   1.8,
+   2.58
+  ],
+  "foot_passenger_R": [
+   -2.6,
+   1.8,
+   2.58
+  ],
+  "grip_L": [
+   2.48,
+   -4.9525,
+   6.8725
+  ],
+  "grip_R": [
+   -2.48,
+   -4.9525,
+   6.8725
+  ],
+  "handlebar": [
+   -0.0,
+   -5.9,
+   6.95
+  ],
+  "headlight": [
+   0.0,
+   -11.75,
+   4.4
+  ],
+  "indicator_L": [
+   1.75,
+   -11.2,
+   3.85
+  ],
+  "indicator_R": [
+   -1.75,
+   -11.2,
+   3.85
+  ],
+  "meter": [
+   5.55,
+   -6.5,
+   8.05
+  ],
+  "seat_driver": [
+   0.0,
+   -2.05,
+   4.78
+  ],
+  "seat_passenger_C": [
+   0.0,
+   6.6,
+   5.4
+  ],
+  "seat_passenger_L": [
+   2.7,
+   6.6,
+   5.4
+  ],
+  "seat_passenger_R": [
+   -2.7,
+   6.6,
+   5.4
+  ],
+  "taillight_L": [
+   4.95,
+   11.3,
+   3.95
+  ],
+  "taillight_R": [
+   -4.95,
+   11.3,
+   3.95
+  ],
+  "wheel_RL": [
+   5.85,
+   6.4,
+   1.65
+  ],
+  "wheel_RR": [
+   -5.85,
+   6.4,
+   1.65
+  ],
+  "wheel_front": [
+   0.0,
+   -8.6,
+   1.6
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 448544,
+ "clips": {},
+ "family": "vehicle",
+ "file": "auto_rickshaw.glb",
+ "front": "-Y",
+ "id": "auto_rickshaw",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 438.0,
+ "kit": 1,
+ "materials": [
+  "M_auto_rickshaw@night"
+ ],
+ "max": [
+  6.67,
+  11.569,
+  12.165
+ ],
+ "meta": {
+  "height": 12.0,
+  "lamps": {
+   "head": [
+    "headlight"
+   ],
+   "tail": [
+    "taillight_L",
+    "taillight_R"
+   ]
+  },
+  "length": 22.0,
+  "open": true,
+  "options": [
+   {
+    "bone": "opt_name",
+    "label": "YADAGIRI",
+    "types": [
+     "yadagiri_auto"
+    ]
+   },
+   {
+    "bone": "opt_slogan0",
+    "notTypes": [
+     "yadagiri_auto"
+    ],
+    "seed": [
+     4,
+     0
+    ]
+   },
+   {
+    "bone": "opt_slogan1",
+    "notTypes": [
+     "yadagiri_auto"
+    ],
+    "seed": [
+     4,
+     1
+    ]
+   },
+   {
+    "bone": "opt_slogan2",
+    "notTypes": [
+     "yadagiri_auto"
+    ],
+    "seed": [
+     4,
+     2
+    ]
+   },
+   {
+    "bone": "opt_slogan3",
+    "notTypes": [
+     "yadagiri_auto"
+    ],
+    "seed": [
+     4,
+     3
+    ]
+   }
+  ],
+  "riders": {
+   "driver": {
+    "feet": [
+     "foot_L",
+     "foot_R"
+    ],
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "lean": 0.12,
+    "pose": "auto",
+    "seat": "seat_driver"
+   },
+   "passengers": [
+    {
+     "feet": [
+      "foot_passenger_L"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_L"
+    },
+    {
+     "feet": [
+      "foot_passenger_R"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_R"
+    },
+    {
+     "feet": [
+      "foot_passenger_C"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_C"
+    }
+   ]
+  },
+  "steerAxis": [
+   0.0,
+   -0.4392,
+   -0.8984
+  ],
+  "steerBones": {
+   "steer": {
+    "axis": [
+     0.0,
+     -0.43921011686325073,
+     -0.8983843326568604
+    ],
+    "k": 1.0
+   }
+  },
+  "tintSrc": {
+   "paint": "color",
+   "paint2": "color2"
+  },
+  "vehicleTypes": [
+   "auto",
+   "yadagiri_auto"
+  ],
+  "wheelR": 1.62,
+  "wheels": {
+   "wheel_RL": 1.65,
+   "wheel_RR": 1.65,
+   "wheel_front": 1.6
+  },
+  "width": 13.0
+ },
+ "min": [
+  -6.657,
+  -11.985,
+  0.0
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  13.327,
+  23.554,
+  12.165
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "r4",
+   "r5",
+   "r6",
+   "r7"
+  ],
+  "regions": {
+   "paint": "#f2c230",
+   "paint2": "#1c1a1c"
+  }
+ },
+ "tris": 5278,
+ "units": "u",
+ "up": "Z"
+}

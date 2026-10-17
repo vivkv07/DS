@@ -1,18 +1,29 @@
-"""NOSTALGIA — tools/blender/vehicles.py — vehicles (ARCHITECTURE §21). Build:
-    /home/user/.venvs/blender/bin/python tools/blender/build_all.py hero_cycle
+"""NOSTALGIA — tools/blender/vehicles.py (vehicles artist) — every vehicle of the game (ARCHITECTURE §21).
+Build one / some / all:
+    /home/user/.venvs/blender/bin/python tools/blender/build_all.py auto_rickshaw ambassador
+    /home/user/.venvs/blender/bin/python tools/blender/build_all.py --list
 
-Vehicle convention: front = -Y (forward), the rider's left = +X, wheels on z = 0. Length matches
-vehicles.js TYPES[t].w (hero_cycle: 16 u, wheels R 3.0 u, like view3d_actors' 'hero' model so
-riders fit both). Moving parts are bones of a rigid skin (one draw call): root (frame), steer
-(fork + bars + front wheel + lamp, axis = the steering axis), wheel_front, wheel_rear, crank,
-pedal_L, pedal_R. The runtime spins wheels / crank about the model's lateral axis and turns the
-steer bone about its own axis (N.models3d.vehicleParts). Anchors: seat_driver, seat_pillion,
-handlebar, grip_L/R, pedal_L/R, headlight, wheel_front, wheel_rear, bell, reflector.
+Vehicle convention (binding): front = -Y (forward), the rider's left = +X, wheels on z = 0, origin at
+the centre of the 2D collision footprint; the length along -Y equals vehicles.js TYPES[t].w and the
+width ~ TYPES[t].d (src/vehicles.js, traffic.js 'rickshaw'). Moving parts are bones of a rigid skin
+(one mesh, one baked material M_<id>@night = one draw call): root, steer (+ steer_L / steer_R for
+cars), wheel_* (any number; spin radius per bone in meta.wheels), crank, pedal_L / pedal_R, saddle,
+prop / paddle (boats), opt_* (variant parts the runtime scales to zero: taxi carrier, beacon,
+slogans...). Paint faces carry the _REGION tint (1 = paint <- v.color, 2 = paint2 <- v.color2 or a
+livery colour, see meta.tint), so one model serves every colour of a type. Lamps are baked into an
+emissive mask (head / tail / meter lamps glow at night while the vehicle is in use).
+Anchors: seat_driver, seat_pillion, seat_passenger_*, handlebar, grip_L/R (handlebar grips or the
+steering-wheel rim), foot_L/R (footrests / floor where the rider's feet go), pedal_L/R,
+foot_pillion_L/R, headlight*, taillight*, indicator_*, exhaust, wheel_*, bell, reflector.
+Rider geometry for pedal cycles is shared with characters.py through HERO / hero_geom() (the riders'
+ride_cycle clips are authored against it): change both together.
+Helpers: tools/blender/_vehicles_kit.py (rig, bakes, tint regions, emissive lamps, previews).
 """
 import math
 from mathutils import Vector, Matrix
 import kit
 from kit import material, tube, lathe, loft
+import _vehicles_kit as vk
 
 
 def V(*a):
@@ -375,3 +386,212 @@ def hero_cycle(A):
     A.anchor('reflector', tuple(Ra + V(0, 3.35, 0.75)), arm, 'root')
     A.meta.update({'steerAxis': [round(c, 4) for c in ax], 'bb': [round(c, 4) for c in BB], 'seat': [round(c, 4) for c in SEAT], 'saddleTube': [round(c, 4) for c in SEAT_TUBE]})
     A.preview = {'shots': [{'view': {'az': -62, 'el': 14, 'fov': 28}}, {'name': 'side', 'size': 320, 'samples': 16, 'view': {'az': -90, 'el': 3, 'fov': 26}}]}
+
+
+# =========================================================================== shared vehicle helpers
+def opt_rule(**kw):
+    """an option-bone rule for meta.options (runtime: show the bone's parts when the rule matches)"""
+    return {k: v for k, v in kw.items() if v is not None}
+
+
+def ride_geom(asset_id):
+    """rider targets of a vehicle model (Blender coords) for clip authoring in characters.py:
+    {seat, grip_L, grip_R, foot_L, foot_R, pose}. Pedal cycles: hero_geom()."""
+    return dict(RIDE_GEOM.get(asset_id, {}))
+
+
+RIDE_GEOM = {}
+
+
+def anchors_from(A, arm, spec):
+    """spec: {name: (loc, bone)}"""
+    for n, (loc, bone) in spec.items():
+        A.anchor(n, tuple(loc), arm, bone)
+
+
+# =========================================================================== auto-rickshaw
+AUTO_AX = V(0, -0.44, -0.9).normalized()       # steering column axis (down, forwards)
+AUTO_COL = V(0, -6.05, 6.85)                   # column top (handlebar centre below the dash)
+
+
+@kit.asset('auto_rickshaw', 'vehicle', vehicleTypes=['auto', 'yadagiri_auto'], length=22.0, width=13.0, wheelR=1.62,
+           wheels={'wheel_front': 1.6, 'wheel_RL': 1.65, 'wheel_RR': 1.65}, steerBones={'steer': {'axis': list(AUTO_AX), 'k': 1.0}},
+           tintSrc={'paint': 'color', 'paint2': 'color2'},
+           options=[{'bone': 'opt_name', 'types': ['yadagiri_auto'], 'label': 'YADAGIRI'},
+                    {'bone': 'opt_slogan0', 'seed': [4, 0], 'notTypes': ['yadagiri_auto']}, {'bone': 'opt_slogan1', 'seed': [4, 1], 'notTypes': ['yadagiri_auto']},
+                    {'bone': 'opt_slogan2', 'seed': [4, 2], 'notTypes': ['yadagiri_auto']}, {'bone': 'opt_slogan3', 'seed': [4, 3], 'notTypes': ['yadagiri_auto']}],
+           riders={'driver': {'pose': 'auto', 'seat': 'seat_driver', 'grips': ['grip_L', 'grip_R'], 'feet': ['foot_L', 'foot_R'], 'lean': 0.12},
+                   'passengers': [{'seat': 'seat_passenger_L', 'feet': ['foot_passenger_L'], 'hands': 'knees'}, {'seat': 'seat_passenger_R', 'feet': ['foot_passenger_R'], 'hands': 'knees'},
+                                  {'seat': 'seat_passenger_C', 'feet': ['foot_passenger_C'], 'hands': 'knees'}]},
+           lamps={'head': ['headlight'], 'tail': ['taillight_L', 'taillight_R']}, open=True)
+def auto_rickshaw(A):
+    """The Bajaj-RE-style three-wheeler of 2003 Hyderabad: yellow body, black lower body and
+    mudguards, a yellow canvas canopy on steel bows with a black centre strip, a single round
+    headlamp on the nose, handlebar steering, the fare meter with its red flag on the driver's left,
+    a red rexine passenger bench, painted slogans on the back (one of four per auto, or the owner's
+    name), nimbu-mirchi charm on the nose. 22 x 13 u (TYPES.auto), canopy top ~12 u."""
+    P = vk.palette()
+    Y = vk.paint('auto_yellow', '#f2c230', region=1, rough=0.42, chips=0.3, under='#7a7a72', grime=0.45, dirt='#5a4a2a')
+    K = vk.paint('auto_black', '#1c1a1c', region=2, rough=0.55, chips=0.12, grime=0.4)
+    CAN = vk.mat('cloth', 'canopy_canvas', region=1, base='#f2c230', rough=0.95, var=0.08, grain=0.1, weave=0.14, grime=0.55, dirt='#6a5a32', scale=2.4, streaks=0.25)
+    CANK = vk.mat('cloth', 'canopy_strip', region=2, base='#1c1a1c', rough=0.9, var=0.05, grain=0.08, weave=0.1, grime=0.4, dirt='#4a4436', scale=2.4)
+    FLOOR = vk.mat('rubber', 'floor_mat', base='#2a2624', rough=0.95, grain=0.15, grime=0.6, dirt='#5a5040')
+    R = vk.VRig(A)
+    R.bone('steer', AUTO_COL, AUTO_COL + AUTO_AX * 1.5)
+    R.bone('wheel_front', (0, -8.6, 1.6), parent='steer')
+    R.bone('wheel_RL', (5.85, 6.4, 1.65))
+    R.bone('wheel_RR', (-5.85, 6.4, 1.65))
+    for n in ('opt_name', 'opt_slogan0', 'opt_slogan1', 'opt_slogan2', 'opt_slogan3'):
+        R.bone(n, (0, 11.3, 6.0))
+    # ---------------------------------------------------------------- wheels
+    R.add('wheel_front', vk.disc_wheel('wf', (0, -8.6, 1.6), 1.6, 1.0, P, side=1, seg=16, rim_m=K, cap_frac=0.34, hub_bolts=4))
+    R.add('wheel_RL', vk.disc_wheel('wrl', (5.85, 6.4, 1.65), 1.65, 1.1, P, side=1, seg=16, rim_m=K, cap_frac=0.34, hub_bolts=4))
+    R.add('wheel_RR', vk.disc_wheel('wrr', (-5.85, 6.4, 1.65), 1.65, 1.1, P, side=-1, seg=16, rim_m=K, cap_frac=0.34, hub_bolts=4))
+    body = []
+    # ---------------------------------------------------------------- floor pan + rear lower body
+    body.append(vk.plan_prism('floor_pan', [(5.0, -6.9), (5.1, 4.2), (4.85, 11.0), (-4.85, 11.0), (-5.1, 4.2), (-5.0, -6.9)], 1.35, 2.5, K, bevel=0.12))
+    body.append(vk.plan_prism('floor_mat', [(4.7, -6.6), (4.8, 3.0), (-4.8, 3.0), (-4.7, -6.6)], 2.5, 2.56, FLOOR))
+    # rear side panels with the wheel arches (yellow), wheel-well liners (black)
+    arch = []
+    cx, cz, ar = 6.4, 1.65, 2.05
+    for i in range(13):
+        a = math.radians(178 - 176 * i / 12)
+        arch.append((cx + ar * math.cos(a), cz + ar * math.sin(a)))
+    prof = [(0.5, 1.9), (cx - ar, 1.9)] + arch + [(cx + ar, 1.9), (11.05, 1.9), (11.05, 4.75), (0.5, 4.75)]
+    for sx in (1, -1):
+        x0, x1 = (6.1, 6.32) if sx > 0 else (-6.32, -6.1)
+        body.append(vk.side_prism('side_panel', prof, x0, x1, Y))
+        # yellow lip on top + black rubbing strip
+        body.append(vk.rbox('side_lip', (0.42, 10.6, 0.22), (sx * 6.18, 5.78, 4.86), Y, bevel=0.08))
+        body.append(vk.rbox('rub_strip', (0.12, 10.3, 0.26), (sx * 6.35, 5.9, 3.95), K, bevel=0.0))
+        # inner wheel well (dark) so the arch never shows the void
+        well = vk.side_prism('well', [(cx - ar - 0.1, 1.9), (cx - ar - 0.1, 3.85), (cx + ar + 0.1, 3.85), (cx + ar + 0.1, 1.9)], *((5.15, 5.25) if sx > 0 else (-5.25, -5.15)), P['dark'])
+        body.append(well)
+        body.append(vk.rbox('well_top', (1.05, 4.4, 0.1), (sx * 5.7, cx, 3.82), P['dark'], bevel=0.0))
+    # rear body: engine compartment box across the back + engine lid
+    body.append(vk.rbox('rear_body', (12.4, 2.3, 2.85), (0, 9.95, 3.32), Y, bevel=0.25, seg=3))
+    body.append(vk.rbox('engine_lid', (6.2, 0.12, 1.5), (0, 11.12, 3.55), Y, bevel=0.0))
+    body.append(vk.rbox('rear_bumper', (11.2, 0.5, 0.45), (0, 11.25, 2.05), K, bevel=0.12))
+    # ---------------------------------------------------------------- nose cowl (yellow, rounded)
+    nose = vk.section_loft('nose', [
+        (-11.55, 1.0, 2.75, 3.85, 2.2), (-11.38, 1.9, 2.5, 4.55, 2.6), (-10.9, 2.75, 2.4, 5.0, 2.9), (-10.0, 3.6, 2.35, 5.45, 3.1),
+        (-8.8, 4.35, 2.35, 5.85, 3.3), (-7.6, 4.9, 2.35, 6.12, 3.5), (-6.6, 5.25, 2.35, 6.3, 3.7), (-6.15, 5.35, 2.35, 6.32, 3.7)], Y, seg=22)
+    body.append(nose)
+    # dashboard lip and the cowl's inner back wall (the driver sees it)
+    body.append(vk.rbox('dash', (9.6, 0.6, 0.35), (0, -6.05, 6.3), K, bevel=0.1))
+    body.append(vk.rbox('cowl_back', (9.8, 0.14, 3.8), (0, -5.95, 4.35), K, bevel=0.0))
+    # front bumper bar + guard (black tube) under the nose
+    body.append(tube('front_bar', [V(2.2, -10.2, 2.45), V(1.6, -11.65, 2.55), V(-1.6, -11.65, 2.55), V(-2.2, -10.2, 2.45)], 0.12, seg=6, mat=K))
+    # headlamp on the nose, horn grille, indicators, plate
+    body += vk.lamp_round('headlamp', (0, -11.3, 4.3), 0.6, 0.45, P, facing=(0, -1, 0.25))
+    body.append(vk.disc_y('horn', (0, -11.35, 3.25), 0.38, 0.12, P['dark'], seg=10))
+    for sx in (1, -1):
+        body.append(vk.rbox('indicator', (0.55, 0.3, 0.32), (sx * 1.75, -11.05, 3.85), P['amber'], bevel=0.0))
+    body.append(vk.plate('plate_front', 'AP 09 V 2716', 2.4, 0.62, (0, -11.42, 2.95), '-Y', bg='#f2c230', fg='#141414'))
+    # ---------------------------------------------------------------- windscreen frame, posts, canopy
+    for sx in (1, -1):
+        body.append(tube('ws_post', [V(sx * 4.95, -6.3, 6.2), V(sx * 4.85, -6.55, 9.0), V(sx * 4.75, -6.75, 10.45)], 0.15, seg=6, mat=K))
+        body.append(tube('b_post', [V(sx * 6.12, 0.55, 4.75), V(sx * 6.2, 0.55, 9.75)], 0.13, seg=6, mat=K))
+        body.append(tube('rear_post', [V(sx * 5.95, 10.85, 4.75), V(sx * 6.1, 10.85, 9.75)], 0.13, seg=6, mat=K))
+        body.append(tube('grab_rail', [V(sx * 5.95, 1.2, 8.6), V(sx * 6.0, 9.8, 8.6)], 0.07, seg=5, mat=P['chrome']))
+    body.append(tube('ws_top', [V(4.75, -6.75, 10.45), V(-4.75, -6.75, 10.45)], 0.15, seg=6, mat=K))
+    body.append(tube('ws_bottom', [V(4.95, -6.32, 6.25), V(-4.95, -6.32, 6.25)], 0.13, seg=6, mat=K))
+    body.append(tube('ws_mid', [V(0, -6.32, 6.25), V(0, -6.75, 10.45)], 0.08, seg=5, mat=K))
+    # canopy: canvas on bows, sagging between them, a black strip along the crown
+    stations = [(-7.75, 5.7, 10.35, 10.55, 0.7, 0.05), (-7.25, 6.3, 9.85, 10.7, 0.9, 0.18), (-5.0, 6.5, 9.55, 10.85, 0.95, 0.28),
+                (-2.5, 6.52, 9.5, 10.72, 0.95, 0.16), (0.0, 6.55, 9.5, 10.88, 0.95, 0.3), (2.6, 6.55, 9.5, 10.74, 0.95, 0.16),
+                (5.2, 6.55, 9.5, 10.88, 0.95, 0.3), (7.9, 6.52, 9.5, 10.74, 0.95, 0.16), (10.4, 6.45, 9.5, 10.82, 0.95, 0.26),
+                (11.15, 6.25, 9.6, 10.45, 1.1, 0.12)]
+    rows = [vk.arc_row(y, hw, zs, zsh, r, zc, n_side=1, n_corner=3, n_top=3) for (y, hw, zs, zsh, r, zc) in stations]
+    body.append(vk.shell('canopy', rows, CAN, thick=0.1, inside=(0, 1.5, 5.0)))
+    strip = []
+    for (y, hw, zs, zsh, r, zc) in stations[1:-1]:
+        row = []
+        for x in (0.95, 0.0, -0.95):
+            u = x / (hw - r)
+            row.append((x, y, zsh + r + zc * (1 - u * u) + 0.035))
+        strip.append(row)
+    body.append(vk.shell('canopy_strip', strip, CANK, thick=0.04, inside=(0, 1.5, 5.0)))
+    for sx in (1, -1):
+        body.append(tube('canopy_pipe', [V(sx * (hw + 0.05), y, zs) for (y, hw, zs, zsh, r, zc) in stations[1:]], 0.07, seg=5, mat=K))
+    # back: canvas panel down to the rear body with a small window; slogans painted on it
+    body.append(vk.rbox('back_canvas', (12.1, 0.14, 4.95), (0, 11.18, 7.2), CAN, bevel=0.05))
+    body.append(vk.rbox('back_window', (5.2, 0.06, 1.5), (0, 11.28, 8.55), P['glass'], bevel=0.0))
+    body.append(vk.rbox('back_window_rim', (5.5, 0.04, 1.8), (0, 11.255, 8.55), K, bevel=0.0))
+    # ---------------------------------------------------------------- seats
+    body.append(vk.rbox('driver_pedestal', (3.0, 1.6, 1.55), (0, -2.0, 3.28), K, bevel=0.1))
+    body.append(vk.seat_pad('driver_seat', -2.4, 2.4, -3.2, -0.85, 4.05, 4.72, P['seat_black'], crown=0.1))
+    body.append(vk.seat_pad('driver_back', -2.5, 2.5, -0.85, -0.35, 4.75, 6.65, P['seat_black'], crown=0.0, bevel=0.12))
+    body.append(vk.rbox('bench_base', (11.0, 6.2, 1.9), (0, 6.5, 3.45), K, bevel=0.12))
+    body.append(vk.seat_pad('bench', -5.6, 5.6, 3.35, 9.45, 4.4, 5.35, P['seat_red'], crown=0.14))
+    bb = vk.seat_pad('bench_back', -5.6, 5.6, 9.45, 10.35, 5.35, 9.05, P['seat_red'], crown=0.0, bevel=0.15)
+    body.append(vk.rotate_about(bb, (0, 9.9, 5.35), (math.radians(-8), 0, 0)))
+    # passenger entry steps (black)
+    for sx in (1, -1):
+        body.append(vk.rbox('step', (0.8, 2.0, 0.18), (sx * 5.55, 2.0, 2.05), K, bevel=0.0))
+    # ---------------------------------------------------------------- fare meter (driver's left, outside the windscreen post) + mirror
+    body.append(vk.rbox('meter', (0.85, 0.75, 1.45), (5.55, -6.05, 7.75), P['plastic'], bevel=0.12))
+    body.append(vk.rbox('meter_face', (0.55, 0.06, 0.38), (5.55, -6.45, 8.05), vk.mat('lamp_lens', 'meter_lamp', base='#e8d090', emit='#ffb050'), bevel=0.0))
+    body.append(tube('meter_arm', [V(5.55, -6.05, 7.0), V(4.95, -6.25, 7.2)], 0.07, seg=5, mat=K))
+    flag = vk.rbox('meter_flag', (0.08, 1.1, 0.75), (5.55, -6.0, 8.95), vk.paint('flag_red', '#c42a24', region=0, chips=0.1), bevel=0.0)
+    body.append(flag)
+    body.append(tube('flag_rod', [V(5.55, -6.05, 8.45), V(5.55, -6.05, 9.4)], 0.04, seg=4, mat=P['chrome']))
+    body += vk.mirror('mirror', (-4.9, -6.6, 8.9), (-5.7, -7.1, 9.35), 0.38, P, facing=(-0.2, -1, 0.1))
+    # ---------------------------------------------------------------- rear: tail lamps, plate, exhaust, reflectors
+    for sx, S in ((1, 'L'), (-1, 'R')):
+        body.append(vk.rbox('tail_lamp', (1.0, 0.25, 0.6), (sx * 4.95, 11.12, 3.95), P['tail_lens'], bevel=0.0))
+        body.append(vk.rbox('rear_ind', (0.45, 0.22, 0.35), (sx * 5.75, 11.08, 3.95), P['amber'], bevel=0.0))
+    body.append(vk.plate('plate_rear', 'AP 09 V 2716', 2.6, 0.7, (0, 11.2, 2.75), '+Y', bg='#f2c230', fg='#141414'))
+    body.append(tube('exhaust', [V(-3.0, 8.5, 1.55), V(-3.3, 10.6, 1.45), V(-3.4, 11.55, 1.5)], 0.17, seg=8, mat=P['steel']))
+    # nimbu-mirchi: a lemon and green chillies on a thread under the nose (against the evil eye)
+    charm = [tube('charm_thread', [V(0, -11.6, 2.5), V(0, -11.62, 1.55)], 0.015, seg=3, mat=P['black'])]
+    lem = kit.lathe('charm_lemon', [(0.0, -0.22), (0.13, -0.15), (0.17, 0.0), (0.13, 0.15), (0.0, 0.22)], seg=8, mat=vk.mat('walkman', 'lemon', base='#d8c020', grime=0.2))
+    charm.append(vk.xform(lem, loc=(0, -11.62, 1.4)))
+    for i, (dx, dz) in enumerate(((0.12, 1.05), (-0.12, 1.08), (0.0, 0.98))):
+        ch = kit.cylinder('chilli', 0.055, 0.5, (0, 0, 0), seg=5, mat=vk.mat('cloth', 'chilli', base='#2e7a2a', rough=0.5, weave=0.0, grime=0.2), r2=0.012, base=True)
+        charm.append(vk.xform(ch, loc=(dx, -11.62, dz + 0.0), rot=(math.pi, 0.25 * (i - 1), 0)))
+    body += charm
+    R.add('root', body)
+    # ---------------------------------------------------------------- slogans / owner's name on the back canvas (option bones)
+    texts = [("MOTHER'S GIFT", 'opt_slogan0'), ('HUM DO HAMARE DO', 'opt_slogan1'), ('SOUND HORN', 'opt_slogan2'), ('JAI BOLO', 'opt_slogan3'), ('YADAGIRI', 'opt_name')]
+    for t, bone in texts:
+        R.add(bone, vk.decal('sign_' + bone, t, 7.4, 1.25, (0, 11.27, 6.35), '+Y', fg='#16141a', bg='#f2c230', px=512))
+    # ---------------------------------------------------------------- steering: column, handlebar, fork, front mudguard
+    st = []
+    st.append(tube('column', [AUTO_COL, AUTO_COL + AUTO_AX * 3.7], 0.16, seg=8, mat=K))
+    st.append(vk.rbox('bar_housing', (1.3, 0.6, 0.45), tuple(AUTO_COL + V(0, 0.18, 0.12)), K, bevel=0.12))
+    st.append(vk.rbox('speedo', (0.55, 0.08, 0.32), tuple(AUTO_COL + V(0, -0.1, 0.42)), vk.mat('lamp_lens', 'speedo_glass', base='#b8b4a0', rough=0.1), bevel=0.0))
+    bc = AUTO_COL + V(0, 0.15, 0.1)
+    grips = {}
+    for sx, S in ((1, 'L'), (-1, 'R')):
+        pts = [bc, bc + V(sx * 0.9, 0.05, 0.02), bc + V(sx * 1.7, 0.35, 0.0), bc + V(sx * 2.35, 0.85, -0.06)]
+        st.append(tube('bar', pts, 0.09, seg=6, mat=P['chrome']))
+        g0, g1 = bc + V(sx * 2.15, 0.7, -0.05), bc + V(sx * 2.75, 1.15, -0.1)
+        st.append(tube('grip', [g0, g1], 0.17, seg=8, mat=P['plastic']))
+        grips[S] = g0.lerp(g1, 0.55)
+        st.append(tube('lever', [bc + V(sx * 1.85, 0.25, 0.05), bc + V(sx * 2.45, 0.35, 0.02)], 0.04, seg=4, mat=P['chrome']))
+    fork_top = AUTO_COL + AUTO_AX * 3.7
+    st.append(tube('fork_arm', [fork_top + V(0.45, 0, 0), V(0.62, -8.15, 2.15), V(0.62, -8.6, 1.6)], 0.15, seg=6, mat=K))
+    st.append(vk.cyl_between('shock', fork_top + V(0.62, 0.1, -0.2), V(0.62, -8.2, 2.0), 0.13, seg=8, m=P['chrome']))
+    st.append(vk.mudguard('guard_front', (0, -8.6, 1.6), 1.6, math.radians(-15), math.radians(150), K, w=1.25, gap=0.22, thick=0.08, n=12))
+    R.add('steer', st)
+    # ---------------------------------------------------------------- rig, bake
+    arm, ob = R.build(tex=512, orm=256, emit=256, ao_samples=24, albedo_samples=6, ao_strength=0.75, ao_dist=2.6,
+                      boost={'sign_': 2.8, 'head_lens': 1.6, 'tail_lens': 1.4, 'meter_lamp': 1.5})
+    # ---------------------------------------------------------------- anchors
+    vk_anchor = {
+        'seat_driver': ((0, -2.05, 4.78), 'root'), 'handlebar': (tuple(bc), 'steer'),
+        'grip_L': (tuple(grips['L']), 'steer'), 'grip_R': (tuple(grips['R']), 'steer'),
+        'foot_L': ((0.95, -5.0, 2.58), 'root'), 'foot_R': ((-0.95, -5.0, 2.58), 'root'),
+        'seat_passenger_L': ((2.7, 6.6, 5.4), 'root'), 'seat_passenger_R': ((-2.7, 6.6, 5.4), 'root'), 'seat_passenger_C': ((0.0, 6.6, 5.4), 'root'),
+        'foot_passenger_L': ((2.6, 1.8, 2.58), 'root'), 'foot_passenger_R': ((-2.6, 1.8, 2.58), 'root'), 'foot_passenger_C': ((0.0, 1.8, 2.58), 'root'),
+        'headlight': ((0, -11.75, 4.4), 'root'), 'taillight_L': ((4.95, 11.3, 3.95), 'root'), 'taillight_R': ((-4.95, 11.3, 3.95), 'root'),
+        'indicator_L': ((1.75, -11.2, 3.85), 'root'), 'indicator_R': ((-1.75, -11.2, 3.85), 'root'),
+        'exhaust': ((-3.4, 11.6, 1.5), 'root'), 'meter': ((5.55, -6.5, 8.05), 'root'),
+        'wheel_front': ((0, -8.6, 1.6), 'wheel_front'), 'wheel_RL': ((5.85, 6.4, 1.65), 'wheel_RL'), 'wheel_RR': ((-5.85, 6.4, 1.65), 'wheel_RR'),
+    }
+    anchors_from(A, arm, vk_anchor)
+    RIDE_GEOM['auto_rickshaw'] = {'pose': 'auto', 'seat': (0, -2.05, 4.78), 'grip_L': tuple(grips['L']), 'grip_R': tuple(grips['R']), 'foot_L': (0.95, -5.0, 2.58), 'foot_R': (-0.95, -5.0, 2.58)}
+    A.meta.update({'steerAxis': [round(c, 4) for c in AUTO_AX], 'height': 12.0})
+    A.preview = {'shots': [{'view': {'az': -38, 'el': 16, 'fov': 30}}, {'name': 'rear', 'size': 320, 'samples': 16, 'view': {'az': 152, 'el': 14, 'fov': 30}}],
+                 'variants': {'sets': [{'paint': '#f2c230', 'paint2': '#1c1a1c'}, {'paint': '#f2c230', 'paint2': '#2a4a2a'}], 'view': {'az': -120, 'el': 22, 'fov': 30}}}
