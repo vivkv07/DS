@@ -1221,6 +1221,14 @@ function components() {
   for (const comp of comps.slice(1)) if (comp.every((r) => r.src === 'osm' || r.src === 'grid')) { for (const r of comp) ROADS_OUT.delete(r.id); dropped += comp.length; }
   vlog(`network: ${fixed} islands joined, ${dropped} infill roads dropped, ${kept} curated islands, ${components().length} components left`);
 }
+// 9.8 shops on their streets (now that the infill lanes exist)
+paintRoadsOcc(); buildRH();
+placeAll(V1.landmarks.filter((l) => !LM.has(l.id) && !/^golconda_wall/.test(l.id)));
+{
+  const big = moves.filter((m) => m.moved > 80).sort((a, b) => b.moved - a.moved);
+  vlog('landmarks moved > 80 u to clear space:', big.length, big.slice(0, 30).map((m) => m.id + ':' + m.moved).join(' '));
+}
+
 // 9.76 near-miss junctions (regression fix, Map v2 QA): a road end that stops just short of another road
 // is extended onto it. The curated alignments and the OSM strokes come from different sources, clusters
 // moved, duplicate runs were trimmed, so ~2,000 ends stopped 5-60 u short of the road they meet. The engine
@@ -1229,7 +1237,8 @@ function components() {
 // Musallam Jung and Purana Pul bridges each dead-ended on one bank. An end is joined when another road is
 // straight ahead (curated 72 u, OSM 44 u) or close beside it, and the connector is clear of water, solid
 // footprints, rails, roof zones and (unless a bridge is involved) the sandy Musi bed; OSM lanes also keep
-// out of the no-infill zones. Deterministic (road order).
+// out of the no-infill zones. Deterministic (road order). It runs after every landmark is placed (none of
+// them moves); the places (10) and the building blocks (15) are laid out around the connectors.
 const joinStats = { ends: 0, open: 0, ahead: 0, near: 0, endToEnd: 0, blocked: 0, curated: [], left: [] };
 {
   const roads = roadList().filter((r) => r.kind !== 'path');
@@ -1237,6 +1246,7 @@ const joinStats = { ends: 0, open: 0, ahead: 0, near: 0, endToEnd: 0, blocked: 0
   const isOsm = (r) => r.src === 'osm' || r.src === 'grid';
   const atFrame = (p) => p[0] < 12 || p[1] < 12 || p[0] > W - 12 || p[1] > H - 12;
   const done = new Set(); // 'id:end' of ends another road was joined to end-to-end
+  const conns = [];
   const isJoined = (r, e) => HJ.near(e[0], e[1], 64).some(({ it, q }) => it.ref !== r && q.d2 <= (it.ref.w / 2 + 6) ** 2);
   const blocked = (r, a, b, bridge) => {
     const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L, nx = -uy, ny = ux, hw = r.w / 2;
@@ -1285,22 +1295,18 @@ const joinStats = { ends: 0, open: 0, ahead: 0, near: 0, endToEnd: 0, blocked: 0
       const q = ptR(hit);
       if (Math.hypot(q[0] - e[0], q[1] - e[1]) < 1) continue;
       if (end) pts.push(q); else pts.unshift(q);
+      conns.push([r, [e[0], e[1]], q]);
       joinStats[how]++;
       if (!osm) joinStats.curated.push(r.id + (end ? '>' : '<') + B.id + ' ' + Math.round(Math.hypot(q[0] - e[0], q[1] - e[1])) + 'u');
     }
   }
+  // the placement raster and the road index learn the connectors (places are laid out next)
+  for (const [r, a, b] of conns) OCC.fillThick([a, b], r.w / 2 + (FOOT[r.kind] || 0) + 2, (o) => { const v = OCC.a[o]; if (!v || v === 7 || v === 8) OCC.a[o] = 1; });
+  buildRH();
   vlog('near-miss junctions: ' + JSON.stringify(Object.assign({}, joinStats, { curated: joinStats.curated.length, left: joinStats.left.length })));
   vlog('  curated joins: ' + joinStats.curated.join(', '));
   vlog('  curated ends left open: ' + joinStats.left.join(', '));
 }
-// 9.8 shops on their streets (now that the infill lanes exist)
-paintRoadsOcc(); buildRH();
-placeAll(V1.landmarks.filter((l) => !LM.has(l.id) && !/^golconda_wall/.test(l.id)));
-{
-  const big = moves.filter((m) => m.moved > 80).sort((a, b) => b.moved - a.moved);
-  vlog('landmarks moved > 80 u to clear space:', big.length, big.slice(0, 30).map((m) => m.id + ':' + m.moved).join(' '));
-}
-
 // roads that lie wholly outside the frame become a short spur from the network to their edge landmark
 {
   const uoh = ROADS_OUT.get('uoh_rd'), l = LM.get('university_of_hyderabad');
