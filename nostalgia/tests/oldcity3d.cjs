@@ -96,7 +96,14 @@ function oldcityAssets() {
     if (SHOTS) {
       const R = Math.max(lm.w, lm.d, (lm.h || 20) * 1.5);
       const top = (geo.max[1] - geo.min[1]);
-      await page.evaluate(([l, R, top]) => { N.view3dActors.debug.camera([l.x - R * 0.9, Math.max(14, top * 0.45), l.y + R * 1.5], [l.x, top * 0.42, l.y], 50); }, [lm, R, top]);
+      // from the facade side (face n/s/e/w; none = south), a little to its left and high enough to clear the
+      // surrounding lots so the model itself is in view
+      await page.evaluate(([l, R, top]) => {
+        const F = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] }[l.face || 's'] || [0, 1];
+        const sx = -F[1], sy = F[0];
+        const d = R * 1.35 + 30;
+        N.view3dActors.debug.camera([l.x + F[0] * d + sx * d * 0.45, Math.max(45, top * 1.1), l.y + F[1] * d + sy * d * 0.45], [l.x, top * 0.4, l.y], 50);
+      }, [lm, R, top]);
       await shot('oldcity_' + a.id + '.png');
       if (a.id === 'charminar' && NIGHT) {
         await page.evaluate(() => N.debug.setTime(21, 0));

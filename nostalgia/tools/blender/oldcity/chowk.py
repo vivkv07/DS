@@ -122,6 +122,7 @@ FY = T / 2        # face plane
 ARCH_W = 36.0
 SPRING = 33.0
 APEX = 54.0
+KZ = 0.82         # vertical squash applied to the finished gateway (see kaman_build)
 CORE_TOP = 73.0   # roof slab top (the parapet rises to ~75.6, merlons above)
 PIER_X = 28.3     # centre of the niche column on each pier
 TUR_X, TUR_Y, TUR_R = 34.5, 4.5, 2.2
@@ -134,9 +135,9 @@ def niche_outline(w, h, sf=0.64, n=3):
 
 def kaman_build(A, rotate=False):
     M = common.mats(
-        kplaster=('lime_plaster', dict(base='#ede2c8', var=0.07, grain=0.045, streaks=0.7, grime=0.45, dirt='#8d887e')),
+        kplaster=('lime_plaster', dict(base='#ede2c8', var=0.07, grain=0.045, streaks=0.6, grime=0.58, dirt='#8d887e')),
         kplaster_hi=('lime_plaster', dict(base='#f4ecd8', var=0.05, grain=0.035, streaks=0.5, grime=0.4, dirt='#938e84')),
-        niche=('lime_plaster_shadow', dict(base='#a39478', var=0.1, streaks=0.5, grime=0.6, dirt='#5e574c')),
+        niche=('lime_plaster_shadow', dict(base='#5a5246', var=0.08, streaks=0.3, grime=0.4, dirt='#3e3830')),
     )
     P, PH, NI, G = M['kplaster'], M['kplaster_hi'], M['niche'], M['granite']
     hard, soft = [], []
@@ -229,6 +230,12 @@ def kaman_build(A, rotate=False):
             common.col_box('top', (ARCH_W, T, CORE_TOP - APEX + 2), (0, 0, APEX - 2))]
     cols = [common.col_join(cols, 'kaman')]
 
+    # art review: the real Char Kaman are about a third of Charminar's height; the data height (78 u)
+    # made them compete with it across the chowk, so the whole gateway is squashed to KZ in z
+    from mathutils import Matrix as _Mx
+    for o in hard + soft + cols:
+        o.matrix_world = _Mx.Scale(KZ, 4, (0, 0, 1)) @ o.matrix_world
+        kit.apply_transform(o)
     if rotate:
         common.rot_z(hard + soft + cols, math.pi / 2)
     lean_finish(A, hard, soft, tile=10.0, dice_edge=0, ao_dist=4.0, ground_dirt=6.0, ao_strength=0.55)
@@ -237,17 +244,17 @@ def kaman_build(A, rotate=False):
         {'name': 'arch', 'size': 320, 'samples': 14, 'view': {'az': az0 - 12, 'el': 3, 'fov': 40, 'pad': 0.5}}])
 
 
-@kit.asset('kaman', 'landmark', draw='kaman', footprint=[72, 12], height=78, fit='footprint', floodlit=True)
+@kit.asset('kaman', 'landmark', draw='kaman', footprint=[72, 12], height=74, fit='footprint', floodlit=True)
 def build_kaman(A):
     kaman_build(A, rotate=False)
 
 
-@kit.asset('kaman_kali', 'landmark', landmark='kaman_kali', footprint=[12, 72], height=78, fit='footprint', floodlit=True)
+@kit.asset('kaman_kali', 'landmark', landmark='kaman_kali', footprint=[12, 72], height=74, fit='footprint', floodlit=True)
 def build_kaman_kali(A):
     kaman_build(A, rotate=True)
 
 
-@kit.asset('kaman_sher_e_batil', 'landmark', landmark='kaman_sher_e_batil', footprint=[12, 72], height=78, fit='footprint', floodlit=True)
+@kit.asset('kaman_sher_e_batil', 'landmark', landmark='kaman_sher_e_batil', footprint=[12, 72], height=74, fit='footprint', floodlit=True)
 def build_kaman_sher_e_batil(A):
     kaman_build(A, rotate=True)
 

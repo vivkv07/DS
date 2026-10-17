@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 136924,
+ "bytes": 140264,
  "clips": {},
  "family": "landmark",
  "file": "kaman_kali.glb",
@@ -15,7 +15,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 133.7,
+ "kb": 137.0,
  "kit": 1,
  "materials": [
   "M_kaman_kali_lime_plaster",
@@ -27,7 +27,7 @@
  "max": [
   7.45,
   37.45,
-  89.91
+  60.455
  ],
  "meta": {
   "fit": "footprint",
@@ -36,7 +36,7 @@
    12,
    72
   ],
-  "height": 78,
+  "height": 74,
   "landmark": "kaman_kali"
  },
  "min": [
@@ -49,7 +49,7 @@
  "size": [
   14.9,
   74.9,
-  89.91
+  60.455
  ],
  "tint": null,
  "tris": 2392,
