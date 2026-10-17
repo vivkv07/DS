@@ -58,6 +58,9 @@ module.exports = {
         if (at(0) && at(6)) ok++;
       }
       out.ocClaps = { bars, ok, meter: oc.meter };
+      const raga = [0, 1, 4, 5, 7, 8, 11].map((x) => (x + oc.tr.root) % 12), outside = new Set();
+      for (const evs of oc.events) for (const e of evs || []) if (e.k === 'n') for (const m of e.notes) if (raga.indexOf(m % 12) < 0) outside.add(e.part + ':' + (m % 12));
+      out.ocOutside = Array.from(outside);
       out.instruments = { musicbox: !!I.INST.musicbox, choir: !!I.INST.choir, sarangi: !!I.INST.sarangi, tuba: !!I.INST.tuba, calliope: !!I.INST.calliope, dappu: !!I.KITS.dappu, tasha: !!I.KITS.tasha, marfa: !!I.KITS.marfa, machine: !!I.KITS.machine };
       out.list = N.audio.music.TRACKS;
       out.idDur = {}; for (const k of ['id_vani', 'id_band', 'id_pop']) out.idDur[k] = I.compile(k).duration;
@@ -85,17 +88,18 @@ module.exports = {
       'the ending resolves: last music-box, drone and bass notes are Sa (pc ' + S.tonicEnd + ')', { mbox: S.endMbox, drone: S.endDrone, bass: S.endBass, last: S.lastStepPcs });
     const hook = [0, 2, 4, 7, 9, 7, 4, 2], cm = S.codaMbox.join(',');
     check(cm.indexOf(hook.join(',')) >= 0 && S.codaMbox[S.codaMbox.length - 1] === 0 && S.codaMbox[S.codaMbox.length - 2] === 2, 'the coda plays the hook (S R G P D P G R) and only then lands R -> S', S.codaMbox);
+    check(S.ocOutside.length === 0, 'oldcity: every note (melody, harmonium chords, bass) stays inside Bhairav', S.ocOutside);
     check(S.ocClaps.meter === 12 && S.ocClaps.ok === S.ocClaps.bars, 'oldcity: qawwali claps on beats 1 and 4 of every 6/8 bar (' + S.ocClaps.ok + '/' + S.ocClaps.bars + ')');
 
     // ---- renders
     const SEC = +(process.env.MUSIC_SEC || 26);
     const only = process.env.MUSIC_ONLY ? process.env.MUSIC_ONLY.split(',') : null;
     const jobs = [];
-    for (const id of S.list) if (id !== 'ending') jobs.push({ id, name: 'music_' + id, sec: SEC, opts: {} });
+    for (const id of S.list) if (id !== 'ending') jobs.push({ id, name: 'music_' + id, sec: S.info[id].loop ? SEC : Math.min(SEC, S.info[id].dur + 0.5), opts: {} });
     const ec = await ev(() => { const c = N.audio._internal.compile('ending'); return c.secStart; });
     ['alaap', 'theme', 'rise', 'lift', 'coda'].forEach((n, i) => jobs.push({ id: 'ending', name: 'music_ending_' + n, sec: n === 'coda' ? 40 : 30, opts: { offsetStep: ec[i] } }));
     for (const id of ['id_vani', 'id_band', 'id_pop']) jobs.push({ id, name: 'music_' + id, sec: Math.min(6, S.idDur[id] + 0.4), opts: {} });
-    const loud = [], quiet = [], clip = [], gaps = [];
+    const loud = [], quiet = [], clip = [], gaps = [], secRms = {}, riseHalves = [];
     for (const j of jobs) {
       if (only && !only.includes(j.id)) continue;
       const t0 = Date.now();
@@ -103,6 +107,8 @@ module.exports = {
       const m = L.save(r, j.name);
       if (!m) { check(false, j.name + ' rendered'); continue; }
       const idt = /^id_/.test(j.id);
+      if (j.id === 'ending') secRms[j.name.replace('music_ending_', '')] = m.rmsDb;
+      if (j.name === 'music_ending_rise') { const mo = L.mono(r), h = Math.floor(mo.length / 3), db = (a, b) => { let e = 0; for (let i = a; i < b; i++) e += mo[i] * mo[i]; return +(10 * Math.log10(e / (b - a) + 1e-12)).toFixed(1); }; riseHalves.push(db(0, h), db(2 * h, mo.length)); }
       log(j.name.padEnd(22) + ' rms ' + m.rmsDb + ' peak ' + m.peakDb + ' loud95 ' + m.loud95 + ' silent ' + m.silentFrac + ' centroid ' + m.centroid + ' low ' + m.lowFrac + ' clicks ' + m.clicks + '  (' + ((Date.now() - t0) / 1000).toFixed(1) + ' s)');
       if (m.peakDb > -0.5) clip.push(j.name + ' ' + m.peakDb);
       if (!idt && m.rmsDb > -14) loud.push(j.name + ' ' + m.rmsDb);
@@ -116,5 +122,31 @@ module.exports = {
     check(loud.length === 0, 'no track louder than -14 dBFS RMS', loud);
     check(quiet.length === 0, 'no track quieter than -22 dBFS RMS (alaap/coda -30)', quiet);
     check(gaps.length === 0, 'no unintended silent gaps', gaps);
+    if (secRms.theme != null && secRms.lift != null) {
+      check(secRms.lift - secRms.theme >= 2 && secRms.lift >= secRms.rise && secRms.coda < secRms.lift - 3 && secRms.alaap < secRms.theme - 4,
+        'the ending builds: alaap ' + secRms.alaap + ' < theme ' + secRms.theme + ' < lift ' + secRms.lift + ' (peak), coda ' + secRms.coda + ' falls away', secRms);
+      check(riseHalves.length === 2 && riseHalves[1] - riseHalves[0] >= 1.5, 'the rise rises (first third ' + riseHalves[0] + ' dB -> last third ' + riseHalves[1] + ' dB)');
+    }
+    // melody balance: the lead alone vs the accompaniment alone (temporary muted re-voicings; removed afterwards)
+    const BAL = [['title', 'B', ['vln']], ['title', 'A', ['flute']], ['ending', 'theme', ['flute']], ['ending', 'lift', ['vln', 'flute']], ['oldcity', 'A', ['hl', 'sh']], ['oldcity', 'D', ['hl', 'sh']]];
+    const bal = [];
+    for (const [id, sec, lead] of BAL) {
+      if (only && !only.includes(id)) continue;
+      const lv = [];
+      for (const keepLead of [true, false]) {
+        const off = await ev(([id, sec, lead, keepLead]) => {
+          const I = N.audio._internal, tr = I.TRACKS[id], mute = Object.keys(tr.parts).filter((p) => lead.includes(p) !== keepLead);
+          N.audio.ext.registerTrack('__bal', { base: id, mute });
+          const c = I.compile('__bal'); return c.secStart[c.tr.order.indexOf(sec)];
+        }, [id, sec, lead, keepLead]);
+        const r = await L.renderTrack(page, '__bal', 14, { offsetStep: off });
+        lv.push(L.metrics(r).rmsDb);
+      }
+      bal.push(id + '.' + sec + ' ' + lead.join('+') + ' ' + (lv[0] - lv[1] >= 0 ? '+' : '') + (lv[0] - lv[1]).toFixed(1) + ' dB');
+      if (!(lv[0] - lv[1] >= 2)) bal.push('  ^ too low');
+    }
+    await ev(() => { delete N.audio._internal.TRACKS.__bal; N.audio.music.TRACKS = N.audio.music.TRACKS.filter((k) => k !== '__bal'); });
+    log('melody over accompaniment: ' + bal.join(', '));
+    check(!bal.some((x) => /too low/.test(x)), 'every lead sits >= 2 dB over its accompaniment', bal);
   },
 };

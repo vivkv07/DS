@@ -43,6 +43,10 @@
     }).join(' ');
   }
   const bare = (t) => t.replace(/[!?]$/, '');
+  // accent every struck token of a pattern (notes / drum strokes get '!', chord 'x' becomes 'X'): a dynamic swell
+  const acc = (pat) => pat.split(/\s+/).map((t) => (t === '|' || t === '.' || t === '-' ? t : t === 'x' ? 'X' : /[!?]$/.test(t) ? t : t + '!')).join(' ');
+  // a section-wide level: every listed part times k (with per-part overrides)
+  const allVol = (parts, k, o) => { const v = {}; for (const p of parts) v[p] = k * (o && o[p] != null ? o[p] : 1); return v; };
   // 8th-note tokens -> 16th tokens (same rhythm, twice the resolution; for mixing in 16th ornaments)
   const d2 = (pat) => pat.split(/\s+/).map((t) => (t === '|' ? t : t === '.' ? '. .' : t + ' -')).join(' ');
   // "double the density": every struck 8th not followed by a hold becomes a 16th turn (note + upper neighbour, ghosted)
@@ -114,7 +118,7 @@
       A: { bars: 8, cdiv: 8, chords: HOOK_CH + ' ' + HOOK2_CH, drone: '5 ^1 ^1 1', pad: 'x - x -', bass: 'r - r f', flute: T_A,
         santoor: 'r . f . o . f .', tabla: J(rests(R8, 2), KEH, KEHF2, keh(4)), vol: { tabla: 0.7, santoor: 0.8 } },
       B: { bars: 8, cdiv: 8, chords: T_B_CH, drone: '5 ^1 ^1 1', pad: 'x - x -', str: 'x - x -', bass: 'r - r f', vln: T_B,
-        santoor: 'r t f o f t f t', tabla: keh(8), vol: { santoor: 0.6 },
+        santoor: 'r t f o f t f t', tabla: keh(8), vol: { santoor: 0.45, vln: 1.6, str: 0.7, pad: 0.7, tabla: 0.85 },
         sitar: J(R8, '. . . . 5 - ~6 -', R8, '. . . . ^1 - 6 5', R8, '. . . . 3 - ~5 -', R8, R8) },
       A2: { bars: 8, cdiv: 8, chords: HOOK_CH + ' ' + HOOK2_CH, drone: '5 ^1 ^1 1', pad: 'x - x -', str: 'x - - -', bass: 'r - r f', flute: T_A, cello: T_CELLO,
         santoor: 'r f o ^t o f o f', tabla: keh(8), mbox: J(rests(R8, 7), '. . . . 5 - 3 -') },
@@ -254,7 +258,7 @@
   // a sarangi bridge, then harmonium + shehnai together. Accelerando across the pass (qawwali style). No vocals.
   const OC_CALL = '3 4 6 - 6 5 | 4 3 ~2 - 1 -';                        // G m d d P | m G r S  (vadi d, samvadi r)
   const ocResp = (d) => { const a = shift('1', d - 1), b = shift('1', d), c = shift('1', d - 2); return `${a} - ${b} ${a} - ${c} | ${a} - - - . .`; };
-  const OC_CH = '1:M 6:M 4:m 1:M 1:M 2:M 1:M 1:M';                      // cdiv 6 (half bars): I bVI iv I | I bII I I
+  const OC_CH = '1:5';                                                   // Sa-Pa only: Bhairav's r and d stay melodic, never fought by a chord
   const OCD1 = 'D . t k? t . D . k . t .', OCD2 = 'D . t . t k? D . k t? t .', OCDF = 'D t t D t t D t D t t t!';
   const OC_CLAP = 'x . . x . .', OC_CLAP2 = 'X . . x . .';
   const ocAB = (k) => ({ hl: J(shift(OC_CALL, k), R6, R6, shift(OC_CALL, k + 1), R6, R6), sh: J(R6, R6, ocResp(3 + k), R6, R6, ocResp(4 + k)),
@@ -262,22 +266,22 @@
   reg('oldcity', {
     name: 'Gulzar Houz Ki Shaam', bpm: 96, root: 62, scale: 'bhairav', meter: 12, loopTo: 0, gain: 1.0, roam: true,
     parts: {
-      claps: { kit: 'clap', div: 2, vol: 0.7, rev: 0.25, pan: -0.15 },
-      dholak: { kit: 'dholak', div: 1, vol: 0.6, rev: 0.1, pan: 0.15 },
+      claps: { kit: 'clap', div: 2, vol: 0.6, rev: 0.25, pan: -0.15 },
+      dholak: { kit: 'dholak', div: 1, vol: 0.5, rev: 0.1, pan: 0.15 },
       drone: { inst: 'tanpura', div: 3, oct: -1, vol: 0.35, rev: 0.3 },
       bass: { inst: 'bass', div: 6, oct: -2, vol: 0.5 },
-      hc: { type: 'chord', inst: 'harmonium', div: 6, oct: -1, vol: 0.28, rev: 0.15, pan: -0.25, ev: { stop: 'bass' } },
-      hl: { inst: 'harmonium1', div: 2, oct: 0, vol: 0.75, rev: 0.25, pan: 0.05 },
-      sh: { inst: inst('shehnai'), div: 2, oct: 1, vol: 0.55, rev: 0.3, pan: 0.3, ev: { kan: true } },
+      hc: { type: 'chord', inst: 'harmonium', div: 6, oct: -1, vol: 0.16, rev: 0.15, pan: -0.25, ev: { stop: 'bass' } },
+      hl: { inst: 'harmonium1', div: 2, oct: 0, vol: 1.0, rev: 0.25, pan: 0.05 },
+      sh: { inst: inst('shehnai'), div: 2, oct: 1, vol: 0.75, rev: 0.3, pan: 0.3, ev: { kan: true } },
       sar: { inst: SARANGI, div: 2, oct: 0, vol: 0.5, rev: 0.35, pan: -0.25, ev: { gamak: 0.4 } },
     },
     sections: {
-      intro: { bars: 2, cdiv: 6, chords: '1:M 6:M 1:M 1:M', drone: '5 ^1 ^1 1', claps: OC_CLAP, hc: 'x -', hl: '5 - ~6 - 5 4 | 3 - ~2 - 1 -', dholak: J(R12, OCDF) },
-      A: Object.assign({ bars: 8, cdiv: 6, chords: OC_CH, drone: '5 ^1 ^1 1', claps: OC_CLAP, hc: 'x -', bass: 'r f', dholak: cyc(8, [OCD1, OCD2], OCDF) }, ocAB(0)),
+      intro: { bars: 2, cdiv: 6, chords: '1:5', drone: '5 ^1 ^1 1', claps: OC_CLAP, hc: 'x -', hl: '5 - ~6 - 5 4 | 3 - ~2 - 1 -', dholak: J(R12, OCDF) },
+      A: Object.assign({ bars: 8, cdiv: 6, chords: OC_CH, drone: '5 ^1 ^1 1', claps: OC_CLAP, hc: 'x -', bass: 'r f', dholak: cyc(8, [OCD1, OCD2], OCDF), vol: { sar: 0.55, dholak: 0.85, sh: 1.25 } }, ocAB(0)),
       B: Object.assign({ bars: 8, bpm: 100, cdiv: 6, chords: OC_CH, drone: '5 ^1 ^1 1', claps: J(OC_CLAP2, OC_CLAP), hc: 'x x', bass: 'r f', dholak: cyc(8, [OCD2, OCD1], OCDF), vol: { claps: 1.1, sh: 1.1 } }, ocAB(2)),
-      C: { bars: 8, bpm: 96, cdiv: 12, chords: '6:M 4:m 1:M 5:M 2:M 6:M 4:m 1:M', drone: '5 ^1 ^1 1', claps: OC_CLAP, hc: 'x -', bass: 'r .', dholak: cyc(8, ['D . . k? t . D . . . t .', 'D . . . t . D . k? . t .'], 'D . t . t . D t D t t .'),
+      C: { bars: 8, bpm: 96, cdiv: 12, chords: '1:5', drone: '5 ^1 ^1 1', claps: OC_CLAP, hc: 'x -', bass: 'r .', dholak: cyc(8, ['D . . k? t . D . . . t .', 'D . . . t . D . k? . t .'], 'D . t . t . D t D t t .'),
         sar: '~6 - - - 5 - | 4 - 3 - ~2 - | 3 - 4 - 6 - | 7 - - - ^1 - | ~^2 - - - ^1 - | 7 - 6 - 5 - | 4 - 3 - ~2 - | 1 - - - - -', vol: { sar: 1.3, claps: 0.8 } },
-      D: { bars: 8, bpm: [100, 108], cdiv: 6, chords: '1:M 6:M 4:m 1:M 4:m 5:M 1:M 2:M 6:M 5:M 4:m 6:M 2:M 2:M 1:M 1:M', drone: '5 ^1 ^1 1', claps: J(OC_CLAP2, OC_CLAP2, OC_CLAP2, 'X . . x . x'), hc: 'x x', bass: 'r f',
+      D: { bars: 8, bpm: [100, 108], cdiv: 6, chords: '1:5', drone: '5 ^1 ^1 1', claps: J(OC_CLAP2, OC_CLAP2, OC_CLAP2, 'X . . x . x'), hc: 'x x', bass: 'r f',
         dholak: cyc(8, [OCD2, 'D . t k t . D k t . t k?'], OCDF),
         hl: '3 4 6 - 6 5 | 4 3 ~2 - 1 - | 4 6 7 - 7 6 | 7 ^1 ~^2 - ^1 - | ^1 7 6 - 6 5 | 4 3 4 6 5 4 | 3 - ~2 - - - | 1 - - - . .',
         sh: '3 4 6 - 6 5 | 4 3 ~2 - 1 - | 4 6 7 - 7 6 | 7 ^1 ~^2 - ^1 - | ^1 7 6 - 6 5 | 4 3 4 6 5 4 | 3 - ~2 - - - | 1 - - - . .', vol: { sh: 0.85, claps: 1.15 } },
@@ -382,6 +386,7 @@
   const EN_LIFT = '1 - 2 - 3 - 5 - | 6 - - - ^1 - ^2 - | ^3 - - - ^2 - ^1 - | 6 - ^1 - ^2 - - - | ^3 - ^2 - ^1 - 6 - | ^1 - - 6 5 - 3 - | 5 - - - 6 - 5 3 | 2 - - - - - - - | 1 - 2 - 3 - 5 - | 6 - - - 5 - 3 - | 2 - - - 1 - _6 - | 2 - - - - - . .';
   const EN_LIFT_CH = '1 - 4 6:m 1 - 4 5 6:m - 4 - 2:m7 - 5:s4 - 1 - 4 6:m 2:m7 - 5:s4 -';
   const TIHAI = 'ti ra ki ta dha . dha . dha . . . ti ra ki ta dha . dha . dha . . . ti ra ki ta dha . dha .';
+  const EN_P = ['drone', 'sitar', 'flute', 'vln', 'cello', 'str', 'choir', 'pad', 'santoor', 'tabla', 'bass', 'mbox'];
   reg('ending', {
     name: 'Charminar Ki Chaon', bpm: 76, root: 63, scale: 'major', meter: 16, loop: false, gain: 0.66,
     parts: {
@@ -390,8 +395,8 @@
       flute: { inst: 'bansuri', div: 2, oct: 0, vol: 0.85, rev: 0.45, pan: 0.1 },
       vln: { inst: 'violin', div: 2, oct: 0, vol: 0.65, rev: 0.5, pan: -0.1 },
       cello: { inst: 'violin', div: 4, oct: -1, vol: 0.45, rev: 0.45, pan: -0.3 },
-      str: { type: 'chord', inst: 'strings', div: 4, oct: 0, vol: 0.7, rev: 0.55 },
-      choir: { type: 'chord', inst: CHOIR, div: 8, oct: 0, vol: 0.55, rev: 0.6, ev: { vowel: 'a' } },
+      str: { type: 'chord', inst: 'strings', div: 4, oct: -1, vol: 0.7, rev: 0.55 },
+      choir: { type: 'chord', inst: CHOIR, div: 8, oct: -1, vol: 0.55, rev: 0.6, ev: { vowel: 'a' } },
       pad: { type: 'chord', inst: 'harmonium', div: 4, oct: -1, vol: 0.35, rev: 0.3, pan: 0.15 },
       santoor: { inst: 'santoor', div: 2, oct: 1, vol: 0.35, rev: 0.5, pan: 0.35 },
       tabla: { kit: 'tabla', div: 2, vol: 0.55, rev: 0.2, pan: 0.2 },
@@ -404,14 +409,17 @@
         str: J(R4, R4, R4, R4, 'x - - -', 'x - - -', 'x - - -'), vol: { str: 0.95, sitar: 1.85, drone: 1.85 } },
       theme: { bars: 12, cdiv: 8, chords: EN_THEME_CH, drone: '5 ^1 ^1 1', flute: EN_THEME, str: 'x - x -', pad: 'x - x -', bass: 'r - r -',
         santoor: J(rests(R8, 4), rep('r . f . o . f .', 8)), cello: J(rests(R4, 4), T_CELLO),
-        tabla: J(rests(R8, 4), 'dha . . . dha . . .', KEH2, KEH, KEHF2, keh(4)), vol: { str: 0.75, tabla: 0.75 } },
-      rise: { bars: 14, bpm: [76, 82], cdiv: 8, chords: EN_RISE_CH, drone: '5 ^1 ^1 1', vln: EN_RISE, pad: 'x - x -', bass: J(rep('r - r f', 8), rep('r r r r', 4), 'r - - - | r - r r'),
-        str: J(rep('x - x -', 8), rep('x x x x', 4), 'x - - - | x - x x'), flute: J(rests(R8, 8), shift('1 2 3 5 6 - - - | 2 3 5 6 ^1 - - - | 3 5 6 ^1 ^2 - - - | 5 6 ^1 ^2 ^3 - - -', -2), '7 - - - - - - - | 7 - - - - - . .'),
-        cello: J(T_CELLO, '1 - - - | 2 - - - | 3 - - - | 4 - - - | 5 - - - | 5 - - -'), santoor: J(rests(R8, 8), rep('r f o ^t o f o f', 6)),
-        tabla: J(K16A, K16B, K16A, K16F, K16B, K16A, K16B, K16F, K16C, K16C, K16C, K16F, TIHAI), div: { tabla: 1 }, vol: { vln: 1.1, str: 0.9 } },
-      lift: { bars: 12, bpm: 80, tp: 2, cdiv: 8, chords: EN_LIFT_CH, drone: '5 ^1 ^1 1', flute: shift(EN_LIFT, 7), vln: EN_LIFT, sitar: 'r . f . o . f .', choir: 'x x', str: 'x - x -', pad: 'x - x -',
+        tabla: J(rests(R8, 4), 'dha . . . dha . . .', KEH2, KEH, KEHF2, keh(4)), vol: allVol(EN_P, 0.68, { str: 0.75, tabla: 0.75, flute: 1.25 }) },
+      rise: { bars: 14, bpm: [76, 82], cdiv: 8, chords: EN_RISE_CH, drone: '5 ^1 ^1 1', vln: J(T_B, acc(EN_RISE.split(' | ').slice(8).join(' | '))), pad: 'x - x -',
+        bass: J(rep('r - r -', 4), rep('r - r f', 4), acc(rep('r r r r', 4)), acc('r - - - | r - r r')),
+        str: J(rests(R4, 4), rep('x - x -', 4), rep('X X X X', 4), 'X - - - | X - X X'),
+        flute: J(rests(R8, 8), acc(shift('1 2 3 5 6 - - - | 2 3 5 6 ^1 - - - | 3 5 6 ^1 ^2 - - - | 5 6 ^1 ^2 ^3 - - -', -2)), acc('7 - - - - - - - | 7 - - - - - . .')),
+        cello: J(T_CELLO, acc('1 - - - | 2 - - - | 3 - - - | 4 - - - | 5 - - - | 5 - - -')), santoor: J(rests(R8, 8), rep('r f o ^t o f o f', 6)),
+        tabla: J(K16A, K16B, K16A, K16F, K16B, K16A, K16B, K16F, acc(K16C), acc(K16C), acc(K16C), acc(K16F), acc(TIHAI)), div: { tabla: 1 },
+        vol: allVol(EN_P, 0.72, { vln: 1.25, str: 0.9 }) },
+      lift: { bars: 12, bpm: 80, tp: 2, cdiv: 8, chords: EN_LIFT_CH, drone: '5 ^1 ^1 1', flute: acc(shift(EN_LIFT, 7)), vln: acc(EN_LIFT), sitar: 'r . f . o . f .', choir: 'x x', str: 'x - x -', pad: 'x - x -',
         bass: 'r - f -', santoor: 'r f o f ^t f o f', cello: 'r - - - | t - - -', tabla: J('dha! ge na ti na ka dhi na', KEH2, KEH, KEHF, keh(8)),
-        vol: { flute: 0.75, vln: 1.15, str: 1.15, sitar: 0.5, santoor: 0.8, tabla: 0.85 } },
+        vol: allVol(EN_P, 0.78, { flute: 0.9, vln: 1.5, str: 0.75, choir: 0.6, pad: 0.55, cello: 0.8, sitar: 0.35, santoor: 0.55, tabla: 0.85 }) },
       coda: { bars: 8, bpm: [70, 46], tp: 2, cdiv: 8, chords: '4 - 5:s4 - 1 - 4 - 2:m7 - 5:s4 - 5:s4 5 1 -', drone: J(rep('5 ^1 ^1 1', 7), '1 - - -'),
         flute: J('6 - - - 5 - 3 -', '2 - - - - - - -', rests(R8, 6)), str: J('x - - -', 'x - - -', 'x - - -', 'x - - -', 'x - - -', 'x - - -', 'x - x -', 'x - - -'),
         mbox: J(R8, R8, HOOK, R8, '5 - 3 - 2 - - -', '1 - - - - - - -'), bass: J('r - - -', 'r - - -', R4, R4, R4, R4, 'r - r -', 'r - - -'),
