@@ -1251,11 +1251,12 @@
   }
 
   /* ================================================================ terrain maps (resumable) */
-  // surface classes -> weights: R grass, G paving, B sand, A water (BRIDGE counts as water: the river
-  // runs under the deck). Samples sit on a (n + 2)^2 grid with a one-texel border, so the 1-2-1 blur and
-  // the texel centres on the chunk edges match the neighbour chunk exactly (no seams).
+  // Per chunk ONE ground map (RGBA): R grass, G paving (+ ~0.3 for compacted yards), B sand, A contact
+  // AO (x baked sun shadows on phones). Samples sit on a (n + 2)^2 grid with a one-texel border, so the
+  // 1-2-1 blur and the texel centres on the chunk edges match the neighbour chunk exactly (no seams).
+  // Water comes from the core's aux texture (alpha), soil colour from one world-wide soil texture.
   const SCLS = new Uint8Array(16);
-  function initCls() { const S = N.SURF; SCLS.fill(0); SCLS[S.GRASS] = 1; SCLS[S.PLAZA] = 2; SCLS[S.SAND] = 3; SCLS[S.WATER] = 4; SCLS[S.BRIDGE] = 4; }
+  function initCls() { const S = N.SURF; SCLS.fill(0); SCLS[S.GRASS] = 1; SCLS[S.PLAZA] = 2; SCLS[S.SAND] = 3; SCLS[S.SOLID] = 5; SCLS[S.ROCK] = 6; }
   function buildSurf(job, deadline) {
     const ch = job.ch, n = job.sn, m = n + 2, step = CHS / (n - 1), W = N.world;
     if (!job.cls) { job.cls = scratch('cls', Uint8Array, m * m); job.row = 0; initCls(); }
@@ -1265,23 +1266,48 @@
       for (let i = 0; i < m; i++) cls[o + i] = SCLS[W.surfaceAt(ch.x0 + (i - 1) * step, y) & 15];
       if ((job.row & 7) === 0 && now() > deadline) return false;
     }
+    if (!job.yard) {
+      // compacted earth yards in front of houses (lawns are GRASS cells already)
+      const yard = job.yard = scratch('yard', Uint8Array, m * m); yard.fill(0, 0, m * m);
+      const gx0 = ch.x0 - step, gy0 = ch.y0 - step;
+      W.queryStructures(gx0, gy0, ch.x0 + CHS + step, ch.y0 + CHS + step, (sv) => {
+        if (sv.t !== 'bldg' || !sv.yard || sv.yard.lawn) return;
+        const yd = sv.yard;
+        const i0 = Math.max(0, Math.ceil((yd.x + 1 - gx0) / step)), i1 = Math.min(m - 1, Math.floor((yd.x + yd.w - 1 - gx0) / step));
+        const j0 = Math.max(0, Math.ceil((yd.y + 1 - gy0) / step)), j1 = Math.min(m - 1, Math.floor((yd.y + yd.h - 1 - gy0) / step));
+        for (let j = j0; j <= j1; j++) yard.fill(1, j * m + i0, j * m + i1 + 1);
+      });
+      job.shadow = I && I.Q.baked && I.sunBake ? bakeShadows(ch, m, step) : null;
+      return false; // (resume next slice)
+    }
     if (!job.surf) { job.surf = new Uint8Array(n * n * 4); job.brow = 0; }
-    const out = job.surf, acc = [0, 0, 0, 0, 0];
+    const out = job.surf, yard = job.yard, sh = job.shadow, acc = [0, 0, 0, 0, 0, 0, 0];
     const WT = [1, 2, 1];
+    const shK = sh ? 0.34 * I.sunBake.strength + 0.05 : 0;
     while (job.brow < n) {
       const j = job.brow++;
       for (let i = 0; i < n; i++) {
-        acc[0] = acc[1] = acc[2] = acc[3] = acc[4] = 0;
-        for (let dj = 0; dj < 3; dj++) { const r = (j + dj) * m + i, wj = WT[dj]; acc[cls[r]] += wj; acc[cls[r + 1]] += wj * 2; acc[cls[r + 2]] += wj; }
+        acc[0] = acc[1] = acc[2] = acc[3] = acc[4] = acc[5] = acc[6] = 0;
+        let yw = 0;
+        for (let dj = 0; dj < 3; dj++) {
+          const r = (j + dj) * m + i, wj = WT[dj];
+          acc[cls[r]] += wj; acc[cls[r + 1]] += wj * 2; acc[cls[r + 2]] += wj;
+          yw += (yard[r] + yard[r + 1] * 2 + yard[r + 2]) * wj;
+        }
         const o = (j * n + i) * 4;
-        out[o] = acc[1] * 16 - (acc[1] >> 4); out[o + 1] = acc[2] * 16 - (acc[2] >> 4); out[o + 2] = acc[3] * 16 - (acc[3] >> 4); out[o + 3] = acc[4] * 16 - (acc[4] >> 4);
+        out[o] = acc[1] * 16 - (acc[1] >> 4);
+        out[o + 1] = Math.max(acc[2] * 16 - (acc[2] >> 4), Math.round(yw * 5));
+        out[o + 2] = acc[3] * 16 - (acc[3] >> 4);
+        let ao = 1 - 0.42 * ((acc[5] + acc[6] * 0.5) / 16);
+        if (sh) ao *= 1 - sh[(j + 1) * m + (i + 1)] * shK;
+        out[o + 3] = Math.round(clamp(ao, 0, 1) * 255);
       }
       if ((job.brow & 15) === 0 && now() > deadline) return false;
     }
     return true;
   }
   /** fill a polygon on a grid with a scanline rule; set(i, j) per covered sample (x = gx0 + i * step) */
-  function scanPoly(poly, gx0, gy0, step, m, set) {
+  function scanPoly(poly, gx0, gy0, step, m, set, mx) {
     let y0 = Infinity, y1 = -Infinity;
     for (const p of poly) { if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
     const j0 = Math.max(0, Math.ceil((y0 - gy0) / step)), j1 = Math.min(m - 1, Math.floor((y1 - gy0) / step));
@@ -1296,64 +1322,34 @@
       if (xs.length < 2) continue;
       xs.sort((u, v) => u - v);
       for (let k = 0; k + 1 < xs.length; k += 2) {
-        const i0 = Math.max(0, Math.ceil((xs[k] - gx0) / step)), i1 = Math.min(m - 1, Math.floor((xs[k + 1] - gx0) / step));
+        const i0 = Math.max(0, Math.ceil((xs[k] - gx0) / step)), i1 = Math.min((mx || m) - 1, Math.floor((xs[k + 1] - gx0) / step));
         for (let i = i0; i <= i1; i++) set(i, j);
       }
     }
   }
-  function buildTint(job, deadline) {
-    const ch = job.ch, n = job.tn, m = n + 2, step = CHS / (n - 1), W = N.world, S = N.SURF;
-    if (!job.tcol) { job.tcol = scratch('tcol', Float32Array, m * m * 3); job.tsol = scratch('tsol', Float32Array, m * m); job.trow = 0; job.dcache = new Map(); }
-    const col = job.tcol, solid = job.tsol, dcache = job.dcache;
-    const dcol = (d) => { let c = dcache.get(d); if (!c) { c = hexRGB((d && d.ground) || '#a98a66'); dcache.set(d, c); } return c; };
-    while (job.trow < m) {
-      const j = job.trow++, y = ch.y0 + (j - 1) * step;
-      let lastD = undefined, c = null;
-      for (let i = 0; i < m; i++) {
-        const x = ch.x0 + (i - 1) * step, o = j * m + i;
-        // districts change slowly: look up every 4th sample
-        if ((i & 3) === 0 || lastD === undefined) { let d = null; try { d = W.districtAt(x, y); } catch (e) { d = null; } if (d !== lastD) { lastD = d; c = dcol(d); } }
-        col[o * 3] = c[0]; col[o * 3 + 1] = c[1]; col[o * 3 + 2] = c[2];
-        const sv = W.surfaceAt(x, y);
-        solid[o] = sv === S.SOLID ? 1 : sv === S.ROCK ? 0.5 : 0;
-      }
-      if ((job.trow & 7) === 0 && now() > deadline) return false;
+  /** one world-wide soil colour texture (32 u texels): district soil, maidans, rocky parks (shared) */
+  const SOIL = { tex: null, cell: 32, nx: 0, ny: 0, ms: 0 };
+  function buildSoil() {
+    const t0 = now(), W = N.world, D = W.data, c = SOIL.cell;
+    const nx = Math.max(2, Math.ceil(N.WORLD_W / c)), ny = Math.max(2, Math.ceil(N.WORLD_H / c));
+    const data = new Uint8Array(nx * ny * 4);
+    const cache = new Map();
+    const put = (o, hex) => { let v = cache.get(hex); if (!v) { v = hexRGB(hex); cache.set(hex, v); } data[o] = v[0] * 255; data[o + 1] = v[1] * 255; data[o + 2] = v[2] * 255; data[o + 3] = 255; };
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      let d = null; try { d = W.districtAt((i + 0.5) * c, (j + 0.5) * c); } catch (e) { d = null; }
+      put((j * nx + i) * 4, (d && d.ground) || '#a98a66');
     }
-    const gx0 = ch.x0 - step, gy0 = ch.y0 - step;
-    const put = (c) => (i, j) => { const o = j * m + i; col[o * 3] = c[0]; col[o * 3 + 1] = c[1]; col[o * 3 + 2] = c[2]; };
-    const D = W.data, X1 = ch.x0 + CHS + step, Y1 = ch.y0 + CHS + step;
     for (const p of D.parks || []) {
-      const c = PARKSOIL[p.kind];
-      if (!c || !p.poly) continue;
-      const bb = p._bb || (p._bb = bboxOf(p.poly, 0));
-      if (bb[2] < gx0 || bb[0] > X1 || bb[3] < gy0 || bb[1] > Y1) continue;
-      scanPoly(p.poly, gx0, gy0, step, m, put(hexRGB(c)));
+      const hex = PARKSOIL[p.kind];
+      if (!hex || !p.poly) continue;
+      scanPoly(p.poly, c / 2, c / 2, c, ny, (i, j) => put((j * nx + i) * 4, hex), nx);
     }
-    W.queryStructures(gx0, gy0, X1, Y1, (sv) => {
-      if (sv.t !== 'bldg' || !sv.yard || sv.yard.lawn) return;
-      const yd = sv.yard, f = put(hexRGB(yd.col || YARD));
-      const i0 = Math.max(0, Math.ceil((yd.x + 1 - gx0) / step)), i1 = Math.min(m - 1, Math.floor((yd.x + yd.w - 1 - gx0) / step));
-      const j0 = Math.max(0, Math.ceil((yd.y + 1 - gy0) / step)), j1 = Math.min(m - 1, Math.floor((yd.y + yd.h - 1 - gy0) / step));
-      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) f(i, j);
-    });
-    // low tier: baked sun shadows (the core flags the chunk when the quantised sun moves)
-    let shadow = null;
-    if (I && I.Q.baked && I.sunBake) shadow = bakeShadows(ch, m, step);
-    const out = new Uint8Array(n * n * 4);
-    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
-      const o = (j * n + i) * 4;
-      let r = 0, g = 0, b = 0, so = 0;
-      for (let dj = 0; dj < 3; dj++) for (let di = 0; di < 3; di++) {
-        const w = (dj === 1 ? 2 : 1) * (di === 1 ? 2 : 1), q = (j + dj) * m + (i + di);
-        r += col[q * 3] * w; g += col[q * 3 + 1] * w; b += col[q * 3 + 2] * w; so += solid[q] * w;
-      }
-      out[o] = Math.round(r / 16 * 255); out[o + 1] = Math.round(g / 16 * 255); out[o + 2] = Math.round(b / 16 * 255);
-      let ao = 1 - 0.42 * (so / 16);
-      if (shadow) ao *= 1 - shadow[(j + 1) * m + (i + 1)] * (0.34 * I.sunBake.strength + 0.05);
-      out[o + 3] = Math.round(clamp(ao, 0, 1) * 255);
-    }
-    job.tint = out;
-    return true;
+    if (SOIL.tex) SOIL.tex.dispose();
+    const t = new THREE.DataTexture(data, nx, ny, THREE.RGBAFormat);
+    t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.needsUpdate = true; t.userData.shared = true;
+    SOIL.tex = t; SOIL.nx = nx; SOIL.ny = ny; SOIL.u.value.set(1 / (nx * c), 1 / (ny * c));
+    SOIL.ms = Math.round((now() - t0) * 10) / 10;
   }
   /** phones: sun shadows of buildings / walls / trees rasterised on the tint grid (2D paintShadows rules) */
   function bakeShadows(ch, m, step) {
