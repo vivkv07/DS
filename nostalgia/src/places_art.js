@@ -1576,12 +1576,18 @@
       pole(ax, ay, 0, 9.4, '#8a6a3a', 0.4); pole(bx, by, 0, 9.4, '#8a6a3a', 0.4);
       seg3(ax, ay, 9.2, bx, by, 9.2, 'rgba(240,240,240,0.7)', 0.25);
       const nk = Math.max(4, Math.round(C.hl * 2 / 2.8));
-      for (let row = 0; row < 2; row++) for (let i = 0; i < nk; i++) {
-        const u = -C.hl + 1.4 + i * (C.hl * 2 - 2.8) / (nk - 1), sway = Math.sin(TIME * 2 + i * 1.3 + row) * 0.35, h = 8.6 - row * 3;
-        const x = cx_(C, u, vv + sway + row * C.side * 0.6), y = cy_(C, u, vv + sway + row * C.side * 0.6), k = kh(h);
-        ctx.beginPath(); ctx.moveTo(sx(x, k), sy(y, k) - 2.1 * k); ctx.lineTo(sx(x, k) + 1.7 * k, sy(y, k)); ctx.lineTo(sx(x, k), sy(y, k) + 2.1 * k); ctx.lineTo(sx(x, k) - 1.7 * k, sy(y, k)); ctx.closePath();
-        fillc(kc[(i + row * 3 + (A.seed % 5)) % kc.length]);
-        ctx.fillStyle = 'rgba(30,20,20,0.45)'; ctx.fillRect(sx(x, k) - 0.2, sy(y, k) - 1.6 * k, 0.5, 3.2 * k);
+      // kites batched by colour (one fill per colour)
+      for (let ci = 0; ci < kc.length; ci++) {
+        ctx.beginPath();
+        let any = false;
+        for (let row = 0; row < 2; row++) for (let i = 0; i < nk; i++) {
+          if ((i + row * 3 + (A.seed % 5)) % kc.length !== ci) continue;
+          any = true;
+          const u = -C.hl + 1.4 + i * (C.hl * 2 - 2.8) / (nk - 1), sway = Math.sin(TIME * 2 + i * 1.3 + row) * 0.35, h = 8.6 - row * 3;
+          const x = cx_(C, u, vv + sway + row * C.side * 0.6), y = cy_(C, u, vv + sway + row * C.side * 0.6), k = kh(h), X = sx(x, k), Y = sy(y, k);
+          ctx.moveTo(X, Y - 2.1 * k); ctx.lineTo(X + 1.7 * k, Y); ctx.lineTo(X, Y + 2.1 * k); ctx.lineTo(X - 1.7 * k, Y); ctx.closePath();
+        }
+        if (any) fillc(kc[ci]);
       }
     },
     count() { return S.sankranti ? 4 : S.min > 1260 || S.min < 480 ? 1 : 2; },
