@@ -116,6 +116,7 @@ async function registerTestMission(page) {
         const stand = N.places.cycle_rent_5;
         const f = N.world.findFree(stand.x + 14, stand.y + 18, 'drive', 16) || stand;
         const cycle = m.vehicle('cycle', f.x, f.y, 0, { color: '#2f6a3a' });
+        if (cycle) cycle.__qaHire = true; // traffic rides plain 'cycle's too: the checks below find this one by tag
         m.objective('Get on the cycle.');
         const b = m.blip(cycle, { color: '#6fbf5a', icon: 'dot', pulse: true });
         await m.until(() => N.player.vehicle === cycle);
@@ -430,9 +431,9 @@ async function desktop(browser) {
   await sleep(300);
   await shot('mission_talk');
   await advanceDialogue(page, 0);
-  ms = await page.evaluate(() => ({ obj: N.hud.objectiveText, money: N.player.money, money0: window.__money0, cyc: N.vehicles.list.filter((v) => v.type === 'cycle' && !v.seeded).length }));
+  ms = await page.evaluate(() => ({ obj: N.hud.objectiveText, money: N.player.money, money0: window.__money0, cyc: N.vehicles.list.filter((v) => v.__qaHire && v.alive).length }));
   check(/Get on the cycle/.test(ms.obj || '') && ms.money === ms.money0 - 200 && ms.cyc === 1, 'choice "pakka" pays ₹ 2 and the hire cycle appears', ms);
-  await page.evaluate(() => { const v = N.vehicles.list.filter((x) => x.type === 'cycle' && !x.seeded)[0]; N.player.teleport(v.x, v.y + 9); window.__v = v; });
+  await page.evaluate(() => { const v = N.vehicles.list.filter((x) => x.__qaHire && x.alive)[0]; N.player.teleport(v.x, v.y + 9); window.__v = v; });
   await sleep(200);
   await page.keyboard.press('KeyE');
   await page.waitForFunction(() => N.hud.timerValue() !== null, null, { timeout: 3000 }).catch(() => {});
@@ -440,7 +441,7 @@ async function desktop(browser) {
   check(ms.veh && ms.timer > 40 && ms.timerShown && ms.cp === 'race', 'on the cycle: checkpoint "race" + 45 s HUD timer', ms);
   await page.keyboard.down('KeyW'); await gameWait(page, 1.0); await page.keyboard.up('KeyW');
   const t2 = await page.evaluate(() => N.hud.timerValue());
-  check(t2 < ms.timer - 0.5, 'race timer counts down (' + ms.timer.toFixed(1) + ' -> ' + t2.toFixed(1) + ')');
+  check(t2 < ms.timer - 0.5, 'race timer counts down (' + ms.timer + ' -> ' + t2 + ')');
   await shot('mission_race');
   // (test shortcut) put the cycle at the café
   await page.evaluate(() => { const c = N.places.irani_cafe_3, v = window.__v, f = N.world.findFree(c.x, c.y, 'drive', 12) || c; v.x = f.x; v.y = f.y; v.vx = v.vy = 0; });
@@ -461,8 +462,8 @@ async function desktop(browser) {
   await sleep(300);
   await page.evaluate(() => { N.debug.startMission('demo_chai_run'); N.debug.teleport('cycle_rent_5'); });
   // (generous timeouts: these wait on the mission script, which runs in game time)
-  await page.waitForFunction(() => /Get on the cycle/.test(N.hud.objectiveText || '') && N.vehicles.list.some((v) => v.type === 'cycle' && !v.seeded), null, { timeout: 20000 }).catch(() => {});
-  await page.evaluate(() => { const v = N.vehicles.list.filter((x) => x.type === 'cycle' && !x.seeded).pop(); N.vehicles.enter(N.player, v); });
+  await page.waitForFunction(() => /Get on the cycle/.test(N.hud.objectiveText || '') && N.vehicles.list.some((v) => v.__qaHire && v.alive), null, { timeout: 20000 }).catch(() => {});
+  await page.evaluate(() => { const v = N.vehicles.list.filter((x) => x.__qaHire && x.alive).pop(); N.vehicles.enter(N.player, v); });
   await page.waitForFunction(() => N.hud.timerValue() !== null, null, { timeout: 15000 }).catch(() => {});
   await page.evaluate(() => { const a = N.missions.active; if (a && a.timer) a.timer.left = 0.3; });
   await page.waitForFunction(() => !N.missions.active, null, { timeout: 15000 }).catch(() => {});

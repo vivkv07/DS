@@ -100,7 +100,7 @@ const SCRIPTS = {
     else { await io.K.hold('Space', 800); await io.K.hold('ArrowLeft', 350); await io.K.hold('Space', 500); }
   },
   kiteProbe: S_('(S.maxT || 0)'),
-  async clap(io, V) { for (let i = 0; i < 4; i++) { if (V.touch) await io.tapBtn('clap'); else await io.K.press('Space'); await gwait(page, 0.33); } },
+  async clap(io, V, page) { for (let i = 0; i < 4; i++) { if (V.touch) await io.tapBtn('clap'); else await io.K.press('Space'); await gwait(page, 0.33); } },
   clapProbe: S_('S.clapsTotal || 0'),
   async brickgame(io, V, page) {
     await gwait(page, 1.5); // boot animation
@@ -112,17 +112,17 @@ const SCRIPTS = {
     else { await io.K.press('ArrowLeft'); await io.K.press('ArrowUp'); await io.K.hold('ArrowDown', 400); }
   },
   brickgameProbe: S_('S.mode === "blocks" ? 1 : 0'),
-  async cricket(io, V) {
+  async cricket(io, V, page) {
     await gwait(page, 1.15);
     for (const a of ['drive', 'cut']) { if (V.touch) await io.tapBtn(a); else await io.K.press(a === 'drive' ? 'ArrowUp' : 'ArrowRight'); await gwait(page, 2.6); }
   },
   cricketProbe: S_('S.swings || 0'),
-  async antenna(io, V) {
+  async antenna(io, V, page) {
     if (V.touch) { await io.holdBtn('right', 1000); await io.tapBtn('left'); await io.tapBtn('shoo'); }
     else { await io.K.hold('ArrowRight', 1000); await io.K.press('ArrowLeft'); await io.K.press('Space'); }
   },
   antennaProbe: S_('Math.abs(N.util.angleDiff(S.theta0, S.theta))'),
-  async panipuri(io, V) {
+  async panipuri(io, V, page) {
     for (let i = 0; i < 4; i++) { await gwait(page, 0.7); if (V.touch) await io.tapBtn('eat'); else await io.K.press('Space'); }
     if (V.touch) await io.tapBtn('skip'); else await io.K.press('ArrowDown');
   },

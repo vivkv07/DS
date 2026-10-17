@@ -366,7 +366,10 @@ async function run() {
       if (r.b && !shotTaken) { await shot(page, 'busted_slipper'); shotTaken = true; }
       if (r.b) { busted = true; break; }
     }
-    if (!busted) fail('busted', 'Pochaiah never caught a boy standing still for 28 s');
+    if (!busted) {
+      const why = await page.evaluate(() => { const W = N.wanted, c = W.chaser, p = N.player; return { level: W.level, mode: N.state.mode, chaser: c && { role: c.role, d: Math.round(Math.hypot(c.x - p.x, c.y - p.y)), st: c.st || c.state || null }, pursuers: (W.pursuers || []).length, t: +N.time.now.toFixed(1) }; });
+      fail('busted', 'Pochaiah never caught a boy standing still for 28 s ' + JSON.stringify(why));
+    }
     else {
       await gwait(page, 0.9);
       const banner = await page.evaluate(() => document.body.innerText.indexOf('PAKDA GAYA') >= 0);
@@ -526,16 +529,25 @@ async function run() {
       const f = (N.landmarks && N.landmarks.flocks || []).find((q) => q.id === 'charminar');
       if (!f) return null;
       const b = f.birds.find((q) => q.st === 0) || f.birds[0];
-      N.player.teleport(b.x - 60, b.y);
+      // come at it from the open plaza side (away from the monument): a bird on the east side with a start 60 u
+      // west of it would put him inside the Charminar's footprint, and teleport pops him out somewhere else
+      // (outward first, then turning round to either side until the start is where we asked and the run is clear)
+      const oa = Math.atan2(b.y - f.cy, b.x - f.cx);
+      for (const da of [0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8, Math.PI]) {
+        const x = b.x + Math.cos(oa + da) * 60, y = b.y + Math.sin(oa + da) * 60;
+        N.player.teleport(x, y);
+        const rc = N.world.raycast(N.player.x, N.player.y, b.x, b.y, 'walk');
+        if (Math.hypot(N.player.x - x, N.player.y - y) < 8 && !(rc && rc.hit)) break;
+      }
       await __gw(0.3);
       // run at that bird for 1.4 s of game time, re-aiming every 0.1 s (a straight dash east could be
       // stopped by the monument's piers or a stall when the bird has hopped behind one)
       N.input.hold('run', true);
       for (let i = 0; i < 14 && b.st === 0; i++) { const dx = b.x - N.player.x, dy = b.y - N.player.y, L = Math.hypot(dx, dy) || 1; N.input.setMove(dx / L, dy / L, true); await __gw(0.1); }
       N.input.setMove(null); N.input.hold('run', false);
-      return { flying: f.birds.filter((q) => q.st !== 0).length, n: f.birds.length };
+      return { flying: f.birds.filter((q) => q.st !== 0).length, n: f.birds.length, gap: Math.round(Math.hypot(b.x - N.player.x, b.y - N.player.y)), mode: N.state.mode, locked: !!N.player.controlsLocked, pmode: N.player.mode, veh: !!N.player.vehicle };
     });
-    if (cm) { if (!cm.flying) fail('misc', 'Charminar pigeons did not lift off'); else { ok('Charminar pigeons burst into flight (' + cm.flying + '/' + cm.n + ')'); await shot(page, 'charminar_pigeons'); } }
+    if (cm) { if (!cm.flying) fail('misc', 'Charminar pigeons did not lift off ' + JSON.stringify(cm)); else { ok('Charminar pigeons burst into flight (' + cm.flying + '/' + cm.n + ')'); await shot(page, 'charminar_pigeons'); } }
     // a cow lying on the road: traffic stops / goes round, the horn makes her get up
     const cow = await page.evaluate(async () => {
       const T = N.traffic;

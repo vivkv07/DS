@@ -425,7 +425,14 @@ async function desktop(browser) {
           if (!wp) { N.input.setMove(null); d.done = true; return; }
           const dx = wp.x - v.x, dy = wp.y - v.y, L = Math.hypot(dx, dy);
           if (L < (p.vehicle ? 20 : 8)) { d.i++; return; }
-          const m = p.vehicle && d.i === d.pts.length - 1 && L < 60 ? 0.5 : 1;
+          let m = p.vehicle && d.i === d.pts.length - 1 && L < 60 ? 0.5 : 1;
+          if (p.vehicle) {
+            // a rider: take the next point once this one is behind (closer to the next than it is), ease off for turns
+            const nx = d.pts[d.i + 1];
+            if (nx && Math.hypot(nx.x - v.x, nx.y - v.y) < Math.hypot(nx.x - wp.x, nx.y - wp.y)) { d.i++; return; }
+            const turn = Math.abs(N.util.angleDiff(v.angle, Math.atan2(dy, dx)));
+            m = Math.min(m, turn > 0.9 ? 0.35 : turn > 0.45 ? 0.6 : 1);
+          }
           N.input.setMove((dx / L) * m, (dy / L) * m, true);
         },
       });
