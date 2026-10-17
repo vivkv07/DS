@@ -32,6 +32,7 @@ import kit
 
 REGION_NAMES = ['none', 'paint', 'paint2', 'paint3', 'head', 'tail', 'indicator', 'beacon']
 R_NONE, R_PAINT, R_PAINT2, R_PAINT3, R_HEAD, R_TAIL, R_IND, R_BEACON = range(8)
+UV_ANGLE = float(os.environ.get('NOS_UV_ANGLE', 80))   # smart-project island angle: fewer seams = fewer split vertices
 FONT_BOLD = next((p for p in ('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
                               '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf') if os.path.exists(p)), None)
 FONT_COND = next((p for p in ('/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf', '/usr/share/fonts/truetype/liberation/LiberationSansNarrow-Bold.ttf') if os.path.exists(p)), FONT_BOLD)
@@ -156,8 +157,11 @@ def disc_y(name, c, r, w, m, seg=16, cap=True, r2=None):
 
 
 def rbox(name, size, loc, m, bevel=0.06, seg=1):
-    """a bevelled box (seg 1 = a chamfer: crisp highlights for ~44 tris; bevel 0 = 12 tris)"""
-    return kit.box(name, size, loc, m, bevel=bevel, segments=seg)
+    """a bevelled box (seg 1 = a chamfer: crisp highlights for ~44 tris; bevel 0 = 12 tris); its
+    chamfers stay sharp-shaded (nos_smooth 32) so panels read crisp"""
+    o = kit.box(name, size, loc, m, bevel=bevel, segments=seg)
+    o['nos_smooth'] = 32.0
+    return o
 
 
 def section_loft(name, stations, m, seg=16, cap_start=True, cap_end=True, axis='Y'):
@@ -253,7 +257,9 @@ def spoke_wheel(name, c, R, M, spokes=28, seg=24, tyre_w=0.42, rim_d=0.4, hub_w=
         r = Vector((0.03 * side, ri2 * math.cos(a), ri2 * math.sin(a)))
         sp.append(kit.tube(name + '_spoke%d' % i, [Vector(c) + h, Vector(c) + r], sp_r, seg=sp_seg, mat=M['chrome'], cap=False))
     if sp:
-        parts.append(kit.join(sp, name + '_spokes'))
+        j = kit.join(sp, name + '_spokes')
+        j['nos_smooth'] = 180.0     # thin spokes: fully smooth (shared vertices)
+        parts.append(j)
     return parts
 
 
@@ -503,7 +509,7 @@ class VRig:
         return self
 
     def build(self, tex=512, orm=256, emit=256, ao_samples=24, albedo_samples=6, ao_strength=0.72, ao_dist=2.2, ground=True,
-              boost=None, under=0.45, smooth_angle=38.0, margin=0.005):
+              boost=None, under=0.45, smooth_angle=62.0, margin=0.005):
         A = self.A
         arm_d = bpy.data.armatures.new(A.id + '_rig')
         arm = bpy.data.objects.new(A.id + '_rig', arm_d)
@@ -525,7 +531,9 @@ class VRig:
                     continue
                 kit.apply_modifiers(o)
                 kit.weights(o, b)
-                kit.smooth(o, self.smooth.get(o.name, smooth_angle))
+                # 62 deg default: 6- and 8-sided tubes shade round and share vertices (smaller
+                # GLB); boxes keep crisp edges; per object: rbox chamfers 32, spokes 180
+                kit.smooth(o, self.smooth.get(o.name, float(o.get('nos_smooth', smooth_angle))))
                 meshes.append(o)
         if os.environ.get('NOS_TRIS'):
             # authoring aid: triangle cost per part (NOS_TRIS=1 build_all.py <id> --one ...)
@@ -606,7 +614,7 @@ def uv_atlas_weighted(ob, boost=None, under=0.45, margin=0.005):
     kit.select_only([ob], ob)
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=margin, area_weight=0.0, correct_aspect=True, scale_to_bounds=False)
+    bpy.ops.uv.smart_project(angle_limit=math.radians(UV_ANGLE), island_margin=margin, area_weight=0.0, correct_aspect=True, scale_to_bounds=False)
     bpy.ops.object.mode_set(mode='OBJECT')
     boost = boost or {}
     names = [m.name if m else '' for m in me.materials]

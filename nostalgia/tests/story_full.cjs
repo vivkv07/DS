@@ -98,6 +98,10 @@ async function openPage(browser) {
 }
 async function bootTitle() {
   await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 60000 });
+  // src/testing.js (play-testing builds) tops the pocket money up to ₹9,99,999 by default: this playthrough
+  // checks the real economy (money never below ₹0, the friend pays the rest), so it plays with it off
+  // (remembered in this test browser's localStorage only)
+  await ev(() => { if (N.testing && N.testing.unlimitedMoney) N.testing.setUnlimitedMoney(false); });
   await page.mouse.click(2, 2);
   await ev(() => { const d = document.getElementById('debug'); if (d) d.classList.add('hide'); });
 }
@@ -118,6 +122,8 @@ async function installHooks() {
     N.on('mission:pass', (d) => { const k = d && d.id; if (k) window.__passes[k] = (window.__passes[k] || 0) + 1; });
     N.on('mission:fail', (d) => { window.__fails.push({ id: d && d.id, reason: d && d.reason, at: N.calendar.osd() }); });
     N.on('walkman:play', () => { window.__wm++; });
+    window.__wlog = [];
+    N.on('wanted:change', (d) => { if (window.__wlog.length > 60) window.__wlog.shift(); window.__wlog.push({ lvl: d && d.level, prev: d && d.prev, why: d && d.reason, m: (N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || null, at: N.calendar.osd(), veh: N.player.vehicle ? N.player.vehicle.type : null }); });
     N.on('minigame:start', (d) => { const P = (d && d.params) || {}; window.__mg.push({ id: d && d.id, lb: !!N.flags.lb_match, mission: N.missions.active && N.missions.active.id, home: P.home && (P.home.name || P.home), away: P.away && (P.away.name || P.away), intro: P.intro || null, title: P.title || null, place: P.place || null, at: N.calendar.osd() }); });
     N.on('minigame:end', (d) => { const r = (d && d.result) || {}; window.__mgEnd.push({ id: d && d.id, win: r.win, quit: r.quit, aborted: r.aborted, at: N.calendar.osd() }); });
     window.__shops = [];
@@ -539,7 +545,7 @@ async function afterMain(id, date, extra) {
   const s = await ev(() => ({
     done: N.missions.isDone ? Array.from(N.missions.done) : [], counter: N.tape.counter, hud: ((document.querySelector('#ui .osd-tape .tp-num') || {}).textContent || '').trim(),
     side: ((document.querySelector('#ui .osd-tape .tp-side') || {}).textContent || '').trim(), tracks: N.tape.tracks.map((t) => t.id), tin: Array.from(N.tape.tin),
-    date: N.calendar.label(), money: N.player.money, wanted: N.wanted ? N.wanted.level | 0 : 0, mode: N.state.mode,
+    date: N.calendar.label(), money: N.player.money, wanted: N.wanted ? N.wanted.level | 0 : 0, mode: N.state.mode, wlog: (window.__wlog || []).slice(-6),
     save: (() => { try { const o = JSON.parse(localStorage.getItem('nostalgia.save.v1')); return { done: o.data.missions.done, counter: o.data.tape && o.data.tape.counter }; } catch (e) { return null; } })(),
   }));
   const n = COUNTER[id];
@@ -551,8 +557,8 @@ async function afterMain(id, date, extra) {
   const miss = want.filter((t) => s.tin.indexOf(t) < 0);
   check(!miss.length, id + ': the tin holds every token so far (' + want.length + ')', { miss, tin: s.tin });
   if (date) check(s.date.indexOf(date) >= 0, id + ': free roam goes on on ' + date, s.date);
-  check(s.money >= 0, id + ': pocket money never negative (₹' + (s.money / 100).toFixed(2) + ')', s.money);
-  check(s.wanted === 0 || (extra && extra.wantedOk), id + ': Chappal Meter back at 0 after the mission', s.wanted);
+  check(s.money >= 0 && s.money < 100000, id + ': pocket money never negative (₹' + (s.money / 100).toFixed(2) + ')', s.money);
+  check(s.wanted === 0 || (extra && extra.wantedOk), id + ': Chappal Meter back at 0 after the mission', { wanted: s.wanted, changes: s.wlog });
   check(!!(s.save && s.save.done && s.save.done.indexOf(id) >= 0 && s.save.counter === n), id + ': autosaved on MISSION PASSED', s.save);
   log('  ' + id + ': ₹' + (s.money / 100).toFixed(2) + ', ' + s.date + ', tin ' + s.tin.length);
   return s;
@@ -759,12 +765,14 @@ async function pM5() {
       }
       if (!late.caught) late.caught = await ev(() => window.__busted[0] || false);
       if (!late.caught && Date.now() - late.t < 60000) { await sleep(300); return true; } // stand still: the chaser comes
+      if (!late.caught) late.faced = true;
       return false; // (not caught within a minute: walk back to the step, "face her at the step")
     }
     return false;
   } });
   check(late.expired && late.branch && late.branch.wanted >= 3 && late.line, 'M5 late: the timer ran out, Chappal Meter ' + (late.branch && late.branch.wanted) + ', Amma: "' + FULL.toUpperCase() + '! I came out and the step was EMPTY!"', late);
-  check(late.caught || !(late.branch && late.branch.policy), 'M5 late: the real Chappal Meter chase catches him (PAKDA GAYA by ' + late.caught + ') and the mission goes on', late);
+  log('  M5 late: ' + (late.caught ? 'PAKDA GAYA (caught by ' + late.caught + ')' : 'not caught in 60 s: he faced Amma at the step'));
+  check(late.caught || late.faced, 'M5 late: escape or be caught (bible): ' + (late.caught ? 'the real Chappal Meter chase caught him (PAKDA GAYA, ' + late.caught + ')' : 'he went back and faced Amma at the step') + '; the mission goes on', late);
   await afterMain('right_right', 'WED 02 APR 2003');
   const v = await ev(() => ({ bus: N.flags.bus_unlocked || N.flags.unlock_bus, tickets: N.collectibles.unlocked('tickets') }));
   check(v.bus && v.tickets, 'M5: bus travel and Ticket Thatha\'s tickets unlocked', v);

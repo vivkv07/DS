@@ -53,7 +53,8 @@
  *     playMatch(m, params) -> result            the LB match ('match'), falls back to 'cricket'
  *     chapterCard(n) -> cutscene steps, money(m, paise, why, companion), at(h, mi)
  *   debug  {mg: null|'win'|'lose' (forces minigame autoplay), fastRides: false, skip() (finishes the
- *          current kit step), target() -> {x, y} of the current goal, use() (fires the current act/press)}
+ *          current kit step), target() -> {x, y} of the current goal, use() (fires the current act/press),
+ *          expire() (runs the soft timers out: M5's late branch)}
  *
  * Flags written: prologue_seen, lock_1..lock_4 + riddle_1..riddle_4 (the Lock page), bunty_words
  *   [...], meter_live + sa6_unlocked (M3), side_cricket (M4), clue5_solved (M6), power_cut (SA2 /
@@ -2610,6 +2611,9 @@
     debug: {
       mg: null, mgTimeScale: null, fastRides: false,
       skip() { const s = S.step; if (s && s.skip) { s.skip(); return s.kind; } return null; },
+      /** Runs every running soft timer out on the next tick (tests: M5's "AMMA COMES OUT" late branch without
+       *  the four-minute wait). Returns how many timers it ended. */
+      expire() { let n = 0; for (const T of S.timers) if (T.on && !T.expired) { T.left = 0.001; n++; } return n; },
       use() { for (const st of S.acts.values()) if (!st.used) { st.used = true; return true; } for (const o of S.offers) if (!o.used) { o.used = true; return true; } return false; },
       target() {
         if (S.step && S.step.target) { const p = pos(S.step.target); if (p) return { x: p.x, y: p.y }; }
