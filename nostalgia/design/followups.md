@@ -24,7 +24,7 @@ Other:
 - recording_centre_1 / electronics_shop_1 need their own places_art variants ('recording', 'tv_radio').
 - Free chai at Café Gulistan (`N.flags.unlock_free_chai`), framed print, golden bell: shops/places_art should read the flags.
 - Cassette pickup 2 s song preview (systems §7.1).
-- Menus settings that other modules must act on: autoAdvance (dialogue), assist (minigames), high-contrast.
+- Menus settings that other modules must act on: assist (minigames). (autoAdvance -> dialogue.js and body.high-contrast -> style.css are done; tests/settings.cjs.)
 - whole-frame cost is rising as modules land (smoke desktop ~29 ms/frame on a loaded machine): a performance pass is needed.
 
 Map v2 (done; 98.8% of 1,340 real-geography relations pass):

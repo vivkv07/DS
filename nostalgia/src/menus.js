@@ -811,7 +811,7 @@
   let manualMem = null, lastSaveT = 0;
   function parseBlob(raw) {
     if (!raw || typeof raw !== 'string') return null;
-    try { const o = JSON.parse(raw); return o && o.game === 'nostalgia' && o.data && typeof o.data === 'object' ? o : null; } catch (e) { return null; }
+    try { const o = JSON.parse(raw); return o && o.game === 'nostalgia' && !(o.v > ((N.save && N.save.VERSION) || 1)) && o.data && typeof o.data === 'object' ? o : null; } catch (e) { return null; }
   }
   function latestInfo() { try { return N.save && N.save.has && N.save.has() ? N.save.info() : null; } catch (e) { return null; } }
   function manualRaw() { return lsOK() ? lsGet(MANUAL_KEY) : manualMem; }
@@ -1037,7 +1037,7 @@
     { id: 'mute', label: 'Mute everything', type: 'toggle' },
     { sec: 'Text' },
     { id: 'textSpeed', label: 'Text speed', type: 'seg', opts: SEG([['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast'], ['instant', 'Instant']]) },
-    { id: 'autoAdvance', label: 'Auto-advance dialogue', type: 'toggle', help: 'Lines move on by themselves after 2 s.' },
+    { id: 'autoAdvance', label: 'Auto-advance dialogue', type: 'toggle', help: 'Lines move on by themselves once read (2 s or more). Choices still wait for you.' },
     { id: 'captions', label: 'Sound captions', type: 'toggle', help: '[whistle ↗] and [bus horn] on screen, for playing without sound.' },
     { sec: 'Screen' },
     { id: 'reducedMotion', label: 'Reduced motion', type: 'seg', opts: SEG([['auto', 'Auto'], ['on', 'On'], ['off', 'Off']]), help: 'No shake, no VHS roll, gentler camera.' },
@@ -1180,7 +1180,7 @@
         row.querySelector('.st-info').innerHTML = (avail ? 'Saves are kept in this browser.' : '<b>Saves last only this session</b> (browser storage is off).') +
           (i ? ' Latest: ' + esc(saveLine(i)) + ', saved ' + esc(agoText(i.t)) + '.' : ' No saved game yet.');
       } else if (r.type === 'danger') {
-        const has = !!(latestInfo() || manualInfo());
+        const has = !!(latestInfo() || manualInfo() || (N.save && N.save.tooNew)); // a newer build's save can be erased too (lifts the save block)
         const b = row.querySelector('.st-erase');
         b.disabled = !has;
         if (!row.classList.contains('armed')) { b.textContent = 'Erase'; h.textContent = has ? 'Both tapes: latest and manual.' : 'Nothing to erase.'; }

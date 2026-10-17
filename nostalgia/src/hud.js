@@ -146,9 +146,9 @@
   function mapImage() {
     if (MM.img) return MM.img;
     if (!N.world.built) return null;
-    const src = N.world.renderMap(MM.ppu);
-    const c = N.render.makeCanvas(src.width, src.height), g = c.getContext('2d');
-    g.drawImage(src, 0, 0);
+    // a canvas of our own (not N.world's cached copy), graded in place: one 3000 x 2250 image, not two
+    const c = N.world.renderMap(MM.ppu, { fresh: true }), g = c.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
     // night-VHS grade: cool + darken the land, keep the roads bright
     g.globalCompositeOperation = 'multiply';
     g.fillStyle = '#a99fb4'; g.fillRect(0, 0, c.width, c.height);

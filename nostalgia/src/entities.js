@@ -31,13 +31,18 @@
   let hash = new Map();
   const hkey = (i, j) => j * 4096 + i;
 
+  // rebuilt every step: the Map is cleared and refilled (same key order as a new Map) and the bucket
+  // arrays are recycled, so a step allocates no buckets
+  const bucketPool = [];
   function rebuildHash() {
-    hash = new Map();
+    for (const b of hash.values()) { b.length = 0; bucketPool.push(b); }
+    hash.clear();
     for (const e of list) {
       if (!e.alive) continue;
       const k = hkey(Math.floor(e.x / HC), Math.floor(e.y / HC));
       const b = hash.get(k);
-      if (b) b.push(e); else hash.set(k, [e]);
+      if (b) b.push(e);
+      else { const nb = bucketPool.pop() || []; nb.push(e); hash.set(k, nb); }
     }
   }
 
@@ -61,8 +66,8 @@
       N.emit('entity:remove', e);
     },
     /** Entities within r of (x,y) (centre distance minus their radius), optional predicate. */
-    query(x, y, r, pred) {
-      const out = [];
+    query(x, y, r, pred, into) {
+      const out = into || [];
       const i0 = Math.floor((x - r - 40) / HC), i1 = Math.floor((x + r + 40) / HC);
       const j0 = Math.floor((y - r - 40) / HC), j1 = Math.floor((y + r + 40) / HC);
       for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
@@ -121,33 +126,40 @@
   E.pushTo = pushTo;
 
   // Push overlapping solid actors apart (mass-weighted) and report bumps.
+  let nearBuf = [], nearBusy = false;
   function resolveOverlaps() {
-    for (const [k, b] of hash) {
-      void k;
+    for (const b of hash.values()) {
       for (const a of b) {
         if (!a.solid || !a.alive || a.noCollide) continue;
-        const near = E.query(a.x, a.y, (a.r || 4) + 2);
-        for (const o of near) {
-          if (o === a || o.id < a.id || !o.solid || o.noCollide) continue;
-          if (a.ignore === o || o.ignore === a) continue;
-          const dx = o.x - a.x, dy = o.y - a.y;
-          const rr = (a.r || 4) + (o.r || 4);
-          const d2 = dx * dx + dy * dy;
-          if (d2 >= rr * rr) continue;
-          const d = Math.sqrt(d2) || 0.01;
-          const nx = d2 > 0 ? dx / d : 1, ny = d2 > 0 ? dy / d : 0;
-          const pen = rr - d;
-          const ma = a.fixed ? 1e9 : a.mass || 1, mo = o.fixed ? 1e9 : o.mass || 1;
-          const ta = mo / (ma + mo), to = ma / (ma + mo);
-          if (!a.fixed) pushTo(a, a.x - nx * pen * ta, a.y - ny * pen * ta);
-          if (!o.fixed) pushTo(o, o.x + nx * pen * to, o.y + ny * pen * to);
-          const rel = ((a.vx || 0) - (o.vx || 0)) * nx + ((a.vy || 0) - (o.vy || 0)) * ny; // closing speed
-          const info = { a, b: o, nx, ny, speed: Math.max(0, rel) };
-          if (a.onBump) { try { a.onBump(o, info); } catch (err) { N.err('onBump', err); } }
-          if (o.onBump) { try { o.onBump(a, info); } catch (err) { N.err('onBump', err); } }
-          if (info.speed > 30) N.emit('bump', info);
-        }
+        // a scratch result array (a fresh one if an onBump handler re-entered this loop)
+        const own = !nearBusy, buf = own ? nearBuf : [];
+        buf.length = 0;
+        const near = E.query(a.x, a.y, (a.r || 4) + 2, null, buf);
+        if (own) nearBusy = true;
+        try { resolvePairs(a, near); } finally { if (own) nearBusy = false; }
       }
+    }
+  }
+  function resolvePairs(a, near) {
+    for (const o of near) {
+      if (o === a || o.id < a.id || !o.solid || o.noCollide) continue;
+      if (a.ignore === o || o.ignore === a) continue;
+      const dx = o.x - a.x, dy = o.y - a.y;
+      const rr = (a.r || 4) + (o.r || 4);
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= rr * rr) continue;
+      const d = Math.sqrt(d2) || 0.01;
+      const nx = d2 > 0 ? dx / d : 1, ny = d2 > 0 ? dy / d : 0;
+      const pen = rr - d;
+      const ma = a.fixed ? 1e9 : a.mass || 1, mo = o.fixed ? 1e9 : o.mass || 1;
+      const ta = mo / (ma + mo), to = ma / (ma + mo);
+      if (!a.fixed) pushTo(a, a.x - nx * pen * ta, a.y - ny * pen * ta);
+      if (!o.fixed) pushTo(o, o.x + nx * pen * to, o.y + ny * pen * to);
+      const rel = ((a.vx || 0) - (o.vx || 0)) * nx + ((a.vy || 0) - (o.vy || 0)) * ny; // closing speed
+      const info = { a, b: o, nx, ny, speed: Math.max(0, rel) };
+      if (a.onBump) { try { a.onBump(o, info); } catch (err) { N.err('onBump', err); } }
+      if (o.onBump) { try { o.onBump(a, info); } catch (err) { N.err('onBump', err); } }
+      if (info.speed > 30) N.emit('bump', info);
     }
   }
 
@@ -317,11 +329,15 @@
       }
       if (!p.vehicle) {
         for (const s of reg.values()) {
-          if (s.enabled && !s.enabled(p)) continue;
           const ex = s.entity ? s.entity.x : s.x, ey = s.entity ? s.entity.y : s.y;
           if (ex == null) continue;
-          const d = Math.hypot(ex - p.x, ey - p.y);
-          if (d > (s.r || 16) + p.r) continue;
+          const reach = (s.r || 16) + p.r, dx = ex - p.x, dy = ey - p.y;
+          if (dx > reach || dx < -reach || dy > reach || dy < -reach) continue; // hypot >= |dx|, |dy|: out of reach
+          const d = Math.hypot(dx, dy);
+          if (d > reach) continue;
+          // enabled() last: the in-range test is cheap, and some enabled() checks (shop hours, the story
+          // calendar) allocate; calling them for every registered interactable each step was ~10 MB/s
+          if (s.enabled && !s.enabled(p)) continue;
           const sc = (s.priority || 0) * 1000 - d;
           if (sc > bs) { bs = sc; best = s; }
         }

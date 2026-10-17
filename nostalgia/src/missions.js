@@ -367,7 +367,7 @@
           run.ff = null;
           const cp = run.cpData;
           if (cp) {
-            const V = N.vehicles, rideCp = cp.ride || (cp.vehicleType && V.canDrive && !V.canDrive(cp.vehicleType) ? { type: cp.vehicleType, as: null, angle: cp.angle } : null);
+            const V = N.vehicles, rideCp = cp.ride || (cp.ride === undefined && cp.vehicleType && V.canDrive && !V.canDrive(cp.vehicleType) ? { type: cp.vehicleType, as: null, angle: cp.angle } : null);
             if (rideCp && V.restoreRide && V.TYPES[rideCp.type]) {
               // A3: he was riding along (pillion / passenger / bus) at the checkpoint: back on the seat behind
               // an NPC driver, never at the wheel. The replayed script's own ride is kept when it seated him again.

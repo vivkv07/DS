@@ -945,7 +945,7 @@ async function main() {
       await page.evaluate(() => { N.input.setMove(null); if (N.player.vehicle) N.vehicles.exit(N.player, true); });
       check(st1.sp > st1.top * 0.7 && st1.err < 0.3 && st2.err < 0.5, type + ' on the stick: ' + st1.sp.toFixed(0) + ' u/s holding the line (heading error ' + st1.err.toFixed(2) + ' rad), turns to a new stick direction (' + st2.err.toFixed(2) + ' rad off)', { st1, st2 });
     }
-    // 13. save + load at the wheel of a car (debug) or as a bus passenger: back on foot, no stray copy left behind
+    // 13. save + load at the wheel of a car (debug): back on foot, no stray copy; as a bus passenger: a passenger again
     r = await page.evaluate(async () => {
       const p = N.player, r0 = window.__road;
       N.vehicles.list.slice().forEach((v) => { if (!v.seeded) N.vehicles.remove(v); });
@@ -959,11 +959,13 @@ async function main() {
         const loaded = N.save.load();
         await new Promise((res) => setTimeout(res, 300));
         const near = N.vehicles.list.filter((q) => q.alive && (q.type === 'ambassador' || q.type === 'bus') && Math.hypot(q.x - p.x, q.y - p.y) < 120).length;
-        out[kind] = { saved, loaded, veh: p.vehicle ? p.vehicle.type : null, mode: p.mode, stray: near };
+        out[kind] = { saved, loaded, veh: p.vehicle ? p.vehicle.type : null, mode: p.mode, stray: near, as: p.passenger || null, atWheel: !!(p.vehicle && p.vehicle.driver === p) };
+        if (p.vehicle) N.vehicles.exit(p, true);
       }
       return out;
     });
-    check(r.car.loaded && !r.car.veh && r.car.stray === 0 && r.bus.loaded && !r.bus.veh && r.bus.stray === 0, 'save + load in a debug Ambassador / riding a bus: on foot after the load, no stray copy left', r);
+    // A4: a save made riding along loads him riding along again (vehicles 'ride' section), never at the wheel
+    check(r.car.loaded && !r.car.veh && r.car.stray === 0 && r.bus.loaded && r.bus.veh === 'bus' && r.bus.as === 'passenger' && !r.bus.atWheel && r.bus.stray === 1, 'save + load in a debug Ambassador: on foot after the load, no stray copy; riding a bus: still a passenger (not at the wheel), only that bus', r);
     await fresh(page);
     await checkErrors(page, errors, 'adv');
   }

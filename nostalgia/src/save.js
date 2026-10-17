@@ -96,7 +96,7 @@
      *  minigames, cutscenes, dialogue, Chappal Meter, N.flags.no_save), else the missions' rules. */
     allowed() {
       const mode = N.state.mode;
-      if (mode === 'boot' || mode === 'title' || mode === 'gameover') return { ok: false, why: 'Not now.' };
+      if (mode === 'boot' || mode === 'title' || N.state.has('gameover')) return { ok: false, why: 'Not now.' };
       if (newerSave()) return { ok: false, why: NEWER_MSG };
       try {
         if (N.menus && typeof N.menus.canSave === 'function') { const c = N.menus.canSave(); return { ok: !!c.ok, why: c.ok ? null : c.reason }; }

@@ -114,6 +114,7 @@
     const j0 = Math.max(0, Math.floor(minY / CELL)), j1 = Math.min(GH - 1, Math.floor(maxY / CELL));
     const xs = polyXs;
     const lut = lutOf(map);
+    if (poly.length > 16) { fillPolyAET(poly, j0, j1, lut); return; }
     for (let j = j0; j <= j1; j++) {
       const y = (j + 0.5) * CELL;
       let n = 0;
@@ -131,6 +132,46 @@
     }
   }
   const polyXs = [];
+  // fillPoly for big polygons (lakes, parks, rock areas: hundreds of vertices): each row tests only the
+  // edges whose y range is near it (an active edge list) instead of every edge. The crossing test and the
+  // crossing x are the same expressions on the same (a, b) vertex pairs, so the spans are identical.
+  let aetE = new Float64Array(0), aetLo = new Int32Array(0), aetHi = new Int32Array(0), aetOrd = new Int32Array(0), aetAct = new Int32Array(0);
+  function fillPolyAET(poly, j0, j1, lut) {
+    const n = poly.length;
+    if (aetLo.length < n) { aetE = new Float64Array(n * 4); aetLo = new Int32Array(n); aetHi = new Int32Array(n); aetOrd = new Int32Array(n); aetAct = new Int32Array(n); }
+    const E = aetE, lo = aetLo, hi = aetHi, ord = aetOrd, act = aetAct;
+    for (let a = 0, b = n - 1; a < n; b = a++) {
+      const ya = poly[a][1], yb = poly[b][1];
+      E[a * 4] = poly[a][0]; E[a * 4 + 1] = ya; E[a * 4 + 2] = poly[b][0]; E[a * 4 + 3] = yb;
+      // rows this edge can cross, widened by a row each side (the exact test below decides)
+      lo[a] = Math.floor(Math.min(ya, yb) / CELL) - 1; hi[a] = Math.floor(Math.max(ya, yb) / CELL) + 1;
+      if (!(ya === ya && yb === yb)) { lo[a] = -1073741824; hi[a] = 1073741823; } // NaN: test it on every row, as before
+      ord[a] = a;
+    }
+    // edges by first row (insertion sort: polygons are rings, mostly already in runs)
+    for (let k = 1; k < n; k++) { const v = ord[k], l = lo[v]; let m = k; while (m > 0 && lo[ord[m - 1]] > l) { ord[m] = ord[m - 1]; m--; } ord[m] = v; }
+    const xs = polyXs;
+    let next = 0, na = 0;
+    for (let j = j0; j <= j1; j++) {
+      while (next < n && lo[ord[next]] <= j) act[na++] = ord[next++];
+      const y = (j + 0.5) * CELL;
+      let c = 0, w = 0;
+      for (let q = 0; q < na; q++) {
+        const a = act[q];
+        if (hi[a] < j) continue; // finished: drop it
+        act[w++] = a;
+        const o = a * 4, ya = E[o + 1], yb = E[o + 3];
+        if ((ya > y) !== (yb > y)) {
+          const x = E[o] + ((y - ya) / (yb - ya)) * (E[o + 2] - E[o]);
+          let k = c++;
+          while (k > 0 && xs[k - 1] > x) { xs[k] = xs[k - 1]; k--; }
+          xs[k] = x;
+        }
+      }
+      na = w;
+      for (let k = 0; k + 1 < c; k += 2) spanLUT(j, Math.ceil(xs[k] / CELL - 0.5), Math.floor(xs[k + 1] / CELL - 0.5), lut);
+    }
+  }
   // Thick polyline (a capsule per segment). Each row only visits the cells inside the segment's band
   // (|distance to the line| <= r, widened by a cell), not the segment's whole bounding box.
   function fillThickLine(pts, w, map, closed) {
@@ -447,17 +488,27 @@
     let gt = gt0;
     const gmark = (k) => { const t = performance.now(); gp[k] = Math.round((t - gt) * 10) / 10; gt = t; };
     const nodes = [], edges = [];
-    const ngrid = new Map();
+    // node lookup grid (16 u cells) as typed per-cell lists in insertion order (head / tail / next),
+    // sized to the roads' bounding box (+1 cell) once the points are final (see the 'nodes' pass)
+    let NG0 = 0, NGJ0 = 0, NGW = 0, NGH = 0, nHead = null, nTail = null, nNext = new Int32Array(1024);
     const getNode = (x, y) => {
       const gx = Math.floor(x / 16), gy = Math.floor(y / 16);
-      for (let j = gy - 1; j <= gy + 1; j++) for (let i = gx - 1; i <= gx + 1; i++) {
-        const l = ngrid.get(j * 4096 + i);
-        if (l) for (const id of l) { const n = nodes[id]; if ((n.x - x) ** 2 + (n.y - y) ** 2 < 100) return n; }
+      for (let j = gy - 1; j <= gy + 1; j++) {
+        const rj = j - NGJ0;
+        if (rj < 0 || rj >= NGH) continue;
+        for (let i = gx - 1; i <= gx + 1; i++) {
+          const ri = i - NG0;
+          if (ri < 0 || ri >= NGW) continue;
+          for (let id = nHead[rj * NGW + ri]; id >= 0; id = nNext[id]) { const n = nodes[id]; const ex = n.x - x, ey = n.y - y; if (ex * ex + ey * ey < 100) return n; }
+        }
       }
       const n = { id: nodes.length, x, y, links: [], inc: [], deg: 0, w: 0 };
       nodes.push(n);
-      const key = gy * 4096 + gx;
-      (ngrid.get(key) || ngrid.set(key, []).get(key)).push(n.id);
+      if (n.id >= nNext.length) { const nn = new Int32Array(nNext.length * 2); nn.set(nNext); nNext = nn; }
+      nNext[n.id] = -1;
+      const c = (gy - NGJ0) * NGW + (gx - NG0);
+      if (nHead[c] < 0) nHead[c] = n.id; else nNext[nTail[c]] = n.id;
+      nTail[c] = n.id;
       return n;
     };
     const RR = roads.filter((r) => r.kind !== 'path' && r.pts && r.pts.length > 1).map((r) => {
@@ -520,12 +571,19 @@
     let maxTol = 0;
     const rTol = new Float64Array(RR.length);
     for (let k = 0; k < RR.length; k++) { rTol[k] = RR[k].r.w / 2 + 6; maxTol = Math.max(maxTol, rTol[k]); }
+    // every segment's end points, flat (ax, ay, bx, by per global segment id): the scan below reads
+    // these instead of B.pts[sI][0] ...; kept in step with the snapped end points
+    const segXY = new Float64Array(NSEG * 4);
+    for (let k = 0; k < RR.length; k++) {
+      const P = RR[k].pts;
+      for (let s2 = 0, o = segBase[k] * 4; s2 < P.length - 1; s2++, o += 4) { segXY[o] = P[s2][0]; segXY[o + 1] = P[s2][1]; segXY[o + 2] = P[s2 + 1][0]; segXY[o + 3] = P[s2 + 1][1]; }
+    }
     for (let ai = 0; ai < RR.length; ai++) {
       const A = RR[ai];
       for (let e2 = 0; e2 < 2; e2++) {
         const end = e2 ? A.pts.length - 1 : 0;
         const p = A.pts[end], px = p[0], py = p[1];
-        let bB = null, bs = 0, bt = 0, bd2 = Infinity, bx = 0, by = 0;
+        let bi0 = -1, bs = 0, bt = 0, bd2 = Infinity, bx = 0, by = 0;
         for (let j = Math.floor((py - maxTol) / HC); j <= Math.floor((py + maxTol) / HC); j++) {
           for (let i = Math.floor((px - maxTol) / HC); i <= Math.floor((px + maxTol) / HC); i++) {
             const c = cellOf(i, j);
@@ -533,21 +591,24 @@
             for (let k = cellStart[c], ke = cellStart[c + 1]; k < ke; k++) {
               const gid = cellSeg[k], bi = segRoad[gid];
               if (bi === ai) continue;
-              const B = RR[bi], sI = gid - segBase[bi], a = B.pts[sI], b = B.pts[sI + 1];
-              const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
-              let t = l2 > 0 ? ((px - a[0]) * dx + (py - a[1]) * dy) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
-              const qx = a[0] + dx * t, qy = a[1] + dy * t, d2 = (qx - px) * (qx - px) + (qy - py) * (qy - py);
+              const o = gid * 4, ax = segXY[o], ay = segXY[o + 1];
+              const dx = segXY[o + 2] - ax, dy = segXY[o + 3] - ay, l2 = dx * dx + dy * dy;
+              let t = l2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+              const qx = ax + dx * t, qy = ay + dy * t, d2 = (qx - px) * (qx - px) + (qy - py) * (qy - py);
               const tol = rTol[bi];
-              if (d2 <= tol * tol && d2 < bd2) { bd2 = d2; bB = B; bs = sI; bt = t; bx = qx; by = qy; }
+              if (d2 <= tol * tol && d2 < bd2) { bd2 = d2; bi0 = bi; bs = gid - segBase[bi]; bt = t; bx = qx; by = qy; }
             }
           }
         }
-        if (!bB) continue;
+        if (bi0 < 0) continue;
+        const bB = RR[bi0];
         const segL = bB.cum[bs + 1] - bB.cum[bs];
         bB.splits.push({ d: bB.cum[bs] + segL * bt, x: bx, y: by });
         if (bd2 > 0.01) { // snap the endpoint onto the other road (unless it already is one of its points)
           p[0] = bx; p[1] = by;
           A.splits[end].x = bx; A.splits[end].y = by;
+          const o = end ? (segBase[ai] + end - 1) * 4 + 2 : segBase[ai] * 4;
+          segXY[o] = bx; segXY[o + 1] = by;
         }
       }
     }
@@ -582,6 +643,16 @@
       }
     }
     gmark('crossings');
+    {
+      // every split lies on a road segment, so inside the points' bounding box
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const A of RR) for (const sp of A.splits) { if (sp.x < x0) x0 = sp.x; if (sp.x > x1) x1 = sp.x; if (sp.y < y0) y0 = sp.y; if (sp.y > y1) y1 = sp.y; }
+      if (x0 <= x1) {
+        NG0 = Math.floor(x0 / 16) - 1; NGJ0 = Math.floor(y0 / 16) - 1;
+        NGW = Math.floor(x1 / 16) + 2 - NG0; NGH = Math.floor(y1 / 16) + 2 - NGJ0;
+      }
+      nHead = new Int32Array(NGW * NGH).fill(-1); nTail = new Int32Array(NGW * NGH);
+    }
     for (const A of RR) {
       // stable insertion sort (same order as Array#sort): the splits are the road's own points, already
       // in order, plus a few junctions appended, so this is ~linear and allocates nothing
@@ -647,7 +718,7 @@
             const l = nb.get(j * 1000 + i); if (!l) continue;
             for (const n of l) {
               if (pred && !pred(n)) continue;
-              const d = (n.x - x) ** 2 + (n.y - y) ** 2;
+              const ex = n.x - x, ey = n.y - y, d = ex * ex + ey * ey;
               if (d < bd) { bd = d; best = n; }
             }
           }
@@ -782,8 +853,9 @@
           const qx = a[0] + dx * t - cx, qy = a[1] + dy * t - cy;
           if (qx * qx + qy * qy > SG * SG * 0.6) continue;
           const key = j * 4096 + i;
-          const l = segGrid.get(key);
-          if (l) l.push(r, s); else segGrid.set(key, [r, s]);
+          let l = segGrid.get(key);
+          if (!l) segGrid.set(key, (l = { rs: [], xy: [] }));
+          l.rs.push(r, s); l.xy.push(a[0], a[1], b[0], b[1]);
         }
       }
     }
@@ -808,16 +880,19 @@
       for (let j = cj - ring; j <= cj + ring; j++) {
         const rowEdge = j === cj - ring || j === cj + ring;
         for (let i = ci - ring; i <= ci + ring; i += rowEdge || !ring ? 1 : 2 * ring) {
-          const l = segGrid.get(j * 4096 + i);
-          if (!l) continue;
+          const cell = segGrid.get(j * 4096 + i);
+          if (!cell) continue;
+          // the segment end points are read from the cell's own flat copy (xy: ax, ay, bx, by per
+          // entry), not through r.pts (road objects come in many shapes: a megamorphic load each)
+          const l = cell.rs, xy = cell.xy;
           for (let k = 0; k < l.length; k += 2) {
-            const r = l[k], si = l[k + 1];
+            const r = l[k];
             if (pred && !pred(r)) continue;
-            const a = r.pts[si], b = r.pts[si + 1];
-            const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
-            let t = ((x - a[0]) * dx + (y - a[1]) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
-            const qx = a[0] + dx * t, qy = a[1] + dy * t, d2 = (qx - x) * (qx - x) + (qy - y) * (qy - y);
-            if (d2 < bd2) { bd2 = d2; br = r; bs = si; bt = t; bx = qx; by = qy; }
+            const o = k * 2, ax = xy[o], ay = xy[o + 1];
+            const dx = xy[o + 2] - ax, dy = xy[o + 3] - ay, l2 = dx * dx + dy * dy || 1;
+            let t = ((x - ax) * dx + (y - ay) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+            const qx = ax + dx * t, qy = ay + dy * t, d2 = (qx - x) * (qx - x) + (qy - y) * (qy - y);
+            if (d2 < bd2) { bd2 = d2; br = r; bs = l[k + 1]; bt = t; bx = qx; by = qy; }
           }
         }
       }
@@ -921,9 +996,12 @@
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
       const l = keepGrid.get(j * 4096 + i);
       if (!l) continue;
+      const x1 = x + w, y1 = y + h;
       for (const k of l) {
-        const qx = U.clamp(k.x, x, x + w), qy = U.clamp(k.y, y, y + h);
-        if ((qx - k.x) ** 2 + (qy - k.y) ** 2 < k.r * k.r) return false;
+        const kx = k.x, ky = k.y;
+        const qx = kx < x ? x : kx > x1 ? x1 : kx, qy = ky < y ? y : ky > y1 ? y1 : ky; // U.clamp
+        const ex = qx - kx, ey = qy - ky;
+        if (ex * ex + ey * ey < k.r * k.r) return false;
       }
     }
     return true;
@@ -2170,14 +2248,6 @@
   const treeCache = makeLRU(500);
   W.spriteCaches = { roofCache, treeCache };
 
-  function wallSeg(b, face) {
-    switch (face) {
-      case 'N': return [b.x, b.y, b.x + b.w, b.y];
-      case 'S': return [b.x + b.w, b.y + b.d, b.x, b.y + b.d];
-      case 'W': return [b.x, b.y + b.d, b.x, b.y];
-      default: return [b.x + b.w, b.y, b.x + b.w, b.y + b.d];
-    }
-  }
   function wallPx(b, face) {
     const R = N.render;
     const dist = face === 'N' ? b.y - R.camY : face === 'S' ? b.y + b.d - R.camY : face === 'W' ? b.x - R.camX : b.x + b.w - R.camX;
@@ -2254,15 +2324,30 @@
     const wx = ax + ux * uc - R.camX, wy = ay + uy * uc - R.camY;
     const jux = ux * k, juy = uy * k, jvx = wx * Z * P, jvy = wy * Z * P;
     const px = R.W / 2 + wx * k, py = R.H / 2 + wy * k;
-    ctx.setTransform(jux, juy, jvx, jvy, px - jux * uc - jvx * vc, py - juy * uc - jvy * vc);
-    return [jux, juy, jvx, jvy, px - jux * uc - jvx * vc, py - juy * uc - jvy * vc];
+    const M = wallM;
+    M[0] = jux; M[1] = juy; M[2] = jvx; M[3] = jvy; M[4] = px - jux * uc - jvx * vc; M[5] = py - juy * uc - jvy * vc;
+    ctx.setTransform(M[0], M[1], M[2], M[3], M[4], M[5]);
+    return M;
+  }
+  // the last wall transform (scratch: drawWallDetail copies it into litWalls when a wall glows)
+  const wallM = new Float64Array(6);
+  // lit walls this frame, flat: 6 transform numbers, the Path2D, the colour (8 slots per wall)
+  function pushLit(m, path, col) {
+    litWalls.push(m[0], m[1], m[2], m[3], m[4], m[5], path, col);
   }
 
   function drawWallDetail(ctx, b, face) {
     const px = wallPx(b, face);
     if (px < 4.5) return; // thin slivers near the screen centre: plain wall reads fine
     const R = N.render;
-    const [ax, ay, bx, by] = wallSeg(b, face);
+    // the wall's ground segment (a -> b) in the wall's winding
+    let ax, ay, bx, by;
+    switch (face) {
+      case 'N': ax = b.x; ay = b.y; bx = b.x + b.w; by = b.y; break;
+      case 'S': ax = b.x + b.w; ay = b.y + b.d; bx = b.x; by = b.y + b.d; break;
+      case 'W': ax = b.x; ay = b.y + b.d; bx = b.x; by = b.y; break;
+      default: ax = b.x + b.w; ay = b.y; bx = b.x + b.w; by = b.y + b.d;
+    }
     const L = Math.hypot(bx - ax, by - ay), ux = (bx - ax) / L, uy = (by - ay) / L;
     const floors = b.floors || Math.max(1, Math.round(b.h / 10.5));
     const fh = b.h / floors;
@@ -2282,20 +2367,21 @@
           const open = !(N.clock.minutes < 9 * 60 || N.clock.minutes > 22 * 60);
           ctx.fillStyle = open ? '#3a2a22' : '#7d8088'; ctx.fill(g.gf);
           if (open) { ctx.fillStyle = '#b08850'; ctx.fill(g.gfLines); }
-          if (open && night > 0.2) litWalls.push([m, g.gfLit, '#ffc860']);
+          if (open && night > 0.2) pushLit(m, g.gfLit, '#ffc860');
         } else { ctx.fillStyle = g.gfCol; ctx.fill(g.gf); }
       }
     }
-    if (night > 0.2 && g.anyLit) litWalls.push([m, g.lit, '#ffd27a']);
+    if (night > 0.2 && g.anyLit) pushLit(m, g.lit, '#ffd27a');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   // light layer: lit windows / open shops (warm) over the night overlay
   function drawLitWalls(ctx, night) {
     ctx.globalAlpha = Math.min(1, night * 1.25);
-    for (const [m, path, col] of litWalls) {
-      ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
-      ctx.fillStyle = col; ctx.fill(path);
+    const lw = litWalls;
+    for (let i = 0; i < lw.length; i += 8) {
+      ctx.setTransform(lw[i], lw[i + 1], lw[i + 2], lw[i + 3], lw[i + 4], lw[i + 5]);
+      ctx.fillStyle = lw[i + 7]; ctx.fill(lw[i + 6]);
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
@@ -4048,13 +4134,18 @@
   }
 
   /* --------------------------------------------------------- enqueue */
+  let lampLights = [], porchLights = [];
   W.draw = function () {
     if (!W.built) return;
     const R = N.render, D = N.draw, v = R.view;
     const night = R.night || 0;
     const m = 140; // landmarks just outside the view may still cast shadows into it
-    litWalls = [];
+    litWalls.length = 0;
     const lights = R.lights;
+    // light records are recycled frame to frame (render.js drains R.lights every flush); if the last
+    // frame's were not drained, start new ones rather than rewrite records still in the list
+    if (lights.length) { lampLights = []; porchLights = []; }
+    let nLamp = 0, nPorch = 0;
     beginRoofs();
     W.queryStructures(v.x0 - m, v.y0 - m, v.x1 + m, v.y1 + m, (s) => {
       const vis = s.x1 >= v.x0 - 6 && s.x0 <= v.x1 + 6 && s.y1 >= v.y0 - 6 && s.y0 <= v.y1 + 6;
@@ -4065,13 +4156,21 @@
         return;
       }
       if (night > 0.05 && s.t === 'lamp') {
-        for (const a of s.arms) lights.push({ x: s.x + a[0] * 1.6, y: s.y + a[1] * 1.6, r: s.tube ? 46 : 64, color: s.tube ? '#bfe8ff' : '#ffa040', intensity: s.tube ? 0.75 : 0.95 });
+        for (const a of s.arms) {
+          const L = lampLights[nLamp] || (lampLights[nLamp] = { x: 0, y: 0, r: 0, color: '', intensity: 0 });
+          nLamp++;
+          L.x = s.x + a[0] * 1.6; L.y = s.y + a[1] * 1.6; L.r = s.tube ? 46 : 64; L.color = s.tube ? '#bfe8ff' : '#ffa040'; L.intensity = s.tube ? 0.75 : 0.95;
+          lights.push(L);
+        }
       }
       if (vis) R.queue('structures', R.distKey(s.cx, s.cy), sfn(s));
       if (night > 0.2 && vis && s.porch && s.cwall) {
         const c = s.cwall, f = s.front;
         const gx = f === 'W' ? c.x : f === 'E' ? c.x + c.w : c.x + c.w / 2, gy = f === 'N' ? c.y : f === 'S' ? c.y + c.h : c.y + c.h / 2;
-        lights.push({ x: (gx + s.cx) / 2, y: (gy + s.cy) / 2, r: 24, color: '#ffc870', intensity: 0.5, h: 4 });
+        const L = porchLights[nPorch] || (porchLights[nPorch] = { x: 0, y: 0, r: 24, color: '#ffc870', intensity: 0.5, h: 4 });
+        nPorch++;
+        L.x = (gx + s.cx) / 2; L.y = (gy + s.cy) / 2;
+        lights.push(L);
       }
     });
     enqueueRoofs();

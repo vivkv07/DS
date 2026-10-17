@@ -131,6 +131,23 @@ async function newer(browser) {
   });
   check(c.cont && c.from === 'backup' && c.money === 777 && c.stillNew, 'CONTINUE plays the older backup and leaves the newer save alone', c);
   check(c.after === null && c.saved, 'after erasing the saves, saving works again', c);
+  // only a newer save on this browser: the settings' Erase button still works (it is the way out)
+  await page.evaluate(() => {
+    const K = N.save.KEY, V = N.save.VERSION;
+    N.game.quitToTitle();
+    localStorage.clear();
+    localStorage.setItem(K, JSON.stringify({ game: 'nostalgia', v: V + 1, t: 2, meta: {}, data: {} }));
+    N.menus.openSettings();
+  });
+  await sleep(300);
+  const e = await page.evaluate(async () => {
+    const b = document.querySelector('.st-erase');
+    const r = { disabled: !b || b.disabled };
+    if (b && !b.disabled) { b.click(); await new Promise((res) => setTimeout(res, 50)); b.click(); }
+    r.after = N.save.tooNew; r.keys = [localStorage.getItem(N.save.KEY), localStorage.getItem(N.save.KEY + '.manual')];
+    return r;
+  });
+  check(!e.disabled && e.after === null && e.keys[0] === null && e.keys[1] === null, 'Erase is enabled with only a newer save and lifts the block', e);
   await checkErrors(page, errors, 'newer');
   await context.close();
 }

@@ -66,6 +66,31 @@
       for (const q of r.pts) { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }
       return { rd: r, bb: [x0, y0, x1, y1] };
     });
+    // the roads bucketed by bounding box on a coarse grid: the crossing search below only tests the
+    // roads whose bucket a rail segment's box touches (ascending index = the same order as a full scan)
+    const RB_CELL = 512, rbCells = new Map();
+    roads.forEach((RB, k) => {
+      const bb = RB.bb;
+      for (let j = Math.floor(bb[1] / RB_CELL); j <= Math.floor(bb[3] / RB_CELL); j++) {
+        for (let i = Math.floor(bb[0] / RB_CELL); i <= Math.floor(bb[2] / RB_CELL); i++) {
+          const key = j * 65536 + i, l = rbCells.get(key);
+          if (l) l.push(k); else rbCells.set(key, [k]);
+        }
+      }
+    });
+    const rbSeen = new Uint32Array(roads.length);
+    let rbStamp = 0;
+    const roadsNear = (sx0, sy0, sx1, sy1) => {
+      const out = [];
+      rbStamp++;
+      for (let j = Math.floor(sy0 / RB_CELL); j <= Math.floor(sy1 / RB_CELL); j++) {
+        for (let i = Math.floor(sx0 / RB_CELL); i <= Math.floor(sx1 / RB_CELL); i++) {
+          const l = rbCells.get(j * 65536 + i);
+          if (l) for (const k of l) if (rbSeen[k] !== rbStamp) { rbSeen[k] = rbStamp; out.push(k); }
+        }
+      }
+      return out.sort((a, b) => a - b);
+    };
     prepared = (D.rails || []).map((r) => {
       const segs = [];
       for (let i = 0; i < r.pts.length - 1; i++) {
@@ -89,8 +114,8 @@
       const xings = [];
       for (const sg of segs) {
         const sx0 = Math.min(sg.a[0], sg.b[0]), sx1 = Math.max(sg.a[0], sg.b[0]), sy0 = Math.min(sg.a[1], sg.b[1]), sy1 = Math.max(sg.a[1], sg.b[1]);
-        for (const RB of roads) {
-          const bb = RB.bb, rd = RB.rd;
+        for (const rk of roadsNear(sx0, sy0, sx1, sy1)) {
+          const RB = roads[rk], bb = RB.bb, rd = RB.rd;
           if (bb[2] < sx0 || bb[0] > sx1 || bb[3] < sy0 || bb[1] > sy1) continue;
           for (let k = 0; k < rd.pts.length - 1; k++) {
             const I = segInter(sg.a, sg.b, rd.pts[k], rd.pts[k + 1]);
