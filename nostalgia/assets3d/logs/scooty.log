@@ -1,0 +1,7 @@
+00:00.096  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building scooty (vehicle)
+00:04.058  render           | Saved: '/tmp/nostalgia_blender/text_b7346486.png'
+00:04.334  render           | Saved: '/tmp/nostalgia_blender/text_b7346486.png'
+00:04.506  render           | Saved: '/tmp/nostalgia_blender/text_0ddcb91d.png'
+[kit] uv: 1092 faces unwrapped along seams, 622 smart-projected
+[kit] uv atlas: 44 islands rescaled

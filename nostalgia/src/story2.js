@@ -103,6 +103,20 @@
   function nick() { return (N.player && (N.player.nick || N.player.name)) || 'Chinnu'; }
   function emailOf() { return (nick().toLowerCase().replace(/[^a-z0-9]+/g, '') || 'chinnu') + '_charminar2'; }
   function toast(t, ms, key) { try { if (N.hud && N.hud.toast) N.hud.toast(plain(t), ms || 2600, key ? { key } : undefined); } catch (e) { N.err('story2.toast', e); } }
+  /** The next mission's clue as a toast a few seconds after MISSION PASSED. HUD toasts wait while the centre is
+   *  busy (dialogue, cutscenes, J-cards), so a clue queued once the next mission has begun would pop up in the
+   *  middle of it (seen: the M12 tape clue over the Chand Raat chase): it is only queued in free roam. */
+  function clueToast(t, ms, nextId) {
+    let tries = 0;
+    const go = () => {
+      const M = N.missions;
+      if (!M || M.active || (nextId && M.isDone && M.isDone(nextId))) return;
+      // a shop card / cutscene in the way: try again for a while (the clue also waits on its giver's J-card)
+      if (N.state && N.state.mode !== 'play') { if (++tries < 20) setTimeout(go, 1000); return; }
+      toast(t, ms);
+    };
+    setTimeout(go, 4600);
+  }
   function sfx(name, o) { try { if (N.audio && N.audio.sfx) return N.audio.sfx(name, o || { ui: true }); } catch (e) { /* audio never breaks the story */ } return false; }
   function isDone(id) { try { return !!(N.missions && N.missions.isDone && N.missions.isDone(id)); } catch (e) { return false; } }
   const F = () => N.flags || (N.flags = {});
@@ -1369,7 +1383,7 @@
     },
     onPass() {
       F().ramulu_agarwal = true;
-      setTimeout(() => toast('Ammi phoned the colony STD booth: Abba forgot his tiffin again. (Fri 25 Jul, Immu\'s house)', 4200), 4600);
+      clueToast('Ammi phoned the colony STD booth: Abba forgot his tiffin again. (Fri 25 Jul, Immu\'s house)', 4200, 'opening_day');
     },
   };
 
@@ -1484,7 +1498,7 @@
       F().prasads_open = true;
       F().clue_peacock = true;
       journalNote('clue_peacock', 'Bunty\'s flyer: "Colony Ganesh Committee. Lorry for immersion: behind the station dressed as a palace. Look for the peacock." (Tue 9 Sep, the colony pandal)');
-      setTimeout(() => toast('Bunty\'s flyer: "Lorry for immersion: behind the station dressed as a palace. Look for the peacock."', 4600), 4600);
+      clueToast('Bunty\'s flyer: "Lorry for immersion: behind the station dressed as a palace. Look for the peacock."', 4600, 'agle_baras');
     },
   };
 
@@ -1927,7 +1941,7 @@
       await rec(m);
       m.meter('normal');
     },
-    onPass() { setTimeout(() => toast('Mon 24 Nov: a cassette drops through the window. Immu\'s last tape. (Chand Raat, home)', 4600), 4600); },
+    onPass() { clueToast('Mon 24 Nov: a cassette drops through the window. Immu\'s last tape. (Chand Raat, home)', 4600, 'chand_raat'); },
   };
 
   /* ================================================================== M12 chand_raat — Chand Raat (THE FINALE AT CHARMINAR) */
@@ -1987,6 +2001,7 @@
     const gal = placeOf('charminar_gallery') || placeOf('charminar'), cafe = placeOf('irani_cafe_19');
     if (!gal || !cafe || isFF(m)) return;
     const R = N.render, p = N.player;
+    const back = topDownFor(); onEnd(m, back);
     const plaza = placeOf('charminar_plaza') || gal;
     const coat = { x: plaza.x, y: plaza.y, t: 0, draw: PAINT.raincoat, layer: 'sky', sort: 4, margin: 200 };
     prop(m, 's2:raincoat', coat);
@@ -2018,9 +2033,28 @@
     S2.gallery = null;
     sfx('ui_select');
     m.blip('irani_cafe_19', { color: '#f2c230', icon: 'star', label: 'The yellow raincoat went in here', pulse: true, route: true });
-    toast('Marked: Café Noor-e-Iran. A yellow raincoat, the side door.', 2600);
+    // same key as the "A yellow raincoat! E: mark it." hint, so it replaces it at once (it used to queue behind
+    // it and hang over the start of the chase)
+    toast('Marked: Café Noor-e-Iran. A yellow raincoat, the side door.', 2600, 'mark');
     R.camOverride = null;
     p.controlsLocked = prevLock;
+    back();
+  }
+  /** A story-camera beat that is drawn with 2D story props (M12's raincoat seen from the gallery; the ending's
+   *  kite train, plane light and pigeons) has nothing to show in a 3D view (N.view 'tps' / 'fps'): those props
+   *  have no 3D model. The beat plays top-down instead, without touching the saved view preference; the
+   *  returned function puts the player's view back (unless he changed it himself meanwhile). */
+  function topDownFor() {
+    const V = N.view;
+    if (!V || typeof V.set !== 'function' || typeof V.is3D !== 'function' || !V.is3D()) return () => {};
+    const prev = V.mode;
+    try { V.set('top', { noSave: true }); } catch (e) { N.err('story2.view', e); return () => {}; }
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      try { if (V.want === 'top' && V.mode === 'top') V.set(prev, { noSave: true }); } catch (e) { N.err('story2.view', e); }
+    };
   }
   /** The respect zones round the chase (by distance from the café), and the pursuers' buffer: 40 u round a
    *  masjid or any other faith zone; Charminar's interior (its top-floor mosque) only up to its walls, since
@@ -2562,6 +2596,8 @@
     await sc.say('kite_chacha', kites >= 12 ? 'All twelve. Now watch, *beta*.' : kites + ' kites. Enough to make the sky look busy. Watch.');
     try { if (N.audio && N.audio.music && N.audio.ready) N.audio.music.play('ending'); } catch (e) { /* ignore */ }
     N.emit('story2:ending', { phase: 'alaap', kites });
+    // from the kite train to the white-out the ending is drawn with 2D story props: top-down in a 3D view
+    const back2d = topDownFor(); onEnd(sc, back2d);
     kiteTrain(sc, Math.max(0, kites), nowT());
     await sc.cutscene([camSteps('charminar', 0.7, 2200), { type: 'wait', ms: Math.max(1500, kites * 600) },
       kites >= 12 ? { type: 'text', lines: ['Twelve kites on one string, into the floodlight beside the minarets: a fifth minar of paper.'], ms: 3600 } : { type: 'text', lines: [kites ? kites + ' kites rise on one long string into the floodlight beside the minarets.' : 'The floodlight beside the minarets. One bare string, waiting for next Sankranti.'], ms: 3200 }], { keepCamera: false });
@@ -2601,6 +2637,7 @@
       { type: 'fade', to: 'white', ms: 1200 },
     ], { keepCamera: false });
     if (N.render) N.render.camOverride = null;
+    back2d();
     F().ending_done = true;
     N.emit('story2:ending', { phase: 'end' });
   }

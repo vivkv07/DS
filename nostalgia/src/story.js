@@ -53,7 +53,8 @@
  *     playMatch(m, params) -> result            the LB match ('match'), falls back to 'cricket'
  *     chapterCard(n) -> cutscene steps, money(m, paise, why, companion), at(h, mi)
  *   debug  {mg: null|'win'|'lose' (forces minigame autoplay), fastRides: false, skip() (finishes the
- *          current kit step), target() -> {x, y} of the current goal, use() (fires the current act/press)}
+ *          current kit step), target() -> {x, y} of the current goal, use() (fires the current act/press),
+ *          expire() (runs the soft timers out: M5's late branch)}
  *
  * Flags written: prologue_seen, lock_1..lock_4 + riddle_1..riddle_4 (the Lock page), bunty_words
  *   [...], meter_live + sa6_unlocked (M3), side_cricket (M4), clue5_solved (M6), power_cut (SA2 /
@@ -933,11 +934,21 @@
   function homeTeam(spec) {
     if (spec && spec !== 'chinnu_xi') return spec;
     const nick = (N.player && N.player.nick) || 'Chinnu';
-    if (nick === 'Chinnu') return 'chinnu_xi';
-    const name = nick + ' XI', short = (nick.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) || 'HOME') + ' XI';
+    // the score bug's short name: a short nickname whole ("PINTU XI", "RAJU XI"), a long one cut like the
+    // engine's own "CHIN XI" (never "PINT XI")
+    const letters = nick.toUpperCase().replace(/[^A-Z]/g, '');
+    const name = nick + ' XI', short = ((letters.length <= 5 ? letters : letters.slice(0, 4)) || 'HOME') + ' XI';
     const T = N.cricketMatch && N.cricketMatch.TEAMS && N.cricketMatch.TEAMS.chinnu_xi;
-    if (!T || !Array.isArray(T.players)) return { id: 'chinnu_xi', name, short };
-    return { id: 'chinnu_xi', name, short, players: T.players.map((q) => (q && q.hero ? Object.assign({}, q, { name: nick }) : q)) };
+    if (!T || !Array.isArray(T.players)) return nick === 'Chinnu' ? 'chinnu_xi' : { id: 'chinnu_xi', name, short };
+    // a summer-camp side of colony kids: Bunty-anna is 19 (bible §2.2, the Committee President with an RX100),
+    // so his place goes to Pappu from the colony; he watches from the stands
+    const players = T.players.map((q) => {
+      if (!q) return q;
+      if (q.hero) return Object.assign({}, q, { name: nick });
+      if (q.name === 'Bunty') return Object.assign({}, q, { name: 'Pappu', look: Object.assign({}, q.look || {}, { shades: false, puff: false }) });
+      return q;
+    });
+    return { id: 'chinnu_xi', name, short, players };
   }
   /** The LB Stadium match (cricket_match.js 'match'); the gully `cricket` minigame stands in when it is missing. */
   async function playMatch(m, params) {
@@ -2574,7 +2585,26 @@
     if (S.kiteTick && mode() === 'play') S.kiteTick(dt);
     if (S.tickFns) for (const fn of S.tickFns) { try { fn(dt); } catch (e) { N.err('story.tickFn', e); } }
     if (S.dark) S.dark.t += dt;
-    if (mode() === 'play') { giversTick(dt); powerCutTick(dt); }
+    if (mode() === 'play') { giversTick(dt); powerCutTick(dt); mountGuard(); }
+  }
+  /** A mission cycle / Scooty waiting to be mounted beside a shop: ACTION must get on it, not open the shop card
+   *  (shops sit at priority 3 over a parked vehicle's 0: Nanna's cycle at the girni is 20 u from the chemist,
+   *  the hired cycle at Raju Cycle Taxi, Bunty's cycle at Paradise). While the player stands by an unmounted
+   *  vehicle of the running mission (story.js or story2.js), shops.js's per-mission lock is on. */
+  function mountGuard() {
+    const r = run();
+    if (!r) return;
+    const p = N.player;
+    let near = false;
+    if (p && !p.vehicle && Array.isArray(r.spawned)) {
+      for (const s of r.spawned) {
+        const e = s && s.e;
+        if (!e || e.kind !== 'vehicle' || e.alive === false || e.noEnter || e.locked || e.driver || !(e.T && e.T.kidOk)) continue;
+        if (Math.hypot(e.x - p.x, e.y - p.y) < 30) { near = true; break; }
+      }
+    }
+    if (near) { if (!r.lockShops) r.lockShops = 'story:mount'; }
+    else if (r.lockShops === 'story:mount') r.lockShops = false;
   }
   // pin the player in the queue after the player system moved him
   function pinTick() {
@@ -2610,6 +2640,9 @@
     debug: {
       mg: null, mgTimeScale: null, fastRides: false,
       skip() { const s = S.step; if (s && s.skip) { s.skip(); return s.kind; } return null; },
+      /** Runs every running soft timer out on the next tick (tests: M5's "AMMA COMES OUT" late branch without
+       *  the four-minute wait). Returns how many timers it ended. */
+      expire() { let n = 0; for (const T of S.timers) if (T.on && !T.expired) { T.left = 0.001; n++; } return n; },
       use() { for (const st of S.acts.values()) if (!st.used) { st.used = true; return true; } for (const o of S.offers) if (!o.used) { o.used = true; return true; } return false; },
       target() {
         if (S.step && S.step.target) { const p = pos(S.step.target); if (p) return { x: p.x, y: p.y }; }
@@ -2636,6 +2669,19 @@
     if (mode() === 'play' && !run()) prologue();
   });
   for (const ev of ['mission:complete', 'mission:fail', 'mission:abort']) N.on(ev, () => { cleanupAll(); });
+  // A ▶▶ / ◀◀ jump to another day (a mission's start date, a scene's next morning, a replay) leaves last night
+  // behind: the Chappal Meter from before the jump (e.g. the curfew level after an SA1 pandal night at 22:00)
+  // must not ride into the next afternoon's mission, where a 'frozen' meter policy would hold it all mission
+  // long and hand it back after MISSION PASSED (found in the playthrough: M10 ended at Chappal Meter 1).
+  // Days that pass normally in free roam keep the meter; a scripted (locked) meter is left alone.
+  N.on('calendar:change', (d) => {
+    try {
+      if (!d || d.reason !== 'jump' || !d.prev || !d.date) return;
+      if (d.prev.y === d.date.y && d.prev.m === d.date.m && d.prev.d === d.date.d) return;
+      const W = wanted();
+      if (W && (W.level | 0) > 0 && W.locked == null) wantedClear('sleep');
+    } catch (e) { N.err('story.newday', e); }
+  });
   N.on('mission:complete', () => { const p = N.player; if (p) S.stepOut = { x: p.x, y: p.y }; });
   N.on('mission:start', (d) => {
     cleanupAll(); clearGivers();

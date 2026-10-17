@@ -1,0 +1,60 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 96784,
+ "clips": {},
+ "family": "landmark",
+ "file": "gulzar_houz.glb",
+ "front": "-Y",
+ "id": "gulzar_houz",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 94.5,
+ "kit": 1,
+ "materials": [
+  "M_gulzar_houz_granite_grey",
+  "M_gulzar_houz_lime_plaster",
+  "M_gulzar_houz_lime_plaster_shadow",
+  "M_gulzar_houz_granite_grey.001",
+  "M_gulzar_houz_iron_black",
+  "M_gulzar_houz_lime_plaster.001"
+ ],
+ "max": [
+  11.0,
+  11.0,
+  14.6
+ ],
+ "meta": {
+  "fit": "footprint",
+  "floodlit": false,
+  "footprint": [
+   22,
+   22
+  ],
+  "height": 15,
+  "landmark": "gulzar_houz"
+ },
+ "min": [
+  -11.0,
+  -11.0,
+  0.0
+ ],
+ "notes": [],
+ "script": "oldcity.chowk",
+ "size": [
+  22.0,
+  22.0,
+  14.6
+ ],
+ "tint": null,
+ "tris": 1568,
+ "units": "u",
+ "up": "Z"
+}

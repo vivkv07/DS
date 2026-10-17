@@ -1,0 +1,32 @@
+00:00.029  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building mecca_masjid (landmark)
+[kit] baked AO to vertex colours (32 samples) in 0.2s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+20:39:23 | INFO: Starting glTF 2.0 export
+20:39:23 | INFO: Extracting primitive: COL_mecca
+20:39:23 | INFO: Primitives created: 1
+20:39:23 | INFO: Extracting primitive: mecca_masjid_body
+20:39:23 | INFO: Primitives created: 6
+20:39:23 | INFO: Finished glTF 2.0 export in 0.1085960865020752 s
+
+[kit] mecca_masjid: 2439 tris (budget 20000) ok, 144.1 KB, clips [], anchors 0
+20:39:23 | INFO: Data are loaded, start creating Blender stuff
+20:39:23 | INFO: Blender create Mesh node COL_mecca
+20:39:23 | INFO: Blender create Mesh node mecca_masjid_body
+20:39:23 | INFO: glTF import finished in 0.05s
+00:03.507  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/mecca_masjid.png'
+[kit] preview mecca_masjid.png (384px, 20 spp) in 2.2s
+20:39:26 | INFO: Data are loaded, start creating Blender stuff
+20:39:26 | INFO: Blender create Mesh node COL_mecca
+20:39:26 | INFO: Blender create Mesh node mecca_masjid_body
+20:39:26 | INFO: glTF import finished in 0.03s
+00:04.816  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/mecca_masjid_back.png'
+[kit] preview mecca_masjid_back.png (320px, 14 spp) in 1.3s
+20:39:27 | INFO: Data are loaded, start creating Blender stuff
+20:39:27 | INFO: Blender create Mesh node COL_mecca
+20:39:27 | INFO: Blender create Mesh node mecca_masjid_body
+20:39:27 | INFO: glTF import finished in 0.04s
+00:06.419  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/mecca_masjid_arches.png'
+[kit] preview mecca_masjid_arches.png (320px, 14 spp) in 1.5s
+[kit] done mecca_masjid in 6.0s
