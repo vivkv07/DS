@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 46880,
+ "bytes": 37360,
  "clips": {},
  "family": "prop",
  "file": "tree_gulmohar.glb",
@@ -12,37 +12,37 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 45.8,
+ "kb": 36.5,
  "kit": 1,
  "materials": [
   "M_tree_gulmohar_imp",
   "M_tree_gulmohar"
  ],
  "max": [
-  131.742,
-  13.961,
-  30.184
+  121.887,
+  14.226,
+  30.026
  ],
  "meta": {
   "crown": [
-   31.478,
-   26.726
+   29.156,
+   27.831
   ],
   "doubleSided": true,
-  "height": 30.184,
+  "height": 28.069,
   "impostor": {
    "billboard": "cylindrical",
    "from": 800,
-   "h": 30.286,
+   "h": 28.176,
    "node": "tree_gulmohar_IMPOSTOR",
    "offset": [
-    114.599,
+    106.588,
     0,
     0
    ],
-   "w": 31.478,
-   "x0": -14.335,
-   "z0": -0.102
+   "w": 29.156,
+   "x0": -13.857,
+   "z0": -0.107
   },
   "kind": "gulmohar",
   "lods": [
@@ -55,29 +55,29 @@
      0,
      0
     ],
-    "tris": 516
+    "tris": 424
    },
    {
     "from": 180,
     "lod": 1,
     "node": "tree_gulmohar_LOD1",
     "offset": [
-     38.2,
+     35.529,
      0,
      0
     ],
-    "tris": 268
+    "tris": 152
    },
    {
     "from": 420,
     "lod": 2,
     "node": "tree_gulmohar_LOD2",
     "offset": [
-     76.399,
+     71.058,
      0,
      0
     ],
-    "tris": 84
+    "tris": 68
    }
   ],
   "tree": true,
@@ -92,19 +92,19 @@
   }
  },
  "min": [
-  -14.335,
-  -16.894,
-  -0.102
+  -13.857,
+  -13.936,
+  -0.107
  ],
  "notes": [],
  "script": "props_trees",
  "size": [
-  146.076,
-  30.855,
-  30.286
+  135.743,
+  28.162,
+  30.133
  ],
  "tint": null,
- "tris": 870,
+ "tris": 646,
  "units": "u",
  "up": "Z"
 }

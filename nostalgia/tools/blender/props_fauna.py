@@ -316,7 +316,10 @@ def build_bird(A, S):
         tl = sheet('tail', rows, (lambda i, k, tm=tm: Mt[tm(i, k)]) if callable(tm) else Mt[tm])
         kit.weights(tl, 'tail')
         objs.append(tl)
-    # legs
+    # legs (built standing, then tucked back: the bind pose is a clean flight pose)
+    legobjs = []
+    bz = S['bodyZ']
+    tuck = S['clip'].get('tuck', 1.35)
     if S.get('legs'):
         L = S['legs']
         for s, sfx in ((1, 'L'), (-1, 'R')):
@@ -325,7 +328,7 @@ def build_bird(A, S):
             pts = [(s * hx, hy, hz)] + [(s * hx * k, y, z) for (k, y, z) in L.get('mid', [])] + [(s * hx, fy, 0.02 * sc)]
             lg = P.taper('leg', pts, L['r'], seg=3, mat=Mt[L['mat']], cap_end=False)
             kit.weights(lg, 'leg_' + sfx)
-            objs.append(lg)
+            legobjs.append(lg)
             tl_ = L['toe']
             tw = tl_ * 0.12
             fx = s * hx
@@ -338,8 +341,17 @@ def build_bird(A, S):
                 toes.append(sheet('toe', [[b - sd, b + sd], [b + d * ln - sd * 0.3, b + d * ln + sd * 0.3]], Mt[L['mat']]))
             for o in toes:
                 kit.weights(o, 'leg_' + sfx)
-            objs += toes
-    # rig
+            legobjs += toes
+    if S.get('legs'):
+        hip = V(S['legs']['hip'])
+        hip.x = 0
+        Mk = Matrix.Translation(hip) @ Matrix.Rotation(tuck, 4, 'X') @ Matrix.Translation(-hip)
+        for o in legobjs:
+            o.data.transform(Mk)
+        objs += legobjs
+    for o in objs:
+        o.data.transform(Matrix.Translation((0, 0, -bz)))
+    # rig (body centre at the origin)
     B = S['bones']
     bones = [('root', (0, 0, 0), (0, -0.4 * sc, 0), None),
              ('body', B['body'][0], B['body'][1], 'root')]
@@ -359,6 +371,10 @@ def build_bird(A, S):
         hx, hy, hz = S['legs']['hip']
         for s, sfx in ((1, 'L'), (-1, 'R')):
             bones.append(('leg_' + sfx, (s * hx, hy, hz), (s * hx, S['legs']['foot_y'], 0.0), S.get('leg_parent', 'root')))
+    if S.get('legs'):
+        bones = [b if not b[0].startswith('leg_') else (b[0], V(b[1]), Mk @ V(b[2]), b[3]) for b in bones]
+    bones = [(n, V(h) - V((0, 0, bz)), V(t) - V((0, 0, bz)), p) for n, h, t, p in bones]
+    bones[0] = ('root', V((0, 0, 0)), V((0, -0.4 * sc, 0)), None)
     arm = P.rig(A, A.id + '_rig', [(n, tuple(h), tuple(t), p) for n, h, t, p in bones])
     ob = P.finish_prop(A, objs, size=S.get('tex', 64), double=True, ao_strength=0.45)
     P.skin(A, ob, arm)
@@ -389,12 +405,14 @@ def bird_clips(A, arm, S, ob):
     neck_fly = C.get('neck_fly')       # egret: (neck rx, head rx)
     has_legs = bool(S.get('legs'))
 
-    def legs_tucked(Pd, k=1.0):
+    bz = S['bodyZ']
+
+    def landed(Pd):
+        Pd['root'] = (None, (0, 0, bz))
         if has_legs:
-            LR(Pd, 'leg', qe(tuck * k, 0, 0))
+            LR(Pd, 'leg', qe(-tuck, 0, 0))
 
     def flight_common(Pd):
-        legs_tucked(Pd)
         if neck_fly:
             Pd['neck'] = (qe(neck_fly[0], 0, 0), None)
             Pd['head'] = (qe(neck_fly[1], 0, 0), None)
@@ -439,6 +457,7 @@ def bird_clips(A, arm, S, ob):
     def perch(t):
         Pd = {}
         folded(Pd)
+        landed(Pd)
         # head: quick turns (look left, back, right, back) + a small nod
         yaw = 0.7 * win(t, 0.10, 0.14, 0.32, 0.36) - 0.6 * win(t, 0.55, 0.59, 0.80, 0.84)
         nod = 0.15 * win(t, 0.42, 0.45, 0.48, 0.51)
@@ -454,6 +473,7 @@ def bird_clips(A, arm, S, ob):
     def peck(t):
         Pd = {}
         folded(Pd)
+        landed(Pd)
         k = win(t, 0.05, 0.22, 0.38, 0.50) + win(t, 0.55, 0.68, 0.80, 0.95)
         jab = 0.12 * (win(t, 0.24, 0.27, 0.30, 0.34) + win(t, 0.70, 0.73, 0.75, 0.79))
         pk = C.get('peck', (0.7, 0.6, 0.0))
@@ -484,7 +504,7 @@ def bird_previews(A, S, main='perch', main_frame=20):
                   {'name': 'fly', 'clip': 'glide' if main != 'glide' else 'flap', 'frame': 0 if main != 'glide' else fr // 2, 'size': 320, 'samples': 16,
                    'view': {'az': -30, 'el': 40, 'fov': 30}}],
         'sheet': {'name': 'sheet', 'size': 160, 'samples': 10, 'cols': 8,
-                  'view': {'az': -20, 'el': 10, 'fov': 30, 'target': (0, 0, H * 0.5), 'dist': span * 1.0 / math.tan(math.radians(15)) * 0.62},
+                  'view': {'az': -20, 'el': 10, 'fov': 30, 'target': (0, 0, 0.0), 'dist': span * 1.0 / math.tan(math.radians(15)) * 0.62},
                   'frames': [('flap', int(round(fr * k / 6))) for k in range(6)] + [('glide', 0), (main if main != 'glide' else 'perch', 30)]},
     }
 
