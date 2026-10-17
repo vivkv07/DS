@@ -19,6 +19,12 @@
  *    still blends into a relaxed stance with breathing, weight shift and glances; turning on the
  *    spot steps; getting on / off a vehicle blends seat <-> standing beside it. Timing follows the
  *    simulation clock (slow motion / pause freeze it with the game). Contact shadows under the feet.
+ *    Idle habits per person (uncles and constables clasp their hands behind the back, aunties hold
+ *    them in front or fold their arms, students hold their bag straps, kids swing their arms; they
+ *    come and go), talking gestures while a dialogue line or bark of theirs is up (hand raised in
+ *    small emphatic arcs, the other lifting, head nods), paunchy uncles get a swelling torso.
+ *    KAINCHI: a kid on an adult's roadster (T.kainchi) rides standing beside the frame, the right leg
+ *    through the triangle to the far pedal (hip abduction joint), the cycle leaning away.
  *    Two LODs (near / far), instanced: all people are 2 draw calls (+ shadows).
  *  - VEHICLES: a model per type of vehicles.js / traffic.js (cycle, ladies cycle, Hero roadster,
  *    Hercules, kid cycle, Scooty, Luna, Chetak, RX100, auto-rickshaw, Ambassador, Maruti 800,
@@ -29,9 +35,10 @@
  *    one atlas (HORN OK PLEASE, USE DIPPER AT NIGHT, CITY BUS, route boards, number plates), the
  *    rider / driver / pillion / passenger visible where the vehicle is open (cars, bus and lorry
  *    cabs have translucent fresnel glass: a second instanced draw of the glass triangles sharing the
- *    pool's instance buffers, so drivers show through), and first-person
- *    cockpits (car / bus / lorry interiors with the steering wheel and hands; handlebar + hands on
- *    two-wheelers and autos come from the vehicle model itself).
+ *    pool's instance buffers, so drivers show through; from inside, in first person, it turns nearly
+ *    clear), and first-person cockpits (car / bus / lorry interiors with the steering wheel and
+ *    hands, dials with ticks and a live speedometer needle; handlebar + hands, the headset speedo and
+ *    mirrors on two-wheelers and autos come from the vehicle model itself).
  *  - ANIMALS: cows (standing, ambling, lying on the road chewing), stray dogs (napping, trotting),
  *    goats; pigeon flocks (N.traffic.flocks + N.landmarks.flocks) pecking and bursting into flight.
  *  - PARITY LAYERS: mission markers (cylinders of light at objectives and givers), the interaction
@@ -59,7 +66,10 @@
  *    rider looks the same in both views.
  *
  * Public: N.view3dActors = {stats(), lookSpec(look), pools, F (feature ids), MODELS, models(),
- *   setOptions({glows, pools, decals, seasons, blobs}), debug {...}}.
+ *   setOptions({glows, pools, decals, seasons, blobs, fx, habits: true | false | 'always'}),
+ *   debug {camera, track, rec, counts, glints, fx, feet, riderAnkles, ...}}.
+ * Listens to (read only): 'dialogue:bark' / 'dialogue:line' (who is talking), 'vehicle:enter' /
+ * 'vehicle:exit' (mount blends).
  * Coordinates: model space +x forward, +y up, +z right (world angle a -> yaw -a); three (x, y, z) =
  * world (x, height, y). People template: an adult 9 u tall (kids are scaled 0.78 with a 1.16 head).
  */
@@ -573,10 +583,10 @@
     FACE_VEIL: 31, SPECS: 32, BEARD: 33, LONGBEARD: 34, MOUSTACHE: 35, BINDI: 36, TIE: 37, BELT: 38, BAG: 39, TOWEL: 40,
     APRON: 41, WALKMAN: 42, CAMERA: 43, SHOES: 44, P_STICK: 45, P_BASKET: 46, P_CLOTHBAG: 47, P_TRAY: 48, P_TRUNK: 49, P_POT: 50,
     P_BAT: 51, P_BALL: 52, P_NOTEBOOK: 53, P_PACKET: 54, P_RADIO: 55, P_CHAPPAL: 56, P_CHARKHI: 57, P_DAPPU: 58, P_NEEM: 59, P_TIFFIN: 60,
-    SHORTS: 61, FACE: 62, HAIR_FRINGE: 63,
+    SHORTS: 61, FACE: 62, HAIR_FRINGE: 63, SLIM: 64,
   };
   // pattern / logic bits in iFlags.w (bit index)
-  const BIT_STRIPES = 15, BIT_BORDER = 16, BIT_CHECKS = 17, BIT_KID = 18, BIT_FPS = 19;
+  const BIT_STRIPES = 15, BIT_BORDER = 16, BIT_CHECKS = 17, BIT_KID = 18, BIT_FPS = 19, BIT_ARMS = 20, BIT_NOBODY = 21; // first person: ARMS = only the arms drawn, NOBODY = no torso / neck (the eye sits behind them)
 
   function personVertexHeader(depth) {
     return [
@@ -585,9 +595,11 @@
       GLSL_UNPACK, GLSL_ROT,
       'float pFeat(float f){ if (f < 0.5) return 1.0; float i = f - 1.0; float w = floor(i / 20.0 + 0.0001); float b = i - w * 20.0;',
       '  float m = w < 0.5 ? iFlags.x : (w < 1.5 ? iFlags.y : (w < 2.5 ? iFlags.z : iFlags.w)); return aBit(m, b); }',
+      // two angles packed in one float (12 bits each, 1/1000 rad, +-2.048): head yaw / pitch, leg abduction
+      'vec2 pUnp2(float v){ if (v < 0.5) return vec2(0.0); float hi = floor(v / 4096.0 + 0.00001); return vec2((hi - 2048.0) / 1000.0, (v - hi * 4096.0 - 2048.0) / 1000.0); }',
       'void pAnim(inout vec3 p, inout vec3 n){',
       '  float part = aSP.y;',
-      '  if (pFeat(aSP.z) < 0.5 || (part > 8.5 && part < 9.5 && aBit(iFlags.w, ' + BIT_FPS + '.0) > 0.5)) { p = vec3(0.0, -60.0, 0.0); return; }',
+      '  if (pFeat(aSP.z) < 0.5 || (part > 8.5 && part < 9.5 && aBit(iFlags.w, ' + BIT_FPS + '.0) > 0.5) || ((part < 4.5 || part > 8.5) && aBit(iFlags.w, ' + BIT_ARMS + '.0) > 0.5) || (part < 0.5 && aBit(iFlags.w, ' + BIT_NOBODY + '.0) > 0.5)) { p = vec3(0.0, -60.0, 0.0); return; }',
       '  bool foot = part > 9.5;',
       '  if ((part > 0.5 && part < 4.5) || foot) {',
       '    float side = foot ? (part < 10.5 ? -1.0 : 1.0) : ((part < 1.5 || (part > 2.5 && part < 3.5)) ? -1.0 : 1.0);',
@@ -596,6 +608,9 @@
       '      p = aRotZ(p, vec2(0.0, ' + ANK_Y.toFixed(3) + '), ank); n = aRotZ(n, vec2(0.0), ank); }',
       '    if (part > 2.5) { p = aRotZ(p, vec2(0.0, ' + KNEE_Y.toFixed(3) + '), knee); n = aRotZ(n, vec2(0.0), knee); }',
       '    p = aRotZ(p, vec2(0.0, ' + HIP_Y.toFixed(3) + '), hip); n = aRotZ(n, vec2(0.0), hip);',
+      // hip abduction (+ = the leg swings out sideways), about the forward axis through the hip joint
+      '    vec2 abd2 = pUnp2(iJ3.y); float abd = side < 0.0 ? abd2.x : abd2.y;',
+      '    if (abs(abd) > 0.0005) { p = aRotX(p, vec2(' + HIP_Y.toFixed(3) + ', side * ' + HIP_Z.toFixed(3) + '), -side * abd); n = aRotX(n, vec2(0.0), -side * abd); }',
       '  } else if (part > 4.5 && part < 8.5) {',
       '    float side = (part < 5.5 || (part > 6.5 && part < 7.5)) ? -1.0 : 1.0;',
       '    float sh = side < 0.0 ? iJ1.x : iJ1.y; float el = side < 0.0 ? iJ1.z : iJ1.w; float ab = side < 0.0 ? iJ2.x : iJ2.y;',
@@ -608,8 +623,9 @@
       '    p = aRotAx(p - sp, ax, -side * ab) + sp; n = aRotAx(n, ax, -side * ab);',
       '  } else if (part > 8.5 && part < 9.5) {',
       '    if (aBit(iFlags.w, ' + BIT_KID + '.0) > 0.5) { p.xy = (p.xy - vec2(0.05, ' + NECK_Y.toFixed(3) + ')) * 1.16 + vec2(0.05, ' + NECK_Y.toFixed(3) + '); p.z *= 1.16; }',
-      '    p = aRotY(p, vec2(0.05, 0.0), iJ3.x); n = aRotY(n, vec2(0.0), iJ3.x);',
-      '    p = aRotZ(p, vec2(0.05, ' + NECK_Y.toFixed(3) + '), iJ3.y); n = aRotZ(n, vec2(0.0), iJ3.y);',
+      '    vec2 hpy = pUnp2(iJ3.x);',
+      '    p = aRotY(p, vec2(0.05, 0.0), hpy.x); n = aRotY(n, vec2(0.0), hpy.x);',
+      '    p = aRotZ(p, vec2(0.05, ' + NECK_Y.toFixed(3) + '), hpy.y); n = aRotZ(n, vec2(0.0), hpy.y);',
       '  }',
       // wraps / skirts / tunics: each side of the hem follows its leg (the cloth strides with the legs)
       '  if (part < 0.5 && aSP.z > 2.5 && aSP.z < 5.5 && p.y < ' + HIP_Y.toFixed(3) + ') {',
@@ -684,9 +700,10 @@
     // ---------------------------------------------------------------- hips, torso, belly, neck
     b.part(0).feat(0).slot(BOT).color(W).ell(0, 4.72, 0, 0.62, 0.52, 0.86, sL, near ? 5 : 3);
     const torso = [[0.8, 4.82], [0.86, 5.3], [0.92, 5.95], [0.98, 6.55], [0.94, 6.95], [0.62, 7.3], [0.3, 7.42]];
-    b.slot(TOP).color(W).lathe(near ? torso : [[0.8, 4.82], [0.95, 6.3], [0.9, 6.95], [0.32, 7.42]], near ? 12 : 6, 0, 0, 0.66, 1);
-    // paunch: a broad, soft swell that blends into the chest and the waist (not a ball stuck on)
-    b.feat(F.BELLY).slot(TOP).color(W).ell(0.2, 5.62, 0, 0.72, 0.98, 0.86, near ? 14 : 8, near ? 8 : 5).feat(0);
+    b.feat(F.SLIM).slot(TOP).color(W).lathe(near ? torso : [[0.8, 4.82], [0.95, 6.3], [0.9, 6.95], [0.32, 7.42]], near ? 12 : 6, 0, 0, 0.66, 1);
+    // paunch: the torso itself swells forward over the waist (one smooth surface, not a ball stuck on)
+    const paunch = [[0.84, 4.82], [0.98, 5.12], [1.1, 5.5], [1.12, 5.88], [1.05, 6.3], [0.99, 6.62], [0.94, 6.95], [0.62, 7.3], [0.3, 7.42]];
+    b.feat(F.BELLY).slot(TOP).color(W).lathe(near ? paunch : [[0.84, 4.82], [1.1, 5.6], [1.0, 6.4], [0.9, 6.95], [0.32, 7.42]], near ? 14 : 6, 0.1, 0, 0.74, 0.9).feat(0);
     b.slot(SK).color(W).cyl([0, 7.15, 0], [0, 7.85, 0], 0.3, 0.27, sS, 0);
     // shoulders: shirt (sleeves) or skin (banian / sleeveless)
     for (const sd of [-1, 1]) {
@@ -958,6 +975,7 @@
     if (pf) on(pf);
     if (bits.has(F.P_TRUNK) || bits.has(F.P_POT)) { bits.delete(F.CAP_TOPI); bits.delete(F.CAP_CRICKET); bits.delete(F.CAP_BACK); }
     on(F.FACE);
+    if (!bits.has(F.BELLY)) on(F.SLIM);
     // pack
     const f = [0, 0, 0, 0];
     for (const id of bits) { const i = id - 1, w = (i / 20) | 0, bb = i - w * 20; f[w] += Math.pow(2, bb); }
@@ -978,8 +996,9 @@
   }
 
   /* ---------------------------------------------------------------- poses (joint angles) */
-  // J: [hipL, hipR, kneeL, kneeR, shL, shR, elL, elR, abL, abR, lean, bob, headYaw, headPitch, breathe, -]
-  const J = new Float32Array(16);
+  // J: [hipL, hipR, kneeL, kneeR, shL, shR, elL, elR, abL, abR, lean, bob, headYaw, headPitch, breathe,
+  //     ankles (packed), legAbdL, legAbdR]; the instance packs head yaw + pitch and the two leg abductions
+  const J = new Float32Array(18);
   function poseRest(j) { j.fill(0); j[8] = j[9] = 0.07; j[6] = j[7] = 0.12; return j; }
   /** lowest point of a foot sole (template y) for hip angle h and knee angle k (feet planting) */
   function soleMin(h, k) {
@@ -1027,6 +1046,43 @@
     armIK(j, 0, L[0], L[1], lz, abMin); armIK(j, 1, R[0], R[1], rz, abMin);
     j[10] = lean;
   }
+  /* talking: whoever speaks a dialogue line or a bark gestures while the words are up (one hand
+   * raised palm-up in small emphatic arcs, the other lifting now and then, the head nodding) */
+  const TALK = new WeakMap(); // actor -> {t0, until}
+  function talkStart(a, secs) {
+    if (!a || typeof a !== 'object' || !a.look) return;
+    const t = nowS(), r = TALK.get(a);
+    TALK.set(a, { t0: r && r.until > t ? r.t0 : t, until: t + clamp(secs, 0.8, 7) });
+  }
+  N.on('dialogue:bark', (d) => { try { if (d && d.target) talkStart(d.target, 1.6 + String(d.text || '').length * 0.05); } catch (e) { /* cosmetic */ } });
+  N.on('dialogue:line', (d) => {
+    try {
+      if (!d || d.skipped) return;
+      const id = d.as || d.speaker;
+      const a = id === 'player' || id === 'chinnu' ? N.player : (N.npcs && N.npcs.get ? N.npcs.get(id) : null);
+      if (a) talkStart(a, 1.2 + String(d.text || '').length * 0.045);
+    } catch (e) { /* cosmetic */ }
+  });
+  /** 0..1 talking weight now (eased in and out) */
+  function talkW(a) {
+    const r = TALK.get(a); if (!r) return 0;
+    const t = nowS();
+    if (t > r.until + 0.4) { TALK.delete(a); return 0; }
+    return clamp((t - r.t0) / 0.25, 0, 1) * clamp((r.until + 0.4 - t) / 0.4, 0, 1);
+  }
+  function talkArms(j, t, seed, rightFree) {
+    const a = t * 2.3 + seed, b = t * 1.55 + seed * 2.3;
+    const g = 0.5 + 0.5 * Math.sin(a * 0.9) * Math.sin(b * 0.7 + 1);
+    if (rightFree) {
+      j[5] = 0.42 + 0.3 * g + 0.08 * Math.sin(a * 1.9);
+      j[7] = 1.3 + 0.38 * Math.sin(a);
+      j[9] = 0.22 + 0.16 * Math.sin(b);
+    }
+    const l = Math.max(0, Math.sin(b * 0.8 + 2));
+    j[4] = 0.1 + 0.32 * l; j[6] = 0.3 + 0.9 * l; j[8] = 0.12 + 0.1 * l;
+    j[12] += 0.1 * Math.sin(t * 3.1 + seed); j[13] += 0.05 * Math.sin(t * 4.4 + seed);
+    return j;
+  }
   /* idle arm habits: what people do with their hands while standing about (feedback_3d.md #2,
    * "idle"): uncles and constables clasp their hands behind the back, aunties and women hold them
    * in front, men fold their arms, students hold their bag straps, kids swing their arms. A habit
@@ -1050,7 +1106,7 @@
     const k = clamp((v - 0.3) / 0.22, 0, 1);
     return k * k * (3 - 2 * k);
   }
-  const JH = new Float32Array(16);
+  const JH = new Float32Array(18);
   function habitArms(j, hab, s, t, seed) {
     const belly = !!s.belly;
     const fx = belly ? 1.12 : 0.8, bx = s.wrap || belly ? -0.98 : -0.84;
@@ -1060,6 +1116,10 @@
       case 'fold': armsTo(j, j[10], belly ? 1.12 : 0.95, 6.12, 0.42, belly ? 1.16 : 1.0, 5.92, -0.42, 0, -0.95); break;
       case 'straps': armsTo(j, j[10], 0.74, 6.42, -0.52, 0.74, 6.5, 0.52, 0, -0.9); break;
       case 'swing': { const a = Math.sin(t * 1.9 + seed) * 0.42; j[4] = a; j[5] = a * 0.85; j[6] = j[7] = 0.25 + Math.max(0, a) * 0.4; j[8] = j[9] = 0.1; break; }
+      case 'work': // a shopkeeper / chai-wala busy at the counter: both hands working at waist height
+        armsTo(j, j[10], 1.3 + 0.16 * Math.sin(t * 2.1 + seed), 5.3 + 0.14 * Math.sin(t * 3.3 + seed), -0.5,
+          1.36 + 0.16 * Math.sin(t * 1.7 + seed + 1), 5.25 + 0.12 * Math.sin(t * 2.9 + 1), 0.48, 0, -0.9);
+        break;
       default: break;
     }
     return j;
@@ -1148,7 +1208,7 @@
   }
   /** full-body gait pose for cycle position ph (cycles) */
   function gaitPose(j, ph, P, wrapK) {
-    j[12] = j[13] = j[14] = 0;
+    j[12] = j[13] = j[14] = j[16] = j[17] = 0;
     const uL = ph - Math.floor(ph), uR = (ph + 0.5) - Math.floor(ph + 0.5);
     footAt(uL, P, FA); footAt(uR, P, FB);
     let hy;
@@ -1184,11 +1244,12 @@
     j[15] = encAnk(-j[0] - j[2], -j[1] - j[3]);
     return j;
   }
-  const JS = new Float32Array(16);
+  const JS = new Float32Array(18);
   /** blend everything but the packed ankles (re-derived so feet stay flat) */
   function blendPose(j, from, k) {
     const af = decAnk(from[15]), aj = decAnk(j[15]);
     for (let i = 0; i < 15; i++) j[i] = from[i] + (j[i] - from[i]) * k;
+    j[16] = (from[16] || 0) + ((j[16] || 0) - (from[16] || 0)) * k; j[17] = (from[17] || 0) + ((j[17] || 0) - (from[17] || 0)) * k;
     j[15] = encAnk(af[0] + (aj[0] - af[0]) * k, af[1] + (aj[1] - af[1]) * k);
   }
 
@@ -1234,12 +1295,12 @@
     fr.write(pool.M, i * 16, lx, ly, lz, o && o.yaw || 0, o && o.roll || 0, o && o.pitch || 0, sc * s.wide, sc, sc * s.wide);
     const A = pool.A;
     const a0 = A.iJ0.array, a1 = A.iJ1.array, a2 = A.iJ2.array, a3 = A.iJ3.array, fl = A.iFlags.array, ca = A.iColA.array, cb = A.iColB.array, k = i * 4;
-    a3[k] = j[12]; a3[k + 1] = j[13]; a3[k + 2] = j[14]; a3[k + 3] = j[15] || 0;
+    a3[k] = encAnk(j[12], j[13]); a3[k + 1] = encAnk(j[16] || 0, j[17] || 0); a3[k + 2] = j[14]; a3[k + 3] = j[15] || 0;
     a0[k] = j[0]; a0[k + 1] = j[1]; a0[k + 2] = j[2]; a0[k + 3] = j[3];
     a1[k] = j[4]; a1[k + 1] = j[5]; a1[k + 2] = j[6]; a1[k + 3] = j[7];
     a2[k] = j[8]; a2[k + 1] = j[9]; a2[k + 2] = j[10]; a2[k + 3] = j[11];
     const ff = o && o.seated ? s.fSeat : s.f;
-    fl[k] = ff[0]; fl[k + 1] = ff[1]; fl[k + 2] = ff[2]; fl[k + 3] = ff[3] + (o && o.fpsHide ? Math.pow(2, BIT_FPS) : 0);
+    fl[k] = ff[0]; fl[k + 1] = ff[1]; fl[k + 2] = ff[2]; fl[k + 3] = ff[3] + (o && o.fpsHide ? Math.pow(2, BIT_FPS) : 0) + (o && o.fpsHide && o.armsOnly ? Math.pow(2, BIT_ARMS) : 0) + (o && o.fpsHide && o.noBody ? Math.pow(2, BIT_NOBODY) : 0);
     ca[k] = s.c[0]; ca[k + 1] = s.c[1]; ca[k + 2] = s.c[2]; ca[k + 3] = s.c[3];
     cb[k] = s.c[4]; cb[k + 1] = s.c[5]; cb[k + 2] = s.c[6]; cb[k + 3] = s.c[7];
     if (pool === PEOPLE) ST.people++; else ST.peopleFar++;
@@ -1798,6 +1859,7 @@
     FX(b, '#141214').box(31.2, 15.6, -6.5, 31.45, 16.5, 6.5);
     FX(b, '#1c1a1e'); for (const x of [21.6, -10.4]) b.box(x, 2.0, -hw - 0.1, x + 4.4, 15.2, -hw + 0.04);
     FX(b, '#9aa0a6'); for (const x of [21.6, -10.4]) b.box(x + 2.15, 2.0, -hw - 0.14, x + 2.25, 15.2, -hw + 0.05);
+    FX(b, '#3a3a3e'); for (const x of [21.6, -10.4]) b.box(x + 0.1, 1.85, -hw - 1.25, x + 4.3, 2.25, -hw + 0.05); // footboard steps
     FX(b, '#2a2628').box(30.9, 1.4, -8.6, 32.1, 3.0, 8.6).box(-32.0, 1.4, -8.6, -30.9, 3.0, 8.6);
     FX(b, '#1a1a1e').box(31.3, 4.4, -4.0, 31.5, 7.4, 4.0);
     for (const s of [-1, 1]) { CH(b).cyl([31.2, 3.9, s * 6.6], [31.5, 3.9, s * 6.6], 0.85, 0.85, 10, 0); HL(b).cyl([31.25, 3.9, s * 6.6], [31.55, 3.9, s * 6.6], 0.7, 0.7, 10, 2); TL(b).box(-31.45, 3.4, s * 7.0 - 0.7, -31.2, 4.8, s * 7.0 + 0.7); }
@@ -1805,7 +1867,7 @@
     return {
       L, W: 18, H: 17.6, show: false, cockpit: 'bus', rearR: 3.0,
       wheels: [{ x: 22, z: -8.12, r: 3.0, w: 2.0, kind: 'solid', front: true }, { x: 22, z: 8.12, r: 3.0, w: 2.0, kind: 'solid', front: true }, { x: -18, z: -7.82, r: 3.0, w: 2.6, kind: 'solid' }, { x: -18, z: 7.82, r: 3.0, w: 2.6, kind: 'solid' }],
-      seats: [], lamps: { head: [[31.6, 3.9, -6.6], [31.6, 3.9, 6.6]], tail: [[-31.5, 4.1, -7.0], [-31.5, 4.1, 7.0]] },
+      seats: [], lamps: { head: [[31.6, 3.9, -6.6], [31.6, 3.9, 6.6]], tail: [[-31.5, 4.1, -7.0], [-31.5, 4.1, 7.0]] }, busLife: true,
       decals: [
         { cell: 'citybus', x: -4, y: 5.6, z: hw + 0.1, w: 15, h: 3.2, face: 'R' }, { cell: 'citybus', x: -4, y: 5.6, z: -hw - 0.1, w: 15, h: 3.2, face: 'L' },
         { cell: 'route', x: 31.5, y: 15.95, z: 0, w: 4.6, h: 1.0, face: 'F' }, { cell: 'route', x: -31.35, y: 16.05, z: 0, w: 4.0, h: 0.9, face: 'B' },
@@ -1993,15 +2055,19 @@
     b.part(0);
     FX(b, '#2c2a2c').box(fx - 2.0, dashY - 2.4, -hw, fx, dashY, hw);
     FX(b, '#1e1c1e').box(fx - 2.4, dashY - 0.1, -hw, fx - 1.4, dashY + 0.3, hw);
-    dial(b, fx - 2.42, dashY + 0.14, -0.62, 0.44, true);
-    dial(b, fx - 2.42, dashY + 0.12, 0.62, 0.36, false, 1.3);
+    dial(b, fx - 2.42, dashY + 0.3, -1.25, 0.46, true);
+    dial(b, fx - 2.42, dashY + 0.26, 1.2, 0.38, false, 1.3);
     P1(b).box(fx - 0.6, base, -hw - 0.4, fx + 0.3, top, -hw).box(fx - 0.6, base, hw, fx + 0.3, top, hw + 0.4).box(fx - 0.6, base - 0.05, -0.18, fx + 0.2, top, 0.18);
     P1(b, 0.85).box(fx - 1.2, top - 0.8, -hw, fx + 0.3, top, hw);
     FX(b, '#cfc8b8').box(fx - 18, top, -hw - 0.3, fx + 0.2, top + 0.25, hw + 0.3);
     for (const s of [-1, 1]) { P1(b, 0.9).box(fx - 18, 2.4, s > 0 ? hw : -hw - 0.5, fx - 0.5, base + 0.4, s > 0 ? hw + 0.5 : -hw); for (let x = fx - 18; x < fx - 1; x += 6) P1(b).box(x, base, s > 0 ? hw : -hw - 0.5, x + 0.6, top, s > 0 ? hw + 0.5 : -hw); }
     FX(b, '#5a5a5e').box(fx - 6, 2.4, 2.2, fx - 2.4, 6.4, 6.0);
     if (bus) { CH(b); for (const s of [-1, 1]) b.tube([fx - 18, top - 0.8, s * 3.0], [fx - 3, top - 0.8, s * 3.0], 0.1, 5); FX(b, '#c9a227').box(fx - 1.4, top - 1.3, -1.6, fx - 1.2, top - 0.9, 1.6); }
-    else { FX(b, '#ff9a1a'); for (let z = -hw + 0.6; z < hw - 0.4; z += 0.8) b.ell(fx - 1.0, top - 1.0 - Math.sin(((z + hw) / (2 * hw)) * Math.PI) * 0.7, z, 0.25, 0.25, 0.25, 5, 3); }
+    else { // a marigold string across the top of the windscreen (above the eye line), orange and yellow
+      let k = 0;
+      for (let z = -hw + 0.5; z < hw - 0.3; z += 0.34, k++) FX(b, k % 3 === 2 ? '#f2c230' : '#ff8a1a').ell(fx - 1.0, top - 0.32 - Math.sin(((z + hw) / (2 * hw)) * Math.PI) * 0.32, z, 0.15, 0.15, 0.15, 6, 3);
+      FX(b, '#c03030').ell(fx - 1.0, top - 0.9, 0, 0.22, 0.3, 0.22, 6, 4); // the little hanging tassel
+    }
     FX(b, '#2a2a2a').box(fx - 18, 2.0, -hw, fx, 2.4, hw);
     return { wheelAt: [fx - 4.0, dashY + 0.8, 0], wheelTilt: 1.15, wheelR: 2.0 };
   }
@@ -2022,7 +2088,7 @@
     FX(b, '#1c1a1a').xf(new THREE.Matrix4()).ringZ([[0.86, -0.1], [0.94, -0.13], [1.03, -0.1], [1.06, 0], [1.03, 0.1], [0.94, 0.13], [0.86, 0.1]], 32).xf(null);
     FX(b, '#2a2626'); for (let k = 0; k < 3; k++) { const a = -Math.PI / 2 + k * (TAU / 3); b.tube([0, 0, 0], [Math.cos(a) * 0.9, Math.sin(a) * 0.9, 0.02], 0.09, 5); }
     FX(b, '#262222').cyl([0, 0, -0.08], [0, 0, 0.14], 0.3, 0.27, 12, 3);
-    CH(b).cyl([0, 0, 0.14], [0, 0, 0.17], 0.13, 0.13, 10, 2);
+    FX(b, '#6a6a70').cyl([0, 0, 0.14], [0, 0, 0.16], 0.075, 0.075, 8, 2); // the small horn emblem
     FX(b, '#2a2626').cyl([0, 0, -0.1], [0, 0, -1.8], 0.12, 0.12, 5, 0);
     return b.build();
   }
@@ -2226,6 +2292,57 @@
     return v._x3d[k];
   }
   /** seat a person (look) on a vehicle in the vehicle frame FR */
+  /* KAINCHI ("scissors"): a kid too small for an adult's roadster rides standing on the pedals beside
+   * the frame, the right leg through the triangle to the far pedal, both hands on the bar, the cycle
+   * leaning away to the right so the body stays upright over the wheels, rising and falling with the
+   * stroke (vehicles.js draws the same in 2D). The numbers come from an offline search over the Hero
+   * geometry for a kid (every crank angle reachable, the right hip ~0.7 u under the top tube, the
+   * grips reachable with a forward lean). Writes J (legs by IK + hip abduction, arms to the grips);
+   * returns the person root [x, y, z, yaw, roll] in the vehicle frame. */
+  const KAINCHI = { dx: 1.0, hy: 3.85, bob: 0.1, hz: -1.0, yaw: -0.05, roll: -0.2, pz: 0.88, tilt: 0.2 };
+  const KF = new Frame(), KQ = [0, 0, 0], KR = [0, 0, 0, 0, 0], KL = [0, 0, 0, 0];
+  const KAI_J = new WeakMap(); // actor -> its last kainchi pose (getting off blends from it)
+  function kainchiPose(md, seat, sc, sx, o) {
+    const K = KAINCHI, c = o.crank || 0, Rk = md.crank[2], bxk = md.crank[0] * sx, byk = md.crank[1];
+    KF.set(0, 0, 0, K.yaw, K.roll, 0);
+    const m = KF.m, hx = bxk + K.dx, hz = K.hz;
+    let hy = K.hy + K.bob * Math.cos(2 * c), rx = 0, ry = 0, rz = 0;
+    const loc = (x, y, z) => { // vehicle frame -> the person's template coordinates
+      const dx = x - rx, dy = y - ry, dz = z - rz;
+      KQ[0] = (m[0] * dx + m[3] * dy + m[6] * dz) / sc; KQ[1] = (m[1] * dx + m[4] * dy + m[7] * dz) / sc; KQ[2] = (m[2] * dx + m[5] * dy + m[8] * dz) / sc;
+      return KQ;
+    };
+    for (let it = 0; it < 3; it++) { // root (feet point) from the hip centre; drop the hips if the low pedal is out of reach
+      KF.apply(0, HIP_Y * sc, 0, P3); rx = hx - P3[0]; ry = hy - P3[1]; rz = hz - P3[2];
+      let over = 0;
+      for (const sd of [-1, 1]) {
+        loc(bxk + sd * Math.cos(c) * Rk - 0.25, byk + sd * Math.sin(c) * Rk + 0.18 + ANK_Y * sc, sd * K.pz);
+        const dx = KQ[0], dy = KQ[1] - HIP_Y, dz = KQ[2] - sd * HIP_Z, k = sd < 0 ? 0 : 1;
+        KL[k * 2] = dx; KL[k * 2 + 1] = HIP_Y - Math.hypot(dy, dz);
+        J[16 + k] = Math.atan2(sd * dz, -dy); // the right leg swings out through the frame, the left one in
+        over = Math.max(over, Math.hypot(dx, dy, dz) - LEG * 0.975);
+      }
+      if (over <= 0) break;
+      hy -= over * sc;
+    }
+    legsTo(J, KL[0], KL[1], KL[2], KL[3]);
+    flatFeet(J, -0.1 + 0.15 * Math.sin(c), -0.1 - 0.15 * Math.sin(c));
+    // hands on the grips, turned with the bar
+    const gx = seat.grip ? seat.grip[0] * sx : bxk + 3.2, gy = seat.grip ? seat.grip[1] : 5.9, gz = seat.grip ? seat.grip[2] : 1.75;
+    let lx = gx, lz = -gz, gxr = gx, rz2 = gz;
+    const st = o.steer || 0;
+    if (st && md.steerX != null) {
+      const px = md.steerX * sx, cs = Math.cos(st), sn = Math.sin(st);
+      lx = px + (gx - px) * cs + gz * sn; lz = (gx - px) * sn - gz * cs;
+      gxr = px + (gx - px) * cs - gz * sn; rz2 = (gx - px) * sn + gz * cs;
+    }
+    loc(lx, gy, lz); const qx = KQ[0], qy = KQ[1], qz = KQ[2];
+    loc(gxr, gy, rz2);
+    armsTo(J, 0.35, qx, qy, qz, KQ[0], KQ[1], KQ[2], 0.95, -0.9);
+    J[13] = J[10] * 0.7; // eyes up the road past the bar
+    KR[0] = rx; KR[1] = ry; KR[2] = rz; KR[3] = K.yaw; KR[4] = K.roll;
+    return KR;
+  }
   function submitRider(md, seat, look, seed, sx, o) {
     if (!look || !seat) return;
     const s = lookSpec(look, seed), sc = s.size;
@@ -2233,10 +2350,14 @@
     const hx = seat.x * sx, hz = seat.z || 0;
     const rootY = hy - HIP_Y * sc;
     const T = (x, y, out) => { out[0] = (x - hx) / sc; out[1] = (y - rootY) / sc; return out; };
-    let yaw2 = 0, seated = true;
+    let yaw2 = 0, roll2 = 0, seated = true, tx = hx, ty = rootY, tz = hz;
     poseRest(J);
     const pose = seat.pose;
-    if (pose === 'cycle' || pose === 'scooter' || pose === 'moto' || pose === 'auto' || pose === 'car') {
+    if (pose === 'cycle' && o.kainchi && md.crank) {
+      const K = kainchiPose(md, seat, sc, sx, o);
+      tx = K[0]; ty = K[1]; tz = K[2]; yaw2 = K[3]; roll2 = K[4]; seated = false;
+      if (o.actor) { let kj = KAI_J.get(o.actor); if (!kj) { kj = new Float32Array(18); KAI_J.set(o.actor, kj); } kj.set(J); }
+    } else if (pose === 'cycle' || pose === 'scooter' || pose === 'moto' || pose === 'auto' || pose === 'car') {
       const lean = pose === 'cycle' ? 0.3 : pose === 'moto' ? 0.38 : pose === 'scooter' ? 0.08 : pose === 'auto' ? 0.12 : 0.06;
       let gx = seat.grip ? seat.grip[0] * sx : hx + 3, gy = seat.grip ? seat.grip[1] : hy + 1.5, gz = seat.grip ? seat.grip[2] : 1.2;
       let lx = gx, lz = hz - gz, rx = gx, rz = hz + gz; // grips either side of the seat's centre line
@@ -2280,7 +2401,7 @@
       T(-14.0 * sx, seat.y + 0.4, A0); armsTo(J, 0.05, 0.6, 5.0, -0.9, A0[0], A0[1], 0.9);
     }
     // getting on: from standing beside the vehicle (its left side) onto the seat
-    let rx = hx, ry = rootY, rz = hz;
+    let rx = tx, ry = ty, rz = tz;
     const m = o.actor ? MOUNT.get(o.actor) : null;
     if (m && m.on) {
       const k = (nowS() - m.t0) / MOUNT_S;
@@ -2290,13 +2411,68 @@
         blendPose(J, sj, 1 - q);
         J[12] = sj[12]; J[13] = sj[13]; J[14] = sj[14];
         const sideZ = -(md.W / 2 + 2.2);
-        rx = hx; rz = sideZ + (hz - sideZ) * q;
-        ry = (-FR.y) * (1 - q) + rootY * q + Math.sin(q * Math.PI) * 1.0;
-        seated = q > 0.5;
+        rx = tx; rz = sideZ + (tz - sideZ) * q;
+        ry = (-FR.y) * (1 - q) + ty * q + Math.sin(q * Math.PI) * 1.0;
+        seated = seated && q > 0.5; roll2 *= q; yaw2 *= q;
       } else MOUNT.delete(o.actor);
     }
-    if (DBG.riderNext && DBG.rec) { DBG.rec.riders = DBG.rec.riders || []; DBG.rec.riders.push({ pose, J: Array.from(J), seated, fpsHide: !!o.fpsHide, kid: s.kid }); }
-    submitPerson(look, seed, FR, rx, ry, rz, J, { yaw: yaw2, fpsHide: o.fpsHide, noBlob: true, near: o.near, seated });
+    if (DBG.riderNext && DBG.rec) { DBG.rec.riders = DBG.rec.riders || []; DBG.rec.riders.push({ pose: o.kainchi && pose === 'cycle' ? 'kainchi' : pose, J: Array.from(J), seated, fpsHide: !!o.fpsHide, kid: s.kid, root: [rx, ry, rz], yaw: yaw2, roll: roll2, size: sc }); }
+    // first person on a kainchi ride: the eye sits over the saddle, not where his head is, so only his
+    // arms are drawn (hands on the grips), not his back hanging off the side below the camera
+    // on two-wheelers / autos the core's eye sits a little behind his head: no torso or neck in the
+    // way (hands on the grips and the knees stay); in a car cockpit the body is below the eye
+    submitPerson(look, seed, FR, rx, ry, rz, J, { yaw: yaw2, roll: roll2, fpsHide: o.fpsHide, armsOnly: !!(o.kainchi && pose === 'cycle'), noBody: pose !== 'car', noBlob: true, near: o.near, seated });
+  }
+  /* ---------------------------------------------------------------- the city bus crowd
+   * Traffic / parked buses carry life the 2D roof hides: the driver at the wheel (right-hand drive)
+   * seen through the windscreen, passengers standing in the aisle holding the overhead rail and
+   * swaying with the bus (heads and shoulders in the windows), and up to three footboard boys
+   * hanging off the rear door step, one hand on the door pole, leaning out. Looks are per bus
+   * (seeded), the crowd size too; only near the camera (cheap instanced people). */
+  const BUS_DRIVER = { x: 26.4, y: 9.0, z: 5.0, pose: 'car', grip: [29.0, 10.5, 1.0], foot: [29.6, 5.2] };
+  const BF = new Frame(), BQ = [0, 0, 0];
+  function busLook(v, k, kind) {
+    if (!v._bus) v._bus = [];
+    if (!v._bus[k]) { const r = U.rng((v.seed | 0) * 31 + 7 * k + 3); v._bus[k] = N.people.randomLook(r, kind || (r.next() < 0.3 ? 'aunty' : r.next() < 0.3 ? 'student' : r.next() < 0.5 ? 'man' : 'uncle')); }
+    return v._bus[k];
+  }
+  function busLife(v, md, sx, steer) {
+    const d = camDist(v.x, 8, v.y);
+    if (d > 300 || v.fallen) return;
+    const seed = (v.seed | 0) & 0xffff, t = H.time, pl = N.player;
+    const low = H.quality.tier === 'low';
+    const crowdN = (low ? 2 + (seed % 4) : 4 + (seed % 9)) * (d < (low ? 120 : 170) ? 1 : 0), boys = v.driver ? (seed >> 3) % 4 : 0;
+    const accel = clamp((v.throttle || 0) * 0.5 - (v.ctl && v.ctl.brake ? 0.6 : 0), -0.6, 0.5);
+    if (DBG.track === v && DBG.rec) DBG.rec.bus = { crowd: crowdN, boys };
+    if (v.driver && v.driver !== pl && d < 220) submitRider(md, BUS_DRIVER, riderLookOf(v), v.seed, sx, { steer });
+    // standing in the aisle, one hand up on the rail (inside: only near enough to see through the glass)
+    {
+      for (let k = 0; k < crowdN; k++) {
+        const look = busLook(v, k), s = lookSpec(look, seed + k), sc = s.size;
+        const x = (-24 + (k * 37 % 47)) * sx, z = ((k * 13) % 5 - 2) * 0.9, floor = 4.4;
+        poseStand(J, t, seed + k);
+        const sway = Math.sin(t * 1.3 + k) * 0.03 - accel * 0.18;
+        armsTo(J, sway, 0.25, (15.1 - floor) / sc, 0.5, 0.2, (15.1 - floor) / sc - 0.2, 0.9, 0, -0.9);
+        J[4] = 0.1 + 0.05 * Math.sin(t + k); J[6] = 0.3; J[8] = 0.1; // the other hand down (a bag, a tiffin)
+        J[12] = Math.sin(t * 0.3 + k * 1.7) * 0.6;
+        submitPerson(look, seed + k, FR, x, floor, z, J, { yaw: k % 3 === 0 ? Math.PI / 2 : k % 3 === 1 ? -Math.PI / 2 : 0, noBlob: true });
+      }
+    }
+    // footboard boys at the rear door (left side): standing on the step, a hand on the door pole, leaning out
+    for (let k = 0; k < boys; k++) {
+      const look = busLook(v, 20 + k, k % 2 ? 'student' : 'man'), s = lookSpec(look, seed + 50 + k), sc = s.size;
+      const doorX = -8.2 * sx, hw = md.W / 2, rx = doorX + (k - (boys - 1) / 2) * 1.5, rz = -hw - 0.75 - (k === 1 ? 0.3 : 0);
+      BF.set(0, 0, 0, -Math.PI / 2, 0, 0); // facing +z: into the bus
+      const loc = (x, y, z) => { const m = BF.m, dx = x - rx, dy = y - 2.25, dz = z - rz; BQ[0] = (m[0] * dx + m[3] * dy + m[6] * dz) / sc; BQ[1] = (m[1] * dx + m[4] * dy + m[7] * dz) / sc; BQ[2] = (m[2] * dx + m[5] * dy + m[8] * dz) / sc; return BQ; };
+      poseStand(J, t, seed + 50 + k);
+      const back = -0.22 - 0.06 * Math.sin(t * 2.1 + k) - Math.abs(accel) * 0.12; // hanging back off the pole
+      loc(doorX, 11.6 - k * 0.5, -hw - 0.05); const lx = BQ[0], ly = BQ[1], lz = BQ[2]; // the door pole
+      loc(doorX, 10.2 - k * 0.4, -hw - 0.05);
+      armsTo(J, back, lx, ly, lz, BQ[0], BQ[1], BQ[2], 0, -0.9);
+      if (k === boys - 1 && boys > 1) { J[5] = 0.35 + 0.25 * Math.sin(t * 3 + k); J[7] = 0.2; J[9] = 0.9; } // the last one waves an arm free
+      J[12] = -0.7 + 0.2 * Math.sin(t * 0.7 + k); // looking along the road ahead
+      submitPerson(look, seed + 50 + k, FR, rx, 2.25, rz, J, { yaw: -Math.PI / 2, noBlob: true });
+    }
   }
   const SW = [0, 0, 0, 0, 0, 0];
   function vehicleEntity(v) {
@@ -2307,9 +2483,13 @@
     const sx = T && T.w ? T.w / md.L : 1, sz = T && T.d && md.W ? clamp(T.d / md.W, 0.7, 1.4) : 1;
     const t = H.time;
     let roll = 0, pitch = 0, yOff = 0;
+    const dLook = v.driver ? (v.driver === pl ? pl.look : riderLookOf(v)) : null;
+    const kainchi = !!(dLook && md.crank && md.pedal && T && T.kainchi && !v.fallen && lookSpec(dLook, v.driver === pl ? 7 : v.seed).kid);
     if (md.bike) {
       if (v.fallen) { roll = -1.3; yOff = 0.5; } else if (!v.driver) roll = -(md.standLean || 0); else roll = clamp(v.lean || 0, -0.6, 0.6);
+      if (kainchi) roll += KAINCHI.tilt; // the cycle leans away from the kid hanging off its left side
     }
+    if (kainchi) v._kainchi = true; else if (v._kainchi && v.driver) v._kainchi = false;
     const j = v.jolt || 0;
     if (j > 0) { const ph = (1 - j) * Math.PI * 3.2, big = md.bike ? 1 : 0.7; yOff += -Math.sin(ph) * j * 0.8 * big; pitch += Math.sin(ph * 1.3) * j * 0.05 * big; roll += Math.sin(ph * 1.7) * j * 0.04 * (v.joltSide || 1); }
     if (md.boat) { const ph = t + ((v.seed | 0) % 100); yOff = 0.15 + Math.sin(ph * 1.3) * 0.22; roll = Math.sin(ph * 0.9) * 0.035; pitch = Math.sin(ph * 1.1 + 1) * 0.02 - clamp((v.speed || 0) / 600, -0.02, 0.06); }
@@ -2351,7 +2531,7 @@
       // it (first person on an auto / scooter: the windscreen glass turns nearly clear)
       b2[k] = steerVis; b2[k + 1] = crank; b2[k + 2] = beacon;
       b2[k + 3] = cockpit ? clamp(sp / (((T && T.maxSpeed) || 150) * 1.1), 0, 1) * 4.4 : (fps ? 1 : 0);
-      if (DBG.track === v && DBG.rec) DBG.rec.needle = cockpit ? b2[k + 3] : null;
+      if (DBG.track === v && DBG.rec) { DBG.rec.needle = cockpit ? b2[k + 3] : null; DBG.rec.inside = !cockpit && fps ? 1 : 0; }
     }
     // wheels
     if (!cockpit) {
@@ -2369,6 +2549,8 @@
         ST.wheels++;
       }
     }
+    // a city bus at rush hour: the driver, a standing crowd inside, footboard boys at the rear door
+    if (md.busLife && !cockpit) busLife(v, md, sx, steerVis);
     // riders: driver, pillion, passengers
     const near = mine;
     // closed cars: seen through the translucent glass when the camera is close enough to tell
@@ -2376,8 +2558,7 @@
     if (md.show || fps || seeIn) {
       const seats = md.seats;
       if (v.driver && seats[0] && !v.fallen && !cockpit) {
-        const look = v.driver === pl ? pl.look : riderLookOf(v);
-        submitRider(md, seats[0], look, v.driver === pl ? 7 : v.seed, sx, { steer: steerVis, crank, fpsHide: fps && (v.driver === pl || mine), near, actor: v.driver.look ? v.driver : null });
+        submitRider(md, seats[0], dLook, v.driver === pl ? 7 : v.seed, sx, { steer: steerVis, crank, fpsHide: fps && (v.driver === pl || mine), near, actor: v.driver.look ? v.driver : null, kainchi });
       }
       const pil = v.pillion;
       if (pil && seats[1] && !v.fallen) submitRider(md, seats[1], pil.look || pil, pil === pl ? 7 : (v.seed | 0) + 3, sx, { fpsHide: fps && pil === pl, near, actor: pil.look ? pil : null });
@@ -2637,11 +2818,13 @@
       if (!v || !a || !READY) return;
       const md = model(modelKeyFor(v.T)), seat = md.seats[d.passenger && md.seats[1] ? 1 : 0];
       if (!seat) return;
-      const c = Math.cos(v.angle || 0), sn = Math.sin(v.angle || 0), lz = seat.z || 0;
-      MOUNT.set(a, { t0: nowS(), on: false, x: v.x + c * seat.x - sn * lz, y: v.y + sn * seat.x + c * lz, hip: seat.y, yaw: -(v.angle || 0), show: md.show });
+      const c = Math.cos(v.angle || 0), sn = Math.sin(v.angle || 0);
+      const kj = !d.passenger && v._kainchi ? KAI_J.get(a) : null; // stepping off a kainchi ride: from that pose
+      const sxk = kj && md.crank ? md.crank[0] * ((v.T && v.T.w) ? v.T.w / md.L : 1) + KAINCHI.dx : seat.x, lz = kj ? KAINCHI.hz : (seat.z || 0);
+      MOUNT.set(a, { t0: nowS(), on: false, x: v.x + c * sxk - sn * lz, y: v.y + sn * sxk + c * lz, hip: kj ? KAINCHI.hy : seat.y, yaw: -(v.angle || 0), show: md.show, kj });
     } catch (e) { /* no blend */ }
   });
-  const SEATED_J = new Float32Array([1.35, 1.35, -1.4, -1.4, 0.6, 0.6, 0.6, 0.6, 0.1, 0.1, 0.08, 0, 0, 0, 0, 0]);
+  const SEATED_J = new Float32Array([1.35, 1.35, -1.4, -1.4, 0.6, 0.6, 0.6, 0.6, 0.1, 0.1, 0.08, 0, 0, 0, 0, 0, 0, 0]);
   const ease = (k) => k * k * (3 - 2 * k);
   function wrapA(a) { return Math.atan2(Math.sin(a), Math.cos(a)); }
   /** simulation seconds since the last frame (0 while paused; slow motion slows it) */
@@ -2720,8 +2903,9 @@
       if (e.balloons) { J[5] = 0.5; J[7] = 1.6; }
       // idle hands: a habit per person (not with a prop in hand, not the player, not a spotter)
       if (!isP && !s.prop && !s.headCarry && !e.spotter && !e.balloons && st.gw < 0.95) {
-        const hab = habitOf(s, seed);
-        const on = hab ? habitOn(t, seed) * (1 - st.gw) : 0;
+        const work = e.idle === 'work' && !e.talking;
+        const hab = work ? 'work' : habitOf(s, seed);
+        const on = hab ? (work && OPT.habits !== false ? 1 : habitOn(t, seed)) * (1 - st.gw) : 0;
         if (on > 0.01) {
           JH.set(J); habitArms(JH, hab, s, t, seed);
           for (let q = 4; q < 10; q++) J[q] += (JH[q] - J[q]) * on;
@@ -2744,6 +2928,13 @@
       st.hy += (clamp(rel, -1.1, 1.1) - st.hy) * Math.min(1, dt * 5);
       J[12] = st.hy; J[13] = idle ? Math.sin(t * 0.45 + seed) * 0.05 : (st.v > 62 ? -0.08 : 0);
       J[14] = Math.sin(t * (st.v > 62 ? 5 : 1.7) + seed) * (st.v > 62 ? 0.05 : 0.04);
+      // talking: gestures blend over the stance or the seat (subtler while walking; not with a load on the head)
+      const tw = !s.headCarry && !e.constable ? talkW(e) * (1 - 0.65 * (st.gw || 0)) : 0;
+      if (tw > 0.01) {
+        JH.set(J); talkArms(JH, t, seed, !s.prop || s.prop === 'notebook');
+        for (let q = 4; q < 14; q++) if (q !== 10 && q !== 11) J[q] += (JH[q] - J[q]) * tw;
+        st.talk = tw;
+      } else st.talk = 0;
     }
     // getting off a vehicle: blend from the seat
     const m = MOUNT.get(e);
@@ -2752,7 +2943,7 @@
       const k = (nowS() - m.t0) / MOUNT_S;
       if (k < 1) {
         const q = ease(Math.max(0, k));
-        blendPose(J, SEATED_J, q);
+        blendPose(J, m.kj || SEATED_J, q);
         bx = m.x + (x - m.x) * q; by = m.y + (y - m.y) * q;
         rootY = (m.hip - HIP_Y * s.size) * (1 - q) + rootY * q + Math.sin(q * Math.PI) * 0.8;
         yaw = m.yaw + wrapA(yaw - m.yaw) * q;
@@ -2764,7 +2955,7 @@
       else if (CAMP && Math.hypot(CAMP.x - bx, CAMP.y - (el + 6), CAMP.z - by) < 4.5) return;
     }
     FR.set(bx, rootY, by, yaw, roll, pitch);
-    if (DBG.track === e) DBG.rec = { kind: 'person', J: Array.from(J), x: bx, y: by, h: rootY, yaw, pitch, size: s.size, wide: s.wide, seated: o.seated, fpsHide: o.fpsHide, v: st.v, cyc: st.cyc, beta: st.beta, X: st.X, f: st.f, run: !!st.run, gw: st.gw, hab: st.hab || null, habW: st.habW || 0, frame: ST.frame };
+    if (DBG.track === e) DBG.rec = { kind: 'person', J: Array.from(J), x: bx, y: by, h: rootY, yaw, pitch, size: s.size, wide: s.wide, seated: o.seated, fpsHide: o.fpsHide, v: st.v, cyc: st.cyc, beta: st.beta, X: st.X, f: st.f, run: !!st.run, gw: st.gw, hab: st.hab || null, habW: st.habW || 0, talk: st.talk || 0, frame: ST.frame };
     const i = submitPerson(look, seed, FR, 0, 0, 0, J, o);
     if (i < 0) return;
     const head = el + 9.4 * s.size + (s.headCarry ? 1.4 : 0);
@@ -2794,6 +2985,30 @@
         pts.push({ x: r.x + lx * c + lz * sn, y: r.y - lx * sn + lz * c, h: r.h + ly });
       }
       out.push({ heel: pts[0], toe: pts[1], low: Math.min(pts[0].h, pts[1].h) });
+    }
+    return out;
+  }
+  function riderAnkles(vr, sx) {
+    const rd = vr && vr.riders && vr.riders[0];
+    if (!rd || !rd.root) return null;
+    const md = model(vr.model), j = rd.J, sc = rd.size || 1, ank = [];
+    const M = rot3(new Float64Array(9), rd.yaw || 0, rd.roll || 0, 0);
+    for (const sd of [-1, 1]) {
+      const k = sd < 0 ? 0 : 1;
+      let p = [0, ANK_Y, sd * HIP_Z];
+      let q = rotZ2(p[0], p[1], 0, KNEE_Y, j[2 + k]); p = [q[0], q[1], p[2]];
+      q = rotZ2(p[0], p[1], 0, HIP_Y, j[k]); p = [q[0], q[1], p[2]];
+      const a = -sd * (j[16 + k] || 0), c = Math.cos(a), s = Math.sin(a), qy = p[1] - HIP_Y, qz = p[2] - sd * HIP_Z;
+      p = [p[0], qy * c - qz * s + HIP_Y, qy * s + qz * c + sd * HIP_Z];
+      p[1] += j[11] || 0;
+      const x = p[0] * sc, y = p[1] * sc, z = p[2] * sc;
+      ank.push([rd.root[0] + M[0] * x + M[1] * y + M[2] * z, rd.root[1] + M[3] * x + M[4] * y + M[5] * z, rd.root[2] + M[6] * x + M[7] * y + M[8] * z]);
+    }
+    const out = { ankles: ank, pose: rd.pose };
+    if (md.crank) {
+      const c = vr.crank || 0, R = md.crank[2], bx = md.crank[0] * sx, by = md.crank[1];
+      out.targets = [-1, 1].map((sd) => [bx + sd * Math.cos(c) * R - 0.25, by + sd * Math.sin(c) * R + 0.18 + ANK_Y * sc, sd * KAINCHI.pz]);
+      out.err = out.targets.map((t, i) => +Math.hypot(t[0] - ank[i][0], t[1] - ank[i][1], t[2] - ank[i][2]).toFixed(3));
     }
     return out;
   }
@@ -3633,6 +3848,9 @@
       /** live skid-mark quads (fading over 40 s of game time) and smoke / dust puffs */
       fx() { return { skids: FXS.skN, puffs: FXS.live }; },
       feet: (r) => feetOf(r || DBG.rec),
+      /** tests: the rider's ankles (mirroring the vertex shader: knee, hip, abduction, then the
+       *  person's roll / yaw / scale / root) and the pedal ankle targets, in the vehicle frame */
+      riderAnkles(vrec, sx) { return riderAnkles(vrec || DBG.rec, sx || 1); },
     },
   };
 })();

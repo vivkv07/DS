@@ -617,12 +617,24 @@ class VRig:
         if os.environ.get('NOS_TRIS'):
             # authoring aid: triangle cost per part (NOS_TRIS=1 build_all.py <id> --one ...)
             cost = {}
+            vcost = {}
             for o in meshes:
                 k = o.name.split('.')[0]
                 cost[k] = cost.get(k, 0) + sum(len(p.vertices) - 2 for p in o.data.polygons)
-            for k, n in sorted(cost.items(), key=lambda kv: -kv[1])[:40]:
-                kit.log('  tris %-22s %5d' % (k, n))
-            kit.log('  tris total %d' % sum(cost.values()))
+                # exported vertices (lower bound: normal splits only; UV seams add more)
+                me = o.data
+                try:
+                    cn = me.corner_normals
+                    seen = set()
+                    for li, lp in enumerate(me.loops):
+                        n = cn[li].vector
+                        seen.add((lp.vertex_index, round(n.x, 2), round(n.y, 2), round(n.z, 2)))
+                    vcost[k] = vcost.get(k, 0) + len(seen)
+                except Exception:
+                    vcost[k] = vcost.get(k, 0) + len(me.vertices)
+            for k, n in sorted(cost.items(), key=lambda kv: -vcost.get(kv[0], 0))[:45]:
+                kit.log('  tris %-22s %5d  verts %5d' % (k, n, vcost.get(k, 0)))
+            kit.log('  tris total %d, verts >= %d' % (sum(cost.values()), sum(vcost.values())))
         ob = kit.join(meshes, A.id)
         A.tint = {'attribute': '_REGION', 'names': REGION_NAMES, 'regions': region_colours(ob)}
         kit.write_regions(ob)
@@ -1203,7 +1215,7 @@ def moto_bars(name, centre, pts_left, grip_len, M, bar_m=None, grip_m=None, r=0.
             side = Vector((0, -1, 0))
             l0 = g0 - d * 0.1 + Vector((0, -0.12, 0.05))
             parts.append(tube(name + '_lever', [l0, l0 + d * (grip_len * 0.75) + side * 0.35 + Vector((0, 0, -0.05))], 0.045, seg=4, mat=lever_m or M['chrome']))
-            parts.append(rbox(name + '_perch', (0.22, 0.28, 0.22), tuple(g0 - d * 0.12), lever_m or M['black'], bevel=0.0))
+            parts.append(rbox(name + '_perch', (0.22, 0.28, 0.22), tuple(g0 - d * 0.12), M['black'], bevel=0.0))
     return parts, grips
 
 
@@ -1231,12 +1243,12 @@ def lens_box(name, size, loc, m, bezel_m=None, facing='-Y', bezel=0.06):
     sx, sy, sz = size
     if facing in ('-Y', '+Y'):
         s = 1 if facing == '+Y' else -1
-        parts.append(rbox(name + '_lens', (sx, sy, sz), loc, m, bevel=min(0.05, sz * 0.2)))
+        parts.append(rbox(name + '_lens', (sx, sy, sz), loc, m, bevel=0.0))
         if bezel_m is not None:
             l = Vector(loc)
             parts.append(rbox(name + '_bezel', (sx + bezel * 2, sy * 0.7, sz + bezel * 2), tuple(l - Vector((0, s * sy * 0.3, 0))), bezel_m, bevel=0.0))
     else:
-        parts.append(rbox(name + '_lens', (sx, sy, sz), loc, m, bevel=min(0.05, sz * 0.2)))
+        parts.append(rbox(name + '_lens', (sx, sy, sz), loc, m, bevel=0.0))
     return parts
 
 
@@ -1250,3 +1262,61 @@ def spring(name, a, b, r, turns, m, wire=0.05, seg=3):
     n = int(turns * 6)
     pts = [a + d * (i / n) + (u * math.cos(2 * math.pi * turns * i / n) + v * math.sin(2 * math.pi * turns * i / n)) * r for i in range(n + 1)]
     return tube(name, pts, wire, seg=seg, mat=m, cap=False)
+
+
+def car_section(hw, z0, z1, rs=0.8, rb=0.5, crown=0.2, bulge=0.15, ns=4, nb=2, nt=3):
+    """a car body cross-section [(x, z)] as a closed loop: a crowned top, rounded shoulders (radius
+    rs) at the belt line, sides bulging out by `bulge` at mid height, rounded bottom corners (rb)"""
+    rs = min(rs, hw * 0.9, (z1 - z0) * 0.6)
+    rb = min(rb, hw * 0.5, (z1 - z0) * 0.3)
+    L = []
+    w = hw - rs
+    for i in range(nt):                      # top, from the centre line out to the shoulder
+        x = w * i / nt
+        u = x / max(1e-3, hw)
+        L.append((x, z1 + crown * (1 - u * u)))
+    for i in range(ns + 1):                  # shoulder arc
+        a = math.pi / 2 * (1 - i / ns)
+        L.append((w + rs * math.cos(a), z1 - rs + rs * math.sin(a) + crown * (1 - (w / max(1e-3, hw)) ** 2) * (i == 0)))
+    zt, zbot = z1 - rs, z0 + rb
+    for t in (0.33, 0.66):                   # side with a bulge
+        z = zt + (zbot - zt) * t
+        L.append((hw + bulge * math.sin(math.pi * t), z))
+    for i in range(nb + 1):                  # bottom corner arc
+        a = -math.pi / 2 * i / nb
+        L.append((hw - rb + rb * math.cos(a), z0 + rb + rb * math.sin(a)))
+    L.append((0.0, z0))
+    R = [(-x, z) for (x, z) in reversed(L[1:-1])]
+    return L + R
+
+
+def section_halfwidth(loop, z):
+    """the largest |x| of a section loop at height z (linear between loop points)"""
+    best = 0.0
+    n = len(loop)
+    for i in range(n):
+        (x0, z0), (x1, z1) = loop[i], loop[(i + 1) % n]
+        if (z0 - z) * (z1 - z) <= 0 and abs(z1 - z0) > 1e-9:
+            t = (z - z0) / (z1 - z0)
+            best = max(best, abs(x0 + (x1 - x0) * t))
+    return best
+
+
+def profile_loft(name, stations, m, cap=True):
+    """a closed body through explicit section loops: stations = [(y, [(x, z) ...])] (same point count,
+    each loop closed implicitly); the ends are capped with n-gons"""
+    bm = bmesh.new()
+    rings = []
+    for (y, loop) in stations:
+        rings.append([bm.verts.new((x, y, z)) for (x, z) in loop])
+    n = len(rings[0])
+    for A_, B_ in zip(rings, rings[1:]):
+        for k in range(n):
+            bm.faces.new((A_[k], A_[(k + 1) % n], B_[(k + 1) % n], B_[k]))
+    if cap:
+        bm.faces.new(list(reversed(rings[0])))
+        bm.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    o = kit.obj_from_bm(bm, name, m)
+    o['nos_smooth'] = 50.0
+    return o

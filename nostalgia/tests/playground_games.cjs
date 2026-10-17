@@ -24,7 +24,11 @@
  *     across the red wind-up line; a ball rolling off the ground stops near it; fetching it is not "leaving";
  *     hiding off the ground in maram pitti is out after a warning; "Play again" offered where Chinnu stands;
  *     no point-blank AI throws (the holder steps back first); phones: the touch stick is a catapult too
- * Fails on any console error / page error / N.err.   ONLY=desktop|fixes|ambient|3d|portrait|landscape
+ *   fairness (playtest round 2, desktop, real keys): the AI wind-up's red line is a fuse; a Shift tap in its gold
+ *     (committed) stretch beats the throw, an early hop is re-aimed at; an AI seeker brushing a hitter is not SAFE,
+ *     Chinnu running into one is; holding the ball, the aim assist passes over a SAFE seeker; maram pitti: Chinnu's hit
+ *     from right next to a kid is a TOO CLOSE foul (label / orange reticle warn him first)
+ * Fails on any console error / page error / N.err.   ONLY=desktop|fixes|fair|ambient|3d|portrait|landscape
  *   node nostalgia/tests/playground_games.cjs
  */
 'use strict';
@@ -301,10 +305,10 @@ async function desktop(browser) {
   await sleep(120);
   await tapKey(page, 'KeyE', 60);
   check(await waitLog(page, 'grab', { me: true }, 6000) && (await st(page)).ball.holderIsMe, 'after the bounce E grabs it');
-  // a throw that hits = out (real E tap at a kid 14 u away, straight aim, no dodge)
+  // a throw that hits = out (real E tap at a kid 22 u away, straight aim, no dodge)
   const victim = await page.evaluate(() => {
     const S = N.playgroundGames.current, p = N.player, T = S.parts.find((q) => !q.isPlayer && !q.out);
-    T.e.x = p.x + 14; T.e.y = p.y; p.angle = p.facing = 0;
+    T.e.x = p.x + 22; T.e.y = p.y; p.angle = p.facing = 0;
     return T.name;
   });
   await page.evaluate(() => { const A = N.playgroundGames.debug.assist; A.aim = true; A.noDodge = true; });
@@ -469,6 +473,129 @@ async function fixes(browser) {
   await context.close();
 }
 
+/* ======================================================================= fairness (playtest round 2) */
+async function fair(browser) {
+  cur = 'fair';
+  console.log('\n== fairness: the wind-up fuse, the committed aim, deliberate SAFE, aim assist (desktop, real keys)');
+  const { context, page, errors } = await openPage(browser, { viewport: { width: 1280, height: 720 } });
+  await page.evaluate(() => { N.playgroundGames.ambient.off = true; const f = N.playgroundGames.fieldFor('playground_2'); N.debug.teleport(f.centre.x, f.centre.y); });
+  await startResult(page, 'marampitti', { place: 'playground_2', seed: 33 });
+  check(await waitPhase(page, 'play', 90000), 'maram pitti at Vidyanagar ground');
+  // one AI kid (K) winds up at Chinnu from 30 u; another (J) stays far off; slow motion so the timing is exact
+  const setup = () => page.evaluate(() => {
+    const D = N.playgroundGames.debug, S = D.session(), F = S.F, p = N.player;
+    D.assist.noTimer = true;
+    const kids = S.parts.filter((q) => !q.isPlayer), al = kids.filter((q) => !q.out);
+    for (const q of al.slice(2)) D.out(q.name);
+    const K = al[0] || kids[0], J = al[1] || kids.find((q) => q !== K);
+    for (const q of [K, J]) { q.out = false; q.sit = null; q.e.idle = null; q.windT = 0; }
+    p.x = F.cx; p.y = F.cy; p.vx = p.vy = 0; S.me.dashT = -9;
+    K.e.x = F.cx + 30; K.e.y = F.cy; K.downT = 0; K.e.down = false; J.e.x = F.x0 + 4; J.e.y = F.y0 + 4;
+    D.give(K.name); K.tgt = S.me; K.tgtT = S.t + 99; K.lookT = 0;
+    K.windT = K.windT0 = 0.7; K.aimLock = null; S.tele = { from: K, to: S.me };
+    N.time.scale = 0.25;
+    return K.name;
+  });
+  const lastThrow = (k) => page.evaluate((k) => { const l = N.playgroundGames.debug.log().filter((e) => e.type === 'throw' && e.by === k); return l.length ? l[l.length - 1] : null; }, k);
+  const throws = (k) => page.evaluate((k) => N.playgroundGames.debug.log().filter((e) => e.type === 'throw' && e.by === k).length, k);
+  let K = await setup();
+  let n0 = await throws(K);
+  check(await waitFor(page, () => { const t = N.playgroundGames.debug.state().tele; return !!t && t.atMe && t.fuse > 0.2; }, null, 20000), 'the red line is a fuse that burns towards Chinnu (debug tele.fuse)');
+  const pr = (await st(page)).prompt;
+  check(/fuse reaches you/.test(pr), 'the prompt explains it: "' + pr + '"');
+  await shot(page, 'fair_fuse');
+  // a tap in the committed (gold) stretch: his aim is already fixed, the hop beats it
+  const locked = await waitFor(page, () => { const t = N.playgroundGames.debug.state().tele; return !!t && t.locked; }, null, 20000);
+  await tapKey(page, 'ShiftLeft', 60);
+  await waitFor(page, (a) => N.playgroundGames.debug.log().filter((e) => e.type === 'throw' && e.by === a[0]).length > a[1], [K, n0], 20000);
+  const late = await lastThrow(K);
+  await sleep(1500);
+  const outLate = await page.evaluate(() => N.playgroundGames.debug.state().parts.find((p) => p.me).out);
+  check(locked && late && late.aimOff >= 6 && !outLate, 'Shift as the fuse turns gold: he throws where Chinnu was (' + (late && late.aimOff) + ' u off), Chinnu is not out', late);
+  // an early hop (as the line appears): he simply aims at where Chinnu landed
+  K = await setup();
+  n0 = await throws(K);
+  await waitFor(page, () => { const t = N.playgroundGames.debug.state().tele; return !!t && t.fuse > 0.02; }, null, 20000);
+  await tapKey(page, 'ShiftLeft', 60);
+  await waitFor(page, (a) => N.playgroundGames.debug.log().filter((e) => e.type === 'throw' && e.by === a[0]).length > a[1], [K, n0], 20000);
+  const early = await lastThrow(K);
+  check(early && late && early.aimOff < late.aimOff * 0.6, 'a hop as soon as the line appears is re-aimed at (' + (early && early.aimOff) + ' u off vs ' + (late && late.aimOff) + ')', early);
+  // colony manners: Chinnu's hit from right next to a kid is a foul, not an out (the reticle / label warn him)
+  await page.evaluate(() => { N.time.scale = 1; });
+  K = await page.evaluate(() => {
+    const D = N.playgroundGames.debug, S = D.session(), F = S.F, p = N.player;
+    D.assist.freezeAI = true; D.assist.aim = true; D.assist.noDodge = true;
+    const kids = S.parts.filter((q) => !q.isPlayer), K = kids.find((q) => !q.out) || kids[0];
+    K.out = false; K.windT = 0; S.tele = null;
+    p.x = F.cx; p.y = F.cy; p.vx = p.vy = 0; p.angle = p.facing = 0; K.e.x = F.cx + 10; K.e.y = F.cy;
+    D.give('me');
+    return K.name;
+  });
+  await sleep(300);
+  const tcl = (await st(page)).label;
+  check(/Too close/.test(tcl), 'holding the ball 10 u from ' + K + ': "' + tcl + '" (orange reticle)');
+  await tapKey(page, 'KeyE', 80);
+  check(await waitLog(page, 'close_foul', { name: K }, 8000), 'E anyway: TOO CLOSE! — a foul, not an out');
+  check(!(await st(page)).parts.find((q) => q.name === K).out, '... ' + K + ' stays in');
+  await page.evaluate(() => { const D = N.playgroundGames.debug; D.assist.freezeAI = false; D.assist.aim = false; D.assist.noDodge = false; N.playgroundGames.abort('test'); });
+  await result(page, 20000);
+
+  // lingocha: SAFE only for a touch the seeker went for; Chinnu's aim assist passes over a SAFE seeker
+  await page.evaluate(() => { const f = N.playgroundGames.fieldFor('playground_1'); N.debug.teleport(f.line.x + 4, f.line.y + 4); });
+  await startResult(page, 'lingocha', { place: 'playground_1', seekFirst: false, seed: 41 });
+  await waitPhase(page, 'aim', 90000);
+  await page.evaluate(() => N.playgroundGames.debug.knock());
+  check(await waitPhase(page, 'live', 30000), 'lingocha: Chinnu’s team hits, the stack is down');
+  const brush = await page.evaluate(() => {
+    const D = N.playgroundGames.debug, S = D.session(), F = S.F;
+    D.assist.freezeAI = true; D.assist.noTimer = true;
+    const A = S.parts.find((q) => !q.isPlayer && q.team === S.L.seek && !q.dood), H = S.parts.find((q) => !q.isPlayer && q.team !== S.L.seek);
+    for (const q of S.parts) { q.safeT = 0; q.safeCD = 0; }
+    A.e.x = F.cx; A.e.y = F.cy; H.e.x = F.cx + 5; H.e.y = F.cy;
+    return A.name;
+  });
+  await sleep(600);
+  check(!(await logHas(page, 'safe', { name: brush })), 'an AI seeker brushing past a hitter is not SAFE (' + brush + ')');
+  const aimSkip = await page.evaluate(() => {
+    const D = N.playgroundGames.debug, S = D.session(), F = S.F, p = N.player;
+    const seek = S.parts.filter((q) => !q.isPlayer && q.team === S.L.seek && !q.dood);
+    const A = seek[0], B = seek[1];
+    for (const q of S.parts) if (!q.isPlayer && q !== A && q !== B) { q.e.x = F.x0 + 3; q.e.y = F.y0 + 3; }
+    p.x = F.cx - 20; p.y = F.cy; p.vx = p.vy = 0; p.angle = p.facing = 0;
+    A.e.x = p.x + 12; A.e.y = p.y; A.safeT = 30; A.safeCD = 99;
+    B.e.x = p.x + 22; B.e.y = p.y + 8; B.safeT = 0; B.safeCD = 99;
+    D.give('me');
+    return { A: A.name, B: B.name };
+  });
+  await sleep(300);
+  const tg = (await st(page)).target;
+  check(tg === aimSkip.B, 'holding the ball, the aim assist passes over SAFE ' + aimSkip.A + ' (straight ahead) for ' + aimSkip.B + ' (' + tg + ')');
+  await shot(page, 'fair_aim_skip_safe');
+  // round 2: Chinnu seeks; he walks (real keys) into a hitter = SAFE
+  await page.evaluate(() => { const D = N.playgroundGames.debug; D.assist.freezeAI = false; D.finishRound('away'); });
+  await waitLog(page, 'role_swap', null, 30000);
+  await waitPhase(page, 'aim', 60000);
+  await page.evaluate(() => N.playgroundGames.debug.knock());
+  await waitPhase(page, 'live', 30000);
+  const hx = await page.evaluate(() => {
+    const D = N.playgroundGames.debug, S = D.session(), F = S.F, p = N.player;
+    D.assist.freezeAI = true;
+    for (const q of S.parts) { q.safeT = 0; q.safeCD = 0; }
+    const H = S.parts.find((q) => !q.isPlayer && q.team !== S.L.seek);
+    p.x = F.cx - 14; p.y = F.cy; p.vx = p.vy = 0; H.e.x = F.cx; H.e.y = F.cy;
+    D.ballTo(F.x0 + 3, F.y1 - 3, 0);
+    return H.name;
+  });
+  await page.keyboard.down('ArrowRight');
+  const safeMe = await waitLog(page, 'safe', { me: true }, 8000);
+  await page.keyboard.up('ArrowRight');
+  check(safeMe, 'Chinnu runs into ' + hx + ' (real keys): SAFE');
+  await page.evaluate(() => { const D = N.playgroundGames.debug; D.assist.freezeAI = false; D.assist.noTimer = false; N.playgroundGames.abort('test'); });
+  await result(page, 20000);
+  await noErrors(page, errors);
+  await context.close();
+}
+
 /* ======================================================================= ambient */
 async function ambient(browser) {
   cur = 'ambient';
@@ -516,6 +643,11 @@ async function three() {
     const L = await page.evaluate(() => { const V = N.playgroundGames.debug.v3; return { ok: V.ok, vis: !!(V.grp && V.grp.visible), stones: V.stones.filter((m) => m.visible).length, chalk: !!(V.chalk && V.chalk.visible), arrow: !!(V.arrow && V.arrow.visible), rings: V.rings.filter((m) => m.visible).length }; });
     check(L.ok && L.vis && L.stones === 7 && L.chalk && L.rings >= 6, 'the 3D layer: 7 stones, chalk line + ring, team rings (' + JSON.stringify(L) + ')');
     check(L.arrow, 'the aim arrow lies on the ground in front of Chinnu');
+    // V mid-aim (real key): first person, top-down, back to the chase view; still at the line, still aimed at the stack
+    const aimNow = () => page.evaluate(() => { const s = N.playgroundGames.debug.state(), p = N.player, to = Math.atan2(s.lingocha.base.y - p.y, s.lingocha.base.x - p.x); return { phase: s.phase, off: +Math.abs(Math.atan2(Math.sin(s.aim.ang - to), Math.cos(s.aim.ang - to))).toFixed(2), mode: N.view.mode }; });
+    const vm = [];
+    for (let i = 0; i < 3; i++) { await tapKey(page, 'KeyV'); await waitFor(page, (n) => N.view.mode === n || !N.view.loading, ['fps', 'top', 'tps'][i], 120000); await frames(6); vm.push(await aimNow()); }
+    check(vm.every((m) => m.phase === 'aim' && m.off < 0.4) && vm[2].mode === 'tps', 'V three times mid-aim (' + vm.map((m) => m.mode).join(' > ') + '): Chinnu stays at the line, aimed at the stack', vm);
     await page.evaluate(() => { N.playgroundGames.debug.knock(); });
     await waitPhase(page, 'live', 120000);
     await frames(20);
@@ -529,7 +661,18 @@ async function three() {
     await frames(10);
     const M = await page.evaluate(() => { const V = N.playgroundGames.debug.v3; return { ball: !!(V.ball && V.ball.visible), stones: V.stones.filter((m) => m.visible).length }; });
     check(M.ball && M.stones === 0, 'maram pitti in 3D: the ball, no stones');
+    // a wind-up at Chinnu: the fuse strip burns along the red line in 3D too
+    await page.evaluate(() => {
+      const D = N.playgroundGames.debug, S = D.session(), p = N.player;
+      D.assist.freezeAI = true;
+      const K = S.parts.find((q) => !q.isPlayer && !q.out);
+      K.e.x = p.x + 26; K.e.y = p.y; D.give(K.name); K.windT0 = 30; K.windT = 12; K.tgt = S.me; S.tele = { from: K, to: S.me };
+    });
+    await frames(6);
+    const FZ = await page.evaluate(() => { const V = N.playgroundGames.debug.v3; return { tele: !!(V.tele && V.tele.visible), fuse: !!(V.fuse && V.fuse.visible), len: V.fuse ? +V.fuse.scale.x.toFixed(1) : 0 }; });
+    check(FZ.tele && FZ.fuse && FZ.len > 5, 'the wind-up fuse burns along the red line in 3D (' + JSON.stringify(FZ) + ')');
     await shot(page, '3d_maram');
+    await page.evaluate(() => { N.playgroundGames.debug.assist.freezeAI = false; });
     await page.evaluate(() => N.playgroundGames.abort('test'));
     await noErrors(page, errors);
     await context.close();
@@ -603,7 +746,7 @@ async function phone(browser, name, viewport) {
   check(/Grab/i.test(lab2), 'ACTION button: "' + lab2 + '"');
   await page.tap('.t-btn.t-action');
   check(await waitFor(page, () => N.playgroundGames.debug.state().ball.holderIsMe, null, 8000), 'tap ACTION grabs the ball');
-  const victim = await page.evaluate(() => { const S = N.playgroundGames.current, p = N.player, T = S.parts.find((q) => !q.isPlayer && !q.out); T.e.x = p.x + 13; T.e.y = p.y + 2; p.angle = p.facing = 0; return T.name; });
+  const victim = await page.evaluate(() => { const S = N.playgroundGames.current, p = N.player, T = S.parts.find((q) => !q.isPlayer && !q.out); T.e.x = p.x + 22; T.e.y = p.y + 2; p.angle = p.facing = 0; return T.name; });
   await sleep(300);
   const lab3 = await page.evaluate(() => document.querySelector('.t-btn.t-action .t-txt').textContent);
   check(/Throw at/i.test(lab3), 'ACTION button: "' + lab3 + '" (aim assist)');
@@ -627,6 +770,7 @@ async function phone(browser, name, viewport) {
   try {
     if (want('desktop')) await desktop(browser);
     if (want('fixes')) await fixes(browser);
+    if (want('fair')) await fair(browser);
     if (want('ambient')) await ambient(browser);
     if (want('portrait')) await phone(browser, 'portrait', { width: 390, height: 844 });
     if (want('landscape')) await phone(browser, 'landscape', { width: 844, height: 390 });

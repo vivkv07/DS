@@ -1,0 +1,315 @@
+{
+ "anchors": {
+  "exhaust": [
+   -2.7,
+   13.55,
+   1.55
+  ],
+  "eye_driver": [
+   -2.4,
+   -0.0,
+   8.05
+  ],
+  "foot_L": [
+   -1.85,
+   -3.45,
+   2.05
+  ],
+  "foot_R": [
+   -2.95,
+   -3.45,
+   2.05
+  ],
+  "foot_passenger_F": [
+   2.4,
+   -3.35,
+   2.05
+  ],
+  "foot_passenger_RL": [
+   2.6,
+   -1.9,
+   2.05
+  ],
+  "foot_passenger_RR": [
+   -2.6,
+   -1.9,
+   2.05
+  ],
+  "grip_L": [
+   -3.3119,
+   -3.503,
+   6.9101
+  ],
+  "grip_R": [
+   -1.4881,
+   -3.503,
+   6.9101
+  ],
+  "handlebar": [
+   -2.4,
+   -3.05,
+   6.55
+  ],
+  "headlight_L": [
+   4.15,
+   -13.3,
+   3.85
+  ],
+  "headlight_R": [
+   -4.15,
+   -13.3,
+   3.85
+  ],
+  "indicator_FL": [
+   4.15,
+   -13.25,
+   2.95
+  ],
+  "indicator_FR": [
+   -4.15,
+   -13.25,
+   2.95
+  ],
+  "indicator_RL": [
+   4.55,
+   13.25,
+   3.58
+  ],
+  "indicator_RR": [
+   -4.55,
+   13.25,
+   3.58
+  ],
+  "seat_driver": [
+   -2.4,
+   -0.4,
+   4.15
+  ],
+  "seat_passenger_F": [
+   2.4,
+   -0.4,
+   4.15
+  ],
+  "seat_passenger_RL": [
+   2.6,
+   3.775,
+   4.15
+  ],
+  "seat_passenger_RR": [
+   -2.6,
+   3.775,
+   4.15
+  ],
+  "taillight_L": [
+   4.55,
+   13.25,
+   4.1
+  ],
+  "taillight_R": [
+   -4.55,
+   13.25,
+   4.1
+  ],
+  "wheel_FL": [
+   4.85,
+   -8.2,
+   2.12
+  ],
+  "wheel_FR": [
+   -4.85,
+   -8.2,
+   2.12
+  ],
+  "wheel_RL": [
+   4.85,
+   8.4,
+   2.12
+  ],
+  "wheel_RR": [
+   -4.85,
+   8.4,
+   2.12
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 312208,
+ "clips": {},
+ "family": "vehicle",
+ "file": "padmini.glb",
+ "front": "-Y",
+ "id": "padmini",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 304.9,
+ "kit": 1,
+ "materials": [
+  "M_padmini@night",
+  "M_padmini_glass"
+ ],
+ "max": [
+  6.069,
+  13.51,
+  11.242
+ ],
+ "meta": {
+  "closed": true,
+  "cockpit": {
+   "eye": [
+    -2.4,
+    -0.0,
+    8.05
+   ]
+  },
+  "fps": "cockpit",
+  "height": 11.0,
+  "lamps": {
+   "head": [
+    "headlight_L",
+    "headlight_R"
+   ],
+   "tail": [
+    "taillight_L",
+    "taillight_R"
+   ]
+  },
+  "length": 26.0,
+  "options": [
+   {
+    "bone": "opt_carrier",
+    "flag": "taxi"
+   }
+  ],
+  "riders": {
+   "driver": {
+    "clips": [
+     "drive",
+     "sit"
+    ],
+    "feet": [
+     "foot_L",
+     "foot_R"
+    ],
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "car",
+    "seat": "seat_driver"
+   },
+   "passengers": [
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_F"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_F"
+    },
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_RL"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_RL"
+    },
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_RR"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_RR"
+    }
+   ]
+  },
+  "steerBones": {
+   "steer_L": {
+    "axis": [
+     0,
+     0,
+     1
+    ],
+    "k": 1.0
+   },
+   "steer_R": {
+    "axis": [
+     0,
+     0,
+     1
+    ],
+    "k": 1.0
+   },
+   "steer_wheel": {
+    "axis": [
+     0.0,
+     -0.6222,
+     -0.7828
+    ],
+    "k": -2.6
+   }
+  },
+  "taxi": {
+   "paint": "#1c1c22",
+   "paint2": "#f2c230"
+  },
+  "tintSrc": {
+   "paint": "color",
+   "paint2": "color"
+  },
+  "vehicleTypes": [
+   "padmini",
+   "taxi_padmini"
+  ],
+  "wheelR": 2.12,
+  "wheels": {
+   "wheel_FL": 2.12,
+   "wheel_FR": 2.12,
+   "wheel_RL": 2.12,
+   "wheel_RR": 2.12
+  },
+  "width": 12.0
+ },
+ "min": [
+  -6.069,
+  -13.545,
+  -0.0
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  12.139,
+  27.055,
+  11.242
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#8fb0c8",
+   "paint2": "#8fb0c8"
+  }
+ },
+ "tris": 4136,
+ "units": "u",
+ "up": "Z"
+}

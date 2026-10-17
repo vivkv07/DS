@@ -1,0 +1,328 @@
+{
+ "anchors": {
+  "beacon": [
+   0.0,
+   0.6,
+   10.5
+  ],
+  "exhaust": [
+   -3.1,
+   15.6,
+   1.6
+  ],
+  "eye_driver": [
+   -2.75,
+   -0.225,
+   8.35
+  ],
+  "foot_L": [
+   -2.2,
+   -4.05,
+   2.1
+  ],
+  "foot_R": [
+   -3.3,
+   -4.05,
+   2.1
+  ],
+  "foot_passenger_F": [
+   2.75,
+   -3.95,
+   2.1
+  ],
+  "foot_passenger_RL": [
+   2.6,
+   -2.2,
+   2.1
+  ],
+  "foot_passenger_RR": [
+   -2.6,
+   -2.2,
+   2.1
+  ],
+  "grip_L": [
+   -3.721,
+   -4.1324,
+   7.1834
+  ],
+  "grip_R": [
+   -1.779,
+   -4.1324,
+   7.1834
+  ],
+  "handlebar": [
+   -2.75,
+   -3.65,
+   6.8
+  ],
+  "headlight_L": [
+   4.5,
+   -15.25,
+   3.95
+  ],
+  "headlight_R": [
+   -4.5,
+   -15.25,
+   3.95
+  ],
+  "indicator_FL": [
+   3.05,
+   -15.15,
+   4.45
+  ],
+  "indicator_FR": [
+   -3.05,
+   -15.15,
+   4.45
+  ],
+  "indicator_RL": [
+   5.05,
+   15.15,
+   3.6
+  ],
+  "indicator_RR": [
+   -5.05,
+   15.15,
+   3.6
+  ],
+  "seat_driver": [
+   -2.75,
+   -0.625,
+   4.3
+  ],
+  "seat_passenger_F": [
+   2.75,
+   -0.625,
+   4.3
+  ],
+  "seat_passenger_RL": [
+   2.6,
+   4.1,
+   4.3
+  ],
+  "seat_passenger_RR": [
+   -2.6,
+   4.1,
+   4.3
+  ],
+  "taillight_L": [
+   5.05,
+   15.15,
+   4.2
+  ],
+  "taillight_R": [
+   -5.05,
+   15.15,
+   4.2
+  ],
+  "wheel_FL": [
+   5.55,
+   -9.35,
+   2.45
+  ],
+  "wheel_FR": [
+   -5.55,
+   -9.35,
+   2.45
+  ],
+  "wheel_RL": [
+   5.55,
+   9.55,
+   2.45
+  ],
+  "wheel_RR": [
+   -5.55,
+   9.55,
+   2.45
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 348384,
+ "clips": {},
+ "family": "vehicle",
+ "file": "ambassador.glb",
+ "front": "-Y",
+ "id": "ambassador",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 340.2,
+ "kit": 1,
+ "materials": [
+  "M_ambassador@night",
+  "M_ambassador_glass"
+ ],
+ "max": [
+  6.913,
+  15.76,
+  11.742
+ ],
+ "meta": {
+  "closed": true,
+  "cockpit": {
+   "eye": [
+    -2.75,
+    -0.225,
+    8.35
+   ]
+  },
+  "fps": "cockpit",
+  "height": 12.5,
+  "lamps": {
+   "beacon": [
+    "beacon"
+   ],
+   "head": [
+    "headlight_L",
+    "headlight_R"
+   ],
+   "tail": [
+    "taillight_L",
+    "taillight_R"
+   ]
+  },
+  "length": 30.0,
+  "options": [
+   {
+    "bone": "opt_beacon",
+    "flag": "beacon"
+   },
+   {
+    "bone": "opt_carrier",
+    "flag": "taxi"
+   }
+  ],
+  "riders": {
+   "driver": {
+    "clips": [
+     "drive",
+     "sit"
+    ],
+    "feet": [
+     "foot_L",
+     "foot_R"
+    ],
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "car",
+    "seat": "seat_driver"
+   },
+   "passengers": [
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_F"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_F"
+    },
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_RL"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_RL"
+    },
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_RR"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_RR"
+    }
+   ]
+  },
+  "steerBones": {
+   "steer_L": {
+    "axis": [
+     0,
+     0,
+     1
+    ],
+    "k": 1.0
+   },
+   "steer_R": {
+    "axis": [
+     0,
+     0,
+     1
+    ],
+    "k": 1.0
+   },
+   "steer_wheel": {
+    "axis": [
+     0.0,
+     -0.6222,
+     -0.7828
+    ],
+    "k": -2.6
+   }
+  },
+  "taxi": {
+   "paint": "#1c1c22",
+   "paint2": "#f2c230"
+  },
+  "tintSrc": {
+   "paint": "color",
+   "paint2": "color"
+  },
+  "vehicleTypes": [
+   "ambassador",
+   "govt_ambassador",
+   "taxi_ambassador"
+  ],
+  "wheelR": 2.45,
+  "wheels": {
+   "wheel_FL": 2.45,
+   "wheel_FR": 2.45,
+   "wheel_RL": 2.45,
+   "wheel_RR": 2.45
+  },
+  "width": 14.0
+ },
+ "min": [
+  -6.913,
+  -15.77,
+  -0.0
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  13.826,
+  31.53,
+  11.742
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#efeae0",
+   "paint2": "#efeae0"
+  }
+ },
+ "tris": 4602,
+ "units": "u",
+ "up": "Z"
+}

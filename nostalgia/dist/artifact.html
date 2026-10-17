@@ -39577,6 +39577,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       try { N.calendar.set(end); } catch (e) { N.err('mission.end', e); }
     }
     if (kindOf(def) === 'main' && N.calendar && N.calendar.markStop) N.calendar.markStop(N.clock.day);
+    coolGiversUnderPlayer();
     N.emit('mission:complete', { id: def.id, title: def.title, reward: rw, kind: kindOf(def) });
     N.emit('mission:pass', { id: def.id });
     if (typeof def.onPass === 'function') { try { def.onPass(); } catch (e) { N.err('mission.onPass', e); } }
@@ -39593,6 +39594,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (run.failCause === 'timer') streaks.timer[run.id] = (streaks.timer[run.id] || 0) + 1;
     else if (run.lostGame) { const k = run.id + ':' + run.lostGame; streaks.game[k] = (streaks.game[k] || 0) + 1; lastFailed.game = run.lostGame; }
     if (run.def.giver) giverCooldown.add(run.id);
+    coolGiversUnderPlayer();
     N.hud.banner('MISSION FAILED', reason || '', 3600, { kind: 'fail' });
     N.emit('mission:fail', { id: run.id, reason: reason || '' });
     const myFail = lastFailed;
@@ -39628,6 +39630,18 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (g.place) { const p = N.places[g.place]; if (p) return p; }
     if (typeof g.x === 'number') return g;
     return null;
+  }
+  /** Every giver whose ring the player stands in (or next to) waits until he steps out (playthrough review:
+   *  M6 failed at the girni and the girni's odd job started under the retry card). */
+  function coolGiversUnderPlayer() {
+    const p = N.player;
+    if (!p) return;
+    for (const id of order) {
+      const d = defs[id];
+      if (!d || !d.giver) continue;
+      const g = giverPos(d);
+      if (g && Math.hypot(p.x - g.x, p.y - g.y) <= (d.giver.r || 14) + 24) giverCooldown.add(d.id);
+    }
   }
   function isAvailable(def) {
     if (done.has(def.id) || (active && active.id === def.id)) return false;
@@ -39906,6 +39920,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     /** Abort silently (quit / load). */
     abort() { if (!active) return false; const r = active; abortRun(r, 'abort'); endRun(r, 'abort'); return true; },
     retry,
+    /** true while the MISSION FAILED retry card is up */
+    get askOpen() { return askOpen; },
     /** Markers currently shown (for the full map): [{x, y, color, kind}] */
     markers() {
       const out = [];
@@ -41898,11 +41914,21 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function homeTeam(spec) {
     if (spec && spec !== 'chinnu_xi') return spec;
     const nick = (N.player && N.player.nick) || 'Chinnu';
-    if (nick === 'Chinnu') return 'chinnu_xi';
-    const name = nick + ' XI', short = (nick.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) || 'HOME') + ' XI';
+    // the score bug's short name: a short nickname whole ("PINTU XI", "RAJU XI"), a long one cut like the
+    // engine's own "CHIN XI" (never "PINT XI")
+    const letters = nick.toUpperCase().replace(/[^A-Z]/g, '');
+    const name = nick + ' XI', short = ((letters.length <= 5 ? letters : letters.slice(0, 4)) || 'HOME') + ' XI';
     const T = N.cricketMatch && N.cricketMatch.TEAMS && N.cricketMatch.TEAMS.chinnu_xi;
-    if (!T || !Array.isArray(T.players)) return { id: 'chinnu_xi', name, short };
-    return { id: 'chinnu_xi', name, short, players: T.players.map((q) => (q && q.hero ? Object.assign({}, q, { name: nick }) : q)) };
+    if (!T || !Array.isArray(T.players)) return nick === 'Chinnu' ? 'chinnu_xi' : { id: 'chinnu_xi', name, short };
+    // a summer-camp side of colony kids: Bunty-anna is 19 (bible §2.2, the Committee President with an RX100),
+    // so his place goes to Pappu from the colony; he watches from the stands
+    const players = T.players.map((q) => {
+      if (!q) return q;
+      if (q.hero) return Object.assign({}, q, { name: nick });
+      if (q.name === 'Bunty') return Object.assign({}, q, { name: 'Pappu', look: Object.assign({}, q.look || {}, { shades: false, puff: false }) });
+      return q;
+    });
+    return { id: 'chinnu_xi', name, short, players };
   }
   /** The LB Stadium match (cricket_match.js 'match'); the gully `cricket` minigame stands in when it is missing. */
   async function playMatch(m, params) {
@@ -42829,6 +42855,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     let late = false;
     const T = softTimer(240, 'AMMA COMES OUT', { onExpire: () => { late = true; } });
     void T;
+    m.toast('Back on this step before Amma comes out.', 3200); // the bible's line for the 240 s timer
     follow('immu', true, { dist: 14 });
     // 2. Gokul Chat: pani-puri challenge, Nani's parcel
     npc(m, 'gokul_man', spot('gokul_chat', 0, -6, 16), { idle: 'work' });
@@ -43453,7 +43480,12 @@ body.reduced-motion .pg-hud.show { animation: none; }
     // side activities (bible §7): kind 'side', windows, no autosave; none fail permanently
     M.register({ id: 'pandal_duty', kind: 'side', title: 'Pandal Duty', chapter: 'Side activity', requires: ['ammammas_thursday'], giver: { place: 'playground_1', r: 18 }, window: { from: '21:00', to: '23:30' },
       when: () => inMD('08-31', '09-08') && (F().pandal_nights | 0) < 4 && F().pandal_last_day !== todayKey(), autosave: false, help: true,
-      onPass: () => { const f = F(); f.pandal_nights = (f.pandal_nights | 0) + 1; f.pandal_last_day = todayKey(); if (f.pandal_nights >= 4) f.tiger_helps_lorry = true; else N.missions.done.delete('pandal_duty'); },
+      onPass: () => {
+        const f = F(); f.pandal_nights = (f.pandal_nights | 0) + 1; f.pandal_last_day = todayKey(); if (f.pandal_nights >= 4) f.tiger_helps_lorry = true; else N.missions.done.delete('pandal_duty');
+        // a pandal night ends after the 21:30 curfew: the committee's boy walks home with Mummy's blessing
+        // (wanted.js's curfew stays off until he is home or the night is over), not with Mummy at the gate
+        if (!f.no_curfew) { f.no_curfew = 'pandal'; S.pandalGrace = todayKey(); }
+      },
       script: sa1 });
     M.register({ id: 'current_poyindi', kind: 'side', title: 'Current Poyindi!', chapter: 'Side activity', requires: ['last_man_batting'], giver: { place: 'kirana_1', r: 18 }, window: { from: '19:00', to: '21:00' },
       when: () => powerCutTonight(), autosave: false,
@@ -43484,6 +43516,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     S.giverT -= dt;
     if (S.giverT > 0) return;
     S.giverT = 0.5;
+    pandalGraceTick();
     if (!N.npcs || !N.npcs.spawn || !N.world || !N.world.built) return;
     let mk = [];
     try { mk = run() ? [] : (N.missions.markers() || []).filter((x) => x.kind === 'giver' && GIVER_NPC[x.id]); } catch (e) { mk = []; }
@@ -43539,7 +43572,59 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (S.kiteTick && mode() === 'play') S.kiteTick(dt);
     if (S.tickFns) for (const fn of S.tickFns) { try { fn(dt); } catch (e) { N.err('story.tickFn', e); } }
     if (S.dark) S.dark.t += dt;
-    if (mode() === 'play') { giversTick(dt); powerCutTick(dt); }
+    if (mode() === 'play') { giversTick(dt); powerCutTick(dt); mountGuard(); }
+    rings3d();
+  }
+  /** The roof rings (terrace goals: M1's kite and lootna, SA2's candles, the antenna...) are drawn by storyDraw in
+   *  the top-down view only. In the 3D view (V) the mission's own markers are placed at roof height by
+   *  view3d_actors, so each ring gets a real mission marker while 3D is on (removed again in 2D, where a ground
+   *  marker would sit hidden under the building). */
+  const ring3d = new Map(); // ring -> {run, id}
+  function rings3d() {
+    const r = run();
+    const on = !!(N.view3d && N.view3d.active) && !!r && !r.ended && !!r.markers;
+    for (const [rg, o] of ring3d) {
+      if (on && S.rings.has(rg) && o.run === r) continue;
+      try { if (o.run && o.run.markers) o.run.markers.delete(o.id); } catch (e) { /* ignore */ }
+      ring3d.delete(rg);
+    }
+    if (!on) return;
+    for (const rg of S.rings) {
+      if (ring3d.has(rg)) continue;
+      const id = 'st:ring3d:' + (++seq);
+      r.markers.set(id, { target: rg.target, r: rg.r || 16, color: rg.color || '#ff5fb0', label: '' });
+      ring3d.set(rg, { run: r, id });
+    }
+  }
+  /** SA1's curfew grace (see its onPass) ends at home, at 05:00 or on another day. */
+  function pandalGraceTick() {
+    const f = F();
+    if (f.no_curfew !== 'pandal') return;
+    const p = N.player, h = pos('home');
+    const m = N.clock ? N.clock.minutes : 0;
+    const home = p && h && !p.level && Math.hypot(p.x - h.x, p.y - h.y) < 45;
+    const night = m >= 20 * 60 || m < 5 * 60;
+    const sameNight = S.pandalGrace == null || S.pandalGrace === todayKey() || (m < 5 * 60);
+    if (home || !night || !sameNight) { delete f.no_curfew; S.pandalGrace = null; }
+  }
+  /** A mission cycle / Scooty waiting to be mounted beside a shop: ACTION must get on it, not open the shop card
+   *  (shops sit at priority 3 over a parked vehicle's 0: Nanna's cycle at the girni is 20 u from the chemist,
+   *  the hired cycle at Raju Cycle Taxi, Bunty's cycle at Paradise). While the player stands by an unmounted
+   *  vehicle of the running mission (story.js or story2.js), shops.js's per-mission lock is on. */
+  function mountGuard() {
+    const r = run();
+    if (!r) return;
+    const p = N.player;
+    let near = false;
+    if (p && !p.vehicle && Array.isArray(r.spawned)) {
+      for (const s of r.spawned) {
+        const e = s && s.e;
+        if (!e || e.kind !== 'vehicle' || e.alive === false || e.noEnter || e.locked || e.driver || !(e.T && e.T.kidOk)) continue;
+        if (Math.hypot(e.x - p.x, e.y - p.y) < 30) { near = true; break; }
+      }
+    }
+    if (near) { if (!r.lockShops) r.lockShops = 'story:mount'; }
+    else if (r.lockShops === 'story:mount') r.lockShops = false;
   }
   // pin the player in the queue after the player system moved him
   function pinTick() {
@@ -43600,6 +43685,10 @@ body.reduced-motion .pg-hud.show { animation: none; }
     cleanupAll();
     clearGivers();
     if (opts && opts.skipIntro) return;
+    // an automated quick start (N.menus.quickStart: navigator.webdriver, the tests that click ▶ PLAY and expect
+    // to be in the game) skips the prologue the way menus.js skips the name card; a test that drives the real
+    // flow turns quickStart off (story_full, smoke, menus, story_part1's prologue phase). Players never have it.
+    if (N.menus && N.menus.quickStart) return;
     // the prologue plays right away (menus calls newGame once the name card closes)
     if (mode() === 'play' && !run()) prologue();
   });
@@ -43757,6 +43846,20 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function nick() { return (N.player && (N.player.nick || N.player.name)) || 'Chinnu'; }
   function emailOf() { return (nick().toLowerCase().replace(/[^a-z0-9]+/g, '') || 'chinnu') + '_charminar2'; }
   function toast(t, ms, key) { try { if (N.hud && N.hud.toast) N.hud.toast(plain(t), ms || 2600, key ? { key } : undefined); } catch (e) { N.err('story2.toast', e); } }
+  /** The next mission's clue as a toast a few seconds after MISSION PASSED. HUD toasts wait while the centre is
+   *  busy (dialogue, cutscenes, J-cards), so a clue queued once the next mission has begun would pop up in the
+   *  middle of it (seen: the M12 tape clue over the Chand Raat chase): it is only queued in free roam. */
+  function clueToast(t, ms, nextId) {
+    let tries = 0;
+    const go = () => {
+      const M = N.missions;
+      if (!M || M.active || (nextId && M.isDone && M.isDone(nextId))) return;
+      // a shop card / cutscene in the way: try again for a while (the clue also waits on its giver's J-card)
+      if (N.state && N.state.mode !== 'play') { if (++tries < 20) setTimeout(go, 1000); return; }
+      toast(t, ms);
+    };
+    setTimeout(go, 4600);
+  }
   function sfx(name, o) { try { if (N.audio && N.audio.sfx) return N.audio.sfx(name, o || { ui: true }); } catch (e) { /* audio never breaks the story */ } return false; }
   function isDone(id) { try { return !!(N.missions && N.missions.isDone && N.missions.isDone(id)); } catch (e) { return false; } }
   const F = () => N.flags || (N.flags = {});
@@ -43868,6 +43971,13 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function follow(key, leader, o) { try { if (N.npcs && N.npcs.follow) N.npcs.follow(key, leader, o || {}); } catch (e) { N.err('story2.follow', e); } }
   function stopNpc(key) { try { if (N.npcs && N.npcs.stop) N.npcs.stop(key); } catch (e) { /* ignore */ } }
   function bark(key, text, o) {
+    // a speech bubble carries the words only: a screenplay direction such as "(level 5, the chappal raised)"
+    // is acted (an emote), not printed
+    if (typeof text === 'string' && /^\(/.test(text)) {
+      const dir = (text.match(/^\(([^)]*)\)/) || [])[1] || '';
+      text = text.replace(/^\([^)]*\)\s*/, '');
+      emote(key, /chappal|angr|shout/.test(dir) ? 'anger' : '*', 1.6);
+    }
     try {
       if (N.npcs && N.npcs.bark && npcGet(key)) return N.npcs.bark(key, text, o);
       if (N.dialogue && N.dialogue.bark) return N.dialogue.bark(key, text, o);
@@ -44086,8 +44196,23 @@ body.reduced-motion .pg-hud.show { animation: none; }
     try { N.hud.objective(null); N.hud.timer(null); } catch (e) { /* ignore */ }
     if (p) { p.noRun = false; if (sc.locked) p.controlsLocked = false; }
     if (SC.cur === sc) SC.cur = null;
-    if (!SC.cur) F().no_save = false;
+    if (!SC.cur) { F().no_save = false; sceneCalm(false); }
     N.emit('story2:scene', { id: sc.id, on: false, ok: !!ok });
+  }
+  /** The interlude, the ending at Charminar (23:20 to 23:40, past the curfew) and the epilogue are calm scenes:
+   *  no Chappal Meter, no curfew aunties (seen in the playthrough: an uncle pursuer barking "Does your Amma
+   *  know?" while the kites rose over Charminar). */
+  function sceneCalm(on) {
+    const W = N.wanted, f = F();
+    try {
+      if (on) {
+        if (W) { if (has(W, 'clear') && W.locked == null) W.clear('scene'); if (has(W, 'freeze')) W.freeze(true, 'story2:scene'); }
+        if (!f.no_curfew) f.no_curfew = 'scene';
+      } else {
+        if (W && has(W, 'freeze')) W.freeze(false, 'story2:scene');
+        if (f.no_curfew === 'scene') delete f.no_curfew;
+      }
+    } catch (e) { N.err('story2.calm', e); }
   }
   /** Run a sequence; resolves true when it finished, false when it was aborted (quit / load / new game). */
   function runScene(id, fn) {
@@ -44095,6 +44220,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const sc = makeScene(id);
     SC.cur = sc; SC.last = id;
     F().no_save = true; // the interlude, the ending and the epilogue cannot be saved half-way (systems §13.9)
+    sceneCalm(true);
     N.emit('story2:scene', { id, on: true });
     return Promise.resolve().then(() => fn(sc.api)).then(() => { endScene(sc, true); return true; }, (e) => {
       if (!(e && (e.name === 'SceneAbort' || e.name === 'MissionAbort'))) N.err('story2.scene:' + id, e);
@@ -44864,6 +44990,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       dbgTarget(null);
       // 7. back to the depot by 19:30 (no fail: being late changes the lines)
       music(m, 'day');
+      m.objective('Back to the Mehdipatnam depot by 19:30.');
       await ride(m, 'mehdipatnam_bus_terminus', { mode: 'bus', label: 'BUS 66G → MEHDIPATNAM DEPOT', after: () => beside('immu') });
       const late = N.clock.minutes > TUNE.depotBy || N.clock.minutes < 6 * 60;
       npc(m, 'bunty', near('mehdipatnam_bus_terminus', 20, 12, 'drive'), { vehicle: 'bunty_rx100', talk: false });
@@ -45023,7 +45150,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     },
     onPass() {
       F().ramulu_agarwal = true;
-      setTimeout(() => toast('Ammi phoned the colony STD booth: Abba forgot his tiffin again. (Fri 25 Jul, Immu\'s house)', 4200), 4600);
+      clueToast('Ammi phoned the colony STD booth: Abba forgot his tiffin again. (Fri 25 Jul, Immu\'s house)', 4200, 'opening_day');
     },
   };
 
@@ -45120,6 +45247,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
       npc(m, 'abba', near('ntr_gardens', 12, 10), { idle: 'stand', talk: false });
       beside('immu', -10, 8);
       let trainP = null;
+      // he parks the cycle at the gate first (shops.trainRide hides the player but leaves a vehicle under him:
+      // the parked cycle would carry an invisible rider round the gardens' gate for the whole ride)
+      if (N.player.vehicle && N.vehicles && N.vehicles.exit) { try { N.vehicles.exit(N.player, true); } catch (e) { /* ignore */ } }
       if (!isFF(m) && N.shops && has(N.shops, 'trainRide')) { trainP = N.shops.trainRide('ntr_gardens', { secs: 40 }); }
       else await m.cutscene([{ type: 'text', lines: ['A seated ride round the gardens: the Machan tree, the waterfall. Chinnu sits one seat behind.'], ms: 2600 }]);
       await talk(m, [
@@ -45138,7 +45268,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       F().prasads_open = true;
       F().clue_peacock = true;
       journalNote('clue_peacock', 'Bunty\'s flyer: "Colony Ganesh Committee. Lorry for immersion: behind the station dressed as a palace. Look for the peacock." (Tue 9 Sep, the colony pandal)');
-      setTimeout(() => toast('Bunty\'s flyer: "Lorry for immersion: behind the station dressed as a palace. Look for the peacock."', 4600), 4600);
+      clueToast('Bunty\'s flyer: "Lorry for immersion: behind the station dressed as a palace. Look for the peacock."', 4600, 'agle_baras');
     },
   };
 
@@ -45581,7 +45711,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       await rec(m);
       m.meter('normal');
     },
-    onPass() { setTimeout(() => toast('Mon 24 Nov: a cassette drops through the window. Immu\'s last tape. (Chand Raat, home)', 4600), 4600); },
+    onPass() { clueToast('Mon 24 Nov: a cassette drops through the window. Immu\'s last tape. (Chand Raat, home)', 4600, 'chand_raat'); },
   };
 
   /* ================================================================== M12 chand_raat — Chand Raat (THE FINALE AT CHARMINAR) */
@@ -45887,6 +46017,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       await m.say('photo_uncle', 'Laughing boys, ready. Eight copies. Four each?');
       m.give('passport_photos', { name: 'Eight passport photos (two boys laughing)' });
       // 1. Laad Bazaar with both families
+      m.objective('Go to Laad Bazaar with both families.');
       await ride(m, 'laad_bazaar', { mode: 'nanna', label: 'NANNA\'S CHETAK + YADAGIRI-ANNA\'S AUTO → LAAD BAZAAR', minutes: 30 });
       N.clock.set(19, 30);
       m.checkpoint('laad_bazaar');
@@ -48034,6 +48165,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function autoViewpoints(dt) {
     const p = N.player; if (!p || p.vehicle || missionActive() || T.vp || T.click) { T.dwell = null; return; }
     try { if (N.hud && N.hud.jcardOpen) { T.dwell = null; return; } } catch (e) { /* stub */ }
+    // the MISSION FAILED retry card owns ACTION (M1 fails on home_terrace, a walk-up viewpoint)
+    if (N.missions && N.missions.askOpen) { T.dwell = null; return; }
     let here = null;
     for (const id in VIEWPOINTS) {
       const v = VIEWPOINTS[id];
@@ -62651,7 +62784,15 @@ body.reduced-motion .pg-hud.show { animation: none; }
     // with the ball you only shuffle (holdWalk x walk): you throw from about where you picked it up
     // minD: a holder steps back (backWalk x walk) rather than throw at a kid nearer than this (point-blank is
     // unsporting and undodgeable); spread: kids keep this far apart while they scatter (no clumps)
-    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46, holdWalk: 0.22, look: [0.55, 1.3], range: [44, 56], minD: 18, backWalk: 0.4, spread: 13, hopT: 0.16, bound: 10, boundT: 4, lineWarn: 7 },
+    // range: a holder winds up once his mark is nearer than this (u; d 0..1); aiErr: his aim error (rad); meW: Chinnu
+    // counts as this much nearer when a holder picks his mark (everybody wants the new hero out)
+    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46, holdWalk: 0.22, look: [0.55, 1.3], range: [36, 48], aiErr: [0.15, 0.09], meW: 0.8, minD: 18, backWalk: 0.4, spread: 13, hopT: 0.16, bound: 10, boundT: 4, lineWarn: 7 },
+    // AI wind-up: the red line fills like a fuse; the thrower commits his aim lockT s (d 0..1) before he lets go, so
+    // a hop / sidestep from then on dodges (an early one is simply re-aimed at)
+    lockT: [0.26, 0.18],
+    // the kid under Chinnu's reticle is watching him: the chance he jukes as Chinnu lets go (d 0..1); a hard throw
+    // (held ACTION) is that much harder to read (x alertHard)
+    alert: [0.42, 0.68], alertHard: 0.6,
     // the line throw: the aim starts a little off the stack (straighten it), accuracy drops with power
     aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130, startOff: [0.06, 0.2], err: 0.026, errPow: 0.075 },
     pay: { win: 200, win3: 300, daily: 3 },
@@ -63230,6 +63371,19 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const a = S.tele.from.e, b = S.tele.to.e, l = hyp(b.x - a.x, b.y - a.y) || 1;
     return { ax: a.x, ay: a.y, bx: b.x, by: b.y, ex: b.x + ((b.x - a.x) / l) * TUNE.overshoot, ey: b.y + ((b.y - a.y) / l) * TUNE.overshoot, l };
   }
+  /** an AI holder starts his wind-up at T (the red line fills like a fuse over windT0) */
+  function windUp(S, P, T) {
+    P.windT = P.windT0 = lerp(TUNE.lingocha.windup[0], TUNE.lingocha.windup[1], S.d) * (S.real && PG.debug.assist.weakAI && T && T.isPlayer ? 1.6 : 1);
+    P.aimLock = null;
+  }
+  /** one wind-up step; he commits his aim TUNE.lockT before letting go. true = let go now */
+  function windTick(S, P, T, dt) {
+    P.windT -= dt;
+    if (!P.aimLock && P.windT <= lerp(TUNE.lockT[0], TUNE.lockT[1], S.d)) P.aimLock = LING.aiAimPoint(S, P, T);
+    return P.windT <= 0;
+  }
+  /** 0..1: how far the wind-up fuse has burnt */
+  function fuse(P) { return P && P.windT0 > 0 ? clamp(1 - P.windT / P.windT0, 0, 1) : 0; }
   function segDist(px, py, ax, ay, bx, by) {
     const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy || 1, t = clamp(((px - ax) * dx + (py - ay) * dy) / L, 0, 1);
     return hyp(px - ax - dx * t, py - ay - dy * t);
@@ -63245,7 +63399,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     for (const Q of S.parts) Q.hold = false;
     b.state = 'held'; b.holder = P; b.thrower = null; b.live = false; b.pass = false; b.passTo = null; b.bounced = 1;
     b.lockP = null; b.lockT = 0; S.freeT = 0;
-    P.hold = true; P.holdT = 0; P.windT = 0; P.passRoll = S.rng.next(); P.lookT = null;
+    P.hold = true; P.holdT = 0; P.windT = 0; P.windT0 = 0; P.aimLock = null; P.passRoll = S.rng.next(); P.lookT = null;
     const h = holdPos(P); b.x = h.x; b.y = h.y; b.z = h.z; b.vx = b.vy = b.vz = 0;
   }
   function drop(S, P) {
@@ -63265,7 +63419,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     b.x = e.x + Math.cos(ang) * 2.4; b.y = e.y + Math.sin(ang) * 2.4; b.z = TUNE.hand;
     b.vx = Math.cos(ang) * speed; b.vy = Math.sin(ang) * speed; b.vz = vz;
     if (!P.isPlayer) { e.angle = ang; } else { e.angle = e.facing = ang; }
-    P.hold = false; P.windT = 0; P.holdT = 0;
+    P.hold = false; P.windT = 0; P.windT0 = 0; P.aimLock = null; P.holdT = 0;
     S.tele = null;
     sfx('chappal_whoosh', { x: e.x, y: e.y, vol: 0.7, pitch: 1.3 });
     // every kid gets a reaction time to this throw (AI dodging) and a catch roll; the kid it was aimed at
@@ -63273,10 +63427,13 @@ body.reduced-motion .pg-hud.show { animation: none; }
     b.target = o.target || null;
     // a throw stays live a little past its mark (overshoot), then it is a dying ball: no random hits across the ground
     b.rx = b.x; b.ry = b.y; b.liveDist = b.target && b.target.e ? hyp(b.target.e.x - e.x, b.target.e.y - e.y) + TUNE.overshoot : 70;
+    const noDodge = S.real && PG.debug.assist.noDodge;
     for (const Q of S.parts) {
       if (Q.isPlayer || Q === P) continue;
       Q.react = S.t + lerp(0.34, 0.12, S.d) * (0.8 + S.rng.next() * 0.5);
-      Q.dodgeRoll = S.real && PG.debug.assist.noDodge ? 0 : S.rng.next() < lerp(TUNE.lingocha.dodge[0], TUNE.lingocha.dodge[1], S.d) ? 1 : 0;
+      Q.dodgeRoll = noDodge ? 0 : S.rng.next() < lerp(TUNE.lingocha.dodge[0], TUNE.lingocha.dodge[1], S.d) ? 1 : 0;
+      // Chinnu's mark saw him take aim (the reticle): he may juke as the ball leaves Chinnu's hand
+      if (P.isPlayer && Q === b.target && b.live && !noDodge) Q.dodgeRoll = S.rng.next() < lerp(TUNE.alert[0], TUNE.alert[1], S.d) * (speed > TUNE.throwSpeed + 20 ? TUNE.alertHard : 1) ? 1 : 0;
       // a point-blank throw is hard to catch; a long one gives time to get the hands up
       const flight = hyp(Q.e.x - e.x, Q.e.y - e.y) / Math.max(40, speed);
       Q.catchRoll = S.id === 'marampitti' && !(S.real && PG.debug.assist.noDodge) && S.rng.next() < (0.08 + 0.1 * S.d) * clamp((flight - 0.09) / 0.16, 0, 1.2);
@@ -63953,16 +64110,18 @@ body.reduced-motion .pg-hud.show { animation: none; }
         P.holdT += dt;
         const targets = LING.seekers(S).filter((Q) => !Q.out && !Q.dood && Q.safeT <= 0);
         if (!targets.length) { halt(P); if (P.holdT > TUNE.lingocha.holdMax) drop(S, P); return; }
-        if (!P.tgt || P.tgt.out || P.tgt.safeT > 0 || S.t > P.tgtT) {
+        // (mid wind-up he keeps his mark unless that kid is out / SAFE; then the fuse starts again on a new one)
+        if (!P.tgt || P.tgt.out || P.tgt.safeT > 0 || (S.t > P.tgtT && !(P.windT > 0))) {
           let best = null, bs = Infinity;
           for (const Q of targets) { const s = pdist(P, Q) * (Q.carry ? 0.7 : 1) * (Q.isPlayer ? 1.05 : 1) * (0.85 + 0.3 * S.rng.next()); if (s < bs) { bs = s; best = Q; } }
+          if (P.windT > 0 && best !== P.tgt) windUp(S, P, best);
           P.tgt = best; P.tgtT = S.t + 1.2;
         }
         const T = P.tgt, d = pdist(P, T);
         if (P.windT > 0) {
-          halt(P); P.face = Math.atan2(T.e.y - e.y, T.e.x - e.x); P.windT -= dt;
+          halt(P); P.face = Math.atan2(T.e.y - e.y, T.e.x - e.x);
           S.tele = { from: P, to: T };
-          if (P.windT <= 0) LING.aiThrowAt(S, P, T);
+          if (windTick(S, P, T, dt)) LING.aiThrowAt(S, P, T);
           return;
         }
         // pass to a teammate who is much closer to the target (Chinnu too, some of the time: "Chinnu, catch!")
@@ -63976,7 +64135,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
           }
         }
         const range = lerp(30, 42, S.d);
-        if (d < range || P.holdT > TUNE.lingocha.holdMax - 0.6) { P.windT = lerp(TUNE.lingocha.windup[0], TUNE.lingocha.windup[1], S.d) * (S.real && PG.debug.assist.weakAI ? 1.6 : 1); halt(P); return; }
+        if (d < range || P.holdT > TUNE.lingocha.holdMax - 0.6) { windUp(S, P, T); halt(P); return; }
         goTo(P, T.e.x, T.e.y, speedOf(S, P, false), 2);
         return;
       }
@@ -64006,16 +64165,22 @@ body.reduced-motion .pg-hud.show { animation: none; }
         goTo(P, q.x, q.y, TUNE.kidWalk + 10, 3);
       } else halt(P);
     },
-    aiThrowAt(S, P, T) {
-      const weak = S.real && PG.debug.assist.weakAI && T.isPlayer;
+    /** where P means to throw at T (he leads T's run; read from the smoothed velocity, not a last sidestep) */
+    aiAimPoint(S, P, T) {
       const sp = lerp(TUNE.aiSpeed[0], TUNE.aiSpeed[1], S.d) * (0.92 + S.rng.next() * 0.16);
       const d = pdist(P, T), t = d / sp, lead = 0.5 + 0.4 * S.d;
-      // he reads your run, not a last-moment sidestep (smoothed velocity)
       const vx = T.svx != null ? T.svx : T.e.vx || 0, vy = T.svy != null ? T.svy : T.e.vy || 0;
-      const tx = T.e.x + vx * t * lead, ty = T.e.y + vy * t * lead;
-      const errA = weak ? 0.45 : lerp(TUNE.lingocha.aiErr[0], TUNE.lingocha.aiErr[1], S.d);
+      return { x: T.e.x + vx * t * lead, y: T.e.y + vy * t * lead, sp };
+    },
+    aiThrowAt(S, P, T) {
+      const weak = S.real && PG.debug.assist.weakAI && T.isPlayer;
+      // the aim he committed to near the end of the wind-up (a hop since then fools him)
+      const a = P.aimLock || LING.aiAimPoint(S, P, T);
+      P.aimLock = null;
+      const E = S.id === 'marampitti' ? TUNE.maram.aiErr : TUNE.lingocha.aiErr;
+      const errA = weak ? 0.45 : lerp(E[0], E[1], S.d);
       const tz = clamp(2.4 + gauss(S.rng) * (1.1 - 0.5 * S.d), 0.8, 6.5);
-      launchAt(S, P, tx, ty, tz, sp, errA, { target: T });
+      launchAt(S, P, a.x, a.y, tz, a.sp, errA, { target: T });
     },
     hud(S) {
       const L = S.L, me = S.me;
@@ -64274,13 +64439,13 @@ body.reduced-motion .pg-hud.show { animation: none; }
         const al = MARAM.alive(S).filter((Q) => Q !== P);
         if (!al.length) { halt(P); return; }
         const minD = TUNE.maram.minD;
-        if (!P.tgt || P.tgt.out || S.t > P.tgtT) {
+        if (!P.tgt || P.tgt.out || (S.t > P.tgtT && !(P.windT > 0))) {
           // the nearest kid, rather one who is not running (an easier mark); colony manners: nobody throws
           // from point-blank (a kid right next to him counts as far away)
           let best = null, bs = Infinity;
           for (const Q of al) {
             const dq = pdist(P, Q), eff = dq >= minD ? dq : minD + (minD - dq) * 1.4;
-            const s = eff * (0.75 + 0.5 * S.rng.next()) * (1 + Math.min(1, hyp(Q.svx || 0, Q.svy || 0) / 90) * 0.35);
+            const s = eff * (0.75 + 0.5 * S.rng.next()) * (1 + Math.min(1, hyp(Q.svx || 0, Q.svy || 0) / 90) * 0.35) * (Q.isPlayer ? TUNE.maram.meW : 1);
             if (s < bs) { bs = s; best = Q; }
           }
           P.tgt = best; P.tgtT = S.t + 1.1;
@@ -64288,10 +64453,10 @@ body.reduced-motion .pg-hud.show { animation: none; }
         const T = P.tgt, d = pdist(P, T);
         const late = P.holdT > TUNE.maram.holdMax - 0.6;
         if (P.windT > 0) {
-          halt(P); P.face = Math.atan2(T.e.y - e.y, T.e.x - e.x); P.windT -= dt; S.tele = { from: P, to: T };
-          if (P.windT <= 0) {
+          halt(P); P.face = Math.atan2(T.e.y - e.y, T.e.x - e.x); S.tele = { from: P, to: T };
+          if (windTick(S, P, T, dt)) {
             // the mark ran right up to him during the wind-up: no point-blank throw — a step back first
-            if (d < minD * 0.6 && !late) { P.windT = 0; P.lookT = 0; S.tele = null; }
+            if (d < minD * 0.6 && !late) { P.windT = 0; P.windT0 = 0; P.aimLock = null; P.lookT = 0; S.tele = null; }
             else LING.aiThrowAt(S, P, T);
           }
           return;
@@ -64304,7 +64469,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
           goTo(P, q.x, q.y, TUNE.kidWalk * TUNE.maram.backWalk, 1); P.face = Math.atan2(T.e.y - e.y, T.e.x - e.x);
           return;
         }
-        if ((P.holdT > P.lookT && d < lerp(TUNE.maram.range[0], TUNE.maram.range[1], S.d)) || late) { P.lookT = null; P.windT = lerp(TUNE.lingocha.windup[0], TUNE.lingocha.windup[1], S.d) * (S.real && PG.debug.assist.weakAI && T.isPlayer ? 1.6 : 1); halt(P); return; }
+        if ((P.holdT > P.lookT && d < lerp(TUNE.maram.range[0], TUNE.maram.range[1], S.d)) || late) { P.lookT = null; windUp(S, P, T); halt(P); return; }
         goTo(P, T.e.x, T.e.y, speedOf(S, P, false), 2);
         return;
       }
@@ -76675,6 +76840,12 @@ if (ngShine > 0.01) {
  *    still blends into a relaxed stance with breathing, weight shift and glances; turning on the
  *    spot steps; getting on / off a vehicle blends seat <-> standing beside it. Timing follows the
  *    simulation clock (slow motion / pause freeze it with the game). Contact shadows under the feet.
+ *    Idle habits per person (uncles and constables clasp their hands behind the back, aunties hold
+ *    them in front or fold their arms, students hold their bag straps, kids swing their arms; they
+ *    come and go), talking gestures while a dialogue line or bark of theirs is up (hand raised in
+ *    small emphatic arcs, the other lifting, head nods), paunchy uncles get a swelling torso.
+ *    KAINCHI: a kid on an adult's roadster (T.kainchi) rides standing beside the frame, the right leg
+ *    through the triangle to the far pedal (hip abduction joint), the cycle leaning away.
  *    Two LODs (near / far), instanced: all people are 2 draw calls (+ shadows).
  *  - VEHICLES: a model per type of vehicles.js / traffic.js (cycle, ladies cycle, Hero roadster,
  *    Hercules, kid cycle, Scooty, Luna, Chetak, RX100, auto-rickshaw, Ambassador, Maruti 800,
@@ -76685,9 +76856,10 @@ if (ngShine > 0.01) {
  *    one atlas (HORN OK PLEASE, USE DIPPER AT NIGHT, CITY BUS, route boards, number plates), the
  *    rider / driver / pillion / passenger visible where the vehicle is open (cars, bus and lorry
  *    cabs have translucent fresnel glass: a second instanced draw of the glass triangles sharing the
- *    pool's instance buffers, so drivers show through), and first-person
- *    cockpits (car / bus / lorry interiors with the steering wheel and hands; handlebar + hands on
- *    two-wheelers and autos come from the vehicle model itself).
+ *    pool's instance buffers, so drivers show through; from inside, in first person, it turns nearly
+ *    clear), and first-person cockpits (car / bus / lorry interiors with the steering wheel and
+ *    hands, dials with ticks and a live speedometer needle; handlebar + hands, the headset speedo and
+ *    mirrors on two-wheelers and autos come from the vehicle model itself).
  *  - ANIMALS: cows (standing, ambling, lying on the road chewing), stray dogs (napping, trotting),
  *    goats; pigeon flocks (N.traffic.flocks + N.landmarks.flocks) pecking and bursting into flight.
  *  - PARITY LAYERS: mission markers (cylinders of light at objectives and givers), the interaction
@@ -76715,7 +76887,10 @@ if (ngShine > 0.01) {
  *    rider looks the same in both views.
  *
  * Public: N.view3dActors = {stats(), lookSpec(look), pools, F (feature ids), MODELS, models(),
- *   setOptions({glows, pools, decals, seasons, blobs}), debug {...}}.
+ *   setOptions({glows, pools, decals, seasons, blobs, fx, habits: true | false | 'always'}),
+ *   debug {camera, track, rec, counts, glints, fx, feet, riderAnkles, ...}}.
+ * Listens to (read only): 'dialogue:bark' / 'dialogue:line' (who is talking), 'vehicle:enter' /
+ * 'vehicle:exit' (mount blends).
  * Coordinates: model space +x forward, +y up, +z right (world angle a -> yaw -a); three (x, y, z) =
  * world (x, height, y). People template: an adult 9 u tall (kids are scaled 0.78 with a 1.16 head).
  */
@@ -76735,7 +76910,7 @@ if (ngShine > 0.01) {
 
   /* ================================================================ options + stats */
   const DBG = { cam: null, track: null, rec: null, riderNext: false }; // tests: camera override {pos, look, fov}; track(entity) records its pose
-  const OPT = { glows: true, decals: true, seasons: true, blobs: true, pools: true, fx: true };
+  const OPT = { glows: true, decals: true, seasons: true, blobs: true, pools: true, fx: true, habits: true }; // habits: true | false | 'always' (tests)
   const ST = { people: 0, peopleFar: 0, vehicles: 0, wheels: 0, glows: 0, pools: 0, decals: 0, animals: 0, birds: 0, markers: 0, kites: 0, skids: 0, puffs: 0, ms: 0, msAvg: 0, frame: 0, culled: 0 };
   let tFrame0 = 0;
 
@@ -77229,10 +77404,10 @@ if (ngShine > 0.01) {
     FACE_VEIL: 31, SPECS: 32, BEARD: 33, LONGBEARD: 34, MOUSTACHE: 35, BINDI: 36, TIE: 37, BELT: 38, BAG: 39, TOWEL: 40,
     APRON: 41, WALKMAN: 42, CAMERA: 43, SHOES: 44, P_STICK: 45, P_BASKET: 46, P_CLOTHBAG: 47, P_TRAY: 48, P_TRUNK: 49, P_POT: 50,
     P_BAT: 51, P_BALL: 52, P_NOTEBOOK: 53, P_PACKET: 54, P_RADIO: 55, P_CHAPPAL: 56, P_CHARKHI: 57, P_DAPPU: 58, P_NEEM: 59, P_TIFFIN: 60,
-    SHORTS: 61, FACE: 62, HAIR_FRINGE: 63,
+    SHORTS: 61, FACE: 62, HAIR_FRINGE: 63, SLIM: 64,
   };
   // pattern / logic bits in iFlags.w (bit index)
-  const BIT_STRIPES = 15, BIT_BORDER = 16, BIT_CHECKS = 17, BIT_KID = 18, BIT_FPS = 19;
+  const BIT_STRIPES = 15, BIT_BORDER = 16, BIT_CHECKS = 17, BIT_KID = 18, BIT_FPS = 19, BIT_ARMS = 20; // ARMS: first person, only the arms drawn
 
   function personVertexHeader(depth) {
     return [
@@ -77241,9 +77416,11 @@ if (ngShine > 0.01) {
       GLSL_UNPACK, GLSL_ROT,
       'float pFeat(float f){ if (f < 0.5) return 1.0; float i = f - 1.0; float w = floor(i / 20.0 + 0.0001); float b = i - w * 20.0;',
       '  float m = w < 0.5 ? iFlags.x : (w < 1.5 ? iFlags.y : (w < 2.5 ? iFlags.z : iFlags.w)); return aBit(m, b); }',
+      // two angles packed in one float (12 bits each, 1/1000 rad, +-2.048): head yaw / pitch, leg abduction
+      'vec2 pUnp2(float v){ if (v < 0.5) return vec2(0.0); float hi = floor(v / 4096.0 + 0.00001); return vec2((hi - 2048.0) / 1000.0, (v - hi * 4096.0 - 2048.0) / 1000.0); }',
       'void pAnim(inout vec3 p, inout vec3 n){',
       '  float part = aSP.y;',
-      '  if (pFeat(aSP.z) < 0.5 || (part > 8.5 && part < 9.5 && aBit(iFlags.w, ' + BIT_FPS + '.0) > 0.5)) { p = vec3(0.0, -60.0, 0.0); return; }',
+      '  if (pFeat(aSP.z) < 0.5 || (part > 8.5 && part < 9.5 && aBit(iFlags.w, ' + BIT_FPS + '.0) > 0.5) || ((part < 4.5 || part > 8.5) && aBit(iFlags.w, ' + BIT_ARMS + '.0) > 0.5)) { p = vec3(0.0, -60.0, 0.0); return; }',
       '  bool foot = part > 9.5;',
       '  if ((part > 0.5 && part < 4.5) || foot) {',
       '    float side = foot ? (part < 10.5 ? -1.0 : 1.0) : ((part < 1.5 || (part > 2.5 && part < 3.5)) ? -1.0 : 1.0);',
@@ -77252,6 +77429,9 @@ if (ngShine > 0.01) {
       '      p = aRotZ(p, vec2(0.0, ' + ANK_Y.toFixed(3) + '), ank); n = aRotZ(n, vec2(0.0), ank); }',
       '    if (part > 2.5) { p = aRotZ(p, vec2(0.0, ' + KNEE_Y.toFixed(3) + '), knee); n = aRotZ(n, vec2(0.0), knee); }',
       '    p = aRotZ(p, vec2(0.0, ' + HIP_Y.toFixed(3) + '), hip); n = aRotZ(n, vec2(0.0), hip);',
+      // hip abduction (+ = the leg swings out sideways), about the forward axis through the hip joint
+      '    vec2 abd2 = pUnp2(iJ3.y); float abd = side < 0.0 ? abd2.x : abd2.y;',
+      '    if (abs(abd) > 0.0005) { p = aRotX(p, vec2(' + HIP_Y.toFixed(3) + ', side * ' + HIP_Z.toFixed(3) + '), -side * abd); n = aRotX(n, vec2(0.0), -side * abd); }',
       '  } else if (part > 4.5 && part < 8.5) {',
       '    float side = (part < 5.5 || (part > 6.5 && part < 7.5)) ? -1.0 : 1.0;',
       '    float sh = side < 0.0 ? iJ1.x : iJ1.y; float el = side < 0.0 ? iJ1.z : iJ1.w; float ab = side < 0.0 ? iJ2.x : iJ2.y;',
@@ -77264,8 +77444,9 @@ if (ngShine > 0.01) {
       '    p = aRotAx(p - sp, ax, -side * ab) + sp; n = aRotAx(n, ax, -side * ab);',
       '  } else if (part > 8.5 && part < 9.5) {',
       '    if (aBit(iFlags.w, ' + BIT_KID + '.0) > 0.5) { p.xy = (p.xy - vec2(0.05, ' + NECK_Y.toFixed(3) + ')) * 1.16 + vec2(0.05, ' + NECK_Y.toFixed(3) + '); p.z *= 1.16; }',
-      '    p = aRotY(p, vec2(0.05, 0.0), iJ3.x); n = aRotY(n, vec2(0.0), iJ3.x);',
-      '    p = aRotZ(p, vec2(0.05, ' + NECK_Y.toFixed(3) + '), iJ3.y); n = aRotZ(n, vec2(0.0), iJ3.y);',
+      '    vec2 hpy = pUnp2(iJ3.x);',
+      '    p = aRotY(p, vec2(0.05, 0.0), hpy.x); n = aRotY(n, vec2(0.0), hpy.x);',
+      '    p = aRotZ(p, vec2(0.05, ' + NECK_Y.toFixed(3) + '), hpy.y); n = aRotZ(n, vec2(0.0), hpy.y);',
       '  }',
       // wraps / skirts / tunics: each side of the hem follows its leg (the cloth strides with the legs)
       '  if (part < 0.5 && aSP.z > 2.5 && aSP.z < 5.5 && p.y < ' + HIP_Y.toFixed(3) + ') {',
@@ -77340,8 +77521,10 @@ if (ngShine > 0.01) {
     // ---------------------------------------------------------------- hips, torso, belly, neck
     b.part(0).feat(0).slot(BOT).color(W).ell(0, 4.72, 0, 0.62, 0.52, 0.86, sL, near ? 5 : 3);
     const torso = [[0.8, 4.82], [0.86, 5.3], [0.92, 5.95], [0.98, 6.55], [0.94, 6.95], [0.62, 7.3], [0.3, 7.42]];
-    b.slot(TOP).color(W).lathe(near ? torso : [[0.8, 4.82], [0.95, 6.3], [0.9, 6.95], [0.32, 7.42]], near ? 12 : 6, 0, 0, 0.66, 1);
-    b.feat(F.BELLY).slot(TOP).color(W).ell(0.36, 5.55, 0, 0.62, 0.78, 0.8, sL, 5).feat(0);
+    b.feat(F.SLIM).slot(TOP).color(W).lathe(near ? torso : [[0.8, 4.82], [0.95, 6.3], [0.9, 6.95], [0.32, 7.42]], near ? 12 : 6, 0, 0, 0.66, 1);
+    // paunch: the torso itself swells forward over the waist (one smooth surface, not a ball stuck on)
+    const paunch = [[0.84, 4.82], [0.98, 5.12], [1.1, 5.5], [1.12, 5.88], [1.05, 6.3], [0.99, 6.62], [0.94, 6.95], [0.62, 7.3], [0.3, 7.42]];
+    b.feat(F.BELLY).slot(TOP).color(W).lathe(near ? paunch : [[0.84, 4.82], [1.1, 5.6], [1.0, 6.4], [0.9, 6.95], [0.32, 7.42]], near ? 14 : 6, 0.1, 0, 0.74, 0.9).feat(0);
     b.slot(SK).color(W).cyl([0, 7.15, 0], [0, 7.85, 0], 0.3, 0.27, sS, 0);
     // shoulders: shirt (sleeves) or skin (banian / sleeveless)
     for (const sd of [-1, 1]) {
@@ -77613,6 +77796,7 @@ if (ngShine > 0.01) {
     if (pf) on(pf);
     if (bits.has(F.P_TRUNK) || bits.has(F.P_POT)) { bits.delete(F.CAP_TOPI); bits.delete(F.CAP_CRICKET); bits.delete(F.CAP_BACK); }
     on(F.FACE);
+    if (!bits.has(F.BELLY)) on(F.SLIM);
     // pack
     const f = [0, 0, 0, 0];
     for (const id of bits) { const i = id - 1, w = (i / 20) | 0, bb = i - w * 20; f[w] += Math.pow(2, bb); }
@@ -77626,15 +77810,16 @@ if (ngShine > 0.01) {
     if (bits.has(F.WRAP)) { fSeat[0] -= Math.pow(2, F.WRAP - 1); if (!bits.has(F.LEG_PANTS)) fSeat[0] += Math.pow(2, F.LEG_PANTS - 1); }
     s = {
       seed: seed | 0, f, fSeat, c: [pack(skin), pack(hair), pack(top), pack(bottom), pack(accent), pack(hat), pack(bag), pack(extra)],
-      size, wide, kid, wrap, girl, headCarry: !!HEAD_PROPS[prop], prop: prop || null, kind,
+      size, wide, kid, wrap, girl, headCarry: !!HEAD_PROPS[prop], prop: prop || null, kind, belly: bits.has(F.BELLY),
     };
     lookCache.set(L, s);
     return s;
   }
 
   /* ---------------------------------------------------------------- poses (joint angles) */
-  // J: [hipL, hipR, kneeL, kneeR, shL, shR, elL, elR, abL, abR, lean, bob, headYaw, headPitch, breathe, -]
-  const J = new Float32Array(16);
+  // J: [hipL, hipR, kneeL, kneeR, shL, shR, elL, elR, abL, abR, lean, bob, headYaw, headPitch, breathe,
+  //     ankles (packed), legAbdL, legAbdR]; the instance packs head yaw + pitch and the two leg abductions
+  const J = new Float32Array(18);
   function poseRest(j) { j.fill(0); j[8] = j[9] = 0.07; j[6] = j[7] = 0.12; return j; }
   /** lowest point of a foot sole (template y) for hip angle h and knee angle k (feet planting) */
   function soleMin(h, k) {
@@ -77667,20 +77852,98 @@ if (ngShine > 0.01) {
   /** one arm (k 0 = left, z < 0; 1 = right) to a 3D hand target in the unleaned body frame: 2-bone IK
    *  in the sagittal plane at the full 3D distance, then the out-of-plane swing (j[8 + k], see the
    *  shader) carries the hand out to the target's lateral offset */
-  function armIK(j, k, x, y, z) {
+  function armIK(j, k, x, y, z, abMin) {
     const side = k ? 1 : -1, dy = y - SH_Y, ds = Math.hypot(x, dy) || 1e-6;
     const lat = side * z - SH_Z, d3 = Math.hypot(ds, lat);
     ik2(0, SH_Y, x / ds * d3, SH_Y + dy / ds * d3, UARM, FARM, -1, IKO, 0);
     j[4 + k] = IKO[0]; j[6 + k] = IKO[1];
-    j[8 + k] = clamp(Math.atan2(lat, ds), -0.6, 1.3);
+    j[8 + k] = clamp(Math.atan2(lat, ds), abMin == null ? -0.6 : abMin, 1.3);
   }
-  function armsTo(j, lean, lx, ly, lz, rx, ry, rz, maxLean) {
+  function armsTo(j, lean, lx, ly, lz, rx, ry, rz, maxLean, abMin) {
     if (maxLean > lean) for (let k = 0; k < 16 && lean < maxLean && Math.max(armNeed(lean, lx, ly, lz), armNeed(lean, rx, ry, rz)) > ARM_REACH; k++) lean = Math.min(maxLean, lean + 0.05);
     const c = Math.cos(lean), s = Math.sin(lean);
     const un = (x, y) => { const qx = x, qy = y - HIP_Y; return [qx * c - qy * s, qx * s + qy * c + HIP_Y]; }; // undo the forward lean
     const L = un(lx, ly), R = un(rx, ry);
-    armIK(j, 0, L[0], L[1], lz); armIK(j, 1, R[0], R[1], rz);
+    armIK(j, 0, L[0], L[1], lz, abMin); armIK(j, 1, R[0], R[1], rz, abMin);
     j[10] = lean;
+  }
+  /* talking: whoever speaks a dialogue line or a bark gestures while the words are up (one hand
+   * raised palm-up in small emphatic arcs, the other lifting now and then, the head nodding) */
+  const TALK = new WeakMap(); // actor -> {t0, until}
+  function talkStart(a, secs) {
+    if (!a || typeof a !== 'object' || !a.look) return;
+    const t = nowS(), r = TALK.get(a);
+    TALK.set(a, { t0: r && r.until > t ? r.t0 : t, until: t + clamp(secs, 0.8, 7) });
+  }
+  N.on('dialogue:bark', (d) => { try { if (d && d.target) talkStart(d.target, 1.6 + String(d.text || '').length * 0.05); } catch (e) { /* cosmetic */ } });
+  N.on('dialogue:line', (d) => {
+    try {
+      if (!d || d.skipped) return;
+      const id = d.as || d.speaker;
+      const a = id === 'player' || id === 'chinnu' ? N.player : (N.npcs && N.npcs.get ? N.npcs.get(id) : null);
+      if (a) talkStart(a, 1.2 + String(d.text || '').length * 0.045);
+    } catch (e) { /* cosmetic */ }
+  });
+  /** 0..1 talking weight now (eased in and out) */
+  function talkW(a) {
+    const r = TALK.get(a); if (!r) return 0;
+    const t = nowS();
+    if (t > r.until + 0.4) { TALK.delete(a); return 0; }
+    return clamp((t - r.t0) / 0.25, 0, 1) * clamp((r.until + 0.4 - t) / 0.4, 0, 1);
+  }
+  function talkArms(j, t, seed, rightFree) {
+    const a = t * 2.3 + seed, b = t * 1.55 + seed * 2.3;
+    const g = 0.5 + 0.5 * Math.sin(a * 0.9) * Math.sin(b * 0.7 + 1);
+    if (rightFree) {
+      j[5] = 0.42 + 0.3 * g + 0.08 * Math.sin(a * 1.9);
+      j[7] = 1.3 + 0.38 * Math.sin(a);
+      j[9] = 0.22 + 0.16 * Math.sin(b);
+    }
+    const l = Math.max(0, Math.sin(b * 0.8 + 2));
+    j[4] = 0.1 + 0.32 * l; j[6] = 0.3 + 0.9 * l; j[8] = 0.12 + 0.1 * l;
+    j[12] += 0.1 * Math.sin(t * 3.1 + seed); j[13] += 0.05 * Math.sin(t * 4.4 + seed);
+    return j;
+  }
+  /* idle arm habits: what people do with their hands while standing about (feedback_3d.md #2,
+   * "idle"): uncles and constables clasp their hands behind the back, aunties and women hold them
+   * in front, men fold their arms, students hold their bag straps, kids swing their arms. A habit
+   * comes and goes (habitOn) and blends in with the standing weight. */
+  const HABIT_KINDS = {
+    police: [['behind', 1]], uncle: [['behind', 0.75], ['fold', 1]], lungi: [['behind', 0.5], ['fold', 0.8]],
+    aunty: [['front', 0.55], ['fold', 0.8]], saree: [['front', 0.5], ['fold', 0.7]], woman: [['front', 0.55]], burqa: [['front', 1]],
+    man: [['fold', 0.35], ['behind', 0.6]], kid: [['swing', 0.45], ['behind', 0.6]], student: [['straps', 0.85], ['swing', 1]],
+  };
+  function habitOf(s, seed) {
+    const L = HABIT_KINDS[s.kind];
+    if (!L) return null;
+    const r = hash1(seed * 0.731 + 5.3);
+    for (const h of L) if (r < h[1]) return h[0];
+    return null;
+  }
+  /** 0..1: is the habit on now (slow, per person: held for tens of seconds, eased in / out) */
+  function habitOn(t, seed) {
+    if (OPT.habits !== true) return OPT.habits === 'always' ? 1 : 0;
+    const v = 0.5 + 0.5 * Math.sin(t * 0.083 + seed * 1.71) * Math.cos(t * 0.031 + seed * 0.37);
+    const k = clamp((v - 0.3) / 0.22, 0, 1);
+    return k * k * (3 - 2 * k);
+  }
+  const JH = new Float32Array(18);
+  function habitArms(j, hab, s, t, seed) {
+    const belly = !!s.belly;
+    const fx = belly ? 1.12 : 0.8, bx = s.wrap || belly ? -0.98 : -0.84;
+    switch (hab) {
+      case 'behind': armsTo(j, j[10], bx, 5.05, -0.2, bx - 0.04, 5.16, 0.14, 0, -0.9); break;
+      case 'front': armsTo(j, j[10], fx, belly ? 4.8 : 5.0, -0.14, fx + 0.04, belly ? 4.92 : 5.1, 0.1, 0, -0.9); break;
+      case 'fold': armsTo(j, j[10], belly ? 1.12 : 0.95, 6.12, 0.42, belly ? 1.16 : 1.0, 5.92, -0.42, 0, -0.95); break;
+      case 'straps': armsTo(j, j[10], 0.74, 6.42, -0.52, 0.74, 6.5, 0.52, 0, -0.9); break;
+      case 'swing': { const a = Math.sin(t * 1.9 + seed) * 0.42; j[4] = a; j[5] = a * 0.85; j[6] = j[7] = 0.25 + Math.max(0, a) * 0.4; j[8] = j[9] = 0.1; break; }
+      case 'work': // a shopkeeper / chai-wala busy at the counter: both hands working at waist height
+        armsTo(j, j[10], 1.3 + 0.16 * Math.sin(t * 2.1 + seed), 5.3 + 0.14 * Math.sin(t * 3.3 + seed), -0.5,
+          1.36 + 0.16 * Math.sin(t * 1.7 + seed + 1), 5.25 + 0.12 * Math.sin(t * 2.9 + 1), 0.48, 0, -0.9);
+        break;
+      default: break;
+    }
+    return j;
   }
   function legsTo(j, lx, ly, rx, ry) {
     ik2(0, HIP_Y, lx, ly, THIGH, SHIN, 1, IKO, 0); j[0] = IKO[0]; j[2] = IKO[1];
@@ -77766,7 +78029,7 @@ if (ngShine > 0.01) {
   }
   /** full-body gait pose for cycle position ph (cycles) */
   function gaitPose(j, ph, P, wrapK) {
-    j[12] = j[13] = j[14] = 0;
+    j[12] = j[13] = j[14] = j[16] = j[17] = 0;
     const uL = ph - Math.floor(ph), uR = (ph + 0.5) - Math.floor(ph + 0.5);
     footAt(uL, P, FA); footAt(uR, P, FB);
     let hy;
@@ -77802,11 +78065,12 @@ if (ngShine > 0.01) {
     j[15] = encAnk(-j[0] - j[2], -j[1] - j[3]);
     return j;
   }
-  const JS = new Float32Array(16);
+  const JS = new Float32Array(18);
   /** blend everything but the packed ankles (re-derived so feet stay flat) */
   function blendPose(j, from, k) {
     const af = decAnk(from[15]), aj = decAnk(j[15]);
     for (let i = 0; i < 15; i++) j[i] = from[i] + (j[i] - from[i]) * k;
+    j[16] = (from[16] || 0) + ((j[16] || 0) - (from[16] || 0)) * k; j[17] = (from[17] || 0) + ((j[17] || 0) - (from[17] || 0)) * k;
     j[15] = encAnk(af[0] + (aj[0] - af[0]) * k, af[1] + (aj[1] - af[1]) * k);
   }
 
@@ -77852,12 +78116,12 @@ if (ngShine > 0.01) {
     fr.write(pool.M, i * 16, lx, ly, lz, o && o.yaw || 0, o && o.roll || 0, o && o.pitch || 0, sc * s.wide, sc, sc * s.wide);
     const A = pool.A;
     const a0 = A.iJ0.array, a1 = A.iJ1.array, a2 = A.iJ2.array, a3 = A.iJ3.array, fl = A.iFlags.array, ca = A.iColA.array, cb = A.iColB.array, k = i * 4;
-    a3[k] = j[12]; a3[k + 1] = j[13]; a3[k + 2] = j[14]; a3[k + 3] = j[15] || 0;
+    a3[k] = encAnk(j[12], j[13]); a3[k + 1] = encAnk(j[16] || 0, j[17] || 0); a3[k + 2] = j[14]; a3[k + 3] = j[15] || 0;
     a0[k] = j[0]; a0[k + 1] = j[1]; a0[k + 2] = j[2]; a0[k + 3] = j[3];
     a1[k] = j[4]; a1[k + 1] = j[5]; a1[k + 2] = j[6]; a1[k + 3] = j[7];
     a2[k] = j[8]; a2[k + 1] = j[9]; a2[k + 2] = j[10]; a2[k + 3] = j[11];
     const ff = o && o.seated ? s.fSeat : s.f;
-    fl[k] = ff[0]; fl[k + 1] = ff[1]; fl[k + 2] = ff[2]; fl[k + 3] = ff[3] + (o && o.fpsHide ? Math.pow(2, BIT_FPS) : 0);
+    fl[k] = ff[0]; fl[k + 1] = ff[1]; fl[k + 2] = ff[2]; fl[k + 3] = ff[3] + (o && o.fpsHide ? Math.pow(2, BIT_FPS) : 0) + (o && o.fpsHide && o.armsOnly ? Math.pow(2, BIT_ARMS) : 0);
     ca[k] = s.c[0]; ca[k + 1] = s.c[1]; ca[k + 2] = s.c[2]; ca[k + 3] = s.c[3];
     cb[k] = s.c[4]; cb[k + 1] = s.c[5]; cb[k + 2] = s.c[6]; cb[k + 3] = s.c[7];
     if (pool === PEOPLE) ST.people++; else ST.peopleFar++;
@@ -77895,6 +78159,8 @@ if (ngShine > 0.01) {
         'vec3 vPos = vec3(position);',
         'if (aSP.y > 0.5 && aSP.y < 1.5) { vPos = aRotY(vPos, aPiv.xz, iVB.x); objectNormal = aRotY(objectNormal, vec2(0.0), iVB.x); }',
         'else if (aSP.y > 1.5 && aSP.y < 2.5) { vPos = aRotZ(vPos, aPiv.xy, iVB.y); objectNormal = aRotZ(objectNormal, vec2(0.0), iVB.y); }',
+        // part 3: dial needles of the first-person interiors turn about x by iVB.w (the speedometer)
+        'else if (aSP.y > 2.5 && aSP.y < 3.5) { vPos = aRotX(vPos, aPiv.yz, iVB.w); objectNormal = aRotX(objectNormal, vec2(0.0), iVB.w); }',
       ].join('\n'))
       .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed = vPos;')
       .replace('#include <color_vertex>', [
@@ -77921,11 +78187,16 @@ if (ngShine > 0.01) {
   /** vehicle glass: the vehicle shader, translucent with a fresnel rise towards grazing angles */
   function glassCompile(shader) {
     vehicleCompile(shader);
-    shader.fragmentShader = shader.fragmentShader.replace('#include <output_fragment>', [
-      '{ vec3 vd = normalize(vViewPosition); float fr = 1.0 - abs(dot(normal, vd));',
-      '  diffuseColor.a = mix(0.34, 0.94, fr * fr); }',
-      '#include <output_fragment>',
-    ].join('\n'));
+    // iVB.w = 1 on the body the first-person camera sits in: seen from inside, the windscreen is
+    // nearly clear (a faint tint and reflections at grazing angles), so the road ahead reads
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying float vIns;')
+      .replace('#include <color_vertex>', '#include <color_vertex>\nvIns = iVB.w;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vIns;')
+      .replace('#include <output_fragment>', [
+        '{ vec3 vd = normalize(vViewPosition); float fr = 1.0 - abs(dot(normal, vd));',
+        '  diffuseColor.a = vIns > 0.5 ? mix(0.05, 0.3, fr * fr) : mix(0.34, 0.94, fr * fr); }',
+        '#include <output_fragment>',
+      ].join('\n'));
   }
   const P1 = (b, k) => b.slot(VP).shade(k == null ? 1 : k);
   const P2 = (b, k) => b.slot(VP2).shade(k == null ? 1 : k);
@@ -78129,7 +78400,16 @@ if (ngShine > 0.01) {
     HL(b).cyl([ba[0] + 0.72, ba[1] - 0.12, 0], [ba[0] + 0.92, ba[1] - 0.12, 0], 0.42, 0.42, 10, 2);
     CH(b).cyl([ba[0] + 0.68, ba[1] - 0.12, 0], [ba[0] + 0.78, ba[1] - 0.12, 0], 0.52, 0.5, 10, 0);
     FX(b, '#141418').box(ba[0] - 0.3, ba[1] + 0.22, -0.45, ba[0] + 0.35, ba[1] + 0.32, 0.45);
-    CH(b); for (const s of [-1, 1]) { b.tube([ba[0] - 0.1, ba[1], s * ba[2] * 0.62], [ba[0] - 0.25, ba[1] + 1.1, s * ba[2] * 0.8], 0.06, 4).ell(ba[0] - 0.25, ba[1] + 1.25, s * ba[2] * 0.8, 0.08, 0.28, 0.35, 6, 4); }
+    // speedometer set into the headset top (what the rider sees between the grips in first person)
+    FX(b, '#2a2a2e').cyl([ba[0] + 0.02, ba[1] + 0.3, 0], [ba[0] + 0.02, ba[1] + 0.36, 0], 0.34, 0.32, 14, 2);
+    b.slot(VLIT).color('#efe6c8').cyl([ba[0] + 0.02, ba[1] + 0.36, 0], [ba[0] + 0.02, ba[1] + 0.38, 0], 0.27, 0.27, 14, 2);
+    FX(b, '#1a1616'); for (let k = 0; k <= 6; k++) { const a = Math.PI * (0.15 + k * 0.7 / 6) + Math.PI / 2; b.box(ba[0] + 0.02 + Math.cos(a) * 0.21 - 0.02, ba[1] + 0.38, Math.sin(a) * 0.21 - 0.02, ba[0] + 0.02 + Math.cos(a) * 0.21 + 0.02, ba[1] + 0.395, Math.sin(a) * 0.21 + 0.02); }
+    FX(b, '#e0501c').tube([ba[0] + 0.02, ba[1] + 0.395, 0], [ba[0] - 0.1, ba[1] + 0.395, -0.17], 0.025, 3);
+    // mirrors: chrome backs with dark glass faces towards the rider
+    for (const s of [-1, 1]) {
+      CH(b).tube([ba[0] - 0.1, ba[1], s * ba[2] * 0.62], [ba[0] - 0.25, ba[1] + 1.1, s * ba[2] * 0.8], 0.06, 4).ell(ba[0] - 0.25, ba[1] + 1.25, s * ba[2] * 0.8, 0.08, 0.28, 0.35, 10, 5);
+      FX(b, '#4a5864').ell(ba[0] - 0.3, ba[1] + 1.25, s * ba[2] * 0.8, 0.05, 0.23, 0.29, 10, 5);
+    }
     b.part(0);
     return {
       L: o.L, W: o.W, H: ba[1] + 1.4, bike: true, show: true, steerX: o.steerX, rearR: R,
@@ -78400,6 +78680,7 @@ if (ngShine > 0.01) {
     FX(b, '#141214').box(31.2, 15.6, -6.5, 31.45, 16.5, 6.5);
     FX(b, '#1c1a1e'); for (const x of [21.6, -10.4]) b.box(x, 2.0, -hw - 0.1, x + 4.4, 15.2, -hw + 0.04);
     FX(b, '#9aa0a6'); for (const x of [21.6, -10.4]) b.box(x + 2.15, 2.0, -hw - 0.14, x + 2.25, 15.2, -hw + 0.05);
+    FX(b, '#3a3a3e'); for (const x of [21.6, -10.4]) b.box(x + 0.1, 1.85, -hw - 1.25, x + 4.3, 2.25, -hw + 0.05); // footboard steps
     FX(b, '#2a2628').box(30.9, 1.4, -8.6, 32.1, 3.0, 8.6).box(-32.0, 1.4, -8.6, -30.9, 3.0, 8.6);
     FX(b, '#1a1a1e').box(31.3, 4.4, -4.0, 31.5, 7.4, 4.0);
     for (const s of [-1, 1]) { CH(b).cyl([31.2, 3.9, s * 6.6], [31.5, 3.9, s * 6.6], 0.85, 0.85, 10, 0); HL(b).cyl([31.25, 3.9, s * 6.6], [31.55, 3.9, s * 6.6], 0.7, 0.7, 10, 2); TL(b).box(-31.45, 3.4, s * 7.0 - 0.7, -31.2, 4.8, s * 7.0 + 0.7); }
@@ -78407,7 +78688,7 @@ if (ngShine > 0.01) {
     return {
       L, W: 18, H: 17.6, show: false, cockpit: 'bus', rearR: 3.0,
       wheels: [{ x: 22, z: -8.12, r: 3.0, w: 2.0, kind: 'solid', front: true }, { x: 22, z: 8.12, r: 3.0, w: 2.0, kind: 'solid', front: true }, { x: -18, z: -7.82, r: 3.0, w: 2.6, kind: 'solid' }, { x: -18, z: 7.82, r: 3.0, w: 2.6, kind: 'solid' }],
-      seats: [], lamps: { head: [[31.6, 3.9, -6.6], [31.6, 3.9, 6.6]], tail: [[-31.5, 4.1, -7.0], [-31.5, 4.1, 7.0]] },
+      seats: [], lamps: { head: [[31.6, 3.9, -6.6], [31.6, 3.9, 6.6]], tail: [[-31.5, 4.1, -7.0], [-31.5, 4.1, 7.0]] }, busLife: true,
       decals: [
         { cell: 'citybus', x: -4, y: 5.6, z: hw + 0.1, w: 15, h: 3.2, face: 'R' }, { cell: 'citybus', x: -4, y: 5.6, z: -hw - 0.1, w: 15, h: 3.2, face: 'L' },
         { cell: 'route', x: 31.5, y: 15.95, z: 0, w: 4.6, h: 1.0, face: 'F' }, { cell: 'route', x: -31.35, y: 16.05, z: 0, w: 4.0, h: 0.9, face: 'B' },
@@ -78536,6 +78817,25 @@ if (ngShine > 0.01) {
   /* ---------------------------------------------------------------- first-person interiors */
   // drawn instead of the body when the player drives a car / bus / lorry in first person (the body
   // has no inside). Built in the vehicle's local frame; the hood seen through the windscreen is a copy.
+  /** a round dial facing -x (towards the driver) centred at (x, y, z), radius r: dark bezel, cream
+   *  face (lit at night), 9 ticks over a 270 degree sweep (lower left -> lower right, clockwise as
+   *  the driver sees it) and an orange needle. live: the needle is part 3, turned about x by iVB.w
+   *  (the speedometer); else it rests at angle `rest` (radians, 0 = pointing right, PI/2 = up) */
+  function dial(b, x, y, z, r, live, rest) {
+    b.part(0);
+    FX(b, '#141212').cyl([x + 0.08, y, z], [x - 0.05, y, z], r * 1.2, r * 1.12, 16, 3);
+    b.slot(VLIT).color('#efe6c8').cyl([x - 0.03, y, z], [x - 0.07, y, z], r, r, 16, 2);
+    FX(b, '#1a1616');
+    for (let k = 0; k <= 8; k++) {
+      const a = (225 - k * 33.75) * Math.PI / 180, c = Math.cos(a), sn = Math.sin(a), r0 = k % 2 ? 0.74 : 0.64;
+      b.tube([x - 0.08, y + sn * r * r0, z + c * r * r0], [x - 0.08, y + sn * r * 0.9, z + c * r * 0.9], r * 0.045, 3);
+    }
+    const a0 = live ? 225 * Math.PI / 180 : (rest == null ? Math.PI / 2 : rest), c0 = Math.cos(a0), s0 = Math.sin(a0);
+    if (live) b.part(3, [0, y, z]);
+    FX(b, '#e0501c').tube([x - 0.1, y - s0 * r * 0.16, z - c0 * r * 0.16], [x - 0.1, y + s0 * r * 0.82, z + c0 * r * 0.82], r * 0.045, 3);
+    b.part(0);
+    FX(b, '#141212').cyl([x - 0.09, y, z], [x - 0.12, y, z], r * 0.12, r * 0.12, 6, 2);
+  }
   function mkCarInterior(b, md) {
     const g = md.gh, hw = md.W / 2, L = md.L, dash = md.dash || { x: g.x1 - 0.8, y: g.y0 + 0.5 };
     b.part(0);
@@ -78546,7 +78846,10 @@ if (ngShine > 0.01) {
     // dashboard, instrument cluster, glovebox
     FX(b, '#3a2f2c').box(dash.x - 0.2, dash.y - 1.4, -g.w0 + 0.1, g.x1 + 0.1, dash.y, g.w0 - 0.1);
     FX(b, '#2a2220').box(dash.x - 0.6, dash.y - 0.1, -g.w0 + 0.2, dash.x + 0.5, dash.y + 0.25, g.w0 - 0.2);
-    for (const k of [-0.55, 0.55]) { CH(b).cyl([dash.x - 0.62, dash.y + 0.15, hw * 0.36 + k], [dash.x - 0.7, dash.y + 0.15, hw * 0.36 + k], 0.42, 0.42, 10, 0); b.slot(VLIT).color('#efe6c8').cyl([dash.x - 0.6, dash.y + 0.15, hw * 0.36 + k], [dash.x - 0.66, dash.y + 0.15, hw * 0.36 + k], 0.36, 0.36, 10, 2); }
+    // instrument cluster behind the wheel: speedometer (live needle) + fuel / temperature
+    FX(b, '#201a18').box(dash.x - 0.66, dash.y - 0.38, hw * 0.36 - 1.12, dash.x - 0.5, dash.y + 0.62, hw * 0.36 + 1.02);
+    dial(b, dash.x - 0.66, dash.y + 0.14, hw * 0.36 - 0.5, 0.4, true);
+    dial(b, dash.x - 0.66, dash.y + 0.12, hw * 0.36 + 0.5, 0.32, false, 1.15);
     FX(b, '#4a3a34').box(dash.x - 0.66, dash.y - 1.0, -hw * 0.6, dash.x - 0.6, dash.y - 0.3, -hw * 0.2);
     // A-pillars, roof liner, header, door panels with sills, B-pillars, rear-view mirror + nimbu-mirchi
     const top = g.y1 - 0.15;
@@ -78573,7 +78876,8 @@ if (ngShine > 0.01) {
     b.part(0);
     FX(b, '#2c2a2c').box(fx - 2.0, dashY - 2.4, -hw, fx, dashY, hw);
     FX(b, '#1e1c1e').box(fx - 2.4, dashY - 0.1, -hw, fx - 1.4, dashY + 0.3, hw);
-    for (const k of [-0.6, 0.6]) { CH(b).cyl([fx - 2.42, dashY + 0.1, k], [fx - 2.5, dashY + 0.1, k], 0.45, 0.45, 10, 0); b.slot(VLIT).color('#efe6c8').cyl([fx - 2.4, dashY + 0.1, k], [fx - 2.46, dashY + 0.1, k], 0.38, 0.38, 10, 2); }
+    dial(b, fx - 2.42, dashY + 0.14, -0.62, 0.44, true);
+    dial(b, fx - 2.42, dashY + 0.12, 0.62, 0.36, false, 1.3);
     P1(b).box(fx - 0.6, base, -hw - 0.4, fx + 0.3, top, -hw).box(fx - 0.6, base, hw, fx + 0.3, top, hw + 0.4).box(fx - 0.6, base - 0.05, -0.18, fx + 0.2, top, 0.18);
     P1(b, 0.85).box(fx - 1.2, top - 0.8, -hw, fx + 0.3, top, hw);
     FX(b, '#cfc8b8').box(fx - 18, top, -hw - 0.3, fx + 0.2, top + 0.25, hw + 0.3);
@@ -78598,9 +78902,10 @@ if (ngShine > 0.01) {
   function buildSteeringWheel() {
     const b = new AB();
     b.part(0);
-    FX(b, '#1c1a1a').xf(new THREE.Matrix4()).ringZ([[0.86, -0.1], [1.0, -0.12], [1.06, 0], [1.0, 0.12], [0.86, 0.1]], 16).xf(null);
-    FX(b, '#2a2626'); for (let k = 0; k < 3; k++) { const a = -Math.PI / 2 + k * (TAU / 3); b.tube([0, 0, 0], [Math.cos(a) * 0.9, Math.sin(a) * 0.9, 0.02], 0.09, 4); }
-    CH(b).cyl([0, 0, -0.08], [0, 0, 0.14], 0.24, 0.24, 8, 3);
+    FX(b, '#1c1a1a').xf(new THREE.Matrix4()).ringZ([[0.86, -0.1], [0.94, -0.13], [1.03, -0.1], [1.06, 0], [1.03, 0.1], [0.94, 0.13], [0.86, 0.1]], 32).xf(null);
+    FX(b, '#2a2626'); for (let k = 0; k < 3; k++) { const a = -Math.PI / 2 + k * (TAU / 3); b.tube([0, 0, 0], [Math.cos(a) * 0.9, Math.sin(a) * 0.9, 0.02], 0.09, 5); }
+    FX(b, '#262222').cyl([0, 0, -0.08], [0, 0, 0.14], 0.3, 0.27, 12, 3);
+    FX(b, '#6a6a70').cyl([0, 0, 0.14], [0, 0, 0.16], 0.075, 0.075, 8, 2); // the small horn emblem
     FX(b, '#2a2626').cyl([0, 0, -0.1], [0, 0, -1.8], 0.12, 0.12, 5, 0);
     return b.build();
   }
@@ -78804,6 +79109,57 @@ if (ngShine > 0.01) {
     return v._x3d[k];
   }
   /** seat a person (look) on a vehicle in the vehicle frame FR */
+  /* KAINCHI ("scissors"): a kid too small for an adult's roadster rides standing on the pedals beside
+   * the frame, the right leg through the triangle to the far pedal, both hands on the bar, the cycle
+   * leaning away to the right so the body stays upright over the wheels, rising and falling with the
+   * stroke (vehicles.js draws the same in 2D). The numbers come from an offline search over the Hero
+   * geometry for a kid (every crank angle reachable, the right hip ~0.7 u under the top tube, the
+   * grips reachable with a forward lean). Writes J (legs by IK + hip abduction, arms to the grips);
+   * returns the person root [x, y, z, yaw, roll] in the vehicle frame. */
+  const KAINCHI = { dx: 1.0, hy: 3.85, bob: 0.1, hz: -1.0, yaw: -0.05, roll: -0.2, pz: 0.88, tilt: 0.2 };
+  const KF = new Frame(), KQ = [0, 0, 0], KR = [0, 0, 0, 0, 0], KL = [0, 0, 0, 0];
+  const KAI_J = new WeakMap(); // actor -> its last kainchi pose (getting off blends from it)
+  function kainchiPose(md, seat, sc, sx, o) {
+    const K = KAINCHI, c = o.crank || 0, Rk = md.crank[2], bxk = md.crank[0] * sx, byk = md.crank[1];
+    KF.set(0, 0, 0, K.yaw, K.roll, 0);
+    const m = KF.m, hx = bxk + K.dx, hz = K.hz;
+    let hy = K.hy + K.bob * Math.cos(2 * c), rx = 0, ry = 0, rz = 0;
+    const loc = (x, y, z) => { // vehicle frame -> the person's template coordinates
+      const dx = x - rx, dy = y - ry, dz = z - rz;
+      KQ[0] = (m[0] * dx + m[3] * dy + m[6] * dz) / sc; KQ[1] = (m[1] * dx + m[4] * dy + m[7] * dz) / sc; KQ[2] = (m[2] * dx + m[5] * dy + m[8] * dz) / sc;
+      return KQ;
+    };
+    for (let it = 0; it < 3; it++) { // root (feet point) from the hip centre; drop the hips if the low pedal is out of reach
+      KF.apply(0, HIP_Y * sc, 0, P3); rx = hx - P3[0]; ry = hy - P3[1]; rz = hz - P3[2];
+      let over = 0;
+      for (const sd of [-1, 1]) {
+        loc(bxk + sd * Math.cos(c) * Rk - 0.25, byk + sd * Math.sin(c) * Rk + 0.18 + ANK_Y * sc, sd * K.pz);
+        const dx = KQ[0], dy = KQ[1] - HIP_Y, dz = KQ[2] - sd * HIP_Z, k = sd < 0 ? 0 : 1;
+        KL[k * 2] = dx; KL[k * 2 + 1] = HIP_Y - Math.hypot(dy, dz);
+        J[16 + k] = Math.atan2(sd * dz, -dy); // the right leg swings out through the frame, the left one in
+        over = Math.max(over, Math.hypot(dx, dy, dz) - LEG * 0.975);
+      }
+      if (over <= 0) break;
+      hy -= over * sc;
+    }
+    legsTo(J, KL[0], KL[1], KL[2], KL[3]);
+    flatFeet(J, -0.1 + 0.15 * Math.sin(c), -0.1 - 0.15 * Math.sin(c));
+    // hands on the grips, turned with the bar
+    const gx = seat.grip ? seat.grip[0] * sx : bxk + 3.2, gy = seat.grip ? seat.grip[1] : 5.9, gz = seat.grip ? seat.grip[2] : 1.75;
+    let lx = gx, lz = -gz, gxr = gx, rz2 = gz;
+    const st = o.steer || 0;
+    if (st && md.steerX != null) {
+      const px = md.steerX * sx, cs = Math.cos(st), sn = Math.sin(st);
+      lx = px + (gx - px) * cs + gz * sn; lz = (gx - px) * sn - gz * cs;
+      gxr = px + (gx - px) * cs - gz * sn; rz2 = (gx - px) * sn + gz * cs;
+    }
+    loc(lx, gy, lz); const qx = KQ[0], qy = KQ[1], qz = KQ[2];
+    loc(gxr, gy, rz2);
+    armsTo(J, 0.35, qx, qy, qz, KQ[0], KQ[1], KQ[2], 0.95, -0.9);
+    J[13] = J[10] * 0.7; // eyes up the road past the bar
+    KR[0] = rx; KR[1] = ry; KR[2] = rz; KR[3] = K.yaw; KR[4] = K.roll;
+    return KR;
+  }
   function submitRider(md, seat, look, seed, sx, o) {
     if (!look || !seat) return;
     const s = lookSpec(look, seed), sc = s.size;
@@ -78811,10 +79167,14 @@ if (ngShine > 0.01) {
     const hx = seat.x * sx, hz = seat.z || 0;
     const rootY = hy - HIP_Y * sc;
     const T = (x, y, out) => { out[0] = (x - hx) / sc; out[1] = (y - rootY) / sc; return out; };
-    let yaw2 = 0, seated = true;
+    let yaw2 = 0, roll2 = 0, seated = true, tx = hx, ty = rootY, tz = hz;
     poseRest(J);
     const pose = seat.pose;
-    if (pose === 'cycle' || pose === 'scooter' || pose === 'moto' || pose === 'auto' || pose === 'car') {
+    if (pose === 'cycle' && o.kainchi && md.crank) {
+      const K = kainchiPose(md, seat, sc, sx, o);
+      tx = K[0]; ty = K[1]; tz = K[2]; yaw2 = K[3]; roll2 = K[4]; seated = false;
+      if (o.actor) { let kj = KAI_J.get(o.actor); if (!kj) { kj = new Float32Array(18); KAI_J.set(o.actor, kj); } kj.set(J); }
+    } else if (pose === 'cycle' || pose === 'scooter' || pose === 'moto' || pose === 'auto' || pose === 'car') {
       const lean = pose === 'cycle' ? 0.3 : pose === 'moto' ? 0.38 : pose === 'scooter' ? 0.08 : pose === 'auto' ? 0.12 : 0.06;
       let gx = seat.grip ? seat.grip[0] * sx : hx + 3, gy = seat.grip ? seat.grip[1] : hy + 1.5, gz = seat.grip ? seat.grip[2] : 1.2;
       let lx = gx, lz = hz - gz, rx = gx, rz = hz + gz; // grips either side of the seat's centre line
@@ -78858,7 +79218,7 @@ if (ngShine > 0.01) {
       T(-14.0 * sx, seat.y + 0.4, A0); armsTo(J, 0.05, 0.6, 5.0, -0.9, A0[0], A0[1], 0.9);
     }
     // getting on: from standing beside the vehicle (its left side) onto the seat
-    let rx = hx, ry = rootY, rz = hz;
+    let rx = tx, ry = ty, rz = tz;
     const m = o.actor ? MOUNT.get(o.actor) : null;
     if (m && m.on) {
       const k = (nowS() - m.t0) / MOUNT_S;
@@ -78868,13 +79228,65 @@ if (ngShine > 0.01) {
         blendPose(J, sj, 1 - q);
         J[12] = sj[12]; J[13] = sj[13]; J[14] = sj[14];
         const sideZ = -(md.W / 2 + 2.2);
-        rx = hx; rz = sideZ + (hz - sideZ) * q;
-        ry = (-FR.y) * (1 - q) + rootY * q + Math.sin(q * Math.PI) * 1.0;
-        seated = q > 0.5;
+        rx = tx; rz = sideZ + (tz - sideZ) * q;
+        ry = (-FR.y) * (1 - q) + ty * q + Math.sin(q * Math.PI) * 1.0;
+        seated = seated && q > 0.5; roll2 *= q; yaw2 *= q;
       } else MOUNT.delete(o.actor);
     }
-    if (DBG.riderNext && DBG.rec) { DBG.rec.riders = DBG.rec.riders || []; DBG.rec.riders.push({ pose, J: Array.from(J), seated, fpsHide: !!o.fpsHide, kid: s.kid }); }
-    submitPerson(look, seed, FR, rx, ry, rz, J, { yaw: yaw2, fpsHide: o.fpsHide, noBlob: true, near: o.near, seated });
+    if (DBG.riderNext && DBG.rec) { DBG.rec.riders = DBG.rec.riders || []; DBG.rec.riders.push({ pose: o.kainchi && pose === 'cycle' ? 'kainchi' : pose, J: Array.from(J), seated, fpsHide: !!o.fpsHide, kid: s.kid, root: [rx, ry, rz], yaw: yaw2, roll: roll2, size: sc }); }
+    // first person on a kainchi ride: the eye sits over the saddle, not where his head is, so only his
+    // arms are drawn (hands on the grips), not his back hanging off the side below the camera
+    submitPerson(look, seed, FR, rx, ry, rz, J, { yaw: yaw2, roll: roll2, fpsHide: o.fpsHide, armsOnly: !!(o.kainchi && pose === 'cycle'), noBlob: true, near: o.near, seated });
+  }
+  /* ---------------------------------------------------------------- the city bus crowd
+   * Traffic / parked buses carry life the 2D roof hides: the driver at the wheel (right-hand drive)
+   * seen through the windscreen, passengers standing in the aisle holding the overhead rail and
+   * swaying with the bus (heads and shoulders in the windows), and up to three footboard boys
+   * hanging off the rear door step, one hand on the door pole, leaning out. Looks are per bus
+   * (seeded), the crowd size too; only near the camera (cheap instanced people). */
+  const BUS_DRIVER = { x: 26.4, y: 9.0, z: 5.0, pose: 'car', grip: [29.0, 10.5, 1.0], foot: [29.6, 5.2] };
+  const BF = new Frame(), BQ = [0, 0, 0];
+  function busLook(v, k, kind) {
+    if (!v._bus) v._bus = [];
+    if (!v._bus[k]) { const r = U.rng((v.seed | 0) * 31 + 7 * k + 3); v._bus[k] = N.people.randomLook(r, kind || (r.next() < 0.3 ? 'aunty' : r.next() < 0.3 ? 'student' : r.next() < 0.5 ? 'man' : 'uncle')); }
+    return v._bus[k];
+  }
+  function busLife(v, md, sx, steer) {
+    const d = camDist(v.x, 8, v.y);
+    if (d > 300 || v.fallen) return;
+    const seed = (v.seed | 0) & 0xffff, t = H.time, pl = N.player;
+    const crowdN = 4 + (seed % 9), boys = v.driver ? (seed >> 3) % 4 : 0;
+    const accel = clamp((v.throttle || 0) * 0.5 - (v.ctl && v.ctl.brake ? 0.6 : 0), -0.6, 0.5);
+    if (DBG.track === v && DBG.rec) DBG.rec.bus = { crowd: d < 170 ? crowdN : 0, boys };
+    if (v.driver && v.driver !== pl && d < 220) submitRider(md, BUS_DRIVER, riderLookOf(v), v.seed, sx, { steer });
+    // standing in the aisle, one hand up on the rail (inside: only near enough to see through the glass)
+    if (d < 170) {
+      for (let k = 0; k < crowdN; k++) {
+        const look = busLook(v, k), s = lookSpec(look, seed + k), sc = s.size;
+        const x = (-24 + (k * 37 % 47)) * sx, z = ((k * 13) % 5 - 2) * 0.9, floor = 4.4;
+        poseStand(J, t, seed + k);
+        const sway = Math.sin(t * 1.3 + k) * 0.03 - accel * 0.18;
+        armsTo(J, sway, 0.25, (15.1 - floor) / sc, 0.5, 0.2, (15.1 - floor) / sc - 0.2, 0.9, 0, -0.9);
+        J[4] = 0.1 + 0.05 * Math.sin(t + k); J[6] = 0.3; J[8] = 0.1; // the other hand down (a bag, a tiffin)
+        J[12] = Math.sin(t * 0.3 + k * 1.7) * 0.6;
+        submitPerson(look, seed + k, FR, x, floor, z, J, { yaw: k % 3 === 0 ? Math.PI / 2 : k % 3 === 1 ? -Math.PI / 2 : 0, noBlob: true });
+      }
+    }
+    // footboard boys at the rear door (left side): standing on the step, a hand on the door pole, leaning out
+    for (let k = 0; k < boys; k++) {
+      const look = busLook(v, 20 + k, k % 2 ? 'student' : 'man'), s = lookSpec(look, seed + 50 + k), sc = s.size;
+      const doorX = -8.2 * sx, hw = md.W / 2, rx = doorX + (k - (boys - 1) / 2) * 1.5, rz = -hw - 0.75 - (k === 1 ? 0.3 : 0);
+      BF.set(0, 0, 0, -Math.PI / 2, 0, 0); // facing +z: into the bus
+      const loc = (x, y, z) => { const m = BF.m, dx = x - rx, dy = y - 2.25, dz = z - rz; BQ[0] = (m[0] * dx + m[3] * dy + m[6] * dz) / sc; BQ[1] = (m[1] * dx + m[4] * dy + m[7] * dz) / sc; BQ[2] = (m[2] * dx + m[5] * dy + m[8] * dz) / sc; return BQ; };
+      poseStand(J, t, seed + 50 + k);
+      const back = -0.22 - 0.06 * Math.sin(t * 2.1 + k) - Math.abs(accel) * 0.12; // hanging back off the pole
+      loc(doorX, 11.6 - k * 0.5, -hw - 0.05); const lx = BQ[0], ly = BQ[1], lz = BQ[2]; // the door pole
+      loc(doorX, 10.2 - k * 0.4, -hw - 0.05);
+      armsTo(J, back, lx, ly, lz, BQ[0], BQ[1], BQ[2], 0, -0.9);
+      if (k === boys - 1 && boys > 1) { J[5] = 0.35 + 0.25 * Math.sin(t * 3 + k); J[7] = 0.2; J[9] = 0.9; } // the last one waves an arm free
+      J[12] = -0.7 + 0.2 * Math.sin(t * 0.7 + k); // looking along the road ahead
+      submitPerson(look, seed + 50 + k, FR, rx, 2.25, rz, J, { yaw: -Math.PI / 2, noBlob: true });
+    }
   }
   const SW = [0, 0, 0, 0, 0, 0];
   function vehicleEntity(v) {
@@ -78885,9 +79297,13 @@ if (ngShine > 0.01) {
     const sx = T && T.w ? T.w / md.L : 1, sz = T && T.d && md.W ? clamp(T.d / md.W, 0.7, 1.4) : 1;
     const t = H.time;
     let roll = 0, pitch = 0, yOff = 0;
+    const dLook = v.driver ? (v.driver === pl ? pl.look : riderLookOf(v)) : null;
+    const kainchi = !!(dLook && md.crank && md.pedal && T && T.kainchi && !v.fallen && lookSpec(dLook, v.driver === pl ? 7 : v.seed).kid);
     if (md.bike) {
       if (v.fallen) { roll = -1.3; yOff = 0.5; } else if (!v.driver) roll = -(md.standLean || 0); else roll = clamp(v.lean || 0, -0.6, 0.6);
+      if (kainchi) roll += KAINCHI.tilt; // the cycle leans away from the kid hanging off its left side
     }
+    if (kainchi) v._kainchi = true; else if (v._kainchi && v.driver) v._kainchi = false;
     const j = v.jolt || 0;
     if (j > 0) { const ph = (1 - j) * Math.PI * 3.2, big = md.bike ? 1 : 0.7; yOff += -Math.sin(ph) * j * 0.8 * big; pitch += Math.sin(ph * 1.3) * j * 0.05 * big; roll += Math.sin(ph * 1.7) * j * 0.04 * (v.joltSide || 1); }
     if (md.boat) { const ph = t + ((v.seed | 0) % 100); yOff = 0.15 + Math.sin(ph * 1.3) * 0.22; roll = Math.sin(ph * 0.9) * 0.035; pitch = Math.sin(ph * 1.1 + 1) * 0.02 - clamp((v.speed || 0) / 600, -0.02, 0.06); }
@@ -78925,7 +79341,11 @@ if (ngShine > 0.01) {
       FR.write(pool.M, i * 16, 0, 0, 0, 0, 0, 0, sx, 1, sz);
       const a = pool.A.iVA.array, b2 = pool.A.iVB.array, k = i * 4;
       a[k] = c1; a[k + 1] = c2; a[k + 2] = on ? (dyn ? clamp(sp / 80, 0.3, 1) : 1) : 0; a[k + 3] = braking;
-      b2[k] = steerVis; b2[k + 1] = crank; b2[k + 2] = beacon; b2[k + 3] = 0;
+      // iVB.w: the speedometer needle of a cockpit interior; on a body: 1 = the camera sits inside
+      // it (first person on an auto / scooter: the windscreen glass turns nearly clear)
+      b2[k] = steerVis; b2[k + 1] = crank; b2[k + 2] = beacon;
+      b2[k + 3] = cockpit ? clamp(sp / (((T && T.maxSpeed) || 150) * 1.1), 0, 1) * 4.4 : (fps ? 1 : 0);
+      if (DBG.track === v && DBG.rec) { DBG.rec.needle = cockpit ? b2[k + 3] : null; DBG.rec.inside = !cockpit && fps ? 1 : 0; }
     }
     // wheels
     if (!cockpit) {
@@ -78943,6 +79363,8 @@ if (ngShine > 0.01) {
         ST.wheels++;
       }
     }
+    // a city bus at rush hour: the driver, a standing crowd inside, footboard boys at the rear door
+    if (md.busLife && !cockpit) busLife(v, md, sx, steerVis);
     // riders: driver, pillion, passengers
     const near = mine;
     // closed cars: seen through the translucent glass when the camera is close enough to tell
@@ -78950,8 +79372,7 @@ if (ngShine > 0.01) {
     if (md.show || fps || seeIn) {
       const seats = md.seats;
       if (v.driver && seats[0] && !v.fallen && !cockpit) {
-        const look = v.driver === pl ? pl.look : riderLookOf(v);
-        submitRider(md, seats[0], look, v.driver === pl ? 7 : v.seed, sx, { steer: steerVis, crank, fpsHide: fps && (v.driver === pl || mine), near, actor: v.driver.look ? v.driver : null });
+        submitRider(md, seats[0], dLook, v.driver === pl ? 7 : v.seed, sx, { steer: steerVis, crank, fpsHide: fps && (v.driver === pl || mine), near, actor: v.driver.look ? v.driver : null, kainchi });
       }
       const pil = v.pillion;
       if (pil && seats[1] && !v.fallen) submitRider(md, seats[1], pil.look || pil, pil === pl ? 7 : (v.seed | 0) + 3, sx, { fpsHide: fps && pil === pl, near, actor: pil.look ? pil : null });
@@ -79211,11 +79632,13 @@ if (ngShine > 0.01) {
       if (!v || !a || !READY) return;
       const md = model(modelKeyFor(v.T)), seat = md.seats[d.passenger && md.seats[1] ? 1 : 0];
       if (!seat) return;
-      const c = Math.cos(v.angle || 0), sn = Math.sin(v.angle || 0), lz = seat.z || 0;
-      MOUNT.set(a, { t0: nowS(), on: false, x: v.x + c * seat.x - sn * lz, y: v.y + sn * seat.x + c * lz, hip: seat.y, yaw: -(v.angle || 0), show: md.show });
+      const c = Math.cos(v.angle || 0), sn = Math.sin(v.angle || 0);
+      const kj = !d.passenger && v._kainchi ? KAI_J.get(a) : null; // stepping off a kainchi ride: from that pose
+      const sxk = kj && md.crank ? md.crank[0] * ((v.T && v.T.w) ? v.T.w / md.L : 1) + KAINCHI.dx : seat.x, lz = kj ? KAINCHI.hz : (seat.z || 0);
+      MOUNT.set(a, { t0: nowS(), on: false, x: v.x + c * sxk - sn * lz, y: v.y + sn * sxk + c * lz, hip: kj ? KAINCHI.hy : seat.y, yaw: -(v.angle || 0), show: md.show, kj });
     } catch (e) { /* no blend */ }
   });
-  const SEATED_J = new Float32Array([1.35, 1.35, -1.4, -1.4, 0.6, 0.6, 0.6, 0.6, 0.1, 0.1, 0.08, 0, 0, 0, 0, 0]);
+  const SEATED_J = new Float32Array([1.35, 1.35, -1.4, -1.4, 0.6, 0.6, 0.6, 0.6, 0.1, 0.1, 0.08, 0, 0, 0, 0, 0, 0, 0]);
   const ease = (k) => k * k * (3 - 2 * k);
   function wrapA(a) { return Math.atan2(Math.sin(a), Math.cos(a)); }
   /** simulation seconds since the last frame (0 while paused; slow motion slows it) */
@@ -79292,6 +79715,17 @@ if (ngShine > 0.01) {
       else if (s.prop === 'dappu') { J[4] = 0.9; J[6] = 1.2; J[5] = 0.8 + Math.sin(t * 9) * 0.25; J[7] = 1.4; }
       if (e.spotter && e.spotter.stick) { J[5] = 2.55 + Math.sin(t * 9) * 0.35; J[7] = 0.35; }
       if (e.balloons) { J[5] = 0.5; J[7] = 1.6; }
+      // idle hands: a habit per person (not with a prop in hand, not the player, not a spotter)
+      if (!isP && !s.prop && !s.headCarry && !e.spotter && !e.balloons && st.gw < 0.95) {
+        const work = e.idle === 'work' && !e.talking;
+        const hab = work ? 'work' : habitOf(s, seed);
+        const on = hab ? (work && OPT.habits !== false ? 1 : habitOn(t, seed)) * (1 - st.gw) : 0;
+        if (on > 0.01) {
+          JH.set(J); habitArms(JH, hab, s, t, seed);
+          for (let q = 4; q < 10; q++) J[q] += (JH[q] - J[q]) * on;
+          st.hab = hab; st.habW = on;
+        } else st.habW = 0;
+      }
     }
     // head: look at what they look at; the player looks where the camera looks; idle glances; breathing
     if (!down) {
@@ -79308,6 +79742,13 @@ if (ngShine > 0.01) {
       st.hy += (clamp(rel, -1.1, 1.1) - st.hy) * Math.min(1, dt * 5);
       J[12] = st.hy; J[13] = idle ? Math.sin(t * 0.45 + seed) * 0.05 : (st.v > 62 ? -0.08 : 0);
       J[14] = Math.sin(t * (st.v > 62 ? 5 : 1.7) + seed) * (st.v > 62 ? 0.05 : 0.04);
+      // talking: gestures blend over the stance or the seat (subtler while walking; not with a load on the head)
+      const tw = !s.headCarry && !e.constable ? talkW(e) * (1 - 0.65 * (st.gw || 0)) : 0;
+      if (tw > 0.01) {
+        JH.set(J); talkArms(JH, t, seed, !s.prop || s.prop === 'notebook');
+        for (let q = 4; q < 14; q++) if (q !== 10 && q !== 11) J[q] += (JH[q] - J[q]) * tw;
+        st.talk = tw;
+      } else st.talk = 0;
     }
     // getting off a vehicle: blend from the seat
     const m = MOUNT.get(e);
@@ -79316,7 +79757,7 @@ if (ngShine > 0.01) {
       const k = (nowS() - m.t0) / MOUNT_S;
       if (k < 1) {
         const q = ease(Math.max(0, k));
-        blendPose(J, SEATED_J, q);
+        blendPose(J, m.kj || SEATED_J, q);
         bx = m.x + (x - m.x) * q; by = m.y + (y - m.y) * q;
         rootY = (m.hip - HIP_Y * s.size) * (1 - q) + rootY * q + Math.sin(q * Math.PI) * 0.8;
         yaw = m.yaw + wrapA(yaw - m.yaw) * q;
@@ -79328,7 +79769,7 @@ if (ngShine > 0.01) {
       else if (CAMP && Math.hypot(CAMP.x - bx, CAMP.y - (el + 6), CAMP.z - by) < 4.5) return;
     }
     FR.set(bx, rootY, by, yaw, roll, pitch);
-    if (DBG.track === e) DBG.rec = { kind: 'person', J: Array.from(J), x: bx, y: by, h: rootY, yaw, pitch, size: s.size, wide: s.wide, seated: o.seated, fpsHide: o.fpsHide, v: st.v, cyc: st.cyc, beta: st.beta, X: st.X, f: st.f, run: !!st.run, gw: st.gw, frame: ST.frame };
+    if (DBG.track === e) DBG.rec = { kind: 'person', J: Array.from(J), x: bx, y: by, h: rootY, yaw, pitch, size: s.size, wide: s.wide, seated: o.seated, fpsHide: o.fpsHide, v: st.v, cyc: st.cyc, beta: st.beta, X: st.X, f: st.f, run: !!st.run, gw: st.gw, hab: st.hab || null, habW: st.habW || 0, talk: st.talk || 0, frame: ST.frame };
     const i = submitPerson(look, seed, FR, 0, 0, 0, J, o);
     if (i < 0) return;
     const head = el + 9.4 * s.size + (s.headCarry ? 1.4 : 0);
@@ -79358,6 +79799,30 @@ if (ngShine > 0.01) {
         pts.push({ x: r.x + lx * c + lz * sn, y: r.y - lx * sn + lz * c, h: r.h + ly });
       }
       out.push({ heel: pts[0], toe: pts[1], low: Math.min(pts[0].h, pts[1].h) });
+    }
+    return out;
+  }
+  function riderAnkles(vr, sx) {
+    const rd = vr && vr.riders && vr.riders[0];
+    if (!rd || !rd.root) return null;
+    const md = model(vr.model), j = rd.J, sc = rd.size || 1, ank = [];
+    const M = rot3(new Float64Array(9), rd.yaw || 0, rd.roll || 0, 0);
+    for (const sd of [-1, 1]) {
+      const k = sd < 0 ? 0 : 1;
+      let p = [0, ANK_Y, sd * HIP_Z];
+      let q = rotZ2(p[0], p[1], 0, KNEE_Y, j[2 + k]); p = [q[0], q[1], p[2]];
+      q = rotZ2(p[0], p[1], 0, HIP_Y, j[k]); p = [q[0], q[1], p[2]];
+      const a = -sd * (j[16 + k] || 0), c = Math.cos(a), s = Math.sin(a), qy = p[1] - HIP_Y, qz = p[2] - sd * HIP_Z;
+      p = [p[0], qy * c - qz * s + HIP_Y, qy * s + qz * c + sd * HIP_Z];
+      p[1] += j[11] || 0;
+      const x = p[0] * sc, y = p[1] * sc, z = p[2] * sc;
+      ank.push([rd.root[0] + M[0] * x + M[1] * y + M[2] * z, rd.root[1] + M[3] * x + M[4] * y + M[5] * z, rd.root[2] + M[6] * x + M[7] * y + M[8] * z]);
+    }
+    const out = { ankles: ank, pose: rd.pose };
+    if (md.crank) {
+      const c = vr.crank || 0, R = md.crank[2], bx = md.crank[0] * sx, by = md.crank[1];
+      out.targets = [-1, 1].map((sd) => [bx + sd * Math.cos(c) * R - 0.25, by + sd * Math.sin(c) * R + 0.18 + ANK_Y * sc, sd * KAINCHI.pz]);
+      out.err = out.targets.map((t, i) => +Math.hypot(t[0] - ank[i][0], t[1] - ank[i][1], t[2] - ank[i][2]).toFixed(3));
     }
     return out;
   }
@@ -80197,6 +80662,9 @@ if (ngShine > 0.01) {
       /** live skid-mark quads (fading over 40 s of game time) and smoke / dust puffs */
       fx() { return { skids: FXS.skN, puffs: FXS.live }; },
       feet: (r) => feetOf(r || DBG.rec),
+      /** tests: the rider's ankles (mirroring the vertex shader: knee, hip, abduction, then the
+       *  person's roll / yaw / scale / root) and the pedal ankle targets, in the vehicle frame */
+      riderAnkles(vrec, sx) { return riderAnkles(vrec || DBG.rec, sx || 1); },
     },
   };
 })();
@@ -80347,7 +80815,7 @@ if (ngShine > 0.01) {
   function wanted(id) {
     const m = manifest(id); if (!m) return false;
     const meta = m.meta || {};
-    if (m.family === 'character') return OPT.player || OPT.kidPeds || OPT.riders;
+    if (m.family === 'character') return !(meta.role === 'clips' || meta.lazy) && (OPT.player || OPT.kidPeds || OPT.riders); // libraries / lazy people: on demand
     if (m.family === 'vehicle') return OPT.vehicles;
     if (m.family === 'landmark' || m.family === 'hero_landmark') return OPT.landmarks && (!meta.proto || useProto);
     return true;
@@ -80371,9 +80839,16 @@ if (ngShine > 0.01) {
           let md = null;
           try { md = prepare(id, g); } catch (e) { S.failed.set(id, String(e.message || e)); N.err('models3d.prepare:' + id, e); }
           S.parseMs += now() - t0;
-          S.pending.delete(id);
-          if (md) S.models.set(id, md);
-          resolve(md);
+          const done = (m) => { S.pending.delete(id); if (m) S.models.set(id, m); resolve(m); };
+          // characters carry no clips of their own when meta.clips names a clip library (one per rig)
+          const lib = md && md.man.family === 'character' && typeof md.meta.clips === 'string' ? md.meta.clips : null;
+          if (!lib) { done(md); return; }
+          parse(lib).then((L) => {
+            if (L && L.clips.size) { linkClips(md, L); done(md); return; }
+            S.failed.set(id, 'clip library ' + lib + ' unavailable');
+            console.warn('[models3d] ' + id + ': clip library ' + lib + ' unavailable');
+            done(null);
+          });
         }, (err) => {
           S.failed.set(id, String((err && err.message) || err));
           S.pending.delete(id);
@@ -80394,6 +80869,18 @@ if (ngShine > 0.01) {
     if (!scene) throw new Error('no scene');
     const md = { id, man, meta: man.meta || {}, scene, clips: new Map(), night: [], metal: [], floodlit: [], skinned: false };
     for (const c of g.animations || []) md.clips.set(c.name, c);
+    const track = md.meta.clipTrack && md.clips.get(md.meta.clipTrack);
+    if (track) {
+      // a clip library stores all its clips one after the other in one animation: cut them out by
+      // their frame ranges (manifest clips[name].range, at meta.clipFps)
+      const out = new Map(), fps = md.meta.clipFps || 30;
+      for (const [name, c] of Object.entries(man.clips || {})) {
+        if (!c || !c.range) continue;
+        const sc = THREE.AnimationUtils.subclip(track, name, c.range[0] - 0.5, c.range[1] + 0.5, fps);
+        if (sc.tracks.length) out.set(name, sc);
+      }
+      md.clips = out;
+    }
     if (!COL_MAT) { COL_MAT = new THREE.MeshBasicMaterial({ visible: false }); COL_MAT.userData.shared = true; }
     scene.traverse((o) => {
       if (!o.isMesh) return;
@@ -80422,6 +80909,13 @@ if (ngShine > 0.01) {
     if (md.metal.length && OPT.env) for (const m of md.metal) { m.envMap = envMap(); m.envMapIntensity = 0.6; }
     scene.updateMatrixWorld(true);
     return md;
+  }
+  /** a character bound to its rig's clip library: the library's clips (bound by bone name) and
+   *  their manifest entries become the character's own (manifest(id).clips lists them) */
+  function linkClips(md, L) {
+    md.clips = L.clips; md.lib = L.id;
+    const own = md.man.clips && Object.keys(md.man.clips).length ? md.man.clips : null;
+    md.man.clips = Object.assign({}, L.man.clips || {}, own || {});
   }
   /** a small gradient sky as a PMREM environment for metallic materials (chrome reads as chrome) */
   function envMap() {
@@ -80570,6 +81064,7 @@ if (ngShine > 0.01) {
     /** dress from an N.people look (skin, hair, shirt, stripes, pants...) */
     tint(look) {
       this.lookRef = look;
+      if (api.hooks.tint && api.hooks.tint(this, look)) return this;   // models3d_people.js: regions + accessory slots
       if (!this.mesh || !this.md.man.tint) return this;
       if (!this.tintMat) { this.tintMat = tintMaterial(this.mesh.material); this.mesh.material = this.tintMat; }
       const R = tintRatios(this.md, look), U = this.tintMat.userData.tintU.uTint.value;
@@ -80762,6 +81257,7 @@ if (ngShine > 0.01) {
   /** the rider model id for occupant d of vehicle v (or null: the procedural renderer draws it) */
   function riderModel(v, d) {
     if (!d) return null;
+    if (api.hooks.riderModel) { const r = api.hooks.riderModel(v, d); if (r !== undefined) return r; }
     const vid = VEH_TYPES.get(v.type), vmd = vid && S.models.get(vid);
     if (!vmd) return null;
     const drop = ((vmd.meta.saddleDrop || {})[v.type]) || 0;
@@ -80914,12 +81410,13 @@ if (ngShine > 0.01) {
     const V3 = N.view3d;
     if (!V3 || !V3.active || S.state !== 'ready') return;
     const p = N.player;
-    // the player
+    const PH = api.hooks.people && api.hooks.people.ready ? api.hooks.people : null;
+    // the player (models3d_people.js routes the player and the people itself when it is loaded)
     const pid = OPT.player && OPT.enabled ? PLAYER_ID() : null;
-    const want = pid && canShowPlayer(p) && !tracked(p) ? 'm3d:char:' + pid : null;
-    if (p) {
+    if (p && !PH) {
+      const want = pid && canShowPlayer(p) && !tracked(p) ? 'm3d:char:' + pid : null;
       if (want && p.view3d !== want) p.view3d = want;
-      else if (!want && p.view3d && String(p.view3d).indexOf('m3d:') === 0) delete p.view3d;
+      else if (!want && p.view3d && String(p.view3d).indexOf('m3d:char:') === 0) delete p.view3d;
       S.routedPlayer = !!want;
     }
     // vehicles: parked (no rider) ones of a modelled type; ridden ones stay procedural (riders)
@@ -80927,8 +81424,9 @@ if (ngShine > 0.01) {
     const f = V3.focus ? V3.focus() : p;
     let list = [];
     try { list = N.entities.query(f.x, f.y, (V3.quality && V3.quality.actorDist) || 620); } catch (e) { list = []; }
+    if (PH) { try { PH.route(list, p, tracked); S.routedPlayer = !!(p && p.view3d && String(p.view3d).indexOf('m3d:') === 0); } catch (e) { N.err('models3d.people.route', e); } }
     for (const e of list) {
-      if (!e || e.kind !== 'vehicle') { if (e && OPT.kidPeds && e !== p && e.kind === 'ped' && pid) routePed(e, pid); continue; }
+      if (!e || e.kind !== 'vehicle') { if (!PH && e && OPT.kidPeds && e !== p && e.kind === 'ped' && pid) routePed(e, pid); continue; }
       const mid = OPT.vehicles && OPT.enabled ? VEH_TYPES.get(e.type) : null;
       const ridersOk = !e.pillion && !e.passenger && (!e.driver || (OPT.riders && !!riderModel(e, e.driver)));
       const key = mid && ridersOk && e.alive !== false && !tracked(e) ? 'm3d:veh:' + mid : null;
@@ -80962,6 +81460,10 @@ if (ngShine > 0.01) {
   /* ================================================================ API */
   const api = (N.models3d = {
     OPT, options: OPT, packUrls: null, noCdn: false,
+    /** extension points (models3d_people.js): tint(character, look) -> true when handled;
+     *  people {ready, route(list, player, tracked)} routes the player + people; riderModel(v, d) ->
+     *  model id | null (undefined: the built-in choice) */
+    hooks: { tint: null, people: null, riderModel: null },
     get ready() { return S.state === 'ready'; },
     get state() { return S.state; },
     get error() { return S.error; },
@@ -80995,7 +81497,7 @@ if (ngShine > 0.01) {
         registered: Array.from(S.registered).concat(Array.from(S.landmarkKeys.keys())), routedPlayer: S.routedPlayer, routedVehicles: S.routedVehicles, useProto,
       };
     },
-    debug: { S, route, unrouteAll, Character, tintRatios, cloneScene, riderModel },
+    debug: { S, route, unrouteAll, Character, tintRatios, cloneScene, riderModel, findBones, findAnchors, disposeInstance },
   });
 
   N.addSystem({
@@ -81014,6 +81516,643 @@ if (ngShine > 0.01) {
     });
   }
   N.on('view:change', (d) => { if (d && d.mode === 'top') unrouteAll(); });
+})();
+
+</script>
+<script>/* src/models3d_people.js */
+/* NOSTALGIA — models3d_people.js (characters artist) — ARCHITECTURE §21 "Characters (people runtime)"
+ *
+ * The people of Hyderabad, 2003, drawn with the Blender character set (tools/blender/characters.py ->
+ * assets3d/<id>.glb -> src/assets3d_pack.js) in the 3D view: the player (kid_chinnu; an adult model in
+ * the 2026 epilogue), the named cast (meta.npcs) and the street crowd (by look kind / role / match
+ * rule). Characters share one skeleton per rig and carry no clips of their own: their rig's clip
+ * library (clips_kid / clips_adult) is bound by bone name (models3d.js links it at parse time).
+ *
+ *  - Archetypes + variants: each model has the 8 base tint regions (skin hair shirt stripes pants shoes
+ *    accent) plus accessory SLOTS (regions 8..23: caps, specs, beards, bellies, bags, frocks, plaits...)
+ *    whose visibility follows rules on the person's look (manifest tint.show; rule language: {f} truthy,
+ *    {f, in: [...]}, {f, re}, {f, lt | gt}, {any}, {all}, {not}); every region names the look fields
+ *    that colour it (tint.fields: 'shirt', '@saree:0.7' = a shade of a field, '#hex' fixed). One shader
+ *    (onBeforeCompile on the baked material): colour x look / baked grey, hidden slots collapse in the
+ *    vertex shader (also in the shadow depth pass). The runtime adds `_r` (a stable random in [0, 1)
+ *    per person), `_role` (traffic ped role) and `_cart` to the look the rules see.
+ *  - Clips: locomotion (stroll / walk / run / sprint; women use the *_f variants when the library has
+ *    them; cart pushers push_cart) blended by speed between their nominal speeds, the common phase
+ *    driven by the distance actually travelled (phase += dist / sum(w * stride)): planted feet at any
+ *    speed. Standing: idle with idle_look now and then. States on top (cross-faded): fall (held) /
+ *    getup, sit (bench) / sit_step (stool, kerb), talk, direct (traffic constables), and any clip a
+ *    script asks for (e.clip3d = 'clap' | {name, loop} or people.play(e, name)). Head turns towards
+ *    what the person looks at (and the camera for the player); an archetype's posture (old men stoop)
+ *    is added after the mixer.
+ *  - Routing: models3d.js calls hooks.people.route() every frame; the player (on foot), cast NPCs and
+ *    peds get e.view3d = 'm3d:ppl:<id>' when their look has a model and every visible part of their
+ *    state is supported (no umbrella / balloons / head loads / unmodelled props / riding), nearest first
+ *    up to options.max (hysteresis keeps them), at most options.maxNew new ones per frame (creation
+ *    cost). Everything else keeps view3d_actors' procedural renderer (it stays registered underneath).
+ *    Lazy models parse on first use. Riders on Hero cycles (models3d vehicleSpec) get the same tint /
+ *    slot shader through hooks.tint.
+ *
+ * Public: N.models3d.people = {options, ready, models(), choose(e) -> {id, ctx}|null, play(e, clip, o),
+ *   stop(e), person(e) -> Person|null, stats(), debug}. Entity hints read: look, npcId, role, vx/vy,
+ *   facing/angle, idle ('sit'), bench, sitting, down / downT / knockT / getupT, talking, constable +
+ *   pod, lookAt / lookT / lookTarget, emoteSt / spotter, roofH, umb, balloons, cart, clip3d.
+ * Hooks into modules this file does not own: N.models3d.hooks (people, tint) — documented extension
+ * points of models3d.js; e.view3d (ARCHITECTURE §20 key resolution); emotes are drawn by pushing into
+ * N.view3dActors.debug.EMOTES like view3d_actors' own people do.
+ */
+(() => {
+  'use strict';
+  const N = window.N;
+  if (!N) return;
+  const TAU = Math.PI * 2;
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+  const nowMs = () => performance.now();
+  let THREE = null;
+
+  /* ================================================================ options + state */
+  const OPT = { enabled: true, player: true, npcs: true, peds: true, max: 26, maxNew: 2, dist: 230, hyst: 40, shadows: true, posture: true, headLook: true };
+  const S = {
+    ready: false, idx: null, specs: new Set(), persons: new Set(), choice: new WeakMap(), parsing: new Set(),
+    routed: 0, created: 0, disposed: 0, frameNew: 0, lastRoute: 0, ms: 0, msAvg: 0, mats: 0,
+  };
+  const KEY = (id) => 'm3d:ppl:' + id;
+  const isOurs = (k) => typeof k === 'string' && k.indexOf('m3d:ppl:') === 0;
+  const M3 = () => N.models3d;
+  const hash01 = (s) => { let h = 2166136261; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 100003) / 100003; };
+
+  /* ================================================================ rules (mirror of _characters_kit.rule_eval) */
+  function rule(r, L) {
+    if (r === true || r == null) return true;
+    if (r === false) return false;
+    if (r.any) { for (const x of r.any) if (rule(x, L)) return true; return false; }
+    if (r.all) { for (const x of r.all) if (!rule(x, L)) return false; return true; }
+    if (r.not) return !rule(r.not, L);
+    const v = L[r.f];
+    if (r.in) return r.in.indexOf(v) >= 0;
+    if (r.re) { try { return typeof v === 'string' && new RegExp(r.re).test(v); } catch (e) { return false; } }
+    if (r.lt != null) return typeof v === 'number' && v < r.lt;
+    if (r.gt != null) return typeof v === 'number' && v > r.gt;
+    return !!v;
+  }
+
+  /* ================================================================ colours (mirror of resolve_look) */
+  const DEFAULT_FIELDS = { skin: ['skin'], hair: ['hair'], shirt: ['shirt', 'kameez', 'saree'], stripes: ['stripes', 'shoulders'], pants: ['pants', 'lungi'], shoes: ['shoes', 'chappal'], accent: ['accent'] };
+  const isCol = (v) => typeof v === 'string' && v[0] === '#' && (v.length === 4 || v.length === 7);
+  function rgb255(h) {
+    let s = h.slice(1); if (s.length === 3) s = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
+    const v = parseInt(s, 16); return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+  }
+  function shadeHex(h, f) {
+    const c = rgb255(h).map((x) => Math.floor(Math.min(1, (x / 255) * f) * 255));
+    return '#' + c.map((x) => x.toString(16).padStart(2, '0')).join('');
+  }
+  const LIN = new Map();
+  function lin(h) {
+    let o = LIN.get(h); if (o) return o;
+    const f = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    o = rgb255(h).map(f); LIN.set(h, o); return o;
+  }
+  function pick(specs, L) {
+    if (!specs || !L) return null;
+    for (const s of specs) {
+      if (s[0] === '#') return s;
+      if (s[0] === '@') { const i = s.indexOf(':'), f = s.slice(1, i < 0 ? undefined : i), k = i < 0 ? 1 : parseFloat(s.slice(i + 1)); if (isCol(L[f])) return shadeHex(L[f], k); continue; }
+      if (isCol(L[s])) return L[s];
+    }
+    return null;
+  }
+  /** -> {cols: [vec4 per region: ratio rgb, hide], hidden: [names]} for the manifest tint spec */
+  function resolve(tint, look, defLook, ctx) {
+    const names = tint.names || ['none'], fields = tint.fields || {}, show = tint.show || {}, base = tint.regions || {};
+    const L = Object.assign({}, look || {}, ctx || {});
+    const out = [], hidden = [];
+    for (let i = 0; i < 24; i++) {
+      const n = names[i];
+      if (!n || i === 0) { out.push([1, 1, 1, 0]); continue; }
+      const fl = fields[n] || DEFAULT_FIELDS[n];
+      const want = pick(fl, look || {}) || pick(fl, defLook || {});
+      let r = [1, 1, 1];
+      if (want && isCol(base[n])) { const w = lin(want), b = lin(base[n]); r = [clamp(w[0] / Math.max(b[0], 0.004), 0, 24), clamp(w[1] / Math.max(b[1], 0.004), 0, 24), clamp(w[2] / Math.max(b[2], 0.004), 0, 24)]; }
+      const hide = show[n] !== undefined && !rule(show[n], L);
+      if (hide) hidden.push(n);
+      out.push([r[0], r[1], r[2], hide ? 1 : 0]);
+    }
+    return { cols: out, hidden };
+  }
+
+  /* ================================================================ the region shader (24 regions + hide) */
+  function regionUniform() { const a = []; for (let i = 0; i < 24; i++) a.push(new THREE.Vector4(1, 1, 1, 0)); return { value: a }; }
+  const VS_HEAD = '#include <common>\nattribute float aRegion;\nuniform vec4 uReg[24];\n';
+  function peopleMaterial(src) {
+    const m = src.clone();
+    m.userData = { shared: false, m3dPeople: true };
+    const U = { uReg: regionUniform() };
+    m.userData.reg = U.uReg;
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uReg = U.uReg;
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', VS_HEAD + 'varying vec3 vTint;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvec4 regT = uReg[int(clamp(aRegion + 0.5, 0.0, 23.0))];\n\tvTint = regT.rgb;')
+        .replace('#include <project_vertex>', '\tif (regT.a > 0.5) transformed = vec3(0.0);\n#include <project_vertex>');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vTint;')
+        .replace('#include <map_fragment>', '#include <map_fragment>\n\tdiffuseColor.rgb *= vTint;');
+    };
+    m.customProgramCacheKey = () => 'm3d-ppl24';
+    m.needsUpdate = true;
+    // the shadow pass: hidden slots must not cast shadows either
+    const d = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+    d.userData = { shared: false };
+    d.onBeforeCompile = (sh) => {
+      sh.uniforms.uReg = U.uReg;
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', VS_HEAD)
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvec4 regT = uReg[int(clamp(aRegion + 0.5, 0.0, 23.0))];')
+        .replace('#include <project_vertex>', '\tif (regT.a > 0.5) transformed = vec3(0.0);\n#include <project_vertex>');
+    };
+    d.customProgramCacheKey = () => 'm3d-ppl24-depth';
+    m.userData.depth = d;
+    S.mats++;
+    return m;
+  }
+  function dressMaterial(m, md, look, ctx) {
+    const T = md.man.tint;
+    if (!T) return null;
+    const R = resolve(T, look, md.meta.look, ctx);
+    const U = m.userData.reg.value;
+    for (let i = 0; i < 24; i++) { const c = R.cols[i]; U[i].set(c[0], c[1], c[2], c[3]); }
+    return R;
+  }
+
+  /* ================================================================ archetype index (from the manifests) */
+  const ROLE_MODEL = { vendor: 'vendor', old: 'old_man_dhoti', elder: 'man_kurta_skullcap', police: 'police_khaki', youth: 'student', college: 'student' };
+  function buildIndex() {
+    const P = N.ASSETS3D && N.ASSETS3D.manifest;
+    if (!P) return null;
+    const I = { all: [], byNpc: new Map(), byKind: new Map(), player: null, props: new Map(), clipsOf: new Map() };
+    for (const id in P) {
+      const m = P[id];
+      if (!m || m.family !== 'character') continue;
+      const meta = m.meta || {};
+      if (meta.role === 'clips') { I.clipsOf.set(meta.rig || id, m); continue; }
+      I.all.push(id);
+      if (meta.role === 'player') I.player = id;
+      for (const [npc, ctx] of Object.entries(meta.npcs || {})) if (!I.byNpc.has(npc)) I.byNpc.set(npc, { id, ctx: ctx || {} });
+      for (const k of meta.kinds || []) {
+        if (!I.byKind.has(k)) I.byKind.set(k, []);
+        I.byKind.get(k).push({ id, pri: meta.priority || 0, match: meta.match || null });
+      }
+      // props this model can show: values of 'prop' in its slot rules
+      const props = new Set();
+      const scan = (r) => { if (!r || typeof r !== 'object') return; if (r.f === 'prop' && r.in) r.in.forEach((x) => props.add(x)); for (const k of ['any', 'all']) if (r[k]) r[k].forEach(scan); if (r.not) scan(r.not); };
+      for (const r of Object.values((m.tint && m.tint.show) || {})) scan(r);
+      I.props.set(id, props);
+    }
+    for (const L of I.byKind.values()) L.sort((a, b) => b.pri - a.pri);
+    return I;
+  }
+  const hasModel = (id) => !!(id && M3() && M3().has(id));
+  /** the model for a person: {id, ctx} or null (cached per entity while the look object is the same) */
+  function choose(e) {
+    const I = S.idx;
+    if (!I || !e) return null;
+    const p = N.player, isP = e === p;
+    const look = e.look;
+    if (!look) return null;
+    const c0 = S.choice.get(e);
+    if (c0 && c0.look === look && c0.cart === !!e.cart) return c0.r;
+    let r = null;
+    const ctx = { _r: hash01((e.npcId || '') + ':' + (e.seed != null ? e.seed : (e.id != null ? e.id : '')) + ':' + (look.shirt || '') + (look.skin || '')), _role: e.role || null, _cart: !!e.cart };
+    if (isP && look.kind === 'kid' && I.player) r = { id: I.player, ctx };
+    if (!r && e.npcId && I.byNpc.has(e.npcId)) { const n = I.byNpc.get(e.npcId); r = { id: n.id, ctx: Object.assign({}, ctx, n.ctx) }; }
+    if (!r) {
+      const kind = look.kind || 'man';
+      const L = Object.assign({}, look, ctx);
+      const prefer = ROLE_MODEL[e.role];
+      const list = I.byKind.get(kind) || [];
+      if (prefer && list.some((c) => c.id === prefer)) r = { id: prefer, ctx };
+      else for (const c of list) if (!c.match || rule(c.match, L)) { r = { id: c.id, ctx }; break; }
+    }
+    if (r && !hasModel(r.id)) r = null;
+    S.choice.set(e, { look, cart: !!e.cart, r });
+    return r;
+  }
+  const HEAD_LOADS = { trunk: 1, pot: 1, bonam: 1, dappu: 1, neem: 1 };
+  /** can the Blender model show this person's current state completely? */
+  function supported(e, ch) {
+    if (e.hidden || e.vehicle || e.riding || e.alive === false) return false;
+    if (e.umb || e.balloons || e.cart) return false;           // procedural extras (umbrella, balloons, carts)
+    if (e.spotter && e.spotter.stick) return false;
+    const L = e.look || {};
+    if (L.prop && (HEAD_LOADS[L.prop] || !(S.idx.props.get(ch.id) || new Set()).has(L.prop))) return false;
+    if (e.constable && !clipOf(ch.id, 'direct')) return false;
+    return true;
+  }
+  function clipOf(id, name) {
+    const m = N.ASSETS3D && N.ASSETS3D.manifest[id];
+    if (!m) return null;
+    const lib = typeof (m.meta || {}).clips === 'string' ? N.ASSETS3D.manifest[m.meta.clips] : m;
+    return (lib && lib.clips && lib.clips[name]) || null;
+  }
+  /** parse a lazy model on first use; true when it is ready */
+  function ensure(id) {
+    const A = M3();
+    if (A.loaded(id)) return true;
+    if (!S.parsing.has(id) && A.has(id)) {
+      S.parsing.add(id);
+      A.parse(id).then(() => S.parsing.delete(id), () => S.parsing.delete(id));
+    }
+    return false;
+  }
+
+  /* ================================================================ seats (benches / stools under seated people) */
+  let SEAT = null;
+  function seatMeshes() {
+    if (SEAT) return SEAT;
+    const mk = (hex, rough) => { const m = new THREE.MeshStandardMaterial({ color: new THREE.Color(hex), roughness: rough, metalness: 0 }); m.userData.shared = true; return m; };
+    const cement = mk('#a7a196', 0.95), wood = mk('#7a5a3a', 0.85);
+    const box = (w, h, d, x, y, z) => { const g = new THREE.BoxGeometry(w, h, d); g.translate(x, y, z); g.userData.shared = true; return g; };
+    // GLB frame of the sitter: +X his left, +Y up, +Z his front; the seat sits a little behind the hips
+    SEAT = {
+      bench: [[box(7.4, 0.36, 2.3, 0, 2.04, -0.35), cement], [box(0.5, 1.86, 1.7, 3.0, 0.93, -0.35), cement], [box(0.5, 1.86, 1.7, -3.0, 0.93, -0.35), cement]],
+      stool: [[box(2.5, 0.3, 2.5, 0, 1.69, -0.3), wood], [box(0.3, 1.54, 0.3, 1.0, 0.77, 0.7), wood], [box(0.3, 1.54, 0.3, -1.0, 0.77, 0.7), wood], [box(0.3, 1.54, 0.3, 1.0, 0.77, -1.3), wood], [box(0.3, 1.54, 0.3, -1.0, 0.77, -1.3), wood]],
+    };
+    return SEAT;
+  }
+  function makeSeat(kind) {
+    const g = new THREE.Group(); g.name = 'm3d-seat:' + kind;
+    for (const [geo, mat] of seatMeshes()[kind]) { const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; m.raycast = () => {}; g.add(m); }
+    g.visible = false;
+    return g;
+  }
+
+  /* ================================================================ a person */
+  const V_IDLE = 3, FADE = 0.2;
+  const tmpQ = () => new THREE.Quaternion();
+  class Person {
+    constructor(md, look, ctx, o) {
+      o = o || {};
+      const A = M3();
+      this.md = md; this.id = md.id; this.meta = md.meta || {};
+      this.object = new THREE.Group(); this.object.name = 'm3d-ppl:' + md.id;
+      this.pivot = A.instance(md.id);
+      this.pivot.rotation.y = o.attach ? 0 : Math.PI / 2;
+      this.object.add(this.pivot);
+      this.mesh = null; this.pivot.traverse((x) => { if (x.isSkinnedMesh && !this.mesh) this.mesh = x; });
+      this.bones = A.debug.findBones(this.pivot);
+      this.anchors = A.debug.findAnchors(this.pivot);
+      this.mixer = new THREE.AnimationMixer(this.pivot);
+      this.acts = new Map();
+      const CM = md.man.clips || {};
+      this.cm = CM;
+      const female = !!this.meta.female;
+      // locomotion sets: the plain gaits, women's '_f' variants replace their base, carts push
+      const base = [], fem = new Map();
+      for (const [name, c] of Object.entries(CM)) {
+        if (!c || !c.loco || !(c.stride > 0) || !md.clips.has(name)) continue;
+        if (c.set) continue;
+        if (c.style === 'f') { if (c.base) fem.set(c.base, name); continue; }
+        base.push(name);
+      }
+      const L = (names) => names.map((n) => ({ name: n, stride: CM[n].stride, nominal: CM[n].nominal || 40, w: 0, a: null })).sort((p, q) => p.nominal - q.nominal);
+      this.sets = { walk: L(base.map((n) => (female && fem.has(n) ? fem.get(n) : n))) };
+      if (md.clips.has('push_cart')) this.sets.cart = L(['push_cart']);
+      this.set = 'walk'; this.phase = Math.random(); this.locoW = 0; this.v = 0;
+      this.idleName = 'idle'; this.idleT = 6 + Math.random() * 8; this.idleW = { idle: 1, idle_look: 0 };
+      this.over = null; this.fading = [];
+      this.clip = 'idle';
+      // tint / slots
+      this.mat = null;
+      if (this.mesh && md.man.tint) { this.mat = peopleMaterial(this.mesh.material); this.mesh.material = this.mat; this.mesh.customDepthMaterial = this.mat.userData.depth; }
+      this.lookRef = null; this.ctx = ctx || {};
+      if (look) this.dress(look, ctx);
+      // post-mixer offsets (head look, posture): the mixer's output is restored before each update
+      this.post = [];
+      for (const n of ['spine', 'chest', 'neck', 'head']) if (this.bones[n]) this.post.push({ n, b: this.bones[n], saved: new THREE.Quaternion(), has: false });
+      this.headYaw = 0;
+      this.seat = null;
+      this.act('idle');
+      this.mixer.update(0);
+    }
+    act(name) {
+      let a = this.acts.get(name);
+      if (a) return a;
+      const clip = this.md.clips.get(name);
+      if (!clip) return null;
+      a = this.mixer.clipAction(clip);
+      a.enabled = true; a.setEffectiveWeight(0); a.play();
+      const c = this.cm[name] || {};
+      if (c.loco) a.paused = true;
+      this.acts.set(name, a);
+      return a;
+    }
+    has(name) { return this.md.clips.has(name); }
+    dress(look, ctx) {
+      this.lookRef = look; if (ctx) this.ctx = ctx;
+      if (this.mat) this.hidden = (dressMaterial(this.mat, this.md, look, this.ctx) || {}).hidden || [];
+      const sz = (look && look.size) || 1;
+      this.object.scale.setScalar(clamp(sz, 0.6, 1.4));
+      return this;
+    }
+    /** a state clip on top of the walking / standing base: mode 'loop' | 'once' (then back) | 'hold' */
+    state(name, mode, fade) {
+      if (!name) { this.done = null; if (this.over) { this.fading.push(this.over); this.over = null; } return true; }
+      if (this.over && this.over.name === name) return true;
+      if (this.done === name) return true;          // a one-shot that already played (until the state changes)
+      this.done = null;
+      const a = this.act(name);
+      if (!a) return false;
+      if (this.over) this.fading.push(this.over);
+      this.fading = this.fading.filter((f) => f.a !== a);
+      a.reset(); a.enabled = true; a.paused = false; a.timeScale = 1;
+      if (mode === 'loop') a.setLoop(THREE.LoopRepeat, Infinity);
+      else { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+      a.setEffectiveWeight(0); a.play();
+      this.over = { name, a, mode: mode || 'loop', w: 0, fade: fade != null ? fade : FADE, t: 0 };
+      return true;
+    }
+    blend(set, v) {
+      let S_ = 0;
+      for (const l of set) l.w = 0;
+      if (!set.length) return 0;
+      if (v <= set[0].nominal) set[0].w = 1;
+      else if (v >= set[set.length - 1].nominal) set[set.length - 1].w = 1;
+      else for (let i = 0; i < set.length - 1; i++) if (v < set[i + 1].nominal) { const t = (v - set[i].nominal) / (set[i + 1].nominal - set[i].nominal); set[i].w = 1 - t; set[i + 1].w = t; break; }
+      for (const l of set) S_ += l.w * l.stride;
+      return S_;
+    }
+    /** dt: sim seconds; dist: distance travelled this frame; v: speed (u/s) */
+    update(dt, dist, v, o) {
+      o = o || {};
+      dt = Math.max(0, dt || 0);
+      this.v = v;
+      for (const P of this.post) if (P.has) P.b.quaternion.copy(P.saved);
+      // base: locomotion set by speed, idle / idle_look when standing
+      const setName = o.set && this.sets[o.set] ? o.set : 'walk';
+      if (setName !== this.set) { for (const l of this.sets[this.set]) if (l.a) l.a.setEffectiveWeight(0); this.set = setName; }
+      const set = this.sets[this.set];
+      const moving = v > V_IDLE && set.length > 0;
+      this.locoW += clamp((moving ? 1 : 0) - this.locoW, -dt / FADE, dt / FADE);
+      const stride = this.blend(set, Math.max(v, V_IDLE));
+      if (dist == null) dist = v * dt;
+      if (moving && stride > 0) this.phase = (this.phase + dist / stride) % 1;
+      // the state overlay
+      let ov = 0;
+      if (this.over) {
+        const O = this.over; O.t += dt;
+        O.w = Math.min(1, O.w + dt / Math.max(0.01, O.fade));
+        if (O.mode === 'once' && O.t > 0.05 && !O.a.isRunning()) { this.fading.push(O); this.over = null; this.done = O.name; }
+      }
+      for (const F of this.fading) { F.w = Math.max(0, F.w - dt / Math.max(0.01, F.fade)); }
+      this.fading = this.fading.filter((F) => { if (F.w > 0) return true; F.a.setEffectiveWeight(0); F.a.stop(); return false; });
+      if (this.over) { this.over.a.setEffectiveWeight(this.over.w); ov = this.over.w; }
+      for (const F of this.fading) { F.a.setEffectiveWeight(F.w); ov += F.w; }
+      ov = Math.min(1, ov);
+      const base = 1 - ov;
+      let top = null, topW = -1;
+      for (const l of set) {
+        const w = base * this.locoW * l.w;
+        if (w > 0 && !l.a) l.a = this.act(l.name);
+        if (l.a) { l.a.time = this.phase * l.a.getClip().duration; l.a.setEffectiveWeight(w); }
+        if (w > topW) { topW = w; top = l.name; }
+      }
+      // idle: mostly idle, now and then a look around (cross-faded)
+      if (!moving) { this.idleT -= dt; if (this.idleT <= 0) { const look = this.idleName === 'idle' && this.has('idle_look'); this.idleName = look ? 'idle_look' : 'idle'; this.idleT = look ? 6 : 8 + Math.random() * 10; if (look) { const a = this.act('idle_look'); if (a) a.reset(); } } }
+      const iw = base * (1 - this.locoW);
+      for (const n of ['idle', 'idle_look']) {
+        this.idleW[n] += clamp((this.idleName === n ? 1 : 0) - this.idleW[n], -dt / 0.6, dt / 0.6);
+        const a = this.acts.get(n) || (this.idleW[n] > 0 && this.act(n));
+        if (a) a.setEffectiveWeight(iw * this.idleW[n]);
+      }
+      this.clip = this.over ? this.over.name : (iw >= topW ? this.idleName : top);
+      this.mixer.update(dt);
+      // post: posture + head look (about the person's own up / left axes, whatever the bone axes are)
+      const post = (o.posture || o.headYaw) && this.post.length;
+      if (post) {
+        this.pivot.updateWorldMatrix(true, true);
+        const qObj = tmpQ(); this.pivot.getWorldQuaternion(qObj);
+        const up = new THREE.Vector3(0, 1, 0).applyQuaternion(qObj), left = new THREE.Vector3(1, 0, 0).applyQuaternion(qObj);
+        const qb = tmpQ(), q = tmpQ(), ax = new THREE.Vector3();
+        for (const P of this.post) {
+          P.saved.copy(P.b.quaternion); P.has = true;
+          const pitch = (o.posture && o.posture[P.n]) || 0;
+          const yaw = o.headYaw ? (P.n === 'head' ? 0.6 : P.n === 'neck' ? 0.4 : 0) * o.headYaw : 0;
+          if (!pitch && !yaw) continue;
+          P.b.getWorldQuaternion(qb); qb.invert();
+          if (pitch) { ax.copy(left).applyQuaternion(qb).normalize(); P.b.quaternion.multiply(q.setFromAxisAngle(ax, pitch)); }
+          if (yaw) { ax.copy(up).applyQuaternion(qb).normalize(); P.b.quaternion.multiply(q.setFromAxisAngle(ax, yaw)); }
+          P.b.updateMatrixWorld(true);
+        }
+      }
+      return this;
+    }
+    /** hold one clip exclusively at a phase (riding: the phase follows the crank) */
+    pose(name, phase) {
+      const a = this.act(name);
+      if (!a) return false;
+      for (const [k, x] of this.acts) if (x !== a) x.setEffectiveWeight(0);
+      a.paused = true; a.setEffectiveWeight(1);
+      a.time = (((phase % 1) + 1) % 1) * a.getClip().duration;
+      this.clip = name; this.over = null; this.fading = []; this.locoW = 0;
+      this.mixer.update(0);
+      return true;
+    }
+    showSeat(kind) {
+      if (!kind) { if (this.seat) this.seat.visible = false; return; }
+      if (!this.seat || this.seat.name !== 'm3d-seat:' + kind) {
+        if (this.seat) this.pivot.remove(this.seat);
+        this.seat = makeSeat(kind); this.pivot.add(this.seat);
+      }
+      this.seat.visible = true;
+    }
+    weights() { const o = {}; for (const [k, a] of this.acts) { const w = a.getEffectiveWeight(); if (w > 0.001) o[k] = +w.toFixed(3); } return o; }
+    /** world positions of the sole anchors (tests: planted feet) */
+    soles() {
+      const out = {}, v = new THREE.Vector3();
+      this.object.updateWorldMatrix(true, true);
+      for (const n of ['sole_heel_L', 'sole_heel_R', 'sole_toe_L', 'sole_toe_R']) { const a = this.anchors[n]; if (a) { a.getWorldPosition(v); out[n] = { x: v.x, h: v.y, y: v.z }; } }
+      return out;
+    }
+    dispose() {
+      this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.pivot);
+      if (this.mat) { if (this.mat.userData.depth) this.mat.userData.depth.dispose(); this.mat.dispose(); S.mats--; }
+      M3().debug.disposeInstance(this.object);
+    }
+  }
+
+  /* ================================================================ actor spec + per-entity state */
+  const simDt = (st) => { const t = (N.time && N.time.now) || 0; const d = clamp(t - (st.t == null ? t : st.t), 0, 0.1); st.t = t; return d; };
+  function personState(e, isP, v) {
+    const o = e.clip3d;
+    if (o) { const n = typeof o === 'string' ? o : o.name; return { clip: n, mode: (o && o.loop === false) ? 'once' : (o && o.hold) ? 'hold' : 'loop' }; }
+    const down = e.down || (isP && e.downT > 0) || (!isP && e.knockT > 0 && e.kind !== 'ped');
+    if (down) {
+      const up = e.getupT > 0 || (isP && e.downT > 0 && e.downT < 0.45);
+      return up ? { clip: 'getup', mode: 'once', fade: 0.12 } : { clip: 'fall', mode: 'hold', fade: 0.08 };
+    }
+    if ((e.idle === 'sit' && !e.walk && !e.followSt && v < 4) || (isP && e.sitting)) return { clip: e.bench ? 'sit' : 'sit_step', mode: 'loop', seat: e.bench ? 'bench' : 'stool', fade: 0.3 };
+    if (e.constable) return { clip: 'direct', mode: 'loop' };
+    if (e.talking && v < 4) return { clip: 'talk', mode: 'loop', fade: 0.35 };
+    return null;
+  }
+  function spec(id) {
+    return {
+      shadow: true, fps: false, m3d: id, people: true,
+      create(e, H) {
+        const md = M3().debug.S.models.get(id);
+        if (!md || !md.clips.size) return null;
+        const ch = choose(e);
+        let P;
+        try { P = new Person(md, e === N.player ? N.player.look : e.look, ch && ch.id === id ? ch.ctx : {}); } catch (er) { N.err('models3d_people.create:' + id, er); return null; }
+        P.object.userData.m3dPerson = P;
+        if (H && H.quality && !H.quality.shadows) P.object.add(H.blobShadow(e.look && e.look.kind === 'kid' ? 3.8 : 4.6));
+        P.st = { t: null, x: e.x, y: e.y, yaw: isFinite(e.facing) && e === N.player ? e.facing : (e.angle || 0), v: 0, hy: 0, ent: e };
+        S.persons.add(P); S.created++;
+        return P.object;
+      },
+      update(obj, e, dt, H) {
+        const P = obj.userData.m3dPerson, st = P.st;
+        const isP = e === N.player;
+        const d = simDt(st);
+        let dist = Math.hypot(e.x - st.x, e.y - st.y);
+        if (dist > 40) dist = 0;   // teleported
+        st.x = e.x; st.y = e.y;
+        let v = Math.hypot(e.vx || 0, e.vy || 0);
+        if (!(v > 0) && d > 1e-5) v = Math.min(200, dist / d);
+        st.v += (v - st.v) * Math.min(1, d * 12);
+        const look = isP ? N.player.look : e.look;
+        if (look !== P.lookRef) { const ch = choose(e); P.dress(look, ch && ch.id === id ? ch.ctx : P.ctx); }
+        // facing: smooth turns like the procedural people
+        const face = isFinite(e.facing) && isP ? e.facing : (e.angle || 0);
+        st.yaw += wrapA(face - st.yaw) * Math.min(1, d * 14);
+        const S1 = personState(e, isP, st.v);
+        let yaw = st.yaw;
+        if (S1 && S1.clip === 'direct' && e.pod) { const pod = e.pod; yaw = (pod.axisA || 0) + (pod.green ? Math.PI / 2 : 0) + Math.sin(((N.time && N.time.now) || 0) * 2) * 0.3; st.yaw = yaw; }
+        if (S1) { if (!P.state(S1.clip, S1.mode, S1.fade)) P.state(null); } else P.state(null);
+        P.showSeat(S1 && S1.seat);
+        // the head turns towards what the person looks at; the player looks where the camera looks
+        let rel = 0;
+        if (OPT.headLook && !(S1 && (S1.clip === 'fall' || S1.clip === 'getup'))) {
+          let tg = null;
+          if (e.lookT > 0 && e.lookAt && isFinite(e.lookAt.x)) tg = e.lookAt;
+          else if (e.lookTarget && isFinite(e.lookTarget.x)) tg = e.lookTarget;
+          if (tg) rel = wrapA(Math.atan2(tg.y - e.y, tg.x - e.x) - st.yaw);
+          else if (isP && N.view && N.view.mode === 'tps' && isFinite(N.view.yaw)) rel = wrapA(N.view.yaw - st.yaw) * 0.6;
+        }
+        st.hy += (clamp(rel, -1.1, 1.1) - st.hy) * Math.min(1, d * 5);
+        P.update(d, (S1 ? 0 : dist), S1 ? 0 : st.v, { set: 'walk', headYaw: Math.abs(st.hy) > 0.01 ? -st.hy : 0, posture: OPT.posture ? P.meta.posture : null });
+        let el = H.elev(e);
+        if (!el && e.roofH) el = e.roofH * ((N.view3d && N.view3d.VS) || 1.5);
+        obj.position.set(e.x, el, e.y);
+        obj.rotation.y = -yaw;
+        // emotes / the spotter's "!" over the head (view3d_actors draws them)
+        const EM = N.view3dActors && N.view3dActors.debug && N.view3dActors.debug.EMOTES;
+        if (EM) {
+          const head = el + (P.meta.height || 9) * ((look && look.size) || 1) + 0.6;
+          if (e.spotter) EM.push({ x: e.x, y: e.y, h: head + 3, kind: '!', a: 1 });
+          else if (e.emoteSt) { const em = e.emoteSt; EM.push({ x: e.x, y: e.y, h: head + 3, kind: em.kind, a: clamp(Math.min(em.t * 6, (em.secs - em.t) * 4), 0, 1) }); }
+        }
+      },
+      dispose(obj) { const P = obj && obj.userData.m3dPerson; if (P) { S.persons.delete(P); S.disposed++; P.dispose(); } },
+    };
+  }
+
+  /* ================================================================ routing (called by models3d.js every frame) */
+  function unroute(e) { if (e && isOurs(e.view3d)) delete e.view3d; }
+  function route(list, p, tracked) {
+    const t0 = nowMs();
+    const V3 = N.view3d;
+    if (!S.ready || !V3 || !V3.active) return;
+    const A = M3();
+    if (!OPT.enabled || !A.options.enabled) { for (const e of list) unroute(e); if (p) unroute(p); return; }
+    const f = V3.focus ? V3.focus() : p;
+    const fx = f ? f.x : 0, fy = f ? f.y : 0;
+    const cands = [];
+    const consider = (e) => {
+      if (!e || e.alive === false) return;
+      const isP = e === p;
+      if (!isP && e.kind !== 'ped' && e.kind !== 'npc') return;
+      if (isP ? !(OPT.player && A.options.player) : e.kind === 'npc' ? !OPT.npcs : !OPT.peds) { unroute(e); return; }
+      const ch = choose(e);
+      if (!ch || (tracked && tracked(e)) || !supported(e, ch)) { unroute(e); return; }
+      if (!ensure(ch.id)) { unroute(e); return; }
+      const d2 = (e.x - fx) * (e.x - fx) + (e.y - fy) * (e.y - fy);
+      cands.push({ e, key: KEY(ch.id), d2, isP });
+    };
+    if (p) consider(p);
+    for (const e of list) if (e !== p) consider(e);
+    cands.sort((a, b) => (b.isP - a.isP) || (a.d2 - b.d2));
+    let n = 0, fresh = 0;
+    const R = OPT.dist, RH = OPT.dist + OPT.hyst;
+    for (let i = 0; i < cands.length; i++) {
+      const c = cands[i], on = c.e.view3d === c.key;
+      const ok = c.isP || (on ? (i < OPT.max + 6 && c.d2 < RH * RH) : (i < OPT.max && c.d2 < R * R && fresh < OPT.maxNew));
+      if (ok) { if (!on) { c.e.view3d = c.key; fresh++; } n++; } else unroute(c.e);
+    }
+    S.routed = n; S.frameNew = fresh;
+    S.ms = nowMs() - t0; S.msAvg += (S.ms - S.msAvg) * 0.05;
+  }
+
+  /* ================================================================ riders (models3d Character): the same shader */
+  function tintHook(c, look) {
+    if (!c || !c.mesh || !c.md || !c.md.man.tint || !(c.md.man.tint.names || []).length) return false;
+    if (!c._ppl) {
+      const m = peopleMaterial(c.mesh.material);
+      c._ppl = m; c.mesh.material = m; c.mesh.customDepthMaterial = m.userData.depth; c.tintMat = m;
+      const d0 = c.dispose.bind(c);
+      c.dispose = () => { if (m.userData.depth) m.userData.depth.dispose(); S.mats--; d0(); };
+    }
+    const ctx = { _r: hash01((look && (look.shirt || '') + (look.skin || '')) || 'rider') };
+    dressMaterial(c._ppl, c.md, look, ctx);
+    return true;
+  }
+
+  /* ================================================================ setup */
+  function setup() {
+    const A = M3(), V3 = N.view3d;
+    if (!A || !V3 || S.ready) return;
+    THREE = window.THREE;
+    if (!THREE || !THREE.AnimationMixer) return;
+    S.idx = buildIndex();
+    if (!S.idx || !S.idx.all.length) return;
+    for (const id of S.idx.all) {
+      const k = KEY(id);
+      if (S.specs.has(k)) continue;
+      V3.registerActorRenderer(k, spec(id));
+      S.specs.add(k);
+    }
+    A.hooks.tint = tintHook;
+    A.hooks.people = { ready: true, route };
+    S.ready = true;
+    N.emit('models3d:people', { models: S.idx.all.slice() });
+  }
+  N.on('models3d:ready', () => { try { setup(); } catch (e) { N.err('models3d_people.setup', e); } });
+
+  /* ================================================================ API */
+  const api = {
+    options: OPT, OPT,
+    get ready() { return S.ready; },
+    models: () => (S.idx ? S.idx.all.slice() : []),
+    choose: (e) => choose(e),
+    /** play a clip on a person drawn by a Blender model (or as soon as it is): loop by default */
+    play(e, name, o) { if (!e) return false; e.clip3d = o && o.loop === false ? { name, loop: false } : (o && o.hold ? { name, hold: true } : name); return true; },
+    stop(e) { if (e) delete e.clip3d; },
+    person(e) {
+      const V3 = N.view3d, E = V3 && V3.engine;
+      if (!E || !E.actorGroup || !e) return null;
+      let out = null;
+      for (const P of S.persons) if (P.st && P.st.ent === e) { out = P; break; }
+      return out;
+    },
+    stats() {
+      return { ready: S.ready, models: S.idx ? S.idx.all.length : 0, routed: S.routed, persons: S.persons.size, created: S.created, disposed: S.disposed, parsing: Array.from(S.parsing), mats: S.mats, routeMs: +S.msAvg.toFixed(3) };
+    },
+    debug: { S, Person, resolve, rule, choose, supported, route, buildIndex, peopleMaterial, dressMaterial },
+  };
+  const attach = () => { if (N.models3d) N.models3d.people = api; };
+  attach();
+  if (!N.models3d) N.on('models3d:ready', attach);
 })();
 
 </script>

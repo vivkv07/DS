@@ -1,0 +1,386 @@
+{
+ "anchors": {
+  "eye": [
+   0.0,
+   -0.485,
+   8.1958
+  ],
+  "grip_L": [
+   2.76,
+   0.0,
+   5.06
+  ],
+  "grip_R": [
+   -2.76,
+   0.0,
+   5.06
+  ],
+  "head_top": [
+   0.0,
+   0.08,
+   8.9868
+  ],
+  "sole_heel_L": [
+   0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_heel_R": [
+   -0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_toe_L": [
+   0.49,
+   -1.08,
+   -0.0
+  ],
+  "sole_toe_R": [
+   -0.49,
+   -1.08,
+   -0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 4000,
+ "bytes": 285164,
+ "clips": {},
+ "family": "character",
+ "file": "man_shirt_pants.glb",
+ "front": "-Y",
+ "id": "man_shirt_pants",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 278.5,
+ "kit": 1,
+ "materials": [
+  "M_man_shirt_pants"
+ ],
+ "max": [
+  2.963,
+  0.857,
+  9.071
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "shoulder_L",
+   "upperarm_L",
+   "forearm_L",
+   "hand_L",
+   "thigh_L",
+   "shin_L",
+   "foot_L",
+   "toe_L",
+   "shoulder_R",
+   "upperarm_R",
+   "forearm_R",
+   "hand_R",
+   "thigh_R",
+   "shin_R",
+   "foot_R",
+   "toe_R"
+  ],
+  "clips": "clips_adult",
+  "height": 9.0,
+  "kinds": [
+   "man"
+  ],
+  "look": {
+   "hair": "#1a1412",
+   "kind": "man",
+   "pants": "#4a4a52",
+   "shirt": "#dfe8f2",
+   "skin": "#a0683f"
+  },
+  "npcs": {
+   "abba": {},
+   "faramarz": {},
+   "imran": {},
+   "nanna": {},
+   "net_uncle": {},
+   "photo_uncle": {},
+   "srikanth": {},
+   "yadagiri": {}
+  },
+  "people": [
+   "man"
+  ],
+  "priority": 0,
+  "regionsUsed": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "pants",
+   "shoes",
+   "moustache",
+   "beard",
+   "specs",
+   "belly",
+   "camera",
+   "pens",
+   "lanyard",
+   "hair_top",
+   "cap_irani",
+   "cap_skull",
+   "towel"
+  ],
+  "rig": "adult_rig",
+  "role": "people",
+  "variants": {
+   "abba": {
+    "beard": "#1a1412",
+    "hair": "#1a1412",
+    "kind": "man",
+    "lanyardDot": "#2a5cb8",
+    "pants": "#4a4a52",
+    "shirt": "#dfe8f2",
+    "skin": "#c68b5e",
+    "specs": true
+   },
+   "belly": {
+    "belly": true,
+    "hair": "#8a8680",
+    "kind": "man",
+    "pants": "#6a5a4a",
+    "shirt": "#e8dcc8",
+    "skin": "#a0683f",
+    "towel": "#c03030"
+   },
+   "faramarz": {
+    "hair": "#e8e4dc",
+    "hat": "irani",
+    "kind": "man",
+    "moustache": true,
+    "pants": "#4a4648",
+    "shirt": "#7a2f35",
+    "shoulders": "#f4f2ea",
+    "skin": "#d29a6a",
+    "specs": true
+   },
+   "man": {
+    "hair": "#1a1412",
+    "kind": "man",
+    "pants": "#4a4a52",
+    "shirt": "#dfe8f2",
+    "skin": "#a0683f"
+   },
+   "nanna": {
+    "camera": true,
+    "hair": "#1a1412",
+    "kind": "man",
+    "moustache": true,
+    "oiled": true,
+    "pants": "#5a5f66",
+    "shirt": "#a9c4e0",
+    "skin": "#9a6040"
+   }
+  }
+ },
+ "min": [
+  -2.963,
+  -1.268,
+  -0.0
+ ],
+ "notes": [],
+ "script": "characters",
+ "size": [
+  5.926,
+  2.124,
+  9.071
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "fields": {
+   "beard": [
+    "beard",
+    "hair"
+   ],
+   "belly": [
+    "shirt"
+   ],
+   "cap_irani": [
+    "hatColor",
+    "#26221f"
+   ],
+   "cap_skull": [
+    "hatColor",
+    "capColor",
+    "#f4f2ea"
+   ],
+   "hair_top": [
+    "hair"
+   ],
+   "lanyard": [
+    "lanyardDot",
+    "#2a5cb8"
+   ],
+   "moustache": [
+    "moustache",
+    "hair"
+   ],
+   "pants": [
+    "pants"
+   ],
+   "shirt": [
+    "shirt"
+   ],
+   "shoes": [
+    "shoes",
+    "#4a3424"
+   ],
+   "stripes": [
+    "shirt"
+   ],
+   "towel": [
+    "towel"
+   ]
+  },
+  "names": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "shoes",
+   "accent",
+   "moustache",
+   "beard",
+   "specs",
+   "belly",
+   "camera",
+   "pens",
+   "lanyard",
+   "hair_top",
+   "cap_irani",
+   "cap_skull",
+   "towel"
+  ],
+  "regions": {
+   "beard": "#3b3735",
+   "belly": "#c9c7c1",
+   "camera": "#1c1c1e",
+   "cap_irani": "#26221f",
+   "cap_skull": "#f2f0ea",
+   "hair": "#3b3735",
+   "hair_top": "#3b3735",
+   "lanyard": "#f4f2ea",
+   "moustache": "#3b3735",
+   "pants": "#8f8d87",
+   "pens": "#2a3a6a",
+   "shirt": "#c9c7c1",
+   "shoes": "#6a5a4a",
+   "skin": "#9e6440",
+   "specs": "#2a2624",
+   "towel": "#dedcd6"
+  },
+  "show": {
+   "beard": {
+    "f": "beard"
+   },
+   "belly": {
+    "f": "belly"
+   },
+   "camera": {
+    "f": "camera"
+   },
+   "cap_irani": {
+    "f": "hat",
+    "in": [
+     "irani"
+    ]
+   },
+   "cap_skull": {
+    "any": [
+     {
+      "f": "hat",
+      "in": [
+       "skull",
+       "topi"
+      ]
+     },
+     {
+      "f": "cap",
+      "in": [
+       "topi"
+      ]
+     }
+    ]
+   },
+   "hair_top": {
+    "not": {
+     "any": [
+      {
+       "f": "hat"
+      },
+      {
+       "f": "cap"
+      }
+     ]
+    }
+   },
+   "lanyard": {
+    "f": "lanyardDot"
+   },
+   "moustache": {
+    "all": [
+     {
+      "not": {
+       "f": "beard"
+      }
+     },
+     {
+      "not": {
+       "f": "noMoustache"
+      }
+     },
+     {
+      "any": [
+       {
+        "f": "moustache"
+       },
+       {
+        "f": "_r",
+        "lt": 0.65
+       }
+      ]
+     }
+    ]
+   },
+   "pens": {
+    "any": [
+     {
+      "f": "camera"
+     },
+     {
+      "f": "pens"
+     },
+     {
+      "f": "lanyardDot"
+     },
+     {
+      "f": "_r",
+      "lt": 0.35
+     }
+    ]
+   },
+   "specs": {
+    "f": "specs"
+   },
+   "towel": {
+    "f": "towel"
+   }
+  }
+ },
+ "tris": 3512,
+ "units": "u",
+ "up": "Z"
+}

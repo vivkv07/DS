@@ -1,0 +1,456 @@
+{
+ "anchors": {
+  "eye": [
+   0.0,
+   -0.46,
+   6.4448
+  ],
+  "grip_L": [
+   2.064,
+   -0.004,
+   3.896
+  ],
+  "grip_R": [
+   -2.064,
+   -0.004,
+   3.896
+  ],
+  "head_top": [
+   0.0,
+   0.06,
+   7.2768
+  ],
+  "sole_heel_L": [
+   0.36,
+   0.26,
+   -0.0
+  ],
+  "sole_heel_R": [
+   -0.36,
+   0.26,
+   -0.0
+  ],
+  "sole_toe_L": [
+   0.38,
+   -0.86,
+   -0.0
+  ],
+  "sole_toe_R": [
+   -0.38,
+   -0.86,
+   -0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 4000,
+ "bytes": 325212,
+ "clips": {},
+ "family": "character",
+ "file": "kid_generic.glb",
+ "front": "-Y",
+ "id": "kid_generic",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 317.6,
+ "kit": 1,
+ "materials": [
+  "M_kid_generic"
+ ],
+ "max": [
+  2.233,
+  0.88,
+  7.412
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "shoulder_L",
+   "upperarm_L",
+   "forearm_L",
+   "hand_L",
+   "thigh_L",
+   "shin_L",
+   "foot_L",
+   "toe_L",
+   "shoulder_R",
+   "upperarm_R",
+   "forearm_R",
+   "hand_R",
+   "thigh_R",
+   "shin_R",
+   "foot_R",
+   "toe_R"
+  ],
+  "clips": "clips_kid",
+  "height": 6.9,
+  "kinds": [
+   "kid",
+   "student"
+  ],
+  "lazy": true,
+  "look": {
+   "hair": "#1a1412",
+   "kind": "kid",
+   "pants": "#2a3a6a",
+   "shirt": "#d8402a",
+   "skin": "#a0683f",
+   "stripes": "#f2c230"
+  },
+  "npcs": {
+   "ayesha": {},
+   "chitti": {},
+   "tiger": {}
+  },
+  "priority": 0,
+  "regionsUsed": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "frock",
+   "hair_girl",
+   "plaits",
+   "ribbon",
+   "ponytails",
+   "pony_band",
+   "collar",
+   "tie",
+   "school_shoes",
+   "chappal",
+   "bag",
+   "cap_cricket"
+  ],
+  "rig": "kid_rig",
+  "role": "people",
+  "variants": {
+   "boy": {
+    "hair": "#1a1412",
+    "kind": "kid",
+    "pants": "#2a3a6a",
+    "shirt": "#d8402a",
+    "skin": "#a0683f",
+    "stripes": "#f2c230"
+   },
+   "cap": {
+    "cap": "cricket",
+    "capColor": "#f2c230",
+    "hair": "#1a1412",
+    "kind": "kid",
+    "pants": "#2a3a6a",
+    "shirt": "#3a8a3a",
+    "skin": "#a0683f",
+    "stripes": null
+   },
+   "girl": {
+    "girl": true,
+    "hair": "#1a1412",
+    "kind": "kid",
+    "pants": "#e88aa8",
+    "ponytails": "#d8202a",
+    "shirt": "#e88aa8",
+    "skin": "#b97a4f"
+   },
+   "school": {
+    "bag": "#2a5cb8",
+    "hair": "#1a1412",
+    "kind": "student",
+    "pants": "#2a3a6a",
+    "shirt": "#f2f0ea",
+    "skin": "#8d5a3b",
+    "tie": "#b22b2b"
+   },
+   "schoolgirl": {
+    "bag": "#b22b2b",
+    "girl": true,
+    "hair": "#1a1412",
+    "kind": "student",
+    "pants": "#2a3a6a",
+    "plaits": "#d8202a",
+    "shirt": "#f2f0ea",
+    "skin": "#c68b5e"
+   }
+  }
+ },
+ "min": [
+  -2.233,
+  -0.98,
+  -0.0
+ ],
+ "notes": [],
+ "script": "characters",
+ "size": [
+  4.466,
+  1.86,
+  7.412
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "fields": {
+   "bag": [
+    "bag",
+    "#2a5cb8"
+   ],
+   "cap_cricket": [
+    "capColor",
+    "hatColor",
+    "#2a5cb8"
+   ],
+   "chappal": [
+    "chappal",
+    "#2f62b5"
+   ],
+   "collar": [
+    "shirt"
+   ],
+   "frock": [
+    "pants",
+    "shirt"
+   ],
+   "hair_girl": [
+    "hair"
+   ],
+   "hair_top": [
+    "hair"
+   ],
+   "pants": [
+    "pants"
+   ],
+   "plaits": [
+    "hair"
+   ],
+   "pony_band": [
+    "ponytails",
+    "#d8202a"
+   ],
+   "ponytails": [
+    "hair"
+   ],
+   "ribbon": [
+    "plaits",
+    "#d8202a"
+   ],
+   "shirt": [
+    "shirt"
+   ],
+   "stripes": [
+    "stripes",
+    "shoulders",
+    "shirt"
+   ],
+   "tie": [
+    "tie",
+    "tieDot",
+    "#b22b2b"
+   ]
+  },
+  "names": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "shoes",
+   "accent",
+   "frock",
+   "hair_girl",
+   "plaits",
+   "ribbon",
+   "ponytails",
+   "pony_band",
+   "hair_top",
+   "collar",
+   "tie",
+   "school_shoes",
+   "chappal",
+   "bag",
+   "cap_cricket"
+  ],
+  "regions": {
+   "bag": "#c9c7c1",
+   "cap_cricket": "#c9c7c1",
+   "chappal": "#8a8a8a",
+   "collar": "#c9c7c1",
+   "frock": "#c9c7c1",
+   "hair": "#3b3735",
+   "hair_girl": "#3b3735",
+   "pants": "#8f8d87",
+   "plaits": "#3b3735",
+   "pony_band": "#dedcd6",
+   "ponytails": "#3b3735",
+   "ribbon": "#dedcd6",
+   "school_shoes": "#1c1a1a",
+   "shirt": "#c9c7c1",
+   "skin": "#b07448",
+   "stripes": "#dedcd6",
+   "tie": "#6e6c68"
+  },
+  "show": {
+   "bag": {
+    "any": [
+     {
+      "f": "kind",
+      "in": [
+       "student"
+      ]
+     },
+     {
+      "f": "bag"
+     }
+    ]
+   },
+   "cap_cricket": {
+    "any": [
+     {
+      "f": "cap",
+      "in": [
+       "cricket"
+      ]
+     },
+     {
+      "f": "hat",
+      "in": [
+       "backcap",
+       "cricket"
+      ]
+     }
+    ]
+   },
+   "chappal": {
+    "not": {
+     "f": "kind",
+     "in": [
+      "student"
+     ]
+    }
+   },
+   "collar": {
+    "f": "kind",
+    "in": [
+     "student"
+    ]
+   },
+   "frock": {
+    "f": "girl"
+   },
+   "hair_girl": {
+    "f": "girl"
+   },
+   "hair_top": {
+    "all": [
+     {
+      "not": {
+       "f": "girl"
+      }
+     },
+     {
+      "not": {
+       "f": "hat"
+      }
+     },
+     {
+      "not": {
+       "f": "cap"
+      }
+     }
+    ]
+   },
+   "plaits": {
+    "all": [
+     {
+      "f": "girl"
+     },
+     {
+      "not": {
+       "f": "ponytails"
+      }
+     },
+     {
+      "not": {
+       "f": "hat"
+      }
+     },
+     {
+      "not": {
+       "f": "cap"
+      }
+     }
+    ]
+   },
+   "pony_band": {
+    "all": [
+     {
+      "f": "girl"
+     },
+     {
+      "f": "ponytails"
+     }
+    ]
+   },
+   "ponytails": {
+    "all": [
+     {
+      "f": "girl"
+     },
+     {
+      "f": "ponytails"
+     }
+    ]
+   },
+   "ribbon": {
+    "all": [
+     {
+      "f": "girl"
+     },
+     {
+      "not": {
+       "f": "ponytails"
+      }
+     },
+     {
+      "not": {
+       "f": "hat"
+      }
+     },
+     {
+      "not": {
+       "f": "cap"
+      }
+     }
+    ]
+   },
+   "school_shoes": {
+    "f": "kind",
+    "in": [
+     "student"
+    ]
+   },
+   "tie": {
+    "all": [
+     {
+      "f": "kind",
+      "in": [
+       "student"
+      ]
+     },
+     {
+      "not": {
+       "f": "girl"
+      }
+     }
+    ]
+   }
+  }
+ },
+ "tris": 4172,
+ "units": "u",
+ "up": "Z"
+}

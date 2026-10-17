@@ -1,0 +1,328 @@
+{
+ "anchors": {
+  "eye": [
+   0.0,
+   -0.47,
+   8.176
+  ],
+  "grip_L": [
+   2.76,
+   0.0,
+   5.06
+  ],
+  "grip_R": [
+   -2.76,
+   0.0,
+   5.06
+  ],
+  "head_top": [
+   0.0,
+   0.08,
+   8.946
+  ],
+  "sole_heel_L": [
+   0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_heel_R": [
+   -0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_toe_L": [
+   0.49,
+   -1.08,
+   -0.0
+  ],
+  "sole_toe_R": [
+   -0.49,
+   -1.08,
+   -0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 4000,
+ "bytes": 278612,
+ "clips": {},
+ "family": "character",
+ "file": "student.glb",
+ "front": "-Y",
+ "id": "student",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 272.1,
+ "kit": 1,
+ "materials": [
+  "M_student"
+ ],
+ "max": [
+  2.963,
+  1.27,
+  9.234
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "shoulder_L",
+   "upperarm_L",
+   "forearm_L",
+   "hand_L",
+   "thigh_L",
+   "shin_L",
+   "foot_L",
+   "toe_L",
+   "shoulder_R",
+   "upperarm_R",
+   "forearm_R",
+   "hand_R",
+   "thigh_R",
+   "shin_R",
+   "foot_R",
+   "toe_R"
+  ],
+  "clips": "clips_adult",
+  "height": 8.9,
+  "kinds": [
+   "man"
+  ],
+  "lazy": true,
+  "look": {
+   "hair": "#1a1412",
+   "kind": "man",
+   "pants": "#3a4a6a",
+   "puff": true,
+   "shirt": "#d24d57",
+   "skin": "#b97a4f"
+  },
+  "match": {
+   "any": [
+    {
+     "f": "puff"
+    },
+    {
+     "f": "hat",
+     "in": [
+      "backcap"
+     ]
+    },
+    {
+     "f": "jacket"
+    }
+   ]
+  },
+  "npcs": {
+   "babloo": {},
+   "bunty": {
+    "jacket": "#4a6fa5",
+    "shirt": "#f4f2ea"
+   }
+  },
+  "priority": 1,
+  "regionsUsed": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "pants",
+   "shoes",
+   "moustache",
+   "hair_top",
+   "cap_back",
+   "aviators",
+   "jacket",
+   "bag"
+  ],
+  "rig": "adult_rig",
+  "role": "people",
+  "variants": {
+   "babloo": {
+    "bag": "#2a2a2e",
+    "hair": "#1a1412",
+    "kind": "man",
+    "pants": "#2a3a5a",
+    "puff": true,
+    "shirt": "#d24d57",
+    "size": 0.92,
+    "skin": "#b97a4f"
+   },
+   "bunty": {
+    "hair": "#1a1412",
+    "jacket": "#4a6fa5",
+    "kind": "man",
+    "pants": "#2a3a5a",
+    "puff": true,
+    "shirt": "#f4f2ea",
+    "skin": "#b97a4f",
+    "specs": "#2a2a36"
+   },
+   "cap": {
+    "hair": "#1a1412",
+    "hat": "backcap",
+    "hatColor": "#f2f0ea",
+    "kind": "man",
+    "pants": "#3a4a6a",
+    "puff": false,
+    "shirt": "#2a8c82",
+    "skin": "#b97a4f"
+   },
+   "youth": {
+    "hair": "#1a1412",
+    "kind": "man",
+    "pants": "#3a4a6a",
+    "puff": true,
+    "shirt": "#d24d57",
+    "skin": "#b97a4f"
+   }
+  }
+ },
+ "min": [
+  -2.963,
+  -1.136,
+  -0.0
+ ],
+ "notes": [],
+ "script": "characters",
+ "size": [
+  5.926,
+  2.405,
+  9.234
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "fields": {
+   "bag": [
+    "bag",
+    "#2a2a2e"
+   ],
+   "cap_back": [
+    "hatColor",
+    "#c03030"
+   ],
+   "hair_top": [
+    "hair"
+   ],
+   "jacket": [
+    "jacket",
+    "#4a6fa5"
+   ],
+   "moustache": [
+    "moustache",
+    "hair"
+   ],
+   "pants": [
+    "pants",
+    "#3a4a6a"
+   ],
+   "shirt": [
+    "shirt"
+   ],
+   "shoes": [
+    "shoes",
+    "#e8e6e0"
+   ]
+  },
+  "names": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "shoes",
+   "accent",
+   "moustache",
+   "hair_top",
+   "cap_back",
+   "aviators",
+   "jacket",
+   "bag"
+  ],
+  "regions": {
+   "aviators": "#b8b0a0",
+   "bag": "#6e6c68",
+   "cap_back": "#c9c7c1",
+   "hair": "#3b3735",
+   "hair_top": "#3b3735",
+   "jacket": "#c9c7c1",
+   "moustache": "#3b3735",
+   "pants": "#8f8d87",
+   "shirt": "#c9c7c1",
+   "shoes": "#dedcd6",
+   "skin": "#9e6440"
+  },
+  "show": {
+   "aviators": {
+    "f": "specs"
+   },
+   "bag": {
+    "any": [
+     {
+      "f": "bag"
+     },
+     {
+      "f": "prop",
+      "in": [
+       "notebook"
+      ]
+     }
+    ]
+   },
+   "cap_back": {
+    "f": "hat",
+    "in": [
+     "backcap"
+    ]
+   },
+   "hair_top": {
+    "not": {
+     "any": [
+      {
+       "f": "hat"
+      },
+      {
+       "f": "cap"
+      }
+     ]
+    }
+   },
+   "jacket": {
+    "f": "jacket"
+   },
+   "moustache": {
+    "all": [
+     {
+      "not": {
+       "f": "beard"
+      }
+     },
+     {
+      "not": {
+       "f": "noMoustache"
+      }
+     },
+     {
+      "any": [
+       {
+        "f": "moustache"
+       },
+       {
+        "f": "_r",
+        "lt": 0.3
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "tris": 3766,
+ "units": "u",
+ "up": "Z"
+}

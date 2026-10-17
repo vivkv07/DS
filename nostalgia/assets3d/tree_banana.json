@@ -1,0 +1,110 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 29568,
+ "clips": {},
+ "family": "prop",
+ "file": "tree_banana.glb",
+ "front": "-Y",
+ "id": "tree_banana",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 28.9,
+ "kit": 1,
+ "materials": [
+  "M_tree_banana_imp",
+  "M_tree_banana"
+ ],
+ "max": [
+  105.689,
+  10.382,
+  14.337
+ ],
+ "meta": {
+  "crown": [
+   25.19,
+   21.137
+  ],
+  "doubleSided": true,
+  "height": 14.337,
+  "impostor": {
+   "billboard": "cylindrical",
+   "from": 800,
+   "h": 14.455,
+   "node": "tree_banana_IMPOSTOR",
+   "offset": [
+    92.906,
+    0,
+    0
+   ],
+   "w": 25.19,
+   "x0": -12.407,
+   "z0": -0.118
+  },
+  "kind": "banana",
+  "lods": [
+   {
+    "from": 0,
+    "lod": 0,
+    "node": "tree_banana_LOD0",
+    "offset": [
+     0.0,
+     0,
+     0
+    ],
+    "tris": 264
+   },
+   {
+    "from": 180,
+    "lod": 1,
+    "node": "tree_banana_LOD1",
+    "offset": [
+     30.969,
+     0,
+     0
+    ],
+    "tris": 64
+   },
+   {
+    "from": 420,
+    "lod": 2,
+    "node": "tree_banana_LOD2",
+    "offset": [
+     61.937,
+     0,
+     0
+    ],
+    "tris": 40
+   }
+  ],
+  "tree": true,
+  "wind": {
+   "a": "spare (1)",
+   "attribute": "_WIND",
+   "b": "flutter mask (1 = leaf)",
+   "g": "flutter phase 0..1",
+   "r": "bend 0 (trunk base) -> 1 (tips)",
+   "scale": 255,
+   "three": "_wind"
+  }
+ },
+ "min": [
+  -12.407,
+  -10.755,
+  -0.118
+ ],
+ "notes": [],
+ "script": "props_trees",
+ "size": [
+  118.096,
+  21.137,
+  14.455
+ ],
+ "tint": null,
+ "tris": 370,
+ "units": "u",
+ "up": "Z"
+}

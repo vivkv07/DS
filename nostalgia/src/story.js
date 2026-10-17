@@ -1875,6 +1875,7 @@
     let late = false;
     const T = softTimer(240, 'AMMA COMES OUT', { onExpire: () => { late = true; } });
     void T;
+    m.toast('Back on this step before Amma comes out.', 3200); // the bible's line for the 240 s timer
     follow('immu', true, { dist: 14 });
     // 2. Gokul Chat: pani-puri challenge, Nani's parcel
     npc(m, 'gokul_man', spot('gokul_chat', 0, -6, 16), { idle: 'work' });
@@ -2499,7 +2500,12 @@
     // side activities (bible §7): kind 'side', windows, no autosave; none fail permanently
     M.register({ id: 'pandal_duty', kind: 'side', title: 'Pandal Duty', chapter: 'Side activity', requires: ['ammammas_thursday'], giver: { place: 'playground_1', r: 18 }, window: { from: '21:00', to: '23:30' },
       when: () => inMD('08-31', '09-08') && (F().pandal_nights | 0) < 4 && F().pandal_last_day !== todayKey(), autosave: false, help: true,
-      onPass: () => { const f = F(); f.pandal_nights = (f.pandal_nights | 0) + 1; f.pandal_last_day = todayKey(); if (f.pandal_nights >= 4) f.tiger_helps_lorry = true; else N.missions.done.delete('pandal_duty'); },
+      onPass: () => {
+        const f = F(); f.pandal_nights = (f.pandal_nights | 0) + 1; f.pandal_last_day = todayKey(); if (f.pandal_nights >= 4) f.tiger_helps_lorry = true; else N.missions.done.delete('pandal_duty');
+        // a pandal night ends after the 21:30 curfew: the committee's boy walks home with Mummy's blessing
+        // (wanted.js's curfew stays off until he is home or the night is over), not with Mummy at the gate
+        if (!f.no_curfew) { f.no_curfew = 'pandal'; S.pandalGrace = todayKey(); }
+      },
       script: sa1 });
     M.register({ id: 'current_poyindi', kind: 'side', title: 'Current Poyindi!', chapter: 'Side activity', requires: ['last_man_batting'], giver: { place: 'kirana_1', r: 18 }, window: { from: '19:00', to: '21:00' },
       when: () => powerCutTonight(), autosave: false,
@@ -2530,6 +2536,7 @@
     S.giverT -= dt;
     if (S.giverT > 0) return;
     S.giverT = 0.5;
+    pandalGraceTick();
     if (!N.npcs || !N.npcs.spawn || !N.world || !N.world.built) return;
     let mk = [];
     try { mk = run() ? [] : (N.missions.markers() || []).filter((x) => x.kind === 'giver' && GIVER_NPC[x.id]); } catch (e) { mk = []; }
@@ -2586,6 +2593,39 @@
     if (S.tickFns) for (const fn of S.tickFns) { try { fn(dt); } catch (e) { N.err('story.tickFn', e); } }
     if (S.dark) S.dark.t += dt;
     if (mode() === 'play') { giversTick(dt); powerCutTick(dt); mountGuard(); }
+    rings3d();
+  }
+  /** The roof rings (terrace goals: M1's kite and lootna, SA2's candles, the antenna...) are drawn by storyDraw in
+   *  the top-down view only. In the 3D view (V) the mission's own markers are placed at roof height by
+   *  view3d_actors, so each ring gets a real mission marker while 3D is on (removed again in 2D, where a ground
+   *  marker would sit hidden under the building). */
+  const ring3d = new Map(); // ring -> {run, id}
+  function rings3d() {
+    const r = run();
+    const on = !!(N.view3d && N.view3d.active) && !!r && !r.ended && !!r.markers;
+    for (const [rg, o] of ring3d) {
+      if (on && S.rings.has(rg) && o.run === r) continue;
+      try { if (o.run && o.run.markers) o.run.markers.delete(o.id); } catch (e) { /* ignore */ }
+      ring3d.delete(rg);
+    }
+    if (!on) return;
+    for (const rg of S.rings) {
+      if (ring3d.has(rg)) continue;
+      const id = 'st:ring3d:' + (++seq);
+      r.markers.set(id, { target: rg.target, r: rg.r || 16, color: rg.color || '#ff5fb0', label: '' });
+      ring3d.set(rg, { run: r, id });
+    }
+  }
+  /** SA1's curfew grace (see its onPass) ends at home, at 05:00 or on another day. */
+  function pandalGraceTick() {
+    const f = F();
+    if (f.no_curfew !== 'pandal') return;
+    const p = N.player, h = pos('home');
+    const m = N.clock ? N.clock.minutes : 0;
+    const home = p && h && !p.level && Math.hypot(p.x - h.x, p.y - h.y) < 45;
+    const night = m >= 20 * 60 || m < 5 * 60;
+    const sameNight = S.pandalGrace == null || S.pandalGrace === todayKey() || (m < 5 * 60);
+    if (home || !night || !sameNight) { delete f.no_curfew; S.pandalGrace = null; }
   }
   /** A mission cycle / Scooty waiting to be mounted beside a shop: ACTION must get on it, not open the shop card
    *  (shops sit at priority 3 over a parked vehicle's 0: Nanna's cycle at the girni is 20 u from the chemist,
@@ -2665,6 +2705,10 @@
     cleanupAll();
     clearGivers();
     if (opts && opts.skipIntro) return;
+    // an automated quick start (N.menus.quickStart: navigator.webdriver, the tests that click ▶ PLAY and expect
+    // to be in the game) skips the prologue the way menus.js skips the name card; a test that drives the real
+    // flow turns quickStart off (story_full, smoke, menus, story_part1's prologue phase). Players never have it.
+    if (N.menus && N.menus.quickStart) return;
     // the prologue plays right away (menus calls newGame once the name card closes)
     if (mode() === 'play' && !run()) prologue();
   });
