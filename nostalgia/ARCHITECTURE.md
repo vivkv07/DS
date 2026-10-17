@@ -41,6 +41,7 @@ nostalgia/
   src/render.js     canvas, pixel scaling, camera, projection, layer queue, chunk cache, draw helpers -> N.render, N.draw
   src/worlddata.js  pure data: the map (districts, roads, water, parks, blocks, landmarks, places) -> N.WORLD_DATA
   src/world.js      builds collision/surface grid, spatial index, road graph; draws ground + generic buildings -> N.world
+  src/world_extras.js (map maker) railways + level crossings: wraps setGroundPainter / renderMap -> N.worldExtras
   src/landmarks.js  custom pseudo-3D drawing for named landmarks -> N.landmarks
   src/entities.js   entity registry, spatial hash, Actor base, people drawing, Player on foot -> N.entities, N.player
   src/vehicles.js   vehicle types, physics, drawing, enter/exit -> N.vehicles
@@ -75,6 +76,15 @@ Every file starts with:
 
 `core.js` creates `window.N`. Files may reference other modules only lazily (inside
 functions called after boot), never at load time, except `N` utilities from core.js.
+
+DOM (index.html, owned by the engine): `canvas#game` (z 0) < `#ui` HUD (z 10,
+`pointer-events: none`; give clickable HUD parts the class `interactive`) < `#touch`
+touch controls (z 20, built by input.js) < `#overlay` menus/dialogue/cutscenes (z 30; a
+full-screen panel is `.screen`, shown with `.show`) < `#debug` (z 40). `#boot` is a
+loading splash hidden once `body.booted` is set. `body[data-mode]` mirrors `N.state.mode`.
+`tools/build.mjs` inlines everything into `dist/nostalgia.html` (full page) and
+`dist/artifact.html` (title, font links, style, body markup, scripts; no html/head/body
+wrapper). A new src file must be added to index.html (and this list) or it won't ship.
 
 ## 4. Units, coordinates, constants
 
@@ -117,8 +127,40 @@ N.err(where, e): logs once per (where) per 5s; shown in #debug overlay
 ```
 Update order bands: input 0, clock 5, missions 10, player 20, vehicles 30, traffic 40,
 npcs 45, wanted 50, collectibles 55, camera 60, audio 70, hud 80, debug 99.
+Engine bands added: entities 25 (runs every entity's `update`), interact 58 (ACTION
+arbitration, §8), menus 85.
 Draw happens via the render layer queue (section 6), not via systems directly
 (a system may expose `draw()` which main calls each frame to enqueue).
+
+Implementation notes (core.js / main.js, binding):
+- `N.systems = {list, get(id), init(), update(dt), draw(), reset(), started}`; main.js
+  drives them. `runIn: ['*']` = every mode (default `['play']`). Re-adding an id replaces
+  it. Every call is try/catch-wrapped and reported through `N.err`.
+- `N.state.set(mode)` replaces the stack (boot -> title -> play); `push/pop` for overlays.
+  `N.state.has(mode)`; `N.state.remove(mode)` drops the topmost `mode` wherever it sits (an
+  overlay closing underneath the pause menu); every change emits `'state' {mode, prev, op}`.
+- Main loop: semi-fixed step — the frame dt (clamped to 0.1 s) is split into equal
+  sub-steps of at most 1/60 s, so motion is smooth at 60/120/144 Hz. `N.time.now` advances
+  only in play/dialogue/cutscene/minigame/gameover. `N.perf = {fps, frameMs, updateMs, drawMs}`.
+- `N.clock`: also `hour()`, `label()` ("17:42"), `dateLabel()` ("THU 14 JAN 1999", from
+  `baseDate` + `day`), `serialize()/deserialize()`; emits `'clock:day'`. Light curve: night
+  ≈ 19:45–05:00, golden hour 16:30–18:30; `isNight()` = `light() < 0.3`.
+- `N.util` extras: `TAU, strHash(s), pointInPoly(x,y,poly), closestOnSeg(px,py,ax,ay,bx,by)
+  -> {x,y,t,d2}, hexToRgb, rgbToHex, shade(hex, f) (f<1 darker, f>1 towards white),
+  mix(hexA, hexB, t)`; `rng(seed)` also takes a string and has `chance(p)`.
+- `N.errors` holds captured errors (N.err + window error/unhandledrejection; a rejected
+  `MissionAbort` is ignored). `N.loadPlaces(list)` fills `N.places` (world.js calls it).
+- `N.game` (main.js): `newGame({skipIntro, hour, minute})` resets flags/clock (16:40),
+  calls `N.systems.reset()`, enters play and emits `'game:new'` with the opts — **the story
+  module listens to `'game:new'` and runs the intro unless `skipIntro`**. Also
+  `continueGame()` (N.save.load, emits `'game:continue'`), `quitToTitle()` (`'game:quit'`),
+  `pause()` / `resume()` (push/pop 'paused', `'game:pause'/'game:resume'`, calls
+  `N.menus.pause()`), `snapshot()` for hot reload. `'boot'` is emitted once the world is built.
+  `pause()` works from `play` **and `dialogue`** (the tab hiding mid-conversation pauses it;
+  `resume()` returns to the dialogue); cutscenes and minigames handle their own pausing.
+- Robustness (binding): the player, vehicles and camera recover from non-finite state (last
+  good position / spawn) and report it through `N.err('player.nan' | 'vehicle.nan')`;
+  `N.world.surfaceAt(NaN, ..)` is VOID. Treat any such report as a bug in the caller.
 
 ## 6. render.js — canvas, camera, pseudo-3D
 
@@ -156,6 +198,46 @@ Draw happens via the render layer queue (section 6), not via systems directly
 - `N.render.shake(amount, time)`, `N.render.fx = {vhs: 0..1, flash, fade}` screen effects.
 - Culling helper: `N.render.inView(x, y, margin)`; view rect in world: `N.render.view`.
 
+Implementation notes (render.js, binding):
+- main.js calls `N.render.begin()`, then everything enqueues (world, entities, systems),
+  then `N.render.flush(dt)`. The queue runner resets transform, alpha and composite after
+  every item; draw helpers leave the identity transform. `N.render.stats.ms` holds the last
+  frame's cost per phase (enqWorld, enqOther, chunks, each layer, cast, night, screenfx, flush).
+- Sub-pixel camera: the canvas is `N.render.PAD` (1) internal px larger than the viewport on
+  every side (`W/H` include it; the visible centre is still `W/2, H/2`) and is shifted by the
+  camera's sub-pixel remainder in whole device pixels (CSS translate, `N.render.subpx`) each
+  frame. The camera itself stays snapped to the internal pixel grid (crisp cached ground),
+  but scrolling and the followed vehicle move at device-pixel precision (no ±1 px wobble).
+- Camera: `N.render.follow` (entity, default player/player's vehicle), `camOverride =
+  {x, y, zoom, rate?, snap?}` for cutscenes/title, `baseZoom` (multiplier, default 1),
+  `snapCamera()`. The camera is snapped to the pixel grid each frame (`N.render.camX/camY/Z`).
+- Fast projection for hot loops: `k(h)`, `sx(x, k)`, `sy(y, k)`; `distKey(x, y)` is the
+  structures sortKey; `screenToWorld(sx, sy)`, `clientToWorld(clientX, clientY)`, `rectInView`.
+- Ground chunks: the painter receives a ctx **pre-translated to world coordinates**.
+  `warmChunks(x, y, r)` pre-builds around a point (teleports). Static cast shadows of
+  generic structures are **baked into the chunks** (world.js) using a quantised sun;
+  `N.render.shadowEpoch` bumps when it changes and stale visible chunks repaint one per
+  frame. Missing visible chunks are built nearest-first within a ~2.5 ms budget (at least one
+  per frame); otherwise every third frame prefetches one chunk in the view grown by half a
+  chunk plus ~1 s of the followed entity's travel. LRU cap 64 chunks.
+- Night: the darkness mask is painted at 1/4 resolution and upscaled (it is soft anyway).
+- `N.render.sun = {dx, dy (towards the sun), sx, sy (shadow offset per unit height), elev,
+  strength}`; `faceShade {N,S,E,W}`, `shadeNormal(nx, ny)`, `shaded(hex, f)` (cached).
+  Sun: east at 06:00 -> south -> west at 18:00; long golden-hour shadows.
+- Extra `N.draw` helpers: `quadPath(ctx, x0,y0,x1,y1,h0,h1)` (vertical wall rect into the
+  current path), `rectPath(ctx, x,y,w,d,h)`, `visibleWalls(x,y,w,d)` -> bits N1 S2 W4 E8,
+  `plane(h, fn)` (affine world-coord drawing at height h; `flat` = `plane(0)`),
+  `pixelText(x,y,h,str,color,{scale,shadow,rot:±1})` crisp 3x5 pixel font for in-world
+  signs (`pixelTextWidth`, `pixelTextCanvas`), and dynamic cast shadows
+  `castBox(x,y,w,d,h) / castPoly(pts,h) / castCircle(x,y,r,h) / castPole(x,y,h,w)` that are
+  merged into one fill at the start of the `shadow` layer (call them while enqueueing).
+- Styles: `box {roof: colour|false, wall, wallN/S/E/W, outline, roofFn(ctx,k,x,y,w,d,h)
+  (roof plane, world coords), wallFn(ctx, face, ...)}`; `cyl {wall, roof|top, grad:false,
+  bands:[h]}`; `dome {fill, steps, bulb, finial, finialColor}`. Face colours not given
+  explicitly are sun-shaded from `wall`.
+- Lights: `{x, y, r, color, intensity, h?, glow?: false}`. After flush `N.render.night`
+  (0..1) says how dark it is. `fx = {vhs, flash (decays), fade, fadeColor, grade}`.
+
 ## 7. World data and world.js
 
 `N.WORLD_DATA` (pure data, authored from `design/map_plan.md`):
@@ -174,6 +256,15 @@ Draw happens via the render layer queue (section 6), not via systems directly
   spawns:    {player:[x,y], home:[x,y]}
 }
 ```
+Data notes: landmark `x, y` is the **centre** (w = east-west, d = north-south); optional
+`plaza` (radius of a paved circle), `solids: [[x,y,w,h], ...]` (custom collision rects;
+default = whole footprint), `noSolid`. `water[].bank` = width of a sandy bank ring,
+`water[].color` overrides the water colour. `buildings[]` may set `color`, `roof`,
+`sign: {text, color, fg?}`. Places and spawns are kept clear of generated buildings.
+Also honoured: landmark `solid: false` (walk/drive under it), park `surface: 'sand'`,
+road `median` (bool; arterials default true) and road `trees` (set when the map plants that
+road's avenue itself, so the engine adds none). Tree kinds: neem, banyan, gulmohar,
+ashoka, palm, coconut, mango, tamarind, peepal (unknown kinds draw as neem).
 `world.js` builds: surface grid; `N.world.surfaceAt(x,y)`, `isWalkable(x,y)`,
 `isDrivable(x,y)`, `isWater(x,y)`, `collide(x, y, r, mode)` → `{x, y, hit}` push-out
 (mode 'walk'|'drive'|'boat'), `raycast(x0,y0,x1,y1,mode)`, `districtAt(x,y)`,
@@ -182,6 +273,31 @@ Draw happens via the render layer queue (section 6), not via systems directly
 (generic buildings auto-generated inside `blocks`, styled per district, with painted
 shop signboards, water tanks on roofs, dish antennas/TV antennas, clotheslines);
 trees; street lamps along arterials.
+
+Implementation notes (world.js, binding):
+- `N.world.build()` (main.js, at boot; emits `'world:built'`), `built`, `buildMs`, `data`.
+- Extra queries: `surfaceSpeed(surf, mode)` (vehicle slow-down on GROUND/GRASS/SAND...),
+  `findFree(x, y, mode, maxCells)` (nearest walkable cell centre), `randomRoadPoint(rnd,
+  kinds)`; `collide` returns `{x, y, hit, nx, ny}` (non-finite input: `{hit: true, bad: true}`);
+  `raycast` -> `{hit, x, y, t, surf}`; every random source (`randomRoadPoint(rnd)`,
+  `randomRoute(.., {rng})`) accepts a function (`Math.random`) or an `N.util.rng(seed)` object;
+  `districtAt` -> the district object; `nearestRoadPoint(x, y, pred?)` -> `{x, y, dist,
+  road, seg, t, angle}`.
+- Road graph `N.world.roads`: `nodes [{id, x, y, links:[{to, edge}] (traversable), inc:[edgeId] (all incident), deg, w}]`, `edges
+  [{id, a, b, road, kind, w, len, oneway, lanes, angle}]`, `isJunction(n)`,
+  `edgeBetween(a, b)`, `neighbors(n)`, `nearestNode(x, y, pred?)`, `randomRoute(from,
+  steps, {rng, avoid:[kinds], prev})` -> [node...], `laneOffset(edge, lane)` and
+  `lanePoint(a, b, t, lane)` -> `{x, y, angle}` (**left-hand** lanes). Junction nodes are
+  shared by every road meeting there (T-junction endpoints are snapped onto the other road).
+- Structures: `queryStructures(x0, y0, x1, y1, fn)`; `addStructure({t:'custom', x0, y0,
+  x1, y1, cx?, cy?, draw(ctx, s)})` for extra static props. `trees`, `lamps`, `rocks`,
+  `lots`, `STYLES`. `renderMap(pxPerUnit)` -> cached canvas of the simplified map (for
+  the minimap and full map). Profiling aids: `detail` (switches), `buildPhases`, `stats`
+  (running counts / ms of roof, wall and tree sprite-cache misses).
+- Landmarks: every frame world.js calls `N.landmarks.enqueue(lm, visible)` for each
+  landmark within the view + 140 u (cast dynamic shadows there, queue art on
+  `structures` when `visible`), and `N.landmarks.paintGround(ctx, lm)` from the chunk
+  painter (world coords) for static ground art.
 
 ## 8. Entities, player, vehicles
 
@@ -201,6 +317,80 @@ N.vehicles.spawn(type, x, y, angle, opts) → vehicle actor; vehicle.driver (act
 Player enters the nearest vehicle within 18u with ACTION; occupied traffic vehicles can
 be "borrowed" (driver gets out shouting) which raises the Chappal Meter by 1.
 ```
+
+Implementation notes (vehicles.js, binding):
+- `TYPES[type]`: **`w` = length along the heading, `d` = width** (local +x forward, +y right).
+  Extra fields: `short` ("Chetak"), `verb` (Ride/Drive/Steer), `cls` ('bike'|'car'|'auto'|
+  'heavy'|'boat'), `mode` ('drive'|'boat' collision), `reverse` (fraction of top speed),
+  `drag`, `turnLow`/`turnHigh` (steering factor at standstill / top speed), `steerResp`,
+  `drift` (grip with the handbrake), `bounce`, `mass`, `camZoom` (bus/lorry zoom out),
+  `smoke` ('2t'|'diesel'|'light'), `rider`, `door`, `lights`; derived collision circles
+  `cr`/`co`. `N.vehicles.define(id, {base:'rx100', ...})` adds story vehicles.
+- `spawn(type, x, y, angle, opts)` opts: `{color, color2, seed, driver: true | {look} | Actor,
+  controller(v, dt), locked, noEnter (set on v), label, special, route (bus), beacon,
+  seeded}`. Vehicle fields: `speed` (signed forward u/s), `slip`, `throttle`, `ctl {throttle
+  -1..1, steer -1..1, handbrake, brake}`, `driver`, `controller`, `asleep`, `locked` (player
+  can't get out), `noEnter`, `lightsOn`, `taxi`. Vehicles are entities with `selfUpdate` +
+  `noCollide`; the `vehicles` system (order 30, play/dialogue/cutscene) moves them.
+- **AI hook (traffic.js):** set `v.controller = (v, dt) => { v.ctl.throttle = ..; v.ctl.steer = .. }`;
+  vehicles.js does the physics and every collision. Driverless, controller-less vehicles
+  brake to a stop and then sleep (cost ~0). Physics: throttle/brake/reverse, speed-dependent
+  steering, lateral grip (handbrake = drift + skid marks), surface slow-down
+  (`N.world.surfaceSpeed`, bikes keep speed on footpaths), multi-circle wall collisions
+  (bounce, scrape sparks, spin), vehicle-vehicle impulses, vehicle-vs-people oriented-box
+  pushes (people get `knockT` seconds + a velocity kick). Movement is **swept** (each step is
+  split so no collision circle moves more than ~70% of its radius per piece) and every push
+  (vehicle-vehicle, a person pinned against a wall, which stops the vehicle instead) goes
+  through the same wall collision; a vehicle whose circle centre still ends inside a solid is
+  restored to its last good pose. Controller values are sanitised (NaN reads as 0).
+- Player controls: keyboard = tank (up/down/left/right via `N.input.down`); `N.input.analog`
+  = point-to-steer (stick behind you = brake, then reverse swinging the tail round); RUN =
+  handbrake (touch button relabelled BRAKE / H-BRAKE). ACTION offers (priority 0, within 18u
+  of the body): "Ride Chetak" / "Drive auto" / "Borrow auto"; while driving "Get off" /
+  "Get out" (priority 0); exit spot = left door, then right, rear, front, then a ring around
+  the body, always reachable from the vehicle without crossing a wall (boats need a shore).
+  A forced exit (`exit(actor, true)`: teleport, despawn) puts the actor on the nearest dry land.
+- Borrowing an occupied vehicle: an Actor driver gets `onEvicted(v, by)` (if defined) and is
+  placed at the door, otherwise an angry driver ped is spawned (speech bubble); +1 Chappal
+  Meter via `N.wanted.add(1)`.
+- Events: `bump` {a, b|null, speed, x, y, wall?, ped?, vehicle}, `horn` {x, y, type ('foot' on
+  foot), vehicle, who, dur} (held car/bus horns repeat), `vehicle:enter|exit` {vehicle, actor},
+  `player:enterVehicle|exitVehicle` {vehicle}, `radio:enter|exit` {vehicle} (types with
+  `radio:true`), `vehicle:borrowed` {vehicle, driver, by, x, y}, `vehicle:spawn`, `sfx` {name:
+  'skid'}. Night: headlight pools via `N.render.lights` + bulb/tail-lamp glows on `light`.
+- `N.vehicles.autoSeed` (default true): on `game:new` / `game:continue` parked cycles appear at
+  `cycle_rent` places, boats at jetties and the family Chetak at home (`seeded: true`).
+  Helpers: `nearest(x, y, r, pred)`, `distTo(v, x, y)` (0 inside), `exitSpot(v)`, `remove(v)`,
+  `clearDecals()`.
+Implementation notes (entities.js, binding):
+- `N.Actor` (= `N.entities.Actor`) base class. The `entities` system (order 25, runs in
+  play/dialogue/cutscene) calls `update(dt)` on every entity except those with
+  `selfUpdate` (the player has its own system), removes `alive === false` ones, rebuilds the
+  spatial hash and pushes overlapping `solid` actors apart by `mass` (`fixed` = immovable,
+  `noCollide`, `ignore: otherEntity`), calling `onBump(other, {a, b, nx, ny, speed})` and
+  emitting `'bump'` when the closing speed > 30. Shoves go through
+  `N.entities.pushTo(e, x, y)`, which never moves a non-vehicle into or through a wall (actors
+  may set `moveMode` (default 'walk') or `noWorld: true` to opt out). main.js calls `N.entities.draw()` each
+  frame: every in-view entity's `draw()` enqueues itself. Also `byKind(kind)`,
+  `clear(pred)` (never removes the player), `count()`; events `'entity:add'/'entity:remove'`.
+- `N.people.draw(ctx, look, {phase, speed 0..1, run})` draws ~1.35x the collision size
+  (`N.people.SCALE`) so people read at the internal resolution. Extra look fields: `stripes,
+  saree, border, blouse, lungi, dupatta, girl, bag, tie, cap: 'police'|'topi'|'cricket',
+  capColor`. `N.people.randomLook(rng, kind?)`.
+- `N.player` extras: `look`, `anim`, `exhausted`, `god`, `teleport(x, y)` (clamped into the
+  map; a blocked spot falls back to the nearest free cell, else the spawn), `reset()`,
+  `serialize()/deserialize()` (junk fields keep the current values; never NaN). Walk 45 / run 80 with acceleration, smooth turning, wall
+  sliding; running drains energy (exhausted at 0 until 30). Events `'footstep' {x, y,
+  surf, run, who}`, `'player:exhausted'`, `'player:teleport'`. While `player.vehicle` is
+  set the player just follows it (vehicles.js moves the vehicle and draws the driver).
+- **`N.interact`** decides what ACTION does: `add(id, {x, y | entity, r, label (string or
+  fn(player)), priority, enabled?(player), use(player)})`, `remove(id)`, or per update
+  step `offer({label, priority, dist, use})` (e.g. "Ride Chetak" near a vehicle, "Get off"
+  while driving). The `interact` system (order 58) picks the best (priority, then
+  nearest), shows its label via `N.input.setActionLabel`, and on ACTION consumes the press
+  and calls `use(player)`. Systems that read ACTION themselves run earlier and must
+  `N.input.consume('action')`.
+
 Controls in vehicles: keyboard = tank style (up accelerate, down brake/reverse,
 left/right steer); touch joystick / gamepad stick = point-to-steer (vehicle turns toward
 stick direction, throttle = stick magnitude). RUN button = handbrake in vehicles.
@@ -223,6 +413,20 @@ joystick on the left half; right side buttons ACTION (context label: "Talk", "Ri
 `N.input.setActionLabel(text|null)` lets the player/npc systems show the context label
 (also shown on desktop as a prompt "E — Ride Chetak").
 
+Implementation notes (input.js, binding): the `input` system runs first in every mode
+(order 0, `runIn ['*']`); edges are computed per update step. Also `N.input.analog` (move
+came from joystick/stick: use point-to-steer), `hold(a, on)`, `press(a, seconds?)`,
+`setMove(x, y, analog = true)` / `setMove(null)`, `clear()`, `anyPressed()`,
+`setLabel(action, text|null)` (e.g. RUN -> 'BRAKE' in vehicles), `showTouch(on)`,
+`releaseAll()` (drops every physical key / touch / pad input; done automatically on window
+blur and when the tab hides — synthetic `hold`/`setMove` input is kept); the joystick also
+resets on `lostpointercapture` and on a release anywhere on the page;
+`'input:device'` event; body classes `touch-on`, `dev-touch`, `dev-pad`. Touch layout:
+joystick zone = left 52% below the top 64 px; ACTION/RUN/HORN bottom-right; MAP and
+PAUSE pills at the top-right (keep ~120 x 52 px there free on touch). Touch controls only
+show in `play` mode. Gamepad: A action, B horn, X/RB/RT run, Y radio, LB journal, Back
+map, Start pause, d-pad/left stick move. Touch scrolling is blocked except inside `.scroll`.
+
 ## 10. UI (DOM) — HUD, dialogue, menus
 
 DOM overlay `#ui` above the canvas, built with plain DOM APIs. All colours are CSS
@@ -237,6 +441,8 @@ body "Baloo 2", OSD/mono "VT323"; each with fallbacks
 - `N.hud.objective(text|null)`, `N.hud.toast(text, ms)`, `N.hud.banner(title, sub, ms)`,
   `N.hud.blip(id, {x, y} | entity, {color, icon, label, pulse, route})`, `N.hud.unblip(id)`,
   `N.hud.districtBanner(name)`, `N.hud.timer(label, seconds|null)`, `N.hud.show/hide()`.
+  The HUD keeps the current objective in `N.hud.objectiveText` (read by `N.debug.state()`);
+  `N.world.renderMap(ppu)` gives a ready map image for the minimap.
 - Dialogue: `await N.dialogue.say(speakerId, text, {mood})`,
   `await N.dialogue.choice(speakerId, prompt, [opts]) → index`,
   `await N.dialogue.play([{s, t}, ...])`, `N.dialogue.speakers[id] = {name, color, portrait(ctx, w, h)}`.
@@ -247,6 +453,48 @@ body "Baloo 2", OSD/mono "VT323"; each with fallbacks
   (story so far, clues, collectibles, trivia cards, Hyderabadi dictionary), settings
   (volume, music, touch layout, reduced motion, text speed), credits. Cutscenes:
   `await N.menus.cutscene([{type:'card'|'text'|'vhs'|'fade', ...}])`.
+  Menus API used by the engine: `N.menus.title()`, `pause()`, `resume()` (calls
+  `N.game.resume()`), `hideAll()`, `isOpen()`. Menus own the `pause` action (open/close
+  the pause screen) and must unlock audio (`N.audio.unlock()`) inside the START gesture,
+  then call `N.game.newGame({skipIntro:false})` / `N.game.continueGame()`.
+
+Implementation notes (hud.js / dialogue.js, binding):
+- HUD layout: OSD top-left, tin-sign stats top-right (below MAP/PAUSE on touch), a top-centre
+  column `.hud-top` (objective, timer, toasts stack, never overlap), centre banner, district
+  card (bottom-right desktop, centred on phones), minimap bottom-left on desktop and under the
+  OSD on touch / phone portrait. Hidden in title/boot/cutscene; minimap + toasts fade in
+  dialogue; only the top column + banner show in minigame. `N.hud.hide()/show()` for scripts.
+- `N.hud.banner(title, sub, ms, {kind})`: kind 'pass' | 'fail' | 'busted' | 'chapter' | 'info'
+  (inferred from the title if omitted); pass/fail/busted cut in front of title cards.
+- `N.hud.blip(id, target, opts)`: target `{x, y}` | entity | place id; opts `{color, icon:
+  'dot'|'star'|'giver'|'shop'|'square'|'ring'|'diamond', label, pulse, route (pink road
+  route on the minimap via A* over N.world.roads), size, minimap:false, edge:false (hide when
+  off the minimap instead of an edge arrow)}`. `N.hud.blips` (Map), `blipPos(b)`, `route()`
+  (current route polyline) and `mapImage()` (the styled minimap base image) are there for
+  the full map.
+- `N.hud.timer(label, seconds, {countdown})` counts down by itself in play mode (missions
+  push the value each step with countdown:false); `timer(null)` hides; `timerValue()`.
+- `N.hud.ask(title, [{label, key?, fn}])` -> close(): small interactive card (retry etc.);
+  `closeAsk()`. `N.hud.objective()` emits `hud:objective` (text).
+- Dialogue: `N.dialogue.define(id, {name, color, look, portrait(ctx, w, h, mood) | false,
+  voice})`. Unknown ids get a generated speaker; built in: `narrator` (no portrait) and `you`
+  (Chinnu). `look` feeds `paintPortrait(ctx, w, h, look, mood)` (48x48 pixel bust): `{skin,
+  hair, hairStyle: short|side|long|bun|braid|bald|spiky|puff|curly|oiled, moustache:
+  true|'thick', beard: true|'stubble'|'long', specs: true|'round'|'thick', cap: topi|skull|
+  gandhi|police|cricket, capColor, dupatta, burqa, bindi, shirt, stripes, tie, collar,
+  earrings, flowers (jasmine), ribbon, age: kid|teen|adult|old, bg, kind (N.people kind)}`;
+  moods: neutral | happy | angry | sad | surprised.
+- `say(s, t, {mood, auto: seconds})`, `choice(s, prompt, options, {default, mood})` -> index
+  (-1 if cancelled), `play([{s, t, mood?, choices?}])` -> last choice, `cancel()`, `advance()`,
+  `isOpen()`, `current`, `textSpeed` (settings), `skip` (debug: instant, choices -> default).
+  Lines queue; the box stays open between back-to-back lines. It pushes the `dialogue` state
+  only when opened in play (in cutscene/minigame it just overlays). It only types and takes
+  input in play/dialogue/cutscene/minigame/gameover (never under the pause menu, map or
+  journal); `auto` lines count game time. Plainly assigned `speakers[id] = {...}` objects are
+  normalised on first use. Keys: ACTION completes
+  then advances; arrows/W-S + ACTION or 1-4 choose; tap/click the box or a choice.
+  Events: `dialogue:open|close`, `dialogue:line` {speaker, text, choices}, `dialogue:char`
+  {speaker, pitch}, `dialogue:choice` {speaker, index, text}.
 
 ## 11. Missions — coroutine API (`N.missions`)
 
@@ -269,11 +517,51 @@ condition becomes true; abort (fail/quit/load) rejects everything pending with a
 `MissionAbort` that scripts must not catch. On success: banner + reward + save.
 Mission givers appear as a pulsing coloured marker on the map/minimap.
 
+Implementation notes (missions.js, binding):
+- Def extras: `giver: {place | npc | x, y, r = 14, onFoot}`, `requires`, `autoStart`, `when()`,
+  `reward: {money, item, flag}`, `passText`, `color` (giver marker), `autosave` (default
+  true), `onPass()`. Walking into an available giver's marker starts it (after a failure the
+  player must step out first). `m` extras: `m.toast()`, `m.marker(target, {r, color})` /
+  `m.unmarker(id)`, `m.vehicle(type, x, y, angle, opts)` (spawn + track), `m.data`,
+  `m.attempt`, `m.retrying`; `goto` opts `{r, label (sets the objective), onFoot, inVehicle:
+  true|type, vehicleType, blip, marker, route, color}` (hints if the condition isn't met);
+  `until(fn, {timeout, failMsg})` fails the run on timeout even if not awaited;
+  `timer(sec, label, {failMsg})` -> `{stop(), add(s), left}`, `timer(null)` stops;
+  `give(id, {name})` toasts "Got: name".
+- Retry: the failed run's checkpoint is kept; retry re-runs the script in **fast-forward**
+  until `m.checkpoint(name)` is reached again (goto/wait/until/say/cutscene resolve at once,
+  choices and minigames replay the recorded answers, money/give are skipped, spawns, flags,
+  objectives and blips are applied), then teleports the player to the checkpoint position
+  and back into a vehicle of the same type. Without a checkpoint the player is put back at
+  the mission start.
+- When a run ends early (fail / abort / quit / load) the runner also closes what it opened:
+  `N.minigames.abort('mission:<result>')` for a minigame started with `m.minigame`, and
+  `N.menus.abortCutscene()` (menus agent: please provide it; it must resolve the pending
+  `cutscene()` promise) for `m.cutscene`.
+- Markers: pulsing cylinder of light (ground glow + rings + projected beam + a screen-space
+  shaft and diamond), night light, and an off-screen edge arrow with the distance in metres
+  (1u ≈ 0.3 m). Goal markers are pink `#ff5fb0` (matches the minimap route), givers yellow.
+- Events: `mission:start` {id, title, attempt}, `mission:checkpoint` {id, name},
+  `mission:complete` + `mission:pass` {id}, `mission:fail` {id, reason}, `mission:abort`,
+  `item:give`, `flag`, `money`. `N.missions`: `active`, `lastFailed`, `defs`, `available()`,
+  `isDone(id)`, `giverPos(def)`, `posOf(target)`, `complete()` (debug), `fail(reason)`,
+  `abort()` (silent), `retry()`, `markers()` (for the full map), save section `missions`.
+
 ## 12. Save — `N.save`
 
 `N.save.register(key, {serialize() → json, deserialize(json)})`; `N.save.save()`,
 `N.save.load() → bool`, `N.save.has()`, `N.save.clear()`. Key `nostalgia.save.v1`.
 Saving happens at STD/PCO booths, on mission pass, and from the pause menu.
+
+Implementation notes (save.js, binding): one JSON blob `{game:'nostalgia', v:1, t, meta:{reason,
+day, clock, date, money, district, missions}, data:{section: json}}`; the previous good save is
+kept under `nostalgia.save.v1.bak` and used when the main blob is corrupt. Without localStorage
+saves live in memory for the session (`N.save.available` false). `save({reason, toast:false})`
+-> bool (not in title/boot; emits `save` {ok, reason}); `load()` validates first, then aborts
+the mission, cancels dialogue, clears flags, calls `N.systems.reset()` and deserializes each
+section on its own (errors are reported, never thrown); emits `save:loaded`. `info()` -> meta
+for a Continue button. Built-in sections: `player` (incl. the vehicle being ridden), `clock`,
+`flags`; missions registers `missions`. Modules register more in their `init()`.
 
 ## 13. Debug/test hooks — `N.debug` (always present; overlay only with `#debug`)
 
@@ -284,6 +572,11 @@ startMission(id), completeMission(), skipDialogue(bool) (auto-advance instantly)
 collectAll(), god(bool), fps(), state() → {mode, mission, objective, player:{x,y,mode}, errors:[]}
 N.debug.errors → array of captured errors (window.onerror + N.err)
 ```
+Also `N.debug.perf()` -> `{fps, frameMs, updateMs, drawMs, chunks, entities, queued,
+chunkBuilds, buildMs, ms}` (`ms` = last frame per phase, see §6), `freezeClock(on)`; `teleport` also accepts a landmark id and
+returns the final `{x, y}` (null if unknown); `state()` also has `clock, day, district,
+surface, wanted` and `player.energy/money/vehicle`. Overlay keys (with #debug): backquote
+toggles it, Alt+1..4 = 07:00 / 12:00 / 17:30 / 21:00, Alt+G = god mode.
 
 ## 14. Testing
 
@@ -295,7 +588,19 @@ Use `.cjs` test files under `nostalgia/tests/`. Open `file:///home/user/DS/nosta
 (add `#debug` when needed). Fail on any page error or console error. Screenshots go to
 `nostalgia/tests/out/` (git-ignored). Use `page.keyboard` for real input, or
 `N.input.press` / `N.input.setMove` for deterministic input. Typical run:
-`node nostalgia/tests/smoke.cjs`. Headless Chromium has no audio device; audio code must
+`node nostalgia/tests/smoke.cjs`. Tests stub Google Fonts (route `fonts.googleapis.com` /
+`fonts.gstatic.com` to an empty 200 response) so runs are hermetic and offline font
+failures never count as console errors (`REAL_FONTS=1` loads them through `$HTTPS_PROXY`).
+`tests/smoke.cjs` covers desktop keyboard + portrait/landscape touch (CDP touch drags on
+the joystick), pause, teleports, night and in-page frame timing; `ONLY=desktop|portrait|
+landscape` runs one viewport. `tests/core_systems.cjs` covers vehicles (real-key
+driving of several types, walls, boats, borrowing), dialogue, the mission runner (DEMO mission,
+fail + checkpoint retry), save/reload/corruption, the minimap and HUD overlap on phones
+(`ONLY=desktop|portrait|landscape|nostorage`). `tests/engine_qa.cjs` is the adversarial engine
+review: an in-page checker for every API in §5-§13, tunnelling / wall / exit / NaN / input-loss /
+joystick / dialogue / mission-leak / save-garbage probes, a night-drive perf run with a CPU
+profile, screenshots and the dist build (`ONLY=contract,bugs,perf,visual,build`).
+Build with `node nostalgia/tools/build.mjs`. Headless Chromium has no audio device; audio code must
 not throw when the AudioContext cannot start.
 
 ## 15. Visual direction
@@ -306,3 +611,118 @@ Hussain Sagar water `#2f7f86`→`#3f9aa0`, dusty red soil `#b5694a`, neem green 
 auto-rickshaw yellow `#f2c230` + black, APSRTC red `#b22b2b`, Irani-cafe teal `#2a8c82`,
 whitewash `#efe9dc`, painted-signboard primaries. Night: sodium-vapour orange street lights.
 UI: hand-painted tin signboards + VHS on-screen-display. Avoid generic "pixel-font arcade".
+
+## 16. Performance budget (engine notes)
+
+Target: 60 fps on mid-range phones. The internal canvas is ~640x360 (desktop) or ~390x844
+(portrait), so fill-rate is cheap; JavaScript canvas calls are the real cost. Keep the
+per-frame JS draw work under ~6 ms on a desktop CPU in the densest view (~500 buildings).
+Rules that keep it there: draw only what is in view; cache anything static as a sprite or
+`Path2D` (roof tops, tree canopies and wall window grids are cached per structure in
+small LRUs; ground and static shadows live in chunks); batch many shapes into one path
+and one fill; avoid per-frame closures/objects in hot loops; never call `getImageData`
+on the main canvas (it switches Chrome to CPU rendering).
+Measured (headless Chromium, software raster, night, 180 u/s dolly through Old City -> Abids
+-> Secunderabad with 40 lit vehicles): desktop ~7 ms JS per frame, phone portrait ~10.5 ms.
+Generic buildings cost ~12 µs each (~180 in view); big landmarks cost 0.3-0.6 ms each per
+frame plus their night light layers — landmark art should cache its static parts (roof
+sprites / Path2D) the way world.js does. Use `N.debug.perf().ms` to see the phase split.
+
+
+## 17. Audio — `N.audio` (audio.js, system order 70, runs in every mode)
+
+All sound is synthesised (WebAudio only, no samples): ~96 one-shot SFX, engine voices,
+district ambience + place emitters, an original step-sequenced score (sitar/santoor/tanpura
+via Karplus-Strong, bansuri, shehnai, harmonium, strings, brass band, tabla/dholak/dappu/marfa,
+90s synths), a 3-station vehicle radio and the Walkman. It never throws without an
+AudioContext; every call before `unlock()` is a safe no-op returning `false`/`null`.
+
+```
+N.audio.unlock()                 call inside the START gesture (also auto on the first pointer/key; later
+                                 gestures resume a context the OS suspended). available / ready / ctx.
+setVolume(bus, 0..1), getVolume(bus)   bus: master | music | sfx | radio | ambient   (persisted)
+mute(bool), toggleMute(), muted, settings   localStorage 'nostalgia.audio.v1' (try/catch); emits 'audio:settings'
+duck(on, amount=0.32)            manual music duck (dialogue mode / 'dialogue:open' duck automatically)
+sfx(name, {x, y, vol, pitch, pan, surface, variant, delay, force, ui}) -> bool
+                                 x/y = world position: distance attenuation + pan + air absorption,
+                                 culled beyond ~700u; omit for UI sounds. SFX_NAMES lists all names.
+horn(vehicle | type, {x, y})     the right horn: cycle bell, auto "pom pom", scooter, car, bus, lorry tune
+engine(vehicle | null)           force the player-engine target (default: follows N.player.vehicle)
+music.play(id) / music(id)       lock a track (story cues); music.stop(fade) / music(null); music.lock(null)
+music.mood(id | null)            soft request (below chase/victory); music.intro(sec|false)
+music.current, music.ended       'music:ended' {id} fires when a locked non-looping track (e.g. 'ending') ends
+music.sections(id) -> [{name, start}], music.position()   sync cutscenes to the score
+music.TRACKS: title, flashback, day, night, chase, oldcity, tension, victory, ending, festival,
+              numaish, kites, + radio songs r_chandni, r_barish, r_baraat, r_neon, r_pager
+radio.next() / set(i | -1) / off() / toggle(), radio.on, radio.station, radio.text, radio.STATIONS
+walkman.play(id?) / stop() / next() / rewind() / unlock(id) / library / playing;  SONGS {id: {title, artist}}
+ambient.set(bedId | null), ambient.bed, ambient.emitters, ambient.BEDS
+tape(0..1)                       cassette wow/flutter + muffle on music (also follows N.render.fx.vhs)
+rec(sfxName) -> name             "● REC" a city sound (REC beep + the sound)
+tapeMontage([sfxNames], {gap}) -> Promise   play recorded sounds back "from the cassette" (Side A)
+tapeStop(sec) -> Promise         "■ STOP": the score winds down like a tape deck
+beacon(target | placeId | null, {sound, max})   hot/cold beeping that speeds up near a hidden thing
+renderOffline(name, sec), renderTrackOffline(id, sec) -> Promise<{peak, rms, buffer}>; stats()
+```
+Music director (automatic unless locked): title screen -> `title`; a new game (not
+skipIntro) opens on `title` for ~40 s; free roam -> `day` / `night` (N.clock.isNight) /
+`oldcity` (Old City districts), one pass then 25-50 s of ambience-only rest, district
+changes switch only after 10 s; Chappal Meter >= 3 -> `chase` (held 4 s after escaping);
+`mission:complete` -> fanfare then `victory`; `N.missions.active.music` (a track id) is
+honoured; radio or Walkman playing -> score yields. Story calls `N.audio.music.play('ending')`
+for the Charminar finale (5 sections: alaap, theme, rise, lift (key change), coda).
+
+Events listened to (all optional): `horn`/`vehicle:horn` {vehicle|type, x, y}, `bump`
+{a, b, speed} (only vehicles/the player make noise), `pickup`/`collectible` {kind},
+`money` {delta}, `mission:start|complete|fail`, `objective`, `hud:objective`,
+`wanted`/`wanted:change` {level, prev}, `busted`, `wasted`, `player:exhausted` (panting),
+`dialogue:open|close|char` {speaker}, `player:enterVehicle|exitVehicle`, `footstep`
+{x, y, surf, run, who}, `kite:cut`, `radio:next`, `flashback` {tape}, `shop:buy`, `door`
+{kind:'wood'}, `splash`, `save`, `game:new|quit`, generic `sfx` {name, x, y, ...} and
+`music` {id} | {mood}. Polled as fallbacks: N.player.vehicle (enter/exit, engine), horn and
+radio input (only until a module emits horn events), player footsteps (only when no
+'footstep' events arrive), N.wanted.level, N.clock, N.world.districtAt/isWater, N.places
+(emitters by id/prefix: charminar, koti_bus_stand, gokul_chat, temples, stations, girnis,
+irani_cafe_*, school_*, playground_*, std_*, barber_*, ...), N.flags festivals
+(`ganesh_immersion`, `bonalu`, `ramzan`, `numaish`, `sankranti`: `N.flags[id]` truthy,
+`N.flags.festival === id` or listed in `N.flags.festivals`). Vehicle types may set
+`TYPES[type].radio` (default: auto, cars, bus, lorry). Emits `audio:unlocked`,
+`radio:station` {station, name}; DJ lines go to `N.hud.toast`.
+CPU: pooled channel strips (22 voices) + per-sound cooldowns, k-rate pitch/filter params,
+drum strokes and plucked strings pre-rendered to buffers in idle time, 0.18 s lookahead
+scheduler; the context is suspended while the tab is hidden. Test: `node nostalgia/tests/audio.cjs`.
+
+## 18. Minigames — `N.minigames` (minigames.js)
+
+Eight full-screen minigames, each a DOM overlay (`#overlay .mg-screen`, opaque) with its own
+canvas, VHS-OSD top bar, big touch buttons (touch) or a key-hint strip (keyboard), a one-screen
+how-to card, a 3-2-1 countdown, pause (Esc / ‖ pill: Resume · Restart · Quit) and a result card
+("Aage chalo" resolves, "Phir se" retries). Keyboard, mouse, touch and gamepad all work.
+```
+N.minigames.play(id, params) -> Promise<result>   (alias start(); never rejects)
+N.minigames.list() -> [{id, title, sub, place, places, secs}]   has(id), resolve(id) (aliases:
+  golconda_clap, kite_fight, pech, brick_game, gully_cricket, pani_puri, haggle, goli, kanche ...)
+N.minigames.abort(reason)   active (id|null)   isOpen()   stats {best, plays, wins}   covering
+ids: kite clap brickgame cricket antenna panipuri bargain marbles
+params: difficulty 0..1 (default 0.4), seed, noRetry, noQuit, skipHowto, intro (story line on the
+  how-to card), title, reward (paise, paid on a win), autoplay 'win'|'lose' (test bot),
+  timeScale; per game: kite {target, time} · clap {rounds} · brickgame {mode:'blocks'|'race',
+  target} · cricket {target, overs, wickets} · antenna {time} · panipuri {target} ·
+  bargain {who:'auto'|'banana'|'flower', start, target} · marbles {count}
+result: {id, win, score, stars 0..3, quit, aborted, attempts, time, difficulty, ...}
+  kite {cuts, lost, livesLeft} · clap {rounds, fails, perfects} · brickgame {mode, lines, cars}
+  cricket {runs, balls, wickets, reason} · antenna {crows, timeLeft, best} · panipuri {eaten,
+  crunches, bestCombo, reason} · bargain {price, start, saved, savedPaise, who} · marbles
+  {mine, rival, draw}
+```
+While open: state `minigame` is pushed (popped on close; `N.input.clear()`), the overlay owns
+the keyboard (keydowns don't reach the game), the tab-hidden event pauses it, and
+`N.world.draw` / `N.entities.draw` are skipped (wrapped lazily) because the world is covered.
+Events: `minigame:start` {id, params}, `minigame:end` {id, result}, `minigame:event` {id, type}.
+Free-roam side activities are registered with `N.interact` at priority -1 (story wins) on
+`boot`: kite at home_terrace/gulzar_houz, antenna at home, clap at golconda_fateh_darwaza,
+brick game at video_parlour_*, cricket + marbles at playground_*, pani puri at gokul_chat,
+auto haggling at koti_bus_stand/rtc_x_roads/stations, banana/flower haggling at the carts, plus
+any `WORLD_DATA.places[].minigame`. Turn off with `N.minigames.side(false)` or
+`N.flags.mg_side_off = true`. Stats persist in localStorage and `N.save` key `minigames`.
+Test: `node nostalgia/tests/minigames.cjs` (LAB=1 for the staging lab, ONLY=, IDS=, QUICK=1).

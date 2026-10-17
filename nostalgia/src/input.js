@@ -52,8 +52,8 @@
       for (const k in keyDown) keyDown[k] = false;
       for (const k in touchDown) touchDown[k] = false;
       for (const k in synHold) synHold[k] = 0;
-      synMove = null; stick.active = false; stick.x = stick.y = 0;
-      updateStickDom();
+      synMove = null;
+      resetStick();
     },
     setActionLabel(text) {
       text = text || null;
@@ -147,7 +147,19 @@
   window.addEventListener('keyup', (e) => {
     if (KEYMAP[e.code]) keyDown[e.code] = false;
   });
-  window.addEventListener('blur', () => { for (const k in keyDown) keyDown[k] = false; });
+  // Losing focus (alt-tab, app switch, notification shade) never delivers the matching keyup /
+  // pointerup, so drop every *physical* input; synthetic holds (tests, cutscenes) are kept.
+  function releasePhysical() {
+    for (const k in keyDown) keyDown[k] = false;
+    for (const k in touchDown) touchDown[k] = false;
+    for (const k in padDown) padDown[k] = false;
+    padMove.x = padMove.y = 0;
+    if (dom.btns) for (const a in dom.btns) dom.btns[a].classList.remove('on');
+    resetStick();
+  }
+  input.releaseAll = releasePhysical;
+  window.addEventListener('blur', releasePhysical);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) releasePhysical(); });
 
   /* -------------------------------------------------------------- gamepad */
   function pollGamepad() {
@@ -213,18 +225,23 @@
     // Buttons: pointer events, multi-touch safe
     for (const a in dom.btns) {
       const b = dom.btns[a];
+      let pid = -1;
       const down = (e) => {
         e.preventDefault();
         try { b.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
         if (!touchDown[a]) pendingPress[a] = (pendingPress[a] || 0) + 1;
-        touchDown[a] = true; b.classList.add('on');
+        touchDown[a] = true; b.classList.add('on'); pid = e.pointerId;
         setDevice('touch');
       };
-      const up = (e) => { touchDown[a] = false; b.classList.remove('on'); if (e) e.preventDefault(); };
+      const release = () => { touchDown[a] = false; b.classList.remove('on'); pid = -1; };
+      const up = (e) => { release(); if (e && e.cancelable) e.preventDefault(); };
       b.addEventListener('pointerdown', down);
       b.addEventListener('pointerup', up);
       b.addEventListener('pointercancel', up);
-      b.addEventListener('lostpointercapture', () => { touchDown[a] = false; b.classList.remove('on'); });
+      b.addEventListener('lostpointercapture', release);
+      const anyUp = (e) => { if (e.pointerId === pid) release(); };
+      window.addEventListener('pointerup', anyUp, true);
+      window.addEventListener('pointercancel', anyUp, true);
     }
 
     // Floating joystick on the left half
@@ -256,13 +273,14 @@
       stick.y = mm > 0 ? (dy / mm) * mag : 0;
       updateStickDom(dx, dy);
     });
-    const end = (e) => {
-      if (e.pointerId !== stick.id) return;
-      stick.active = false; stick.id = -1; stick.x = stick.y = 0;
-      updateStickDom();
-    };
+    const end = (e) => { if (stick.active && e.pointerId === stick.id) resetStick(); };
     dom.zone.addEventListener('pointerup', end);
     dom.zone.addEventListener('pointercancel', end);
+    // capture can be lost (OS gesture, element hidden) or fail to start: the finger lifting
+    // anywhere on the page must still release the stick and the buttons
+    dom.zone.addEventListener('lostpointercapture', end);
+    window.addEventListener('pointerup', end, true);
+    window.addEventListener('pointercancel', end, true);
 
     // Desktop prompt "E — Ride Chetak"
     let prompt = document.getElementById('prompt');
@@ -270,6 +288,11 @@
     prompt.innerHTML = '<kbd>E</kbd><span></span>';
     dom.prompt = prompt; dom.promptText = prompt.querySelector('span');
     input.setActionLabel(input.actionLabel);
+  }
+
+  function resetStick() {
+    stick.active = false; stick.id = -1; stick.x = stick.y = 0;
+    updateStickDom();
   }
 
   function updateStickDom(dx, dy) {
@@ -298,7 +321,11 @@
   // Mode classes on <body> so CSS can show/hide controls per state
   N.on('state', ({ mode }) => {
     document.body.dataset.mode = mode;
-    if (mode !== 'play') { stick.active = false; stick.x = stick.y = 0; updateStickDom(); for (const k in touchDown) touchDown[k] = false; }
+    if (mode !== 'play') {
+      resetStick();
+      for (const k in touchDown) touchDown[k] = false;
+      if (dom.btns) for (const a in dom.btns) dom.btns[a].classList.remove('on');
+    }
   });
 
   function init() {

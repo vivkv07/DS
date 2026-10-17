@@ -10,6 +10,7 @@
 
   const MAX_STEP = 1 / 60;
   const TIME_MODES = { play: 1, dialogue: 1, cutscene: 1, minigame: 1, gameover: 1 }; // modes where game time advances
+  const PAUSABLE = { play: 1, dialogue: 1 }; // N.game.pause() works here (cutscenes/minigames run their own)
 
   const perf = { fps: 60, frameMs: 0, updateMs: 0, drawMs: 0, frames: 0, _acc: 0, _n: 0, _work: 0, _upd: 0, _drw: 0, hist: [] };
   N.perf = perf;
@@ -53,8 +54,9 @@
       N.emit('game:quit', {});
       if (N.menus && N.menus.title) N.menus.title();
     },
+    /** Pause from free roam or mid-conversation (PAUSABLE); resume() returns to that mode. */
     pause() {
-      if (N.state.mode !== 'play') return false;
+      if (!PAUSABLE[N.state.mode]) return false;
       N.state.push('paused');
       N.emit('game:pause', {});
       if (N.menus && N.menus.pause) { try { N.menus.pause(); } catch (e) { N.err('menus.pause', e); } }
@@ -86,12 +88,16 @@
   }
 
   function render(dt) {
-    const R = N.render;
-    R.begin();
+    const R = N.render, ms = R.stats.ms;
+    let t = performance.now(), t1;
+    try { R.begin(); } catch (e) { N.err('render.begin', e); }
     try { N.world.draw(); } catch (e) { N.err('world.draw', e); }
+    t1 = performance.now(); ms.enqWorld = t1 - t; t = t1;
     try { N.entities.draw(); } catch (e) { N.err('entities.draw', e); }
     N.systems.draw();
-    R.flush(dt);
+    t1 = performance.now(); ms.enqOther = t1 - t; t = t1;
+    try { R.flush(dt); } catch (e) { N.err('render.flush', e); }
+    ms.flush = performance.now() - t;
   }
 
   function frame(t) {

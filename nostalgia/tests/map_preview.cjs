@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const { loadWorldData, MUST } = require('../tools/validate_map.cjs');
+const { loadWorldData, MUST, HERITAGE_DRAWS } = require('../tools/validate_map.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const OUT = path.join(__dirname, 'out');
@@ -141,18 +141,18 @@ async function overview(browser, D) {
   await page.close();
 }
 
-// draw ids implemented in src/landmarks.js (heritage); everything else is src/places_art.js
-const HERITAGE_DRAWS = ['charminar', 'mecca_masjid', 'kaman', 'gulzar_houz', 'chowmahalla', 'falaknuma', 'golconda_bala_hissar', 'fort_wall', 'fort_gate',
-  'qutb_tomb', 'taramati_baradari', 'purani_haveli', 'high_court', 'osmania_hospital', 'state_central_library', 'salar_jung_museum', 'british_residency',
-  'assembly', 'jubilee_hall', 'birla_mandir', 'birla_planetarium', 'buddha_statue', 'tank_bund_statue', 'kakatiya_arch', 'clock_tower', 'spanish_mosque',
-  'church', 'mosque', 'temple', 'sai_temple', 'ou_arts_college', 'cyber_towers', 'dargah', 'pathergatti_arcade', 'madina_building', 'puranapul_arches',
-  'khairatabad_ganesh', 'mahankali_temple', 'raj_bhavan', 'nizam_college', 'secretariat', 'charkaman'];
-
 async function engineShots(browser, D) {
   const need = ['index.html', 'src/world.js', 'src/main.js'].every((f) => fs.existsSync(path.join(ROOT, f)));
   if (!need) { console.log('engine not present yet; skipping teleport shots'); return; }
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+  if (!process.env.REAL_FONTS) await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, body: '' }));
   const errs = [];
+  // world_extras.js (rails) is loaded right after world.js; inject it if index.html does not list it yet
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  if (!/world_extras\.js/.test(html)) {
+    console.log('note: index.html does not load src/world_extras.js yet; injecting it for this test');
+    await page.route(/index\.html/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: html.replace('<script src="src/world.js"></script>', '<script src="src/world.js"></script>\n<script src="src/world_extras.js"></script>') }));
+  }
   page.on('pageerror', (e) => errs.push('pageerror: ' + e));
   page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
   await page.goto('file://' + path.join(ROOT, 'index.html') + '#debug');

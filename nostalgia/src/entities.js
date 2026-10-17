@@ -109,6 +109,17 @@
     },
   });
 
+  // Move an actor that is being shoved, without pushing it into (or through) a wall.
+  // Vehicles are moved by vehicles.js; everything else collides like a walker.
+  function pushTo(e, x, y) {
+    if (e.kind === 'vehicle' || e.noWorld || !N.world.built) { e.x = x; e.y = y; return; }
+    const c = N.world.collide(x, y, e.r || 4, e.moveMode || 'walk');
+    if (c.bad) return;
+    if (c.hit && N.world.raycast(e.x, e.y, c.x, c.y, e.moveMode || 'walk').hit) return; // would cross a wall: stay
+    e.x = c.x; e.y = c.y;
+  }
+  E.pushTo = pushTo;
+
   // Push overlapping solid actors apart (mass-weighted) and report bumps.
   function resolveOverlaps() {
     for (const [k, b] of hash) {
@@ -128,8 +139,8 @@
           const pen = rr - d;
           const ma = a.fixed ? 1e9 : a.mass || 1, mo = o.fixed ? 1e9 : o.mass || 1;
           const ta = mo / (ma + mo), to = ma / (ma + mo);
-          if (!a.fixed) { a.x -= nx * pen * ta; a.y -= ny * pen * ta; }
-          if (!o.fixed) { o.x += nx * pen * to; o.y += ny * pen * to; }
+          if (!a.fixed) pushTo(a, a.x - nx * pen * ta, a.y - ny * pen * ta);
+          if (!o.fixed) pushTo(o, o.x + nx * pen * to, o.y + ny * pen * to);
           const rel = ((a.vx || 0) - (o.vx || 0)) * nx + ((a.vy || 0) - (o.vy || 0)) * ny; // closing speed
           const info = { a, b: o, nx, ny, speed: Math.max(0, rel) };
           if (a.onBump) { try { a.onBump(o, info); } catch (err) { N.err('onBump', err); } }
@@ -147,8 +158,8 @@
   const SAREE = ['#d8402a', '#2a8c82', '#f2c230', '#c03a8a', '#3a8a3a', '#f08a24', '#7a3a8a', '#e85a7a', '#2a5cb8'];
   const LUNGI = ['#2a5cb8', '#3a8a3a', '#7a3a3a', '#efe9dc', '#5a3a8a'];
 
-  const PEOPLE_SCALE = 1.35;
-  function outline(ctx) { ctx.strokeStyle = 'rgba(25,15,20,0.55)'; ctx.lineWidth = 0.55; ctx.stroke(); }
+  const PEOPLE_SCALE = 1.5;
+  function outline(ctx) { ctx.strokeStyle = 'rgba(25,15,20,0.6)'; ctx.lineWidth = 0.7; ctx.stroke(); }
   function ell(ctx, x, y, rx, ry) { ctx.beginPath(); ctx.ellipse(x, y, Math.max(0.1, rx), Math.max(0.1, ry), 0, 0, Math.PI * 2); }
 
   /**
@@ -337,6 +348,12 @@
     stepAcc: 0, restT: 0,
   });
 
+  function spawnPoint() {
+    const sp = (N.WORLD_DATA && N.WORLD_DATA.spawns && N.WORLD_DATA.spawns.player) || [N.WORLD_W / 2, N.WORLD_H / 2];
+    const f = N.world.built && !N.world.isWalkable(sp[0], sp[1]) ? N.world.findFree(sp[0], sp[1], 'walk', 60) : null;
+    return f || { x: sp[0], y: sp[1] };
+  }
+
   player.reset = function () {
     const sp = (N.WORLD_DATA && N.WORLD_DATA.spawns && N.WORLD_DATA.spawns.player) || [N.WORLD_W / 2, N.WORLD_H / 2];
     this.x = sp[0]; this.y = sp[1]; this.vx = this.vy = 0; this.angle = Math.PI / 2;
@@ -347,16 +364,32 @@
   };
   /** Place the player (on foot) at a point, nudged to the nearest walkable spot. */
   player.teleport = function (x, y) {
+    if (!isFinite(x) || !isFinite(y)) { N.err('player.teleport', new Error('bad position ' + x + ',' + y)); return; }
     if (this.vehicle && N.vehicles && N.vehicles.exit) { try { N.vehicles.exit(this, true); } catch (e) { N.err('teleport.exit', e); } }
     this.vehicle = null; this.mode = 'foot';
-    if (N.world.built && !N.world.isWalkable(x, y)) { const f = N.world.findFree(x, y, 'walk', 80); if (f) { x = f.x; y = f.y; } }
+    // stay inside the map, and never end up inside a wall / the lake (fall back to the spawn)
+    x = U.clamp(x, N.CELL * 2, N.WORLD_W - N.CELL * 2); y = U.clamp(y, N.CELL * 2, N.WORLD_H - N.CELL * 2);
+    if (N.world.built && !N.world.isWalkable(x, y)) {
+      const f = N.world.findFree(x, y, 'walk', 80) || spawnPoint();
+      x = f.x; y = f.y;
+    }
     this.x = x; this.y = y; this.vx = this.vy = 0;
+    this.goodX = x; this.goodY = y;
     N.render.snapCamera();
     N.render.warmChunks(x, y, 500);
     N.emit('player:teleport', { x, y });
   };
 
   player.update = function (dt) {
+    // a NaN from anywhere (a script, a bad push) must not stick: fall back to the last good spot
+    if (!isFinite(this.x) || !isFinite(this.y)) {
+      const g = isFinite(this.goodX) && isFinite(this.goodY) ? { x: this.goodX, y: this.goodY } : spawnPoint();
+      N.err('player.nan', new Error('player position was not finite; restored'));
+      this.x = g.x; this.y = g.y; this.vx = this.vy = 0;
+    }
+    if (!isFinite(this.vx) || !isFinite(this.vy)) this.vx = this.vy = 0;
+    if (!isFinite(this.angle)) this.angle = 0;
+    if (!isFinite(this.energy)) this.energy = 100;
     if (this.vehicle) {
       const v = this.vehicle;
       this.mode = 'drive'; this.x = v.x; this.y = v.y; this.vx = v.vx || 0; this.vy = v.vy || 0;
@@ -402,6 +435,7 @@
       if (dot < 0) { this.vx -= dot * c.nx; this.vy -= dot * c.ny; }
     }
     this.x = c.x; this.y = c.y;
+    if (!c.hit || N.world.isWalkable(this.x, this.y)) { this.goodX = this.x; this.goodY = this.y; }
     // walk cycle + footsteps
     const sp = Math.hypot(this.vx, this.vy);
     this.anim.speed = Math.min(1, sp / WALK);
@@ -412,6 +446,8 @@
       N.emit('footstep', { x: this.x, y: this.y, surf: N.world.surfaceAt(this.x, this.y), run: running, who: this });
     }
     if (sp < 4) this.anim.phase *= 0.8;
+    // idle timer drives the "you are here" marker
+    this.idleT = sp < 3 && canControl ? (this.idleT || 0) + dt : 0;
   };
 
   player.draw = function () {
@@ -420,16 +456,36 @@
     const self = this;
     R.queue('shadow', 0, () => D.shadow(self.x, self.y, 7, 9, self.angle, 1.5));
     R.queue('actors', this.y, () => D.sprite(self.x, self.y, self.angle, 8, (ctx) => drawPerson(ctx, self.look, self.anim)));
+    // after a few idle seconds a small bobbing chevron marks the player (busy screens, phones)
+    const a = Math.min(1, Math.max(0, ((this.idleT || 0) - 2.5) / 0.6));
+    if (a > 0 && N.state.mode === 'play') {
+      R.queue('sky', 0, (ctx) => {
+        const k = R.k(14), bob = Math.sin(N.time.real * 5) * 1.5;
+        const X = R.sx(self.x, k), Y = R.sy(self.y, k) - 9 - bob;
+        ctx.globalAlpha = a * 0.95;
+        ctx.fillStyle = '#1a1214';
+        ctx.beginPath(); ctx.moveTo(X - 4.5, Y - 4.5); ctx.lineTo(X + 4.5, Y - 4.5); ctx.lineTo(X, Y + 1.5); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#f2c230';
+        ctx.beginPath(); ctx.moveTo(X - 3, Y - 3.6); ctx.lineTo(X + 3, Y - 3.6); ctx.lineTo(X, Y); ctx.closePath(); ctx.fill();
+      });
+    }
   };
 
   player.serialize = function () {
     return { x: this.x, y: this.y, energy: this.energy, money: this.money, inventory: Array.from(this.inventory), name: this.name, look: this.look };
   };
   player.deserialize = function (o) {
-    if (!o) return;
-    this.x = o.x; this.y = o.y; this.energy = o.energy == null ? 100 : o.energy; this.money = o.money || 0;
-    this.inventory = new Set(o.inventory || []); if (o.name) this.name = o.name; if (o.look) this.look = o.look;
+    if (!o || typeof o !== 'object') return;
+    const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+    // junk / missing fields keep the current (or default) values instead of becoming NaN
+    this.x = num(o.x, this.x); this.y = num(o.y, this.y);
+    this.energy = U.clamp(num(o.energy, 100), 0, 100);
+    this.money = Math.round(U.clamp(num(o.money, this.money), -1e12, 1e12));
+    this.inventory = new Set(Array.isArray(o.inventory) ? o.inventory.filter((i) => typeof i === 'string') : []);
+    if (typeof o.name === 'string') this.name = o.name;
+    if (o.look && typeof o.look === 'object') this.look = o.look;
     this.vehicle = null; this.mode = 'foot'; this.vx = this.vy = 0;
+    this.goodX = this.x; this.goodY = this.y;
   };
 
   N.player = player;

@@ -39,7 +39,8 @@
 
   function surfAt(x, y) {
     const i = Math.floor(x / CELL), j = Math.floor(y / CELL);
-    if (i < 0 || j < 0 || i >= GW || j >= GH) return S.VOID;
+    // written so NaN coordinates also land here (VOID = blocked), never on grid[NaN]
+    if (!(i >= 0 && j >= 0 && i < GW && j < GH)) return S.VOID;
     return grid[j * GW + i];
   }
   W.surfaceAt = surfAt;
@@ -119,6 +120,7 @@
   W.collide = function (x, y, r, mode) {
     const blk = BLOCK[mode] || BLOCK.walk;
     let hit = false, nx = 0, ny = 0;
+    if (!isFinite(x) || !isFinite(y)) return { x, y, hit: true, nx: 0, ny: 0, bad: true };
     for (let it = 0; it < 5; it++) {
       let best = 0, bx = 0, by = 0, inside = false;
       const i0 = Math.floor((x - r) / CELL), i1 = Math.floor((x + r) / CELL);
@@ -235,7 +237,7 @@
         const l = ngrid.get(j * 4096 + i);
         if (l) for (const id of l) { const n = nodes[id]; if ((n.x - x) ** 2 + (n.y - y) ** 2 < 100) return n; }
       }
-      const n = { id: nodes.length, x, y, links: [], deg: 0, w: 0 };
+      const n = { id: nodes.length, x, y, links: [], inc: [], deg: 0, w: 0 };
       nodes.push(n);
       const key = gy * 4096 + gx;
       (ngrid.get(key) || ngrid.set(key, []).get(key)).push(n.id);
@@ -303,6 +305,7 @@
           edges.push(e);
           prev.links.push({ to: n.id, edge: e.id });
           if (!e.oneway) n.links.push({ to: prev.id, edge: e.id });
+          prev.inc.push(e.id); n.inc.push(e.id);
           prev.deg++; n.deg++;
         }
         prev = n; prevD = sp.d;
@@ -310,6 +313,9 @@
     }
     return makeRoadsAPI(nodes, edges, roads);
   }
+
+  // Accept a bare function (Math.random) or an N.util.rng(seed) object as a random source.
+  const toRnd = (r) => (typeof r === 'function' ? r : r && typeof r.next === 'function' ? () => r.next() : Math.random);
 
   function makeRoadsAPI(nodes, edges, list) {
     const nb = new Map();
@@ -346,7 +352,7 @@
       /** Random walk along the graph without U-turns. Returns [node, node, ...]. opts: {rng, avoid:[kinds]} */
       randomRoute(fromNode, steps, opts) {
         opts = opts || {};
-        const rnd = opts.rng || Math.random;
+        const rnd = toRnd(opts.rng);
         let cur = typeof fromNode === 'number' ? nodes[fromNode] : fromNode;
         if (!cur) return [];
         const route = [cur];
@@ -379,25 +385,65 @@
   }
 
   /** Nearest point on any road centre line: {x, y, dist, road, seg, t, angle}. */
-  W.nearestRoadPoint = function (x, y, pred) {
-    let best = null;
-    for (const r of W.data.roads || []) {
-      if (r.kind === 'path' || (pred && !pred(r))) continue;
-      const bb = r._bb;
-      if (best && bb && (x < bb[0] - best.dist || x > bb[2] + best.dist || y < bb[1] - best.dist || y > bb[3] + best.dist)) continue;
+  // Road segments bucketed on a 128u grid so nearest-road queries stay cheap.
+  const SG = 128;
+  let segGrid = null;
+  function buildSegGrid(roads) {
+    segGrid = new Map();
+    for (const r of roads) {
+      if (r.kind === 'path') continue;
       for (let s = 0; s < r.pts.length - 1; s++) {
         const a = r.pts[s], b = r.pts[s + 1];
-        const q = U.closestOnSeg(x, y, a[0], a[1], b[0], b[1]);
-        const d = Math.sqrt(q.d2);
-        if (!best || d < best.dist) best = { x: q.x, y: q.y, dist: d, road: r, seg: s, t: q.t, angle: Math.atan2(b[1] - a[1], b[0] - a[0]) };
+        const i0 = Math.floor(Math.min(a[0], b[0]) / SG), i1 = Math.floor(Math.max(a[0], b[0]) / SG);
+        const j0 = Math.floor(Math.min(a[1], b[1]) / SG), j1 = Math.floor(Math.max(a[1], b[1]) / SG);
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          // only cells the segment actually passes near
+          const cx = (i + 0.5) * SG, cy = (j + 0.5) * SG;
+          const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
+          let t = ((cx - a[0]) * dx + (cy - a[1]) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const qx = a[0] + dx * t - cx, qy = a[1] + dy * t - cy;
+          if (qx * qx + qy * qy > SG * SG * 0.6) continue;
+          const key = j * 4096 + i;
+          const l = segGrid.get(key);
+          if (l) l.push(r, s); else segGrid.set(key, [r, s]);
+        }
       }
     }
-    return best;
+  }
+  /** Nearest point on any road centre line: {x, y, dist, road, seg, t, angle} (null if none). */
+  W.nearestRoadPoint = function (x, y, pred) {
+    if (!segGrid) buildSegGrid(W.data.roads || []);
+    const ci = Math.floor(x / SG), cj = Math.floor(y / SG);
+    let bd2 = Infinity, br = null, bs = 0, bt = 0, bx = 0, by = 0;
+    const maxRing = Math.ceil(Math.max(N.WORLD_W, N.WORLD_H) / SG);
+    for (let ring = 0; ring <= maxRing; ring++) {
+      for (let j = cj - ring; j <= cj + ring; j++) {
+        for (let i = ci - ring; i <= ci + ring; i++) {
+          if (ring && Math.max(Math.abs(i - ci), Math.abs(j - cj)) !== ring) continue;
+          const l = segGrid.get(j * 4096 + i);
+          if (!l) continue;
+          for (let k = 0; k < l.length; k += 2) {
+            const r = l[k], si = l[k + 1];
+            if (pred && !pred(r)) continue;
+            const a = r.pts[si], b = r.pts[si + 1];
+            const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
+            let t = ((x - a[0]) * dx + (y - a[1]) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+            const qx = a[0] + dx * t, qy = a[1] + dy * t, d2 = (qx - x) * (qx - x) + (qy - y) * (qy - y);
+            if (d2 < bd2) { bd2 = d2; br = r; bs = si; bt = t; bx = qx; by = qy; }
+          }
+        }
+      }
+      // anything in a further ring is at least (ring) cells away
+      if (br && Math.sqrt(bd2) <= ring * SG) break;
+    }
+    if (!br) return null;
+    const a = br.pts[bs], b = br.pts[bs + 1];
+    return { x: bx, y: by, dist: Math.sqrt(bd2), road: br, seg: bs, t: bt, angle: Math.atan2(b[1] - a[1], b[0] - a[0]) };
   };
 
   /** A random point on a road (centre line), optionally filtered by road kind. */
   W.randomRoadPoint = function (rnd, kinds) {
-    rnd = rnd || Math.random;
+    rnd = toRnd(rnd);
     const roads = (W.data.roads || []).filter((r) => r.kind !== 'path' && (!kinds || kinds.indexOf(r.kind) >= 0));
     if (!roads.length) return null;
     const r = roads[Math.floor(rnd() * roads.length)];
@@ -475,10 +521,21 @@
   /* ======================================================= generation */
   const OK_LOT = new Uint8Array(16); OK_LOT[S.GROUND] = 1;
   let keepClear = [];
+  let keepGrid = new Map(); // 256u buckets of keep-clear circles
+  function addKeepClear(k) {
+    keepClear.push(k);
+    const i0 = Math.floor((k.x - k.r) / 256), i1 = Math.floor((k.x + k.r) / 256), j0 = Math.floor((k.y - k.r) / 256), j1 = Math.floor((k.y + k.r) / 256);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { const key = j * 4096 + i; const l = keepGrid.get(key); if (l) l.push(k); else keepGrid.set(key, [k]); }
+  }
   function clearOf(x, y, w, h) {
-    for (const k of keepClear) {
-      const qx = U.clamp(k.x, x, x + w), qy = U.clamp(k.y, y, y + h);
-      if ((qx - k.x) ** 2 + (qy - k.y) ** 2 < k.r * k.r) return false;
+    const i0 = Math.floor(x / 256), i1 = Math.floor((x + w) / 256), j0 = Math.floor(y / 256), j1 = Math.floor((y + h) / 256);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const l = keepGrid.get(j * 4096 + i);
+      if (!l) continue;
+      for (const k of l) {
+        const qx = U.clamp(k.x, x, x + w), qy = U.clamp(k.y, y, y + h);
+        if ((qx - k.x) ** 2 + (qy - k.y) ** 2 < k.r * k.r) return false;
+      }
     }
     return true;
   }
@@ -658,6 +715,7 @@
         b.front = fr.side;
         b.yard = { x, y, w, h, kolam: rng.next() < 0.35, col: rng.next() < 0.3 ? '#8aa05a' : null };
         b.cwall = { x, y, w, h, side: fr.side, col: rng.next() < 0.5 ? b.trim : b.wall };
+        if (rng.next() < 0.22) b.porch = true; // bulb over the gate at night
         // occasional colony shop at the road edge
         if (onRoad && style === 'colony' && rng.next() < 0.12) {
           const bg = rng.pick(SIGN_BG);
@@ -772,7 +830,12 @@
     gulmohar: { cols: ['#2f5a28', '#3f7032', '#4f8238', '#628f40'], h: 20, flowers: ['#e0482a', '#f07a2a', '#d83a24'] },
     ashoka: { cols: ['#1f4a24', '#2b5d2e', '#3a7038', '#4a8040'], h: 26, flowers: null },
     palm: { cols: ['#3e6a2a', '#4f7f34', '#6a9440', '#2e5222'], h: 30, flowers: null },
+    coconut: { cols: ['#456f2c', '#588a36', '#74a046', '#33582a'], h: 34, flowers: null, palm: true },
+    mango: { cols: ['#1c3f1c', '#28522a', '#376636', '#4a7a40'], h: 22, flowers: null },
+    tamarind: { cols: ['#2a4f24', '#386230', '#4a763a', '#5f8a46'], h: 24, flowers: null },
+    peepal: { cols: ['#25502a', '#326434', '#43783e', '#58904a'], h: 26, flowers: null },
   };
+  const isPalm = (kind) => kind === 'palm' || kind === 'coconut';
   const KIND_BY_STYLE = {
     oldcity: ['neem', 'neem', 'neem', 'palm'], market: ['neem', 'neem', 'palm'], colony: ['neem', 'ashoka', 'palm', 'gulmohar', 'neem', 'palm'],
     posh: ['palm', 'ashoka', 'gulmohar', 'palm', 'neem'], colonial: ['banyan', 'neem', 'ashoka', 'gulmohar'], cantonment: ['banyan', 'neem', 'gulmohar', 'neem'],
@@ -781,18 +844,19 @@
   function makeTree(x, y, kind, r, seed) {
     const K = TREE_KINDS[kind] || TREE_KINDS.neem;
     const rng = U.rng(seed || ((x * 73856093) ^ (y * 19349663)));
-    r = r || (kind === 'banyan' ? 16 + rng.next() * 8 : kind === 'palm' ? 9 + rng.next() * 3 : kind === 'ashoka' ? 6 + rng.next() * 2 : 9 + rng.next() * 5);
+    if (!TREE_KINDS[kind]) kind = 'neem';
+    r = r || (kind === 'banyan' ? 16 + rng.next() * 8 : isPalm(kind) ? 9 + rng.next() * 3 : kind === 'ashoka' ? 6 + rng.next() * 2 : 9 + rng.next() * 5);
     const h = K.h * (0.8 + rng.next() * 0.35) * (kind === 'banyan' ? 1 : Math.min(1.15, 0.7 + r / 30));
     const blobs = [];
-    if (kind !== 'palm') {
-      const n = kind === 'banyan' ? 11 : kind === 'ashoka' ? 5 : 7;
+    if (!isPalm(kind)) {
+      const n = kind === 'banyan' || kind === 'peepal' ? 11 : kind === 'ashoka' ? 5 : 7;
       for (let i = 0; i < n; i++) {
         const a = rng.next() * Math.PI * 2, d = rng.next() * r * 0.55;
         blobs.push([Math.cos(a) * d, Math.sin(a) * d, r * (0.38 + rng.next() * 0.3)]);
       }
     }
     const fronds = [];
-    if (kind === 'palm') {
+    if (isPalm(kind)) {
       const n = 7 + (rng.next() * 3 | 0);
       for (let i = 0; i < n; i++) fronds.push([((i + rng.next() * 0.5) / n) * Math.PI * 2, r * (0.8 + rng.next() * 0.35)]);
     }
@@ -812,6 +876,9 @@
   /* ======================================================= world build */
   W.build = function () {
     const t0 = performance.now();
+    const phases = (W.buildPhases = {});
+    let tp = t0, lastP = 'setup';
+    const mark = (name) => { const t = performance.now(); phases[lastP] = Math.round((t - tp) * 10) / 10; tp = t; lastP = name; };
     const D = N.WORLD_DATA || {};
     W.data = D;
     D.districts = D.districts || []; D.water = D.water || []; D.roads = D.roads || []; D.parks = D.parks || [];
@@ -842,16 +909,20 @@
       return [x0 - m, y0 - m, x1 + m, y1 + m];
     };
     for (const p of D.parks) p._bb = polyBB(p.poly, 4);
+    buildSegGrid(D.roads);
     for (const w of D.water) w._bb = polyBB(w.poly, (w.bank || 0) + 30);
 
+    mark('1');
     // 1. parks
     const parkSurf = { grass: S.GRASS, garden: S.GRASS, ground: S.GROUND, plaza: S.PLAZA, rock: S.GROUND };
-    for (const p of D.parks) fillPoly(p.poly, always(parkSurf[p.kind] == null ? S.GRASS : parkSurf[p.kind]));
+    for (const p of D.parks) fillPoly(p.poly, always(p.surface === 'sand' ? S.SAND : parkSurf[p.kind] == null ? S.GRASS : parkSurf[p.kind]));
+    mark('2');
     // 2. water + sandy banks
     for (const w of D.water) {
       if (w.bank) fillThickLine(w.poly, w.bank * 2, always(S.SAND), true);
       fillPoly(w.poly, always(S.WATER));
     }
+    mark('3');
     // 3. footpaths, then roads (bridges over water)
     for (const r of D.roads) {
       const fp = FOOT[r.kind] || 0;
@@ -863,21 +934,24 @@
       else if (r.kind === 'bund') fillThickLine(r.pts, r.w, always(S.ROAD));
       else fillThickLine(r.pts, r.w, (o) => (o === S.WATER || o === S.BRIDGE ? S.BRIDGE : S.ROAD));
     }
+    mark('4');
     // 4. landmarks: plaza + solid footprint
     for (const lm of D.landmarks) {
       if (lm.plaza) fillCircle(lm.x, lm.y, lm.plaza, always(S.PLAZA));
     }
     for (const lm of D.landmarks) {
       if (lm.solids) for (const s of lm.solids) solidRect(s[0], s[1], s[2], s[3]);
-      else if (!lm.noSolid) solidRect(lm.x - lm.w / 2, lm.y - lm.d / 2, lm.w, lm.d);
+      else if (!lm.noSolid && lm.solid !== false) solidRect(lm.x - lm.w / 2, lm.y - lm.d / 2, lm.w, lm.d);
       lm.x0 = lm.x - lm.w / 2; lm.y0 = lm.y - lm.d / 2; lm.x1 = lm.x + lm.w / 2; lm.y1 = lm.y + lm.d / 2;
     }
+    mark('5');
     // 5. keep-clear zones: spawns + places so generation never buries them
-    keepClear = [];
-    for (const p of D.places) keepClear.push({ x: p.x, y: p.y, r: Math.min(60, Math.max(14, (p.r || 20) * 0.6)) });
-    if (D.spawns.player) keepClear.push({ x: D.spawns.player[0], y: D.spawns.player[1], r: 22 });
-    if (D.spawns.home) keepClear.push({ x: D.spawns.home[0], y: D.spawns.home[1], r: 18 });
+    keepClear = []; keepGrid = new Map();
+    for (const p of D.places) addKeepClear({ x: p.x, y: p.y, r: Math.min(60, Math.max(14, (p.r || 20) * 0.6)) });
+    if (D.spawns.player) addKeepClear({ x: D.spawns.player[0], y: D.spawns.player[1], r: 22 });
+    if (D.spawns.home) addKeepClear({ x: D.spawns.home[0], y: D.spawns.home[1], r: 18 });
 
+    mark('6');
     // 6. hand-placed buildings
     const out = { bldgs: [], trees: [], walls: [], rocks: [], cranes: [] };
     const hrng = U.rng(4242);
@@ -894,6 +968,7 @@
       solidRect(x, y, w, d);
       out.bldgs.push(b);
     }
+    mark('7');
     // 7. procedural blocks
     for (const blk of D.blocks) {
       const before = out.bldgs.length;
@@ -911,6 +986,7 @@
     for (const b of out.bldgs) {
       if (b.yard && b.yard.lawn) fillRect(b.yard.x + 4, b.yard.y + 4, b.yard.w - 8, b.yard.h - 8, (o) => (o === S.GROUND ? S.GRASS : -1));
     }
+    mark('8');
     // 8. rocks (data + generated)
     const allRocks = D.rocks.concat(out.rocks.map((r) => ({ x: r.x, y: r.y, r: r.r, h: r.h || r.r * (1 + U.hash2(r.x, r.y) * 0.6) })));
     const OK_ROCK = new Uint8Array(16); OK_ROCK[S.GROUND] = 1; OK_ROCK[S.GRASS] = 1;
@@ -929,6 +1005,7 @@
       addStructure(s);
     }
 
+    mark('9');
     // 9. structures: buildings, walls, cranes
     for (const b of out.bldgs) {
       addStructure(b);
@@ -940,6 +1017,7 @@
     }
     for (const c of out.cranes) addStructure({ t: 'crane', x: c.x, y: c.y, h: c.h, a: c.a, len: c.len, x0: c.x - c.len, y0: c.y - c.len, x1: c.x + c.len, y1: c.y + c.len, cx: c.x, cy: c.y });
 
+    mark('10');
     // 10. bridge parapets (3D rails)
     for (const r of D.roads) {
       if (r.kind !== 'bridge') continue;
@@ -958,9 +1036,11 @@
       }
     }
 
+    mark('11');
     // 11. road graph
     W.roads = buildRoadGraph(D.roads);
 
+    mark('12');
     // 12. lamps along arterials / bund / bridges (median), streets (side tube lights)
     const junctions = W.roads.nodes.filter((n) => n.deg >= 3);
     const nearJunction = (x, y, r) => junctions.some((n) => (n.x - x) ** 2 + (n.y - y) ** 2 < r * r);
@@ -991,13 +1071,25 @@
       }
     }
 
+    mark('13');
     // 13. trees: data, generated (lots, parks, avenues)
+    // spacing hashes (32u cells) for trees and lamps
+    const tHash = new Map(), lHash = new Map();
+    const hput = (H, o) => { const key = Math.floor(o.y / 32) * 4096 + Math.floor(o.x / 32); const l = H.get(key); if (l) l.push(o); else H.set(key, [o]); };
+    const hnear = (H, x, y, d) => {
+      for (let j = Math.floor((y - d) / 32); j <= Math.floor((y + d) / 32); j++) for (let i = Math.floor((x - d) / 32); i <= Math.floor((x + d) / 32); i++) {
+        const l = H.get(j * 4096 + i); if (l) for (const o of l) if (Math.abs(o.x - x) < d && Math.abs(o.y - y) < d) return true;
+      }
+      return false;
+    };
+    for (const l of W.lamps) hput(lHash, l);
+    const nearTree = (x, y, d) => hnear(tHash, x, y, d), nearLamp = (x, y, d) => hnear(lHash, x, y, d);
     const placeTree = (x, y, kind, r) => {
       if (!treeSpotOK(x, y)) return;
       const t = makeTree(x, y, kind, r);
-      W.trees.push(t); addStructure(t);
+      W.trees.push(t); addStructure(t); hput(tHash, t);
     };
-    for (const t of D.trees) { const tt = makeTree(t.x, t.y, t.kind || 'neem', t.r); W.trees.push(tt); addStructure(tt); }
+    for (const t of D.trees) { const tt = makeTree(t.x, t.y, t.kind || 'neem', t.r); W.trees.push(tt); addStructure(tt); hput(tHash, tt); }
     const trng = U.rng(777);
     for (const t of out.trees) {
       const kinds = KIND_BY_STYLE[t.style] || KIND_BY_STYLE.colony;
@@ -1016,13 +1108,14 @@
           if (e === 0) y = y0 + 10; else if (e === 1) y = y1 - 10; else if (e === 2) x = x0 + 10; else x = x1 - 10;
         }
         if (!U.pointInPoly(x, y, p.poly)) continue;
-        if (W.trees.some((t) => Math.abs(t.x - x) < 14 && Math.abs(t.y - y) < 14)) continue;
+        if (nearTree(x, y, 14)) continue;
         placeTree(x, y, trng.pick(p.kind === 'garden' ? ['neem', 'gulmohar', 'ashoka', 'palm', 'banyan', 'neem'] : ['neem', 'neem', 'palm']));
       }
     }
     // avenue trees along streets/arterials on the footpath edge
     for (const r of D.roads) {
       if (r.kind !== 'street' && r.kind !== 'arterial' && r.kind !== 'bund') continue;
+      if (r.trees !== undefined) continue; // the map plants (or forbids) this road's avenue itself
       const off = r.w / 2 + (FOOT[r.kind] || 0) - 3;
       let acc = 30;
       for (let s = 0; s < r.pts.length - 1; s++) {
@@ -1038,7 +1131,7 @@
             if (trng.next() > p) continue;
             const tx = x + nx * off * sd, ty = y + ny * off * sd;
             if (nearJunction(tx, ty, r.w + 30)) continue;
-            if (W.lamps.some((l) => Math.abs(l.x - tx) < 10 && Math.abs(l.y - ty) < 10)) continue;
+            if (nearLamp(tx, ty, 10)) continue;
             placeTree(tx, ty, trng.pick(KIND_BY_STYLE[st] || KIND_BY_STYLE.colony), 7 + trng.next() * 6);
           }
         }
@@ -1046,13 +1139,16 @@
       }
     }
 
+    mark('14');
     // 14. landmarks as structures (drawn by N.landmarks)
     for (const lm of D.landmarks) addStructure({ t: 'landmark', lm, x0: lm.x - lm.w / 2 - 10, y0: lm.y - lm.d / 2 - 10, x1: lm.x + lm.w / 2 + 10, y1: lm.y + lm.d / 2 + 10, cx: lm.x, cy: lm.y });
 
     W.junctions = junctions;
+    soil = null;
     prepPainter();
     N.render.setGroundPainter(paintGround);
     W.built = true;
+    mark('end');
     W.buildMs = Math.round(performance.now() - t0);
     N.emit('world:built', W);
     return W;
@@ -1097,13 +1193,17 @@
       }
     });
     const blot = mk(512, 512, (g, w, h) => {
-      for (let i = 0; i < 70; i++) {
-        const x = rng.next() * w, y = rng.next() * h, r = 20 + rng.next() * 70;
-        const gr = g.createRadialGradient(x, y, 0, x, y, r);
-        const c = rng.next() < 0.5 ? '90,55,30' : '255,235,200';
-        gr.addColorStop(0, 'rgba(' + c + ',0.10)'); gr.addColorStop(1, 'rgba(' + c + ',0)');
-        g.fillStyle = gr;
-        for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) { g.save(); g.translate(ox, oy); g.fillRect(x - r, y - r, r * 2, r * 2); g.restore(); }
+      // soft, irregular soil variation (clusters of small soft dabs, never a clean circle)
+      for (let i = 0; i < 46; i++) {
+        const x = rng.next() * w, y = rng.next() * h, light = rng.next() < 0.6;
+        const c = light ? '255,235,200' : '110,70,40';
+        for (let k = 0; k < 9; k++) {
+          const px = x + (rng.next() - 0.5) * 90, py = y + (rng.next() - 0.5) * 60, r = 10 + rng.next() * 26;
+          const gr = g.createRadialGradient(px, py, 0, px, py, r);
+          gr.addColorStop(0, 'rgba(' + c + ',' + (light ? 0.05 : 0.035) + ')'); gr.addColorStop(1, 'rgba(' + c + ',0)');
+          g.fillStyle = gr;
+          for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) g.fillRect(px - r + ox, py - r + oy, r * 2, r * 2);
+        }
       }
     });
     const grass = mk(64, 64, (g, w, h) => {
@@ -1190,17 +1290,29 @@
     }
   }
 
+  // District soil colours on a coarse grid (1 px per DG units); upscaled with bilinear
+  // filtering in the chunk painter so neighbouring districts blend instead of meeting in
+  // hard straight edges.
+  let soil = null;
+  function buildSoil() {
+    soil = N.render.makeCanvas(DGW, DGH);
+    const g = soil.getContext('2d');
+    g.fillStyle = '#a98a66'; g.fillRect(0, 0, DGW, DGH);
+    for (const d of W.data.districts) {
+      const [x, y, w, h] = d.rect;
+      g.fillStyle = d.ground || '#a98a66';
+      g.fillRect(Math.round(x / DG), Math.round(y / DG), Math.max(1, Math.round(w / DG)), Math.max(1, Math.round(h / DG)));
+    }
+  }
+
   function paintGround(ctx, x0, y0, w, h) {
     const D = W.data, x1 = x0 + w, y1 = y0 + h;
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    // 1. district soil
-    ctx.fillStyle = '#a98a66'; ctx.fillRect(x0, y0, w, h);
-    for (const d of D.districts) {
-      const [dx, dy, dw, dh] = d.rect;
-      if (dx > x1 || dy > y1 || dx + dw < x0 || dy + dh < y0) continue;
-      ctx.fillStyle = d.ground || '#a98a66';
-      ctx.fillRect(dx, dy, dw, dh);
-    }
+    // 1. district soil (blended)
+    if (!soil) buildSoil();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(soil, x0 / DG - 2, y0 / DG - 2, w / DG + 4, h / DG + 4, x0 - 2 * DG, y0 - 2 * DG, w + 4 * DG, h + 4 * DG);
+    ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = pat.blot; ctx.fillRect(x0, y0, w, h);
     // 2. lots: yards, lawns, kolam
     const bi0 = Math.max(0, Math.floor(x0 / BK)), bj0 = Math.max(0, Math.floor(y0 / BK));
@@ -1231,6 +1343,7 @@
     for (const p of D.parks) {
       if (!inBB(p._bb, x0, y0, x1, y1)) continue;
       pathPoly(ctx, p.poly);
+      if (p.surface === 'sand') { ctx.fillStyle = '#cdb489'; ctx.fill(); ctx.fillStyle = pat.speck; ctx.fill(); continue; }
       ctx.fillStyle = PARKCOL[p.kind] || PARKCOL.grass; ctx.fill();
       if (p.kind === 'grass' || p.kind === 'garden') {
         ctx.fillStyle = pat.grass; ctx.fill();
@@ -1305,42 +1418,67 @@
     // markings
     ctx.lineCap = 'butt';
     for (const r of roads) {
-      if (r.kind === 'arterial') {
+      const median = r.median != null ? r.median : r.kind === 'arterial';
+      if (median) {
         // painted median: black + yellow stripes
         pathLine(ctx, r.pts); ctx.strokeStyle = '#1e1c1e'; ctx.lineWidth = 4; ctx.stroke();
         ctx.strokeStyle = '#e8c02c'; ctx.setLineDash([4, 4]); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      if (r.kind === 'arterial') {
+        if (!median) { pathLine(ctx, r.pts); ctx.strokeStyle = 'rgba(236,232,220,0.8)'; ctx.lineWidth = 1.2; ctx.setLineDash([8, 9]); ctx.stroke(); }
         ctx.strokeStyle = 'rgba(236,232,220,0.75)'; ctx.lineWidth = 1.2; ctx.setLineDash([9, 11]);
         pathLine(ctx, r._laneL); ctx.stroke(); pathLine(ctx, r._laneR); ctx.stroke();
         ctx.setLineDash([]);
-      } else if (r.kind === 'street' || r.kind === 'bund' || r.kind === 'bridge') {
+      } else if (!median && (r.kind === 'street' || r.kind === 'bund' || r.kind === 'bridge')) {
         pathLine(ctx, r.pts); ctx.strokeStyle = 'rgba(236,232,220,0.8)'; ctx.lineWidth = 1.2; ctx.setLineDash([8, 9]); ctx.stroke(); ctx.setLineDash([]);
       }
     }
-    // junction clears + zebra crossings
+    // junctions: re-paint each meeting road near the node in its own colour (narrowest
+    // first) to clear dashes/medians, then zebra crossings on street/arterial approaches
+    const RANK = { lane: 0, path: 0, bund: 1, street: 1, bridge: 2, arterial: 3 };
+    ctx.lineCap = 'butt';
     for (const n of W.junctions) {
       const R = n.w / 2 + 2;
       if (n.x + R + 30 < x0 || n.x - R - 30 > x1 || n.y + R + 30 < y0 || n.y - R - 30 > y1) continue;
-      const kinds = n.links.map((l) => W.roads.edges[l.edge].kind);
-      const lane = kinds.every((k) => k === 'lane');
-      ctx.beginPath(); ctx.arc(n.x, n.y, R * 0.92, 0, Math.PI * 2);
-      ctx.fillStyle = lane ? ROADCOL.lane : ROADCOL.street; ctx.fill();
-      ctx.fillStyle = lane ? pat.speck : pat.asphalt; ctx.fill();
-      if (lane) continue;
+      const inc = n.inc.map((id) => W.roads.edges[id]).sort((a, b) => (RANK[a.kind] - RANK[b.kind]) || a.w - b.w);
+      let widest = null;
+      for (const e of inc) {
+        const o = W.roads.nodes[e.a === n.id ? e.b : e.a];
+        let ux = o.x - n.x, uy = o.y - n.y; const L = Math.hypot(ux, uy) || 1; ux /= L; uy /= L;
+        const reach = Math.min(L, R + 4);
+        ctx.beginPath(); ctx.moveTo(n.x, n.y); ctx.lineTo(n.x + ux * reach, n.y + uy * reach);
+        ctx.lineWidth = e.w; ctx.strokeStyle = ROADCOL[e.kind] || ROADCOL.street; ctx.stroke();
+        ctx.strokeStyle = e.kind === 'lane' ? pat.speck : pat.asphalt; ctx.stroke();
+        widest = e;
+      }
+      if (widest) { // fill the centre with the dominant road's surface
+        ctx.beginPath(); ctx.arc(n.x, n.y, Math.min(widest.w / 2, R) * 0.98, 0, Math.PI * 2);
+        ctx.fillStyle = ROADCOL[widest.kind] || ROADCOL.street; ctx.fill();
+        ctx.fillStyle = widest.kind === 'lane' ? pat.speck : pat.asphalt; ctx.fill();
+      }
+      if (inc.every((e) => e.kind === 'lane')) continue;
       const seenDir = [];
-      for (const l of n.links) {
-        const e = W.roads.edges[l.edge];
+      for (const e of inc) {
         if (e.kind === 'lane' || e.kind === 'bridge') continue;
-        const o = W.roads.nodes[l.to];
+        const o = W.roads.nodes[e.a === n.id ? e.b : e.a];
         let ux = o.x - n.x, uy = o.y - n.y; const L = Math.hypot(ux, uy) || 1; ux /= L; uy /= L;
         if (L < R + 24) continue;
         if (seenDir.some((d) => d[0] * ux + d[1] * uy > 0.95)) continue;
         seenDir.push([ux, uy]);
-        const cxz = n.x + ux * (R + 7), cyz = n.y + uy * (R + 7);
-        ctx.save();
-        ctx.translate(cxz, cyz); ctx.rotate(Math.atan2(uy, ux));
+        // stand-off: clear of the widest crossing road
+        const off = (widest ? widest.w / 2 : R) + 6;
+        const cxz = n.x + ux * off, cyz = n.y + uy * off;
+        const ca = ux, sa = uy;
         ctx.fillStyle = 'rgba(238,234,222,0.85)';
-        for (let s = -e.w / 2 + 3; s <= e.w / 2 - 4; s += 4.5) ctx.fillRect(-4, s, 8, 2.4);
-        ctx.restore();
+        for (let t = -e.w / 2 + 3; t <= e.w / 2 - 4; t += 4.5) {
+          // stripe: 8 long (along the road) x 2.4 wide, centred on (cxz, cyz) + t * normal
+          const px = cxz - sa * t, py = cyz + ca * t;
+          ctx.beginPath();
+          ctx.moveTo(px - ca * 4, py - sa * 4); ctx.lineTo(px + ca * 4, py + sa * 4);
+          ctx.lineTo(px + ca * 4 - sa * 2.4, py + sa * 4 + ca * 2.4); ctx.lineTo(px - ca * 4 - sa * 2.4, py - sa * 4 + ca * 2.4);
+          ctx.closePath(); ctx.fill();
+        }
       }
     }
     // bridge edges (kerb lines)
@@ -1393,10 +1531,17 @@
           break;
         }
         case 'tree': case 'rock': {
-          const h = s.t === 'tree' ? s.h : s.h * 0.7, r = s.r * 0.9;
+          const tree = s.t === 'tree';
+          const h = tree ? s.h * 0.92 : s.h * 0.7, r = s.r * (tree ? (isPalm(s.kind) ? 0.55 : 0.82) : 0.9);
           const X = s.x + sx * h, Y = s.y + sy * h;
-          if (X + r < x0 || X - r > x1 || Y + r < y0 || Y - r > y1) return;
+          if (Math.max(X, s.x) + r < x0 || Math.min(X, s.x) - r > x1 || Math.max(Y, s.y) + r < y0 || Math.min(Y, s.y) - r > y1) return;
           ctx.moveTo(X + r, Y); ctx.arc(X, Y, r, 0, Math.PI * 2); ctx.closePath(); n++;
+          if (tree) { // trunk
+            const ex = sx * h * 0.8, ey = sy * h * 0.8, l = Math.hypot(ex, ey) || 1, w = s.kind === 'banyan' ? 1.6 : 0.8;
+            let nx = (-ey / l) * w, ny = (ex / l) * w;
+            if (ex * ny - ey * nx < 0) { nx = -nx; ny = -ny; }
+            ctx.moveTo(s.x + nx, s.y + ny); ctx.lineTo(s.x + ex + nx, s.y + ey + ny); ctx.lineTo(s.x + ex - nx, s.y + ey - ny); ctx.lineTo(s.x - nx, s.y - ny); ctx.closePath();
+          }
           break;
         }
         case 'lamp': case 'crane': {
@@ -1464,17 +1609,24 @@
      drawImage each instead of dozens of path ops; rendered at 2 px per world unit. */
   const SPR_RES = 2;
   function makeLRU(cap) {
+    // stamp-based LRU: hits only update a counter; eviction (rare) drops the oldest quarter
     const map = new Map();
+    let tick = 0;
     return {
-      get(key) { const c = map.get(key); if (c) { map.delete(key); map.set(key, c); } return c; },
+      get(key) { const e = map.get(key); if (!e) return null; e.t = ++tick; return e.c; },
       put(key, w, h) {
         let c = null;
-        if (map.size >= cap) { const k = map.keys().next().value; c = map.get(k); map.delete(k); }
-        if (!c) c = N.render.makeCanvas(w, h);
-        if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } else c.getContext('2d').clearRect(0, 0, w, h);
-        map.set(key, c);
+        if (map.size >= cap) {
+          const all = Array.from(map.entries()).sort((a, b) => a[1].t - b[1].t);
+          for (let i = 0; i < Math.ceil(cap / 4); i++) { if (!c && all[i][1].c instanceof HTMLCanvasElement) c = all[i][1].c; map.delete(all[i][0]); }
+        }
+        if (w != null) {
+          if (!c) c = N.render.makeCanvas(w, h);
+          if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } else c.getContext('2d').clearRect(0, 0, w, h);
+        }
         return c;
       },
+      set(key, c) { map.set(key, { c, t: ++tick }); return c; },
       clear() { map.clear(); },
       get size() { return map.size; },
     };
@@ -1506,7 +1658,9 @@
     const key = b.id * 4 + 'NSWE'.indexOf(face);
     let g = wallCache.get(key);
     if (g) return g;
-    g = { win: new Path2D(), lit: new Path2D(), shade: null, ledge: null, gf: null, gfLit: null, gfCol: null, any: false, anyLit: false };
+    wallCache.put(key); // may evict old entries
+    wstats.wallBuilds++;
+    g = wallCache.set(key, { win: new Path2D(), lit: new Path2D(), shade: null, ledge: null, gf: null, gfLit: null, gfCol: null, any: false, anyLit: false });
     const isFront = b.front === face;
     const fc = face.charCodeAt(0);
     if (b.win === 'glass') {
@@ -1571,7 +1725,7 @@
 
   function drawWallDetail(ctx, b, face) {
     const px = wallPx(b, face);
-    if (px < 3.5) return; // thin slivers near the screen centre: plain wall reads fine
+    if (px < 4.5) return; // thin slivers near the screen centre: plain wall reads fine
     const R = N.render;
     const [ax, ay, bx, by] = wallSeg(b, face);
     const L = Math.hypot(bx - ax, by - ay), ux = (bx - ax) / L, uy = (by - ay) / L;
@@ -1683,10 +1837,17 @@
       b._signC = [rx + rw / 2, ry + rh / 2, rw, rh];
     }
   }
+  // sprite cache misses this frame (count + ms), for profiling: N.world.stats
+  const wstats = (W.stats = { roofBuilds: 0, roofMs: 0, wallBuilds: 0, treeBuilds: 0, treeMs: 0 });
   function roofImage(b) {
     let c = roofCache.get(b.id);
     if (c) return c;
-    c = roofCache.put(b.id, Math.ceil(b.w * SPR_RES) + 2, Math.ceil(b.d * SPR_RES) + 2);
+    const t0 = performance.now();
+    try { return roofImageBuild(b); } finally { wstats.roofBuilds++; wstats.roofMs += performance.now() - t0; }
+  }
+  function roofImageBuild(b) {
+    let c;
+    c = roofCache.set(b.id, roofCache.put(b.id, Math.ceil(b.w * SPR_RES) + 2, Math.ceil(b.d * SPR_RES) + 2));
     const g = c.getContext('2d');
     g._ox = -b.x * SPR_RES + 1; g._oy = -b.y * SPR_RES + 1;
     g.setTransform(SPR_RES, 0, 0, SPR_RES, g._ox, g._oy);
@@ -1861,14 +2022,19 @@
     const key = t.id * 8 + oct;
     let c = treeCache.get(key);
     if (c) return c;
+    const t0 = performance.now();
+    try { return treeImageBuild(t, oct, key); } finally { wstats.treeBuilds++; wstats.treeMs += performance.now() - t0; }
+  }
+  function treeImageBuild(t, oct, key) {
+    let c;
     const pad = 3, size = Math.ceil((t.r * 2 + pad * 2) * SPR_RES);
-    c = treeCache.put(key, size, size);
+    c = treeCache.set(key, treeCache.put(key, size, size));
     const g = c.getContext('2d');
     const o = (t.r + pad) * SPR_RES;
     g.setTransform(SPR_RES, 0, 0, SPR_RES, o, o);
     const K = TREE_KINDS[t.kind] || TREE_KINDS.neem;
     const sa = (oct / 8) * Math.PI * 2, sdx = Math.cos(sa), sdy = Math.sin(sa);
-    if (t.kind === 'palm') {
+    if (isPalm(t.kind)) {
       g.lineCap = 'round';
       for (let pass = 0; pass < 3; pass++) {
         g.strokeStyle = pass === 0 ? K.cols[3] : pass === 1 ? K.cols[1] : K.cols[2];
@@ -1922,8 +2088,9 @@
       if (dx * dx + dy * dy < (t.r + 5) * (t.r + 5)) alpha = 0.45;
     }
     const kt = R.k(t.h), k0 = R.k(0), km = R.k(t.h * 0.85);
-    ctx.strokeStyle = t.kind === 'palm' ? '#8a6a4a' : '#5a4030';
-    ctx.lineWidth = Math.max(1, (t.kind === 'palm' ? 1.6 : t.kind === 'banyan' ? 3 : 2) * k0);
+    const palm = isPalm(t.kind);
+    ctx.strokeStyle = palm ? '#8a6a4a' : '#5a4030';
+    ctx.lineWidth = Math.max(1, (palm ? 1.6 : t.kind === 'banyan' ? 3 : 2) * k0);
     ctx.beginPath(); ctx.moveTo(R.sx(t.x, k0), R.sy(t.y, k0)); ctx.lineTo(R.sx(t.x, km), R.sy(t.y, km)); ctx.stroke();
     const oct = ((Math.round((Math.atan2(R.sun.dy, R.sun.dx) / (Math.PI * 2)) * 8) % 8) + 8) % 8;
     const img = treeImage(t, oct);
@@ -2017,9 +2184,40 @@
         for (const a of s.arms) lights.push({ x: s.x + a[0] * 1.6, y: s.y + a[1] * 1.6, r: s.tube ? 46 : 64, color: s.tube ? '#bfe8ff' : '#ffa040', intensity: s.tube ? 0.75 : 0.95 });
       }
       if (vis) R.queue('structures', R.distKey(s.cx, s.cy), s.fn);
+      if (night > 0.2 && vis && s.porch && s.cwall) {
+        const c = s.cwall, f = s.front;
+        const gx = f === 'W' ? c.x : f === 'E' ? c.x + c.w : c.x + c.w / 2, gy = f === 'N' ? c.y : f === 'S' ? c.y + c.h : c.y + c.h / 2;
+        lights.push({ x: (gx + s.cx) / 2, y: (gy + s.cy) / 2, r: 24, color: '#ffc870', intensity: 0.5, h: 4 });
+      }
     });
     if (night > 0.2) R.queue('light', 0, (ctx) => drawLitWalls(ctx, night));
+    R.queue('ground', 0, drawWaterGlints);
   };
+
+  // Animated glitter on visible water: sampled on a jittered 20u grid (cheap), coloured by
+  // the time of day (white noon sparkle, gold at golden hour, faint blue moonlight).
+  function drawWaterGlints(ctx) {
+    const R = N.render, v = R.view, t = N.time.real, step = 20;
+    const m = N.clock.minutes, night = R.night || 0;
+    const col = night > 0.6 ? '#a8c4ff' : m > 990 && m < 1150 ? '#ffd48a' : m < 450 ? '#ffc8d8' : '#f2fbff';
+    const base = night > 0.6 ? 0.25 : 0.55;
+    ctx.fillStyle = col;
+    const i0 = Math.floor(v.x0 / step), i1 = Math.floor(v.x1 / step), j0 = Math.floor(v.y0 / step), j1 = Math.floor(v.y1 / step);
+    const k = R.Z;
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const hsh = U.hash2(i, j);
+        const x = (i + hsh) * step, y = (j + U.hash2(j, i)) * step;
+        if (surfAt(x, y) !== S.WATER) continue;
+        const a = Math.sin(t * (1.2 + hsh * 2) + hsh * 40);
+        if (a < 0.35) continue;
+        ctx.globalAlpha = (a - 0.35) * base;
+        const len = (2 + hsh * 5) * k;
+        ctx.fillRect(Math.round(R.sx(x, k)), Math.round(R.sy(y, k)), Math.max(1, len), 1);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
 
   /* ------------------------------------------------------- map image */
   const mapCache = new Map();

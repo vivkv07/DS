@@ -65,6 +65,11 @@ async function run(browser, V) {
   let s = await state();
   if (s.mode !== 'play') fail(V.name, 'mode is ' + s.mode); else ok('playing at ' + s.player.x + ',' + s.player.y + ' (' + s.district + ', ' + s.surface + ')');
   const start = s.player;
+  // in-page odometer (distance walked while the input below is applied)
+  await page.evaluate(() => {
+    window.__odo = 0; let lx = N.player.x, ly = N.player.y;
+    N.addSystem({ id: '__odo', order: 99, runIn: ['play'], update() { window.__odo += Math.hypot(N.player.x - lx, N.player.y - ly); lx = N.player.x; ly = N.player.y; } });
+  });
 
   // ---- move with real input
   if (!V.touch) {
@@ -88,15 +93,31 @@ async function run(browser, V) {
     await drag(0, 60, 700);
     await drag(-60, 0, 700);
     await drag(0, -60, 700);
-    // ACTION button: a tap must register as a pressed action without errors
-    await page.tap('#touch .t-action');
+    // (the ACTION button tap is exercised below against a test interactable: a bare tap here
+    // would start whatever real content sits near the spawn, e.g. the antenna minigame)
   }
   await sleep(200);
   s = await state();
   const moved = Math.hypot(s.player.x - start.x, s.player.y - start.y);
-  const travelled = await page.evaluate(() => N.player.anim.phase);
-  if (moved < 15 && travelled < 3) fail(V.name, 'player did not move (moved ' + moved.toFixed(1) + ')'); else ok('player moved ' + moved.toFixed(1) + 'u (walk phase ' + travelled.toFixed(1) + ')');
+  const odo = await page.evaluate(() => window.__odo);
+  if (odo < 60) fail(V.name, 'player barely moved (walked ' + odo.toFixed(1) + 'u, net ' + moved.toFixed(1) + 'u)');
+  else ok('player walked ' + odo.toFixed(1) + 'u (net ' + moved.toFixed(1) + 'u) with real ' + (V.touch ? 'touch' : 'keyboard') + ' input');
   await shot('moved');
+
+  // ---- ACTION context: an interactable next to the player shows its label; ACTION uses it
+  await page.evaluate(() => {
+    window.__used = 0;
+    // priority 99: must beat real content near the spawn (shops, minigame spots, givers)
+    N.interact.add('__test', { x: N.player.x, y: N.player.y, r: 20, priority: 99, label: 'Chai pe chalo', use: () => { window.__used++; } });
+  });
+  await sleep(150);
+  const label = await page.evaluate(() => ({ label: N.input.actionLabel, prompt: document.querySelector('#prompt.show span') ? document.querySelector('#prompt.show span').textContent : null, btn: document.querySelector('#touch .t-action .t-txt') ? document.querySelector('#touch .t-action .t-txt').textContent : null }));
+  if (V.touch) await page.tap('#touch .t-action'); else await page.keyboard.press('KeyE');
+  await sleep(150);
+  const used = await page.evaluate(() => { const u = window.__used; N.interact.remove('__test'); return u; });
+  if (label.label !== 'Chai pe chalo' || (V.touch ? label.btn !== 'Chai pe chalo' : label.prompt !== 'Chai pe chalo')) fail(V.name, 'action label not shown: ' + JSON.stringify(label));
+  else if (used !== 1) fail(V.name, 'interactable use() ran ' + used + ' times');
+  else ok('ACTION label "' + label.label + '" shown and used once');
 
   // ---- pause / resume with the keyboard (desktop) or the PAUSE button (touch)
   if (!V.touch) { await page.keyboard.press('Escape'); } else { await page.tap('#touch .t-pause'); }
@@ -129,11 +150,26 @@ async function run(browser, V) {
   }
 
   // ---- night mode
-  await page.evaluate(() => { N.debug.teleport(N.places.home ? 'home' : Object.keys(N.places)[0]); N.debug.setTime(21, 0); });
+  await page.evaluate(() => {
+    const sp = N.WORLD_DATA.spawns && N.WORLD_DATA.spawns.player;
+    if (N.places.home) N.debug.teleport('home'); else if (sp) N.debug.teleport(sp[0], sp[1]);
+    N.debug.setTime(21, 0);
+  });
   await sleep(700);
   await shot('night');
   const night = await page.evaluate(() => N.render.night);
   if (!(night > 0.5)) fail(V.name, 'night overlay not active at 21:00 (night=' + night + ')'); else ok('night overlay ' + night.toFixed(2));
+
+  // ---- rotate the phone: the canvas must re-fit the new viewport (integer scale, no scroll)
+  if (V.name === 'landscape') {
+    await page.setViewportSize({ width: V.viewport.height, height: V.viewport.width });
+    await sleep(400);
+    const fit = await page.evaluate(() => { const r = N.render.canvas.getBoundingClientRect(); return { W: N.render.W, H: N.render.H, cw: Math.round(r.width), ch: Math.round(r.height), iw: innerWidth, ih: innerHeight }; });
+    if (fit.W > fit.H || fit.cw < fit.iw || fit.ch < fit.ih) fail(V.name, 'canvas did not re-fit after rotation: ' + JSON.stringify(fit)); else ok('rotation re-fit ' + JSON.stringify(fit));
+    await shot('rotated');
+    await page.setViewportSize(V.viewport);
+    await sleep(300);
+  }
 
   // ---- frame time over 3 s (walking in a circle, golden hour)
   await page.evaluate(() => { N.debug.setTime(17, 0); N.input.setMove(0.7, 0.7); });

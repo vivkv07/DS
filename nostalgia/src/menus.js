@@ -75,8 +75,10 @@
   function attract(dt) {
     attractT += dt;
     const D = N.WORLD_DATA || {};
-    const pts = (D.places || []).filter((p) => p.kind === 'landmark').slice(0, 6);
-    if (!pts.length || !N.render.camOverride) return;
+    let pts = (D.places || []).filter((p) => p.kind === 'landmark').slice(0, 6);
+    if (!pts.length) pts = (D.landmarks || []).slice(0, 6);
+    if (!pts.length) pts = [{ x: N.player.x, y: N.player.y }];
+    if (!N.render.camOverride) return;
     const seg = 14; // seconds per hop
     const i = Math.floor(attractT / seg) % pts.length, j = (i + 1) % pts.length;
     const t = N.util.smooth((attractT % seg) / seg);

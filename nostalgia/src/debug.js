@@ -24,6 +24,7 @@
           x = lm.x; y = lm.y + lm.d / 2 + 16;
         } else { x = p.x; y = p.y; }
       } else { x = +a; y = +b; }
+      if (!isFinite(x) || !isFinite(y)) return null;
       N.player.teleport(x, y);
       return { x: N.player.x, y: N.player.y };
     },
@@ -51,10 +52,13 @@
     collectAll() { return N.collectibles && N.collectibles.collectAll ? N.collectibles.collectAll() : 0; },
     god(on) { N.player.god = on !== false; return N.player.god; },
     fps() { return N.perf ? N.perf.fps : 0; },
-    /** {fps, frameMs (avg CPU ms per frame: update + draw), updateMs, drawMs, chunks, entities, structuresQueued} */
+    /** {fps, frameMs (avg CPU ms per frame: update + draw), updateMs, drawMs, chunks, entities, queued, chunkBuilds, buildMs,
+     *   ms: last frame's cost per phase (enqWorld, enqOther, chunks, ground..fx layers, cast, night, screenfx, flush)} */
     perf() {
       const p = N.perf || {};
-      return { fps: p.fps, frameMs: p.frameMs, updateMs: p.updateMs, drawMs: p.drawMs, chunks: N.render.chunkCount(), entities: N.entities.count(), queued: N.render.stats.queued, chunkBuilds: N.render.stats.chunkBuilds, buildMs: N.world.buildMs };
+      const ms = {};
+      for (const k in N.render.stats.ms) ms[k] = Math.round(N.render.stats.ms[k] * 100) / 100; // last frame, per phase
+      return { fps: p.fps, frameMs: p.frameMs, updateMs: p.updateMs, drawMs: p.drawMs, chunks: N.render.chunkCount(), entities: N.entities.count(), queued: N.render.stats.queued, chunkBuilds: N.render.stats.chunkBuilds, buildMs: N.world.buildMs, ms };
     },
     state() {
       const p = N.player;

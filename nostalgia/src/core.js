@@ -230,6 +230,16 @@
     },
     is(mode) { return this.mode === mode; },
     has(mode) { return this.stack.indexOf(mode) >= 0; },
+    /** Remove the topmost `mode` wherever it sits (an overlay that closes while another one,
+     *  e.g. the pause menu, is on top of it). Never empties the stack. Returns true if removed. */
+    remove(mode) {
+      const i = this.stack.lastIndexOf(mode);
+      if (i < 0 || this.stack.length <= 1) return false;
+      if (i === this.stack.length - 1) { this.pop(); return true; }
+      this.stack.splice(i, 1);
+      N.emit('state', { mode: this.mode, prev: this.mode, op: 'remove', removed: mode });
+      return true;
+    },
   };
 
   /* ------------------------------------------------------------------ time */

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audio Lab</title>
+<style>
+  :root { color-scheme: dark; --bg: #14121a; --fg: #efe9dc; --dim: #9a8f86; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 12px/1.3 ui-monospace, Menlo, Consolas, monospace; }
+  #sheet { display: block; }
+</style>
+</head>
+<body>
+<canvas id="sheet" width="1400" height="200"></canvas>
+<script src="../src/core.js"></script>
+<script src="audio.js"></script>
+<script>
+// Spectrogram + waveform painter used by the lab runner (not part of the game).
+window.LAB = (() => {
+  function fft(re, im) {
+    const n = re.length;
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+    }
+    for (let len = 2; len <= n; len <<= 1) {
+      const ang = -2 * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang);
+      for (let i = 0; i < n; i += len) {
+        let cr = 1, ci = 0;
+        for (let k = 0; k < len / 2; k++) {
+          const ar = re[i + k], ai = im[i + k];
+          const br = re[i + k + len / 2] * cr - im[i + k + len / 2] * ci;
+          const bi = re[i + k + len / 2] * ci + im[i + k + len / 2] * cr;
+          re[i + k] = ar + br; im[i + k] = ai + bi;
+          re[i + k + len / 2] = ar - br; im[i + k + len / 2] = ai - bi;
+          const nr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = nr;
+        }
+      }
+    }
+  }
+  function heat(v) { // 0..1 -> colour
+    v = Math.max(0, Math.min(1, v));
+    const r = Math.min(255, v * 3 * 255), g = Math.min(255, Math.max(0, (v - 0.33) * 3 * 255)), b = Math.min(255, Math.max(0, (v - 0.66) * 3 * 255) + v * 90);
+    return [r | 0, g | 0, b | 0];
+  }
+  function draw(ctx, buf, x0, y0, w, h, label) {
+    const d0 = buf.getChannelData(0), d1 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : d0, sr = buf.sampleRate;
+    const n = 1024, hop = Math.max(1, Math.floor((d0.length - n) / w));
+    const wh = 22; // waveform strip
+    const sh = h - wh - 14;
+    const img = ctx.createImageData(w, sh);
+    const re = new Float32Array(n), im = new Float32Array(n);
+    const fmin = 40, fmax = 14000;
+    for (let col = 0; col < w; col++) {
+      const off = col * hop;
+      for (let i = 0; i < n; i++) { const win = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1)); re[i] = ((d0[off + i] || 0) + (d1[off + i] || 0)) * 0.5 * win; im[i] = 0; }
+      fft(re, im);
+      for (let row = 0; row < sh; row++) {
+        const f = fmin * Math.pow(fmax / fmin, 1 - row / (sh - 1));
+        const bin = Math.min(n / 2 - 1, Math.round(f / sr * n));
+        const mag = Math.hypot(re[bin], im[bin]);
+        const db = 20 * Math.log10(mag / (n / 4) + 1e-9);
+        const c = heat((db + 84) / 78);
+        const k = (row * w + col) * 4;
+        img.data[k] = c[0]; img.data[k + 1] = c[1]; img.data[k + 2] = c[2]; img.data[k + 3] = 255;
+      }
+    }
+    ctx.fillStyle = '#0c0b10'; ctx.fillRect(x0, y0, w, h);
+    ctx.putImageData(img, x0, y0 + 14 + wh);
+    // waveform envelope
+    ctx.fillStyle = '#6fd3c4';
+    const per = Math.max(1, Math.floor(d0.length / w));
+    for (let col = 0; col < w; col++) {
+      let pk = 0; for (let i = col * per; i < (col + 1) * per && i < d0.length; i++) pk = Math.max(pk, Math.abs(d0[i]), Math.abs(d1[i]));
+      const hh = Math.min(1, pk) * (wh - 2);
+      ctx.fillStyle = pk > 0.99 ? '#ff4d4d' : '#6fd3c4';
+      ctx.fillRect(x0 + col, y0 + 14 + wh / 2 - hh / 2, 1, Math.max(1, hh));
+    }
+    ctx.fillStyle = '#efe9dc'; ctx.font = '11px monospace';
+    ctx.fillText(label, x0 + 3, y0 + 11);
+    // 1 kHz / 4 kHz guide ticks
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    for (const f of [100, 1000, 4000]) { const row = (1 - Math.log(f / fmin) / Math.log(fmax / fmin)) * (sh - 1); ctx.fillRect(x0, y0 + 14 + wh + row, 4, 1); }
+  }
+  return { draw };
+})();
+</script>
+</body>
+</html>

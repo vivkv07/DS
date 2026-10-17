@@ -11,7 +11,7 @@
 
   const LAYERS = ['ground', 'shadow', 'actors', 'structures', 'sky', 'light', 'fx'];
   const CH = 256;          // chunk size in world units (= px at zoom 1)
-  const MAX_CHUNKS = 56;   // LRU cap
+  const MAX_CHUNKS = 64;   // LRU cap (256 KB each): visible + prefetch ring + look-ahead
 
   const R = (N.render = {
     canvas: null, ctx: null,
@@ -25,7 +25,7 @@
     lights: [],              // per-frame: {x, y, r, color, intensity, h?}
     fx: { vhs: 0, flash: 0, fade: 0, fadeColor: '#000000', grade: true },
     sun: { dx: 0.6, dy: 0.2, sx: -0.6, sy: -0.2, elev: 0.5, strength: 1 },
-    stats: { chunkBuilds: 0, queued: 0 },
+    stats: { chunkBuilds: 0, queued: 0, ms: {} }, // ms: last frame's cost per flush phase
     LAYERS, CH,
   });
 
@@ -41,25 +41,44 @@
   }
   R.makeCanvas = makeCanvas;
 
+  // The canvas is PAD internal pixels larger than the viewport on every side and is shifted
+  // by the camera's sub-pixel remainder (rounded to device pixels) each frame, so scrolling and
+  // the followed vehicle move smoothly even though the camera itself is snapped to the
+  // internal pixel grid (which keeps the cached ground crisp). See setupFrame / applySubpixel.
+  const PAD = 1;
+  R.PAD = PAD;
   function resize() {
     const c = R.canvas; if (!c) return;
     const dpr = window.devicePixelRatio || 1;
     const vw = Math.max(1, window.innerWidth), vh = Math.max(1, window.innerHeight);
     const pw = Math.round(vw * dpr), ph = Math.round(vh * dpr);
     const scale = Math.max(1, Math.round(Math.min(pw, ph) / 400));
-    const W = Math.ceil(pw / scale), H = Math.ceil(ph / scale);
+    const W = Math.ceil(pw / scale) + PAD * 2, H = Math.ceil(ph / scale) + PAD * 2;
     R.dpr = dpr; R.scale = scale;
     if (W !== R.W || H !== R.H || c.width !== W || c.height !== H) {
       R.W = W; R.H = H;
       c.width = W; c.height = H;
-      if (lightCanvas) { lightCanvas.width = Math.ceil(W / 2); lightCanvas.height = Math.ceil(H / 2); }
+      if (lightCanvas) { lightCanvas.width = Math.ceil(W / LIGHT_DIV); lightCanvas.height = Math.ceil(H / LIGHT_DIV); }
     }
     c.style.width = (W * scale) / dpr + 'px';
     c.style.height = (H * scale) / dpr + 'px';
+    c.style.left = (-PAD * scale) / dpr + 'px';
+    c.style.top = (-PAD * scale) / dpr + 'px';
+    subpx.x = subpx.y = NaN; // force a transform refresh
     R.ctx.imageSmoothingEnabled = false;
-    // Portrait phones see less horizontally: zoom out a touch so the street reads.
-    R.baseZoom = W < H ? 0.92 : 1;
+    R.baseZoom = 1; // (portrait already shows ~844 u vertically; no extra zoom-out)
     N.emit('render:resize', { W, H, scale });
+  }
+  // Sub-pixel camera remainder, applied as a CSS translate in whole device pixels.
+  const subpx = { x: 0, y: 0 };
+  R.subpx = subpx;
+  function applySubpixel(fx, fy) {
+    const c = R.canvas; if (!c) return;
+    const dev = R.scale; // device pixels per internal pixel
+    const tx = Math.round(-fx * dev), ty = Math.round(-fy * dev);
+    if (tx === subpx.x && ty === subpx.y) return;
+    subpx.x = tx; subpx.y = ty;
+    c.style.transform = tx || ty ? 'translate3d(' + tx / R.dpr + 'px,' + ty / R.dpr + 'px,0)' : '';
   }
 
   /* ------------------------------------------------------------- camera */
@@ -75,15 +94,19 @@
   function updateCamera(dt) {
     const cam = R.cam;
     const o = R.camOverride;
-    if (o) {
+    // never let a bad value (NaN from a broken script / entity) poison the camera for good
+    if (!isFinite(cam.x) || !isFinite(cam.y)) { const e = followEntity(); cam.x = e && isFinite(e.x) ? e.x : N.WORLD_W / 2; cam.y = e && isFinite(e.y) ? e.y : N.WORLD_H / 2; camState.inited = false; }
+    if (!(cam.zoom > 0.05) || !isFinite(cam.zoom)) cam.zoom = 1;
+    if (!isFinite(camState.lookX) || !isFinite(camState.lookY)) camState.lookX = camState.lookY = 0;
+    if (o && !(isFinite(o.x) && isFinite(o.y))) { /* ignore a broken override this frame */ } else if (o) {
       const rate = o.snap ? 1 : 1 - Math.exp(-dt * (o.rate || 3));
       cam.x += (o.x - cam.x) * rate; cam.y += (o.y - cam.y) * rate;
       if (o.zoom) cam.zoom += (o.zoom - cam.zoom) * rate;
       camState.inited = true;
     } else {
       const e = followEntity();
-      if (e) {
-        const vx = e.vx || 0, vy = e.vy || 0;
+      if (e && isFinite(e.x) && isFinite(e.y)) {
+        const vx = isFinite(e.vx) ? e.vx : 0, vy = isFinite(e.vy) ? e.vy : 0;
         const speed = Math.hypot(vx, vy);
         // look-ahead in velocity direction, smoothed slowly so it doesn't swing
         let lx = vx * 0.5, ly = vy * 0.5;
@@ -119,9 +142,12 @@
     const W = R.W, H = R.H;
     Z = Math.max(0.2, R.cam.zoom);
     cx = W / 2; cy = H / 2;
-    // snap camera to the pixel grid so the cached ground never shimmers
-    camX = Math.round((R.cam.x + shakeX) * Z) / Z;
-    camY = Math.round((R.cam.y + shakeY) * Z) / Z;
+    // snap camera to the pixel grid so the cached ground never shimmers; the remainder is
+    // applied as a whole-device-pixel CSS shift of the (padded) canvas (applySubpixel)
+    const rx = (R.cam.x + shakeX) * Z, ry = (R.cam.y + shakeY) * Z;
+    camX = Math.round(rx) / Z;
+    camY = Math.round(ry) / Z;
+    applySubpixel(rx - Math.round(rx), ry - Math.round(ry));
     const v = R.view;
     v.x0 = camX - cx / Z; v.x1 = camX + cx / Z;
     v.y0 = camY - cy / Z; v.y1 = camY + cy / Z;
@@ -161,9 +187,11 @@
     q.push({ k: sortKey || 0, i: qSeq++, fn });
   };
   const byKey = (a, b) => a.k - b.k || a.i - b.i;
+  const now = () => performance.now();
   function runLayer(layer) {
     const q = queues[layer];
-    if (!q.length) return;
+    if (!q.length) { R.stats.ms[layer] = 0; return; }
+    const t0 = now();
     if (layer !== 'ground' && layer !== 'light' && layer !== 'fx') q.sort(byKey);
     else q.sort(byKey);
     const ctx = R.ctx;
@@ -176,6 +204,7 @@
     }
     R.stats.queued += q.length;
     q.length = 0;
+    R.stats.ms[layer] = now() - t0;
   }
   // structures sort key helper: farthest from camera first
   R.distKey = (x, y) => -((x - camX) * (x - camX) + (y - camY) * (y - camY));
@@ -233,40 +262,58 @@
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) getChunk(i, j, true);
   };
 
+  // Ground chunks: visible ones missing from the cache are built nearest-first within a time
+  // budget (at least one per frame); spare budget repaints one chunk baked with an old sun, or
+  // prefetches one chunk ahead of the camera's travel, so driving fast never stalls a frame on
+  // a burst of chunk builds.
+  const BUILD_MS = 2.5;
+  const visList = [];
+  let prefetchTick = 0;
   function drawGround(ctx) {
     const v = R.view;
     const maxI = Math.ceil(N.WORLD_W / CH) - 1, maxJ = Math.ceil(N.WORLD_H / CH) - 1;
     const i0 = Math.max(0, Math.floor(v.x0 / CH)), i1 = Math.min(maxI, Math.floor(v.x1 / CH));
     const j0 = Math.max(0, Math.floor(v.y0 / CH)), j1 = Math.min(maxJ, Math.floor(v.y1 / CH));
-    let budget = 4; // chunk builds per frame; missing chunks fall back to a flat fill
-    let stale = 2;  // repaints per frame of chunks baked with an older sun (shadows)
-    // build nearest-to-centre first
-    const list = [];
+    visList.length = 0;
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
       const dx = (i + 0.5) * CH - camX, dy = (j + 0.5) * CH - camY;
-      list.push([dx * dx + dy * dy, i, j]);
+      visList.push(Math.floor(dx * dx + dy * dy) * 4096 + j * 64 + i); // packed: distance, then index
     }
-    list.sort((a, b) => a[0] - b[0]);
+    visList.sort((a, b) => a - b);
+    const t0 = now();
+    let built = 0, missing = 0, staleDone = false;
     ctx.imageSmoothingEnabled = Z < 0.97;
-    for (const [, i, j] of list) {
+    for (let n = 0; n < visList.length; n++) {
+      const code = visList[n] % 4096, i = code % 64, j = (code - i) / 64;
       let c = getChunk(i, j, false);
-      if (!c && budget > 0) { c = buildChunk(i, j); budget--; }
-      else if (c && stale > 0 && chunkEpoch.get(j * 1000 + i) !== R.shadowEpoch) { c = buildChunk(i, j); stale--; }
+      if (!c) {
+        if (built === 0 || now() - t0 < BUILD_MS) { c = buildChunk(i, j); built++; } else missing++;
+      } else if (!staleDone && !built && chunkEpoch.get(j * 1000 + i) !== R.shadowEpoch) {
+        c = buildChunk(i, j); staleDone = true; // the sun moved: refresh baked shadows, one per frame
+      }
       const x0 = Math.round(cx + (i * CH - camX) * Z), x1 = Math.round(cx + ((i + 1) * CH - camX) * Z);
       const y0 = Math.round(cy + (j * CH - camY) * Z), y1 = Math.round(cy + ((j + 1) * CH - camY) * Z);
       if (c) ctx.drawImage(c, x0, y0, x1 - x0, y1 - y0);
       else { ctx.fillStyle = '#6b5a48'; ctx.fillRect(x0, y0, x1 - x0, y1 - y0); }
     }
     ctx.imageSmoothingEnabled = false;
-    // prefetch one chunk ahead in the direction of camera travel
-    if (budget > 0) {
-      const e = followEntity();
-      if (e && (e.vx || e.vy)) {
-        const px = camX + Math.sign(e.vx || 0) * (v.x1 - v.x0) * 0.75, py = camY + Math.sign(e.vy || 0) * (v.y1 - v.y0) * 0.75;
-        const i = Math.floor(px / CH), j = Math.floor(py / CH);
-        if (i >= 0 && j >= 0 && i <= maxI && j <= maxJ) getChunk(i, j, true);
+    if (missing || built || staleDone || now() - t0 > BUILD_MS || (++prefetchTick % 3)) return;
+    // prefetch: the nearest uncached chunk in the view grown by half a chunk plus ~1 s of travel
+    const e = followEntity();
+    const lead = Math.min(1, 380 / Math.max(1, Math.hypot((e && e.vx) || 0, (e && e.vy) || 0)));
+    const ax = e && isFinite(e.vx) ? e.vx * lead : 0, ay = e && isFinite(e.vy) ? e.vy * lead : 0;
+    const px0 = Math.min(v.x0, v.x0 + ax) - CH / 2, px1 = Math.max(v.x1, v.x1 + ax) + CH / 2;
+    const py0 = Math.min(v.y0, v.y0 + ay) - CH / 2, py1 = Math.max(v.y1, v.y1 + ay) + CH / 2;
+    const fx = camX + ax, fy = camY + ay;
+    let best = -1, bd = Infinity;
+    for (let j = Math.max(0, Math.floor(py0 / CH)); j <= Math.min(maxJ, Math.floor(py1 / CH)); j++) {
+      for (let i = Math.max(0, Math.floor(px0 / CH)); i <= Math.min(maxI, Math.floor(px1 / CH)); i++) {
+        if (chunks.has(j * 1000 + i)) continue;
+        const dx = (i + 0.5) * CH - fx, dy = (j + 0.5) * CH - fy, d = dx * dx + dy * dy;
+        if (d < bd) { bd = d; best = j * 1000 + i; }
       }
     }
+    if (best >= 0) { buildChunk(best % 1000, Math.floor(best / 1000)); R.stats.prefetched = (R.stats.prefetched || 0) + 1; }
   }
 
   /* --------------------------------------------------------------- sun */
@@ -689,6 +736,8 @@
   }
 
   /* ----------------------------------------------- grade, night, effects */
+  // The night darkness mask is soft, so it is painted at 1/LIGHT_DIV resolution and upscaled.
+  const LIGHT_DIV = 4;
   let lightCanvas = null, lightCtx = null;
   const blobCache = new Map();
   function blob(color) {
@@ -713,7 +762,7 @@
   // Colour grade by time of day: [minute, color, alpha]
   const GRADE = [
     [0, '#1a2a6a', 0.0], [300, '#2a2a6a', 0.0], [345, '#ff7aa8', 0.16], [420, '#ffc9a0', 0.10], [540, '#fff4e0', 0.03],
-    [720, '#ffffff', 0.0], [930, '#ffe0a0', 0.06], [1020, '#ffa040', 0.16], [1090, '#ff6a30', 0.22], [1140, '#b04a80', 0.16],
+    [720, '#ffffff', 0.0], [930, '#ffe0a0', 0.05], [1020, '#ffb050', 0.11], [1090, '#ff8040', 0.15], [1140, '#c05a80', 0.13],
     [1200, '#2a3a8a', 0.0], [1440, '#1a2a6a', 0.0],
   ];
   function gradeAt(m) {
@@ -733,10 +782,10 @@
       const [col, a] = gradeAt(N.clock.minutes);
       if (a > 0.005) {
         ctx.globalCompositeOperation = 'soft-light';
-        ctx.globalAlpha = Math.min(1, a * 3.2);
+        ctx.globalAlpha = Math.min(1, a * 2.4);
         ctx.fillStyle = col; ctx.fillRect(0, 0, W, H);
         ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = a * 0.55;
+        ctx.globalAlpha = a * 0.35;
         ctx.fillRect(0, 0, W, H);
         ctx.globalAlpha = 1;
       }
@@ -744,11 +793,11 @@
     const night = U.clamp((0.6 - light) / 0.52, 0, 1);
     R.night = night;
     if (night <= 0.01) { R.lights.length = 0; return; }
-    if (!lightCanvas) { lightCanvas = makeCanvas(Math.ceil(W / 2), Math.ceil(H / 2)); lightCtx = lightCanvas.getContext('2d'); }
+    if (!lightCanvas) { lightCanvas = makeCanvas(Math.ceil(W / LIGHT_DIV), Math.ceil(H / LIGHT_DIV)); lightCtx = lightCanvas.getContext('2d'); }
     const lc = lightCtx, LW = lightCanvas.width, LH = lightCanvas.height;
     lc.globalCompositeOperation = 'source-over';
     lc.clearRect(0, 0, LW, LH);
-    lc.fillStyle = 'rgba(8,12,40,' + (0.8 * night).toFixed(3) + ')';
+    lc.fillStyle = 'rgba(10,16,52,' + (0.76 * night).toFixed(3) + ')';
     lc.fillRect(0, 0, LW, LH);
     lc.globalCompositeOperation = 'destination-out';
     const mask = blob('mask');
@@ -756,7 +805,7 @@
     for (let i = 0; i < lights.length; i++) {
       const L = lights[i];
       const k = Z * (1 + (L.h || 0) * R.PERSP);
-      const X = (cx + (L.x - camX) * k) / 2, Y = (cy + (L.y - camY) * k) / 2, rr = (L.r || 40) * k / 2;
+      const X = (cx + (L.x - camX) * k) / LIGHT_DIV, Y = (cy + (L.y - camY) * k) / LIGHT_DIV, rr = (L.r || 40) * k / LIGHT_DIV;
       if (X + rr < 0 || Y + rr < 0 || X - rr > LW || Y - rr > LH) continue;
       lc.globalAlpha = U.clamp(L.intensity == null ? 1 : L.intensity, 0, 1);
       lc.drawImage(mask, X - rr, Y - rr, rr * 2, rr * 2);
@@ -764,7 +813,7 @@
     lc.globalAlpha = 1;
     lc.globalCompositeOperation = 'source-over';
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(lightCanvas, 0, 0, LW * 2, LH * 2);
+    ctx.drawImage(lightCanvas, 0, 0, LW * LIGHT_DIV, LH * LIGHT_DIV);
     ctx.imageSmoothingEnabled = false;
     // coloured additive glow (sodium vapour orange etc.)
     ctx.globalCompositeOperation = 'lighter';
@@ -852,17 +901,26 @@
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#1b1420'; ctx.fillRect(0, 0, W, H);
+    const ms = R.stats.ms;
+    let t0 = now();
     try { drawGround(ctx); } catch (e) { N.err('drawGround', e); }
+    ms.chunks = now() - t0;
     runLayer('ground');
+    t0 = now();
     try { drawCastShadows(ctx); } catch (e) { N.err('castShadows', e); }
+    ms.cast = now() - t0;
     runLayer('shadow');
     runLayer('actors');
     runLayer('structures');
     runLayer('sky');
+    t0 = now();
     try { drawGradeAndNight(ctx); } catch (e) { N.err('night', e); }
+    ms.night = now() - t0;
     runLayer('light');
     runLayer('fx');
+    t0 = now();
     drawScreenFX(ctx, dt || 0.016);
+    ms.screenfx = now() - t0;
   };
 
   /* --------------------------------------------------------------- init */
