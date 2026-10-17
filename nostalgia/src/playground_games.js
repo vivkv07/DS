@@ -586,6 +586,15 @@
   }
   function separate(S) {
     const L = S.parts;
+    // ambient games: the kids make way for Chinnu walking through their game
+    if (S.ambient && N.player && !N.player.vehicle) {
+      const p = N.player;
+      for (const a of L) {
+        if (!a.e || a.e.alive === false) continue;
+        const dx = a.e.x - p.x, dy = a.e.y - p.y, d = hyp(dx, dy), m = a.e.r + p.r - 0.6;
+        if (d < m && d > 1e-4) moveBy(a, (dx / d) * (m - d), (dy / d) * (m - d));
+      }
+    }
     for (let i = 0; i < L.length; i++) {
       const a = L[i];
       if (!a.e || a.e.alive === false || (a.out && !a.isPlayer)) continue;
@@ -2750,6 +2759,7 @@
       /** a live ball from `from` (default: a kid of the other side) that hits the player on the body now */
       hitPlayer(z) {
         const S = current; if (!S || !S.me) return false;
+        S.me.safeT = 0; S.me.safeCD = 3; S.me.catchT = -9;
         const p = N.player, from = S.parts.find((P) => !P.isPlayer && !P.out && (S.id !== 'lingocha' || P.team !== S.me.team)) || S.parts.find((P) => !P.isPlayer);
         if (!from) return false;
         release(S, from, Math.atan2(p.y - from.e.y, p.x - from.e.x), 150, 0, { quiet: true });

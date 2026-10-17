@@ -88,10 +88,14 @@ async function walkTo(page, x, y, r, maxMs) {
     if (dx > 1.5) keys.push('ArrowRight'); else if (dx < -1.5) keys.push('ArrowLeft');
     if (dy > 1.5) keys.push('ArrowDown'); else if (dy < -1.5) keys.push('ArrowUp');
     await set(keys);
+    // short steps near the target (a loaded machine polls slowly: do not overshoot)
+    if (d < 25) { await sleep(60); await set([]); }
     await sleep(40);
   }
   await set([]);
-  return d;
+  await sleep(250);
+  const p = await page.evaluate(() => ({ x: N.player.x, y: N.player.y }));
+  return Math.hypot(x - p.x, y - p.y);
 }
 async function noErrors(page, errors, label) {
   const nerr = await page.evaluate(() => N.debug.state().errors);
@@ -171,7 +175,7 @@ async function desktop(browser) {
   check(!!stn, 'a loose stone to fetch');
   if (stn) {
     const d = await walkTo(page, stn.x, stn.y, 3.5, 12000);
-    if (d > 5) await page.evaluate((q) => { N.player.x = q.x + 2; N.player.y = q.y; }, stn);
+    if (d > 4.5) await page.evaluate((q) => { N.player.x = q.x + 2; N.player.y = q.y; N.player.vx = N.player.vy = 0; }, stn);
     await sleep(150);
     const lab = (await st(page)).label;
     check(/Pick up stone/.test(lab), 'over a stone the ACTION label says "' + lab + '"');
@@ -181,7 +185,7 @@ async function desktop(browser) {
     const base = (await st(page)).lingocha.base;
     await walkTo(page, base.x, base.y + 5, 2, 12000);
     const d2 = await page.evaluate((q) => Math.hypot(N.player.x - q.x, N.player.y - q.y), base);
-    if (d2 > 8) await page.evaluate((q) => { N.player.x = q.x; N.player.y = q.y + 5; }, base);
+    if (d2 > 8) await page.evaluate((q) => { N.player.x = q.x; N.player.y = q.y + 5; N.player.vx = N.player.vy = 0; }, base);
     await sleep(150);
     check(/Stack/.test((await st(page)).label), 'at the stack the label is "' + (await st(page)).label + '"');
     await tapKey(page, 'KeyE');
@@ -213,6 +217,9 @@ async function desktop(browser) {
   const seek = await page.evaluate(() => {
     const D = N.playgroundGames.debug, S = D.session(), p = N.player;
     const T = S.parts.find((q) => !q.isPlayer && q.team !== S.me.team && !q.dood && !q.out);
+    // the other seekers stand well aside; nobody is SAFE just now
+    let k = 0;
+    for (const q of S.parts) { q.safeT = 0; q.safeCD = 99; if (!q.isPlayer && q !== T && q.team === T.team) { q.e.x = S.F.x0 + 4 + (k++) * 6; q.e.y = S.F.y0 + 4; } }
     // stand 14 u from the seeker, facing him, the ball at our feet
     const a = Math.atan2(T.e.y - p.y, T.e.x - p.x);
     p.x = T.e.x - Math.cos(a) * 14; p.y = T.e.y - Math.sin(a) * 14; p.angle = p.facing = a;
@@ -225,7 +232,7 @@ async function desktop(browser) {
   check(await waitFor(page, () => N.playgroundGames.debug.state().ball.holderIsMe, null, 8000), 'E: Chinnu holds the ball');
   await sleep(250);
   const tgt = (await st(page)).target;
-  check(!!tgt, 'aim assist picks a seeker: ' + tgt);
+  check(tgt === seek, 'aim assist picks the seeker in front: ' + tgt);
   await page.evaluate(() => { N.playgroundGames.debug.assist.noDodge = true; });
   await shot(page, 'desktop_lingocha_hitter');
   await tapKey(page, 'KeyE', 90);

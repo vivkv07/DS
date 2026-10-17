@@ -109,7 +109,7 @@ async function installHooks() {
     window.__hooked = true;
     // a walkable spot near (x, y) outside every giver ring (standing in a ring for 1 s starts its mission / odd job)
     window.__safeSpot = (x, y, minD) => {
-      const gs = (N.missions.markers() || []).filter((g) => g.kind === 'giver');
+      const gs = Object.values(N.missions.defs).filter((d) => d && d.giver).map((d) => { const q = N.missions.giverPos(d); return q ? { x: q.x, y: q.y, r: d.giver.r || 18 } : null; }).filter(Boolean);
       const ok = (px, py) => N.world.isWalkable(px, py) && gs.every((g) => Math.hypot(g.x - px, g.y - py) > (g.r || 18) + 40);
       for (let r = minD || 0; r < 400; r += 20) for (let a = 0; a < 6.283; a += 0.5) { const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r; if (ok(px, py)) return { x: px, y: py }; }
       return { x, y };
@@ -469,6 +469,19 @@ const passed2 = (id) => (s) => s.mission !== id && s.scene == null && !s.ask;
 /** The player walks into a giver marker with the arrow keys (from a clear 60 u approach) and presses E on
  *  the J-card. Falls back to standing on the marker. */
 async function startFromGiver(id, o) {
+  for (let k = 0; k < 3; k++) {
+    const ok = await startFromGiver1(id, o);
+    if (ok) return true;
+    // an odd job's ring (its window opened while he stood there) took the J-card: leave it and walk in again
+    const other = await ev(() => N.missions.active && N.missions.active.id);
+    if (!other || !/^job_/.test(other)) return false;
+    log('  (' + id + ': the odd job ' + other + ' started on the J-card dwell instead -> quit it, walk in again)');
+    await ev(() => { try { N.missions.abort(); } catch (e) { /* ignore */ } });
+    await sleep(800);
+  }
+  return false;
+}
+async function startFromGiver1(id, o) {
   o = o || {};
   await ev(() => { if (N.wanted && N.wanted.level > 0 && N.wanted.set) N.wanted.set(0, 'test'); });
   // step away first (a giver right where the last mission ended waits until you step out)
@@ -1165,6 +1178,9 @@ const SIDE_PHASES = new Set(['sa3', 'sa2', 'sa4', 'sa7', 'sa5', 'sa6', 'sa1', 's
       if (!['interlude', 'credits', 'ending', 'epilogue'].includes(name) && !/^reload/.test(name)) await snapshot(name, { save: SIDE_PHASES.has(name) });
       else if (/^reload/.test(name)) await snapshot(name, { save: false });
       if (STOP && name === STOP) break;
+      // a main mission that did not pass blocks the rest of the story: stop here instead of cascading
+      const MAIN_OF = { m1: 'bo_kaata', m2: 'lost_and_found', m3: 'first_day_first_show', m4: 'last_man_batting', m5: 'right_right', m6: 'ammammas_thursday', m7: 'the_clap', m8: 'drums_for_amma', m9: 'opening_day', m10: 'agle_baras', m11: 'last_bell', m12: 'chand_raat' };
+      if (MAIN_OF[name] && !(await ev((mid) => N.missions.isDone(mid), MAIN_OF[name]).catch(() => false))) { check(false, MAIN_OF[name] + ' did not pass: the rest of the story cannot be played'); break; }
       // between main missions: a few minutes of free roam, a find or two
       if (name === 'm6') { for (const id of ['cassette_5', 'ticket_1']) await collect(id); }
       if (name === 'm8') { for (const id of ['cassette_9', 'kite_7']) await collect(id); }

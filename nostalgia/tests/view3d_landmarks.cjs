@@ -289,7 +289,7 @@ async function main() {
       { name: 'charminar_chand_raat_tps_night', lm: 'charminar', at: [-56, -83], look: [0, 0], mode: 'tps', h: [22, 0], pitch: -0.28, set: () => { N.flags.chand_raat = true; } },
       { name: 'prasads_open_tps_day', lm: 'prasads_imax', at: [0, 96], look: [0, 0], mode: 'tps', h: [11, 0], pitch: 0, set: () => { if (N.placesArt) N.placesArt.fx.prasads = 'open'; N.flags.prasads_open = true; } },
       { name: 'prasads_fence_tps_day', lm: 'prasads_imax', at: [0, 96], look: [0, 0], mode: 'tps', h: [11, 0], pitch: 0, set: () => { if (N.placesArt) N.placesArt.fx.prasads = 'fence'; N.flags.prasads_open = false; } },
-      { name: 'ntr_gardens_tps_golden', lm: 'ntr_memorial', at: [-110, 20], clear: true, look: [0, 0], mode: 'tps', h: [17, 40], pitch: 0.1, set: () => {} },
+      { name: 'ntr_gardens_tps_golden', lm: 'ntr_memorial', at: [75, -30], look: [0, 0], mode: 'tps', h: [17, 40], pitch: 0.15, set: () => {} },
       { name: 'laad_bazaar_fps_night', lm: 'charminar', atFn: 'laad', look: [0, 0], mode: 'fps', h: [21, 0], pitch: -0.12, set: () => {} },
     ];
     for (const v of V) {

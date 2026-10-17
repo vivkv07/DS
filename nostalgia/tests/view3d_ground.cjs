@@ -102,9 +102,10 @@ async function setView(page, S) {
   }, S);
 }
 async function shoot(page, file) {
-  await frames(page, 3);
+  // SwiftShader frames are slow on a loaded machine: settle the streaming, then one frame, then shoot
   await page.evaluate(() => N.view3d.settle(20000));
-  await frames(page, 2);
+  await frames(page, 1);
+  await page.evaluate(() => N.view3d.settle(5000));
   await page.screenshot({ path: file, timeout: 300000 });
 }
 /** BEFORE | AFTER side by side with labels, drawn in a blank page */
