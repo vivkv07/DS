@@ -582,13 +582,15 @@
   class RB {
     constructor(x0, z0) {
       this.x0 = x0; this.z0 = z0; this.x1 = x0 + CHS; this.z1 = z0 + CHS;
-      this.cap = 8192; this.n = 0; this.icap = 16384; this.ni = 0;
+      this.cap = 4096; this.n = 0; this.icap = 8192; this.ni = 0;
       this.P = new Float32Array(this.cap * 3); this.Nn = new Int8Array(this.cap * 3); this.C = new Uint8Array(this.cap * 3);
       this.UV = new Float32Array(this.cap * 2); this.GEO = new Float32Array(this.cap * 4); this.MK = new Float32Array(this.cap * 4); this.ST = new Float32Array(this.cap * 4);
       this.I = new Uint32Array(this.icap);
       this.tmpA = []; this.tmpB = [];
       this.raised = []; // [x0, z0, x1, z1, ... polygon footprints, h] for groundHeightAt
     }
+    /** reuse the buffers for another chunk (jobs run one at a time) */
+    reset(x0, z0) { this.x0 = x0; this.z0 = z0; this.x1 = x0 + CHS; this.z1 = z0 + CHS; this.n = 0; this.ni = 0; this.raised = []; return this; }
     grow(nv, ni) {
       if (this.n + nv > this.cap) {
         let c = this.cap; while (this.n + nv > c) c *= 2;
@@ -1234,7 +1236,9 @@
   }
   function emitPatch(B, q, pots) {
     for (const p of pots) if (Math.hypot(p.x - q.x, p.y - q.y) < q.R + Math.max(p.rx, p.ry) + 1) return;
-    const c = cst(linRGB('#2b2a2e'), LY.PATCH, { g0: q.len, g1: q.wid, age: q.age || 0.5 });
+    const st = RSTYLE[q.kind] || RSTYLE.street;
+    const base = mixRGB(linRGB(st.col), linRGB('#232226'), 0.45);
+    const c = cst(base, LY.PATCH, { g0: q.len, g1: q.wid, age: q.age || 0.5 });
     for (const pl of q.polys || []) {
       if (!pl || pl.length < 3) continue;
       const ca = Math.cos(q.a), sa = Math.sin(q.a);
@@ -1254,7 +1258,7 @@
   function initCls() { const S = N.SURF; SCLS.fill(0); SCLS[S.GRASS] = 1; SCLS[S.PLAZA] = 2; SCLS[S.SAND] = 3; SCLS[S.WATER] = 4; SCLS[S.BRIDGE] = 4; }
   function buildSurf(job, deadline) {
     const ch = job.ch, n = job.sn, m = n + 2, step = CHS / (n - 1), W = N.world;
-    if (!job.cls) { job.cls = new Uint8Array(m * m); job.row = 0; initCls(); }
+    if (!job.cls) { job.cls = scratch('cls', Uint8Array, m * m); job.row = 0; initCls(); }
     const cls = job.cls;
     while (job.row < m) {
       const j = job.row++, y = ch.y0 + (j - 1) * step, o = j * m;
@@ -1299,7 +1303,7 @@
   }
   function buildTint(job, deadline) {
     const ch = job.ch, n = job.tn, m = n + 2, step = CHS / (n - 1), W = N.world, S = N.SURF;
-    if (!job.tcol) { job.tcol = new Float32Array(m * m * 3); job.tsol = new Float32Array(m * m); job.trow = 0; job.dcache = new Map(); }
+    if (!job.tcol) { job.tcol = scratch('tcol', Float32Array, m * m * 3); job.tsol = scratch('tsol', Float32Array, m * m); job.trow = 0; job.dcache = new Map(); }
     const col = job.tcol, solid = job.tsol, dcache = job.dcache;
     const dcol = (d) => { let c = dcache.get(d); if (!c) { c = hexRGB((d && d.ground) || '#a98a66'); dcache.set(d, c); } return c; };
     while (job.trow < m) {
@@ -1550,7 +1554,7 @@ if (ngShine > 0.01) {
       .replace('#include <envmap_fragment>', ROAD_ENV);
   }
   const ROAD_FUNCS = `
-float ngBit(float bits, float b){ return mod(floor(bits / b), 2.0); }
+float ngBit(float bits, float b){ return mod(floor(floor(bits + 0.5) / b + 0.001), 2.0); } // bits arrive interpolated (7.9999)
 vec3 ngAsphalt(vec2 P, vec3 base, float age, float fw){
   float g = 0.0;
   g += (ngF(P * 0.055, fw * 0.055) - 0.5) * (0.22 + 0.3 * age);
@@ -1558,8 +1562,10 @@ vec3 ngAsphalt(vec2 P, vec3 base, float age, float fw){
   g += (ngF(P * 1.7, fw * 1.7) - 0.5) * 0.15;
 #ifndef NG_LOW
   g += (ngF(P * 5.9, fw * 5.9) - 0.5) * 0.2;
-  float sp = ngH(floor(P * 4.3));
-  g += (step(0.952, sp) * 0.34 - step(sp, 0.03) * 0.18) * (1.0 - smoothstep(0.07, 0.24, fw));
+  // aggregate stones: small round chips (lighter quartz, darker basalt), gone before they could alias
+  float sh = 0.0;
+  float sp = ngBlob(P * 2.7, 0.55, sh) * (1.0 - smoothstep(0.035, 0.11, fw));
+  g += sp * (sh < 0.2 ? 0.26 : -0.13);
 #endif
   return base * (1.0 + g);
 }
@@ -1695,9 +1701,11 @@ if (layer < 1.5) {
   // tar patch: fresher, darker asphalt with a seam
   col = ngAsphalt(P, base, 0.1, fw);
   vec2 e2 = min(vRd, vGeo.xy - vRd);
-  float seam = 1.0 - clamp((min(e2.x, e2.y) - 0.25) / max(fw, 1e-4) + 0.5, 0.0, 1.0);
-  col *= 1.0 - 0.35 * seam;
-  col = mix(col, base * 1.6, smoothstep(0.75, 1.0, age) * 0.0);
+  float ed = min(e2.x, e2.y);
+  float seam = 1.0 - clamp((ed - 0.18) / max(fw, 1e-4) + 0.5, 0.0, 1.0);
+  col *= 1.0 - 0.22 * seam * (1.0 - smoothstep(0.1, 0.4, fw));
+  // older patches weather towards the road colour
+  col = mix(col, base * 1.35, age * 0.5);
   ngShine = uWet * 0.6;
 } else if (layer < 7.5) {
   // railway ballast + sleepers
@@ -1787,8 +1795,16 @@ if (ngShine > 0.01) {
   const STEPMS = []; // cumulative ms per job step: analyse, aux, surface, tint, roads, upload
   const curPot = () => { const PH = N.world && N.world.potholes; return PH && PH.version != null ? PH.version : 0; };
   function chunkBucket(ch) { return NET.buckets.get(bkey(ch.ci, ch.cj)) || null; }
+  let SHARED_RB = null, ACTIVE = null;
+  const SCR = new Map();
+  /** scratch typed array reused across jobs (jobs are serialised) */
+  function scratch(name, Ctor, n) {
+    let a = SCR.get(name);
+    if (!a || a.length < n) { a = new Ctor(n); SCR.set(name, a); }
+    return a;
+  }
   function startJob(ch, roadsOnly, lod) {
-    const B = new RB(ch.x0, ch.y0);
+    const B = SHARED_RB ? SHARED_RB.reset(ch.x0, ch.y0) : (SHARED_RB = new RB(ch.x0, ch.y0));
     return { ch, step: roadsOnly ? 3 : 0, B, bucket: null, pots: [], roadsOnly: !!roadsOnly, t: 0, potVer: curPot(), lod, sn: lod ? SURF_N / 2 : SURF_N, tn: lod ? TINT_N / 2 : TINT_N };
   }
   // shared terrain plane (one per chunk size; vUv as the core's ground plane for the aux texture)
@@ -1860,6 +1876,7 @@ if (ngShine > 0.01) {
   }
   function disposeChunk(ch) {
     const G = ch.ng;
+    if (ACTIVE && ACTIVE.ch === ch) ACTIVE = null;
     if (!G) return;
     if (G.terrain) { ch.group.remove(G.terrain); G.terrain.material.dispose(); }
     if (G.road) { ch.group.remove(G.road); G.road.geometry.dispose(); G.road.material.dispose(); }
@@ -1971,6 +1988,12 @@ if (ngShine > 0.01) {
       return !G || !G.ready || !!G.job || G.potVer !== curPot() || !!G.dirty || (d != null && lodChange(G, d));
     },
     step(ch, d, deadline) {
+      // one job at a time (shared scratch buffers): finish the active chunk first
+      if (ACTIVE && ACTIVE.ch !== ch) {
+        const A = ACTIVE;
+        if (I.chunks.get(A.ch.key) === A.ch && A.ch.ng && A.ch.ng.job === A) { stepJob(A, deadline); if (A.step >= 6) ACTIVE = null; return; }
+        ACTIVE = null;
+      }
       let G = ch.ng;
       if (!G) G = ch.ng = { ready: false };
       if (!G.job) {
@@ -1980,7 +2003,9 @@ if (ngShine > 0.01) {
         if (roadsOnly) { G.job.step = G.resun ? 3 : 4; if (!G.resun) G.job.tint = null; }
         G.resun = false;
       }
+      ACTIVE = G.job;
       stepJob(G.job, deadline);
+      if (G.job == null || ACTIVE.step >= 6) ACTIVE = null;
     },
     dispose(ch) { disposeChunk(ch); },
     heightAt: entityHeight,

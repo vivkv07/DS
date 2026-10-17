@@ -32,9 +32,9 @@
   "counts": {
    "ids": 651,
    "by_confidence": {
-    "high": 50,
+    "high": 54,
     "medium": 125,
-    "low": 476
+    "low": 472
    },
    "merge": {
     "only_nw": 213,
@@ -53,7 +53,8 @@
     },
     "alias_synced": 1
    }
-  }
+  },
+  "fixes": "design/geo/places_fixes.json applied by tools/geo/apply_place_fixes.cjs (entry.fix keeps the replaced values)"
  },
  "places": {
   "abids": {
@@ -105,15 +106,25 @@
   },
   "afzalgunj_bridge": {
    "name": "Afzalgunj Bridge",
-   "lat": 17.37215,
-   "lon": 78.479,
-   "confidence": "low",
-   "source": "on the OSM Musi line between Salar Jung Museum and the State Central Library [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+   "lat": 17.374432,
+   "lon": 78.481807,
+   "confidence": "high",
+   "source": "midpoint of the OSM way 'Afzalgunj Bridge (Salar Jung Pul)' (design/geo/roads.json afzalgunj_bridge)",
    "note": "the Salar Jung / Afzalgunj bridge (game name); exact crossing not verified",
    "from": "se",
    "ward": "Ward 32 Patthergatti",
    "merge": "only_se",
-   "district": "afzalgunj"
+   "district": "afzalgunj",
+   "fix": {
+    "by": "geography verification (design/geo/places_fixes.json)",
+    "reason": "the old point (17.37215, 78.479, 'exact crossing not verified') was 380 m south-west of the OSM bridge",
+    "prev": {
+     "lat": 17.37215,
+     "lon": 78.479,
+     "confidence": "low",
+     "source": "on the OSM Musi line between Salar Jung Museum and the State Central Library [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]"
+    }
+   }
   },
   "akkanna_madanna_temple": {
    "name": "Akkanna Madanna Mahankali Temple",
@@ -1304,15 +1315,25 @@
   },
   "chaderghat_bridge": {
    "name": "Chaderghat Bridge",
-   "lat": 17.3792,
-   "lon": 78.488,
-   "confidence": "low",
-   "source": "on the OSM Musi line where the OSM red metro line / Koti-Malakpet road crosses east of MGBS [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+   "lat": 17.379321,
+   "lon": 78.49189,
+   "confidence": "high",
+   "source": "midpoint of the OSM way 'Chaderghat Bridge' (design/geo/roads.json chaderghat_bridge)",
    "note": "Chaderghat (Oliphant) bridge; exact crossing not verified",
    "from": "se",
    "ward": "Ward 30 Dabeerpura",
    "merge": "only_se",
-   "district": "chaderghat"
+   "district": "chaderghat",
+   "fix": {
+    "by": "geography verification (design/geo/places_fixes.json)",
+    "reason": "the old point (17.3792, 78.488, 'exact crossing not verified') was 410 m west of the OSM bridge, on the MGBS side",
+    "prev": {
+     "lat": 17.3792,
+     "lon": 78.488,
+     "confidence": "low",
+     "source": "on the OSM Musi line where the OSM red metro line / Koti-Malakpet road crosses east of MGBS [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]"
+    }
+   }
   },
   "chai_bandi_1": {
    "name": "Raju's chai bandi",
@@ -3615,15 +3636,25 @@
   },
   "hide_nayapul_sand": {
    "name": "Under Naya Pul, on the sand",
-   "lat": 17.37045,
-   "lon": 78.4748,
+   "lat": 17.371114,
+   "lon": 78.476444,
    "confidence": "medium",
-   "source": "OSM Musi line under Naya Pul [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+   "source": "OSM Musi centreline 30 m upstream of where the OSM Naya Pul crosses it (17.371204, 78.47671)",
    "note": "on the sand under Naya Pul",
    "from": "se",
    "ward": "Ward 49 Ghansi Bazar",
    "merge": "only_se",
-   "district": "afzalgunj"
+   "district": "afzalgunj",
+   "fix": {
+    "by": "geography verification (design/geo/places_fixes.json)",
+    "reason": "followed naya_pul: the old point was 150 m west of the bridge",
+    "prev": {
+     "lat": 17.37045,
+     "lon": 78.4748,
+     "confidence": "medium",
+     "source": "OSM Musi line under Naya Pul [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]"
+    }
+   }
   },
   "hide_ntr_lawn": {
    "name": "NTR Gardens, under the big tree",
@@ -4021,8 +4052,8 @@
   },
   "hotel_madina": {
    "name": "Hotel Madina",
-   "lat": 17.3652,
-   "lon": 78.4747,
+   "lat": 17.366,
+   "lon": 78.47548,
    "confidence": "medium",
    "source": "in the Madina Building (registry); game alias of pathergatti",
    "note": "real Hotel Madina is in the Madina building ~200 m north of the Pathergatti arcades",
@@ -4031,7 +4062,11 @@
    "merge": "only_se",
    "district": "charminar",
    "alias_moved_m": 214,
-   "alias": "pathergatti"
+   "alias": "pathergatti",
+   "fix": {
+    "by": "geography verification",
+    "reason": "alias of pathergatti, which was corrected"
+   }
   },
   "hotel_nayaab": {
    "name": "Hotel Nayaab",
@@ -5566,10 +5601,10 @@
   },
   "lower_tank_bund": {
    "name": "Lower Tank Bund",
-   "lat": 17.42,
-   "lon": 78.486,
-   "confidence": "low",
-   "source": "road below the bund east of the OSM lake edge (estimated) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+   "lat": 17.419522,
+   "lon": 78.483583,
+   "confidence": "medium",
+   "source": "on the OSM 'Lower Tank Bund Road' (design/geo/roads.json lower_tank_bund) at 17.4195",
    "note": "Lower Tank Bund Road",
    "from": "se",
    "ward": "Ward 90 Kavadiguda",
@@ -5582,7 +5617,17 @@
     "d_m": 101,
     "source": "researcher knowledge of the city (no single source), cross-checked against GHMC ward polygon"
    },
-   "district": "musheerabad"
+   "district": "musheerabad",
+   "fix": {
+    "by": "geography verification (design/geo/places_fixes.json)",
+    "reason": "the old point (17.42, 78.486, estimated) was 180 m east of the road",
+    "prev": {
+     "lat": 17.42,
+     "lon": 78.486,
+     "confidence": "low",
+     "source": "road below the bund east of the OSM lake edge (estimated) [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]"
+    }
+   }
   },
   "lumbini_boat": {
    "name": "Lumbini boat jetty",
@@ -5647,15 +5692,25 @@
   },
   "madina_building": {
    "name": "Madina Building",
-   "lat": 17.3672,
-   "lon": 78.4744,
+   "lat": 17.3694,
+   "lon": 78.4757,
    "confidence": "low",
-   "source": "Wikipedia gives only 17°22'N 78°30'E (rounded); placed at Madina circle, N end of Pathergatti, S of Naya Pul",
+   "source": "estimated from OSM geometry: Madina circle is where OSM 'Pathergatti Road' (north end 17.3687, 78.4761) meets the south-bank road (17.3703) at the foot of Naya Pul; the building stands on its west side. Wikipedia only gives 17 deg 22 min N, 78 deg 30 min E (rounded)",
    "note": "Madina Building at Madina circle",
    "id_kind": "landmark",
    "from": "se",
    "ward": "Ward 49 Ghansi Bazar",
-   "merge": "only_se"
+   "merge": "only_se",
+   "fix": {
+    "by": "geography verification (design/geo/places_fixes.json)",
+    "reason": "the old point (17.3672, 78.4744) was 150 m west of the road and 230 m south of Madina circle",
+    "prev": {
+     "lat": 17.3672,
+     "lon": 78.4744,
+     "confidence": "low",
+     "source": "Wikipedia gives only 17°22'N 78°30'E (rounded); placed at Madina circle, N end of Pathergatti, S of Naya Pul"
+    }
+   }
   },
   "mahboob_chowk_clock_tower": {
    "name": "Mahboob Chowk & Murgi Chowk",
@@ -6159,15 +6214,25 @@
   },
   "musallam_jung_bridge": {
    "name": "Musallam Jung Bridge",
-   "lat": 17.36965,
-   "lon": 78.4675,
-   "confidence": "low",
-   "source": "on the OSM Musi line; sources say it links the High Court side to Begum Bazar, parallel to Purana Pul [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+   "lat": 17.369805,
+   "lon": 78.46878,
+   "confidence": "high",
+   "source": "midpoint of the OSM way 'Musallam Jung Bridge' (design/geo/roads.json musallam_jung_bridge)",
    "note": "exact crossing not verified",
    "from": "se",
    "ward": "Ward 51 Goshamahal",
    "merge": "only_se",
-   "district": "afzalgunj"
+   "district": "afzalgunj",
+   "fix": {
+    "by": "geography verification (design/geo/places_fixes.json)",
+    "reason": "the old point (17.36965, 78.4675, 'exact crossing not verified') was 135 m west of the OSM bridge",
+    "prev": {
+     "lat": 17.36965,
+     "lon": 78.4675,
+     "confidence": "low",
+     "source": "on the OSM Musi line; sources say it links the High Court side to Begum Bazar, parallel to Purana Pul [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]"
+    }
+   }
   },
   "musi_riverbed": {
    "name": "Musi riverbed & dhobi ghat",
@@ -6238,15 +6303,25 @@
   },
   "naya_pul": {
    "name": "Naya Pul",
-   "lat": 17.3707,
-   "lon": 78.4752,
-   "confidence": "medium",
-   "source": "on the OSM Musi line where the Pathergatti/Madina road crosses to Afzalgunj; Wikipedia Nayapul locality 17.3707,78.4763 [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]",
+   "lat": 17.371551,
+   "lon": 78.47656,
+   "confidence": "high",
+   "source": "midpoint of the OSM way 'Naya Pul' (design/geo/roads.json naya_pul; OSM two carriageways lon 78.4759-78.4769)",
    "note": "Naya Pul bridge",
    "from": "se",
    "ward": "Ward 49 Ghansi Bazar",
    "merge": "only_se",
-   "district": "afzalgunj"
+   "district": "afzalgunj",
+   "fix": {
+    "by": "geography verification (design/geo/places_fixes.json)",
+    "reason": "the old point (17.3707, 78.4752) lay 150 m west of the bridge, on the riverbed; the map builder already snapped the place onto the bridge",
+    "prev": {
+     "lat": 17.3707,
+     "lon": 78.4752,
+     "confidence": "medium",
+     "source": "on the OSM Musi line where the Pathergatti/Madina road crosses to Afzalgunj; Wikipedia Nayapul locality 17.3707,78.4763 [OSM data: (c) OpenStreetMap contributors, ODbL, via github.com/Lakeer-org/hyderabad-open-gis-data]"
+    }
+   }
   },
   "necklace_road": {
    "name": "Necklace Road",
@@ -6592,27 +6667,47 @@
   },
   "pathergatti": {
    "name": "Pathergatti & Madina Building",
-   "lat": 17.3652,
-   "lon": 78.4747,
+   "lat": 17.366,
+   "lon": 78.47548,
    "confidence": "medium",
-   "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Pathargatti 17°21'48\"N 78°28'30\"E is the south end; arcades run north to Madina",
+   "source": "OSM 'Pathergatti Road' (trunk, lat 17.3635-17.3687, lon 78.4750-78.4761): mid-way between Gulzar Houz and Madina, 10 m west of the centreline; Wikipedia gives the south end at 17.3633, 78.4750",
    "note": "stone arcades between Gulzar Houz and Madina circle",
    "from": "se",
    "ward": "Ward 49 Ghansi Bazar",
    "merge": "only_se",
-   "district": "charminar"
+   "district": "charminar",
+   "fix": {
+    "by": "geography verification (design/geo/places_fixes.json)",
+    "reason": "the old point (17.3652, 78.4747) was 75 m west of the road, and the place stood at the Madina Building; the place is the stone arcades (registry: stone arcades, shops; story: the tape stall in the arcade)",
+    "prev": {
+     "lat": 17.3652,
+     "lon": 78.4747,
+     "confidence": "medium",
+     "source": "Wikipedia/Wikidata infobox coordinates (read via web-search summaries) Pathargatti 17°21'48\"N 78°28'30\"E is the south end; arcades run north to Madina"
+    }
+   }
   },
   "pathergatti_arcade_w": {
    "name": "Pathergatti arcades",
-   "lat": 17.3652,
-   "lon": 78.474559,
+   "lat": 17.3658,
+   "lon": 78.47545,
    "confidence": "medium",
-   "source": "Pathergatti road alignment",
+   "source": "OSM 'Pathergatti Road' centreline at 17.3658 (lon 78.4755): west arcade row about 10 m west of it",
    "note": "west arcade row of Pathergatti",
    "id_kind": "landmark",
    "from": "se",
    "ward": "Ward 49 Ghansi Bazar",
-   "merge": "only_se"
+   "merge": "only_se",
+   "fix": {
+    "by": "geography verification (design/geo/places_fixes.json)",
+    "reason": "the old point (17.3652, 78.474559) was 95 m west of the road; the arcades line the road",
+    "prev": {
+     "lat": 17.3652,
+     "lon": 78.474559,
+     "confidence": "medium",
+     "source": "Pathergatti road alignment"
+    }
+   }
   },
   "peddamma_temple": {
    "name": "Peddamma Temple",

@@ -1,0 +1,55 @@
+{
+ "meta": {
+  "title": "Verified corrections to places.json (geography verification, Map v2)",
+  "generator": "written by hand during the geography verification (tools/geo/verify_geo.cjs, design/geo/verify_report.md); applied by tools/geo/apply_place_fixes.cjs and by tools/geo/merge_places.cjs (last step), so a re-merge keeps them",
+  "rule": "each entry replaces lat / lon / confidence / source of the merged entry and keeps the old values in entry.fix.prev; aliases of a fixed id follow it",
+  "attribution": "OSM geometry: (c) OpenStreetMap contributors (ODbL), via Overture Maps Foundation (design/geo/roads.json) and the Geofabrik-schema Hyderabad extract (buildings layer)"
+ },
+ "fixes": {
+  "naya_pul": {
+   "lat": 17.371551, "lon": 78.47656, "confidence": "high",
+   "source": "midpoint of the OSM way 'Naya Pul' (design/geo/roads.json naya_pul; OSM two carriageways lon 78.4759-78.4769)",
+   "reason": "the old point (17.3707, 78.4752) lay 150 m west of the bridge, on the riverbed; the map builder already snapped the place onto the bridge"
+  },
+  "hide_nayapul_sand": {
+   "lat": 17.371114, "lon": 78.476444, "confidence": "medium",
+   "source": "OSM Musi centreline 30 m upstream of where the OSM Naya Pul crosses it (17.371204, 78.47671)",
+   "reason": "followed naya_pul: the old point was 150 m west of the bridge"
+  },
+  "afzalgunj_bridge": {
+   "lat": 17.374432, "lon": 78.481807, "confidence": "high",
+   "source": "midpoint of the OSM way 'Afzalgunj Bridge (Salar Jung Pul)' (design/geo/roads.json afzalgunj_bridge)",
+   "reason": "the old point (17.37215, 78.479, 'exact crossing not verified') was 380 m south-west of the OSM bridge"
+  },
+  "musallam_jung_bridge": {
+   "lat": 17.369805, "lon": 78.46878, "confidence": "high",
+   "source": "midpoint of the OSM way 'Musallam Jung Bridge' (design/geo/roads.json musallam_jung_bridge)",
+   "reason": "the old point (17.36965, 78.4675, 'exact crossing not verified') was 135 m west of the OSM bridge"
+  },
+  "chaderghat_bridge": {
+   "lat": 17.379321, "lon": 78.49189, "confidence": "high",
+   "source": "midpoint of the OSM way 'Chaderghat Bridge' (design/geo/roads.json chaderghat_bridge)",
+   "reason": "the old point (17.3792, 78.488, 'exact crossing not verified') was 410 m west of the OSM bridge, on the MGBS side"
+  },
+  "pathergatti": {
+   "lat": 17.366, "lon": 78.47548, "confidence": "medium",
+   "source": "OSM 'Pathergatti Road' (trunk, lat 17.3635-17.3687, lon 78.4750-78.4761): mid-way between Gulzar Houz and Madina, 10 m west of the centreline; Wikipedia gives the south end at 17.3633, 78.4750",
+   "reason": "the old point (17.3652, 78.4747) was 75 m west of the road, and the place stood at the Madina Building; the place is the stone arcades (registry: stone arcades, shops; story: the tape stall in the arcade)"
+  },
+  "pathergatti_arcade_w": {
+   "lat": 17.3658, "lon": 78.47545, "confidence": "medium",
+   "source": "OSM 'Pathergatti Road' centreline at 17.3658 (lon 78.4755): west arcade row about 10 m west of it",
+   "reason": "the old point (17.3652, 78.474559) was 95 m west of the road; the arcades line the road"
+  },
+  "madina_building": {
+   "lat": 17.3694, "lon": 78.4757, "confidence": "low",
+   "source": "estimated from OSM geometry: Madina circle is where OSM 'Pathergatti Road' (north end 17.3687, 78.4761) meets the south-bank road (17.3703) at the foot of Naya Pul; the building stands on its west side. Wikipedia only gives 17 deg 22 min N, 78 deg 30 min E (rounded)",
+   "reason": "the old point (17.3672, 78.4744) was 150 m west of the road and 230 m south of Madina circle"
+  },
+  "lower_tank_bund": {
+   "lat": 17.419522, "lon": 78.483583, "confidence": "medium",
+   "source": "on the OSM 'Lower Tank Bund Road' (design/geo/roads.json lower_tank_bund) at 17.4195",
+   "reason": "the old point (17.42, 78.486, estimated) was 180 m east of the road"
+  }
+ }
+}

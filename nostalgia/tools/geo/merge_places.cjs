@@ -18,6 +18,7 @@
  *      d. a candidate whose source cites data (OSM, DataMeet, Wikipedia, listing, address, plus code,
  *         station list) beats a pure estimate.
  *      e. the researcher whose scope owned the place's game district; shared districts -> NW.
+ *   3b. verified corrections from design/geo/places_fixes.json replace the merged value (tools/geo/apply_place_fixes.cjs).
  *   4. aliases (worlddata place.alias) get their target's coordinates.
  * The losing candidate is kept in entry.alt {from, lat, lon, confidence, d_m}.
  * Usage: node tools/geo/merge_places.cjs [--quiet]
@@ -118,6 +119,8 @@ function merge() {
     if (pDistrict[id]) entry.district = pDistrict[id];
     out[id] = entry;
   }
+  // 3b. verified corrections (design/geo/places_fixes.json, from the geography verification) override the merge
+  stats.verified_fixes = require('./apply_place_fixes.cjs').applyFixes(out).length;
   // 4. aliases share their target's position
   let aliasFixed = 0;
   for (const id in alias) {

@@ -164,7 +164,7 @@ const HELPERS = () => {
     },
     capBegin(o) {
       const C = T3.cap;
-      Object.assign(C, { frames: [], lastF: -1, cells: 0, next: null, key: 'cyc', step: 1 / 12, max: 12, cw: 170, ch: 236, dy: 0, follow: null, off: [0, 6, -34, 4.4], fov: 40 }, o || {});
+      Object.assign(C, { frames: [], lastF: -1, cells: 0, next: null, key: 'cyc', step: 1 / 12, max: 12, cw: 170, ch: 236, dy: 0, follow: null, off: [0, 12, -34, 4.4], fov: 40 }, o || {});
       if (!(o && o.strip === false)) { C.strip = document.createElement('canvas'); C.strip.width = C.cw * C.max; C.strip.height = C.ch; } else C.strip = null;
       C.on = true;
     },
@@ -235,7 +235,8 @@ async function gait(browser) {
       const b = window.__base;
       N.player.hidden = true;
       const look = kind === 'kid' ? N.npcs.look('chinnu') : N.people.randomLook(N.util.rng(kind === 'saree' ? 5 : 3), kind);
-      const e = new N.Actor({ kind: 'ped', x: b.x - 120, y: b.y, r: 3.4 });
+      const e = new N.Actor({ kind: 'ped', x: b.x - 70, y: b.y, r: 0.01 });
+      N.player.x = b.x; N.player.y = b.y - 160; // keep the (hidden) player off the path: no entity pushes
       e.__gt = true; e.look = look; e.angle = 0; e.vx = 0; e.vy = 0; e.anim = { phase: 0, speed: 1, run: sp > 62 };
       e.update = function (dt) { this.x += this.vx * dt; };
       N.entities.add(e);

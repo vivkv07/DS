@@ -15,7 +15,8 @@
  *
  *   node nostalgia/tests/view3d_landmarks.cjs
  *   ONLY=charminar,mecca_masjid (ids or draw ids)  ALL=1 (every representative, 4 shots each)
- *   MODES=tps,fps  TIMES=day,night  SHOTS=0  VISIT=0  W=1280 H=720  DD=<draw distance>  SKIP=ids
+ *   MODES=tps,fps  TIMES=day,night  PAIRS=1 (tps day + fps night only)  SHOTS=0  VISIT=0|1  W=1280 H=720  DD=<draw distance>  SKIP=ids
+ *   with ONLY: MEASURE=1 VARIANTS=1 PERF=1 PHONE=1 add those sections
  */
 'use strict';
 const path = require('path');
@@ -36,7 +37,7 @@ const DD = +process.env.DD || 0;
 const MODES = (process.env.MODES || 'tps,fps').split(',');
 const TIMES = (process.env.TIMES || 'day,night').split(',');
 const SHOTS = process.env.SHOTS !== '0';
-const VISIT = process.env.VISIT !== '0' && !ONLY.length;
+const VISIT = process.env.VISIT === '1' || (process.env.VISIT !== '0' && !ONLY.length);
 const VW = +process.env.W || 1280, VH = +process.env.H || 720;
 const failures = [];
 const report = [];
@@ -232,12 +233,12 @@ async function main() {
   let n = 0;
   const T0 = Date.now();
   if (SHOTS) {
-    const all4 = process.env.ALL === '1' || ONLY.length > 0;
+    const all4 = process.env.ALL === '1' || (ONLY.length > 0 && process.env.PAIRS !== '1');
     for (const P of plan) {
       for (const time of TIMES) {
         for (const mode of MODES) {
           if (P.fpsOnly && mode !== 'fps') continue;
-          if (!all4 && !TOP.includes(P.id) && !((mode === 'tps' && time === 'day') || (mode === 'fps' && time === 'night'))) continue;
+          if (!all4 && (process.env.PAIRS === '1' || !TOP.includes(P.id)) && !((mode === 'tps' && time === 'day') || (mode === 'fps' && time === 'night'))) continue;
           const name = P.id + (P.view ? '_' + P.view : '') + '_' + mode + '_' + time;
           const info = await page.evaluate((a) => {
             const { P, mode, time } = a;

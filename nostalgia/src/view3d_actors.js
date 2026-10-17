@@ -606,6 +606,13 @@
       '    p = aRotY(p, vec2(0.05, 0.0), iJ3.x); n = aRotY(n, vec2(0.0), iJ3.x);',
       '    p = aRotZ(p, vec2(0.05, ' + NECK_Y.toFixed(3) + '), iJ3.y); n = aRotZ(n, vec2(0.0), iJ3.y);',
       '  }',
+      // wraps / skirts / tunics: each side of the hem follows its leg (the cloth strides with the legs)
+      '  if (part < 0.5 && aSP.z > 2.5 && aSP.z < 5.5 && p.y < ' + HIP_Y.toFixed(3) + ') {',
+      '    float axL = ' + THIGH.toFixed(3) + ' * sin(iJ0.x) + ' + SHIN.toFixed(3) + ' * sin(iJ0.x + iJ0.z);',
+      '    float axR = ' + THIGH.toFixed(3) + ' * sin(iJ0.y) + ' + SHIN.toFixed(3) + ' * sin(iJ0.y + iJ0.w);',
+      '    float k = clamp((' + HIP_Y.toFixed(3) + ' - p.y) / ' + (HIP_Y - ANK_Y).toFixed(3) + ', 0.0, 1.1);',
+      '    p.x += mix(axL, axR, smoothstep(-0.75, 0.75, p.z)) * k * 0.92;',
+      '  }',
       '  if ((part < 0.5 && p.y > 5.6) || (part > 4.5 && part < 9.5)) p.y += iJ3.z;',
       '  if (part < 0.5 || (part > 4.5 && part < 9.5)) { p = aRotZ(p, vec2(0.0, ' + HIP_Y.toFixed(3) + '), -iJ2.z); n = aRotZ(n, vec2(0.0), -iJ2.z); }',
       '  p.y += iJ2.w;',
@@ -2542,7 +2549,7 @@
       let vt = vv / (s.size * (s.wide || 1));
       const turnV = Math.min(14, Math.abs(st.yawRate || 0) * 3.5); // turning on the spot: small steps
       if (vt < turnV) vt = turnV;
-      const wrapK = s.wrap ? 0.62 : 1;
+      const wrapK = s.wrap ? 0.85 : 1;
       gaitParams(vt, run, wrapK, GP);
       const moving = vt > 1.2;
       if (moving) st.cyc += GP.f * dt;
@@ -3072,7 +3079,7 @@
       const look = carryLook(q.look, q.carry === 'neem' ? null : q.carry);
       const el = (q.h || 0) * VS;
       if (el > 0) { poseRest(J); armsTo(J, -0.05, 1.3, 8.4, -0.35, 1.5, 9.0, 0.35); }
-      else if (q.carry) { const wk = q.carry === 'bonam' ? 0.62 : 1; gaitParams(6, false, wk, GP); gaitPose(J, t * GP.f + i * 0.37, GP, wk); if (q.carry === 'bonam') armsTo(J, 0.02, 0.25, 9.2, -0.62, 0.25, 9.2, 0.62); else if (q.carry === 'dappu') { J[4] = 0.9; J[6] = 1.2; J[5] = 0.8 + Math.sin(t * 10 + i) * 0.3; J[7] = 1.4; } }
+      else if (q.carry) { const wk = q.carry === 'bonam' ? 0.85 : 1; gaitParams(6, false, wk, GP); gaitPose(J, t * GP.f + i * 0.37, GP, wk); if (q.carry === 'bonam') armsTo(J, 0.02, 0.25, 9.2, -0.62, 0.25, 9.2, 0.62); else if (q.carry === 'dappu') { J[4] = 0.9; J[6] = 1.2; J[5] = 0.8 + Math.sin(t * 10 + i) * 0.3; J[7] = 1.4; } }
       else { poseRest(J); J[4] += Math.sin(t * 1.3 + i) * 0.05; J[5] += Math.sin(t * 1.1 + i * 2) * 0.05; }
       FR.set(q.x, el, q.y, -(q.a || 0), 0, 0);
       submitPerson(look, 1000 + i, FR, 0, 0, 0, J, {});

@@ -1214,3 +1214,37 @@ pixelRatio, drawDist, ...; before the first switch also antialias, shadows, poin
 `stats()`, `engine` (internals). Parity hooks still owed by other modules: missions expose active
 markers (`N.missions.markers()`), collectibles expose glint positions, seasons expose overlay data;
 missing parity degrades gracefully (never blocks progress).
+
+## 21. Blender asset pipeline (3D models) — `N.models3d`
+
+The user asked to design the 3D in Blender (open source) and integrate it. Blender runs
+headless here as the Python module **bpy 5.2.2 LTS** in the venv
+`/home/user/.venvs/blender` (`/home/user/.venvs/blender/bin/python script.py`). Every asset is
+**authored as a Python script** in `tools/blender/` (procedural modelling with bmesh,
+modifiers, curves, booleans; materials; UVs; baked ambient occlusion/lighting with Cycles
+CPU; rigs and keyframed animation), so assets are reproducible and reviewable in git.
+
+- **Layout:** `tools/blender/kit.py` (shared helpers: palette/materials, bevel, arches,
+  lathe/screw, arrays, decals, AO bake, export, Cycles preview renders and contact sheets),
+  one script per asset family (`characters.py`, `vehicles.py`, `landmarks_*.py`,
+  `props.py`), outputs `assets3d/<id>.glb` + `assets3d/previews/<id>.png`, and
+  `tools/pack_assets3d.cjs` → `src/assets3d_pack.js` (`N.ASSETS3D = {id: base64 GLB}` +
+  manifest with sizes, tri counts, clips) loaded **lazily** only when 3D starts.
+- **Conventions:** Blender Z-up metres = world units on the ground plane (the glTF exporter
+  converts to three.js Y-up); model origin at ground level, centred on the footprint the 2D
+  map uses (landmark `w`/`d` from worlddata), facing −Y in Blender = +x (east) in the world
+  after the runtime rotation (document per family); heights include the 3D vertical scale
+  `N.view3d.VS` (1.5). Characters ~7u (kid) to ~9u (adult) tall with the shared skeleton
+  `kid_rig`/`adult_rig` (same bone names) and clips `idle walk run ride_cycle ride_scooty
+  sit talk wave fall getup pick`; stride lengths stored in the manifest so the runtime sets
+  playback speed from real movement speed (no foot sliding).
+- **Budgets:** whole pack ≤ ~8 MB (WebP textures, ≤ 1024² per hero landmark, shared atlases
+  for props), triangles: hero landmark ≤ 60k, other landmarks ≤ 20k, vehicles ≤ 6k,
+  characters ≤ 4k, props ≤ 1.5k.
+- **Runtime (`src/models3d.js`):** loads `vendor/three/GLTFLoader.classic.js` (three r149
+  GLTFLoader converted to a classic script by `tools/vendor_gltfloader.cjs`, MIT) and the
+  pack lazily; `N.models3d.ready`, `has(id)`, `instance(id)` (shared geometry/materials),
+  `character(id, look)` → `{object, play(clip, {speed}), update(dt)}`; registers overrides
+  through `N.view3d.registerLandmark` / `registerActorRenderer` so Blender models replace the
+  procedural ones, with the procedural ones kept as fallbacks. The single-file build inlines
+  the pack; the artifact publishes it as a supporting file.

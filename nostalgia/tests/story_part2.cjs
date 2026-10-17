@@ -79,6 +79,7 @@ const probe = (page) => page.evaluate(() => {
   s.defs = !!document.querySelector('.mn-defs.show');
   s.credits = !!document.querySelector('.mn-credits.show');
   s.journal = N.state.mode === 'journal';
+  s.mgResult = !!document.querySelector('.mg-card-result');
   return s;
 });
 async function shot(page, name) { try { await page.screenshot({ path: path.join(OUT, name + '.png') }); } catch (e) { console.log('  (screenshot failed: ' + name + ')'); } }
@@ -96,7 +97,7 @@ const STORY_OFFER = /^(CLAP \(|Set the self|Drag Nanna|Nanna,|Look down|Leave th
 async function drive(page, done, o) {
   o = o || {};
   const t0 = Date.now();
-  let s = null, lastKey = '', same = 0, dlgT = 0;
+  let s = null, lastKey = '', same = 0, dlgT = 0, mgT = 0;
   while (Date.now() - t0 < (o.timeout || 180000)) {
     s = await probe(page);
     if (await done(s)) return s;
@@ -108,7 +109,11 @@ async function drive(page, done, o) {
     if (s.defs) { await page.keyboard.press('KeyE'); await sleep(400); continue; }
     if (s.credits) { await page.keyboard.press('Escape'); await sleep(400); continue; }
     if (s.cut && !o.keepCut) { await page.evaluate(() => { if (N.menus.skipCutscene) N.menus.skipCutscene(); }); await sleep(200); continue; }
-    if (s.mg || s.mode === 'minigame') { await sleep(300); continue; }
+    if (s.mg || s.mode === 'minigame') {
+      // autoplay closes its result card itself; at a very low frame rate that timer can miss, so press Enter
+      if (s.mgResult) { mgT = mgT || Date.now(); if (Date.now() - mgT > 2500) { await page.keyboard.press('Enter'); mgT = Date.now(); } } else mgT = 0;
+      await sleep(300); continue;
+    }
     if (s.rec === 'prompt') { await page.keyboard.press('KeyE'); await sleep(250); continue; }
     if (s.panel) { if (o.panel && (await o.panel(s)) !== false) { await sleep(200); continue; } await page.keyboard.press('KeyE'); await sleep(350); continue; }
     if (s.dialog || s.mode === 'dialogue') {
@@ -461,7 +466,8 @@ async function reloadContinue(page) {
             await new Promise((res) => setTimeout(res, 2500));
             const ms = ['amma', 'ammi'].map((k) => N.npcs.get(k)).filter(Boolean);
             out.inRespect = !!N.respect.at(N.player.x, N.player.y);
-            out.minNear = Math.min(...ms.map((a) => { const n = N.respect.near(a.x, a.y, 200); return n ? n.d : 999; }));
+            const mosques = N.respect.zones.filter((q) => q.kind === 'mosque' && /^(mecca_masjid|jama_masjid_charminar)$/.test(q.place));
+            out.minNear = Math.round(Math.min(...ms.map((a) => Math.min(...mosques.map((q) => N.respect.distance(a.x, a.y, q))))));
             out.mumIn = ms.some((a) => N.respect.at(a.x, a.y));
             // try to walk into the compound: pushed back to the gate
             let inside = null;
@@ -471,7 +477,8 @@ async function reloadContinue(page) {
           });
           seen.respectStop = r; seen.mosqueGuards = r.guards;
           // then get caught by Ammi (PAKDA GAYA: the scene plays on to the café)
-          await page.evaluate(() => { const a = N.npcs.get('ammi') || N.npcs.get('amma'); if (a) N.player.teleport(a.x + 4, a.y); });
+          // (on her far side from the masjid gate: a boy still heading for the gate is never caught inside the buffer)
+          await page.evaluate(() => { const a = N.npcs.get('ammi') || N.npcs.get('amma'); const z = N.respect.zones.find((q) => q.place === 'mecca_masjid'); if (!a) return; const g = (z && z.gate) || { x: a.x - 1, y: a.y }; const an = Math.atan2(a.y - g.y, a.x - g.x); N.player.teleport(a.x + Math.cos(an) * 7, a.y + Math.sin(an) * 7); });
           await sleep(1200);
           return 'skip';
         }

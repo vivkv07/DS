@@ -2003,6 +2003,19 @@
     R.camOverride = null;
     p.controlsLocked = prevLock;
   }
+  /** The respect zones round the chase (by distance from the café), and the pursuers' buffer: 40 u round a
+   *  masjid or any other faith zone; Charminar's interior (its top-floor mosque) only up to its walls, since
+   *  the chase runs across the plaza right round it (bible M12: "chases stay in the bazaar lanes and plaza"). */
+  function respectDist(x, y, z) { try { return N.respect && N.respect.distance ? N.respect.distance(x, y, z) : Infinity; } catch (e) { return Infinity; } }
+  function chaseZones(c, r) { try { return (N.respect && N.respect.zones || []).filter((z) => respectDist(c.x, c.y, z) < r); } catch (e) { return []; } }
+  function chaseBuffer(x, y, zones) {
+    let best = null;
+    for (const z of zones) {
+      const d = respectDist(x, y, z), buf = z.kind === 'charminar' ? 6 : TUNE.respectBuffer;
+      if (d <= buf && (!best || d < best.d)) best = { zone: z, d };
+    }
+    return best;
+  }
   /** M12 step 4 (W1): both mothers at level 5, the homing chappal, the masjid gates held by watchmen.
    *  Resolves 'escaped' (reached the café) or 'caught' (PAKDA GAYA: the scene plays on). */
   async function chandRaatChase(m) {
@@ -2019,10 +2032,20 @@
     }
     variant('amma', 'chappal');
     onEnd(m, () => variant('amma', null));
-    const away = (d) => { const a = Math.atan2(p.y - cafe.y, p.x - cafe.x); return free(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d); };
+    const czones = chaseZones(cafe, 700);
+    // the mothers (and Pasha) start in the lanes behind him, never inside a masjid's buffer
+    const clearOf = (q) => {
+      if (!q || !chaseBuffer(q.x, q.y, czones)) return q;
+      for (let r = 12; r <= 240; r += 12) for (let k = 0; k < 16; k++) {
+        const a = k / 16 * Math.PI * 2, f = free(q.x + Math.cos(a) * r, q.y + Math.sin(a) * r);
+        if (f && !chaseBuffer(f.x, f.y, czones) && !respectAt(f.x, f.y)) return f;
+      }
+      return q;
+    };
+    const away = (d) => { const a = Math.atan2(p.y - cafe.y, p.x - cafe.x); return clearOf(free(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d)); };
     const ms = [
       { key: 'amma', speed: TUNE.mumSpeed, at: away(110), lines: LV5.amma, first: '(level 5, the chappal raised) {FULL}! Stop RIGHT there!', barkT: 1 },
-      { key: 'ammi', speed: TUNE.ammiSpeed, at: (() => { const q = away(100); return free(q.x + 50, q.y - 40); })(), lines: LV5.ammi, first: '{nick}! I can see you behind that bangle shop!', barkT: 3.5 },
+      { key: 'ammi', speed: TUNE.ammiSpeed, at: (() => { const q = away(100); return clearOf(free(q.x + 50, q.y - 40)); })(), lines: LV5.ammi, first: '{nick}! I can see you behind that bangle shop!', barkT: 3.5 },
     ];
     for (const M0 of ms) { npc(m, M0.key, M0.at, { idle: 'stand', talk: false }); M0.job = null; M0.wait = false; M0.last = null; }
     const pa = npc(m, 'pasha', away(140), { idle: 'stand', talk: false });
@@ -2032,7 +2055,7 @@
     m.objective(subst('Get to Café Noor-e-Iran without getting caught.'));
     const cb = m.blip('irani_cafe_19', { color: PINK, icon: 'star', label: 'Café Noor-e-Iran', route: true });
     const ch = { t: TUNE.chappalEvery, fly: null, wind: 0, by: null };
-    dbgTarget(cafe); S2.chase = { ms, gates, ch };
+    dbgTarget(cafe); S2.chase = { ms, gates, ch, zones: czones.map((z) => z.id) };
     onEnd(m, () => { dbgTarget(null); S2.chase = null; });
     prop(m, 's2:chappal', { pos: () => ch.fly, draw: PAINT.chappal, sort: 6, margin: 40 });
     let last = nowT(), t0 = last, pashaGone = false, result = null, whoCaught = null, shantT = 0, dodged = false;
@@ -2064,17 +2087,19 @@
         const d = Math.hypot(a.x - p.x, a.y - p.y);
         M0.barkT -= dt;
         if (M0.barkT <= 0 && d < 260) { M0.barkT = 5 + Math.random() * 3; const line = M0.first || (U.pick ? U.pick(M0.lines) : M0.lines[0]); M0.first = null; bark(M0.key, line, { secs: 2.8 }); }
-        const nz = respectNear(a.x, a.y, TUNE.respectBuffer);
-        if (inRespect || (nz && !(respectAt(a.x, a.y)))) {
-          // pursuers never path within 40 u of a respect zone; at the gate they stop and wait, arms folded
+        const nz = chaseBuffer(a.x, a.y, czones);
+        // pursuers never path within 40 u of a masjid (Charminar's own interior: only up to its walls). With
+        // the boy inside a zone they stop where they are and wait, arms folded; inside the buffer they only
+        // keep coming while he is heading away from it (so they never close in on a gate)
+        const holdBack = inRespect || (nz && !respectAt(a.x, a.y) && respectDist(p.x, p.y, nz.zone) < nz.d + 2);
+        if (holdBack) {
           if (M0.job) { stopNpc(M0.key); M0.job = null; }
           if (nz && M0.last) { a.x = M0.last.x; a.y = M0.last.y; a.vx = a.vy = 0; }
           if (!M0.wait) { M0.wait = true; emote(M0.key, '...', 2.5); }
-          M0.waitT = (M0.waitT || 0) + dt;
-          if (!inRespect && M0.waitT > 0.8) { M0.wait = false; M0.waitT = 0; }
           continue;
         }
-        M0.last = { x: a.x, y: a.y };
+        if (M0.wait && M0.job) { stopNpc(M0.key); M0.job = null; }
+        if (!nz) M0.last = { x: a.x, y: a.y };
         M0.wait = false;
         if (!M0.job) {
           const tok = {};
