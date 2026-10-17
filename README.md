@@ -9,7 +9,7 @@ Koti bus stand, Numaish, Tank Bund, cricket at LB Stadium, and an ending at Char
 A top-down open-city adventure for 90s kids, with an optional 3D third/first-person view
 (press **V**). Runs in the browser on desktop and phone; progress saves in your browser.
 
-This branch holds only the built game; the source is in the nostalgia/ folder of the claude/nostalgia-hyderabad-game branch. Build 2026-10-17T21:03Z (source 62a33de).
+This branch holds only the built game; the source is in the nostalgia/ folder of the claude/nostalgia-hyderabad-game branch. Build 2026-10-17T21:54Z (source 436c9d3).
 This is a play-testing build: pocket money is unlimited for now.
 
 ## Credits
