@@ -1,0 +1,35 @@
+00:00.025  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building cyber_towers (landmark)
+00:01.205  render           | Saved: '/tmp/nostalgia_blender/text_a69295c7.png'
+00:01.229  render           | Saved: '/tmp/nostalgia_blender/text_a6007fe4.png'
+Info: No active and selected image texture node found in material "ct_beacon@night" (7) for object "cyber_towers_body"
+Info: No active and selected image texture node found in material "ct_office@night" (11) for object "cyber_towers_body"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (8 samples) in 1.0s
+Info: No active and selected image texture node found in material "ct_beacon@night" (7) for object "cyber_towers_body"
+Info: No active and selected image texture node found in material "ct_office@night" (11) for object "cyber_towers_body"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 256x256 (24 samples) in 1.4s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+19:26:21 | INFO: Starting glTF 2.0 export
+19:26:21 | INFO: Extracting primitive: COL_ct_ring
+19:26:21 | INFO: Primitives created: 1
+19:26:21 | INFO: Extracting primitive: cyber_towers_body
+19:26:21 | INFO: Primitives created: 3
+19:26:21 | INFO: Finished glTF 2.0 export in 0.06326413154602051 s
+
+[kit] cyber_towers: 1354 tris (budget 20000) ok, 99.6 KB, clips [], anchors 0
+19:26:21 | INFO: Data are loaded, start creating Blender stuff
+19:26:21 | INFO: Blender create Mesh node COL_ct_ring
+19:26:21 | INFO: Blender create Mesh node cyber_towers_body
+19:26:21 | INFO: glTF import finished in 0.02s
+00:06.546  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/cyber_towers.png'
+[kit] preview cyber_towers.png (320px, 14 spp) in 1.1s
+19:26:22 | INFO: Data are loaded, start creating Blender stuff
+19:26:22 | INFO: Blender create Mesh node COL_ct_ring
+19:26:22 | INFO: Blender create Mesh node cyber_towers_body
+19:26:22 | INFO: glTF import finished in 0.01s
+00:07.382  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/cyber_towers_front.png'
+[kit] preview cyber_towers_front.png (256px, 14 spp) in 0.8s
+[kit] done cyber_towers in 7.0s

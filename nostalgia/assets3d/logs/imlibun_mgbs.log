@@ -1,0 +1,36 @@
+00:00.026  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building imlibun_mgbs (landmark)
+00:01.160  render           | Saved: '/tmp/nostalgia_blender/text_20bb947a.png'
+00:01.209  render           | Saved: '/tmp/nostalgia_blender/text_42cef298.png'
+00:01.236  render           | Saved: '/tmp/nostalgia_blender/text_793fe3a3.png'
+Info: No active and selected image texture node found in material "mgbs_shell" (1) for object "imlibun_mgbs_body"
+Info: No active and selected image texture node found in material "lamp_e8f4ff@night" (7) for object "imlibun_mgbs_body"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (8 samples) in 0.4s
+Info: No active and selected image texture node found in material "mgbs_shell" (1) for object "imlibun_mgbs_body"
+Info: No active and selected image texture node found in material "lamp_e8f4ff@night" (7) for object "imlibun_mgbs_body"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 256x256 (24 samples) in 0.5s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+19:29:23 | INFO: Starting glTF 2.0 export
+19:29:23 | INFO: Extracting primitive: COL_mgbs_block
+19:29:23 | INFO: Primitives created: 1
+19:29:23 | INFO: Extracting primitive: imlibun_mgbs_body
+19:29:23 | INFO: Primitives created: 3
+19:29:23 | INFO: Finished glTF 2.0 export in 0.05716443061828613 s
+
+[kit] imlibun_mgbs: 886 tris (budget 20000) ok, 75.3 KB, clips [], anchors 0
+19:29:23 | INFO: Data are loaded, start creating Blender stuff
+19:29:23 | INFO: Blender create Mesh node COL_mgbs_block
+19:29:23 | INFO: Blender create Mesh node imlibun_mgbs_body
+19:29:23 | INFO: glTF import finished in 0.01s
+00:05.268  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/imlibun_mgbs.png'
+[kit] preview imlibun_mgbs.png (320px, 14 spp) in 1.2s
+19:29:24 | INFO: Data are loaded, start creating Blender stuff
+19:29:24 | INFO: Blender create Mesh node COL_mgbs_block
+19:29:24 | INFO: Blender create Mesh node imlibun_mgbs_body
+19:29:24 | INFO: glTF import finished in 0.01s
+00:06.171  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/imlibun_mgbs_halls.png'
+[kit] preview imlibun_mgbs_halls.png (256px, 14 spp) in 0.9s
+[kit] done imlibun_mgbs in 5.8s

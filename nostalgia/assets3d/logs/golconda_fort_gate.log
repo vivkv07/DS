@@ -1,0 +1,47 @@
+00:00.039  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building golconda_fort_gate (landmark)
+Info: No active and selected image texture node found in material "lamp_ffd9a0@night" (8) for object "golconda_fort_gate_body"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (8 samples) in 1.5s
+Info: No active and selected image texture node found in material "lamp_ffd9a0@night" (8) for object "golconda_fort_gate_body"
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 256x256 (24 samples) in 2.5s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+19:28:11 | INFO: Starting glTF 2.0 export
+19:28:11 | INFO: Extracting primitive: COL_gate_bastion0
+19:28:11 | INFO: Primitives created: 1
+19:28:11 | INFO: Extracting primitive: COL_gate_bastion1
+19:28:11 | INFO: Primitives created: 1
+19:28:11 | INFO: Extracting primitive: COL_gate_pier0
+19:28:11 | INFO: Primitives created: 1
+19:28:11 | INFO: Extracting primitive: COL_gate_pier1
+19:28:11 | INFO: Primitives created: 1
+19:28:11 | INFO: Extracting primitive: COL_gate_top
+19:28:11 | INFO: Primitives created: 1
+19:28:11 | INFO: Extracting primitive: golconda_fort_gate_body
+19:28:11 | INFO: Primitives created: 2
+19:28:11 | INFO: Finished glTF 2.0 export in 0.06293153762817383 s
+
+[kit] golconda_fort_gate: 2167 tris (budget 20000) ok, 149.4 KB, clips [], anchors 0
+19:28:11 | INFO: Data are loaded, start creating Blender stuff
+19:28:11 | INFO: Blender create Mesh node COL_gate_bastion0
+19:28:11 | INFO: Blender create Mesh node COL_gate_bastion1
+19:28:11 | INFO: Blender create Mesh node COL_gate_pier0
+19:28:11 | INFO: Blender create Mesh node COL_gate_pier1
+19:28:11 | INFO: Blender create Mesh node COL_gate_top
+19:28:11 | INFO: Blender create Mesh node golconda_fort_gate_body
+19:28:11 | INFO: glTF import finished in 0.02s
+00:10.370  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/golconda_fort_gate.png'
+[kit] preview golconda_fort_gate.png (320px, 14 spp) in 2.5s
+19:28:14 | INFO: Data are loaded, start creating Blender stuff
+19:28:14 | INFO: Blender create Mesh node COL_gate_bastion0
+19:28:14 | INFO: Blender create Mesh node COL_gate_bastion1
+19:28:14 | INFO: Blender create Mesh node COL_gate_pier0
+19:28:14 | INFO: Blender create Mesh node COL_gate_pier1
+19:28:14 | INFO: Blender create Mesh node COL_gate_top
+19:28:14 | INFO: Blender create Mesh node golconda_fort_gate_body
+19:28:14 | INFO: glTF import finished in 0.02s
+00:12.201  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/golconda_fort_gate_arch.png'
+[kit] preview golconda_fort_gate_arch.png (256px, 14 spp) in 1.8s
+[kit] done golconda_fort_gate in 11.7s

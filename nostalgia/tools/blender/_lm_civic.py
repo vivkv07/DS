@@ -499,4 +499,4 @@ def build_assembly(A):
             P.append(cylinder('pin', 1.0, 4.5, (sx * 10, -21 + sy * 9, 38.0), seg=4, mat=T, r2=0.05))
     tri_report(A.id, P)
     L.finish(A, P, size=512)
-    L.shots(A, az=-35, el=12, extra=[{'name': 'front', 'view': {'az': 0, 'el': 6, 'fov': 32, 'pad': 1.05}}, {'name': 'detail', 'view': {'az': -30, 'el': 15, 'fov': 30, 'target': (-29, -21, 34), 'dist': 40}}])
+    L.shots(A, az=-35, el=12, extra=[{'name': 'front', 'view': {'az': 0, 'el': 6, 'fov': 32, 'pad': 1.05}}, {'name': 'detail', 'view': {'az': -90, 'el': 3, 'fov': 30, 'target': (-29, -21, 34), 'dist': 60}}])
