@@ -1117,7 +1117,6 @@ def animal_cow(A):
         Pd = {}
         Pd['root'] = (qe(0, 0.07, 0), (0, 0, -LIE_DROP))
         # forelegs folded under the chest (carpus forward), hind legs tucked to the left
-        LR(Pd, 'leg_F', None)
         for lg, s in (('FL', 1), ('FR', -1)):
             Pd['leg_%s_upper' % lg] = (qe(-1.2, 0, 0), None)
             Pd['leg_%s_lower' % lg] = (qe(2.75, 0, 0), None)
@@ -1130,7 +1129,6 @@ def animal_cow(A):
         Pd['tail1'] = (qe(-0.6, 0.9, 0), None)
         Pd['tail2'] = (qe(-0.4, 0.3 + 0.15 * win(t, 0.5, 0.55, 0.6, 0.66), 0), None)
         return Pd
-    Pd0 = {}
     mkclip(A, arm, 'lie', 4 * FPS_F, lie)
     check(A, arm, ob, ['stand', 'walk', 'lie'], feet=['leg_%s_lower' % l for l in LEGS])
     A.meta.update(height=7.0, length=11.0, idleClip='stand', restClip='lie', walkClip='walk', loco={'walk': 25.0})
