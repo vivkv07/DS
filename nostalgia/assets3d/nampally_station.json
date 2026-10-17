@@ -2,18 +2,20 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 37272,
+ "bytes": 43148,
  "clips": {},
  "family": "landmark",
  "file": "nampally_station.glb",
  "front": "-Y",
  "id": "nampally_station",
  "images": [
+  "image/webp",
   "image/webp"
  ],
- "kb": 36.4,
+ "kb": 42.1,
  "kit": 1,
  "materials": [
+  "M_nampally_station_name_board",
   "M_nampally_station"
  ],
  "max": [
@@ -44,7 +46,7 @@
   42.1
  ],
  "tint": null,
- "tris": 326,
+ "tris": 316,
  "units": "u",
  "up": "Z"
 }

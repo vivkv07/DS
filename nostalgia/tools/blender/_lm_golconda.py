@@ -101,9 +101,12 @@ def arcade(name, span, n, z0, h, mat, fy, rz=0.0, wfrac=0.62, n_seg=3, off=0.06)
     out = []
     step = span / n
     F = face_frame(rz, 0)
+    wfrac = min(0.75, max(wfrac, 0.72))       # broad Qutb Shahi two-centred arches, gentle point
+    w = step * wfrac
+    rise = min(h * 0.38, 0.6 * w)
     for i in range(n):
         x = -span / 2 + step * (i + 0.5)
-        out.append(arch_decal(name, step * wfrac, h * 0.62, h * 0.38, mat, F(x, fy - off, z0), rz, n=n_seg))
+        out.append(arch_decal(name, w, h - rise, rise, mat, F(x, fy - off, z0), rz, n=max(n_seg, 6)))
     return out
 
 
@@ -133,14 +136,14 @@ def rrect(hx, hy, n, p=5.0):
     return pts
 
 
-def tier(name, c, h0, h1, z0, z1, mat, seed, n=18, jit=0.8, bulge=1.06):
+def tier(name, c, h0, h1, z0, z1, mat, seed, n=18, jit=0.8, bulge=1.06, p=5.0):
     """rocky terrace: sloped jittered sides from a bottom rounded rect to a smaller top (flat top)"""
     rnd = random.Random(seed)
     bm = bmesh.new()
     rings = []
     for k, (hx, hy, z, j) in enumerate(((h0[0], h0[1], z0, jit), ((h0[0] + h1[0]) / 2 * bulge, (h0[1] + h1[1]) / 2 * bulge, (z0 + z1) / 2, jit * 1.6), (h1[0], h1[1], z1, jit))):
         ring = []
-        for (x, y) in rrect(hx, hy, n):
+        for (x, y) in rrect(hx, hy, n, p):
             r = 1.0 + rnd.uniform(-j, j) / max(hx, hy)
             ring.append(bm.verts.new((c[0] + x * r, c[1] + y * r, z + (rnd.uniform(-0.6, 0.6) if 0 < k < 2 else 0))))
         rings.append(ring)
@@ -383,45 +386,68 @@ def leaf_merlon(name, w, d, h, mat):
     return prism_from_outline(name, ol, d, mat=mat)
 
 
+def treads(name, x0, x1, y0, y1, z0, z1, n, mat):
+    """light stone tread slabs on a flight() (risers stay dark)"""
+    rise, dx = (z1 - z0) / n, (x1 - x0) / n
+    out = []
+    for i in range(n):
+        xa = x0 + dx * i
+        out.append(box(name, (abs(dx) * 0.8, abs(y1 - y0), 0.3), (xa + dx * 0.5, (y0 + y1) / 2, z0 + rise * (i + 1)), mat, base=True))
+    return kit.join(out, name)
+
+
+def rock_cone(name, rings, seg, seed, jit=2.5):
+    """hand-built rocky hill shell: jittered oval rings [((hx, hy), z, (cx, cy))], top capped"""
+    rnd = random.Random(seed)
+    bm = bmesh.new()
+    R = []
+    for k, ((hx, hy), z, (cx, cy)) in enumerate(rings):
+        ring = []
+        last = k == len(rings) - 1
+        for i in range(seg):
+            a = 2 * math.pi * i / seg
+            j = 0.0 if last else rnd.uniform(-jit, jit)
+            ring.append(bm.verts.new((cx + (hx + j) * math.cos(a), cy + (hy + j) * math.sin(a), z + (0 if (k == 0 or last) else rnd.uniform(-1.2, 1.2)))))
+        R.append(ring)
+    for a_, b_ in zip(R[:-1], R[1:]):
+        for i in range(seg):
+            bm.faces.new((a_[i], a_[(i + 1) % seg], b_[(i + 1) % seg], b_[i]))
+    bm.faces.new(R[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return kit.obj_from_bm(bm, name)
+
+
 # =========================================================================== Bala Hissar
 @kit.asset('golconda_bala_hissar', 'landmark', draw='golconda_bala_hissar', face='s', footprint=[84, 64], height=70.0, fit='footprint', floodlit=True)
 def build_bala_hissar(A):
     M = gmats()
     P = []
-    # ---- the granite hill: three rocky terraces (front = -Y = south; +X = east, towards Fateh Darwaza)
-    P.append(tier('hill0', (0, 0), (41.5, 31.5), (37, 27), 0, 12, M['rock'], 1, n=20, jit=1.0))
-    P.append(tier('hill1', (-3, 3), (31, 22), (27, 18), 12, 26, M['rock'], 2, n=18, jit=0.9))
-    P.append(tier('hill2', (-4, 6), (24, 15), (22, 13), 26, 38, M['rock'], 3, n=16, jit=0.7))
-    # scrubby ledges (dry grass on the terrace tops)
-    for (cx, cy, hx, hy, z) in ((-3, 3, 33.5, 24, 12.03), (-4, 6, 25.5, 16.5, 26.03)):
-        P.append(up_poly('ledge', [(cx + x, cy + y, z) for (x, y) in rrect(hx, hy, 12)], M['scrub']))
-    # ---- ruined retaining walls / fort walls on the west half of each terrace front, and round the back
-    P.append(crenel_wall('rwall0', (-39, -28.5), (2, -28.5), 0, 12.5, 2.2, M['fort'], M['fort_lt'], seed=11, ruin=0.25))
-    P.append(crenel_wall('rwall0w', (-40.5, -27.5), (-40.5, 4), 0, 11.5, 2.2, M['fort'], M['fort_lt'], seed=12, ruin=0.4))
-    P.append(crenel_wall('rwall1', (-30, -19.6), (-1, -19.6), 12, 14.4, 2.0, M['fort'], M['fort_lt'], seed=13, ruin=0.3))
-    P.append(crenel_wall('rwall2', (-26, -9.6), (-5, -9.6), 26, 12.6, 1.8, M['fort'], M['fort_lt'], seed=14, ruin=0.2))
-    P.append(crenel_wall('rwall1b', (-28, 24.5), (18, 24.5), 12, 14.0, 1.8, M['fort'], M['fort_lt'], seed=15, ruin=0.45))
-    # summit parapet (crenellated, broken) round the citadel top
-    P.append(crenel_wall('swall_s', (-25, -6.5), (2, -6.5), 38, 2.4, 1.2, M['fort_lt'], seed=16, ruin=0.3, mh=1.8))
-    P.append(crenel_wall('swall_w', (-25.6, -6), (-25.6, 18), 38, 2.4, 1.2, M['fort_lt'], seed=17, ruin=0.35, mh=1.8))
-    P.append(crenel_wall('swall_n', (-25, 18.6), (17, 18.6), 38, 2.4, 1.2, M['fort_lt'], seed=18, ruin=0.3, mh=1.8))
-    # lime plaster remnants on the retaining walls
-    for (x, y, z, w, h) in ((-30, -29.7, 3.0, 6, 5), (-12, -29.7, 6.5, 4, 3.5), (-22, -20.7, 15.0, 5, 4), (-16, -10.6, 29, 4, 4)):
-        P.append(rect_decal('lime', w, h, M['plaster'], (x, y, z)))
-    # ---- THE CLIMB: three zig-zag flights with landings up the south-east face
-    S = M['fort_lt']
-    P.append(flight('fl1', 4, 27, -31.5, -27.5, 0, 12, 0, 8, S))
-    P.append(slope_wall('fl1p', 4, 27, -31.8, 0, 12, 0, 1.4, 0.7, M['fort']))
-    P.append(box('land1', (8, 9, 12), (31, -27.5, 0), M['fort'], base=True))
-    P.append(crenel_wall('land1w', (27, -32), (35, -32), 12, 0.5, 0.8, M['fort'], M['fort_lt'], mw=1.2, gap=2.2, seed=21))
-    P.append(flight('fl2', 27, 5, -23.5, -19.5, 12, 26, 12, 8, S))
-    P.append(slope_wall('fl2p', 27, 5, -23.8, 12, 26, 12, 1.4, 0.7, M['fort']))
-    P.append(box('land2', (7, 9.5, 14), (1.5, -19.6, 12), M['fort'], base=True))
-    P.append(flight('fl3', 5, 17, -15.0, -11.0, 26, 38, 26, 7, S))
-    P.append(slope_wall('fl3p', 5, 17, -15.3, 26, 38, 26, 1.4, 0.7, M['fort']))
-    P.append(box('land3', (6, 8, 12.2), (19.5, -10.5, 26), M['fort'], base=True))
-    # small gate pavilion at the head of the climb
-    P.append(L.arch_wall('topgate', 7, 7.5, 1.6, [(0, 3.2, 3.2, 2.2)], M['fort_lt'], center=(19.5, -14.2, 38.2)))
+    # ---- the granite hill (front = -Y = south; +X = east, towards Fateh Darwaza): oval rocky
+    # terraces in the detail model, one jittered rocky cone as the shell
+    P.append(tier('hill0', (0, 0), (41.5, 31.5), (37, 27), 0, 12, M['rock'], 1, n=20, jit=1.6, p=2.5))
+    P.append(tier('hill1', (-2, 2), (33, 24), (28, 19), 10, 24, M['rock'], 2, n=18, jit=1.4, p=2.5))
+    P.append(tier('hill2', (-4, 6), (26, 16), (22, 13), 22, 38, M['rock'], 3, n=16, jit=1.0, p=2.5))
+    for (cx, cy, hx, hy, z) in ((-2, 2, 34, 25, 12.03), (-4, 6, 26, 17, 24.03)):
+        P.append(up_poly('ledge', [(cx + x, cy + y, z) for (x, y) in rrect(hx, hy, 12, 2.5)], M['scrub']))
+    # ---- ruined walls hugging the slopes (leaf merlons, broken tops)
+    P.append(crenel_wall('rwall0', (-36, -27.5), (0, -27.5), 0, 10.5, 2.2, M['fort'], M['fort_lt'], seed=11, ruin=0.25))
+    P.append(crenel_wall('rwall1', (-27, -19.0), (-3, -19.0), 11, 11.0, 2.0, M['fort'], M['fort_lt'], seed=13, ruin=0.3))
+    P.append(crenel_wall('rwall1b', (-24, 23.5), (14, 23.5), 11, 10.0, 1.8, M['fort'], M['fort_lt'], seed=15, ruin=0.45))
+    # summit parapet (broken) round the citadel top
+    P.append(crenel_wall('swall_s', (-22, -4.5), (2, -4.5), 38, 2.0, 1.2, M['fort_lt'], seed=16, ruin=0.3, mh=1.6))
+    P.append(crenel_wall('swall_n', (-20, 17.0), (12, 17.0), 38, 2.0, 1.2, M['fort_lt'], seed=18, ruin=0.3, mh=1.6))
+    # ---- THE CLIMB: three zig-zag flights (6 u wide, light treads on dark risers) with landings
+    S = M['rock_dk']
+    T = L.paint('#c9bfae', 'gc_tread', rough=0.9, grime=0.3)
+    FLIGHTS = (('fl1', 4, 27, -33.0, 0, 12, 8), ('fl2', 27, 5, -25.0, 12, 26, 8), ('fl3', 5, 17, -16.5, 26, 38, 7))
+    for (nm, x0, x1, ya, z0_, z1_, n) in FLIGHTS:
+        P.append(flight(nm, x0, x1, ya, ya + 6, z0_, z1_, z0_, n, S))
+        P.append(treads(nm + 't', x0, x1, ya, ya + 6, z0_, z1_, n, T))
+        P.append(slope_wall(nm + 'p', x0, x1, ya - 0.3, z0_, z1_, z0_, 1.4, 0.7, M['fort']))
+    LAND = [((31, -28.0, 0), (8, 10, 12)), ((1.5, -21.0, 12), (7, 10, 14)), ((19.5, -12.0, 26), (6, 9, 12.2))]
+    for (c, sz) in LAND:
+        P.append(box('land', sz, c, M['fort'], base=True))
+    P.append(L.arch_wall('topgate', 7, 7.5, 1.6, [(0, 3.2, 3.2, 2.2)], M['fort_lt'], center=(19.5, -15.6, 38.2)))
     # ---- boulders (the Golconda look: big rounded granite rocks everywhere)
     B = [((-37, -6, 0), (7, 9, 8)), ((-35, 14, 0), (8, 8, 10)), ((-19, 27, 0), (9, 6, 9)), ((1, 28.5, 0), (8, 5.5, 7)),
          ((20, 27, 0), (9, 6, 9)), ((36.5, 15, 0), (6.5, 8, 9)), ((38, -9, 0), (5, 6, 7)), ((-38, -26, 0), (4.5, 5, 6)),
@@ -430,46 +456,43 @@ def build_bala_hissar(A):
          ((-12, -27, 11), (3.5, 3, 3.5)), ((32, -6, 11), (4, 4, 4))]
     for i, (c, r) in enumerate(B):
         P.append(boulder('rock%d' % i, c, r, M['rock_dk'] if i % 3 == 0 else M['rock'], 100 + i))
-    # ---- cannon bastion on the east ledge, facing Fateh Darwaza
-    P.append(cylinder('bastion', 5.2, 5.5, (33, -15, 11), seg=12, mat=M['fort'], r2=4.8))
+    big = sorted(range(len(B)), key=lambda i: -(B[i][1][0] * B[i][1][1] * B[i][1][2]))[:6]
+    # ---- cannon bastion on the east shoulder, facing Fateh Darwaza (a round tower from the ground)
+    P.append(cylinder('bastion', 5.6, 16.5, (33, -15, 0), seg=12, mat=M['fort'], r2=4.8))
     P.append(merlon_ring('bastion_m', 4.4, 16.4, 7, M['fort_lt'], w=1.4, h=1.8, d=0.9, cx=33, cy=-15, arc=(-math.pi * 0.85, math.pi * 0.75)))
     P.append(cannon('cannon1', M, (33.5, -16.5, 16.4), math.radians(110), s=0.9))
     P.append(cannon('cannon2', M, (31.0, -12.5, 16.4), math.radians(70), s=0.8))
-    # ---- summit: the Bala Hissar baradari (two-storey darbar hall, rubble granite, pointed arches)
-    hx, hy, hc = 28.0, 12.0, (-10.0, 10.0)
+    # ---- summit: the Bala Hissar baradari, a long two-storey pavilion of broad arches
+    hx, hy, hc = 34.0, 12.0, (-7.0, 9.0)
     z0 = 38.0
-    P.append(box('bh_plinth', (hx + 2, hy + 2, 1.6), (hc[0], hc[1], z0 - 0.3), M['fort'], base=True))
+    P.append(box('bh_plinth', (hx + 2, hy + 2, 7.6), (hc[0], hc[1], z0 - 6.3), M['fort'], base=True))
     zb = z0 + 1.3
-    H = 20.0
+    H = 16.0
     P.append(box('bh_hall', (hx, hy, H), (hc[0], hc[1], zb), M['fort_lt'], base=True))
     P.append(box('bh_band', (hx + 0.8, hy + 0.8, 0.8), (hc[0], hc[1], zb + H / 2 - 0.4), M['fort'], base=True))
     P.append(box('bh_cornice', (hx + 1.0, hy + 1.0, 0.9), (hc[0], hc[1], zb + H - 0.9), M['fort'], base=True))
-    for (rz, span, d, n) in ((0, hx, hy / 2, 7), (math.pi, hx, hy / 2, 7), (math.pi / 2, hy, hx / 2, 3), (-math.pi / 2, hy, hx / 2, 3)):
+    for (rz, span, d, n) in ((0, hx, hy / 2, 9), (math.pi, hx, hy / 2, 9), (math.pi / 2, hy, hx / 2, 3), (-math.pi / 2, hy, hx / 2, 3)):
         for k in range(2):
-            for o in arcade('bh_arc', span - 1.5, max(2, n - 1), zb + 1.0 + k * H / 2, H / 2 - 3.0, M['dark'], -d, rz, wfrac=0.7):
+            for o in arcade('bh_arc', span - 1.5, n, zb + 1.0 + k * H / 2, H / 2 - 2.2, M['dark'], -d, rz):
                 o.location = (hc[0], hc[1], 0)
                 kit.apply_transform(o)
                 P.append(o)
-    # merlons on the flat roof
     for (p0, p1) in (((-hx / 2, -hy / 2 + 0.5), (hx / 2, -hy / 2 + 0.5)), ((-hx / 2, hy / 2 - 0.5), (hx / 2, hy / 2 - 0.5)),
                      ((-hx / 2 + 0.5, -hy / 2 + 1.5), (-hx / 2 + 0.5, hy / 2 - 1.5)), ((hx / 2 - 0.5, -hy / 2 + 1.5), (hx / 2 - 0.5, hy / 2 - 1.5))):
         P.append(crenel_wall('bh_par', (hc[0] + p0[0], hc[1] + p0[1]), (hc[0] + p1[0], hc[1] + p1[1]), zb + H, 0.9, 1.0, M['fort_lt'], mw=1.4, mh=2.0, gap=2.1, seed=31))
-    # upper pavilion on the roof (the highest point)
-    P.append(box('bh_top', (10, 7, 6.5), (hc[0] - 2, hc[1] + 1, zb + H), M['fort_lt'], base=True))
-    for o in arcade('bh_toparc', 9, 3, zb + H + 0.6, 5.0, M['dark'], -3.5, 0, wfrac=0.6):
-        o.location = (hc[0] - 2, hc[1] + 1, 0)
+    # roof pavilion: 18 x 7 x 5 with five arches
+    tc = (hc[0], hc[1] + 1.5)
+    P.append(box('bh_top', (18, 7, 5), (tc[0], tc[1], zb + H), M['fort_lt'], base=True))
+    for o in arcade('bh_toparc', 17, 5, zb + H + 0.5, 4.0, M['dark'], -3.5, 0):
+        o.location = (tc[0], tc[1], 0)
         kit.apply_transform(o)
         P.append(o)
-    P.append(crenel_wall('bh_topm', (hc[0] - 7, hc[1] - 2.2), (hc[0] + 3, hc[1] - 2.2), zb + H + 6.5, 0.4, 0.8, M['fort_lt'], mw=1.2, mh=1.6, gap=2.0, seed=32))
-    P.append(crenel_wall('bh_topm2', (hc[0] - 7, hc[1] + 4.2), (hc[0] + 3, hc[1] + 4.2), zb + H + 6.5, 0.4, 0.8, M['fort_lt'], mw=1.2, mh=1.6, gap=2.0, seed=33))
-    # plaster remnants on the hall
-    for (x, z, w, h) in ((-19, zb + 1, 4, 6), (-2, zb + 11, 3, 5), (-12, zb + 15, 5, 3)):
-        P.append(rect_decal('bh_lime', w, h, M['plaster'], (x, hc[1] - hy / 2 - 0.05, z)))
+    P.append(L.place(kit.merlons('bh_topm', 18, 0, 0.6, 1.4, n=11, w=1.0, mat=M['fort_lt'], kind='leaf'), (tc[0], tc[1] - 3.2, zb + H + 5.0)))
     # ---- Ibrahim mosque: three arches, flat roof, two stubby minarets
-    mc = (9.0, 4.0)
-    P.append(box('ms_plinth', (11, 8, 1.2), (mc[0], mc[1], z0 - 0.2), M['fort'], base=True))
+    mc = (10.0, 3.0)
+    P.append(box('ms_plinth', (11, 8, 6.2), (mc[0], mc[1], z0 - 5.2), M['fort'], base=True))
     P.append(box('ms_body', (9, 6, 6.5), (mc[0], mc[1], z0 + 1.0), M['plaster'], base=True))
-    for o in arcade('ms_arc', 8.4, 3, z0 + 1.0, 5.2, M['dark'], -3.0, 0, wfrac=0.66):
+    for o in arcade('ms_arc', 8.4, 3, z0 + 1.0, 5.2, M['dark'], -3.0, 0):
         o.location = (mc[0], mc[1], 0)
         kit.apply_transform(o)
         P.append(o)
@@ -479,37 +502,41 @@ def build_bala_hissar(A):
         P.append(lathe('ms_min', [(0.85, z0 + 1.0), (0.85, z0 + 9.5), (1.15, z0 + 9.8), (1.15, z0 + 10.4), (0.75, z0 + 10.6)], seg=6, mat=M['plaster'], loc=(mc[0] + sx * 4.6, mc[1] - 2.9, 0)))
         P.append(onion('ms_dome', 0.8, 1.6, z0 + 10.6, M['plaster'], seg=6, loc=(mc[0] + sx * 4.6, mc[1] - 2.9), n=4))
     _tally(P)
-    # ---- shells. The rock, terraces, walls and the climb get an automatic decimated shell (made
-    # from the solid parts only, not the flat decals); the buildings and cannons get hand shells.
-    AUTO = ('hill', 'rwall', 'swall', 'fl', 'land', 'rock', 'bastion')
-    src = []
-    for o in P:
-        if o.name.startswith(AUTO) and not o.name.startswith('bastion_m'):
-            kit.apply_modifiers(o)
-            c = o.copy()
-            c.data = o.data.copy()
-            kit.link(c, A.coll)
-            src.append(c)
-    auto = kit.join(src, 's_hill')
-    auto.data.materials.clear()
-    L._auto_lo(auto, int(__import__('os').environ.get('BH_TRIS', '420')))
-    lo = [auto, L.shell_box('s_tg', (7.4, 2.0, 7.8), (19.5, -14.2, 38.1))]
-    lo.append(L.shell_box('s_bh', (hx + 1.2, hy + 1.2, H + 1.6), (hc[0], hc[1], z0 - 0.3)))
+    # ---- shells: the rocky cone, big boulders, walls, landings, bastion, buildings, cannons
+    lo = [rock_cone('s_hill', [((42, 32), 0.0, (0, 0)), ((36, 26), 10.0, (-1, 1)), ((28, 19), 22.0, (-3, 3)),
+                               ((23, 14), 34.0, (-4, 5)), ((21, 12), 38.5, (-4, 6))], 14, 7)]
+    for i in big:
+        c, r = B[i]
+        lo.append(boulder('s_rock', c, (r[0] * 1.06, r[1] * 1.06, r[2] * 1.06), None, 100 + i, sub=1))
+    for nm in ('rwall0', 'rwall1', 'rwall1b'):
+        o = [q for q in P if q.name.startswith(nm)][0]
+        bb = [o.matrix_world @ Vector(v) for v in o.bound_box]
+        xs, ys, zs = [v.x for v in bb], [v.y for v in bb], [v.z for v in bb]
+        lo.append(L.shell_box('s_' + nm, (max(xs) - min(xs) + 0.4, max(ys) - min(ys) + 0.4, max(zs) - min(zs) - 1.0), ((max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2, min(zs))))
+    for (nm, x0, x1, ya, z0_, z1_, n) in FLIGHTS:
+        rr = 1.0 if x1 > x0 else -1.0
+        ol = [(x0 - rr * 0.3, z0_), (x1, z1_ + 0.4), (x1, z0_)] if x1 > x0 else [(x1, z0_), (x1, z1_ + 0.4), (x0 + 0.3, z0_)]
+        lo.append(prism_from_outline('s_' + nm, ol, 6.6, center=(0, ya + 3.0, 0)))
+    for (c, sz) in LAND:
+        lo.append(L.shell_box('s_land', (sz[0] + 0.4, sz[1] + 0.4, sz[2] + 0.1), c))
+    lo.append(L.shell_box('s_tg', (7.4, 2.0, 7.8), (19.5, -15.6, 38.1)))
+    lo.append(cylinder('s_bas', 5.9, 17.4, (33, -15, 0), seg=8, r2=5.1, cap=True))
+    lo.append(L.shell_box('s_bh', (hx + 2.4, hy + 2.4, H + 7.6), (hc[0], hc[1], z0 - 6.3)))
     lo += crest_shell_rect('s_bhp', hc, hx, hy, zb + H, 2.4, 2.94)
-    lo.append(L.shell_box('s_bht', (10.4, 7.4, 7.0), (hc[0] - 2, hc[1] + 1, zb + H)))
-    lo.append(L.shell_box('s_ms', (9.6, 7.2, 7.6), (mc[0], mc[1], z0 - 0.2)))
+    lo.append(L.shell_box('s_bht', (18.4, 7.4, 6.6), (tc[0], tc[1], zb + H)))
+    lo.append(L.shell_box('s_ms', (11.4, 8.4, 13.0), (mc[0], mc[1], z0 - 5.2)))
     for sx in (-1, 1):
-        lo.append(pinnacle('s_msm', 2.2, z0 + 1.0, z0 + 10.4, z0 + 12.6, (mc[0] + sx * 4.6, mc[1] - 2.9)))
+        lo.append(pinnacle('s_msm', 2.2, z0 + 7.8, z0 + 10.4, z0 + 12.6, (mc[0] + sx * 4.6, mc[1] - 2.9)))
     lo.append(cannon_shell('s_can1', (33.5, -16.5, 16.4), math.radians(110), 0.9))
     lo.append(cannon_shell('s_can2', (31.0, -12.5, 16.4), math.radians(70), 0.8))
-    los = L.finish_proxy(A, P, lo=lo, size=int(__import__('os').environ.get('BH_SIZE', '384')), ao_dist=6.0, cage=2.5, ray=9.0)
+    los = L.finish_proxy(A, P, lo=lo, size=384, ao_dist=6.0, cage=2.5, ray=9.0)
     for o in los:
-        kit.smooth(o, float(__import__('os').environ.get('BH_SMOOTH', '50')))   # fewer split normals (vertex count = bytes)
-    L.col_box('bh_hill0', (78, 58, 12), (0, 0, 0))
-    L.col_box('bh_hill1', (56, 38, 14), (-3, 3, 12))
-    L.col_box('bh_hill2', (44, 26, 12), (-4, 6, 26))
-    L.col_box('bh_hall', (28, 12, 20), (hc[0], hc[1], zb))
-    A.notes.append('COL_bh_*: camera proxies for the hill terraces and the hall')
+        kit.smooth(o, 50)
+    L.col_box('bh_hill0', (72, 52, 10), (0, 0, 0))
+    L.col_box('bh_hill1', (52, 36, 14), (-2, 2, 10))
+    L.col_box('bh_hill2', (40, 22, 14), (-4, 6, 24))
+    L.col_box('bh_hall', (hx, hy, H), (hc[0], hc[1], zb))
+    A.notes.append('rocky cone shell + boulder / wall / landing / building shells; COL_bh_* camera proxies')
     L.shots(A, az=-30, el=12, extra=[{'name': 'east', 'view': {'az': 70, 'el': 8, 'fov': 32, 'pad': 1.05}}])
 
 
@@ -518,7 +545,7 @@ def build_bala_hissar(A):
 def build_fort_gate(A):
     M = gmats()
     P = []
-    AW, AS, AR = 16.0, 21.0, 13.0        # arch width, spring, rise (apex 34)
+    AW, AS, AR = 20.0, 17.0, 12.0        # arch width, spring, rise (apex 29): broad Deccani arch
     WT = 13.0                            # gate-wall thickness
     WH = 46.0
     # gate wall between the bastions, the passage cut through (Deccani two-centred pointed arch)
@@ -554,22 +581,27 @@ def build_fort_gate(A):
             a = -math.pi / 2 + ang
             r = BR - 0.55 * (z / BH) + 0.08
             P.append(rect_decal('slit', 0.6, 1.8, M['dark'], (cx + r * math.cos(a), -0.6 + r * math.sin(a), z), a + math.pi / 2))
-        P.append(rect_decal('lime', 5, 6, M['plaster'], (cx - sx * 2.5, -0.6 - BR + 0.15, 6.0), sx * 0.25))
-    # the great teak doors standing open against the passage walls: long iron anti-elephant spikes
+    # the great teak doors, hinged at the front of the passage and swung ~25 deg off the walls,
+    # their faces bristling with long iron anti-elephant spikes that catch the light
+    DL, SW = 9.0, math.radians(25)
+    doors = []
     for sx in (-1, 1):
-        xd = sx * (AW / 2 - 0.5)
-        P.append(box('door', (0.9, 9.0, 24.0), (xd, -1.0, 0.1), M['wood'], base=True))
+        hxp, hyp = sx * (AW / 2 - 0.6), -WT / 2 + 3.0
+        d = [box('door', (0.9, DL, 22.0), (0, DL / 2, 0.1), M['wood'], base=True)]
         for z in (3.0, 11.0, 19.0):
-            P.append(box('door_band', (1.05, 9.0, 0.5), (xd, -1.0, z), M['ironp'], base=True))
-        for z in (6.0, 10.0, 14.0, 18.0, 22.0):
-            for y in (-4.0, -1.0, 2.0):
-                sp = cylinder('spike', 0.4, 2.6, (0, 0, 0), seg=4, mat=M['ironp'], r2=0.0, axis='X', base=False)
-                L.place(sp, (xd - sx * 1.6, y, z), 0.0 if sx < 0 else math.pi)
-                P.append(sp)
+            d.append(box('door_band', (1.05, DL, 0.5), (0, DL / 2, z), M['ironp'], base=True))
+        for z in (5.0, 9.0, 13.0, 17.0):
+            for yy in (1.5, 4.5, 7.5):
+                sp = cylinder('spike', 0.42, 2.8, (0, 0, 0), seg=4, mat=M['ironp'], r2=0.0, axis='X', base=False)
+                d.append(L.place(sp, (-sx * 1.85, yy, z), math.pi if sx > 0 else 0.0))
+        rz = sx * SW            # free end swings towards the passage centre
+        for o in d:
+            P.append(L.place(o, (hxp, hyp, 0), rz))
+        doors.append(L.place(L.shell_box('s_door', (1.3, DL + 0.3, 22.3), (-sx * 0.15, DL / 2, 0.0)), (hxp, hyp, 0), rz))
     _tally(P)
     # ---- shells: gate wall with the real passage, gallery block, leaf-merlon cards, bastions
     sw = L.shell_box('s_gw', (30.4, WT + 1.4, WH), (0, 0, 0))
-    kit.boolean(sw, prism_from_outline('s_cut', arch_outline(AW - 0.2, AS, AR, 'pointed', n=4), WT + 6, center=(0, 0, -0.5)))
+    kit.boolean(sw, prism_from_outline('s_cut', arch_outline(AW - 0.2, AS, AR, 'pointed', n=6), WT + 6, center=(0, 0, -0.5)))
     lo = [sw, L.shell_box('s_gal', (20.4, 3.4, 4.2), (0, -WT / 2 - 2.0, 39.4)),
           poly('s_galc', leaf_teeth(20.4, 2.0, 9, base=0.0), None, (0, -WT / 2 - 2.75, 43.6))]
     for y in (-WT / 2, WT / 2):
@@ -578,10 +610,10 @@ def build_fort_gate(A):
     for sx in (-1, 1):
         lo.append(bastion_shell('s_bas', BR + 0.85, BR - 0.1, BH, 0.0, 6, (sx * BX, -0.6)))
         lo += leaf_ring('s_bm', BR - 0.1, BH, 9, 2.6, 3.6, (sx * BX, -0.6))
+    lo += doors
     L.finish_proxy(A, P, lo=lo, size=384, ao_dist=6.0)
     for sx in (-1, 1):
         L.col_box('gate_bastion%d' % (sx > 0), (BR * 2, BR * 2, BH), (sx * BX, -0.6, 0))
-        L.col_box('gate_pier%d' % (sx > 0), (15 - AW / 2 - 0.2, WT, WH), (sx * (AW / 2 + (15 - AW / 2) / 2 + 0.1), 0, 0))
     L.col_box('gate_top', (AW + 0.4, WT, WH - AS - AR), (0, 0, AS + AR))
     A.notes.append('COL_gate_*: bastions, piers and the mass over the arch (the passage itself is clear)')
     L.shots(A, az=-25, el=8, extra=[{'name': 'arch', 'view': {'az': -5, 'el': 2, 'fov': 40, 'target': (0, -8, 16), 'dist': 60}}])

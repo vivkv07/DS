@@ -1,26 +1,31 @@
-00:00.025  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.029  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building kachiguda_station (landmark)
-00:01.190  render           | Saved: '/tmp/nostalgia_blender/text_553a8255.png'
+00:01.366  render           | Saved: '/tmp/nostalgia_blender/text_553a8255.png'
+00:01.397  render           | Saved: '/tmp/nostalgia_blender/kachiguda_station_name_board.png'
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] proxy-baked albedo 384² in 0.4s
+[kit] proxy-baked albedo 384² in 0.6s
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] proxy-baked ao 192² in 1.6s
+[kit] proxy-baked ao 192² in 2.7s
 ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
 ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
-21:59:41 | INFO: Starting glTF 2.0 export
-21:59:41 | INFO: Extracting primitive: kachiguda_station_body
-21:59:41 | INFO: Primitives created: 1
-21:59:41 | INFO: Finished glTF 2.0 export in 0.06664109230041504 s
+22:21:53 | INFO: Starting glTF 2.0 export
+22:21:53 | INFO: Extracting primitive: kachiguda_station_body
+22:21:53 | INFO: Primitives created: 1
+22:21:53 | INFO: Extracting primitive: name_board
+22:21:53 | INFO: Primitives created: 1
+22:21:53 | INFO: Finished glTF 2.0 export in 0.051032066345214844 s
 
-[kit] kachiguda_station: 344 tris (budget 20000) ok, 40.2 KB, clips [], anchors 0
-21:59:41 | INFO: Data are loaded, start creating Blender stuff
-21:59:41 | INFO: Blender create Mesh node kachiguda_station_body
-21:59:41 | INFO: glTF import finished in 0.01s
-00:06.491  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kachiguda_station.png'
-[kit] preview kachiguda_station.png (320px, 14 spp) in 1.3s
-21:59:43 | INFO: Data are loaded, start creating Blender stuff
-21:59:43 | INFO: Blender create Mesh node kachiguda_station_body
-21:59:43 | INFO: glTF import finished in 0.01s
-00:07.497  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kachiguda_station_front.png'
-[kit] preview kachiguda_station_front.png (256px, 14 spp) in 1.0s
-[kit] done kachiguda_station in 7.0s
+[kit] kachiguda_station: 522 tris (budget 20000) ok, 46.5 KB, clips [], anchors 0
+22:21:53 | INFO: Data are loaded, start creating Blender stuff
+22:21:53 | INFO: Blender create Mesh node kachiguda_station_body
+22:21:53 | INFO: Blender create Mesh node name_board
+22:21:53 | INFO: glTF import finished in 0.01s
+00:09.818  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kachiguda_station.png'
+[kit] preview kachiguda_station.png (320px, 14 spp) in 2.4s
+22:21:56 | INFO: Data are loaded, start creating Blender stuff
+22:21:56 | INFO: Blender create Mesh node kachiguda_station_body
+22:21:56 | INFO: Blender create Mesh node name_board
+22:21:56 | INFO: glTF import finished in 0.01s
+00:11.664  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kachiguda_station_front.png'
+[kit] preview kachiguda_station_front.png (256px, 14 spp) in 1.8s
+[kit] done kachiguda_station in 11.1s

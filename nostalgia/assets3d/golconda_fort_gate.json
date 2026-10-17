@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 39520,
+ "bytes": 39160,
  "clips": {},
  "family": "landmark",
  "file": "golconda_fort_gate.glb",
@@ -11,7 +11,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 38.6,
+ "kb": 38.2,
  "kit": 1,
  "materials": [
   "M_golconda_fort_gate"
@@ -47,7 +47,7 @@
   53.6
  ],
  "tint": null,
- "tris": 401,
+ "tris": 417,
  "units": "u",
  "up": "Z"
 }

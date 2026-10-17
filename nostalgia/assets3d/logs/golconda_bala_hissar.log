@@ -1,43 +1,41 @@
-00:00.031  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.028  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building golconda_bala_hissar (landmark)
-[kit] decimated s_hill: 2479 -> 410 tris
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] proxy-baked albedo 384² in 0.9s
+[kit] proxy-baked albedo 384² in 1.7s
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] proxy-baked ao 192² in 1.6s
+[kit] proxy-baked ao 192² in 2.8s
 ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
 ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
-22:09:49 | INFO: Starting glTF 2.0 export
-22:09:49 | INFO: Extracting primitive: COL_bh_hall
-22:09:49 | INFO: Primitives created: 1
-22:09:49 | INFO: Extracting primitive: COL_bh_hill0
-22:09:49 | INFO: Primitives created: 1
-22:09:49 | INFO: Extracting primitive: COL_bh_hill1
-22:09:49 | INFO: Primitives created: 1
-22:09:49 | INFO: Extracting primitive: COL_bh_hill2
-22:09:49 | INFO: Primitives created: 1
-22:09:49 | WARNING: Mesh golconda_bala_hissar_body is not valid, and may be exported wrongly
-22:09:49 | INFO: Extracting primitive: golconda_bala_hissar_body
-22:09:49 | INFO: Primitives created: 1
-22:09:49 | INFO: Finished glTF 2.0 export in 0.04796242713928223 s
+22:21:29 | INFO: Starting glTF 2.0 export
+22:21:29 | INFO: Extracting primitive: COL_bh_hall
+22:21:29 | INFO: Primitives created: 1
+22:21:29 | INFO: Extracting primitive: COL_bh_hill0
+22:21:29 | INFO: Primitives created: 1
+22:21:29 | INFO: Extracting primitive: COL_bh_hill1
+22:21:29 | INFO: Primitives created: 1
+22:21:29 | INFO: Extracting primitive: COL_bh_hill2
+22:21:29 | INFO: Primitives created: 1
+22:21:29 | INFO: Extracting primitive: golconda_bala_hissar_body
+22:21:29 | INFO: Primitives created: 1
+22:21:29 | INFO: Finished glTF 2.0 export in 0.051520586013793945 s
 
-[kit] golconda_bala_hissar: 658 tris (budget 20000) ok, 78.9 KB, clips [], anchors 0
-22:09:49 | INFO: Data are loaded, start creating Blender stuff
-22:09:49 | INFO: Blender create Mesh node COL_bh_hall
-22:09:49 | INFO: Blender create Mesh node COL_bh_hill0
-22:09:49 | INFO: Blender create Mesh node COL_bh_hill1
-22:09:49 | INFO: Blender create Mesh node COL_bh_hill2
-22:09:49 | INFO: Blender create Mesh node golconda_bala_hissar_body
-22:09:49 | INFO: glTF import finished in 0.02s
-00:07.253  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/golconda_bala_hissar.png'
-[kit] preview golconda_bala_hissar.png (320px, 14 spp) in 1.4s
-22:09:50 | INFO: Data are loaded, start creating Blender stuff
-22:09:50 | INFO: Blender create Mesh node COL_bh_hall
-22:09:50 | INFO: Blender create Mesh node COL_bh_hill0
-22:09:50 | INFO: Blender create Mesh node COL_bh_hill1
-22:09:50 | INFO: Blender create Mesh node COL_bh_hill2
-22:09:50 | INFO: Blender create Mesh node golconda_bala_hissar_body
-22:09:50 | INFO: glTF import finished in 0.02s
-00:08.260  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/golconda_bala_hissar_east.png'
-[kit] preview golconda_bala_hissar_east.png (256px, 14 spp) in 1.0s
-[kit] done golconda_bala_hissar in 7.7s
+[kit] golconda_bala_hissar: 702 tris (budget 20000) ok, 69.7 KB, clips [], anchors 0
+22:21:29 | INFO: Data are loaded, start creating Blender stuff
+22:21:29 | INFO: Blender create Mesh node COL_bh_hall
+22:21:29 | INFO: Blender create Mesh node COL_bh_hill0
+22:21:29 | INFO: Blender create Mesh node COL_bh_hill1
+22:21:29 | INFO: Blender create Mesh node COL_bh_hill2
+22:21:29 | INFO: Blender create Mesh node golconda_bala_hissar_body
+22:21:29 | INFO: glTF import finished in 0.01s
+00:10.941  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/golconda_bala_hissar.png'
+[kit] preview golconda_bala_hissar.png (320px, 14 spp) in 1.9s
+22:21:31 | INFO: Data are loaded, start creating Blender stuff
+22:21:31 | INFO: Blender create Mesh node COL_bh_hall
+22:21:31 | INFO: Blender create Mesh node COL_bh_hill0
+22:21:31 | INFO: Blender create Mesh node COL_bh_hill1
+22:21:31 | INFO: Blender create Mesh node COL_bh_hill2
+22:21:31 | INFO: Blender create Mesh node golconda_bala_hissar_body
+22:21:31 | INFO: glTF import finished in 0.01s
+00:12.296  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/golconda_bala_hissar_east.png'
+[kit] preview golconda_bala_hissar_east.png (256px, 14 spp) in 1.3s
+[kit] done golconda_bala_hissar in 11.8s

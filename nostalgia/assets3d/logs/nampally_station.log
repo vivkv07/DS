@@ -1,26 +1,31 @@
-00:00.027  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.024  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building nampally_station (landmark)
-00:01.094  render           | Saved: '/tmp/nostalgia_blender/text_430d473a.png'
+00:00.967  render           | Saved: '/tmp/nostalgia_blender/text_430d473a.png'
+00:00.996  render           | Saved: '/tmp/nostalgia_blender/nampally_station_name_board.png'
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] proxy-baked albedo 384² in 0.5s
+[kit] proxy-baked albedo 384² in 0.8s
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] proxy-baked ao 192² in 1.7s
+[kit] proxy-baked ao 192² in 3.1s
 ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
 ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
-21:59:34 | INFO: Starting glTF 2.0 export
-21:59:34 | INFO: Extracting primitive: nampally_station_body
-21:59:34 | INFO: Primitives created: 1
-21:59:34 | INFO: Finished glTF 2.0 export in 0.04984879493713379 s
+22:19:51 | INFO: Starting glTF 2.0 export
+22:19:51 | INFO: Extracting primitive: name_board
+22:19:51 | INFO: Primitives created: 1
+22:19:51 | INFO: Extracting primitive: nampally_station_body
+22:19:51 | INFO: Primitives created: 1
+22:19:51 | INFO: Finished glTF 2.0 export in 0.06404638290405273 s
 
-[kit] nampally_station: 326 tris (budget 20000) ok, 36.4 KB, clips [], anchors 0
-21:59:34 | INFO: Data are loaded, start creating Blender stuff
-21:59:34 | INFO: Blender create Mesh node nampally_station_body
-21:59:34 | INFO: glTF import finished in 0.01s
-00:06.184  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/nampally_station.png'
-[kit] preview nampally_station.png (320px, 14 spp) in 1.0s
-21:59:35 | INFO: Data are loaded, start creating Blender stuff
-21:59:35 | INFO: Blender create Mesh node nampally_station_body
-21:59:35 | INFO: glTF import finished in 0.01s
-00:06.943  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/nampally_station_front.png'
-[kit] preview nampally_station_front.png (256px, 14 spp) in 0.7s
-[kit] done nampally_station in 6.4s
+[kit] nampally_station: 316 tris (budget 20000) ok, 42.1 KB, clips [], anchors 0
+22:19:51 | INFO: Data are loaded, start creating Blender stuff
+22:19:51 | INFO: Blender create Mesh node name_board
+22:19:51 | INFO: Blender create Mesh node nampally_station_body
+22:19:51 | INFO: glTF import finished in 0.01s
+00:08.332  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/nampally_station.png'
+[kit] preview nampally_station.png (320px, 14 spp) in 1.8s
+22:19:53 | INFO: Data are loaded, start creating Blender stuff
+22:19:53 | INFO: Blender create Mesh node name_board
+22:19:53 | INFO: Blender create Mesh node nampally_station_body
+22:19:53 | INFO: glTF import finished in 0.01s
+00:09.696  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/nampally_station_front.png'
+[kit] preview nampally_station_front.png (256px, 14 spp) in 1.3s
+[kit] done nampally_station in 9.2s
