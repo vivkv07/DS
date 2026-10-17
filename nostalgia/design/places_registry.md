@@ -131,3 +131,10 @@ but keep the calendar consistent with the chosen year.
 |---|---|---|
 | `hitec_city` | HITEC City, Madhapur | the new IT district rising out of rocky, barren Deccan land in the early 2000s: new glass offices, construction sites and cranes, wide empty roads, giant boulders, Shilparamam nearby; the place the grown-ups talk about ("software job", "onsite to America") |
 | `cyber_towers` | Cyber Towers | the iconic curved, ringed glass building (opened 1998) that became the symbol of the new Hyderabad; tall, reflective, dramatic at sunset and lit at night. Recognisable art is a must; use it in the story (e.g. a parent works there, a field trip, a clue seen from its top) |
+
+## Round 9 (user, binding)
+
+| id | Place | Notes |
+|---|---|---|
+| `golconda_fort` | Golconda Fort | massive granite walls and bastions on a hill, the Fateh Darwaza where a clap at the gate is heard at the Bala Hissar summit (`golconda_fateh_darwaza`, `golconda_bala_hissar`), cannons, steps up the hill, the sound-and-light show in the evening, the old diamond-trade legends; the Charminar–Golconda tunnel legend links it to the finale. Recognisable art + the clap minigame are a must |
+| `qutb_shahi_tombs` | Qutb Shahi Tombs | the domed tombs of the Qutb Shahi kings on raised platforms near Golconda, grey granite and stucco, onion domes, quiet gardens; a calm, mysterious place for clues and trivia (verified facts only), depicted respectfully |
