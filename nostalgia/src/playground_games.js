@@ -1262,6 +1262,8 @@
         toast(mine ? 'Knocked down! Grab the stones and restack — dodge the ball!' : 'Down it goes! Get the ball and hit them before they restack!', 2600);
       }
       S.phase = 'scatter'; S.phaseT = 0;
+      // the stack is down: Chinnu's own legs again (no walk back to the line still running)
+      if (S.auto && !(S.me && S.me.out)) S.auto = null;
       for (const P of LING.hitters(S)) if (!P.isPlayer) P.think = 0;
     },
     stoneStep(S, st, dt) {
