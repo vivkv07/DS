@@ -591,109 +591,6 @@ attachPort('gulzar_houz_w', GZC, add2(GZC, [-36, 0]), add2(GZC, [-112, 0]), 124,
 attachPort('gulzar_houz_e', GZC, add2(GZC, [36, 0]), add2(GZC, [144, 0]), 156, { cluster: 'gulzar_houz' });
 
 
-// 6.3 zones the infill keeps out of (cluster layouts, real parks, the airfield, big landmark sites)
-const NOINFILL = []; // {poly}
-const sqPoly = (c, h) => [[c[0] - h, c[1] - h], [c[0] + h, c[1] - h], [c[0] + h, c[1] + h], [c[0] - h, c[1] + h]];
-NOINFILL.push({ id: 'charminar', poly: sqPoly(CHC, 132) }, { id: 'gulzar_houz', poly: sqPoly(GZC, 80) });
-for (const c of CLUSTERS) if (c.core) { const a = tr(c, [c.core[0], c.core[1]]), b = tr(c, [c.core[2], c.core[3]]); NOINFILL.push({ id: c.id, poly: [[a[0] - 14, a[1] - 14], [b[0] + 14, a[1] - 14], [b[0] + 14, b[1] + 14], [a[0] - 14, b[1] + 14]] }); }
-for (const id of ['public_gardens', 'lumbini_park', 'ntr_gardens', 'sanjeevaiah_park', 'indira_park', 'parade_grounds', 'gymkhana_ground_secunderabad']) if (REALPARK.has(id)) NOINFILL.push({ id, poly: REALPARK.get(id) });
-// Begumpet runway (09/27, 3290 m, airfield reference point 17.4531 N 78.4676 E; heading ~089 true): medium confidence
-const RUNWAY = (() => {
-  const c = [17.4531, 78.4676], half = 1645, brg = 89 * Math.PI / 180;
-  const dLat = (Math.cos(brg) * half) / 110700, dLon = (Math.sin(brg) * half) / 106260;
-  const a = proj(c[0] - dLat, c[1] - dLon), b = proj(c[0] + dLat, c[1] + dLon);
-  return { a, b, line: [a, b], hw: 28 };
-})();
-NOINFILL.push({ id: 'begumpet_runway', poly: G.ribbon(RUNWAY.line, 150) });
-const NI = new G.Raster(W, H, 8);
-for (const z of NOINFILL) NI.fillPoly(z.poly, (o) => { NI.a[o] = 1; });
-
-// 6.4 OSM residential infill for the districts that were built up by 2003
-const INFILL = {
-  // spacing between parallel streets (u), shortest piece kept (u), lowest OSM rank (1 living street .. 6 primary)
-  charminar: [28, 60, 1], bahadurpura: [30, 70, 1], dabeerpura: [30, 70, 1], puranapul: [30, 70, 1], falaknuma: [40, 100, 2],
-  abids: [30, 60, 1], koti: [30, 60, 1], nampally: [32, 70, 1], chaderghat: [32, 70, 1], rtc_x: [34, 80, 1], afzalgunj: [32, 70, 1],
-  basheerbagh: [36, 80, 1], himayatnagar: [34, 70, 1], kachiguda: [38, 90, 2], musheerabad: [38, 90, 2], khairatabad: [40, 90, 2],
-  masab_tank: [40, 100, 2], malakpet: [42, 100, 2], amberpet: [50, 130, 2], saidabad: [50, 130, 2], dilsukhnagar: [50, 130, 2],
-  ameerpet: [46, 120, 2], erragadda: [52, 140, 2], secunderabad: [46, 110, 2], marredpally: [52, 140, 2], hussain_sagar: [56, 150, 2],
-  begumpet: [60, 160, 2], banjara: [64, 170, 2], tolichowki: [60, 160, 2], langar_houz: [70, 200, 2], chandrayangutta: [64, 180, 2],
-  saroornagar: [64, 180, 2], lb_nagar: [70, 220, 2], osmania: [80, 240, 2], jubilee: [80, 240, 2], balanagar: [90, 260, 3],
-  hitec: [110, 320, 4], golconda: [110, 320, 4], zoo: [100, 300, 3], rajendranagar: [120, 360, 4],
-};
-const POTHOLE = { oldcity: 0.75, market: 0.6, colonial: 0.45, colony: 0.6, cantonment: 0.35, posh: 0.3, rocky: 0.55, hitec: 0.5 };
-const OSMKIND = (c) => (c === 'primary' || c === 'trunk' ? ['street', 40] : c === 'secondary' ? ['street', 36] : c === 'tertiary' ? ['street', 32] : c === 'living_street' || c === 'pedestrian' ? ['lane', 18] : ['lane', 22]);
-let infillStats = { candidates: 0, kept: 0, pieces: 0, dropped: {} };
-{
-  const drop = (why) => { infillStats.dropped[why] = (infillStats.dropped[why] || 0) + 1; };
-  const curated = roadList().filter((r) => r.kind !== 'path');
-  const HC = segIndex(curated, 64);   // curated (for duplicates)
-  const HA = segIndex(curated, 64);   // everything accepted so far (for spacing)
-  // the Himayatnagar grid (curated OSM lanes >= 80 m) goes in first, then the raw strokes
-  const cands = [];
-  for (const l of ROADS.himayatnagar_grid.lanes) cands.push({ id: l.id, c: 'residential', n: l.name, rank: 3, p: l.pts, conf: l.confidence, grid: true });
-  for (const s of OSMST.strokes) cands.push({ id: 'o' + s.id, c: s.c, n: s.n, rank: s.rank, p: s.p, b: s.b });
-  cands.sort((a, b) => (b.grid ? 1 : 0) - (a.grid ? 1 : 0) || b.rank - a.rank || G.len(b.p) - G.len(a.p));
-  const usedIds = new Set();
-  for (const s of cands) {
-    infillStats.candidates++;
-    if (s.b) { drop('bridge'); continue; } // OSM bridges: the Musi crossings are curated
-    const pts0 = GEO.projectLine(s.p, { maxSegM: 25 });
-    if (pts0.some((p) => p[0] < -4 || p[1] < -4 || p[0] > W + 4 || p[1] > H + 4)) { drop('outside'); continue; }
-    const mid = G.atFrac(pts0, 0.5), dist = districtAt(mid.x, mid.y);
-    const P = dist && INFILL[dist.id]; if (!P) { drop('district'); continue; }
-    const [S, minLen, minRank] = P;
-    if (s.rank < minRank) { drop('rank'); continue; }
-    const [kind, w0] = OSMKIND(s.c);
-    const w = dist.style === 'oldcity' && kind === 'lane' ? Math.min(w0, 20) : w0;
-    const pts = G.resample(pts0, 6), n = pts.length;
-    const bad = new Uint8Array(n);
-    const c = G.cum(pts), L = c[n - 1];
-    for (let k = 0; k < n; k++) {
-      const p = pts[k];
-      // water / riverbed / no-infill zones
-      const wv = WR.get(p[0], p[1]); if (wv === 1 || wv === 2) { bad[k] = 2; continue; }
-      if (NI.get(p[0], p[1])) { bad[k] = 3; continue; }
-      const a = pts[Math.max(0, k - 1)], b = pts[Math.min(n - 1, k + 1)];
-      const dl = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, ux = (b[0] - a[0]) / dl, uy = (b[1] - a[1]) / dl;
-      const nearEnd = Math.min(c[k], L - c[k]) < S * 0.9;
-      const test = (Hh, rad, pred) => {
-        for (const { it, q } of Hh.near(p[0], p[1], rad)) {
-          const r = it.ref, sx = it.b[0] - it.a[0], sy = it.b[1] - it.a[1], sl = Math.hypot(sx, sy) || 1;
-          const cos = Math.abs((ux * sx + uy * sy) / sl), d = Math.sqrt(q.d2);
-          if (pred(r, d, cos)) return true;
-        }
-        return false;
-      };
-      // a duplicate of a curated road (runs along it inside its corridor)
-      if (test(HC, 60, (r, d, cos) => cos > 0.8 && d < r.w / 2 + (FOOT[r.kind] || 0) + w / 2 + 4)) { bad[k] = 4; continue; }
-      // too close to (and parallel with) a street already drawn
-      if (!nearEnd && test(HA, S + 30, (r, d, cos) => cos > 0.75 && d < Math.max(S, (r.w + w) / 2 + 6))) { bad[k] = 5; continue; }
-      // never run through the core of another street (crossing at a shallow angle)
-      if (test(HA, 30, (r, d, cos) => cos > 0.93 && d < (r.w + w) / 4)) { bad[k] = 5; continue; }
-    }
-    // keep the good runs
-    let k = 0, piece = 0;
-    while (k < n) {
-      if (bad[k]) { k++; continue; }
-      let e = k; while (e < n && !bad[e]) e++;
-      // extend one sample into a 'too close' run so the piece meets the street it ends at
-      const a0 = k > 0 && bad[k - 1] >= 4 ? k - 1 : k, e0 = e < n && bad[e] >= 4 ? e + 1 : e;
-      const run = pts.slice(a0, e0);
-      k = e;
-      if (G.len(run) < minLen) { drop('short'); continue; }
-      let id = 'ln_' + s.id + (piece ? '_' + piece : ''); piece++;
-      while (usedIds.has(id)) id += 'x';
-      usedIds.add(id);
-      const rr = { id, name: s.n || (dist.name.split(/ [&(]/)[0] + (kind === 'lane' ? ' gully' : ' road')), kind, w, pts: G.thin(G.dp(run, 1.5), 4), pothole: POTHOLE[dist.style] || 0.5, conf: s.conf || 'high', src: s.grid ? 'grid' : 'osm', osm: s.id };
-      addRoad(rr); HA.add(rr.pts, rr);
-      infillStats.pieces++;
-    }
-    infillStats.kept++;
-  }
-  vlog('infill', JSON.stringify(infillStats));
-}
-
-
 /* ===================================================================== 7. rails */
 {
   const sec = (id) => { const s = RAIL.sections.find((q) => q.id === id); return projLine(s.pts, 1.5); };
@@ -1023,11 +920,10 @@ function placeSite(l) {
   moveLm(l, st.x, st.y);
   moves.push({ id: l.id, kind: 'site', moved: Math.round(st.moved), from: c0 });
 }
-{
-  const rest = V1.landmarks.filter((l) => !LM.has(l.id) && !/^golconda_wall/.test(l.id));
-  const prio = (l) => (MUSTSET.has(l.id) ? 2e7 : 0) + (HER.has(l.draw) ? 1e7 : 0) + (v1Frontage.has(l.id) ? -3e7 : 0) + l.w * l.d;
-  rest.sort((a, b) => prio(b) - prio(a));
-  for (const v of rest) {
+function placeAll(list) {
+  const prio = (l) => (MUSTSET.has(l.id) ? 2e7 : 0) + (HER.has(l.draw) ? 1e7 : 0) + l.w * l.d;
+  list.sort((a, b) => prio(b) - prio(a));
+  for (const v of list) {
     const l = cloneLm(v.id);
     const e = PLACES[v.id]; l.conf = e ? e.confidence : 'low';
     if (e) l.ll = [e.lat, e.lon];
@@ -1035,7 +931,122 @@ function placeSite(l) {
     if (fr) snapShop(l, fr); else placeSite(l);
     LM.set(l.id, l); markLandmark(l);
   }
+}
+// sites first (against the curated streets), then the infill is laid around them, then the shops
+placeAll(V1.landmarks.filter((l) => !LM.has(l.id) && !/^golconda_wall/.test(l.id) && !v1Frontage.has(l.id)));
+
+// 6.3 zones the infill keeps out of (cluster layouts, real parks, the airfield, big landmark sites)
+const NOINFILL = []; // {poly}
+const sqPoly = (c, h) => [[c[0] - h, c[1] - h], [c[0] + h, c[1] - h], [c[0] + h, c[1] + h], [c[0] - h, c[1] + h]];
+NOINFILL.push({ id: 'charminar', poly: sqPoly(CHC, 132) }, { id: 'gulzar_houz', poly: sqPoly(GZC, 80) });
+for (const c of CLUSTERS) if (c.core) { const a = tr(c, [c.core[0], c.core[1]]), b = tr(c, [c.core[2], c.core[3]]); NOINFILL.push({ id: c.id, poly: [[a[0] - 14, a[1] - 14], [b[0] + 14, a[1] - 14], [b[0] + 14, b[1] + 14], [a[0] - 14, b[1] + 14]] }); }
+for (const id of ['public_gardens', 'lumbini_park', 'ntr_gardens', 'sanjeevaiah_park', 'indira_park', 'parade_grounds', 'gymkhana_ground_secunderabad']) if (REALPARK.has(id)) NOINFILL.push({ id, poly: REALPARK.get(id) });
+// Begumpet runway (09/27, 3290 m, airfield reference point 17.4531 N 78.4676 E; heading ~089 true): medium confidence
+const RUNWAY = (() => {
+  const c = [17.4531, 78.4676], half = 1645, brg = 89 * Math.PI / 180;
+  const dLat = (Math.cos(brg) * half) / 110700, dLon = (Math.sin(brg) * half) / 106260;
+  const a = proj(c[0] - dLat, c[1] - dLon), b = proj(c[0] + dLat, c[1] + dLon);
+  return { a, b, line: [a, b], hw: 28 };
+})();
+NOINFILL.push({ id: 'begumpet_runway', poly: G.ribbon(RUNWAY.line, 150) });
+const NI = new G.Raster(W, H, 8);
+for (const z of NOINFILL) NI.fillPoly(z.poly, (o) => { NI.a[o] = 1; });
+// lanes never run through a landmark compound or a roof zone (they are placed before the infill)
+for (const l of LM.values()) for (const s2 of (l.noSolid && !l.solids ? [lmRect(l)] : partsOf(l))) NI.fillRect(s2[0] - 10, s2[1] - 10, s2[2] + 20, s2[3] + 20, (o) => { NI.a[o] = 1; });
+for (const r of D.roofs) NI.fillRect(r.rect[0] - 12, r.rect[1] - 12, r.rect[2] + 24, r.rect[3] + 24, (o) => { NI.a[o] = 1; });
+
+// 6.4 OSM residential infill for the districts that were built up by 2003
+const INFILL = {
+  // spacing between parallel streets (u), shortest piece kept (u), lowest OSM rank (1 living street .. 6 primary)
+  charminar: [28, 60, 1], bahadurpura: [30, 70, 1], dabeerpura: [30, 70, 1], puranapul: [30, 70, 1], falaknuma: [40, 100, 2],
+  abids: [30, 60, 1], koti: [30, 60, 1], nampally: [32, 70, 1], chaderghat: [32, 70, 1], rtc_x: [34, 80, 1], afzalgunj: [32, 70, 1],
+  basheerbagh: [36, 80, 1], himayatnagar: [34, 70, 1], kachiguda: [38, 90, 2], musheerabad: [38, 90, 2], khairatabad: [40, 90, 2],
+  masab_tank: [40, 100, 2], malakpet: [42, 100, 2], amberpet: [50, 130, 2], saidabad: [50, 130, 2], dilsukhnagar: [50, 130, 2],
+  ameerpet: [46, 120, 2], erragadda: [52, 140, 2], secunderabad: [46, 110, 2], marredpally: [52, 140, 2], hussain_sagar: [56, 150, 2],
+  begumpet: [60, 160, 2], banjara: [64, 170, 2], tolichowki: [60, 160, 2], langar_houz: [70, 200, 2], chandrayangutta: [64, 180, 2],
+  saroornagar: [64, 180, 2], lb_nagar: [70, 220, 2], osmania: [80, 240, 2], jubilee: [80, 240, 2], balanagar: [90, 260, 3],
+  hitec: [110, 320, 4], golconda: [110, 320, 4], zoo: [100, 300, 3], rajendranagar: [120, 360, 4],
+};
+const POTHOLE = { oldcity: 0.75, market: 0.6, colonial: 0.45, colony: 0.6, cantonment: 0.35, posh: 0.3, rocky: 0.55, hitec: 0.5 };
+const OSMKIND = (c) => (c === 'primary' || c === 'trunk' ? ['street', 40] : c === 'secondary' ? ['street', 36] : c === 'tertiary' ? ['street', 32] : c === 'living_street' || c === 'pedestrian' ? ['lane', 18] : ['lane', 22]);
+let infillStats = { candidates: 0, kept: 0, pieces: 0, dropped: {} };
+{
+  const drop = (why) => { infillStats.dropped[why] = (infillStats.dropped[why] || 0) + 1; };
+  const curated = roadList().filter((r) => r.kind !== 'path');
+  const HC = segIndex(curated, 64);   // curated (for duplicates)
+  const HA = segIndex(curated, 64);   // everything accepted so far (for spacing)
+  // the Himayatnagar grid (curated OSM lanes >= 80 m) goes in first, then the raw strokes
+  const cands = [];
+  for (const l of ROADS.himayatnagar_grid.lanes) cands.push({ id: l.id, c: 'residential', n: l.name, rank: 3, p: l.pts, conf: l.confidence, grid: true });
+  for (const s of OSMST.strokes) cands.push({ id: 'o' + s.id, c: s.c, n: s.n, rank: s.rank, p: s.p, b: s.b });
+  cands.sort((a, b) => (b.grid ? 1 : 0) - (a.grid ? 1 : 0) || b.rank - a.rank || G.len(b.p) - G.len(a.p));
+  const usedIds = new Set();
+  for (const s of cands) {
+    infillStats.candidates++;
+    if (s.b) { drop('bridge'); continue; } // OSM bridges: the Musi crossings are curated
+    const pts0 = GEO.projectLine(s.p, { maxSegM: 25 });
+    if (pts0.some((p) => p[0] < -4 || p[1] < -4 || p[0] > W + 4 || p[1] > H + 4)) { drop('outside'); continue; }
+    const mid = G.atFrac(pts0, 0.5), dist = districtAt(mid.x, mid.y);
+    const P = dist && INFILL[dist.id]; if (!P) { drop('district'); continue; }
+    const [S, minLen, minRank] = P;
+    if (s.rank < minRank) { drop('rank'); continue; }
+    const [kind, w0] = OSMKIND(s.c);
+    const w = dist.style === 'oldcity' && kind === 'lane' ? Math.min(w0, 20) : w0;
+    const pts = G.resample(pts0, 6), n = pts.length;
+    const bad = new Uint8Array(n);
+    const c = G.cum(pts), L = c[n - 1];
+    for (let k = 0; k < n; k++) {
+      const p = pts[k];
+      // water / riverbed / no-infill zones
+      const wv = WR.get(p[0], p[1]); if (wv === 1 || wv === 2) { bad[k] = 2; continue; }
+      if (NI.get(p[0], p[1])) { bad[k] = 3; continue; }
+      const a = pts[Math.max(0, k - 1)], b = pts[Math.min(n - 1, k + 1)];
+      const dl = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, ux = (b[0] - a[0]) / dl, uy = (b[1] - a[1]) / dl;
+      const nearEnd = Math.min(c[k], L - c[k]) < S * 0.9;
+      const test = (Hh, rad, pred) => {
+        for (const { it, q } of Hh.near(p[0], p[1], rad)) {
+          const r = it.ref, sx = it.b[0] - it.a[0], sy = it.b[1] - it.a[1], sl = Math.hypot(sx, sy) || 1;
+          const cos = Math.abs((ux * sx + uy * sy) / sl), d = Math.sqrt(q.d2);
+          if (pred(r, d, cos)) return true;
+        }
+        return false;
+      };
+      // a duplicate of a curated road (runs along it inside its corridor)
+      if (test(HC, 60, (r, d, cos) => cos > 0.8 && d < r.w / 2 + (FOOT[r.kind] || 0) + w / 2 + 4)) { bad[k] = 4; continue; }
+      // too close to (and parallel with) a street already drawn
+      if (!nearEnd && test(HA, S + 30, (r, d, cos) => cos > 0.75 && d < Math.max(S, (r.w + w) / 2 + 6))) { bad[k] = 5; continue; }
+      // never run through the core of another street (crossing at a shallow angle)
+      if (test(HA, 30, (r, d, cos) => cos > 0.93 && d < (r.w + w) / 4)) { bad[k] = 5; continue; }
+    }
+    // keep the good runs
+    let k = 0, piece = 0;
+    while (k < n) {
+      if (bad[k]) { k++; continue; }
+      let e = k; while (e < n && !bad[e]) e++;
+      // extend one sample into a 'too close' run so the piece meets the street it ends at
+      const a0 = k > 0 && bad[k - 1] >= 4 ? k - 1 : k, e0 = e < n && bad[e] >= 4 ? e + 1 : e;
+      const run = pts.slice(a0, e0);
+      k = e;
+      if (G.len(run) < minLen) { drop('short'); continue; }
+      let id = 'ln_' + s.id + (piece ? '_' + piece : ''); piece++;
+      while (usedIds.has(id)) id += 'x';
+      usedIds.add(id);
+      const rr = { id, name: s.n || (dist.name.split(/ [&(]/)[0] + (kind === 'lane' ? ' gully' : ' road')), kind, w, pts: G.thin(G.dp(run, 1.5), 4), pothole: POTHOLE[dist.style] || 0.5, conf: s.conf || 'high', src: s.grid ? 'grid' : 'osm', osm: s.id };
+      addRoad(rr); HA.add(rr.pts, rr);
+      infillStats.pieces++;
+    }
+    infillStats.kept++;
+  }
+  vlog('infill', JSON.stringify(infillStats));
+}
+
+
+
+// 9.8 shops on their streets (now that the infill lanes exist)
+paintRoadsOcc(); buildRH();
+placeAll(V1.landmarks.filter((l) => !LM.has(l.id) && !/^golconda_wall/.test(l.id)));
+{
   const big = moves.filter((m) => m.moved > 80).sort((a, b) => b.moved - a.moved);
-  vlog('landmarks moved > 80 u to clear space:', big.length, big.slice(0, 20).map((m) => m.id + ':' + m.moved).join(' '));
+  vlog('landmarks moved > 80 u to clear space:', big.length, big.slice(0, 30).map((m) => m.id + ':' + m.moved).join(' '));
 }
 module.exports = { D, V1, G, GEO, W, H, ROADS_OUT, CLUSTERS, CLID, warnings, infillStats, LM, moves, OCC }; // (debug)
