@@ -1,0 +1,33 @@
+00:00.044  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building osmania_hospital (landmark)
+00:01.103  render           | Saved: '/tmp/nostalgia_blender/text_e5f3eee7.png'
+[kit] baked AO to vertex colours (32 samples) in 0.3s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+20:40:31 | INFO: Starting glTF 2.0 export
+20:40:31 | INFO: Extracting primitive: COL_osmania_hospital
+20:40:31 | INFO: Primitives created: 1
+20:40:31 | INFO: Extracting primitive: osmania_hospital_body
+20:40:31 | INFO: Primitives created: 8
+20:40:31 | INFO: Finished glTF 2.0 export in 0.15072345733642578 s
+
+[kit] osmania_hospital: 2656 tris (budget 20000) ok, 152.5 KB, clips [], anchors 0
+20:40:31 | INFO: Data are loaded, start creating Blender stuff
+20:40:31 | INFO: Blender create Mesh node COL_osmania_hospital
+20:40:31 | INFO: Blender create Mesh node osmania_hospital_body
+20:40:31 | INFO: glTF import finished in 0.06s
+00:04.287  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/osmania_hospital.png'
+[kit] preview osmania_hospital.png (384px, 20 spp) in 2.5s
+20:40:34 | INFO: Data are loaded, start creating Blender stuff
+20:40:34 | INFO: Blender create Mesh node COL_osmania_hospital
+20:40:34 | INFO: Blender create Mesh node osmania_hospital_body
+20:40:34 | INFO: glTF import finished in 0.04s
+00:05.555  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/osmania_hospital_back.png'
+[kit] preview osmania_hospital_back.png (320px, 14 spp) in 1.2s
+20:40:35 | INFO: Data are loaded, start creating Blender stuff
+20:40:35 | INFO: Blender create Mesh node COL_osmania_hospital
+20:40:35 | INFO: Blender create Mesh node osmania_hospital_body
+20:40:35 | INFO: glTF import finished in 0.03s
+00:07.436  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/osmania_hospital_tower.png'
+[kit] preview osmania_hospital_tower.png (320px, 16 spp) in 1.8s
+[kit] done osmania_hospital in 6.9s

@@ -67,3 +67,68 @@ ERROR MeshOptimizer is not available because library could not be found at /home
 [kit] variant render kid_chinnu run_11 (8.6s)
 02:30.381  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_v_12.png'
 [kit] variant render kid_chinnu run_12 (7.7s)
+02:40.757  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_v_13.png'
+[kit] variant render kid_chinnu run_13 (10.4s)
+02:47.947  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_v_14.png'
+[kit] variant render kid_chinnu run_14 (7.2s)
+02:56.591  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_v_15.png'
+[kit] variant render kid_chinnu run_15 (8.6s)
+[kit] variants sheet /home/user/DS/nostalgia/assets3d/previews/kid_chinnu_gait.png
+20:43:53 | INFO: Data are loaded, start creating Blender stuff
+20:43:54 | INFO: Blender create Mesh node hero_cycle
+20:43:54 | INFO: glTF import finished in 0.52s
+20:43:54 | INFO: Data are loaded, start creating Blender stuff
+20:43:54 | INFO: Blender create Mesh node kid_chinnu
+20:43:54 | INFO: glTF import finished in 0.22s
+03:06.920  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_ride_00.png'
+20:44:04 | INFO: Data are loaded, start creating Blender stuff
+20:44:04 | INFO: Blender create Mesh node hero_cycle
+20:44:04 | INFO: glTF import finished in 0.18s
+20:44:04 | INFO: Data are loaded, start creating Blender stuff
+20:44:04 | INFO: Blender create Mesh node kid_chinnu
+20:44:04 | INFO: glTF import finished in 0.15s
+03:18.598  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_ride_08.png'
+20:44:15 | INFO: Data are loaded, start creating Blender stuff
+20:44:15 | INFO: Blender create Mesh node hero_cycle
+20:44:16 | INFO: glTF import finished in 0.14s
+20:44:16 | INFO: Data are loaded, start creating Blender stuff
+20:44:16 | INFO: Blender create Mesh node kid_chinnu
+20:44:16 | INFO: glTF import finished in 0.15s
+03:27.626  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_ride_16.png'
+20:44:24 | INFO: Data are loaded, start creating Blender stuff
+20:44:24 | INFO: Blender create Mesh node hero_cycle
+20:44:25 | INFO: glTF import finished in 0.35s
+20:44:25 | INFO: Data are loaded, start creating Blender stuff
+20:44:25 | INFO: Blender create Mesh node kid_chinnu
+20:44:25 | INFO: glTF import finished in 0.22s
+03:36.681  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_ride_24.png'
+[kit] ride preview kid_chinnu_ride.png
+20:44:34 | INFO: Data are loaded, start creating Blender stuff
+20:44:34 | INFO: Blender create Mesh node hero_cycle
+20:44:34 | INFO: glTF import finished in 0.33s
+20:44:34 | INFO: Data are loaded, start creating Blender stuff
+20:44:34 | INFO: Blender create Mesh node kid_chinnu
+20:44:34 | INFO: glTF import finished in 0.18s
+03:44.264  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_ride_00.png'
+20:44:41 | INFO: Data are loaded, start creating Blender stuff
+20:44:41 | INFO: Blender create Mesh node hero_cycle
+20:44:41 | INFO: glTF import finished in 0.25s
+20:44:41 | INFO: Data are loaded, start creating Blender stuff
+20:44:42 | INFO: Blender create Mesh node kid_chinnu
+20:44:42 | INFO: glTF import finished in 0.13s
+03:52.552  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_ride_08.png'
+20:44:50 | INFO: Data are loaded, start creating Blender stuff
+20:44:50 | INFO: Blender create Mesh node hero_cycle
+20:44:50 | INFO: glTF import finished in 0.18s
+20:44:50 | INFO: Data are loaded, start creating Blender stuff
+20:44:50 | INFO: Blender create Mesh node kid_chinnu
+20:44:50 | INFO: glTF import finished in 0.05s
+04:00.219  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_ride_16.png'
+20:44:57 | INFO: Data are loaded, start creating Blender stuff
+20:44:57 | INFO: Blender create Mesh node hero_cycle
+20:44:57 | INFO: glTF import finished in 0.17s
+20:44:57 | INFO: Data are loaded, start creating Blender stuff
+20:44:57 | INFO: Blender create Mesh node kid_chinnu
+20:44:57 | INFO: glTF import finished in 0.05s
+04:06.384  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_ride_24.png'
+[kit] ride preview kid_chinnu_ride.png

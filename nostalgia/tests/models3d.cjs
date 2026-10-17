@@ -10,7 +10,7 @@
  *            8 frames at 0.1 s strips (tests/out/models3d_walk.png / _run.png) + dense slow-motion
  *            sampling of the sole anchors: grounded soles must not slide, never sink, run has flight
  *  cycle     hero_cycle parts: wheels spin with distance, steering turns the fork, pedals stay level
- *  proto     N.models3d.useProto swaps the procedural Charminar for charminar_proto (and back)
+ *  proto     the Blender Charminar (oldcity/charminar.py) replaces the procedural one; setEnabled(false) brings it back
  *  tint      NPC looks dress the character (shirt / pants / skin ratios), line-up screenshot
  *  fallback  pack missing -> procedural, no errors besides the blocked request; a corrupt model is
  *            skipped while the others still load
@@ -413,29 +413,23 @@ async function main3d(browser) {
   await context.close();
 }
 
-/* ---------------------------------------------------------------- Charminar proto */
+/* ---------------------------------------------------------------- Charminar (Blender hero landmark) */
 async function proto(browser) {
   cur = 'proto';
-  console.log('\n== Charminar proto (N.models3d.useProto)');
+  console.log('\n== Charminar: the Blender model (tools/blender/oldcity/charminar.py) replaces the procedural one');
   const { context, page, errors } = await openPage(browser);
   await to3D(page, 'tps');
   const st = await waitModels(page);
   check(st.state === 'ready', 'models ready');
-  const has = await page.evaluate(() => N.models3d.has('charminar_proto'));
-  if (!has) { fail('charminar_proto is not in the pack'); await context.close(); return; }
+  const has = await page.evaluate(() => N.models3d.has('charminar') && N.models3d.loaded('charminar'));
+  if (!check(has, 'charminar is in the pack and parsed with the active models')) { await context.close(); return; }
   const lmNames = () => page.evaluate(() => N.view3d.engine.lmGroup.children.map((c) => c.name).filter((n) => /charminar/.test(n)));
   await page.evaluate(() => { N.debug.teleport('charminar_plaza'); N.debug.setTime(10, 30); N.view3d.settle(30000); });
-  await frames(page, 3);
-  const procBefore = await lmNames();
-  check(procBefore.some((n) => /^lm3d:charminar$/.test(n)), 'procedural Charminar by default (' + procBefore.join(', ') + ')');
-  await page.evaluate(() => { N.models3d.useProto = true; });
-  await page.waitForFunction(() => N.models3d.loaded('charminar_proto'), null, { timeout: 240000 });
-  await page.evaluate(() => N.view3d.settle(30000));
   await frames(page, 4);
-  const withProto = await lmNames();
-  check(withProto.some((n) => /^m3d-lm:charminar_proto:charminar$/.test(n)) && !withProto.some((n) => /^lm3d:charminar$/.test(n)), 'useProto: charminar_proto replaces the procedural model (' + withProto.join(', ') + ')');
+  const withModel = await lmNames();
+  check(withModel.some((n) => /^m3d-lm:charminar:charminar$/.test(n)) && !withModel.some((n) => /^lm3d:charminar$/.test(n)), 'the Blender Charminar replaces the procedural model (' + withModel.join(', ') + ')');
   const geo = await page.evaluate(() => {
-    const o = N.view3d.engine.lmGroup.children.find((c) => /^m3d-lm:charminar_proto/.test(c.name));
+    const o = N.view3d.engine.lmGroup.children.find((c) => /^m3d-lm:charminar:/.test(c.name));
     const b = new N.view3d.THREE.Box3().setFromObject(o);
     let col = 0, vis = 0, ray = 0;
     o.traverse((m) => { if (!m.isMesh) return; if (m.material && m.material.visible === false) col++; else vis++; if (m.raycast && m.raycast.toString().length < 12) ray++; });
@@ -453,10 +447,14 @@ async function proto(browser) {
     await page.evaluate(() => { N.debug.setTime(10, 30); N.view3dActors.debug.camera(null); N.view3d.setCamera({ yaw: Math.PI / 2 + 0.3, pitch: 0.12, snap: true }); });
     await shot(page, 'models3d_charminar_tps.png');
   }
-  await page.evaluate(() => { N.models3d.useProto = false; N.view3d.settle(30000); });
+  await page.evaluate(() => { N.models3d.setEnabled(false); N.view3d.settle(30000); });
   await frames(page, 4);
-  const after = await lmNames();
-  check(!after.some((n) => /^m3d-lm:/.test(n)) && after.some((n) => /^lm3d:charminar$/.test(n)), 'useProto off: the procedural Charminar is back (' + after.join(', ') + ')');
+  const off = await lmNames();
+  check(!off.some((n) => /^m3d-lm:/.test(n)) && off.some((n) => /charminar/.test(n)), 'models off: a non-Blender Charminar is back (' + off.join(', ') + ')');
+  await page.evaluate(() => { N.models3d.setEnabled(true); N.view3d.settle(30000); });
+  await frames(page, 4);
+  const on = await lmNames();
+  check(on.some((n) => /^m3d-lm:charminar:charminar$/.test(n)), 'models on again: the Blender Charminar is back (' + on.join(', ') + ')');
   await checkErrors(page, errors);
   await context.close();
 }

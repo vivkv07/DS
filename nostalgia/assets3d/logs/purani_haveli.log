@@ -1,0 +1,33 @@
+00:00.029  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building purani_haveli (landmark)
+00:00.818  render           | Saved: '/tmp/nostalgia_blender/text_803129cf.png'
+[kit] baked AO to vertex colours (32 samples) in 0.3s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+20:39:51 | INFO: Starting glTF 2.0 export
+20:39:51 | INFO: Extracting primitive: COL_purani_haveli
+20:39:51 | INFO: Primitives created: 1
+20:39:51 | INFO: Extracting primitive: purani_haveli_body
+20:39:51 | INFO: Primitives created: 8
+20:39:51 | INFO: Finished glTF 2.0 export in 0.14389538764953613 s
+
+[kit] purani_haveli: 1678 tris (budget 20000) ok, 146.6 KB, clips [], anchors 0
+20:39:51 | INFO: Data are loaded, start creating Blender stuff
+20:39:51 | INFO: Blender create Mesh node COL_purani_haveli
+20:39:51 | INFO: Blender create Mesh node purani_haveli_body
+20:39:51 | INFO: glTF import finished in 0.04s
+00:05.963  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/purani_haveli.png'
+[kit] preview purani_haveli.png (384px, 20 spp) in 4.5s
+20:39:55 | INFO: Data are loaded, start creating Blender stuff
+20:39:55 | INFO: Blender create Mesh node COL_purani_haveli
+20:39:55 | INFO: Blender create Mesh node purani_haveli_body
+20:39:55 | INFO: glTF import finished in 0.04s
+00:08.630  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/purani_haveli_back.png'
+[kit] preview purani_haveli_back.png (320px, 14 spp) in 2.6s
+20:39:58 | INFO: Data are loaded, start creating Blender stuff
+20:39:58 | INFO: Blender create Mesh node COL_purani_haveli
+20:39:58 | INFO: Blender create Mesh node purani_haveli_body
+20:39:58 | INFO: glTF import finished in 0.03s
+00:11.790  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/purani_haveli_court.png'
+[kit] preview purani_haveli_court.png (320px, 14 spp) in 3.1s
+[kit] done purani_haveli in 11.3s

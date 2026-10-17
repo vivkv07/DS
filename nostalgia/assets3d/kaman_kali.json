@@ -1,0 +1,58 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 140264,
+ "clips": {},
+ "family": "landmark",
+ "file": "kaman_kali.glb",
+ "front": "-Y",
+ "id": "kaman_kali",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 137.0,
+ "kit": 1,
+ "materials": [
+  "M_kaman_kali_lime_plaster",
+  "M_kaman_kali_lime_plaster.001",
+  "M_kaman_kali_lime_plaster_shadow",
+  "M_kaman_kali_granite_grey",
+  "M_kaman_kali_gold_leaf"
+ ],
+ "max": [
+  7.45,
+  37.45,
+  60.455
+ ],
+ "meta": {
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   12,
+   72
+  ],
+  "height": 74,
+  "landmark": "kaman_kali"
+ },
+ "min": [
+  -7.45,
+  -37.45,
+  0.0
+ ],
+ "notes": [],
+ "script": "oldcity.chowk",
+ "size": [
+  14.9,
+  74.9,
+  60.455
+ ],
+ "tint": null,
+ "tris": 2392,
+ "units": "u",
+ "up": "Z"
+}

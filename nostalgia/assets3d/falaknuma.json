@@ -1,0 +1,65 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 150320,
+ "clips": {},
+ "family": "landmark",
+ "file": "falaknuma.glb",
+ "front": "-Y",
+ "id": "falaknuma",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 146.8,
+ "kit": 1,
+ "materials": [
+  "M_falaknuma_granite_grey",
+  "M_falaknuma_sandstone",
+  "M_falaknuma_lime_plaster",
+  "M_falaknuma_lime_plaster_shadow",
+  "M_falaknuma_clock_face@night",
+  "M_falaknuma_whitewash",
+  "M_falaknuma_lime_plaster_shadow.001",
+  "M_falaknuma_iron_black"
+ ],
+ "max": [
+  54.5,
+  84.291,
+  72.6
+ ],
+ "meta": {
+  "face": "e",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   110,
+   170
+  ],
+  "height": 76.0,
+  "landmark": "falaknuma_palace"
+ },
+ "min": [
+  -54.5,
+  -85.5,
+  -1.77
+ ],
+ "notes": [],
+ "script": "oldcity.mosques_palaces",
+ "size": [
+  109.0,
+  169.791,
+  74.37
+ ],
+ "tint": null,
+ "tris": 2045,
+ "units": "u",
+ "up": "Z"
+}

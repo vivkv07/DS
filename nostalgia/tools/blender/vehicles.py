@@ -22,7 +22,8 @@ Helpers: tools/blender/_vehicles_kit.py (rig, bakes, tint regions, emissive lamp
 import math
 from mathutils import Vector, Matrix
 import kit
-from kit import material, tube, lathe, loft
+from kit import material
+from _vehicles_kit import tube, lathe, loft
 import _vehicles_kit as vk
 
 

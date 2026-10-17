@@ -45,6 +45,73 @@ def V(*a):
     return Vector(a)
 
 
+# =========================================================================== tagged primitives (cheap UVs)
+# Curved parts (tubes, lathes, lofts) are created ring by ring; the wrappers record the ring sizes so
+# finish can mark one seam per surface and unwrap them as a few low-distortion islands instead of
+# smart-projecting every facet (fewer UV-split vertices: a much smaller GLB for the same look).
+def _tag(o, rings, seg, closed=False):
+    o['nos_rings'] = list(rings)
+    o['nos_seg'] = int(seg)
+    o['nos_closed'] = bool(closed)
+    return o
+
+
+def tube(name, pts, r, seg=8, mat=None, cap=True):
+    o = kit.tube(name, pts, r, seg=seg, mat=mat, cap=cap)
+    return _tag(o, [seg] * len(pts), seg)
+
+
+def loft(name, rings, seg=10, side=(1, 0, 0), mat=None, cap_start=True, cap_end=True, arm=None):
+    o = kit.loft(name, rings, seg=seg, side=side, mat=mat, cap_start=cap_start, cap_end=cap_end, arm=arm)
+    return _tag(o, [seg] * len(rings), seg)
+
+
+def lathe(name, profile, seg=24, mat=None, loc=(0, 0, 0), close_top=True, close_bottom=True):
+    o = kit.lathe(name, profile, seg=seg, mat=mat, loc=loc, close_top=close_top, close_bottom=close_bottom)
+    return _tag(o, [1 if r < 1e-4 else seg for (r, z) in profile], seg)
+
+
+def mark_seams(o, angle=62.0):
+    """seams for a tagged ring-built mesh: one longitudinal line (k = 0), cap borders, the closing
+    ring of a torus, and every edge sharper than `angle` (those split normals anyway). Returns False
+    when the topology no longer matches the tags (then the part is smart-projected)."""
+    rings = list(o.get('nos_rings') or [])
+    if not rings:
+        return False
+    info = []
+    for ri, n in enumerate(rings):
+        for k in range(n):
+            info.append((ri, k if n > 1 else -1))
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    bm.verts.ensure_lookup_table()
+    if len(bm.verts) != len(info):
+        bm.free()
+        return False
+    closed = bool(o.get('nos_closed'))
+    lim = math.radians(angle)
+    for e in bm.edges:
+        a, b = info[e.verts[0].index], info[e.verts[1].index]
+        seam = False
+        if a[0] != b[0]:
+            if (a[1] == 0 and b[1] in (0, -1)) or (b[1] == 0 and a[1] == -1):
+                seam = True
+        elif closed and a[0] == 0:
+            seam = True
+        for f in e.link_faces:
+            if len({info[v.index][0] for v in f.verts}) == 1:
+                seam = True
+        if not seam and len(e.link_faces) == 2 and e.calc_face_angle(0) > lim:
+            seam = True
+        e.seam = seam
+    lay = bm.faces.layers.int.get('_cyl') or bm.faces.layers.int.new('_cyl')
+    for f in bm.faces:
+        f[lay] = 1
+    bm.to_mesh(o.data)
+    bm.free()
+    return True
+
+
 # =========================================================================== materials
 def mat(key, name, region=0, **kw):
     """kit.material with an explicit tint region (kit's people materials carry their own regions).
@@ -91,7 +158,7 @@ def paint(name, base, region=1, rough=0.35, chips=0.2, **kw):
 # =========================================================================== mesh helpers
 def lathe_x(name, prof, seg, m, c, closed=False):
     """revolve a profile [(radius, x_offset)] around the X axis, centred at c"""
-    o = kit.lathe(name, [(r, z) for (r, z) in prof], seg=seg, mat=m, close_top=False, close_bottom=False)
+    o = lathe(name, [(r, z) for (r, z) in prof], seg=seg, mat=m, close_top=False, close_bottom=False)
     if closed:
         bm = bmesh.new()
         bm.from_mesh(o.data)
@@ -106,6 +173,7 @@ def lathe_x(name, prof, seg, m, c, closed=False):
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         bm.to_mesh(o.data)
         bm.free()
+        o['nos_closed'] = True
     o.rotation_euler = (0, math.radians(90), 0)
     o.location = c
     kit.apply_transform(o)
@@ -173,7 +241,7 @@ def section_loft(name, stations, m, seg=16, cap_start=True, cap_end=True, axis='
         y, hw, z0, z1, p = st[:5]
         rings.append(dict(c=(0.0, y, (z0 + z1) / 2.0), r=(hw, (z1 - z0) / 2.0), p=p, side=(1, 0, 0)))
     # loft frames follow the path tangent (Y); `side` = X so rx is the half width and ry the half height
-    o = kit.loft(name, rings, seg=seg, side=(1, 0, 0), mat=m, cap_start=cap_start, cap_end=cap_end)
+    o = loft(name, rings, seg=seg, side=(1, 0, 0), mat=m, cap_start=cap_start, cap_end=cap_end)
     return o
 
 
@@ -255,9 +323,13 @@ def spoke_wheel(name, c, R, M, spokes=28, seg=24, tyre_w=0.42, rim_d=0.4, hub_w=
         lead = 0.42 * (1 if (i // 2) % 2 == 0 else -1)
         h = Vector((hub_w * 0.38 * side, 0.26 * math.cos(a + lead), 0.26 * math.sin(a + lead)))
         r = Vector((0.03 * side, ri2 * math.cos(a), ri2 * math.sin(a)))
-        sp.append(kit.tube(name + '_spoke%d' % i, [Vector(c) + h, Vector(c) + r], sp_r, seg=sp_seg, mat=M['chrome'], cap=False))
+        sp.append(tube(name + '_spoke%d' % i, [Vector(c) + h, Vector(c) + r], sp_r, seg=sp_seg, mat=M['chrome'], cap=False))
     if sp:
+        rings = []
+        for o_ in sp:
+            rings += list(o_['nos_rings'])
         j = kit.join(sp, name + '_spokes')
+        _tag(j, rings, sp_seg)
         j['nos_smooth'] = 180.0     # thin spokes: fully smooth (shared vertices)
         parts.append(j)
     return parts
@@ -293,15 +365,15 @@ def mudguard(name, c, R, a0, a1, m, w=0.62, n=12, gap=0.26, thick=0.09, p=4.0, s
         a = a0 + (a1 - a0) * i / n
         d = Vector((0, -math.cos(a), math.sin(a)))
         rings.append(dict(c=tuple(Vector(c) + d * (R + gap)), r=(w / 2, thick), p=p, w={'root': 1}))
-    return kit.loft(name, rings, seg=seg, side=(1, 0, 0), mat=m, cap_start=True, cap_end=True)
+    return loft(name, rings, seg=seg, side=(1, 0, 0), mat=m, cap_start=True, cap_end=True)
 
 
 def lamp_round(name, c, r, depth, M, lens='head_lens', bezel='chrome', facing=(0, -1, 0), seg=14):
     """a round lamp: a bezel cup + a slightly domed lens, facing `facing`"""
     f = Vector(facing).normalized()
     q = f.to_track_quat('-Z', 'Y')
-    cup = kit.lathe(name + '_cup', [(r * 0.55, -depth), (r * 1.05, -depth * 0.55), (r * 1.12, 0.0), (r * 1.02, 0.04)], seg=seg, mat=M[bezel], close_bottom=True, close_top=False)
-    lensO = kit.lathe(name + '_lens', [(r * 0.98, 0.0), (r * 0.8, 0.06), (r * 0.4, 0.1), (0.0, 0.11)], seg=seg, mat=M[lens], close_bottom=False, close_top=False)
+    cup = lathe(name + '_cup', [(r * 0.55, -depth), (r * 1.05, -depth * 0.55), (r * 1.12, 0.0), (r * 1.02, 0.04)], seg=seg, mat=M[bezel], close_bottom=True, close_top=False)
+    lensO = lathe(name + '_lens', [(r * 0.98, 0.0), (r * 0.8, 0.06), (r * 0.4, 0.1), (0.0, 0.11)], seg=seg, mat=M[lens], close_bottom=False, close_top=False)
     for o in (cup, lensO):
         # the lathe's +Z axis becomes the facing direction
         o.rotation_mode = 'QUATERNION'
@@ -327,8 +399,8 @@ def decal(name, text, w, h, loc, facing='-Y', fg='#1a1a1a', bg='#f2c230', px=512
 
 def mirror(name, base, arm_to, r, M, facing=(0, 1, 0)):
     """a round rear-view mirror on a stalk"""
-    stalk = kit.tube(name + '_stalk', [Vector(base), Vector(arm_to)], 0.05, seg=5, mat=M['chrome'])
-    head = kit.lathe(name + '_head', [(0.0, -0.08), (r, -0.06), (r * 1.02, 0.02), (r * 0.9, 0.06)], seg=12, mat=M['chrome'], close_top=True)
+    stalk = tube(name + '_stalk', [Vector(base), Vector(arm_to)], 0.05, seg=5, mat=M['chrome'])
+    head = lathe(name + '_head', [(0.0, -0.08), (r, -0.06), (r * 1.02, 0.02), (r * 0.9, 0.06)], seg=12, mat=M['chrome'], close_top=True)
     f = Vector(facing).normalized()
     head.rotation_mode = 'QUATERNION'
     head.rotation_quaternion = f.to_track_quat('Z', 'Y')
@@ -351,7 +423,7 @@ def seat_pad(name, x0, x1, y0, y1, z0, z1, m, crown=0.12, seg=2, bevel=0.14):
 
 
 def hose(name, pts, r, m, seg=6):
-    return kit.tube(name, [Vector(p) for p in pts], r, seg=seg, mat=m)
+    return tube(name, [Vector(p) for p in pts], r, seg=seg, mat=m)
 
 
 def shell(name, rows, m, thick=0.08, closed=False, inside=None):
@@ -391,7 +463,7 @@ def loft_z(name, stations, m, seg=16, cap_start=True, cap_end=True):
     """A shell built from horizontal superellipse sections stacked along Z (an auto's front cowl,
     a scooter's leg shield): stations [(z, y_centre, x_half_width, y_half_depth, power)]."""
     rings = [dict(c=(0.0, yc, z), r=(hw, hd), p=pw) for (z, yc, hw, hd, pw) in stations]
-    return kit.loft(name, rings, seg=seg, side=(1, 0, 0), mat=m, cap_start=cap_start, cap_end=cap_end)
+    return loft(name, rings, seg=seg, side=(1, 0, 0), mat=m, cap_start=cap_start, cap_end=cap_end)
 
 
 def mirror_x(objs, suffix='_R'):
@@ -533,7 +605,10 @@ class VRig:
                 kit.weights(o, b)
                 # 62 deg default: 6- and 8-sided tubes shade round and share vertices (smaller
                 # GLB); boxes keep crisp edges; per object: rbox chamfers 32, spokes 180
-                kit.smooth(o, self.smooth.get(o.name, float(o.get('nos_smooth', smooth_angle))))
+                ang = self.smooth.get(o.name, float(o.get('nos_smooth', smooth_angle)))
+                kit.smooth(o, ang)
+                if o.get('nos_rings') and not o.modifiers:
+                    mark_seams(o, min(ang, 89.0))
                 meshes.append(o)
         if os.environ.get('NOS_TRIS'):
             # authoring aid: triangle cost per part (NOS_TRIS=1 build_all.py <id> --one ...)
@@ -613,9 +688,32 @@ def uv_atlas_weighted(ob, boost=None, under=0.45, margin=0.005):
     me.uv_layers.active = uvl
     kit.select_only([ob], ob)
     bpy.ops.object.mode_set(mode='EDIT')
+    ebm = bmesh.from_edit_mesh(me)
+    cl = ebm.faces.layers.int.get('_cyl')
+    n_cyl = 0
+    for f in ebm.faces:
+        f.select = bool(cl is not None and f[cl])
+        n_cyl += f.select
+    bmesh.update_edit_mesh(me)
+    if n_cyl:
+        # ring-built parts: angle-based unwrap along their seams (a few islands each)
+        bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=margin)
+    ebm = bmesh.from_edit_mesh(me)
+    cl = ebm.faces.layers.int.get('_cyl')
+    n_rest = 0
+    for f in ebm.faces:
+        f.select = not (cl is not None and f[cl])
+        n_rest += f.select
+    bmesh.update_edit_mesh(me)
+    if n_rest:
+        bpy.ops.uv.smart_project(angle_limit=math.radians(UV_ANGLE), island_margin=margin, area_weight=0.0, correct_aspect=True, scale_to_bounds=False)
     bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.uv.smart_project(angle_limit=math.radians(UV_ANGLE), island_margin=margin, area_weight=0.0, correct_aspect=True, scale_to_bounds=False)
+    try:
+        bpy.ops.uv.average_islands_scale()
+    except Exception as e:
+        kit.log('average_islands_scale failed', e)
     bpy.ops.object.mode_set(mode='OBJECT')
+    kit.log('uv: %d faces unwrapped along seams, %d smart-projected' % (n_cyl, n_rest))
     boost = boost or {}
     names = [m.name if m else '' for m in me.materials]
     nobake = [bool(m is not None and not m.get('nos_bake', True)) for m in me.materials]
