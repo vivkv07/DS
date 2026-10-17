@@ -2490,6 +2490,14 @@
       setTimeout(() => { try { pn.disconnect(); } catch (e) { /* ignore */ } }, 900);
     }
   }
+  // Engine voice factory (ext.setEngineVoice): (ac, dest, type, profile, vehicle, isPlayer) -> voice | null (= built-in)
+  let engineFactory = null;
+  function makeEngine(ac, dest, type, veh, isPlayer) {
+    if (engineFactory) {
+      try { const v = engineFactory(ac, dest, type, engProfile(type), veh, isPlayer); if (v) return v; } catch (e) { N.err('audio.engineFactory', e); }
+    }
+    return new EngineVoice(ac, dest, type);
+  }
   const eng = { player: null, forced: undefined, playerVeh: null, startAt: 0, traffic: [null, null], trafficVeh: [null, null], scanT: 0 };
   function startDelayFor(type) {
     const pr = engProfile(type);
@@ -2507,7 +2515,7 @@
     if (v !== eng.playerVeh) {
       if (eng.player) { eng.player.stop(); eng.player = null; }
       eng.playerVeh = v || null;
-      if (v) { eng.player = new EngineVoice(ctx, G.engine, v.type); eng.startAt = now + (eng.forced !== undefined ? 0 : startDelayFor(v.type)); }
+      if (v) { eng.player = makeEngine(ctx, G.engine, v.type, v, true); eng.startAt = now + (eng.forced !== undefined ? 0 : startDelayFor(v.type)); }
     }
     if (eng.player && v) {
       const sf = clamp(vSpeed(v) / vMax(v), 0, 1.2);
@@ -2517,7 +2525,7 @@
         thr = N.input.down && (N.input.down('up') || N.input.down('down')) ? 1 : N.input.analog ? Math.min(1, Math.hypot(mv.x, mv.y)) : 0;
       }
       const on = now >= eng.startAt && active ? 1 : 0;
-      eng.player.update(sf, thr, on, 0);
+      eng.player.update(sf, thr, on, 0, { veh: v, player: true, dt, dop: 1, dist: 0 });
     }
     // two nearest traffic vehicles
     eng.scanT -= dt;
@@ -2538,7 +2546,7 @@
         if (eng.trafficVeh.indexOf(tv) >= 0) continue;
         const i = eng.trafficVeh[0] ? 1 : 0;
         if (eng.trafficVeh[i]) continue;
-        eng.trafficVeh[i] = tv; eng.traffic[i] = new EngineVoice(ctx, G.engine, tv.type);
+        eng.trafficVeh[i] = tv; eng.traffic[i] = makeEngine(ctx, G.engine, tv.type, tv, false);
       }
     }
     for (let i = 0; i < 2; i++) {
@@ -2547,7 +2555,7 @@
       if (!tv || tv.alive === false) { ev.stop(); eng.traffic[i] = null; eng.trafficVeh[i] = null; continue; }
       const s = spatial(tv.x, tv.y, 60, 340);
       const sf = clamp(vSpeed(tv) / vMax(tv), 0, 1.2);
-      ev.update(sf, sf > 0.3 ? 0.6 : 0.2, s && active ? s.g * 0.55 : 0, s ? s.pan : 0);
+      ev.update(sf, sf > 0.3 ? 0.6 : 0.2, s && active ? s.g * 0.55 : 0, s ? s.pan : 0, { veh: tv, player: false, dt, dop: 1, dist: s ? s.d : 1e9 });
     }
   }
 
@@ -3058,7 +3066,9 @@
 
   /* ============================================================ event hooks + fallbacks */
   const hooks = { objText: null, hornEvt: false, hornFrame: -1, footEvt: -10, bumpEvt: false, wantedEvt: false, wanted: 0, dialogue: false, lastSpeed: 0, footT: 0, hornRepeat: 0, prevWanted: 0, lastVeh: null };
+  let extHornFor = null; // ext.setHornFor(fn(type, profile) -> sfx name | {name, ...opts} | null)
   function hornFor(type) {
+    if (extHornFor) { try { const r = extHornFor(type, engProfile(type)); if (r) return typeof r === 'string' ? r : r.name; } catch (e) { N.err('audio.hornFor', e); } }
     const t = String(type || '');
     if (!t || t === 'foot') return 'finger_whistle';
     const pr = engProfile(t);
@@ -3075,11 +3085,14 @@
     const pos = {};
     if (o && o.x != null) { pos.x = o.x; pos.y = o.y; } else if (v && typeof v === 'object' && v.x != null && v !== (N.player && N.player.vehicle)) { pos.x = v.x; pos.y = v.y; }
     const name = hornFor(type);
+    let hornOpts = null;
+    if (extHornFor) { try { const r = extHornFor(type, engProfile(type)); if (r && typeof r === 'object') hornOpts = r; } catch (e) { /* reported above */ } }
     const VT = N.vehicles && N.vehicles.TYPES && N.vehicles.TYPES[type];
     const extra = {};
     if (name === 'bell' && VT && VT.bell) extra.variant = VT.bell;           // A3: Hero vs Hercules bells
     if (name === 'scooter_horn' && engProfile(type) === ENGINES.scooty) extra.pitch = 1.35; // the Scooty's thin "peep peep"
-    return playSfx(name, Object.assign(pos, type === 'boat' ? { pitch: 0.7 } : {}, extra, o && o.dur ? { dur: o.dur } : {}));
+    if (hornOpts) return playSfx(name, Object.assign(pos, hornOpts, { name: undefined, vtype: type }, o && o.dur ? { dur: o.dur } : {}));
+    return playSfx(name, Object.assign(pos, type === 'boat' ? { pitch: 0.7 } : {}, extra, { vtype: type }, o && o.dur ? { dur: o.dur } : {}));
   };
   function speakerPitch(id) {
     try { const sp0 = N.dialogue && N.dialogue.speakers && N.dialogue.speakers[id]; if (sp0 && sp0.pitch) return sp0.pitch; } catch (e) { /* ignore */ }
@@ -3342,7 +3355,7 @@
 
   const STAGES = [['pump', () => pump()], ['bus', (dt, m) => busUpdate(m)], ['vehicle', () => pollVehicle()], ['engine', (dt, m) => engineUpdate(dt, m)],
     ['ambient', (dt, m) => ambientUpdate(dt, m)], ['radio', () => radioUpdate()], ['walkman', () => walkmanUpdate()], ['music', (dt, m) => musicUpdate(m)],
-    ['fallbacks', (dt, m) => fallbacks(dt, m)], ['beacon', (dt, m) => beaconUpdate(m)]];
+    ['fallbacks', (dt, m) => fallbacks(dt, m)], ['beacon', (dt, m) => beaconUpdate(m)], ['ext', (dt, m) => extUpdate(dt, m)]];
   function update(dt) {
     if (!ctx || !unlocked || hidden) return;
     const mode = (N.state && N.state.mode) || 'play';
@@ -3446,7 +3459,7 @@
   A.toggleMute = function () { A.mute(!S.muted); return S.muted; };
   A.duck = function (on, amount) { A._duck = !!on; if (amount != null) A._duckAmt = clamp(amount, 0, 1); busState.duck = -1; };
   A.sfx = (name, o) => playSfx(name, o);
-  A.SFX_NAMES = Object.keys(SFX);
+  Object.defineProperty(A, 'SFX_NAMES', { get: () => Object.keys(SFX), enumerable: true });
   A.engine = function (v) { eng.forced = v === null ? undefined : v; };
   A.tape = function (amount) { manualTape = clamp(+amount || 0, 0, 1); };
   A.SONGS = SONGS;
@@ -3536,6 +3549,94 @@
     let s0 = 0; for (let i = 0; i < abuf.length; i++) s0 += abuf[i] * abuf[i];
     return Math.sqrt(s0 / abuf.length);
   }
+
+  /* ============================================================ extension API (A.ext) */
+  // Helper files (src/audio_*.js, loaded right after audio.js) extend the engine through A.ext. Everything here is
+  // stable API for other workers too (e.g. weather: rain/thunder/birds). All register* calls are safe before unlock.
+  //   ext.P                          primitives: osc0 gain filt shaper panner sp tone burst strike pulses noiseVoice noiseBuf
+  //                                  crowd wave curve pulseCurve kr mtof rr pick rnd clamp ksPlay ksBuffer drumHit
+  //                                  BELL BIGBELL METAL CERAMIC VOW WAVES (mutable) TAU
+  //   ext.registerSfx(name, fn(ac, out, t, o) -> endTime, {cooldown, gain, ui, caption, capMax})   (replaces same name)
+  //   ext.registerInst(name, fn(ac, out, t, notes, dur, vel, ev, st))   ext.registerKs(name, def)   ext.registerKit(name, strokes)
+  //   ext.registerScale(name, semis[])   ext.registerTrack(id, def)  (replaces; recompiles; music.TRACKS updated)
+  //   ext.registerStation(i, station)    ext.registerSong(id, {title, artist, station})
+  //   ext.registerEngine(type, profile)  ext.setEngineVoice(factory(ac, dest, type, profile, vehicle, isPlayer) -> voice|null)
+  //                                  voice: {update(sf 0..1.2, thr 0..1, g gain, pan -1..1, info{veh, player, dt, dop, dist}), stop(), type}
+  //   ext.setHornFor(fn(type, profile) -> name | {name, ...sfx opts} | null)
+  //   ext.registerBed(id, def)  ext.registerPlace(rule, {first})  ext.registerFestival(id, def)  ext.DAY_ONLY (Set)
+  //   ext.onUpdate(id, fn(dt, mode, info), order)   per-frame after the core stages; info: {t, L, night, hour, day, weekday,
+  //                                  district, bed, playing, active (place emitters)}; replaces the same id
+  //   ext.bus(name)                  live GainNodes: master sfx amb engine ui music walk radio revIn worldLP worldDuck musicDuck
+  //   ext.listener()                 the listening pose {x, y, h, yaw, is3D} (3D camera in 3D views, else the player)
+  //   ext.spatial(x, y, ref, max)    {g, pan, d} or null (culled)
+  //   ext.play(name, o)              = N.audio.sfx;  ext.ctx (getter)
+  const extUpdates = new Map();
+  let extList = [];
+  function extUpdate(dt, mode) {
+    if (!extList.length) return;
+    const t = ctx.currentTime;
+    const hour = N.clock && N.clock.minutes != null ? N.clock.minutes / 60 : 12;
+    const day = N.clock && N.clock.day != null ? N.clock.day : 0;
+    const info = { t, L: A.ext.listener(), night: !!(N.clock && N.clock.isNight && N.clock.isNight()), hour, day, weekday: extWeekday(day),
+      district: amb.district, bed: amb.bed, playing: mode === 'play' || mode === 'dialogue' || mode === 'cutscene' || mode === 'minigame', active: amb.active };
+    for (const u of extList) { try { u.fn(dt, mode, info); } catch (e) { N.err('audio.ext.' + u.id, e); } }
+  }
+  // 0 = Sunday. The story starts in 2003; N.clock.baseDate (if any) else day 0 = Monday 6 Jan 2003.
+  function extWeekday(day) {
+    let base = 1;
+    try { const b = N.clock && N.clock.baseDate; if (b) base = new Date(b).getDay(); } catch (e) { base = 1; }
+    return (((base + (day | 0)) % 7) + 7) % 7;
+  }
+  A.ext = {
+    P: { osc0, gain, filt, shaper, panner, sp, tone, burst, strike, pulses, noiseVoice, noiseBuf, crowd, wave, curve, pulseCurve, kr, mtof, rr, pick, rnd, clamp,
+      ksPlay, ksBuffer, drumHit, BELL, BIGBELL, METAL, CERAMIC, VOW, WAVES, TAU, KS_RATE },
+    get ctx() { return ctx; },
+    registerSfx(name, fn, o) {
+      if (typeof fn !== 'function') return false;
+      o = o || {};
+      const g0 = o.gain;
+      SFX[name] = g0 != null && g0 !== 1 ? (ac, out, t, oo) => fn(ac, gain(ac, g0, out), t, oo || {}) : (ac, out, t, oo) => fn(ac, out, t, oo || {});
+      if (o.cooldown != null) COOLDOWN[name] = o.cooldown;
+      if (o.ui) UI_SFX.add(name);
+      if (o.caption) CAPTIONS[name] = o.caption;
+      if (o.capMax) CAP_MAX[name] = o.capMax;
+      return true;
+    },
+    registerInst(name, fn) { if (typeof fn === 'function') INST[name] = fn; },
+    registerKs(name, def) { KS_DEF[name] = def; for (const k of Array.from(KS.keys())) if (k.startsWith(name + ':')) KS.delete(k); INST[name] = INST[name] || plucked(name, 0.6, 0.8, false); },
+    registerKit(name, strokes) { KITS[name] = Object.assign(KITS[name] || {}, strokes); for (const k of Array.from(DRUMS.keys())) if (k.startsWith(name + '.')) DRUMS.delete(k); },
+    registerScale(name, semis) { SCALES[name] = semis; },
+    registerTrack(id, def) { TRACKS[id] = def; COMPILED.clear(); A.music.TRACKS = Object.keys(TRACKS).filter((k) => !/^id_/.test(k)); },
+    registerStation(i, st) { STATIONS[i] = st; PLAYLISTS.length = 0; },
+    registerSong(id, info) { SONGS[id] = info; },
+    registerEngine(type, profile) { ENGINES[type] = profile; },
+    setEngineVoice(factory) { engineFactory = typeof factory === 'function' ? factory : null; },
+    setHornFor(fn) { extHornFor = typeof fn === 'function' ? fn : null; },
+    registerBed(id, def) { BEDS[id] = def; A.ambient.BEDS = Object.keys(BEDS); },
+    registerPlace(rule, o) { if (o && o.first) PLACE_SOUNDS.unshift(rule); else PLACE_SOUNDS.push(rule); amb.ruleCache.clear(); },
+    registerFestival(id, def) { FESTIVALS[id] = def; },
+    DAY_ONLY,
+    onUpdate(id, fn, order) {
+      if (typeof fn !== 'function') extUpdates.delete(id); else extUpdates.set(id, { id, fn, order: order || 0 });
+      extList = Array.from(extUpdates.values()).sort((a, b) => a.order - b.order);
+    },
+    bus(name) { return G ? G[name] || null : null; },
+    listener() {
+      const L = listener();
+      if (!L) return null;
+      let is3D = false, yaw = -Math.PI / 2, h = 0, x = L.x, y = L.y;
+      try {
+        const V = N.view3d, E = V && V.active && V.engine;
+        if (E && E.camera) { is3D = true; x = E.camera.position.x; y = E.camera.position.z; h = E.camera.position.y; yaw = N.view && typeof N.view.yaw === 'number' ? N.view.yaw : yaw; }
+      } catch (e) { is3D = false; }
+      return { x, y, h, yaw, is3D, ref: L };
+    },
+    spatial(x, y, ref, max) { return spatial(x, y, ref, max); },
+    play: (name, o) => playSfx(name, o),
+    engProfile: (type) => engProfile(type),
+    hornFor: (type) => hornFor(type),
+    weekday: (day) => extWeekday(day == null ? (N.clock && N.clock.day) || 0 : day),
+  };
   // internals for tests/tools (not a gameplay API)
   A._internal = { TRACKS, SFX, INST, KITS, compile, Seq, STATIONS, BEDS, PLACE_SOUNDS, FESTIVALS, ENGINES, engineF, EngineVoice, buildGraph, ksBuffer, liveSeqs, DRUMS, warmDrums, drumQueue, meter, placeRule, amb, music, radio, eng, bus: () => G };
 })();
