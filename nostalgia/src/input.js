@@ -2,22 +2,29 @@
  * Keyboard + gamepad + touch (floating joystick, ACTION/RUN/HORN, MAP/PAUSE) -> N.input.
  * Edges (pressed/released) are computed once per update step by the 'input' system
  * (order 0, runs in every mode). Contract: ARCHITECTURE.md §9.
+ * 3D view (ARCHITECTURE §20): action 'view' (V / pad R3 / the touch VIEW pill) cycles the view;
+ * while N.view.is3D() in 'play', N.input.move is rotated by the camera yaw (N.view.yaw) so "up" is
+ * forward (N.input.rawMove keeps the screen-relative vector). Look input for the 3D camera:
+ * mouse drag or pointer lock on canvas#game3d, the right-half touch look zone (.t-look) and the
+ * gamepad right stick -> N.input.look {dx, dy (px since the last takeLook()), stickX, stickY,
+ * dragging, locked}; N.input.takeLook() returns and clears the accumulated deltas.
  */
 (() => {
   'use strict';
   const N = window.N;
   const { clamp } = N.util;
 
-  const ACTIONS = ['up', 'down', 'left', 'right', 'action', 'run', 'horn', 'map', 'journal', 'pause', 'radio'];
+  const ACTIONS = ['up', 'down', 'left', 'right', 'action', 'run', 'horn', 'map', 'journal', 'pause', 'radio', 'view'];
   const KEYMAP = {
     KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down',
     KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
     KeyE: 'action', KeyF: 'action', Enter: 'action', NumpadEnter: 'action',
     ShiftLeft: 'run', ShiftRight: 'run', Space: 'horn',
     KeyM: 'map', KeyJ: 'journal', Escape: 'pause', KeyP: 'pause', KeyQ: 'radio', KeyR: 'radio',
+    KeyV: 'view',
   };
-  // Gamepad "standard" mapping
-  const PADMAP = { 0: 'action', 1: 'horn', 2: 'run', 3: 'radio', 4: 'journal', 5: 'run', 7: 'run', 8: 'map', 9: 'pause', 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
+  // Gamepad "standard" mapping (11 = right-stick click cycles the 3D view)
+  const PADMAP = { 0: 'action', 1: 'horn', 2: 'run', 3: 'radio', 4: 'journal', 5: 'run', 7: 'run', 8: 'map', 9: 'pause', 11: 'view', 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
 
   const keyDown = Object.create(null);   // code -> bool
   const touchDown = Object.create(null); // action -> bool
@@ -30,10 +37,17 @@
   const stick = { active: false, id: -1, ox: 0, oy: 0, x: 0, y: 0 }; // touch joystick (-1..1)
   const padMove = { x: 0, y: 0 };
   let synMove = null;
+  // 3D camera look input (consumed by view3d.js each frame)
+  const look = { dx: 0, dy: 0, stickX: 0, stickY: 0, dragging: false, locked: false, source: null };
 
   const input = {
     ACTIONS, KEYMAP,
     move: { x: 0, y: 0 },
+    rawMove: { x: 0, y: 0 }, // move before the 3D camera rotation (screen-relative)
+    look,
+    /** Accumulated look deltas (px) since the last call, then cleared. */
+    takeLook() { const r = { dx: look.dx, dy: look.dy }; look.dx = look.dy = 0; return r; },
+    addLook(dx, dy) { look.dx += +dx || 0; look.dy += +dy || 0; }, // synthetic look (tests, scripts)
     analog: false,          // true when move came from joystick/gamepad stick this step
     device: 'keyboard',
     touchUI: false,         // touch controls visible
@@ -114,6 +128,13 @@
     }
     const m = Math.hypot(x, y);
     if (m > 1) { x /= m; y /= m; }
+    input.rawMove.x = x; input.rawMove.y = y;
+    // 3D view: "up" means the camera's forward direction (world angle N.view.yaw)
+    const V = N.view;
+    if (V && V.is3D && V.is3D() && N.state.mode === 'play' && isFinite(V.yaw) && (x || y)) {
+      const c = Math.cos(V.yaw), s = Math.sin(V.yaw), f = -y, r = x;
+      x = f * c - r * s; y = f * s + r * c;
+    }
     input.move.x = x; input.move.y = y; input.analog = analog;
   }
 
@@ -156,6 +177,8 @@
     padMove.x = padMove.y = 0;
     if (dom.btns) for (const a in dom.btns) dom.btns[a].classList.remove('on');
     resetStick();
+    endLookDrag();
+    look.stickX = look.stickY = 0;
   }
   input.releaseAll = releasePhysical;
   window.addEventListener('blur', releasePhysical);
@@ -170,6 +193,7 @@
     for (const p of pads || []) if (p && p.connected) { gp = p; break; }
     for (const k in padDown) padDown[k] = false;
     padMove.x = padMove.y = 0;
+    look.stickX = look.stickY = 0;
     if (!gp) return;
     let active = false;
     gp.buttons.forEach((b, i) => {
@@ -182,8 +206,67 @@
       const s = Math.min(1, (m - 0.18) / 0.82) / m;
       padMove.x = ax * s; padMove.y = ay * s; active = true;
     }
+    // right stick: 3D camera look
+    const lx = gp.axes[2] || 0, ly = gp.axes[3] || 0, lm = Math.hypot(lx, ly);
+    if (lm > 0.16) {
+      const s = Math.min(1, (lm - 0.16) / 0.84) / lm;
+      look.stickX = lx * s; look.stickY = ly * s; look.source = 'pad'; active = true;
+    }
     if (active) setDevice('gamepad');
   }
+
+  /* ------------------------------------------------- 3D look: mouse + touch */
+  // Desktop: drag on canvas#game3d to look; a click (no drag) requests pointer lock (Esc releases).
+  // Touch: the .t-look zone (right half, shown in 3D) turns finger drags into look deltas.
+  const drag = { id: -1, x: 0, y: 0, sx: 0, sy: 0, t: 0, moved: 0, el: null };
+  function endLookDrag() {
+    if (drag.el && drag.id >= 0) { try { drag.el.releasePointerCapture(drag.id); } catch (_) { /* ignore */ } }
+    drag.id = -1; drag.el = null; look.dragging = false;
+  }
+  function lookTarget(e) {
+    const t = e.target;
+    return !!(t && (t.id === 'game3d' || (t.classList && t.classList.contains('t-look'))));
+  }
+  window.addEventListener('pointerdown', (e) => {
+    if (!lookTarget(e) || drag.id >= 0) return;
+    if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 2) return;
+    if (look.locked) return;
+    drag.id = e.pointerId; drag.el = e.target; drag.x = drag.sx = e.clientX; drag.y = drag.sy = e.clientY;
+    drag.t = performance.now(); drag.moved = 0;
+    look.dragging = true; look.source = e.pointerType === 'mouse' ? 'mouse' : 'touch';
+    try { e.target.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+    if (e.cancelable) e.preventDefault();
+  }, true);
+  window.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    drag.x = e.clientX; drag.y = e.clientY;
+    drag.moved += Math.abs(dx) + Math.abs(dy);
+    look.dx += dx; look.dy += dy;
+  }, true);
+  const lookUp = (e) => {
+    if (e.pointerId !== drag.id) return;
+    const click = e.type === 'pointerup' && e.pointerType === 'mouse' && drag.moved < 5 && performance.now() - drag.t < 350;
+    const el = drag.el;
+    endLookDrag();
+    // a plain click on the 3D view captures the mouse for free look (desktop only)
+    if (click && el && el.id === 'game3d' && el.requestPointerLock && N.state.mode === 'play' && !(N.view && N.view.noPointerLock)) {
+      try { const p = el.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (_) { /* ignore */ }
+    }
+  };
+  window.addEventListener('pointerup', lookUp, true);
+  window.addEventListener('pointercancel', lookUp, true);
+  window.addEventListener('lostpointercapture', (e) => { if (e.pointerId === drag.id) endLookDrag(); }, true);
+  document.addEventListener('pointerlockchange', () => {
+    const el = document.pointerLockElement;
+    look.locked = !!(el && el.id === 'game3d');
+    if (look.locked) look.source = 'mouse';
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!look.locked) return;
+    look.dx += e.movementX || 0; look.dy += e.movementY || 0;
+  });
+  input.exitPointerLock = () => { try { if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock(); } catch (_) { /* ignore */ } };
 
   /* ---------------------------------------------------------------- touch */
   const dom = {};
@@ -203,6 +286,7 @@
     root.innerHTML = '';
     root.setAttribute('aria-hidden', 'true');
     dom.root = root;
+    dom.look = el('div', 't-look', root); // 3D camera look zone (CSS shows it only in 3D views)
     dom.zone = el('div', 't-zone', root);
     dom.stick = el('div', 't-stick', root);
     dom.knob = el('div', 't-knob', dom.stick);
@@ -220,6 +304,7 @@
     mk('horn', 't-horn', 'HORN');
     mk('map', 't-top t-map', 'MAP');
     mk('pause', 't-top t-pause', '‖');
+    mk('view', 't-top t-view', (N.view && N.view.shortLabel && N.view.shortLabel()) || '3D');
     input.setActionLabel(input.actionLabel);
 
     // Buttons: pointer events, multi-touch safe
@@ -323,8 +408,11 @@
     document.body.dataset.mode = mode;
     if (mode !== 'play') {
       resetStick();
+      endLookDrag();
       for (const k in touchDown) touchDown[k] = false;
       if (dom.btns) for (const a in dom.btns) dom.btns[a].classList.remove('on');
+      // menus need the cursor back (the 3D view's pointer lock stays only in play/dialogue/cutscene)
+      if (mode !== 'dialogue' && mode !== 'cutscene') input.exitPointerLock();
     }
   });
 

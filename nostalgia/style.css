@@ -1484,7 +1484,8 @@ body.touch-on .osd-cas { width: 44px; height: 32px; margin: -6px -6px; }
 .osd-cas.on { transform: translateY(1px) scale(0.94); }
 @keyframes sc-reel { to { transform: rotate(360deg); } }
 
-.osd-tape { display: inline-flex; align-items: baseline; gap: 6px; }
+.osd-tape { display: inline-flex; align-items: baseline; gap: 6px; flex: none; }
+.osd-row1 > *, .osd-row2 > * { flex: none; }
 .osd-tape .tp-side { font-size: 0.78em; letter-spacing: 1px; opacity: 0.9; }
 .osd-tape .tp-num {
   padding: 0 4px;
@@ -1579,11 +1580,20 @@ body[data-mode='minigame'] .hud-qitem, body[data-mode='dialogue'] .hud-qitem { d
 body:has(.hud-banner.show) .hud-qitem, body:has(.hud-jcard.show) .hud-qitem, body:has(.hud-ask.show) .hud-qitem { opacity: 0; pointer-events: none; }
 /* phones: keep the OSD date + tape counter inside its corner */
 @media (max-width: 600px) and (orientation: portrait) {
-  .osd-row2 { letter-spacing: 0; gap: 9px; }
-  .osd-row2 .osd-year { display: inline; margin-left: -4px; } /* the year matters: 2003 (and 2026) */
+  body.touch-on .hud-osd { max-width: calc(100% - 158px - var(--safe-r)); } /* clear of the MAP / PAUSE pills */
+  .osd-row1 { gap: 6px; }
+  .osd-tape { gap: 4px; }
+  .osd-tape .tp-num { letter-spacing: 1px; padding: 0 2px; }
+  .osd-row2 { letter-spacing: 0; gap: 5px; }
+  .osd-row2 .osd-time { font-size: 22px; margin-right: 3px; }
+  .osd-loop { margin-left: -4px; }
+  .osd-row2 .osd-year { display: inline; margin-left: -2px; } /* the year matters: 2003 (and 2026) */
   .osd-tape .tp-side { font-size: 0.72em; }
 }
 @media (max-height: 500px) and (orientation: landscape) {
+  .osd-row1 { gap: 6px; }
+  .osd-tape { gap: 4px; }
+  .osd-tape .tp-num { letter-spacing: 1px; padding: 0 2px; }
   .osd-row2 { letter-spacing: 0; gap: 7px; font-size: 16px; }
   .osd-row2 .osd-time { font-size: 21px; }
   .osd-row2 .osd-year { margin-left: -3px; }
@@ -1730,6 +1740,8 @@ body:has(.hud-jcard.show) .hud-district { opacity: 0; }
   text-shadow: 3px 3px 0 var(--osd-shadow), 0 0 12px var(--osd-glow);
 }
 .sc-vhs.show { display: flex; }
+/* the date jump owns the top of the screen for its 1.5 s */
+body:has(.sc-vhs.show) #hud .hud-top, body:has(.sc-vhs.show) #hud .hud-district, body:has(.sc-vhs.show) #hud .hud-jcard { opacity: 0; }
 .sc-vhs-mode { font-size: clamp(40px, 9vw, 76px); letter-spacing: 6px; animation: osd-blink 0.5s steps(2, start) infinite; }
 .sc-vhs-date { margin-top: 6px; font-size: clamp(24px, 5vw, 44px); letter-spacing: 3px; }
 body.reduced-motion .sc-vhs-mode { animation: none; }
@@ -1778,14 +1790,8 @@ body.reduced-motion .sc-vhs-mode { animation: none; }
 .sc-deck-text { min-height: 2.6em; font-family: var(--font-body); font-size: 15px; font-style: italic; color: #e8dcc0; }
 .sc-deck-keys { display: flex; flex-wrap: wrap; gap: 10px; }
 
-/* ---- Journal tabs registered by storycore (Side A, The Tin, Clues) */
+/* ---- the Journal's Clues page (storycore) */
 .sc-j h3 { margin: 0 0 8px; font-family: var(--font-osd); font-size: 24px; letter-spacing: 2px; }
-.sc-j-tracks { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 6px; }
-.sc-j-tracks li { opacity: 0.55; }
-.sc-j-tracks li.done { opacity: 1; }
-.sc-j-tracks li span { display: block; font-size: 14px; color: var(--ink-dim); }
-.sc-j-tin { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
-.sc-j-tin li span { display: block; font-size: 14px; color: var(--ink-dim); }
 .sc-j-clue { font-family: var(--font-display); font-size: 20px; color: #1a2a6a; background: #f4ead8; padding: 8px 10px; border-radius: 3px; }
 .sc-j-ps { font-style: italic; color: #ffd27a; }
 
@@ -2455,6 +2461,7 @@ body.touch-on .jr-foot { display: none; }
 .df-list li:nth-child(8) .df-w { color: var(--mn-red); }
 .df-hint { margin: 6px 0 0; min-height: 1.2em; font-family: var(--font-osd); font-size: 18px; text-align: right; color: #6a7aa8; }
 @media (max-width: 560px), (max-height: 520px) { .df-card { padding: 12px 14px 10px; } .df-h { font-size: 28px; } .df-t { font-size: 14px; } .df-w { font-size: 13px; } .df-list li { margin-bottom: 2px; } }
+@media (max-height: 520px) and (min-aspect-ratio: 1/1) { .df-list { columns: 2; column-gap: 28px; } .df-list li { break-inside: avoid; } .df-h { font-size: 24px; margin-bottom: 2px; } .df-t { font-size: 13px; } .df-w { font-size: 12px; } }
 
 /* ---- cutscene player */
 .mn-cs { position: absolute; inset: 0; z-index: 4; display: none; pointer-events: auto; overflow: hidden; }

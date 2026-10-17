@@ -526,6 +526,9 @@
     if (N.wanted && N.wanted.level > 0 && N.wanted.set) N.wanted.set(Math.max(0, N.wanted.level - 2));
   }
 
+  // whoever runs THAK GAYA (wanted.js) cancels the fallback
+  N.on('wasted', (d) => { if (!(d && d.fallback)) player.starveT = 99; });
+
   player.update = function (dt) {
     // a NaN from anywhere (a script, a bad push) must not stick: fall back to the last good spot
     if (!isFinite(this.x) || !isFinite(this.y)) {

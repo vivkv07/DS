@@ -146,7 +146,7 @@ Implementation notes (core.js / main.js, binding):
 - Main loop: semi-fixed step — the frame dt (clamped to 0.1 s) is split into equal
   sub-steps of at most 1/60 s, so motion is smooth at 60/120/144 Hz. `N.time.now` advances
   only in play/dialogue/cutscene/minigame/gameover. `N.perf = {fps, frameMs, updateMs, drawMs}`.
-- `N.clock`: also `hour()`, `label()` ("17:42"), `dateLabel()` ("THU 14 JAN 1999", from
+- `N.clock`: also `hour()`, `label()` ("17:42"), `dateLabel()` ("TUE 14 JAN 2003", from
   `baseDate` + `day`), `serialize()/deserialize()`; emits `'clock:day'`. Light curve: night
   ≈ 19:45–05:00, golden hour 16:30–18:30; `isNight()` = `light() < 0.3`.
 - `N.util` extras: `TAU, strHash(s), pointInPoly(x,y,poly), closestOnSeg(px,py,ax,ay,bx,by)
@@ -257,6 +257,10 @@ Implementation notes (render.js, binding):
   landmarks: [{id, name, x, y, w, d, h, draw:'charminar'|...}],      // solid footprint + custom art
   trees:     [{x, y, r, kind:'neem'|'palm'|'banyan'|'gulmohar'|'ashoka'}],  // plus generated ones
   places:    [{id, name, x, y, r, district, kind}],           // story/shop/collectible anchors
+                                                              // (+ level, roof, podium, virtual, alias, festival...)
+  roofs:     [{id, name, rect, h, building, group, tags, solids, stairs}],   // walkable terraces (see "Roof zones")
+  planks:    [{id, a, b, rect}],                              // planked gaps with railings between roofs
+  respect:   [{id, name, kind, place, rects, polys, lines, forecourt, gate}],  // §19 N.respect
   spawns:    {player:[x,y], home:[x,y]}
 }
 ```
@@ -302,6 +306,55 @@ Implementation notes (world.js, binding):
   landmark within the view + 140 u (cast dynamic shadows there, queue art on
   `structures` when `visible`), and `N.landmarks.paintGround(ctx, lm)` from the chunk
   painter (world coords) for static ground art.
+
+### Roof zones (walkable terraces) — `N.world.roofs`, `N.player.level`
+
+Bible §1.5 rule 2 + systems §7.3: rooftop routes are walled terraces with stairs and planked
+gaps with handrails; no edges, no falls. Data (worlddata.js):
+```
+roofs:  [{id, name, rect:[x,y,w,d] (footprint), h (floor height), building: '<landmark id>' | null
+          (null = world.js builds a colony house under it), group, tags:['colony','lootna','antenna',
+          'candles','kites','ending',...], order (route order), solids:[[x,y,w,d]] (blocked spots on
+          the roof), stairs:[{place, x, y (ground foot, a walkable 'stairs' place), tx, ty (landing on
+          the roof; computed for generated houses), face:'n'|'s'|'e'|'w' (wall with the door)}]}]
+planks: [{id, a, b (roof ids), rect:[x,y,w,d]}]   axis-aligned, cell-aligned (4 u), 12 u wide
+places: a place ON a roof carries `level: '<roof id>'` (e.g. home_terrace, patang_chacha_roof);
+        a stairs foot carries `roof: '<roof id>'` (home_stairs, lakshmi_t6_stairs, ...)
+```
+Roofs today: the M1 lootna chain `home_terrace` -> `lakshmi_t2` .. `lakshmi_t6` (group
+`lakshmi_lootna`, 6 terraces, 5 planks, stairs down at t6 by the street), `friend_terrace` (Immu's),
+`ashok_t1..3` (antenna jobs near Cable Babji's kirana_3) and `patang_chacha_roof` (by the Char
+Kaman; the ending's kite train). Engine: one extra surface grid (`roofGrid`) holds every roof floor
+(PLAZA) and plank (FOOTPATH); off-roof is VOID. While an actor on a roof updates, the world queries
+(`collide`, `surfaceAt`, `isWalkable`, `findFree`, `raycast`) run against that grid, so the normal
+movement code walks the roof and can never step off it. Such actors are drawn by their roof's own
+`structures` item (same sort key as the building under it, queued right after it) at roof height.
+```
+N.world.roofs = { list, planks, get(id), at(x, y) -> {roof, plank, h} | null, heightAt(x, y),
+  byGroup(g), byTag(t), route(group = 'lakshmi_lootna') -> roofs in order, onRoof(actor),
+  climb(id, stairIndex?, actor = player, {instant}) (short fade, then on the landing),
+  descend(actor = player, {x, y, instant}), place(actor, roofId, x?, y?) (an NPC on a roof: drawn
+  at roof height via actor.look / actor.roofDraw(h), noCollide while up there),
+  remove(actor, x?, y?), withRoof(fn), actors (Set), stats }
+N.player.level   roof id | null (ground). teleport(x, y) to a roof point puts the player on that roof
+                 (teleport(x, y, {ground: true}) forces the ground); saved with the player.
+events: 'roof:enter' / 'roof:exit' {roof, id, actor}, 'player:level' {level, prev},
+        'roof:climb' / 'roof:descend' {roof, id, actor}; a 'door' {kind:'wood'} sound on the stairs.
+```
+Stairs: ACTION "Go up to the terrace" / "Climb to the terrace" at the foot, "Go downstairs" at the
+landing (priority 2). **Interactables have a level**: `spec.level = '<roof id>' | 'roof' | 'ground' | '*'`;
+without one, a registered interactable is on the level of its point (a point on a roof cell = that
+roof) and per-step offers are ground-only unless they set `level` or have priority >= 5. So shops
+are not offered from a roof, and a collectible / minigame on a roof is only offered up there.
+Pursuers, traffic and line of sight all work on the ground grid: a player on a roof stands
+"inside" the building for them (story code decides what that means).
+
+**Podium junctions** (`N.world.podiums = [{id, place, x, y, home}]`): a painted traffic-police
+podium with an umbrella at the road node nearest each place with `podium: true` (19 big
+junctions; `rtc_x_roads` is Havaldar Pochaiah's home). The constable is traffic.js / wanted.js's.
+
+**Respect data**: `WORLD_DATA.respect` = one zone per temple / mosque / dargah / church / gurudwara /
+ashurkhana / tomb compound (+ Charminar's interior), see §19 `N.respect`.
 
 ## 8. Entities, player, vehicles
 
@@ -438,7 +491,7 @@ tokens defined on `:root` in style.css (single deliberate dark "VHS night" look,
 backgrounds, `color-scheme: dark`). Fonts: display "Yatra One" (hand-painted signboard),
 body "Baloo 2", OSD/mono "VT323"; each with fallbacks
 (`'Yatra One', 'Baloo 2', system-ui, sans-serif` etc.).
-- HUD: top-left VHS OSD strip (`▶ PLAY  THU 14 JAN 1999  17:42`) + district name;
+- HUD: top-left VHS OSD strip (`▶ PLAY  TUE 14 JAN 2003  17:42`) + district name;
   top-right money, energy bar, **Chappal Meter** (5 slipper icons drawn in CSS/SVG);
   top-center objective; bottom-left minimap (canvas, rotates with heading optional, blips);
   toasts; big centre banners ("MISSION PASSED — Respect +", "PAKDA GAYA!", "THAK GAYA!").
@@ -780,6 +833,21 @@ procession with cranes, Bonalu pots and Pothurajus, Ramzan lights and haleem bha
 Raat crowds at Charminar, Christmas stars in Secunderabad, Prasads fence vs open cinema).
 Emits `season:change`. Also **`N.respect.at(x, y) → zone|null`** (respect zones: walk only,
 meter frozen, pursuers stop at the boundary).
+Details (seasons.js header is the reference): `set(name, on|null)` overrides the calendar (an
+override set during a mission ends with it), `autoFor(date)` applies the bible §1.4 calendar and
+keeps overrides on top, `calendarFor(date)`, `active()`, extras `world_cup monsoon eid`, weather
+`raining` / `mist` (`'weather'` event; `N.flags.rain = true|false` forces it), `overlays[name] =
+false` switches one overlay off, `profile` / `prof` time them. The giant Khairatabad idol leaves its
+pandal on immersion day (`N.landmarks.fx.ganesh` is set false only while it is null).
+`N.respect.at(x, y)` -> `{id, name, kind, place, part: 'compound'|'forecourt', gate, zone}`:
+'compound' = inside the walls (walk only; vehicles get an invisible wall; no horn, radio, peels,
+borrowing, camera, jobs, minigames; collectibles never go here), 'forecourt' = the 30 u at the gate
+(footwear stand; meter frozen, pursuers wait 40 u away). Kinds: temple mosque church dargah
+gurudwara ashurkhana tomb charminar procession. Also `inside(x, y)`, `near(x, y, r)` -> `{zone, d}`
+(the pursuers' 40 u buffer), `distance(x, y, zone)`, `zones`, `add(zone)` / `remove(id)`,
+`procession(id, pts, r, {name})` / `endProcession(id)` (seasons.js adds the Bonalu and Tank Bund
+immersion processions while those flags are on), event `respect:change`. Tests:
+`node tests/seasons.cjs`, `node tools/check_registry.cjs` (every place id the design docs use).
 
 **`N.tape`** (storycore.js): `counter (0-999)`, `side 'A'|'B'`, `paused`, `tracks[]`,
 `await rec(id, {sfx, label, place, to})` (the ● REC moment: UI, sound, counter roll),
@@ -789,6 +857,31 @@ HUD shows `SIDE A 000` beside the OSD strip.
 `next()`, `playing`. Cassette metadata from bible §6.3. Uses `N.audio`.
 **`N.hints`** (storycore.js): `register(missionId, [tier1..tier4])`, `next(source)` with
 source `'std'|'aunty'|'city'|'auto'`, automatic nudges at 3/6/10/15 min (systems §6).
+
+Story-core implementation notes (binding; full API comment at the top of storycore.js):
+- `N.clock.baseDate = [2003, 0, 14]`; `N.clock.hold(reason, on)` / `held` freeze the clock (shop menus,
+  VHS jumps); `N.clock.loop {from, to, n}` + `setLoop()` / `looping` (the elastic week loop, set by
+  N.calendar from the next unfinished main mission); events `clock:day`, `clock:loop`.
+- `N.calendar.STORY` holds the 12 missions' bible data (date, end, track, J-card line, scribble, REC sound,
+  counter, token); `missions.register` fills those fields for the bible ids. `jumpTo(spec, {fx, ms})`.
+  `markStop(day)` after a main mission; `setHorizon(spec)` pins the loop's stop (story beats).
+- `N.tape.rec(id?, opts)` defaults come from STORY; `recState` drives the HUD `● REC`; `m.rec()` /
+  `m.token()` wrap it in missions (instant while a retry fast-forwards).
+- `N.walkman`: `add('cassette_N')` (collectibles), `addSong('ending')`, `deck.open()` (home 2-in-1);
+  the RADIO action on foot / bikes = next source, hold 0.6 s = off; vehicle radios stay in audio.js.
+- `N.hints.start(missionId, {clue, answer})` when the clue is handed over; `next()` does not charge
+  money (the STD booth / auto caller does); `solve()` happens on that mission's `mission:start`.
+- `N.player` (entities.js): money starts at 1000; `tummy` (start 80, energy <= tummy), `feed(n, {energy,
+  tummy})`, `addStatus/hasStatus/clearStatus/statusLeft` (warm coma knee limp cool gola hair balloon
+  goggles sugar), counted `items` + `addItem/itemCount/eat/bestEdible`, `sitting` / `noRun` flags,
+  `legsGone` (pedal at energy 0: vehicles.js may scale cycle speed x0.65), `fall(v)` (also automatic from
+  `bump` events on bikes); events `player:feed|status|fall|up|starving|eat|items`. THAK GAYA belongs to
+  wanted.js (listen to `player:starving`, set `tummy = 40`); entities.js runs a minimal fallback after 4 s.
+- `N.missions`: def `kind 'main'|'side'|'job'`, `date`, `end`, `window`, `meter`, `jcard`, `scribble`,
+  `rec`, `help`; the J-card prompt (`N.hud.jcard`) replaces walk-in starts; `canSave()`; player-facing
+  `N.save.save({reason})` calls are refused during missions (no reason / `force` / 'mission' always save).
+- `N.hud`: `toast(text, ms, {key})` (one visible at a time, keyed replace), `caption(text, {x, y, kind})`
+  (setting `captions`), `searchCircle(id, c|null)`, `jcard(spec|null)`, `banner(.., {note})`.
 
 **`N.npcs`** (npcs.js): every character in bible §2 is predefined:
 `define(id, {name, look, portrait, color, voice})`, `spawn(id, target, {angle, idle, talk})`
@@ -804,6 +897,28 @@ full map, settings, credits, save/load, Journal with
 `vhs {mode:'rewind'|'ff'|'play'|'stop'|'rec', ms}`, `fade {to:'black'|'clear', ms}`,
 `wait {ms}`, `say {s, t}`, `talk {lines}`, `camera {target, zoom, ms}`, `call {fn}`,
 `jcard {...}`, `credits {}`; `abortCutscene()`.
+
+Implementation notes (menus.js, binding; full API in the header of src/menus.js):
+- Extra step types: `definitions {}` (bible §9.3), `prompt {label}` (waits for ACTION), `sfx {name}`,
+  `music {id|null}`, `osd {text, sub, ms}`, `counter {from, to, ms}`, `flash`, `title {sub}`,
+  `letterbox {on}`, `vhsfx {amount}`; a bare function is a `call`; `async: true` runs a step alongside
+  the next ones; `vhs` also takes `year: [2026, 2003]`, `label`, `hold`, `music` (stop -> tapeStop).
+  `cutscene(steps, {id, skippable, letterbox, keepCamera, holdFade})` -> `{skipped, aborted}`; it pushes
+  `cutscene` from play/dialogue/minigame, holds under the pause menu, skips on a 1 s ACTION hold or the
+  SKIP pill (call steps still run). Events `cutscene:start|step|skip|end`, `cutscene:vhs` (audio rewind).
+- Names: `nameEntry()` -> `{nick, full}`; stored on `N.player.name/nick/full/fullName`, saved as section
+  `profile`; `names()`, `setNames()`, `subst()`. Under automation (`navigator.webdriver`)
+  `N.menus.quickStart` skips the overwrite prompt and the name card; tests set it false for the real flow.
+- `N.settings` (menus.js): `get/set/values`, every key also a plain property (`N.settings.captions`),
+  `diff(key)` = the systems §14.1 difficulty table, `textCps()`, `vhsScale()`; `settings:change`.
+  Other modules add rows with `N.menus.addSettingsRow({id, label, type, opts, get, set, section})`;
+  when `N.view` exists the title shows a VIEW track and settings a View row.
+- Journal: built-in tabs `story`, `side_a`, `tin`, `lock`, `dictionary` keep their ids unless a caller
+  passes `replace: true`; `addDiary()`. Map: `addMapLayer({id, title, points() | draw(ctx, view)})`,
+  `waypoint(x, y | null)`; the place card reads `N.shops.hoursText(id)`, `N.flags.visited_<id>`,
+  `N.collectibles.triviaFor(id)` when present. Saves: the N.save slot ("latest") + a manual copy
+  (`nostalgia.save.v1.manual`); `canSave()` refuses during missions, minigames, cutscenes, dialogue,
+  Chappal Meter >= 3 and `N.flags.no_save`. Other: `credits()`, `definitions()`, `jcard()`, `osdCard()`.
 
 **`N.collectibles`** (collectibles.js): series `kite goli cassette ticket frame` (bible §6),
 `items`, `has(id)`, `count(series)`, `total()`, emits `collectible {series, id}`, the unlock

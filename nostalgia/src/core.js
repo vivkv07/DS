@@ -292,7 +292,7 @@
       return 0;
     },
     isNight() { return this.light() < 0.3; },
-    // "THU 14 JAN 1999"
+    // "TUE 14 JAN 2003"
     dateLabel() {
       const b = this.baseDate;
       const d = new Date(Date.UTC(b[0], b[1], b[2] + this.day));

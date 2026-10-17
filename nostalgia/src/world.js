@@ -2269,6 +2269,7 @@
     }
   }
   function buildRoofs(D) {
+    const keep = Array.from(roofActors);
     RF.list = []; RF.planks = []; RF.byId = {};
     roofCell.clear(); roofActors.clear();
     const roofs = D.roofs || [];
@@ -2341,6 +2342,12 @@
       if (p.virtual) N.places[p.id].virtual = true;
     }
     for (const r of RF.list) addStructure({ t: 'roofzone', roof: r, x0: r.x - 12, y0: r.y - 12, x1: r.x + r.w + 12, y1: r.y + r.d + 12, cx: r.kx, cy: r.ky });
+    // a rebuild while someone stands on a roof: keep them up there if that roof still exists
+    for (const a of keep) {
+      const c = RF.at(a.x, a.y);
+      if (c && c.roof) { roofActors.add(a); a.level = c.roof.id; a._roofOn = roofCell.get(Math.floor(a.y / CELL) * GW + Math.floor(a.x / CELL)) || null; }
+      else { a.level = null; if (a._roofNC) { a._roofNC = false; a.noCollide = a._roofNCWas || false; } }
+    }
   }
   // Generated colony-house terrace: stair room (mumty) by the first stairs, Sintex tank on it,
   // TV antenna in the far corner, a clothesline, sometimes a cot or chillies drying.
@@ -2451,6 +2458,8 @@
     a.update = function (dt) {
       if (!this.level) return upd.call(this, dt);
       if (this.vehicle) { setLevel(this, null); return upd.call(this, dt); }
+      // moved off the roof by a script (x/y set directly, far from the last roof spot): ground again
+      if (!RF.at(this.x, this.y) && !(Math.abs(this.x - this._roofX) < 30 && Math.abs(this.y - this._roofY) < 30)) { setLevel(this, null); return upd.call(this, dt); }
       withRoofGrid(() => upd.call(this, dt));
       afterRoofMove(this);
     };

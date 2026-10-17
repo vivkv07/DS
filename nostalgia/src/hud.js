@@ -560,6 +560,10 @@
     }
     e.textContent = '[' + text + arrow + ']';
     e.style.left = left + '%'; e.style.top = top + '%';
+    // keep the whole caption on screen (it is centred on its point)
+    const W = window.innerWidth || 800, cw = e.offsetWidth || 0;
+    const px = U.clamp((left / 100) * W, cw / 2 + 8, W - cw / 2 - 8);
+    e.style.left = Math.round(px) + 'px';
     const c = { el: e, text, t0: now, left: o.ms || 1600 };
     state.caps.push(c);
     requestAnimationFrame(() => e.classList.add('show'));

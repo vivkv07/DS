@@ -65,6 +65,8 @@
  *   minimap, 600 s r 300, 900 s Immu's PS on the Clues page. Setting `hintNudges` off|normal|fast.
  *   Events: 'hint:start' {id}, 'hint:taken' {id, source, tier}, 'hint:nudge' {id, level}, 'hint:solved' {id}
  *
+ * Journal: storycore adds the 'clues' page (active clue, hints taken, Immu's PS); menus.js draws Side A and
+ * The Tin from N.tape.
  * Saved through N.save.register: 'calendar', 'tape', 'walkman', 'hints'.
  * Settings read from N.settings (or N.menus.settings) when present: hintNudges, captions.
  */
@@ -941,17 +943,7 @@
     const M = N.menus;
     if (!M || typeof M.addJournalTab !== 'function') return;
     try {
-      M.addJournalTab({ id: 'side_a', title: 'Side A', order: 20, render(root) {
-        const rows = STORY.map((s) => {
-          const tr = T.track(s.id);
-          return '<li class="' + (tr ? 'done' : '') + '"><b>' + esc(s.jcard) + '</b>' + (tr ? '<span>' + esc(pad3(tr.counter)) + ' · ' + esc(tr.date) + (s.scribble ? ' — <i>' + esc(s.scribble) + '</i>' : '') + '</span>' : '<span>· · ·</span>') + '</li>';
-        }).join('');
-        root.innerHTML = '<div class="sc-j"><h3>SIDE A · ' + pad3(tape.counter) + (tape.paused ? ' ■ PAUSED' : '') + '</h3><ol class="sc-j-tracks">' + rows + '</ol></div>';
-      } });
-      M.addJournalTab({ id: 'tin', title: 'The Tin', order: 30, render(root) {
-        const ids = Array.from(tape.tin);
-        root.innerHTML = '<div class="sc-j"><h3>THE TIN (' + ids.length + ')</h3>' + (ids.length ? '<ul class="sc-j-tin">' + ids.map((id) => { const t = tape.tokens[id] || { name: id }; return '<li><b>' + esc(subst(t.name)) + '</b><span>' + esc(subst(t.desc || '')) + '</span></li>'; }).join('') + '</ul>' : '<p>Empty. A Karachi Bakery tin waits for its first token.</p>') + '</div>';
-      } });
+      // (menus.js owns the Side A and The Tin pages; they read N.tape.tracks / tin / tokens)
       M.addJournalTab({ id: 'clues', title: 'Clues', order: 25, render(root) {
         const A = hs.active;
         root.innerHTML = '<div class="sc-j"><h3>CLUES</h3>' + (A ? '<p class="sc-j-clue">' + esc(subst(A.clue || '(Immu\'s clue)')) + '</p>' +

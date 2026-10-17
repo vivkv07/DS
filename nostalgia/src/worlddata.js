@@ -29,6 +29,11 @@
  * (landmark + place at its entrance), S / shop (shop beside a road), place, alias, laneV,
  * laneH, compound (paved/garden forecourt around a landmark). Validate with
  * `node tools/validate_map.cjs`; preview with `node tests/map_preview.cjs`.
+ * Story reconcile (world-reconcile agent): the bible's NEW ids (irani_cafe_19 / cafe_noor_e_iran,
+ * recording_centre_1, electronics_shop_1, charminar_gallery), roofs[] + planks[] (walkable terraces,
+ * ARCHITECTURE §7 "Roof zones"), podium junctions (places with podium: true), respect[] (worship
+ * compounds + forecourts, §19 N.respect). `node tools/check_registry.cjs` diffs every place id
+ * the design documents use against this file.
  */
 // MAP_PLAN_FINAL
 (() => {

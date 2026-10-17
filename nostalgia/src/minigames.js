@@ -288,7 +288,8 @@
   function reducedMotion() {
     try { return document.body.classList.contains('reduced-motion') || !!settings().reducedMotion || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
   }
-  function hasItem(id) { try { const inv = N.player && N.player.inventory; return !!(inv && (inv.has ? inv.has(id) : inv[id])); } catch (e) { return false; } }
+  function hasItem(id) { try { const inv = N.player && N.player.inventory; return !!(inv && (inv.has ? inv.has(id) : inv[id])) || itemCount(id) > 0; } catch (e) { return false; } }
+  function itemCount(id) { try { const p = N.player; return p ? (typeof p.itemCount === 'function' ? p.itemCount(id) : (p.items && p.items[id]) | 0) : 0; } catch (e) { return 0; } }
 
   let cur = null; // the open Game
 
@@ -298,7 +299,7 @@
     stats,
     TUNE,
     helpers: H,
-    hasItem,
+    hasItem, itemCount,
     covering: false,
     register(id, def) {
       if (typeof id === 'object') { def = id; id = def.id; }
@@ -398,7 +399,8 @@
       this.assist = assistOn(params);
       this.winMul = this.assist ? TUNE.assistWindow : 1;           // every timing window x1.5 with Assist
       const base = params.difficulty == null ? 0.4 : +params.difficulty || 0;
-      this.diff = clamp(base + presetOffset() - (this.assist ? TUNE.assistDiff : 0), TUNE.diffMin, TUNE.diffMax);
+      let bonus = 0; try { bonus = (def.diffBonus && +def.diffBonus(params)) || 0; } catch (e) { /* ignore */ }  // e.g. Ayesha bowls +0.2
+      this.diff = clamp(base + bonus + presetOffset() - (this.assist ? TUNE.assistDiff : 0), TUNE.diffMin, TUNE.diffMax);
       this.reduced = reducedMotion();
       const ap = params.autoplay;
       this.auto = ap === true ? 'win' : ap === 'win' || ap === 'lose' ? ap : null;
@@ -1177,7 +1179,9 @@
       setup(g) {
         const S = g.S;
         S.charkhi = !!(g.params.charkhi || MG.hasItem('charkhi'));
-        S.lives = Math.min(T.maxLives, (g.params.lives || T.lives) + (S.charkhi ? 1 : 0)); S.livesMax = S.lives;
+        // +1 patang per spare kite owned (lootna kites), +1 with a charkhi, max 5 (systems_design §8.1)
+        const spare = g.params.lives ? 0 : MG.itemCount('kite') + MG.itemCount('lootna_kite') + MG.itemCount('patang');
+        S.lives = Math.min(T.maxLives, (g.params.lives || T.lives) + spare + (S.charkhi ? 1 : 0)); S.livesMax = S.lives;
         setBand(g);
         S.score = 0; S.cuts = 0; S.lost = 0; S.time = 0; S.left = timeLimit(g); S.target = targetCuts(g); S.redT = 0; S.latch = false;
         S.wind = (g.rng.next() < 0.5 ? -1 : 1) * (3 + g.rng.next() * 3); S.windT = 8 + g.rng.next() * 4;
@@ -3195,6 +3199,7 @@
 
     const def = {
       id: 'cricket',
+      diffBonus: (p) => (p.bowler === 'ayesha' ? 0.2 : 0), // SA4: Ayesha bowls at d + 0.2 (systems_design §8.4)
       title: 'Gully Cricket',
       sub: 'Tennis ball, three bricks for stumps, and Aunty\'s window on the left.',
       osd: 'COLONY LANE · EVENING',
@@ -5766,6 +5771,14 @@
           // clear path?
           let blocked = false;
           for (const o of S.balls) { if (o === b) continue; const t = ((o.x - sx) * ux + (o.y - sy) * uy); if (t <= 0 || t >= al) continue; const px = sx + ux * t, py = sy + uy * t; if (Math.hypot(o.x - px, o.y - py) < o.r + SR + 0.15) { blocked = true; break; } }
+          // pebbles on the striker's path, or on the target's way out, nudge it off line
+          let bumpy = 0;
+          for (const o of S.pebbles) {
+            const t = (o.x - sx) * ux + (o.y - sy) * uy;
+            if (t <= 0 || t >= al + R) continue;
+            const px = sx + ux * t, py = sy + uy * t, dd = Math.hypot(o.x - px, o.y - py);
+            if (dd < o.r + (t < al ? SR : b.r) + 0.2) bumpy++;
+          }
           // how far must the target travel along u to leave the ring?
           const bu = b.x * ux + b.y * uy, disc = bu * bu - (b.x * b.x + b.y * b.y - R * R);
           const e = -bu + Math.sqrt(Math.max(0, disc)) + b.r + 1.2;
@@ -5774,7 +5787,7 @@
           const v0 = launchFor(Math.max(0, al - SR - b.r), vi);
           const power = (v0 - 6) / 36;
           const ok = power <= 1;
-          const sc = -e * 1.2 - al * 0.15 - (blocked ? 40 : 0) - (ok ? 0 : 25 + (power - 1) * 30) + (b.jack ? 5 : 0);
+          const sc = -e * 1.2 - al * 0.15 - (blocked ? 40 : 0) - bumpy * 12 - (ok ? 0 : 25 + (power - 1) * 30) + (b.jack ? 5 : 0);
           if (sc > bs) { bs = sc; best = { tx: b.x, ty: b.y, pos: a, power: U.clamp(power * 1.06, 0.15, 1), ok }; }
         }
       }

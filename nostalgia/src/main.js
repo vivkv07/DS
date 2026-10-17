@@ -90,6 +90,17 @@
   function render(dt) {
     const R = N.render, ms = R.stats.ms;
     let t = performance.now(), t1;
+    // 3D view (ARCHITECTURE §20): no 2D world / entity draw; systems still draw (HUD minimap,
+    // dialogue barks; their 2D queue items are dropped by view3d), then the WebGL scene renders.
+    const V3 = N.view3d;
+    if (V3 && V3.active) {
+      try { R.begin(); } catch (e) { N.err('render.begin', e); }
+      try { V3.beginFrame(dt); } catch (e) { N.err('view3d.beginFrame', e); }
+      N.systems.draw();
+      try { V3.render(dt); } catch (e) { N.err('view3d.render', e); }
+      ms.flush = performance.now() - t;
+      return;
+    }
     try { R.begin(); } catch (e) { N.err('render.begin', e); }
     try { N.world.draw(); } catch (e) { N.err('world.draw', e); }
     t1 = performance.now(); ms.enqWorld = t1 - t; t = t1;

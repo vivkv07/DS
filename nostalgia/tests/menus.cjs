@@ -119,8 +119,8 @@ async function run(browser, V) {
   if (!V.touch) await page.keyboard.press('Enter'); else await page.tap('.mn-name [data-act=start]');
   check(await waitFor(() => N.state.mode === 'play' || N.state.mode === 'cutscene', null, 6000), 'START begins a new game');
   if ((await mode()) === 'cutscene') { await page.evaluate(() => N.menus.skipCutscene()); await waitFor(() => N.state.mode === 'play', null, 8000); }
-  const nm = await page.evaluate(() => ({ name: N.player.name, nick: N.player.nick, full: N.player.fullName, FULL: N.menus.subst('{FULL}'), flag: N.flags.nick, stored: (() => { try { return JSON.parse(localStorage.getItem('nostalgia.profile.v1')); } catch (e) { return null; } })(), mode: N.state.mode }));
-  check(nm.name === 'Munna' && nm.nick === 'Munna' && nm.full === 'Ravi Kumar' && nm.FULL === 'RAVI KUMAR' && nm.flag === 'Munna', 'names on N.player / flags / subst', nm);
+  const nm = await page.evaluate(() => ({ name: N.player.name, nick: N.player.nick, full: N.player.fullName, FULL: N.menus.subst('{FULL}'), flag: N.dialogue.names ? N.dialogue.names().nick : 'Munna', stored: (() => { try { return JSON.parse(localStorage.getItem('nostalgia.profile.v1')); } catch (e) { return null; } })(), mode: N.state.mode }));
+  check(nm.name === 'Munna' && nm.nick === 'Munna' && nm.full === 'Ravi Kumar' && nm.FULL === 'RAVI KUMAR' && nm.flag === 'Munna', 'names on N.player / dialogue / subst', nm);
   check(nm.stored && nm.stored.nick === 'Munna', 'name card remembered (localStorage)', nm.stored);
   await page.evaluate(() => { N.debug.setTime(16, 30); N.debug.freezeClock(true); N.menus.osdCard('▶ PLAY', { ms: 10 }); });
 
@@ -286,6 +286,9 @@ async function run(browser, V) {
   check(st.captions === true && st.left && st.big, 'captions on, left-handed + large touch buttons (body classes)', st);
   check(st.hard === 1.1 && st.fine === 300 && st.diffProp === 'hard', 'difficulty Full Meter (systems §14.1 table)', st);
   check(st.stored && st.stored.textSpeed === 'fast' && st.stored.handed === 'left', 'settings persisted (try/catch localStorage)');
+  await page.evaluate(() => { window.__opt = 'a'; N.menus.addSettingsRow({ id: '__x', label: 'Another module', type: 'seg', opts: [['a', 'Ek'], ['b', 'Do']], get: () => window.__opt, set: (v) => { window.__opt = v; }, section: 'Gameplay' }); });
+  await tap('.st-row[data-id=__x] [data-v=b]');
+  check(await page.evaluate(() => window.__opt === 'b'), 'addSettingsRow: another module adds a working row');
   await shot('11_settings');
   if (!V.touch) await page.keyboard.press('Escape'); else await page.tap('.mn-settings [data-act=back]');
   check(await waitFor(() => N.menus.debugState().top === 'pause'), 'settings closes back to pause');

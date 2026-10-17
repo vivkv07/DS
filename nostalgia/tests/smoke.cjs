@@ -57,9 +57,19 @@ async function run(browser, V) {
   const scroll = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth, sh: document.documentElement.scrollHeight, ih: window.innerHeight }));
   if (scroll.sw > scroll.iw || scroll.sh > scroll.ih) fail(V.name, 'page scrolls: ' + JSON.stringify(scroll)); else ok('no page scroll');
 
-  // ---- start a game from the title (real click / tap)
+  // ---- start a game from the title (real click / tap): ▶ PLAY -> the name card -> ▶ START
+  // (menus.js skips the name card under automation unless quickStart is turned off: drive the real flow)
+  await page.evaluate(() => { if (N.menus) N.menus.quickStart = false; });
   if (V.touch) await page.tap('#title-start'); else await page.click('#title-start');
-  await page.waitForFunction(() => N.state.mode === 'play', null, { timeout: 5000 }).catch(() => fail(V.name, 'did not enter play mode after START'));
+  const named = await page.waitForFunction(() => N.menus.debugState().top === 'name', null, { timeout: 5000 }).then(() => true, () => false);
+  if (!named) fail(V.name, 'PLAY did not open the name card'); else ok('PLAY opens the name card');
+  if (named) { if (V.touch) await page.tap('.mn-name [data-act=start]'); else await page.click('.mn-name [data-act=start]'); }
+  await page.waitForFunction(() => N.state.mode === 'play' || N.state.mode === 'cutscene', null, { timeout: 5000 }).catch(() => fail(V.name, 'did not start a game after START'));
+  if (await page.evaluate(() => N.state.mode === 'cutscene')) {
+    // the story's prologue: skip it with the real SKIP pill
+    if (V.touch) await page.tap('.cs-skip'); else await page.click('.cs-skip');
+  }
+  await page.waitForFunction(() => N.state.mode === 'play', null, { timeout: 8000 }).catch(() => fail(V.name, 'did not enter play mode after START'));
   await page.evaluate(() => { N.debug.setTime(16, 30); });
   await sleep(500);
   let s = await state();

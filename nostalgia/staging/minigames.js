@@ -5771,6 +5771,14 @@
           // clear path?
           let blocked = false;
           for (const o of S.balls) { if (o === b) continue; const t = ((o.x - sx) * ux + (o.y - sy) * uy); if (t <= 0 || t >= al) continue; const px = sx + ux * t, py = sy + uy * t; if (Math.hypot(o.x - px, o.y - py) < o.r + SR + 0.15) { blocked = true; break; } }
+          // pebbles on the striker's path, or on the target's way out, nudge it off line
+          let bumpy = 0;
+          for (const o of S.pebbles) {
+            const t = (o.x - sx) * ux + (o.y - sy) * uy;
+            if (t <= 0 || t >= al + R) continue;
+            const px = sx + ux * t, py = sy + uy * t, dd = Math.hypot(o.x - px, o.y - py);
+            if (dd < o.r + (t < al ? SR : b.r) + 0.2) bumpy++;
+          }
           // how far must the target travel along u to leave the ring?
           const bu = b.x * ux + b.y * uy, disc = bu * bu - (b.x * b.x + b.y * b.y - R * R);
           const e = -bu + Math.sqrt(Math.max(0, disc)) + b.r + 1.2;
@@ -5779,7 +5787,7 @@
           const v0 = launchFor(Math.max(0, al - SR - b.r), vi);
           const power = (v0 - 6) / 36;
           const ok = power <= 1;
-          const sc = -e * 1.2 - al * 0.15 - (blocked ? 40 : 0) - (ok ? 0 : 25 + (power - 1) * 30) + (b.jack ? 5 : 0);
+          const sc = -e * 1.2 - al * 0.15 - (blocked ? 40 : 0) - bumpy * 12 - (ok ? 0 : 25 + (power - 1) * 30) + (b.jack ? 5 : 0);
           if (sc > bs) { bs = sc; best = { tx: b.x, ty: b.y, pos: a, power: U.clamp(power * 1.06, 0.15, 1), ok }; }
         }
       }

@@ -18,6 +18,7 @@
  *   raining / mist (bool, read only)    monsoon showers (40% of monsoon days, one 2 h shower starting
  *                                       14:00-18:00, deterministic per date) and winter-morning mist.
  *   overlays {name: bool}               switch one overlay off (tests / perf); quality 0..1 (crowd caps)
+ *   scene(cx, cy, r) -> {kites, people, props}  what the overlays show there, as data (3D view parity)
  *   Every name is mirrored into N.flags[name] (true/false); N.flags.year === 2026 forces year2026.
  *   Events: 'season:change' {name, on, prev, source}, 'weather' {rain, mist}.
  *   Draws flag-driven world overlays (all culled to the view, sprite-cached, capped):
@@ -1615,6 +1616,7 @@
       if (mode === 'minigame' || mode === 'boot') return;
       frame();
       const q = R.queue;
+      if (S.profile) for (const k in S.prof) S.prof[k] = 0;
       for (const n of ALL) {
         const o = OV[n];
         if (!o || !o.draw || !enabled(n)) continue;
@@ -1629,5 +1631,43 @@
   N.on('boot', () => { try { RESP.rebuild(); apply('boot'); } catch (e) { N.err('seasons.boot', e); } });
   N.on('save:loaded', () => apply('load'));
   N.on('world:built', () => { RX.built = false; });
+  /** 3D parity (ARCHITECTURE §20): what the overlays show near (cx, cy) within r, as plain data.
+   *  -> {kites: [{x, y, h, ax, ay, ah, color}], people: [{x, y, h, a, look, carry?}], props: [{kind, x, y, h?, a?, ...}]} */
+  S.scene = function (cx, cy, r) {
+    const out = { kites: [], people: [], props: [] };
+    if (!N.world || !N.world.built) return out;
+    makeLooks();
+    const R2 = (r || 400) * (r || 400), near = (x, y) => (x - cx) * (x - cx) + (y - cy) * (y - cy) < R2;
+    TIME = (N.time && N.time.real) || 0;
+    if (enabled('sankranti')) {
+      const wind = Math.sin(TIME * 0.05) * 0.4 - 2.3; sank.wx = Math.cos(wind); sank.wy = Math.sin(wind);
+      N.world.queryStructures(cx - r, cy - r, cx + r, cy + r, (st) => {
+        if (out.kites.length > 60 || st.t !== 'bldg' || st.roofType !== 'flat' || st.h < 9) return;
+        const pp = KITE_STYLES[st.style]; if (!pp || hsh(st.x, st.y) > 0.5 * pp) return;
+        kitePos(st, kp);
+        out.kites.push({ x: kp.x, y: kp.y, h: kp.h, ax: kp.ax, ay: kp.ay, ah: st.h + 9, color: KCOL[kp.ci % KCOL.length] });
+        out.people.push({ x: kp.ax, y: kp.ay, h: st.h, a: Math.atan2(kp.y - kp.ay, kp.x - kp.ax), look: LOOKS[lookIdx['kid' + ((hsh(st.x, st.y) * 6) | 0)] || 0] });
+      });
+    }
+    for (const k in crowds) { const c = crowds[k]; for (const p of c.people) if (near(p.x, p.y)) out.people.push({ x: p.x, y: p.y, h: 0, a: p.a, look: LOOKS[p.li] }); }
+    if (enabled('bonalu') && bon.procs) for (const pr of bon.procs) for (const m of pr.members) {
+      if (m.d < 0) continue; along(pr.path, m.d, tmpP);
+      const x = tmpP.x - Math.sin(tmpP.a) * m.side, y = tmpP.y + Math.cos(tmpP.a) * m.side;
+      if (near(x, y)) out.people.push({ x, y, h: 0, a: tmpP.a, look: LOOKS[m.li], carry: m.kind === 'bonam' ? 'bonam' : m.kind === 'drum' ? 'dappu' : m.kind === 'poth' ? 'neem' : null });
+    }
+    if (enabled('ganesh_immersion') && imm.path) {
+      for (const rg of imm.rigs) { bundAt(rg.d, 11, bp); if (near(bp.x, bp.y)) out.props.push({ kind: rg.kind, x: bp.x, y: bp.y, a: bp.a, idol: rg.has ? { size: rg.size, colors: rg.idol } : null }); }
+      for (const c of imm.cranes) if (near(c.x, c.y)) out.props.push({ kind: 'crane', x: c.x, y: c.y, ox: c.ox, oy: c.oy, t: c.t % 16 });
+      for (const w of imm.watch || []) if (near(w.x, w.y)) out.people.push({ x: w.x, y: w.y, h: 0, a: w.a, look: LOOKS[w.li] });
+    }
+    if ((enabled('ramzan') || enabled('chand_raat')) && ram.stalls) {
+      for (const st of ram.stalls) if (near(st.x, st.y)) out.props.push({ kind: 'stall', x: st.x, y: st.y, a: st.a, color: st.col });
+      for (const b2 of ram.bhattis || []) if (near(b2[0], b2[1])) out.props.push({ kind: 'haleem_bhatti', x: b2[0], y: b2[1] });
+      for (const st of ram.strings || []) if (near(st.x0, st.y0) || near(st.x1, st.y1)) out.props.push({ kind: 'bulbs', x: st.x0, y: st.y0, h: st.h0, x1: st.x1, y1: st.y1, h1: st.h1, colors: ['#40ff80', '#ffffff'] });
+    }
+    if (enabled('summer') && summ.sheds) for (const sh of summ.sheds) if (near(sh.x, sh.y)) out.props.push({ kind: 'chalivendram', x: sh.x, y: sh.y, a: sh.a });
+    if (enabled('christmas') && xmas.cribs) for (const c of xmas.cribs) if (near(c.x, c.y)) out.props.push({ kind: 'crib', x: c.x, y: c.y });
+    return out;
+  };
   S._debug = { crowds, parts, OV, bon, imm, ram, sank, RX };
 })();

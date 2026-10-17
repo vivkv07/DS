@@ -20,6 +20,16 @@
 
   const approach = (a, b, d) => (a < b ? Math.min(b, a + d) : Math.max(b, a - d));
 
+  // Tunables (systems §2.6, §3.1, §5.6): kid at the wheel, flats, falls, potholes, rain grip.
+  const TUNE = {
+    kidTop: 0.9, kidAccel: 0.85, flatTop: 0.55, punctureRate: 0.003, potholeEvery: 2.5, potholeFall: 0.1,
+    potholeSpeed: 100, pickupAfter: 1.5, rightAfter: 8, rainGrip: 0.8, rainGripBike: 0.7, witnessR: 120,
+    ownerShout: 0.25, heatParked: 40, heatWitnessed: 100, heatCycle: 30, heatChetakNanna: 100, heatChetak: 40,
+  };
+  // bike surface factors (cls 'bike'); everything else uses world.js SPEED.drive
+  const BIKE_SURF = { [N.SURF.FOOTPATH]: 1, [N.SURF.PLAZA]: 1, [N.SURF.GROUND]: 0.85, [N.SURF.GRASS]: 0.75, [N.SURF.SAND]: 0.55 };
+  function raining() { const f = N.flags || {}; return !!(f.raining || f.rain || (N.seasons && N.seasons.is && (() => { try { return N.seasons.is('rain'); } catch (e) { return false; } })())); }
+
   /* ================================================================ types */
   const DEFAULTS = {
     name: 'Vehicle', short: 'vehicle', verb: 'Drive', cls: 'car', mode: 'drive',
@@ -29,6 +39,7 @@
     grip: 9, drift: 1.5, bounce: 0.28, mass: 8,
     seats: 4, colors: ['#e8e4d8'], colors2: null, radio: false, lights: true, camZoom: 1,
     smoke: null, rider: false, door: true,
+    playerNoEnter: false, noEnter: false, nakko: null, bikeLook: null,
   };
   const TYPES = {};
 
@@ -50,7 +61,7 @@
   define('cycle', {
     name: 'Hero cycle', short: 'cycle', verb: 'Ride', cls: 'bike', w: 15, d: 5, h: 6,
     maxSpeed: 115, accel: 62, brake: 170, reverse: 0.12, drag: 24, turn: 3.4, turnLow: 0.5, turnHigh: 0.62,
-    grip: 13, drift: 3.2, mass: 1.2, seats: 1, lights: false, rider: true, pedal: true, door: false,
+    grip: 13, drift: 3.2, mass: 1.2, seats: 1, lights: false, rider: true, pedal: true, door: false, bikeLook: 'cycle',
     colors: ['#1d1d22', '#2f6a3a', '#24479a', '#9a2424', '#1d1d22'], draw: (ctx, v) => drawBike(ctx, v),
   });
   define('ladiescycle', {
@@ -60,19 +71,19 @@
   define('luna', {
     name: 'TVS Luna', short: 'Luna', verb: 'Ride', cls: 'bike', w: 15, d: 5.5, h: 7,
     maxSpeed: 120, accel: 70, brake: 190, reverse: 0.1, drag: 26, turn: 3.2, turnLow: 0.45, turnHigh: 0.6,
-    grip: 12, drift: 3, mass: 2, seats: 1, lights: true, rider: true, door: false, smoke: 'light',
+    grip: 12, drift: 3, mass: 2, seats: 1, lights: true, rider: true, door: false, smoke: 'light', bikeLook: 'luna',
     colors: ['#b82a2a', '#2a4a9a', '#2a2a30', '#3a7a4a'], draw: (ctx, v) => drawBike(ctx, v),
   });
   define('chetak', {
     name: 'Bajaj Chetak', short: 'Chetak', verb: 'Ride', cls: 'bike', w: 17, d: 7, h: 8,
     maxSpeed: 150, accel: 95, brake: 210, reverse: 0.1, drag: 28, turn: 3.0, turnLow: 0.42, turnHigh: 0.58,
-    grip: 11, drift: 2.6, mass: 3, seats: 2, lights: true, rider: true, door: false, smoke: '2t',
+    grip: 11, drift: 2.6, mass: 3, seats: 2, lights: true, rider: true, door: false, smoke: '2t', bikeLook: 'chetak',
     colors: ['#86b9c9', '#ddd2b2', '#b9483b', '#6f8d68', '#e9e4d8', '#4f6fa8'], draw: (ctx, v) => drawBike(ctx, v),
   });
   define('rx100', {
     name: 'Yamaha RX100', short: 'RX100', verb: 'Ride', cls: 'bike', w: 18, d: 6, h: 8,
     maxSpeed: 180, accel: 150, brake: 230, reverse: 0.1, drag: 28, turn: 3.1, turnLow: 0.4, turnHigh: 0.52,
-    grip: 11, drift: 2.4, mass: 3, seats: 2, lights: true, rider: true, door: false, smoke: '2t',
+    grip: 11, drift: 2.4, mass: 3, seats: 2, lights: true, rider: true, door: false, smoke: '2t', bikeLook: 'rx100',
     colors: ['#1c1c22', '#a01e2a', '#1e3c8a', '#5a1a3a'], draw: (ctx, v) => drawBike(ctx, v),
   });
   define('auto', {
@@ -105,13 +116,13 @@
   define('bus', {
     name: 'City bus', short: 'bus', verb: 'Drive', cls: 'heavy', w: 62, d: 18, h: 19.5,
     maxSpeed: 115, accel: 42, brake: 150, reverse: 0.25, drag: 30, turn: 1.25, turnLow: 0, turnHigh: 0.7,
-    grip: 10, drift: 3, bounce: 0.18, mass: 40, seats: 50, radio: true, camZoom: 0.86, smoke: 'diesel',
+    grip: 10, drift: 3, bounce: 0.18, mass: 40, seats: 50, radio: true, camZoom: 0.86, smoke: 'diesel', playerNoEnter: true,
     colors: ['#b22b2b'], routes: ['127K', '8A', '9X', '49M', '5K', '1Z', '65G', '219'], draw: (ctx, v) => drawBus(ctx, v),
   });
   define('lorry', {
     name: 'Lorry', short: 'lorry', verb: 'Drive', cls: 'heavy', w: 46, d: 16, h: 16,
     maxSpeed: 110, accel: 40, brake: 150, reverse: 0.25, drag: 30, turn: 1.2, turnLow: 0, turnHigh: 0.7,
-    grip: 10, drift: 3, bounce: 0.18, mass: 45, seats: 2, radio: true, camZoom: 0.88, smoke: 'diesel',
+    grip: 10, drift: 3, bounce: 0.18, mass: 45, seats: 2, radio: true, camZoom: 0.88, smoke: 'diesel', playerNoEnter: true,
     colors: ['#e0782a', '#2a6ab8', '#3a8a5a', '#c03030', '#d8a020'], colors2: ['#e8c060', '#3aa0a0', '#e86a3a', '#8ac04a'],
     draw: (ctx, v) => drawLorry(ctx, v),
   });
@@ -121,6 +132,44 @@
     grip: 2.2, drift: 1.2, bounce: 0.15, mass: 12, seats: 6, door: false,
     colors: ['#f2efe6', '#e8e2d0'], colors2: ['#c0392b', '#2a8c82', '#2a5cb8', '#e0a020'], draw: (ctx, v) => drawBoat(ctx, v),
   });
+
+  /* ------------------------------------------- story and special types (systems §3.2) */
+  // nakko: the player can't take it; ACTION near it shows "Nakko" and says this line instead.
+  // allow(): when present, the nakko applies only until it returns true (unlocks).
+  define('family_chetak', { base: 'chetak', name: "Nanna's Chetak", short: 'Chetak', colors: ['#7d9ab0'] });
+  define('chinnu_cycle', { base: 'cycle', name: "Chinnu's cycle", short: 'cycle', maxSpeed: 122, accel: 66, carrier: 0.75, colors: ['#1d1d22'] });
+  define('old_cycle', { base: 'cycle', name: "Nanna's roadster", short: 'roadster', maxSpeed: 105, turn: 3.0, colors: ['#141416'] });
+  define('kid_cycle', { base: 'cycle', name: "Kid's hire cycle", short: 'cycle', maxSpeed: 110, turn: 3.6, w: 13.5, colors: ['#9a2424', '#2f6a3a', '#24479a'] });
+  define('bunty_rx100', {
+    base: 'rx100', name: "Bunty-anna's RX100", short: 'RX100', colors: ['#1c1c22'], seats: 2,
+    nakko: "Bunty-anna's RX100? Only on Sundays, only with a helmet, only if Mummy doesn't know. Not today.",
+    allow: () => unlocked('rx100', 60) || !!(N.flags && (N.flags.bunty_rx100 || N.flags.rx100_lent)),
+  });
+  define('yadagiri_auto', { base: 'auto', name: "Yadagiri-anna's auto", short: 'auto', label: 'YADAGIRI', nakko: "Yadagiri-anna's auto. *Nakko, beta.* Call AUTO! with the horn.", draw: (ctx, v) => { drawAuto(ctx, v); readableText(ctx, -3.5, 0, 14.6, 'YADAGIRI', '#1a1214', true); } });
+  define('pochaiah_luna', { base: 'luna', name: "Pochaiah's Luna", short: 'Luna', colors: ['#b82a2a'], nakko: "The Havaldar's Luna? Are you MAD?", draw: (ctx, v) => { drawBike(ctx, v); drawLightBar(ctx, v); } });
+  define('pasha_lambretta', { base: 'chetak', name: "Professor Pasha's Lambretta", short: 'Lambretta', maxSpeed: 140, colors: ['#e8c020'], nakko: "Professor Pasha's scooter? He'll put you on TV. *Nakko.*", draw: (ctx, v) => { drawBike(ctx, v); drawSidecar(ctx, v); } });
+  define('peacock_lorry', { base: 'lorry', name: 'Peacock lorry', colors: ['#2a6ab8'], colors2: ['#e8c060'], draw: (ctx, v) => { drawLorry(ctx, v); drawPeacock(ctx, v); } });
+  define('govt_ambassador', { base: 'ambassador', name: 'Government Ambassador', colors: ['#f4f2ec'], beacon: true, nakko: 'VIP car, *beta*. *Nakko.*' });
+  define('taxi_ambassador', { base: 'ambassador', name: 'Taxi', short: 'taxi', colors: ['#1c1c22'], taxi: true, draw: (ctx, v) => { drawCar(ctx, v); drawTrunks(ctx, v); } });
+  define('safari_bus', { base: 'bus', name: 'Zoo safari bus', colors: ['#3a6a3a'], routes: ['SAFARI'], draw: (ctx, v) => { drawBus(ctx, v); drawCage(ctx, v); } });
+
+  /** Total collectibles found (0 while collectibles.js is a stub). */
+  function finds() {
+    const C = N.collectibles;
+    try { if (C && typeof C.total === 'function') { const n = +C.total(); if (isFinite(n)) return n; } } catch (e) { /* stub */ }
+    try { if (C && C.found && typeof C.found.size === 'number') return C.found.size; } catch (e) { /* stub */ }
+    return 0;
+  }
+  /** A home unlock from the finds ladder (systems §7.5): N.flags.unlock_<name> or `n` total finds. */
+  function unlocked(name, n) { return !!(N.flags && N.flags['unlock_' + name]) || finds() >= n; }
+  /** The line a "nakko" vehicle says to the player, or null when he may take it. */
+  function nakkoFor(v) {
+    const T = v.T;
+    if (!T.nakko) return null;
+    if (typeof T.allow === 'function') { try { if (T.allow(v)) return null; } catch (e) { /* ignore */ } }
+    if (v.allowPlayer) return null;
+    return T.nakko;
+  }
 
   /* ============================================================ vehicle */
   const list = [];
@@ -142,8 +191,14 @@
       this.color = opts.color || rng.pick(T.colors);
       this.color2 = opts.color2 || (T.colors2 ? rng.pick(T.colors2) : U.shade(this.color, 0.7));
       this.route = opts.route || (T.routes ? rng.pick(T.routes) : null);
-      this.beacon = !!opts.beacon;
-      this.label = opts.label || null;
+      this.beacon = opts.beacon != null ? !!opts.beacon : !!T.beacon;
+      this.label = opts.label || T.label || null;
+      if (opts.taxi != null ? opts.taxi : T.taxi) this.taxi = true;
+      // shops / traffic tags: hire (place id of the stall that rents it), parked (borrowing a parked
+      // vehicle raises the meter, systems §3.3), owned (the family's own: never any heat)
+      this.hire = opts.hire || null; this.hired = !!opts.hired;
+      this.parked = !!opts.parked; this.owned = !!opts.owned;
+      this.flat = false; this.fallen = null; this.pillion = null; this.potT = 1;
       this.ctl = { throttle: 0, steer: 0, handbrake: false, brake: false };
       this.driver = null; this.controller = opts.controller || null;
       this.locked = !!opts.locked; this.special = opts.special || null; this.seeded = !!opts.seeded;
@@ -182,10 +237,19 @@
     const surf = W.surfaceAt(v.x, v.y);
     let sMul = 1;
     if (T.mode !== 'boat') {
-      sMul = W.surfaceSpeed(surf, 'drive');
-      if (T.cls === 'bike' && (surf === S.FOOTPATH || surf === S.PLAZA)) sMul = Math.max(sMul, 0.95); // cycles love footpaths
+      // bikes keep their speed on footpaths and plazas and lose less on dirt (systems §3.1)
+      const bs = T.cls === 'bike' ? BIKE_SURF[surf] : undefined;
+      sMul = bs != null ? bs : W.surfaceSpeed(surf, 'drive');
     }
-    const top = T.maxSpeed * sMul * (v.boost || 1);
+    let top = T.maxSpeed * sMul * (v.boost || 1);
+    let accel = T.accel;
+    if (v.flat) top *= TUNE.flatTop;
+    const pl = N.player;
+    if (pl && v.driver === pl) {
+      // kid at the wheel: perched on the seat edge to reach the pedals
+      if (T.cls === 'car' || T.cls === 'auto') { top *= TUNE.kidTop; accel *= TUNE.kidAccel; }
+      if (T.pedal && pl.legsGone) top *= (pl.TUNE && pl.TUNE.legsGoneMul) || 0.65;
+    }
     const ctl = v.ctl;
     // controllers (traffic AI, story scripts) may hand us junk: NaN reads as 0
     const thr = U.clamp(+ctl.throttle || 0, -1, 1);
@@ -196,18 +260,18 @@
       if (vf < -3) vf = Math.min(0, vf + T.brake * thr * dt);
       else {
         const f = 1 - Math.pow(U.clamp(vf / Math.max(1, top), 0, 1), 2.2);
-        vf += T.accel * thr * (0.35 + 0.65 * f) * dt * (vf < top ? 1 : 0);
+        vf += accel * thr * (0.35 + 0.65 * f) * dt * (vf < top ? 1 : 0);
       }
     } else if (thr < -0.02) {
       if (vf > 3) vf = Math.max(0, vf + T.brake * thr * dt);
       else {
         const rtop = top * T.reverse;
-        if (vf > -rtop) vf = Math.max(-rtop, vf + T.accel * 0.75 * thr * dt);
+        if (vf > -rtop) vf = Math.max(-rtop, vf + accel * 0.75 * thr * dt);
       }
     } else {
       vf = approach(vf, 0, (T.drag + (v.driver ? 0 : 90)) * dt);
     }
-    if (vf > top + 1) vf = approach(vf, top, (T.accel + (vf - top) * 2.5) * dt);
+    if (vf > top + 1) vf = approach(vf, top, (accel + (vf - top) * 2.5) * dt);
     if (hb) vf = approach(vf, 0, T.brake * 0.4 * dt);
     // steering: rate depends on speed (bikes can turn slowly when nearly stopped)
     const sp = Math.abs(vf), sn = sp / T.maxSpeed;
@@ -221,6 +285,7 @@
     // lateral grip (handbrake = drift)
     let grip = hb ? T.drift : T.grip;
     if (T.mode !== 'boat' && (surf === S.SAND || surf === S.GRASS || surf === S.GROUND)) grip *= 0.8;
+    if (T.mode !== 'boat' && raining()) grip *= T.cls === 'bike' ? TUNE.rainGripBike : TUNE.rainGrip; // monsoon showers (systems §3.1)
     const vlBefore = vl;
     vl *= Math.exp(-grip * dt);
     // part of the scrubbed sideways speed carries on forward (keeps corners lively)
@@ -483,6 +548,8 @@
     opts = opts || {};
     if (!actor || !v || !v.alive || actor.vehicle) return false;
     if (v.driver && v.driver !== actor) borrow(v, actor);
+    else if (actor === N.player && !opts.quiet) { try { takeParked(v); } catch (e) { N.err('vehicles.take', e); } }
+    if (v.fallen) v.fallen = null;
     const T = v.T;
     actor.vehicle = v; v.driver = actor; v.controller = null;
     actor.mode = 'drive';
@@ -513,6 +580,48 @@
     }
     N.emit('vehicle:borrowed', { vehicle: v, driver: ped, by: actor, x: spot.x, y: spot.y });
     if (actor === N.player && N.wanted && N.wanted.add) N.wanted.add(1);
+  }
+
+  /**
+   * Taking a vehicle nobody is sitting on (systems §3.3). Only vehicles tagged `parked` (traffic.js
+   * parks them with opts.parked) and the family Chetak raise the Chappal Meter; seeded, hired,
+   * owned, mission and debug vehicles never do. Heat goes through N.wanted.addHeat (wanted.js);
+   * with the stub meter (no heat model) nothing happens.
+   */
+  function takeParked(v) {
+    const p = N.player, W = N.wanted, T = v.T;
+    if (v.borrowedBy === p || v.hire || v.hired || v.owned || v.npcOwned) return;
+    const heat = (h, why) => { if (W && typeof W.addHeat === 'function' && h > 0) W.addHeat(h, why); };
+    if (T.id === 'family_chetak' || v.special === 'family') {
+      v.borrowedBy = p;
+      if (unlocked('chetak', 30) || (N.missions && N.missions.active)) return;
+      const m = N.clock.minutes, dow = N.calendar && N.calendar.weekday ? N.calendar.weekday() : 1;
+      const nannaHome = m >= 18 * 60 + 30 || m < 8 * 60 + 30 || dow === 0 || !!(N.flags && N.flags.festival);
+      heat(nannaHome ? TUNE.heatChetakNanna : TUNE.heatChetak, 'chetak');
+      if (N.hud) N.hud.toast(nannaHome ? 'Chitti: "Sreenivas-garu ka Chetak kidhar gaya?" She saw.' : '"Sreenivas-garu ka Chetak kidhar gaya?"', 2600);
+      return;
+    }
+    if (!v.parked) return;
+    v.borrowedBy = p;
+    if (N.missions && N.missions.active) return;
+    if (T.pedal) {
+      if (Math.random() < TUNE.ownerShout) {
+        const spot = exitSpot(v, 'walk') || { x: v.x + 10, y: v.y };
+        const owner = N.entities.add(new AngryDriver(spot.x, spot.y, v, null));
+        owner.shout = 'OYE! MERI CYCLE!'; owner.chase = 6;
+        if (witnessed(v)) heat(TUNE.heatCycle, 'borrow');
+      }
+      return;
+    }
+    heat(T.cls === 'auto' || witnessed(v) ? TUNE.heatWitnessed : TUNE.heatParked, 'borrow');
+  }
+  /** Is any pedestrian within TUNE.witnessR of the vehicle with a clear line of sight? */
+  function witnessed(v) {
+    const W = N.world;
+    for (const q of N.entities.query(v.x, v.y, TUNE.witnessR, (e) => (e.kind === 'ped' || e.kind === 'npc') && e !== N.player && e.alive !== false)) {
+      try { if (!W.raycast(q.x, q.y, v.x, v.y, 'walk').hit) return true; } catch (e) { return true; }
+    }
+    return false;
   }
 
   /** Nearest free spot next to a vehicle: left door first, then right, rear, front. */

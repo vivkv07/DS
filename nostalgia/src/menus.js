@@ -48,6 +48,8 @@
  *   N.menus.osdCard('▶ PLAY', {sub, ms})  non-blocking VHS OSD card (used after CONTINUE)
  *   N.menus.openMap({x, y, zoom}) / closeMap() · openJournal(tabId) / closeJournal()
  *   N.menus.openSettings() · openSaveLoad() · openPause()
+ *   N.menus.addSettingsRow({id, label, type: 'seg'|'toggle'|'slider', opts: [[v, text]...], get(), set(v),
+ *     help, section})   rows owned by other modules (N.view, §20, gets a View row + a VIEW title track)
  *   N.menus.addJournalTab({id, title, order, render(el, api)}) / removeJournalTab(id) / refreshJournal()
  *     built-in tabs: story (10), sidea (20), tin (40), lock (50), dictionary (90).
  *     render(el) gets an empty .jr-page element; re-rendered every time the tab is shown.
@@ -73,8 +75,8 @@
  *   vhsScale() · emits 'settings:change' {key, value}.
  *   Keys: textSpeed (slow|normal|fast|instant), autoAdvance, captions, reducedMotion (auto|on|off),
  *   flashReduce (auto|on|off), vhs (0-100), handed (right|left), btnSize (s|m|l), difficulty
- *   (relaxed|normal|hard), hints (off|normal|fast), assist, colorBlind (off|deutan|protan|tritan),
- *   highContrast. Volumes go straight to N.audio.setVolume (audio.js persists them).
+ *   (relaxed|normal|hard), hintNudges (off|normal|fast; alias .hints), assist, letImmu,
+ *   colorBlind (off|deutan|protan|tritan), highContrast; every key is also a plain property. Volumes go straight to N.audio.setVolume (audio.js persists them).
  *   Body classes: reduced-motion, flash-reduce, touch-left, tbtn-s | tbtn-l, captions-on,
  *   high-contrast, cb-<mode>. N.dialogue.textSpeed follows the text speed.
  *
@@ -377,7 +379,6 @@
   function applyNames() {
     const p = N.player;
     if (p) { p.name = profile.nick; p.nick = profile.nick; p.full = profile.full; p.fullName = profile.full; }
-    if (N.flags) { N.flags.nick = profile.nick; N.flags.full = profile.full; }
   }
   function setNames(nick, full) {
     profile.nick = cleanName(nick, 12) || NAME_DEF.nick;
@@ -588,6 +589,7 @@
         '<li><button type="button" id="title-start" class="jc-trk" data-nav data-def data-act="play"><i>▶</i><b>PLAY</b><em>new game</em></button></li>' +
         '<li class="trk-cont"><button type="button" class="jc-trk" data-nav data-act="continue"><i>▶▶</i><b>CONTINUE</b><em class="cont-sub"></em></button></li>' +
         '<li class="trk-load"><button type="button" class="jc-trk" data-nav data-act="load"><i>⏏</i><b>OTHER TAPE</b><em class="load-sub"></em></button></li>' +
+        '<li class="trk-view" hidden><button type="button" class="jc-trk" data-nav data-act="view"><i>◫</i><b>VIEW</b><em class="view-sub"></em></button></li>' +
         '<li><button type="button" class="jc-trk" data-nav data-act="settings"><i>≡</i><b>SETTINGS</b><em>sound · text · touch</em></button></li>' +
         '<li><button type="button" class="jc-trk" data-nav data-act="credits"><i>♪</i><b>CREDITS</b><em>who made this tape</em></button></li>' +
         '</ol>' +
@@ -601,6 +603,7 @@
         st: e.querySelector('.vcr-st'), tm: e.querySelector('.vcr-tm'), ctr: e.querySelector('.vcr-ctr'),
         cont: e.querySelector('.trk-cont'), contSub: e.querySelector('.cont-sub'), load: e.querySelector('.trk-load'), loadSub: e.querySelector('.load-sub'),
         confirm: e.querySelector('.jc-confirm'), tracks: e.querySelector('.jc-tracks'), cas: e.querySelector('.cas'), jc: e.querySelector('.jc'),
+        view: e.querySelector('.trk-view'), viewSub: e.querySelector('.view-sub'),
       };
       e.addEventListener('click', (ev) => {
         const b = ev.target.closest('button[data-act]');
@@ -625,6 +628,9 @@
       const man = manualInfo();
       this.dom.load.hidden = !(man && info && man.t !== info.t);
       if (man) this.dom.loadSub.textContent = saveLine(man);
+      const V = N.view, hasView = !!(V && (typeof V.cycle === 'function' || typeof V.set === 'function'));
+      this.dom.view.hidden = !hasView;
+      if (hasView) this.dom.viewSub.textContent = ({ top: 'top-down', tps: '3D · third person', fps: 'first person' })[V.mode] || String(V.mode || 'top-down');
     },
     back() {
       if (!this.dom.confirm.hidden) { this.dom.confirm.hidden = true; this.dom.tracks.hidden = false; focusFirst(this); }
@@ -652,6 +658,11 @@
       continueLatest();
     } else if (act === 'load') { unlockAudio(); sfx('ui_select'); openPanel('slots', { from: 'title' }); }
     else if (act === 'settings') { unlockAudio(); sfx('ui_select'); openPanel('settings', { from: 'title' }); }
+    else if (act === 'view') {
+      sfx('ui_select');
+      try { const V = N.view; if (typeof V.cycle === 'function') V.cycle(); else V.set(({ top: 'tps', tps: 'fps', fps: 'top' })[V.mode] || 'top'); } catch (e) { N.err('menus.view', e); }
+      title.refresh();
+    }
     else if (act === 'credits') { unlockAudio(); sfx('ui_select'); M.credits({ fromTitle: true }); }
   }
   let starting = false;
@@ -774,16 +785,17 @@
       const r = setNames(this.dom.nick.value, this.dom.full.value);
       sfx('rec');
       blurActive();
+      const res = nameResolve; nameResolve = null; // take it before onClose() would resolve it with null
       closePanel('name');
-      const res = nameResolve; nameResolve = null;
       if (res) res(r);
     },
     back() {
       blurActive();
-      closePanel('name');
       const res = nameResolve; nameResolve = null;
+      closePanel('name');
       if (res) res(null);
     },
+    onClose() { const res = nameResolve; nameResolve = null; if (res) res(null); },
   });
   void nameCard;
 
@@ -1037,7 +1049,40 @@
     { id: 'storage', type: 'info' },
     { id: 'erase', label: 'Erase saved game', type: 'danger' },
   ];
+  // Other modules add rows with N.menus.addSettingsRow({id, label, type: 'seg'|'toggle'|'slider',
+  // opts: [[value, text]...], get(), set(v), help, section}); N.view (3D mode, §20) gets a View row.
+  const extraRows = [];
+  function viewRow() {
+    const V = N.view;
+    if (!V || typeof V.set !== 'function') return null;
+    return { id: 'view', label: 'View', type: 'seg', opts: SEG([['top', 'Top-down'], ['tps', '3D'], ['fps', 'First person']]), help: 'The same city, seen from above or from behind {nick}.', get: () => V.mode || 'top', set: (v) => { try { V.set(v); } catch (e) { N.err('menus.view', e); } } };
+  }
+  function settingsRows() {
+    const rows = SETTINGS_ROWS.slice();
+    const vr = viewRow();
+    if (vr) rows.splice(rows.findIndex((r) => r.sec === 'Screen') + 1, 0, vr);
+    for (const x of extraRows) {
+      let at = rows.findIndex((r) => r.sec === (x.section || 'Gameplay'));
+      if (at < 0) { rows.splice(rows.findIndex((r) => r.sec === 'Saved game'), 0, { sec: x.section }); at = rows.findIndex((r) => r.sec === x.section); }
+      let end = at + 1;
+      while (end < rows.length && !rows[end].sec) end++;
+      rows.splice(end, 0, x);
+    }
+    return rows;
+  }
+  const rowById = (id) => (settings.rows || SETTINGS_ROWS).find((x) => x.id === id) || extraRows.find((x) => x.id === id) || null;
+  function addSettingsRow(def) {
+    if (!def || !def.id || !def.type || (def.type === 'seg' && !Array.isArray(def.opts))) { N.err('menus.addSettingsRow', new Error('bad row ' + (def && def.id))); return null; }
+    const row = Object.assign({}, def, def.type === 'seg' ? { opts: def.opts.map((o) => (Array.isArray(o) ? { v: o[0], t: o[1] } : o)) } : {});
+    const i = extraRows.findIndex((x) => x.id === def.id);
+    if (i >= 0) extraRows[i] = row; else extraRows.push(row);
+    settings.dirtyRows = true;
+    if (isShown('settings')) { settings.buildRows(); settings.syncAll(); }
+    return def.id;
+  }
   function settingGet(id) {
+    const cr = rowById(id);
+    if (cr && typeof cr.get === 'function') { try { return cr.get(); } catch (e) { N.err('menus.settingGet', e); return null; } }
     if (id.startsWith('vol.')) {
       const bus = id.slice(4);
       try { if (N.audio && N.audio.getVolume) { const v = N.audio.getVolume(bus); if (isFinite(v)) return Math.round(v * 100); } } catch (e) { /* ignore */ }
@@ -1047,6 +1092,8 @@
     return S.get(id);
   }
   function settingSet(id, v) {
+    const cr = rowById(id);
+    if (cr && typeof cr.set === 'function') { try { cr.set(v); } catch (e) { N.err('menus.settingSet', e); } sfx('ui_click'); return; }
     if (id.startsWith('vol.')) {
       try { if (N.audio && N.audio.setVolume) N.audio.setVolume(id.slice(4), U.clamp(v, 0, 100) / 100); } catch (e) { N.err('menus.volume', e); }
       sfx(id === 'vol.music' ? 'ui_select' : 'ui_click');
@@ -1066,7 +1113,31 @@
       this.dom = { list: e.querySelector('.st-list') };
       e.querySelector('[data-act=back]').addEventListener('click', () => { sfx('ui_back'); this.back(); });
       const L = this.dom.list;
-      for (const r of SETTINGS_ROWS) {
+      this.buildRows();
+      L.addEventListener('input', (ev) => {
+        const inp = ev.target.closest('input[type=range]');
+        if (!inp) return;
+        const row = inp.closest('.st-row');
+        settingSet(row.dataset.id, +inp.value);
+        this.sync(row);
+      });
+      L.addEventListener('click', (ev) => {
+        const row = ev.target.closest('.st-row');
+        if (!row) return;
+        focusEl(row);
+        const r = rowById(row.dataset.id);
+        if (!r) return;
+        if (r.type === 'toggle' && ev.target.closest('.st-tog')) { settingSet(r.id, !settingGet(r.id)); this.sync(row); }
+        else if (r.type === 'seg') { const b = ev.target.closest('button[data-v]'); if (b) { settingSet(r.id, b.dataset.v); this.syncAll(); } }
+        else if (r.type === 'danger' && ev.target.closest('.st-erase')) this.erase(row);
+      });
+    },
+    buildRows() {
+      const L = this.dom.list;
+      L.innerHTML = '';
+      this.rows = settingsRows();
+      this.dirtyRows = false;
+      for (const r of this.rows) {
         if (r.sec) { el('h3', 'st-sec', L).textContent = r.sec; continue; }
         const row = el('div', 'st-row st-t-' + r.type, L);
         row.dataset.id = r.id;
@@ -1082,33 +1153,16 @@
         row.innerHTML = '<span class="st-l">' + esc(r.label) + '<small class="st-h"></small></span><span class="st-c">' + c + '</span>';
         row.setAttribute('aria-label', r.label);
       }
-      L.addEventListener('input', (ev) => {
-        const inp = ev.target.closest('input[type=range]');
-        if (!inp) return;
-        const row = inp.closest('.st-row');
-        settingSet(row.dataset.id, +inp.value);
-        this.sync(row);
-      });
-      L.addEventListener('click', (ev) => {
-        const row = ev.target.closest('.st-row');
-        if (!row) return;
-        focusEl(row);
-        const r = SETTINGS_ROWS.find((x) => x.id === row.dataset.id);
-        if (!r) return;
-        if (r.type === 'toggle' && ev.target.closest('.st-tog')) { settingSet(r.id, !settingGet(r.id)); this.sync(row); }
-        else if (r.type === 'seg') { const b = ev.target.closest('button[data-v]'); if (b) { settingSet(r.id, b.dataset.v); this.syncAll(); } }
-        else if (r.type === 'danger' && ev.target.closest('.st-erase')) this.erase(row);
-      });
     },
-    onOpen() { this.syncAll(); },
+    onOpen() { if (this.dirtyRows || (!this.rows.some((r) => r.id === 'view') && viewRow())) this.buildRows(); this.syncAll(); },
     syncAll() { this.el.querySelectorAll('.st-row').forEach((row) => this.sync(row)); },
     sync(row) {
       const id = row.dataset.id;
-      const r = SETTINGS_ROWS.find((x) => x.id === id);
+      const r = rowById(id);
       if (!r) return;
       const v = r.type === 'info' || r.type === 'danger' ? null : settingGet(id);
       const h = row.querySelector('.st-h');
-      if (h) h.textContent = typeof r.help === 'function' ? r.help() : r.help || '';
+      if (h) h.textContent = subst(typeof r.help === 'function' ? r.help() : r.help || '');
       if (r.type === 'slider') { const inp = row.querySelector('input'); inp.value = v; row.querySelector('.st-val').textContent = v; inp.style.setProperty('--p', v + '%'); }
       else if (r.type === 'toggle') { const b = row.querySelector('.st-tog'); b.classList.toggle('is-on', !!v); b.setAttribute('aria-pressed', v ? 'true' : 'false'); }
       else if (r.type === 'seg') row.querySelectorAll('button[data-v]').forEach((b) => { const on = b.dataset.v === v; b.classList.toggle('sel', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); b.setAttribute('role', 'radio'); });
@@ -1125,7 +1179,7 @@
       }
     },
     adjust(row, d) {
-      const r = SETTINGS_ROWS.find((x) => x.id === row.dataset.id);
+      const r = rowById(row.dataset.id);
       if (!r) return;
       if (r.type === 'slider') { if (!d) return; settingSet(r.id, U.clamp(settingGet(r.id) + d * 5, 0, 100)); }
       else if (r.type === 'toggle') settingSet(r.id, !settingGet(r.id));
@@ -2702,6 +2756,7 @@
       if (r) r({ left: !!left });
     },
     back() { this.finish(true); },
+    onClose() { if (!this.done) { this.done = true; const r = creditsResolve; creditsResolve = null; if (r) r({ left: true }); } },
   });
   function playCredits(o) {
     o = o || {};
@@ -2749,6 +2804,7 @@
       if (r) r();
     },
     back() { this.advance(); },
+    onClose() { if (!this.done) { this.done = true; const r = defsResolve; defsResolve = null; if (r) r(); } },
   });
   function showDefinitions(o) {
     if (defsResolve) { const r = defsResolve; defsResolve = null; r(); }
@@ -2814,6 +2870,7 @@
     settings: S,
     addDiary(d) { if (d && (d.text || d.ink)) { const i = d.id ? extraDiary.findIndex((x) => x.id === d.id) : -1; if (i >= 0) extraDiary[i] = d; else extraDiary.push(d); } },
     openSettings() { openPanel('settings', { from: N.state.mode }); return true; },
+    addSettingsRow,
     openSaveLoad() { openPanel('slots', { from: N.state.mode === 'title' ? 'title' : 'pause' }); return true; },
     addMapLayer(def) {
       if (!def || !def.id || (typeof def.points !== 'function' && typeof def.draw !== 'function')) { N.err('menus.addMapLayer', new Error('bad layer ' + (def && def.id))); return null; }
@@ -2860,6 +2917,7 @@
   }
   N.on('game:quit', () => { abortCutscene(); setWaypoint(null); });
   N.on('render:resize', onResize);
+  N.on('view:change', () => { if (isShown('title')) title.refresh(); if (isShown('settings')) settings.syncAll(); });
 
   N.addSystem({
     id: 'menus', order: 85, runIn: ['*'],

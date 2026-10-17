@@ -353,3 +353,10 @@ announced in text, Hinglish/Telugu commentary lines, no real players' names) and
 **batting and bowling**. Ayesha "Bowling" Fatima and Immu should be part of it. It is
 replayable afterwards as an exhibition match. Engine: `src/cricket_match.js`
 (minigame id `match`); the story wires it in (bible M4 or a side activity, writers' call).
+
+## Round 13 (user, binding): accuracy, potholes, age-appropriate vehicles, best sound and rendering
+
+The user said: "Take as much time as you want but I want the best rendered elements for the
+gameplay, best sounds; match the actual Hyderabad city map as closely as possible; roads
+can have potholes (for 3D); Hero cycles, Hercules cycles, Scooty, auto can be driven by the
+character as per the age." See `design/amendments.md` for how each is implemented.
