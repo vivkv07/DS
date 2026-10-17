@@ -2597,6 +2597,7 @@
       if (N.landmarks && N.landmarks.drawDefault) N.landmarks.drawDefault(s.lm);
     },
   };
+  W._fx = { DRAW, treeImage, TREE_KINDS, isPalm, DETAIL }; // [atmosphere hook] wind.js sways trees / clothes through the draw table
 
   /* ========================================================= roof zones */
   // Walkable walled terraces (ARCHITECTURE §7 "Roof zones"; data: WORLD_DATA.roofs / planks).
