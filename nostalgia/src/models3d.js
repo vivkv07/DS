@@ -194,9 +194,10 @@
         o.material = COL_MAT; o.userData.noShadow = true; o.castShadow = false; o.receiveShadow = false; o.userData.collision = true;
         return;
       }
-      o.raycast = NOOP_RAY;                 // the camera ray uses the COL_ proxies (no BVH in three)
+      o.userData.noRay = true;              // the camera ray uses the COL_ proxies (no BVH in three)
       if (o.isSkinnedMesh) { md.skinned = true; o.frustumCulled = false; }
       const geo = o.geometry;
+      if (geo) geo.userData.shared = true;  // shared by every clone: the core's disposeObj must keep it
       if (geo && geo.attributes._region) { geo.setAttribute('aRegion', geo.attributes._region); geo.deleteAttribute('_region'); }
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       for (const m of mats) {
@@ -204,6 +205,7 @@
         S.mats.add(m);
         m.userData.shared = true;           // H.dispose / core disposeObj must not free shared model materials
         m.userData.m3d = id;
+        for (const k of ['map', 'emissiveMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'alphaMap']) if (m[k]) m[k].userData.shared = true;
         if (/@night$/.test(m.name)) { m.userData.nightBase = m.emissive ? m.emissive.clone() : null; md.night.push(m); m.emissiveIntensity = 0; }
         if ((m.metalness || 0) > 0.05 || m.metalnessMap) md.metal.push(m);
         if (md.meta.floodlit && m.map && !/@night$/.test(m.name)) { md.floodlit.push(m); m.emissiveMap = m.map; m.emissive = new THREE.Color(0xffc98a); m.emissiveIntensity = 0; }
@@ -257,6 +259,7 @@
     const o = cloneScene(md.scene);
     o.name = 'm3d:' + id;
     o.userData.m3d = id;
+    o.traverse((m) => { if (m.isMesh && m.userData.noRay) m.raycast = NOOP_RAY; });
     S.instances++;
     return o;
   }
@@ -356,8 +359,8 @@
     }
     /** dress from an N.people look (skin, hair, shirt, stripes, pants...) */
     tint(look) {
-      if (!this.mesh || !this.md.man.tint) return this;
       this.lookRef = look;
+      if (!this.mesh || !this.md.man.tint) return this;
       if (!this.tintMat) { this.tintMat = tintMaterial(this.mesh.material); this.mesh.material = this.tintMat; }
       const R = tintRatios(this.md, look), U = this.tintMat.userData.tintU.uTint.value;
       for (let i = 0; i < 8; i++) U[i].copy(R[i]);
@@ -397,9 +400,9 @@
       const L = this.loco;
       const want = v > V_IDLE && L.length ? 1 : 0;
       this.locoW += clamp(want - this.locoW, -dt / FADE, dt / FADE);
-      const S = this.blend(Math.max(v, V_IDLE));
+      const stride = this.blend(Math.max(v, V_IDLE));
       if (dist == null) dist = v * dt;
-      if (S > 0 && want) this.phase = (this.phase + dist / S) % 1;
+      if (stride > 0 && want) this.phase = (this.phase + dist / stride) % 1;
       // one-shot overlay
       let oneW = 0;
       if (this.oneShot) {
@@ -588,10 +591,9 @@
         inst.rotation.y = rotFor(lm);
         const fp = md.meta.footprint;
         if (md.meta.fit === 'footprint' && fp && lm.w && lm.d) {
+          // the model's width runs along its front: world x for faces n / s, world y for e / w
           const ns = !lm.face || lm.face === 'n' || lm.face === 's' || isFinite(lm.faceAngle);
-          const L = ns ? lm.w : lm.d, D = ns ? lm.d : lm.w;
-          inst.scale.set(L / fp[0], 1, D / fp[1]);
-          if (ns) inst.scale.set(lm.w / fp[0], 1, lm.d / fp[1]);
+          inst.scale.set((ns ? lm.w : lm.d) / fp[0], 1, (ns ? lm.d : lm.w) / fp[1]);
         }
         g.add(inst);
         g.userData.m3d = id;
