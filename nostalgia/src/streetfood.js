@@ -218,7 +218,7 @@
       roles: () => ({ student: 2, office: 3, uncle: 2, youth: 3, kid: 2, aunty: 1, auto: 1 }),
       vendor: { role: 'man', look: { shirt: '#e8e0c8', towel: '#efe6d0' }, work: 'fry' },
       stove: { u: 0.55, v: 0, h: 7.0, u3: 0.55, h3: 6.2 }, hold: 'cone', eat: [16, 34], parcel: 0.25, serve: 6.5,
-      steam: { rate: 4.4, burst: 10, smoke: 0.45 }, sounds: { cook: 'sizzle', serve: 'paper', pay: 'coin' },
+      steam: { rate: 4.4, burst: 10, smoke: 0.25 }, sounds: { cook: 'sizzle', serve: 'paper', pay: 'coin' },
       orders: 'samosa', vlines: 'samosaV', vehicles: 2, lamp: 'bulb', glow: '#ff7a20', shelter: 'tarp', shop: true,
     },
     chai: {
@@ -1425,7 +1425,7 @@
   function pState(i, out) {
     const t = P.life[i] / P.max[i];
     out.t = t; out.s = lerp(P.s0[i], P.s1[i], Math.sqrt(t));
-    out.a = P.a0[i] * (t < 0.12 ? t / 0.12 : 1) * (1 - t) * (1 - t);
+    out.a = P.a0[i] * (t < 0.1 ? t / 0.1 : 1) * Math.pow(1 - t, 1.15);
     return out;
   }
 

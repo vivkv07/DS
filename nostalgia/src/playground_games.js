@@ -103,8 +103,9 @@
       // the other team in a real match plays this much above the game's difficulty (Chinnu is better than the AI kid
       // he stands in for); meW: AI hitters' pick of a mark counts Chinnu this much nearer (bots: ~60% match wins)
       rival: 0.12, meW: 0.9 },
-    // the kid under Chinnu's reticle dances side to side (reversing every dance s, d 0..1) so a lead can guess wrong
-    dance: [0.55, 0.32],
+    // the kid under Chinnu's reticle runs across his aim, turning back every dance s (d 0..1, x0.7..1.3) so a lead
+    // can guess wrong (throw just after he turns); he backs off when Chinnu is nearer than danceAway u
+    dance: [1.1, 0.65], danceAway: 36,
     // with the ball you only shuffle (holdWalk x walk): you throw from about where you picked it up
     // minD: a holder steps back (backWalk x walk) rather than throw at a kid nearer than this (point-blank is
     // unsporting and undodgeable); spread: kids keep this far apart while they scatter (no clumps)
@@ -772,20 +773,25 @@
     }
     if (!o.quiet) log(S, o.pass ? 'pass' : o.kind === 'stack' ? 'stack_throw' : 'throw', { by: P.name, speed: Math.round(speed), at: b.target ? b.target.name : null, busy: !!(b.target && b.target.act), juke: !!(b.target && b.target.dodgeT > 0), me: !!P.isPlayer, aimOff: o.aimOff != null ? +o.aimOff.toFixed(1) : undefined });
   }
-  /** Chinnu holds the ball with his reticle on P: P dances side to side (reversing at random moments), backing off
-   *  if he is close, so a throw that leads his run can guess wrong — throw just after he turns */
+  /** Chinnu holds the ball with his reticle on P: P runs across his aim at full tilt, turning back now and then (a
+   *  throw that leads his run guesses wrong if he turns while it flies: throw just after he turns), and backs off
+   *  while Chinnu is close */
   function dance(S, P) {
     const e = P.e, m = N.player;
-    if (!P.danceT || S.t > P.danceT) {
-      P.danceDir = -(P.danceDir || (S.rng.next() < 0.5 ? 1 : -1));
-      P.danceT = S.t + lerp(TUNE.dance[0], TUNE.dance[1], kd(S, P)) * (0.6 + 0.8 * S.rng.next());
-    }
     let ax = e.x - m.x, ay = e.y - m.y; const l = hyp(ax, ay) || 1; ax /= l; ay /= l;
-    let ux = -ay * P.danceDir, uy = ax * P.danceDir;
-    if (!inRect(S.F, e.x + ux * 8, e.y + uy * 8, -2) || !walk(e.x + ux * 8, e.y + uy * 8)) { P.danceDir = -P.danceDir; ux = -ux; uy = -uy; P.danceT = S.t + 0.3; }
-    const back = l < 24 ? 0.6 : l > 50 ? -0.3 : 0.1, sp = speedOf(S, P, true) * 0.85;
-    let vx = ux + ax * back, vy = uy + ay * back; const vl = hyp(vx, vy) || 1;
-    P.dvx = (vx / vl) * sp; P.dvy = (vy / vl) * sp;
+    if (!P.danceT || S.t > P.danceT) {
+      P.danceDir = P.danceDir ? -P.danceDir : S.rng.next() < 0.5 ? 1 : -1;
+      P.danceT = S.t + lerp(TUNE.dance[0], TUNE.dance[1], kd(S, P)) * (0.7 + 0.6 * S.rng.next());
+    }
+    const away = l < TUNE.danceAway ? 0.6 : l > TUNE.danceAway + 22 ? -0.25 : 0.15;
+    let ux = -ay * P.danceDir + ax * away, uy = ax * P.danceDir + ay * away;
+    // the edge of the ground / a wall: turn back now
+    if (!inRect(S.F, e.x + ux * 9, e.y + uy * 9, -3) || !walk(e.x + ux * 9, e.y + uy * 9)) {
+      P.danceDir = -P.danceDir; P.danceT = S.t + lerp(TUNE.dance[0], TUNE.dance[1], kd(S, P)) * 0.7;
+      ux = -ay * P.danceDir + ax * away; uy = ax * P.danceDir + ay * away;
+    }
+    const ul = hyp(ux, uy) || 1, sp = speedOf(S, P, true);
+    P.dvx = (ux / ul) * sp; P.dvy = (uy / ul) * sp;
   }
   function aimedByMe(S, P) { return S.real && S.me && S.me.hold && !S.me.out && S.aimTarget === P && hyp(P.e.x - N.player.x, P.e.y - N.player.y) < 60; }
   /** sidestep across the line of a throw from P */

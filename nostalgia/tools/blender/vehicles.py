@@ -1795,8 +1795,8 @@ def dual_wheel(name, c, R, w, P, side, rim_m):
     """twin rear tyres (the outer one at c, the inner one w + 0.15 further in)"""
     c = Vector(c)
     inner = c - V(side * (w + 0.15), 0, 0)
-    return vk.disc_wheel(name + 'o', tuple(c), R, w, P, side=side, seg=16, rim_m=rim_m, cap_frac=0.0, hub_bolts=6) + \
-        vk.disc_wheel(name + 'i', tuple(inner), R, w, P, side=side, seg=14, rim_m=rim_m, cap_frac=0.0)
+    return vk.disc_wheel(name + 'o', tuple(c), R, w, P, side=side, seg=16, rim_m=rim_m, cap_frac=0.22, cap_m=P['steel'], hub_bolts=0) + \
+        [vk.tyre(name + 'i_tyre', tuple(inner), R, w, P['tyre'], seg=14)]
 
 
 BUS_ROUTES = [('127K', 'KOTI'), ('8A', 'SECUNDERABAD'), ('49M', 'MEHDIPATNAM'), ('5K', 'AFZALGUNJ')]
@@ -1839,7 +1839,7 @@ def city_bus(A):
     for k, c in W.items():
         side = 1 if k[1] == 'L' else -1
         if k[0] == 'F':
-            Rg.add('wheel_' + k, vk.disc_wheel('w' + k, tuple(c), R, 1.8, P, side=side, seg=16, rim_m=P['dark'], cap_frac=0.0, hub_bolts=6))
+            Rg.add('wheel_' + k, vk.disc_wheel('w' + k, tuple(c), R, 1.8, P, side=side, seg=16, rim_m=P['dark'], cap_frac=0.22, cap_m=P['steel'], hub_bolts=0))
         else:
             Rg.add('wheel_' + k, dual_wheel('w' + k, tuple(c), R, 1.55, P, side, P['dark']))
     b = []
@@ -1903,8 +1903,8 @@ def city_bus(A):
     for sx in (1, -1):
         b.append(vk.rbox('rear_post', (1.6, 0.3, 6.1), (sx * 7.9, 30.9, 11.95), PIL, bevel=0.0))
     # ---------------------------------------------------------------- interior: seat backs + driver seat, dash, steering wheel
-    for k in range(13):
-        y = -22.0 + k * 3.6
+    for k in range(10):
+        y = -22.0 + k * 4.8
         for sx in (1, -1):
             if sx > 0 and any(y0 - 1.2 < y < y1 + 1.2 for (y0, y1) in doors):
                 continue
@@ -1923,7 +1923,7 @@ def city_bus(A):
         b.append(tube('wiper', [V(sx * 4.2, -31.05, 9.3), V(sx * 2.4, -31.05, 13.6)], 0.06, seg=3, mat=TRIMK))
     b.append(vk.rbox('grille', (7.2, 0.15, 2.8), (0, -31.15, 5.4), P['dark'], bevel=0.0))
     for k in range(5):
-        b.append(vk.rbox('grille_bar', (7.0, 0.1, 0.12), (0, -31.22, 4.3 + k * 0.55), P['alu'], bevel=0.0))
+        b.append(tube('grille_bar', [V(-3.5, -31.22, 4.3 + k * 0.55), V(3.5, -31.22, 4.3 + k * 0.55)], 0.07, seg=4, mat=P['alu'], cap=False))
     b.append(vk.rbox('bumper_f', (17.6, 0.9, 1.3), (0, -31.45, 2.4), TRIMK, bevel=0.15))
     b.append(vk.plate('plate_front', 'AP 11 Z 1293', 3.4, 0.82, (0, -31.95, 2.4), '-Y', bg='#f2c230', fg='#141414', px=128))
     # ---------------------------------------------------------------- rear: lamps, engine grille, bumper, plate
@@ -1932,7 +1932,7 @@ def city_bus(A):
         b += vk.lens_box('ind_r', (0.9, 0.18, 0.45), (sx * 7.6, 31.18, 5.3), P['amber'], facing='+Y')
     b.append(vk.rbox('engine_grille', (8.0, 0.12, 2.4), (0, 31.15, 4.6), P['dark'], bevel=0.0))
     for k in range(5):
-        b.append(vk.rbox('grille_slat', (7.8, 0.1, 0.14), (0, 31.22, 3.6 + k * 0.5), PIL, bevel=0.0))
+        b.append(tube('grille_slat', [V(-3.9, 31.22, 3.6 + k * 0.5), V(3.9, 31.22, 3.6 + k * 0.5)], 0.08, seg=4, mat=PIL, cap=False))
     b.append(vk.rbox('bumper_r', (17.6, 0.8, 1.2), (0, 31.4, 2.4), TRIMK, bevel=0.15))
     b.append(vk.plate('plate_rear', 'AP 11 Z 1293', 3.4, 0.82, (0, 31.85, 2.4), '+Y', bg='#f2c230', fg='#141414', px=128))
     b.append(tube('tailpipe', [V(-5.0, 28.0, 1.6), V(-5.1, 31.8, 1.7)], 0.22, seg=6, mat=P['dark']))
@@ -1949,9 +1949,9 @@ def city_bus(A):
     for sx in (1, -1):
         saf.append(vk.decal('sign_safari', 'ZOO SAFARI', 14.0, 2.4, (sx * 9.06, -4.0, 4.9), '+X' if sx > 0 else '-X', fg='#f2e6a0', bg='#3a6a3a', px=512, font=vk.FONT_BOLD))
         for k in range(26):
-            saf.append(vk.rbox('mesh_bar', (0.08, 0.08, 5.8), (sx * 9.0, -29.0 + k * 2.3, 11.95), PIL, bevel=0.0))
-        saf.append(vk.rbox('mesh_rail', (0.08, 58.0, 0.08), (sx * 9.0, 0, 11.0), PIL, bevel=0.0))
-        saf.append(vk.rbox('mesh_rail', (0.08, 58.0, 0.08), (sx * 9.0, 0, 13.4), PIL, bevel=0.0))
+            saf.append(tube('mesh_bar', [V(sx * 9.02, -29.0 + k * 2.3, 9.05), V(sx * 9.02, -29.0 + k * 2.3, 14.85)], 0.05, seg=3, mat=PIL, cap=False))
+        for z in (11.0, 13.4):
+            saf.append(tube('mesh_rail', [V(sx * 9.02, -29.5, z), V(sx * 9.02, 29.5, z)], 0.05, seg=3, mat=PIL, cap=False))
     saf.append(vk.decal('sign_safarif', 'SAFARI', 7.6, 1.0, (0, -31.25, 15.55), '-Y', fg='#f2e6a0', bg='#141414', px=256, font=vk.FONT_BOLD))
     Rg.add('opt_safari', saf)
     for i, (rt, dest) in enumerate(BUS_ROUTES):
@@ -2015,7 +2015,7 @@ def lorry(A):
     for k, c in W.items():
         side = 1 if k[1] == 'L' else -1
         if k[0] == 'F':
-            Rg.add('wheel_' + k, vk.disc_wheel('w' + k, tuple(c), R, 1.7, P, side=side, seg=16, rim_m=P['dark'], cap_frac=0.0, hub_bolts=6))
+            Rg.add('wheel_' + k, vk.disc_wheel('w' + k, tuple(c), R, 1.7, P, side=side, seg=16, rim_m=P['dark'], cap_frac=0.22, cap_m=P['steel'], hub_bolts=0))
         else:
             Rg.add('wheel_' + k, dual_wheel('w' + k, tuple(c), R, 1.45, P, side, P['dark']))
     b = []
@@ -2057,15 +2057,15 @@ def lorry(A):
     # crown board over the windscreen (painted wood) with a secular slogan, nazar charm + tassels
     b.append(vk.rbox('crown_board', (13.4, 1.2, 1.4), (0, -22.0, 17.2), vk.paint('crown', '#f4e8c8', region=0, rough=0.6, chips=0.3, grime=0.5), bevel=0.1))
     b.append(vk.decal('sign_crown', 'MERA BHARAT MAHAN', 11.0, 1.0, (0, -22.62, 17.2), '-Y', fg='#b82020', bg='#f4e8c8', px=512, font=vk.FONT_BOLD))
-    for k in range(9):
-        x = -6.0 + k * 1.5
-        b.append(vk.xform(kit.lathe('tassel', [(0.0, 0.0), (0.22, 0.25), (0.12, 0.9), (0.0, 1.2)], seg=5,
+    for k in range(7):
+        x = -6.0 + k * 2.0
+        b.append(vk.xform(kit.lathe('tassel', [(0.0, 0.0), (0.22, 0.25), (0.12, 0.9), (0.0, 1.2)], seg=4,
                                     mat=vk.mat('cloth', 'tassel_%d' % (k % 2), base=('#c82020' if k % 2 else '#1a1a1a'), rough=0.9, weave=0.2, scale=6.0)),
                           loc=(x, -22.7, 15.25), rot=(math.pi, 0, 0)))
     # ---------------------------------------------------------------- cab front: grille, lamps, striped bumper, plate
     b.append(vk.rbox('grille', (7.6, 0.15, 3.6), (0, -23.45, 6.4), P['dark'], bevel=0.0))
     for k in range(6):
-        b.append(vk.rbox('grille_bar', (7.4, 0.1, 0.16), (0, -23.52, 4.9 + k * 0.62), P['chrome'], bevel=0.0))
+        b.append(tube('grille_bar', [V(-3.7, -23.52, 4.9 + k * 0.62), V(3.7, -23.52, 4.9 + k * 0.62)], 0.08, seg=4, mat=P['chrome'], cap=False))
     for sx in (1, -1):
         b += vk.lamp_round('head', (sx * 5.4, -23.48, 6.2), 0.78, 0.3, P, facing=(0, -1, 0), seg=12)
         b += vk.lens_box('ind_f', (0.7, 0.15, 0.4), (sx * 5.4, -23.45, 7.6), P['amber'])
@@ -2074,8 +2074,9 @@ def lorry(A):
         b.append(tube('wiper', [V(sx * 3.6, -22.95, 10.4), V(sx * 1.6, -22.5, 14.0)], 0.06, seg=3, mat=TRIMK))
     bump = vk.rbox('bumper_f', (15.6, 1.0, 1.5), (0, -23.95, 2.6), P['black'], bevel=0.12)
     b.append(bump)
+    sw_m = vk.paint('stripe_white', '#ece8dc', region=0, chips=0.3, grime=0.4)
     for k in range(7):
-        b.append(vk.rbox('bumper_stripe', (1.0, 0.05, 1.42), (-6.6 + k * 2.2, -24.47, 2.6), vk.paint('stripe_white', '#ece8dc', region=0, chips=0.3, grime=0.4), bevel=0.0))
+        b.append(vk.front_prism('bumper_stripe', [(-6.6 + k * 2.2 - 0.5, 1.9), (-6.6 + k * 2.2 + 0.5, 1.9), (-6.6 + k * 2.2 + 0.5, 3.3), (-6.6 + k * 2.2 - 0.5, 3.3)], -24.48, -24.45, sw_m))
     b.append(vk.plate('plate_front', 'AP 16 T 4472', 3.4, 0.82, (0, -24.5, 4.0), '-Y', bg='#f2c230', fg='#141414', px=128))
     charm = [tube('charm_thread', [V(3.0, -23.6, 3.4), V(3.0, -23.65, 2.6)], 0.02, seg=3, mat=P['black'])]
     charm.append(vk.xform(kit.lathe('charm_lemon', [(0.0, -0.22), (0.14, -0.14), (0.18, 0.0), (0.14, 0.14), (0.0, 0.22)], seg=6, mat=vk.mat('walkman', 'lemon', base='#d8c020')), loc=(3.0, -23.65, 2.42)))
@@ -2102,7 +2103,8 @@ def lorry(A):
         for z in (fz + 0.35, top - 0.2):
             b.append(vk.rbox('bed_rail', (0.45, by1 - by0 + 0.1, 0.4), (sx * 7.9, (by0 + by1) / 2, z), RAIL, bevel=0.0))
         for k in range(6):
-            b.append(vk.rbox('bed_post', (0.45, 0.4, top - fz), (sx * 7.9, by0 + 0.4 + k * (by1 - by0 - 0.8) / 5, (fz + top) / 2), RAIL, bevel=0.0))
+            y = by0 + 0.4 + k * (by1 - by0 - 0.8) / 5
+            b.append(tube('bed_post', [V(sx * 8.05, y, fz), V(sx * 8.05, y, top)], 0.22, seg=4, mat=RAIL, cap=False))
     b.append(vk.rbox('headboard', (16.0, 0.4, 13.6 - fz), (0, by0 + 0.2, (fz + 13.6) / 2), BED, bevel=0.0))
     b.append(vk.rbox('headboard_cap', (16.2, 0.5, 0.4), (0, by0 + 0.2, 13.7), RAIL, bevel=0.0))
     b.append(vk.rbox('tailgate', (15.6, 0.35, top - fz), (0, by1 - 0.17, (fz + top) / 2), vk.paint('tailgate', '#f2c230', region=0, rough=0.5, chips=0.35, under='#6a4a2a', grime=0.5), bevel=0.0))
