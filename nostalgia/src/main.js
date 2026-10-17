@@ -171,7 +171,6 @@
     N.player.reset();
     N.render.cam.x = N.player.x; N.render.cam.y = N.player.y;
     N.render.snapCamera();
-    N.render.warmChunks(N.player.x, N.player.y, 520);
     document.body.classList.remove('booting');
     document.body.classList.add('booted');
     N.emit('boot', {});
@@ -190,6 +189,30 @@
       if (N.menus && N.menus.title) { try { N.menus.title(); } catch (e) { N.err('menus.title', e); } }
     }
     requestAnimationFrame(frame);
+    afterBoot();
+  }
+
+  // Work that used to run before the title screen and is only needed once play starts: the ground
+  // chunks around the player (newGame / continueGame warm them again anyway; this just makes that
+  // instant) and the minimap image (~3000 x 2250 px, a ~0.25 s paint that otherwise lands on the
+  // first play frame). Done in idle slices while the title screen is up, one chunk per slice.
+  function afterBoot() {
+    const ric = window.requestIdleCallback ? (fn) => window.requestIdleCallback(fn, { timeout: 2000 }) : (fn) => setTimeout(() => fn({ timeRemaining: () => 8, didTimeout: false }), 50);
+    const R = N.render, CH = 256, r = 520, px = N.player.x, py = N.player.y;
+    const todo = [];
+    const i0 = Math.max(0, Math.floor((px - r) / CH)), i1 = Math.min(Math.ceil(N.WORLD_W / CH) - 1, Math.floor((px + r) / CH));
+    const j0 = Math.max(0, Math.floor((py - r) / CH)), j1 = Math.min(Math.ceil(N.WORLD_H / CH) - 1, Math.floor((py + r) / CH));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) todo.push(i, j);
+    let k = 0, mapDone = false;
+    const slice = (dl) => {
+      if (game.started || N.state.mode !== 'title') return; // play began: newGame / continueGame did their own warm-up
+      try {
+        while (k < todo.length && (dl.didTimeout || dl.timeRemaining() > 4)) { R.warmChunks((todo[k] + 0.5) * CH, (todo[k + 1] + 0.5) * CH, 1); k += 2; }
+        if (k >= todo.length && !mapDone && (dl.didTimeout || dl.timeRemaining() > 8)) { mapDone = true; if (N.hud && N.hud.mapImage) N.hud.mapImage(); }
+      } catch (e) { N.err('boot.idle', e); mapDone = true; k = todo.length; }
+      if (k < todo.length || !mapDone) ric(slice);
+    };
+    setTimeout(() => ric(slice), 1000);
   }
 
   // Save (silently, when allowed) as the tab is hidden or the page goes away: mobile browsers
