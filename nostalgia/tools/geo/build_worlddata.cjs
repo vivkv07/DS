@@ -290,10 +290,12 @@ let MUSI_LINE = null, MUSI_CHANNEL = null, MUSI_BED = null;
   line = G.dp(line, 1.5);
   MUSI_LINE = line;
   // per-vertex widths from the samples (nearest sample along the river)
-  const sw = samples.map((s) => { const p = proj(s[0], s[1]); return { x: p[0], y: p[1], m: s[2] }; });
+  const sw = MUSI.width_samples.filter((s) => s[2] > 0).map((s) => { const p = proj(s[0], s[1]); return { x: p[0], y: p[1], m: s[2] }; });
+  const firstW = proj(MUSI.width_samples.find((s) => s[2] > 0)[0], MUSI.width_samples.find((s) => s[2] > 0)[1]);
   const widthAt = (p) => { let b = sw[0], bd = Infinity; for (const s of sw) { const d = (s.x - p[0]) ** 2 + (s.y - p[1]) ** 2; if (d < bd) { bd = d; b = s; } } return b.m; };
   const CH = 16; // channel half width (u): the 2003 channel was 10-40 m wide; boats need room
-  const hwBed = line.map((p) => { const m = widthAt(p); const u = upmAt(p[0], p[1]); return m > 0 ? Math.max(CH + 18, Math.min(150, (m / 2) * u * 1.15)) : CH + 10; });
+  // upstream of the first sample (above Bapu Ghat) the Musi is a small stream without a wide bed
+  const hwBed = line.map((p) => { const u = upmAt(p[0], p[1]); if (p[0] < firstW[0] - 200) return CH + 10; return Math.max(CH + 22, Math.min(150, (widthAt(p) / 2) * u * 1.15)); });
   // smooth the bed widths
   const sm = hwBed.map((_, i) => { let s = 0, n = 0; for (let k = -3; k <= 3; k++) { const v = hwBed[i + k]; if (v != null) { s += v; n++; } } return s / n; });
   MUSI_BED = traceRibbon(line, (i) => sm[Math.max(0, Math.min(sm.length - 1, i))], 6, 4)[0];
@@ -340,6 +342,7 @@ const REAL_PARKS = {
 const REALPARK = new Map(); // id -> world poly
 for (const [id, it] of Object.entries(REAL_PARKS)) if (it) REALPARK.set(id, projRing(it.outer, 1.5));
 
+const landmarkCentreEarly = (id) => { const e = PLACES[id]; return GEO.placeWorld(e); };
 /* ===================================================================== 5. roads */
 const ROADS_OUT = new Map(); // id -> road
 const roadList = () => [...ROADS_OUT.values()];
@@ -363,6 +366,47 @@ for (const r of ROADS.roads) {
   o.conf = r.confidence; o.src = 'roads';
   if (r.real_name && r.real_name !== o.name) o.realName = r.real_name;
   addRoad(o);
+}
+// clip every line to the world rectangle: a road that leaves the map ends exactly on its edge
+function clipToWorld(pts) {
+  const inside = (p2) => p2[0] >= 0 && p2[1] >= 0 && p2[0] <= W && p2[1] <= H;
+  const edgeHit = (a2, b2) => { // point where segment a->b crosses the rectangle boundary
+    let t = 1; const dx = b2[0] - a2[0], dy = b2[1] - a2[1];
+    if (b2[0] < 0) t = Math.min(t, -a2[0] / dx); if (b2[0] > W) t = Math.min(t, (W - a2[0]) / dx);
+    if (b2[1] < 0) t = Math.min(t, -a2[1] / dy); if (b2[1] > H) t = Math.min(t, (H - a2[1]) / dy);
+    return [a2[0] + dx * t, a2[1] + dy * t];
+  };
+  const runs = []; let cur = [];
+  for (let k = 0; k < pts.length; k++) {
+    const p2 = pts[k];
+    if (inside(p2)) { if (!cur.length && k > 0) cur.push(edgeHit(p2, pts[k - 1])); cur.push(p2); }
+    else if (cur.length) { cur.push(edgeHit(pts[k - 1], p2)); runs.push(cur); cur = []; }
+  }
+  if (cur.length) runs.push(cur);
+  runs.sort((a2, b2) => G.len(b2) - G.len(a2));
+  return runs[0] && runs[0].length > 1 ? runs[0] : null;
+}
+for (const r of roadList()) { const c = clipToWorld(r.pts); if (c) r.pts = c; else warn('road ' + r.id + ' lies outside the world'); }
+// the Old Mumbai Highway beyond Gachibowli (Gachibowli stadium, University of Hyderabad) is not in the road
+// file: a low-confidence continuation from the end of old_mumbai_rd to the west edge, east of the stadium
+{
+  const om = ROADS_OUT.get('old_mumbai_rd'), e = om.pts[0][0] < om.pts[om.pts.length - 1][0] ? om.pts[0] : om.pts[om.pts.length - 1];
+  const gs = landmarkCentreEarly('gachibowli_stadium');
+  const pts = [e.slice(), [gs[0] + 330, gs[1] + 150], [gs[0] + 180, gs[1] - 120], [gs[0] - 140, gs[1] - 400], [0, gs[1] - 640]];
+  addRoad({ id: 'gachibowli_rd', name: 'Old Mumbai Highway (Gachibowli)', kind: 'arterial', w: 48, pts: G.thin(G.dp(G.resample(pts, 40), 2), 4), median: false, pothole: 0.5, conf: 'low', src: 'roads', note: 'estimated continuation to Lingampally past the stadium and the University (no alignment in the data)' });
+}
+// the Gandipet road to Osman Sagar leaves the frame where water.json's off-map arrow points (low confidence west of
+// the alignment's end)
+{
+  const gr = ROADS_OUT.get('gandipet_rd'), os = WATER.off_map.find((o) => o.id === 'osman_sagar');
+  const tgt = proj(os.arrow_at_frame_edge[0], os.arrow_at_frame_edge[1]); tgt[0] = 0;
+  const atStart = gr.pts[0][0] < gr.pts[gr.pts.length - 1][0];
+  const e = atStart ? gr.pts[0] : gr.pts[gr.pts.length - 1];
+  if (e[0] > 40) {
+    const ext = G.resample([e.slice(), [(e[0] + tgt[0]) / 2, (e[1] + tgt[1]) / 2 + 60], tgt], 60);
+    if (atStart) gr.pts = ext.slice(1).reverse().concat(gr.pts); else gr.pts = gr.pts.concat(ext.slice(1));
+    gr.note = 'west of Langar Houz the line to the frame edge (towards Osman Sagar) is estimated';
+  }
 }
 // the Lower Tank Bund is a street at the foot of the bund (39 m from the Tank Bund in reality)
 { const ltb = ROADS_OUT.get('lower_tank_bund'); ltb.kind = 'street'; ltb.w = 34; delete ltb.median; }
@@ -534,6 +578,11 @@ const RING = 84;
   const gl = ROADS_OUT.get('gulzar_houz_loop');
   Object.assign(gl, { pts: V1R.get('gulzar_houz_loop').pts.map((p) => tr(GZ, p)), w: V1R.get('gulzar_houz_loop').w, src: 'cluster' });
 }
+// cluster water (the Mecca Masjid houz)
+for (const c of CLUSTERS) for (const id of c.water) {
+  const v = V1WATER.get(id); const w = addWater(id, v.name, v.poly.map((q) => tr(c, q)), Object.assign({ bank: v.bank || 0, conf: 'medium' }, v.color ? { color: v.color } : {}));
+  WR.fillPoly(w.poly, (o) => { WR.a[o] = 1; });
+}
 // colony lanes: the v1 lanes translated, then each end trimmed at / extended to the first real street
 function fitLane(id, c) {
   const r = ROADS_OUT.get(id), v = V1R.get(id);
@@ -591,12 +640,30 @@ attachPort('gulzar_houz_w', GZC, add2(GZC, [-36, 0]), add2(GZC, [-112, 0]), 124,
 attachPort('gulzar_houz_e', GZC, add2(GZC, [36, 0]), add2(GZC, [144, 0]), 156, { cluster: 'gulzar_houz' });
 
 
+const NOINFILL_EXTRA = [];
+// 6.3 a curated road that crosses the Musi channel gets an explicit bridge piece there (the 2003 crossing)
+{
+  const ch = MUSI_CHANNEL;
+  for (const r of roadList()) {
+    if (r.kind === 'bridge' || r.kind === 'path') continue;
+    const dense = G.resample(r.pts, 4), inW = dense.map((p2) => G.inPoly(p2[0], p2[1], ch));
+    if (!inW.some(Boolean)) continue;
+    let a2 = inW.indexOf(true), b2 = inW.lastIndexOf(true);
+    if (a2 === 0 || b2 === dense.length - 1) { warn(`road ${r.id} ends in the Musi channel`); continue; }
+    a2 = Math.max(0, a2 - 5); b2 = Math.min(dense.length - 1, b2 + 5);
+    const before = dense.slice(0, a2 + 1), mid = dense.slice(a2, b2 + 1), after = dense.slice(b2);
+    r.pts = G.thin(G.dp(before, 1.5), 4);
+    addRoad({ id: r.id + '_bridge', name: r.name + ' (bridge)', kind: 'bridge', w: Math.max(30, r.w - 8), pts: G.thin(G.dp(mid, 1), 4), conf: 'low', src: 'roads', pothole: 0.3, note: 'Musi crossing on the real alignment; 2003 bridge not verified' });
+    addRoad(Object.assign({}, r, { id: r.id + '_2', pts: G.thin(G.dp(after, 1.5), 4) }));
+    warn(`road ${r.id} crosses the Musi: split with a bridge piece ${r.id}_bridge`);
+  }
+}
 /* ===================================================================== 7. rails */
 {
   const sec = (id) => { const s = RAIL.sections.find((q) => q.id === id); return projLine(s.pts, 1.5); };
   const join = (...parts) => { const out = []; for (const p of parts) { for (const q of p) { const l = out[out.length - 1]; if (!l || Math.hypot(l[0] - q[0], l[1] - q[1]) > 3) out.push(q); } } return out; };
   const rev = (p) => p.slice().reverse();
-  const RL = (id, name, pts) => D.rails.push({ id, name, pts: pts.map(ptR), w: 16 });
+  const RL = (id, name, pts) => D.rails.push({ id, name, pts: (clipToWorld(pts) || pts).map(ptR), w: 16 });
   const j1 = sec('sec_j1'), jh = sec('j1_hyderabad'), jl = sec('j1_lingampally'), sf = sec('sec_falaknuma'), s2 = sec('sec_j2'), mo = sec('j2_moula_ali'), bo = sec('j2_bolarum');
   RL('rail_hyd_sec', 'Hyderabad–Secunderabad line', join(rev(jh), rev(j1)));
   RL('rail_wadi', 'Secunderabad–Wadi line (Begumpet, Lingampally)', jl);
@@ -676,6 +743,7 @@ let RH = null;
 const buildRH = () => { RH = segIndex(roadList().filter((r) => r.kind !== 'path'), 64); };
 buildRH();
 const nearestRoad = (x, y, rmax, pred) => { const e = RH.nearest(x, y, rmax || 400, pred); if (!e) return null; const r = e.it.ref; const q = G.nearestOnLine(r.pts, x, y); return Object.assign(q, { road: r }); };
+const allRoadsRH = () => { const h = new G.SegHash(64); for (const r of roadList()) h.add(r.pts, r); return h; };
 
 // 9.1 v1 relations: shop frontage (which road, which side, how far), givers
 const FOOTK = { arterial: 10, street: 7, bund: 9, lane: 0, bridge: 0, path: 0 };
@@ -728,7 +796,7 @@ for (const l of LM.values()) markLandmark(l);
     moveLm(l, p.x + nx * (tb.w / 2 + 4), p.y + ny * (tb.w / 2 + 4)); l.faceAngle = Math.round(Math.atan2(-ny, -nx) * 1000) / 1000; l.conf = 'low'; l.proc = 'tank_bund';
     LM.set(l.id, l);
   }
-  const arch = (id, t) => { const p = G.atFrac(pts, t, c), nx = -p.dy * side, ny = p.dx * side; const l = cloneLm(id); moveLm(l, p.x + nx * (tb.w / 2 + 16), p.y + ny * (tb.w / 2 + 16)); l.conf = 'low'; l.proc = 'tank_bund'; LM.set(id, l); markLandmark(l); };
+  const arch = (id, t) => { const p = G.atFrac(pts, t, c), nx = -p.dy * side, ny = p.dx * side; const l = cloneLm(id); const x = p.x + nx * (tb.w / 2 + 16), y = p.y + ny * (tb.w / 2 + 16); const st = settle(l, x, y, { maxR: 120, pref: Math.atan2(ny, nx) }); moveLm(l, st ? st.x : x, st ? st.y : y); l.conf = 'low'; l.proc = 'tank_bund'; LM.set(id, l); markLandmark(l); };
   arch('kakatiya_arch_s', 0.07); arch('kakatiya_arch_n', 0.9);
   D._tankBundLakeSide = side;
 }
@@ -778,80 +846,98 @@ for (const l of LM.values()) markLandmark(l);
   moveLm(j, bestP[0] + (dxl / dl) * 10, bestP[1] + (dyl / dl) * 10); j.conf = 'medium'; j.shore = ptR(bestP); LM.set(j.id, j);
 }
 
-// 9.6 Golconda: the citadel wall follows the real hill (DEM outline) 30 u out, as a chain of wall
-// blocks, with Fateh Darwaza (east) and Banjara Darwaza (north) as gaps where the roads come in
+// 9.6 Golconda: the outer fort wall runs through the researchers' five wall points (N, E1, E2, S, W; ~1.2 km
+// across) as a smooth closed curve, built from non-overlapping wall blocks; gaps where roads come in, the two
+// gates (Fateh Darwaza, Banjara Darwaza) on the curve nearest their real positions
 const GOLCONDA = {};
 {
-  const hill = HILLS.get('golconda_hill');
-  const bb = G.bbox(hill.outline), cell = 6, pad = 60;
-  const x0 = bb[0] - pad, y0 = bb[1] - pad, gw = Math.ceil((bb[2] - bb[0] + 2 * pad) / cell), gh = Math.ceil((bb[3] - bb[1] + 2 * pad) / cell);
-  const m = new Uint8Array(gw * gh);
-  const RAD = 30;
-  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
-    const x = x0 + (i + 0.5) * cell, y = y0 + (j + 0.5) * cell;
-    if (G.inPoly(x, y, hill.outline) || G.polyEdgeDist(x, y, hill.outline) < RAD) m[j * gw + i] = 1;
+  const ids = ['golconda_wall_n', 'golconda_wall_e1', 'golconda_wall_e2', 'golconda_wall_s', 'golconda_wall_w'];
+  const P0 = ids.map((id) => { const r = realOf(id); return [r.x, r.y]; });
+  const cx = P0.reduce((s2, p2) => s2 + p2[0], 0) / P0.length, cy = P0.reduce((s2, p2) => s2 + p2[1], 0) / P0.length;
+  const ord = P0.map((p2, i) => ({ p: p2, a: Math.atan2(p2[1] - cy, p2[0] - cx), id: ids[i] })).sort((p2, q) => p2.a - q.a);
+  const n = ord.length, ring = [];
+  for (let k = 0; k < n; k++) {
+    const p0 = ord[(k - 1 + n) % n].p, p1 = ord[k].p, p2 = ord[(k + 1) % n].p, p3 = ord[(k + 2) % n].p;
+    for (let t = 0; t < 1; t += 1 / 30) {
+      const t2 = t * t, t3 = t2 * t;
+      const f = (a0, a1, a2, a3) => 0.5 * (2 * a1 + (-a0 + a2) * t + (2 * a0 - 5 * a1 + 4 * a2 - a3) * t2 + (-a0 + 3 * a1 - 3 * a2 + a3) * t3);
+      ring.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+    }
   }
-  let ring = traceMask(m, gw, gh, x0, y0, cell, 3)[0];
-  ring = G.dp(ring.concat([ring[0]]), 22); ring.pop();
-  GOLCONDA.ring = ring;
-  const onRing = (x, y) => { let best = null; for (let k = 0; k < ring.length; k++) { const a = ring[k], b = ring[(k + 1) % ring.length]; const q = G.closestOnSeg(x, y, a[0], a[1], b[0], b[1]); if (!best || q.d2 < best.d2) best = Object.assign(q, { k }); } return best; };
+  GOLCONDA.ring = ring; GOLCONDA.centre = [cx, cy];
+  const onRing = (x, y) => { let best = null; for (let k = 0; k < ring.length; k++) { const a2 = ring[k], b2 = ring[(k + 1) % ring.length]; const q = G.closestOnSeg(x, y, a2[0], a2[1], b2[0], b2[1]); if (!best || q.d2 < best.d2) best = Object.assign(q, { k }); } return best; };
+  // gates
   const gates = [];
   for (const id of ['golconda_fateh_darwaza', 'banjara_darwaza']) {
     const R = realOf(id), q = onRing(R.x, R.y), l = cloneLm(id);
-    moveLm(l, q.x, q.y); l.conf = R.conf; LM.set(id, l); gates.push({ id, x: q.x, y: q.y, half: Math.max(l.w, l.d) / 2 + 2 });
+    moveLm(l, q.x, q.y); l.conf = R.conf; LM.set(id, l); gates.push({ id, x: q.x, y: q.y, r: Math.max(l.w, l.d) / 2 + 6 });
     GOLCONDA[id] = [q.x, q.y];
   }
-  // wall blocks along the ring (axis-aligned steps), skipping the gate gaps
-  const blocks = [];
-  for (let k = 0; k < ring.length; k++) {
-    const a = ring[k], b = ring[(k + 1) % ring.length], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy);
-    const horiz = Math.abs(dx) >= Math.abs(dy);
-    const n = Math.max(1, Math.min(Math.ceil((horiz ? Math.abs(dy) : Math.abs(dx)) / 10), Math.floor(L / 18)));
-    for (let s2 = 0; s2 < n; s2++) {
-      const p0 = [a[0] + (dx * s2) / n, a[1] + (dy * s2) / n], p1 = [a[0] + (dx * (s2 + 1)) / n, a[1] + (dy * (s2 + 1)) / n];
-      const cx = (p0[0] + p1[0]) / 2, cy = (p0[1] + p1[1]) / 2;
-      if (gates.some((g) => Math.hypot(g.x - cx, g.y - cy) < g.half + Math.max(Math.abs(p1[0] - p0[0]), Math.abs(p1[1] - p0[1])) / 2)) continue;
-      const w = horiz ? Math.abs(p1[0] - p0[0]) + 8 : 16, d = horiz ? 16 : Math.abs(p1[1] - p0[1]) + 8;
-      blocks.push({ x: cx, y: cy, w: Math.max(16, RD(w)), d: Math.max(16, RD(d)), k });
+  // gate passages run across the wall (along the outward normal): turn a gate whose v1 passage runs the other way
+  for (const g of gates) {
+    const l = LM.get(g.id), nx = g.x - cx, ny = g.y - cy;
+    const passEW = Math.abs(nx) >= Math.abs(ny);
+    const v1EW = l.d > l.w; // posts north/south -> passage east-west
+    if (passEW !== v1EW) {
+      const t = l.w; l.w = l.d; l.d = t;
+      l.solids = (l.solids || []).map((s2) => { const ox = s2[0] + s2[2] / 2 - l.x, oy = s2[1] + s2[3] / 2 - l.y; return [RD(l.x + oy - s2[3] / 2), RD(l.y + ox - s2[2] / 2), s2[3], s2[2]]; });
+      l.face = { n: 'e', e: 's', s: 'w', w: 'n' }[l.face] || l.face; l.axis = passEW ? 'ew' : 'ns';
     }
+    g.out = passEW ? [Math.sign(nx), 0] : [0, Math.sign(ny)];
   }
-  // the five v1 ids go to the north-most, south-most, west-most and the two east-most blocks (north / south of the gate)
-  const pick = (f) => blocks.reduce((b, q) => (f(q) < f(b) ? q : b));
-  const fd = GOLCONDA.golconda_fateh_darwaza;
-  const named = new Map();
-  named.set(pick((q) => q.y), 'golconda_wall_n'); named.set(pick((q) => -q.y), 'golconda_wall_s'); named.set(pick((q) => q.x), 'golconda_wall_w');
-  const east = blocks.filter((q) => !named.has(q)).sort((p2, q) => q.x - p2.x);
-  const e1 = east.find((q) => q.y < fd[1]), e2 = east.find((q) => q.y >= fd[1]);
-  if (e1) named.set(e1, 'golconda_wall_e1'); if (e2) named.set(e2, 'golconda_wall_e2');
-  let n = 1;
-  for (const b of blocks) {
-    const id = named.get(b) || 'golconda_wall_' + (n++);
-    const l = Object.assign({}, V1L.get('golconda_wall_n'), { id, x: RD(b.x), y: RD(b.y), w: b.w, d: b.d, conf: 'medium', note: 'citadel wall along the real hill outline (DEM), 30 u out' });
-    l.v1 = V1L.has(id) ? [V1L.get(id).x, V1L.get(id).y] : null; if (!l.v1) delete l.v1;
-    LM.set(id, l);
-  }
-  for (const id of ['golconda_wall_n', 'golconda_wall_s', 'golconda_wall_w', 'golconda_wall_e1', 'golconda_wall_e2']) if (!LM.has(id)) throw new Error('golconda wall id not assigned: ' + id);
-  for (const id of LM.keys()) if (/^golconda_wall|darwaza/.test(id)) markLandmark(LM.get(id));
   // the fort road runs in through Fateh Darwaza
+  const fd = GOLCONDA.golconda_fateh_darwaza, fg = gates[0];
   const gr = ROADS_OUT.get('golconda_rd');
   if (gr) {
-    const e0 = gr.pts[0], e1p = gr.pts[gr.pts.length - 1];
-    const toGate = (p) => Math.hypot(p[0] - fd[0], p[1] - fd[1]);
-    const endAtGate = toGate(e1p) <= toGate(e0);
-    const pts = endAtGate ? gr.pts.slice() : gr.pts.slice().reverse();
-    // drop the last points inside the ring, then go through the gate centre to 40 u inside
-    while (pts.length > 2 && G.inPoly(pts[pts.length - 1][0], pts[pts.length - 1][1], ring)) pts.pop();
-    const hp = hill.peak, vx = hp[0] - fd[0], vy = hp[1] - fd[1], vl = Math.hypot(vx, vy) || 1;
-    const before = [fd[0] - (vx / vl) * 40, fd[1] - (vy / vl) * 40];
-    if (toGate(pts[pts.length - 1]) > 60) pts.push(before);
-    pts.push([fd[0], fd[1]], [fd[0] + (vx / vl) * 36, fd[1] + (vy / vl) * 36]);
-    gr.pts = G.thin(endAtGate ? pts : pts.reverse(), 4);
-    GOLCONDA.inside = [fd[0] + (vx / vl) * 36, fd[1] + (vy / vl) * 36];
+    const dEnd = (p2) => Math.hypot(p2[0] - fd[0], p2[1] - fd[1]);
+    const atEnd = dEnd(gr.pts[gr.pts.length - 1]) <= dEnd(gr.pts[0]);
+    let pts = atEnd ? gr.pts.slice() : gr.pts.slice().reverse();
+    const A = [fd[0] + fg.out[0] * 80, fd[1] + fg.out[1] * 80];
+    while (pts.length > 2 && (G.inPoly(pts[pts.length - 1][0], pts[pts.length - 1][1], ring) || dEnd(pts[pts.length - 1]) < 150)) pts.pop();
+    const E = pts[pts.length - 1];
+    const C = fg.out[0] ? [A[0], E[1]] : [E[0], A[1]]; // come round to the approach line first
+    if (Math.hypot(C[0] - E[0], C[1] - E[1]) > 8 && Math.hypot(C[0] - A[0], C[1] - A[1]) > 8) pts.push(C);
+    pts.push(A, [fd[0], fd[1]], [fd[0] - fg.out[0] * 50, fd[1] - fg.out[1] * 50]);
+    gr.pts = G.thin(atEnd ? pts : pts.reverse(), 4);
+    GOLCONDA.inside = [fd[0] - fg.out[0] * 50, fd[1] - fg.out[1] * 50];
   }
+  // wall band on a 12 u raster, minus gates and road crossings
+  const cell = 12, bb = G.bbox(ring), x0 = Math.floor((bb[0] - 30) / cell) * cell, y0 = Math.floor((bb[1] - 30) / cell) * cell;
+  const gw = Math.ceil((bb[2] - x0 + 30) / cell), gh = Math.ceil((bb[3] - y0 + 30) / cell), m = new Uint8Array(gw * gh);
+  const near = roadList().filter((r) => { const b2 = G.bbox(r.pts); return b2[2] > bb[0] - 60 && b2[0] < bb[2] + 60 && b2[3] > bb[1] - 60 && b2[1] < bb[3] + 60; });
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+    const x = x0 + (i + 0.5) * cell, y = y0 + (j + 0.5) * cell;
+    if (G.polyEdgeDist(x, y, ring) > 9) continue;
+    if (gates.some((g) => Math.hypot(g.x - x, g.y - y) < g.r)) continue;
+    if (near.some((r) => { const q = G.nearestOnLine(r.pts, x, y); return q && q.d < r.w / 2 + (FOOT[r.kind] || 0) + 10; })) continue;
+    m[j * gw + i] = 1;
+  }
+  // merge into rectangles: horizontal runs, then stack identical runs
+  const boxes = [], open = new Map();
+  for (let j = 0; j <= gh; j++) {
+    const runs = [];
+    if (j < gh) { let i = 0; while (i < gw) { if (!m[j * gw + i]) { i++; continue; } let e = i; while (e < gw && m[j * gw + e]) e++; runs.push([i, e]); i = e; } }
+    const next = new Map();
+    for (const [i, e] of runs) { const k = i + ',' + e; if (open.has(k)) { next.set(k, open.get(k)); open.delete(k); } else next.set(k, { i, e, j0: j }); }
+    for (const b2 of open.values()) boxes.push({ x: x0 + b2.i * cell, y: y0 + b2.j0 * cell, w: (b2.e - b2.i) * cell, d: (j - b2.j0) * cell });
+    open.clear(); for (const [k, v] of next) open.set(k, v);
+  }
+  const named = new Map();
+  for (const id of ids) { const r = realOf(id); let best = null, bd = Infinity; for (const b2 of boxes) { if (named.has(b2)) continue; const d = Math.hypot(b2.x + b2.w / 2 - r.x, b2.y + b2.d / 2 - r.y); if (d < bd) { bd = d; best = b2; } } named.set(best, id); }
+  let k = 1;
+  const tmpl = V1L.get('golconda_wall_n');
+  for (const b2 of boxes) {
+    const id = named.get(b2) || 'golconda_wall_' + (k++);
+    const l = Object.assign({}, tmpl, { id, x: RD(b2.x + b2.w / 2), y: RD(b2.y + b2.d / 2), w: b2.w, d: b2.d, conf: 'low', note: 'outer fort wall through the estimated wall points (researchers, ~1.2 km across)' });
+    if (V1L.has(id)) l.v1 = [V1L.get(id).x, V1L.get(id).y];
+    LM.set(id, l); markLandmark(l);
+  }
+  for (const g of gates) markLandmark(LM.get(g.id));
+  NOINFILL_EXTRA.push({ id: 'golconda', poly: ring });
 }
 // keep a point inside the Golconda ring (pull it towards the summit)
 function insideGolconda(x, y) {
-  const ring = GOLCONDA.ring, pk = HILLS.get('golconda_hill').peak;
+  const ring = GOLCONDA.ring, pk = realOf('golconda_bala_hissar') ? [realOf('golconda_bala_hissar').x, realOf('golconda_bala_hissar').y] : GOLCONDA.centre;
   let k = 0; while (!G.inPoly(x, y, ring) && k++ < 40) { x += (pk[0] - x) * 0.08; y += (pk[1] - y) * 0.08; }
   if (G.polyEdgeDist(x, y, ring) < 40) { x += (pk[0] - x) * 0.15; y += (pk[1] - y) * 0.15; }
   return [x, y];
@@ -866,8 +952,28 @@ const REFACE_OK = new Set(['cinema', 'school', 'temple', 'mosque', 'church', 'ir
   'market_hall', 'museum', 'department_store', 'auditorium', 'radio_station', 'club_house', 'ashram', 'dargah', 'gurudwara', 'mahankali_temple', 'gpo', 'bal_bhavan',
   'clothes_store', 'tiffin_centre', 'kirana', 'stationery', 'photo_studio', 'medical_shop', 'internet_cafe', 'video_parlour', 'barber', 'sweet_shop', 'iyengar_bakery', 'meat_shop', 'pindi_girni']);
 const moves = [];
+// things beyond the frame stand at the world edge where their road leaves the map
+const EDGE = { jntu_kukatpally: 'mumbai_hwy', kphb_colony: 'mumbai_hwy', playground_16: 'mumbai_hwy', rashtrapati_nilayam: 'trimulgherry_rd', holy_trinity_church_bolarum: 'trimulgherry_rd',
+  harina_vanasthali: 'malakpet_rd', ramoji_film_city: 'malakpet_rd', vijayawada_highway: 'malakpet_rd', university_of_hyderabad: 'gachibowli_rd',
+  gandipet: 'gandipet_rd', chilkur_balaji: 'gandipet_rd', mrugavani_park: 'gandipet_rd', himayat_sagar: 'gandipet_rd' };
+const EDGE_SIDE = { jntu_kukatpally: 1, kphb_colony: -1, playground_16: -1, rashtrapati_nilayam: 1, holy_trinity_church_bolarum: -1, harina_vanasthali: 1, ramoji_film_city: -1, vijayawada_highway: 0, university_of_hyderabad: 1,
+  gandipet: 0, chilkur_balaji: 1, mrugavani_park: -1, himayat_sagar: 1 };
+function edgeExit(roadId) {
+  const r = ROADS_OUT.get(roadId), a2 = r.pts[0], b2 = r.pts[r.pts.length - 1];
+  const dEdge = (p2) => Math.min(p2[0], p2[1], W - p2[0], H - p2[1]);
+  const end = dEdge(a2) <= dEdge(b2) ? 0 : 1, E = end ? b2 : a2, P2 = end ? r.pts[r.pts.length - 2] : r.pts[1];
+  const ux = P2[0] - E[0], uy = P2[1] - E[1], ul = Math.hypot(ux, uy) || 1; // inward along the road
+  return { E, ux: ux / ul, uy: uy / ul, road: r };
+}
+function edgePos(id, w, d) {
+  const X = edgeExit(EDGE[id]), sd = EDGE_SIDE[id] || 0, nx = -X.uy, ny = X.ux;
+  const along = 60 + Math.max(w, d), off = sd ? X.road.w / 2 + 16 + Math.max(w, d) / 2 : 0;
+  return [X.E[0] + X.ux * along + nx * off * sd, X.E[1] + X.uy * along + ny * off * sd];
+}
 function landmarkCentre(id) {
   const e = PLACES[id]; if (!e) return null;
+  if (EDGE[id]) { const v = V1L.get(id); return edgePos(id, v ? v.w : 30, v ? v.d : 30); }
+  if (id === 'playground_kit_16') { const q = edgePos('playground_16', 20, 20); return [q[0] + 52, q[1] - 20]; }
   if (e.stadium_centre) return proj(e.stadium_centre[0], e.stadium_centre[1]);
   if (e.palace_centroid) return proj(e.palace_centroid[0], e.palace_centroid[1]);
   let p = GEO.placeWorld(e);
@@ -938,7 +1044,7 @@ placeAll(V1.landmarks.filter((l) => !LM.has(l.id) && !/^golconda_wall/.test(l.id
 // 6.3 zones the infill keeps out of (cluster layouts, real parks, the airfield, big landmark sites)
 const NOINFILL = []; // {poly}
 const sqPoly = (c, h) => [[c[0] - h, c[1] - h], [c[0] + h, c[1] - h], [c[0] + h, c[1] + h], [c[0] - h, c[1] + h]];
-NOINFILL.push({ id: 'charminar', poly: sqPoly(CHC, 132) }, { id: 'gulzar_houz', poly: sqPoly(GZC, 80) });
+NOINFILL.push({ id: 'charminar', poly: sqPoly(CHC, 132) }, { id: 'gulzar_houz', poly: sqPoly(GZC, 80) }, ...NOINFILL_EXTRA);
 for (const c of CLUSTERS) if (c.core) { const a = tr(c, [c.core[0], c.core[1]]), b = tr(c, [c.core[2], c.core[3]]); NOINFILL.push({ id: c.id, poly: [[a[0] - 14, a[1] - 14], [b[0] + 14, a[1] - 14], [b[0] + 14, b[1] + 14], [a[0] - 14, b[1] + 14]] }); }
 for (const id of ['public_gardens', 'lumbini_park', 'ntr_gardens', 'sanjeevaiah_park', 'indira_park', 'parade_grounds', 'gymkhana_ground_secunderabad']) if (REALPARK.has(id)) NOINFILL.push({ id, poly: REALPARK.get(id) });
 // Begumpet runway (09/27, 3290 m, airfield reference point 17.4531 N 78.4676 E; heading ~089 true): medium confidence
@@ -952,7 +1058,7 @@ NOINFILL.push({ id: 'begumpet_runway', poly: G.ribbon(RUNWAY.line, 150) });
 const NI = new G.Raster(W, H, 8);
 for (const z of NOINFILL) NI.fillPoly(z.poly, (o) => { NI.a[o] = 1; });
 // lanes never run through a landmark compound or a roof zone (they are placed before the infill)
-for (const l of LM.values()) for (const s2 of (l.noSolid && !l.solids ? [lmRect(l)] : partsOf(l))) NI.fillRect(s2[0] - 10, s2[1] - 10, s2[2] + 20, s2[3] + 20, (o) => { NI.a[o] = 1; });
+for (const l of LM.values()) for (const s2 of (l.noSolid && !l.solids ? [lmRect(l)] : partsOf(l))) NI.fillRect(s2[0] - 24, s2[1] - 24, s2[2] + 48, s2[3] + 48, (o) => { NI.a[o] = 1; });
 for (const r of D.roofs) NI.fillRect(r.rect[0] - 12, r.rect[1] - 12, r.rect[2] + 24, r.rect[3] + 24, (o) => { NI.a[o] = 1; });
 
 // 6.4 OSM residential infill for the districts that were built up by 2003
@@ -1042,6 +1148,61 @@ let infillStats = { candidates: 0, kept: 0, pieces: 0, dropped: {} };
 
 
 
+// 9.75 one connected network (validate_map rules): islands reach out to the network or are dropped
+function components() {
+  for (const r of roadList()) r.pts = r.pts.map(ptR);
+  const roads = roadList().filter((r) => r.kind !== 'path');
+  const H0 = segIndex(roads, 64);
+  const idx = new Map(roads.map((r, i) => [r, i]));
+  const parent = roads.map((_, i) => i);
+  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const join = (a2, b2) => { parent[find(a2)] = find(b2); };
+  roads.forEach((A, a2) => {
+    for (const e of [A.pts[0], A.pts[A.pts.length - 1]]) for (const { it, q } of H0.near(e[0], e[1], 40)) { const B = it.ref; if (B !== A && q.d2 <= (B.w / 2 + 5) ** 2) join(a2, idx.get(B)); }
+    for (let s2 = 0; s2 < A.pts.length - 1; s2++) {
+      const a0 = A.pts[s2], a1 = A.pts[s2 + 1], mx = (a0[0] + a1[0]) / 2, my = (a0[1] + a1[1]) / 2, rr = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]) / 2 + 2;
+      for (const { it } of H0.near(mx, my, rr)) { const B = it.ref; if (B !== A && G.segInter(a0, a1, it.a, it.b)) join(a2, idx.get(B)); }
+    }
+  });
+  const comps = new Map(); roads.forEach((r, i) => { const c = find(i); if (!comps.has(c)) comps.set(c, []); comps.get(c).push(r); });
+  return [...comps.values()].sort((a2, b2) => b2.length - a2.length);
+}
+{
+  let comps = components(), fixed = 0, dropped = 0, kept = 0;
+  const main = new Set(comps[0]);
+  const HM = segIndex(comps[0], 64);
+  for (const comp of comps.slice(1)) {
+    let linked = false;
+    for (const r of comp) {
+      for (const end of [0, 1]) {
+        const pts = r.pts, e = end ? pts[pts.length - 1] : pts[0], pr = end ? pts[pts.length - 2] : pts[1];
+        const dx = e[0] - pr[0], dy = e[1] - pr[1], dl = Math.hypot(dx, dy) || 1;
+        // straight on up to 48 u, else the nearest main road within 36 u
+        let hit = null;
+        for (let t = 4; t <= 48 && !hit; t += 4) { const x = e[0] + (dx / dl) * t, y = e[1] + (dy / dl) * t; const n2 = HM.nearest(x, y, 20); if (n2 && Math.sqrt(n2.q.d2) < n2.it.ref.w / 2) hit = [n2.q.x, n2.q.y]; }
+        if (!hit) { const n2 = HM.nearest(e[0], e[1], 36); if (n2) hit = [n2.q.x, n2.q.y]; }
+        const blocked = (a2, b2) => { const L = Math.hypot(b2[0] - a2[0], b2[1] - a2[1]) || 1, nx = -(b2[1] - a2[1]) / L, ny = (b2[0] - a2[0]) / L; for (let t = 0; t <= L; t += 3) for (const o of [-(r.w / 2 + 2), 0, r.w / 2 + 2]) { const v = OCC.get(a2[0] + ((b2[0] - a2[0]) * t) / L + nx * o, a2[1] + ((b2[1] - a2[1]) * t) / L + ny * o); if (v === 2 || v === 3 || v === 6) return true; } return false; };
+        if (hit && !blocked(e, hit)) { if (end) pts.push(hit); else pts.unshift(hit); linked = true; break; }
+      }
+      if (linked) break;
+    }
+    if (linked) { fixed++; continue; }
+    if (comp.every((r) => r.src === 'osm' || r.src === 'grid')) { for (const r of comp) ROADS_OUT.delete(r.id); dropped += comp.length; continue; }
+    // a curated island gets a connector lane from its closest end to the network (up to 400 u, never over water)
+    let best = null;
+    for (const r of comp) for (const e of [r.pts[0], r.pts[r.pts.length - 1]]) { const n2 = HM.nearest(e[0], e[1], 400); if (n2 && (!best || n2.q.d2 < best.d2)) best = { d2: n2.q.d2, e, q: [n2.q.x, n2.q.y], r }; }
+    if (best) {
+      const mid = [(best.e[0] + best.q[0]) / 2, (best.e[1] + best.q[1]) / 2];
+      if (WR.get(mid[0], mid[1]) === 1) warn('connector over water for ' + best.r.id);
+      addRoad({ id: best.r.id + '_link', name: best.r.name, kind: 'street', w: 32, pts: [best.e.slice(), best.q], conf: 'low', src: 'roads', pothole: 0.5, note: 'connector added by the builder' });
+      kept++; vlog('connector for island ' + comp.map((r) => r.id).join(', ') + ': ' + Math.round(Math.sqrt(best.d2)) + ' u');
+    } else warn('road island kept (curated): ' + comp.map((r) => r.id).join(', '));
+  }
+  // a second round catches islands that were linked to other islands
+  comps = components();
+  for (const comp of comps.slice(1)) if (comp.every((r) => r.src === 'osm' || r.src === 'grid')) { for (const r of comp) ROADS_OUT.delete(r.id); dropped += comp.length; }
+  vlog(`network: ${fixed} islands joined, ${dropped} infill roads dropped, ${kept} curated islands, ${components().length} components left`);
+}
 // 9.8 shops on their streets (now that the infill lanes exist)
 paintRoadsOcc(); buildRH();
 placeAll(V1.landmarks.filter((l) => !LM.has(l.id) && !/^golconda_wall/.test(l.id)));
@@ -1049,4 +1210,684 @@ placeAll(V1.landmarks.filter((l) => !LM.has(l.id) && !/^golconda_wall/.test(l.id
   const big = moves.filter((m) => m.moved > 80).sort((a, b) => b.moved - a.moved);
   vlog('landmarks moved > 80 u to clear space:', big.length, big.slice(0, 30).map((m) => m.id + ':' + m.moved).join(' '));
 }
-module.exports = { D, V1, G, GEO, W, H, ROADS_OUT, CLUSTERS, CLID, warnings, infillStats, LM, moves, OCC }; // (debug)
+
+// roads that lie wholly outside the frame become a short spur from the network to their edge landmark
+{
+  const uoh = ROADS_OUT.get('uoh_rd'), l = LM.get('university_of_hyderabad');
+  if (uoh && l && uoh.pts.some((p2) => p2[0] < 0 || p2[1] < 0 || p2[0] > W || p2[1] > H)) {
+    const fv = FACE[l.face || 'e'], e = (fv[0] ? l.w : l.d) / 2 + 18, front = [l.x + fv[0] * e, l.y + fv[1] * e], out = [front[0] + fv[0] * 40, front[1] + fv[1] * 40];
+    const n2 = nearestRoad(out[0], out[1], 4000, (r) => r.id !== 'uoh_rd' && r.kind !== 'path');
+    uoh.pts = [[n2.x, n2.y], out, front].map(ptR); uoh.conf = 'low'; uoh.note = 'edge spur (the campus is west of the frame)';
+  }
+}
+/* ===================================================================== 10. places */
+const placeCluster = new Map(); for (const c of CLUSTERS) for (const id of c.places) placeCluster.set(id, c);
+const ROT = { n: 0, e: Math.PI / 2, s: Math.PI, w: -Math.PI / 2 };
+const rotV = (v, a) => [v[0] * Math.cos(a) - v[1] * Math.sin(a), v[0] * Math.sin(a) + v[1] * Math.cos(a)];
+const SITE_PAIR = { gpo: 'abids_gpo', pathergatti: 'madina_building', nizams_museum: 'purani_haveli', golconda_fort: 'golconda_fateh_darwaza' };
+const NOT_OK = new Set([2, 3, 6]);
+function okAt(x, y, offRoad) {
+  if (x < 6 || y < 6 || x > W - 6 || y > H - 6) return false;
+  for (const [dx, dy] of [[0, 0], [3, 0], [-3, 0], [0, 3], [0, -3]]) { const v = OCC.get(x + dx, y + dy); if (NOT_OK.has(v) || (offRoad && (v === 1 || v === 8 || v === 4))) return false; }
+  return true;
+}
+function validSpot(x, y, offRoad, maxR) {
+  if (okAt(x, y, offRoad)) return [x, y, 0];
+  for (let r = 4; r <= (maxR || 200); r += 4) {
+    const n = Math.max(8, Math.round((2 * Math.PI * r) / 5));
+    for (let k = 0; k < n; k++) { const a = (k / n) * Math.PI * 2, xx = x + Math.cos(a) * r, yy = y + Math.sin(a) * r; if (okAt(xx, yy, offRoad)) return [xx, yy, r]; }
+  }
+  if (offRoad) return validSpot(x, y, false, maxR);
+  return [x, y, -1];
+}
+const pmoves = [];
+function setPlace(v, x, y, how) {
+  const p = JSON.parse(JSON.stringify(v));
+  p.x = RD(x); p.y = RD(y);
+  const e = PLACES[v.id];
+  if (e) { p.conf = e.confidence; p.ll = [e.lat, e.lon]; }
+  if (how) p.how = how;
+  PL.set(p.id, p); return p;
+}
+function onRoad(roadId, R, along) {
+  const r = ROADS_OUT.get(roadId); if (!r) return null;
+  const q = G.nearestOnLine(r.pts, R[0], R[1]); return q;
+}
+const roofStairs = new Map(); for (const r of D.roofs) for (const s2 of r.stairs) roofStairs.set(s2.place, s2);
+{
+  // offsets of v1 places from their landmark, in the landmark's face frame
+  for (const v of V1.places) {
+    if (v.alias) continue;
+    const c = placeCluster.get(v.id);
+    if (c) {
+      let x = v.x + c.T[0], y = v.y + c.T[1];
+      if (v.id === 'hide_charminar_corner') { x = CHC[0] + 108; y = CHC[1] + 108; }
+      setPlace(v, x, y, 'cluster:' + c.id); continue;
+    }
+    if (roofStairs.has(v.id)) { const s2 = roofStairs.get(v.id); setPlace(v, s2.x, s2.y, 'stairs'); continue; }
+    if (v.level) { const r = D.roofs.find((q) => q.id === v.level); const r1 = V1RF.get(v.level); setPlace(v, v.x + r.rect[0] - r1.rect[0], v.y + r.rect[1] - r1.rect[1], 'roof'); continue; }
+    const lid = LM.has(v.id) ? v.id : SITE_PAIR[v.id];
+    if (lid && LM.has(lid)) {
+      const l = LM.get(lid), l1 = V1L.get(lid);
+      if (l._spot && lid === v.id) { const sp = validSpot(l._spot[0], l._spot[1], false, 60); setPlace(v, sp[0], sp[1], 'shop'); continue; }
+      let off = [v.x - l1.x, v.y - l1.y];
+      if (l._rot) off = rotV(off, ROT[l._rot[1]] - ROT[l._rot[0]]);
+      if (v.virtual) { setPlace(v, l.x, l.y, 'virtual'); continue; }
+      if (v.id === 'lumbini_jetty') { const dxl = BUDDHA[0] - l.shore[0], dyl = BUDDHA[1] - l.shore[1], dl = Math.hypot(dxl, dyl); const sp = validSpot(l.shore[0] - (dxl / dl) * 10, l.shore[1] - (dyl / dl) * 10, false, 60); setPlace(v, sp[0], sp[1], 'jetty'); continue; }
+      if (v.id === 'buddha_statue') { setPlace(v, BUDDHA[0], BUDDHA[1] + 22, 'island'); continue; }
+      const sp = validSpot(l.x + off[0], l.y + off[1], false, 120);
+      if (sp[2]) pmoves.push({ id: v.id, moved: sp[2] });
+      setPlace(v, sp[0], sp[1], 'entrance'); continue;
+    }
+    // pure places
+    const R = realOf(v.id);
+    if (!R) { warn('no real position for place ' + v.id); setPlace(v, v.x, v.y, 'v1'); continue; }
+    let x = R.x, y = R.y, how = 'real';
+    if (EDGE[v.id]) { [x, y] = edgePos(v.id, 20, 20); how = 'edge'; if (!EDGE_SIDE[v.id]) { const X = edgeExit(EDGE[v.id]); x = X.E[0] + X.ux * 40; y = X.E[1] + X.uy * 40; } else if (!LM.has(v.id)) { const X = edgeExit(EDGE[v.id]); const k = { chilkur_balaji: 70, mrugavani_park: 100, himayat_sagar: 130, kphb_colony: 90, ramoji_film_city: 90 }[v.id] || 60; x = X.E[0] + X.ux * k - X.uy * (X.road.w / 2 + 6) * EDGE_SIDE[v.id]; y = X.E[1] + X.uy * k + X.ux * (X.road.w / 2 + 6) * EDGE_SIDE[v.id]; } }
+    else if (!R.inFrame || x < 0 || y < 0 || x > W || y > H) { x = Math.max(30, Math.min(W - 30, x)); y = Math.max(30, Math.min(H - 30, y)); how = 'edge'; const nr = nearestRoad(x, y, 500); if (nr) { x = nr.x; y = nr.y; } }
+    if (GOLCONDA_IN.has(v.id)) { [x, y] = insideGolconda(x, y); }
+    if (v.kind === 'junction') { const nr = nearestRoad(x, y, 180, (r) => r.src === 'roads' && r.kind !== 'path' && r.kind !== 'lane'); if (nr) { x = nr.x; y = nr.y; how = 'junction'; } }
+    else if (v.kind === 'giver') {
+      const rid = v1Giver.get(v.id); let q = rid ? onRoad(rid, [x, y]) : null, road = rid ? ROADS_OUT.get(rid) : null;
+      if (!q || q.d > 220) { const nr = nearestRoad(x, y, 400, (r) => r.kind !== 'bridge' && r.kind !== 'bund'); if (nr) { q = nr; road = nr.road; } }
+      if (q) { const [nx, ny] = roadSideFrame(q), off = road.w / 2 + Math.max(3, (FOOTK[road.kind] || 0) / 2); x = q.x + nx * off; y = q.y + ny * off; how = 'giver:' + road.id; }
+    } else if (v.kind === 'bridge') {
+      // the bridge road of the same name (real OSM alignment), at its crossing of the river; else the nearest bridge
+      const br = ROADS_OUT.get({ purana_pul: 'puranapul' }[v.id] || v.id);
+      let I = null;
+      if (br) for (let s2 = 0; s2 < br.pts.length - 1 && !I; s2++) for (let m = 0; m < MUSI_LINE.length - 1 && !I; m++) I = G.segInter(br.pts[s2], br.pts[s2 + 1], MUSI_LINE[m], MUSI_LINE[m + 1]);
+      if (I) { x = I.x; y = I.y; how = 'bridge:' + br.id; }
+      else { const nr = br ? G.nearestOnLine(br.pts, x, y) : nearestRoad(x, y, 200, (r) => r.kind === 'bridge'); if (nr) { x = nr.x; y = nr.y; how = 'bridge'; } }
+    } else if (['tank_bund', 'tank_bund_statues', 'ganesh_immersion_point'].includes(v.id)) {
+      const tb = ROADS_OUT.get('tank_bund'); const t = v.id === 'tank_bund_statues' ? 0.16 + 5.5 * 0.064 : null;
+      const q = t != null ? Object.assign(G.atFrac(tb.pts, t), {}) : G.nearestOnLine(tb.pts, x, y);
+      const sd = D._tankBundLakeSide, nx = q.dy * sd, ny = -q.dx * sd; x = q.x + nx * (tb.w / 2 - 6); y = q.y + ny * (tb.w / 2 - 6); how = 'bund';
+    } else if (v.id === 'necklace_road' || v.id === 'lower_tank_bund') {
+      const nr = onRoad(v.id === 'necklace_road' ? 'necklace_rd' : 'lower_tank_bund', [x, y]); if (nr) { x = nr.x; y = nr.y; how = 'road'; }
+    } else if (v.id === 'musi_riverbed') {
+      // on the sand of the riverbed
+      let best = null; for (let r = 0; r <= 400 && !best; r += 6) for (let k = 0; k < 24 && !best; k++) { const a = (k / 24) * Math.PI * 2, xx = x + Math.cos(a) * r, yy = y + Math.sin(a) * r; if (OCC.get(xx, yy) === 7) best = [xx, yy]; }
+      if (best) { x = best[0]; y = best[1]; how = 'riverbed'; }
+    }
+    const offRoad = v.kind === 'hidden' || v.kind === 'park' || v.kind === 'playground';
+    const sp = how === 'junction' || how === 'bund' || how.startsWith('bridge') || how === 'road' ? [x, y, 0] : validSpot(x, y, offRoad, 220);
+    if (sp[2]) pmoves.push({ id: v.id, moved: sp[2] });
+    setPlace(v, sp[0], sp[1], how);
+  }
+  for (const v of V1.places) if (v.alias) {
+    const t = PL.get(v.alias); if (!t) { warn('alias target missing ' + v.id); continue; }
+    const p = JSON.parse(JSON.stringify(v)); p.x = t.x; p.y = t.y; const e = PLACES[v.id]; if (e) { p.conf = e.confidence; p.ll = [e.lat, e.lon]; } PL.set(p.id, p);
+  }
+  for (const p of PL.values()) { const d = districtAt(p.x, p.y); p.district = d ? d.id : null; }
+  // podiums: the junction places (v1 flags) stay junctions
+  vlog('places moved off solids/water:', pmoves.filter((m) => m.moved > 30).map((m) => m.id + ':' + m.moved).join(' '));
+}
+
+// access spurs: every place a player has to reach (not on water / a roof / virtual) is within 150 u of a road
+{
+  RH = allRoadsRH();
+  let n = 0;
+  for (const p2 of PL.values()) {
+    if (p2.virtual || p2.level || p2.alias || p2.kind === 'hidden' || p2.boat) continue;
+    const nrAny = nearestRoad(p2.x, p2.y, 160);
+    if (nrAny && nrAny.d <= 150) continue;
+    if (GOLCONDA.ring && G.inPoly(p2.x, p2.y, GOLCONDA.ring)) continue; // inside the fort: the steps path and the fort road
+    const nr = nearestRoad(p2.x, p2.y, 3000, (r) => r.kind !== 'path');
+    if (!nr) continue;
+    // straight spur unless it would cross water or a building; then try the next road candidates
+    const clear = (a2, b2) => { const L = Math.hypot(b2[0] - a2[0], b2[1] - a2[1]) || 1, nx = -(b2[1] - a2[1]) / L, ny = (b2[0] - a2[0]) / L; for (let t = 0; t <= L; t += 4) for (const o of [-14, -7, 0, 7, 14]) { const x = a2[0] + ((b2[0] - a2[0]) * t) / L + nx * o, y = a2[1] + ((b2[1] - a2[1]) * t) / L + ny * o; const v = OCC.get(x, y); if (v === 2 || v === 3 || v === 6) return false; } return true; };
+    let done = false;
+    for (const cand of [nr].concat(RH.near(p2.x, p2.y, nr.d + 400).map((e) => { const q = G.nearestOnLine(e.it.ref.pts, p2.x, p2.y); return Object.assign(q, { road: e.it.ref }); }).sort((a2, b2) => a2.d - b2.d).slice(0, 12))) {
+      // stop 10 u short of the place so the spur never runs under it
+      const dx = p2.x - cand.x, dy = p2.y - cand.y, L = Math.hypot(dx, dy) || 1, end = [p2.x - (dx / L) * 10, p2.y - (dy / L) * 10];
+      if (!clear([cand.x, cand.y], end)) continue;
+      const id = 'spur_' + p2.id;
+      addRoad({ id, name: (p2.name || '').replace(/\s*\(.*\)$/, '') + ' road', kind: 'lane', w: 22, pts: [[cand.x, cand.y], end].map(ptR), spur: true, pothole: 0.6, conf: 'low', src: 'roads', note: 'access spur added by the builder' });
+      OCC.fillThick([[cand.x, cand.y], end], 13, (o) => { if (!OCC.a[o]) OCC.a[o] = 1; });
+      n++; done = true; vlog('access spur', id, Math.round(nr.d)); break;
+    }
+    if (!done) warn('no access spur possible for ' + p2.id + ' (' + Math.round(nr.d) + ' u from a road)');
+  }
+  vlog('access spurs:', n);
+}
+/* ===================================================================== 11. v1 -> v2 warp (moving least squares, affine) */
+// control points: v1 positions of places / landmarks whose real position is known (high / medium) -> where they are now
+const MLS_CP = [];
+for (const [id, e] of Object.entries(PLACES)) {
+  if (!(e.confidence === 'high' || e.confidence === 'medium') || e.alias || e.anchor_latlon || !GEO.inFrame(e.lat, e.lon)) continue;
+  const v = V1L.get(id) || V1P.get(id); if (!v) continue;
+  const now = LM.get(id) || PL.get(id); if (!now) continue;
+  MLS_CP.push([v.x, v.y, now.x, now.y]);
+}
+for (const c of CLUSTERS) MLS_CP.push([c.v1Anchor[0], c.v1Anchor[1], c.v1Anchor[0] + c.T[0], c.v1Anchor[1] + c.T[1]]);
+function mls(x, y) {
+  let sw = 0, px = 0, py = 0, qx = 0, qy = 0; const ws = [];
+  for (const c of MLS_CP) { const d2 = (c[0] - x) ** 2 + (c[1] - y) ** 2; const w = 1 / (d2 + 400); ws.push(w); sw += w; px += w * c[0]; py += w * c[1]; qx += w * c[2]; qy += w * c[3]; }
+  px /= sw; py /= sw; qx /= sw; qy /= sw;
+  let a = 0, b = 0, d = 0, m00 = 0, m01 = 0, m10 = 0, m11 = 0;
+  MLS_CP.forEach((c, i) => { const w = ws[i], hx = c[0] - px, hy = c[1] - py, gx = c[2] - qx, gy = c[3] - qy; a += w * hx * hx; b += w * hx * hy; d += w * hy * hy; m00 += w * hx * gx; m01 += w * hx * gy; m10 += w * hy * gx; m11 += w * hy * gy; });
+  const det = a * d - b * b || 1e-9, i00 = d / det, i01 = -b / det, i11 = a / det;
+  const M00 = i00 * m00 + i01 * m10, M01 = i00 * m01 + i01 * m11, M10 = i01 * m00 + i11 * m10, M11 = i01 * m01 + i11 * m11;
+  const vx = x - px, vy = y - py;
+  return [vx * M00 + vy * M10 + qx, vx * M01 + vy * M11 + qy];
+}
+
+/* ===================================================================== 12. parks */
+const PK = new Map();
+const parkClusterOf = new Map(); for (const c of CLUSTERS) for (const id of c.parks) parkClusterOf.set(id, c);
+const COMPOUNDS = [ // v1 compound() calls: [landmark id, pad, kind, extra [l, t, r, b]]
+  ['dilsukhnagar_sai_temple', 22, 'plaza', [10, 0, 10, 10]], ['ujjaini_mahankali_temple', 16, 'plaza'], ['lal_darwaza_temple', 14, 'plaza'],
+  ['temple_1', 10, 'plaza'], ['temple_2', 10, 'plaza'], ['temple_3', 14, 'plaza'], ['temple_4', 12, 'plaza'], ['temple_5', 12, 'plaza'], ['temple_6', 12, 'plaza'],
+  ['peddamma_temple', 16, 'plaza'], ['karmanghat_hanuman_temple', 16, 'plaza'], ['ashtalakshmi_temple', 16, 'plaza'],
+  ['balkampet_yellamma_temple', 12, 'plaza'], ['akkanna_madanna_temple', 8, 'plaza'], ['katta_maisamma_temple', 8, 'plaza'],
+  ['iskcon_abids', 10, 'plaza'], ['secunderabad_ganesh_temple', 8, 'plaza'],
+  ['spanish_mosque', 16, 'garden'], ['jama_masjid_charminar', 6, 'plaza'], ['khairatabad_mosque', 10, 'plaza'],
+  ...[1, 2, 3, 4, 5, 6, 7, 8].map((k) => ['mosque_' + k, 8, 'plaza']),
+  ['dargah_yousufain', 10, 'plaza'], ['hussain_shah_wali_dargah', 14, 'plaza'], ['moula_ali_dargah', 12, 'plaza'],
+  ['church_st_josephs', 14, 'garden'], ['church_st_marys', 16, 'garden'], ['church_wesley', 12, 'garden'],
+  ['church_1', 12, 'garden'], ['church_2', 8, 'garden'], ['st_johns_church_secunderabad', 12, 'garden'],
+  ['st_georges_church_abids', 10, 'garden'], ['holy_trinity_church_bolarum', 14, 'garden'],
+  ['gurudwara_gowliguda', 10, 'plaza'], ['ramakrishna_math', 14, 'garden'],
+  ['purani_haveli', 12, 'garden'], ['king_kothi', 14, 'garden'], ['errum_manzil', 16, 'garden'],
+  ['hill_fort_palace', 10, 'garden'], ['rashtrapati_nilayam', 18, 'garden'], ['falaknuma_palace', 16, 'garden'],
+  ['chowmahalla_palace', 6, 'garden'], ['high_court', 8, 'garden'], ['salar_jung_museum', 6, 'garden'],
+  ['osmania_hospital', 8, 'garden'], ['state_central_library', 8, 'garden'], ['nizam_college', 14, 'grass'],
+  ['city_college', 10, 'grass'], ['secretariat', 12, 'garden'], ['kachiguda_station', 10, 'plaza'],
+  ['nampally_station', 10, 'plaza'], ['secunderabad_station', 6, 'plaza'],
+];
+const COMPOUND_IDS = new Set(COMPOUNDS.map((c) => c[0] + '_compound'));
+const lmDisp = (id) => { const l = LM.get(id), v = V1L.get(id); return l && v ? [l.x - v.x, l.y - v.y] : null; };
+const plDisp = (id) => { const p = PL.get(id), v = V1P.get(id); return p && v ? [p.x - v.x, p.y - v.y] : null; };
+const parkHow = {};
+const WARP_PARKS = new Set(['nehru_zoo', 'osmania_campus', 'malakpet_race_course']); // big grounds without a real outline: v1 shape, warped to the real scale
+for (const v of V1.parks) {
+  if (COMPOUND_IDS.has(v.id)) continue; // regenerated below
+  let poly = null, how = '';
+  const c = parkClusterOf.get(v.id);
+  if (v.id === 'charminar_plaza') { poly = sqPoly(CHC, 120); how = 'cluster'; }
+  else if (c) { poly = v.poly.map((q) => tr(c, q)); how = 'cluster'; }
+  else if (REALPARK.has(v.id)) { poly = REALPARK.get(v.id); how = 'osm'; }
+  else if (HILL_PARK[v.id]) { poly = HILLS.get(HILL_PARK[v.id]).outline; how = 'dem'; }
+  else if (v.id === 'begumpet_runway') { poly = G.ribbon(RUNWAY.line, RUNWAY.hw); how = 'runway'; }
+  else if (/_platforms$/.test(v.id)) {
+    const st = LM.get(v.id.replace('_platforms', '_station'));
+    const rl = D.rails.filter((r) => r.id !== 'rail_sec_yard');
+    let best = null, bp = null; for (const r of rl) { const q = G.nearestOnLine(r.pts, st.x, st.y); if (q && (!best || q.d < best.d)) { best = q; bp = r.pts; } }
+    const cc = G.cum(bp), L = Math.max(st.w, st.d) + 60, a = Math.max(0, best.along - L / 2), b = Math.min(cc[cc.length - 1], best.along + L / 2);
+    const piece = []; for (let d2 = a; d2 <= b; d2 += 12) { const pp = G.atDist(bp, d2, cc); piece.push([pp.x, pp.y]); }
+    poly = G.ribbon(piece, 22); how = 'rail';
+  } else if (WARP_PARKS.has(v.id)) {
+    poly = v.poly.map((q) => mls(q[0], q[1])); how = 'mls';
+  } else {
+    // attach rigidly to the landmark it surrounds (most overlap), else to a place inside it, else warp
+    const bb = G.bbox(v.poly); let best = null, ba = 0;
+    const sg = /^school_(\d+)_ground$/.exec(v.id); if (sg && LM.has('school_' + sg[1])) { best = 'school_' + sg[1]; ba = Infinity; }
+    for (const l of V1.landmarks) {
+      const ox = Math.min(bb[2], l.x + l.w / 2) - Math.max(bb[0], l.x - l.w / 2), oy = Math.min(bb[3], l.y + l.d / 2) - Math.max(bb[1], l.y - l.d / 2);
+      if (ox > 0 && oy > 0 && ox * oy > ba && LM.has(l.id)) { ba = ox * oy; best = l.id; }
+    }
+    let disp = best ? lmDisp(best) : null; how = best ? 'lm:' + best : '';
+    if (!disp) { const pin = V1.places.find((q) => !q.alias && G.inPoly(q.x, q.y, v.poly) && PL.has(q.id)); if (pin) { disp = plDisp(pin.id); how = 'place:' + pin.id; } }
+    if (disp) poly = v.poly.map((q) => [q[0] + disp[0], q[1] + disp[1]]);
+    else { poly = v.poly.map((q) => mls(q[0], q[1])); how = 'mls'; }
+  }
+  parkHow[v.id] = how;
+  const o = Object.assign({}, v, { poly: poly.map((q) => [RD(clampX(q[0])), RD(clampY(q[1]))]) });
+  if (how === 'osm') o.conf = 'high'; else if (how === 'dem') o.conf = 'high'; else if (how === 'mls') o.conf = 'low';
+  PK.set(v.id, o);
+}
+// compounds around places of worship and palaces (v1 rule, from the final footprints)
+for (const [id, pad, kind, e0] of COMPOUNDS) {
+  const l = LM.get(id); if (!l) continue;
+  const e = e0 || [0, 0, 0, 0];
+  const r = [l.x - l.w / 2 - pad - e[0], l.y - l.d / 2 - pad - e[1], l.w + pad * 2 + e[0] + e[2], l.d + pad * 2 + e[1] + e[3]].map(RD);
+  PK.set(id + '_compound', { id: id + '_compound', name: l.name + ' compound', kind, poly: [[r[0], r[1]], [r[0] + r[2], r[1]], [r[0] + r[2], r[1] + r[3]], [r[0], r[1] + r[3]]] });
+}
+// the Musi riverbed (sand) and a few named hills as rock ground
+if (MUSI_BED) PK.set('musi_bed', { id: 'musi_bed', name: 'Musi riverbed', kind: 'ground', surface: 'sand', poly: MUSI_BED.map((q) => [RD(clampX(q[0])), RD(clampY(q[1]))]), conf: 'high' });
+for (const h of TERR.hills) if (HILL_EXTRA.has(h.id)) PK.set('hill_' + h.id, { id: 'hill_' + h.id, name: h.name, kind: 'rock', poly: HILLS.get(h.id).outline.map(ptR), conf: h.confidence });
+// real green spaces the v1 map did not have
+for (const [id, re] of [['jalagam_vengal_rao_park', /Jalagam Vengal Rao Park/], ['chacha_nehru_park', /^Chacha Nehru Park$/], ['ntr_stadium_ground', /^NTR Stadium$/]]) {
+  const it = LU(re); if (it) PK.set(id, { id, name: it.n, kind: /Stadium/.test(it.n) ? 'ground' : 'garden', poly: projRing(it.outer, 1.5).map(ptR), conf: 'high' });
+}
+const ORDER_PARKS = ['musi_bed'];
+D.parks = ORDER_PARKS.filter((id) => PK.has(id)).map((id) => PK.get(id)).concat([...PK.values()].filter((p) => !ORDER_PARKS.includes(p.id)));
+
+/* ===================================================================== 13. respect zones (v1 rule) */
+{
+  const PKm = new Map(D.parks.map((p) => [p.id, p]));
+  const bbr = (poly) => { const b = G.bbox(poly); return [b[0], b[1], b[2] - b[0], b[3] - b[1]]; };
+  const RK = { temple: 'temple', mahankali_temple: 'temple', sai_temple: 'temple', birla_mandir: 'temple', khairatabad_ganesh: 'temple',
+    mosque: 'mosque', spanish_mosque: 'mosque', mecca_masjid: 'mosque', dargah: 'dargah', church: 'church', gurudwara: 'gurudwara', ashurkhana: 'ashurkhana' };
+  const FC = 30;
+  const zone = (id, kind, l, o) => {
+    o = o || {};
+    const cp = PKm.get(id + '_compound');
+    const core = o.rect || (cp ? bbr(cp.poly) : [l.x - l.w / 2 - 6, l.y - l.d / 2 - 6, l.w + 12, l.d + 12]);
+    const rects = [core.map(RD)].concat((o.rects || []).map((r) => r.map(RD)));
+    const p = PL.get(o.place || id);
+    const face = o.face || l.face || null;
+    const [x, y, w, h] = core;
+    let fc = [], gate = p ? { x: p.x, y: p.y } : { x: l.x, y: l.y };
+    if (o.forecourt !== false) {
+      if (face === 'n') { fc = [[x - 10, y - FC, w + 20, FC]]; gate = { x: x + w / 2, y }; }
+      else if (face === 's') { fc = [[x - 10, y + h, w + 20, FC]]; gate = { x: x + w / 2, y: y + h }; }
+      else if (face === 'w') { fc = [[x - FC, y - 10, FC, h + 20]]; gate = { x, y: y + h / 2 }; }
+      else if (face === 'e') { fc = [[x + w, y - 10, FC, h + 20]]; gate = { x: x + w, y: y + h / 2 }; }
+      else fc = [[x - FC, y - FC, w + FC * 2, FC], [x - FC, y + h, w + FC * 2, FC], [x - FC, y, FC, h], [x + w, y, FC, h]];
+    }
+    D.respect.push({ id, name: o.name || l.name, kind, place: p ? (p.alias || p.id) : null, rects, polys: (o.polys || []).map((q) => q.map(ptR)), lines: (o.lines || []).map((ln) => ({ pts: ln.pts.map(ptR), r: ln.r })), forecourt: fc.map((r) => r.map(RD)), gate: { x: RD(gate.x), y: RD(gate.y) } });
+  };
+  for (const l of V1.landmarks) {
+    const k = RK[l.draw]; const L = LM.get(l.id);
+    if (!k || !L || l.id === 'mecca_masjid' || l.id === 'birla_mandir' || l.id === 'moula_ali_dargah') continue;
+    zone(l.id, k, L);
+  }
+  const mm = LM.get('mecca_masjid'), cy = PKm.get('mecca_masjid_courtyard');
+  zone('mecca_masjid', 'mosque', mm, { rects: cy ? [bbr(cy.poly)] : [], face: 'e', rect: [mm.x - mm.w / 2 - 4, mm.y - mm.d / 2 - 4, mm.w + 8 + (cy ? bbr(cy.poly)[2] : 0), mm.d + 8] });
+  const bm = LM.get('birla_mandir'), steps = ROADS_OUT.get('birla_mandir_steps');
+  zone('birla_mandir', 'temple', bm, { lines: steps ? [{ pts: steps.pts, r: steps.w / 2 + 4 }] : [] });
+  const ma = LM.get('moula_ali_dargah'), hill = PKm.get('moula_ali_hill');
+  zone('moula_ali_dargah', 'dargah', ma, { polys: hill ? [hill.poly] : [] });
+  const ch = LM.get('charminar');
+  zone('charminar', 'charminar', ch, { rect: [ch.x - ch.w / 2, ch.y - ch.d / 2, ch.w, ch.d], forecourt: false, name: 'Charminar (interior; the top-floor mosque)' });
+  const qs = PKm.get('qutb_shahi_gardens');
+  if (qs) { const b = bbr(qs.poly); zone('qutb_shahi_tombs', 'tomb', { x: b[0] + b[2] / 2, y: b[1] + b[3] / 2, w: b[2], d: b[3], name: 'Qutb Shahi Tombs', face: null }, { rect: b, forecourt: false }); }
+  if (LM.get('paigah_tombs')) zone('paigah_tombs', 'tomb', LM.get('paigah_tombs'));
+}
+
+/* ===================================================================== 14. trees */
+const TREE_OUT = [];
+{
+  const hand = [
+    ...[[4556, 2618], [4626, 2614], [4600, 2618], [4784, 2626], [5120, 2585], [5842, 600], [6230, 4160], [6460, 3970], [5000, 4390], [1704, 2918], [2412, 740], [3040, 2652]].map(([x, y]) => [x, y, 'coconut', 9]),
+    [3830, 2010, 'palm'], [3935, 2015, 'palm'], [3600, 1960, 'coconut'], [3740, 1995, 'coconut'], [3640, 2690, 'banyan', 20],
+    [3790, 2712, 'banyan', 16], [3620, 2530, 'banyan', 18], [4500, 1900, 'banyan', 20], [4560, 2020, 'gulmohar'], [4950, 880, 'banyan', 16],
+    [4585, 3360, 'banyan', 18], [4650, 3280, 'gulmohar'], [4662, 2700, 'neem', 12], [4620, 2712, 'neem', 11],
+    [6300, 2160, 'banyan', 22], [6150, 1700, 'banyan', 20], [2880, 1812, 'palm'], [2950, 1812, 'palm'],
+    [630, 500, 'coconut'], [720, 520, 'coconut'], [2560, 4800, 'banyan', 20], [2700, 4900, 'neem', 14],
+  ];
+  const colony = CLID.lakshmi_nagar_colony;
+  for (const [x, y, k, r] of hand) {
+    let nx, ny;
+    if (x >= colony.trees[0][0] && x <= colony.trees[0][2] && y >= colony.trees[0][1] && y <= colony.trees[0][3]) { nx = x + colony.T[0]; ny = y + colony.T[1]; }
+    else {
+      let best = null, bd = 150 * 150;
+      for (const l of V1.landmarks) { const d = (l.x - x) ** 2 + (l.y - y) ** 2; if (d < bd && LM.has(l.id)) { bd = d; best = lmDisp(l.id); } }
+      for (const q of V1.places) { const d = (q.x - x) ** 2 + (q.y - y) ** 2; if (d < bd && !q.alias && PL.has(q.id)) { bd = d; best = plDisp(q.id); } }
+      if (best) { nx = x + best[0]; ny = y + best[1]; } else [nx, ny] = mls(x, y);
+    }
+    const v = OCC.get(nx, ny); if (v === 1 || v === 2 || v === 3 || v === 6 || v === 4) continue;
+    TREE_OUT.push({ x: RD(nx), y: RD(ny), r: r || 9, kind: k });
+  }
+}
+const AVENUES = [
+  { road: 'necklace_rd', kind: 'coconut', every: 40, off: 5 },
+  { road: 'tank_bund', kind: 'palm', every: 70, off: 6 },
+  { road: 'ou_rd', kind: 'banyan', every: 80, off: 10 },
+  { road: 'secretariat_rd', kind: 'palm', every: 70, off: 8 },
+  { road: 'raj_bhavan_rd', kind: 'gulmohar', every: 70, off: 8 },
+  { road: 'sp_rd', kind: 'gulmohar', every: 80, off: 8 },
+  { road: 'jubilee_rd36', kind: 'palm', every: 80, off: 8 },
+  { road: 'banjara_rd1', kind: 'gulmohar', every: 80, off: 8 },
+  { road: 'lower_tank_bund', kind: 'neem', every: 90, off: 8 },
+  { road: 'indira_park_rd', kind: 'gulmohar', every: 90, off: 8 },
+  { road: 'sd_rd', kind: 'rain_tree', every: 90, off: 8 },
+];
+
+/* ===================================================================== 15. blocks, avenue trees, boulders (v1 expansion, polygon districts) */
+{
+  const GC = 8, GW = Math.ceil(W / GC), GH = Math.ceil(H / GC);
+  const occ = new Uint8Array(GW * GH);
+  let T = occ;
+  const markThick = (pts, hw) => {
+    for (let s2 = 0; s2 < pts.length - 1; s2++) {
+      const a = pts[s2], b = pts[s2 + 1];
+      const i0 = Math.max(0, Math.floor((Math.min(a[0], b[0]) - hw) / GC)), i1 = Math.min(GW - 1, Math.floor((Math.max(a[0], b[0]) + hw) / GC));
+      const j0 = Math.max(0, Math.floor((Math.min(a[1], b[1]) - hw) / GC)), j1 = Math.min(GH - 1, Math.floor((Math.max(a[1], b[1]) + hw) / GC));
+      const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const px = (i + 0.5) * GC, py = (j + 0.5) * GC;
+        let t = ((px - a[0]) * dx + (py - a[1]) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const qx = a[0] + dx * t - px, qy = a[1] + dy * t - py;
+        if (qx * qx + qy * qy <= hw * hw) T[j * GW + i] = 1;
+      }
+    }
+  };
+  const markPoly = (poly, grow) => {
+    let y0 = 1e9, y1 = -1e9; for (const p2 of poly) { y0 = Math.min(y0, p2[1]); y1 = Math.max(y1, p2[1]); }
+    for (let j = Math.max(0, Math.floor((y0 - grow) / GC)); j <= Math.min(GH - 1, Math.floor((y1 + grow) / GC)); j++) {
+      const y = (j + 0.5) * GC, xs = [];
+      for (let a = 0, b = poly.length - 1; a < poly.length; b = a++) { const ya = poly[a][1], yb = poly[b][1]; if ((ya > y) !== (yb > y)) xs.push(poly[a][0] + ((y - ya) / (yb - ya)) * (poly[b][0] - poly[a][0])); }
+      xs.sort((p2, q) => p2 - q);
+      for (let k = 0; k + 1 < xs.length; k += 2) for (let i = Math.max(0, Math.floor((xs[k] - grow) / GC)); i <= Math.min(GW - 1, Math.floor((xs[k + 1] + grow) / GC)); i++) T[j * GW + i] = 1;
+    }
+    if (grow > 0) markThick(poly.concat([poly[0]]), grow);
+  };
+  const markRect2 = (x, y, w, h, m) => {
+    for (let j = Math.max(0, Math.floor((y - m) / GC)); j <= Math.min(GH - 1, Math.floor((y + h + m - 0.01) / GC)); j++)
+      for (let i = Math.max(0, Math.floor((x - m) / GC)); i <= Math.min(GW - 1, Math.floor((x + w + m - 0.01) / GC)); i++) T[j * GW + i] = 1;
+  };
+  const markCircle = (x, y, r) => markRect2(x - r, y - r, r * 2, r * 2, 0);
+  for (const r of roadList()) markThick(r.pts, r.w / 2 + (FOOT[r.kind] || 0) + 2);
+  for (const r of D.rails) markThick(r.pts, 16);
+  for (const w of D.water) markPoly(w.poly, (w.bank || 0) + 4);
+  for (const l of LM.values()) markRect2(l.x - l.w / 2, l.y - l.d / 2, l.w, l.d, l.pad == null ? 4 : l.pad);
+  for (const r of D.roofs) if (!r.building) markRect2(r.rect[0], r.rect[1], r.rect[2], r.rect[3], 3);
+  for (const p2 of PL.values()) if (['playground', 'park', 'home', 'terrace'].includes(p2.kind)) markCircle(p2.x, p2.y, 12);
+  for (const t of TREE_OUT) markCircle(t.x, t.y, 5);
+  const occR = occ.slice();
+  T = occR;
+  for (const l of LM.values()) markRect2(l.x - l.w / 2, l.y - l.d / 2, l.w, l.d, 4);
+  for (const p2 of PL.values()) markCircle(p2.x, p2.y, 10);
+  // avenue trees check the fine placement raster (OCC) for roads / water / rails, and these coarse ones
+  // for places, footprints and other trees
+  const occTree = new Uint8Array(GW * GH); T = occTree;
+  for (const p2 of PL.values()) markCircle(p2.x, p2.y, 10);
+  for (const t of TREE_OUT) markCircle(t.x, t.y, 8);
+  const occRoadOnly = new Uint8Array(GW * GH); T = occRoadOnly;
+  for (const r of roadList()) markThick(r.pts, r.w / 2 + (FOOT[r.kind] || 0) + 2);
+  for (const r of D.rails) markThick(r.pts, 16);
+  for (const w of D.water) markPoly(w.poly, (w.bank || 0) + 4);
+  T = occR;
+  const markBoth = (fn) => { T = occ; fn(); T = occR; fn(); };
+  // avenue trees
+  const avStats = {};
+  for (const a of AVENUES) {
+    const r = ROADS_OUT.get(a.road); if (!r) continue;
+    r.trees = r.trees || a.kind;
+    const off = r.w / 2 + (FOOT[r.kind] || 0) + (a.off || 8);
+    for (const sd of [-1, 1]) {
+      let acc = a.every * 0.5;
+      for (let s2 = 0; s2 < r.pts.length - 1; s2++) {
+        const p0 = r.pts[s2], p1 = r.pts[s2 + 1];
+        const L = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) || 1, ux = (p1[0] - p0[0]) / L, uy = (p1[1] - p0[1]) / L;
+        for (; acc < L; acc += a.every) {
+          const x = p0[0] + ux * acc - uy * off * sd, y = p0[1] + uy * acc + ux * off * sd;
+          const i = Math.floor(x / GC), j = Math.floor(y / GC);
+          if (i < 1 || j < 1 || i >= GW - 1 || j >= GH - 1) continue;
+          // a free cell of the placement raster (no road / footpath / water / rail / footprint), clear of places and trees
+          let bad = 0;
+          for (const [ox, oy] of [[0, 0], [2, 0], [-2, 0], [0, 2], [0, -2]]) { const v = OCC.get(x + ox, y + oy); if (v !== 0 && v !== 7) { bad = v; break; } }
+          const why = bad ? 'occ' + bad : occTree[j * GW + i] ? 'tree/place' : occR[j * GW + i] && !occRoadOnly[j * GW + i] ? 'footprint' : '';
+          if (why) { avStats[a.road + ':' + why] = (avStats[a.road + ':' + why] || 0) + 1; continue; }
+          TREE_OUT.push({ x: RD(x), y: RD(y), r: a.kind === 'banyan' ? 16 : a.kind === 'palm' || a.kind === 'coconut' ? 9 : 11, kind: a.kind === 'rain_tree' ? 'banyan' : a.kind });
+          markBoth(() => markCircle(x, y, 6)); T = occTree; markCircle(x, y, a.every * 0.4); T = occR;
+        }
+        acc -= L;
+      }
+    }
+  }
+  vlog('avenue rejects', JSON.stringify(avStats));
+  markBoth(() => {
+    for (const p2 of D.parks) if (p2.kind !== 'rock') markPoly(p2.poly, 2);
+    for (const n of D.noFill) markRect2(n.rect[0], n.rect[1], n.rect[2], n.rect[3], 0);
+    const hm = PL.get('home'); markCircle(hm.x, hm.y, 24);
+  });
+  // boulder fields: the real rocky ground (DEM rock fields, granite hills); density by field
+  const FIELD_DENS = { banjara_jubilee_rocks: 1 / 9000, hitec_rocks: 1 / 12000, golconda_tombs_rocks: 1 / 9000, falaknuma_rocks: 1 / 7000, moula_ali_rocks: 1 / 7000, naubat_pahad_rock: 1 / 3500, ou_rocks_field: 1 / 14000 };
+  const fields = [];
+  for (const rf of ROCKFIELDS) for (const poly of rf.polys) fields.push({ poly, dens: FIELD_DENS[rf.id] || 1 / 10000, seed: G.strHash(rf.id) % 1000 });
+  for (const id of ['jalal_pahad', 'fakhruddin_gutta', 'kbr_hill', 'jubilee_hills_summit', 'film_nagar_hill', 'banjara_hills_summit', 'asman_garh', 'malkajgiri_hill']) if (HILLS.has(id)) fields.push({ poly: HILLS.get(id).outline, dens: 1 / 5000, seed: G.strHash(id) % 1000 });
+  let rocks = 0;
+  for (const f of fields) {
+    const bb = G.bbox(f.poly), area = Math.abs(G.polyArea(f.poly)), n = Math.min(260, Math.round(area * f.dens));
+    let placed = 0;
+    for (let k = 0; k < n * 5 && placed < n; k++) {
+      const cx = bb[0] + G.hash(k, f.seed, 11) * (bb[2] - bb[0]), cy = bb[1] + G.hash(k, f.seed, 23) * (bb[3] - bb[1]);
+      if (!G.inPoly(cx, cy, f.poly)) continue;
+      const r = Math.round(6 + G.hash(k, f.seed, 37) * 15);
+      const i0 = Math.floor((cx - r - 6) / GC), i1 = Math.floor((cx + r + 6) / GC), j0 = Math.floor((cy - r - 6) / GC), j1 = Math.floor((cy + r + 6) / GC);
+      let free = i0 >= 0 && j0 >= 0 && i1 < GW && j1 < GH;
+      for (let j = j0; free && j <= j1; j++) for (let i = i0; i <= i1; i++) if (occR[j * GW + i]) { free = false; break; }
+      if (!free) continue;
+      D.rocks.push({ x: RD(cx), y: RD(cy), r, h: Math.round(r * 1.1) }); rocks++;
+      markBoth(() => markCircle(cx, cy, r + 4)); placed++;
+      if (G.hash(k, f.seed, 41) < 0.45) {
+        const a = G.hash(k, f.seed, 43) * 6.283, rr = Math.max(5, Math.round(r * 0.6));
+        const bx = cx + Math.cos(a) * (r + rr - 2), by = cy + Math.sin(a) * (r + rr - 2);
+        const bi = Math.floor(bx / GC), bj = Math.floor(by / GC);
+        if (bi > 0 && bj > 0 && bi < GW && bj < GH && !occR[bj * GW + bi]) { D.rocks.push({ x: RD(bx), y: RD(by), r: rr, h: Math.round(rr * 1.1) }); markBoth(() => markCircle(bx, by, rr + 3)); }
+      }
+    }
+  }
+  // v1's hand-placed rocks (OU campus, Indira Park rock garden) move with their landmark / park
+  const ouD = lmDisp('osmania_university'), ipP = PK.get('indira_park');
+  for (const [x, y, r] of [[6000, 1560, 14], [6080, 1640, 10], [6480, 1560, 16], [6510, 2150, 12], [6050, 2260, 14], [6400, 2280, 9], [5980, 2050, 11]]) {
+    const [nx, ny] = mls(x, y); const i = Math.floor(nx / GC), j = Math.floor(ny / GC); if (occR[j * GW + i]) continue; D.rocks.push({ x: RD(nx), y: RD(ny), r, h: Math.round(r * 1.1) }); markBoth(() => markCircle(nx, ny, r + 4));
+  }
+  if (ipP) { const c = G.centroid(ipP.poly); for (const [dx, dy, r] of [[40, -60, 12], [20, -20, 8], [60, 40, 9]]) { const nx = c[0] + dx, ny = c[1] + dy, i = Math.floor(nx / GC), j = Math.floor(ny / GC); if (occR[j * GW + i]) continue; D.rocks.push({ x: RD(nx), y: RD(ny), r, h: Math.round(r * 1.1) }); markBoth(() => markCircle(nx, ny, r + 4)); } }
+  T = occ;
+  for (const p2 of D.parks) if (p2.kind === 'rock') markPoly(p2.poly, 2);
+  vlog('rocks', D.rocks.length);
+
+  // building blocks: greedy square-ish rectangles of free land on a 16 u raster, one district each
+  const C2 = 16, W2 = Math.ceil(GW / 2), H2 = Math.ceil(GH / 2);
+  const occ2 = new Uint8Array(W2 * H2), near = new Uint8Array(W2 * H2);
+  for (let j = 0; j < H2; j++) for (let i = 0; i < W2; i++) {
+    const o = (j * 2) * GW + i * 2;
+    occ2[j * W2 + i] = occ[o] | (i * 2 + 1 < GW ? occ[o + 1] : 1) | (j * 2 + 1 < GH ? occ[o + GW] : 1) | (i * 2 + 1 < GW && j * 2 + 1 < GH ? occ[o + GW + 1] : 1);
+  }
+  // only within reach of a street (dense districts reach further)
+  const REACH = { oldcity: 200, market: 200, colonial: 200, colony: 180, cantonment: 170, posh: 170, rocky: 120, hitec: 120 };
+  const distIdx = new Int16Array(W2 * H2);
+  for (let j = 0; j < H2; j++) for (let i = 0; i < W2; i++) distIdx[j * W2 + i] = DR.get(Math.min(W - 1, i * C2 + 8), Math.min(H - 1, j * C2 + 8)) - 1;
+  for (const r of roadList()) {
+    if (r.kind === 'path') continue;
+    for (let k = 0; k < r.pts.length - 1; k++) {
+      const a = r.pts[k], b = r.pts[k + 1];
+      const d0 = districtAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), RCH = d0 ? REACH[d0.style] || 160 : 160;
+      const i0 = Math.max(0, Math.floor((Math.min(a[0], b[0]) - RCH) / C2)), i1 = Math.min(W2 - 1, Math.floor((Math.max(a[0], b[0]) + RCH) / C2));
+      const j0 = Math.max(0, Math.floor((Math.min(a[1], b[1]) - RCH) / C2)), j1 = Math.min(H2 - 1, Math.floor((Math.max(a[1], b[1]) + RCH) / C2));
+      const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const o = j * W2 + i; if (near[o]) continue;
+        const px = (i + 0.5) * C2, py = (j + 0.5) * C2;
+        let t = ((px - a[0]) * dx + (py - a[1]) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const qx = a[0] + dx * t - px, qy = a[1] + dy * t - py;
+        if (qx * qx + qy * qy <= RCH * RCH) near[o] = 1;
+      }
+    }
+  }
+  for (let o = 0; o < W2 * H2; o++) if (!near[o]) occ2[o] = 1;
+  const used = new Uint8Array(W2 * H2);
+  const tilesOf = new Map(); // district index -> its cells' bbox
+  for (let j = 0; j < H2; j++) for (let i = 0; i < W2; i++) { const k = distIdx[j * W2 + i]; if (k < 0) continue; const b = tilesOf.get(k) || [1e9, 1e9, -1, -1]; b[0] = Math.min(b[0], i); b[1] = Math.min(b[1], j); b[2] = Math.max(b[2], i); b[3] = Math.max(b[3], j); tilesOf.set(k, b); }
+  for (let pass = 0; pass < 2; pass++) for (const [k, bb] of tilesOf) {
+    const d = D.districts[k]; if (!d.fill) continue;
+    const maxC = Math.max(2, Math.round((d.lot[1] * 1.5) / C2)), minC = Math.max(2, Math.ceil(d.lot[0] / C2));
+    const free = (q) => !occ2[q] && !used[q] && distIdx[q] === k;
+    const [ia, ja, ib, jb] = bb;
+    for (let tj = Math.floor(ja / maxC) * maxC; tj <= jb; tj += maxC) for (let ti = Math.floor(ia / maxC) * maxC; ti <= ib; ti += maxC) {
+      const ta = Math.max(ti, ia), tb = pass ? Math.min(ib + 1, W2) : Math.min(ti + maxC, ib + 1), tc = Math.max(tj, ja), td = pass ? Math.min(jb + 1, H2) : Math.min(tj + maxC, jb + 1);
+      for (let j = tc; j < td; j++) for (let i = ta; i < tb; i++) {
+        const o = j * W2 + i; if (!free(o)) continue;
+        let fits = i + minC <= tb && j + minC <= td;
+        for (let jj = j; fits && jj < j + minC; jj++) for (let ii = i; ii < i + minC; ii++) if (!free(jj * W2 + ii)) { fits = false; break; }
+        if (!fits) continue;
+        let w = minC, h = minC;
+        const lim = pass ? maxC : Infinity;
+        for (;;) {
+          let cw = i + w < tb && w < lim, ch = j + h < td && h < lim;
+          for (let q = 0; cw && q < h; q++) if (!free((j + q) * W2 + i + w)) cw = false;
+          for (let q = 0; ch && q < w; q++) if (!free((j + h) * W2 + i + q)) ch = false;
+          if (!cw && !ch) break;
+          if (cw && (!ch || w <= h)) w++; else h++;
+        }
+        for (let jj = j; jj < j + h; jj++) for (let q = 0; q < w; q++) used[jj * W2 + i + q] = 1;
+        if (G.hash(i, j, 7 + pass * 2) > d.fill) continue;
+        D.blocks.push({ rect: [i * C2, j * C2, w * C2, h * C2], style: d.style, seed: (i * 7349 + j * 131 + pass * 7) % 100000, pass });
+      }
+    }
+  }
+  vlog('blocks', D.blocks.length, 'trees', TREE_OUT.length);
+}
+D.trees = TREE_OUT;
+
+/* ===================================================================== 16. assemble */
+{
+  const home = PL.get('home');
+  D.spawns = { player: [home.x, home.y], home: [home.x, home.y], title: [RD(CHC[0]), RD(CHC[1] - 60)] };
+  D.noFill.push({ rect: (() => { const b = G.bbox(G.ribbon(RUNWAY.line, 90)); return [RD(b[0]), RD(b[1]), RD(b[2] - b[0]), RD(b[3] - b[1])]; })(), why: 'Begumpet airfield' });
+  // output order: v1 order for places / landmarks (stable diffs), new things after
+  const lmOrder = V1.landmarks.map((l) => l.id).filter((id) => LM.has(id)).concat([...LM.keys()].filter((id) => !V1L.has(id)));
+  D.landmarks = lmOrder.map((id) => { const l = LM.get(id); delete l._spot; delete l._road; delete l._rot; return l; });
+  D.places = V1.places.map((p) => PL.get(p.id));
+  for (const p of D.places) delete p.how;
+  // roads: the network (curated, then cluster, then infill) with integer points
+  D.roads = roadList().map((r) => {
+    const o = { id: r.id, name: r.name, kind: r.kind, w: r.w, pts: r.pts.map(ptR) };
+    for (const k of ['median', 'spur', 'trees', 'oneway', 'pothole', 'conf', 'src', 'realName']) if (r[k] != null) o[k] = r[k];
+    return o;
+  });
+  // clusters: rigid translations (for modules that kept v1 coordinates near a cluster)
+  for (const c of CLUSTERS) D.clusters[c.id] = { dx: c.T[0], dy: c.T[1], v1Anchor: c.v1Anchor, anchor: [RD(c.v1Anchor[0] + c.T[0]), RD(c.v1Anchor[1] + c.T[1])], moved: c.moved || 0, conf: c.conf };
+  D.geo = {
+    preset: GEO.PRESET, frame: { lonW: +GEO.FRAME.lonW.toFixed(5), lonE: +GEO.FRAME.lonE.toFixed(5), latS: +GEO.FRAME.latS.toFixed(5), latN: +GEO.FRAME.latN.toFixed(5) },
+    baseUnitsPerMetre: GEO.BASE_UPM, projection: 'tools/geo/project.cjs (equirectangular about 17.3935 N 78.448 E + smooth monotonic warp)',
+    credits: 'Map reference: DataMeet Municipal Spatial Data (CC BY 4.0) and © OpenStreetMap contributors (ODbL)',
+    attribution: ['Map reference: DataMeet Municipal Spatial Data (CC BY 4.0) and © OpenStreetMap contributors (ODbL)', 'Roads, water, parks: © OpenStreetMap contributors (ODbL), via Overture Maps Foundation and the Geofabrik-schema Hyderabad extract', 'Railway stations: datameet/railways (CC0)', 'Elevation: Terrain Tiles on AWS Open Data (SRTM, public domain)'],
+  };
+}
+/* ===================================================================== 17. emit */
+function emit() {
+  const J = (v) => JSON.stringify(v);
+  const arr = (list, fmt) => '[\n' + list.map((x) => '    ' + (fmt ? fmt(x) : J(x))).join(',\n') + '\n  ]';
+  const counts = { districts: D.districts.length, water: D.water.length, roads: D.roads.length, rails: D.rails.length, parks: D.parks.length, landmarks: D.landmarks.length, places: D.places.length, blocks: D.blocks.length, rocks: D.rocks.length, trees: D.trees.length, roofs: D.roofs.length, respect: D.respect.length };
+  const roadsBySrc = {}; for (const r of D.roads) roadsBySrc[r.src || 'roads'] = (roadsBySrc[r.src || 'roads'] || 0) + 1;
+  // MLS control points for fromV1 (v1 x, y -> v2 x, y), compact
+  const cp = MLS_CP.map((c) => c.map(RD));
+  const head = `/* NOSTALGIA — worlddata.js   (GENERATED: do not edit by hand; edit tools/geo/build_worlddata.cjs and run it)
+ * MAP_PLAN_FINAL — Map v2: the real Hyderabad + Secunderabad as N.WORLD_DATA (amendment A1).
+ * Owner: map builder. Generated ${new Date().toISOString().slice(0, 10)} by tools/geo/build_worlddata.cjs from design/geo/*.json,
+ * tools/geo/project.cjs and design/geo/worlddata_v1.js (the hand-made v1 map: every id, kind, name, sign, draw id,
+ * variant, roof, plank, respect zone, podium, hide spot, bus stop and landmark size comes from there).
+ *
+ * World: ${W} x ${H} u (sets N.WORLD_W / N.WORLD_H below; core.js keeps 8000 x 6000 only as a default).
+ * Frame: lon ${GEO.FRAME.lonW.toFixed(5)}-${GEO.FRAME.lonE.toFixed(5)} E, lat ${GEO.FRAME.latS.toFixed(5)}-${GEO.FRAME.latN.toFixed(5)} N (24 x 18 km), 1.6 m per u
+ * at the base scale; a smooth monotonic warp gives the dense cores more room (Charminar ~1.15 u/m, Abids ~1.0,
+ * Tank Bund / Secunderabad ~0.77, outskirts ~0.6). North is up, +y is south; compass bearings are kept (<= 14 deg).
+ *
+ * ${MAP_CREDITS}
+ * Roads, water, rail, parks: (c) OpenStreetMap contributors (ODbL 1.0) via Overture Maps Foundation and the Hyderabad
+ * district OSM extract (Geofabrik free-layer schema); stations: datameet/railways (CC0); hills: AWS Terrain Tiles (SRTM,
+ * public domain). Every place / landmark carries conf ('high' | 'medium' | 'low') and ll ([lat, lon] used); the
+ * sources are in design/geo/places.json. Places in the fictional colony keep game-unit layouts (clusters below).
+ *
+ * Format: ARCHITECTURE.md §7 plus (v2):
+ *  - districts[]: {id, name, nameTe, rect (bounding box, for old consumers), poly [[x,y]...] (main ring, world units),
+ *    polys? (every ring when a district has several parts), holes? (rings that belong to other districts),
+ *    ground, style, fill, lot, wards (GHMC wards), conf}. The districts tile the world; rect consumers that let
+ *    "later win" get the smallest last. districtGrid {cell 32, w, h, rle [index, run, ...]} is the exact
+ *    gap-free lookup (index into districts[], row-major).
+ *  - roads[]: + pothole (0 smooth .. 1 cratered; amendment A2 hint by road kind / district), conf, src ('roads' =
+ *    curated real alignment, 'cluster' = a game layout, 'osm' / 'grid' = residential infill), realName.
+ *  - water[]: lakes / tanks keyholed around islands; the Musi is a 2003 dry-season channel ('river') inside the
+ *    sandy riverbed park 'musi_bed'; nalas are narrow channels ('nala'); color / bank as in v1.
+ *  - landmarks[]: + conf, ll, v1 ([x, y] in the v1 map: modules with hard-coded v1 offsets near a landmark use
+ *    l.x + (oldX - l.v1[0])), cluster (id of the rigid layout it belongs to), street (the road a shop fronts).
+ *  - places[]: + conf, ll. clusters{id: {dx, dy, v1Anchor, anchor}}: rigid layouts moved by (dx, dy) whole cells.
+ *  - terrain.hills[]: {id, name, peak, relM (height above the surrounding ground, m), outline} for the 3D view.
+ *  - fromV1(x, y) -> [x, y]: converts a v1 coordinate (exact inside a cluster, else a local fit through ${cp.length}
+ *    known places). For module constants that were written against the 8000 x 6000 map.
+ *
+ * Counts: ${J(counts)}
+ * Roads by source: ${J(roadsBySrc)}
+ */
+// MAP_PLAN_FINAL
+(() => {
+  'use strict';
+  const N = (window.N = window.N || {});
+  N.WORLD_W = ${W};
+  N.WORLD_H = ${H};
+  const D = {
+    version: 2,
+    size: [${W}, ${H}],
+    geo: ${J(D.geo)},
+`;
+  const parts = [];
+  parts.push(`    districts: ${arr(D.districts)},`);
+  parts.push(`    districtGrid: ${J(D.districtGrid)},`);
+  parts.push(`    water: ${arr(D.water)},`);
+  parts.push(`    roads: ${arr(D.roads.filter((r) => r.src !== 'osm' && r.src !== 'grid'))},`);
+  parts.push(`    rails: ${arr(D.rails)},`);
+  parts.push(`    parks: ${arr(D.parks)},`);
+  parts.push(`    landmarks: ${arr(D.landmarks)},`);
+  parts.push(`    places: ${arr(D.places)},`);
+  parts.push(`    roofs: ${arr(D.roofs)},`);
+  parts.push(`    planks: ${arr(D.planks)},`);
+  parts.push(`    respect: ${arr(D.respect)},`);
+  parts.push(`    buildings: [],`);
+  parts.push(`    noFill: ${J(D.noFill)},`);
+  parts.push(`    spawns: ${J(D.spawns)},`);
+  parts.push(`    clusters: ${J(D.clusters)},`);
+  parts.push(`    terrain: ${J(D.terrain)},`);
+  const STY = [...new Set(D.blocks.map((b) => b.style))];
+  // infill streets (OSM residential lanes): [id, name index, kind index, w, pothole x100, x0, y0, dx1, dy1, ...]
+  const inf = D.roads.filter((r) => r.src === 'osm' || r.src === 'grid');
+  const RN = [...new Set(inf.map((r) => r.name))], RK = ['lane', 'street', 'arterial', 'path'];
+  const enc = (r) => { const f = [r.id, RN.indexOf(r.name), RK.indexOf(r.kind) + (r.src === 'grid' ? 10 : 0), r.w, Math.round((r.pothole || 0) * 100)]; let px = 0, py = 0; r.pts.forEach((q, k) => { f.push(k ? q[0] - px : q[0], k ? q[1] - py : q[1]); px = q[0]; py = q[1]; }); return J(f); };
+  const tail = `  };
+  // infill streets (residential lanes from OpenStreetMap, ODbL), packed: [id, name, kind, w, pothole%, x0, y0, dx, dy, ...]
+  const RN = ${J(RN)}, RK = ${J(RK)};
+  const RI = [
+${inf.map((r) => '    ' + enc(r)).join(',\n')}
+  ];
+  for (const f of RI) {
+    const pts = []; let x = 0, y = 0;
+    for (let k = 5; k < f.length; k += 2) { x = k === 5 ? f[k] : x + f[k]; y = k === 5 ? f[k + 1] : y + f[k + 1]; pts.push([x, y]); }
+    D.roads.push({ id: f[0], name: RN[f[1]], kind: RK[f[2] % 10], w: f[3], pts, pothole: f[4] / 100, conf: 'high', src: f[2] >= 10 ? 'grid' : 'osm' });
+  }
+  // compact lists: blocks [x/16, y/16, w/16, h/16, style index, pass], rocks [x, y, r, h], trees [x, y, r, kind index]
+  const STY = ${J(STY)};
+  const BLK = ${J(D.blocks.flatMap((b) => [b.rect[0] / 16, b.rect[1] / 16, b.rect[2] / 16, b.rect[3] / 16, STY.indexOf(b.style), b.pass || 0]))};
+  D.blocks = [];
+  for (let k = 0; k < BLK.length; k += 6) D.blocks.push({ rect: [BLK[k] * 16, BLK[k + 1] * 16, BLK[k + 2] * 16, BLK[k + 3] * 16], style: STY[BLK[k + 4]], seed: (BLK[k] * 7349 + BLK[k + 1] * 131 + BLK[k + 5] * 7) % 100000 });
+  D.rocks = ${J(D.rocks.map((r) => [r.x, r.y, r.r, r.h]))}.map((r) => ({ x: r[0], y: r[1], r: r[2], h: r[3] }));
+  const TK = ${J([...new Set(D.trees.map((t) => t.kind))])};
+  D.trees = ${J(D.trees.map((t) => [t.x, t.y, t.r, [...new Set(D.trees.map((q) => q.kind))].indexOf(t.kind)]))}.map((t) => ({ x: t[0], y: t[1], r: t[2], kind: TK[t[3]] }));
+  // v1 (8000 x 6000) coordinates -> this map: exact inside a rigid cluster, else moving-least-squares (affine)
+  const CP = ${J(cp)};
+  const CLB = ${J(CLUSTERS.map((c) => { const pts = []; for (const id of c.lms) { const l = V1L.get(id); if (l) pts.push([l.x - l.w / 2, l.y - l.d / 2], [l.x + l.w / 2, l.y + l.d / 2]); } for (const id of c.places) { const q = V1P.get(id); if (q) pts.push([q.x, q.y]); } for (const id of c.roofs) { const r = V1RF.get(id); pts.push([r.rect[0], r.rect[1]], [r.rect[0] + r.rect[2], r.rect[1] + r.rect[3]]); } const b = G.bbox(pts); return [RD(b[0] - 20), RD(b[1] - 20), RD(b[2] + 20), RD(b[3] + 20), c.T[0], c.T[1]]; }))};
+  D.fromV1 = function (x, y) {
+    for (const b of CLB) if (x >= b[0] && y >= b[1] && x <= b[2] && y <= b[3]) return [x + b[4], y + b[5]];
+    let sw = 0, px = 0, py = 0, qx = 0, qy = 0; const ws = new Array(CP.length);
+    for (let i = 0; i < CP.length; i++) { const c = CP[i], w = 1 / ((c[0] - x) * (c[0] - x) + (c[1] - y) * (c[1] - y) + 400); ws[i] = w; sw += w; px += w * c[0]; py += w * c[1]; qx += w * c[2]; qy += w * c[3]; }
+    px /= sw; py /= sw; qx /= sw; qy /= sw;
+    let a = 0, b = 0, d = 0, m00 = 0, m01 = 0, m10 = 0, m11 = 0;
+    for (let i = 0; i < CP.length; i++) { const c = CP[i], w = ws[i], hx = c[0] - px, hy = c[1] - py, gx = c[2] - qx, gy = c[3] - qy; a += w * hx * hx; b += w * hx * hy; d += w * hy * hy; m00 += w * hx * gx; m01 += w * hx * gy; m10 += w * hy * gx; m11 += w * hy * gy; }
+    const det = a * d - b * b || 1e-9, i00 = d / det, i01 = -b / det, i11 = a / det;
+    const M00 = i00 * m00 + i01 * m10, M01 = i00 * m01 + i01 * m11, M10 = i01 * m00 + i11 * m10, M11 = i01 * m01 + i11 * m11;
+    const vx = x - px, vy = y - py;
+    return [Math.round(vx * M00 + vy * M10 + qx), Math.round(vx * M01 + vy * M11 + qy)];
+  };
+  D.meta = { generator: 'tools/geo/build_worlddata.cjs', blocks: D.blocks.length, rocks: D.rocks.length, trees: D.trees.length, roads: D.roads.length };
+  N.WORLD_DATA = D;
+})();
+`;
+  return head + parts.join('\n') + '\n' + tail;
+}
+const MAP_CREDITS = 'Map reference: DataMeet Municipal Spatial Data (CC BY 4.0) and © OpenStreetMap contributors (ODbL).';
+const text = emit();
+function writeAtomic(file, txt) { const tmp = file + '.tmp-' + process.pid; fs.writeFileSync(tmp, txt); fs.renameSync(tmp, file); }
+if (require.main === module) {
+  const live = path.join(ROOT, 'src/worlddata.js');
+  if (OUT_FILE) { writeAtomic(path.resolve(OUT_FILE), text); log('wrote', OUT_FILE, (text.length / 1024).toFixed(0) + ' KB'); }
+  else {
+    const next = path.join(ROOT, 'src/.worlddata.next.js');
+    writeAtomic(next, text);
+    log('built', path.relative(ROOT, next), (text.length / 1024).toFixed(0) + ' KB in', ((Date.now() - T0) / 1000).toFixed(1) + ' s');
+    const VM = require(path.join(ROOT, 'tools/validate_map.cjs'));
+    const Dn = VM.loadWorldData(next);
+    const res = VM.validate(Dn);
+    for (const w of res.warns) log('WARN ', w);
+    for (const e of res.errors) log('ERROR', e);
+    let regOk = true;
+    try { const CR2 = require(path.join(ROOT, 'tools/check_registry.cjs')); const r = CR2.check(Dn); for (const e of r.errors) log('REGISTRY', e); regOk = !r.errors.length; } catch (e) { log('registry check failed to run:', e.message); regOk = false; }
+    if (res.errors.length || !regOk) { log(`NOT swapped: ${res.errors.length} map errors${regOk ? '' : ', registry errors'} (the live src/worlddata.js is unchanged; candidate kept in src/.worlddata.next.js)`); process.exitCode = 1; }
+    else if (argv.includes('--no-swap')) log('valid; --no-swap: live map unchanged');
+    else { fs.renameSync(next, live); log('swapped into src/worlddata.js (atomic rename)'); }
+  }
+  log(`${warnings.length} builder warnings${VERBOSE ? '' : ' (--verbose lists them)'}`);
+}
+module.exports = { D, text, warnings };

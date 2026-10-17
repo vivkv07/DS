@@ -3,13 +3,15 @@
  * Loads src/worlddata.js in a sandbox (no browser) and checks the map:
  *  - ids unique (places, landmarks, roads, rails, parks, water, districts)
  *  - every must-have id from design/places_registry.md is present (+ prefix counts)
- *  - everything inside the 8000 x 6000 world
- *  - districts tile the world (no gaps, no overlaps)
+ *  - everything inside the world (size from WORLD_DATA.size: 15000 x 11250 for Map v2, 8000 x 6000 for v1)
+ *  - districts tile the world: v2 polygons (poly / polys / holes) with at most a boundary sliver of
+ *    overlap or gap, and the run-length districtGrid covers every cell; v1 rects (no gaps, no overlaps)
+ *  - roads cross the Musi channel only on bridges (kind 'bridge'); rails stay in bounds
  *  - places sit on walkable cells: not in water, landmark/building footprints, rocks
  *  - landmark / building footprints do not sit on roads or water (except noSolid ones)
  *  - roads form one connected network (same T-junction + crossing rules as world.js)
- * Prints stats. Exit code 1 on errors.  Usage: node tools/validate_map.cjs [--quiet]
- * Also exports loadWorldData() for tests/map_preview.cjs.
+ * Prints stats. Exit code 1 on errors.  Usage: node tools/validate_map.cjs [--quiet] [--file path/to/worlddata.js]
+ * Also exports loadWorldData(file?) for tests/map_preview.cjs and tools/geo/build_worlddata.cjs.
  */
 'use strict';
 const fs = require('fs');
@@ -17,10 +19,11 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.resolve(__dirname, '..');
-const W = 8000, H = 6000;
+let W = 8000, H = 6000; // replaced by WORLD_DATA.size in validate()
 
-function loadWorldData() {
-  const code = fs.readFileSync(path.join(ROOT, 'src/worlddata.js'), 'utf8');
+function loadWorldData(file) {
+  file = file || process.env.WORLDDATA || path.join(ROOT, 'src/worlddata.js');
+  const code = fs.readFileSync(file, 'utf8');
   const sandbox = { window: { N: {} }, console, Math, performance: { now: () => Date.now() } };
   sandbox.window.window = sandbox.window;
   vm.createContext(sandbox);
@@ -29,6 +32,8 @@ function loadWorldData() {
   const D = sandbox.window.N.WORLD_DATA;
   if (!D) throw new Error('worlddata.js did not set N.WORLD_DATA');
   D._loadMs = Date.now() - t0;
+  D._worldW = sandbox.window.N.WORLD_W; D._worldH = sandbox.window.N.WORLD_H;
+  delete D.fromV1;
   D._hasMarker = /\/\/ MAP_PLAN_FINAL/.test(code.slice(0, 4000));
   return JSON.parse(JSON.stringify(D)); // plain objects (strip sandbox prototypes)
 }
@@ -112,6 +117,8 @@ function validate(D, opts) {
   opts = opts || {};
   const errors = [], warns = [];
   const E = (m) => errors.push(m), Wn = (m) => warns.push(m);
+  [W, H] = D.size || [8000, 6000];
+  if (D.version >= 2 && (D._worldW !== W || D._worldH !== H)) E(`worlddata.js must set N.WORLD_W/N.WORLD_H to ${W} x ${H} (has ${D._worldW} x ${D._worldH})`);
 
   if (!D._hasMarker) E('missing "// MAP_PLAN_FINAL" marker near the top of worlddata.js');
 
@@ -139,13 +146,65 @@ function validate(D, opts) {
   for (const b of D.blocks) { const [x, y, w, h] = b.rect; if (!inB(x, y) || !inB(x + w, y + h)) E('block out of bounds ' + b.rect); }
 
   // ---- districts tile the world
-  const DG = 10, dgw = W / DG, dgh = H / DG; const dcount = new Uint8Array(dgw * dgh);
-  for (const d of D.districts) { const [x, y, w, h] = d.rect; for (let j = Math.floor(y / DG); j < Math.ceil((y + h) / DG); j++) for (let i = Math.floor(x / DG); i < Math.ceil((x + w) / DG); i++) if (i >= 0 && j >= 0 && i < dgw && j < dgh) dcount[j * dgw + i]++; }
-  let gaps = 0, over = 0; for (const c of dcount) { if (c === 0) gaps++; if (c > 1) over++; }
-  if (gaps) E(`districts leave ${gaps} gap cells (10u)`); if (over) E(`districts overlap in ${over} cells (10u)`);
+  if (D.districts.some((d) => d.poly)) {
+    // v2 polygons: every 16 u cell centre in exactly one district (outer rings minus holes); boundary slivers allowed
+    const DG = 16, dgw = Math.ceil(W / DG), dgh = Math.ceil(H / DG), cnt = new Uint8Array(dgw * dgh);
+    const fill = (poly, v) => {
+      let y0 = Infinity, y1 = -Infinity; for (const p of poly) { y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+      for (let j = Math.max(0, Math.floor(y0 / DG)); j <= Math.min(dgh - 1, Math.floor(y1 / DG)); j++) {
+        const y = (j + 0.5) * DG, xs = [];
+        for (let a = 0, b = poly.length - 1; a < poly.length; b = a++) { const ya = poly[a][1], yb = poly[b][1]; if ((ya > y) !== (yb > y)) xs.push(poly[a][0] + ((y - ya) / (yb - ya)) * (poly[b][0] - poly[a][0])); }
+        xs.sort((p, q) => p - q);
+        for (let k = 0; k + 1 < xs.length; k += 2) for (let i = Math.max(0, Math.ceil(xs[k] / DG - 0.5)); i <= Math.min(dgw - 1, Math.floor(xs[k + 1] / DG - 0.5)); i++) cnt[j * dgw + i] += v;
+      }
+    };
+    for (const d of D.districts) {
+      if (!d.poly || d.poly.length < 3) { E(`district ${d.id} has no polygon`); continue; }
+      for (const p of d.polys || [d.poly]) fill(p, 1);
+      for (const h of d.holes || []) fill(h, -1);
+      if (!d.rect || d.rect.length !== 4) E(`district ${d.id} has no bounding rect`);
+    }
+    let gaps = 0, over = 0; for (const c of cnt) { if (c === 0) gaps++; else if (c > 1 && c < 200) over++; }
+    const tot = dgw * dgh;
+    if (gaps / tot > 0.004) E(`district polygons leave ${(100 * gaps / tot).toFixed(2)} % of the world uncovered`); else if (gaps) Wn(`district polygons: boundary slivers uncovered ${gaps} cells of 16 u (${(100 * gaps / tot).toFixed(3)} %; districtGrid covers them)`);
+    if (over / tot > 0.004) E(`district polygons overlap on ${(100 * over / tot).toFixed(2)} % of the world`); else if (over) Wn(`district polygons: boundary slivers overlap ${over} cells of 16 u`);
+    const g = D.districtGrid;
+    if (!g) E('missing districtGrid'); else {
+      let n = 0, bad = 0; for (let k = 0; k < g.rle.length; k += 2) { n += g.rle[k + 1]; if (g.rle[k] < 0 || g.rle[k] >= D.districts.length) bad += g.rle[k + 1]; }
+      if (n !== g.w * g.h) E(`districtGrid covers ${n} cells, expected ${g.w * g.h}`);
+      if (bad) E(`districtGrid has ${bad} cells without a district`);
+      if (g.w * g.cell < W || g.h * g.cell < H) E('districtGrid is smaller than the world');
+    }
+  } else {
+    const DG = 10, dgw = W / DG, dgh = H / DG; const dcount = new Uint8Array(dgw * dgh);
+    for (const d of D.districts) { const [x, y, w, h] = d.rect; for (let j = Math.floor(y / DG); j < Math.ceil((y + h) / DG); j++) for (let i = Math.floor(x / DG); i < Math.ceil((x + w) / DG); i++) if (i >= 0 && j >= 0 && i < dgw && j < dgh) dcount[j * dgw + i]++; }
+    let gaps = 0, over = 0; for (const c of dcount) { if (c === 0) gaps++; if (c > 1) over++; }
+    if (gaps) E(`districts leave ${gaps} gap cells (10u)`); if (over) E(`districts overlap in ${over} cells (10u)`);
+  }
+  for (const r of D.rails || []) for (const p of r.pts) if (!inB(p[0], p[1], 80)) { E(`rail ${r.id} point out of bounds ${p}`); break; }
+
+  // ---- roads cross the Musi only on bridges
+  const musi = (D.water || []).find((w) => w.id === 'musi');
+  if (musi) {
+    const mp = musi.poly, bad = [];
+    for (const r of D.roads) {
+      if (r.kind === 'bridge') continue;
+      let hit = false;
+      for (let s = 0; s < r.pts.length - 1 && !hit; s++) for (let k = 0; k < mp.length; k++) { if (segInter(r.pts[s], r.pts[s + 1], mp[k], mp[(k + 1) % mp.length])) { hit = true; break; } }
+      if (hit) bad.push(r.id);
+    }
+    // a road may touch the channel where it meets a bridge head; it must not cross it
+    const realCross = bad.filter((id) => {
+      const r = D.roads.find((q) => q.id === id);
+      const inside = (p) => inPoly(p[0], p[1], mp);
+      return !inside(r.pts[0]) && !inside(r.pts[r.pts.length - 1]);
+    });
+    for (const id of realCross) E(`road ${id} crosses the Musi without a bridge`);
+    for (const id of bad.filter((id) => !realCross.includes(id))) Wn(`road ${id} ends in the Musi channel (at a bridge head?)`);
+  }
 
   // ---- rasterise solids / water / roads at 4u (like world.js)
-  const C = 4, GW = W / C, GH = H / C;
+  const C = 4, GW = Math.ceil(W / C), GH = Math.ceil(H / C);
   const g = new Uint8Array(GW * GH); // 0 ground 1 road 2 water 3 solid(landmark/bld) 4 rock
   const fillPoly = (poly, v) => {
     let y0 = Infinity, y1 = -Infinity; for (const p of poly) { y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
@@ -167,7 +226,7 @@ function validate(D, opts) {
   };
   const rect = (x, y, w, h, v) => { for (let j = Math.max(0, Math.round(y / C)); j < Math.min(GH, Math.round((y + h) / C)); j++) for (let i = Math.max(0, Math.round(x / C)); i < Math.min(GW, Math.round((x + w) / C)); i++) g[j * GW + i] = v; };
   for (const w of D.water) fillPoly(w.poly, 2);
-  const ridx = new Int16Array(GW * GH).fill(-1);
+  const ridx = new Int32Array(GW * GH).fill(-1);
   D.roads.forEach((r, k) => thick(r.pts, r.w, (o) => { g[o] = 1; ridx[o] = k; }));
   const rr = (i) => g[i];
   // landmark / building footprints must not cover roads or water
@@ -272,34 +331,51 @@ function tables(D) {
   const out = [];
   const esc = (t) => String(t == null ? '' : t).replace(/\|/g, '/');
   const len = (pts) => { let s = 0; for (let i = 1; i < pts.length; i++) s += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return Math.round(s); };
-  out.push('### Districts (' + D.districts.length + ')', '', '| id | name | Telugu | rect [x, y, w, h] | style | ground | block fill |', '|---|---|---|---|---|---|---|');
-  for (const d of D.districts) out.push(`| \`${d.id}\` | ${esc(d.name)} | ${esc(d.nameTe)} | ${d.rect.join(', ')} | ${d.style} | ${d.ground} | ${d.fill} |`);
+  const ll = (o) => (o.ll ? o.ll[0].toFixed(5) + ', ' + o.ll[1].toFixed(5) : '');
+  const v2 = D.version >= 2;
+  if (v2) {
+    out.push('### Districts (' + D.districts.length + ')', '', 'Polygons from real GHMC wards (DataMeet, CC BY 4.0); `bbox` = the compatibility rect [x, y, w, h].', '',
+      '| id | name | Telugu | GHMC wards | bbox | style | ground | block fill | conf |', '|---|---|---|---|---|---|---|---|---|');
+    for (const d of D.districts) out.push(`| \`${d.id}\` | ${esc(d.name)} | ${esc(d.nameTe)} | ${esc((d.wards || []).join(', '))} | ${d.rect.join(', ')} | ${d.style} | ${d.ground} | ${d.fill} | ${d.conf || ''} |`);
+  } else {
+    out.push('### Districts (' + D.districts.length + ')', '', '| id | name | Telugu | rect [x, y, w, h] | style | ground | block fill |', '|---|---|---|---|---|---|---|');
+    for (const d of D.districts) out.push(`| \`${d.id}\` | ${esc(d.name)} | ${esc(d.nameTe)} | ${d.rect.join(', ')} | ${d.style} | ${d.ground} | ${d.fill} |`);
+  }
   for (const owner of ['landmarks.js', 'places_art.js']) {
-    const L = D.landmarks.filter((l) => drawOwner(l.draw) === owner).sort((a, b) => (a.draw + a.id).localeCompare(b.draw + b.id));
-    out.push('', `### Landmarks drawn by src/${owner} (${L.length})`, '', 'x, y = centre; w = east-west, d = north-south, h = suggested art height (1 storey = 10 u).', '',
-      '| draw | id | name | x | y | w | d | h | face | notes |', '|---|---|---|---|---|---|---|---|---|---|');
+    const L = D.landmarks.filter((l) => drawOwner(l.draw) === owner && !(/^golconda_wall_\d/.test(l.id))).sort((a, b) => (a.draw + a.id).localeCompare(b.draw + b.id));
+    out.push('', `### Landmarks drawn by src/${owner} (${L.length}${owner === 'landmarks.js' ? ' + ' + D.landmarks.filter((l) => /^golconda_wall_\d/.test(l.id)).length + ' numbered Golconda wall blocks' : ''})`, '', 'x, y = centre; w = east-west, d = north-south, h = suggested art height (1 storey = 10 u). lat, lon = the real position used; conf = its confidence (design/geo/places.json has the sources).', '',
+      '| draw | id | name | x | y | w | d | h | face | lat, lon | conf | notes |', '|---|---|---|---|---|---|---|---|---|---|---|---|');
     for (const l of L) {
-      const notes = [l.noSolid ? 'walk-through' : '', l.solids ? 'solids:' + l.solids.length : '', l.gated ? 'gated' : '', l.variant ? 'variant ' + l.variant : '', l.sign ? 'sign "' + l.sign + '"' : '', l.films ? 'films: ' + l.films.join(', ') : '', l.era || '', l.seasonal ? 'seasonal ' + l.seasonal : ''].filter(Boolean).join('; ');
-      out.push(`| ${l.draw} | \`${l.id}\` | ${esc(l.name)} | ${Math.round(l.x)} | ${Math.round(l.y)} | ${l.w} | ${l.d} | ${l.h} | ${l.face || ''} | ${esc(notes)} |`);
+      const notes = [l.noSolid ? 'walk-through' : '', l.solids ? 'solids:' + l.solids.length : '', l.gated ? 'gated' : '', l.variant ? 'variant ' + l.variant : '', l.sign ? 'sign "' + l.sign + '"' : '', l.films ? 'films: ' + l.films.join(', ') : '', l.era || '', l.seasonal ? 'seasonal ' + l.seasonal : '', l.cluster ? 'layout ' + l.cluster : '', l.street ? 'on ' + l.street : ''].filter(Boolean).join('; ');
+      out.push(`| ${l.draw} | \`${l.id}\` | ${esc(l.name)} | ${Math.round(l.x)} | ${Math.round(l.y)} | ${l.w} | ${l.d} | ${l.h} | ${l.face || ''} | ${ll(l)} | ${l.conf || ''} | ${esc(notes)} |`);
     }
   }
   const kinds = {}; for (const p of D.places) (kinds[p.kind] = kinds[p.kind] || []).push(p);
-  out.push('', `### Places (${D.places.length}), grouped by kind`, '', 'Each place is a walkable point next to the thing it names. `alias` = same spot as another id.', '');
+  out.push('', `### Places (${D.places.length}), grouped by kind`, '', 'Each place is a walkable point next to the thing it names. `alias` = same spot as another id. lat, lon = the real position (places.json); x, y = where it is in the world after the projection and the move to a walkable spot.', '');
   for (const k of Object.keys(kinds).sort()) {
-    out.push(`#### ${k} (${kinds[k].length})`, '', '| id | name | district | x | y | r | notes |', '|---|---|---|---|---|---|---|');
+    out.push(`#### ${k} (${kinds[k].length})`, '', '| id | name | district | x | y | r | lat, lon | conf | notes |', '|---|---|---|---|---|---|---|---|---|');
     for (const p of kinds[k].sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }))) {
-      const notes = [p.alias ? 'alias of `' + p.alias + '`' : '', p.festival ? 'festival ' + p.festival : '', p.offMap ? 'off-map exit' : '', p.boat ? 'boat' : '', p.final ? 'FINALE' : '', p.era || '', p.season || '', p.minigame ? 'minigame ' + p.minigame : ''].filter(Boolean).join('; ');
-      out.push(`| \`${p.id}\` | ${esc(p.name)} | ${p.district} | ${p.x} | ${p.y} | ${p.r} | ${esc(notes)} |`);
+      const notes = [p.alias ? 'alias of `' + p.alias + '`' : '', p.festival ? 'festival ' + p.festival : '', p.offMap ? 'off-map exit' : '', p.boat ? 'boat' : '', p.final ? 'FINALE' : '', p.podium ? 'podium' : '', p.level ? 'on roof ' + p.level : '', p.era || '', p.season || '', p.minigame ? 'minigame ' + p.minigame : ''].filter(Boolean).join('; ');
+      out.push(`| \`${p.id}\` | ${esc(p.name)} | ${p.district} | ${p.x} | ${p.y} | ${p.r} | ${ll(p)} | ${p.conf || ''} | ${esc(notes)} |`);
     }
     out.push('');
   }
-  out.push(`### Roads (${D.roads.length})`, '', '| id | name | kind | width | length (u) |', '|---|---|---|---|---|');
-  for (const r of D.roads) out.push(`| \`${r.id}\` | ${esc(r.name)} | ${r.kind} | ${r.w} | ${len(r.pts)} |`);
+  const named = D.roads.filter((r) => !(r.src === 'osm' || r.src === 'grid'));
+  out.push(`### Roads (${D.roads.length}: ${named.length} named / layout roads below, ${D.roads.length - named.length} residential infill lanes)`, '', 'src: `roads` = real alignment (design/geo/roads.json, OSM), `cluster` = a game layout (colony lanes, the Charminar ring, the Gulzar Houz loop). pothole = the A2 condition hint.', '',
+    '| id | name | kind | width | length (u) | src | conf | pothole |', '|---|---|---|---|---|---|---|---|');
+  for (const r of named) out.push(`| \`${r.id}\` | ${esc(r.name)} | ${r.kind} | ${r.w} | ${len(r.pts)} | ${r.src || ''} | ${r.conf || ''} | ${r.pothole != null ? r.pothole : ''} |`);
+  if (v2) {
+    const byD = {};
+    const dAt = (x, y) => { const g = D.districtGrid; if (!g) return '?'; const i = Math.floor(x / g.cell), j = Math.floor(y / g.cell); let o = j * g.w + i; for (let k = 0; k < g.rle.length; k += 2) { if (o < g.rle[k + 1]) return D.districts[g.rle[k]].id; o -= g.rle[k + 1]; } return '?'; };
+    for (const r of D.roads) if (r.src === 'osm' || r.src === 'grid') { const m = r.pts[Math.floor(r.pts.length / 2)]; const id = dAt(m[0], m[1]); (byD[id] = byD[id] || [0, 0])[0]++; byD[id][1] += len(r.pts); }
+    out.push('', '#### Residential infill lanes by district (OSM, ODbL; spacing and minimum length by district, see tools/geo/build_worlddata.cjs INFILL)', '', '| district | lanes | length (u) |', '|---|---|---|');
+    for (const [id, [n, l]] of Object.entries(byD).sort((a, b) => b[1][0] - a[1][0])) out.push(`| \`${id}\` | ${n} | ${l} |`);
+  }
   out.push('', `### Railways (${(D.rails || []).length})`, '', '| id | name | length (u) |', '|---|---|---|');
   for (const r of D.rails || []) out.push(`| \`${r.id}\` | ${esc(r.name)} | ${len(r.pts)} |`);
   out.push('', `### Water (${D.water.length}) and parks (${D.parks.length})`, '', '| id | name | type |', '|---|---|---|');
-  for (const w of D.water) out.push(`| \`${w.id}\` | ${esc(w.name)} | water${w.bank ? ', sand bank ' + w.bank : ''} |`);
-  for (const p of D.parks) out.push(`| \`${p.id}\` | ${esc(p.name)} | park: ${p.kind} |`);
+  for (const w of D.water) out.push(`| \`${w.id}\` | ${esc(w.name)} | water${w.river ? ' (river)' : ''}${w.nala ? ' (nala)' : ''}${w.bank ? ', sand bank ' + w.bank : ''}${w.conf ? ', ' + w.conf : ''} |`);
+  for (const p of D.parks) out.push(`| \`${p.id}\` | ${esc(p.name)} | park: ${p.kind}${p.surface ? ' (' + p.surface + ')' : ''}${p.conf ? ', ' + p.conf : ''} |`);
   return out.join('\n');
 }
 
@@ -307,8 +383,9 @@ module.exports = { loadWorldData, validate, MUST, HERITAGE_DRAWS, drawOwner, tab
 
 if (require.main === module) {
   const quiet = process.argv.includes('--quiet');
+  const fi = process.argv.indexOf('--file');
   let D;
-  try { D = loadWorldData(); } catch (e) { console.error('LOAD FAILED:', e.stack || e); process.exit(1); }
+  try { D = loadWorldData(fi > 0 ? path.resolve(process.argv[fi + 1]) : undefined); } catch (e) { console.error('LOAD FAILED:', e.stack || e); process.exit(1); }
   if (process.argv.includes('--tables')) { console.log(tables(D)); process.exit(0); }
   const { errors, warns, stats, drawIds } = validate(D);
   if (!quiet) {

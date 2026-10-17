@@ -636,15 +636,34 @@
       },
     };
     if (!o.keys) el.addEventListener('click', () => { if (nowT() - P.opened > 0.25) P.close(true); });
+    else {
+      // a keyed panel (lock dial, rewind menu) reads the keyboard from keydown itself: N.input folds two
+      // presses inside one slow frame into one edge, and a dropped click on a dial is a wrong code.
+      // Pad and touch still come through panelKeys.
+      const KM = (N.input && N.input.KEYMAP) || {};
+      const onDown = (e) => {
+        const k = KM[e.code];
+        if (P.closed || UI.panel !== P || !k || !/^(up|down|left|right|action)$/.test(k)) return;
+        const md = mode();
+        if ((md !== 'play' && md !== 'cutscene') || (e.repeat && k === 'action')) return;
+        if (k === 'action') UI.eatAction = true;
+        P.keys(k);
+      };
+      window.addEventListener('keydown', onDown);
+      done.then(() => window.removeEventListener('keydown', onDown));
+    }
     UI.panel = P;
     return P;
   }
   function panelKeys() {
     const P = UI.panel, I = N.input;
+    // the E that a keyed panel already took from keydown must not reach the interact system as well
+    if (UI.eatAction && I) { if (I.pressed('action')) I.consume('action'); UI.eatAction = false; }
     if (!P || !I || P.closed) return;
     const md = mode();
     if (md !== 'play' && md !== 'cutscene') return;
-    const fire = (k) => { if (P.keys) P.keys(k); else if (k === 'action' || k === 'back') { if (nowT() - P.opened > 0.25) P.close(true); } };
+    const kb = N.input.device === 'keyboard';
+    const fire = (k) => { if (P.keys) { if (!kb) P.keys(k); } else if (k === 'action' || k === 'back') { if (nowT() - P.opened > 0.25) P.close(true); } };
     if (I.pressed('action')) { I.consume('action'); fire('action'); }
     for (const k of ['up', 'down', 'left', 'right']) if (I.pressed(k)) fire(k);
   }

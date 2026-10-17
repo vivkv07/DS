@@ -13,7 +13,8 @@
  * Also checks the extra structure the story needs: roof zones (home_terrace + the M1 lootna
  * chain), stairs places, Tank Bund statues 1-12 from the Lumbini end, podium junctions,
  * respect zones for every worship place.
- * Usage: node tools/check_registry.cjs [--verbose]
+ * Map v2: also checks that every id of the v1 map (design/geo/worlddata_v1.js) still exists.
+ * Usage: node tools/check_registry.cjs [--verbose] [--file path/to/worlddata.js]
  */
 'use strict';
 const fs = require('fs');
@@ -164,8 +165,7 @@ function collect() {
   return { want, prefixMin };
 }
 
-function main() {
-  const D = loadWorldData();
+function check(D) {
   const places = new Map(D.places.map((p) => [p.id, p]));
   const lms = new Map(D.landmarks.map((l) => [l.id, l]));
   const roads = new Set(D.roads.map((r) => r.id));
@@ -228,12 +228,28 @@ function main() {
   for (const p of worship) if (!respectIds.has(p.id)) errors.push(`no respect zone for ${p.kind} place ${p.id}`);
   for (const id of ['charminar', 'mecca_masjid', 'birla_mandir', 'badshahi_ashurkhana', 'gurudwara_gowliguda', 'moula_ali_dargah']) if (!respectIds.has(id)) errors.push('no respect zone for ' + id);
 
-  if (verbose) console.log('checked ids:', [...want.keys()].sort().join(' '));
-  console.log(`registry ids checked: ${want.size}; roofs ${roofs.size}, planks ${(D.planks || []).length}, podiums ${pods.length}, respect zones ${(D.respect || []).length}`);
-  for (const w of warns) console.log('WARN ', w);
-  for (const e of errors) console.log('ERROR', e);
-  console.log(errors.length ? `FAIL: ${errors.length} errors` : 'OK: every registry id exists');
-  process.exit(errors.length ? 1 : 0);
+  // Map v2: every id of the v1 map (design/geo/worlddata_v1.js) must still exist
+  const v1file = path.join(ROOT, 'design/geo/worlddata_v1.js');
+  let v1n = 0;
+  if (D.version >= 2 && fs.existsSync(v1file)) {
+    const V1 = loadWorldData(v1file);
+    const kinds = { place: 'places', landmark: 'landmarks', road: 'roads', rail: 'rails', park: 'parks', water: 'water', district: 'districts', roof: 'roofs', plank: 'planks', respect: 'respect' };
+    for (const [k, list] of Object.entries(kinds)) {
+      const have = new Set((D[list] || []).map((o) => o.id));
+      for (const o of V1[list] || []) { v1n++; if (o.id && !have.has(o.id)) errors.push(`v1 ${k} id "${o.id}" is missing in Map v2`); }
+    }
+  }
+  return { errors, warns, n: want.size, roofs: roofs.size, planks: (D.planks || []).length, podiums: pods.length, respect: (D.respect || []).length, v1n };
+}
+function main() {
+  const fi = process.argv.indexOf('--file');
+  const D = loadWorldData(fi > 0 ? path.resolve(process.argv[fi + 1]) : undefined);
+  const r = check(D);
+  console.log(`registry ids checked: ${r.n}; roofs ${r.roofs}, planks ${r.planks}, podiums ${r.podiums}, respect zones ${r.respect}${r.v1n ? `; v1 ids checked: ${r.v1n}` : ''}`);
+  for (const w of r.warns) console.log('WARN ', w);
+  for (const e of r.errors) console.log('ERROR', e);
+  console.log(r.errors.length ? `FAIL: ${r.errors.length} errors` : 'OK: every registry id exists');
+  process.exit(r.errors.length ? 1 : 0);
 }
 if (require.main === module) main();
-module.exports = { collect };
+module.exports = { collect, check };

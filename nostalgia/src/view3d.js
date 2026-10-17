@@ -944,6 +944,9 @@
       if (r) return r.h * VS;
     }
     if (isFinite(e.z) && e.z > 0) return e.z;
+    // [ground hook] raised footpaths / medians and pothole dips under the entity (view3d_ground.js)
+    const gp = gpOn();
+    if (gp && gp.heightAt) return gp.heightAt(e.x, e.y, e);
     return 0;
   }
 
@@ -1013,8 +1016,14 @@
 
   /* ================================================================ chunks */
   const chunks = new Map(); // key -> chunk
-  const CW = Math.ceil(8000 / CH), CHn = Math.ceil(6000 / CH);
+  // [ground hook] chunk columns / rows follow the built world size (map v2 is larger than 8000 x 6000)
+  let CW = Math.ceil(8000 / CH), CHn = Math.ceil(6000 / CH);
+  const sizeChunks = () => { CW = Math.min(64, Math.ceil((N.WORLD_W || 8000) / CH)); CHn = Math.ceil((N.WORLD_H || 6000) / CH); };
   const ckey = (ci, cj) => cj * 64 + ci;
+  // [ground hook] ground provider (src/view3d_ground.js, N.view3d.setGroundProvider): when enabled it
+  // builds every chunk's ground (terrain + road geometry) instead of the render.js painter texture
+  let GP = null;
+  const gpOn = () => (GP && GP.enabled ? GP : null);
   let railSegs = null; // chunk key -> [[ax, ay, bx, by]] (64u pieces)
   function prepRails() {
     railSegs = new Map();
@@ -1064,9 +1073,18 @@
     if (ch.groundMat) ch.groundMat.dispose();
     if (ch.groundTex) ch.groundTex.dispose();
     if (ch.aux) ch.aux.dispose();
+    if (GP) { try { GP.dispose(ch); } catch (e) { N.err('view3d.ground.dispose', e); } } // [ground hook]
     E.city.remove(ch.group);
     chunks.delete(ch.key);
     if (paintJob && paintJob.ch === ch) paintJob = null;
+  }
+  // [ground hook] drop a chunk's painted ground plane + texture (the provider took over its ground)
+  function dropPainted(ch) {
+    if (ch.ground) { ch.group.remove(ch.ground); ch.ground.geometry.dispose(); ch.ground = null; }
+    if (ch.groundMat) { ch.groundMat.dispose(); ch.groundMat = null; }
+    if (ch.groundTex) { ch.groundTex.dispose(); ch.groundTex = null; }
+    if (paintJob && paintJob.ch === ch) paintJob = null;
+    ch.groundRes = 0; ch.groundStale = false;
   }
 
   /* ---------------------------------------------------- ground mesh + texture */
@@ -1630,6 +1648,7 @@
   let lastPlan = { x: -1e9, y: -1e9, t: 0 }, planList = [];
   function plan(fx, fy) {
     // chunks wanted around the focus, nearest first, with their detail / ground resolution
+    sizeChunks(); // [ground hook] the world size may have changed (map v2)
     const r = Q.drawDist + CH * 0.75;
     const ci0 = Math.max(0, Math.floor((fx - r) / CH)), ci1 = Math.min(CW - 1, Math.floor((fx + r) / CH));
     const cj0 = Math.max(0, Math.floor((fy - r) / CH)), cj1 = Math.min(CHn - 1, Math.floor((fy + r) / CH));
@@ -1665,7 +1684,9 @@
         const far = it.d > Q.nearDist * 1.8;
         const downRes = far && ch.groundRes > w.res, downGeo = far && ch.detail > w.detail;
         const needGeom = ch.detail < 0 || ch.dirty || (pass === 1 && (w.detail > ch.detail || downGeo));
-        const needGround = !ch.groundRes || (pass === 1 && (w.res > ch.groundRes || ch.groundStale || downRes));
+        // [ground hook] the ground provider decides what its chunks still need
+        const gp = gpOn();
+        const needGround = gp ? gp.need(ch, it.d, pass) : !ch.groundRes || (pass === 1 && (w.res > ch.groundRes || ch.groundStale || downRes));
         if (!needGeom && !needGround) continue;
         if (now() > deadline) break;
         if (needGeom && (pass === 1 || ch.detail < 0 || ch.dirty)) {
@@ -1673,7 +1694,8 @@
           if (!J || J.detail !== w.detail) J = startGeom(ch, w.detail);
           if (stepGeom(J, deadline)) finishGeom(J);
         }
-        if (needGround && now() < deadline) {
+        if (needGround && now() < deadline && gp) gp.step(ch, it.d, deadline); // [ground hook]
+        else if (needGround && now() < deadline) {
           // never interleave two paint jobs: finish the current one first
           if (paintJob && paintJob.ch !== ch && chunks.has(paintJob.ch.key)) stepPaint(paintJob.ch, paintJob.res, deadline);
           else stepPaint(ch, ch.groundRes && !ch.groundStale && !downRes ? Math.max(w.res, ch.groundRes) : w.res, deadline);
@@ -1700,7 +1722,8 @@
     for (const it of planList) {
       if (it.d > Math.min(Q.nearDist, 500)) break;
       const ch = chunks.get(ckey(it.ci, it.cj));
-      if (!ch || ch.detail < 0 || !ch.groundRes || ch.gjob) return false;
+      const gp = gpOn(); // [ground hook]
+      if (!ch || ch.detail < 0 || (gp ? gp.pending(ch, it.d) : !ch.groundRes) || ch.gjob) return false;
     }
     return planList.length > 0;
   }
@@ -2561,8 +2584,18 @@
     }, false);
     E.ready = true;
     api.ready = true;
+    if (GP && GP.attach) { try { GP.attach(groundInternals()); } catch (e) { N.err('view3d.ground.attach', e); GP = null; } } // [ground hook]
     for (const L of layerList) initLayer(L);
     N.emit('view3d:ready', api);
+  }
+
+  // [ground hook] engine internals handed to the ground provider (view3d_ground.js)
+  function groundInternals() {
+    return {
+      THREE, E, Q, UNI, MAT, TEX, H, SUN, VS, CH, chunks, ckey, sunBake,
+      buildAux, dropPainted, rgb8, col, GB, mergeGeometries,
+      replan() { lastPlan.t = 0; },
+    };
   }
 
   /* ================================================================ API */
@@ -2603,6 +2636,10 @@
     },
     project, elevation, heightAt,
     focus,
+    /** [ground hook] install the ground provider (src/view3d_ground.js). p.attach(internals) runs once the
+     *  engine is ready; p: {enabled, attach(I), need(ch, d, pass), step(ch, d, deadline), pending(ch, d),
+     *  dispose(ch), heightAt(x, y, e)}. While p.enabled it owns every chunk's ground (no painter texture). */
+    setGroundProvider(p) { GP = p || null; if (GP && E.ready && GP.attach) GP.attach(groundInternals()); lastPlan.t = 0; return !!GP; },
     /** mark chunks overlapping rect [x, y, w, h] (or all) for a rebuild */
     rebuild(rect) {
       for (const ch of chunks.values()) if (!rect || (ch.x0 < rect[0] + rect[2] && ch.x0 + CH > rect[0] && ch.y0 < rect[1] + rect[3] && ch.y0 + CH > rect[1])) { ch.dirty = true; ch.groundStale = true; }
@@ -2628,9 +2665,11 @@
         let pending = !!paintJob || lmQueue.length > 0;
         for (const ch of chunks.values()) if (farChunk(ch, f.x, f.y)) { pending = true; break; }
         if (!pending && now() - lmCheckT > 350) { updateLandmarks(f.x, f.y, now() + 20); pending = lmQueue.length > 0; }
+        const gp = gpOn(); // [ground hook]
         for (const it of planList) {
           const ch = chunks.get(ckey(it.ci, it.cj)), w = wantFor(it.d);
-          if (!ch || ch.detail < w.detail || ch.detail < 0 || ch.gjob || ch.dirty || !ch.groundRes || ch.groundRes < w.res || ch.groundStale) { pending = true; break; }
+          const gnd = gp ? gp.pending(ch || null, it.d) : !ch || !ch.groundRes || ch.groundRes < w.res || ch.groundStale;
+          if (!ch || ch.detail < w.detail || ch.detail < 0 || ch.gjob || ch.dirty || gnd) { pending = true; break; }
         }
         if (!pending) return true;
       }

@@ -25,8 +25,8 @@
  * N.world.potholeAt(x, y) -> {depth, r, wet?} | null under its front and rear wheels (missing API: no
  * potholes). On entry: speed x0.82 at full depth and top speed, v.jolt = 1 (decays; 2D bob here, 3D
  * reads it), N.render.shake(1.5) for the player, sfx 'pothole' (louder with speed, variant 'wet' after
- * rain), dust / muddy drops, 4% puncture (pedal cycles), 2% comic fall above 80% of top speed (bikes,
- * player.fall: DHADAAM, never hurt). On foot: a tiny stumble (+ splash when wet), 'player:stumble'.
+ * rain), dust / muddy drops, 2.5% x depth puncture (pedal cycles; 60 s grace), 2% x depth comic fall
+ * above 80% of top speed (bikes, player.fall: DHADAAM, never hurt; 45 s grace). On foot: a tiny stumble (+ splash when wet), 'player:stumble'.
  * Events: 'vehicle:pothole' {vehicle, speed, depth, severity, wet, wheel, x, y, player} once per pothole (the
  * rear wheel dropping into the same one is 'vehicle:potholeRear', a softer thump with no second penalty).
  *
@@ -48,9 +48,11 @@
     kidTop: 0.9, kidAccel: 0.85, kidTopAuto: 0.8, kidAccelAuto: 0.8, flatTop: 0.55, punctureRate: 0.003,
     pickupAfter: 1.5, rightAfter: 8, rainGrip: 0.8, rainGripBike: 0.7, witnessR: 120,
     ownerShout: 0.25, heatParked: 40, heatWitnessed: 100, heatCycle: 30, heatChetakNanna: 100, heatChetak: 40,
-    // A2 potholes: speed x0.82 at full depth + top speed, a jolt, shake 1.5 (player), 4% flats on cycles,
+    // A2 potholes: speed x0.82 at full depth + top speed, a jolt, shake 1.5 (player), 2.5% flats on cycles,
     // 2% comic falls above 80% of top speed; walking through one is a tiny stumble
-    potholeLoss: 0.18, potholeShake: 1.5, potholePuncture: 0.04, potholeFall: 0.02, potholeFallAt: 0.8,
+    // (measured on world.js' real potholes, flat out on a Hero: ~5 hits/min in a colony, ~13 round Tank Bund,
+    // ~19 in the Old City; 2.5% x depth per hit + 60 s of grace = a flat every few minutes at worst)
+    potholeLoss: 0.18, potholeShake: 1.5, potholePuncture: 0.025, potholePunctureCD: 60, potholeFall: 0.02, potholeFallAt: 0.8,
     potholeMinSpeed: 6, potholeView: 90, joltDecay: 2.8, stumble: 0.45,
     // the rear wheel dropping into the pothole the front wheel just hit: a softer second thump (no second
     // speed loss / puncture / fall roll); swept wheel samples every 2 u; no second comic fall for 45 s
@@ -695,6 +697,13 @@
     } else {
       ped = N.entities.add(new AngryDriver(spot.x, spot.y, v, d && d.look));
     }
+    // an aunty / friend riding pillion gets off too (and has words): never left sitting behind the kid
+    const pl = v.pillion;
+    if (pl && pl !== actor && !(pl instanceof N.Actor)) {
+      const look = pl.look || pl;
+      v.pillion = null;
+      if (look && typeof look === 'object') { const q = N.entities.add(new AngryDriver(spot.x + 5, spot.y + 2, v, look)); q.shout = 'BESHARAM!'; }
+    }
     N.emit('vehicle:borrowed', { vehicle: v, driver: ped, by: actor, x: spot.x, y: spot.y });
     if (actor === N.player && N.wanted && N.wanted.add) N.wanted.add(1);
   }
@@ -918,10 +927,10 @@
     if (v.driver && !npcDriven(v)) return false;
     return true;
   }
-  // "No" offers (a refusal, "Nakko", no lifts) sit below every other interaction (shops, NPCs, side
-  // activities at -1). The generic ones (any Chetak, car, lorry; no lifts) also show up only close by and
-  // never hide a rideable vehicle within reach; a named "Nakko" (Akka's Scooty before 30 finds, the VIP
-  // car...) carries a hint, so it competes by distance.
+  // "No" offers only show up close by (10 u). The generic ones (any Chetak, car, lorry; no lifts) sit below
+  // every other interaction (shops, NPCs, side activities and "Namaste" at -1) and never hide a rideable
+  // vehicle within reach; a named "Nakko" (Akka's Scooty before 30 finds, the VIP car, Yadagiri's auto)
+  // carries a hint, so it keeps the vehicle priority and competes by distance.
   const NO_KINDS = { refuse: 1, nakko: 1, nolift: 1 };
   const SHY_KINDS = { refuse: 1, nolift: 1 };
   function bestOffer(p) {
@@ -932,7 +941,7 @@
       const d = distTo(v, p.x, p.y);
       if (d >= yd && d >= nd) continue;
       const o = offerFor(v);
-      if (!o) continue;
+      if (!o || (NO_KINDS[o.kind] && d >= TUNE.noR)) continue;
       if (SHY_KINDS[o.kind]) { if (d < nd) { nd = d; no = { v, d, o }; } } else if (d < yd) { yd = d; yes = { v, d, o }; }
     }
     return yes || no;
@@ -2407,7 +2416,7 @@
       if (n) {
         const o = n.o;
         offerSpec.label = o.label; offerSpec.kind = o.kind; offerSpec.use = useOffer;
-        offerSpec.priority = NO_KINDS[o.kind] ? TUNE.noPriority : 0;
+        offerSpec.priority = SHY_KINDS[o.kind] ? TUNE.noPriority : 0;
         offerSpec.dist = n.d; offerSpec.target = n.v;
         N.interact.offer(offerSpec);
       }
@@ -2601,7 +2610,7 @@
     const T = v.T;
     return potSeverity(ph) * (T.potholeMul || 1) * (T.cls === 'heavy' ? 0.45 : T.cls === 'car' ? 0.75 : T.cls === 'auto' ? 0.9 : 1);
   }
-  let potFallAt = -1e9;
+  let potFallAt = -1e9, potFlatAt = -1e9;
   function hitPothole(v, ph, wheel, off, mine, p, hx, hy) {
     const T = v.T, sp = Math.abs(v.speed);
     if (!(sp >= 0) || !isFinite(sp)) return;
@@ -2627,7 +2636,9 @@
     if (v.driver !== p || N.state.mode !== 'play') return;
     // the rolls scale with the pothole: a shallow arterial dip rarely flats a tyre or throws him
     const k = Math.min(1, sev);
-    if (T.pedal && !v.flat && Math.random() < TUNE.potholePuncture * (T.punctureMul || 1) * k) V.puncture(v);
+    if (T.pedal && !v.flat && N.time.now - potFlatAt > TUNE.potholePunctureCD && Math.random() < TUNE.potholePuncture * (T.punctureMul || 1) * k) {
+      if (V.puncture(v)) potFlatAt = N.time.now;
+    }
     // a comic fall (never hurt), at speed only, and never twice in a row: 45 s of grace after one
     if (T.cls === 'bike' && spf > TUNE.potholeFallAt && N.time.now - potFallAt > TUNE.potholeFallCD && Math.random() < TUNE.potholeFall * k && p.fall) {
       if (p.fall(v, { speed: sp, pothole: true })) potFallAt = N.time.now;
@@ -3084,7 +3095,7 @@
       V.clearDecals();
       if (zoomOwned) { N.render.baseZoom = 1; zoomOwned = false; }
       if (N.player) { N.player.noCollide = false; N.player.passenger = null; }
-      footWas = false; shoutT = 4; potFallAt = -1e9; noT = -1e9; noV = null;
+      footWas = false; shoutT = 4; potFallAt = -1e9; potFlatAt = -1e9; noT = -1e9; noV = null;
       N.input.setLabel('run', null);
     },
   });

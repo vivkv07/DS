@@ -253,7 +253,9 @@
         else if (Array.isArray(q)) addAny(q);                       // nested (multipolygon)
       }
     };
-    addAny(d.poly); addAny(d.polys);
+    // Map v2 builder: `polys` lists every ring (the main one = `poly` too), `holes` the cut-outs
+    if (d.polys) addAny(d.polys); else addAny(d.poly);
+    if (out.length && Array.isArray(d.holes)) for (const h of d.holes) if (Array.isArray(h) && h.length >= 3 && isPt(h[0])) out[0].holes.push(h);
     d._rings = out.length ? out : null;
     return d._rings;
   }
@@ -301,9 +303,25 @@
     }
   }
   W.scanRings = scanRings;
-  function buildDistricts(list) {
+  // WORLD_DATA.districtGrid = {cell, w, h, rle: [index, run, ...]} (Map v2 builder): the exact, gap-free
+  // district raster (index into districts[], -1 = none). Used as is when it matches the lookup grid.
+  function decodeDistrictGrid(G, n) {
+    if (!G || G.cell !== DG || G.w !== DGW || G.h !== DGH || !Array.isArray(G.rle)) return false;
+    let o = 0;
+    for (let k = 0; k + 1 < G.rle.length; k += 2) {
+      const v = G.rle[k], run = G.rle[k + 1];
+      if (!(run > 0) || o + run > distMap.length) return false;
+      if (v >= 0 && v < n) distMap.fill(v + 1, o, o + run);
+      o += run;
+    }
+    return o === distMap.length;
+  }
+  function buildDistricts(list, grid) {
     distMap = new Uint16Array(DGW * DGH);
     for (const d of list) { d._rings = undefined; d._bbox = null; } // (re)read the shapes on every build
+    if (grid && decodeDistrictGrid(grid, list.length)) { districtLabels(list); W.districtSource = 'grid'; return; }
+    distMap.fill(0);
+    W.districtSource = 'raster';
     list.forEach((d, idx) => {
       const rings = districtRings(d);
       if (rings) { scanRings(rings, DG, DGW, DGH, (j, i0, i1) => distMap.fill(idx + 1, j * DGW + i0, j * DGW + i1 + 1)); return; }
@@ -331,7 +349,10 @@
         front = next;
       }
     }
-    // label anchors: the district cell nearest to the centroid of its cells
+    districtLabels(list);
+  }
+  // label anchors: the district cell nearest to the centroid of its cells
+  function districtLabels(list) {
     const sx = new Float64Array(list.length + 1), sy = new Float64Array(list.length + 1), sn = new Float64Array(list.length + 1);
     for (let o = 0; o < distMap.length; o++) { const v = distMap[o]; if (!v) continue; const i = o % DGW; sx[v] += i; sy[v] += (o - i) / DGW; sn[v]++; }
     list.forEach((d, idx) => {
@@ -401,6 +422,9 @@
   }
 
   function buildRoadGraph(roads) {
+    const gp = (W.graphPhases = {}), gt0 = performance.now();
+    let gt = gt0;
+    const gmark = (k) => { const t = performance.now(); gp[k] = Math.round((t - gt) * 10) / 10; gt = t; };
     const nodes = [], edges = [];
     const ngrid = new Map();
     const getNode = (x, y) => {
@@ -422,52 +446,88 @@
       return { r, pts, cum: cumLen(pts), splits: [], bb: [x0, y0, x1, y1] };
     });
     for (const A of RR) A.pts.forEach((p, i) => A.splits.push({ d: A.cum[i], x: p[0], y: p[1] }));
-    // T-junctions: endpoints lying on another road snap onto it
-    for (const A of RR) {
-      for (const end of [0, A.pts.length - 1]) {
-        const p = A.pts[end];
-        let best = null;
-        for (const B of RR) {
-          if (B === A) continue;
-          const tb = B.r.w / 2 + 6, bb = B.bb;
-          if (p[0] < bb[0] - tb || p[0] > bb[2] + tb || p[1] < bb[1] - tb || p[1] > bb[3] + tb) continue;
-          for (let s = 0; s < B.pts.length - 1; s++) {
-            const q = U.closestOnSeg(p[0], p[1], B.pts[s][0], B.pts[s][1], B.pts[s + 1][0], B.pts[s + 1][1]);
-            const tol = B.r.w / 2 + 6;
-            if (q.d2 <= tol * tol && (!best || q.d2 < best.q.d2)) best = { B, s, q };
+    // Segment hash (64 u cells; each segment in the cells it passes through): the v2 map has ~3.6k roads
+    // and ~15k segments, so the pairwise tests below only look at segments that share a cell.
+    const HC = 64, hash = new Map();
+    const segBase = new Int32Array(RR.length + 1);
+    for (let k = 0; k < RR.length; k++) segBase[k + 1] = segBase[k] + RR[k].pts.length - 1;
+    const indexSegs = () => {
+      hash.clear();
+      const near2 = (HC * 0.7072 + 1) * (HC * 0.7072 + 1);
+      for (let ai = 0; ai < RR.length; ai++) {
+        const P = RR[ai].pts;
+        for (let s = 0; s < P.length - 1; s++) {
+          const a = P[s], b = P[s + 1], dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
+          const i0 = Math.floor(Math.min(a[0], b[0]) / HC), i1 = Math.floor(Math.max(a[0], b[0]) / HC);
+          const j0 = Math.floor(Math.min(a[1], b[1]) / HC), j1 = Math.floor(Math.max(a[1], b[1]) / HC);
+          for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+            const cx = (i + 0.5) * HC, cy = (j + 0.5) * HC;
+            let t = ((cx - a[0]) * dx + (cy - a[1]) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+            const qx = a[0] + dx * t - cx, qy = a[1] + dy * t - cy;
+            if (qx * qx + qy * qy > near2) continue;
+            const key = j * 8192 + i, l = hash.get(key);
+            if (l) l.push(ai, s); else hash.set(key, [ai, s]);
           }
         }
-        if (best && best.q.d2 > 0.01) {
-          const { B, s, q } = best;
-          // only snap when the endpoint isn't already one of B's vertices
-          const segL = B.cum[s + 1] - B.cum[s];
-          B.splits.push({ d: B.cum[s] + segL * q.t, x: q.x, y: q.y });
-          p[0] = q.x; p[1] = q.y;
-          A.splits[end].x = q.x; A.splits[end].y = q.y;
-        } else if (best) {
-          const { B, s, q } = best; const segL = B.cum[s + 1] - B.cum[s];
-          B.splits.push({ d: B.cum[s] + segL * q.t, x: q.x, y: q.y });
+      }
+    };
+    indexSegs();
+    gmark('index');
+    // T-junctions: endpoints lying on another road snap onto it (the nearest such segment)
+    let maxTol = 0;
+    for (const A of RR) maxTol = Math.max(maxTol, A.r.w / 2 + 6);
+    for (let ai = 0; ai < RR.length; ai++) {
+      const A = RR[ai];
+      for (const end of [0, A.pts.length - 1]) {
+        const p = A.pts[end], px = p[0], py = p[1];
+        let bB = null, bs = 0, bt = 0, bd2 = Infinity, bx = 0, by = 0;
+        for (let j = Math.floor((py - maxTol) / HC); j <= Math.floor((py + maxTol) / HC); j++) {
+          for (let i = Math.floor((px - maxTol) / HC); i <= Math.floor((px + maxTol) / HC); i++) {
+            const l = hash.get(j * 8192 + i);
+            if (!l) continue;
+            for (let k = 0; k < l.length; k += 2) {
+              if (l[k] === ai) continue;
+              const B = RR[l[k]], sI = l[k + 1], a = B.pts[sI], b = B.pts[sI + 1];
+              const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
+              let t = l2 > 0 ? ((px - a[0]) * dx + (py - a[1]) * dy) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+              const qx = a[0] + dx * t, qy = a[1] + dy * t, d2 = (qx - px) * (qx - px) + (qy - py) * (qy - py);
+              const tol = B.r.w / 2 + 6;
+              if (d2 <= tol * tol && d2 < bd2) { bd2 = d2; bB = B; bs = sI; bt = t; bx = qx; by = qy; }
+            }
+          }
+        }
+        if (!bB) continue;
+        const segL = bB.cum[bs + 1] - bB.cum[bs];
+        bB.splits.push({ d: bB.cum[bs] + segL * bt, x: bx, y: by });
+        if (bd2 > 0.01) { // snap the endpoint onto the other road (unless it already is one of its points)
+          p[0] = bx; p[1] = by;
+          A.splits[end].x = bx; A.splits[end].y = by;
         }
       }
     }
-    // proper crossings (boxes again: snapping moved some endpoints)
-    for (const A of RR) {
-      const bb = A.bb; bb[0] = bb[1] = Infinity; bb[2] = bb[3] = -Infinity;
-      for (const p of A.pts) { if (p[0] < bb[0]) bb[0] = p[0]; if (p[0] > bb[2]) bb[2] = p[0]; if (p[1] < bb[1]) bb[1] = p[1]; if (p[1] > bb[3]) bb[3] = p[1]; }
-    }
+    gmark('tjunctions');
+    // proper crossings, once per segment pair (the hash again: snapping moved some endpoints)
+    indexSegs();
+    const seen = new Int32Array(segBase[RR.length]);
+    let stampS = 0;
     for (let ai = 0; ai < RR.length; ai++) {
-      const A = RR[ai], ab = A.bb;
-      for (let bi = ai + 1; bi < RR.length; bi++) {
-        const B = RR[bi], bb = B.bb;
-        if (ab[2] < bb[0] - 1 || ab[0] > bb[2] + 1 || ab[3] < bb[1] - 1 || ab[1] > bb[3] + 1) continue; // boxes apart
-        for (let s = 0; s < A.pts.length - 1; s++) {
-          const a0 = A.pts[s], a1 = A.pts[s + 1];
-          const sx0 = Math.min(a0[0], a1[0]) - 1, sx1 = Math.max(a0[0], a1[0]) + 1, sy0 = Math.min(a0[1], a1[1]) - 1, sy1 = Math.max(a0[1], a1[1]) + 1;
-          if (sx1 < bb[0] || sx0 > bb[2] || sy1 < bb[1] || sy0 > bb[3]) continue;
-          for (let q = 0; q < B.pts.length - 1; q++) {
-            const b0 = B.pts[q], b1 = B.pts[q + 1];
-            if ((b0[0] < sx0 && b1[0] < sx0) || (b0[0] > sx1 && b1[0] > sx1) || (b0[1] < sy0 && b1[1] < sy0) || (b0[1] > sy1 && b1[1] > sy1)) continue;
-            const I = segInter(a0, a1, b0, b1);
+      const A = RR[ai], P = A.pts;
+      for (let s = 0; s < P.length - 1; s++) {
+        const a0 = P[s], a1 = P[s + 1];
+        stampS++;
+        const i0 = Math.floor(Math.min(a0[0], a1[0]) / HC), i1 = Math.floor(Math.max(a0[0], a1[0]) / HC);
+        const j0 = Math.floor(Math.min(a0[1], a1[1]) / HC), j1 = Math.floor(Math.max(a0[1], a1[1]) / HC);
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          const l = hash.get(j * 8192 + i);
+          if (!l) continue;
+          for (let k = 0; k < l.length; k += 2) {
+            const bi = l[k];
+            if (bi <= ai) continue;
+            const q = l[k + 1], gid = segBase[bi] + q;
+            if (seen[gid] === stampS) continue;
+            seen[gid] = stampS;
+            const B = RR[bi];
+            const I = segInter(a0, a1, B.pts[q], B.pts[q + 1]);
             if (!I) continue;
             A.splits.push({ d: A.cum[s] + (A.cum[s + 1] - A.cum[s]) * I.t, x: I.x, y: I.y });
             B.splits.push({ d: B.cum[q] + (B.cum[q + 1] - B.cum[q]) * I.u, x: I.x, y: I.y });
@@ -475,6 +535,7 @@
         }
       }
     }
+    gmark('crossings');
     for (const A of RR) {
       A.splits.sort((p, q) => p.d - q.d);
       let prev = null, prevD = -1e9;
@@ -497,7 +558,10 @@
         prev = n; prevD = sp.d;
       }
     }
-    return makeRoadsAPI(nodes, edges, roads);
+    gmark('nodes');
+    const api = makeRoadsAPI(nodes, edges, roads);
+    gmark('api');
+    return api;
   }
 
   // Accept a bare function (Math.random) or an N.util.rng(seed) object as a random source.
@@ -1132,7 +1196,7 @@
     W.grid = grid;
     for (let i = 0; i < GW; i++) { grid[i] = S.VOID; grid[(GH - 1) * GW + i] = S.VOID; }
     for (let j = 0; j < GH; j++) { grid[j * GW] = S.VOID; grid[j * GW + GW - 1] = S.VOID; }
-    buildDistricts(D.districts);
+    buildDistricts(D.districts, D.districtGrid);
     N.loadPlaces(D.places);
 
     // bounding boxes for roads (painter + nearest road)
@@ -2549,8 +2613,8 @@
     roofCell.clear(); roofActors.clear();
     const roofs = D.roofs || [];
     if (!roofs.length) { roofGrid = null; return; }
-    if (!roofGrid || roofGrid.length !== GW * GH) roofGrid = new Uint8Array(GW * GH);
-    roofGrid.fill(S.VOID);
+    if (!roofGrid || roofGrid.length !== GW * GH) roofGrid = new Uint8Array(GW * GH); // (fresh = all VOID)
+    else roofGrid.fill(S.VOID);
     const LM = {}; for (const l of D.landmarks) LM[l.id] = l;
     const cellRect = (x0, y0, x1, y1, fn) => { // cells fully inside [x0,x1]x[y0,y1]
       const i0 = Math.ceil(x0 / CELL), i1 = Math.floor(x1 / CELL) - 1, j0 = Math.ceil(y0 / CELL), j1 = Math.floor(y1 / CELL) - 1;
@@ -3130,9 +3194,11 @@
     PATCH: { lane: 0.2, street: 0.7, arterial: 0.85, bund: 0.3 },   // tar patches per 100 u
     PATCH_STYLE: { oldcity: 1.2, market: 1.2, colony: 1.0, rocky: 0.7, colonial: 1.1, cantonment: 0.9, posh: 0.9, hitec: 0.12 },
     JUNCTION_PAD: 16,   // clear of junctions: node half width + this (zebras sit at half width + 2..10)
+    LANE_JUNCTION_PAD: 3, // a junction of lanes only (no zebras there): just its centre stays clear
     BRIDGE_PAD: 26,     // clear of bridge ends (expansion joints)
     RAIL_PAD: 20,       // clear of railway lines (level crossings)
     HIT: 0.9,           // hit ellipse = outline ellipse x this (the ragged rim averages ~0.89)
+    SLICE_MS: 3,        // generation work per frame (it runs after the world build, off the boot path)
   });
   const PG = 32;        // potholeAt lookup cells (u)
   // one-function mulberry32 (U.rng builds five closures per call; this runs per road segment)
@@ -3146,7 +3212,7 @@
     };
   }
   let potStart = null, potItems = null, PGW = 0, PGH = 0;
-  let potList = [], potPatches = [], potChunks = [], patchChunks = [];
+  const potList = [], potPatches = [], potChunks = [], patchChunks = []; // filled in place (PH keeps them)
   let rainState = 0;    // 0 dry, 1 monsoon (extra potholes; deep ones hold water), 2 raining (all wet)
   let potVersion = 0;
   const potActive = (p) => !p.rain || rainState >= 1;
@@ -3154,7 +3220,8 @@
   function roadPotFactor(r) {
     if (r.potholes === false || r.potholes === 0) return { f: 0, hinted: false };
     let f = typeof r.potholes === 'number' && r.potholes > 0 ? r.potholes : 1;
-    const h = r.pothole_hint != null ? +r.pothole_hint : r.potholeHint != null ? +r.potholeHint : NaN;
+    // the condition hint (0 smooth .. 1 cratered): `pothole` (Map v2 builder), `pothole_hint` (roads.json)
+    const h = r.pothole != null ? +r.pothole : r.pothole_hint != null ? +r.pothole_hint : r.potholeHint != null ? +r.potholeHint : NaN;
     const ref = POT.HINT_REF[r.kind];
     if (isFinite(h) && ref) { f *= U.clamp(h / ref, 0.2, 1.6); return { f, hinted: true }; }
     return { f, hinted: false };
@@ -3205,179 +3272,299 @@
     };
   }
 
+  // Generation runs in passes over every road segment: the dry potholes, the tar patches, and the
+  // rain-only extras (only once the monsoon / rain needs them; the dry set never depends on them, so
+  // every order gives the same city). It is time-sliced off the boot path: W.build() only resets it,
+  // the 'potholes' system runs ~3 ms of it per frame (title screen first), then indexes the potholes
+  // and repaints the ground chunks. potholes.ensure() finishes it at once (tests, tools).
+  let gen = null, rainDone = false;
+  const job = { stage: 'idle', ri: 0, t: 0, frames: 0 };
   function buildPotholes(D) {
-    const t0 = performance.now();
-    potList = []; potPatches = [];
+    potList.length = 0; potPatches.length = 0; rainDone = false;
+    potStart = null; potItems = null; // potholeAt -> null until the first set is indexed
     PGW = Math.ceil(N.WORLD_W / PG); PGH = Math.ceil(N.WORLD_H / PG);
-    potChunks = new Array(BW * BH); patchChunks = new Array(BW * BH);
+    potChunks.length = BW * BH; patchChunks.length = BW * BH;
     for (let i = 0; i < BW * BH; i++) { potChunks[i] = []; patchChunks[i] = []; }
-    const stats = { dry: 0, rain: 0, patches: 0, rejected: { junction: 0, bridge: 0, rail: 0, surface: 0, overlap: 0 }, byKind: {}, byStyle: {}, byDistrict: {}, roadLen: {}, ms: 0 };
+    const stats = { dry: 0, rain: 0, patches: 0, rejected: { junction: 0, bridge: 0, rail: 0, surface: 0, overlap: 0 }, byKind: {}, byStyle: {}, byDistrict: {}, roadLen: {}, ms: 0, frames: 0 };
+    PH.stats = stats; PH.ready = false;
+    gen = { D, stats, built: false };
+    job.stage = 'dry'; job.ri = 0; job.t = 0; job.frames = 0;
+    rainState = readRain();
+    PH.cols = BW; PH.rows = BH; PH.rain = rainState;
+  }
+  /** Run pothole generation for up to `ms` (Infinity = finish). Returns true when nothing is left. */
+  function stepGen(ms) {
+    if (job.stage === 'idle' || !gen) return true;
+    const t0 = performance.now(), deadline = t0 + ms;
+    if (!gen.built) Object.assign(gen, makeGen(gen.D, gen.stats), { built: true });
+    let changed = false;
+    while (job.stage !== 'idle') {
+      if (performance.now() > deadline) break;
+      if (job.stage === 'dry' || job.stage === 'rain') {
+        job.ri = genPass(job.stage === 'rain', job.ri, deadline);
+        if (job.ri >= 0) break;
+        if (job.stage === 'rain') { rainDone = true; job.stage = 'index'; } else { job.stage = 'patches'; }
+        job.ri = 0;
+      } else if (job.stage === 'patches') {
+        job.ri = genPatches(job.ri, deadline);
+        if (job.ri >= 0) break;
+        gen.stats.patches = potPatches.length;
+        job.ri = 0; job.stage = rainState >= 1 && !rainDone ? 'rain' : 'index';
+      } else if (job.stage === 'index') {
+        indexPotholes(); applyWet(); changed = true;
+        job.stage = rainState >= 1 && !rainDone ? 'rain' : 'idle';
+      }
+    }
+    job.t += performance.now() - t0; job.frames++;
+    const st = gen.stats;
+    st.ms = Math.round(job.t * 10) / 10; st.frames = job.frames;
+    if (changed) {
+      potVersion++;
+      const first = !PH.ready;
+      PH.ready = true; PH.version = potVersion; PH.rain = rainState;
+      if (W.built) repaintPotholes();
+      N.emit('potholes:change', { rain: rainState, prev: rainState, version: potVersion, ready: true, first });
+    }
+    return job.stage === 'idle';
+  }
+  // the cached ground must show the new set: in 2D stale chunks repaint one per frame (no blank frames)
+  let needs3D = false;
+  function repaintPotholes() {
+    const R = N.render;
+    if (N.view3d && N.view3d.active) R.invalidateChunks();
+    else { R.shadowEpoch++; needs3D = true; }
+  }
+  function makeGen(D, stats) {
     const avoid = avoidIndex(D);
     const placed = new Map(); // 32 u buckets of placed potholes (overlap test)
     const near = (x, y, r) => {
       for (let j = Math.floor((y - r - 6) / 32); j <= Math.floor((y + r + 6) / 32); j++) for (let i = Math.floor((x - r - 6) / 32); i <= Math.floor((x + r + 6) / 32); i++) {
         const l = placed.get(j * 4096 + i); if (!l) continue;
-        for (const p of l) { const rr = (p.r + r) * 0.95 + 1; if ((p.x - x) ** 2 + (p.y - y) ** 2 < rr * rr) return true; }
+        for (const p of l) { const rr = (p.r + r) * 0.95 + 1; if ((p.x - x) * (p.x - x) + (p.y - y) * (p.y - y) < rr * rr) return true; }
       }
       return false;
     };
+    const place = (p) => { const key = Math.floor(p.y / 32) * 4096 + Math.floor(p.x / 32); const l = placed.get(key); if (l) l.push(p); else placed.set(key, [p]); };
     const ROAD = S.ROAD;
-    // every rim sample on plain road (no bridge deck, footpath, plaza, water...)
+    // every rim sample on plain road (no bridge deck, footpath, plaza, water...): 16 on the rim, 16 just outside
     const onRoad = (x, y, rx, ry, ca, sa, grow) => {
       if (surfAt(x, y) !== ROAD) return false;
-      for (let k = 0; k < 8; k++) {
-        const t = (k / 8) * Math.PI * 2, u = Math.cos(t) * (rx * grow + 1), v = Math.sin(t) * (ry * grow + 1);
-        if (surfAt(x + u * ca - v * sa, y + u * sa + v * ca) !== ROAD) return false;
+      for (let k = 0; k < 16; k++) {
+        const t = (k / 16) * Math.PI * 2, c = Math.cos(t), sn = Math.sin(t);
+        for (let g = 0; g < 2; g++) {
+          const u = c * (g ? rx * grow + 1 : rx), v = sn * (g ? ry * grow + 1 : ry);
+          if (surfAt(x + u * ca - v * sa, y + u * sa + v * ca) !== ROAD) return false;
+        }
       }
       return true;
     };
+    // Junctions: zebra crossings are painted on the street / arterial / bund approaches of a junction, so
+    // those keep JUNCTION_PAD clear; a junction of lanes only has no zebras (colony lane crossings are
+    // pothole country) and only keeps its centre clear. A coarse 16 u mask answers "nothing near" fast.
+    const edges = W.roads.edges;
+    const JM = 16, jmW = Math.ceil(N.WORLD_W / JM), jmH = Math.ceil(N.WORLD_H / JM), jmask = new Uint8Array(jmW * jmH);
+    const RMAX = POT.SIZE[1] / 2 + 2;
+    for (const n of W.junctions || []) {
+      let zebra = false;
+      for (const id of n.inc) { const k = edges[id].kind; if (k !== 'lane' && k !== 'path' && k !== 'bridge') { zebra = true; break; } }
+      n._potPad = zebra ? POT.JUNCTION_PAD : POT.LANE_JUNCTION_PAD;
+      const rad = n.w / 2 + n._potPad + RMAX + JM * 0.75;
+      for (let j = Math.max(0, Math.floor((n.y - rad) / JM)); j <= Math.min(jmH - 1, Math.floor((n.y + rad) / JM)); j++) {
+        for (let i = Math.max(0, Math.floor((n.x - rad) / JM)); i <= Math.min(jmW - 1, Math.floor((n.x + rad) / JM)); i++) {
+          const dx = (i + 0.5) * JM - n.x, dy = (j + 0.5) * JM - n.y;
+          if (dx * dx + dy * dy <= rad * rad) jmask[j * jmW + i] = 1;
+        }
+      }
+    }
+    const nearJunctionPot = (x, y, R) => {
+      const i = Math.floor(x / JM), j = Math.floor(y / JM);
+      if (!(i >= 0 && j >= 0 && i < jmW && j < jmH) || !jmask[j * jmW + i]) return false;
+      const S2 = R + POT.JUNCTION_PAD + 40;
+      for (let gj = Math.floor((y - S2) / JG); gj <= Math.floor((y + S2) / JG); gj++) {
+        for (let gi = Math.floor((x - S2) / JG); gi <= Math.floor((x + S2) / JG); gi++) {
+          const l = jGrid.get(gj * 4096 + gi);
+          if (!l) continue;
+          for (const n of l) { const rr = R + n.w / 2 + (n._potPad != null ? n._potPad : POT.JUNCTION_PAD); if ((n.x - x) * (n.x - x) + (n.y - y) * (n.y - y) < rr * rr) return true; }
+        }
+      }
+      return false;
+    };
     const clearOfThings = (x, y, R) => {
-      if (junctionNear(x, y, R, POT.JUNCTION_PAD)) { stats.rejected.junction++; return false; }
+      if (nearJunctionPot(x, y, R)) { stats.rejected.junction++; return false; }
       if (avoid.bridgeNear(x, y, POT.BRIDGE_PAD + R)) { stats.rejected.bridge++; return false; }
       if (avoid.railNear(x, y, POT.RAIL_PAD + R)) { stats.rejected.rail++; return false; }
       return true;
     };
-    D.roads.forEach((r, ri) => {
-      if (!r.pts || r.pts.length < 2 || !POT.KIND[r.kind]) return;
+    return { D, stats, avoid, near, place, onRoad, nearJunctionPot, clearOfThings };
+  }
+  // one pass over every road segment: the dry potholes, or the rain-only extras
+  // potholes of roads ri0.. until the deadline: returns the next road index, or -1 when the pass is done
+  function genPass(rain, ri0, deadline) {
+    const { D, stats, near, place, onRoad, clearOfThings } = gen;
+    for (let ri = ri0 || 0; ri < D.roads.length; ri++) {
+      if ((ri & 15) === 0 && ri > (ri0 || 0) && performance.now() > deadline) return ri;
+      const r = D.roads[ri];
+      if (!r.pts || r.pts.length < 2 || !POT.KIND[r.kind]) continue;
       const rid = r.id || 'road' + ri;
       const { f: rf, hinted } = roadPotFactor(r);
+      const base = POT.KIND[r.kind] * rf * (rain ? POT.RAIN : 1);
       const median = r.median != null ? !!r.median : r.kind === 'arterial';
       const hw = r.w / 2;
       for (let s = 0; s < r.pts.length - 1; s++) {
         const a = r.pts[s], b = r.pts[s + 1];
         const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy);
         if (!(L > 4)) continue;
+        if (!rain) stats.roadLen[r.kind] = (stats.roadLen[r.kind] || 0) + L;
+        if (!(base > 0)) continue;
         const ux = dx / L, uy = dy / L, nx = -uy, ny = ux, ang = Math.atan2(dy, dx);
-        stats.roadLen[r.kind] = (stats.roadLen[r.kind] || 0) + L;
-        // ---- potholes: dry ones, then the rain-only extras (own stream each)
-        for (const rain of [false, true]) {
-          const base = POT.KIND[r.kind] * rf * (rain ? POT.RAIN : 1);
-          if (!(base > 0)) continue;
-          const rng = rand32((rain ? 'potr:' : 'pot:') + rid + ':' + s);
-          const lam = (base * POT.MAXF) / 100; // candidates per u (thinned below by the district)
-          const gap = () => -Math.log(1 - rng() * 0.999999) / lam;
-          for (let pos = gap() * 0.5; pos < L; pos += gap()) {
-            const cx = a[0] + ux * pos, cy = a[1] + uy * pos;
-            let sf = styleFactor(cx, cy, POT.STYLE);
-            if (hinted) sf = Math.sqrt(sf); // the hint already knows the neighbourhood
-            const keep = rng() < sf / POT.MAXF;
-            const nClu = rng() < POT.CLUSTER ? 1 + ((rng() * 3) | 0) : 0;
-            const sz = rng(), lat = rng(), lat2 = rng(), shp = rng(), dep = rng(), seed = (rng() * 2147483647) | 0;
-            if (!keep) { for (let c = 0; c < nClu * 3; c++) rng(); continue; }
-            for (let c = 0; c <= nClu; c++) {
-              const along = c ? (rng() - 0.5) * 40 : 0, cl1 = c ? rng() : lat, cl2 = c ? rng() : lat2;
-              const sizeK = (r.kind === 'lane' ? 1.05 : 1) * (rain ? 0.85 : 1) * (c ? 0.9 : 1);
-              let D0 = POT.SIZE[0] + (POT.SIZE[1] - POT.SIZE[0]) * Math.pow(c ? (sz * 0.7 + 0.3 * cl2) : sz, 0.8) * sizeK;
-              D0 = U.clamp(D0, POT.SIZE[0], POT.SIZE[1]);
-              let rx = D0 / 2, ry = rx * (0.68 + 0.3 * shp);
-              const across = shp > 0.82;
-              const pa = ang + (across ? Math.PI / 2 : 0) + (cl2 - 0.5) * 0.6;
-              let R = Math.max(rx, ry);
-              // lateral position: wheel tracks on two-lane roads, anywhere on narrow lanes
-              let usable = hw - R - 1.5;
-              if (usable < 0) { const k = (hw - 2.5) / R; if (k < 0.45) continue; rx *= k; ry *= k; R = Math.max(rx, ry); usable = 0.5; }
-              let off;
-              if (r.kind === 'lane' || r.w < 26) off = (cl1 * 2 - 1) * usable;
-              else {
-                const lanes = r.w >= 48 ? 2 : 1, lw = hw / lanes, side = cl1 < 0.5 ? -1 : 1, k = ((cl1 * 2) % 1) < 0.5 || lanes === 1 ? 0 : 1;
-                const track = (k + 0.5) * lw + (cl2 < 0.5 ? -1 : 1) * lw * 0.28 + (cl2 - 0.5) * lw * 0.25;
-                off = side * U.clamp(track, median ? 3 + R : 0, usable);
-              }
-              if (median && Math.abs(off) < 3 + R) off = (off < 0 ? -1 : 1) * Math.min(usable, 3 + R);
-              const along2 = U.clamp(pos + along, R + 1, L - R - 1);
-              const x = a[0] + ux * along2 + nx * off, y = a[1] + uy * along2 + ny * off;
-              if (!clearOfThings(x, y, R)) continue;
-              const ca = Math.cos(pa), sa = Math.sin(pa);
-              if (!onRoad(x, y, rx, ry, ca, sa, 1.2)) { stats.rejected.surface++; continue; }
-              const rr = (rx + ry) / 2;
-              if (near(x, y, rr)) { stats.rejected.overlap++; continue; }
-              const depth = U.clamp(0.18 + 0.5 * ((D0 - POT.SIZE[0]) / (POT.SIZE[1] - POT.SIZE[0])) + 0.32 * (c ? cl1 : dep), 0.15, 1) * (rain ? 0.7 : 1);
-              const dist = W.districtAt(x, y);
-              const p = makePothole(potList.length, x, y, rx, ry, pa, depth, rain, r, rid, s, dist, seed + c * 7919);
-              potList.push(p);
-              const key = Math.floor(y / 32) * 4096 + Math.floor(x / 32);
-              const l = placed.get(key); if (l) l.push(p); else placed.set(key, [p]);
-              if (rain) stats.rain++; else stats.dry++;
-              stats.byKind[r.kind] = (stats.byKind[r.kind] || 0) + (rain ? 0 : 1);
-              const st = (dist && dist.style) || 'none', did = (dist && dist.id) || 'none';
-              if (!rain) { stats.byStyle[st] = (stats.byStyle[st] || 0) + 1; stats.byDistrict[did] = (stats.byDistrict[did] || 0) + 1; }
+        const rng = rand32((rain ? 'potr:' : 'pot:') + rid + ':' + s);
+        const lam = (base * POT.MAXF) / 100; // candidates per u (thinned below by the district)
+        for (let pos = (-Math.log(1 - rng() * 0.999999) / lam) * 0.5; pos < L; pos += -Math.log(1 - rng() * 0.999999) / lam) {
+          const cx = a[0] + ux * pos, cy = a[1] + uy * pos;
+          let sf = styleFactor(cx, cy, POT.STYLE);
+          if (hinted && sf > 1) sf = Math.sqrt(sf); // the hint already knows a bad neighbourhood (HITEC stays near 0)
+          const keep = rng() < sf / POT.MAXF;
+          const nClu = rng() < POT.CLUSTER ? 1 + ((rng() * 3) | 0) : 0;
+          const sz = rng(), lat = rng(), lat2 = rng(), shp = rng(), dep = rng(), seed = (rng() * 2147483647) | 0;
+          if (!keep) { for (let c = 0; c < nClu * 3; c++) rng(); continue; }
+          for (let c = 0; c <= nClu; c++) {
+            const along = c ? (rng() - 0.5) * 40 : 0, cl1 = c ? rng() : lat, cl2 = c ? rng() : lat2;
+            const sizeK = (r.kind === 'lane' ? 1.05 : 1) * (rain ? 0.85 : 1) * (c ? 0.9 : 1);
+            let D0 = POT.SIZE[0] + (POT.SIZE[1] - POT.SIZE[0]) * Math.pow(c ? (sz * 0.7 + 0.3 * cl2) : sz, 0.8) * sizeK;
+            D0 = U.clamp(D0, POT.SIZE[0], POT.SIZE[1]);
+            let rx = D0 / 2, ry = rx * (0.68 + 0.3 * shp);
+            const across = shp > 0.82;
+            const pa = ang + (across ? Math.PI / 2 : 0) + (cl2 - 0.5) * 0.6;
+            let R = Math.max(rx, ry);
+            // lateral position: wheel tracks on two-lane roads, anywhere on narrow lanes
+            let usable = hw - R - 1.5;
+            if (usable < 0) { const k = (hw - 2.5) / R; if (k < 0.45) continue; rx *= k; ry *= k; R = Math.max(rx, ry); usable = 0.5; }
+            let off;
+            if (r.kind === 'lane' || r.w < 26) off = (cl1 * 2 - 1) * usable;
+            else {
+              const lanes = r.w >= 48 ? 2 : 1, lw = hw / lanes, side = cl1 < 0.5 ? -1 : 1, k = ((cl1 * 2) % 1) < 0.5 || lanes === 1 ? 0 : 1;
+              const track = (k + 0.5) * lw + (cl2 < 0.5 ? -1 : 1) * lw * 0.28 + (cl2 - 0.5) * lw * 0.25;
+              off = side * U.clamp(track, median ? 3 + R : 0, usable);
             }
-          }
-        }
-        // ---- tar patches (old repairs; paint only)
-        const pd = (POT.PATCH[r.kind] || 0) * (rf > 0 ? Math.min(1.3, 0.6 + rf * 0.4) : 0.6);
-        if (pd > 0) {
-          const rng = rand32('patch:' + rid + ':' + s);
-          const lam = (pd * 1.3) / 100;
-          for (let pos = (-Math.log(1 - rng() * 0.999999) / lam) * 0.5; pos < L; pos += -Math.log(1 - rng() * 0.999999) / lam) {
-            const cx = a[0] + ux * pos, cy = a[1] + uy * pos;
-            const keep = rng() < styleFactor(cx, cy, POT.PATCH_STYLE) / 1.3;
-            const pl = 8 + rng() * 20, pwW = Math.min(r.w - 4, 6 + rng() * 10), lat = rng(), twist = (rng() - 0.5) * 0.12, seed = (rng() * 2147483647) | 0;
-            if (!keep || pwW < 4) continue;
-            const lx = U.clamp(pos, pl / 2 + 1, L - pl / 2 - 1);
-            const usable = Math.max(0, hw - pwW / 2 - 1);
-            const off = (lat * 2 - 1) * usable;
-            const x = a[0] + ux * lx + nx * off, y = a[1] + uy * lx + ny * off;
-            const R = Math.hypot(pl, pwW) / 2;
-            if (junctionNear(x, y, R, POT.JUNCTION_PAD) || avoid.bridgeNear(x, y, POT.BRIDGE_PAD + R) || avoid.railNear(x, y, POT.RAIL_PAD + R)) continue;
-            const pa = ang + twist, ca = Math.cos(pa), sa = Math.sin(pa);
-            if (!onRoad(x, y, pl / 2, pwW / 2, ca, sa, 1)) continue;
-            potPatches.push(makePatch(potPatches.length, x, y, pl, pwW, pa, seed, r.kind));
+            if (median && Math.abs(off) < 3 + R) off = (off < 0 ? -1 : 1) * Math.min(usable, 3 + R);
+            const along2 = U.clamp(pos + along, R + 1, L - R - 1);
+            const x = a[0] + ux * along2 + nx * off, y = a[1] + uy * along2 + ny * off;
+            if (!clearOfThings(x, y, R)) continue;
+            const ca = Math.cos(pa), sa = Math.sin(pa);
+            if (!onRoad(x, y, rx, ry, ca, sa, 1.2)) { stats.rejected.surface++; continue; }
+            const rr = (rx + ry) / 2;
+            if (near(x, y, rr)) { stats.rejected.overlap++; continue; }
+            const depth = U.clamp(0.18 + 0.5 * ((D0 - POT.SIZE[0]) / (POT.SIZE[1] - POT.SIZE[0])) + 0.32 * (c ? cl1 : dep), 0.15, 1) * (rain ? 0.7 : 1);
+            const dist = W.districtAt(x, y);
+            const p = new Pothole(potList.length, x, y, rx, ry, pa, depth, rain, r.kind, rid, s, dist, seed + c * 7919);
+            potList.push(p);
+            place(p);
+            if (rain) { stats.rain++; continue; }
+            stats.dry++;
+            stats.byKind[r.kind] = (stats.byKind[r.kind] || 0) + 1;
+            const st = (dist && dist.style) || 'none', did = (dist && dist.id) || 'none';
+            stats.byStyle[st] = (stats.byStyle[st] || 0) + 1; stats.byDistrict[did] = (stats.byDistrict[did] || 0) + 1;
           }
         }
       }
-    });
-    stats.patches = potPatches.length;
-    // lookup grid (CSR): every pothole in each 32 u cell its hit ellipse touches
+    }
+    return -1;
+  }
+  // tar patches (old repairs; paint only)
+  function genPatches(ri0, deadline) {
+    const { D, onRoad, nearJunctionPot, avoid } = gen;
+    for (let ri = ri0 || 0; ri < D.roads.length; ri++) {
+      if ((ri & 15) === 0 && ri > (ri0 || 0) && performance.now() > deadline) return ri;
+      const r = D.roads[ri];
+      if (!r.pts || r.pts.length < 2 || !POT.PATCH[r.kind]) continue;
+      const rid = r.id || 'road' + ri;
+      const rf = roadPotFactor(r).f;
+      const pd = POT.PATCH[r.kind] * (rf > 0 ? Math.min(1.3, 0.6 + rf * 0.4) : 0.6);
+      const hw = r.w / 2;
+      for (let s = 0; s < r.pts.length - 1; s++) {
+        const a = r.pts[s], b = r.pts[s + 1];
+        const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy);
+        if (!(L > 4)) continue;
+        const ux = dx / L, uy = dy / L, nx = -uy, ny = ux, ang = Math.atan2(dy, dx);
+        const rng = rand32('patch:' + rid + ':' + s);
+        const lam = (pd * 1.3) / 100;
+        for (let pos = (-Math.log(1 - rng() * 0.999999) / lam) * 0.5; pos < L; pos += -Math.log(1 - rng() * 0.999999) / lam) {
+          const cx = a[0] + ux * pos, cy = a[1] + uy * pos;
+          const keep = rng() < styleFactor(cx, cy, POT.PATCH_STYLE) / 1.3;
+          const pl = 8 + rng() * 20, pwW = Math.min(r.w - 4, 6 + rng() * 10), lat = rng(), twist = (rng() - 0.5) * 0.12, seed = (rng() * 2147483647) | 0;
+          if (!keep || pwW < 4) continue;
+          const lx = U.clamp(pos, pl / 2 + 1, L - pl / 2 - 1);
+          const usable = Math.max(0, hw - pwW / 2 - 1);
+          const off = (lat * 2 - 1) * usable;
+          const x = a[0] + ux * lx + nx * off, y = a[1] + uy * lx + ny * off;
+          const R = Math.hypot(pl, pwW) / 2;
+          if (nearJunctionPot(x, y, R + 2) || avoid.bridgeNear(x, y, POT.BRIDGE_PAD + R) || avoid.railNear(x, y, POT.RAIL_PAD + R)) continue;
+          const pa = ang + twist, ca = Math.cos(pa), sa = Math.sin(pa);
+          if (!onRoad(x, y, pl / 2, pwW / 2, ca, sa, 1)) continue;
+          potPatches.push(makePatch(potPatches.length, x, y, pl, pwW, pa, seed, r.kind));
+        }
+      }
+    }
+    return -1;
+  }
+  /** The rain-only potholes, made the first time they are needed (monsoon / rain): queue the pass. */
+  function ensureRain() {
+    if (rainDone || !gen) return false;
+    if (job.stage === 'idle') { job.stage = 'rain'; job.ri = 0; }
+    return true;
+  }
+  // lookup grid (CSR: every pothole in each 32 u cell its hit ellipse touches) and the 256 u chunk lists
+  function indexPotholes() {
     const counts = new Uint32Array(PGW * PGH + 1);
-    const cellsOf = (p, fn) => {
+    const cells = (p, fn) => {
       const R = Math.max(p.rx, p.ry) + 0.5;
       const i0 = Math.max(0, Math.floor((p.x - R) / PG)), i1 = Math.min(PGW - 1, Math.floor((p.x + R) / PG));
       const j0 = Math.max(0, Math.floor((p.y - R) / PG)), j1 = Math.min(PGH - 1, Math.floor((p.y + R) / PG));
       for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) fn(j * PGW + i);
     };
-    for (const p of potList) cellsOf(p, (c) => { counts[c + 1]++; });
+    for (const p of potList) cells(p, (c) => { counts[c + 1]++; });
     for (let c = 0; c < PGW * PGH; c++) counts[c + 1] += counts[c];
-    potStart = counts;
-    potItems = new Uint32Array(counts[PGW * PGH]);
+    const items = new Uint32Array(counts[PGW * PGH]);
     const fill = new Uint32Array(PGW * PGH);
-    for (const p of potList) cellsOf(p, (c) => { potItems[potStart[c] + fill[c]++] = p.id; });
-    // per-chunk lists (256 u = render chunks) with the painted extent (rim, cracks, gravel)
+    for (const p of potList) cells(p, (c) => { items[counts[c] + fill[c]++] = p.id; });
+    potStart = counts; potItems = items;
     const bucket = (arr, o, R) => {
       const i0 = Math.max(0, Math.floor((o.x - R) / BK)), i1 = Math.min(BW - 1, Math.floor((o.x + R) / BK));
       const j0 = Math.max(0, Math.floor((o.y - R) / BK)), j1 = Math.min(BH - 1, Math.floor((o.y + R) / BK));
       for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) arr[j * BW + i].push(o);
     };
+    for (let i = 0; i < BW * BH; i++) { potChunks[i].length = 0; patchChunks[i].length = 0; }
     for (const p of potList) bucket(potChunks, p, p.R);
     for (const q of potPatches) bucket(patchChunks, q, q.R + 2);
-    rainState = readRain();
-    applyWet();
-    potVersion++;
-    stats.ms = Math.round((performance.now() - t0) * 10) / 10;
-    PH.list = potList; PH.patches = potPatches; PH.chunks = potChunks; PH.patchChunks = patchChunks;
-    PH.cols = BW; PH.rows = BH; PH.stats = stats; PH.rain = rainState; PH.version = potVersion;
+    wetPaths.clear();
   }
 
-  function makePothole(id, x, y, rx, ry, a, depth, rain, road, rid, seg, dist, seed) {
-    const rng = rand32(seed || 1);
+  // A pothole. The ragged outline (`pts`) is made on first use from its seed (paint, puddles, 3D).
+  class Pothole {
+    constructor(id, x, y, rx, ry, a, depth, rain, kind, rid, seg, dist, seed) {
+      this.id = id; this.x = x; this.y = y; this.r = (rx + ry) / 2; this.rx = rx; this.ry = ry; this.R = Math.max(rx, ry) * 1.4 + 9;
+      this.a = a; this.ca = Math.cos(a); this.sa = Math.sin(a); this.depth = depth; this.dip = Math.round(depth * 30) / 10;
+      this.wet = false; this.rain = rain; this.road = rid; this.kind = kind; this.seg = seg;
+      this.district = dist ? dist.id : null; this.style = dist ? dist.style : null; this.seed = seed || 1;
+      const hr = POT.HIT; this.hx = 1 / ((rx * hr) * (rx * hr)); this.hy = 1 / ((ry * hr) * (ry * hr));
+      this._pts = null; this._q = 0;
+    }
+    get pts() { return this._pts || (this._pts = potOutline(this)); }
+  }
+  // ragged outline: per-vertex radius 0.74..1, lightly smoothed, small angular jitter -> [x0, y0, x1, y1, ...]
+  function potOutline(p) {
+    const rng = rand32(p.seed);
     const n = 10 + ((rng() * 5) | 0);
-    const ca = Math.cos(a), sa = Math.sin(a);
-    // ragged outline: per-vertex radius 0.74..1, lightly smoothed, small angular jitter
-    const m = [];
-    for (let k = 0; k < n; k++) m.push(0.74 + 0.26 * rng());
-    const pts = new Float32Array(n * 2);
+    const m = new Array(n);
+    for (let k = 0; k < n; k++) m[k] = 0.74 + 0.26 * rng();
+    const pts = new Array(n * 2);
     for (let k = 0; k < n; k++) {
       const mm = (m[k] * 2 + m[(k + 1) % n] + m[(k + n - 1) % n]) / 4;
       const t = ((k + (rng() - 0.5) * 0.5) / n) * Math.PI * 2;
-      const u = Math.cos(t) * rx * mm, v = Math.sin(t) * ry * mm;
-      pts[k * 2] = x + u * ca - v * sa; pts[k * 2 + 1] = y + u * sa + v * ca;
+      const u = Math.cos(t) * p.rx * mm, v = Math.sin(t) * p.ry * mm;
+      pts[k * 2] = p.x + u * p.ca - v * p.sa; pts[k * 2 + 1] = p.y + u * p.sa + v * p.ca;
     }
-    const hr = POT.HIT;
-    return {
-      id, x, y, r: (rx + ry) / 2, rx, ry, R: Math.max(rx, ry) * 1.4 + 9, a, ca, sa, depth, dip: Math.round(depth * 30) / 10, wet: false, rain,
-      road: rid, kind: road.kind, seg, district: dist ? dist.id : null, style: dist ? dist.style : null,
-      pts, seed: seed || 1, hx: 1 / ((rx * hr) * (rx * hr)), hy: 1 / ((ry * hr) * (ry * hr)), _path: null,
-    };
+    return pts;
   }
   function makePatch(id, x, y, len, wid, a, seed, kind) {
     const rng = rand32(seed || 1);
@@ -3393,8 +3580,7 @@
       polys.push([[u0 - l2 / 2, v0 - w2 / 2], [u0 + l2 / 2, v0 - w2 / 2], [u0 + l2 / 2, v0 + w2 / 2], [u0 - l2 / 2, v0 + w2 / 2]]);
     }
     for (const pl of polys) for (const c of pl) { const u = c[0], v = c[1]; c[0] = x + u * ca - v * sa; c[1] = y + u * sa + v * ca; }
-    const world = polys;
-    return { id, x, y, len, wid, a, polys: world, R: Math.hypot(len, wid) / 2 + wid * 0.5, kind, age: rng(), seed: seed || 1 };
+    return { id, x, y, len, wid, a, polys, R: Math.hypot(len, wid) / 2 + wid * 0.5, kind, age: rng(), seed: seed || 1, _q: 0 };
   }
 
   /** The pothole under (x, y) or null. Allocation-free; ~0.1 µs on an empty cell. */
@@ -3428,29 +3614,32 @@
     for (const p of potList) p.wet = potActive(p) && (rainState === 2 || (rainState === 1 && p.depth >= 0.4));
     wetPaths.clear();
   }
-  let needs3D = false;
   /** Re-read the weather; when the set of potholes changes the ground chunks repaint (one per frame). */
   function refreshRain(force) {
     const st = readRain();
     if (st === rainState && !force) return false;
     const prev = rainState;
     rainState = st;
+    if (st >= 1) ensureRain(); // (made over the next frames, then indexed and painted)
     applyWet();
     potVersion++;
     PH.rain = st; PH.version = potVersion;
-    if (W.built && (prev >= 1) !== (st >= 1)) {
-      // the rain-only potholes appear / vanish: repaint the cached ground
-      const R = N.render;
-      if (N.view3d && N.view3d.active) R.invalidateChunks();
-      else { R.shadowEpoch++; needs3D = true; } // stale chunks repaint progressively (no blank frames)
-    }
-    N.emit('potholes:change', { rain: st, prev, version: potVersion });
+    // the rain-only potholes appear / vanish: repaint the cached ground
+    if (W.built && PH.ready && rainDone && (prev >= 1) !== (st >= 1)) repaintPotholes();
+    N.emit('potholes:change', { rain: st, prev, version: potVersion, ready: PH.ready });
     return true;
   }
   N.on('view:change', () => { if (needs3D && N.view3d && N.view3d.active) { needs3D = false; N.render.invalidateChunks(); } });
   for (const ev of ['weather', 'season:change', 'game:new', 'save:loaded', 'calendar:change']) N.on(ev, () => { if (W.built) refreshRain(); });
   let rainAcc = 0;
-  N.addSystem({ id: 'potholes', order: 6, runIn: ['*'], update(dt) { rainAcc += dt; if (rainAcc >= 0.5) { rainAcc = 0; if (W.built) refreshRain(); } }, reset() { if (W.built) refreshRain(); } });
+  N.addSystem({
+    id: 'potholes', order: 6, runIn: ['*'],
+    update(dt) {
+      if (job.stage !== 'idle' && W.built) { try { stepGen(POT.SLICE_MS); } catch (e) { N.err('world.potholes', e); job.stage = 'idle'; } }
+      rainAcc += dt; if (rainAcc >= 0.5) { rainAcc = 0; if (W.built) refreshRain(); }
+    },
+    reset() { if (W.built) refreshRain(); },
+  });
 
   // ---- public API
   let qStamp = 0;
@@ -3468,8 +3657,11 @@
     at: potholeAt,
     /** re-read the weather now (normally polled twice a second and on 'weather' / 'season:change') */
     refresh: () => refreshRain(true),
+    /** finish any pending generation now (dry set, patches, and the rain extras if it rains) */
+    ensure() { if (!W.built) return false; return stepGen(Infinity); },
     /** regenerate (after tuning N.world.POTHOLE) and repaint the ground */
-    rebuild() { if (!W.built) return null; buildPotholes(W.data); N.render.invalidateChunks(); return PH.stats; },
+    rebuild() { if (!W.built) return null; buildPotholes(W.data); stepGen(Infinity); N.render.invalidateChunks(); return PH.stats; },
+    ready: false,
   });
   function queryPot(arr, x0, y0, x1, y1, out, pred) {
     qStamp++;

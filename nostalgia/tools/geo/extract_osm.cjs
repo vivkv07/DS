@@ -150,7 +150,7 @@ const RANK = { trunk: 6, trunk_link: 4, primary: 6, primary_link: 4, secondary: 
       }
     }
     const L = lenM(pts);
-    if (L < 25) continue;
+    if (L < 50) continue; // shorter strokes never survive the builder's minimum lengths
     strokes.push({ id: ids[0], c: fam(w.c), n: w.n, rank: RANK[w.c] || 1, len: Math.round(L), ...(w.o ? { o: 1 } : {}), ...(w.b ? { b: 1 } : {}), ways: ids.length, p: dp(pts, 3).map((q) => [r5(q[0]), r5(q[1])]) });
   }
   strokes.sort((a, b) => b.rank - a.rank || b.len - a.len);

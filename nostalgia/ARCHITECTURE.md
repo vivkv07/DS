@@ -93,14 +93,19 @@ wrapper). A new src file must be added to index.html (and this list) or it won't
 ## 4. Units, coordinates, constants
 
 - World units ("u"). +x = east, +y = south. Angles in radians, 0 = east, +π/2 = south
-  (clockwise on screen). `N.WORLD_W = 8000`, `N.WORLD_H = 6000`.
+  (clockwise on screen). `N.WORLD_W = 8000`, `N.WORLD_H = 6000` are core.js defaults only: the map
+  decides the size. `N.world.build()` reads `WORLD_DATA.size = [w, h]` (worlddata.js may also set
+  `N.WORLD_W/H` at its top) and writes it back to `N.WORLD_W/H`; Map v2 (A1) is 15000 x 11250 u
+  (1.6 m per u at the base scale). **Never cache `N.WORLD_W/H` (or anything sized from them) at script
+  load**: read them lazily or on `'world:built'`, the v1 (8000 x 6000) and v2 maps must both work.
 - 1 internal pixel = 1 world unit at camera zoom 1. Scale reference: a person is ~8u
   across, a cycle 15x5u, a Chetak 17x7u, an auto-rickshaw 22x13u, an Ambassador 30x14u,
   a city bus 62x18u. A 2-lane road is ~32u wide, an arterial ~56-70u. One storey ≈ 10u
   of height. Charminar footprint ≈ 60x60u.
 - Speeds (u/s): walk 45, run 80, cycle 115, Luna 120, Chetak 150, auto 135, car 165,
   RX100 180, bus 115, boat 60. Traffic drives on the **left**.
-- Collision/surface grid: cell size `N.CELL = 4` u → 2000 x 1500 cells (`Uint8Array`).
+- Collision/surface grid: cell size `N.CELL = 4` u → `N.world.GW x GH` cells (`Uint8Array`, sized at
+  build: 2000 x 1500 for v1, 3750 x 2813 = 10.5 M cells for v2).
 
 Surface enum `N.SURF`:
 ```
@@ -247,9 +252,12 @@ Implementation notes (render.js, binding):
 `N.WORLD_DATA` (pure data, authored from `design/map_plan.md`):
 ```
 {
-  districts: [{id, name, nameTe?, rect:[x,y,w,h], ground:'#hex', style:'oldcity'|'colonial'|'colony'|'posh'|'rocky'|'cantonment'|'hitec'|'market'}],
+  size:      [w, h],                                         // world size in u (sets N.WORLD_W/H at build)
+  districts: [{id, name, nameTe?, rect:[x,y,w,h] | poly | polys, ground:'#hex', style:'oldcity'|'colonial'|'colony'|'posh'|'rocky'|'cantonment'|'hitec'|'market',
+               label?:[x,y], potholes?: number (multiplier)}],
   water:     [{id, name, poly:[[x,y],...]}],                 // Hussain Sagar, Musi, ponds
-  roads:     [{id, name, pts:[[x,y],...], w, kind:'arterial'|'street'|'lane'|'bund'|'bridge'|'path', oneway?:false}],
+  roads:     [{id, name, pts:[[x,y],...], w, kind:'arterial'|'street'|'lane'|'bund'|'bridge'|'path', oneway?:false,
+               potholes?: false | number (multiplier), pothole_hint?: 0..1 (from design/geo/roads.json)}],
   parks:     [{id, name, poly, kind:'grass'|'garden'|'ground'|'plaza'|'rock'}],
   rocks:     [{x, y, r, h}],                                  // Deccan boulders (solid, drawn 3D)
   blocks:    [{rect:[x,y,w,h], style, seed}],                 // procedural building fill areas
@@ -302,10 +310,101 @@ Implementation notes (world.js, binding):
   `lots`, `STYLES`. `renderMap(pxPerUnit)` -> cached canvas of the simplified map (for
   the minimap and full map). Profiling aids: `detail` (switches), `buildPhases`, `stats`
   (running counts / ms of roof, wall and tree sprite-cache misses).
+- Map v2 (bigger world, A1): every grid / index (surface + roof grids, 256 u structure and decal
+  buckets, district lookup, pothole index) is sized in `build()` from the data, never at load
+  (`N.world.GW/GH/size`). `renderMap(ppu)` honours `ppu` up to a canvas budget (4096 px a side,
+  12 M px): `N.world.mapPPU(ppu)` gives the scale it will use and the returned canvas carries it as
+  `.ppu` (callers that ask for more than the budget must use `canvas.ppu`, not their own ppu).
+  Generic buildings (`t:'bldg'`) are `Bldg` instances whose roof furniture `items` is generated on
+  first read (from `b.seed`), and trees' `blobs / fronds / flowers` likewise: read them, don't
+  assume they exist as own properties at build time. Build budget: < 1.0 s for the v2 world
+  (measured by `tests/potholes.cjs`, CPU time, load independent).
+- Districts as polygons (A1): a district may carry `poly` (one ring `[[x, y]...]` or a list of rings)
+  or `polys` (`[{outer, holes}]` or a list of rings) instead of `rect`; holes cut out (even-odd).
+  `districtAt` uses a 32 u lookup raster ("later wins"); cells within ~190 u of a district that no
+  polygon covers (slivers between wards) go to the nearest district, open land beyond the city is
+  null. Helpers: `districtRings(d)` -> `[{outer, holes}] | null` (null = rect), `districtBBox(d)` ->
+  `[x0, y0, x1, y1]`, `districtLabel(d | id)` -> `[x, y]` inside it (the data's `label` if given),
+  `districtPath(ctx, d)` (adds the shape to the current path; fill with 'evenodd'). Modules that
+  read `d.rect` (menus.js full map, audio.js fallback) must use these instead.
 - Landmarks: every frame world.js calls `N.landmarks.enqueue(lm, visible)` for each
   landmark within the view + 140 u (cast dynamic shadows there, queue art on
   `structures` when `visible`), and `N.landmarks.paintGround(ctx, lm)` from the chunk
   painter (world coords) for static ground art.
+
+### Potholes (A2) — `N.world.potholeAt`, `N.world.potholes`
+
+Hyderabad's roads have potholes (amendment A2), generated by world.js at build time:
+- **Deterministic per road segment**: segment `s` of road `id` draws its own from a PRNG seeded with
+  `'pot:' + id + ':' + s` (rain-only extras `'potr:'`, tar patches `'patch:'`), so the same map always
+  has the same potholes and editing one road never moves another's.
+- **Density** (per 100 u of road, dry): `N.world.POTHOLE.KIND` lane 1.6, street 0.8, arterial 0.36,
+  bund 0.08 (bridges and paths none) x the district style factor `STYLE` (oldcity 1.7, market 1.35,
+  colony 1.3, rocky 1.05, colonial 0.75, posh 0.55, cantonment 0.5, hitec 0.05). A road may set
+  `potholes: false | multiplier` or carry `pothole_hint` (0..1, design/geo/roads.json; then the style
+  factor is softened to its square root), a district may set `potholes: multiplier`. 30% come with
+  1-3 neighbours (a bad stretch). Measured on v1: lanes 1.65, streets 1.0, arterials 0.51, Tank Bund
+  0.18 per 100 u; Old City lanes 2.0, colony lanes 1.7; HITEC 0.06.
+- **Never** within a junction's half width + 16 u (zebra crossings, podiums), within 26 u of a bridge
+  end (expansion joints), on a bridge deck, within 20 u of a railway (level crossings), or anywhere a
+  rim sample is not plain `ROAD`; no two overlap. Size 3-9 u across (ellipses, mostly along the road,
+  in the wheel tracks), `depth` 0.15-1 (bigger ones deeper), `dip` = depth x 3 u.
+- **Monsoon / rain**: while `N.seasons.is('monsoon')` or `is('rain')` (or `N.flags.rain`) the rain-only
+  extras (+60%, smaller, shallower) exist too; when it rains every pothole is `wet` (in the monsoon
+  without rain only the deep ones, depth >= 0.4). The state is polled twice a second and on
+  `'weather' / 'season:change' / 'calendar:change'`; a change emits `'potholes:change' {rain: 0|1|2,
+  prev, version}` and, when the extras appear / vanish, the ground chunks repaint one per frame
+  (`N.render.shadowEpoch` bump; in 3D `invalidateChunks()`).
+- **Drawing (2D)**: baked into the ground chunks (after the markings): a crumbled pale apron, the
+  near-black hole with a crisp broken edge, its floor lit away from the (quantised) sun, the sunlit
+  far wall, gravel inside and kicked out, chips and hairline cracks; tar patches (old repairs) on many
+  roads. Water is live on the `ground` layer: the sky colour of the hour (dawn pink, noon blue,
+  golden-hour orange, night blue-black; muddy on dirt lanes), a brighter sky patch, a sheen, a dark wet
+  halo and rain rings (one cached Path2D per 256 u chunk; ~0.3 ms a frame in the densest view).
+
+```
+N.world.potholeAt(x, y) -> pothole | null      // ~0.05 µs (node) / 0.2 µs (page); null on roofs and off-map
+  pothole = {id, x, y, r (mean radius), rx, ry, a (angle), ca, sa, depth (0..1), dip (u), wet, rain
+             (rain-only), road (id), seg, kind, district, style, pts ([x0, y0, x1, y1, ...] ragged
+             outline, world u), R (painted extent), seed}      // shared object: read, never write
+N.world.potholes = {
+  list, patches,                                // every pothole (incl. rain-only) / every tar patch
+  chunks, patchChunks, CH: 256, cols, rows,     // per 256 u render chunk: chunks[j * cols + i]
+  chunk(i, j) -> [pothole], query(x0, y0, x1, y1, out?, all?) -> active potholes in the rect,
+  queryPatches(x0, y0, x1, y1, out?), active(p) -> bool, at(x, y) (= potholeAt),
+  rain: 0 dry | 1 monsoon | 2 raining, version (bumps on every change), stats {dry, rain, patches,
+  rejected, byKind, byStyle, byDistrict, roadLen, ms}, refresh(), rebuild() (after tuning POTHOLE) }
+```
+3D (view3d*.js): read `N.world.potholes.query(chunk rect)` per 512 u chunk and carve real dips:
+an elliptical bowl `rx x ry` rotated by `a`, `dip * N.view3d.VS` deep, the outline in `pts`;
+water at 70% of the dip when `wet`; listen to `'potholes:change'` to rebuild the chunks whose lists
+changed (`p.rain` ones appear / vanish). The ground texture already shows the painted hole and patches.
+
+**Vehicles (vehicles.js owns this; reference integration).** Each step, for each moving vehicle near
+the view (and always the player's): sample the front and rear wheel contact points (sweep every 2 u
+so a small pothole is never jumped at speed), and react only on *entering* a pothole:
+```js
+const ph = N.world.potholeAt && N.world.potholeAt(wx, wy);           // wheel contact point
+if (ph && ph.id !== v._potId) {                                        // just entered this pothole
+  v._potId = ph.id;
+  const sev = Math.min(1, ph.depth) * (v.T.potholeMul || 1);           // 0..1 (cars 0.75, buses 0.45)
+  const spf = Math.abs(v.speed) / v.T.maxSpeed;                        // 0..1 of top speed
+  const keep = 1 - 0.18 * sev * (0.45 + 0.55 * spf);                   // = x0.82 at full depth + top speed
+  v.vx *= keep; v.vy *= keep; v.speed *= keep;
+  v.jolt = 1;                                                          // body bob (2D) / suspension dip (3D)
+  N.audio.sfx('pothole', { x: wx, y: wy, vol: 0.3 + 0.7 * spf, variant: ph.wet ? 'wet' : null }); // "DHADAK!"
+  N.emit('vehicle:pothole', { vehicle: v, speed: Math.abs(v.speed), depth: ph.depth, wet: ph.wet, x: wx, y: wy, player: mine });
+  if (mine) {
+    N.render.shake(1.5 * sev, 0.22);                                   // camera shake 1.5
+    if (v.T.pedal && !v.flat && Math.random() < 0.04 * sev) N.vehicles.puncture(v);  // 4% cycle puncture
+    if (v.T.cls === 'bike' && spf > 0.8 && Math.random() < 0.02 * sev)               // 2% comic fall above
+      N.player.fall(v, { speed: Math.abs(v.speed), pothole: true });                 // 80% of top speed
+  }
+} else if (!ph) v._potId = null;
+```
+Wet potholes splash muddy drops; on foot the player stumbles (speed x0.45, `'player:stumble'`).
+vehicles.js implements this with refinements (`TUNE.pothole*`: a softer rear-wheel "-dak" for the
+same pothole, a 45 s grace between falls, severity from `depth`).
 
 ### Roof zones (walkable terraces) — `N.world.roofs`, `N.player.level`
 
@@ -660,6 +759,10 @@ fail + checkpoint retry), save/reload/corruption, the minimap and HUD overlap on
 review: an in-page checker for every API in §5-§13, tunnelling / wall / exit / NaN / input-loss /
 joystick / dialogue / mission-leak / save-garbage probes, a night-drive perf run with a CPU
 profile, screenshots and the dist build (`ONLY=contract,bugs,perf,visual,build`).
+`tests/potholes.cjs` covers the world engine at both map sizes and A2: node builds (CPU-time build
+budget, grids sized from the data, polygon districts, pothole densities per kind / district, the
+placement rules, `potholeAt` vs brute force and < 2 µs, determinism, rain) plus the real game (a cycle
+through a pothole fires `vehicle:pothole`, screenshots `tests/out/potholes_*`; `ONLY=node|browser`).
 Build with `node nostalgia/tools/build.mjs`. Headless Chromium has no audio device; audio code must
 not throw when the AudioContext cannot start.
 

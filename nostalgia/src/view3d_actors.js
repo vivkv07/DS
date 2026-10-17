@@ -67,7 +67,7 @@
   const now = () => performance.now();
 
   /* ================================================================ options + stats */
-  const DBG = { cam: null }; // tests: {pos: [x, h, y], look: [x, h, y], fov} overrides the 3D camera for a frame
+  const DBG = { cam: null, track: null, rec: null, riderNext: false }; // tests: camera override {pos, look, fov}; track(entity) records its pose
   const OPT = { glows: true, decals: true, seasons: true, blobs: true, pools: true };
   const ST = { people: 0, peopleFar: 0, vehicles: 0, wheels: 0, glows: 0, pools: 0, decals: 0, animals: 0, birds: 0, markers: 0, kites: 0, ms: 0, msAvg: 0, frame: 0, culled: 0 };
   let tFrame0 = 0;
@@ -553,17 +553,20 @@
 
   function personVertexHeader(depth) {
     return [
-      'attribute vec3 aSP;', 'attribute vec4 iJ0;', 'attribute vec4 iJ1;', 'attribute vec4 iJ2;', 'attribute vec4 iFlags;',
+      'attribute vec3 aSP;', 'attribute vec4 iJ0;', 'attribute vec4 iJ1;', 'attribute vec4 iJ2;', 'attribute vec4 iJ3;', 'attribute vec4 iFlags;',
       depth ? '' : 'attribute vec4 iColA;\nattribute vec4 iColB;\nvarying vec3 vPat;\nvarying vec3 vAcc;\nvarying vec3 vLP;\nvarying float vSlot;',
       GLSL_UNPACK, GLSL_ROT,
       'float pFeat(float f){ if (f < 0.5) return 1.0; float i = f - 1.0; float w = floor(i / 20.0 + 0.0001); float b = i - w * 20.0;',
       '  float m = w < 0.5 ? iFlags.x : (w < 1.5 ? iFlags.y : (w < 2.5 ? iFlags.z : iFlags.w)); return aBit(m, b); }',
       'void pAnim(inout vec3 p, inout vec3 n){',
       '  float part = aSP.y;',
-      '  if (pFeat(aSP.z) < 0.5 || (part > 8.5 && aBit(iFlags.w, ' + BIT_FPS + '.0) > 0.5)) { p = vec3(0.0, -60.0, 0.0); return; }',
-      '  if (part > 0.5 && part < 4.5) {',
-      '    float side = (part < 1.5 || (part > 2.5 && part < 3.5)) ? -1.0 : 1.0;',
+      '  if (pFeat(aSP.z) < 0.5 || (part > 8.5 && part < 9.5 && aBit(iFlags.w, ' + BIT_FPS + '.0) > 0.5)) { p = vec3(0.0, -60.0, 0.0); return; }',
+      '  bool foot = part > 9.5;',
+      '  if ((part > 0.5 && part < 4.5) || foot) {',
+      '    float side = foot ? (part < 10.5 ? -1.0 : 1.0) : ((part < 1.5 || (part > 2.5 && part < 3.5)) ? -1.0 : 1.0);',
       '    float hip = side < 0.0 ? iJ0.x : iJ0.y; float knee = side < 0.0 ? iJ0.z : iJ0.w;',
+      '    if (foot && iJ3.w > 0.5) { float hi = floor(iJ3.w / 4096.0 + 0.00001); float ank = side < 0.0 ? (hi - 2048.0) / 1000.0 : (iJ3.w - hi * 4096.0 - 2048.0) / 1000.0;',
+      '      p = aRotZ(p, vec2(0.0, ' + ANK_Y.toFixed(3) + '), ank); n = aRotZ(n, vec2(0.0), ank); }',
       '    if (part > 2.5) { p = aRotZ(p, vec2(0.0, ' + KNEE_Y.toFixed(3) + '), knee); n = aRotZ(n, vec2(0.0), knee); }',
       '    p = aRotZ(p, vec2(0.0, ' + HIP_Y.toFixed(3) + '), hip); n = aRotZ(n, vec2(0.0), hip);',
       '  } else if (part > 4.5 && part < 8.5) {',
@@ -572,10 +575,13 @@
       '    if (part > 6.5) { p = aRotZ(p, vec2(0.0, ' + EL_Y.toFixed(3) + '), el); n = aRotZ(n, vec2(0.0), el); }',
       '    p = aRotZ(p, vec2(0.0, ' + SH_Y.toFixed(3) + '), sh); n = aRotZ(n, vec2(0.0), sh);',
       '    p = aRotX(p, vec2(' + SH_Y.toFixed(3) + ', side * ' + SH_Z.toFixed(3) + '), -side * ab); n = aRotX(n, vec2(0.0), -side * ab);',
-      '  } else if (part > 8.5) {',
+      '  } else if (part > 8.5 && part < 9.5) {',
       '    if (aBit(iFlags.w, ' + BIT_KID + '.0) > 0.5) { p.xy = (p.xy - vec2(0.05, ' + NECK_Y.toFixed(3) + ')) * 1.16 + vec2(0.05, ' + NECK_Y.toFixed(3) + '); p.z *= 1.16; }',
+      '    p = aRotY(p, vec2(0.05, 0.0), iJ3.x); n = aRotY(n, vec2(0.0), iJ3.x);',
+      '    p = aRotZ(p, vec2(0.05, ' + NECK_Y.toFixed(3) + '), iJ3.y); n = aRotZ(n, vec2(0.0), iJ3.y);',
       '  }',
-      '  if (part < 0.5 || part > 4.5) { p = aRotZ(p, vec2(0.0, ' + HIP_Y.toFixed(3) + '), -iJ2.z); n = aRotZ(n, vec2(0.0), -iJ2.z); }',
+      '  if ((part < 0.5 && p.y > 5.6) || (part > 4.5 && part < 9.5)) p.y += iJ3.z;',
+      '  if (part < 0.5 || (part > 4.5 && part < 9.5)) { p = aRotZ(p, vec2(0.0, ' + HIP_Y.toFixed(3) + '), -iJ2.z); n = aRotZ(n, vec2(0.0), -iJ2.z); }',
       '  p.y += iJ2.w;',
       '}',
     ].join('\n') + '\n';
@@ -621,12 +627,13 @@
     // ---------------------------------------------------------------- legs
     for (const sd of [-1, 1]) {
       const z = sd * HIP_Z;
-      b.part(sd < 0 ? 3 : 4).feat(0);
-      // foot (skin) + chappal sole
+      // foot (skin) + chappal sole: parts 10 / 11 (ankle joint)
+      b.part(sd < 0 ? 10 : 11).feat(0);
       b.slot(0).color('#2a2220').box(-0.42, 0, z - 0.3, 1.06, 0.17, z + 0.3);
       b.slot(SK).color(W);
       if (near) b.ell(0.32, 0.3, z, 0.66, 0.2, 0.25, 8, 4, { lat0: 0 }); else b.box(-0.3, 0.17, z - 0.24, 0.9, 0.42, z + 0.24);
       if (near) { b.feat(F.SHOES).slot(0).color('#16141a').ell(0.3, 0.26, z, 0.74, 0.3, 0.32, 8, 5, { lat0: -0.2 }).feat(0); }
+      b.part(sd < 0 ? 3 : 4).feat(0);
       // shin: bare (skin) or trouser
       b.feat(F.LEG_BARE).slot(SK).color(W).cyl([0, ANK_Y - 0.05, z], [0, KNEE_Y + 0.05, z], 0.26, 0.31, sS, 0);
       if (near) b.ell(0.06, KNEE_Y + 0.02, z, 0.3, 0.3, 0.3, 6, 4);
@@ -932,24 +939,34 @@
   }
 
   /* ---------------------------------------------------------------- poses (joint angles) */
-  // J: [hipL, hipR, kneeL, kneeR, shL, shR, elL, elR, abL, abR, lean, bob]
-  const J = new Float32Array(12);
+  // J: [hipL, hipR, kneeL, kneeR, shL, shR, elL, elR, abL, abR, lean, bob, headYaw, headPitch, breathe, -]
+  const J = new Float32Array(16);
   function poseRest(j) { j.fill(0); j[8] = j[9] = 0.07; j[6] = j[7] = 0.12; return j; }
-  function poseWalk(j, phase, spd, run, wrapK) {
-    spd = clamp(spd, 0, 1);
-    const s = Math.sin(phase), c = Math.cos(phase);
-    const amp = spd * (run ? 0.78 : 0.48) * (wrapK || 1);
-    j[0] = s * amp; j[1] = -s * amp;
-    const kb = (run ? 1.25 : 0.8) * spd * (wrapK || 1);
-    j[2] = -Math.max(0, -c) * kb - 0.04 * spd; j[3] = -Math.max(0, c) * kb - 0.04 * spd;
-    const aamp = spd * (run ? 0.85 : 0.5);
-    j[4] = -s * aamp; j[5] = s * aamp;
-    j[6] = 0.12 + spd * (run ? 1.25 : 0.32); j[7] = j[6];
-    j[8] = j[9] = 0.07 + spd * 0.04;
-    j[10] = run ? 0.2 * spd : 0.04 * spd;
-    j[11] = Math.abs(Math.sin(phase)) * (run ? 0.38 : 0.16) * spd;
-    return j;
+  /** lowest point of a foot sole (template y) for hip angle h and knee angle k (feet planting) */
+  function soleMin(h, k) {
+    const ay = HIP_Y - THIGH * Math.cos(h) - SHIN * Math.cos(h + k);
+    const sn = Math.sin(h + k), cs = Math.cos(h + k);
+    return ay + Math.min(-0.42 * sn - 0.36 * cs, 1.06 * sn - 0.36 * cs);
   }
+  /** lift / drop the whole body so the lowest foot touches the ground */
+  function ground(j) { j[11] = -Math.min(soleMin(j[0], j[2]), soleMin(j[1], j[3])); return j; }
+  /** walk / run cycle with the hip swing amplitude amp (rad); left leg forward at phase PI/2 */
+  function poseGait(j, phase, amp, run, wrapK) {
+    j[12] = j[13] = j[14] = j[15] = 0;
+    const s = Math.sin(phase), c = Math.cos(phase);
+    const a = amp * (wrapK || 1), g = clamp(amp / 0.6, 0, 1.4);
+    j[0] = s * a; j[1] = -s * a;
+    // the knee folds while its leg swings forward (and a little at landing)
+    const kb = run ? 1.0 + 0.7 * g : 0.25 + 0.75 * g;
+    j[2] = -kb * Math.pow(Math.max(0, c), 1.3) - 0.05 * g; j[3] = -kb * Math.pow(Math.max(0, -c), 1.3) - 0.05 * g;
+    const aamp = a * (run ? 1.05 : 0.85);
+    j[4] = -s * aamp; j[5] = s * aamp;
+    j[6] = j[7] = run ? 1.25 + 0.15 * g : 0.15 + 0.25 * g;
+    j[8] = j[9] = 0.07 + 0.04 * g;
+    j[10] = run ? 0.12 + 0.12 * Math.min(1, g) : 0.03 * g;
+    return ground(j);
+  }
+  function poseWalk(j, phase, spd, run, wrapK) { return poseGait(j, phase, clamp(spd, 0, 1) * (run ? 0.85 : 0.55), run, wrapK); }
   /** 2-bone IK in the sagittal plane: root at (rx, ry), target (tx, ty), bones a, b; bend +1 knee-forward / -1 elbow-back */
   function ik2(rx, ry, tx, ty, a, b, bend, out, oi) {
     let dx = tx - rx, dy = ty - ry;
@@ -977,10 +994,122 @@
     ik2(0, HIP_Y, rx, ry, THIGH, SHIN, 1, IKO, 0); j[1] = IKO[0]; j[3] = IKO[1];
   }
   function poseSit(j, armRest) {
-    j.fill(0);
+    j.fill(0); j[14] = 0;
     j[0] = j[1] = 1.5; j[2] = j[3] = -1.5;
     j[4] = j[5] = armRest == null ? 0.45 : armRest; j[6] = j[7] = 0.75; j[8] = j[9] = 0.12;
     return j;
+  }
+  /** both ankle angles packed into J[15] (0 = feet rigid with the shins) */
+  function encAnk(a, b) { return (Math.round(clamp(a, -2, 2) * 1000) + 2048) * 4096 + Math.round(clamp(b, -2, 2) * 1000) + 2048; }
+  function decAnk(v) { if (!(v > 0.5)) return [0, 0]; const hi = Math.floor(v / 4096); return [(hi - 2048) / 1000, (v - hi * 4096 - 2048) / 1000]; }
+  /** feet flat (plus tilt) for the current hip / knee angles */
+  function flatFeet(j, tl, tr) { j[15] = encAnk((tl || 0) - j[0] - j[2], (tr || 0) - j[1] - j[3]); }
+
+  /* ---------------------------------------------------------------- planted-foot gait
+   * Procedural walk / run in template units (adult, legs THIGH + SHIN from hip to ankle).
+   * Each leg spends the fraction `beta` of a cycle in stance: its flat foot moves backwards
+   * relative to the hip at exactly the body's speed (2X per beta of a cycle), so it stays
+   * still on the ground (no sliding); it rolls onto the heel at contact and over the toe at
+   * push-off (ankle joint, J[15]). The cadence follows from the stride: f = v * beta / 2X, with a
+   * floor (short strides when slow) and X capped by the leg's reach. The hip height follows
+   * the stance leg (inverted pendulum when walking, compression + ballistic flight when
+   * running), legs are solved by 2-bone IK to the ankle targets. */
+  const LEG = THIGH + SHIN;
+  const GP = { beta: 0.5, X: 0, lift: 0, thH: 0, thT: 0, kst: 0.98, cap: HIP_Y, run: false, f: 0, bump: 0 };
+  const FA = { ax: 0, ay: 0, th: 0, c: 0 }, FB = { ax: 0, ay: 0, th: 0, c: 0 }, F0 = { ax: 0, ay: 0, th: 0 }, F1 = { ax: 0, ay: 0, th: 0 };
+  function gaitParams(vt, run, wrapK, P) {
+    P.run = run;
+    if (run) {
+      P.beta = clamp(0.36 - vt * 0.0016, 0.2, 0.34);
+      P.X = Math.min(0.6 * LEG * wrapK, vt * P.beta / (2 * 2.2));
+      P.lift = 2.1 * wrapK; P.thH = 0.12; P.thT = 0.8; P.kst = 0.935; P.cap = HIP_Y - 0.42; P.bump = 0.55;
+    } else {
+      P.beta = clamp(0.64 - vt * 0.0064, 0.34, 0.62);
+      P.X = Math.min(0.6 * LEG * wrapK, vt * P.beta / (2 * 1.5));
+      P.lift = 0.6 * wrapK; P.thH = 0.3 * wrapK; P.thT = 0.55 * wrapK; P.kst = 0.985; P.cap = HIP_Y - 0.2; P.bump = 0.08;
+    }
+    P.f = P.X > 0.01 ? vt * P.beta / (2 * P.X) : 0;
+    P.lift *= clamp(P.X / 1.1, 0, 1);
+    return P;
+  }
+  /** ankle position (x forward, y above the ground) and foot pitch th (+ toes up) of a foot whose
+   *  flat-foot ankle would be at xr: th > 0 pivots on the heel, th < 0 on the toe */
+  function rollFoot(xr, th, out) {
+    const c = Math.cos(th), s = Math.sin(th);
+    const px = th >= 0 ? xr - 0.42 : xr + 1.06, dx = th >= 0 ? 0.42 : -1.06, dy = ANK_Y;
+    out.ax = px + dx * c - dy * s; out.ay = dx * s + dy * c; out.th = th;
+    return out;
+  }
+  const sq = (x) => x * x;
+  /** one foot at cycle position u in [0, 1): stance (c = 1) then swing */
+  function footAt(u, P, out) {
+    const X = P.X;
+    if (u < P.beta) {
+      const s = u / P.beta;
+      let th = 0;
+      if (s < 0.2) th = P.thH * sq(1 - s / 0.2);
+      else if (s > 0.62) th = -P.thT * sq((s - 0.62) / 0.38);
+      rollFoot(X - 2 * X * s, th, out); out.c = 1; out.s = s;
+    } else {
+      const s = (u - P.beta) / (1 - P.beta);
+      rollFoot(-X, -P.thT, F0); rollFoot(X, P.thH, F1);
+      // running: the heel kicks up behind first, then the knee drives the foot forward
+      const e = P.run ? (1 - Math.cos(Math.PI * Math.pow(s, 1.35))) / 2 : (1 - Math.cos(Math.PI * s)) / 2;
+      out.ax = F0.ax + (F1.ax - F0.ax) * e;
+      out.ay = F0.ay + (F1.ay - F0.ay) * s + P.lift * Math.sin(Math.PI * (P.run ? Math.pow(s, 0.7) : s));
+      out.th = F0.th + (F1.th - F0.th) * e + (P.run ? -0.35 * Math.sin(Math.PI * s) : 0);
+      out.c = 0; out.s = s;
+    }
+    return out;
+  }
+  /** highest the hip may be with this stance foot on the ground */
+  function hipFor(F, P) {
+    const k = P.run ? P.kst - 0.05 * Math.sin(Math.PI * F.s) : P.kst;
+    const L = LEG * k, d = Math.min(Math.abs(F.ax), L * 0.995);
+    return Math.min(P.cap, F.ay + Math.sqrt(L * L - d * d));
+  }
+  /** full-body gait pose for cycle position ph (cycles) */
+  function gaitPose(j, ph, P, wrapK) {
+    j[12] = j[13] = j[14] = 0;
+    const uL = ph - Math.floor(ph), uR = (ph + 0.5) - Math.floor(ph + 0.5);
+    footAt(uL, P, FA); footAt(uR, P, FB);
+    let hy;
+    if (FA.c || FB.c) hy = Math.min(FA.c ? hipFor(FA, P) : 99, FB.c ? hipFor(FB, P) : 99);
+    else { // flight: from the push-off height to the landing height, a ballistic arc
+      const h2 = ph * 2 - Math.floor(ph * 2), q = clamp((h2 * 0.5 - P.beta) / Math.max(0.01, 0.5 - P.beta), 0, 1);
+      const a = hipFor(rollFoot(-P.X, -P.thT, F0), (F0.s = 1, P)), b = hipFor(rollFoot(P.X, P.thH, F1), (F1.s = 0, P));
+      hy = a + (b - a) * q + 4 * P.bump * q * (1 - q);
+    }
+    const bob = hy - HIP_Y;
+    legsTo(j, FA.ax, FA.ay - bob, FB.ax, FB.ay - bob);
+    j[15] = encAnk(FA.th - j[0] - j[2], FB.th - j[1] - j[3]);
+    // arms swing against the legs: forward when the opposite foot is forward
+    const g = clamp(P.X / (0.6 * LEG), 0, 1), cs = Math.cos(TAU * ph);
+    const aamp = (P.run ? 0.95 : 0.6) * g * (wrapK < 1 ? 0.8 : 1);
+    j[4] = -cs * aamp; j[5] = cs * aamp;
+    j[6] = P.run ? 1.45 + 0.25 * cs : 0.12 + 0.3 * g + 0.18 * Math.max(0, -cs) * g;
+    j[7] = P.run ? 1.45 - 0.25 * cs : 0.12 + 0.3 * g + 0.18 * Math.max(0, cs) * g;
+    j[8] = j[9] = 0.07 + 0.05 * g;
+    j[10] = P.run ? 0.16 + 0.1 * g : 0.025 + 0.035 * g;
+    j[11] = bob;
+    return j;
+  }
+  /** standing still, weight a little on one leg */
+  function poseStand(j, t, seed) {
+    poseRest(j);
+    const w = Math.sin(t * 0.37 + seed) * 0.5 + 0.5;
+    const hy = HIP_Y - 0.06 - 0.04 * w;
+    legsTo(j, 0.18 - 0.1 * w, ANK_Y - (hy - HIP_Y), -0.12 + 0.08 * w, ANK_Y - (hy - HIP_Y));
+    j[11] = hy - HIP_Y;
+    j[15] = encAnk(-j[0] - j[2], -j[1] - j[3]);
+    return j;
+  }
+  const JS = new Float32Array(16);
+  /** blend everything but the packed ankles (re-derived so feet stay flat) */
+  function blendPose(j, from, k) {
+    const af = decAnk(from[15]), aj = decAnk(j[15]);
+    for (let i = 0; i < 15; i++) j[i] = from[i] + (j[i] - from[i]) * k;
+    j[15] = encAnk(af[0] + (aj[0] - af[0]) * k, af[1] + (aj[1] - af[1]) * k);
   }
 
   /* ---------------------------------------------------------------- people pools + submission */
@@ -1024,7 +1153,8 @@
     if (i < 0) return -1;
     fr.write(pool.M, i * 16, lx, ly, lz, o && o.yaw || 0, o && o.roll || 0, o && o.pitch || 0, sc * s.wide, sc, sc * s.wide);
     const A = pool.A;
-    const a0 = A.iJ0.array, a1 = A.iJ1.array, a2 = A.iJ2.array, fl = A.iFlags.array, ca = A.iColA.array, cb = A.iColB.array, k = i * 4;
+    const a0 = A.iJ0.array, a1 = A.iJ1.array, a2 = A.iJ2.array, a3 = A.iJ3.array, fl = A.iFlags.array, ca = A.iColA.array, cb = A.iColB.array, k = i * 4;
+    a3[k] = j[12]; a3[k + 1] = j[13]; a3[k + 2] = j[14]; a3[k + 3] = j[15] || 0;
     a0[k] = j[0]; a0[k + 1] = j[1]; a0[k + 2] = j[2]; a0[k + 3] = j[3];
     a1[k] = j[4]; a1[k + 1] = j[5]; a1[k + 2] = j[6]; a1[k + 3] = j[7];
     a2[k] = j[8]; a2[k + 1] = j[9]; a2[k + 2] = j[10]; a2[k + 3] = j[11];
@@ -1043,7 +1173,7 @@
     const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
     depth.onBeforeCompile = personDepthCompile;
     depth.customProgramCacheKey = () => 'nostalgia-person-depth';
-    const attrs = { iJ0: 4, iJ1: 4, iJ2: 4, iFlags: 4, iColA: 4, iColB: 4 };
+    const attrs = { iJ0: 4, iJ1: 4, iJ2: 4, iJ3: 4, iFlags: 4, iColA: 4, iColB: 4 };
     const gNear = buildPersonTemplate(0), gFar = buildPersonTemplate(1);
     ST.personVerts = [gNear.attributes.position.count, gFar.attributes.position.count];
     PEOPLE = new Pool('people', gNear, PERSON_MAT, 96, attrs, { depth, cast: true, max: 1024 });
@@ -1939,9 +2069,10 @@
         const pxr = bx + Math.cos(c) * R, pyr = by + Math.sin(c) * R, pxl = bx - Math.cos(c) * R, pyl = by - Math.sin(c) * R;
         T(pxl - 0.25, pyl + 0.18 + ANK_Y * sc, A0); T(pxr - 0.25, pyr + 0.18 + ANK_Y * sc, A1);
         legsTo(J, A0[0], A0[1], A1[0], A1[1]);
+        flatFeet(J, -0.12 + 0.18 * Math.sin(c), -0.12 - 0.18 * Math.sin(c)); // ankling through the pedal stroke
       } else if (seat.foot) {
         T(seat.foot[0] * sx, seat.foot[1] + ANK_Y * sc, A0);
-        legsTo(J, A0[0], A0[1], A0[0], A0[1]);
+        legsTo(J, A0[0], A0[1], A0[0], A0[1]); flatFeet(J);
         if (pose === 'moto' || pose === 'scooter') { J[8] += 0.02; }
       } else { J[0] = J[1] = 1.45; J[2] = J[3] = -1.4; }
       if (pose === 'scooter' || pose === 'moto') { J[0] += 0.04; J[1] += 0.04; }
@@ -1950,18 +2081,35 @@
         yaw2 = Math.PI / 2; seated = false; poseSit(J, 0.5); J[0] = J[1] = 1.35; J[2] = J[3] = -1.5; J[6] = J[7] = 1.1;
       } else {
         poseSit(J, 0.5);
-        if (seat.foot) { T(seat.foot[0] * sx, seat.foot[1] + ANK_Y * sc, A0); legsTo(J, A0[0], A0[1], A0[0], A0[1]); }
+        if (seat.foot) { T(seat.foot[0] * sx, seat.foot[1] + ANK_Y * sc, A0); legsTo(J, A0[0], A0[1], A0[0], A0[1]); flatFeet(J); }
         const d0 = md.seats[0];
         if (d0) { T(d0.x * sx + 0.6, d0.y + 1.3, A0); armsTo(J, 0.12, A0[0], A0[1], -0.95, A0[0], A0[1], 0.95); }
       }
     } else if (pose === 'bench') {
       poseSit(J, 0.25);
-      if (seat.foot) { T(seat.foot[0] * sx, seat.foot[1] + ANK_Y * sc, A0); legsTo(J, A0[0], A0[1], A0[0], A0[1]); }
+      if (seat.foot) { T(seat.foot[0] * sx, seat.foot[1] + ANK_Y * sc, A0); legsTo(J, A0[0], A0[1], A0[0], A0[1]); flatFeet(J); }
     } else if (pose === 'boatman') {
       poseSit(J, 0.3);
       T(-14.0 * sx, seat.y + 0.4, A0); armsTo(J, 0.05, 0.6, 5.0, -0.9, A0[0], A0[1], 0.9);
     }
-    submitPerson(look, seed, FR, hx, rootY, hz, J, { yaw: yaw2, fpsHide: o.fpsHide, noBlob: true, near: o.near, seated });
+    // getting on: from standing beside the vehicle (its left side) onto the seat
+    let rx = hx, ry = rootY, rz = hz;
+    const m = o.actor ? MOUNT.get(o.actor) : null;
+    if (m && m.on) {
+      const k = (nowS() - m.t0) / MOUNT_S;
+      if (k < 1) {
+        const q = ease(Math.max(0, k));
+        const sj = J.slice(); poseStand(J, H.time, seed); // standing beside it -> the riding pose
+        blendPose(J, sj, 1 - q);
+        J[12] = sj[12]; J[13] = sj[13]; J[14] = sj[14];
+        const sideZ = -(md.W / 2 + 2.2);
+        rx = hx; rz = sideZ + (hz - sideZ) * q;
+        ry = (-FR.y) * (1 - q) + rootY * q + Math.sin(q * Math.PI) * 1.0;
+        seated = q > 0.5;
+      } else MOUNT.delete(o.actor);
+    }
+    if (DBG.riderNext && DBG.rec) { DBG.rec.riders = DBG.rec.riders || []; DBG.rec.riders.push({ pose, J: Array.from(J), seated, fpsHide: !!o.fpsHide, kid: s.kid }); }
+    submitPerson(look, seed, FR, rx, ry, rz, J, { yaw: yaw2, fpsHide: o.fpsHide, noBlob: true, near: o.near, seated });
   }
   const SW = [0, 0, 0, 0, 0, 0];
   function vehicleEntity(v) {
@@ -1998,6 +2146,7 @@
     let c2 = pack(v.color2 || shadeHex(v.color || '#c0392b', 0.7));
     if (md.key === 'ambassador_taxi') c2 = pack('#f2c230');
     const cockpit = fps && md.cockpit;
+    if (DBG.track === v) { DBG.rec = { kind: 'vehicle', model: md.key, spin, steer: steerVis, crank, lights: on, brake: braking, beacon, roll, cockpit: !!cockpit, frame: ST.frame }; DBG.riderNext = true; }
     // body (or the interior in first person)
     let pool, it = null;
     if (cockpit) { it = interior(md); pool = it.pool; } else pool = vpool(md);
@@ -2028,14 +2177,14 @@
     const near = mine;
     if (md.show || fps) {
       const seats = md.seats;
-      if (v.driver && seats[0] && !v.fallen) {
+      if (v.driver && seats[0] && !v.fallen && !cockpit) {
         const look = v.driver === pl ? pl.look : riderLookOf(v);
-        submitRider(md, seats[0], look, v.driver === pl ? 7 : v.seed, sx, { steer: steerVis, crank, fpsHide: fps && v.driver === pl, near });
+        submitRider(md, seats[0], look, v.driver === pl ? 7 : v.seed, sx, { steer: steerVis, crank, fpsHide: fps && (v.driver === pl || mine), near, actor: v.driver.look ? v.driver : null });
       }
       const pil = v.pillion;
-      if (pil && seats[1] && !v.fallen) submitRider(md, seats[1], pil.look || pil, pil === pl ? 7 : (v.seed | 0) + 3, sx, { fpsHide: fps && pil === pl, near });
+      if (pil && seats[1] && !v.fallen) submitRider(md, seats[1], pil.look || pil, pil === pl ? 7 : (v.seed | 0) + 3, sx, { fpsHide: fps && pil === pl, near, actor: pil.look ? pil : null });
       const pass = v.passenger;
-      if (pass && pass !== pil && seats[1] && !v.fallen && (md.show || pass === pl)) submitRider(md, seats[seats.length > 2 ? 1 : 1], pass.look || pass, pass === pl ? 7 : (v.seed | 0) + 5, sx, { fpsHide: fps && pass === pl, near });
+      if (pass && pass !== pil && seats[1] && !v.fallen && (md.show || pass === pl)) submitRider(md, seats[1], pass.look || pass, pass === pl ? 7 : (v.seed | 0) + 5, sx, { fpsHide: fps && pass === pl, near, actor: pass.look ? pass : null });
       // ambient passengers in traffic autos / rickshaws (3D life; the 2D sprite shows the canopy)
       if ((md.key === 'auto' || md.key === 'rickshaw') && v.driver && !pass && !mine && ((v.seed | 0) % 3 === 0)) {
         const n = 1 + ((v.seed | 0) % 2);
@@ -2096,6 +2245,7 @@
       }
     }
     if (BLOBS && !md.boat) blob(v.x, v.y, md.L * sx * 1.05, md.W * sz * 1.15, v.angle || 0, 0);
+    DBG.riderNext = false;
   }
 
   /* ================================================================ ANIMALS + PIGEONS */
@@ -2274,70 +2424,163 @@
 
   /* ================================================================ PEOPLE as entities */
   const PSTATE = new WeakMap();
+  const SIM = { frame: -1, last: 0, dt: 0 };
   const EMOTES = [];       // [{x, h, y, kind, a}] collected this frame
   const EXTRAS = { umb: [], balloons: [], carts: [], benches: [] };
   function seedOf(e) { return e === N.player ? 7 : (e.id | 0) || 1; }
+  // getting on / off a vehicle: a short blend between standing beside it and the seat
+  const MOUNT = new WeakMap();
+  const nowS = () => performance.now() / 1000;
+  const MOUNT_S = 0.4;
+  N.on('vehicle:enter', (d) => { if (d && d.actor && d.vehicle) MOUNT.set(d.actor, { t0: nowS(), v: d.vehicle, on: true }); });
+  N.on('vehicle:exit', (d) => {
+    try {
+      const v = d && d.vehicle, a = d && d.actor;
+      if (!v || !a || !READY) return;
+      const md = model(modelKeyFor(v.T)), seat = md.seats[d.passenger && md.seats[1] ? 1 : 0];
+      if (!seat) return;
+      const c = Math.cos(v.angle || 0), sn = Math.sin(v.angle || 0), lz = seat.z || 0;
+      MOUNT.set(a, { t0: nowS(), on: false, x: v.x + c * seat.x - sn * lz, y: v.y + sn * seat.x + c * lz, hip: seat.y, yaw: -(v.angle || 0), show: md.show });
+    } catch (e) { /* no blend */ }
+  });
+  const SEATED_J = new Float32Array([1.35, 1.35, -1.4, -1.4, 0.6, 0.6, 0.6, 0.6, 0.1, 0.1, 0.08, 0, 0, 0, 0, 0]);
+  const ease = (k) => k * k * (3 - 2 * k);
+  function wrapA(a) { return Math.atan2(Math.sin(a), Math.cos(a)); }
   function personEntity(e, dt) {
     if (e.hidden || e.vehicle) return;
     const p = N.player, isP = e === p;
     const look = e.look;
     if (!look) return;
+    // simulation time of this frame (slow motion / pause freeze the gait with the sim)
+    if (SIM.frame !== ST.frame) { const now = (N.time && N.time.now) || 0; SIM.dt = clamp(now - SIM.last, 0, 0.1); SIM.last = now; SIM.frame = ST.frame; }
+    dt = SIM.dt;
     let el = H.elev(e);
     if (!el && e.roofH) el = e.roofH * VS;
     const face = isFinite(e.facing) && isP ? e.facing : (e.angle || 0);
-    const t = H.time;
-    let roll = 0, pitch = 0, yaw = -face, x = e.x, y = e.y, rootY = el;
-    const s = lookSpec(look, seedOf(e));
-    const an = e.anim;
-    let st = null;
-    if (!an) { st = PSTATE.get(e); if (!st) { st = { ph: 0 }; PSTATE.set(e, st); } }
-    const vx = e.vx || 0, vy = e.vy || 0, v = Math.hypot(vx, vy);
+    const t = H.time, seed = seedOf(e);
+    let roll = 0, pitch = 0, x = e.x, y = e.y, rootY = el;
+    const s = lookSpec(look, seed);
+    let st = PSTATE.get(e);
+    if (!st) { st = { cyc: Math.random(), v: 0, lx: x, ly: y, yaw: face, hy: 0, gw: 0, yawRate: 0 }; PSTATE.set(e, st); }
+    // speed: the entity's velocity, else its position change
+    if (dt > 1e-5) {
+      let v = Math.hypot(e.vx || 0, e.vy || 0);
+      if (!(v > 0)) v = Math.min(200, Math.hypot(x - st.lx, y - st.ly) / dt);
+      if (Math.hypot(x - st.lx, y - st.ly) > 40) v = 0; // teleported
+      st.lx = x; st.ly = y;
+      st.v += (v - st.v) * Math.min(1, dt * 12);
+      // smooth turning
+      const dy0 = wrapA(face - st.yaw) * Math.min(1, dt * 14);
+      st.yaw += dy0; st.yawRate += (dy0 / dt - st.yawRate) * Math.min(1, dt * 10);
+    }
+    let yaw = -st.yaw;
     const fps = H.mode === 'fps';
     const o = { fpsHide: false, near: isP, seated: false };
-    // poses
+    let idle = false;
     const down = e.down || (isP && e.downT > 0) || (!isP && e.knockT > 0 && e.kind !== 'ped');
     if (down) {
       const sitUp = (e.getupT > 0) || (isP && e.downT > 0 && e.downT < 0.45);
       const a = isP && isFinite(e.fallA) ? e.fallA : face;
-      if (sitUp) { poseSit(J, 0.6); J[0] = J[1] = 1.5; J[2] = J[3] = -0.25; rootY = el - HIP_Y * s.size + 0.6 * s.size; yaw = -a; o.seated = true; }
+      if (sitUp) { poseSit(J, 0.6); J[0] = J[1] = 1.5; J[2] = J[3] = -0.25; J[13] = -0.3; rootY = el - HIP_Y * s.size + 0.6 * s.size; yaw = -a; o.seated = true; }
       else { poseRest(J); J[4] = 0.6; J[5] = -0.4; J[0] = 0.25; J[3] = -0.4; yaw = -(a + Math.PI); pitch = 1.5; rootY = el + 0.7 * s.size; }
-    } else if ((e.idle === 'sit' && !e.walk && !e.followSt && v < 4) || (isP && e.sitting)) {
-      poseSit(J, 0.35); o.seated = true;
+      st.yaw = -yaw;
+    } else if ((e.idle === 'sit' && !e.walk && !e.followSt && st.v < 4) || (isP && e.sitting)) {
+      poseSit(J, 0.35); o.seated = true; idle = true;
       rootY = el + (e.bench ? 2.6 : 2.2) - HIP_Y * s.size;
-      if (e.bench) EXTRAS.benches.push(x - Math.cos(face) * 0.9, y - Math.sin(face) * 0.9, face, el);
+      EXTRAS.benches.push(x - Math.cos(face) * 0.9, y - Math.sin(face) * 0.9, face, el, e.bench ? 0 : 1);
     } else if (e.constable) {
       const pod = e.pod || {};
       const ang = (pod.axisA || 0) + (pod.green ? Math.PI / 2 : 0) + Math.sin(t * 2) * 0.3;
-      yaw = -ang;
+      yaw = -ang; st.yaw = ang;
       poseRest(J); J[9] = 1.45; J[5] = 0.1; J[7] = 0.7 + Math.sin(t * 5) * 0.55; J[4] = -0.25; J[6] = 1.7; J[8] = 0.55;
+      ground(J);
     } else {
-      const spd = an ? clamp(an.speed || 0, 0, 1) : clamp(v / 45, 0, 1);
-      if (!an) st.ph += v * dt * 0.26;
-      const ph = an ? an.phase || 0 : st.ph;
-      const run = an ? !!an.run : v > 62;
-      poseWalk(J, ph, spd, run, s.wrap ? 0.5 : 1);
-      if (spd < 0.05) { J[4] += Math.sin(t * 1.3 + seedOf(e)) * 0.03; J[11] = 0; }
+      // planted-foot gait (gaitPose): the stance foot moves back exactly as fast as the body moves
+      // forwards; the cadence follows the stride; standing still blends to a relaxed stance
+      const vv = st.v, run = vv > 62 || (e.anim && e.anim.run && vv > 30);
+      let vt = vv / (s.size * (s.wide || 1));
+      const turnV = Math.min(14, Math.abs(st.yawRate || 0) * 3.5); // turning on the spot: small steps
+      if (vt < turnV) vt = turnV;
+      const wrapK = s.wrap ? 0.62 : 1;
+      gaitParams(vt, run, wrapK, GP);
+      const moving = vt > 1.2;
+      if (moving) st.cyc += GP.f * dt;
+      gaitPose(J, st.cyc, GP, wrapK);
+      st.gw += ((moving ? 1 : 0) - st.gw) * Math.min(1, dt * (moving ? 9 : 5));
+      if (st.gw < 0.999) { poseStand(JS, t, seed); blendPose(J, JS, st.gw); }
+      idle = st.gw < 0.05;
+      st.beta = GP.beta; st.X = GP.X; st.f = GP.f; st.run = run;
+      if (idle) { J[4] += Math.sin(t * 1.3 + seed) * 0.025; J[5] -= Math.sin(t * 1.1 + seed) * 0.025; }
       if (s.headCarry) { armsTo(J, J[10], 0.25, 9.2, -0.62, 0.25, 9.2, 0.62); }
       else if (s.prop === 'tray' || s.prop === 'notebook') { J[5] = 0.45; J[7] = 1.35; }
       else if (s.prop === 'dappu') { J[4] = 0.9; J[6] = 1.2; J[5] = 0.8 + Math.sin(t * 9) * 0.25; J[7] = 1.4; }
       if (e.spotter && e.spotter.stick) { J[5] = 2.55 + Math.sin(t * 9) * 0.35; J[7] = 0.35; }
       if (e.balloons) { J[5] = 0.5; J[7] = 1.6; }
-      if (e.lookT > 0 && e.lookAt && isFinite(e.lookAt.x)) yaw = -Math.atan2(e.lookAt.y - y, e.lookAt.x - x);
+    }
+    // head: look at what they look at; the player looks where the camera looks; idle glances; breathing
+    if (!down) {
+      let tg = null;
+      if (e.lookT > 0 && e.lookAt && isFinite(e.lookAt.x)) tg = e.lookAt;
+      else if (e.lookTarget && isFinite(e.lookTarget.x)) tg = e.lookTarget;
+      let rel;
+      if (tg) rel = wrapA(Math.atan2(tg.y - y, tg.x - x) - st.yaw);
+      else if (isP && N.view && N.view.mode === 'tps') rel = wrapA(N.view.yaw - st.yaw) * 0.6;
+      else rel = idle ? Math.sin(t * 0.31 + seed * 1.3) * Math.max(0, Math.sin(t * 0.13 + seed)) * 0.7 : 0;
+      st.hy += (clamp(rel, -1.1, 1.1) - st.hy) * Math.min(1, dt * 5);
+      J[12] = st.hy; J[13] = idle ? Math.sin(t * 0.45 + seed) * 0.05 : (st.v > 62 ? -0.08 : 0);
+      J[14] = Math.sin(t * (st.v > 62 ? 5 : 1.7) + seed) * (st.v > 62 ? 0.05 : 0.04);
+    }
+    // getting off a vehicle: blend from the seat
+    const m = MOUNT.get(e);
+    let bx = x, by = y;
+    if (m && !m.on) {
+      const k = (nowS() - m.t0) / MOUNT_S;
+      if (k < 1) {
+        const q = ease(Math.max(0, k));
+        blendPose(J, SEATED_J, q);
+        bx = m.x + (x - m.x) * q; by = m.y + (y - m.y) * q;
+        rootY = (m.hip - HIP_Y * s.size) * (1 - q) + rootY * q + Math.sin(q * Math.PI) * 0.8;
+        yaw = m.yaw + wrapA(yaw - m.yaw) * q;
+        o.seated = q < 0.5;
+      } else MOUNT.delete(e);
     }
     if (isP) {
       if (fps) o.fpsHide = true;
-      else if (CAMP && Math.hypot(CAMP.x - x, CAMP.y - (el + 6), CAMP.z - y) < 4.5) return;
+      else if (CAMP && Math.hypot(CAMP.x - bx, CAMP.y - (el + 6), CAMP.z - by) < 4.5) return;
     }
-    FR.set(x, rootY, y, yaw, roll, pitch);
-    const i = submitPerson(look, seedOf(e), FR, 0, 0, 0, J, o);
+    FR.set(bx, rootY, by, yaw, roll, pitch);
+    if (DBG.track === e) DBG.rec = { kind: 'person', J: Array.from(J), x: bx, y: by, h: rootY, yaw, pitch, size: s.size, wide: s.wide, seated: o.seated, fpsHide: o.fpsHide, v: st.v, cyc: st.cyc, beta: st.beta, X: st.X, f: st.f, run: !!st.run, gw: st.gw, frame: ST.frame };
+    const i = submitPerson(look, seed, FR, 0, 0, 0, J, o);
     if (i < 0) return;
     const head = el + 9.4 * s.size + (s.headCarry ? 1.4 : 0);
     // extras: umbrella, balloons, push cart, emotes / spotter pip
     if (e.umb) EXTRAS.umb.push(x, head + 1.2, y, pack(e.umb));
-    if (e.balloons) EXTRAS.balloons.push({ x: x + Math.cos(face + 1.2) * 1.3, y: y + Math.sin(face + 1.2) * 1.3, h: el + 5.8 * s.size, cols: e.balloons, seed: seedOf(e) });
+    if (e.balloons) EXTRAS.balloons.push({ x: x + Math.cos(face + 1.2) * 1.3, y: y + Math.sin(face + 1.2) * 1.3, h: el + 5.8 * s.size, cols: e.balloons, seed });
     if (e.cart) EXTRAS.carts.push(x + Math.cos(face) * 11.5, y + Math.sin(face) * 11.5, face, e.cart.kind || 'banana_cart', el);
     if (e.spotter) EMOTES.push({ x, y, h: head + 3, kind: '!', a: 1 });
     else if (e.emoteSt) { const em = e.emoteSt; EMOTES.push({ x, y, h: head + 3, kind: em.kind, a: clamp(Math.min(em.t * 6, (em.secs - em.t) * 4), 0, 1) }); }
+  }
+  /** tests: world positions of the heel and toe of both soles of a tracked person record, mirroring
+   *  the vertex shader (ankle, knee, hip rotations, bob, then the instance scale / yaw) */
+  function rotZ2(px, py, cx, cy, a) { const c = Math.cos(a), s = Math.sin(a), qx = px - cx, qy = py - cy; return [qx * c - qy * s + cx, qx * s + qy * c + cy]; }
+  function feetOf(r) {
+    if (!r || r.kind !== 'person') return null;
+    const out = [], ank = decAnk(r.J[15]);
+    const sc = r.size || 1, wd = r.wide || 1, c = Math.cos(r.yaw), sn = Math.sin(r.yaw);
+    for (const sd of [-1, 1]) {
+      const h = sd < 0 ? r.J[0] : r.J[1], k = sd < 0 ? r.J[2] : r.J[3], an = sd < 0 ? ank[0] : ank[1];
+      const pts = [];
+      for (const q of [[-0.42, 0], [1.06, 0]]) {
+        let p = rotZ2(q[0], q[1], 0, ANK_Y, an);
+        p = rotZ2(p[0], p[1], 0, KNEE_Y, k);
+        p = rotZ2(p[0], p[1], 0, HIP_Y, h);
+        const lx = p[0] * sc * wd, lz = sd * HIP_Z * sc * wd, ly = (p[1] + r.J[11]) * sc;
+        // three's rotation about +y by yaw: x' = x cos + z sin, z' = -x sin + z cos (world y = three z)
+        pts.push({ x: r.x + lx * c + lz * sn, y: r.y - lx * sn + lz * c, h: r.h + ly });
+      }
+      out.push({ heel: pts[0], toe: pts[1], low: Math.min(pts[0].h, pts[1].h) });
+    }
+    return out;
   }
   function propEntity(e) {
     if (e.cars && Array.isArray(e.cars)) { // the mini train (shops.js)
@@ -2384,6 +2627,7 @@
     return { L: 7, W: 7, H: 1 };
   });
   defModel('bench', (b) => { FX(b, '#a8a49c').box(-1.4, 2.1, -3.4, 1.4, 2.6, 3.4); FX(b, '#8a867e').box(-1.2, 0, -3.0, 1.2, 2.1, -2.4).box(-1.2, 0, 2.4, 1.2, 2.1, 3.0); return { L: 3, W: 7, H: 2.6 }; });
+  defModel('stool', (b) => { FX(b, '#7a5232').box(-1.2, 1.7, -1.3, 1.2, 2.2, 1.3); FX(b, '#5a3a22'); for (const p of [[-0.9, -1.0], [-0.9, 1.0], [0.9, -1.0], [0.9, 1.0]]) b.box(p[0] - 0.18, 0, p[1] - 0.18, p[0] + 0.18, 1.7, p[1] + 0.18); return { L: 2.4, W: 2.6, H: 2.2 }; });
   defModel('balloon', (b) => { P1(b).ell(0, 0, 0, 1.25, 1.5, 1.25, 8, 6); P1(b, 0.8).cyl([0, -1.45, 0], [0, -1.8, 0], 0.15, 0.25, 5, 0); return { L: 2.5, W: 2.5, H: 3 }; });
   function submitProp(key, x, h, y, yaw, c1, c2, s, roll) {
     const md = model(key), P = vpool(md), i = P.add(); if (i < 0) return;
@@ -2400,7 +2644,7 @@
       const md = submitProp('cart', E.carts[k], E.carts[k + 4], E.carts[k + 1], -E.carts[k + 2], pack(c[0]), pack(c[1]));
       if (md) { FR2.set(E.carts[k], E.carts[k + 4], E.carts[k + 1], -E.carts[k + 2], 0, 0); for (const w of md.wheels) { const W = WHEELS.spoke, wi = W.add(); if (wi >= 0) FR2.write(W.M, wi * 16, w.x, w.r, w.z, 0, 0, 0, w.r, w.r, w.w); } }
     }
-    for (let k = 0; k < E.benches.length; k += 4) submitProp('bench', E.benches[k], E.benches[k + 3], E.benches[k + 1], -E.benches[k + 2], 0);
+    for (let k = 0; k < E.benches.length; k += 5) submitProp(E.benches[k + 4] ? 'stool' : 'bench', E.benches[k], E.benches[k + 3], E.benches[k + 1], -E.benches[k + 2], 0);
     if (E.balloons.length) {
       if (!BAL_LINES) initBalloonLines();
       let n = 0; const pos = BAL_LINES.pos;
@@ -2784,7 +3028,7 @@
       const look = carryLook(q.look, q.carry === 'neem' ? null : q.carry);
       const el = (q.h || 0) * VS;
       if (el > 0) { poseRest(J); armsTo(J, -0.05, 1.3, 8.4, -0.35, 1.5, 9.0, 0.35); }
-      else if (q.carry) { poseWalk(J, t * 5.2 + i, 0.45, false, 0.5); if (q.carry === 'bonam') armsTo(J, 0.02, 0.25, 9.2, -0.62, 0.25, 9.2, 0.62); else if (q.carry === 'dappu') { J[4] = 0.9; J[6] = 1.2; J[5] = 0.8 + Math.sin(t * 10 + i) * 0.3; J[7] = 1.4; } }
+      else if (q.carry) { const wk = q.carry === 'bonam' ? 0.62 : 1; gaitParams(6, false, wk, GP); gaitPose(J, t * GP.f + i * 0.37, GP, wk); if (q.carry === 'bonam') armsTo(J, 0.02, 0.25, 9.2, -0.62, 0.25, 9.2, 0.62); else if (q.carry === 'dappu') { J[4] = 0.9; J[6] = 1.2; J[5] = 0.8 + Math.sin(t * 10 + i) * 0.3; J[7] = 1.4; } }
       else { poseRest(J); J[4] += Math.sin(t * 1.3 + i) * 0.05; J[5] += Math.sin(t * 1.1 + i * 2) * 0.05; }
       FR.set(q.x, el, q.y, -(q.a || 0), 0, 0);
       submitPerson(look, 1000 + i, FR, 0, 0, 0, J, {});
@@ -2981,6 +3225,7 @@
       if (SEA.strings) { const S = SEA.strings; S.geo.setDrawRange(0, S.n); S.obj.visible = S.n > 0; if (S.n) { S.geo.attributes.position.needsUpdate = true; S.geo.attributes.color.needsUpdate = true; } }
       for (const P of POOLS) P.commit();
       commitGlows();
+      ROOT.visible = !OPT.hidden;
       if (DEC.dirty) { DEC.tex.needsUpdate = true; DEC.dirty = false; }
       const ms = tFrame0 ? now() - tFrame0 : 0;
       ST.ms = ms; ST.msAvg += (ms - ST.msAvg) * 0.05;
@@ -3013,6 +3258,13 @@
     debug: { BARKS, EMOTES, SEA, MK, GLOW, DEC, DBG,
       /** tests: look from world (x, h, y) at (x2, h2, y2); camera(null) gives the camera back */
       camera(pos, look, fov) { DBG.cam = pos ? { pos, look, fov } : null; },
+      /** tests: record the pose / wheel state of one entity each frame (debug.rec) */
+      track(e) { DBG.track = e || null; DBG.rec = null; },
+      get rec() { return DBG.rec; },
+      /** instance counts per pool (name -> count) of the last committed frame */
+      counts() { const o = {}; for (const P of POOLS) if (P.mesh && P.mesh.count) o[P.name] = P.mesh.count; o.glows = LAST.glows; return o; },
+      glints() { return GL2.geo ? GL2.geo.drawRange.count : 0; },
+      feet: (r) => feetOf(r || DBG.rec),
     },
   };
 })();

@@ -186,6 +186,17 @@ async function waitMission(page, id, ms) {
   return false;
 }
 const passed = (id) => (s) => s.mission !== id && s.scene == null;
+/** Start a mission once the game is idle (play mode, no mission, scene or card up; a Chappal Meter left over
+ *  from M7 running late, level 2, is cleared first so the mothers do not catch him mid-errand), and wait until it runs. */
+async function startM(page, id) {
+  for (let k = 0; k < 3; k++) {
+    await page.waitForFunction(() => N.state.mode === 'play' && !N.missions.active && !N.story2.state().scene && !N.story2.state().panel, null, { timeout: 15000 }).catch(() => {});
+    const r = await page.evaluate((mid) => { if (N.wanted && N.wanted.level > 0 && N.wanted.set) N.wanted.set(0, 'test'); const ok = N.debug.startMission(mid); return { ok, active: N.missions.active && N.missions.active.id, mode: N.state.mode, done: N.missions.isDone(mid) }; }, id);
+    if (r.done || (await waitMission(page, id, 6000))) return true;
+    console.log('  (start ' + id + ' again: ' + JSON.stringify(r) + ')');
+  }
+  return false;
+}
 /** Test speed-ups (minigames autoplay; escorts walk faster; dialogue instant). */
 async function retune(page) {
   await page.evaluate(() => {
@@ -216,17 +227,19 @@ async function reloadContinue(page) {
       N.debug.newGame({ skipIntro: true });
       N.save.clear();
       const M16 = ['bo_kaata', 'lost_and_found', 'first_day_first_show', 'last_man_batting', 'right_right', 'ammammas_thursday'];
-      const LATER = { M8: ['the_clap'], SA6: ['the_clap'], M9: ['the_clap', 'drums_for_amma'], M10: ['the_clap', 'drums_for_amma', 'opening_day'], M11: ['the_clap', 'drums_for_amma', 'opening_day', 'agle_baras'], M12: ['the_clap', 'drums_for_amma', 'opening_day', 'agle_baras', 'last_bell'], END: ['the_clap', 'drums_for_amma', 'opening_day', 'agle_baras', 'last_bell'] }[start] || [];
+      const LATER = { M8: ['the_clap'], SA6: ['the_clap'], M9: ['the_clap', 'drums_for_amma'], M10: ['the_clap', 'drums_for_amma', 'opening_day'], M11: ['the_clap', 'drums_for_amma', 'opening_day', 'agle_baras'], M12: ['the_clap', 'drums_for_amma', 'opening_day', 'agle_baras', 'last_bell'], END: ['the_clap', 'drums_for_amma', 'opening_day', 'agle_baras', 'last_bell', 'chand_raat'] }[start] || [];
+      // the kites are found before Chand Raat (found after it they are 'late' and stay out of the ending)
+      for (const s of ['kites', 'golis', 'frames', 'tickets']) { try { N.collectibles.unlockSeries(s, { silent: true }); } catch (e) { /* ignore */ } }
+      for (const k of ['kite_1', 'kite_3', 'kite_7']) { try { N.collectibles.found(k, { silent: true }); } catch (e) { /* ignore */ } }
       N.missions.deserialize({ done: M16.concat(LATER) });
       for (const id of M16) N.tape.rec(id, { silent: true });
       for (const id of LATER) N.tape.rec(id, { silent: true });
       if (LATER.indexOf('agle_baras') >= 0) Object.assign(N.flags, { interlude_done: true, ayesha_moving: true, lock_4: 1, riddle_4: true, clue_tunnel: true });
       if (LATER.indexOf('last_bell') >= 0) Object.assign(N.flags, { lock_3: 0, riddle_3: true });
+      if (LATER.indexOf('chand_raat') >= 0) Object.assign(N.flags, { tin_locked: true, frame_24: true });
       const f = N.flags;
       Object.assign(f, { prologue_seen: true, clue5_solved: true, lock_1: 1, riddle_1: true, lock_2: 4, riddle_2: true });
-      for (const s of ['kites', 'golis', 'frames', 'tickets']) { try { N.collectibles.unlockSeries(s, { silent: true }); } catch (e) { /* ignore */ } }
       for (const c of ['cassette_1', 'cassette_5', 'cassette_9', 'cassette_13', 'cassette_14', 'cassette_15', 'cassette_16']) N.walkman.add(c, { silent: true });
-      for (const k of ['kite_1', 'kite_3', 'kite_7']) { try { N.collectibles.found(k, { silent: true }); } catch (e) { /* ignore */ } }
       N.player.inventory.add('camera'); N.player.inventory.add('walkman');
       N.calendar.set(2003, 5, 15, 19, 30);
       N.player.money = 20000;
@@ -283,7 +296,8 @@ async function reloadContinue(page) {
     await page.evaluate(() => { N.calendar.set(2003, 6, 9, 10, 0); });
     await sleep(300);
     check(await page.evaluate(() => N.missions.available().some((d) => d.id === 'new_class_old_books')), 'SA7 is available on 9 Jun');
-    await page.evaluate(() => { const g = N.places.koti_book_bazaar; N.player.teleport(g.x, g.y + 40); N.debug.startMission('new_class_old_books'); });
+    await page.evaluate(() => { const g = N.places.koti_book_bazaar; N.player.teleport(g.x, g.y + 40); });
+    await startM(page, 'new_class_old_books');
     await drive(page, passed('new_class_old_books'), { timeout: 90000 });
     check(await page.evaluate(() => N.missions.isDone('new_class_old_books')), 'SA7 passed (books, brown cover, the home cutscene)');
 
@@ -294,7 +308,7 @@ async function reloadContinue(page) {
     await page.evaluate(() => { N.calendar.set(2003, 6, 10, 11, 30); const g = N.places.std_1; N.player.teleport(g.x, g.y + 30); });
     await sleep(300);
     check(await page.evaluate(() => N.missions.available().some((d) => d.id === 'twelve_oclock') && N.missions.inWindow('twelve_oclock')), 'SA5 offered at 11:30');
-    await page.evaluate(() => N.debug.startMission('twelve_oclock'));
+    await startM(page, 'twelve_oclock');
     await drive(page, passed('twelve_oclock'), { timeout: 90000 });
     const a5 = await page.evaluate(() => ({ done: N.missions.isDone('twelve_oclock'), f12: N.collectibles && N.collectibles.has ? N.collectibles.has('frame_12') : null }));
     check(a5.done, 'SA5 passed: the gong struck twelve', a5);
@@ -303,7 +317,7 @@ async function reloadContinue(page) {
     if (from('M8')) {
     /* ------------------------------------------------ M8 drums_for_amma (real E on ● REC) */
     log('M8 drums_for_amma');
-    await page.evaluate(() => N.debug.startMission('drums_for_amma'));
+    await startM(page, 'drums_for_amma');
     await waitMission(page, 'drums_for_amma', 6000);
     await page.waitForFunction(() => /20 JUL 2003/.test(N.calendar.label()), null, { timeout: 6000 }).catch(() => {});
     check(await page.evaluate(() => /20 JUL 2003/.test(N.calendar.label()) && !!N.flags.bonalu), 'M8 jumps to SUN 20 JUL 2003 (Bonalu flag on)');
@@ -320,7 +334,8 @@ async function reloadContinue(page) {
     /* ------------------------------------------------ SA6 bunty_races R1-R4 (16:00-19:00) */
     for (const id of ['bunty_races', 'bunty_races_r2', 'bunty_races_r3', 'bunty_races_r4']) {
       log('SA6 ' + id);
-      await page.evaluate((mid) => { N.clock.set(16, 40); const g = N.missions.giverPos(N.missions.defs[mid]); N.player.teleport(g.x, g.y + 30); N.debug.startMission(mid); }, id);
+      await page.evaluate((mid) => { N.clock.set(16, 40); const g = N.missions.giverPos(N.missions.defs[mid]); N.player.teleport(g.x, g.y + 30); }, id);
+      await startM(page, id);
       await waitMission(page, id, 6000);
       if (id === 'bunty_races_r3') { await sleep(2500); await shot(page, 'sa6_r3_start'); }
       await drive(page, passed(id), { timeout: 150000, near: 20 });
@@ -478,7 +493,7 @@ async function reloadContinue(page) {
     await drive(page, (s) => s.scene === 'ending', { timeout: 20000 });
     check(await page.evaluate(() => N.flags.no_save === true && N.menus.canSave().ok === false), 'the ending cannot be saved half-way (N.flags.no_save)');
     const end = { atPlaza: null, kites: null, plane: false, rise: false };
-    await page.evaluate(() => { window.__s2ev = []; N.on('story2:ending', (d) => window.__s2ev.push(d.phase)); N.on('story2:epilogue', (d) => { const c = N.places.charminar; window.__s2ev.push('epi:' + d.phase + ':' + Math.round(Math.hypot(N.player.x - c.x, N.player.y - c.y))); }); window.__lines = []; N.on('dialogue:line', (d) => window.__lines.push([d.speaker, d.text])); });
+    await page.evaluate(() => { window.__s2ev = []; N.on('story2:ending', (d) => window.__s2ev.push(d.phase)); N.on('story2:epilogue', (d) => { const c = N.places.charminar; window.__s2ev.push('epi:' + d.phase + ':' + Math.round(Math.hypot(N.player.x - c.x, N.player.y - c.y))); }); N.on('player:teleport', () => { if (N.story2.state().epilogue) window.__s2ev.push('tp:' + Math.round(N.player.x) + ',' + Math.round(N.player.y) + ' ' + String(new Error().stack).split('\n').slice(3, 7).map((l) => l.trim().replace(/^at /, '').replace(/file:.*\/src\//, '')).join(' < ')); }); window.__lines = []; N.on('dialogue:line', (d) => window.__lines.push([d.speaker, d.text])); });
     await drive(page, (s) => s.scene !== 'ending', {
       timeout: 240000,
       each: async (s) => {
@@ -554,7 +569,7 @@ async function reloadContinue(page) {
     check(radio.length === 3 && /Pinky of Malakpet/.test(radio[0]) && /7 pm Java batch/.test(radio[1]) && /bangle sellers of Laad Bazaar/.test(radio[2]), 'Side B\'s tail: the 3 dedication cassettes found play as lines', radio);
     check(hiss === 9, 'Side B\'s tail: the 9 missed ones are tape hiss', hiss);
     check(ap.lines.some((l) => l[0] === 'imran_tape' && /promoted/.test(l[1])), 'all four Agent tapes found: "Agent, you are promoted."');
-    const coda = (await page.evaluate(() => window.__s2ev.slice())).filter((e) => /^epi:/.test(e));
+    const coda = (await page.evaluate(() => window.__s2ev.slice())).filter((e) => /^(epi|tp):/.test(e));
     const codaAt = coda.find((e) => /^epi:coda:/.test(e));
     check(codaAt && +codaAt.split(':')[2] < 320, 'the epilogue ends on the Charminar plaza (Café Noor-e-Iran) at the coda', coda);
 
@@ -593,7 +608,8 @@ async function reloadContinue(page) {
     if (from('END')) {
     /* ------------------------------------------------ SA8 christmas_stars */
     log('SA8 christmas_stars');
-    await page.evaluate(() => { N.clock.set(10, 30); const g = N.places.iyengar_bakery_2; N.player.teleport(g.x, g.y + 30); N.debug.startMission('christmas_stars'); });
+    await page.evaluate(() => { N.clock.set(10, 30); const g = N.places.iyengar_bakery_2; N.player.teleport(g.x, g.y + 30); });
+    await startM(page, 'christmas_stars');
     await waitMission(page, 'christmas_stars', 6000);
     let mailShot = false;
     await drive(page, passed('christmas_stars'), {

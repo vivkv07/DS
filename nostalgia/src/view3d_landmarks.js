@@ -1,33 +1,52 @@
 /* NOSTALGIA — view3d_landmarks.js (3D landmark modeller) — ARCHITECTURE §20
  *
- * Low-poly 3D models for every N.WORLD_DATA.landmarks draw id, registered through
- * N.view3d.registerLandmark (nothing else is edited). Proportions and colours follow the 2D art in
- * landmarks.js / places_art.js so the same city reads the same in both views.
+ * Low-poly 3D models for every N.WORLD_DATA.landmarks draw id (426 landmarks, ~95 draw ids),
+ * registered through N.view3d.registerLandmark; nothing in another module is edited or patched.
+ * Proportions and colours follow the 2D art in landmarks.js / places_art.js so the city reads the
+ * same in both views. Test: node tests/view3d_landmarks.cjs (screenshots: tests/out/view3d_landmarks/).
  *
  * How it is built
- *  - Kit material (one shared Lambert program, vertex colours): the GeoBuilder's 4-byte `facade`
- *    attribute is reused per vertex as [emission colour index, night emission 0-255, floodlight
- *    0-255, -]: index 0 = the vertex colour itself, 1 warm bulb, 2 cool tube light, 3 sodium,
- *    4 festive green. So one mesh per landmark carries walls, floodlit stone and glowing shop
- *    interiors / windows / bulbs. Floodlight is warm, strongest near the ground.
- *  - Large facades of civic buildings use the core facade atlas (H.materials.facade / facadeLit:
- *    window styles, lit windows at night); signboards use the core sign atlas (H.signSlot).
+ *  - Kit material (one shared Lambert program, vertex colours): the core GeoBuilder's 4-byte
+ *    `facade` attribute is reused per vertex as [emission colour index, night emission 0-255,
+ *    floodlight 0-255, -]: index 0 = the vertex colour itself, 1 warm bulb, 2 cool tube light,
+ *    3 sodium, 4 festive green. One mesh per landmark carries walls, floodlit stone (warm, strongest
+ *    near the ground) and glowing shop interiors / windows / bulbs. Double-sided pieces (awnings,
+ *    tarps, railings) are emitted twice with opposite winding into the same mesh (no extra call).
+ *  - Big civic facades use the core facade atlas (H.materials.facade / facadeLit: window styles,
+ *    lit windows at night) through civic(md, lm, D, opts) - porch / domes / chhatris / tower /
+ *    crest / compound options; signboards use the core sign atlas (H.signSlot) with the 2D sign text.
  *  - Frames: every model is written in a local frame (u = right as seen from the front, y = up,
- *    v = towards the front; front face at v = +D/2) and rotated by the landmark's `face` (or
- *    `faceAngle`); arch walls are THREE.Shape outlines with pointed-arch openings extruded with
- *    ExtrudeGeometry and merged; domes, minarets and petals are lathes.
- *  - Small things (shops, carts, booths, bus stops, statues...) are batched: all of one class in a
- *    384 u cell become one mesh (+ one per sign page) built by whichever member the core asks for
- *    first; the others return false. Each batch is a THREE.LOD that hides it beyond ~420-1100 u.
- *  - Extruded wall geometry is cached by shape (Charminar's four faces share one).
- *  - Night: a layer ('landmarks3d') fades the glow points (bulb strings, lamps), the clock dials
- *    (one shared dynamic texture showing the in-game time), the painted film hoardings, and
- *    toggles the festive (Chand Raat) bulbs. Landmarks with lights push H.light() near the player.
- *  - Variants are built side by side and toggled per frame: Prasads (fence / open), NTR Gardens,
- *    LB Stadium match day (N.flags.lb_match: crowds + floodlights), giant wheel turning.
+ *    v = towards the front; front face at v = +D/2) rotated by the landmark's `face` / `faceAngle`.
+ *    Arch walls are THREE.Shape outlines with pointed-arch openings (two-centred arches) extruded
+ *    with ExtrudeGeometry and merged; domes, minarets, petals, shikharas are lathes. Extruded walls
+ *    and lathes are cached by shape (Charminar's four faces share one).
+ *  - Small things (shops, Irani cafes, carts, booths, bus stops, Tank Bund statues...) are batched:
+ *    every member of one class in a 384 u cell becomes one mesh (+ one per sign page) built by
+ *    whichever member the core asks for first (the others return false; the owner's dispose frees
+ *    the cell). Each batch, and the mid-size worship / school models, is a THREE.LOD that hides it
+ *    beyond ~430-1400 u (shorter on the low tier).
+ *  - Camera: detailed meshes are not ray-cast (raycast = no-op: three.js has no BVH and the core
+ *    casts the camera ray every frame); invisible proxy boxes (material.visible = false) stand in
+ *    where the camera can pass under (Charminar's arches, the Char Kaman, gates, canopies, the
+ *    hangar vault). Solid footprints are already in the core's height grid.
+ *  - Night: a layer ('landmarks3d') fades the glow points (bulb strings, lamps, floodlight banks;
+ *    hidden entirely by day = no draw calls), the clock dials (one shared dynamic texture showing
+ *    the in-game time on Charminar, the clock towers, Mozamjahi, Chowmahalla), the painted film
+ *    hoardings (ported from places_art's board painter, fictional titles). Landmarks with lights
+ *    push H.light() near the player (floodlit Charminar plaza, stadium towers on match day...).
+ *  - Variants are built side by side and toggled per frame: Charminar bulbs white / festive green
+ *    (N.landmarks.fx.festive or flags chand_raat / eid / ramzan / finale), LB Stadium match day
+ *    (N.flags.lb_match: crowds on the stands, floodlight banks, the U-12 FINAL banner), Prasads
+ *    fence / open (N.placesArt.variant('prasads_imax') or N.flags.prasads_open), NTR Gardens
+ *    (construction hides the Machan tree + train; the mini train runs round its loop), Khairatabad
+ *    Ganesh idol (ganesh season), the Numaish giant wheel turning.
+ *  - Decor layer: street-market stalls (Laad Bazaar bangles, Patang Bazaar kites, Sultan Bazaar
+ *    cloth, Abids books...) and colony playgrounds that places_art draws from places in 2D are
+ *    replayed with the same seeded placement and built within ~650 u of the focus.
  * Respect: places of worship are modelled plainly and with care; nothing is destructible.
- * Hooks: none into other modules' code. Reads N.world (roads, data), N.flags, N.clock,
- * N.placesArt.variant() and N.landmarks.fx (festive) when present.
+ * Reads (never writes): N.world (data, roads, surfaces), N.flags, N.clock, N.places,
+ * N.placesArt.variant(), N.landmarks.fx.
+ * Debug / tests: N.view3dLandmarks = {DEFS, cells(), measure(id) -> {ms, tris, meshes, points}}.
  */
 (() => {
   'use strict';
@@ -513,10 +532,34 @@
     lod.name = obj.name;
     return lod;
   }
+  /* built objects are kept (LRU) so coming back to an area re-uses their CPU-side geometry: on
+   * dispose only the GPU buffers are freed (geometry.dispose()); three.js re-uploads on reuse */
+  const OBJ_CACHE = new Map();
+  const OBJ_CACHE_MAX = 48;
+  function cacheKeep(key, obj) {
+    obj.traverse((m) => { if (m.geometry) m.geometry.userData.shared = true; });
+    OBJ_CACHE.delete(key); OBJ_CACHE.set(key, obj);
+    while (OBJ_CACHE.size > OBJ_CACHE_MAX) {
+      const k0 = OBJ_CACHE.keys().next().value, o = OBJ_CACHE.get(k0);
+      OBJ_CACHE.delete(k0);
+      // in the scene: let the core free it normally later; else free its GPU buffers now
+      o.traverse((m) => { if (m.geometry) { m.geometry.userData.shared = false; if (!o.parent) m.geometry.dispose(); } });
+    }
+  }
+  function cacheGet(key) {
+    const o = OBJ_CACHE.get(key);
+    if (!o || o.parent) return null;
+    OBJ_CACHE.delete(key); OBJ_CACHE.set(key, o);
+    return o;
+  }
+  function freeGpu(obj) { if (obj) obj.traverse((m) => { if (m.geometry && m.geometry.userData.shared) m.geometry.dispose(); }); }
+  function cacheClear() { for (const o of OBJ_CACHE.values()) o.traverse((m) => { if (m.geometry) { m.geometry.userData.shared = false; if (!o.parent) m.geometry.dispose(); } }); OBJ_CACHE.clear(); }
   function buildOne(T, lm, h) {
     init(T, h);
     const d = defFor(lm);
     if (!d) return null;
+    const hit = cacheGet('lm:' + lm.id);
+    if (hit) { hit.position.set(0, 0, 0); return hit; }
     const md = new Model(lm.x, lm.y);
     md.at(0, 0, rotFor(lm));
     d.fn(md, lm, dims(lm));
@@ -524,6 +567,7 @@
     obj.name = 'lm3d:' + lm.id;
     if (d.lod) obj = wrapLod(obj, CLS[d.lod][isLow() ? 1 : 0]);
     obj.name = 'lm3d:' + lm.id;
+    cacheKeep('lm:' + lm.id, obj);
     return obj;
   }
   // batched small landmarks: cells per class
@@ -546,6 +590,8 @@
     const c = cells.get(cellKey(d.cls, lm));
     if (!c) return buildOne(T, lm, h);
     if (c.owner) return false;
+    const hit = cacheGet('cell:' + c.key);
+    if (hit) { c.owner = lm.id; return hit; }
     let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9;
     for (const m of c.members) { x0 = Math.min(x0, m.x); z0 = Math.min(z0, m.y); x1 = Math.max(x1, m.x); z1 = Math.max(z1, m.y); }
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
@@ -562,12 +608,15 @@
     lod.userData.worldSpace = true;
     lod.userData.cell = c;
     c.owner = lm.id;
+    cacheKeep('cell:' + c.key, lod);
     return lod;
   }
   function disposeSmall(obj, lm) {
     const c = obj && obj.userData && obj.userData.cell;
     if (c && c.owner === lm.id) c.owner = null;
+    freeGpu(obj);
   }
+  function disposeOne(obj) { freeGpu(obj); }
   function lmUpdate(obj, lm, dt, h) {
     const u = obj.userData.lm3d; if (!u) return;
     for (const t of u.ticks) t(dt, h, obj, u);
@@ -579,7 +628,7 @@
   function registerAll() {
     for (const [id, d] of DEFS) {
       if (d.cls) V3.registerLandmark(id, buildSmall, { dispose: disposeSmall });
-      else V3.registerLandmark(id, buildOne, d.anim ? { update: lmUpdate } : {});
+      else V3.registerLandmark(id, buildOne, d.anim ? { update: lmUpdate, dispose: disposeOne } : { dispose: disposeOne });
     }
   }
 
@@ -1459,7 +1508,7 @@
   def('osmania_hospital', (md, lm, D) => civic(md, lm, D, {
     wall: '#b0a49a', trim: '#d8cec2', roof: '#9a9088', win: 'arch', gf: 'arcade', flood: true, crest: 'merlon', corners: 'chhatri', bands: true, lit: 0.55,
     porch: { w: 30, d: 10, h: 24, kind: 'arch', col: '#c8beb2' }, domes: [[-50, -8, 6, 7, 'onion'], [50, -8, 6, 7, 'onion']],
-    tower: { u: 0, v: -6, w: 22, h: 66, top: 'onion' }, sign: ['OSMANIA GENERAL HOSPITAL', '#1f6a4a', '#ffffff'],
+    tower: { u: 0, v: -6, w: 24, h: 82, top: 'onion' }, sign: ['OSMANIA GENERAL HOSPITAL', '#1f6a4a', '#ffffff'],
   }), { anim: true });
   // High Court: red-and-white banded stone, a big central dome, two smaller domes and minarets
   def('high_court', (md, lm, D) => {
@@ -1487,11 +1536,17 @@
     k.fx(0, 0, 0);
   }, { anim: true });
   // Purani Haveli: long U-shaped palace, two storeys of arches
-  def('purani_haveli', (md, lm, D) => civic(md, lm, D, {
-    wall: '#e8c890', trim: '#fff4dc', win: 'colonial', gf: 'arcade', crest: 'balustrade', flood: true,
-    blocks: (hl, hv, h) => [[-hl, -hv, hl, -hv + 20, h], [-hl, -hv + 20, -hl + 22, hv, h], [hl - 22, -hv + 20, hl, hv, h]],
-    sign: ["NIZAM'S MUSEUM", '#7a1a1a', '#fff4d8'],
-  }), { anim: true });
+  def('purani_haveli', (md, lm, D) => {
+    civic(md, lm, D, {
+      wall: '#e8c890', trim: '#fff4dc', win: 'colonial', gf: 'arcade', crest: 'balustrade', flood: true,
+      blocks: (hl, hv, h) => [[-hl, -hv, hl, -hv + 20, h], [-hl, -hv + 20, -hl + 22, hv, h], [hl - 22, -hv + 20, hl, hv, h]],
+    });
+    // the front gateway between the two wings carrying the museum board
+    const k = md.k, hv = D.D / 2, gw = D.L - 44;
+    k.c('#efd29c').fx(0, 0, FL_CIV).slab(-gw / 2, hv, gw / 2, hv, 2.4, cached('ph:gate:' + gw, () => ext(wallShape(gw, 0, 16, [{ x0: gw / 2 - 7, x1: gw / 2 + 7, ys: 8, ya: 12.5 }], 6, merlonTop(gw, 16, 1.8, 1.6, 0.6)), 2.4, 6)));
+    md.sign("NIZAM'S MUSEUM", -14, 14, 13, 15.6, hv + 0.1, '#7a1a1a', '#fff4d8');
+    k.fx(0, 0, 0);
+  }, { anim: true });
   // Madina Building: big Nizam-era block of shopfronts with arcades
   def('madina_building pathergatti_arcade', (md, lm, D) => {
     const pg = lm.draw === 'pathergatti_arcade';
@@ -2882,7 +2937,7 @@
     dispose(h) { decorClear(h); },
   });
 
-  N.on('world:built', () => { cells = null; });
+  N.on('world:built', () => { cells = null; cacheClear(); });
   registerAll();
   /** debug / tests: build one landmark's model off-scene and report its cost */
   function measure(id) {

@@ -75,6 +75,10 @@ const fresh = (page, o) => page.evaluate((o) => {
   if (N.wanted && N.wanted.set) N.wanted.set(0);
   window.__ev.length = 0; window.__shakes.length = 0; window.__sfx.length = 0;
   N.vehicles.allowHeavy = false;
+  // world.js' real potholes stay off unless asked for (o.pot): the handling numbers must not depend on
+  // whether the test road happens to have a pothole on its line this week
+  if (!('__worldPot' in window)) window.__worldPot = typeof N.world.potholeAt === 'function' ? N.world.potholeAt : null;
+  N.world.potholeAt = o && o.pot && window.__worldPot ? window.__worldPot : () => null;
   return N.state.mode;
 }, o || {});
 // wait for n simulation steps (a loaded machine can render at a few fps: never trust a fixed sleep for
@@ -185,7 +189,7 @@ async function main() {
       await sleep(180);
       const lb = await label(page);
       await page.keyboard.press('KeyE');
-      await sleep(200);
+      await frames(page, 6); await sleep(200 / 4);
       let st = await page.evaluate(() => ({ veh: N.player.vehicle && N.player.vehicle.type, drv: N.player.vehicle && N.player.vehicle.driver === N.player }));
       check(st.veh === type && st.drv, type + ': "' + lb + '" + E gets him on (d=' + st0.d.toFixed(1) + ')', st);
       // full throttle down the road for 4 s: top speed, time to 80 u/s, max kid wobble
@@ -203,6 +207,13 @@ async function main() {
       await gameWait(page, 4);
       st = await page.evaluate(() => { const v = window.__v, R = window.__rec; return { max: R.max, t80: R.t80, wob: R.wob, top: v.T.maxSpeed, along: (v.x - R.x0) * Math.cos(R.a0) + (v.y - R.y0) * Math.sin(R.a0), shout: window.__ev.filter((e) => e[0] === 'vehicle:autoShout').length }; });
       rides[type] = st;
+      // brake on the straight: exactly 0.5 s of game time from the first step S registers
+      await page.keyboard.up('KeyW');
+      st.s0 = await page.evaluate(() => { window.__rec.brake = true; return window.__v.speed; });
+      await page.keyboard.down('KeyS'); await page.waitForFunction(() => window.__rec.bd != null, null, { timeout: 20000 }).catch(() => {});
+      st.brake = await page.evaluate(() => window.__rec.bd || 0);
+      await page.keyboard.up('KeyS');
+      await page.keyboard.down('KeyW'); await gameWait(page, 1.5);
       // steer at speed: yaw over 0.2 s (game time) of A (towards the kerb: sd_rd has lamp posts on its median),
       // then D back; a wall bump in the window would spin the bike, so it is recorded
       await page.evaluate(() => { window.__bumped = 0; window.__bh = (d) => { if (d && d.wall && (d.vehicle === window.__v || d.a === window.__v)) window.__bumped++; }; N.on('bump', window.__bh); window.__rec.steer = true; });
@@ -212,16 +223,11 @@ async function main() {
       await page.keyboard.down('KeyD'); await gameWait(page, 0.2); await page.keyboard.up('KeyD');
       st.bumped = await page.evaluate(() => { N.off('bump', window.__bh); return window.__bumped; });
       await page.keyboard.up('KeyW');
-      // brake 0.5 s of game time (the rate per game second, whatever the frame rate)
-      st.s0 = await page.evaluate(() => { window.__rec.brake = true; return window.__v.speed; });
-      await page.keyboard.down('KeyS'); await page.waitForFunction(() => window.__rec.bd != null, null, { timeout: 20000 }).catch(() => {});
-      st.brake = await page.evaluate(() => window.__rec.bd || 0);
-      await page.keyboard.up('KeyS');
       // horn (bell / peep / pom-pom), then stop and get off with E
       await page.keyboard.press('Space');
       await page.keyboard.down('KeyS'); await sleep(1300); await page.keyboard.up('KeyS');
       await page.keyboard.press('KeyE');
-      await sleep(220);
+      await frames(page, 6); await sleep(220 / 4);
       const off = await page.evaluate(() => ({ veh: !!N.player.vehicle, mode: N.player.mode, walk: N.world.isWalkable(N.player.x, N.player.y) }));
       await page.evaluate(() => { const i = N.systems.list.findIndex((q) => q.id === '__rec'); if (i >= 0) N.systems.list.splice(i, 1); });
       console.log('       ' + type + ': top ' + st.max.toFixed(1) + '/' + st.top + ', 0-80 ' + (st.t80 == null ? '—' : st.t80.toFixed(2) + ' s') + ', yaw ' + st.da.toFixed(2) + ' rad, brake -' + st.brake.toFixed(0) + ' u/s in 0.5 s' + (st.wob ? ', wobble ' + st.wob.toFixed(2) : ''));
@@ -304,7 +310,7 @@ async function main() {
       await sleep(170);
       const lb = await label(page);
       await page.keyboard.press('KeyE');
-      await sleep(220);
+      await frames(page, 6); await sleep(220 / 4);
       const r = await page.evaluate(() => ({ veh: N.player.vehicle && N.player.vehicle.type, ref: (window.__ev.find((e) => e[0] === 'vehicle:refused') || [])[2], toasts: N.hud.toastQueue() }));
       check(!r.veh && lb === 'Too small to drive' && !!r.ref && r.toasts.some((t) => t === String(r.ref).replace(/\*([^*]+)\*/g, '$1')), type + ': "' + lb + '" -> "' + r.ref + '"', r);
     }
@@ -325,7 +331,7 @@ async function main() {
     await sleep(170);
     const dl = await label(page);
     await page.keyboard.press('KeyE');
-    await sleep(200);
+    await frames(page, 6); await sleep(200 / 4);
     const dv = await page.evaluate(() => { const t = N.player.vehicle && N.player.vehicle.type; if (N.player.vehicle) N.vehicles.exit(N.player, true); N.vehicles.allowHeavy = false; const v = N.debug.enterVehicle('lorry'); const t2 = N.player.vehicle === v; N.vehicles.exit(N.player, true); return { t, t2 }; });
     check(dl === 'Ride Chetak' && dv.t === 'chetak' && dv.t2, 'debug: N.vehicles.allowHeavy -> "' + dl + '"; N.debug.enterVehicle(lorry) works', dv);
     await checkErrors(page, errors, 'refuse');
@@ -358,18 +364,18 @@ async function main() {
     const bl = await label(page);
     const m0 = await page.evaluate(() => N.player.money);
     await page.keyboard.press('KeyE');
-    await sleep(300);
+    await frames(page, 6); await sleep(300 / 4);
     r = await page.evaluate((m0) => ({ on: N.player.vehicle === window.__v, as: N.player.passenger, paid: m0 - N.player.money, board: (window.__ev.find((e) => e[0] === 'bus:board') || [])[1] }), m0);
     check(bl === 'Board bus ₹3' && r.on && r.as === 'passenger' && r.paid === 300, 'city bus: "' + bl + '" -> a passenger, ₹3 paid', r);
     await page.keyboard.press('KeyE');
-    await sleep(300);
+    await frames(page, 6); await sleep(300 / 4);
     check(await page.evaluate(() => !N.player.vehicle), 'E at a crawl: gets down from the bus at once');
     // the family Chetak with Nanna at the controls: "Sit pillion" (rideOk)
     await parkAhead(page, 'family_chetak', { driver: 'npc' });
     await sleep(150);
     const fl = await label(page);
     await page.keyboard.press('KeyE');
-    await sleep(250);
+    await frames(page, 6); await sleep(250 / 4);
     r = await page.evaluate(() => ({ on: N.player.vehicle === window.__v, as: N.player.passenger }));
     check(fl === 'Sit pillion' && r.on && r.as === 'pillion', 'Nanna\'s Chetak with Nanna on it: "' + fl + '"', r);
     await page.evaluate(() => N.vehicles.exit(N.player, true));
@@ -379,7 +385,7 @@ async function main() {
     await sleep(150);
     const cl = await label(page);
     await page.keyboard.press('KeyE');
-    await sleep(250);
+    await frames(page, 6); await sleep(250 / 4);
     r = await page.evaluate(() => ({ on: !!N.player.vehicle, line: (window.__ev.find((e) => e[0] === 'vehicle:refused') || [])[2] }));
     check(cl === 'Ask for a lift' && !r.on && /stranger|Small boys/.test(r.line || ''), 'a stranger\'s Ambassador: "' + cl + '" -> "' + r.line + '"', r);
     // a working traffic auto: "Ride auto (fare)" -> the fare card (shops.js)
@@ -388,7 +394,7 @@ async function main() {
     await sleep(150);
     const al = await label(page);
     await page.keyboard.press('KeyE');
-    await sleep(400);
+    await frames(page, 6); await sleep(400 / 4);
     r = await page.evaluate(() => ({ cur: N.shops.current, hail: !!N.shops.autoJob, rows: N.shops.debug.UI.items.map((it) => it.row.id).slice(0, 4) }));
     check(al === 'Ride auto (fare)' && r.cur && r.cur.kind === 'auto_ride' && r.hail, 'a traffic auto with its driver: "' + al + '" -> the fare card (meter + das upar)', r);
     await shot('fare_card');
@@ -432,7 +438,7 @@ async function main() {
     section = 'potholes';
     console.log('\n== A2 potholes');
     await fresh(page);
-    const had = await page.evaluate(() => typeof N.world.potholeAt === 'function');
+    const had = await page.evaluate(() => !!window.__worldPot);
     console.log('       N.world.potholeAt from world.js: ' + (had ? 'present (stubbed over for the test)' : 'missing (stubbed for the test)'));
     // a deterministic stub with potholes placed down the test road
     await page.evaluate(() => {
@@ -530,12 +536,13 @@ async function main() {
     for (const k of key) await page.keyboard.up(k);
     const sm = await page.evaluate(() => ({ st: window.__ev.filter((e) => e[0] === 'player:stumble'), splash: window.__sfx.filter((s) => s[0] === 'splash').length }));
     check(sm.st.length >= 1 && sm.splash >= 1, 'walking through a (wet) pothole: a tiny stumble and a splash', sm);
-    // probabilities over many trials: 4% punctures on cycles, 2% comic falls above 80% of top speed
+    // probabilities over many trials (the grace periods off): 2.5% punctures on cycles, 2% comic falls above 80% of top speed
     const pr = await page.evaluate(() => {
       const V = N.vehicles, p = N.player, out = {};
-      const realFall = p.fall;
+      const realFall = p.fall, cd0 = V.TUNE.potholePunctureCD;
       let falls = 0;
       p.fall = () => { falls++; return false; };
+      V.TUNE.potholePunctureCD = -1; out.rate = V.TUNE.potholePuncture;
       const trial = (type, frac, n) => {
         const v = N.debug.enterVehicle(type);
         let flats = 0; falls = 0;
@@ -557,13 +564,13 @@ async function main() {
       out.herc = trial('hercules_cycle', 0.9, 6000);
       out.scooty = trial('scooty', 0.9, 6000);
       out.auto = trial('auto', 0.95, 2000);
-      p.fall = realFall;
+      p.fall = realFall; V.TUNE.potholePunctureCD = cd0;
       return out;
     });
     console.log('       trials: ' + JSON.stringify(pr));
-    check(Math.abs(pr.hero.flats - 0.04) < 0.012 && Math.abs(pr.hero.falls - 0.02) < 0.008, 'Hero at 90%: punctures ' + (pr.hero.flats * 100).toFixed(1) + '% (4%), falls ' + (pr.hero.falls * 100).toFixed(1) + '% (2%) over 6000 potholes', pr.hero);
-    check(pr.heroSlow.falls === 0 && Math.abs(pr.heroSlow.flats - 0.04) < 0.015, 'below 80% of top speed: no falls (' + (pr.heroSlow.falls * 100).toFixed(1) + '%)', pr.heroSlow);
-    check(pr.herc.flats < pr.hero.flats && pr.herc.flats > 0.008, 'Hercules fat tyres puncture less (' + (pr.herc.flats * 100).toFixed(1) + '%)', pr.herc);
+    check(Math.abs(pr.hero.flats - pr.rate) < 0.01 && Math.abs(pr.hero.falls - 0.02) < 0.008, 'Hero at 90%: punctures ' + (pr.hero.flats * 100).toFixed(1) + '% (' + (pr.rate * 100).toFixed(1) + '%), falls ' + (pr.hero.falls * 100).toFixed(1) + '% (2%) over 6000 full-depth potholes', pr.hero);
+    check(pr.heroSlow.falls === 0 && Math.abs(pr.heroSlow.flats - pr.rate) < 0.012, 'below 80% of top speed: no falls (' + (pr.heroSlow.falls * 100).toFixed(1) + '%)', pr.heroSlow);
+    check(pr.herc.flats < pr.hero.flats && pr.herc.flats > 0.003, 'Hercules fat tyres puncture less (' + (pr.herc.flats * 100).toFixed(1) + '%)', pr.herc);
     check(pr.scooty.flats === 0 && Math.abs(pr.scooty.falls - 0.02) < 0.008 && pr.auto.flats === 0 && pr.auto.falls === 0, 'Scooty: no cycle punctures, ' + (pr.scooty.falls * 100).toFixed(1) + '% falls; the auto never throws him', { scooty: pr.scooty, auto: pr.auto });
     // a real fall (never hurt): DHADAAM through the existing falls system
     const realFallR = await page.evaluate(() => {
@@ -579,14 +586,48 @@ async function main() {
     });
     check(realFallR.fallen && realFallR.onFoot && realFallR.toasts.some((t) => /DHADAAM/.test(t)), 'the comic fall: DHADAAM!, the cycle on its side, Chinnu fine', realFallR);
     // missing API: no potholes at all
-    await page.evaluate(() => { N.world.potholeAt = window.__realPot; if (!window.__realPot) delete N.world.potholeAt; N.vehicles.list.slice().forEach((v) => { if (!v.seeded) N.vehicles.remove(v); }); window.__ev.length = 0; });
-    if (!had) {
-      await parkAhead(page, 'hero_cycle');
-      await page.evaluate(() => N.vehicles.enter(N.player, window.__v));
-      await page.keyboard.down('KeyW'); await sleep(2500); await page.keyboard.up('KeyW');
-      const none = await page.evaluate(() => window.__ev.filter((e) => e[0] === 'vehicle:pothole').length);
-      check(none === 0, 'without N.world.potholeAt: potholes do nothing (0 events)');
-    } else ok('world.js provides N.world.potholeAt (the missing-API path is not exercised)');
+    await page.evaluate(() => { delete N.world.potholeAt; N.vehicles.list.slice().forEach((v) => { if (!v.seeded) N.vehicles.remove(v); }); window.__ev.length = 0; });
+    await parkAhead(page, 'hero_cycle');
+    await page.evaluate(() => N.vehicles.enter(N.player, window.__v));
+    await page.keyboard.down('KeyW'); await gameWait(page, 2.5); await page.keyboard.up('KeyW');
+    const none = await page.evaluate(() => { const n = window.__ev.filter((e) => e[0] === 'vehicle:pothole').length; if (N.player.vehicle) N.vehicles.exit(N.player, true); N.world.potholeAt = () => null; return n; });
+    check(none === 0, 'without N.world.potholeAt: potholes do nothing (0 events)');
+    // world.js' REAL potholes: ride a Hero with real keys at one of them (straight approach on its road)
+    if (had) {
+      await fresh(page, { pot: true });
+      const rp = await page.evaluate(() => {
+        const PH = N.world.potholes, W = N.world, S = N.SURF;
+        const list = (PH && PH.list ? PH.list : []).filter((q) => !q.rain && q.depth >= 0.5);
+        for (const ph of list) {
+          const r = W.nearestRoadPoint(ph.x, ph.y); if (!r || r.dist > 8 || !isFinite(r.angle)) continue;
+          const c = Math.cos(r.angle), s = Math.sin(r.angle);
+          let ok = true;
+          for (let d = -90; d <= 24 && ok; d += 3) for (const off of [-4, 0, 4]) {
+            const x = ph.x + c * d - s * off, y = ph.y + s * d + c * off, sf = W.surfaceAt(x, y);
+            if ((sf !== S.ROAD) || W.collide(x, y, 3, 'drive').hit || (d < -8 && W.potholeAt(x, y))) { ok = false; break; }
+          }
+          if (!ok) continue;
+          N.vehicles.list.slice().forEach((v) => { if (!v.seeded) N.vehicles.remove(v); });
+          N.player.teleport(ph.x - c * 80 + s * 14, ph.y - s * 80 - c * 14);
+          const v = N.vehicles.spawn('hero_cycle', ph.x - c * 80, ph.y - s * 80, r.angle, { seed: 7 });
+          N.vehicles.enter(N.player, v); window.__v = v;
+          window.__realHit = null;
+          window.__rh = (d) => { if (d.vehicle === v && !window.__realHit) window.__realHit = { x: d.x, y: d.y, depth: d.depth, sev: d.severity, speed: d.speed, jolt: v.jolt, wheel: d.wheel }; };
+          N.on('vehicle:pothole', window.__rh);
+          return { id: ph.id, x: ph.x, y: ph.y, r: ph.r, depth: ph.depth, n: list.length };
+        }
+        return { n: list.length };
+      });
+      if (rp.id != null) {
+        await page.keyboard.down('KeyW');
+        await page.waitForFunction(() => !!window.__realHit, null, { timeout: 20000 }).catch(() => {});
+        await closeCam(page, true, 4.5); await frames(page, 2); await shot('pothole_real'); await closeCam(page, false);
+        await page.keyboard.up('KeyW');
+        const rh = await page.evaluate(() => { N.off('vehicle:pothole', window.__rh); if (N.player.vehicle) N.vehicles.exit(N.player, true); return window.__realHit; });
+        check(!!rh && Math.hypot(rh.x - rp.x, rh.y - rp.y) < (rp.r || 5) + 5 && rh.jolt >= 0.55 && rh.sev > 0.3, 'a REAL world.js pothole (' + rp.n + ' deep ones on the map; depth ' + (+rp.depth).toFixed(2) + ', r ' + (+rp.r).toFixed(1) + '): the Hero hits it with real keys, jolt ' + (rh ? rh.jolt.toFixed(2) : '?'), { rp, rh });
+      } else fail('no real pothole with a clear straight approach found (' + rp.n + ' candidates)');
+      await page.evaluate(() => { N.world.potholeAt = () => null; });
+    } else ok('world.js has no N.world.potholeAt yet: the real-pothole ride is skipped');
     await checkErrors(page, errors, 'potholes');
   }
 
@@ -615,7 +656,7 @@ async function main() {
     await sleep(200);
     const lb30 = await label(page);
     await page.keyboard.press('KeyE');
-    await sleep(250);
+    await frames(page, 6); await sleep(250 / 4);
     const rideAk = await page.evaluate(() => N.player.vehicle && N.player.vehicle.type);
     check(l.names[0] === "Akka's Scooty" && /Bunty/.test(l.names[1] || ''), 'ladder names: 30 "' + l.names[0] + '", 60 "' + l.names[1] + '"', l.names);
     check(l.akka && !l.at29.scooty && lb29 === 'Nakko', '29 finds: Akka\'s Scooty is parked at home and says "' + lb29 + '"', { l, lb29 });
@@ -748,6 +789,20 @@ async function main() {
     r = await page.evaluate(() => { const v = window.__v; v.controller = (q) => { q.ctl.brake = false; q.ctl.steer = 0; q.ctl.throttle = q.speed < 70 ? 1 : 0; }; v.speed = 70; v.vx = Math.cos(v.angle) * 70; v.vy = Math.sin(v.angle) * 70; return N.vehicles.offerFor(v); });
     const fullR = await page.evaluate(() => { const v = window.__v; v.controller = (q) => { q.ctl.throttle = 0; q.ctl.brake = true; }; v.vx = v.vy = 0; v.speed = 0; N.vehicles.setPillion(v, N.people.randomLook(null, 'aunty')); const o = N.vehicles.offerFor(v); window.__ev.length = 0; o && N.vehicles.TYPES && 0; return o; });
     check(r === null && fullR && fullR.kind === 'nolift', 'a Chetak passing at 70 u/s offers nothing; one with an aunty pillion: "' + (fullR && fullR.label) + '" -> no room', { r, fullR });
+    // 4b. borrowing a stranger's Scooty with an aunty on the back: she gets off too
+    r = await page.evaluate(() => {
+      N.vehicles.list.slice().forEach((v) => { if (!v.seeded) N.vehicles.remove(v); });
+      const p = N.player, r0 = window.__road; p.teleport(r0.x, r0.y);
+      const v = N.vehicles.spawn('scooty', r0.x + Math.cos(r0.angle) * 10, r0.y + Math.sin(r0.angle) * 10, r0.angle, { driver: { look: N.people.randomLook(null, 'woman'), npc: true } });
+      N.vehicles.setPillion(v, N.people.randomLook(null, 'aunty'));
+      const o = N.vehicles.offerFor(v);
+      const peds0 = N.entities.all.filter((e) => e.kind === 'ped').length;
+      N.vehicles.enter(p, v);
+      const out = { o: o && o.label, drv: v.driver === p, pill: v.pillion, peds: N.entities.all.filter((e) => e.kind === 'ped').length - peds0 };
+      N.vehicles.exit(p, true); N.vehicles.remove(v);
+      return out;
+    });
+    check(r.o === 'Borrow Scooty' && r.drv && !r.pill && r.peds === 2, 'borrowing a Scooty with an aunty pillion: both get off, shouting (' + r.peds + ' angry peds)', r);
     // 5. a pursuer's Chetak (Nanna + Mummy chasing him) never offers "Sit pillion"
     r = await page.evaluate(() => { N.vehicles.list.slice().forEach((v) => { if (!v.seeded) N.vehicles.remove(v); }); return true; });
     await parkAhead(page, 'family_chetak', { driver: 'npc' });
