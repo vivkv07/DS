@@ -110,3 +110,10 @@ but keep the calendar consistent with the chosen year.
   (Indo-Saracenic, grey granite, big arched entrance) in a huge green, rocky campus with
   tree-lined roads; students on cycles and scooters, canteen chai. Must appear on the map
   with recognisable art and be used by the story, a side activity or a collectible.
+
+## Round 6 (user, binding)
+
+| id | Place | Area | Notes |
+|---|---|---|---|
+| `karachi_bakery` | Karachi Bakery | beside `mozamjahi_market` | the original shop: fruit biscuits, Osmania biscuits, dil khush, plum cake; the tin boxes everyone carried to relatives; a must-buy gift run |
+| `lumbini_park` | Lumbini Park | south-east shore of Hussain Sagar, near the Secretariat | lawns, musical fountain, the boat jetty for trips to the `buddha_statue`, ice cream and balloon sellers, families on Sunday evenings |
