@@ -3228,9 +3228,9 @@
   ];
   // Festival soundscapes switched on by story flags: N.flags[id] truthy, N.flags.festival === id, or in N.flags.festivals[].
   const FESTIVALS = {
-    ganesh_immersion: { near: ['ganesh_immersion_point', 'tank_bund', 'khairatabad_ganesh', 'tank_bund_statues', 'necklace_road'], r: 650, music: 'festival', ev: [['crowd_cheer', 2], ['whistle', 1]] },
+    ganesh_immersion: { near: ['ganesh_immersion_point', 'tank_bund', 'khairatabad_ganesh', 'tank_bund_statues', 'necklace_road'], r: 650, music: 'ganesh', ev: [['crowd_cheer', 2], ['whistle', 1]] },
     bonalu: { near: ['ujjaini_mahankali_temple', 'lal_darwaza_temple'], r: 500, music: 'festival', ev: [['dappu', 2], ['temple_bell', 0.8], ['crowd_cheer', 1]] },
-    ramzan: { near: ['charminar', 'mecca_masjid'], r: 650, ev: [['bangles', 6], ['vendor_call', 6], ['firework', 0.8], ['crowd_cheer', 0.5]] },
+    ramzan: { near: ['charminar', 'mecca_masjid'], r: 650, music: 'ramzan', ev: [['bangles', 6], ['vendor_call', 6], ['firework', 0.8], ['crowd_cheer', 0.5]] },
     numaish: { near: ['nampally_exhibition'], r: 600, music: 'numaish' },
     sankranti: { global: true, ev: [['bo_kaata', 1.2], ['kite_wind', 1]] },
   };
@@ -3463,7 +3463,9 @@
     if (walkman.seq) return null;
     if (music.stingUntil > now) return null;
     if (wantedLevel() >= 3) music.chaseUntil = now + 4; // keep the chase going a moment after escaping
-    if (music.chaseUntil > now) return 'chase';
+    // Chappal Meter 5 adds the comic tuba motif ('chase5'); sticky until the chase ends so 4<->5 doesn't restart the cue
+    if (music.chaseUntil > now) { if (wantedLevel() >= 5 && TRACKS.chase5) music.chase5 = true; return music.chase5 ? 'chase5' : 'chase'; }
+    music.chase5 = false;
     if (music.victoryUntil > now) return now >= music.victoryAt ? 'victory' : null;
     if (music.moodId) return music.moodId;
     if (music.introUntil > now) return 'title';

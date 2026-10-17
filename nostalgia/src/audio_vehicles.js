@@ -39,18 +39,50 @@
   function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
   const DATA = new Map();          // key@sr -> Float32Array
   const BUFS = new WeakMap();      // ac -> Map(key@sr -> AudioBuffer)
+  // Renderers are generators that yield every ~0.3-1 ms of work: live, they run in idle-time slices of <= 3.5 ms (pump);
+  // offline (tests, OfflineAudioContext) they are drained synchronously.
+  const JOBS = new Map();          // key@sr -> {gen} in progress
+  const QUEUE = [];                // [{k, sr, make}] wanted live, front = most urgent
+  const drain = (g) => { let r; do r = g.next(); while (!r.done); return r.value; };
   function data(key, sr, make) {
     const k = key + '@' + sr;
     let d = DATA.get(k);
-    if (!d) { d = make(sr); DATA.set(k, d); }
+    if (!d) { const j = JOBS.get(k); d = drain(j ? j.gen : make(sr)); JOBS.delete(k); DATA.set(k, d); }
     return d;
   }
-  function buf(ac, key, make) {
+  let pumping = false;
+  const ric = (fn) => (window.requestIdleCallback ? window.requestIdleCallback(fn, { timeout: 400 }) : setTimeout(() => fn(null), 40));
+  function want(key, sr, make, front) {
+    const k = key + '@' + sr;
+    if (DATA.has(k)) return;
+    let q = QUEUE.find((x) => x.k === k);
+    if (q) { if (front) { QUEUE.splice(QUEUE.indexOf(q), 1); QUEUE.unshift(q); } } else { q = { k, sr, make }; if (front) QUEUE.unshift(q); else QUEUE.push(q); }
+    if (!pumping) { pumping = true; ric(pump); }
+  }
+  function pump() {
+    const t0 = performance.now();
+    try {
+      while (QUEUE.length && performance.now() - t0 < 3.5) {
+        const q = QUEUE[0];
+        if (DATA.has(q.k)) { QUEUE.shift(); continue; }
+        let j = JOBS.get(q.k);
+        if (!j) { j = { gen: q.make(q.sr) }; JOBS.set(q.k, j); }
+        const r = j.gen.next();
+        if (r.done) { DATA.set(q.k, r.value); JOBS.delete(q.k); QUEUE.shift(); }
+      }
+    } catch (e) { err('warm', e); QUEUE.length = 0; }
+    pumping = false;
+    if (QUEUE.length) { pumping = true; ric(pump); }
+  }
+  const isLive = (ac) => !!ac && ac === X.ctx;
+  // lazy: on the live context return null (and queue the render up front) instead of rendering inside a frame
+  function buf(ac, key, make, lazy) {
     const sr = ac.sampleRate, k = key + '@' + sr;
     let m = BUFS.get(ac);
     if (!m) { m = new Map(); BUFS.set(ac, m); }
     let b = m.get(k);
     if (b) return b;
+    if (lazy && isLive(ac) && !DATA.has(k)) { want(key, sr, make, true); return null; }
     const d = data(key, sr, make);
     b = ac.createBuffer(1, d.length, sr);
     b.getChannelData(0).set(d);
@@ -58,18 +90,18 @@
     return b;
   }
   // RBJ bandpass (0 dB peak) run twice round a loop so the seam is continuous
-  function bandLoop(x, sr, f, q) {
+  function* bandLoop(x, sr, f, q) {
     const w = TAU * Math.min(f, sr * 0.45) / sr, al = Math.sin(w) / (2 * q), a0 = 1 + al;
     const b0 = al / a0, b2 = -al / a0, a1 = -2 * Math.cos(w) / a0, a2 = (1 - al) / a0;
     let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
     const n = x.length, y = new Float32Array(n);
-    for (let pass = 0; pass < 2; pass++) for (let i = 0; i < n; i++) { const v = x[i], o = b0 * v + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = v; y2 = y1; y1 = o; if (pass) y[i] = o; }
+    for (let pass = 0; pass < 2; pass++) for (let i = 0; i < n; i++) { const v = x[i], o = b0 * v + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = v; y2 = y1; y1 = o; if (pass) y[i] = o; if ((i & 16383) === 16383) yield; }
     return y;
   }
-  function hpLoop(x, sr, f) { // one-pole highpass, looped (removes DC and sub-rumble)
+  function* hpLoop(x, sr, f) { // one-pole highpass, looped (removes DC and sub-rumble)
     const a = 1 / (1 + TAU * f / sr);
     let px = 0, py = 0;
-    for (let pass = 0; pass < 2; pass++) for (let i = 0; i < x.length; i++) { const v = x[i], o = a * (py + v - px); px = v; py = o; if (pass) x[i] = o; }
+    for (let pass = 0; pass < 2; pass++) for (let i = 0; i < x.length; i++) { const v = x[i], o = a * (py + v - px); px = v; py = o; if (pass) x[i] = o; if ((i & 16383) === 16383) yield; }
     return x;
   }
   function lpLoop(x, sr, f) {
@@ -85,51 +117,60 @@
    * (pipe / muffler / body resonances), nz {a, tau, f, q} (per-firing noise rasp), click {a, lo, hi, dec, n, at} (diesel knock),
    * rattle {a, lo, hi, dec, n, span} (loose tin), cyl [] / cylT [] (per-cylinder amp / timing, fraction of a period),
    * jit (timing jitter), ampJit, miss (probability of a weak/missed fire) + missAmp, pop {p, a} (off-throttle pops). */
-  function renderLoop(sr, d, seed) {
+  // damped sinusoid added into a loop (recursive envelope + rotating phasor: no exp/sin per sample); att = attack samples
+  function dsin(arr, len, s0, n, amp, dec, w, ph, att) {
+    const r = Math.exp(-1 / dec), cw = Math.cos(w), sw = Math.sin(w);
+    let c = Math.cos(ph), si = Math.sin(ph), e = amp;
+    for (let j = 0; j < n; j++) { arr[(s0 + j) % len] += e * si * (j < att ? j / att : 1); e *= r; const c2 = c * cw - si * sw; si = si * cw + c * sw; c = c2; }
+  }
+  function dnoise(arr, len, s0, n, amp, dec, rnd, att) {
+    const r = Math.exp(-1 / dec); let e = amp;
+    for (let j = 0; j < n; j++) { arr[(s0 + j) % len] += e * (rnd() * 2 - 1) * (j < att ? j / att : 1); e *= r; }
+  }
+  function* renderLoop(sr, d, seed) {
     const rnd = prng(seed);
     const T = sr / d.f0, K = d.K, len = Math.round(T * K);
     const out = new Float32Array(len), nz = new Float32Array(len);
-    const add = (arr, i, v) => { arr[i % len] += v; };
     const cyl = d.cyl || [1], cylT = d.cylT || [0];
     const ring = d.ring || [];
-    const t1 = d.tau * sr, t2 = t1 * (d.neg || 3.5), n2 = Math.ceil(t2 * 9);
+    const t1 = d.tau * sr, t2 = t1 * (d.neg || 3.5), n1 = Math.ceil(t1 * 12), n2 = Math.ceil(t2 * 9);
+    // the exhaust pressure pulse shape, computed once: fast alpha blip minus a slower equal-area rarefaction (no DC)
+    const pulse = new Float32Array(n2);
+    for (let j = 0; j < n2; j++) pulse[j] = (j < n1 ? (j / t1) * Math.exp(1 - j / t1) : 0) - (j / t2) * Math.exp(1 - j / t2) * (t1 / t2);
     for (let k = 0; k < K; k++) {
+      yield;
       let a = cyl[k % cyl.length] * (1 + (rnd() - 0.5) * 2 * (d.ampJit || 0));
       if (d.miss && rnd() < d.miss) a *= (d.missAmp || 0.15) * (0.5 + rnd());
       const st = Math.round((k + (cylT[k % cylT.length] || 0) + (rnd() - 0.5) * 2 * (d.jit || 0)) * T + len) % len;
-      // exhaust pressure pulse: fast alpha blip minus a slower equal-area rarefaction (no DC)
-      for (let j = 0; j < n2; j++) {
-        const p = j / t1 < 12 ? (j / t1) * Math.exp(1 - j / t1) : 0, q = (j / t2) * Math.exp(1 - j / t2) * (t1 / t2);
-        add(out, st + j, a * (p - q));
-      }
+      for (let j = 0; j < n2; j++) out[(st + j) % len] += a * pulse[j];
       for (const r of ring) {
-        const f = r[0] * (1 + (rnd() - 0.5) * 0.04), dec = r[1] * sr, n = Math.ceil(dec * 6), w = TAU * f / sr, ph = rnd() * 0.6;
-        for (let j = 0; j < n; j++) add(out, st + j, a * r[2] * Math.exp(-j / dec) * Math.sin(w * j + ph) * Math.min(1, j / 6));
+        const f = r[0] * (1 + (rnd() - 0.5) * 0.04), dec = r[1] * sr;
+        dsin(out, len, st, Math.ceil(dec * 6), a * r[2], dec, TAU * f / sr, rnd() * 0.6, 6);
       }
-      if (d.nz) {
-        const dec = d.nz.tau * sr, n = Math.ceil(dec * 6), aa = Math.pow(Math.max(0, a), 1.3) * d.nz.a;
-        for (let j = 0; j < n; j++) add(nz, st + j, aa * Math.exp(-j / dec) * (rnd() * 2 - 1) * Math.min(1, j / 8));
-      }
+      if (d.nz) { const dec = d.nz.tau * sr; dnoise(nz, len, st, Math.ceil(dec * 6), Math.pow(Math.max(0, a), 1.3) * d.nz.a, dec, rnd, 8); }
       if (d.click) for (let c = 0; c < d.click.n; c++) {
-        const f = d.click.lo + rnd() * (d.click.hi - d.click.lo), dec = d.click.dec * sr * (0.7 + rnd() * 0.6), w = TAU * f / sr;
-        const s0 = st + Math.round((d.click.at + c * 0.04 + rnd() * 0.01) * T), aa = d.click.a * (0.6 + 0.4 * Math.abs(a)) * (c ? 0.5 : 1);
-        for (let j = 0, n = Math.ceil(dec * 6); j < n; j++) add(out, s0 + j, aa * Math.exp(-j / dec) * Math.sin(w * j) * Math.min(1, j / 3));
+        const f = d.click.lo + rnd() * (d.click.hi - d.click.lo), dec = d.click.dec * sr * (0.7 + rnd() * 0.6);
+        const s0 = st + Math.round((d.click.at + c * 0.04 + rnd() * 0.01) * T);
+        dsin(out, len, s0, Math.ceil(dec * 6), d.click.a * (0.6 + 0.4 * Math.abs(a)) * (c ? 0.5 : 1), dec, TAU * f / sr, 0, 3);
       }
       if (d.rattle) for (let c = 0; c < d.rattle.n; c++) {
-        const f = d.rattle.lo + rnd() * (d.rattle.hi - d.rattle.lo), dec = d.rattle.dec * sr * (0.6 + rnd() * 0.8), w = TAU * f / sr;
-        const s0 = st + Math.round(rnd() * d.rattle.span * T), aa = d.rattle.a * (0.3 + 0.7 * rnd()) * (0.5 + 0.5 * Math.abs(a));
-        for (let j = 0, n = Math.ceil(dec * 6); j < n; j++) add(out, s0 + j, aa * Math.exp(-j / dec) * Math.sin(w * j) * Math.min(1, j / 3));
+        const f = d.rattle.lo + rnd() * (d.rattle.hi - d.rattle.lo), dec = d.rattle.dec * sr * (0.6 + rnd() * 0.8);
+        const s0 = st + Math.round(rnd() * d.rattle.span * T);
+        dsin(out, len, s0, Math.ceil(dec * 6), d.rattle.a * (0.3 + 0.7 * rnd()) * (0.5 + 0.5 * Math.abs(a)), dec, TAU * f / sr, 0, 3);
       }
       if (d.pop && rnd() < d.pop.p) { // off-throttle pop: a sharp crack in the pipe + a little thump
         const s0 = st + Math.round((0.3 + rnd() * 0.4) * T), dec = 0.0025 * sr, aa = d.pop.a * (0.6 + 0.4 * rnd());
-        for (let j = 0, n = Math.ceil(dec * 6); j < n; j++) add(nz, s0 + j, aa * 3 * Math.exp(-j / dec) * (rnd() * 2 - 1) * Math.min(1, j / 4));
-        const td = 0.012 * sr, w = TAU * (d.ring && d.ring[0] ? d.ring[0][0] * 0.6 : 200) / sr;
-        for (let j = 0, n = Math.ceil(td * 5); j < n; j++) add(out, s0 + j, aa * Math.exp(-j / td) * Math.sin(w * j) * Math.min(1, j / 8));
+        dnoise(nz, len, s0, Math.ceil(dec * 6), aa * 3, dec, rnd, 4);
+        const td = 0.012 * sr;
+        dsin(out, len, s0, Math.ceil(td * 5), aa, td, TAU * (d.ring && d.ring[0] ? d.ring[0][0] * 0.6 : 200) / sr, 0, 8);
       }
     }
-    const nzf = d.nz ? bandLoop(nz, sr, d.nz.f, d.nz.q) : nz;
+    yield;
+    const nzf = d.nz ? yield* bandLoop(nz, sr, d.nz.f, d.nz.q) : nz;
+    yield;
     for (let i = 0; i < len; i++) out[i] += nzf[i] * 2.2;
-    hpLoop(out, sr, d.hp || 18);
+    yield* hpLoop(out, sr, d.hp || 18);
+    yield;
     return normPeak(out, 0.85);
   }
 
@@ -195,40 +236,40 @@
       fIdle: 25, fMax: 85, tops: [0.18, 0.36, 0.55, 0.78, 1.2], shift: 0.8, lp: [1300, 2500], pk: { f: 100, q: 1, g: 6 }, whine: { f0: 130, f1: 600, a: 0.02 }, vol: 0.32, size: 1.4, heavy: true, seed: 101,
     },
     boat: {
-      c: { f0: 17, K: 16, tau: 0.0025, ring: [[300, 0.03, 0.5], [800, 0.01, 0.3]], nz: { a: 0.4, tau: 0.02, f: 600, q: 0.6 }, jit: 0.06, ampJit: 0.2, miss: 0.12, missAmp: 0.2 },
+      c: { f0: 17, K: 16, tau: 0.0025, ring: [[300, 0.03, 0.5], [800, 0.01, 0.3]], nz: { a: 0.4, tau: 0.02, f: 600, q: 0.6 }, jit: 0.03, ampJit: 0.15, miss: 0.05, missAmp: 0.3 },
       l: { f0: 40, K: 24, tau: 0.002, ring: [[320, 0.025, 0.5], [850, 0.01, 0.3]], nz: { a: 0.6, tau: 0.014, f: 900, q: 0.6 }, jit: 0.02, ampJit: 0.15 },
       fIdle: 17, fMax: 54, tops: [1], cvt: true, lp: [500, 2000], pk: { f: 300, q: 1, g: 4 }, vol: 0.5, size: 1, water: true, seed: 111,
     },
   };
   const TYPES = Object.keys(DEF);
   const loopKey = (key, which) => 'eng:' + key + ':' + which;
-  function engBuf(ac, key, which) {
+  function engBuf(ac, key, which, lazy) {
     const D = DEF[key];
-    return buf(ac, loopKey(key, which), (sr) => renderLoop(sr, Object.assign({ hp: D.hp }, D[which]), D.seed + (which === 'l' ? 7 : 0)));
+    return buf(ac, loopKey(key, which), (sr) => renderLoop(sr, Object.assign({ hp: D.hp }, D[which]), D.seed + (which === 'l' ? 7 : 0)), lazy);
   }
 
   /* ---- small loops: freewheel ratchet, crank (pedal), road grit */
-  function renderRatchet(sr) { // 24 pawl clicks in one second (played at rate = ticks per s / 24)
+  function* renderRatchet(sr) { // 24 pawl clicks in one second (played at rate = ticks per s / 24)
     const rnd = prng(7), len = sr, out = new Float32Array(len);
     for (let k = 0; k < 24; k++) {
+      if (k % 6 === 5) yield;
       const st = Math.round((k + (rnd() - 0.5) * 0.12) / 24 * sr + len) % len, a = 0.7 + 0.3 * rnd();
       for (const [f, dec, g] of [[3100, 0.0018, 0.6], [4700, 0.0012, 0.45], [6900, 0.0008, 0.18], [1400, 0.003, 0.3]]) {
         const w = TAU * f * (1 + (rnd() - 0.5) * 0.05) / sr, dd = dec * sr;
-        for (let j = 0, n = Math.ceil(dd * 6); j < n; j++) out[(st + j) % len] += a * g * Math.exp(-j / dd) * Math.sin(w * j) * Math.min(1, j / 5);
+        dsin(out, len, st, Math.ceil(dd * 6), a * g, dd, w, 0, 5);
       }
     }
-    return normPeak(hpLoop(out, sr, 400), 0.8);
+    return normPeak(yield* hpLoop(out, sr, 400), 0.8);
   }
-  function renderCrank(sr) { // 2 crank revolutions at 1 rev/s: chain clack per down-stroke, a creak once per revolution, chain whirr
+  function* renderCrank(sr) { // 2 crank revolutions at 1 rev/s: chain clack per down-stroke, a creak once per revolution, chain whirr
     const rnd = prng(9), len = 2 * sr, out = new Float32Array(len), nz = new Float32Array(len);
     for (let s = 0; s < 4; s++) {
       const st = Math.round((s * 0.5 + 0.02) * sr);
-      for (const [f, dec, g] of [[140, 0.025, 0.35], [950, 0.004, 0.2], [2300, 0.002, 0.08]]) {
-        const w = TAU * f / sr, dd = dec * sr;
-        for (let j = 0, n = Math.ceil(dd * 6); j < n; j++) out[(st + j) % len] += g * Math.exp(-j / dd) * Math.sin(w * j) * Math.min(1, j / 10);
-      }
+      yield;
+      for (const [f, dec, g] of [[140, 0.025, 0.35], [950, 0.004, 0.2], [2300, 0.002, 0.08]]) { const dd = dec * sr; dsin(out, len, st, Math.ceil(dd * 6), g, dd, TAU * f / sr, 0, 10); }
     }
     for (let r = 0; r < 2; r++) { // bottom-bracket creak: a stick-slip squeak, 0.13 s, pitch wobbling 650..900
+      yield;
       const st = Math.round((r + 0.27) * sr), n = Math.round(0.13 * sr);
       let ph = 0;
       for (let j = 0; j < n; j++) {
@@ -238,21 +279,25 @@
         out[(st + j) % len] += 0.09 * Math.sin(u * Math.PI) * stick * (Math.sin(ph) + 0.4 * Math.sin(2 * ph));
       }
     }
+    yield;
     for (let i = 0; i < len; i++) nz[i] = (rnd() * 2 - 1) * (0.6 + 0.4 * Math.abs(Math.sin(i / sr * TAU)));
-    const w = bandLoop(nz, sr, 3200, 1.2);
+    yield;
+    const w = yield* bandLoop(nz, sr, 3200, 1.2);
+    yield;
     for (let i = 0; i < len; i++) out[i] += w[i] * 0.05;
-    return normPeak(hpLoop(out, sr, 60), 0.6);
+    return normPeak(yield* hpLoop(out, sr, 60), 0.6);
   }
-  function renderGrit(sr) { // 2 s of sparse gravel/stone impacts (crunch); played faster with speed, filtered per surface
+  function* renderGrit(sr) { // 2 s of sparse gravel/stone impacts (crunch); played faster with speed, filtered per surface
     const rnd = prng(13), len = 2 * sr, out = new Float32Array(len);
-    const hit = (st, a, dec, bright) => { const dd = dec * sr; let lp = 0; for (let j = 0, n = Math.ceil(dd * 6); j < n; j++) { const x = rnd() * 2 - 1; lp += (x - lp) * bright; out[(st + j) % len] += a * Math.exp(-j / dd) * lp * Math.min(1, j / 4); } };
-    for (let k = 0; k < 260; k++) hit(Math.floor(rnd() * len), Math.pow(rnd(), 2) * 0.8, 0.0008 + rnd() * 0.003, 0.3 + rnd() * 0.6);
+    const hit = (st, a, dec, bright) => { const dd = dec * sr, r = Math.exp(-1 / dd); let lp = 0, e = a; for (let j = 0, n = Math.ceil(dd * 6); j < n; j++) { const x = rnd() * 2 - 1; lp += (x - lp) * bright; out[(st + j) % len] += e * lp * (j < 4 ? j / 4 : 1); e *= r; } };
+    for (let k = 0; k < 260; k++) if (k % 20 === 19) yield; else hit(Math.floor(rnd() * len), Math.pow(rnd(), 2) * 0.8, 0.0008 + rnd() * 0.003, 0.3 + rnd() * 0.6);
     for (let k = 0; k < 16; k++) { // a few bigger stones: a low knock
       const st = Math.floor(rnd() * len), dd = 0.012 * sr, w = TAU * (90 + rnd() * 80) / sr;
-      for (let j = 0, n = Math.ceil(dd * 5); j < n; j++) out[(st + j) % len] += 0.35 * Math.exp(-j / dd) * Math.sin(w * j) * Math.min(1, j / 20);
+      dsin(out, len, st, Math.ceil(dd * 5), 0.35, dd, w, 0, 20);
       hit(st, 0.5, 0.004, 0.5);
     }
-    return normPeak(hpLoop(out, sr, 50), 0.8);
+    yield;
+    return normPeak(yield* hpLoop(out, sr, 50), 0.8);
   }
 
   /* ============================================================ the voice */
@@ -331,7 +376,8 @@
       if (this.player) {
         this.gritG = mk(gain(ac, 0, this.mix));
         this.gritF = mk(filt(ac, 'lowpass', 3000, 0.7, this.gritG));
-        this.grit = src(buf(ac, 'grit', renderGrit), 1); this.grit.connect(this.gritF);
+        const gb = buf(ac, 'grit', renderGrit, true);
+        if (gb) { this.grit = src(gb, 1); this.grit.connect(this.gritF); }
         this.skidG = mk(gain(ac, 0, this.mix));
         this.skidF = mk(filt(ac, 'bandpass', 1500, 6, this.skidG));
         src(noiseBuf(ac, 'white'), 1).connect(this.skidF);
@@ -390,7 +436,7 @@
       this.set(this.roadF.Q, 'rq', R[1], 0.2, 0.05, true);
       this.set(this.roadG.gain, 'rg', R[2] * roll * 3.5, 0.12, 0.002);
       if (this.player) {
-        this.set(this.grit.playbackRate, 'gr', R[4] * (0.2 + 1.1 * sf) * dop, 0.15, 0.02, true);
+        if (this.grit) this.set(this.grit.playbackRate, 'gr', R[4] * (0.2 + 1.1 * sf) * dop, 0.15, 0.02, true);
         this.set(this.gritF.frequency, 'gf', R[5], 0.2, 0.05, true);
         this.set(this.gritG.gain, 'gg', R[3] * roll * 1.6, 0.12, 0.002);
         // skid: a squeal on tarmac, a scrub on dirt (vehicles.js sets v.skidding / v.slip)
@@ -431,7 +477,7 @@
       }
       const shifting = this.shiftT > 0;
       const u = shifting ? 1 - this.shiftT / this.shiftD : 0;
-      const ldT = shifting ? Math.min(ld, 0.25) : brake ? 0 : ld;
+      const ldT = shifting ? Math.min(ld, 0.45) : brake ? 0 : ld;
       this.load += (ldT - this.load) * (1 - Math.exp(-dt / (shifting ? 0.03 : 0.08)));
       const L = this.load;
       const f = D.fIdle + (D.fMax - D.fIdle) * r;
@@ -447,7 +493,7 @@
         this.set(this.pk.frequency, 'pf', (D.pk.f[0] + (D.pk.f[1] - D.pk.f[0]) * Math.min(1, r)) * dop, 0.06, 0.02, true);
         this.set(this.pk.gain, 'pg', D.pk.g[0] + (D.pk.g[1] - D.pk.g[0]) * on * on * (3 - 2 * on), 0.06, 0.2);
       } else this.set(this.pk.frequency, 'pf', D.pk.f * dop, 0.1, 0.02, true);
-      const dip = shifting ? 1 - 0.35 * Math.sin(Math.PI * u) : 1;
+      const dip = shifting ? 1 - 0.2 * Math.sin(Math.PI * u) : 1;
       this.set(this.vol.gain, 'v', D.vol * (0.42 + 0.33 * Math.min(1, r) + 0.3 * L) * dip * (brake ? 0.85 : 1), shifting ? 0.03 : 0.06, 0.003);
       if (this.wO) {
         const w = D.whine, x = w.cvt ? Math.min(1.1, sf) : Math.min(1.1, r);
@@ -477,6 +523,10 @@
   function factory(ac, dest, type, prof, veh, isPlayer) {
     const key = keyFor(type, prof);
     if (!key) return null;
+    if (isLive(ac)) { // never render inside a frame: missing loops are queued first and the built-in voice covers this ride
+      const miss = key === 'pedal' ? [buf(ac, 'ratchet', renderRatchet, true), buf(ac, 'crank', renderCrank, true)] : [engBuf(ac, key, 'c', true), engBuf(ac, key, 'l', true)];
+      if (miss.some((b) => !b)) return null;
+    }
     return new Voice(ac, dest, type, key, veh, isPlayer);
   }
   X.setEngineVoice(factory);
@@ -544,7 +594,7 @@
   X.registerSfx('bus_horn', (ac, out, t, o) => { // APSRTC air horn: two big trumpets + a third, air pressure builds into a blat, hiss on release
     const d = o.dur || 0.8, p = PO(o);
     let end = t;
-    for (const [f, v, dl] of [[146.8, 0.065, 0], [185, 0.055, 0.012], [220, 0.033, 0.02]]) {
+    for (const [f, v, dl] of [[146.8, 0.045, 0], [185, 0.038, 0.012], [220, 0.022, 0.02]]) {
       end = Math.max(end, hornNote(ac, out, t + dl, { f: f * p * rr(0.995, 1.005), d, duty: 0.33, drive: 3, pre: 0.9, res: [[650, 1.2, 7], [1500, 2, 5]], lp: 4200, hp: 90, v, a: 0.06, r: 0.14, scoop: 0.8, scoopT: 0.09, droop: 0.9, vib: [5.5, 0.004] }));
     }
     burst(ac, out, t, { ft: 'highpass', f: 2200, a: 0.02, h: 0.05, r: 0.12, v: 0.04 });
@@ -624,7 +674,7 @@
     // Hercules: the small thumb-flick bell — two bright clean "ding"s (strike + a little rebound)
     hercules: { f: 3150, modes: [[1, 1, 0.55], [2.76, 0.4, 0.35], [5.4, 0.18, 0.22], [8.9, 0.07, 0.15]], n: 2, iv: 0.022, gap: 0.17, tail: 0.6, amp: (k) => (k ? 0.28 : 1) },
   };
-  function renderBell(sr, variant, rings) {
+  function* renderBell(sr, variant, rings) {
     const B = BELLS[variant] || BELLS.plain, rnd = prng(17 + rings * 3 + variant.length);
     const dur = (rings - 1) * B.gap + B.n * B.iv + B.tail, len = Math.ceil(dur * sr);
     const exc = new Float32Array(len), out = new Float32Array(len);
@@ -633,18 +683,26 @@
       for (let j = 0; j < 12 && st + j < len; j++) exc[st + j] += a * (rnd() * 2 - 1) * (1 - j / 12); // a short hammer contact
     }
     for (const [ratio, amp, t60] of B.modes) {
+      yield;
       const w = TAU * B.f * ratio / sr, rad = Math.exp(-6.9 / (t60 * sr)), c1 = 2 * rad * Math.cos(w), c2 = -rad * rad, gn = amp * Math.sin(w);
       let y1 = 0, y2 = 0;
-      for (let i = 0; i < len; i++) { const y = c1 * y1 + c2 * y2 + exc[i] * gn; y2 = y1; y1 = y; out[i] += y; }
+      for (let i = 0; i < len; i++) { const y = c1 * y1 + c2 * y2 + exc[i] * gn; y2 = y1; y1 = y; out[i] += y; if ((i & 16383) === 16383) yield; }
     }
     const fade = Math.round(0.08 * sr);
     for (let i = 0; i < fade; i++) out[len - 1 - i] *= i / fade;
     return normPeak(out, 0.5);
   }
-  function bellBuf(ac, variant, rings) { return buf(ac, 'bell:' + variant + ':' + rings, (sr) => renderBell(sr, variant, rings)); }
+  function bellBuf(ac, variant, rings, lazy) { return buf(ac, 'bell:' + variant + ':' + rings, (sr) => renderBell(sr, variant, rings), lazy); }
   X.registerSfx('bell', (ac, out, t, o) => {
-    const variant = BELLS[o.variant] ? o.variant : 'plain', rings = clamp(Math.round(o.rings || 2), 1, 4);
-    const s = ac.createBufferSource(); s.buffer = bellBuf(ac, variant, rings);
+    const T = o.vtype && VT(o.vtype);
+    const variant = BELLS[o.variant] ? o.variant : T && BELLS[T.bell] ? T.bell : 'plain', rings = clamp(Math.round(o.rings || 2), 1, 4);
+    const b = bellBuf(ac, variant, rings, true);
+    if (!b) { // not rendered yet (first ring right after unlock): a quick struck fallback, the real one is queued
+      const B = BELLS[variant]; let e = t;
+      for (let r = 0; r < rings; r++) for (let k = 0; k < Math.min(4, B.n); k++) e = strike(ac, out, t + r * B.gap + k * B.iv * 1.5, B.f * PO(o), BELL, 0.3 * B.amp(k), B.tail * 0.5);
+      return e;
+    }
+    const s = ac.createBufferSource(); s.buffer = b;
     const rate = PO(o) * rr(0.985, 1.015);
     s.playbackRate.value = rate;
     s.connect(gain(ac, 1, out)); s.start(t);
@@ -654,7 +712,19 @@
   /* ============================================================ starts (built on the engine loops) */
   // An engine loop through a static muffler, revving along a rate curve [[t, firing Hz]] with a gain curve [[t, g]].
   function loopRev(ac, out, key, which, curve, gcurve, lpHz) {
-    const D = DEF[key], s = ac.createBufferSource(); s.buffer = engBuf(ac, key, which); s.loop = true;
+    const D = DEF[key], b = engBuf(ac, key, which, true);
+    if (!b) { // loop not rendered yet: a train of exhaust puffs along the same rev curve
+      const end = gcurve[gcurve.length - 1][0];
+      let tt = gcurve[0][0], i = 0;
+      while (tt < end - 0.05) {
+        while (i < curve.length - 1 && curve[i + 1][0] <= tt) i++;
+        const f = curve[i][1];
+        burst(ac, out, tt, { kind: 'pink', f: Math.min(1800, (lpHz || 900) * 0.6), q: 0.8, a: 0.002, r: Math.min(0.06, 1.2 / f), v: 0.35 * rr(0.6, 1) });
+        tt += 1 / Math.max(10, f);
+      }
+      return end;
+    }
+    const s = ac.createBufferSource(); s.buffer = b; s.loop = true;
     const f0 = D[which].f0;
     s.playbackRate.setValueAtTime(curve[0][1] / f0, curve[0][0]);
     for (let i = 1; i < curve.length; i++) s.playbackRate.setTargetAtTime(curve[i][1] / f0, curve[i - 1][0], Math.max(0.02, (curve[i][0] - curve[i - 1][0]) / 3));
@@ -677,7 +747,8 @@
     for (let k = 0; k < 4; k++) burst(ac, out, t + 0.05 + k * 0.03, { f: 2800, q: 3, a: 0.001, r: 0.012, v: 0.1 * v });
   }
   function pitchKey(o) { // onVehicleEnter passes a pitch per 2-stroke: map it back to the type
-    if (o.vtype && DEF[o.vtype]) return o.vtype;
+    const kv = o.vtype && keyFor(o.vtype, X.engProfile(o.vtype));
+    if (kv && DEF[kv]) return kv;
     const p = PO(o);
     return p > 1.45 ? 'scooty' : p > 1.3 ? 'luna' : p > 1.1 ? 'rx100' : p < 0.9 ? 'boat' : 'chetak';
   }
@@ -705,7 +776,7 @@
     return c + dur + 0.2;
   }, { cooldown: 0.8 });
   X.registerSfx('car_start', (ac, out, t, o) => { // key click, starter "rrr-rrr-rrr" against compression, catch, flare, settle
-    const key = o.vtype && DEF[o.vtype] ? o.vtype : 'ambassador', D = DEF[key], fi = D.fIdle;
+    const kv = o.vtype && keyFor(o.vtype, X.engProfile(o.vtype)), key = kv && DEF[kv] && !DEF[kv].heavy ? kv : 'ambassador', D = DEF[key], fi = D.fIdle;
     burst(ac, out, t, { ft: 'highpass', f: 3000, a: 0.001, r: 0.015, v: 0.25 });
     const crank = 0.55, st = t + 0.08;
     const m = osc0(ac); m.type = 'sawtooth'; m.frequency.setValueAtTime(95, st); m.frequency.linearRampToValueAtTime(120, st + crank);
@@ -722,7 +793,7 @@
     return c + dur + 0.2;
   }, { cooldown: 0.8 });
   X.registerSfx('diesel_start', (ac, out, t, o) => { // slow heavy starter grind, the diesel knocks into life, black-smoke rev, air release
-    const key = o.vtype === 'lorry' ? 'lorry' : 'bus', D = DEF[key], fi = D.fIdle;
+    const key = o.vtype && keyFor(o.vtype, X.engProfile(o.vtype)) === 'lorry' ? 'lorry' : 'bus', D = DEF[key], fi = D.fIdle;
     const crank = 0.7;
     const m = osc0(ac); m.type = 'sawtooth'; m.frequency.setValueAtTime(70, t); m.frequency.linearRampToValueAtTime(85, t + crank);
     const lp = filt(ac, 'lowpass', 600, 1, out), g = gain(ac, 0, lp); m.connect(g);
@@ -775,29 +846,19 @@
   }, { cooldown: 0.06 });
 
   /* ============================================================ idle-time prewarm + environment tracking */
-  const warm = [];
-  for (const k of TYPES) warm.push(['c', k], ['l', k]);
-  warm.push(['bell', 'plain'], ['bell', 'hero'], ['bell', 'hercules'], ['x', 'ratchet'], ['x', 'crank'], ['x', 'grit']);
   let warming = false;
-  function warmStep(ac) {
-    const ric = window.requestIdleCallback || ((fn) => setTimeout(() => fn({ timeRemaining: () => 6 }), 50));
-    ric((dl) => {
-      try {
-        while (warm.length && (!dl || dl.timeRemaining() > 4)) {
-          const [a, b] = warm.shift();
-          if (a === 'c' || a === 'l') engBuf(ac, b, a);
-          else if (a === 'bell') bellBuf(ac, b, 2);
-          else buf(ac, b, b === 'ratchet' ? renderRatchet : b === 'crank' ? renderCrank : renderGrit);
-          break; // one item per idle slice: each is ~0.3-2 ms
-        }
-      } catch (e) { err('warm', e); warm.length = 0; }
-      if (warm.length) warmStep(ac);
-    });
+  function warmAll(ac) { // most common first; each item renders in idle slices (pump)
+    const sr = ac.sampleRate;
+    const order = ['auto', 'chetak', 'scooty', 'ambassador', 'bus'].concat(TYPES.filter((k) => !/^(auto|chetak|scooty|ambassador|bus)$/.test(k)));
+    order.slice(0, 5).forEach((k) => { for (const w of ['c', 'l']) want(loopKey(k, w), sr, (r) => renderLoop(r, Object.assign({ hp: DEF[k].hp }, DEF[k][w]), DEF[k].seed + (w === 'l' ? 7 : 0))); });
+    want('ratchet', sr, renderRatchet); want('crank', sr, renderCrank); want('grit', sr, renderGrit);
+    for (const v of ['plain', 'hero', 'hercules']) { want('bell:' + v + ':2', sr, (r) => renderBell(r, v, 2)); want('bell:' + v + ':1', sr, (r) => renderBell(r, v, 1)); }
+    order.slice(5).forEach((k) => { for (const w of ['c', 'l']) want(loopKey(k, w), sr, (r) => renderLoop(r, Object.assign({ hp: DEF[k].hp }, DEF[k][w]), DEF[k].seed + (w === 'l' ? 7 : 0))); });
   }
   X.onUpdate('vehicles', (dt, mode, info) => {
     env.bed = info.bed; env.t -= dt;
     if (env.t <= 0) { env.t = 0.5; env.wet = isWet(); }
-    if (!warming && X.ctx) { warming = true; warmStep(X.ctx); }
+    if (!warming && X.ctx) { warming = true; try { warmAll(X.ctx); } catch (e) { err('warmAll', e); } }
   }, 5);
 
   /* ============================================================ test hooks */
@@ -853,10 +914,20 @@
       return sec;
     },
     nodes(type, player) {
-      const ac = X.ctx || new OfflineAudioContext(1, 128, 44100);
+      const ac = new OfflineAudioContext(1, 128, 44100);
       const v = factory(ac, ac.destination, type, X.engProfile(type), null, player);
       if (!v) return 0;
       const n = v.nodes; v.stop(); return n;
+    },
+    // the longest single idle-time render step (ms) over every buffer, fresh, at sr
+    sliceMax(sr) {
+      sr = sr || 48000;
+      const gens = [];
+      for (const k of TYPES) for (const w of ['c', 'l']) gens.push([k + ':' + w, renderLoop(sr, Object.assign({ hp: DEF[k].hp }, DEF[k][w]), 1)]);
+      gens.push(['ratchet', renderRatchet(sr)], ['crank', renderCrank(sr)], ['grit', renderGrit(sr)], ['bell:hero', renderBell(sr, 'hero', 2)], ['bell:plain', renderBell(sr, 'plain', 2)]);
+      let mx = 0, tot = 0, at = ''; const per = {};
+      for (const [name, g] of gens) { let r, i = 0; do { const t0 = performance.now(); r = g.next(); const d = performance.now() - t0; if (d > mx) { mx = d; at = name + '#' + i; } tot += d; per[name] = +((per[name] || 0) + d).toFixed(1); i++; } while (!r.done); }
+      return { maxMs: +mx.toFixed(2), at, totalMs: Math.round(tot), per };
     },
     // render cost of n voices for sec seconds offline (audio thread; OfflineAudioContext suspend() is itself slow in Chrome,
     // so no per-frame suspends here) vs the same count of built-in voices, + the JS cost of one update() call (main thread)

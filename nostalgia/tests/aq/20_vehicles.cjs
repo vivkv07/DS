@@ -162,11 +162,12 @@ module.exports = {
       const V = N.audio.vehicles;
       const nodes = { auto: V.nodes('auto', false), autoPlayer: V.nodes('auto', true), bus: V.nodes('bus', false), cycle: V.nodes('hero_cycle', true) };
       const b = await V.bench(5, 10);
-      return { nodes, b };
+      return { nodes, b, slice: V.sliceMax(48000) };
     });
     log('CPU ' + JSON.stringify(cpu));
     check(cpu.nodes.auto <= 20 && cpu.nodes.autoPlayer <= 24 && cpu.nodes.cycle <= 20, 'nodes per voice within budget', cpu.nodes);
     check(cpu.b.ms <= cpu.b.msBuiltin * 1.6 + 150 && cpu.b.realtimeFrac < 0.2, '5 voices: audio-thread cost near the built-in voices, well under real time', cpu.b);
+    check(cpu.slice.maxMs < 4, 'idle-time pre-render: no single step over 4 ms', cpu.slice);
     check(cpu.b.updUs < 60, 'update() JS cost per voice per frame < 60 us', cpu.b.updUs);
     // the voice through the live engine: player vehicle -> our voice
     const live = await ev(() => { const e = N.audio._internal.eng; return { has: !!N.audio.vehicles, factory: typeof N.audio.ext.setEngineVoice }; });
