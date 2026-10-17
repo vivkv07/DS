@@ -174,6 +174,8 @@ async function installHooks() {
         // the lake: anywhere on the shore road / water (its place point is mid-lake)
         if (lake && Math.hypot(p.x - lake.x, p.y - lake.y) < 700 && (N.world.isWater && (N.world.isWater(p.x + 40, p.y) || N.world.isWater(p.x - 40, p.y) || N.world.isWater(p.x, p.y + 40) || N.world.isWater(p.x, p.y - 40) || N.world.isWater(p.x, p.y)))) hit('hussain_sagar');
         for (const q of pre) if (Math.hypot(p.x - q.x, p.y - q.y) < q.r) hit(q.id);
+        // district-sized places: being anywhere in the district counts (HITEC City is the IT district round Cyber Towers)
+        try { const d = N.world.districtAt(p.x, p.y); const did = d && (d.id || d); if (did === 'hitec') hit('hitec_city'); } catch (e) { /* ignore */ }
       } catch (e) { /* the tracker never breaks the run */ }
     }, 200);
     void nick; void full;
