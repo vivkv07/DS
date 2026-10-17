@@ -988,7 +988,7 @@
   /** The Lock page (story.js convention): lock_N = the digit, riddle_N = true. */
   function lockDigit(api, slot, digit) {
     const f = F();
-    f['lock_' + slot] = digit; f['riddle_' + slot] = true;
+    f['lock_' + slot] = digit; f['riddle_' + slot] = true; f['lock_digit_' + slot] = true;
     if (isFF(api)) return;
     toast('The Lock: ' + [1, 2, 3, 4].map((i) => (f['lock_' + i] != null && f['lock_' + i] !== false ? f['lock_' + i] : '_')).join(' '), 3200, 'lock');
   }
@@ -3013,14 +3013,55 @@
     if (R.back) later(4.8, () => { if (!N.missions.active && !SC.cur) { try { N.calendar.jumpTo(R.back, { fx: 'ff' }); } catch (e) { N.err('story2.replay', e); } } });
   }
 
+  /* ================================================================== giver NPCs beside the visible markers (bible §4 / §7) */
+  const GIVER_NPC = {
+    the_clap: { id: 'amma', off: [16, 2] },
+    drums_for_amma: { id: 'amma', off: [16, 2], variant: 'bonam' },
+    opening_day: { id: 'ammi', off: [14, 2] },
+    agle_baras: { id: 'bunty', off: [14, 0], variant: 'committee' },
+    last_bell: { id: 'immu', off: [14, 2] },
+    twelve_oclock: { id: 'chitti', off: [12, 2] },
+    bunty_races: { id: 'bunty', off: [16, 0] }, bunty_races_r2: { id: 'bunty', off: [16, 0] }, bunty_races_r3: { id: 'bunty', off: [16, 0] }, bunty_races_r4: { id: 'bunty', off: [16, 0] },
+    new_class_old_books: { id: 'book_man', off: [12, 2] },
+    christmas_stars: { id: 'bakery_lady', off: [12, 2] },
+    lb_final: { id: 'ayesha', off: [14, 2] },
+  };
+  const givers = new Map();
+  let giverT = 0;
+  function giversTick(dt) {
+    giverT -= dt;
+    if (giverT > 0) return;
+    giverT = 0.5;
+    if (!N.npcs || !N.npcs.spawn || !N.world || !N.world.built) return;
+    let mk = [];
+    try { mk = N.missions && !N.missions.active && !SC.cur ? (N.missions.markers() || []).filter((x) => x.kind === 'giver' && GIVER_NPC[x.id]) : []; } catch (e) { mk = []; }
+    const want = new Set(), p = N.player;
+    for (const g of mk) {
+      if (Math.hypot(g.x - p.x, g.y - p.y) > 640) continue;
+      const spec = GIVER_NPC[g.id], key = 'giver:' + g.id;
+      want.add(key);
+      if (!givers.has(key) || !npcGet(key)) {
+        try {
+          if (spec.variant) variant(spec.id, spec.variant);
+          const f = free(g.x + spec.off[0], g.y + spec.off[1]);
+          const a = N.npcs.spawn(spec.id, f, { key, idle: 'stand', talk: false, owner: 'story2-giver' });
+          if (a) { a.angle = a.baseAngle = Math.atan2(g.y - a.y, g.x - a.x); givers.set(key, a); }
+        } catch (e) { N.err('story2.giver', e); }
+      }
+    }
+    for (const key of Array.from(givers.keys())) if (!want.has(key)) { despawn(key); givers.delete(key); }
+  }
+  function clearGivers() { for (const key of Array.from(givers.keys())) { despawn(key); givers.delete(key); } }
+
   /* ================================================================== registration, runtime, API */
   const MAIN = [M7, M8, M9, M10, M11, M12];
   const SIDES = [SA5, SA7, SA8, LB].concat(RACES.map(raceDef));
   function register() {
     if (!N.missions || !N.missions.register) return;
+    const lbElsewhere = !!(N.missions.defs.lb_exhibition || N.missions.defs.six_balls);
     for (const d of MAIN.concat(SIDES)) {
-      const def = Object.assign({}, d);
-      N.missions.register(def);
+      if (d.id === 'lb_final' && lbElsewhere) continue; // story.js plays the LB Stadium match (SA4 finale + exhibition)
+      N.missions.register(Object.assign({}, d));
     }
   }
   const laters = [];
@@ -3045,9 +3086,10 @@
   });
   N.on('mission:fail', (d) => { runCleanups(missionCleanups); endReplay({ id: d && d.id, type: 'fail' }); });
   N.on('mission:abort', (d) => { runCleanups(missionCleanups); endReplay({ id: d && d.id, type: 'abort' }); });
-  N.on('mission:start', () => { runCleanups(missionCleanups); });
+  N.on('mission:start', () => { runCleanups(missionCleanups); clearGivers(); });
   function hardReset() {
     abortScene();
+    clearGivers();
     runCleanups(missionCleanups);
     laters.length = 0;
     props.clear();
@@ -3078,6 +3120,7 @@
     tickSoftTimers(dt);
     const p = N.player, f = F();
     if (!p) return;
+    if (md === 'play') giversTick(dt);
     // 2026: Srikanth's knees (running empties energy in 4 s; THAK GAYA line 8, no penalty)
     if (S2.epilogue && md === 'play') {
       if (p.running) { p.energy = Math.max(0, p.energy - TUNE.epilogueRunDrain * dt); }

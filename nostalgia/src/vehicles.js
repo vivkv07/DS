@@ -69,40 +69,96 @@
     return t;
   }
 
+  // Refusal lines (A3): Chinnu is 11. He rides cycles, the Scooty and the auto; everything else is
+  // pillion / passenger with a grown-up at the controls.
+  const REFUSE = {
+    luna: ['A Luna? Pedal, pedal, then WHOOSH. Amma would see it from the terrace. *Nakko.*', "Feet don't even reach the stand, *baba*."],
+    chetak: ["A Chetak? You kick-start it tilted sideways. Feet don't even reach, *baba*.", 'Chetak gears are on the handle. My hands are too small. *Nakko.*'],
+    family_chetak: ['Nanna will kill me if I touch his Chetak!', "Nanna's Chetak. He counts the scratches. *Nakko!*"],
+    rx100: ["RX100? Bunty-anna says it's \"not for kids, for legends\". Feet don't even reach, *baba*.", 'That thing goes *DHOOM*. Amma would go *DHOOM* too. *Nakko.*'],
+    car: ["Feet don't even reach, *baba*. And the steering is bigger than me.", 'Drive a CAR? I can see over the dashboard only if I stand. *Nakko.*'],
+    bus: ['A whole BUS? Conductor uncle would pull my ear. Board one at a stop, three rupees.', 'The bus steering is as big as a *thali*. *Nakko.*'],
+    lorry: ['Horn OK Please. Driving NOT OK, please.', 'The lorry has a ladder to get in. A LADDER. *Nakko.*'],
+    boat: ['Boats only at the jetty, with the boatman. Ten rupees.', 'I can\'t even swim properly. *Nakko.*'],
+  };
   define('cycle', {
-    name: 'Hero cycle', short: 'cycle', verb: 'Ride', cls: 'bike', w: 15, d: 5, h: 6,
+    name: 'BSA SLR cycle', short: 'cycle', verb: 'Ride', cls: 'bike', w: 15, d: 5, h: 6,
     maxSpeed: 115, accel: 62, brake: 170, reverse: 0.12, drag: 24, turn: 3.4, turnLow: 0.5, turnHigh: 0.62,
     grip: 13, drift: 3.2, mass: 1.2, seats: 1, lights: false, rider: true, pedal: true, door: false, bikeLook: 'cycle',
+    kidOk: true, sound: 'cycle', bell: 'plain',
     colors: ['#1d1d22', '#2f6a3a', '#24479a', '#9a2424', '#1d1d22'], draw: (ctx, v) => drawBike(ctx, v),
   });
+  define('bsa_cycle', { base: 'cycle', name: 'BSA SLR', short: 'BSA SLR', colors: ['#24479a', '#9a2424', '#2f6a3a', '#1d1d22'] });
   define('ladiescycle', {
     base: 'cycle', name: 'Ladies cycle', maxSpeed: 108, accel: 58, basket: true,
     colors: ['#8a2a4a', '#c05a8a', '#3a7ab0', '#6a3a8a', '#2a8a7a'],
+  });
+  // The classic black Hero roadster: rod brakes, rear carrier, chain guard, dynamo lamp and THE bell.
+  // Heavy and steady: slow to spin up, coasts for ever, brakes like a thought. A kid rides it *kainchi*
+  // style (one leg through the frame) because the saddle is miles up.
+  define('hero_cycle', {
+    base: 'cycle', name: 'Hero cycle', short: 'Hero cycle', w: 16, d: 5, h: 6.5, bikeLook: 'hero',
+    maxSpeed: 110, accel: 55, brake: 150, reverse: 0.1, drag: 21, turn: 3.1, turnLow: 0.45, turnHigh: 0.58, steerResp: 8,
+    grip: 14, drift: 3.4, mass: 1.6, bounce: 0.24, carrier: 0.85, dynamo: true, kainchi: true, bell: 'hero',
+    colors: ['#141418', '#141418', '#141418', '#16213e', '#3a1618'],
+    spawn: { colony: 10, market: 6, oldcity: 10, colonial: 4, posh: 2, cantonment: 7, hitec: 2, rocky: 6, osmania: 10 },
+    draw: (ctx, v) => drawCycle2(ctx, v),
+  });
+  // The sporty Hercules: bright frame, flat bar, fat knobbly tyres. Lighter and quicker, and it
+  // shrugs off rough ground and potholes better than the roadster.
+  define('hercules_cycle', {
+    base: 'cycle', name: 'Hercules', short: 'Hercules', w: 14.5, d: 5, h: 6, bikeLook: 'hercules',
+    maxSpeed: 120, accel: 68, brake: 185, reverse: 0.12, drag: 25, turn: 3.6, turnLow: 0.55, turnHigh: 0.66, steerResp: 13,
+    grip: 12.5, drift: 3, mass: 1.1, punctureMul: 0.5, potholeMul: 0.65, bell: 'hercules',
+    rough: { [N.SURF.GROUND]: 0.94, [N.SURF.GRASS]: 0.86, [N.SURF.SAND]: 0.68 },
+    colors: ['#d8262a', '#1f6fd0', '#f0b818', '#26a050', '#e8601a', '#b82884'], colors2: ['#f4f2ea', '#1a1a1e', '#ffe14a'],
+    spawn: { colony: 5, market: 2, oldcity: 3, colonial: 3, posh: 3, cantonment: 4, hitec: 2, rocky: 4, osmania: 8 },
+    draw: (ctx, v) => drawCycle2(ctx, v),
+  });
+  define('hercules_gears', {
+    base: 'hercules_cycle', name: 'Hercules with gears', short: 'Hercules (gears)', maxSpeed: 132, accel: 74, gears: true,
+    colors: ['#1f6fd0'], colors2: ['#ffe14a'], spawn: null,
+  });
+  // The Scooty: a small step-through scooter in a bright colour. Light and nimble; with an
+  // 11-year-old perched on the front of the seat it gets wobbly near the top speed.
+  define('scooty', {
+    name: 'Scooty', short: 'Scooty', verb: 'Ride', cls: 'bike', w: 14.5, d: 5.6, h: 7.2,
+    maxSpeed: 122, accel: 84, brake: 195, reverse: 0.08, drag: 26, turn: 3.4, turnLow: 0.5, turnHigh: 0.56, steerResp: 12,
+    grip: 10.5, drift: 2.6, mass: 1.7, seats: 2, lights: true, rider: true, door: false, smoke: 'light', bikeLook: 'scooty',
+    kidOk: true, kidWobble: 0.6, sound: 'scooty', potholeMul: 1.15,
+    rough: { [N.SURF.GROUND]: 0.78, [N.SURF.GRASS]: 0.66, [N.SURF.SAND]: 0.45 },
+    colors: ['#e8323c', '#f07aa0', '#2e9ad8', '#f2c418', '#8cc63e', '#ff7a1a', '#c6ccd2', '#7a4ac0'],
+    spawn: { colony: 7, market: 5, oldcity: 3, colonial: 5, posh: 7, cantonment: 6, hitec: 4, rocky: 4, osmania: 9 },
+    draw: (ctx, v) => drawScooty(ctx, v),
   });
   define('luna', {
     name: 'TVS Luna', short: 'Luna', verb: 'Ride', cls: 'bike', w: 15, d: 5.5, h: 7,
     maxSpeed: 120, accel: 70, brake: 190, reverse: 0.1, drag: 26, turn: 3.2, turnLow: 0.45, turnHigh: 0.6,
     grip: 12, drift: 3, mass: 2, seats: 1, lights: true, rider: true, door: false, smoke: 'light', bikeLook: 'luna',
+    refuse: REFUSE.luna, sound: 'luna',
     colors: ['#b82a2a', '#2a4a9a', '#2a2a30', '#3a7a4a'], draw: (ctx, v) => drawBike(ctx, v),
   });
   define('chetak', {
     name: 'Bajaj Chetak', short: 'Chetak', verb: 'Ride', cls: 'bike', w: 17, d: 7, h: 8,
     maxSpeed: 150, accel: 95, brake: 210, reverse: 0.1, drag: 28, turn: 3.0, turnLow: 0.42, turnHigh: 0.58,
     grip: 11, drift: 2.6, mass: 3, seats: 2, lights: true, rider: true, door: false, smoke: '2t', bikeLook: 'chetak',
+    refuse: REFUSE.chetak, sound: 'chetak',
     colors: ['#86b9c9', '#ddd2b2', '#b9483b', '#6f8d68', '#e9e4d8', '#4f6fa8'], draw: (ctx, v) => drawBike(ctx, v),
   });
   define('rx100', {
     name: 'Yamaha RX100', short: 'RX100', verb: 'Ride', cls: 'bike', w: 18, d: 6, h: 8,
     maxSpeed: 180, accel: 150, brake: 230, reverse: 0.1, drag: 28, turn: 3.1, turnLow: 0.4, turnHigh: 0.52,
     grip: 11, drift: 2.4, mass: 3, seats: 2, lights: true, rider: true, door: false, smoke: '2t', bikeLook: 'rx100',
+    refuse: REFUSE.rx100, sound: 'rx100',
     colors: ['#1c1c22', '#a01e2a', '#1e3c8a', '#5a1a3a'], draw: (ctx, v) => drawBike(ctx, v),
   });
   define('auto', {
     name: 'Auto-rickshaw', short: 'auto', verb: 'Drive', cls: 'auto', w: 22, d: 13, h: 14.5,
     maxSpeed: 135, accel: 80, brake: 210, reverse: 0.3, drag: 32, turn: 2.7, turnLow: 0.12, turnHigh: 0.6,
-    grip: 7.5, drift: 1.6, mass: 5, seats: 3, radio: true, smoke: '2t', door: false,
+    grip: 7.5, drift: 1.6, mass: 5, seats: 3, radio: true, smoke: '2t', door: false, kidOk: true, sound: 'auto',
     colors: ['#f2c230'], colors2: ['#1c1a1c', '#1c1a1c', '#2a4a2a'], draw: (ctx, v) => drawAuto(ctx, v),
   });
+  DEFAULTS.refuse = REFUSE.car; // cars (and any story type without its own lines)
   define('ambassador', {
     name: 'Ambassador', short: 'Ambassador', w: 30, d: 14, h: 12.5,
     maxSpeed: 165, accel: 88, turn: 2.2, grip: 8.5, mass: 10, radio: true,
