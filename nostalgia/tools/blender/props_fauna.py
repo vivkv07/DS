@@ -926,35 +926,29 @@ def bird_parakeet(A):
         'ring': mat('feather_black', 'pk_ring', base='#1c1c1e'),
         'pink': mat('beak_red', 'pk_pink', base='#d86a8a'),
         'beak': mat('beak_red', 'pk_beak', base='#cc2a26'),
-        'eye': mat('feather_black', 'pk_eye', base='#e8d8a0'),
-        'leg': mat('feather_grey', 'pk_leg', base='#8a8a8c'),
         'wing': mat('feather_green', 'pk_wing', base='#4aa636'),
         'tip': mat('feather_green', 'pk_tip', base='#2e6a4a'),
         'tail': mat('feather_green', 'pk_tail', base='#4a9a7a'),
     }
-    S = dict(mats=Mt, bodyZ=0.45, height=1.0, tex=64, rings=[
+    S = dict(mats=Mt, bodyZ=0.5, tex=64, rings=[
         (0.32, 0.50, 0.06, 0.05, 'green', 'body'),
-        (0.18, 0.47, 0.15, 0.15, 'green', 'body'),
-        (0.00, 0.48, 0.19, 0.19, 'light', 'body'),
-        (-0.16, 0.56, 0.18, 0.18, 'light', 'body'),
-        (-0.24, 0.67, 0.14, 0.14, 'ring', {'body': 0.5, 'head': 0.5}),
-        (-0.26, 0.72, 0.14, 0.14, 'pink', 'head'),
-        (-0.28, 0.76, 0.14, 0.14, 'green', 'head'),
-        (-0.32, 0.84, 0.15, 0.15, 'green', 'head'),
+        (0.12, 0.47, 0.17, 0.17, 'green', 'body'),
+        (-0.08, 0.50, 0.19, 0.19, 'light', 'body'),
+        (-0.23, 0.65, 0.14, 0.14, 'ring', {'body': 0.5, 'head': 0.5}),
+        (-0.27, 0.73, 0.14, 0.14, 'pink', 'head'),
+        (-0.31, 0.83, 0.15, 0.15, 'green', 'head'),
         (-0.42, 0.87, 0.11, 0.11, 'green', 'head'),
         (-0.47, 0.85, 0.06, 0.06, 'green', 'head'),
     ],
         beak=dict(pts=[(0, -0.44, 0.86), (0, -0.54, 0.83), (0, -0.56, 0.73)], r=[0.075, 0.05, 0.012], mat='beak', squash=0.8),
-        eye=dict(p=(0.10, -0.37, 0.89), r=0.03, mat='eye'),
-        wing=dict(stations=[(0.10, -0.10, 0.22, 0.62), (0.45, -0.14, 0.26, 0.64), (0.75, -0.12, 0.22, 0.66),
-                            (1.05, -0.02, 0.14, 0.66), (1.18, 0.08, 0.12, 0.66)], wrist=2, camber=0.04,
+        wing=dict(stations=[(0.10, -0.10, 0.20, 0.62), (0.40, -0.13, 0.22, 0.64), (0.80, -0.11, 0.18, 0.66),
+                            (1.18, 0.06, 0.12, 0.66)], wrist=1, camber=0.04,
                   mat=lambda i, k: 'tip' if i >= 2 else 'wing'),
-        tail=dict(rows=[(0.28, 0.07, 0.50, 0.0), (0.75, 0.09, 0.47, 0.0), (1.20, 0.05, 0.44, 0.08), (1.55, 0.012, 0.42, 0.0)],
-                  mat='tail'),
-        legs=dict(hip=(0.07, 0.0, 0.32), foot_y=-0.02, r=[0.03, 0.025], mat='leg', toe=0.09),
-        bones=dict(body=((0, 0.0, 0.42), (0, -0.25, 0.42)), head=((0, -0.24, 0.67), (0, -0.42, 0.86)),
-                   tail=((0, 0.28, 0.5), (0, 1.55, 0.42)), shoulder=(0.10, -0.06, 0.62), wrist=(0.75, -0.04, 0.66), tip=(1.18, 0.1, 0.66)),
-        clip=dict(beat=0.2, amp=0.85, off=0.12, fold=(-1.25, 1.66, (0.08, 0.0, 0.0), 0.12), perch_pitch=-0.55),
+        tail=dict(rows=[(0.28, 0.07, 0.50, 0.0), (0.85, 0.09, 0.47, 0.0), (1.55, 0.015, 0.42, 0.0)], mat='tail'),
+        bones=dict(head=((0, -0.23, 0.65), (0, -0.42, 0.86)), tail=((0, 0.28, 0.5), (0, 1.55, 0.42)),
+                   shoulder=(0.10, -0.06, 0.62), wrist=(0.40, -0.06, 0.64), tip=(1.18, 0.1, 0.66)),
+        perch_lift=0.3,
+        clip=dict(beat=0.2, amp=0.85, off=0.12, tamp=0.35, fold=(0.0, 1.66, 1.66, (0.0, 0.0, -0.05)), perch_pitch=-0.6),
     )
     arm, ob = build_bird(A, S)
     A.meta.update(wingspan=2.36, length=2.0, perchClip='perch', flightClips=['flap', 'glide'])
@@ -969,37 +963,34 @@ def bird_egret(A):
     Mt = {
         'white': mat('feather_white', 'eg_white', base='#f2f0e8'),
         'bill': mat('beak_yellow', 'eg_bill', base='#e8b828'),
-        'eye': mat('beak_yellow', 'eg_eye', base='#e8d040'),
         'leg': mat('feather_black', 'eg_leg', base='#2a2a26'),
-        'wing': mat('feather_white', 'eg_wing', base='#f4f2ec'),
     }
-    S = dict(mats=Mt, bodyZ=2.45, height=4.5, tex=64, seg=8, rings=[
+    S = dict(mats=Mt, bodyZ=2.45, tex=64, rings=[
         (0.85, 2.55, 0.08, 0.06, 'white', 'body'),
-        (0.55, 2.48, 0.25, 0.24, 'white', 'body'),
-        (0.15, 2.45, 0.33, 0.32, 'white', 'body'),
-        (-0.30, 2.55, 0.28, 0.28, 'white', 'body'),
-        (-0.50, 2.75, 0.15, 0.15, 'white', {'body': 0.6, 'neck': 0.4}),
-        (-0.46, 3.10, 0.10, 0.10, 'white', 'neck'),
-        (-0.36, 3.45, 0.09, 0.09, 'white', 'neck'),
-        (-0.40, 3.80, 0.085, 0.085, 'white', {'neck': 0.5, 'head': 0.5}),
-        (-0.52, 4.05, 0.09, 0.09, 'white', 'head'),
-        (-0.60, 4.18, 0.12, 0.12, 'white', 'head'),
-        (-0.75, 4.20, 0.10, 0.09, 'white', 'head'),
-        (-0.84, 4.18, 0.05, 0.05, 'bill', 'head'),
+        (0.50, 2.48, 0.26, 0.25, 'white', 'body'),
+        (0.05, 2.46, 0.33, 0.32, 'white', 'body'),
+        (-0.35, 2.58, 0.26, 0.26, 'white', 'body'),
+        (-0.50, 2.80, 0.13, 0.14, 'white', {'body': 0.5, 'neck': 0.5}),
+        (-0.44, 3.20, 0.10, 0.10, 'white', 'neck'),
+        (-0.38, 3.60, 0.09, 0.09, 'white', 'neck'),
+        (-0.48, 3.95, 0.09, 0.09, 'white', {'neck': 0.5, 'head': 0.5}),
+        (-0.60, 4.16, 0.12, 0.12, 'white', 'head'),
+        (-0.78, 4.19, 0.08, 0.08, 'bill', 'head'),
     ],
-        beak=dict(pts=[(0, -0.82, 4.18), (0, -1.40, 4.11)], r=[0.05, 0.008], mat='bill'),
-        eye=dict(p=(0.08, -0.72, 4.24), r=0.03, mat='eye'),
-        wing=dict(stations=[(0.25, -0.32, 0.62, 2.68), (1.00, -0.40, 0.72, 2.72), (1.60, -0.38, 0.62, 2.76),
-                            (2.10, -0.20, 0.42, 2.76), (2.35, 0.00, 0.22, 2.76)], wrist=2, mat='wing'),
+        beak=dict(pts=[(0, -0.76, 4.19), (0, -1.40, 4.11)], r=[0.05, 0.008], mat='bill'),
+        wing=dict(stations=[(0.25, -0.30, 0.56, 2.68), (0.85, -0.38, 0.62, 2.72), (1.60, -0.34, 0.54, 2.76),
+                            (2.35, 0.00, 0.22, 2.76)], wrist=1, mat='white'),
         tail=dict(rows=[(0.80, 0.12, 2.56, 0.0), (1.15, 0.18, 2.50, 0.03)], mat='white'),
-        legs=dict(hip=(0.12, 0.15, 2.30), foot_y=0.05, r=[0.06, 0.045, 0.03], mid=[(0.22, 1.25)], mat='leg', toe=0.34),
-        bones=dict(body=((0, 0.15, 2.45), (0, -0.3, 2.45)), neck=((0, -0.5, 2.75), (0, -0.40, 3.80)), head=((0, -0.40, 3.80), (0, -0.75, 4.20)),
-                   tail=((0, 0.8, 2.56), (0, 1.15, 2.5)), shoulder=(0.25, -0.2, 2.68), wrist=(1.6, -0.15, 2.76), tip=(2.35, 0.1, 2.76)),
-        clip=dict(beat=0.42, amp=0.6, off=0.1, tamp=0.4, bob=0.08, tuck=1.5, neck_fly=(1.1, -1.1),
-                  fold=(-1.25, 1.62, (0.12, 0.0, 0.0), 0.12), peck=(0.35, 0.3, 0.9), perch_s=3.0),
+        legs=dict(hip=(0.12, 0.15, 2.30), foot_y=0.05, r=[0.06, 0.045, 0.03], mid=[(0.22, 1.25)], mat='leg', toe=0.3,
+                  bones=True, tuck=1.5),
+        bones=dict(neck=((0, -0.5, 2.80), (0, -0.48, 3.95)), head=((0, -0.48, 3.95), (0, -0.78, 4.19)),
+                   tail=((0, 0.8, 2.56), (0, 1.15, 2.5)), shoulder=(0.25, -0.2, 2.68), wrist=(0.85, -0.15, 2.72), tip=(2.35, 0.1, 2.76)),
+        rest_pose={'neck': qe(1.15, 0, 0), 'head': qe(-1.15, 0, 0)},
+        clip=dict(beat=0.42, amp=0.6, off=0.1, tamp=0.35, bob=0.08, fold=(0.0, 1.62, 1.62, (0.0, 0.0, -0.1)), perch_s=3.0),
     )
     arm, ob = build_bird(A, S)
-    A.meta.update(wingspan=4.7, length=2.5, standHeight=4.45, perchClip='perch', flightClips=['flap', 'glide'])
+    A.meta.update(wingspan=4.7, length=2.5, standHeight=4.4, perchClip='perch', flightClips=['flap', 'glide'],
+                  restNote='bind pose = flight: neck retracted, legs trailing; perch unfolds them (stands 4.4 u tall)')
     bird_clips(A, arm, S, ob)
     bird_previews(A, S)
 
@@ -1009,12 +1000,11 @@ def bird_egret(A):
                             habitat=['lawn', 'colony', 'market'], sound='chatter'))
 def bird_myna(A):
     Mt = {
-        'brown': mat('feather_brown', 'my_brown', base='#6a4630'),
+        'brown': mat('feather_brown', 'my_brown', base='#7a5236'),
         'black': mat('feather_black', 'my_black', base='#1e1c1c'),
         'white': mat('feather_white', 'my_white', base='#efece4'),
         'yellow': mat('beak_yellow', 'my_yellow', base='#f0c020'),
-        'eye': mat('feather_black', 'my_eye', base='#5a3a20'),
-        'wing': mat('feather_brown', 'my_wing', base='#5e3e2a'),
+        'wing': mat('feather_brown', 'my_wing', base='#6a4630'),
         'tip': mat('feather_black', 'my_tip', base='#24201e'),
     }
 
@@ -1022,30 +1012,27 @@ def bird_myna(A):
         o = octa('patch', (s * 0.105, -0.47, 1.02), 0.06, Mt['yellow'], sq=(0.45, 1.0, 0.8))
         kit.weights(o, 'head')
         return o
-    S = dict(mats=Mt, bodyZ=0.6, height=1.1, tex=64, rings=[
+    S = dict(mats=Mt, bodyZ=0.6, tex=64, rings=[
         (0.45, 0.66, 0.07, 0.06, 'white', 'body'),
-        (0.36, 0.64, 0.13, 0.12, 'brown', 'body'),
-        (0.28, 0.62, 0.18, 0.17, 'brown', 'body'),
+        (0.32, 0.63, 0.15, 0.14, 'brown', 'body'),
         (0.04, 0.60, 0.25, 0.24, 'brown', 'body'),
         (-0.18, 0.66, 0.23, 0.23, 'black', 'body'),
         (-0.30, 0.80, 0.17, 0.17, 'black', {'body': 0.5, 'head': 0.5}),
-        (-0.36, 0.92, 0.15, 0.15, 'black', 'head'),
-        (-0.42, 1.00, 0.15, 0.15, 'black', 'head'),
-        (-0.54, 1.00, 0.10, 0.10, 'black', 'head'),
+        (-0.40, 0.98, 0.15, 0.15, 'black', 'head'),
+        (-0.53, 1.00, 0.10, 0.10, 'black', 'head'),
         (-0.60, 0.98, 0.05, 0.05, 'yellow', 'head'),
     ],
         beak=dict(pts=[(0, -0.58, 0.98), (0, -0.74, 0.95)], r=[0.045, 0.01], mat='yellow'),
-        eye=dict(p=(0.115, -0.47, 1.03), r=0.022, mat='eye'),
         extras_lr=[eyepatch],
-        wing=dict(stations=[(0.14, -0.14, 0.30, 0.74), (0.50, -0.18, 0.32, 0.76), (0.82, -0.16, 0.28, 0.78),
-                            (1.02, -0.08, 0.22, 0.78), (1.25, 0.08, 0.14, 0.78)], wrist=2,
-                  mat=lambda i, k: 'white' if i == 2 else ('tip' if i >= 3 else 'wing')),
+        wing=dict(stations=[(0.14, -0.14, 0.28, 0.74), (0.45, -0.17, 0.30, 0.76), (0.82, -0.14, 0.24, 0.78),
+                            (1.25, 0.06, 0.14, 0.78)], wrist=1,
+                  mat=lambda i, k: ('white' if k == 0 else 'tip') if i == 1 else ('tip' if i >= 2 else 'wing')),
         tail=dict(rows=[(0.40, 0.09, 0.66, 0.0), (0.80, 0.15, 0.62, 0.0), (0.92, 0.16, 0.61, 0.0)],
                   mat=lambda i, k: 'white' if i == 1 else 'tip'),
-        legs=dict(hip=(0.09, 0.02, 0.40), foot_y=-0.02, r=[0.032, 0.026], mat='yellow', toe=0.13),
-        bones=dict(body=((0, 0.02, 0.60), (0, -0.25, 0.60)), head=((0, -0.30, 0.80), (0, -0.54, 1.0)),
-                   tail=((0, 0.40, 0.66), (0, 0.92, 0.61)), shoulder=(0.14, -0.08, 0.74), wrist=(0.82, -0.06, 0.78), tip=(1.25, 0.1, 0.78)),
-        clip=dict(beat=0.26, amp=0.8, off=0.15, fold=(-1.25, 1.66, (0.1, 0.0, 0.0), 0.12), peck=(0.7, 0.55, 0.0)),
+        legs=dict(hip=(0.09, 0.02, 0.40), foot_y=-0.02, r=[0.032, 0.026], mat='yellow', tuck=1.3),
+        bones=dict(head=((0, -0.30, 0.80), (0, -0.54, 1.0)), tail=((0, 0.40, 0.66), (0, 0.92, 0.61)),
+                   shoulder=(0.14, -0.08, 0.74), wrist=(0.45, -0.08, 0.76), tip=(1.25, 0.1, 0.78)),
+        clip=dict(beat=0.26, amp=0.8, off=0.15, tamp=0.35, fold=(0.0, 1.69, 1.69, (0.0, 0.0, -0.08)), perch_pitch=-0.08),
     )
     arm, ob = build_bird(A, S)
     A.meta.update(wingspan=2.5, length=1.66, perchClip='perch', flightClips=['flap', 'glide'])
@@ -1057,54 +1044,53 @@ def bird_myna(A):
            flock=flock_meta(size=[3, 15], perch=['tree', 'ruin'], alt=[10, 45], speed=[35, 55], erratic=True, dusk=True,
                             habitat=['golconda', 'old_trees'], sound='squeak'))
 def bat(A):
-    bpy.context.scene.render.fps = FPS_F
+    """Bind pose = flight (body centre at the origin, wings spread). hang / perch: upside down, feet at the
+    origin, body hanging below."""
+    bpy.context.scene.render.fps = BIRD_FPS
+    use_slim_export()
     Mt = {
         'fur': mat('fur_dark', 'bt_fur', base='#4a382c'),
         'furl': mat('fur_dark', 'bt_furl', base='#6a5038'),
         'mem': mat('membrane', 'bt_mem', base='#3a2c28'),
-        'eye': mat('feather_black', 'bt_eye', base='#0e0c0c'),
     }
     objs = []
     body = wloft('body', [
-        (0.24, 0.50, 0.05, 0.04, Mt['fur'], 'body'),
-        (0.12, 0.50, 0.11, 0.10, Mt['fur'], 'body'),
-        (-0.02, 0.50, 0.13, 0.12, Mt['furl'], 'body'),
-        (-0.14, 0.51, 0.11, 0.11, Mt['fur'], {'body': 0.5, 'head': 0.5}),
-        (-0.20, 0.52, 0.09, 0.09, Mt['fur'], 'head'),
-        (-0.27, 0.52, 0.075, 0.07, Mt['fur'], 'head'),
-        (-0.32, 0.51, 0.035, 0.035, Mt['fur'], 'head'),
+        (0.24, 0.0, 0.05, 0.04, Mt['fur'], 'body'),
+        (0.10, 0.0, 0.11, 0.10, Mt['furl'], 'body'),
+        (-0.06, 0.0, 0.13, 0.12, Mt['fur'], 'body'),
+        (-0.17, 0.01, 0.10, 0.10, Mt['fur'], {'body': 0.5, 'head': 0.5}),
+        (-0.26, 0.02, 0.075, 0.07, Mt['fur'], 'head'),
+        (-0.32, 0.01, 0.035, 0.035, Mt['fur'], 'head'),
     ], 6, Mt['fur'])
     objs.append(body)
     for s in (1, -1):
-        e = sheet('ear', [[(s * 0.03, -0.21, 0.56), (s * 0.08, -0.19, 0.56)], [(s * 0.075, -0.20, 0.68), (s * 0.08, -0.195, 0.68)]], Mt['mem'])
+        e = sheet('ear', [[(s * 0.03, -0.21, 0.06), (s * 0.08, -0.19, 0.06)], [(s * 0.075, -0.20, 0.18), (s * 0.08, -0.195, 0.18)]], Mt['mem'])
         kit.weights(e, 'head')
-        o = octa('eye', (s * 0.05, -0.27, 0.545), 0.014, Mt['eye'])
-        kit.weights(o, 'head')
-        objs += [e, o]
-    # membrane wings: arm along the leading edge, fingers, scalloped trailing edge
-    st = [(0.08, -0.06, 0.24, 0.52), (0.25, -0.10, 0.32, 0.53), (0.45, -0.12, 0.22, 0.54),
-          (0.66, -0.08, 0.34, 0.54), (0.82, -0.01, 0.16, 0.54), (1.00, 0.07, 0.11, 0.54)]
+        objs.append(e)
+    st = [(0.08, -0.06, 0.24, 0.02), (0.30, -0.10, 0.32, 0.03), (0.45, -0.12, 0.22, 0.04),
+          (0.66, -0.08, 0.34, 0.04), (0.82, -0.01, 0.16, 0.04), (1.00, 0.07, 0.11, 0.04)]
     for s, sfx in ((1, 'L'), (-1, 'R')):
         rows = [[(s * x, ly, z), (s * x, ly + (ty - ly) * 0.4, z + 0.015), (s * x, ty, z - 0.01)] for x, ly, ty, z in st]
         w = sheet('wing', rows, Mt['mem'])
         kit.weights(w, lambda co, sfx=sfx: {'wing_' + sfx: 1.0} if abs(co.x) < 0.40 else ({'wingtip_' + sfx: 1.0} if abs(co.x) > 0.5 else {'wing_' + sfx: 0.5, 'wingtip_' + sfx: 0.5}))
         objs.append(w)
-        lg = P.taper('leg', [(s * 0.05, 0.16, 0.48), (s * 0.06, 0.30, 0.47)], [0.02, 0.012], seg=3, mat=Mt['fur'], cap_end=False)
+        lg = P.taper('leg', [(s * 0.05, 0.16, -0.02), (s * 0.06, 0.30, -0.03)], [0.02, 0.012], seg=3, mat=Mt['fur'], cap_end=False)
         kit.weights(lg, 'body')
         objs.append(lg)
-    tm = sheet('uro', [[(-0.06, 0.20, 0.49), (0.06, 0.20, 0.49)], [(-0.02, 0.36, 0.49), (0.02, 0.36, 0.49)]], Mt['mem'])
+    tm = sheet('uro', [[(-0.06, 0.20, -0.01), (0.06, 0.20, -0.01)], [(-0.02, 0.36, -0.01), (0.02, 0.36, -0.01)]], Mt['mem'])
     kit.weights(tm, 'body')
     objs.append(tm)
     arm = P.rig(A, 'bat_rig', [
-        ('root', (0, 0, 0), (0, -0.2, 0), None),
-        ('body', (0, 0.05, 0.5), (0, -0.12, 0.5), 'root'),
-        ('head', (0, -0.14, 0.51), (0, -0.30, 0.52), 'body'),
-        ('wing_L', (0.08, -0.08, 0.52), (0.45, -0.10, 0.54), 'body'),
-        ('wingtip_L', (0.45, -0.10, 0.54), (1.0, 0.07, 0.54), 'wing_L'),
-        ('wing_R', (-0.08, -0.08, 0.52), (-0.45, -0.10, 0.54), 'body'),
-        ('wingtip_R', (-0.45, -0.10, 0.54), (-1.0, 0.07, 0.54), 'wing_R'),
+        ('body', (0, 0.05, 0.0), (0, -0.12, 0.0), None),
+        ('head', (0, -0.14, 0.01), (0, -0.30, 0.02), 'body'),
+        ('wing_L', (0.08, -0.08, 0.02), (0.45, -0.10, 0.04), 'body'),
+        ('wingtip_L', (0.45, -0.10, 0.04), (1.0, 0.07, 0.04), 'wing_L'),
+        ('wing_R', (-0.08, -0.08, 0.02), (-0.45, -0.10, 0.04), 'body'),
+        ('wingtip_R', (-0.45, -0.10, 0.04), (-1.0, 0.07, 0.04), 'wing_R'),
     ])
-    ob = P.finish_prop(A, objs, size=64, double=True, ao_strength=0.4)
+    for o in objs:
+        kit.smooth(o, 85.0)
+    ob = P.finish_prop(A, objs, size=64, double=True, ao_strength=0.4, orm=False)
     P.skin(A, ob, arm)
 
     beats = 3
@@ -1120,42 +1106,40 @@ def bat(A):
         LR(Pd, 'wing', qe(0.1 * math.sin(TAU * ph), -(a * 0.85 * c + 0.1), 0.25 * up))
         LR(Pd, 'wingtip', qe(0, -(0.6 * math.cos(TAU * ph - 0.8)), 0.7 * up))
         jit = math.sin(TAU * t) * 0.18 + math.sin(TAU * t * 2 + 1.3) * 0.08
-        Pd['root'] = (qe(0.05 * math.sin(TAU * t * 2), jit * 0.6, jit * 0.5), (0.06 * math.sin(TAU * t + 0.4), 0, -0.05 * c))
+        Pd['body'] = (qe(0.05 * math.sin(TAU * t * 2), jit * 0.6, jit * 0.5), (0.06 * math.sin(TAU * t + 0.4), 0, -0.05 * c))
         return Pd
 
     def glide(t):
         s1 = math.sin(TAU * t)
         Pd = {}
         LR(Pd, 'wing', qe(0, -(0.12 + 0.05 * s1), -0.05))
-        LR(Pd, 'wingtip', qe(0, 0.05, 0.15))
-        Pd['root'] = (qe(0, 0.12 * s1, 0.05 * math.sin(TAU * t * 2)), (0, 0, 0.03 * s1))
+        Pd['body'] = (qe(0, 0.12 * s1, 0), (0, 0, 0.03 * s1))
         return Pd
 
     def hang(t):
         Pd = {}
-        # upside down: feet (0, 0.30, 0.47) -> origin, body hanging below, wings wrapped round the body
-        Pd['root'] = (qe(math.pi / 2, 0, 0), (0, 0.47, -0.30))
+        # Rx(+90) about the origin takes the feet (0, 0.30, -0.03) to (0, 0.03, 0.30): shift them to the origin
+        Pd['body'] = (qe(math.pi / 2, 0, 0), (0, -0.03, -0.30))
         LR(Pd, 'wing', qe(0, 1.05, 1.45), (0.0, 0.0, -0.02))
         LR(Pd, 'wingtip', qe(0, 0.9, 2.2))
-        sw = 0.05 * math.sin(TAU * t)
-        Pd['body'] = (qe(0, 0, sw), None)
         Pd['head'] = (qe(-0.25 * win(t, 0.3, 0.38, 0.6, 0.7), 0, 0.5 * win(t, 0.15, 0.2, 0.42, 0.48) - 0.4 * win(t, 0.65, 0.7, 0.85, 0.9)), None)
         return Pd
 
-    nf = int(round(0.18 * beats * FPS_F))
-    mkclip(A, arm, 'flap', nf, flap, beats=beats, beat=round(nf / beats / FPS_F, 4))
-    mkclip(A, arm, 'glide', int(1.5 * FPS_F), glide)
-    mkclip(A, arm, 'hang', int(3.0 * FPS_F), hang, upsideDown=True)
-    mkclip(A, arm, 'perch', int(3.0 * FPS_F), hang, upsideDown=True, alias='hang')
+    nf = int(round(0.18 * beats * BIRD_FPS))
+    mkclip(A, arm, 'flap', nf, flap, fps=BIRD_FPS, beats=beats, beat=round(nf / beats / BIRD_FPS, 4))
+    mkclip(A, arm, 'glide', int(1.5 * BIRD_FPS), glide, fps=BIRD_FPS)
+    mkclip(A, arm, 'hang', int(2.0 * BIRD_FPS), hang, fps=BIRD_FPS, upsideDown=True)
+    mkclip(A, arm, 'perch', int(2.0 * BIRD_FPS), hang, fps=BIRD_FPS, upsideDown=True, alias='hang')
     check(A, arm, ob, ['flap', 'hang'])
     A.meta.update(wingspan=2.0, length=0.56, perchClip='hang', flightClips=['flap', 'glide'],
+                  origin='body centre; bind pose = flight pose',
                   hangNote='hang/perch: feet at the origin (the branch), body hangs below (z < 0)')
     fr = A.clips['flap']['frames']
     A.preview = {
         'shots': [{'clip': 'flap', 'frame': fr // 6, 'size': 320, 'samples': 20, 'view': {'az': -25, 'el': 30, 'fov': 30}},
-                  {'name': 'hang', 'clip': 'hang', 'frame': 0, 'size': 256, 'samples': 16, 'ground': False, 'view': {'az': -40, 'el': 10, 'fov': 30}}],
+                  {'name': 'hang', 'clip': 'hang', 'frame': 0, 'size': 256, 'samples': 16, 'view': {'az': -40, 'el': 10, 'fov': 30}}],
         'sheet': {'name': 'sheet', 'size': 160, 'samples': 10, 'cols': 8,
-                  'view': {'az': -20, 'el': 14, 'fov': 30, 'target': (0, 0, 0.5), 'dist': 4.2},
+                  'view': {'az': -20, 'el': 14, 'fov': 30, 'target': (0, 0, 0.0), 'dist': 4.2},
                   'frames': [('flap', int(round(fr * k / 8))) for k in range(8)]},
     }
 

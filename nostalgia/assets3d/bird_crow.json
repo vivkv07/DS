@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 18988,
+ "bytes": 18996,
  "clips": {
   "flap": {
    "beat": 0.3333,
@@ -34,7 +34,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 18.5,
+ "kb": 18.6,
  "kit": 1,
  "materials": [
   "M_bird_crow"
