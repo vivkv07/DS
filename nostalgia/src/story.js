@@ -540,7 +540,7 @@
   /* ================================================================ kit: queue cage (W5, systems §8.12) */
   function queue(m, o) {
     o = o || {};
-    const q = { done: false, failed: false, steps: 0, ahead: 0, cut: 0, line: [], gap: 0, tell: null, slots: [], ps: 0, t: 0, nextServe: 0, nextCut: 0 };
+    const q = { done: false, failed: false, steps: 0, ahead: 0, cut: 0, sent: 0, line: [], gap: false, gapT: 0, tell: null, slots: [], ps: 0, t: 0, nextServe: 0, nextCut: 0, behind: [] };
     if (ff()) { q.done = true; return q; }
     const C = pos(o.at);
     const p = N.player;
@@ -588,17 +588,19 @@
     sfx('kids', { ui: true, vol: 0.4 });
     return q;
   }
+  // the first free slot in front of the player (everyone ahead stands contiguously from slot 0)
+  function qFront(q) { let f = 0; for (const e of q.line) f = Math.max(f, e.slot + 1); return f; }
   function queueTick(dt) {
     const q = S.queue;
     if (!q || q.done || q.failed || mode() !== 'play') return;
     const p = N.player;
     q.t += dt;
     const slotAt = (i) => q.slots[Math.max(0, Math.min(q.slots.length - 1, i))];
-    // serve the front of the line
+    // serve the front of the line every 2.5-4 s
     q.nextServe -= dt;
     if (q.nextServe <= 0) {
       q.nextServe = U.randRange(q.serve[0], q.serve[1]);
-      if (q.ps === 0 && !q.gap) {
+      if (q.ps === 0) {
         q.done = true; widget(null); S.pin = null; p.noRun = false; sfx('coin', { ui: true });
         return;
       }
@@ -607,20 +609,15 @@
         const side = { x: f.x + q.dir.nx * 30 - q.dir.dx * 6, y: f.y + q.dir.ny * 30 - q.dir.dy * 6 };
         f.faceTo = null; f.moveTo(side.x, side.y, 38); f.life = 2.2;
         for (const e of q.line) { e.slot -= 1; const s = slotAt(e.slot); e.moveTo(s.x, s.y, 30); }
-        if (!q.gap) { q.gap = 1.5; sfx('objective', { ui: true, vol: 0.4 }); }
       }
+      if (q.ps > qFront(q) && !q.gap) { q.gap = true; q.gapT = 1.5; sfx('objective', { ui: true, vol: 0.4 }); }
     }
-    // the gap in front of the player: step forward within 1.5 s or a cutter takes it
+    // the gap in front of the player: step forward (↑ / ACTION) within 1.5 s or a cutter takes it
     if (q.gap) {
-      const up = N.input.pressed('up');
-      if (up) N.input.consume('up');
-      if (up) stepForward(q);
-      else {
-        q.gap = Math.max(0.0001, q.gap - dt);
-        if (q.gap <= 0.0001 + 1e-9 && !q.respect) {
-          q.gap = 0;
-          if (q.cuttersLeft > 0) cutIn(q, true); else q.gap = 0.0001; // nobody to take it: stays open
-        }
+      if (N.input.pressed('up')) { N.input.consume('up'); stepForward(q); }
+      else if (!q.respect && q.gapT > 0) {
+        q.gapT -= dt;
+        if (q.gapT <= 0 && q.cuttersLeft > 0 && !q.tell) cutIn(q, true);
       }
     }
     // line-cutters lean in from the rail with a 1.2 s tell (ACTION: "Line mein!")
@@ -638,20 +635,20 @@
       q.tell.t -= dt;
       if (q.tell.t <= 0) { const e = q.tell.e; q.tell = null; e.mark = null; cutIn(q, false, e); }
     }
-    // offers: Step forward / Line mein!
+    // the ACTION label: "Line mein!" / Step forward
     if (q.tell) N.interact.offer({ label: '"Line mein!"', priority: 9, dist: 0, use: () => lineMein(q) });
     else if (q.gap) N.interact.offer({ label: 'Step forward', priority: 9, dist: 0, use: () => stepForward(q) });
-    else if (q.ps === 0) N.interact.offer({ label: 'Wait for the counter...', priority: 9, dist: 0, use: () => {} });
+    else N.interact.offer({ label: q.ps === 0 ? 'Next! Wait for the counter...' : 'Wait in line...', priority: 9, dist: 0, use: () => {} });
     widget({ label: q.label, value: null, text: (q.ps === 0 ? 'NEXT!' : q.ps + ' AHEAD') + (q.respect ? '' : ' · CUTTERS ' + q.cuttersLeft) + (q.gap ? ' · STEP ↑' : q.tell ? ' · LINE MEIN!' : '') });
   }
   function stepForward(q) {
     if (!q.gap) return;
-    q.gap = 0;
-    q.ps = Math.max(0, q.ps - 1);
+    q.gap = false; q.gapT = 0;
+    q.ps = Math.max(0, qFront(q));
     q.steps++;
     const s = q.slots[q.ps];
-    S.pin = { x: s.x, y: s.y, ease: 0 };
-    for (const e of q.behind) { e.slot = Math.max(q.ps + 1, e.slot - 1); const s2 = q.slots[e.slot]; e.moveTo(s2.x, s2.y, 30); }
+    S.pin = { x: s.x, y: s.y };
+    q.behind.forEach((e, i) => { e.slot = q.ps + 1 + i; const s2 = q.slots[Math.min(q.slots.length - 1, e.slot)]; e.moveTo(s2.x, s2.y, 30); });
     sfx('step', { ui: true, vol: 0.5 });
   }
   function lineMein(q) {
@@ -661,27 +658,34 @@
     bark('player', '"*Line mein!*"', 1.6);
     e.faceTo = null; e.moveTo(e.x + q.dir.nx * 40 + q.dir.dx * 40, e.y + q.dir.ny * 40 + q.dir.dy * 40, 50); e.life = 1.8;
     q.cuttersLeft = Math.max(0, q.cuttersLeft - 1);
+    q.sent = (q.sent || 0) + 1;
     q.nextCut = U.randRange(4, 8);
     sfx('ui_select', { ui: true });
   }
-  // a cutter slips in ahead of the player: he loses a place
+  // a cutter slips in ahead of the player: into the open gap, or in front of him (he loses a place)
   function cutIn(q, intoGap, e) {
     q.cuttersLeft = Math.max(0, q.cuttersLeft - 1);
     q.nextCut = U.randRange(4, 8);
     q.cut++;
-    if (!e) { const s = q.slots[q.ps]; e = extra(s.x + q.dir.nx * 16, s.y + q.dir.ny * 16, randomLook('cutg' + q.cut, 'man'), { role: 'cutter' }); }
+    if (!e) { const s = q.slots[Math.max(0, q.ps - 1)]; e = extra(s.x + q.dir.nx * 16, s.y + q.dir.ny * 16, randomLook('cutg' + q.cut, 'man'), { role: 'cutter' }); }
     e.mark = null; e.faceTo = q.C;
     if (intoGap) {
-      e.slot = q.ps - 1; const s = q.slots[e.slot]; e.moveTo(s.x, s.y, 50);
+      e.slot = qFront(q);
+      const s = q.slots[e.slot]; e.moveTo(s.x, s.y, 50);
+      q.line.push(e);
+      if (q.ps <= qFront(q)) { q.gap = false; q.gapT = 0; }
+      else q.gapT = 1.5;
     } else {
-      e.slot = q.ps; const s = q.slots[e.slot]; e.moveTo(s.x, s.y, 50);
+      // he squeezes in right in front of the player: everyone from the player back moves one slot
+      e.slot = q.ps;
+      const s = q.slots[e.slot]; e.moveTo(s.x, s.y, 50);
+      q.line.push(e);
       q.ps = Math.min(q.slots.length - 2, q.ps + 1);
       const s2 = q.slots[q.ps]; S.pin = { x: s2.x, y: s2.y };
-      for (const b of q.behind) { b.slot = Math.min(q.slots.length - 1, b.slot + 1); const s3 = q.slots[b.slot]; b.moveTo(s3.x, s3.y, 30); }
+      q.behind.forEach((b, i) => { b.slot = Math.min(q.slots.length - 1, q.ps + 1 + i); const s3 = q.slots[b.slot]; b.moveTo(s3.x, s3.y, 30); });
     }
-    q.line.push(e);
     q.line.sort((a, b) => a.slot - b.slot);
-    toast('A line-cutter slipped in! "Just asking the rate..."', 2200, 'queue');
+    toast('A line-cutter slipped in ahead of you! "Just asking the rate..."', 2200, 'queue');
     sfx('bump', { ui: true, vol: 0.4 });
   }
 
@@ -2434,9 +2438,10 @@
   }
 
   /* ================================================================ N.story */
-  const Story = (N.story = Object.assign(N.story && !N.story.demo ? N.story : {}, {
+  const Story = (N.story = N.story && typeof N.story === 'object' && !N.story.demo ? N.story : {});
+  Object.defineProperty(Story, 'chapter', { configurable: true, enumerable: true, get() { return isDone('first_day_first_show') ? 2 : 1; } });
+  Object.assign(Story, {
     part: 1,
-    get chapter() { const d = N.missions && N.missions.done; if (!d) return 0; if (d.has('ammammas_thursday') || d.has('last_man_batting')) return 2; return d.has('prologue') ? 1 : 1; },
     MISSIONS, SIDES, CLUES,
     prologue, begin: () => prologue(),
     replay(id) {
@@ -2444,7 +2449,7 @@
       try { if (N.menus && N.menus.cutscene) return N.menus.cutscene(steps, { id: 'replay' }); } catch (e) { N.err('story.replay', e); }
       return Promise.resolve(null);
     },
-    kit: { npc, walkNpc, party, act, press, go, ride, rings, softTimer, queue, cargo, darkness, candle, findPlace, game, playMatch, chapterCard, money, at, pos, spot, extra, wrapP, nightWatch },
+    kit: { npc, walkNpc, party, act, press, go, ride, rings, softTimer, queue, cargo, darkness, candle, findPlace, game, playMatch, chapterCard, money, at, pos, spot, extra, extraAt, wrapP, nightWatch },
     debug: {
       mg: null, mgTimeScale: null, fastRides: false,
       skip() { const s = S.step; if (s && s.skip) { s.skip(); return s.kind; } return null; },
@@ -2458,10 +2463,10 @@
         for (const [id] of S.acts) { const I = N.interact.get(id); if (I && I.x != null) return { x: I.x, y: I.y }; }
         return null;
       },
-      state() { return { step: S.step && S.step.kind, queue: S.queue ? { ps: S.queue.ps, done: S.queue.done, cut: S.queue.cut, gap: !!S.queue.gap, tell: !!S.queue.tell } : null, cargo: S.cargo ? Math.round(S.cargo.v) : null, ride: !!S.ride, dark: !!S.dark, givers: Array.from(S.givers.keys()), tag: S.tag ? { t: S.tag.t, tagged: S.tag.tagged } : null }; },
+      state() { return { step: S.step && S.step.kind, queue: S.queue ? { ps: S.queue.ps, done: S.queue.done, cut: S.queue.cut, sent: S.queue.sent, gap: !!S.queue.gap, tell: !!S.queue.tell, steps: S.queue.steps } : null, cargo: S.cargo ? Math.round(S.cargo.v) : null, ride: !!S.ride, dark: !!S.dark, givers: Array.from(S.givers.keys()), tag: S.tag ? { t: S.tag.t, tagged: S.tag.tagged, lost: S.tag.lost } : null }; },
       queue: () => S.queue, cargo: () => S.cargo, tag: () => S.tag,
     },
-  }));
+  });
   delete Story.demo; delete Story.DEMO_ID;
 
   /* ================================================================ wiring */
@@ -2469,8 +2474,8 @@
     cleanupAll();
     clearGivers();
     if (opts && opts.skipIntro) return;
-    // the prologue plays after the name card (menus calls newGame once the card closes)
-    setTimeout(() => { if (mode() === 'play' && !run()) prologue(); }, 60);
+    // the prologue plays right away (menus calls newGame once the name card closes)
+    if (mode() === 'play' && !run()) prologue();
   });
   for (const ev of ['mission:complete', 'mission:fail', 'mission:abort']) N.on(ev, () => { cleanupAll(); });
   N.on('mission:start', () => { cleanupAll(); clearGivers(); });
