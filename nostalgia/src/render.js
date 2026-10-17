@@ -1,0 +1,803 @@
+/* NOSTALGIA — render.js
+ * Integer-scaled pixel canvas, camera (follow + look-ahead + speed zoom), GTA2-style
+ * pseudo-3D projection, layer queue, LRU ground-chunk cache, N.draw helpers with
+ * back-face culling and sun shading, day colour grade, night lighting, shake, VHS FX.
+ * Contract: ARCHITECTURE.md §6.
+ */
+(() => {
+  'use strict';
+  const N = window.N;
+  const U = N.util;
+
+  const LAYERS = ['ground', 'shadow', 'actors', 'structures', 'sky', 'light', 'fx'];
+  const CH = 256;          // chunk size in world units (= px at zoom 1)
+  const MAX_CHUNKS = 56;   // LRU cap
+
+  const R = (N.render = {
+    canvas: null, ctx: null,
+    W: 640, H: 360, scale: 1, dpr: 1,
+    PERSP: 0.0032,
+    cam: { x: 4000, y: 3000, zoom: 1 },
+    baseZoom: 1,             // multiplied into the follow zoom (e.g. portrait tweak)
+    follow: null,            // entity to follow (default: player or player's vehicle)
+    camOverride: null,       // {x, y, zoom, snap?} for cutscenes / title attract mode
+    view: { x0: 0, y0: 0, x1: 0, y1: 0 },
+    lights: [],              // per-frame: {x, y, r, color, intensity, h?}
+    fx: { vhs: 0, flash: 0, fade: 0, fadeColor: '#000000', grade: true },
+    sun: { dx: 0.6, dy: 0.2, sx: -0.6, sy: -0.2, elev: 0.5, strength: 1 },
+    stats: { chunkBuilds: 0, queued: 0 },
+    LAYERS, CH,
+  });
+
+  // Frame projection values (hot path, kept in closure vars)
+  let cx = 320, cy = 180, camX = 0, camY = 0, Z = 1;
+  let shakeAmt = 0, shakeT = 0, shakeDur = 1, shakeX = 0, shakeY = 0;
+
+  /* ------------------------------------------------------------- canvas */
+  function makeCanvas(w, h) {
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, w | 0); c.height = Math.max(1, h | 0);
+    return c;
+  }
+  R.makeCanvas = makeCanvas;
+
+  function resize() {
+    const c = R.canvas; if (!c) return;
+    const dpr = window.devicePixelRatio || 1;
+    const vw = Math.max(1, window.innerWidth), vh = Math.max(1, window.innerHeight);
+    const pw = Math.round(vw * dpr), ph = Math.round(vh * dpr);
+    const scale = Math.max(1, Math.round(Math.min(pw, ph) / 400));
+    const W = Math.ceil(pw / scale), H = Math.ceil(ph / scale);
+    R.dpr = dpr; R.scale = scale;
+    if (W !== R.W || H !== R.H || c.width !== W || c.height !== H) {
+      R.W = W; R.H = H;
+      c.width = W; c.height = H;
+      if (lightCanvas) { lightCanvas.width = Math.ceil(W / 2); lightCanvas.height = Math.ceil(H / 2); }
+    }
+    c.style.width = (W * scale) / dpr + 'px';
+    c.style.height = (H * scale) / dpr + 'px';
+    R.ctx.imageSmoothingEnabled = false;
+    // Portrait phones see less horizontally: zoom out a touch so the street reads.
+    R.baseZoom = W < H ? 0.92 : 1;
+    N.emit('render:resize', { W, H, scale });
+  }
+
+  /* ------------------------------------------------------------- camera */
+  const camState = { lookX: 0, lookY: 0, zoom: 1, inited: false };
+
+  function followEntity() {
+    if (R.follow) return R.follow;
+    const p = N.player;
+    if (!p) return null;
+    return p.vehicle || p;
+  }
+
+  function updateCamera(dt) {
+    const cam = R.cam;
+    const o = R.camOverride;
+    if (o) {
+      const rate = o.snap ? 1 : 1 - Math.exp(-dt * (o.rate || 3));
+      cam.x += (o.x - cam.x) * rate; cam.y += (o.y - cam.y) * rate;
+      if (o.zoom) cam.zoom += (o.zoom - cam.zoom) * rate;
+      camState.inited = true;
+    } else {
+      const e = followEntity();
+      if (e) {
+        const vx = e.vx || 0, vy = e.vy || 0;
+        const speed = Math.hypot(vx, vy);
+        // look-ahead in velocity direction, smoothed slowly so it doesn't swing
+        let lx = vx * 0.5, ly = vy * 0.5;
+        const lm = Math.hypot(lx, ly), maxL = 110;
+        if (lm > maxL) { lx *= maxL / lm; ly *= maxL / lm; }
+        const la = 1 - Math.exp(-dt * 2.2);
+        camState.lookX += (lx - camState.lookX) * la;
+        camState.lookY += (ly - camState.lookY) * la;
+        const tx = e.x + camState.lookX, ty = e.y + camState.lookY;
+        if (!camState.inited) { cam.x = tx; cam.y = ty; camState.inited = true; }
+        const f = 1 - Math.exp(-dt * 9);
+        cam.x += (tx - cam.x) * f; cam.y += (ty - cam.y) * f;
+        // zoom out with speed: 1.0 on foot -> ~0.78 at top car speed
+        const zt = U.lerp(1, 0.78, U.smooth((speed - 60) / (170 - 60))) * R.baseZoom;
+        cam.zoom += (zt - cam.zoom) * (1 - Math.exp(-dt * 1.6));
+      }
+    }
+    if (shakeT > 0) {
+      shakeT -= dt;
+      const a = shakeAmt * Math.max(0, shakeT / shakeDur);
+      shakeX = (Math.random() * 2 - 1) * a; shakeY = (Math.random() * 2 - 1) * a;
+    } else { shakeX = shakeY = 0; }
+  }
+  R.snapCamera = function () { camState.inited = false; camState.lookX = camState.lookY = 0; updateCamera(0.016); };
+  R.shake = function (amount, time) {
+    if (document.body.classList.contains('reduced-motion')) amount *= 0.3;
+    shakeAmt = Math.max(shakeAmt * Math.max(0, shakeT / shakeDur), amount || 3);
+    shakeDur = shakeT = Math.max(0.05, time || 0.3);
+  };
+
+  /* --------------------------------------------------------- projection */
+  function setupFrame() {
+    const W = R.W, H = R.H;
+    Z = Math.max(0.2, R.cam.zoom);
+    cx = W / 2; cy = H / 2;
+    // snap camera to the pixel grid so the cached ground never shimmers
+    camX = Math.round((R.cam.x + shakeX) * Z) / Z;
+    camY = Math.round((R.cam.y + shakeY) * Z) / Z;
+    const v = R.view;
+    v.x0 = camX - cx / Z; v.x1 = camX + cx / Z;
+    v.y0 = camY - cy / Z; v.y1 = camY + cy / Z;
+    R.camX = camX; R.camY = camY; R.Z = Z;
+  }
+
+  R.proj = function (x, y, h) {
+    const k = Z * (1 + (h || 0) * R.PERSP);
+    return { x: cx + (x - camX) * k, y: cy + (y - camY) * k, k };
+  };
+  // allocation-free helpers for hot loops
+  R.k = (h) => Z * (1 + h * R.PERSP);
+  R.sx = (x, k) => cx + (x - camX) * k;
+  R.sy = (y, k) => cy + (y - camY) * k;
+  R.screenToWorld = function (sx, sy) { return { x: camX + (sx - cx) / Z, y: camY + (sy - cy) / Z }; };
+  // CSS pixel (clientX/Y) -> world (ground plane)
+  R.clientToWorld = function (clientX, clientY) {
+    const r = R.canvas.getBoundingClientRect();
+    return R.screenToWorld(((clientX - r.left) / r.width) * R.W, ((clientY - r.top) / r.height) * R.H);
+  };
+  R.inView = function (x, y, margin) {
+    const m = margin || 0, v = R.view;
+    return x >= v.x0 - m && x <= v.x1 + m && y >= v.y0 - m && y <= v.y1 + m;
+  };
+  R.rectInView = function (x, y, w, h, margin) {
+    const m = margin || 0, v = R.view;
+    return x + w >= v.x0 - m && x <= v.x1 + m && y + h >= v.y0 - m && y <= v.y1 + m;
+  };
+
+  /* -------------------------------------------------------------- queue */
+  const queues = {};
+  for (const l of LAYERS) queues[l] = [];
+  let qSeq = 0;
+  R.queue = function (layer, sortKey, fn) {
+    const q = queues[layer];
+    if (!q) { N.err('render.queue', new Error('unknown layer ' + layer)); return; }
+    q.push({ k: sortKey || 0, i: qSeq++, fn });
+  };
+  const byKey = (a, b) => a.k - b.k || a.i - b.i;
+  function runLayer(layer) {
+    const q = queues[layer];
+    if (!q.length) return;
+    if (layer !== 'ground' && layer !== 'light' && layer !== 'fx') q.sort(byKey);
+    else q.sort(byKey);
+    const ctx = R.ctx;
+    for (let i = 0; i < q.length; i++) {
+      try { q[i].fn(ctx); } catch (e) { N.err('draw:' + layer, e); }
+      // guard against helpers leaving a transform/alpha behind
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    R.stats.queued += q.length;
+    q.length = 0;
+  }
+  // structures sort key helper: farthest from camera first
+  R.distKey = (x, y) => -((x - camX) * (x - camX) + (y - camY) * (y - camY));
+
+  /* ------------------------------------------------------- chunk cache */
+  let groundPainter = null;
+  const chunks = new Map(); // key -> canvas (Map order = LRU order)
+  const pool = [];
+  R.setGroundPainter = function (fn) { groundPainter = fn; R.invalidateChunks(); };
+  R.invalidateChunks = function (rect) {
+    if (!rect) { for (const c of chunks.values()) pool.push(c); chunks.clear(); return; }
+    const [x, y, w, h] = rect;
+    for (const key of Array.from(chunks.keys())) {
+      const i = key % 1000, j = Math.floor(key / 1000);
+      if (i * CH < x + w && i * CH + CH > x && j * CH < y + h && j * CH + CH > y) { pool.push(chunks.get(key)); chunks.delete(key); }
+    }
+  };
+  function buildChunk(i, j) {
+    const key = j * 1000 + i;
+    let c;
+    if (chunks.size >= MAX_CHUNKS) {
+      const oldest = chunks.keys().next().value;
+      c = chunks.get(oldest); chunks.delete(oldest);
+    } else c = pool.pop() || makeCanvas(CH, CH);
+    const g = c.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    g.fillStyle = '#6b5a48'; g.fillRect(0, 0, CH, CH);
+    if (groundPainter) {
+      g.save();
+      g.translate(-i * CH, -j * CH); // painter draws in world coordinates
+      try { groundPainter(g, i * CH, j * CH, CH, CH); } catch (e) { N.err('groundPainter', e); }
+      g.restore();
+    }
+    chunks.set(key, c);
+    R.stats.chunkBuilds++;
+    return c;
+  }
+  function getChunk(i, j, allowBuild) {
+    const key = j * 1000 + i;
+    const c = chunks.get(key);
+    if (c) { chunks.delete(key); chunks.set(key, c); return c; }
+    return allowBuild ? buildChunk(i, j) : null;
+  }
+  R.chunkCount = () => chunks.size;
+  // Pre-build chunks around a point (boot / teleport) so there is no pop-in.
+  R.warmChunks = function (x, y, radius) {
+    const r = radius || 600;
+    const i0 = Math.max(0, Math.floor((x - r) / CH)), i1 = Math.min(Math.ceil(N.WORLD_W / CH) - 1, Math.floor((x + r) / CH));
+    const j0 = Math.max(0, Math.floor((y - r) / CH)), j1 = Math.min(Math.ceil(N.WORLD_H / CH) - 1, Math.floor((y + r) / CH));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) getChunk(i, j, true);
+  };
+
+  function drawGround(ctx) {
+    const v = R.view;
+    const maxI = Math.ceil(N.WORLD_W / CH) - 1, maxJ = Math.ceil(N.WORLD_H / CH) - 1;
+    const i0 = Math.max(0, Math.floor(v.x0 / CH)), i1 = Math.min(maxI, Math.floor(v.x1 / CH));
+    const j0 = Math.max(0, Math.floor(v.y0 / CH)), j1 = Math.min(maxJ, Math.floor(v.y1 / CH));
+    let budget = 4; // chunk builds per frame; missing chunks fall back to a flat fill
+    // build nearest-to-centre first
+    const list = [];
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const dx = (i + 0.5) * CH - camX, dy = (j + 0.5) * CH - camY;
+      list.push([dx * dx + dy * dy, i, j]);
+    }
+    list.sort((a, b) => a[0] - b[0]);
+    ctx.imageSmoothingEnabled = Z < 0.97;
+    for (const [, i, j] of list) {
+      let c = getChunk(i, j, false);
+      if (!c && budget > 0) { c = buildChunk(i, j); budget--; }
+      const x0 = Math.round(cx + (i * CH - camX) * Z), x1 = Math.round(cx + ((i + 1) * CH - camX) * Z);
+      const y0 = Math.round(cy + (j * CH - camY) * Z), y1 = Math.round(cy + ((j + 1) * CH - camY) * Z);
+      if (c) ctx.drawImage(c, x0, y0, x1 - x0, y1 - y0);
+      else { ctx.fillStyle = '#6b5a48'; ctx.fillRect(x0, y0, x1 - x0, y1 - y0); }
+    }
+    ctx.imageSmoothingEnabled = false;
+    // prefetch one chunk ahead in the direction of camera travel
+    if (budget > 0) {
+      const e = followEntity();
+      if (e && (e.vx || e.vy)) {
+        const px = camX + Math.sign(e.vx || 0) * (v.x1 - v.x0) * 0.75, py = camY + Math.sign(e.vy || 0) * (v.y1 - v.y0) * 0.75;
+        const i = Math.floor(px / CH), j = Math.floor(py / CH);
+        if (i >= 0 && j >= 0 && i <= maxI && j <= maxJ) getChunk(i, j, true);
+      }
+    }
+  }
+
+  /* --------------------------------------------------------------- sun */
+  function updateSun() {
+    const m = N.clock.minutes;
+    const t = U.clamp((m - 360) / 720, 0, 1); // 0 at 06:00 (east) -> 1 at 18:00 (west)
+    const a = Math.PI * t;
+    let dx = Math.cos(a), dy = 0.55 * Math.sin(a) + 0.15;
+    const l = Math.hypot(dx, dy); dx /= l; dy /= l;
+    const elev = U.lerp(0.14, 1.05, Math.sin(Math.PI * t)); // radians
+    const day = N.clock.light();
+    const s = R.sun;
+    if (day < 0.08) { dx = 0.5; dy = 0.7; } // moonlight: soft fixed direction
+    s.dx = dx; s.dy = dy; s.elev = elev;
+    const len = Math.min(2.0, 1 / Math.tan(Math.max(0.2, elev)));
+    s.sx = -dx * len; s.sy = -dy * len; // shadow offset per unit height
+    s.strength = U.clamp(day * 1.4, 0.15, 1);
+    faceShade.N = shadeFor(0, -1); faceShade.S = shadeFor(0, 1);
+    faceShade.E = shadeFor(1, 0); faceShade.W = shadeFor(-1, 0);
+    faceShade.roof = 1;
+  }
+  const faceShade = { N: 0.6, S: 0.85, E: 0.7, W: 0.8, roof: 1 };
+  function shadeFor(nx, ny) {
+    const d = nx * R.sun.dx + ny * R.sun.dy; // -1..1
+    return U.clamp(0.66 + 0.3 * d * R.sun.strength, 0.42, 0.98);
+  }
+  R.faceShade = faceShade;
+  R.shadeNormal = shadeFor;
+
+  // colour shading cache: shaded(hex, f) quantised to 1/32
+  const shadeCache = new Map();
+  function shaded(hex, f) {
+    if (f === 1 || typeof hex !== 'string' || hex[0] !== '#') return hex;
+    let arr = shadeCache.get(hex);
+    if (!arr) { arr = new Array(41); shadeCache.set(hex, arr); }
+    const q = Math.max(0, Math.min(40, Math.round(f * 32)));
+    return arr[q] || (arr[q] = U.shade(hex, q / 32));
+  }
+  R.shaded = shaded;
+
+  /* ------------------------------------------------------- draw helpers */
+  const D = (N.draw = {});
+
+  function quad(ctx, x0, y0, x1, y1, x2, y2, x3, y3) {
+    ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3); ctx.closePath();
+  }
+  // Adds a vertical rectangle (ground segment (x0,y0)-(x1,y1), heights h0..h1) to the current path.
+  D.quadPath = function (ctx, x0, y0, x1, y1, h0, h1) {
+    const k0 = Z * (1 + h0 * R.PERSP), k1 = Z * (1 + h1 * R.PERSP);
+    quad(ctx,
+      cx + (x0 - camX) * k0, cy + (y0 - camY) * k0,
+      cx + (x1 - camX) * k0, cy + (y1 - camY) * k0,
+      cx + (x1 - camX) * k1, cy + (y1 - camY) * k1,
+      cx + (x0 - camX) * k1, cy + (y0 - camY) * k1);
+  };
+  // Adds a horizontal rect at height h to the current path
+  D.rectPath = function (ctx, x, y, w, d, h) {
+    const k = Z * (1 + (h || 0) * R.PERSP);
+    ctx.rect(cx + (x - camX) * k, cy + (y - camY) * k, w * k, d * k);
+  };
+
+  function wallColor(st, face) {
+    const own = st['wall' + face];
+    if (own) return own;
+    return shaded(st.wall || '#c9b99a', faceShade[face]);
+  }
+
+  // Which walls of an axis-aligned box face the camera: returns bitmask N=1,S=2,W=4,E=8
+  D.visibleWalls = function (x, y, w, d) {
+    return (camY < y ? 1 : 0) | (camY > y + d ? 2 : 0) | (camX < x ? 4 : 0) | (camX > x + w ? 8 : 0);
+  };
+
+  /** Extruded axis-aligned box. style: {roof, wall, wallN/S/E/W, outline, roofFn(ctx,k,x,y,w,d), wallFn(ctx,face,...)} */
+  D.box = function (x, y, w, d, h0, h1, st) {
+    st = st || {};
+    const ctx = R.ctx;
+    const k0 = Z * (1 + h0 * R.PERSP), k1 = Z * (1 + h1 * R.PERSP);
+    const ax0 = cx + (x - camX) * k0, ax1 = cx + (x + w - camX) * k0;
+    const ay0 = cy + (y - camY) * k0, ay1 = cy + (y + d - camY) * k0;
+    const bx0 = cx + (x - camX) * k1, bx1 = cx + (x + w - camX) * k1;
+    const by0 = cy + (y - camY) * k1, by1 = cy + (y + d - camY) * k1;
+    if (h1 - h0 > 0.01) {
+      if (camY < y) { ctx.beginPath(); quad(ctx, ax0, ay0, ax1, ay0, bx1, by0, bx0, by0); ctx.fillStyle = wallColor(st, 'N'); ctx.fill(); if (st.wallFn) st.wallFn(ctx, 'N', x, y, w, d, h0, h1); }
+      if (camY > y + d) { ctx.beginPath(); quad(ctx, ax0, ay1, ax1, ay1, bx1, by1, bx0, by1); ctx.fillStyle = wallColor(st, 'S'); ctx.fill(); if (st.wallFn) st.wallFn(ctx, 'S', x, y, w, d, h0, h1); }
+      if (camX < x) { ctx.beginPath(); quad(ctx, ax0, ay0, ax0, ay1, bx0, by1, bx0, by0); ctx.fillStyle = wallColor(st, 'W'); ctx.fill(); if (st.wallFn) st.wallFn(ctx, 'W', x, y, w, d, h0, h1); }
+      if (camX > x + w) { ctx.beginPath(); quad(ctx, ax1, ay0, ax1, ay1, bx1, by1, bx1, by0); ctx.fillStyle = wallColor(st, 'E'); ctx.fill(); if (st.wallFn) st.wallFn(ctx, 'E', x, y, w, d, h0, h1); }
+    }
+    if (st.roof !== false) {
+      ctx.fillStyle = st.roof || '#d8cbb0';
+      ctx.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
+      if (st.roofFn) {
+        ctx.save();
+        ctx.setTransform(k1, 0, 0, k1, cx - camX * k1, cy - camY * k1);
+        try { st.roofFn(ctx, k1, x, y, w, d, h1); } finally { ctx.restore(); }
+      }
+      if (st.outline) {
+        ctx.strokeStyle = st.outline; ctx.lineWidth = st.outlineW || 1;
+        ctx.strokeRect(bx0 + 0.5, by0 + 0.5, bx1 - bx0 - 1, by1 - by0 - 1);
+      }
+    }
+  };
+
+  function polyArea(pts) {
+    let a = 0;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) a += pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1];
+    return a / 2;
+  }
+  /** Extruded polygon (points [[x,y],...]). Walls back-face culled, farthest first, roof last. */
+  D.poly = function (pts, h0, h1, st) {
+    st = st || {};
+    const ctx = R.ctx;
+    const n = pts.length; if (n < 3) return;
+    const k0 = Z * (1 + h0 * R.PERSP), k1 = Z * (1 + h1 * R.PERSP);
+    const sgn = polyArea(pts) > 0 ? 1 : -1;
+    if (h1 - h0 > 0.01) {
+      const walls = [];
+      for (let i = 0; i < n; i++) {
+        const a = pts[i], b = pts[(i + 1) % n];
+        const ex = b[0] - a[0], ey = b[1] - a[1];
+        const nx = ey * sgn, ny = -ex * sgn; // outward normal
+        if (nx * (camX - a[0]) + ny * (camY - a[1]) <= 0) continue;
+        const mx = (a[0] + b[0]) / 2 - camX, my = (a[1] + b[1]) / 2 - camY;
+        const nl = Math.hypot(nx, ny) || 1;
+        walls.push([mx * mx + my * my, a, b, shadeFor(nx / nl, ny / nl)]);
+      }
+      walls.sort((p, q) => q[0] - p[0]);
+      for (const [, a, b, f] of walls) {
+        ctx.beginPath();
+        quad(ctx,
+          cx + (a[0] - camX) * k0, cy + (a[1] - camY) * k0, cx + (b[0] - camX) * k0, cy + (b[1] - camY) * k0,
+          cx + (b[0] - camX) * k1, cy + (b[1] - camY) * k1, cx + (a[0] - camX) * k1, cy + (a[1] - camY) * k1);
+        ctx.fillStyle = st.wallFlat ? st.wall : shaded(st.wall || '#c9b99a', f);
+        ctx.fill();
+        if (st.edge) { ctx.strokeStyle = st.edge; ctx.lineWidth = 0.6; ctx.stroke(); }
+      }
+    }
+    if (st.roof !== false) {
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const X = cx + (pts[i][0] - camX) * k1, Y = cy + (pts[i][1] - camY) * k1;
+        if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = st.roof || '#d8cbb0'; ctx.fill();
+      if (st.outline) { ctx.strokeStyle = st.outline; ctx.lineWidth = 1; ctx.stroke(); }
+      if (st.roofFn) {
+        ctx.save();
+        ctx.setTransform(k1, 0, 0, k1, cx - camX * k1, cy - camY * k1);
+        try { st.roofFn(ctx, k1, h1); } finally { ctx.restore(); }
+      }
+    }
+  };
+
+  /** Cylinder: hull of base and top circles, shaded towards the sun, top disc. */
+  D.cyl = function (x, y, r, h0, h1, st) {
+    st = st || {};
+    const ctx = R.ctx;
+    const k0 = Z * (1 + h0 * R.PERSP), k1 = Z * (1 + h1 * R.PERSP);
+    const bx = cx + (x - camX) * k0, by = cy + (y - camY) * k0, rb = r * k0;
+    const tx = cx + (x - camX) * k1, ty = cy + (y - camY) * k1, rt = r * k1;
+    const dx = tx - bx, dy = ty - by, L = Math.hypot(dx, dy);
+    const wall = st.wall || '#c9b99a';
+    if (L > Math.abs(rt - rb) + 0.01 && h1 - h0 > 0.01) {
+      const th = Math.atan2(dy, dx), al = Math.acos(U.clamp((rb - rt) / L, -1, 1));
+      ctx.beginPath();
+      ctx.arc(bx, by, rb, th + al, th - al + Math.PI * 2);
+      ctx.arc(tx, ty, rt, th - al, th + al);
+      ctx.closePath();
+      if (st.grad === false) ctx.fillStyle = shaded(wall, 0.72);
+      else {
+        // light comes from the sun direction across the cylinder
+        const sx = R.sun.dx, sy = R.sun.dy, mx = (bx + tx) / 2, my = (by + ty) / 2, rr = (rb + rt) / 2;
+        const g = ctx.createLinearGradient(mx + sx * rr, my + sy * rr, mx - sx * rr, my - sy * rr);
+        g.addColorStop(0, shaded(wall, 0.98)); g.addColorStop(0.55, shaded(wall, 0.74)); g.addColorStop(1, shaded(wall, 0.5));
+        ctx.fillStyle = g;
+      }
+      ctx.fill();
+      if (st.bands) { // horizontal rings (e.g. minaret balconies)
+        ctx.strokeStyle = st.bandColor || shaded(wall, 0.55); ctx.lineWidth = Math.max(1, k0);
+        for (const bh of st.bands) {
+          const kb = Z * (1 + bh * R.PERSP);
+          ctx.beginPath(); ctx.arc(cx + (x - camX) * kb, cy + (y - camY) * kb, r * kb, 0, Math.PI * 2); ctx.stroke();
+        }
+      }
+    }
+    if (st.top !== false) {
+      ctx.beginPath(); ctx.arc(tx, ty, rt, 0, Math.PI * 2);
+      ctx.fillStyle = st.roof || st.top || shaded(wall, 1.08); ctx.fill();
+      if (st.outline) { ctx.strokeStyle = st.outline; ctx.lineWidth = 1; ctx.stroke(); }
+    }
+  };
+
+  /** Dome: stacked rings from h0 to hTop, lighter towards the top and the sun. */
+  D.dome = function (x, y, r, h0, hTop, st) {
+    st = st || {};
+    const ctx = R.ctx;
+    const col = st.fill || st.wall || '#e8d9b5';
+    const steps = st.steps || Math.max(4, Math.min(10, Math.round(r / 2.5)));
+    for (let i = 0; i <= steps; i++) {
+      const s = i / steps;
+      const rr = r * Math.sqrt(Math.max(0, 1 - s * s)) * (st.bulb ? 1 + 0.25 * Math.sin(s * Math.PI) : 1);
+      if (rr <= 0.05 && i < steps) continue;
+      const h = h0 + (hTop - h0) * s;
+      const k = Z * (1 + h * R.PERSP);
+      // shift highlight towards the sun as we go up
+      const off = rr * 0.18 * s;
+      ctx.beginPath();
+      ctx.arc(cx + (x - camX) * k + R.sun.dx * off * k, cy + (y - camY) * k + R.sun.dy * off * k, Math.max(0.6, rr * k), 0, Math.PI * 2);
+      ctx.fillStyle = shaded(col, 0.62 + 0.42 * s);
+      ctx.fill();
+    }
+    if (st.finial) {
+      const k = Z * (1 + (hTop + st.finial) * R.PERSP), kb = Z * (1 + hTop * R.PERSP);
+      ctx.strokeStyle = st.finialColor || '#c9a227'; ctx.lineWidth = Math.max(1, kb * 0.8);
+      ctx.beginPath(); ctx.moveTo(cx + (x - camX) * kb, cy + (y - camY) * kb); ctx.lineTo(cx + (x - camX) * k, cy + (y - camY) * k); ctx.stroke();
+    }
+  };
+
+  D.disc = function (x, y, r, h, fill) {
+    const ctx = R.ctx, k = Z * (1 + (h || 0) * R.PERSP);
+    ctx.beginPath(); ctx.arc(cx + (x - camX) * k, cy + (y - camY) * k, Math.max(0.5, r * k), 0, Math.PI * 2);
+    ctx.fillStyle = fill || '#000'; ctx.fill();
+  };
+
+  /** Draw in world coordinates on a horizontal plane at height h (affine). */
+  D.plane = function (h, fn) {
+    const ctx = R.ctx, k = Z * (1 + (h || 0) * R.PERSP);
+    ctx.save();
+    ctx.setTransform(k, 0, 0, k, cx - camX * k, cy - camY * k);
+    try { fn(ctx, k); } finally { ctx.restore(); }
+  };
+  D.flat = function (fn) { D.plane(0, fn); };
+
+  /** Top-down sprite: fn(ctx) draws in local units centred at origin facing +x. */
+  D.sprite = function (x, y, angle, h, fn) {
+    const ctx = R.ctx, k = Z * (1 + (h || 0) * R.PERSP);
+    const c = Math.cos(angle || 0) * k, s = Math.sin(angle || 0) * k;
+    ctx.save();
+    ctx.setTransform(c, s, -s, c, cx + (x - camX) * k, cy + (y - camY) * k);
+    try { fn(ctx, k); } finally { ctx.restore(); }
+  };
+
+  const fontCache = new Map();
+  /** Upright text at a projected point. style: {size, font, color, align, baseline, outline, bg, pad} */
+  D.text = function (x, y, h, str, st) {
+    st = st || {};
+    const ctx = R.ctx, k = Z * (1 + (h || 0) * R.PERSP);
+    const size = Math.max(4, Math.round((st.size || 8) * (st.fixed ? 1 : k)));
+    const fam = st.font || "'VT323', 'Courier New', monospace";
+    const key = size + '|' + fam + '|' + (st.weight || '');
+    let f = fontCache.get(key);
+    if (!f) { f = (st.weight ? st.weight + ' ' : '') + size + 'px ' + fam; fontCache.set(key, f); }
+    ctx.font = f;
+    ctx.textAlign = st.align || 'center';
+    ctx.textBaseline = st.baseline || 'middle';
+    const X = Math.round(cx + (x - camX) * k), Y = Math.round(cy + (y - camY) * k);
+    if (st.bg) {
+      const w = ctx.measureText(str).width, p = st.pad == null ? 2 : st.pad;
+      ctx.fillStyle = st.bg;
+      const bx = st.align === 'left' ? X - p : st.align === 'right' ? X - w - p : X - w / 2 - p;
+      ctx.fillRect(Math.round(bx), Math.round(Y - size / 2 - p / 2), Math.round(w + p * 2), Math.round(size + p));
+    }
+    if (st.outline) { ctx.lineWidth = st.outlineW || 2; ctx.strokeStyle = st.outline; ctx.lineJoin = 'round'; ctx.strokeText(str, X, Y); }
+    ctx.fillStyle = st.color || '#fff';
+    ctx.fillText(str, X, Y);
+  };
+
+  /** Soft contact shadow under an object (rounded rect rotated by angle). Enqueue on 'shadow'. */
+  D.shadow = function (x, y, w, d, angle, h) {
+    const ctx = R.ctx, s = R.sun;
+    const lift = (h == null ? 3 : h);
+    const ox = s.sx * lift, oy = s.sy * lift;
+    const c = Math.cos(angle || 0) * Z, sn = Math.sin(angle || 0) * Z;
+    ctx.save();
+    ctx.setTransform(c, sn, -sn, c, cx + (x + ox - camX) * Z, cy + (y + oy - camY) * Z);
+    ctx.globalAlpha = 0.32 * s.strength + 0.08;
+    ctx.fillStyle = '#1a1020';
+    const r = Math.min(w, d) * 0.45;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(-w / 2, -d / 2, w, d, r); else ctx.rect(-w / 2, -d / 2, w, d);
+    ctx.fill();
+    ctx.restore();
+  };
+
+  /* ---------------------------------------- batched cast shadows (buildings) */
+  // world.js / landmarks add footprints during enqueue; drawn as ONE fill so overlaps
+  // don't double-darken. Drawn at the start of the 'shadow' layer.
+  let castPath = null, castCount = 0;
+  function castBegin() { castPath = new Path2D(); castCount = 0; }
+  function hullPath(pts) {
+    pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lower = [], upper = [];
+    for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+    for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+    const hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+    for (let i = 0; i < hull.length; i++) {
+      const X = cx + (hull[i][0] - camX) * Z, Y = cy + (hull[i][1] - camY) * Z;
+      if (i) castPath.lineTo(X, Y); else castPath.moveTo(X, Y);
+    }
+    castPath.closePath();
+    castCount++;
+  }
+  /** Cast shadow of an axis-aligned box of height h. */
+  D.castBox = function (x, y, w, d, h) {
+    const sx = R.sun.sx * h, sy = R.sun.sy * h;
+    hullPath([[x, y], [x + w, y], [x + w, y + d], [x, y + d], [x + sx, y + sy], [x + w + sx, y + sy], [x + w + sx, y + d + sy], [x + sx, y + d + sy]]);
+  };
+  /** Cast shadow of an extruded convex polygon of height h. */
+  D.castPoly = function (pts, h) {
+    const sx = R.sun.sx * h, sy = R.sun.sy * h;
+    const all = [];
+    for (const p of pts) { all.push([p[0], p[1]]); all.push([p[0] + sx, p[1] + sy]); }
+    hullPath(all);
+  };
+  /** Cast shadow of a round thing (tree canopy, dome) of radius r at height h. */
+  D.castCircle = function (x, y, r, h, h0) {
+    const base = h0 || 0;
+    const X = cx + (x + R.sun.sx * h - camX) * Z, Y = cy + (y + R.sun.sy * h - camY) * Z;
+    castPath.moveTo(X + r * Z, Y);
+    castPath.arc(X, Y, r * Z, 0, Math.PI * 2);
+    castPath.closePath();
+    if (base === 0 && h > r) { // trunk/pole line to the ground
+      hullPathLine(x, y, x + R.sun.sx * h, y + R.sun.sy * h, Math.max(1, r * 0.18));
+    }
+    castCount++;
+  };
+  function hullPathLine(x0, y0, x1, y1, w) {
+    const dx = x1 - x0, dy = y1 - y0, l = Math.hypot(dx, dy) || 1;
+    const nx = (-dy / l) * w * 0.5, ny = (dx / l) * w * 0.5;
+    hullPath([[x0 + nx, y0 + ny], [x0 - nx, y0 - ny], [x1 + nx, y1 + ny], [x1 - nx, y1 - ny]]);
+  }
+  /** Cast shadow of a thin pole (lamp post) of height h. */
+  D.castPole = function (x, y, h, w) { hullPathLine(x, y, x + R.sun.sx * h, y + R.sun.sy * h, w || 1.5); };
+
+  function drawCastShadows(ctx) {
+    if (!castCount) return;
+    ctx.globalAlpha = 0.30 * R.sun.strength + 0.04;
+    ctx.fillStyle = '#20142a';
+    ctx.fill(castPath);
+    ctx.globalAlpha = 1;
+  }
+
+  /* ----------------------------------------------- grade, night, effects */
+  let lightCanvas = null, lightCtx = null;
+  const blobCache = new Map();
+  function blob(color) {
+    let c = blobCache.get(color);
+    if (c) return c;
+    c = makeCanvas(64, 64);
+    const g = c.getContext('2d');
+    const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    if (color === 'mask') {
+      gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.45, 'rgba(255,255,255,0.75)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    } else {
+      const [r, gg, b] = U.hexToRgb(color);
+      gr.addColorStop(0, 'rgba(' + r + ',' + gg + ',' + b + ',0.55)');
+      gr.addColorStop(0.4, 'rgba(' + r + ',' + gg + ',' + b + ',0.22)');
+      gr.addColorStop(1, 'rgba(' + r + ',' + gg + ',' + b + ',0)');
+    }
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    blobCache.set(color, c);
+    return c;
+  }
+
+  // Colour grade by time of day: [minute, color, alpha]
+  const GRADE = [
+    [0, '#1a2a6a', 0.0], [300, '#2a2a6a', 0.0], [345, '#ff7aa8', 0.16], [420, '#ffc9a0', 0.10], [540, '#fff4e0', 0.03],
+    [720, '#ffffff', 0.0], [930, '#ffe0a0', 0.06], [1020, '#ffa040', 0.16], [1090, '#ff6a30', 0.22], [1140, '#b04a80', 0.16],
+    [1200, '#2a3a8a', 0.0], [1440, '#1a2a6a', 0.0],
+  ];
+  function gradeAt(m) {
+    for (let i = 1; i < GRADE.length; i++) {
+      if (m <= GRADE[i][0]) {
+        const a = GRADE[i - 1], b = GRADE[i], t = (m - a[0]) / (b[0] - a[0]);
+        return [U.mix(a[1], b[1], t), U.lerp(a[2], b[2], t)];
+      }
+    }
+    return ['#ffffff', 0];
+  }
+
+  function drawGradeAndNight(ctx) {
+    const W = R.W, H = R.H;
+    const light = N.clock.light();
+    if (R.fx.grade) {
+      const [col, a] = gradeAt(N.clock.minutes);
+      if (a > 0.005) {
+        ctx.globalCompositeOperation = 'soft-light';
+        ctx.globalAlpha = Math.min(1, a * 3.2);
+        ctx.fillStyle = col; ctx.fillRect(0, 0, W, H);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = a * 0.55;
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 1;
+      }
+    }
+    const night = U.clamp((0.6 - light) / 0.52, 0, 1);
+    R.night = night;
+    if (night <= 0.01) { R.lights.length = 0; return; }
+    if (!lightCanvas) { lightCanvas = makeCanvas(Math.ceil(W / 2), Math.ceil(H / 2)); lightCtx = lightCanvas.getContext('2d'); }
+    const lc = lightCtx, LW = lightCanvas.width, LH = lightCanvas.height;
+    lc.globalCompositeOperation = 'source-over';
+    lc.clearRect(0, 0, LW, LH);
+    lc.fillStyle = 'rgba(8,12,40,' + (0.8 * night).toFixed(3) + ')';
+    lc.fillRect(0, 0, LW, LH);
+    lc.globalCompositeOperation = 'destination-out';
+    const mask = blob('mask');
+    const lights = R.lights;
+    for (let i = 0; i < lights.length; i++) {
+      const L = lights[i];
+      const k = Z * (1 + (L.h || 0) * R.PERSP);
+      const X = (cx + (L.x - camX) * k) / 2, Y = (cy + (L.y - camY) * k) / 2, rr = (L.r || 40) * k / 2;
+      if (X + rr < 0 || Y + rr < 0 || X - rr > LW || Y - rr > LH) continue;
+      lc.globalAlpha = U.clamp(L.intensity == null ? 1 : L.intensity, 0, 1);
+      lc.drawImage(mask, X - rr, Y - rr, rr * 2, rr * 2);
+    }
+    lc.globalAlpha = 1;
+    lc.globalCompositeOperation = 'source-over';
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(lightCanvas, 0, 0, LW * 2, LH * 2);
+    ctx.imageSmoothingEnabled = false;
+    // coloured additive glow (sodium vapour orange etc.)
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < lights.length; i++) {
+      const L = lights[i];
+      if (L.glow === false) continue;
+      const k = Z * (1 + (L.h || 0) * R.PERSP);
+      const X = cx + (L.x - camX) * k, Y = cy + (L.y - camY) * k, rr = (L.r || 40) * k * 0.8;
+      if (X + rr < 0 || Y + rr < 0 || X - rr > W || Y - rr > H) continue;
+      ctx.globalAlpha = night * 0.7 * U.clamp(L.intensity == null ? 1 : L.intensity, 0, 1);
+      ctx.drawImage(blob(L.color || '#ffb050'), X - rr, Y - rr, rr * 2, rr * 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    lights.length = 0;
+  }
+
+  // VHS: scanlines + rolling tracking band + chroma offset
+  let vhsA = null, vhsB = null, scanPat = null, noiseCanvas = null;
+  function drawVHS(ctx, amt) {
+    const W = R.W, H = R.H, t = performance.now() / 1000;
+    if (!vhsA || vhsA.width !== W || vhsA.height !== H) { vhsA = makeCanvas(W, H); vhsB = makeCanvas(W, H); }
+    const a = vhsA.getContext('2d'), b = vhsB.getContext('2d');
+    // chroma split: red channel shifted right, green+blue shifted left
+    a.globalCompositeOperation = 'source-over'; a.drawImage(R.canvas, 0, 0);
+    a.globalCompositeOperation = 'multiply'; a.fillStyle = '#ff0000'; a.fillRect(0, 0, W, H);
+    b.globalCompositeOperation = 'source-over'; b.drawImage(R.canvas, 0, 0);
+    b.globalCompositeOperation = 'multiply'; b.fillStyle = '#00ffff'; b.fillRect(0, 0, W, H);
+    const off = Math.max(1, Math.round(2 * amt));
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(vhsB, -off * 0.5, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(vhsA, off, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    // wobble: a few horizontally displaced slices
+    const band = ((t * 0.18) % 1.3) * H - H * 0.15;
+    for (let y = Math.max(0, band | 0); y < Math.min(H, band + 18 * amt); y += 3) {
+      ctx.drawImage(R.canvas, 0, y, W, 3, Math.sin(y * 0.7 + t * 30) * 4 * amt, y, W, 3);
+    }
+    // tracking noise band
+    if (!noiseCanvas) {
+      noiseCanvas = makeCanvas(128, 32);
+      const g = noiseCanvas.getContext('2d'), id = g.createImageData(128, 32);
+      for (let i = 0; i < id.data.length; i += 4) { const v = Math.random() < 0.5 ? 255 : 0; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = Math.random() * 200; }
+      g.putImageData(id, 0, 0);
+    }
+    ctx.globalAlpha = 0.35 * amt;
+    ctx.drawImage(noiseCanvas, (Math.random() * 64) | 0, (Math.random() * 16) | 0, 64, 8, 0, band, W, 10 + 6 * amt);
+    ctx.globalAlpha = 1;
+    // scanlines
+    if (!scanPat) {
+      const s = makeCanvas(2, 3), g = s.getContext('2d');
+      g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, 2, 2, 1);
+      scanPat = ctx.createPattern(s, 'repeat');
+    }
+    ctx.globalAlpha = Math.min(1, amt * 1.2);
+    ctx.fillStyle = scanPat; ctx.fillRect(0, 0, W, H);
+    // slight desaturating wash + vignette tint
+    ctx.globalAlpha = 0.08 * amt; ctx.fillStyle = '#3040a0'; ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+
+  function drawScreenFX(ctx, dt) {
+    const fx = R.fx, W = R.W, H = R.H;
+    if (fx.vhs > 0.01) { try { drawVHS(ctx, Math.min(1, fx.vhs)); } catch (e) { N.err('vhs', e); } }
+    if (fx.flash > 0.01) {
+      ctx.globalAlpha = Math.min(1, fx.flash); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+      fx.flash = Math.max(0, fx.flash - dt * 3);
+    }
+    if (fx.fade > 0.001) {
+      ctx.globalAlpha = Math.min(1, fx.fade); ctx.fillStyle = fx.fadeColor || '#000'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+    }
+  }
+
+  /* -------------------------------------------------------------- frame */
+  R.begin = function () {
+    setupFrame();
+    updateSun();
+    castBegin();
+    R.stats.queued = 0;
+  };
+
+  R.flush = function (dt) {
+    const ctx = R.ctx, W = R.W, H = R.H;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#1b1420'; ctx.fillRect(0, 0, W, H);
+    try { drawGround(ctx); } catch (e) { N.err('drawGround', e); }
+    runLayer('ground');
+    try { drawCastShadows(ctx); } catch (e) { N.err('castShadows', e); }
+    runLayer('shadow');
+    runLayer('actors');
+    runLayer('structures');
+    runLayer('sky');
+    try { drawGradeAndNight(ctx); } catch (e) { N.err('night', e); }
+    runLayer('light');
+    runLayer('fx');
+    drawScreenFX(ctx, dt || 0.016);
+  };
+
+  /* --------------------------------------------------------------- init */
+  R.init = function () {
+    let c = document.getElementById('game');
+    if (!c) { c = document.createElement('canvas'); c.id = 'game'; document.body.prepend(c); }
+    R.canvas = c;
+    R.ctx = c.getContext('2d', { alpha: false });
+    resize();
+    let pending = false;
+    const onResize = () => {
+      if (pending) return; pending = true;
+      requestAnimationFrame(() => { pending = false; resize(); });
+    };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
+    R.resize = resize;
+  };
+
+  N.addSystem({ id: 'camera', order: 60, runIn: ['*'], update: updateCamera });
+})();
