@@ -632,6 +632,11 @@
       this.dom.view.hidden = !hasView;
       const vm = V && (V.want || V.mode);
       this.dom.tracks.classList.toggle('many', Array.from(this.dom.tracks.children).filter((li) => !li.hidden).length >= 5);
+      // a save from a newer build is never overwritten (save.js): say so before they play
+      const newer = N.save && N.save.tooNew;
+      let nn = this.el.querySelector('.jc-newer');
+      if (newer && !nn) { nn = el('p', 'jc-newer', null); nn.setAttribute('role', 'note'); this.dom.tracks.after(nn); }
+      if (nn) { nn.hidden = !newer; nn.textContent = newer ? N.save.NEWER_MSG : ''; }
       if (hasView) this.dom.viewSub.textContent = (V.loading ? 'loading 3D… ' : '') + (({ top: 'top-down', tps: '3D · third person', fps: 'first person' })[vm] || String(vm || 'top-down'));
     },
     back() {
@@ -820,6 +825,7 @@
     if (!N.save || !N.save.save) return { ok: false, reason: 'Saving is not ready yet.' };
     const bm = baseMode();
     if (bm === 'title' || bm === 'boot') return { ok: false, reason: 'Start a game first.' };
+    if (N.save.tooNew) return { ok: false, reason: 'A newer version of the game saved here. Update it to save.' };
     if (N.state.has('cutscene') || cs.active) return { ok: false, reason: 'Not during a scene. The tape is rolling.' };
     if (N.state.has('minigame') || (N.minigames && N.minigames.active)) return { ok: false, reason: 'Finish the game first.' };
     if (N.state.has('dialogue') || (N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen())) return { ok: false, reason: 'Finish the conversation first.' };

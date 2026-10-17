@@ -2,7 +2,7 @@
  * Boot (fonts with a 1.5 s timeout, world build, systems init), title -> play, the
  * requestAnimationFrame loop with a semi-fixed update step (equal sub-steps of at most
  * 1/60 s, frame dt clamped to 0.1 s) and the per-frame draw order (ARCHITECTURE §6),
- * pause on visibility change, and N.game (newGame / continueGame / quitToTitle / snapshot).
+ * pause (and a silent save when allowed) on visibility change / pagehide, and N.game (newGame / continueGame / quitToTitle / snapshot).
  */
 (() => {
   'use strict';
@@ -149,7 +149,8 @@
       setTimeout(fin, timeout);
       try {
         if (document.fonts && document.fonts.load) {
-          Promise.all(["16px 'Yatra One'", "16px 'Baloo 2'", "16px 'VT323'"].map((f) => document.fonts.load(f).catch(() => null)))
+          // Telugu: load the glyph subset the district card's subtitle uses (unicode-range)
+          Promise.all([["16px 'Yatra One'"], ["16px 'Baloo 2'"], ["16px 'VT323'"], ["700 16px 'Noto Sans Telugu'", 'తెలుగు']].map((f) => document.fonts.load(f[0], f[1]).catch(() => null)))
             .then(() => document.fonts.ready).then(fin, fin);
         } else fin();
       } catch (e) { fin(); }
@@ -191,11 +192,23 @@
     requestAnimationFrame(frame);
   }
 
+  // Save (silently, when allowed) as the tab is hidden or the page goes away: mobile browsers
+  // kill background tabs without warning. hide + pagehide usually fire together: save once.
+  let lastHideSave = 0;
+  function saveOnHide(why) {
+    try {
+      const now = Date.now();
+      if (now - lastHideSave < 1000 || !game.started || !N.save || !N.save.autosave) return;
+      lastHideSave = now;
+      N.save.autosave('autosave');
+    } catch (e) { N.err('save.' + why, e); }
+  }
   // Pause when the tab is hidden; resync the clock when it comes back.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) game.pause();
+    if (document.hidden) { saveOnHide('hidden'); game.pause(); }
     last = 0;
   });
+  window.addEventListener('pagehide', () => saveOnHide('pagehide'));
 
   // Hot-reload support (optional runtime): provide a snapshot, then boot.
   try {

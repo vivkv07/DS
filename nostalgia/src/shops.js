@@ -181,7 +181,7 @@
   const TUNE = {
     r: 18, rBig: 30, quickHold: 0.5, lineCooldown: 10, toffeeChance: 0.3, khaataLimit: 1000, khaataLimitL5: 2000,
     busPrice: 300, busSpeed: 115, busFxMs: 2500, autoFirst: 600, autoPerKm: 400, mapKm: 430, autoAsk: 1000, autoNight: 1.5,
-    autoSpeed: 135, autoFxMs: 3000, autoReach: 40, autoSpawnR: 260, autoTimeout: 14, hireHour: 300, hireCap: 1000, hireLate: 300, hireLost: 1600,
+    autoSpeed: 135, rickSpeed: 80, autoFxMs: 3000, autoReach: 40, autoSpawnR: 260, autoTimeout: 14, hireHour: 300, hireCap: 1000, hireLate: 300, hireLost: 1600,
     puncture: 200, cinemaFloor: 1000, cinemaBalcony: 2500, prasads: 5000, boat: 1000, boatSecs: 120, trainSecs: 45, nannaDelay: 20, buntyDelay: 15,
     familyRoomSecs: 10, haircutSecs: 8, champiSecs: 6, punctureSecs: 2, hideSecs: 8, lobbySecs: 10,
   };
@@ -1813,7 +1813,8 @@
     if (N.traffic && typeof N.traffic.release === 'function') { try { N.traffic.release(v); } catch (e) { N.err('shops.release', e); } }
     if (N.vehicles && N.vehicles.stopDriving) N.vehicles.stopDriving(v);
     v.controller = null; v.noEnter = true; v.summoned = true;
-    const job = { v, pick: { x: v.x, y: v.y }, t: 0, arrived: true, yada: v.type === 'yadagiri_auto', nanna: false, taxi: !!(v.taxi || (v.T && v.T.cls === 'car')), wait: 25 };
+    const rick = !!(v.T && v.T.fare); // a cycle-rickshaw (vehicles.js TYPES[t].fare): the rickshaw-wala pedals
+    const job = { v, pick: { x: v.x, y: v.y }, t: 0, arrived: true, yada: v.type === 'yadagiri_auto', nanna: false, rick, taxi: !rick && !!(v.taxi || (v.T && v.T.cls === 'car')), wait: 25 };
     S.hail = job;
     N.emit('auto:hail', { x: p.x, y: p.y, vehicle: v, yadagiri: job.yada, flagged: true });
     return openAuto(job) || true;
@@ -2024,7 +2025,7 @@
     const p = N.player;
     const V = N.vehicles;
     const dist = V && V.roadDistance ? V.roadDistance(p.x, p.y, dest.x, dest.y) : Math.hypot(dest.x - p.x, dest.y - p.y) * 1.3;
-    const speed = o.mode === 'bus' ? TUNE.busSpeed : o.mode === 'nanna' ? 128 : o.mode === 'bunty' ? 150 : TUNE.autoSpeed;
+    const speed = o.mode === 'bus' ? TUNE.busSpeed : o.mode === 'nanna' ? 128 : o.mode === 'bunty' ? 150 : o.mode === 'rickshaw' ? TUNE.rickSpeed : TUNE.autoSpeed;
     const minutes = o.minutes != null ? o.minutes : Math.max(2, Math.round(dist / speed));
     if (UI.open) closeShop(true);
     if (p.vehicle && V) V.exit(p, true);
@@ -2173,7 +2174,7 @@
     if (!job || !job.v) return;
     job.riding = true;
     N.emit('auto:ride', { to: d.id, price, yadagiri: !!job.yada });
-    travelTo(d, { mode: job.nanna ? 'nanna' : job.bunty ? 'bunty' : 'auto', vehicle: job.v, label: (job.nanna ? 'NANNA' : job.bunty ? 'BUNTY-ANNA' : job.taxi ? 'TAXI' : 'AUTO') + ' → ' + d.name }).then(() => {
+    travelTo(d, { mode: job.nanna ? 'nanna' : job.bunty ? 'bunty' : job.rick ? 'rickshaw' : 'auto', vehicle: job.v, label: (job.nanna ? 'NANNA' : job.bunty ? 'BUNTY-ANNA' : job.taxi ? 'TAXI' : job.rick ? 'RICKSHAW' : 'AUTO') + ' → ' + d.name }).then(() => {
       if (job.bunty) {
         toast('Bunty-anna: "Reached! Don\'t tell Mummy. Word of the day: nostalgia. Means a free ride."', 3200);
       } else if (job.nanna) {
@@ -2197,8 +2198,9 @@
   function openAuto(job) {
     if (!job || !job.v || !job.v.alive) return false;
     const kind = job.nanna ? 'nanna_ride' : job.bunty ? 'bunty_ride' : 'auto_ride';
-    const def = { id: job.nanna ? 'nanna' : job.bunty ? 'bunty' : 'auto', kind, K: KINDS[kind], place: { x: job.v.x, y: job.v.y }, name: job.nanna ? "Nanna's Chetak" : job.bunty ? "Bunty-anna's RX100" : job.yada ? "Yadagiri-anna's auto" : job.taxi ? 'Taxi' : 'Auto-rickshaw', x: job.v.x, y: job.v.y, r: 30, virtual: true };
+    const def = { id: job.nanna ? 'nanna' : job.bunty ? 'bunty' : 'auto', kind, K: KINDS[kind], place: { x: job.v.x, y: job.v.y }, name: job.nanna ? "Nanna's Chetak" : job.bunty ? "Bunty-anna's RX100" : job.yada ? "Yadagiri-anna's auto" : job.taxi ? 'Taxi' : job.rick ? 'Cycle-rickshaw' : 'Auto-rickshaw', x: job.v.x, y: job.v.y, r: 30, virtual: true };
     if (job.taxi) def.K = Object.assign({}, KINDS.auto_ride, { title: 'Taxi', lines: ['*Kahan jaana*, *beta*? Meter is honest. Mostly.', 'Sit at the back. Don\'t touch the trunks.'] });
+    if (job.rick) def.K = Object.assign({}, KINDS.auto_ride, { title: 'Cycle-rickshaw', lines: ['*Kidhar jaana*, *chhotu*? Sit back, I pedal.', 'Uphill you get down and walk. Rule.', 'Hold the side. The hood folds if you lean.'] });
     if (job.yada) def.K = Object.assign({}, KINDS.auto_ride, { keeper: 'yadagiri', lines: ['*Meter nakko*, for you *paanch*.', 'Exact change, *tammudu*. Always exact change.'] });
     return openVirtual(def);
   }
@@ -2315,7 +2317,7 @@
       if (job.dismissed) {
         if (d > 60) job.dismissed = false;
         else if (d < 46 && !p.vehicle && N.state.mode === 'play' && !UI.open && N.interact && N.interact.offer) {
-          N.interact.offer({ label: job.nanna ? 'Nanna is waiting' : job.bunty ? 'Bunty-anna is waiting' : job.taxi ? 'Ride taxi (fare)' : 'Ride auto (fare)', priority: 1, dist: d, use: () => { job.dismissed = false; openAuto(job); } });
+          N.interact.offer({ label: job.nanna ? 'Nanna is waiting' : job.bunty ? 'Bunty-anna is waiting' : job.taxi ? 'Ride taxi (fare)' : job.rick ? 'Ride rickshaw (fare)' : 'Ride auto (fare)', priority: 1, dist: d, use: () => { job.dismissed = false; openAuto(job); } });
         }
         continue;
       }

@@ -36,6 +36,7 @@
   --font-display: 'Yatra One', 'Baloo 2', system-ui, sans-serif;
   --font-body: 'Baloo 2', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-osd: 'VT323', ui-monospace, 'Courier New', monospace;
+  --font-telugu: 'Noto Sans Telugu', 'Nirmala UI', 'Gautami', 'Telugu Sangam MN', 'Baloo 2', system-ui, sans-serif;
   /* safe areas */
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
@@ -670,7 +671,7 @@ body.touch-on .hud-stats { top: calc(56px + var(--safe-t)); right: calc(10px + v
   color: var(--whitewash);
   text-shadow: -2px -2px 0 var(--auto-black), 2px -2px 0 var(--auto-black), -2px 2px 0 var(--auto-black), 2px 2px 0 var(--auto-black), 4px 4px 0 rgba(42, 140, 130, 0.95);
 }
-.hud-district .d-sub { margin-top: 2px; font-family: var(--font-body); font-weight: 600; font-size: 17px; color: var(--osd); text-shadow: 1px 1px 0 var(--osd-shadow), 0 0 4px rgba(0, 0, 0, 0.8); }
+.hud-district .d-sub { margin-top: 2px; font-family: var(--font-telugu); font-weight: 600; font-size: 17px; color: var(--osd); text-shadow: 1px 1px 0 var(--osd-shadow), 0 0 4px rgba(0, 0, 0, 0.8); }
 .hud-district .d-sub:empty { display: none; }
 
 /* ---- minimap (bottom-left on desktop) */
@@ -1987,6 +1988,8 @@ body.reduced-motion .sc-vhs-mode { animation: none; }
 .jc-confirm p { margin: 0 0 10px; font-family: var(--font-hand); font-weight: 700; font-size: 22px; color: var(--mn-red); }
 .jc-confirm p span { display: block; font-weight: 400; font-size: 17px; color: var(--mn-pencil); }
 .jc-cbtns { display: flex; flex-wrap: wrap; gap: 12px; }
+.jc-newer { margin: 6px 0 2px; padding: 4px 8px; font-family: var(--font-hand); font-weight: 700; font-size: 16px; line-height: 1.25; color: var(--mn-red); border-left: 3px solid var(--mn-red); background: rgba(255, 255, 255, 0.35); }
+.jc-newer[hidden] { display: none; }
 .jc-scribble { position: absolute; right: 18px; bottom: 0; margin: 0; font-family: var(--font-hand); font-size: 22px; color: var(--mn-pencil); transform: rotate(-7deg); opacity: 0.85; pointer-events: none; }
 .mn-title .jc-front:has(#title-start:focus) .reel, .jc.rolling .reel { animation: mn-spin 1.4s linear infinite; }
 .jc.rolling .reel { animation-duration: 0.45s; }

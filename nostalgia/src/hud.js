@@ -120,7 +120,7 @@
     dom.banner = el('div', 'hud-banner', root, '<div class="b-title"></div><div class="b-sub"></div>');
     dom.bTitle = dom.banner.querySelector('.b-title');
     dom.bSub = dom.banner.querySelector('.b-sub');
-    dom.district = el('div', 'hud-district', root, '<span class="d-name"></span><span class="d-sub"></span>');
+    dom.district = el('div', 'hud-district', root, '<span class="d-name"></span><span class="d-sub" lang="te"></span>');
     dom.dName = dom.district.querySelector('.d-name');
     dom.dSub = dom.district.querySelector('.d-sub');
 
@@ -178,54 +178,14 @@
   }
 
   // Route along the road graph (A*), recomputed when the target or nearest node changes.
-  const route = { key: '', pts: null, t: 0, sx: 0, sy: 0 };
+  const route = { key: '', pts: null, t: 0, sx: 0, sy: 0, a: -1, b: -1 };
+  // Walkers ignore one-way rules (every incident edge) and may cut along footpaths (x1.15).
+  // N.world.roads.route is a heap A* sized for the 15k-node map (a cross-city trip expands a few
+  // thousand nodes); the budget only stops a pathological search from stalling a frame.
+  const GPS_OPTS = { walk: true, paths: true, costs: { path: 1.15 }, maxExpand: 40000 };
   function astar(a, b) {
-    const R = N.world.roads, nodes = R.nodes, edges = R.edges;
     if (!a || !b) return null;
-    if (a === b) return [a];
-    const g = new Map(), from = new Map(), open = [[0, a.id]], closed = new Set();
-    g.set(a.id, 0);
-    const h = (n) => Math.hypot(n.x - b.x, n.y - b.y);
-    let guard = 0;
-    while (open.length && guard++ < 6000) {
-      // binary heap pop
-      const top = open[0], last = open.pop();
-      if (open.length) {
-        open[0] = last;
-        let i = 0;
-        for (;;) {
-          const l = i * 2 + 1, r = l + 1;
-          let m = i;
-          if (l < open.length && open[l][0] < open[m][0]) m = l;
-          if (r < open.length && open[r][0] < open[m][0]) m = r;
-          if (m === i) break;
-          const tmp = open[i]; open[i] = open[m]; open[m] = tmp; i = m;
-        }
-      }
-      const id = top[1];
-      if (closed.has(id)) continue;
-      if (id === b.id) {
-        const path = [nodes[id]];
-        let c = id;
-        while (from.has(c)) { c = from.get(c); path.push(nodes[c]); }
-        return path.reverse();
-      }
-      closed.add(id);
-      const n = nodes[id], gn = g.get(id);
-      // walkers ignore one-way rules: use every incident edge
-      for (const eid of n.inc) {
-        const e = edges[eid], to = e.a === id ? e.b : e.a;
-        if (closed.has(to)) continue;
-        const ng = gn + (e.len || Math.hypot(nodes[to].x - n.x, nodes[to].y - n.y)) * (e.kind === 'path' ? 1.15 : 1);
-        if (ng < (g.has(to) ? g.get(to) : Infinity)) {
-          g.set(to, ng); from.set(to, id);
-          open.push([ng + h(nodes[to]), to]);
-          let i = open.length - 1;
-          while (i > 0) { const p = (i - 1) >> 1; if (open[p][0] <= open[i][0]) break; const tmp = open[p]; open[p] = open[i]; open[i] = tmp; i = p; }
-        }
-      }
-    }
-    return null;
+    return N.world.roads.route(a, b, GPS_OPTS);
   }
   function updateRoute(dt) {
     let target = null;
@@ -241,6 +201,9 @@
     if (direct < 120) { route.pts = [[p.x, p.y], [target.x, target.y]]; return; }
     const R = N.world.roads;
     const a = R.nearestNode(p.x, p.y), b = R.nearestNode(target.x, target.y);
+    // same end nodes as the last search (riding along one road): keep the route, just move its start
+    if (a && b && route.pts && route.pts.length > 2 && route.a === a.id && route.b === b.id) { route.pts[0] = [p.x, p.y]; route.pts[route.pts.length - 1] = [target.x, target.y]; return; }
+    route.a = a ? a.id : -1; route.b = b ? b.id : -1;
     const path = astar(a, b);
     if (!path) { route.pts = [[p.x, p.y], [target.x, target.y]]; return; }
     const pts = [[p.x, p.y]];
