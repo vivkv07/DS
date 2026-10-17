@@ -234,7 +234,8 @@ async function prologue() {
 async function m1() {
   phase = 'm1';
   console.log('\n== M1 bo_kaata');
-  await ev(() => { N.debug.skipDialogue(true); N.story.debug.fastRides = true; N.story.debug.mg = 'lose'; });
+  // (the losing bot needs ~40 s of kite time; a fast sim keeps it short on a loaded machine)
+  await ev(() => { N.debug.skipDialogue(true); N.story.debug.fastRides = true; N.story.debug.mg = 'lose'; N.story.debug.mgTimeScale = 16; });
   if (!(await ev(() => N.missions.active && N.missions.active.id === 'bo_kaata'))) { await ev(() => { N.flags.prologue_seen = true; }); await startMission('bo_kaata', 'home_terrace'); }
   // real input: walk to the kite (it is right there on the terrace) and press E
   await waitFor(() => N.story.debug.state().step === 'act', null, 5000, 'the kite prompt');
@@ -245,9 +246,9 @@ async function m1() {
   const kiteGo = () => (N.minigames && N.minigames.active === 'kite') || N.story.debug.state().step !== 'act' || !!(N.missions.lastFailed && N.missions.lastFailed.id === 'bo_kaata');
   for (let i = 0; i < 3 && !(await waitFor(kiteGo, null, 4000)); i++) { console.log('   (E again on "Fly the kite")'); await pressKey('KeyE'); }
   // the kite minigame is lost (autoplay) -> MISSION FAILED -> retry from 'terrace'
-  const failed = await waitFor(() => N.missions.lastFailed && N.missions.lastFailed.id === 'bo_kaata', null, 90000, 'M1 to fail on a lost kite fight');
+  const failed = await waitFor(() => N.missions.lastFailed && N.missions.lastFailed.id === 'bo_kaata', null, 240000, 'M1 to fail on a lost kite fight');
   check(failed, 'losing the kite fight fails M1 (bible: the kite minigame offers retry)');
-  await ev(() => { N.story.debug.mg = 'win'; });
+  await ev(() => { N.story.debug.mg = 'win'; N.story.debug.mgTimeScale = 6; });
   check(await retryFromCard('bo_kaata'), 'retry (E on the card) restarts M1 from the terrace checkpoint');
   const lvl = await ev(() => N.player.level);
   check(lvl === 'home_terrace', 'retry resumes on home_terrace', lvl);

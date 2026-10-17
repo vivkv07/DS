@@ -13,6 +13,9 @@
  *  - wraps N.world.renderMap (minimap / full map image) to draw the railway lines.
  *  - listens to 'world:built' to set BRIDGE cells and add the boom props.
  * Load order: after src/world.js, before src/main.js boots (index.html). Safe to omit.
+ * Map v2 (world-engine agent): the rail geometry is re-prepared on every 'world:built' (a rebuild or a
+ * different map), the over-water test reads the built surface grid (fast with real, many-vertex lake
+ * and river polygons) and level crossings are box-filtered first. Works with any world size.
  */
 (() => {
   'use strict';
@@ -47,8 +50,22 @@
   function prepare() {
     if (prepared) return prepared;
     const D = data();
-    const water = (D.water || []).map((w) => w.poly);
-    const roads = (D.roads || []).filter((r) => r.kind !== 'path' && r.kind !== 'bridge');
+    const water = (D.water || []).map((w) => w.poly).filter((p) => p && p.length > 2);
+    const wbb = water.map((p) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const q of p) { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; } return [x0, y0, x1, y1]; });
+    // over water? the built surface grid when there is one (WATER, or BRIDGE where a road bridge
+    // already crosses), else the water polygons
+    const W = N.world, S = N.SURF;
+    const useGrid = !!(W && W.built && W.grid && W.surfaceAt);
+    const wetAt = (x, y) => {
+      if (useGrid) { const sf = W.surfaceAt(x, y); return sf === S.WATER || (sf === S.BRIDGE && water.some((p, k) => x >= wbb[k][0] && x <= wbb[k][2] && y >= wbb[k][1] && y <= wbb[k][3] && inPoly(x, y, p))); }
+      for (let k = 0; k < water.length; k++) { const b = wbb[k]; if (x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3] && inPoly(x, y, water[k])) return true; }
+      return false;
+    };
+    const roads = (D.roads || []).filter((r) => r.kind !== 'path' && r.kind !== 'bridge' && r.pts && r.pts.length > 1).map((r) => {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const q of r.pts) { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }
+      return { rd: r, bb: [x0, y0, x1, y1] };
+    });
     prepared = (D.rails || []).map((r) => {
       const segs = [];
       for (let i = 0; i < r.pts.length - 1; i++) {
@@ -60,7 +77,7 @@
         let start = -1;
         for (let s = 0; s <= L + 0.01; s += 6) {
           const x = a[0] + ux * s, y = a[1] + uy * s;
-          const isWet = water.some((p) => inPoly(x, y, p));
+          const isWet = wetAt(x, y);
           if (isWet && start < 0) start = Math.max(0, s - 14);
           if (!isWet && start >= 0) { wet.push([start, Math.min(L, s + 14)]); start = -1; }
         }
@@ -71,7 +88,10 @@
       // level crossings with roads
       const xings = [];
       for (const sg of segs) {
-        for (const rd of roads) {
+        const sx0 = Math.min(sg.a[0], sg.b[0]), sx1 = Math.max(sg.a[0], sg.b[0]), sy0 = Math.min(sg.a[1], sg.b[1]), sy1 = Math.max(sg.a[1], sg.b[1]);
+        for (const RB of roads) {
+          const bb = RB.bb, rd = RB.rd;
+          if (bb[2] < sx0 || bb[0] > sx1 || bb[3] < sy0 || bb[1] > sy1) continue;
           for (let k = 0; k < rd.pts.length - 1; k++) {
             const I = segInter(sg.a, sg.b, rd.pts[k], rd.pts[k + 1]);
             if (!I) continue;
@@ -190,7 +210,7 @@
         done.add(c);
         try {
           const g = c.getContext('2d');
-          const s = ppu || 0.1;
+          const s = c.ppu || ppu || 0.1; // the image may be rendered below the asked scale (N.world.mapPPU)
           g.save(); g.setTransform(s, 0, 0, s, 0, 0);
           g.lineCap = 'round'; g.lineJoin = 'round';
           for (const r of data().rails || []) {
@@ -220,6 +240,7 @@
     W = W || N.world;
     try {
       wrapRenderMap();
+      prepared = null; // a new build (maybe a new map): measure the rails again against it
       const P = prepare();
       const S = N.SURF, CELL = N.CELL, grid = W.grid, GW = W.GW, GH = W.GH;
       // rail bridges: water cells under a track become BRIDGE (walkable; boats still pass)

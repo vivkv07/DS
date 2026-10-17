@@ -2653,8 +2653,8 @@
         if (dist < d.r + 16) { N.interact.offer({ label: 'Return cycle', priority: 1, dist, use: () => { const m = returnCycle(id); toast(plain(typeof m === 'string' ? m : m.msg || ''), 3000); } }); return; }
       }
     }
-    // stopped next to a shop on wheels: "Get off to buy" (systems §1.4)
-    if (sp < 10 && !v.hire) {
+    // stopped next to a shop on wheels: "Get off to buy" (systems §1.4); not off a seat a story has locked
+    if (sp < 10 && !v.hire && !(p.passenger && v.lockPassenger)) {
       for (const id in defs) {
         const d = defs[id]; if (d.K.direct || d.K.virtual) continue;
         const dist = Math.hypot(d.x - p.x, d.y - p.y);

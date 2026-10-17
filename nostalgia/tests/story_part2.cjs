@@ -70,6 +70,10 @@ async function boot(page) {
   await page.evaluate(() => { const d = document.getElementById('debug'); if (d) d.classList.add('hide'); });
 }
 const probe = (page) => page.evaluate(() => {
+  // the autopilot never stops to eat: keep Chinnu fed so THAK GAYA (another module's flow) does not interrupt the run
+  const pl = N.player;
+  if (pl && pl.tummy != null && pl.tummy < 60) { try { if (pl.feed) pl.feed(60, { quiet: true }); else pl.tummy = 80; } catch (e) { pl.tummy = 80; } }
+  if (pl && pl.energy < 50 && !N.story2.state().epilogue) pl.energy = 80;
   const s = N.story2.probe();
   s.shop = !!(N.shops && N.shops.isOpen && N.shops.isOpen());
   s.defs = !!document.querySelector('.mn-defs.show');
@@ -90,7 +94,7 @@ const STORY_OFFER = /^(CLAP \(|Set the self|Drag Nanna|Nanna,|Look down|Leave th
 async function drive(page, done, o) {
   o = o || {};
   const t0 = Date.now();
-  let s = null, lastKey = '', same = 0;
+  let s = null, lastKey = '', same = 0, dlgT = 0;
   while (Date.now() - t0 < (o.timeout || 180000)) {
     s = await probe(page);
     if (await done(s)) return s;
@@ -105,7 +109,13 @@ async function drive(page, done, o) {
     if (s.mg || s.mode === 'minigame') { await sleep(300); continue; }
     if (s.rec === 'prompt') { await page.keyboard.press('KeyE'); await sleep(250); continue; }
     if (s.panel) { if (o.panel && (await o.panel(s)) !== false) { await sleep(200); continue; } await page.keyboard.press('KeyE'); await sleep(350); continue; }
-    if (s.dialog || s.mode === 'dialogue') { await sleep(120); continue; }
+    if (s.dialog || s.mode === 'dialogue') {
+      // with skipDialogue on every new line resolves at once: a box that stays up was shown before it
+      dlgT = dlgT || Date.now();
+      if (Date.now() - dlgT > 1500) { await page.keyboard.press('KeyE'); dlgT = Date.now(); }
+      await sleep(120); continue;
+    }
+    dlgT = 0;
     if (s.mode === 'play') {
       if (s.gallery) { await galleryKeys(page, s); continue; }
       if (s.offer && STORY_OFFER.test(s.offer) && (!s.target || s.dist <= 44)) { await page.keyboard.press('KeyE'); await sleep(220); continue; }
@@ -380,6 +390,7 @@ async function reloadContinue(page) {
     await page.evaluate(() => N.debug.startMission('last_bell'));
     await waitMission(page, 'last_bell', 6000);
     await page.waitForFunction(() => /21 NOV 2003/.test(N.calendar.label()), null, { timeout: 6000 }).catch(() => {});
+    await page.waitForFunction(() => N.tape.paused && N.missions.active && !N.calendar.jumping, null, { timeout: 6000 }).catch(() => {});
     check(await page.evaluate(() => /21 NOV 2003/.test(N.calendar.label()) && N.tape.paused), 'M11: FRI 21 NOV 2003, the counter still ■ PAUSED');
     let riddle = false, riddleDone = false, parapetShot = false;
     const rst = { choices: [1, 0], ci: 0, dbg: 0 };
@@ -467,7 +478,7 @@ async function reloadContinue(page) {
     await drive(page, (s) => s.scene === 'ending', { timeout: 20000 });
     check(await page.evaluate(() => N.flags.no_save === true && N.menus.canSave().ok === false), 'the ending cannot be saved half-way (N.flags.no_save)');
     const end = { atPlaza: null, kites: null, plane: false, rise: false };
-    await page.evaluate(() => { window.__s2ev = []; N.on('story2:ending', (d) => window.__s2ev.push(d.phase)); N.on('story2:epilogue', (d) => window.__s2ev.push('epi:' + d.phase)); window.__lines = []; N.on('dialogue:line', (d) => window.__lines.push([d.speaker, d.text])); });
+    await page.evaluate(() => { window.__s2ev = []; N.on('story2:ending', (d) => window.__s2ev.push(d.phase)); N.on('story2:epilogue', (d) => { const c = N.places.charminar; window.__s2ev.push('epi:' + d.phase + ':' + Math.round(Math.hypot(N.player.x - c.x, N.player.y - c.y))); }); window.__lines = []; N.on('dialogue:line', (d) => window.__lines.push([d.speaker, d.text])); });
     await drive(page, (s) => s.scene !== 'ending', {
       timeout: 240000,
       each: async (s) => {
@@ -543,7 +554,9 @@ async function reloadContinue(page) {
     check(radio.length === 3 && /Pinky of Malakpet/.test(radio[0]) && /7 pm Java batch/.test(radio[1]) && /bangle sellers of Laad Bazaar/.test(radio[2]), 'Side B\'s tail: the 3 dedication cassettes found play as lines', radio);
     check(hiss === 9, 'Side B\'s tail: the 9 missed ones are tape hiss', hiss);
     check(ap.lines.some((l) => l[0] === 'imran_tape' && /promoted/.test(l[1])), 'all four Agent tapes found: "Agent, you are promoted."');
-    check(ap.player < 320, 'the epilogue ends on the Charminar plaza (Café Noor-e-Iran)', ap.player);
+    const coda = (await page.evaluate(() => window.__s2ev.slice())).filter((e) => /^epi:/.test(e));
+    const codaAt = coda.find((e) => /^epi:coda:/.test(e));
+    check(codaAt && +codaAt.split(':')[2] < 320, 'the epilogue ends on the Charminar plaza (Café Noor-e-Iran) at the coda', coda);
 
     }
     if (from('END')) {

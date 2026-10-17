@@ -39,6 +39,16 @@ async function boot(browser) {
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
   if (!process.env.REAL_FONTS) await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '/* stubbed */' }));
+  // three.js for the 3D view: the vendored copy at the CDN URL (hermetic, as tests/view3d.cjs does)
+  const THREE_JS = fs.readFileSync(path.join(ROOT, 'vendor/three/three.min.js'), 'utf8');
+  await page.route(/cdn\.jsdelivr\.net\/npm\/three@/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_JS }));
+  // PIN_FILES=src/world.js,...: serve those files as committed (git HEAD), to test this module while other
+  // agents have a half-edited copy of theirs on disk
+  for (const f of (process.env.PIN_FILES || '').split(',').filter(Boolean)) {
+    const body = require('child_process').execSync('git -C "' + ROOT + '" show HEAD:./' + f, { maxBuffer: 64 << 20 }).toString();
+    await page.route('**/' + f, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body }));
+    console.log('       (pinned ' + f + ' to git HEAD)');
+  }
   await page.goto(URL);
   await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 30000 });
   await page.click('#title-start').catch(() => {});
@@ -71,6 +81,8 @@ const fresh = (page, o) => page.evaluate((o) => {
 // "the interact system has caught up")
 const frames = (page, n) => page.evaluate((n) => new Promise((res) => { const f0 = N.time.frame, t0 = performance.now(); (function chk() { if (N.time.frame - f0 >= n || performance.now() - t0 > 6000) res(); else requestAnimationFrame(chk); })(); }), n || 4);
 const label = async (page) => { await frames(page, 4); return page.evaluate(() => N.input.actionLabel); };
+// wait until `secs` of GAME time have passed (key holds measured in game time, not wall-clock time)
+const gameWait = (page, secs) => page.evaluate((secs) => new Promise((res) => { const g0 = N.time.now, t0 = performance.now(); (function chk() { if (N.time.now - g0 >= secs || performance.now() - t0 > secs * 1000 * 8 + 4000) res(N.time.now - g0); else requestAnimationFrame(chk); })(); }), secs);
 async function checkErrors(page, errors, where) {
   const ne = await page.evaluate(() => N.errors.map((e) => e.where + ': ' + e.msg.split('\n')[0]));
   check(errors.length === 0 && ne.length === 0, 'no console / page / engine errors (' + where + ')', { console: errors.slice(0, 5), engine: ne.slice(0, 5) });
@@ -179,24 +191,32 @@ async function main() {
       // full throttle down the road for 4 s: top speed, time to 80 u/s, max kid wobble
       await page.evaluate(() => {
         const v = window.__v; window.__rec = { t0: N.time.now, max: 0, t80: null, wob: 0, x0: v.x, y0: v.y, a0: v.angle };
-        N.addSystem({ id: '__rec', order: 31, runIn: ['play'], update() { const v = window.__v, R = window.__rec; if (!v) return; R.max = Math.max(R.max, v.speed); if (R.t80 == null && v.speed >= 80) R.t80 = N.time.now - R.t0; R.wob = Math.max(R.wob, Math.abs(v.wobble || 0)); } });
+        N.addSystem({ id: '__rec', order: 31, runIn: ['play'], update() { const v = window.__v, R = window.__rec; if (!v) return; R.max = Math.max(R.max, v.speed); if (R.t80 == null && v.speed >= 80) R.t80 = N.time.now - R.t0; R.wob = Math.max(R.wob, Math.abs(v.wobble || 0));
+          // exact game-time windows from the first step the key registers: 0.2 s of A (yaw), 0.5 s of S (brake)
+          if (R.steer && R.sT == null && v.ctl.steer < -0.5) { R.sT = N.time.now; R.sA = v.angle; }
+          if (R.sT != null && R.da == null && N.time.now - R.sT >= 0.2) R.da = -N.util.angleDiff(R.sA, v.angle);
+          if (R.brake && R.bT == null && v.ctl.throttle < -0.5) { R.bT = N.time.now; R.bS = v.speed; }
+          if (R.bT != null && R.bd == null && N.time.now - R.bT >= 0.5) R.bd = R.bS - v.speed;
+        } });
       });
       await page.keyboard.down('KeyW');
-      await sleep(4000);
+      await gameWait(page, 4);
       st = await page.evaluate(() => { const v = window.__v, R = window.__rec; return { max: R.max, t80: R.t80, wob: R.wob, top: v.T.maxSpeed, along: (v.x - R.x0) * Math.cos(R.a0) + (v.y - R.y0) * Math.sin(R.a0), shout: window.__ev.filter((e) => e[0] === 'vehicle:autoShout').length }; });
       rides[type] = st;
-      // steer at speed: yaw over 0.45 s of D
-      const a0 = await page.evaluate(() => window.__v.angle);
-      await page.keyboard.down('KeyD'); await sleep(450); await page.keyboard.up('KeyD');
-      st.da = await page.evaluate((a0) => N.util.angleDiff(a0, window.__v.angle), a0);
-      await page.keyboard.down('KeyA'); await sleep(450); await page.keyboard.up('KeyA');
+      // steer at speed: yaw over 0.2 s (game time) of A (towards the kerb: sd_rd has lamp posts on its median),
+      // then D back; a wall bump in the window would spin the bike, so it is recorded
+      await page.evaluate(() => { window.__bumped = 0; window.__bh = (d) => { if (d && d.wall && (d.vehicle === window.__v || d.a === window.__v)) window.__bumped++; }; N.on('bump', window.__bh); window.__rec.steer = true; });
+      await page.keyboard.down('KeyA'); await page.waitForFunction(() => window.__rec.da != null, null, { timeout: 20000 }).catch(() => {});
+      st.da = await page.evaluate(() => window.__rec.da || 0);
+      await page.keyboard.up('KeyA');
+      await page.keyboard.down('KeyD'); await gameWait(page, 0.2); await page.keyboard.up('KeyD');
+      st.bumped = await page.evaluate(() => { N.off('bump', window.__bh); return window.__bumped; });
       await page.keyboard.up('KeyW');
-      // brake 0.5 s
-      const s0 = await page.evaluate(() => window.__v.speed);
-      await page.keyboard.down('KeyS'); await sleep(500);
-      const s1 = await page.evaluate(() => window.__v.speed);
+      // brake 0.5 s of game time (the rate per game second, whatever the frame rate)
+      st.s0 = await page.evaluate(() => { window.__rec.brake = true; return window.__v.speed; });
+      await page.keyboard.down('KeyS'); await page.waitForFunction(() => window.__rec.bd != null, null, { timeout: 20000 }).catch(() => {});
+      st.brake = await page.evaluate(() => window.__rec.bd || 0);
       await page.keyboard.up('KeyS');
-      st.brake = s0 - s1; st.s0 = s0;
       // horn (bell / peep / pom-pom), then stop and get off with E
       await page.keyboard.press('Space');
       await page.keyboard.down('KeyS'); await sleep(1300); await page.keyboard.up('KeyS');
@@ -206,7 +226,7 @@ async function main() {
       await page.evaluate(() => { const i = N.systems.list.findIndex((q) => q.id === '__rec'); if (i >= 0) N.systems.list.splice(i, 1); });
       console.log('       ' + type + ': top ' + st.max.toFixed(1) + '/' + st.top + ', 0-80 ' + (st.t80 == null ? '—' : st.t80.toFixed(2) + ' s') + ', yaw ' + st.da.toFixed(2) + ' rad, brake -' + st.brake.toFixed(0) + ' u/s in 0.5 s' + (st.wob ? ', wobble ' + st.wob.toFixed(2) : ''));
       check(st.along > 150 && st.max > st.top * 0.8 && st.max <= st.top * 1.03, type + ': W rides up to ' + st.max.toFixed(0) + ' u/s (top ' + st.top + ')', st);
-      check(st.da > 0.12 && st.brake > 30, type + ': D steers (' + st.da.toFixed(2) + ' rad), S brakes (-' + st.brake.toFixed(0) + ')', st);
+      check(st.da > 0.08 && st.brake > 30 && !st.bumped, type + ': A steers (' + st.da.toFixed(2) + ' rad in 0.2 s), S brakes (-' + st.brake.toFixed(0) + '), no wall hit', st);
       check(!off.veh && off.mode === 'foot' && off.walk, type + ': E gets him off', off);
     }
     if (rides.hero_cycle && rides.hercules_cycle) {
@@ -618,6 +638,16 @@ async function main() {
       return { scooty: !!N.flags.unlock_scooty, nakko: ak ? N.vehicles.nakko(ak) : 'none' };
     });
     check(old.scooty && old.nakko === null, 'an old save with unlock_chetak: Akka\'s Scooty is unlocked too', old);
+    // an old save with "Bunty's RX100, any day" (unlock_rx100, e.g. from SA6) and fewer than 60 finds
+    const oldRx = await page.evaluate(() => {
+      N.debug.newGame({ skipIntro: true });
+      N.flags.unlock_rx100 = true; delete N.flags.unlock_bunty_pillion; delete N.flags.unlock_hercules_gears;
+      N.collectibles.deserialize({ found: [], ladder: [] });
+      N.vehicles.seedHome();
+      return { pill: !!N.flags.unlock_bunty_pillion, gears: !!N.flags.unlock_hercules_gears, herc: N.vehicles.list.some((v) => v.type === 'hercules_gears' && v.alive), std: N.shops.rows('std_1').map((r) => r.id).indexOf('call_bunty') >= 0, canRx: N.vehicles.canDrive('bunty_rx100') };
+    });
+    check(oldRx.pill && oldRx.gears && oldRx.herc && oldRx.std && !oldRx.canRx, 'an old save with unlock_rx100: Bunty-anna pillion + his geared Hercules at home, the RX100 itself pillion-only', oldRx);
+    await page.evaluate(() => { N.debug.skipDialogue(true); });
     await checkErrors(page, errors, 'ladder');
   }
 
@@ -749,7 +779,7 @@ async function main() {
     const freeLb = await label(page);
     await page.evaluate(() => { Object.defineProperty(N.missions, 'active', window.__d0); if (N.player.vehicle) N.vehicles.exit(N.player, true); });
     check(r && lockedLb !== 'Get off' && freeLb === 'Get off', 'locked pillion ride: no "Get off" during the mission ("' + lockedLb + '"), "' + freeLb + '" once it ends', { r, lockedLb, freeLb });
-    // 9. ticket punch: free bus rides
+    // 8. ticket punch: free bus rides
     await parkAhead(page, 'bus', { driver: 'npc' });
     await page.evaluate(() => { window.__v.controller = (q) => { q.ctl.throttle = 0; q.ctl.brake = true; }; N.player.inventory.add('ticket_punch'); });
     const pl = await label(page);
@@ -759,7 +789,7 @@ async function main() {
     r = await page.evaluate((m0) => ({ on: N.player.vehicle === window.__v, paid: m0 - N.player.money }), m0);
     await page.evaluate(() => { N.player.inventory.delete('ticket_punch'); if (N.player.vehicle) N.vehicles.exit(N.player, true); });
     check(/punch/.test(pl) && r.on && r.paid === 0, 'Ticket Thatha\'s punch: "' + pl + '", free', r);
-    // 10. the fare card: Escape closes it for good (no instant re-open); ACTION next to the auto reopens it
+    // 9. the fare card: Escape closes it for good (no instant re-open); ACTION next to the auto reopens it
     await page.evaluate(() => { N.vehicles.list.slice().forEach((v) => { if (!v.seeded) N.vehicles.remove(v); }); });
     await parkAhead(page, 'auto', { driver: 'npc' });
     await page.evaluate(() => { window.__v.trafficOwned = true; });
@@ -776,7 +806,7 @@ async function main() {
     const open2 = await page.evaluate(() => !!N.shops.isOpen());
     await page.evaluate(() => { if (N.shops.isOpen()) N.shops.close(); const SS = N.shops.debug.S; if (SS.hail && SS.hail.v) N.vehicles.remove(SS.hail.v); SS.hail = null; });
     check(open1 && !reopened && /fare/.test(again || '') && open2, 'fare card: Escape keeps it shut, "' + again + '" + E opens it again', { open1, reopened, again, open2 });
-    // 11. potholes: no tunnelling (a 1.3 u pothole at 120 u/s), one hit per pothole per wheel, the rear wheel's
+    // 10. potholes: no tunnelling (a 1.3 u pothole at 120 u/s), one hit per pothole per wheel, the rear wheel's
     //     follow-through is a softer thump (no second speed loss or roll), and one comic fall per 45 s at most
     const pt = await page.evaluate(async () => {
       const r0 = window.__road, out = {};
@@ -793,10 +823,10 @@ async function main() {
         N.player.teleport(r0.x + c * (20 + dist) - s * 30, r0.y + s * (20 + dist) + c * 30);
         const evs = [], sp = [];
         const h = (d) => { if (d.vehicle === v) evs.push({ wheel: d.wheel, follow: !!d.follow, speed: Math.round(d.speed) }); };
-        N.on('vehicle:pothole', h);
+        N.on('vehicle:pothole', h); N.on('vehicle:potholeRear', h);
         const t0 = performance.now();
         while (performance.now() - t0 < 2600) { await new Promise((res) => requestAnimationFrame(res)); sp.push(v.speed); }
-        N.off && N.off('vehicle:pothole', h);
+        if (N.off) { N.off('vehicle:pothole', h); N.off('vehicle:potholeRear', h); }
         N.vehicles.remove(v);
         return { evs, nan: sp.some((x) => !isFinite(x)) };
       };
@@ -830,12 +860,13 @@ async function main() {
     check(full(pt.hero) === 1 && fol(pt.hero) <= 1, 'a Hero at 45 u/s: one pothole = one hit (+ the softer rear thump), not two penalties', pt.hero);
     check(pt.falls === 1, 'two forced fall rolls back to back: one DHADAAM (45 s of grace)', pt.falls);
     check(pt.nanSafe, 'junk pothole data (NaN depth, empty object): no NaN in the vehicle');
-    // 12. 3D view (V): the same rules (refusal, no driving)
+    // 11. 3D view (V): the same rules (refusal, no driving)
     const has3d = await page.evaluate(() => !!(N.view && N.view.set));
     if (has3d) {
       await page.evaluate(() => { N.vehicles.list.slice().forEach((v) => { if (!v.seeded) N.vehicles.remove(v); }); });
       await parkAhead(page, 'chetak');
       await page.keyboard.press('KeyV');
+      await page.waitForFunction(() => N.view.mode !== 'top', null, { timeout: 90000 }).catch(() => {});
       await frames(page, 12);
       const vm = await page.evaluate(() => N.view.mode);
       const l3 = await label(page);
@@ -844,9 +875,22 @@ async function main() {
       const in3 = await page.evaluate(() => N.player.vehicle && N.player.vehicle.type);
       await page.evaluate(() => N.view.set('top'));
       await frames(page, 6);
-      check(l3 === 'Too small to drive' && !in3, '3D view (' + vm + '): a parked Chetak still says "' + l3 + '" and E does not drive it', { l3, in3, vm });
+      check(l3 === 'Too small to drive' && !in3 && vm !== 'top', '3D view (' + vm + '): a parked Chetak still says "' + l3 + '" and E does not drive it', { l3, in3, vm });
     }
-    // 8. save + load at the wheel of a car (debug) or as a bus passenger: back on foot, no stray copy left behind
+    // 12. touch / stick (point-to-steer): the kid's wobbly Scooty and the heavy Hero still hold a line, and turn
+    //     to a new stick direction
+    for (const type of ['scooty', 'hero_cycle']) {
+      await parkAhead(page, type);
+      await page.evaluate(() => { N.vehicles.enter(N.player, window.__v); const a = window.__road.angle; N.input.setMove(Math.cos(a), Math.sin(a), true); });
+      await sleep(2600);
+      const st1 = await page.evaluate(() => { const v = window.__v; return { sp: v.speed, top: v.T.maxSpeed, err: Math.abs(N.util.angleDiff(v.angle, window.__road.angle)), wob: v.wobble || 0 }; });
+      await page.evaluate(() => { const a = window.__road.angle - Math.PI / 2; N.input.setMove(Math.cos(a), Math.sin(a), true); });
+      await sleep(1500);
+      const st2 = await page.evaluate(() => { const v = window.__v; return { err: Math.abs(N.util.angleDiff(v.angle, window.__road.angle - Math.PI / 2)) }; });
+      await page.evaluate(() => { N.input.setMove(null); if (N.player.vehicle) N.vehicles.exit(N.player, true); });
+      check(st1.sp > st1.top * 0.7 && st1.err < 0.3 && st2.err < 0.5, type + ' on the stick: ' + st1.sp.toFixed(0) + ' u/s holding the line (heading error ' + st1.err.toFixed(2) + ' rad), turns to a new stick direction (' + st2.err.toFixed(2) + ' rad off)', { st1, st2 });
+    }
+    // 13. save + load at the wheel of a car (debug) or as a bus passenger: back on foot, no stray copy left behind
     r = await page.evaluate(async () => {
       const p = N.player, r0 = window.__road;
       N.vehicles.list.slice().forEach((v) => { if (!v.seeded) N.vehicles.remove(v); });

@@ -2316,8 +2316,8 @@
   // Sound captions (systems §14.2): important gameplay sounds tell the HUD, even when audio is off.
   const CAPTIONS = { whistle: 'whistle', gurkha: 'lathi tok-tok', chappal_whoosh: 'chappal whoosh', chappal: 'thup!', peel_slip: 'slip!',
     dog_bark: 'dog barking', bus_horn: 'bus horn', lorry_horn: 'lorry horn', train_horn: 'train horn', std_ring: 'phone ringing',
-    school_bell: 'school bell', dappu: 'dappu drums', conductor: '"Right, right!"' };
-  const CAP_MAX = { dog_bark: 260, bus_horn: 320, lorry_horn: 320, train_horn: 600, school_bell: 400, std_ring: 160, conductor: 260 };
+    school_bell: 'school bell', dappu: 'dappu drums', conductor: '"Right, right!"', pothole: 'dhadak!' };
+  const CAP_MAX = { dog_bark: 260, bus_horn: 320, lorry_horn: 320, train_horn: 600, school_bell: 400, std_ring: 160, conductor: 260, pothole: 90 };
   function captionFor(name, o) {
     const text = CAPTIONS[name];
     if (!text || o.bus === 'amb' || o.noCaption) return;

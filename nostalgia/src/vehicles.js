@@ -27,7 +27,8 @@
  * reads it), N.render.shake(1.5) for the player, sfx 'pothole' (louder with speed, variant 'wet' after
  * rain), dust / muddy drops, 4% puncture (pedal cycles), 2% comic fall above 80% of top speed (bikes,
  * player.fall: DHADAAM, never hurt). On foot: a tiny stumble (+ splash when wet), 'player:stumble'.
- * Events: 'vehicle:pothole' {vehicle, speed, depth, severity, wet, wheel, x, y, player}.
+ * Events: 'vehicle:pothole' {vehicle, speed, depth, severity, wet, wheel, x, y, player} once per pothole (the
+ * rear wheel dropping into the same one is 'vehicle:potholeRear', a softer thump with no second penalty).
  *
  * Conventions: a type's `w` is its LENGTH along the heading and `d` its WIDTH. Local vehicle
  * coordinates: +x forward, +y to the right. Vehicles are entities with `selfUpdate` and
@@ -846,10 +847,12 @@
   }
   /** Each frame while the player rides along: honour "Ask to stop" and drop him when it is slow. */
   function passengerTick(p, v, dt) {
-    if (!v.alive || !npcDriven(v)) { passengerExit(p, true); return; }
+    const d = v.driver;
+    if (!v.alive || !d || d === p || d.alive === false) { passengerExit(p, true); return; } // nobody driving any more
     if (v.lockPassenger) {
-      // the mission that locked the seat has ended, or (free roam) the ride has sat still for 8 s
-      v.rideStill = Math.abs(v.speed) < 3 ? (v.rideStill || 0) + dt : 0;
+      // the mission that locked the seat has ended, or (free roam) the ride has sat still for 8 s of play
+      // (cutscenes and conversations don't count)
+      v.rideStill = Math.abs(v.speed) < 3 ? (v.rideStill || 0) + (N.state.mode === 'play' && !p.controlsLocked ? dt : 0) : 0;
       const M = N.missions;
       if (v.lockRun ? !(M && M.active === v.lockRun) : v.rideStill > TUNE.lockStuck) { v.lockPassenger = false; v.lockRun = null; }
     }
@@ -865,6 +868,8 @@
     const v = actor && actor.vehicle;
     if (!v) return false;
     if (actor.passenger || (v.passenger === actor && v.driver !== actor)) {
+      // a story holds the seat (ride(.., {lock})): only a forced exit (teleport, despawn, a fall) gets him off
+      if (!instant && v.lockPassenger) return false;
       // riding along: get down at once when slow (or forced), otherwise ask the driver to stop
       if (!instant && Math.abs(v.speed) > 20 && v.driver && v.driver !== actor) {
         if (!v.stopReq) { v.stopReq = 1; if (actor === N.player) toast(v.T.cls === 'heavy' ? '"Stop, stop! Getting down!" The conductor whistles twice.' : '"Uncle, stop here please!"', 1800); }
@@ -913,9 +918,12 @@
     if (v.driver && !npcDriven(v)) return false;
     return true;
   }
-  // "No" offers (a refusal, "Nakko", no lifts) only show up close by and below every other interaction
-  // (shops, NPCs, side activities at -1), and never hide a rideable vehicle further away.
+  // "No" offers (a refusal, "Nakko", no lifts) sit below every other interaction (shops, NPCs, side
+  // activities at -1). The generic ones (any Chetak, car, lorry; no lifts) also show up only close by and
+  // never hide a rideable vehicle within reach; a named "Nakko" (Akka's Scooty before 30 finds, the VIP
+  // car...) carries a hint, so it competes by distance.
   const NO_KINDS = { refuse: 1, nakko: 1, nolift: 1 };
+  const SHY_KINDS = { refuse: 1, nolift: 1 };
   function bestOffer(p) {
     const near = N.entities.query(p.x, p.y, 18 + 34, isVehicle);
     let yes = null, yd = 18, no = null, nd = TUNE.noR;
@@ -925,7 +933,7 @@
       if (d >= yd && d >= nd) continue;
       const o = offerFor(v);
       if (!o) continue;
-      if (NO_KINDS[o.kind]) { if (d < nd) { nd = d; no = { v, d, o }; } } else if (d < yd) { yd = d; yes = { v, d, o }; }
+      if (SHY_KINDS[o.kind]) { if (d < nd) { nd = d; no = { v, d, o }; } } else if (d < yd) { yd = d; yes = { v, d, o }; }
     }
     return yes || no;
   }
@@ -2406,11 +2414,13 @@
       // a bike lying on its side after a fall: pick it up (systems §2.6)
       const fb = nearestFallen(p);
       if (fb) { pickSpec.label = 'Pick up ' + fb.v.T.short; pickSpec.dist = fb.d; pickSpec.target = fb.v; N.interact.offer(pickSpec); }
-    } else if (pv && p.passenger && !p.controlsLocked && !pv.lockPassenger) {
-      // riding along: "Get off" (asks the driver to stop first when moving)
-      exitSpec.label = Math.abs(pv.speed) > 20 && !pv.stopReq ? 'Ask to stop' : 'Get off';
-      exitSpec.use = useExit;
-      N.interact.offer(exitSpec);
+    } else if (pv && p.passenger) {
+      // riding along: "Get off" (asks the driver to stop first when moving); none while a story locks the seat
+      if (!p.controlsLocked && !pv.lockPassenger) {
+        exitSpec.label = Math.abs(pv.speed) > 20 && !pv.stopReq ? 'Ask to stop' : 'Get off';
+        exitSpec.use = useExit;
+        N.interact.offer(exitSpec);
+      }
     } else if (pv && !pv.locked && !p.controlsLocked) {
       exitSpec.label = pv.T.cls === 'bike' ? 'Get off' : pv.T.cls === 'boat' ? 'Get out' : 'Get out';
       exitSpec.use = useExit;
@@ -2574,17 +2584,18 @@
     const R = sweepWheel(pw[2], pw[3], rx, ry, v._potR == null ? (v.potR ? true : null) : v._potR);
     pw[0] = fx; pw[1] = fy; pw[2] = rx; pw[3] = ry;
     v._potF = F.state; v._potR = R.state; v.potF = F.state != null; v.potR = R.state != null;
-    if (F.hit) {
-      if (v.potCD <= 0) hitPothole(v, F.hit, 'front', ax, mine, p, fhx, fhy);
-      v._potLast = { k: potKey(F.hit), x: fhx, y: fhy, r: +F.hit.r || 5, t: v.age };
-    }
-    if (R.hit) {
-      const L = v._potLast, k = potKey(R.hit);
-      const same = !!L && v.age - L.t < (2 * ax) / Math.max(4, sp) + 0.6 &&
-        ((k != null && k === L.k) || Math.hypot(wheelHit.x - L.x, wheelHit.y - L.y) < L.r * 1.25 + 3);
-      if (same) { v._potLast = null; rearThump(v, R.hit, mine, p, wheelHit.x, wheelHit.y, v.age - L.t); }
-      else if (v.potCD <= 0) hitPothole(v, R.hit, 'rear', -ax, mine, p, wheelHit.x, wheelHit.y);
-    }
+    // the leading wheel (front, or rear when reversing) takes the hit; the trailing one dropping into the same
+    // pothole a moment later is the follow-through
+    const wheelIn = (ph, wheel, off, hx, hy) => {
+      const L = v._potLast, k = potKey(ph);
+      const same = !!L && L.w !== wheel && v.age - L.t < (2 * ax) / Math.max(4, sp) + 0.6 &&
+        ((k != null && k === L.k) || Math.hypot(hx - L.x, hy - L.y) < L.r * 1.25 + 3);
+      if (same) { v._potLast = null; rearThump(v, ph, mine, p, hx, hy, v.age - L.t, wheel); return; }
+      if (v.potCD <= 0) hitPothole(v, ph, wheel, off, mine, p, hx, hy);
+      v._potLast = { w: wheel, k, x: hx, y: hy, r: +ph.r || 5, t: v.age };
+    };
+    if (F.hit) wheelIn(F.hit, 'front', ax, fhx, fhy);
+    if (R.hit) wheelIn(R.hit, 'rear', -ax, wheelHit.x, wheelHit.y);
   }
   function potSev(v, ph) {
     const T = v.T;
@@ -2623,7 +2634,7 @@
     }
   }
   /** The rear wheel follows the front one into the same pothole: a smaller jolt and a softer "-dak". */
-  function rearThump(v, ph, mine, p, x, y, after) {
+  function rearThump(v, ph, mine, p, x, y, after, wheel) {
     const T = v.T, sp = Math.abs(v.speed);
     if (!(sp >= 0)) return;
     const sev = potSev(v, ph), spf = U.clamp(sp / Math.max(1, T.maxSpeed), 0, 1.2);
@@ -2634,7 +2645,8 @@
     // a bike's two drops come ~0.1 s apart: the pothole sound already has its second "dak" in it
     if (after > 0.16 && N.audio && N.audio.sfx) N.audio.sfx('pothole', { x, y, vol: U.clamp(0.2 + 0.5 * spf, 0.18, 0.7) * (mine ? 1 : 0.7), variant: wet ? 'wet' : null, pitch: T.cls === 'heavy' ? 0.62 : T.cls === 'bike' ? 1.25 : 0.9, key: v.sid });
     if (wet) potholeFx(x, y, true, sev * 0.5, sp);
-    N.emit('vehicle:pothole', { vehicle: v, speed: sp, depth: ph.depth, severity: sev * TUNE.potholeRear, wet, wheel: 'rear', follow: true, x, y, player: mine });
+    // its own event: one pothole stays ONE 'vehicle:pothole' for listeners that count them (cargo meters)
+    N.emit('vehicle:potholeRear', { vehicle: v, speed: sp, depth: ph.depth, severity: sev * TUNE.potholeRear, wet, wheel: wheel || 'rear', follow: true, x, y, player: mine });
     if (mine && N.render && N.render.shake && !reducedMotion()) N.render.shake(TUNE.potholeShake * 0.4 * U.clamp(sev, 0.35, 1), 0.15);
   }
   function potholeFx(x, y, wet, sev, sp) {

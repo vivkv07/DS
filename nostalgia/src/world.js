@@ -7,6 +7,15 @@
  * (WORLD_DATA.roofs / planks) -> N.world.roofs, N.player.level; podium junctions -> N.world.podiums.
  * Interactables and offers carry a level (spec.level = roof id | 'roof' | 'ground' | '*'; by default
  * the level of their point), see ARCHITECTURE §7 "Roof zones".
+ * Map v2 (world-engine + potholes agent, amendments A1/A2):
+ *  - Every grid / index is sized at build() time from the data: WORLD_DATA.size [w, h] when present
+ *    (it then sets N.WORLD_W / N.WORLD_H), else N.WORLD_W / N.WORLD_H (worlddata.js may set them at
+ *    its top). Works with the v1 8000 x 6000 map and the v2 real-geography map (15000 x 11250).
+ *  - Districts may be polygons: `poly` ([[x, y], ...] or a list of rings) or `polys` ([{outer, holes}]
+ *    or a list of rings); `rect` is the fallback. Rasterised on a 32 u lookup grid (later wins), small
+ *    gaps between polygons go to the nearest district. N.world.districtLabel(d) -> [x, y].
+ *  - Potholes (A2): deterministic per road segment, N.world.potholeAt(x, y) and N.world.potholes
+ *    (see "Potholes" below and ARCHITECTURE §7 "Potholes").
  */
 (() => {
   'use strict';
@@ -14,15 +23,24 @@
   const U = N.util;
   const S = N.SURF;
   const CELL = N.CELL;
-  const GW = Math.ceil(N.WORLD_W / CELL), GH = Math.ceil(N.WORLD_H / CELL);
   const BK = 256; // structure / decal bucket size (= render chunk size)
-  const BW = Math.ceil(N.WORLD_W / BK), BH = Math.ceil(N.WORLD_H / BK);
+  // grid sizes: computed in sizeGrids() at build time (the data decides the world size)
+  let GW = 0, GH = 0, BW = 0, BH = 0;
 
   const W = (N.world = {
     GW, GH, grid: null, data: null, built: false,
     structures: [], trees: [], lamps: [], rocks: [], lots: [],
     roads: null, districts: [],
   });
+  /** Size every grid from the data (WORLD_DATA.size) or N.WORLD_W / N.WORLD_H. */
+  function sizeGrids(D) {
+    const sz = D && D.size;
+    if (Array.isArray(sz) && sz[0] > 0 && sz[1] > 0 && isFinite(sz[0]) && isFinite(sz[1])) { N.WORLD_W = +sz[0]; N.WORLD_H = +sz[1]; }
+    GW = Math.ceil(N.WORLD_W / CELL); GH = Math.ceil(N.WORLD_H / CELL);
+    BW = Math.ceil(N.WORLD_W / BK); BH = Math.ceil(N.WORLD_H / BK);
+    DGW = Math.ceil(N.WORLD_W / DG); DGH = Math.ceil(N.WORLD_H / DG);
+    W.GW = GW; W.GH = GH; W.size = [N.WORLD_W, N.WORLD_H];
+  }
 
   let grid = null;
 
@@ -53,26 +71,37 @@
   W.isWater = (x, y) => surfAt(x, y) === S.WATER;
 
   /* -------------------------------------------------------- rasterising */
-  // map(old) -> new surface or -1 to keep
-  function setIJ(i, j, map) {
-    if (i < 0 || j < 0 || i >= GW || j >= GH) return;
-    const o = j * GW + i;
-    const v = map(grid[o]);
-    if (v >= 0) grid[o] = v;
+  // A surface rule is map(old) -> new surface or -1 to keep. It is turned into a 16-entry lookup
+  // table once per fill (lut[old] = new | -1), so the per-cell work is one table read (the bigger
+  // v2 world has ~10.5 M cells; a closure call per cell made the fills the slowest build phase).
+  const LUT = new Int8Array(16);
+  function lutOf(map) { for (let s = 0; s < 16; s++) { const v = map(s); LUT[s] = v >= 0 ? v : -1; } return LUT; }
+  const alwaysCache = [];
+  const always = (v) => alwaysCache[v] || (alwaysCache[v] = () => v);
+  // fill cells i0..i1 of row j through the current LUT
+  function spanLUT(j, i0, i1, lut) {
+    if (j < 0 || j >= GH) return;
+    if (i0 < 0) i0 = 0; if (i1 > GW - 1) i1 = GW - 1;
+    const row = j * GW;
+    for (let i = i0; i <= i1; i++) { const v = lut[grid[row + i]]; if (v >= 0) grid[row + i] = v; }
   }
-  const always = (v) => () => v;
 
   function fillRect(x, y, w, h, map) {
     const i0 = Math.max(0, Math.round(x / CELL)), i1 = Math.min(GW - 1, Math.round((x + w) / CELL) - 1);
     const j0 = Math.max(0, Math.round(y / CELL)), j1 = Math.min(GH - 1, Math.round((y + h) / CELL) - 1);
-    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) setIJ(i, j, map);
+    if (i1 < i0 || j1 < j0) return;
+    const lut = lutOf(map);
+    for (let j = j0; j <= j1; j++) spanLUT(j, i0, i1, lut);
   }
   function fillCircle(x, y, r, map) {
-    const i0 = Math.floor((x - r) / CELL), i1 = Math.floor((x + r) / CELL);
+    const lut = lutOf(map);
     const j0 = Math.floor((y - r) / CELL), j1 = Math.floor((y + r) / CELL);
-    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-      const cx = (i + 0.5) * CELL - x, cy = (j + 0.5) * CELL - y;
-      if (cx * cx + cy * cy <= r * r) setIJ(i, j, map);
+    for (let j = j0; j <= j1; j++) {
+      // cells whose centre is within r: |cx - x| <= sqrt(r² - dy²)
+      const dy = (j + 0.5) * CELL - y, h2 = r * r - dy * dy;
+      if (h2 < 0) continue;
+      const hw = Math.sqrt(h2);
+      spanLUT(j, Math.ceil((x - hw) / CELL - 0.5), Math.floor((x + hw) / CELL - 0.5), lut);
     }
   }
   function fillPoly(poly, map) {
@@ -80,6 +109,7 @@
     for (const p of poly) { if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1]; }
     const j0 = Math.max(0, Math.floor(minY / CELL)), j1 = Math.min(GH - 1, Math.floor(maxY / CELL));
     const xs = [];
+    const lut = lutOf(map);
     for (let j = j0; j <= j1; j++) {
       const y = (j + 0.5) * CELL;
       xs.length = 0;
@@ -88,25 +118,37 @@
         if ((ya > y) !== (yb > y)) xs.push(poly[a][0] + ((y - ya) / (yb - ya)) * (poly[b][0] - poly[a][0]));
       }
       xs.sort((p, q) => p - q);
-      for (let k = 0; k + 1 < xs.length; k += 2) {
-        const i0 = Math.max(0, Math.ceil(xs[k] / CELL - 0.5)), i1 = Math.min(GW - 1, Math.floor(xs[k + 1] / CELL - 0.5));
-        for (let i = i0; i <= i1; i++) setIJ(i, j, map);
-      }
+      for (let k = 0; k + 1 < xs.length; k += 2) spanLUT(j, Math.ceil(xs[k] / CELL - 0.5), Math.floor(xs[k + 1] / CELL - 0.5), lut);
     }
   }
+  // Thick polyline (a capsule per segment). Each row only visits the cells inside the segment's band
+  // (|distance to the line| <= r, widened by a cell), not the segment's whole bounding box.
   function fillThickLine(pts, w, map, closed) {
     const r = w / 2, r2 = r * r;
     const n = closed ? pts.length : pts.length - 1;
+    const lut = lutOf(map);
     for (let s = 0; s < n; s++) {
       const a = pts[s], b = pts[(s + 1) % pts.length];
-      const i0 = Math.floor((Math.min(a[0], b[0]) - r) / CELL), i1 = Math.floor((Math.max(a[0], b[0]) + r) / CELL);
-      const j0 = Math.floor((Math.min(a[1], b[1]) - r) / CELL), j1 = Math.floor((Math.max(a[1], b[1]) + r) / CELL);
-      const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
-      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-        const px = (i + 0.5) * CELL, py = (j + 0.5) * CELL;
-        let t = ((px - a[0]) * dx + (py - a[1]) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
-        const qx = a[0] + dx * t - px, qy = a[1] + dy * t - py;
-        if (qx * qx + qy * qy <= r2) setIJ(i, j, map);
+      const ax = a[0], ay = a[1], dx = b[0] - ax, dy = b[1] - ay, l2 = dx * dx + dy * dy || 1, L = Math.sqrt(l2);
+      const i0 = Math.max(0, Math.floor((Math.min(ax, b[0]) - r) / CELL)), i1 = Math.min(GW - 1, Math.floor((Math.max(ax, b[0]) + r) / CELL));
+      const j0 = Math.max(0, Math.floor((Math.min(ay, b[1]) - r) / CELL)), j1 = Math.min(GH - 1, Math.floor((Math.max(ay, b[1]) + r) / CELL));
+      // x range of the infinite band on a row: |(x - ax) * dy - (y - ay) * dx| / L <= r
+      const steep = Math.abs(dy) > 1e-6;
+      const half = steep ? Math.abs((r + CELL) * L / dy) : 0;
+      for (let j = j0; j <= j1; j++) {
+        const py = (j + 0.5) * CELL;
+        let lo = i0, hi = i1;
+        if (steep) {
+          const xc = ax + ((py - ay) * dx) / dy;
+          lo = Math.max(i0, Math.floor((xc - half) / CELL)); hi = Math.min(i1, Math.floor((xc + half) / CELL));
+        }
+        const row = j * GW;
+        for (let i = lo; i <= hi; i++) {
+          const px = (i + 0.5) * CELL;
+          let t = ((px - ax) * dx + (py - ay) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const qx = ax + dx * t - px, qy = ay + dy * t - py;
+          if (qx * qx + qy * qy <= r2) { const v = lut[grid[row + i]]; if (v >= 0) grid[row + i] = v; }
+        }
       }
     }
   }
@@ -195,23 +237,149 @@
   /* ========================================================== districts */
   const DG = 32; // district lookup resolution
   let distMap = null;
-  const DGW = Math.ceil(N.WORLD_W / DG), DGH = Math.ceil(N.WORLD_H / DG);
+  let DGW = 0, DGH = 0;
+  const isPt = (p) => Array.isArray(p) && p.length >= 2 && typeof p[0] === 'number';
+  /** A district's area as [{outer: [[x, y]...], holes: [[[x, y]...]...]}] (poly / polys), or null (rect). */
+  function districtRings(d) {
+    if (d._rings !== undefined) return d._rings;
+    const out = [];
+    const addRing = (r) => { if (Array.isArray(r) && r.length >= 3 && isPt(r[0])) out.push({ outer: r, holes: [] }); };
+    const addAny = (v) => {
+      if (!Array.isArray(v) || !v.length) return;
+      if (isPt(v[0])) { addRing(v); return; }                       // one ring
+      for (const q of v) {
+        if (q && !Array.isArray(q) && q.outer) out.push({ outer: q.outer, holes: (q.holes || []).filter((h) => Array.isArray(h) && h.length >= 3) });
+        else if (Array.isArray(q) && q.length && isPt(q[0])) addRing(q); // list of rings
+        else if (Array.isArray(q)) addAny(q);                       // nested (multipolygon)
+      }
+    };
+    addAny(d.poly); addAny(d.polys);
+    d._rings = out.length ? out : null;
+    return d._rings;
+  }
+  W.districtRings = districtRings;
+  /** Bounding box [x0, y0, x1, y1] of a district (polygon or rect). */
+  function districtBBox(d) {
+    if (d._bbox) return d._bbox;
+    const rings = districtRings(d);
+    if (rings) {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const r of rings) for (const p of r.outer) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
+      d._bbox = [x0, y0, x1, y1];
+    } else if (d.rect) d._bbox = [d.rect[0], d.rect[1], d.rect[0] + d.rect[2], d.rect[1] + d.rect[3]];
+    else d._bbox = [0, 0, 0, 0];
+    return d._bbox;
+  }
+  W.districtBBox = districtBBox;
+  // Scanline fill of polygon rings (even-odd, so holes cut out) on a grid of `cell` units:
+  // cb(j, i0, i1) for every run of cells whose centres are inside.
+  function scanRings(rings, cell, gw, gh, cb) {
+    let minY = Infinity, maxY = -Infinity;
+    const edges = [];
+    for (const r of rings) for (const ring of [r.outer].concat(r.holes || [])) {
+      for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
+        const A = ring[a], B = ring[b];
+        if (A[1] === B[1]) continue;
+        edges.push(A[0], A[1], B[0], B[1]);
+        if (A[1] < minY) minY = A[1]; if (A[1] > maxY) maxY = A[1];
+      }
+    }
+    const j0 = Math.max(0, Math.floor(minY / cell)), j1 = Math.min(gh - 1, Math.floor(maxY / cell));
+    const xs = [];
+    for (let j = j0; j <= j1; j++) {
+      const y = (j + 0.5) * cell;
+      xs.length = 0;
+      for (let k = 0; k < edges.length; k += 4) {
+        const ya = edges[k + 1], yb = edges[k + 3];
+        if ((ya > y) !== (yb > y)) xs.push(edges[k] + ((y - ya) / (yb - ya)) * (edges[k + 2] - edges[k]));
+      }
+      xs.sort((p, q) => p - q);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const i0 = Math.max(0, Math.ceil(xs[k] / cell - 0.5)), i1 = Math.min(gw - 1, Math.floor(xs[k + 1] / cell - 0.5));
+        if (i1 >= i0) cb(j, i0, i1);
+      }
+    }
+  }
+  W.scanRings = scanRings;
   function buildDistricts(list) {
-    distMap = new Uint8Array(DGW * DGH);
+    distMap = new Uint16Array(DGW * DGH);
+    for (const d of list) { d._rings = undefined; d._bbox = null; } // (re)read the shapes on every build
     list.forEach((d, idx) => {
+      const rings = districtRings(d);
+      if (rings) { scanRings(rings, DG, DGW, DGH, (j, i0, i1) => distMap.fill(idx + 1, j * DGW + i0, j * DGW + i1 + 1)); return; }
+      if (!d.rect) return;
       const [x, y, w, h] = d.rect;
       const i0 = Math.max(0, Math.floor(x / DG)), i1 = Math.min(DGW - 1, Math.floor((x + w - 1) / DG));
       const j0 = Math.max(0, Math.floor(y / DG)), j1 = Math.min(DGH - 1, Math.floor((y + h - 1) / DG));
-      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) distMap[j * DGW + i] = idx + 1; // later wins
+      for (let j = j0; j <= j1; j++) if (i1 >= i0) distMap.fill(idx + 1, j * DGW + i0, j * DGW + i1 + 1); // later wins
+    });
+    // polygon districts leave slivers between wards: cells within GAP_FILL cells of a district take
+    // the nearest one (breadth-first dilation); the land beyond the city stays null
+    if (list.some((d) => districtRings(d))) {
+      let front = [];
+      for (let o = 0; o < distMap.length; o++) if (distMap[o]) front.push(o);
+      const GAP_FILL = 6;
+      for (let step = 0; step < GAP_FILL && front.length; step++) {
+        const next = [];
+        for (const o of front) {
+          const v = distMap[o], i = o % DGW, j = (o - i) / DGW;
+          if (i > 0 && !distMap[o - 1]) { distMap[o - 1] = v; next.push(o - 1); }
+          if (i < DGW - 1 && !distMap[o + 1]) { distMap[o + 1] = v; next.push(o + 1); }
+          if (j > 0 && !distMap[o - DGW]) { distMap[o - DGW] = v; next.push(o - DGW); }
+          if (j < DGH - 1 && !distMap[o + DGW]) { distMap[o + DGW] = v; next.push(o + DGW); }
+        }
+        front = next;
+      }
+    }
+    // label anchors: the district cell nearest to the centroid of its cells
+    const sx = new Float64Array(list.length + 1), sy = new Float64Array(list.length + 1), sn = new Float64Array(list.length + 1);
+    for (let o = 0; o < distMap.length; o++) { const v = distMap[o]; if (!v) continue; const i = o % DGW; sx[v] += i; sy[v] += (o - i) / DGW; sn[v]++; }
+    list.forEach((d, idx) => {
+      const v = idx + 1;
+      d._cells = sn[v];
+      if (!sn[v]) { const bb = districtBBox(d); d._label = [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2]; return; }
+      const ci = sx[v] / sn[v], cj = sy[v] / sn[v];
+      let best = -1, bd = Infinity;
+      const R = 40;
+      for (let j = Math.max(0, Math.floor(cj - R)); j <= Math.min(DGH - 1, Math.ceil(cj + R)); j++) {
+        for (let i = Math.max(0, Math.floor(ci - R)); i <= Math.min(DGW - 1, Math.ceil(ci + R)); i++) {
+          if (distMap[j * DGW + i] !== v) continue;
+          const dd = (i - ci) ** 2 + (j - cj) ** 2;
+          if (dd < bd) { bd = dd; best = j * DGW + i; }
+        }
+      }
+      if (best < 0) { d._label = [(ci + 0.5) * DG, (cj + 0.5) * DG]; return; }
+      d._label = [((best % DGW) + 0.5) * DG, (Math.floor(best / DGW) + 0.5) * DG];
     });
   }
   W.districtAt = function (x, y) {
     if (!distMap) return null;
     const i = Math.floor(x / DG), j = Math.floor(y / DG);
-    if (i < 0 || j < 0 || i >= DGW || j >= DGH) return null;
+    if (!(i >= 0 && j >= 0 && i < DGW && j < DGH)) return null;
     const v = distMap[j * DGW + i];
-    return v ? W.districts[v - 1] : null;
+    return v ? W.districts[v - 1] || null : null;
   };
+  /** Where to write a district's name: [x, y] inside it (the data's `label: [x, y]` if given). */
+  W.districtLabel = function (d) {
+    if (typeof d === 'string') d = W.districts.find((q) => q.id === d);
+    if (!d) return null;
+    if (isPt(d.label)) return d.label;
+    if (d._label) return d._label;
+    const bb = districtBBox(d);
+    return [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2];
+  };
+  /** The district polygon / rect as a canvas path (world units) on ctx g (no beginPath). */
+  function districtPath(g, d) {
+    const rings = districtRings(d);
+    if (rings) {
+      for (const r of rings) for (const ring of [r.outer].concat(r.holes || [])) {
+        g.moveTo(ring[0][0], ring[0][1]);
+        for (let i = 1; i < ring.length; i++) g.lineTo(ring[i][0], ring[i][1]);
+        g.closePath();
+      }
+    } else if (d.rect) g.rect(d.rect[0], d.rect[1], d.rect[2], d.rect[3]);
+  }
+  W.districtPath = districtPath;
 
   /* ========================================================== road graph */
   const FOOT = { arterial: 10, street: 7, bund: 9, lane: 0, bridge: 0, path: 0 };
@@ -249,7 +417,9 @@
     };
     const RR = roads.filter((r) => r.kind !== 'path' && r.pts && r.pts.length > 1).map((r) => {
       const pts = r.pts.map((p) => [p[0], p[1]]);
-      return { r, pts, cum: cumLen(pts), splits: [] };
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const p of pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
+      return { r, pts, cum: cumLen(pts), splits: [], bb: [x0, y0, x1, y1] };
     });
     for (const A of RR) A.pts.forEach((p, i) => A.splits.push({ d: A.cum[i], x: p[0], y: p[1] }));
     // T-junctions: endpoints lying on another road snap onto it
@@ -259,6 +429,8 @@
         let best = null;
         for (const B of RR) {
           if (B === A) continue;
+          const tb = B.r.w / 2 + 6, bb = B.bb;
+          if (p[0] < bb[0] - tb || p[0] > bb[2] + tb || p[1] < bb[1] - tb || p[1] > bb[3] + tb) continue;
           for (let s = 0; s < B.pts.length - 1; s++) {
             const q = U.closestOnSeg(p[0], p[1], B.pts[s][0], B.pts[s][1], B.pts[s + 1][0], B.pts[s + 1][1]);
             const tol = B.r.w / 2 + 6;
@@ -278,14 +450,24 @@
         }
       }
     }
-    // proper crossings
+    // proper crossings (boxes again: snapping moved some endpoints)
+    for (const A of RR) {
+      const bb = A.bb; bb[0] = bb[1] = Infinity; bb[2] = bb[3] = -Infinity;
+      for (const p of A.pts) { if (p[0] < bb[0]) bb[0] = p[0]; if (p[0] > bb[2]) bb[2] = p[0]; if (p[1] < bb[1]) bb[1] = p[1]; if (p[1] > bb[3]) bb[3] = p[1]; }
+    }
     for (let ai = 0; ai < RR.length; ai++) {
-      const A = RR[ai];
+      const A = RR[ai], ab = A.bb;
       for (let bi = ai + 1; bi < RR.length; bi++) {
-        const B = RR[bi];
+        const B = RR[bi], bb = B.bb;
+        if (ab[2] < bb[0] - 1 || ab[0] > bb[2] + 1 || ab[3] < bb[1] - 1 || ab[1] > bb[3] + 1) continue; // boxes apart
         for (let s = 0; s < A.pts.length - 1; s++) {
+          const a0 = A.pts[s], a1 = A.pts[s + 1];
+          const sx0 = Math.min(a0[0], a1[0]) - 1, sx1 = Math.max(a0[0], a1[0]) + 1, sy0 = Math.min(a0[1], a1[1]) - 1, sy1 = Math.max(a0[1], a1[1]) + 1;
+          if (sx1 < bb[0] || sx0 > bb[2] || sy1 < bb[1] || sy0 > bb[3]) continue;
           for (let q = 0; q < B.pts.length - 1; q++) {
-            const I = segInter(A.pts[s], A.pts[s + 1], B.pts[q], B.pts[q + 1]);
+            const b0 = B.pts[q], b1 = B.pts[q + 1];
+            if ((b0[0] < sx0 && b1[0] < sx0) || (b0[0] > sx1 && b1[0] > sx1) || (b0[1] < sy0 && b1[1] < sy0) || (b0[1] > sy1 && b1[1] > sy1)) continue;
+            const I = segInter(a0, a1, b0, b1);
             if (!I) continue;
             A.splits.push({ d: A.cum[s] + (A.cum[s + 1] - A.cum[s]) * I.t, x: I.x, y: I.y });
             B.splits.push({ d: B.cum[q] + (B.cum[q + 1] - B.cum[q]) * I.u, x: I.x, y: I.y });
@@ -416,14 +598,24 @@
   }
   /** Nearest point on any road centre line: {x, y, dist, road, seg, t, angle} (null if none). */
   W.nearestRoadPoint = function (x, y, pred) {
+    if (!nearestRoad(x, y, pred)) return null;
+    const a = NR.road.pts[NR.seg], b = NR.road.pts[NR.seg + 1];
+    return { x: NR.x, y: NR.y, dist: NR.dist, road: NR.road, seg: NR.seg, t: NR.t, angle: Math.atan2(b[1] - a[1], b[0] - a[0]) };
+  };
+  // allocation-free core: fills NR and returns true when a road was found
+  const NR = { x: 0, y: 0, dist: 0, road: null, seg: 0, t: 0 };
+  function nearestRoad(x, y, pred) {
     if (!segGrid) buildSegGrid(W.data.roads || []);
+    if (!isFinite(x) || !isFinite(y)) return false;
     const ci = Math.floor(x / SG), cj = Math.floor(y / SG);
     let bd2 = Infinity, br = null, bs = 0, bt = 0, bx = 0, by = 0;
     const maxRing = Math.ceil(Math.max(N.WORLD_W, N.WORLD_H) / SG);
+    // after scanning ring r, every segment within r * SG + (distance to the own cell's edge) was seen
+    const edge = Math.min(x - ci * SG, (ci + 1) * SG - x, y - cj * SG, (cj + 1) * SG - y);
     for (let ring = 0; ring <= maxRing; ring++) {
       for (let j = cj - ring; j <= cj + ring; j++) {
-        for (let i = ci - ring; i <= ci + ring; i++) {
-          if (ring && Math.max(Math.abs(i - ci), Math.abs(j - cj)) !== ring) continue;
+        const rowEdge = j === cj - ring || j === cj + ring;
+        for (let i = ci - ring; i <= ci + ring; i += rowEdge || !ring ? 1 : 2 * ring) {
           const l = segGrid.get(j * 4096 + i);
           if (!l) continue;
           for (let k = 0; k < l.length; k += 2) {
@@ -437,13 +629,13 @@
           }
         }
       }
-      // anything in a further ring is at least (ring) cells away
-      if (br && Math.sqrt(bd2) <= ring * SG) break;
+      // anything in a further ring is farther than ring * SG + edge
+      if (br && Math.sqrt(bd2) <= ring * SG + edge) break;
     }
-    if (!br) return null;
-    const a = br.pts[bs], b = br.pts[bs + 1];
-    return { x: bx, y: by, dist: Math.sqrt(bd2), road: br, seg: bs, t: bt, angle: Math.atan2(b[1] - a[1], b[0] - a[0]) };
-  };
+    if (!br) return false;
+    NR.x = bx; NR.y = by; NR.dist = Math.sqrt(bd2); NR.road = br; NR.seg = bs; NR.t = bt;
+    return true;
+  }
 
   /** A random point on a road (centre line), optionally filtered by road kind. */
   W.randomRoadPoint = function (rnd, kinds) {
@@ -465,18 +657,19 @@
     const i0 = Math.max(0, Math.floor(s.x0 / BK)), i1 = Math.min(BW - 1, Math.floor(s.x1 / BK));
     const j0 = Math.max(0, Math.floor(s.y0 / BK)), j1 = Math.min(BH - 1, Math.floor(s.y1 / BK));
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) buckets[j * BW + i].push(s);
-    s.fn = (ctx) => DRAW[s.t](ctx, s);
+    s.fn = null; // draw closure, made the first time the structure is queued (sfn)
     s.stamp = 0;
     return s;
   }
+  const sfn = (s) => s.fn || (s.fn = (ctx) => DRAW[s.t](ctx, s));
   /** Add a custom structure: {t:'custom', x0,y0,x1,y1, cx?, cy?, draw(ctx, s), cast?(s)} */
   W.addStructure = function (s) {
     if (s.t === 'custom' && typeof s.draw === 'function') DRAW.custom = DRAW.custom || ((ctx, st) => st.draw(ctx, st));
     return addStructure(s);
   };
-  function addDecal(d) {
-    const i0 = Math.max(0, Math.floor(d.x / BK)), i1 = Math.min(BW - 1, Math.floor((d.x + d.w) / BK));
-    const j0 = Math.max(0, Math.floor(d.y / BK)), j1 = Math.min(BH - 1, Math.floor((d.y + d.h) / BK));
+  function addDecalRect(d, x, y, w, h) {
+    const i0 = Math.max(0, Math.floor(x / BK)), i1 = Math.min(BW - 1, Math.floor((x + w) / BK));
+    const j0 = Math.max(0, Math.floor(y / BK)), j1 = Math.min(BH - 1, Math.floor((y + h) / BK));
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) decals[j * BW + i].push(d);
   }
   /** Iterate structures overlapping a rect (each once). */
@@ -566,8 +759,8 @@
   // Which side of a rect faces the nearest road, and how far the road edge is.
   function frontOf(x, y, w, h) {
     const cx = x + w / 2, cy = y + h / 2;
-    const rp = W.nearestRoadPoint(cx, cy);
-    if (!rp) return { side: 'S', gap: 999 };
+    if (!nearestRoad(cx, cy)) return { side: 'S', gap: 999 };
+    const rp = NR;
     const dx = rp.x - cx, dy = rp.y - cy;
     let side, edge;
     if (Math.abs(dx) * h > Math.abs(dy) * w) { side = dx > 0 ? 'E' : 'W'; edge = Math.abs(dx) - w / 2; }
@@ -619,16 +812,36 @@
     return items;
   }
 
+  // shade() results are cached (thousands of buildings share a dozen wall colours)
+  const shadeMemo = new Map();
+  const shadeC = (hex, f) => { const k = hex + f; let v = shadeMemo.get(k); if (v === undefined) { v = U.shade(hex, f); shadeMemo.set(k, v); } return v; };
+
+  // A generic building. Its roof furniture (`items`: tanks, antennas, clotheslines...) is generated on
+  // first use from the building's own seed: the bigger v2 world has ~35k buildings and only the ones
+  // drawn near the player (2D roof sprites, 3D chunks) ever need it.
+  class Bldg {
+    constructor(x, y, w, d, h, style, P, rng) {
+      this.t = 'bldg'; this.x = x; this.y = y; this.w = w; this.d = d; this.h = h; this.style = style;
+      this.x0 = x; this.y0 = y; this.x1 = x + w; this.y1 = y + d; this.cx = x + w / 2; this.cy = y + d / 2;
+      this.wall = rng.pick(P.walls); this.roof = rng.pick(P.roofs); this.trim = P.trim;
+      this.seed = (rng.next() * 1e9) | 0; this.lit = 0.25 + rng.next() * 0.4;
+      this.win = 'rect'; this.winSp = 7 + rng.next() * 2; this.winW = 3; this.roofType = 'flat'; this.parapet = 1;
+      this._items = null; this._extra = null; this.front = null; this.sign = null; this.awning = null; this.gf = null;
+      this.id = 0; this.fn = null; this.stamp = 0;
+    }
+    get items() {
+      if (!this._items) {
+        const it = this.roofType === 'flat' ? makeItems(U.rng(this.seed ^ 0x5bd1e995), this.x, this.y, this.w, this.d, this.style) : [];
+        if (this._extra) for (const e of this._extra) it.push(e);
+        this._items = it;
+      }
+      return this._items;
+    }
+    set items(v) { this._items = v; }
+  }
   function newBuilding(x, y, w, d, h, style, rng, extra) {
     const P = STY[style] || STY.colony;
-    const b = {
-      t: 'bldg', x, y, w, d, h, style,
-      x0: x, y0: y, x1: x + w, y1: y + d, cx: x + w / 2, cy: y + d / 2,
-      wall: rng.pick(P.walls), roof: rng.pick(P.roofs), trim: P.trim,
-      seed: (rng.next() * 1e9) | 0, lit: 0.25 + rng.next() * 0.4,
-      win: 'rect', winSp: 7 + rng.next() * 2, winW: 3, roofType: 'flat', parapet: 1, items: null,
-      front: null, sign: null, awning: null, gf: null,
-    };
+    const b = new Bldg(x, y, w, d, h, style, P, rng);
     switch (style) {
       case 'oldcity': b.win = rng.next() < 0.4 ? 'arch' : 'rect'; b.parapet = rng.next() < 0.5 ? 2 : 1; b.winSp = 6 + rng.next() * 2; b.gf = rng.next() < 0.5 ? 'arches' : 'door'; break;
       case 'market': b.win = 'rect'; b.parapet = 1; b.gf = 'shutters'; break;
@@ -640,16 +853,16 @@
       case 'rocky': b.win = 'grill'; b.parapet = 1; b.gf = 'door'; break;
     }
     // parapets/ledges pick up the house colour (white trim stays for colonial / posh / hitec)
-    if (style === 'oldcity' || style === 'market' || style === 'colony' || style === 'rocky') b.trim = U.shade(b.wall, 1.12);
-    Object.assign(b, extra || {});
-    if (b.roofType === 'flat' && !b.items) b.items = makeItems(rng, x, y, w, d, style);
-    if (!b.items) b.items = [];
+    if (style === 'oldcity' || style === 'market' || style === 'colony' || style === 'rocky') b.trim = shadeC(b.wall, 1.12);
+    if (extra) Object.assign(b, extra);
     return b;
   }
 
   // A shop name that fits a board `len` world units long (the 3x5 font is ~1 px per unit at zoom 1)
+  const signW = new Map();
+  const textW = (t) => { let w = signW.get(t); if (w == null) { w = N.draw.pixelTextWidth(t); signW.set(t, w); } return w; };
   function pickSign(rng, len, bg, list) {
-    const fit = (arr) => arr.filter((t) => N.draw.pixelTextWidth(t) <= len * 1.05);
+    const fit = (arr) => arr.filter((t) => textW(t) <= len * 1.05);
     let texts = fit(list || SIGNS);
     if (texts.length < 3) texts = texts.concat(fit(SHORT_SIGNS));
     if (!texts.length) return null;
@@ -699,7 +912,7 @@
             b.gf = 'shutters';
           }
         }
-        if (style === 'oldcity' && rng.next() < 0.1 && bw > 14 && bd > 14) b.items.push({ t: 'domeItem', x: bx + bw / 2, y: by + bd / 2, r: 4, h: 6, col: b.wall });
+        if (style === 'oldcity' && rng.next() < 0.1 && bw > 14 && bd > 14) (b._extra || (b._extra = [])).push({ t: 'domeItem', x: bx + bw / 2, y: by + bd / 2, r: 4, h: 6, col: b.wall });
         out.bldgs.push(b);
         return;
       }
@@ -760,8 +973,8 @@
         const floors = 2 + (rng.next() * 2 | 0);
         const b = newBuilding(x + inset, y + inset, bw, bd, floors * 11 + 2, style, rng);
         b.front = fr.side;
-        if (bw > 40 && bd > 30 && rng.next() < 0.35) b.items.push({ t: 'domeItem', x: b.x + bw / 2, y: b.y + bd / 2, r: Math.min(bw, bd) * 0.16, h: 12, col: b.wall === '#a5543f' || b.wall === '#9a4a38' || b.wall === '#b0603f' ? '#efe9dc' : b.wall, finial: true });
-        if (rng.next() < 0.5 && bw > 30) b.items.push({ t: 'tower', x: b.x + bw / 2 - 5, y: b.y + (fr.side === 'S' ? bd - 10 : 0), w: 10, d: 10, h: 16 });
+        if (bw > 40 && bd > 30 && rng.next() < 0.35) (b._extra || (b._extra = [])).push({ t: 'domeItem', x: b.x + bw / 2, y: b.y + bd / 2, r: Math.min(bw, bd) * 0.16, h: 12, col: b.wall === '#a5543f' || b.wall === '#9a4a38' || b.wall === '#b0603f' ? '#efe9dc' : b.wall, finial: true });
+        if (rng.next() < 0.5 && bw > 30) (b._extra || (b._extra = [])).push({ t: 'tower', x: b.x + bw / 2 - 5, y: b.y + (fr.side === 'S' ? bd - 10 : 0), w: 10, d: 10, h: 16 });
         out.bldgs.push(b);
         if (rng.next() < 0.6) for (let i = 0; i < 2; i++) out.trees.push({ x: x + 4 + rng.next() * (w - 8), y: y + 3 + rng.next() * 3 + (i ? h - 9 : 0), style });
         return;
@@ -845,12 +1058,23 @@
     posh: ['palm', 'ashoka', 'gulmohar', 'coconut', 'neem'], colonial: ['banyan', 'neem', 'ashoka', 'gulmohar'], cantonment: ['banyan', 'neem', 'gulmohar', 'neem'],
     hitec: ['palm', 'neem'], rocky: ['neem', 'neem', 'palm'],
   };
-  function makeTree(x, y, kind, r, seed) {
-    const K = TREE_KINDS[kind] || TREE_KINDS.neem;
-    const rng = U.rng(seed || ((x * 73856093) ^ (y * 19349663)));
-    if (!TREE_KINDS[kind]) kind = 'neem';
-    r = r || (kind === 'banyan' ? 16 + rng.next() * 8 : isPalm(kind) ? 9 + rng.next() * 3 : kind === 'ashoka' ? 6 + rng.next() * 2 : 9 + rng.next() * 5);
-    const h = K.h * (0.8 + rng.next() * 0.35) * (kind === 'banyan' ? 1 : Math.min(1.15, 0.7 + r / 30));
+  // A tree. Its canopy parts (blobs / palm fronds / flowers) are made on first use from the same
+  // seeded stream as before (identical look), so trees never drawn cost no allocations.
+  class Tree {
+    constructor(x, y, kind, r, h, seed, rGiven) {
+      this.t = 'tree'; this.kind = kind; this.x = x; this.y = y; this.r = r; this.h = h;
+      this.x0 = x - r; this.y0 = y - r; this.x1 = x + r; this.y1 = y + r; this.cx = x; this.cy = y;
+      this.seed = seed; this.rGiven = rGiven; this._parts = null; this.id = 0; this.fn = null; this.stamp = 0;
+    }
+    get blobs() { return (this._parts || treeParts(this)).blobs; }
+    get fronds() { return (this._parts || treeParts(this)).fronds; }
+    get flowers() { return (this._parts || treeParts(this)).flowers; }
+  }
+  function treeParts(t) {
+    const kind = t.kind, K = TREE_KINDS[kind] || TREE_KINDS.neem, r = t.r;
+    const rng = U.rng(t.seed);
+    if (!t.rGiven) rng.next(); // the radius draw
+    rng.next();                // the height draw
     const blobs = [];
     if (!isPalm(kind)) {
       const n = kind === 'banyan' || kind === 'peepal' ? 11 : kind === 'ashoka' ? 5 : 7;
@@ -866,7 +1090,17 @@
     }
     const flowers = [];
     if (K.flowers) for (let i = 0; i < 9; i++) { const a = rng.next() * Math.PI * 2, d = rng.next() * r * 0.75; flowers.push([Math.cos(a) * d, Math.sin(a) * d, 1.2 + rng.next() * 1.6, K.flowers[i % K.flowers.length]]); }
-    return { t: 'tree', kind, x, y, r, h, blobs, fronds, flowers, x0: x - r, y0: y - r, x1: x + r, y1: y + r, cx: x, cy: y };
+    return (t._parts = { blobs, fronds, flowers });
+  }
+  function makeTree(x, y, kind, r, seed) {
+    const K = TREE_KINDS[kind] || TREE_KINDS.neem;
+    seed = seed || ((x * 73856093) ^ (y * 19349663));
+    const rng = U.rng(seed);
+    if (!TREE_KINDS[kind]) kind = 'neem';
+    const rGiven = !!r;
+    r = r || (kind === 'banyan' ? 16 + rng.next() * 8 : isPalm(kind) ? 9 + rng.next() * 3 : kind === 'ashoka' ? 6 + rng.next() * 2 : 9 + rng.next() * 5);
+    const h = K.h * (0.8 + rng.next() * 0.35) * (kind === 'banyan' ? 1 : Math.min(1.15, 0.7 + r / 30));
+    return new Tree(x, y, kind, r, h, seed, rGiven);
   }
   const OK_TREE = new Uint8Array(16); OK_TREE[S.GROUND] = 1; OK_TREE[S.GRASS] = 1; OK_TREE[S.FOOTPATH] = 1; OK_TREE[S.PLAZA] = 1; OK_TREE[S.SAND] = 1;
   function treeSpotOK(x, y, r) {
@@ -885,6 +1119,7 @@
     const mark = (name) => { const t = performance.now(); phases[lastP] = Math.round((t - tp) * 10) / 10; tp = t; lastP = name; };
     const D = N.WORLD_DATA || {};
     W.data = D;
+    sizeGrids(D);
     D.districts = D.districts || []; D.water = D.water || []; D.roads = D.roads || []; D.parks = D.parks || [];
     D.rocks = D.rocks || []; D.blocks = D.blocks || []; D.buildings = D.buildings || []; D.landmarks = D.landmarks || [];
     D.trees = D.trees || []; D.places = D.places || []; D.spawns = D.spawns || {};
@@ -893,7 +1128,7 @@
     buckets = []; decals = [];
     for (let i = 0; i < BW * BH; i++) { buckets.push([]); decals.push([]); }
 
-    grid = new Uint8Array(GW * GH).fill(S.GROUND);
+    grid = W.grid && W.grid.length === GW * GH ? W.grid.fill(S.GROUND) : new Uint8Array(GW * GH).fill(S.GROUND);
     W.grid = grid;
     for (let i = 0; i < GW; i++) { grid[i] = S.VOID; grid[(GH - 1) * GW + i] = S.VOID; }
     for (let j = 0; j < GH; j++) { grid[j * GW] = S.VOID; grid[j * GW + GW - 1] = S.VOID; }
@@ -1015,8 +1250,8 @@
     // 9. structures: buildings, walls, cranes
     for (const b of out.bldgs) {
       addStructure(b);
-      if (b.yard) addDecal({ t: 'yard', x: b.yard.x, y: b.yard.y, w: b.yard.w, h: b.yard.h, b });
-      addDecal({ t: 'plinth', x: b.x - 1, y: b.y - 1, w: b.w + 2, h: b.d + 2 });
+      // the building is its own ground decal: yard (if any) + contact plinth
+      if (b.yard) addDecalRect(b, b.yard.x, b.yard.y, b.yard.w, b.yard.h); else addDecalRect(b, b.x - 1, b.y - 1, b.w + 2, b.d + 2);
     }
     for (const wl of out.walls) {
       for (const sg of wl.segs) addStructure({ t: 'wall', x: sg[0], y: sg[1], w: sg[2], d: sg[3], h: wl.h, col: wl.col, x0: sg[0], y0: sg[1], x1: sg[0] + sg[2], y1: sg[1] + sg[3] });
@@ -1049,7 +1284,8 @@
     mark('12');
     // 12. lamps along arterials / bund / bridges (median), streets (side tube lights)
     const junctions = W.roads.nodes.filter((n) => n.deg >= 3);
-    const nearJunction = (x, y, r) => junctions.some((n) => (n.x - x) ** 2 + (n.y - y) ** 2 < r * r);
+    indexJunctions(junctions);
+    const nearJunction = junctionNear;
     for (const r of D.roads) {
       const median = r.kind === 'arterial' || r.kind === 'bund' || r.kind === 'bridge';
       const side = r.kind === 'street';
@@ -1154,7 +1390,12 @@
     try { buildRoofs(D); } catch (e) { N.err('world.roofs', e); }
     try { buildPodiums(D); } catch (e) { N.err('world.podiums', e); }
     try { setupRoofRuntime(); } catch (e) { N.err('world.roofsRuntime', e); }
+    mark('15');
+    // 16. potholes and tar patches (A2), after every surface is final
+    try { buildPotholes(D); } catch (e) { N.err('world.potholes', e); }
+    mark('16');
     soil = null;
+    mapCache.clear();
     prepPainter();
     N.render.setGroundPainter(paintGround);
     W.built = true;
@@ -1163,6 +1404,32 @@
     N.emit('world:built', W);
     return W;
   };
+
+  // Junction nodes bucketed on a 128 u grid (lamps, avenue trees and potholes keep clear of them)
+  const JG = 128;
+  let jGrid = new Map();
+  function indexJunctions(list) {
+    jGrid = new Map();
+    for (const n of list) {
+      const key = Math.floor(n.y / JG) * 4096 + Math.floor(n.x / JG);
+      const l = jGrid.get(key); if (l) l.push(n); else jGrid.set(key, [n]);
+    }
+  }
+  /** Is a junction node within r of (x, y)? With `pad`, within pad + the node's half width. */
+  function junctionNear(x, y, r, pad) {
+    const R = pad != null ? r + pad + 40 : r;
+    for (let j = Math.floor((y - R) / JG); j <= Math.floor((y + R) / JG); j++) {
+      for (let i = Math.floor((x - R) / JG); i <= Math.floor((x + R) / JG); i++) {
+        const l = jGrid.get(j * 4096 + i);
+        if (!l) continue;
+        for (const n of l) {
+          const rr = pad != null ? r + pad + n.w / 2 : r;
+          if ((n.x - x) * (n.x - x) + (n.y - y) * (n.y - y) < rr * rr) return n;
+        }
+      }
+    }
+    return null;
+  }
 
   function wallSegments(wl, gate) {
     const { x, y, w, h, side } = wl;
@@ -1309,8 +1576,14 @@
     const g = soil.getContext('2d');
     g.fillStyle = '#a98a66'; g.fillRect(0, 0, DGW, DGH);
     for (const d of W.data.districts) {
-      const [x, y, w, h] = d.rect;
       g.fillStyle = d.ground || '#a98a66';
+      if (districtRings(d)) { // polygon districts: drawn at 1 px per DG units, slightly grown so they meet
+        g.save(); g.scale(1 / DG, 1 / DG); g.beginPath(); districtPath(g, d); g.fill('evenodd');
+        g.strokeStyle = g.fillStyle; g.lineWidth = DG * 0.9; g.lineJoin = 'round'; g.stroke(); g.restore();
+        continue;
+      }
+      if (!d.rect) continue;
+      const [x, y, w, h] = d.rect;
       g.fillRect(Math.round(x / DG), Math.round(y / DG), Math.max(1, Math.round(w / DG)), Math.max(1, Math.round(h / DG)));
     }
   }
@@ -1330,10 +1603,10 @@
     const seen = new Set();
     const dl = [];
     for (let j = bj0; j <= bj1; j++) for (let i = bi0; i <= bi1; i++) for (const d of decals[j * BW + i]) if (!seen.has(d)) { seen.add(d); dl.push(d); }
-    for (const d of dl) {
-      if (d.t !== 'yard') continue;
-      const b = d.b;
-      if (d.b.yard.lawn) {
+    for (const b of dl) {
+      if (!b.yard) continue;
+      const d = b.yard; // {x, y, w, h}
+      if (b.yard.lawn) {
         ctx.fillStyle = '#c9b89a'; ctx.fillRect(d.x, d.y, d.w, d.h);
         ctx.fillStyle = '#5f9140'; ctx.fillRect(d.x + 4, d.y + 4, d.w - 8, d.h - 8);
         ctx.fillStyle = pat.grass; ctx.fillRect(d.x + 4, d.y + 4, d.w - 8, d.h - 8);
@@ -1491,6 +1764,8 @@
         }
       }
     }
+    // potholes and tar patches (A2)
+    try { paintPotholes(ctx, x0, y0, x1, y1); } catch (e) { N.err('world.paintPotholes', e); }
     // bridge edges (kerb lines)
     for (const r of roads) {
       if (r.kind !== 'bridge') continue;
@@ -1511,7 +1786,7 @@
     }
     // 7. building plinths (contact darkening) and rock bases
     ctx.fillStyle = 'rgba(40,30,35,0.45)';
-    for (const d of dl) if (d.t === 'plinth') ctx.fillRect(d.x, d.y, d.w, d.h);
+    for (const b of dl) ctx.fillRect(b.x - 1, b.y - 1, b.w + 2, b.d + 2);
     for (const rk of W.rocks) {
       if (rk.x + rk.r * 2 < x0 || rk.x - rk.r * 2 > x1 || rk.y + rk.r * 2 < y0 || rk.y - rk.r * 2 > y1) continue;
       ctx.beginPath(); ctx.ellipse(rk.x, rk.y + 1, rk.r * 1.25, rk.r * 1.1, 0, 0, Math.PI * 2);
@@ -2833,6 +3108,568 @@
     },
   });
 
+  /* ============================================================ potholes (A2) */
+  // Hyderabad's roads have potholes: worst in colony lanes and the Old City, fewer on arterials, a
+  // handful on Tank Bund, almost none on the new HITEC roads. Deterministic: each road segment draws
+  // its own from rand32('pot:' + road id + ':' + segment index), so the same map always has the same
+  // potholes. Never inside a junction (zebra crossings, podiums), near a bridge joint or a level
+  // crossing, never on a bridge deck, a footpath or a plaza (every rim sample must be ROAD).
+  // The monsoon (N.seasons 'monsoon') adds more (rain-only ones) and rain fills them with water that
+  // reflects the sky. Tar patches (old repairs) are painted on many roads.
+  //   N.world.potholeAt(x, y) -> the pothole {id, x, y, r, depth (0..1), dip (u), wet, ...} | null
+  //   N.world.potholes = {list, patches, chunks (256 u chunk lists), chunk(i, j), query(...), ...}
+  // Densities and sizes are in N.world.POTHOLE (tunable before the world is built).
+  const POT = (W.POTHOLE = {
+    KIND: { lane: 1.6, street: 0.8, arterial: 0.36, bund: 0.08 },  // dry potholes per 100 u of road
+    STYLE: { oldcity: 1.7, market: 1.35, colony: 1.3, rocky: 1.05, colonial: 0.75, cantonment: 0.5, posh: 0.55, hitec: 0.05 },
+    HINT_REF: { lane: 0.65, street: 0.4, arterial: 0.22, bund: 0.05 }, // road.pothole_hint that means "typical"
+    MAXF: 1.8,          // the highest district factor (thinning reference)
+    RAIN: 0.6,          // monsoon / rain: rain-only potholes, relative to the dry ones
+    CLUSTER: 0.3,       // chance that a pothole brings 1-3 neighbours (a bad stretch)
+    SIZE: [3, 9],       // diameter (u)
+    PATCH: { lane: 0.2, street: 0.7, arterial: 0.85, bund: 0.3 },   // tar patches per 100 u
+    PATCH_STYLE: { oldcity: 1.2, market: 1.2, colony: 1.0, rocky: 0.7, colonial: 1.1, cantonment: 0.9, posh: 0.9, hitec: 0.12 },
+    JUNCTION_PAD: 16,   // clear of junctions: node half width + this (zebras sit at half width + 2..10)
+    BRIDGE_PAD: 26,     // clear of bridge ends (expansion joints)
+    RAIL_PAD: 20,       // clear of railway lines (level crossings)
+    HIT: 0.9,           // hit ellipse = outline ellipse x this (the ragged rim averages ~0.89)
+  });
+  const PG = 32;        // potholeAt lookup cells (u)
+  // one-function mulberry32 (U.rng builds five closures per call; this runs per road segment)
+  function rand32(seed) {
+    let a = (typeof seed === 'string' ? U.strHash(seed) : seed) >>> 0 || 0x9e3779b9;
+    return function () {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  let potStart = null, potItems = null, PGW = 0, PGH = 0;
+  let potList = [], potPatches = [], potChunks = [], patchChunks = [];
+  let rainState = 0;    // 0 dry, 1 monsoon (extra potholes; deep ones hold water), 2 raining (all wet)
+  let potVersion = 0;
+  const potActive = (p) => !p.rain || rainState >= 1;
+
+  function roadPotFactor(r) {
+    if (r.potholes === false || r.potholes === 0) return { f: 0, hinted: false };
+    let f = typeof r.potholes === 'number' && r.potholes > 0 ? r.potholes : 1;
+    const h = r.pothole_hint != null ? +r.pothole_hint : r.potholeHint != null ? +r.potholeHint : NaN;
+    const ref = POT.HINT_REF[r.kind];
+    if (isFinite(h) && ref) { f *= U.clamp(h / ref, 0.2, 1.6); return { f, hinted: true }; }
+    return { f, hinted: false };
+  }
+  // district factor at a point (a district may carry its own `potholes` multiplier)
+  function styleFactor(x, y, table) {
+    const d = W.districtAt(x, y);
+    if (d && typeof d.potholes === 'number') return d.potholes;
+    const v = table[(d && d.style) || 'colony'];
+    return v == null ? 1 : v;
+  }
+  // points to keep clear of (bridge ends) and rail segments, bucketed on 256 u
+  function avoidIndex(D) {
+    const pts = new Map(), rails = new Map();
+    const put = (M, x0, y0, x1, y1, v) => {
+      for (let j = Math.floor(y0 / 256); j <= Math.floor(y1 / 256); j++) for (let i = Math.floor(x0 / 256); i <= Math.floor(x1 / 256); i++) {
+        const k = j * 4096 + i; const l = M.get(k); if (l) l.push(v); else M.set(k, [v]);
+      }
+    };
+    for (const r of D.roads) {
+      if (r.kind !== 'bridge' || !r.pts || r.pts.length < 2) continue;
+      for (const q of [r.pts[0], r.pts[r.pts.length - 1]]) put(pts, q[0], q[1], q[0], q[1], q);
+    }
+    for (const r of D.rails || []) {
+      if (!r.pts) continue;
+      for (let k = 0; k < r.pts.length - 1; k++) {
+        const a = r.pts[k], b = r.pts[k + 1];
+        put(rails, Math.min(a[0], b[0]) - 40, Math.min(a[1], b[1]) - 40, Math.max(a[0], b[0]) + 40, Math.max(a[1], b[1]) + 40, [a[0], a[1], b[0], b[1], (r.w || 16) / 2]);
+      }
+    }
+    return {
+      bridgeNear(x, y, d) {
+        const l = pts.get(Math.floor(y / 256) * 4096 + Math.floor(x / 256)); if (!l) return false;
+        for (const q of l) if ((q[0] - x) ** 2 + (q[1] - y) ** 2 < d * d) return true;
+        // a joint near a bucket edge: check the 8 neighbours too
+        for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+          if (!i && !j) continue;
+          const m = pts.get((Math.floor(y / 256) + j) * 4096 + Math.floor(x / 256) + i); if (!m) continue;
+          for (const q of m) if ((q[0] - x) ** 2 + (q[1] - y) ** 2 < d * d) return true;
+        }
+        return false;
+      },
+      railNear(x, y, d) {
+        const l = rails.get(Math.floor(y / 256) * 4096 + Math.floor(x / 256)); if (!l) return false;
+        for (const s of l) { const q = U.closestOnSeg(x, y, s[0], s[1], s[2], s[3]); const rr = d + s[4]; if (q.d2 < rr * rr) return true; }
+        return false;
+      },
+    };
+  }
+
+  function buildPotholes(D) {
+    const t0 = performance.now();
+    potList = []; potPatches = [];
+    PGW = Math.ceil(N.WORLD_W / PG); PGH = Math.ceil(N.WORLD_H / PG);
+    potChunks = new Array(BW * BH); patchChunks = new Array(BW * BH);
+    for (let i = 0; i < BW * BH; i++) { potChunks[i] = []; patchChunks[i] = []; }
+    const stats = { dry: 0, rain: 0, patches: 0, rejected: { junction: 0, bridge: 0, rail: 0, surface: 0, overlap: 0 }, byKind: {}, byStyle: {}, byDistrict: {}, roadLen: {}, ms: 0 };
+    const avoid = avoidIndex(D);
+    const placed = new Map(); // 32 u buckets of placed potholes (overlap test)
+    const near = (x, y, r) => {
+      for (let j = Math.floor((y - r - 6) / 32); j <= Math.floor((y + r + 6) / 32); j++) for (let i = Math.floor((x - r - 6) / 32); i <= Math.floor((x + r + 6) / 32); i++) {
+        const l = placed.get(j * 4096 + i); if (!l) continue;
+        for (const p of l) { const rr = (p.r + r) * 0.95 + 1; if ((p.x - x) ** 2 + (p.y - y) ** 2 < rr * rr) return true; }
+      }
+      return false;
+    };
+    const ROAD = S.ROAD;
+    // every rim sample on plain road (no bridge deck, footpath, plaza, water...)
+    const onRoad = (x, y, rx, ry, ca, sa, grow) => {
+      if (surfAt(x, y) !== ROAD) return false;
+      for (let k = 0; k < 8; k++) {
+        const t = (k / 8) * Math.PI * 2, u = Math.cos(t) * (rx * grow + 1), v = Math.sin(t) * (ry * grow + 1);
+        if (surfAt(x + u * ca - v * sa, y + u * sa + v * ca) !== ROAD) return false;
+      }
+      return true;
+    };
+    const clearOfThings = (x, y, R) => {
+      if (junctionNear(x, y, R, POT.JUNCTION_PAD)) { stats.rejected.junction++; return false; }
+      if (avoid.bridgeNear(x, y, POT.BRIDGE_PAD + R)) { stats.rejected.bridge++; return false; }
+      if (avoid.railNear(x, y, POT.RAIL_PAD + R)) { stats.rejected.rail++; return false; }
+      return true;
+    };
+    D.roads.forEach((r, ri) => {
+      if (!r.pts || r.pts.length < 2 || !POT.KIND[r.kind]) return;
+      const rid = r.id || 'road' + ri;
+      const { f: rf, hinted } = roadPotFactor(r);
+      const median = r.median != null ? !!r.median : r.kind === 'arterial';
+      const hw = r.w / 2;
+      for (let s = 0; s < r.pts.length - 1; s++) {
+        const a = r.pts[s], b = r.pts[s + 1];
+        const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy);
+        if (!(L > 4)) continue;
+        const ux = dx / L, uy = dy / L, nx = -uy, ny = ux, ang = Math.atan2(dy, dx);
+        stats.roadLen[r.kind] = (stats.roadLen[r.kind] || 0) + L;
+        // ---- potholes: dry ones, then the rain-only extras (own stream each)
+        for (const rain of [false, true]) {
+          const base = POT.KIND[r.kind] * rf * (rain ? POT.RAIN : 1);
+          if (!(base > 0)) continue;
+          const rng = rand32((rain ? 'potr:' : 'pot:') + rid + ':' + s);
+          const lam = (base * POT.MAXF) / 100; // candidates per u (thinned below by the district)
+          const gap = () => -Math.log(1 - rng() * 0.999999) / lam;
+          for (let pos = gap() * 0.5; pos < L; pos += gap()) {
+            const cx = a[0] + ux * pos, cy = a[1] + uy * pos;
+            let sf = styleFactor(cx, cy, POT.STYLE);
+            if (hinted) sf = Math.sqrt(sf); // the hint already knows the neighbourhood
+            const keep = rng() < sf / POT.MAXF;
+            const nClu = rng() < POT.CLUSTER ? 1 + ((rng() * 3) | 0) : 0;
+            const sz = rng(), lat = rng(), lat2 = rng(), shp = rng(), dep = rng(), seed = (rng() * 2147483647) | 0;
+            if (!keep) { for (let c = 0; c < nClu * 3; c++) rng(); continue; }
+            for (let c = 0; c <= nClu; c++) {
+              const along = c ? (rng() - 0.5) * 40 : 0, cl1 = c ? rng() : lat, cl2 = c ? rng() : lat2;
+              const sizeK = (r.kind === 'lane' ? 1.05 : 1) * (rain ? 0.85 : 1) * (c ? 0.9 : 1);
+              let D0 = POT.SIZE[0] + (POT.SIZE[1] - POT.SIZE[0]) * Math.pow(c ? (sz * 0.7 + 0.3 * cl2) : sz, 0.8) * sizeK;
+              D0 = U.clamp(D0, POT.SIZE[0], POT.SIZE[1]);
+              let rx = D0 / 2, ry = rx * (0.68 + 0.3 * shp);
+              const across = shp > 0.82;
+              const pa = ang + (across ? Math.PI / 2 : 0) + (cl2 - 0.5) * 0.6;
+              let R = Math.max(rx, ry);
+              // lateral position: wheel tracks on two-lane roads, anywhere on narrow lanes
+              let usable = hw - R - 1.5;
+              if (usable < 0) { const k = (hw - 2.5) / R; if (k < 0.45) continue; rx *= k; ry *= k; R = Math.max(rx, ry); usable = 0.5; }
+              let off;
+              if (r.kind === 'lane' || r.w < 26) off = (cl1 * 2 - 1) * usable;
+              else {
+                const lanes = r.w >= 48 ? 2 : 1, lw = hw / lanes, side = cl1 < 0.5 ? -1 : 1, k = ((cl1 * 2) % 1) < 0.5 || lanes === 1 ? 0 : 1;
+                const track = (k + 0.5) * lw + (cl2 < 0.5 ? -1 : 1) * lw * 0.28 + (cl2 - 0.5) * lw * 0.25;
+                off = side * U.clamp(track, median ? 3 + R : 0, usable);
+              }
+              if (median && Math.abs(off) < 3 + R) off = (off < 0 ? -1 : 1) * Math.min(usable, 3 + R);
+              const along2 = U.clamp(pos + along, R + 1, L - R - 1);
+              const x = a[0] + ux * along2 + nx * off, y = a[1] + uy * along2 + ny * off;
+              if (!clearOfThings(x, y, R)) continue;
+              const ca = Math.cos(pa), sa = Math.sin(pa);
+              if (!onRoad(x, y, rx, ry, ca, sa, 1.2)) { stats.rejected.surface++; continue; }
+              const rr = (rx + ry) / 2;
+              if (near(x, y, rr)) { stats.rejected.overlap++; continue; }
+              const depth = U.clamp(0.18 + 0.5 * ((D0 - POT.SIZE[0]) / (POT.SIZE[1] - POT.SIZE[0])) + 0.32 * (c ? cl1 : dep), 0.15, 1) * (rain ? 0.7 : 1);
+              const dist = W.districtAt(x, y);
+              const p = makePothole(potList.length, x, y, rx, ry, pa, depth, rain, r, rid, s, dist, seed + c * 7919);
+              potList.push(p);
+              const key = Math.floor(y / 32) * 4096 + Math.floor(x / 32);
+              const l = placed.get(key); if (l) l.push(p); else placed.set(key, [p]);
+              if (rain) stats.rain++; else stats.dry++;
+              stats.byKind[r.kind] = (stats.byKind[r.kind] || 0) + (rain ? 0 : 1);
+              const st = (dist && dist.style) || 'none', did = (dist && dist.id) || 'none';
+              if (!rain) { stats.byStyle[st] = (stats.byStyle[st] || 0) + 1; stats.byDistrict[did] = (stats.byDistrict[did] || 0) + 1; }
+            }
+          }
+        }
+        // ---- tar patches (old repairs; paint only)
+        const pd = (POT.PATCH[r.kind] || 0) * (rf > 0 ? Math.min(1.3, 0.6 + rf * 0.4) : 0.6);
+        if (pd > 0) {
+          const rng = rand32('patch:' + rid + ':' + s);
+          const lam = (pd * 1.3) / 100;
+          for (let pos = (-Math.log(1 - rng() * 0.999999) / lam) * 0.5; pos < L; pos += -Math.log(1 - rng() * 0.999999) / lam) {
+            const cx = a[0] + ux * pos, cy = a[1] + uy * pos;
+            const keep = rng() < styleFactor(cx, cy, POT.PATCH_STYLE) / 1.3;
+            const pl = 8 + rng() * 20, pwW = Math.min(r.w - 4, 6 + rng() * 10), lat = rng(), twist = (rng() - 0.5) * 0.12, seed = (rng() * 2147483647) | 0;
+            if (!keep || pwW < 4) continue;
+            const lx = U.clamp(pos, pl / 2 + 1, L - pl / 2 - 1);
+            const usable = Math.max(0, hw - pwW / 2 - 1);
+            const off = (lat * 2 - 1) * usable;
+            const x = a[0] + ux * lx + nx * off, y = a[1] + uy * lx + ny * off;
+            const R = Math.hypot(pl, pwW) / 2;
+            if (junctionNear(x, y, R, POT.JUNCTION_PAD) || avoid.bridgeNear(x, y, POT.BRIDGE_PAD + R) || avoid.railNear(x, y, POT.RAIL_PAD + R)) continue;
+            const pa = ang + twist, ca = Math.cos(pa), sa = Math.sin(pa);
+            if (!onRoad(x, y, pl / 2, pwW / 2, ca, sa, 1)) continue;
+            potPatches.push(makePatch(potPatches.length, x, y, pl, pwW, pa, seed, r.kind));
+          }
+        }
+      }
+    });
+    stats.patches = potPatches.length;
+    // lookup grid (CSR): every pothole in each 32 u cell its hit ellipse touches
+    const counts = new Uint32Array(PGW * PGH + 1);
+    const cellsOf = (p, fn) => {
+      const R = Math.max(p.rx, p.ry) + 0.5;
+      const i0 = Math.max(0, Math.floor((p.x - R) / PG)), i1 = Math.min(PGW - 1, Math.floor((p.x + R) / PG));
+      const j0 = Math.max(0, Math.floor((p.y - R) / PG)), j1 = Math.min(PGH - 1, Math.floor((p.y + R) / PG));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) fn(j * PGW + i);
+    };
+    for (const p of potList) cellsOf(p, (c) => { counts[c + 1]++; });
+    for (let c = 0; c < PGW * PGH; c++) counts[c + 1] += counts[c];
+    potStart = counts;
+    potItems = new Uint32Array(counts[PGW * PGH]);
+    const fill = new Uint32Array(PGW * PGH);
+    for (const p of potList) cellsOf(p, (c) => { potItems[potStart[c] + fill[c]++] = p.id; });
+    // per-chunk lists (256 u = render chunks) with the painted extent (rim, cracks, gravel)
+    const bucket = (arr, o, R) => {
+      const i0 = Math.max(0, Math.floor((o.x - R) / BK)), i1 = Math.min(BW - 1, Math.floor((o.x + R) / BK));
+      const j0 = Math.max(0, Math.floor((o.y - R) / BK)), j1 = Math.min(BH - 1, Math.floor((o.y + R) / BK));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) arr[j * BW + i].push(o);
+    };
+    for (const p of potList) bucket(potChunks, p, p.R);
+    for (const q of potPatches) bucket(patchChunks, q, q.R + 2);
+    rainState = readRain();
+    applyWet();
+    potVersion++;
+    stats.ms = Math.round((performance.now() - t0) * 10) / 10;
+    PH.list = potList; PH.patches = potPatches; PH.chunks = potChunks; PH.patchChunks = patchChunks;
+    PH.cols = BW; PH.rows = BH; PH.stats = stats; PH.rain = rainState; PH.version = potVersion;
+  }
+
+  function makePothole(id, x, y, rx, ry, a, depth, rain, road, rid, seg, dist, seed) {
+    const rng = rand32(seed || 1);
+    const n = 10 + ((rng() * 5) | 0);
+    const ca = Math.cos(a), sa = Math.sin(a);
+    // ragged outline: per-vertex radius 0.74..1, lightly smoothed, small angular jitter
+    const m = [];
+    for (let k = 0; k < n; k++) m.push(0.74 + 0.26 * rng());
+    const pts = new Float32Array(n * 2);
+    for (let k = 0; k < n; k++) {
+      const mm = (m[k] * 2 + m[(k + 1) % n] + m[(k + n - 1) % n]) / 4;
+      const t = ((k + (rng() - 0.5) * 0.5) / n) * Math.PI * 2;
+      const u = Math.cos(t) * rx * mm, v = Math.sin(t) * ry * mm;
+      pts[k * 2] = x + u * ca - v * sa; pts[k * 2 + 1] = y + u * sa + v * ca;
+    }
+    const hr = POT.HIT;
+    return {
+      id, x, y, r: (rx + ry) / 2, rx, ry, R: Math.max(rx, ry) * 1.4 + 9, a, ca, sa, depth, dip: Math.round(depth * 30) / 10, wet: false, rain,
+      road: rid, kind: road.kind, seg, district: dist ? dist.id : null, style: dist ? dist.style : null,
+      pts, seed: seed || 1, hx: 1 / ((rx * hr) * (rx * hr)), hy: 1 / ((ry * hr) * (ry * hr)), _path: null,
+    };
+  }
+  function makePatch(id, x, y, len, wid, a, seed, kind) {
+    const rng = rand32(seed || 1);
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const hl = len / 2, hw = wid / 2;
+    // a slightly wonky rectangle; one in four is an L of two rectangles (a repair of a repair)
+    const corners = [[-hl, -hw], [hl, -hw], [hl, hw], [-hl, hw]];
+    for (const c of corners) { c[0] += (rng() - 0.5) * 1.6; c[1] += (rng() - 0.5) * 1.2; }
+    const polys = [corners];
+    if (rng() < 0.25) {
+      const u0 = (rng() - 0.5) * len * 0.6, w2 = wid * (0.4 + rng() * 0.3), l2 = len * (0.3 + rng() * 0.3), side = rng() < 0.5 ? -1 : 1;
+      const v0 = side * (hw + w2 / 2 - 1);
+      polys.push([[u0 - l2 / 2, v0 - w2 / 2], [u0 + l2 / 2, v0 - w2 / 2], [u0 + l2 / 2, v0 + w2 / 2], [u0 - l2 / 2, v0 + w2 / 2]]);
+    }
+    for (const pl of polys) for (const c of pl) { const u = c[0], v = c[1]; c[0] = x + u * ca - v * sa; c[1] = y + u * sa + v * ca; }
+    const world = polys;
+    return { id, x, y, len, wid, a, polys: world, R: Math.hypot(len, wid) / 2 + wid * 0.5, kind, age: rng(), seed: seed || 1 };
+  }
+
+  /** The pothole under (x, y) or null. Allocation-free; ~0.1 µs on an empty cell. */
+  function potholeAt(x, y) {
+    if (!potStart || grid === roofGrid) return null; // (roof level: no potholes up there)
+    const i = Math.floor(x / PG), j = Math.floor(y / PG);
+    if (!(i >= 0 && j >= 0 && i < PGW && j < PGH)) return null;
+    const c = j * PGW + i;
+    for (let k = potStart[c], e = potStart[c + 1]; k < e; k++) {
+      const p = potList[potItems[k]];
+      if (p.rain && rainState < 1) continue;
+      const dx = x - p.x, dy = y - p.y;
+      const u = dx * p.ca + dy * p.sa, v = dy * p.ca - dx * p.sa;
+      if (u * u * p.hx + v * v * p.hy <= 1) return p;
+    }
+    return null;
+  }
+  W.potholeAt = potholeAt;
+
+  // ---- rain / monsoon state
+  function readRain() {
+    let st = 0;
+    try {
+      const SE = N.seasons;
+      if (SE && SE.is) { if (SE.is('rain')) st = 2; else if (SE.is('monsoon')) st = 1; }
+    } catch (e) { /* seasons missing: dry */ }
+    if (st < 2 && N.flags && N.flags.rain === true) st = 2;
+    return st;
+  }
+  function applyWet() {
+    for (const p of potList) p.wet = potActive(p) && (rainState === 2 || (rainState === 1 && p.depth >= 0.4));
+    wetPaths.clear();
+  }
+  let needs3D = false;
+  /** Re-read the weather; when the set of potholes changes the ground chunks repaint (one per frame). */
+  function refreshRain(force) {
+    const st = readRain();
+    if (st === rainState && !force) return false;
+    const prev = rainState;
+    rainState = st;
+    applyWet();
+    potVersion++;
+    PH.rain = st; PH.version = potVersion;
+    if (W.built && (prev >= 1) !== (st >= 1)) {
+      // the rain-only potholes appear / vanish: repaint the cached ground
+      const R = N.render;
+      if (N.view3d && N.view3d.active) R.invalidateChunks();
+      else { R.shadowEpoch++; needs3D = true; } // stale chunks repaint progressively (no blank frames)
+    }
+    N.emit('potholes:change', { rain: st, prev, version: potVersion });
+    return true;
+  }
+  N.on('view:change', () => { if (needs3D && N.view3d && N.view3d.active) { needs3D = false; N.render.invalidateChunks(); } });
+  for (const ev of ['weather', 'season:change', 'game:new', 'save:loaded', 'calendar:change']) N.on(ev, () => { if (W.built) refreshRain(); });
+  let rainAcc = 0;
+  N.addSystem({ id: 'potholes', order: 6, runIn: ['*'], update(dt) { rainAcc += dt; if (rainAcc >= 0.5) { rainAcc = 0; if (W.built) refreshRain(); } }, reset() { if (W.built) refreshRain(); } });
+
+  // ---- public API
+  let qStamp = 0;
+  const PH = (W.potholes = {
+    list: potList, patches: potPatches, chunks: potChunks, patchChunks, CH: BK, cols: 0, rows: 0,
+    rain: 0, version: 0, stats: null, POT,
+    /** potholes listed for render chunk (i, j) (256 u; rain-only ones included, see active(p)) */
+    chunk(i, j) { return (i >= 0 && j >= 0 && i < BW && j < BH && potChunks[j * BW + i]) || []; },
+    /** active potholes whose painted extent overlaps [x0, x1] x [y0, y1] -> array (opts.all: rain-only too) */
+    query(x0, y0, x1, y1, out, all) { return queryPot(potChunks, x0, y0, x1, y1, out || [], all ? null : potActive); },
+    /** tar patches overlapping the rect */
+    queryPatches(x0, y0, x1, y1, out) { return queryPot(patchChunks, x0, y0, x1, y1, out || [], null); },
+    /** is this pothole there now? (rain-only ones need the monsoon / rain) */
+    active: potActive,
+    at: potholeAt,
+    /** re-read the weather now (normally polled twice a second and on 'weather' / 'season:change') */
+    refresh: () => refreshRain(true),
+    /** regenerate (after tuning N.world.POTHOLE) and repaint the ground */
+    rebuild() { if (!W.built) return null; buildPotholes(W.data); N.render.invalidateChunks(); return PH.stats; },
+  });
+  function queryPot(arr, x0, y0, x1, y1, out, pred) {
+    qStamp++;
+    const i0 = Math.max(0, Math.floor(x0 / BK)), i1 = Math.min(BW - 1, Math.floor(x1 / BK));
+    const j0 = Math.max(0, Math.floor(y0 / BK)), j1 = Math.min(BH - 1, Math.floor(y1 / BK));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const l = arr[j * BW + i]; if (!l) continue;
+      for (const p of l) {
+        if (p._q === qStamp) continue; p._q = qStamp;
+        const R = p.R;
+        if (p.x + R < x0 || p.x - R > x1 || p.y + R < y0 || p.y - R > y1) continue;
+        if (pred && !pred(p)) continue;
+        out.push(p);
+      }
+    }
+    return out;
+  }
+
+  // ---- 2D painting (baked into the ground chunks; the water on top is drawn live, see drawWet)
+  function holePath(ctx, p, k, ox, oy) {
+    const pts = p.pts, n = pts.length / 2;
+    ctx.moveTo(p.x + (pts[0] - p.x) * k + (ox || 0), p.y + (pts[1] - p.y) * k + (oy || 0));
+    for (let i = 1; i < n; i++) ctx.lineTo(p.x + (pts[i * 2] - p.x) * k + (ox || 0), p.y + (pts[i * 2 + 1] - p.y) * k + (oy || 0));
+    ctx.closePath();
+  }
+  const POTCOL = {
+    asphalt: { apron: 1.55, hole: '#121012', floor: '#2f2a26', wall: '#958b80', chip: '#141215', gravel: ['#b0a79b', '#948b80', '#c8bfb2', '#77706a'] },
+    lane: { apron: 1.24, hole: '#1e1610', floor: '#3e3022', wall: '#b39a7c', chip: '#22190f', gravel: ['#c0ad8e', '#9c896c', '#d6c4a4', '#76644e'] },
+  };
+  // the crumbled apron around a hole: its own ragged ring (1.15-1.5 x the hole), not a scaled copy
+  function apronPath(ctx, p, rng) {
+    const n = 9 + ((rng() * 5) | 0);
+    for (let k = 0; k <= n; k++) {
+      const t = ((k % n) / n) * Math.PI * 2, m = 1.22 + rng() * 0.38;
+      const u = Math.cos(t) * p.rx * m + (k ? 0 : 0), v = Math.sin(t) * p.ry * m;
+      const X = p.x + u * p.ca - v * p.sa, Y = p.y + u * p.sa + v * p.ca;
+      if (k === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+    }
+    ctx.closePath();
+  }
+  const scratch = [];
+  function paintPatches(ctx, x0, y0, x1, y1) {
+    const list = queryPot(patchChunks, x0 - 4, y0 - 4, x1 + 4, y1 + 4, scratch, null);
+    if (!list.length) return;
+    for (const q of list) {
+      const base = ROADCOL[q.kind] || ROADCOL.street;
+      // fresher tar is darker and smoother; old patches fade towards the road colour
+      ctx.beginPath();
+      for (const pl of q.polys) { ctx.moveTo(pl[0][0], pl[0][1]); for (let i = 1; i < pl.length; i++) ctx.lineTo(pl[i][0], pl[i][1]); ctx.closePath(); }
+      ctx.fillStyle = shadeC(base, q.kind === 'lane' ? 0.62 : 0.78 + q.age * 0.12); ctx.fill();
+      ctx.globalAlpha = 0.5; ctx.fillStyle = pat.asphalt; ctx.fill(); ctx.globalAlpha = 1;
+      ctx.lineWidth = 0.9; ctx.strokeStyle = 'rgba(18,16,20,0.55)'; ctx.stroke();       // the cut seam
+      ctx.lineWidth = 0.5; ctx.strokeStyle = 'rgba(255,250,235,0.10)'; ctx.stroke();   // its worn lip
+    }
+    scratch.length = 0;
+  }
+  function paintPotholes(ctx, x0, y0, x1, y1) {
+    paintPatches(ctx, x0, y0, x1, y1);
+    const list = queryPot(potChunks, x0, y0, x1, y1, scratch, potActive);
+    if (!list.length) return;
+    const sun = N.render.sun;
+    let sx = sun.sx || -0.6, sy = sun.sy || -0.2;
+    const sl = Math.hypot(sx, sy) || 1;
+    for (const p of list) {
+      const lane = p.kind === 'lane';
+      const C = lane ? POTCOL.lane : POTCOL.asphalt;
+      const base = ROADCOL[p.kind] || ROADCOL.street;
+      const rng = rand32(p.seed ^ 0x2c1b3c6d);
+      const minR = Math.min(p.rx, p.ry);
+      // 1. broken edge: a crumbled, lighter apron of worn asphalt / dry dirt around the hole
+      ctx.beginPath(); apronPath(ctx, p, rng);
+      ctx.fillStyle = shadeC(base, C.apron); ctx.globalAlpha = 0.9; ctx.fill(); ctx.globalAlpha = 1;
+      ctx.fillStyle = pat.speck; ctx.fill();
+      // 2. the hole (in shadow) with a crisp broken edge, 3. its lit floor: the hole shifted away from
+      // the sun, clipped (at 1 texel per unit the hole must read as a dark pit with a pale rim)
+      ctx.beginPath(); holePath(ctx, p, 1);
+      ctx.fillStyle = C.hole; ctx.fill();
+      ctx.lineWidth = 0.7; ctx.strokeStyle = C.chip; ctx.stroke();
+      ctx.save(); ctx.clip();
+      const sh = Math.min(minR * 0.45, p.dip * 0.6 + 0.4);
+      ctx.beginPath(); holePath(ctx, p, 0.92, (sx / sl) * sh, (sy / sl) * sh);
+      ctx.fillStyle = C.floor; ctx.fill();
+      // 4. the far (sunlit) wall: the outline nudged towards the sun shows only on that side
+      ctx.beginPath(); holePath(ctx, p, 1, -(sx / sl) * 0.8, -(sy / sl) * 0.8);
+      ctx.lineWidth = 1.2; ctx.strokeStyle = C.wall; ctx.stroke();
+      // 5. gravel on the floor
+      const ng = 3 + ((rng() * 5) | 0);
+      for (let k = 0; k < ng; k++) {
+        const t = rng() * Math.PI * 2, d = Math.sqrt(rng()) * 0.7, gs = 0.45 + rng() * 0.7;
+        const u = Math.cos(t) * p.rx * d, v = Math.sin(t) * p.ry * d;
+        ctx.fillStyle = C.gravel[(rng() * C.gravel.length) | 0];
+        ctx.fillRect(p.x + u * p.ca - v * p.sa - gs / 2, p.y + u * p.sa + v * p.ca - gs / 2, gs, gs * (0.7 + rng() * 0.5));
+      }
+      ctx.restore();
+      // 6. dark chips along the rim, cracks running off it and loose gravel kicked out by tyres
+      ctx.fillStyle = C.chip;
+      const nc = 3 + ((rng() * 5) | 0);
+      for (let k = 0; k < nc; k++) {
+        const t = rng() * Math.PI * 2, d = 1.05 + rng() * 0.25, cs = 0.5 + rng() * 0.6;
+        const u = Math.cos(t) * p.rx * d, v = Math.sin(t) * p.ry * d;
+        ctx.fillRect(p.x + u * p.ca - v * p.sa - cs / 2, p.y + u * p.sa + v * p.ca - cs / 2, cs, cs);
+      }
+      if (!lane) {
+        ctx.beginPath();
+        const ncr = 1 + ((rng() * 3) | 0);
+        for (let k = 0; k < ncr; k++) {
+          const t = rng() * Math.PI * 2;
+          let u = Math.cos(t) * p.rx * 1.05, v = Math.sin(t) * p.ry * 1.05;
+          let X = p.x + u * p.ca - v * p.sa, Y = p.y + u * p.sa + v * p.ca;
+          ctx.moveTo(X, Y);
+          let dir = t + p.a;
+          const segs = 2 + ((rng() * 2) | 0);
+          for (let q = 0; q < segs; q++) { dir += (rng() - 0.5) * 1.1; const l = 1.0 + rng() * 1.6; X += Math.cos(dir) * l; Y += Math.sin(dir) * l; ctx.lineTo(X, Y); }
+        }
+        ctx.lineWidth = 0.45; ctx.strokeStyle = 'rgba(22,20,24,0.65)'; ctx.stroke();
+      }
+      const nl = 2 + ((rng() * 4) | 0);
+      for (let k = 0; k < nl; k++) {
+        const t = rng() * Math.PI * 2, d = 1.3 + rng() * 0.9, gs = 0.4 + rng() * 0.5;
+        const u = Math.cos(t) * p.rx * d, v = Math.sin(t) * p.ry * d;
+        ctx.fillStyle = C.gravel[(rng() * C.gravel.length) | 0];
+        ctx.fillRect(p.x + u * p.ca - v * p.sa, p.y + u * p.sa + v * p.ca, gs, gs);
+      }
+    }
+    scratch.length = 0;
+  }
+
+  // ---- live water in wet potholes (ground layer): the water sits below the road, so the hole's wall
+  // shows as a dark band on the sunny side; the surface mirrors the sky of the hour (a brighter patch
+  // on the far side, a thin sheen), wet asphalt darkens around it and drops ring it while it rains.
+  // Paths are cached per 256 u chunk (rebuilt when the quantised sun or the weather changes).
+  const wetPaths = new Map(); // chunk index -> {key, list, halo, water, mud, glow, sheen}
+  function wetChunk(ci) {
+    const key = N.render.shadowEpoch * 4 + rainState;
+    let w = wetPaths.get(ci);
+    if (w && w.key === key) return w;
+    const list = potChunks[ci].filter((p) => p.wet && Math.floor(p.x / BK) + Math.floor(p.y / BK) * BW === ci);
+    w = { key, list, halo: null, water: null, mud: null, glow: null };
+    if (list.length && typeof Path2D !== 'undefined') {
+      const sun = N.render.sun, sl = Math.hypot(sun.sx || 0, sun.sy || 0) || 1, ux = (sun.sx || -0.6) / sl, uy = (sun.sy || -0.2) / sl;
+      w.halo = new Path2D(); w.water = new Path2D(); w.mud = new Path2D(); w.glow = new Path2D();
+      for (const p of list) {
+        const o = Math.min(p.rx, p.ry) * 0.12;
+        holePath(w.halo, p, 1.4);
+        holePath(p.kind === 'lane' ? w.mud : w.water, p, 0.84, ux * o, uy * o);
+        holePath(w.glow, p, 0.42, ux * o * 2.4, uy * o * 2.4);
+      }
+    }
+    if (wetPaths.size > 256) wetPaths.clear();
+    wetPaths.set(ci, w);
+    return w;
+  }
+  const SKY = [ // [minute, colour of the sky reflected by standing water]
+    [0, '#1d2538'], [300, '#232c44'], [345, '#7a6e90'], [390, '#e0a8b0'], [450, '#a9c4dc'], [600, '#8fbde0'],
+    [960, '#9cc0da'], [1020, '#f0b070'], [1100, '#e8885c'], [1150, '#7a5a88'], [1200, '#2a3150'], [1440, '#1d2538'],
+  ];
+  function skyColor(m) {
+    for (let i = 1; i < SKY.length; i++) if (m <= SKY[i][0]) { const a = SKY[i - 1], b = SKY[i]; return U.mix(a[1], b[1], (m - a[0]) / (b[0] - a[0])); }
+    return SKY[0][1];
+  }
+  let skyKey = -1;
+  const WC = { water: '#5b7890', mud: '#6a5a46', glow: '#a9c4dc', mudGlow: '#9a8a70' };
+  function drawWet(ctx) {
+    if (rainState === 0 || !potChunks.length) return;
+    const R = N.render, v = R.view, Z = R.Z;
+    const m = Math.round((N.clock && N.clock.minutes) || 720);
+    if (m !== skyKey) {
+      skyKey = m;
+      const sky = skyColor(m);
+      WC.water = U.mix(sky, '#26303a', 0.48); WC.glow = U.mix(sky, '#ffffff', 0.12);
+      WC.mud = U.mix(U.mix(sky, '#26303a', 0.4), '#5c4a36', 0.55); WC.mudGlow = U.mix(sky, '#8a7658', 0.4);
+    }
+    const i0 = Math.max(0, Math.floor((v.x0 - 12) / BK)), i1 = Math.min(BW - 1, Math.floor((v.x1 + 12) / BK));
+    const j0 = Math.max(0, Math.floor((v.y0 - 12) / BK)), j1 = Math.min(BH - 1, Math.floor((v.y1 + 12) / BK));
+    ctx.setTransform(Z, 0, 0, Z, R.sx(0, Z), R.sy(0, Z));
+    const raining = rainState === 2, t = N.time.real || 0;
+    let ripples = false;
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const w = wetChunk(j * BW + i);
+      if (!w.list.length || !w.water) continue;
+      ctx.fillStyle = 'rgba(18,16,30,0.20)'; ctx.fill(w.halo);   // wet road around the hole
+      ctx.fillStyle = WC.water; ctx.fill(w.water);
+      ctx.fillStyle = WC.mud; ctx.fill(w.mud);
+      ctx.globalAlpha = 0.55; ctx.fillStyle = WC.glow; ctx.fill(w.glow); ctx.globalAlpha = 1; // the sky patch
+      // a thin sheen line on every puddle
+      ctx.fillStyle = 'rgba(250,252,255,0.55)';
+      for (const p of w.list) ctx.fillRect(p.x - p.rx * 0.38, p.y - p.ry * 0.3, p.rx * 0.5, 0.35);
+      if (raining) {
+        if (!ripples) { ripples = true; ctx.beginPath(); }
+        for (const p of w.list) {
+          const ph = (t * 0.9 + (p.seed % 997) / 997) % 1, rr = Math.min(p.rx, p.ry) * (0.12 + ph * 0.62);
+          const cx = p.x + ((p.seed >> 3) % 3 - 1) * 0.5, cy = p.y + ((p.seed >> 5) % 3 - 1) * 0.4;
+          ctx.moveTo(cx + rr, cy); ctx.ellipse(cx, cy, rr, rr * 0.85, 0, 0, Math.PI * 2);
+        }
+      }
+    }
+    if (ripples) { ctx.lineWidth = 0.45; ctx.strokeStyle = 'rgba(230,238,255,0.5)'; ctx.stroke(); }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
   /* --------------------------------------------------------- enqueue */
   W.draw = function () {
     if (!W.built) return;
@@ -2847,13 +3684,13 @@
       if (s.t === 'roofzone') { if (vis) deckQ.push(s.roof); return; }
       if (s.t === 'landmark') {
         if (N.landmarks && N.landmarks.enqueue) { try { N.landmarks.enqueue(s.lm, vis); } catch (e) { N.err('landmarks.enqueue', e); } }
-        else if (vis) R.queue('structures', R.distKey(s.cx, s.cy), s.fn);
+        else if (vis) R.queue('structures', R.distKey(s.cx, s.cy), sfn(s));
         return;
       }
       if (night > 0.05 && s.t === 'lamp') {
         for (const a of s.arms) lights.push({ x: s.x + a[0] * 1.6, y: s.y + a[1] * 1.6, r: s.tube ? 46 : 64, color: s.tube ? '#bfe8ff' : '#ffa040', intensity: s.tube ? 0.75 : 0.95 });
       }
-      if (vis) R.queue('structures', R.distKey(s.cx, s.cy), s.fn);
+      if (vis) R.queue('structures', R.distKey(s.cx, s.cy), sfn(s));
       if (night > 0.2 && vis && s.porch && s.cwall) {
         const c = s.cwall, f = s.front;
         const gx = f === 'W' ? c.x : f === 'E' ? c.x + c.w : c.x + c.w / 2, gy = f === 'N' ? c.y : f === 'S' ? c.y + c.h : c.y + c.h / 2;
@@ -2863,6 +3700,7 @@
     enqueueRoofs();
     if (night > 0.2) R.queue('light', 0, (ctx) => drawLitWalls(ctx, night));
     R.queue('ground', 0, drawWaterGlints);
+    if (rainState > 0) R.queue('ground', 0, drawWet);
   };
 
   // Animated glitter on visible water: sampled on a jittered 20u grid (cheap), coloured by
@@ -2893,17 +3731,35 @@
   /* ------------------------------------------------------- map image */
   const mapCache = new Map();
   /** Simplified top-down map image at `ppu` pixels per world unit (cached). For minimap/full map. */
-  W.renderMap = function (ppu) {
+  // Canvas budget for the map image: browsers cap a canvas at ~16 M px (iOS) and big ones are slow
+  // to paint, so a request above MAP_MAX_SIDE px on a side is rendered at a lower scale; the
+  // returned canvas carries its real scale as `.ppu` (callers should read it).
+  const MAP_MAX_SIDE = 4096, MAP_MAX_PX = 12e6;
+  W.mapPPU = function (ppu) {
     ppu = ppu || 0.1;
-    const key = ppu.toFixed(4);
+    const side = Math.max(N.WORLD_W, N.WORLD_H) * ppu, area = N.WORLD_W * N.WORLD_H * ppu * ppu;
+    if (side > MAP_MAX_SIDE) ppu *= MAP_MAX_SIDE / side;
+    if (area > MAP_MAX_PX) ppu = Math.min(ppu, Math.sqrt(MAP_MAX_PX / (N.WORLD_W * N.WORLD_H)));
+    return ppu;
+  };
+  W.renderMap = function (ppu) {
+    const want = ppu || 0.1;
+    const key = want.toFixed(4) + '@' + N.WORLD_W + 'x' + N.WORLD_H;
     if (mapCache.has(key)) return mapCache.get(key);
+    ppu = W.mapPPU(want);
     const D = W.data;
     const c = N.render.makeCanvas(Math.ceil(N.WORLD_W * ppu), Math.ceil(N.WORLD_H * ppu));
+    c.ppu = ppu;
     const g = c.getContext('2d');
     g.scale(ppu, ppu);
     g.fillStyle = '#a98a66'; g.fillRect(0, 0, N.WORLD_W, N.WORLD_H);
-    for (const d of D.districts) { g.fillStyle = d.ground || '#a98a66'; g.fillRect(d.rect[0], d.rect[1], d.rect[2], d.rect[3]); }
-    for (const l of W.lots) { g.fillStyle = 'rgba(70,50,40,0.18)'; g.fillRect(l.rect[0], l.rect[1], l.rect[2], l.rect[3]); }
+    for (const d of D.districts) {
+      g.fillStyle = d.ground || '#a98a66';
+      g.beginPath(); districtPath(g, d); g.fill('evenodd');
+    }
+    g.beginPath(); // every lot in one path, one fill
+    for (const l of W.lots) g.rect(l.rect[0], l.rect[1], l.rect[2], l.rect[3]);
+    g.fillStyle = 'rgba(70,50,40,0.18)'; g.fill();
     for (const p of D.parks) { pathPoly(g, p.poly); g.fillStyle = PARKCOL[p.kind] || PARKCOL.grass; g.fill(); }
     for (const w of D.water) { pathPoly(g, w.poly); if (w.bank) { g.strokeStyle = '#cdb489'; g.lineWidth = w.bank * 2; g.stroke(); } g.fillStyle = w.color || '#2f7f86'; g.fill(); }
     g.lineJoin = 'round'; g.lineCap = 'round';

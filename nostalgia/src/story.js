@@ -80,6 +80,16 @@
   function landmark(id) { return ((N.WORLD_DATA && N.WORLD_DATA.landmarks) || []).find((l) => l.id === id) || null; }
   function roofs() { return (N.world && N.world.roofs && typeof N.world.roofs.get === 'function') ? N.world.roofs : null; }
   function roofCentre(r) { return { x: r.rect[0] + r.rect[2] / 2, y: r.rect[1] + r.rect[3] / 2, roof: r.id, h: r.h }; }
+  /** Put the player on roof `id` (teleport onto its place point; if that point is not a roof cell on the
+   *  current map, climb the roof's stairs instead). Returns true when the player stands on it. */
+  function putPlayerOnRoof(id, placeId) {
+    const p = N.player, RF = roofs();
+    if (!p) return false;
+    const P = pos(placeId || id);
+    if (P && p.level !== id) p.teleport(P.x, P.y);
+    if (RF && RF.get(id) && p.level !== id && typeof RF.climb === 'function') { try { RF.climb(id, 0, p, { instant: true }); } catch (e) { N.err('story.roof', e); } }
+    return p.level === id;
+  }
   /** target -> {x, y} (place id | landmark id | npc key | roof id | [candidates] | [x, y] | {x, y} | entity) */
   function pos(t) {
     if (t == null) return null;
@@ -1005,8 +1015,7 @@
     const C = N.calendar;
     let art = { scene() {}, remove() {} };
     const toTerrace = () => {
-      const P = pos('home_terrace') || pos('home');
-      if (P) N.player.teleport(P.x, P.y);
+      if (!putPlayerOnRoof('home_terrace')) { const P = (N.player.level ? null : pos('home_terrace')) || pos('home'); if (P && !N.player.level) N.player.teleport(P.x, P.y); }
       N.player.angle = Math.PI / 2;
     };
     const steps = [
@@ -1109,7 +1118,7 @@
     const p = N.player;
     const T0 = pos('home_terrace');
     // on the terrace: Nanna with his camera, Chitti; Immu on his own terrace across the ground
-    if (T0 && (!p.level || p.level !== (T0.level || 'home_terrace')) && dist(p, T0) > 40) p.teleport(T0.x, T0.y);
+    if (T0 && p.level !== (T0.level || 'home_terrace') && (dist(p, T0) > 40 || !p.level)) putPlayerOnRoof(T0.level || 'home_terrace', 'home_terrace');
     m.checkpoint('terrace');
     const R = roofs();
     const onRoof = (rid, dx, dy) => { const r = R && R.get(rid); if (!r) return null; const c = roofCentre(r); return { x: c.x + (dx || 0), y: c.y + (dy || 0) }; };
