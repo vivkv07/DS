@@ -304,7 +304,7 @@
       let want = null;
       if (look && r && LOOK_FIELDS[r]) for (const f of LOOK_FIELDS[r]) if (look[f]) { want = hexLin(look[f]); break; }
       if (!b || !want) { out.push(new THREE.Vector3(1, 1, 1)); continue; }
-      out.push(new THREE.Vector3(clamp(want[0] / Math.max(b[0], 0.004), 0, 8), clamp(want[1] / Math.max(b[1], 0.004), 0, 8), clamp(want[2] / Math.max(b[2], 0.004), 0, 8)));
+      out.push(new THREE.Vector3(clamp(want[0] / Math.max(b[0], 0.004), 0, 24), clamp(want[1] / Math.max(b[1], 0.004), 0, 24), clamp(want[2] / Math.max(b[2], 0.004), 0, 24)));
     }
     return out;
   }

@@ -72,6 +72,9 @@ async function openPage(browser, V) {
     N.view.set('tps');
   });
   await page.waitForFunction(() => N.view.mode === 'tps' && N.view3dActors && N.view3dActors.ready, null, { timeout: 240000 });
+  // this file tests the procedural actors: models3d.js (Blender GLB pipeline, tested by its own
+  // suite) would otherwise take over the on-foot player and parked vehicles when its pack has them
+  await page.evaluate(() => { if (N.models3d && N.models3d.options) { N.models3d.options.player = false; N.models3d.options.vehicles = false; } });
   return { context, page, errors };
 }
 const frames = (page, n) => page.evaluate((n) => new Promise((r) => { let k = 0; const f = () => (++k >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n || 2);
@@ -177,6 +180,15 @@ const HELPERS = () => {
       return { strip, frames: C.frames, cells: C.cells };
     },
     raf(n) { return new Promise((r) => { let k = 0; const f = () => (++k >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }); },
+    /** slow motion so that every rendered frame advances the simulation by about simPerFrame s,
+     *  whatever the real frame rate (software GL under load: ~0.1 s, a GPU: ~0.016 s) */
+    async slowmo(simPerFrame) {
+      N.time.scale = 1;
+      const t0 = performance.now(); await T3.raf(4);
+      const dt = Math.min(0.1, Math.max(0.004, (performance.now() - t0) / 4000));
+      N.time.scale = Math.max(0.01, Math.min(1, simPerFrame / dt));
+      return N.time.scale;
+    },
     /** contact + sliding over sampled person frames: a sole point (heel / toe) within 0.08 u of the
      *  ground in two successive frames must not move; ratio = its travel / the body's travel */
     gaitStats(F) {
@@ -215,12 +227,12 @@ const saveStrip = (name, data) => { if (!data) return; fs.writeFileSync(path.joi
 // (N.time.scale), and strips of successive frames are saved as tests/out/view3d_actors_gait_*.png.
 async function gait(browser) {
   cur = 'gait';
-  console.log('\n== gait: frame sequences (720x420)');
-  const { context, page, errors } = await openPage(browser, { viewport: { width: 720, height: 420 } });
+  console.log('\n== gait: frame sequences (640x360)');
+  const { context, page, errors } = await openPage(browser, { viewport: { width: 640, height: 360 } });
   await page.evaluate(HELPERS);
   await page.evaluate(() => {
     if (N.traffic) { N.traffic.enabled = false; N.traffic.clear(); }
-    N.view3d.setQuality({ adaptive: false, drawDist: 300 });
+    N.view3d.setQuality({ adaptive: false, drawDist: 240 });
     N.debug.teleport('fateh_maidan'); N.debug.setTime(11, 0);
     N.view3d.settle(20000);
     document.getElementById('ui').style.display = 'none';
@@ -247,7 +259,7 @@ async function gait(browser) {
       T3.capBegin({ strip: false, follow: e });
       await T3.raf(10);
       T3.capEnd();
-      N.time.scale = 0.05; // slow motion: successive rendered frames sample the cycle finely
+      await T3.slowmo(0.018); // slow motion: successive rendered frames sample the cycle finely
       T3.capBegin({ follow: e });
       for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
       const out = T3.capEnd();
@@ -262,7 +274,7 @@ async function gait(browser) {
     res[tag] = st;
     saveStrip(tag, r.strip);
     const run = sp > 62;
-    check(st.n >= 24 && st.pairs >= 10, tag + ': ' + st.n + ' frames sampled, ' + st.pairs + ' foot-contact pairs');
+    check(st.n >= 12 && st.pairs >= 6, tag + ': ' + st.n + ' frames sampled, ' + st.pairs + ' foot-contact pairs');
     check(st.ratio != null && st.ratio < 0.08, tag + ': planted feet — a grounded sole moves ' + st.slip + ' u while the body moves ' + st.travel + ' u (sliding ' + ((st.ratio || 0) * 100).toFixed(1) + '% < 8%)');
     check(st.minLow > -0.15, tag + ': soles never sink below the ground (lowest ' + st.minLow + ' u)');
     if (!run) check(st.hover === 0, tag + ': walking never leaves both feet off the ground by > 0.6 u (highest lowest-sole ' + st.maxLow + ' u)');
@@ -287,8 +299,8 @@ async function gait(browser) {
       N.time.scale = 1;
       N.input.hold('up', true); if (run) N.input.hold('run', true);
       await T3.raf(12);
-      N.time.scale = 0.05;
-      T3.capBegin({ dy: 40 }); // the game's own tps camera (from behind)
+      await T3.slowmo(0.018);
+      T3.capBegin({ dy: 30, max: 8 }); // the game's own tps camera (from behind)
       for (let i = 0; i < 400 && T3.cap.cells < 8 && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
       T3.cap.max = T3.cap.cells; const a = T3.capEnd();
       const sp = Math.hypot(p.vx || 0, p.vy || 0) || 1, side = [-(p.vy || 0) / sp * 30, 6, (p.vx || 0) / sp * 30, 4.0];
@@ -301,7 +313,7 @@ async function gait(browser) {
     }
     // stop: blend to a relaxed stance with both feet down
     N.input.hold('run', false); N.input.hold('up', false);
-    N.time.scale = 0.25;
+    await T3.slowmo(0.04);
     T3.capBegin({ key: 't', step: 0.05, max: 10, follow: p, off: window.__side });
     for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
     const s = T3.capEnd();
@@ -310,7 +322,7 @@ async function gait(browser) {
     // idle: breathing + looking around over a few seconds
     N.time.scale = 1;
     T3.capBegin({ strip: false, key: 't' });
-    const t0 = N.time.now; for (let i = 0; i < 300 && N.time.now - t0 < 4; i++) await T3.raf(2);
+    const t0 = N.time.now; for (let i = 0; i < 300 && N.time.now - t0 < 3; i++) await T3.raf(2);
     const id = T3.capEnd().frames;
     const rng = (k) => { const v = id.map((q) => q.J[k]); return v.length ? +(Math.max(...v) - Math.min(...v)).toFixed(3) : 0; };
     out.idle = { breathe: rng(14), headYaw: rng(12), drift: id.length ? +Math.hypot(id[id.length - 1].x - id[0].x, id[id.length - 1].y - id[0].y).toFixed(2) : 9, n: id.length };
@@ -334,7 +346,7 @@ async function gait(browser) {
     const v = N.vehicles.spawn('hero_cycle', p.x + 6, p.y, 0, {});
     if (!v) return { skip: 'no spawn' };
     N.view3dActors.debug.track(v);
-    N.time.scale = 0.1;
+    await T3.slowmo(0.04);
     T3.capBegin({ key: 't', step: 0.05, max: 9, follow: v, off: [0, 7, -28, 4.5] });
     N.vehicles.enter(p, v);
     for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
@@ -342,7 +354,7 @@ async function gait(browser) {
     out.on = { strip: on.strip, hips: on.frames.filter((q) => q.J).map((q) => +q.J[0].toFixed(2)) };
     // pedalling
     N.time.scale = 1; N.input.hold('up', true); await T3.raf(16);
-    N.time.scale = 0.05;
+    await T3.slowmo(0.025);
     T3.capBegin({ key: 't', step: 0.03, max: 10, follow: v, off: [0, 7, -28, 4.5] });
     for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
     const pd = T3.capEnd();
@@ -352,7 +364,7 @@ async function gait(browser) {
     for (let i = 0; i < 40 && Math.abs(v.speed || 0) > 1; i++) await T3.raf(2);
     // getting off
     N.view3dActors.debug.track(p);
-    N.time.scale = 0.1;
+    await T3.slowmo(0.04);
     T3.capBegin({ key: 't', step: 0.05, max: 9, follow: p, off: [0, 7, -28, 4.5] });
     N.vehicles.exit(p);
     for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);

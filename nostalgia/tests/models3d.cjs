@@ -237,7 +237,7 @@ async function main3d(browser) {
   cur = 'gait';
   await page.evaluate(() => {
     if (N.traffic) { N.traffic.enabled = false; if (N.traffic.clear) N.traffic.clear(); }
-    N.debug.teleport('fateh_maidan'); N.debug.setTime(11, 0);
+    N.debug.teleport('parade_grounds'); N.debug.setTime(11, 0);
     N.view3d.setQuality({ adaptive: false, drawDist: 320, pixelRatio: 1 });
     N.view3d.settle(20000);
     document.getElementById('ui').style.display = 'none';
@@ -247,12 +247,20 @@ async function main3d(browser) {
   for (const [name, run] of [['walk', false], ['run', true]]) {
     const g = await page.evaluate(async (run) => {
       const p = N.player;
-      N.debug.teleport('fateh_maidan');
-      N.view3d.setCamera({ yaw: 0, pitch: 0.2, snap: true });   // open ground to the east (like tests/view3d_actors.cjs)
-      p.facing = p.angle = 0;
-      N.time.scale = 1;
+      N.debug.teleport('parade_grounds');
+      // walk along the most open direction (no walls / stands for the whole sample)
+      let best = 0, bestD = -1;
+      for (let k = 0; k < 24; k++) {
+        const a = (k / 24) * Math.PI * 2;
+        let d = 0;
+        for (; d < 260; d += 4) if (!N.world.isWalkable(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d)) break;
+        if (d > bestD) { bestD = d; best = a; }
+      }
+      N.view3d.setCamera({ yaw: best, pitch: 0.2, snap: true });
+      p.facing = p.angle = best;
+      N.time.scale = 0.3;
       N.input.hold('up', true); if (run) N.input.hold('run', true);
-      await M3.raf(16);
+      await M3.raf(12);
       // the strip: 8 frames at 0.1 s of game time, side camera following Chinnu
       N.time.scale = 0.25;
       M3.begin({ max: 8, step: 0.1, follow: true });
@@ -387,7 +395,7 @@ async function main3d(browser) {
   });
   // expected: linear(#d8402a) / linear(#3d6fb0)
   const lin = (h) => [1, 3, 5].map((i) => { const c = parseInt(h.slice(i, i + 2), 16) / 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });
-  const e1 = lin('#d8402a').map((x, i) => x / lin('#3d6fb0')[i]);
+  const e1 = lin('#d8402a').map((x, i) => Math.min(24, x / lin('#3d6fb0')[i]));
   check(ti.tinted && ti.key === 'm3d-tint' && ti.shirt.every((x, i) => Math.abs(x - e1[i]) < 0.02), 'tint: look.shirt -> region ratio ' + ti.shirt.join(',') + ' (expected ' + e1.map((x) => x.toFixed(3)).join(',') + '), one shared program');
   if (SHOTS) {
     await page.evaluate(() => { const p = N.player, a = p.facing || 0; N.view3dActors.debug.camera([p.x + Math.cos(a) * 24, 6.5, p.y + Math.sin(a) * 24], [p.x, 3.6, p.y], 40); });

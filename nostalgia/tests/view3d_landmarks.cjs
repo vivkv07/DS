@@ -57,7 +57,7 @@ const NAMED = ['birla_planetarium', 'assembly', 'mozamjahi_market', 'kachiguda_s
 // at / look are offsets from the landmark centre (or from another landmark: rel: '<id>')
 const VIEWS = {
   // Map v2: the Charminar Kaman stands 140 u due north, so the 'north' view looks from north-north-west
-  charminar: [{ name: 'north', from: -Math.PI / 2 - 0.6, dist: 100, fpsDist: 110 }, { name: 'laad_bazaar', atFn: 'laad', fpsPitch: -0.2 }, { name: 'close', from: -Math.PI / 2 + 0.5, dist: 92, fpsDist: 70, fpsPitch: -0.75 }],
+  charminar: [{ name: 'north', from: -Math.PI / 2 - 0.6, dist: 125, fpsDist: 110, tpsPitch: -0.25 }, { name: 'laad_bazaar', atFn: 'laad', fpsPitch: -0.2 }, { name: 'close', from: -Math.PI / 2 + 0.5, dist: 92, fpsDist: 70, fpsPitch: -0.75 }],
   lb_stadium: [{ name: 'gate', from: Math.PI, dist: 150 }, { name: 'field', at: [0, 60], look: [0, -110], fpsOnly: true, fpsPitch: -0.05 }],
   birla_mandir: [{ name: 'front', from: Math.PI / 2, dist: 140 }],
   buddha_statue: [{ name: 'bund', atFn: 'bund', fpsPitch: -0.1 }],
@@ -168,7 +168,7 @@ async function main() {
         const look = v.look ? [lm.x + v.look[0], lm.y + v.look[1]] : null;
         if (v.atFn) at = atFn(v.atFn, lm, L);
         out.push({ id: lm.id, draw: lm.draw, view: v.name || '', x: lm.x, y: lm.y, Ht, at, look, fpsOnly: !!v.fpsOnly,
-          tps: [lm.x + Math.cos(from) * dist, lm.y + Math.sin(from) * dist], fps: [lm.x + Math.cos(from) * fdist, lm.y + Math.sin(from) * fdist], fdist, fpsPitch: v.fpsPitch, snapRoad: sm && !v.at });
+          tps: [lm.x + Math.cos(from) * dist, lm.y + Math.sin(from) * dist], fps: [lm.x + Math.cos(from) * fdist, lm.y + Math.sin(from) * fdist], fdist, fpsPitch: v.fpsPitch, tpsPitch: v.tpsPitch, snapRoad: sm && !v.at });
       }
     }
     return out;
@@ -265,7 +265,7 @@ async function main() {
             const yaw = Math.atan2(look[1] - p.y, look[0] - p.x);
             let pitch;
             if (mode === 'fps') pitch = P.fpsPitch != null ? P.fpsPitch : -Math.atan2(Math.max(0, P.Ht * 0.48 - 6.3), Math.max(20, d)) * 0.95;
-            else pitch = P.snapRoad ? 0.32 : P.Ht > 70 ? -0.12 : 0.02;
+            else pitch = P.tpsPitch != null ? P.tpsPitch : P.snapRoad ? 0.32 : P.Ht > 70 ? -0.12 : 0.02;
             N.view3d.setCamera({ yaw, pitch, snap: true });
             const settled = N.view3d.settle(20000);
             return { settled, d: Math.round(d), x: Math.round(p.x), y: Math.round(p.y) };
@@ -286,7 +286,7 @@ async function main() {
     const V = [
       { name: 'lb_stadium_matchday_fps_night', lm: 'lb_stadium', at: [0, 60], look: [0, -110], mode: 'fps', h: [19, 40], pitch: -0.08, set: () => { N.flags.lb_match = true; } },
       { name: 'lb_stadium_matchday_tps_dusk', lm: 'lb_stadium', at: [-141, 0], look: [0, 0], mode: 'tps', h: [18, 20], pitch: 0.18, set: () => { N.flags.lb_match = true; } },
-      { name: 'charminar_chand_raat_tps_night', lm: 'charminar', at: [-56, -83], look: [0, 0], mode: 'tps', h: [22, 0], pitch: -0.12, set: () => { N.flags.chand_raat = true; } },
+      { name: 'charminar_chand_raat_tps_night', lm: 'charminar', at: [-56, -83], look: [0, 0], mode: 'tps', h: [22, 0], pitch: -0.28, set: () => { N.flags.chand_raat = true; } },
       { name: 'prasads_open_tps_day', lm: 'prasads_imax', at: [0, 96], look: [0, 0], mode: 'tps', h: [11, 0], pitch: 0, set: () => { if (N.placesArt) N.placesArt.fx.prasads = 'open'; N.flags.prasads_open = true; } },
       { name: 'prasads_fence_tps_day', lm: 'prasads_imax', at: [0, 96], look: [0, 0], mode: 'tps', h: [11, 0], pitch: 0, set: () => { if (N.placesArt) N.placesArt.fx.prasads = 'fence'; N.flags.prasads_open = false; } },
       { name: 'ntr_gardens_tps_golden', lm: 'ntr_memorial', at: [-110, 20], clear: true, look: [0, 0], mode: 'tps', h: [17, 40], pitch: 0.1, set: () => {} },

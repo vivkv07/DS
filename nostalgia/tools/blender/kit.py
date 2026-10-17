@@ -1138,6 +1138,69 @@ def text_image(text, w=512, h=128, fg='#1a1a1a', bg='#f2c230', font=None, size=0
     return img
 
 
+def sign_material(img, name=None, grime=0.35):
+    """Material that paints an image (text_image) through the 'SignUV' layer, with a little
+    grime / sun-fade on top; bakes into atlases (finish_atlas) or ships as is (finish_tiled)."""
+    name = name or ('sign_' + img.name)
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    m['nos'] = json.dumps({'base': '#ffffff', 'rough': 0.6, 'sign': img.filepath_raw or img.name})
+    m['nos_key'] = 'sign'
+    m['nos_sign'] = img.name
+    m['nos_bake'] = True
+    m['nos_region'] = 0
+    nt = m.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    B = NodeBuilder(m)
+    uv = B.node('ShaderNodeUVMap')
+    uv.uv_map = 'SignUV'
+    t = B.node('ShaderNodeTexImage')
+    t.image = img
+    t.interpolation = 'Cubic'
+    B.link(uv.outputs['UV'], t.inputs['Vector'])
+    tc = B.node('ShaderNodeTexCoord')
+    coord = B.node('NodeReroute', 'NOS_COORD')
+    B.link(tc.outputs['Object'], coord.inputs[0])
+    wv = B.value(1.3, 'NOS_W')
+    aof = B.value(1.0, 'NOS_AOF')
+    n1 = B.noise(coord.outputs[0], wv, 1.2, detail=4.0)
+    fade = B.mix(B.math('MULTIPLY', B.ramp(n1, 0.45, 0.8), grime), t.outputs['Color'], B.rgb(lin('#6a5f50')))
+    alb = B.node('NodeReroute', 'NOS_ALBEDO')
+    B.link(fade, alb.inputs[0])
+    rough = B.value(0.6, 'NOS_ROUGH')
+    metal = B.value(0.0, 'NOS_METAL')
+    bsdf = B.node('ShaderNodeBsdfPrincipled', 'NOS_BSDF')
+    B.link(alb.outputs[0], bsdf.inputs['Base Color'])
+    B.link(rough, bsdf.inputs['Roughness'])
+    B.link(metal, bsdf.inputs['Metallic'])
+    out = B.node('ShaderNodeOutputMaterial', 'NOS_OUT')
+    B.link(bsdf.outputs[0], out.inputs['Surface'])
+    return m
+
+
+def signboard(name, text, w, h, loc=(0, 0, 0), depth=0.12, fg='#1a1a1a', bg='#f2c230', frame_mat=None, px=512, font=None):
+    """A painted signboard facing -Y: a thin board whose front face carries `text` (era brand names
+    only as plain painted text, never logos). Returns the board object."""
+    img = text_image(text, px, max(32, int(px * h / w)), fg=fg, bg=bg, font=font)
+    sm = sign_material(img)
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    bmesh.ops.scale(bm, vec=Vector((w, depth, h)), verts=bm.verts)
+    suv = bm.loops.layers.uv.new('SignUV')
+    bm.loops.layers.uv.new('UVMap')
+    for f in bm.faces:
+        front = f.normal.y < -0.9
+        f.material_index = 0 if front else 1
+        for l in f.loops:
+            co = l.vert.co
+            l[suv].uv = ((co.x / w + 0.5), (co.z / h + 0.5)) if front else (0.02, 0.02)
+    bmesh.ops.translate(bm, vec=Vector(loc), verts=bm.verts)
+    ob = obj_from_bm(bm, name, sm)
+    ob.data.materials.append(frame_mat or material('wood_raw', 'sign_frame'))
+    return ob
+
+
 # =========================================================================== UVs
 def uv_atlas(objs, margin=0.004, angle=60.0):
     """Smart-project all objects into one shared, packed UV atlas (one texture for the asset)."""
@@ -1145,8 +1208,12 @@ def uv_atlas(objs, margin=0.004, angle=60.0):
     if not objs:
         return
     for o in objs:
-        if not o.data.uv_layers:
-            o.data.uv_layers.new(name='UVMap')
+        uvl = o.data.uv_layers.get('UVMap') or o.data.uv_layers.new(name='UVMap')
+        o.data.uv_layers.active = uvl
+        try:
+            uvl.active_render = True
+        except Exception:
+            pass
     select_only(objs, objs[0])
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
@@ -1368,6 +1435,7 @@ def finish_atlas(A, objs, size=None, ao_samples=32, albedo_samples=8, ao_strengt
         opath = os.path.join(TMP_DIR, A.id + '_orm.png')
         save_png(orm_a, opath, srgb=False, name=A.id + '_orm')
     M = baked_material('M_' + A.id, bpath, opath, rough=0.8)
+    drop_uv(objs, 'SignUV')
     for o in objs:
         slots = list(o.data.materials)
         keep = [m for m in slots if m is not None and not m.get('nos_bake', True)]
@@ -1601,6 +1669,15 @@ def finish_tiled(A, objs, tile=16.0, tex=512, ao_samples=64, ao_strength=0.8, ao
     finals = {}
     for o in objs:
         uv_box(o, tile)
+        # sign faces: their painted image maps through SignUV, copied into the exported UV layer
+        me = o.data
+        if me.uv_layers.get('SignUV'):
+            su, uv = me.uv_layers['SignUV'], me.uv_layers['UVMap']
+            for p in me.polygons:
+                mm = me.materials[p.material_index] if p.material_index < len(me.materials) else None
+                if mm is not None and mm.get('nos_sign'):
+                    for li in p.loop_indices:
+                        uv.data[li].uv = su.data[li].uv
         slots = list(o.data.materials)
         newm = []
         for m in slots:
@@ -1608,6 +1685,14 @@ def finish_tiled(A, objs, tile=16.0, tex=512, ao_samples=64, ao_strength=0.8, ao
                 continue
             if not m.get('nos_bake', True):
                 newm.append(glass_material(A.id, m))
+                continue
+            if m.get('nos_sign'):
+                img = bpy.data.images.get(m['nos_sign'])
+                p = bpy.path.abspath(img.filepath_raw) if img else None
+                if m.name not in finals and p and os.path.exists(p):
+                    finals[m.name] = baked_material('M_%s_%s' % (A.id, m.name), p, None, rough=0.6, vcol='AO')
+                    A.textures.append(p)
+                newm.append(finals.get(m.name) or m)
                 continue
             if m.name not in finals:
                 spec = json.loads(m.get('nos', '{}'))
@@ -1626,7 +1711,15 @@ def finish_tiled(A, objs, tile=16.0, tex=512, ao_samples=64, ao_strength=0.8, ao
             o.data.materials.append(m)
         for p, i in zip(o.data.polygons, fidx):
             p.material_index = min(i, len(newm) - 1)
+    drop_uv(objs, 'SignUV')
     return list(finals.values())
+
+
+def drop_uv(objs, name):
+    for o in objs:
+        uv = o.data.uv_layers.get(name)
+        if uv is not None:
+            o.data.uv_layers.remove(uv)
 
 
 # =========================================================================== region attribute (characters)
