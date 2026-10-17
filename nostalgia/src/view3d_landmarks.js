@@ -1,6 +1,6 @@
 /* NOSTALGIA — view3d_landmarks.js (3D landmark modeller) — ARCHITECTURE §20
  *
- * Low-poly 3D models for every N.WORLD_DATA.landmarks draw id (426 landmarks, ~95 draw ids),
+ * Low-poly 3D models for every N.WORLD_DATA.landmarks draw id (Map v2: 506 landmarks, 126 model defs),
  * registered through N.view3d.registerLandmark; nothing in another module is edited or patched.
  * Proportions and colours follow the 2D art in landmarks.js / places_art.js so the city reads the
  * same in both views. Test: node tests/view3d_landmarks.cjs (screenshots: tests/out/view3d_landmarks/).
@@ -25,6 +25,11 @@
  *    whichever member the core asks for first (the others return false; the owner's dispose frees
  *    the cell). Each batch, and the mid-size worship / school models, is a THREE.LOD that hides it
  *    beyond ~430-1400 u (shorter on the low tier).
+ *    The Golconda curtain wall (85 segments on Map v2) is batched the same way, with a bastion at
+ *    every joint. Big models are kept in a small LRU (40) when the core disposes them, so walking
+ *    back and forth does not rebuild them (GPU buffers are freed and re-uploaded on reuse);
+ *    'world:built' clears it. Positions inside a model (bus bays, the LB field, gates) are derived
+ *    from the landmark's own data (solids, the matching park polygon), never absolute coordinates.
  *  - Camera: detailed meshes are not ray-cast (raycast = no-op: three.js has no BVH and the core
  *    casts the camera ray every frame); invisible proxy boxes (material.visible = false) stand in
  *    where the camera can pass under (Charminar's arches, the Char Kaman, gates, canopies, the
@@ -35,7 +40,8 @@
  *    hoardings (ported from places_art's board painter, fictional titles). Landmarks with lights
  *    push H.light() near the player (floodlit Charminar plaza, stadium towers on match day...).
  *  - Variants are built side by side and toggled per frame: Charminar bulbs white / festive green
- *    (N.landmarks.fx.festive or flags chand_raat / eid / ramzan / finale), LB Stadium match day
+ *    and green floodlights (N.landmarks.fx.festive or flags chand_raat / eid / ramzan / finale;
+ *    M.kitFest shares the kit program with its own uFlood uniform), LB Stadium match day
  *    (N.flags.lb_match: crowds on the stands, floodlight banks, the U-12 FINAL banner), Prasads
  *    fence / open (N.placesArt.variant('prasads_imax') or N.flags.prasads_open), NTR Gardens
  *    (construction hides the Machan tree + train; the mini train runs round its loop), Khairatabad
@@ -75,12 +81,14 @@
   /* ================================================================ materials */
   function kitCompile(shader) {
     shader.uniforms.uNight = H.uniforms.uNight;
+    // floodlight colour per material (one shared program: same code + cache key, own uniform values)
+    shader.uniforms.uFlood = (this && this.userData && this.userData.uFlood) || { value: new THREE.Vector3(1.0, 0.80, 0.56) };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec4 facade;\nvarying vec4 vKit;\nvarying float vKitY;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvKit = facade;')
       .replace('#include <project_vertex>', '#include <project_vertex>\n\tvKitY = (modelMatrix * vec4(transformed, 1.0)).y;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uNight;\nvarying vec4 vKit;\nvarying float vKitY;')
+      .replace('#include <common>', '#include <common>\nuniform float uNight;\nuniform vec3 uFlood;\nvarying vec4 vKit;\nvarying float vKitY;')
       .replace('#include <emissivemap_fragment>', [
         '#include <emissivemap_fragment>',
         '{',
@@ -88,7 +96,7 @@
         '  vec3 ec = ci < 0.5 ? vColor : ci < 1.5 ? vec3(1.0, 0.70, 0.40) : ci < 2.5 ? vec3(0.80, 0.92, 1.0) : ci < 3.5 ? vec3(1.0, 0.55, 0.22) : vec3(0.50, 1.0, 0.62);',
         '  totalEmissiveRadiance += ec * kE * uNight * 2.0;',
         '  float fh = 1.0 - smoothstep(0.0, 170.0, vKitY) * 0.5;',
-        '  totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.80, 0.56) * kF * uNight * fh * 0.95;',
+        '  totalEmissiveRadiance += diffuseColor.rgb * uFlood * kF * uNight * fh * 0.95;',
         '}',
       ].join('\n'));
   }
@@ -97,13 +105,16 @@
     THREE = T; H = h || V3.H;
     TMP.m = new THREE.Matrix4(); TMP.m2 = new THREE.Matrix4(); TMP.m3 = new THREE.Matrix4(); TMP.id = new THREE.Matrix4();
     TMP.d = new THREE.Vector3(); TMP.up = new THREE.Vector3(0, 1, 0); TMP.q = new THREE.Quaternion(); TMP.p = new THREE.Vector3(); TMP.sc = new THREE.Vector3(); TMP.sv = new THREE.Vector3();
-    const kit = (side, key) => {
+    const kit = (side, key, flood) => {
       const m = new THREE.MeshLambertMaterial({ vertexColors: true, side });
       m.onBeforeCompile = kitCompile; m.customProgramCacheKey = () => key;
+      m.userData.uFlood = { value: new THREE.Vector3(flood[0], flood[1], flood[2]) };
       m.userData.shared = true; return m;
     };
-    M.kit = kit(THREE.FrontSide, 'lm3d-kit');
-    M.kit2 = kit(THREE.DoubleSide, 'lm3d-kit2');
+    M.kit = kit(THREE.FrontSide, 'lm3d-kit', [1.0, 0.80, 0.56]);
+    M.kit2 = kit(THREE.DoubleSide, 'lm3d-kit2', [1.0, 0.80, 0.56]);
+    // festive nights: Charminar's floodlights turn green (same program as M.kit, its own uniform)
+    M.kitFest = kit(THREE.FrontSide, 'lm3d-kit', [0.50, 1.0, 0.60]);
     M.water = new THREE.MeshPhongMaterial({ color: '#3a8a93', specular: '#bfe2ea', shininess: 70, transparent: true, opacity: 0.9 });
     const gmap = H.materials.glow && H.materials.glow.map;
     const pts = (size) => new THREE.PointsMaterial({ size, map: gmap, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true, opacity: 0 });
@@ -752,9 +763,11 @@
     // night: bulb strings on the crest and the balcony edge (festive set in green)
     for (const tag of ['bulbs', 'bulbsF']) {
       md.sub = tag;
-      const col = tag === 'bulbs' ? '#fff1b8' : '#8dffa8';
-      for (let u = -23; u <= 23.1; u += 2.3) md.glow(u, 89.6, 25.4, col);
-      for (let u = -27.6; u <= 27.7; u += 2.3) md.glow(u, 71.4, 29.0, col);
+      // festive nights (Chand Raat, Eid, Ramzan): mostly green with every third bulb white
+      let i = 0;
+      const col = () => (tag === 'bulbs' || i++ % 3 === 2 ? '#fff1b8' : '#3dff6a');
+      for (let u = -23; u <= 23.1; u += 2.3) md.glow(u, 89.6, 25.4, col());
+      for (let u = -27.6; u <= 27.7; u += 2.3) md.glow(u, 71.4, 29.0, col());
       md.sub = null;
     }
   }
@@ -841,6 +854,7 @@
     u.fest = f;
     if (u.subs.bulbs) u.subs.bulbs.visible = !f;
     if (u.subs.bulbsF) u.subs.bulbsF.visible = f;
+    obj.traverse((m) => { if (m.isMesh && (m.material === M.kit || m.material === M.kitFest)) m.material = f ? M.kitFest : M.kit; });
   }
   def('charminar', charminar, { anim: true });
 

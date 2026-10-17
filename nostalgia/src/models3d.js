@@ -46,7 +46,7 @@
   const lsGet = (k) => { try { return window.localStorage.getItem(k); } catch (e) { return null; } };
 
   /* ================================================================ options + state */
-  const OPT = { enabled: true, player: true, vehicles: true, landmarks: true, kidPeds: false, env: true, nightGlow: true };
+  const OPT = { enabled: true, player: true, vehicles: true, riders: true, landmarks: true, kidPeds: false, env: true, nightGlow: true };
   const LOADER_URLS = ['vendor/three/GLTFLoader.classic.js', '../vendor/three/GLTFLoader.classic.js', 'https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/GLTFLoader.js'];
   const PACK_URLS = ['src/assets3d_pack.js', '../src/assets3d_pack.js'];
   const S = {
@@ -142,7 +142,7 @@
   function wanted(id) {
     const m = manifest(id); if (!m) return false;
     const meta = m.meta || {};
-    if (m.family === 'character') return OPT.player || OPT.kidPeds;
+    if (m.family === 'character') return OPT.player || OPT.kidPeds || OPT.riders;
     if (m.family === 'vehicle') return OPT.vehicles;
     if (m.family === 'landmark' || m.family === 'hero_landmark') return OPT.landmarks && (!meta.proto || useProto);
     return true;
@@ -332,10 +332,13 @@
   const V_IDLE = 3;          // u/s below which a character stands
   const FADE = 0.18;         // s, idle <-> locomotion cross-fade
   class Character {
-    constructor(md, look) {
+    constructor(md, look, opts) {
+      opts = opts || {};
       this.md = md; this.id = md.id;
       this.object = new THREE.Group(); this.object.name = 'm3d-char:' + md.id;
-      this.pivot = instance(md.id); this.pivot.rotation.y = Math.PI / 2; // GLB front +Z -> +X
+      // GLB front +Z -> +X for the core's rotation.y = -angle; riders are attached inside a vehicle's
+      // GLB frame (opts.attach) where both models share the same axes
+      this.pivot = instance(md.id); this.pivot.rotation.y = opts.attach ? 0 : Math.PI / 2;
       this.object.add(this.pivot);
       this.mesh = null; this.pivot.traverse((o) => { if (o.isSkinnedMesh && !this.mesh) this.mesh = o; });
       this.anchors = findAnchors(this.pivot);
@@ -429,13 +432,26 @@
       this.mixer.update(dt);
       return this;
     }
+    /** hold one clip exclusively at a phase in [0, 1) (riding: the phase follows the crank) */
+    pose(name, phase) {
+      const a = this.actions[name];
+      if (!a) return false;
+      for (const k in this.actions) if (this.actions[k] !== a) this.actions[k].setEffectiveWeight(0);
+      a.paused = true; a.setEffectiveWeight(1);
+      const d = a.getClip().duration;
+      a.time = (((phase % 1) + 1) % 1) * d;
+      this.clip = name; this.oneShot = null; this.locoW = 0;
+      this.mixer.update(0);
+      return true;
+    }
+    has(name) { return !!this.actions[name]; }
     weights() { const o = {}; for (const k in this.actions) o[k] = +this.actions[k].getEffectiveWeight().toFixed(3); return o; }
     dispose() { this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.pivot); if (this.tintMat) this.tintMat.dispose(); disposeInstance(this.object); }
   }
-  function character(id, look) {
+  function character(id, look, opts) {
     const md = S.models.get(id);
     if (!md || !md.clips.size) return null;
-    try { return new Character(md, look); } catch (e) { N.err('models3d.character:' + id, e); return null; }
+    try { return new Character(md, look, opts); } catch (e) { N.err('models3d.character:' + id, e); return null; }
   }
 
   /* ================================================================ vehicles */
@@ -462,14 +478,23 @@
     const sa = meta.steerAxis || [0, -0.381, -0.925];
     const steerAxis = new THREE.Vector3(sa[0], sa[2], -sa[1]).normalize(); // Blender -> glTF
     const part = (name, axis) => { const b = bones[name]; return b ? { node: b, rest: b.quaternion.clone(), axis: localAxis(b, rootQinv, axis) } : null; };
+    const st0 = meta.saddleTube || [0, 0.371, 0.928];
+    let saddle = null;
+    if (bones.saddle) {
+      const b = bones.saddle, pq = new THREE.Quaternion();
+      if (b.parent) { b.parent.getWorldQuaternion(pq); pq.premultiply(rootQinv); }
+      saddle = { node: b, rest: b.position.clone(), dir: new THREE.Vector3(st0[0], st0[2], -st0[1]).normalize().applyQuaternion(pq.invert()) };
+    }
     const P = {
       object, pivot, md, bones, anchors,
       wheels: ['wheel_rear', 'wheel_front'].map((n) => part(n, lateral)).filter(Boolean),
       steer: part('steer', steerAxis), crank: part('crank', lateral),
       pedals: ['pedal_L', 'pedal_R'].map((n) => part(n, lateral)).filter(Boolean),
-      R: meta.wheelR || 3, gear: meta.gear || 2.4, night: [],
+      R: meta.wheelR || 3, gear: meta.gear || 2.4, night: [], saddlePart: saddle, drop: 0, rider: null,
       state: { dist: 0, steer: 0, crank: 0 },
     };
+    /** let the saddle down by d u along the seat tube (Chinnu's cycle) */
+    P.saddle = (d) => { if (saddle && d !== P.drop) { P.drop = d; saddle.node.position.copy(saddle.rest).addScaledVector(saddle.dir, -d); } return P; };
     // per-instance copies of the @night materials (a parked cycle's lamp is off, a ridden one on)
     pivot.traverse((o) => {
       if (!o.isMesh) return;
@@ -492,7 +517,7 @@
       return P;
     };
     P.lamp = (k) => { for (const m of P.night) m.emissiveIntensity = k; };
-    P.dispose = () => { for (const m of P.night) m.dispose(); disposeInstance(object); };
+    P.dispose = () => { if (P.rider) { P.rider.dispose(); P.rider = null; } for (const m of P.night) m.dispose(); disposeInstance(object); };
     P.set({ dist: 0, steer: 0 });
     return P;
   }
@@ -528,6 +553,25 @@
       dispose(obj) { const c = obj && obj.userData.m3dChar; if (c) c.dispose(); },
     };
   }
+  const MALE = { man: 1, uncle: 1, lungi: 1 };
+  /** the rider model id for occupant d of vehicle v (or null: the procedural renderer draws it) */
+  function riderModel(v, d) {
+    if (!d) return null;
+    const vid = VEH_TYPES.get(v.type), vmd = vid && S.models.get(vid);
+    if (!vmd) return null;
+    const drop = ((vmd.meta.saddleDrop || {})[v.type]) || 0;
+    const p = N.player;
+    const look = d === p ? p.look : (d.look || v._look || null);
+    for (const [id, md] of S.models) {
+      if (md.man.family !== 'character') continue;
+      const rc = (md.man.clips || {}).ride_cycle;
+      if (!rc || Math.abs((rc.saddleDrop || 0) - drop) > 1e-3 || !md.clips.has('ride_cycle')) continue;
+      if (d === p) { if (md.meta.role === 'player') return id; continue; }
+      if (md.meta.role === 'player') continue;
+      if (look && MALE[look.kind] && (md.meta.people || []).indexOf('man') >= 0) return id;
+    }
+    return null;
+  }
   function vehicleSpec(id) {
     return {
       shadow: true, fps: true, m3d: id,
@@ -550,6 +594,25 @@
         obj.position.set(e.x, H.elev(e) + y, e.y);
         obj.rotation.set(roll, -(e.angle || 0), pitch);
         P.set({ dist: (e.wheelPhase || 0) * 2, steer: -(e.steerVis || 0) * 0.8 });
+        P.saddle(((P.md.meta.saddleDrop || {})[e.type]) || 0);
+        // the rider, seated in the cycle's own frame; the clip phase follows the crank (feet on the pedals)
+        const d = e.driver && !e.fallen ? e.driver : null;
+        const rid = d ? riderModel(e, d) : null;
+        const look = d ? (d === N.player ? N.player.look : (d.look || e._look)) : null;
+        if (P.rider && (P.rider.id !== rid || P.riderOf !== d)) { P.rider.dispose(); P.rider = null; }
+        if (rid && !P.rider) {
+          P.rider = character(rid, look, { attach: true }); P.riderOf = d;
+          if (P.rider) {
+            const sh = !!(H.quality && H.quality.shadows);
+            P.rider.object.traverse((m) => { if (m.isMesh) m.castShadow = sh; });   // added after the core's create() pass
+            P.pivot.add(P.rider.object);
+          }
+        }
+        if (P.rider) {
+          if (look !== P.rider.lookRef) P.rider.tint(look);
+          P.rider.pose('ride_cycle', P.state.crank / TAU);
+          P.rider.object.visible = !(d === N.player && H.mode === 'fps');
+        }
         const moving = !!e.driver && Math.abs(e.speed || 0) > 10;
         P.lamp(OPT.nightGlow && moving ? H.night * 1.5 : 0);
         if (moving && H.night > 0.2 && P.anchors.headlight) {
@@ -636,13 +699,19 @@
   function canShowPlayer(p) {
     return !!(p && !p.vehicle && !p.hidden && !p.sitting && !(p.downT > 0) && !p.fallen && !p.riding && p.alive !== false);
   }
+  /** an entity the procedural renderer's debug recorder is tracking (tests/view3d_actors.cjs) stays
+   *  procedural, so its pose recorder keeps working */
+  function tracked(e) {
+    const A = N.view3dActors, D = A && A.debug && A.debug.DBG;
+    return !!(D && D.track && D.track === e);
+  }
   function route() {
     const V3 = N.view3d;
     if (!V3 || !V3.active || S.state !== 'ready') return;
     const p = N.player;
     // the player
     const pid = OPT.player && OPT.enabled ? PLAYER_ID() : null;
-    const want = pid && canShowPlayer(p) ? 'm3d:char:' + pid : null;
+    const want = pid && canShowPlayer(p) && !tracked(p) ? 'm3d:char:' + pid : null;
     if (p) {
       if (want && p.view3d !== want) p.view3d = want;
       else if (!want && p.view3d && String(p.view3d).indexOf('m3d:') === 0) delete p.view3d;
@@ -656,8 +725,8 @@
     for (const e of list) {
       if (!e || e.kind !== 'vehicle') { if (e && OPT.kidPeds && e !== p && e.kind === 'ped' && pid) routePed(e, pid); continue; }
       const mid = OPT.vehicles && OPT.enabled ? VEH_TYPES.get(e.type) : null;
-      const riders = e.driver || e.pillion || e.passenger;
-      const key = mid && !riders && e.alive !== false ? 'm3d:veh:' + mid : null;
+      const ridersOk = !e.pillion && !e.passenger && (!e.driver || (OPT.riders && !!riderModel(e, e.driver)));
+      const key = mid && ridersOk && e.alive !== false && !tracked(e) ? 'm3d:veh:' + mid : null;
       if (key) { if (e.view3d !== key) e.view3d = key; n++; } else if (e.view3d && String(e.view3d).indexOf('m3d:') === 0) delete e.view3d;
     }
     S.routedVehicles = n;
@@ -721,7 +790,7 @@
         registered: Array.from(S.registered).concat(Array.from(S.landmarkKeys.keys())), routedPlayer: S.routedPlayer, routedVehicles: S.routedVehicles, useProto,
       };
     },
-    debug: { S, route, unrouteAll, Character, tintRatios, cloneScene },
+    debug: { S, route, unrouteAll, Character, tintRatios, cloneScene, riderModel },
   });
 
   N.addSystem({

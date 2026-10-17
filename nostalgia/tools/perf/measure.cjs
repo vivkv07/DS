@@ -60,7 +60,7 @@ const PROFILES = {
 const DEVICE = {
   viewport: { width: 412, height: 892 }, deviceScaleFactor: 2.625, isMobile: true, hasTouch: true,
   userAgent: 'Mozilla/5.0 (Linux; Android 14; SM-A256E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36',
-  ignoreHTTPSErrors: true, serviceWorkers: 'allow',
+  serviceWorkers: 'allow',
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const r1 = (v) => (v == null || !isFinite(v) ? null : Math.round(v * 10) / 10);
@@ -195,10 +195,11 @@ async function navigate(page, url, label, timeoutMs) {
     const nav = performance.getEntriesByType('navigation')[0] || {};
     const res = performance.getEntriesByType('resource').map((r) => ({ name: r.name.replace(/^https:\/\//, '').slice(0, 80), type: r.initiatorType, start: Math.round(r.startTime), end: Math.round(r.responseEnd), transfer: r.transferSize, encoded: r.encodedBodySize, decoded: r.decodedBodySize, blocking: r.renderBlockingStatus }));
     const marks = performance.getEntriesByType('mark').filter((m) => m.name.startsWith('mod:')).map((m) => [m.name.slice(4), Math.round(m.startTime * 10) / 10]);
+    const bootPhases = performance.getEntriesByType('measure').filter((m) => m.name.startsWith('boot:')).map((m) => [m.name.slice(5), Math.round(m.startTime), Math.round(m.duration)]);
     const fonts = []; try { document.fonts.forEach((f) => { if (f.status === 'loaded') fonts.push(f.family + ' ' + f.weight + ' ' + (f.unicodeRange || '').slice(0, 14)); }); } catch (e) { /* no FontFaceSet */ }
     return {
       nav: { ttfb: Math.round(nav.responseStart), htmlEnd: Math.round(nav.responseEnd), domInteractive: Math.round(nav.domInteractive), dcl: Math.round(nav.domContentLoadedEventEnd), load: Math.round(nav.loadEventEnd), transfer: nav.transferSize, encoded: nav.encodedBodySize, decoded: nav.decodedBodySize },
-      marks: __perf.marks, long: __perf.long.slice(0, 40), longTotal: __perf.long.reduce((s, l) => s + l[1], 0), res, modMarks: marks, fonts,
+      marks: __perf.marks, long: __perf.long.slice(0, 40), longTotal: __perf.long.reduce((s, l) => s + l[1], 0), res, modMarks: marks, bootPhases, fonts,
       worldBuildMs: N.world && N.world.buildMs, swControlled: !!(navigator.serviceWorker && navigator.serviceWorker.controller),
     };
   });
@@ -252,10 +253,12 @@ async function run(browser, server, srvProc, url, runIdx) {
       new MutationObserver(() => {
         if (F.pollT.name == null && document.querySelector('.mn-name')) { F.pollT.name = performance.now(); firstFrame('name'); }
       }).observe(document.body, { subtree: true, childList: true });
+      F.states = [];
       N.on('state', (e) => {
         const t = performance.now();
+        F.states.push([e.mode, Math.round(t)]);
         if ((e.mode === 'play' || e.mode === 'cutscene') && F.pollT.started == null) { F.pollT.started = t; F.pollT.startedMode = e.mode; firstFrame('started'); }
-        if (e.mode === 'play' && F.pollT.play == null) { F.pollT.play = t; firstFrame('play'); }
+        if (e.mode === 'play') { F.pollT.play = t; F.pollT.playFrame = null; firstFrame('play'); }
       });
     });
     const mA = await cdpMetrics(cdp);
@@ -271,18 +274,19 @@ async function run(browser, server, srvProc, url, runIdx) {
     }
     const mB = await cdpMetrics(cdp);
     let down3 = null;
+    await sleep(1500);
     if (await page.evaluate(() => N.state.mode === 'cutscene')) {
-      await sleep(800);
       await tapSel(page, '.cs-skip');
       down3 = await page.evaluate(() => __perf.flow.lastDown);
+      await page.waitForFunction((d) => __perf.flow.pollT.play != null && __perf.flow.pollT.play > d && __perf.flow.pollT.playFrame != null, down3, { timeout: TO, polling: 100 });
     }
-    await page.waitForFunction(() => __perf.flow.pollT.play != null, null, { timeout: TO, polling: 100 });
+    await page.waitForFunction(() => __perf.flow.pollT.play != null && N.state.mode === 'play', null, { timeout: TO, polling: 100 });
     const F = await page.evaluate(() => __perf.flow.pollT);
     R.play = {
       tapToNameCard: named ? r1(F.name - down1) : null, tapToNameFrame: named ? r1(F.nameFrame - down1) : null,
       startTapToGame: r1(F.started - (down2 != null ? down2 : down1)), startTapToGameFrame: r1(F.startedFrame - (down2 != null ? down2 : down1)), startedMode: F.startedMode,
       skipTapToPlay: down3 != null ? r1(F.play - down3) : null, skipTapToPlayFrame: down3 != null ? r1(F.playFrame - down3) : null,
-      downs: [down1, down2, down3].map(r1), raw: F,
+      downs: [down1, down2, down3].map(r1), states: F.states, raw: F,
       cpuToGame: cpuOf(mA, mB),
     };
     console.log('    play: PLAY->name ' + R.play.tapToNameCard + ' ms (frame ' + R.play.tapToNameFrame + '), START->' + R.play.startedMode + ' ' + R.play.startTapToGame + ' ms (frame ' + R.play.startTapToGameFrame + '), SKIP->play ' + R.play.skipTapToPlay + ' ms (frame ' + R.play.skipTapToPlayFrame + ')');
@@ -342,7 +346,9 @@ async function run(browser, server, srvProc, url, runIdx) {
       const st = R.frames3d.statsAfter;
       console.log('    3D frames: rAF p50 ' + R.frames3d.rafP50 + ' / p95 ' + R.frames3d.rafP95 + ' ms, view3d js ' + st.jsAvg + ' ms, ' + st.calls + ' calls, ' + st.triangles + ' tris, pr ' + st.pixelRatio + ', tier ' + st.tier + ', CPU/frame ' + R.frames3d.cpuMsPerFrame + ', heap ' + R.frames3d.heapMB + ' MB, gpu ' + JSON.stringify(R.frames3d.mem['gpu-process'] || {}));
     }
-    await page.evaluate(() => N.view.set('top', { noSave: true }));
+    // back to top-down AND saved, or the next visit would boot straight into 3D (view3d keeps the
+    // last view in localStorage) and the repeat-visit numbers would include three.js + the pack
+    await page.evaluate(() => N.view.set('top'));
   }
 
   // ---------------- repeat visits (same context: HTTP cache, SW, V8 code cache)
@@ -384,9 +390,12 @@ async function run(browser, server, srvProc, url, runIdx) {
   // the host's HTTPS_PROXY would tunnel nostalgia.test through the egress proxy: drop it for the browser
   const env = Object.assign({}, process.env); for (const k of Object.keys(env)) if (/proxy/i.test(k)) delete env[k];
   const bs = await chromium.launchServer({ headless: true, env, args: [
-    '--host-resolver-rules=' + server.resolverRules, '--ignore-certificate-errors', '--no-proxy-server',
+    '--host-resolver-rules=' + server.resolverRules, '--ignore-certificate-errors-spki-list=' + server.spki, '--no-proxy-server',
     '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required',
-  ] });
+    // GPU=1 keeps Chromium's GPU compositing (SwiftShader on this host: ~1 frame per several seconds).
+    // Default: software compositing + software 2D canvas (raster cost lands on the main thread, an
+    // upper bound for a phone that rasterises canvas on its GPU); WebGL still runs on SwiftShader.
+  ].concat(process.env.GPU === '1' ? [] : ['--disable-gpu']) });
   const browser = await chromium.connect(bs.wsEndpoint());
   // The measurement host is shared with other agents' headless browsers (load avg 30-60 on 4 cores,
   // all at nice -8). Give this browser tree and the server top priority (nice -20) so wall-clock

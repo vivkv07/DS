@@ -22,7 +22,7 @@
  *   phone portrait 390x844 (touch, low tier): blob shadows instead of the shadow map, crowd +
  *     traffic, screenshots tps + fps on a Scooty, perf numbers
  * Fails on any console error / page error / N.err.
- *   node nostalgia/tests/view3d_actors.cjs     ONLY=gait|desktop|phone   SHOTS=0 (skip screenshots)
+ *   node nostalgia/tests/view3d_actors.cjs     ONLY=gait|desktop|phone   GAIT=player (skip the scripted walkers)   SHOTS=0 (skip screenshots)
  */
 'use strict';
 const path = require('path');
@@ -229,7 +229,7 @@ async function gait(browser) {
   });
   await frames(page, 3);
   // ---- scripted walkers / runners at constant speed, side view
-  const CASES = [['man', 45], ['man', 80], ['kid', 45], ['kid', 80], ['saree', 34], ['uncle', 22]];
+  const CASES = process.env.GAIT === 'player' ? [] : [['man', 45], ['man', 80], ['kid', 45], ['kid', 80], ['saree', 34], ['uncle', 22]];
   const res = {};
   for (const [kind, sp] of CASES) {
     const r = await page.evaluate(async ({ kind, sp }) => {
@@ -249,7 +249,7 @@ async function gait(browser) {
       T3.capEnd();
       N.time.scale = 0.05; // slow motion: successive rendered frames sample the cycle finely
       T3.capBegin({ follow: e });
-      for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max; i++) await T3.raf(2);
+      for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
       const out = T3.capEnd();
       N.time.scale = 1; e.vx = 0;
       const st = T3.gaitStats(out.frames);
@@ -270,11 +270,15 @@ async function gait(browser) {
     check(st.arm > (run ? 0.8 : 0.4), tag + ': arms swing against the legs (range ' + st.arm + ' rad)');
     report.push('gait ' + tag + ': cadence ' + st.f + ' cycles/s, stride ' + st.stride + ' template u, sliding ' + ((st.ratio || 0) * 100).toFixed(1) + '%, lean ' + st.lean + ' rad, ' + st.air + '/' + st.n + ' frames airborne');
   }
-  check(res.man80.stride > res.man45.stride * 1.3 && res.man80.lean > res.man45.lean + 0.08, 'run is distinct from walk: longer stride (' + res.man80.stride + ' vs ' + res.man45.stride + '), forward lean (' + res.man80.lean + ' vs ' + res.man45.lean + ')');
+  if (CASES.length) check(res.man80.stride > res.man45.stride * 1.3 && res.man80.lean > res.man45.lean + 0.08, 'run is distinct from walk: longer stride (' + res.man80.stride + ' vs ' + res.man45.stride + '), forward lean (' + res.man80.lean + ' vs ' + res.man45.lean + ')');
 
   // ---- the player: walk, run, stop (real input, the game's tps camera and a side view)
   const pl = await page.evaluate(async () => {
     const p = N.player, out = {};
+    // models3d.js (Blender pipeline) may route the on-foot player to its GLB character; this test
+    // checks the procedural renderer (always used for NPCs and whenever the player rides / sits)
+    if (N.models3d && N.models3d.options) { window.__m3dPlayer = N.models3d.options.player; N.models3d.options.player = false; }
+    await T3.raf(3);
     p.hidden = false;
     N.debug.teleport('fateh_maidan');
     N.view.set('tps'); N.view3d.setCamera({ yaw: 0, pitch: 0.2, snap: true });
@@ -285,12 +289,12 @@ async function gait(browser) {
       await T3.raf(12);
       N.time.scale = 0.05;
       T3.capBegin({ dy: 40 }); // the game's own tps camera (from behind)
-      for (let i = 0; i < 400 && T3.cap.cells < 8; i++) await T3.raf(2);
+      for (let i = 0; i < 400 && T3.cap.cells < 8 && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
       T3.cap.max = T3.cap.cells; const a = T3.capEnd();
       const sp = Math.hypot(p.vx || 0, p.vy || 0) || 1, side = [-(p.vy || 0) / sp * 30, 6, (p.vx || 0) / sp * 30, 4.0];
       window.__side = side;
       T3.capBegin({ follow: p, off: side }); // side view
-      for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max; i++) await T3.raf(2);
+      for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
       const b = T3.capEnd();
       out[name] = { st: T3.gaitStats(b.frames), tps: a.strip, side: b.strip, speed: Math.hypot(p.vx || 0, p.vy || 0) };
       N.time.scale = 1;
@@ -299,17 +303,17 @@ async function gait(browser) {
     N.input.hold('run', false); N.input.hold('up', false);
     N.time.scale = 0.25;
     T3.capBegin({ key: 't', step: 0.05, max: 10, follow: p, off: window.__side });
-    for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max; i++) await T3.raf(2);
+    for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
     const s = T3.capEnd();
     const last = s.frames[s.frames.length - 1];
-    out.stop = { strip: s.strip, gw: last.gw, feet: last.feet.map((f) => +(f.low - last.h).toFixed(3)) };
+    out.stop = last ? { strip: s.strip, gw: last.gw, feet: last.feet.map((f) => +(f.low - last.h).toFixed(3)) } : { strip: null, gw: 1, feet: [9, 9] };
     // idle: breathing + looking around over a few seconds
     N.time.scale = 1;
     T3.capBegin({ strip: false, key: 't' });
-    const t0 = N.time.now; for (let i = 0; i < 600 && N.time.now - t0 < 4; i++) await T3.raf(2);
+    const t0 = N.time.now; for (let i = 0; i < 300 && N.time.now - t0 < 4; i++) await T3.raf(2);
     const id = T3.capEnd().frames;
-    const rng = (k) => { const v = id.map((q) => q.J[k]); return +(Math.max(...v) - Math.min(...v)).toFixed(3); };
-    out.idle = { breathe: rng(14), headYaw: rng(12), drift: +Math.hypot(id[id.length - 1].x - id[0].x, id[id.length - 1].y - id[0].y).toFixed(2), n: id.length };
+    const rng = (k) => { const v = id.map((q) => q.J[k]); return v.length ? +(Math.max(...v) - Math.min(...v)).toFixed(3) : 0; };
+    out.idle = { breathe: rng(14), headYaw: rng(12), drift: id.length ? +Math.hypot(id[id.length - 1].x - id[0].x, id[id.length - 1].y - id[0].y).toFixed(2) : 9, n: id.length };
     N.time.scale = 1;
     return out;
   });
@@ -333,14 +337,14 @@ async function gait(browser) {
     N.time.scale = 0.1;
     T3.capBegin({ key: 't', step: 0.05, max: 9, follow: v, off: [0, 7, -28, 4.5] });
     N.vehicles.enter(p, v);
-    for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max; i++) await T3.raf(2);
+    for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
     const on = T3.capEnd();
     out.on = { strip: on.strip, hips: on.frames.filter((q) => q.J).map((q) => +q.J[0].toFixed(2)) };
     // pedalling
     N.time.scale = 1; N.input.hold('up', true); await T3.raf(16);
     N.time.scale = 0.05;
     T3.capBegin({ key: 't', step: 0.03, max: 10, follow: v, off: [0, 7, -28, 4.5] });
-    for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max; i++) await T3.raf(2);
+    for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
     const pd = T3.capEnd();
     N.input.hold('up', false); N.time.scale = 1;
     const kn = pd.frames.filter((q) => q.J).map((q) => q.J[2]), cr = pd.frames.map((q) => q.crank || 0);
@@ -351,11 +355,12 @@ async function gait(browser) {
     N.time.scale = 0.1;
     T3.capBegin({ key: 't', step: 0.05, max: 9, follow: p, off: [0, 7, -28, 4.5] });
     N.vehicles.exit(p);
-    for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max; i++) await T3.raf(2);
+    for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
     const off = T3.capEnd();
     N.time.scale = 1;
     out.off = { strip: off.strip, hips: off.frames.filter((q) => q.J).map((q) => +q.J[0].toFixed(2)), lastLow: off.frames.length ? +(Math.min(off.frames[off.frames.length - 1].feet[0].low, off.frames[off.frames.length - 1].feet[1].low) - off.frames[off.frames.length - 1].h).toFixed(3) : null };
     N.view3dActors.debug.track(null);
+    if (N.models3d && N.models3d.options && window.__m3dPlayer != null) N.models3d.options.player = window.__m3dPlayer;
     return out;
   });
   if (ride.skip) fail('ride: ' + ride.skip);

@@ -875,23 +875,69 @@ def join(objs, name=None):
     return tgt
 
 
-def boolean(target, cutter, op='DIFFERENCE', solver='EXACT', keep=False):
-    """Boolean with a cutter object (applied). solver EXACT is robust for arches."""
+def boolean(target, cutter, op='DIFFERENCE', solver='MANIFOLD', keep=False):
+    """Boolean with a cutter object (applied). MANIFOLD is fast and fine for closed solids; EXACT is
+    the fallback. Cutters must not overlap themselves (cut overlapping cutters one at a time).
+    A result with no faces is refused (the target is kept and a warning logged)."""
     apply_transform(cutter)
-    mod = target.modifiers.new('bool', 'BOOLEAN')
-    mod.operation = op
-    mod.object = cutter
-    try:
-        mod.solver = solver
-    except Exception:
-        pass
-    apply_modifiers(target)
+    if target.data.materials and cutter.type == 'MESH':
+        cutter.data.materials.clear()
+        cutter.data.materials.append(target.data.materials[0])
+    before = target.data.copy()
+    res = None
+    for sv in ([solver, 'EXACT'] if solver != 'EXACT' else ['EXACT']):
+        mod = target.modifiers.new('bool', 'BOOLEAN')
+        mod.operation = op
+        mod.object = cutter
+        try:
+            mod.solver = sv
+        except Exception:
+            pass
+        try:
+            apply_modifiers(target)
+        except Exception as e:
+            log('boolean %s failed (%s): %s' % (sv, target.name, e))
+            target.modifiers.clear()
+            continue
+        if len(target.data.polygons) > 0 or op == 'INTERSECT':
+            res = sv
+            break
+        log('boolean %s emptied %s; retrying' % (sv, target.name))
+        target.data = before.copy()
+    if res is None:
+        log('WARNING: boolean on %s failed; kept the uncut mesh' % target.name)
+        target.data = before
+    else:
+        bpy.data.meshes.remove(before)
+    clean_slots(target)
     if not keep:
         d = cutter.data
         bpy.data.objects.remove(cutter)
         if d.users == 0:
             bpy.data.meshes.remove(d)
     return target
+
+
+def clean_slots(ob):
+    """merge duplicate / empty material slots (faces of an empty slot take the first material)"""
+    me = ob.data
+    mats = list(me.materials)
+    if not mats:
+        return ob
+    keep = []
+    for m in mats:
+        if m is not None and m not in keep:
+            keep.append(m)
+    if len(keep) == len(mats):
+        return ob
+    remap = [keep.index(m) if m is not None else 0 for m in mats]
+    idx = [remap[p.material_index] if p.material_index < len(remap) else 0 for p in me.polygons]
+    me.materials.clear()
+    for m in keep:
+        me.materials.append(m)
+    for p, i in zip(me.polygons, idx):
+        p.material_index = i
+    return ob
 
 
 def bevel_mod(ob, width, segments=2, angle=35.0, harden=True):
@@ -1287,6 +1333,7 @@ def finish_atlas(A, objs, size=None, ao_samples=32, albedo_samples=8, ao_strengt
     objs = mesh_objects(objs)
     for o in objs:
         apply_modifiers(o)
+        clean_slots(o)
     if ao_dist:
         bpy.context.scene.world.light_settings.distance = ao_dist
     uv_atlas(objs)
@@ -1493,6 +1540,7 @@ def finish_tiled(A, objs, tile=16.0, tex=512, ao_samples=64, ao_strength=0.8, ao
     for o in objs:
         apply_modifiers(o)
         apply_transform(o)
+        clean_slots(o)
         if dice_edge:
             dice(o, dice_edge)
     sc = bpy.context.scene
@@ -1502,8 +1550,12 @@ def finish_tiled(A, objs, tile=16.0, tex=512, ao_samples=64, ao_strength=0.8, ao
         me = o.data
         for a in list(me.color_attributes):
             me.color_attributes.remove(a)
-        ca = me.color_attributes.new('AO', 'BYTE_COLOR', 'CORNER')
+        ca = me.color_attributes.new('AO', 'BYTE_COLOR', 'POINT')
         me.color_attributes.active_color = ca
+        try:
+            me.color_attributes.render_color_index = me.color_attributes.active_color_index
+        except Exception:
+            pass
     select_only(objs, objs[0])
     sc.cycles.samples = ao_samples
     sc.render.bake.target = 'VERTEX_COLORS'
@@ -1519,13 +1571,15 @@ def finish_tiled(A, objs, tile=16.0, tex=512, ao_samples=64, ao_strength=0.8, ao
         arr = np.empty(n * 4, np.float32)
         ca.data.foreach_get('color', arr)
         arr = arr.reshape(n, 4)
-        zs = np.empty(n, np.float32)
-        vidx = np.empty(len(me.loops), np.int32)
-        me.loops.foreach_get('vertex_index', vidx)
         co = np.empty(len(me.vertices) * 3, np.float32)
         me.vertices.foreach_get('co', co)
         co = co.reshape(-1, 3)
-        zs = co[vidx, 2]
+        if n == len(me.vertices):
+            zs = co[:, 2]
+        else:
+            vidx = np.empty(len(me.loops), np.int32)
+            me.loops.foreach_get('vertex_index', vidx)
+            zs = co[vidx, 2]
         ao = arr[:, 0]
         k = ao_curve(ao, ao_strength, gamma=1.2)
         if ground_dirt:
@@ -1560,7 +1614,7 @@ def finish_tiled(A, objs, tile=16.0, tex=512, ao_samples=64, ao_strength=0.8, ao
                 share = area.get(m.name, 0.0) / tot_area
                 size_m = tex if share > 0.08 else (max(64, tex // 4) if share > 0.01 else 64)
                 p = tile_texture(m, size_m, tile)
-                fm = baked_material('M_%s_%s' % (A.id, m.get('nos_key', m.name)), p, None, rough=float(spec.get('rough', 0.8)), metal=float(spec.get('metal', 0)), vcol='AO')
+                fm = baked_material('M_%s_%s' % (A.id, m.get('nos_key', m.name)), p, None, rough=float(spec.get('rough', 0.8)), metal=float(spec.get('metal', 0)), vcol='AO', emissive=spec.get('emit'))
                 if m.name.endswith('@night'):
                     fm.name = fm.name + '@night'
                 finals[m.name] = fm
@@ -1763,6 +1817,14 @@ def preview_render(A, glb_path=None, size=384, samples=24, view=None, out=None, 
     sc.cycles.caustics_reflective = False
     sc.cycles.caustics_refractive = False
     sc.cycles.blur_glossy = 2.0
+    sc.cycles.sample_clamp_indirect = 1.5
+    try:
+        sc.cycles.use_fast_gi = True
+        sc.cycles.fast_gi_method = 'REPLACE'
+        sc.cycles.ao_bounces_render = 1
+        sc.world.light_settings.distance = 12.0
+    except Exception:
+        pass
     sc.render.threads_mode = 'FIXED'
     sc.render.threads = 4
     sc.render.resolution_x = size
@@ -1870,6 +1932,102 @@ def preview_render(A, glb_path=None, size=384, samples=24, view=None, out=None, 
     return out
 
 
+def preview_ride(A, glb_path, vehicle_id, drop=0.0, frames=(0, 8, 16, 24), size=256, samples=12):
+    """Contact sheet of the rider's ride_cycle clip seated on the vehicle GLB (crank, pedals and
+    saddle posed like the runtime does): assets3d/previews/<id>_ride.png."""
+    vglb = os.path.join(ASSETS_DIR, vehicle_id + '.glb')
+    if not os.path.exists(vglb):
+        log('preview_ride: %s.glb missing (build it first)' % vehicle_id)
+        return None
+    outs = []
+    for fr in frames:
+        sc = bpy.data.scenes.new('_ride')
+        win = bpy.context.window
+        prev = bpy.context.scene
+        if win:
+            win.scene = sc
+        sc.world = bpy.data.worlds.new('_rw')
+        _preview_world(sc, 0.9)
+        sc.render.engine = 'CYCLES'
+        sc.cycles.device = 'CPU'
+        sc.cycles.samples = samples
+        sc.cycles.use_denoising = False
+        try:
+            sc.cycles.use_fast_gi = True
+            sc.cycles.fast_gi_method = 'REPLACE'
+            sc.world.light_settings.distance = 8.0
+        except Exception:
+            pass
+        sc.render.resolution_x = size
+        sc.render.resolution_y = size
+        sc.render.fps = FPS
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=vglb)
+        varm = next((o for o in bpy.data.objects if o not in before and o.type == 'ARMATURE'), None)
+        th = 2 * math.pi * fr / 32.0
+        if varm:
+            pb = varm.pose.bones
+
+            def spin(name, a):
+                if name not in pb:
+                    return
+                b = varm.data.bones[name]
+                ax = b.matrix_local.to_3x3().inverted() @ Vector((1, 0, 0))
+                pb[name].rotation_mode = 'AXIS_ANGLE'
+                pb[name].rotation_axis_angle = (a, ax.x, ax.y, ax.z)
+            spin('crank', th)
+            spin('pedal_L', -th)
+            spin('pedal_R', -th)
+            if 'saddle' in pb and drop:
+                st = Vector(json.load(open(os.path.join(ASSETS_DIR, vehicle_id + '.json')))['meta'].get('saddleTube', (0, 0.371, 0.928)))
+                pb['saddle'].location = varm.data.bones['saddle'].matrix_local.to_3x3().inverted() @ (-st * drop)
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=glb_path)
+        rarm = next((o for o in bpy.data.objects if o not in before and o.type == 'ARMATURE'), None)
+        act = bpy.data.actions.get('ride_cycle')
+        if rarm and act:
+            rarm.animation_data_create()
+            rarm.animation_data.action = act
+            try:
+                rarm.animation_data.action_slot = act.slots[0]
+            except Exception:
+                pass
+        sc.frame_set(fr)
+        bm = bmesh.new()
+        bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=40)
+        gme = bpy.data.meshes.new('_g')
+        bm.to_mesh(gme)
+        bm.free()
+        g = bpy.data.objects.new('_g', gme)
+        sc.collection.objects.link(g)
+        ld = bpy.data.lights.new('_s', 'SUN')
+        ld.energy = 3.2
+        lo = bpy.data.objects.new('_s', ld)
+        sc.collection.objects.link(lo)
+        lo.rotation_euler = Vector((0.9, 0.35, 0.5)).normalized().to_track_quat('Z', 'Y').to_euler()
+        cd = bpy.data.cameras.new('_c')
+        cd.angle = math.radians(34)
+        cam = bpy.data.objects.new('_c', cd)
+        sc.collection.objects.link(cam)
+        tgt = Vector((0, 0, 4.4))
+        cam.location = tgt + Vector((-1, -0.12, 0.1)).normalized() * 30
+        cam.rotation_euler = (tgt - cam.location).to_track_quat('-Z', 'Y').to_euler()
+        sc.camera = cam
+        p = os.path.join(TMP_DIR, '%s_ride_%02d.png' % (A.id, fr))
+        sc.render.filepath = p
+        bpy.ops.render.render(write_still=True, scene=sc.name)
+        outs.append(p)
+        if win:
+            win.scene = prev
+        for o in list(sc.collection.all_objects):
+            bpy.data.objects.remove(o, do_unlink=True)
+        bpy.data.scenes.remove(sc)
+    out = os.path.join(PREVIEW_DIR, A.id + '_ride.png')
+    contact_sheet(outs, out, cols=len(outs), cell=size)
+    log('ride preview %s' % os.path.basename(out))
+    return out
+
+
 def contact_sheet(paths, out, cols=4, cell=256, label=True):
     """Tile PNGs into one sheet (numpy; nearest-neighbour downscale to the cell size)."""
     imgs = []
@@ -1936,6 +2094,9 @@ def run_asset(aid, previews=True, quick=False):
                 preview_render(A, glb, size=sh.get('size', 192), samples=sh.get('samples', 12), view=sh.get('view'), out=p, frame=fr, clip=clip, sun=sh.get('sun', (0.9, 0.35, 0.5)))
                 frames.append(p)
             contact_sheet(frames, os.path.join(PREVIEW_DIR, A.id + '_' + sh.get('name', 'sheet') + '.png'), cols=sh.get('cols', 8), cell=sh.get('size', 192))
+        if A.preview.get('ride'):
+            rp = A.preview['ride']
+            preview_ride(A, glb, rp.get('vehicle', 'hero_cycle'), rp.get('drop', 0.0))
     log('done %s in %.1fs' % (aid, time.time() - t0))
     return man
 
@@ -2269,10 +2430,15 @@ GAITS = {
 }
 
 
-def gait_clip(R, name, g, frames=32, arm_lower=None):
+def gait_clip(R, name, g, frames=32, arm_lower=None, scale=1.0):
     """Author an in-place cyclic locomotion clip. Phase u in [0, 1): 0 = left heel strike. The
     stance foot moves backwards (+Y) at exactly stride per cycle (planted in the world when the
     character moves forwards at stride * cycles/s). Returns the manifest entry."""
+    g = dict(g)
+    if scale != 1.0:  # adults: longer strides / lift / stance width for the same nominal speeds
+        for key in ('stride', 'lift', 'footx'):
+            g[key] = g[key] * scale
+        g['cap'] = g['cap'] * scale
     S, beta = g['stride'], g['duty']
     J = R.J
     footx = g['footx']
@@ -2438,3 +2604,69 @@ def idle_clip(R, name='idle', frames=120, arm_lower=None):
         R.key(P, fr)
     R.end(act, 0, frames, cyclic=True)
     return {'loop': True, 'loco': False, 'frames': frames, 'fps': FPS, 'duration': round(frames / FPS, 4)}
+
+
+# ---------------------------------------------------------------- riding (pedalling) clips
+def ride_clip(R, G, name='ride_cycle', frames=32, lean=0.5, hip_back=0.18, hip_up=0.26, rock=0.06):
+    """Seated pedalling on a cycle, authored in the CYCLE's model frame (the rider's root sits at the
+    cycle origin). G (Blender coords, from vehicles.py): seat (saddle top centre), grip_L, grip_R,
+    bb (bottom bracket), crank (crank radius), pedal_x (lateral pedal centre), pedal_up (ball of foot
+    above the pedal axle). One clip cycle = one crank revolution; phase 0 = crank angle 0 (left crank
+    pointing back, right forward), positive = forward pedalling (rotation about +X). The runtime
+    sets the clip phase from the cycle's crank angle, so the feet stay on the pedals. When a leg
+    cannot reach the bottom of the stroke the hips dip / rock towards it (a kid on a big cycle)."""
+    act = R.begin(name)
+    J = R.J
+    seat = Vector(G['seat'])
+    bb = Vector(G['bb'])
+    cr = G['crank']
+    px = G['pedal_x']
+    leg = R.leg
+    ball_rest = {s: Vector((sx * J['ball'][0], J['ball'][1], J['ball'][2])) for s, sx in (('L', 1), ('R', -1))}
+    ankle_rest = {s: Vector((sx * J['ankle'][0], J['ankle'][1], J['ankle'][2])) for s, sx in (('L', 1), ('R', -1))}
+    worst = 0.0
+    for fr in range(frames + 1):
+        th = 2 * math.pi * fr / frames
+        P = R.pose()
+        feet = {}
+        for s, sx, sign in (('L', 1, 1), ('R', -1, -1)):
+            ped = bb + Vector((sx * px, sign * cr * math.cos(th), sign * cr * math.sin(th)))
+            # ankling: toes down through the bottom of the stroke, flatter at the top
+            ang = math.atan2(sign * math.sin(th), sign * math.cos(th))
+            pitch = -0.28 - 0.18 * math.sin(ang - 0.6)
+            ball = ped + Vector((0, 0, G.get('pedal_up', 0.12)))
+            Rf = foot_rot(pitch)
+            ankle = ball + Rf.to_3x3() @ (ankle_rest[s] - ball_rest[s])
+            feet[s] = (ankle, Rf, ball)
+        # hips on the saddle; dip / rock when a leg cannot reach its ankle target
+        hip0 = seat + Vector((0, hip_back, hip_up))
+        dip = 0.0
+        for s, sx in (('L', 1), ('R', -1)):
+            hj = hip0 + Vector((sx * R.head['thigh_L'].x, 0, 0))
+            d = (feet[s][0] - hj).length
+            if d > leg * 0.985:
+                dip = max(dip, d - leg * 0.985)
+        dip = min(dip, 0.45)
+        worst = max(worst, dip)
+        # rock towards the leg that is pushing down (front pedal descending)
+        side = math.sin(th)   # > 0 while the right pedal is on its way down
+        # translate the rest hip-joint midpoint (0, J.hip.y, hip_z) onto the saddle target
+        t = Vector((-rock * side, hip0.y - J['hip'][1], hip0.z - dip - R.hip_z))
+        R.fk(P, 'root')
+        R.fk(P, 'hips', Rx(lean * 0.45) @ Ry(0.04 * side) @ Rz(0.03 * side), t=tuple(t))
+        R.fk(P, 'spine', Rx(lean * 0.3) @ Ry(-0.03 * side))
+        R.fk(P, 'chest', Rx(lean * 0.25) @ Rz(-0.04 * side))
+        R.fk(P, 'neck', Rx(-lean * 0.45))
+        R.fk(P, 'head', Rx(-lean * 0.35))
+        for s, sx in (('L', 1), ('R', -1)):
+            R.fk(P, 'shoulder_' + s, Rx(lean * 0.1))
+            grip = Vector(G['grip_' + s])
+            R.arm_ik(P, s, grip, None, pole=(sx * 0.9, 0.45, -0.15))
+        for s, sx in (('L', 1), ('R', -1)):
+            ankle, Rf, ball = feet[s]
+            R.leg_ik(P, s, ankle, Rf, Rf, pole=(sx * 0.25, -1, 0.35))
+        R.key(P, fr)
+    R.end(act, 0, frames, cyclic=True)
+    log('clip %s: seat z %.2f, crank %.2f, max hip dip %.2f u' % (name, seat.z, cr, worst))
+    return {'loop': True, 'loco': False, 'ride': True, 'frames': frames, 'fps': FPS, 'duration': round(frames / FPS, 4),
+            'phase': 'crank angle / 2pi (0 = left crank back)', 'vehicle': G.get('vehicle'), 'saddleDrop': G.get('saddleDrop', 0.0), 'hipDip': round(worst, 3)}

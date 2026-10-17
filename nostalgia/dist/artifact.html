@@ -40973,7 +40973,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
  *   MISSIONS, SIDES            ids registered here
  *   prologue() -> Promise      plays the 2026 prologue cutscene, then starts M1 on home_terrace
  *   begin()                    = prologue() for a fresh game (game:new without skipIntro calls it)
- *   replay(missionId)          Side A replay (Journal button after the credits): J-card + the tape track
+ *   replay(missionId)          Side A replay (Journal button after the credits, bible §9.5): the mission plays
+ *                              again on its own date via N.story2.replay; else the J-card + the tape track
  *   kit                        mission helpers story2.js may reuse (all take the mission api `m` first):
  *     npc(m, id, target, opts) -> actor        N.npcs.spawn + m.spawn (talk:false by default)
  *     walkNpc(m, key, target, opts) -> Promise  tracked walk (teleports while a retry fast-forwards)
@@ -41506,6 +41507,38 @@ body.reduced-motion .pg-hud.show { animation: none; }
   }
 
   /* ================================================================ kit: queue cage (W5, systems §8.12) */
+  /** The queue's standing spots: it leaves the counter C in direction (dx, dy), then bends along the
+   *  footpath / forecourt round buildings, so a long line never runs across a carriageway when there is a
+   *  way round (map v2 has narrow forecourts). Falls back to a straight line on a stub world. */
+  function queueSlots(C, dx, dy, n) {
+    const out = [];
+    const W = N.world, SU = N.SURF;
+    const straight = (i) => { const wob = (i % 2 ? 1.8 : -1.8); return walkable(C.x + dx * (10 + i * 8.5) - dy * wob, C.y + dy * (10 + i * 8.5) + dx * wob, 14); };
+    if (!W || typeof W.isWalkable !== 'function' || typeof W.surfaceAt !== 'function' || !SU) { for (let i = 0; i < n; i++) out.push(straight(i)); return out; }
+    const surf = (x, y) => { const sf = W.surfaceAt(x, y); return sf === SU.ROAD || sf === SU.BRIDGE ? -5 : sf === SU.FOOTPATH || sf === SU.PLAZA ? 3 : 2; };
+    const TURNS = [0, 0.39, -0.39, 0.79, -0.79, 1.18, -1.18, 1.57, -1.57];
+    let cx = C.x, cy = C.y, a0 = Math.atan2(dy, dx);
+    for (let i = 0; i < n; i++) {
+      const step = i === 0 ? 10 : 8.5;
+      let best = null, bs = -1e9;
+      for (const da of TURNS) {
+        const a = a0 + da, x = cx + Math.cos(a) * step, y = cy + Math.sin(a) * step;
+        if (!W.isWalkable(x, y) || Math.hypot(x - C.x, y - C.y) < 9) continue;
+        let clash = false;
+        for (let j = 0; j < out.length - 1 && !clash; j++) if (Math.hypot(out[j].x - x, out[j].y - y) < 7.5) clash = true;
+        if (clash) continue;
+        let sc = surf(x, y) - Math.abs(da) * 1.4;
+        const x2 = x + Math.cos(a) * step, y2 = y + Math.sin(a) * step;
+        if (!W.isWalkable(x2, y2)) sc -= 2.5; else sc += surf(x2, y2) * 0.4;
+        if (sc > bs) { bs = sc; best = { x, y, a }; }
+      }
+      if (!best) { const f = straight(i); out.push(f); cx = f.x; cy = f.y; continue; }
+      const wob = (i % 2 ? 1.6 : -1.6), nxx = -Math.sin(best.a), nyy = Math.cos(best.a);
+      out.push(W.isWalkable(best.x + nxx * wob, best.y + nyy * wob) ? { x: best.x + nxx * wob, y: best.y + nyy * wob } : { x: best.x, y: best.y });
+      cx = best.x; cy = best.y; a0 = best.a;
+    }
+    return out;
+  }
   function queue(m, o) {
     o = o || {};
     const q = { done: false, failed: false, steps: 0, ahead: 0, cut: 0, sent: 0, line: [], gap: false, gapT: 0, tell: null, slots: [], ps: 0, t: 0, nextServe: 0, nextCut: 0, behind: [] };
@@ -41529,7 +41562,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
           const x = C.x + ux * (10 + i * 8.5), y = C.y + uy * (10 + i * 8.5);
           if (!W.isWalkable(x, y)) { sc -= (want - i) * 2; break; }
           const sf = W.surfaceAt(x, y);
-          sc += sf === SU.ROAD || sf === SU.BRIDGE ? 0.2 : sf === SU.FOOTPATH || sf === SU.PLAZA ? 3 : 2;
+          sc += sf === SU.ROAD || sf === SU.BRIDGE ? -1 : sf === SU.FOOTPATH || sf === SU.PLAZA ? 3 : 2;
         }
         if (sc > best) { best = sc; bd = { ux, uy }; }
       }
@@ -41538,11 +41571,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const nx = -dy, ny = dx;
     q.dir = { dx, dy, nx, ny };
     const n = (o.ahead || 8) + 1 + (o.behind == null ? 3 : o.behind) + (o.cutters || 0) + 2;
-    for (let i = 0; i < n; i++) {
-      const wob = (i % 2 ? 1.8 : -1.8);
-      const x = C.x + dx * (10 + i * 8.5) + nx * wob, y = C.y + dy * (10 + i * 8.5) + ny * wob;
-      q.slots.push(walkable(x, y, 14));
-    }
+    q.slots = queueSlots(C, dx, dy, n);
     const ahead = o.ahead || 8;
     for (let i = 0; i < ahead; i++) {
       const s = q.slots[i];
@@ -41840,8 +41869,20 @@ body.reduced-motion .pg-hud.show { animation: none; }
   }
   function hasGame(id) { const MG = N.minigames; try { return !!(MG && (typeof MG.has === 'function' ? MG.has(id) : MG.defs && MG.defs[id])); } catch (e) { return false; } }
   /** The LB Stadium match (cricket_match.js 'match'); the gully `cricket` minigame stands in when it is missing. */
+  /** The home side for the match engine: "Chinnu XI" with the player's nickname (bible's global {nick} rule:
+   *  the team and the hero's name on the scorecard follow the name card). */
+  function homeTeam(spec) {
+    if (spec && spec !== 'chinnu_xi') return spec;
+    const nick = (N.player && N.player.nick) || 'Chinnu';
+    if (nick === 'Chinnu') return 'chinnu_xi';
+    const name = nick + ' XI', short = (nick.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) || 'HOME') + ' XI';
+    const T = N.cricketMatch && N.cricketMatch.TEAMS && N.cricketMatch.TEAMS.chinnu_xi;
+    if (!T || !Array.isArray(T.players)) return { id: 'chinnu_xi', name, short };
+    return { id: 'chinnu_xi', name, short, players: T.players.map((q) => (q && q.hero ? Object.assign({}, q, { name: nick }) : q)) };
+  }
   async function playMatch(m, params) {
     params = Object.assign({ home: 'chinnu_xi', away: 'ashok_nagar', overs: 3, venue: 'lb_stadium', place: 'lb_stadium', time: 'evening' }, params || {});
+    params.home = homeTeam(params.home);
     F().lb_match = true;
     if (hasGame('match')) {
       const r = await game(m, 'match', params);
@@ -41852,7 +41893,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       }
     }
     // fallback: the gully cricket batting game, scored as the final
-    const r2 = await game(m, 'cricket', { target: 24, overs: 3, wickets: 2, bowler: undefined, place: 'lb_stadium', intro: params.intro || 'Summer camp final. Chinnu XI need 24.', title: params.title || 'Summer Camp Final' });
+    const r2 = await game(m, 'cricket', { target: 24, overs: 3, wickets: 2, bowler: undefined, place: 'lb_stadium', intro: params.intro || ((N.player && N.player.nick) || 'Chinnu') + ' XI need 24 in the summer camp final.', title: params.title || 'Summer Camp Final' });
     if (N.flags) N.flags.lb_match_played = true;
     return Object.assign({ fallback: true }, r2 || {});
   }
@@ -43000,6 +43041,13 @@ body.reduced-motion .pg-hud.show { animation: none; }
 
   /* ================================================================ SA1 pandal_duty — Pandal Duty */
   function todayKey() { return N.clock ? N.clock.day : 0; }
+  /** A pandal night is on right now: SA1 can start (its window, its dates, a night left to guard tonight). */
+  function pandalTonight() {
+    const f = F();
+    if (!isDone('ammammas_thursday') || (f.pandal_nights | 0) >= 4 || f.pandal_last_day === todayKey() || !inMD('08-31', '09-08')) return false;
+    const mi = N.clock ? N.clock.minutes : 0;
+    return mi >= 21 * 60 && mi <= 23 * 60 + 30;
+  }
   function inMD(from, to) { try { return !!(N.calendar && N.calendar.inRange(from, to)); } catch (e) { return false; } }
   async function sa1(m) {
     const night = (F().pandal_nights | 0) + 1;
@@ -43307,7 +43355,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       { s: 'coach', t: 'Final is this evening. Under the lights. Colony XI against the Ashok Nagar boys. Your captain opens the bowling.' },
       { s: 'immu', t: 'LB Stadium. Real stumps. Real scoreboard. Agent Ayesha opens. Over.', mood: 'happy' },
     ]);
-    const r = await playMatch(m, { home: 'chinnu_xi', away: 'ashok_nagar', overs: 3, time: 'evening', title: 'Summer Camp Final', intro: 'LB Stadium, under the lights. Ayesha opens the bowling. Immu bats at three.' });
+    const r = await playMatch(m, { home: 'chinnu_xi', away: 'ashok_nagar', overs: 3, time: 'evening', title: 'Summer Camp Final', intro: 'LB Stadium, under the lights. You and Immu open the batting; Ayesha opens the bowling.' });
     F().lb_match_unlocked = true;
     if (r && r.win) {
       sfx('crowd_cheer', { ui: true });
@@ -43394,12 +43442,16 @@ body.reduced-motion .pg-hud.show { animation: none; }
       when: () => inMD('04-26', '06-11'), autosave: false, script: sa4 });
     M.register({ id: 'lb_exhibition', kind: 'side', title: 'Exhibition Match', chapter: 'LB Stadium', requires: ['six_balls'], giver: { place: 'lb_stadium', r: 18 }, window: { from: '06:00', to: '20:00' },
       autosave: false, help: false, onPass: () => { N.missions.done.delete('lb_exhibition'); }, script: exhibition });
-    for (const id of MISSIONS.concat(SIDES)) {
-      const d = M.defs[id];
-      if (!d) continue;
-      const w0 = d.when;
-      d.when = () => stepOutOK(id) && (!w0 || w0());
-    }
+    for (const id of MISSIONS.concat(SIDES)) gateGiver(id);
+  }
+  /** Wrap a story giver's `when` with the step-out gate (once). story2.js's missions get it too (at boot),
+   *  so no story giver starts by itself on the J-card dwell under a player who did not walk into it. */
+  function gateGiver(id) {
+    const M = N.missions, d = M && M.defs && M.defs[id];
+    if (!d || d._stepGate) return;
+    const w0 = d.when;
+    d.when = () => stepOutOK(id) && (!w0 || w0());
+    d._stepGate = true;
   }
 
   /* ================================================================ giver NPCs + free-roam power cuts */
@@ -43482,6 +43534,14 @@ body.reduced-motion .pg-hud.show { animation: none; }
     MISSIONS, SIDES, CLUES,
     prologue, begin: () => prologue(),
     replay(id) {
+      // bible §9.5: "Any mission can be replayed from the Journal's track list": the mission itself plays again
+      // on its own date (story2.js's runner brings the calendar back to today afterwards; the tape keeps 999).
+      // Without that runner (or mid-mission) the track is played back from the tape instead.
+      try {
+        if (N.story2 && typeof N.story2.replay === 'function' && N.missions && N.missions.defs && N.missions.defs[id] && !N.missions.active && N.missions.isDone(id)) {
+          if (N.story2.replay(id)) return Promise.resolve(true);
+        }
+      } catch (e) { N.err('story.replay', e); }
       const steps = [{ type: 'jcard', id, ms: 2600 }, { type: 'call', fn: () => { try { if (N.tape && N.tape.play) return N.tape.play(id); } catch (e) { N.err('story.replay', e); } return null; } }];
       try { if (N.menus && N.menus.cutscene) return N.menus.cutscene(steps, { id: 'replay' }); } catch (e) { N.err('story.replay', e); }
       return Promise.resolve(null);
@@ -43523,7 +43583,20 @@ body.reduced-motion .pg-hud.show { animation: none; }
   });
   N.on('game:quit', () => { cleanupAll(); clearGivers(); });
   const reLook = () => { try { if (N.player && N.player.inventory && N.player.inventory.has('camera')) setVariant('chinnu', 'camera'); } catch (e) { /* ignore */ } };
-  N.on('save:loaded', () => { cleanupAll(); clearGivers(); reLook(); });
+  // CONTINUE puts him where the save was made, often right in the next giver's ring (MISSION PASSED at home
+  // autosaves at home): that giver waits until he has stepped out once, instead of starting the next
+  // mission by itself one second after the load.
+  N.on('save:loaded', () => { cleanupAll(); clearGivers(); reLook(); const p = N.player; if (p) S.stepOut = { x: p.x, y: p.y }; });
+  N.on('boot', () => {
+    try { if (N.story2) for (const id of (N.story2.MISSIONS || []).concat(N.story2.SIDE || [])) gateGiver(id); } catch (e) { N.err('story.gate', e); }
+    // M10's giver (Bunty at the colony pandal) and SA1's (Bunty, Committee President, same pandal) share
+    // playground_1: on a pandal night (21:00-23:30, 31 Aug-8 Sep, a night still to guard) the ring is SA1's,
+    // so the optional nights the bible puts "before" M10 can actually be played; M10 shows the rest of the day.
+    try {
+      const d = N.missions && N.missions.defs && N.missions.defs.agle_baras;
+      if (d && !d._pandalGate) { const w0 = d.when; d.when = () => !pandalTonight() && (!w0 || w0()); d._pandalGate = true; }
+    } catch (e) { N.err('story.gate', e); }
+  });
   N.on('game:continue', reLook);
 
   N.addSystem({
@@ -43697,6 +43770,22 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (!api || api.scene) return false;
     const r = N.missions && N.missions.active;
     return !!(r && r.m === api && r.ff);
+  }
+  /** A purchase inside a mission (systems §2.4: money never goes below 0, no soft-locks). With enough
+   *  pocket money it is a plain m.money(-paise); when he is short, the one with him pays the difference
+   *  through N.shops.charge (Udhaar, repaid from the next income; story.js does the same). Skipped while
+   *  a retry fast-forwards, like m.money. */
+  function pay(api, paise, who, why) {
+    paise = Math.round(paise || 0);
+    if (!(paise > 0) || isFF(api)) return;
+    const p = N.player; if (!p) return;
+    const have = Math.max(0, p.money | 0);
+    if (have >= paise) { api.money(-paise); return; }
+    if (N.shops && has(N.shops, 'charge')) {
+      try { const r = N.shops.charge(paise, { why: why || 'story', companion: who || 'immu' }); if (r && r.ok !== false) return; } catch (e) { N.err('story2.pay', e); }
+    }
+    if (have > 0) api.money(-have);
+    toast(({ immu: 'Immu', amma: 'Amma', ammi: 'Ammi', bunty: 'Bunty-anna' }[who || 'immu'] || 'A friend') + ' paid the rest (₹' + Math.ceil((paise - have) / 100) + ').', 2400, 'udhaar');
   }
   /** Await an outside promise inside a mission / scene; aborts propagate on the next verb. */
   async function ext(api, p) {
@@ -44627,7 +44716,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       }
       const bg = await game(m, 'bargain', { who: 'farmer', list: 4000, intro: 'Amma\'s list, ₹40. Every rupee you save is yours.', place: 'rythu_bazaar_mehdipatnam' });
       const paid = bg && bg.pricePaise > 0 ? Math.min(4000, bg.pricePaise) : 3400;
-      m.money(-paid);
+      pay(m, paid, 'immu', 'vegetables');
       m.give('amma_vegetables', { name: 'Amma\'s vegetables' });
       // 2. the bus west
       await go(m, 'mehdipatnam_bus_terminus', 'Take the bus from Mehdipatnam depot to Golconda.', { r: 30 });
@@ -44909,7 +44998,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       m.checkpoint('bus');
       const how = await m.choice('narrator', 'HITEC City is far. How do you go?', ['Bus to HITEC City (₹3)', 'Cycle it'], { default: 0 });
       if (how === 0) {
-        m.money(-300);
+        pay(m, 300, 'immu', 'bus');
         await ride(m, 'bus_stop_20', { mode: 'bus', label: 'BUS 10H → HITEC CITY', after: () => beside('immu') });
       } else {
         const c = near('friend_home', 20, 18, 'drive');
@@ -45039,11 +45128,11 @@ body.reduced-motion .pg-hud.show { animation: none; }
         ['chappal_man', 'New pair, fifteen rupees. And for your Mummy? Ladies\' *kotha chappal*, twenty-five. Very good for... apologies.'],
       ]);
       const buy = await m.choice('chinnu', 'Chappals?', ['Hawai pair (₹15)', 'Kotha chappal for Mummy (₹25)', 'Both (₹40)', 'Nothing. I\'ll limp.'], { default: 0 });
-      if (buy === 0 || buy === 2) { m.money(-1500); m.give('hawai_chappals', { name: 'New hawai chappals' }); }
-      if (buy === 1 || buy === 2) { m.money(-2500); m.give('kotha_chappal', { name: 'Kotha chappal (for Mummy)' }); }
+      if (buy === 0 || buy === 2) { pay(m, 1500, 'immu', 'chappals'); m.give('hawai_chappals', { name: 'New hawai chappals' }); }
+      if (buy === 1 || buy === 2) { pay(m, 2500, 'immu', 'chappals'); m.give('kotha_chappal', { name: 'Kotha chappal (for Mummy)' }); }
       if (buy === 1 || buy === 3) { try { N.player.addStatus('limp'); F().s2_limp = true; } catch (e) { /* ignore */ } toast('One chappal. You limp (80% speed) until home.', 2600); }
       const ban = await m.choice('narrator', 'Puja bananas from the cart? (₹10)', ['Yes (₹10)', 'No'], { default: 1 });
-      if (ban === 0) { m.money(-1000); m.give('puja_bananas', { name: 'Puja bananas' }); }
+      if (ban === 0) { pay(m, 1000, 'immu', 'bananas'); m.give('puja_bananas', { name: 'Puja bananas' }); }
       // the peacock lorry
       const ls = near('chappal_bazar', 50, 34, 'drive');
       const nar = npc(m, 'narsimha', ls, { vehicle: 'peacock_lorry', talk: false });
@@ -45308,7 +45397,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
         ['stationery_man', 'Slam book? Twenty-five rupees. "Your crush (optional)" page also there.'],
         ['chinnu', 'We\'ll skip that page.'],
       ]);
-      m.money(-2500);
+      pay(m, 2500, 'immu', 'slam book');
       m.give('slam_book', { name: 'A slam book' });
       // 2. fill it before the last bell (VII-B)
       npc(m, 'vimala_maam', near('school_1', -10, 6), { idle: 'stand', talk: false });
@@ -45328,7 +45417,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       npc(m, 'net_uncle', near('internet_cafe_1', 6, -6), { idle: 'work', talk: false });
       await go(m, 'internet_cafe_1', 'Make email IDs at Cyber Zone (₹20 an hour).', { r: 24 });
       m.checkpoint('net_cafe');
-      m.money(-2000);
+      pay(m, 2000, 'immu', 'net cafe');
       sfx('dialup');
       const T = softTimer(m, 'CYBER ZONE', TUNE.netSecs); T.beep = true;
       await talk(m, [
@@ -45347,7 +45436,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       ]);
       if (sent === 'time') {
         const c = await m.choice('net_uncle', 'Time up. Twenty rupees more, *beta*?', ['Pay ₹20 more', 'Leave'], { default: 1 });
-        if (c === 0) { m.money(-2000); toast('Sent: "Agent. Test. Over."', 2400); }
+        if (c === 0) { pay(m, 2000, 'immu', 'net cafe'); toast('Sent: "Agent. Test. Over."', 2400); }
       } else toast('Sent: "Agent. Test. Over." (' + emailOf() + ' → agent_immu_2003)', 3000);
       T.stop();
       journalNote('emails', 'Inside the slam book\'s back cover: agent_immu_2003 · ' + emailOf());
@@ -45367,14 +45456,14 @@ body.reduced-motion .pg-hud.show { animation: none; }
         ['chinnu', '...Power cuts.'],
         ['agarwal', 'Smart boy. Your Nanna\'s department, power cuts.'],
       ]);
-      m.money(-2000); m.give('torch', { name: 'A torch' });
+      pay(m, 2000, 'immu', 'torch'); m.give('torch', { name: 'A torch' });
       npc(m, 'salim', near('irani_cafe_7', 6, -6), { idle: 'work', talk: false });
       await go(m, 'irani_cafe_7', 'Buy tunnel supplies: Osmania biscuits at Café Gulistan.', { r: 24 });
       await talk(m, [
         ['salim', 'Osmania to take away? Going on a journey, chhote?'],
         ['chinnu', 'Not me.'],
       ]);
-      m.money(-1000); m.give('osmania_packet', { name: 'A packet of Osmania biscuits' });
+      pay(m, 1000, 'immu', 'osmania'); m.give('osmania_packet', { name: 'A packet of Osmania biscuits' });
       // 6. Naubat Pahad at sunset with Ammamma (W8 up the steps, respect; W6 every REC place lights up)
       await m.jumpTo([2003, 11, 21, 17, 30], { fx: 'ff' });
       const steps = roadPts('birla_mandir_steps') || [];
@@ -45876,7 +45965,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
         ['recording_man', 'Copy of a home recording? Thirty rupees. Ten minutes. Chand Raat rush, fifteen.'],
         ['immu', 'The original comes with me. The copy stays in the tin. Agent rules.'],
       ]);
-      m.money(-3000);
+      pay(m, 3000, 'immu', 'recording');
       m.give('side_a_copy', { name: 'The Side A copy' });
       // 8. the tin, locked
       npc(m, 'faramarz', near('irani_cafe_19', 4, -6), { idle: 'work', talk: false });
@@ -46535,12 +46624,12 @@ body.reduced-motion .pg-hud.show { animation: none; }
       npc(m, 'book_man', near('koti_book_bazaar', 6, -6), { idle: 'work', talk: false });
       await m.say('book_man', 'Seventh class, full set, half price. Guide also? Guide is extra, but guide has the answers.');
       const r = await game(m, 'bargain', { who: 'books', intro: 'Last year\'s class VII textbooks, on the footpath.', place: 'koti_book_bazaar' });
-      m.money(-(r && r.pricePaise > 0 ? Math.min(6000, r.pricePaise) : 4000));
+      pay(m, r && r.pricePaise > 0 ? Math.min(6000, r.pricePaise) : 4000, 'amma', 'books');
       m.give('class7_books', { name: 'Class VII textbooks (second-hand)' });
       npc(m, 'stationery_man', near('stationery_4', 6, -6), { idle: 'work', talk: false });
       await go(m, 'stationery_4', 'Brown cover paper and name labels at the Koti textbook stall.', { r: 22 });
       await m.say('stationery_man', 'Brown cover, how many sheets? Take labels also, for your name. Write neat.');
-      m.money(-1000);
+      pay(m, 1000, 'amma', 'brown cover');
       npc(m, 'amma', near('home', 12, 12), { idle: 'stand', talk: false });
       npc(m, 'chitti', near('home', -10, 12), { idle: 'stand', talk: false });
       await go(m, 'home', 'Home: cover the books.', { r: 26 });
@@ -46559,7 +46648,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     async script(m) {
       npc(m, 'bakery_lady', near('iyengar_bakery_2', 6, -6), { idle: 'work', talk: false });
       await m.say('bakery_lady', 'Honey cake just out! ...Plum cakes? Four. For the churches? Then the cake is half price.');
-      m.money(-800);
+      pay(m, 800, 'amma', 'plum cakes');
       m.give('plum_cakes', { name: 'Four plum cakes' });
       let first = true;
       for (const id of CHURCHES) {
@@ -46755,6 +46844,21 @@ body.reduced-motion .pg-hud.show { animation: none; }
   N.on('mission:fail', (d) => { runCleanups(missionCleanups); endReplay({ id: d && d.id, type: 'fail' }); });
   N.on('mission:abort', (d) => { runCleanups(missionCleanups); endReplay({ id: d && d.id, type: 'abort' }); });
   N.on('mission:start', () => { runCleanups(missionCleanups); clearGivers(); });
+  // The free-roam side-minigame offers ("Clap under the dome", "Play goli", haggling...) would take the E
+  // meant for a story step (the ending's CLAP at Charminar, M7's clap at the Fateh Darwaza): they stay off
+  // while a story2 mission or scene runs, as story.js does for its own missions (N.flags.mg_side_off).
+  const SIDE_OFF = { was: null };
+  function sideOff(on) {
+    const f = F();
+    if (on) { if (SIDE_OFF.was == null) { SIDE_OFF.was = !!f.mg_side_off; f.mg_side_off = true; } return; }
+    if (SIDE_OFF.was == null) return;
+    if (SIDE_OFF.was) f.mg_side_off = true; else delete f.mg_side_off;
+    SIDE_OFF.was = null;
+  }
+  const OWN = new Set(MAIN.concat(SIDES).map((d) => d.id));
+  N.on('mission:start', (d) => { if (d && OWN.has(d.id)) sideOff(true); });
+  for (const evn of ['mission:complete', 'mission:fail', 'mission:abort']) N.on(evn, () => { if (!SC.cur) sideOff(false); });
+  N.on('story2:scene', (d) => { if (d && d.on) sideOff(true); else if (!SC.cur && !(N.missions && N.missions.active && OWN.has(N.missions.active.id))) sideOff(false); });
   function hardReset() {
     abortScene();
     clearGivers();
@@ -46765,6 +46869,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (UI.panel) UI.panel.close(null);
     meterHide(); twoChappals(false);
     S2.epilogue = false; S2.replaying = null; S2.finaleRunning = false; S2.pendingSeason = null; S2.thakSaid = false;
+    SIDE_OFF.was = null;
     if (N.flags) N.flags.no_save = false;
   }
   N.on('game:new', () => hardReset());
@@ -63015,8 +63120,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     for (const Q of S.parts) {
       if (Q.isPlayer || Q === P) continue;
       Q.react = S.t + lerp(0.34, 0.12, S.d) * (0.8 + S.rng.next() * 0.5);
-      Q.dodgeRoll = S.rng.next() < lerp(TUNE.lingocha.dodge[0], TUNE.lingocha.dodge[1], S.d) ? 1 : 0;
-      Q.catchRoll = S.id === 'marampitti' && S.rng.next() < 0.08 + 0.1 * S.d;
+      Q.dodgeRoll = S.real && PG.debug.assist.noDodge ? 0 : S.rng.next() < lerp(TUNE.lingocha.dodge[0], TUNE.lingocha.dodge[1], S.d) ? 1 : 0;
+      Q.catchRoll = S.id === 'marampitti' && !(S.real && PG.debug.assist.noDodge) && S.rng.next() < 0.08 + 0.1 * S.d;
       if (Q === b.target && b.live && !Q.out && Q.downT <= 0) {
         // busy hands (picking / stacking) drop the job to duck only some of the time
         if (Q.act && Q.dodgeRoll && S.rng.next() < 0.55) { Q.act = null; Q.actStone = null; juke(S, Q, P); }
@@ -63568,6 +63673,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     ai(S, P, dt) {
       const L = S.L, e = P.e, b = S.ball;
       if (!e || e.alive === false) return;
+      if (S.real && PG.debug.assist.freezeAI) { halt(P); return; }
       if (P.scatter) { const q = edgeSpot(S.F, e.x, e.y, 20); goTo(P, q.x, q.y, speedOf(S, P, true), 3); return; }
       if (P.downT > 0) { halt(P); return; }
       if (P.out) { goSit(S, P, dt); return; }
@@ -63908,6 +64014,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     ai(S, P, dt) {
       const e = P.e, b = S.ball, M = S.M;
       if (!e || e.alive === false) return;
+      if (S.real && PG.debug.assist.freezeAI) { halt(P); return; }
       if (P.scatter) { const q = edgeSpot(S.F, e.x, e.y, 20); goTo(P, q.x, q.y, speedOf(S, P, true), 3); return; }
       if (P.downT > 0) { halt(P); return; }
       if (P.out) { goSit(S, P, dt); return; }
@@ -64713,6 +64820,13 @@ body.reduced-motion .pg-hud.show { animation: none; }
       R.queue('shadow', 1, () => D.shadow(bx, by, 5.4, 5.4, 0, 1));
       R.queue('actors', by, () => { list.forEach((st, i) => stoneDraw(D, st, bx + Math.sin(i * 2.3) * 0.25, by + Math.cos(i * 1.7) * 0.2, i * TUNE.stoneH)); });
     }
+    // Chinnu seeking: a soft chalk ring marks the stones lying about (easy to spot among the dust)
+    if (S.real && S.me && !S.me.out && S.me.team === L.seek && (S.phase === 'live' || S.phase === 'scatter') && !S.ended) {
+      R.queue('ground', 4, () => D.flat((ctx) => {
+        ctx.strokeStyle = 'rgba(255,240,190,' + (0.45 + 0.25 * Math.sin(S.t * 6)).toFixed(2) + ')'; ctx.lineWidth = 0.6;
+        for (const st of L.stones) if (st.state === 'loose') { ctx.beginPath(); ctx.arc(st.x, st.y, st.r * 1.25 + 1.6, 0, TAU); ctx.stroke(); }
+      }));
+    }
     for (const st of L.stones) {
       if (st.state === 'stack') continue;
       const x = st.x, y = st.y, z = st.z;
@@ -65057,7 +65171,10 @@ body.reduced-motion .pg-hud.show { animation: none; }
   });
   N.addSystem({ id: 'pg.paOn', order: 42.95, runIn: ['*'], draw() { paDrawing = true; } });
   N.addSystem({ id: 'pg.paOff', order: 43.05, runIn: ['*'], draw() { paDrawing = false; } });
-  if (N.view3d && N.view3d.registerLayer) {
+  // view3d.js loads after this file: register the 3D layer once everything is loaded
+  function registerV3() {
+    if (registerV3.done || !N.view3d || !N.view3d.registerLayer) return;
+    registerV3.done = true;
     N.view3d.registerLayer('playgroundGames', {
       order: 60,
       init(THREE, H) { try { v3Init(THREE, H); } catch (e) { N.err('pg.v3init', e); } },
@@ -65065,6 +65182,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
       dispose(H) { v3Dispose(H); },
     });
   }
+  registerV3();
+  N.on('boot', registerV3);
+  if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('DOMContentLoaded', registerV3);
   if (N.world && N.world.built) onWorld();
 
   /* ================================================================ public API + test hooks */
@@ -65079,7 +65199,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     ambient: AMB,
     ledger,
     debug: {
-      assist: { aim: false, power: null, weakAI: false, noTimer: false },
+      assist: { aim: false, power: null, weakAI: false, noTimer: false, noDodge: false, freezeAI: false },
       session(which) { return which === 'ambient' ? AMB.S : current; },
       state(which) {
         const S = which === 'ambient' ? AMB.S : current;
@@ -65127,7 +65247,14 @@ body.reduced-motion .pg-hud.show { animation: none; }
         const S = current; if (!S || !S.L) return 0;
         const L = S.L; let k = 0;
         const P = LING.seekers(S).find((q) => !q.out) || LING.seekers(S)[0];
-        for (const st of L.stones) { if (k >= (n || 7) || L.stack.length >= 7) break; if (st.state !== 'loose' && st.state !== 'fly') continue; if (P.carry) LING.stackStone(S, P); st.state = 'loose'; LING.pickStone(S, P, st); LING.stackStone(S, P); k++; }
+        for (const st of L.stones) {
+          if (k >= (n || 7) || L.stack.length >= 7) break;
+          if (st.state === 'stack') continue;
+          if (st.state === 'carried' && st.by && st.by !== P) { st.by.carry = null; st.by.act = null; }
+          if (P.carry && P.carry !== st) { LING.stackStone(S, P); k++; if (k >= (n || 7) || L.stack.length >= 7) break; }
+          if (P.carry !== st) { st.state = 'loose'; st.by = null; LING.pickStone(S, P, st); }
+          LING.stackStone(S, P); k++;
+        }
         return k;
       },
       /** knock the stack down now (a perfect try) */
@@ -65162,6 +65289,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       kidCount() { return N.entities.all.filter((e) => e.pgKid && e.alive !== false).length; },
       busy() { return Array.from(BUSY); },
       filtered: FILTERED,
+      v3: V3L,
     },
   });
 })();
@@ -72338,23 +72466,30 @@ float ngBlob(vec2 p, float prob, out float h){
 `;
   // shared after-lighting water: reflection of the sky + sun glint (pothole puddles, rivers, wet roads)
   const GLSL_WATER = `
+// sky seen in a reflection; occ: how much of the low sky is hidden by the city (buildings, trees)
+vec3 ngSky(vec3 Rf, float occ){
+  vec3 s = mix(uHor, uZen, clamp(Rf.y * 2.4 + 0.32, 0.0, 1.0)) * 0.82;
+  return mix(s * (1.0 - 0.72 * occ), s, smoothstep(0.03, 0.34, Rf.y));
+}
 vec3 ngWaterCol(vec3 lit, vec3 P, vec3 nrm, float t, float deep){
-  vec3 Vd = normalize(cameraPosition - P);
+  vec3 Vd = normalize(uCamPos - P);
   float fres = 0.04 + 0.96 * pow(1.0 - clamp(dot(nrm, Vd), 0.0, 1.0), 4.0);
   vec3 Rf = reflect(-Vd, nrm);
-  vec3 skyC = mix(uHor, uZen, clamp(Rf.y * 2.4 + 0.32, 0.0, 1.0)) * 0.82;
+  vec3 skyC = ngSky(Rf, 1.0 - deep * 0.6);
   float sd = max(dot(Rf, uSunDir), 0.0);
   float sp = pow(sd, 260.0) * 5.0 + pow(sd, 22.0) * 0.14;
   vec3 base = lit * mix(vec3(0.55, 0.62, 0.6), vec3(0.5, 0.78, 0.82), deep) + vec3(0.004, 0.02, 0.024) * deep;
   return mix(base, skyC, clamp(0.08 + fres * 0.62, 0.0, 0.66)) + sp * uSunCol;
 }
 `;
-  const VERT_COMMON = 'varying vec3 vWP;\n';
+  // NB: three r149 uploads cameraPosition only for Phong / Standard / Toon / Shader materials, never for
+  // Lambert: these shaders read uCamPos (updated every frame by the 'ground' layer) instead
+  const VERT_COMMON = 'varying vec3 vWP;\nuniform vec3 uCamPos;\n';
   function commonUniforms(shader, ud) {
     const U = I.UNI;
     shader.uniforms.uNight = U.uNight; shader.uniforms.uTime = U.uTime; shader.uniforms.uSunDir = U.uSunDir;
     shader.uniforms.uSunCol = U.uSunCol; shader.uniforms.uZen = U.uZen; shader.uniforms.uHor = U.uHor;
-    shader.uniforms.uWet = GU.uWet; shader.uniforms.uRain = GU.uRain;
+    shader.uniforms.uWet = GU.uWet; shader.uniforms.uRain = GU.uRain; shader.uniforms.uCamPos = GU.uCamPos;
     shader.uniforms.auxMap = ud.aux; shader.uniforms.tSurf = ud.surf; shader.uniforms.uOrigin = ud.origin; shader.uniforms.uSurfN = ud.surfN;
     shader.uniforms.tSoil = SOIL.t; shader.uniforms.uSoilK = SOIL.u;
   }
@@ -72373,6 +72508,7 @@ uniform vec3 uSunDir;
 uniform vec3 uSunCol;
 uniform vec3 uZen;
 uniform vec3 uHor;
+uniform vec3 uCamPos;
 varying vec3 vWP;
 float ngWm = 0.0;
 float ngShine = 0.0;
@@ -72445,7 +72581,7 @@ col = mix(col, grass, wGrass);
 col = mix(col, sandC, wSand);
 col = mix(col, stone, wPave);
 col *= sw.a;
-col *= 1.0 - uWet * 0.28 * (1.0 - wGrass * 0.5);
+col *= 1.0 - uWet * 0.4 * (1.0 - wGrass * 0.4);
 diffuseColor.rgb = col;
 ngShine = wetS * wSand * 0.35 + uWet * 0.18 * (1.0 - wGrass);
 `;
@@ -72467,11 +72603,10 @@ if (ngWm > 0.003) {
   outgoingLight = mix(outgoingLight, wc, ngWm);
 }
 if (ngShine > 0.01) {
-  vec3 Vd = normalize(cameraPosition - vWP);
+  vec3 Vd = normalize(uCamPos - vWP);
   float fres = pow(1.0 - clamp(Vd.y, 0.0, 1.0), 5.0);
   vec3 Rf = reflect(-Vd, vec3(0.0, 1.0, 0.0));
-  vec3 skyC = mix(uHor, uZen, clamp(Rf.y * 2.4 + 0.32, 0.0, 1.0)) * 0.7;
-  outgoingLight = mix(outgoingLight, skyC, clamp(fres * ngShine, 0.0, 0.5));
+  outgoingLight = mix(outgoingLight, ngSky(Rf, 0.7) * 0.85, clamp(fres * ngShine, 0.0, 0.45));
 }
 `;
 
@@ -72480,7 +72615,7 @@ if (ngShine > 0.01) {
     commonUniforms(shader, ud);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\n' + VERT_COMMON + 'attribute vec2 aRd;\nattribute vec4 aGeo;\nattribute vec4 aMk;\nattribute vec4 aSt;\nvarying vec2 vRd;\nvarying vec4 vGeo;\nvarying vec4 vMk;\nvarying vec4 vSt;\n')
-      .replace('#include <project_vertex>', '#include <project_vertex>\n\tvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;\n\tvRd = aRd; vGeo = aGeo; vMk = aMk; vSt = aSt;');
+      .replace('#include <project_vertex>', '#include <project_vertex>\n\tvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;\n\tvRd = aRd; vGeo = aGeo; vMk = aMk; vSt = aSt;\n' + POT_DEPTH);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\n' + FRAG_PARS + 'varying vec2 vRd;\nvarying vec4 vGeo;\nvarying vec4 vMk;\nvarying vec4 vSt;\n' + GLSL_NOISE + GLSL_WATER + ROAD_FUNCS)
       .replace('#include <map_fragment>', ROAD_MAP)
@@ -72488,6 +72623,16 @@ if (ngShine > 0.01) {
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += diffuseColor.rgb * texture2D(auxMap, vec2((vWP.x - uOrigin.x) / 512.0, 1.0 - (vWP.z - uOrigin.y) / 512.0)).rgb * (uNight * 3.0);')
       .replace('#include <envmap_fragment>', ROAD_ENV);
   }
+  // Pothole bowls dip below the terrain plane (y = 0): give their vertices the depth of the road plane
+  // along the same view ray (screen position unchanged), so they draw above the terrain and below
+  // anything standing on the road, while keeping their real shape for shading.
+  const POT_DEPTH = `
+\tif (aSt.w > 0.001 && uCamPos.y > ${Y_ROAD.toFixed(3)} + 0.05) {
+\t\tfloat ngK = (uCamPos.y - ${Y_ROAD.toFixed(3)}) / max(uCamPos.y - vWP.y, 1e-3);
+\t\tvec4 ngC = projectionMatrix * viewMatrix * vec4(uCamPos + (vWP - uCamPos) * ngK, 1.0);
+\t\tgl_Position.z = ngC.z / ngC.w * gl_Position.w;
+\t}
+`;
   const ROAD_FUNCS = `
 // distance to the nearest cell border of a jittered grid (0 on the border): block / alligator cracks
 float ngCell2(vec2 p){
@@ -72559,14 +72704,14 @@ if (layer < 1.5) {
     col = mix(col, vec3(0.31, 0.24, 0.15) * (0.8 + 0.4 * en / 2.7), edge * (0.25 + 0.65 * sandy));
     // hairline cracks on older surfaces: block / alligator patterns in patches, wobbly, ~1 px wide
 #ifndef NG_LOW
-    float cmask = smoothstep(0.52, 0.7, ngN(P * 0.021 + 7.0) + age * 0.25) * (1.0 - smoothstep(0.05, 0.16, fw)) * smoothstep(0.25, 0.55, age);
+    float cmask = smoothstep(0.62, 0.82, ngN(P * 0.017 + 7.0) * 0.8 + ngN(P * 0.09 + 1.0) * 0.2 + age * 0.22) * (1.0 - smoothstep(0.05, 0.16, fw)) * smoothstep(0.25, 0.55, age);
     if (cmask > 0.001) {
-      vec2 cp = P * 0.33 + (vec2(ngN(P * 1.3), ngN(P * 1.3 + 9.0)) - 0.5) * 0.22;
+      vec2 cp = P * 0.42 + (vec2(ngN(P * 1.1), ngN(P * 1.1 + 9.0)) - 0.5) * 0.35;
       float e = ngCell2(cp);
       float ew = fwidth(e);
-      float crack = 1.0 - smoothstep(0.012, 0.012 + ew * 1.4, e);
-      crack *= 0.55 + 0.45 * ngN(P * 0.9 + 3.0);
-      col *= 1.0 - crack * 0.55 * cmask;
+      float crack = 1.0 - smoothstep(0.008, 0.008 + ew * 1.3, e);
+      crack *= smoothstep(0.25, 0.6, ngN(P * 0.7 + 3.0)); // broken, not every cell edge
+      col *= 1.0 - crack * 0.42 * cmask;
     }
 #endif
     // markings (white paint), all from (u, v) with analytic AA
@@ -72705,12 +72850,11 @@ if (ngWm > 0.003) {
   outgoingLight = mix(outgoingLight, wc, ngWm);
 }
 if (ngShine > 0.01) {
-  vec3 Vd = normalize(cameraPosition - vWP);
-  float fres = 0.05 + 0.95 * pow(1.0 - clamp(Vd.y, 0.0, 1.0), 5.0);
+  vec3 Vd = normalize(uCamPos - vWP);
+  float fres = 0.04 + 0.96 * pow(1.0 - clamp(Vd.y, 0.0, 1.0), 5.0);
   vec3 Rf = reflect(-Vd, vec3(0.0, 1.0, 0.0));
-  vec3 skyC = mix(uHor, uZen, clamp(Rf.y * 2.4 + 0.32, 0.0, 1.0)) * 0.75;
   float sd = max(dot(Rf, uSunDir), 0.0);
-  outgoingLight = mix(outgoingLight, skyC, clamp(fres * ngShine, 0.0, 0.6)) + uSunCol * pow(sd, 90.0) * 0.6 * ngShine;
+  outgoingLight = mix(outgoingLight, ngSky(Rf, 1.0) * 0.8, clamp(fres * ngShine, 0.0, 0.55)) + uSunCol * pow(sd, 90.0) * 0.6 * ngShine;
 }
 `;
 
@@ -72936,7 +73080,7 @@ if (ngShine > 0.01) {
     attach(internals) {
       I = internals; THREE = I.THREE;
       NET.built = false;
-      GU.uWet = { value: 0 }; GU.uRain = { value: 0 };
+      GU.uWet = { value: 0 }; GU.uRain = { value: 0 }; GU.uCamPos = { value: new THREE.Vector3() };
       SOIL.u = { value: new THREE.Vector2(1, 1) }; SOIL.t = { value: null };
     },
     need(ch, d, pass) {
@@ -72997,17 +73141,20 @@ if (ngShine > 0.01) {
   }
 
   /* ================================================================ per frame: wetness + rebuild triggers */
-  let wetT = 0, lastPot = -1;
+  let wetT = 0, lastPot = -1, wetForce = null;
   V.registerLayer('ground', {
     order: -10,
     init() { },
-    update(dt) {
+    update(dt, H) {
       if (!GU.uWet) return;
+      const cam = (H && H.camera) || (I && I.E.camera);
+      if (cam) GU.uCamPos.value.copy(cam.position);
       let raining = false;
       try { raining = !!(N.seasons && N.seasons.is && N.seasons.is('rain')) || !!(N.flags && N.flags.rain === true); } catch (e) { raining = false; }
       const target = raining ? 1 : 0;
-      // roads darken in a few seconds when the shower starts and dry out slowly
-      wetT += (target - wetT) * Math.min(1, dt * (raining ? 0.5 : 0.06));
+      // roads darken in a few seconds when the shower starts and dry out slowly (tests may force it)
+      if (wetForce != null) wetT = wetForce;
+      else wetT += (target - wetT) * Math.min(1, dt * (raining ? 0.5 : 0.06));
       GU.uWet.value = wetT;
       GU.uRain.value += ((raining ? 1 : 0) - GU.uRain.value) * Math.min(1, dt * 2);
       // pothole set / wetness changed (monsoon, rain, progressive generation): rebuild only the
@@ -73033,6 +73180,8 @@ if (ngShine > 0.01) {
     setEnabled,
     heightAt: groundHeightAt,
     potholeDip,
+    /** tests / cutscenes: force the road wetness 0..1 (null = follow the weather again) */
+    setWet(v) { wetForce = v == null ? null : clamp(+v || 0, 0, 1); if (wetForce != null) { wetT = wetForce; if (GU.uWet) GU.uWet.value = wetT; } return wetT; },
     /** re-analyse the road network and rebuild every chunk's ground */
     rebuild() { NET.built = false; AN = null; POTS.clear(); if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } },
     stats() {
@@ -73055,7 +73204,7 @@ if (ngShine > 0.01) {
 <script>/* src/view3d_landmarks.js */
 /* NOSTALGIA — view3d_landmarks.js (3D landmark modeller) — ARCHITECTURE §20
  *
- * Low-poly 3D models for every N.WORLD_DATA.landmarks draw id (426 landmarks, ~95 draw ids),
+ * Low-poly 3D models for every N.WORLD_DATA.landmarks draw id (Map v2: 506 landmarks, 126 model defs),
  * registered through N.view3d.registerLandmark; nothing in another module is edited or patched.
  * Proportions and colours follow the 2D art in landmarks.js / places_art.js so the city reads the
  * same in both views. Test: node tests/view3d_landmarks.cjs (screenshots: tests/out/view3d_landmarks/).
@@ -73080,6 +73229,11 @@ if (ngShine > 0.01) {
  *    whichever member the core asks for first (the others return false; the owner's dispose frees
  *    the cell). Each batch, and the mid-size worship / school models, is a THREE.LOD that hides it
  *    beyond ~430-1400 u (shorter on the low tier).
+ *    The Golconda curtain wall (85 segments on Map v2) is batched the same way, with a bastion at
+ *    every joint. Big models are kept in a small LRU (40) when the core disposes them, so walking
+ *    back and forth does not rebuild them (GPU buffers are freed and re-uploaded on reuse);
+ *    'world:built' clears it. Positions inside a model (bus bays, the LB field, gates) are derived
+ *    from the landmark's own data (solids, the matching park polygon), never absolute coordinates.
  *  - Camera: detailed meshes are not ray-cast (raycast = no-op: three.js has no BVH and the core
  *    casts the camera ray every frame); invisible proxy boxes (material.visible = false) stand in
  *    where the camera can pass under (Charminar's arches, the Char Kaman, gates, canopies, the
@@ -79432,7 +79586,7 @@ if (ngShine > 0.01) {
   const lsGet = (k) => { try { return window.localStorage.getItem(k); } catch (e) { return null; } };
 
   /* ================================================================ options + state */
-  const OPT = { enabled: true, player: true, vehicles: true, landmarks: true, kidPeds: false, env: true, nightGlow: true };
+  const OPT = { enabled: true, player: true, vehicles: true, riders: true, landmarks: true, kidPeds: false, env: true, nightGlow: true };
   const LOADER_URLS = ['vendor/three/GLTFLoader.classic.js', '../vendor/three/GLTFLoader.classic.js', 'https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/GLTFLoader.js'];
   const PACK_URLS = ['src/assets3d_pack.js', '../src/assets3d_pack.js'];
   const S = {
@@ -79457,7 +79611,7 @@ if (ngShine > 0.01) {
       document.head.appendChild(s);
     });
   }
-  /** run an inline <script type="text/plain" id=...> block (dist/nostalgia.html) */
+  /** run an inline text/plain script block by id (dist/nostalgia.html) */
   function runInline(id, ok) {
     const el = document.getElementById(id);
     if (!el || !el.textContent) return false;
@@ -79470,11 +79624,13 @@ if (ngShine > 0.01) {
     return ok();
   }
   const hasLoader = () => !!(window.THREE && window.THREE.GLTFLoader);
+  /** pages built into dist/ find the repo files one level up: try those first (no 404 noise) */
+  const order = (urls) => (/\/dist\//.test(location.pathname) ? urls.slice().sort((a, b) => (b.indexOf('../') === 0) - (a.indexOf('../') === 0)) : urls);
   const hasPack = () => !!(N.ASSETS3D && N.ASSETS3D.glb && N.ASSETS3D.manifest);
   async function loadLoader() {
     if (hasLoader()) { S.loaderFrom = S.loaderFrom || 'present'; return true; }
     if (runInline('gltfloader-src', hasLoader)) { S.loaderFrom = 'inline'; return true; }
-    for (const u of LOADER_URLS) {
+    for (const u of order(LOADER_URLS)) {
       if (/^https?:/.test(u) && location.protocol === 'file:' && N.models3d.noCdn) continue;
       if (await loadScript(u, hasLoader, /^https?:/.test(u) ? 12000 : 8000)) { S.loaderFrom = u; return true; }
     }
@@ -79483,7 +79639,7 @@ if (ngShine > 0.01) {
   async function loadPack() {
     if (hasPack()) { S.packFrom = S.packFrom || 'present'; return true; }
     if (runInline('assets3d-pack', hasPack)) { S.packFrom = 'inline'; return true; }
-    for (const u of N.models3d.packUrls || PACK_URLS) {
+    for (const u of order(N.models3d.packUrls || PACK_URLS)) {
       if (await loadScript(u, hasPack, 20000)) { S.packFrom = u; return true; }
     }
     return false;
@@ -79526,7 +79682,7 @@ if (ngShine > 0.01) {
   function wanted(id) {
     const m = manifest(id); if (!m) return false;
     const meta = m.meta || {};
-    if (m.family === 'character') return OPT.player || OPT.kidPeds;
+    if (m.family === 'character') return OPT.player || OPT.kidPeds || OPT.riders;
     if (m.family === 'vehicle') return OPT.vehicles;
     if (m.family === 'landmark' || m.family === 'hero_landmark') return OPT.landmarks && (!meta.proto || useProto);
     return true;
@@ -79671,7 +79827,7 @@ if (ngShine > 0.01) {
   }
 
   /* ================================================================ tint (N.people looks -> regions) */
-  const LOOK_FIELDS = { skin: ['skin'], hair: ['hair'], shirt: ['shirt', 'kameez', 'saree'], stripes: ['stripes'], pants: ['pants', 'lungi'], shoes: ['shoes', 'chappal'], accent: ['accent'] };
+  const LOOK_FIELDS = { skin: ['skin'], hair: ['hair'], shirt: ['shirt', 'kameez', 'saree'], stripes: ['stripes', 'shoulders'], pants: ['pants', 'lungi'], shoes: ['shoes', 'chappal'], accent: ['accent'] };
   function hexLin(h) {
     if (typeof h !== 'string') return null;
     let s = h.trim(); if (s[0] === '#') s = s.slice(1);
@@ -79716,10 +79872,13 @@ if (ngShine > 0.01) {
   const V_IDLE = 3;          // u/s below which a character stands
   const FADE = 0.18;         // s, idle <-> locomotion cross-fade
   class Character {
-    constructor(md, look) {
+    constructor(md, look, opts) {
+      opts = opts || {};
       this.md = md; this.id = md.id;
       this.object = new THREE.Group(); this.object.name = 'm3d-char:' + md.id;
-      this.pivot = instance(md.id); this.pivot.rotation.y = Math.PI / 2; // GLB front +Z -> +X
+      // GLB front +Z -> +X for the core's rotation.y = -angle; riders are attached inside a vehicle's
+      // GLB frame (opts.attach) where both models share the same axes
+      this.pivot = instance(md.id); this.pivot.rotation.y = opts.attach ? 0 : Math.PI / 2;
       this.object.add(this.pivot);
       this.mesh = null; this.pivot.traverse((o) => { if (o.isSkinnedMesh && !this.mesh) this.mesh = o; });
       this.anchors = findAnchors(this.pivot);
@@ -79813,13 +79972,26 @@ if (ngShine > 0.01) {
       this.mixer.update(dt);
       return this;
     }
+    /** hold one clip exclusively at a phase in [0, 1) (riding: the phase follows the crank) */
+    pose(name, phase) {
+      const a = this.actions[name];
+      if (!a) return false;
+      for (const k in this.actions) if (this.actions[k] !== a) this.actions[k].setEffectiveWeight(0);
+      a.paused = true; a.setEffectiveWeight(1);
+      const d = a.getClip().duration;
+      a.time = (((phase % 1) + 1) % 1) * d;
+      this.clip = name; this.oneShot = null; this.locoW = 0;
+      this.mixer.update(0);
+      return true;
+    }
+    has(name) { return !!this.actions[name]; }
     weights() { const o = {}; for (const k in this.actions) o[k] = +this.actions[k].getEffectiveWeight().toFixed(3); return o; }
     dispose() { this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.pivot); if (this.tintMat) this.tintMat.dispose(); disposeInstance(this.object); }
   }
-  function character(id, look) {
+  function character(id, look, opts) {
     const md = S.models.get(id);
     if (!md || !md.clips.size) return null;
-    try { return new Character(md, look); } catch (e) { N.err('models3d.character:' + id, e); return null; }
+    try { return new Character(md, look, opts); } catch (e) { N.err('models3d.character:' + id, e); return null; }
   }
 
   /* ================================================================ vehicles */
@@ -79846,14 +80018,23 @@ if (ngShine > 0.01) {
     const sa = meta.steerAxis || [0, -0.381, -0.925];
     const steerAxis = new THREE.Vector3(sa[0], sa[2], -sa[1]).normalize(); // Blender -> glTF
     const part = (name, axis) => { const b = bones[name]; return b ? { node: b, rest: b.quaternion.clone(), axis: localAxis(b, rootQinv, axis) } : null; };
+    const st0 = meta.saddleTube || [0, 0.371, 0.928];
+    let saddle = null;
+    if (bones.saddle) {
+      const b = bones.saddle, pq = new THREE.Quaternion();
+      if (b.parent) { b.parent.getWorldQuaternion(pq); pq.premultiply(rootQinv); }
+      saddle = { node: b, rest: b.position.clone(), dir: new THREE.Vector3(st0[0], st0[2], -st0[1]).normalize().applyQuaternion(pq.invert()) };
+    }
     const P = {
       object, pivot, md, bones, anchors,
       wheels: ['wheel_rear', 'wheel_front'].map((n) => part(n, lateral)).filter(Boolean),
       steer: part('steer', steerAxis), crank: part('crank', lateral),
       pedals: ['pedal_L', 'pedal_R'].map((n) => part(n, lateral)).filter(Boolean),
-      R: meta.wheelR || 3, gear: meta.gear || 2.4, night: [],
+      R: meta.wheelR || 3, gear: meta.gear || 2.4, night: [], saddlePart: saddle, drop: 0, rider: null,
       state: { dist: 0, steer: 0, crank: 0 },
     };
+    /** let the saddle down by d u along the seat tube (Chinnu's cycle) */
+    P.saddle = (d) => { if (saddle && d !== P.drop) { P.drop = d; saddle.node.position.copy(saddle.rest).addScaledVector(saddle.dir, -d); } return P; };
     // per-instance copies of the @night materials (a parked cycle's lamp is off, a ridden one on)
     pivot.traverse((o) => {
       if (!o.isMesh) return;
@@ -79876,7 +80057,7 @@ if (ngShine > 0.01) {
       return P;
     };
     P.lamp = (k) => { for (const m of P.night) m.emissiveIntensity = k; };
-    P.dispose = () => { for (const m of P.night) m.dispose(); disposeInstance(object); };
+    P.dispose = () => { if (P.rider) { P.rider.dispose(); P.rider = null; } for (const m of P.night) m.dispose(); disposeInstance(object); };
     P.set({ dist: 0, steer: 0 });
     return P;
   }
@@ -79912,6 +80093,25 @@ if (ngShine > 0.01) {
       dispose(obj) { const c = obj && obj.userData.m3dChar; if (c) c.dispose(); },
     };
   }
+  const MALE = { man: 1, uncle: 1, lungi: 1 };
+  /** the rider model id for occupant d of vehicle v (or null: the procedural renderer draws it) */
+  function riderModel(v, d) {
+    if (!d) return null;
+    const vid = VEH_TYPES.get(v.type), vmd = vid && S.models.get(vid);
+    if (!vmd) return null;
+    const drop = ((vmd.meta.saddleDrop || {})[v.type]) || 0;
+    const p = N.player;
+    const look = d === p ? p.look : (d.look || v._look || null);
+    for (const [id, md] of S.models) {
+      if (md.man.family !== 'character') continue;
+      const rc = (md.man.clips || {}).ride_cycle;
+      if (!rc || Math.abs((rc.saddleDrop || 0) - drop) > 1e-3 || !md.clips.has('ride_cycle')) continue;
+      if (d === p) { if (md.meta.role === 'player') return id; continue; }
+      if (md.meta.role === 'player') continue;
+      if (look && MALE[look.kind] && (md.meta.people || []).indexOf('man') >= 0) return id;
+    }
+    return null;
+  }
   function vehicleSpec(id) {
     return {
       shadow: true, fps: true, m3d: id,
@@ -79934,6 +80134,25 @@ if (ngShine > 0.01) {
         obj.position.set(e.x, H.elev(e) + y, e.y);
         obj.rotation.set(roll, -(e.angle || 0), pitch);
         P.set({ dist: (e.wheelPhase || 0) * 2, steer: -(e.steerVis || 0) * 0.8 });
+        P.saddle(((P.md.meta.saddleDrop || {})[e.type]) || 0);
+        // the rider, seated in the cycle's own frame; the clip phase follows the crank (feet on the pedals)
+        const d = e.driver && !e.fallen ? e.driver : null;
+        const rid = d ? riderModel(e, d) : null;
+        const look = d ? (d === N.player ? N.player.look : (d.look || e._look)) : null;
+        if (P.rider && (P.rider.id !== rid || P.riderOf !== d)) { P.rider.dispose(); P.rider = null; }
+        if (rid && !P.rider) {
+          P.rider = character(rid, look, { attach: true }); P.riderOf = d;
+          if (P.rider) {
+            const sh = !!(H.quality && H.quality.shadows);
+            P.rider.object.traverse((m) => { if (m.isMesh) m.castShadow = sh; });   // added after the core's create() pass
+            P.pivot.add(P.rider.object);
+          }
+        }
+        if (P.rider) {
+          if (look !== P.rider.lookRef) P.rider.tint(look);
+          P.rider.pose('ride_cycle', P.state.crank / TAU);
+          P.rider.object.visible = !(d === N.player && H.mode === 'fps');
+        }
         const moving = !!e.driver && Math.abs(e.speed || 0) > 10;
         P.lamp(OPT.nightGlow && moving ? H.night * 1.5 : 0);
         if (moving && H.night > 0.2 && P.anchors.headlight) {
@@ -80020,13 +80239,19 @@ if (ngShine > 0.01) {
   function canShowPlayer(p) {
     return !!(p && !p.vehicle && !p.hidden && !p.sitting && !(p.downT > 0) && !p.fallen && !p.riding && p.alive !== false);
   }
+  /** an entity the procedural renderer's debug recorder is tracking (tests/view3d_actors.cjs) stays
+   *  procedural, so its pose recorder keeps working */
+  function tracked(e) {
+    const A = N.view3dActors, D = A && A.debug && A.debug.DBG;
+    return !!(D && D.track && D.track === e);
+  }
   function route() {
     const V3 = N.view3d;
     if (!V3 || !V3.active || S.state !== 'ready') return;
     const p = N.player;
     // the player
     const pid = OPT.player && OPT.enabled ? PLAYER_ID() : null;
-    const want = pid && canShowPlayer(p) ? 'm3d:char:' + pid : null;
+    const want = pid && canShowPlayer(p) && !tracked(p) ? 'm3d:char:' + pid : null;
     if (p) {
       if (want && p.view3d !== want) p.view3d = want;
       else if (!want && p.view3d && String(p.view3d).indexOf('m3d:') === 0) delete p.view3d;
@@ -80040,8 +80265,8 @@ if (ngShine > 0.01) {
     for (const e of list) {
       if (!e || e.kind !== 'vehicle') { if (e && OPT.kidPeds && e !== p && e.kind === 'ped' && pid) routePed(e, pid); continue; }
       const mid = OPT.vehicles && OPT.enabled ? VEH_TYPES.get(e.type) : null;
-      const riders = e.driver || e.pillion || e.passenger;
-      const key = mid && !riders && e.alive !== false ? 'm3d:veh:' + mid : null;
+      const ridersOk = !e.pillion && !e.passenger && (!e.driver || (OPT.riders && !!riderModel(e, e.driver)));
+      const key = mid && ridersOk && e.alive !== false && !tracked(e) ? 'm3d:veh:' + mid : null;
       if (key) { if (e.view3d !== key) e.view3d = key; n++; } else if (e.view3d && String(e.view3d).indexOf('m3d:') === 0) delete e.view3d;
     }
     S.routedVehicles = n;
@@ -80105,7 +80330,7 @@ if (ngShine > 0.01) {
         registered: Array.from(S.registered).concat(Array.from(S.landmarkKeys.keys())), routedPlayer: S.routedPlayer, routedVehicles: S.routedVehicles, useProto,
       };
     },
-    debug: { S, route, unrouteAll, Character, tintRatios, cloneScene },
+    debug: { S, route, unrouteAll, Character, tintRatios, cloneScene, riderModel },
   });
 
   N.addSystem({

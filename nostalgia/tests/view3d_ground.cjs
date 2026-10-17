@@ -210,6 +210,7 @@ async function main() {
     N.view3d.settle(20000);
     const raining = !!(N.seasons && N.seasons.is && N.seasons.is('rain'));
     delete N.flags.rain;
+    N.view3d.ground.setWet(0); // dry at once for the screenshots (roads otherwise dry out over ~a minute)
     return { wet: s.wet, raining, v0, v1: N.view3d.ground.stats().potVer };
   });
   await page.evaluate(() => N.view3d.setQuality({ pixelRatio: 1 }));
@@ -223,7 +224,13 @@ async function main() {
       const t0 = Date.now();
       await page.evaluate(() => N.view3d.ground.setEnabled(true));
       const info = await setView(page, S);
-      if (S.rain) await page.evaluate(async () => { for (let i = 0; i < 400 && N.view3d.ground.stats().wet < 0.85; i++) await new Promise((r) => requestAnimationFrame(r)); N.view3d.settle(20000); });
+      await page.evaluate((rain) => N.view3d.ground.setWet(rain ? 1 : 0), !!S.rain);
+      if (S.rain) await page.evaluate(async () => {
+        const raining = () => !!(N.seasons && N.seasons.is && N.seasons.is('rain'));
+        for (let i = 0; i < 240 && !raining(); i++) await new Promise((r) => requestAnimationFrame(r));
+        for (let i = 0; i < 12; i++) await new Promise((r) => requestAnimationFrame(r)); // potholes fill (polled twice a second)
+        N.view3d.settle(20000);
+      });
       const fa = path.join(OUT, 'ground_' + S.name + '_after.png'), fb = path.join(OUT, 'ground_' + S.name + '_before.png');
       await shoot(page, fa);
       const sa = await page.evaluate(() => N.view3d.stats());
@@ -233,7 +240,7 @@ async function main() {
       await compose(browser, fb, fa, path.join(OUT, 'ground_' + S.name + '.png'), S.name + ' @ ' + info.x + ',' + info.y);
       ok('shot ' + S.name + ' (' + info.x + ',' + info.y + '; calls ' + sb.calls + ' -> ' + sa.calls + ', tris ' + sb.triangles + ' -> ' + sa.triangles + ', ' + Math.round((Date.now() - t0) / 1000) + ' s)');
     }
-    await page.evaluate(() => { N.view3d.ground.setEnabled(true); delete N.flags.rain; });
+    await page.evaluate(() => { N.view3d.ground.setEnabled(true); N.view3d.ground.setWet(null); delete N.flags.rain; });
   }
 
   const nerr = await page.evaluate(() => N.debug.state().errors);

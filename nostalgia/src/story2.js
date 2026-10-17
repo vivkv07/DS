@@ -26,6 +26,9 @@
  *    Non-mission sequences (interlude, ending, epilogue, rewind) run on a small scene runner here with the
  *    same verbs (goto / wait / until / say / talk / choice / cutscene / minigame); they refuse saves while
  *    they run (N.flags.no_save) and resume from the start after a load (bible §12.10: not interruptible).
+ *  - Purchases go through pay(): money never goes below 0 (systems §2.4); when he is short, Immu (or Amma)
+ *    pays the difference through N.shops.charge (Udhaar). The free-roam side-minigame offers are switched
+ *    off (N.flags.mg_side_off) while a story2 mission or scene runs, so E always reaches the story step.
  *  - Every other module may be a stub: wanted.js (the scripted Chand Raat chase is done here with the
  *    meter policy 'frozen' so the real Chappal Meter adds no pursuers of its own), traffic, the 3D view,
  *    cricket_match ('match' falls back to the gully 'cricket' minigame), collectibles, shops.
@@ -157,6 +160,22 @@
     if (!api || api.scene) return false;
     const r = N.missions && N.missions.active;
     return !!(r && r.m === api && r.ff);
+  }
+  /** A purchase inside a mission (systems §2.4: money never goes below 0, no soft-locks). With enough
+   *  pocket money it is a plain m.money(-paise); when he is short, the one with him pays the difference
+   *  through N.shops.charge (Udhaar, repaid from the next income; story.js does the same). Skipped while
+   *  a retry fast-forwards, like m.money. */
+  function pay(api, paise, who, why) {
+    paise = Math.round(paise || 0);
+    if (!(paise > 0) || isFF(api)) return;
+    const p = N.player; if (!p) return;
+    const have = Math.max(0, p.money | 0);
+    if (have >= paise) { api.money(-paise); return; }
+    if (N.shops && has(N.shops, 'charge')) {
+      try { const r = N.shops.charge(paise, { why: why || 'story', companion: who || 'immu' }); if (r && r.ok !== false) return; } catch (e) { N.err('story2.pay', e); }
+    }
+    if (have > 0) api.money(-have);
+    toast(({ immu: 'Immu', amma: 'Amma', ammi: 'Ammi', bunty: 'Bunty-anna' }[who || 'immu'] || 'A friend') + ' paid the rest (₹' + Math.ceil((paise - have) / 100) + ').', 2400, 'udhaar');
   }
   /** Await an outside promise inside a mission / scene; aborts propagate on the next verb. */
   async function ext(api, p) {
@@ -1087,7 +1106,7 @@
       }
       const bg = await game(m, 'bargain', { who: 'farmer', list: 4000, intro: 'Amma\'s list, ₹40. Every rupee you save is yours.', place: 'rythu_bazaar_mehdipatnam' });
       const paid = bg && bg.pricePaise > 0 ? Math.min(4000, bg.pricePaise) : 3400;
-      m.money(-paid);
+      pay(m, paid, 'immu', 'vegetables');
       m.give('amma_vegetables', { name: 'Amma\'s vegetables' });
       // 2. the bus west
       await go(m, 'mehdipatnam_bus_terminus', 'Take the bus from Mehdipatnam depot to Golconda.', { r: 30 });
@@ -1369,7 +1388,7 @@
       m.checkpoint('bus');
       const how = await m.choice('narrator', 'HITEC City is far. How do you go?', ['Bus to HITEC City (₹3)', 'Cycle it'], { default: 0 });
       if (how === 0) {
-        m.money(-300);
+        pay(m, 300, 'immu', 'bus');
         await ride(m, 'bus_stop_20', { mode: 'bus', label: 'BUS 10H → HITEC CITY', after: () => beside('immu') });
       } else {
         const c = near('friend_home', 20, 18, 'drive');
@@ -1499,11 +1518,11 @@
         ['chappal_man', 'New pair, fifteen rupees. And for your Mummy? Ladies\' *kotha chappal*, twenty-five. Very good for... apologies.'],
       ]);
       const buy = await m.choice('chinnu', 'Chappals?', ['Hawai pair (₹15)', 'Kotha chappal for Mummy (₹25)', 'Both (₹40)', 'Nothing. I\'ll limp.'], { default: 0 });
-      if (buy === 0 || buy === 2) { m.money(-1500); m.give('hawai_chappals', { name: 'New hawai chappals' }); }
-      if (buy === 1 || buy === 2) { m.money(-2500); m.give('kotha_chappal', { name: 'Kotha chappal (for Mummy)' }); }
+      if (buy === 0 || buy === 2) { pay(m, 1500, 'immu', 'chappals'); m.give('hawai_chappals', { name: 'New hawai chappals' }); }
+      if (buy === 1 || buy === 2) { pay(m, 2500, 'immu', 'chappals'); m.give('kotha_chappal', { name: 'Kotha chappal (for Mummy)' }); }
       if (buy === 1 || buy === 3) { try { N.player.addStatus('limp'); F().s2_limp = true; } catch (e) { /* ignore */ } toast('One chappal. You limp (80% speed) until home.', 2600); }
       const ban = await m.choice('narrator', 'Puja bananas from the cart? (₹10)', ['Yes (₹10)', 'No'], { default: 1 });
-      if (ban === 0) { m.money(-1000); m.give('puja_bananas', { name: 'Puja bananas' }); }
+      if (ban === 0) { pay(m, 1000, 'immu', 'bananas'); m.give('puja_bananas', { name: 'Puja bananas' }); }
       // the peacock lorry
       const ls = near('chappal_bazar', 50, 34, 'drive');
       const nar = npc(m, 'narsimha', ls, { vehicle: 'peacock_lorry', talk: false });
@@ -1768,7 +1787,7 @@
         ['stationery_man', 'Slam book? Twenty-five rupees. "Your crush (optional)" page also there.'],
         ['chinnu', 'We\'ll skip that page.'],
       ]);
-      m.money(-2500);
+      pay(m, 2500, 'immu', 'slam book');
       m.give('slam_book', { name: 'A slam book' });
       // 2. fill it before the last bell (VII-B)
       npc(m, 'vimala_maam', near('school_1', -10, 6), { idle: 'stand', talk: false });
@@ -1788,7 +1807,7 @@
       npc(m, 'net_uncle', near('internet_cafe_1', 6, -6), { idle: 'work', talk: false });
       await go(m, 'internet_cafe_1', 'Make email IDs at Cyber Zone (₹20 an hour).', { r: 24 });
       m.checkpoint('net_cafe');
-      m.money(-2000);
+      pay(m, 2000, 'immu', 'net cafe');
       sfx('dialup');
       const T = softTimer(m, 'CYBER ZONE', TUNE.netSecs); T.beep = true;
       await talk(m, [
@@ -1807,7 +1826,7 @@
       ]);
       if (sent === 'time') {
         const c = await m.choice('net_uncle', 'Time up. Twenty rupees more, *beta*?', ['Pay ₹20 more', 'Leave'], { default: 1 });
-        if (c === 0) { m.money(-2000); toast('Sent: "Agent. Test. Over."', 2400); }
+        if (c === 0) { pay(m, 2000, 'immu', 'net cafe'); toast('Sent: "Agent. Test. Over."', 2400); }
       } else toast('Sent: "Agent. Test. Over." (' + emailOf() + ' → agent_immu_2003)', 3000);
       T.stop();
       journalNote('emails', 'Inside the slam book\'s back cover: agent_immu_2003 · ' + emailOf());
@@ -1827,14 +1846,14 @@
         ['chinnu', '...Power cuts.'],
         ['agarwal', 'Smart boy. Your Nanna\'s department, power cuts.'],
       ]);
-      m.money(-2000); m.give('torch', { name: 'A torch' });
+      pay(m, 2000, 'immu', 'torch'); m.give('torch', { name: 'A torch' });
       npc(m, 'salim', near('irani_cafe_7', 6, -6), { idle: 'work', talk: false });
       await go(m, 'irani_cafe_7', 'Buy tunnel supplies: Osmania biscuits at Café Gulistan.', { r: 24 });
       await talk(m, [
         ['salim', 'Osmania to take away? Going on a journey, chhote?'],
         ['chinnu', 'Not me.'],
       ]);
-      m.money(-1000); m.give('osmania_packet', { name: 'A packet of Osmania biscuits' });
+      pay(m, 1000, 'immu', 'osmania'); m.give('osmania_packet', { name: 'A packet of Osmania biscuits' });
       // 6. Naubat Pahad at sunset with Ammamma (W8 up the steps, respect; W6 every REC place lights up)
       await m.jumpTo([2003, 11, 21, 17, 30], { fx: 'ff' });
       const steps = roadPts('birla_mandir_steps') || [];
@@ -2336,7 +2355,7 @@
         ['recording_man', 'Copy of a home recording? Thirty rupees. Ten minutes. Chand Raat rush, fifteen.'],
         ['immu', 'The original comes with me. The copy stays in the tin. Agent rules.'],
       ]);
-      m.money(-3000);
+      pay(m, 3000, 'immu', 'recording');
       m.give('side_a_copy', { name: 'The Side A copy' });
       // 8. the tin, locked
       npc(m, 'faramarz', near('irani_cafe_19', 4, -6), { idle: 'work', talk: false });
@@ -2995,12 +3014,12 @@
       npc(m, 'book_man', near('koti_book_bazaar', 6, -6), { idle: 'work', talk: false });
       await m.say('book_man', 'Seventh class, full set, half price. Guide also? Guide is extra, but guide has the answers.');
       const r = await game(m, 'bargain', { who: 'books', intro: 'Last year\'s class VII textbooks, on the footpath.', place: 'koti_book_bazaar' });
-      m.money(-(r && r.pricePaise > 0 ? Math.min(6000, r.pricePaise) : 4000));
+      pay(m, r && r.pricePaise > 0 ? Math.min(6000, r.pricePaise) : 4000, 'amma', 'books');
       m.give('class7_books', { name: 'Class VII textbooks (second-hand)' });
       npc(m, 'stationery_man', near('stationery_4', 6, -6), { idle: 'work', talk: false });
       await go(m, 'stationery_4', 'Brown cover paper and name labels at the Koti textbook stall.', { r: 22 });
       await m.say('stationery_man', 'Brown cover, how many sheets? Take labels also, for your name. Write neat.');
-      m.money(-1000);
+      pay(m, 1000, 'amma', 'brown cover');
       npc(m, 'amma', near('home', 12, 12), { idle: 'stand', talk: false });
       npc(m, 'chitti', near('home', -10, 12), { idle: 'stand', talk: false });
       await go(m, 'home', 'Home: cover the books.', { r: 26 });
@@ -3019,7 +3038,7 @@
     async script(m) {
       npc(m, 'bakery_lady', near('iyengar_bakery_2', 6, -6), { idle: 'work', talk: false });
       await m.say('bakery_lady', 'Honey cake just out! ...Plum cakes? Four. For the churches? Then the cake is half price.');
-      m.money(-800);
+      pay(m, 800, 'amma', 'plum cakes');
       m.give('plum_cakes', { name: 'Four plum cakes' });
       let first = true;
       for (const id of CHURCHES) {
@@ -3215,6 +3234,21 @@
   N.on('mission:fail', (d) => { runCleanups(missionCleanups); endReplay({ id: d && d.id, type: 'fail' }); });
   N.on('mission:abort', (d) => { runCleanups(missionCleanups); endReplay({ id: d && d.id, type: 'abort' }); });
   N.on('mission:start', () => { runCleanups(missionCleanups); clearGivers(); });
+  // The free-roam side-minigame offers ("Clap under the dome", "Play goli", haggling...) would take the E
+  // meant for a story step (the ending's CLAP at Charminar, M7's clap at the Fateh Darwaza): they stay off
+  // while a story2 mission or scene runs, as story.js does for its own missions (N.flags.mg_side_off).
+  const SIDE_OFF = { was: null };
+  function sideOff(on) {
+    const f = F();
+    if (on) { if (SIDE_OFF.was == null) { SIDE_OFF.was = !!f.mg_side_off; f.mg_side_off = true; } return; }
+    if (SIDE_OFF.was == null) return;
+    if (SIDE_OFF.was) f.mg_side_off = true; else delete f.mg_side_off;
+    SIDE_OFF.was = null;
+  }
+  const OWN = new Set(MAIN.concat(SIDES).map((d) => d.id));
+  N.on('mission:start', (d) => { if (d && OWN.has(d.id)) sideOff(true); });
+  for (const evn of ['mission:complete', 'mission:fail', 'mission:abort']) N.on(evn, () => { if (!SC.cur) sideOff(false); });
+  N.on('story2:scene', (d) => { if (d && d.on) sideOff(true); else if (!SC.cur && !(N.missions && N.missions.active && OWN.has(N.missions.active.id))) sideOff(false); });
   function hardReset() {
     abortScene();
     clearGivers();
@@ -3225,6 +3259,7 @@
     if (UI.panel) UI.panel.close(null);
     meterHide(); twoChappals(false);
     S2.epilogue = false; S2.replaying = null; S2.finaleRunning = false; S2.pendingSeason = null; S2.thakSaid = false;
+    SIDE_OFF.was = null;
     if (N.flags) N.flags.no_save = false;
   }
   N.on('game:new', () => hardReset());

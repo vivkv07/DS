@@ -36,3 +36,10 @@ Map v2 (done; 98.8% of 1,340 real-geography relations pass):
 - story_part1 got stuck in M6 ammammas_thursday at the walkman step after a retry (check in QA).
 - design/map_plan.md still lists old positions for pathergatti, hotel_madina, madina_building and west-edge signposts.
 - The machine ran at load 25-65 on 4 cores: timing-based checks are flaky; re-run QA on a quieter machine (fewer parallel workflows) and replace wall-clock waits with game-time waits.
+
+Launch plan (design/online_plan.md) found:
+- BUG save.js: a save written by a newer version is ignored, the game falls back to the backup, and the next save overwrites the newer progress. Must refuse to overwrite a newer save.
+- BUG main.js (~line 195): pausing on visibilitychange does not save; Android killing the tab loses progress. Save (when allowed) on hide/pagehide.
+- dist/nostalgia.html now inlines the 3D model pack (8.3 MB raw); add the --web split build per plan §2.1 so 2D players don't download 3D.
+- Noto Sans Telugu is requested but unused by CSS (the district subtitle font-family must reference it); Kalam is injected at runtime by menus.js.
+- Boot CPU 3.7 s on a mid-range phone (world.build 2.3-2.5 s): target ≤ 2.0 s.

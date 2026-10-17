@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 460764,
+ "bytes": 468356,
  "clips": {
   "idle": {
    "duration": 4.0,
@@ -51,6 +51,18 @@
    "frames": 120,
    "loco": false,
    "loop": true
+  },
+  "ride_cycle": {
+   "duration": 1.0667,
+   "fps": 30,
+   "frames": 32,
+   "hipDip": 0.323,
+   "loco": false,
+   "loop": true,
+   "phase": "crank angle / 2pi (0 = left crank back)",
+   "ride": true,
+   "saddleDrop": 0.6,
+   "vehicle": "hero_cycle"
   },
   "run": {
    "duration": 1.0667,
@@ -123,14 +135,14 @@
  "images": [
   "image/webp"
  ],
- "kb": 450.0,
+ "kb": 457.4,
  "kit": 1,
  "materials": [
   "M_kid_chinnu"
  ],
  "max": [
   2.228,
-  0.813,
+  0.828,
   7.358
  ],
  "meta": {
@@ -183,7 +195,7 @@
  "script": "characters",
  "size": [
   4.456,
-  1.791,
+  1.806,
   7.358
  ],
  "tint": {
@@ -208,7 +220,7 @@
    "stripes": "#eeebe2"
   }
  },
- "tris": 4104,
+ "tris": 3936,
  "units": "u",
  "up": "Z"
 }

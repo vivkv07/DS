@@ -23,8 +23,11 @@ fs.mkdirSync(OUT, { recursive: true });
   const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });
   // fonts: real Google Fonts files from a local mirror when given, else stubbed (fallback fonts)
   const list = FONTS && fs.existsSync(path.join(FONTS, 'list.json')) ? JSON.parse(fs.readFileSync(path.join(FONTS, 'list.json'), 'utf8')) : [];
-  const byPath = {}; for (const f of list) byPath[new URL(f.url).pathname] = path.join(FONTS, f.fam.replace(/ /g, '_') + '_' + f.w + '_' + f.subset + '.woff2');
-  await page.route(/fonts\.googleapis\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: FONTS ? fs.readFileSync(path.join(FONTS, 'fonts.css'), 'utf8') : '' }));
+  const byPath = {};
+  for (const f of list) { const p = path.join(FONTS, f.fam.replace(/ /g, '_') + '_' + f.w + '_' + f.subset + '.woff2'); if (!byPath[new URL(f.url).pathname] && fs.existsSync(p)) byPath[new URL(f.url).pathname] = p; }
+  // menus.js asks for Kalam with its own css2 URL
+  const cssFor = (u) => { const fam = (new URL(u).searchParams.getAll('family')[0] || '').split(':')[0].toLowerCase().replace(/[^a-z0-9]/g, ''); const own = FONTS && path.join(FONTS, fam + '.css'); return own && fs.existsSync(own) && new URL(u).searchParams.getAll('family').length === 1 ? own : FONTS && path.join(FONTS, 'fonts.css'); };
+  await page.route(/fonts\.googleapis\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: FONTS ? fs.readFileSync(cssFor(r.request().url()), 'utf8') : '' }));
   await page.route(/fonts\.gstatic\.com/, (r) => { const p = byPath[new URL(r.request().url()).pathname]; return p ? r.fulfill({ status: 200, contentType: 'font/woff2', body: fs.readFileSync(p) }) : r.abort(); });
   await page.route(/cdn\.jsdelivr\.net/, (r) => r.abort());
   await page.goto('file://' + PAGE);

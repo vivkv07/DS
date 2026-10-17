@@ -17,6 +17,12 @@
  * `lb_stadium`) replays it as an exhibition match any day, 06:00-20:00. M4 keeps the bible's
  * "Stadium mein nakko! No match today" (the final day is a gully match on the Public Gardens lawn).
  *
+ * Playthrough fixes (reviewer): after CONTINUE every story giver (story.js and story2.js) waits until the player
+ * has stepped out of the spot he loaded on (no mission starts by itself on the 1 s J-card dwell); on a pandal
+ * night (21:00-23:30, 31 Aug-8 Sep) the shared playground_1 ring belongs to SA1, so the optional nights can be
+ * played before M10; queue cages bend along footpaths instead of crossing a carriageway; the LB match's home
+ * side carries the nickname ("Pintu XI", hero "Pintu"); the Journal's ▶ Replay replays the mission (§9.5).
+ *
  * Everything is referenced by place / landmark id (the map is being rebuilt on real geography);
  * roof routes come from N.world.roofs (route 'lakshmi_lootna') with a ground fallback.
  * Every neighbour module may be a stub: wanted (stub = level only), traffic, view3d, collectibles,
@@ -27,7 +33,8 @@
  *   MISSIONS, SIDES            ids registered here
  *   prologue() -> Promise      plays the 2026 prologue cutscene, then starts M1 on home_terrace
  *   begin()                    = prologue() for a fresh game (game:new without skipIntro calls it)
- *   replay(missionId)          Side A replay (Journal button after the credits): J-card + the tape track
+ *   replay(missionId)          Side A replay (Journal button after the credits, bible §9.5): the mission plays
+ *                              again on its own date via N.story2.replay; else the J-card + the tape track
  *   kit                        mission helpers story2.js may reuse (all take the mission api `m` first):
  *     npc(m, id, target, opts) -> actor        N.npcs.spawn + m.spawn (talk:false by default)
  *     walkNpc(m, key, target, opts) -> Promise  tracked walk (teleports while a retry fast-forwards)
@@ -560,6 +567,38 @@
   }
 
   /* ================================================================ kit: queue cage (W5, systems §8.12) */
+  /** The queue's standing spots: it leaves the counter C in direction (dx, dy), then bends along the
+   *  footpath / forecourt round buildings, so a long line never runs across a carriageway when there is a
+   *  way round (map v2 has narrow forecourts). Falls back to a straight line on a stub world. */
+  function queueSlots(C, dx, dy, n) {
+    const out = [];
+    const W = N.world, SU = N.SURF;
+    const straight = (i) => { const wob = (i % 2 ? 1.8 : -1.8); return walkable(C.x + dx * (10 + i * 8.5) - dy * wob, C.y + dy * (10 + i * 8.5) + dx * wob, 14); };
+    if (!W || typeof W.isWalkable !== 'function' || typeof W.surfaceAt !== 'function' || !SU) { for (let i = 0; i < n; i++) out.push(straight(i)); return out; }
+    const surf = (x, y) => { const sf = W.surfaceAt(x, y); return sf === SU.ROAD || sf === SU.BRIDGE ? -5 : sf === SU.FOOTPATH || sf === SU.PLAZA ? 3 : 2; };
+    const TURNS = [0, 0.39, -0.39, 0.79, -0.79, 1.18, -1.18, 1.57, -1.57];
+    let cx = C.x, cy = C.y, a0 = Math.atan2(dy, dx);
+    for (let i = 0; i < n; i++) {
+      const step = i === 0 ? 10 : 8.5;
+      let best = null, bs = -1e9;
+      for (const da of TURNS) {
+        const a = a0 + da, x = cx + Math.cos(a) * step, y = cy + Math.sin(a) * step;
+        if (!W.isWalkable(x, y) || Math.hypot(x - C.x, y - C.y) < 9) continue;
+        let clash = false;
+        for (let j = 0; j < out.length - 1 && !clash; j++) if (Math.hypot(out[j].x - x, out[j].y - y) < 7.5) clash = true;
+        if (clash) continue;
+        let sc = surf(x, y) - Math.abs(da) * 1.4;
+        const x2 = x + Math.cos(a) * step, y2 = y + Math.sin(a) * step;
+        if (!W.isWalkable(x2, y2)) sc -= 2.5; else sc += surf(x2, y2) * 0.4;
+        if (sc > bs) { bs = sc; best = { x, y, a }; }
+      }
+      if (!best) { const f = straight(i); out.push(f); cx = f.x; cy = f.y; continue; }
+      const wob = (i % 2 ? 1.6 : -1.6), nxx = -Math.sin(best.a), nyy = Math.cos(best.a);
+      out.push(W.isWalkable(best.x + nxx * wob, best.y + nyy * wob) ? { x: best.x + nxx * wob, y: best.y + nyy * wob } : { x: best.x, y: best.y });
+      cx = best.x; cy = best.y; a0 = best.a;
+    }
+    return out;
+  }
   function queue(m, o) {
     o = o || {};
     const q = { done: false, failed: false, steps: 0, ahead: 0, cut: 0, sent: 0, line: [], gap: false, gapT: 0, tell: null, slots: [], ps: 0, t: 0, nextServe: 0, nextCut: 0, behind: [] };
@@ -583,7 +622,7 @@
           const x = C.x + ux * (10 + i * 8.5), y = C.y + uy * (10 + i * 8.5);
           if (!W.isWalkable(x, y)) { sc -= (want - i) * 2; break; }
           const sf = W.surfaceAt(x, y);
-          sc += sf === SU.ROAD || sf === SU.BRIDGE ? 0.2 : sf === SU.FOOTPATH || sf === SU.PLAZA ? 3 : 2;
+          sc += sf === SU.ROAD || sf === SU.BRIDGE ? -1 : sf === SU.FOOTPATH || sf === SU.PLAZA ? 3 : 2;
         }
         if (sc > best) { best = sc; bd = { ux, uy }; }
       }
@@ -592,11 +631,7 @@
     const nx = -dy, ny = dx;
     q.dir = { dx, dy, nx, ny };
     const n = (o.ahead || 8) + 1 + (o.behind == null ? 3 : o.behind) + (o.cutters || 0) + 2;
-    for (let i = 0; i < n; i++) {
-      const wob = (i % 2 ? 1.8 : -1.8);
-      const x = C.x + dx * (10 + i * 8.5) + nx * wob, y = C.y + dy * (10 + i * 8.5) + ny * wob;
-      q.slots.push(walkable(x, y, 14));
-    }
+    q.slots = queueSlots(C, dx, dy, n);
     const ahead = o.ahead || 8;
     for (let i = 0; i < ahead; i++) {
       const s = q.slots[i];
@@ -893,9 +928,21 @@
     return m.minigame(id, p);
   }
   function hasGame(id) { const MG = N.minigames; try { return !!(MG && (typeof MG.has === 'function' ? MG.has(id) : MG.defs && MG.defs[id])); } catch (e) { return false; } }
+  /** The home side for the match engine: "Chinnu XI" with the player's nickname (bible's global {nick} rule:
+   *  the team and the hero's name on the scorecard follow the name card). */
+  function homeTeam(spec) {
+    if (spec && spec !== 'chinnu_xi') return spec;
+    const nick = (N.player && N.player.nick) || 'Chinnu';
+    if (nick === 'Chinnu') return 'chinnu_xi';
+    const name = nick + ' XI', short = (nick.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) || 'HOME') + ' XI';
+    const T = N.cricketMatch && N.cricketMatch.TEAMS && N.cricketMatch.TEAMS.chinnu_xi;
+    if (!T || !Array.isArray(T.players)) return { id: 'chinnu_xi', name, short };
+    return { id: 'chinnu_xi', name, short, players: T.players.map((q) => (q && q.hero ? Object.assign({}, q, { name: nick }) : q)) };
+  }
   /** The LB Stadium match (cricket_match.js 'match'); the gully `cricket` minigame stands in when it is missing. */
   async function playMatch(m, params) {
     params = Object.assign({ home: 'chinnu_xi', away: 'ashok_nagar', overs: 3, venue: 'lb_stadium', place: 'lb_stadium', time: 'evening' }, params || {});
+    params.home = homeTeam(params.home);
     F().lb_match = true;
     if (hasGame('match')) {
       const r = await game(m, 'match', params);
@@ -906,7 +953,7 @@
       }
     }
     // fallback: the gully cricket batting game, scored as the final
-    const r2 = await game(m, 'cricket', { target: 24, overs: 3, wickets: 2, bowler: undefined, place: 'lb_stadium', intro: params.intro || 'Summer camp final. Chinnu XI need 24.', title: params.title || 'Summer Camp Final' });
+    const r2 = await game(m, 'cricket', { target: 24, overs: 3, wickets: 2, bowler: undefined, place: 'lb_stadium', intro: params.intro || ((N.player && N.player.nick) || 'Chinnu') + ' XI need 24 in the summer camp final.', title: params.title || 'Summer Camp Final' });
     if (N.flags) N.flags.lb_match_played = true;
     return Object.assign({ fallback: true }, r2 || {});
   }
@@ -2054,6 +2101,13 @@
 
   /* ================================================================ SA1 pandal_duty — Pandal Duty */
   function todayKey() { return N.clock ? N.clock.day : 0; }
+  /** A pandal night is on right now: SA1 can start (its window, its dates, a night left to guard tonight). */
+  function pandalTonight() {
+    const f = F();
+    if (!isDone('ammammas_thursday') || (f.pandal_nights | 0) >= 4 || f.pandal_last_day === todayKey() || !inMD('08-31', '09-08')) return false;
+    const mi = N.clock ? N.clock.minutes : 0;
+    return mi >= 21 * 60 && mi <= 23 * 60 + 30;
+  }
   function inMD(from, to) { try { return !!(N.calendar && N.calendar.inRange(from, to)); } catch (e) { return false; } }
   async function sa1(m) {
     const night = (F().pandal_nights | 0) + 1;
@@ -2361,7 +2415,7 @@
       { s: 'coach', t: 'Final is this evening. Under the lights. Colony XI against the Ashok Nagar boys. Your captain opens the bowling.' },
       { s: 'immu', t: 'LB Stadium. Real stumps. Real scoreboard. Agent Ayesha opens. Over.', mood: 'happy' },
     ]);
-    const r = await playMatch(m, { home: 'chinnu_xi', away: 'ashok_nagar', overs: 3, time: 'evening', title: 'Summer Camp Final', intro: 'LB Stadium, under the lights. Ayesha opens the bowling. Immu bats at three.' });
+    const r = await playMatch(m, { home: 'chinnu_xi', away: 'ashok_nagar', overs: 3, time: 'evening', title: 'Summer Camp Final', intro: 'LB Stadium, under the lights. You and Immu open the batting; Ayesha opens the bowling.' });
     F().lb_match_unlocked = true;
     if (r && r.win) {
       sfx('crowd_cheer', { ui: true });
@@ -2448,12 +2502,16 @@
       when: () => inMD('04-26', '06-11'), autosave: false, script: sa4 });
     M.register({ id: 'lb_exhibition', kind: 'side', title: 'Exhibition Match', chapter: 'LB Stadium', requires: ['six_balls'], giver: { place: 'lb_stadium', r: 18 }, window: { from: '06:00', to: '20:00' },
       autosave: false, help: false, onPass: () => { N.missions.done.delete('lb_exhibition'); }, script: exhibition });
-    for (const id of MISSIONS.concat(SIDES)) {
-      const d = M.defs[id];
-      if (!d) continue;
-      const w0 = d.when;
-      d.when = () => stepOutOK(id) && (!w0 || w0());
-    }
+    for (const id of MISSIONS.concat(SIDES)) gateGiver(id);
+  }
+  /** Wrap a story giver's `when` with the step-out gate (once). story2.js's missions get it too (at boot),
+   *  so no story giver starts by itself on the J-card dwell under a player who did not walk into it. */
+  function gateGiver(id) {
+    const M = N.missions, d = M && M.defs && M.defs[id];
+    if (!d || d._stepGate) return;
+    const w0 = d.when;
+    d.when = () => stepOutOK(id) && (!w0 || w0());
+    d._stepGate = true;
   }
 
   /* ================================================================ giver NPCs + free-roam power cuts */
@@ -2536,6 +2594,14 @@
     MISSIONS, SIDES, CLUES,
     prologue, begin: () => prologue(),
     replay(id) {
+      // bible §9.5: "Any mission can be replayed from the Journal's track list": the mission itself plays again
+      // on its own date (story2.js's runner brings the calendar back to today afterwards; the tape keeps 999).
+      // Without that runner (or mid-mission) the track is played back from the tape instead.
+      try {
+        if (N.story2 && typeof N.story2.replay === 'function' && N.missions && N.missions.defs && N.missions.defs[id] && !N.missions.active && N.missions.isDone(id)) {
+          if (N.story2.replay(id)) return Promise.resolve(true);
+        }
+      } catch (e) { N.err('story.replay', e); }
       const steps = [{ type: 'jcard', id, ms: 2600 }, { type: 'call', fn: () => { try { if (N.tape && N.tape.play) return N.tape.play(id); } catch (e) { N.err('story.replay', e); } return null; } }];
       try { if (N.menus && N.menus.cutscene) return N.menus.cutscene(steps, { id: 'replay' }); } catch (e) { N.err('story.replay', e); }
       return Promise.resolve(null);
@@ -2577,7 +2643,20 @@
   });
   N.on('game:quit', () => { cleanupAll(); clearGivers(); });
   const reLook = () => { try { if (N.player && N.player.inventory && N.player.inventory.has('camera')) setVariant('chinnu', 'camera'); } catch (e) { /* ignore */ } };
-  N.on('save:loaded', () => { cleanupAll(); clearGivers(); reLook(); });
+  // CONTINUE puts him where the save was made, often right in the next giver's ring (MISSION PASSED at home
+  // autosaves at home): that giver waits until he has stepped out once, instead of starting the next
+  // mission by itself one second after the load.
+  N.on('save:loaded', () => { cleanupAll(); clearGivers(); reLook(); const p = N.player; if (p) S.stepOut = { x: p.x, y: p.y }; });
+  N.on('boot', () => {
+    try { if (N.story2) for (const id of (N.story2.MISSIONS || []).concat(N.story2.SIDE || [])) gateGiver(id); } catch (e) { N.err('story.gate', e); }
+    // M10's giver (Bunty at the colony pandal) and SA1's (Bunty, Committee President, same pandal) share
+    // playground_1: on a pandal night (21:00-23:30, 31 Aug-8 Sep, a night still to guard) the ring is SA1's,
+    // so the optional nights the bible puts "before" M10 can actually be played; M10 shows the rest of the day.
+    try {
+      const d = N.missions && N.missions.defs && N.missions.defs.agle_baras;
+      if (d && !d._pandalGate) { const w0 = d.when; d.when = () => !pandalTonight() && (!w0 || w0()); d._pandalGate = true; }
+    } catch (e) { N.err('story.gate', e); }
+  });
   N.on('game:continue', reLook);
 
   N.addSystem({

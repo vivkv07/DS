@@ -1,108 +1,109 @@
-00:00.389  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.033  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building kid_chinnu (character)
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] baked albedo 512x512 (8 samples) in 33.8s
+[kit] baked albedo 512x512 (8 samples) in 8.3s
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] baked ao 256x256 (32 samples) in 57.2s
+[kit] baked ao 256x256 (32 samples) in 14.7s
 [kit] clip stroll: stride 4.8 u, duty 0.60, nominal 14 u/s -> 2.92 cycles/s; slip {'max': 0.0255, 'mean': 0.0009, 'pairs': 60, 'step': 0.15, 'ratio': 0.0063, 'low': -0.001}
 [kit] clip walk: stride 10.4 u, duty 0.40, nominal 45 u/s -> 4.33 cycles/s; slip {'max': 0.0346, 'mean': 0.0019, 'pairs': 38, 'step': 0.325, 'ratio': 0.0057, 'low': -0.048}
 [kit] clip run: stride 16.0 u, duty 0.27, nominal 80 u/s -> 5.00 cycles/s; slip {'max': 0.0002, 'mean': 0.0, 'pairs': 24, 'step': 0.5, 'ratio': 0.0, 'low': -0.0}
+[kit] clip ride_cycle: seat z 4.74, crank 1.05, max hip dip 0.32 u
 ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
 ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
-16:28:57 | INFO: Starting glTF 2.0 export
-16:28:57 | INFO: Extracting primitive: kid_chinnu
-16:28:58 | INFO: Primitives created: 1
-16:29:04 | INFO: Finished glTF 2.0 export in 6.6926984786987305 s
+17:43:23 | INFO: Starting glTF 2.0 export
+17:43:23 | INFO: Extracting primitive: kid_chinnu
+17:43:23 | INFO: Primitives created: 1
+17:43:25 | INFO: Finished glTF 2.0 export in 2.1658575534820557 s
 
-[kit] kid_chinnu: 4104 tris (budget 4000) OVER BUDGET, 450.0 KB, clips ['idle', 'stroll', 'walk', 'run'], anchors 8
-16:29:04 | INFO: Data are loaded, start creating Blender stuff
-16:29:04 | INFO: Blender create Mesh node kid_chinnu
-16:29:05 | INFO: glTF import finished in 0.73s
-03:04.112  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kid_chinnu.png'
-[kit] preview kid_chinnu.png (384px, 24 spp) in 61.7s
-16:30:07 | INFO: Data are loaded, start creating Blender stuff
-16:30:07 | INFO: Blender create Mesh node kid_chinnu
-16:30:08 | INFO: glTF import finished in 0.95s
-03:38.725  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kid_chinnu_face.png'
-[kit] preview kid_chinnu_face.png (256px, 20 spp) in 33.3s
-16:30:41 | INFO: Data are loaded, start creating Blender stuff
-16:30:41 | INFO: Blender create Mesh node kid_chinnu
-16:30:42 | INFO: glTF import finished in 0.16s
-03:46.749  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_00.png'
-[kit] preview kid_chinnu_sheet_00.png (160px, 10 spp) in 7.8s
-16:30:49 | INFO: Data are loaded, start creating Blender stuff
-16:30:49 | INFO: Blender create Mesh node kid_chinnu
-16:30:50 | INFO: glTF import finished in 0.99s
-04:01.085  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_01.png'
-[kit] preview kid_chinnu_sheet_01.png (160px, 10 spp) in 13.2s
-16:31:04 | INFO: Data are loaded, start creating Blender stuff
-16:31:04 | INFO: Blender create Mesh node kid_chinnu
-16:31:05 | INFO: glTF import finished in 0.54s
-04:12.781  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_02.png'
-[kit] preview kid_chinnu_sheet_02.png (160px, 10 spp) in 10.7s
-16:31:15 | INFO: Data are loaded, start creating Blender stuff
-16:31:15 | INFO: Blender create Mesh node kid_chinnu
-16:31:16 | INFO: glTF import finished in 0.38s
-04:22.264  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_03.png'
-[kit] preview kid_chinnu_sheet_03.png (160px, 10 spp) in 9.0s
-16:31:25 | INFO: Data are loaded, start creating Blender stuff
-16:31:25 | INFO: Blender create Mesh node kid_chinnu
-16:31:25 | INFO: glTF import finished in 0.26s
-04:31.377  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_04.png'
-[kit] preview kid_chinnu_sheet_04.png (160px, 10 spp) in 8.9s
-16:31:34 | INFO: Data are loaded, start creating Blender stuff
-16:31:34 | INFO: Blender create Mesh node kid_chinnu
-16:31:35 | INFO: glTF import finished in 0.36s
-04:39.592  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_05.png'
-[kit] preview kid_chinnu_sheet_05.png (160px, 10 spp) in 7.6s
-16:31:43 | INFO: Data are loaded, start creating Blender stuff
-16:31:43 | INFO: Blender create Mesh node kid_chinnu
-16:31:43 | INFO: glTF import finished in 0.26s
-04:50.031  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_06.png'
-[kit] preview kid_chinnu_sheet_06.png (160px, 10 spp) in 9.6s
-16:31:53 | INFO: Data are loaded, start creating Blender stuff
-16:31:53 | INFO: Blender create Mesh node kid_chinnu
-16:31:54 | INFO: glTF import finished in 0.68s
-04:59.772  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_07.png'
-[kit] preview kid_chinnu_sheet_07.png (160px, 10 spp) in 8.5s
-16:32:03 | INFO: Data are loaded, start creating Blender stuff
-16:32:03 | INFO: Blender create Mesh node kid_chinnu
-16:32:03 | INFO: glTF import finished in 0.26s
-05:12.643  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_08.png'
-[kit] preview kid_chinnu_sheet_08.png (160px, 10 spp) in 12.0s
-16:32:16 | INFO: Data are loaded, start creating Blender stuff
-16:32:16 | INFO: Blender create Mesh node kid_chinnu
-16:32:16 | INFO: glTF import finished in 0.60s
-05:25.048  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_09.png'
-[kit] preview kid_chinnu_sheet_09.png (160px, 10 spp) in 11.4s
-16:32:28 | INFO: Data are loaded, start creating Blender stuff
-16:32:28 | INFO: Blender create Mesh node kid_chinnu
-16:32:28 | INFO: glTF import finished in 0.53s
-05:37.475  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_10.png'
-[kit] preview kid_chinnu_sheet_10.png (160px, 10 spp) in 11.7s
-16:32:40 | INFO: Data are loaded, start creating Blender stuff
-16:32:40 | INFO: Blender create Mesh node kid_chinnu
-16:32:41 | INFO: glTF import finished in 0.89s
-05:50.591  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_11.png'
-[kit] preview kid_chinnu_sheet_11.png (160px, 10 spp) in 12.0s
-16:32:53 | INFO: Data are loaded, start creating Blender stuff
-16:32:53 | INFO: Blender create Mesh node kid_chinnu
-16:32:54 | INFO: glTF import finished in 0.49s
-06:04.701  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_12.png'
-[kit] preview kid_chinnu_sheet_12.png (160px, 10 spp) in 13.5s
-16:33:09 | INFO: Data are loaded, start creating Blender stuff
-16:33:09 | INFO: Blender create Mesh node kid_chinnu
-16:33:09 | INFO: glTF import finished in 0.52s
-06:17.120  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_13.png'
-[kit] preview kid_chinnu_sheet_13.png (160px, 10 spp) in 10.3s
-16:33:20 | INFO: Data are loaded, start creating Blender stuff
-16:33:20 | INFO: Blender create Mesh node kid_chinnu
-16:33:21 | INFO: glTF import finished in 0.94s
-06:28.743  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_14.png'
-[kit] preview kid_chinnu_sheet_14.png (160px, 10 spp) in 10.2s
-16:33:31 | INFO: Data are loaded, start creating Blender stuff
-16:33:31 | INFO: Blender create Mesh node kid_chinnu
-16:33:32 | INFO: glTF import finished in 0.31s
-06:40.346  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_15.png'
-[kit] preview kid_chinnu_sheet_15.png (160px, 10 spp) in 11.2s
-[kit] done kid_chinnu in 395.5s
+[kit] kid_chinnu: 3936 tris (budget 4000) ok, 457.4 KB, clips ['idle', 'stroll', 'walk', 'run', 'ride_cycle'], anchors 8
+17:43:25 | INFO: Data are loaded, start creating Blender stuff
+17:43:25 | INFO: Blender create Mesh node kid_chinnu
+17:43:25 | INFO: glTF import finished in 0.21s
+00:46.172  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kid_chinnu.png'
+[kit] preview kid_chinnu.png (384px, 24 spp) in 14.6s
+17:43:40 | INFO: Data are loaded, start creating Blender stuff
+17:43:40 | INFO: Blender create Mesh node kid_chinnu
+17:43:40 | INFO: glTF import finished in 0.22s
+00:53.761  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kid_chinnu_face.png'
+[kit] preview kid_chinnu_face.png (256px, 20 spp) in 7.3s
+17:43:47 | INFO: Data are loaded, start creating Blender stuff
+17:43:47 | INFO: Blender create Mesh node kid_chinnu
+17:43:47 | INFO: glTF import finished in 0.11s
+00:57.271  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_00.png'
+[kit] preview kid_chinnu_sheet_00.png (160px, 10 spp) in 3.4s
+17:43:51 | INFO: Data are loaded, start creating Blender stuff
+17:43:51 | INFO: Blender create Mesh node kid_chinnu
+17:43:51 | INFO: glTF import finished in 0.13s
+01:00.512  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_01.png'
+[kit] preview kid_chinnu_sheet_01.png (160px, 10 spp) in 3.1s
+17:43:54 | INFO: Data are loaded, start creating Blender stuff
+17:43:54 | INFO: Blender create Mesh node kid_chinnu
+17:43:54 | INFO: glTF import finished in 0.12s
+01:03.365  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_02.png'
+[kit] preview kid_chinnu_sheet_02.png (160px, 10 spp) in 2.7s
+17:43:57 | INFO: Data are loaded, start creating Blender stuff
+17:43:57 | INFO: Blender create Mesh node kid_chinnu
+17:43:57 | INFO: glTF import finished in 0.19s
+01:06.328  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_03.png'
+[kit] preview kid_chinnu_sheet_03.png (160px, 10 spp) in 2.7s
+17:44:00 | INFO: Data are loaded, start creating Blender stuff
+17:44:00 | INFO: Blender create Mesh node kid_chinnu
+17:44:00 | INFO: glTF import finished in 0.12s
+01:09.679  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_04.png'
+[kit] preview kid_chinnu_sheet_04.png (160px, 10 spp) in 3.2s
+17:44:03 | INFO: Data are loaded, start creating Blender stuff
+17:44:03 | INFO: Blender create Mesh node kid_chinnu
+17:44:03 | INFO: glTF import finished in 0.09s
+01:11.862  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_05.png'
+[kit] preview kid_chinnu_sheet_05.png (160px, 10 spp) in 2.1s
+17:44:05 | INFO: Data are loaded, start creating Blender stuff
+17:44:05 | INFO: Blender create Mesh node kid_chinnu
+17:44:06 | INFO: glTF import finished in 0.08s
+01:14.597  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_06.png'
+[kit] preview kid_chinnu_sheet_06.png (160px, 10 spp) in 2.6s
+17:44:08 | INFO: Data are loaded, start creating Blender stuff
+17:44:08 | INFO: Blender create Mesh node kid_chinnu
+17:44:08 | INFO: glTF import finished in 0.27s
+01:16.639  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_07.png'
+[kit] preview kid_chinnu_sheet_07.png (160px, 10 spp) in 1.7s
+17:44:10 | INFO: Data are loaded, start creating Blender stuff
+17:44:10 | INFO: Blender create Mesh node kid_chinnu
+17:44:10 | INFO: glTF import finished in 0.10s
+01:18.503  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_08.png'
+[kit] preview kid_chinnu_sheet_08.png (160px, 10 spp) in 1.7s
+17:44:12 | INFO: Data are loaded, start creating Blender stuff
+17:44:12 | INFO: Blender create Mesh node kid_chinnu
+17:44:12 | INFO: glTF import finished in 0.09s
+01:20.449  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_09.png'
+[kit] preview kid_chinnu_sheet_09.png (160px, 10 spp) in 1.8s
+17:44:14 | INFO: Data are loaded, start creating Blender stuff
+17:44:14 | INFO: Blender create Mesh node kid_chinnu
+17:44:14 | INFO: glTF import finished in 0.14s
+01:22.902  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_10.png'
+[kit] preview kid_chinnu_sheet_10.png (160px, 10 spp) in 2.3s
+17:44:17 | INFO: Data are loaded, start creating Blender stuff
+17:44:17 | INFO: Blender create Mesh node kid_chinnu
+17:44:17 | INFO: glTF import finished in 0.12s
+01:24.862  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_11.png'
+[kit] preview kid_chinnu_sheet_11.png (160px, 10 spp) in 1.8s
+17:44:18 | INFO: Data are loaded, start creating Blender stuff
+17:44:19 | INFO: Blender create Mesh node kid_chinnu
+17:44:19 | INFO: glTF import finished in 0.09s
+01:26.728  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_12.png'
+[kit] preview kid_chinnu_sheet_12.png (160px, 10 spp) in 1.7s
+17:44:20 | INFO: Data are loaded, start creating Blender stuff
+17:44:20 | INFO: Blender create Mesh node kid_chinnu
+17:44:21 | INFO: glTF import finished in 0.15s
+01:30.494  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_13.png'
+[kit] preview kid_chinnu_sheet_13.png (160px, 10 spp) in 3.6s
+17:44:24 | INFO: Data are loaded, start creating Blender stuff
+17:44:24 | INFO: Blender create Mesh node kid_chinnu
+17:44:24 | INFO: glTF import finished in 0.11s
+01:33.654  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_14.png'
+[kit] preview kid_chinnu_sheet_14.png (160px, 10 spp) in 3.0s
+17:44:27 | INFO: Data are loaded, start creating Blender stuff
+17:44:27 | INFO: Blender create Mesh node kid_chinnu
+17:44:28 | INFO: glTF import finished in 0.22s
+01:36.234  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_15.png'
+[kit] preview kid_chinnu_sheet_15.png (160px, 10 spp) in 2.2s
+[kit] done kid_chinnu in 95.5s

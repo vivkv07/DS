@@ -59,6 +59,9 @@ nostalgia/
   src/collectibles.js hidden goli/cards/tapes, journal data -> N.collectibles
   src/shops.js      Irani cafe, kirana, STD booth (save), barber (clear meter), video parlour -> N.shops
   src/minigames.js  kite fight, Golconda clap, brick game, etc. -> N.minigames
+  src/cricket_match.js the LB Stadium match (minigame 'match', TV + FPV cameras) -> N.cricketMatch
+  src/playground_games.js Lingocha + Maram Pitti played IN THE WORLD on the colony grounds (minigame ids
+                    'lingocha' / 'marampitti' through N.minigames), ambient kids' games -> N.playgroundGames
   src/menus.js      title, pause, full map, journal, settings, credits, cutscenes/VHS FX -> N.menus
   src/view3d.js     3D view mode core (three.js r149, loaded lazily): renderer, city streaming, sky,
                     cameras, registries -> N.view, N.view3d (§20)
@@ -66,6 +69,13 @@ nostalgia/
                     footpaths, medians, shader markings + zebras), terrain shaders, potholes
                     -> N.view3d.ground, N.view3d.groundHeightAt
   src/view3d_landmarks.js / src/view3d_actors.js  3D landmark models / people, vehicles, animals (§20)
+  src/models3d.js   Blender model runtime (§21): lazily loads GLTFLoader + the pack when 3D starts,
+                    instances / characters / vehicle parts, overrides via N.view3d -> N.models3d
+  src/assets3d_pack.js GENERATED (tools/pack_assets3d.cjs): N.ASSETS3D = base64 GLBs + manifest. NOT
+                    in index.html: models3d.js loads it on demand (dist inlines it as text/plain)
+  tools/blender/*.py Blender (bpy 5.2) asset scripts: kit.py, build_all.py, characters.py, vehicles.py,
+                    landmarks_*.py -> assets3d/<id>.glb + .json + previews/ (§21)
+  tools/pack_assets3d.cjs assets3d/*.glb + manifests -> src/assets3d_pack.js (size report, budgets)
   src/save.js       save/load -> N.save
   src/debug.js      test hooks + #debug overlay -> N.debug
   src/main.js       boot + main loop
@@ -940,6 +950,53 @@ for 10 game minutes. Turn off with `N.minigames.side(false)` or `N.flags.mg_side
 Stats persist in localStorage and `N.save` key `minigames` (with the day ledger).
 Test: `node nostalgia/tests/minigames.cjs` (LAB=1 for the staging lab, ONLY=, IDS=, QUICK=1).
 
+### In-world playground games — `N.playgroundGames` (playground_games.js, places_registry "Round 14")
+
+Lingocha (seven stones) and Maram Pitti (Indian dodgeball) are not overlays: they are played on the real
+colony grounds (places `playground_*`) with Chinnu's normal on-foot controls (keyboard, touch joystick +
+ACTION / RUN, gamepad) against AI kids (entities of kind `'ped'`, `pgKid: true`, N.people looks; Immu, Ayesha,
+Chitti, Bunty-anna, Babloo and Tiger take their looks / names / bark speakers from N.npcs), with a soft tennis
+ball and stones in simple arcade physics (gravity, bounces, rolling friction, the houses' walls, a kerb at the
+ground's edge). The state stays `play` (the world keeps running); the game owns ACTION through a priority-90
+`N.interact.offer` per step and reads the input in system `pg.ctl` (order 15) before the player moves.
+```
+N.minigames.play('lingocha' | 'marampitti', params) -> Promise<result>   (also N.playgroundGames.play)
+  aliases: seven_stones lagori pittu pithu lingoch maram_pitti marampeety picchi_banti dodgeball
+  the defs are registered with inWorld: true; N.minigames.play/start/abort/isOpen/active are wrapped so these
+  ids run in the world and missions (m.minigame), menus (no saving) and the mission runner's abort just work
+params: place (playground id; default the nearest ground) · difficulty · assist · seed · side (free-roam pay)
+  · reward · noQuit · intro · title · lingocha: rounds (best of 3) · team (3-5 a side) · seekFirst · liveTime
+  · marampitti: kids (6-10) · time (150 s)
+result: {id, win, score, stars, quit, aborted, reason, time, difficulty, assist, place, paid, window,
+  lingocha: roundsWon, roundsLost, rounds[], stacked, hits, outs, tries · marampitti: hits, catches, fouls,
+  rank, survivors, kids}
+N.playgroundGames: current, isOpen(), abort(reason), fields() (open-ground rectangle, stack, chalk line per
+  ground), fieldFor(placeId), kidsPresent(), ambient {force, off, S}, ledger(), TUNE, debug {state(), log(),
+  assist {aim, power, weakAI, noTimer, noDodge, freezeAI}, give, out, hitPlayer, throwAt, restack, knock,
+  finishRound, setTimer, breakWindow, ballTo, toss, end, simulate(gid, place, secs) (AI-only fast sim)}
+```
+Rules: lingocha — the seekers get 3 tries from the chalk line (aim + power: ←/→ / stick / mouse / the 3D
+camera, hold ACTION and let go; touch: drag back on the picture and let go), the stones scatter, the seekers
+restack them one at a time (one pair of hands on the stack at once) while the hitters throw the ball at them
+(hit on the full = out, no head shots, a touch on a hitter = SAFE 2.4 s, Chitti is doodh-bhaat), seven back =
+"LINGOCHA!"; roles swap every round, best of 3. Maram pitti — the ball is tossed up and every throw must
+bounce before anyone grabs it (a catch on the full puts the thrower out), hit on the full = out, head shots are
+fouls (3 = out), RUN taps dodge, last one standing wins. Free-roam pay (systems §2.4): ₹2 a win, ₹3 for 3 stars,
+max 3 paid wins per game per game-day in the shared `N.minigames.ledger`. Offers "Join lingocha" / "Join maram
+pitti" (`pg:<game>:<ground>`, priority -1) sit next to the gully-cricket offer while kids are out (school days
+16:00-18:30, holidays / Sundays 08:00-18:30, not in the rain). Ambient: near a ground in that window with no
+mission running, the kids play gully cricket (places_art), lingocha or maram pitti (simulated here, all AI) with
+barks. Chappal Meter: Chinnu's ball on an adult passer-by `N.wanted.addHeat(15, 'ball')`; Chinnu's ball through a
+house window at window height ends the game ("KHANNN!", +30 heat, the aunty keeps the ball for the day).
+Hooks (from playground_games.js only): the 3D layer `playgroundGames` (stones, ball, chalk, aim arrow, rings);
+`N.render.queue` drops places_art's static cricket kids (actors layer, that ground's sort key) while its draw
+runs (marker systems `pg.paOn` / `pg.paOff` at order 42.95 / 43.05) at a ground taken by our games; during a real
+game: `N.clock.hold('playground-game')` (the clock crawls at 0.25 game-min/s), `N.render.baseZoom` fits the
+ground (1-1.8, top-down), `N.traffic.closeRoads('pg', ...)`, traffic's 'playground' crowd zone moved to the
+sideline (spectators), mission givers' `when()` wrapped so no J-card starts a mission mid-game, an N.npcs actor
+of a playing friend standing at the ground hidden while its double plays. Test: `node tests/playground_games.cjs`
+(ONLY=desktop|ambient|3d|portrait|landscape).
+
 ## 19. Story layer (integration contract)
 
 The story layer implements `design/story_bible.md` (the story, binding) and
@@ -1178,16 +1235,19 @@ ground no longer reuses the 2D pixel-art painter. A ground provider (installed w
   the back edge), footpath corners around the fillets, raised medians on divided roads
   (`divided` / `median` / arterial default) with painted kerbs, rounded noses and shrubs; concrete
   bridge edges; railway ballast beds with sleepers; dirt paths; tar patch decals
-  (`N.world.potholes.patches`); potholes as real dips (a 0.7 u grid around each one, depth
+  (`N.world.potholes.patches`); potholes as real dips (a ~1 u grid around each one, depth
   0.35 + depth (≤ 1.15 u), ragged outline from `pts`), broken rim + gravel, rainwater with sky
-  reflection and rain rings when `wet`.
+  reflection and rain rings when `wet` (the bowl's vertices get the depth of the road plane along
+  their view ray, so the dip draws above the terrain plane and below anything on the road).
 - **Road shader** (Lambert + onBeforeCompile, world-space, OES_standard_derivatives): value-noise
   grain band-limited by the pixel footprint (so no texels or shimmer at any distance), round
   aggregate chips, tyre tracks per lane, oil drips, block cracks (age), dusty crumbling edges on
   old lanes, colour by kind and district age; markings from (u along, v across) with fwidth AA and
   distance pre-filtering: centre dashes (8 on / 9 off), lane lines (arterials, ±hw/2, 9/11), solid
   edge lines (arterials, bund), zebras (8 long, 2.4 stripes every 4.5) + stop lines on the inbound
-  half, all suppressed inside junction trims; wet sheen + sky reflection when it rains (`uWet`).
+  half, all suppressed inside junction trims; when it rains (`uWet`) the asphalt darkens, puddles
+  form in low spots and along the gutters, and reflections show the sky with the low sky hidden by
+  the city (no milky roads).
 - **Terrain**: one plane per chunk with a ground map (RGBA 256², 2 u texels from
   `N.world.surfaceAt`, 1-2-1 blurred, border-matched so chunks are seamless: grass / paving
   (+ compacted yards) / sand weights, A = contact AO and, on phones, baked sun shadows), a
@@ -1205,9 +1265,16 @@ ground no longer reuses the 2D pixel-art painter. A ground provider (installed w
   `elevation(e)` (`H.elev(e)`) adds it for entities on the ground (vehicles average the front and
   rear wheel points), so actors stand on kerbs and wheels dip; roof levels and `e.z` win.
 - **API**: `N.view3d.ground = {enabled, setEnabled(on) (false = the old painted ground, for
-  before/after), heightAt, potholeDip(x, y), rebuild(), stats() -> {pieces, junctions, zebras, bays,
-  chunks, roadTris, analyzeMs, avgChunkMs, stepMs, wet, ...}, net() (debug)}`. Rebuilds itself on
-  `'world:built'` and `'potholes:change'` (roads only), `uWet` follows `N.seasons.is('rain')`.
+  before/after), heightAt, potholeDip(x, y), setWet(0..1 | null) (tests; null = follow the
+  weather), rebuild(), stats() -> {pieces, junctions, zebras, bays, chunks, roadTris, analyzeMs,
+  avgChunkMs, stepMs, wet, ...}, net() (debug)}`. Rebuilds itself on `'world:built'`; when the
+  pothole set changes (`'potholes:change'`, monsoon, progressive generation) only the chunks whose
+  own potholes changed rebuild their roads; `uWet` follows `N.seasons.is('rain')` (wets in seconds,
+  dries in about a minute). The road network analysis is resumable (sliced by the frame budget).
+- **Gotcha (three r149):** `cameraPosition` is uploaded only for Phong / Standard / Toon /
+  ShaderMaterial (or with an envMap) — a `MeshLambertMaterial` patched with onBeforeCompile reads
+  (0, 0, 0). The ground shaders use their own `uCamPos` uniform (updated by the 'ground' layer);
+  other Lambert-based shaders that need the eye position must do the same.
 
 ### `N.view3d` API (for view3d_landmarks.js / view3d_actors.js)
 
@@ -1285,27 +1352,144 @@ headless here as the Python module **bpy 5.2.2 LTS** in the venv
 modifiers, curves, booleans; materials; UVs; baked ambient occlusion/lighting with Cycles
 CPU; rigs and keyframed animation), so assets are reproducible and reviewable in git.
 
-- **Layout:** `tools/blender/kit.py` (shared helpers: palette/materials, bevel, arches,
-  lathe/screw, arrays, decals, AO bake, export, Cycles preview renders and contact sheets),
-  one script per asset family (`characters.py`, `vehicles.py`, `landmarks_*.py`,
-  `props.py`), outputs `assets3d/<id>.glb` + `assets3d/previews/<id>.png`, and
-  `tools/pack_assets3d.cjs` → `src/assets3d_pack.js` (`N.ASSETS3D = {id: base64 GLB}` +
-  manifest with sizes, tri counts, clips) loaded **lazily** only when 3D starts.
-- **Conventions:** Blender Z-up metres = world units on the ground plane (the glTF exporter
-  converts to three.js Y-up); model origin at ground level, centred on the footprint the 2D
-  map uses (landmark `w`/`d` from worlddata), facing −Y in Blender = +x (east) in the world
-  after the runtime rotation (document per family); heights include the 3D vertical scale
-  `N.view3d.VS` (1.5). Characters ~7u (kid) to ~9u (adult) tall with the shared skeleton
-  `kid_rig`/`adult_rig` (same bone names) and clips `idle walk run ride_cycle ride_scooty
-  sit talk wave fall getup pick`; stride lengths stored in the manifest so the runtime sets
-  playback speed from real movement speed (no foot sliding).
-- **Budgets:** whole pack ≤ ~8 MB (WebP textures, ≤ 1024² per hero landmark, shared atlases
-  for props), triangles: hero landmark ≤ 60k, other landmarks ≤ 20k, vehicles ≤ 6k,
-  characters ≤ 4k, props ≤ 1.5k.
-- **Runtime (`src/models3d.js`):** loads `vendor/three/GLTFLoader.classic.js` (three r149
-  GLTFLoader converted to a classic script by `tools/vendor_gltfloader.cjs`, MIT) and the
-  pack lazily; `N.models3d.ready`, `has(id)`, `instance(id)` (shared geometry/materials),
-  `character(id, look)` → `{object, play(clip, {speed}), update(dt)}`; registers overrides
-  through `N.view3d.registerLandmark` / `registerActorRenderer` so Blender models replace the
-  procedural ones, with the procedural ones kept as fallbacks. The single-file build inlines
-  the pack; the artifact publishes it as a supporting file.
+Owner: the pipeline technical artist (kit.py, build_all.py, pack_assets3d.cjs, models3d.js,
+tests/models3d.cjs, the build.mjs pack step). Asset artists own their family scripts and follow
+the conventions below; anything else needs a change here first.
+
+- **Files:** `tools/blender/kit.py` (the kit: scene reset, unit conventions, PBR material
+  library `kit.LIB` / `kit.material(key, name, **overrides)`, mesh helpers `box cylinder tube lathe
+  onion_profile loft arch_outline prism_from_outline extrude_polygon merlons grill stairs
+  ring_array array_objects`, `boolean bevel_mod smooth join decimate_to dice`, `text_image`
+  (painted signboard text), UVs `uv_atlas uv_box`, finishing `finish_atlas` / `finish_tiled`
+  (bakes), `export_glb`, `write_manifest`, `preview_render`, `contact_sheet`, rig + clip
+  authoring `build_armature Rig gait_clip idle_clip GAITS weights normalize_weights`,
+  `kit.asset` registry, `run_asset`); `tools/blender/build_all.py` (runner); one script per
+  family: `characters.py`, `vehicles.py`, `landmarks_<area>.py` (`landmarks_proto.py` holds
+  blockouts), `props.py`. Generated (committed): `assets3d/<id>.glb`, `assets3d/<id>.json`
+  (manifest), `assets3d/previews/<id>*.png`, `assets3d/previews/_sheet.png`,
+  `src/assets3d_pack.js`. Build logs: `assets3d/logs/` (ignored by tests).
+- **Commands:** `/home/user/.venvs/blender/bin/python tools/blender/build_all.py [ids] [--no-preview]
+  [--pack] [-j 2]` (one fresh Blender process per asset; `--list` lists the registry), then
+  `node tools/pack_assets3d.cjs` (size report; fails over 8 MB or over a triangle budget;
+  `--check` = is the pack up to date), `node tools/build.mjs`, `node tests/models3d.cjs`.
+  Cycles CPU only (no GPU): bakes and previews use low samples and small sizes.
+- **Registering an asset:** `@kit.asset('<id>', '<family>', **meta)` on `def build(A)`. Families:
+  `character`, `vehicle`, `landmark`, `hero_landmark`, `prop`. Ids are snake_case and unique; the
+  builder creates objects (they land in `A.coll`), finishes them (`kit.finish_atlas` or
+  `kit.finish_tiled`), adds anchors with `A.anchor(name, loc, armature, bone)`, clips into
+  `A.clips`, sets `A.tint` (characters) and `A.preview` (shots / contact sheet). `meta` goes to
+  the manifest: landmarks `draw` (worlddata draw id) or `landmark` (one landmark id), `face`,
+  `footprint: [w, d]`, `height`, `fit: 'footprint'`, `proto: true` (blockout, only with
+  `N.models3d.useProto`), `floodlit`; vehicles `vehicleTypes: [...]` (vehicles.js types it
+  draws), `length` (= TYPES[t].w), `wheelR`, `crankR`, `gear`, `steerAxis`; characters `role`
+  ('player'), `rig` ('kid_rig' | 'adult_rig'), `height`, `look` (default N.people look).
+- **Units and axes (binding):** 1 Blender unit = 1 world unit (u), Z up; the glTF exporter makes
+  it Y-up. Heights already include `VS` = 1.5 (a storey is 15 u; kids ~7 u, adults ~9 u tall).
+  **Front = −Y in Blender** (Blender's Front view) = +Z in the GLB. Runtime: actors get an inner
+  pivot `rotation.y = PI/2` so the outer object uses the core rule `rotation.y = -angle`;
+  landmarks are turned by their face like view3d_landmarks: `FR = {s: 0, n: PI, e: PI/2,
+  w: -PI/2}` (`faceAngle`: `PI/2 - faceAngle`), so an unrotated model faces south. The rider's /
+  character's left is +X. **Origin** on the ground (z = 0) at the centre of the 2D footprint;
+  landmarks are modelled at the worlddata `w x d` (for faces e / w the model's width runs along
+  world y, i.e. model width = `lm.d`); `fit: 'footprint'` rescales x / z to the live data.
+  Vehicles: length along −Y equals `TYPES[t].w` (hero_cycle 16 u, wheels R 3.0 like
+  view3d_actors' models so riders fit both renderers).
+- **Names (binding):** files `assets3d/<id>.glb|.json`, previews `assets3d/previews/<id>.png`
+  (+ `<id>_<shot>.png`). Bones (shared kid / adult skeleton, see `kit.BONES`): `root hips spine
+  chest neck head shoulder_L upperarm_L forearm_L hand_L thigh_L shin_L foot_L toe_L` (+ `_R`);
+  joints from `kit.KID_J` / `kit.ADULT_J`. Vehicle bones: `root steer wheel_front wheel_rear
+  crank pedal_L pedal_R` (rigid skin, one draw call). Anchors are empties `anchor_<name>`
+  (exported nodes, parented to a bone when they move with it): characters `sole_heel_L/R`,
+  `sole_toe_L/R` (contact checks), `grip_L/R`, `eye` (first person), `head_top`; vehicles
+  `seat_driver seat_pillion handlebar grip_L/R pedal_L/R headlight wheel_front wheel_rear bell
+  reflector`; landmarks may add `door_*`, `spot_*`. Meshes named `COL_*` are invisible camera-ray
+  proxies (the core casts the camera ray at landmark objects; detailed meshes skip ray casts).
+  Materials: one baked `M_<id>` (+ `M_<id>_<key>` for non-baked glass / lenses); a material
+  whose name ends with **`@night`** glows with `H.night` (clock faces, lamp lenses, lit windows).
+- **Materials and bakes:** model with `kit.material(key)` from the PBR library (lime plaster,
+  whitewash, Deccan granite grey / pink, sandstone, red oxide, rusty tin, blue / green painted
+  wood, raw wood, black iron, gold leaf, clock face, glass, black paint, chrome, steel, rubber,
+  leather, reflector, lamp lens, skin, hair, cloth, stripes, pants, chappals, eyes, lips,
+  walkman yellow, black plastic, orange foam, shoelace; overrides like `base='#3d6fb0'`). Each
+  carries procedural detail that is **baked**: tone variation, grain, weave, hair strands, skin
+  blush, granite specks, rain streaks, rust, chipped paint on edges (bevel-normal mask), grime
+  in crevices (AO node) and dirt rising from the ground. `finish_atlas` (characters, vehicles,
+  props, small landmarks): unique UV atlas, baked albedo x ambient occlusion (AO baked at half
+  size, upsampled) [+ ORM when metals / mixed roughness], one material, ≤ 512² (1024² hero).
+  `finish_tiled` (big landmarks): seamless 4D-noise tiles per material (`tile` u per repeat,
+  small tiles for small-area materials) on world-scale box UVs, AO + ground dirt in vertex
+  colours (COLOR_0, multiplied by three), long edges diced for AO resolution. Textures ship as
+  **WebP** inside the GLB. Bevel hard edges (`bevel_mod` / `box(..., bevel=)`), `smooth(angle)`
+  for split normals; respectful, plain depiction of religious places; no logos (era brand
+  names only as plain painted text via `text_image`).
+- **Characters (tint):** faces carry a tint region (`kit.REGIONS`: none skin hair shirt stripes
+  pants shoes accent) from their library material → exported as the vertex attribute
+  `_REGION`; the manifest's `tint.regions` holds the default colours. `N.models3d.character(id,
+  look)` multiplies each region by `look[field] / default` in one shared shader program
+  (`skin`, `hair`, `shirt|kameez|saree`, `stripes|shoulders`, `pants|lungi`, `shoes`, `accent`).
+- **Clips (binding):** names `idle walk run stroll ride_cycle ride_scooty sit talk wave fall
+  getup pick` (more allowed). Locomotion clips are **in place** (root fixed; the stance foot moves
+  backwards at exactly stride per cycle), loop seamlessly, **phase 0 = left heel strike**, and are
+  authored with `kit.gait_clip(rig, name, kit.GAITS[...])` (32 frames per cycle at 30 fps; the
+  frame count does not set the speed). Their manifest entry carries `{loop, loco: true, stride
+  (u per cycle), nominal (u/s the clip is meant for), duty, gait: walk|run, slip}`; `slip` is the
+  authoring-time check of grounded sole points (must stay < 2 % of the per-frame step). The
+  runtime blends the locomotion clips by speed between neighbouring `nominal` speeds and drives
+  their common phase from the **distance actually travelled** (`phase += dist / Σ w·stride`):
+  feet cannot slide at any speed. kid_chinnu: stroll 4.8 u @ 14 u/s, walk 10.4 u @ 45 u/s
+  (duty 0.40, low foot lift: a hurried kid's walk at the game's walking speed), run 16 u @ 80
+  u/s (duty 0.27, flight, lean); idle 4 s (breathing, weight shift, glances). Adults use the
+  same `GAITS` scaled by leg length (`gait_clip(..., scale=leg / 3.1)`).
+  **Riding:** `kit.ride_clip(rig, vehicles.hero_geom(saddle_drop))` authors seated pedalling in the
+  *cycle's* model frame (rider root at the cycle origin): one clip cycle = one crank turn (phase 0
+  = left crank pointing back, forward pedalling = +X rotation), balls of the feet on the pedal
+  circle, hips on the saddle (dipping / rocking when a short leg cannot reach), hands IK'd to the
+  grips; manifest `{ride: true, vehicle, saddleDrop, hipDip}`. The runtime attaches the rider
+  inside the vehicle's GLB frame and sets the clip phase from the crank angle (wheel angle /
+  gear), so the feet stay on the pedals. Vehicle geometry that riders depend on lives in
+  module constants (`vehicles.HERO`, `hero_geom()`); change both together.
+- **Packing:** `pack_assets3d.cjs` quantizes each GLB on the way into the pack (the Blender
+  output in assets3d/ stays untouched): skin weights → normalized ubyte, atlas UVs → normalized
+  ushort, colours → normalized ubyte, `_REGION` → ubyte, animation rotations → normalized short,
+  normals → normalized byte under `KHR_mesh_quantization` (three r149 reads it); positions stay
+  float. ~25-35 % smaller; `--no-quantize` skips it.
+- **Budgets:** whole pack ≤ 8 MB (packer fails above), triangles: hero landmark ≤ 60k, other
+  landmarks ≤ 20k, vehicles ≤ 6k, characters ≤ 4k, props ≤ 1.5k (packer fails above unless
+  `--allow-over`); textures ≤ 1024² (hero landmark), 512² otherwise.
+- **Runtime (`src/models3d.js`, after view3d_actors.js in index.html):** nothing loads in
+  top-down. When `N.view3d.ready`, it loads `vendor/three/GLTFLoader.classic.js` (three r149,
+  converted by `tools/vendor_gltfloader.cjs`, MIT) and `src/assets3d_pack.js` (dist/nostalgia.html:
+  the inline `text/plain` blocks `gltfloader-src` / `assets3d-pack`; under dist/ it tries `../`
+  first), parses the GLBs it needs (protos only on demand) and registers renderers. API:
+  `N.models3d.ready / state ('idle'|'loading'|'ready'|'missing'|'failed') / has(id) / loaded(id) /
+  load() / instance(id)` (clone sharing geometry, textures and materials, skinned meshes rebound)
+  `/ character(id, look)` → `{object, play(clip, {speed, fade, loop}), stop(), setSpeed(u/s),
+  update(dt, dist), tint(look), anchors, bones, clip, phase, weights(), dispose()}` `/
+  vehicleParts(id)` → `{object, bones, wheels, steer, crank, pedals, anchors, set({dist, steer,
+  crank}), lamp(k), dispose()}` `/ useProto` (get / set) `/ options {enabled, player, vehicles,
+  landmarks, kidPeds, env, nightGlow} / setEnabled(v) / stats() / debug`.
+- **Overrides and fallbacks:** the procedural renderers stay registered. models3d registers its
+  own actor keys (`m3d:char:<id>`, `m3d:veh:<id>`) and routes entities to them through the
+  documented per-entity key `e.view3d` (§20): the player while on foot (not riding, sitting,
+  fallen or hidden), vehicles of a model's `vehicleTypes` when parked or when every occupant has
+  a rider model with a matching `ride_cycle` clip (the player on Chinnu's cycle = kid_chinnu with
+  the saddle let down via the cycle's `saddle` bone and `meta.saddleDrop`; traffic men / uncles
+  on Hero cycles = adult_man tinted from the driver's look; pillions, women and kainchi-style
+  kids stay procedural), optional plain kid peds (`options.kidPeds`); everything else, and
+  everything when a model is missing / fails / is disabled, keeps the procedural renderer.
+  Landmarks register `'#<landmark>'` (or the draw id); a proto registers only while
+  `useProto` is true (persisted in localStorage `nostalgia.models3d.proto`). Turning it off
+  re-registers the key with the previously built procedural object (best effort; the core may
+  add `N.view3d.unregisterLandmark(key)`, which models3d already uses when present).
+  Materials and geometry are marked `userData.shared` so the core's disposeObj keeps them;
+  metallic materials get a small sky PMREM environment (chrome reads as chrome), `@night`
+  materials and `floodlit` landmarks follow `H.night`.
+- **Build / publish:** index.html never loads the pack. `tools/build.mjs` inlines it (and the
+  GLTFLoader) into dist/nostalgia.html as non-executing `<script type="text/plain">` blocks run on
+  demand; dist/artifact.html stays lazy and `dist/artifact.files.json` lists its supporting files
+  (`src/assets3d_pack.js`, `vendor/three/GLTFLoader.classic.js`, `vendor/three/three.min.js`) to
+  publish next to the page.
+- **Tests:** `node tests/models3d.cjs` (lazy loading, routes, clip selection by speed, planted
+  feet on 0.1 s frame strips + dense slow-motion sole sampling while walking / running, vehicle
+  parts, the proto flag, tinting, pack-missing and corrupt-model fallbacks, the dist build, zero
+  console errors; screenshots `tests/out/models3d_*.png`).

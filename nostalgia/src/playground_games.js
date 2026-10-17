@@ -1190,6 +1190,7 @@
     ai(S, P, dt) {
       const L = S.L, e = P.e, b = S.ball;
       if (!e || e.alive === false) return;
+      if (S.real && PG.debug.assist.freezeAI) { halt(P); return; }
       if (P.scatter) { const q = edgeSpot(S.F, e.x, e.y, 20); goTo(P, q.x, q.y, speedOf(S, P, true), 3); return; }
       if (P.downT > 0) { halt(P); return; }
       if (P.out) { goSit(S, P, dt); return; }
@@ -1381,7 +1382,7 @@
       if (seeker) {
         if (me.carry) {
           const d = hyp(L.base.x - p.x, L.base.y - p.y);
-          if (d < 8.5) {
+          if (d < 10) {
             offer(S, L.stack.length === 6 ? 'Stack + LINGOCHA!' : 'Stack it (' + (L.stack.length + 1) + '/7)');
             if (I.pressed('action')) { LING.stackStone(S, me); }
           } else offer(S, '');
@@ -1530,6 +1531,7 @@
     ai(S, P, dt) {
       const e = P.e, b = S.ball, M = S.M;
       if (!e || e.alive === false) return;
+      if (S.real && PG.debug.assist.freezeAI) { halt(P); return; }
       if (P.scatter) { const q = edgeSpot(S.F, e.x, e.y, 20); goTo(P, q.x, q.y, speedOf(S, P, true), 3); return; }
       if (P.downT > 0) { halt(P); return; }
       if (P.out) { goSit(S, P, dt); return; }
@@ -2335,6 +2337,13 @@
       R.queue('shadow', 1, () => D.shadow(bx, by, 5.4, 5.4, 0, 1));
       R.queue('actors', by, () => { list.forEach((st, i) => stoneDraw(D, st, bx + Math.sin(i * 2.3) * 0.25, by + Math.cos(i * 1.7) * 0.2, i * TUNE.stoneH)); });
     }
+    // Chinnu seeking: a soft chalk ring marks the stones lying about (easy to spot among the dust)
+    if (S.real && S.me && !S.me.out && S.me.team === L.seek && (S.phase === 'live' || S.phase === 'scatter') && !S.ended) {
+      R.queue('ground', 4, () => D.flat((ctx) => {
+        ctx.strokeStyle = 'rgba(255,240,190,' + (0.45 + 0.25 * Math.sin(S.t * 6)).toFixed(2) + ')'; ctx.lineWidth = 0.6;
+        for (const st of L.stones) if (st.state === 'loose') { ctx.beginPath(); ctx.arc(st.x, st.y, st.r * 1.25 + 1.6, 0, TAU); ctx.stroke(); }
+      }));
+    }
     for (const st of L.stones) {
       if (st.state === 'stack') continue;
       const x = st.x, y = st.y, z = st.z;
@@ -2707,7 +2716,7 @@
     ambient: AMB,
     ledger,
     debug: {
-      assist: { aim: false, power: null, weakAI: false, noTimer: false, noDodge: false },
+      assist: { aim: false, power: null, weakAI: false, noTimer: false, noDodge: false, freezeAI: false },
       session(which) { return which === 'ambient' ? AMB.S : current; },
       state(which) {
         const S = which === 'ambient' ? AMB.S : current;
@@ -2755,7 +2764,14 @@
         const S = current; if (!S || !S.L) return 0;
         const L = S.L; let k = 0;
         const P = LING.seekers(S).find((q) => !q.out) || LING.seekers(S)[0];
-        for (const st of L.stones) { if (k >= (n || 7) || L.stack.length >= 7) break; if (st.state !== 'loose' && st.state !== 'fly') continue; if (P.carry) LING.stackStone(S, P); st.state = 'loose'; LING.pickStone(S, P, st); LING.stackStone(S, P); k++; }
+        for (const st of L.stones) {
+          if (k >= (n || 7) || L.stack.length >= 7) break;
+          if (st.state === 'stack') continue;
+          if (st.state === 'carried' && st.by && st.by !== P) { st.by.carry = null; st.by.act = null; }
+          if (P.carry && P.carry !== st) { LING.stackStone(S, P); k++; if (k >= (n || 7) || L.stack.length >= 7) break; }
+          if (P.carry !== st) { st.state = 'loose'; st.by = null; LING.pickStone(S, P, st); }
+          LING.stackStone(S, P); k++;
+        }
         return k;
       },
       /** knock the stack down now (a perfect try) */

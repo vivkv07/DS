@@ -1417,23 +1417,30 @@ float ngBlob(vec2 p, float prob, out float h){
 `;
   // shared after-lighting water: reflection of the sky + sun glint (pothole puddles, rivers, wet roads)
   const GLSL_WATER = `
+// sky seen in a reflection; occ: how much of the low sky is hidden by the city (buildings, trees)
+vec3 ngSky(vec3 Rf, float occ){
+  vec3 s = mix(uHor, uZen, clamp(Rf.y * 2.4 + 0.32, 0.0, 1.0)) * 0.82;
+  return mix(s * (1.0 - 0.72 * occ), s, smoothstep(0.03, 0.34, Rf.y));
+}
 vec3 ngWaterCol(vec3 lit, vec3 P, vec3 nrm, float t, float deep){
-  vec3 Vd = normalize(cameraPosition - P);
+  vec3 Vd = normalize(uCamPos - P);
   float fres = 0.04 + 0.96 * pow(1.0 - clamp(dot(nrm, Vd), 0.0, 1.0), 4.0);
   vec3 Rf = reflect(-Vd, nrm);
-  vec3 skyC = mix(uHor, uZen, clamp(Rf.y * 2.4 + 0.32, 0.0, 1.0)) * 0.82;
+  vec3 skyC = ngSky(Rf, 1.0 - deep * 0.6);
   float sd = max(dot(Rf, uSunDir), 0.0);
   float sp = pow(sd, 260.0) * 5.0 + pow(sd, 22.0) * 0.14;
   vec3 base = lit * mix(vec3(0.55, 0.62, 0.6), vec3(0.5, 0.78, 0.82), deep) + vec3(0.004, 0.02, 0.024) * deep;
   return mix(base, skyC, clamp(0.08 + fres * 0.62, 0.0, 0.66)) + sp * uSunCol;
 }
 `;
-  const VERT_COMMON = 'varying vec3 vWP;\n';
+  // NB: three r149 uploads cameraPosition only for Phong / Standard / Toon / Shader materials, never for
+  // Lambert: these shaders read uCamPos (updated every frame by the 'ground' layer) instead
+  const VERT_COMMON = 'varying vec3 vWP;\nuniform vec3 uCamPos;\n';
   function commonUniforms(shader, ud) {
     const U = I.UNI;
     shader.uniforms.uNight = U.uNight; shader.uniforms.uTime = U.uTime; shader.uniforms.uSunDir = U.uSunDir;
     shader.uniforms.uSunCol = U.uSunCol; shader.uniforms.uZen = U.uZen; shader.uniforms.uHor = U.uHor;
-    shader.uniforms.uWet = GU.uWet; shader.uniforms.uRain = GU.uRain;
+    shader.uniforms.uWet = GU.uWet; shader.uniforms.uRain = GU.uRain; shader.uniforms.uCamPos = GU.uCamPos;
     shader.uniforms.auxMap = ud.aux; shader.uniforms.tSurf = ud.surf; shader.uniforms.uOrigin = ud.origin; shader.uniforms.uSurfN = ud.surfN;
     shader.uniforms.tSoil = SOIL.t; shader.uniforms.uSoilK = SOIL.u;
   }
@@ -1452,6 +1459,7 @@ uniform vec3 uSunDir;
 uniform vec3 uSunCol;
 uniform vec3 uZen;
 uniform vec3 uHor;
+uniform vec3 uCamPos;
 varying vec3 vWP;
 float ngWm = 0.0;
 float ngShine = 0.0;
@@ -1524,7 +1532,7 @@ col = mix(col, grass, wGrass);
 col = mix(col, sandC, wSand);
 col = mix(col, stone, wPave);
 col *= sw.a;
-col *= 1.0 - uWet * 0.28 * (1.0 - wGrass * 0.5);
+col *= 1.0 - uWet * 0.4 * (1.0 - wGrass * 0.4);
 diffuseColor.rgb = col;
 ngShine = wetS * wSand * 0.35 + uWet * 0.18 * (1.0 - wGrass);
 `;
@@ -1546,11 +1554,10 @@ if (ngWm > 0.003) {
   outgoingLight = mix(outgoingLight, wc, ngWm);
 }
 if (ngShine > 0.01) {
-  vec3 Vd = normalize(cameraPosition - vWP);
+  vec3 Vd = normalize(uCamPos - vWP);
   float fres = pow(1.0 - clamp(Vd.y, 0.0, 1.0), 5.0);
   vec3 Rf = reflect(-Vd, vec3(0.0, 1.0, 0.0));
-  vec3 skyC = mix(uHor, uZen, clamp(Rf.y * 2.4 + 0.32, 0.0, 1.0)) * 0.7;
-  outgoingLight = mix(outgoingLight, skyC, clamp(fres * ngShine, 0.0, 0.5));
+  outgoingLight = mix(outgoingLight, ngSky(Rf, 0.7) * 0.85, clamp(fres * ngShine, 0.0, 0.45));
 }
 `;
 
@@ -1559,7 +1566,7 @@ if (ngShine > 0.01) {
     commonUniforms(shader, ud);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\n' + VERT_COMMON + 'attribute vec2 aRd;\nattribute vec4 aGeo;\nattribute vec4 aMk;\nattribute vec4 aSt;\nvarying vec2 vRd;\nvarying vec4 vGeo;\nvarying vec4 vMk;\nvarying vec4 vSt;\n')
-      .replace('#include <project_vertex>', '#include <project_vertex>\n\tvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;\n\tvRd = aRd; vGeo = aGeo; vMk = aMk; vSt = aSt;');
+      .replace('#include <project_vertex>', '#include <project_vertex>\n\tvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;\n\tvRd = aRd; vGeo = aGeo; vMk = aMk; vSt = aSt;\n' + POT_DEPTH);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\n' + FRAG_PARS + 'varying vec2 vRd;\nvarying vec4 vGeo;\nvarying vec4 vMk;\nvarying vec4 vSt;\n' + GLSL_NOISE + GLSL_WATER + ROAD_FUNCS)
       .replace('#include <map_fragment>', ROAD_MAP)
@@ -1567,6 +1574,16 @@ if (ngShine > 0.01) {
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += diffuseColor.rgb * texture2D(auxMap, vec2((vWP.x - uOrigin.x) / 512.0, 1.0 - (vWP.z - uOrigin.y) / 512.0)).rgb * (uNight * 3.0);')
       .replace('#include <envmap_fragment>', ROAD_ENV);
   }
+  // Pothole bowls dip below the terrain plane (y = 0): give their vertices the depth of the road plane
+  // along the same view ray (screen position unchanged), so they draw above the terrain and below
+  // anything standing on the road, while keeping their real shape for shading.
+  const POT_DEPTH = `
+\tif (aSt.w > 0.001 && uCamPos.y > ${Y_ROAD.toFixed(3)} + 0.05) {
+\t\tfloat ngK = (uCamPos.y - ${Y_ROAD.toFixed(3)}) / max(uCamPos.y - vWP.y, 1e-3);
+\t\tvec4 ngC = projectionMatrix * viewMatrix * vec4(uCamPos + (vWP - uCamPos) * ngK, 1.0);
+\t\tgl_Position.z = ngC.z / ngC.w * gl_Position.w;
+\t}
+`;
   const ROAD_FUNCS = `
 // distance to the nearest cell border of a jittered grid (0 on the border): block / alligator cracks
 float ngCell2(vec2 p){
@@ -1638,14 +1655,14 @@ if (layer < 1.5) {
     col = mix(col, vec3(0.31, 0.24, 0.15) * (0.8 + 0.4 * en / 2.7), edge * (0.25 + 0.65 * sandy));
     // hairline cracks on older surfaces: block / alligator patterns in patches, wobbly, ~1 px wide
 #ifndef NG_LOW
-    float cmask = smoothstep(0.52, 0.7, ngN(P * 0.021 + 7.0) + age * 0.25) * (1.0 - smoothstep(0.05, 0.16, fw)) * smoothstep(0.25, 0.55, age);
+    float cmask = smoothstep(0.62, 0.82, ngN(P * 0.017 + 7.0) * 0.8 + ngN(P * 0.09 + 1.0) * 0.2 + age * 0.22) * (1.0 - smoothstep(0.05, 0.16, fw)) * smoothstep(0.25, 0.55, age);
     if (cmask > 0.001) {
-      vec2 cp = P * 0.33 + (vec2(ngN(P * 1.3), ngN(P * 1.3 + 9.0)) - 0.5) * 0.22;
+      vec2 cp = P * 0.42 + (vec2(ngN(P * 1.1), ngN(P * 1.1 + 9.0)) - 0.5) * 0.35;
       float e = ngCell2(cp);
       float ew = fwidth(e);
-      float crack = 1.0 - smoothstep(0.012, 0.012 + ew * 1.4, e);
-      crack *= 0.55 + 0.45 * ngN(P * 0.9 + 3.0);
-      col *= 1.0 - crack * 0.55 * cmask;
+      float crack = 1.0 - smoothstep(0.008, 0.008 + ew * 1.3, e);
+      crack *= smoothstep(0.25, 0.6, ngN(P * 0.7 + 3.0)); // broken, not every cell edge
+      col *= 1.0 - crack * 0.42 * cmask;
     }
 #endif
     // markings (white paint), all from (u, v) with analytic AA
@@ -1683,7 +1700,10 @@ if (layer < 1.5) {
     float gr = ngF(P * 3.4, fw * 3.4);
     float rim = smoothstep(0.0, 0.25, pd) * (1.0 - smoothstep(0.45, 0.75, pd));
     col *= 1.0 - 0.45 * rim * (0.6 + 0.6 * ngF(P * 2.0, fw * 2.0));
-    vec3 gravel = vec3(0.13, 0.115, 0.1) * (0.55 + 0.9 * gr) + vec3(0.06, 0.04, 0.02) * step(0.8, ngH(floor(P * 6.0)));
+    float gh = 0.0;
+    float chip = ngBlob(P * 3.6, 0.45, gh) * (1.0 - smoothstep(0.05, 0.15, fw));
+    vec3 gravel = vec3(0.075, 0.068, 0.06) * (0.6 + 0.8 * gr) + vec3(0.11, 0.1, 0.09) * chip * (0.5 + gh);
+    gravel *= 1.0 - 0.35 * smoothstep(0.55, 1.0, pd); // cavity: the deep middle stays darker
     col = mix(col, gravel, smoothstep(0.35, 0.7, pd));
     if (wet > 0.5) ngWm = smoothstep(0.55, 0.7, pd + (ngF(P * 1.3, fw * 1.3) - 0.5) * 0.15);
   }
@@ -1784,12 +1804,11 @@ if (ngWm > 0.003) {
   outgoingLight = mix(outgoingLight, wc, ngWm);
 }
 if (ngShine > 0.01) {
-  vec3 Vd = normalize(cameraPosition - vWP);
-  float fres = 0.05 + 0.95 * pow(1.0 - clamp(Vd.y, 0.0, 1.0), 5.0);
+  vec3 Vd = normalize(uCamPos - vWP);
+  float fres = 0.04 + 0.96 * pow(1.0 - clamp(Vd.y, 0.0, 1.0), 5.0);
   vec3 Rf = reflect(-Vd, vec3(0.0, 1.0, 0.0));
-  vec3 skyC = mix(uHor, uZen, clamp(Rf.y * 2.4 + 0.32, 0.0, 1.0)) * 0.75;
   float sd = max(dot(Rf, uSunDir), 0.0);
-  outgoingLight = mix(outgoingLight, skyC, clamp(fres * ngShine, 0.0, 0.6)) + uSunCol * pow(sd, 90.0) * 0.6 * ngShine;
+  outgoingLight = mix(outgoingLight, ngSky(Rf, 1.0) * 0.8, clamp(fres * ngShine, 0.0, 0.55)) + uSunCol * pow(sd, 90.0) * 0.6 * ngShine;
 }
 `;
 
@@ -2015,7 +2034,7 @@ if (ngShine > 0.01) {
     attach(internals) {
       I = internals; THREE = I.THREE;
       NET.built = false;
-      GU.uWet = { value: 0 }; GU.uRain = { value: 0 };
+      GU.uWet = { value: 0 }; GU.uRain = { value: 0 }; GU.uCamPos = { value: new THREE.Vector3() };
       SOIL.u = { value: new THREE.Vector2(1, 1) }; SOIL.t = { value: null };
     },
     need(ch, d, pass) {
@@ -2076,17 +2095,20 @@ if (ngShine > 0.01) {
   }
 
   /* ================================================================ per frame: wetness + rebuild triggers */
-  let wetT = 0, lastPot = -1;
+  let wetT = 0, lastPot = -1, wetForce = null;
   V.registerLayer('ground', {
     order: -10,
     init() { },
-    update(dt) {
+    update(dt, H) {
       if (!GU.uWet) return;
+      const cam = (H && H.camera) || (I && I.E.camera);
+      if (cam) GU.uCamPos.value.copy(cam.position);
       let raining = false;
       try { raining = !!(N.seasons && N.seasons.is && N.seasons.is('rain')) || !!(N.flags && N.flags.rain === true); } catch (e) { raining = false; }
       const target = raining ? 1 : 0;
-      // roads darken in a few seconds when the shower starts and dry out slowly
-      wetT += (target - wetT) * Math.min(1, dt * (raining ? 0.5 : 0.06));
+      // roads darken in a few seconds when the shower starts and dry out slowly (tests may force it)
+      if (wetForce != null) wetT = wetForce;
+      else wetT += (target - wetT) * Math.min(1, dt * (raining ? 0.5 : 0.06));
       GU.uWet.value = wetT;
       GU.uRain.value += ((raining ? 1 : 0) - GU.uRain.value) * Math.min(1, dt * 2);
       // pothole set / wetness changed (monsoon, rain, progressive generation): rebuild only the
@@ -2112,6 +2134,8 @@ if (ngShine > 0.01) {
     setEnabled,
     heightAt: groundHeightAt,
     potholeDip,
+    /** tests / cutscenes: force the road wetness 0..1 (null = follow the weather again) */
+    setWet(v) { wetForce = v == null ? null : clamp(+v || 0, 0, 1); if (wetForce != null) { wetT = wetForce; if (GU.uWet) GU.uWet.value = wetT; } return wetT; },
     /** re-analyse the road network and rebuild every chunk's ground */
     rebuild() { NET.built = false; AN = null; POTS.clear(); if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } },
     stats() {

@@ -42,7 +42,7 @@ def rot_copies(objs, n=4):
 def minaret(M, cx, cy):
     """Engaged corner minaret: faceted shaft to the roof, two balcony tiers, petals, onion dome."""
     parts = []
-    seg = 20
+    seg = 16
     r0 = MIN_R
     prof = [(r0 + 0.8, 0.0), (r0 + 0.8, 1.6), (r0, 1.6), (r0, 30.0), (r0 + 0.45, 30.3), (r0 + 0.45, 31.4), (r0, 31.7),
             (r0, 55.0), (r0 + 0.5, 55.4), (r0 + 0.5, 56.8), (r0, 57.2), (r0, 69.5), (r0 + 0.5, 69.9), (r0 + 0.5, 71.2), (r0, 71.6),
@@ -58,12 +58,12 @@ def minaret(M, cx, cy):
     sh = lathe('minaret_shaft', prof, seg=seg, mat=M['plaster'], close_top=True, close_bottom=False)
     parts.append(sh)
     # balcony parapets: rings of small pointed merlons (arched railing look)
-    for (rz, rr, n) in ((83.4, r0 + 2.4, 24), (103.0, r0 + 0.95, 18)):
+    for (rz, rr, n) in ((83.4, r0 + 2.4, 14), (103.0, r0 + 0.95, 10)):
         ring = []
         for i in range(n):
             a = 2 * math.pi * (i + 0.5) / n
             w = 2 * math.pi * rr / n * 0.62
-            o = kit.prism_from_outline('rail', [(-w / 2, 0), (w / 2, 0), (w / 2, 1.5), (w * 0.2, 2.3), (0, 2.6), (-w * 0.2, 2.3), (-w / 2, 1.5)], 0.35, center=(0, 0, rz), mat=M['plaster'])
+            o = kit.prism_from_outline('rail', [(-w / 2, 0), (w / 2, 0), (w / 2, 1.6), (0, 2.6), (-w / 2, 1.6)], 0.35, center=(0, 0, rz), mat=M['plaster'])
             o.rotation_euler = (0, 0, a + math.pi / 2)
             o.location = (rr * math.cos(a), rr * math.sin(a), 0)
             kit.apply_transform(o)
@@ -71,12 +71,12 @@ def minaret(M, cx, cy):
         parts.append(kit.join(ring, 'balcony_rail'))
     # lotus petals round the dome base
     petals = []
-    n = 14
+    n = 10
     for i in range(n):
         a = 2 * math.pi * i / n
-        o = kit.prism_from_outline('petal', [(-1.0, 0), (1.0, 0), (0.95, 1.4), (0.4, 2.6), (0, 3.1), (-0.4, 2.6), (-0.95, 1.4)], 0.3, center=(0, 0, 111.0), mat=M['plaster'])
-        o.rotation_euler = (math.radians(-28), 0, a + math.pi / 2)
-        o.location = ((r0 - 1.55) * math.cos(a), (r0 - 1.55) * math.sin(a), 0)
+        o = kit.prism_from_outline('petal', [(-1.0, 0), (1.0, 0), (0.95, 1.4), (0.4, 2.6), (0, 3.1), (-0.4, 2.6), (-0.95, 1.4)], 0.3, center=(0, 0, 0), mat=M['plaster'])
+        o.rotation_euler = (math.radians(-28), 0, a + math.pi / 2)   # built at the origin, then placed
+        o.location = ((r0 - 1.55) * math.cos(a), (r0 - 1.55) * math.sin(a), 111.0)
         kit.apply_transform(o)
         petals.append(o)
     parts.append(kit.join(petals, 'petals'))
@@ -162,7 +162,7 @@ def arcade_cutters(z0, z1, n, depth, span, fy, kind='pointed'):
     w = step * 0.62
     for i in range(n):
         x = -span / 2 + step * (i + 0.5)
-        o = prism_from_outline('arc_cut', arch_outline(w, h * 0.62, h * 0.33, kind, n=8), depth * 2, center=(x, fy, z0))
+        o = prism_from_outline('arc_cut', arch_outline(w, h * 0.62, h * 0.33, kind, n=5), depth * 2, center=(x, fy, z0))
         cs.append(o)
     return kit.join(cs, 'arcade_cut')
 
@@ -171,8 +171,8 @@ def arcade_cutters(z0, z1, n, depth, span, fy, kind='pointed'):
            proto=True, floodlit=True, fit='footprint')
 def charminar_proto(A):
     M = {
-        'plaster': material('lime_plaster', 'plaster'),
-        'granite': material('granite_grey', 'granite'),
+        'plaster': material('lime_plaster', 'plaster', base='#e2d1ab', var=0.06, grain=0.035, streaks=0.3),
+        'granite': material('granite_grey', 'granite', base='#a8a39b'),
         'clock': material('clock_face', 'clock@night', emit='#fff3d0', emit_strength=0.0),
         'iron': material('iron_black', 'iron'),
         'gold': material('gold_leaf', 'finial_gold', base='#b89a5a', metal=0.3, rough=0.55),
@@ -181,8 +181,8 @@ def charminar_proto(A):
     core = box('core', (2 * CORE, 2 * CORE, TOP - 1.6), (0, 0, 1.6), M['plaster'], base=True)
     t1 = prism_from_outline('tunnel_ns', arch_outline(ARCH_W, ARCH_SPRING, ARCH_RISE, 'pointed', n=16), 2 * CORE + 8, center=(0, 0, 1.0))
     t2 = prism_from_outline('tunnel_ew', arch_outline(ARCH_W, ARCH_SPRING, ARCH_RISE, 'pointed', n=16), 2 * CORE + 8, axis='X', center=(0, 0, 1.0))
-    tun = kit.join([t1, t2], 'tunnels')
-    kit.boolean(core, tun)
+    kit.boolean(core, t1)        # one at a time: crossing cutters must not be joined
+    kit.boolean(core, t2)
     # galleries: blind arcades on all four faces (one cutter per face)
     span = 2 * CORE - 2 * MIN_R - 1.0
     for k in range(4):
@@ -223,7 +223,7 @@ def charminar_proto(A):
     kit.smooth(body, 32)
     kit.smooth(rest, 32)
     objs = [o for o in (body, rest) if o]
-    kit.finish_tiled(A, objs, tile=12.0, tex=512, ao_samples=48, ao_strength=0.85, ao_dist=10.0, dice_edge=5.0, ground_dirt=7.0)
+    kit.finish_tiled(A, objs, tile=12.0, tex=512, ao_samples=48, ao_strength=0.85, ao_dist=10.0, dice_edge=11.0, ground_dirt=7.0)
     # ---- camera collision proxies (never drawn): four piers + the upper body
     span_in = ARCH_W / 2
     cols = []

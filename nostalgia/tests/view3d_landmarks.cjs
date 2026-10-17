@@ -16,7 +16,7 @@
  *   node nostalgia/tests/view3d_landmarks.cjs
  *   ONLY=charminar,mecca_masjid (ids or draw ids)  ALL=1 (every representative, 4 shots each)
  *   MODES=tps,fps  TIMES=day,night  PAIRS=1 (tps day + fps night only)  SHOTS=0  VISIT=0|1  W=1280 H=720  DD=<draw distance>  SKIP=ids
- *   with ONLY: MEASURE=1 VARIANTS=1 PERF=1 PHONE=1 add those sections
+ *   with ONLY: MEASURE=1 VARIANTS=1 PERF=1 PHONE=1 add those sections; VIEW=<name> keeps one named view
  */
 'use strict';
 const path = require('path');
@@ -56,7 +56,8 @@ const NAMED = ['birla_planetarium', 'assembly', 'mozamjahi_market', 'kachiguda_s
   'giant_wheel', 'khairatabad_ganesh', 'doordarshan_kendra', 'nimrah_cafe', 'grand_hotel', 'kirana_3', 'bangle_shop_1', 'banana_cart_1', 'std_1', 'bus_stop_1', 'home', 'water_tank_1', 'purani_haveli', 'madina_building', 'kakatiya_arch_s', 'koti_womens_college', 'school_1'];
 // at / look are offsets from the landmark centre (or from another landmark: rel: '<id>')
 const VIEWS = {
-  charminar: [{ name: 'north', from: -Math.PI / 2, dist: 175, fpsDist: 120 }, { name: 'laad_bazaar', atFn: 'laad', fpsPitch: -0.2 }, { name: 'close', from: -Math.PI / 2 + 0.5, dist: 92, fpsDist: 70, fpsPitch: -0.75 }],
+  // Map v2: the Charminar Kaman stands 140 u due north, so the 'north' view looks from north-north-west
+  charminar: [{ name: 'north', from: -Math.PI / 2 - 0.6, dist: 100, fpsDist: 110 }, { name: 'laad_bazaar', atFn: 'laad', fpsPitch: -0.2 }, { name: 'close', from: -Math.PI / 2 + 0.5, dist: 92, fpsDist: 70, fpsPitch: -0.75 }],
   lb_stadium: [{ name: 'gate', from: Math.PI, dist: 150 }, { name: 'field', at: [0, 60], look: [0, -110], fpsOnly: true, fpsPitch: -0.05 }],
   birla_mandir: [{ name: 'front', from: Math.PI / 2, dist: 140 }],
   buddha_statue: [{ name: 'bund', atFn: 'bund', fpsPitch: -0.1 }],
@@ -76,7 +77,7 @@ async function main() {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '/* stubbed */' }));
   await page.route(CDN, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_JS }));
   await page.goto(URL);
-  await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 60000 });
+  await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 180000 });
   await page.evaluate(() => {
     N.debug.newGame({ skipIntro: true });
     N.debug.freezeClock(true);
@@ -87,7 +88,7 @@ async function main() {
     N.view3d.setQuality({ adaptive: false });
     N.view.set('tps');
   });
-  await page.waitForFunction(() => N.view.mode === 'tps', null, { timeout: 120000 });
+  await page.waitForFunction(() => N.view.mode === 'tps', null, { timeout: 300000 });
   await page.evaluate((DD) => { N.view3d.setQuality(Object.assign({ adaptive: false, pixelRatio: 1 }, DD ? { drawDist: DD } : {})); if (N.hud && N.hud.hide) N.hud.hide(); }, DD);
   ok('3D view ready');
   // viewpoint picker: the first spot (around the wanted one) with a clear line of sight to the landmark
@@ -155,6 +156,7 @@ async function main() {
       const Ht = (lm.h || 20) * 1.5;
       const views = VIEWS[lm.id] || VIEWS[lm.draw] || [{ name: '' }];
       for (const v of views) {
+        if (args.VIEW && (v.name || '') !== args.VIEW) continue;
         const face = { n: -Math.PI / 2, s: Math.PI / 2, e: 0, w: Math.PI }[lm.face] ?? (isFinite(lm.faceAngle) ? lm.faceAngle : Math.PI / 2);
         const from = v.from != null ? v.from : face;
         const size = Math.max(lm.w, lm.d);
@@ -170,7 +172,7 @@ async function main() {
       }
     }
     return out;
-  }, { ONLY, VIEWS, SKIP, TOP, NAMED, ALL: process.env.ALL === '1' });
+  }, { ONLY, VIEWS, SKIP, TOP, NAMED, ALL: process.env.ALL === '1', VIEW: process.env.VIEW || '' });
   console.log('\n== ' + plan.length + ' shot targets (' + MODES.join('/') + ' x ' + TIMES.join('/') + ')');
 
   // ---------------------------------------------------------------- 1. visit every landmark: model built by view3d_landmarks.js
@@ -284,10 +286,10 @@ async function main() {
     const V = [
       { name: 'lb_stadium_matchday_fps_night', lm: 'lb_stadium', at: [0, 60], look: [0, -110], mode: 'fps', h: [19, 40], pitch: -0.08, set: () => { N.flags.lb_match = true; } },
       { name: 'lb_stadium_matchday_tps_dusk', lm: 'lb_stadium', at: [-141, 0], look: [0, 0], mode: 'tps', h: [18, 20], pitch: 0.18, set: () => { N.flags.lb_match = true; } },
-      { name: 'charminar_chand_raat_tps_night', lm: 'charminar', at: [0, -175], clear: true, look: [0, 0], mode: 'tps', h: [22, 0], pitch: -0.12, set: () => { N.flags.chand_raat = true; } },
+      { name: 'charminar_chand_raat_tps_night', lm: 'charminar', at: [-56, -83], look: [0, 0], mode: 'tps', h: [22, 0], pitch: -0.12, set: () => { N.flags.chand_raat = true; } },
       { name: 'prasads_open_tps_day', lm: 'prasads_imax', at: [0, 96], look: [0, 0], mode: 'tps', h: [11, 0], pitch: 0, set: () => { if (N.placesArt) N.placesArt.fx.prasads = 'open'; N.flags.prasads_open = true; } },
       { name: 'prasads_fence_tps_day', lm: 'prasads_imax', at: [0, 96], look: [0, 0], mode: 'tps', h: [11, 0], pitch: 0, set: () => { if (N.placesArt) N.placesArt.fx.prasads = 'fence'; N.flags.prasads_open = false; } },
-      { name: 'ntr_gardens_tps_golden', lm: 'ntr_memorial', at: [0, 80], look: [0, 0], mode: 'tps', h: [17, 40], pitch: 0.1, set: () => {} },
+      { name: 'ntr_gardens_tps_golden', lm: 'ntr_memorial', at: [-110, 20], clear: true, look: [0, 0], mode: 'tps', h: [17, 40], pitch: 0.1, set: () => {} },
       { name: 'laad_bazaar_fps_night', lm: 'charminar', atFn: 'laad', look: [0, 0], mode: 'fps', h: [21, 0], pitch: -0.12, set: () => {} },
     ];
     for (const v of V) {
@@ -330,6 +332,11 @@ async function main() {
     }
   }
 
+  // the desktop page is done: collect its errors and close it, so the phone page does not share the
+  // (software) GPU process with a second 3D city still rendering every frame
+  const nerr = await page.evaluate(() => N.debug.state().errors);
+  await context.close();
+
   // ---------------------------------------------------------------- 3b. phone (low tier): models + LOD distances, a portrait shot of Charminar
   if (!ONLY.length || process.env.PHONE === '1') {
     const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
@@ -339,11 +346,12 @@ async function main() {
     await p2.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '/* stubbed */' }));
     await p2.route(CDN, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_JS }));
     await p2.goto(URL);
-    await p2.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 60000 });
+    await p2.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 180000 });
     await p2.evaluate(() => { N.debug.newGame({ skipIntro: true }); N.debug.freezeClock(true); N.debug.god(true); N.view.noPointerLock = true; if (N.dialogue) N.dialogue.skip = true; const d = document.getElementById('debug'); if (d) d.style.display = 'none'; N.view3d.setQuality({ adaptive: false }); N.view.set('tps'); });
-    await p2.waitForFunction(() => N.view.mode === 'tps', null, { timeout: 120000 });
+    // the 3D view loads + builds the city on demand: ~70 s for a phone on a loaded headless machine
+    await p2.waitForFunction(() => N.view.mode === 'tps', null, { timeout: 300000 });
     const r2 = await p2.evaluate(() => {
-      const C = N.WORLD_DATA.landmarks.find((l) => l.id === 'charminar'); N.player.teleport(C.x, C.y - 160); N.debug.setTime(21, 0); N.view3d.setCamera({ yaw: Math.PI / 2, pitch: -0.1, snap: true }); N.view3d.settle(20000);
+      const C = N.WORLD_DATA.landmarks.find((l) => l.id === 'charminar'); N.player.teleport(C.x - 56, C.y - 83); N.debug.setTime(21, 0); N.view3d.setCamera({ yaw: Math.atan2(83, 56), pitch: -0.1, snap: true }); N.view3d.settle(20000);
       return { tier: N.view3d.quality.tier, s: N.view3d.stats() };
     });
     await frames(p2, 3);
@@ -356,7 +364,6 @@ async function main() {
   }
 
   // ---------------------------------------------------------------- 4. errors
-  const nerr = await page.evaluate(() => N.debug.state().errors);
   const all = errors.concat(nerr.map((e) => 'N.err: ' + e));
   check(all.length === 0, 'no console / page / N.err errors', all.slice(0, 8).join(' | '));
   await browser.close();

@@ -3,11 +3,12 @@
  * DevTools network throttling applies to EVERY request (Playwright route() fulfilments bypass the
  * network stack and are not throttled). Chromium maps the real hostnames onto it with
  *   --host-resolver-rules="MAP nostalgia.test 127.0.0.1:PORT, MAP *.nostalgia.test ..., MAP cdn.jsdelivr.net ...,
- *                          MAP fonts.googleapis.com ..., MAP fonts.gstatic.com ..." --ignore-certificate-errors
+ *                          MAP fonts.googleapis.com ..., MAP fonts.gstatic.com ..." --ignore-certificate-errors-spki-list=<pin>
  * Virtual hosts:
  *   <site>.nostalgia.test   a build folder (sites[<site>] = {root, cache(path) -> Cache-Control})
  *   cdn.jsdelivr.net        /npm/three@0.149.0/build/three.min.js -> vendor/three/three.min.js
- *   fonts.googleapis.com    /css2 -> <fontsDir>/fonts.css (a real Android-Chrome css2 response)
+ *   fonts.googleapis.com    /css2 -> <fontsDir>/fonts.css (a real Android-Chrome css2 response), or
+ *                           <fontsDir>/<family>.css for a one-family request (menus.js loads Kalam)
  *   fonts.gstatic.com       /s/... -> <fontsDir>/*.woff2 via <fontsDir>/list.json
  * Text responses are negotiated br > gzip (precompressed once, brotli q11 / gzip 9, cached on disk),
  * with strong ETags and 304s, like a CDN with precompression.
@@ -56,7 +57,9 @@ function startServer(opts) {
   if (fontsDir && fs.existsSync(path.join(fontsDir, 'list.json'))) {
     for (const f of JSON.parse(fs.readFileSync(path.join(fontsDir, 'list.json'), 'utf8'))) {
       const name = f.fam.replace(/ /g, '_') + '_' + f.w + '_' + f.subset + '.woff2';
-      fontMap[new URL(f.url).pathname] = path.join(fontsDir, name);
+      const file = path.join(fontsDir, name);
+      // variable fonts: several weights share one URL; the mirror stores it once (first weight)
+      if (!fontMap[new URL(f.url).pathname] && fs.existsSync(file)) fontMap[new URL(f.url).pathname] = file;
     }
   }
   const threeFile = opts.threeFile || path.join(ROOT, 'vendor/three/three.min.js');
@@ -124,7 +127,13 @@ function startServer(opts) {
       return notFound(req, res);
     }
     if (host === 'fonts.googleapis.com') {
-      if (p === '/css2' && fontsDir) return send(req, res, path.join(fontsDir, 'fonts.css'), 'private, max-age=86400, stale-while-revalidate=604800', { 'timing-allow-origin': '*' });
+      // the page asks for two css2 URLs: index.html (Baloo 2, Noto Sans Telugu, VT323, Yatra One) and
+      // menus.js at load (Kalam); a per-family css file sits next to fonts.css (kalam.css)
+      if (p === '/css2' && fontsDir) {
+        const fam = (url.searchParams.getAll('family')[0] || '').split(':')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+        const own = path.join(fontsDir, fam + '.css');
+        return send(req, res, url.searchParams.getAll('family').length === 1 && fs.existsSync(own) ? own : path.join(fontsDir, 'fonts.css'), 'private, max-age=86400, stale-while-revalidate=604800', { 'timing-allow-origin': '*' });
+      }
       return notFound(req, res);
     }
     if (host === 'fonts.gstatic.com') {
@@ -148,8 +157,12 @@ function startServer(opts) {
     server.listen(opts.port || 0, '127.0.0.1', () => {
       const port = server.address().port;
       const hosts = ['nostalgia.test', '*.nostalgia.test', 'cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
+      // SPKI pin for --ignore-certificate-errors-spki-list: Chromium then treats the self-signed cert as
+      // valid. (--ignore-certificate-errors is not enough: pages loaded with a certificate error are
+      // never revalidated from the HTTP cache, which would break the repeat-visit measurements.)
+      const spki = crypto.createHash('sha256').update(new crypto.X509Certificate(cert).publicKey.export({ type: 'spki', format: 'der' })).digest('base64');
       resolve({
-        port, log, warm,
+        port, log, warm, spki,
         resolverRules: hosts.map((h) => 'MAP ' + h + ' 127.0.0.1:' + port).join(', '),
         close: () => new Promise((r) => { server.close(() => r()); setTimeout(r, 500); }),
       });
@@ -163,6 +176,6 @@ if (require.main === module) {
   const root = path.resolve(process.argv[2] || path.join(ROOT, 'dist'));
   startServer({ port: +process.argv[3] || 8443, sites: { a: { root } }, fontsDir: process.env.FONTS_DIR }).then((s) => {
     console.log('serving ' + root + ' on https://127.0.0.1:' + s.port + ' (h2). Chromium flags:');
-    console.log('  --host-resolver-rules="' + s.resolverRules + '" --ignore-certificate-errors');
+    console.log('  --host-resolver-rules="' + s.resolverRules + '" --ignore-certificate-errors-spki-list=' + s.spki);
   });
 }

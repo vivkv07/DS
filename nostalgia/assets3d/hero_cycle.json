@@ -6,14 +6,14 @@
    6.4157
   ],
   "grip_L": [
-   1.6,
-   -2.4258,
-   6.0857
+   1.61,
+   -1.7458,
+   6.0307
   ],
   "grip_R": [
-   -1.6,
-   -2.4258,
-   6.0857
+   -1.61,
+   -1.7458,
+   6.0307
   ],
   "handlebar": [
    0.0,
@@ -41,9 +41,9 @@
    3.75
   ],
   "seat_driver": [
-   0.0,
-   2.1,
-   5.66
+   -0.0,
+   1.62,
+   5.3
   ],
   "seat_pillion": [
    0.0,
@@ -63,7 +63,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 6000,
- "bytes": 511716,
+ "bytes": 510924,
  "clips": {},
  "family": "vehicle",
  "file": "hero_cycle.glb",
@@ -73,14 +73,14 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 499.7,
+ "kb": 498.9,
  "kit": 1,
  "materials": [
   "M_hero_cycle",
   "M_hero_cycle_lamp_lens@night"
  ],
  "max": [
-  1.774,
+  1.775,
   8.346,
   6.576
  ],
@@ -100,9 +100,22 @@
    "wheel_rear",
    "crank",
    "pedal_L",
-   "pedal_R"
+   "pedal_R",
+   "saddle"
   ],
-  "saddleZ": 5.66,
+  "saddleDrop": {
+   "chinnu_cycle": 0.6
+  },
+  "saddleTube": [
+   0.0,
+   0.3707,
+   0.9287
+  ],
+  "seat": [
+   0.0,
+   1.62,
+   5.3
+  ],
   "steerAxis": [
    0.0,
    -0.3809,
@@ -116,19 +129,19 @@
   "wheelR": 3.0
  },
  "min": [
-  -1.774,
+  -1.775,
   -8.344,
   -0.0
  ],
  "notes": [],
  "script": "vehicles",
  "size": [
-  3.547,
+  3.549,
   16.69,
   6.576
  ],
  "tint": null,
- "tris": 5782,
+ "tris": 5806,
  "units": "u",
  "up": "Z"
 }

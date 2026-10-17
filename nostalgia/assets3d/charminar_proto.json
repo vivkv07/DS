@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 60000,
- "bytes": 2374816,
+ "bytes": 1561908,
  "clips": {},
  "family": "hero_landmark",
  "file": "charminar_proto.glb",
@@ -12,19 +12,21 @@
   "image/webp",
   "image/webp",
   "image/webp",
+  "image/webp",
   "image/webp"
  ],
- "kb": 2319.2,
+ "kb": 1525.3,
  "kit": 1,
  "materials": [
   "M_charminar_proto_lime_plaster",
+  "M_charminar_proto_granite_grey",
   "M_charminar_proto_clock_face@night",
   "M_charminar_proto_iron_black",
   "M_charminar_proto_gold_leaf"
  ],
  "max": [
-  73.649,
-  72.429,
+  35.0,
+  35.0,
   135.0
  ],
  "meta": {
@@ -41,8 +43,8 @@
   "proto": true
  },
  "min": [
-  -73.649,
-  -72.429,
+  -35.0,
+  -35.0,
   0.0
  ],
  "notes": [
@@ -50,12 +52,12 @@
  ],
  "script": "landmarks_proto",
  "size": [
-  147.298,
-  144.859,
+  70.0,
+  70.0,
   135.0
  ],
  "tint": null,
- "tris": 54870,
+ "tris": 31160,
  "units": "u",
  "up": "Z"
 }

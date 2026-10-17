@@ -19,6 +19,35 @@ def V(*a):
     return Vector(a)
 
 
+# ---------------------------------------------------------------- Hero roadster geometry (Blender
+# coords, front -Y). Shared with characters.py: the riders' ride_cycle clips are authored against it.
+R = 3.0                                    # wheel radius incl. tyre (u)
+RA = V(0, 5.0, R)                          # rear axle
+FA = V(0, -5.0, R)                         # front axle
+BB = V(0, 0.75, 2.35)                      # bottom bracket
+SC = V(0, 1.72, 4.78)                      # seat cluster (top of the seat tube)
+S0 = V(0, -3.55, 5.5)                      # head tube top
+AX = V(0, -0.381, -0.925).normalized()     # steering axis (down, forwards)
+SEAT_TUBE = (SC - BB).normalized()
+SEAT = V(0, 1.62, 5.3)                     # saddle top centre: where the rider sits
+STEM_TOP = S0 - AX * 0.72
+BAR_C = STEM_TOP + V(0, -0.15, 0.05)       # handlebar centre (on the steer bone)
+GRIP = V(1.61, 1.68, -0.185)               # grip centre relative to BAR_C (x mirrored for the right)
+CRANK_R = 1.05
+PEDAL_X = 0.95
+SADDLE_DROP = {'chinnu_cycle': 0.6}        # Chinnu's cycle: the saddle let right down (u along the seat tube)
+HERO = {'vehicle': 'hero_cycle', 'seat': tuple(SEAT), 'grip_L': tuple(BAR_C + GRIP), 'grip_R': tuple(BAR_C + V(-GRIP.x, GRIP.y, GRIP.z)),
+        'bb': tuple(BB), 'crank': CRANK_R, 'pedal_x': PEDAL_X, 'pedal_up': 0.14, 'seat_tube': tuple(SEAT_TUBE)}
+
+
+def hero_geom(saddle_drop=0.0):
+    """rider targets for a saddle lowered by `saddle_drop` u along the seat tube"""
+    g = dict(HERO)
+    g['seat'] = tuple(SEAT - SEAT_TUBE * saddle_drop)
+    g['saddleDrop'] = saddle_drop
+    return g
+
+
 def wheel(name, c, R, M, spokes=36, seg=28):
     """28-inch roadster wheel at centre c (axle along X): tyre, chrome rim, hub, crossed spokes."""
     parts = []
@@ -101,15 +130,9 @@ def guard(name, c, R, a0, a1, M, w=0.62, n=16):
 
 
 @kit.asset('hero_cycle', 'vehicle', vehicleTypes=['hero_cycle', 'old_cycle', 'chinnu_cycle'], length=16.0, wheelR=3.0, crankR=1.05,
-           gear=2.4, parts=['root', 'steer', 'wheel_front', 'wheel_rear', 'crank', 'pedal_L', 'pedal_R'])
+           gear=2.4, parts=['root', 'steer', 'wheel_front', 'wheel_rear', 'crank', 'pedal_L', 'pedal_R', 'saddle'], saddleDrop=SADDLE_DROP)
 def hero_cycle(A):
-    R = 3.0
-    Ra = V(0, 5.0, R)
-    Fa = V(0, -5.0, R)
-    BB = V(0, 0.75, 2.35)
-    SC = V(0, 1.95, 5.05)
-    S0 = V(0, -3.55, 5.5)                     # head tube top
-    ax = V(0, -0.381, -0.925).normalized()    # steering axis (down, forwards)
+    Ra, Fa, ax = RA, FA, AX
     HB = S0 + ax * 1.0                         # head tube bottom
     crown = S0 + ax * 1.18
     M = {
@@ -168,25 +191,25 @@ def hero_cycle(A):
     fr.append(kit.cylinder('bb_shell', 0.24, 0.62, (0, 0, 0), seg=10, mat=M['paint'], axis='X', base=False))
     fr[-1].location = BB
     kit.apply_transform(fr[-1])
-    sp_top = SC + V(0, 0.14, 0.42)
-    fr.append(tube('seat_post', [SC + V(0, 0.0, 0.1), sp_top], 0.1, seg=8, mat=M['chrome']))
-    sad = loft('saddle', [
-        dict(c=(0, 1.32, 5.5), r=(0.16, 0.07), p=2.5, w={'root': 1}),
-        dict(c=(0, 1.65, 5.53), r=(0.24, 0.1), p=2.5, w={'root': 1}),
-        dict(c=(0, 2.05, 5.56), r=(0.42, 0.12), p=3.0, w={'root': 1}),
-        dict(c=(0, 2.42, 5.58), r=(0.56, 0.13), p=3.5, w={'root': 1}),
-        dict(c=(0, 2.62, 5.56), r=(0.55, 0.11), p=3.5, w={'root': 1}),
-        dict(c=(0, 2.7, 5.5), r=(0.42, 0.06), p=3.0, w={'root': 1}),
-    ], seg=12, side=(1, 0, 0), mat=M['leather'])
-    fr.append(sad)
-    fr.append(tube('saddle_rail', [V(-0.25, 1.45, 5.42), V(0, 1.9, 5.4), V(0.25, 1.45, 5.42)], 0.035, seg=4, mat=M['chrome']))
-    fr.append(kit.box('saddle_clamp', (0.3, 0.3, 0.16), tuple(sp_top + V(0, 0, 0.0)), M['chrome']))
+    # saddle group (its own bone: variants let it down along the seat tube)
+    sd = []
+    clamp = SEAT + V(0, 0.12, -0.3)
+    sd.append(tube('seat_post', [SC - SEAT_TUBE * 0.3, clamp], 0.1, seg=8, mat=M['chrome']))
+    sd.append(loft('saddle', [
+        dict(c=tuple(SEAT + V(0, -0.72, -0.08)), r=(0.16, 0.07), p=2.5, w={'root': 1}),
+        dict(c=tuple(SEAT + V(0, -0.42, -0.04)), r=(0.25, 0.1), p=2.5, w={'root': 1}),
+        dict(c=tuple(SEAT + V(0, -0.05, -0.01)), r=(0.43, 0.12), p=3.0, w={'root': 1}),
+        dict(c=tuple(SEAT + V(0, 0.32, 0.0)), r=(0.56, 0.13), p=3.5, w={'root': 1}),
+        dict(c=tuple(SEAT + V(0, 0.52, -0.02)), r=(0.55, 0.11), p=3.5, w={'root': 1}),
+        dict(c=tuple(SEAT + V(0, 0.6, -0.08)), r=(0.42, 0.06), p=3.0, w={'root': 1}),
+    ], seg=12, side=(1, 0, 0), mat=M['leather']))
+    sd.append(tube('saddle_rail', [SEAT + V(-0.25, -0.62, -0.16), SEAT + V(0, -0.2, -0.2), SEAT + V(0.25, -0.62, -0.16)], 0.035, seg=4, mat=M['chrome']))
+    sd.append(kit.box('saddle_clamp', (0.3, 0.3, 0.16), tuple(clamp), M['chrome']))
     for sx in (1, -1):
-        sprg = []
-        base = V(0.38 * sx, 2.45, 5.08)
-        pts = [base + V(0.11 * math.cos(t * 1.0), 0.11 * math.sin(t * 1.0), t * 0.024) for t in [i * 0.6 for i in range(26)]]
-        fr.append(tube('spring', pts, 0.022, seg=4, mat=M['chrome'], cap=False))
-        fr.append(tube('spring_rod', [V(0.38 * sx, 2.45, 5.0), sp_top + V(0.1 * sx, 0.05, -0.05)], 0.035, seg=4, mat=M['chrome']))
+        base = SEAT + V(0.38 * sx, 0.42, -0.5)
+        pts = [base + V(0.11 * math.cos(t), 0.11 * math.sin(t), t * 0.022) for t in [i * 0.6 for i in range(26)]]
+        sd.append(tube('spring', pts, 0.022, seg=4, mat=M['chrome'], cap=False))
+        sd.append(tube('spring_rod', [SEAT + V(0.38 * sx, 0.42, -0.56), clamp + V(0.1 * sx, 0.05, -0.05)], 0.035, seg=4, mat=M['chrome']))
     # rear carrier
     cz = 2 * R + 0.38
     cr = []
@@ -253,19 +276,19 @@ def hero_cycle(A):
     st[-1].rotation_euler = ax.to_track_quat('Z', 'Y').to_euler()
     st[-1].location = crown
     kit.apply_transform(st[-1])
-    stem_top = S0 - ax * 0.72
+    stem_top = STEM_TOP
     st.append(tube('stem', [S0 - ax * 0.05, stem_top], 0.1, seg=8, mat=M['chrome']))
-    bar_c = stem_top + V(0, -0.15, 0.05)
+    bar_c = BAR_C
     st.append(tube('stem_ext', [stem_top, bar_c], 0.09, seg=6, mat=M['chrome']))
     bars = []
     for sx in (1, -1):
-        bars.append(tube('bar', [bar_c, bar_c + V(0.55 * sx, -0.08, 0.02), bar_c + V(1.0 * sx, -0.05, 0.0), bar_c + V(1.38 * sx, 0.3, -0.04), bar_c + V(1.55 * sx, 0.75, -0.1), bar_c + V(1.62 * sx, 1.15, -0.14)], 0.075, seg=6, mat=M['chrome']))
-        g0 = bar_c + V(1.56 * sx, 0.72, -0.1)
-        g1 = bar_c + V(1.64 * sx, 1.28, -0.15)
-        st.append(tube('grip', [g0, g0.lerp(g1, 0.5) + V(0, 0, 0.0), g1], 0.135, seg=8, mat=M['grip']))
-        # rod-brake lever + rod down to the stirrups
-        lv = bar_c + V(1.15 * sx, -0.35, -0.08)
-        st.append(tube('brake_lever', [bar_c + V(0.95 * sx, -0.05, 0.0), lv, bar_c + V(1.45 * sx, 0.45, -0.18)], 0.04, seg=4, mat=M['chrome']))
+        bars.append(tube('bar', [bar_c, bar_c + V(0.55 * sx, -0.08, 0.02), bar_c + V(1.0 * sx, -0.02, 0.0), bar_c + V(1.36 * sx, 0.42, -0.05),
+                                 bar_c + V(1.53 * sx, 0.95, -0.12), bar_c + V(1.6 * sx, 1.45, -0.17), bar_c + V(1.63 * sx, 2.02, -0.2)], 0.075, seg=6, mat=M['chrome']))
+        g0 = bar_c + V(1.58 * sx, 1.3, -0.16)
+        g1 = bar_c + V(1.64 * sx, 2.06, -0.21)
+        st.append(tube('grip', [g0, g0.lerp(g1, 0.5), g1], 0.135, seg=8, mat=M['grip']))
+        # rod-brake lever under the bar, pulling the rods
+        st.append(tube('brake_lever', [bar_c + V(1.2 * sx, 0.3, -0.06), bar_c + V(1.42 * sx, 0.95, -0.3), bar_c + V(1.5 * sx, 1.55, -0.36)], 0.04, seg=4, mat=M['chrome']))
     st += bars
     # front brake rod down the steering column to the front stirrup
     st.append(tube('front_rod', [bar_c + V(0.25, -0.2, -0.06), S0 + V(0.25, -0.12, 0), crown + V(0.25, -0.15, -0.1), Fa + V(0, -0.35, R - 0.3) + V(0.25, 0, 0)], 0.03, seg=4, mat=M['chrome']))
@@ -289,6 +312,7 @@ def hero_cycle(A):
     fr.append(tube('rear_rod', [ttF + V(-0.22, 0.05, -0.18), SC + V(-0.2, 0.0, -0.18), Ra + V(-0.32, -0.45, R - 0.35)], 0.03, seg=4, mat=M['chrome']))
     fr.append(tube('rear_stirrup', [Ra + V(-0.32, -0.55, R - 0.45), Ra + V(-0.32, -0.3, R - 0.2), Ra + V(0.32, -0.3, R - 0.2), Ra + V(0.32, -0.55, R - 0.45)], 0.035, seg=4, mat=M['chrome']))
     add('root', *fr)
+    add('saddle', *sd)
     add('steer', *st)
     add('crank', *crank)
     for S in ('L', 'R'):
@@ -314,6 +338,7 @@ def hero_cycle(A):
     bone('wheel_front', Fa, Fa + X, 'steer')
     bone('wheel_rear', Ra, Ra + X, 'root')
     bone('crank', BB, BB + X, 'root')
+    bone('saddle', SC, SC + SEAT_TUBE * 0.8, 'root')
     bone('pedal_L', pedals['L'][0], pedals['L'][0] + X, 'crank')
     bone('pedal_R', pedals['R'][0], pedals['R'][0] + X, 'crank')
     kit.bpy.ops.object.mode_set(mode='OBJECT')
@@ -331,16 +356,16 @@ def hero_cycle(A):
     cyc.parent = arm
     kit.normalize_weights(cyc, 1)
     # anchors
-    A.anchor('seat_driver', (0, 2.1, 5.66), arm, 'root')
+    A.anchor('seat_driver', tuple(SEAT), arm, 'saddle')
     A.anchor('seat_pillion', (0, 4.8, cz + 0.12), arm, 'root')
     A.anchor('handlebar', tuple(bar_c), arm, 'steer')
     for sx, S in ((1, 'L'), (-1, 'R')):
-        A.anchor('grip_' + S, tuple(bar_c + V(1.6 * sx, 1.0, -0.13)), arm, 'steer')
+        A.anchor('grip_' + S, tuple(bar_c + V(GRIP.x * sx, GRIP.y, GRIP.z)), arm, 'steer')
         A.anchor('pedal_' + S, tuple(pedals[S][0] + V(0, 0, 0.1)), arm, 'pedal_' + S)
     A.anchor('headlight', tuple(lamp_c + V(0, -0.28, 0)), arm, 'steer')
     A.anchor('wheel_front', tuple(Fa), arm, 'wheel_front')
     A.anchor('wheel_rear', tuple(Ra), arm, 'wheel_rear')
     A.anchor('bell', tuple(bar_c + V(0.45, -0.04, 0.2)), arm, 'steer')
     A.anchor('reflector', tuple(Ra + V(0, 3.35, 0.75)), arm, 'root')
-    A.meta.update({'steerAxis': [round(c, 4) for c in ax], 'bb': [round(c, 4) for c in BB], 'saddleZ': 5.66})
+    A.meta.update({'steerAxis': [round(c, 4) for c in ax], 'bb': [round(c, 4) for c in BB], 'seat': [round(c, 4) for c in SEAT], 'saddleTube': [round(c, 4) for c in SEAT_TUBE]})
     A.preview = {'shots': [{'view': {'az': -62, 'el': 14, 'fov': 28}}, {'name': 'side', 'size': 320, 'samples': 16, 'view': {'az': -90, 'el': 3, 'fov': 26}}]}

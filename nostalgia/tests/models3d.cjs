@@ -182,7 +182,7 @@ async function main3d(browser) {
   check(st.packFrom === 'src/assets3d_pack.js' && /GLTFLoader/.test(st.loaderFrom || ''), 'loaded lazily from the dev files (' + st.loaderFrom + ', ' + st.packFrom + ')');
   check(st.parsed.indexOf('kid_chinnu') >= 0 && st.parsed.indexOf('hero_cycle') >= 0 && st.parsed.indexOf('charminar_proto') < 0, 'parsed kid_chinnu + hero_cycle, the proto only on demand (' + st.parsed.join(', ') + ')');
   report.push('load: pack ' + st.pack.join(',') + '; script load ' + st.loadMs + ' ms, GLB parse ' + st.parseMs + ' ms (software GL, loaded machine)');
-  try { execFileSync('node', [path.join(ROOT, 'tools/pack_assets3d.cjs'), '--check'], { stdio: 'pipe' }); ok('src/assets3d_pack.js is up to date with assets3d/*.glb'); } catch (e) { fail('src/assets3d_pack.js is stale: ' + String(e.stdout || e.message).trim()); }
+  try { execFileSync('node', [path.join(ROOT, 'tools/pack_assets3d.cjs'), '--check'], { stdio: 'pipe' }); ok('src/assets3d_pack.js is up to date with assets3d/*.glb'); } catch (e) { fail('src/assets3d_pack.js is stale: ' + String(e.stderr || e.stdout || e.message).trim()); }
 
   // ---- routes: the player renders with the Blender model; the procedural renderer stays underneath
   cur = 'routes';
@@ -247,21 +247,26 @@ async function main3d(browser) {
   for (const [name, run] of [['walk', false], ['run', true]]) {
     const g = await page.evaluate(async (run) => {
       const p = N.player;
+      N.debug.teleport('fateh_maidan');
+      N.view3d.setCamera({ yaw: 0, pitch: 0.2, snap: true });   // open ground to the east (like tests/view3d_actors.cjs)
+      p.facing = p.angle = 0;
       N.time.scale = 1;
       N.input.hold('up', true); if (run) N.input.hold('run', true);
       await M3.raf(16);
       // the strip: 8 frames at 0.1 s of game time, side camera following Chinnu
       N.time.scale = 0.25;
       M3.begin({ max: 8, step: 0.1, follow: true });
-      for (let i = 0; i < 900 && M3.cap.cells < 8; i++) await M3.raf(1);
+      for (let i = 0; i < 300 && M3.cap.cells < 8; i++) await M3.raf(1);
       const strip = M3.end();
-      // dense: slow motion, every rendered frame
-      N.time.scale = 0.04;
+      // dense: slow motion, every rendered frame (tiny canvas: only the bones matter here)
+      N.view3d.setQuality({ pixelRatio: 0.3 });
+      N.time.scale = 0.06;
       M3.begin({ max: 0, follow: true });
       const t0 = N.time.now;
-      for (let i = 0; i < 900 && N.time.now - t0 < 0.5; i++) await M3.raf(1);
+      for (let i = 0; i < 400 && N.time.now - t0 < 0.3; i++) await M3.raf(1);
       const dense = M3.end();
       N.time.scale = 1;
+      N.view3d.setQuality({ pixelRatio: 1 });
       N.input.hold('run', false); N.input.hold('up', false);
       await M3.raf(10);
       return { strip: strip.strip, cells: strip.cells, stats: M3.gait(dense.frames), clips: Array.from(new Set(dense.frames.map((f) => f.clip))), v: dense.frames.length ? dense.frames[dense.frames.length - 1].v : 0, n: dense.frames.length };
@@ -311,6 +316,63 @@ async function main3d(browser) {
     });
     await shot(page, 'models3d_cycle.png');
     await page.evaluate(() => N.view3dActors.debug.camera(null));
+  }
+  // ---- riders: an NPC man pedals a Blender Hero cycle; Chinnu rides his own cycle (saddle let down)
+  cur = 'riders';
+  const rd = await page.evaluate(async () => {
+    const T = N.view3d.THREE, p = N.player, out = {};
+    const find = (v) => { let P = null; N.view3d.engine.actorGroup.traverse((o) => { if (o.userData && o.userData.m3dParts && Math.abs(o.position.x - v.x) < 0.6 && Math.abs(o.position.z - v.y) < 0.6) P = o.userData.m3dParts; }); return P; };
+    /** spin the crank through a revolution; distance between each foot's ball (toe bone) and its pedal */
+    const pedalGap = async (v, P) => {
+      let worst = 0, n = 0;
+      const a = new T.Vector3(), b = new T.Vector3();
+      const w0 = v.wheelPhase || 0;
+      for (let k = 0; k <= 16; k++) {
+        v.wheelPhase = w0 + (k / 16) * Math.PI * P.R * P.gear;   // one crank turn = 2 pi R gear of road / 2
+        await M3.raf(1);
+        if (!P.rider) return null;
+        for (const s of ['L', 'R']) {
+          const toe = P.rider.bones['toe_' + s], ped = P.anchors['pedal_' + s];
+          if (!toe || !ped) return null;
+          toe.getWorldPosition(a); ped.getWorldPosition(b);
+          worst = Math.max(worst, a.distanceTo(b)); n++;
+        }
+      }
+      v.wheelPhase = w0;
+      return { worst: +worst.toFixed(3), n };
+    };
+    if (!N.models3d.has('adult_man')) return { skip: 'no adult_man in the pack' };
+    const v = N.vehicles.spawn('hero_cycle', p.x + 14, p.y - 10, 0.4, { driver: true });
+    v.update = function () {};  // hold it still: the test drives the crank
+    await M3.raf(4);
+    const P = find(v);
+    out.npc = { key: v.view3d || null, kind: v.driver && v.driver.look && v.driver.look.kind, rider: P && P.rider ? P.rider.id : null, clip: P && P.rider ? P.rider.clip : null };
+    out.npcGap = P ? await pedalGap(v, P) : null;
+    window.__npcCycle = v;
+    // Chinnu on his own cycle: the saddle is let right down, he pedals with the kid model
+    const c = N.vehicles.spawn('chinnu_cycle', p.x + 6, p.y + 8, 0, {});
+    N.vehicles.enter(p, c);
+    await M3.raf(4);
+    const Q = find(c);
+    out.kid = { key: c.view3d || null, player: p.view3d || null, rider: Q && Q.rider ? Q.rider.id : null, drop: Q ? Q.drop : null };
+    out.kidGap = Q ? await pedalGap(c, Q) : null;
+    window.__kidCycle = c;
+    return out;
+  });
+  if (rd.skip) console.log('  skip riders: ' + rd.skip);
+  else {
+    check(rd.npc.key === 'm3d:veh:hero_cycle' && rd.npc.rider === 'adult_man' && rd.npc.clip === 'ride_cycle', 'traffic cyclist (' + rd.npc.kind + ') rides the Blender Hero cycle as adult_man (' + JSON.stringify(rd.npc) + ')');
+    check(rd.npcGap && rd.npcGap.worst < 0.35, 'adult rider: feet stay on the pedals through a crank turn (worst ball-to-pedal ' + (rd.npcGap && rd.npcGap.worst) + ' u over ' + (rd.npcGap && rd.npcGap.n) + ' samples)');
+    check(rd.kid.key === 'm3d:veh:hero_cycle' && rd.kid.rider === 'kid_chinnu' && !rd.kid.player && rd.kid.drop > 0.3, "Chinnu's cycle: Blender model with the saddle let down (" + JSON.stringify(rd.kid) + ')');
+    check(rd.kidGap && rd.kidGap.worst < 0.35, 'Chinnu pedals with his feet on the pedals (worst ' + (rd.kidGap && rd.kidGap.worst) + ' u)');
+    if (SHOTS) {
+      await page.evaluate(() => { const v = window.__npcCycle; N.view3dActors.debug.camera([v.x + 3, 6.5, v.y + 22], [v.x, 4.2, v.y], 38); });
+      await shot(page, 'models3d_rider.png');
+      await page.evaluate(() => { const v = window.__kidCycle; N.view3dActors.debug.camera([v.x - 4, 6, v.y + 20], [v.x, 3.8, v.y], 38); });
+      await shot(page, 'models3d_chinnu_cycle.png');
+      await page.evaluate(() => N.view3dActors.debug.camera(null));
+    }
+    await page.evaluate(async () => { N.vehicles.exit(N.player, true); await M3.raf(3); });
   }
   // ---- tint: N.people looks dress the kid (line-up next to Chinnu)
   cur = 'tint';

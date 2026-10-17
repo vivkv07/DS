@@ -1,0 +1,226 @@
+{
+ "anchors": {
+  "eye": [
+   0.0,
+   -0.52,
+   8.15
+  ],
+  "grip_L": [
+   2.76,
+   0.0,
+   5.06
+  ],
+  "grip_R": [
+   -2.76,
+   0.0,
+   5.06
+  ],
+  "head_top": [
+   0.0,
+   0.08,
+   9.0
+  ],
+  "sole_heel_L": [
+   0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_heel_R": [
+   -0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_toe_L": [
+   0.49,
+   -1.08,
+   -0.0
+  ],
+  "sole_toe_R": [
+   -0.49,
+   -1.08,
+   -0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 4000,
+ "bytes": 389476,
+ "clips": {
+  "idle": {
+   "duration": 4.0,
+   "fps": 30,
+   "frames": 120,
+   "loco": false,
+   "loop": true
+  },
+  "ride_cycle": {
+   "duration": 1.0667,
+   "fps": 30,
+   "frames": 32,
+   "hipDip": 0.0,
+   "loco": false,
+   "loop": true,
+   "phase": "crank angle / 2pi (0 = left crank back)",
+   "ride": true,
+   "saddleDrop": 0.0,
+   "vehicle": "hero_cycle"
+  },
+  "run": {
+   "duration": 1.0667,
+   "duty": 0.27,
+   "fps": 30,
+   "frames": 32,
+   "gait": "run",
+   "loco": true,
+   "loop": true,
+   "nominal": 80.0,
+   "phase0": "left heel strike",
+   "slip": {
+    "low": -0.0,
+    "max": 0.0003,
+    "mean": 0.0,
+    "pairs": 24,
+    "ratio": 0.0,
+    "step": 0.64
+   },
+   "speed": 19.199,
+   "stride": 20.479196718338407
+  },
+  "stroll": {
+   "duration": 1.0667,
+   "duty": 0.6,
+   "fps": 30,
+   "frames": 32,
+   "gait": "walk",
+   "loco": true,
+   "loop": true,
+   "nominal": 14.0,
+   "phase0": "left heel strike",
+   "slip": {
+    "low": -0.0,
+    "max": 0.0357,
+    "mean": 0.0013,
+    "pairs": 60,
+    "ratio": 0.0068,
+    "step": 0.192
+   },
+   "speed": 5.76,
+   "stride": 6.143759015501522
+  },
+  "walk": {
+   "duration": 1.0667,
+   "duty": 0.4,
+   "fps": 30,
+   "frames": 32,
+   "gait": "walk",
+   "loco": true,
+   "loop": true,
+   "nominal": 45.0,
+   "phase0": "left heel strike",
+   "slip": {
+    "low": -0.057,
+    "max": 0.0404,
+    "mean": 0.0022,
+    "pairs": 38,
+    "ratio": 0.0052,
+    "step": 0.416
+   },
+   "speed": 12.48,
+   "stride": 13.311477866919965
+  }
+ },
+ "family": "character",
+ "file": "adult_man.glb",
+ "front": "-Y",
+ "id": "adult_man",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 380.3,
+ "kit": 1,
+ "materials": [
+  "M_adult_man"
+ ],
+ "max": [
+  2.953,
+  0.916,
+  8.906
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "shoulder_L",
+   "upperarm_L",
+   "forearm_L",
+   "hand_L",
+   "thigh_L",
+   "shin_L",
+   "foot_L",
+   "toe_L",
+   "shoulder_R",
+   "upperarm_R",
+   "forearm_R",
+   "hand_R",
+   "thigh_R",
+   "shin_R",
+   "foot_R",
+   "toe_R"
+  ],
+  "height": 9.0,
+  "look": {
+   "hair": "#1a1412",
+   "kind": "man",
+   "pants": "#3a3a4a",
+   "shirt": "#8fa6c4",
+   "skin": "#9a6040"
+  },
+  "people": [
+   "man"
+  ],
+  "riderOf": [
+   "hero_cycle",
+   "old_cycle"
+  ],
+  "rig": "adult_rig",
+  "role": "rider"
+ },
+ "min": [
+  -2.953,
+  -1.223,
+  -0.0
+ ],
+ "notes": [],
+ "script": "characters",
+ "size": [
+  5.905,
+  2.138,
+  8.906
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "shoes",
+   "accent"
+  ],
+  "regions": {
+   "hair": "#1a1412",
+   "pants": "#3a3a4a",
+   "shirt": "#8fa6c4",
+   "shoes": "#5a3a22",
+   "skin": "#9a6040"
+  }
+ },
+ "tris": 3176,
+ "units": "u",
+ "up": "Z"
+}
