@@ -365,7 +365,6 @@ def build_streetlight(A):
     hx, hy = psc_dims(zn)
     o, p = shackle('neut', (0.0, hy + 0.78, zn), front=(0, 1, 0))
     objs += o
-    objs.append(clamp_band('neut_clamp', 0.0, zn, hx, hy, h=0.3))
     W['N'] = p
     zs = 35.0
     hx, hy = psc_dims(zs)

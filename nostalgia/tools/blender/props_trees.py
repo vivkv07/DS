@@ -236,6 +236,15 @@ def uv_atlas_trees(objs, margin=0.004, angle=60.0):
     if sel(False):
         bpy.ops.uv.smart_project(angle_limit=math.radians(angle), island_margin=margin, area_weight=0.0,
                                  correct_aspect=True, scale_to_bounds=False)
+    # texel share: wood (rings, bark) gets more, foliage (flat noise) less
+    bpy.ops.object.mode_set(mode='OBJECT')
+    for o in objs:
+        f = o.get('uvs', 1.0)
+        if abs(f - 1.0) > 1e-3:
+            uv = o.data.uv_layers.active.data
+            for l in uv:
+                l.uv = l.uv * f
+    bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     try:
         bpy.ops.uv.select_all(action='SELECT')
@@ -292,12 +301,14 @@ class Tree:
         ob = taper(self.name('trunk'), pts, radii, seg=seg, mat=mat, cap_end=cap)
         if flute_kw:
             flute(ob, pts, **flute_kw)
+        ob['uvs'] = WOOD_UV
         zt, tb = self.zt, self.tb
         P.wind(ob, lambda co, i: tb * min(1.0, max(0.0, co.z) / zt) ** 1.5, 0.0, 0.0)
         return self.add(ob, *lods)
 
     def limb(self, pts, radii, seg=5, mat=None, lods=(0, 2), phase=0.0, cap=False):
         ob = taper(self.name('limb'), pts, radii, seg=seg, mat=mat, cap_end=cap)
+        ob['uvs'] = WOOD_UV
         P.wind(ob, self.bend, phase, 0.0)
         return self.add(ob, *lods)
 
@@ -336,6 +347,7 @@ class Tree:
 
 
 UV_ANGLE = 85.0
+WOOD_UV = 1.8
 
 
 # ---- crown helpers
@@ -475,6 +487,7 @@ def build_palm_crown(T, top, fronds, mats, rachis, dry_mat=None, dry=(), lod1=No
                      sweep=fd.get('sweep', 0.45), seed=T.rnd.randrange(10 ** 6), plume=fd.get('plume', 0.0),
                      rachis_w=fd.get('rachis_w', (0.42, 0.12)), sag=fd.get('sag', 0.12))
         frond_wind(ob, base, fd['L'], tb, T.rnd.random(), fd.get('fl0', 0.3))
+        ob['uvs'] = 0.7
         T.add(ob, *fd.get('lods', (0, 0)))
     for lst, lv in ((lod1, 1), (lod2, 2)):
         for k, fd in enumerate(lst or []):
@@ -489,6 +502,7 @@ def build_palm_crown(T, top, fronds, mats, rachis, dry_mat=None, dry=(), lod1=No
             else:
                 ob = vblade(T.name('vfrond'), pts, fd.get('w', fd['L'] * 0.2), mat, hang=fd.get('hang', 35), sweep=fd.get('sweep', 0.3))
             frond_wind(ob, base, fd['L'], tb, T.rnd.random(), fd.get('fl0', 0.3))
+            ob['uvs'] = 0.7
             T.add(ob, lv, fd.get('l1', lv))
 
 
@@ -518,8 +532,8 @@ def build_coconut(A):
         t = i / (len(pts) - 1)
         r = 0.78 + 0.22 * (1 - t) ** 3 + 0.75 * max(0.0, 1 - t * 9) ** 1.5
         radii.append(r * (1.06 if i % 2 else 0.95))
-    bark = add_rings(P.M('palm_trunk', name='coco_trunk', base='#8c7d66', grain=0.22, var=0.14, scale=1.2),
-                     1.6, '#4e4236', amount=0.75, sharp=(0.45, 0.85))
+    bark = add_rings(P.M('palm_trunk', name='coco_trunk', base='#94866e', grain=0.22, var=0.14, scale=1.2),
+                     2.2, '#4a3e32', amount=0.8, sharp=(0.35, 0.8))
     T.trunk(pts, radii, seg=6, mat=bark, lods=(0, 0))
     # LOD1/2 trunk: fewer rings
     sel2 = (0, 1, 3, 6, 9)
@@ -538,14 +552,14 @@ def build_coconut(A):
              P.M('frond', name='coco_f3', base='#4c7a30', var=0.2, grain=0.2, scale=0.8),
              add_patches(P.M('frond', name='coco_f4', base='#76984a', var=0.2, grain=0.2, scale=0.8), '#b0a454', 0.6, 0.6, 0.7, 0.8)]
     dry_m = P.M('frond_dry', name='coco_dry', base='#8a6c40', var=0.22, grain=0.2, dirt='#4a3420', grime=0.3)
-    N = 12
+    N = 11
     fronds = []
     for k in range(N):
         az = k * math.radians(137.5) + 0.3
         a = k / (N - 1)  # 0 = young (up), 1 = old (low)
         fronds.append(dict(az=az, L=rnd.uniform(18.0, 21.0) - 3.0 * (1 - a) ** 2, e0=58 - 66 * a + rnd.uniform(-6, 6),
                            e1=-45 - 38 * a + rnd.uniform(-8, 8), dz=-1.2 * a + rnd.uniform(-0.3, 0.3),
-                           hang=36 + 16 * a, nleaf=8, lods=(0, 0), leaf_len=0.3 * 19, sweep=0.6))
+                           hang=36 + 16 * a, nleaf=8, lods=(0, 0), leaf_len=0.34 * 19, sweep=0.95))
     # two dry hanging fronds
     for az in (lean_az + 2.2, lean_az - 1.7):
         fronds.append(dict(az=az, L=14.0, e0=-48, e1=-86, dz=-1.6, hang=65, nleaf=5, mat=dry_m, lods=(0, 0),

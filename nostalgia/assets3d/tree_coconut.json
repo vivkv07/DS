@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 51300,
+ "bytes": 50756,
  "clips": {},
  "family": "prop",
  "file": "tree_coconut.glb",
@@ -12,21 +12,21 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 50.1,
+ "kb": 49.6,
  "kit": 1,
  "materials": [
   "M_tree_coconut_imp",
   "M_tree_coconut"
  ],
  "max": [
-  135.881,
-  10.2,
+  135.296,
+  10.304,
   46.001
  ],
  "meta": {
   "crown": [
-   30.499,
-   32.224
+   30.558,
+   32.059
   ],
   "doubleSided": true,
   "height": 46.001,
@@ -36,12 +36,12 @@
    "h": 46.392,
    "node": "tree_coconut_IMPOSTOR",
    "offset": [
-    117.172,
+    116.604,
     0,
     0
    ],
-   "w": 30.499,
-   "x0": -11.789,
+   "w": 30.558,
+   "x0": -11.866,
    "z0": -0.391
   },
   "kind": "coconut",
@@ -55,14 +55,14 @@
      0,
      0
     ],
-    "tris": 410
+    "tris": 394
    },
    {
     "from": 180,
     "lod": 1,
     "node": "tree_coconut_LOD1",
     "offset": [
-     39.057,
+     38.868,
      0,
      0
     ],
@@ -73,7 +73,7 @@
     "lod": 2,
     "node": "tree_coconut_LOD2",
     "offset": [
-     78.115,
+     77.736,
      0,
      0
     ],
@@ -92,19 +92,19 @@
   }
  },
  "min": [
-  -11.789,
-  -22.024,
+  -11.866,
+  -21.755,
   -0.416
  ],
  "notes": [],
  "script": "props_trees",
  "size": [
-  147.67,
-  32.224,
+  147.161,
+  32.059,
   46.417
  ],
  "tint": null,
- "tris": 590,
+ "tris": 574,
  "units": "u",
  "up": "Z"
 }
