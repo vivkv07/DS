@@ -105,16 +105,19 @@ const cam = (page, eye, at, fov) => page.evaluate(([e, a, f]) => N.view3dActors.
       check(info.n > 0 && info.bad === 0, 'tree instanced meshes carry the aWind attribute (' + info.n + ' meshes)');
       // wind follows N.wind
       const w = await page.evaluate(async () => {
-        const prev = N.wind;
-        N.wind = { dir: 1.2, speed: 18, gust: () => 0.8 };
-        await new Promise((r) => setTimeout(r, 200));
+        const P = N.models3d.props, prev = N.wind;
+        if (P.windUniforms.shared) return { shared: true };
+        N.wind = { dir: 1.2, strength: 0.8, gustiness: 0.6 };
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-        const u = N.models3d.props.windUniforms.uWind.value;
-        const out = [u.x, u.y, u.z, u.w];
+        const u = P.windUniforms.uWind.value, t0 = P.windUniforms.uWindWave.value.z;
+        const out = { v: [u.x, u.y, u.z, u.w], t0 };
+        await new Promise((r) => setTimeout(r, 300));
+        out.t1 = P.windUniforms.uWindWave.value.z;
         if (prev === undefined) delete N.wind; else N.wind = prev;
         return out;
       });
-      check(Math.abs(w[0] - Math.cos(1.2)) < 1e-3 && Math.abs(w[2] - 1.8) < 1e-3 && Math.abs(w[3] - 0.8) < 1e-3, 'wind uniforms follow N.wind ' + w.map((v) => v.toFixed(2)).join(','));
+      if (w.shared) ok('tree wind shares the atmosphere layer uniforms (N.wind.uniforms)');
+      else check(Math.abs(w.v[0] - Math.cos(1.2)) < 1e-3 && Math.abs(w.v[2] - 0.8) < 1e-3 && Math.abs(w.v[3] - 0.6) < 1e-3 && w.t1 > w.t0, 'wind uniforms follow N.wind and the wind clock runs ' + w.v.map((v) => v.toFixed(2)).join(','));
       // pixels move with wind: two renders at different times differ near trees
       const p = await page.evaluate(() => ({ x: N.player.x, y: N.player.y }));
       await cam(page, [p.x - 60, 26, p.y + 60], [p.x, 14, p.y], 50);

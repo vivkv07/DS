@@ -512,7 +512,7 @@ def build_coconut(A):
     rnd = T.rnd
     H = 40.5
     lean_az = math.radians(-60)
-    pts = ringed_trunk_pts(H, 6.0, lean_az, 12, wob=0.35, seed=3)
+    pts = ringed_trunk_pts(H, 6.0, lean_az, 10, wob=0.35, seed=3)
     radii = []
     for i, p in enumerate(pts):
         t = i / (len(pts) - 1)
@@ -520,16 +520,16 @@ def build_coconut(A):
         radii.append(r * (1.06 if i % 2 else 0.95))
     bark = add_rings(P.M('palm_trunk', name='coco_trunk', base='#8c7d66', grain=0.22, var=0.14, scale=1.2),
                      1.6, '#4e4236', amount=0.75, sharp=(0.45, 0.85))
-    T.trunk(pts, radii, seg=7, mat=bark, lods=(0, 0))
+    T.trunk(pts, radii, seg=6, mat=bark, lods=(0, 0))
     # LOD1/2 trunk: fewer rings
-    sel2 = (0, 1, 3, 7, 11)
+    sel2 = (0, 1, 3, 6, 9)
     T.trunk([pts[i] for i in sel2], [radii[i] for i in sel2], seg=5, mat=bark, lods=(1, 1))
-    sel3 = (0, 2, 11)
+    sel3 = (0, 2, 9)
     T.trunk([pts[i] for i in sel3], [radii[i] for i in sel3], seg=4, mat=bark, lods=(2, 2))
     top = pts[-1]
     # crown heart: frond boots + spear
     boots = P.M('palm_trunk', name='coco_boot', base='#7a6a40', var=0.2, grain=0.2, scale=2.0)
-    T.clump(top + V((0, 0, 0.3)), 1.35, boots, lods=(0, 1), kind='ico', subdiv=1, scale=(1, 1, 1.25), noise=0.15, flat=0.0, flutter=0.0)
+    T.clump(top + V((0, 0, 0.3)), 1.35, boots, lods=(0, 1), seg=5, rings=3, scale=(1, 1, 1.25), noise=0.15, flat=0.0, flutter=0.0)
     sp = taper(T.name('spear'), [top, top + V((0.3, 0.2, 5.5))], (0.35, 0.02), seg=4, mat=P.M('frond', name='coco_spear', base='#8aa04a'))
     frond_wind(sp, top, 6.0, 0.3, 0.5, 0.3)
     T.add(sp, 0, 0)
@@ -538,32 +538,32 @@ def build_coconut(A):
              P.M('frond', name='coco_f3', base='#4c7a30', var=0.2, grain=0.2, scale=0.8),
              add_patches(P.M('frond', name='coco_f4', base='#76984a', var=0.2, grain=0.2, scale=0.8), '#b0a454', 0.6, 0.6, 0.7, 0.8)]
     dry_m = P.M('frond_dry', name='coco_dry', base='#8a6c40', var=0.22, grain=0.2, dirt='#4a3420', grime=0.3)
-    N = 13
+    N = 12
     fronds = []
     for k in range(N):
         az = k * math.radians(137.5) + 0.3
         a = k / (N - 1)  # 0 = young (up), 1 = old (low)
         fronds.append(dict(az=az, L=rnd.uniform(18.0, 21.0) - 3.0 * (1 - a) ** 2, e0=58 - 66 * a + rnd.uniform(-6, 6),
                            e1=-45 - 38 * a + rnd.uniform(-8, 8), dz=-1.2 * a + rnd.uniform(-0.3, 0.3),
-                           hang=36 + 16 * a, nleaf=10, lods=(0, 0)))
+                           hang=36 + 16 * a, nleaf=8, lods=(0, 0), leaf_len=0.3 * 19, sweep=0.6))
     # two dry hanging fronds
     for az in (lean_az + 2.2, lean_az - 1.7):
-        fronds.append(dict(az=az, L=14.0, e0=-48, e1=-86, dz=-1.6, hang=65, nleaf=6, mat=dry_m, lods=(0, 0),
+        fronds.append(dict(az=az, L=14.0, e0=-48, e1=-86, dz=-1.6, hang=65, nleaf=5, mat=dry_m, lods=(0, 0),
                            leaf_len=3.0, sweep=0.2, fl0=0.2))
-    lod1 = [dict(az=f['az'], L=f['L'], e0=f['e0'], e1=f['e1'], dz=f['dz'], nleaf=4, hang=f['hang'], leaf_len=f['L'] * 0.27) for f in fronds[:11]]
+    lod1 = [dict(az=f['az'], L=f['L'], e0=f['e0'], e1=f['e1'], dz=f['dz'], nleaf=3, hang=f['hang'], leaf_len=f['L'] * 0.3) for f in fronds[:8]]
     lod1.append(dict(az=fronds[N]['az'], L=13.0, e0=-50, e1=-86, dz=-1.6, nleaf=3, hang=65, mat=dry_m, leaf_len=3.0, sweep=0.2))
     lod2 = [dict(az=f['az'], L=f['L'], e0=f['e0'], e1=f['e1'], dz=f['dz'], nleaf=2, hang=40, leaf_len=f['L'] * 0.3) for f in fronds[:7]]
     build_palm_crown(T, top, fronds, gmats, None, lod1=lod1, lod2=lod2, tb=0.3)
     # coconuts: a hanging cluster under the crown, on the street side
     nutm = P.M('coconut', name='coco_nut', base='#6f7f2c', var=0.15, grain=0.1)
     ph = rnd.random()
-    for j in range(4):
+    for j in range(3):
         a = j * 2.3 + 0.4
         rr = 1.25 + 0.35 * (j % 2)
         c = top + V((math.cos(a) * rr, math.sin(a) * rr - 0.4, -1.7 - 0.5 * (j % 3)))
-        T.clump(c, 0.78, nutm, lods=(0, 0), kind='ico', subdiv=1, scale=(1, 1, 1.18), noise=0.05, flat=0.0, phase=ph, flutter=0.0)
-    T.clump(top + V((0, -0.4, -2.0)), 1.9, nutm, lods=(1, 1), kind='ico', subdiv=1, scale=(1.1, 1.1, 0.8), noise=0.2, flat=0.0, phase=ph, flutter=0.0)
-    T.finish('coconut', tex=256)
+        T.clump(c, 0.8, nutm, lods=(0, 0), seg=5, rings=3, scale=(1, 1, 1.18), noise=0.05, flat=0.0, phase=ph, flutter=0.0)
+    T.clump(top + V((0, -0.4, -2.0)), 1.7, nutm, lods=(1, 1), seg=5, rings=3, scale=(1.1, 1.1, 0.8), noise=0.2, flat=0.0, phase=ph, flutter=0.0)
+    T.finish('coconut', tex=128)
 
 
 # --------------------------------------------------------------------------- roadside palm (royal palm)

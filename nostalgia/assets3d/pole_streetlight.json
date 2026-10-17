@@ -38,7 +38,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 29108,
+ "bytes": 25096,
  "clips": {},
  "family": "prop",
  "file": "pole_streetlight.glb",
@@ -47,7 +47,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 28.4,
+ "kb": 24.5,
  "kit": 1,
  "materials": [
   "M_pole_streetlight",
@@ -90,7 +90,7 @@
   46.32
  ],
  "tint": null,
- "tris": 496,
+ "tris": 390,
  "units": "u",
  "up": "Z"
 }

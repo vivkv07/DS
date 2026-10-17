@@ -92,10 +92,12 @@ def del_bottom(ob, z=0.01):
     return ob
 
 
-def pin_insulator(name, loc, s=1.0, seg=6):
+def pin_insulator(name, loc, s=1.0, seg=4, lite=False):
     """11 kV porcelain pin insulator (two sheds + top groove) on a short steel pin.
     Returns (objs, wire point = the top groove)."""
     prof = [(0.14 * s, 0.0), (0.36 * s, 0.30 * s), (0.20 * s, 0.40 * s), (0.50 * s, 0.66 * s), (0.24 * s, 0.92 * s)]
+    if lite:
+        prof = [(0.16 * s, 0.0), (0.50 * s, 0.62 * s), (0.24 * s, 0.92 * s)]
     ins = rnd(kit.lathe(name, prof, seg=seg, mat=P.M('porcelain'), loc=loc, close_bottom=False))
     return [ins], V(loc) + V((0, 0, 0.9 * s))
 
@@ -105,12 +107,13 @@ def shackle(name, loc, s=1.0, front=(0, -1, 0)):
     The bracket straps run back from the spool along -front. Returns (objs, wire point)."""
     loc = V(loc)
     f = V(front).normalized()
-    spool = rnd(kit.lathe(name, [(0.30 * s, -0.30 * s), (0.18 * s, 0.0), (0.30 * s, 0.30 * s)], seg=6, mat=P.M('porcelain'), loc=loc))
+    spool = rnd(kit.lathe(name, [(0.30 * s, -0.30 * s), (0.18 * s, 0.0), (0.30 * s, 0.30 * s)], seg=4, mat=P.M('porcelain'), loc=loc))
     gal = P.M('galvanised')
     back = loc - f * 0.75 * s
-    st1 = bar(name + '_s1', loc + V((0, 0, 0.36 * s)), back + V((0, 0, 0.36 * s)), 0.06 * s, mat=gal)
-    st2 = bar(name + '_s2', loc - V((0, 0, 0.36 * s)), back - V((0, 0, 0.36 * s)), 0.06 * s, mat=gal)
-    return [spool, st1, st2], loc + f * 0.2 * s
+    # D-iron: one flat strap loop (top, back, bottom) as a single thin ribbon
+    sts = [rnd(kit.tube(name + '_d%d' % k, [loc + V((0, 0, dz * s)), back + V((0, 0, dz * s))], 0.06 * s, seg=3, mat=gal, cap=False))
+           for k, dz in enumerate((0.36, -0.36))]
+    return [spool] + sts, loc + f * 0.2 * s
 
 
 def channel_y(name, cx, cz, y0, y1, w=0.34, h=0.42, t=0.07, open_dir=-1, mat=None):
@@ -176,7 +179,10 @@ def psc_shaft(prefix, x=0.0, H=PSC_H, holes=(10.0, 40.0, 9.0, 1.0), mat=None):
             vs = [bm.verts.new((x + px, y, pz)) for px, pz in ((-w, z), (w, z), (w, z + hh), (-w, z + hh))]
             f = bm.faces.new(vs if s < 0 else list(reversed(vs)))
         z += step
-    objs.append(kit.obj_from_bm(bm, prefix + '_holes', hole))
+    if bm.faces:
+        objs.append(kit.obj_from_bm(bm, prefix + '_holes', hole))
+    else:
+        bm.free()
     objs.append(frustum(prefix + '_muff', 0.0, 1.3, (hx0 + 0.35, hy0 + 0.35), (hx0 + 0.12, hy0 + 0.12), (x, 0), mat=P.M('concrete_old')))
     return objs
 
@@ -188,15 +194,16 @@ def clamp_band(name, x, z, hx, hy, h=0.45, mat=None):
 def danger_board(prefix, x, y, z, w=1.25, h=1.0):
     """Plain red/white danger plate: white plate, red border bar, red warning triangle, red
     'text' bars (no skull, no logos). Faces -Y; y = the plate's back."""
-    objs = [kit.box(prefix + '_plate', (w, 0.05, h), (x, y - 0.025, z), mat=P.M('paint_white'))]
     red = P.M('paint_red')
-    yy = y - 0.065
-    yy = y - 0.06
+    bm = bmesh.new()
+    yy = y - 0.03
+    bm.faces.new([bm.verts.new((x + a, yy, z + b)) for a, b in ((-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2))])
+    objs = [kit.obj_from_bm(bm, prefix + '_plate', P.M('paint_white'))]
+    yy = y - 0.05
     bm = bmesh.new()
     def quad(pts):
         bm.faces.new([bm.verts.new((x + a, yy, z + b)) for a, b in pts])
     quad([(-0.26 * w, 0.0), (0.26 * w, 0.0), (0.0, 0.42 * h)])                      # warning triangle
-    quad([(-0.4 * w, -0.24 * h), (0.4 * w, -0.24 * h), (0.4 * w, -0.1 * h), (-0.4 * w, -0.1 * h)])   # 'DANGER'
     quad([(-0.25 * w, -0.42 * h), (0.25 * w, -0.42 * h), (0.25 * w, -0.31 * h), (-0.25 * w, -0.31 * h)])  # '440 V'
     objs.append(kit.obj_from_bm(bm, prefix + '_red', red))
     return objs
@@ -298,7 +305,7 @@ def build_rail(A):
     # crossarm: angle iron along Y bolted to the head (-X)
     za = 39.0
     ax = -0.62
-    objs.append(angle_y('arm', ax, za, -3.4, 3.4, w=0.34, mat=gal))
+    objs.append(kit.box('arm', (0.3, 6.8, 0.3), (ax, 0.0, za), mat=gal))
     for s in (-1, 1):
         objs.append(bar('brace%d' % s, (ax, s * 2.3, za - 0.15), (-0.47, s * 0.15, za - 2.6), 0.06, mat=gal))
     W = {}
@@ -319,13 +326,12 @@ def build_rail(A):
     W['N'] = p
     # second short arm (angle) for service drops (+Y) and cable TV / phone (-Y)
     zc = 30.5
-    objs.append(angle_y('arm2', ax, zc, -1.6, 2.4, w=0.26, mat=gal))
+    objs.append(kit.box('arm2', (0.24, 4.0, 0.24), (ax, 0.4, zc), mat=gal))
     o, p = shackle('svc', (ax, 2.2, zc + 0.5), s=0.8, front=(0, 1, 0))
     objs += o
     W['service'] = p
     objs.append(bar('cab_hook', (ax, -1.5, zc), (ax, -1.5, zc - 0.4), 0.05, mat=gal))
     W['cable'] = V((ax, -1.5, zc - 0.35))
-    objs.append(cable_coil('coil', (ax - 0.1, -1.0, zc - 0.4), r=0.5))
     # old enamel-style danger plate (same plain red / white)
     objs += danger_board('danger', 0.0, -0.09, 11.5, w=1.0, h=0.85)
     for o in objs:
@@ -339,7 +345,7 @@ def build_rail(A):
 @kit.asset('pole_streetlight', 'prop', kind='pole', variant='streetlight', height=PSC_H, light={'color': '#ffb050', 'anchor': 'wire_lamp'})
 def build_streetlight(A):
     gal = P.M('galvanised')
-    objs = psc_shaft('psc')
+    objs = psc_shaft('psc', holes=(10.0, 9.0, 14.0, 1.0))
     za = 41.2
     hx, hy = psc_dims(za)
     ax = -(hx + 0.2)
@@ -369,19 +375,19 @@ def build_streetlight(A):
     # lamp arm: galvanised pipe curving out over the road (-Y) with a lower brace
     zl = 30.0
     hx, hy = psc_dims(zl)
-    pts = [(0.0, -hy + 0.05, zl), (0.0, -1.6, zl + 0.9), (0.0, -3.6, zl + 1.7), (0.0, -6.0, zl + 2.2), (0.0, -7.4, zl + 2.25)]
-    objs.append(rnd(P.taper('lamp_arm', pts, (0.16, 0.12), seg=5, mat=gal)))
+    pts = [(0.0, -hy + 0.05, zl), (0.0, -2.0, zl + 1.2), (0.0, -4.6, zl + 2.05), (0.0, -7.4, zl + 2.25)]
+    objs.append(rnd(P.taper('lamp_arm', pts, (0.16, 0.12), seg=4, mat=gal)))
     objs.append(rnd(kit.tube('lamp_brace', [(0.0, -hy + 0.05, zl - 2.2), (0.0, -1.8, zl - 0.6), (0.0, -3.4, zl + 1.65)], 0.09, seg=4, mat=gal, cap=False)))
     objs.append(clamp_band('lamp_clamp', 0.0, zl, hx, hy, h=0.4))
     # sodium-vapour lantern ("cobra head"): grey housing + glowing lens underneath
     hz = zl + 2.05
     hc = -8.4
-    housing = kit.cylinder('lamp_head', 0.6, 2.4, loc=(0.0, hc, 0.0), seg=8, mat=P.M('aluminium', base='#8a8e8c', grime=0.55), axis='Y', base=False)
+    housing = kit.cylinder('lamp_head', 0.6, 2.4, loc=(0.0, hc, 0.0), seg=6, mat=P.M('aluminium', base='#8a8e8c', grime=0.55), axis='Y', base=False)
     P.xform(housing, scale=(1.0, 1.0, 0.45))
     P.xform(housing, loc=(0.0, 0.0, hz))
     objs.append(rnd(housing, 50.0))
     lens_m = P.M('sodium_lens', 'sodium_lens@night', bake=False, emit='#ff9a30', alpha=1.0, rough=0.25)
-    lens = kit.cylinder('lamp_lens', 0.46, 1.7, loc=(0.0, hc - 0.1, 0.0), seg=8, mat=lens_m, axis='Y', base=False)
+    lens = kit.cylinder('lamp_lens', 0.46, 1.7, loc=(0.0, hc - 0.1, 0.0), seg=6, mat=lens_m, axis='Y', base=False)
     P.xform(lens, scale=(1.0, 1.0, 0.42))
     P.xform(lens, loc=(0.0, 0.0, hz - 0.12))
     objs.append(rnd(lens, 50.0))

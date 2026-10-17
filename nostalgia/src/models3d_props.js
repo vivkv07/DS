@@ -27,10 +27,11 @@
  *   wires(id)           {wire_L1: THREE.Vector3, ...} pole wire attachment points in the GLB frame
  *                       (Y up, front = +Z; rotate / scale with the pole object)
  *   windMaterial(src, {height, impostor}) -> a wind-animated clone of a model material
- *   wind                {dir (radians, world x/y like e.angle), strength (0 calm .. 1 breezy .. 2 storm),
- *                        gust (0..1 extra travelling gust waves)}; follows N.wind when present
- *                        ({dir, speed, gust}: strength = speed / 10 unless N.wind.strength is set)
- *   windUniforms        {uWind: vec4(dirX, dirZ, strength, gust)} shared by every wind material
+ *   wind                {dir (radians, world x/y), strength (0..1, 0.3 = breeze), gust (gustiness 0..1)}:
+ *                       used only without the atmosphere layer (then it follows N.wind {dir, strength,
+ *                       gustiness}); with it, the tree shader shares N.wind.uniforms(THREE)
+ *   windUniforms        {uWind: vec4(dirX, dirZ, strength, gustiness), uWindWave: vec4(1 / wavelength,
+ *                        gust front (u), time (s), 0), shared: true when they are the atmosphere's}
  *   options             {trees, rocks, podiums, landmarks, animals, lodScale}
  *   stats(), debug
  */
@@ -61,28 +62,41 @@
   let THREE = null;
 
   /* ================================================================ wind */
-  const WIND = { dir: 0.6, strength: 0.55, gust: 0.35 };
-  const WU = { uWind: { value: null }, uTime: { value: 0 } };
-  function updateWind(H) {
+  // Wind state. With the atmosphere layer (N.wind.uniforms(THREE), src/atmosphere.js) the tree shader
+  // shares its uniforms (uWind = dx, dz, strength 0..1, gustiness; uWindWave = 1 / wavelength, gust
+  // front, time) so Blender trees sway with the same gust fronts as everything else; otherwise this
+  // file drives its own copy from WIND (or a plain N.wind {dir, strength, gustiness}).
+  const WIND = { dir: 0.6, strength: 0.3, gust: 0.5 };
+  const WU = { uWind: { value: null }, uWindWave: { value: null }, shared: false };
+  let front = 0;
+  function bindWind() {
+    const W = N.wind;
+    if (W && typeof W.uniforms === 'function') {
+      try {
+        const u = W.uniforms(THREE);
+        if (u && u.uWind && u.uWindWave) { WU.uWind = u.uWind; WU.uWindWave = u.uWindWave; WU.shared = true; return; }
+      } catch (e) { /* fall back to our own uniforms */ }
+    }
+    WU.uWind = { value: new THREE.Vector4(1, 0, WIND.strength, WIND.gust) };
+    WU.uWindWave = { value: new THREE.Vector4(1 / 520, 0, 0, 0) };
+  }
+  function updateWind(dt, H) {
+    if (WU.shared) return;   // the atmosphere layer updates the shared uniforms
     const w = N.wind;
     if (w && typeof w === 'object') {
       if (isFinite(w.dir)) WIND.dir = w.dir;
       if (isFinite(w.strength)) WIND.strength = w.strength;
-      else if (isFinite(w.speed)) WIND.strength = clamp(w.speed / 10, 0, 2.5);
       if (isFinite(w.gustiness)) WIND.gust = w.gustiness;
-      else if (typeof w.gust === 'function') {
-        try { const p = N.player || { x: 0, y: 0 }; const g = w.gust(p.x, p.y, H.time); if (isFinite(g)) WIND.gust = clamp(g, 0, 1.5); } catch (e) { /* ignore */ }
-      } else if (isFinite(w.gust)) WIND.gust = w.gust;
     }
-    const v = WU.uWind.value;
-    v.set(Math.cos(WIND.dir), Math.sin(WIND.dir), WIND.strength, WIND.gust);
-    WU.uTime.value = H.time || 0;
+    front = (front + (dt || 0) * 60) % (520 * 64);
+    WU.uWind.value.set(Math.cos(WIND.dir), Math.sin(WIND.dir), WIND.strength, WIND.gust);
+    WU.uWindWave.value.set(1 / 520, front, (H.time || 0) % 10000, 0);
   }
   // Shared GLSL: world wind direction -> instance-local displacement (uniform-scaled instances).
   const WIND_VERT_COMMON = [
     'attribute vec4 aWind;',
     'uniform vec4 uWind;',
-    'uniform float uTime;',
+    'uniform vec4 uWindWave;',
     'uniform float uTreeH;',
     'varying float vWindFl;',
   ].join('\n');
@@ -101,8 +115,10 @@
     '  vec3 dl = vec3(dot(im[0], dW), dot(im[1], dW), dot(im[2], dW)) / isc;',
     '  vec3 sl = vec3(-dl.z, 0.0, dl.x);',
     '  float iph = wp.x * 0.071 + wp.z * 0.053;',
-    '  float gw = 0.5 + 0.5 * sin(dot(wp.xz, uWind.xy) * 0.011 - uTime * 1.6);',
-    '  float str = uWind.z * (0.75 + uWind.w * gw * gw * 1.6);',
+    '  float uTime = uWindWave.z;',
+    '  float gph = (dot(wp.xz, uWind.xy) - uWindWave.y) * uWindWave.x;',
+    '  float gw = max(0.0, sin(gph * 6.2831853) + 0.35 * sin(gph * 18.849556 + 1.3)); gw = min(1.0, gw * gw * 0.8);',
+    '  float str = uWind.z * (0.72 + 0.62 * uWind.w * gw) * 1.6;',
     '  float b2 = bend * bend;',
     '  float sway = b2 * str * (0.55 + 0.45 * sin(uTime * 0.95 + iph) + 0.18 * sin(uTime * 2.1 + iph * 1.7));',
     '  vec3 off = dl * sway * uTreeH * 0.045;',
@@ -148,7 +164,7 @@
     const U = { uTreeH: { value: o.height || 30 } };
     m.userData = Object.assign({}, src.userData, { shared: true, wind: true });
     m.onBeforeCompile = (sh) => {
-      sh.uniforms.uWind = WU.uWind; sh.uniforms.uTime = WU.uTime; sh.uniforms.uTreeH = U.uTreeH;
+      sh.uniforms.uWind = WU.uWind; sh.uniforms.uWindWave = WU.uWindWave; sh.uniforms.uTreeH = U.uTreeH;
       let v = sh.vertexShader.replace('#include <common>', '#include <common>\n' + WIND_VERT_COMMON);
       if (o.impostor) v = v.replace('#include <beginnormal_vertex>', IMP_NORMAL).replace('#include <begin_vertex>', IMP_VERT + '\n' + WIND_VERT.replace('#include <begin_vertex>', ''));
       else v = v.replace('#include <begin_vertex>', WIND_VERT);
@@ -193,6 +209,11 @@
     const md = mdOf(id);
     if (!md) { S.trees.set(id, null); return null; }
     const meta = md.meta || {};
+    // the GLB spreads its LOD nodes along +X for the preview line-up: put them back on the origin and
+    // show only LOD0, so a plain N.models3d.instance(tree id) is one sensible tree
+    const lodNodes = new Set((meta.lods || []).map((l) => l.node).concat(meta.impostor ? [meta.impostor.node] : []));
+    md.scene.traverse((o) => { if (lodNodes.has(o.name)) { o.position.set(0, 0, 0); o.visible = /_LOD0$/.test(o.name); } });
+    md.scene.updateMatrixWorld(true);
     const lods = [];
     for (const L of meta.lods || []) {
       const mesh = nodeMesh(md, L.node);
@@ -609,7 +630,7 @@
     if (S.state !== 'idle') return;
     S.state = 'loading';
     THREE = S.THREE = window.THREE;
-    WU.uWind.value = new THREE.Vector4(1, 0, 0.5, 0.3);
+    bindWind();
     try {
       const ids = Array.from(new Set(WANT())).filter((id) => M3().has(id));
       await ensure(ids);
@@ -664,7 +685,7 @@
       update(dt, H) {
         S.frame++;
         if (!WU.uWind.value) return;
-        updateWind(H);
+        updateWind(dt, H);
         if (S.batches.size) { try { updateLods(); } catch (e) { N.err('models3d_props.lod', e); } }
       },
     });
