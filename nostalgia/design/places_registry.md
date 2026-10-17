@@ -48,3 +48,21 @@ with charm: the story may span the late 90s into the very early 2000s, or show t
 in a present-day or "years later" scene, or as fenced construction sites with
 "coming soon" hoardings that later open. They must still be visitable and recognisable.
 Everything else stays true to the 1990s.
+
+## Additional must-haves (user, round 2, binding)
+
+More everyday elements and props. They must appear across colonies and markets and be
+*used* by the story, errands/odd jobs, shops, collectibles or ambience.
+
+| id prefix / item | What | Notes |
+|---|---|---|
+| `meat_shop_*` | Chicken & mutton shops | shopfront with a painted "Fresh Chicken & Mutton" board, the Sunday-morning queue (Dad's Sunday mutton errand). Kid-friendly: show the shopfront, cages and queue, never gore |
+| `medical_shop_*` | Medical shops ("Medical & General Stores") | green cross sign, glass counters; errands for Nani's medicine; Hajmola and Vicks on the counter |
+| `iyengar_bakery_*` | Iyengar bakeries | honey cake, dilpasand, egg/veg puffs, cream rolls, fruit bread; warm yellow light, glass shelves |
+| `samosa_bandi_*`, `dosa_bandi_*` | Samosa and dosa pushcarts (bandis) | evening/morning street food carts with a stove and steam; cheap energy refills |
+| `photo_studio_*` | Passport photo studios | "Colour Lab / Photo Studio" board, backdrop + umbrella light inside; passport, visa or school-ID photos |
+| item: `walkman` | Walkman | player item: plays collected cassettes while walking (on-foot radio) |
+| item: `cassette_player` | Cassette player / "2-in-1" at home | plays and rewinds cassettes; key story prop is welcome |
+| `cassette_*` | Cassettes | collectibles that unlock songs/dedications/messages for the Walkman and 2-in-1 |
+| cricket | Cricket everywhere | gully cricket in colony playgrounds, LB Stadium, crowds watching a match on a TV in a shop window, bats/balls from shops, cricket minigame |
+| tree kind `coconut` | Coconut trees | along Necklace Road, in colony compounds and gardens; tender-coconut carts (`coconut_cart_*`) |
