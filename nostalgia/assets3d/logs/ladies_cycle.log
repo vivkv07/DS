@@ -21,3 +21,31 @@ ERROR MeshOptimizer is not available because library could not be found at /home
 20:36:38 | INFO: Data are loaded, start creating Blender stuff
 20:36:38 | INFO: Blender create Mesh node ladies_cycle
 20:36:38 | INFO: glTF import finished in 0.77s
+01:15.866  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/ladies_cycle.png'
+[kit] preview ladies_cycle.png (384px, 24 spp) in 42.3s
+20:37:21 | INFO: Data are loaded, start creating Blender stuff
+20:37:21 | INFO: Blender create Mesh node ladies_cycle
+20:37:21 | INFO: glTF import finished in 0.24s
+01:32.089  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/ladies_cycle_side.png'
+[kit] preview ladies_cycle_side.png (320px, 16 spp) in 15.7s
+[kit] done ladies_cycle in 89.8s
+20:37:37 | INFO: Data are loaded, start creating Blender stuff
+20:37:37 | INFO: Blender create Mesh node ladies_cycle
+20:37:37 | INFO: glTF import finished in 0.49s
+01:45.228  render           | Saved: '/tmp/nostalgia_blender/ladies_cycle_var_0.png'
+[kit] render ladies_cycle_var_0.png (256px, 14 spp) in 12.6s
+20:37:50 | INFO: Data are loaded, start creating Blender stuff
+20:37:50 | INFO: Blender create Mesh node ladies_cycle
+20:37:51 | INFO: glTF import finished in 0.34s
+01:56.503  render           | Saved: '/tmp/nostalgia_blender/ladies_cycle_var_1.png'
+[kit] render ladies_cycle_var_1.png (256px, 14 spp) in 10.7s
+20:38:01 | INFO: Data are loaded, start creating Blender stuff
+20:38:01 | INFO: Blender create Mesh node ladies_cycle
+20:38:01 | INFO: glTF import finished in 0.12s
+02:11.659  render           | Saved: '/tmp/nostalgia_blender/ladies_cycle_var_2.png'
+[kit] render ladies_cycle_var_2.png (256px, 14 spp) in 15.0s
+20:38:16 | INFO: Data are loaded, start creating Blender stuff
+20:38:16 | INFO: Blender create Mesh node ladies_cycle
+20:38:16 | INFO: glTF import finished in 0.05s
+02:23.012  render           | Saved: '/tmp/nostalgia_blender/ladies_cycle_var_3.png'
+[kit] render ladies_cycle_var_3.png (256px, 14 spp) in 11.3s

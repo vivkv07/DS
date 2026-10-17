@@ -39,6 +39,7 @@ import json
 import struct
 import atexit
 import random
+import time
 import bpy
 import bmesh
 from mathutils import Vector, Matrix
@@ -118,6 +119,7 @@ class Look:
         self.fields = {}
         self.show = {}
         self.slots = {}
+        self.base = {}      # region -> baked base colour (overrides the first material's colour)
 
     def slot(self, name, show=True, tint=None):
         if name in self.slots:
@@ -140,8 +142,9 @@ class Look:
         return self.names.index(name)
 
     def spec(self, ob):
-        return {'attribute': '_REGION', 'names': self.names, 'regions': region_colours(ob, self.names),
-                'fields': self.fields, 'show': self.show}
+        regs = region_colours(ob, self.names)
+        regs.update({k: v for k, v in self.base.items() if k in self.names})
+        return {'attribute': '_REGION', 'names': self.names, 'regions': regs, 'fields': self.fields, 'show': self.show}
 
 
 def write_regions(ob):
@@ -1110,7 +1113,7 @@ def body_point(rig, x, z, front=True, off=0.0, belly=0.0):
     if belly and z < TORSO[rig][7][0][2] and z > TORSO[rig][2][0][2]:
         ry += 0.25 * k * belly
         cy -= 0.15 * k * belly
-    q = max(0.0, 1 - (x / max(rx, 1e-3)) ** 2.25)
+    q = max(0.0, 1 - (abs(x) / max(rx, 1e-3)) ** 2.25)
     y = ry * q ** (1 / 2.25)
     return Vector((x, cy - (y + off) if front else cy + (y + off), z))
 
@@ -2793,7 +2796,8 @@ def ride_sheet(A, body_glb, vehicle_id, clip, drop=0.0, frames=(0, 8, 16, 24), s
         act.name = 'ride_cycle'
     import types
     try:
-        p = kit.preview_ride(types.SimpleNamespace(id=A.id), body_glb, vehicle_id, drop, frames=frames, size=size, samples=samples)
+        tmp_id = A.id if out_name == 'ride' else A.id + '__' + out_name
+        p = kit.preview_ride(types.SimpleNamespace(id=tmp_id), body_glb, vehicle_id, drop, frames=frames, size=size, samples=samples)
         if p and out_name != 'ride':
             q = os.path.join(kit.PREVIEW_DIR, '%s_%s.png' % (A.id, out_name))
             os.replace(p, q)
@@ -2804,3 +2808,284 @@ def ride_sheet(A, body_glb, vehicle_id, clip, drop=0.0, frames=(0, 8, 16, 24), s
             if keep:
                 keep.name = 'ride_cycle'
     return p
+
+
+# =========================================================================== looks -> tints (python mirror of models3d_people.js)
+DEFAULT_FIELDS = {'skin': ['skin'], 'hair': ['hair'], 'shirt': ['shirt', 'kameez', 'saree'], 'stripes': ['stripes', 'shoulders'],
+                  'pants': ['pants', 'lungi'], 'shoes': ['shoes', 'chappal'], 'accent': ['accent']}
+
+
+def _is_col(v):
+    return isinstance(v, str) and v.startswith('#') and len(v) in (4, 7)
+
+
+def shade_hex(h, f):
+    r, g, b = kit.hex_rgb(h)
+    return '#%02x%02x%02x' % (int(min(1, r * f) * 255), int(min(1, g * f) * 255), int(min(1, b * f) * 255))
+
+
+def pick_field(specs, look):
+    for s in specs or []:
+        if s.startswith('#'):
+            return s
+        if s.startswith('@'):
+            f, _, k = s[1:].partition(':')
+            v = look.get(f)
+            if _is_col(v):
+                return shade_hex(v, float(k or 1))
+            continue
+        if s in look:
+            v = look[s]
+            if _is_col(v):
+                return v
+    return None
+
+
+def resolve_look(spec, look, default_look, ctx=None):
+    """-> ({region: '#hex' or None}, hidden set) exactly like the runtime"""
+    names, fields, show = spec['names'], spec.get('fields') or {}, spec.get('show') or {}
+    cols, hidden = {}, set()
+    c = dict(look)
+    c.update(ctx or {})
+    for i, n in enumerate(names):
+        if i == 0:
+            continue
+        fl = fields.get(n) or DEFAULT_FIELDS.get(n)
+        want = pick_field(fl, look) or pick_field(fl, default_look or {})
+        cols[n] = want
+        if n in show and not rule_eval(show[n], c):
+            hidden.add(n)
+    return cols, hidden
+
+
+def render_variants(A, glb, variants, out, view=None, size=256, samples=14, clip=None, frames=None, cols=None, spec=None, default_look=None):
+    """Import the exported GLB once and render it dressed as each variant (region tints and slot
+    visibility like the runtime), optionally posed at (clip, frame) pairs. variants: [(name,
+    look, ctx)]; frames: [(clip, frame)] renders the first variant at each frame instead.
+    Returns the contact sheet path (and writes it to `out`)."""
+    man = json.load(open(os.path.join(kit.ASSETS_DIR, A.id + '.json')))
+    spec = spec or man['tint']
+    default_look = default_look or man['meta'].get('look', {})
+    names, base = spec['names'], spec['regions']
+    sc = bpy.data.scenes.new('_variants')
+    win = bpy.context.window
+    prev_scene = bpy.context.scene
+    if win:
+        win.scene = sc
+    sc.world = bpy.data.worlds.new('_vw')
+    kit._preview_world(sc, 0.9)
+    sc.render.engine = 'CYCLES'
+    sc.cycles.device = 'CPU'
+    sc.cycles.samples = samples
+    sc.cycles.use_adaptive_sampling = True
+    sc.cycles.adaptive_threshold = 0.03
+    sc.cycles.use_denoising = False
+    sc.cycles.max_bounces = 3
+    sc.cycles.diffuse_bounces = 2
+    sc.cycles.transparent_max_bounces = 4
+    try:
+        sc.cycles.use_fast_gi = True
+        sc.cycles.fast_gi_method = 'REPLACE'
+        sc.world.light_settings.distance = 6.0
+    except Exception:
+        pass
+    sc.render.threads_mode = 'FIXED'
+    sc.render.threads = 4
+    sc.render.resolution_x = size
+    sc.render.resolution_y = size
+    sc.render.filter_size = 1.6
+    try:
+        sc.view_settings.view_transform = 'AgX'
+        sc.view_settings.look = 'AgX - Medium High Contrast'
+    except Exception:
+        pass
+    sc.render.fps = kit.FPS
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=glb)
+    objs = [o for o in bpy.data.objects if o not in before]
+    arm = next((o for o in objs if o.type == 'ARMATURE'), None)
+    # material: per-region multiply + hide (transparent)
+    ctl = {}
+    for o in objs:
+        if o.type != 'MESH':
+            continue
+        for m in o.data.materials:
+            if not m or not m.use_nodes or m.name in ctl:
+                continue
+            nt = m.node_tree
+            bsdf = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+            outn = next((n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL'), None)
+            if bsdf is None or not bsdf.inputs['Base Color'].links:
+                continue
+            at = nt.nodes.new('ShaderNodeAttribute')
+            at.attribute_name = '_REGION'
+            col = bsdf.inputs['Base Color'].links[0].from_socket
+            mixes, hides = {}, {}
+            hsum = None
+            for i, n in enumerate(names):
+                if i == 0:
+                    continue
+                cmp_ = nt.nodes.new('ShaderNodeMath')
+                cmp_.operation = 'COMPARE'
+                nt.links.new(at.outputs['Fac'], cmp_.inputs[0])
+                cmp_.inputs[1].default_value = float(i)
+                cmp_.inputs[2].default_value = 0.4
+                mx = nt.nodes.new('ShaderNodeMix')
+                mx.data_type = 'RGBA'
+                mx.blend_type = 'MULTIPLY'
+                mx.clamp_result = False
+                nt.links.new(cmp_.outputs[0], mx.inputs[0])
+                nt.links.new(col, kit._sock(mx, 'A', 'RGBA'))
+                kit._sock(mx, 'B', 'RGBA').default_value = (1, 1, 1, 1)
+                col = kit._sock(mx, 'Result', 'RGBA', out=True)
+                mixes[n] = mx
+                hv = nt.nodes.new('ShaderNodeMath')
+                hv.operation = 'MULTIPLY'
+                nt.links.new(cmp_.outputs[0], hv.inputs[0])
+                hv.inputs[1].default_value = 0.0
+                hides[n] = hv
+                if hsum is None:
+                    hsum = hv.outputs[0]
+                else:
+                    ad = nt.nodes.new('ShaderNodeMath')
+                    ad.operation = 'ADD'
+                    nt.links.new(hsum, ad.inputs[0])
+                    nt.links.new(hv.outputs[0], ad.inputs[1])
+                    hsum = ad.outputs[0]
+            nt.links.new(col, bsdf.inputs['Base Color'])
+            if outn is not None and hsum is not None:
+                tr = nt.nodes.new('ShaderNodeBsdfTransparent')
+                ms = nt.nodes.new('ShaderNodeMixShader')
+                nt.links.new(hsum, ms.inputs[0])
+                nt.links.new(bsdf.outputs[0], ms.inputs[1])
+                nt.links.new(tr.outputs[0], ms.inputs[2])
+                nt.links.new(ms.outputs[0], outn.inputs['Surface'])
+            ctl[m.name] = (mixes, hides)
+
+    def dress(look, ctx):
+        cols_, hidden = resolve_look(spec, look, default_look, ctx)
+        for mixes, hides in ctl.values():
+            for n, mx in mixes.items():
+                want, b = cols_.get(n), base.get(n)
+                if want and b:
+                    w, bb = kit.lin(want), kit.lin(b)
+                    kit._sock(mx, 'B', 'RGBA').default_value = tuple(min(24.0, w[c] / max(bb[c], 0.004)) for c in range(3)) + (1.0,)
+                else:
+                    kit._sock(mx, 'B', 'RGBA').default_value = (1, 1, 1, 1)
+                hides[n].inputs[1].default_value = 1.0 if n in hidden else 0.0
+
+    def pose(clip_, fr):
+        if arm is None:
+            return
+        act = bpy.data.actions.get(clip_) if clip_ else None
+        if act:
+            arm.animation_data_create()
+            arm.animation_data.action = act
+            try:
+                arm.animation_data.action_slot = act.slots[0]
+            except Exception:
+                pass
+            sc.frame_set(int(fr or 0))
+        else:
+            if arm.animation_data:
+                arm.animation_data.action = None
+            for pb in arm.pose.bones:
+                pb.matrix_basis = Matrix.Identity(4)
+            sc.frame_set(0)
+        bpy.context.view_layer.update()
+    # ground, sun, camera
+    bm = bmesh.new()
+    bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=60)
+    gp = bpy.data.meshes.new('_vg')
+    bm.to_mesh(gp)
+    bm.free()
+    g = bpy.data.objects.new('_vg', gp)
+    sc.collection.objects.link(g)
+    gm = bpy.data.materials.new('_vgm')
+    gm.use_nodes = True
+    gm.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = kit.lin('#b9ad98')
+    gm.node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value = 0.95
+    gp.materials.append(gm)
+    ld = bpy.data.lights.new('_vs', 'SUN')
+    ld.energy = 3.2
+    ld.angle = math.radians(3)
+    ld.color = (1.0, 0.96, 0.9)
+    lo_ = bpy.data.objects.new('_vs', ld)
+    sc.collection.objects.link(lo_)
+    lo_.rotation_euler = Vector((0.9, 0.35, 0.5)).normalized().to_track_quat('Z', 'Y').to_euler()
+    v = view or {}
+    hgt = man['size'][2] if man.get('size') and man['size'][2] > 0 else 8.0
+    az, el = math.radians(v.get('az', -32.0)), math.radians(v.get('el', 10.0))
+    fov = math.radians(v.get('fov', 30.0))
+    tgt = Vector(v.get('target', (0, 0, hgt * 0.5)))
+    dist = v.get('dist') or (hgt * 0.62 / math.tan(fov / 2))
+    d = Vector((math.sin(az) * math.cos(el), -math.cos(az) * math.cos(el), math.sin(el)))
+    cd = bpy.data.cameras.new('_vc')
+    cd.angle = fov
+    cd.clip_start = 0.05
+    cam = bpy.data.objects.new('_vc', cd)
+    sc.collection.objects.link(cam)
+    cam.location = tgt + d * dist
+    cam.rotation_euler = (tgt - cam.location).to_track_quat('-Z', 'Y').to_euler()
+    sc.camera = cam
+    shots = []
+    if frames:
+        nm, lk, cx = variants[0]
+        dress(lk, cx)
+        for j, (c_, fr) in enumerate(frames):
+            shots.append((('%s_%02d' % (c_, j)), c_, fr))
+    else:
+        shots = [(nm, clip, frames) for nm, _, _ in variants]
+    outs = []
+    for j, (nm, c_, fr) in enumerate(shots):
+        if not frames:
+            dress(variants[j][1], variants[j][2])
+        pose(c_, fr)
+        p = os.path.join(kit.TMP_DIR, '%s_v_%02d.png' % (A.id, j))
+        sc.render.filepath = p
+        sc.render.image_settings.file_format = 'PNG'
+        t0 = time.time()
+        bpy.ops.render.render(write_still=True, scene=sc.name)
+        kit.log('variant render %s %s (%.1fs)' % (A.id, nm, time.time() - t0))
+        outs.append(p)
+    if win:
+        win.scene = prev_scene
+    for o in list(sc.collection.all_objects):
+        bpy.data.objects.remove(o, do_unlink=True)
+    bpy.data.scenes.remove(sc)
+    kit.contact_sheet(outs, out, cols=cols or len(outs), cell=size)
+    kit.log('variants sheet', out)
+    return out
+
+
+def previews_on():
+    import sys
+    return not ('--no-preview' in sys.argv or '--quick' in sys.argv)
+
+
+def post_previews(A, variants, face=None, gait=True, ride=None, kainchi=None):
+    """after kit.run_asset (atexit, same process): the dressed previews that replace kit's undressed
+    ones: <id>.png (every variant), <id>_face.png, <id>_gait.png (walk + run strip, side view, the
+    default look), <id>_ride.png / <id>_kainchi.png (riding the Hero cycle)"""
+    glb = os.path.join(kit.ASSETS_DIR, A.id + '.glb')
+
+    def run():
+        if not os.path.exists(glb) or not previews_on():
+            return
+        try:
+            render_variants(A, glb, variants, os.path.join(kit.PREVIEW_DIR, A.id + '.png'), size=256, samples=14)
+            if face:
+                render_variants(A, glb, variants[:1], os.path.join(kit.PREVIEW_DIR, A.id + '_face.png'), view=face, size=256, samples=18)
+            if gait:
+                fr = [('walk', f) for f in range(0, 32, 4)] + [('run', f) for f in range(0, 32, 4)]
+                render_variants(A, glb, variants[:1], os.path.join(kit.PREVIEW_DIR, A.id + '_gait.png'), size=160, samples=8, frames=fr, cols=8,
+                                view={'az': -90, 'el': 4, 'fov': 30})
+            if ride:
+                ride_sheet(A, glb, ride.get('vehicle', 'hero_cycle'), 'ride_cycle', ride.get('drop', 0.0))
+            if kainchi:
+                ride_sheet(A, glb, 'hero_cycle', 'ride_kainchi', 0.0, out_name='kainchi')
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            kit.log('post_previews failed: %s' % e)
+    atexit.register(run)

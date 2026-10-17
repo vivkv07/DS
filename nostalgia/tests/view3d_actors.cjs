@@ -587,7 +587,13 @@ async function desktop(browser) {
     T3.populate(24, 20);
     for (let i = 0; i < 6; i++) await fr();
     N.view3d.setCamera({ yaw: N.view.yaw, pitch: 0.2, snap: true });
-    await fr(); await fr();
+    // a few lit vehicles coming towards the camera, so the shot shows lamps and light pools up close
+    { const p = N.player, a = N.view.yaw, cx = Math.cos(a), sy = Math.sin(a);
+      for (const [t, d, off] of [['ambassador', 46, 9], ['auto', 72, -8], ['chetak', 30, 16], ['bus', 120, 4]]) {
+        const q = T3.road(cx * d - sy * off, sy * d + cx * off);
+        N.vehicles.spawn(t, q.x, q.y, a + Math.PI, { driver: true, seed: d });
+      } }
+    for (let i = 0; i < 3; i++) await fr();
     const c = N.view3dActors.debug.counts();
     const lit = N.entities.all.filter((e) => e.kind === 'vehicle' && e.T && e.T.lights && e.driver).length;
     return { c, lit, night: N.view3d.H.night };
@@ -640,7 +646,17 @@ async function desktop(browser) {
     N.entities.remove(e);
     // collectible glints near an item
     const C = N.collectibles;
-    const it = C && C.items ? C.items.find((q) => q.series !== 'frames' && !(C.has && C.has(q.id)) && !q.level && isFinite(q.x)) : null;
+    // an item whose glint is live now (series unlocked, season / time / shop rules met): probe a few
+    let it = null;
+    if (C && C.items && C.glintPoints) {
+      const ox = p.x, oy = p.y;
+      for (const q of C.items) {
+        if (q.series === 'frames' || q.level || !isFinite(q.x) || (C.has && C.has(q.id))) continue;
+        p.x = q.x + 20; p.y = q.y;
+        if ((C.glintPoints(150) || []).some((g) => g.id === q.id)) { it = q; break; }
+      }
+      p.x = ox; p.y = oy;
+    }
     if (it) { N.debug.teleport(it.x + 20, it.y); N.view3d.settle(8000); await fr(); await fr(); await fr(); out.glints = N.view3dActors.debug.glints(); out.item = it.id; }
     return out;
   });

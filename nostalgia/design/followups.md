@@ -46,3 +46,10 @@ Launch plan (design/online_plan.md) found:
 
 User feedback (auto travel was undiscoverable): added "🛺 Auto here" on map place cards (menus.js callAutoTo).
 Still to do in QA/polish: a one-time tutorial tip "Press HORN near a road: AUTO!", auto-stand icons on the minimap/map legend, preselect "Your map waypoint" in the auto fare card when a waypoint exists, and a clear on-screen marker where the hailed auto stops.
+
+Old City worlddata (reported by the blender-oldcity session with Charminar v3, commit 3bd9be7):
+- bangle_shop_1/2/3 face 'n' but the Laad Bazaar lane is to the south, so players see their backs; flip to 's'.
+- bangle_shop_2 sits behind bangle_shop_1 (overlapping lots); respace along the lane.
+- Mecca Masjid, Chowmahalla, Falaknuma, Purani Haveli and Pathergatti are hemmed in by procedural filler lots; clear a forecourt around each.
+- puranapul_arches is axis-aligned but the road there runs ~16.8° off axis; rotate the structure to match.
+- Charminar v3: street-level view reads right; the 3/4 overview still looks a little tall for its width. Revisit after the integration pass.

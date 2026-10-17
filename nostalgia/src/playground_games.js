@@ -86,7 +86,7 @@
   /* ================================================================ tunables */
   const TUNE = {
     g: 165, ballR: 0.85, hand: 4.4, headZ: 5.5, bodyTop: 7.2, hitR: 3.9,
-    bounce: 0.56, bounceFric: 0.8, rollFric: 58, rollDrag: 0.75, kerb: 0.45, kerbM: 8, wallE: 0.5, bumpy: 0.16,
+    bounce: 0.56, bounceFric: 0.8, rollFric: 58, rollDrag: 0.75, kerb: 0.45, kerbM: 8, wallE: 0.5, bumpy: 0.16, outerM: 16, roughMul: 4,
     kidWalk: 42, kidRun: 64, kidRunD: 12, kidR: 3.2, holdWalk: 0.68, carryMul: 0.78,
     stoneR: [2.6, 2.3, 2.05, 1.8, 1.55, 1.35, 1.15], stoneH: 0.78,
     // broken Shahabad / Kadapa floor slabs and sandstone: what colony kids stack (contrast on red dust)
@@ -99,7 +99,7 @@
     // with the ball you only shuffle (holdWalk x walk): you throw from about where you picked it up
     // minD: a holder steps back (backWalk x walk) rather than throw at a kid nearer than this (point-blank is
     // unsporting and undodgeable); spread: kids keep this far apart while they scatter (no clumps)
-    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46, holdWalk: 0.22, look: [0.55, 1.3], range: [44, 56], minD: 18, backWalk: 0.4, spread: 13 },
+    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46, holdWalk: 0.22, look: [0.55, 1.3], range: [44, 56], minD: 18, backWalk: 0.4, spread: 13, hopT: 0.16, bound: 10, boundT: 4 },
     // the line throw: the aim starts a little off the stack (straighten it), accuracy drops with power
     aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130, startOff: [0.06, 0.2], err: 0.026, errPow: 0.075 },
     pay: { win: 200, win3: 300, daily: 3 },
@@ -119,6 +119,10 @@
     // a free ball nobody can reach comes back onto the ground ("Ball la, ra!")
     freeMax: { lingocha: 9, marampitti: 6, outside: 3.5 },
     heat: { adult: 15, window: 30 },
+    // share of Chinnu's run stamina drain given back during a real game (the legs last twice as long)
+    runRefund: 0.5,
+    // s the "Play again" offer stays under Chinnu after a free-roam game
+    againT: 10,
   };
   const TEAM_COL = ['#f2c230', '#e2483a'];
   const BOYS = ['Venky', 'Sameer', 'Gopi', 'Raju', 'Sunny', 'Chintu', 'Munna', 'Lucky', 'Sattar', 'Pappu', 'Srinu', 'Kittu', 'Bunny', 'Arif', 'Naveen', 'Pandu', 'Jaffer', 'Ravi'];
@@ -824,7 +828,9 @@
       if (b.bounced === 1) { log(S, 'bounce', { live: wasLive }); if (S.G.onBounce) S.G.onBounce(S, b, wasLive); }
     }
     if (b.state === 'roll') {
-      const s = hyp(b.vx, b.vy), dec = (TUNE.rollFric + TUNE.rollDrag * s) * h;
+      // off the ground (a lane, a gutter, somebody's feet): the ball soon stops instead of rolling 100 u away
+      const rough = inRect(F, b.x, b.y, TUNE.outerM) ? 1 : TUNE.roughMul;
+      const s = hyp(b.vx, b.vy), dec = (TUNE.rollFric * rough + TUNE.rollDrag * s * (rough > 1 ? 3 : 1)) * h;
       if (s <= dec || s < 2.5) { b.vx = b.vy = 0; b.state = 'rest'; }
       else { const k = (s - dec) / s; b.vx *= k; b.vy *= k; }
     }
@@ -976,7 +982,7 @@
       const L = S.L, A = S.aim, T = L.thrower, x = T && T.e ? T.e.x : L.line.x, y = T && T.e ? T.e.y : L.line.y;
       const off = TUNE.aim.startOff, side = S.rng.next() < 0.5 ? -1 : 1;
       A.ang = Math.atan2(L.base.y - y, L.base.x - x) + (T && T.isPlayer && !PG.debug.assist.aim ? side * lerp(off[0], off[1], S.rng.next()) : 0);
-      A.yaw = null;
+      A.yaw = null; A.stickArm = false; A.stickSling = false; A.dragging = false;
     },
     liveTime(S) { return S.params.liveTime > 0 ? +S.params.liveTime : lerp(TUNE.lingocha.live[0], TUNE.lingocha.live[1], S.d); },
     seekers(S) { return S.parts.filter((P) => P.team === S.L.seek); },
@@ -995,12 +1001,16 @@
       }
       // throwers: Chinnu when his team seeks (a real game), else the seekers in turn
       L.throwers = S.me && S.me.team === L.seek ? [S.me] : seek.filter((P) => !P.dood);
-      seek.forEach((P, i) => {
-        const off = (i - (seek.length - 1) / 2) * 7;
-        const q = clampIn(F, ln.x - ux * 6 + vx * off, ln.y - uy * 6 + vy * off, 3);
-        P.spot = spotNear(q.x, q.y, 3, 12, F);
-      });
+      // the thrower toes the line; the rest of his team wait beside it (not right behind him, where they would
+      // fill the 3D camera's view of the stack)
       const thrower = L.throwers[0] || seek[0];
+      let j = 0;
+      for (const P of seek) {
+        if (P === thrower) continue;
+        const off = (j % 2 ? 1 : -1) * (10 + 7 * Math.floor(j / 2)); j++;
+        const q = clampIn(F, ln.x - ux * 4 + vx * off, ln.y - uy * 4 + vy * off, 3);
+        P.spot = spotNear(q.x, q.y, 3, 12, F);
+      }
       if (thrower) thrower.spot = { x: ln.x, y: ln.y };
       const away = Math.atan2(uy, ux);
       hit.forEach((P, i) => {
@@ -1537,7 +1547,8 @@
       if (S.phase === 'aim') {
         if (L.thrower !== me) return (L.thrower ? L.thrower.name : 'They') + ' throws at the stack…';
         const tr = 'Try ' + (L.tries + 1) + '/' + TUNE.lingocha.tries + ': ';
-        if (isTouch() && !is3D()) return tr + 'drag back on the ground and let go (or stick + hold ' + a + ')';
+        if (isTouch() && !is3D()) return tr + 'pull back from the stack (stick or screen) and let go, like a catapult';
+        if (isTouch()) return tr + 'drag the view or the stick to aim · hold ' + a + ' for power, let go';
         if (N.input && N.input.device === 'gamepad') return tr + 'stick aims · hold A for power, let go to throw';
         return tr + (is3D() ? 'look / ← → aim' : '← → or mouse aim') + ' · hold ' + a + ' for power, let go';
       }
@@ -1629,6 +1640,17 @@
       } else if (S.phase === 'play') {
         if (!(S.real && PG.debug.assist.noTimer)) M.timeLeft -= dt;
         const al = MARAM.alive(S);
+        if (S.real && !S.me.out && S.endAt == null) {
+          // the ground has a boundary: hiding off it (out of everybody's range) is out; fetching a ball that
+          // rolled off is fine
+          const p = N.player, off = rectDist(S.F, p.x, p.y);
+          const fetching = !b.holder && rectDist(S.F, b.x, b.y) > 2 && hyp(b.x - p.x, b.y - p.y) < 30;
+          if (off > TUNE.maram.bound && !fetching && !S.me.hold) {
+            S.boundT = (S.boundT || 0) + dt;
+            if (!S.boundWarn) { S.boundWarn = true; toast('*Andar aa!* Back inside the ground — or you are OUT', 2200); const k = al.find((Q) => !Q.isPlayer); if (k) bark(S, k, '*Andar aa*, ra! No hiding!'); }
+            if (S.boundT > TUNE.maram.boundT) setOut(S, S.me, null, 'boundary');
+          } else { S.boundT = 0; S.boundWarn = false; }
+        }
         if (S.real) {
           if (S.me.out && S.endAt == null) { S.endAt = S.t + 2.2; S.endWin = false; S.endExtra = { reason: 'out', rank: al.length + 1 }; }
           else if (!S.me.out && al.length <= 1 && S.endAt == null) {
@@ -1712,14 +1734,18 @@
           P.tgt = best; P.tgtT = S.t + 1.1;
         }
         const T = P.tgt, d = pdist(P, T);
+        const late = P.holdT > TUNE.maram.holdMax - 0.6;
         if (P.windT > 0) {
           halt(P); P.face = Math.atan2(T.e.y - e.y, T.e.x - e.x); P.windT -= dt; S.tele = { from: P, to: T };
-          if (P.windT <= 0) LING.aiThrowAt(S, P, T);
+          if (P.windT <= 0) {
+            // the mark ran right up to him during the wind-up: no point-blank throw — a step back first
+            if (d < minD * 0.6 && !late) { P.windT = 0; P.lookT = 0; S.tele = null; }
+            else LING.aiThrowAt(S, P, T);
+          }
           return;
         }
         // a look round first (the others scatter), then a throw from where he stands
         if (P.lookT == null) P.lookT = lerp(TUNE.maram.look[1], TUNE.maram.look[0], S.d) * (0.8 + 0.4 * S.rng.next());
-        const late = P.holdT > TUNE.maram.holdMax - 0.6;
         // too close to his mark: a step back first (the wind-up then gives the mark a fair chance)
         if (!late && d < minD && P.holdT > P.lookT * 0.5) {
           const l = d || 1, q = clampIn(S.F, e.x - ((T.e.x - e.x) / l) * 10, e.y - ((T.e.y - e.y) / l) * 10, 4);
@@ -1807,7 +1833,15 @@
         }
         if (l < 0.2) { dx = Math.cos(p.angle); dy = Math.sin(p.angle); l = 1; }
         p.vx += (dx / l) * TUNE.maram.dashV; p.vy += (dy / l) * TUNE.maram.dashV;
-        me.dashT = S.t; log(S, 'dodge');
+        me.dashT = S.t; me.dashX = dx / l; me.dashY = dy / l; log(S, 'dodge');
+      }
+      // the hop is committed for a moment (the stick or the keys steer again after it): a thumb on DODGE
+      // alone gets well out of the line, not a little shuffle
+      if (!me.hold && S.t - me.dashT < TUNE.maram.hopT && me.dashX != null) {
+        I.move.x = me.dashX; I.move.y = me.dashY; I.analog = true;
+        const sp = hyp(p.vx, p.vy), along = p.vx * me.dashX + p.vy * me.dashY;
+        if (along < TUNE.maram.dashV * 0.85) { p.vx += me.dashX * (TUNE.maram.dashV * 0.85 - along); p.vy += me.dashY * (TUNE.maram.dashV * 0.85 - along); }
+        void sp;
       }
       if (me.hold) { holderControl(S, dt, I, MARAM.alive(S).filter((Q) => Q !== me)); return; }
       // the red line points at me (a wind-up) or a ball is coming: hands up to CATCH — time it with the throw
@@ -1839,6 +1873,7 @@
       if (!me) return '';
       if (S.phase === 'setup') return 'Stand in the ring — the ball goes up, wait for the BOUNCE';
       if (me.out) return 'OUT!';
+      if (S.boundT > 0) return 'Back inside the ground! Out in ' + Math.max(0, TUNE.maram.boundT - S.boundT).toFixed(1) + ' s';
       if (S.phase === 'toss') return 'Wait for the bounce… then grab it (' + a + ')';
       if (me.hold) return a + ': throw at ' + (S.aimTarget ? S.aimTarget.name : 'someone') + ' (below the head!) · hold for a hard one · ' + Math.max(0, TUNE.maram.holdMax - me.holdT).toFixed(1) + 's';
       if (MARAM.threatened(S)) return (b.state === 'air' || !S.tele ? 'Incoming! ' : (S.tele.from.name || 'He') + (S.tele.to === me ? ' is aiming at you! ' : ' is throwing your way! ')) + r + ' = dodge · ' + a + ' = CATCH as he throws';
@@ -1946,9 +1981,12 @@
     const L = S.L, A = S.aim, p = N.player, me = S.me;
     const toStack = Math.atan2(L.base.y - p.y, L.base.x - p.x);
     const mv = I.rawMove || I.move;
-    // aim input: stick (analog) points, keys rotate, the mouse points (2D), the camera looks (3D). In 3D the move
-    // vector is camera-relative (pointing the stick would chase the camera round): there left / right turn the aim.
+    // aim input: a pad stick (analog) points, keys rotate, the mouse points (2D), the camera looks (3D), the touch
+    // stick is a catapult (below). In 3D the move vector is camera-relative (pointing the stick would chase the
+    // camera round): there left / right turn the aim.
+    const touchDev = !!(N.input && N.input.device === 'touch');
     if (is3D()) { if (Math.abs(mv.x) > 0.2) A.ang += mv.x * TUNE.aim.rotKey * dt; }
+    else if (I.analog && touchDev) { /* the touch catapult below */ }
     else if (I.analog && hyp(I.move.x, I.move.y) > 0.35) A.ang = A.ang + adiff(A.ang, Math.atan2(I.move.y, I.move.x)) * Math.min(1, dt * 10);
     else if (Math.abs(mv.x) > 0.2) { A.ang += Math.sign(mv.x) * TUNE.aim.rotKey * dt; PTR.mouseT = 0; }
     if (!is3D() && PTR.mouseT > 0 && performance.now() - PTR.mouseT < 2000 && PTR.wx != null && !PTR.drag) A.ang = Math.atan2(PTR.wy - p.y, PTR.wx - p.x);
@@ -1958,6 +1996,26 @@
       else if (Math.abs(adiff(A.yaw, A.ang)) > 0.002) { A.yaw = A.ang; try { N.view3d.setCamera({ yaw: A.ang }); } catch (e) { /* ignore */ } }
     }
     const asst = S.assist || isTouch();
+    // touch (top-down): the joystick is the same catapult as a drag on the picture — pull back from the stack
+    // (the thumb usually lands on the stick's half of the screen) and let go; the power bar shows the pull
+    // armed only once the stick has been let go in this aim (a thumb still on it from walking up throws nothing)
+    if (!A.stickArm && !(touchDev && I.analog && hyp(I.move.x, I.move.y) > 0.1)) A.stickArm = true;
+    const tStick = !is3D() && touchDev && I.analog && !PTR.drag && A.stickArm;
+    const tm = tStick ? hyp(I.move.x, I.move.y) : 0;
+    if (tm > 0.2) {
+      A.ang = Math.atan2(-I.move.y, -I.move.x); A.p = clamp(tm, 0.05, 1); A.charging = false; A.dragging = true; A.stickSling = true;
+      zeroMove(I); I.consume('run'); p.angle = p.facing = A.ang;
+      offer(S, 'Let go!'); I.consume('action');
+      return;
+    }
+    if (A.stickSling) {
+      A.stickSling = false; A.dragging = false;
+      if (A.p >= 0.2) {
+        if (asst && Math.abs(adiff(A.ang, toStack)) < TUNE.aim.assistSnap * 1.5) A.ang = toStack + adiff(toStack, A.ang) * 0.25;
+        throwAtStack(S, A.ang, A.p); offer(S, ''); I.consume('action'); zeroMove(I);
+        return;
+      }
+    }
     if (asst && Math.abs(adiff(A.ang, toStack)) < TUNE.aim.assistSnap) A.ang += adiff(A.ang, toStack) * Math.min(1, dt * 6);
     zeroMove(I); I.consume('run');
     p.angle = p.facing = A.ang;
@@ -2162,6 +2220,10 @@
       if (r.win) sfx('finger_whistle', { ui: true, vol: 0.7 });
     }
     cleanupReal(S);
+    // a free-roam game that ended normally: "Play again" right where Chinnu stands for a few seconds (the kids
+    // are still there; no walking back to find the Join spot after being knocked out in ten seconds)
+    AGAIN.gid = null;
+    if (S.params.side && !r.aborted && !r.quit && r.reason !== 'window' && r.reason !== 'chappal') { AGAIN.gid = S.id; AGAIN.F = S.F; AGAIN.until = now() + TUNE.againT; }
     try { N.emit('minigame:end', { id: S.id, result: r, inWorld: true }); } catch (e) { /* ignore */ }
     const res = S.resolve; S.resolve = null;
     if (res) { try { res(r); } catch (e) { N.err('pg.resolve', e); } }
@@ -2249,7 +2311,17 @@
   }
 
   /* ================================================================ systems */
+  const AGAIN = { gid: null, F: null, until: 0, offer: null };
+  function againOffer() {
+    const A = AGAIN, p = N.player;
+    if (!A.gid || current) return;
+    if (now() > A.until || !p || p.vehicle || rectDist(A.F, p.x, p.y) > 40 || !offerOpen(A.F)) { if (now() > A.until) A.gid = null; return; }
+    if (!A.offer) A.offer = { priority: 1, dist: 0, label: '', use() { const g = AGAIN.gid, F = AGAIN.F; AGAIN.gid = null; if (g && F) play(g, { place: F.ids[0], side: true }); } };
+    A.offer.label = 'Play again (' + GAMES[A.gid].title.toLowerCase() + ')';
+    try { N.interact.offer(A.offer); } catch (e) { /* ignore */ }
+  }
   function ctlUpdate(dt) {
+    againOffer();
     const S = current;
     if (!S || S.ended) return;
     const I = N.input, p = N.player;
@@ -2322,15 +2394,18 @@
     } catch (e) { /* ignore */ }
     if (S.endAt != null && S.t >= S.endAt) { endSession(S, S.endWin, S.endExtra); return; }
     if (p.vehicle) { endSession(S, false, { quit: true, reason: 'vehicle' }); return; }
+    // a playground game is all running: Chinnu's legs last longer on the ground (part of the run drain back)
+    try { if (p.running && !p.god && p.TUNE && p.TUNE.runDrain) p.energy = Math.min(p.tummy != null ? p.tummy : 100, p.energy + dt * p.TUNE.runDrain * TUNE.runRefund); } catch (e) { /* ignore */ }
     ballRescue(S, dt);
     if (N.wanted && N.wanted.level >= 3 && S.endAt == null) {
       banner('BHAAGO!', 'The Chappal Meter is up — game over, run!', 2400, 'fail');
       endSession(S, false, { reason: 'chappal' });
       return;
     }
-    // walked off the ground
-    const d = rectDist(F, p.x, p.y);
-    if (d > TUNE.leaveR) {
+    // walked off the ground (fetching the ball that went off it does not count)
+    const d = rectDist(F, p.x, p.y), bl = S.ball;
+    const fetching = (S.me && S.me.hold) || (!bl.holder && !bl.hiddenBall && hyp(bl.x - p.x, bl.y - p.y) < 30 && rectDist(F, bl.x, bl.y) > 2);
+    if (d > TUNE.leaveR && !fetching) {
       S.awayT = (S.awayT || 0) + dt;
       if (S.awayT > 0.2 && !S.awayWarned) { S.awayWarned = true; toast('*Arre*, where are you going? Come back or the game is over!', 2400); }
       if (S.awayT > TUNE.leaveT) {
@@ -2895,6 +2970,7 @@
     installQueueFilter();
   }
   function resetAll() {
+    AGAIN.gid = null;
     if (current) { const S = current; hardCleanup(S); const r = S.resolve; S.resolve = null; S.ended = true; if (r) r({ id: S.id, win: false, score: 0, stars: 0, aborted: true, reason: 'reset' }); }
     if (AMB.S) { const S = AMB.S; AMB.S = null; BUSY.delete(S.F.decorY); restoreDoubles(S); spectatorsOff(S); for (const k of S.kids) { try { N.entities.remove(k); } catch (e) { /* ignore */ } } }
     for (const L of leftovers) for (const pp of L.S.pops) if (pp.el) pp.el.remove();

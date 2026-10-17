@@ -1,0 +1,164 @@
+{
+ "anchors": {
+  "bell": [
+   0.45,
+   -3.4453,
+   4.9511
+  ],
+  "grip_L": [
+   1.377,
+   -3.0608,
+   5.1921
+  ],
+  "grip_R": [
+   -1.377,
+   -3.0608,
+   5.1921
+  ],
+  "handlebar": [
+   0.0,
+   -3.4053,
+   4.7511
+  ],
+  "pedal_L": [
+   0.836,
+   1.7075,
+   2.055
+  ],
+  "pedal_R": [
+   -0.836,
+   0.0925,
+   2.055
+  ],
+  "reflector": [
+   0.0,
+   7.085,
+   3.225
+  ],
+  "seat_driver": [
+   0.0,
+   1.446,
+   4.241
+  ],
+  "seat_pillion": [
+   0.0,
+   2.646,
+   4.341
+  ],
+  "wheel_front": [
+   0.0,
+   -4.45,
+   2.3
+  ],
+  "wheel_rear": [
+   0.0,
+   4.45,
+   2.3
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 299652,
+ "clips": {},
+ "family": "vehicle",
+ "file": "kid_cycle.glb",
+ "front": "-Y",
+ "id": "kid_cycle",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 292.6,
+ "kit": 1,
+ "materials": [
+  "M_kid_cycle"
+ ],
+ "max": [
+  1.84,
+  7.06,
+  5.314
+ ],
+ "meta": {
+  "bb": [
+   0.0,
+   0.9,
+   1.955
+  ],
+  "crankR": 0.807,
+  "gear": 2.2,
+  "length": 13.5,
+  "pedal": true,
+  "pedalX": 0.836,
+  "riders": {
+   "driver": {
+    "clips": [
+     "ride_cycle"
+    ],
+    "feet": "pedals",
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "cycle",
+    "seat": "seat_driver"
+   }
+  },
+  "saddleTube": [
+   0.0,
+   0.34,
+   0.94
+  ],
+  "seat": [
+   0.0,
+   1.446,
+   4.241
+  ],
+  "steerAxis": [
+   0.0,
+   -0.3809,
+   -0.9246
+  ],
+  "tintSrc": {
+   "paint": "color"
+  },
+  "vehicleTypes": [
+   "kid_cycle"
+  ],
+  "wheelR": 2.3,
+  "wheels": {
+   "wheel_front": 2.3,
+   "wheel_rear": 2.3
+  }
+ },
+ "min": [
+  -1.84,
+  -6.876,
+  -0.0
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  3.679,
+  13.936,
+  5.314
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#9a2424"
+  }
+ },
+ "tris": 2920,
+ "units": "u",
+ "up": "Z"
+}
