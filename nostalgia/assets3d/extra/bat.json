@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 18616,
+ "bytes": 18944,
  "clips": {
   "flap": {
    "beat": 0.1778,
@@ -45,7 +45,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 18.2,
+ "kb": 18.5,
  "kit": 1,
  "materials": [
   "M_bat"

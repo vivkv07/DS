@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 41336,
+ "bytes": 42736,
  "clips": {
   "lie": {
    "duration": 4.0,
@@ -62,7 +62,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 40.4,
+ "kb": 41.7,
  "kit": 1,
  "materials": [
   "M_dog"

@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 16564,
+ "bytes": 19240,
  "clips": {
   "flap": {
    "beat": 0.2667,
@@ -34,7 +34,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 16.2,
+ "kb": 18.8,
  "kit": 1,
  "materials": [
   "M_bird_pigeon"

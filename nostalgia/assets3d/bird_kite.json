@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 18952,
+ "bytes": 20212,
  "clips": {
   "flap": {
    "beat": 0.6,
@@ -34,7 +34,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 18.5,
+ "kb": 19.7,
  "kit": 1,
  "materials": [
   "M_bird_kite"

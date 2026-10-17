@@ -189,9 +189,36 @@ def slim_glb(path, eps=2e-4, key_tol=0.0018):
         return _st.unpack('<%df' % (len(r) // 4), r), NC[a['type']]
     rest = {'translation': [0, 0, 0], 'rotation': [0, 0, 0, 1], 'scale': [1, 1, 1]}
     dropped = 0
+
+    def at_rest(an, ch):
+        pth = ch['target']['path']
+        rv = J['nodes'][ch['target']['node']].get(pth, rest[pth])
+        vals, n = floats(an['samplers'][ch['sampler']]['output'])
+        for i in range(0, len(vals), n):
+            k = vals[i:i + n]
+            d = max(abs(x - y) for x, y in zip(k, rv))
+            if pth == 'rotation':
+                d = min(d, max(abs(x + y) for x, y in zip(k, rv)))
+            if d > eps:
+                return False
+        return True
+    # properties some clip moves away from rest: every clip keeps them (1 STEP key when at rest), so any
+    # loader (not only three.js, which restores unbound properties) returns them to rest
+    moved = set()
+    for an in J.get('animations', []):
+        for ch in an['channels']:
+            if not at_rest(an, ch):
+                moved.add((ch['target']['node'], ch['target']['path']))
+    one_key = {}
     for an in J.get('animations', []):
         keep = []
         for ch in an['channels']:
+            key = (ch['target']['node'], ch['target']['path'])
+            if key in moved and at_rest(an, ch):
+                sm = an['samplers'][ch['sampler']]
+                one_key[id(sm)] = True
+                keep.append(ch)
+                continue
             pth = ch['target']['path']
             node = J['nodes'][ch['target']['node']]
             rv = node.get(pth, rest[pth])
@@ -224,6 +251,10 @@ def slim_glb(path, eps=2e-4, key_tol=0.0018):
             tv, _ = floats(sm['input'])
             vals, n = floats(sm['output'])
             K = [vals[i * n:(i + 1) * n] for i in range(len(tv))]
+            if id(sm) in one_key:
+                sm['interpolation'] = 'STEP'
+                newdata[id(sm)] = (_st.pack('<f', tv[0]), _st.pack('<%df' % n, *K[0]), 1, [tv[0]], [tv[0]])
+                continue
             if len(K) <= 2:
                 continue
             tol = key_tol if n == 4 else key_tol * 0.5
@@ -1371,7 +1402,7 @@ def animal_cow(A):
                     pts=[(-2.2, 4.4, 0.5), (-2.25, 3.0, 0.38), (-2.2, 1.6, 0.25), (-2.3, 0.38, 0.2)], hoof=(0.21, 0.25))
 
     def hleg(x):
-        return dict(P=(x, 2.8, 4.6), K=(x, 3.35, 2.05), F=(x, 3.12, 0.0), flesh=1.0, flesh_w=0.55,
+        return dict(P=(x, 2.8, 4.6), K=(x, 3.35, 2.05), F=(x, 3.12, 0.0), flesh=0.8, flesh_w=0.25,
                     pts=[(2.8, 4.7, 0.62), (3.0, 3.3, 0.45), (3.35, 2.05, 0.22), (3.15, 0.38, 0.19)], hoof=(0.2, 0.24))
     legs = {'FL': fleg(xL), 'FR': fleg(-xL), 'HL': hleg(xL), 'HR': hleg(-xL)}
     for k, L in legs.items():
@@ -1454,11 +1485,11 @@ def animal_cow(A):
         Pd['root'] = (qe(0, 0.04, 0), (0, 0, -LIE_DROP))
         idle_head(Pd, t, look=0.45)
         Pd['neck'] = (qe(0.1, 0, Pd['neck'][0].to_euler().z), None)
-        Pd['tail1'] = (qe(-0.5, 0, 1.0 + 0.12 * win(t, 0.5, 0.55, 0.6, 0.66)), None)
+        Pd['tail1'] = (qe(0.0, 0, 0.6 + 0.12 * win(t, 0.5, 0.55, 0.6, 0.66)) @ qe(0.72, 0, 0), None)
         # forelegs folded under the chest (knee forward), hind legs folded with the hocks out behind
-        for lg, k, dy in (('FL', -1, 0.9), ('FR', -1, 0.8), ('HL', 1, -1.3), ('HR', 1, -1.1)):
+        for lg, k, dy, z in (('FL', -1, -0.9, 0.12), ('FR', -1, -0.8, 0.12), ('HL', 1, -0.4, 0.3), ('HR', 1, -0.3, 0.3)):
             L = Q['legs'][lg]
-            Sk.leg(Pd, lg, L['F'][1] + dy, 0.12, k)
+            Sk.leg(Pd, lg, L['F'][1] + dy, z, k)
         return Pd
     mkclip(A, arm, 'lie', 4 * FPS_F, lie)
     check(A, arm, ob, ['stand', 'walk', 'lie'], feet=['leg_%s_lower' % l for l in LEGS])
@@ -1548,7 +1579,7 @@ def animal_dog(A):
 
     def sit(t):
         Pd = {}
-        Pd['root'] = (None, (0, 0, -1.3))
+        Pd['root'] = (None, (0, 0, -1.2))
         Pd['body'] = (qe(SIT_P, 0, 0), None)
         look = 0.45 * win(t, 0.25, 0.32, 0.5, 0.58) - 0.35 * win(t, 0.7, 0.76, 0.86, 0.92)
         Pd['neck'] = (qe(0.35, 0, look), None)
@@ -1558,22 +1589,25 @@ def animal_dog(A):
         for lg in ('FL', 'FR'):
             Sk.leg(Pd, lg, Q['legs'][lg]['F'][1] + 0.25, 0.0, -1)
         for lg in ('HL', 'HR'):
-            Sk.leg(Pd, lg, 0.55, 0.0, 1)
+            Sk.leg(Pd, lg, -0.75, 0.25, 1)
         return Pd
 
     def lie(t):
+        # nap lying on its left side, curled towards the belly, legs relaxed sideways
         Pd = {}
-        br = 0.02 * math.sin(TAU * 2 * t)
-        Pd['root'] = (None, (0, 0, -1.5 + br))
-        Pd['chest'] = (qe(0, 0, 0.25), None)
-        Pd['neck'] = (qe(0.85, 0, 0.35), None)
-        Pd['head'] = (qe(-0.1 - 0.06 * win(t, 0.55, 0.6, 0.7, 0.75), -0.25, 0.25), None)
-        Pd['tail1'] = (qe(1.9, 0, -0.6), None)
-        for lg, a in (('FL', -1.3), ('FR', -1.15)):
-            Pd['leg_%s_upper' % lg] = (qe(a, 0, 0), None)
-            Pd['leg_%s_lower' % lg] = (qe(0.1, 0, 0), None)
+        br = 0.015 * math.sin(TAU * 2 * t)
+        Pd['root'] = (qe(0, 1.45, 0), (-2.29, 0, 0.36 + br))
+        Pd['chest'] = (qe(0.3, 0, 0), None)
+        Pd['neck'] = (qe(0.55, 0, 0), None)
+        Pd['head'] = (qe(0.25 + 0.12 * win(t, 0.55, 0.6, 0.7, 0.75), 0, 0), None)
+        Pd['tail1'] = (qe(1.5, 0, 0), None)
+        Pd['tail2'] = (qe(0.6, 0, 0), None)
+        for lg in ('FL', 'FR'):
+            Pd['leg_%s_upper' % lg] = (qe(-0.5, 0, 0), None)
+            Pd['leg_%s_lower' % lg] = (qe(0.5, 0, 0), None)
         for lg in ('HL', 'HR'):
-            Sk.leg(Pd, lg, 0.8, 0.12, 1)
+            Pd['leg_%s_upper' % lg] = (qe(-0.7, 0, 0), None)
+            Pd['leg_%s_lower' % lg] = (qe(0.9 + 0.1 * win(t, 0.3, 0.32, 0.34, 0.37), 0, 0), None)
         return Pd
     mkclip(A, arm, 'sit', 3 * FPS_F, sit)
     mkclip(A, arm, 'lie', 4 * FPS_F, lie)

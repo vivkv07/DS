@@ -2,13 +2,13 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 23360,
+ "bytes": 18096,
  "clips": {
   "flap": {
-   "beat": 0.4333,
-   "duration": 0.4333,
+   "beat": 0.2,
+   "duration": 0.2,
    "fps": 30,
-   "frames": 13,
+   "frames": 6,
    "loco": false,
    "loop": true
   },
@@ -20,43 +20,40 @@
    "loop": true
   },
   "perch": {
-   "duration": 3.0,
+   "duration": 2.0,
    "fps": 30,
-   "frames": 90,
+   "frames": 60,
    "loco": false,
    "loop": true
   }
  },
  "family": "prop",
- "file": "bird_egret.glb",
+ "file": "bird_parakeet.glb",
  "front": "-Y",
- "id": "bird_egret",
+ "id": "bird_parakeet",
  "images": [
   "image/webp"
  ],
- "kb": 22.8,
+ "kb": 17.7,
  "kit": 1,
  "materials": [
-  "M_bird_egret"
+  "M_bird_parakeet"
  ],
  "max": [
-  2.35,
-  2.44,
-  1.146
+  1.18,
+  1.55,
+  0.465
  ],
  "meta": {
-  "bodyZ": 2.45,
+  "bodyZ": 0.3,
   "bones": [
    "root",
-   "neck",
    "head",
    "wing_L",
    "wingtip_L",
    "wing_R",
    "wingtip_R",
-   "tail",
-   "leg_L",
-   "leg_R"
+   "tail"
   ],
   "doubleSided": true,
   "flightClips": [
@@ -65,53 +62,51 @@
   ],
   "flock": {
    "alt": [
-    6,
+    10,
     40
    ],
    "habitat": [
-    "hussain_sagar",
-    "musi",
-    "lawn"
+    "neem",
+    "park",
+    "colony"
    ],
    "perch": [
-    "shore",
-    "field",
-    "tree"
+    "tree",
+    "wire"
    ],
    "size": [
-    1,
-    12
+    4,
+    20
    ],
-   "sound": null,
+   "sound": "screech",
    "speed": [
-    35,
-    50
-   ]
+    60,
+    90
+   ],
+   "startle": true
   },
   "kind": "bird",
-  "length": 2.5,
+  "length": 2.0,
   "origin": "body centre; bind pose = flight pose (wings along +-X, legs tucked). perch lifts the root by perchLift so the feet are on z = 0",
   "perchClip": "perch",
-  "perchLift": 2.45,
-  "restNote": "bind pose = flight: neck retracted, legs trailing; perch unfolds them (stands 4.4 u tall)",
-  "species": "egret",
-  "standHeight": 4.4,
-  "wingspan": 4.7
+  "perchLift": 0.3,
+  "species": "parakeet",
+  "wingspan": 2.36
  },
  "min": [
-  -2.35,
-  -2.463,
-  -0.711
+  -1.18,
+  -0.569,
+  -0.177
  ],
  "notes": [],
  "script": "props_fauna",
  "size": [
-  4.7,
-  4.903,
-  1.857
+  2.36,
+  2.119,
+  0.642
  ],
  "tint": null,
- "tris": 186,
+ "tris": 140,
  "units": "u",
  "up": "Z"
 }

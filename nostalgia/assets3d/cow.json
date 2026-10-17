@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 44428,
+ "bytes": 45976,
  "clips": {
   "lie": {
    "duration": 4.0,
@@ -44,7 +44,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 43.4,
+ "kb": 44.9,
  "kit": 1,
  "materials": [
   "M_cow"

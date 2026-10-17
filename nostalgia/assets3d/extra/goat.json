@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 35520,
+ "bytes": 38492,
  "clips": {
   "graze": {
    "duration": 3.0,
@@ -44,7 +44,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 34.7,
+ "kb": 37.6,
  "kit": 1,
  "materials": [
   "M_goat"
