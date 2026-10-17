@@ -357,7 +357,13 @@
       if (!set.length) return 0;
       if (v <= set[0].nominal) set[0].w = 1;
       else if (v >= set[set.length - 1].nominal) set[set.length - 1].w = 1;
-      else for (let i = 0; i < set.length - 1; i++) if (v < set[i + 1].nominal) { const t = (v - set[i].nominal) / (set[i + 1].nominal - set[i].nominal); set[i].w = 1 - t; set[i + 1].w = t; break; }
+      else for (let i = 0; i < set.length - 1; i++) if (v < set[i + 1].nominal) {
+        // blend only through the middle of the gap: two gaits with different stance timing mixed at
+        // one phase let the feet drift, a single gait (its cadence from the distance) never does
+        let t = (v - set[i].nominal) / (set[i + 1].nominal - set[i].nominal);
+        t = t <= 0.3 ? 0 : t >= 0.7 ? 1 : ((x) => x * x * (3 - 2 * x))((t - 0.3) / 0.4);
+        set[i].w = 1 - t; set[i + 1].w = t; break;
+      }
       for (const l of set) S_ += l.w * l.stride;
       return S_;
     }

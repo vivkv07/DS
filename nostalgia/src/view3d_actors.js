@@ -1109,9 +1109,11 @@
   const JH = new Float32Array(18);
   function habitArms(j, hab, s, t, seed) {
     const belly = !!s.belly;
-    const fx = belly ? 1.12 : 0.8, bx = s.wrap || belly ? -0.98 : -0.84;
+    const fx = belly ? 1.12 : 0.8, bx = s.wrap || belly ? -1.2 : -1.06;
     switch (hab) {
-      case 'behind': armsTo(j, j[10], bx, 5.05, -0.2, bx - 0.04, 5.16, 0.14, 0, -0.9); break;
+      // hands joined low behind the back: nearly straight arms swung back and in (elbows tucked by the
+      // back, not winged out at shoulder height)
+      case 'behind': armsTo(j, j[10], bx, 4.35, -0.18, bx - 0.04, 4.45, 0.14, 0, -0.9); break;
       case 'front': armsTo(j, j[10], fx, belly ? 4.8 : 5.0, -0.14, fx + 0.04, belly ? 4.92 : 5.1, 0.1, 0, -0.9); break;
       case 'fold': armsTo(j, j[10], belly ? 1.12 : 0.95, 6.12, 0.42, belly ? 1.16 : 1.0, 5.92, -0.42, 0, -0.95); break;
       case 'straps': armsTo(j, j[10], 0.74, 6.42, -0.52, 0.74, 6.5, 0.52, 0, -0.9); break;

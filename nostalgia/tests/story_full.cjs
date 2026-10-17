@@ -12,10 +12,22 @@
  * calendar date at the start and the end, the festival flags (N.seasons) of that date, the Chappal Meter
  * back at 0, money never negative; at the end: every must-have place of design/places_registry.md
  * visited by a mission / side activity / scene (coverage table in tests/out/story_full/coverage.md),
- * no "Chinnu"/"Srikanth"/{nick} left in any line, objective or toast for a custom nickname, zero console
- * errors, page errors and N.err.
+ * no "Chinnu"/"Srikanth"/{nick} left in any line, objective, toast, cutscene card, J-card or minigame card
+ * for a custom nickname, zero console errors, page errors and N.err.
+ * Round 2 (reviewer) adds:
+ *   - the bible, line by line (static): all ~424 dialogue lines of §4-§9 and all 79 HUD objectives are in
+ *     the source;
+ *   - a reachability audit: every mission goal the test teleports to is a walkable spot (or a roof / the
+ *     water) joined on foot to the road network (tests/out/story_full/reach.json);
+ *   - ACTION meant for the story never opens a shop card (M6: Nanna's cycle 20 u from the chemist);
+ *     an E-driven step the autopilot has to debug-skip is a failure;
+ *   - the LB match's scorecard carries the nickname ("PINTU XI") and a camp side without Bunty-anna (19);
+ *   - after every CONTINUE the free-roam side games are on; after each pandal night no curfew chase; the
+ *     ending at Charminar has no Chappal Meter at all;
+ *   - free roam in July (explore2): K12 on the Falaknuma hill path and Ticket Thatha's stage 7.
  *
- *   node nostalgia/tests/story_full.cjs                 the whole run (60-90 min on a loaded machine)
+ *   node nostalgia/tests/story_full.cjs                 the whole run (25-30 min at load 30 on 4 cores)
+ *   COVERAGE_ONLY=1 node nostalgia/tests/story_full.cjs rewrite coverage.md from the last run's snapshot
  *   START=m7 node nostalgia/tests/story_full.cjs        resume from the snapshot written after the phase
  *                                                       before m7 (tests/out/story_full/saves/*.json)
  *   STOP=m6 ...                                         stop after that phase
@@ -1238,7 +1250,7 @@ function coverageReport() {
     'the story files that reference the id (givers, gotos, cameras, props, respect zones); "also used by" the other modules.', '',
     '## Must-have places (places_registry §2)', '', '| id | visited by (mission / side activity / scene, first date) | story script | also used by |', '|---|---|---|---|'].concat(MUST.map(row), ['', '## Festival sites', '', '| id | visited by | story script | also used by |', '|---|---|---|---|'], FESTIVAL.map(row), AMBIENT.map(row), ['', '## Other named places (rounds 5-11)', '', '| id | visited by | story script | also used by |', '|---|---|---|---|'], NAMED.map(row));
   // a prefix is "used" by a module that names one of its ids (or the prefix itself) in its source
-  const prefUses = (q) => { const out = []; for (const f of USE_FILES.concat(['story', 'story2', 'sidejobs', 'world_extras'])) { const src = USE_SRC[f] != null ? USE_SRC[f] : (USE_SRC[f] = (() => { try { return fs.readFileSync(path.join(ROOT, 'src', f + '.js'), 'utf8'); } catch (e) { return ''; } })()); if (src.indexOf("'" + q) >= 0 && out.indexOf(f) < 0) out.push(f); } return out; };
+  const prefUses = (q) => { const out = []; for (const f of USE_FILES.concat(['story', 'story2', 'sidejobs', 'world_extras'])) { const src = USE_SRC[f] != null ? USE_SRC[f] : (USE_SRC[f] = (() => { try { return fs.readFileSync(path.join(ROOT, 'src', f + '.js'), 'utf8'); } catch (e) { return ''; } })()); if ((src.indexOf("'" + q) >= 0 || src.indexOf("'" + q.slice(0, -1) + "'") >= 0) && out.indexOf(f) < 0) out.push(f); } return out; };
   const pre = PREFIX.map((q) => { const ids = Object.keys(cov).filter((k) => k.indexOf(q) === 0); return '| `' + q + '*` | ' + (ids.length ? ids.length + ': ' + ids.slice(0, 8).join(', ') : '**none**') + ' | ' + (prefUses(q).join(', ') || '-') + ' |'; });
   lines.push('', '## Everyday elements (registry §3, rounds 2-3)', '', '| prefix | instances visited by a mission / side activity | named in |', '|---|---|---|', ...pre);
   fs.writeFileSync(path.join(OUT, 'coverage.md'), lines.join('\n') + '\n');
@@ -1291,6 +1303,14 @@ const PHASES = [
 ];
 const SIDE_PHASES = new Set(['sa3', 'sa2', 'sa4', 'sa7', 'sa5', 'sa6', 'sa1', 'sa8', 'explore1', 'explore2', 'replay']);
 (async () => {
+  // COVERAGE_ONLY=1: rewrite coverage.md from the last full run's snapshot (no browser)
+  if (process.env.COVERAGE_ONLY) {
+    const snap = JSON.parse(fs.readFileSync(path.join(SAVES, 'after_replay.json'), 'utf8'));
+    Object.assign(cov, snap.cov || {});
+    const c = coverageReport();
+    console.log('coverage table rewritten: ' + path.join(OUT, 'coverage.md') + ' ' + JSON.stringify(c));
+    return;
+  }
   const browser = await chromium.launch();
   await openPage(browser);
   const START = process.env.START || 'title', STOP = process.env.STOP || null;
