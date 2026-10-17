@@ -324,7 +324,8 @@ Implementation notes (world.js, binding):
 - Structures: `queryStructures(x0, y0, x1, y1, fn)`; `addStructure({t:'custom', x0, y0,
   x1, y1, cx?, cy?, draw(ctx, s)})` for extra static props. `trees`, `lamps`, `rocks`,
   `lots`, `STYLES`. `renderMap(pxPerUnit)` -> cached canvas of the simplified map (for
-  the minimap and full map). Profiling aids: `detail` (switches), `buildPhases`, `stats`
+  the minimap and full map); `renderMap(ppu, {fresh: true})` renders an uncached canvas the caller
+  owns (the HUD grades its minimap image in place on one, so the 27 MB image exists once). Profiling aids: `detail` (switches), `buildPhases`, `stats`
   (running counts / ms of roof, wall and tree sprite-cache misses).
 - Map v2 (bigger world, A1): every grid / index (surface + roof grids, 256 u structure and decal
   buckets, district lookup, pothole index) is sized in `build()` from the data, never at load
