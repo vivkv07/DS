@@ -3,3 +3,4 @@ node_modules/
 dist/site/
 __pycache__/
 *.pyc
+assets3d/logs/
