@@ -1593,7 +1593,9 @@
   let drumBusy = false;
   function drumKey(kit, stroke, tune) { return kit + '.' + stroke + (kit === 'tabla' ? '@' + Math.round(tune) : ''); }
   let drumCacheOff = false;
+  const DRUM_NOCACHE = new Set(); // kits that cache themselves (ext.registerKit(name, strokes, {cache: false}))
   function queueDrum(kit, stroke, tune, sr) {
+    if (DRUM_NOCACHE.has(kit)) return;
     const key = drumKey(kit, stroke, tune);
     if (DRUMS.has(key) || !OAC || drumCacheOff) return;
     DRUMS.set(key, null);
@@ -4210,7 +4212,7 @@
   //                                  BELL BIGBELL METAL CERAMIC VOW WAVES (mutable) TAU
   //   ext.registerSfx(name, fn(ac, out, t, o) -> endTime, {cooldown, gain, ui, caption, capMax})   (replaces same name)
   //   ext.registerInst(name, fn(ac, out, t, notes, dur, vel, ev, st))   st = per-part state of the Seq; st.live === true when
-  //                                  scheduled in real time (never render a buffer inline then: fall back to a cached one)   ext.registerKs(name, def)   ext.registerKit(name, strokes)
+  //                                  scheduled in real time (never render a buffer inline then: fall back to a cached one)   ext.registerKs(name, def)   ext.registerKit(name, strokes, {cache: false = the kit caches itself})
   //   ext.registerScale(name, semis[])   ext.registerTrack(id, def)  (replaces; recompiles; music.TRACKS updated)
   //   ext.registerStation(i, station)    ext.registerSong(id, {title, artist, station})
   //   ext.registerEngine(type, profile)  ext.setEngineVoice(factory(ac, dest, type, profile, vehicle, isPlayer) -> voice|null)
@@ -4274,7 +4276,7 @@
     },
     registerInst(name, fn) { if (typeof fn === 'function') INST[name] = fn; },
     registerKs(name, def) { KS_DEF[name] = def; for (const k of Array.from(KS.keys())) if (k.startsWith(name + ':')) KS.delete(k); INST[name] = INST[name] || plucked(name, 0.6, 0.8, false); },
-    registerKit(name, strokes) { KITS[name] = Object.assign(KITS[name] || {}, strokes); for (const k of Array.from(DRUMS.keys())) if (k.startsWith(name + '.')) DRUMS.delete(k); },
+    registerKit(name, strokes, o) { if (o && o.cache === false) DRUM_NOCACHE.add(name); else DRUM_NOCACHE.delete(name); KITS[name] = Object.assign(KITS[name] || {}, strokes); for (const k of Array.from(DRUMS.keys())) if (k.startsWith(name + '.')) DRUMS.delete(k); },
     registerScale(name, semis) { SCALES[name] = semis; },
     registerTrack(id, def) { TRACKS[id] = def; COMPILED.clear(); A.music.TRACKS = Object.keys(TRACKS).filter((k) => !/^id_/.test(k)); },
     registerStation(i, st) { STATIONS[i] = st; PLAYLISTS.length = 0; },

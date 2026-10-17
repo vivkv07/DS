@@ -106,8 +106,13 @@
     for (let i = Math.max(0, n - 128); i < n; i++) o[i] *= (n - i) / 128;
     return o;
   }
+  // Deferred rendering: while OPS is set, the synthesis helpers below only record themselves, so a drum render can be
+  // replayed one helper call at a time (each <= ~2 ms) by the idle job pump instead of in one long main-thread task.
+  let OPS = null;
+  const op = (fn) => (OPS ? OPS.push(fn) : fn());
   // exponentially decaying sine "mode" (rotating phasor: 4 mults/sample); fr(tSec) -> frequency multiplier (then sin per sample)
   function mode(d, sr, t0, f, amp, t60, att, fr) {
+    if (OPS) { const a = arguments; OPS.push(() => mode.apply(null, a)); return; }
     if (f * (fr ? fr(0) : 1) >= sr * 0.46 || amp === 0) return;
     const n0 = Math.max(0, Math.floor(t0 * sr)), len = Math.min(d.length - n0, Math.ceil(Math.min(t60 * 1.05, 12) * sr));
     const r = Math.exp(-6.9078 / (t60 * sr)), na = Math.max(1, Math.floor((att || 0.0004) * sr));
@@ -127,6 +132,7 @@
   }
   // noise burst: attack att, hold, exponential decay (time constant tc); color white|pink|brown; filters [[type,f,q,dB]]
   function noise(d, sr, t0, amp, tc, o) {
+    if (OPS) { const a = arguments; OPS.push(() => noise.apply(null, a)); return; }
     o = o || {};
     const n0 = Math.max(0, Math.floor(t0 * sr)), hold = o.hold || 0, att = o.att || 0.0005;
     const len = Math.min(d.length - n0, Math.ceil((att + hold + tc * 7) * sr));
@@ -148,6 +154,7 @@
   }
   // 808-style metal: six detuned square waves -> filters, decaying (hats, cymbals, cowbell)
   function metal(d, sr, t0, amp, tc, freqs, filters, att) {
+    if (OPS) { const a = arguments; OPS.push(() => metal.apply(null, a)); return; }
     const n0 = Math.floor(t0 * sr), len = Math.min(d.length - n0, Math.ceil(tc * 8 * sr));
     const tmp = new Float32Array(len), ph = freqs.map(() => rnd()), inc = freqs.map((f) => f / sr);
     const r = Math.exp(-1 / (tc * sr)), na = Math.max(1, (att || 0.0005) * sr);
@@ -162,6 +169,7 @@
   }
   // small room (Schroeder: 4 combs + 2 allpasses), mixed in place
   function room(d, sr, wet, rt) {
+    if (OPS) { const a = arguments; OPS.push(() => room.apply(null, a)); return d; }
     const combs = [0.0297, 0.0371, 0.0411, 0.0437].map((s) => Math.floor(s * sr)), aps = [0.005, 0.0017].map((s) => Math.floor(s * sr));
     const n = d.length, w = new Float32Array(n);
     for (const L of combs) {
@@ -219,7 +227,7 @@
     const ph = Math.atan2(-Math.sin(w), a + Math.cos(w)) - Math.atan2(-a * Math.sin(w), 1 + a * Math.cos(w));
     let d = -ph / w; if (d < 0) d += TAU / w; return d;
   };
-  function stringInto(out, sr, f, o, vel, amp) {
+  function* stringInto(out, sr, f, o, vel, amp) { // generator: yields every 8192 samples (~0.5 ms)
     const len = out.length, L = sr / f, w0 = (TAU * f) / sr;
     const p = clamp(o.lp == null ? 0.2 : o.lp, 0, 0.95);
     const lossD = Math.atan2(p * Math.sin(w0), 1 - p * Math.cos(w0)) / w0;
@@ -251,6 +259,7 @@
         if (jr) thr += jr / sr;
       }
       if (i < ex.length) v += ex[i];
+      if ((i & 4095) === 4095) yield;
       dl[idx] = v;
       out[i] += v * amp;
       if (++idx >= Ni) idx = 0;
@@ -259,7 +268,7 @@
   // Instruments made of strings. strings: [[cents, amp], ...] (courses / polarisations), body: filter list (gourd, box, skin)
   const KSD = {
     sitar: { dur: 3.0, t60: 4.5, t60k: 0.35, lp: 0.1, disp: -0.18, nd: 2, exc: 'pick', pos: 0.11, bright: 0.55, jaw: 0.6, th: 0.12, jm: 1,
-      body: [['hp', 85, 0.7], ['pk', 185, 1.3, 5], ['pk', 560, 1.6, 2], ['pk', 1250, 2, 4], ['pk', 2900, 1.5, 6], ['pk', 5200, 1.2, 3]], vol: 0.62, mono: true, taraf: 0.34, ring: 1.0 },
+      body: [['hp', 85, 0.7], ['pk', 185, 1.3, 5], ['pk', 560, 1.6, 2], ['pk', 1250, 2, 4], ['pk', 2900, 1.5, 6], ['pk', 5200, 1.2, 3]], vol: 0.62, mono: true, taraf: 0.6, ring: 1.0 },
     veena: { dur: 3.0, t60: 3.2, t60k: 0.3, lp: 0.34, disp: -0.1, nd: 1, exc: 'pick', pos: 0.16, bright: 0.45, jaw: 0.6, th: 0.2, jm: 0.6,
       body: [['hp', 50, 0.7], ['pk', 105, 1.1, 6], ['pk', 240, 1.3, 4], ['pk', 650, 1.6, 2], ['lp', 5200, 0.6]], vol: 0.66, mono: true, gamak: 1, taraf: 0.1, ring: 1.2 },
     sarod: { dur: 2.0, t60: 1.5, t60k: 0.4, lp: 0.07, disp: -0.32, nd: 3, exc: 'pick', pos: 0.08, bright: 0.9,
@@ -277,17 +286,19 @@
     bass: { dur: 1.9, t60: 2.2, t60k: 0.2, lp: 0.55, exc: 'soft', pos: 0.22, bright: 0.3,
       body: [['hp', 35, 0.7], ['pk', 95, 1, 3], ['lp', 2400, 0.7]], vol: 0.72, mono: true, ring: 0.06 },
     // sympathetic (taraf) strings: excited by the bridge, not plucked -> slow swell, long ring, light buzz
-    taraf: { dur: 3.0, t60: 3.6, t60k: 0.2, lp: 0.12, disp: -0.15, nd: 1, exc: 'swell', swell: 0.09, jaw: 0.8, th: 0.12, jm: 1,
+    taraf: { dur: 3.0, t60: 4.2, t60k: -0.1, lp: 0.12, disp: -0.15, nd: 1, exc: 'swell', swell: 0.09, jaw: 0.9, th: 0.2, jm: 1,
       body: [['hp', 200, 0.7], ['pk', 1250, 2, 3], ['pk', 2900, 1.5, 5], ['pk', 5200, 1.2, 3]] },
     taraf2: { dur: 2.6, t60: 3.0, t60k: 0.2, lp: 0.2, exc: 'swell', swell: 0.14, body: [['hp', 200, 0.7], ['pk', 1800, 1.5, 3], ['lp', 6000, 0.7]] },
   };
-  function renderStringInst(def, f) {
+  function* renderStringInst(def, f) {
     const sr = KSR, out = new Float32Array(Math.floor(def.dur * sr));
-    for (const s of def.strings || [[0, 1]]) stringInto(out, sr, f * Math.pow(2, s[0] / 1200), def, 1, s[1]);
+    for (const s of def.strings || [[0, 1]]) yield* stringInto(out, sr, f * Math.pow(2, s[0] / 1200), def, 1, s[1]);
     dcBlock(out, sr, 20);
-    chain(out, sr, def.body);
+    for (const fl of def.body || []) { yield; runBq(out, bq(fl[0], fl[1], fl[2], sr, fl[3]), 0); }
+    yield;
     return finish(out, 0.8, 12, 0.2);
   }
+  const drain = (g) => { let r; do r = g.next(); while (!r.done); return r.value; };
 
   /* ============================================================ modal (struck bars / tines) */
   const MODAL = {
@@ -298,16 +309,17 @@
     // soft tubular chime (not a temple bell): free-free bar partials, strike tone around the 4th-6th partials
     bell: { dur: 3.4, modes: [[1, 0.55, 3.2], [2.756, 0.45, 2.2], [5.404, 0.3, 1.3], [8.933, 0.16, 0.7], [13.34, 0.06, 0.35]], tick: [0.08, 3500], att: 0.0015, body: [['hp', 150, 0.7], ['lp', 8000, 0.7]], vol: 0.42 },
   };
-  function renderModal(def, f) {
+  function* renderModal(def, f) {
     const sr = KSR, out = new Float32Array(Math.floor(def.dur * sr));
     const tk = Math.pow(220 / f, 0.25);
     for (const m of def.modes) {
       const amp = m[1] * rr(0.9, 1.1);
       mode(out, sr, 0, f * m[0], amp, m[2] * tk, def.att);
       if (def.beat && m[0] === 1) mode(out, sr, 0, f * Math.pow(2, def.beat / 1200), amp * 0.35, m[2] * tk * 0.8, def.att);
+      yield;
     }
     if (def.tick) noise(out, sr, 0, def.tick[0], 0.0015, { f: [['bp', def.tick[1], 1.2]] });
-    chain(out, sr, def.body);
+    for (const fl of def.body || []) { yield; runBq(out, bq(fl[0], fl[1], fl[2], sr, fl[3]), 0); }
     return finish(out, 0.8, 8, 0.25);
   }
 
@@ -316,52 +328,82 @@
   // ornaments. AudioBuffers are context-independent, so live and offline contexts share them. LRU-capped.
   const NB = new Map();
   const NB_MAX = 110;
-  const stats = { renders: 0, renderMs: 0, maxMs: 0 };
+  const stats = { renders: 0, renderMs: 0, maxMs: 0, maxStepMs: 0, maxSliceMs: 0, jobs: 0, fallbacks: 0 };
   const now = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
-  function noteBuf(ac, inst, anchor) {
+  // Idle job pump: heavy renders run as generators, stepped in idle callbacks with a ~3 ms budget per callback
+  // (each step <= ~1-2 ms), so live playback never renders on the scheduling path.
+  const JOBS = [], JOBKEYS = new Set();
+  let jobCur = null, pumping = false;
+  const idle = (fn) => { try { if (window.requestIdleCallback) return window.requestIdleCallback(fn, { timeout: 100 }); } catch (e) { /* fall back */ } return setTimeout(fn, 12); };
+  function queueJob(key, makeGen, done, front) {
+    if (JOBKEYS.has(key)) return;
+    JOBKEYS.add(key);
+    JOBS[front ? 'unshift' : 'push']({ key, makeGen, done });
+    if (!pumping) { pumping = true; idle(pump); }
+  }
+  function pump() {
+    const t0 = now();
+    try {
+      while (now() - t0 < 3) {
+        if (!jobCur) { jobCur = JOBS.shift() || null; if (!jobCur) { pumping = false; return; } jobCur.gen = jobCur.makeGen(); }
+        const s0 = now(), r = jobCur.gen.next();
+        if (now() - s0 > stats.maxStepMs) { stats.maxStepMs = now() - s0; stats.maxStepKey = jobCur.key; }
+        if (r.done) { const j = jobCur; jobCur = null; JOBKEYS.delete(j.key); stats.jobs++; j.done(r.value); }
+      }
+    } catch (e) { report('pump', e); if (jobCur) JOBKEYS.delete(jobCur.key); jobCur = null; }
+    stats.maxSliceMs = Math.max(stats.maxSliceMs, now() - t0);
+    idle(pump);
+  }
+  const mkBuf = (ac, data, sr) => { const b = ac.createBuffer(1, data.length, sr); if (b.copyToChannel) b.copyToChannel(data, 0); else b.getChannelData(0).set(data); return b; };
+  const noteGen = (inst, anchor) => (MODAL[inst] ? renderModal(MODAL[inst], mtof(anchor)) : renderStringInst(KSD[inst], mtof(anchor)));
+  function storeNote(key, b) { NB.set(key, b); if (NB.size > NB_MAX) NB.delete(NB.keys().next().value); }
+  // live: never render here - queue it and return null (the caller substitutes a neighbouring cached note)
+  function noteBuf(ac, inst, anchor, live) {
     const key = inst + ':' + anchor;
     let b = NB.get(key);
     if (b) { NB.delete(key); NB.set(key, b); return b; }
+    if (live) { queueJob('n:' + key, () => noteGen(inst, anchor), (d) => storeNote(key, mkBuf(ac, d, KSR)), true); return null; }
     const t0 = now();
-    const data = MODAL[inst] ? renderModal(MODAL[inst], mtof(anchor)) : renderStringInst(KSD[inst], mtof(anchor));
-    b = ac.createBuffer(1, data.length, KSR);
-    if (b.copyToChannel) b.copyToChannel(data, 0); else b.getChannelData(0).set(data);
+    if (ac === X.ctx) stats.liveSync = (stats.liveSync || 0) + 1; // should stay 0
+    b = mkBuf(ac, drain(noteGen(inst, anchor)), KSR);
     const ms = now() - t0;
     stats.renders++; stats.renderMs += ms; stats.maxMs = Math.max(stats.maxMs, ms);
-    NB.set(key, b);
-    if (NB.size > NB_MAX) NB.delete(NB.keys().next().value);
+    storeNote(key, b);
     return b;
   }
   const anchorOf = (m) => m - (((m % 2) + 2) % 2);
-  // Warm-up: when a sequence starts (music, radio, walkman), queue the plucked/struck notes it uses and render a few
-  // per frame (<= ~4 ms per frame) so the first bars never stall the scheduler.
-  const warmQ = [], warmSeen = new Set(), warmKeys = new Set();
-  function warmTrack(c) {
+  // Warm-up: when a sequence starts (music, radio, walkman, film emitters) queue the plucked/struck notes it uses and
+  // its drum strokes (at the track's tabla tuning) on the idle pump, so the first bars find their buffers.
+  const warmSeen = new Set(), warmKeys = new Set();
+  function warmTrack(c, ac) {
     if (!c || warmSeen.has(c.id)) return;
     warmSeen.add(c.id);
-    const evs = c.events || [];
+    const evs = c.events || [], drums = new Set();
     for (let i = 0; i < evs.length; i++) {
       const e = evs[i];
       if (!e) continue;
       for (const ev of e) {
-        const cfg = c.parts && c.parts[ev.part], inst = cfg && cfg.inst;
-        if (!inst || !ev.notes) continue;
-        const kind = PLUCK[inst] ? PLUCK[inst].buf : MODAL[inst] ? inst : null;
-        if (!kind) continue;
-        for (const m of ev.notes) { const k = kind + ':' + anchorOf(m); if (!warmKeys.has(k)) { warmKeys.add(k); warmQ.push([kind, anchorOf(m)]); } }
+        const cfg = c.parts && c.parts[ev.part];
+        if (!cfg) continue;
+        if (ev.strokes && cfg.kit) { for (const sk of ev.strokes) drums.add(cfg.kit + '|' + sk); continue; }
+        const kind = PLUCK[cfg.inst] ? PLUCK[cfg.inst].buf : null;
+        if (!kind || !ev.notes) continue;
+        for (const m of ev.notes) {
+          const k = kind + ':' + anchorOf(m);
+          if (!warmKeys.has(k) && !NB.has(k)) { warmKeys.add(k); queueJob('n:' + k, () => noteGen(kind, anchorOf(m)), (d) => storeNote(k, mkBuf(ac, d, KSR))); }
+        }
       }
     }
+    for (const ds of drums) { const [kit, sk] = ds.split('|'); if (STROKES[kit] && STROKES[kit][sk]) STROKES[kit][sk].warm(ac, c.tune); }
   }
   X.onUpdate('instruments.warm', () => {
     const ac = X.ctx;
     if (!ac) return;
     try {
       const I = N.audio._internal;
-      if (I && I.liveSeqs) for (const s of I.liveSeqs) warmTrack(s.c);
-      if (!warmSeen.size && I && I.compile && I.TRACKS && I.TRACKS.title) warmTrack(I.compile('title'));
+      if (!warmSeen.size && I && I.compile && I.TRACKS && I.TRACKS.title) warmTrack(I.compile('title'), ac);
+      if (I && I.liveSeqs) for (const sq of I.liveSeqs) if (!warmSeen.has(sq.c.id)) warmTrack(sq.c, ac);
     } catch (e) { /* tracks not ready */ }
-    const t0 = now();
-    while (warmQ.length && now() - t0 < 4) { const j = warmQ.shift(); try { noteBuf(ac, j[0], j[1]); } catch (e) { report('warm', e); break; } }
   }, 50);
 
   /* ============================================================ plucked / struck player */
@@ -371,8 +413,22 @@
   for (const k in KSD) if (!/^taraf/.test(k)) PLUCK[k] = { buf: k, vol: KSD[k].vol, mono: KSD[k].mono, taraf: KSD[k].taraf, gamak: KSD[k].gamak, ring: KSD[k].ring };
   for (const k in MODAL) PLUCK[k] = { buf: k, vol: MODAL[k].vol, ring: 2.5 };
 
+  // live cache miss: borrow the nearest cached note of the same model (shifted playbackRate), else a tiny generic
+  // pluck rendered once (<1 ms); the real note is queued on the idle pump.
+  let FB = null;
+  function fallbackBuf(ac) {
+    if (FB) return FB;
+    const sr = KSR, d = new Float32Array(Math.floor(sr * 1.6)), f = mtof(60);
+    for (let h = 1; h <= 6; h++) mode(d, sr, 0, f * h, 1 / (h * h), 1.4 / h, 0.002);
+    return (FB = mkBuf(ac, finish(d, 0.8, 24, 0.2), sr));
+  }
   function startBuf(ac, out, t, kind, midi, vel, o) {
-    const anchor = anchorOf(midi), buf = noteBuf(ac, kind, anchor);
+    let anchor = anchorOf(midi), buf = noteBuf(ac, kind, anchor, o.live);
+    if (!buf) {
+      stats.fallbacks++;
+      for (const dd of [2, -2, 4, -4, 6, -6, 8, -8]) { const b = NB.get(kind + ':' + (anchor + dd)); if (b) { buf = b; anchor += dd; break; } }
+      if (!buf) { buf = fallbackBuf(ac); anchor = 60; vel *= 0.6; }
+    }
     const rate = Math.pow(2, (midi - anchor) / 12 + (o.cents || 0) / 1200);
     const src = ac.createBufferSource(); src.buffer = buf;
     const g = gain(ac, 0, out);
@@ -419,7 +475,7 @@
       const old = tr[c];
       if (old && t - old.t0 < 0.35) continue;
       const tm = 62 + ((c - 2 + 12) % 12);
-      const v = startBuf(ac, out, t + 0.005, kind || 'taraf', tm, vel * lvl * a, {});
+      const v = startBuf(ac, out, t + 0.005, kind || 'taraf', tm, vel * lvl * a, { live: !!st.live || ac === X.ctx });
       v.tRef = t; ringTo(v, t + 2.6, 0.3);
       if (old) damp(old, t + 0.05, 0.12);
       tr[c] = v;
@@ -429,13 +485,13 @@
     const d = PLUCK[name];
     return (ac, out, t, notes, dur, vel, ev, st) => {
       ev = ev || {}; st = st || {};
-      const ring = d.ring == null ? 0.8 : d.ring, vv = vel * d.vol;
+      const ring = d.ring == null ? 0.8 : d.ring, vv = vel * d.vol, live = !!st.live || ac === X.ctx;
       if (ev.trem) { // alternate picking; each stroke interrupts the last
         for (const m of notes) {
           let prev = null, k = 0;
           for (let tt = 0; tt < dur - 0.03; tt += 0.064, k++) {
             if (prev) damp(prev, t + tt, 0.012);
-            prev = startBuf(ac, out, t + tt + rr(0, 0.004), d.buf, m, vv * (k % 2 ? 0.62 : 0.86) * rr(0.92, 1.05) / Math.sqrt(notes.length), { cents: rr(-3, 3) });
+            prev = startBuf(ac, out, t + tt + rr(0, 0.004), d.buf, m, vv * (k % 2 ? 0.62 : 0.86) * rr(0.92, 1.05) / Math.sqrt(notes.length), { cents: rr(-3, 3), live });
             prev.tRef = t + tt;
           }
           if (prev) ringTo(prev, t + dur + ring, 0.06);
@@ -445,8 +501,8 @@
       }
       if (d.mono) {
         const midi = notes[notes.length - 1], pv = st.pv;
-        const live = pv && pv.ac === ac && pv.decayAt > t + 0.01 && pv.decayAt > ac.currentTime + 0.01;
-        if (ev.glide && live && Math.abs(midi - st.lastMidi) <= 7) { // meend: pull the ringing string to the new note
+        const ringing = pv && pv.ac === ac && pv.decayAt > t + 0.01 && pv.decayAt > ac.currentTime + 0.01;
+        if (ev.glide && ringing && Math.abs(midi - st.lastMidi) <= 7) { // meend: pull the ringing string to the new note
           const nr = Math.pow(2, (midi - pv.anchor) / 12), pr = pv.src.playbackRate, gl = clamp(dur * 0.4, 0.08, 0.32);
           pr.cancelScheduledValues(t); pr.setValueAtTime(pv.rate, t); pr.exponentialRampToValueAtTime(nr, t + gl);
           pv.tUsed = (pv.tUsed || 0) + (t - pv.tRef) * pv.maxRate; pv.tRef = t;
@@ -458,8 +514,8 @@
           st.lastMidi = midi;
           return;
         }
-        if (live) damp(pv, t, 0.02);
-        const v = startBuf(ac, out, t, d.buf, midi, vv * rr(0.95, 1.03), { cents: rr(-2, 2) });
+        if (ringing) damp(pv, t, 0.02);
+        const v = startBuf(ac, out, t, d.buf, midi, vv * rr(0.95, 1.03), { cents: rr(-2, 2), live });
         v.ac = ac; v.tRef = t;
         const pr = v.src.playbackRate;
         if (ev.glide && st.lastMidi != null && st.lastMidi !== midi) { // slide into the note from the last one (re-plucked)
@@ -478,7 +534,7 @@
       // polyphonic strings / bars (chords strum slightly)
       notes.forEach((m, i) => {
         const tt = t + (notes.length > 1 ? i * rr(0.008, 0.016) : 0);
-        const v = startBuf(ac, out, tt, d.buf, m, vv * rr(0.94, 1.03) / Math.sqrt(Math.max(1, notes.length * 0.7)), { cents: rr(-2, 2) });
+        const v = startBuf(ac, out, tt, d.buf, m, vv * rr(0.94, 1.03) / Math.sqrt(Math.max(1, notes.length * 0.7)), { cents: rr(-2, 2), live });
         v.tRef = tt;
         const pr = v.src.playbackRate;
         if (ev.glide && st.lastMidi != null && notes.length === 1 && st.lastMidi !== m) {
@@ -921,7 +977,7 @@
     x: [1.9, 0.5, (d, sr) => crash(d, sr, 0, 1, 1.5, 380)],
   };
   S.machine = {
-    k: [0.8, 0.78, (d, sr) => { mode(d, sr, 0, 50, 1, 0.7, 0.001, (t) => 1 + 2 * Math.exp(-t / 0.01)); noise(d, sr, 0, 0.15, 0.002, { f: [['hp', 3000, 0.7]] }); for (let i = 0; i < d.length; i++) d[i] = Math.tanh(d[i] * 1.6); }],
+    k: [0.8, 0.78, (d, sr) => { mode(d, sr, 0, 50, 1, 0.7, 0.001, (t) => 1 + 2 * Math.exp(-t / 0.01)); noise(d, sr, 0, 0.15, 0.002, { f: [['hp', 3000, 0.7]] }); op(() => { for (let i = 0; i < d.length; i++) d[i] = Math.tanh(d[i] * 1.6); }); }],
     s: [0.4, 0.62, (d, sr) => { mode(d, sr, 0, 185, 0.6, 0.12, 0.001, (t) => 1 + 0.3 * Math.exp(-t / 0.01)); mode(d, sr, 0, 330, 0.35, 0.07); noise(d, sr, 0, 0.6, 0.05, { f: [['hp', 1500, 0.7], ['pk', 5000, 1, 4]] }); }],
     h: [0.15, 0.3, (d, sr) => metal(d, sr, 0, 1, 0.01, HATF, [['bp', 10000, 1.2], ['hp', 7000, 0.7]])],
     o: [0.7, 0.3, (d, sr) => metal(d, sr, 0, 1, 0.1, HATF, [['bp', 10000, 1.2], ['hp', 7000, 0.7]])],
@@ -942,27 +998,59 @@
   };
   S.matka = S.ghatam;
 
+  // drum render as a generator: record the helper calls (OPS), then replay one per step
+  function* drumGen(fn, sec, pk, sr, tune) {
+    const d = new Float32Array(Math.ceil(sec * sr));
+    let ops;
+    OPS = [];
+    try { fn(d, sr, tune); } finally { ops = OPS; OPS = null; }
+    for (const f of ops) { yield; f(); }
+    yield;
+    dcBlock(d, sr, 15);
+    return trim(finish(d, pk, Math.max(4, Math.round(sr * 0.0002)), 0.08));
+  }
+  // the core's original strokes (live nodes, cheap) stand in for a live hit whose buffer is still being rendered
+  const OLD = {}, I0 = N.audio._internal;
+  try { for (const k in I0.KITS) OLD[k] = Object.assign({}, I0.KITS[k]); } catch (e) { /* none */ }
+  const ALT = { dappu: ['dhol', { T: 't', k: 't' }], tasha: ['band', { t: 'p', D: 'P' }], marfa: ['band', { b: 'B', k: 'M', t: 'p' }], machine: ['kit', { b: 'r', l: 't' }],
+    ghatam: ['dholak', { D: 'g', T: 't', R: 't' }], matka: ['dholak', { D: 'g', T: 't', R: 't' }], dholak: ['dholak', { chi: 'c', na: 't', tin: 't', dha: 'D', ge: 'g', ta: 't', ka: 'k' }],
+    dhol: ['dhol', { d: 'D', dt: 'D' }], clap: ['clap', { s: 'x' }], band: ['band', {}], kit: ['kit', { l: 't', f: 't' }], tabla: ['tabla', { tak: 'na', geu: 'ge', ged: 'ge', dhet: 'dhit', dhun: 'dhin' }] };
+  function oldStroke(kit, name) {
+    const al = ALT[kit] || [kit, {}], K = OLD[al[0]] || {};
+    return K[al[1][name] || name] || null;
+  }
+  const STROKES = {};
   function stroke(kit, name, def) {
     const [sec, pk, fn, tuned] = def;
-    return (ac, out, t, vel, tune) => {
-      const sr = ac.sampleRate, key = kit + '.' + name + '@' + (tuned ? Math.round(tune || 294) : 0) + ':' + sr;
-      let arr = DB.get(key);
-      if (!arr) { DB.set(key, arr = []); if (DB.size > 600) DB.delete(DB.keys().next().value); }
-      let b;
+    const keyOf = (sr, tune) => kit + '.' + name + '@' + (tuned ? Math.round(tune || 294) : 0) + ':' + sr;
+    const arrOf = (key) => { let arr = DB.get(key); if (!arr) { DB.set(key, arr = []); if (DB.size > 600) DB.delete(DB.keys().next().value); } return arr; };
+    const queue = (ac, key, arr, tune) => queueJob('d:' + key + '#' + arr.length, () => drumGen(fn, sec, pk, ac.sampleRate, tune || 294), (o) => { if (arr.length < 3) arr.push(mkBuf(ac, o, ac.sampleRate)); });
+    const hit = (ac, out, t, vel, tune) => {
+      const sr = ac.sampleRate, key = keyOf(sr, tune), arr = arrOf(key);
+      const live = ac === X.ctx;
+      let b = null, rate = 1;
       if (arr.length < 3) {
-        const d = new Float32Array(Math.ceil(sec * sr));
-        fn(d, sr, tune || 294);
-        dcBlock(d, sr, 15);
-        const o = trim(finish(d, pk, Math.max(4, Math.round(sr * 0.0002)), 0.08));
-        b = ac.createBuffer(1, o.length, sr);
-        if (b.copyToChannel) b.copyToChannel(o, 0); else b.getChannelData(0).set(o);
-        arr.push(b);
-      } else b = arr[(rnd() * arr.length) | 0];
+        if (live) queue(ac, key, arr, tune);
+        else arr.push(mkBuf(ac, drain(drumGen(fn, sec, pk, sr, tune || 294)), sr));
+      }
+      if (arr.length) b = arr[(rnd() * arr.length) | 0];
+      else { // live miss: same stroke at another tabla tuning (re-pitched), else the core's old live-node stroke
+        stats.fallbacks++;
+        if (tuned) {
+          const pre = kit + '.' + name + '@';
+          for (const [k, v] of DB) if (v.length && k.startsWith(pre) && k.endsWith(':' + sr)) { const tu = +k.slice(pre.length, k.lastIndexOf(':')); if (tu) { b = v[0]; rate = (tune || 294) / tu; break; } }
+        }
+        if (!b) { const o = oldStroke(kit, name); if (o) o(ac, out, t, vel, tune); return t + 0.3; }
+      }
       const s = ac.createBufferSource(); s.buffer = b;
+      if (rate !== 1) s.playbackRate.value = clamp(rate, 0.5, 2);
       const g = gain(ac, vel, out);
       s.connect(g); s.start(t);
       return t + b.duration;
     };
+    hit.warm = (ac, tune) => { const key = keyOf(ac.sampleRate, tune), arr = arrOf(key); if (!arr.length) queue(ac, key, arr, tune); };
+    (STROKES[kit] || (STROKES[kit] = {}))[name] = hit;
+    return hit;
   }
 
   /* ============================================================ registration */
@@ -976,9 +1064,18 @@
   for (const kit in S) {
     const o = {};
     for (const st in S[kit]) { const fn = stroke(kit, st, S[kit][st]); o[st] = (ac, out, t, vel, tune) => { try { return fn(ac, out, t, vel == null ? 1 : vel, tune); } catch (e) { report('kit.' + kit, e); } return t; }; }
-    X.registerKit(kit, o);
+    // our strokes cache themselves (idle-rendered, live-safe): keep the core's OfflineAudioContext drum pre-render away
+    X.registerKit(kit, o, { cache: false });
   }
+  // after unlock: render one take of every (non-tabla) stroke in idle time
+  let warmedKits = false;
+  X.onUpdate('instruments.kits', () => {
+    const ac = X.ctx;
+    if (warmedKits || !ac) return;
+    warmedKits = true;
+    for (const kit in STROKES) if (kit !== 'tabla') for (const k in STROKES[kit]) STROKES[kit][k].warm(ac, 0);
+  }, 51);
   // tests / tools
   X.instruments = { names: Object.keys(PLUCK).concat(Object.keys(LEAD), Object.keys(POLY)), kits: Object.keys(S).reduce((o, k) => { o[k] = Object.keys(S[k]); return o; }, {}),
-    stats, noteBuf, renderString: (inst, midi) => renderStringInst(KSD[inst], mtof(midi)), KSD, MODAL, LEAD, warmQ };
+    stats, noteBuf, renderString: (inst, midi) => drain(renderStringInst(KSD[inst], mtof(midi))), KSD, MODAL, LEAD, JOBS };
 })();
