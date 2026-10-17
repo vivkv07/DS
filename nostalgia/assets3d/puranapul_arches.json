@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 135148,
+ "bytes": 135076,
  "clips": {},
  "family": "landmark",
  "file": "puranapul_arches.glb",
@@ -13,7 +13,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 132.0,
+ "kb": 131.9,
  "kit": 1,
  "materials": [
   "M_puranapul_arches_granite_grey",
@@ -21,8 +21,8 @@
   "M_puranapul_arches_lime_plaster"
  ],
  "max": [
-  44.394,
-  78.582,
+  24.74,
+  77.2,
   14.4
  ],
  "meta": {
@@ -36,18 +36,18 @@
   "landmark": "puranapul_arches"
  },
  "min": [
-  -44.394,
-  -82.582,
+  -24.74,
+  -77.2,
   0.0
  ],
  "notes": [
-  "Built along the road span (rotated 16.8 deg, centred on (0.0, -2.0)): X extent exceeds lm.w on purpose; deck free for the ground renderer road (|v| < 18.5)",
+  "Built along Blender Y (the bridge axis); the landmark faceAngle turns it onto the real span; deck free for the ground renderer road (|v| < 18.5)",
   "COL_puranapul_arches: the two side walls (camera-ray proxies)"
  ],
  "script": "oldcity.civic",
  "size": [
-  88.787,
-  161.164,
+  49.48,
+  154.4,
   14.4
  ],
  "tint": null,
