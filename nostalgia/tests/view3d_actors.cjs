@@ -104,6 +104,17 @@ const HELPERS = () => {
   window.T3 = {
     clearVehicles() { for (const e of N.entities.all.slice()) if (e.kind === 'vehicle' && e !== N.player.vehicle) N.vehicles.remove(e); },
     exit() { const p = N.player; if (p.vehicle) { try { N.vehicles.exit(p, true); } catch (e) { p.vehicle = null; } } p.hidden = false; },
+    /** the heading with the longest clear straight drive from the player (the maidan has stands,
+     *  sight screens and match-day dressing: driving into one stops the car) */
+    clearDir(r) {
+      const p = N.player; let best = -Math.PI / 2, bestD = -1;
+      for (let k = 0; k < 32; k++) {
+        const a = k / 32 * Math.PI * 2; let d = 0;
+        for (; d < 400; d += 6) { const c = N.world.collide(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, r || 7, 'drive'); if (c.hit || c.bad) break; }
+        if (d > bestD) { bestD = d; best = a; }
+      }
+      return best;
+    },
     road(dx, dy) { const p = N.player; const q = N.world.nearestRoadPoint(p.x + (dx || 0), p.y + (dy || 0)); return q ? { x: q.x, y: q.y, angle: q.angle } : { x: p.x, y: p.y, angle: 0 }; },
     water() {
       const p = N.player;
@@ -353,7 +364,8 @@ async function gait(browser) {
     const p = N.player, out = {};
     const st = window.__start, dir = window.__dir || 0;
     p.x = st.x; p.y = st.y; await T3.raf(2);
-    const v = N.vehicles.spawn('hero_cycle', p.x + Math.cos(dir + 1.57) * 6, p.y + Math.sin(dir + 1.57) * 6, dir, {});
+    // Chinnu's own cycle (saddle let down): he sits on it; on an adult's Hero he rides kainchi (below)
+    const v = N.vehicles.spawn('chinnu_cycle', p.x + Math.cos(dir + 1.57) * 6, p.y + Math.sin(dir + 1.57) * 6, dir, {});
     const side = [Math.sin(dir) * 44, 10, -Math.cos(dir) * 44, 4.5], wide = { cw: 300, ch: 236, fov: 42 }; // camera square to the cycle
     if (!v) return { skip: 'no spawn' };
     N.view3dActors.debug.track(v);
@@ -394,6 +406,48 @@ async function gait(browser) {
     check(ride.pedal.knee > 0.4 && ride.pedal.crank > 1, 'pedalling: knees cycle with the crank (knee range ' + ride.pedal.knee + ' rad, crank ' + ride.pedal.crank + ' rad over ' + ride.pedal.n + ' frames)');
     const o = ride.off.hips, mo = o.filter((x) => x > 0.35 && x < 1.0).length;
     check(o.length > 4 && o[0] > 0.8 && o[o.length - 1] < 0.4 && mo >= 2 && Math.abs(ride.off.lastLow) < 0.12, 'getting off: from seated to standing over several frames, feet back on the ground (' + o.slice(0, 14).join(' ') + '; sole ' + ride.off.lastLow + ')');
+  }
+
+  // ---- kainchi: an 11-year-old on an adult's Hero roadster rides standing beside the frame, the
+  // right leg through the triangle to the far pedal, the cycle leaning away (vehicles.js 2D does it too)
+  const kai = await page.evaluate(async () => {
+    const p = N.player, A = N.view3dActors;
+    if (p.vehicle) { try { N.vehicles.exit(p, true); } catch (e) { p.vehicle = null; } }
+    for (const e of N.entities.all.slice()) if (e.kind === 'vehicle') N.vehicles.remove(e);
+    const st = window.__start, dir = window.__dir || 0;
+    p.x = st.x; p.y = st.y; p.hidden = false; await T3.raf(2);
+    const v = N.vehicles.spawn('hero_cycle', p.x, p.y, dir, {});
+    if (!v) return { skip: 'no spawn' };
+    N.vehicles.enter(p, v);
+    if (p.vehicle !== v) return { skip: 'enter refused' };
+    A.debug.track(v);
+    N.time.scale = 1; N.input.hold('up', true); await T3.raf(16);
+    await T3.slowmo(0.025);
+    const left = [Math.sin(dir) * 40, 9, -Math.cos(dir) * 40, 4.5]; // he hangs off the cycle's left side
+    T3.capBegin({ key: 't', step: 0.04, max: 10, follow: v, off: left, cw: 300, ch: 236, fov: 42 });
+    const err = [], abdR = [], knee = [], roll = [], poses = {};
+    for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) {
+      await T3.raf(2);
+      const r = A.debug.rec, rd = r && r.riders && r.riders[0];
+      if (!rd) continue;
+      poses[rd.pose] = (poses[rd.pose] || 0) + 1;
+      if (rd.pose !== 'kainchi') continue;
+      const an = A.debug.riderAnkles(r, v.T.w / A.model(r.model).L);
+      err.push(Math.max(...an.err)); abdR.push(rd.J[17]); knee.push(rd.J[2]); roll.push(r.roll);
+    }
+    const k = T3.capEnd();
+    N.input.hold('up', false); N.time.scale = 1;
+    for (let i = 0; i < 15 && Math.abs(v.speed || 0) > 1; i++) { N.input.hold('down', true); await T3.raf(1); } N.input.hold('down', false);
+    A.debug.track(null);
+    const avg = (a) => a.length ? a.reduce((s2, x) => s2 + x, 0) / a.length : 0;
+    return { strip: k.strip, poses, n: err.length, errMax: err.length ? +Math.max(...err).toFixed(2) : 9, errAvg: +avg(err).toFixed(2), abdR: +avg(abdR).toFixed(2), knee: knee.length ? +(Math.max(...knee) - Math.min(...knee)).toFixed(2) : 0, roll: +avg(roll).toFixed(2) };
+  });
+  if (kai.skip) fail('kainchi: ' + kai.skip);
+  else {
+    saveStrip('kainchi', kai.strip);
+    check(kai.n >= 6 && (kai.poses.kainchi || 0) === kai.n, 'kainchi: Chinnu on a Hero roadster rides standing beside the frame (' + JSON.stringify(kai.poses) + ')');
+    check(kai.errAvg < 0.3 && kai.errMax < 0.6, 'kainchi: both feet on the pedals through the stroke (ankle to pedal ' + kai.errAvg + ' u avg, ' + kai.errMax + ' max)');
+    check(kai.abdR > 0.3 && kai.roll > 0.1 && kai.knee > 0.4, 'kainchi: the right leg swings out through the frame (' + kai.abdR + ' rad), the cycle leans away (' + kai.roll + ' rad), knees pump (' + kai.knee + ' rad)');
   }
   await errorsOk(page, errors);
   await context.close();
@@ -488,7 +542,7 @@ async function desktop(browser) {
       if (t === 'boat') { N.debug.teleport('tank_bund'); const w = T3.water(); if (!w) return { t, skip: 'no water' }; p.x = w.x; p.y = w.y; }
       else N.debug.teleport('fateh_maidan');
       const T = N.vehicles.TYPES[t];
-      const v = N.vehicles.spawn(t, p.x, p.y, -Math.PI / 2, {});
+      const v = N.vehicles.spawn(t, p.x, p.y, t === 'boat' ? -Math.PI / 2 : T3.clearDir(T.d ? T.d / 2 + 2 : 7), {});
       if (!v) return { t, skip: 'no spawn' };
       N.vehicles.enter(p, v);
       if (p.vehicle !== v) return { t, skip: 'enter refused' };
@@ -506,7 +560,8 @@ async function desktop(browser) {
       N.view.set('tps');
       A.debug.track(null);
       return { t, model: tps && tps.model, riders: tps && tps.riders ? tps.riders.length : 0, riderPose: tps && tps.riders && tps.riders[0] ? tps.riders[0].pose : null,
-        spin: moved && tps ? Math.abs(moved.spin - tps.spin) : 0, speed: Math.abs(v.speed || 0), cockpit: fps && fps.cockpit, fpsHide: !!(fps && fps.riders && fps.riders.some((q) => q.fpsHide)), show: A.model(fps ? fps.model : 'cycle').show, cls: T.cls };
+        spin: moved && tps ? Math.abs(moved.spin - tps.spin) : 0, speed: Math.abs(v.speed || 0), cockpit: fps && fps.cockpit, fpsHide: !!(fps && fps.riders && fps.riders.some((q) => q.fpsHide)), show: A.model(fps ? fps.model : 'cycle').show, cls: T.cls,
+        needle: fps && fps.needle, inside: fps && fps.inside, kainchi: !!(tps && tps.riders && tps.riders[0] && tps.riders[0].pose === 'kainchi') };
     }, t);
     rides.push(r);
   }
@@ -515,13 +570,15 @@ async function desktop(browser) {
     const heavyOrCar = r.cls === 'car' && r.t !== 'rickshaw' || r.cls === 'heavy';
     const okRider = heavyOrCar ? r.cockpit && r.fpsHide : r.riders >= 1 && r.fpsHide;
     check(r.model && okRider && (r.spin > 0.05 || r.cls === 'boat'), 'ride ' + r.t + ' (' + r.model + '): tps rider ' + (r.riders ? r.riderPose : 'hidden in a closed cabin') + ', moving (wheel spin ' + r.spin.toFixed(2) + '), fps ' + (r.cockpit ? 'cockpit interior + hands on the wheel' : 'head hidden, own hands on the grips'), JSON.stringify(r));
+    if (r.cockpit) check(r.needle > 0.05, 'ride ' + r.t + ': the speedometer needle reads the speed (' + (+r.needle || 0).toFixed(2) + ' rad at ' + r.speed.toFixed(0) + ' u/s)');
+    else if (r.cls !== 'boat') check(r.inside === 1, 'ride ' + r.t + ': first person flags the body the camera sits in (its windscreen turns clear)');
   }
 
   // ---- skid marks + dust / smoke: a handbrake turn on the maidan (real input)
   const fx = await page.evaluate(async () => {
     const fr = () => new Promise((r) => requestAnimationFrame(() => r()));
     T3.exit(); T3.clearVehicles(); N.debug.teleport('fateh_maidan');
-    const p = N.player, v = N.vehicles.spawn('ambassador', p.x, p.y, -Math.PI / 2, {});
+    const p = N.player, v = N.vehicles.spawn('ambassador', p.x, p.y, T3.clearDir(9), {});
     N.vehicles.enter(p, v); N.view.set('tps');
     N.input.hold('up', true);
     let maxSp = 0;
@@ -553,24 +610,59 @@ async function desktop(browser) {
       for (const id of ['chinnu', 'immu', 'amma', 'pochaiah', 'kite_chacha']) if (N.npcs && N.npcs.look) looks.push(N.npcs.look(id));
       window.__peds = looks.map((L, i) => { const e = new N.Actor({ kind: 'ped', x: b.x - 36 + (i % 7) * 12, y: b.y + 10 + Math.floor(i / 7) * 14, r: 3.4 }); e.look = L; e.anim = { phase: i, speed: i % 3 === 1 ? 1 : 0, run: false }; e.angle = -Math.PI / 2; e.update = function (dt) { this.anim.phase += dt * 6 * this.anim.speed; }; N.entities.add(e); return e; });
       p.hidden = true;
+      N.view3dActors.setOptions({ habits: 'always' }); // every idle habit on for the line-up
       N.view3dActors.debug.camera([b.x, 9.5, b.y - 34], [b.x, 5, b.y + 12], 50);
     });
+    const hab = await page.evaluate(async () => {
+      const fr = () => new Promise((r) => requestAnimationFrame(() => r()));
+      const A = N.view3dActors, out = {};
+      for (const e of window.__peds) { A.debug.track(e); await fr(); await fr(); const r = A.debug.rec; if (r && r.hab && r.habW > 0.5) out[r.hab] = (out[r.hab] || 0) + 1; }
+      A.debug.track(null);
+      return out;
+    });
+    check(Object.keys(hab).length >= 3, 'idle habits: people stand about with their hands behind the back, in front, folded, on bag straps (' + JSON.stringify(hab) + ')');
     await shot(page, 'people');
+    // talking: a bark makes its speaker gesture
+    const talk = await page.evaluate(async () => {
+      const fr = () => new Promise((r) => requestAnimationFrame(() => r()));
+      const A = N.view3dActors, e = window.__peds[2];
+      N.dialogue.bark(e, 'Arre bhai, suno na, ek baat bolta hoon!', { secs: 4 });
+      A.debug.track(e);
+      const el = [], tw = [];
+      for (let i = 0; i < 12; i++) { await fr(); const r = A.debug.rec; if (r) { el.push(r.J[7]); tw.push(r.talk); } }
+      A.debug.track(null);
+      return { range: el.length ? +(Math.max(...el) - Math.min(...el)).toFixed(2) : 0, talk: tw.length ? +Math.max(...tw).toFixed(2) : 0 };
+    });
+    check(talk.talk > 0.5 && talk.range > 0.1, 'talking: the speaker of a bark gestures (talk weight ' + talk.talk + ', elbow range ' + talk.range + ' rad)');
+    await page.evaluate(() => N.view3dActors.setOptions({ habits: true }));
     await page.evaluate(() => {
       for (const e of window.__peds) N.entities.remove(e);
       const b = window.__b;
       const row = [['chetak', -60], ['scooty', -44], ['rx100', -30], ['hero_cycle', -16], ['auto', 6], ['ambassador', 34], ['rickshaw', -78]];
       for (const [t, dx] of row) N.vehicles.spawn(t, b.x + dx, b.y + 10, -Math.PI / 2 + 0.25, { driver: true, seed: 5 + dx });
-      N.vehicles.spawn('bus', b.x - 10, b.y + 60, 0.2, { driver: true }); N.vehicles.spawn('lorry', b.x + 60, b.y + 62, Math.PI - 0.3, { driver: true });
+      window.__bus = N.vehicles.spawn('bus', b.x - 10, b.y + 60, 0.2, { driver: true, seed: 24 }); N.vehicles.spawn('lorry', b.x + 60, b.y + 62, Math.PI - 0.3, { driver: true });
       N.view3dActors.debug.camera([b.x - 18, 16, b.y - 40], [b.x - 12, 4, b.y + 22], 55);
     });
+    const bus = await page.evaluate(async () => {
+      const fr = () => new Promise((r) => requestAnimationFrame(() => r()));
+      const A = N.view3dActors; A.debug.track(window.__bus); await fr(); await fr();
+      const r = A.debug.rec; A.debug.track(null);
+      return r ? { bus: r.bus, driver: !!(r.riders && r.riders.length) } : null;
+    });
+    check(bus && bus.bus && bus.bus.crowd > 0 && bus.bus.boys > 0 && bus.driver, 'city bus: driver at the wheel, a standing crowd inside, footboard boys at the rear door', JSON.stringify(bus));
     await shot(page, 'vehicles');
+    await page.evaluate(() => { const v = window.__bus, a = v.angle; N.view3dActors.debug.camera([v.x + Math.cos(a) * 14 + Math.sin(a) * 36, 11, v.y + Math.sin(a) * 14 - Math.cos(a) * 36], [v.x - Math.cos(a) * 6, 8, v.y - Math.sin(a) * 6], 50); });
+    await shot(page, 'bus_footboard');
     await page.evaluate(() => { N.view3dActors.debug.camera(null); N.player.hidden = false; T3.clearVehicles(); const v = N.vehicles.spawn('chetak', N.player.x, N.player.y, -Math.PI / 2, {}); N.vehicles.enter(N.player, v); N.view.set('tps'); N.view3d.setCamera({ yaw: -Math.PI / 2 + 0.6, pitch: 0.22, snap: true }); });
     await shot(page, 'ride_chetak_tps');
     await page.evaluate(() => { N.view.set('fps'); N.view3d.setCamera({ pitch: 0.35, snap: true }); });
     await shot(page, 'ride_chetak_fps');
     for (const [t, pitch] of [['hero_cycle', 0.4], ['auto', 0.15], ['ambassador', 0.12], ['bus', 0.15]]) {
-      await page.evaluate(([t, pitch]) => { T3.exit(); T3.clearVehicles(); N.debug.teleport('fateh_maidan'); const v = N.vehicles.spawn(t, N.player.x, N.player.y, -Math.PI / 2, {}); N.vehicles.enter(N.player, v); N.view.set('fps'); N.view3d.setCamera({ pitch, snap: true }); }, [t, pitch]);
+      await page.evaluate(async ([t, pitch]) => {
+        T3.exit(); T3.clearVehicles(); N.debug.teleport('fateh_maidan');
+        const v = N.vehicles.spawn(t, N.player.x, N.player.y, T3.clearDir(8), {}); N.vehicles.enter(N.player, v); N.view.set('fps'); N.view3d.setCamera({ pitch, snap: true });
+        N.input.hold('up', true); await T3.raf(8); N.input.hold('up', false); // rolling: the speedometer needle is off its stop
+      }, [t, pitch]);
       await shot(page, 'ride_' + t + '_fps');
     }
     await page.evaluate(() => { N.view.set('tps'); });
@@ -673,7 +765,7 @@ async function desktop(browser) {
     for (let i = 0; i < 4; i++) await fr();
     out.kites = N.view3dActors.stats().kites;
     // frame the nearest kites from roof height (a tps camera at street level only sees the lane)
-    const p = N.player, sc = S.scene(p.x, p.y, 560), VS = N.view3d.VS || 1.5;
+    const p = N.player, sc = (N.view3dActors.debug.SEA && N.view3dActors.debug.SEA.sc) || S.scene(p.x, p.y, 560), VS = N.view3d.VS || 1.5; // what the layer draws
     const ks = (sc && sc.kites || []).filter((k) => isFinite(k.x)).sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y)).slice(0, 5);
     if (ks.length) {
       const c = ks.reduce((o, k) => ({ x: o.x + k.x / ks.length, y: o.y + k.y / ks.length, h: o.h + k.h * VS / ks.length }), { x: 0, y: 0, h: 0 });
@@ -683,7 +775,7 @@ async function desktop(browser) {
     } else N.view3d.setCamera({ yaw: N.view.yaw, pitch: -0.3, snap: true });
     return out;
   });
-  if (!sea.skip) check(sea.kites > 0, 'Sankranti: kites in the sky with strings (' + sea.kites + ')');
+  if (!sea.skip) check(sea.kites > 0, 'Sankranti: kites in the sky with strings (' + sea.kites + ', ' + (sea.framed || 0) + ' framed for the shot)');
   if (!sea.skip && SHOTS) { await lowRes(page, false); await shot(page, 'sankranti_kites'); await lowRes(page, true); }
   await page.evaluate(() => N.view3dActors.debug.camera(null));
   const sea2 = await page.evaluate(async () => {

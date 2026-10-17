@@ -617,12 +617,24 @@ class VRig:
         if os.environ.get('NOS_TRIS'):
             # authoring aid: triangle cost per part (NOS_TRIS=1 build_all.py <id> --one ...)
             cost = {}
+            vcost = {}
             for o in meshes:
                 k = o.name.split('.')[0]
                 cost[k] = cost.get(k, 0) + sum(len(p.vertices) - 2 for p in o.data.polygons)
-            for k, n in sorted(cost.items(), key=lambda kv: -kv[1])[:40]:
-                kit.log('  tris %-22s %5d' % (k, n))
-            kit.log('  tris total %d' % sum(cost.values()))
+                # exported vertices (lower bound: normal splits only; UV seams add more)
+                me = o.data
+                try:
+                    cn = me.corner_normals
+                    seen = set()
+                    for li, lp in enumerate(me.loops):
+                        n = cn[li].vector
+                        seen.add((lp.vertex_index, round(n.x, 2), round(n.y, 2), round(n.z, 2)))
+                    vcost[k] = vcost.get(k, 0) + len(seen)
+                except Exception:
+                    vcost[k] = vcost.get(k, 0) + len(me.vertices)
+            for k, n in sorted(cost.items(), key=lambda kv: -vcost.get(kv[0], 0))[:45]:
+                kit.log('  tris %-22s %5d  verts %5d' % (k, n, vcost.get(k, 0)))
+            kit.log('  tris total %d, verts >= %d' % (sum(cost.values()), sum(vcost.values())))
         ob = kit.join(meshes, A.id)
         A.tint = {'attribute': '_REGION', 'names': REGION_NAMES, 'regions': region_colours(ob)}
         kit.write_regions(ob)
@@ -717,6 +729,11 @@ def uv_atlas_weighted(ob, boost=None, under=0.45, margin=0.005):
     except Exception as e:
         kit.log('average_islands_scale failed', e)
     bpy.ops.object.mode_set(mode='OBJECT')
+    # the seam-marker face layer has done its job: drop it so the exporter does not ship it as a
+    # _CYL vertex attribute (4 bytes a vertex for nothing)
+    at = me.attributes.get('_cyl')
+    if at is not None:
+        me.attributes.remove(at)
     kit.log('uv: %d faces unwrapped along seams, %d smart-projected' % (n_cyl, n_rest))
     boost = boost or {}
     names = [m.name if m else '' for m in me.materials]
@@ -1124,3 +1141,182 @@ def after_export(A):
             traceback.print_exc()
             kit.log('variant previews failed: %s' % e)
     atexit.register(run)
+
+
+# =========================================================================== bodywork helpers (motor vehicles)
+def u_row(y, hw, z_skirt, zc, hh, p=2.6, n=8, x0=0.0):
+    """one cross-section row of an open inverted-U shell at y (scooter rear bodies, mudguards, bonnets):
+    from the left skirt (x0 + hw, z_skirt) up over a superellipse top (centre zc, half height hh) and
+    down to the right skirt; every row has n + 3 points"""
+    zs = min(z_skirt, zc - 0.02)
+    pts = [(x0 + hw, y, zs)]
+    for i in range(n + 1):
+        a = math.pi * i / n
+        ca, sa = math.cos(a), math.sin(a)
+        ex = math.copysign(abs(ca) ** (2.0 / p), ca)
+        ez = abs(sa) ** (2.0 / p)
+        pts.append((x0 + hw * ex, y, zc + hh * ez))
+    pts.append((x0 - hw, y, zs))
+    return pts
+
+
+def apron_rows(levels, n=8):
+    """rows of a leg shield / apron (curved sheet, convex towards -Y): levels = [(z, y_back, hw,
+    bulge)], each row runs across x from +hw to -hw"""
+    rows = []
+    for (z, y0, hw, bulge) in levels:
+        row = []
+        for i in range(n + 1):
+            u = 1 - 2 * i / n
+            row.append((hw * u, y0 - bulge * (1 - u * u), z))
+        rows.append(row)
+    return rows
+
+
+def ring_y(y, hw, z0, z1, p=2.4, x0=0.0):
+    """a loft ring (kit.loft dict) across Y: a superellipse of half width hw between z0 and z1"""
+    return dict(c=(x0, y, (z0 + z1) / 2.0), r=(hw, (z1 - z0) / 2.0), p=p, side=(1, 0, 0))
+
+
+def loft_y(name, stations, m, seg=12, cap_start=True, cap_end=True):
+    """a closed body along Y from superellipse stations [(y, hw, z0, z1, p[, x0])]"""
+    rings = [ring_y(*s) for s in stations]
+    return loft(name, rings, seg=seg, side=(1, 0, 0), mat=m, cap_start=cap_start, cap_end=cap_end)
+
+
+def tele_fork(name, crown, axle, ax, half, r, m, lower_m=None, lower_r=None, split=0.55, seg=6):
+    """telescopic fork: two legs from the crown (top) down to the axle along the steering axis ax,
+    `half` apart from the centre line; the lower (slider) part in lower_m (the stanchion in m)"""
+    parts = []
+    crown, axle = Vector(crown), Vector(axle)
+    for sx in (1, -1):
+        top = crown + Vector((sx * half, 0, 0))
+        bot = axle + Vector((sx * half, 0, 0))
+        mid = top.lerp(bot, split)
+        parts.append(tube(name + '_stanchion', [top, mid + (bot - top) * 0.05], r, seg=seg, mat=m))
+        parts.append(tube(name + '_slider', [mid, bot], lower_r or r * 1.25, seg=seg, mat=lower_m or m, cap=True))
+    return parts
+
+
+def moto_bars(name, centre, pts_left, grip_len, M, bar_m=None, grip_m=None, r=0.09, grip_r=0.15, levers=True, lever_m=None):
+    """a handlebar mirrored about x = centre.x: pts_left = polyline offsets (left half, +X) from the
+    centre; the grip follows the last segment for grip_len. Returns (parts, {'L': grip centre, 'R': ...})"""
+    c = Vector(centre)
+    parts = []
+    grips = {}
+    for sx, S in ((1, 'L'), (-1, 'R')):
+        P = [c + Vector((p[0] * sx, p[1], p[2])) for p in pts_left]
+        parts.append(tube(name + '_bar', P, r, seg=6, mat=bar_m or M['chrome']))
+        d = (P[-1] - P[-2]).normalized()
+        g0, g1 = P[-1] - d * grip_len, P[-1] + d * 0.05
+        parts.append(tube(name + '_grip', [g0, g1], grip_r, seg=7, mat=grip_m or M['plastic'], cap=True))
+        grips[S] = g0.lerp(g1, 0.5)
+        if levers:
+            side = Vector((0, -1, 0))
+            l0 = g0 - d * 0.1 + Vector((0, -0.12, 0.05))
+            parts.append(tube(name + '_lever', [l0, l0 + d * (grip_len * 0.75) + side * 0.35 + Vector((0, 0, -0.05))], 0.045, seg=4, mat=lever_m or M['chrome']))
+            parts.append(rbox(name + '_perch', (0.22, 0.28, 0.22), tuple(g0 - d * 0.12), M['black'], bevel=0.0))
+    return parts, grips
+
+
+def mirrors(name, bases, height, lean, r, M, stalk_m=None):
+    """a pair of round mirrors on stalks from bases [(x, y, z) left, right] rising `height`, leaning
+    outwards by `lean`; the glass faces back (+Y) to the rider"""
+    parts = []
+    for b in bases:
+        b = Vector(b)
+        sx = 1 if b.x >= 0 else -1
+        top = b + Vector((sx * lean, 0.1, height))
+        parts.append(tube(name + '_stalk', [b, b + Vector((sx * lean * 0.3, 0.02, height * 0.55)), top], 0.045, seg=4, mat=stalk_m or M['chrome']))
+        head = lathe(name + '_head', [(0.0, -0.1), (r * 0.9, -0.08), (r, 0.0), (r * 0.95, 0.05)], seg=10, mat=M['chrome'], close_top=True)
+        head.rotation_mode = 'QUATERNION'
+        head.rotation_quaternion = Vector((sx * 0.25, 1, 0.1)).normalized().to_track_quat('Z', 'Y')
+        head.location = top + Vector((0, 0, r * 0.6))
+        kit.apply_transform(head)
+        parts.append(head)
+    return parts
+
+
+def lens_box(name, size, loc, m, bezel_m=None, facing='-Y', bezel=0.06):
+    """a rectangular lamp: a lens (lamp material, glows at night) in a thin bezel"""
+    parts = []
+    sx, sy, sz = size
+    if facing in ('-Y', '+Y'):
+        s = 1 if facing == '+Y' else -1
+        parts.append(rbox(name + '_lens', (sx, sy, sz), loc, m, bevel=0.0))
+        if bezel_m is not None:
+            l = Vector(loc)
+            parts.append(rbox(name + '_bezel', (sx + bezel * 2, sy * 0.7, sz + bezel * 2), tuple(l - Vector((0, s * sy * 0.3, 0))), bezel_m, bevel=0.0))
+    else:
+        parts.append(rbox(name + '_lens', (sx, sy, sz), loc, m, bevel=0.0))
+    return parts
+
+
+def spring(name, a, b, r, turns, m, wire=0.05, seg=3):
+    """a coil spring from a to b (rear shocks, seat springs)"""
+    a, b = Vector(a), Vector(b)
+    d = b - a
+    t = d.normalized()
+    u = t.orthogonal().normalized()
+    v = t.cross(u)
+    n = int(turns * 6)
+    pts = [a + d * (i / n) + (u * math.cos(2 * math.pi * turns * i / n) + v * math.sin(2 * math.pi * turns * i / n)) * r for i in range(n + 1)]
+    return tube(name, pts, wire, seg=seg, mat=m, cap=False)
+
+
+def car_section(hw, z0, z1, rs=0.8, rb=0.5, crown=0.2, bulge=0.15, ns=4, nb=2, nt=3):
+    """a car body cross-section [(x, z)] as a closed loop: a crowned top, rounded shoulders (radius
+    rs) at the belt line, sides bulging out by `bulge` at mid height, rounded bottom corners (rb)"""
+    rs = min(rs, hw * 0.9, (z1 - z0) * 0.6)
+    rb = min(rb, hw * 0.5, (z1 - z0) * 0.3)
+    L = []
+    w = hw - rs
+    for i in range(nt):                      # top, from the centre line out to the shoulder
+        x = w * i / nt
+        u = x / max(1e-3, hw)
+        L.append((x, z1 + crown * (1 - u * u)))
+    for i in range(ns + 1):                  # shoulder arc
+        a = math.pi / 2 * (1 - i / ns)
+        L.append((w + rs * math.cos(a), z1 - rs + rs * math.sin(a) + crown * (1 - (w / max(1e-3, hw)) ** 2) * (i == 0)))
+    zt, zbot = z1 - rs, z0 + rb
+    for t in (0.33, 0.66):                   # side with a bulge
+        z = zt + (zbot - zt) * t
+        L.append((hw + bulge * math.sin(math.pi * t), z))
+    for i in range(nb + 1):                  # bottom corner arc
+        a = -math.pi / 2 * i / nb
+        L.append((hw - rb + rb * math.cos(a), z0 + rb + rb * math.sin(a)))
+    L.append((0.0, z0))
+    R = [(-x, z) for (x, z) in reversed(L[1:-1])]
+    return L + R
+
+
+def section_halfwidth(loop, z):
+    """the largest |x| of a section loop at height z (linear between loop points)"""
+    best = 0.0
+    n = len(loop)
+    for i in range(n):
+        (x0, z0), (x1, z1) = loop[i], loop[(i + 1) % n]
+        if (z0 - z) * (z1 - z) <= 0 and abs(z1 - z0) > 1e-9:
+            t = (z - z0) / (z1 - z0)
+            best = max(best, abs(x0 + (x1 - x0) * t))
+    return best
+
+
+def profile_loft(name, stations, m, cap=True):
+    """a closed body through explicit section loops: stations = [(y, [(x, z) ...])] (same point count,
+    each loop closed implicitly); the ends are capped with n-gons"""
+    bm = bmesh.new()
+    rings = []
+    for (y, loop) in stations:
+        rings.append([bm.verts.new((x, y, z)) for (x, z) in loop])
+    n = len(rings[0])
+    for A_, B_ in zip(rings, rings[1:]):
+        for k in range(n):
+            bm.faces.new((A_[k], A_[(k + 1) % n], B_[(k + 1) % n], B_[k]))
+    if cap:
+        bm.faces.new(list(reversed(rings[0])))
+        bm.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    o = kit.obj_from_bm(bm, name, m)
+    o['nos_smooth'] = 50.0
+    return o

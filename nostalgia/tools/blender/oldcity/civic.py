@@ -787,12 +787,9 @@ def salar_jung_museum(A):
 # y = 0, so the bridge's arches can only be shown ABOVE it: like the procedural model, each side of the
 # deck carries the bridge's elevation (22 pointed arches on piers, cutwaters upstream, buttresses
 # downstream, string course, parapet, refuges) between |v| = 18.5 and ~22, and nothing stands on the
-# deck itself. The landmark is axis-aligned (no face) but the road's straight span runs from world
-# (7295, 7517) to (7339, 7663), ~16.8 deg off north-south, so the model is built along that segment
-# (Blender (x, y) = world (x - lm.x, -(y - lm.y))): its own X extent (~86 u) exceeds lm.w = 44 on
-# purpose; footprint meta [44, 150] keeps the runtime's fit scale at exactly 1.
-PP_P1 = (7295.0 - 7317.0, -(7517.0 - 7588.0))     # north end of the straight span (Blender coords)
-PP_P2 = (7339.0 - 7317.0, -(7663.0 - 7588.0))     # south end
+# deck itself. The model is built along Blender Y (the bridge axis) at the footprint [44, 150]; the
+# world generator gives the landmark a faceAngle along the real span (~16.8 deg off north-south), which
+# the runtime uses to turn it onto the road.
 PP_HALF = 15.0 + 3.5                               # road half width + the renderer's concrete strips
 
 
@@ -926,19 +923,13 @@ def puranapul_arches(A):
             parts.append(_pyramid('pillar_top', sq, 13.2, (cxp, ye, 14.4), lime))
     # COL proxies (side walls only; the deck stays free), built in the same local frame
     cols = [C.col_box('pp_w', (XO - XI, L, ZP), ((XI + XO) / 2, 0, 0)), C.col_box('pp_e', (XO - XI, L, ZP), (-(XI + XO) / 2, 0, 0))]
-    # turn the bridge onto the road's straight span
-    ang = math.atan2(PP_P2[0] - PP_P1[0], PP_P1[1] - PP_P2[1])      # local +Y -> P2 -> P1 direction
-    mx, my = (PP_P1[0] + PP_P2[0]) / 2, (PP_P1[1] + PP_P2[1]) / 2
-    R = Matrix.Translation((mx, my, 0)) @ Matrix.Rotation(ang, 4, 'Z')
     strip_bottoms(parts)
     for o in parts + cols:
         kit.apply_modifiers(o)
-        o.matrix_world = R @ o.matrix_world
-        kit.apply_transform(o)
     C.finish(A, parts, tile=8.0, tex=256, ao_samples=32, ao_dist=6.0, ground_dirt=2.0)
     C.col_join(cols, 'puranapul_arches')
-    A.notes.append('Built along the road span (rotated %.1f deg, centred on (%.1f, %.1f)): X extent exceeds lm.w on purpose; '
-                   'deck free for the ground renderer road (|v| < %.1f)' % (math.degrees(ang), mx, my, XI))
+    A.notes.append('Built along Blender Y (the bridge axis); the landmark faceAngle turns it onto the real span; '
+                   'deck free for the ground renderer road (|v| < %.1f)' % XI)
     A.notes.append('COL_puranapul_arches: the two side walls (camera-ray proxies)')
     A.preview = C.shots(front_az=-70, el=14, fov=30, extra=[
         {'name': 'arches', 'size': 320, 'samples': 16, 'view': {'az': -100, 'el': 5, 'fov': 36, 'target': (-30, 0, 3), 'dist': 70}}])

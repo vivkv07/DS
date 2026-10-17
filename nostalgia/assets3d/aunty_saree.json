@@ -1,0 +1,266 @@
+{
+ "anchors": {
+  "eye": [
+   0.0,
+   -0.465,
+   8.1694
+  ],
+  "grip_L": [
+   2.76,
+   0.0,
+   5.06
+  ],
+  "grip_R": [
+   -2.76,
+   0.0,
+   5.06
+  ],
+  "head_top": [
+   0.0,
+   0.08,
+   8.9324
+  ],
+  "sole_heel_L": [
+   0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_heel_R": [
+   -0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_toe_L": [
+   0.49,
+   -1.08,
+   -0.0
+  ],
+  "sole_toe_R": [
+   -0.49,
+   -1.08,
+   -0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 4000,
+ "bytes": 349052,
+ "clips": {},
+ "family": "character",
+ "file": "aunty_saree.glb",
+ "front": "-Y",
+ "id": "aunty_saree",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 340.9,
+ "kit": 1,
+ "materials": [
+  "M_aunty_saree"
+ ],
+ "max": [
+  2.963,
+  1.081,
+  8.919
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "shoulder_L",
+   "upperarm_L",
+   "forearm_L",
+   "hand_L",
+   "thigh_L",
+   "shin_L",
+   "foot_L",
+   "toe_L",
+   "shoulder_R",
+   "upperarm_R",
+   "forearm_R",
+   "hand_R",
+   "thigh_R",
+   "shin_R",
+   "foot_R",
+   "toe_R"
+  ],
+  "clips": "clips_adult",
+  "female": true,
+  "height": 8.8,
+  "kinds": [
+   "aunty",
+   "saree"
+  ],
+  "lazy": true,
+  "look": {
+   "blouse": "#7a1f2b",
+   "border": "#7a1f2b",
+   "hair": "#1a1412",
+   "kind": "aunty",
+   "saree": "#3b7d4f",
+   "skin": "#a0683f"
+  },
+  "npcs": {
+   "amma": {},
+   "ammamma": {},
+   "aunty": {},
+   "aunty_2": {},
+   "aunty_3": {},
+   "flower_aunty": {},
+   "vimala_maam": {}
+  },
+  "priority": 0,
+  "regionsUsed": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "pants",
+   "shoes",
+   "accent",
+   "specs",
+   "jasmine",
+   "clothbag"
+  ],
+  "rig": "adult_rig",
+  "role": "people",
+  "variants": {
+   "amma": {
+    "blouse": "#7a1f2b",
+    "border": "#7a1f2b",
+    "hair": "#1a1412",
+    "kind": "aunty",
+    "saree": "#3b7d4f",
+    "skin": "#a0683f"
+   },
+   "ammamma": {
+    "border": "#c9a227",
+    "hair": "#e8e4dc",
+    "kind": "saree",
+    "prop": "clothbag",
+    "saree": "#efe6d2",
+    "skin": "#8d5a3b",
+    "specs": true
+   },
+   "orange": {
+    "blouse": null,
+    "border": "#c9a227",
+    "hair": "#1a1412",
+    "kind": "aunty",
+    "saree": "#e07a2e",
+    "skin": "#a0683f"
+   },
+   "teal": {
+    "blouse": null,
+    "border": "#efe9dc",
+    "hair": "#1a1412",
+    "kind": "saree",
+    "saree": "#2a8c82",
+    "skin": "#a0683f"
+   }
+  }
+ },
+ "min": [
+  -2.963,
+  -1.268,
+  -0.0
+ ],
+ "notes": [],
+ "script": "characters",
+ "size": [
+  5.926,
+  2.348,
+  8.919
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "fields": {
+   "accent": [
+    "border",
+    "#f2c230"
+   ],
+   "clothbag": [
+    "bag",
+    "#c8b48a"
+   ],
+   "pants": [
+    "saree",
+    "shirt"
+   ],
+   "shirt": [
+    "blouse",
+    "@saree:0.7",
+    "@shirt:0.7"
+   ],
+   "shoes": [
+    "chappal",
+    "#5a3a2a"
+   ],
+   "stripes": [
+    "border",
+    "#f2c230"
+   ]
+  },
+  "names": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "shoes",
+   "accent",
+   "specs",
+   "jasmine",
+   "clothbag"
+  ],
+  "regions": {
+   "accent": "#dedcd6",
+   "clothbag": "#c8b48a",
+   "hair": "#3b3735",
+   "jasmine": "#f8f6ee",
+   "pants": "#dedcd6",
+   "shirt": "#c9c7c1",
+   "shoes": "#6e6c68",
+   "skin": "#9e6440",
+   "specs": "#6a5a4a"
+  },
+  "show": {
+   "clothbag": {
+    "f": "prop",
+    "in": [
+     "clothbag",
+     "satchel"
+    ]
+   },
+   "jasmine": {
+    "all": [
+     {
+      "not": {
+       "f": "noJasmine"
+      }
+     },
+     {
+      "not": {
+       "f": "hair",
+       "in": [
+        "#e8e4dc",
+        "#efe9dc",
+        "#d8d4cc"
+       ]
+      }
+     }
+    ]
+   },
+   "specs": {
+    "f": "specs"
+   }
+  }
+ },
+ "tris": 3912,
+ "units": "u",
+ "up": "Z"
+}

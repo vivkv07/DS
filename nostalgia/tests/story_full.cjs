@@ -73,6 +73,7 @@ const PREFIX = ['school_', 'kirana_', 'banana_cart_', 'flower_cart_', 'stationer
   'samosa_bandi_', 'dosa_bandi_', 'photo_studio_', 'internet_cafe_', 'mosque_', 'church_', 'coconut_cart_'];
 const TRACK = MUST.concat(FESTIVAL, AMBIENT, NAMED);
 const cov = {}; // id -> {ctx: firstSeenLabel}   (merged from the page)
+const reach = {}; // mission goals the test teleported to -> {ctx, ok | bad} (window.__audit)
 let nickBad = []; // lines / objectives / toasts that still say Chinnu / Srikanth / {nick}
 const realKeys = {};
 const tally = (k, n) => { realKeys[k] = (realKeys[k] || 0) + (n || 1); };
@@ -119,12 +120,36 @@ async function installHooks() {
       return { x, y };
     };
     window.__passes = {}; window.__fails = []; window.__mg = []; window.__mgEnd = []; window.__wm = 0; window.__cov = {}; window.__nick = []; window.__lines = []; window.__s2ev = [];
+    // reachability audit: the test travels by teleport, so every mission goal it jumps to is checked the way a
+    // player would have to get there: a walkable spot (or a roof / the water), joined on foot to the road network
+    window.__reach = {};
+    window.__audit = (t, ctx) => {
+      if (!t || typeof t.x !== 'number' || typeof t.y !== 'number') return;
+      const key = Math.round(t.x / 24) + ',' + Math.round(t.y / 24);
+      if (window.__reach[key]) return;
+      const rec = { ctx: ctx || ((N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || '-') + ' | ' + (N.hud.objectiveText || ''), x: Math.round(t.x), y: Math.round(t.y) };
+      window.__reach[key] = rec;
+      try {
+        const W = N.world;
+        if ((W.roofs && W.roofs.at && W.roofs.at(t.x, t.y)) || t.level) { rec.ok = 'roof'; return; }
+        if (W.isWater && W.isWater(t.x, t.y)) { rec.ok = 'water'; return; }
+        let gx = t.x, gy = t.y;
+        if (!W.isWalkable(t.x, t.y)) { const f = W.findFree(t.x, t.y, 'walk', 24); if (!f) { rec.bad = 'the goal is not walkable (no free spot within 24 u)'; return; } gx = f.x; gy = f.y; }
+        const r = W.nearestRoadPoint(gx, gy);
+        if (!r) { rec.bad = 'no road anywhere near'; return; }
+        const dr = Math.hypot(r.x - gx, r.y - gy); rec.road = Math.round(dr);
+        if (dr < 10 && W.isWalkable(r.x, r.y)) { rec.ok = 'road'; return; }
+        const p = N.npcs && N.npcs.gridPath ? N.npcs.gridPath(r.x, r.y, gx, gy, { margin: 320, max: 220000 }) : [];
+        if (!p) rec.bad = 'no walking path from the nearest road (' + Math.round(dr) + ' u away)';
+        else rec.ok = 'path';
+      } catch (e) { rec.err = String(e && e.message || e); }
+    };
     N.on('mission:pass', (d) => { const k = d && d.id; if (k) window.__passes[k] = (window.__passes[k] || 0) + 1; });
     N.on('mission:fail', (d) => { window.__fails.push({ id: d && d.id, reason: d && d.reason, at: N.calendar.osd() }); });
     N.on('walkman:play', () => { window.__wm++; });
     window.__wlog = [];
     N.on('wanted:change', (d) => { if (window.__wlog.length > 60) window.__wlog.shift(); window.__wlog.push({ lvl: d && d.level, prev: d && d.prev, why: d && d.reason, m: (N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || null, at: N.calendar.osd(), veh: N.player.vehicle ? N.player.vehicle.type : null }); });
-    N.on('minigame:start', (d) => { const P = (d && d.params) || {}; window.__mg.push({ id: d && d.id, lb: !!N.flags.lb_match, mission: N.missions.active && N.missions.active.id, home: P.home && (P.home.name || P.home), away: P.away && (P.away.name || P.away), intro: P.intro || null, title: P.title || null, place: P.place || null, at: N.calendar.osd() }); });
+    N.on('minigame:start', (d) => { const P = (d && d.params) || {}; window.__mg.push({ id: d && d.id, lb: !!N.flags.lb_match, mission: N.missions.active && N.missions.active.id, home: P.home && (P.home.name || P.home), homeShort: P.home && P.home.short, homePlayers: P.home && Array.isArray(P.home.players) ? P.home.players.map((q) => q && (q.name || q)) : null, away: P.away && (P.away.name || P.away), intro: P.intro || null, title: P.title || null, place: P.place || null, at: N.calendar.osd() }); });
     N.on('minigame:end', (d) => { const r = (d && d.result) || {}; window.__mgEnd.push({ id: d && d.id, win: r.win, quit: r.quit, aborted: r.aborted, at: N.calendar.osd() }); });
     window.__shops = [];
     N.on('shop:open', (d) => { window.__shops.push({ place: d && d.place, kind: d && d.kind, mission: (N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || null, at: N.calendar.osd() }); });
@@ -141,6 +166,19 @@ async function installHooks() {
       if (N.hud.banner) { const B = N.hud.banner.bind(N.hud); N.hud.banner = function (a, b) { note('banner', a); note('banner', b); return B.apply(null, arguments); }; }
     } catch (e) { /* ignore */ }
     N.on('minigame:start', (d) => { const P = (d && d.params) || {}; note('minigame intro', P.intro); note('minigame title', P.title); note('minigame home', P.home && (P.home.name || P.home)); });
+    // what is on screen: cutscene cards, the J-card, the dialogue box, banners, story panels, minigame cards
+    const seenDom = new Set();
+    setInterval(() => {
+      try {
+        for (const sel of ['.mn-cs', '.hud-jcard', '#ui .dlg', '.hud-banner', '.s2-panel', '.mg-screen .mg-card', '.mn-defs']) {
+          const el = document.querySelector(sel);
+          const t = el && el.offsetParent !== null ? (el.innerText || '').trim() : '';
+          if (!t || seenDom.has(t)) continue;
+          seenDom.add(t); if (seenDom.size > 3000) seenDom.clear();
+          note('screen ' + sel, t);
+        }
+      } catch (e) { /* ignore */ }
+    }, 300);
     // coverage: which mission / side activity / scene brought the player within reach of each place
     const pts = {};
     const lm = (id) => (N.WORLD_DATA.landmarks || []).find((l) => l.id === id);
@@ -168,7 +206,7 @@ async function installHooks() {
     const sample = (c0) => {
       try {
         if (!N.player || !N.state || /title|boot/.test(N.state.mode)) return;
-        const c = c0 || (N.missions && N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || null;
+        const c = c0 || (N.missions && N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || window.__exploreCtx || null;
         if (!c) return;
         const p = N.player;
         const at = N.calendar.date.short;
@@ -196,8 +234,9 @@ async function installHooks() {
 /** Merge the page's coverage + nick notes into the node side (before a reload wipes them). */
 async function harvest() {
   try {
-    const h = await ev(() => { const o = { cov: window.__cov || {}, nick: window.__nick || [] }; window.__nick = []; return o; });
+    const h = await ev(() => { const o = { cov: window.__cov || {}, nick: window.__nick || [], reach: window.__reach || {} }; window.__nick = []; return o; });
     for (const id in h.cov) { cov[id] = cov[id] || {}; for (const c in h.cov[id]) if (!cov[id][c]) cov[id][c] = h.cov[id][c]; }
+    for (const k in h.reach) if (!reach[k] || (h.reach[k].bad && !reach[k].bad)) reach[k] = h.reach[k];
     for (const n of h.nick) if (nickBad.indexOf(n) < 0) nickBad.push(n);
   } catch (e) { /* page busy */ }
 }
@@ -217,7 +256,7 @@ async function snapshot(name, { save } = {}) {
     if (save) { try { N.save.save({ reason: 'std', toast: false }); } catch (e) { /* ignore */ } }
     try { return localStorage.getItem('nostalgia.save.v1'); } catch (e) { return null; }
   }, !!save);
-  fs.writeFileSync(path.join(SAVES, 'after_' + name + '.json'), JSON.stringify({ raw, cov, nickBad, realKeys, t: new Date().toISOString() }));
+  fs.writeFileSync(path.join(SAVES, 'after_' + name + '.json'), JSON.stringify({ raw, cov, nickBad, realKeys, reach, t: new Date().toISOString() }));
 }
 /** A player quits and comes back: page reload, then a real click on the title's ▶▶ CONTINUE. */
 async function reloadContinue(why) {
@@ -236,8 +275,10 @@ async function reloadContinue(why) {
   await sleep(3500);
   const auto = await ev(() => N.missions.active && N.missions.active.id);
   check(!auto, 'after CONTINUE no mission starts by itself under the player (' + why + ')', auto);
-  const after = await ev(() => ({ counter: N.tape.counter, tin: N.tape.tin.size, done: N.missions.done.size, money: N.player.money, date: N.calendar.label(), mode: N.state.mode }));
+  const after = await ev(() => ({ counter: N.tape.counter, tin: N.tape.tin.size, done: N.missions.done.size, money: N.player.money, date: N.calendar.label(), mode: N.state.mode, sideOff: !!N.flags.mg_side_off, scene: !!(N.story2 && N.story2.state().scene) }));
   check(after.counter === before.counter && after.tin === before.tin && after.done === before.done, 'reload + CONTINUE restores the tape, the tin and the missions (' + why + ')', { before, after });
+  // the story turns the free-roam side games off while its missions run: a save never carries that switch
+  if (!after.scene) check(!after.sideOff, 'after CONTINUE the free-roam side games are on (no mission-time switch saved) (' + why + ')', after);
   return after;
 }
 
@@ -289,6 +330,7 @@ async function autopilot1(id, o) {
     if (s.mode === 'dialogue' && await ev(() => !!(N.shops && N.shops.isOpen && N.shops.isOpen()))) {
       const what = await ev(() => (window.__shops || []).slice(-1)[0] || null);
       log('   (' + id + ': a shop/auto card opened mid-mission: ' + JSON.stringify(what) + ' -> Escape)');
+      check(false, id + ': ACTION meant for the story opened a shop card instead (a player would get it too)', what);
       await pressKey('Escape'); await ev(() => { try { if (N.shops.isOpen()) N.shops.close(); } catch (e) { /* ignore */ } }); await sleep(300); continue;
     }
     if (s.mode === 'dialogue') {
@@ -321,10 +363,17 @@ async function autopilot1(id, o) {
     if (veh && /Get on|cycle/i.test(s.obj || '')) { await goTo({ x: veh.x + 9, y: veh.y }); await pressKey('KeyE'); tally('E get on a cycle'); await sleep(250); continue; }
     if (s.tgt) {
       const d = Math.hypot(s.tgt.x - s.p.x, s.tgt.y - s.p.y);
-      if (d > 12) { await goTo(s.tgt); continue; }
+      if (d > 12) { await ev((t) => window.__audit(t), s.tgt); await goTo(s.tgt); continue; }
       if (s.st.step === 'act' || s.st.step === 'press' || s.st.step === 'cutouts') { await pressKey('KeyE'); tally('E story prompt'); await sleep(250); continue; }
     } else if (s.st.step === 'press') { await pressKey('KeyE'); tally('E story prompt'); await sleep(250); continue; }
-    if (same > 40 && s.st.step) { await ev(() => N.story.debug.skip()); same = 0; }
+    if (same > 40 && s.st.step) {
+      // the autopilot could not finish this step the way a player does: a blocker (a goal it cannot reach, a
+      // prompt that never shows). It is skipped so the run goes on, and reported.
+      log('   !! ' + id + ': stuck on step ' + JSON.stringify(s.st.step) + ' (' + s.obj + ') -> debug skip');
+      tally('debug skips (stuck steps)');
+      if (/^(act|press|cutouts)$/.test(s.st.step)) check(false, id + ': the step "' + s.obj + '" could not be played with E at its goal (debug skip)', { step: s.st.step, p: s.p, tgt: s.tgt, clock: s.clock });
+      await ev(() => N.story.debug.skip()); same = 0;
+    }
     await sleep(180);
   }
 }
@@ -392,7 +441,12 @@ async function drive2(done, o) {
     const key = [s.mission, s.scene, s.objective, s.target && Math.round(s.target.x), s.offer, s.mode].join('|');
     if (key === lastKey) same++; else { same = 0; lastKey = key; if (process.env.VERBOSE) console.log('     ·', s.mission || s.scene, '|', s.mode, '|', s.objective, '|', s.offer, '|', JSON.stringify(s.player), s.date); }
     if (Date.now() - (o.hb || t0) > 60000) { o.hb = Date.now(); log('   … ' + (s.mission || s.scene) + ': ' + s.mode + ' | ' + s.objective + ' | offer ' + s.offer + ' | ' + JSON.stringify(s.player) + ' tgt ' + JSON.stringify(s.target) + ' d ' + Math.round(s.dist || 0) + ' | ' + s.date + (s.panel ? ' | panel ' + s.panel : '') + (s.mg ? ' | mg ' + s.mg : '')); }
-    if (s.shop) { await ev(() => { try { N.shops.close(); } catch (e) { /* ignore */ } }); await sleep(250); continue; }
+    if (s.shop) {
+      const what = await ev(() => (window.__shops || []).slice(-1)[0] || null);
+      log('   (' + (s.mission || s.scene) + ': a shop card opened mid-mission: ' + JSON.stringify(what) + ' -> close)');
+      check(false, (s.mission || s.scene) + ': ACTION meant for the story opened a shop card instead', what);
+      await ev(() => { try { N.shops.close(); } catch (e) { /* ignore */ } }); await sleep(250); continue;
+    }
     if (s.journal) { await page.keyboard.press('Escape'); await sleep(250); continue; }
     if (s.defs) { await page.keyboard.press('KeyE'); await sleep(400); continue; }
     if (s.credits) { await page.keyboard.press('Escape'); await sleep(400); continue; }
@@ -412,7 +466,7 @@ async function drive2(done, o) {
     if (s.mode === 'play') {
       if (s.gallery) { await galleryKeys(s); continue; }
       if (s.offer && STORY_OFFER.test(s.offer) && (!s.target || s.dist <= 44) && (!/^Ride /.test(s.offer) || RIDE_OK.test(s.mission || ''))) { await page.keyboard.press('KeyE'); tally('E story offer'); await sleep(220); continue; }
-      if (s.target && s.dist > (o.near || 16)) { await ev(([x, y]) => N.story2.tp(x, y), [s.target.x, s.target.y]); await sleep(o.tpWait || 160); continue; }
+      if (s.target && s.dist > (o.near || 16)) { await ev(([x, y]) => { window.__audit({ x, y }); N.story2.tp(x, y); }, [s.target.x, s.target.y]); await sleep(o.tpWait || 160); continue; }
       if (same > 40 && s.target) { await ev(([x, y]) => N.story2.tp(x + 6, y + 6), [s.target.x, s.target.y]); same = 0; }
     }
     await sleep(160);
@@ -575,6 +629,12 @@ async function collect(id) {
   if (r.skip) return false;
   await sleep(300);
   if (r.pick === 'walk') await walkKeys(r.x, r.y, 3, 8000);
+  if (r.pick === 'click') {
+    // Nanna's camera: turn to the subject with a tap of the arrow key, then E
+    const f = await ev((id) => { const it = N.collectibles.get(id); return { dx: it.sx - N.player.x, dy: it.sy - N.player.y }; }, id);
+    const k = Math.abs(f.dx) > Math.abs(f.dy) ? (f.dx > 0 ? 'ArrowRight' : 'ArrowLeft') : (f.dy > 0 ? 'ArrowDown' : 'ArrowUp');
+    await page.keyboard.down(k); await sleep(60); await page.keyboard.up(k); await sleep(150);
+  }
   for (let i = 0; i < 6 && !(await ev((id) => N.collectibles.has(id), id)); i++) {
     if (r.pick !== 'walk') { await pressKey('KeyE'); }
     else { await goTo({ x: r.x, y: r.y }); }
@@ -654,6 +714,17 @@ async function pExplore1() {
   const got = [];
   for (const id of ['cassette_1', 'kite_3', 'goli_1']) if (await collect(id)) got.push(id);
   log('  explored: ' + got.join(', '));
+}
+/** Free roam in the monsoon (after M9): a long cycle ride south to Falaknuma for Patang Chacha's last kite
+ *  (K12, "on the hill path below the locked gate"), Ticket Thatha's stage 7 at Secunderabad station (T07) and
+ *  Nanna's camera at the zoo gate (F13): the must-see places the bible leaves to the collectibles. */
+async function pExplore2() {
+  await ev(() => { window.__exploreCtx = 'explore'; });
+  const got = [];
+  for (const id of ['kite_12', 'ticket_7', 'frame_13']) if (await collect(id)) got.push(id);
+  await ev(() => { window.__exploreCtx = null; });
+  log('  explored: ' + got.join(', '));
+  check(got.indexOf('kite_12') >= 0, 'free roam: K12 picked up on the Falaknuma hill path (it rises at Charminar in the ending)', got);
 }
 async function pM2() {
   await testTune();
@@ -813,6 +884,9 @@ async function pSA4() {
   const match = games.find((g) => g.id === 'match');
   check(!!match, 'THE LB STADIUM MATCH is played with the match engine (minigame "match")', games);
   check(match && match.lb, 'the match day: N.flags.lb_match on (floodlights, crowds)', match);
+  check(match && match.home === NICK + ' XI' && match.homeShort === NICK.toUpperCase() + ' XI', 'the scorecard carries the nickname: ' + NICK + ' XI / ' + NICK.toUpperCase() + ' XI', match && { home: match.home, short: match.homeShort });
+  const pl = (match && match.homePlayers) || [];
+  check(pl[0] === NICK && pl.indexOf('Immu') >= 0 && pl.indexOf('Ayesha') >= 0 && pl.indexOf('Bunty') < 0, 'the camp side: ' + NICK + ', Immu and Ayesha play; Bunty-anna (19) does not', pl);
   log('  LB match: ' + JSON.stringify(match) + ' -> ' + JSON.stringify(await ev(() => (window.__mgEnd || []).filter((e) => e.id === 'match').slice(-1)[0] || null)));
   const v = await ev(() => ({ played: N.flags.lb_match_played, badge: N.flags.ayesha_camp_badge, money: N.player.money, nets: N.npcs.scheduleOn ? N.npcs.scheduleOn('ayesha_nets') : null, cm: N.cricketMatch ? N.cricketMatch.last || null : null }));
   check(v.played && v.badge && v.money >= money0 + 2000, 'SA4 passed: the match played, Ayesha\'s camp badge, ₹20', v);
@@ -903,6 +977,10 @@ async function pSA1() {
     };
     await finish1('pandal_duty', { hook, timeout: 300000 });
     check((await ev(() => N.flags.pandal_nights)) === night, 'SA1 night ' + night + ' done');
+    // the night ends after the 21:30 curfew: the committee's boy walks home without Mummy at the gate
+    await sleep(1500);
+    const g = await ev(() => ({ grace: N.flags.no_curfew || null, lvl: N.wanted ? N.wanted.level | 0 : 0, clock: N.clock.label() }));
+    check(g.lvl === 0 && g.grace === 'pandal', 'SA1 night ' + night + ': after pandal duty (' + g.clock + ') no curfew chase on the way home', g);
   }
   check(await ev(() => !!N.flags.tiger_helps_lorry), 'SA1: four nights done: Tiger\'s gang will push the lorry in M10');
 }
@@ -1014,10 +1092,12 @@ async function pEnding() {
       const ph = await ev(() => window.__s2ev.slice());
       if (ph.indexOf('alaap') >= 0 && end.kites == null) { end.kites = await ev(() => N.story2.state().props.indexOf('s2:kites') >= 0); await sleep(1200); await shot('ending_kites'); }
       if (ph.indexOf('theme') >= 0 && end.atPlaza == null) { end.atPlaza = await ev(() => { const c = N.places.charminar; return { d: Math.round(Math.hypot(N.player.x - c.x, N.player.y - c.y)), t: N.clock.label(), date: N.calendar.label() }; }); await sleep(800); await shot('ending_charminar'); }
+      if ((s.wanted | 0) > (end.maxWanted | 0)) end.maxWanted = s.wanted | 0;
       if (/CLAP/.test(s.offer || '')) { await page.keyboard.press('KeyE'); tally('E CLAP'); await sleep(260); return 'skip'; }
       return null;
     },
   });
+  check(!end.maxWanted, 'the ending is calm: no Chappal Meter, no curfew uncles on the plaza at 23:40', end.maxWanted);
   const ae = await ev(() => ({ ending: N.flags.ending_done, counter: N.tape.counter, phases: window.__s2ev.slice(), kites: N.story2.kitesForEnding(), found: N.collectibles.kitesForEnding ? N.collectibles.kitesForEnding() : null }));
   check(ae.ending && ae.counter === 999, 'the ending played: Side A plays back to 999', ae);
   check(end.atPlaza && end.atPlaza.d < 260 && /27 NOV 2003/.test(end.atPlaza.date), 'THE GAME ENDS AT CHARMINAR: the player is on the plaza (THU 27 NOV 2003, ' + (end.atPlaza && end.atPlaza.t) + ')', end);
@@ -1148,13 +1228,19 @@ function storyRefs(id) {
   return out;
 }
 function coverageReport() {
-  const ctxName = (c) => ({ bo_kaata: 'M1', lost_and_found: 'M2', first_day_first_show: 'M3', last_man_batting: 'M4', right_right: 'M5', ammammas_thursday: 'M6', the_clap: 'M7', drums_for_amma: 'M8', opening_day: 'M9', agle_baras: 'M10', last_bell: 'M11', chand_raat: 'M12', pandal_duty: 'SA1', current_poyindi: 'SA2', sunday_mutton: 'SA3', six_balls: 'SA4', lb_exhibition: 'SA4x', twelve_oclock: 'SA5', bunty_races: 'SA6r1', bunty_races_r2: 'SA6r2', bunty_races_r3: 'SA6r3', bunty_races_r4: 'SA6r4', new_class_old_books: 'SA7', christmas_stars: 'SA8', interlude: 'Interlude', ending: 'Ending', epilogue: 'Epilogue' }[c] || c);
-  const row = (id) => { const o = cov[id]; return '| `' + id + '` | ' + (o ? Object.keys(o).map((c) => (/~cam$/.test(c) ? ctxName(c.slice(0, -4)) + ' (camera, ' + o[c] + ')' : ctxName(c) + ' (' + o[c] + ')')).join(', ') : '**not visited**') + ' | ' + (storyRefs(id).join(', ') || '-') + ' | ' + (usesOf(id).join(', ') || '-') + ' |'; };
+  const ctxName = (c) => ({ bo_kaata: 'M1', lost_and_found: 'M2', first_day_first_show: 'M3', last_man_batting: 'M4', right_right: 'M5', ammammas_thursday: 'M6', the_clap: 'M7', drums_for_amma: 'M8', opening_day: 'M9', agle_baras: 'M10', last_bell: 'M11', chand_raat: 'M12', pandal_duty: 'SA1', current_poyindi: 'SA2', sunday_mutton: 'SA3', six_balls: 'SA4', lb_exhibition: 'SA4x', twelve_oclock: 'SA5', explore: 'Free roam (collectibles)', bunty_races: 'SA6r1', bunty_races_r2: 'SA6r2', bunty_races_r3: 'SA6r3', bunty_races_r4: 'SA6r4', new_class_old_books: 'SA7', christmas_stars: 'SA8', interlude: 'Interlude', ending: 'Ending', epilogue: 'Epilogue' }[c] || c);
+  // where the bible itself uses the places no mission walks to (collectibles, a scene seen from afar, ambience)
+  const BIBLE_USE = { falaknuma_palace: 'bible: K12 kite on the hill path, F16 frame (gated palace, seen from afar)', birla_planetarium: 'bible: M11 mentions it at its corner; F05 frame', nehru_zoo: 'bible: F13 frame, G25 goli',
+    secunderabad_station: 'bible: T07 ticket', begumpet_airport: 'bible: the ending (the plane light climbing out of Begumpet, seen from Charminar)', lal_darwaza_temple: 'bible: Old City Bonalu ambience (seasons.js)',
+    rythu_bazaar_saroornagar: 'bible: the third Rythu Bazaar (vegetables shop); the registry asks for two', mecca_masjid: 'bible: M12 respectful background (a watchman at the gate, no chase)', st_josephs_cathedral: 'bible: SA8 church compound' };
+  const row = (id) => { const o = cov[id]; return '| `' + id + '` | ' + (o ? Object.keys(o).map((c) => (/~cam$/.test(c) ? ctxName(c.slice(0, -4)) + ' (camera, ' + o[c] + ')' : ctxName(c) + ' (' + o[c] + ')')).join(', ') : '**not visited**' + (BIBLE_USE[id] ? ' (' + BIBLE_USE[id] + ')' : '')) + ' | ' + (storyRefs(id).join(', ') || '-') + ' | ' + (usesOf(id).join(', ') || '-') + ' |'; };
   const lines = ['# Story playthrough: place coverage', '', 'Generated by tests/story_full.cjs (' + new Date().toISOString() + '). A place counts when the player was within reach of it while a', 'mission, side activity or story scene was running (passenger rides included; first date per context). "story script" lists',
     'the story files that reference the id (givers, gotos, cameras, props, respect zones); "also used by" the other modules.', '',
     '## Must-have places (places_registry §2)', '', '| id | visited by (mission / side activity / scene, first date) | story script | also used by |', '|---|---|---|---|'].concat(MUST.map(row), ['', '## Festival sites', '', '| id | visited by | story script | also used by |', '|---|---|---|---|'], FESTIVAL.map(row), AMBIENT.map(row), ['', '## Other named places (rounds 5-11)', '', '| id | visited by | story script | also used by |', '|---|---|---|---|'], NAMED.map(row));
-  const pre = PREFIX.map((q) => { const ids = Object.keys(cov).filter((k) => k.indexOf(q) === 0); return '| `' + q + '*` | ' + (ids.length ? ids.length + ': ' + ids.slice(0, 8).join(', ') : '**none**') + ' |'; });
-  lines.push('', '## Everyday elements (registry §3, rounds 2-3)', '', '| prefix | instances visited |', '|---|---|', ...pre);
+  // a prefix is "used" by a module that names one of its ids (or the prefix itself) in its source
+  const prefUses = (q) => { const out = []; for (const f of USE_FILES.concat(['story', 'story2', 'sidejobs', 'world_extras'])) { const src = USE_SRC[f] != null ? USE_SRC[f] : (USE_SRC[f] = (() => { try { return fs.readFileSync(path.join(ROOT, 'src', f + '.js'), 'utf8'); } catch (e) { return ''; } })()); if (src.indexOf("'" + q) >= 0 && out.indexOf(f) < 0) out.push(f); } return out; };
+  const pre = PREFIX.map((q) => { const ids = Object.keys(cov).filter((k) => k.indexOf(q) === 0); return '| `' + q + '*` | ' + (ids.length ? ids.length + ': ' + ids.slice(0, 8).join(', ') : '**none**') + ' | ' + (prefUses(q).join(', ') || '-') + ' |'; });
+  lines.push('', '## Everyday elements (registry §3, rounds 2-3)', '', '| prefix | instances visited by a mission / side activity | named in |', '|---|---|---|', ...pre);
   fs.writeFileSync(path.join(OUT, 'coverage.md'), lines.join('\n') + '\n');
   fs.writeFileSync(path.join(OUT, 'coverage.json'), JSON.stringify(cov, null, 1));
   // registry §2: "Rythu Bazaars (at least 2)": the three ids count as one row that needs two of them
@@ -1164,15 +1250,46 @@ function coverageReport() {
   return { mustMissing: MUST.filter((id) => !onFoot(id) && !(rythuOk && /^rythu_bazaar_/.test(id))), festMissing: FESTIVAL.filter((id) => !cov[id]), namedMissing: NAMED.filter((id) => !cov[id]), preMissing: PREFIX.filter((q) => !Object.keys(cov).some((k) => k.indexOf(q) === 0)) };
 }
 
+/* ====================================================================== the bible, line by line (static) */
+/** Every dialogue line of the bible's script blocks (§4 to §9) and every quoted HUD objective must be in the
+ *  game's source (story.js / story2.js and the modules that speak for them: menus' cards, storycore's tracks,
+ *  dialogue's barks...). Stage directions in (parentheses) and *slang marks* are ignored; {nick} / {full} too. */
+function bibleCheck() {
+  const B = fs.readFileSync(path.join(ROOT, 'design', 'story_bible.md'), 'utf8').split('\n');
+  const files = ['story', 'story2', 'menus', 'storycore', 'dialogue', 'npcs', 'collectibles', 'minigames', 'cricket_match', 'shops', 'sidejobs', 'wanted', 'seasons', 'hud', 'traffic'];
+  const norm = (t) => String(t).replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\*/g, '').replace(/\{(nick|full|FULL|NICK)\}/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  let src = '';
+  for (const f of files) { try { src += fs.readFileSync(path.join(ROOT, 'src', f + '.js'), 'utf8') + '\n'; } catch (e) { /* missing module */ } }
+  const S = norm(src);
+  const story = norm(fs.readFileSync(path.join(ROOT, 'src', 'story.js'), 'utf8') + fs.readFileSync(path.join(ROOT, 'src', 'story2.js'), 'utf8'));
+  const lines = { n: 0, miss: [] }, objs = { n: 0, miss: [] };
+  let inBlock = false, sec = '';
+  for (let i = 0; i < B.length; i++) {
+    const l = B[i];
+    if (/^#{2,3} /.test(l)) sec = l.replace(/^#+ /, '').slice(0, 40);
+    if (i >= 840 && i <= 2400) for (const m of l.matchAll(/`"([^"`]+)"`/g)) { objs.n++; const t = norm(m[1]); if (story.indexOf(t.slice(0, 40)) < 0) objs.miss.push((i + 1) + ' ' + sec + ': "' + m[1] + '"'); }
+    if (/^\s*```/.test(l)) { inBlock = !inBlock; continue; }
+    if (!inBlock || i < 840 || i > 2712) continue;
+    const m = l.match(/^\s*([a-z_]+(?: \(tape\))?)\s*:\s+(.*)$/);
+    if (!m) continue;
+    const parts = m[2].replace(/^\([^)]*\)\s*/, '').split(/\([^)]*\)/).filter((p) => p.trim().length > 12);
+    if (!parts.length) continue;
+    lines.n++;
+    const n = norm(parts.reduce((a, b) => (b.length > a.length ? b : a)));
+    if (S.indexOf(n.slice(0, 50)) < 0 && S.indexOf(n.slice(Math.floor(n.length / 3), Math.floor(n.length / 3) + 35)) < 0) lines.miss.push((i + 1) + ' ' + sec + ' ' + m[1] + ': ' + m[2].slice(0, 90));
+  }
+  return { lines, objs };
+}
+
 /* ====================================================================== main */
 const PHASES = [
   ['title', pTitle], ['m1', pM1], ['explore1', pExplore1], ['m2', pM2], ['reload1', () => reloadContinue('after M2')],
   ['m3', pM3], ['sa3', pSA3], ['m4', pM4], ['reload2', () => reloadContinue('after M4')], ['sa2', pSA2], ['m5', pM5], ['m6', pM6],
   ['sa4', pSA4], ['reload3', () => reloadContinue('after SA4 (STD booth save)')], ['m7', pM7], ['sa7', pSA7], ['sa5', pSA5], ['m8', pM8], ['sa6', pSA6],
-  ['m9', pM9], ['sa1', pSA1], ['m10', pM10], ['interlude', pInterlude], ['m11', pM11], ['m12', pM12], ['ending', pEnding], ['epilogue', pEpilogue],
+  ['m9', pM9], ['explore2', pExplore2], ['sa1', pSA1], ['m10', pM10], ['interlude', pInterlude], ['m11', pM11], ['m12', pM12], ['ending', pEnding], ['epilogue', pEpilogue],
   ['credits', pCredits], ['sa8', pSA8], ['replay', pReplay],
 ];
-const SIDE_PHASES = new Set(['sa3', 'sa2', 'sa4', 'sa7', 'sa5', 'sa6', 'sa1', 'sa8', 'explore1', 'replay']);
+const SIDE_PHASES = new Set(['sa3', 'sa2', 'sa4', 'sa7', 'sa5', 'sa6', 'sa1', 'sa8', 'explore1', 'explore2', 'replay']);
 (async () => {
   const browser = await chromium.launch();
   await openPage(browser);
@@ -1202,7 +1319,7 @@ const SIDE_PHASES = new Set(['sa3', 'sa2', 'sa4', 'sa7', 'sa5', 'sa6', 'sa1', 's
       const prev = PHASES[si - 1][0];
       const f = path.join(SAVES, 'after_' + prev + '.json');
       const snap = JSON.parse(fs.readFileSync(f, 'utf8'));
-      Object.assign(cov, snap.cov || {}); nickBad = snap.nickBad || []; Object.assign(realKeys, snap.realKeys || {});
+      Object.assign(cov, snap.cov || {}); nickBad = snap.nickBad || []; Object.assign(realKeys, snap.realKeys || {}); Object.assign(reach, snap.reach || {});
       await ev((raw) => { localStorage.setItem('nostalgia.save.v1', raw); }, snap.raw);
       await page.reload();
       await bootTitle();
@@ -1212,6 +1329,10 @@ const SIDE_PHASES = new Set(['sa3', 'sa2', 'sa4', 'sa7', 'sa5', 'sa6', 'sa1', 's
       log('resumed from ' + f);
     }
     await installHooks();
+    phase = 'bible';
+    const bc = bibleCheck();
+    check(!bc.lines.miss.length, 'the bible, line by line: all ' + bc.lines.n + ' dialogue lines of §4-§9 are in the game', bc.lines.miss.slice(0, 12));
+    check(!bc.objs.miss.length, 'the bible, step by step: all ' + bc.objs.n + ' HUD objectives of §4-§7 are in the story scripts', bc.objs.miss.slice(0, 12));
     for (let i = si; i < PHASES.length; i++) {
       const [name, fn] = PHASES[i];
       phase = name;
@@ -1249,6 +1370,11 @@ const SIDE_PHASES = new Set(['sa3', 'sa2', 'sa4', 'sa7', 'sa5', 'sa6', 'sa1', 's
     check(!c.festMissing.length, 'the festival sites are visited', c.festMissing);
   }
   log('coverage: must missing ' + JSON.stringify(c.mustMissing) + ', festival missing ' + JSON.stringify(c.festMissing) + ', named missing ' + JSON.stringify(c.namedMissing) + ', prefixes missing ' + JSON.stringify(c.preMissing));
+  phase = 'reach';
+  const rv = Object.values(reach), bad = rv.filter((r) => r.bad || r.err);
+  fs.writeFileSync(path.join(OUT, 'reach.json'), JSON.stringify(rv, null, 1));
+  log('reachability audit: ' + rv.length + ' mission goals checked (' + ['road', 'path', 'roof', 'water'].map((k) => rv.filter((r) => r.ok === k).length + ' ' + k).join(', ') + ')');
+  check(!bad.length, 'every mission goal the test jumped to can be reached on foot from the road network (' + rv.length + ' goals)', bad.slice(0, 12));
   phase = 'nick';
   check(!nickBad.length, 'custom nickname: no "Chinnu" / "Srikanth" / {nick} left in lines, objectives, toasts or minigame cards', nickBad.slice(0, 20));
   log('real input: ' + JSON.stringify(realKeys));

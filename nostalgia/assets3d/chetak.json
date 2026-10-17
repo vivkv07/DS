@@ -1,0 +1,203 @@
+{
+ "anchors": {
+  "exhaust": [
+   1.05,
+   6.35,
+   0.9
+  ],
+  "foot_L": [
+   0.75,
+   -1.7,
+   1.42
+  ],
+  "foot_R": [
+   -0.75,
+   -1.7,
+   1.42
+  ],
+  "foot_pillion_L": [
+   1.35,
+   0.4,
+   1.42
+  ],
+  "foot_pillion_R": [
+   -1.35,
+   0.4,
+   1.42
+  ],
+  "grip_L": [
+   2.1,
+   -2.5,
+   6.425
+  ],
+  "grip_R": [
+   -2.1,
+   -2.5,
+   6.425
+  ],
+  "handlebar": [
+   -0.0,
+   -3.2,
+   6.5
+  ],
+  "headlight": [
+   -0.0,
+   -4.4,
+   6.5
+  ],
+  "indicator_FL": [
+   1.25,
+   -3.72,
+   5.0
+  ],
+  "indicator_FR": [
+   -1.25,
+   -3.72,
+   5.0
+  ],
+  "seat_driver": [
+   0.0,
+   1.7,
+   5.15
+  ],
+  "seat_pillion": [
+   0.0,
+   4.6,
+   5.2
+  ],
+  "spare": [
+   0.0,
+   7.62,
+   2.55
+  ],
+  "taillight": [
+   0.0,
+   7.55,
+   4.18
+  ],
+  "wheel_front": [
+   0.0,
+   -5.35,
+   1.85
+  ],
+  "wheel_rear": [
+   0.0,
+   5.2,
+   1.85
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 265560,
+ "clips": {},
+ "family": "vehicle",
+ "file": "chetak.glb",
+ "front": "-Y",
+ "id": "chetak",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 259.3,
+ "kit": 1,
+ "materials": [
+  "M_chetak@night"
+ ],
+ "max": [
+  2.509,
+  8.195,
+  8.195
+ ],
+ "meta": {
+  "fps": "bars",
+  "height": 8.0,
+  "lamps": {
+   "head": [
+    "headlight"
+   ],
+   "tail": [
+    "taillight"
+   ]
+  },
+  "length": 17.0,
+  "open": true,
+  "riders": {
+   "driver": {
+    "clips": [
+     "ride_scooty"
+    ],
+    "feet": [
+     "foot_L",
+     "foot_R"
+    ],
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "scooter",
+    "seat": "seat_driver"
+   },
+   "pillion": {
+    "clips": [
+     "sit"
+    ],
+    "feet": [
+     "foot_pillion_L",
+     "foot_pillion_R"
+    ],
+    "pose": "pillion",
+    "seat": "seat_pillion"
+   }
+  },
+  "steerAxis": [
+   0.0,
+   -0.4803,
+   -0.8771
+  ],
+  "tintSrc": {
+   "paint": "color"
+  },
+  "vehicleTypes": [
+   "chetak",
+   "family_chetak"
+  ],
+  "wheelR": 1.85,
+  "wheels": {
+   "wheel_front": 1.85,
+   "wheel_rear": 1.85
+  },
+  "width": 7.0
+ },
+ "min": [
+  -2.507,
+  -7.525,
+  -0.022
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  5.016,
+  15.72,
+  8.217
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#86b9c9"
+  }
+ },
+ "tris": 3604,
+ "units": "u",
+ "up": "Z"
+}

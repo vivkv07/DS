@@ -108,7 +108,20 @@ def rule_eval(rule, look):
     if 're' in rule:
         import re
         return isinstance(v, str) and re.search(rule['re'], v) is not None
+    if 'lt' in rule:
+        return isinstance(v, (int, float)) and not isinstance(v, bool) and v < rule['lt']
+    if 'gt' in rule:
+        return isinstance(v, (int, float)) and not isinstance(v, bool) and v > rule['gt']
     return bool(v)
+
+
+def LT(field, x):
+    """numeric field below x (the runtime's per-person `_r` in [0, 1) makes variety: LT('_r', 0.6))"""
+    return {'f': field, 'lt': x}
+
+
+def GT(field, x):
+    return {'f': field, 'gt': x}
 
 
 # =========================================================================== regions + slots
@@ -902,8 +915,11 @@ class Head:
         return self.add(loft(name, [dict(c=tuple(base - d * 0.06), r=r0 * 0.9, w={'head': 1}, mat=m), dict(c=tuple(mid), r=r0 * 0.72, w={'head': 1}, mat=m),
                                     dict(c=tuple(end), r=0.03, w={'head': 1}, mat=m)], seg=seg, side=(0, 0, 1)))
 
-    def hair(self, style, m):
+    def hair(self, style, m, top_m=None, skin_m=None):
+        """top_m: material for the parts that stand above the hair cap (quiff, puff, spikes) so
+        they can live in a slot that caps hide; skin_m: the parting strip (girls' hair in a slot)"""
         hz, cy = self.hz, self.cy
+        tm = top_m or m
         if style == 'spiky':
             # Chinnu: a chunky crop of upswept locks round the crown, a three-spike fringe, the cowlick
             self.cap(m, 0.03, line=lambda f, s: 0.62 + 0.36 * f ** 1.6 - 0.1 * s * (1 - f))
@@ -934,11 +950,11 @@ class Head:
                         p['r'] = (p['r'][0] * 0.8, p['r'][1] * 0.6)
                 for p in pts:
                     p['w'] = {'head': 1}
-                    p['mat'] = m
+                    p['mat'] = tm
                 self.add(loft('quiff', pts, seg=8, side=(0, 0, 1)))
         elif style == 'puff':
             self.cap(m, 0.045, line=lambda f, s: 0.70 + 0.30 * f ** 1.4 - 0.12 * s * (1 - f), crown=1.3)
-            self.puff(m)
+            self.puff(tm)
         elif style == 'receding':
             # uncle: hair round the back and the sides only (a shiny crown and a high forehead)
             self.cap(m, 0.03, keep=lambda f, sd, z: 0.5 < z < 1.02 - 0.06 * f and f < 0.32)
@@ -955,7 +971,7 @@ class Head:
             # a centre parting: two smooth halves over the skull
             self.cap(m, 0.04, line=lambda f, s: 0.70 + 0.27 * f ** 1.3 - 0.18 * s * (1 - f), crown=1.2)
             # the parting line: a thin skin-coloured strip on top
-            self.add(kit.tube('parting', [(0, cy - 0.42, hz + 1.12), (0, cy - 0.15, hz + 1.30), (0, cy + 0.15, hz + 1.31)], 0.012, seg=4, mat=self.M['skin']))
+            self.add(kit.tube('parting', [(0, cy - 0.42, hz + 1.12), (0, cy - 0.15, hz + 1.30), (0, cy + 0.15, hz + 1.31)], 0.012, seg=4, mat=skin_m or self.M['skin']))
             # hair framing the face, tucked behind the ears
             for sx in (1, -1):
                 pts = [dict(c=(0.36 * sx, cy - 0.33, hz + 1.03), r=(0.1, 0.08)), dict(c=(0.52 * sx, cy - 0.2, hz + 0.82), r=(0.1, 0.09)),
@@ -1189,11 +1205,11 @@ def specs(H, m, kind='round', lens=None, tape=None):
         x = ex * sx
         y = H.front_y(x, ez) - 0.07
         pts = []
-        for i in range(13):
-            a = 2 * math.pi * i / 12
+        for i in range(11):
+            a = 2 * math.pi * i / 10
             rz = r * (1.0 if kind != 'aviator' else (1.05 if math.sin(a) < 0 else 0.85))
             pts.append((x + math.cos(a) * r * 1.05, y + 0.01 * math.cos(a) * sx, ez + math.sin(a) * rz * 0.88))
-        objs.append(kit.tube('rim', pts, th, seg=5, mat=m, cap=False))
+        objs.append(kit.tube('rim', pts, th, seg=4, mat=m, cap=False))
         if lens is not None:
             l = kit.cylinder('lens', r * 0.98, 0.02, (0, 0, 0), seg=12, mat=lens, axis='Y', base=False)
             l.scale = (1.05, 1.0, 0.88 if kind != 'aviator' else 0.95)
@@ -1272,6 +1288,14 @@ def cap(H, m, kind='cricket', brim=None):
         d = kit.lathe('topi', prof, seg=14, mat=m, close_bottom=False)
         d.rotation_euler = (math.radians(-10), 0, 0)
         d.location = (0, cy + 0.05, hz + 1.0)
+        kit.apply_transform(d)
+        return H.add(d)
+    if kind == 'pith':
+        # a sola topee (Professor Pasha): a domed crown on a wide, gently sloping brim
+        prof = [(0.98, -0.08), (0.96, -0.03), (0.72, 0.08), (0.64, 0.2), (0.6, 0.38), (0.48, 0.56), (0.28, 0.67), (0.0, 0.7)]
+        d = kit.lathe('pith', prof, seg=SEG['cap'] + 2, mat=m, close_bottom=False)
+        d.scale = (0.95, 1.06, 1.0)
+        d.location = (0, cy + 0.06, hz + 0.92)
         kit.apply_transform(d)
         return H.add(d)
     if kind == 'police':
@@ -1744,8 +1768,325 @@ def epaulettes(B, m):
     return B.add(kit.join(objs, 'epaulettes'), 'chest')
 
 
+# ------------------------------------------------------------------ garment slots (shown by look rules)
+def belly_shell(B, m, bel=1.0, off=0.025, from_level=4, name='belly'):
+    """a pot belly as a shell over the flat torso (slot 'belly': shown when look.belly): the torso
+    rings from `from_level` (4 = above a belt, so the belt stays visible under the overhang) to
+    the chest, bulged like Body.torso(belly=...), weighted like the torso"""
+    rig, k = B.rig, B.k
+    T = TORSO[rig]
+    rings = []
+    for i in range(from_level, 8):
+        (c, r), w = T[i], TORSO_W[i]
+        c = list(c)
+        rx, ry = r
+        f = {'waist_lo': 0.45, 'waist': 0.7, 'waist_hi': 0.85, 'belly': 1.0, 'ribs': 0.55}.get(LEVELS[i], 0.0) * bel
+        ry += 0.30 * f * k
+        rx += 0.08 * f * k
+        c[1] -= 0.18 * f * k
+        o = off * (1.0 if i < 7 else 0.4)
+        rings.append(dict(c=tuple(c), r=(rx + o, ry + o), p=2.25, w=dict(w), mat=m))
+    ob = loft(name, rings, seg=SEG['torso'], side=(1, 0, 0), cap_start=False, cap_end=False)
+    ob = B._thicken_hem(ob, 0.03 * k)
+    return B.add(ob)
+
+
+def jacket(B, m, m_cuff=None, z0=None, open_front=0.2, off=0.07, name='jacket'):
+    """an open jacket over the torso (Bunty-anna's denim jacket): a torso shell open at the front,
+    a collar band and long sleeves over the arms"""
+    rig, k = B.rig, B.k
+    T = TORSO[rig]
+    z0 = z0 if z0 is not None else T[1][0][2] - 0.1 * k
+    objs = [shell(B, z0, T[10][0][2] + 0.02, off, m, name=name, open_front=open_front * k, seg=16)]
+    for sx in (1, -1):
+        objs.append(sleeve_shell(B, sx, m, off * 0.8, t1=1.0, name=name + '_sleeve'))
+    cz = T[10][0][2]
+    pts = []
+    for i in range(9):
+        a = math.radians(-40 + 260 * i / 8)
+        pts.append((math.cos(a) * (T[10][1][0] + 0.12 * k), T[10][0][1] + math.sin(a) * (T[10][1][1] + 0.12 * k), cz + 0.06 + 0.06 * math.sin(a)))
+    col = kit.tube(name + '_collar', pts, 0.07 * k, seg=5, mat=m_cuff or m, cap=True)
+    kit.weights(col, {'chest': 0.7, 'neck': 0.3})
+    objs.append(col)
+    return B.add(kit.join(objs, name))
+
+
+def shirt_over(B, m, z0=None, off=0.06, sleeve_t=0.5, name='shirt_over'):
+    """a half-sleeve shirt worn open-ish over a banian and lungi ('lungi' looks, vendors)"""
+    rig, k = B.rig, B.k
+    T = TORSO[rig]
+    z0 = z0 if z0 is not None else T[1][0][2] - 0.2 * k
+    objs = [shell(B, z0, T[10][0][2] + 0.02, off, m, name=name, open_front=0.0, seg=14, flare=0.06 * k)]
+    for sx in (1, -1):
+        objs.append(sleeve_shell(B, sx, m, off * 0.9, t1=sleeve_t, name=name + '_sleeve'))
+    o = kit.join(objs, name)
+    return B.add(o)
+
+
+def raincoat(B, m, name='raincoat'):
+    """Immu's yellow raincoat for Chand Raat: a long shell from the collar to below the knee,
+    with sleeves (the hood is cap / hood() on the head)"""
+    rig, k = B.rig, B.k
+    T = TORSO[rig]
+    objs = [shell(B, T[3][0][2], T[10][0][2] + 0.02, 0.09 * k, m, name=name, seg=14)]
+    for sx in (1, -1):
+        objs.append(sleeve_shell(B, sx, m, 0.08 * k, t1=1.0, name=name + '_sleeve'))
+    o = kit.join(objs, name)
+    B.add(o)
+    B.skirt('kurta', m=m, hem_z=B.J['knee'][2] - 0.25 * k, flare=1.25, z_top=T[3][0][2] + 0.05, rings_n=4)
+
+
+def school_shoes(B, m_shoe, m_sock, name='shoes'):
+    """black school shoes over white socks (a slot over the chappal feet): the shoe shell is a
+    little larger than the bare foot + sole, the sock a ring up the ankle"""
+    J, k = B.J, B.k
+    an, bl, tp = J['ankle'], J['ball'], J['toe']
+    objs = []
+    for sx in (1, -1):
+        S = 'L' if sx > 0 else 'R'
+        ft, to, sh = 'foot_' + S, 'toe_' + S, 'shin_' + S
+        rings = [dict(c=mir((an[0], an[1] + 0.29 * k, 0.03), sx), r=(0.2 * k, 0.12 * k), w={ft: 1}, mat=m_shoe),
+                 dict(c=mir((an[0], an[1] + 0.27 * k, 0.26 * k), sx), r=(0.18 * k, 0.12 * k), w={ft: 1}, mat=m_shoe),
+                 dict(c=mir((an[0], an[1] + 0.03, 0.33 * k), sx), r=(0.21 * k, 0.21 * k), w={ft: 1}, mat=m_shoe),
+                 dict(c=mir((an[0], an[1] - 0.32 * k, 0.25 * k), sx), r=(0.225 * k, 0.16 * k), w={ft: 1}, mat=m_shoe),
+                 dict(c=mir((bl[0], bl[1] + 0.05, 0.19 * k), sx), r=(0.225 * k, 0.13 * k), w={ft: 0.5, to: 0.5}, mat=m_shoe),
+                 dict(c=mir((tp[0], tp[1] + 0.12 * k, 0.16 * k), sx), r=(0.2 * k, 0.11 * k), w={to: 1}, mat=m_shoe),
+                 dict(c=mir((tp[0], tp[1] - 0.05, 0.11 * k), sx), r=(0.1 * k, 0.07 * k), w={to: 1}, mat=m_shoe),
+                 dict(c=mir((tp[0], tp[1] - 0.07, 0.03), sx), r=(0.04 * k, 0.03 * k), w={to: 1}, mat=m_shoe)]
+        objs.append(loft(name + '_' + S, rings, seg=SEG['shoe'], side=(1, 0, 0)))
+        sock = [dict(c=mir((an[0], an[1] + 0.02, 0.3 * k), sx), r=0.165 * k, w={ft: 1}, mat=m_sock),
+                dict(c=mir((an[0], an[1] + 0.03, 0.6 * k), sx), r=0.15 * k, w={sh: 1}, mat=m_sock),
+                dict(c=mir((an[0], an[1] + 0.03, 0.78 * k), sx), r=0.155 * k, w={sh: 1}, mat=m_sock)]
+        objs.append(loft('sock_' + S, sock, seg=SEG['leg'], side=(1, 0, 0), cap_start=False, cap_end=False))
+    return B.add(kit.join(objs, name))
+
+
+def cable_coil(B, m, side=-1):
+    """Cable Babji's coil of black TV cable over one shoulder and across the chest"""
+    rig, k = B.rig, B.k
+    T = TORSO[rig]
+    sx = side
+    c = Vector((0.55 * k * sx, 0.0, T[8][0][2] - 0.35 * k))
+    objs = []
+    for j in range(3):
+        pts = []
+        for i in range(13):
+            a = 2 * math.pi * i / 12
+            r = 0.62 * k + 0.05 * j
+            pts.append(c + Vector((math.sin(a) * 0.18 * k * sx, math.cos(a) * r * 0.7, math.sin(a) * r * 0.95)))
+        objs.append(kit.tube('coil', pts, 0.045 * k, seg=5, mat=m, cap=False))
+    o = kit.join(objs, 'cable')
+    return B.add(o, lambda co, rig=rig: torso_w(rig, co))
+
+
+def ponytails(H, m, band=None, name='ponytails'):
+    """Chitti's two high 'antenna' ponytails with rubber bands"""
+    hz, cy = H.hz, H.cy
+    objs = []
+    for sx in (1, -1):
+        base = Vector((0.42 * sx, cy + 0.12, hz + 1.12))
+        d = Vector((0.55 * sx, 0.1, 0.55)).normalized()
+        L = 0.62
+        rings = [dict(c=tuple(base), r=0.13), dict(c=tuple(base + d * 0.12), r=0.1),
+                 dict(c=tuple(base + d * L * 0.6 + Vector((0.04 * sx, 0, 0.04))), r=0.15),
+                 dict(c=tuple(base + d * L + Vector((0.12 * sx, 0.02, -0.08))), r=0.07),
+                 dict(c=tuple(base + d * L * 1.15 + Vector((0.2 * sx, 0.02, -0.22))), r=0.02)]
+        for r in rings:
+            r['w'] = {'head': 1}
+            r['mat'] = m
+        objs.append(loft('tail', rings, seg=7, side=(0, 1, 0)))
+        if band is not None:
+            b = kit.cylinder('band', 0.115, 0.07, (0, 0, 0), seg=8, mat=band, base=False)
+            b.rotation_euler = Vector((0, 0, 1)).rotation_difference(d).to_euler()
+            b.location = base + d * 0.1
+            kit.apply_transform(b)
+            objs.append(b)
+    return H.add(kit.join(objs, name))
+
+
 # =========================================================================== finishing
 LOOKDEV = os.environ.get('NOS_LOOKDEV')          # 1 = render the unbaked scene and stop (fast look iteration)
+
+
+UV_ANGLE = float(os.environ.get('NOS_UV_ANGLE', 78))
+
+
+# ---------------------------------------------------------------- slot-aware baking
+def _layer_copy(me, keep, name):
+    """a copy of the joined character mesh keeping only the faces whose region is in `keep`"""
+    ob = me.copy()
+    ob.data = me.data.copy()
+    ob.name = name
+    ob.modifiers.clear()
+    for c in me.users_collection:
+        c.objects.link(ob)
+    at = ob.data.attributes.get('_REGION')
+    vals = [0.0] * len(ob.data.vertices)
+    at.data.foreach_get('value', vals)
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bm.verts.ensure_lookup_table()
+    kill = [f for f in bm.faces if int(round(vals[f.verts[0].index])) not in keep]
+    bmesh.ops.delete(bm, geom=kill, context='FACES')
+    bm.to_mesh(ob.data)
+    bm.free()
+    return ob
+
+
+def _uv_mask(ob, W, H):
+    """pixels (H, W) whose centre lies inside one of the object's UV triangles (what a bake fills)"""
+    import numpy as np
+    me = ob.data
+    me.calc_loop_triangles()
+    uv = me.uv_layers.active.data
+    a = [0.0] * (len(uv) * 2)
+    uv.foreach_get('uv', a)
+    UV = np.array(a, dtype=np.float64).reshape(-1, 2)
+    tris = np.array([lt.loops[:] for lt in me.loop_triangles], dtype=np.int64)
+    mask = np.zeros((H, W), dtype=bool)
+    if not len(tris):
+        return mask
+    P = UV[tris] * np.array([W, H])
+    for t in P:
+        x0, y0 = np.floor(t.min(0)).astype(int)
+        x1, y1 = np.ceil(t.max(0)).astype(int)
+        x0, y0 = max(0, x0), max(0, y0)
+        x1, y1 = min(W - 1, x1), min(H - 1, y1)
+        if x1 < x0 or y1 < y0:
+            continue
+        xs, ys = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
+        (ax, ay), (bx, by), (cx, cy) = t
+        d = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
+        if abs(d) < 1e-12:
+            continue
+        l1 = ((by - cy) * (xs - cx) + (cx - bx) * (ys - cy)) / d
+        l2 = ((cy - ay) * (xs - cx) + (ax - cx) * (ys - cy)) / d
+        inside = (l1 >= -1e-6) & (l2 >= -1e-6) & (l1 + l2 <= 1 + 1e-6)
+        mask[y0:y1 + 1, x0:x1 + 1] |= inside
+    return mask
+
+
+def _dilate(m, r):
+    import numpy as np
+    out = m.copy()
+    for _ in range(r):
+        o = out.copy()
+        o[1:, :] |= out[:-1, :]
+        o[:-1, :] |= out[1:, :]
+        o[:, 1:] |= out[:, :-1]
+        o[:, :-1] |= out[:, 1:]
+        out = o
+    return out
+
+
+def _bake(objs, visible, mode, size, samples, margin, name, aof=None):
+    """kit.bake_pass with explicit occluders: only `objs` (targets) and `visible` render; aof sets
+    every material's grime factor (NOS_AOF) for the pass"""
+    sc = bpy.context.scene
+    hidden = []
+    keep = set(objs) | set(visible)
+    for o in sc.objects:
+        if o.type == 'MESH' and o not in keep and not o.hide_render:
+            o.hide_render = True
+            hidden.append(o)
+    mats, saved = [], []
+    for o in objs + list(visible):
+        for m in o.data.materials:
+            if m and m not in mats:
+                mats.append(m)
+    if aof is not None:
+        for m in mats:
+            n = m.node_tree.nodes.get('NOS_AOF') if m.node_tree else None
+            if n is not None:
+                saved.append((n, n.outputs[0].default_value))
+                n.outputs[0].default_value = aof
+    try:
+        img = kit.bake_pass(objs, mode, size, samples=samples, margin=margin, name=name)
+    finally:
+        for n, v in saved:
+            n.outputs[0].default_value = v
+        for o in hidden:
+            o.hide_render = False
+    return img
+
+
+def finish_atlas_layered(A, me, size=512, ao_samples=32, albedo_samples=8, ao_strength=0.6, ao_dist=1.2, ao_scale=0.5, margin=6):
+    """kit.finish_atlas for characters with accessory slots. A slot is often hidden at runtime (the
+    belly shell, a camera, a frock over the shorts), so it must not darken what is under it: the base
+    (regions < 8) is baked with every slot hidden, each slot against the base alone, and the passes
+    are composited by their UV-island masks. One atlas, one material M_<id> (like finish_atlas)."""
+    import numpy as np
+    kit.ensure_dirs()
+    kit.apply_modifiers(me)
+    kit.clean_slots(me)
+    if ao_dist:
+        bpy.context.scene.world.light_settings.distance = ao_dist
+    kit.uv_atlas([me], margin=0.006, angle=UV_ANGLE)
+    at = me.data.attributes.get('_REGION')
+    vals = [0.0] * len(me.data.vertices)
+    at.data.foreach_get('value', vals)
+    regs = sorted(set(int(round(vals[p.vertices[0]])) for p in me.data.polygons))
+    slots = [r for r in regs if r >= len(BASE)]
+    base_ob = _layer_copy(me, set(r for r in regs if r < len(BASE)), A.id + '_L_base')
+    slot_obs = [(r, _layer_copy(me, {r}, A.id + '_L_%d' % r)) for r in slots]
+    me.hide_render = True
+    ao_size = max(64, int(size * ao_scale))
+    try:
+        alb = kit.img_array(_bake([base_ob], [], 'albedo', size, albedo_samples, margin, '_alb'))
+        ao = kit.img_array(_bake([base_ob], [], 'ao', ao_size, ao_samples, max(2, margin // 2), '_ao'))
+        if slot_obs:
+            # pixel ownership: the base, then each slot (exact island coverage); unowned texels go to
+            # the nearest island within the bake margin (bilinear filtering, slivers). Every slot is
+            # baked on its own (albedo + AO against the base only), so its margins hold its own colour.
+            for W_, is_ao in ((size, False), (ao_size, True)):
+                own = np.full((W_, W_), -1, dtype=np.int32)
+                own[_uv_mask(base_ob, W_, W_)] = 0
+                for r, o in slot_obs:
+                    m = _uv_mask(o, W_, W_) & (own < 0)
+                    own[m] = r
+                for _ in range(margin if not is_ao else max(2, margin // 2)):
+                    free = own < 0
+                    if not free.any():
+                        break
+                    nb = np.full_like(own, -1)
+                    nb[1:, :] = np.maximum(nb[1:, :], own[:-1, :])
+                    nb[:-1, :] = np.maximum(nb[:-1, :], own[1:, :])
+                    nb[:, 1:] = np.maximum(nb[:, 1:], own[:, :-1])
+                    nb[:, :-1] = np.maximum(nb[:, :-1], own[:, 1:])
+                    own[free] = nb[free]
+                for r, o in slot_obs:
+                    m = own == r
+                    if not m.any():
+                        continue
+                    if is_ao:
+                        img = kit.img_array(_bake([o], [base_ob], 'ao', ao_size, max(16, ao_samples * 2 // 3), max(2, margin // 2), '_ao_%d' % r))
+                        ao[m] = img[m]
+                    else:
+                        img = kit.img_array(_bake([o], [base_ob], 'albedo', size, albedo_samples, margin, '_alb_%d' % r, aof=0.35))
+                        alb[m] = img[m]
+    finally:
+        me.hide_render = False
+        for o in [base_ob] + [o for _, o in slot_obs]:
+            bpy.data.objects.remove(o, do_unlink=True)
+    if ao_size != size:
+        ao = kit.resize_bilinear(ao, size, size)
+    base = alb.copy()
+    k = kit.ao_curve(ao[..., 0], ao_strength)
+    base[..., 0] *= k
+    base[..., 1] *= k
+    base[..., 2] *= k
+    base[..., 3] = 1.0
+    bpath = os.path.join(kit.TMP_DIR, A.id + '_base.png')
+    kit.save_png(base, bpath, srgb=True, name=A.id + '_base')
+    M = kit.baked_material('M_' + A.id, bpath, None, rough=0.8)
+    kit.drop_uv([me], 'SignUV')
+    kit.assign(me, M)
+    A.textures.append(bpath)
+    kit.log('layered bake: base + %d slot layer(s)' % len(slot_obs))
+    return M
+
+
+
 
 
 def finish_character(A, J, rig_name, B, H, look, tex=512, ao_dist=1.2, organic_angle=70, hard=()):
@@ -1780,7 +2121,8 @@ def finish_character(A, J, rig_name, B, H, look, tex=512, ao_dist=1.2, organic_a
     arm = kit.build_armature(J, rig_name, A.coll)
     A.armature = arm
     if not LOOKDEV:
-        kit.finish_atlas(A, [me], size=tex, ao_samples=32, albedo_samples=8, ao_strength=0.6, ao_dist=ao_dist, orm=False)
+        finish_atlas_layered(A, me, size=tex, ao_samples=32, albedo_samples=8, ao_strength=0.6, ao_dist=ao_dist)
+        kit.log('%s: %d verts / %d tris after the atlas' % (A.id, len(me.data.vertices), sum(len(p.vertices) - 2 for p in me.data.polygons)))
     mod = me.modifiers.new('Armature', 'ARMATURE')
     mod.object = arm
     me.parent = arm
@@ -2628,7 +2970,7 @@ def _acc_read(J, BIN, ai):
     return [struct.unpack_from('<%d%s' % (n, fmt), BIN, o + i * stride) for i in range(a['count'])]
 
 
-def optimize_glb(path, resample=None, eps=2e-5):
+def optimize_glb(path, resample=None, eps=2e-5, quant=True, merge=False):
     """Shrink an exported clip library in place: animation channels that hold the bone's rest
     value for the whole clip are dropped (three's mixer blends unanimated bones to their rest
     state), slow clips can be resampled (resample: {clip: step}: every step-th key + the last),
@@ -2668,6 +3010,54 @@ def optimize_glb(path, resample=None, eps=2e-5):
                 vals = [vals[i] for i in idx]
             chans.append((ch['target'], sm.get('interpolation', 'LINEAR'), times, vals))
         new_anim_data.append((an, chans))
+    ranges = None
+    if merge and new_anim_data:
+        # one long animation ('library'): per animated target, the clips' keys one after the other
+        # (a target that is constant in a clip gets two rest keys spanning it); clip k occupies frames
+        # [F_k, F_k + n_k] at kit.FPS; the runtime cuts them out with AnimationUtils.subclip
+        GAP = 6
+        fps = float(kit.FPS)
+        targets = []
+        seen = set()
+        for an, chans in new_anim_data:
+            for target, interp, times, vals in chans:
+                key = (target['node'], target['path'])
+                if key not in seen:
+                    seen.add(key)
+                    targets.append(target)
+        merged = {(t['node'], t['path']): ([], []) for t in targets}
+        ranges = {}
+        F = 0
+        for an, chans in new_anim_data:
+            have = {(t['node'], t['path']): (times, vals) for t, interp, times, vals in chans}
+            src = [sm for sm in an['samplers']]
+            dur = 0.0
+            for t, interp, times, vals in chans:
+                dur = max(dur, times[-1])
+            if not chans:
+                # an all-constant clip: its length from the original key times
+                for sm in src:
+                    tt = _acc_read(J, BIN, sm['input'])
+                    dur = max(dur, tt[-1][0])
+            n = int(round(dur * fps))
+            ranges[an.get('name')] = [F, F + n]
+            for key, (T_, V_) in merged.items():
+                if key in have:
+                    times, vals = have[key]
+                    for tt, vv in zip(times, vals):
+                        T_.append(F / fps + tt)
+                        V_.append(vv)
+                else:
+                    node = nodes[key[0]]
+                    rest = tuple(node.get(key[1], rest_of[key[1]]))
+                    T_.append(F / fps)
+                    V_.append(rest)
+                    T_.append((F + n) / fps)
+                    V_.append(rest)
+            F += n + GAP
+        lib = {'name': 'library', 'channels': [], 'samplers': []}
+        chans = [(t, 'LINEAR', merged[(t['node'], t['path'])][0], merged[(t['node'], t['path'])][1]) for t in targets]
+        new_anim_data = [(lib, chans)]
     # rebuild: keep non-animation buffer views verbatim, append animation data packed
     anim_acc = set()
     for an in anims:
@@ -2714,9 +3104,13 @@ def optimize_glb(path, resample=None, eps=2e-5):
     for im in J.get('images', []):
         if im.get('bufferView') is not None:
             im['bufferView'] = bv_map[im['bufferView']]
-    # animation data: one buffer view for key times (deduplicated), one for values
-    tblob, vblob = [], []
-    t_off = v_off = 0
+    # animation data: one buffer view for key times (deduplicated), one for float values
+    # (translations / scales) and one for rotations as normalized SHORT (core glTF 2.0 allows it for
+    # rotation outputs; three's GLTFLoader de-normalizes them). Keeping rotations in a view of their
+    # own also lets tools/pack_assets3d.cjs leave the library as it is (it re-packs float rotations
+    # into new views but copies any view still used by other accessors in full).
+    tblob, vblob, rblob = [], [], []
+    t_off = v_off = r_off = 0
     t_cache = {}
     t_acc_specs, v_acc_specs = [], []
     for an, chans in new_anim_data:
@@ -2730,31 +3124,51 @@ def optimize_glb(path, resample=None, eps=2e-5):
                 t_off += len(tb)
             n = len(vals[0])
             flat = [x for v in vals for x in v]
-            vb = struct.pack('<%df' % len(flat), *flat)
-            v_acc_specs.append((v_off, len(vals), n))
-            vblob.append(vb)
-            v_off += len(vb)
-            an['samplers'].append({'input': ('T', t_cache[tb]), 'output': ('V', len(v_acc_specs) - 1), 'interpolation': interp})
+            if target.get('path') == 'rotation' and quant:
+                q = [max(-32767, min(32767, int(round(x * 32767)))) for x in flat]
+                vb = struct.pack('<%dh' % len(q), *q)
+                v_acc_specs.append(('R', r_off, len(vals), n))
+                rblob.append(vb)
+                r_off += len(vb)
+            else:
+                vb = struct.pack('<%df' % len(flat), *flat)
+                v_acc_specs.append(('V', v_off, len(vals), n))
+                vblob.append(vb)
+                v_off += len(vb)
+            smp = {'input': ('T', t_cache[tb]), 'output': ('V', len(v_acc_specs) - 1)}
+            if interp != 'LINEAR':
+                smp['interpolation'] = interp
+            an['samplers'].append(smp)
             an['channels'].append({'sampler': len(an['samplers']) - 1, 'target': target})
     TYPES = {1: 'SCALAR', 3: 'VEC3', 4: 'VEC4'}
     if tblob:
         tbv = len(new_bvs)
         new_bvs.append({'buffer': 0, 'byteOffset': push(b''.join(tblob)), 'byteLength': t_off})
-        vbv = len(new_bvs)
-        new_bvs.append({'buffer': 0, 'byteOffset': push(b''.join(vblob)), 'byteLength': v_off})
+        vbv = rbv = None
+        if vblob:
+            vbv = len(new_bvs)
+            new_bvs.append({'buffer': 0, 'byteOffset': push(b''.join(vblob)), 'byteLength': v_off})
+        if rblob:
+            rbv = len(new_bvs)
+            new_bvs.append({'buffer': 0, 'byteOffset': push(b''.join(rblob)), 'byteLength': r_off})
         t_idx = []
         for o, cnt, mn, mx in t_acc_specs:
             t_idx.append(len(new_acc))
             new_acc.append({'bufferView': tbv, 'byteOffset': o, 'componentType': 5126, 'count': cnt, 'type': 'SCALAR', 'min': [mn], 'max': [mx]})
         v_idx = []
-        for o, cnt, n in v_acc_specs:
+        for kind, o, cnt, n in v_acc_specs:
             v_idx.append(len(new_acc))
-            new_acc.append({'bufferView': vbv, 'byteOffset': o, 'componentType': 5126, 'count': cnt, 'type': TYPES[n]})
+            if kind == 'R':
+                new_acc.append({'bufferView': rbv, 'byteOffset': o, 'componentType': 5122, 'normalized': True, 'count': cnt, 'type': TYPES[n]})
+            else:
+                new_acc.append({'bufferView': vbv, 'byteOffset': o, 'componentType': 5126, 'count': cnt, 'type': TYPES[n]})
         for an, _ in new_anim_data:
             for sm in an['samplers']:
                 sm['input'] = t_idx[sm['input'][1]]
                 sm['output'] = v_idx[sm['output'][1]]
     J['animations'] = [an for an, ch in new_anim_data if ch]
+    if ranges is not None:
+        J.setdefault('extras', {})['clipRanges'] = ranges
     # remap the other accessor references
     for m in J.get('meshes', []):
         for p in m['primitives']:
@@ -2772,8 +3186,8 @@ def optimize_glb(path, resample=None, eps=2e-5):
     J['buffers'] = [{'byteLength': len(nbin) + ((4 - len(nbin) % 4) % 4)}]
     _write_glb(path, J, nbin)
     new = os.path.getsize(path)
-    kit.log('optimize %s: %d constant channels dropped, %.1f -> %.1f KB' % (os.path.basename(path), dropped, old / 1024, new / 1024))
-    return old, new
+    kit.log('optimize %s: %d constant channels dropped%s, %.1f -> %.1f KB' % (os.path.basename(path), dropped, ', clips merged into one track set' if ranges else '', old / 1024, new / 1024))
+    return (old, new, ranges) if merge else (old, new)
 
 
 _kit_export_glb = kit.export_glb
@@ -2785,7 +3199,13 @@ def _export_glb_hook(A, path=None):
     p = _kit_export_glb(A, path)
     opt = getattr(A, 'nos_optimize', None)
     if opt is not None:
-        optimize_glb(p, **opt)
+        r = optimize_glb(p, **opt)
+        if opt.get('merge') and len(r) > 2 and r[2]:
+            for name, rg in r[2].items():
+                if name in A.clips:
+                    A.clips[name]['range'] = rg
+            A.meta['clipTrack'] = 'library'
+            A.meta['clipFps'] = kit.FPS
     return p
 
 
@@ -2910,7 +3330,7 @@ def render_variants(A, glb, variants, out, view=None, size=256, samples=14, clip
     sc.cycles.use_denoising = False
     sc.cycles.max_bounces = 3
     sc.cycles.diffuse_bounces = 2
-    sc.cycles.transparent_max_bounces = 4
+    sc.cycles.transparent_max_bounces = 24
     try:
         sc.cycles.use_fast_gi = True
         sc.cycles.fast_gi_method = 'REPLACE'

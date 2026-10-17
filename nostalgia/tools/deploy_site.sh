@@ -7,6 +7,7 @@
 #
 #   tools/deploy_site.sh                 build + assemble + push
 #   tools/deploy_site.sh --dry-run       build + assemble dist/site only
+#   tools/deploy_site.sh --from-dist     skip the build: publish the dist/web.html already tested
 #   DEPLOY_REMOTE=<url> DEPLOY_BRANCH=<branch> tools/deploy_site.sh
 set -euo pipefail
 
@@ -15,10 +16,17 @@ REMOTE=${DEPLOY_REMOTE:-$(git -C "$HERE" remote get-url origin)}
 BRANCH=${DEPLOY_BRANCH:-gh-pages}
 SITE_URL=${DEPLOY_URL:-https://vivkv07.github.io/DS/}
 SITE="$HERE/dist/site"
-DRY=0
-[ "${1:-}" = "--dry-run" ] && DRY=1
+DRY=0; BUILD=1
+for a in "$@"; do
+  case "$a" in
+    --dry-run) DRY=1 ;;
+    --from-dist) BUILD=0 ;;
+    *) echo "unknown option: $a" >&2; exit 2 ;;
+  esac
+done
 
-node "$HERE/tools/build.mjs"
+[ $BUILD = 1 ] && node "$HERE/tools/build.mjs"
+[ -f "$HERE/dist/web.html" ] || { echo "dist/web.html missing: run without --from-dist" >&2; exit 1; }
 
 SRC_REV=$(git -C "$HERE" rev-parse --short HEAD 2>/dev/null || echo unknown)
 STAMP=$(date -u +%Y-%m-%dT%H:%MZ)

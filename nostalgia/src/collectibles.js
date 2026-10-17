@@ -963,6 +963,8 @@
   function autoViewpoints(dt) {
     const p = N.player; if (!p || p.vehicle || missionActive() || T.vp || T.click) { T.dwell = null; return; }
     try { if (N.hud && N.hud.jcardOpen) { T.dwell = null; return; } } catch (e) { /* stub */ }
+    // the MISSION FAILED retry card owns ACTION (M1 fails on home_terrace, a walk-up viewpoint)
+    if (N.missions && N.missions.askOpen) { T.dwell = null; return; }
     let here = null;
     for (const id in VIEWPOINTS) {
       const v = VIEWPOINTS[id];
