@@ -93,3 +93,16 @@ ERROR MeshOptimizer is not available because library could not be found at /home
 16:33:09 | INFO: Data are loaded, start creating Blender stuff
 16:33:09 | INFO: Blender create Mesh node kid_chinnu
 16:33:09 | INFO: glTF import finished in 0.52s
+06:17.120  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_13.png'
+[kit] preview kid_chinnu_sheet_13.png (160px, 10 spp) in 10.3s
+16:33:20 | INFO: Data are loaded, start creating Blender stuff
+16:33:20 | INFO: Blender create Mesh node kid_chinnu
+16:33:21 | INFO: glTF import finished in 0.94s
+06:28.743  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_14.png'
+[kit] preview kid_chinnu_sheet_14.png (160px, 10 spp) in 10.2s
+16:33:31 | INFO: Data are loaded, start creating Blender stuff
+16:33:31 | INFO: Blender create Mesh node kid_chinnu
+16:33:32 | INFO: glTF import finished in 0.31s
+06:40.346  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_15.png'
+[kit] preview kid_chinnu_sheet_15.png (160px, 10 spp) in 11.2s
+[kit] done kid_chinnu in 395.5s
