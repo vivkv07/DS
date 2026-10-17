@@ -125,7 +125,7 @@
   // Noise + IR buffers cached per sample rate; PeriodicWaves per context; KS buffers global
   // (AudioBuffers are context-independent).
   const NOISE = new Map();   // sr -> {white, pink, brown}
-  const IRS = new Map();     // sr -> AudioBuffer
+  const IRS = new Map();     // 'sr:zone' -> AudioBuffer (generated impulse responses)
   const WAVECACHE = new WeakMap();
   const CURVES = new Map();
 
@@ -161,26 +161,105 @@
   }
   const noiseBuf = (ac, kind) => noiseSet(ac)[kind || 'white'];
 
-  function makeIR(ac) {
-    const sr = ac.sampleRate;
-    let b = IRS.get(sr);
-    if (b) return b;
-    const dur = 1.7, len = Math.floor(sr * dur);
-    b = ac.createBuffer(2, len, sr);
+  /* ------------------------------------------------------------ generated impulse responses (reverb zones)
+   * Every IR is synthesised here (no recordings): a decorrelated stereo noise tail with an RT60 envelope and
+   * frequency-dependent damping (a one-pole lowpass that closes over time = air + soft surfaces eat the highs
+   * first), a density build-up after the pre-delay, discrete early reflections as short filtered grains
+   * (walls, arches, stands), optional flutter (two close parallel walls), distinct late echoes (Golconda's
+   * Fateh Darwaza clap that "answers" from Bala Hissar) and resonant ringing (a station's metal roof).
+   * Each IR is normalised to unit energy; the zone's `wet` gain sets the direct/reverb ratio.
+   * Cached per sample rate; generation is ~2-8 ms (JS) and runs in idle time except for 'open' + music. */
+  const IRZ = {
+    // id: len (s), rt (RT60 s), pre (pre-delay s), build (density ramp s), lp0/lp1 (damping cutoff Hz, start/end),
+    //     hp (Hz), wet (output gain), near (minimum send even right next to a sound), taps [[t, g, pan, lpHz]],
+    //     flutter {t0, per, n, k, lp}, echo [[t, g, lpHz, spread]], ring [[Hz, Q, g]], width (stereo decorrelation 0..1)
+    open: { len: 1.0, rt: 0.7, pre: 0.012, build: 0.03, lp0: 7000, lp1: 1800, hp: 120, wet: 0.13, near: 0.04,
+      taps: [[0.017, 0.45, -0.5, 6000], [0.029, 0.32, 0.6, 5000], [0.043, 0.22, -0.2, 4200], [0.061, 0.14, 0.4, 3500]] },
+    oldcity_lane: { len: 1.15, rt: 0.9, pre: 0.006, build: 0.02, lp0: 6500, lp1: 1600, hp: 140, wet: 0.2, near: 0.11,
+      flutter: { t0: 0.008, per: 0.0185, n: 16, k: 0.72, lp: 5200 },
+      taps: [[0.011, 0.5, -0.8, 6500], [0.013, 0.45, 0.8, 6500], [0.052, 0.18, 0.1, 3000]] },
+    charminar: { len: 2.6, rt: 2.2, pre: 0.02, build: 0.06, lp0: 9500, lp1: 3200, hp: 110, wet: 0.22, near: 0.1,
+      taps: [[0.023, 0.42, -0.6, 8000], [0.041, 0.38, 0.6, 7500], [0.067, 0.3, -0.3, 7000], [0.089, 0.27, 0.35, 6500],
+        [0.12, 0.2, 0, 6000], [0.156, 0.14, -0.5, 5000], [0.19, 0.1, 0.5, 4500]] },
+    golconda: { len: 3.4, rt: 3.0, pre: 0.03, build: 0.12, lp0: 7000, lp1: 1500, hp: 90, wet: 0.26, near: 0.14,
+      taps: [[0.031, 0.35, -0.5, 6000], [0.058, 0.3, 0.55, 5500], [0.097, 0.22, 0.1, 4500]],
+      // the famous answer: a clap under the Fateh Darwaza dome comes back from the hill, then once more fainter
+      echo: [[0.78, 1.25, 2600, 0.012], [1.52, 0.42, 1700, 0.02]], tailG: 0.55 },
+    stadium: { len: 2.9, rt: 2.5, pre: 0.045, build: 0.25, lp0: 6000, lp1: 1400, hp: 100, wet: 0.2, near: 0.08,
+      taps: [[0.062, 0.2, 0.3, 4000]], echo: [[0.165, 0.9, 3800, 0.03], [0.29, 0.4, 3000, 0.05]], tailG: 0.75 },
+    station: { len: 3.2, rt: 2.8, pre: 0.025, build: 0.09, lp0: 8000, lp1: 2200, hp: 130, wet: 0.24, near: 0.13,
+      taps: [[0.028, 0.3, -0.4, 7000], [0.047, 0.26, 0.5, 6500], [0.083, 0.2, 0, 6000]],
+      flutter: { t0: 0.035, per: 0.034, n: 10, k: 0.8, lp: 4500 }, ring: [[410, 18, 0.5], [1130, 26, 0.45], [2480, 34, 0.3], [3720, 40, 0.18]] },
+    irani_cafe: { len: 0.65, rt: 0.5, pre: 0.003, build: 0.012, lp0: 4200, lp1: 1400, hp: 150, wet: 0.15, near: 0.1,
+      taps: [[0.004, 0.55, -0.6, 4500], [0.007, 0.5, 0.6, 4200], [0.011, 0.4, 0.2, 3800], [0.016, 0.3, -0.3, 3500], [0.022, 0.22, 0.4, 3000]] },
+    lake: { len: 1.3, rt: 0.6, pre: 0.01, build: 0.03, lp0: 5000, lp1: 1500, hp: 160, wet: 0.08, near: 0.02, tailG: 0.4,
+      echo: [[0.36, 0.55, 1400, 0.04]] },
+    // music: a smooth, dense plate/hall (no discrete echoes) so the score never gets the station's ring
+    music: { len: 2.3, rt: 1.9, pre: 0.016, build: 0.035, lp0: 9000, lp1: 3500, hp: 160, wet: 0.17, width: 1 },
+  };
+  function genIRData(sr, Z) {
+    const len = Math.max(64, Math.floor(sr * Z.len));
+    const out = [new Float32Array(len), new Float32Array(len)];
+    let seed = 0x9e3779b9 ^ Math.floor(Z.rt * 1000 + Z.len * 7919);
+    const rand = () => { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return ((seed >>> 0) / 4294967296) * 2 - 1; };
+    const k60 = 6.9078 / Math.max(0.05, Z.rt);
+    const pre = Math.floor(Z.pre * sr), build = Math.max(1, Z.build * sr);
+    const lpA = (f) => 1 - Math.exp(-TAU * f / sr);
+    const hpA = Math.exp(-TAU * (Z.hp || 80) / sr);
+    const tailG = Z.tailG == null ? 1 : Z.tailG;
     for (let ch = 0; ch < 2; ch++) {
-      const d = b.getChannelData(ch);
-      let lp = 0;
-      for (let i = 0; i < len; i++) {
-        const t = i / sr;
-        const damp = 0.35 + 0.6 * Math.min(1, t / dur); // darker tail
-        lp += (rnd() * 2 - 1 - lp) * (1 - damp);
-        d[i] = lp * Math.exp(-t * 3.6) * (t < 0.008 ? t / 0.008 : 1);
+      const d = out[ch];
+      // late diffuse tail
+      let lp = 0, hpX = 0, hpY = 0, a = lpA(Z.lp0), env = tailG * 2.2;
+      const kEnv = Math.exp(-k60 / sr);
+      for (let i = pre; i < len; i++) {
+        if (((i - pre) & 31) === 0) a = lpA(Z.lp1 + (Z.lp0 - Z.lp1) * Math.exp(-((i - pre) / sr) / (Z.rt * 0.3))); // damping closes over time
+        lp += (rand() - lp) * a;
+        const y = hpA * (hpY + lp - hpX); hpX = lp; hpY = y;
+        d[i] = y * env * (i - pre < build ? (i - pre) / build : 1);
+        env *= kEnv;
       }
-      // a few early reflections (courtyard / galli walls)
-      const refl = ch ? [0.013, 0.029, 0.047, 0.071] : [0.017, 0.023, 0.053, 0.083];
-      refl.forEach((rt, k) => { const i = Math.floor(rt * sr); if (i < len) d[i] += (0.5 - k * 0.09) * (ch ? 1 : -1); });
+      // a grain = a few ms of filtered noise with a fast decay (a wall reflection, not a digital click)
+      const grain = (t0, g, lpHz, spread) => {
+        const i0 = Math.floor(t0 * sr), n = Math.max(8, Math.floor((spread || 0.0015) * sr)), a = lpA(lpHz || 6000);
+        let l = 0;
+        for (let k = 0; k < n * 3 && i0 + k < len; k++) { l += (rand() - l) * a; d[i0 + k] += l * g * Math.exp(-k / n) * 2.5; }
+      };
+      if (Z.taps) for (const tp of Z.taps) { const side = ch ? 1 + tp[2] : 1 - tp[2]; grain(tp[0] * (ch ? 1.03 : 0.97), tp[1] * Math.max(0.1, side) * 0.8, tp[3]); }
+      if (Z.flutter) {
+        const F = Z.flutter;
+        for (let k = 0; k < F.n; k++) grain(F.t0 + k * F.per + (ch && k % 2 ? F.per * 0.5 : 0), Math.pow(F.k, k) * 0.55 * (k % 2 === ch ? 1 : 0.6), F.lp * Math.pow(0.93, k));
+      }
+      if (Z.echo) for (const e of Z.echo) grain(e[0] + (ch ? 0.004 : 0), e[1] * 0.6, e[2], e[3]);
+      if (Z.ring) { // resonant ringing riding on the tail (metal roof): 2-pole resonators fed by the tail
+        const src = d.slice(0);
+        for (const r of Z.ring) {
+          const w = TAU * r[0] / sr, rr2 = Math.exp(-Math.PI * r[0] / (r[1] * sr)), a1 = 2 * rr2 * Math.cos(w), a2 = -rr2 * rr2;
+          let y1 = 0, y2 = 0;
+          for (let i = 0; i < len; i++) { const y = src[i] * (1 - rr2) + a1 * y1 + a2 * y2; y2 = y1; y1 = y; d[i] += y * r[2] * 3; }
+        }
+      }
+      // fade the very end so the buffer stops at silence
+      const fe = Math.min(len >> 3, Math.floor(sr * 0.05));
+      for (let i = 0; i < fe; i++) d[len - 1 - i] *= i / fe;
     }
-    IRS.set(sr, b);
+    // stereo width: mid/side blend (width 1 = fully decorrelated)
+    const w = Z.width == null ? 0.85 : Z.width;
+    if (w < 1) for (let i = 0; i < len; i++) { const m = (out[0][i] + out[1][i]) * 0.5, s0 = (out[0][i] - out[1][i]) * 0.5 * w; out[0][i] = m + s0; out[1][i] = m - s0; }
+    let e = 0;
+    for (const d of out) for (let i = 0; i < len; i++) e += d[i] * d[i];
+    const k = 1 / Math.sqrt(Math.max(1e-12, e));
+    for (const d of out) for (let i = 0; i < len; i++) d[i] *= k;
+    return out;
+  }
+  function zoneIR(ac, id) {
+    const Z = IRZ[id] || IRZ.open, key = ac.sampleRate + ':' + (IRZ[id] ? id : 'open');
+    let b = IRS.get(key);
+    if (b) return b;
+    const data = genIRData(ac.sampleRate, Z);
+    b = ac.createBuffer(2, data[0].length, ac.sampleRate);
+    for (let ch = 0; ch < 2; ch++) { if (b.copyToChannel) b.copyToChannel(data[ch], ch); else b.getChannelData(ch).set(data[ch]); }
+    IRS.set(key, b);
     return b;
   }
 
@@ -793,6 +872,8 @@
     return t + d + 0.2;
   };
   SFX.clap_echo = (ac, out, t, o) => { // Golconda clap at the gate, heard echoing to the top
+    // inside the 'golconda' reverb zone the generated IR is the echo (heard ~0.8 s later from Bala Hissar): just the clap
+    if (o && o.zone === 'golconda') return Math.max(SFX.clap(ac, out, t, o), t + 1.6);
     let e = t;
     for (let k = 0; k < 5; k++) e = burst(ac, out, t + k * 0.32, { f: 1600 - k * 220, q: 1, a: 0.001, r: 0.06 + k * 0.02, v: 0.6 * Math.pow(0.55, k) });
     return e;
@@ -2216,29 +2297,72 @@
   ];
 
   /* ============================================================ live graph */
+  // Master limiter: DynamicsCompressor (brick-wall-ish: 6 ms look-ahead, 1 ms attack, ratio 20) after a trim that
+  // cancels the compressor's automatic make-up gain (Chrome/WebKit/Gecko apply (1/fullRangeGain)^0.6), then a
+  // static soft clipper (linear up to -1 dBFS, tanh knee into a -0.3 dBFS ceiling) as the very last stage.
+  const LIM = { thr: -2, ratio: 20, ceil: Math.pow(10, -0.3 / 20), knee0: Math.pow(10, -1 / 20) };
+  LIM.trim = Math.pow(10, -((-LIM.thr - -LIM.thr / LIM.ratio) * 0.6) / 20);
+  function clipCurve() {
+    let c = CURVES.get('clip');
+    if (c) return c;
+    c = new Float32Array(8193);
+    const T = LIM.knee0, C = LIM.ceil;
+    for (let i = 0; i < c.length; i++) { // input domain [-1, 1] = signal [-2, 2] (a 0.5 pre-gain feeds the shaper)
+      const x = ((i / (c.length - 1)) * 2 - 1) * 2, a = Math.abs(x);
+      c[i] = Math.sign(x) * (a <= T ? a : T + (C - T) * Math.tanh((a - T) / (C - T)));
+    }
+    CURVES.set('clip', c);
+    return c;
+  }
+  // one convolver per reverb zone (built on demand, see zones below); its send input fades, the output keeps ringing
+  function mkZoneNode(ac, g, id) {
+    const conv = ac.createConvolver(); conv.normalize = false; conv.buffer = zoneIR(ac, id);
+    const inG = gain(ac, 0); g.revIn.connect(inG); inG.connect(conv);
+    const outG = gain(ac, (IRZ[id] || IRZ.open).wet, g.revOut); conv.connect(outG);
+    const z = { id, conv, inG, outG, quietAt: 0, used: 0 };
+    g.zones.set(id, z);
+    return z;
+  }
   function buildGraph(ac, dest) {
     const g = {};
     g.master = gain(ac, 1);
+    // master chain: glue compressor -> trim -> limiter -> soft clip -> out
     const comp = ac.createDynamicsCompressor();
     comp.threshold.value = -14; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = 0.005; comp.release.value = 0.25;
-    g.master.connect(comp); comp.connect(dest);
-    g.revIn = gain(ac, 1);
-    const conv = ac.createConvolver(); conv.buffer = makeIR(ac);
-    g.revIn.connect(conv);
-    g.revOut = gain(ac, 0.42, g.master); conv.connect(g.revOut);
-    // world (sfx + ambient): pause muffle + duck
+    const lim = ac.createDynamicsCompressor();
+    lim.threshold.value = LIM.thr; lim.knee.value = 0; lim.ratio.value = LIM.ratio; lim.attack.value = 0.001; lim.release.value = 0.08;
+    g.glue = comp; g.limiter = lim;
+    g.trim = gain(ac, LIM.trim);
+    g.clip = ac.createWaveShaper(); g.clip.curve = clipCurve();
+    const clipIn = gain(ac, 0.5);
+    g.master.connect(comp); comp.connect(g.trim); g.trim.connect(lim); lim.connect(clipIn); clipIn.connect(g.clip); g.clip.connect(dest);
+    // world (sfx + ambient): pause muffle + duck; per-bus ducks (dialogue dips ambience more than sfx)
     g.worldDuck = gain(ac, 1, g.master);
     g.worldLP = filt(ac, 'lowpass', 20000, 0.5, g.worldDuck);
-    g.sfx = gain(ac, 1, g.worldLP);
-    g.amb = gain(ac, 1, g.worldLP);
+    g.sfxDuck = gain(ac, 1, g.worldLP);
+    g.ambDuck = gain(ac, 1, g.worldLP);
+    g.sfx = gain(ac, 1, g.sfxDuck);
+    g.amb = gain(ac, 1, g.ambDuck);
     g.engine = gain(ac, 1, g.sfx);
     g.ui = gain(ac, 1, g.master);
+    // world reverb: G.revIn (send input, public) -> one convolver per zone (crossfaded) -> revOut -> world bus
+    g.revIn = gain(ac, 1);
+    g.revOut = gain(ac, 1, g.worldLP);
+    g.zones = new Map();
+    mkZoneNode(ac, g, 'open').inG.gain.value = 1;
+    g.zone = 'open';
+    g.engPlayer = gain(ac, 1, g.engine);          // the player's own engine (head-locked) + a little room
+    g.engSend = gain(ac, 0.06, g.revIn); g.engPlayer.connect(g.engSend);
     // music (+ walkman): duck -> tape wow/flutter delay -> tape lowpass -> master
     g.musicFade = gain(ac, 1, g.master);
     g.tapeLP = filt(ac, 'lowpass', 20000, 0.5, g.musicFade);
     g.tape = ac.createDelay(2.5); g.tape.delayTime.value = 0.012; g.tape.connect(g.tapeLP);
     g.musicDuck = gain(ac, 1, g.tape);
     g.music = gain(ac, 1, g.musicDuck);
+    // the score's own fixed, musical reverb (a smooth plate/hall): it never takes the station's echo
+    g.musicRevIn = gain(ac, 1);
+    const mconv = ac.createConvolver(); mconv.normalize = false; mconv.buffer = zoneIR(ac, 'music');
+    g.musicRevIn.connect(mconv); g.musicRevOut = gain(ac, IRZ.music.wet, g.music); mconv.connect(g.musicRevOut);
     g.walkDuck = gain(ac, 1, g.tape);           // the walkman has its own duck (systems §3.5)
     g.walk = gain(ac, 1, g.walkDuck);
     g.wow = osc0(ac); g.wow.frequency.value = 0.55; g.wowD = gain(ac, 0, g.tape.delayTime); g.wow.connect(g.wowD); g.wow.start();
@@ -2268,34 +2392,176 @@
     sp(G.walk.gain, v2(S.radio), t, 0.03);
   }
 
-  /* ============================================================ spatial one-shots (pooled strips) */
-  function listener() {
+  /* ============================================================ spatial: listening pose, panners, occlusion */
+  // Coordinates (ARCHITECTURE §20): WebAudio (x, y, z) = world (x, height, y) like three.js; +x east, +z south.
+  // 3D views: the AudioListener sits at the 3D camera and faces where it looks (yaw only, up = +y).
+  // Top-down: the ear hovers TOP_H above the followed actor facing down with north = up, so east = right and the
+  //   stereo image is about the lateral offset (a source 280u east pans ~60°), i.e. the old 2D feel with a gentle width.
+  // Distance gain, air absorption, occlusion and Doppler are computed in JS per sound class (PannerNodes only pan:
+  // rolloff 0), so the far fade/cull (~700u) stays exact and the numbers are available for the mix.
+  const TOP_H = 170;
+  const SOUND_C = 2400;          // effective speed of sound (u/s): a bus at ~110 u/s passing a standing ear shifts ~±4.5 %
+  const DOP_MIN = 0.93, DOP_MAX = 1.07;
+  const STRIP_HRTF = 4, EMIT_HRTF = 4;   // HRTF budget (3D + high tier); everything else is equal-power
+  // distance classes: [ref (full level inside), rolloff (inverse-law steepness beyond ref), max (silent + culled)]
+  const DCLS = { def: [80, 1.1, 700], step: [28, 1.3, 260], small: [45, 1.2, 420], horn: [90, 0.95, 700], loud: [130, 0.8, 800],
+    engine: [45, 1.0, 360], music: [90, 1.0, 900], amb: [70, 1.0, 650] };
+  const SFX_CLS = { step: 'step', pothole: 'small', bump: 'small', chappal: 'small', coin: 'small', coin_drop: 'small', marble: 'small', keys: 'small', sip: 'small',
+    munch: 'small', door: 'small', door_creak: 'small', skid: 'small', freewheel: 'small', puncture: 'small', splash: 'small',
+    car_horn: 'horn', bus_horn: 'horn', lorry_horn: 'horn', auto_horn: 'horn', scooter_horn: 'horn', bell: 'horn', crash: 'horn', air_brake: 'horn', conductor: 'horn',
+    finger_whistle: 'horn', dog_bark: 'horn', whistle: 'loud', train_horn: 'loud', school_bell: 'loud', temple_bell: 'loud', church_bell: 'loud', firework: 'loud',
+    announce: 'loud', airplane: 'loud', gong: 'loud' };
+  // sounds whose point is the room they are made in (Golconda's clap): they reach the zone reverb even as UI sounds
+  const ROOM_SFX = new Set(['clap', 'clap_echo', 'finger_whistle', 'applause']);
+  // story stings: a short sidechain-like dip of music + ambience while they play
+  const STORY_SFX = new Set(['mission_passed', 'mission_failed', 'busted', 'wasted', 'wanted_up']);
+
+  function listener() { // the followed actor (gameplay: ambience scans, captions); the EAR is `pose`
     const p = N.player;
     if (p && typeof p.x === 'number') { const v = p.vehicle; return v && typeof v.x === 'number' ? v : p; }
     const r = N.render;
     if (r && r.cam && typeof r.cam.x === 'number') return r.cam;
     return null;
   }
-  function spatial(x, y, ref, max) {
-    const L = listener();
-    if (!L) return { g: 1, pan: 0, d: 0 };
-    const dx = x - L.x, dy = y - L.y, d = Math.hypot(dx, dy);
-    ref = ref || 80; max = max || 700;
-    if (d >= max) return null;
-    let g = d <= ref ? 1 : ref / (ref + (d - ref) * 1.1);
-    g *= 1 - U.smooth((d - max * 0.65) / (max * 0.35));
-    return { g, pan: clamp(dx / 280, -1, 1) * 0.85, d };
+  const pose = { x: 0, y: 0, h: TOP_H, yaw: -Math.PI / 2, fx: 0, fy: -1, is3D: false, vx: 0, vy: 0, ok: false, ref: null, hq: true, mode: 'top' };
+  let poseOverride = null;      // tests/tools: {x, y, h, yaw, is3D, vx, vy, hq}
+  let hrtfPref = 'auto';        // 'auto' (3D + high tier) | true | false
+  function hqTier() {
+    if (hrtfPref === true) return true;
+    if (hrtfPref === false) return false;
+    try { const q = N.view3d && N.view3d.quality; if (q && q.tier) return q.tier !== 'low'; } catch (e) { /* ignore */ }
+    return true;
   }
+  function updatePose() {
+    const P = pose;
+    if (poseOverride) {
+      const o = poseOverride, F = o.follow ? listener() : null; // follow: a chase camera 30u behind the followed actor
+      P.x = F ? F.x - Math.cos(o.yaw || 0) * 30 : o.x || 0; P.y = F ? F.y - Math.sin(o.yaw || 0) * 30 : o.y || 0; P.is3D = !!o.is3D; P.h = o.h != null ? o.h : P.is3D ? 12 : TOP_H;
+      P.yaw = o.yaw != null ? o.yaw : -Math.PI / 2; P.fx = Math.cos(P.yaw); P.fy = Math.sin(P.yaw);
+      if (!P.is3D) { P.fx = 0; P.fy = -1; P.yaw = -Math.PI / 2; }
+      P.vx = F && typeof F.vx === 'number' ? F.vx : o.vx || 0; P.vy = F && typeof F.vy === 'number' ? F.vy : o.vy || 0; P.hq = o.hq != null ? !!o.hq : hqTier(); P.ok = true; P.ref = null; P.mode = P.is3D ? 'override3d' : 'override';
+      return P;
+    }
+    const L = listener();
+    P.ref = L; P.ok = !!L;
+    if (!L) return P;
+    P.is3D = false;
+    try {
+      const V = N.view3d, E = V && V.active ? V.engine : null, cam = E && E.camera;
+      if (cam && cam.position && !(N.view && N.view.mode === 'top')) {
+        P.is3D = true; P.x = cam.position.x; P.y = cam.position.z; P.h = cam.position.y;
+        const m = cam.matrixWorld && cam.matrixWorld.elements;
+        const fx = m ? -m[8] : 0, fy = m ? -m[10] : 0, n = Math.hypot(fx, fy);
+        if (n > 1e-3) { P.fx = fx / n; P.fy = fy / n; P.yaw = Math.atan2(P.fy, P.fx); }
+        else { const yaw = N.view && isFinite(N.view.yaw) ? N.view.yaw : P.yaw; P.yaw = yaw; P.fx = Math.cos(yaw); P.fy = Math.sin(yaw); }
+        P.mode = N.view && N.view.mode || 'tps';
+      }
+    } catch (e) { P.is3D = false; }
+    if (!P.is3D || !isFinite(P.x) || !isFinite(P.y)) { P.is3D = false; P.x = L.x; P.y = L.y; P.h = TOP_H; P.yaw = -Math.PI / 2; P.fx = 0; P.fy = -1; P.mode = 'top'; }
+    // the ear moves with the followed actor (not the camera's orbit jitter) for Doppler
+    if (typeof L.vx === 'number' && typeof L.vy === 'number') { P.vx = L.vx; P.vy = L.vy; }
+    else if (isFinite(L.angle) && isFinite(L.speed)) { P.vx = Math.cos(L.angle) * L.speed; P.vy = Math.sin(L.angle) * L.speed; }
+    else { P.vx = 0; P.vy = 0; }
+    P.hq = hqTier();
+    return P;
+  }
+  const LS_LAST = new Float64Array(9).fill(NaN), LS_NOW = new Float64Array(9);
+  function applyListener(ac, P, last) {
+    const Ls = ac.listener;
+    if (!Ls) return;
+    const v = LS_NOW;
+    v[0] = P.x; v[1] = P.is3D ? P.h : TOP_H; v[2] = P.y;
+    if (P.is3D) { v[3] = P.fx; v[4] = 0; v[5] = P.fy; v[6] = 0; v[7] = 1; v[8] = 0; } else { v[3] = 0; v[4] = -1; v[5] = 0; v[6] = 0; v[7] = 0; v[8] = -1; }
+    last = last || new Float64Array(9).fill(NaN);
+    let ch = false;
+    for (let i = 0; i < 9; i++) if (!(Math.abs(v[i] - last[i]) < (i < 3 ? 0.05 : 1e-4))) { ch = true; break; }
+    if (!ch) return;
+    try {
+      if (Ls.positionX) {
+        const ps = [Ls.positionX, Ls.positionY, Ls.positionZ, Ls.forwardX, Ls.forwardY, Ls.forwardZ, Ls.upX, Ls.upY, Ls.upZ];
+        for (let i = 0; i < 9; i++) if (v[i] !== last[i]) { ps[i].value = v[i]; last[i] = v[i]; }
+      } else {
+        Ls.setPosition(v[0], v[1], v[2]); Ls.setOrientation(v[3], v[4], v[5], v[6], v[7], v[8]);
+        for (let i = 0; i < 9; i++) last[i] = v[i];
+      }
+    } catch (e) { N.err('audio.listener', e); }
+  }
+  function mkPanner(ac, hrtf) {
+    if (!ac.createPanner) return null;
+    const p = ac.createPanner();
+    p.panningModel = hrtf ? 'HRTF' : 'equalpower';
+    p.distanceModel = 'inverse'; p.refDistance = 1; p.rolloffFactor = 0; p.maxDistance = 100000;
+    // a point source is mono: downmix first so the mono pan law applies (the stereo-input law only shifts the balance)
+    try { p.channelCount = 1; p.channelCountMode = 'explicit'; } catch (e) { /* keep stereo input */ }
+    return p;
+  }
+  function setPos(p, x, h, y) {
+    if (p.positionX) { p.positionX.value = x; p.positionY.value = h; p.positionZ.value = y; } else p.setPosition(x, h, y);
+  }
+  function distTo(P, x, y, h) {
+    const dx = x - P.x, dy = y - P.y;
+    if (!P.is3D) return Math.sqrt(dx * dx + dy * dy);
+    const dh = (h == null ? 3 : h) - P.h;
+    return Math.sqrt(dx * dx + dy * dy + dh * dh * 0.5);
+  }
+  function distGain(d, ref, roll, max) {
+    if (d >= max) return 0;
+    const g = d <= ref ? 1 : ref / (ref + (d - ref) * roll);
+    return g * (1 - U.smooth((d - max * 0.65) / (max * 0.35)));
+  }
+  const airLP = (d) => (d <= 40 ? 18000 : clamp(18000 * Math.exp(-(d - 40) / 300), 1100, 18000));
+  const occLP = (o) => 18000 * Math.pow(900 / 18000, o);   // full occlusion: ~900 Hz
+  // ext.spatial / 2D fallbacks: {g, pan, d} or null (culled); pan is relative to the ear (camera right in 3D)
+  function spatial(x, y, ref, max, roll) {
+    const P = pose.ok ? pose : updatePose();
+    if (!P.ok) return { g: 1, pan: 0, d: 0 };
+    ref = ref || 80; max = max || 700;
+    const d = distTo(P, x, y, 3);
+    if (d >= max) return null;
+    const dx = x - P.x, dy = y - P.y;
+    const pan = P.is3D ? clamp((-P.fy * dx + P.fx * dy) / Math.max(30, Math.hypot(dx, dy)), -1, 1) * 0.85 : clamp(dx / 280, -1, 1) * 0.85;
+    return { g: distGain(d, ref, roll || 1.1, max), pan, d };
+  }
+  // Occlusion: does a building (SOLID grid cells) stand on the straight line ear -> source? 0..1 (thin wall .. block).
+  // A grid march at 4u steps (~1 µs per 100u); skips the ear's and the source's own walls (shop sounds sit at a facade).
+  let SOLID = 8;
+  try { if (N.SURF && N.SURF.SOLID != null) SOLID = N.SURF.SOLID; } catch (e) { /* default */ }
+  function occlusion(x0, y0, x1, y1) {
+    const W = N.world;
+    if (!W || typeof W.surfaceAt !== 'function') return 0;
+    const dx = x1 - x0, dy = y1 - y0, d = Math.sqrt(dx * dx + dy * dy);
+    if (!(d >= 28)) return 0;
+    const st = 4, n = Math.floor(d / st), ux = (dx / d) * st, uy = (dy / d) * st;
+    let solid = 0;
+    try { for (let i = 2; i <= n - 4; i++) if (W.surfaceAt(x0 + ux * i, y0 + uy * i) === SOLID) solid++; } catch (e) { return 0; }
+    return clamp((solid * st - 6) / 18, 0, 1);
+  }
+
+  /* ---------------------------------------------------------- pooled one-shot strips */
+  // in (vol) -> lowpass (air + occlusion) -> [PannerNode (positional) | StereoPanner (UI / explicit pan)] -> post -> bus
+  //                                                                                               post -> send -> zone reverb
+  // A strip is reused only once its previous sound has rung out (busy = end + 0.15 s), so the parameter jumps at
+  // reuse happen in silence (no clicks); the source position is fixed at the start (fine for one-shots).
   class Strip {
     constructor(ac) {
-      this.in = gain(ac, 1); this.lp = filt(ac, 'lowpass', 18000, 0.5); this.pn = panner(ac); this.send = gain(ac, 0, G.revIn);
-      this.in.connect(this.lp); this.lp.connect(this.pn); this.pn.connect(this.send);
+      this.ac = ac;
+      this.in = gain(ac, 0); this.lp = filt(ac, 'lowpass', 18000, 0.5); this.in.connect(this.lp);
+      this.st = panner(ac); this.pn = null; this.post = gain(ac, 1); this.st.connect(this.post);
+      this.send = gain(ac, 0, G.revIn); this.post.connect(this.send);
+      this.lp.connect(this.st); this.via = 'st'; this.hrtf = false;
       this.busy = 0; this.dest = null;
     }
     route(dest) {
       if (this.dest === dest) return;
-      if (this.dest) { try { this.pn.disconnect(this.dest); } catch (e) { /* ignore */ } }
-      this.pn.connect(dest); this.dest = dest;
+      if (this.dest) { try { this.post.disconnect(this.dest); } catch (e) { /* ignore */ } }
+      this.post.connect(dest); this.dest = dest;
+    }
+    use3d(on, hrtf) {
+      if (on && !this.pn) { this.pn = mkPanner(this.ac, false); if (this.pn) this.pn.connect(this.post); else on = false; }
+      if (on) { const m = hrtf ? 'HRTF' : 'equalpower'; if (this.pn.panningModel !== m) this.pn.panningModel = m; }
+      const want = on ? 'pn' : 'st';
+      if (want !== this.via) { try { this.lp.disconnect(); } catch (e) { /* ignore */ } this.lp.connect(on ? this.pn : this.st); this.via = want; }
+      this.hrtf = !!(on && hrtf);
     }
   }
   const strips = [];
@@ -2304,6 +2570,7 @@
     if (strips.length < MAX_STRIPS) { const s = new Strip(ctx); strips.push(s); return s; }
     return null;
   }
+  function hrtfStrips(now) { let n = 0; for (const s of strips) if (s.hrtf && s.busy > now) n++; return n; }
   const COOLDOWN = { detector: 0.05, clap: 0.05, pant: 3, step: 0.07, type: 0.04, bell: 0.3, car_horn: 0.3, bus_horn: 0.5, lorry_horn: 1.2, auto_horn: 0.45, scooter_horn: 0.35,
     finger_whistle: 0.4, coin: 0.05, pickup: 0.1, objective: 1.2, mission_passed: 2, mission_failed: 2, bump: 0.08, crash: 0.15, whistle: 0.6,
     wanted_up: 0.5, wanted_down: 0.5, busted: 2, wasted: 2, chetak_start: 0.8, car_start: 0.8, auto_start: 0.8, diesel_start: 1, door: 0.2 };
@@ -2311,7 +2578,8 @@
     'busted', 'wasted', 'wanted_up', 'wanted_down', 'rewind', 'tape_click', 'radio_static']);
   const SFX_GAIN = { step: 0.8, type: 0.45, bump: 0.9, pigeons: 0.8, vendor_call: 0.7, cooker: 0.6, kids: 0.8 };
   const cool = Object.create(null);
-  let sfxPlayed = 0;
+  let sfxPlayed = 0, sfxOccluded = 0;
+  const mixState = { storyUntil: 0 };
 
   // Sound captions (systems §14.2): important gameplay sounds tell the HUD, even when audio is off.
   const CAPTIONS = { whistle: 'whistle', gurkha: 'lathi tok-tok', chappal_whoosh: 'chappal whoosh', chappal: 'thup!', peel_slip: 'slip!',
@@ -2334,29 +2602,259 @@
     const cd = COOLDOWN[name] != null ? COOLDOWN[name] : 0.03;
     const ck = name + (o.key != null ? ':' + o.key : '');
     if (cool[ck] != null && now - cool[ck] < cd && !o.force) return false;
-    let g = 1, pan = o.pan || 0, d = 0;
+    let g = 1, d = 0, posi = false;
     if (o.x != null && o.y != null) {
-      const s = spatial(o.x, o.y, o.ref, o.max);
-      if (!s) return false;
-      g = s.g; pan = s.pan; d = s.d;
+      const P = pose.ok ? pose : updatePose();
+      if (P.ok) {
+        const c = DCLS[o.cls] || DCLS[SFX_CLS[name]] || DCLS.def;
+        const max = o.max || c[2];
+        d = distTo(P, o.x, o.y, o.h);
+        if (d >= max) return false;
+        g = distGain(d, o.ref || c[0], c[1], max);
+        posi = true;
+      }
     }
-    const vol = (o.vol == null ? 1 : o.vol) * g * (SFX_GAIN[name] || 1);
+    let vol = (o.vol == null ? 1 : o.vol) * g * (SFX_GAIN[name] || 1);
     if (vol < 0.008) return false;
     const strip = getStrip(now);
     if (!strip) return false;
     cool[ck] = now;
-    const bus = o.bus === 'amb' ? G.amb : (o.ui || (UI_SFX.has(name) && o.x == null)) ? G.ui : G.sfx;
+    const occ = posi && d > 30 && o.occlude !== false ? occlusion(pose.x, pose.y, o.x, o.y) : 0;
+    if (occ > 0.05) { vol *= 1 - 0.5 * occ; sfxOccluded++; }
+    const ui = o.ui || (UI_SFX.has(name) && o.x == null);
+    const bus = o.bus === 'amb' ? G.amb : ui ? G.ui : G.sfx;
     strip.route(bus);
+    if (posi) {
+      strip.use3d(true, pose.is3D && pose.hq && d < 300 && hrtfStrips(now) < STRIP_HRTF);
+      if (strip.pn) setPos(strip.pn, o.x, pose.is3D ? (o.h == null ? 3 : o.h) : 0, o.y);
+    }
+    if (!posi || !strip.pn) { strip.use3d(false); if (strip.st.pan) strip.st.pan.setValueAtTime(clamp(o.pan || 0, -1, 1), now); }
     strip.in.gain.setValueAtTime(vol, now);
-    if (strip.pn.pan) strip.pn.pan.setValueAtTime(clamp(pan, -1, 1), now);
-    strip.lp.frequency.setValueAtTime(d > 0 ? clamp(17000 * Math.exp(-d / 320), 900, 18000) : 18000, now);
-    strip.send.gain.setValueAtTime(clamp(0.04 + d / 1500, 0, 0.45) * (o.rev == null ? 1 : o.rev), now);
+    strip.lp.frequency.setValueAtTime(Math.min(posi ? airLP(d) : 18000, occLP(occ)), now);
+    const Z = IRZ[rv.zone] || IRZ.open;
+    const send = posi ? clamp(Z.near + d / 1500, 0, 0.45) * (1 + 0.3 * occ) : ROOM_SFX.has(name) ? Math.max(0.12, Z.near * 2.5) : 0.04;
+    strip.send.gain.setValueAtTime(send * (o.rev == null ? 1 : o.rev), now);
+    const oo = o.zone ? o : Object.assign({}, o, { zone: rv.zone });
     try {
-      const end = fn(ctx, strip.in, now + (o.delay || 0) + 0.004, o);
-      strip.busy = (typeof end === 'number' && isFinite(end) ? end : now + 1) + 0.12;
+      const end = fn(ctx, strip.in, now + (o.delay || 0) + 0.004, oo);
+      strip.busy = (typeof end === 'number' && isFinite(end) ? end : now + 1) + 0.15;
     } catch (e) { N.err('audio.sfx.' + name, e); strip.busy = now + 0.2; return false; }
+    if (STORY_SFX.has(name) || o.duck) mixState.storyUntil = Math.max(mixState.storyUntil, Math.min(strip.busy, now + 4));
     sfxPlayed++;
     return true;
+  }
+
+  /* ---------------------------------------------------------- continuous spatial emitters */
+  // lowpass (input: air + occlusion) -> PannerNode -> g (distance x level x occlusion) -> bus
+  //                                                -> send (distance-aware) -> zone reverb
+  // 4 nodes. The core updates every live emitter each frame (pose-relative gain, smoothed Doppler ratio `dop`,
+  // occlusion tested round-robin at ~5 Hz per emitter, HRTF for the nearest few in 3D on capable devices).
+  const emitters = new Set();
+  const emitStat = { hrtf: 0, occluded: 0, lastIs3D: false, rr: 0, list: [] };
+  class Emitter {
+    constructor(ac, o) {
+      o = o || {};
+      const c = DCLS[o.cls] || DCLS.def;
+      this.ac = ac; this.cls = o.cls || 'def'; this.name = o.name || this.cls;
+      this.ref = o.ref || c[0]; this.roll = o.roll || c[1]; this.max = o.max || c[2];
+      this.level = o.gain == null ? 1 : o.gain; this.rev = o.rev == null ? 1 : o.rev; this.prio = o.prio || 0;
+      this.occlude = o.occlude !== false; this.useHrtf = o.hrtf !== false;
+      this.lp = filt(ac, 'lowpass', 18000, 0.5); this.input = this.lp;
+      this.pn = mkPanner(ac, false) || panner(ac);
+      this.lp.connect(this.pn);
+      this.g = gain(ac, 0, o.dest || (G && G[o.bus || 'sfx']) || G.sfx);
+      this.pn.connect(this.g);
+      this.send = gain(ac, 0, o.revIn || G.revIn); this.pn.connect(this.send);
+      this.x = 0; this.y = 0; this.h = o.h == null ? 4 : o.h; this.vx = 0; this.vy = 0; this.has = false;
+      this.dop = 1; this.d = 1e9; this.occ = 0; this.occS = 0; this.occT = 0; this.hrtf = false;
+      this.gOut = -1; this.fOut = -1; this.sOut = -1; this.px = NaN; this.py = NaN; this.ph = NaN;
+      this.fadeIn = o.fadeIn == null ? 0.12 : o.fadeIn;
+      this.alive = true;
+      emitters.add(this);
+      if (pose.is3D && pose.hq && this.useHrtf && this.pn.panningModel && emitStat.hrtf < EMIT_HRTF) { this.pn.panningModel = 'HRTF'; this.hrtf = true; emitStat.hrtf++; }
+    }
+    set(x, y, h, vx, vy) {
+      if (!isFinite(x) || !isFinite(y)) return this;
+      this.x = x; this.y = y; if (h != null && isFinite(h)) this.h = h;
+      this.vx = vx || 0; this.vy = vy || 0; this.has = true;
+      return this;
+    }
+    setGain(v) { this.level = Math.max(0, +v || 0); return this; }
+    update(dt, P, t) {
+      if (!this.alive) return;
+      let gd = 0, f = 18000, snd = 0;
+      if (this.has && P.ok) {
+        const dx = this.x - P.x, dy = this.y - P.y, dH = Math.sqrt(dx * dx + dy * dy);
+        const dh = P.is3D ? this.h - P.h : 0;
+        const d = P.is3D ? Math.sqrt(dH * dH + dh * dh * 0.5) : dH;
+        this.d = d;
+        let tgt = 1;
+        if (dH > 2) {
+          const ux = dx / dH, uy = dy / dH;
+          tgt = clamp((SOUND_C + P.vx * ux + P.vy * uy) / (SOUND_C + this.vx * ux + this.vy * uy), DOP_MIN, DOP_MAX);
+        }
+        if (dt > 0) this.dop += (tgt - this.dop) * (1 - Math.exp(-dt / 0.12));
+        if (dt > 0) this.occS += (this.occ - this.occS) * (1 - Math.exp(-dt / 0.15));
+        gd = distGain(d, this.ref, this.roll, this.max) * this.level * (1 - 0.5 * this.occS);
+        f = Math.min(airLP(d), occLP(this.occS));
+        const Z = IRZ[rv.zone] || IRZ.open;
+        snd = gd * clamp(Z.near + d / 1500, 0, 0.45) * this.rev;
+        const ph = P.is3D ? this.h : 0;
+        if (this.pn.panningModel) { if (Math.abs(this.x - this.px) > 0.25 || Math.abs(this.y - this.py) > 0.25 || ph !== this.ph) { setPos(this.pn, this.x, ph, this.y); this.px = this.x; this.py = this.y; this.ph = ph; } }
+        else if (this.pn.pan) { const s = spatial(this.x, this.y, this.ref, this.max); const pn = s ? s.pan : 0; if (Math.abs(pn - this.px) > 0.02) { this.pn.pan.setTargetAtTime(pn, t, 0.05); this.px = pn; } }
+      }
+      const fresh = this.gOut < 0;
+      if (Math.abs(gd - this.gOut) > Math.max(0.0015, gd * 0.02)) { this.g.gain.setTargetAtTime(gd, t, fresh ? this.fadeIn / 3 : 0.05); this.gOut = gd; }
+      if (Math.abs(snd - this.sOut) > Math.max(0.001, snd * 0.04)) { this.send.gain.setTargetAtTime(snd, t, fresh ? this.fadeIn / 3 : 0.08); this.sOut = snd; }
+      if (Math.abs(f - this.fOut) > this.fOut * 0.03) { this.lp.frequency.setTargetAtTime(f, t, fresh ? 0.01 : 0.08); this.fOut = f; }
+    }
+    dispose(fade) {
+      if (!this.alive) return;
+      this.alive = false;
+      emitters.delete(this);
+      if (this.hrtf) emitStat.hrtf = Math.max(0, emitStat.hrtf - 1);
+      const t = this.ac.currentTime, f = fade == null ? 0.15 : Math.max(0.01, fade);
+      try { this.g.gain.cancelScheduledValues(t); this.g.gain.setTargetAtTime(0, t, f / 3); this.send.gain.cancelScheduledValues(t); this.send.gain.setTargetAtTime(0, t, f / 3); } catch (e) { /* ignore */ }
+      const nodes = [this.lp, this.pn, this.g, this.send];
+      setTimeout(() => { for (const n of nodes) { try { n.disconnect(); } catch (e) { /* ignore */ } } }, (f * 2 + 0.4) * 1000);
+    }
+  }
+  function emitUpdate(dt) {
+    if (!emitters.size) { emitStat.occluded = 0; return; }
+    const P = pose, t = ctx.currentTime;
+    // view changed (top <-> 3D) or tier changed: re-assign HRTF to the nearest emitters
+    const want3 = P.is3D && P.hq;
+    if (want3 !== emitStat.lastIs3D) {
+      emitStat.lastIs3D = want3;
+      const L = emitStat.list; L.length = 0;
+      for (const e of emitters) L.push(e);
+      L.sort((a, b) => (b.prio - a.prio) || (a.d - b.d));
+      let n = 0;
+      for (const e of L) {
+        const h = want3 && e.useHrtf && n < EMIT_HRTF && !!e.pn.panningModel;
+        if (h) n++;
+        if (e.pn.panningModel && e.hrtf !== h) e.pn.panningModel = h ? 'HRTF' : 'equalpower';
+        e.hrtf = h;
+      }
+      emitStat.hrtf = n; L.length = 0;
+    }
+    // occlusion: at most 2 line tests per frame, each emitter refreshed every ~0.18 s
+    let tests = 0, occN = 0;
+    for (const e of emitters) {
+      if (e.occlude && e.has && P.ok && tests < 2 && t >= e.occT) { e.occT = t + 0.18 + rnd() * 0.04; tests++; e.occ = e.d < e.max ? occlusion(P.x, P.y, e.x, e.y) : 0; }
+      if (e.occS > 0.3) occN++;
+      e.update(dt, P, t);
+    }
+    emitStat.occluded = occN;
+  }
+
+  /* ---------------------------------------------------------- reverb zones */
+  // Zone = where the followed actor is (place proximity, district style, close walls, open water). A new zone is held
+  // for 0.5 s before it switches; the switch crossfades the reverb SEND into the new zone's convolver while the old
+  // one keeps ringing out on its own (a buffer is never swapped under a playing convolver: each zone has its own
+  // ConvolverNode, built once in idle time when the actor approaches, at most 4 alive).
+  const ZONE_PLACES = [ // [exact id | RegExp, radius (u; negative = the place's own r + |n|), zone, priority]
+    [/^irani_cafe_\d+$|^cafe_bahar$|^niloufer_cafe$|^garden_cafe$|^blue_sea_cafe$|^nimrah_cafe$|^cafe_noor_e_iran$/, -6, 'irani_cafe', 9],
+    [/_station$/, 110, 'station', 8],
+    ['golconda_fateh_darwaza', 130, 'golconda', 7], ['golconda_bala_hissar', 170, 'golconda', 7], ['golconda_fort', 230, 'golconda', 7], ['golconda_sound_light', 120, 'golconda', 7],
+    ['charminar', 170, 'charminar', 6], ['charminar_plaza', 120, 'charminar', 6],
+    ['lb_stadium', 150, 'stadium', 5], ['gachibowli_stadium', 170, 'stadium', 5],
+    ['laad_bazaar', 140, 'oldcity_lane', 4], ['gulzar_houz', 110, 'oldcity_lane', 4],
+    ['hussain_sagar', 420, 'lake', 3], ['tank_bund', 170, 'lake', 3], ['lower_tank_bund', 140, 'lake', 3], ['necklace_road', 200, 'lake', 3],
+    ['lumbini_park', 130, 'lake', 3], ['lumbini_jetty', 90, 'lake', 3],
+  ];
+  const ZONE_IDS = ['open', 'oldcity_lane', 'charminar', 'golconda', 'stadium', 'station', 'irani_cafe', 'lake'];
+  const rv = { zone: 'open', cand: 'open', candSince: 0, override: null, scanT: 0, places: null, placesN: -1, building: new Set(), buildMs: 0, lane: false, detected: 'open' };
+  const ric = (fn, to) => (window.requestIdleCallback ? window.requestIdleCallback(fn, { timeout: to || 300 }) : setTimeout(fn, 30));
+  function zonePlaces() {
+    const P = N.places || {};
+    const keys = Object.keys(P);
+    if (rv.places && rv.placesN === keys.length) return rv.places;
+    const out = [];
+    for (const id of keys) {
+      const p = P[id];
+      if (!p || typeof p.x !== 'number') continue;
+      for (const z of ZONE_PLACES) {
+        if (typeof z[0] === 'string' ? z[0] !== id : !z[0].test(id)) continue;
+        out.push({ id, x: p.x, y: p.y, r: z[1] < 0 ? (p.r || 18) - z[1] : z[1], zone: z[2], prio: z[3] });
+        break;
+      }
+    }
+    rv.places = out; rv.placesN = keys.length;
+    return out;
+  }
+  function laneAt(x, y) { // two facing walls within ~44u (a galli): probe E-W and N-S
+    const W = N.world;
+    if (!W || typeof W.surfaceAt !== 'function') return false;
+    const probe = (ux, uy) => { for (let r = 3; r <= 30; r += 3) if (W.surfaceAt(x + ux * r, y + uy * r) === SOLID) return r; return 99; };
+    try { return probe(1, 0) + probe(-1, 0) < 46 || probe(0, 1) + probe(0, -1) < 46; } catch (e) { return false; }
+  }
+  function detectZone(L) {
+    let best = null;
+    const sp = Math.hypot(L.vx || 0, L.vy || 0);
+    for (const q of zonePlaces()) {
+      const dx = q.x - L.x, dy = q.y - L.y, d2 = dx * dx + dy * dy;
+      if (d2 < q.r * q.r * 2.6 && !G.zones.has(q.zone)) requestZone(q.zone); // approaching: build it in idle time
+      if (d2 < q.r * q.r && (!best || q.prio > best.prio) && !(q.zone === 'irani_cafe' && sp > 45)) best = q;
+    }
+    if (best) return best.zone;
+    if (amb.waterFrac >= 0.5) return 'lake';
+    const d = amb.district, st = d && d.style;
+    if (st === 'oldcity' || st === 'market') { rv.lane = laneAt(L.x, L.y); if (rv.lane) return 'oldcity_lane'; } else rv.lane = false;
+    return 'open';
+  }
+  function requestZone(id) {
+    if (!IRZ[id] || rv.building.has(id) || (G && G.zones.has(id))) return;
+    rv.building.add(id);
+    ric(() => {
+      rv.building.delete(id);
+      if (!ctx || !G || G.zones.has(id)) return;
+      const t0 = performance.now();
+      try { mkZoneNode(ctx, G, id); } catch (e) { N.err('audio.reverb', e); return; }
+      rv.buildMs = performance.now() - t0;
+      pruneZones();
+    }, 400);
+  }
+  function pruneZones() {
+    if (G.zones.size <= 4) return;
+    const now = ctx.currentTime;
+    let old = null;
+    for (const z of G.zones.values()) if (z.id !== rv.zone && z.id !== 'open' && now > z.quietAt && (!old || z.used < old.used)) old = z;
+    if (!old) return;
+    G.zones.delete(old.id);
+    try { G.revIn.disconnect(old.inG); } catch (e) { /* ignore */ }
+    try { old.inG.disconnect(); old.conv.disconnect(); old.outG.disconnect(); } catch (e) { /* ignore */ }
+  }
+  function setZone(g, id, t, tc) { // crossfade the send; returns false while the zone's convolver is still being built
+    if (id === g.zone) return true;
+    const nz = g.zones.get(id);
+    if (!nz) return false;
+    const oz = g.zones.get(g.zone);
+    tc = tc == null ? 0.2 : tc;
+    if (oz) { oz.inG.gain.cancelScheduledValues(t); oz.inG.gain.setTargetAtTime(0, t, tc); oz.quietAt = t + tc * 6 + (IRZ[oz.id] || IRZ.open).len + 0.3; }
+    nz.inG.gain.cancelScheduledValues(t); nz.inG.gain.setTargetAtTime(1, t, tc);
+    nz.used = t; g.zone = id;
+    if (g === G) rv.zone = id;
+    return true;
+  }
+  function zoneUpdate(dt) {
+    rv.scanT -= dt;
+    if (rv.scanT > 0) return;
+    rv.scanT = 0.25;
+    const t = ctx.currentTime;
+    const L = listener();
+    let want = rv.override;
+    if (!want) { try { want = L ? detectZone(L) : 'open'; } catch (e) { N.err('audio.zone', e); want = 'open'; } }
+    rv.detected = want;
+    if (want !== rv.cand) { rv.cand = want; rv.candSince = t; }
+    if (want === rv.zone) return;
+    if (!G.zones.has(want)) { requestZone(want); return; }
+    if (rv.override || t - rv.candSince >= 0.5) setZone(G, want, t);
+  }
+  function listenUpdate(dt) {
+    const P = updatePose();
+    if (P.ok) applyListener(ctx, P, LS_LAST);
+    zoneUpdate(dt);
   }
 
   /* ============================================================ engines */
@@ -2453,8 +2951,10 @@
       this.last = { f: 0, v: -1, pan: 9 };
       this.alive = true;
     }
-    update(sf, thr, g, pan) {
+    update(sf, thr, g, pan, info) {
       const ac = this.ac, t = ac.currentTime, pr = this.pr;
+      const dop = info && info.dop > 0 ? info.dop : 1;
+      if (info && info.spatialized) pan = 0; // the core's emitter pans it
       if (pr.kind === 'pedal') {
         const v = 0.05 * sf * g;
         if (Math.abs(v - this.last.v) > 0.002) { this.whirr.gain.setTargetAtTime(v, t, 0.1); this.last.v = v; }
@@ -2467,12 +2967,12 @@
         }
         this.out.gain.setTargetAtTime(g, t, 0.05);
       } else {
-        const e = engineF(pr, sf, thr);
-        if (Math.abs(e.f - this.last.f) > 0.3) {
-          this.osc.frequency.setTargetAtTime(e.f, t, 0.07);
-          if (this.hum) this.hum.frequency.setTargetAtTime(e.f / 2, t, 0.07);
-          this.bp.frequency.setTargetAtTime(pr.bp * (0.8 + 0.5 * e.rf), t, 0.1);
-          this.last.f = e.f;
+        const e = engineF(pr, sf, thr), f = e.f * dop;
+        if (Math.abs(f - this.last.f) > 0.15) {
+          this.osc.frequency.setTargetAtTime(f, t, 0.07);
+          if (this.hum) this.hum.frequency.setTargetAtTime(f / 2, t, 0.07);
+          this.bp.frequency.setTargetAtTime(pr.bp * (0.8 + 0.5 * e.rf) * dop, t, 0.1);
+          this.last.f = f;
         }
         const v = pr.vol * (0.55 + 0.25 * e.rf + 0.25 * thr) * g;
         if (Math.abs(v - this.last.v) > 0.004) { this.out.gain.setTargetAtTime(v, t, 0.08); this.last.v = v; }
@@ -2498,7 +2998,11 @@
     }
     return new EngineVoice(ac, dest, type);
   }
-  const eng = { player: null, forced: undefined, playerVeh: null, startAt: 0, traffic: [null, null], trafficVeh: [null, null], scanT: 0 };
+  // Traffic engines: the nearest ~4 moving motor vehicles (2 on the low tier) each get a voice inside a core spatial
+  // emitter (distance, pan/HRTF, air, occlusion, reverb send) and a real Doppler ratio. Handover is smooth: a slot
+  // keeps its vehicle while it stays among the nearest max+2 and within range; new voices fade in, dropped ones
+  // fade out (voice.stop() + emitter.dispose()).
+  const eng = { player: null, forced: undefined, playerVeh: null, startAt: 0, traffic: [], scanT: 0, cands: [], pool: [], made: 0 };
   function startDelayFor(type) {
     const pr = engProfile(type);
     if (pr.kind === 'pedal') return 0;
@@ -2507,15 +3011,23 @@
     if (pr.kind === 'diesel') return 1.3;
     return 1.0;
   }
+  const trafficMax = () => (pose.hq ? 4 : 2);
+  const ENG_R = 330;
+  function dropTraffic(i) {
+    const s = eng.traffic[i];
+    try { if (s.voice) s.voice.stop(); } catch (e) { N.err('audio.engine.stop', e); }
+    s.em.dispose(0.3);
+    eng.traffic.splice(i, 1);
+  }
   function engineUpdate(dt, mode) {
     const now = ctx.currentTime;
     const v = (eng.forced !== undefined ? eng.forced : N.player && N.player.vehicle) || null;
     const active = mode === 'play' || mode === 'cutscene' || mode === 'dialogue';
-    // player engine
+    // player engine (head-locked: no pan, no Doppler)
     if (v !== eng.playerVeh) {
       if (eng.player) { eng.player.stop(); eng.player = null; }
       eng.playerVeh = v || null;
-      if (v) { eng.player = makeEngine(ctx, G.engine, v.type, v, true); eng.startAt = now + (eng.forced !== undefined ? 0 : startDelayFor(v.type)); }
+      if (v) { eng.player = makeEngine(ctx, G.engPlayer, v.type, v, true); eng.startAt = now + (eng.forced !== undefined ? 0 : startDelayFor(v.type)); }
     }
     if (eng.player && v) {
       const sf = clamp(vSpeed(v) / vMax(v), 0, 1.2);
@@ -2525,37 +3037,55 @@
         thr = N.input.down && (N.input.down('up') || N.input.down('down')) ? 1 : N.input.analog ? Math.min(1, Math.hypot(mv.x, mv.y)) : 0;
       }
       const on = now >= eng.startAt && active ? 1 : 0;
-      eng.player.update(sf, thr, on, 0, { veh: v, player: true, dt, dop: 1, dist: 0 });
+      const inf = eng.pInfo || (eng.pInfo = { veh: null, player: true, dt: 0, dop: 1, dist: 0, spatialized: false });
+      inf.veh = v; inf.dt = dt;
+      eng.player.update(sf, thr, on, 0, inf);
     }
-    // two nearest traffic vehicles
+    // nearest traffic vehicles
     eng.scanT -= dt;
     if (eng.scanT <= 0) {
       eng.scanT = 0.25;
-      const L = listener();
-      let cands = [];
+      const L = listener(), max = trafficMax(), C = eng.cands;
+      C.length = 0;
       if (L && N.entities && typeof N.entities.query === 'function' && active) {
-        try {
-          cands = N.entities.query(L.x, L.y, 320, (e) => e && e.kind === 'vehicle' && e !== v && vSpeed(e) > 6 && engProfile(e.type).kind !== 'pedal') || [];
-        } catch (e) { cands = []; }
-        cands = cands.map((e) => [e, Math.hypot(e.x - L.x, e.y - L.y)]).sort((a, b) => a[1] - b[1]).slice(0, 2).map((p) => p[0]);
+        let q = null;
+        try { q = N.entities.query(L.x, L.y, ENG_R, (e) => e && e.kind === 'vehicle' && e !== v && e.alive !== false && vSpeed(e) > 6 && engProfile(e.type).kind !== 'pedal'); } catch (e) { q = null; }
+        if (q) for (const e of q) { const c = eng.pool[C.length] || (eng.pool[C.length] = { e: null, d: 0 }); c.e = e; c.d = Math.hypot(e.x - L.x, e.y - L.y); C.push(c); }
+        C.sort((a, b) => a.d - b.d);
       }
-      for (let i = 0; i < 2; i++) { // drop voices whose vehicle is no longer a candidate
-        if (eng.trafficVeh[i] && cands.indexOf(eng.trafficVeh[i]) < 0) { if (eng.traffic[i]) eng.traffic[i].stop(); eng.traffic[i] = null; eng.trafficVeh[i] = null; }
+      // drop slots whose vehicle left the nearest max+2 (hysteresis) or the range
+      const keepN = Math.min(C.length, max + 2);
+      for (let i = eng.traffic.length - 1; i >= 0; i--) {
+        let k = -1;
+        for (let j = 0; j < C.length; j++) if (C[j].e === eng.traffic[i].veh) { k = j; eng.traffic[i].d = C[j].d; break; }
+        if (k < 0 || k >= keepN || i >= max) dropTraffic(i);
       }
-      for (const tv of cands) { // give new candidates a free slot
-        if (eng.trafficVeh.indexOf(tv) >= 0) continue;
-        const i = eng.trafficVeh[0] ? 1 : 0;
-        if (eng.trafficVeh[i]) continue;
-        eng.trafficVeh[i] = tv; eng.traffic[i] = makeEngine(ctx, G.engine, tv.type, tv, false);
+      // fill free slots with the nearest unvoiced vehicles; a much closer newcomer replaces the farthest voice
+      for (let k = 0; k < Math.min(C.length, max); k++) {
+        const tv = C[k].e, td = C[k].d;
+        if (eng.traffic.some((s) => s.veh === tv)) continue;
+        if (eng.traffic.length >= max) {
+          let fi = -1, fd = -1;
+          for (let i = 0; i < eng.traffic.length; i++) { const d = eng.traffic[i].d; if (d > fd) { fd = d; fi = i; } }
+          if (fi < 0 || td > fd * 0.7) continue;
+          dropTraffic(fi);
+        }
+        const em = new Emitter(ctx, { cls: 'engine', bus: 'engine', gain: 0.55, h: 3, prio: 1, name: 'engine', fadeIn: 0.35 });
+        em.set(tv.x, tv.y, 3, tv.vx, tv.vy);
+        const voice = makeEngine(ctx, em.input, tv.type, tv, false);
+        eng.made++;
+        eng.traffic.push({ veh: tv, d: td, voice, em, info: { veh: tv, player: false, dt: 0, dop: 1, dist: 0, spatialized: true } });
       }
     }
-    for (let i = 0; i < 2; i++) {
-      const tv = eng.trafficVeh[i], ev = eng.traffic[i];
-      if (!ev) continue;
-      if (!tv || tv.alive === false) { ev.stop(); eng.traffic[i] = null; eng.trafficVeh[i] = null; continue; }
-      const s = spatial(tv.x, tv.y, 60, 340);
+    for (let i = eng.traffic.length - 1; i >= 0; i--) {
+      const s = eng.traffic[i], tv = s.veh;
+      if (!tv || tv.alive === false || !s.voice) { dropTraffic(i); continue; }
+      let vx = tv.vx, vy = tv.vy;
+      if (typeof vx !== 'number') { const sp = tv.speed || 0, a = tv.angle || 0; vx = Math.cos(a) * sp; vy = Math.sin(a) * sp; }
+      s.em.set(tv.x, tv.y, 3, vx, vy);
       const sf = clamp(vSpeed(tv) / vMax(tv), 0, 1.2);
-      ev.update(sf, sf > 0.3 ? 0.6 : 0.2, s && active ? s.g * 0.55 : 0, s ? s.pan : 0, { veh: tv, player: false, dt, dop: 1, dist: s ? s.d : 1e9 });
+      const inf = s.info; inf.dt = dt; inf.dop = s.em.dop; inf.dist = s.em.d;
+      try { s.voice.update(sf, sf > 0.3 ? 0.6 : 0.2, active ? 1 : 0, 0, inf); } catch (e) { N.err('audio.engine.update', e); dropTraffic(i); }
     }
   }
 
@@ -2855,22 +3385,22 @@
     for (const a of amb.active) if (a.rule.music && a.p && (!best || a.d < best.d)) best = a;
     const S0 = amb.spatial;
     if (S0 && (!best || best.id !== S0.key)) {
-      S0.seq.stop(1.2); const ch = S0.chain;
-      setTimeout(() => { try { ch.pn.disconnect(); } catch (e) { /* ignore */ } }, 3000);
+      S0.seq.stop(1.2); S0.chain.em.dispose(1.5); const ch = S0.chain;
+      setTimeout(() => { try { ch.g.disconnect(); ch.lp.disconnect(); } catch (e) { /* ignore */ } }, 3500);
       amb.spatial = null;
     }
     if (best && !amb.spatial) {
-      const g = gain(ctx, 0); const lp = filt(ctx, 'lowpass', 1300, 0.7); const pn = panner(ctx, G.amb);
-      g.connect(lp); lp.connect(pn);
-      amb.spatial = { key: best.id, id: best.rule.music, place: best.p, r: best.rule.r, chain: { g, lp, pn }, seq: new Seq(ctx, best.rule.music, g, { live: true, revIn: G.revIn, fadeIn: 1.5 }) };
+      // a PA horn / theatre speaker far away: band-limited, then the core emitter (distance, pan/HRTF, occlusion, zone reverb)
+      const em = new Emitter(ctx, { cls: 'music', bus: 'amb', max: best.rule.r * 1.3, gain: 0.6, h: 8, prio: 2, name: 'spatialMusic', fadeIn: 0.6 });
+      em.set(best.p.x, best.p.y, 8);
+      const g = gain(ctx, 1); const lp = filt(ctx, 'lowpass', 1300, 0.7, em.input); g.connect(lp);
+      amb.spatial = { key: best.id, id: best.rule.music, place: best.p, r: best.rule.r, chain: { g, lp, em }, seq: new Seq(ctx, best.rule.music, g, { live: true, fadeIn: 1.5 }) };
     }
     const sm = amb.spatial;
     if (sm) {
-      if (sm.seq.done && ctx.currentTime > sm.seq.endTime) sm.seq.release(), sm.seq = new Seq(ctx, sm.id, sm.chain.g, { live: true, revIn: G.revIn, startTime: ctx.currentTime + 2 });
-      const s = L ? spatial(sm.place.x, sm.place.y, 90, sm.r * 1.3) : null;
-      const t = ctx.currentTime;
-      sm.chain.g.gain.setTargetAtTime(s ? s.g * 0.6 : 0, t, 0.3);
-      if (sm.chain.pn.pan) sm.chain.pn.pan.setTargetAtTime(s ? s.pan : 0, t, 0.2);
+      if (sm.seq.done && ctx.currentTime > sm.seq.endTime) sm.seq.release(), sm.seq = new Seq(ctx, sm.id, sm.chain.g, { live: true, startTime: ctx.currentTime + 2 });
+      sm.chain.em.set(sm.place.x, sm.place.y, 8);
+      sm.chain.em.setGain(L ? 0.6 : 0);
     }
   }
 
@@ -2921,7 +3451,7 @@
     if (!id || !TRACKS[id]) { music.cur = null; return; }
     const tr = resolveTrack(id);
     music.seq = new Seq(ctx, id, G.music, { startTime: ctx.currentTime + 0.1, fadeIn: fadeIn != null ? fadeIn : id === 'title' || id === 'ending' ? 2.5 : 0.8,
-      revIn: G.revIn, live: true, maxPasses: tr.roam ? 1 : 0 });
+      revIn: G.musicRevIn, live: true, maxPasses: tr.roam ? 1 : 0 });
     liveSeqs.add(music.seq);
     music.trackTape = tr.tape || 0;
   }
@@ -3036,7 +3566,7 @@
     if (!quiet) SFX.tape_click(ctx, G.ui, ctx.currentTime, {});
     walkman.cur = id;
     const k = walkman.library.indexOf(id); if (k >= 0) walkman.idx = k;
-    walkman.seq = new Seq(ctx, id, G.walk, { startTime: ctx.currentTime + 0.35, live: true, loop: false, revIn: G.revIn, fadeIn: 0.1 });
+    walkman.seq = new Seq(ctx, id, G.walk, { startTime: ctx.currentTime + 0.35, live: true, loop: false, revIn: G.musicRevIn, fadeIn: 0.1 });
     liveSeqs.add(walkman.seq);
     const s = SONGS[id];
     toast('▶ ' + (s ? s.title + ' — ' + s.artist : id), 3200);
@@ -3259,17 +3789,28 @@
     }
     if (amb.spatial) { try { amb.spatial.seq.schedule(until); } catch (e) { N.err('audio.pump', e); } }
   }
+  // Mix + ducking (systems §12.1 priority: dialogue > story SFX > player SFX > pursuer cues > music > ambience).
+  // Targets (gain): dialogue -> music A._duckAmt (0.32), radio 0.45, ambience 0.6, sfx 0.85; a story sting (MISSION
+  // PASSED, busted ...) -> music 0.5, ambience 0.7, radio 0.7 while it plays; pause/map menus -> music 0.55, world
+  // 0.5 + muffle. All ramps are setTargetAtTime (tc 0.12-0.25 s): no zipper, no clicks.
+  const DUCK = { musicStory: 0.5, ambDlg: 0.6, ambStory: 0.7, sfxDlg: 0.85, radioDlg: 0.45, radioStory: 0.7, menuMusic: 0.55, menuWorld: 0.5 };
   function busUpdate(mode) {
     const t = ctx.currentTime;
     const dlg = hooks.dialogue || mode === 'dialogue';
     const menu = mode === 'paused' || mode === 'map' || mode === 'journal';
+    const story = t < mixState.storyUntil;
     const duck = menu ? 2 : dlg || A._duck ? 1 : 0;
-    if (duck !== busState.duck) {
-      busState.duck = duck;
-      const md = duck === 2 ? 0.55 : duck === 1 ? A._duckAmt : 1;
-      G.musicDuck.gain.setTargetAtTime(md, t, 0.18);
-      G.radioDuck.gain.setTargetAtTime(duck ? 0.45 : 1, t, 0.18);
-      G.worldDuck.gain.setTargetAtTime(duck === 2 ? 0.5 : duck === 1 ? 0.8 : 1, t, 0.2);
+    const key = duck * 2 + (story ? 1 : 0) + A._duckAmt;
+    if (key !== busState.duck) {
+      busState.duck = key;
+      let md = duck === 2 ? DUCK.menuMusic : duck === 1 ? A._duckAmt : 1;
+      if (story) md = Math.min(md, DUCK.musicStory);
+      const up = !story && !duck;
+      G.musicDuck.gain.setTargetAtTime(md, t, up ? 0.25 : 0.12);
+      G.radioDuck.gain.setTargetAtTime(duck ? DUCK.radioDlg : story ? DUCK.radioStory : 1, t, 0.18);
+      G.worldDuck.gain.setTargetAtTime(duck === 2 ? DUCK.menuWorld : 1, t, 0.2);
+      G.ambDuck.gain.setTargetAtTime(duck === 1 ? DUCK.ambDlg : story ? DUCK.ambStory : 1, t, 0.25);
+      G.sfxDuck.gain.setTargetAtTime(duck === 1 ? DUCK.sfxDlg : 1, t, 0.2);
     }
     // walkman: 40% under dialogue, 70% for 3 s after a pursuer sees Chinnu (so he hears the whistle)
     let seen = t - (hooks.seenAt || -10) < 3;
@@ -3298,6 +3839,7 @@
       'r_chandni', 'r_barish', 'r_baraat', 'r_neon', 'r_pager', 'id_vani', 'id_band', 'id_pop'];
     const jobs = [];
     const seen = new Set();
+    for (const z of ZONE_IDS) jobs.push(() => { if (ctx) zoneIR(ctx, z); }); // reverb IRs (JS only; convolvers are built on approach)
     for (const id of order) {
       jobs.push(() => {
         const c = compile(id);
@@ -3353,8 +3895,8 @@
   };
   for (const ev of ['pointerdown', 'keydown', 'touchend']) window.addEventListener(ev, gesture, { capture: true, passive: true });
 
-  const STAGES = [['pump', () => pump()], ['bus', (dt, m) => busUpdate(m)], ['vehicle', () => pollVehicle()], ['engine', (dt, m) => engineUpdate(dt, m)],
-    ['ambient', (dt, m) => ambientUpdate(dt, m)], ['radio', () => radioUpdate()], ['walkman', () => walkmanUpdate()], ['music', (dt, m) => musicUpdate(m)],
+  const STAGES = [['listen', (dt) => listenUpdate(dt)], ['pump', () => pump()], ['bus', (dt, m) => busUpdate(m)], ['vehicle', () => pollVehicle()], ['engine', (dt, m) => engineUpdate(dt, m)],
+    ['ambient', (dt, m) => ambientUpdate(dt, m)], ['emitters', (dt) => emitUpdate(dt)], ['radio', () => radioUpdate()], ['walkman', () => walkmanUpdate()], ['music', (dt, m) => musicUpdate(m)],
     ['fallbacks', (dt, m) => fallbacks(dt, m)], ['beacon', (dt, m) => beaconUpdate(m)], ['ext', (dt, m) => extUpdate(dt, m)]];
   function update(dt) {
     if (!ctx || !unlocked || hidden) return;
@@ -3411,8 +3953,9 @@
       if (!strip) { await delay(Math.max(300, o.minStep || 0)); continue; }
       strip.route(G.walk);
       const now = ctx.currentTime;
+      strip.use3d(false);
       strip.in.gain.setValueAtTime(o.vol || 0.9, now);
-      if (strip.pn.pan) strip.pn.pan.setValueAtTime(0, now);
+      if (strip.st.pan) strip.st.pan.setValueAtTime(0, now);
       strip.lp.frequency.setValueAtTime(9000, now);
       strip.send.gain.setValueAtTime(0.12, now);
       let end = now + 1;
@@ -3527,18 +4070,44 @@
     const sr = 44100, oc = new OAC(2, Math.ceil(sr * seconds), sr);
     const g = buildGraph(oc, oc.destination);
     if (opts.radio) { const s = new Seq(oc, id, g.radio, { startTime: 0.05 }); s.schedule(seconds + 0.5); }
-    else { const s = new Seq(oc, id, g.music, { startTime: 0.05, revIn: g.revIn, offsetStep: opts.offsetStep || 0 }); s.schedule(seconds + 0.5); }
+    else { const s = new Seq(oc, id, g.music, { startTime: 0.05, revIn: g.musicRevIn, offsetStep: opts.offsetStep || 0 }); s.schedule(seconds + 0.5); }
     return oc.startRendering().then(analyse);
   };
   A.stats = function () {
     const now = ctx ? ctx.currentTime : 0;
+    let occ = emitStat.occluded;
     return {
       state: ctx ? ctx.state : 'none', unlocked, time: now, strips: strips.length, busyStrips: strips.filter((s) => s.busy > now).length,
-      sfxPlayed, ksBuffers: KS.size, drumBuffers: DRUMS.size, music: music.cur, musicLock: music.lockId, radio: radio.on ? STATIONS[radio.idx].name : null,
+      sfxPlayed, sfxOccluded, ksBuffers: KS.size, drumBuffers: DRUMS.size, music: music.cur, musicLock: music.lockId, radio: radio.on ? STATIONS[radio.idx].name : null,
       walkman: walkman.seq ? walkman.cur : null, bed: amb.bed, emitters: amb.active.length, spatialMusic: amb.spatial ? amb.spatial.id : null,
-      engines: [eng.player, eng.traffic[0], eng.traffic[1]].filter(Boolean).map((e) => e.type), seqs: liveSeqs.size,
+      engines: [eng.player].concat(eng.traffic.map((s) => s.voice)).filter(Boolean).map((e) => e.type), traffic: eng.traffic.length, seqs: liveSeqs.size,
       beacon: beacon.target ? (typeof beacon.target === 'string' ? beacon.target : 'xy') : null,
+      // spatial / mix
+      zone: rv.zone, zoneWant: rv.detected, zoneOverride: rv.override, reverbs: G ? Array.from(G.zones.keys()) : [], zoneBuildMs: +rv.buildMs.toFixed(2),
+      spatialEmitters: emitters.size, hrtf: emitStat.hrtf + strips.filter((s) => s.hrtf && s.busy > now).length, occluded: occ,
+      listener: pose.ok ? { x: Math.round(pose.x), y: Math.round(pose.y), h: Math.round(pose.h), yaw: +pose.yaw.toFixed(3), is3D: pose.is3D, mode: pose.mode, hq: pose.hq } : null,
+      duck: G ? { music: +G.musicDuck.gain.value.toFixed(3), amb: +G.ambDuck.gain.value.toFixed(3), sfx: +G.sfxDuck.gain.value.toFixed(3), radio: +G.radioDuck.gain.value.toFixed(3), world: +G.worldDuck.gain.value.toFixed(3) } : null,
+      limiterDb: G && G.limiter ? +G.limiter.reduction.toFixed(2) : 0,
     };
+  };
+  // reverb zones: N.audio.reverb.zone (current), .set(id | null) (override; null = automatic), .ZONES
+  A.reverb = {
+    ZONES: ZONE_IDS.slice(),
+    get zone() { return rv.zone; },
+    get detected() { return rv.detected; },
+    get override() { return rv.override; },
+    set(id) {
+      rv.override = id && IRZ[id] && id !== 'music' ? id : null;
+      rv.scanT = 0;
+      if (rv.override && G && !G.zones.has(rv.override)) requestZone(rv.override);
+      return rv.override;
+    },
+  };
+  // spatial: N.audio.spatial.hrtf = 'auto' | true | false (3D on a high tier = HRTF for the nearest sounds)
+  A.spatial = {
+    get hrtf() { return hrtfPref; },
+    set hrtf(v) { hrtfPref = v === true || v === false ? v : 'auto'; emitStat.lastIs3D = null; },
+    get pose() { return pose.ok ? { x: pose.x, y: pose.y, h: pose.h, yaw: pose.yaw, is3D: pose.is3D, mode: pose.mode, hq: pose.hq } : null; },
   };
   // live output meter (tests): RMS of the master output over the last ~46 ms
   let analyser = null, abuf = null;
@@ -3566,10 +4135,26 @@
   //   ext.registerBed(id, def)  ext.registerPlace(rule, {first})  ext.registerFestival(id, def)  ext.DAY_ONLY (Set)
   //   ext.onUpdate(id, fn(dt, mode, info), order)   per-frame after the core stages; info: {t, L, night, hour, day, weekday,
   //                                  district, bed, playing, active (place emitters)}; replaces the same id
-  //   ext.bus(name)                  live GainNodes: master sfx amb engine ui music walk radio revIn worldLP worldDuck musicDuck
-  //   ext.listener()                 the listening pose {x, y, h, yaw, is3D} (3D camera in 3D views, else the player)
-  //   ext.spatial(x, y, ref, max)    {g, pan, d} or null (culled)
+  //   ext.bus(name)                  live GainNodes: master sfx amb engine engPlayer ui music walk radio revIn (world/zone reverb send)
+  //                                  musicRevIn (the score's own reverb send) worldLP worldDuck sfxDuck ambDuck musicDuck radioDuck
+  //   ext.listener()                 the listening pose {x, y, h, yaw, fx, fy, vx, vy, is3D, mode, hq, ref}: the 3D camera in 3D
+  //                                  views (yaw = where it looks), else the followed actor (top-down: north-up, east = right)
+  //   ext.spatial(x, y, ref, max)    {g, pan, d} or null (culled); pan is relative to the ear (camera right in 3D)
+  //   ext.emitter(opts) -> emitter | null (before unlock)   a core-owned spatial chain for a CONTINUOUS sound:
+  //                                  connect your source into `emitter.input`; call `set(x, y, h?, vx?, vy?)` whenever it moves;
+  //                                  `setGain(v)`; `dispose(fade?)` when done (fades, then disconnects). The core updates it every
+  //                                  frame: distance gain per class, pan (HRTF for the nearest few in 3D on capable devices,
+  //                                  equal-power otherwise), air absorption, occlusion behind buildings (lowpass ~900 Hz + -6 dB,
+  //                                  smoothed, ~5 Hz line tests), zone-reverb send, and a smoothed Doppler ratio `emitter.dop`
+  //                                  (multiply your pitches by it); also `emitter.d` (distance), `emitter.occS` (0..1).
+  //                                  opts: {cls: 'def'|'engine'|'music'|'amb'|'horn'|'loud'|'small'|'step', ref, roll, max, gain,
+  //                                  bus: 'sfx'|'amb'|'engine', h (height u), rev (send x), prio, hrtf (false = never), occlude (false)}
+  //   ext.reverbZone()               current reverb zone id: open | oldcity_lane | charminar | golconda | stadium | station |
+  //                                  irani_cafe | lake (N.audio.reverb.set(id|null) overrides). SFX fns also get `o.zone`.
   //   ext.play(name, o)              = N.audio.sfx;  ext.ctx (getter)
+  //                                  sfx o: {x, y, h, vol, pitch, pan, cls (distance class), ref, max, rev, occlude: false, duck: true}
+  //   Engine voices (setEngineVoice) for traffic are routed through a core emitter: `info.spatialized === true` means do NOT
+  //   pan (the core does), and `info.dop` is the Doppler ratio to multiply every pitch by. The player's voice gets dop 1.
   const extUpdates = new Map();
   let extList = [];
   function extUpdate(dt, mode) {
@@ -3622,15 +4207,15 @@
     },
     bus(name) { return G ? G[name] || null : null; },
     listener() {
-      const L = listener();
-      if (!L) return null;
-      let is3D = false, yaw = -Math.PI / 2, h = 0, x = L.x, y = L.y;
-      try {
-        const V = N.view3d, E = V && V.active && V.engine;
-        if (E && E.camera) { is3D = true; x = E.camera.position.x; y = E.camera.position.z; h = E.camera.position.y; yaw = N.view && typeof N.view.yaw === 'number' ? N.view.yaw : yaw; }
-      } catch (e) { is3D = false; }
-      return { x, y, h, yaw, is3D, ref: L };
+      const P = pose.ok ? pose : updatePose();
+      if (!P.ok) return null;
+      return { x: P.x, y: P.y, h: P.is3D ? P.h : 0, yaw: P.yaw, fx: P.fx, fy: P.fy, vx: P.vx, vy: P.vy, is3D: P.is3D, mode: P.mode, hq: P.hq, ref: P.ref || listener() };
     },
+    emitter(o) {
+      if (!ctx || !G || !unlocked) return null;
+      try { return new Emitter(ctx, o || {}); } catch (e) { N.err('audio.ext.emitter', e); return null; }
+    },
+    reverbZone: () => rv.zone,
     spatial(x, y, ref, max) { return spatial(x, y, ref, max); },
     play: (name, o) => playSfx(name, o),
     engProfile: (type) => engProfile(type),
@@ -3638,5 +4223,7 @@
     weekday: (day) => extWeekday(day == null ? (N.clock && N.clock.day) || 0 : day),
   };
   // internals for tests/tools (not a gameplay API)
-  A._internal = { TRACKS, SFX, INST, KITS, compile, Seq, STATIONS, BEDS, PLACE_SOUNDS, FESTIVALS, ENGINES, engineF, EngineVoice, buildGraph, ksBuffer, liveSeqs, DRUMS, warmDrums, drumQueue, meter, placeRule, amb, music, radio, eng, bus: () => G };
+  A._internal = { IRZ, genIRData, zoneIR, mkZoneNode, setZone, applyListener, mkPanner, setPos, occlusion, distGain, DCLS, LIM, emitters, rv, pose,
+    setPose(p) { poseOverride = p || null; emitStat.lastIs3D = null; if (ctx) { updatePose(); if (pose.ok) applyListener(ctx, pose, LS_LAST); } return pose; },
+    TRACKS, SFX, INST, KITS, compile, Seq, STATIONS, BEDS, PLACE_SOUNDS, FESTIVALS, ENGINES, engineF, EngineVoice, buildGraph, ksBuffer, liveSeqs, DRUMS, warmDrums, drumQueue, meter, placeRule, amb, music, radio, eng, bus: () => G };
 })();
