@@ -698,7 +698,9 @@
     const near = N.entities.query(p.x, p.y, 18 + 34, isVehicle);
     let best = null, bd = 18;
     for (const v of near) {
-      if (!v.alive || v.noEnter || v.driver === p) continue;
+      if (!v.alive || v.noEnter || v.driver === p || v.fallen) continue;
+      // buses and lorries: the player rides buses as a passenger (shops / traffic), never drives them
+      if (v.T.playerNoEnter && !V.allowHeavy) continue;
       if (v.driver && !(v.driver.npc || v.driver instanceof N.Actor)) continue;
       const d = distTo(v, p.x, p.y);
       if (d < bd) { bd = d; best = v; }
@@ -721,7 +723,14 @@
       if (this.knockT > 0) this.knockT -= dt;
       if (this.bumpT > 0) this.bumpT -= dt;
       const sp = Math.hypot(this.vx, this.vy);
-      if (this.t < 2.6) { // shake a fist at the vehicle
+      const pl = N.player;
+      if (this.chase > 0 && this.t > 0.6 && this.t < 0.6 + this.chase && pl) { // "Oye! Meri cycle!": chase on foot for a bit
+        const a = Math.atan2(pl.y - this.y, pl.x - this.x);
+        this.angle = a;
+        this.vx += (Math.cos(a) * 60 - this.vx) * Math.min(1, dt * 6); this.vy += (Math.sin(a) * 60 - this.vy) * Math.min(1, dt * 6);
+        this.anim.speed = 1; this.anim.run = true; this.anim.phase += sp * dt * 0.2;
+        if (this.t > 0.5 + this.chase) { this.chase = 0; this.t = 2.6; this.anim.run = false; }
+      } else if (this.t < 2.6) { // shake a fist at the vehicle
         this.vx *= 0.85; this.vy *= 0.85;
         if (this.v && this.v.alive) this.angle = Math.atan2(this.v.y - this.y, this.v.x - this.x);
         this.anim.speed = 0.3; this.anim.phase += dt * 14;
@@ -1638,8 +1647,12 @@
       if (v.bumpT > 0) v.bumpT -= dt;
       if (v.doorT > 0) v.doorT -= dt;
       v.age += dt;
+      if (v.fallen) { v.fallen.t += dt; if (v.fallen.t > TUNE.rightAfter && !v.driver) { v.fallen = null; v.wake(); } }
       if (v.driver === p) {
         if (mode === 'play' && !p.controlsLocked) playerControl(v); else idleControl(v);
+        if (mode === 'play' && v.T.cls === 'bike') bikeHazards(v, dt);
+      } else if (v.fallen) {
+        idleControl(v);
       } else if (v.controller) {
         try { v.controller(v, dt); } catch (e) { N.err('vehicle.controller', e); v.controller = null; }
       } else idleControl(v);
@@ -1665,11 +1678,16 @@
       const n = nearestEnterable(p);
       if (n) {
         const v = n.v, T = v.T;
-        offerSpec.label = (v.driver ? 'Borrow ' : T.verb + ' ') + (v.label || T.short);
+        const nk = nakkoFor(v);
+        if (nk) { offerSpec.label = 'Nakko'; offerSpec.use = useNakko; }
+        else if (v.hire && !v.hired) { offerSpec.label = T.mode === 'boat' ? 'Hire boat' : 'Hire cycle'; offerSpec.use = useHire; }
+        else { offerSpec.label = (v.driver ? 'Borrow ' : T.verb + ' ') + (v.label && !T.label ? v.label : T.short); offerSpec.use = useEnter; }
         offerSpec.dist = n.d; offerSpec.target = v;
-        offerSpec.use = useEnter;
         N.interact.offer(offerSpec);
       }
+      // a bike lying on its side after a fall: pick it up (systems §2.6)
+      const fb = nearestFallen(p);
+      if (fb) { pickSpec.label = 'Pick up ' + fb.v.T.short; pickSpec.dist = fb.d; pickSpec.target = fb.v; N.interact.offer(pickSpec); }
     } else if (pv && !pv.locked && !p.controlsLocked) {
       exitSpec.label = pv.T.cls === 'bike' ? 'Get off' : pv.T.cls === 'boat' ? 'Get out' : 'Get out';
       exitSpec.use = useExit;
@@ -1682,6 +1700,52 @@
   }
   function useEnter() { if (offerSpec.target) enter(N.player, offerSpec.target); }
   function useExit() { exit(N.player, false); }
+  function useNakko() {
+    const v = offerSpec.target; if (!v) return;
+    const line = nakkoFor(v);
+    if (line && N.hud) N.hud.toast(line, 2600);
+    if (N.audio && N.audio.horn && v.T.cls !== 'bike') { try { N.audio.horn(v, { x: v.x, y: v.y }); } catch (e) { /* ignore */ } }
+  }
+  /** A rental cycle / jetty boat: the stall's menu decides (N.shops); without shops it is just ridden. */
+  function useHire() {
+    const v = offerSpec.target; if (!v) return;
+    if (N.shops && typeof N.shops.open === 'function' && N.shops.open(v.hire, { vehicle: v })) return;
+    v.hired = true; enter(N.player, v);
+  }
+  const pickSpec = { label: 'Pick up cycle', priority: 1, dist: 0, target: null, use: () => { const v = pickSpec.target; if (v && v.fallen) { v.fallen = null; N.emit('vehicle:pickup', { vehicle: v }); enter(N.player, v, { quiet: true }); } } };
+  function nearestFallen(p) {
+    let best = null, bd = 18;
+    for (const v of list) {
+      if (!v.fallen || v.fallen.t < TUNE.pickupAfter || !v.alive) continue;
+      const d = distTo(v, p.x, p.y);
+      if (d < bd) { bd = d; best = v; }
+    }
+    return best ? { v: best, d: bd } : null;
+  }
+  // the player went DHADAAM (entities.js player.fall): the bike stays down until picked up
+  N.on('player:fall', (d) => {
+    const v = d && d.vehicle;
+    if (!v || !v.T || v.T.cls !== 'bike' || !v.alive) return;
+    v.fallen = { t: 0, angle: v.angle };
+    v.vx *= 0.3; v.vy *= 0.3; v.av = 0;
+    N.emit('vehicle:fallen', { vehicle: v });
+  });
+  /** Punctures and potholes for the bike the player rides (systems §2.6, §5.6). */
+  function bikeHazards(v, dt) {
+    const T = v.T, S = N.SURF;
+    const surf = N.world.surfaceAt(v.x, v.y), sp = Math.abs(v.speed);
+    const dirt = surf === S.GROUND || surf === S.SAND;
+    if (T.pedal && !v.flat && dirt && sp > 25 && Math.random() < dt * TUNE.punctureRate) V.puncture(v);
+    if (surf === S.GROUND && sp >= TUNE.potholeSpeed) {
+      v.potT -= dt;
+      if (v.potT <= 0) {
+        v.potT = TUNE.potholeEvery * (0.5 + Math.random());
+        if (N.audio && N.audio.sfx) N.audio.sfx('pothole', { x: v.x, y: v.y });
+        N.emit('vehicle:pothole', { vehicle: v, speed: sp });
+        if (Math.random() < TUNE.potholeFall && N.player.fall) N.player.fall(v, { speed: sp, pothole: true });
+      }
+    } else v.potT = Math.max(v.potT, 0.6);
+  }
   function emitHorn(v) {
     const p = N.player;
     if (v) N.emit('horn', { x: v.x, y: v.y, type: v.type, vehicle: v, who: p, dur: 0.42 });
