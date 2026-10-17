@@ -1,0 +1,110 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 122232,
+ "clips": {},
+ "family": "prop",
+ "file": "tree_coconut.glb",
+ "front": "-Y",
+ "id": "tree_coconut",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 119.4,
+ "kit": 1,
+ "materials": [
+  "M_tree_coconut_imp",
+  "M_tree_coconut"
+ ],
+ "max": [
+  137.306,
+  10.195,
+  46.001
+ ],
+ "meta": {
+  "crown": [
+   30.902,
+   32.592
+  ],
+  "doubleSided": true,
+  "height": 46.001,
+  "impostor": {
+   "billboard": "cylindrical",
+   "from": 800,
+   "h": 46.412,
+   "node": "tree_coconut_IMPOSTOR",
+   "offset": [
+    118.441,
+    0,
+    0
+   ],
+   "w": 30.902,
+   "x0": -12.037,
+   "z0": -0.411
+  },
+  "kind": "coconut",
+  "lods": [
+   {
+    "from": 0,
+    "lod": 0,
+    "node": "tree_coconut_LOD0",
+    "offset": [
+     0.0,
+     0,
+     0
+    ],
+    "tris": 984
+   },
+   {
+    "from": 180,
+    "lod": 1,
+    "node": "tree_coconut_LOD1",
+    "offset": [
+     39.48,
+     0,
+     0
+    ],
+    "tris": 378
+   },
+   {
+    "from": 420,
+    "lod": 2,
+    "node": "tree_coconut_LOD2",
+    "offset": [
+     78.961,
+     0,
+     0
+    ],
+    "tris": 126
+   }
+  ],
+  "tree": true,
+  "wind": {
+   "a": "spare (1)",
+   "attribute": "_WIND",
+   "b": "flutter mask (1 = leaf)",
+   "g": "flutter phase 0..1",
+   "r": "bend 0 (trunk base) -> 1 (tips)",
+   "scale": 255,
+   "three": "_wind"
+  }
+ },
+ "min": [
+  -12.037,
+  -22.397,
+  -0.411
+ ],
+ "notes": [],
+ "script": "props_trees",
+ "size": [
+  149.343,
+  32.592,
+  46.412
+ ],
+ "tint": null,
+ "tris": 1490,
+ "units": "u",
+ "up": "Z"
+}

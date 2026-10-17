@@ -1,0 +1,86 @@
+{
+ "anchors": {
+  "wire_L1": [
+   -0.62,
+   -2.9,
+   40.07
+  ],
+  "wire_L2": [
+   -0.62,
+   0.0,
+   43.4
+  ],
+  "wire_L3": [
+   -0.62,
+   2.9,
+   40.07
+  ],
+  "wire_N": [
+   0.05,
+   -1.05,
+   35.2
+  ],
+  "wire_cable": [
+   -0.62,
+   -1.5,
+   30.15
+  ],
+  "wire_service": [
+   -0.62,
+   2.36,
+   31.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 29808,
+ "clips": {},
+ "family": "prop",
+ "file": "pole_rail.glb",
+ "front": "-Y",
+ "id": "pole_rail",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 29.1,
+ "kit": 1,
+ "materials": [
+  "M_pole_rail",
+  "galvanised"
+ ],
+ "max": [
+  0.85,
+  3.4,
+  43.42
+ ],
+ "meta": {
+  "doubleSided": false,
+  "height": 42.0,
+  "kind": "pole",
+  "variant": "rail",
+  "wires": [
+   "wire_L1",
+   "wire_L2",
+   "wire_L3",
+   "wire_N",
+   "wire_service",
+   "wire_cable"
+  ]
+ },
+ "min": [
+  -1.12,
+  -3.4,
+  0.0
+ ],
+ "notes": [],
+ "script": "props_poles",
+ "size": [
+  1.97,
+  6.8,
+  43.42
+ ],
+ "tint": null,
+ "tris": 495,
+ "units": "u",
+ "up": "Z"
+}

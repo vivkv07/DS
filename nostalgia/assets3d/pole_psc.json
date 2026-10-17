@@ -1,0 +1,85 @@
+{
+ "anchors": {
+  "wire_L1": [
+   -0.5211,
+   -3.5,
+   42.31
+  ],
+  "wire_L2": [
+   -0.5211,
+   -1.0,
+   42.31
+  ],
+  "wire_L3": [
+   -0.5211,
+   3.5,
+   42.31
+  ],
+  "wire_N": [
+   0.0,
+   -1.2553,
+   37.4
+  ],
+  "wire_cable": [
+   1.0889,
+   -0.1,
+   28.7
+  ],
+  "wire_service": [
+   0.0,
+   1.2633,
+   35.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 25924,
+ "clips": {},
+ "family": "prop",
+ "file": "pole_psc.glb",
+ "front": "-Y",
+ "id": "pole_psc",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 25.3,
+ "kit": 1,
+ "materials": [
+  "M_pole_psc"
+ ],
+ "max": [
+  1.139,
+  4.0,
+  45.0
+ ],
+ "meta": {
+  "doubleSided": false,
+  "height": 45.0,
+  "kind": "pole",
+  "variant": "psc",
+  "wires": [
+   "wire_L1",
+   "wire_L2",
+   "wire_L3",
+   "wire_N",
+   "wire_service",
+   "wire_cable"
+  ]
+ },
+ "min": [
+  -1.021,
+  -4.0,
+  0.0
+ ],
+ "notes": [],
+ "script": "props_poles",
+ "size": [
+  2.16,
+  8.0,
+  45.0
+ ],
+ "tint": null,
+ "tris": 435,
+ "units": "u",
+ "up": "Z"
+}
