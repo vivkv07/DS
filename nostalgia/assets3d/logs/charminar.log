@@ -1,0 +1,44 @@
+00:00.027  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building charminar (hero_landmark)
+[kit] baked AO to vertex colours (48 samples) in 10.6s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+19:21:30 | INFO: Starting glTF 2.0 export
+19:21:30 | INFO: Extracting primitive: charminar_body
+19:21:30 | INFO: Primitives created: 7
+19:21:30 | INFO: Extracting primitive: COL_charminar
+19:21:30 | INFO: Primitives created: 1
+19:21:30 | INFO: Finished glTF 2.0 export in 0.5366477966308594 s
+
+[kit] charminar: 32256 tris (budget 60000) ok, 1466.7 KB, clips [], anchors 0
+19:21:30 | INFO: Data are loaded, start creating Blender stuff
+19:21:30 | INFO: Blender create Mesh node charminar_body
+19:21:31 | INFO: Blender create Mesh node COL_charminar
+19:21:31 | INFO: glTF import finished in 0.14s
+00:22.112  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/charminar.png'
+[kit] preview charminar.png (448px, 20 spp) in 8.2s
+19:21:39 | INFO: Data are loaded, start creating Blender stuff
+19:21:39 | INFO: Blender create Mesh node charminar_body
+19:21:39 | INFO: Blender create Mesh node COL_charminar
+19:21:39 | INFO: glTF import finished in 0.14s
+00:28.445  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/charminar_front.png'
+[kit] preview charminar_front.png (384px, 16 spp) in 6.1s
+19:21:45 | INFO: Data are loaded, start creating Blender stuff
+19:21:45 | INFO: Blender create Mesh node charminar_body
+19:21:45 | INFO: Blender create Mesh node COL_charminar
+19:21:45 | INFO: glTF import finished in 0.19s
+00:33.874  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/charminar_arch.png'
+[kit] preview charminar_arch.png (320px, 14 spp) in 5.2s
+19:21:51 | INFO: Data are loaded, start creating Blender stuff
+19:21:51 | INFO: Blender create Mesh node charminar_body
+19:21:51 | INFO: Blender create Mesh node COL_charminar
+19:21:51 | INFO: glTF import finished in 0.15s
+00:35.692  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/charminar_top.png'
+[kit] preview charminar_top.png (320px, 14 spp) in 1.6s
+19:21:52 | INFO: Data are loaded, start creating Blender stuff
+19:21:52 | INFO: Blender create Mesh node charminar_body
+19:21:53 | INFO: Blender create Mesh node COL_charminar
+19:21:53 | INFO: glTF import finished in 0.13s
+00:38.032  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/charminar_west.png'
+[kit] preview charminar_west.png (320px, 14 spp) in 2.2s
+[kit] done charminar in 37.6s
