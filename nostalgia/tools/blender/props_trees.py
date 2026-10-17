@@ -79,6 +79,18 @@ def lump(name, r, loc=(0, 0, 0), seg=6, rings=4, noise=0.2, seed=0, mat=None, sc
     between the 20-tri icosahedron and the 80-tri ico-sphere."""
     bm = bmesh.new()
     bmesh.ops.create_uvsphere(bm, u_segments=seg, v_segments=rings, radius=1.0)
+    # UV seam along one meridian (+ the pole edges) -> one island
+    mer = [v for v in bm.verts if abs(v.co.x) + abs(v.co.y) > 1e-4]
+    a0 = math.atan2(mer[0].co.y, mer[0].co.x)
+
+    def on_mer(v):
+        if abs(v.co.x) + abs(v.co.y) <= 1e-4:
+            return True
+        da = (math.atan2(v.co.y, v.co.x) - a0 + math.pi) % (2 * math.pi) - math.pi
+        return abs(da) < 1e-3
+    for e in bm.edges:
+        if on_mer(e.verts[0]) and on_mer(e.verts[1]):
+            e.seam = True
     rnd = random.Random(seed)
     ph = [rnd.uniform(0, 6.28) for _ in range(6)]
     rot = rnd.uniform(0, 6.28)
@@ -94,7 +106,9 @@ def lump(name, r, loc=(0, 0, 0), seg=6, rings=4, noise=0.2, seed=0, mat=None, sc
             q.z *= (1.0 - flat_bottom)
         v.co = q + V(loc)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    return kit.obj_from_bm(bm, name, mat)
+    ob = kit.obj_from_bm(bm, name, mat)
+    ob['uvw'] = 'unwrap'
+    return ob
 
 
 def bez(p0, p1, p2, n):
@@ -143,6 +157,97 @@ def verts(ob):
     return len(ob.data.vertices)
 
 
+def taper(name, pts, radii, seg=6, mat=None, cap_end=True, cap_start=False, squash=1.0):
+    """props_kit.taper + one longitudinal UV seam (one island per tube after unwrap)."""
+    ob = P.taper(name, pts, radii, seg=seg, mat=mat, cap_end=cap_end, cap_start=cap_start, squash=squash)
+    n = len(pts)
+    me = ob.data
+    if len(me.vertices) == n * seg:
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bm.verts.ensure_lookup_table()
+        for e in bm.edges:
+            a, b = sorted(v.index for v in e.verts)
+            if a % seg == 0 and b == a + seg:
+                e.seam = True
+        bm.to_mesh(me)
+        bm.free()
+        ob['uvw'] = 'unwrap'
+    return ob
+
+
+def fan(name, base, direction, length, width, n=5, spread=1.4, droop=0.3, mat=None, seed=0, notch=0.35):
+    """A star-shaped leaf spray: n pointed blades around one shared base vertex, notches between
+    them (one connected mesh: 2n+1 verts, 2n tris)."""
+    rnd = random.Random(seed)
+    d = V(direction).normalized()
+    a, b = P._frame_for(d)
+    bm = bmesh.new()
+    p0 = V(base)
+    c = bm.verts.new(p0)
+    side = d.cross(V((0, 0, 1)))
+    side = side.normalized() if side.length > 1e-6 else a
+    ring = []
+    for i in range(2 * n + 1):
+        t = (i / (2 * n) - 0.5) * spread
+        dd = (d * math.cos(t) + side * math.sin(t)).normalized()
+        dd = (dd - V((0, 0, droop * rnd.uniform(0.6, 1.2) * (1 if i % 2 else 0.6)))).normalized()
+        dd = (dd + b * rnd.uniform(-0.15, 0.15)).normalized()
+        L = length * rnd.uniform(0.75, 1.1) * (1.0 if i % 2 else notch)
+        ring.append(bm.verts.new(p0 + dd * L))
+    for i in range(2 * n):
+        bm.faces.new((c, ring[i], ring[i + 1]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    ob = kit.obj_from_bm(bm, name, mat)
+    ob['uvw'] = 'unwrap'
+    return ob
+
+
+def uv_atlas_trees(objs, margin=0.004, angle=60.0):
+    """kit.uv_atlas replacement for trees: objects flagged uvw='unwrap' (open strips, fans, tubes
+    and spheres with marked seams) get an angle-based unwrap = one island each, the rest smart
+    project; then one shared pack. Far fewer split vertices than smart project everywhere."""
+    objs = kit.mesh_objects(objs)
+    if not objs:
+        return
+    for o in objs:
+        uvl = o.data.uv_layers.get('UVMap') or o.data.uv_layers.new(name='UVMap')
+        o.data.uv_layers.active = uvl
+        try:
+            uvl.active_render = True
+        except Exception:
+            pass
+    kit.select_only(objs, objs[0])
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.context.tool_settings.mesh_select_mode = (False, False, True)
+
+    def sel(flag):
+        any_ = False
+        for o in objs:
+            bm = bmesh.from_edit_mesh(o.data)
+            f_on = (o.get('uvw') == 'unwrap') == flag
+            for f in bm.faces:
+                f.select_set(f_on)
+            any_ = any_ or (f_on and len(bm.faces) > 0)
+            bmesh.update_edit_mesh(o.data)
+        return any_
+    if sel(True):
+        bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=margin)
+    if sel(False):
+        bpy.ops.uv.smart_project(angle_limit=math.radians(angle), island_margin=margin, area_weight=0.0,
+                                 correct_aspect=True, scale_to_bounds=False)
+    bpy.ops.mesh.select_all(action='SELECT')
+    try:
+        bpy.ops.uv.select_all(action='SELECT')
+    except Exception:
+        pass
+    try:
+        bpy.ops.uv.pack_islands(rotate=True, margin=margin)
+    except Exception as e:
+        kit.log('pack_islands failed', e)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+
 def tris(ob):
     return kit.tri_count([ob])
 
@@ -184,7 +289,7 @@ class Tree:
 
     # ---- wood
     def trunk(self, pts, radii, seg=7, mat=None, lods=(0, 2), flute_kw=None, cap=False):
-        ob = P.taper(self.name('trunk'), pts, radii, seg=seg, mat=mat, cap_end=cap)
+        ob = taper(self.name('trunk'), pts, radii, seg=seg, mat=mat, cap_end=cap)
         if flute_kw:
             flute(ob, pts, **flute_kw)
         zt, tb = self.zt, self.tb
@@ -192,7 +297,7 @@ class Tree:
         return self.add(ob, *lods)
 
     def limb(self, pts, radii, seg=5, mat=None, lods=(0, 2), phase=0.0, cap=False):
-        ob = P.taper(self.name('limb'), pts, radii, seg=seg, mat=mat, cap_end=cap)
+        ob = taper(self.name('limb'), pts, radii, seg=seg, mat=mat, cap_end=cap)
         P.wind(ob, self.bend, phase, 0.0)
         return self.add(ob, *lods)
 
@@ -210,7 +315,7 @@ class Tree:
 
     def spray(self, base, d, length, width, mat, n=5, spread=1.4, droop=0.35, lods=(0, 0), phase=None):
         ph = self.rnd.random() if phase is None else phase
-        ob = P.leaf_fan(self.name('spray'), base, d, length, width, n=n, spread=spread, droop=droop, mat=mat,
+        ob = fan(self.name('spray'), base, d, length, width, n=n, spread=spread, droop=droop, mat=mat,
                         seed=self.rnd.randrange(10 ** 6))
         P.wind(ob, self.bend, ph, 1.0)
         return self.add(ob, *lods)
@@ -223,7 +328,7 @@ class Tree:
         # fewer UV islands = fewer split vertices (positions stay float in the pack: vertex count
         # drives size): smart-project with a wide angle limit while this tree bakes
         orig = kit.uv_atlas
-        kit.uv_atlas = lambda objs, margin=0.004, angle=60.0: orig(objs, margin=margin, angle=UV_ANGLE)
+        kit.uv_atlas = lambda objs, margin=0.004, angle=60.0: uv_atlas_trees(objs, margin=margin, angle=UV_ANGLE)
         try:
             return P.finish_tree(self.A, self.parts, kind, lod_tris=lod_tris, tex=tex, **kw)
         finally:
@@ -293,44 +398,39 @@ def _interp(pts, t):
     return p, d
 
 
-def pinnate(name, pts, mat, leaf_len=4.0, hang=40.0, sweep=0.45, rachis_w=(0.42, 0.12), seed=0, plume=0.0,
-            sag=0.12, petiole=1):
-    """A pinnate palm frond, vertex-cheap: a flat rachis strip (pts) whose two edges carry one
-    triangle per leaflet (base = one rachis segment, tip out), so the whole frond is one
-    edge-connected mesh (few UV seams, shared vertices). The first `petiole` segments are bare.
+def pinnate(name, pts, mat, leaf_len=4.0, hang=40.0, sweep=0.45, rachis_w=None, seed=0, plume=0.0, sag=0.12, petiole=0):
+    """A pinnate palm frond, vertex-cheap: the rachis is a polyline (pts) and every segment
+    carries one leaflet triangle on each side sharing that segment's edge (the inverted-V crease
+    reads as the rachis). One connected open mesh = one UV island: (n) + 2(n-1) verts.
     hang = degrees below the frond plane (positive = drooping inverted V, coconut; negative = up)."""
     rnd = random.Random(seed)
     bm = bmesh.new()
     n = len(pts)
-    K = n - 1 - petiole
-    rows = []
-    frames = []
-    for i, p in enumerate(pts):
-        d = (pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]).normalized()
+    K = n - 1
+    cv = [bm.verts.new(p) for p in pts]
+    for j in range(K):
+        p0, p1 = pts[j], pts[j + 1]
+        d = (p1 - p0).normalized()
         s = d.cross(V((0, 0, 1)))
         s = s.normalized() if s.length > 1e-6 else V((1, 0, 0))
         u = s.cross(d).normalized()
-        frames.append((d, s, u))
-        w = rachis_w[0] + (rachis_w[1] - rachis_w[0]) * i / (n - 1)
-        rows.append((bm.verts.new(p - s * w * 0.5), bm.verts.new(p + s * w * 0.5)))
-    for i in range(n - 1):
-        bm.faces.new((rows[i][0], rows[i][1], rows[i + 1][1], rows[i + 1][0]))
-    for side, col in ((-1, 0), (1, 1)):
-        for j in range(K):
-            i = petiole + j
-            t = (j + 0.5) / K
-            p0, p1 = rows[i][col].co, rows[i + 1][col].co
-            d, s, u = frames[i]
-            prof = math.sin(math.pi * (0.1 + 0.86 * t)) ** 0.6
+        t = (j + 0.5) / K
+        prof = math.sin(math.pi * (0.1 + 0.86 * t)) ** 0.6
+        for side in (-1, 1):
             L = leaf_len * prof * rnd.uniform(0.85, 1.12)
             a = math.radians(hang + rnd.uniform(-7, 7))
-            pl = plume * (1 if (j % 2) else -1)
+            pl = plume * (1 if (j % 2) else -1) * side
             ld = (s * side * math.cos(a) - u * math.sin(a) + d * sweep + u * pl).normalized()
-            tip = p0.lerp(p1, 0.35) + ld * L - V((0, 0, L * sag))
+            tip = p0.lerp(p1, 0.4) + ld * L - V((0, 0, L * sag))
             vt = bm.verts.new(tip)
-            bm.faces.new((rows[i][col], rows[i + 1][col], vt))
+            if side < 0:
+                bm.faces.new((cv[j], vt, cv[j + 1]))
+            else:
+                bm.faces.new((cv[j], cv[j + 1], vt))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    return kit.obj_from_bm(bm, name, mat)
+    ob = kit.obj_from_bm(bm, name, mat)
+    ob['uvw'] = 'unwrap'
+    return ob
 
 
 def vblade(name, pts, width, mat, hang=35.0, sweep=0.0):
@@ -352,7 +452,9 @@ def vblade(name, pts, width, mat, hang=35.0, sweep=0.0):
     for i in range(n - 1):
         bm.faces.new((rows[i][0], rows[i][1], rows[i + 1][1], rows[i + 1][0]))
         bm.faces.new((rows[i][1], rows[i][2], rows[i + 1][2], rows[i + 1][1]))
-    return kit.obj_from_bm(bm, name, mat)
+    ob = kit.obj_from_bm(bm, name, mat)
+    ob['uvw'] = 'unwrap'
+    return ob
 
 
 def frond_wind(ob, base, L, tb, phase, fl0=0.3):
@@ -367,7 +469,7 @@ def build_palm_crown(T, top, fronds, mats, rachis, dry_mat=None, dry=(), lod1=No
     get V-blade versions."""
     for k, fd in enumerate(fronds):
         base = V(top) + V((math.cos(fd['az']), math.sin(fd['az']), 0)) * fd.get('off', 0.5) + V((0, 0, fd.get('dz', 0)))
-        pts = frond_path(base, fd['az'], fd['L'], fd['e0'], fd['e1'], fd.get('nleaf', 11) + 2)
+        pts = frond_path(base, fd['az'], fd['L'], fd['e0'], fd['e1'], fd.get('nleaf', 11) + 1)
         mat = fd.get('mat') or mats[k % len(mats)]
         ob = pinnate(T.name('frond'), pts, mat, leaf_len=fd.get('leaf_len', fd['L'] * 0.24), hang=fd.get('hang', 40),
                      sweep=fd.get('sweep', 0.45), seed=T.rnd.randrange(10 ** 6), plume=fd.get('plume', 0.0),
@@ -380,7 +482,7 @@ def build_palm_crown(T, top, fronds, mats, rachis, dry_mat=None, dry=(), lod1=No
             pts = frond_path(base, fd['az'], fd['L'], fd['e0'], fd['e1'], fd.get('n', 5))
             mat = fd.get('mat') or mats[k % len(mats)]
             if fd.get('nleaf'):
-                pts = frond_path(base, fd['az'], fd['L'], fd['e0'], fd['e1'], fd['nleaf'] + 2)
+                pts = frond_path(base, fd['az'], fd['L'], fd['e0'], fd['e1'], fd['nleaf'] + 1)
                 ob = pinnate(T.name('pfrond'), pts, mat, leaf_len=fd.get('leaf_len', fd['L'] * 0.24), hang=fd.get('hang', 40),
                              sweep=fd.get('sweep', 0.45), seed=T.rnd.randrange(10 ** 6), plume=fd.get('plume', 0.0),
                              rachis_w=(0.5, 0.2), sag=fd.get('sag', 0.12))
@@ -410,7 +512,7 @@ def build_coconut(A):
     rnd = T.rnd
     H = 40.5
     lean_az = math.radians(-60)
-    pts = ringed_trunk_pts(H, 6.0, lean_az, 15, wob=0.35, seed=3)
+    pts = ringed_trunk_pts(H, 6.0, lean_az, 12, wob=0.35, seed=3)
     radii = []
     for i, p in enumerate(pts):
         t = i / (len(pts) - 1)
@@ -420,16 +522,15 @@ def build_coconut(A):
                      1.6, '#4e4236', amount=0.75, sharp=(0.45, 0.85))
     T.trunk(pts, radii, seg=7, mat=bark, lods=(0, 0))
     # LOD1/2 trunk: fewer rings
-    pts2 = [pts[i] for i in (0, 1, 3, 6, 10, 14)]
-    rad2 = [radii[i] for i in (0, 1, 3, 6, 10, 14)]
-    T.trunk(pts2, rad2, seg=6, mat=bark, lods=(1, 1))
-    pts3 = [pts[i] for i in (0, 2, 7, 14)]
-    T.trunk(pts3, [radii[i] for i in (0, 2, 7, 14)], seg=5, mat=bark, lods=(2, 2))
+    sel2 = (0, 1, 3, 7, 11)
+    T.trunk([pts[i] for i in sel2], [radii[i] for i in sel2], seg=5, mat=bark, lods=(1, 1))
+    sel3 = (0, 2, 11)
+    T.trunk([pts[i] for i in sel3], [radii[i] for i in sel3], seg=4, mat=bark, lods=(2, 2))
     top = pts[-1]
     # crown heart: frond boots + spear
     boots = P.M('palm_trunk', name='coco_boot', base='#7a6a40', var=0.2, grain=0.2, scale=2.0)
     T.clump(top + V((0, 0, 0.3)), 1.35, boots, lods=(0, 1), kind='ico', subdiv=1, scale=(1, 1, 1.25), noise=0.15, flat=0.0, flutter=0.0)
-    sp = P.taper(T.name('spear'), [top, top + V((0.3, 0.2, 5.5))], (0.35, 0.02), seg=4, mat=P.M('frond', name='coco_spear', base='#8aa04a'))
+    sp = taper(T.name('spear'), [top, top + V((0.3, 0.2, 5.5))], (0.35, 0.02), seg=4, mat=P.M('frond', name='coco_spear', base='#8aa04a'))
     frond_wind(sp, top, 6.0, 0.3, 0.5, 0.3)
     T.add(sp, 0, 0)
     gmats = [P.M('frond', name='coco_f1', base='#5a8a36', var=0.2, grain=0.2, scale=0.8),
@@ -444,19 +545,19 @@ def build_coconut(A):
         a = k / (N - 1)  # 0 = young (up), 1 = old (low)
         fronds.append(dict(az=az, L=rnd.uniform(18.0, 21.0) - 3.0 * (1 - a) ** 2, e0=58 - 66 * a + rnd.uniform(-6, 6),
                            e1=-45 - 38 * a + rnd.uniform(-8, 8), dz=-1.2 * a + rnd.uniform(-0.3, 0.3),
-                           hang=36 + 16 * a, nleaf=11, lods=(0, 0)))
+                           hang=36 + 16 * a, nleaf=10, lods=(0, 0)))
     # two dry hanging fronds
     for az in (lean_az + 2.2, lean_az - 1.7):
-        fronds.append(dict(az=az, L=14.0, e0=-48, e1=-86, dz=-1.6, hang=65, nleaf=7, mat=dry_m, lods=(0, 0),
+        fronds.append(dict(az=az, L=14.0, e0=-48, e1=-86, dz=-1.6, hang=65, nleaf=6, mat=dry_m, lods=(0, 0),
                            leaf_len=3.0, sweep=0.2, fl0=0.2))
-    lod1 = [dict(az=f['az'], L=f['L'], e0=f['e0'], e1=f['e1'], dz=f['dz'], nleaf=5, hang=f['hang'], leaf_len=f['L'] * 0.26) for f in fronds[:12]]
+    lod1 = [dict(az=f['az'], L=f['L'], e0=f['e0'], e1=f['e1'], dz=f['dz'], nleaf=4, hang=f['hang'], leaf_len=f['L'] * 0.27) for f in fronds[:11]]
     lod1.append(dict(az=fronds[N]['az'], L=13.0, e0=-50, e1=-86, dz=-1.6, nleaf=3, hang=65, mat=dry_m, leaf_len=3.0, sweep=0.2))
-    lod2 = [dict(az=f['az'], L=f['L'], e0=f['e0'], e1=f['e1'], dz=f['dz'], n=4, w=f['L'] * 0.17, hang=40) for f in fronds[:8]]
+    lod2 = [dict(az=f['az'], L=f['L'], e0=f['e0'], e1=f['e1'], dz=f['dz'], nleaf=2, hang=40, leaf_len=f['L'] * 0.3) for f in fronds[:7]]
     build_palm_crown(T, top, fronds, gmats, None, lod1=lod1, lod2=lod2, tb=0.3)
     # coconuts: a hanging cluster under the crown, on the street side
     nutm = P.M('coconut', name='coco_nut', base='#6f7f2c', var=0.15, grain=0.1)
     ph = rnd.random()
-    for j in range(5):
+    for j in range(4):
         a = j * 2.3 + 0.4
         rr = 1.25 + 0.35 * (j % 2)
         c = top + V((math.cos(a) * rr, math.sin(a) * rr - 0.4, -1.7 - 0.5 * (j % 3)))
@@ -485,10 +586,10 @@ def build_palm(A):
     # glossy green crownshaft
     shaft = P.M('leaf', name='palm_shaft', base='#5f8a3a', var=0.1, grain=0.08, rough=0.35, scale=1.0)
     cs = [pts[7], pts[7] + V((0, 0, 3.5)), pts[7] + V((0, 0, 7.0)), pts[7] + V((0, 0, 8.6))]
-    sh = P.taper(T.name('shaft'), cs, [radii[7] * 0.98, radii[7] * 1.05, radii[7] * 0.85, 0.45], seg=7, mat=shaft, cap_end=True)
+    sh = taper(T.name('shaft'), cs, [radii[7] * 0.98, radii[7] * 1.05, radii[7] * 0.85, 0.45], seg=7, mat=shaft, cap_end=True)
     P.wind(sh, T.bend, 0.0, 0.0)
     T.add(sh, 0, 1)
-    sh2 = P.taper(T.name('shaft2'), [cs[0], cs[-1]], [radii[7], 0.5], seg=5, mat=shaft, cap_end=False)
+    sh2 = taper(T.name('shaft2'), [cs[0], cs[-1]], [radii[7], 0.5], seg=5, mat=shaft, cap_end=False)
     P.wind(sh2, T.bend, 0.0, 0.0)
     T.add(sh2, 2, 2)
     top = cs[-1] - V((0, 0, 0.4))
@@ -613,13 +714,13 @@ def build_banyan(A):
             if (k + j) % 4 == 1:
                 # pillar root: reaches the ground, rigid at its foot
                 q = [p, p + V((rnd.uniform(-0.4, 0.4), rnd.uniform(-0.4, 0.4), -p.z * 0.5)), V((p.x + rnd.uniform(-0.5, 0.5), p.y + rnd.uniform(-0.5, 0.5), 0.0))]
-                ob = P.taper(T.name('pillar'), q, [0.35, 0.5, 0.75], seg=5, mat=rootm, cap_end=False)
+                ob = taper(T.name('pillar'), q, [0.35, 0.5, 0.75], seg=5, mat=rootm, cap_end=False)
                 P.wind(ob, lambda co, i, w=wtop, z0=p.z: w * max(0.0, co.z / z0) ** 1.5, 0.0, 0.0)
                 T.add(ob, 0, 1)
             else:
                 L = rnd.uniform(9, p.z - 6)
                 q = [p, p + V((rnd.uniform(-0.3, 0.3), rnd.uniform(-0.3, 0.3), -L * 0.5)), p + V((rnd.uniform(-0.6, 0.6), rnd.uniform(-0.6, 0.6), -L))]
-                ob = P.taper(T.name('aroot'), q, [0.2, 0.12, 0.03], seg=3, mat=rootm, cap_end=False)
+                ob = taper(T.name('aroot'), q, [0.2, 0.12, 0.03], seg=3, mat=rootm, cap_end=False)
                 z0 = p.z
                 P.wind(ob, lambda co, i, w=wtop, z0=z0, L=L: w + (0.72 - w) * min(1.0, (z0 - co.z) / L), rnd.random(), 0.0)
                 T.add(ob, 0, 0)
@@ -627,7 +728,7 @@ def build_banyan(A):
                     # thin strands beside it
                     L2 = L * 0.6
                     p2 = p + V((0.6, 0.4, 0))
-                    ob = P.taper(T.name('aroot'), [p2, p2 + V((0.2, 0, -L2))], [0.12, 0.02], seg=3, mat=rootm, cap_end=False)
+                    ob = taper(T.name('aroot'), [p2, p2 + V((0.2, 0, -L2))], [0.12, 0.02], seg=3, mat=rootm, cap_end=False)
                     P.wind(ob, lambda co, i, w=wtop, z0=p2.z, L=L2: w + (0.72 - w) * min(1.0, (z0 - co.z) / L), rnd.random(), 0.0)
                     T.add(ob, 0, 0)
     T.finish('banyan', tex=256)
@@ -708,7 +809,7 @@ def build_ashoka(A):
             d = V((math.cos(a), math.sin(a), 0.15))
             base = V((0.15, 0, z + r * 0.3)) + V((d.x, d.y, 0)) * r * 0.75
             T.spray(base, d, max(2.2, r * 0.9), 0.75, spray, n=4, spread=0.9, droop=2.2, lods=(0, 0))
-    tip = P.taper(T.name('tip'), [V((0.2, 0, H - 3.0)), V((0.25, 0, H + 0.3))], (0.9, 0.05), seg=5, mat=mats[2], cap_end=False)
+    tip = taper(T.name('tip'), [V((0.2, 0, H - 3.0)), V((0.25, 0, H + 0.3))], (0.9, 0.05), seg=5, mat=mats[2], cap_end=False)
     P.wind(tip, T.bend, rnd.random(), 1.0)
     T.add(tip, 0, 1)
     for i in range(5):

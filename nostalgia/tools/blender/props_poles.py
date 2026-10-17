@@ -291,17 +291,14 @@ RAIL = [(0.45, -0.37), (0.45, 0.37), (0.37, 0.37), (0.30, 0.08), (-0.22, 0.08), 
 def build_rail(A):
     H = RAIL_H
     gal = P.M('galvanised')
-    rs = P.M('rail_steel')
-    objs = [kit.extrude_polygon('rail_lo', RAIL, 0.0, 5.5, mat=P.M('paint_white', chips=0.6, grime=0.6, under='#4a4644')),
-            kit.extrude_polygon('rail_hi', RAIL, 5.5, H, mat=rs)]
+    rs = P.M('rail_steel', base='#5e5650', rust=0.75, rust_col='#7a4220')
+    objs = [kit.extrude_polygon('rail', RAIL, 0.0, H, mat=rs)]
     objs.append(frustum('muff', 0.0, 1.1, (0.85, 0.75), (0.65, 0.55), mat=P.M('concrete_old')))
     objs.append(kit.box('cap', (1.0, 0.85, 0.08), (0.0, 0.0, H + 0.04), mat=rs))
     # crossarm: angle iron along Y bolted to the head (-X)
     za = 39.0
     ax = -0.62
     objs.append(angle_y('arm', ax, za, -3.4, 3.4, w=0.34, mat=gal))
-    for i, y in enumerate((-0.35, 0.35)):
-        objs.append(bar('bolt%d' % i, (ax, y, za + 0.05), (0.5, y, za + 0.05), 0.05, mat=gal))
     for s in (-1, 1):
         objs.append(bar('brace%d' % s, (ax, s * 2.3, za - 0.15), (-0.47, s * 0.15, za - 2.6), 0.06, mat=gal))
     W = {}
@@ -323,9 +320,8 @@ def build_rail(A):
     # second short arm (angle) for service drops (+Y) and cable TV / phone (-Y)
     zc = 30.5
     objs.append(angle_y('arm2', ax, zc, -1.6, 2.4, w=0.26, mat=gal))
-    objs.append(bar('bolt2', (ax, 0.0, zc), (0.5, 0.0, zc), 0.05, mat=gal))
     o, p = shackle('svc', (ax, 2.2, zc + 0.5), s=0.8, front=(0, 1, 0))
-    objs += o[:1] + o[3:]
+    objs += o
     W['service'] = p
     objs.append(bar('cab_hook', (ax, -1.5, zc), (ax, -1.5, zc - 0.4), 0.05, mat=gal))
     W['cable'] = V((ax, -1.5, zc - 0.35))
@@ -336,7 +332,7 @@ def build_rail(A):
         del_bottom(o)
     wires(A, W)
     finish(A, objs, size=128, ao_samples=16)
-    previews(A, (-0.6, 0.0, 38.5))
+    previews(A, (-0.6, 0.0, 39.5), top_dist=14.0)
 
 
 # =========================================================================== pole_streetlight
@@ -374,38 +370,34 @@ def build_streetlight(A):
     zl = 30.0
     hx, hy = psc_dims(zl)
     pts = [(0.0, -hy + 0.05, zl), (0.0, -1.6, zl + 0.9), (0.0, -3.6, zl + 1.7), (0.0, -6.0, zl + 2.2), (0.0, -7.4, zl + 2.25)]
-    objs.append(P.taper('lamp_arm', pts, (0.16, 0.12), seg=6, mat=gal))
-    objs.append(kit.tube('lamp_brace', [(0.0, -hy + 0.05, zl - 2.2), (0.0, -1.8, zl - 0.6), (0.0, -3.4, zl + 1.65)], 0.09, seg=4, mat=gal))
+    objs.append(rnd(P.taper('lamp_arm', pts, (0.16, 0.12), seg=5, mat=gal)))
+    objs.append(rnd(kit.tube('lamp_brace', [(0.0, -hy + 0.05, zl - 2.2), (0.0, -1.8, zl - 0.6), (0.0, -3.4, zl + 1.65)], 0.09, seg=4, mat=gal, cap=False)))
     objs.append(clamp_band('lamp_clamp', 0.0, zl, hx, hy, h=0.4))
-    objs.append(clamp_band('lamp_clamp2', 0.0, zl - 2.2, *psc_dims(zl - 2.2), h=0.3))
     # sodium-vapour lantern ("cobra head"): grey housing + glowing lens underneath
     hz = zl + 2.05
     hc = -8.4
     housing = kit.cylinder('lamp_head', 0.6, 2.4, loc=(0.0, hc, 0.0), seg=8, mat=P.M('aluminium', base='#8a8e8c', grime=0.55), axis='Y', base=False)
     P.xform(housing, scale=(1.0, 1.0, 0.45))
     P.xform(housing, loc=(0.0, 0.0, hz))
-    objs.append(housing)
+    objs.append(rnd(housing, 50.0))
     lens_m = P.M('sodium_lens', 'sodium_lens@night', bake=False, emit='#ff9a30', alpha=1.0, rough=0.25)
     lens = kit.cylinder('lamp_lens', 0.46, 1.7, loc=(0.0, hc - 0.1, 0.0), seg=8, mat=lens_m, axis='Y', base=False)
     P.xform(lens, scale=(1.0, 1.0, 0.42))
     P.xform(lens, loc=(0.0, 0.0, hz - 0.12))
-    objs.append(lens)
+    objs.append(rnd(lens, 50.0))
     W['lamp'] = V((0.0, hc - 0.1, hz - 0.3))
-    # supply cable from the line down to the lamp arm + a small time-switch box
-    objs.append(kit.tube('lamp_feed', [(-hx - 0.1, -0.1, za - 0.6), (-hx - 0.05, -hy - 0.05, zl + 0.6), (0.0, -1.0, zl + 0.75)], 0.05, seg=4, mat=P.M('cable_black'), cap=False))
-    objs.append(kit.box('switch_box', (0.6, 0.35, 0.8), (0.0, -psc_dims(10)[1] - 0.17, 10.0), mat=P.M('galvanised', base='#6e7a74')))
     # cable TV bracket
     zc = 28.0
     hx, hy = psc_dims(zc)
     objs.append(bar('cab_br', (hx, 0.1, zc), (hx + 0.7, 0.1, zc), 0.07, mat=gal))
     W['cable'] = V((hx + 0.7, 0.1, zc - 0.05))
-    objs.append(cable_coil('coil', (hx + 0.2, hy + 0.2, zc - 1.0)))
     objs += danger_board('danger', 0.0, -psc_dims(12.5)[1], 12.5)
     for o in objs:
         del_bottom(o)
     wires(A, W)
     finish(A, objs, size=128, ao_samples=16)
-    previews(A, (0.0, -4.0, 36.0), top_dist=17.0)
+    A.preview = {'shots': [{'view': {'az': -35.0, 'el': 14.0, 'fov': 32.0}},
+                           {'name': 'top', 'view': {'az': -75.0, 'el': 10.0, 'fov': 32.0, 'target': (0.0, -3.6, 36.0), 'dist': 24.0}}]}
 
 
 # =========================================================================== pole_transformer
