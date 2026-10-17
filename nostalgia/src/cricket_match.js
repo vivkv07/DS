@@ -14,8 +14,10 @@
  *   N.cricketMatch.start(params) / play(params)                 same, for the story; sets N.flags.lb_match_played
  *   N.cricketMatch.TEAMS, VENUES, FIELDS, COMM                   data (rosters, venues, field presets, lines)
  *   N.cricketMatch.rules {newInnings, applyBall, oversText, ...} pure scoring engine (tests use it)
- *   N.cricketMatch.debug {force(kind), state(), game()}          test hooks for an open match: force the next
- *                                                                ball: four|six|wide|noball|runout|bowled|caught|dot|single
+ *   N.cricketMatch.debug {force(kind), state(), game(), toggleCam()}  test hooks for an open match: force the next
+ *                                                                delivery: four|six|wide|noball|runout|bowled|caught|dot|single|house
+ *                                                                (house = gully rule); state() includes ballLog / inputLog / perf
+ *   N.cricketMatch.TUNE {tv, tvGully}                            TV camera framing (height, distance, focal)
  *   N.cricketMatch.dressing {on, draw()}                         match-day dressing of the 2D world (below)
  *
  * params (all optional; the minigame framework adds difficulty/assist/seed/autoplay/timeScale/intro/
@@ -30,6 +32,15 @@
  * result {id:'match', win, tie, score, runs, wickets, overs, oppRuns, oppWickets, oppOvers, target, fours, sixes,
  *   extras, battedFirst, tossWon, margin, reason 'chased'|'defended'|'allout'|'short'|'tie', motm {name, team,
  *   line}, topScorer, bestBowler, wagon [{ang, dist, runs}], innings [..summary], quit, aborted, stars, ...}
+ *
+ * CONTROLS  keyboard: bat ← ↑ → (shot, on time) ↓ block, hold Shift loft, R run · bowl arrows aim, 1-4 type
+ *   (pace/spin/yorker/bouncer), Space bowl then Space release (in the green), F field, Space = catch when
+ *   prompted · V camera (TV / FPV) · Esc pause. Touch: pad buttons (2 rows in portrait, side bars in
+ *   landscape), swipe on the picture to play a shot (swipe up = lofted, tap = straight), drag to aim,
+ *   tap the CAM pill. Gamepad (via the framework): A = Space, B = run / cycle type, X = loft / field,
+ *   Y = camera, d-pad / stick = arrows, Start = pause.
+ * TESTS  tests/cricket_match.cjs. Note: Canvas 2D only; headless Chromium launched with the SwiftShader
+ *   WebGL flags only ticks requestAnimationFrame on screenshots, so the test launches without them.
  *
  * HOOKS INTO OTHER MODULES (from this file only, ARCHITECTURE §3 "add hooks from your own file")
  *   - N.minigames.register({id:'match', ...}) at load (minigames.js loads first) or on 'boot'; the framework
@@ -3291,7 +3302,10 @@
       S.light = lerp(S.light, L, Math.min(1, dt * 0.5));
     }
     // crowd murmur bed
-    if (S.loop) S.loop.set((S.V.gully ? 0.012 : 0.03) + Math.min(0.08, S.celebrate * 0.03), S.celebrate > 0 ? 900 : 520);
+    if (S.loop) {
+      const v = (S.V.gully ? 0.012 : 0.03) + Math.min(0.08, S.celebrate * 0.03), fq = S.celebrate > 0 ? 900 : 520;
+      if (Math.abs(v - (S.loopV || 0)) > 0.003 || fq !== S.loopF) { S.loopV = v; S.loopF = fq; S.loop.set(v, fq); }
+    }
     void g;
   }
   function uiFor(S) {
@@ -3582,7 +3596,7 @@
           gully ? 'Colony rules: <b>one-tip-one-hand</b> is out, and a ball into a house on the full is <b>OUT</b>.' : 'The <b>CAM</b> button switches the TV camera and the first-person (FPV) camera.',
         ],
         goal: (S ? S.home.short + ' vs ' + S.away.short : 'CHIN XI vs ASHK XI') + ' · ' + (S && S.mode === 'chase' ? 'CHASE ' + (S.innings[0] ? S.innings[0].runs + 1 : '') : S && S.mode === 'defend' ? 'DEFEND ' + (S.innings[0] ? S.innings[0].runs : '') : 'FULL MATCH'),
-        keys: 'Bat: <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd> <kbd>↓</kbd> · <kbd>Shift</kbd> loft · <kbd>R</kbd> run<br>Bowl: arrows aim · <kbd>1</kbd>-<kbd>4</kbd> type · <kbd>Space</kbd> · <kbd>F</kbd> field · <kbd>V</kbd> camera',
+        keys: 'Bat: <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd> <kbd>↓</kbd> · <kbd>Shift</kbd> loft · <kbd>R</kbd> run<br>Bowl: arrows aim · <kbd>1</kbd>-<kbd>4</kbd> type · <kbd>Space</kbd> · <kbd>F</kbd> field · <kbd>V</kbd> camera<br>Pad: A bowl / straight · B run / type · X loft / field · Y camera',
         touch: 'Bat: tap ◀ ▲ ▶ or <b>swipe</b> (swipe up = lofted) · Bowl: drag to aim, BOWL to run in and release',
       };
     },
@@ -3679,6 +3693,7 @@
     start(params) {
       params = Object.assign({}, params || {});
       if (params.autoplay && params.skipHowto == null) params.skipHowto = true;
+      if (params.exhibition && !params.title) params.title = params.venue === 'gully' ? 'Colony Exhibition' : 'Exhibition Match';
       if (!N.minigames || !N.minigames.play) return Promise.resolve({ id: 'match', win: false, error: 'no-minigames' });
       if (!N.minigames.has('match')) register();
       return N.minigames.play('match', params).then((r) => {
