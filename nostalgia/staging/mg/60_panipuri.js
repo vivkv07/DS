@@ -5,10 +5,13 @@
   // meter; say "NAKKO" to skip them. Brown meetha ones cool you down. Two puris piled up already?
   // The oldest goes soggy and breaks.
   {
+    // systems_design §8.6: a puri every 1.6 - 0.6*d s (and bhaiya speeds up as you go), teekha +34
+    // spice, meetha -25, spice falls 6/s, 100 = "PAANI!" (a miss, reset to 50), 3 misses = out
+    const T = (MG.TUNE.panipuri = Object.assign({ base: 1.6, perD: 0.6, speedUp: 0.3, minGap: 0.62, teekha: 34, meetha: -25, normal: 6, fall: 6, reset: 50, misses: 3, crunch: 0.62, life: 1.55, target0: 18, target1: 12 }, MG.TUNE.panipuri || {}));
     const TYPES = {
-      normal: { fill: '#5fa04a', spice: 6, pts: 10, label: '' },
-      teekha: { fill: '#d8402a', spice: 27, pts: 22, label: 'TEEKHA' },
-      meetha: { fill: '#8a4a24', spice: -16, pts: 8, label: 'MEETHA' },
+      normal: { fill: '#5fa04a', spice: T.normal, pts: 10, label: '' },
+      teekha: { fill: '#d8402a', spice: T.teekha, pts: 22, label: 'TEEKHA' },
+      meetha: { fill: '#8a4a24', spice: T.meetha, pts: 8, label: 'MEETHA' },
       sukha: { fill: '#f2c230', spice: 0, pts: 60, label: 'SUKHA!' },
     };
     const def = {
@@ -75,7 +78,7 @@
       },
       stars(g, r) { const S = g.S; return r.win ? 1 + (S.misses === 0 ? 1 : 0) + (S.crunches >= S.eaten * 0.75 ? 1 : 0) : 0; },
     };
-    function target(g) { return g.params.target || Math.round(18 + g.diff * 12); }
+    function target(g) { return g.params.target || Math.round(T.target0 + g.diff * T.target1); }
 
     function bhaiyaSay(S, t) { S.bh.say = t; S.bh.sayT = 1.6; }
 
@@ -86,12 +89,12 @@
       if (S.served > 6 && g.rng.next() < 0.05) return 'sukha';
       return 'normal';
     }
-    function interval(g, S) { const prog = S.eaten / S.target; return Math.max(0.62, 1.55 - prog * 0.62 - g.diff * 0.28); }
+    function interval(g, S) { const prog = S.eaten / S.target; return Math.max(T.minGap, (T.base - T.perD * g.diff) * (1 - T.speedUp * prog)); }
 
     function miss(g, S, why) {
       S.misses++; S.combo = 0;
       g.shake(5); g.tone(160, 0.15, { type: 'triangle', vol: 0.06 });
-      if (S.misses >= 3 && !g.over) g.finish(false, { eaten: S.eaten, reason: why, delay: 1.4 });
+      if (S.misses >= T.misses && !g.over) g.finish(false, { eaten: S.eaten, reason: why, delay: 1.4 });
     }
 
     function step(g, S, dt) {
@@ -100,7 +103,7 @@
       if (S.bh.sayT > 0) S.bh.sayT -= dt;
       S.face.chew = Math.max(0, S.face.chew - dt); S.face.gasp = Math.max(0, S.face.gasp - dt);
       S.water = Math.max(0, S.water - dt);
-      S.spice = Math.max(0, S.spice - dt * (S.water > 0 ? 30 : 3.5));
+      S.spice = Math.max(0, S.spice - dt * (S.water > 0 ? 30 : T.fall));
       S.face.red += (S.spice / 100 - S.face.red) * Math.min(1, dt * 4);
       // serving
       if (!g.over) {
@@ -121,7 +124,7 @@
       if (S.fly) {
         S.fly.t += dt / 0.32;
         if (S.fly.t >= 1) {
-          const life = interval(g, S) * 1.55;
+          const life = interval(g, S) * T.life * (g.assist ? 1.3 : 1);
           S.dona.push({ type: S.fly.type, age: 0, life, wob: Math.random() * TAU });
           S.fly = null;
           g.tone(420, 0.03, { type: 'sine', vol: 0.03 });
@@ -158,7 +161,7 @@
     function eat(g, S, p) {
       const T = TYPES[p.type], L = S.L;
       const fresh = p.age / p.life;
-      const crunch = fresh < 0.62;
+      const crunch = fresh < T.crunch * (g.assist ? 1.2 : 1);
       S.eaten++;
       S.face.chew = 0.45;
       if (crunch) { S.combo++; S.crunches++; } else S.combo = 0;
@@ -174,7 +177,7 @@
       const txt = p.type === 'sukha' ? 'SUKHA! +' + pts : crunch ? (S.combo >= 3 ? 'CRUNCH x' + S.combo : 'CRUNCH!') : 'soggy...';
       g.pop(txt, L.donaX + (Math.random() - 0.5) * 30, L.donaY - L.donaR * 1.7, { size: crunch ? 26 : 19, color: p.type === 'teekha' ? '#ff6a4a' : crunch ? '#ffd84a' : '#d8d0c0', font: crunch ? 'display' : 'body' });
       if (S.spice >= 100) {
-        S.spice = 55; S.water = 1.6; S.face.gasp = 1.6;
+        S.spice = T.reset; S.water = 1.6; S.face.gasp = 1.6;
         g.pop('PAANI! PAANI!', g.W / 2, L.faceY - L.faceR * 1.6, { size: 34, color: '#7ac8ff', life: 1.6 });
         g.flash('#ff3a2a', 0.35); g.sfx('sip', { delay: 0.3 });
         bhaiyaSay(S, 'Arre, paani do isko!');

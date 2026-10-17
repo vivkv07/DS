@@ -263,13 +263,42 @@
   } catch (e) { /* storage blocked */ }
   function saveStats() { try { window.localStorage && window.localStorage.setItem(STORE, JSON.stringify(stats)); } catch (e) { /* storage blocked */ } }
 
+  // Tunables (systems_design §0.2 / §8 / §14). Each game adds its own block (TUNE.kite, ...).
+  // assist / offset: null = read the settings (N.settings.minigameAssist|assist, N.settings.difficulty
+  // 'relaxed'|'normal'|'hard'); set them here to override.
+  const TUNE = {
+    assist: null, offset: null,
+    assistWindow: 1.5, assistDiff: 0.15, presetOffset: { relaxed: -0.15, aaram: -0.15, easy: -0.15, normal: 0, hard: 0.15, full: 0.15 },
+    diffMin: 0.05, diffMax: 0.95,
+    payCap: 3, // paid free-play wins per minigame per game-day
+  };
+  function settings() { try { return N.settings || (N.menus && N.menus.settings) || {}; } catch (e) { return {}; } }
+  function assistOn(params) {
+    if (params.assist != null) return !!params.assist;
+    if (TUNE.assist != null) return !!TUNE.assist;
+    const s = settings();
+    return !!(s.minigameAssist || s.assist || (N.flags && N.flags.minigame_assist));
+  }
+  function presetOffset() {
+    if (TUNE.offset != null) return +TUNE.offset || 0;
+    const p = settings().difficulty != null ? settings().difficulty : settings().preset;
+    if (typeof p === 'number') return p < 0 ? -0.15 : p > 0 ? 0.15 : 0;
+    return TUNE.presetOffset[String(p || 'normal').toLowerCase()] || 0;
+  }
+  function reducedMotion() {
+    try { return document.body.classList.contains('reduced-motion') || !!settings().reducedMotion || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+  }
+  function hasItem(id) { try { const inv = N.player && N.player.inventory; return !!(inv && (inv.has ? inv.has(id) : inv[id])); } catch (e) { return false; } }
+
   let cur = null; // the open Game
 
   const MG = (N.minigames = {
     VERSION: 1,
     defs,
     stats,
+    TUNE,
     helpers: H,
+    hasItem,
     covering: false,
     register(id, def) {
       if (typeof id === 'object') { def = id; id = def.id; }
@@ -358,13 +387,19 @@
     return false;
   }
   const EMPTY = Object.freeze({});
-  const PAD_CODES = { 0: 'Space', 1: 'KeyX', 2: 'KeyZ', 3: 'KeyC', 9: 'Escape', 12: 'ArrowUp', 13: 'ArrowDown', 14: 'ArrowLeft', 15: 'ArrowRight' };
+  // gamepad (standard mapping) -> key codes the games map: A main (Space), B secondary (KeyX), X (KeyZ),
+  // Y (KeyC), LB/RB (BracketLeft/Right), LT/RT (ShiftLeft/Right), Start = pause, d-pad/stick = arrows
+  const PAD_CODES = { 0: 'Space', 1: 'KeyX', 2: 'KeyZ', 3: 'KeyC', 4: 'BracketLeft', 5: 'BracketRight', 6: 'ShiftLeft', 7: 'ShiftRight', 9: 'Escape', 12: 'ArrowUp', 13: 'ArrowDown', 14: 'ArrowLeft', 15: 'ArrowRight' };
 
   /* ================================================================= Game */
   class Game {
     constructor(def, params, resolve) {
       this.def = def; this.id = def.id; this.params = params; this.resolveFn = resolve;
-      this.diff = clamp(params.difficulty == null ? 0.4 : +params.difficulty || 0, 0, 1);
+      this.assist = assistOn(params);
+      this.winMul = this.assist ? TUNE.assistWindow : 1;           // every timing window x1.5 with Assist
+      const base = params.difficulty == null ? 0.4 : +params.difficulty || 0;
+      this.diff = clamp(base + presetOffset() - (this.assist ? TUNE.assistDiff : 0), TUNE.diffMin, TUNE.diffMax);
+      this.reduced = reducedMotion();
       const ap = params.autoplay;
       this.auto = ap === true ? 'win' : ap === 'win' || ap === 'lose' ? ap : null;
       this.timeScale = +params.timeScale > 0 ? +params.timeScale : this.auto ? 2.5 : 1;
@@ -473,7 +508,7 @@
 
     baseResult() {
       const S = this.S || {};
-      return { id: this.id, win: false, score: Math.round(S.score || 0), stars: 0, quit: false, aborted: false, attempts: this.attempts, time: Math.round(this.playTime * 10) / 10, difficulty: this.diff };
+      return { id: this.id, win: false, score: Math.round(S.score || 0), stars: 0, quit: false, aborted: false, attempts: this.attempts, time: Math.round(this.playTime * 10) / 10, difficulty: Math.round(this.diff * 100) / 100, assist: this.assist };
     }
 
     close(result) {
@@ -534,6 +569,7 @@
       const padH = this.touch && this.padEl.childElementCount ? this.padEl.offsetHeight || 0 : this.hintEl.offsetHeight || 0;
       this.area = { x: 0, y: topH, w: W, h: Math.max(100, Hh - topH - padH) };
       this.topH = topH; this.padH = padH;
+      this.hudKey = null; // refit the stats row on the next HUD tick
       if (this.S) { try { this.def.layout && this.def.layout(this); } catch (e) { N.err('minigame.layout:' + this.id, e); } }
       this.drawnPaused = false;
     }
@@ -681,11 +717,11 @@
       const lines = (h.lines || []).map((l, i) => '<li><span class="mg-num">' + (i + 1) + '</span><span>' + l + '</span></li>').join('');
       const ctrl = this.touch ? h.touch || h.keys || '' : h.keys || h.touch || '';
       const intro = this.params.intro ? '<p class="mg-intro">' + esc(this.params.intro) + '</p>' : '';
-      const best = stats.best[this.id] ? '<span class="mg-best">BEST ' + stats.best[this.id] + '</span>' : '';
+      const best = (stats.best[this.id] ? '<span class="mg-best">BEST ' + stats.best[this.id] + '</span>' : '') + (this.assist ? '<span class="mg-best">ASSIST</span>' : '');
       this.showCard(
         '<div class="mg-howto">' +
-          '<div class="mg-howto-head"><div class="osd-line mg-osd"><span class="rec">&#9654;</span><span>' + esc(d.osd || 'HOW TO PLAY') + '</span>' + best + '</div>' +
-          '<h2>' + esc(this.params.title || d.title) + '</h2>' + (d.sub ? '<p class="mg-sub">' + esc(d.sub) + '</p>' : '') + intro + '</div>' +
+          '<div class="mg-howto-head"><div class="osd-line mg-osd"><span class="rec">&#9654;</span><span>' + esc(h.osd || d.osd || 'HOW TO PLAY') + '</span>' + best + '</div>' +
+          '<h2>' + esc(h.title || this.params.title || d.title) + '</h2>' + ((h.sub || d.sub) ? '<p class="mg-sub">' + esc(h.sub || d.sub) + '</p>' : '') + intro + '</div>' +
           '<div class="mg-howto-body"><ol class="mg-rules">' + lines + '</ol>' +
           (h.goal ? '<div class="mg-goal">' + h.goal + '</div>' : '') +
           (ctrl ? '<div class="mg-ctrl">' + ctrl + '</div>' : '') +
@@ -708,7 +744,7 @@
       this.sfx('ui_click');
       this.showCard(
         '<div class="mg-pause"><div class="osd-line mg-osd"><span class="rec">&#10074;&#10074; PAUSE</span>' + (auto ? '<span>TAB HIDDEN</span>' : '') + '</div>' +
-        '<h2>' + esc(this.params.title || this.def.title) + '</h2>' +
+        '<h2>' + esc(this.nameEl.textContent || this.params.title || this.def.title) + '</h2>' +
         '<div class="mg-actions col"><button type="button" class="sign-btn primary" data-do="resume">Resume</button>' +
         (this.params.noRetry ? '' : '<button type="button" class="sign-btn alt" data-do="retry">Restart</button>') +
         (this.params.noQuit ? '' : '<button type="button" class="sign-btn alt" data-do="quit">Quit</button>') + '</div></div>', 'mg-card-pause');
@@ -828,6 +864,12 @@
       if (!force && key === this.hudKey) return;
       this.hudKey = key;
       this.statsEl.innerHTML = items.map((i) => '<span class="mg-stat' + (i.warn ? ' warn' : '') + (i.good ? ' good' : '') + '">' + (i.k ? esc(i.k) + ' ' : '') + '<b>' + esc(i.v) + '</b></span>').join('');
+      // narrow phones keep the stats on one row: shrink the OSD text to fit rather than clip it
+      const se = this.statsEl; se.style.fontSize = '';
+      if (se.scrollWidth > se.clientWidth + 1 && se.clientWidth > 0) {
+        const fs = parseFloat(getComputedStyle(se).fontSize) || 21;
+        se.style.fontSize = Math.max(12, Math.floor(fs * (se.clientWidth / se.scrollWidth) * 0.97)) + 'px';
+      }
       if (this.topEl.offsetHeight !== this.topH) this.resize(); // the stats row can change the bar height
     }
     render(dt) {
@@ -850,8 +892,8 @@
     }
 
     /* ------------------------------------------------- juice: fx + text */
-    shake(a) { this.shakeA = Math.max(this.shakeA, a); }
-    flash(c, a) { this.flashC = c || '#fff'; this.flashA = a == null ? 0.5 : a; }
+    shake(a) { if (!this.reduced) this.shakeA = Math.max(this.shakeA, a); }
+    flash(c, a) { this.flashC = c || '#fff'; this.flashA = Math.min(this.reduced ? 0.3 : 1, a == null ? 0.5 : a); }
     pop(text, x, y, o) {
       o = o || {};
       this.pops.push({ text, x, y, t: 0, life: o.life || 1.1, color: o.color || '#f2c230', size: o.size || 26, font: o.font || 'display', rise: o.rise == null ? 36 : o.rise, outline: o.outline == null ? 5 : o.outline });

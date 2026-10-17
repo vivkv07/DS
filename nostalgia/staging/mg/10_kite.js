@@ -13,7 +13,15 @@
       { a: '#e8487c', b: '#2f9e5b', pat: 'band', line: '#b8f0c2' },
       { a: '#1a1214', b: '#f2c230', pat: 'chand', line: '#ffe9a8' },
     ];
-    const SWEET0 = 0.62, SWEET1 = 0.86;
+    // systems_design §8.1: green band width (35% - 15%*d) of the gauge (0..1.1), higher kite x1.3,
+    // snap after 0.4 s in the red, gusts every 6-10 s, 3 patangs (+1 charkhi, max 5)
+    const T = (MG.TUNE.kite = Object.assign({ lives: 3, maxLives: 5, band0: 0.35, band1: 0.15, bandCenter: 0.74, charkhiBand: 0.1, highBonus: 1.3, snapGrace: 0.4,
+      gustMin: 6, gustMax: 10, time0: 95, time1: 15, target0: 2, target1: 3, pechRate: 0.95 }, MG.TUNE.kite || {}));
+    let SWEET0 = 0.62, SWEET1 = 0.86;
+    function setBand(g) {
+      const w = (T.band0 - T.band1 * g.diff) * 1.1 * (g.S && g.S.charkhi ? 1 + T.charkhiBand : 1) * (g.assist ? 1.25 : 1);
+      SWEET0 = Math.max(0.3, T.bandCenter - w / 2); SWEET1 = Math.min(0.97, T.bandCenter + w / 2);
+    }
 
     function drawKite(ctx, x, y, s, ang, skin, o) {
       o = o || {};
@@ -194,20 +202,23 @@
           lines: [
             '<b>Turn</b> your patang, then <b>pull</b> to make it dart where its nose points. Let go and it drifts with the hawa.',
             'Fly across a rival\'s manja to start a <b>pech</b>. Then pulse the pull: keep the tension needle in the <b>green</b>.',
-            'Too much pull and your manja <b>snaps</b>. When a gust comes, give it dheel (let go). Higher kite wins more.',
+            'Too much pull (needle in the red) and your manja <b>snaps</b>. When a gust comes, give it dheel (let go). The higher kite cuts faster.' + (g.S.charkhi ? ' Your new <b>charkhi</b> gives an extra patang.' : ''),
           ],
-          goal: 'CUT ' + n + ' KITES &middot; 3 PATANGS &middot; ' + timeLimit(g) + 's',
+          goal: 'CUT ' + n + ' KITE' + (n > 1 ? 'S' : '') + ' &middot; ' + g.S.livesMax + ' PATANGS &middot; ' + timeLimit(g) + 's',
           keys: '<kbd>←</kbd> <kbd>→</kbd> turn &nbsp;·&nbsp; hold <kbd>Space</kbd> to pull',
           touch: 'Tap <b>◀ ▶</b> to turn &nbsp;·&nbsp; hold <b>KHENCH</b> to pull',
         };
       },
       setup(g) {
         const S = g.S;
-        S.score = 0; S.cuts = 0; S.lives = 3; S.lost = 0; S.time = 0; S.left = timeLimit(g); S.target = targetCuts(g);
+        S.charkhi = !!(g.params.charkhi || MG.hasItem('charkhi'));
+        S.lives = Math.min(T.maxLives, (g.params.lives || T.lives) + (S.charkhi ? 1 : 0)); S.livesMax = S.lives;
+        setBand(g);
+        S.score = 0; S.cuts = 0; S.lost = 0; S.time = 0; S.left = timeLimit(g); S.target = targetCuts(g); S.redT = 0; S.latch = false;
         S.wind = (g.rng.next() < 0.5 ? -1 : 1) * (3 + g.rng.next() * 3); S.windT = 8 + g.rng.next() * 4;
-        S.gust = 0; S.gustWarn = 0; S.gustIn = 6 + g.rng.next() * 4; S.gustDir = 1;
+        S.gust = 0; S.gustWarn = 0; S.gustIn = T.gustMin + g.rng.next() * (T.gustMax - T.gustMin); S.gustDir = 1;
         S.rivals = []; S.skinI = 0; S.pech = null; S.respawn = 0; S.lowWarnT = 0; S.over = false; S.banner = null;
-        S.maxRivals = g.diff > 0.6 ? 3 : 2;
+        S.maxRivals = 2 + (g.diff > 0.45 ? 1 : 0) + (g.diff > 0.8 && !g.portrait ? 1 : 0);
         S.decor = []; S.clouds = []; S.birds = [];
         for (let i = 0; i < 16; i++) S.decor.push({ x: g.rng.next(), y: g.rng.next() * 0.55, s: 0.35 + g.rng.next() * 0.5, sk: KITE_SKINS[1 + ((g.rng.next() * 6) | 0)], ph: g.rng.next() * TAU, sp: 0.004 + g.rng.next() * 0.01 });
         for (let i = 0; i < 6; i++) S.clouds.push({ x: g.rng.next(), y: 0.06 + g.rng.next() * 0.4, s: 0.6 + g.rng.next() * 0.9, sp: 0.004 + g.rng.next() * 0.006 });
@@ -217,6 +228,7 @@
       },
       layout(g) {
         const S = g.S, A = g.area;
+        setBand(g);
         const U0 = Math.sqrt(A.w * A.h) / 100;
         S.U = U0; S.ox = A.x; S.oy = A.y; S.Wu = A.w / U0; S.Hu = A.h / U0;
         S.roofY = S.Hu * (g.portrait ? 0.8 : 0.76);
@@ -273,7 +285,7 @@
           if (S.gustWarn <= 0) { S.gust = 1.7; S.windSave = S.wind; g.sfx('kite_wind', { vol: 1 }); }
         } else if (S.gust <= 0) {
           S.gustIn -= dt;
-          if (S.gustIn <= 0) { S.gustIn = 7.5 + g.rng.next() * 6 - g.diff * 2; S.gustWarn = 1.1; S.gustDir = g.rng.next() < 0.5 ? -1 : 1; }
+          if (S.gustIn <= 0) { S.gustIn = T.gustMin + g.rng.next() * (T.gustMax - T.gustMin); S.gustWarn = 1.1; S.gustDir = g.rng.next() < 0.5 ? -1 : 1; }
         }
         const windNow = S.wind + (S.gust > 0 ? S.gustDir * 15 * Math.sin(Math.min(1, (1.7 - S.gust) / 0.4) * Math.PI * 0.5) : 0);
         const baseWind = S.wind; S.wind = windNow;
@@ -284,7 +296,12 @@
 
         // player control
         if (me.state === 'fly' || me.state === 'pech') {
-          me.pull = !g.over && g.down('pull');
+          if (g.assist) { // Assist: a quick tap latches the pull on/off (hold still works)
+            if (g.pressed('pull')) S.pullT = 0;
+            if (g.down('pull')) S.pullT = (S.pullT || 0) + dt;
+            if (g.released('pull') && S.pullT < 0.22) S.latch = !S.latch;
+          }
+          me.pull = !g.over && (g.down('pull') || (g.assist && S.latch));
           me.steer = g.over || me.state === 'pech' ? 0 : (g.down('right') ? 1 : 0) - (g.down('left') ? 1 : 0);
         } else { me.pull = false; me.steer = 0; }
 
@@ -301,7 +318,8 @@
             if (!k.me) rivalAI(g, S, k, dt);
             kiteStep(S, k, dt);
             tensionStep(S, k, dt, false);
-            if (k.me && k.T > 1) { // a gust snapped it
+            if (k.me) S.redT = k.T > 1 ? S.redT + dt : 0;
+            if (k.me && S.redT > T.snapGrace) { // a gust snapped it
               S.lives--; S.lost++; cutKite(g, S, k, 'snap');
               g.pop('MANJA TOOT GAYA!', g.W / 2, S.oy + S.roofY * S.U * 0.45, { color: '#ff8a7a', size: 28 });
               g.sfx('kite_cut'); g.shake(6);
@@ -350,16 +368,18 @@
           if (P.burst > 0) P.burst -= dt;
           const base = 0.36 + g.diff * 0.36;
           const rival = base * (0.85 + 0.25 * Math.sin(P.t * 2.3 + P.ph)) + (P.burst > 0 ? 0.42 + g.diff * 0.2 : 0);
-          const you = quality(me.T) * (P.above ? 1.22 : 1);
+          const you = quality(me.T) * (P.above ? T.highBonus : 1);
           P.you = you; P.rival = rival;
-          P.P += (you - rival) * 0.95 * dt;
+          P.P += (you - rival) * T.pechRate * dt;
+          S.redT = me.T > 1 ? S.redT + dt : 0;
           if (S.rasp) S.rasp.set(0.02 + 0.05 * Math.min(1, you + rival) * (me.pull ? 1 : 0.5), 1800 + me.T * 2000);
           // the manja creaks when it is about to snap
           S.creakT = (S.creakT || 0) - dt;
           if (me.T > 0.92 && S.creakT <= 0) { S.creakT = 0.16; g.tone(1400 + me.T * 900, 0.05, { type: 'sawtooth', vol: 0.035 }); }
           const pp = toPx(S, P.pt.x, P.pt.y);
           if (g.rng.next() < 0.6) g.burst(pp.x, pp.y, 1, { colors: ['#fff6c8', '#ffd84a', '#ff9a4a'], kind: 'spark', speed: 140, grav: 200, life: 0.35, size: 2.2 });
-          if (me.T > 1) {
+          if (S.redT > T.snapGrace) {
+            S.redT = 0; S.latch = false;
             S.lives--; S.lost++; cutKite(g, S, me, 'snap'); endPech(S, k);
             g.pop('MANJA TOOT GAYA!', pp.x, pp.y - 24, { color: '#ff8a7a', size: 28 });
             g.sfx('kite_cut'); g.shake(7); g.flash('#ff5a3a', 0.25);
@@ -407,7 +427,7 @@
         if (S.pech) {
           g.botHold('left', false); g.botHold('right', false);
           if (want === 'lose') { g.botHold('pull', true); return; }
-          if (me.T < 0.68) g.botHold('pull', true); else if (me.T > 0.8) g.botHold('pull', false);
+          if (me.T < (SWEET0 + T.bandCenter) / 2) g.botHold('pull', true); else if (me.T > (T.bandCenter + SWEET1) / 2) g.botHold('pull', false);
           return;
         }
         let best = null, bd = 1e9;
@@ -502,15 +522,15 @@
         const S = g.S;
         return {
           title: r.win ? 'Bo kaata!' : r.reason === 'time' ? 'Andhera ho gaya!' : 'Saari patang kat gayi!',
-          line: r.win ? 'The whole colony heard you. Somebody is going to lootna those kites.' : r.reason === 'time' ? 'Amma is calling everyone down from the terrace.' : 'Ammamma says: pull too hard and it snaps. Let it go a little.',
+          line: r.win ? 'The whole colony heard you. Immu is already running to lootna the cut kites.' : r.reason === 'time' ? 'Amma is calling everyone down from the terrace.' : 'Ammamma says: pull too hard and it snaps. Let it go a little.',
           rows: [['Kites cut', S.cuts + ' / ' + S.target], ['Patangs lost', S.lost], ['Score', r.score]],
         };
       },
       stars(g, r) { return r.win ? 1 + (g.S.lost === 0 ? 1 : 0) + (g.S.left > timeLimit(g) * 0.35 ? 1 : 0) : 0; },
       cleanup(g) { if (g.S && g.S.rasp) g.S.rasp.stop(); },
     };
-    function targetCuts(g) { return g.params.target || Math.round(2 + g.diff * 3); }
-    function timeLimit(g) { return g.params.time || Math.round(95 - g.diff * 15); }
+    function targetCuts(g) { return g.params.target || Math.round(T.target0 + g.diff * T.target1); }
+    function timeLimit(g) { return g.params.time || Math.round(T.time0 - g.diff * T.time1); }
     function fmtT(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 
     function cloud(ctx, x, y, s) {

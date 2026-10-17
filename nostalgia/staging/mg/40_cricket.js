@@ -9,6 +9,7 @@
     const LWH = 1.9, RWH = 1.05;     // wall heights
     const FAR = 23;                  // the crossroads
     const HIT_Z = 0.25;
+    const T = (MG.TUNE.cricket = Object.assign({ perfect: [0.045, 0.02], good: [0.095, 0.03], edge: [0.15, 0.03], overs: 2, target0: 13, target1: 14, catchFull: [0.62, 0.25], catchTip: [0.45, 0.3], maliPause: 3 }, MG.TUNE.cricket || {}));
 
     const def = {
       id: 'cricket',
@@ -18,7 +19,7 @@
       place: 'playground_', places: ['playground_', 'playground_home', 'lb_stadium', 'victory_playground'],
       secs: 75,
       goLabel: 'PLAY!',
-      keys: { ArrowLeft: 'pull', KeyA: 'pull', ArrowUp: 'drive', KeyW: 'drive', Space: 'drive', ArrowRight: 'cut', KeyD: 'cut' },
+      keys: { ArrowLeft: 'pull', KeyA: 'pull', KeyZ: 'pull', ArrowUp: 'drive', KeyW: 'drive', Space: 'drive', ArrowRight: 'cut', KeyD: 'cut', KeyX: 'cut' },
       buttons: () => [
         { a: 'pull', label: '◀ PULL', sub: 'LEFT' },
         { a: 'drive', label: '▲ DRIVE', sub: 'STRAIGHT', cls: 'big' },
@@ -33,7 +34,7 @@
             'Play the line: <b>◀ pull</b> balls on the left, <b>cut ▶</b> balls on the right, <b>▲ drive</b> straight ones. Hit a wall hard = <b>four</b>; over the low right wall = <b>six</b>.',
             'House rules: <b>one-tip-one-hand</b> is out, a catch is out, and anything into <b>Aunty\'s compound</b> (left wall) is OUT.',
           ],
-          goal: S.target + ' RUNS IN ' + S.balls + ' BALLS &middot; ' + S.wkts + ' WICKETS',
+          goal: S.target + ' RUNS IN ' + S.balls + ' BALLS &middot; ' + S.wkts + ' WICKET' + (S.wkts > 1 ? 'S' : '') + (S.bowlerName ? ' &middot; AYESHA BOWLS' : '') + (S.trial ? ' &middot; TRIAL BALL' : ''),
           keys: '<kbd>←</kbd> pull &nbsp;·&nbsp; <kbd>↑</kbd> / <kbd>Space</kbd> drive &nbsp;·&nbsp; <kbd>→</kbd> cut',
           touch: 'Tap <b>◀ PULL</b>, <b>▲ DRIVE</b> or <b>CUT ▶</b> as the ball arrives',
         };
@@ -41,11 +42,14 @@
       setup(g) {
         const S = g.S, d = g.diff;
         S.score = 0; S.runs = 0;
-        S.overs = g.params.overs || 2;
+        S.overs = g.params.overs || T.overs;
         S.balls = S.overs * 6; S.ballsLeft = S.balls; S.bowled = 0;
         S.wkts = g.params.wickets || (d > 0.75 ? 1 : 2); S.wktsLeft = S.wkts;
-        S.target = g.params.target || Math.round(13 + d * 14);
-        S.winP = 0.045 + (1 - d) * 0.02; S.winG = 0.095 + (1 - d) * 0.03; S.winE = 0.15 + (1 - d) * 0.03;
+        S.target = g.params.target || Math.round(T.target0 + d * T.target1);
+        S.winP = (T.perfect[0] + (1 - d) * T.perfect[1]) * g.winMul; S.winG = (T.good[0] + (1 - d) * T.good[1]) * g.winMul; S.winE = (T.edge[0] + (1 - d) * T.edge[1]) * g.winMul;
+        S.bowlerName = g.params.bowler === 'ayesha' ? 'Ayesha' : null;
+        S.trial = !!(g.params.trialBall != null ? g.params.trialBall : !g.params.story && MG.hasItem('cricket_ball'));
+        S.mali = (g.params.mali || g.params.place === 'public_gardens') ? { at: 2 + ((g.rng.next() * Math.max(1, S.balls - 4)) | 0), t: -1 } : null;
         S.fours = 0; S.sixes = 0; S.log = [];
         S.stage = 'wait'; S.st = 0; S.clock = 0;
         S.ball = null; S.swing = null; S.msg = null; S.aunty = 0; S.bricks = null;
@@ -158,10 +162,18 @@
       const b = S.ball;
       if (b) b.done = true;
       let line = '';
+      if (kind === 'out' && S.trial) { // the owner of the ball bats first: the first dismissal is a trial ball
+        S.trial = false;
+        g.sfx('whistle', { vol: 0.5 });
+        S.msg = { text: text, col: '#ffb4a6', t: 0, sub: 'TRIAL BALL! Ball tumhari, toh out nahi.', big: true };
+        S.log.push('T'); S.nextAt = 2.0;
+        return;
+      }
       if (kind === 'out') {
         S.wktsLeft--;
         g.sfx('howzat'); g.shake(5);
         line = S.wktsLeft > 0 ? (S.wktsLeft === 1 ? 'Last man batting!' : '') : '';
+        if (S.bowlerName && text === 'BOWLED!') line = (line ? line + ' ' : '') + 'Ayesha ki yorker!';
       } else if (kind === 'wide') {
         S.runs += 1; S.ballsLeft++;
       } else {
@@ -185,6 +197,12 @@
       // input
       if (!g.over) for (const a of ['pull', 'drive', 'cut']) if (g.pressed(a) && (S.stage === 'flight' || S.stage === 'runup')) { swing(g, S, a); break; }
       const bw = S.bowler;
+      if (S.mali && S.mali.t >= 0) {
+        S.mali.t += dt;
+        if (S.mali.t > T.maliPause) { S.mali.t = -2; S.mali.done = true; }
+        return;
+      }
+      if (S.stage === 'wait' && S.mali && !S.mali.done && S.bowled === S.mali.at && S.mali.t === -1) { S.mali.t = 0; g.sfx('whistle', { vol: 0.6 }); return; }
       if (S.stage === 'wait') {
         if (S.st > (S.bowled === 0 ? 0.4 : 0.15)) { S.stage = 'runup'; S.st = 0; bw.z = 20.5; S.swing = null; S.bricks = null; resetFielders(S); }
       } else if (S.stage === 'runup') {
@@ -285,11 +303,11 @@
         if (dxz > 0.75 || b.y > 1.75) continue;
         const r = g.rng.next();
         if (b.bounces === 0 && b.t > 0.12) {
-          if (r < 0.62 + g.diff * 0.25) { catchBall(g, S, f, 'CAUGHT!'); return; }
+          if (r < T.catchFull[0] + g.diff * T.catchFull[1]) { catchBall(g, S, f, 'CAUGHT!'); return; }
           dropped(g, S, f); return;
         }
         if (b.bounces === 1 && b.y > 0.15) {
-          if (r < 0.45 + g.diff * 0.3) { catchBall(g, S, f, 'ONE TIP ONE HAND!'); return; }
+          if (r < T.catchTip[0] + g.diff * T.catchTip[1]) { catchBall(g, S, f, 'ONE TIP ONE HAND!'); return; }
           dropped(g, S, f); return;
         }
         if (b.bounces >= 1) { fielded(g, S, f); return; }
@@ -464,6 +482,7 @@
       ctx.fillStyle = o.shirt || '#2a8c82'; H.rr(ctx, -10, by, 20, 24, 5); ctx.fill();
       ctx.fillStyle = o.skin || '#8a5a35'; ctx.beginPath(); ctx.arc(0, by - 7, 7.5, 0, TAU); ctx.fill();
       ctx.fillStyle = '#1a1412'; ctx.beginPath(); ctx.arc(0, by - 9, 7.8, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+      if (o.girl) { ctx.fillRect(-9, by - 9, 3, 16); ctx.fillRect(6, by - 9, 3, 16); ctx.fillStyle = '#d24d57'; ctx.fillRect(-9.5, by + 5, 4, 3); ctx.fillRect(5.5, by + 5, 4, 3); ctx.fillStyle = '#1a1412'; }
       ctx.fillStyle = '#1a1412'; ctx.fillRect(-3.5, by - 7.5, 2, 2); ctx.fillRect(1.5, by - 7.5, 2, 2);
       ctx.strokeStyle = o.skin || '#8a5a35'; ctx.lineWidth = 4.2; ctx.lineCap = 'round';
       ctx.beginPath();
@@ -530,7 +549,7 @@
       // sprites, far to near
       const spr = [];
       const bw = S.bowler;
-      spr.push({ z: bw.z, f: () => { const p = proj(S, bw.x, 0, bw.z); kid(ctx, p.x, p.y, 1.45 * p.k, { shirt: '#d8402a', pants: '#2b2430', run: S.stage === 'runup', ph: bw.ph, bowl: S.stage === 'flight' || S.stage === 'runup' ? bw.arm : null }); } });
+      spr.push({ z: bw.z, f: () => { const p = proj(S, bw.x, 0, bw.z); kid(ctx, p.x, p.y, 1.45 * p.k, { shirt: S.bowlerName ? '#d24d57' : '#d8402a', pants: S.bowlerName ? '#f4efe2' : '#2b2430', girl: !!S.bowlerName, run: S.stage === 'runup', ph: bw.ph, bowl: S.stage === 'flight' || S.stage === 'runup' ? bw.arm : null }); } });
       S.fielders.forEach((f, i) => spr.push({ z: f.z, f: () => { const p = proj(S, f.x, 0, f.z); kid(ctx, p.x, p.y, 1.35 * p.k, { shirt: ['#2a8c82', '#f2c230', '#7a3db8', '#3b6fc4'][i % 4], pants: '#4a3f35', crouch: !f.run && !f.catch && S.stage !== 'result', run: f.run > 0.5, ph: f.ph, catch: f.catch }); } }));
       // bowler's-end bricks
       spr.push({ z: 13.4, f: () => drawBricks(ctx, S, 13.45, null) });
@@ -540,11 +559,17 @@
       for (const s_ of spr) s_.f();
       // the hitting ring at the batter's feet
       if (S.stage === 'flight' && b && !b.hit) {
-        const dtA = b.tArrive - S.clock, near = U.clamp(1 - Math.abs(dtA) / 0.45, 0, 1);
+        const dtA = b.tArrive - S.clock, near = U.clamp(1 - Math.abs(dtA) / (g.assist ? 0.7 : 0.45), 0, 1);
         const p = proj(S, 0.15, 0, HIT_Z);
-        ctx.strokeStyle = 'rgba(255,216,74,' + (0.25 + near * 0.7 * (g.diff < 0.65 ? 1 : 0.4)) + ')';
+        ctx.strokeStyle = 'rgba(255,216,74,' + (0.25 + near * 0.7 * (g.diff < 0.65 || g.assist ? 1 : 0.4)) + ')';
         ctx.lineWidth = 2 + near * 3;
         ctx.beginPath(); ctx.ellipse(p.x, p.y, p.k * (0.75 - near * 0.2), p.k * 0.16, 0, 0, TAU); ctx.stroke();
+      }
+      if (S.mali && S.mali.t >= 0) { // the park mali walks across with his hose
+        const k = Math.min(1, S.mali.t / 0.8), p = proj(S, lerp(5.5, 1.8, k), 0, 6);
+        kid(ctx, p.x, p.y, 1.75 * p.k, { shirt: '#e8e2d2', pants: '#2f6a4a', skin: '#6a3a1a' });
+        ctx.strokeStyle = '#2f8a3a'; ctx.lineWidth = Math.max(2, p.k * 0.08); ctx.beginPath(); ctx.moveTo(p.x + p.k * 0.3, p.y - p.k * 0.8); ctx.quadraticCurveTo(p.x + p.k * 2, p.y, p.x + p.k * 4, p.y - p.k * 0.1); ctx.stroke();
+        H.sign(ctx, Math.max(8, p.x - 90), p.y - p.k * 2.6 - 40, 200, 34, { fill: '#fff8e6', text: 'Ghaas pe nakko khelna!', size: 15, font: 'body', bolts: false, r: 10 });
       }
       drawBatter(ctx, S, g);
       drawBricks(ctx, S, -0.75, S.bricks);

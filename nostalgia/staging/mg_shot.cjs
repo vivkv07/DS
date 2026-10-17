@@ -32,7 +32,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   if (mode === 'win' || mode === 'lose') params.autoplay = mode;
   await page.evaluate(([id, p]) => { window.__res = null; N.minigames.play(id, p).then((r) => { window.__res = r; }); }, [id, params]);
   let n = 0;
-  const shot = async (tag) => { const f = path.join(OUT, 'dev_' + id + '_' + vpName + '_' + (n++) + '_' + tag + '.png'); await page.screenshot({ path: f }); console.log('shot', f); };
+  const shot = async (tag) => { const f = path.join(OUT, 'dev_' + id + (extra.skin ? '-' + extra.skin : '') + (extra.who ? '-' + extra.who : '') + '_' + vpName + '_' + (n++) + '_' + tag + '.png'); await page.screenshot({ path: f }); console.log('shot', f); };
   await sleep(500);
   await shot('howto');
   if (mode === 'howto') { await browser.close(); return; }

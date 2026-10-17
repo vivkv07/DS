@@ -1,39 +1,78 @@
 
   /* =================================================================== CLAP */
-  // Golconda, Fateh Darwaza. The guide claps a rhythm under the dome ("SUNO"); you clap it back on
-  // the beat ("AB AAP"). Every clean echo climbs the hill and lights the path to Bala Hissar.
+  // Call and echo rhythm (systems_design §8.2). SUNO: the guide claps n notes on an 8/16-slot bar;
+  // 4 count-in ticks; AB AAP: clap the same slots on time. A mistake (miss or extra clap) costs one
+  // of 3 *mauke* and the round replays. Skins: 'golconda' (Fateh Darwaza; each clean round lights a
+  // lamp up to Bala Hissar, the echo comes back), 'drums' (keep step with the Bonalu dappu drummers;
+  // no fail: Amma's bonam wobbles and the round replays), 'doorway' (clap the remembered Golconda
+  // rhythm at the storeroom door; Immu answers from inside).
   {
+    const T = (MG.TUNE.clap = Object.assign({ bpm0: 90, bpm1: 30, perfect: 0.045, good: 0.09, ok: 0.14, chances: 3, echoDelay: 0.35, pts: { perfect: 100, good: 70, ok: 40 } }, MG.TUNE.clap || {}));
+    const SKINS = {
+      golconda: {
+        title: 'Golconda Taali', sub: 'Clap under the Fateh Darwaza dome. They hear it at the very top.', osd: 'GOLCONDA · FATEH DARWAZA', go: 'SUNO!',
+        lines: (g) => [
+          '<b>SUNO</b>: the guide claps a rhythm under the dome. Watch the strip and listen to the beat.',
+          '<b>AB AAP</b>: after the 4 ticks, clap the same rhythm back, on time. Extra claps count as mistakes.',
+          'Every clean echo climbs the hill and lights a lamp on the way to <b>Bala Hissar</b>.' + (hideNotes(g) ? ' At this level the notes hide on your turn: remember them!' : ''),
+        ],
+        win: 'Bala Hissar ne suna!', winLine: 'Your claps climbed 400 years of granite and came back. Immu is waving from the top.',
+        lose: 'Echo kho gaya...', loseLine: 'The guide smiles: "Dome ko sunao, apne aap ko nahi." Listen to the beat, then clap.',
+      },
+      drums: {
+        title: 'Bonalu Dappu', sub: 'Walk with Amma\'s bonam. Keep step with the drums.', osd: 'BONALU · PROCESSION', go: 'SUNO!', noFail: true,
+        lines: (g) => [
+          '<b>SUNO</b>: the dappu drummers play a beat. Watch the strip and feel it.',
+          '<b>AB AAP</b>: after the 4 ticks, step with the same beat, on time.',
+          'Miss a step and Amma\'s bonam wobbles: no harm, the drummers simply play it again.',
+        ],
+        win: 'Ekdum taal mein!', winLine: 'The drummers grin and play louder. Amma\'s bonam never wobbled.',
+        lose: 'Taal toot gaya', loseLine: 'Amma steadies the bonam: "Dheere, kanna. Drums ke saath."',
+      },
+      doorway: {
+        title: 'Darwaza Taali', sub: 'The storeroom door. The Golconda rhythm. Will he answer?', osd: 'THE STOREROOM DOOR', go: 'YAAD HAI?', recall: true,
+        lines: () => [
+          'The strip shows the <b>Golconda rhythm</b> you clapped with Immu. Remember it.',
+          'After the 4 ticks, <b>clap it</b> at the door, on time.',
+          'Clap it right and Immu answers from inside.',
+        ],
+        win: 'Immu ne jawab diya!', winLine: 'Behind the door, the same rhythm comes back. Then the latch.',
+        lose: 'Darwaza band hai', loseLine: 'Silence from the storeroom. Try the rhythm again, slower.',
+      },
+    };
+    const RECALL_SLOTS = [0, 2, 3, 6]; // ta . ta ta . . ta . : the rhythm from Golconda
+
     const def = {
       id: 'clap',
       title: 'Golconda Taali',
-      sub: 'Clap under the Fateh Darwaza dome. They hear it at the very top.',
-      osd: 'GOLCONDA · FATEH DARWAZA',
+      sub: SKINS.golconda.sub,
+      osd: SKINS.golconda.osd,
       place: 'golconda_fateh_darwaza', places: ['golconda_fateh_darwaza', 'golconda_fort'],
       secs: 70,
       goLabel: 'SUNO!',
-      keys: { Space: 'clap', KeyJ: 'clap', KeyF: 'clap', KeyK: 'clap', KeyD: 'clap', ArrowUp: 'clap', ArrowDown: 'clap', Enter: 'clap', NumpadEnter: 'clap' },
-      buttons: () => [{ gap: true }, { a: 'clap', label: 'TAALI', sub: 'TAP TO CLAP', cls: 'big' }, { gap: true }],
-      keyHint: () => '<kbd>Space</kbd> clap (or <kbd>F</kbd> <kbd>J</kbd>, or click) &nbsp; listen first, then echo it on the beat',
+      keys: { Space: 'clap', KeyJ: 'clap', KeyF: 'clap', KeyK: 'clap', KeyD: 'clap', ArrowUp: 'clap', ArrowDown: 'clap', Enter: 'clap', NumpadEnter: 'clap', KeyX: 'clap', KeyZ: 'clap', KeyC: 'clap' },
+      buttons: (g) => [{ gap: true }, { a: 'clap', label: skinOf(g) === SKINS.drums ? 'THAP!' : 'TAALI', sub: skinOf(g) === SKINS.drums ? 'TAP TO STEP' : 'TAP TO CLAP', cls: 'big' }, { gap: true }],
+      keyHint: (g) => '<kbd>Space</kbd> ' + (skinOf(g) === SKINS.drums ? 'step' : 'clap') + ' (or <kbd>F</kbd> <kbd>J</kbd>, or click) &nbsp; listen first, then echo it on the beat',
       howto(g) {
+        const K = skinOf(g), n = rounds(g);
         return {
-          lines: [
-            '<b>SUNO</b>: the guide claps a rhythm under the dome. Watch the strip and listen to the beat.',
-            '<b>AB AAP</b>: after the 4 ticks, clap the same rhythm back, on time. Extra claps count as mistakes.',
-            'Every clean echo climbs the hill and lights a lamp on the way to <b>Bala Hissar</b>.' + (g.diff >= 0.55 ? ' At this level the notes hide on your turn: remember them!' : ''),
-          ],
-          goal: rounds(g) + ' RHYTHMS &middot; 3 MAUKE (CHANCES)',
-          keys: '<kbd>Space</kbd> clap &nbsp;·&nbsp; or click the screen',
-          touch: 'Tap <b>TAALI</b> or anywhere on the screen to clap',
+          title: g.params.title || K.title, sub: K.sub, osd: K.osd,
+          lines: K.lines(g),
+          goal: (K.recall ? 'CLAP THE RHYTHM' : n + ' RHYTHM' + (n > 1 ? 'S' : '')) + ' &middot; ' + (noFail(g) ? 'NO FAIL' : T.chances + ' MAUKE (CHANCES)'),
+          keys: '<kbd>Space</kbd> ' + (K === SKINS.drums ? 'step' : 'clap') + ' &nbsp;·&nbsp; or click the screen',
+          touch: 'Tap <b>' + (K === SKINS.drums ? 'THAP!' : 'TAALI') + '</b> or anywhere on the screen',
         };
       },
       setup(g) {
         const S = g.S;
-        S.score = 0; S.round = 0; S.rounds = rounds(g); S.chances = 3; S.fails = 0; S.perfects = 0; S.notesTotal = 0;
-        S.bpm = Math.round(92 + g.diff * 32);
+        S.K = skinOf(g); S.skin = skinName(g);
+        if (g.nameEl && !g.params.title) g.nameEl.textContent = S.K.title;
+        S.score = 0; S.round = 0; S.rounds = rounds(g); S.chances = T.chances; S.noFail = noFail(g); S.fails = 0; S.perfects = 0; S.notesTotal = 0;
+        S.bpm = Math.round(T.bpm0 + g.diff * T.bpm1);
         S.beat = 60 / S.bpm; S.slot = S.beat / 2;
-        S.winP = 0.05 + (1 - g.diff) * 0.025; S.winG = 0.115 + (1 - g.diff) * 0.05;
-        S.hide = g.diff >= 0.55;
-        S.rings = []; S.orbs = []; S.marks = []; S.lit = 0; S.litT = 0; S.wave = 0; S.guideClap = 0; S.kidClap = 0;
+        S.winP = T.perfect * g.winMul; S.winG = T.good * g.winMul; S.winO = T.ok * g.winMul;
+        S.hide = hideNotes(g) && !g.assist;
+        S.rings = []; S.orbs = []; S.marks = []; S.lit = 0; S.litT = 0; S.wave = 0; S.guideClap = 0; S.kidClap = 0; S.wobble = 0; S.door = 0; S.doorT = 0;
         S.stars = []; for (let i = 0; i < 60; i++) S.stars.push({ x: g.rng.next(), y: g.rng.next() * 0.55, r: 0.5 + g.rng.next() * 1.2, ph: g.rng.next() * TAU });
         S.bats = []; S.msg = null;
         S.clock = 0;
@@ -45,27 +84,30 @@
         S.clock += dt;
         const R = S.R;
         const t = S.clock - R.t0;
-        // scheduled sounds: ticks + the guide's demo claps
+        // scheduled sounds: ticks + the guide's notes
         while (R.ev.length && R.ev[0].t <= t) {
           const e = R.ev.shift();
           if (e.k === 'tick') { g.tone(e.acc ? 1560 : 1180, 0.045, { type: 'sine', vol: e.soft ? 0.05 : 0.09 }); g.tone(e.acc ? 3100 : 2400, 0.012, { type: 'square', vol: 0.02 }); S.tickT = 0.12; S.tickAcc = e.acc; }
-          else if (e.k === 'demo') { g.sfx('clap', { pitch: 0.82, vol: 0.9 }); S.guideClap = 0.18; ring(S, 'guide'); R.shown[e.i] = true; }
-          else if (e.k === 'stage') { R.stage = e.s; if (e.s === 'you') S.msg = { text: 'AB AAP!', t: 0, col: '#ffd84a' }; if (e.s === 'listen') S.msg = { text: 'SUNO...', t: 0, col: '#eaf2ff' }; }
+          else if (e.k === 'demo') { guideSound(g, S, false); S.guideClap = 0.18; ring(S, 'guide'); R.shown[e.i] = true; }
+          else if (e.k === 'answer') { guideSound(g, S, true); S.guideClap = 0.18; ring(S, 'guide'); }
+          else if (e.k === 'stage') { R.stage = e.s; if (e.s === 'you') S.msg = { text: S.K === SKINS.drums ? 'AB CHALO!' : 'AB AAP!', t: 0, col: '#ffd84a' }; if (e.s === 'listen') S.msg = { text: S.K.recall ? 'YAAD HAI?' : 'SUNO...', t: 0, col: '#eaf2ff' }; }
+          else if (e.k === 'done') finishRound(g, S);
         }
         // the player's claps
         if (!g.over && g.pressed('clap')) clap(g, S, t);
         // misses: expected notes whose window has passed
         if (R.stage === 'you' || R.stage === 'judge') {
           for (const n of R.notes) {
-            if (n.res || t < R.pB + n.s * S.slot + S.winG) continue;
+            if (n.res || t < R.pB + n.s * S.slot + S.winO) continue;
             n.res = 'miss'; R.errors++;
             mark(g, S, n.s, 'miss');
             g.tone(140, 0.12, { type: 'triangle', vol: 0.06 });
+            if (S.K === SKINS.drums) S.wobble = 1;
           }
         }
-        if (R.stage === 'you' && t > R.pB + R.L * S.slot + S.winG) { R.stage = 'judge'; judge(g, S); }
+        if (R.stage === 'you' && t > R.pB + R.L * S.slot + S.winO) { R.stage = 'judge'; judge(g, S); }
         if (R.stage === 'next' && t > R.nextAt) {
-          if (S.round >= S.rounds) { if (!g.over) { S.score += S.chances * 150; g.finish(true, { rounds: S.round, fails: S.fails, perfects: S.perfects, delay: 1.6 }); } }
+          if (S.round >= S.rounds) { if (!g.over) { S.score += S.chances * 150; g.finish(true, { skin: S.skin, rounds: S.round, fails: S.fails, perfects: S.perfects, delay: 1.6 }); } }
           else newRound(g, S, 0);
         }
         animate(g, S, dt);
@@ -84,58 +126,81 @@
       },
       hud(g) {
         const S = g.S;
-        return [{ k: 'TAAL', v: Math.min(S.round, S.rounds) + '/' + S.rounds }, { k: 'MAUKE', v: String(S.chances), warn: S.chances === 1 }, { k: 'SCORE', v: String(S.score) }];
+        return [{ k: S.K === SKINS.drums ? 'TAAL' : 'TAAL', v: Math.min(S.round, S.rounds) + '/' + S.rounds }, S.noFail ? { k: 'GALTI', v: String(S.fails) } : { k: 'MAUKE', v: String(S.chances), warn: S.chances === 1 }, { k: 'SCORE', v: String(S.score) }];
       },
-      draw(g, ctx) { drawClap(g, ctx, g.S); },
+      draw(g, ctx) { const S = g.S; if (S.K === SKINS.drums) drawDrums(g, ctx, S); else if (S.K === SKINS.doorway) drawDoorway(g, ctx, S); else drawClap(g, ctx, S); },
       result(g, r) {
-        const S = g.S;
+        const S = g.S, K = S.K;
         return {
-          title: r.win ? 'Bala Hissar ne suna!' : 'Echo kho gaya...',
-          line: r.win ? 'Your claps climbed 400 years of granite and came back. The guide is impressed.' : 'The guide smiles: "Dome ko sunao, apne aap ko nahi." Listen to the beat, then clap.',
-          rows: [['Rhythms', Math.min(S.round, S.rounds) + ' / ' + S.rounds], ['Perfect claps', S.perfects + ' / ' + S.notesTotal], ['Mistakes', S.fails], ['Score', r.score]],
+          title: r.win ? K.win : K.lose,
+          line: r.win ? K.winLine : K.loseLine,
+          rows: [['Rhythms', Math.min(S.round, S.rounds) + ' / ' + S.rounds], ['Perfect ' + (K === SKINS.drums ? 'steps' : 'claps'), S.perfects + ' / ' + S.notesTotal], ['Mistakes', S.fails], ['Score', r.score]],
         };
       },
       stars(g, r) { const S = g.S; return r.win ? 1 + (S.fails === 0 ? 1 : 0) + (S.perfects >= S.notesTotal * 0.7 ? 1 : 0) : 0; },
     };
-    function rounds(g) { return g.params.rounds || Math.round(4 + g.diff * 2); }
+    function skinName(g) { return SKINS[g.params.skin] ? g.params.skin : 'golconda'; }
+    function skinOf(g) { return SKINS[skinName(g)]; }
+    function noFail(g) { return g.params.noFail != null ? !!g.params.noFail : !!skinOf(g).noFail; }
+    function hideNotes(g) { return g.diff >= 0.55; }
+    function rounds(g) { return g.params.rounds || (skinOf(g).recall ? 1 : Math.round(4 + g.diff * 2)); }
+
+    function guideSound(g, S, answer) {
+      if (S.K === SKINS.drums) { // dappu: a low thump with a skin slap
+        g.tone(96, 0.14, { type: 'sine', vol: 0.2, f2: 58 }); g.noise(0.07, { f: 850, q: 1.2, vol: 0.12 });
+      } else if (S.K === SKINS.doorway && answer) { // Immu's claps, muffled through the door
+        g.sfx('clap', { pitch: 0.7, vol: 0.45, key: 'door' }); g.noise(0.05, { ft: 'lowpass', f: 700, vol: 0.06 });
+      } else g.sfx('clap', { pitch: 0.82, vol: 0.9 });
+    }
+    function playerSound(g, S) {
+      if (S.K === SKINS.drums) { g.noise(0.09, { f: 6200, q: 3, vol: 0.07 }); g.tone(150, 0.06, { type: 'sine', vol: 0.08, f2: 90 }); } // ghungroo + a stamp
+      else g.sfx('clap', { pitch: 1.08 });
+    }
 
     function newRound(g, S, lead) {
       const k = S.round; // 0-based index of this rhythm
-      const n = Math.min(9, 3 + k + (g.diff > 0.7 ? 1 : 0));
-      const L = n >= 6 ? 16 : 8;
-      const slots = new Set([0]);
-      const minGap = g.diff < 0.35 && L === 8 && n <= 4 ? 2 : 1;
-      let guard = 0;
-      while (slots.size < n && guard++ < 200) {
-        const s = (g.rng.next() * L) | 0;
-        let ok = true;
-        for (const o of slots) if (Math.abs(o - s) < minGap) ok = false;
-        if (ok) slots.add(s);
+      let notes, L;
+      if (S.K.recall) { L = 8; notes = RECALL_SLOTS.map((s) => ({ s, res: null })); }
+      else {
+        const n = Math.min(9, 3 + k + (g.diff > 0.7 ? 1 : 0));
+        L = n >= 6 ? 16 : 8;
+        const slots = new Set([0]);
+        const minGap = g.diff < 0.35 && L === 8 && n <= 4 ? 2 : 1;
+        let guard = 0;
+        while (slots.size < n && guard++ < 200) {
+          const s = (g.rng.next() * L) | 0;
+          let ok = true;
+          for (const o of slots) if (Math.abs(o - s) < minGap) ok = false;
+          if (ok) slots.add(s);
+        }
+        notes = Array.from(slots).sort((a, b) => a - b).map((s) => ({ s, res: null }));
       }
-      const notes = Array.from(slots).sort((a, b) => a - b).map((s) => ({ s, res: null }));
       const b = S.beat, sl = S.slot;
       const pA = lead + 4 * b, pB = pA + L * sl + 4 * b;
       const ev = [];
       ev.push({ t: lead - 0.01, k: 'stage', s: 'listen' });
       for (let i = 0; i < 4; i++) ev.push({ t: lead + i * b, k: 'tick', acc: i === 0 });
-      notes.forEach((nn, i) => ev.push({ t: pA + nn.s * sl, k: 'demo', i }));
+      if (S.K.recall) notes.forEach((nn, i) => ev.push({ t: pA + nn.s * sl, k: 'show', i })); // recall: shown, not played
+      else notes.forEach((nn, i) => ev.push({ t: pA + nn.s * sl, k: 'demo', i }));
       if (g.diff < 0.5) for (let i = 0; i < L / 2; i++) ev.push({ t: pA + i * b, k: 'tick', soft: true, acc: i % 4 === 0 });
       ev.push({ t: pA + L * sl - 0.02, k: 'stage', s: 'ready' });
       for (let i = 0; i < 4; i++) ev.push({ t: pA + L * sl + i * b, k: 'tick', acc: i === 0 });
-      ev.push({ t: pB - S.winG, k: 'stage', s: 'you' });
+      ev.push({ t: pB - S.winO, k: 'stage', s: 'you' });
       if (g.diff < 0.75) for (let i = 0; i < L / 2; i++) ev.push({ t: pB + i * b, k: 'tick', soft: true, acc: i % 4 === 0 });
       ev.sort((a, c) => a.t - c.t);
-      S.R = { t0: S.clock, notes, L, pA, pB, ev, stage: 'pre', errors: 0, extras: 0, shown: {}, claps: [] };
+      const shown = {};
+      if (S.K.recall) notes.forEach((nn, i) => { shown[i] = true; });
+      S.R = { t0: S.clock, notes, L, pA, pB, ev, stage: 'pre', errors: 0, extras: 0, shown, claps: [] };
       S.marks = [];
     }
 
     function clap(g, S, t) {
       const R = S.R;
       S.kidClap = 0.16; S.clapsTotal = (S.clapsTotal || 0) + 1;
-      g.sfx('clap', { pitch: 1.08 });
+      playerSound(g, S);
       ring(S, 'kid');
       if (R.stage !== 'you') {
-        if (R.stage === 'listen' || R.stage === 'ready') { S.msg = { text: 'Pehle suno!', t: 0, col: '#ffb4a6', small: true }; }
+        if (R.stage === 'listen' || R.stage === 'ready') { S.msg = { text: S.K.recall ? 'Ruko, ticks ke baad!' : 'Pehle suno!', t: 0, col: '#ffb4a6', small: true }; }
         return;
       }
       // match the nearest unjudged note
@@ -146,17 +211,19 @@
         if (d < bd) { bd = d; best = n; }
       }
       const relSlot = (t - R.pB) / S.slot;
-      if (best && bd <= S.winG) {
-        best.res = bd <= S.winP ? 'perfect' : 'good';
+      if (best && bd <= S.winO) {
+        best.res = bd <= S.winP ? 'perfect' : bd <= S.winG ? 'good' : 'ok';
         S.notesTotal++;
-        if (best.res === 'perfect') { S.perfects++; S.score += 100; } else S.score += 50;
+        if (best.res === 'perfect') S.perfects++;
+        S.score += T.pts[best.res];
         mark(g, S, relSlot, best.res);
         S.orbs.push({ t: 0, ok: true });
-        g.sfx('clap', { pitch: 0.9, vol: 0.35, delay: 0.32, key: 'echo' });
+        if (S.K === SKINS.golconda) g.sfx('clap', { pitch: 0.9, vol: 0.35, delay: T.echoDelay, key: 'echo' });
       } else {
         R.extras++; R.errors++;
         mark(g, S, relSlot, 'extra');
         g.tone(180, 0.1, { type: 'triangle', vol: 0.05 });
+        if (S.K === SKINS.drums) S.wobble = 1;
       }
     }
 
@@ -165,19 +232,37 @@
       for (const n of R.notes) if (!n.res) { n.res = 'miss'; R.errors++; }
       const ok = R.errors === 0;
       if (ok) {
-        S.round++;
-        S.score += 100 * S.round;
-        S.msg = { text: ['WAAH!', 'SHABASH!', 'ZABARDAST!', 'KYA BAAT!'][(S.round - 1) % 4], t: 0, col: '#b9ffb0', big: true };
-        g.sfx('clap_echo', { delay: 0.15 });
-        S.litTarget = S.round / S.rounds;
-        S.wave = 1.4;
-        if (S.round >= S.rounds) { g.sfx('applause', { delay: 0.5 }); for (let i = 0; i < 8; i++) S.bats.push({ t: -i * 0.08, x: 0, y: 0, vx: (Math.random() - 0.5) * 2, ph: Math.random() * TAU }); }
-      } else {
-        S.chances--; S.fails++;
-        S.msg = { text: S.chances > 0 ? 'PHIR SE SUNO' : 'BAS!', t: 0, col: '#ffb4a6', big: true };
-        g.shake(4);
-        if (S.chances <= 0 && !g.over) { R.stage = 'done'; g.finish(false, { rounds: S.round, fails: S.fails, perfects: S.perfects, delay: 1.4 }); return; }
+        if (S.K.recall) { // Immu answers through the door, then the round is won
+          const b = S.beat, base = S.clock - R.t0 + b * 1.2;
+          R.notes.forEach((nn) => R.ev.push({ t: base + nn.s * S.slot, k: 'answer' }));
+          R.ev.push({ t: base + R.L * S.slot + 0.2, k: 'done' });
+          R.ev.sort((a, c) => a.t - c.t);
+          R.stage = 'answer';
+          S.msg = { text: 'Suno... andar se!', t: 0, col: '#eaf2ff', big: false };
+          return;
+        }
+        finishRound(g, S);
+        return;
       }
+      S.fails++;
+      if (!S.noFail) S.chances--;
+      S.msg = { text: S.noFail ? (S.K === SKINS.drums ? 'Phir se, taal mein!' : 'PHIR SE') : S.chances > 0 ? 'PHIR SE SUNO' : 'BAS!', t: 0, col: '#ffb4a6', big: true };
+      g.shake(4);
+      if (!S.noFail && S.chances <= 0 && !g.over) { R.stage = 'done'; g.finish(false, { skin: S.skin, rounds: S.round, fails: S.fails, perfects: S.perfects, delay: 1.4 }); return; }
+      R.stage = 'next';
+      R.nextAt = S.clock - R.t0 + 1.25;
+    }
+    function finishRound(g, S) {
+      const R = S.R;
+      S.round++;
+      S.score += 100 * S.round;
+      S.msg = { text: S.K.recall ? 'DARWAZA KHULA!' : S.K === SKINS.drums ? ['EKDUM TAAL!', 'WAAH!', 'JHOOM!'][(S.round - 1) % 3] : ['WAAH!', 'SHABASH!', 'ZABARDAST!', 'KYA BAAT!'][(S.round - 1) % 4], t: 0, col: '#b9ffb0', big: true };
+      if (S.K === SKINS.golconda) g.sfx('clap_echo', { delay: 0.15 });
+      else if (S.K === SKINS.drums) { for (let i = 0; i < 6; i++) g.tone(96, 0.12, { type: 'sine', vol: 0.16, f2: 60, delay: i * 0.11 }); }
+      else { g.sfx('door_creak', { vol: 0.8 }); S.doorT = 1; }
+      S.litTarget = S.round / S.rounds;
+      S.wave = 1.4;
+      if (S.round >= S.rounds) { g.sfx('applause', { delay: 0.5, vol: S.K === SKINS.doorway ? 0.3 : 1 }); if (S.K === SKINS.golconda) for (let i = 0; i < 8; i++) S.bats.push({ t: -i * 0.08, x: 0, y: 0, vx: (Math.random() - 0.5) * 2, ph: Math.random() * TAU }); }
       R.stage = 'next';
       R.nextAt = S.clock - R.t0 + 1.25;
     }
@@ -187,8 +272,8 @@
       const L = S.lane;
       if (L) {
         const x = L.x + L.pad + (slot / S.R.L) * L.inner;
-        const txt = { perfect: 'PERFECT', good: 'ACCHA', miss: 'MISS', extra: 'EXTRA' }[res];
-        const col = { perfect: '#ffd84a', good: '#eaf2ff', miss: '#ff8a7a', extra: '#ffb04a' }[res];
+        const txt = { perfect: 'PERFECT', good: 'ACCHA', ok: 'THEEK', miss: 'MISS', extra: 'EXTRA' }[res];
+        const col = { perfect: '#ffd84a', good: '#b9ffb0', ok: '#eaf2ff', miss: '#ff8a7a', extra: '#ffb04a' }[res];
         g.pop(txt, U.clamp(x, 40, g.W - 40), L.y - 8, { size: 18, color: col, font: 'osd', outline: 4, rise: 22, life: 0.8 });
       }
     }
@@ -204,6 +289,8 @@
       S.guideClap = Math.max(0, S.guideClap - dt); S.kidClap = Math.max(0, S.kidClap - dt);
       S.tickT = Math.max(0, (S.tickT || 0) - dt);
       S.wave = Math.max(0, S.wave - dt);
+      S.wobble = Math.max(0, S.wobble - dt * 0.8);
+      if (S.doorT > 0) S.door = Math.min(1, S.door + dt * 0.7);
       if (S.litTarget != null) S.lit = H.approach(S.lit, S.litTarget, dt * 0.6);
       for (const b of S.bats) b.t += dt;
     }
@@ -430,11 +517,15 @@
       drawKidClap(ctx, W / 2 + u * 2, floorY, s, S.kidClap > 0);
       // the beat lane
       drawLane(g, ctx, S);
-      // big message
+      drawMsg(g, ctx, S);
+    }
+
+    function drawMsg(g, ctx, S) {
+      const W = g.W, u = S.G ? S.G.u : Math.min(W, g.area.h * 1.2) / 100;
       if (S.msg && S.msg.t < 1.6) {
         const m = S.msg, k = Math.min(1, m.t / 0.18), a = m.t > 1.2 ? 1 - (m.t - 1.2) / 0.4 : 1;
         const L = S.lane;
-        ctx.save(); ctx.translate(W / 2, L.y - (m.big ? u * 9 : u * 6)); ctx.scale(0.6 + 0.4 * H.ease.outBack(k), 0.6 + 0.4 * H.ease.outBack(k));
+        ctx.save(); ctx.translate(W / 2, S.msgY || L.y - (m.big ? u * 9 : u * 6)); ctx.scale(0.6 + 0.4 * H.ease.outBack(k), 0.6 + 0.4 * H.ease.outBack(k));
         H.text(ctx, m.text, 0, 0, { font: m.small ? 'body' : 'display', weight: m.small ? 700 : null, size: m.big ? Math.max(30, u * 5.5) : Math.max(22, u * 3.8), color: m.col, outline: 6, alpha: a });
         ctx.restore();
       }
@@ -454,7 +545,7 @@
         ctx.fillRect(x - (bar ? 1.5 : 1), cy - (bar ? L.h * 0.34 : beat ? L.h * 0.22 : L.h * 0.12), bar ? 3 : 2, bar ? L.h * 0.68 : beat ? L.h * 0.44 : L.h * 0.24);
       }
       // stage label
-      const lab = { pre: 'TAIYAAR', listen: 'SUNO', ready: 'TAIYAAR...', you: 'AB AAP', judge: 'AB AAP', next: '', done: '' }[R.stage] || '';
+      const lab = { pre: 'TAIYAAR', listen: S.K.recall ? 'YAAD KARO' : 'SUNO', ready: 'TAIYAAR...', you: S.K === SKINS.drums ? 'AB CHALO' : 'AB AAP', judge: 'AB AAP', answer: 'SUNO... ANDAR SE', next: '', done: '' }[R.stage] || '';
       H.text(ctx, lab, L.x + 10, L.y - 10, { font: 'osd', size: 20, align: 'left', color: R.stage === 'you' ? '#ffd84a' : '#eaf2ff', outline: 4, stroke: '#120d16' });
       // count-in dots
       const cin = R.stage === 'pre' || R.stage === 'listen' ? (t - (R.pA - 4 * S.beat)) / S.beat : R.stage === 'ready' ? (t - (R.pB - 4 * S.beat)) / S.beat : -1;
@@ -472,7 +563,7 @@
         if (R.stage === 'listen' || R.stage === 'ready' || R.stage === 'pre') {
           if (!demoShown) return;
           const age = t - (R.pA + n.s * S.slot);
-          drawPalm(ctx, x, cy, L.h * 0.28 * (age < 0.15 ? 1 + (0.15 - age) * 3 : 1), '#eaf2ff', 1);
+          drawPalm(ctx, x, cy, L.h * 0.28 * (age >= 0 && age < 0.15 ? 1 + (0.15 - age) * 3 : 1), '#eaf2ff', 1);
         } else if (showGhost || n.res) {
           const col = n.res === 'perfect' ? '#ffd84a' : n.res === 'good' ? '#b9ffb0' : n.res === 'miss' ? '#ff6a5a' : 'rgba(234,242,255,0.35)';
           drawPalm(ctx, x, cy, L.h * 0.26, col, n.res ? 1 : 0.6);
@@ -536,6 +627,258 @@
       ctx.restore();
       H.kidBack(ctx, x, y, s, { shirt: '#d8402a', stripes: '#f2c230', pants: '#3b4a6b' });
       if (clapping) { ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = '#ffd84a'; for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i - 2) * 0.45; ctx.fillRect(Math.cos(a) * 15 - 1, -70 + Math.sin(a) * 15, 2.5, 6); } ctx.restore(); }
+    }
+
+
+    /* ------------------------------------------- skin: drums (Bonalu procession) */
+    function laneFor(g) {
+      const A = g.area, W = g.W, P = g.portrait, short = !P && A.h < 420;
+      const lane = { w: Math.min(W - 40, 560), h: Math.max(46, Math.min(70, A.h * (short ? 0.17 : 0.1))) };
+      lane.x = (W - lane.w) / 2; lane.y = P ? A.y + A.h * 0.56 : A.y + A.h * (short ? 0.4 : 0.5); lane.pad = 22; lane.inner = lane.w - lane.pad * 2;
+      return lane;
+    }
+    function personFront(ctx, x, y, h, o) {
+      const s = h / 64;
+      ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+      ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(0, 0, 13, 3.5, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = o.lower || '#e8e2d2'; ctx.fillRect(-9, -28, 8, 28); ctx.fillRect(1, -28, 8, 28);
+      ctx.fillStyle = o.shirt || '#f4efe2'; H.rr(ctx, -11, -54, 22, 28, 6); ctx.fill();
+      if (o.scarf) { ctx.fillStyle = o.scarf; ctx.beginPath(); ctx.moveTo(-11, -52); ctx.lineTo(11, -40); ctx.lineTo(11, -34); ctx.lineTo(-11, -46); ctx.fill(); }
+      ctx.fillStyle = o.skin || '#7a4a2a'; ctx.beginPath(); ctx.arc(0, -61, 8, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#1a1412'; ctx.beginPath(); ctx.arc(0, -63, 8.3, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+      if (o.band) { ctx.fillStyle = o.band; ctx.fillRect(-8, -66, 16, 3); }
+      ctx.fillStyle = '#1a1412'; ctx.fillRect(-4, -62, 2, 2); ctx.fillRect(2, -62, 2, 2);
+      if (o.moustache) ctx.fillRect(-4, -57.5, 8, 1.8);
+      ctx.strokeStyle = o.skin || '#7a4a2a'; ctx.lineWidth = 4.4; ctx.lineCap = 'round';
+      if (o.drum) {
+        // the dappu: a big round frame drum held on the left, a stick in the right hand
+        const hit = o.hit || 0;
+        ctx.beginPath(); ctx.moveTo(-10, -48); ctx.lineTo(-17, -36); ctx.stroke();
+        ctx.fillStyle = '#e8d6a8'; ctx.beginPath(); ctx.ellipse(-16, -34, 14, 16, -0.2, 0, TAU); ctx.fill();
+        ctx.strokeStyle = '#7a4a24'; ctx.lineWidth = 3; ctx.stroke();
+        ctx.fillStyle = 'rgba(178,43,43,0.6)'; ctx.beginPath(); ctx.arc(-16, -34, 5, 0, TAU); ctx.fill();
+        ctx.strokeStyle = o.skin || '#7a4a2a'; ctx.lineWidth = 4.4;
+        const ax = 10 + (1 - hit) * 6, ay = -58 + hit * 20;
+        ctx.beginPath(); ctx.moveTo(10, -48); ctx.lineTo(ax, ay); ctx.stroke();
+        ctx.strokeStyle = '#d9c08a'; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax - 16 + hit * 6, ay + 6 + hit * 6); ctx.stroke();
+        if (hit > 0.5) { ctx.strokeStyle = '#fff6c8'; ctx.lineWidth = 1.5; for (let i = 0; i < 4; i++) { const a = -2.4 + i * 0.4; ctx.beginPath(); ctx.moveTo(-16 + Math.cos(a) * 18, -34 + Math.sin(a) * 20); ctx.lineTo(-16 + Math.cos(a) * 24, -34 + Math.sin(a) * 26); ctx.stroke(); } }
+      } else { ctx.beginPath(); ctx.moveTo(-10, -48); ctx.lineTo(-13, -30); ctx.moveTo(10, -48); ctx.lineTo(13, -30); ctx.stroke(); }
+      ctx.restore();
+    }
+    function ammaBonam(ctx, x, y, h, wob, t) {
+      const s = h / 70;
+      ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+      ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(0, 0, 15, 4, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#2f8a3a'; ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(-11, -46); ctx.lineTo(11, -46); ctx.lineTo(15, 0); ctx.closePath(); ctx.fill(); // green saree (back)
+      ctx.fillStyle = '#f2c230'; ctx.fillRect(-14, -5, 29, 4);
+      ctx.fillStyle = '#d8402a'; H.rr(ctx, -10, -60, 20, 16, 4); ctx.fill();
+      ctx.fillStyle = '#2f8a3a'; ctx.beginPath(); ctx.moveTo(-10, -60); ctx.lineTo(10, -58); ctx.lineTo(12, -36); ctx.lineTo(-2, -40); ctx.fill(); // pallu
+      ctx.fillStyle = '#1a1412'; ctx.beginPath(); ctx.arc(0, -68, 8, 0, TAU); ctx.fill(); ctx.beginPath(); ctx.arc(0, -61, 4.5, 0, TAU); ctx.fill(); // hair + bun
+      ctx.fillStyle = '#ffffff'; for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(-4 + i * 2, -58 + (i % 2), 1.4, 0, TAU); ctx.fill(); } // jasmine
+      // arms up, steadying the bonam
+      ctx.strokeStyle = '#8a5a35'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(-9, -56); ctx.lineTo(-11, -78); ctx.moveTo(9, -56); ctx.lineTo(10, -78); ctx.stroke();
+      // the bonam: brass pot, turmeric + kumkum dots, neem leaves, a small lamp on top
+      const w = Math.sin(t * 14) * wob * 0.25;
+      ctx.save(); ctx.translate(0, -80); ctx.rotate(w);
+      const gr = ctx.createRadialGradient(-4, -10, 1, 0, -8, 14);
+      gr.addColorStop(0, '#ffe08a'); gr.addColorStop(0.6, '#d9a030'); gr.addColorStop(1, '#a8701a');
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.ellipse(0, -8, 12, 10, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#c8901a'; ctx.fillRect(-6, -20, 12, 4);
+      ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.arc(-5, -8, 1.8, 0, TAU); ctx.arc(5, -8, 1.8, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#c8203a'; ctx.beginPath(); ctx.arc(0, -6, 1.8, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#3f7a2a'; for (let i = 0; i < 6; i++) { ctx.save(); ctx.translate(-5 + i * 2, -21); ctx.rotate(-0.8 + i * 0.32); ctx.beginPath(); ctx.ellipse(0, -5, 1.8, 5, 0, 0, TAU); ctx.fill(); ctx.restore(); }
+      ctx.fillStyle = '#e8c070'; ctx.beginPath(); ctx.ellipse(0, -26, 4, 1.6, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ffb030'; ctx.beginPath(); ctx.moveTo(0, -34 - Math.sin(t * 11) * 1.2); ctx.quadraticCurveTo(2.5, -28, 0, -27); ctx.quadraticCurveTo(-2.5, -28, 0, -34 - Math.sin(t * 11) * 1.2); ctx.fill();
+      ctx.restore();
+      ctx.restore();
+    }
+    function paintDrums(g, S) {
+      const W = g.W, Hh = g.H, d = g.dpr, A = g.area;
+      S.bgKey = W + 'x' + Hh + ':' + d + ':' + A.h;
+      const lane = (S.lane = laneFor(g));
+      const u = Math.min(W, A.h * 1.2) / 100;
+      const hor = A.y + A.h * (g.portrait ? 0.3 : 0.26), floorY = A.y + A.h;
+      S.G = { u, hor, charS: (A.h * (g.portrait ? 0.15 : 0.26)) / 70 };
+      const c0 = (S.bg = S.bg || H.canvas(1, 1)); c0.width = Math.round(W * d); c0.height = Math.round(Hh * d);
+      const c = c0.getContext('2d'); c.setTransform(d, 0, 0, d, 0, 0);
+      let gr = c.createLinearGradient(0, 0, 0, hor);
+      gr.addColorStop(0, '#22285a'); gr.addColorStop(0.6, '#7a4a7a'); gr.addColorStop(1, '#e8905a');
+      c.fillStyle = gr; c.fillRect(0, 0, W, Hh);
+      // the street in perspective
+      const vx = W / 2;
+      gr = c.createLinearGradient(0, hor, 0, floorY);
+      gr.addColorStop(0, '#6a5a58'); gr.addColorStop(1, '#3a302e');
+      c.fillStyle = gr; c.fillRect(0, hor, W, Hh - hor);
+      // old-city facades on both sides, converging
+      const rng = U.rng(4141);
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < 6; i++) {
+          const f0 = i / 6, f1 = (i + 1) / 6;
+          const x0 = vx + side * lerp(W * 0.08, W * 0.62, f0 * f0), x1 = vx + side * lerp(W * 0.08, W * 0.62, f1 * f1);
+          const top0 = hor - lerp(u * 6, u * 34, f0 * f0), top1 = hor - lerp(u * 6, u * 34, f1 * f1);
+          const bot0 = hor + lerp(u * 1, u * 40, f0 * f0), bot1 = hor + lerp(u * 1, u * 40, f1 * f1);
+          c.fillStyle = ['#d9c3a0', '#c7b9d6', '#e9c6b6', '#bcd3c4', '#e8d9b5', '#d0a888'][(rng.next() * 6) | 0];
+          c.beginPath(); c.moveTo(x0, top0); c.lineTo(x1, top1); c.lineTo(x1, bot1); c.lineTo(x0, bot0); c.closePath(); c.fill();
+          c.fillStyle = 'rgba(0,0,0,0.12)'; c.fill();
+          // arched doorway
+          const ax = lerp(x0, x1, 0.5), ay = lerp(bot0, bot1, 0.5), ah = (lerp(bot0, bot1, 0.5) - lerp(top0, top1, 0.5)) * 0.45, aw = Math.abs(x1 - x0) * 0.32;
+          c.fillStyle = '#3a2a24'; c.beginPath(); c.moveTo(ax - aw / 2, ay); c.lineTo(ax - aw / 2, ay - ah * 0.7); c.quadraticCurveTo(ax, ay - ah * 1.15, ax + aw / 2, ay - ah * 0.7); c.lineTo(ax + aw / 2, ay); c.fill();
+          c.fillStyle = 'rgba(255,200,120,0.35)'; c.fillRect(ax - aw * 0.3, ay - ah * 0.6, aw * 0.6, ah * 0.6);
+        }
+      }
+      // the temple gopuram at the end of the street (silhouette, respectfully distant)
+      const gx = vx, gy = hor + u * 1, gw = u * 9;
+      c.fillStyle = '#f0e2c8';
+      for (let k = 0; k < 5; k++) { const w = gw * (1 - k * 0.17), h = u * 2.4; c.fillRect(gx - w / 2, gy - u * 4 - k * h, w, h + 1); }
+      c.beginPath(); c.arc(gx, gy - u * 4 - 5 * u * 2.4, gw * 0.12, Math.PI, TAU); c.fill();
+      c.strokeStyle = '#6a5a4a'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(gx, gy - u * 4 - 5 * u * 2.4 - gw * 0.12); c.lineTo(gx, gy - u * 20); c.stroke();
+      c.fillStyle = '#ef8a2a'; c.beginPath(); c.moveTo(gx, gy - u * 20); c.lineTo(gx + u * 2.4, gy - u * 19.2); c.lineTo(gx, gy - u * 18.4); c.fill();
+      c.fillStyle = 'rgba(80,50,40,0.35)'; c.fillRect(gx - gw / 2, gy - u * 4, gw, u * 4);
+      // neem-leaf torans strung across
+      for (let k = 0; k < 3; k++) {
+        const y = hor - u * (12 - k * 4) - k * u * 3, x0 = vx - W * (0.18 + k * 0.17), x1 = vx + W * (0.18 + k * 0.17), sag = u * (2 + k * 1.5);
+        c.strokeStyle = 'rgba(60,40,30,0.6)'; c.lineWidth = 1; c.beginPath(); c.moveTo(x0, y); c.quadraticCurveTo(vx, y + sag * 2, x1, y); c.stroke();
+        for (let i = 1; i < 14; i++) { const f = i / 14, x = lerp(x0, x1, f), yy = y + Math.sin(f * Math.PI) * sag; c.fillStyle = i % 3 ? '#3f7a2a' : '#5a9a3a'; c.beginPath(); c.ellipse(x, yy + u * (0.8 + k * 0.3), u * (0.35 + k * 0.12), u * (0.9 + k * 0.3), 0, 0, TAU); c.fill(); }
+      }
+      // marigold petals on the road
+      for (let i = 0; i < 70; i++) { const y = hor + u * 3 + rng.next() * (Hh - hor), x = rng.next() * W, r = u * (0.2 + (y - hor) / (Hh - hor) * 0.4); c.fillStyle = rng.next() < 0.6 ? '#ef8a2a' : '#f2c230'; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); }
+      S.festoon = [];
+      for (let k = 0; k < 2; k++) S.festoon.push({ y: hor - u * (18 - k * 7), x0: vx - W * (0.3 + k * 0.25), x1: vx + W * (0.3 + k * 0.25), sag: u * (3 + k * 2) });
+    }
+    function drawDrums(g, ctx, S) {
+      const W = g.W, Hh = g.H, A = g.area;
+      if (S.bgKey !== W + 'x' + Hh + ':' + g.dpr + ':' + A.h) paintDrums(g, S);
+      ctx.drawImage(S.bg, 0, 0, W, Hh);
+      const G = S.G, u = G.u;
+      // festoon bulbs twinkling
+      const cols = ['#ff5a4a', '#ffd84a', '#6fdc5a', '#4ac8ff', '#ff7ae0'];
+      for (const f of S.festoon) {
+        ctx.strokeStyle = 'rgba(30,20,20,0.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(f.x0, f.y); ctx.quadraticCurveTo(W / 2, f.y + f.sag * 2, f.x1, f.y); ctx.stroke();
+        for (let i = 1; i < 22; i++) {
+          const k = i / 22, x = lerp(f.x0, f.x1, k), y = f.y + Math.sin(k * Math.PI) * f.sag;
+          const on = (i + Math.floor(S.clock * 4)) % 3 !== 0;
+          ctx.fillStyle = on ? cols[i % cols.length] : 'rgba(80,60,60,0.8)';
+          ctx.beginPath(); ctx.arc(x, y + 2, Math.max(1.5, u * 0.45), 0, TAU); ctx.fill();
+        }
+      }
+      // drummers ahead, facing the procession
+      const dy = G.hor + (S.lane.y - G.hor) * 0.92, dh = A.h * (g.portrait ? 0.13 : 0.22);
+      const hit = Math.min(1, S.guideClap / 0.12);
+      [[-0.22, '#d8402a', '#f2c230'], [0, '#ef8a2a', '#d8402a'], [0.22, '#2a8c82', '#f2c230']].forEach(([fx, sc, band], i) => {
+        personFront(ctx, W / 2 + fx * Math.min(W, 700), dy + (i === 1 ? 4 : 0), dh, { shirt: '#f4efe2', lower: '#e8e2d2', scarf: sc, band, drum: true, hit: i === 1 ? hit : hit * 0.8, moustache: true });
+      });
+      // sound rings from the drums
+      for (const r of S.rings) {
+        const k = r.t / 1.2, cx = W / 2, cy = dy - dh * 0.5;
+        ctx.strokeStyle = r.who === 'guide' ? 'rgba(255,220,160,' + (1 - k) * 0.5 + ')' : 'rgba(255,216,74,' + (1 - k) * 0.6 + ')';
+        ctx.lineWidth = Math.max(1.5, u * 0.5 * (1 - k));
+        ctx.beginPath(); ctx.ellipse(cx, r.who === 'guide' ? cy : Hh - dh * 0.6, u * (3 + k * 34), u * (1.5 + k * 14), 0, 0, TAU); ctx.stroke();
+      }
+      drawLane(g, ctx, S);
+      // the family from behind: Amma with the bonam, Chinnu, Immu with neem branches
+      const fy = A.y + A.h * (g.portrait ? 0.95 : 0.99), s = G.charS;
+      ammaBonam(ctx, W / 2 - 8 * s * 4, fy, 70 * s * 1.15, S.wobble, S.clock);
+      const step = S.kidClap > 0 ? -3 * s : 0;
+      H.kidBack(ctx, W / 2 + 9 * s * 4, fy + step, s * 1.0, { shirt: '#d8402a', stripes: '#f2c230', pants: '#3b4a6b' });
+      H.kidBack(ctx, W / 2 + 26 * s * 4, fy, s * 1.02, { shirt: '#f4efe2', pants: '#2a8c82', skin: '#8a5a35' });
+      ctx.save(); ctx.translate(W / 2 + 26 * s * 4 + 9 * s, fy - 60 * s); ctx.rotate(-0.3 + Math.sin(S.clock * 3) * 0.08);
+      ctx.strokeStyle = '#6a4a2a'; ctx.lineWidth = 2 * s; ctx.beginPath(); ctx.moveTo(0, 20 * s); ctx.lineTo(0, -16 * s); ctx.stroke();
+      ctx.fillStyle = '#3f7a2a'; for (let i = 0; i < 9; i++) { ctx.beginPath(); ctx.ellipse(Math.sin(i * 1.7) * 5 * s, -16 * s + i * 2.2 * s, 1.8 * s, 4.2 * s, Math.sin(i) * 0.9, 0, TAU); ctx.fill(); }
+      ctx.restore();
+      // diyas along the road: one more lit per clean round
+      const n = Math.max(3, S.rounds * 2);
+      for (let i = 0; i < n; i++) {
+        const x = W * (0.08 + (i / (n - 1)) * 0.84), y = A.y + A.h * (g.portrait ? 0.72 : 0.7) + Math.abs(i - (n - 1) / 2) * u * 0.6, on = (i + 1) / n <= S.lit + 0.001;
+        ctx.fillStyle = '#a8582a'; ctx.beginPath(); ctx.ellipse(x, y, u * 1.2, u * 0.5, 0, 0, Math.PI); ctx.fill();
+        if (on) {
+          const gr = ctx.createRadialGradient(x, y - u, 0, x, y - u, u * 3);
+          gr.addColorStop(0, 'rgba(255,220,140,0.9)'); gr.addColorStop(1, 'rgba(255,170,64,0)');
+          ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y - u, u * 3, 0, TAU); ctx.fill();
+          ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.moveTo(x, y - u * 1.6 - Math.sin(S.clock * 9 + i) * u * 0.2); ctx.quadraticCurveTo(x + u * 0.4, y - u * 0.6, x, y - u * 0.4); ctx.quadraticCurveTo(x - u * 0.4, y - u * 0.6, x, y - u * 1.6); ctx.fill();
+        }
+      }
+      drawMsg(g, ctx, S);
+    }
+
+    /* ---------------------------------------------- skin: doorway (the storeroom) */
+    function paintDoorway(g, S) {
+      const W = g.W, Hh = g.H, d = g.dpr, A = g.area;
+      S.bgKey = W + 'x' + Hh + ':' + d + ':' + A.h;
+      const lane = (S.lane = laneFor(g));
+      lane.y = A.y + Math.max(34, A.h * 0.08); // the strip sits above the door, never across it
+      const u = Math.min(W, A.h * 1.2) / 100;
+      S.msgY = lane.y + lane.h + u * 9;
+      const floorY = A.y + A.h * (g.portrait ? 0.78 : 0.82);
+      const dw = Math.min(W * 0.34, A.h * 0.42), dh = Math.min(floorY - (lane.y + lane.h + u * 16), dw * 2.1), dx = W / 2 - dw / 2, dTop = floorY - dh;
+      S.G = { u, floorY, door: { x: dx, y: dTop, w: dw, h: dh }, charS: (A.h * (g.portrait ? 0.15 : 0.26)) / 70 };
+      const c0 = (S.bg = S.bg || H.canvas(1, 1)); c0.width = Math.round(W * d); c0.height = Math.round(Hh * d);
+      const c = c0.getContext('2d'); c.setTransform(d, 0, 0, d, 0, 0);
+      // lime-washed wall with a darker dado, a tube light, red-oxide floor
+      c.fillStyle = '#9cc7d4'; c.fillRect(0, 0, W, Hh);
+      c.fillStyle = '#6a9aae'; c.fillRect(0, floorY - A.h * 0.12, W, A.h * 0.12);
+      c.fillStyle = 'rgba(255,255,255,0.08)'; const rng = U.rng(9); for (let i = 0; i < 40; i++) c.fillRect(rng.next() * W, rng.next() * floorY, 20 + rng.next() * 50, 2);
+      let gr = c.createLinearGradient(0, floorY, 0, Hh); gr.addColorStop(0, '#9a3f2c'); gr.addColorStop(1, '#6a2a1e');
+      c.fillStyle = gr; c.fillRect(0, floorY, W, Hh - floorY);
+      c.fillStyle = 'rgba(255,240,220,0.9)'; H.rr(c, W * 0.06, A.y + A.h * 0.3, 6, A.h * 0.18, 3); c.fill();
+      gr = c.createRadialGradient(W * 0.06, A.y + A.h * 0.39, 0, W * 0.06, A.y + A.h * 0.39, W * 0.5); gr.addColorStop(0, 'rgba(255,250,230,0.3)'); gr.addColorStop(1, 'rgba(255,250,230,0)');
+      c.fillStyle = gr; c.fillRect(0, 0, W, floorY);
+      // the storeroom door frame
+      const D = S.G.door;
+      c.fillStyle = '#5a3a24'; c.fillRect(D.x - u * 1.4, D.y - u * 1.4, D.w + u * 2.8, D.h + u * 1.4);
+      c.fillStyle = '#2a1a14'; c.fillRect(D.x, D.y, D.w, D.h);
+      // flour sacks + a tin trunk beside it
+      for (let i = 0; i < 3; i++) { const sx = D.x + D.w + u * 3 + i * u * 7, sw = u * 7, sh = u * 9; c.fillStyle = '#d9c8a0'; H.rr(c, sx, floorY - sh, sw, sh, u * 2); c.fill(); c.fillStyle = '#b22b2b'; H.text(c, 'ATTA', sx + sw / 2, floorY - sh * 0.5, { font: 'osd', size: u * 2.2, color: '#b22b2b' }); }
+      c.fillStyle = '#7a8a9a'; c.fillRect(D.x - u * 16, floorY - u * 8, u * 13, u * 8); c.fillStyle = '#5a6a7a'; c.fillRect(D.x - u * 16, floorY - u * 8, u * 13, u * 1.4);
+      c.fillStyle = '#c8b070'; c.fillRect(D.x - u * 10, floorY - u * 6.4, u * 1.4, u * 1.6);
+      // a calendar
+      { const cx = W * 0.8, cy = A.y + A.h * 0.32; c.fillStyle = '#f4efe2'; c.fillRect(cx, cy, u * 9, u * 12); c.fillStyle = '#2a8c82'; c.fillRect(cx, cy, u * 9, u * 5); c.fillStyle = '#f2c230'; c.beginPath(); c.arc(cx + u * 4.5, cy + u * 2.5, u * 1.4, 0, TAU); c.fill(); c.fillStyle = 'rgba(40,30,30,0.45)'; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) c.fillRect(cx + u * (1 + j * 2), cy + u * (6.2 + i * 1.4), u * 1.3, u * 0.4); }
+    }
+    function drawDoorway(g, ctx, S) {
+      const W = g.W, Hh = g.H, A = g.area;
+      if (S.bgKey !== W + 'x' + Hh + ':' + g.dpr + ':' + A.h) paintDoorway(g, S);
+      ctx.drawImage(S.bg, 0, 0, W, Hh);
+      const G = S.G, u = G.u, D = G.door;
+      // warm light from inside when Immu answers / the door opens
+      const glow = Math.max(S.guideClap * 4, S.door);
+      // door leaves (they swing open as S.door rises)
+      const open = H.ease.out(S.door), lw = D.w / 2;
+      for (const side of [-1, 1]) {
+        const w = lw * (1 - open * 0.75), x = side < 0 ? D.x : D.x + D.w - w;
+        const gr = ctx.createLinearGradient(x, 0, x + w, 0);
+        gr.addColorStop(0, '#8a5a34'); gr.addColorStop(1, '#6a4024');
+        ctx.fillStyle = gr; ctx.fillRect(x, D.y, w, D.h);
+        ctx.strokeStyle = 'rgba(40,20,10,0.6)'; ctx.lineWidth = 2; ctx.strokeRect(x + 4, D.y + 6, w - 8, D.h * 0.42); ctx.strokeRect(x + 4, D.y + D.h * 0.5, w - 8, D.h * 0.45);
+      }
+      // the gap of light (and Immu's shadow moving in it when he claps)
+      const gapX = D.x + lw * (1 - open * 0.75), gapW = Math.max(3, D.w - 2 * lw * (1 - open * 0.75));
+      const gr = ctx.createLinearGradient(gapX, 0, gapX + gapW, 0);
+      gr.addColorStop(0, 'rgba(255,200,120,' + (0.35 + glow * 0.5) + ')'); gr.addColorStop(0.5, 'rgba(255,230,170,' + (0.55 + glow * 0.45) + ')'); gr.addColorStop(1, 'rgba(255,200,120,' + (0.35 + glow * 0.5) + ')');
+      ctx.fillStyle = gr; ctx.fillRect(gapX, D.y, gapW, D.h);
+      if (S.door > 0.2) personFront(ctx, D.x + D.w / 2, D.y + D.h, D.h * 0.6, { shirt: '#f4efe2', lower: '#2a8c82', skin: '#8a5a35' });
+      else if (S.guideClap > 0) { ctx.fillStyle = 'rgba(40,20,10,0.5)'; ctx.fillRect(gapX + gapW * 0.2, D.y + D.h * 0.3, gapW * 0.6, D.h * 0.5); }
+      // iron latch
+      if (S.door < 0.05) { ctx.fillStyle = '#3a3a40'; ctx.fillRect(D.x + D.w / 2 - u * 2, D.y + D.h * 0.48, u * 4, u * 1.2); }
+      // light spilling onto the floor
+      ctx.fillStyle = 'rgba(255,220,150,' + (0.08 + glow * 0.18) + ')';
+      ctx.beginPath(); ctx.moveTo(gapX, D.y + D.h); ctx.lineTo(gapX + gapW, D.y + D.h); ctx.lineTo(gapX + gapW + u * 10, Hh); ctx.lineTo(gapX - u * 10, Hh); ctx.fill();
+      // rings: the answer comes from the door, your claps from the front
+      for (const r of S.rings) {
+        const k = r.t / 1.2, cy = r.who === 'guide' ? D.y + D.h * 0.45 : A.y + A.h * 0.9;
+        ctx.strokeStyle = r.who === 'guide' ? 'rgba(255,230,170,' + (1 - k) * 0.6 + ')' : 'rgba(255,216,74,' + (1 - k) * 0.6 + ')';
+        ctx.lineWidth = Math.max(1.5, u * 0.5 * (1 - k));
+        ctx.beginPath(); ctx.ellipse(W / 2, cy, u * (3 + k * 30), u * (1.5 + k * 14), 0, 0, TAU); ctx.stroke();
+      }
+      drawLane(g, ctx, S);
+      // Chinnu, from behind, clapping at the door
+      const s = G.charS, fy = A.y + A.h * (g.portrait ? 0.97 : 1.0);
+      ctx.save(); ctx.translate(W / 2 + u * 6, fy); ctx.scale(s, s);
+      ctx.strokeStyle = '#a8703f'; ctx.lineWidth = 4.6; ctx.lineCap = 'round';
+      const k = S.kidClap > 0 ? 0 : 7;
+      ctx.beginPath(); ctx.moveTo(-8, -42); ctx.lineTo(-2 - k, -64); ctx.moveTo(8, -42); ctx.lineTo(2 + k, -64); ctx.stroke();
+      ctx.restore();
+      H.kidBack(ctx, W / 2 + u * 6, fy, s, { shirt: '#d8402a', stripes: '#f2c230', pants: '#3b4a6b' });
+      drawMsg(g, ctx, S);
     }
 
     MG.register(def);

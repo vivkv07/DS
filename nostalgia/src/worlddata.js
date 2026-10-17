@@ -690,7 +690,8 @@
   laneH('ln_lakshmi_h1', 'Lakshmi Nagar Main Street', 2600, 4490, 4885);
   lm('home', 'Home (Lakshmi Nivas)', 'home_house', 4580, 2645, 40, 34, 22, { face: 'n', terrace: true, sign: 'LAKSHMI NIVAS' });
   place('home', 'Home (Lakshmi Nivas, Lakshmi Nagar Colony)', 'home', 4580, 2619, 20);
-  place('home_terrace', 'Home terrace (kites, sleeping under the stars)', 'terrace', 4614, 2648, 12, { roof: 'home' });
+  // home_terrace is ON the roof (level 'home_terrace', see ROOF ZONES below); the stairs are home_stairs
+  place('home_terrace', 'Home terrace (kites, sleeping under the stars)', 'terrace', 4574, 2644, 12, { level: 'home_terrace', roof: 'home' });
   park('playground_home', 'Lakshmi Nagar colony ground', 'ground', [4656, 2616, 88, 90]);
   lm('playground_kit_home', 'Swings & slide', 'playground_kit', 4730, 2630, 18, 10, 14, { pad: 2 });
   place('playground_home', 'Lakshmi Nagar colony ground', 'playground', 4696, 2666, 34);
@@ -722,7 +723,8 @@
   S('std_2', 'std_booth', 'STD/ISD/PCO', 'STD ISD PCO', 'himayatnagar_rd', 0.71, 'R');
   S('internet_cafe_1', 'internet_cafe', 'Cyber Zone Browsing Centre', 'CYBER ZONE', 'ln_hyderguda_v1', 0.16, 'L', { fw: 32, fd: 22, draw: 'internet_cafe' });
   S('photo_studio_1', 'photo_studio', 'Raj Colour Lab & Studio', 'RAJ COLOUR LAB', 'himayatnagar_rd', 0.3, 'R');
-  S('irani_cafe_7', 'irani_cafe', 'Hotel Sarvar', 'HOTEL SARVAR', 'himayatnagar_rd', 0.93, 'R');
+  // Base café (bible §3.1): the sign reads Café Gulistan (invented; renamed from the map's "Hotel Sarvar")
+  S('irani_cafe_7', 'irani_cafe', 'Café Gulistan', 'CAFE GULISTAN', 'himayatnagar_rd', 0.93, 'R', { place: { std: true } });
   S('bus_stop_10', 'bus_stop', 'Himayatnagar bus stop', 'HIMAYATNAGAR', 'himayatnagar_rd', 0.52, 'L');
 
   // ---- Domalguda & Ashok Nagar (between Indira Park Road and Himayatnagar)
@@ -952,7 +954,6 @@
   S('meat_shop_4', 'meat_shop', 'Malakpet Mutton Shop', 'MUTTON SHOP', 'ln_malakpet_v1', 0.6, 'R');
   S('medical_shop_5', 'medical_shop', 'Malakpet Medicals', 'MEDICALS', 'malakpet_rd', 0.22, 'L');
   S('dosa_bandi_2', 'dosa_bandi', 'Dosa bandi', null, 'ln_malakpet_h1', 0.8, 'R');
-  S('banana_cart_8', 'banana_cart', 'Banana cart', null, 'malakpet_rd', 0.33, 'R');
   S('mosque_4', 'restaurant', 'Malakpet Masjid', null, 'ln_malakpet_v1', 0.45, 'L', { fw: 36, fd: 36, h: 36, draw: 'mosque', kind: 'mosque' });
   S('bakery_4', 'bakery', 'Malakpet Bakery', 'BAKERY', 'dabeerpura_rd', 0.8, 'R');
   S('bus_stop_12', 'bus_stop', 'Malakpet bus stop', 'MALAKPET', 'malakpet_rd', 0.2, 'L');
@@ -962,7 +963,10 @@
   laneV('ln_dilsukh_v2', 'Dilsukhnagar Street 2', 6450, 3930, 4380);
   laneH('ln_dilsukh_h1', 'Dilsukhnagar Colony Road', 4150, 5425, 6712);
   laneH('ln_dilsukh_h2', 'Chaitanyapuri Road', 4380, 5950, 6683);
-  for (let k = 0; k < 4; k++) shop('flower_cart_' + (5 + k), 'flower_cart', 'Flower cart (Sai Baba temple)', null, side('malakpet_rd', 0.6 + k * 0.011, 'R', 12));
+  // Sai Baba temple lane (west of the temple compound): rose-garland carts 5..8, the banana cart (bible M6)
+  laneV('ln_sai_temple', 'Sai Baba Temple Lane', 6212, 3944, 4150);
+  for (let k = 0; k < 4; k++) S('flower_cart_' + (5 + k), 'flower_cart', 'Flower cart (Sai Baba temple lane)', null, 'ln_sai_temple', 0.17 + k * 0.105, 'R', { sgap: 3 });
+  S('banana_cart_8', 'banana_cart', 'Banana cart (outside the Sai Baba temple lane)', null, 'ln_sai_temple', 0.62, 'R', { sgap: 3 });
   S('coconut_cart_6', 'coconut_cart', 'Tender coconut cart', null, 'malakpet_rd', 0.66, 'R', { sgap: 2 });
   park('school_11_ground', 'Dilsukhnagar school ground', 'ground', [5975, 3975, 150, 160]);
   site('school_11', 'Dilsukhnagar Public School', 'school', 6060, 4200, 80, 28, 28, 's', 'school', { gap: 60, r: 24, lm: { sign: 'DILSUKHNAGAR PUBLIC SCHOOL' } });
@@ -1183,6 +1187,93 @@
   alias('bonalu', 'ujjaini_mahankali_temple', 'festival', 'Lashkar Bonalu, Ujjaini Mahankali');
   alias('lumbini_boat', 'lumbini_jetty', 'jetty');
 
+  /* ============================================ STORY RECONCILE (story_bible §3.1-§3.2, §12; systems §15 #6) */
+  // Owner: world-reconcile agent. New ids the story needs, roof zones, podium junctions.
+  KIND.recording_centre = [30, 16, 22, 'video_parlour']; // no cassette-shop art yet: video_parlour + variant
+  KIND.electronics_shop = [30, 8, 14, 'video_parlour'];  // a bunk shop in the LB Stadium outer row
+  // Café Noor-e-Iran (Faramarz uncle, invented): west of the Charminar–Gulzar Houz road, facing east
+  // to the monument; not next to Nimrah Café's door. Teal, bentwood chairs, a storeroom one step down.
+  lm('irani_cafe_19', 'Café Noor-e-Iran', 'irani_cafe', 3844, 4196, 30, 32, 24, { face: 'e', sign: 'CAFE NOOR-E-IRAN', variant: 'noor_e_iran', era: 'invented' });
+  place('irani_cafe_19', 'Café Noor-e-Iran', 'irani_cafe', 3868, 4206, 18, { story: 'faramarz', std: false });
+  alias('cafe_noor_e_iran', 'irani_cafe_19', 'irani_cafe', 'Café Noor-e-Iran (Faramarz uncle)');
+  // Raag Recording Centre: "Recording Done Here" cassette shop at the Laad Bazaar mouth (C07, M12)
+  S('recording_centre_1', 'recording_centre', 'Raag Recording Centre', 'RAAG RECORDING', 'laad_bazaar', 0.15, 'R', { lm: { variant: 'recording', sign2: 'RECORDING DONE HERE' } });
+  // Vijaya TV & Radio: TV in the window, the World Cup final crowd on the footpath (M4)
+  lm('electronics_shop_1', 'Vijaya TV & Radio', 'video_parlour', 4004, 2696, 30, 8, 14, { face: 's', sign: 'VIJAYA TV & RADIO', variant: 'tv_radio' });
+  place('electronics_shop_1', 'Vijaya TV & Radio', 'electronics_shop', 4004, 2702, 18, { tvCrowd: true });
+  // Charminar first gallery: a camera-only viewpoint INSIDE the monument (no walkable floor)
+  place('charminar_gallery', 'Charminar first gallery (viewpoint)', 'viewpoint', 3900, 4360, 20, { virtual: true, h: 34, view: true, of: 'charminar' });
+  // two more colony grounds (systems §16 lists playground_1..16)
+  park('playground_15', 'Erragadda colony ground', 'ground', [2484, 638, 92, 54]);
+  lm('playground_kit_15', 'Swings & slide', 'playground_kit', 2562, 650, 18, 10, 14, { pad: 2 });
+  place('playground_15', 'Erragadda colony ground', 'playground', 2524, 666, 30);
+  park('playground_16', 'KPHB colony ground', 'ground', [1336, 162, 112, 54]);
+  lm('playground_kit_16', 'Swings & slide', 'playground_kit', 1436, 172, 18, 10, 14, { pad: 2 });
+  place('playground_16', 'KPHB colony ground', 'playground', 1384, 192, 30);
+  // coconut palms in colony compounds (registry round 2; Necklace Road has its own avenue)
+  for (const [x, y] of [[4556, 2618], [4626, 2614], [4600, 2618], [4784, 2626], [5120, 2585], [5842, 600], [6230, 4160], [6460, 3970],
+    [5000, 4390], [1704, 2918], [2412, 740], [3040, 2652]]) tree(x, y, 'coconut');
+
+  // ---- podium junctions: a traffic constable on a painted podium, 08:00-21:00 (systems §4.4, §11)
+  for (const id of ['rtc_x_roads', 'abids', 'koti', 'basheerbagh', 'liberty', 'khairatabad', 'lakdikapul', 'panjagutta', 'ameerpet', 'begumpet',
+    'ranigunj', 'masab_tank', 'mehdipatnam', 'malakpet', 'dilsukhnagar', 'jubilee_hills', 'tarnaka', 'tolichowki', 'erragadda']) if (PL[id]) PL[id].podium = true;
+  PL.rtc_x_roads.podiumHome = 'pochaiah'; // Havaldar Pochaiah's home podium
+
+  /* ============================================ ROOF ZONES (ARCHITECTURE §7 "Roof zones") */
+  // Walled terraces the player can walk on (no edges, no falls: parapet all round). Each roof:
+  //   {id, name, rect:[x,y,w,d] (footprint), h (floor height), building: landmark id whose top this
+  //    is (null = world.js builds a colony house under it), group, tags, solids: [[x,y,w,d]] (blocked
+  //    spots on the roof: stair room, tank), stairs: [{place, x, y (ground foot), tx, ty (landing on
+  //    the roof), face (wall with the door)}]}
+  // planks: {id, a, b (roof ids), rect:[x,y,w,d]} axis-aligned planked gaps with railings.
+  // Places on a roof carry `level: <roof id>`; stairs places carry `roof: <roof id>`.
+  D.roofs = []; D.planks = [];
+  const RF = {};
+  function roof(id, name, rect, h, o) {
+    const r = Object.assign({ id, name, rect, h, building: null, group: null, tags: [], solids: [], stairs: [] }, o || {});
+    D.roofs.push(r); RF[id] = r; return r;
+  }
+  function stairs(rid, pid, fx, fy, tx, ty, face) {
+    const r = RF[rid];
+    r.stairs.push({ place: pid, x: fx, y: fy, tx, ty, face });
+    place(pid, r.name + ': stairs', 'stairs', fx, fy, 10, { roof: rid });
+  }
+  const plank = (id, a, b, rect) => D.planks.push({ id, a, b, rect });
+  const LOOT = ['colony', 'lootna', 'antenna', 'candles'];
+  // Lakshmi Nagar Colony: home + five neighbours = the M1 lootna route (six walled terraces,
+  // planks with handrails): home -> t2 -> t3 -> t4 -> t5 -> t6, stairs down at t6 by the street.
+  roof('home_terrace', 'Home terrace (Lakshmi Nivas)', [4560, 2628, 40, 34], 22, { building: 'home', group: 'lakshmi_lootna', tags: ['home', 'kites'].concat(LOOT), solids: [[4590, 2652, 8, 8]], order: 1 });
+  roof('lakshmi_t2', "Reddy-garu's terrace", [4528, 2628, 24, 36], 20, { group: 'lakshmi_lootna', tags: LOOT, wall: '#e8b4b8', order: 2 });
+  roof('lakshmi_t3', "Sharma-ji's terrace", [4532, 2672, 28, 28], 22, { group: 'lakshmi_lootna', tags: LOOT, wall: '#a8d0c8', order: 3 });
+  roof('lakshmi_t4', "the Naidus' terrace", [4568, 2672, 24, 28], 25, { group: 'lakshmi_lootna', tags: LOOT, wall: '#f0d890', order: 4 });
+  roof('lakshmi_t5', "Pinto aunty's terrace", [4600, 2672, 24, 28], 21, { group: 'lakshmi_lootna', tags: LOOT, wall: '#b8c8e8', order: 5 });
+  roof('lakshmi_t6', "the corner house terrace", [4608, 2628, 20, 36], 23, { group: 'lakshmi_lootna', tags: LOOT, wall: '#f2c6a0', order: 6, lootnaEnd: true });
+  plank('plank_home_t2', 'home_terrace', 'lakshmi_t2', [4548, 2640, 16, 12]);
+  plank('plank_t2_t3', 'lakshmi_t2', 'lakshmi_t3', [4536, 2660, 12, 16]);
+  plank('plank_t3_t4', 'lakshmi_t3', 'lakshmi_t4', [4556, 2680, 16, 12]);
+  plank('plank_t4_t5', 'lakshmi_t4', 'lakshmi_t5', [4588, 2680, 16, 12]);
+  plank('plank_t5_t6', 'lakshmi_t5', 'lakshmi_t6', [4608, 2660, 12, 16]);
+  stairs('home_terrace', 'home_stairs', 4604, 2650, 4583, 2655, 'e');
+  stairs('lakshmi_t2', 'lakshmi_t2_stairs', 4540, 2622, 4540, 2637, 'n');
+  stairs('lakshmi_t3', 'lakshmi_t3_stairs', 4546, 2703, 4546, 2693, 's');
+  stairs('lakshmi_t4', 'lakshmi_t4_stairs', 4580, 2703, 4580, 2693, 's');
+  stairs('lakshmi_t5', 'lakshmi_t5_stairs', 4612, 2703, 4612, 2693, 's');
+  stairs('lakshmi_t6', 'lakshmi_t6_stairs', 4618, 2622, 4618, 2637, 'n');
+  // Immu's terrace across the colony ground (M1: "Immu on his own terrace across the ground")
+  roof('friend_terrace', "Immu's terrace", [4791, 2637, 34, 30], 22, { building: 'friend_home', group: 'lakshmi_friend', tags: ['friend', 'colony', 'antenna', 'candles'], solids: [[4815, 2657, 8, 8]] });
+  stairs('friend_terrace', 'friend_stairs', 4808, 2632, 4806, 2645, 'n');
+  // Ashok Nagar (near Cable Babji's kirana_3): antenna-job terraces
+  roof('ashok_t1', 'Ashok Nagar terrace (1)', [4700, 2244, 28, 28], 21, { group: 'ashok_nagar', tags: ['colony', 'antenna'], wall: '#d8b0d8' });
+  roof('ashok_t2', 'Ashok Nagar terrace (2)', [4736, 2244, 28, 28], 24, { group: 'ashok_nagar', tags: ['colony', 'antenna'], wall: '#c8e0a8' });
+  roof('ashok_t3', 'Ashok Nagar terrace (3)', [4736, 2280, 28, 28], 22, { group: 'ashok_nagar', tags: ['colony', 'antenna'], wall: '#f4d0c0' });
+  stairs('ashok_t1', 'ashok_t1_stairs', 4696, 2258, 4709, 2258, 'w');
+  stairs('ashok_t2', 'ashok_t2_stairs', 4750, 2240, 4750, 2253, 'n');
+  stairs('ashok_t3', 'ashok_t3_stairs', 4768, 2294, 4755, 2294, 'e');
+  // Patang Chacha's roof by the Char Kaman (bible §9.1: the kite train rises from here)
+  roof('patang_chacha_roof', "Patang Chacha's roof", [3984, 4136, 40, 32], 26, { group: 'gulzar_houz', tags: ['ending', 'kites', 'oldcity'], wall: '#e8d9b5', style: 'oldcity' });
+  stairs('patang_chacha_roof', 'patang_chacha_stairs', 4016, 4133, 4016, 4147, 'n');
+  place('patang_chacha_roof', "Patang Chacha's roof", 'terrace', 4002, 4156, 12, { level: 'patang_chacha_roof' });
+
   /* ============================================ COMPOUNDS around places of worship & palaces */
   // Paved / garden forecourts so generated houses keep a respectful distance and crowds
   // (Thursday at the Sai Baba temple, Bonalu, Christmas, Friday prayers) have room.
@@ -1215,10 +1306,60 @@
   compound('city_college', 10, 'grass'); compound('secretariat', 12, 'garden'); compound('kachiguda_station', 10, 'plaza');
   compound('nampally_station', 10, 'plaza'); compound('secunderabad_station', 6, 'plaza');
 
+  /* ============================================ RESPECT ZONES (bible §1.5 rule 3, systems §4.8) */
+  // Every temple / mosque / dargah / church / gurudwara / ashurkhana / tomb compound (the
+  // `<id>_compound` park, else the footprint + 6 u) plus a 30 u forecourt at its gate (the face
+  // side), and Charminar's interior (footprint only). src/seasons.js indexes these (N.respect.at)
+  // and adds procession paths at runtime. Zone: {id, name, kind, place, rects: [[x,y,w,h]],
+  // polys: [[[x,y]...]], lines: [{pts, r}], forecourt: [[x,y,w,h]], gate: {x, y}}.
+  D.respect = [];
+  {
+    const PK = {}; for (const p of D.parks) PK[p.id] = p;
+    const LM = {}; for (const l of D.landmarks) LM[l.id] = l;
+    const bb = (poly) => { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const q of poly) { x0 = Math.min(x0, q[0]); y0 = Math.min(y0, q[1]); x1 = Math.max(x1, q[0]); y1 = Math.max(y1, q[1]); } return [x0, y0, x1 - x0, y1 - y0]; };
+    const RK = { temple: 'temple', mahankali_temple: 'temple', sai_temple: 'temple', birla_mandir: 'temple', khairatabad_ganesh: 'temple',
+      mosque: 'mosque', spanish_mosque: 'mosque', mecca_masjid: 'mosque', dargah: 'dargah', church: 'church', gurudwara: 'gurudwara', ashurkhana: 'ashurkhana' };
+    const FC = 30; // forecourt depth
+    const zone = (id, kind, l, o) => {
+      o = o || {};
+      const cp = PK[id + '_compound'];
+      const core = o.rect || (cp ? bb(cp.poly) : [l.x - l.w / 2 - 6, l.y - l.d / 2 - 6, l.w + 12, l.d + 12]);
+      const rects = [core.map(Math.round)].concat(o.rects || []);
+      const p = PL[o.place || id];
+      const face = o.face || l.face || null;
+      const [x, y, w, h] = core;
+      let fc = [], gate = p ? { x: p.x, y: p.y } : { x: l.x, y: l.y };
+      if (o.forecourt !== false) {
+        if (face === 'n') { fc = [[x - 10, y - FC, w + 20, FC]]; gate = { x: x + w / 2, y }; }
+        else if (face === 's') { fc = [[x - 10, y + h, w + 20, FC]]; gate = { x: x + w / 2, y: y + h }; }
+        else if (face === 'w') { fc = [[x - FC, y - 10, FC, h + 20]]; gate = { x, y: y + h / 2 }; }
+        else if (face === 'e') { fc = [[x + w, y - 10, FC, h + 20]]; gate = { x: x + w, y: y + h / 2 }; }
+        else fc = [[x - FC, y - FC, w + FC * 2, FC], [x - FC, y + h, w + FC * 2, FC], [x - FC, y, FC, h], [x + w, y, FC, h]];
+      }
+      D.respect.push({ id, name: o.name || l.name, kind, place: p ? (p.alias || p.id) : null, rects, polys: o.polys || [], lines: o.lines || [], forecourt: fc.map((r) => r.map(Math.round)), gate: { x: Math.round(gate.x), y: Math.round(gate.y) } });
+    };
+    for (const l of D.landmarks) {
+      const k = RK[l.draw];
+      if (!k || l.id === 'mecca_masjid' || l.id === 'birla_mandir' || l.id === 'moula_ali_dargah') continue;
+      zone(l.id, k, l);
+    }
+    const mm = LM.mecca_masjid, cy = PK.mecca_masjid_courtyard;
+    zone('mecca_masjid', 'mosque', mm, { rects: cy ? [bb(cy.poly)] : [], face: 'e', rect: [mm.x - mm.w / 2 - 4, mm.y - mm.d / 2 - 4, mm.w + 8 + (cy ? bb(cy.poly)[2] : 0), mm.d + 8] });
+    const bm = LM.birla_mandir, steps = ROAD.birla_mandir_steps;
+    zone('birla_mandir', 'temple', bm, { lines: steps ? [{ pts: steps.pts, r: steps.w / 2 + 4 }] : [] });
+    const ma = LM.moula_ali_dargah, hill = PK.moula_ali_hill;
+    zone('moula_ali_dargah', 'dargah', ma, { polys: hill ? [hill.poly] : [] }); // no collectible on the hill (bible)
+    const ch = LM.charminar;
+    zone('charminar', 'charminar', ch, { rect: [ch.x - ch.w / 2, ch.y - ch.d / 2, ch.w, ch.d], forecourt: false, name: "Charminar (interior; the top-floor mosque)" });
+    const qs = PK.qutb_shahi_gardens;
+    if (qs) zone('qutb_shahi_tombs', 'tomb', { x: 925, y: 2810, w: 330, d: 300, name: 'Qutb Shahi Tombs', face: null }, { rect: bb(qs.poly), forecourt: false });
+    if (LM.paigah_tombs) zone('paigah_tombs', 'tomb', LM.paigah_tombs);
+  }
+
   /* ============================================ MISSION GIVER ANCHORS (one per district) */
   // Footpath spots where story NPCs can stand; the story decides who stands where.
   const G2 = (district, name, rid, t, s) => { const p = side(rid, t, s, -4); giver(district, name, p.x, p.y); };
-  G2('himayatnagar', 'Himayatnagar: outside Hotel Sarvar', 'himayatnagar_rd', 0.9, 'R');
+  G2('himayatnagar', 'Himayatnagar: outside Café Gulistan', 'himayatnagar_rd', 0.9, 'R');
   G2('rtc_x', 'RTC X Roads: under the film hoardings', 'indira_park_rd', 0.9, 'L');
   G2('koti', 'Koti: by the bus stand', 'koti_kachiguda_rd', 0.08, 'R');
   G2('abids', 'Abids: GPO corner', 'gunfoundry_rd', 0.12, 'R');
@@ -1333,7 +1474,7 @@
   ];
   for (const [x, y, k, r] of [[3830, 2010, 'palm'], [3935, 2015, 'palm'], [3600, 1960, 'coconut'], [3740, 1995, 'coconut'], [3640, 2690, 'banyan', 20],
     [3790, 2712, 'banyan', 16], [3620, 2530, 'banyan', 18], [4500, 1900, 'banyan', 20], [4560, 2020, 'gulmohar'], [4950, 880, 'banyan', 16],
-    [4585, 3360, 'banyan', 18], [4650, 3280, 'gulmohar'], [4662, 2700, 'neem', 12], [4540, 2690, 'coconut'], [4620, 2700, 'neem', 11],
+    [4585, 3360, 'banyan', 18], [4650, 3280, 'gulmohar'], [4662, 2700, 'neem', 12], [4620, 2712, 'neem', 11],
     [6300, 2160, 'banyan', 22], [6150, 1700, 'banyan', 20], [2880, 1812, 'palm'], [2950, 1812, 'palm'],
     [630, 500, 'coconut'], [720, 520, 'coconut'], [2560, 4800, 'banyan', 20], [2700, 4900, 'neem', 14]]) tree(x, y, k, r);
 
@@ -1404,6 +1545,7 @@
     if (l.noSolid || l.solids || l.w * l.d > 9000 || l.reserve) markRect(l.x - l.w / 2, l.y - l.d / 2, l.w, l.d, l.pad == null ? 4 : l.pad);
   }
   for (const b of D.buildings) markRect(b.rect[0], b.rect[1], b.rect[2], b.rect[3], 3);
+  for (const r of D.roofs) if (!r.building) markRect(r.rect[0], r.rect[1], r.rect[2], r.rect[3], 3);
   for (const p of D.places) if (p.kind === 'playground' || p.kind === 'park' || p.kind === 'home' || p.kind === 'terrace') markCircle(p.x, p.y, 12);
   for (const t of D.trees) markCircle(t.x, t.y, 5);
   // strict raster (all footprints + all places) for avenue trees and boulders

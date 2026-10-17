@@ -254,13 +254,31 @@
   ];
   const DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
   const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  // Story layer (systems §10.1, §10.5; bible §1.4/§12.2): the main story starts on Tue 14 Jan 2003.
+  // N.clock.day counts days since baseDate (N.calendar in storycore.js turns it into dates).
+  // loop = {from, to, n} is the elastic "week loop": after day `to` comes day `from` again (n counts
+  // the wraps); N.calendar sets it between missions. hold(reason, on) freezes the clock while any
+  // reason is held (shop menus, a mission step, a VHS date jump); `frozen` stays the manual switch.
   N.clock = {
     minutes: 17 * 60,     // 0..1440
     day: 0,               // days elapsed since the base date
     speed: 1,             // game minutes per real second
     frozen: false,
-    baseDate: [1999, 0, 14], // y, m (0-based), d — Thu 14 Jan 1999 (Sankranti kite season)
+    holds: new Set(),
+    loop: null,           // {from, to, n} elastic week loop (systems §10.5), or null
+    baseDate: [2003, 0, 14], // y, m (0-based), d — Tue 14 Jan 2003 (Sankranti, M1)
     set(h, m) { this.minutes = ((h * 60 + (m || 0)) % 1440 + 1440) % 1440; N.emit('clock:set', this.minutes); },
+    hold(reason, on) { if (on === false) this.holds.delete(reason); else this.holds.add(reason); return this.holds.size > 0; },
+    get held() { return this.frozen || this.holds.size > 0; },
+    /** Loop days [from..to] (inclusive) after midnight; null clears it. Returns the loop. */
+    setLoop(from, to) {
+      if (from == null || to == null || !isFinite(from) || !isFinite(to) || to < from) { this.loop = null; return null; }
+      const keep = this.loop && this.loop.from === (from | 0) && this.loop.to === (to | 0) ? this.loop.n : 0;
+      this.loop = { from: from | 0, to: to | 0, n: keep };
+      return this.loop;
+    },
+    /** True once the current loop window has wrapped at least once (the OSD shows ↻). */
+    get looping() { const L = this.loop; return !!(L && L.n > 0 && this.day >= L.from && this.day <= L.to); },
     hour() { return Math.floor(this.minutes / 60); },
     light() {
       const t = this.minutes;
@@ -282,13 +300,25 @@
       return DAYS[d.getUTCDay()] + ' ' + (dd < 10 ? '0' : '') + dd + ' ' + MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
     },
     label() { return util.fmtClock(this.minutes); },
-    update(dt) {
-      if (this.frozen) return;
-      this.minutes += dt * this.speed;
-      while (this.minutes >= 1440) { this.minutes -= 1440; this.day++; N.emit('clock:day', this.day); }
+    /** Midnight rollover: next day, or back to loop.from when the week loop is closing. */
+    nextDay() {
+      this.day++;
+      const L = this.loop;
+      if (L && this.day > L.to && this.day - 1 >= L.from) { this.day = L.from; L.n++; N.emit('clock:loop', { day: this.day, n: L.n }); }
+      N.emit('clock:day', this.day);
     },
-    serialize() { return { minutes: this.minutes, day: this.day }; },
-    deserialize(o) { if (o) { this.minutes = o.minutes || 0; this.day = o.day || 0; } },
+    update(dt) {
+      if (this.frozen || this.holds.size) return;
+      this.minutes += dt * this.speed;
+      while (this.minutes >= 1440) { this.minutes -= 1440; this.nextDay(); }
+    },
+    serialize() { return { minutes: this.minutes, day: this.day, loop: this.loop ? { from: this.loop.from, to: this.loop.to, n: this.loop.n } : null }; },
+    deserialize(o) {
+      if (!o) return;
+      this.minutes = o.minutes || 0; this.day = o.day || 0;
+      const L = o.loop;
+      this.loop = L && isFinite(L.from) && isFinite(L.to) && L.to >= L.from ? { from: L.from | 0, to: L.to | 0, n: Math.max(0, L.n | 0) } : null;
+    },
   };
   N.addSystem({
     id: 'clock', order: 5, runIn: ['play'],

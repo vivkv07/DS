@@ -126,8 +126,10 @@ const VARIANTS = [
         const big = Math.max(lm.w, lm.d);
         const f = lm.face || '';
         const ox = f === 'e' ? 1 : f === 'w' ? -1 : 0, oy = f === 's' ? 1 : f === 'n' ? -1 : 0;
-        const off = Math.min(140, big * 0.5 + 40) / zoom;
-        const cx = lm.x + ox * off + (ox || oy ? 0 : 30 / zoom), cy = lm.y + oy * off + (ox || oy ? 0 : 24 / zoom);
+        const depth = oy ? lm.d : lm.w;
+        const off = Math.min(60, depth * 0.5 + 12);
+        const cx = lm.x + ox * off + (ox || oy ? 0 : 10), cy = lm.y + oy * off + (ox || oy ? 0 : 8);
+        void big;
         const p = N.world.findFree(cx + 420, cy + 260, 'walk', 60) || { x: cx + 420, y: cy + 260 };
         N.player.teleport(p.x, p.y);
         R.camOverride = { x: cx, y: cy, zoom, snap: true };
@@ -139,7 +141,13 @@ const VARIANTS = [
       await page.screenshot({ path: path.join(OUT, name) });
       files.push([name, lm.id + (s.label ? ' [' + s.label + ']' : '') + ' ' + tag]);
       if (process.env.PERF) {
-        const ms = await page.evaluate(async () => { await new Promise((r) => setTimeout(r, 900)); const p = N.debug.perf(); return [p.drawMs, p.queued, (N.render.stats.ms.structures || 0).toFixed(2), (N.render.stats.ms.actors || 0).toFixed(2)]; });
+        const ms = await page.evaluate(async () => {
+          // average this module's own per-frame cost over ~40 frames
+          let sum = 0, n = 0;
+          await new Promise((r) => { const t = () => { const q = N.placesArt.perf(); sum += q.ms; n++; if (n < 40) requestAnimationFrame(t); else r(); }; requestAnimationFrame(t); });
+          const p = N.debug.perf();
+          return [p.drawMs, p.queued, (N.render.stats.ms.structures || 0).toFixed(2), (sum / n).toFixed(2)];
+        });
         perf.push([name, ms]);
       }
       process.stdout.write('.');
@@ -147,7 +155,7 @@ const VARIANTS = [
   }
   process.stdout.write('\n');
   await page.evaluate(() => { for (const k of Object.keys(N.placesArt.fx)) N.placesArt.fx[k] = null; });
-  if (perf.length) for (const [n, m] of perf) console.log('perf', n.padEnd(44), 'draw', m[0], 'ms  queued', m[1], ' structures', m[2], 'actors', m[3]);
+  if (perf.length) for (const [n, m] of perf) console.log('perf', n.padEnd(44), 'frame draw', m[0], 'ms  queued', m[1], ' structures layer', m[2], 'ms  places_art', m[3], 'ms');
   const st = await page.evaluate(() => N.debug.state());
   if (st.errors && st.errors.length) errs.push(...st.errors.map((e) => 'N.errors: ' + e));
 

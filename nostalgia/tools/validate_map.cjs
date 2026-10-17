@@ -65,6 +65,10 @@ const MUST = [
   'jntu_kukatpally', 'kphb_colony', 'malakpet_race_course', 'ashtalakshmi_temple', 'saroornagar_lake', 'karmanghat_hanuman_temple',
   'gaddiannaram_fruit_market', 'harina_vanasthali', 'chilkur_balaji', 'mrugavani_park', 'himayat_sagar', 'garden_cafe',
   'ganesh_immersion', 'bonalu',
+  // story bible §3 NEW ids + the story's map utility ids
+  'irani_cafe_19', 'cafe_noor_e_iran', 'recording_centre_1', 'electronics_shop_1', 'charminar_gallery', 'charminar_plaza', 'patang_bazaar',
+  'lumbini_jetty', 'state_museum', 'gandhi_statue_assembly', 'ganesh_immersion_point', 'chappal_bazar', 'golconda_sound_light', 'abids_book_market',
+  'home_stairs', 'patang_chacha_roof', 'kite_stall_*:3', 'playground_*:16',
   'school_*:6', 'kirana_*:12', 'banana_cart_*:8', 'flower_cart_*:8', 'stationery_*:6', 'pindi_girni_*:5', 'playground_*:8',
   'irani_cafe_*:10', 'rythu_bazaar_*:2', 'bus_stop_*:10', 'std_*:10', 'barber_*:6', 'cycle_rent_*:4', 'video_parlour_*:3',
   'bakery_*:3', 'chai_bandi_*:6', 'meat_shop_*:5', 'medical_shop_*:6', 'iyengar_bakery_*:3', 'samosa_bandi_*:5', 'dosa_bandi_*:5',
@@ -115,7 +119,7 @@ function validate(D, opts) {
   const seen = new Map();
   const uniq = (kind, list) => { for (const o of list || []) { if (!o.id) continue; const k = kind + ':' + o.id; if (seen.has(k)) E(`duplicate ${kind} id "${o.id}"`); seen.set(k, o); } };
   uniq('place', D.places); uniq('landmark', D.landmarks); uniq('road', D.roads); uniq('rail', D.rails); uniq('park', D.parks);
-  uniq('water', D.water); uniq('district', D.districts); uniq('building', D.buildings);
+  uniq('water', D.water); uniq('district', D.districts); uniq('building', D.buildings); uniq('roof', D.roofs); uniq('plank', D.planks);
   const placeIds = new Set((D.places || []).map((p) => p.id));
 
   // ---- must-haves
@@ -176,7 +180,7 @@ function validate(D, opts) {
       if (hitWater > 2 && !l.inWater) E(`landmark ${l.id} footprint covers ${hitWater} water cells`);
     }
   }
-  for (const b of D.buildings) {
+  for (const b of (D.buildings || []).concat((D.roofs || []).filter((r) => !r.building).map((r) => ({ id: 'roof ' + r.id, rect: r.rect })))) {
     let hit = 0; const [x, y, w, h] = b.rect;
     for (let j = Math.round(y / C); j < Math.round((y + h) / C); j++) for (let i = Math.round(x / C); i < Math.round((x + w) / C); i++) if (rr(j * GW + i) === 1 || rr(j * GW + i) === 2) hit++;
     if (hit > 2) E(`building ${b.id || b.rect} covers ${hit} road/water cells`);
@@ -191,8 +195,20 @@ function validate(D, opts) {
     if (ox > 2 && oy > 2 && !(A.over || B.over)) E(`landmarks overlap: ${A.id} / ${B.id}`);
   }
   // places
+  // roof zones (walkable terraces): footprints are solid at ground level; places with `level`
+  // must sit on a walkable roof cell (inside a roof, off its solids) instead
+  const roofOf = new Map((D.roofs || []).map((r) => [r.id, r]));
+  for (const r of D.roofs || []) if (!r.building) rect(r.rect[0], r.rect[1], r.rect[2], r.rect[3], 3);
   for (const p of D.places) {
-    if (p.inWater) continue;
+    if (p.inWater || p.virtual) continue;
+    if (p.level) {
+      const r = roofOf.get(p.level);
+      if (!r) { E(`place ${p.id} is on unknown roof ${p.level}`); continue; }
+      const [x, y, w, h] = r.rect;
+      if (p.x < x + 6 || p.y < y + 6 || p.x > x + w - 6 || p.y > y + h - 6) E(`place ${p.id} is not inside roof ${p.level}`);
+      for (const s of r.solids || []) if (p.x > s[0] - 4 && p.y > s[1] - 4 && p.x < s[0] + s[2] + 4 && p.y < s[1] + s[3] + 4) E(`place ${p.id} sits on a solid of roof ${p.level}`);
+      continue;
+    }
     const i = Math.floor(p.x / C), j = Math.floor(p.y / C); const v = g[j * GW + i];
     if (v === 2) E(`place ${p.id} is in water`);
     if (v === 3) E(`place ${p.id} @${p.x},${p.y} is inside a solid footprint`);

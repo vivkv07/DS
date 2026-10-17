@@ -3,6 +3,10 @@
  * (nodes at intersections, left-hand lanes), procedural generic buildings per district style,
  * trees, street lamps, Deccan boulders, the chunked ground painter and per-frame structure
  * enqueueing. Contract: ARCHITECTURE.md §7.
+ * Roof zones (world-reconcile agent): walkable walled terraces with stairs and planked gaps
+ * (WORLD_DATA.roofs / planks) -> N.world.roofs, N.player.level; podium junctions -> N.world.podiums.
+ * Interactables and offers carry a level (spec.level = roof id | 'roof' | 'ground' | '*'; by default
+ * the level of their point), see ARCHITECTURE §7 "Roof zones".
  */
 (() => {
   'use strict';
@@ -837,8 +841,8 @@
   };
   const isPalm = (kind) => kind === 'palm' || kind === 'coconut';
   const KIND_BY_STYLE = {
-    oldcity: ['neem', 'neem', 'neem', 'palm'], market: ['neem', 'neem', 'palm'], colony: ['neem', 'ashoka', 'palm', 'gulmohar', 'neem', 'palm'],
-    posh: ['palm', 'ashoka', 'gulmohar', 'palm', 'neem'], colonial: ['banyan', 'neem', 'ashoka', 'gulmohar'], cantonment: ['banyan', 'neem', 'gulmohar', 'neem'],
+    oldcity: ['neem', 'neem', 'neem', 'palm'], market: ['neem', 'neem', 'palm'], colony: ['neem', 'ashoka', 'coconut', 'gulmohar', 'neem', 'palm', 'coconut', 'mango'],
+    posh: ['palm', 'ashoka', 'gulmohar', 'coconut', 'neem'], colonial: ['banyan', 'neem', 'ashoka', 'gulmohar'], cantonment: ['banyan', 'neem', 'gulmohar', 'neem'],
     hitec: ['palm', 'neem'], rocky: ['neem', 'neem', 'palm'],
   };
   function makeTree(x, y, kind, r, seed) {
@@ -968,6 +972,8 @@
       solidRect(x, y, w, d);
       out.bldgs.push(b);
     }
+    // 6b. colony houses under the roof zones (walkable terraces, ARCHITECTURE §7)
+    buildRoofHouses(D, out, hrng);
     mark('7');
     // 7. procedural blocks
     for (const blk of D.blocks) {
@@ -1144,6 +1150,10 @@
     for (const lm of D.landmarks) addStructure({ t: 'landmark', lm, x0: lm.x - lm.w / 2 - 10, y0: lm.y - lm.d / 2 - 10, x1: lm.x + lm.w / 2 + 10, y1: lm.y + lm.d / 2 + 10, cx: lm.x, cy: lm.y });
 
     W.junctions = junctions;
+    // 15. roof zones (terraces, planks, stairs) and the podium junctions
+    try { buildRoofs(D); } catch (e) { N.err('world.roofs', e); }
+    try { buildPodiums(D); } catch (e) { N.err('world.podiums', e); }
+    try { setupRoofRuntime(); } catch (e) { N.err('world.roofsRuntime', e); }
     soil = null;
     prepPainter();
     N.render.setGroundPainter(paintGround);
@@ -2159,11 +2169,660 @@
       for (const p of s.parts) N.draw.dome(s.x + p[0], s.y + p[1], p[2], p[3], p[4], { fill: s.col, steps: 5 });
     },
     crane: drawCrane,
+    roofzone(ctx, s) { drawDeck(ctx, s.roof); },
+    podium(ctx, s) { drawPodium(ctx, s); },
     landmark(ctx, s) {
       // landmarks normally enqueue themselves via N.landmarks.enqueue; this is the fallback
       if (N.landmarks && N.landmarks.drawDefault) N.landmarks.drawDefault(s.lm);
     },
   };
+
+  /* ========================================================= roof zones */
+  // Walkable walled terraces (ARCHITECTURE §7 "Roof zones"; data: WORLD_DATA.roofs / planks).
+  // One extra surface grid (`roofGrid`, same size as the ground grid) holds every roof floor
+  // (PLAZA) and every plank (FOOTPATH); everything else is VOID. While an actor that is on a roof
+  // updates, `grid` is swapped to roofGrid, so collide / surfaceAt / isWalkable / findFree /
+  // raycast work on the roof level unchanged (no fall is possible: off the roof is VOID).
+  // The player (and any actor put on a roof with N.world.roofs.place) is drawn at the roof's
+  // height by the roof's own render-queue item, right after the building under it.
+  let roofGrid = null;
+  const roofCell = new Map();   // cell index -> {roof} | {plank}
+  const roofActors = new Set(); // actors currently on a roof (the player included)
+  const ROOF_IN = 2;            // walkable floor = footprint inset by the parapet (u)
+  const PARA_H = 3.6, PARA_T = 1.4;
+  const RF = (W.roofs = {
+    list: [], planks: [], byId: {},
+    /** roof object by id */
+    get(id) { return (id && RF.byId[id]) || null; },
+    /** {roof, plank, h} for a walkable roof/plank cell at (x, y), or null */
+    at(x, y) {
+      const i = Math.floor(x / CELL), j = Math.floor(y / CELL);
+      if (!(i >= 0 && j >= 0 && i < GW && j < GH)) return null;
+      const c = roofCell.get(j * GW + i);
+      if (!c) return null;
+      return { roof: c.roof || roofOfPlank(c.plank, x, y), plank: c.plank || null, h: heightOn(c, x, y) };
+    },
+    /** roof floor height at (x, y) (0 = not on a roof) */
+    heightAt(x, y) { const a = RF.at(x, y); return a ? a.h : 0; },
+    /** roofs in a group / with a tag ('colony', 'lootna', 'antenna', 'candles', 'kites', 'ending'...) */
+    byGroup(g) { return RF.list.filter((r) => r.group === g); },
+    byTag(t) { return RF.list.filter((r) => r.tags && r.tags.indexOf(t) >= 0); },
+    /** the lootna route in order (M1): home_terrace ... lakshmi_t6 */
+    route(group) { return RF.byGroup(group || 'lakshmi_lootna').sort((a, b) => (a.order || 0) - (b.order || 0)); },
+    /** which roof an actor stands on (id) or null */
+    onRoof(actor) { return (actor && actor.level) || null; },
+    /** Climb the stairs: put `actor` (default the player) on the landing of roof `id` (stair k). */
+    climb(id, k, actor, opts) { return climbRoof(RF.get(id), k || 0, actor || N.player, opts || {}); },
+    /** Go down: the actor leaves its roof by the nearest stairs (or to {x, y} on the ground). */
+    descend(actor, opts) { return descendRoof(actor || N.player, opts || {}); },
+    /** Put an actor (NPC) on a roof at (x, y) (default: the landing); it is drawn at roof height. */
+    place(actor, id, x, y) { return putOnRoof(actor, RF.get(id), x, y); },
+    /** Take an actor off its roof (to (x, y) on the ground, default the stairs foot). */
+    remove(actor, x, y) { return takeOffRoof(actor, x, y); },
+    /** Run fn with the world queries switched to the roof level (advanced). */
+    withRoof(fn) { return withRoofGrid(fn); },
+    actors: roofActors,
+    stats: { cells: 0 },
+  });
+
+  function roofOfPlank(p, x, y) {
+    if (!p) return null;
+    const t = plankT(p, x, y);
+    return t < 0.5 ? p.ra : p.rb;
+  }
+  // 0 at the `a` end, 1 at the `b` end of a plank
+  function plankT(p, x, y) {
+    const [px, py, pw, pd] = p.rect;
+    const t = p.horiz ? (x - px) / pw : (y - py) / pd;
+    const tt = t < 0 ? 0 : t > 1 ? 1 : t;
+    return p.aFirst ? tt : 1 - tt;
+  }
+  function heightOn(c, x, y) {
+    if (c.roof) return c.roof.h;
+    const p = c.plank, t = plankT(p, x, y);
+    return p.ra.h + (p.rb.h - p.ra.h) * t;
+  }
+  function withRoofGrid(fn) {
+    if (!roofGrid) return fn();
+    const g = grid;
+    grid = roofGrid;
+    try { return fn(); } finally { grid = g; }
+  }
+  W.withRoof = withRoofGrid;
+
+  // ---- build: colony houses under data roofs (before the block filler), then the roof grid
+  function buildRoofHouses(D, out, rng) {
+    for (const r of D.roofs || []) {
+      if (r.building) continue;
+      const [x, y, w, d] = r.rect;
+      const dist = W.districtAt(x + w / 2, y + d / 2);
+      const style = r.style || (dist && dist.style === 'oldcity' ? 'oldcity' : 'colony');
+      const b = newBuilding(x, y, w, d, r.h, STY[style] ? style : 'colony', rng, { items: [{ t: 'stain', x: x + w * 0.3, y: y + d * 0.6, r: 3 }, { t: 'stain', x: x + w * 0.7, y: y + d * 0.3, r: 2.5 }], parapet: 0, roofZone: r.id });
+      if (r.wall) b.wall = r.wall;
+      b.roof = r.floor || '#cdbfa6';
+      b.trim = U.shade(b.wall, 1.12);
+      b.front = (r.stairs && r.stairs[0] && r.stairs[0].face || 's').toUpperCase();
+      b.gf = 'door';
+      solidRect(x, y, w, d);
+      out.bldgs.push(b);
+      r._bldg = b;
+    }
+  }
+  function buildRoofs(D) {
+    RF.list = []; RF.planks = []; RF.byId = {};
+    roofCell.clear(); roofActors.clear();
+    const roofs = D.roofs || [];
+    if (!roofs.length) { roofGrid = null; return; }
+    if (!roofGrid || roofGrid.length !== GW * GH) roofGrid = new Uint8Array(GW * GH);
+    roofGrid.fill(S.VOID);
+    const LM = {}; for (const l of D.landmarks) LM[l.id] = l;
+    const cellRect = (x0, y0, x1, y1, fn) => { // cells fully inside [x0,x1]x[y0,y1]
+      const i0 = Math.ceil(x0 / CELL), i1 = Math.floor(x1 / CELL) - 1, j0 = Math.ceil(y0 / CELL), j1 = Math.floor(y1 / CELL) - 1;
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (i >= 0 && j >= 0 && i < GW && j < GH) fn(j * GW + i, i, j);
+    };
+    const cellTouch = (x0, y0, x1, y1, fn) => { // cells touching the rect
+      const i0 = Math.floor(x0 / CELL), i1 = Math.ceil(x1 / CELL) - 1, j0 = Math.floor(y0 / CELL), j1 = Math.ceil(y1 / CELL) - 1;
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (i >= 0 && j >= 0 && i < GW && j < GH) fn(j * GW + i, i, j);
+    };
+    for (const src of roofs) {
+      const r = Object.assign({}, src);
+      r.data = src;
+      const [x, y, w, d] = r.rect;
+      r.x = x; r.y = y; r.w = w; r.d = d; r.cx = x + w / 2; r.cy = y + d / 2;
+      const lm = r.building ? LM[r.building] : null;
+      r.lm = lm || null;
+      // sort key reference = whatever draws the building under the roof (same distKey)
+      if (lm) { r.kx = lm.x; r.ky = lm.y; } else if (src._bldg) { r.kx = src._bldg.cx; r.ky = src._bldg.cy; r.bldg = src._bldg; } else { r.kx = r.cx; r.ky = r.cy; }
+      r.solids = (src.solids || []).map((s) => s.slice());
+      r.stairs = (src.stairs || []).map((s) => Object.assign({}, s));
+      r.items = [];
+      if (!lm) planRoofItems(r);
+      else r.antenna = { x: x + 5, y: y + 5, h: 12, a: 0.7 }; // places_art's home_house layout (approx.)
+      for (const s of r.solids) r.items.push({ t: 'solid', s });
+      RF.list.push(r); RF.byId[r.id] = r;
+      cellRect(x + ROOF_IN, y + ROOF_IN, x + w - ROOF_IN, y + d - ROOF_IN, (o) => { roofGrid[o] = S.PLAZA; roofCell.set(o, { roof: r }); });
+    }
+    for (const r of RF.list) for (const s of r.solids) cellTouch(s[0], s[1], s[0] + s[2], s[1] + s[3], (o) => { if (roofCell.has(o) && roofCell.get(o).roof === r) { roofGrid[o] = S.VOID; roofCell.delete(o); } });
+    for (const src of D.planks || []) {
+      const ra = RF.byId[src.a], rb = RF.byId[src.b];
+      if (!ra || !rb) continue;
+      const [px, py, pw, pd] = src.rect;
+      const horiz = pw >= pd;
+      const p = { id: src.id, a: src.a, b: src.b, ra, rb, rect: src.rect.slice(), horiz, data: src };
+      p.aFirst = horiz ? ra.cx < rb.cx : ra.cy < rb.cy;
+      p.cx = px + pw / 2; p.cy = py + pd / 2;
+      RF.planks.push(p);
+      (ra.planks || (ra.planks = [])).push(p); (rb.planks || (rb.planks = [])).push(p);
+      cellRect(px, py, px + pw, py + pd, (o) => { const c = roofCell.get(o); if (c && c.roof) return; roofGrid[o] = S.FOOTPATH; roofCell.set(o, { plank: p }); });
+    }
+    // landings are always walkable (nudge to the nearest roof cell of that roof)
+    for (const r of RF.list) {
+      for (const s of r.stairs) {
+        const c = RF.at(s.tx, s.ty);
+        if (!c || c.roof !== r) {
+          let best = null, bd = Infinity;
+          for (const [o, cc] of roofCell) {
+            if (cc.roof !== r) continue;
+            const cx = (o % GW + 0.5) * CELL, cy = (Math.floor(o / GW) + 0.5) * CELL, dd = (cx - s.tx) ** 2 + (cy - s.ty) ** 2;
+            if (dd < bd) { bd = dd; best = [cx, cy]; }
+          }
+          if (best) { s.tx = best[0]; s.ty = best[1]; }
+        }
+      }
+      r.door = r.stairs[0] || null;
+    }
+    RF.stats.cells = roofCell.size;
+    // places on roofs: copy the level onto N.places entries (core keeps only the basic fields)
+    for (const p of D.places) {
+      if (!N.places[p.id]) continue;
+      if (p.level) N.places[p.id].level = p.level;
+      if (p.roof) N.places[p.id].roof = p.roof;
+      if (p.podium) N.places[p.id].podium = true;
+      if (p.virtual) N.places[p.id].virtual = true;
+    }
+    for (const r of RF.list) addStructure({ t: 'roofzone', roof: r, x0: r.x - 12, y0: r.y - 12, x1: r.x + r.w + 12, y1: r.y + r.d + 12, cx: r.kx, cy: r.ky });
+  }
+  // Generated colony-house terrace: stair room (mumty) by the first stairs, Sintex tank on it,
+  // TV antenna in the far corner, a clothesline, sometimes a cot or chillies drying.
+  function planRoofItems(r) {
+    const { x, y, w, d } = r;
+    const rng = U.rng('roof:' + r.id);
+    const st = r.stairs[0];
+    const M = 8;
+    if (st) {
+      const f = st.face;
+      let mx, my, door;
+      const cl = (v, a, b) => (v < a ? a : v > b ? b : v);
+      if (f === 'n' || f === 's') { mx = cl(st.x - M / 2, x + 2, x + w - 2 - M); my = f === 'n' ? y + 2 : y + d - 2 - M; door = f === 'n' ? 's' : 'n'; }
+      else { my = cl(st.y - M / 2, y + 2, y + d - 2 - M); mx = f === 'w' ? x + 2 : x + w - 2 - M; door = f === 'w' ? 'e' : 'w'; }
+      r.mumty = { x: mx, y: my, w: M, d: M, h: 8, door };
+      r.solids.push([mx, my, M, M]);
+      // landing in front of the stair-room door
+      if (door === 's') { st.tx = mx + M / 2; st.ty = my + M + 4; }
+      else if (door === 'n') { st.tx = mx + M / 2; st.ty = my - 4; }
+      else if (door === 'e') { st.tx = mx + M + 4; st.ty = my + M / 2; }
+      else { st.tx = mx - 4; st.ty = my + M / 2; }
+      r.tank = { x: mx + M / 2, y: my + M / 2, r: 2.3, on: true };
+    }
+    // antenna in the corner farthest from the stair room
+    const corners = [[x + 4, y + 4], [x + w - 4, y + 4], [x + 4, y + d - 4], [x + w - 4, y + d - 4]];
+    let far = corners[0], fd = -1;
+    for (const c of corners) { const dd = r.mumty ? (c[0] - r.mumty.x - 4) ** 2 + (c[1] - r.mumty.y - 4) ** 2 : rng.next(); if (dd > fd) { fd = dd; far = c; } }
+    r.antenna = { x: far[0], y: far[1], h: 10 + rng.next() * 3, a: rng.next() * Math.PI };
+    // clothesline across the long side, clear of the stair room
+    const horiz = w >= d;
+    const cl = [];
+    const L = horiz ? w - 8 : d - 8;
+    for (let u = 2; u < L - 2; u += 2.4 + rng.next() * 1.6) if (rng.next() < 0.75) cl.push([u / L, CLOTHES[(rng.next() * CLOTHES.length) | 0], 1.4 + rng.next() * 1.6]);
+    if (horiz) { const ly = r.mumty && r.mumty.y < y + d / 2 ? y + d * 0.68 : y + d * 0.34; r.line = { x0: x + 4, y0: ly, x1: x + w - 4, y1: ly, cl }; }
+    else { const lx = r.mumty && r.mumty.x < x + w / 2 ? x + w * 0.68 : x + w * 0.34; r.line = { x0: lx, y0: y + 4, x1: lx, y1: y + d - 4, cl }; }
+    if (rng.next() < 0.35 && w * d > 700) r.chilli = { x: x + w * 0.3, y: y + d * 0.42, w: 6, d: 3.4 };
+    if (r.tags && r.tags.indexOf('kites') >= 0) r.kites = { x: x + w * 0.62, y: y + d * 0.55 };
+  }
+
+  // ---- actors on roofs
+  function setLevel(actor, roof, silent) {
+    const prev = actor.level || null, next = roof ? roof.id : null;
+    if (prev === next) return;
+    actor.level = next;
+    if (next) {
+      roofActors.add(actor);
+      if (!actor._roofNC) { actor._roofNC = true; actor._roofNCWas = !!actor.noCollide; actor.noCollide = true; }
+    } else {
+      roofActors.delete(actor);
+      if (actor._roofNC) { actor._roofNC = false; actor.noCollide = actor._roofNCWas || false; actor._roofOn = null; }
+    }
+    if (silent) return;
+    const pr = prev ? RF.byId[prev] : null;
+    if (pr) N.emit('roof:exit', { roof: pr, id: prev, actor });
+    if (roof) N.emit('roof:enter', { roof, id: next, actor });
+    if (actor === N.player) N.emit('player:level', { level: next, prev });
+  }
+  function afterRoofMove(actor) {
+    const i = Math.floor(actor.x / CELL), j = Math.floor(actor.y / CELL);
+    const c = i >= 0 && j >= 0 && i < GW && j < GH ? roofCell.get(j * GW + i) : null;
+    if (!c) { // never step off a roof: back to the last good roof spot
+      if (isFinite(actor._roofX)) { actor.x = actor._roofX; actor.y = actor._roofY; } else if (actor.level) takeOffRoof(actor);
+      actor.vx = actor.vy = 0;
+      return;
+    }
+    actor._roofX = actor.x; actor._roofY = actor.y; actor._roofOn = c;
+    const r = c.roof || roofOfPlank(c.plank, actor.x, actor.y);
+    if (r && r.id !== actor.level) setLevel(actor, r);
+  }
+  function putOnRoof(actor, roof, x, y) {
+    if (!actor || !roof) return false;
+    const st = roof.stairs[0];
+    if (x == null || !isFinite(x)) { x = st ? st.tx : roof.cx; y = st ? st.ty : roof.cy; }
+    let a = RF.at(x, y);
+    if (!a) { // nearest roof cell of that roof
+      const f = withRoofGrid(() => W.findFree(x, y, 'walk', 12));
+      if (f) { x = f.x; y = f.y; a = RF.at(x, y); }
+    }
+    if (!a) return false;
+    if (actor.vehicle && N.vehicles && N.vehicles.exit) { try { N.vehicles.exit(actor, true); } catch (e) { N.err('roofs.exit', e); } }
+    hookActor(actor);
+    actor.x = x; actor.y = y; actor.vx = 0; actor.vy = 0;
+    actor._roofX = x; actor._roofY = y; actor.goodX = x; actor.goodY = y;
+    setLevel(actor, a.roof);
+    actor._roofOn = roofCell.get(Math.floor(y / CELL) * GW + Math.floor(x / CELL)) || null;
+    return true;
+  }
+  function takeOffRoof(actor, x, y) {
+    if (!actor) return false;
+    const r = actor.level ? RF.byId[actor.level] : null;
+    if (x == null || !isFinite(x)) {
+      let best = null, bd = Infinity;
+      const all = r ? r.stairs : [];
+      for (const s of all) { const dd = (s.tx - actor.x) ** 2 + (s.ty - actor.y) ** 2; if (dd < bd) { bd = dd; best = s; } }
+      if (best) { x = best.x; y = best.y; } else { x = actor.x; y = actor.y; }
+    }
+    setLevel(actor, null);
+    if (!W.isWalkable(x, y)) { const f = W.findFree(x, y, 'walk', 60); if (f) { x = f.x; y = f.y; } }
+    actor.x = x; actor.y = y; actor.vx = 0; actor.vy = 0; actor.goodX = x; actor.goodY = y;
+    return true;
+  }
+  // wrap an actor's update/draw once so it works on the roof level
+  function hookActor(a) {
+    if (!a || a._roofHooked) return;
+    a._roofHooked = true;
+    if (a.level === undefined) a.level = null;
+    const upd = a.update, drw = a.draw;
+    a.update = function (dt) {
+      if (!this.level) return upd.call(this, dt);
+      if (this.vehicle) { setLevel(this, null); return upd.call(this, dt); }
+      withRoofGrid(() => upd.call(this, dt));
+      afterRoofMove(this);
+    };
+    a.draw = function () {
+      if (this.level && !this.vehicle) return; // drawn by its roof's render-queue item
+      return drw.call(this);
+    };
+  }
+  function installPlayerHooks() {
+    const p = N.player;
+    if (!p || p._roofPlayerHooks) return;
+    p._roofPlayerHooks = true;
+    hookActor(p);
+    const tp = p.teleport, rst = p.reset, ser = p.serialize, des = p.deserialize;
+    /** teleport(x, y, {ground}) — a point on a roof puts the player on that roof */
+    p.teleport = function (x, y, opts) {
+      const a = isFinite(x) && isFinite(y) && !(opts && opts.ground) ? RF.at(x, y) : null;
+      if (a) {
+        if (this.vehicle && N.vehicles && N.vehicles.exit) { try { N.vehicles.exit(this, true); } catch (e) { N.err('teleport.exit', e); } }
+        this.vehicle = null; this.mode = 'foot';
+        putOnRoof(this, a.roof, x, y);
+        N.render.snapCamera(); N.render.warmChunks(x, y, 500);
+        N.emit('player:teleport', { x, y, level: this.level });
+        return;
+      }
+      if (this.level) setLevel(this, null);
+      return tp.call(this, x, y, opts);
+    };
+    p.reset = function () { if (this.level) setLevel(this, null, true); return rst.apply(this, arguments); };
+    if (ser) p.serialize = function () { const o = ser.apply(this, arguments); if (o && this.level) o.level = this.level; return o; };
+    if (des) p.deserialize = function (o) {
+      if (this.level) setLevel(this, null, true);
+      const r = des.apply(this, arguments);
+      if (o && o.level && RF.byId[o.level]) putOnRoof(this, RF.byId[o.level], this.x, this.y);
+      return r;
+    };
+  }
+
+  // ---- stairs: interactables + the little fade
+  const fade = { t: 0, dur: 0, cb: null, done: false, actor: null };
+  function climbRoof(roof, k, actor, opts) {
+    if (!roof || !actor) return false;
+    const st = roof.stairs[k] || roof.stairs[0];
+    const go = () => {
+      if (!putOnRoof(actor, roof, st ? st.tx : null, st ? st.ty : null)) return;
+      if (actor === N.player) { N.render.snapCamera(); N.emit('door', { kind: 'wood', x: actor.x, y: actor.y }); }
+      N.emit('roof:climb', { roof, id: roof.id, actor });
+    };
+    if (opts.instant || actor !== N.player || !N.state.is('play')) { go(); return true; }
+    startFade(actor, go);
+    return true;
+  }
+  function descendRoof(actor, opts) {
+    if (!actor || !actor.level) return false;
+    const roof = RF.byId[actor.level];
+    const go = () => {
+      takeOffRoof(actor, opts.x, opts.y);
+      if (actor === N.player) { N.render.snapCamera(); N.emit('door', { kind: 'wood', x: actor.x, y: actor.y }); }
+      N.emit('roof:descend', { roof, id: roof && roof.id, actor });
+    };
+    if (opts.instant || actor !== N.player || !N.state.is('play')) { go(); return true; }
+    startFade(actor, go);
+    return true;
+  }
+  function startFade(actor, cb) {
+    if (fade.cb) { try { fade.cb(); } catch (e) { N.err('roofs.fade', e); } }
+    fade.t = 0; fade.dur = 0.42; fade.cb = cb; fade.done = false; fade.actor = actor;
+    actor._roofLockWas = actor.controlsLocked; actor.controlsLocked = true;
+  }
+  function tickFade(dt) {
+    if (!fade.cb && !fade.done) return;
+    fade.t += dt;
+    const half = fade.dur / 2;
+    if (!fade.done && fade.t >= half) { const cb = fade.cb; fade.cb = null; fade.done = true; try { cb(); } catch (e) { N.err('roofs.fade', e); } }
+    const a = fade.t < half ? fade.t / half : Math.max(0, 1 - (fade.t - half) / half);
+    N.render.fx.fade = Math.max(0, Math.min(0.85, a * 0.85));
+    if (fade.t >= fade.dur) {
+      N.render.fx.fade = 0; fade.done = false;
+      if (fade.actor) { fade.actor.controlsLocked = !!fade.actor._roofLockWas; fade.actor = null; }
+    }
+  }
+  function addStairInteractables() {
+    const I = N.interact;
+    if (!I || !I.add) return;
+    for (const r of RF.list) {
+      r.stairs.forEach((s, k) => {
+        const up = r.upLabel || (r.id === 'home_terrace' ? 'Go up to the terrace' : r.id === 'friend_terrace' ? "Up to Immu's terrace" : 'Climb to the terrace');
+        I.add('roof:' + r.id + ':up:' + k, { x: s.x, y: s.y, r: 12, priority: 2, level: 'ground', label: up, use: () => climbRoof(r, k, N.player, {}) });
+        I.add('roof:' + r.id + ':down:' + k, { x: s.tx, y: s.ty, r: 11, priority: 2, level: r.id, label: 'Go downstairs', use: () => descendRoof(N.player, { x: s.x, y: s.y }) });
+      });
+    }
+  }
+  // interactables / offers know their level: spec.level = '<roof id>' | 'roof' | 'ground' | '*';
+  // without one, a registered spec is on the level of its point (a roof cell = that roof)
+  function levelOK(spec, p) {
+    const pl = (p && p.level) || null;
+    const lv = spec.level;
+    if (lv === '*') return true;
+    if (lv === 'ground') return !pl;
+    if (lv === 'roof') return !!pl;
+    if (lv) return pl === lv;
+    const e = spec.entity;
+    if (e) return (e.level || null) === pl;
+    if (spec.x == null || spec.y == null) return true;
+    return RF.at(spec.x, spec.y) ? !!pl : !pl;
+  }
+  function installInteractLevels() {
+    const I = N.interact;
+    if (!I || I._levels) return;
+    I._levels = true;
+    const add = I.add, offer = I.offer;
+    I.add = function (id, spec) {
+      if (spec && typeof spec === 'object' && !spec._lv) {
+        spec._lv = true;
+        const en = spec.enabled;
+        spec.enabled = function (p) { if (!levelOK(spec, p)) return false; return en ? en.call(this, p) : true; };
+      }
+      return add.call(this, id, spec);
+    };
+    I.offer = function (spec) {
+      const p = N.player, pl = p && p.level;
+      if (spec) {
+        const lv = spec.level;
+        if (pl) { if (!(lv === '*' || lv === 'roof' || lv === pl || (spec.priority || 0) >= 5)) return; }
+        else if (lv && lv !== '*' && lv !== 'ground') return;
+      }
+      return offer.call(this, spec);
+    };
+    I.levelOK = levelOK;
+  }
+
+  // ---- drawing
+  const deckQ = [];
+  // project helper (screen coords at height h)
+  function P(x, y, h) { const R = N.render, k = R.k(h); return [R.sx(x, k), R.sy(y, k)]; }
+  function drawParapet(ctx, r) {
+    const D = N.draw, h = r.h, t = PARA_T, top = h + PARA_H;
+    const col = r.bldg ? r.bldg.trim : r.lm ? '#efe6d2' : '#e8dcc6';
+    const st = r._pst || (r._pst = { wall: col, roof: N.render.shaded(col, 1.08) });
+    // gaps where planks rest on the parapet
+    const gaps = { N: [], S: [], W: [], E: [] };
+    for (const p of r.planks || []) {
+      const [px, py, pw, pd] = p.rect;
+      if (p.horiz) { if (px < r.x + 1 && px + pw > r.x - 1) gaps.W.push([py, py + pd]); if (px < r.x + r.w + 1 && px + pw > r.x + r.w - 1) gaps.E.push([py, py + pd]); }
+      else { if (py < r.y + 1 && py + pd > r.y - 1) gaps.N.push([px, px + pw]); if (py < r.y + r.d + 1 && py + pd > r.y + r.d - 1) gaps.S.push([px, px + pw]); }
+    }
+    const seg = (a0, a1, list, fn) => {
+      let s = a0;
+      for (const g of list.sort((u, v) => u[0] - v[0])) { if (g[0] > s) fn(s, Math.min(g[0], a1)); s = Math.max(s, g[1]); }
+      if (s < a1) fn(s, a1);
+    };
+    const R = N.render;
+    // far walls first (inner faces visible), near walls last
+    const walls = [
+      ['N', r.cy - R.camY], ['S', R.camY - r.cy], ['W', r.cx - R.camX], ['E', R.camX - r.cx],
+    ].sort((a, b) => b[1] - a[1]);
+    for (const [f] of walls) {
+      if (f === 'N') seg(r.x, r.x + r.w, gaps.N, (a, b) => D.box(a, r.y, b - a, t, h, top, st));
+      else if (f === 'S') seg(r.x, r.x + r.w, gaps.S, (a, b) => D.box(a, r.y + r.d - t, b - a, t, h, top, st));
+      else if (f === 'W') seg(r.y, r.y + r.d, gaps.W, (a, b) => D.box(r.x, a, t, b - a, h, top, st));
+      else seg(r.y, r.y + r.d, gaps.E, (a, b) => D.box(r.x + r.w - t, a, t, b - a, h, top, st));
+    }
+  }
+  function drawStairDoor(ctx, r, s) {
+    const R = N.render, f = s.face;
+    // the wall must face the camera
+    if (f === 'n' && !(R.camY < r.y)) return; if (f === 's' && !(R.camY > r.y + r.d)) return;
+    if (f === 'w' && !(R.camX < r.x)) return; if (f === 'e' && !(R.camX > r.x + r.w)) return;
+    const hw = 2.6, hh = 8.4;
+    let a, b;
+    if (f === 'n') { a = [s.x - hw, r.y]; b = [s.x + hw, r.y]; } else if (f === 's') { a = [s.x - hw, r.y + r.d]; b = [s.x + hw, r.y + r.d]; }
+    else if (f === 'w') { a = [r.x, s.y - hw]; b = [r.x, s.y + hw]; } else { a = [r.x + r.w, s.y - hw]; b = [r.x + r.w, s.y + hw]; }
+    ctx.beginPath(); N.draw.quadPath(ctx, a[0], a[1], b[0], b[1], 0, hh + 0.8); ctx.fillStyle = '#efe6d4'; ctx.fill();
+    const ix = (b[0] - a[0]) * 0.12, iy = (b[1] - a[1]) * 0.12;
+    ctx.beginPath(); N.draw.quadPath(ctx, a[0] + ix, a[1] + iy, b[0] - ix, b[1] - iy, 0, hh); ctx.fillStyle = '#6a4228'; ctx.fill();
+    // a small step
+    ctx.beginPath(); N.draw.quadPath(ctx, a[0] - ix, a[1] - iy, b[0] + ix, b[1] + iy, 0, 0.9); ctx.fillStyle = '#9a9088'; ctx.fill();
+  }
+  function drawMumty(r) {
+    const m = r.mumty, D = N.draw, R = N.render, h = r.h;
+    const wall = r.bldg ? r.bldg.wall : '#e8dcc6';
+    D.box(m.x, m.y, m.w, m.d, h, h + m.h, r._mst || (r._mst = { wall, roof: R.shaded('#cdbfa6', 0.95) }));
+    // the door on the landing side
+    const ctx = R.ctx, dw = 2.4;
+    let a, b, vis;
+    if (m.door === 's') { a = [m.x + m.w / 2 - dw, m.y + m.d]; b = [m.x + m.w / 2 + dw, m.y + m.d]; vis = R.camY > m.y + m.d; }
+    else if (m.door === 'n') { a = [m.x + m.w / 2 - dw, m.y]; b = [m.x + m.w / 2 + dw, m.y]; vis = R.camY < m.y; }
+    else if (m.door === 'e') { a = [m.x + m.w, m.y + m.d / 2 - dw]; b = [m.x + m.w, m.y + m.d / 2 + dw]; vis = R.camX > m.x + m.w; }
+    else { a = [m.x, m.y + m.d / 2 - dw]; b = [m.x, m.y + m.d / 2 + dw]; vis = R.camX < m.x; }
+    if (vis) { ctx.beginPath(); N.draw.quadPath(ctx, a[0], a[1], b[0], b[1], h, h + 6.5); ctx.fillStyle = '#5a3a28'; ctx.fill(); }
+    if (r.tank) { // Sintex drum on the stair room
+      D.cyl(r.tank.x, r.tank.y, r.tank.r, h + m.h, h + m.h + 4.2, { wall: '#2e3136', roof: '#3b4048', grad: false });
+    }
+  }
+  function drawAntenna(ctx, r) {
+    const a = r.antenna, R = N.render, h = r.h;
+    if (!a) return;
+    const k0 = R.k(h), k1 = R.k(h + a.h), ca = Math.cos(a.a), sa = Math.sin(a.a);
+    ctx.strokeStyle = '#3a3a40'; ctx.lineWidth = 0.6; ctx.beginPath();
+    ctx.moveTo(R.sx(a.x, k0), R.sy(a.y, k0)); ctx.lineTo(R.sx(a.x, k1), R.sy(a.y, k1));
+    for (let i = 0; i < 3; i++) {
+      const k = R.k(h + a.h - i * 2.2), L = 4.5 - i;
+      ctx.moveTo(R.sx(a.x - ca * L, k), R.sy(a.y - sa * L, k)); ctx.lineTo(R.sx(a.x + ca * L, k), R.sy(a.y + sa * L, k));
+    }
+    ctx.stroke();
+  }
+  function drawLine(ctx, r) {
+    const l = r.line, R = N.render, h = r.h + 5.5;
+    if (!l) return;
+    const a = P(l.x0, l.y0, h), b = P(l.x1, l.y1, h);
+    const a0 = P(l.x0, l.y0, r.h), b0 = P(l.x1, l.y1, r.h);
+    ctx.strokeStyle = '#6a6460'; ctx.lineWidth = 0.6; ctx.beginPath();
+    ctx.moveTo(a0[0], a0[1]); ctx.lineTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(b0[0], b0[1]); ctx.stroke();
+    const k = R.k(h), dx = b[0] - a[0], dy = b[1] - a[1];
+    const horiz = Math.abs(l.x1 - l.x0) > Math.abs(l.y1 - l.y0);
+    for (const [t, c, s] of l.cl) {
+      const px = a[0] + dx * t, py = a[1] + dy * t;
+      ctx.fillStyle = c;
+      if (horiz) ctx.fillRect(px, py, s * k, 2.2 * k); else ctx.fillRect(px - 1.1 * k, py, 2.2 * k, s * k * 0.6);
+    }
+  }
+  function drawFloorBits(r) {
+    if (!r.chilli && !r.kites) return;
+    N.draw.plane(r.h, (g) => {
+      if (r.chilli) { const c = r.chilli; g.fillStyle = '#e8dcc0'; g.fillRect(c.x, c.y, c.w, c.d); g.fillStyle = '#c82a1a'; for (let i = 0; i < 12; i++) g.fillRect(c.x + 0.4 + ((i * 2.3) % (c.w - 1)), c.y + 0.4 + ((i * 1.7) % (c.d - 1)), 0.9, 0.6); }
+      if (r.kites) { const q = r.kites; for (let i = 0; i < 3; i++) { const kx = q.x + i * 3.2, ky = q.y + (i % 2) * 1.6; g.fillStyle = ['#e83a5a', '#2a5cb8', '#f2c230'][i]; g.beginPath(); g.moveTo(kx, ky - 1.6); g.lineTo(kx + 1.2, ky); g.lineTo(kx, ky + 1.6); g.lineTo(kx - 1.2, ky); g.closePath(); g.fill(); } }
+    });
+  }
+  function drawRoofActor(ctx, a, h) {
+    const R = N.render, D = N.draw;
+    if (a.hidden) return;
+    // soft contact shadow on the roof floor
+    D.plane(h, (g) => { g.globalAlpha = 0.28; g.fillStyle = '#1a1020'; g.beginPath(); g.ellipse(a.x + 0.8, a.y + 1, 3.6, 3, 0, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1; });
+    if (typeof a.roofDraw === 'function') { try { a.roofDraw(h); } catch (e) { N.err('roofs.actor', e); } return; }
+    if (a.look && N.people) D.sprite(a.x, a.y, a.angle || 0, h + 8, (c) => N.people.draw(c, a.look, a.anim || { phase: 0, speed: 0 }));
+    if (a === N.player) { // the idle "you are here" chevron, at roof height
+      const al = Math.min(1, Math.max(0, ((a.idleT || 0) - 2.5) / 0.6));
+      if (al > 0 && N.state.mode === 'play') {
+        const k = R.k(h + 14), bob = Math.sin((N.time.real || 0) * 5) * 1.5;
+        const X = R.sx(a.x, k), Y = R.sy(a.y, k) - 9 - bob;
+        ctx.globalAlpha = al * 0.95; ctx.fillStyle = '#1a1214';
+        ctx.beginPath(); ctx.moveTo(X - 4.5, Y - 4.5); ctx.lineTo(X + 4.5, Y - 4.5); ctx.lineTo(X, Y + 1.5); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.moveTo(X - 3, Y - 3.6); ctx.lineTo(X + 3, Y - 3.6); ctx.lineTo(X, Y); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+  function drawDeck(ctx, r) {
+    // ground-level stair doors (on the building's walls), then the terrace
+    for (const s of r.stairs) drawStairDoor(ctx, r, s);
+    drawParapet(ctx, r);
+    drawFloorBits(r);
+    const list = r._drawList || (r._drawList = []);
+    list.length = 0;
+    if (r.mumty) list.push({ y: r.mumty.y + r.mumty.d, f: 1 });
+    if (r.antenna && !r.lm) list.push({ y: r.antenna.y, f: 2 });
+    if (r.line) list.push({ y: Math.max(r.line.y0, r.line.y1), f: 3 });
+    for (const a of r._actors) list.push({ y: a.y, a });
+    list.sort((p, q) => p.y - q.y);
+    for (const it of list) {
+      if (it.a) drawRoofActor(ctx, it.a, r.h);
+      else if (it.f === 1) drawMumty(r);
+      else if (it.f === 2) drawAntenna(ctx, r);
+      else drawLine(ctx, r);
+    }
+    // what roof furniture to draw on top for the seasons layer etc.
+    if (RF.onDeck) { try { RF.onDeck(ctx, r); } catch (e) { N.err('roofs.onDeck', e); } }
+  }
+  function drawPlank(ctx, p) {
+    const R = N.render, [x, y, w, d] = p.rect;
+    const ha = p.ra.h, hb = p.rb.h;
+    // corner heights: along the long axis from the a end to the b end
+    const hAt = (px, py) => ha + (hb - ha) * plankT(p, px, py);
+    const pad = 1.0;
+    const c = p.horiz ? [[x, y + pad], [x + w, y + pad], [x + w, y + d - pad], [x, y + d - pad]] : [[x + pad, y], [x + w - pad, y], [x + w - pad, y + d], [x + pad, y + d]];
+    const pts = c.map((q) => P(q[0], q[1], hAt(q[0], q[1]) + 0.2));
+    const under = c.map((q) => P(q[0], q[1], hAt(q[0], q[1]) - 1.2));
+    // thickness (front edge) then the boards
+    ctx.fillStyle = '#5a3c24';
+    ctx.beginPath(); ctx.moveTo(under[0][0], under[0][1]); for (let i = 1; i < 4; i++) ctx.lineTo(under[i][0], under[i][1]); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#9a6a3c';
+    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < 4; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.closePath(); ctx.fill();
+    // board joints across
+    ctx.strokeStyle = 'rgba(60,36,20,0.55)'; ctx.lineWidth = 0.5; ctx.beginPath();
+    const L = p.horiz ? w : d;
+    for (let u = 2.5; u < L; u += 2.5) {
+      const q0 = p.horiz ? [x + u, y + pad] : [x + pad, y + u], q1 = p.horiz ? [x + u, y + d - pad] : [x + w - pad, y + u];
+      const s0 = P(q0[0], q0[1], hAt(q0[0], q0[1]) + 0.25), s1 = P(q1[0], q1[1], hAt(q1[0], q1[1]) + 0.25);
+      ctx.moveTo(s0[0], s0[1]); ctx.lineTo(s1[0], s1[1]);
+    }
+    ctx.stroke();
+    // actors on the plank, then the two handrails (posts + rail) on the long sides
+    for (const a of p._actors) drawRoofActor(ctx, a, hAt(a.x, a.y));
+    ctx.strokeStyle = '#c8a050'; ctx.lineWidth = Math.max(0.8, 0.7 * R.k(ha));
+    ctx.beginPath();
+    const sides = p.horiz ? [y + pad + 0.3, y + d - pad - 0.3] : [x + pad + 0.3, x + w - pad - 0.3];
+    for (const sv of sides) {
+      const A = p.horiz ? [x, sv] : [sv, y], B = p.horiz ? [x + w, sv] : [sv, y + d];
+      const n = Math.max(2, Math.round(L / 5));
+      for (let i = 0; i <= n; i++) {
+        const q = [A[0] + (B[0] - A[0]) * (i / n), A[1] + (B[1] - A[1]) * (i / n)], hh = hAt(q[0], q[1]);
+        const s0 = P(q[0], q[1], hh), s1 = P(q[0], q[1], hh + 5);
+        ctx.moveTo(s0[0], s0[1]); ctx.lineTo(s1[0], s1[1]);
+      }
+      const a1 = P(A[0], A[1], hAt(A[0], A[1]) + 5), b1 = P(B[0], B[1], hAt(B[0], B[1]) + 5);
+      ctx.moveTo(a1[0], a1[1]); ctx.lineTo(b1[0], b1[1]);
+    }
+    ctx.stroke();
+  }
+  // enqueue after every other structure of the frame (same sort key as the building = right after it)
+  function beginRoofs() {
+    deckQ.length = 0;
+    for (const r of RF.list) { if (r._actors) r._actors.length = 0; else r._actors = []; }
+    for (const p of RF.planks) { if (p._actors) p._actors.length = 0; else p._actors = []; }
+  }
+  function enqueueRoofs() {
+    const R = N.render;
+    // actors on roofs go to the roof / plank they stand on
+    for (const a of roofActors) {
+      if (!a.level || a.alive === false) continue;
+      const c = a._roofOn || roofCell.get(Math.floor(a.y / CELL) * GW + Math.floor(a.x / CELL));
+      if (!c) continue;
+      if (c.plank) c.plank._actors.push(a); else if (c.roof) { if (deckQ.indexOf(c.roof) < 0) deckQ.push(c.roof); c.roof._actors.push(a); }
+    }
+    for (const r of deckQ) { const rr = r; R.queue('structures', R.distKey(rr.kx, rr.ky), rr._qfn || (rr._qfn = (ctx) => drawDeck(ctx, rr))); }
+    deckQ.length = 0;
+    const v = R.view;
+    for (const p of RF.planks) {
+      const [x, y, w, d] = p.rect;
+      if (x + w < v.x0 - 30 || x > v.x1 + 30 || y + d < v.y0 - 30 || y > v.y1 + 30) continue;
+      const ka = R.distKey(p.ra.kx, p.ra.ky), kb = R.distKey(p.rb.kx, p.rb.ky);
+      const pp = p;
+      R.queue('structures', Math.max(ka, kb), pp._qfn || (pp._qfn = (ctx) => drawPlank(ctx, pp)));
+    }
+  }
+
+  // podium junctions: a painted traffic-police podium with an umbrella (the constable is traffic.js's)
+  function buildPodiums(D) {
+    W.podiums = [];
+    for (const p of D.places) {
+      if (!p.podium) continue;
+      const n = W.roads && W.roads.nearestNode ? W.roads.nearestNode(p.x, p.y) : null;
+      const x = n && Math.hypot(n.x - p.x, n.y - p.y) < 60 ? n.x : p.x, y = n && Math.hypot(n.x - p.x, n.y - p.y) < 60 ? n.y : p.y;
+      const pod = { id: p.id, place: p.id, x, y, home: p.podiumHome || null };
+      W.podiums.push(pod);
+      addStructure({ t: 'podium', pod, x: pod.x, y: pod.y, x0: pod.x - 10, y0: pod.y - 10, x1: pod.x + 10, y1: pod.y + 10, cx: pod.x, cy: pod.y });
+    }
+  }
+  function drawPodium(ctx, s) {
+    const D = N.draw, x = s.x, y = s.y;
+    D.cyl(x, y, 3.2, 0, 2.6, { wall: '#efe9dc', roof: '#d8402a', grad: false, bands: [1.3], bandColor: '#d8402a' });
+    D.cyl(x, y, 0.35, 2.6, 13, { wall: '#5a5a62', grad: false, top: false });
+    // striped umbrella
+    const R = N.render, k = R.k(13.5), X = R.sx(x, k), Y = R.sy(y, k), rr = 5.2 * k;
+    for (let i = 0; i < 8; i++) {
+      ctx.beginPath(); ctx.moveTo(X, Y); ctx.arc(X, Y, rr, (i / 8) * Math.PI * 2, ((i + 1) / 8) * Math.PI * 2); ctx.closePath();
+      ctx.fillStyle = i % 2 ? '#efe9dc' : '#2a5cb8'; ctx.fill();
+    }
+  }
+  function setupRoofRuntime() {
+    installInteractLevels();
+    installPlayerHooks();
+    addStairInteractables();
+  }
+  N.addSystem({
+    id: 'roofs', order: 21, runIn: ['play', 'dialogue', 'cutscene', 'minigame'],
+    update(dt) { tickFade(dt); },
+    reset() {
+      fade.cb = null; fade.done = false; if (fade.actor) { fade.actor.controlsLocked = !!fade.actor._roofLockWas; fade.actor = null; }
+      for (const a of Array.from(roofActors)) if (a !== N.player) setLevel(a, null, true);
+    },
+  });
 
   /* --------------------------------------------------------- enqueue */
   W.draw = function () {
@@ -2173,8 +2832,10 @@
     const m = 140; // landmarks just outside the view may still cast shadows into it
     litWalls = [];
     const lights = R.lights;
+    beginRoofs();
     W.queryStructures(v.x0 - m, v.y0 - m, v.x1 + m, v.y1 + m, (s) => {
       const vis = s.x1 >= v.x0 - 6 && s.x0 <= v.x1 + 6 && s.y1 >= v.y0 - 6 && s.y0 <= v.y1 + 6;
+      if (s.t === 'roofzone') { if (vis) deckQ.push(s.roof); return; }
       if (s.t === 'landmark') {
         if (N.landmarks && N.landmarks.enqueue) { try { N.landmarks.enqueue(s.lm, vis); } catch (e) { N.err('landmarks.enqueue', e); } }
         else if (vis) R.queue('structures', R.distKey(s.cx, s.cy), s.fn);
@@ -2190,6 +2851,7 @@
         lights.push({ x: (gx + s.cx) / 2, y: (gy + s.cy) / 2, r: 24, color: '#ffc870', intensity: 0.5, h: 4 });
       }
     });
+    enqueueRoofs();
     if (night > 0.2) R.queue('light', 0, (ctx) => drawLitWalls(ctx, night));
     R.queue('ground', 0, drawWaterGlints);
   };

@@ -5,7 +5,11 @@
   // hold = turn), the wind pushes it, reflections make false peaks, and crows love to sit on it.
   // Amma shouts from below: "Aaya? Ab? Thoda left! BAS! Wahi rakho!"
   {
-    const LOCK_Q = 0.84;
+    // systems_design §8.5: turn 40 deg/s, 2 deg nudge, 1-2 false peaks at 60-80%, lock = quality >= 85%
+    // for 2.5 s, crows every 8-12 s knock it 5-10 deg off, hints wrong 25% of the time at d > 0.6
+    const T = (MG.TUNE.antenna = Object.assign({ turn: 0.7, nudge: 0.035, lockQ: 0.85, lockTime: 2.5, crowMin: 8, crowMax: 12, crowKick: [0.087, 0.175],
+      falseLo: 0.6, falseHi: 0.8, wrongHint: 0.25, time0: 60, time1: 15 }, MG.TUNE.antenna || {}));
+    const LOCK_Q = T.lockQ;
     const def = {
       id: 'antenna',
       title: 'Antenna Ghumao',
@@ -24,8 +28,8 @@
         return {
           lines: [
             '<b>Hold ◀ ▶</b> to turn the rusty antenna; <b>tap</b> for a tiny nudge. Watch the TV and the booster needle downstairs.',
-            'Listen to Amma: <i>"thoda left!", "aaya!"</i>. The tower is a rough guide: reflections from buildings fool you.',
-            'When the picture is clear, <b>hold it</b> till the lock fills. Crows land on the antenna: <b>SHOO</b> them!',
+            'Listen to ' + (g.params.caller === 'babji' ? 'Babji' : 'Amma') + ': <i>"thoda left!", "aaya!"</i>. Reflections off buildings make <b>false peaks</b>: a ghostly picture is not the real thing.',
+            'When the picture is clear, <b>hold it steady</b> for ' + T.lockTime + ' s. Crows land on the antenna and knock it: <b>SHOO</b> them!',
           ],
           goal: 'CLEAR PICTURE BEFORE 11:00 &middot; ' + timeLimit(g) + 's',
           keys: 'hold <kbd>←</kbd> <kbd>→</kbd> turn · tap to nudge · <kbd>Space</kbd> shoo',
@@ -35,16 +39,19 @@
       setup(g) {
         const S = g.S, d = g.diff, r = g.rng;
         S.score = 0; S.time = 0; S.limit = timeLimit(g); S.left = S.limit;
-        S.tower = -0.35 + r.next() * 0.7;                    // bearing of the tower (as drawn on the compass)
-        S.best = S.tower + (r.next() < 0.5 ? -1 : 1) * (0.18 + r.next() * 0.22 + d * 0.1); // true best (reflections)
-        S.side = S.best + (r.next() < 0.5 ? -1 : 1) * (1.0 + r.next() * 0.3); // a false peak
+        S.tower = -0.6 + r.next() * 1.2;                     // bearing of the Doordarshan tower: the true peak
+        S.best = S.tower;
+        S.peaks = [];                                          // 1-2 false peaks (reflections off buildings)
+        const nf = d > 0.5 ? 2 : 1;
+        for (let i = 0; i < nf; i++) S.peaks.push({ a: S.best + (i % 2 ? -1 : 1) * (r.next() < 0.5 ? 1 : -1) * (0.9 + r.next() * 0.8), h: T.falseLo + r.next() * (T.falseHi - T.falseLo) });
+        S.caller = g.params.caller === 'babji' ? 'babji' : 'amma';
         S.theta = S.best + Math.PI * (0.55 + r.next() * 0.5) * (r.next() < 0.5 ? -1 : 1); S.theta0 = S.theta;
         S.omega = 0; S.effort = 0; S.holdT = 0; S.lastDir = 0;
-        S.Q = 0; S.Qs = 0; S.lock = 0; S.locked = false; S.holdNeed = 3.4 + d * 2.4;
+        S.Q = 0; S.Qs = 0; S.lock = 0; S.locked = false; S.holdNeed = T.lockTime;
         S.windPh = r.next() * 10; S.gust = 0; S.gustIn = 6 + r.next() * 5; S.gustDir = 1;
-        S.crow = null; S.crowIn = 6 + r.next() * 4 - d * 2; S.shoo = 0; S.crows = 0;
+        S.crow = null; S.crowIn = T.crowMin + r.next() * (T.crowMax - T.crowMin); S.shoo = 0; S.crows = 0;
         S.interf = null; S.interfIn = 9 + r.next() * 6;
-        S.amma = { text: 'Antenna ghumao! Kuch nahi dikh raha!', t: 0, mood: 'cross' }; S.ammaT = 2.6; S.prevBand = 0;
+        S.amma = { text: S.caller === 'babji' ? 'Ghumao bhai, signal dhoondo! Picture saaf chahiye.' : 'Antenna ghumao! Kuch nahi dikh raha!', t: 0, mood: 'cross' }; S.ammaT = 2.6; S.prevBand = 0;
         S.roll = 0; S.wasLocked = false; S.flicker = 0;
         S.hiss = g.loop({ ft: 'highpass', f: 1400, q: 0.4 });
       },
@@ -72,7 +79,7 @@
       result(g, r) {
         const S = g.S;
         return {
-          title: r.win ? 'Picture saaf!' : 'Show shuru... sirf barish!',
+          title: r.win ? 'Picture saaf!' : 'Signal gaya!',
           line: r.win ? 'Amma: "Bas! Ab haath mat lagana!" The whole family is in front of the TV.' : 'The title song is playing behind the snow. Next Sunday, start at 10:55.',
           rows: [['Best signal', Math.round(S.bestQ * 100) + '%'], ['Crows shooed', S.crows], ['Time to spare', Math.max(0, Math.ceil(S.left)) + 's'], ['Score', r.score]],
         };
@@ -80,11 +87,13 @@
       stars(g, r) { const S = g.S; return r.win ? 1 + (S.left > S.limit * 0.4 ? 1 : 0) + (S.left > S.limit * 0.65 ? 1 : 0) : 0; },
       cleanup(g) { if (g.S && g.S.hiss) g.S.hiss.stop(); },
     };
-    function timeLimit(g) { return g.params.time || Math.round(60 - g.diff * 15); }
+    function timeLimit(g) { return g.params.time || Math.round(T.time0 - g.diff * T.time1); }
 
     function signal(S, th) {
-      const d = U.angleDiff(th, S.best), ds = U.angleDiff(th, S.side), db = U.angleDiff(th, S.best + Math.PI);
-      return Math.min(1, Math.exp(-(d * d) / (2 * 0.17 * 0.17)) + 0.5 * Math.exp(-(ds * ds) / (2 * 0.16 * 0.16)) + 0.3 * Math.exp(-(db * db) / (2 * 0.22 * 0.22)));
+      const d = U.angleDiff(th, S.best), db = U.angleDiff(th, S.best + Math.PI);
+      let q = Math.exp(-(d * d) / (2 * 0.17 * 0.17)) + 0.25 * Math.exp(-(db * db) / (2 * 0.22 * 0.22));
+      for (const p of S.peaks) { const dp = U.angleDiff(th, p.a); q = Math.max(q, p.h * Math.exp(-(dp * dp) / (2 * 0.15 * 0.15))); }
+      return Math.min(1, q);
     }
 
     function say(S, text, mood) { if (S.amma && S.amma.text === text && S.amma.t < 2) return; S.amma = { text, t: 0, mood: mood || 'ok' }; }
@@ -99,10 +108,10 @@
         if (dir) {
           S.holdT += dt;
           S.effort += dt;
-          if (S.effort > 0.16) S.omega = H.approach(S.omega, dir * 0.95, 3.2 * dt);
+          if (S.effort > 0.16) S.omega = H.approach(S.omega, dir * T.turn, 3.2 * dt);
           S.lastDir = dir;
         } else {
-          if (S.holdT > 0 && S.holdT < 0.16) { S.theta += S.lastDir * 0.035; g.tone(260, 0.03, { type: 'square', vol: 0.025 }); } // a nudge
+          if (S.holdT > 0 && S.holdT < 0.16) { S.theta += S.lastDir * T.nudge; g.tone(260, 0.03, { type: 'square', vol: 0.025 }); } // a nudge
           S.holdT = 0; S.effort = 0;
           S.omega *= Math.exp(-7 * dt);
         }
@@ -117,12 +126,12 @@
       if (S.crow) {
         const c = S.crow;
         c.t += dt;
-        if (c.state === 'in' && c.t > 1.1) { c.state = 'sit'; c.t = 0; g.sfx('crow_caw'); }
-        else if (c.state === 'sit') { S.theta += c.side * 0.09 * dt * (1 + g.diff); if (c.t > 2.5 && Math.random() < dt * 0.5) g.sfx('crow_caw', { vol: 0.5 }); }
+        if (c.state === 'in' && c.t > 1.1) { c.state = 'sit'; c.t = 0; g.sfx('crow_caw'); S.theta += c.side * lerp(T.crowKick[0], T.crowKick[1], Math.random()); } // lands with a thump: 5-10 deg off
+        else if (c.state === 'sit') { S.theta += c.side * 0.02 * dt; if (c.t > 2.5 && Math.random() < dt * 0.5) g.sfx('crow_caw', { vol: 0.5 }); }
         else if (c.state === 'out' && c.t > 1.2) S.crow = null;
       } else if (!g.over) {
         S.crowIn -= dt;
-        if (S.crowIn <= 0) { S.crow = { state: 'in', t: 0, side: Math.random() < 0.5 ? -1 : 1, from: Math.random() < 0.5 ? -1 : 1 }; S.crowIn = 9 + Math.random() * 6 - g.diff * 3; }
+        if (S.crowIn <= 0) { S.crow = { state: 'in', t: 0, side: Math.random() < 0.5 ? -1 : 1, from: Math.random() < 0.5 ? -1 : 1 }; S.crowIn = T.crowMin + Math.random() * (T.crowMax - T.crowMin); }
       }
       if (g.pressed('shoo') && !g.over) {
         S.shoo = 0.5;
@@ -137,7 +146,7 @@
       else if (!g.over) { S.interfIn -= dt; if (S.interfIn <= 0) { const k = Math.random() < 0.5 ? 'mixer' : 'plane'; S.interf = { k, t: 0, dur: k === 'mixer' ? 1.6 : 2.2 }; S.interfIn = 10 + Math.random() * 8; if (k === 'plane') g.sfx('airplane', { vol: 0.5 }); else g.noise(1.5, { f: 900, q: 3, vol: 0.05 }); } }
       // --- signal
       let Q = signal(S, S.theta);
-      if (S.crow && S.crow.state === 'sit') Q *= 0.72;
+      if (S.crow && S.crow.state === 'sit') Q *= 0.85;
       const qi = S.interf ? (S.interf.k === 'mixer' ? 0.45 : 0.7) : 1;
       S.Q = Q;
       S.Qs += (Q * qi - S.Qs) * Math.min(1, dt * 6);
@@ -149,7 +158,7 @@
           S.lock = Math.min(1, S.lock + dt / S.holdNeed);
           if (!S.wasLocked) { S.wasLocked = true; say(S, ['BAS! BAS! Wahi rakho!', 'Haan! Aaya! Haath mat hilao!', 'Wahi! Ekdum wahi!'][(Math.random() * 3) | 0], 'happy'); g.tone(880, 0.08, { type: 'triangle', vol: 0.05 }); g.tone(1320, 0.12, { type: 'triangle', vol: 0.05, delay: 0.08 }); }
         } else {
-          if (!S.interf) S.lock = Math.max(0, S.lock - dt * 0.22);
+          if (!S.interf) S.lock = Math.max(0, S.lock - dt / S.holdNeed * 1.5); // keep it steady: the hold drains away
           if (S.wasLocked && S.Qs < 0.6) { S.wasLocked = false; say(S, ['Arre! Phir gaya!', 'Gaya gaya gaya!', 'Kya kiya?! Phir se barish!'][(Math.random() * 3) | 0], 'cross'); }
         }
         if (S.lock >= 1) {
@@ -171,7 +180,7 @@
         S.ammaT = 2.6 + Math.random() * 1.2;
         const d = U.angleDiff(S.theta, S.best);
         let lr = d < 0 ? 'right' : 'left'; // which way to turn
-        if (g.diff > 0.6 && Math.random() < 0.12) lr = lr === 'left' ? 'right' : 'left';
+        if (g.diff > 0.6 && Math.random() < T.wrongHint) lr = lr === 'left' ? 'right' : 'left';
         const hintOK = g.diff < 0.8 || Math.random() < 0.6;
         const dirTxt = hintOK ? (lr === 'left' ? 'Thoda LEFT!' : 'Thoda RIGHT!') : 'Ghumao!';
         if (S.interf) say(S, S.interf.k === 'mixer' ? 'Padosan ka mixer chal raha!' : 'Hawai jahaz! Ruko zara!', 'ok');
@@ -334,9 +343,8 @@
       const cr = Math.max(26, Math.min(T.w, T.h) * 0.1), ccx = T.x + cr + 16, ccy = T.y + cr + 24;
       ctx.fillStyle = 'rgba(18,13,22,0.78)'; ctx.beginPath(); ctx.arc(ccx, ccy, cr + 6, 0, TAU); ctx.fill();
       ctx.strokeStyle = 'rgba(234,242,255,0.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(ccx, ccy, cr, 0, TAU); ctx.stroke();
-      const tA = S.tower - Math.PI / 2;
-      ctx.fillStyle = '#ff6a5a'; ctx.beginPath(); ctx.moveTo(ccx + Math.cos(tA) * (cr - 2), ccy + Math.sin(tA) * (cr - 2)); ctx.lineTo(ccx + Math.cos(tA + 0.12) * (cr - 12), ccy + Math.sin(tA + 0.12) * (cr - 12)); ctx.lineTo(ccx + Math.cos(tA - 0.12) * (cr - 12), ccy + Math.sin(tA - 0.12) * (cr - 12)); ctx.fill();
-      H.text(ctx, 'DD', ccx + Math.cos(tA) * (cr + 14), ccy + Math.sin(tA) * (cr + 14), { font: 'osd', size: 14, color: '#ffb4a6', outline: 3, stroke: '#120d16' });
+      H.text(ctx, 'N', ccx, ccy - cr + 9, { font: 'osd', size: 13, color: '#ffb4a6' });
+      for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; ctx.fillStyle = 'rgba(234,242,255,0.4)'; ctx.fillRect(ccx + Math.cos(a) * (cr - 4) - 1, ccy + Math.sin(a) * (cr - 4) - 1, 2, 2); }
       const aA = S.theta - Math.PI / 2;
       ctx.strokeStyle = '#f2c230'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(ccx - Math.cos(aA) * cr * 0.5, ccy - Math.sin(aA) * cr * 0.5); ctx.lineTo(ccx + Math.cos(aA) * cr * 0.85, ccy + Math.sin(aA) * cr * 0.85); ctx.stroke();
       ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.arc(ccx + Math.cos(aA) * cr * 0.85, ccy + Math.sin(aA) * cr * 0.85, 3.5, 0, TAU); ctx.fill();
@@ -426,7 +434,7 @@
       // Amma, by the TV, shouting up the stairs
       const ax = Math.min(tx + tvW + tvW * 0.42, V.x + V.w - 26), ay = V.y + V.h * 0.86;
       const as = Math.max(0.7, V.h * 0.0042);
-      drawAmma(ctx, ax, ay, as, S.amma && S.amma.mood, S.time);
+      if (S.caller === 'babji') drawBabji(ctx, ax, ay, as, S.amma && S.amma.mood, S.time); else drawAmma(ctx, ax, ay, as, S.amma && S.amma.mood, S.time);
       if (S.amma && S.amma.t < 3.2) {
         ctx.font = H.font('body', Math.max(13, Math.min(18, V.w * 0.035)), 700);
         const maxW = Math.min(V.w * 0.62, 260);
@@ -460,6 +468,20 @@
       if (mood === 'happy') { ctx.beginPath(); ctx.moveTo(-8, -62); ctx.lineTo(-14, -80 + Math.sin(t * 12) * 3); ctx.moveTo(8, -62); ctx.lineTo(14, -80 - Math.sin(t * 12) * 3); ctx.stroke(); }
       else if (mood === 'cross') { ctx.beginPath(); ctx.moveTo(-8, -62); ctx.lineTo(-14, -52); ctx.lineTo(-8, -48); ctx.moveTo(8, -62); ctx.lineTo(10, -84); ctx.stroke(); }
       else { ctx.beginPath(); ctx.moveTo(-8, -62); ctx.lineTo(-13, -45); ctx.moveTo(8, -62); ctx.lineTo(11, -82 + Math.sin(t * 4) * 2); ctx.stroke(); }
+      ctx.restore();
+    }
+
+    function drawBabji(ctx, x, y, s, mood, t) { // Cable Babji: checked shirt, a coil of cable on the shoulder
+      ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(0, 0, 15, 4, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#3b4a6b'; ctx.fillRect(-9, -34, 8, 34); ctx.fillRect(1, -34, 8, 34);
+      ctx.fillStyle = '#c8402a'; H.rr(ctx, -12, -66, 24, 34, 6); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; for (let i = -10; i < 12; i += 5) { ctx.beginPath(); ctx.moveTo(i, -66); ctx.lineTo(i, -33); ctx.stroke(); }
+      ctx.fillStyle = '#7a4a2a'; ctx.beginPath(); ctx.arc(0, -75, 8.5, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#1a1412'; ctx.beginPath(); ctx.arc(0, -78, 8.8, Math.PI, TAU); ctx.fill(); ctx.fillRect(-5, -71, 10, 2);
+      ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.ellipse(-8, -58, 7, 10, 0.3, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = '#7a4a2a'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(8, -62); ctx.lineTo(mood === 'happy' ? 14 : 11, mood === 'happy' ? -84 + Math.sin(t * 12) * 3 : -82); ctx.moveTo(-8, -62); ctx.lineTo(-12, -46); ctx.stroke();
       ctx.restore();
     }
 

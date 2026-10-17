@@ -5,6 +5,27 @@
  * markers (pulsing cylinders of light on the ground layer + minimap blips + off-screen
  * arrows), mission givers that start missions when the player walks in, checkpoints with
  * fast-forward retry, MISSION PASSED / FAILED banners, rewards and autosave.
+ *
+ * Story layer (systems §6.1–§6.4, §15 row 12; story-core agent):
+ *  - Def extras: kind 'main' | 'side' | 'job' (default 'main'), track, date / end ([y, m(1-12), d, h, mi]
+ *    or 'YYYY-MM-DD HH:MM'), jcard ('TRACK 05 · RIGHT, RIGHT! · IMLIBUN'), scribble, rec (false | {sfx, to, token}),
+ *    meter ('normal' | 'frozen' | 'scripted'), window {from: '16:00', to: '20:00', dow: [0..6]}, help (false = no
+ *    "Let Immu do it"). The 12 bible missions get date, end, track, jcard, scribble and REC from N.calendar.STORY.
+ *  - Givers: walking into a marker opens the J-card prompt (track, title, date; "▶ PLAY" on ACTION, or stand in
+ *    it for TUNE.jcardDwell s; stepping out cancels). Outside its window the card offers "Wait till 16:00 (▶▶)".
+ *    Only one main giver shows at a time; side/job givers only inside their windows, the nearest 3, never during
+ *    a main mission.
+ *  - Starting a main mission with a date jumps the calendar there (VHS ▶▶ 1.5 s) before the script runs.
+ *  - m.rec(id?, opts) (the ● REC moment; N.tape.rec), m.token(id, {name, desc}), m.meter(policy, level),
+ *    m.jumpTo(spec, opts). A main bible mission that ends without a REC records it before MISSION PASSED.
+ *  - MISSION PASSED shows the J-card line + Immu's scribble; the clock moves on to the mission's end time;
+ *    autosave (main only by default) toasts "SIDE A saved ●".
+ *  - Help after repeated fails (TUNE): 3 lost tries of the same minigame -> the retry card adds "Let Immu do it"
+ *    (Ayesha for cricket, Ammamma for the clap): the next run passes that minigame with 1 star. 2 timer fails ->
+ *    the timer gets +25% ("Bunty-anna says: extra time"). N.missions.helpEnabled / setting `letImmu` switch it off.
+ *  - Saving is refused while a mission runs (and in minigames, cutscenes, dialogue, chases at level >= 3 or with
+ *    N.flags.no_save) for saves that pass a player-facing meta.reason ('booth', 'menu', 'quit', 'sleep' ...);
+ *    reason 'mission' and meta.force always save. N.missions.canSave() -> {ok, why} for UIs.
  */
 (() => {
   'use strict';
@@ -32,6 +53,40 @@
 
   const MISSION_COLOR = '#ff5fb0';
   const GIVER_COLOR = '#f2c230';
+  const TUNE = { jcardDwell: 1.0, helpAfterGameFails: 3, helpAfterTimerFails: 2, timerBonus: 1.25, maxSideGivers: 3, recWindow: 8 };
+  const streaks = { game: {}, timer: {} };
+  let jc = null;           // the open J-card prompt {id, t}
+  const pref = (k, d) => { const st = N.settings || (N.menus && N.menus.settings) || null; return st && st[k] != null ? st[k] : d; };
+  const kindOf = (def) => (def && def.kind) || 'main';
+  const pad2 = (n) => (n < 10 ? '0' : '') + n;
+  function helpOn(def) { return M.helpEnabled !== false && pref('letImmu', true) !== false && !(def && def.help === false); }
+  function storyEntry(id) { return N.calendar && N.calendar.storyEntry ? N.calendar.storyEntry(id) : null; }
+  function parseDate(spec) { return spec && N.calendar && N.calendar.parse ? N.calendar.parse(spec) : null; }
+  function dateLine(def) {
+    const p = parseDate(def.date);
+    if (p && N.calendar) { const d = N.calendar.dateOf(N.calendar.dayOf(p.y, p.m, p.d)); return d.label + (p.h != null ? ' · ' + pad2(p.h) + ':' + pad2(p.mi || 0) : ''); }
+    if (N.calendar) { const d = N.calendar.date; return d.label + ' · ' + N.clock.label(); }
+    return N.clock.dateLabel() + ' · ' + N.clock.label();
+  }
+  const hm = (v) => { if (typeof v === 'number') return v; const r = /^(\d{1,2}):(\d{2})$/.exec(String(v || '')); return r ? +r[1] * 60 + +r[2] : null; };
+  /** Is the clock inside def.window ({from, to, dow})? */
+  function inWindow(def) {
+    const w = def.window;
+    if (!w) return true;
+    const a = hm(w.from), b = hm(w.to), m = N.clock.minutes;
+    if (w.dow && N.calendar && w.dow.indexOf(N.calendar.weekday()) < 0) return false;
+    if (a == null || b == null) return true;
+    return a <= b ? m >= a && m < b : m >= a || m < b;
+  }
+  function applyMeter(policy, level) {
+    const W = N.wanted;
+    if (!W) return;
+    try {
+      if (typeof W.policy === 'function') W.policy(policy || 'normal', level);
+      else if (typeof W.freeze === 'function') W.freeze(policy === 'frozen', 'mission');
+      if (typeof W.lock === 'function') W.lock(policy === 'scripted' && level != null ? level : null);
+    } catch (e) { N.err('mission.meter', e); }
+  }
 
   /* ============================================================== targets */
   function posOf(target) {
@@ -230,9 +285,23 @@
           run.gi++; run.record.games.push(r);
           return Promise.resolve(r);
         }
+        if (run.assist && (run.assist === id || (MG && MG.resolve && MG.resolve(id) === MG.resolve(run.assist)))) {
+          // "Let Immu do it": the helper plays this one (1 star, a teasing line)
+          run.assist = null;
+          const who = helperFor(id);
+          const r = { id, win: true, stars: 1, score: 0, assisted: true, helper: who.id };
+          run.record.games.push(r); run.gi++;
+          N.hud.toast(who.line, 3200);
+          N.emit('mission:assist', { id: run.id, game: id, helper: who.id });
+          return Promise.resolve(r);
+        }
         if (!has) { const r = { win: true, skipped: true, missing: true }; run.record.games.push(r); run.gi++; return Promise.resolve(r); }
         run.inMinigame = true;
-        return wrap(run, MG.start(id, params || {}), (r) => { run.inMinigame = false; r = r || { win: false }; run.record.games.push(r); run.gi++; return r; });
+        return wrap(run, MG.start(id, params || {}), (r) => {
+          run.inMinigame = false; r = r || { win: false }; run.record.games.push(r); run.gi++;
+          run.lostGame = r.win === false && !r.quit ? id : null;
+          return r;
+        });
       },
       /** Track an entity (auto-removed when the mission ends unless opts.keep). Returns it. */
       spawn(e, opts) {
@@ -249,6 +318,7 @@
         guard(run);
         if (sec == null) { run.timer = null; N.hud.timer(null); return null; }
         if (ffing()) return { stop() {}, add() {}, get left() { return sec; } };
+        if (run.timerBonus > 1) { sec *= run.timerBonus; if (!run.bonusToast) { run.bonusToast = true; N.hud.toast('Bunty-anna says: extra time!', 2600); } }
         const T = run.timer = { left: sec, label: label || 'TIME', failMsg: (opts && opts.failMsg) || 'Time up! Too slow, bhai.' };
         N.hud.timer(T.label, T.left, { countdown: false });
         return { stop() { if (run.timer === T) { run.timer = null; N.hud.timer(null); } }, add(s) { T.left += s; }, get left() { return T.left; } };
@@ -268,6 +338,26 @@
       },
       flag(name, value) { guard(run); N.flags[name] = value === undefined ? true : value; N.emit('flag', { name, value: N.flags[name] }); },
       fail(reason) { guard(run); throw new MissionAbort('fail', reason || 'Mission failed'); },
+      /** The ● REC moment (N.tape.rec): defaults from the bible by mission id. Resolves true when recorded. */
+      rec(id, o) {
+        guard(run);
+        if (id && typeof id === 'object') { o = id; id = null; }
+        id = id || run.id;
+        if (!N.tape || !N.tape.rec) return Promise.resolve(false);
+        if (ffing()) { N.tape.rec(id, Object.assign({}, o || {}, { silent: true })); return Promise.resolve(true); }
+        return wrap(run, N.tape.rec(id, Object.assign({ window: TUNE.recWindow }, o || {})));
+      },
+      /** Put a token in the biscuit tin. */
+      token(id, o) { guard(run); if (N.tape && N.tape.addToken) N.tape.addToken(id, Object.assign({ mission: run.id, silent: ffing() }, o || {})); },
+      /** Chappal Meter policy for this step: 'normal' | 'frozen' | 'scripted' (+ level). */
+      meter(policy, level) { guard(run); run.meterPolicy = policy || 'normal'; applyMeter(run.meterPolicy, level); },
+      /** Move the calendar (VHS ▶▶); instant while fast-forwarding a retry. */
+      jumpTo(spec, opts) {
+        guard(run);
+        if (!N.calendar) return Promise.resolve(null);
+        if (ffing()) return Promise.resolve(N.calendar.set(spec));
+        return wrap(run, N.calendar.jumpTo(spec, opts));
+      },
       checkpoint(name) {
         guard(run);
         const pl = N.player;
@@ -308,13 +398,26 @@
       if (Math.hypot(N.player.x - s.x, N.player.y - s.y) > 60) N.player.teleport(s.x, s.y);
     }
     run.m = makeApi(run);
-    N.emit('mission:start', { id, title: def.title, attempt: run.attempt });
+    run.assist = opts && opts.assist ? opts.assist : null;
+    run.timerBonus = helpOn(def) && (streaks.timer[id] || 0) >= TUNE.helpAfterTimerFails ? TUNE.timerBonus : 1;
+    if (jc) closeJcard();
+    N.emit('mission:start', { id, title: def.title, attempt: run.attempt, kind: kindOf(def) });
     if (run.attempt === 1) N.hud.banner(def.title || id, def.chapter != null ? (typeof def.chapter === 'number' ? 'Chapter ' + def.chapter : String(def.chapter)) : '', 2600, { kind: 'chapter' });
+    run.meterPolicy = def.meter || 'normal';
+    if (def.meter && def.meter !== 'normal') applyMeter(def.meter, def.meterLevel);
+    // a main mission moves the calendar to its date (bible §1.4) with the VHS ▶▶ before the script runs
+    let pre = null;
+    if (def.date && run.attempt === 1 && !(opts && opts.noJump) && N.calendar && N.calendar.jumpTo && (kindOf(def) === 'main' || def.jump)) {
+      try { pre = N.calendar.jumpTo(def.date, { fx: def.jumpFx }); } catch (e) { N.err('mission.jump', e); }
+    }
     let abortReject;
     const abortP = new Promise((_, rej) => { abortReject = rej; });
     abortP.catch(() => {});
     run.abortReject = abortReject;
-    const scriptP = Promise.resolve().then(() => def.script(run.m));
+    const scriptP = Promise.resolve(pre).then(() => {
+      if (run.ended) throw new MissionAbort('abort', 'ended');
+      return def.script(run.m);
+    }).then(() => autoRec(run));
     scriptP.catch(() => {});
     Promise.race([scriptP, abortP]).then(
       () => succeed(run),
@@ -330,6 +433,23 @@
         }
       });
     return true;
+  }
+
+  // A main mission from the bible that ends without its ● REC records it before MISSION PASSED.
+  function needsRec(run) {
+    const def = run.def;
+    if (def.rec === false || kindOf(def) !== 'main' || !N.tape || !N.tape.rec || N.tape.has(run.id)) return false;
+    return !!(def.rec || storyEntry(run.id));
+  }
+  function autoRec(run) {
+    if (run.ended || !needsRec(run)) return null;
+    return N.tape.rec(run.id, Object.assign({ window: TUNE.recWindow }, typeof run.def.rec === 'object' ? run.def.rec : {}));
+  }
+  function helperFor(game) {
+    const g = String(game || '');
+    if (/cricket/.test(g)) return { id: 'ayesha', label: 'Let Ayesha bat', line: 'Ayesha: Move, *doodh-bhaat*. ...See? One star. Write it small.' };
+    if (/clap/.test(g)) return { id: 'ammamma', label: 'Let Ammamma clap', line: 'Ammamma: Like this, *kanna*. Slowly. ...See, the wall answers old ladies too.' };
+    return { id: 'immu', label: 'Let Immu do it', line: 'Immu: Move, move. Watch the master. ...One star. Agent rules: we never talk about this. Over.' };
   }
 
   function abortRun(run, kind, reason) {
@@ -351,6 +471,8 @@
     if (run.inCutscene) { run.inCutscene = false; try { if (N.menus && typeof N.menus.abortCutscene === 'function') N.menus.abortCutscene(); } catch (e) { N.err('mission.csAbort', e); } }
     for (const id of run.blips) N.hud.unblip(id);
     run.blips.clear(); run.markers.clear();
+    if (run.meterPolicy && run.meterPolicy !== 'normal') applyMeter('normal', null);
+    if (result !== 'pass' && N.tape && N.tape.cancelRec) { try { N.tape.cancelRec(); } catch (e) { N.err('mission.rec', e); } }
     if (run.timer) { run.timer = null; }
     N.hud.timer(null);
     N.hud.objective(null);
@@ -374,22 +496,36 @@
     const def = run.def;
     done.add(def.id);
     lastFailed = null;
+    delete streaks.timer[def.id];
+    for (const k in streaks.game) if (k.indexOf(def.id + ':') === 0) delete streaks.game[k];
+    if (needsRec(run)) { try { N.tape.rec(def.id, { silent: true }); } catch (e) { N.err('mission.rec', e); } } // (debug completions)
     const rw = def.reward || {};
-    let sub = def.passText || 'Respect +';
+    let sub = def.jcard || def.passText || 'Respect +';
     if (rw.money) { N.player.money += rw.money; N.emit('money', { delta: rw.money, total: N.player.money, mission: def.id }); sub += '   ' + U.fmtMoney(rw.money); }
     if (rw.item) N.player.inventory.add(rw.item);
     if (rw.flag) N.flags[rw.flag] = true;
-    N.hud.banner('MISSION PASSED', sub, 4200, { kind: 'pass' });
-    N.emit('mission:complete', { id: def.id, title: def.title, reward: rw });
+    N.hud.banner('MISSION PASSED', sub, 4200, { kind: 'pass', note: def.scribble || '' });
+    // free roam goes on at the mission's end time (bible §4), never backwards
+    const end = parseDate(def.end);
+    if (end && N.calendar && N.calendar.compare(end, [N.calendar.date.y, N.calendar.date.m, N.calendar.date.d, N.clock.hour(), Math.floor(N.clock.minutes % 60)]) > 0) {
+      try { N.calendar.set(end); } catch (e) { N.err('mission.end', e); }
+    }
+    if (kindOf(def) === 'main' && N.calendar && N.calendar.markStop) N.calendar.markStop(N.clock.day);
+    N.emit('mission:complete', { id: def.id, title: def.title, reward: rw, kind: kindOf(def) });
     N.emit('mission:pass', { id: def.id });
     if (typeof def.onPass === 'function') { try { def.onPass(); } catch (e) { N.err('mission.onPass', e); } }
-    if (def.autosave !== false && N.save && N.save.save) { try { N.save.save({ reason: 'mission' }); } catch (e) { N.err('mission.autosave', e); } }
+    const autosave = def.autosave != null ? def.autosave !== false : kindOf(def) === 'main';
+    if (autosave && N.save && N.save.save) {
+      try { if (N.save.save({ reason: 'mission', toast: false })) N.hud.toast(N.save.available === false ? 'SIDE A saved ● (this session only)' : 'SIDE A saved ●', 2200); } catch (e) { N.err('mission.autosave', e); }
+    }
     refreshGivers(true);
   }
 
   function failRun(run, reason) {
     if (!endRun(run, 'fail')) return;
     lastFailed = { id: run.id, cp: run.checkpointData, record: run.record, startPos: run.startPos, attempt: run.attempt };
+    if (run.failCause === 'timer') streaks.timer[run.id] = (streaks.timer[run.id] || 0) + 1;
+    else if (run.lostGame) { const k = run.id + ':' + run.lostGame; streaks.game[k] = (streaks.game[k] || 0) + 1; lastFailed.game = run.lostGame; }
     giverCooldown = run.def.giver ? run.id : null;
     N.hud.banner('MISSION FAILED', reason || '', 3600, { kind: 'fail' });
     N.emit('mission:fail', { id: run.id, reason: reason || '' });
@@ -397,20 +533,23 @@
     setTimeout(() => { if (lastFailed === myFail && !active) openAsk(run.def); }, 1500);
   }
 
-  function retry() {
+  function retry(assist) {
     if (!lastFailed || active) return false;
     const lf = lastFailed;
     lastFailed = null;
     closeAsk();
-    return start(lf.id, { retry: lf });
+    return start(lf.id, { retry: lf, assist: assist ? lf.game : null });
   }
 
   function openAsk(def) {
     askOpen = true; askT = 14;
-    N.hud.ask('RETRY “' + (def.title || def.id).toUpperCase() + '”?', [
-      { label: 'Retry', key: 'E', fn: () => retry() },
-      { label: 'Not now', fn: () => { lastFailed = null; closeAsk(); } },
-    ]);
+    const btns = [{ label: 'Retry from checkpoint', key: 'E', fn: () => retry() }];
+    const lf = lastFailed;
+    if (lf && lf.game && helpOn(def) && (streaks.game[lf.id + ':' + lf.game] || 0) >= TUNE.helpAfterGameFails) {
+      btns.push({ label: helperFor(lf.game).label, fn: () => retry(true) });
+    }
+    btns.push({ label: 'Free roam', key: 'Esc', fn: () => { lastFailed = null; closeAsk(); } });
+    N.hud.ask('RETRY “' + (def.title || def.id).toUpperCase() + '”?', btns);
   }
   function closeAsk() { if (askOpen) { askOpen = false; N.hud.closeAsk(); } }
 
@@ -431,7 +570,13 @@
     return true;
   }
   function refreshGivers(force) {
-    const list = order.map((id) => defs[id]).filter((d) => d.giver && isAvailable(d));
+    const all = order.map((id) => defs[id]).filter((d) => d.giver && isAvailable(d));
+    // one main giver at a time; side activities and jobs only inside their windows (nearest few)
+    const main = all.filter((d) => kindOf(d) === 'main').slice(0, 1);
+    const p0 = N.player;
+    const side = all.filter((d) => kindOf(d) !== 'main' && inWindow(d)).map((d) => { const q = giverPos(d); return { d, dist: q && p0 ? Math.hypot(q.x - p0.x, q.y - p0.y) : 1e9 }; })
+      .sort((a, b) => a.dist - b.dist).slice(0, TUNE.maxSideGivers).map((o) => o.d);
+    const list = main.concat(side);
     const ids = new Set(list.map((d) => d.id));
     for (const d of giverList) if (!ids.has(d.id) || active) N.hud.unblip('giver:' + d.id);
     giverList = active ? [] : list;
@@ -461,30 +606,82 @@
       if (T && !run.ended && mode === 'play') {
         T.left -= dt;
         N.hud.timer(T.label, Math.max(0, T.left), { countdown: false });
-        if (T.left <= 0) { run.timer = null; abortRun(run, 'fail', T.failMsg); }
+        if (T.left <= 0) { run.timer = null; run.failCause = 'timer'; abortRun(run, 'fail', T.failMsg); }
       }
     }
-    if (mode !== 'play') return;
-    // retry offer on ACTION while the ask card is up
+    if (mode !== 'play') { if (jc && mode !== 'paused') closeJcard(); return; }
+    // retry offer on ACTION while the ask card is up (Esc = free roam)
     if (askOpen) {
       askT -= dt;
       if (askT <= 0 || !lastFailed) closeAsk();
-      else N.interact.offer({ label: 'Retry mission', priority: 5, dist: 0, use: retry });
+      else {
+        N.interact.offer({ label: 'Retry mission', priority: 5, dist: 0, use: () => retry() });
+        if (N.input.pressed('pause')) { N.input.consume('pause'); lastFailed = null; closeAsk(); }
+      }
     }
     // givers
     giverT -= dt;
     if (giverT <= 0) { giverT = 0.5; refreshGivers(false); }
-    if (active) return;
+    if (active) { if (jc) closeJcard(); return; }
     const p = N.player;
+    let cand = null, cd = Infinity;
     for (const d of giverList) {
       const g = giverPos(d); if (!g) continue;
       const r = (d.giver.r || 14);
       const dist = Math.hypot(p.x - g.x, p.y - g.y);
       if (giverCooldown === d.id) { if (dist > r + 24) giverCooldown = null; continue; }
-      if (dist <= r && (!d.giver.onFoot || !p.vehicle) && !p.controlsLocked) { start(d.id); return; }
+      // the open card stays while the player is a step outside the ring (no flicker at the edge)
+      const reach = jc && jc.id === d.id ? r + 6 : r;
+      if (dist <= reach && (!d.giver.onFoot || !p.vehicle) && dist < cd) { cand = d; cd = dist; }
     }
+    if (cand && !p.controlsLocked) jcardTick(cand, dt);
+    else if (jc) closeJcard();
     for (const id of order) { const d = defs[id]; if (d.autoStart && isAvailable(d)) { start(id); return; } }
   }
+
+  /* ============================================================ J-card prompt (systems §6.1) */
+  function jcardSpec(def) {
+    const se = storyEntry(def.id);
+    const track = def.track || (se && se.track);
+    const k = kindOf(def);
+    const head = track ? 'TRACK ' + pad2(track) : k === 'side' ? 'SIDE ACTIVITY' : k === 'job' ? 'ODD JOB' : def.chapter != null ? (typeof def.chapter === 'number' ? 'CHAPTER ' + def.chapter : String(def.chapter).toUpperCase()) : 'MISSION';
+    const open = inWindow(def);
+    const w = def.window;
+    const spec = { key: def.id, kind: k, head, title: String(def.title || def.id).toUpperCase(), sub: dateLine(def), line: def.jcardLine || '' };
+    if (!open && w) {
+      spec.line = 'Come back at ' + (typeof w.from === 'number' ? N.util.fmtClock(w.from) : w.from) + '.';
+      spec.playLabel = 'Wait till ' + (typeof w.from === 'number' ? N.util.fmtClock(w.from) : w.from) + ' ▶▶';
+      spec.waiting = true;
+    }
+    return spec;
+  }
+  function waitForWindow(def) {
+    const w = def.window;
+    const a = hm(w && w.from);
+    if (a == null || !N.calendar) return;
+    const d = N.calendar.date;
+    let day = N.clock.day + (N.clock.minutes >= a ? 1 : 0);
+    for (let i = 0; i < 8 && w.dow && w.dow.indexOf(N.calendar.dateOf(day).dow) < 0; i++) day++;
+    const t = N.calendar.dateOf(day);
+    void d;
+    N.calendar.jumpTo([t.y, t.m, t.d, Math.floor(a / 60), a % 60], { fx: 'ff' });
+  }
+  function jcardTick(def, dt) {
+    if (!jc || jc.id !== def.id) { closeJcard(); jc = { id: def.id, t: 0, def }; N.emit('mission:prompt', { id: def.id }); }
+    const spec = jcardSpec(def);
+    if (!spec.waiting) jc.t += dt;
+    const go = () => {
+      if (!jc || jc.id !== def.id) return;
+      if (spec.waiting) { waitForWindow(def); jc.t = 0; return; }
+      closeJcard(); start(def.id, { fromGiver: true });
+    };
+    spec.progress = spec.waiting ? 0 : jc.t / TUNE.jcardDwell;
+    spec.onPlay = go;
+    N.hud.jcard(spec);
+    N.interact.offer({ label: spec.waiting ? 'Wait ▶▶' : '▶ PLAY', priority: 6, dist: 0, use: go });
+    if (!spec.waiting && jc.t >= TUNE.jcardDwell && !(N.calendar && N.calendar.jumping)) go();
+  }
+  function closeJcard() { if (jc) { jc = null; N.hud.jcard(null); } }
 
   // Pulsing cylinder of light: glow disc + rings on the ground, a translucent beam that leans
   // with the GTA2 projection, and a bobbing diamond on top.
@@ -598,13 +795,34 @@
 
   /* ================================================================== API */
   const M = (N.missions = {
-    MissionAbort, defs, done,
+    MissionAbort, defs, done, TUNE, streaks,
+    helpEnabled: true,
+    kindOf: (id) => kindOf(typeof id === 'string' ? defs[id] : id),
+    inWindow: (id) => { const d = typeof id === 'string' ? defs[id] : id; return d ? inWindow(d) : false; },
+    get prompt() { return jc ? jc.id : null; },
+    /** Can the player save right now? {ok, why} (STD booths, pause menu, sleeping). */
+    canSave() {
+      const md = N.state.mode;
+      if (active) return { ok: false, why: 'Save after the mission, beta.' };
+      if (md === 'minigame' || md === 'cutscene' || md === 'dialogue') return { ok: false, why: 'Not now — finish this first.' };
+      if (N.flags && N.flags.no_save) return { ok: false, why: 'Not now.' };
+      if (N.wanted && (N.wanted.level | 0) >= 3) return { ok: false, why: 'Shake off the chase first!' };
+      return { ok: true, why: null };
+    },
     get active() { return active; },
     get lastFailed() { return lastFailed; },
     /** {id, chapter, title, giver: {place|npc|x,y, r?, onFoot?}, requires: [ids], autoStart, when(),
      *  reward: {money, item, flag}, passText, color, autosave, script: async (m) => {...}} */
     register(def) {
       if (!def || !def.id || typeof def.script !== 'function') { N.err('missions.register', new Error('bad mission def ' + (def && def.id))); return null; }
+      // bible defaults for the 12 main missions (date, end, track, J-card line, scribble)
+      const se = storyEntry(def.id);
+      if (se) {
+        for (const k of ['date', 'end', 'track', 'jcard', 'scribble']) if (def[k] == null && se[k] != null) def[k] = se[k];
+        if (def.chapter == null) def.chapter = se.chapter;
+        if (def.title == null) def.title = se.title;
+      }
+      if (!def.kind) def.kind = 'main';
       if (!defs[def.id]) order.push(def.id);
       defs[def.id] = def;
       giverT = 0;
@@ -631,7 +849,7 @@
     },
     serialize() { return { done: Array.from(done) }; },
     deserialize(o) {
-      M.abort(); closeAsk(); lastFailed = null;
+      M.abort(); closeAsk(); lastFailed = null; closeJcard();
       done.clear();
       const list = o && Array.isArray(o.done) ? o.done : [];
       for (const id of list) if (typeof id === 'string') done.add(id);
@@ -643,12 +861,33 @@
 
   N.addSystem({
     id: 'missions', order: 10, runIn: ['play', 'dialogue', 'cutscene', 'minigame'],
-    init() { if (N.save && N.save.register) N.save.register('missions', { serialize: M.serialize, deserialize: M.deserialize }); },
+    init() {
+      if (N.save && N.save.register) N.save.register('missions', { serialize: M.serialize, deserialize: M.deserialize });
+      // refuse player-facing saves during missions (systems §6.2, §13.9)
+      if (N.save && typeof N.save.save === 'function' && !N.save._missionGuard) {
+        const orig = N.save.save;
+        N.save.save = function (meta) {
+          const reason = meta && meta.reason;
+          if (reason && reason !== 'mission' && !(meta && meta.force)) {
+            const c = M.canSave();
+            if (!c.ok) {
+              if (!meta || meta.toast !== false) N.hud.toast(c.why, 2400);
+              N.emit('save:refused', { reason, why: c.why });
+              return false;
+            }
+          }
+          return orig.apply(this, arguments);
+        };
+        N.save._missionGuard = true;
+      }
+    },
     update: tick,
     draw,
     reset() {
       if (active) { const r = active; abortRun(r, 'abort'); endRun(r, 'abort'); }
-      done.clear(); lastFailed = null; closeAsk(); giverCooldown = null;
+      done.clear(); lastFailed = null; closeAsk(); giverCooldown = null; closeJcard();
+      for (const k in streaks.game) delete streaks.game[k];
+      for (const k in streaks.timer) delete streaks.timer[k];
       for (const d of giverList) N.hud.unblip('giver:' + d.id);
       giverList = []; giverT = 0;
     },

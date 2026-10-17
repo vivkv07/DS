@@ -338,15 +338,46 @@
   }
 
   /* =========================================================== player */
-  const WALK = 45, RUN = 80;
+  // Numbers: systems_design §2 (N.player.TUNE). Energy is stamina; tummy (§2.2) is how fed Chinnu is,
+  // and energy can never go above it. Statuses (§2.3), falls off bikes (§2.6), counted items (§2.7).
+  const TUNE = {
+    walk: 45, run: 80, startMoney: 1000, startTummy: 80,
+    runDrain: 8.5, restDelay: 0.6, recoverWalk: 7, recoverStand: 14, recoverSit: 25, recoverRide: 10, exhaustedUntil: 30,
+    pedalDrain: 2.0, pedalRecover: 5, legsGoneMul: 0.65,
+    tummyDrain: { idle: 0.10, run: 0.25, pedal: 0.15, ride: 0.05, sit: 0.06 },
+    summerMul: 1.25, hungry: 25, veryHungry: 10, growlEvery: 20,
+    fallSpeedCycle: 75, fallSpeedMotor: 90, fallEnergy: 15, fallThrow: 14, fallDown: 1.0, kneeGm: 120,
+    difficulty: { relaxed: 0.7, normal: 1, hard: 1.2 },
+    starveFallbackS: 4,
+  };
+  // status ids -> default duration: number = real seconds, {gm} = game minutes, Infinity = until cleared
+  const STATUS = {
+    warm: 60, coma: 45, knee: { gm: 120 }, limp: Infinity, cool: 120, gola: { gm: 3 }, hair: Infinity,
+    balloon: { gm: 5 }, goggles: Infinity, sugar: 30,
+  };
+  // edible consumables (§2.7); value = tummy+energy, or {energy, tummy}
+  const EDIBLES = {
+    osmania_packet: { name: 'Osmania biscuits', short: 'Osmania', feed: 15, icon: 'biscuit' },
+    samosa_dozen: { name: 'Onion samosas', short: 'Samosa', feed: 14, icon: 'samosa' },
+    biscuits: { name: 'Glucose biscuits', short: 'Biscuits', feed: 12, icon: 'biscuit' },
+    glucose: { name: 'Glucose powder', short: 'Glucose', energy: 25, tummy: 10, icon: 'glucose' },
+    mango_bite: { name: 'Mango Bite', short: 'Mango Bite', feed: 2, icon: 'toffee' },
+  };
+  const pref = (k, d) => { const st = N.settings || (N.menus && N.menus.settings) || null; return st && st[k] != null ? st[k] : d; };
+  const gmNow = () => N.clock.day * 1440 + N.clock.minutes;
+  const WALK = TUNE.walk, RUN = TUNE.run;
   const player = new Actor({
     kind: 'ped', r: 3.4, mass: 1, solid: true, selfUpdate: true, isPlayer: true,
-    name: 'You', energy: 100, money: 2500, vehicle: null, mode: 'foot', running: false,
-    facing: 0, inventory: new Set(), controlsLocked: false, god: false, exhausted: false,
+    name: 'You', energy: 100, tummy: TUNE.startTummy, money: TUNE.startMoney, vehicle: null, mode: 'foot', running: false,
+    facing: 0, inventory: new Set(), items: {}, status: {}, controlsLocked: false, god: false, exhausted: false,
+    legsGone: false, hungry: false, starving: false, sitting: false, noRun: false, mood: 'neutral', downT: 0,
     look: { kind: 'kid', skin: '#a8703f', hair: '#1a1412', shirt: '#d8402a', stripes: '#f2c230', pants: '#6a5a3a' },
     anim: { phase: 0, speed: 0, run: false },
-    stepAcc: 0, restT: 0,
+    stepAcc: 0, restT: 0, growlT: 0,
   });
+  player.TUNE = TUNE;
+  player.STATUS = STATUS;
+  player.EDIBLES = EDIBLES;
 
   function spawnPoint() {
     const sp = (N.WORLD_DATA && N.WORLD_DATA.spawns && N.WORLD_DATA.spawns.player) || [N.WORLD_W / 2, N.WORLD_H / 2];
@@ -357,8 +388,9 @@
   player.reset = function () {
     const sp = (N.WORLD_DATA && N.WORLD_DATA.spawns && N.WORLD_DATA.spawns.player) || [N.WORLD_W / 2, N.WORLD_H / 2];
     this.x = sp[0]; this.y = sp[1]; this.vx = this.vy = 0; this.angle = Math.PI / 2;
-    this.energy = 100; this.money = 2500; this.vehicle = null; this.mode = 'foot';
-    this.running = false; this.inventory = new Set(); this.controlsLocked = false; this.exhausted = false; this.hidden = false;
+    this.energy = 100; this.tummy = TUNE.startTummy; this.money = TUNE.startMoney; this.vehicle = null; this.mode = 'foot';
+    this.running = false; this.inventory = new Set(); this.items = {}; this.status = {}; this.controlsLocked = false; this.exhausted = false; this.hidden = false;
+    this.legsGone = false; this.hungry = false; this.starving = false; this.sitting = false; this.noRun = false; this.mood = 'neutral'; this.downT = 0; this.growlT = 0;
     this.alive = true;
     if (N.world.built && !N.world.isWalkable(this.x, this.y)) { const f = N.world.findFree(this.x, this.y, 'walk', 60); if (f) { this.x = f.x; this.y = f.y; } }
   };
@@ -380,6 +412,120 @@
     N.emit('player:teleport', { x, y });
   };
 
+  /* ---- food, statuses, items */
+  /** Eat: n goes to both tummy and energy (capped at 100; energy <= tummy). o: {energy, tummy, status, quiet}. */
+  player.feed = function (n, o) {
+    o = o || {};
+    const dt = o.tummy != null ? +o.tummy : +n || 0, de = o.energy != null ? +o.energy : +n || 0;
+    this.tummy = U.clamp((isFinite(this.tummy) ? this.tummy : TUNE.startTummy) + dt, 0, 100);
+    this.energy = U.clamp(this.energy + de, 0, 100);
+    if (this.energy > this.tummy) this.energy = this.tummy;
+    if (this.tummy > 0) this.starving = false;
+    if (o.status) this.addStatus(o.status, o.statusFor);
+    N.emit('player:feed', { tummy: this.tummy, energy: this.energy, amount: n });
+    if (!o.quiet && N.audio && N.audio.sfx) N.audio.sfx('munch', { ui: true });
+    return this.tummy;
+  };
+  /** addStatus('warm') / addStatus('knee', {gm: 120}) / addStatus('hair', {value: 2}); seconds as a number. */
+  player.addStatus = function (id, dur, o) {
+    if (!id) return null;
+    let spec = dur != null ? dur : STATUS[id] != null ? STATUS[id] : 60;
+    if (typeof dur === 'object' && dur && !('gm' in dur) && !('secs' in dur)) { o = dur; spec = STATUS[id] != null ? STATUS[id] : 60; }
+    const st = { t: Infinity, until: null, value: o && o.value != null ? o.value : true };
+    if (typeof spec === 'number') st.t = spec; else if (spec && spec.gm != null) st.until = gmNow() + spec.gm; else if (spec && spec.secs != null) st.t = spec.secs;
+    const had = !!this.status[id];
+    this.status[id] = st;
+    if (!had) {
+      if (id === 'coma' && N.hud) N.hud.toast('*Neend aa rahi hai...*', 2400);
+      N.emit('player:status', { id, on: true });
+    }
+    return st;
+  };
+  player.hasStatus = function (id) { return !!this.status[id]; };
+  player.clearStatus = function (id) { if (!this.status[id]) return false; delete this.status[id]; N.emit('player:status', { id, on: false }); return true; };
+  /** Seconds (or game minutes for gm statuses) left; Infinity for until-cleared; 0 when off. */
+  player.statusLeft = function (id) { const s = this.status[id]; if (!s) return 0; return s.until != null ? Math.max(0, s.until - gmNow()) : s.t; };
+  function tickStatus(p, dt) {
+    const now = gmNow();
+    for (const id in p.status) {
+      const s = p.status[id];
+      if (s.until != null) { if (now >= s.until) p.clearStatus(id); }
+      else if (s.t !== Infinity) { s.t -= dt; if (s.t <= 0) p.clearStatus(id); }
+    }
+  }
+  /** Counted consumables {id: count}. */
+  player.addItem = function (id, n) { if (!id) return 0; const c = Math.max(0, (this.items[id] | 0) + (n == null ? 1 : n | 0)); if (c) this.items[id] = c; else delete this.items[id]; N.emit('player:items', { id, count: c }); return c; };
+  player.itemCount = function (id) { return this.items[id] | 0; };
+  /** The best edible to show in the HUD quick-item slot (or null). */
+  player.bestEdible = function () {
+    let best = null, bv = -1;
+    for (const id in EDIBLES) {
+      if (!(this.items[id] > 0)) continue;
+      const e = EDIBLES[id], v = e.feed != null ? e.feed : (e.tummy || 0) + (e.energy || 0) * 0.5;
+      if (v > bv) { bv = v; best = id; }
+    }
+    return best;
+  };
+  /** Eat one of a counted edible. Returns true when eaten. */
+  player.eat = function (id) {
+    id = id || this.bestEdible();
+    const e = EDIBLES[id];
+    if (!e || !(this.items[id] > 0)) return false;
+    this.addItem(id, -1);
+    if (e.feed != null) this.feed(e.feed); else this.feed(0, { energy: e.energy || 0, tummy: e.tummy || 0 });
+    if (N.hud) N.hud.toast(e.name + (this.items[id] ? ' (' + this.items[id] + ' left)' : '') + ' — *khaao!*', 1800);
+    N.emit('player:eat', { id });
+    return true;
+  };
+
+  /* ---- falling off a bike (§2.6): DHADAAM! */
+  player.fall = function (v, o) {
+    o = o || {};
+    if (this.downT > 0 || this.god) return false;
+    const veh = v || this.vehicle;
+    const ang = (veh ? veh.angle : this.angle) + (Math.random() - 0.5) * (Math.PI / 3);
+    if (this.vehicle && N.vehicles && N.vehicles.exit) { try { if (!N.vehicles.exit(this)) N.vehicles.exit(this, true); } catch (e) { N.err('player.fall.exit', e); } }
+    this.vehicle = null; this.mode = 'foot';
+    this.downT = TUNE.fallDown; this.fallA = ang; this.fallLeft = TUNE.fallThrow; this.fallLocked = !!this.controlsLocked;
+    this.controlsLocked = true;
+    this.vx = this.vy = 0;
+    this.energy = Math.max(0, this.energy - TUNE.fallEnergy);
+    this.addStatus('knee', { gm: TUNE.kneeGm });
+    if (N.hud) N.hud.toast('*DHADAAM!*', 1800);
+    if (N.audio && N.audio.sfx) { N.audio.sfx('crash', { ui: true }); N.audio.sfx('bell', { ui: true, delay: 0.55, vol: 0.5 }); }
+    if (N.render && N.render.shake && !(document.body && document.body.classList.contains('reduced-motion'))) N.render.shake(0.25, 0.2);
+    N.emit('player:fall', { vehicle: veh || null, x: this.x, y: this.y, speed: o.speed || 0 });
+    return true;
+  };
+  N.on('bump', (d) => {
+    const p = player, v = p.vehicle;
+    if (!v || !d || TUNE.autoFall === false || p.downT > 0) return;
+    if (d.a !== v && d.b !== v && d.vehicle !== v) return;
+    const T = v.T || (N.vehicles && N.vehicles.TYPES && N.vehicles.TYPES[v.type]);
+    if (!T || T.cls !== 'bike') return;
+    const other = d.a === v ? d.b : d.a;
+    const hard = d.wall || (other && other.kind === 'vehicle') || (other && other.kind === 'animal' && /cow|buffalo/.test(String(other.type || other.species || other.sub || '')));
+    if (!hard) return;
+    const lim = T.pedal ? TUNE.fallSpeedCycle : TUNE.fallSpeedMotor;
+    if ((+d.speed || 0) >= lim) p.fall(v, { speed: d.speed });
+  });
+
+  /* ---- THAK GAYA fallback (wanted.js owns the full flow; §4.11) */
+  function starveFallback(p) {
+    if (!p.starving || p.tummy > 0 || N.state.mode !== 'play') return;
+    const cafes = Object.values(N.places || {}).filter((q) => /^irani_cafe_\d+$/.test(q.id));
+    const m = N.clock.minutes, shut = m >= 23 * 60 + 30 || m < 5 * 60;
+    let best = N.places && N.places.home || null, bd = Infinity;
+    if (!shut) for (const c of cafes) { const d = Math.hypot(c.x - p.x, c.y - p.y); if (d < bd) { bd = d; best = c; } }
+    if (N.hud) N.hud.banner('THAK GAYA!', 'Glucose water at the counter. −₹1', 2600, { kind: 'fail' });
+    N.emit('wasted', { x: p.x, y: p.y, fallback: true });
+    p.money = Math.max(0, p.money - 100);
+    p.tummy = 40; p.energy = 40; p.starving = false;
+    if (best) p.teleport(best.x, best.y);
+    N.clock.minutes += 45; while (N.clock.minutes >= 1440) { N.clock.minutes -= 1440; N.clock.nextDay(); }
+    if (N.wanted && N.wanted.level > 0 && N.wanted.set) N.wanted.set(Math.max(0, N.wanted.level - 2));
+  }
+
   player.update = function (dt) {
     // a NaN from anywhere (a script, a bad push) must not stick: fall back to the last good spot
     if (!isFinite(this.x) || !isFinite(this.y)) {
@@ -390,34 +536,91 @@
     if (!isFinite(this.vx) || !isFinite(this.vy)) this.vx = this.vy = 0;
     if (!isFinite(this.angle)) this.angle = 0;
     if (!isFinite(this.energy)) this.energy = 100;
-    if (this.vehicle) {
-      const v = this.vehicle;
-      this.mode = 'drive'; this.x = v.x; this.y = v.y; this.vx = v.vx || 0; this.vy = v.vy || 0;
-      this.energy = Math.min(100, this.energy + dt * 8);
+    if (!isFinite(this.tummy)) this.tummy = TUNE.startTummy;
+    const md = N.state.mode, playing = md === 'play';
+    if (playing) tickStatus(this, dt);
+    const S = this.status;
+    // tummy: drains in play only (not while the clock is held: shop menus, VHS jumps)
+    const drainOn = playing && !N.clock.held && !this.god;
+    const diff = TUNE.difficulty[pref('difficulty', 'normal')] || 1;
+    let summer = 1;
+    if (drainOn && !S.cool && N.calendar && N.calendar.inRange && N.clock.minutes >= 720 && N.clock.minutes <= 930) { try { if (N.calendar.inRange('04-24', '06-11')) summer = TUNE.summerMul; } catch (e) { /* ignore */ } }
+    const v = this.vehicle;
+    const pedal = !!(v && v.T && v.T.pedal);
+    let drainKey = 'idle';
+    if (v) {
+      const v0 = v;
+      this.mode = 'drive'; this.x = v0.x; this.y = v0.y; this.vx = v0.vx || 0; this.vy = v0.vy || 0;
+      if (pedal) {
+        const thr = Math.max(0, +v0.throttle || +(v0.ctl && v0.ctl.throttle) || 0);
+        if (thr > 0.05 && !this.god) { this.energy -= dt * TUNE.pedalDrain * thr; drainKey = 'pedal'; }
+        else this.energy += dt * TUNE.pedalRecover;
+        if (this.energy <= 0) { this.energy = 0; if (!this.legsGone) { this.legsGone = true; if (N.hud) N.hud.toast('Legs gone! *Saans phool gayi!*', 2000); } }
+        if (this.legsGone && this.energy >= TUNE.exhaustedUntil) this.legsGone = false;
+      } else { this.energy += dt * TUNE.recoverRide; this.legsGone = false; drainKey = 'ride'; }
+      this.energy = U.clamp(this.energy, 0, 100);
+    } else this.legsGone = false;
+    if (drainOn) {
+      const runningNow = !v && this.running;
+      const key = this.sitting ? 'sit' : runningNow ? 'run' : drainKey;
+      this.tummy = Math.max(0, this.tummy - dt * TUNE.tummyDrain[key] * summer * diff);
+    }
+    // hunger effects (§2.2)
+    const hungry = this.tummy < TUNE.hungry, very = this.tummy < TUNE.veryHungry;
+    if (hungry && !this.hungry && playing && N.hud) N.hud.toast('*Pet mein chuhe daud rahe hain!*', 2600);
+    this.hungry = hungry; this.mood = very ? 'sad' : 'neutral';
+    if (hungry && playing) { this.growlT -= dt; if (this.growlT <= 0) { this.growlT = TUNE.growlEvery; if (N.audio && N.audio.sfx) N.audio.sfx('stomach_growl', { ui: true }); N.emit('caption', { text: 'tummy rumbles', kind: 'self', ms: 1600 }); } } else this.growlT = 3;
+    if (this.tummy <= 0 && playing && !this.starving) {
+      this.starving = true; this.starveT = TUNE.starveFallbackS;
+      N.emit('player:starving', { x: this.x, y: this.y });
+    }
+    if (this.starving && playing) { this.starveT -= dt; if (this.starveT <= 0) { this.starveT = 99; try { starveFallback(this); } catch (e) { N.err('player.starve', e); } } }
+    if (this.energy > this.tummy) this.energy = this.tummy;
+    if (v) return;
+    if (this.mode === 'drive') this.mode = 'foot';
+    // knocked down after a fall: slide along the throw, then sit up
+    if (this.downT > 0) {
+      this.downT -= dt;
+      if (this.fallLeft > 0) {
+        const st = Math.min(this.fallLeft, dt * 60);
+        this.fallLeft -= st;
+        const c = N.world.collide(this.x + Math.cos(this.fallA) * st, this.y + Math.sin(this.fallA) * st, this.r, 'walk');
+        if (!c.bad) { this.x = c.x; this.y = c.y; }
+      }
+      this.vx = this.vy = 0; this.anim.speed = 0;
+      if (this.downT <= 0) { this.downT = 0; this.controlsLocked = !!this.fallLocked; N.emit('player:up', {}); }
       return;
     }
-    if (this.mode === 'drive') this.mode = 'foot';
     const inp = N.input;
-    const canControl = N.state.mode === 'play' && !this.controlsLocked && this.mode !== 'busy';
+    const canControl = playing && !this.controlsLocked && this.mode !== 'busy';
     let mx = 0, my = 0;
     if (canControl) { mx = inp.move.x; my = inp.move.y; }
     const mag = Math.min(1, Math.hypot(mx, my));
     if (mag > 0) { const l = Math.hypot(mx, my); mx /= l; my /= l; }
     // energy (stamina)
-    const wantRun = canControl && inp.down('run') && mag > 0.15;
-    if (this.exhausted && this.energy > 30) this.exhausted = false;
+    let respect = false;
+    try { respect = !!(N.respect && typeof N.respect.at === 'function' && N.respect.at(this.x, this.y)); } catch (e) { respect = false; }
+    const noRun = this.noRun || respect || !!S.coma;
+    const wantRun = canControl && inp.down('run') && mag > 0.15 && !noRun;
+    if (this.exhausted && this.energy > TUNE.exhaustedUntil) this.exhausted = false;
     const running = wantRun && !this.exhausted && this.energy > 0;
     if (running && !this.god) {
-      this.energy -= dt * 8.5; this.restT = 0;
-      if (this.energy <= 0) { this.energy = 0; this.exhausted = true; N.emit('player:exhausted', this); }
+      this.energy -= dt * TUNE.runDrain * (S.sugar ? 0.7 : 1); this.restT = 0;
+      if (this.energy <= 0) { this.energy = 0; this.exhausted = true; if (N.hud) N.hud.toast('*Saans phool gayi!*', 1800); N.emit('player:exhausted', this); }
     } else {
       this.restT += dt;
-      if (this.restT > 0.6) this.energy = Math.min(100, this.energy + dt * (mag > 0.1 ? 7 : 14));
+      if (this.restT > TUNE.restDelay) this.energy = Math.min(100, this.energy + dt * (this.sitting ? TUNE.recoverSit : mag > 0.1 ? TUNE.recoverWalk : TUNE.recoverStand) * (S.warm ? 1.5 : 1));
     }
+    if (this.energy > this.tummy) this.energy = this.tummy;
     this.running = running;
     // velocity with acceleration
     const surf = N.world.surfaceAt(this.x, this.y);
-    const top = (running ? RUN : WALK) * N.world.surfaceSpeed(surf, 'walk') * (this.exhausted ? 0.8 : 1);
+    let mul = this.exhausted ? 0.8 : 1;
+    if (S.limp) mul *= 0.8;
+    if (very) mul *= 0.9;
+    if (S.coma) mul *= 0.9;
+    if (running) { if (S.knee) mul *= 0.9; if (hungry) mul *= 0.9; }
+    const top = (running ? RUN : WALK) * N.world.surfaceSpeed(surf, 'walk') * mul;
     const tvx = mx * top * mag, tvy = my * top * mag;
     const a = 1 - Math.exp(-dt * (mag > 0.05 ? 11 : 16));
     this.vx += (tvx - this.vx) * a; this.vy += (tvy - this.vy) * a;
@@ -455,6 +658,17 @@
     const R = N.render, D = N.draw;
     const self = this;
     R.queue('shadow', 0, () => D.shadow(self.x, self.y, 7, 9, self.angle, 1.5));
+    if (this.downT > 0) {
+      // knocked down: lying along the throw, a dust puff, then sitting up rubbing the knee
+      const k = 1 - this.downT / TUNE.fallDown;
+      R.queue('ground', 4, (ctx) => {
+        const kk = R.k(0), X = R.sx(self.x, kk), Y = R.sy(self.y, kk);
+        ctx.fillStyle = 'rgba(214, 190, 150, ' + (0.55 * (1 - k)).toFixed(3) + ')';
+        for (let i = 0; i < 5; i++) { const a = i * 1.26 + self.fallA, r = (5 + k * 10) * kk; ctx.beginPath(); ctx.arc(X + Math.cos(a) * r, Y + Math.sin(a) * r, (2.5 + k * 3) * kk, 0, Math.PI * 2); ctx.fill(); }
+      });
+      R.queue('actors', this.y, () => D.sprite(self.x, self.y, self.fallA + (k < 0.6 ? Math.PI / 2 : Math.PI / 4), 4, (ctx) => drawPerson(ctx, self.look, { phase: 0, speed: 0 })));
+      return;
+    }
     R.queue('actors', this.y, () => D.sprite(self.x, self.y, self.angle, 8, (ctx) => drawPerson(ctx, self.look, self.anim)));
     // after a few idle seconds a small bobbing chevron marks the player (busy screens, phones)
     const a = Math.min(1, Math.max(0, ((this.idleT || 0) - 2.5) / 0.6));
@@ -472,19 +686,33 @@
   };
 
   player.serialize = function () {
-    return { x: this.x, y: this.y, energy: this.energy, money: this.money, inventory: Array.from(this.inventory), name: this.name, look: this.look };
+    const st = {};
+    for (const id in this.status) { const s = this.status[id]; st[id] = { t: s.t === Infinity ? -1 : Math.round(s.t * 10) / 10, until: s.until, value: s.value }; }
+    return { x: this.x, y: this.y, energy: this.energy, tummy: this.tummy, money: this.money, inventory: Array.from(this.inventory), items: Object.assign({}, this.items), status: st, name: this.name, look: this.look };
   };
   player.deserialize = function (o) {
     if (!o || typeof o !== 'object') return;
     const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
     // junk / missing fields keep the current (or default) values instead of becoming NaN
     this.x = num(o.x, this.x); this.y = num(o.y, this.y);
-    this.energy = U.clamp(num(o.energy, 100), 0, 100);
+    this.tummy = U.clamp(num(o.tummy, TUNE.startTummy), 0, 100);
+    this.energy = Math.min(this.tummy, U.clamp(num(o.energy, 100), 0, 100));
     this.money = Math.round(U.clamp(num(o.money, this.money), -1e12, 1e12));
     this.inventory = new Set(Array.isArray(o.inventory) ? o.inventory.filter((i) => typeof i === 'string') : []);
+    this.items = {};
+    if (o.items && typeof o.items === 'object' && !Array.isArray(o.items)) for (const k in o.items) { const c = num(o.items[k], 0) | 0; if (c > 0 && c < 1000) this.items[k] = c; }
+    this.status = {};
+    if (o.status && typeof o.status === 'object' && !Array.isArray(o.status)) {
+      for (const k in o.status) {
+        const s = o.status[k];
+        if (!s || typeof s !== 'object') continue;
+        this.status[k] = { t: s.t === -1 || s.t == null ? Infinity : num(s.t, 0), until: s.until == null ? null : num(s.until, null), value: s.value == null ? true : s.value };
+      }
+    }
     if (typeof o.name === 'string') this.name = o.name;
     if (o.look && typeof o.look === 'object') this.look = o.look;
     this.vehicle = null; this.mode = 'foot'; this.vx = this.vy = 0;
+    this.downT = 0; this.starving = this.tummy <= 0; this.starveT = TUNE.starveFallbackS; this.legsGone = false;
     this.goodX = this.x; this.goodY = this.y;
   };
 

@@ -5,6 +5,7 @@
   // the device itself (canvas hit-tested), so the same big buttons work for mouse and touch.
   {
     const COLS = 10, ROWS = 20;
+    const T = (MG.TUNE.brickgame = Object.assign({ linesPerLevel: 5, lives: 3, lines0: 5, lines1: 7, cars0: 22, cars1: 25 }, MG.TUNE.brickgame || {}));
     const LCD_BG = '#9fae8c', LCD_OFF = 'rgba(40,52,30,0.11)', LCD_ON = '#141a10';
     // pieces as cells in a 4x4 (I) or 3x3 box
     const PIECES = {
@@ -43,7 +44,7 @@
       duck: 0.12,
       keys: {
         ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowDown: 'down', KeyS: 'down',
-        ArrowUp: 'rotate', KeyW: 'rotate', Space: 'rotate', KeyX: 'rotate', KeyK: 'rotate', Enter: 'start', NumpadEnter: 'start', KeyM: 'sound',
+        ArrowUp: 'rotate', KeyW: 'rotate', Space: 'rotate', KeyZ: 'rotate', KeyK: 'rotate', KeyX: 'down', Enter: 'start', NumpadEnter: 'start', KeyM: 'sound',
       },
       buttons: () => [],
       keyHint: () => '<kbd>←</kbd><kbd>→</kbd> move &nbsp; <kbd>↓</kbd> drop &nbsp; <kbd>↑</kbd>/<kbd>Space</kbd> rotate · turbo &nbsp; <kbd>M</kbd> sound',
@@ -106,7 +107,7 @@
         const race = S.mode === 'race';
         return {
           title: r.win ? (race ? 'Finish line!' : 'Line clear!') : (race ? 'Dhadaam!' : 'Bricks to the top!'),
-          line: r.win ? 'Nobody touch it, the high score is still on the screen.' : 'Batteries still good. One more game?',
+          line: r.win ? 'FREE GAME! Nobody touch it, the high score is still on the screen.' : 'Batteries still good. One more game?',
           rows: race ? [['Cars passed', S.cars + ' / ' + S.target], ['Score', r.score]] : [['Lines', S.lines + ' / ' + S.target], ['Speed', S.speed], ['Score', r.score]],
         };
       },
@@ -117,8 +118,8 @@
         return 1 + (S.score >= S.target * 180 ? 1 : 0) + (S.maxHeight <= 12 ? 1 : 0);
       },
     };
-    function targetLines(g) { return g.params.mode !== 'race' && g.params.target ? g.params.target : Math.round(5 + g.diff * 7); }
-    function targetCars(g) { return g.params.mode === 'race' && g.params.target ? g.params.target : Math.round(22 + g.diff * 25); }
+    function targetLines(g) { return g.params.mode !== 'race' && g.params.target ? g.params.target : Math.round(T.lines0 + g.diff * T.lines1); }
+    function targetCars(g) { return g.params.mode === 'race' && g.params.target ? g.params.target : Math.round(T.cars0 + g.diff * T.cars1); }
 
     function beep(g, S, f, d, o) { if (S.sound) g.tone(f, d, Object.assign({ type: 'square', vol: 0.045 }, o || {})); }
     function melody(g, S, notes, gap, o) { notes.forEach((f, i) => beep(g, S, f, gap * 0.9, Object.assign({ delay: i * gap }, o || {}))); }
@@ -133,7 +134,7 @@
         const garbage = g.diff >= 0.6 ? Math.round((g.diff - 0.5) * 8) : 0;
         for (let r = ROWS - garbage; r < ROWS; r++) { const hole = (g.rng.next() * COLS) | 0; for (let c = 0; c < COLS; c++) if (c !== hole && g.rng.next() < 0.8) S.board[r * COLS + c] = 1; }
       } else {
-        S.target = targetCars(g); S.cars = 0; S.lane = 0; S.enemies = []; S.scroll = 0; S.rowT = 0; S.spawnIn = 2; S.crash = null; S.speed = 1 + Math.round(g.diff * 2); S.lives = 3;
+        S.target = targetCars(g); S.cars = 0; S.lane = 0; S.enemies = []; S.scroll = 0; S.rowT = 0; S.spawnIn = 2; S.crash = null; S.speed = 1 + Math.round(g.diff * 2); S.lives = T.lives;
       }
       melody(g, S, [1568, 1976, 2349, 3136], 0.07);
     }
@@ -177,7 +178,7 @@
       for (const r of rows) { S.board.copyWithin(COLS, 0, r * COLS); S.board.fill(0, 0, COLS); }
       S.lines += rows.length;
       S.flash = null;
-      const lvl = 1 + Math.round(g.diff * 3) + Math.floor(S.lines / 4);
+      const lvl = 1 + Math.round(g.diff * 3) + Math.floor(S.lines / T.linesPerLevel);
       if (lvl > S.speed) { S.speed = Math.min(9, lvl); melody(g, S, [2093, 2637], 0.06); }
       if (S.lines >= S.target && !g.over) { S.score += 500; win(g, S); }
     }

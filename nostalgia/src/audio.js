@@ -60,6 +60,14 @@
  * HOOKS INTO OTHER MODULES: none patched. Reads only (N.player, N.vehicles.TYPES[t].radio/maxSpeed,
  *   N.entities.query, N.world, N.places, N.flags, N.clock, N.wanted, N.missions.active.music,
  *   N.dialogue.speakers[id].pitch) and calls N.hud.toast for radio/Walkman text when present.
+ * STORY LAYER (systems §12, §15 row 4; story-core agent): no bells at Birla Mandir (it has none) — its emitter
+ *   is wind, a distant city hum and soft steps on marble; NEW SFX freewheel, puncture, pothole, chappal_whoosh,
+ *   peel_slip, stomach_growl, weigh_machine, jukebox, goat_bleat, dappu (a teenmaar roll; also the Bonalu
+ *   festival emitter), fountain, giant_wheel; 'hitec' (90s-synth) and 'cantonment' (clarinet + snare)
+ *   re-voicings of `day` chosen by the music director by district style; walkman.setLibrary(list) (the
+ *   storycore walkman owns the found-order song list); the walkman has its own duck (40% under dialogue,
+ *   70% for 3 s after 'wanted:seen'); tapeMontage(names, {onItem(i, name), minStep, clicks}); important sounds
+ *   emit 'caption' {text, x, y} for the HUD's sound captions. Never any azaan, chant, hymn or bhajan.
  * CPU: long-lived buses, pooled channel strips for one-shots (voice cap + per-sound cooldowns),
  *   one shared reverb, noise/KS buffers cached and shared, lookahead scheduler (setInterval 30 ms,
  *   0.18 s ahead) + per-frame top-up, context suspended while the tab is hidden.
@@ -985,6 +993,102 @@
     return t + d + 0.08;
   };
 
+  // ---- story-layer requests (systems §12.2 NEW). Comic and kid-friendly; nothing painful.
+  SFX.freewheel = (ac, out, t, o) => { // cycle coasting: ratchet "tik-tik-tik" at the wheel speed
+    const n = o.n || 10, rate = o.rate || 14;
+    let e = t;
+    for (let k = 0; k < n; k++) e = burst(ac, out, t + k / rate, { ft: 'highpass', f: 4200 * P(o), q: 1.2, a: 0.0008, r: 0.012, v: 0.22 * (1 - (k / n) * 0.5) });
+    return e;
+  };
+  SFX.puncture = (ac, out, t, o) => { // flat tyre: a long "psssss", then a rim thud
+    const d = o.dur || 1.6;
+    burst(ac, out, t, { ft: 'highpass', f: 3800, f2: 2200, sweep: d, q: 0.6, a: 0.02, h: d * 0.7, r: d * 0.3, v: 0.3 });
+    return tone(ac, out, t + d + 0.05, { f: 110, f2: 70, a: 0.001, r: 0.12, v: 0.4 });
+  };
+  SFX.pothole = (ac, out, t, o) => { // hollow "thunk" + a spring rattle
+    tone(ac, out, t, { f: 95 * P(o), f2: 55, glide: 0.1, a: 0.001, r: 0.18, v: 0.6 });
+    burst(ac, out, t, { kind: 'brown', ft: 'lowpass', f: 500, r: 0.08, v: 0.4 });
+    let e = t;
+    for (let k = 0; k < 5; k++) e = strike(ac, out, t + 0.05 + k * 0.035, rr(1800, 2600), METAL, 0.05 * (1 - k * 0.15), 0.06);
+    return e;
+  };
+  SFX.chappal_whoosh = (ac, out, t, o) => { // the 0.4 s wind-up + flight: a rising whoosh with a little whistle
+    const d = o.dur || 0.55;
+    burst(ac, out, t, { kind: 'pink', f: 500, f2: 2600, sweep: d, q: 1.4, a: d * 0.6, h: 0.02, r: 0.12, v: 0.45 });
+    return tone(ac, out, t + d * 0.2, { f: 900 * P(o), f2: 1900, glide: d * 0.8, a: d * 0.4, h: 0.05, r: 0.1, v: 0.06 });
+  };
+  SFX.peel_slip = (ac, out, t, o) => { // a pursuer slips on a peel: slide whistle down, then a soft bump
+    tone(ac, out, t, { f: 1500, f2: 300, glide: 0.55, a: 0.02, h: 0.45, r: 0.08, v: 0.16, vib: [9, 12] });
+    tone(ac, out, t + 0.62, { f: 120, f2: 70, a: 0.001, r: 0.12, v: 0.45 });
+    return burst(ac, out, t + 0.62, { kind: 'brown', ft: 'lowpass', f: 380, r: 0.08, v: 0.35 });
+  };
+  SFX.stomach_growl = (ac, out, t, o) => { // hungry: a comic gurgle
+    const d = 0.9 * (o.dur || 1);
+    const os = osc0(ac); os.type = 'sawtooth';
+    os.frequency.setValueAtTime(70 * P(o), t); os.frequency.linearRampToValueAtTime(115 * P(o), t + d * 0.4); os.frequency.linearRampToValueAtTime(58 * P(o), t + d);
+    const g = gain(ac, 0, out), fl = filt(ac, 'lowpass', 380, 5, g);
+    for (let k = 0; k < 9; k++) g.gain.setTargetAtTime(k % 2 ? 0.06 : 0.24, t + (k * d) / 9, 0.02);
+    g.gain.setTargetAtTime(0, t + d, 0.05);
+    os.connect(fl); os.start(t); os.stop(t + d + 0.3);
+    return t + d + 0.3;
+  };
+  SFX.weigh_machine = (ac, out, t, o) => { // station weighing machine: coin drop, a whirr, the fortune card "chk"
+    SFX.coin_drop(ac, out, t, {});
+    const nv = noiseVoice(ac, out, t + 0.5, 0.95, 'pink', 'bandpass', 900, 3);
+    nv.g.gain.setValueAtTime(0, t + 0.5); nv.g.gain.linearRampToValueAtTime(0.25, t + 0.6); nv.g.gain.setTargetAtTime(0, t + 1.25, 0.05);
+    tone(ac, out, t + 0.5, { type: 'sawtooth', f: 120, f2: 160, glide: 0.7, a: 0.05, h: 0.6, r: 0.05, v: 0.04 });
+    burst(ac, out, t + 1.45, { ft: 'highpass', f: 2500, q: 1, a: 0.001, r: 0.025, v: 0.5 });
+    return tone(ac, out, t + 1.45, { f: 600, a: 0.001, r: 0.03, v: 0.15 });
+  };
+  SFX.jukebox = (ac, out, t, o) => { // Irani café jukebox: the arm clunks over, motor hum, record crackle
+    tone(ac, out, t, { f: 160, f2: 90, a: 0.001, r: 0.1, v: 0.45 });
+    burst(ac, out, t, { f: 900, q: 1, r: 0.05, v: 0.3 });
+    tone(ac, out, t + 0.25, { type: 'sawtooth', f: 60, f2: 75, glide: 0.4, a: 0.05, h: 0.35, r: 0.05, v: 0.03 });
+    tone(ac, out, t + 0.75, { f: 210, f2: 120, a: 0.001, r: 0.06, v: 0.3 });
+    let e = t + 0.8;
+    for (let k = 0; k < 10; k++) e = Math.max(e, burst(ac, out, t + 0.8 + rr(0, 0.9), { ft: 'highpass', f: 3500, r: 0.006, v: 0.18 }));
+    return e;
+  };
+  SFX.goat_bleat = (ac, out, t, o) => { // "meh-eh-eh": a reedy voice with a fast tremolo
+    const d = 0.7, f0 = 330 * P(o) * rr(0.92, 1.08);
+    const os = osc0(ac); os.type = 'sawtooth';
+    os.frequency.setValueAtTime(f0, t); os.frequency.linearRampToValueAtTime(f0 * 1.08, t + 0.15); os.frequency.linearRampToValueAtTime(f0 * 0.86, t + d);
+    const env = gain(ac, 0, out), trem = gain(ac, 0.6, env);
+    const f1 = filt(ac, 'bandpass', 700, 5, trem), f2 = filt(ac, 'bandpass', 1800, 6, gain(ac, 0.6, trem));
+    os.connect(f1); os.connect(f2);
+    const lfo = osc0(ac); lfo.frequency.value = 17; const lg = gain(ac, 0.4, trem.gain); lfo.connect(lg);
+    env.gain.setValueAtTime(0, t); env.gain.linearRampToValueAtTime(0.22, t + 0.04); env.gain.setTargetAtTime(0, t + d - 0.1, 0.06);
+    os.start(t); os.stop(t + d + 0.3); lfo.start(t); lfo.stop(t + d + 0.3);
+    return t + d + 0.3;
+  };
+  SFX.dappu = (ac, out, t, o) => { // a short teenmaar roll: dappu frame drum in a 6/8 gallop with rim slaps (bible §12.4)
+    const st = 0.105 / P(o), pat = 'P.pP.T P.pPTT P.pP.T PpPpTT P.pPTR B..M..';
+    let e = t, i = 0;
+    for (const ch of pat.replace(/ /g, '')) {
+      const tt = t + i * st; i++;
+      if (ch === '.') continue;
+      const fn = KITS.band[ch];
+      if (fn) { fn(ac, out, tt + rr(0, 0.006), ch === 'p' ? 0.7 : ch === 'B' ? 1.1 : 1); e = tt + 0.45; }
+    }
+    return e;
+  };
+  SFX.fountain = (ac, out, t, o) => { // Lumbini musical fountain: rising spray hiss + a few music-box notes
+    const d = o.dur || 2.4;
+    const nv = noiseVoice(ac, out, t, d + 0.4, 'white', 'highpass', 1800, 0.5);
+    nv.g.gain.setValueAtTime(0, t); nv.g.gain.linearRampToValueAtTime(0.3, t + d * 0.5); nv.g.gain.linearRampToValueAtTime(0.12, t + d); nv.g.gain.linearRampToValueAtTime(0, t + d + 0.35);
+    nv.f.frequency.setValueAtTime(1200, t); nv.f.frequency.linearRampToValueAtTime(3800, t + d * 0.5);
+    let e = t;
+    [72, 76, 79, 84, 79, 76].forEach((m, k) => { e = strike(ac, out, t + k * 0.3, mtof(m) * P(o), [[1, 0.5, 1], [2.76, 0.12, 0.4]], 0.08, 0.6); });
+    return Math.max(e, t + d + 0.4);
+  };
+  SFX.giant_wheel = (ac, out, t, o) => { // Numaish giant wheel: slow metal creaks over a bulb hum
+    const d = o.dur || 2.2;
+    tone(ac, out, t, { type: 'sawtooth', f: 100, a: 0.2, h: d, r: 0.3, v: 0.018 });
+    let e = t;
+    for (let k = 0; k < 3; k++) e = tone(ac, out, t + 0.2 + k * 0.7, { type: 'sawtooth', f: rr(380, 520), f2: rr(260, 340), glide: 0.45, a: 0.08, h: 0.25, r: 0.15, v: 0.03, vib: [23, 18] });
+    return Math.max(e, t + d + 0.3);
+  };
+
   // Loudness trims so one-shots sit together in the mix (measured with tests: horns/whistles were ~10 dB hot)
   const SFX_TRIM = { auto_horn: 0.55, car_horn: 0.7, bus_horn: 0.55, lorry_horn: 0.65, diesel_start: 0.6, flour_mill: 0.65, mission_passed: 0.8,
     mission_failed: 0.75, busted: 0.75, cow_moo: 0.5, train_horn: 0.75, whistle: 0.6, conductor: 0.65, bell: 1.3, bird: 1.6, step: 1.5,
@@ -1446,8 +1550,12 @@
     if (!tr.base) return tr;
     const b = resolveTrack(tr.base);
     const parts = {};
-    for (const k in b.parts) if (!(tr.mute || []).includes(k)) parts[k] = b.parts[k];
-    return Object.assign({}, b, tr, { parts, base: null });
+    // re-voicing (story layer): voice {part: cfg overrides}, addParts {name: cfg}, addPat {section|'*': {part: pattern}}
+    for (const k in b.parts) if (!(tr.mute || []).includes(k)) parts[k] = tr.voice && tr.voice[k] ? Object.assign({}, b.parts[k], tr.voice[k]) : b.parts[k];
+    if (tr.addParts) Object.assign(parts, tr.addParts);
+    let sections = b.sections;
+    if (tr.addPat) { sections = {}; for (const sn in b.sections) sections[sn] = Object.assign({}, b.sections[sn], tr.addPat['*'] || {}, tr.addPat[sn] || {}); }
+    return Object.assign({}, b, tr, { parts, sections, base: null });
   }
   function compile(id) {
     const key = typeof id === 'string' ? id : id.id || id.name;
@@ -1710,6 +1818,20 @@
         mando: '5 - 6 5 3 - 2 3 | 7 - ^1 7 6 - 5 6 | ^1 - 6 5 4 - 3 4 | 5 - 7# - ^2 - 7# -' },
     },
     order: ['intro', 'A', 'B', 'brk', 'A'],
+  };
+
+  // District re-voicings of `day` (systems §12.4): HITEC City in 90s synths, Secunderabad as a cantonment band.
+  TRACKS.hitec = {
+    base: 'day', name: 'Cycle Pe Sawaari (Cyber Towers Mix)', bpm: 112, gain: 0.8, mute: ['dholak'],
+    voice: { flute: { inst: 'synlead', vol: 0.7 }, shehnai: { inst: 'synlead', vol: 0.62 }, mando: { inst: 'epiano', vol: 0.55 }, pad: { inst: 'pad', vol: 0.5 }, bass: { inst: 'synbass', vol: 0.7 } },
+    addParts: { dm: { kit: 'kit', div: 1, vol: 0.62 } },
+    addPat: { '*': { dm: 'k . h . s . h . k k h . s . h h' }, intro: { dm: 'k . h . k . h . k . h . k . h h' }, brk: { dm: 'k . . . s . . . k . k . s . s s' } },
+  };
+  TRACKS.cantonment = {
+    base: 'day', name: 'Cycle Pe Sawaari (Cantonment Band)', bpm: 100, gain: 0.82, mute: ['dholak', 'shaker'],
+    voice: { flute: { inst: 'clarinet', vol: 0.82 }, shehnai: { inst: 'clarinet', vol: 0.7 }, mando: { inst: 'guitar', vol: 0.45 }, pad: { inst: 'brass', vol: 0.35 } },
+    addParts: { snare: { kit: 'band', div: 1, vol: 0.55, pan: 0.1 } },
+    addPat: { '*': { snare: 'B . S . . S S . B . S . R . S .' }, intro: { snare: 'R . R . R . R . R . R . R R R R' } },
   };
 
   TRACKS.night = {
@@ -2082,7 +2204,8 @@
     g.tape = ac.createDelay(2.5); g.tape.delayTime.value = 0.012; g.tape.connect(g.tapeLP);
     g.musicDuck = gain(ac, 1, g.tape);
     g.music = gain(ac, 1, g.musicDuck);
-    g.walk = gain(ac, 1, g.musicDuck);
+    g.walkDuck = gain(ac, 1, g.tape);           // the walkman has its own duck (systems §3.5)
+    g.walk = gain(ac, 1, g.walkDuck);
     g.wow = osc0(ac); g.wow.frequency.value = 0.55; g.wowD = gain(ac, 0, g.tape.delayTime); g.wow.connect(g.wowD); g.wow.start();
     g.flut = osc0(ac); g.flut.frequency.value = 7.1; g.flutD = gain(ac, 0, g.tape.delayTime); g.flut.connect(g.flutD); g.flut.start();
     const hs = ac.createBufferSource(); hs.buffer = noiseBuf(ac, 'white'); hs.loop = true;
@@ -2155,11 +2278,23 @@
   const cool = Object.create(null);
   let sfxPlayed = 0;
 
+  // Sound captions (systems §14.2): important gameplay sounds tell the HUD, even when audio is off.
+  const CAPTIONS = { whistle: 'whistle', gurkha: 'lathi tok-tok', chappal_whoosh: 'chappal whoosh', chappal: 'thup!', peel_slip: 'slip!',
+    dog_bark: 'dog barking', bus_horn: 'bus horn', lorry_horn: 'lorry horn', train_horn: 'train horn', std_ring: 'phone ringing',
+    school_bell: 'school bell', dappu: 'dappu drums', conductor: '"Right, right!"' };
+  const CAP_MAX = { dog_bark: 260, bus_horn: 320, lorry_horn: 320, train_horn: 600, school_bell: 400, std_ring: 160, conductor: 260 };
+  function captionFor(name, o) {
+    const text = CAPTIONS[name];
+    if (!text || o.bus === 'amb' || o.noCaption) return;
+    if (o.x != null && o.y != null) { const L = listener(); if (L && Math.hypot(o.x - L.x, o.y - L.y) > (CAP_MAX[name] || 600)) return; }
+    try { N.emit('caption', { text, x: o.x, y: o.y, kind: 'sound', ms: 1700 }); } catch (e) { /* ignore */ }
+  }
   function playSfx(name, o) {
-    if (!G || !unlocked) return false;
     const fn = SFX[name];
     if (!fn) return false;
     o = o || {};
+    captionFor(name, o);
+    if (!G || !unlocked) return false;
     const now = ctx.currentTime;
     const cd = COOLDOWN[name] != null ? COOLDOWN[name] : 0.03;
     const ck = name + (o.key != null ? ':' + o.key : '');
@@ -2399,7 +2534,8 @@
     { m: 'koti_bus_stand', r: 380, ev: [['bus_horn', 5], ['conductor', 3], ['air_brake', 2], ['vendor_call', 1.5, { variant: 'paper' }]], bed: { murmur: 0.3, traffic: 0.3 } },
     { m: 'imlibun_bus_station', r: 420, ev: [['bus_horn', 5], ['conductor', 2.5], ['air_brake', 2], ['announce', 0.8]], bed: { murmur: 0.3, traffic: 0.25 } },
     { m: 'gokul_chat', r: 200, ev: [['sizzle', 4], ['plates', 3], ['vendor_call', 1, { variant: 'chai' }]], bed: { chatter: 0.35 } },
-    { m: 'birla_mandir', r: 320, ev: [['temple_bell', 2.2]], bed: { traffic: -0.15 } },
+    // Birla Mandir has no bells (bible §1.5, systems §12.3): wind, a distant city hum, soft steps on marble
+    { m: 'birla_mandir', r: 320, ev: [['step', 1.4, { surface: 'stone', vol: 0.35 }], ['bird', 0.6]], bed: { traffic: -0.15, wind: 0.22, murmur: 0.08 } },
     { m: 'dilsukhnagar_sai_temple', r: 280, ev: [['temple_bell', 3], ['vendor_call', 1.2, { variant: 'flower' }]], bed: { murmur: 0.25 } },
     { m: 'ujjaini_mahankali_temple', r: 280, ev: [['temple_bell', 2.5]] },
     { m: 'lal_darwaza_temple', r: 260, ev: [['temple_bell', 2.5]] },
@@ -2480,7 +2616,7 @@
   // Festival soundscapes switched on by story flags: N.flags[id] truthy, N.flags.festival === id, or in N.flags.festivals[].
   const FESTIVALS = {
     ganesh_immersion: { near: ['ganesh_immersion_point', 'tank_bund', 'khairatabad_ganesh', 'tank_bund_statues', 'necklace_road'], r: 650, music: 'festival', ev: [['crowd_cheer', 2], ['whistle', 1]] },
-    bonalu: { near: ['ujjaini_mahankali_temple', 'lal_darwaza_temple'], r: 500, music: 'festival', ev: [['temple_bell', 2], ['crowd_cheer', 1]] },
+    bonalu: { near: ['ujjaini_mahankali_temple', 'lal_darwaza_temple'], r: 500, music: 'festival', ev: [['dappu', 2], ['temple_bell', 0.8], ['crowd_cheer', 1]] },
     ramzan: { near: ['charminar', 'mecca_masjid'], r: 650, ev: [['bangles', 6], ['vendor_call', 6], ['firework', 0.8], ['crowd_cheer', 0.5]] },
     numaish: { near: ['nampally_exhibition'], r: 600, music: 'numaish' },
     sankranti: { global: true, ev: [['bo_kaata', 1.2], ['kite_wind', 1]] },
@@ -2700,6 +2836,8 @@
     if (N.clock && N.clock.isNight && N.clock.isNight()) return 'night';
     const d = amb.district;
     if (d && (d.style === 'oldcity' || d.id === 'oldcity' || d.id === 'charminar')) return 'oldcity';
+    if (d && (d.style === 'hitec' || /hitec|madhapur|cyber/.test(String(d.id)))) return 'hitec';
+    if (d && (d.style === 'cantonment' || /secunderabad|cantonment/.test(String(d.id)))) return 'cantonment';
     return 'day';
   }
   function desiredTrack(mode) {
@@ -2869,6 +3007,8 @@
     get playing() { return walkman.seq ? walkman.cur : null; },
     get library() { return walkman.library.slice(); },
     unlock(id) { if (TRACKS[id] && walkman.library.indexOf(id) < 0) walkman.library.push(id); return walkman.library.slice(); },
+    /** Replace the song list (storycore: the found cassettes' songs in found order). */
+    setLibrary(list) { walkman.library = (Array.isArray(list) ? list : []).filter((id) => TRACKS[id]); if (walkman.idx >= walkman.library.length) walkman.idx = 0; return walkman.library.slice(); },
     play(id) { id = id || walkman.library[walkman.idx] || 'title'; A.walkman.unlock(id); walkman.paused = null; return walkmanStart(id); },
     stop() { walkman.paused = null; if (walkman.seq) { walkman.seq.stop(0.2); liveSeqs.delete(walkman.seq); walkman.seq = null; if (ctx) SFX.tape_click(ctx, G.ui, ctx.currentTime, {}); } walkman.cur = null; },
     next() { const lib = walkman.library; if (!lib.length) return false; walkman.idx = (walkman.idx + 1) % lib.length; return walkmanStart(lib[walkman.idx]); },
@@ -2920,7 +3060,7 @@
     if (!G) return;
     const pr = engProfile(v && v.type);
     if (v && pr.kind !== 'pedal' && !/2t/.test(pr.kind)) playSfx('door', { x: v.x, y: v.y });
-    if (radio.on) radioOff(true);
+    if (radio.on && vehicleHasRadio(v)) radioOff(true); // the walkman's radio band (bikes, on foot) keeps playing
     radio.veh = null;
   }
   function pollVehicle() {
@@ -3018,6 +3158,7 @@
       const prev = d.prev != null ? d.prev : d.from != null ? d.from : hooks.wanted;
       if (typeof l === 'number') { if (l > prev) playSfx('wanted_up'); else if (l < prev) playSfx('wanted_down'); hooks.wanted = l; }
     });
+    on(['wanted:seen'], () => { hooks.seenAt = ctx.currentTime; });
     on(['busted', 'player:busted'], () => { playSfx('busted', { ui: true }); music.stingUntil = ctx.currentTime + 4; music.victoryUntil = 0; });
     on(['wasted', 'player:wasted'], () => { playSfx('wasted', { ui: true }); music.stingUntil = ctx.currentTime + 4; music.victoryUntil = 0; });
     on(['player:exhausted'], () => playSfx('pant'));
@@ -3049,7 +3190,7 @@
   /* ============================================================ unlock, buses, system */
   const liveSeqs = new Set();
   let manualTape = 0;
-  const busState = { duck: -1, muffle: -1, tape: -1 };
+  const busState = { duck: -1, muffle: -1, tape: -1, wduck: -1 };
   function pump() {
     if (!ctx || hidden) return;
     const until = ctx.currentTime + LOOKAHEAD;
@@ -3071,6 +3212,11 @@
       G.radioDuck.gain.setTargetAtTime(duck ? 0.45 : 1, t, 0.18);
       G.worldDuck.gain.setTargetAtTime(duck === 2 ? 0.5 : duck === 1 ? 0.8 : 1, t, 0.2);
     }
+    // walkman: 40% under dialogue, 70% for 3 s after a pursuer sees Chinnu (so he hears the whistle)
+    let seen = t - (hooks.seenAt || -10) < 3;
+    try { if (N.wanted && N.wanted.seen && (N.wanted.level | 0) > 0) seen = true; } catch (e) { /* ignore */ }
+    const wd = menu ? 0.55 : dlg ? 0.4 : seen ? 0.7 : 1;
+    if (wd !== busState.wduck && G.walkDuck) { busState.wduck = wd; G.walkDuck.gain.setTargetAtTime(wd, t, 0.15); }
     const muffle = menu ? 1 : 0;
     if (muffle !== busState.muffle) { busState.muffle = muffle; G.worldLP.frequency.setTargetAtTime(muffle ? 650 : 20000, t, 0.12); }
     let vhs = 0;
@@ -3089,7 +3235,7 @@
   // Idle-time warm-up after unlock: compile every track, then render the Karplus-Strong buffers the
   // score needs (roam tracks first), a few ms per slice, so first plays never hitch a frame.
   function warmup() {
-    const order = ['title', 'day', 'night', 'oldcity', 'chase', 'tension', 'ending', 'victory', 'flashback', 'festival', 'numaish', 'kites',
+    const order = ['title', 'day', 'night', 'oldcity', 'hitec', 'cantonment', 'chase', 'tension', 'ending', 'victory', 'flashback', 'festival', 'numaish', 'kites',
       'r_chandni', 'r_barish', 'r_baraat', 'r_neon', 'r_pager', 'id_vani', 'id_band', 'id_pop'];
     const jobs = [];
     const seen = new Set();
@@ -3197,10 +3343,13 @@
     manualTape = Math.max(manualTape, o.tape == null ? 0.35 : o.tape);
     playSfx('tape_click', { ui: true });
     await delay(400);
-    for (const n of names || []) {
+    const list = names || [];
+    for (let i = 0; i < list.length; i++) {
+      const n = list[i];
       if (!SFX[n]) continue;
+      if (o.onItem) { try { o.onItem(i, n); } catch (e) { N.err('audio.montage.onItem', e); } }
       const strip = getStrip(ctx.currentTime);
-      if (!strip) { await delay(300); continue; }
+      if (!strip) { await delay(Math.max(300, o.minStep || 0)); continue; }
       strip.route(G.walk);
       const now = ctx.currentTime;
       strip.in.gain.setValueAtTime(o.vol || 0.9, now);
@@ -3210,7 +3359,7 @@
       let end = now + 1;
       try { end = SFX[n](ctx, strip.in, now + 0.02, o.opts && o.opts[n] || {}); } catch (e) { N.err('audio.montage', e); }
       strip.busy = end + 0.12;
-      await delay(Math.max(300, (end - now) * 1000 * (o.overlap || 0.8) + (o.gap || 250)));
+      await delay(Math.max(300, o.minStep || 0, (end - now) * 1000 * (o.overlap || 0.8) + (o.gap || 250)));
     }
     playSfx('tape_click', { ui: true });
     manualTape = prevTape;

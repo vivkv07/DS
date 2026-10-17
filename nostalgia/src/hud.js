@@ -4,6 +4,20 @@
  * (5 slipper icons), objective strip, mission timer, toasts, centre banners, the GTA-style
  * district banner and a north-up minimap (pre-rendered world image, blips, route line along
  * the road graph, edge arrows). Contract: ARCHITECTURE.md §10 (+ "hud.js notes" there).
+ *
+ * Story layer additions (systems §13.2, §14.2; story-core agent):
+ *  - OSD: `▶ PLAY [cassette] SIDE A 083` (the tape counter from N.tape, `● REC` prompt, greyed
+ *    `■ PAUSED`), the date from N.calendar (spins during a VHS jump) with `↻` while the week loops.
+ *    The cassette icon is the touch RADIO button (tap = next source, hold = off).
+ *  - Energy bar with the tummy notch (bar dimmed above N.player.tummy) and a chai-glass icon that
+ *    blinks when hungry; a quick-item slot (best edible; click/tap eats one).
+ *  - Walkman now-playing strip on the minimap; dashed hint search circles: searchCircle(id, {x, y, r}|null).
+ *  - Sound captions: caption(text, {x, y, ms, kind}) or the 'caption' event; "[whistle ↗]" at the
+ *    screen edge towards the sound (setting `captions`, default on).
+ *  - One centre message at a time: toasts queue (one visible, deduped, compressed when busy) and are
+ *    held while a banner / J-card / ask card / dialogue is up; the district card waits for banners.
+ *  - jcard(spec | null): the mission J-card prompt card (missions.js drives it).
+ *  - banner(title, sub, ms, {kind, note}): `note` is a handwritten third line (Immu's scribble).
  */
 (() => {
   'use strict';
@@ -15,8 +29,9 @@
   const state = {
     money: null, moneyShown: 0, moneyAnim: null, energy: -1, exhausted: null, wanted: -1,
     clock: '', dateDay: -1, district: null, distCand: null, distT: 0, distCheck: 0,
-    timer: null, toasts: [], banners: [], bannerT: 0, bannerCur: null,
-    hidden: false, mmT: 0,
+    timer: null, toasts: [], tq: [], banners: [], bannerT: 0, bannerCur: null,
+    hidden: false, mmT: 0, tummy: -1, hungry: null, tape: '', tapeCls: '', rec: '', loop: null, dateLbl: '',
+    qitem: undefined, qT: 0, walk: '', distPending: null, caps: [], circles: new Map(), jc: null,
   };
 
   /* -------------------------------------------------------------- helpers */
@@ -35,6 +50,15 @@
     '<path class="sole" d="M10 1.5C15.6 1.5 18.2 6 17.8 12.6 17.4 18.6 15 22.6 14.6 27.6 14.3 32.6 14.2 38.4 10 38.6 5.8 38.4 5.7 32.6 5.4 27.6 5 22.6 2.6 18.6 2.2 12.6 1.8 6 4.4 1.5 10 1.5Z"/>' +
     '<path class="strap" d="M10 8.5 3.6 19.5M10 8.5 16.4 19.5"/>' +
     '<circle class="post" cx="10" cy="8.5" r="1.7"/></svg>';
+  const CHAI_SVG =
+    '<svg viewBox="0 0 16 16" aria-hidden="true"><path class="glass" d="M3.2 1.8h9.6l-1.5 12.1a1.2 1.2 0 0 1-1.2 1H5.9a1.2 1.2 0 0 1-1.2-1z"/>' +
+    '<path class="chai" d="M4.3 6.2h7.4l-1 7.7H5.3z"/><path class="rim" d="M3.4 4h9.2"/></svg>';
+  const CASSETTE_SVG =
+    '<svg viewBox="0 0 26 18" aria-hidden="true"><rect class="shell" x="1" y="1" width="24" height="16" rx="2.2"/>' +
+    '<rect class="win" x="5" y="4.5" width="16" height="6.5" rx="3.2"/>' +
+    '<g class="reel r1"><circle cx="8.6" cy="7.75" r="2.3"/><path d="M8.6 5.5v4.5M6.4 7.75h4.4"/></g>' +
+    '<g class="reel r2"><circle cx="17.4" cy="7.75" r="2.3"/><path d="M17.4 5.5v4.5M15.2 7.75h4.4"/></g>' +
+    '<path class="foot" d="M6 17l1.8-3.4h10.4L20 17"/></svg>';
   const RUNNER_SVG =
     '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="10" cy="2.6" r="2"/>' +
     '<path d="M8.6 5.2 5.4 6.8 3.6 9.6M8.6 5.2 7.6 9.4 10.6 11.2 9.8 15M7.6 9.4 5.2 12.6 2 13M8.6 5.2 11.4 8.2 14 8.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -48,20 +72,38 @@
     dom.root = root;
 
     dom.osd = el('div', 'hud-osd', root,
-      '<div class="osd-row1"><span class="osd-play">&#9654; PLAY</span><span class="osd-sp">SP</span></div>' +
-      '<div class="osd-row2"><span class="osd-time">--:--</span><span class="osd-date"></span><span class="osd-year"></span></div>' +
+      '<div class="osd-row1"><span class="osd-play">&#9654; PLAY</span>' +
+      '<button type="button" class="osd-cas interactive" tabindex="-1" aria-label="Walkman / radio">' + CASSETTE_SVG + '</button>' +
+      '<span class="osd-tape"><span class="tp-side">SIDE A</span><span class="tp-pause">&#9632; PAUSED</span><span class="tp-num">000</span></span>' +
+      '<span class="osd-rec">&#9679; REC</span></div>' +
+      '<div class="osd-row2"><span class="osd-time">--:--</span><span class="osd-date"></span><span class="osd-year"></span><span class="osd-loop" title="the week loops">&#8635;</span></div>' +
       '<div class="osd-dist"></div>');
     dom.time = dom.osd.querySelector('.osd-time');
     dom.date = dom.osd.querySelector('.osd-date');
     dom.year = dom.osd.querySelector('.osd-year');
+    dom.loop = dom.osd.querySelector('.osd-loop');
     dom.dist = dom.osd.querySelector('.osd-dist');
+    dom.tape = dom.osd.querySelector('.osd-tape');
+    dom.tapeNum = dom.osd.querySelector('.tp-num');
+    dom.rec = dom.osd.querySelector('.osd-rec');
+    dom.cas = dom.osd.querySelector('.osd-cas');
+    // the cassette icon is the touch RADIO button: tap = next source, hold 0.6 s = off
+    const casUp = () => { if (dom.cas._held) { dom.cas._held = false; dom.cas.classList.remove('on'); try { N.input.hold('radio', false); } catch (e) { N.err('hud.cas', e); } } };
+    dom.cas.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); dom.cas._held = true; dom.cas.classList.add('on'); try { N.input.hold('radio', true); } catch (er) { N.err('hud.cas', er); } });
+    dom.cas.addEventListener('pointerup', casUp);
+    dom.cas.addEventListener('pointercancel', casUp);
+    dom.cas.addEventListener('pointerleave', casUp);
+    window.addEventListener('pointerup', casUp, true);
 
     dom.stats = el('div', 'hud-stats', root);
     dom.money = el('div', 'tin hud-money', dom.stats, '<span class="m-val"></span><span class="m-delta"></span>');
     dom.moneyVal = dom.money.querySelector('.m-val');
     dom.moneyDelta = dom.money.querySelector('.m-delta');
-    dom.energy = el('div', 'hud-energy', dom.stats, '<span class="e-ico">' + RUNNER_SVG + '</span><span class="e-bar"><b></b></span>');
+    dom.energy = el('div', 'hud-energy', dom.stats, '<span class="e-ico">' + CHAI_SVG + '</span><span class="e-bar"><b></b><i class="e-tummy"></i><em class="e-notch"></em></span>');
     dom.energyBar = dom.energy.querySelector('b');
+    dom.tummyDim = dom.energy.querySelector('.e-tummy');
+    dom.tummyNotch = dom.energy.querySelector('.e-notch');
+    void RUNNER_SVG;
     dom.chappal = el('div', 'hud-chappal', dom.stats);
     dom.chappal.setAttribute('aria-label', 'Chappal Meter');
     dom.slippers = [];
@@ -82,11 +124,21 @@
     dom.dName = dom.district.querySelector('.d-name');
     dom.dSub = dom.district.querySelector('.d-sub');
 
-    dom.mm = el('div', 'hud-minimap', root, '<canvas></canvas><span class="mm-n">N</span>');
+    dom.mm = el('div', 'hud-minimap', root, '<canvas></canvas><span class="mm-n">N</span><span class="mm-walk"><span></span></span>');
+    dom.mmWalk = dom.mm.querySelector('.mm-walk');
+    dom.mmWalkTxt = dom.mmWalk.querySelector('span');
     dom.mmCanvas = dom.mm.querySelector('canvas');
     dom.mmCtx = dom.mmCanvas.getContext('2d');
 
     dom.ask = el('div', 'hud-ask', root);
+
+    // quick-item slot (best edible; click / tap to eat)
+    dom.qitem = el('button', 'hud-qitem interactive', root, '<span class="q-ico"></span><span class="q-name"></span><span class="q-n"></span>');
+    dom.qitem.type = 'button'; dom.qitem.tabIndex = -1;
+    dom.qitem.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); try { if (N.player.eat) N.player.eat(); } catch (er) { N.err('hud.qitem', er); } state.qT = 0; });
+    // sound captions + the mission J-card prompt
+    dom.caps = el('div', 'hud-caps', root);
+    dom.jcard = el('div', 'hud-jcard', root);
   }
 
   /* -------------------------------------------------------------- minimap */
@@ -218,6 +270,19 @@
       g.imageSmoothingEnabled = true;
       g.drawImage(img, sx, sy, sw, sw, 0, 0, S, S);
     }
+    // hint search circles (dashed, systems §6.5)
+    if (state.circles.size) {
+      g.save();
+      g.setLineDash([Math.max(3, S * 0.03), Math.max(3, S * 0.025)]);
+      for (const ci of state.circles.values()) {
+        const cr = ci.r * scale;
+        g.lineWidth = Math.max(3, S * 0.022); g.strokeStyle = 'rgba(20,10,30,0.6)';
+        g.beginPath(); g.arc(toX(ci.x), toY(ci.y), cr, 0, TAU); g.stroke();
+        g.lineWidth = Math.max(1.5, S * 0.012); g.strokeStyle = ci.color || '#f2c230';
+        g.beginPath(); g.arc(toX(ci.x), toY(ci.y), cr, 0, TAU); g.stroke();
+      }
+      g.restore();
+    }
     // route line
     if (route.pts && route.pts.length > 1) {
       g.lineJoin = 'round'; g.lineCap = 'round';
@@ -287,13 +352,36 @@
   }
 
   /* ------------------------------------------------------- toasts/banners */
-  function pumpToasts() {
-    const now = performance.now();
-    for (const t of state.toasts) {
-      if (!t.shown) { t.shown = now; t.el.classList.add('show'); }
-      if (now - t.shown > t.ms && !t.out) { t.out = true; t.el.classList.remove('show'); t.el.classList.add('out'); setTimeout(() => t.el.remove(), 400); }
+  // One toast at a time (systems §13.2: never stack messages). Toasts wait while something else
+  // owns the centre (a banner, the J-card, the ask card, dialogue, cutscenes) and are shown
+  // for less time when several are queued.
+  function centreBusy() {
+    const m = N.state.mode;
+    return !!state.bannerCur || !!state.jc || !!(dom.ask && dom.ask.classList.contains('show')) || m === 'dialogue' || m === 'cutscene' || m === 'paused' || m === 'map' || m === 'journal';
+  }
+  function pumpToasts(dt) {
+    const busy = centreBusy();
+    dom.toasts.classList.toggle('held', busy);
+    let t = state.toasts[0];
+    if (t && !busy) {
+      if (!t.shown) { t.shown = true; t.left = t.ms; t.el.classList.add('show'); }
+      if (state.tq.length >= 2) t.left = Math.min(t.left, 1600);
+      else if (state.tq.length === 1) t.left = Math.min(t.left, 2600);
+      t.left -= dt * 1000;
+      if (t.left <= 0 && (t.ms - t.left) > 700) {
+        state.toasts.shift();
+        const e0 = t.el; e0.classList.remove('show'); e0.classList.add('out'); setTimeout(() => e0.remove(), 300);
+        t = null;
+        state.toastGap = 0.18;
+      }
     }
-    state.toasts = state.toasts.filter((t) => !t.out);
+    if (state.toastGap > 0) state.toastGap -= dt;
+    if (!state.toasts.length && state.tq.length && !busy && !(state.toastGap > 0)) {
+      const q = state.tq.shift();
+      const e = el('div', 'hud-toast', dom.toasts);
+      e.textContent = q.text;
+      state.toasts.push({ el: e, text: q.text, ms: q.ms, left: q.ms, shown: false });
+    }
   }
   function pumpBanner(dt) {
     if (state.bannerCur) {
@@ -307,6 +395,9 @@
     state.bannerCur = b; state.bannerT = b.ms / 1000;
     dom.bTitle.textContent = b.title || '';
     dom.bSub.textContent = b.sub || '';
+    if (!dom.bNote) dom.bNote = el('div', 'b-note', dom.banner);
+    dom.bNote.textContent = b.note || '';
+    if (dom.district) dom.district.classList.remove('show');
     dom.banner.className = 'hud-banner kind-' + (b.kind || 'info');
     void dom.banner.offsetWidth; // restart the CSS animation
     dom.banner.classList.add('show');
@@ -323,11 +414,29 @@
     // clock + date (only touch the DOM when the text changes)
     const cl = N.clock.label();
     if (cl !== state.clock) { state.clock = cl; dom.time.textContent = cl; }
-    if (N.clock.day !== state.dateDay) {
-      state.dateDay = N.clock.day;
-      const dl = N.clock.dateLabel();
+    const C = N.calendar;
+    const dl = C && C.displayLabel ? C.displayLabel() : N.clock.dateLabel();
+    if (dl !== state.dateLbl || N.clock.day !== state.dateDay) {
+      state.dateDay = N.clock.day; state.dateLbl = dl;
       dom.date.textContent = dl.slice(0, -5); dom.year.textContent = dl.slice(-4);
     }
+    const lp = !!N.clock.looping;
+    if (lp !== state.loop) { state.loop = lp; dom.loop.classList.toggle('show', lp); }
+    // tape counter + ● REC prompt
+    const TP = N.tape;
+    if (TP) {
+      const txt = TP.side === 'B' ? 'SIDE B' : ('000' + Math.max(0, Math.min(999, TP.shown | 0))).slice(-3);
+      if (txt !== state.tape) { state.tape = txt; dom.tapeNum.textContent = TP.side === 'B' ? '' : txt; dom.tape.querySelector('.tp-side').textContent = TP.side === 'B' ? 'SIDE B' : 'SIDE A'; }
+      const R = TP.recState;
+      const cls = (TP.paused ? 'paused ' : '') + (TP.rolling ? 'rolling ' : '') + (R ? 'rec-' + R.phase : '');
+      if (cls !== state.tapeCls) { state.tapeCls = cls; dom.tape.className = 'osd-tape ' + cls; dom.osd.classList.toggle('recording', !!R); }
+      const rl = R ? R.label : '';
+      if (rl !== state.rec) { state.rec = rl; dom.rec.textContent = rl || '● REC'; dom.rec.classList.toggle('show', !!R); }
+    }
+    // walkman now-playing strip + spinning reels
+    const WK = N.walkman && N.walkman.playing;
+    const wl = WK ? '♪ ' + String(WK.title || '').toUpperCase() : '';
+    if (wl !== state.walk) { state.walk = wl; dom.mmWalkTxt.textContent = wl; dom.mmWalk.classList.toggle('show', !!wl); dom.cas.classList.toggle('playing', !!wl); }
     // money (counts up/down to the new value, shows the delta)
     if (state.money === null) { state.money = p.money; state.moneyShown = p.money; dom.moneyVal.textContent = U.fmtMoney(p.money); }
     if (p.money !== state.money) {
@@ -345,13 +454,40 @@
       dom.moneyVal.textContent = U.fmtMoney(state.moneyShown);
       if (a.t >= 1) state.moneyAnim = null;
     }
-    // energy
+    // energy + the tummy notch (energy can never go above tummy; systems §2.2)
     const en = Math.round(p.energy);
     if (en !== state.energy || p.exhausted !== state.exhausted) {
       state.energy = en; state.exhausted = p.exhausted;
       dom.energyBar.style.width = U.clamp(en, 0, 100) + '%';
       dom.energy.classList.toggle('low', en < 30);
       dom.energy.classList.toggle('tired', !!p.exhausted);
+    }
+    const tm = Math.round(U.clamp(p.tummy == null ? 100 : p.tummy, 0, 100));
+    if (tm !== state.tummy) {
+      state.tummy = tm;
+      dom.tummyDim.style.left = tm + '%';
+      dom.tummyNotch.style.left = tm + '%';
+      dom.energy.classList.toggle('full-tummy', tm >= 99);
+    }
+    const hg = !!p.hungry;
+    if (hg !== state.hungry) { state.hungry = hg; dom.energy.classList.toggle('hungry', hg); }
+    // quick-item slot
+    state.qT -= dt;
+    if (state.qT <= 0) {
+      state.qT = 0.25;
+      const id = p.bestEdible ? p.bestEdible() : null;
+      const key = id ? id + ':' + (p.items[id] | 0) : null;
+      if (key !== state.qitem) {
+        state.qitem = key;
+        dom.qitem.classList.toggle('show', !!id);
+        if (id) {
+          const e = (p.EDIBLES && p.EDIBLES[id]) || { short: id, icon: 'biscuit' };
+          dom.qitem.querySelector('.q-ico').className = 'q-ico ico-' + (e.icon || 'biscuit');
+          dom.qitem.querySelector('.q-name').textContent = e.short || id;
+          dom.qitem.querySelector('.q-n').textContent = '×' + (p.items[id] | 0);
+          dom.qitem.setAttribute('aria-label', 'Eat ' + (e.name || id));
+        }
+      }
     }
     // chappal meter
     const w = N.wanted ? N.wanted.level | 0 : 0;
@@ -375,6 +511,7 @@
           state.district = id;
           dom.dist.textContent = d ? d.name.toUpperCase() : '';
           if (d && N.state.mode === 'play') H.districtBanner(d.name, d.nameTe || null);
+          else state.distPending = null;
         }
       } else state.distCand = id;
     }
@@ -386,9 +523,58 @@
       if (txt !== T.txt) { T.txt = txt; dom.timerVal.textContent = txt; }
       dom.timer.classList.toggle('urgent', T.value <= 10);
     }
-    pumpToasts();
+    pumpToasts(dt);
     pumpBanner(dt);
+    // the district card waits until no banner / J-card / ask card owns the centre
+    if (state.distPending && !state.bannerCur && !state.jc && !(dom.ask && dom.ask.classList.contains('show'))) {
+      const dp = state.distPending; state.distPending = null;
+      if (performance.now() - dp.t < 6000) showDistrict(dp.name, dp.sub);
+    }
+    pumpCaptions(dt);
     updateRoute(dt);
+  }
+
+  /* -------------------------------------------------------- sound captions */
+  const ARROWS = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
+  function captionsOn() { const s = N.settings || (N.menus && N.menus.settings) || null; return !(s && s.captions === false); }
+  function addCaption(text, o) {
+    o = o || {};
+    if (!dom.caps || !text || !captionsOn()) return null;
+    const now = performance.now();
+    for (const c of state.caps) if (c.text === text && now - c.t0 < (o.dedupe || 1500)) { c.left = Math.max(c.left, o.ms || 1600); return c; }
+    while (state.caps.length >= 3) { const c = state.caps.shift(); c.el.remove(); }
+    const e = el('div', 'hud-cap kind-' + (o.kind || 'sound'), dom.caps);
+    let arrow = '', left = 50, top = 72;
+    const p = N.player;
+    if (o.x != null && o.y != null && p && isFinite(o.x) && isFinite(o.y)) {
+      const dx = o.x - p.x, dy = o.y - p.y;
+      if (Math.hypot(dx, dy) > 60) {
+        const a = Math.atan2(dy, dx);
+        arrow = ' ' + ARROWS[((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8];
+        // a point on an inner ellipse towards the sound, kept clear of the top HUD corners
+        left = 50 + Math.cos(a) * 40; top = 52 + Math.sin(a) * 30;
+        left = U.clamp(left, 12, 88); top = U.clamp(top, 30, 80);
+      }
+    }
+    e.textContent = '[' + text + arrow + ']';
+    e.style.left = left + '%'; e.style.top = top + '%';
+    const c = { el: e, text, t0: now, left: o.ms || 1600 };
+    state.caps.push(c);
+    requestAnimationFrame(() => e.classList.add('show'));
+    return c;
+  }
+  function pumpCaptions(dt) {
+    for (const c of state.caps) c.left -= dt * 1000;
+    while (state.caps.length && state.caps[0].left <= 0) { const c = state.caps.shift(); c.el.classList.remove('show'); setTimeout(() => c.el.remove(), 250); }
+  }
+
+  function showDistrict(name, sub) {
+    dom.dName.textContent = name;
+    dom.dSub.textContent = sub || '';
+    dom.district.classList.remove('show'); void dom.district.offsetWidth;
+    dom.district.classList.add('show');
+    clearTimeout(H._dT);
+    H._dT = setTimeout(() => dom.district.classList.remove('show'), 3400);
   }
 
   /* ------------------------------------------------------------------ API */
@@ -407,14 +593,54 @@
       }
       if (changed) N.emit('hud:objective', text);
     },
-    /** Queue a short message (top-left on desktop, top-centre on phones). */
+    /** Queue a short message (top-centre). One shows at a time; duplicates are merged. */
     toast(text, ms) {
       if (!dom.toasts || !text) return;
-      const e = el('div', 'hud-toast', dom.toasts);
-      e.textContent = text;
-      state.toasts.push({ el: e, ms: ms || 2800, shown: 0, out: false });
-      while (state.toasts.length > 3) { const t = state.toasts.shift(); t.el.remove(); }
+      text = String(text).replace(/\*([^*]+)\*/g, '$1');
+      ms = ms || 2800;
+      const cur = state.toasts[0];
+      if (cur && cur.text === text) { cur.left = Math.max(cur.left, Math.min(ms, 2000)); return; }
+      const dup = state.tq.find((q) => q.text === text);
+      if (dup) { dup.ms = Math.max(dup.ms, ms); return; }
+      state.tq.push({ text, ms });
+      while (state.tq.length > 6) state.tq.shift();
     },
+    /** Messages waiting + showing (tests / debugging). */
+    toastQueue: () => state.toasts.map((t) => t.text).concat(state.tq.map((q) => q.text)),
+    /** Sound caption "[whistle ↗]" (systems §14.2). opts: {x, y, ms, kind}. */
+    caption(text, opts) { return !!addCaption(text, opts); },
+    /** Dashed search circle on the minimap / full map: searchCircle(id, {x, y, r, color}) or (id, null). */
+    searchCircle(id, c) { if (!c) state.circles.delete(id); else state.circles.set(id, { x: +c.x, y: +c.y, r: +c.r || 300, color: c.color }); },
+    circles: state.circles,
+    /**
+     * The mission J-card prompt (systems §6.1). spec: {head ('TRACK 05'), title, sub (date line),
+     * line (place / note), playLabel, cancelLabel, onPlay(), onCancel(), progress 0..1} or null.
+     */
+    jcard(spec) {
+      if (!dom.jcard) return;
+      if (!spec) { state.jc = null; dom.jcard.className = 'hud-jcard'; dom.jcard.innerHTML = ''; return; }
+      const same = state.jc && state.jc.key === (spec.key || spec.title);
+      state.jc = Object.assign({}, spec, { key: spec.key || spec.title });
+      if (!same) {
+        dom.jcard.innerHTML =
+          '<div class="jc-tape"><span class="jc-head"></span><span class="jc-reels"><i></i><i></i></span></div>' +
+          '<div class="jc-title"></div><div class="jc-sub"></div><div class="jc-line"></div>' +
+          '<div class="jc-row"><button type="button" class="sign-btn small jc-play"><kbd>E</kbd> &#9654; PLAY</button><span class="jc-not"></span></div>' +
+          '<div class="jc-bar"><b></b></div>';
+        dom.jcard.querySelector('.jc-play').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); const j = state.jc; if (j && j.onPlay) { try { j.onPlay(); } catch (er) { N.err('hud.jcard', er); } } });
+      }
+      dom.jcard.querySelector('.jc-head').textContent = spec.head || '';
+      dom.jcard.querySelector('.jc-title').textContent = spec.title || '';
+      dom.jcard.querySelector('.jc-sub').textContent = spec.sub || '';
+      dom.jcard.querySelector('.jc-line').textContent = spec.line || '';
+      dom.jcard.querySelector('.jc-not').textContent = spec.cancelLabel || 'Not now — step out';
+      const pb = dom.jcard.querySelector('.jc-play');
+      pb.lastChild.textContent = ' ' + (spec.playLabel || '▶ PLAY');
+      pb.classList.toggle('hide', spec.canPlay === false);
+      dom.jcard.querySelector('.jc-bar b').style.width = Math.round(U.clamp(spec.progress || 0, 0, 1) * 100) + '%';
+      dom.jcard.className = 'hud-jcard interactive show kind-' + (spec.kind || 'main');
+    },
+    get jcardOpen() { return !!state.jc; },
     /** Big centre banner. opts.kind: 'pass' | 'fail' | 'busted' | 'chapter' | 'info' (inferred from the title when omitted). */
     banner(title, sub, ms, opts) {
       opts = opts || {};
@@ -431,7 +657,7 @@
           if (dom.banner) dom.banner.classList.remove('show');
         }
       }
-      state.banners.push({ title, sub, ms: ms || 3200, kind });
+      state.banners.push({ title, sub, ms: ms || 3200, kind, note: opts.note || '' });
       if (state.banners.length > 4) state.banners.shift();
       if (!state.bannerCur && !(state.bannerGap > 0)) pumpBanner(0);
     },
@@ -456,12 +682,9 @@
     /** GTA-style district name card. */
     districtBanner(name, sub) {
       if (!dom.district || !name) return;
-      dom.dName.textContent = name;
-      dom.dSub.textContent = sub || '';
-      dom.district.classList.remove('show'); void dom.district.offsetWidth;
-      dom.district.classList.add('show');
-      clearTimeout(H._dT);
-      H._dT = setTimeout(() => dom.district.classList.remove('show'), 3400);
+      // never on top of a banner / J-card / ask card: wait for the centre to clear
+      if (state.bannerCur || state.jc || (dom.ask && dom.ask.classList.contains('show'))) { state.distPending = { name, sub, t: performance.now() }; return; }
+      showDistrict(name, sub);
     },
     /** Mission / minigame countdown: timer(label, seconds) shows it, timer(null) hides it. */
     timer(label, seconds, opts) {
@@ -506,7 +729,8 @@
   N.on('render:resize', () => { if (dom.mmCanvas) requestAnimationFrame(sizeMinimap); });
   N.on('clock:set', () => { state.dateDay = -1; });
   N.on('save:loaded', () => { state.dateDay = -1; state.wanted = -1; state.money = null; });
-  N.on('game:new', () => { state.dateDay = -1; state.district = null; state.distCand = null; state.wanted = -1; state.money = null; H.objective(null); H.timer(null); H.clearBanners(); H.closeAsk(); });
+  N.on('game:new', () => { state.dateDay = -1; state.district = null; state.distCand = null; state.wanted = -1; state.money = null; state.tummy = -1; state.qitem = undefined; H.objective(null); H.timer(null); H.clearBanners(); H.closeAsk(); H.jcard(null); });
+  N.on('caption', (d) => { if (d && d.text) addCaption(d.text, d); });
   N.on('game:continue', () => { state.dateDay = -1; state.district = null; state.wanted = -1; state.money = null; });
   N.on('game:quit', () => { H.objective(null); H.timer(null); H.clearBanners(); H.closeAsk(); });
 
@@ -526,7 +750,10 @@
     },
     reset() {
       blips.clear(); route.pts = null; route.key = '';
-      state.toasts.forEach((t) => t.el.remove()); state.toasts = [];
+      state.toasts.forEach((t) => t.el.remove()); state.toasts = []; state.tq = [];
+      state.caps.forEach((c) => c.el.remove()); state.caps = [];
+      state.circles.clear(); state.distPending = null;
+      H.jcard(null);
     },
   });
 })();

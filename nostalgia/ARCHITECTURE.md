@@ -43,6 +43,10 @@ nostalgia/
   src/world.js      builds collision/surface grid, spatial index, road graph; draws ground + generic buildings -> N.world
   src/world_extras.js (map maker) railways + level crossings: wraps setGroundPainter / renderMap -> N.worldExtras
   src/landmarks.js  custom pseudo-3D drawing for named landmarks -> N.landmarks
+  src/places_art.js (street-life artist) civic / transport / market / cinema / everyday art for the
+                    places_art draw ids (map_plan §4b) + place-driven decorations (colony playgrounds,
+                    NTR Gardens, street-market stalls); registers with N.landmarks.register, system
+                    'placesArt' (order 43), wraps setGroundPainter -> N.placesArt {drawProp, queueProp, fx}
   src/entities.js   entity registry, spatial hash, Actor base, people drawing, Player on foot -> N.entities, N.player
   src/vehicles.js   vehicle types, physics, drawing, enter/exit -> N.vehicles
   src/traffic.js    ambient traffic, pedestrians, cows, dogs, pigeons -> N.traffic
