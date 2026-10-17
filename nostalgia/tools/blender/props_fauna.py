@@ -6,7 +6,7 @@ Birds (meta kind='bird'): bird_pigeon, bird_crow, bird_kite, bird_parakeet, bird
   Clips: flap (one wingbeat, loop), glide (loop), perch (standing on a wire / ledge, idle loop; feet on
   z = 0 = the origin), peck (pigeon, myna, egret, crow), bat: flap (3 erratic beats), glide, hang ==
   perch (upside down: feet at the origin, body hanging below).
-Animals (meta kind='animal', species matches traffic.js): animal_cow, animal_dog, animal_goat.
+Animals (meta kind='animal', species matches traffic.js; ids = models3d_props.js ANIMAL_IDS): cow, dog, goat.
   Rig: root, body (hips / loins), chest, neck, head, jaw, ear_L/R, tail1, tail2,
   leg_{FL,FR,HL,HR}_{upper,lower}. Legs are posed by 2-bone IK in the sagittal plane, so stance feet
   are planted: in walk / run the stance foot moves backwards at exactly stride per cycle.
@@ -66,7 +66,7 @@ def octa(name, c, r, m, sq=(1.0, 1.0, 1.0)):
             for cc in (4, 5):
                 bm.faces.new((vs[a], vs[b], vs[cc]))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    return kit.obj_from_bm(bm, name, m)
+    return all_seams(kit.obj_from_bm(bm, name, m))
 
 
 def sheet(name, rows, m):
@@ -94,6 +94,33 @@ def sheet(name, rows, m):
     return ob
 
 
+def tube_seam(ob, seg):
+    """Mark one longitudinal seam on a tube built ring by ring (kit.loft / props_kit.taper vertex order)
+    so the angle-based unwrap gives one island per tube (few seam vertices)."""
+    me = ob.data
+    nv = len(me.vertices)
+    pairs = set()
+    i = 0
+    while (i + 1) * seg < nv:
+        pairs.add((i * seg, (i + 1) * seg))
+        i += 1
+    for e in me.edges:
+        a, b = sorted(e.vertices)
+        if (a, b) in pairs:
+            e.use_seam = True
+    return ob
+
+
+def all_seams(ob):
+    for e in ob.data.edges:
+        e.use_seam = True
+    return ob
+
+
+def taper(name, pts, radii, seg=6, **kw):
+    return tube_seam(P.taper(name, pts, radii, seg=seg, **kw), seg)
+
+
 def wloft(name, rings, seg, m_default, side=(1, 0, 0), cap_start=True, cap_end=True):
     """kit.loft with rings given as (y, z, rx, rz, mat, w) or dicts; w: bone name or {bone: w}."""
     rr = []
@@ -110,7 +137,7 @@ def wloft(name, rings, seg, m_default, side=(1, 0, 0), cap_start=True, cap_end=T
         if len(r) > 6:
             d['p'] = r[6]
         rr.append(d)
-    return kit.loft(name, rr, seg=seg, side=side, mat=m_default, cap_start=cap_start, cap_end=cap_end)
+    return tube_seam(kit.loft(name, rr, seg=seg, side=side, mat=m_default, cap_start=cap_start, cap_end=cap_end), seg)
 
 
 def seg_weights(segs, bw=0.1):
@@ -412,8 +439,23 @@ def use_slim_export():
     uv0 = kit.uv_atlas
 
     def uv_atlas(objs, margin=0.004, angle=60.0):
-        # low-poly fauna: a wider angle limit keeps loft columns in one island (far fewer seam verts)
-        return uv0(objs, margin=margin, angle=UV_ANGLE)
+        # low-poly fauna: angle-based unwrap along the seams marked per tube (one island per part,
+        # far fewer seam vertices than smart project), then one packed atlas
+        objs = kit.mesh_objects(objs)
+        for o in objs:
+            uvl = o.data.uv_layers.get('UVMap') or o.data.uv_layers.new(name='UVMap')
+            o.data.uv_layers.active = uvl
+        kit.select_only(objs, objs[0])
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
+        try:
+            bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=margin)
+            bpy.ops.uv.pack_islands(rotate=True, margin=max(margin, 0.01))
+        except Exception as e:
+            kit.log('fauna unwrap failed (%s), smart project instead' % e)
+            bpy.ops.object.mode_set(mode='OBJECT')
+            return uv0(objs, margin=margin, angle=UV_ANGLE)
+        bpy.ops.object.mode_set(mode='OBJECT')
     kit.uv_atlas = uv_atlas
 
 
@@ -583,7 +625,7 @@ def build_bird(A, S):
     rings = [(y, z, rx, rz, Mt[m], bw(w)) for (y, z, rx, rz, m, w) in S['rings']]
     objs.append(wloft('body', rings, S.get('seg', 6), None))
     bk = S['beak']
-    beak = P.taper('beak', bk['pts'], bk['r'], seg=bk.get('seg', 4), mat=Mt[bk['mat']], cap_end=False, squash=bk.get('squash', 1.0))
+    beak = taper('beak', bk['pts'], bk['r'], seg=bk.get('seg', 4), mat=Mt[bk['mat']], cap_end=False, squash=bk.get('squash', 1.0))
     kit.weights(beak, 'head')
     objs.append(beak)
     for s in (1, -1):
@@ -646,7 +688,7 @@ def build_bird(A, S):
         Mk = Matrix.Translation(hip) @ Matrix.Rotation(tuck, 4, 'X') @ Matrix.Translation(-hip)
         for s, sfx in ((1, 'L'), (-1, 'R')):
             pts = [(s * hx, hy, hz)] + [(s * hx, y, z) for (y, z) in L.get('mid', [])] + [(s * hx, L['foot_y'], 0.0)]
-            lg = P.taper('leg', pts, L['r'], seg=3, mat=Mt[L['mat']], cap_end=True)
+            lg = taper('leg', pts, L['r'], seg=3, mat=Mt[L['mat']], cap_end=True)
             if lb:
                 kit.weights(lg, 'leg_' + sfx)
                 for (toe_d, ln) in ((-1, L.get('toe', 0.0)), (1, L.get('toe', 0.0) * 0.5)):
@@ -805,9 +847,9 @@ def bird_pigeon(A):
         'head': mat('feather_grey', 'pg_head', base='#858ca0'),
         'beak': mat('feather_black', 'pg_beak', base='#3a3436'),
         'leg': mat('beak_red', 'pg_leg', base='#c45a5e'),
-        'wing': mat('feather_grey', 'pg_wing', base='#bcc2ce'),
+        'wing': mat('feather_grey', 'pg_wing', base='#959cab'),
         'bar': mat('feather_black', 'pg_bar', base='#2e3036'),
-        'tip': mat('feather_grey', 'pg_tip', base='#5a6070'),
+        'tip': mat('feather_grey', 'pg_tip', base='#4e5462'),
         'tail': mat('feather_grey', 'pg_tail', base='#7f8696'),
     }
     S = dict(mats=Mt, bodyZ=0.62, tex=64, rings=[
@@ -1074,7 +1116,7 @@ def bat(A):
         w = sheet('wing', rows, Mt['mem'])
         kit.weights(w, lambda co, sfx=sfx: {'wing_' + sfx: 1.0} if abs(co.x) < 0.40 else ({'wingtip_' + sfx: 1.0} if abs(co.x) > 0.5 else {'wing_' + sfx: 0.5, 'wingtip_' + sfx: 0.5}))
         objs.append(w)
-        lg = P.taper('leg', [(s * 0.05, 0.16, -0.02), (s * 0.06, 0.30, -0.03)], [0.02, 0.012], seg=3, mat=Mt['fur'], cap_end=False)
+        lg = taper('leg', [(s * 0.05, 0.16, -0.02), (s * 0.06, 0.30, -0.03)], [0.02, 0.012], seg=3, mat=Mt['fur'], cap_end=False)
         kit.weights(lg, 'body')
         objs.append(lg)
     tm = sheet('uro', [[(-0.06, 0.20, -0.01), (0.06, 0.20, -0.01)], [(-0.02, 0.36, -0.01), (0.02, 0.36, -0.01)]], Mt['mem'])
@@ -1149,6 +1191,8 @@ def build_quad(A, Q):
     """Q: species spec. Returns (arm, ob, skel)."""
     bpy.context.scene.render.fps = FPS_F
     use_slim_export()
+    global UV_ANGLE
+    UV_ANGLE = 88.0
     Mt = Q['mats']
     objs = []
     J = Q['joints']
@@ -1191,14 +1235,15 @@ def build_quad(A, Q):
         x = L['P'][0]
         pts = [(x, y, z) for (y, z, r) in L['pts']]
         rad = [r for (y, z, r) in L['pts']]
-        o = P.taper('leg_' + lg, pts, rad, seg=Q.get('seg_leg', 6), mat=Mt[L.get('mat', Q['leg_mat'])], cap_end=False)
+        o = taper('leg_' + lg, pts, rad, seg=Q.get('seg_leg', 6), mat=Mt[L.get('mat', Q['leg_mat'])], cap_end=False)
         kit.weights(o, seg_weights([('leg_%s_upper' % lg, L['P'], L['K']), ('leg_%s_lower' % lg, L['K'], L['F'])], bw=0.15))
         objs.append(o)
         hy, hz = L['pts'][-1][0], L['pts'][-1][1]
         r0, r1 = L['hoof'][:2]
-        hf = P.taper('hoof_' + lg, [(x, hy, hz), (x, hy - 0.04, 0.0)], [r0, r1], seg=Q.get('seg_leg', 6), mat=Mt[L.get('hoof_mat', 'hoof')], cap_end=True)
+        hf = taper('hoof_' + lg, [(x, hy, hz), (x, hy - 0.04, 0.0)], [r0, r1], seg=Q.get('seg_leg', 6), mat=Mt[L.get('hoof_mat', 'hoof')], cap_end=True)
         kit.weights(hf, 'leg_%s_lower' % lg)
         objs.append(hf)
+    lean = Q.get('drop_bones', ('jaw', 'ear_L', 'ear_R', 'tail2'))
     bones = [('root', (0, 0, 0), (0, -1.0, 0), None),
              ('body', J['body'][0], J['body'][1], 'root'),
              ('chest', J['chest'][0], J['chest'][1], 'body'),
@@ -1209,16 +1254,40 @@ def build_quad(A, Q):
         h, t = J['ear']
         bones.append(('ear_' + sfx, (s * h[0], h[1], h[2]), (s * t[0], t[1], t[2]), 'head'))
     bones += [('tail1', J['tail1'][0], J['tail1'][1], 'body'), ('tail2', J['tail2'][0], J['tail2'][1], 'tail1')]
+    bones = [b for b in bones if b[0] not in lean]
     for lg, L in legs.items():
         par = 'chest' if lg[0] == 'F' else 'body'
         bones.append(('leg_%s_upper' % lg, L['P'], L['K'], par))
         bones.append(('leg_%s_lower' % lg, L['K'], L['F'], 'leg_%s_upper' % lg))
     arm = P.rig(A, A.id + '_rig', [(n, tuple(h), tuple(t), p) for n, h, t, p in bones])
     for o in objs:
-        kit.smooth(o, 70.0)
+        kit.smooth(o, 179.0)
     ob = P.finish_prop(A, objs, size=Q.get('tex', 128), double=False, ao_strength=0.55, orm=False)
+    merge_groups(ob, {'jaw': 'head', 'ear_L': 'head', 'ear_R': 'head', 'tail2': 'tail1'}, lean)
     P.skin(A, ob, arm)
     return arm, ob, Skel(arm)
+
+
+def merge_groups(ob, remap, drop):
+    """Fold the vertex groups of dropped bones into their parents (lean rigs: fewer animation channels)."""
+    names = {g.index: g.name for g in ob.vertex_groups}
+    for v in ob.data.vertices:
+        add = {}
+        for g in v.groups:
+            n = names[g.group]
+            if n in drop:
+                add[remap[n]] = add.get(remap[n], 0.0) + g.weight
+        for n, w in add.items():
+            tg = ob.vertex_groups.get(n) or ob.vertex_groups.new(name=n)
+            cur = 0.0
+            for g in v.groups:
+                if names.get(g.group) == n:
+                    cur = g.weight
+            tg.add([v.index], cur + w, 'REPLACE')
+    for n in drop:
+        g = ob.vertex_groups.get(n)
+        if g:
+            ob.vertex_groups.remove(g)
 
 
 LEGS = ('FL', 'FR', 'HL', 'HR')
@@ -1228,7 +1297,7 @@ def gait_pose(Sk, Q, t, g, extra=None):
     """Locomotion pose at phase t: g = dict(stride, duty, offs{leg: phase}, lift{F,H}, bob, ...)."""
     Pd = {}
     bob = g.get('bob', 0.0)
-    Pd['root'] = (None, (0, 0, bob * math.cos(TAU * 2 * t + g.get('bobph', 0.0))))
+    Pd['root'] = (None, (0, 0, -g.get('sink', 0.0) - bob * (0.5 + 0.5 * math.cos(TAU * 2 * t + g.get('bobph', 0.0)))))
     if g.get('pitch'):
         Pd['body'] = (qe(g['pitch'] * math.sin(TAU * t + g.get('pitchph', 0.0)), 0, 0), None)
         Pd['chest'] = (qe(-g['pitch'] * 1.2 * math.sin(TAU * t + g.get('pitchph', 0.0)), 0, 0), None)
@@ -1281,7 +1350,7 @@ def quad_previews(A, Q, main, frame, side_dist, tz, sheet_frames):
 
 
 # ---------------------------------------------------------------- cow
-@kit.asset('animal_cow', 'prop', kind='animal', species='cow', breed='zebu')
+@kit.asset('cow', 'prop', kind='animal', species='cow', breed='zebu')
 def animal_cow(A):
     Mt = {
         'hide': mat('fur_white', 'cw_hide', base='#e6dfd0', grime=0.45),
@@ -1312,24 +1381,25 @@ def animal_cow(A):
     def ears_horns(M_):
         out = []
         for s, sfx in ((1, 'L'), (-1, 'R')):
-            e = P.taper('ear', [(s * 0.42, -4.62, 5.95), (s * 0.85, -4.70, 5.80), (s * 1.30, -4.78, 5.50)], [0.16, 0.26, 0.08], seg=6, mat=M_['ear'], squash=0.3)
+            e = taper('ear', [(s * 0.42, -4.62, 5.95), (s * 0.85, -4.70, 5.80), (s * 1.30, -4.78, 5.50)], [0.16, 0.26, 0.08], seg=6, mat=M_['ear'], squash=0.3)
             kit.weights(e, 'ear_' + sfx)
-            h = P.taper('horn', [(s * 0.30, -4.42, 6.20), (s * 0.55, -4.40, 6.60), (s * 0.50, -4.55, 6.95)], [0.14, 0.09, 0.025], seg=5, mat=M_['horn'])
+            h = taper('horn', [(s * 0.30, -4.42, 6.20), (s * 0.55, -4.40, 6.60), (s * 0.50, -4.55, 6.95)], [0.14, 0.09, 0.025], seg=4, mat=M_['horn'])
             kit.weights(h, 'head')
             ey = octa('eye', (s * 0.50, -5.02, 5.72), 0.12, M_['eye'], sq=(0.6, 1.0, 0.8))
             kit.weights(ey, 'head')
             out += [e, h, ey]
-        hump = P.blob('hump', 0.85, (0, -1.75, 6.15), subdiv=1, noise=0.04, scale=(0.85, 1.05, 0.95), mat=M_['hump'])
+        hump = wloft('hump', [(-0.95, 5.85, 0.45, 0.35, M_['hump'], None), (-1.55, 6.2, 0.7, 0.8, M_['hump'], None),
+                              (-2.2, 6.15, 0.65, 0.7, M_['hump'], None), (-2.6, 5.8, 0.35, 0.3, M_['hump'], None)], 7, M_['hump'])
         kit.weights(hump, 'chest')
         dew = wloft('dewlap', [{'c': (0, -2.75, 3.75), 'r': (0.16, 0.35)}, {'c': (0, -3.5, 4.15), 'r': (0.15, 0.55)},
                                {'c': (0, -4.25, 4.85), 'r': (0.12, 0.35)}], 6, M_['hide2'])
         kit.weights(dew, lambda co: {'chest': 1.0} if co.y > -3.0 else {'neck': 1.0} if co.y < -3.6 else {'chest': 0.5, 'neck': 0.5})
-        tail = P.taper('tail', [(0, 3.95, 6.0), (0, 4.22, 5.0), (0, 4.30, 3.8), (0, 4.26, 2.6)], [0.16, 0.1, 0.07, 0.05], seg=5, mat=M_['hide'])
+        tail = taper('tail', [(0, 3.95, 6.0), (0, 4.22, 5.0), (0, 4.30, 3.8), (0, 4.26, 2.6)], [0.16, 0.1, 0.07, 0.05], seg=4, mat=M_['hide'])
         kit.weights(tail, seg_weights([('tail1', (0, 3.95, 6.05), (0, 4.28, 4.3)), ('tail2', (0, 4.28, 4.3), (0, 4.25, 2.4))], bw=0.3))
-        tuft = P.blob('tuft', 0.26, (0, 4.25, 2.35), subdiv=1, noise=0.1, scale=(0.6, 0.6, 1.4), mat=M_['tuft'])
+        tuft = taper('tuft', [(0, 4.26, 2.75), (0, 4.25, 2.4), (0, 4.24, 1.95)], [0.07, 0.2, 0.03], seg=5, mat=M_['tuft'])
         kit.weights(tuft, 'tail2')
         return out + [hump, dew, tail, tuft]
-    Q = dict(mats=Mt, tex=128, seg=10, seg_neck=8, seg_head=8, seg_leg=5, torso_mat='hide', neck_mat='hide', head_mat='face', leg_mat='hide',
+    Q = dict(mats=Mt, tex=128, seg=8, seg_neck=6, seg_head=7, seg_leg=5, torso_mat='hide', neck_mat='hide', head_mat='face', leg_mat='hide',
              split=(0.2, -1.0),
              torso=[(3.95, 5.55, 0.65, 0.8, Mt['hide'], None, 2.4), (3.45, 5.3, 1.22, 1.35, Mt['hide'], None, 2.4),
                     (2.4, 5.05, 1.48, 1.55, Mt['hide'], None, 2.4), (0.8, 4.9, 1.62, 1.72, Mt['hide'], None, 2.3),
@@ -1375,7 +1445,7 @@ def animal_cow(A):
         Pd['tail2'] = (qe(0, 0.12 * math.sin(TAU * t - 0.8), 0), None)
     mkclip(A, arm, 'stand', 4 * FPS_F, stand)
     loco_clip(A, arm, Sk, Q, 'walk', 25.0, 14,
-              dict(duty=0.64, offs={'HL': 0.0, 'FL': 0.25, 'HR': 0.5, 'FR': 0.75}, lift={'F': 0.7, 'H': 0.55}, bob=0.07, bobph=0.0),
+              dict(duty=0.64, offs={'HL': 0.0, 'FL': 0.25, 'HR': 0.5, 'FR': 0.75}, lift={'F': 0.7, 'H': 0.55}, bob=0.1, bobph=0.0, sink=0.22),
               extra=walk_extra, gait='lateral walk')
 
     LIE_DROP = Q.get('lie_drop', 2.95)
@@ -1405,7 +1475,7 @@ def animal_cow(A):
 
 
 # ---------------------------------------------------------------- dog
-@kit.asset('animal_dog', 'prop', kind='animal', species='dog', breed='indian_pariah')
+@kit.asset('dog', 'prop', kind='animal', species='dog', breed='indian_pariah')
 def animal_dog(A):
     Mt = {
         'coat': mat('fur_tan', 'dg_coat', base='#c08a50'),
@@ -1430,18 +1500,18 @@ def animal_dog(A):
     def extras(M_):
         out = []
         for s, sfx in ((1, 'L'), (-1, 'R')):
-            e = P.taper('ear', [(s * 0.15, -2.12, 3.75), (s * 0.21, -2.10, 4.05), (s * 0.25, -2.08, 4.3)], [0.13, 0.08, 0.0], seg=4, mat=M_['ear'], squash=0.35)
+            e = taper('ear', [(s * 0.15, -2.12, 3.75), (s * 0.21, -2.10, 4.05), (s * 0.25, -2.08, 4.3)], [0.13, 0.08, 0.0], seg=4, mat=M_['ear'], squash=0.35)
             kit.weights(e, 'ear_' + sfx)
             ey = octa('eye', (s * 0.17, -2.53, 3.62), 0.05, M_['eye'], sq=(0.6, 1.0, 0.8))
             kit.weights(ey, 'head')
             out += [e, ey]
         nose = octa('nose', (0, -3.17, 3.29), 0.07, M_['nose'], sq=(1.0, 0.8, 0.8))
         kit.weights(nose, 'head')
-        tail = P.taper('tail', [(0, 1.85, 2.55), (0, 2.12, 2.95), (0, 2.18, 3.4), (0, 1.95, 3.68), (0, 1.62, 3.62)],
+        tail = taper('tail', [(0, 1.85, 2.55), (0, 2.12, 2.95), (0, 2.18, 3.4), (0, 1.95, 3.68), (0, 1.62, 3.62)],
                        [0.12, 0.11, 0.1, 0.08, 0.03], seg=5, mat=M_['back'])
         kit.weights(tail, seg_weights([('tail1', (0, 1.85, 2.6), (0, 2.15, 3.2)), ('tail2', (0, 2.15, 3.2), (0, 1.6, 3.6))], bw=0.2))
         return out + [nose, tail]
-    Q = dict(mats=Mt, tex=128, seg=10, seg_neck=8, seg_head=8, seg_leg=5, torso_mat='coat', neck_mat='coat', head_mat='coat', leg_mat='coat',
+    Q = dict(mats=Mt, tex=128, seg=8, seg_neck=6, seg_head=7, seg_leg=4, torso_mat='coat', neck_mat='coat', head_mat='coat', leg_mat='coat',
              split=(0.3, -0.6),
              torso=[(1.85, 2.38, 0.3, 0.32, Mt['back'], None), (1.6, 2.32, 0.5, 0.52, Mt['coat'], None),
                     (0.7, 2.35, 0.46, 0.46, Mt['coat'], None), (-0.4, 2.3, 0.55, 0.68, Mt['coat'], None),
@@ -1466,7 +1536,7 @@ def animal_dog(A):
         Pd['neck'] = (qe(0.05 * math.sin(TAU * 2 * t), 0, 0), None)
         wag(Pd, t, 1, 0.15)
     loco_clip(A, arm, Sk, Q, 'walk', 22.0, 10,
-              dict(duty=0.56, offs={'HL': 0.0, 'FR': 0.06, 'HR': 0.5, 'FL': 0.56}, lift={'F': 0.38, 'H': 0.32}, bob=0.04),
+              dict(duty=0.56, offs={'HL': 0.0, 'FR': 0.06, 'HR': 0.5, 'FL': 0.56}, lift={'F': 0.38, 'H': 0.32}, bob=0.05, sink=0.1),
               extra=walk_extra, gait='trot-walk')
 
     def run_extra(Pd, t):
@@ -1476,7 +1546,7 @@ def animal_dog(A):
         Pd['tail2'] = (qe(-0.5 + 0.2 * math.sin(TAU * t), 0, 0), None)
         LR(Pd, 'ear', qe(0.5, 0, 0))
     loco_clip(A, arm, Sk, Q, 'run', 65.0, 8,
-              dict(duty=0.3, offs={'HL': 0.0, 'HR': 0.1, 'FR': 0.42, 'FL': 0.52}, lift={'F': 0.6, 'H': 0.5}, bob=0.12, bobph=1.0,
+              dict(duty=0.3, offs={'HL': 0.0, 'HR': 0.1, 'FR': 0.42, 'FL': 0.52}, lift={'F': 0.6, 'H': 0.5}, bob=0.12, bobph=1.0, sink=0.15,
                    pitch=0.12, pitchph=0.5, reach={'F': -0.15, 'H': 0.05}),
               extra=run_extra, gait='rotary gallop')
 
@@ -1533,7 +1603,7 @@ def animal_dog(A):
 
 
 # ---------------------------------------------------------------- goat
-@kit.asset('animal_goat', 'prop', kind='animal', species='goat')
+@kit.asset('goat', 'prop', kind='animal', species='goat')
 def animal_goat(A):
     Mt = {
         'brown': mat('fur_tan', 'gt_brown', base='#6a4428'),
@@ -1557,19 +1627,19 @@ def animal_goat(A):
     def extras(M_):
         out = []
         for s, sfx in ((1, 'L'), (-1, 'R')):
-            e = P.taper('ear', [(s * 0.18, -1.78, 3.52), (s * 0.42, -1.86, 3.32), (s * 0.5, -1.95, 3.05)], [0.08, 0.12, 0.04], seg=5, mat=M_['brown'], squash=0.3)
+            e = taper('ear', [(s * 0.18, -1.78, 3.52), (s * 0.42, -1.86, 3.32), (s * 0.5, -1.95, 3.05)], [0.08, 0.12, 0.04], seg=5, mat=M_['brown'], squash=0.3)
             kit.weights(e, 'ear_' + sfx)
-            h = P.taper('horn', [(s * 0.1, -1.76, 3.68), (s * 0.13, -1.62, 3.92), (s * 0.16, -1.42, 3.98)], [0.06, 0.04, 0.008], seg=4, mat=M_['horn'])
+            h = taper('horn', [(s * 0.1, -1.76, 3.68), (s * 0.13, -1.62, 3.92), (s * 0.16, -1.42, 3.98)], [0.06, 0.04, 0.008], seg=4, mat=M_['horn'])
             kit.weights(h, 'head')
             ey = octa('eye', (s * 0.2, -1.98, 3.45), 0.045, M_['eye'], sq=(0.6, 1.0, 0.8))
             kit.weights(ey, 'head')
             out += [e, h, ey]
-        beard = P.taper('beard', [(0, -2.2, 3.0), (0, -2.15, 2.72)], [0.05, 0.01], seg=4, mat=M_['dark'])
+        beard = taper('beard', [(0, -2.2, 3.0), (0, -2.15, 2.72)], [0.05, 0.01], seg=4, mat=M_['dark'])
         kit.weights(beard, 'jaw')
-        tail = P.taper('tail', [(0, 1.62, 2.55), (0, 1.75, 2.82), (0, 1.8, 2.98)], [0.08, 0.06, 0.02], seg=4, mat=M_['brown'])
+        tail = taper('tail', [(0, 1.62, 2.55), (0, 1.75, 2.82), (0, 1.8, 2.98)], [0.08, 0.06, 0.02], seg=4, mat=M_['brown'])
         kit.weights(tail, seg_weights([('tail1', (0, 1.6, 2.55), (0, 1.74, 2.8)), ('tail2', (0, 1.74, 2.8), (0, 1.8, 2.98))], bw=0.1))
         return out + [beard, tail]
-    Q = dict(mats=Mt, tex=128, seg=10, seg_neck=8, seg_head=8, seg_leg=5, torso_mat='brown', neck_mat='white', head_mat='face', leg_mat='white',
+    Q = dict(mats=Mt, tex=128, seg=8, seg_neck=6, seg_head=7, seg_leg=4, torso_mat='brown', neck_mat='white', head_mat='face', leg_mat='white',
              split=(0.3, -0.5),
              torso=[(1.62, 2.38, 0.3, 0.34, Mt['brown'], None), (1.35, 2.32, 0.5, 0.56, Mt['brown'], None),
                     (0.4, 2.22, 0.62, 0.68, Mt['brown'], None), (-0.55, 2.3, 0.55, 0.62, Mt['white'], None),
@@ -1600,7 +1670,7 @@ def animal_goat(A):
         LR(Pd, 'ear', qe(0, 0.12 * math.sin(TAU * 2 * t), 0))
     mkclip(A, arm, 'stand', 3 * FPS_F, stand)
     loco_clip(A, arm, Sk, Q, 'walk', 12.0, 14,
-              dict(duty=0.62, offs={'HL': 0.0, 'FL': 0.25, 'HR': 0.5, 'FR': 0.75}, lift={'F': 0.32, 'H': 0.26}, bob=0.04),
+              dict(duty=0.62, offs={'HL': 0.0, 'FL': 0.25, 'HR': 0.5, 'FR': 0.75}, lift={'F': 0.32, 'H': 0.26}, bob=0.05, sink=0.1),
               extra=walk_extra, gait='lateral walk')
 
     def graze(t):

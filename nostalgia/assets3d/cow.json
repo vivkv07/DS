@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 74616,
+ "bytes": 48256,
  "clips": {
   "lie": {
    "duration": 4.0,
@@ -38,20 +38,20 @@
   }
  },
  "family": "prop",
- "file": "animal_cow.glb",
+ "file": "cow.glb",
  "front": "-Y",
- "id": "animal_cow",
+ "id": "cow",
  "images": [
   "image/webp"
  ],
- "kb": 72.9,
+ "kb": 47.1,
  "kit": 1,
  "materials": [
-  "M_animal_cow"
+  "M_cow"
  ],
  "max": [
   1.62,
-  4.388,
+  4.412,
   6.96
  ],
  "meta": {
@@ -61,11 +61,7 @@
    "chest",
    "neck",
    "head",
-   "jaw",
-   "ear_L",
-   "ear_R",
    "tail1",
-   "tail2",
    "leg_FL_upper",
    "leg_FL_lower",
    "leg_FR_upper",
@@ -90,18 +86,18 @@
  },
  "min": [
   -1.62,
-  -6.449,
+  -6.445,
   -0.021
  ],
  "notes": [],
  "script": "props_fauna",
  "size": [
   3.24,
-  10.837,
+  10.857,
   6.981
  ],
  "tint": null,
- "tris": 711,
+ "tris": 675,
  "units": "u",
  "up": "Z"
 }

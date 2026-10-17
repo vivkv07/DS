@@ -145,6 +145,10 @@ def angle_y(name, cx, cz, y0, y1, w=0.3, t=0.06, mat=None):
 
 # ---------------------------------------------------------------- PSC shaft
 PSC_H = 45.0
+# shared conductor layout (binding for the wires runtime): three phases flat on the crossarm at
+# y = -3.1 / 0 / +3.1 (crossarm on the -X face), neutral shackle on the front (-Y) face, service on
+# the back (+Y) face, cable bracket below — identical on every pole type so mixed streets line up.
+PHASE_Y = (-3.1, 0.0, 3.1)
 
 
 def psc_dims(z, H=PSC_H):
@@ -174,7 +178,7 @@ def section_prism(name, outs, zs, x=0.0, mat=None):
 def psc_shaft(prefix, x=0.0, H=PSC_H, holes=(10.0, 40.0, 9.0, 1.0), mat=None):
     """Indian PSC pole: tapering H-section (flanges at +-X, web recessed from the +-Y faces) with
     the web's through holes (dark inset plates) every ~4 u, on a cement muffing block."""
-    mat = mat or P.M('concrete', base='#c4bfb2', grime=0.45)
+    mat = mat or P.M('concrete', base='#c4bfb2', grime=0.25)
     hx0, hy0 = psc_dims(0, H)
     hx1, hy1 = psc_dims(H, H)
     objs = [section_prism(prefix + '_shaft', [i_outline(hx0, hy0, 0.2, hy0 * 0.42), i_outline(hx1, hy1, 0.12, hy1 * 0.42)], [0.0, H], x=x, mat=mat)]
@@ -261,7 +265,7 @@ def build_psc(A):
     for s in (-1, 1):   # braces from the arm to the pole
         objs.append(bar('brace%d' % s, (ax, s * 2.6, za - 0.2), (-hx - 0.05, s * 0.2, za - 3.0), 0.07, mat=gal))
     W = {}
-    for i, y in enumerate((-3.5, -1.0, 3.5)):
+    for i, y in enumerate(PHASE_Y):
         o, p = pin_insulator('ins%d' % i, (ax, y, za + 0.21))
         objs += o
         W['L%d' % (i + 1)] = p
@@ -311,7 +315,7 @@ RAIL = [(0.45, -0.37), (0.45, 0.37), (0.37, 0.37), (0.30, 0.08), (-0.22, 0.08), 
 def build_rail(A):
     H = RAIL_H
     gal = P.M('galvanised')
-    rs = P.M('rail_steel', base='#5e5650', rust=0.75, rust_col='#7a4220')
+    rs = P.M('rail_steel', base='#7a6656', rust=0.6, rust_col='#8a4e2a')
     objs = [kit.extrude_polygon('rail', RAIL, 0.0, H, mat=rs)]
     objs.append(frustum('muff', 0.0, 1.1, (0.85, 0.75), (0.65, 0.55), mat=P.M('concrete_old')))
     objs.append(kit.box('cap', (1.0, 0.85, 0.08), (0.0, 0.0, H + 0.04), mat=rs))
@@ -322,17 +326,10 @@ def build_rail(A):
     for s in (-1, 1):
         objs.append(bar('brace%d' % s, (ax, s * 2.3, za - 0.15), (-0.47, s * 0.15, za - 2.6), 0.06, mat=gal))
     W = {}
-    o, p = pin_insulator('ins0', (ax, -2.9, za + 0.17))
-    objs += o
-    W['L1'] = p
-    # pole-top pin on a short vertical bracket
-    objs.append(bar('top_br', (-0.5, 0, H - 1.5), (-0.62, 0, H + 0.5), 0.07, mat=gal))
-    o, p = pin_insulator('ins1', (-0.62, 0.0, H + 0.5))
-    objs += o
-    W['L2'] = p
-    o, p = pin_insulator('ins2', (ax, 2.9, za + 0.17))
-    objs += o
-    W['L3'] = p
+    for i, y in enumerate(PHASE_Y):
+        o, p = pin_insulator('ins%d' % i, (ax, y, za + 0.17))
+        objs += o
+        W['L%d' % (i + 1)] = p
     # neutral shackle on the front web face
     o, p = shackle('neut', (0.05, -0.85, 35.2))
     objs += o
@@ -365,18 +362,13 @@ def build_streetlight(A):
     objs.append(channel_y('arm', ax, za, -3.6, 3.6, mat=gal))
     objs.append(clamp_band('arm_clamp', 0.0, za, hx, hy))
     W = {}
-    for i, y in enumerate((-3.1, 0.0, 3.1)):
-        if i == 1:
-            # centre phase on a pole-top pin
-            objs.append(bar('top_br', (-hx - 0.05, 0.0, PSC_H - 1.2), (-hx - 0.2, 0.0, PSC_H + 0.4), 0.07, mat=gal))
-            o, p = pin_insulator('ins1', (-hx - 0.2, 0.0, PSC_H + 0.4))
-        else:
-            o, p = pin_insulator('ins%d' % i, (ax, y, za + 0.21))
+    for i, y in enumerate(PHASE_Y):
+        o, p = pin_insulator('ins%d' % i, (ax, y, za + 0.21))
         objs += o
         W['L%d' % (i + 1)] = p
     zn = 37.4
     hx, hy = psc_dims(zn)
-    o, p = shackle('neut', (0.0, hy + 0.78, zn), front=(0, 1, 0))
+    o, p = shackle('neut', (0.0, -hy - 0.78, zn))
     objs += o
     W['N'] = p
     zs = 35.0
@@ -429,7 +421,7 @@ def build_transformer(A):
     por = P.M('porcelain')
     tx = P.M('transformer')
     blk = P.M('cable_black')
-    con = P.M('concrete', base='#c4bfb2', grime=0.45)
+    con = P.M('concrete', base='#c4bfb2', grime=0.25)
     PX = 4.2
     objs = []
     W = {}

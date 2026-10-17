@@ -2,17 +2,17 @@
  "anchors": {
   "wire_L1": [
    -0.62,
-   -2.9,
+   -3.1,
    40.07
   ],
   "wire_L2": [
    -0.62,
    0.0,
-   43.4
+   40.07
   ],
   "wire_L3": [
    -0.62,
-   2.9,
+   3.1,
    40.07
   ],
   "wire_N": [
@@ -33,7 +33,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 18208,
+ "bytes": 17884,
  "clips": {},
  "family": "prop",
  "file": "pole_rail.glb",
@@ -42,15 +42,15 @@
  "images": [
   "image/webp"
  ],
- "kb": 17.8,
+ "kb": 17.5,
  "kit": 1,
  "materials": [
   "M_pole_rail"
  ],
  "max": [
   0.85,
-  3.4,
-  43.42
+  3.6,
+  42.08
  ],
  "meta": {
   "doubleSided": false,
@@ -68,18 +68,18 @@
  },
  "min": [
   -1.12,
-  -3.4,
+  -3.6,
   0.0
  ],
  "notes": [],
  "script": "props_poles",
  "size": [
   1.97,
-  6.8,
-  43.42
+  7.2,
+  42.08
  ],
  "tint": null,
- "tris": 283,
+ "tris": 275,
  "units": "u",
  "up": "Z"
 }
