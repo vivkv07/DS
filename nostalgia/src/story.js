@@ -135,17 +135,18 @@
   function wantedAdd(n, why) { const W = wanted(); if (!W) return; try { if (W.add) W.add(n == null ? 1 : n, why || 'story'); } catch (e) { N.err('story.wanted', e); } }
   function wantedClear(why) { const W = wanted(); if (!W) return; try { if (W.clear) W.clear(why || 'story'); else if (W.set) W.set(0); } catch (e) { N.err('story.wanted', e); } }
   const realWanted = () => { const W = wanted(); return !!(W && typeof W.policy === 'function'); };
-  /** Pay (paise < 0) or earn (paise > 0). Paying never goes below ₹0: a companion's udhaar covers it. */
+  /** Pay (paise < 0) or earn (paise > 0). Paying never goes below ₹0: in the story the companion
+   *  with him pays the rest ("Bunty-anna paid the rest."), so a forced purchase never leaves a debt. */
+  const WHO = { bunty: 'Bunty-anna', immu: 'Immu', amma: 'Amma', ammi: 'Ammi', ayesha: 'Ayesha' };
   function money(m, paise, why, companion) {
     if (!paise || ff()) return;
     if (paise > 0) { m.money(paise); return; }
-    const S2 = N.shops;
-    if (S2 && typeof S2.charge === 'function') {
-      try { const r = S2.charge(-paise, { why: why || 'story', companion: companion || 'immu' }); if (r && r.udhaar) toast('Udhaar: ' + ({ bunty: 'Bunty-anna', immu: 'Immu', amma: 'Amma', ammi: 'Ammi' }[companion || 'immu'] || 'a friend') + ' paid the rest.', 2400, 'udhaar'); return; } catch (e) { N.err('story.charge', e); }
-    }
     const p = N.player;
-    const take = Math.min(p.money | 0, -paise);
+    const have = Math.max(0, p.money | 0), cost = -paise;
+    const take = Math.min(have, cost);
     if (take > 0) m.money(-take);
+    if (take < cost) toast((WHO[companion || 'immu'] || 'A friend') + ' paid the rest (₹' + Math.ceil((cost - take) / 100) + ').', 2400, 'udhaar');
+    N.emit('shop:buy', { place: 'story', item: why || 'story', price: cost, qty: 1 });
   }
   function give(m, id, name, n) {
     if (ff()) return;
@@ -173,7 +174,7 @@
   const S = {
     cleanups: [], offers: new Set(), acts: new Map(), rings: new Set(), labels: new Set(), timers: new Set(),
     ride: null, pin: null, queue: null, cargo: null, tag: null, dark: null, kite: null, step: null,
-    givers: new Map(), giverT: 0, extras: new Set(), widget: null, lastDay: null, pcT: 0,
+    givers: new Map(), giverT: 0, extras: new Set(), widget: null, lastDay: null, pcT: 0, stepOut: null, sideWas: null,
   };
   function onEnd(fn) { S.cleanups.push(fn); }
   function cleanupAll() {
@@ -192,6 +193,8 @@
     S.extras.clear();
     const p = N.player;
     if (p) { p.noRun = false; if (p.hidden && !S.ride) p.hidden = false; }
+    // free-roam side minigames come back (they were off so a stray ACTION never starts marbles mid-mission)
+    if (S.sideWas != null) { F().mg_side_off = S.sideWas || undefined; if (!S.sideWas) delete F().mg_side_off; S.sideWas = null; }
   }
 
   /* ================================================================ extras (queue people, porters, raiders, crowds) */
@@ -558,6 +561,24 @@
     let dl = Math.hypot(dx, dy);
     if (dl < 8) { dx = 0; dy = 1; dl = 1; }
     dx /= dl; dy /= dl;
+    // the line forms on the forecourt / footpath, not in the carriageway: score 16 directions
+    try {
+      const SU = N.SURF, W = N.world;
+      const want = (o.ahead || 8) + (o.behind == null ? 3 : o.behind) + 3;
+      let best = -1e9, bd = null;
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * TAU, ux = Math.cos(a), uy = Math.sin(a);
+        let sc = (ux * dx + uy * dy) * 3;
+        for (let i = 0; i < want; i++) {
+          const x = C.x + ux * (10 + i * 8.5), y = C.y + uy * (10 + i * 8.5);
+          if (!W.isWalkable(x, y)) { sc -= (want - i) * 2; break; }
+          const sf = W.surfaceAt(x, y);
+          sc += sf === SU.ROAD || sf === SU.BRIDGE ? 0.2 : sf === SU.FOOTPATH || sf === SU.PLAZA ? 3 : 2;
+        }
+        if (sc > best) { best = sc; bd = { ux, uy }; }
+      }
+      if (bd) { dx = bd.ux; dy = bd.uy; }
+    } catch (e) { /* keep the player-facing direction */ }
     const nx = -dy, ny = dx;
     q.dir = { dx, dy, nx, ny };
     const n = (o.ahead || 8) + 1 + (o.behind == null ? 3 : o.behind) + (o.cutters || 0) + 2;
@@ -593,6 +614,10 @@
     S.queue = q;
     S.pin = { x: q.slots[q.ps].x, y: q.slots[q.ps].y };
     p.noRun = true;
+    // standing in a line: nobody chases a boy in a queue (meter frozen until he is served)
+    try { m.meter('frozen'); } catch (e) { /* ignore */ }
+    q.unfreeze = () => { try { if (run() && !q.keepFrozen) m.meter('normal'); } catch (e) { /* ignore */ } };
+    q.keepFrozen = !!o.keepFrozen;
     S.step = { kind: 'queue', skip: () => { q.done = true; } };
     sfx('kids', { ui: true, vol: 0.4 });
     return q;
@@ -611,6 +636,8 @@
       q.nextServe = U.randRange(q.serve[0], q.serve[1]);
       if (q.ps === 0) {
         q.done = true; widget(null); S.pin = null; p.noRun = false; sfx('coin', { ui: true });
+        if (S.step && S.step.kind === 'queue') S.step = null;
+        if (q.unfreeze) q.unfreeze();
         return;
       }
       if (q.line.length && q.line[0].slot === 0) {
@@ -862,7 +889,11 @@
     F().lb_match = true;
     if (hasGame('match')) {
       const r = await game(m, 'match', params);
-      if (r && !r.missing && !r.error) return r;
+      if (r && !r.missing && !r.error) {
+        // (N.cricketMatch.start sets these itself; the story plays it through m.minigame so a failed / quit run aborts it)
+        if (!r.quit && !r.aborted && !r.skipped) { F().lb_match_played = true; if (r.win) F().lb_match_won = true; }
+        return r;
+      }
     }
     // fallback: the gully cricket batting game, scored as the final
     const r2 = await game(m, 'cricket', { target: 24, overs: 3, wickets: 2, bowler: undefined, place: 'lb_stadium', intro: params.intro || 'Summer camp final. Chinnu XI need 24.', title: params.title || 'Summer Camp Final' });
@@ -1135,6 +1166,7 @@
     // 3. The colony ground: Ayesha has the kite
     const ay = npc(m, 'ayesha', spot('playground_1', 6, 4), { idle: 'stand' });
     if (S.kite && ground) { S.kite.x = ground.x + 6; S.kite.y = ground.y + 2; S.kite.h = 8; }
+    if (N.player.level) m.toast('Down the stairs at the last terrace (ACTION: Go downstairs), then run!', 3000);
     await m.goto('playground_1', { label: 'Get to the colony ground.', r: 30 });
     S.kite = null; S.kiteTick = null;
     if (ay) face('ayesha', 'player');
@@ -1270,6 +1302,7 @@
     npc(m, 'chitti', onRoof('home_terrace', 10, 8) || 'home_terrace', { roof: R && R.get('home_terrace') ? 'home_terrace' : undefined });
     npc(m, 'immu', onRoof('friend_terrace') || 'friend_home', { roof: R && R.get('friend_terrace') ? 'friend_terrace' : undefined });
     music('kites');
+    if (!N.player.level) m.toast('Up the stairs beside the house (ACTION: Go up to the terrace).', 3000);
     await go(m, 'home_terrace', { label: 'Up to the terrace: evening kites.', r: 18 });
     if (T1) void T1;
     await m.talk([
@@ -1331,8 +1364,8 @@
     sfx('station_chime', { ui: true });
     bark(porter, '"*Coolie? Coolie?*"', 2.4);
     m.toast('The platform where trains stop for good: the buffer stops at the end of the line.', 3400);
-    m.checkpoint('numaish_gate');
     await go(m, ['numaish_gate', 'nampally_exhibition'], { label: 'Through the side gate into Numaish.', r: 30 });
+    m.checkpoint('numaish_gate');
     music('numaish');
     at(17, 10);
     // 4. Find Immu: three announcements, each names a stall; a beacon on Immu after the third
@@ -1440,8 +1473,8 @@
     await m.say('bahadur', '*Kaun hai?* ...Arre, Chinnu baba. Cinema? *Hau, hau.* I saw nothing. I am only a whistle.', { mood: 'wink' });
     // 2. Four forecourts, four garland counters
     at(5, 50);
-    m.checkpoint('rtc_x');
     await m.goto('rtc_x_roads', { label: 'Find the most-garlanded hero at RTC X Roads.', r: 60 });
+    m.checkpoint('rtc_x');
     for (const c of CUTOUTS) { if (pos(c.id)) S.labels.add({ target: c.id, text: c.n + ' GARLANDS', h: 34, dy: -12 }); }
     npc(m, 'painter', spot('sudarshan_theatre', 8, 10, 30), { idle: 'work' });
     npc(m, 'black_ticket', spot('odeon_theatre', 10, 12, 30), { idle: 'stand' });
@@ -1456,7 +1489,7 @@
       ids.push(aid);
     }
     onEnd(() => ids.forEach((id) => N.interact.remove(id)));
-    S.step = { kind: 'cutouts', skip: () => { visit.id = 'sandhya_theatre'; } };
+    const cstp = S.step = { kind: 'cutouts', target: 'sandhya_theatre', skip: () => { visit.id = 'sandhya_theatre'; } };
     if (ff()) visit.id = 'sandhya_theatre';
     while (visit.id !== 'sandhya_theatre') {
       await m.until(() => visit.id);
@@ -1473,6 +1506,7 @@
       else if (v === 'devi_theatre') await m.say('narrator', 'Banner: "MASS MAHARAJU — 100 DAYS". A kite (not a riddle kite) hangs off the hero\'s sword. Eighteen garlands.');
     }
     ids.forEach((id) => N.interact.remove(id));
+    if (S.step === cstp) S.step = null;
     await m.say('narrator', '"TOOFAN TAMMUDU — FIRST DAY". Thirty-one garlands. The hero\'s boots are as tall as Chinnu.');
     // at Sandhya: the tape behind the painted buckle
     npc(m, 'painter', spot('sandhya_theatre', 6, 12, 30), { idle: 'work' });
@@ -1578,15 +1612,23 @@
     m.meter('normal');
     S.m3caught = false;
     npc(m, 'bunty', spot('bawarchi', 10, 10, 30), { idle: 'stand' });
-    await m.goto('bawarchi', { label: 'Lose Mummy, or bring a peace offering: a Bawarchi parcel for Nanna.', r: 28 });
+    m.objective('Lose Mummy, or bring a peace offering: a Bawarchi parcel for Nanna.');
+    const BW = pos('bawarchi');
+    let bmk = null, bbl = null;
+    if (!ff() && BW) { bmk = m.marker('bawarchi', { r: 28 }); bbl = m.blip('bawarchi', { color: '#ff5fb0', icon: 'star', pulse: true, route: true }); }
+    // caught on the way (PAKDA GAYA, onBusted puts him at home): the same home scene, and the fine was paid
+    await m.until(() => S.m3caught || !BW || dist(N.player, BW) <= 28);
+    if (bmk) m.unmarker(bmk); if (bbl) m.unblip(bbl);
     for (const v of chasers) { try { N.vehicles.remove(v); } catch (e) { /* ignore */ } }
-    if (N.player.vehicle) { try { N.vehicles.exit(N.player, true); } catch (e) { /* ignore */ } }
-    face('bunty', 'player');
-    npc(m, 'bawarchi_man', spot('bawarchi', -6, 4, 20), { idle: 'work' });
-    await m.talk([
-      { s: 'bunty', t: "*Tension nakko*, I'm here. Biryani solves everything. One family parcel, *bhai*.", mood: 'happy' },
-      { s: 'bawarchi_man', t: 'Family pack, forty rupees. Smell is free, parcel is not.' },
-    ]);
+    if (!S.m3caught) {
+      if (N.player.vehicle) { try { N.vehicles.exit(N.player, true); } catch (e) { /* ignore */ } }
+      face('bunty', 'player');
+      npc(m, 'bawarchi_man', spot('bawarchi', -6, 4, 20), { idle: 'work' });
+      await m.talk([
+        { s: 'bunty', t: "*Tension nakko*, I'm here. Biryani solves everything. One family parcel, *bhai*.", mood: 'happy' },
+        { s: 'bawarchi_man', t: 'Family pack, forty rupees. Smell is free, parcel is not.' },
+      ]);
+    } else m.toast('Bunty-anna brings the Bawarchi parcel home anyway. *Tension nakko.*', 3000);
     give(m, 'biryani_parcel', 'A Bawarchi family parcel');
     music('day');
     npc(m, 'amma', spot('home', 14, 6, 30), { idle: 'stand' });
@@ -1645,12 +1687,12 @@
       { s: 'tiger', t: "Girls' captain? Then we bat first. *Doodh-bhaat* team.", mood: 'wink' },
     ]);
     // 2. The match on the back lawn
-    m.checkpoint('match');
     const lawn = spot(['hide_public_gardens_tree', 'public_gardens'], 30, -20, 60);
     for (const [id, dx, dy] of [['ayesha', 0, -30], ['immu', 18, 10], ['tiger', -30, 0]]) npc(m, id, lawn ? { x: lawn.x + dx, y: lawn.y + dy } : 'public_gardens', { idle: 'stand' });
     if (lawn) for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; const e = extraAt(lawn, Math.cos(a) * 46, Math.sin(a) * 34, randomLook('xi' + i, 'kid'), { role: 'fielder' }); e.faceTo = lawn; }
     at(10, 30);
     await m.goto(lawn, { label: 'Win the match on the back lawn before 1:30.', r: 30 });
+    m.checkpoint('match');
     await m.cutscene([
       { type: 'text', lines: ['First innings. Ayesha bowls. Tiger edges it fine...', '...and Chitti, at fine leg as *doodh-bhaat*, takes it one-tip, one-hand.'] },
       { type: 'talk', lines: [
@@ -1680,8 +1722,8 @@
     await m.say('immu', 'That statue is new. Abba says it came in 1998.');
     m.toast('The seated Gandhi statue on the Assembly lawn was installed in 1998.', 4200);
     // 4. The museum mummy (quiet zone: walk)
-    m.checkpoint('museum');
     await m.goto('state_museum', { label: 'See the museum mummy with Immu.', r: 24 });
+    m.checkpoint('museum');
     N.player.noRun = true;
     onEnd(() => { N.player.noRun = false; });
     await m.talk([
@@ -1702,11 +1744,11 @@
     N.player.noRun = false;
     // 5. The final on the TV shop window (antenna minigame)
     at(13, 25);
-    m.checkpoint('tv_shop');
     const tv = pos('electronics_shop_1');
     if (tv) for (let i = 0; i < 7; i++) { const e = extraAt(tv, -24 + i * 8, 14 + (i % 2) * 6, randomLook('tvcrowd' + i), { role: 'crowd' }); e.faceTo = tv; }
     npc(m, 'cable_babji', spot('electronics_shop_1', 16, 8, 20), { idle: 'stand' });
     await m.goto('electronics_shop_1', { label: 'Watch the final at the TV shop by LB Stadium (1:30 pm).', r: 30 });
+    m.checkpoint('tv_shop');
     sfx('radio_static', { ui: true });
     await m.say('cable_babji', 'Signal *gaya!* Somebody go up and turn the antenna! Small boy, you. Up.', { mood: 'shout' });
     const an = await game(m, 'antenna', { time: 40, caller: 'babji', intro: 'Thoda left... thoda right... the tower is that way.' });
@@ -1768,9 +1810,9 @@
     void T;
     follow('immu', true, { dist: 14 });
     // 2. Gokul Chat: pani-puri challenge, Nani's parcel
-    m.checkpoint('gokul');
     npc(m, 'gokul_man', spot('gokul_chat', 0, -6, 16), { idle: 'work' });
     await m.goto('gokul_chat', { label: 'Parcel samosa-ragda at Gokul Chat.', r: 24 });
+    m.checkpoint('gokul');
     await m.talk([
       { s: 'gokul_man', t: '*Teekha ya meetha?* One extra, *phokat!*', mood: 'happy' },
       { s: 'immu', t: "Loser pays for Nani's parcel." },
@@ -1782,9 +1824,9 @@
     await m.say('gokul_man', "Samosa-ragda parcel, double chutney, for Nani. Nani's blessings, free.");
     give(m, 'samosa_ragda', 'Samosa-ragda parcel, double chutney');
     // 3. Koti: Ticket Thatha, then the red bus to Imlibun
-    m.checkpoint('koti');
     npc(m, 'ticket_thatha', spot('koti_bus_stand', 24, 18, 30), { idle: 'sit' });
     await m.goto('ticket_thatha', { label: 'Catch a red bus from Koti to Imlibun.', r: 24 });
+    m.checkpoint('koti');
     face('ticket_thatha', 'player');
     await m.talk([
       { s: 'ticket_thatha', t: 'Imlibun? Thirty-one years I punched tickets on these roads. Any bus for Afzalgunj or MGBS.' },
@@ -1972,7 +2014,7 @@
     music(null);
     await m.goto('dilsukhnagar_sai_temple', { label: 'Join the Thursday queue. Walk only; chappals at the stand.', r: 40 });
     m.toast('Chappals off at the stand. Walk only.', 2400);
-    const q = queue(m, { at: 'dilsukhnagar_sai_temple', ahead: 6, behind: 4, respect: true, label: 'THURSDAY QUEUE', serve: [2.4, 3.4], seed: 'm6' });
+    const q = queue(m, { at: 'dilsukhnagar_sai_temple', ahead: 6, behind: 4, respect: true, keepFrozen: true, label: 'THURSDAY QUEUE', serve: [2.4, 3.4], seed: 'm6' });
     follow('ammamma', false);
     const amPin = () => { const a = N.npcs && N.npcs.get('ammamma'); if (a && S.pin && q.dir) { a.x = S.pin.x + q.dir.nx * 7; a.y = S.pin.y + q.dir.ny * 7; a.homeX = a.x; a.homeY = a.y; } };
     S.tickFns = [amPin];
@@ -2056,10 +2098,15 @@
       await m.say('bunty', 'Committee thanks you. Ganpati also thanks you. Laddu is for after the aarti.');
     } else {
       // Nights 2 to 4: the night watch (W9 tag, 60 s)
-      if (night === 2) await m.talk([
-        { s: 'tiger', t: "We're not stealing. We're... inspecting your laddu.", mood: 'wink' },
-        { s: 'chinnu', t: 'Inspect from your own ground!', mood: 'angry' },
-      ]);
+      if (night === 2) {
+        npc(m, 'tiger', spot('playground_1', 64, 34, 40), { idle: 'stand' });
+        face('tiger', 'player');
+        await m.talk([
+          { s: 'tiger', t: "We're not stealing. We're... inspecting your laddu.", mood: 'wink' },
+          { s: 'chinnu', t: 'Inspect from your own ground!', mood: 'angry' },
+        ]);
+        despawn('tiger');
+      }
       else await m.say('bunty', 'Night ' + night + '. Torch on. Laddu duty.');
       await m.goto('playground_1', { label: 'Guard the laddu: tag the raiders before they reach it.', r: 34 });
       m.checkpoint('watch');
@@ -2137,9 +2184,9 @@
   }
   function powerCutTonight() {
     if (!isDone('last_man_batting')) return false;
+    if (F().sa2_day === todayKey()) return false; // Nanna already fixed it tonight
     if (F().force_power_cut) return true;
     if (festivalToday()) return false;
-    if (F().sa2_day === todayKey()) return false;
     return U.hash2(todayKey() * 7 + 3, 1991) < 0.3;
   }
   function inColony() {
@@ -2345,6 +2392,16 @@
     six_balls: { id: 'ayesha', off: [14, 2] },
     lb_exhibition: { id: 'coach', off: [14, 2] },
   };
+  // After a mission ends the player often stands where the next giver is (home): that giver waits
+  // until he has stepped away once, so nothing starts by accident on the 1 s J-card dwell.
+  function stepOutOK(id) {
+    const so = S.stepOut;
+    if (!so) return true;
+    const p = N.player;
+    if (!p || Math.hypot(p.x - so.x, p.y - so.y) > 70) { S.stepOut = null; return true; }
+    try { const d = N.missions.defs[id]; const g = d && N.missions.giverPos(d); if (g && Math.hypot(p.x - g.x, p.y - g.y) > ((d.giver && d.giver.r) || 14) + 36) return true; } catch (e) { return true; }
+    return false;
+  }
   function register() {
     const M = N.missions;
     if (!M || !M.register) return;
@@ -2382,6 +2439,12 @@
       when: () => inMD('04-26', '06-11'), autosave: false, script: sa4 });
     M.register({ id: 'lb_exhibition', kind: 'side', title: 'Exhibition Match', chapter: 'LB Stadium', requires: ['six_balls'], giver: { place: 'lb_stadium', r: 18 }, window: { from: '06:00', to: '20:00' },
       autosave: false, help: false, onPass: () => { N.missions.done.delete('lb_exhibition'); }, script: exhibition });
+    for (const id of MISSIONS.concat(SIDES)) {
+      const d = M.defs[id];
+      if (!d) continue;
+      const w0 = d.when;
+      d.when = () => stepOutOK(id) && (!w0 || w0());
+    }
   }
 
   /* ================================================================ giver NPCs + free-roam power cuts */
@@ -2498,7 +2561,11 @@
     if (mode() === 'play' && !run()) prologue();
   });
   for (const ev of ['mission:complete', 'mission:fail', 'mission:abort']) N.on(ev, () => { cleanupAll(); });
-  N.on('mission:start', () => { cleanupAll(); clearGivers(); });
+  N.on('mission:complete', () => { const p = N.player; if (p) S.stepOut = { x: p.x, y: p.y }; });
+  N.on('mission:start', (d) => {
+    cleanupAll(); clearGivers();
+    if (d && (MISSIONS.indexOf(d.id) >= 0 || SIDES.indexOf(d.id) >= 0)) { S.sideWas = !!F().mg_side_off; F().mg_side_off = true; }
+  });
   N.on('game:quit', () => { cleanupAll(); clearGivers(); });
   const reLook = () => { try { if (N.player && N.player.inventory && N.player.inventory.has('camera')) setVariant('chinnu', 'camera'); } catch (e) { /* ignore */ } };
   N.on('save:loaded', () => { cleanupAll(); clearGivers(); reLook(); });

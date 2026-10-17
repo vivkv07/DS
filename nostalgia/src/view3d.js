@@ -1683,15 +1683,18 @@
     }
     // landmarks
     if (now() < deadline) updateLandmarks(fx, fy, deadline);
-    // drop far chunks (one per call)
+    // drop far chunks (a few per call; disposal is cheap)
     if (planList.length) {
-      for (const ch of chunks.values()) {
-        if (keep.has(ch.key)) continue;
-        const dx = Math.max(ch.x0 - fx, 0, fx - ch.x0 - CH), dy = Math.max(ch.y0 - fy, 0, fy - ch.y0 - CH);
-        if (Math.hypot(dx, dy) > Q.drawDist + CH) { disposeChunk(ch); break; }
+      let n = 0;
+      for (const ch of Array.from(chunks.values())) {
+        if (farChunk(ch, fx, fy)) { disposeChunk(ch); if (++n >= 8) break; }
       }
     }
     workMs = now() - t0;
+  }
+  function farChunk(ch, fx, fy) {
+    const dx = Math.max(ch.x0 - fx, 0, fx - ch.x0 - CH), dy = Math.max(ch.y0 - fy, 0, fy - ch.y0 - CH);
+    return Math.hypot(dx, dy) > Q.drawDist + CH;
   }
   function nearReady(fx, fy) {
     for (const it of planList) {
@@ -2623,6 +2626,8 @@
       while (now() - t0 < cap) {
         updateWork(f.x, f.y, 50);
         let pending = !!paintJob || lmQueue.length > 0;
+        for (const ch of chunks.values()) if (farChunk(ch, f.x, f.y)) { pending = true; break; }
+        if (!pending && now() - lmCheckT > 350) { updateLandmarks(f.x, f.y, now() + 20); pending = lmQueue.length > 0; }
         for (const it of planList) {
           const ch = chunks.get(ckey(it.ci, it.cj)), w = wantFor(it.d);
           if (!ch || ch.detail < w.detail || ch.detail < 0 || ch.gjob || ch.dirty || !ch.groundRes || ch.groundRes < w.res || ch.groundStale) { pending = true; break; }

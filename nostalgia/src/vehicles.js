@@ -7,6 +7,28 @@
  * particles, headlights at night, enter / exit / borrow, horn and radio events.
  * Contract: ARCHITECTURE.md §8 (extended there: "vehicles.js implementation notes").
  *
+ * A3 age-appropriate vehicles (design/amendments.md, binding): Chinnu is 11. TYPES[t].kidOk types are
+ * the ones he may drive: cycles (hero_cycle — black Hero roadster, rod brakes, carrier, chain guard,
+ * dynamo lamp, THE bell, ridden *kainchi* style; hercules_cycle — the sporty one, fat tyres, flat bar,
+ * better on rough ground; cycle (BSA SLR) / bsa_cycle, ladiescycle, kid_cycle, his own chinnu_cycle,
+ * hercules_gears), the scooty (akka_scooty from 30 finds) and the auto (kid: slower, peeking over the
+ * bar, autowalas shout). Everything else (luna, chetak, rx100, cars, bus, lorry, boats) offers a seat
+ * behind the NPC driver ("Sit pillion" / "Ride as passenger" / "Board bus ₹3" / "Ride auto (fare)" via
+ * N.shops.rideVehicle) or a kid-flavoured refusal (TYPES[t].refuse). N.vehicles.allowHeavy (debug) or
+ * ageRules = false lifts the rule; N.debug.enterVehicle always works. API: canDrive(v | type),
+ * offerFor(v) -> {kind, label}, ride(actor, v, {as, fare, lock}) (pillion / passenger; ACTION "Get off"
+ * asks the driver to stop), isPassenger(), boardBus, trafficMix(style, base) (+ TYPES[t].spawn weights;
+ * patches N.traffic.TUNE.mix once unless N.traffic.readsTypeWeights), seedHome(). Events:
+ * 'vehicle:ride' {vehicle, actor, as, fare}, 'vehicle:refused' {vehicle, type, line}, 'bus:board',
+ * 'vehicle:autoShout'; player:enter/exitVehicle carry {passenger} when riding along.
+ * A2 potholes: every frame each moving vehicle near the view (and always the player's) checks
+ * N.world.potholeAt(x, y) -> {depth, r, wet?} | null under its front and rear wheels (missing API: no
+ * potholes). On entry: speed x0.82 at full depth and top speed, v.jolt = 1 (decays; 2D bob here, 3D
+ * reads it), N.render.shake(1.5) for the player, sfx 'pothole' (louder with speed, variant 'wet' after
+ * rain), dust / muddy drops, 4% puncture (pedal cycles), 2% comic fall above 80% of top speed (bikes,
+ * player.fall: DHADAAM, never hurt). On foot: a tiny stumble (+ splash when wet), 'player:stumble'.
+ * Events: 'vehicle:pothole' {vehicle, speed, depth, severity, wet, wheel, x, y, player}.
+ *
  * Conventions: a type's `w` is its LENGTH along the heading and `d` its WIDTH. Local vehicle
  * coordinates: +x forward, +y to the right. Vehicles are entities with `selfUpdate` and
  * `noCollide` (entities.js leaves them alone); the 'vehicles' system (order 30) moves them
@@ -29,8 +51,14 @@
     // 2% comic falls above 80% of top speed; walking through one is a tiny stumble
     potholeLoss: 0.18, potholeShake: 1.5, potholePuncture: 0.04, potholeFall: 0.02, potholeFallAt: 0.8,
     potholeMinSpeed: 6, potholeView: 90, joltDecay: 2.8, stumble: 0.45,
+    // the rear wheel dropping into the pothole the front wheel just hit: a softer second thump (no second
+    // speed loss / puncture / fall roll); swept wheel samples every 2 u; no second comic fall for 45 s
+    potholeRear: 0.25, potholeStep: 2, potholeFallCD: 45,
     // A3: the kid on a Scooty wobbles above 78% of top speed; autowalas shout at a kid driving an auto
     wobbleFrom: 0.78, autoShout: [7, 13], autoShoutR: 170, fareAutos: true, busFare: 300, footboard: 50,
+    // seats / lifts / fares only while the vehicle is slower than walking; a bus up to 60 u/s (footboard);
+    // "no" offers within 10 u at priority -2 (below side activities), one refusal per 1.5 s
+    seatMaxSpeed: 35, busMaxBoard: 60, noR: 10, noPriority: -2, noCD: 1.5, lockStuck: 8,
   };
   // bike surface factors (cls 'bike'); everything else uses world.js SPEED.drive. A type's `rough`
   // ({surf: factor}) overrides them (the Hercules' fat tyres, the Scooty's small wheels).
@@ -86,11 +114,11 @@
     maxSpeed: 115, accel: 62, brake: 170, reverse: 0.12, drag: 24, turn: 3.4, turnLow: 0.5, turnHigh: 0.62,
     grip: 13, drift: 3.2, mass: 1.2, seats: 1, lights: false, rider: true, pedal: true, door: false, bikeLook: 'cycle',
     kidOk: true, sound: 'cycle', bell: 'plain',
-    colors: ['#1d1d22', '#2f6a3a', '#24479a', '#9a2424', '#1d1d22'], draw: (ctx, v) => drawBike(ctx, v),
+    colors: ['#1d1d22', '#2f6a3a', '#24479a', '#9a2424', '#1d1d22'], draw: (ctx, v) => drawCycle2(ctx, v),
   });
   define('bsa_cycle', { base: 'cycle', name: 'BSA SLR', short: 'BSA SLR', colors: ['#24479a', '#9a2424', '#2f6a3a', '#1d1d22'] });
   define('ladiescycle', {
-    base: 'cycle', name: 'Ladies cycle', maxSpeed: 108, accel: 58, basket: true,
+    base: 'cycle', name: 'Ladies cycle', short: 'ladies cycle', maxSpeed: 108, accel: 58, basket: true,
     colors: ['#8a2a4a', '#c05a8a', '#3a7ab0', '#6a3a8a', '#2a8a7a'],
   });
   // The classic black Hero roadster: rod brakes, rear carrier, chain guard, dynamo lamp and THE bell.
@@ -160,21 +188,21 @@
   });
   DEFAULTS.refuse = REFUSE.car; // cars (and any story type without its own lines)
   define('ambassador', {
-    name: 'Ambassador', short: 'Ambassador', w: 30, d: 14, h: 12.5,
+    name: 'Ambassador', short: 'Ambassador', w: 30, d: 14, h: 12.5, sound: 'ambassador',
     maxSpeed: 165, accel: 88, turn: 2.2, grip: 8.5, mass: 10, radio: true,
     colors: ['#efeae0', '#efeae0', '#1e1e24', '#e0d3ae', '#6a1e26', '#7d8b93'],
     car: { body: [2, 7.4], rf: 5, rr: 5, cab: [-9.5, 5.5], cabInset: 1.2, cabH: 12.5, cabR: 3, slopeF: 3.4, slopeR: 2.6, slopeS: 1.3, bumper: '#c9c9c4', curvy: true },
     draw: (ctx, v) => drawCar(ctx, v),
   });
   define('maruti800', {
-    name: 'Maruti 800', short: 'Maruti 800', w: 24, d: 12, h: 11.5,
+    name: 'Maruti 800', short: 'Maruti 800', w: 24, d: 12, h: 11.5, sound: 'maruti800',
     maxSpeed: 165, accel: 110, turn: 2.6, grip: 8.5, mass: 6, radio: true,
     colors: ['#f2f0ea', '#c8322a', '#2a4c8a', '#b8bcc0', '#8ab8d8', '#f2f0ea'],
     car: { body: [2, 7], rf: 3.6, rr: 2.6, cab: [-10.6, 4.4], cabInset: 1, cabH: 11.5, cabR: 2, slopeF: 3.6, slopeR: 1.4, slopeS: 1.1, bumper: '#3a3a3e' },
     draw: (ctx, v) => drawCar(ctx, v),
   });
   define('padmini', {
-    name: 'Premier Padmini', short: 'Padmini', w: 26, d: 12, h: 11,
+    name: 'Premier Padmini', short: 'Padmini', w: 26, d: 12, h: 11, sound: 'padmini',
     maxSpeed: 158, accel: 92, turn: 2.4, grip: 8.5, mass: 7, radio: true,
     colors: ['#8fb0c8', '#7a9a6a', '#ece6d8', '#c8b48a', '#1e1e24', '#a8443a'],
     car: { body: [2, 7], rf: 3, rr: 3, cab: [-8, 5], cabInset: 1.1, cabH: 11, cabR: 1.6, slopeF: 3, slopeR: 2, slopeS: 1.1, bumper: '#c9c9c4' },
@@ -184,33 +212,40 @@
     name: 'City bus', short: 'bus', verb: 'Drive', cls: 'heavy', w: 62, d: 18, h: 19.5,
     maxSpeed: 115, accel: 42, brake: 150, reverse: 0.25, drag: 30, turn: 1.25, turnLow: 0, turnHigh: 0.7,
     grip: 10, drift: 3, bounce: 0.18, mass: 40, seats: 50, radio: true, camZoom: 0.86, smoke: 'diesel', playerNoEnter: true,
-    colors: ['#b22b2b'], routes: ['127K', '8A', '9X', '49M', '5K', '1Z', '65G', '219'], draw: (ctx, v) => drawBus(ctx, v),
+    refuse: REFUSE.bus, sound: 'bus', colors: ['#b22b2b'], routes: ['127K', '8A', '9X', '49M', '5K', '1Z', '65G', '219'], draw: (ctx, v) => drawBus(ctx, v),
   });
   define('lorry', {
     name: 'Lorry', short: 'lorry', verb: 'Drive', cls: 'heavy', w: 46, d: 16, h: 16,
     maxSpeed: 110, accel: 40, brake: 150, reverse: 0.25, drag: 30, turn: 1.2, turnLow: 0, turnHigh: 0.7,
     grip: 10, drift: 3, bounce: 0.18, mass: 45, seats: 2, radio: true, camZoom: 0.88, smoke: 'diesel', playerNoEnter: true,
-    colors: ['#e0782a', '#2a6ab8', '#3a8a5a', '#c03030', '#d8a020'], colors2: ['#e8c060', '#3aa0a0', '#e86a3a', '#8ac04a'],
+    refuse: REFUSE.lorry, sound: 'lorry', colors: ['#e0782a', '#2a6ab8', '#3a8a5a', '#c03030', '#d8a020'], colors2: ['#e8c060', '#3aa0a0', '#e86a3a', '#8ac04a'],
     draw: (ctx, v) => drawLorry(ctx, v),
   });
   define('boat', {
     name: 'Boat', short: 'boat', verb: 'Steer', cls: 'boat', mode: 'boat', w: 28, d: 11, h: 6,
     maxSpeed: 60, accel: 28, brake: 40, reverse: 0.4, drag: 14, turn: 1.1, turnLow: 0.35, turnHigh: 0.8,
-    grip: 2.2, drift: 1.2, bounce: 0.15, mass: 12, seats: 6, door: false,
+    grip: 2.2, drift: 1.2, bounce: 0.15, mass: 12, seats: 6, door: false, refuse: REFUSE.boat, sound: 'boat',
     colors: ['#f2efe6', '#e8e2d0'], colors2: ['#c0392b', '#2a8c82', '#2a5cb8', '#e0a020'], draw: (ctx, v) => drawBoat(ctx, v),
   });
 
   /* ------------------------------------------- story and special types (systems §3.2) */
   // nakko: the player can't take it; ACTION near it shows "Nakko" and says this line instead.
   // allow(): when present, the nakko applies only until it returns true (unlocks).
-  define('family_chetak', { base: 'chetak', name: "Nanna's Chetak", short: 'Chetak', colors: ['#7d9ab0'] });
-  define('chinnu_cycle', { base: 'cycle', name: "Chinnu's cycle", short: 'cycle', maxSpeed: 122, accel: 66, carrier: 0.75, colors: ['#1d1d22'] });
-  define('old_cycle', { base: 'cycle', name: "Nanna's roadster", short: 'roadster', maxSpeed: 105, turn: 3.0, colors: ['#141416'] });
-  define('kid_cycle', { base: 'cycle', name: "Kid's hire cycle", short: 'cycle', maxSpeed: 110, turn: 3.6, w: 13.5, colors: ['#9a2424', '#2f6a3a', '#24479a'] });
+  // rideOk: an NPC at its controls (story, family) offers the player a pillion / passenger seat.
+  define('family_chetak', { base: 'chetak', name: "Nanna's Chetak", short: 'Chetak', colors: ['#7d9ab0'], refuse: REFUSE.family_chetak, rideOk: true });
+  // Chinnu's own second-hand roadster (12 finds): a Hero with the saddle let right down (no kainchi)
+  define('chinnu_cycle', { base: 'hero_cycle', name: "Chinnu's cycle", short: 'cycle', maxSpeed: 122, accel: 66, carrier: 0.75, kainchi: false, colors: ['#17171c'], spawn: null });
+  define('old_cycle', { base: 'hero_cycle', name: "Nanna's roadster", short: 'roadster', maxSpeed: 105, turn: 3.0, colors: ['#121214'], spawn: null });
+  define('kid_cycle', { base: 'cycle', name: "Kid's hire cycle", short: 'cycle', maxSpeed: 110, turn: 3.6, w: 13.5, bikeLook: 'kid', colors: ['#9a2424', '#2f6a3a', '#24479a'] });
   define('bunty_rx100', {
-    base: 'rx100', name: "Bunty-anna's RX100", short: 'RX100', colors: ['#1c1c22'], seats: 2,
-    nakko: "Bunty-anna's RX100? Only on Sundays, only with a helmet, only if Mummy doesn't know. Not today.",
-    allow: () => unlocked('rx100', 60) || !!(N.flags && (N.flags.bunty_rx100 || N.flags.rx100_lent)),
+    base: 'rx100', name: "Bunty-anna's RX100", short: 'RX100', colors: ['#1c1c22'], seats: 2, rideOk: true,
+    refuse: ["Bunty-anna's RX100? Only pillion, only with a helmet, only behind Bunty-anna.", 'Bunty-anna: "Touch it and I tell Mummy about the Rasna."'],
+  });
+  // A3 + the ladder (30 finds): Akka next door lends her Scooty (backward-compatible with unlock_chetak)
+  define('akka_scooty', {
+    base: 'scooty', name: "Akka's Scooty", short: 'Scooty', colors: ['#e2486c'], colors2: ['#f4f0e8'], spawn: null,
+    nakko: 'Akka\'s Scooty. "When you\'re older," she says. ...Maybe if I find enough things for my diary?',
+    allow: () => unlocked('scooty', 30) || unlocked('chetak', 30),
   });
   define('yadagiri_auto', { base: 'auto', name: "Yadagiri-anna's auto", short: 'auto', label: 'YADAGIRI', nakko: "Yadagiri-anna's auto. *Nakko, beta.* Call AUTO! with the horn.", draw: (ctx, v) => { drawAuto(ctx, v); readableText(ctx, -3.5, 0, 14.6, 'YADAGIRI', '#1a1214', true); } });
   define('pochaiah_luna', { base: 'luna', name: "Pochaiah's Luna", short: 'Luna', colors: ['#b82a2a'], nakko: "The Havaldar's Luna? Are you MAD?", draw: (ctx, v) => { drawBike(ctx, v); drawLightBar(ctx, v); } });
@@ -265,7 +300,11 @@
       // vehicle raises the meter, systems §3.3), owned (the family's own: never any heat)
       this.hire = opts.hire || null; this.hired = !!opts.hired;
       this.parked = !!opts.parked; this.owned = !!opts.owned;
-      this.flat = false; this.fallen = null; this.pillion = null; this.potT = 1;
+      this.flat = false; this.fallen = null; this.pillion = null;
+      // A2: jolt = 1 on hitting a pothole, decays to 0 (renderers bob the body: 2D here, 3D view3d_actors)
+      this.jolt = 0; this.joltSide = 0; this.potF = false; this.potR = false; this.potCD = 0;
+      // passengers riding along with the NPC driver (A3 pillion / passenger rides)
+      this.passenger = null; this.stopReq = 0; this.rideOk = !!(opts.rideOk != null ? opts.rideOk : T.rideOk);
       this.ctl = { throttle: 0, steer: 0, handbrake: false, brake: false };
       this.driver = null; this.controller = opts.controller || null;
       this.locked = !!opts.locked; this.special = opts.special || null; this.seeded = !!opts.seeded;
@@ -304,17 +343,20 @@
     const surf = W.surfaceAt(v.x, v.y);
     let sMul = 1;
     if (T.mode !== 'boat') {
-      // bikes keep their speed on footpaths and plazas and lose less on dirt (systems §3.1)
-      const bs = T.cls === 'bike' ? BIKE_SURF[surf] : undefined;
+      // bikes keep their speed on footpaths and plazas and lose less on dirt (systems §3.1);
+      // a type's own `rough` table wins (Hercules fat tyres, Scooty small wheels)
+      const bs = T.cls === 'bike' ? (T.rough && T.rough[surf] != null ? T.rough[surf] : BIKE_SURF[surf]) : undefined;
       sMul = bs != null ? bs : W.surfaceSpeed(surf, 'drive');
     }
     let top = T.maxSpeed * sMul * (v.boost || 1);
     let accel = T.accel;
     if (v.flat) top *= TUNE.flatTop;
     const pl = N.player;
-    if (pl && v.driver === pl) {
-      // kid at the wheel: perched on the seat edge to reach the pedals
-      if (T.cls === 'car' || T.cls === 'auto') { top *= TUNE.kidTop; accel *= TUNE.kidAccel; }
+    const kid = !!pl && v.driver === pl;
+    if (kid) {
+      // kid at the wheel: perched on the seat edge to reach the pedals (an auto: peeking over the bar)
+      if (T.cls === 'auto') { top *= TUNE.kidTopAuto; accel *= TUNE.kidAccelAuto; }
+      else if (T.cls === 'car' || T.cls === 'heavy') { top *= TUNE.kidTop; accel *= TUNE.kidAccel; }
       if (T.pedal && pl.legsGone) top *= (pl.TUNE && pl.TUNE.legsGoneMul) || 0.65;
     }
     const ctl = v.ctl;
@@ -347,6 +389,13 @@
     const steer = U.clamp(+ctl.steer || 0, -1, 1);
     let tav = steer * T.turn * steerF * dir;
     if (hb && sp > 25) tav *= 1.45;
+    // A3: an 11-year-old on a Scooty near its top speed: the handlebar wobbles (gently, two beats)
+    v.wobble = 0;
+    if (kid && T.kidWobble && sn > TUNE.wobbleFrom && vf > 0) {
+      const amp = U.clamp((sn - TUNE.wobbleFrom) / (1 - TUNE.wobbleFrom), 0, 1) * T.kidWobble;
+      v.wobble = amp * Math.sin(v.age * 6.6 + Math.sin(v.age * 2.1) * 1.6);
+      tav += v.wobble;
+    }
     v.av += (tav - v.av) * (1 - Math.exp(-dt * T.steerResp));
     v.steerVis += (steer * 0.5 - v.steerVis) * Math.min(1, dt * 12);
     // lateral grip (handbrake = drift)
@@ -363,7 +412,7 @@
     integrate(v, dt);
     // visual: wheel spin, two-wheeler lean
     v.wheelPhase += vf * dt * 0.5;
-    const leanT = T.cls === 'bike' ? U.clamp(v.av * sn * 0.9, -0.6, 0.6) : 0;
+    const leanT = T.cls === 'bike' ? U.clamp(v.av * sn * 0.9 + (v.wobble || 0) * 0.35, -0.6, 0.6) : 0;
     v.lean += (leanT - v.lean) * Math.min(1, dt * 8);
     // skid marks + dust + exhaust
     c = Math.cos(v.angle); s = Math.sin(v.angle);
@@ -727,10 +776,104 @@
     return W.findFree(v.x + lx * side, v.y + ly * side, mode || 'walk', 20);
   }
 
+  /* ------------------------------------------- riding along (A3: pillion / passenger) */
+  /**
+   * Sit the actor (the player) behind / beside the NPC driver of v. The driver's controller keeps
+   * driving (traffic route, story script, N.vehicles.driveTo); ACTION "Get off" asks him to stop.
+   * opts: {as: 'pillion'|'passenger', fare (paise, charged via N.shops.charge), lock (no getting off),
+   * quiet}. Returns true when seated. Story: N.vehicles.ride(N.player, nannaChetak, {lock: true}).
+   */
+  function ride(actor, v, opts) {
+    opts = opts || {};
+    if (!actor || !v || !v.alive || actor.vehicle || v.passenger || !v.driver || v.driver === actor) return false;
+    if (v.T.mode === 'boat' && !opts.force) return false;
+    if (opts.fare > 0 && actor === N.player && N.shops && typeof N.shops.charge === 'function') {
+      const r = N.shops.charge(opts.fare, { why: opts.why || 'fare' });
+      if (r && r.ok === false) { if (!opts.quiet) toast('No money for the ticket! (₹' + (opts.fare / 100) + ')', 2400); return false; }
+    }
+    const as = opts.as || (v.T.cls === 'bike' ? 'pillion' : 'passenger');
+    actor.vehicle = v; actor.passenger = as;
+    actor.mode = 'drive';
+    actor._noCollideWas = actor.noCollide; actor.noCollide = true;
+    actor.x = v.x; actor.y = v.y; actor.vx = v.vx; actor.vy = v.vy; actor.angle = v.angle;
+    v.passenger = actor; v.lockPassenger = !!opts.lock; v.stopReq = 0; v.rideStill = 0;
+    // a locked ride belongs to the mission that asked for it: when that mission ends (done, failed,
+    // aborted, a load) the lock goes, so he can never be stuck on the back of a parked scooter
+    v.lockRun = (opts.lock && N.missions && N.missions.active) || null;
+    if (as === 'pillion') { v._pillionWas = v.pillion; v.pillion = actor; }
+    v.wake();
+    if (actor === N.player) {
+      N.emit('player:enterVehicle', { vehicle: v, passenger: as });
+      if (v.T.radio) N.emit('radio:enter', { vehicle: v });
+    }
+    N.emit('vehicle:enter', { vehicle: v, actor, passenger: as });
+    N.emit('vehicle:ride', { vehicle: v, actor, as, fare: opts.fare || 0 });
+    return true;
+  }
+  function passengerExit(actor, instant) {
+    const v = actor.vehicle;
+    let spot = exitSpot(v, 'walk');
+    if (!spot) {
+      if (!instant) { if (actor === N.player) toast('No room to get down here!', 1800); return false; }
+      spot = N.world.findFree(v.x, v.y, 'walk', 260) || { x: v.x, y: v.y };
+    }
+    actor.vehicle = null; actor.passenger = null;
+    actor.mode = 'foot';
+    actor.noCollide = !!actor._noCollideWas;
+    actor.x = spot.x; actor.y = spot.y;
+    actor.vx = v.vx * 0.2; actor.vy = v.vy * 0.2;
+    if (v.passenger === actor) v.passenger = null;
+    if (v.pillion === actor) v.pillion = v._pillionWas || null;
+    v._pillionWas = null; v.stopReq = 0; v.lockPassenger = false;
+    if (actor === N.player) {
+      N.emit('player:exitVehicle', { vehicle: v, passenger: true });
+      if (v.T.radio) N.emit('radio:exit', { vehicle: v });
+      if (zoomOwned) { N.render.baseZoom = 1; zoomOwned = false; }
+    }
+    N.emit('vehicle:exit', { vehicle: v, actor, passenger: true });
+    return true;
+  }
+  /** "Board bus ₹3": a traffic bus (systems §3.6 hop-on). Moving > 15 u/s = footboard (+heat, scolding). */
+  function boardBus(p, v) {
+    const moving = Math.abs(v.speed) > 15, fare = busFare();
+    if (!ride(p, v, { as: 'passenger', fare, why: 'bus' })) return false;
+    if (moving) {
+      if (N.wanted && typeof N.wanted.addHeat === 'function') N.wanted.addHeat(TUNE.footboard, 'footboard');
+      toast('The conductor hauls you in by the collar: "*Footboard pe nakko!*"', 2800);
+    } else toast(fare ? '"Right, right!" Conductor uncle punches your ticket. Three rupees.' : 'You show Ticket Thatha\'s punch. Conductor uncle salutes: "Free, free!"', 2600);
+    N.emit('bus:board', { vehicle: v, footboard: moving, fare });
+    return true;
+  }
+  /** Each frame while the player rides along: honour "Ask to stop" and drop him when it is slow. */
+  function passengerTick(p, v, dt) {
+    if (!v.alive || !npcDriven(v)) { passengerExit(p, true); return; }
+    if (v.lockPassenger) {
+      // the mission that locked the seat has ended, or (free roam) the ride has sat still for 8 s
+      v.rideStill = Math.abs(v.speed) < 3 ? (v.rideStill || 0) + dt : 0;
+      const M = N.missions;
+      if (v.lockRun ? !(M && M.active === v.lockRun) : v.rideStill > TUNE.lockStuck) { v.lockPassenger = false; v.lockRun = null; }
+    }
+    if (v.stopReq > 0) {
+      v.ctl.throttle = 0; v.ctl.brake = true; v.ctl.steer *= 0.5; v.ctl.handbrake = false;
+      // stopped: get down (squeezed between walls: the nearest free spot instead of waiting for ever)
+      if (Math.abs(v.speed) < 6) passengerExit(p, true);
+    }
+  }
+
   /** Get an actor out of its vehicle (instant = no checks, used by teleports). */
   function exit(actor, instant) {
     const v = actor && actor.vehicle;
     if (!v) return false;
+    if (actor.passenger || (v.passenger === actor && v.driver !== actor)) {
+      // riding along: get down at once when slow (or forced), otherwise ask the driver to stop
+      if (!instant && Math.abs(v.speed) > 20 && v.driver && v.driver !== actor) {
+        if (!v.stopReq) { v.stopReq = 1; if (actor === N.player) toast(v.T.cls === 'heavy' ? '"Stop, stop! Getting down!" The conductor whistles twice.' : '"Uncle, stop here please!"', 1800); }
+        return false;
+      }
+      return passengerExit(actor, instant);
+    }
+    // the driver gets out: anyone riding along gets down too
+    if (v.passenger && v.passenger !== actor && v.passenger.vehicle === v) passengerExit(v.passenger, true);
     let spot = exitSpot(v, 'walk');
     if (!spot) {
       if (!instant) { if (actor === N.player && N.hud) N.hud.toast(v.T.mode === 'boat' ? 'Too deep to jump out! Steer to the shore.' : 'No room to get out here!', 2200); return false; }
@@ -761,19 +904,87 @@
     return Math.hypot(ex, ey);
   }
 
-  function nearestEnterable(p) {
-    const near = N.entities.query(p.x, p.y, 18 + 34, isVehicle);
-    let best = null, bd = 18;
-    for (const v of near) {
-      if (!v.alive || v.noEnter || v.driver === p || v.fallen) continue;
-      // buses and lorries: the player rides buses as a passenger (shops / traffic), never drives them
-      if (v.T.playerNoEnter && !V.allowHeavy) continue;
-      if (v.driver && !(v.driver.npc || v.driver instanceof N.Actor)) continue;
-      const d = distTo(v, p.x, p.y);
-      if (d < bd) { bd = d; best = v; }
-    }
-    return best ? { v: best, d: bd } : null;
+  function npcDriven(v) { const d = v.driver; return !!d && d !== N.player && d.alive !== false && !!(d.npc || d instanceof N.Actor); }
+  /** Can ACTION do anything with v at all? (pursuers' and roadblock vehicles never offer a seat) */
+  function enterable(v, p) {
+    if (!v.alive || v.driver === p || v.fallen || v.summoned || v.passenger || v.pursuitVehicle || v.roadblock) return false;
+    // story / family vehicles are noEnter, but with an NPC at the controls and rideOk they offer a seat
+    if (v.noEnter && !(v.rideOk && npcDriven(v))) return false;
+    if (v.driver && !npcDriven(v)) return false;
+    return true;
   }
+  // "No" offers (a refusal, "Nakko", no lifts) only show up close by and below every other interaction
+  // (shops, NPCs, side activities at -1), and never hide a rideable vehicle further away.
+  const NO_KINDS = { refuse: 1, nakko: 1, nolift: 1 };
+  function bestOffer(p) {
+    const near = N.entities.query(p.x, p.y, 18 + 34, isVehicle);
+    let yes = null, yd = 18, no = null, nd = TUNE.noR;
+    for (const v of near) {
+      if (!enterable(v, p)) continue;
+      const d = distTo(v, p.x, p.y);
+      if (d >= yd && d >= nd) continue;
+      const o = offerFor(v);
+      if (!o) continue;
+      if (NO_KINDS[o.kind]) { if (d < nd) { nd = d; no = { v, d, o }; } } else if (d < yd) { yd = d; yes = { v, d, o }; }
+    }
+    return yes || no;
+  }
+
+  /* -------------------------------------------- A3: who may drive what (Chinnu is 11) */
+  /** May the player drive this vehicle? (cycles, the Scooty, the auto; debug: N.vehicles.allowHeavy) */
+  function canDrive(v) {
+    const T = v.T || TYPES[v.type] || DEFAULTS;
+    return !!(V.allowHeavy || V.ageRules === false || v.allowPlayer || T.kidOk);
+  }
+  function lineOf(lines, seed) {
+    if (!lines) return null;
+    if (typeof lines === 'string') return lines;
+    return lines[Math.abs(seed | 0) % lines.length];
+  }
+  /** The kid-flavoured refusal for a vehicle he may not drive. */
+  function refusalFor(v) {
+    const T = v.T;
+    const k = (refusalFor.n = (refusalFor.n || 0) + 1);
+    return lineOf(T.refuse || REFUSE[T.cls === 'heavy' ? 'bus' : 'car'], (v.seed || 0) + k);
+  }
+  const LIFT_LINES = ['"Lift? Okay, sit behind. Hold tight, legs away from the silencer."', '"Where to? ...Okay, okay, hop on. Don\'t wriggle."', '"Sit, sit. Both hands on my shoulders, *beta*."'];
+  const NO_CAR_LIFT = ['"Lift? Ask your Nanna, *beta*. Go home." (Amma said: never get into a stranger\'s car.)', 'Uncle shakes his head: "Small boys don\'t take lifts. Walk home, *beta*."'];
+  const NO_ROOM = ['"Three on one scooter? Pochaiah would LOVE that. *Nakko*, *beta*."', 'Aunty on the back gives you a look. No room, *beta*.'];
+  /**
+   * What ACTION does next to vehicle v (player on foot). kind: 'drive' | 'borrow' | 'hire' | 'nakko'
+   * | 'pillion' | 'passenger' | 'bus' | 'fare' | 'refuse'.
+   */
+  function offerFor(v) {
+    const T = v.T, name = v.label && !T.label ? v.label : T.short;
+    const nk = nakkoFor(v);
+    if (nk) return { kind: 'nakko', label: 'Nakko' };
+    if (v.hire && !v.hired) return { kind: 'hire', label: T.mode === 'boat' ? 'Hire boat' : 'Hire cycle' };
+    const drv = npcDriven(v);
+    // seats and fares only while the vehicle is (nearly) stopped: no hopping onto passing traffic, and no
+    // labels flickering as it goes by. A bus pulling away can still be caught (footboard, systems §3.6).
+    const sp = Math.abs(v.speed || 0);
+    const seat = (k, label) => (sp < TUNE.seatMaxSpeed ? { kind: k, label } : null);
+    const full = T.cls === 'bike' && v.pillion && v.pillion !== N.player;
+    if (canDrive(v)) {
+      // a working traffic auto (or taxi) plying for hire: ride it as a passenger, the fare via shops.js
+      if (drv && TUNE.fareAutos && (T.cls === 'auto' || v.taxi) && (v.trafficOwned || v.tr) && N.shops && typeof N.shops.rideVehicle === 'function') return seat('fare', 'Ride ' + name + ' (fare)');
+      if (v.noEnter) return drv ? (full ? seat('nolift', 'Ask for a lift') : seat(T.cls === 'bike' ? 'pillion' : 'passenger', T.cls === 'bike' ? 'Sit pillion' : 'Ride as passenger')) : null;
+      return { kind: drv ? 'borrow' : 'drive', label: (drv ? 'Borrow ' : T.verb + ' ') + name };
+    }
+    // he may not drive it: a seat with the grown-up at the controls, or a refusal
+    if (drv && T.mode !== 'boat') {
+      if (full) return seat('nolift', 'Ask for a lift');
+      if (v.rideOk || v.npcKey) return seat(T.cls === 'bike' ? 'pillion' : 'passenger', T.cls === 'bike' ? 'Sit pillion' : 'Ride as passenger');
+      if (T.cls === 'heavy' && /bus/.test(T.id)) return sp < TUNE.busMaxBoard ? { kind: 'bus', label: 'Board bus ' + (busFare() ? '₹' + (busFare() / 100) : '(ticket punch)') } : null;
+      if (v.taxi && N.shops && typeof N.shops.rideVehicle === 'function') return seat('fare', 'Ride taxi (fare)');
+      if (T.cls === 'bike') return seat('pillion', 'Ask for a lift');
+      return seat('nolift', 'Ask for a lift');
+    }
+    if (drv) return null; // the boatman's boat on the lake
+    return { kind: 'refuse', label: 'Too small to drive' };
+  }
+  /** Bus fare in paise: ₹3, free with Ticket Thatha's punch (systems §2.7). */
+  function busFare() { const inv = N.player && N.player.inventory; return inv && typeof inv.has === 'function' && inv.has('ticket_punch') ? 0 : TUNE.busFare; }
 
   /* --------------------------------------------------- angry driver */
   class AngryDriver extends N.Actor {
@@ -850,7 +1061,8 @@
   }
   function remove(v) {
     if (!v) return;
-    if (v.driver && v.driver === N.player) exit(N.player, true);
+    // the player aboard (driving or riding along) gets down first: never left riding a removed vehicle
+    if (N.player && N.player.vehicle === v) exit(N.player, true);
     N.entities.remove(v);
     const i = list.indexOf(v); if (i >= 0) list.splice(i, 1);
   }
@@ -959,6 +1171,7 @@
       const drag = p.kind === 'spark' ? 2 : 2.5;
       p.vx *= Math.exp(-dt * drag); p.vy *= Math.exp(-dt * drag);
       if (p.kind === 'smoke' || p.kind === 'dust') p.z += dt * 6;
+      else if (p.kind === 'drop') p.z = 0.5 + Math.sin(Math.min(1, p.t / p.life) * Math.PI) * 5; // a splash arcs up and falls
     }
   }
   function drawParticles(ctx) {
@@ -972,6 +1185,12 @@
         ctx.globalAlpha = 1 - f;
         ctx.fillStyle = p.col;
         ctx.fillRect(Math.round(X), Math.round(Y), Math.max(1, k), Math.max(1, k));
+        continue;
+      }
+      if (p.kind === 'drop') { // muddy rain water out of a pothole
+        ctx.globalAlpha = 0.85 * (1 - f * 0.6);
+        ctx.fillStyle = p.col;
+        ctx.beginPath(); ctx.arc(X, Y, Math.max(0.6, p.r * (1 - f * 0.4) * k), 0, TAU); ctx.fill();
         continue;
       }
       const grow = p.kind === 'foam' ? 1 + f * 1.5 : 1 + f * 2.2;
@@ -999,22 +1218,28 @@
   function lightsFor(v) {
     const R = N.render, night = R.night || 0;
     const T = v.T;
-    if (night < 0.05 || !(T.lights || (T.id === 'chinnu_cycle' && v.driver && unlocked('dynamo', 20)))) return;
+    if (night < 0.05) return;
+    // a dynamo lamp (Hero roadsters) glows only while the wheel turns, brighter with speed; the
+    // player's own needs the ladder's dynamo unlock (20 finds: Nanna fits it)
+    const sp = Math.abs(v.speed || 0);
+    const dyn = !T.lights && T.dynamo && !!v.driver && sp > 10 && (v.driver !== N.player || unlocked('dynamo', 20));
+    if (!(T.lights || dyn)) return;
     const on = !!v.driver || v.controller || v.lightsOn;
     const c = Math.cos(v.angle), s = Math.sin(v.angle);
     const fx = v.x + c * T.w / 2, fy = v.y + s * T.w / 2;
     if (on) {
-      const reach = T.cls === 'bike' ? 0.75 : T.cls === 'heavy' ? 1.25 : 1;
-      R.lights.push({ x: fx + c * 16 * reach, y: fy + s * 16 * reach, r: 26 * reach, color: '#fff2c8', intensity: 0.85, glow: false });
-      R.lights.push({ x: fx + c * 40 * reach, y: fy + s * 40 * reach, r: 38 * reach, color: '#fff2c8', intensity: 0.75 });
+      const reach = (T.cls === 'bike' ? 0.75 : T.cls === 'heavy' ? 1.25 : 1) * (dyn ? 0.85 : 1);
+      const k = dyn ? U.clamp(sp / 80, 0.3, 1) : 1;
+      R.lights.push({ x: fx + c * 16 * reach, y: fy + s * 16 * reach, r: 26 * reach, color: dyn ? '#ffe6a8' : '#fff2c8', intensity: 0.85 * k, glow: false });
+      R.lights.push({ x: fx + c * 40 * reach, y: fy + s * 40 * reach, r: 38 * reach, color: dyn ? '#ffe6a8' : '#fff2c8', intensity: 0.75 * k });
       // lamp bulbs
       const hw = T.cls === 'bike' || T.cls === 'auto' ? 0 : T.d / 2 - 2.6;
-      const h = T.cls === 'bike' ? 7 : T.cls === 'heavy' ? 5 : 5;
+      const h = T.cls === 'bike' ? (dyn ? 5.5 : 7) : T.cls === 'heavy' ? 5 : 5;
       if (hw) { glows.push(fx - s * hw, fy + c * hw, h, 5, 0, fx + s * hw, fy - c * hw, h, 5, 0); }
-      else glows.push(fx, fy, T.cls === 'auto' ? 4 : h, 4.5, 0);
+      else glows.push(fx, fy, T.cls === 'auto' ? 4 : h, dyn ? 3.4 * k + 0.8 : 4.5, 0);
     }
-    // tail lamps (also when parked-but-occupied)
-    if (on && T.cls !== 'boat') {
+    // tail lamps (also when parked-but-occupied); pedal cycles only have a red reflector
+    if (on && T.cls !== 'boat' && !T.pedal) {
       const bx = v.x - c * T.w / 2, by = v.y - s * T.w / 2;
       const hw = T.cls === 'bike' ? 0 : T.d / 2 - 2;
       const braking = v.ctl.throttle < -0.1 || v.ctl.brake || v.ctl.handbrake;
@@ -1045,7 +1270,18 @@
   // Current vehicle frame (set by begin()) — keeps the hot helpers allocation free.
   let fc = 1, fs = 0, fx0 = 0, fy0 = 0, fz = 0;
   let PX = 0, PY = 0;
-  function begin(v) { fc = Math.cos(v.angle); fs = Math.sin(v.angle); fx0 = v.x; fy0 = v.y; fz = v.z || 0; }
+  function begin(v) {
+    fc = Math.cos(v.angle); fs = Math.sin(v.angle); fx0 = v.x; fy0 = v.y; fz = v.z || 0;
+    // A2 pothole jolt: the body drops, bounces and wiggles (decays with v.jolt)
+    const j = v.jolt;
+    if (j > 0) {
+      const ph = (1 - j) * Math.PI * 3.2, big = v.T.cls === 'bike' ? 1 : 0.7;
+      fz += -Math.sin(ph) * j * 1.6 * big;
+      fy0 += Math.sin(ph) * j * 0.9 * big;
+      const sh = Math.sin(ph * 1.7) * j * 0.6 * big * (v.joltSide || 1);
+      fx0 += -fs * sh; fy0 += fc * sh;
+    }
+  }
   const wxOf = (lx, ly) => fx0 + fc * lx - fs * ly;
   const wyOf = (lx, ly) => fy0 + fs * lx + fc * ly;
   function proj(lx, ly, h) {
@@ -1408,6 +1644,8 @@
     prism(ctx, [5.4, -5.6, 5.4, -4.2, 4.2, -4.2, 4.2, -5.6], 5.4, 8.6, '#141214', '#2a2628');
     // pillars
     for (const p of [[6.8, -5.9], [6.8, 5.9], [-10.6, -5.6], [-10.6, 5.6]]) prism(ctx, [p[0] + 0.5, p[1] - 0.5, p[0] + 0.5, p[1] + 0.5, p[0] - 0.5, p[1] + 0.5, p[0] - 0.5, p[1] - 0.5], 5.4, 9.8, '#1a1a1a', false);
+    // A3: Chinnu at the wheel peeks out under the front of the canopy (drawn before it, so it covers him)
+    if (v.driver && v.driver === N.player) kidInAuto(ctx, v);
     // canopy (rexine): yellow skirt + black piping, glass windscreen in front
     prism(ctx, AUTO_CANOPY, 9.6, 14.5, (i) => (i === 0 ? GLASS : yel), U.shade(yel, 1.04), (c2, i, ax, ay, bx, by, nx, ny) => {
       if (i === 0) { band(c2, ax, ay, bx, by, 0.08, 0.92, 13.2, 13.7, GLASS_HI); return; }
@@ -1424,6 +1662,21 @@
       g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(-9, -5.6, 15, 1.1);
     });
     kidPlate(ctx, v, 14.6);
+  }
+  /** A3: Chinnu at the wheel of an auto: perched on a folded gunny sack, peeking over the handlebar. */
+  function kidInAuto(ctx, v) {
+    const look = riderLook(v), skin = (look && look.skin) || '#a0683f', hair = (look && look.hair) || '#1a1412';
+    const steer = v.steerVis * 0.5, bob = Math.sin((v.age || 0) * 9) * Math.min(1, Math.abs(v.speed) / 60) * 0.25;
+    top(ctx, 9.4, (g) => {
+      g.translate(7.7 + bob, 0); g.rotate(steer);
+      // knuckles on the far ends of the bar, poking out under the canopy
+      g.fillStyle = skin; g.beginPath(); g.arc(-0.6, -3.5, 0.7, 0, TAU); g.arc(-0.6, 3.5, 0.7, 0, TAU); g.fill();
+      // shoulders, then the head craning over the handlebar: hair, forehead, two eyes on the road
+      g.fillStyle = (look && look.shirt) || '#e8e0d0'; g.beginPath(); g.ellipse(-1.6, 0, 1.4, 2.6, 0, 0, TAU); g.fill();
+      g.fillStyle = hair; g.beginPath(); g.ellipse(-0.2, 0, 1.6, 1.8, 0, 0, TAU); g.fill();
+      g.fillStyle = skin; g.beginPath(); g.ellipse(0.75, 0, 0.8, 1.25, 0, 0, TAU); g.fill();
+      g.fillStyle = '#1a1214'; g.fillRect(1.05, -0.7, 0.36, 0.34); g.fillRect(1.05, 0.36, 0.36, 0.34);
+    });
   }
 
   // ---------------------------------------------------------------- bus
@@ -1676,6 +1929,325 @@
     top(ctx, 8.2, (g) => { g.translate(at, ox * 1.25); N.people.draw(g, look, pillionAnim); });
   }
 
+  // ------------------------------------------- A3 cycles: Hero roadster, Hercules, BSA, kid, ladies
+  // Stacked horizontal planes at their real heights (tyres 0.9, chain guard 2.3, mudguards 3.3, frame
+  // 4.2, carrier 5.1, saddle 5.8, handlebar 6.3) so they shear apart in the pseudo-3D projection.
+  const CYC = {
+    hero: { R: 3.05, tyre: 0.95, guard: '#121214', tail: '#f2efe6', pin: '#c9a24a', chain: true, carrier: true, rods: true, bar: 'swept', saddle: 'sprung', lamp: 'dynamo', grips: '#e9e2cf', tube: 1.0, at: -1.7, gx: 3.0, gy: 2.9 },
+    cycle: { R: 2.95, tyre: 0.95, guard: null, tail: '#f2efe6', pin: '#e8e2cc', chain: true, carrier: true, rods: true, bar: 'swept', saddle: 'sprung', lamp: null, grips: '#2a2426', tube: 1.0, at: -1.5, gx: 3.1, gy: 2.8 },
+    hercules: { R: 2.9, tyre: 1.4, knobs: true, guard: null, tail: null, pin: null, chain: false, carrier: false, rods: false, bar: 'flat', saddle: 'sport', lamp: null, grips: '#1a1a1e', tube: 1.35, at: -1.3, gx: 3.6, gy: 3.1 },
+    kid: { R: 2.35, tyre: 1.0, guard: null, tail: '#f2efe6', pin: null, chain: true, carrier: false, rods: false, bar: 'swept', saddle: 'sport', lamp: null, grips: '#d8402a', tube: 0.95, at: -1.0, gx: 2.6, gy: 2.4 },
+  };
+  const riderArms = { phase: 0, speed: 0, run: false };
+  function drawCycle2(ctx, v) {
+    const T = v.T, L = T.w;
+    const st = CYC[T.bikeLook] || CYC.cycle;
+    begin(v);
+    const lie = !!v.fallen, riding = !!v.driver && !lie;
+    const kid = riding && v.driver === N.player;
+    const kainchi = kid && T.kainchi;
+    const col = v.color, col2 = v.color2 || '#f4f2ea';
+    const tilt = riding ? v.lean || 0 : lie ? 1.25 : 0.2;
+    const ox = -Math.sin(tilt) * (lie ? 4.6 : 2.2) + (kainchi ? 0.35 : 0);
+    const top = lie ? (c2, h, fn) => topRaw(c2, Math.min(h, 1.6) * 0.6 + 0.2, fn) : topRaw;
+    const R = st.R, wb = L - R * 2 - 0.3, rx = -wb / 2, fxw = wb / 2;
+    const steer = v.steerVis * 0.9, ph = v.wheelPhase || 0;
+    const ladies = !!T.basket;
+    // 1. tyres + rims + spoke glints (the front one turns with the bar)
+    top(ctx, 0.9, (g) => {
+      const tyre = (cx, rot) => {
+        g.save(); g.translate(cx, 0); if (rot) g.rotate(rot);
+        g.fillStyle = '#1b191b'; rrectPath(g, -R, -st.tyre / 2, R * 2, st.tyre, st.tyre / 2); g.fill();
+        if (st.knobs) { g.fillStyle = '#0c0b0c'; for (let x = -R + 0.4; x < R - 0.2; x += 0.75) { g.fillRect(x, -st.tyre / 2 - 0.12, 0.38, 0.24); g.fillRect(x + 0.35, st.tyre / 2 - 0.12, 0.38, 0.24); } }
+        g.fillStyle = '#b8b8b2'; g.fillRect(-R + 0.35, -0.12, R * 2 - 0.7, 0.24); // rim seen edge-on
+        g.fillStyle = 'rgba(255,255,255,0.75)';
+        for (let k = 0; k < 2; k++) { const sx = Math.cos(ph * 1.7 + k * Math.PI) * (R - 0.6); g.fillRect(sx - 0.2, -0.22, 0.4, 0.44); }
+        g.fillStyle = '#d8d8d2'; g.fillRect(-0.35, -0.5, 0.7, 1.0); // hub
+        g.restore();
+      };
+      tyre(rx, 0); tyre(fxw, steer);
+    });
+    // 2. drive side: chainwheel, chain guard (roadsters), cranks + pedals turning with the wheels
+    const bb = rx * 0.08 + 0.2;
+    top(ctx, 2.2, (g) => {
+      g.translate(0, ox * 0.35);
+      const crank = ph * 0.62, pc = Math.cos(crank) * 1.25;
+      g.fillStyle = '#2a2a2c';
+      g.fillRect(bb + pc - 0.6, -2.75, 1.2, 0.85); g.fillRect(bb - pc - 0.6, 1.9, 1.2, 0.85); // pedals
+      g.fillStyle = '#9a9a96'; g.fillRect(bb + pc * 0.5 - 0.2, -1.95, 0.4, 1.0); g.fillRect(bb - pc * 0.5 - 0.2, 0.95, 0.4, 1.0); // cranks
+      if (st.chain) {
+        // the long teardrop chain guard on the right side, gold pinstriped
+        g.fillStyle = T.bikeLook === 'kid' ? col : '#141416';
+        g.beginPath(); g.moveTo(bb + 1.6, 1.0); g.quadraticCurveTo(bb + 1.4, 2.0, bb - 0.2, 2.05); g.lineTo(rx + 0.3, 1.6); g.quadraticCurveTo(rx - 0.4, 1.3, rx + 0.3, 1.0); g.closePath(); g.fill();
+        if (st.pin) { g.strokeStyle = st.pin; g.lineWidth = 0.16; g.beginPath(); g.moveTo(bb + 1.1, 1.75); g.lineTo(rx + 0.6, 1.45); g.stroke(); }
+      } else {
+        g.fillStyle = '#c8c8c2'; g.beginPath(); g.arc(bb, 1.3, 1.25, 0, TAU); g.fill();       // chainring
+        g.fillStyle = '#6a6a66'; g.beginPath(); g.arc(bb, 1.3, 0.55, 0, TAU); g.fill();
+        g.strokeStyle = '#4a4a48'; g.lineWidth = 0.22; g.beginPath(); g.moveTo(bb, 0.55 + 1.3 - 0.75); g.lineTo(rx, 1.0); g.moveTo(bb, 2.0); g.lineTo(rx, 1.6); g.stroke(); // chain
+        if (T.gears) { g.fillStyle = '#d8d8d2'; g.beginPath(); g.arc(rx, 1.3, 0.9, 0, TAU); g.fill(); g.fillStyle = '#8a8a86'; for (let r = 0.75; r > 0.2; r -= 0.18) { g.beginPath(); g.arc(rx, 1.3, r, 0, TAU); g.stroke(); } g.fillStyle = '#2a2a2c'; g.fillRect(rx - 1.1, 1.6, 1.0, 0.5); }
+      }
+    });
+    // 3. mudguards (black on the Hero, with the white-painted tail and a red reflector) / the
+    //    ladies' dress guard
+    if (st.guard || st.tail || ladies) {
+      top(ctx, 3.3, (g) => {
+        g.translate(0, ox * 0.55);
+        const gc = st.guard || col;
+        g.fillStyle = gc;
+        rrectPath(g, rx - R + 0.2, -0.75, R * 1.75, 1.5, 0.7); g.fill();
+        g.save(); g.translate(fxw, 0); g.rotate(steer); rrectPath(g, -R * 0.7, -0.72, R * 1.6, 1.44, 0.7); g.fill(); g.restore();
+        if (st.tail) { g.fillStyle = st.tail; rrectPath(g, rx - R + 0.2, -0.75, 1.5, 1.5, 0.6); g.fill(); }
+        g.fillStyle = '#d0281e'; g.fillRect(rx - R + 0.3, -0.35, 0.55, 0.7); // reflector
+        g.fillStyle = 'rgba(255,255,255,0.22)'; g.fillRect(rx - R + 1.8, -0.55, R * 1.2, 0.3);
+        if (ladies) { g.strokeStyle = 'rgba(240,236,220,0.75)'; g.lineWidth = 0.18; g.beginPath(); for (let k = 0; k < 5; k++) { g.moveTo(rx + 0.4 - k * 0.5, -0.7); g.lineTo(rx - 0.2 - k * 0.45, -2.0); } g.stroke(); }
+      });
+    }
+    // 4. frame: head tube -> seat cluster (top + down tube), stays to the rear hub, fork, pinstripe,
+    //    rod brakes along the frame (roadsters)
+    const seatX = st.at + 0.15, head = fxw - 1.2;
+    top(ctx, 4.2, (g) => {
+      g.translate(0, ox * 0.75);
+      g.lineCap = 'round';
+      g.strokeStyle = U.shade(col, 0.72); g.lineWidth = st.tube * 0.8;
+      g.beginPath(); g.moveTo(seatX, 0); g.lineTo(rx, -0.55); g.moveTo(seatX, 0); g.lineTo(rx, 0.55); g.stroke(); // stays
+      g.strokeStyle = col; g.lineWidth = st.tube;
+      g.beginPath();
+      if (ladies) { g.moveTo(head, 0); g.quadraticCurveTo(bb + 0.5, 0.25, seatX, 0); }
+      else { g.moveTo(head, 0); g.lineTo(seatX, 0); }
+      g.stroke();
+      // fork legs to the front hub (turn with the bar)
+      g.save(); g.translate(head, 0); g.rotate(steer * 0.6);
+      g.strokeStyle = st.rods ? '#cfcfc8' : U.shade(col, 0.85); g.lineWidth = 0.55;
+      g.beginPath(); g.moveTo(0, -0.45); g.lineTo(fxw - head, -0.6); g.moveTo(0, 0.45); g.lineTo(fxw - head, 0.6); g.stroke();
+      g.restore();
+      // highlight along the top of the tube
+      g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 0.22;
+      g.beginPath(); g.moveTo(head - 0.3, -st.tube * 0.25); g.lineTo(seatX + 0.5, -st.tube * 0.25); g.stroke();
+      if (st.pin) { g.strokeStyle = st.pin; g.lineWidth = 0.14; g.beginPath(); g.moveTo(head - 0.4, st.tube * 0.22); g.lineTo(seatX + 0.6, st.tube * 0.22); g.stroke(); }
+      if (T.bikeLook === 'hercules') { // the sporty decal band + a second contrasting stripe
+        g.strokeStyle = col2; g.lineWidth = st.tube * 0.55; g.beginPath(); g.moveTo(head - 1.0, 0); g.lineTo(head - 3.0, 0); g.stroke();
+        g.strokeStyle = '#1a1a1e'; g.lineWidth = 0.18; g.beginPath(); g.moveTo(head - 3.3, -0.4); g.lineTo(head - 3.3, 0.4); g.stroke();
+      }
+      if (st.rods) { // rod brakes: thin silver rods beside the top tube
+        g.strokeStyle = '#d4d4ce'; g.lineWidth = 0.2;
+        g.beginPath(); g.moveTo(head + 0.4, -0.75); g.lineTo(rx + 0.8, -0.85); g.moveTo(head + 0.4, 0.75); g.lineTo(head + 1.6, 0.8); g.stroke();
+      }
+      if (T.dynamo) { g.fillStyle = '#c8c8c2'; g.fillRect(rx + 0.6, 0.85, 1.1, 0.6); g.fillStyle = '#2a2a2c'; g.fillRect(rx + 1.5, 0.95, 0.3, 0.4); } // dynamo on the rear tyre
+    });
+    // 5. rear carrier (silver rack over the rear wheel; NPC riders sometimes carry a tiffin or a bundle)
+    if (st.carrier) {
+      top(ctx, 5.1, (g) => {
+        g.translate(0, ox * 0.85);
+        const x0 = rx - R + 0.6, x1 = seatX - 0.9;
+        g.fillStyle = '#a2a29c';
+        g.fillRect(x0, -1.45, x1 - x0, 0.3); g.fillRect(x0, 1.15, x1 - x0, 0.3); g.fillRect(x0, -0.15, x1 - x0, 0.3);
+        g.fillRect(x0, -1.45, 0.3, 2.9); g.fillRect(x0 + (x1 - x0) * 0.55, -1.45, 0.28, 2.9);
+        g.fillStyle = '#6e6e6a'; g.fillRect(x1 - 0.6, -1.2, 0.5, 2.4); // spring clamp
+        if (!kid && riding && v.seed % 5 === 1) { g.fillStyle = '#d8d8d4'; g.beginPath(); g.arc((x0 + x1) / 2, 0, 1.25, 0, TAU); g.fill(); g.fillStyle = '#9a9a96'; g.fillRect((x0 + x1) / 2 - 1.3, -0.15, 2.6, 0.3); } // steel tiffin
+        else if (!kid && riding && v.seed % 5 === 3) { g.fillStyle = '#c8b48a'; rrectPath(g, x0 - 0.2, -1.7, x1 - x0 + 0.2, 3.4, 0.8); g.fill(); g.strokeStyle = '#7a5a3a'; g.lineWidth = 0.2; g.beginPath(); g.moveTo(x0 + 0.8, -1.7); g.lineTo(x0 + 0.8, 1.7); g.stroke(); } // gunny bundle
+      });
+    }
+    // 6. saddle: sprung leather (roadsters) or a narrow sport saddle
+    if (!kainchi || !riding) top(ctx, 5.8, (g) => {
+      g.translate(0, ox);
+      const sx = st.at;
+      if (st.saddle === 'sprung') {
+        g.fillStyle = '#9a9a96'; g.beginPath(); g.arc(sx - 1.0, -0.8, 0.42, 0, TAU); g.arc(sx - 1.0, 0.8, 0.42, 0, TAU); g.fill();
+        g.fillStyle = '#4a2c1e'; g.beginPath(); g.moveTo(sx + 1.5, 0); g.quadraticCurveTo(sx + 0.2, -1.0, sx - 1.2, -1.2); g.quadraticCurveTo(sx - 1.6, 0, sx - 1.2, 1.2); g.quadraticCurveTo(sx + 0.2, 1.0, sx + 1.5, 0); g.fill();
+        g.fillStyle = 'rgba(255,230,200,0.22)'; g.beginPath(); g.ellipse(sx - 0.2, -0.35, 0.9, 0.3, 0, 0, TAU); g.fill();
+      } else {
+        g.fillStyle = '#18181a'; g.beginPath(); g.moveTo(sx + 1.6, 0); g.quadraticCurveTo(sx, -0.75, sx - 1.0, -0.85); g.lineTo(sx - 1.0, 0.85); g.quadraticCurveTo(sx, 0.75, sx + 1.6, 0); g.fill();
+        g.fillStyle = col2; g.fillRect(sx - 0.9, -0.12, 2.2, 0.24);
+      }
+    });
+    // 7. handlebar: swept-back roadster bar (white grips, chrome bell, rod levers, dynamo lamp) or
+    //    the Hercules' flat bar (black foam grips, small bell, caliper levers)
+    top(ctx, 6.3, (g) => {
+      g.translate(fxw - 0.9, ox);
+      g.rotate(steer);
+      g.lineCap = 'round';
+      if (st.bar === 'flat') {
+        g.strokeStyle = '#2a2a2e'; g.lineWidth = 0.6; g.beginPath(); g.moveTo(0.2, -st.gy); g.lineTo(0.2, st.gy); g.stroke();
+        g.fillStyle = st.grips; g.fillRect(-0.35, -st.gy - 0.3, 1.1, 1.3); g.fillRect(-0.35, st.gy - 1.0, 1.1, 1.3);
+        g.strokeStyle = '#3a3a3e'; g.lineWidth = 0.28; g.beginPath(); g.moveTo(0.3, -st.gy + 1.2); g.lineTo(1.1, -st.gy + 0.6); g.moveTo(0.3, st.gy - 1.2); g.lineTo(1.1, st.gy - 0.6); g.stroke();
+        if (T.gears) { g.fillStyle = '#d8d8d2'; g.fillRect(-0.2, st.gy - 1.9, 0.6, 0.5); }
+        g.fillStyle = '#c8c8c2'; g.beginPath(); g.arc(0.5, -st.gy + 1.7, 0.42, 0, TAU); g.fill(); // mini bell
+        g.fillStyle = '#f4f2ec'; g.fillRect(0.9, -0.35, 0.5, 0.7); // front reflector
+      } else {
+        g.strokeStyle = '#d6d6d0'; g.lineWidth = 0.42;
+        g.beginPath(); g.moveTo(0.6, 0); g.quadraticCurveTo(0.9, -st.gy, -0.9 - (3.0 - st.gx) * 0.3, -st.gy); g.moveTo(0.6, 0); g.quadraticCurveTo(0.9, st.gy, -0.9 - (3.0 - st.gx) * 0.3, st.gy); g.stroke();
+        g.fillStyle = st.grips; g.fillRect(-1.7, -st.gy - 0.32, 1.1, 0.64); g.fillRect(-1.7, st.gy - 0.32, 1.1, 0.64);
+        if (st.rods) { g.strokeStyle = '#c8c8c2'; g.lineWidth = 0.2; g.beginPath(); g.moveTo(-0.6, -st.gy + 0.6); g.lineTo(-1.4, -st.gy + 0.9); g.moveTo(-0.6, st.gy - 0.6); g.lineTo(-1.4, st.gy - 0.9); g.stroke(); }
+        // THE bell (chrome dome on the left)
+        g.fillStyle = '#c9c9c2'; g.beginPath(); g.arc(0.0, -1.55, 0.62, 0, TAU); g.fill();
+        g.fillStyle = '#f8f8f2'; g.beginPath(); g.arc(-0.15, -1.7, 0.22, 0, TAU); g.fill();
+        if (st.lamp) { // dynamo headlamp on its bracket
+          g.fillStyle = '#9a9a96'; g.fillRect(0.6, -0.15, 0.7, 0.3);
+          g.fillStyle = '#d8d8d2'; g.beginPath(); g.arc(1.55, 0, 0.72, 0, TAU); g.fill();
+          g.fillStyle = (N.render.night || 0) > 0.2 && Math.abs(v.speed) > 10 ? '#fff4c0' : '#efe8cc'; g.beginPath(); g.arc(1.75, 0, 0.42, 0, TAU); g.fill();
+        }
+      }
+      if (ladies) { g.fillStyle = '#a07838'; g.fillRect(0.9, -1.9, 2.8, 3.8); g.strokeStyle = '#6a4a20'; g.lineWidth = 0.35; g.strokeRect(0.9, -1.9, 2.8, 3.8); g.beginPath(); g.moveTo(2.3, -1.9); g.lineTo(2.3, 1.9); g.moveTo(0.9, 0); g.lineTo(3.7, 0); g.stroke(); }
+      if (T.id === 'chinnu_cycle' && unlocked('streamers', 75)) { g.strokeStyle = '#ffd84a'; g.lineWidth = 0.5; g.beginPath(); for (const y of [-st.gy, st.gy]) { g.moveTo(-1.4, y); g.lineTo(-3.8, y * 1.25); g.moveTo(-1.4, y); g.lineTo(-4.2, y * 0.9); } g.stroke(); }
+    });
+    if (!riding) return;
+    // the rider: seated, or (a kid on a big Hero roadster) standing *kainchi* style, one leg through the frame
+    const look = riderLook(v);
+    riderArms.phase = ph * 0.6; riderArms.speed = Math.min(0.7, Math.abs(v.speed) / 60); riderArms.run = false;
+    const stemX = fxw - 0.9, gxl = st.bar === 'flat' ? 0.15 : -1.15;
+    if (kainchi) {
+      const sway = Math.sin(ph * 0.62) * 0.35;
+      const ry = -2.6 + ox + sway, rx0 = bb + 0.6;
+      armsTo(ctx, look, 7.4, rx0 + 0.6, ry, stemX, gxl, st.gy, steer, ox);
+      top(ctx, 7.6, (g) => { g.translate(rx0, ry); g.rotate(0.22); N.people.draw(g, look, riderArms); });
+    } else {
+      const ry = ox * 1.2;
+      armsTo(ctx, look, 8.0, st.at + 1.0, ry, stemX, gxl, st.gy, steer, ox);
+      top(ctx, 8.4, (g) => { g.translate(st.at, ry); N.people.draw(g, look, riderArms); });
+    }
+    if (v.pillion) drawPillion(ctx, v, ox, rx - 0.6);
+  }
+  /**
+   * Forearms from the rider's shoulders (sx, sy ± shoulder) to the grips: the bar's stem sits at
+   * (stemX, oy), grips at (gxl, ±gy) in the bar's own frame, rotated by the steering.
+   */
+  function armsTo(ctx, look, h, sx, sy, stemX, gxl, gy, steer, oy) {
+    const kidish = !!look && (look.kind === 'kid' || look.kind === 'student');
+    const bare = !!look && (look.kind === 'saree' || look.kind === 'aunty' || look.kind === 'uncle');
+    const skin = (look && look.skin) || '#a0683f';
+    const sleeve = bare ? skin : (look && look.shirt) || '#e8e0d0';
+    const sh = kidish ? 3.0 : 3.6;
+    const c = Math.cos(steer), s = Math.sin(steer);
+    top(ctx, h, (g) => {
+      g.lineCap = 'round';
+      for (let side = -1; side <= 1; side += 2) {
+        const ly = side * gy;
+        const px = stemX + gxl * c - ly * s, py = oy + gxl * s + ly * c;
+        const ax = sx, ay = sy + side * sh;
+        const mx = ax + (px - ax) * 0.45, my = ay + (py - ay) * 0.45;
+        g.strokeStyle = sleeve; g.lineWidth = kidish ? 1.05 : 1.25;
+        g.beginPath(); g.moveTo(ax, ay); g.lineTo(mx, my); g.stroke();
+        g.strokeStyle = skin; g.lineWidth = kidish ? 0.85 : 1.0;
+        g.beginPath(); g.moveTo(mx, my); g.lineTo(px, py); g.stroke();
+        g.fillStyle = skin; g.beginPath(); g.arc(px, py, kidish ? 0.55 : 0.65, 0, TAU); g.fill();
+      }
+    });
+  }
+  function rrectPath(g, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    g.beginPath();
+    g.moveTo(x + r, y); g.lineTo(x + w - r, y); g.arcTo(x + w, y, x + w, y + r, r);
+    g.lineTo(x + w, y + h - r); g.arcTo(x + w, y + h, x + w - r, y + h, r);
+    g.lineTo(x + r, y + h); g.arcTo(x, y + h, x, y + h - r, r);
+    g.lineTo(x, y + r); g.arcTo(x, y, x + r, y, r);
+    g.closePath();
+  }
+
+  // ------------------------------------------------------------ A3: the Scooty
+  // A small step-through scooter: two little wheels, a bright rear body with a chrome grab rail,
+  // a ribbed floorboard, the curved front apron, a round headlamp nacelle and two mirrors on stalks.
+  const SC_BODY = [-1.0, -2.0, -1.0, 2.0, -3.4, 2.35, -5.8, 2.25, -7.0, 1.5, -7.35, 0, -7.0, -1.5, -5.8, -2.25, -3.4, -2.35];
+  const SC_SEAT = [-1.4, -1.2, -1.4, 1.2, -3.4, 1.45, -5.4, 1.35, -6.15, 0.85, -6.15, -0.85, -5.4, -1.35, -3.4, -1.45];
+  const SC_APRON = [5.3, -0.9, 5.3, 0.9, 4.9, 2.0, 4.2, 2.8, 3.45, 2.65, 3.55, 1.6, 3.75, 0, 3.55, -1.6, 3.45, -2.65, 4.2, -2.8, 4.9, -2.0];
+  const SC_FENDER = [7.0, -0.85, 7.0, 0.85, 4.8, 1.05, 4.8, -1.05];
+  function drawScooty(ctx, v) {
+    const T = v.T;
+    begin(v);
+    const lie = !!v.fallen, riding = !!v.driver && !lie;
+    const kid = riding && v.driver === N.player;
+    const col = v.color, col2 = v.color2 || '#f4f0e8', dark = U.shade(col, 0.62), hi = U.shade(col, 1.2);
+    const tilt = riding ? v.lean || 0 : lie ? 1.25 : 0.18;
+    const ox = -Math.sin(tilt) * (lie ? 4.4 : 2.0);
+    if (lie) fz -= 2.2;
+    const steer = v.steerVis * 0.9;
+    const rw = -4.9, fw = 5.2;
+    // wheels: small fat tyres with alloy hubs
+    topRaw(ctx, 0.8, (g) => {
+      const wheel = (cx, rot) => {
+        g.save(); g.translate(cx, 0); if (rot) g.rotate(rot);
+        g.fillStyle = '#18171a'; rrectPath(g, -1.95, -0.8, 3.9, 1.6, 0.8); g.fill();
+        g.fillStyle = '#b8bcc0'; g.fillRect(-1.0, -0.22, 2.0, 0.44);
+        g.fillStyle = 'rgba(255,255,255,0.6)'; g.fillRect(Math.cos((v.wheelPhase || 0) * 2.4) * 0.7 - 0.15, -0.3, 0.3, 0.6);
+        g.restore();
+      };
+      wheel(rw, 0); wheel(fw, steer);
+    });
+    const shift = (pts, k) => { const o = []; for (let i = 0; i < pts.length; i += 2) o.push(pts[i], pts[i + 1] + ox * k); return o; };
+    // front fender (turns with the bar)
+    topRaw(ctx, 2.4, (g) => {
+      g.translate(fw - 0.4, ox * 0.35); g.rotate(steer); g.translate(-(fw - 0.4), 0);
+      g.fillStyle = col; g.beginPath(); for (let i = 0; i < SC_FENDER.length; i += 2) { if (i) g.lineTo(SC_FENDER[i], SC_FENDER[i + 1]); else g.moveTo(SC_FENDER[i], SC_FENDER[i + 1]); } g.closePath(); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.3)'; g.fillRect(5.0, -0.25, 1.7, 0.4);
+    });
+    // floorboard: dark rubber mat with ribs between the apron and the seat
+    topRaw(ctx, 2.3, (g) => {
+      g.translate(0, ox * 0.4);
+      g.fillStyle = col; rrectPath(g, -1.4, -2.1, 5.3, 4.2, 0.9); g.fill();
+      g.fillStyle = '#34343a'; rrectPath(g, -1.0, -1.6, 4.5, 3.2, 0.6); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.16)'; for (let x = -0.6; x < 3.3; x += 0.75) g.fillRect(x, -1.35, 0.3, 2.7);
+    });
+    // rear body: a solid, sun-shaded shell with a contrasting side stripe and a chrome strip
+    prism(ctx, shift(SC_BODY, 0.5), 1.6, 5.0, col, col, (c2, i, ax, ay, bx, by, nx, ny) => {
+      band(c2, ax, ay, bx, by, 0, 1, 2.6, 3.2, col2, nx, ny);
+      band(c2, ax, ay, bx, by, 0, 1, 1.6, 2.0, dark, nx, ny);
+      if (i === 5 || i === 4 || i === 6) band(c2, ax, ay, bx, by, 0.25, 0.75, 3.4, 4.3, '#c82a20'); // tail lamp
+    }, (g) => {
+      g.translate(0, ox * 0.5);
+      g.fillStyle = 'rgba(255,255,255,0.28)'; g.beginPath(); g.ellipse(-4.4, -1.6, 2.2, 0.45, 0, 0, TAU); g.fill();
+      g.fillStyle = '#f2d23a'; g.fillRect(-7.15, -1.0, 0.5, 2.0); // number plate edge
+    });
+    // the seat on top, with a chrome grab rail round the back
+    prism(ctx, shift(SC_SEAT, 0.62), 5.0, 6.1, '#1c1a1e', '#26232a', null, (g) => {
+      g.translate(0, ox * 0.62);
+      g.strokeStyle = 'rgba(255,255,255,0.16)'; g.lineWidth = 0.3; g.beginPath(); g.moveTo(-1.4, 0); g.lineTo(-6.0, 0); g.stroke();
+      g.strokeStyle = '#cfd2d4'; g.lineWidth = 0.38; g.beginPath(); g.moveTo(-5.4, -2.05); g.quadraticCurveTo(-7.4, -2.0, -7.0, 0); g.quadraticCurveTo(-7.4, 2.0, -5.4, 2.05); g.stroke();
+    });
+    // the curved front apron (leg shield)
+    prism(ctx, shift(SC_APRON, 0.55), 2.0, 6.5, (i) => (i < 2 || i > 7 ? hi : col), col, (c2, i, ax, ay, bx, by, nx, ny) => {
+      if (i >= 3 && i <= 6) band(c2, ax, ay, bx, by, 0, 1, 2.0, 2.5, dark, nx, ny);
+    }, (g) => {
+      g.translate(0, ox * 0.55);
+      g.fillStyle = 'rgba(255,255,255,0.32)'; g.beginPath(); g.moveTo(5.0, -0.7); g.quadraticCurveTo(4.7, -2.0, 4.1, -2.5); g.lineTo(3.9, -2.2); g.quadraticCurveTo(4.4, -1.6, 4.6, -0.6); g.closePath(); g.fill();
+      g.fillStyle = col2; g.fillRect(4.6, -0.3, 0.7, 0.6);
+    });
+    // handlebar + headlamp nacelle + mirrors (turn with the steering)
+    topRaw(ctx, 7.2, (g) => {
+      g.translate(4.4, ox * 0.9); g.rotate(steer);
+      g.lineCap = 'round';
+      g.strokeStyle = '#2a2a2e'; g.lineWidth = 0.55; g.beginPath(); g.moveTo(-0.2, -2.7); g.lineTo(-0.2, 2.7); g.stroke();
+      g.fillStyle = '#16161a'; g.fillRect(-0.7, -3.0, 1.1, 1.0); g.fillRect(-0.7, 2.0, 1.1, 1.0); // grips
+      g.fillStyle = col; rrectPath(g, -0.9, -1.25, 2.3, 2.5, 1.0); g.fill();                     // nacelle
+      g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(-0.6, -0.9, 1.4, 0.35);
+      g.fillStyle = '#e9edf0'; g.beginPath(); g.arc(1.3, 0, 0.85, 0, TAU); g.fill();             // headlamp
+      g.fillStyle = (N.render.night || 0) > 0.2 ? '#fff6c8' : '#cfdce4'; g.beginPath(); g.arc(1.4, 0, 0.55, 0, TAU); g.fill();
+      g.fillStyle = '#ffb030'; g.fillRect(0.9, -1.6, 0.5, 0.4); g.fillRect(0.9, 1.2, 0.5, 0.4);  // indicators
+    });
+    topRaw(ctx, 8.6, (g) => {
+      g.translate(4.4, ox); g.rotate(steer);
+      g.strokeStyle = '#3a3a3e'; g.lineWidth = 0.22; g.beginPath(); g.moveTo(-0.3, -1.7); g.lineTo(-0.9, -2.5); g.moveTo(-0.3, 1.7); g.lineTo(-0.9, 2.5); g.stroke();
+      for (const y of [-2.75, 2.75]) { g.fillStyle = '#c8ccd0'; g.beginPath(); g.arc(-1.0, y, 0.62, 0, TAU); g.fill(); g.fillStyle = '#7fa6c0'; g.beginPath(); g.arc(-1.0, y, 0.4, 0, TAU); g.fill(); }
+    });
+    if (!riding) return;
+    const look = riderLook(v);
+    riderArms.phase = 0; riderArms.speed = 0; riderArms.run = false;
+    if (kid) {
+      // perched right on the front of the seat, arms straight out, toes stretching for the floorboard
+      const ry = ox * 1.1, sx = -1.9;
+      topRaw(ctx, 4.0, (g) => {
+        g.lineCap = 'round'; g.strokeStyle = (look && look.skin) || '#a0683f'; g.lineWidth = 0.75;
+        g.beginPath(); g.moveTo(sx + 0.6, ry - 0.9); g.lineTo(1.9, ry * 0.5 - 1.25); g.moveTo(sx + 0.6, ry + 0.9); g.lineTo(1.9, ry * 0.5 + 1.25); g.stroke();
+        g.fillStyle = '#2a2220'; g.beginPath(); g.ellipse(2.3, ry * 0.5 - 1.25, 0.55, 0.38, 0, 0, TAU); g.ellipse(2.3, ry * 0.5 + 1.25, 0.55, 0.38, 0, 0, TAU); g.fill();
+      });
+      armsTo(ctx, look, 8.2, sx + 1.0, ry, 4.4, -0.15, 2.5, steer, ox * 0.9);
+      top(ctx, 8.6, (g) => { g.translate(sx, ry); N.people.draw(g, look, riderArms); });
+    } else {
+      const ry = ox * 1.15, sx = -3.0;
+      armsTo(ctx, look, 8.0, sx + 1.0, ry, 4.4, -0.15, 2.5, steer, ox * 0.9);
+      top(ctx, 8.4, (g) => { g.translate(sx, ry); N.people.draw(g, look, riderArms); });
+    }
+    if (v.pillion) drawPillion(ctx, v, ox, -5.6);
+  }
+
   // ---------------------------------------------------- story-vehicle extras (systems §3.2)
   function drawLightBar(ctx, v) { // Pochaiah's Luna: a red-and-blue light-bar decal on the carrier
     top(ctx, 4.6, (g) => {
@@ -1781,11 +2353,15 @@
 
   function update(dt) {
     const p = N.player, mode = N.state.mode;
+    // A2: N.world.potholeAt(x, y) -> {depth, r} | null (world.js). Missing: potholes do nothing.
+    potAt = N.world && typeof N.world.potholeAt === 'function' ? N.world.potholeAt : null;
     for (let i = list.length - 1; i >= 0; i--) if (!list[i].alive) { if (list[i] === p.vehicle) exit(p, true); list.splice(i, 1); }
     for (let i = 0; i < list.length; i++) {
       const v = list[i];
       if (v.bumpT > 0) v.bumpT -= dt;
       if (v.doorT > 0) v.doorT -= dt;
+      if (v.jolt > 0) v.jolt = Math.max(0, v.jolt - dt * TUNE.joltDecay);
+      if (v.potCD > 0) v.potCD -= dt;
       v.age += dt;
       if (v.fallen) { v.fallen.t += dt; if (v.fallen.t > TUNE.rightAfter && !v.driver) { v.fallen = null; v.wake(); } }
       if (v.driver === p && v.autopilot && v.controller) {
@@ -1799,12 +2375,13 @@
       } else if (v.controller) {
         try { v.controller(v, dt); } catch (e) { N.err('vehicle.controller', e); v.controller = null; }
       } else idleControl(v);
+      if (v.passenger === p && p.vehicle === v) passengerTick(p, v, dt);
       // sleep parked vehicles so hundreds of them cost nothing
       if (!v.driver && !v.controller && Math.abs(v.vx) + Math.abs(v.vy) < 0.6 && Math.abs(v.av) < 0.03) {
         v.sleepT += dt;
         if (v.sleepT > 0.4 && !v.asleep) { v.asleep = true; v.vx = v.vy = v.av = 0; v.speed = 0; v.skL = v.skR = null; }
       } else { v.sleepT = 0; v.asleep = false; }
-      if (!v.asleep) simulate(v, dt);
+      if (!v.asleep) { simulate(v, dt); if (potAt) potholes(v, dt, p); }
     }
     collideVehicles();
     collidePeople();
@@ -1816,37 +2393,72 @@
     } else if (zoomOwned) { N.render.baseZoom = 1; zoomOwned = false; }
     if (p.knockT > 0) p.knockT -= dt;
     if (mode !== 'play') return;
-    // ACTION offers: get in / get out
+    // ACTION offers: get in / get out (A3: drive, borrow, a seat behind a grown-up, or a refusal)
     if (!pv && p.mode !== 'busy' && !p.controlsLocked) {
-      const n = nearestEnterable(p);
+      const n = bestOffer(p);
       if (n) {
-        const v = n.v, T = v.T;
-        const nk = nakkoFor(v);
-        if (nk) { offerSpec.label = 'Nakko'; offerSpec.use = useNakko; }
-        else if (v.hire && !v.hired) { offerSpec.label = T.mode === 'boat' ? 'Hire boat' : 'Hire cycle'; offerSpec.use = useHire; }
-        else { offerSpec.label = (v.driver ? 'Borrow ' : T.verb + ' ') + (v.label && !T.label ? v.label : T.short); offerSpec.use = useEnter; }
-        offerSpec.dist = n.d; offerSpec.target = v;
+        const o = n.o;
+        offerSpec.label = o.label; offerSpec.kind = o.kind; offerSpec.use = useOffer;
+        offerSpec.priority = NO_KINDS[o.kind] ? TUNE.noPriority : 0;
+        offerSpec.dist = n.d; offerSpec.target = n.v;
         N.interact.offer(offerSpec);
       }
       // a bike lying on its side after a fall: pick it up (systems §2.6)
       const fb = nearestFallen(p);
       if (fb) { pickSpec.label = 'Pick up ' + fb.v.T.short; pickSpec.dist = fb.d; pickSpec.target = fb.v; N.interact.offer(pickSpec); }
+    } else if (pv && p.passenger && !p.controlsLocked && !pv.lockPassenger) {
+      // riding along: "Get off" (asks the driver to stop first when moving)
+      exitSpec.label = Math.abs(pv.speed) > 20 && !pv.stopReq ? 'Ask to stop' : 'Get off';
+      exitSpec.use = useExit;
+      N.interact.offer(exitSpec);
     } else if (pv && !pv.locked && !p.controlsLocked) {
       exitSpec.label = pv.T.cls === 'bike' ? 'Get off' : pv.T.cls === 'boat' ? 'Get out' : 'Get out';
       exitSpec.use = useExit;
       N.interact.offer(exitSpec);
     }
+    if (pv && pv.driver === p) kidAtWheelTick(pv, dt);
+    if (!pv) footPotholes(p, dt);
     // horn (whistle on foot); held car horns repeat
     const I = N.input;
+    if (pv && p.passenger) return;
     if (I.pressed('horn')) { emitHorn(pv); hornHold = 0; }
     else if (I.down('horn') && pv && pv.T.cls !== 'bike') { hornHold += dt; if (hornHold > 0.42) { hornHold = 0; emitHorn(pv); } }
   }
   function useEnter() { if (offerSpec.target) enter(N.player, offerSpec.target); }
   function useExit() { exit(N.player, false); }
+  let noT = -1e9, noV = null;
+  function useOffer() {
+    const v = offerSpec.target; if (!v || !v.alive) return;
+    const o = offerFor(v); if (!o) return;
+    const p = N.player;
+    // mashing ACTION next to a car he can't drive: one line per 1.5 s, not a queue of them
+    if (NO_KINDS[o.kind]) { if (noV === v && N.time.real - noT < TUNE.noCD) return; noV = v; noT = N.time.real; }
+    switch (o.kind) {
+      case 'nakko': useNakko(); return;
+      case 'hire': useHire(); return;
+      case 'drive': case 'borrow': enter(p, v); return;
+      case 'fare': if (!N.shops.rideVehicle(v)) toast('"*Nakko*, not going that side."', 2200); return;
+      case 'bus': boardBus(p, v); return;
+      case 'pillion': case 'passenger': {
+        if (ride(p, v, { as: o.kind })) {
+          const named = v.driver && v.driver.npcId;
+          if (!named && !v.rideOk) toast(lineOf(LIFT_LINES, v.seed + (N.time.frame | 0)), 2600);
+        }
+        return;
+      }
+      case 'nolift': refuseToast(v, lineOf(v.T.cls === 'bike' && v.pillion ? NO_ROOM : v.T.cls === 'heavy' ? ['The lorry-wala laughs: "Next time, *chhotu*! Horn OK Please!"'] : NO_CAR_LIFT, v.seed + (N.time.frame | 0))); return;
+      default: refuseToast(v, refusalFor(v));
+    }
+  }
+  function toast(t, ms, key) { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2400, key ? { key } : undefined); }
+  function refuseToast(v, line) {
+    toast(line, 3000, 'vehicles:no'); // keyed: a new refusal replaces the last one instead of queueing
+    N.emit('vehicle:refused', { vehicle: v, type: v.type, line });
+  }
   function useNakko() {
     const v = offerSpec.target; if (!v) return;
     const line = nakkoFor(v);
-    if (line && N.hud) N.hud.toast(line, 2600);
+    if (line) toast(line, 2600, 'vehicles:no');
     if (N.audio && N.audio.horn && v.T.cls !== 'bike') { try { N.audio.horn(v, { x: v.x, y: v.y }); } catch (e) { /* ignore */ } }
   }
   /** A rental cycle / jetty boat: the stall's menu decides (N.shops); without shops it is just ridden. */
@@ -1855,39 +2467,223 @@
     if (N.shops && typeof N.shops.open === 'function' && N.shops.open(v.hire, { vehicle: v })) return;
     v.hired = true; enter(N.player, v);
   }
-  const pickSpec = { label: 'Pick up cycle', priority: 1, dist: 0, target: null, use: () => { const v = pickSpec.target; if (v && v.fallen) { v.fallen = null; N.emit('vehicle:pickup', { vehicle: v }); enter(N.player, v, { quiet: true }); } } };
+  // picking up a fallen bike gets him back on it, but only one he may drive (A3: a Chetak he fell off
+  // after allowHeavy / debug is just stood back up on its stand)
+  const pickSpec = { label: 'Pick up cycle', priority: 1, dist: 0, target: null, use: () => {
+    const v = pickSpec.target;
+    if (!v || !v.fallen) return;
+    v.fallen = null; N.emit('vehicle:pickup', { vehicle: v });
+    if (!v.driver && canDrive(v)) enter(N.player, v, { quiet: true });
+  } };
   function nearestFallen(p) {
     let best = null, bd = 18;
     for (const v of list) {
-      if (!v.fallen || v.fallen.t < TUNE.pickupAfter || !v.alive) continue;
+      if (!v.fallen || v.fallen.t < TUNE.pickupAfter || !v.alive || v.driver) continue;
       const d = distTo(v, p.x, p.y);
       if (d < bd) { bd = d; best = v; }
     }
     return best ? { v: best, d: bd } : null;
   }
-  // the player went DHADAAM (entities.js player.fall): the bike stays down until picked up
+  // the player went DHADAAM (entities.js player.fall): the bike stays down until picked up. Thrown off
+  // the back of a pillion ride, the grown-up rides on (he stops, see passengerExit): the bike never lies
+  // down with its rider still on it, and the kid can't "pick up" somebody's Chetak and ride away on it.
   N.on('player:fall', (d) => {
     const v = d && d.vehicle;
     if (!v || !v.T || v.T.cls !== 'bike' || !v.alive) return;
+    if (v.driver && v.driver !== N.player) { v.stopReq = 0; return; }
     v.fallen = { t: 0, angle: v.angle };
     v.vx *= 0.3; v.vy *= 0.3; v.av = 0;
     N.emit('vehicle:fallen', { vehicle: v });
   });
-  /** Punctures and potholes for the bike the player rides (systems §2.6, §5.6). */
+  /** Punctures off-road for the cycle the player rides (systems §5.6). Potholes: see potholes(). */
   function bikeHazards(v, dt) {
     const T = v.T, S = N.SURF;
     const surf = N.world.surfaceAt(v.x, v.y), sp = Math.abs(v.speed);
     const dirt = surf === S.GROUND || surf === S.SAND;
-    if (T.pedal && !v.flat && dirt && sp > 25 && Math.random() < dt * TUNE.punctureRate) V.puncture(v);
-    if (surf === S.GROUND && sp >= TUNE.potholeSpeed) {
-      v.potT -= dt;
-      if (v.potT <= 0) {
-        v.potT = TUNE.potholeEvery * (0.5 + Math.random());
-        if (N.audio && N.audio.sfx) N.audio.sfx('pothole', { x: v.x, y: v.y });
-        N.emit('vehicle:pothole', { vehicle: v, speed: sp });
-        if (Math.random() < TUNE.potholeFall && N.player.fall) N.player.fall(v, { speed: sp, pothole: true });
-      }
-    } else v.potT = Math.max(v.potT, 0.6);
+    if (T.pedal && !v.flat && dirt && sp > 25 && Math.random() < dt * TUNE.punctureRate * (T.punctureMul || 1)) V.puncture(v);
+  }
+
+  /* ============================================================ potholes (A2) */
+  let potAt = null;
+  const reducedMotion = () => !!(document.body && document.body.classList.contains('reduced-motion'));
+  function potQuery(x, y) {
+    let ph = null;
+    try { ph = potAt(x, y); } catch (e) { N.err('world.potholeAt', e); potAt = null; return null; }
+    return ph && typeof ph === 'object' ? ph : null;
+  }
+  /** Pothole severity 0.15..1.5 from {depth}: depth <= 1 reads as a 0..1 severity, larger as world units (/3). */
+  function potSeverity(ph) {
+    const d = +ph.depth;
+    if (!isFinite(d) || d <= 0) return 0.5;
+    return d <= 1 ? U.clamp(d, 0.15, 1) : U.clamp(d / 3, 0.15, 1.5);
+  }
+  function potWet(ph) {
+    if (ph.wet != null) return !!ph.wet;
+    if (ph.water != null) return !!ph.water;
+    const f = N.flags || {};
+    return raining() || !!(f.wet_roads || f.puddles || f.monsoon_wet);
+  }
+  /** A pothole's identity: world.js id, else its centre, else none (then contact continuity decides). */
+  function potKey(ph) {
+    if (ph.id != null) return 'i' + ph.id;
+    const x = +ph.x, y = +ph.y;
+    return isFinite(x) && isFinite(y) ? Math.round(x * 2) + ':' + Math.round(y * 2) : null;
+  }
+  /**
+   * One wheel: sweep its contact point from where it was last step to where it is now (every 2 u, so a
+   * small pothole is never jumped at speed) and report the first pothole it ENTERS. state = the key of
+   * the pothole it is in (true when the pothole has no key) or null; continuous contact never re-hits.
+   */
+  const wheelHit = { ph: null, x: 0, y: 0 };
+  function sweepWheel(x0, y0, x1, y1, state) {
+    const L = Math.hypot(x1 - x0, y1 - y0);
+    const n = !(L > 0) || L > 60 ? 1 : Math.min(6, Math.max(1, Math.ceil(L / TUNE.potholeStep)));
+    let cur = state, hit = null;
+    for (let i = 1; i <= n; i++) {
+      const f = i / n, x = n === 1 ? x1 : x0 + (x1 - x0) * f, y = n === 1 ? y1 : y0 + (y1 - y0) * f;
+      const ph = potQuery(x, y);
+      if (!potAt) return { state: null, hit: null };
+      if (!ph) { cur = null; continue; }
+      const k = potKey(ph);
+      const entered = cur == null || (k != null && cur !== true && k !== cur);
+      if (entered && !hit) { hit = ph; wheelHit.x = x; wheelHit.y = y; }
+      cur = k != null ? k : cur == null ? true : cur;
+    }
+    return { state: cur, hit };
+  }
+  /**
+   * Every step for each moving vehicle near the camera (and always the player's): sweep the front and
+   * rear wheels; on entering a pothole: speed loss, jolt, shake + sound (player), splash when wet, and
+   * for the player's bike a small puncture / comic-fall chance. The rear wheel dropping into the same
+   * pothole the front one just hit is a softer second thump ("dha-DAK"), never a second penalty.
+   */
+  function potholes(v, dt, p) {
+    const T = v.T;
+    if (T.mode === 'boat' || v.fallen || v.kin) { v.potF = v.potR = false; v._potF = v._potR = null; v._pw = null; return; }
+    const sp = Math.abs(v.speed);
+    const mine = v.driver === p || v.passenger === p;
+    // slow (parked, creeping, waiting at a junction): no query; a wheel that stopped in a pothole stays in it
+    if (!(sp >= TUNE.potholeMinSpeed)) { v._pw = null; return; }
+    if (!mine && !N.render.inView(v.x, v.y, TUNE.potholeView)) { v._pw = null; v._potF = v._potR = null; v.potF = v.potR = false; return; }
+    const c = Math.cos(v.angle), s = Math.sin(v.angle), ax = T.w / 2 - Math.min(3, T.w * 0.18);
+    const fx = v.x + c * ax, fy = v.y + s * ax, rx = v.x - c * ax, ry = v.y - s * ax;
+    const pw = v._pw || (v._pw = [fx, fy, rx, ry]);
+    const F = sweepWheel(pw[0], pw[1], fx, fy, v._potF == null ? (v.potF ? true : null) : v._potF);
+    if (!potAt) return;
+    const fhx = wheelHit.x, fhy = wheelHit.y;
+    const R = sweepWheel(pw[2], pw[3], rx, ry, v._potR == null ? (v.potR ? true : null) : v._potR);
+    pw[0] = fx; pw[1] = fy; pw[2] = rx; pw[3] = ry;
+    v._potF = F.state; v._potR = R.state; v.potF = F.state != null; v.potR = R.state != null;
+    if (F.hit) {
+      if (v.potCD <= 0) hitPothole(v, F.hit, 'front', ax, mine, p, fhx, fhy);
+      v._potLast = { k: potKey(F.hit), x: fhx, y: fhy, r: +F.hit.r || 5, t: v.age };
+    }
+    if (R.hit) {
+      const L = v._potLast, k = potKey(R.hit);
+      const same = !!L && v.age - L.t < (2 * ax) / Math.max(4, sp) + 0.6 &&
+        ((k != null && k === L.k) || Math.hypot(wheelHit.x - L.x, wheelHit.y - L.y) < L.r * 1.25 + 3);
+      if (same) { v._potLast = null; rearThump(v, R.hit, mine, p, wheelHit.x, wheelHit.y, v.age - L.t); }
+      else if (v.potCD <= 0) hitPothole(v, R.hit, 'rear', -ax, mine, p, wheelHit.x, wheelHit.y);
+    }
+  }
+  function potSev(v, ph) {
+    const T = v.T;
+    return potSeverity(ph) * (T.potholeMul || 1) * (T.cls === 'heavy' ? 0.45 : T.cls === 'car' ? 0.75 : T.cls === 'auto' ? 0.9 : 1);
+  }
+  let potFallAt = -1e9;
+  function hitPothole(v, ph, wheel, off, mine, p, hx, hy) {
+    const T = v.T, sp = Math.abs(v.speed);
+    if (!(sp >= 0) || !isFinite(sp)) return;
+    const sev = potSev(v, ph);
+    const spf = U.clamp(sp / Math.max(1, T.maxSpeed), 0, 1.2);
+    const wet = potWet(ph);
+    v.potCD = 0.12;
+    // speed: x0.82 at full depth and top speed, less for shallow ones and slow riding
+    const keep = 1 - U.clamp(TUNE.potholeLoss * Math.min(1.4, sev) * (0.45 + 0.55 * spf), 0, 0.4);
+    v.vx *= keep; v.vy *= keep; v.speed *= keep;
+    // a twitch: two-wheelers get knocked sideways a little
+    if (T.cls === 'bike') v.av += (Math.random() - 0.5) * 1.1 * Math.min(1, sev) * (0.5 + spf);
+    v.jolt = Math.max(v.jolt || 0, U.clamp(0.55 + 0.45 * sev, 0.55, 1));
+    v.joltSide = Math.random() < 0.5 ? -1 : 1;
+    const c = Math.cos(v.angle), s = Math.sin(v.angle);
+    const x = isFinite(hx) ? hx : v.x + c * off, y = isFinite(hy) ? hy : v.y + s * off;
+    potholeFx(x, y, wet, sev, sp);
+    const vol = U.clamp(0.3 + 0.7 * spf, 0.25, 1) * (mine ? 1 : 0.7);
+    if (N.audio && N.audio.sfx) N.audio.sfx('pothole', { x, y, vol, variant: wet ? 'wet' : null, pitch: T.cls === 'heavy' ? 0.7 : T.cls === 'bike' ? 1.15 : 1, key: v.sid });
+    N.emit('vehicle:pothole', { vehicle: v, speed: sp, depth: ph.depth, severity: sev, wet, wheel, x, y, player: mine });
+    if (!mine) return;
+    if (N.render && N.render.shake && !reducedMotion()) N.render.shake(TUNE.potholeShake * U.clamp(sev * (0.45 + 0.55 * spf), 0.35, 1), 0.22);
+    if (v.driver !== p || N.state.mode !== 'play') return;
+    // the rolls scale with the pothole: a shallow arterial dip rarely flats a tyre or throws him
+    const k = Math.min(1, sev);
+    if (T.pedal && !v.flat && Math.random() < TUNE.potholePuncture * (T.punctureMul || 1) * k) V.puncture(v);
+    // a comic fall (never hurt), at speed only, and never twice in a row: 45 s of grace after one
+    if (T.cls === 'bike' && spf > TUNE.potholeFallAt && N.time.now - potFallAt > TUNE.potholeFallCD && Math.random() < TUNE.potholeFall * k && p.fall) {
+      if (p.fall(v, { speed: sp, pothole: true })) potFallAt = N.time.now;
+    }
+  }
+  /** The rear wheel follows the front one into the same pothole: a smaller jolt and a softer "-dak". */
+  function rearThump(v, ph, mine, p, x, y, after) {
+    const T = v.T, sp = Math.abs(v.speed);
+    if (!(sp >= 0)) return;
+    const sev = potSev(v, ph), spf = U.clamp(sp / Math.max(1, T.maxSpeed), 0, 1.2);
+    const keep = 1 - U.clamp(TUNE.potholeLoss * TUNE.potholeRear * Math.min(1.4, sev) * (0.45 + 0.55 * spf), 0, 0.1);
+    v.vx *= keep; v.vy *= keep; v.speed *= keep;
+    v.jolt = Math.max(v.jolt || 0, U.clamp(0.3 + 0.3 * sev, 0.3, 0.6));
+    const wet = potWet(ph);
+    // a bike's two drops come ~0.1 s apart: the pothole sound already has its second "dak" in it
+    if (after > 0.16 && N.audio && N.audio.sfx) N.audio.sfx('pothole', { x, y, vol: U.clamp(0.2 + 0.5 * spf, 0.18, 0.7) * (mine ? 1 : 0.7), variant: wet ? 'wet' : null, pitch: T.cls === 'heavy' ? 0.62 : T.cls === 'bike' ? 1.25 : 0.9, key: v.sid });
+    if (wet) potholeFx(x, y, true, sev * 0.5, sp);
+    N.emit('vehicle:pothole', { vehicle: v, speed: sp, depth: ph.depth, severity: sev * TUNE.potholeRear, wet, wheel: 'rear', follow: true, x, y, player: mine });
+    if (mine && N.render && N.render.shake && !reducedMotion()) N.render.shake(TUNE.potholeShake * 0.4 * U.clamp(sev, 0.35, 1), 0.15);
+  }
+  function potholeFx(x, y, wet, sev, sp) {
+    const n = Math.round(3 + sev * 4 + sp / 40);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * TAU, k = 10 + Math.random() * (20 + sp * 0.25);
+      if (wet) particle('drop', x, y, Math.cos(a) * k, Math.sin(a) * k, 0.35 + Math.random() * 0.3, 0.7 + Math.random() * 0.6, Math.random() < 0.5 ? '#9fb2b8' : '#7a7462', 1);
+      else particle('dust', x, y, Math.cos(a) * k * 0.6, Math.sin(a) * k * 0.6, 0.5 + Math.random() * 0.4, 1.4, '#a8916e', 1);
+    }
+  }
+  /** Walking through a pothole: a tiny stumble (and a splash when it's full of rain water). */
+  let footWas = false;
+  function footPotholes(p, dt) {
+    if (!potAt || p.level || p.downT > 0 || p.mode !== 'foot') { footWas = false; return; }
+    const sp = Math.hypot(p.vx || 0, p.vy || 0);
+    const ph = sp > 12 ? potQuery(p.x, p.y) : null;
+    if (ph && !footWas) {
+      const wet = potWet(ph);
+      p.vx *= TUNE.stumble; p.vy *= TUNE.stumble;
+      p.stumbleT = 0.35;
+      if (N.render && N.render.shake && !reducedMotion()) N.render.shake(0.3, 0.12);
+      if (wet) { potholeFx(p.x, p.y, true, 0.4, sp); if (N.audio && N.audio.sfx) N.audio.sfx('splash', { x: p.x, y: p.y, vol: 0.35 }); }
+      N.emit('player:stumble', { x: p.x, y: p.y, wet, pothole: ph });
+    }
+    footWas = !!ph;
+  }
+
+  /* ============================================ A3: kid at the wheel of an auto */
+  const AUTO_SHOUTS = [
+    'Oye *chhotu*! Do your feet even reach the pedal?!', '*Arre!* A BACHCHA driving an auto! *Kalyug!*', 'Whose auto is that, *beta*? Your Nanna\'s?',
+    'L-board! Side lo, side!', 'I\'ll complain to the union, *haan*!', '*Meter* down kar, *chhote*! Ha ha!', 'Go home and do your homework, auto-*wale*!',
+  ];
+  let shoutT = 4;
+  function kidAtWheelTick(v, dt) {
+    if (v.T.cls !== 'auto' || N.state.mode !== 'play') return;
+    shoutT -= dt;
+    if (shoutT > 0) return;
+    shoutT = U.randRange(TUNE.autoShout[0], TUNE.autoShout[1]);
+    let best = null, bd = TUNE.autoShoutR;
+    for (const o of N.entities.query(v.x, v.y, TUNE.autoShoutR, isVehicle)) {
+      if (o === v || !o.alive || o.T.cls !== 'auto' || !npcDriven(o)) continue;
+      const d = Math.hypot(o.x - v.x, o.y - v.y);
+      if (d < bd) { bd = d; best = o; }
+    }
+    if (!best) return;
+    const line = AUTO_SHOUTS[(Math.random() * AUTO_SHOUTS.length) | 0];
+    try { if (N.dialogue && N.dialogue.bark) N.dialogue.bark(best, line, { name: false, blip: true, secs: 2.4 }); else toast(line, 2000); } catch (e) { N.err('vehicles.autoShout', e); }
+    if (N.audio && N.audio.horn) { try { N.audio.horn(best, { x: best.x, y: best.y }); } catch (e) { /* ignore */ } }
+    N.emit('vehicle:autoShout', { vehicle: best, at: v, line });
   }
   function emitHorn(v) {
     const p = N.player;
@@ -1899,34 +2695,141 @@
   // A few parked vehicles at sensible places so the city is rideable before traffic.js
   // exists: cycles at cycle-rental stalls, the family Chetak at home, boats at jetties.
   // Set N.vehicles.autoSeed = false to disable (traffic.js may do its own).
+  function seedPut(type, x, y, a, opts) {
+    const T = TYPES[type];
+    if (!T) return null;
+    const W = N.world;
+    let f;
+    if (T.mode === 'boat') f = waterSpot(x, y);
+    else if (W.isDrivable(x, y) && !W.collide(x, y, T.cr + 0.5, 'drive').hit) f = { x, y }; // keep the exact spot (rows of cycles)
+    else f = W.findFree(x, y, 'drive', 12);
+    if (!f) return null;
+    if (T.mode !== 'boat' && W.collide(f.x, f.y, T.cr + 0.5, 'drive').hit) return null;
+    // never stack two parked vehicles on one spot
+    if (N.entities.query(f.x, f.y, T.d / 2 + 3, isVehicle).some((o) => o.alive && distTo(o, f.x, f.y) < T.d / 2 - 0.6)) return null;
+    return spawn(type, f.x, f.y, a, Object.assign({ seeded: true }, opts || {}));
+  }
   function seedParked() {
     if (V.autoSeed === false || !N.world.built) return;
     const P = N.places;
-    const put = (type, x, y, a, opts) => {
-      const T = TYPES[type];
-      const f = T.mode === 'boat' ? waterSpot(x, y) : N.world.findFree(x, y, 'drive', 12);
-      if (!f) return null;
-      if (T.mode !== 'boat' && N.world.collide(f.x, f.y, T.cr + 0.5, 'drive').hit) return null;
-      return spawn(type, f.x, f.y, a, Object.assign({ seeded: true }, opts || {}));
-    };
+    const put = seedPut;
     for (const id in P) {
       const pl = P[id];
       // rental cycles and jetty boats belong to their stall: ACTION opens the stall's menu (shops.js)
       if (pl.kind === 'cycle_rent') {
-        put('kid_cycle', pl.x + 4, pl.y + 6, Math.PI / 2 + 0.15, { seed: U.strHash(id) + 2, hire: id });
-        put('cycle', pl.x + 12, pl.y + 6, Math.PI / 2 + 0.2, { seed: U.strHash(id), hire: id });
-        put('ladiescycle', pl.x + 20, pl.y + 6, Math.PI / 2 + 0.25, { seed: U.strHash(id) + 1, hire: id });
+        // a row of four in front of the stall (kid, big black Hero, Hercules, ladies); squeezed stalls
+        // try the other side and further along
+        const row = [['kid_cycle', 2, 0.15], ['hero_cycle', 0, 0.2], ['hercules_cycle', 3, 0.1], ['ladiescycle', 1, 0.25]];
+        const spots = [];
+        for (const dy of [6, -6, 14, -14, 22]) for (const dx of [2, 9, 16, 23, -5, -12, 30]) spots.push([dx, dy]);
+        let k = 0;
+        for (const r0 of row) {
+          let v = null;
+          while (!v && k < spots.length) { const s0 = spots[k++]; v = put(r0[0], pl.x + s0[0], pl.y + s0[1], Math.PI / 2 + r0[2], { seed: U.strHash(id) + r0[1], hire: id }); }
+        }
       } else if (pl.kind === 'jetty' && !/_boat$/.test(id)) {
         put('boat', pl.x, pl.y, -Math.PI / 2, { seed: U.strHash(id), hire: id });
         put('boat', pl.x + 24, pl.y + 10, -Math.PI / 2 + 0.3, { seed: U.strHash(id) + 7, hire: id });
       }
     }
+    if (V.seedStands !== false) seedStands();
+    seedHome();
+  }
+  /** Home: Nanna's Chetak (pillion only), Akka's Scooty next door, and the ladder's rewards. */
+  function seedHome() {
     const home = (N.WORLD_DATA && N.WORLD_DATA.spawns && N.WORLD_DATA.spawns.home) || null;
+    if (!home || V.autoSeed === false || !N.world.built) return;
+    const have = (type) => list.some((v) => v.alive && v.type === type && v.seeded);
+    const put = (type, dx, dy, opts) => { if (!have(type)) seedPut(type, home[0] + dx, home[1] + dy, Math.PI / 2, opts); };
     // the family Chetak, parked on the footpath a few doors down (clear of the front door)
-    if (home) put('family_chetak', home[0] - 58, home[1] + 2, Math.PI / 2, { seed: 1999, color: '#7d9ab0', special: 'family' });
+    put('family_chetak', -58, 2, { seed: 1999, color: '#7d9ab0', special: 'family' });
+    // A3: Akka's Scooty next door (rideable from 30 finds; before that it says "when you're older")
+    put('akka_scooty', 26, 4, { seed: 1717, owned: true, special: 'akka' });
     // Chinnu's own cycle (12 finds) and Nanna's roadster (after M6) wait at home each morning
-    if (home && unlocked('own_cycle', 12)) put('chinnu_cycle', home[0] - 40, home[1] + 4, Math.PI / 2, { seed: 2003, owned: true, label: 'my cycle' });
-    if (home && (N.flags.old_cycle || (N.missions && N.missions.isDone && N.missions.isDone('ammammas_thursday')))) put('old_cycle', home[0] - 76, home[1] + 2, Math.PI / 2, { seed: 1983, owned: true });
+    if (unlocked('own_cycle', 12)) put('chinnu_cycle', 44, 4, { seed: 2003, owned: true, label: 'my cycle' });
+    if (N.flags.old_cycle || (N.missions && N.missions.isDone && N.missions.isDone('ammammas_thursday'))) put('old_cycle', -76, 2, { seed: 1983, owned: true });
+    // 60 finds: Bunty-anna lends his old Hercules with gears (and pillion rides on the RX100)
+    if (unlocked('rx100', 60) || unlocked('hercules_gears', 60)) put('hercules_gears', 62, 4, { seed: 1960, owned: true, label: "Bunty-anna's Hercules" });
+  }
+  /**
+   * Cycle stands (A3: the city rides Heroes, Hercules and Scooties): a few parked at schools,
+   * cinemas, Irani cafés, kiranas, the OU campus and the Ameerpet coaching centres. Deterministic
+   * per place; they are somebody's (parked: borrowing follows systems §3.3).
+   */
+  const STANDS = {
+    school: { n: 2, p: 1, mix: ['hero_cycle', 'hercules_cycle', 'ladiescycle', 'hero_cycle'] },
+    cinema: { n: 2, p: 1, mix: ['hero_cycle', 'scooty', 'hercules_cycle'] },
+    irani_cafe: { n: 1, p: 0.35, mix: ['hero_cycle', 'scooty', 'hero_cycle'] },
+    kirana: { n: 1, p: 0.25, mix: ['hero_cycle', 'scooty'] },
+    osmania_university: { n: 4, p: 1, mix: ['scooty', 'hercules_cycle', 'scooty', 'hero_cycle'] },
+    ameerpet_coaching: { n: 3, p: 1, mix: ['scooty', 'hercules_cycle', 'scooty'] },
+  };
+  function seedStands() {
+    const P = N.places;
+    for (const id in P) {
+      const pl = P[id], st = STANDS[id] || STANDS[pl.kind];
+      if (!st || pl.level || pl.virtual) continue;
+      const r = U.rng('stand:' + id);
+      if (r.next() > st.p) continue;
+      const a = r.next() * TAU, d = (pl.r || 14) + 8;
+      const bx = pl.x + Math.cos(a) * d, by = pl.y + Math.sin(a) * d;
+      const head = r.chance(0.5) ? Math.PI / 2 : -Math.PI / 2;
+      for (let i = 0; i < st.n; i++) {
+        const type = st.mix[(i + r.int(0, 9)) % st.mix.length];
+        const v = seedPut(type, bx + i * 6.5, by + r.range(-1, 1), head + r.range(-0.18, 0.18), { seed: (U.strHash(id) + i * 7919) | 0, parked: true });
+        if (v) v.stand = id;
+      }
+    }
+  }
+
+  /* ---------------------------------------------- traffic mix (A3 types for traffic.js) */
+  /**
+   * The traffic mix for a district style with the A3 types blended in: the old 'cycle' share is
+   * split Hero 45% / Hercules 25% / BSA 30%, and the Scooty adds its own TYPES.scooty.spawn weight.
+   * traffic.js can call this (or read TYPES[t].spawn) and set N.traffic.readsTypeWeights = true;
+   * until then vehicles.js patches N.traffic.TUNE.mix in place once.
+   */
+  function trafficMix(style, base) {
+    const mix = Object.assign({}, base || {});
+    if (mix.hero_cycle != null) return mix;
+    const cyc = +mix.cycle || 0;
+    const sp = (t) => (TYPES[t] && TYPES[t].spawn && TYPES[t].spawn[style] != null ? TYPES[t].spawn[style] : 0);
+    if (cyc > 0) {
+      const hero = Math.round(cyc * 0.45), herc = Math.round(cyc * 0.25);
+      mix.hero_cycle = hero; mix.hercules_cycle = herc; mix.cycle = Math.max(0, cyc - hero - herc);
+    } else { mix.hero_cycle = sp('hero_cycle'); mix.hercules_cycle = sp('hercules_cycle'); }
+    mix.scooty = (mix.scooty || 0) + sp('scooty');
+    return mix;
+  }
+  const patchedMix = new WeakSet();
+  function patchTraffic() {
+    const TR = N.traffic;
+    if (!TR || TR.readsTypeWeights || !TR.TUNE || !TR.TUNE.mix || V.patchTraffic === false) return;
+    const M = TR.TUNE.mix;
+    for (const style in M) {
+      const m = M[style];
+      if (!m || typeof m !== 'object' || patchedMix.has(m) || m.hero_cycle != null) continue;
+      const nm = trafficMix(style, m);
+      for (const k in nm) m[k] = nm[k];
+      patchedMix.add(m);
+    }
+  }
+  // who rides what: Scooties are mostly college girls and aunties, Hercules students and boys
+  function restyleRider(v) {
+    const d = v && v.driver;
+    if (!d || !d.npc || d instanceof N.Actor || !v.T) return;
+    const r = U.rng((v.seed | 0) + 77);
+    const T = (N.traffic && N.traffic.makeLook) || null;
+    const mk = (role, girl) => {
+      let look = null;
+      try { look = T ? T(role).look : null; } catch (e) { look = null; }
+      if (!look) look = N.people.randomLook(r, role === 'student' ? 'student' : role);
+      if (girl && look) { look.girl = true; if (look.kind === 'burqa' && r.chance(0.5)) look.kind = 'woman'; }
+      return look;
+    };
+    if (v.T.bikeLook === 'scooty') d.look = r.chance(0.45) ? mk('student', true) : r.chance(0.6) ? mk('woman') : mk(r.chance(0.5) ? 'man' : 'youth');
+    else if (v.T.bikeLook === 'hercules') d.look = mk(r.chance(0.6) ? 'student' : 'youth');
+    else if (v.T.bikeLook === 'hero' && r.chance(0.3)) d.look = mk(r.chance(0.5) ? 'uncle' : 'man');
   }
   function waterSpot(x, y) {
     for (let r = 0; r < 140; r += 6) {
@@ -2078,9 +2981,24 @@
   const V = (N.vehicles = {
     TYPES, list, Vehicle, define, spawn, remove, enter, exit, exitSpot, distTo, TUNE,
     autoSeed: true, seedParked,
-    /** debug: let the player drive buses and lorries through the normal ACTION offer */
+    /** debug: let the player drive anything (buses, lorries, Chetaks, cars) through the normal ACTION offer */
     allowHeavy: false,
+    /** A3 age rules on (default). false = the old free-for-all (tests / debug). */
+    ageRules: true,
+    seedStands: true, seedHome, trafficMix, patchTraffic, REFUSE,
     finds, unlocked,
+    /** A3: may the player drive this vehicle (or type)? */
+    canDrive: (v) => canDrive(typeof v === 'string' ? { T: TYPES[v] || DEFAULTS } : v),
+    /** What ACTION would do next to v: {kind, label} (drive | borrow | hire | nakko | pillion | passenger | bus | fare | nolift | refuse). */
+    offerFor: (v) => (v ? offerFor(v) : null),
+    refusalFor: (v) => (v ? refusalFor(v) : null),
+    /** Ride along with v's NPC driver (pillion / passenger): ride(N.player, v, {as, fare, lock}). */
+    ride, boardBus,
+    /** Is the actor (default player) riding along rather than driving? -> 'pillion' | 'passenger' | null */
+    isPassenger(a) { a = a || N.player; return (a && a.vehicle && a.passenger) || null; },
+    /** A2 hooks (tests, debug): hit a pothole now; the walking stumble check. */
+    hitPothole(v, ph) { if (!v) return false; hitPothole(v, ph || { depth: 0.8, r: 6 }, 'front', v.T.w / 2 - 2, v.driver === N.player || v.passenger === N.player, N.player); return true; },
+    potSeverity,
     roadPath, roadDistance, pathLength, driveTo, stopDriving,
     /** An NPC (Actor) gets on as the driver: no borrow, no meter (N.npcs uses enter too). */
     board(actor, v) { if (!actor || !v || (v.driver && v.driver !== actor)) return false; return enter(actor, v, { quiet: true }); },
@@ -2121,8 +3039,22 @@
     particleCount: () => parts.filter((p) => p.t < p.life).length,
   });
 
-  N.on('game:new', () => { try { seedParked(); } catch (e) { N.err('vehicles.seed', e); } });
-  N.on('game:continue', () => { try { if (!list.some((v) => v.alive && v.seeded)) seedParked(); } catch (e) { N.err('vehicles.seed', e); } });
+  N.on('game:new', () => { try { patchTraffic(); seedParked(); } catch (e) { N.err('vehicles.seed', e); } });
+  N.on('game:continue', () => { try { patchTraffic(); if (!list.some((v) => v.alive && v.seeded)) seedParked(); else seedHome(); healAge(); } catch (e) { N.err('vehicles.seed', e); } });
+  N.on('save:loaded', () => { try { healAge(); } catch (e) { N.err('vehicles.heal', e); } });
+  // a ladder unlock appears at home at once (Akka's Scooty, Chinnu's cycle, Bunty-anna's Hercules)
+  N.on('collectible:threshold', (d) => { if (d && d.series === 'total') { try { seedHome(); } catch (e) { N.err('vehicles.seedHome', e); } } });
+  // traffic riders: Scooties are college girls and aunties, Hercules students and boys
+  N.on('vehicle:spawn', (v) => { if (v && v.driver && v.T && v.T.bikeLook && /scooty|hercules|hero/.test(v.T.bikeLook)) Promise.resolve().then(() => { if (v.trafficOwned || v.tr) restyleRider(v); }).catch(() => {}); });
+  /** A3 after a load: a save made while riding along (or a heavy vehicle) never seats him at the wheel. */
+  function healAge() {
+    const p = N.player, v = p && p.vehicle;
+    if (!v || canDrive(v) || p.passenger || (N.missions && N.missions.active)) return;
+    exit(p, true);
+    // save.js re-spawned it from the save under him: a stray copy (a second family Chetak, a bus parked
+    // across the road) goes away; the seeded / hired / owned originals stay
+    if (!v.seeded && !v.hire && !v.owned && !v.special && !v.driver) remove(v);
+  }
 
   N.addSystem({
     id: 'vehicles', order: 30, runIn: ['play', 'dialogue', 'cutscene'],
@@ -2133,12 +3065,14 @@
       R.queue('actors', R.view.y1 + 400, drawParticles);
       if (glows.length) R.queue('light', 5, drawGlows);
     },
+    init() { patchTraffic(); },
     reset() {
       for (const v of list.slice()) { N.entities.remove(v); }
       list.length = 0;
       V.clearDecals();
       if (zoomOwned) { N.render.baseZoom = 1; zoomOwned = false; }
-      if (N.player) N.player.noCollide = false;
+      if (N.player) { N.player.noCollide = false; N.player.passenger = null; }
+      footWas = false; shoutT = 4; potFallAt = -1e9; noT = -1e9; noV = null;
       N.input.setLabel('run', null);
     },
   });

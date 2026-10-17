@@ -138,6 +138,11 @@
   function respectAt(x, y) { try { return N.respect && N.respect.at ? N.respect.at(x, y) : null; } catch (e) { return null; } }
   function respectNear(x, y, r) { try { return N.respect && N.respect.near ? N.respect.near(x, y, r) : null; } catch (e) { return null; } }
   function seasonsSet(name, on) { try { if (N.seasons && N.seasons.set) N.seasons.set(name, on); } catch (e) { N.err('story2.seasons', e); } }
+  /** The first vehicle type that exists (A3: Chinnu drives cycles, the Scooty and the auto only). */
+  function vtype(...ids) { const T = (N.vehicles && N.vehicles.TYPES) || {}; for (const id of ids) if (T[id]) return id; return 'cycle'; }
+  /** Debug / test aid: where the current step wants the player (set by steps that have no goto marker). */
+  const DBG = { target: null };
+  function dbgTarget(t) { DBG.target = t || null; }
   function money(paise, why) {
     const p = N.player; if (!p || !paise) return;
     if (paise > 0 && N.shops && has(N.shops, 'earn')) { try { N.shops.earn(paise, why || 'story'); return; } catch (e) { /* fall back */ } }
@@ -206,6 +211,8 @@
   async function game(api, id, params) {
     params = Object.assign({}, params || {}, TUNE.mg || {});
     const MG = N.minigames;
+    // a free-roam side game the player opened on the spot (minigames.js SIDE) finishes first
+    if (MG && has(MG, 'isOpen') && MG.isOpen() && !isFF(api)) await api.until(() => !MG.isOpen());
     if (id === 'match') {
       const ok = MG && (has(MG, 'has') ? MG.has('match') : false);
       if (!ok) {
@@ -492,11 +499,16 @@
       ctx.fillStyle = '#8ab8d8'; ctx.beginPath(); ctx.arc(c.x, c.y, 1.4 * k, 0, TAU); ctx.fill();
       void t0;
     },
-    idol(ctx, p, t) { // our Ganesh on the peacock lorry (silhouette, marigold garland)
-      const b = P3(p.x, p.y, 16), h = P3(p.x, p.y, 34), k = b.k;
-      ctx.fillStyle = '#e8a04a'; ctx.beginPath(); ctx.ellipse(b.x, (b.y + h.y) / 2, 6 * k, Math.max(4, (b.y - h.y) / 2 + 2 * k), 0, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.arc(h.x, h.y, 4.2 * k, 0, TAU); ctx.fill();
-      ctx.strokeStyle = '#e07a2e'; ctx.lineWidth = 1.2 * k; ctx.beginPath(); ctx.arc(b.x, (b.y + h.y) / 2, 5 * k, 0.2, Math.PI - 0.2); ctx.stroke();
+    idol(ctx, p, t) { // our Ganesh on the peacock lorry (seat, belly, head with ears and trunk, crown, marigold garland)
+      const seat = P3(p.x, p.y, 14), b = P3(p.x, p.y, 24), h = P3(p.x, p.y, 36), cr = P3(p.x, p.y, 44), k = b.k;
+      ctx.fillStyle = '#b22b2b'; ctx.beginPath(); ctx.ellipse(seat.x, seat.y, 10 * k, 5 * k, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = Math.max(1, 1.2 * k);
+      ctx.fillStyle = '#f0a868'; ctx.beginPath(); ctx.ellipse(b.x, b.y, 8.5 * k, 8 * k, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#f4b878'; ctx.beginPath(); ctx.ellipse(h.x - 7 * k, h.y, 4 * k, 5 * k, 0, 0, TAU); ctx.ellipse(h.x + 7 * k, h.y, 4 * k, 5 * k, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(h.x, h.y, 5.4 * k, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#f4b878'; ctx.lineWidth = Math.max(1.5, 2.4 * k); ctx.beginPath(); ctx.moveTo(h.x, h.y + 2 * k); ctx.quadraticCurveTo(h.x + 4 * k, h.y + 9 * k, h.x + 1 * k, h.y + 11 * k); ctx.stroke();
+      ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.moveTo(cr.x - 4 * k, cr.y + 4 * k); ctx.lineTo(cr.x, cr.y - 3 * k); ctx.lineTo(cr.x + 4 * k, cr.y + 4 * k); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#e07a2e'; ctx.lineWidth = Math.max(1.2, 2 * k); ctx.setLineDash([2 * k, 1.5 * k]); ctx.beginPath(); ctx.arc(b.x, b.y - 4 * k, 7 * k, 0.15, Math.PI - 0.15); ctx.stroke(); ctx.setLineDash([]);
       // gulal puffs
       for (let i = 0; i < 4; i++) { const ph = (t * 0.7 + i * 0.25) % 1, q = P3(p.x + Math.sin(i * 2.1 + t) * 14, p.y + Math.cos(i * 1.7) * 10, 4 + ph * 18); ctx.fillStyle = 'rgba(232,90,150,' + (0.45 * (1 - ph)).toFixed(3) + ')'; ctx.beginPath(); ctx.arc(q.x, q.y, (3 + ph * 7) * q.k, 0, TAU); ctx.fill(); }
     },
@@ -509,12 +521,23 @@
       if (N.render.lights && N.render.night > 0.05) N.render.lights.push({ x: p.x, y: p.y, r: 40, color: '#ffcf4a', intensity: 0.6 });
     },
     raincoat(ctx, p, t) { // a yellow raincoat ducking along the plaza (seen from the gallery)
-      const c = P3(p.x, p.y, 6), k = c.k;
-      ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.arc(c.x, c.y, 3.6 * k, 0, TAU); ctx.fill();
-      ctx.strokeStyle = 'rgba(242,194,48,' + (0.5 + 0.5 * Math.sin(t * 6)).toFixed(3) + ')'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(c.x, c.y, 8 * k, 0, TAU); ctx.stroke();
+      const c = P3(p.x, p.y, 6), k = Math.max(0.6, c.k);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(c.x + 1, c.y + 3 * k, 5 * k, 2.5 * k, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#f2c230'; ctx.strokeStyle = '#6a4a08'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(c.x - 5 * k, c.y + 3 * k); ctx.lineTo(c.x, c.y - 6 * k); ctx.lineTo(c.x + 5 * k, c.y + 3 * k); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(c.x, c.y - 5 * k, 2.6 * k, Math.PI, 0); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(242,194,48,' + (0.4 + 0.5 * Math.abs(Math.sin(t * 4))).toFixed(3) + ')'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(c.x, c.y - 1 * k, (9 + 3 * Math.sin(t * 4)) * k, 0, TAU); ctx.stroke();
+    },
+    dim(ctx, p) { // M11 parapet: the whole map dims
+      const R = N.render;
+      ctx.fillStyle = 'rgba(8,6,16,' + (p.alpha == null ? 0.55 : p.alpha) + ')';
+      ctx.fillRect(0, 0, R.W, R.H);
     },
     recLight(ctx, p, t) { // M11 parapet: every REC place lights up
-      const c = P3(p.x, p.y, 0), top = P3(p.x, p.y, 120), k = c.k;
+      const c = P3(p.x, p.y, 0), top = P3(p.x, p.y, 120), k = Math.max(0.5, c.k);
+      const gl = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, 22 * k);
+      gl.addColorStop(0, 'rgba(255,110,90,0.65)'); gl.addColorStop(1, 'rgba(255,110,90,0)');
+      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(c.x, c.y, 22 * k, 0, TAU); ctx.fill();
       const g = ctx.createLinearGradient(c.x, c.y, top.x, top.y);
       g.addColorStop(0, 'rgba(255,90,90,0.75)'); g.addColorStop(1, 'rgba(255,90,90,0)');
       ctx.strokeStyle = g; ctx.lineWidth = Math.max(2, 5 * k); ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(top.x, top.y); ctx.stroke();
@@ -673,7 +696,8 @@
     const r = o.r || TUNE.escortR;
     const speed = (o.speed || TUNE.walkSpeed) * TUNE.escortSpeed;
     pl.noRun = o.noRun !== false;
-    onEnd(api, () => { pl.noRun = false; });
+    onEnd(api, () => { pl.noRun = false; dbgTarget(null); });
+    dbgTarget(() => pos());
     const segLen = []; let total = 0;
     { let px = a0.x, py = a0.y; for (const q of pts) { const L = Math.hypot(q.x - px, q.y - py); segLen.push(L); total += L; px = q.x; py = q.y; } }
     let i = 0, job = null, far = 0, warned = false, fails = 0, last = nowT();
@@ -717,6 +741,7 @@
     }
     if (job) { stopNpc(key); job = null; }
     pl.noRun = false;
+    dbgTarget(null);
     return true;
   }
 
@@ -840,6 +865,7 @@
       n++;
       api.objective(o.label || 'The last photo: set Nanna\'s camera on the tin. Ten seconds.');
       const setId = api.marker ? api.marker(tinPt, { r: 14 }) : null;
+      dbgTarget(tinPt);
       await api.until(() => {
         if (mode() !== 'play') return false;
         if (Math.hypot(N.player.x - tinPt.x, N.player.y - tinPt.y) > 18) return false;
@@ -861,6 +887,7 @@
       const helpers = o.helpers || [];
       for (const h of helpers) { const ha = npcGet(h.key); if (ha) { const hb = free(ha.x + 50, ha.y + 30); walk(api, h.key, hb, { speed: 30 }); } }
       let grabbed = false;
+      dbgTarget(() => (grabbed ? frame : npcGet(stepper)));
       const ok = await api.until(() => {
         if (T.left <= 0) return 'late';
         const a = npcGet(stepper);
@@ -879,6 +906,7 @@
         return false;
       });
       T.stop();
+      dbgTarget(null);
       follow(stepper, null);
       for (const h of helpers) follow(h.key, null);
       if (ok === 'ok') return n;
@@ -975,13 +1003,14 @@
   function useAt(api, target, label, o) {
     o = o || {};
     let used = false;
+    dbgTarget(typeof target === 'function' ? target : placeOf(target));
     return api.until(() => {
       if (mode() !== 'play') return false;
       const q = placeOf(typeof target === 'function' ? target() : target);
       if (!q) return false;
       if (Math.hypot(N.player.x - q.x, N.player.y - q.y) > (o.r || 20)) return false;
       if (N.interact && N.interact.offer) N.interact.offer({ label: subst(label), priority: o.priority || 7, dist: 0, use: () => { used = true; } });
-      if (used) { used = false; return true; }
+      if (used) { used = false; dbgTarget(null); return true; }
       return false;
     });
   }
@@ -1113,6 +1142,8 @@
       if (rp) { const f = free(rp.x, rp.y, 'drive'); bus = m.vehicle('bus', f.x, f.y, rp.angle || 0, { driver: true, noEnter: true, route: '66G' }); }
       const busB = bus ? m.blip(bus, { color: '#b22b2b', icon: 'square', label: 'Bus 66G', route: true }) : null;
       m.objective(subst('Shake off Professor Pasha.'));
+      dbgTarget(bus && bus.alive ? bus : null);
+      onEnd(m, () => dbgTarget(null));
       const t0 = nowT();
       let tricked = false, boarded = false;
       await m.until(() => {
@@ -1131,6 +1162,7 @@
         return !a || Math.hypot(p.x - a.x, p.y - a.y) > TUNE.pashaShake;
       });
       if (busB) m.unblip(busB);
+      dbgTarget(null);
       // 7. back to the depot by 19:30 (no fail: being late changes the lines)
       music(m, 'day');
       await ride(m, 'mehdipatnam_bus_terminus', { mode: 'bus', label: 'BUS 66G → MEHDIPATNAM DEPOT', after: () => beside('immu') });
@@ -1273,7 +1305,7 @@
       ]);
       m.give('biryani_parcel', { name: 'Paradise biryani, family pack' });
       const cyc = near('paradise', 22, 16, 'drive');
-      if (cyc) m.vehicle('cycle', cyc.x, cyc.y, 0, { color: '#1d1d22' });
+      if (cyc) m.vehicle(vtype('hero_cycle', 'cycle'), cyc.x, cyc.y, 0, { color: '#1d1d22' });
       toast('Bunty-anna lent his cycle. An auto is fine too.', 2400);
       const T = softTimer(m, 'HOT PARCEL', TUNE.parcelSecs); T.beep = true;
       await go(m, 'home', 'Bring the parcel home before it goes cold.', { r: 30 });
@@ -1315,7 +1347,7 @@
         await ride(m, 'bus_stop_20', { mode: 'bus', label: 'BUS 10H → HITEC CITY', after: () => beside('immu') });
       } else {
         const c = near('friend_home', 20, 18, 'drive');
-        if (c) m.vehicle('cycle', c.x, c.y, 0, { color: '#2f6a3a' });
+        if (c) m.vehicle(vtype('hero_cycle', 'cycle'), c.x, c.y, 0, { color: '#2f6a3a' });
       }
       npc(m, 'abba', near('cyber_towers', 12, 18), { idle: 'stand', talk: false });
       const lateW = m.until(() => N.clock.minutes >= TUNE.tiffinBy && N.clock.minutes < 20 * 60);
@@ -1340,7 +1372,7 @@
       m.give('tomatoes_3kg', { name: '3 kg tomatoes in a cloth bag' });
       const pc = near('rythu_bazaar_erragadda', -24, 20, 'drive');
       let myCycle = N.player.vehicle && N.player.vehicle.T && N.player.vehicle.T.pedal ? N.player.vehicle : null;
-      if (!myCycle && pc) myCycle = m.vehicle(N.vehicles && N.vehicles.TYPES.hercules ? 'hercules' : 'cycle', pc.x, pc.y, 0, { color: '#24479a' });
+      if (!myCycle && pc) myCycle = m.vehicle(vtype('hercules_cycle', 'cycle'), pc.x, pc.y, 0, { color: '#24479a' });
       if (myCycle && !isFF(m)) await go(m, myCycle, 'Get on the cycle. Bunty-anna is revving.', { r: 18 }).then(() => m.until(() => N.player.vehicle === myCycle, { timeout: 30 }));
       const bag = cargo(m, 'TOMATOES');
       if (!isFF(m)) {
@@ -1471,7 +1503,7 @@
         const d = npc(m, ['kirana_kid', 'uncle', 'papad_man'][i], free(v.x - 20 - i * 10, v.y + 12), { key: 's2_dancer' + i, idle: 'stand', talk: false });
         if (d) { follow(d.key, v, { dist: 22 + i * 8, side: i % 2 ? 'left' : 'right', ride: false }); dancers.push(d.key); }
       }
-      if (isDone('pandal_duty') || F().pandal_duty_done || F().sa1_done) {
+      if (F().tiger_helps_lorry || (F().pandal_nights | 0) >= 4) {
         const tg = npc(m, 'tiger', near('playground_1', 20, 10), { idle: 'stand', talk: false });
         if (tg) { follow('tiger', lorryOf() || N.player, { dist: 26, side: 'left', ride: false }); bark('tiger', 'Push, push! Our laddu is smaller, but our arms are bigger!'); }
       }
@@ -1525,6 +1557,7 @@
       if (!isFF(m) && statue(7)) {
         await m.until(() => {
           const s = statue(n + 1);
+          dbgTarget(s);
           if (!s) { n = 7; return true; }
           if (Math.hypot(N.player.x - s.x, N.player.y - s.y) < TUNE.statueR) {
             n++;
@@ -1572,26 +1605,40 @@
     },
     onPass() { F().boats_open = true; if (F().lock_4 == null) { F().lock_4 = 1; F().riddle_4 = true; } },
   };
-  /** M10 W7: board the boat at the jetty, the boatman rows round the Buddha (autopilot); steering takes over. */
+  /** M10 W7 (systems §3.7; A3: boats are rowed by the boatman, Chinnu rides as a passenger through
+   *  N.vehicles.ride): board at the jetty, one loop round the Buddha at ~64 u, then back to the jetty. */
+  function waterNear(pt, r0) {
+    for (let r = r0 || 10; r < 220; r += 8) for (let a = 0; a < TAU; a += TAU / 24) {
+      const x = pt.x + Math.cos(a) * r, y = pt.y + Math.sin(a) * r;
+      if (N.world.isWater(x, y) && !N.world.collide(x, y, 8, 'boat').hit) return { x, y };
+    }
+    return null;
+  }
   async function boatToBuddha(m) {
     const p = N.player, bud = placeOf('buddha_statue'), jet = placeOf('lumbini_jetty');
     if (!bud || !jet || isFF(m) || !N.vehicles) return;
-    let wp = null;
-    for (let r = 10; r < 220 && !wp; r += 8) for (let a = 0; a < TAU && !wp; a += TAU / 24) {
-      const x = jet.x + Math.cos(a) * r, y = jet.y + Math.sin(a) * r;
-      if (N.world.isWater(x, y) && !N.world.collide(x, y, 8, 'boat').hit) wp = { x, y };
-    }
+    const wp = waterNear(jet);
     if (!wp) return;
     const boat = m.vehicle('boat', wp.x, wp.y, Math.atan2(bud.y - wp.y, bud.x - wp.x), {});
     if (!boat) return;
+    try { if (npcGet('boatman') && N.npcs.ride) N.npcs.ride('boatman', boat); } catch (e) { N.err('story2.boatman', e); }
+    if (!boat.driver) { const d = npc(m, 'boatman', wp, { idle: 'stand', talk: false }); if (d) { try { N.npcs.ride('boatman', boat); } catch (e) { /* ignore */ } } }
     m.objective(subst('Get in the boat.'));
+    dbgTarget(boat); onEnd(m, () => dbgTarget(null));
+    const board = () => {
+      try {
+        if (N.vehicles.ride && boat.driver) N.vehicles.ride(p, boat, { as: 'passenger', force: true, lock: true });
+        else N.vehicles.enter(p, boat);
+      } catch (e) { N.err('story2.boat', e); }
+    };
     await m.until(() => {
       if (p.vehicle === boat) return true;
-      if (Math.hypot(p.x - boat.x, p.y - boat.y) < 40 && N.interact && N.interact.offer) N.interact.offer({ label: 'Get in the boat', priority: 7, dist: 0, use: () => { try { N.vehicles.enter(p, boat); } catch (e) { N.err('story2.boat', e); } } });
+      if (Math.hypot(p.x - boat.x, p.y - boat.y) < 44 && N.interact && N.interact.offer) N.interact.offer({ label: 'Get in the boat', priority: 7, dist: 0, use: board });
       return false;
     });
+    dbgTarget(null);
     const imm = npcGet('immu'); if (imm) { imm.hidden = true; onEnd(m, () => { const a = npcGet('immu'); if (a) a.hidden = false; }); }
-    m.objective(subst('Round the Buddha. (Steer, or let the boatman row: E)'));
+    m.objective(subst('The boatman rows round the Buddha.'));
     const R0 = 64, pts = [];
     const a0 = Math.atan2(boat.y - bud.y, boat.x - bud.x);
     for (let i = 1; i <= 10; i++) {
@@ -1600,22 +1647,16 @@
       for (let k = 0; k < 6 && (!N.world.isWater(x, y) || N.world.collide(x, y, 9, 'boat').hit); k++) { x = bud.x + Math.cos(a) * (R0 + 16 * (k + 1)); y = bud.y + Math.sin(a) * (R0 + 16 * (k + 1)); }
       pts.push([x, y]);
     }
-    let auto = true, swept = 0, lastA = Math.atan2(boat.y - bud.y, boat.x - bud.x), toggled = false;
-    const row = () => { boat.autopilot = true; try { N.vehicles.driveTo(boat, [[boat.x, boat.y]].concat(pts), { speed: 40 * TUNE.escortSpeed, r: 22, road: false, warp: false, stop: true }); } catch (e) { N.err('story2.row', e); } };
-    row();
+    const playerDrives = boat.driver === p;
+    if (playerDrives) boat.autopilot = true;
+    try { N.vehicles.driveTo(boat, [[boat.x, boat.y]].concat(pts), { speed: 40 * TUNE.escortSpeed, r: 22, road: false, warp: false, stop: true }); } catch (e) { N.err('story2.row', e); }
     onEnd(m, () => { boat.autopilot = false; try { N.vehicles.stopDriving(boat); } catch (e) { /* ignore */ } });
+    let swept = 0, lastA = a0;
     await m.until(() => {
-      const I = N.input;
-      if (mode() === 'play' && I) {
-        const mv = I.move || { x: 0, y: 0 };
-        if (auto && Math.hypot(mv.x, mv.y) > 0.3) { auto = false; boat.autopilot = false; try { N.vehicles.stopDriving(boat); } catch (e) { /* ignore */ } toast('You steer. (E: let the boatman row)', 2000, 'boat'); }
-        if (N.interact && N.interact.offer) N.interact.offer({ label: auto ? 'Steer yourself' : 'Let the boatman row', priority: 6, dist: 0, use: () => { toggled = true; } });
-        if (toggled) { toggled = false; auto = !auto; if (auto) row(); else { boat.autopilot = false; try { N.vehicles.stopDriving(boat); } catch (e) { /* ignore */ } } }
-      }
       const a = Math.atan2(boat.y - bud.y, boat.x - bud.x);
-      if (Math.hypot(boat.x - bud.x, boat.y - bud.y) < 180) { swept += Math.abs(U.angleDiff(lastA, a)); }
+      if (Math.hypot(boat.x - bud.x, boat.y - bud.y) < 200) swept += Math.abs(U.angleDiff(lastA, a));
       lastA = a;
-      return swept > TAU * 0.8 || (auto && !boat.drive && swept > TAU * 0.5);
+      return swept > TAU * 0.8 || (!boat.drive && swept > TAU * 0.4);
     }, { timeout: 120 });
     m.boatV = boat;
   }
@@ -1623,13 +1664,14 @@
     const p = N.player, boat = m.boatV, jet = placeOf('lumbini_jetty');
     if (!boat || !jet || isFF(m)) { if (p.vehicle && N.vehicles) { try { N.vehicles.exit(p, true); } catch (e) { /* ignore */ } } return; }
     m.objective(subst('Back to the jetty.'));
-    boat.autopilot = true;
-    let w = null;
-    for (let r = 10; r < 200 && !w; r += 8) for (let a = 0; a < TAU && !w; a += TAU / 24) { const x = jet.x + Math.cos(a) * r, y = jet.y + Math.sin(a) * r; if (N.world.isWater(x, y) && !N.world.collide(x, y, 8, 'boat').hit) w = [x, y]; }
-    try { if (w) N.vehicles.driveTo(boat, [[boat.x, boat.y], w], { speed: 44 * TUNE.escortSpeed, r: 16, road: false, stop: true }); } catch (e) { /* ignore */ }
+    const w = waterNear(jet);
+    try { if (w) N.vehicles.driveTo(boat, [[boat.x, boat.y], [w.x, w.y]], { speed: 44 * TUNE.escortSpeed, r: 16, road: false, stop: true }); } catch (e) { /* ignore */ }
     await m.until(() => !boat.drive || Math.hypot(boat.x - jet.x, boat.y - jet.y) < 60, { timeout: 40 });
     boat.autopilot = false;
     if (p.vehicle === boat) { try { N.vehicles.exit(p, true); } catch (e) { N.err('story2.boat.exit', e); } }
+    if (p.vehicle) { try { N.vehicles.exit(p, true); } catch (e) { /* ignore */ } }
+    const f = free(jet.x, jet.y);
+    if (Math.hypot(p.x - jet.x, p.y - jet.y) > 80) p.teleport(f.x, f.y);
     const imm = npcGet('immu'); if (imm) { imm.hidden = false; beside('immu'); }
   }
 
@@ -1798,9 +1840,20 @@
       music(m, null);
       const tracks = (N.tape && N.tape.tracks) || [];
       let li = 0;
-      for (const tr of tracks) { const q = tr.place && placeOf(tr.place); if (q) prop(m, 's2:rec:' + li++, { x: q.x, y: q.y, draw: PAINT.recLight, layer: 'sky', margin: 400 }); }
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const tr of tracks) {
+        const q = tr.place && placeOf(tr.place);
+        if (!q) continue;
+        prop(m, 's2:rec:' + li++, { x: q.x, y: q.y, draw: PAINT.recLight, layer: 'screen', sort: 12, margin: 4000 });
+        x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y);
+      }
+      prop(m, 's2:dim', { pos: () => ({ x: N.render.cam.x, y: N.render.cam.y }), alpha: 0.55, draw: (ctx) => PAINT.dim(ctx, { alpha: 0.55 }), layer: 'screen', sort: 10 });
       const bm = placeOf('birla_mandir');
-      await m.cutscene([camSteps(bm || 'birla_mandir', 0.3, 2400), { type: 'wait', ms: 2600 }, { type: 'text', lines: [li + ' lights: every place on Side A, all at once.'], ms: 2600 }]);
+      // the camera pulls out until the whole Side A fits: the full map, dimmed, with every REC place lit
+      const fit = isFinite(x0) && N.render.W ? clamp(Math.min(N.render.W / (x1 - x0 + 500), N.render.H / (y1 - y0 + 400)), 0.08, 0.45) : 0.3;
+      const ctr = isFinite(x0) ? { x: (x0 + x1) / 2, y: (y0 + y1) / 2 } : bm;
+      await m.cutscene([camSteps(ctr || 'birla_mandir', fit, 2400), { type: 'wait', ms: 2600 }, { type: 'text', lines: [li + ' lights: every place on Side A, all at once.'], ms: 2600 }]);
+      unprop('s2:dim');
       await viewpoint(m, 'birla_mandir', { camera: false });
       await talk(m, [
         ['ammamma', 'Listen. What do you hear?'],
@@ -1877,8 +1930,11 @@
     m.objective(subst('Immu has vanished. Find him before the mothers find YOU. Ask the city: "four towers keep time"?'));
     const blips = locals.filter((L) => L.at).map((L) => m.blip(npcGet(L.key) || L.at, { color: '#f2c230', icon: 'dot', label: 'Ask', route: false, edge: false }));
     if (isFF(m)) answered = true;
+    dbgTarget(() => { const L = locals.find((q) => q.at && !asked.has(q.key)); return L ? npcGet(L.key) || L.at : null; });
+    onEnd(m, () => dbgTarget(null));
     await m.until(() => answered && !busy && !(N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen()));
     for (const b of blips) m.unblip(b);
+    dbgTarget(null);
     m.flag('m12_asked', true);
   }
   /** M12 step 3: from the first gallery, pan the camera and mark the yellow raincoat ducking into Café Noor-e-Iran. */
@@ -1887,7 +1943,7 @@
     if (!gal || !cafe || isFF(m)) return;
     const R = N.render, p = N.player;
     const plaza = placeOf('charminar_plaza') || gal;
-    const coat = { x: plaza.x, y: plaza.y, t: 0, draw: PAINT.raincoat, layer: 'actors', margin: 200 };
+    const coat = { x: plaza.x, y: plaza.y, t: 0, draw: PAINT.raincoat, layer: 'sky', sort: 4, margin: 200 };
     prop(m, 's2:raincoat', coat);
     const door = free(cafe.x, cafe.y + 10);
     const cam = { x: gal.x, y: gal.y, zoom: 0.6, rate: 3 };
@@ -1896,6 +1952,8 @@
     R.camOverride = cam;
     onEnd(m, () => { if (R.camOverride === cam) R.camOverride = null; p.controlsLocked = prevLock; });
     m.objective(subst('From the gallery: find the yellow raincoat. (Look around with the arrows; E to mark it.)'));
+    S2.gallery = { cam, coat };
+    onEnd(m, () => { S2.gallery = null; });
     let t0 = nowT(), last = t0, marked = false;
     await m.until(() => {
       const t = nowT(), dt = Math.min(0.1, t - last); last = t;
@@ -1907,12 +1965,12 @@
       if (t - t0 > TUNE.galleryFind) { cam.x = U.lerp(cam.x, coat.x, Math.min(1, dt * 1.5)); cam.y = U.lerp(cam.y, coat.y, Math.min(1, dt * 1.5)); }
       const dd = Math.hypot(cam.x - coat.x, cam.y - coat.y);
       if (dd < 90) {
+        if (!coat.seen) { coat.seen = true; toast('A yellow raincoat! E: mark it.', 2600, 'mark'); }
         if (I && I.pressed('action')) { I.consume('action'); marked = true; }
-        if (N.input.setActionLabel) N.input.setActionLabel('Mark it');
       }
       return marked;
     });
-    try { if (N.input.setActionLabel) N.input.setActionLabel(null); } catch (e) { /* ignore */ }
+    S2.gallery = null;
     sfx('ui_select');
     m.blip('irani_cafe_19', { color: '#f2c230', icon: 'star', label: 'The yellow raincoat went in here', pulse: true, route: true });
     toast('Marked: Café Noor-e-Iran. A yellow raincoat, the side door.', 2600);
@@ -1937,8 +1995,8 @@
     onEnd(m, () => variant('amma', null));
     const away = (d) => { const a = Math.atan2(p.y - cafe.y, p.x - cafe.x); return free(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d); };
     const ms = [
-      { key: 'amma', speed: TUNE.mumSpeed, at: away(110), lines: LV5.amma, barkT: 1 },
-      { key: 'ammi', speed: TUNE.ammiSpeed, at: (() => { const q = away(100); return free(q.x + 50, q.y - 40); })(), lines: LV5.ammi, barkT: 3.5 },
+      { key: 'amma', speed: TUNE.mumSpeed, at: away(110), lines: LV5.amma, first: '(level 5, the chappal raised) {FULL}! Stop RIGHT there!', barkT: 1 },
+      { key: 'ammi', speed: TUNE.ammiSpeed, at: (() => { const q = away(100); return free(q.x + 50, q.y - 40); })(), lines: LV5.ammi, first: '{nick}! I can see you behind that bangle shop!', barkT: 3.5 },
     ];
     for (const M0 of ms) { npc(m, M0.key, M0.at, { idle: 'stand', talk: false }); M0.job = null; M0.wait = false; M0.last = null; }
     const pa = npc(m, 'pasha', away(140), { idle: 'stand', talk: false });
@@ -1948,6 +2006,8 @@
     m.objective(subst('Get to Café Noor-e-Iran without getting caught.'));
     const cb = m.blip('irani_cafe_19', { color: PINK, icon: 'star', label: 'Café Noor-e-Iran', route: true });
     const ch = { t: TUNE.chappalEvery, fly: null, wind: 0, by: null };
+    dbgTarget(cafe); S2.chase = { ms, gates, ch };
+    onEnd(m, () => { dbgTarget(null); S2.chase = null; });
     prop(m, 's2:chappal', { pos: () => ch.fly, draw: PAINT.chappal, sort: 6, margin: 40 });
     let last = nowT(), t0 = last, pashaGone = false, result = null, whoCaught = null, shantT = 0, dodged = false;
     const caught = (by) => { whoCaught = by; result = 'caught'; };
@@ -1966,7 +2026,8 @@
       const z = respectAt(p.x, p.y);
       if (z && z.kind === 'mosque' && z.part === 'compound') {
         const g = (gates.find((q) => q.id === z.place) || {}).g || (z.gate && free(z.gate.x, z.gate.y));
-        if (g) { p.teleport(g.x, g.y); p.vx = p.vy = 0; }
+        const out = g && outsideCompound(g, p);
+        if (out) { p.teleport(out.x, out.y); p.vx = p.vy = 0; }
         if (t - shantT > 3) { shantT = t; bark('s2_watch_' + (z.place || ''), '*Shant ho ke aao, beta.*', { speaker: 'watchman', secs: 2.6 }); toast('*Shant ho ke aao, beta.* (Come back calm.)', 2000, 'shant'); }
       }
       const inRespect = !!respectAt(p.x, p.y);
@@ -1976,7 +2037,7 @@
         if (!a) continue;
         const d = Math.hypot(a.x - p.x, a.y - p.y);
         M0.barkT -= dt;
-        if (M0.barkT <= 0 && d < 260) { M0.barkT = 5 + Math.random() * 3; bark(M0.key, U.pick ? U.pick(M0.lines) : M0.lines[0], { secs: 2.6 }); }
+        if (M0.barkT <= 0 && d < 260) { M0.barkT = 5 + Math.random() * 3; const line = M0.first || (U.pick ? U.pick(M0.lines) : M0.lines[0]); M0.first = null; bark(M0.key, line, { secs: 2.8 }); }
         const nz = respectNear(a.x, a.y, TUNE.respectBuffer);
         if (inRespect || (nz && !(respectAt(a.x, a.y)))) {
           // pursuers never path within 40 u of a respect zone; at the gate they stop and wait, arms folded
@@ -2030,6 +2091,7 @@
       return false;
     });
     m.unblip(cb);
+    dbgTarget(null); S2.chase = null;
     for (const M0 of ms) { stopNpc(M0.key); }
     ch.fly = null;
     if (result === 'caught') {
@@ -2051,6 +2113,13 @@
     return result;
   }
 
+  /** The nearest walkable point just outside a compound (the forecourt or the street), seen from its gate. */
+  function outsideCompound(gate, from) {
+    let dx = gate.x - from.x, dy = gate.y - from.y, L = Math.hypot(dx, dy);
+    if (L > 0.5) { dx /= L; dy /= L; for (let d = 6; d <= 60; d += 6) { const x = gate.x + dx * d, y = gate.y + dy * d, q = respectAt(x, y); if ((!q || q.part !== 'compound') && N.world.isWalkable(x, y)) return { x, y }; } }
+    for (let r = 6; r <= 80; r += 6) for (let a = 0; a < TAU; a += TAU / 16) { const x = gate.x + Math.cos(a) * r, y = gate.y + Math.sin(a) * r, q = respectAt(x, y); if ((!q || q.part !== 'compound') && N.world.isWalkable(x, y)) return { x, y }; }
+    return null;
+  }
   const M12 = {
     id: 'chand_raat', kind: 'main', requires: ['last_bell'],
     giver: { place: 'home', r: 16 },
@@ -2282,12 +2351,16 @@
         for (let i = 0; i <= 24; i++) { const q = pt((i / 24) * reach); if (i) ctx.lineTo(q.x, q.y); else ctx.moveTo(q.x, q.y); }
         ctx.stroke();
         for (let i = 0; i < shown; i++) {
-          const u = ((i + 1) / Math.max(1, n)) * reach * 0.98, q = pt(u), k = q.k, s = 5.5 * k;
+          const u = ((i + 1) / Math.max(1, n)) * reach * 0.98, q = pt(u), k = Math.max(0.7, q.k), s = 9 * k;
           const sway = Math.sin(t * 2 + i) * 0.25;
           ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(sway);
+          ctx.fillStyle = 'rgba(255,240,200,0.25)'; ctx.beginPath(); ctx.arc(0, 0, s * 1.5, 0, TAU); ctx.fill();
           ctx.fillStyle = KITE_COLORS[i % 12];
           ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(s * 0.8, 0); ctx.lineTo(0, s); ctx.lineTo(-s * 0.8, 0); ctx.closePath(); ctx.fill();
-          ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.stroke();
+          ctx.strokeStyle = 'rgba(20,10,10,0.55)'; ctx.lineWidth = 1; ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(0, s); ctx.moveTo(-s * 0.8, 0); ctx.lineTo(s * 0.8, 0); ctx.stroke();
+          ctx.strokeStyle = KITE_COLORS[(i + 5) % 12]; ctx.lineWidth = 1.4;
+          ctx.beginPath(); ctx.moveTo(0, s); for (let j = 1; j <= 5; j++) ctx.lineTo(Math.sin(t * 5 + j + i) * 2.5, s + j * 3.2 * k); ctx.stroke();
           ctx.restore();
         }
         if (N.render.lights) N.render.lights.push({ x: top.x, y: top.y, r: 120, color: '#fff2c0', intensity: 0.7 });
@@ -2306,10 +2379,12 @@
         const x = W / 2 + Math.cos(ang) * W * 0.18, y0 = H * 0.2;
         const y = y0 - Math.min(H * 0.17, el * 3.2);
         const blink = Math.floor(el * 2.2) % 2 === 0;
-        ctx.globalAlpha = clamp(1 - el / 30, 0.2, 1);
-        ctx.fillStyle = blink ? '#ff5050' : '#ffffff';
-        ctx.beginPath(); ctx.arc(x, y, blink ? 1.8 : 1.3, 0, TAU); ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.arc(x, y, 5, 0, TAU); ctx.fill();
+        ctx.globalAlpha = clamp(1 - el / 40, 0.3, 1);
+        const gl = ctx.createRadialGradient(x, y, 0, x, y, 12);
+        gl.addColorStop(0, blink ? 'rgba(255,90,90,0.55)' : 'rgba(255,255,255,0.45)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, y, 12, 0, TAU); ctx.fill();
+        ctx.fillStyle = blink ? '#ff4040' : '#ffffff';
+        ctx.beginPath(); ctx.arc(x, y, blink ? 2.6 : 2, 0, TAU); ctx.fill();
         ctx.globalAlpha = 1;
       },
     });
@@ -2387,6 +2462,9 @@
     const gh = near('gulzar_houz', 0, 20) || placeOf('gulzar_houz');
     p.teleport(gh.x, gh.y);
     if (N.render.snapCamera) N.render.snapCamera();
+    const rxAt = near('gulzar_houz', 44, 30, 'drive'), chAt = near('gulzar_houz', -40, 30, 'drive');
+    if (rxAt) sc.vehicle('bunty_rx100', rxAt.x, rxAt.y, 0, { noEnter: true });
+    if (chAt) sc.vehicle('family_chetak', chAt.x, chAt.y, Math.PI, { noEnter: true });
     npc(sc, 'bunty', near('gulzar_houz', 30, 26, 'drive'), { idle: 'stand', talk: false });
     npc(sc, 'nanna', near('gulzar_houz', -24, 22), { idle: 'stand', talk: false });
     follow('nanna', p, { dist: 22, side: 'left', ride: false });
@@ -2806,8 +2884,7 @@
         const rings = raceRoute(R);
         if (!rings.length) { toast('No road for this race today.'); return; }
         const s0 = free(rings[0].x, rings[0].y, 'drive');
-        const T = N.vehicles && N.vehicles.TYPES || {};
-        const type = R.n >= 3 ? (T.scooty ? 'scooty' : T.hercules ? 'hercules' : 'cycle') : (T.hercules && R.n === 2 ? 'hercules' : 'cycle');
+        const type = R.n >= 3 ? vtype('scooty', 'hercules_cycle', 'cycle') : vtype(R.n === 2 ? 'hercules_cycle' : 'hero_cycle', 'cycle');
         const mine = m.vehicle(type, s0.x - 14, s0.y + 10, Math.atan2(rings[0].y - s0.y, rings[0].x - s0.x), { color: '#9a2424' });
         npc(m, 'bunty', free(s0.x + 14, s0.y - 10, 'drive'), { vehicle: 'bunty_rx100', talk: false });
         if (R.line) { await m.say('bunty', R.line); if (R.n === 1) buntyWord('the smell of a new RX100'); }
@@ -3156,6 +3233,39 @@
     get panel() { return UI.panel ? { label: UI.panel.el.querySelector('.s2-card') && UI.panel.el.querySelector('.s2-card').getAttribute('aria-label') } : null; },
     lockState: null,
     get lockResult() { return S2.lockResult; },
+    /** Test aid: what the current step wants (goal markers, a step target, the offer on ACTION, panels...). */
+    probe() {
+      const p = N.player, out = { mode: mode(), mission: N.missions && N.missions.active ? N.missions.active.id : null, scene: SC.cur ? SC.cur.id : null };
+      out.objective = N.hud && N.hud.objectiveText || null;
+      let goals = [];
+      try { goals = (N.missions.markers() || []).filter((q) => q.kind === 'goal').map((q) => ({ x: q.x, y: q.y })); } catch (e) { goals = []; }
+      if (SC.cur) for (const mk of SC.cur.markers.values()) { const q = placeOf(mk.target); if (q) goals.push({ x: q.x, y: q.y, r: mk.r }); }
+      let t = DBG.target; if (typeof t === 'function') { try { t = t(); } catch (e) { t = null; } }
+      out.target = t && isFinite(t.x) ? { x: t.x, y: t.y } : goals.length ? goals[goals.length - 1] : null;
+      out.goals = goals;
+      out.dist = out.target ? Math.hypot(p.x - out.target.x, p.y - out.target.y) : null;
+      out.offer = N.input ? N.input.actionLabel : null;
+      out.rec = N.tape && N.tape.recState ? N.tape.recState.phase : null;
+      out.panel = UI.panel ? (UI.panel.el.className || 'panel') : null;
+      out.dialog = !!(N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen());
+      out.cut = !!(N.menus && N.menus.inCutscene);
+      out.mg = N.minigames ? N.minigames.active || null : null;
+      out.player = { x: Math.round(p.x), y: Math.round(p.y), level: p.level || null, vehicle: p.vehicle ? p.vehicle.type : null };
+      out.wanted = (N.wanted && N.wanted.level) | 0;
+      out.counter = N.tape ? N.tape.counter : null; out.paused = N.tape ? !!N.tape.paused : null;
+      out.date = N.calendar ? N.calendar.label() + ' ' + N.clock.label() : null;
+      out.gallery = S2.gallery ? { cam: { x: S2.gallery.cam.x, y: S2.gallery.cam.y }, coat: { x: S2.gallery.coat.x, y: S2.gallery.coat.y } } : null;
+      out.chase = !!S2.chase;
+      out.lock = N.story2.lockState;
+      out.errors = (N.errors || []).length;
+      return out;
+    },
+    /** Test aid: move the player (and the vehicle he rides) to a walkable point near (x, y). */
+    tp(x, y) {
+      const p = N.player, v = p.vehicle;
+      if (v) { const f = free(x, y, v.T && v.T.mode === 'boat' ? 'boat' : 'drive', 30); v.x = f.x; v.y = f.y; v.vx = v.vy = 0; v.speed = 0; v.okX = null; p.x = f.x; p.y = f.y; return f; }
+      const f = free(x, y, 'walk', 30); p.teleport(f.x, f.y); return { x: p.x, y: p.y };
+    },
     state() {
       const f = F();
       return {

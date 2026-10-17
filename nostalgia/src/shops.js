@@ -32,6 +32,10 @@
  *     hailAuto({yadagiri, stand}) -> bool (horn on foot near a road does this), autoFare(x0, y0, x1, y1)
  *       -> {meter, ask, dist} (paise), autoRide(destId | {x, y, name}, {price}) -> Promise
  *     callNanna() (STD, 45 finds) / nannaWhy() -> reason|null, travelTo(dest, {mode, minutes}) -> Promise (VHS ▶▶ + teleport)
+ *     A3 (amendments): callBunty() / buntyWhy() / buntyJob — Bunty-anna's RX100 pillion (60 finds; STD row
+ *       "Call Bunty-anna", or "Pillion with Bunty-anna" at chai_bandi_3 11-16 h / ameerpet_coaching 18-21 h);
+ *       rideVehicle(v) — a traffic auto / taxi with its driver as a passenger with the fare card (vehicles.js
+ *       offers "Ride auto (fare)"). Cycle hire: kid / big black Hero / Hercules (₹4 an hour, cap ₹12) / ladies.
  *     ffwd(minutes, {ms, label, mid}) -> Promise   pass game time with the VHS ▶▶ look
  *   Services: stdSave(), callHome(), haircut(placeId), trainRide(placeId, {secs}) -> Promise,
  *     viewpoint(id, x, y, {zoom, secs}), fortune(x, y) -> text (weighing machine),
@@ -178,7 +182,7 @@
     r: 18, rBig: 30, quickHold: 0.5, lineCooldown: 10, toffeeChance: 0.3, khaataLimit: 1000, khaataLimitL5: 2000,
     busPrice: 300, busSpeed: 115, busFxMs: 2500, autoFirst: 600, autoPerKm: 400, mapKm: 430, autoAsk: 1000, autoNight: 1.5,
     autoSpeed: 135, autoFxMs: 3000, autoReach: 40, autoSpawnR: 260, autoTimeout: 14, hireHour: 300, hireCap: 1000, hireLate: 300, hireLost: 1600,
-    puncture: 200, cinemaFloor: 1000, cinemaBalcony: 2500, prasads: 5000, boat: 1000, boatSecs: 120, trainSecs: 45, nannaDelay: 20,
+    puncture: 200, cinemaFloor: 1000, cinemaBalcony: 2500, prasads: 5000, boat: 1000, boatSecs: 120, trainSecs: 45, nannaDelay: 20, buntyDelay: 15,
     familyRoomSecs: 10, haircutSecs: 8, champiSecs: 6, punctureSecs: 2, hideSecs: 8, lobbySecs: 10,
   };
 
@@ -826,6 +830,7 @@
       { id: 'call_home', name: 'Call home', sub: 'Ammamma picks up · a proverb, then a hint', price: 100, act: (c) => callHome(c) },
       { id: 'call_yadagiri', name: "Call Yadagiri-anna's auto stand", sub: 'his auto comes to the nearest road', price: 100, when: () => (wanted() >= 3 ? 'He won\'t come during a chase' : S.hail ? 'An auto is already coming' : null), act: (c) => { closeShop(); setTimeout(() => hailAuto({ yadagiri: true, called: true }), 600); return { close: true, msg: '"Five minutes, *tammudu*." The line crackles.' }; } },
         { id: 'call_nanna', name: 'Call Nanna', sub: 'pillion on the Chetak to any place you know', price: 100, hidden: () => !(finds() >= 45 || (N.flags && N.flags.unlock_call_nanna)), when: () => nannaWhy(), act: () => callNanna() },
+      { id: 'call_bunty', name: 'Call Bunty-anna', sub: 'pillion on the RX100 (helmet!) to any place you know', price: 100, hidden: () => !buntyUnlocked(), when: () => buntyWhy(), act: () => callBunty() },
       { id: 'call_vani', name: "Call Deccan Vani's request line", sub: 'a farmaish for a found song', price: 100, hidden: () => cassettes() < 3, act: () => callVani() },
       { id: 'call_kurnool', name: 'Trunk call to Kurnool (Immu\'s Nani)', sub: () => (mins() >= hm('21:00') ? 'night rate' : '"Come at night, the rate is less."'), price: () => (mins() >= hm('21:00') ? 200 : 500), hidden: () => !isDone('right_right'), act: () => callKurnool() },
     ];
@@ -835,7 +840,8 @@
   function hireRows() {
     return [
       { id: 'kid_cycle', name: "Kid's cycle (small frame)", sub: '₹3 an hour, pay when you return', price: 0, house: true, hidden: () => !!S.hire, when: (c) => hireWhy(c), act: (c) => hireCycle(c.id, 'kid_cycle') },
-      { id: 'big_cycle', name: 'Big cycle (*kainchi* style)', sub: '₹3 an hour, pay when you return', price: 0, hidden: () => !!S.hire, when: (c) => hireWhy(c), act: (c) => hireCycle(c.id, 'cycle') },
+      { id: 'big_cycle', name: 'Big black Hero (*kainchi* style)', sub: '₹3 an hour · carrier, rod brakes, the bell', price: 0, hidden: () => !!S.hire, when: (c) => hireWhy(c), act: (c) => hireCycle(c.id, 'hero_cycle') },
+      { id: 'big_cycle_hercules', name: 'Hercules (the sporty one)', sub: '₹4 an hour · fat tyres, flat handle', price: 0, hidden: () => !!S.hire, when: (c) => hireWhy(c), act: (c) => hireCycle(c.id, 'hercules_cycle') },
       { id: 'ladies_cycle', name: 'Ladies cycle with basket', sub: '₹3 an hour · gentle on cargo', price: 0, hidden: () => !!S.hire, when: (c) => hireWhy(c), act: (c) => hireCycle(c.id, 'ladiescycle') },
       { id: 'return', name: 'Return the cycle', sub: () => (S.hire ? 'pay ' + rs(hireFee(S.hire, absMin())) + ' for ' + hireHours() : ''), price: 0, hidden: () => !S.hire, when: (c) => returnWhy(c), act: (c) => returnCycle(c.id) },
       { id: 'late', name: 'Pay the old hire (the boy fetched the cycle)', sub: () => rs(S.lateFee), price: () => S.lateFee, hidden: () => !(S.lateFee > 0), act: () => { S.lateFee = 0; return 'All square. "Next time, return it."'; } },
@@ -1077,7 +1083,7 @@
     render();
     if (opts.focus) { const i = UI.items.findIndex((it) => it.row && it.row.id === opts.focus); if (i >= 0) setSel(i); }
     else { const i = UI.items.findIndex((it) => it.row && it.row.house && !it.why); if (i >= 0) setSel(i); }
-    if (opts.vehicle && def.kind === 'cycle_rent') { const want = opts.vehicle.type === 'ladiescycle' ? 'ladies_cycle' : opts.vehicle.type === 'cycle' ? 'big_cycle' : 'kid_cycle'; const i = UI.items.findIndex((it) => it.row && it.row.id === want); if (i >= 0) setSel(i); }
+    if (opts.vehicle && def.kind === 'cycle_rent') { const want = { ladiescycle: 'ladies_cycle', cycle: 'big_cycle', hero_cycle: 'big_cycle', hercules_cycle: 'big_cycle_hercules' }[opts.vehicle.type] || 'kid_cycle'; const i = UI.items.findIndex((it) => it.row && it.row.id === want); if (i >= 0) setSel(i); }
     sfx('shop_bell');
     N.emit('shop:open', { place: def.id, kind: def.kind });
     return true;
@@ -1093,6 +1099,9 @@
     if (UI.pushed) { UI.pushed = false; if (N.state.has ? N.state.has('dialogue') : N.state.mode === 'dialogue') N.state.remove('dialogue'); }
     if (N.input) { N.input.consume('action'); N.input.consume('pause'); N.input.consume('horn'); }
     if (!silent) sfx('ui_back');
+    // a ride card (auto / taxi / Nanna / Bunty-anna) closed without choosing: the driver waits, the card
+    // stays shut until he asks again (hailTick)
+    if (def && def.virtual && /^(auto|nanna|bunty)_ride$/.test(def.kind || '')) for (const key of ['hail', 'nannaJob', 'buntyJob']) { const j = S[key]; if (j && !j.riding) j.dismissed = true; }
     N.emit('shop:close', { place: def && def.id });
     return true;
   }
@@ -1745,6 +1754,70 @@
     if (sun ? m < hm('07:00') || m > hm('21:30') : m < hm('18:30') || m > hm('21:30')) return sun ? 'Nanna comes 07:00–21:30 on Sundays' : 'Nanna is at the current office till 18:30';
     return null;
   }
+  /* ---- A3: Bunty-anna's RX100, pillion only (the ladder's 60 finds: unlock_rx100) */
+  const BUNTY_SPOTS = { chai_bandi_3: ['11:00', '16:00'], ameerpet_coaching: ['18:00', '21:00'] };
+  function buntyUnlocked() { const F = N.flags || {}; return !!(F.unlock_rx100 || F.unlock_bunty_pillion || F.bunty_rx100 || finds() >= 60); }
+  function buntyWhy() {
+    if (used('bunty')) return 'Once a day. "Petrol is not free, *mamu*."';
+    if (S.bunty || S.buntyJob || S.hail || S.nanna) return 'Someone is already on the way';
+    if (wanted() >= 3) return 'Bunty-anna: "Police? *Nakko*, *mamu*."';
+    const m = mins(), sun = dow() === 0 || !!(N.flags && N.flags.holiday);
+    if (sun ? m < hm('09:00') || m > hm('21:30') : m < hm('16:00') || m > hm('21:30')) return sun ? 'Bunty-anna sleeps till nine on Sundays' : 'Bunty-anna is in college till four';
+    return null;
+  }
+  function callBunty() {
+    use('bunty');
+    closeShop(true);
+    sfx('std_ring');
+    playCall([{ s: 'you', t: 'Bunty-anna? Can you pick me up? ...On the RX100?' }, { s: 'bunty', t: '*Tension nakko*, I\'m coming. Word of the day: nostalgia. Means "waiting for Bunty". Fifteen minutes.' }]).then(() => { S.bunty = { t: TUNE.buntyDelay }; });
+    return { close: true };
+  }
+  function buntyArrive(near) {
+    const look = N.npcs && N.npcs.look ? (() => { try { return N.npcs.look('bunty'); } catch (e) { return null; } })() : null;
+    const job = summon({ type: 'bunty_rx100', look, bunty: true, near: !!near });
+    if (!job) { toast('Bunty-anna couldn\'t find the road. Try another booth.', 2400); return null; }
+    job.wait = 30;
+    S.buntyJob = job;
+    toast('*Dhug-dhug-DHOOM.* Bunty-anna\'s RX100 rattles round the corner.', 2400);
+    return job;
+  }
+  function buntyRows() {
+    const job = S.buntyJob, rows = [];
+    for (const d of destinations()) rows.push({ id: 'to_' + d.id, name: d.name, sub: d.top ? 'the mission' : 'pillion, free · hold tight', price: 0, go: 'Go', mission: !!d.top, act: () => { autoGo(job, d, 0); return { close: true }; } });
+    rows.push({ id: 'nakko', name: 'Never mind, Bunty-anna', price: 0, go: 'Bye', act: () => { autoLeave(job, 'Bunty-anna: "Okay, *mamu*. Nostalgia means \'never mind\'."'); return { close: true }; } });
+    return rows;
+  }
+  /** Bunty's spots (his college chai in the day, the Java class in the evening): "Pillion with Bunty-anna". */
+  function buntySpotTick() {
+    const p = N.player;
+    if (!p || p.vehicle || p.controlsLocked || S.ff || !buntyUnlocked() || N.state.mode !== 'play') return;
+    for (const id in BUNTY_SPOTS) {
+      const pl = N.places[id]; if (!pl) continue;
+      const dist = Math.hypot(pl.x - p.x, pl.y - p.y);
+      if (dist > (pl.r || 20) + 24) continue;
+      const hrs = BUNTY_SPOTS[id], m = mins();
+      if (m < hm(hrs[0]) || m > hm(hrs[1]) || dow() === 0) continue;
+      if (used('bunty') || S.bunty || S.buntyJob || S.hail || S.nanna || wanted() >= 3) continue;
+      N.interact.offer({ label: 'Pillion with Bunty-anna', priority: 1, dist, use: () => { use('bunty'); toast('Bunty-anna: "Oye, *mamu*! Hop on. Helmet. HELMET."', 2400); buntyArrive(true); } });
+      return;
+    }
+  }
+  /**
+   * A3: ride a working auto (or taxi) from the traffic as a passenger. vehicles.js offers "Ride auto
+   * (fare)" next to a traffic auto with its driver; the auto card opens with the meter and "das upar".
+   */
+  function rideVehicle(v) {
+    const p = N.player;
+    if (!v || !v.alive || !p || p.vehicle || N.state.mode !== 'play' || UI.open || S.hail || S.ff || S.ride) return false;
+    if (wanted() >= 3) { toast('The driver sees the chase... "Pochaiah is my cousin\'s friend. *Nakko.*"', 2800); return false; }
+    if (N.traffic && typeof N.traffic.release === 'function') { try { N.traffic.release(v); } catch (e) { N.err('shops.release', e); } }
+    if (N.vehicles && N.vehicles.stopDriving) N.vehicles.stopDriving(v);
+    v.controller = null; v.noEnter = true; v.summoned = true;
+    const job = { v, pick: { x: v.x, y: v.y }, t: 0, arrived: true, yada: v.type === 'yadagiri_auto', nanna: false, taxi: !!(v.taxi || (v.T && v.T.cls === 'car')), wait: 25 };
+    S.hail = job;
+    N.emit('auto:hail', { x: p.x, y: p.y, vehicle: v, yadagiri: job.yada, flagged: true });
+    return openAuto(job) || true;
+  }
   function callNanna() {
     use('nanna');
     closeShop(true);
@@ -1951,12 +2024,12 @@
     const p = N.player;
     const V = N.vehicles;
     const dist = V && V.roadDistance ? V.roadDistance(p.x, p.y, dest.x, dest.y) : Math.hypot(dest.x - p.x, dest.y - p.y) * 1.3;
-    const speed = o.mode === 'bus' ? TUNE.busSpeed : o.mode === 'nanna' ? 128 : TUNE.autoSpeed;
+    const speed = o.mode === 'bus' ? TUNE.busSpeed : o.mode === 'nanna' ? 128 : o.mode === 'bunty' ? 150 : TUNE.autoSpeed;
     const minutes = o.minutes != null ? o.minutes : Math.max(2, Math.round(dist / speed));
     if (UI.open) closeShop(true);
     if (p.vehicle && V) V.exit(p, true);
     // another ride: an auto (or Nanna) still waiting at the kerb gives up
-    for (const key of ['hail', 'nannaJob']) { const j = S[key]; if (j && !j.riding && j.v !== o.vehicle) autoLeave(j); }
+    for (const key of ['hail', 'nannaJob', 'buntyJob']) { const j = S[key]; if (j && !j.riding && j.v !== o.vehicle) autoLeave(j); }
     return ffwd(minutes, { ms: o.mode === 'bus' ? TUNE.busFxMs : TUNE.autoFxMs, label: o.label, mid: () => arrive(dest, o) }).then(() => {
       N.emit('travel', { mode: o.mode || 'auto', to: dest.id || null, minutes });
       return true;
@@ -1995,6 +2068,11 @@
     title: 'Auto-rickshaw', verb: 'Auto', keeper: 'auto_driver', icon: 'auto', hours: [['00:00', '24:00']], virtual: true,
     lines: ['*Kidhar jaana?*', 'Meter? Meter is sleeping. *Das upar*, chalo.', 'Sit, sit. Mind the rod.'],
     rowsFn: (def) => autoRows(def),
+  };
+  KINDS.bunty_ride = {
+    title: "Bunty-anna's RX100", verb: 'Bunty', keeper: 'bunty', icon: 'cycle', hours: [['00:00', '24:00']], virtual: true,
+    lines: ['Helmet. Always. Sit BEHIND me, *mamu*.', 'Word of the day: nostalgia. Means "pillion". *Kidhar?*', 'Hold my jacket, not my hair.'],
+    rowsFn: () => buntyRows(),
   };
   KINDS.nanna_ride = {
     title: "Nanna's Chetak", verb: 'Nanna', keeper: 'nanna', icon: 'cycle', hours: [['00:00', '24:00']], virtual: true,
@@ -2095,14 +2173,17 @@
     if (!job || !job.v) return;
     job.riding = true;
     N.emit('auto:ride', { to: d.id, price, yadagiri: !!job.yada });
-    travelTo(d, { mode: job.nanna ? 'nanna' : 'auto', vehicle: job.v, label: (job.nanna ? 'NANNA' : 'AUTO') + ' → ' + d.name }).then(() => {
-      if (job.nanna) {
+    travelTo(d, { mode: job.nanna ? 'nanna' : job.bunty ? 'bunty' : 'auto', vehicle: job.v, label: (job.nanna ? 'NANNA' : job.bunty ? 'BUNTY-ANNA' : job.taxi ? 'TAXI' : 'AUTO') + ' → ' + d.name }).then(() => {
+      if (job.bunty) {
+        toast('Bunty-anna: "Reached! Don\'t tell Mummy. Word of the day: nostalgia. Means a free ride."', 3200);
+      } else if (job.nanna) {
         const l = wanted();
         if (l >= 1 && l <= 3) { meterDown(3, 'nanna'); toast('Nanna: "Your Amma doesn\'t need to know." ...She will know.', 3600); }
         else toast('Nanna: "Go. Come home before the street lights."', 2800);
       } else toast((price ? rs(price) + '. ' : '') + (note ? plain(note) : '"*Chalo*, here you are."'), 3000);
       if (S.hail === job) S.hail = null;
       if (S.nannaJob === job) S.nannaJob = null;
+      if (S.buntyJob === job) S.buntyJob = null;
     });
   }
   function autoLeave(job, line) {
@@ -2111,10 +2192,13 @@
     if (job.v && job.v.alive) depart(job.v);
     if (S.hail === job) S.hail = null;
     if (S.nannaJob === job) S.nannaJob = null;
+    if (S.buntyJob === job) S.buntyJob = null;
   }
   function openAuto(job) {
     if (!job || !job.v || !job.v.alive) return false;
-    const def = { id: job.nanna ? 'nanna' : 'auto', kind: job.nanna ? 'nanna_ride' : 'auto_ride', K: job.nanna ? KINDS.nanna_ride : KINDS.auto_ride, place: { x: job.v.x, y: job.v.y }, name: job.nanna ? "Nanna's Chetak" : job.yada ? "Yadagiri-anna's auto" : 'Auto-rickshaw', x: job.v.x, y: job.v.y, r: 30, virtual: true };
+    const kind = job.nanna ? 'nanna_ride' : job.bunty ? 'bunty_ride' : 'auto_ride';
+    const def = { id: job.nanna ? 'nanna' : job.bunty ? 'bunty' : 'auto', kind, K: KINDS[kind], place: { x: job.v.x, y: job.v.y }, name: job.nanna ? "Nanna's Chetak" : job.bunty ? "Bunty-anna's RX100" : job.yada ? "Yadagiri-anna's auto" : job.taxi ? 'Taxi' : 'Auto-rickshaw', x: job.v.x, y: job.v.y, r: 30, virtual: true };
+    if (job.taxi) def.K = Object.assign({}, KINDS.auto_ride, { title: 'Taxi', lines: ['*Kahan jaana*, *beta*? Meter is honest. Mostly.', 'Sit at the back. Don\'t touch the trunks.'] });
     if (job.yada) def.K = Object.assign({}, KINDS.auto_ride, { keeper: 'yadagiri', lines: ['*Meter nakko*, for you *paanch*.', 'Exact change, *tammudu*. Always exact change.'] });
     return openVirtual(def);
   }
@@ -2171,7 +2255,7 @@
     if (!v) v = V.spawn(o.type || 'auto', st.x, st.y, st.angle, { driver: { look: o.look || N.people.randomLook(null, 'man'), npc: true }, owned: true, label: o.label || null });
     if (!v) return null;
     v.noEnter = true; v.summoned = true;
-    const job = { v, pick, t: 0, arrived: false, yada: !!o.yada, nanna: !!o.nanna, wait: 25 };
+    const job = { v, pick, t: 0, arrived: false, yada: !!o.yada, nanna: !!o.nanna, bunty: !!o.bunty, wait: 25 };
     const go = V.driveTo ? V.driveTo(v, pick, { r: 16, timeout: TUNE.autoTimeout, speed: o.near ? 40 : 85 }) : Promise.resolve(false);
     go.then((ok) => {
       if (!v.alive) return;
@@ -2216,7 +2300,7 @@
   }
   function hailTick(dt) {
     const p = N.player;
-    for (const key of ['hail', 'nannaJob']) {
+    for (const key of ['hail', 'nannaJob', 'buntyJob']) {
       const job = S[key];
       if (!job) continue;
       if (!job.v || !job.v.alive) { S[key] = null; continue; }
@@ -2225,10 +2309,20 @@
       const d = Math.hypot(job.v.x - p.x, job.v.y - p.y);
       if (!job.arrived) { if (d > 700 || job.t > 40) { autoLeave(job); } continue; }
       job.wait -= dt;
-      if (job.wait <= 0 || d > 260) { autoLeave(job, key === 'nannaJob' ? 'Nanna waited, then went for milk.' : null); continue; }
+      if (job.wait <= 0 || d > 260) { autoLeave(job, key === 'nannaJob' ? 'Nanna waited, then went for milk.' : key === 'buntyJob' ? 'Bunty-anna waited, then went to Ameerpet.' : null); continue; }
+      // closed with Escape: the card doesn't pop straight back up. It reopens when he walks off and comes
+      // back, or with ACTION next to the vehicle (until the driver gives up waiting)
+      if (job.dismissed) {
+        if (d > 60) job.dismissed = false;
+        else if (d < 46 && !p.vehicle && N.state.mode === 'play' && !UI.open && N.interact && N.interact.offer) {
+          N.interact.offer({ label: job.nanna ? 'Nanna is waiting' : job.bunty ? 'Bunty-anna is waiting' : job.taxi ? 'Ride taxi (fare)' : 'Ride auto (fare)', priority: 1, dist: d, use: () => { job.dismissed = false; openAuto(job); } });
+        }
+        continue;
+      }
       if (d < 46 && !p.vehicle && N.state.mode === 'play' && !UI.open && !(N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen())) openAuto(job);
     }
     if (S.nanna) { S.nanna.t -= dt; if (S.nanna.t <= 0) { S.nanna = null; nannaArrive(); } }
+    if (S.bunty) { S.bunty.t -= dt; if (S.bunty.t <= 0) { S.bunty = null; buntyArrive(false); } }
   }
 
   /* ============================================== rides: the mini / toy trains */
@@ -2421,10 +2515,13 @@
     const sid = S.hire && S.hire.sid;
     return (N.vehicles && N.vehicles.list.find((b) => b.alive && b.hired && b.sid === sid)) || null;
   }
+  // A3: the sporty Hercules costs a rupee more an hour (day cap ₹12)
+  const HIRE_RATE = { hercules_cycle: [400, 1200] };
   function hireFee(h, now) {
     const deadline = h.day * 1440 + hm('21:00');
     const hours = Math.max(1, Math.ceil(Math.max(0, Math.min(now, deadline) - h.start) / 60));
-    let fee = Math.min(hours * TUNE.hireHour, TUNE.hireCap);
+    const rate = HIRE_RATE[h.type] || [TUNE.hireHour, TUNE.hireCap];
+    let fee = Math.min(hours * rate[0], rate[1]);
     if (now > deadline) fee += Math.ceil((now - deadline) / 60) * TUNE.hireLate;
     return fee;
   }
@@ -2601,6 +2698,7 @@
     hireTick();
     leavingTick(dt);
     offersTick();
+    buntySpotTick();
     visitTick(dt);
     sneezeTick(dt);
     if (S.tipT > 0) { S.tipT -= dt; if (S.tipT <= 0 && N.hud) N.hud.unblip('shop:goli'); }
@@ -2620,7 +2718,7 @@
     if (S.vp && N.render) N.render.camOverride = null;
     N.clock.hold('shop', false);
     S.khaata = 0; S.debts = []; S.hire = null; S.hireV = null; S.lateFee = 0; S.ledger = { day: -1, used: {} }; S.platform = {}; S.parlour = {}; S.beaten = {};
-    S.lastOrder = null; S.read = {}; S.lineT = {}; S.stats = { spent: 0, earned: 0, buys: 0 }; S.hail = null; S.nanna = null; S.nannaJob = null; S.boat = null; S.ride = null; S.ff = null; S.vp = null; S.hold = null;
+    S.lastOrder = null; S.read = {}; S.lineT = {}; S.stats = { spent: 0, earned: 0, buys: 0 }; S.hail = null; S.nanna = null; S.nannaJob = null; S.bunty = null; S.buntyJob = null; S.boat = null; S.ride = null; S.ff = null; S.vp = null; S.hold = null;
     S.gokulBest = 0; S.sticker = {}; S.leaving = []; S.off = {}; S.tipT = 0;
   }
   function serialize() {
@@ -2677,6 +2775,11 @@
     nannaWhy: () => nannaWhy(),
     callNanna: () => { if (nannaWhy()) return false; use('nanna'); S.nanna = { t: TUNE.nannaDelay }; return true; },
     get nannaJob() { return S.nannaJob ? { arrived: S.nannaJob.arrived, vehicle: S.nannaJob.v } : S.nanna ? { coming: true } : null; },
+    /** A3: Bunty-anna's RX100 pillion (60 finds): buntyWhy() -> reason | null, callBunty() (STD, 15 s), buntyJob */
+    buntyWhy: () => (buntyUnlocked() ? buntyWhy() : 'Needs 60 finds'), callBunty: () => { if (!buntyUnlocked() || buntyWhy()) return false; use('bunty'); S.bunty = { t: TUNE.buntyDelay }; return true; },
+    get buntyJob() { return S.buntyJob ? { arrived: S.buntyJob.arrived, vehicle: S.buntyJob.v } : S.bunty ? { coming: true } : null; },
+    /** A3: a traffic auto / taxi with its driver as a passenger with a fare (vehicles.js "Ride auto (fare)") */
+    rideVehicle,
     travelTo, ffwd, passMinutes,
     stdSave: () => stdSave(), callHome: () => callHome(ctxOf(defOf('std_1') || { id: 'std', K: KINDS.std_booth })),
     haircut: (id) => { const d = defOf(id || 'barber_1'); if (!d || !openShop(d.id, { focus: 'haircut' })) return false; const i = UI.items.findIndex((it) => it.row.id === 'haircut'); if (i >= 0) activate(i); return true; },

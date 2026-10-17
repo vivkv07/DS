@@ -1,0 +1,1794 @@
+{
+ "meta": {
+  "title": "NOSTALGIA Map v2 - railways (2003)",
+  "generated": "2026-10-17",
+  "format": "sections = track centrelines [lat, lon] between junctions (simplified, <= 140 vertices); services = routes as section lists; stations = platform centre [lat, lon]",
+  "confidence_rules": {
+   "high": "from data / several agreeing sources (OSM platform or DataMeet+MMTS list within 150 m)",
+   "medium": "single source, or sources disagree",
+   "low": "estimated"
+  },
+  "attribution": [
+   "Map reference: DataMeet Municipal Spatial Data (CC BY 4.0) and (c) OpenStreetMap contributors (ODbL)",
+   "Track geometry: (c) OpenStreetMap contributors (ODbL) via Overture Maps Foundation, release 2026-09-23.0",
+   "Stations: DataMeet Indian Railways data (CC0, github.com/datameet/railways), OSM platforms via Lakeer hyderabad-open-gis-data (OSM, ODbL), Lakeer MMTS stop list"
+  ],
+  "era_note": "All these lines existed in 2003 (broad gauge). The metro lines in the OSM data (2017+) were excluded. MMTS suburban trains started in August 2003 on the Lingampally-Hyderabad/Secunderabad and Falaknuma-Secunderabad routes; the small MMTS halts were new then.",
+  "counts": {
+   "sections": 7,
+   "stations": 33,
+   "stations_by_confidence": {
+    "high": 27,
+    "medium": 6
+   }
+  }
+ },
+ "sections": [
+  {
+   "id": "sec_j1",
+   "name": "Secunderabad - James Street - Sanjeevaiah Park (to the Hussain Sagar junction)",
+   "gauge": "broad (1676 mm)",
+   "tracks": "double",
+   "pts": [
+    [
+     17.4331,
+     78.50151
+    ],
+    [
+     17.43201,
+     78.49752
+    ],
+    [
+     17.43143,
+     78.49344
+    ],
+    [
+     17.43142,
+     78.4922
+    ],
+    [
+     17.43162,
+     78.49103
+    ],
+    [
+     17.43509,
+     78.47973
+    ],
+    [
+     17.4353,
+     78.47894
+    ],
+    [
+     17.43595,
+     78.47542
+    ],
+    [
+     17.43653,
+     78.47433
+    ],
+    [
+     17.43744,
+     78.47306
+    ],
+    [
+     17.43785,
+     78.47201
+    ],
+    [
+     17.43795,
+     78.47129
+    ],
+    [
+     17.43782,
+     78.4699
+    ],
+    [
+     17.43747,
+     78.46812
+    ],
+    [
+     17.43693,
+     78.46683
+    ]
+   ],
+   "length_m": 3858,
+   "confidence": "high",
+   "source": "track geometry: OpenStreetMap railway ways (ODbL) via Overture Maps Foundation transportation (rail) release 2026-09-23.0, routed between station points"
+  },
+  {
+   "id": "j1_lingampally",
+   "name": "Hussain Sagar junction - Begumpet - Nature Cure Hospital - Fatehnagar - Bharatnagar - Borabanda - Hitech City - Hafeezpet - Chandanagar - Lingampally",
+   "gauge": "broad (1676 mm)",
+   "tracks": "double",
+   "pts": [
+    [
+     17.43693,
+     78.46683
+    ],
+    [
+     17.43668,
+     78.46605
+    ],
+    [
+     17.43659,
+     78.46522
+    ],
+    [
+     17.43665,
+     78.46431
+    ],
+    [
+     17.43682,
+     78.46358
+    ],
+    [
+     17.43754,
+     78.46223
+    ],
+    [
+     17.43814,
+     78.46079
+    ],
+    [
+     17.43838,
+     78.45979
+    ],
+    [
+     17.43869,
+     78.45772
+    ],
+    [
+     17.43898,
+     78.45691
+    ],
+    [
+     17.43962,
+     78.45587
+    ],
+    [
+     17.44007,
+     78.45529
+    ],
+    [
+     17.44073,
+     78.45469
+    ],
+    [
+     17.44182,
+     78.45402
+    ],
+    [
+     17.44671,
+     78.45194
+    ],
+    [
+     17.44778,
+     78.45167
+    ],
+    [
+     17.4581,
+     78.44974
+    ],
+    [
+     17.45909,
+     78.44929
+    ],
+    [
+     17.45983,
+     78.44866
+    ],
+    [
+     17.46054,
+     78.44766
+    ],
+    [
+     17.46085,
+     78.44689
+    ],
+    [
+     17.46101,
+     78.44608
+    ],
+    [
+     17.46128,
+     78.44091
+    ],
+    [
+     17.46204,
+     78.43088
+    ],
+    [
+     17.46203,
+     78.42956
+    ],
+    [
+     17.46184,
+     78.42799
+    ],
+    [
+     17.46203,
+     78.42956
+    ],
+    [
+     17.46208,
+     78.43086
+    ],
+    [
+     17.46202,
+     78.4315
+    ],
+    [
+     17.46217,
+     78.42956
+    ],
+    [
+     17.46214,
+     78.42866
+    ],
+    [
+     17.46201,
+     78.42795
+    ],
+    [
+     17.45901,
+     78.41571
+    ],
+    [
+     17.45885,
+     78.41475
+    ],
+    [
+     17.45874,
+     78.41306
+    ],
+    [
+     17.45874,
+     78.41188
+    ],
+    [
+     17.45924,
+     78.40785
+    ],
+    [
+     17.45874,
+     78.41188
+    ],
+    [
+     17.45874,
+     78.41306
+    ],
+    [
+     17.45885,
+     78.41475
+    ],
+    [
+     17.45901,
+     78.41571
+    ],
+    [
+     17.4621,
+     78.42834
+    ],
+    [
+     17.46217,
+     78.42956
+    ],
+    [
+     17.46202,
+     78.4315
+    ],
+    [
+     17.46214,
+     78.42956
+    ],
+    [
+     17.46205,
+     78.42835
+    ],
+    [
+     17.45935,
+     78.41737
+    ],
+    [
+     17.4588,
+     78.41476
+    ],
+    [
+     17.45867,
+     78.41308
+    ],
+    [
+     17.45869,
+     78.4119
+    ],
+    [
+     17.45883,
+     78.41037
+    ],
+    [
+     17.4599,
+     78.40312
+    ],
+    [
+     17.46025,
+     78.40204
+    ],
+    [
+     17.4607,
+     78.4011
+    ],
+    [
+     17.46338,
+     78.39687
+    ],
+    [
+     17.46377,
+     78.39592
+    ],
+    [
+     17.46398,
+     78.39489
+    ],
+    [
+     17.46401,
+     78.39385
+    ],
+    [
+     17.46367,
+     78.39093
+    ],
+    [
+     17.46367,
+     78.39027
+    ],
+    [
+     17.46376,
+     78.38969
+    ],
+    [
+     17.46403,
+     78.38887
+    ],
+    [
+     17.46461,
+     78.38789
+    ],
+    [
+     17.46532,
+     78.38717
+    ],
+    [
+     17.46582,
+     78.38683
+    ],
+    [
+     17.47122,
+     78.38452
+    ],
+    [
+     17.47231,
+     78.38388
+    ],
+    [
+     17.47335,
+     78.38305
+    ],
+    [
+     17.47429,
+     78.38206
+    ],
+    [
+     17.47504,
+     78.38092
+    ],
+    [
+     17.47578,
+     78.3796
+    ],
+    [
+     17.47689,
+     78.37794
+    ],
+    [
+     17.48066,
+     78.37367
+    ],
+    [
+     17.481,
+     78.37322
+    ],
+    [
+     17.48149,
+     78.37234
+    ],
+    [
+     17.48175,
+     78.37166
+    ],
+    [
+     17.48198,
+     78.37053
+    ],
+    [
+     17.48271,
+     78.36005
+    ],
+    [
+     17.48271,
+     78.35803
+    ],
+    [
+     17.48275,
+     78.35871
+    ],
+    [
+     17.4827,
+     78.34939
+    ],
+    [
+     17.48283,
+     78.34812
+    ],
+    [
+     17.48322,
+     78.34691
+    ],
+    [
+     17.48375,
+     78.34596
+    ],
+    [
+     17.48795,
+     78.34109
+    ],
+    [
+     17.48845,
+     78.34023
+    ],
+    [
+     17.48876,
+     78.33918
+    ],
+    [
+     17.48882,
+     78.3384
+    ],
+    [
+     17.48871,
+     78.33744
+    ],
+    [
+     17.48697,
+     78.3315
+    ],
+    [
+     17.48678,
+     78.33064
+    ],
+    [
+     17.48672,
+     78.32968
+    ],
+    [
+     17.487,
+     78.32639
+    ],
+    [
+     17.48683,
+     78.32532
+    ],
+    [
+     17.48606,
+     78.32353
+    ],
+    [
+     17.48544,
+     78.32233
+    ],
+    [
+     17.48288,
+     78.31687
+    ]
+   ],
+   "length_m": 25191,
+   "confidence": "high",
+   "source": "track geometry: OpenStreetMap railway ways (ODbL) via Overture Maps Foundation transportation (rail) release 2026-09-23.0, routed between station points"
+  },
+  {
+   "id": "j1_hyderabad",
+   "name": "Hussain Sagar junction - Necklace Road - Khairatabad - Lakdikapul - Hyderabad (Nampally)",
+   "gauge": "broad (1676 mm)",
+   "tracks": "single/double (mixed in 2003)",
+   "pts": [
+    [
+     17.43653,
+     78.46659
+    ],
+    [
+     17.43536,
+     78.4657
+    ],
+    [
+     17.43015,
+     78.46244
+    ],
+    [
+     17.42954,
+     78.46211
+    ],
+    [
+     17.42868,
+     78.4618
+    ],
+    [
+     17.42792,
+     78.4617
+    ],
+    [
+     17.42732,
+     78.46174
+    ],
+    [
+     17.4266,
+     78.46192
+    ],
+    [
+     17.42373,
+     78.46289
+    ],
+    [
+     17.42264,
+     78.46299
+    ],
+    [
+     17.42205,
+     78.46291
+    ],
+    [
+     17.41789,
+     78.46173
+    ],
+    [
+     17.41583,
+     78.46123
+    ],
+    [
+     17.41506,
+     78.4611
+    ],
+    [
+     17.41436,
+     78.4611
+    ],
+    [
+     17.41202,
+     78.46129
+    ],
+    [
+     17.4077,
+     78.46177
+    ],
+    [
+     17.40698,
+     78.4619
+    ],
+    [
+     17.40563,
+     78.46231
+    ],
+    [
+     17.40477,
+     78.46273
+    ],
+    [
+     17.4037,
+     78.46345
+    ],
+    [
+     17.39998,
+     78.46656
+    ],
+    [
+     17.39926,
+     78.46704
+    ],
+    [
+     17.39831,
+     78.46746
+    ],
+    [
+     17.39709,
+     78.46763
+    ],
+    [
+     17.39325,
+     78.46731
+    ]
+   ],
+   "length_m": 5164,
+   "confidence": "high",
+   "source": "track geometry: OpenStreetMap railway ways (ODbL) via Overture Maps Foundation transportation (rail) release 2026-09-23.0, routed between station points"
+  },
+  {
+   "id": "sec_falaknuma",
+   "name": "Secunderabad - Sitaphalmandi - Arts College - Jamia Osmania - Vidyanagar - Kacheguda - Malakpet - Dabirpura - Yakutpura - Huppuguda - Falaknuma (- Umdanagar)",
+   "gauge": "broad (1676 mm)",
+   "tracks": "single/double (mixed in 2003)",
+   "pts": [
+    [
+     17.4331,
+     78.50151
+    ],
+    [
+     17.43397,
+     78.50479
+    ],
+    [
+     17.43435,
+     78.50651
+    ],
+    [
+     17.43452,
+     78.50808
+    ],
+    [
+     17.43442,
+     78.50883
+    ],
+    [
+     17.43292,
+     78.51399
+    ],
+    [
+     17.4326,
+     78.51474
+    ],
+    [
+     17.43185,
+     78.51582
+    ],
+    [
+     17.42835,
+     78.51933
+    ],
+    [
+     17.42698,
+     78.52049
+    ],
+    [
+     17.42615,
+     78.52088
+    ],
+    [
+     17.42542,
+     78.52109
+    ],
+    [
+     17.42445,
+     78.52118
+    ],
+    [
+     17.42349,
+     78.52114
+    ],
+    [
+     17.40989,
+     78.51782
+    ],
+    [
+     17.40916,
+     78.51748
+    ],
+    [
+     17.40848,
+     78.51702
+    ],
+    [
+     17.395,
+     78.50479
+    ],
+    [
+     17.38568,
+     78.49623
+    ],
+    [
+     17.38486,
+     78.49556
+    ],
+    [
+     17.38413,
+     78.49514
+    ],
+    [
+     17.38354,
+     78.49492
+    ],
+    [
+     17.38271,
+     78.4948
+    ],
+    [
+     17.37806,
+     78.49507
+    ],
+    [
+     17.37722,
+     78.49506
+    ],
+    [
+     17.37621,
+     78.49483
+    ],
+    [
+     17.37527,
+     78.49443
+    ],
+    [
+     17.37493,
+     78.49421
+    ],
+    [
+     17.36999,
+     78.49059
+    ],
+    [
+     17.36943,
+     78.49029
+    ],
+    [
+     17.36862,
+     78.49005
+    ],
+    [
+     17.36775,
+     78.49
+    ],
+    [
+     17.36686,
+     78.49015
+    ],
+    [
+     17.36612,
+     78.49048
+    ],
+    [
+     17.36318,
+     78.49213
+    ],
+    [
+     17.36217,
+     78.49237
+    ],
+    [
+     17.36147,
+     78.49238
+    ],
+    [
+     17.36053,
+     78.49218
+    ],
+    [
+     17.35823,
+     78.49129
+    ],
+    [
+     17.35105,
+     78.48992
+    ],
+    [
+     17.35003,
+     78.48955
+    ],
+    [
+     17.34861,
+     78.48879
+    ],
+    [
+     17.34767,
+     78.48806
+    ],
+    [
+     17.34138,
+     78.48259
+    ],
+    [
+     17.33208,
+     78.47441
+    ],
+    [
+     17.33541,
+     78.47731
+    ],
+    [
+     17.3291,
+     78.47192
+    ],
+    [
+     17.32754,
+     78.47028
+    ],
+    [
+     17.32175,
+     78.46303
+    ],
+    [
+     17.32108,
+     78.46209
+    ],
+    [
+     17.32048,
+     78.46091
+    ],
+    [
+     17.31989,
+     78.45891
+    ],
+    [
+     17.3198,
+     78.45759
+    ],
+    [
+     17.31986,
+     78.45666
+    ],
+    [
+     17.32051,
+     78.45349
+    ]
+   ],
+   "length_m": 18311,
+   "confidence": "high",
+   "source": "track geometry: OpenStreetMap railway ways (ODbL) via Overture Maps Foundation transportation (rail) release 2026-09-23.0, routed between station points"
+  },
+  {
+   "id": "sec_j2",
+   "name": "Secunderabad east throat to the Moula Ali / Malkajgiri divergence",
+   "gauge": "broad (1676 mm)",
+   "tracks": "double",
+   "pts": [
+    [
+     17.4331,
+     78.50151
+    ],
+    [
+     17.43552,
+     78.511
+    ],
+    [
+     17.43586,
+     78.51209
+    ],
+    [
+     17.43611,
+     78.51266
+    ],
+    [
+     17.43653,
+     78.51327
+    ],
+    [
+     17.43849,
+     78.5155
+    ],
+    [
+     17.43892,
+     78.51619
+    ],
+    [
+     17.4392,
+     78.51689
+    ],
+    [
+     17.43938,
+     78.51766
+    ],
+    [
+     17.43945,
+     78.51847
+    ],
+    [
+     17.43942,
+     78.52183
+    ]
+   ],
+   "length_m": 2329,
+   "confidence": "high",
+   "source": "track geometry: OpenStreetMap railway ways (ODbL) via Overture Maps Foundation transportation (rail) release 2026-09-23.0, routed between station points"
+  },
+  {
+   "id": "j2_moula_ali",
+   "name": "to Moula Ali (Kazipet main line, towards Cherlapally)",
+   "gauge": "broad (1676 mm)",
+   "tracks": "double",
+   "pts": [
+    [
+     17.43942,
+     78.52183
+    ],
+    [
+     17.43925,
+     78.52292
+    ],
+    [
+     17.43756,
+     78.52725
+    ],
+    [
+     17.43722,
+     78.52842
+    ],
+    [
+     17.43711,
+     78.5293
+    ],
+    [
+     17.43708,
+     78.53188
+    ],
+    [
+     17.43688,
+     78.53291
+    ],
+    [
+     17.43654,
+     78.53367
+    ],
+    [
+     17.43604,
+     78.53438
+    ],
+    [
+     17.43439,
+     78.53594
+    ],
+    [
+     17.4339,
+     78.53661
+    ],
+    [
+     17.43349,
+     78.5377
+    ],
+    [
+     17.43341,
+     78.53863
+    ],
+    [
+     17.43351,
+     78.53943
+    ],
+    [
+     17.43446,
+     78.54414
+    ],
+    [
+     17.43472,
+     78.54499
+    ],
+    [
+     17.43509,
+     78.54579
+    ],
+    [
+     17.43557,
+     78.5465
+    ],
+    [
+     17.43634,
+     78.5473
+    ],
+    [
+     17.44038,
+     78.55052
+    ]
+   ],
+   "length_m": 3530,
+   "confidence": "high",
+   "source": "track geometry: OpenStreetMap railway ways (ODbL) via Overture Maps Foundation transportation (rail) release 2026-09-23.0, routed between station points"
+  },
+  {
+   "id": "j2_bolarum",
+   "name": "Lallaguda - Malkajgiri - Dayanand Nagar - Safilguda (- Bolarum / Manmad line)",
+   "gauge": "broad (1676 mm)",
+   "tracks": "double",
+   "pts": [
+    [
+     17.44,
+     78.52295
+    ],
+    [
+     17.44043,
+     78.524
+    ],
+    [
+     17.44108,
+     78.52509
+    ],
+    [
+     17.44168,
+     78.52585
+    ],
+    [
+     17.44303,
+     78.52716
+    ],
+    [
+     17.44415,
+     78.52788
+    ],
+    [
+     17.44542,
+     78.52841
+    ],
+    [
+     17.45891,
+     78.53244
+    ],
+    [
+     17.46085,
+     78.53297
+    ],
+    [
+     17.4618,
+     78.53303
+    ],
+    [
+     17.46085,
+     78.53297
+    ],
+    [
+     17.4603,
+     78.53285
+    ],
+    [
+     17.44537,
+     78.52839
+    ],
+    [
+     17.4439,
+     78.52774
+    ],
+    [
+     17.44303,
+     78.52716
+    ],
+    [
+     17.44252,
+     78.5267
+    ],
+    [
+     17.44391,
+     78.52769
+    ],
+    [
+     17.44538,
+     78.52835
+    ],
+    [
+     17.45913,
+     78.53246
+    ],
+    [
+     17.46032,
+     78.53277
+    ],
+    [
+     17.4612,
+     78.53287
+    ],
+    [
+     17.46219,
+     78.53288
+    ],
+    [
+     17.4631,
+     78.53279
+    ],
+    [
+     17.46407,
+     78.53259
+    ],
+    [
+     17.48193,
+     78.52735
+    ],
+    [
+     17.48313,
+     78.52711
+    ],
+    [
+     17.48645,
+     78.52702
+    ],
+    [
+     17.48734,
+     78.52688
+    ],
+    [
+     17.48773,
+     78.52673
+    ],
+    [
+     17.48854,
+     78.52629
+    ],
+    [
+     17.48946,
+     78.52532
+    ],
+    [
+     17.49007,
+     78.52422
+    ],
+    [
+     17.49131,
+     78.52162
+    ],
+    [
+     17.49199,
+     78.52078
+    ],
+    [
+     17.49261,
+     78.52023
+    ],
+    [
+     17.49318,
+     78.51985
+    ],
+    [
+     17.49518,
+     78.51891
+    ]
+   ],
+   "length_m": 11415,
+   "confidence": "high",
+   "source": "track geometry: OpenStreetMap railway ways (ODbL) via Overture Maps Foundation transportation (rail) release 2026-09-23.0, routed between station points"
+  }
+ ],
+ "junctions": [
+  {
+   "id": "hussain_sagar_junction",
+   "latlon": [
+    17.43693,
+    78.46683
+   ],
+   "note": "divergence of the Hyderabad branch from the Secunderabad-Begumpet line (computed from track geometry)",
+   "confidence": "high"
+  },
+  {
+   "id": "secunderabad_east_divergence",
+   "latlon": [
+    17.43942,
+    78.52184
+   ],
+   "note": "divergence of the Kazipet (Moula Ali) and Bolarum lines east of Secunderabad (computed)",
+   "confidence": "high"
+  }
+ ],
+ "services": [
+  {
+   "id": "secunderabad_nampally",
+   "name": "Secunderabad - Hyderabad (Nampally)",
+   "sections": [
+    "sec_j1",
+    "j1_hyderabad"
+   ],
+   "stations": [
+    "SC",
+    "JET",
+    "SJVP",
+    "HSJ",
+    "NLRD",
+    "KQD",
+    "LKPL",
+    "HYB"
+   ]
+  },
+  {
+   "id": "secunderabad_lingampally",
+   "name": "Secunderabad - Begumpet - Lingampally (MMTS)",
+   "sections": [
+    "sec_j1",
+    "j1_lingampally"
+   ],
+   "stations": [
+    "SC",
+    "JET",
+    "SJVP",
+    "BMT",
+    "NCHS",
+    "FNB",
+    "BTNR",
+    "BRBD",
+    "HTCY",
+    "HFZ",
+    "CDNR",
+    "LPI"
+   ]
+  },
+  {
+   "id": "nampally_lingampally",
+   "name": "Hyderabad (Nampally) - Lingampally (MMTS)",
+   "sections": [
+    "j1_hyderabad",
+    "j1_lingampally"
+   ],
+   "stations": [
+    "HYB",
+    "LKPL",
+    "KQD",
+    "NLRD",
+    "HSJ",
+    "BMT",
+    "NCHS",
+    "FNB",
+    "BTNR",
+    "BRBD",
+    "HTCY",
+    "HFZ",
+    "CDNR",
+    "LPI"
+   ]
+  },
+  {
+   "id": "secunderabad_falaknuma",
+   "name": "Secunderabad - Kacheguda - Malakpet - Dabirpura - Falaknuma",
+   "sections": [
+    "sec_falaknuma"
+   ],
+   "stations": [
+    "SC",
+    "STPD",
+    "ATC",
+    "JOO",
+    "VAR",
+    "KCG",
+    "MXT",
+    "DQR",
+    "YKA",
+    "HPG",
+    "FM"
+   ]
+  },
+  {
+   "id": "secunderabad_moula_ali",
+   "name": "Secunderabad - Moula Ali (Kazipet line)",
+   "sections": [
+    "sec_j2",
+    "j2_moula_ali"
+   ],
+   "stations": [
+    "SC",
+    "MLY"
+   ]
+  },
+  {
+   "id": "secunderabad_bolarum",
+   "name": "Secunderabad - Malkajgiri - Safilguda (Bolarum line)",
+   "sections": [
+    "sec_j2",
+    "j2_bolarum"
+   ],
+   "stations": [
+    "SC",
+    "LGDH",
+    "LGD",
+    "MJF",
+    "DYE",
+    "SFX"
+   ]
+  }
+ ],
+ "stations": [
+  {
+   "id": "secunderabad_station",
+   "code": "SC",
+   "name": "Secunderabad Junction",
+   "latlon": [
+    17.43344,
+    78.50153
+   ],
+   "line": "sec_j1",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) SC 17.43315,78.50148; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.43344,78.50153; Lakeer MMTS stops list 17.43401,78.50165",
+   "track_offset_m": 36,
+   "ward": "Monda Market"
+  },
+  {
+   "id": "james_street_station",
+   "code": "JET",
+   "name": "James Street",
+   "latlon": [
+    17.43294,
+    78.48666
+   ],
+   "line": "sec_j1",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) JET 17.43313,78.48691; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.43294,78.48666; Lakeer MMTS stops list 17.43311,78.48727",
+   "track_offset_m": 2,
+   "ward": "Ramgopalpet",
+   "era": "MMTS halt; MMTS suburban services began 9 Aug 2003 (fits a 2003 story: new in the year of the game)"
+  },
+  {
+   "id": "sanjeevaiah_park_station",
+   "code": "SJVP",
+   "name": "Sanjeevaiah Park",
+   "latlon": [
+    17.43583,
+    78.4762
+   ],
+   "line": "sec_j1",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) SJVP 17.43595,78.47569; Lakeer MMTS stops list 17.43571,78.47672",
+   "track_offset_m": 3,
+   "ward": "Begumpet",
+   "era": "MMTS halt; MMTS suburban services began 9 Aug 2003 (fits a 2003 story: new in the year of the game)"
+  },
+  {
+   "id": "hsj_station",
+   "code": "HSJ",
+   "name": "Hussain Sagar Junction",
+   "latlon": [
+    17.42645,
+    78.4619
+   ],
+   "line": "j1_hyderabad",
+   "in_frame": true,
+   "confidence": "medium",
+   "source": "DataMeet Indian Railways stations (CC0) HSJ 17.42645,78.46190",
+   "track_offset_m": 7,
+   "ward": "Somajiguda",
+   "note": "junction cabin/halt where the Hyderabad (Nampally) branch meets the Secunderabad-Begumpet line"
+  },
+  {
+   "id": "necklace_road_station",
+   "code": "NLRD",
+   "name": "Necklace Road",
+   "latlon": [
+    17.42435,
+    78.46267
+   ],
+   "line": "j1_hyderabad",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) NLRD 17.42334,78.46287; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.42435,78.46267; Lakeer MMTS stops list 17.42471,78.46282",
+   "track_offset_m": 1,
+   "ward": "Somajiguda",
+   "note": "sources spread 152 m; the OSM platform position is used (it sits on the track)",
+   "era": "MMTS halt; MMTS suburban services began 9 Aug 2003 (fits a 2003 story: new in the year of the game)"
+  },
+  {
+   "id": "khairatabad_station",
+   "code": "KQD",
+   "name": "Khairatabad",
+   "latlon": [
+    17.41398,
+    78.46109
+   ],
+   "line": "j1_hyderabad",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) KQD 17.41422,78.46165; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.41398,78.46109; Lakeer MMTS stops list 17.41263,78.46053",
+   "track_offset_m": 4,
+   "ward": "Khairatabad",
+   "note": "sources spread 213 m; the OSM platform position is used (it sits on the track)",
+   "era": "MMTS halt; MMTS suburban services began 9 Aug 2003 (fits a 2003 story: new in the year of the game)"
+  },
+  {
+   "id": "lakdikapul_station",
+   "code": "LKPL",
+   "name": "Lakdikapul",
+   "latlon": [
+    17.40414,
+    78.46344
+   ],
+   "line": "j1_hyderabad",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) LKPL 17.40405,78.46353; Lakeer MMTS stops list 17.40423,78.46336",
+   "track_offset_m": 25,
+   "ward": "Khairatabad",
+   "era": "MMTS halt; MMTS suburban services began 9 Aug 2003 (fits a 2003 story: new in the year of the game)"
+  },
+  {
+   "id": "nampally_station",
+   "code": "HYB",
+   "name": "Hyderabad Deccan (Nampally)",
+   "latlon": [
+    17.39382,
+    78.46757
+   ],
+   "line": "j1_hyderabad",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) HYB 17.39336,78.46738; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.39382,78.46757; Lakeer MMTS stops list 17.39274,78.46758",
+   "track_offset_m": 22,
+   "ward": "Red Hills"
+  },
+  {
+   "id": "begumpet_station",
+   "code": "BMT",
+   "name": "Begumpet",
+   "latlon": [
+    17.43851,
+    78.45888
+   ],
+   "line": "j1_lingampally",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) BMT 17.43887,78.45863; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.43851,78.45888; Lakeer MMTS stops list 17.43891,78.45828",
+   "track_offset_m": 1,
+   "ward": "Begumpet"
+  },
+  {
+   "id": "nchs_station",
+   "code": "NCHS",
+   "name": "Nature Cure Hospital",
+   "latlon": [
+    17.44546,
+    78.45242
+   ],
+   "line": "j1_lingampally",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) NCHS 17.44586,78.45289; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.44546,78.45242; Lakeer MMTS stops list 17.44595,78.45221",
+   "track_offset_m": 5,
+   "ward": "Ameerpet"
+  },
+  {
+   "id": "fnb_station",
+   "code": "FNB",
+   "name": "Fatehnagar",
+   "latlon": [
+    17.45614,
+    78.45026
+   ],
+   "line": "j1_lingampally",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) FNB 17.45620,78.45026; Lakeer MMTS stops list 17.45609,78.45027",
+   "track_offset_m": 16,
+   "ward": "Fateh Nagar"
+  },
+  {
+   "id": "btnr_station",
+   "code": "BTNR",
+   "name": "Bharatnagar",
+   "latlon": [
+    17.46207,
+    78.42869
+   ],
+   "line": "j1_lingampally",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) BTNR 17.46140,78.42819; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.46207,78.42869; Lakeer MMTS stops list 17.46244,78.42941",
+   "track_offset_m": 1,
+   "ward": "Moosapet",
+   "note": "sources spread 173 m; the OSM platform position is used (it sits on the track)"
+  },
+  {
+   "id": "brbd_station",
+   "code": "BRBD",
+   "name": "Borabanda",
+   "latlon": [
+    17.45922,
+    78.40788
+   ],
+   "line": "j1_lingampally",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) BRBD 17.45923,78.40786; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.45922,78.40788; Lakeer MMTS stops list 17.45945,78.40786",
+   "track_offset_m": 2,
+   "ward": "Allapur"
+  },
+  {
+   "id": "hitec_city_station",
+   "code": "HTCY",
+   "name": "Hitech City",
+   "latlon": [
+    17.47012,
+    78.38503
+   ],
+   "line": "j1_lingampally",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) HTCY 17.46940,78.38486; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.47012,78.38503; Lakeer MMTS stops list 17.46999,78.38532",
+   "track_offset_m": 4,
+   "ward": "Allapur",
+   "era": "MMTS halt; MMTS suburban services began 9 Aug 2003 (fits a 2003 story: new in the year of the game)"
+  },
+  {
+   "id": "hfz_station",
+   "code": "HFZ",
+   "name": "Hafizpet",
+   "latlon": [
+    17.48256,
+    78.36326
+   ],
+   "line": "j1_lingampally",
+   "in_frame": false,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) HFZ 17.48228,78.36265; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.48256,78.36326; Lakeer MMTS stops list 17.48303,78.36302",
+   "track_offset_m": 8,
+   "ward": "Madhapur"
+  },
+  {
+   "id": "cdnr_station",
+   "code": "CDNR",
+   "name": "Chandanagar",
+   "latlon": [
+    17.48752,
+    78.33349
+   ],
+   "line": "j1_lingampally",
+   "in_frame": false,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) CDNR 17.48770,78.33357; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.48752,78.33349; Lakeer MMTS stops list 17.48758,78.33268",
+   "track_offset_m": 3,
+   "ward": "Serilingampally"
+  },
+  {
+   "id": "lpi_station",
+   "code": "LPI",
+   "name": "Lingampalli",
+   "latlon": [
+    17.48324,
+    78.31723
+   ],
+   "line": "j1_lingampally",
+   "in_frame": false,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) LPI 17.48287,78.31677; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.48324,78.31723; Lakeer MMTS stops list 17.48330,78.31780",
+   "track_offset_m": 18,
+   "ward": "Serilingampally"
+  },
+  {
+   "id": "stpd_station",
+   "code": "STPD",
+   "name": "Sitaphalmandi",
+   "latlon": [
+    17.42794,
+    78.51986
+   ],
+   "line": "sec_falaknuma",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) STPD 17.42834,78.52029; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.42794,78.51986; Lakeer MMTS stops list 17.42946,78.51963",
+   "track_offset_m": 15,
+   "ward": "Mettuguda",
+   "note": "sources spread 170 m; the OSM platform position is used (it sits on the track)"
+  },
+  {
+   "id": "arts_college_station",
+   "code": "ATC",
+   "name": "Arts College",
+   "latlon": [
+    17.41833,
+    78.51994
+   ],
+   "line": "sec_falaknuma",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) ATC 17.41813,78.51966; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.41833,78.51994; Lakeer MMTS stops list 17.41808,78.51929",
+   "track_offset_m": 6,
+   "ward": "outside (near Ward 146 Boudha Nagar, 6 m)"
+  },
+  {
+   "id": "joo_station",
+   "code": "JOO",
+   "name": "Jamia Osmania",
+   "latlon": [
+    17.41162,
+    78.51832
+   ],
+   "line": "sec_falaknuma",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) JOO 17.41107,78.51778; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.41162,78.51832; Lakeer MMTS stops list 17.41173,78.51832",
+   "track_offset_m": 8,
+   "ward": "outside (near Ward 146 Boudha Nagar, 19 m)"
+  },
+  {
+   "id": "vidyanagar_station",
+   "code": "VAR",
+   "name": "Vidyanagar",
+   "latlon": [
+    17.40145,
+    78.51064
+   ],
+   "line": "sec_falaknuma",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) VAR 17.40248,78.51166; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.40145,78.51064; Lakeer MMTS stops list 17.40248,78.51116",
+   "track_offset_m": 0,
+   "ward": "Nallakunta",
+   "note": "sources spread 157 m; the OSM platform position is used (it sits on the track)"
+  },
+  {
+   "id": "kachiguda_station",
+   "code": "KCG",
+   "name": "Kacheguda",
+   "latlon": [
+    17.38984,
+    78.50019
+   ],
+   "line": "sec_falaknuma",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) KCG 17.38956,78.49976; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.38984,78.50019; Lakeer MMTS stops list 17.38951,78.49926",
+   "track_offset_m": 11,
+   "ward": "Kachiguda"
+  },
+  {
+   "id": "malakpet_station",
+   "code": "MXT",
+   "name": "Malakpet",
+   "latlon": [
+    17.37594,
+    78.49451
+   ],
+   "line": "sec_falaknuma",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) MXT 17.37540,78.49424; Lakeer MMTS stops list 17.37648,78.49478",
+   "track_offset_m": 20,
+   "ward": "Azampura"
+  },
+  {
+   "id": "dqr_station",
+   "code": "DQR",
+   "name": "Dabirpura",
+   "latlon": [
+    17.36584,
+    78.49068
+   ],
+   "line": "sec_falaknuma",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) DQR 17.36608,78.49028; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.36584,78.49068; Lakeer MMTS stops list 17.36679,78.49046",
+   "track_offset_m": 4,
+   "ward": "Chawni"
+  },
+  {
+   "id": "yka_station",
+   "code": "YKA",
+   "name": "Yakutpura",
+   "latlon": [
+    17.35994,
+    78.49191
+   ],
+   "line": "sec_falaknuma",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) YKA 17.35955,78.49171; Lakeer MMTS stops list 17.36032,78.49211",
+   "track_offset_m": 4,
+   "ward": "Dabeerpura"
+  },
+  {
+   "id": "hpg_station",
+   "code": "HPG",
+   "name": "Huppuguda",
+   "latlon": [
+    17.34113,
+    78.48223
+   ],
+   "line": "sec_falaknuma",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) HPG 17.34071,78.48196; Lakeer MMTS stops list 17.34155,78.48249",
+   "track_offset_m": 12,
+   "ward": "Gowlipura"
+  },
+  {
+   "id": "falaknuma_station",
+   "code": "FM",
+   "name": "Falaknuma",
+   "latlon": [
+    17.33229,
+    78.47456
+   ],
+   "line": "sec_falaknuma",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) FM 17.33220,78.47448; OSM platform centroid (ODbL, via Lakeer hyderabad-open-gis-data railway layer) 17.33229,78.47456; Lakeer MMTS stops list 17.32830,78.47435",
+   "track_offset_m": 3,
+   "ward": "Jangammet",
+   "note": "sources spread 442 m; the OSM platform position is used (it sits on the track)"
+  },
+  {
+   "id": "lgdh_station",
+   "code": "LGDH",
+   "name": "Lallaguda Gate",
+   "latlon": [
+    17.44069,
+    78.52445
+   ],
+   "line": "j2_bolarum",
+   "in_frame": true,
+   "confidence": "high",
+   "source": "DataMeet Indian Railways stations (CC0) LGDH 17.44036,78.52440; Lakeer MMTS stops list 17.44102,78.52450",
+   "track_offset_m": 1,
+   "ward": "Addagutta"
+  },
+  {
+   "id": "lgd_station",
+   "code": "LGD",
+   "name": "Lallaguda",
+   "latlon": [
+    17.44146,
+    78.52562
+   ],
+   "line": "j2_bolarum",
+   "in_frame": true,
+   "confidence": "medium",
+   "source": "DataMeet Indian Railways stations (CC0) LGD 17.44146,78.52562",
+   "track_offset_m": 3,
+   "ward": "Addagutta"
+  },
+  {
+   "id": "mjf_station",
+   "code": "MJF",
+   "name": "Malkajgiri",
+   "latlon": [
+    17.45595,
+    78.53024
+   ],
+   "line": "j2_bolarum",
+   "in_frame": true,
+   "confidence": "medium",
+   "source": "DataMeet Indian Railways stations (CC0) MJF 17.44839,78.52961; Lakeer MMTS stops list 17.45595,78.53024",
+   "track_offset_m": 129,
+   "ward": "Gautham Nagar",
+   "note": "sources disagree by 839 m; used the MMTS list position (north of Lallaguda, on the Bolarum line)"
+  },
+  {
+   "id": "dye_station",
+   "code": "DYE",
+   "name": "Dayanand Nagar",
+   "latlon": [
+    17.45625,
+    78.53135
+   ],
+   "line": "j2_bolarum",
+   "in_frame": true,
+   "confidence": "medium",
+   "source": "DataMeet Indian Railways stations (CC0) DYE 17.45625,78.53135",
+   "track_offset_m": 25,
+   "ward": "Gautham Nagar"
+  },
+  {
+   "id": "sfx_station",
+   "code": "SFX",
+   "name": "Safilguda",
+   "latlon": [
+    17.46167,
+    78.53311
+   ],
+   "line": "j2_bolarum",
+   "in_frame": true,
+   "confidence": "medium",
+   "source": "DataMeet Indian Railways stations (CC0) SFX 17.46167,78.53311",
+   "track_offset_m": 9,
+   "ward": "Malkajgiri"
+  },
+  {
+   "id": "moula_ali_station",
+   "code": "MLY",
+   "name": "Moula Ali",
+   "latlon": [
+    17.44041,
+    78.55054
+   ],
+   "line": "j2_moula_ali",
+   "in_frame": true,
+   "confidence": "medium",
+   "source": "DataMeet Indian Railways stations (CC0) MLY 17.44041,78.55054",
+   "track_offset_m": 4,
+   "ward": "East Anand Bagh"
+  }
+ ]
+}

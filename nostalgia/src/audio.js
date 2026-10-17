@@ -68,6 +68,11 @@
  *   storycore walkman owns the found-order song list); the walkman has its own duck (40% under dialogue,
  *   70% for 3 s after 'wanted:seen'); tapeMontage(names, {onItem(i, name), minStep, clicks}); important sounds
  *   emit 'caption' {text, x, y} for the HUD's sound captions. Never any azaan, chant, hymn or bhajan.
+ * A2/A3 (vehicles agent): engine profile `scooty` (thin high 2-stroke automatic buzz, above the Chetak);
+ *   engProfile(type) follows N.vehicles.TYPES[type].sound (story types inherit their base's voice) and
+ *   pedal types are cycles; bell variants by TYPES[type].bell: 'hero' (big chrome double-dome TRRING),
+ *   'hercules' (small bright ding-ding), default 'plain'; the Scooty's horn is a higher "peep peep";
+ *   sfx('pothole', {vol (speed), variant: 'wet'}) = DHADAK thud + spring rattle (+ a muddy splash).
  * CPU: long-lived buses, pooled channel strips for one-shots (voice cap + per-sound cooldowns),
  *   one shared reverb, noise/KS buffers cached and shared, lookahead scheduler (setInterval 30 ms,
  *   0.18 s ahead) + per-frame top-up, context suspended while the tab is hidden.
@@ -356,6 +361,8 @@
 
   // ---- vehicles: horns, bells, starts
   SFX.bell = (ac, out, t, o) => { // cycle bell: "tring tring" — a fast clapper trill on a domed bell
+    if (o.variant === 'hero') return heroBell(ac, out, t, o);
+    if (o.variant === 'hercules') return herculesBell(ac, out, t, o);
     const f = 2350 * P(o) * rr(0.98, 1.02);
     const g = gain(ac, 0, out);
     const hits = [];
@@ -367,6 +374,27 @@
     for (const p of BELL) { const os = osc0(ac); os.frequency.value = f * p[0]; const pg = gain(ac, p[1], g); os.connect(pg); os.start(t); os.stop(end); }
     return end;
   };
+  // A3: the Hero roadster's big chrome double-dome bell: a lower, fuller "TRRING-TRRING" whose two domes
+  // beat against each other, rung with a slower lever clapper and a long shimmer
+  function heroBell(ac, out, t, o) {
+    const f = 1820 * P(o) * rr(0.985, 1.015);
+    const g = gain(ac, 0, out);
+    const rings = o.rings || 2, hits = [];
+    for (let r = 0; r < rings; r++) for (let k = 0; k < 6; k++) hits.push([t + r * 0.42 + k * 0.045, (k ? 0.7 : 1) * (1 - k * 0.06)]);
+    pulses(g.gain, hits, 0.5, 0.03);
+    const end = t + rings * 0.42 + 1.0;
+    g.gain.setTargetAtTime(0, end - 0.6, 0.18);
+    for (const det of [1, 1.012]) for (const p of BELL) { const os = osc0(ac); os.frequency.value = f * det * p[0]; const pg = gain(ac, p[1] * 0.62, g); os.connect(pg); os.start(t); os.stop(end); }
+    return end;
+  }
+  // A3: the sporty Hercules' small thumb-flick bell: two bright, clean "ding-ding"s
+  function herculesBell(ac, out, t, o) {
+    const f = 3150 * P(o) * rr(0.98, 1.02);
+    const rings = o.rings || 2;
+    let e = t;
+    for (let r = 0; r < rings; r++) e = strike(ac, out, t + r * 0.17, f, [[1, 0.5, 1], [2.76, 0.28, 0.6], [5.4, 0.12, 0.4], [8.9, 0.05, 0.25]], 0.34, 0.38);
+    return e;
+  }
   SFX.scooter_horn = (ac, out, t, o) => { // Chetak/Luna/RX100: weedy buzzy "meep meep"
     const f = 440 * P(o);
     let end = t;
@@ -1005,11 +1033,18 @@
     burst(ac, out, t, { ft: 'highpass', f: 3800, f2: 2200, sweep: d, q: 0.6, a: 0.02, h: d * 0.7, r: d * 0.3, v: 0.3 });
     return tone(ac, out, t + d + 0.05, { f: 110, f2: 70, a: 0.001, r: 0.12, v: 0.4 });
   };
-  SFX.pothole = (ac, out, t, o) => { // hollow "thunk" + a spring rattle
+  SFX.pothole = (ac, out, t, o) => { // A2 "DHADAK!": hollow "thunk" (wheel drops, tyre bottoms out) + a spring rattle
     tone(ac, out, t, { f: 95 * P(o), f2: 55, glide: 0.1, a: 0.001, r: 0.18, v: 0.6 });
     burst(ac, out, t, { kind: 'brown', ft: 'lowpass', f: 500, r: 0.08, v: 0.4 });
+    tone(ac, out, t + 0.07, { f: 72 * P(o), f2: 48, glide: 0.08, a: 0.001, r: 0.14, v: 0.42 }); // "-dak": the wheel climbs out
     let e = t;
     for (let k = 0; k < 5; k++) e = strike(ac, out, t + 0.05 + k * 0.035, rr(1800, 2600), METAL, 0.05 * (1 - k * 0.15), 0.06);
+    if (o.variant === 'wet') { // rain-filled: a muddy splash and droplets
+      burst(ac, out, t + 0.01, { ft: 'lowpass', f: 3800, f2: 600, sweep: 0.35, q: 0.7, a: 0.003, r: 0.45, v: 0.62 });
+      tone(ac, out, t + 0.03, { f: 210, f2: 120, glide: 0.12, a: 0.004, r: 0.12, v: 0.18 }); // the "gloop" of the water
+      for (let k = 0; k < 4; k++) { const f = rr(700, 1600); tone(ac, out, t + rr(0.08, 0.45), { f, f2: f * 1.7, glide: 0.04, a: 0.002, r: 0.04, v: 0.06 }); }
+      e = Math.max(e, t + 0.6);
+    }
     return e;
   };
   SFX.chappal_whoosh = (ac, out, t, o) => { // the 0.4 s wind-up + flight: a rising whoosh with a little whistle
@@ -2326,7 +2361,9 @@
 
   /* ============================================================ engines */
   const ENGINES = {
-    cycle: { kind: 'pedal' }, ladiescycle: { kind: 'pedal' },
+    cycle: { kind: 'pedal' }, ladiescycle: { kind: 'pedal' }, hero_cycle: { kind: 'pedal' }, hercules_cycle: { kind: 'pedal' },
+    // A3: the Scooty — a small 2-stroke automatic: a thin high buzz that rises smoothly (variomatic, no gear steps)
+    scooty: { kind: '2t', idle: 34, max: 112, gears: [1], bp: 1650, q: 1.4, noise: 0.62, body: 0.28, lp: 640, pw: 0.32, vol: 0.27 },
     luna: { kind: '2t', idle: 30, max: 88, gears: [1], bp: 1300, q: 1.2, noise: 0.55, body: 0.25, lp: 520, pw: 0.3, vol: 0.26 },
     chetak: { kind: '2t', idle: 21, max: 80, gears: [0.28, 0.52, 0.78, 1], bp: 620, q: 1.1, noise: 0.8, body: 0.5, lp: 280, pw: 0.22, vol: 0.36 },
     rx100: { kind: '2t', idle: 26, max: 125, gears: [0.2, 0.38, 0.56, 0.76, 1], bp: 1250, q: 1.6, noise: 0.7, body: 0.45, lp: 420, pw: 0.18, vol: 0.38 },
@@ -2338,10 +2375,14 @@
     lorry: { kind: 'diesel', idle: 25, max: 68, gears: [0.18, 0.36, 0.55, 0.78, 1], bp: 230, q: 0.8, noise: 0.65, body: 0.95, lp: 150, pw: 0.35, vol: 0.48, rattle: 0.9, hum: 0.7 },
     boat: { kind: '2t', idle: 16, max: 42, gears: [1], bp: 450, q: 1, noise: 0.7, body: 0.5, lp: 250, pw: 0.25, vol: 0.34, water: 1 },
   };
-  const DEFAULT_MAX = { cycle: 115, ladiescycle: 110, luna: 120, chetak: 150, rx100: 180, auto: 135, ambassador: 165, padmini: 165, maruti800: 165, bus: 115, lorry: 105, boat: 60 };
+  const DEFAULT_MAX = { cycle: 115, ladiescycle: 110, hero_cycle: 110, hercules_cycle: 120, scooty: 122, luna: 120, chetak: 150, rx100: 180, auto: 135, ambassador: 165, padmini: 165, maruti800: 165, bus: 115, lorry: 105, boat: 60 };
   function engProfile(type) {
     if (ENGINES[type]) return ENGINES[type];
+    // story / special types inherit their base's voice: TYPES[t].sound (vehicles.js), pedal = cycle
+    const VT = N.vehicles && N.vehicles.TYPES && N.vehicles.TYPES[type];
+    if (VT) { if (VT.sound && ENGINES[VT.sound]) return ENGINES[VT.sound]; if (VT.pedal) return ENGINES.cycle; }
     const t = String(type || '');
+    if (/scooty/.test(t)) return ENGINES.scooty;
     if (/cycle/.test(t)) return ENGINES.cycle;
     if (/bus/.test(t)) return ENGINES.bus;
     if (/lorry|truck|tractor/.test(t)) return ENGINES.lorry;
@@ -3023,7 +3064,7 @@
     const pr = engProfile(t);
     if (pr.kind === 'pedal') return 'bell';
     if (t === 'auto') return 'auto_horn';
-    if (/luna|chetak|rx100|scooter|bike|moped/.test(t)) return 'scooter_horn';
+    if (/luna|chetak|rx100|scooter|scooty|bike|moped/.test(t) || pr === ENGINES.scooty) return 'scooter_horn';
     if (t === 'bus') return 'bus_horn';
     if (t === 'lorry' || /truck|tractor/.test(t)) return 'lorry_horn';
     if (t === 'boat') return 'bus_horn';
@@ -3034,7 +3075,11 @@
     const pos = {};
     if (o && o.x != null) { pos.x = o.x; pos.y = o.y; } else if (v && typeof v === 'object' && v.x != null && v !== (N.player && N.player.vehicle)) { pos.x = v.x; pos.y = v.y; }
     const name = hornFor(type);
-    return playSfx(name, Object.assign(pos, type === 'boat' ? { pitch: 0.7 } : {}, o && o.dur ? { dur: o.dur } : {}));
+    const VT = N.vehicles && N.vehicles.TYPES && N.vehicles.TYPES[type];
+    const extra = {};
+    if (name === 'bell' && VT && VT.bell) extra.variant = VT.bell;           // A3: Hero vs Hercules bells
+    if (name === 'scooter_horn' && engProfile(type) === ENGINES.scooty) extra.pitch = 1.35; // the Scooty's thin "peep peep"
+    return playSfx(name, Object.assign(pos, type === 'boat' ? { pitch: 0.7 } : {}, extra, o && o.dur ? { dur: o.dur } : {}));
   };
   function speakerPitch(id) {
     try { const sp0 = N.dialogue && N.dialogue.speakers && N.dialogue.speakers[id]; if (sp0 && sp0.pitch) return sp0.pitch; } catch (e) { /* ignore */ }
@@ -3045,9 +3090,10 @@
     if (!v || !G) return;
     const type = v.type, pr = engProfile(type);
     const o = { x: v.x, y: v.y };
-    if (pr.kind === 'pedal') playSfx('bell', Object.assign({ rings: 1, vol: 0.5 }, o));
+    const VT = N.vehicles && N.vehicles.TYPES && N.vehicles.TYPES[type];
+    if (pr.kind === 'pedal') playSfx('bell', Object.assign({ rings: 1, vol: 0.5, variant: VT && VT.bell }, o));
     else if (type === 'auto') playSfx('auto_start', o);
-    else if (pr.kind === '2t') playSfx('chetak_start', Object.assign({ pitch: type === 'luna' ? 1.35 : type === 'rx100' ? 1.2 : type === 'boat' ? 0.8 : 1 }, o));
+    else if (pr.kind === '2t') playSfx('chetak_start', Object.assign({ pitch: pr === ENGINES.scooty ? 1.55 : type === 'luna' ? 1.35 : type === 'rx100' ? 1.2 : type === 'boat' ? 0.8 : 1, dur: pr === ENGINES.scooty ? 0.8 : undefined }, o));
     else if (pr.kind === 'diesel') playSfx('diesel_start', o);
     else { playSfx('door', o); playSfx('car_start', Object.assign({ delay: 0.25 }, o)); }
     radio.veh = v;

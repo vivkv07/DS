@@ -51,9 +51,10 @@
     "secretariat_saifabad_rd"
    ],
    "MG Road - Abids - Koti": [
+    "mg_rd",
     "abids_rd",
-    "bank_st",
-    "mg_rd"
+    "gunfoundry_rd",
+    "bank_st"
    ],
    "Bank Street": [
     "bank_st"
@@ -171,7 +172,9 @@
    "Himayatnagar colony street grid": [
     "himayatnagar_grid"
    ]
-  }
+  },
+  "pothole_hint": "design suggestion for A2 (0 = smooth, 1 = cratered), from road kind + Old City wards; NOT measured data",
+  "must_include_note": "MG Road: the OSM \"Mahatma Gandhi Road\" is the Secunderabad one (old James Street, Ranigunj - Paradise) = mg_rd; the Abids - Koti spine is abids_rd + gunfoundry_rd (OSM \"Abids Road\") + bank_st"
  },
  "roads": [
   {
@@ -234,7 +237,8 @@
     "Patthergatti"
    ],
    "note": "one-way loop around the Charminar plinth (OSM \"Charminar Circle\")",
-   "osm_ways": []
+   "osm_ways": [],
+   "pothole_hint": 0.55
   },
   {
    "id": "pathergatti_rd",
@@ -275,7 +279,8 @@
    "osm_ways": [
     238191414,
     1378314991
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "gulzar_houz_loop",
@@ -312,7 +317,8 @@
    "wards": [
     "Ghansi Bazar"
    ],
-   "note": "ring round the Gulzar Houz fountain; the square is c. 40 m across (no separate OSM way; points estimated round the fountain at 17.3637,78.4751)"
+   "note": "ring round the Gulzar Houz fountain; the square is c. 40 m across (no separate OSM way; points estimated round the fountain at 17.3637,78.4751)",
+   "pothole_hint": 0.8
   },
   {
    "id": "pathergatti_n",
@@ -368,7 +374,8 @@
    ],
    "ward_check": "ok",
    "note": "Gulzar Houz - Pathergatti arcades - Madina circle",
-   "osm_ways": []
+   "osm_ways": [],
+   "pothole_hint": 0.55
   },
   {
    "id": "naya_pul",
@@ -407,7 +414,8 @@
     "Begum Bazar"
    ],
    "note": "\"new bridge\" over the Musi, Madina to Afzalgunj; OSM \"Naya Pul\"",
-   "osm_ways": []
+   "osm_ways": [],
+   "pothole_hint": 0.4
   },
   {
    "id": "musi_south_rd",
@@ -596,7 +604,8 @@
     1214705472,
     1387937872,
     1423846710
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "laad_bazaar",
@@ -657,7 +666,8 @@
     1349195738,
     1385756268,
     1548754914
-   ]
+   ],
+   "pothole_hint": 0.8
   },
   {
    "id": "gulzar_houz_w",
@@ -790,7 +800,8 @@
     375787239,
     1188899093,
     1205448810
-   ]
+   ],
+   "pothole_hint": 0.8
   },
   {
    "id": "gulzar_houz_e",
@@ -912,7 +923,8 @@
     363343022,
     784447119,
     1207839359
-   ]
+   ],
+   "pothole_hint": 0.8
   },
   {
    "id": "sardar_mahal_rd",
@@ -955,7 +967,8 @@
     27934062,
     1104860948,
     1104865563
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "shah_ali_banda_rd",
@@ -1102,7 +1115,8 @@
    "note": "Charminar south arch - Shah Ali Banda - Engine Bowli - Falaknuma",
    "osm_ways": [
     1273735976
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "hussaini_alam_rd",
@@ -1150,7 +1164,8 @@
     1349195738,
     1391744867,
     1548754914
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "khilwat_rd",
@@ -1216,7 +1231,8 @@
     28094112,
     1241903940,
     1551993305
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "darulshifa_rd",
@@ -1297,7 +1313,8 @@
     1510205534,
     1510205536,
     1537875788
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "dabeerpura_rd",
@@ -1430,7 +1447,8 @@
     1451582747,
     1451582749,
     1537200803
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "yakutpura_rd",
@@ -1509,7 +1527,8 @@
    "osm_ways": [
     27934063,
     823440640
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "lal_darwaza_rd",
@@ -1562,7 +1581,8 @@
    "note": "Shah Ali Banda - Lal Darwaza (Simhavahini Mahankali temple, Bonalu)",
    "osm_ways": [
     27951890
-   ]
+   ],
+   "pothole_hint": 0.8
   },
   {
    "id": "bahadurpura_rd",
@@ -1832,7 +1852,8 @@
     1391744867,
     1424971432,
     1455075900
-   ]
+   ],
+   "pothole_hint": 0.45
   },
   {
    "id": "falaknuma_rd",
@@ -1880,7 +1901,8 @@
     355688356,
     355691405,
     355707463
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "chandrayangutta_rd",
@@ -2060,7 +2082,8 @@
     1148198921,
     1242205149,
     1288243697
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "saidabad_rd",
@@ -2233,7 +2256,8 @@
     386075382,
     386075395,
     1298281086
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "puranapul",
@@ -2273,7 +2297,8 @@
    "note": "the 1578 Qutb Shahi bridge (OSM \"Purana Pul\", bridge section), Jumerat Bazar / Dhoolpet to Hussaini Alam; narrow",
    "osm_ways": [
     134139737
-   ]
+   ],
+   "pothole_hint": 0.2
   },
   {
    "id": "musallam_jung_bridge",
@@ -2314,7 +2339,8 @@
    "note": "OSM name in Urdu \"Muslim Jung Pul\"; High Court side to Begum Bazar / Malakunta",
    "osm_ways": [
     310460505
-   ]
+   ],
+   "pothole_hint": 0.4
   },
   {
    "id": "afzalgunj_bridge_rd",
@@ -2355,7 +2381,8 @@
    "osm_ways": [
     238284089,
     375787231
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "afzalgunj_bridge",
@@ -2395,7 +2422,8 @@
    "note": "OSM \"Salar Jung Pul\"; the Musi bridge between the Salar Jung Museum and Afzalgunj / MGBS",
    "osm_ways": [
     27934049
-   ]
+   ],
+   "pothole_hint": 0.4
   },
   {
    "id": "chaderghat_bridge",
@@ -2433,7 +2461,8 @@
     "Azampura",
     "Golnaka"
    ],
-   "osm_ways": []
+   "osm_ways": [],
+   "pothole_hint": 0.4
   },
   {
    "id": "moosarambagh_bridge",
@@ -2470,7 +2499,8 @@
    "wards": [
     "Old Malakpet"
    ],
-   "note": "OSM bridge way on Moosarambagh Road over the Musi (low bridge, floods in heavy rain)"
+   "note": "OSM bridge way on Moosarambagh Road over the Musi (low bridge, floods in heavy rain)",
+   "pothole_hint": 0.2
   },
   {
    "id": "nagole_bridge",
@@ -2508,7 +2538,8 @@
     "Kothapet",
     "Uppal"
    ],
-   "note": "OSM bridge way (older at-grade bridge) carrying the LB Nagar - Uppal road over the Musi at Nagole"
+   "note": "OSM bridge way (older at-grade bridge) carrying the LB Nagar - Uppal road over the Musi at Nagole",
+   "pothole_hint": 0.2
   },
   {
    "id": "afzalgunj_rd",
@@ -2731,7 +2762,8 @@
     1288242061,
     1555031782,
     1555031783
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "siddiamber_rd",
@@ -2827,12 +2859,13 @@
     117268210,
     119011050,
     355709414
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "abids_rd",
    "name": "Abids Road",
-   "real_name": "Mahatma Gandhi Road (MJ Market - Abids)",
+   "real_name": "Abids - MJ Market road (OSM \"Abids to MJ Market Road\")",
    "kind": "arterial",
    "lanes": 4,
    "divided": false,
@@ -2865,8 +2898,9 @@
    "wards": [
     "Jambagh"
    ],
-   "note": "OSM \"Abids to MJ Market Road\"; Abids GPO circle at the north end",
-   "osm_ways": []
+   "note": "Abids GPO circle at the north end, Mozamjahi Market at the south end",
+   "osm_ways": [],
+   "pothole_hint": 0.25
   },
   {
    "id": "gunfoundry_rd",
@@ -2949,7 +2983,8 @@
    "note": "OSM \"Abids Road\"; passes Gunfoundry and Fateh Maidan / LB Stadium",
    "osm_ways": [
     313337231
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "basheerbagh_rd",
@@ -2991,7 +3026,8 @@
     310065944,
     312173403,
     312173407
-   ]
+   ],
+   "pothole_hint": 0.15
   },
   {
    "id": "liberty_rd",
@@ -3050,7 +3086,8 @@
    "note": "Liberty cinema junction to the Tank Bund south end",
    "osm_ways": [
     312034205
-   ]
+   ],
+   "pothole_hint": 0.15
   },
   {
    "id": "nampally_rd",
@@ -3093,7 +3130,8 @@
    "osm_ways": [
     28110146,
     207693438
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "mj_market_rd",
@@ -3141,7 +3179,8 @@
    ],
    "osm_ways": [
     1304821869
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "jambagh_rd",
@@ -3213,7 +3252,8 @@
     310462109,
     1198597144,
     1340478042
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "begum_bazaar_rd",
@@ -3304,7 +3344,8 @@
     375787210,
     1193509424,
     1212916220
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "mangalhat_rd",
@@ -3441,7 +3482,8 @@
     274564748,
     1244522914,
     1244522915
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "bank_st",
@@ -3494,7 +3536,8 @@
    "note": "Abids GPO to Koti (State Bank of Hyderabad HQ)",
    "osm_ways": [
     313337280
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "king_koti_rd",
@@ -3610,7 +3653,8 @@
     1304379462,
     1525101483,
     1525101484
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "hanuman_tekdi_rd",
@@ -3666,7 +3710,8 @@
     1096227876,
     1129143537,
     1129143544
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "gowliguda_rd",
@@ -3718,7 +3763,8 @@
     207830810,
     310175550,
     1532604767
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "chaderghat_rd",
@@ -3778,7 +3824,8 @@
     310183967,
     1150086407,
     1288030781
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "sultan_bazaar_ln",
@@ -3819,7 +3866,8 @@
    "note": "narrow market lane between Bank Street and Koti",
    "osm_ways": [
     117259879
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "koti_kachiguda_rd",
@@ -3860,7 +3908,8 @@
    "osm_ways": [
     119011048,
     315704395
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "putlibowli_rd",
@@ -3926,7 +3975,8 @@
    "osm_ways": [
     59866076,
     119011050
-   ]
+   ],
+   "pothole_hint": 0.8
   },
   {
    "id": "assembly_rd",
@@ -4011,7 +4061,8 @@
     "Red Hills"
    ],
    "note": "Nampally - Public Gardens - Assembly - Saifabad; OSM \"Public Garden Road\"",
-   "osm_ways": []
+   "osm_ways": [],
+   "pothole_hint": 0.35
   },
   {
    "id": "nampally_assembly_rd",
@@ -4097,7 +4148,8 @@
     311216130,
     1340502280,
     1530269720
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "saifabad_rd",
@@ -4200,7 +4252,8 @@
     41696373,
     313221554,
     1194669460
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "secretariat_rd",
@@ -4328,7 +4381,8 @@
     164619771,
     176414370,
     313219653
-   ]
+   ],
+   "pothole_hint": 0.15
   },
   {
    "id": "khairatabad_rd",
@@ -4416,7 +4470,8 @@
    ],
    "osm_ways": [
     166454734
-   ]
+   ],
+   "pothole_hint": 0.15
   },
   {
    "id": "naubat_pahad_rd",
@@ -4456,7 +4511,8 @@
    ],
    "osm_ways": [
     58822082
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "birla_mandir_steps",
@@ -4493,7 +4549,8 @@
    "wards": [
     "Gunfoundry"
    ],
-   "note": "OSM \"Birla Temple Road\" (first two points) then the temple stairway, estimated (temple ~17.4062,78.4691)"
+   "note": "OSM \"Birla Temple Road\" (first two points) then the temple stairway, estimated (temple ~17.4062,78.4691)",
+   "pothole_hint": 0.1
   },
   {
    "id": "tank_bund",
@@ -4561,7 +4618,8 @@
    "note": "the Hussain Sagar dam crest; statues of Telugu greats (1986) on the lake side",
    "osm_ways": [
     311061616
-   ]
+   ],
+   "pothole_hint": 0.05
   },
   {
    "id": "necklace_rd",
@@ -4801,7 +4859,8 @@
     580182853,
     824603037,
     1242753319
-   ]
+   ],
+   "pothole_hint": 0.15
   },
   {
    "id": "lower_tank_bund",
@@ -4900,7 +4959,8 @@
     1291217221,
     1313008563,
     1413190974
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "kavadiguda_rd",
@@ -4953,7 +5013,8 @@
     314518168,
     826041707,
     1241929067
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "indira_park_rd",
@@ -5027,7 +5088,8 @@
     1236540821,
     1291217221,
     1374370869
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "lumbini_rd",
@@ -5064,7 +5126,8 @@
    "wards": [
     "Khairatabad"
    ],
-   "note": "entrance lane from the NTR Marg / Secretariat side into Lumbini Park (park ~17.4102,78.4729); estimated"
+   "note": "entrance lane from the NTR Marg / Secretariat side into Lumbini Park (park ~17.4102,78.4729); estimated",
+   "pothole_hint": 0.6
   },
   {
    "id": "himayatnagar_rd",
@@ -5151,7 +5214,8 @@
     310463661,
     313222462,
     1198911483
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "himayat_chikkadpally_rd",
@@ -5195,7 +5259,8 @@
     28668516,
     1424737088,
     1424737090
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "chikkadpally_rd",
@@ -5258,7 +5323,8 @@
     313328794,
     1304805474,
     1318820135
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "narayanguda_rd",
@@ -5369,7 +5435,8 @@
     1193833016,
     1304805474,
     1383677801
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "vidyanagar_rd",
@@ -5438,7 +5505,8 @@
     1189131952,
     1275261984,
     1385747360
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "nallakunta_rd",
@@ -5488,7 +5556,8 @@
    "note": "Vidyanagar - Nallakunta - Tilak Nagar",
    "osm_ways": [
     275474298
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "amberpet_rd",
@@ -5704,7 +5773,8 @@
     355707564,
     656447950,
     1288334122
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "kachiguda_station_rd",
@@ -5749,7 +5819,8 @@
     313328465,
     313328645,
     313328715
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "musheerabad_rd",
@@ -5880,7 +5951,8 @@
     1090415391,
     1153127188,
     1204809068
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "moosarambagh_rd",
@@ -5972,7 +6044,8 @@
     1383922960,
     1386072109,
     1544994972
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "mg_rd",
@@ -6074,7 +6147,8 @@
     749693487,
     1158721594,
     1242752944
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "sp_rd",
@@ -6165,7 +6239,8 @@
     "Begumpet"
    ],
    "note": "Paradise - Rasoolpura - Begumpet airport - Begumpet",
-   "osm_ways": []
+   "osm_ways": [],
+   "pothole_hint": 0.15
   },
   {
    "id": "sd_rd",
@@ -6257,7 +6332,8 @@
     1303860956,
     1516977069,
     1516977070
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "rp_rd",
@@ -6339,7 +6415,8 @@
    "wards": [
     "Ramgopalpet"
    ],
-   "osm_ways": []
+   "osm_ways": [],
+   "pothole_hint": 0.35
   },
   {
    "id": "station_rd",
@@ -6383,7 +6460,8 @@
     831247788,
     1201252790,
     1424075992
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "musheerabad_link",
@@ -6426,7 +6504,8 @@
     28128594,
     1365203512,
     1365203516
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "marredpally_rd",
@@ -6500,7 +6579,8 @@
    ],
    "osm_ways": [
     28129869
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "trimulgherry_rd",
@@ -6653,7 +6733,8 @@
     309507086,
     313217871,
     1148156850
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "begumpet_rd",
@@ -6783,7 +6864,8 @@
    "ward_check": "ok",
    "era_note": "path follows Begumpet Railway Flyover (post-2003 structure on the old road alignment, or an old rail overbridge)",
    "note": "the Begumpet rail overbridge is old (pre-2003)",
-   "osm_ways": []
+   "osm_ways": [],
+   "pothole_hint": 0.15
   },
   {
    "id": "begumpet_ameerpet_rd",
@@ -6880,7 +6962,8 @@
     314374507,
     1077850136,
     1154911740
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "airport_rd",
@@ -6922,7 +7005,8 @@
    "note": "approach from SP Road north towards the old (pre-2008) Begumpet terminal (~17.4525,78.4675); which street served the terminal in 2003 is uncertain",
    "osm_ways": [
     354041337
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "mumbai_hwy",
@@ -7065,7 +7149,8 @@
    "osm_ways": [
     207539239,
     1120987159
-   ]
+   ],
+   "pothole_hint": 0.15
   },
   {
    "id": "raj_bhavan_rd",
@@ -7183,7 +7268,8 @@
    "osm_ways": [
     164618574,
     1512437914
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "banjara_rd1",
@@ -7363,7 +7449,8 @@
    "note": "Panjagutta - Banjara Hills - Masab Tank (game had it running to Jubilee Hills; the real Road No. 1 runs north-south)",
    "osm_ways": [
     1287944568
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "banjara_rd2",
@@ -7416,7 +7503,8 @@
     1550517135,
     1550517140,
     1550517141
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "banjara_rd12",
@@ -7541,7 +7629,8 @@
     311208997,
     312026251,
     1057070308
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "jubilee_rd36",
@@ -7636,7 +7725,8 @@
     309354679,
     312015901,
     1102862173
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "film_nagar_rd",
@@ -7775,7 +7865,8 @@
     314369696,
     1271691967,
     1466655561
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "mehdipatnam_rd",
@@ -7966,7 +8057,8 @@
     393419602,
     564195698,
     1274768211
-   ]
+   ],
+   "pothole_hint": 0.15
   },
   {
    "id": "old_mumbai_rd",
@@ -8257,7 +8349,8 @@
     1311233185,
     1364956966,
     1531597346
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "golconda_rd",
@@ -8463,7 +8556,8 @@
     1134451122,
     1459054343,
     1459054344
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "tombs_rd",
@@ -8611,7 +8705,8 @@
     1152308056,
     1152308057,
     1214225826
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "gandipet_rd",
@@ -8749,7 +8844,8 @@
    "osm_ways": [
     208553714,
     362634369
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "raidurg_rd",
@@ -8813,7 +8909,8 @@
     1032456292,
     1032456294,
     1311222124
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "hitec_rd",
@@ -8939,7 +9036,8 @@
     311704571,
     563566156,
     1052670716
-   ]
+   ],
+   "pothole_hint": 0.15
   },
   {
    "id": "hitec_n_rd",
@@ -8998,7 +9096,8 @@
     313353059,
     435248365,
     1098517313
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "malakpet_rd",
@@ -9278,7 +9377,8 @@
     1304976605,
     1390652480,
     1501288963
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "ou_rd",
@@ -9442,7 +9542,8 @@
     1460957742,
     1461269036,
     1461269037
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "uppal_rd",
@@ -9531,7 +9632,8 @@
     "Chilka Nagar"
    ],
    "ward_check": "ok",
-   "osm_ways": []
+   "osm_ways": [],
+   "pothole_hint": 0.25
   },
   {
    "id": "tarnaka_e_rd",
@@ -9646,7 +9748,8 @@
     1205461232,
     1205461234,
     1459008488
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "nagole_rd",
@@ -9763,7 +9866,8 @@
     1189554183,
     1273732656,
     1273732657
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "nagole_n_rd",
@@ -9826,7 +9930,8 @@
    ],
    "osm_ways": [
     1267442900
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "lb_nagar_s_rd",
@@ -9923,7 +10028,8 @@
    "osm_ways": [
     310317637,
     1501288963
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "kothapet_rd",
@@ -10101,7 +10207,8 @@
     1291208305,
     1530029770,
     1530029771
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "chowmahalla_ln",
@@ -10149,7 +10256,8 @@
     238281773,
     1446916791,
     1551993305
-   ]
+   ],
+   "pothole_hint": 0.8
   },
   {
    "id": "public_gardens_path",
@@ -10186,7 +10294,8 @@
    "wards": [
     "Red Hills"
    ],
-   "note": "walk inside Public Gardens (OSM park polygon 17.3960-17.4007, 78.4679-78.4709); path layout estimated"
+   "note": "walk inside Public Gardens (OSM park polygon 17.3960-17.4007, 78.4679-78.4709); path layout estimated",
+   "pothole_hint": 0.1
   },
   {
    "id": "public_gardens_path2",
@@ -10223,7 +10332,8 @@
    "wards": [
     "Red Hills"
    ],
-   "note": "cross walk inside Public Gardens; path layout estimated"
+   "note": "cross walk inside Public Gardens; path layout estimated",
+   "pothole_hint": 0.1
   },
   {
    "id": "indira_park_path",
@@ -10260,7 +10370,8 @@
    "wards": [
     "Kavadiguda"
    ],
-   "note": "walk inside Indira Park (OSM park polygon 17.4113-17.4180, 78.4796-78.4858); path layout estimated"
+   "note": "walk inside Indira Park (OSM park polygon 17.4113-17.4180, 78.4796-78.4858); path layout estimated",
+   "pothole_hint": 0.1
   },
   {
    "id": "general_bazaar_ln",
@@ -10303,7 +10414,8 @@
     281988602,
     1201252790,
     1424075992
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "golconda_steps",
@@ -10340,7 +10452,8 @@
    "wards": [
     "Langar Houz"
    ],
-   "note": "climb from the Bala Hissar gate up to the Baradari at the summit (~17.3837,78.4011); estimated"
+   "note": "climb from the Bala Hissar gate up to the Baradari at the summit (~17.3837,78.4011); estimated",
+   "pothole_hint": 0.1
   },
   {
    "id": "asif_nagar_rd",
@@ -10460,7 +10573,8 @@
     1189312735,
     1244056279,
     1244056280
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "mallepally_rd",
@@ -10558,7 +10672,8 @@
     898361896,
     1192806040,
     1501340357
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "karwan_rd",
@@ -10749,7 +10864,8 @@
     1329432055,
     1329432056,
     1425799723
-   ]
+   ],
+   "pothole_hint": 0.55
   },
   {
    "id": "sanathnagar_rd",
@@ -10951,7 +11067,8 @@
     1531558045,
     1531558048,
     1531834593
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "ln_lakshmi_v1",
@@ -10991,7 +11108,8 @@
    ],
    "osm_ways": [
     28668202
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_lakshmi_v2",
@@ -11031,7 +11149,8 @@
    ],
    "osm_ways": [
     1424737089
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_lakshmi_h1",
@@ -11071,7 +11190,8 @@
    ],
    "osm_ways": [
     1220705611
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_hyderguda_h1",
@@ -11137,7 +11257,8 @@
     587649173,
     1188961491,
     1244062937
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_hyderguda_v1",
@@ -11177,7 +11298,8 @@
    ],
    "osm_ways": [
     182935368
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_domalguda_v1",
@@ -11219,7 +11341,8 @@
    "osm_ways": [
     312034008,
     416978023
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_domalguda_v2",
@@ -11261,7 +11384,8 @@
    "osm_ways": [
     28668206,
     281764106
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_domalguda_h1",
@@ -11301,7 +11425,8 @@
    ],
    "osm_ways": [
     28668521
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_vidyanagar_v1",
@@ -11341,7 +11466,8 @@
    ],
    "osm_ways": [
     28128602
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_vidyanagar_v2",
@@ -11381,7 +11507,8 @@
    ],
    "osm_ways": [
     49895723
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_vidyanagar_h1",
@@ -11422,7 +11549,8 @@
    "osm_ways": [
     28128609,
     1203063414
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_barkatpura_h1",
@@ -11462,7 +11590,8 @@
    ],
    "osm_ways": [
     28110961
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_barkatpura_v1",
@@ -11502,7 +11631,8 @@
    ],
    "osm_ways": [
     50108229
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_nallakunta_v1",
@@ -11542,7 +11672,8 @@
    ],
    "osm_ways": [
     355705102
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_nallakunta_h1",
@@ -11583,7 +11714,8 @@
    "osm_ways": [
     313329468,
     1221477294
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_vijayanagar_v1",
@@ -11629,7 +11761,8 @@
     28110547,
     1461818831,
     1461818832
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_vijayanagar_v2",
@@ -11670,7 +11803,8 @@
    "osm_ways": [
     28110569,
     58836430
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_vijayanagar_h1",
@@ -11712,7 +11846,8 @@
    "osm_ways": [
     538059466,
     1304801893
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_humayun_v1",
@@ -11754,7 +11889,8 @@
     355687964,
     355688983,
     1320731769
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_mehdipatnam_h1",
@@ -11794,7 +11930,8 @@
    ],
    "osm_ways": [
     281802014
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_tolichowki_v1",
@@ -11856,7 +11993,8 @@
     1376079403,
     1474192469,
     1474192470
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_tolichowki_v2",
@@ -11954,7 +12092,8 @@
     824102870,
     1152308056,
     1301667330
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_tolichowki_h1",
@@ -11998,7 +12137,8 @@
    ],
    "osm_ways": [
     562832894
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_srnagar_h1",
@@ -12039,7 +12179,8 @@
    "osm_ways": [
     313196467,
     1377394046
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_srnagar_h2",
@@ -12080,7 +12221,8 @@
    "osm_ways": [
     31547392,
     826096443
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_srnagar_v1",
@@ -12120,7 +12262,8 @@
    ],
    "osm_ways": [
     310014841
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_srnagar_v2",
@@ -12229,7 +12372,8 @@
     1188795250,
     1339392894,
     1422266828
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_ameerpet_v1",
@@ -12269,7 +12413,8 @@
    ],
    "osm_ways": [
     824181684
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_ameerpet_h1",
@@ -12309,7 +12454,8 @@
    ],
    "osm_ways": [
     163747246
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_erragadda_h1",
@@ -12349,7 +12495,8 @@
    ],
    "osm_ways": [
     587089922
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_erragadda_v1",
@@ -12391,7 +12538,8 @@
     31616315,
     311076283,
     681817016
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_musheerabad_v1",
@@ -12441,7 +12589,8 @@
     238176681,
     1530010040,
     1530010042
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_musheerabad_h1",
@@ -12495,7 +12644,8 @@
     28128032,
     391165542,
     1153127188
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_musheerabad_h2",
@@ -12535,7 +12685,8 @@
    ],
    "osm_ways": [
     28128597
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_marredpally_v1",
@@ -12575,7 +12726,8 @@
    ],
    "osm_ways": [
     176129861
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_marredpally_h0",
@@ -12615,7 +12767,8 @@
    ],
    "osm_ways": [
     27242344
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_marredpally_h1",
@@ -12660,7 +12813,8 @@
    "osm_ways": [
     362634202,
     1210589766
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_marredpally_v2",
@@ -12700,7 +12854,8 @@
    ],
    "osm_ways": [
     28670121
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_lalaguda_h1",
@@ -12769,7 +12924,8 @@
    ],
    "osm_ways": [
     362634202
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_lalaguda_v1",
@@ -12823,7 +12979,8 @@
     126388998,
     728926940,
     1373581762
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_lalaguda_v2",
@@ -12863,7 +13020,8 @@
    ],
    "osm_ways": [
     183532750
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_lalaguda_v3",
@@ -12903,7 +13061,8 @@
    ],
    "osm_ways": [
     315939914
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "malakpet_race_rd",
@@ -12996,7 +13155,8 @@
    "osm_ways": [
     27955295,
     1205834094
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "ln_malakpet_v1",
@@ -13037,7 +13197,8 @@
    "osm_ways": [
     281534265,
     1424923869
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_malakpet_h1",
@@ -13077,7 +13238,8 @@
    ],
    "osm_ways": [
     28475624
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_dilsukh_v1",
@@ -13117,7 +13279,8 @@
    ],
    "osm_ways": [
     146526358
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_dilsukh_v2",
@@ -13157,7 +13320,8 @@
    ],
    "osm_ways": [
     550582996
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_dilsukh_h1",
@@ -13198,7 +13362,8 @@
    "osm_ways": [
     28474381,
     1188800129
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_dilsukh_h2",
@@ -13240,7 +13405,8 @@
    "osm_ways": [
     28474793,
     1425496518
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_sai_temple",
@@ -13284,7 +13450,8 @@
    ],
    "osm_ways": [
     27952600
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_saidabad_v1",
@@ -13330,7 +13497,8 @@
     214949862,
     214949899,
     1424941249
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_saidabad_h1",
@@ -13377,7 +13545,8 @@
    "osm_ways": [
     1244550811,
     1244550812
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "ln_ghansi_bazaar",
@@ -13471,7 +13640,8 @@
     583755405,
     922342237,
     1425763293
-   ]
+   ],
+   "pothole_hint": 0.8
   },
   {
    "id": "ln_kotla_alijah",
@@ -13525,7 +13695,8 @@
     1453518592,
     1453518593,
     1453518594
-   ]
+   ],
+   "pothole_hint": 0.8
   },
   {
    "id": "ln_mitti_ka_sher",
@@ -13596,7 +13767,8 @@
     355709739,
     400701974,
     1191840988
-   ]
+   ],
+   "pothole_hint": 0.8
   },
   {
    "id": "ln_shah_ali_banda_e",
@@ -13645,7 +13817,8 @@
    "osm_ways": [
     27934046,
     1201586357
-   ]
+   ],
+   "pothole_hint": 0.8
   },
   {
    "id": "ln_shah_ali_banda_w",
@@ -13713,7 +13886,8 @@
     28094143,
     28094145,
     238191971
-   ]
+   ],
+   "pothole_hint": 0.8
   },
   {
    "id": "bolarum_rd",
@@ -13759,7 +13933,8 @@
    "osm_ways": [
     28130065,
     314671029
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "club_rd",
@@ -13819,7 +13994,8 @@
     212710698,
     354037926,
     354039903
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "hps_ln",
@@ -13883,7 +14059,8 @@
     32593567,
     166457075,
     1085586796
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "bapu_ghat_rd",
@@ -13921,7 +14098,8 @@
     "Langar Houz",
     "Attapur"
    ],
-   "note": "Langar Houz to Bapu Ghat at the Musi-Esi confluence; estimated"
+   "note": "Langar Houz to Bapu Ghat at the Musi-Esi confluence; estimated",
+   "pothole_hint": 0.6
   },
   {
    "id": "uoh_rd",
@@ -14013,7 +14191,8 @@
     396350751,
     411608457,
     1124057493
-   ]
+   ],
+   "pothole_hint": 0.6
   },
   {
    "id": "purani_haveli_rd",
@@ -14053,7 +14232,8 @@
    "note": "lane past Purani Haveli (Nizam's museum) off Darulshifa",
    "osm_ways": [
     27955570
-   ]
+   ],
+   "pothole_hint": 0.8
   },
   {
    "id": "secretariat_saifabad_rd",
@@ -14111,7 +14291,8 @@
     "Khairatabad"
    ],
    "note": "Telugu Talli / Tank Bund south end west past the Secretariat main gate to the AG Office junction (Saifabad)",
-   "osm_ways": []
+   "osm_ways": [],
+   "pothole_hint": 0.15
   },
   {
    "id": "panjagutta_rd",
@@ -14168,7 +14349,8 @@
    "note": "Panjagutta - Somajiguda (Yashoda) - Irrum Manzil - Khairatabad",
    "osm_ways": [
     1293097867
-   ]
+   ],
+   "pothole_hint": 0.15
   },
   {
    "id": "banjara_rd3",
@@ -14260,7 +14442,8 @@
     314518290,
     314670760,
     634132562
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "chaderghat_causeway",
@@ -14298,7 +14481,8 @@
     "Golnaka"
    ],
    "note": "the old low causeway just downstream (east) of the Chaderghat bridge; OSM \"Causeway Bridge\"; floods in heavy rain",
-   "osm_ways": []
+   "osm_ways": [],
+   "pothole_hint": 0.2
   },
   {
    "id": "narayanguda_kachiguda_rd",
@@ -14385,7 +14569,8 @@
     747373026,
     1057079071,
     1318600446
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "tolichowki_golconda_rd",
@@ -14563,7 +14748,8 @@
     1152308056,
     1214225826,
     1301667330
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "moula_ali_rd",
@@ -14685,7 +14871,8 @@
     1111969152,
     1311500854,
     1313672641
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "tarnaka_sec_rd",
@@ -14824,7 +15011,8 @@
     694846239,
     1324072046,
     1451527000
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "chaderghat_amberpet_rd",
@@ -14942,7 +15130,8 @@
     574949364,
     656736154,
     1371970393
-   ]
+   ],
+   "pothole_hint": 0.25
   },
   {
    "id": "raja_reddy_marg",
@@ -15009,7 +15198,8 @@
     314216879,
     1188905463,
     1188905464
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "mj_afzalgunj_link",
@@ -15052,7 +15242,8 @@
     "Begum Bazar"
    ],
    "note": "Afzalgunj (Naya Pul north end) east past the State Central Library to the Salar Jung bridge north end",
-   "osm_ways": []
+   "osm_ways": [],
+   "pothole_hint": 0.55
   },
   {
    "id": "falaknuma_station_rd",
@@ -15089,7 +15280,8 @@
    "wards": [
     "Jangammet"
    ],
-   "note": "Falaknuma Road to Falaknuma railway station (station 17.3322,78.4745, DataMeet railways CC0); street geometry estimated"
+   "note": "Falaknuma Road to Falaknuma railway station (station 17.3322,78.4745, DataMeet railways CC0); street geometry estimated",
+   "pothole_hint": 0.55
   },
   {
    "id": "banjara_rd10",
@@ -15195,7 +15387,8 @@
     822842754,
     822842755,
     1201938360
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "kbr_jubilee_rd",
@@ -15305,7 +15498,8 @@
     314670267,
     1151958722,
     1550773744
-   ]
+   ],
+   "pothole_hint": 0.35
   },
   {
    "id": "golnaka_bridge",
@@ -15342,7 +15536,8 @@
    "wards": [
     "Golnaka"
    ],
-   "note": "OSM bridge way over the Musi between Old Malakpet and Golnaka / Amberpet (unnamed in OSM)"
+   "note": "OSM bridge way over the Musi between Old Malakpet and Golnaka / Amberpet (unnamed in OSM)",
+   "pothole_hint": 0.2
   },
   {
    "id": "mgbs_bridge",
@@ -15379,7 +15574,8 @@
    "wards": [
     "Dabeerpura"
    ],
-   "note": "OSM bridge way of the MGBS bus station road over the Musi channel at Imlibun"
+   "note": "OSM bridge way of the MGBS bus station road over the Musi channel at Imlibun",
+   "pothole_hint": 0.4
   }
  ],
  "himayatnagar_grid": {
@@ -15424,7 +15620,8 @@
      51714540,
      51714559,
      51714562
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_002",
@@ -15472,7 +15669,8 @@
     "osm_ways": [
      182934763,
      391165545
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_003",
@@ -15507,7 +15705,8 @@
     "length_m": 506,
     "osm_ways": [
      182935368
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_004",
@@ -15563,7 +15762,8 @@
     "osm_ways": [
      280699554,
      1189143155
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_005",
@@ -15611,7 +15811,8 @@
      1304379462,
      1525101483,
      1525101484
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_006",
@@ -15655,7 +15856,8 @@
     "osm_ways": [
      314216879,
      1188905464
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_007",
@@ -15703,7 +15905,8 @@
     "osm_ways": [
      28111572,
      1525101482
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_008",
@@ -15738,7 +15941,8 @@
      1244062937,
      1299927929,
      1424989698
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_009",
@@ -15777,7 +15981,8 @@
      1244062937,
      1299927929,
      1424989698
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_010",
@@ -15816,7 +16021,8 @@
     "length_m": 354,
     "osm_ways": [
      28110946
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_011",
@@ -15843,7 +16049,8 @@
     "length_m": 334,
     "osm_ways": [
      51714566
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_012",
@@ -15875,7 +16082,8 @@
     "osm_ways": [
      28668206,
      281764106
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_013",
@@ -15903,7 +16111,8 @@
     "osm_ways": [
      51714569,
      1453999036
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_014",
@@ -15934,7 +16143,8 @@
     "length_m": 269,
     "osm_ways": [
      28668202
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_015",
@@ -15962,7 +16172,8 @@
     "osm_ways": [
      312034008,
      416978023
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_016",
@@ -15992,7 +16203,8 @@
      310474521,
      310474524,
      313328794
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_017",
@@ -16026,7 +16238,8 @@
      310474521,
      310474524,
      313328794
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_018",
@@ -16058,7 +16271,8 @@
     "osm_ways": [
      28110947,
      749664495
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_019",
@@ -16096,7 +16310,8 @@
      1244062932,
      1244062933,
      1244062934
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_020",
@@ -16130,7 +16345,8 @@
      1244062932,
      1244062933,
      1244062934
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_021",
@@ -16153,7 +16369,8 @@
     "length_m": 176,
     "osm_ways": [
      280699565
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_022",
@@ -16176,7 +16393,8 @@
     "length_m": 168,
     "osm_ways": [
      1424750950
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_023",
@@ -16203,7 +16421,8 @@
     "length_m": 163,
     "osm_ways": [
      355704584
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_024",
@@ -16233,7 +16452,8 @@
      1244062932,
      1244062933,
      1244062934
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_025",
@@ -16261,7 +16481,8 @@
     "osm_ways": [
      314216879,
      1188905464
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_026",
@@ -16284,7 +16505,8 @@
     "length_m": 103,
     "osm_ways": [
      53625346
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_027",
@@ -16307,7 +16529,8 @@
     "length_m": 93,
     "osm_ways": [
      53625337
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_028",
@@ -16338,7 +16561,8 @@
     "length_m": 84,
     "osm_ways": [
      1304776794
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_029",
@@ -16365,7 +16589,8 @@
     "length_m": 82,
     "osm_ways": [
      355688054
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_030",
@@ -16447,7 +16672,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_031",
@@ -16497,7 +16723,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_032",
@@ -16559,7 +16786,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_033",
@@ -16617,7 +16845,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_034",
@@ -16667,7 +16896,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_035",
@@ -16713,7 +16943,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_036",
@@ -16771,7 +17002,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_037",
@@ -16825,7 +17057,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_038",
@@ -16867,7 +17100,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_039",
@@ -16917,7 +17151,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_040",
@@ -16963,7 +17198,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_041",
@@ -17005,7 +17241,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_042",
@@ -17047,7 +17284,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_043",
@@ -17097,7 +17335,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_044",
@@ -17143,7 +17382,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_045",
@@ -17197,7 +17437,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_046",
@@ -17247,7 +17488,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_047",
@@ -17293,7 +17535,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_048",
@@ -17339,7 +17582,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_049",
@@ -17385,7 +17629,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_050",
@@ -17427,7 +17672,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_051",
@@ -17469,7 +17715,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_052",
@@ -17519,7 +17766,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_053",
@@ -17565,7 +17813,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_054",
@@ -17607,7 +17856,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_055",
@@ -17657,7 +17907,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_056",
@@ -17711,7 +17962,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_057",
@@ -17761,7 +18013,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_058",
@@ -17803,7 +18056,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_059",
@@ -17849,7 +18103,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_060",
@@ -17899,7 +18154,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_061",
@@ -17941,7 +18197,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_062",
@@ -17995,7 +18252,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_063",
@@ -18041,7 +18299,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_064",
@@ -18091,7 +18350,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_065",
@@ -18141,7 +18401,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_066",
@@ -18183,7 +18444,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_067",
@@ -18237,7 +18499,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_068",
@@ -18283,7 +18546,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_069",
@@ -18333,7 +18597,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_070",
@@ -18375,7 +18640,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_071",
@@ -18425,7 +18691,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_072",
@@ -18467,7 +18734,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_073",
@@ -18521,7 +18789,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_074",
@@ -18571,7 +18840,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_075",
@@ -18613,7 +18883,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_076",
@@ -18663,7 +18934,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_077",
@@ -18721,7 +18993,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_078",
@@ -18763,7 +19036,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_079",
@@ -18817,7 +19091,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_080",
@@ -18859,7 +19134,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_081",
@@ -18901,7 +19177,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_082",
@@ -18943,7 +19220,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_083",
@@ -18985,7 +19263,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_084",
@@ -19035,7 +19314,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_085",
@@ -19089,7 +19369,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_086",
@@ -19135,7 +19416,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_087",
@@ -19185,7 +19467,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_088",
@@ -19231,7 +19514,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_089",
@@ -19273,7 +19557,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_090",
@@ -19323,7 +19608,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_091",
@@ -19373,7 +19659,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_092",
@@ -19427,7 +19714,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_093",
@@ -19489,7 +19777,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_094",
@@ -19531,7 +19820,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_095",
@@ -19585,7 +19875,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_096",
@@ -19631,7 +19922,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_097",
@@ -19673,7 +19965,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_098",
@@ -19715,7 +20008,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_099",
@@ -19757,7 +20051,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_100",
@@ -19799,7 +20094,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_101",
@@ -19841,7 +20137,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_102",
@@ -19883,7 +20180,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_103",
@@ -19929,7 +20227,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_104",
@@ -19979,7 +20278,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_105",
@@ -20025,7 +20325,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_106",
@@ -20067,7 +20368,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_107",
@@ -20121,7 +20423,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_108",
@@ -20171,7 +20474,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_109",
@@ -20213,7 +20517,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_110",
@@ -20267,7 +20572,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_111",
@@ -20313,7 +20619,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_112",
@@ -20355,7 +20662,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_113",
@@ -20405,7 +20713,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_114",
@@ -20455,7 +20764,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_115",
@@ -20497,7 +20807,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_116",
@@ -20547,7 +20858,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_117",
@@ -20589,7 +20901,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_118",
@@ -20631,7 +20944,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_119",
@@ -20673,7 +20987,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_120",
@@ -20715,7 +21030,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_121",
@@ -20757,7 +21073,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_122",
@@ -20811,7 +21128,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_123",
@@ -20853,7 +21171,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_124",
@@ -20895,7 +21214,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_125",
@@ -20945,7 +21265,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_126",
@@ -20987,7 +21308,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_127",
@@ -21029,7 +21351,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_128",
@@ -21075,7 +21398,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_129",
@@ -21121,7 +21445,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_130",
@@ -21163,7 +21488,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_131",
@@ -21205,7 +21531,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_132",
@@ -21247,7 +21574,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_133",
@@ -21289,7 +21617,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_134",
@@ -21331,7 +21660,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_135",
@@ -21373,7 +21703,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_136",
@@ -21415,7 +21746,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_137",
@@ -21457,7 +21789,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_138",
@@ -21499,7 +21832,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_139",
@@ -21541,7 +21875,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_140",
@@ -21583,7 +21918,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_141",
@@ -21633,7 +21969,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_142",
@@ -21679,7 +22016,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_143",
@@ -21721,7 +22059,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_144",
@@ -21763,7 +22102,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_145",
@@ -21813,7 +22153,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_146",
@@ -21855,7 +22196,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_147",
@@ -21901,7 +22243,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_148",
@@ -21943,7 +22286,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_149",
@@ -21985,7 +22329,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_150",
@@ -22031,7 +22376,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_151",
@@ -22073,7 +22419,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_152",
@@ -22123,7 +22470,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_153",
@@ -22165,7 +22513,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_154",
@@ -22207,7 +22556,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_155",
@@ -22249,7 +22599,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_156",
@@ -22291,7 +22642,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_157",
@@ -22337,7 +22689,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    },
    {
     "id": "himayat_st_158",
@@ -22379,7 +22732,8 @@
      58609845,
      58654106,
      58689255
-    ]
+    ],
+    "pothole_hint": 0.6
    }
   ]
  }

@@ -52,7 +52,8 @@
  * tickets 6 ₹20, 12 `ticket_punch` + N.flags.thatha_ending; prints 8 ₹15, 16 N.flags.album_captions,
  * 23 N.flags.framed_print + title. Titles go to N.flags.titles (array) and N.flags.title.
  * Ladder (systems §7.5, all series together): 5 unlock_double_gong (N.flags.bell_reach = 80),
- * 12 unlock_own_cycle, 20 unlock_dynamo, 30 unlock_chetak, 45 unlock_call_nanna, 60 unlock_rx100
+ * 12 unlock_own_cycle, 20 unlock_dynamo, 30 unlock_scooty (+ unlock_chetak, A3: Akka's Scooty, not the Chetak),
+ * 45 unlock_call_nanna, 60 unlock_rx100 (+ unlock_bunty_pillion, unlock_hercules_gears: A3 pillion only)
  * (vehicles.js also wants SA6 R4), 75 unlock_streamers + unlock_golden_bell + title, 93 unlock_free_chai
  * + unlock_everything. Each one toasts at once and its family line plays at `home` (93: Salim-bhai at
  * `irani_cafe_7`) the next time you walk in without a mission running.
@@ -352,9 +353,13 @@
     { n: 5, id: 'double_gong', name: 'Double-gong bell', s: 'ammamma', line: 'Ring it softly near old people, *kanna*.', sub: 'any cycle you ride: the horn reaches 80 u' },
     { n: 12, id: 'own_cycle', name: "{nick}'s own cycle", s: 'nanna', line: 'Second-hand. First owner was a doctor. Ride like one.', sub: 'a black roadster, parked at home each morning' },
     { n: 20, id: 'dynamo', name: 'Dynamo light', s: 'nanna', line: 'Pedal faster, brighter light. Physics.', sub: 'a headlight on your cycle at night' },
-    { n: 30, id: 'chetak', name: 'Family Chetak permission', s: 'nanna', line: 'Only in the colony. ...And to Immu\'s. And back.', sub: 'no Chappal Meter for taking it' },
+    // A3 (amendments): an 11-year-old never drives the Chetak; Akka next door lends her Scooty instead.
+    // Flags stay backward-compatible: unlock_scooty AND unlock_chetak are both set (old saves: chetak -> scooty).
+    { n: 30, id: 'scooty', name: "Akka's Scooty", s: 'nanna', line: 'Akka next door says you can ride her Scooty. Only in the colony. ...And to Immu\'s. And back. Nanna\'s Chetak? Pillion only.', sub: 'her Scooty, parked at home, is yours to ride (no Chappal Meter)', also: ['chetak'] },
     { n: 45, id: 'call_nanna', name: 'Call Nanna', s: 'nanna', line: "Phone from a booth. I'll come. Don't tell Amma I said yes.", sub: 'pillion rides from any STD booth' },
-    { n: 60, id: 'rx100', name: "Bunty's RX100, any day", s: 'bunty', line: "Helmet. Always. Nostalgia means 'helmet' today.", sub: 'after Bunty-anna\'s fourth race' },
+    // A3: the RX100 is pillion only: call Bunty-anna from an STD booth or find him at his spot; and his old
+    // Hercules with gears is parked at home for you. (Flag id kept: unlock_rx100.)
+    { n: 60, id: 'rx100', name: 'Pillion rides with Bunty-anna + his Hercules with gears', s: 'bunty', line: "Helmet. Always. You sit BEHIND me, *mamu*. And take my old Hercules: it has GEARS. Nostalgia means 'gears' today.", sub: 'call him from any STD booth (or find him at OU chai / Ameerpet); the geared Hercules waits at home', also: ['bunty_pillion', 'hercules_gears'] },
     { n: 75, id: 'streamers', name: 'Golden streamers and a golden bell', s: 'chitti', line: "Annayya's cycle is prettier than me. Unfair.", sub: 'title: Hyderabad ka Khabri', title: 'Hyderabad ka Khabri', also: ['golden_bell'] },
     { n: 93, id: 'free_chai', name: 'Free chai and Osmania for life', s: 'salim', line: '*Phokat*, forever. Faramarz-bhai will be jealous.', sub: 'at Café Gulistan', where: 'irani_cafe_7', also: ['everything'] },
   ];
@@ -822,9 +827,13 @@
   function ladderCheck(silent) {
     const n = total();
     const F = flags();
+    // A3 backward compatibility: an old "family Chetak permission" is now Akka's Scooty
+    if (F.unlock_chetak && !F.unlock_scooty) F.unlock_scooty = true;
+    // ...and an old "Bunty's RX100, any day" is pillion rides with Bunty-anna plus his geared Hercules
+    if (F.unlock_rx100) { F.unlock_bunty_pillion = true; F.unlock_hercules_gears = true; }
     for (const L of LADDER) {
       if (n < L.n) break;
-      if (S.ladder.has(L.n)) { F['unlock_' + L.id] = true; continue; }
+      if (S.ladder.has(L.n)) { F['unlock_' + L.id] = true; for (const a of L.also || []) F['unlock_' + a] = true; continue; }
       S.ladder.add(L.n);
       F['unlock_' + L.id] = true;
       for (const a of L.also || []) F['unlock_' + a] = true;
