@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 226424,
+ "bytes": 247560,
  "clips": {},
  "family": "character",
  "file": "uncle_lungi_banian.glb",
@@ -52,7 +52,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 221.1,
+ "kb": 241.8,
  "kit": 1,
  "materials": [
   "M_uncle_lungi_banian"
@@ -115,7 +115,9 @@
    "moustache",
    "shirt_over",
    "towel",
-   "specs"
+   "specs",
+   "basket",
+   "clothbag"
   ],
   "rig": "adult_rig",
   "role": "people",
@@ -147,20 +149,24 @@
   }
  },
  "min": [
-  -2.963,
+  -3.38,
   -1.268,
   -0.0
  ],
  "notes": [],
  "script": "characters",
  "size": [
-  5.926,
+  6.343,
   2.35,
   8.879
  ],
  "tint": {
   "attribute": "_REGION",
   "fields": {
+   "clothbag": [
+    "bag",
+    "#c8b48a"
+   ],
    "moustache": [
     "moustache",
     "hair"
@@ -196,9 +202,13 @@
    "moustache",
    "shirt_over",
    "towel",
-   "specs"
+   "specs",
+   "basket",
+   "clothbag"
   ],
   "regions": {
+   "basket": "#b48a52",
+   "clothbag": "#c8b48a",
    "hair": "#3b3735",
    "moustache": "#3b3735",
    "pants": "#8f8d87",
@@ -210,6 +220,18 @@
    "towel": "#dedcd6"
   },
   "show": {
+   "basket": {
+    "f": "prop",
+    "in": [
+     "basket"
+    ]
+   },
+   "clothbag": {
+    "f": "prop",
+    "in": [
+     "clothbag"
+    ]
+   },
    "moustache": {
     "all": [
      {
@@ -249,7 +271,7 @@
    }
   }
  },
- "tris": 2930,
+ "tris": 3168,
  "units": "u",
  "up": "Z"
 }

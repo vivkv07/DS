@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 285164,
+ "bytes": 298640,
  "clips": {},
  "family": "character",
  "file": "man_shirt_pants.glb",
@@ -52,14 +52,14 @@
  "images": [
   "image/webp"
  ],
- "kb": 278.5,
+ "kb": 291.6,
  "kit": 1,
  "materials": [
   "M_man_shirt_pants"
  ],
  "max": [
   2.963,
-  0.857,
+  0.957,
   9.071
  ],
  "meta": {
@@ -130,7 +130,8 @@
    "hair_top",
    "cap_irani",
    "cap_skull",
-   "towel"
+   "towel",
+   "clothbag"
   ],
   "rig": "adult_rig",
   "role": "people",
@@ -193,7 +194,7 @@
  "script": "characters",
  "size": [
   5.926,
-  2.124,
+  2.225,
   9.071
  ],
  "tint": {
@@ -214,6 +215,10 @@
     "hatColor",
     "capColor",
     "#f4f2ea"
+   ],
+   "clothbag": [
+    "bag",
+    "#c8b48a"
    ],
    "hair_top": [
     "hair"
@@ -262,7 +267,8 @@
    "hair_top",
    "cap_irani",
    "cap_skull",
-   "towel"
+   "towel",
+   "clothbag"
   ],
   "regions": {
    "beard": "#3b3735",
@@ -270,6 +276,7 @@
    "camera": "#1c1c1e",
    "cap_irani": "#26221f",
    "cap_skull": "#f2f0ea",
+   "clothbag": "#c8b48a",
    "hair": "#3b3735",
    "hair_top": "#3b3735",
    "lanyard": "#f4f2ea",
@@ -313,6 +320,13 @@
        "topi"
       ]
      }
+    ]
+   },
+   "clothbag": {
+    "f": "prop",
+    "in": [
+     "clothbag",
+     "satchel"
     ]
    },
    "hair_top": {
@@ -380,7 +394,7 @@
    }
   }
  },
- "tris": 3512,
+ "tris": 3648,
  "units": "u",
  "up": "Z"
 }

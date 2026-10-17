@@ -2298,10 +2298,11 @@
    * the frame, the right leg through the triangle to the far pedal, both hands on the bar, the cycle
    * leaning away to the right so the body stays upright over the wheels, rising and falling with the
    * stroke (vehicles.js draws the same in 2D). The numbers come from an offline search over the Hero
-   * geometry for a kid (every crank angle reachable, the right hip ~0.7 u under the top tube, the
-   * grips reachable with a forward lean). Writes J (legs by IK + hip abduction, arms to the grips);
+   * geometry for a kid (every crank angle reachable, the right leg crossing the frame plane >= 0.6 u
+   * under the top tube, the grips reachable with the least forward lean, body turned a little
+   * towards the bar). Writes J (legs by IK + hip abduction, arms to the grips);
    * returns the person root [x, y, z, yaw, roll] in the vehicle frame. */
-  const KAINCHI = { dx: 1.0, hy: 3.85, bob: 0.1, hz: -1.0, yaw: -0.05, roll: -0.2, pz: 0.88, tilt: 0.2 };
+  const KAINCHI = { dx: 1.0, hy: 4.1, bob: 0.08, hz: -0.7, yaw: -0.2, roll: -0.2, pz: 0.88, tilt: 0.2 };
   const KF = new Frame(), KQ = [0, 0, 0], KR = [0, 0, 0, 0, 0], KL = [0, 0, 0, 0];
   const KAI_J = new WeakMap(); // actor -> its last kainchi pose (getting off blends from it)
   function kainchiPose(md, seat, sc, sx, o) {
