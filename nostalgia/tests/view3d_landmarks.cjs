@@ -62,6 +62,8 @@ const VIEWS = {
   buddha_statue: [{ name: 'bund', atFn: 'bund', fpsPitch: -0.1 }],
   golconda_bala_hissar: [{ name: 'front', from: Math.PI / 4, dist: 150, fpsPitch: -0.3 }],
   cyber_towers: [{ name: 'front', from: Math.PI / 2, dist: 230 }],
+  // the tower stands in a small park ringed by trees: look from the SD Road side, across the lawn
+  secunderabad_clock_tower: [{ name: '', at: [-33, -73] }],
 };
 
 async function main() {

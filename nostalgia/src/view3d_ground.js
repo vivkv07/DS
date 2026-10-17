@@ -605,7 +605,6 @@
       this.P = new Float32Array(this.cap * 3); this.Nn = new Int8Array(this.cap * 3); this.C = new Uint8Array(this.cap * 3);
       this.UV = new Float32Array(this.cap * 2); this.GEO = new Float32Array(this.cap * 4); this.MK = new Float32Array(this.cap * 4); this.ST = new Float32Array(this.cap * 4);
       this.I = new Uint32Array(this.icap);
-      this.tmpA = []; this.tmpB = [];
       this.raised = []; // [x0, z0, x1, z1, ... polygon footprints, h] for groundHeightAt
     }
     /** reuse the buffers for another chunk (jobs run one at a time) */
@@ -1188,9 +1187,7 @@
     let nx = -dz, nz = dx;
     const A = k.A, cx = A.Q[0], cz = A.Q[1];
     if ((pa[0] - cx) * nx + (pa[1] - cz) * nz < 0) { nx = -nx; nz = -nz; }
-    const fake = { x: 0, y: 0, nx: 0, ny: 0 };
     const fa = { x: pa[0] - nx * A.hw, y: pa[1] - nz * A.hw, nx, ny: nz }, fb = { x: pb[0] - nx * A.hw, y: pb[1] - nz * A.hw, nx, ny: nz };
-    void fake;
     footStrip(B, fa, fb, 0, L, 1, A.hw, k.fp, k.kh, k.paint, A.piece.kind);
   }
 
@@ -1839,7 +1836,7 @@ if (ngShine > 0.01) {
   }
 
   /* ================================================================ chunk jobs (provider) */
-  const STATS = { built: 0, ms: 0, lastMs: 0, tris: 0, roadsRebuilt: 0 };
+  const STATS = { built: 0, ms: 0, lastMs: 0, roadsRebuilt: 0 };
   const STEPMS = []; // cumulative ms per job step: analyse, aux, surface, tint, roads, upload
   const curPot = () => { const PH = N.world && N.world.potholes; return PH && PH.version != null ? PH.version : 0; };
   const SIGBUF = [];

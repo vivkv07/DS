@@ -2331,7 +2331,13 @@
     facWalls(fp, -hl, -hv, hl, -hv + 34, 0, 30, 8);
     k.c('#d8d0c0').hq(-hl, -hv, hl, -hv + 34, 30);
     parapet(k, -hl, -hv, hl, -hv + 34, 30, 2.4, 0.7, '#b22b2b');
-    md.at(0, -hv + 34, 0); md.sign('MAHATMA GANDHI BUS STATION', -40, 40, 22, 28, 0.4, '#b22b2b', '#ffffff'); md.at(0, 0, 0);
+    md.at(0, -hv + 34, 0); md.sign('MAHATMA GANDHI BUS STATION', -40, 40, 22, 28, 0.4, '#b22b2b', '#ffffff');
+    // the road side (front): the same board over a red-pillared entrance porch
+    md.at(0, -hv, PI); md.sign('MAHATMA GANDHI BUS STATION', -40, 40, 22, 28, 0.4, '#b22b2b', '#ffffff');
+    k.c('#d8d0c0').box(-26, 11, 0, 26, 12.6, 12).c('#b22b2b').box(-26.4, 12.6, 11.4, 26.4, 13.6, 12.4);
+    for (const u of [-24, -8, 8, 24]) k.box(u - 0.8, 0, 10.2, u + 0.8, 11, 11.8);
+    md.glow(0, 10.4, 6, '#e0f4ff', 'gM');
+    md.at(0, 0, 0);
     const k2 = md.part('kit2');
     for (let c = 0; c < 4; c++) {
       const u0 = -hl + 8 + c * ((lm.w - 16) / 4), u1 = u0 + (lm.w - 16) / 4 - 6, um = (u0 + u1) / 2;

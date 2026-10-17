@@ -178,11 +178,15 @@ async function main() {
     N.view3d.ground.setEnabled(on);
     N.view3d.setQuality({ pixelRatio: 0.25 });
     const t0 = performance.now(); N.view3d.settle(60000); const settleMs = performance.now() - t0;
-    const js = [];
-    for (let i = 0; i < 24; i++) { await new Promise((r) => requestAnimationFrame(r)); if (i > 4) js.push(N.view3d.stats().jsMs); }
-    js.sort((a, b) => a - b);
+    // SwiftShader rasterises inside renderer.render(), so judge the JS outside it (jsx = js - render)
+    const js = [], rn = [], jsx = [];
+    for (let i = 0; i < 24; i++) {
+      await new Promise((r) => requestAnimationFrame(r));
+      if (i > 4) { const t = N.view3d.stats(); js.push(t.jsMs); rn.push(t.renderMs); jsx.push(Math.max(0, t.jsMs - t.renderMs)); }
+    }
+    const med = (a) => +a.slice().sort((x, y) => x - y)[a.length >> 1].toFixed(2);
     const s = N.view3d.stats(), g = N.view3d.ground.stats();
-    return { calls: s.calls, tris: s.triangles, jsMed: js[js.length >> 1], jsMin: js[0], settleMs: Math.round(settleMs), geometries: s.geometries, textures: s.textures, groundTextures: s.groundTextures, chunkMs: g.avgChunkMs, roadTris: g.roadTris };
+    return { calls: s.calls, tris: s.triangles, jsMed: med(js), renderMed: med(rn), jsxMed: med(jsx), settleMs: Math.round(settleMs), geometries: s.geometries, textures: s.textures, groundTextures: s.groundTextures, chunkMs: g.avgChunkMs, roadTris: g.roadTris };
   }, on);
   await page.evaluate(() => { N.debug.teleport('abids'); N.view3d.setCamera({ yaw: N.view.yaw, pitch: 0.28, snap: true }); });
   const pa = await perf(true);
@@ -194,7 +198,8 @@ async function main() {
   check(pa2.groundTextures === 0, 'toggle on again: provider ground only');
   check(Math.abs(pa2.geometries - pa.geometries) <= Math.max(6, pa.geometries * 0.05) && Math.abs(pa2.textures - pa.textures) <= Math.max(6, pa.textures * 0.05), 'no leaks over off/on toggles (geometries ' + pa.geometries + ' -> ' + pa2.geometries + ', textures ' + pa.textures + ' -> ' + pa2.textures + ')');
   check(pa2.calls <= pb.calls * 1.35 + 30, 'draw calls comparable (' + pb.calls + ' before, ' + pa2.calls + ' after)');
-  check(pa2.jsMed <= Math.max(pb.jsMed * 1.6, pb.jsMed + 4), 'JS ms per frame comparable (median ' + pb.jsMed + ' before, ' + pa2.jsMed + ' after)');
+  check(pa2.jsxMed <= Math.max(pb.jsxMed * 1.6, pb.jsxMed + 3), 'JS ms per frame outside renderer.render comparable (median ' + pb.jsxMed + ' before, ' + pa2.jsxMed + ' after; total incl. SwiftShader raster ' + pb.jsMed + ' / ' + pa2.jsMed + ')');
+  check(pa2.settleMs <= pb.settleMs * 1.5 + 2000, 'building the ground around the player: ' + pa2.settleMs + ' ms after vs ' + pb.settleMs + ' ms painting before');
 
   // ---- rain: roads get wet, rain-only potholes appear (roads rebuilt)
   const rain = await page.evaluate(async () => {

@@ -92,7 +92,7 @@
     stoneCols: ['#8f8a86', '#a39a8c', '#7d7872', '#b3a796', '#8a8078', '#9e988e', '#c2b6a2'],
     lineDist: 30,
     throwSpeed: 160, powerSpeed: 214, aiSpeed: [138, 180], passSpeed: 115,
-    lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.45, stackT: 0.6, scatter: 0.8 },
+    lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.5, stackT: 0.75, threatR: 34, scatter: 0.8, aiErr: [0.2, 0.11], stackErr: [0.17, 0.11], dodge: [0.25, 0.55], windup: [0.7, 0.42] },
     maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8 },
     aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130 },
     pay: { win: 200, win3: 300, daily: 3 },
@@ -123,7 +123,8 @@
   const sfx = (name, o) => { try { if (N.audio && N.audio.sfx) N.audio.sfx(name, o || { ui: true }); } catch (e) { /* audio is optional */ } };
   const toast = (t, ms) => { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2400); } catch (e) { /* ignore */ } };
   const banner = (t, s, ms, kind) => { try { if (N.hud && N.hud.banner) N.hud.banner(t, s || '', ms || 2200, { kind: kind || 'info' }); } catch (e) { /* ignore */ } };
-  function gauss(r) { return (r.next() + r.next() + r.next() - 1.5) * 1.15; }
+  /** ~N(0, 1) (sum of three uniforms, scaled to unit spread) */
+  function gauss(r) { return (r.next() + r.next() + r.next() - 1.5) * 2; }
   function settings() { try { return N.settings || (N.menus && N.menus.settings) || {}; } catch (e) { return {}; } }
   function isTouch() { try { return (N.input && N.input.device === 'touch') || document.body.classList.contains('touch-on'); } catch (e) { return false; } }
   function is3D() { try { return !!(N.view3d && N.view3d.active); } catch (e) { return false; } }
@@ -415,6 +416,7 @@
       hold: false, holdT: 0, carry: null, act: null, actT: 0, dood: false, hits: 0, catches: 0, stacked: 0, fouls: 0,
       downT: 0, react: 0, dodgeT: 0, dodgeX: 0, dodgeY: 0, dodgeRoll: 0, tgt: null, tgtT: 0, windT: 0, spot: null,
       dvx: 0, dvy: 0, face: null, think: 0, goal: null, stone: null, catchT: -9, catchRoll: false, dashT: -9, sit: null, wander: null, role: null,
+      caution: Math.random(), side: Math.random() < 0.5 ? 1 : -1,
     }, o);
     S.parts.push(P);
     return P;
@@ -466,7 +468,7 @@
 
   function log(S, type, data) {
     const ev = Object.assign({ t: +S.t.toFixed(2), type }, data || {});
-    S.log.push(ev); if (S.log.length > 400) S.log.shift();
+    S.log.push(ev); if (S.log.length > (S.logMax || 400)) S.log.shift();
     if (S.real) { try { N.emit('minigame:event', { id: S.id, type, data: ev, inWorld: true }); } catch (e) { /* ignore */ } }
     return ev;
   }
@@ -494,7 +496,7 @@
   function speedOf(S, P, run) {
     let sp = run ? TUNE.kidRun + TUNE.kidRunD * S.d : TUNE.kidWalk;
     if (P.dood) sp *= 0.72;
-    if (P.carry) sp *= TUNE.carryMul;
+    if (P.carry) sp = Math.min(sp, TUNE.kidWalk * 1.1) * TUNE.carryMul;
     if (P.hold) sp = Math.min(sp, TUNE.kidWalk * TUNE.holdWalk);
     return sp;
   }
@@ -590,14 +592,32 @@
     P.hold = false; P.windT = 0; P.holdT = 0;
     S.tele = null;
     sfx('chappal_whoosh', { x: e.x, y: e.y, vol: 0.7, pitch: 1.3 });
-    // every kid gets a reaction time to this throw (AI dodging) and a catch roll
+    // every kid gets a reaction time to this throw (AI dodging) and a catch roll; the kid it was aimed at
+    // may have read the wind-up and jukes at once (the thrower led the old run)
+    b.target = o.target || null;
     for (const Q of S.parts) {
       if (Q.isPlayer || Q === P) continue;
       Q.react = S.t + lerp(0.34, 0.12, S.d) * (0.8 + S.rng.next() * 0.5);
-      Q.dodgeRoll = S.rng.next() < (0.42 + 0.42 * S.d) ? 1 : 0;
-      Q.catchRoll = S.id === 'marampitti' && S.rng.next() < 0.1 + 0.12 * S.d;
+      Q.dodgeRoll = S.rng.next() < lerp(TUNE.lingocha.dodge[0], TUNE.lingocha.dodge[1], S.d) ? 1 : 0;
+      Q.catchRoll = S.id === 'marampitti' && S.rng.next() < 0.08 + 0.1 * S.d;
+      if (Q === b.target && b.live && !Q.out && Q.downT <= 0) {
+        // busy hands (picking / stacking) drop the job to duck only some of the time
+        if (Q.act && Q.dodgeRoll && S.rng.next() < 0.55) { Q.act = null; Q.actStone = null; juke(S, Q, P); }
+        else if (!Q.act && Q.dodgeRoll) juke(S, Q, P);
+      }
     }
-    if (!o.quiet) log(S, o.pass ? 'pass' : o.kind === 'stack' ? 'stack_throw' : 'throw', { by: P.name, speed: Math.round(speed) });
+    if (!o.quiet) log(S, o.pass ? 'pass' : o.kind === 'stack' ? 'stack_throw' : 'throw', { by: P.name, speed: Math.round(speed), at: b.target ? b.target.name : null, busy: !!(b.target && b.target.act), juke: !!(b.target && b.target.dodgeT > 0) });
+  }
+  /** sidestep across the line of a throw from P */
+  function juke(S, Q, P) {
+    const e = Q.e;
+    let dx = e.x - P.e.x, dy = e.y - P.e.y; const l = hyp(dx, dy) || 1; dx /= l; dy /= l;
+    let side = S.rng.next() < 0.5 ? 1 : -1;
+    let ux = -dy * side, uy = dx * side;
+    if (!walk(e.x + ux * 10, e.y + uy * 10) || !inRect(S.F, e.x + ux * 10, e.y + uy * 10, 6)) { ux = -ux; uy = -uy; }
+    const sp = speedOf(S, Q, true) * 1.15;
+    Q.dodgeX = ux * sp; Q.dodgeY = uy * sp; Q.dodgeT = 0.34; Q.dodgeRoll = 0;
+    Q.dvx = Q.dodgeX; Q.dvy = Q.dodgeY;
   }
   /** Throw at a point (tz: height to arrive at) with an aim error (radians). */
   function launchAt(S, P, tx, ty, tz, speed, errA, o) {
@@ -714,16 +734,17 @@
       }
     }
     // passers-by (adults): a little Chappal Meter when it was Chinnu's ball
-    if ((b.live || hyp(b.vx, b.vy) > 70) && b.z > 0.5 && b.z < 8 && S.t - (S.adultT || -9) > 1.2) {
+    if (b.thrower && b.seq !== b.adultSeq && hyp(b.vx, b.vy) > 60 && b.z > 0.8 && b.z < 8) {
       let hitE = null;
       try {
         N.entities.query(b.x, b.y, 6, (q) => {
           if (hitE || !q || q.pgKid || q === N.player || q.vehicle || q.hidden || (q.kind !== 'ped' && q.kind !== 'npc')) return false;
           if (hyp(q.x - b.x, q.y - b.y) > 4) return false;
+          if (q.__pgHitT && S.t - q.__pgHitT < 6 && q.__pgHitS === S) return false;
           hitE = q; return true;
         });
       } catch (e) { hitE = null; }
-      if (hitE) adultHit(S, b, hitE);
+      if (hitE) { b.adultSeq = b.seq; hitE.__pgHitT = S.t; hitE.__pgHitS = S; adultHit(S, b, hitE); }
     }
   }
   function isAdultLook(l) { return !!l && /^(man|woman|uncle|aunty|saree|burqa|lungi|police)$/.test(l.kind || 'man'); }
@@ -734,7 +755,7 @@
     const adult = isAdultLook(q.look) || q.kind === 'npc';
     try { if (N.dialogue && N.dialogue.bark) N.dialogue.bark(q, pick(S, adult ? BARK.adult : ['Oye!', '*Arre*, careful!']), { secs: 1.8, name: false }); } catch (e) { /* ignore */ }
     const mine = b.thrower && b.thrower.isPlayer && S.real;
-    log(S, 'adult_hit', { adult, heat: mine && adult });
+    log(S, 'adult_hit', { adult, heat: mine && adult, who: (q.npcId || q.role || (q.look && q.look.kind) || q.kind) });
     if (mine && adult) { try { if (N.wanted && N.wanted.addHeat) N.wanted.addHeat(TUNE.heat.adult, 'ball'); } catch (e) { N.err('pg.heat', e); } }
   }
   function windowBreak(S, x, y, P) {
@@ -922,7 +943,7 @@
           break;
         }
         case 'scatter': {
-          if (S.phaseT > TUNE.lingocha.scatter) { S.phase = 'live'; S.phaseT = 0; log(S, 'live'); }
+          if (S.phaseT > TUNE.lingocha.scatter) { S.phase = 'live'; S.phaseT = 0; L.liveT0 = S.t; log(S, 'live'); }
           break;
         }
         case 'live': {
@@ -962,7 +983,7 @@
       const L = S.L;
       let ang = Math.atan2(L.base.y - T.e.y, L.base.x - T.e.x);
       const weak = S.real && PG.debug.assist.weakAI && T.team !== (S.me ? S.me.team : -1);
-      ang += gauss(S.rng) * (weak ? 0.5 : (0.1 - 0.05 * S.d));
+      ang += gauss(S.rng) * (weak ? 0.5 : lerp(TUNE.lingocha.stackErr[0], TUNE.lingocha.stackErr[1], S.d));
       const p = 0.32 + S.rng.next() * 0.42;
       LING.stackThrow(S, T, ang, p);
     },
@@ -990,7 +1011,7 @@
       L.stack.forEach((st, i) => {
         st.state = 'fly'; st.claim = null; st.by = null;
         st.x = L.base.x + (S.rng.next() - 0.5); st.y = L.base.y + (S.rng.next() - 0.5); st.z = i * TUNE.stoneH;
-        const a = ba + gauss(S.rng) * 0.85, v = clamp(sp * (0.14 + 0.3 * S.rng.next()) * (0.65 + 0.07 * i), 12, 125);
+        const a = ba + gauss(S.rng) * 0.85, v = clamp(sp * (0.3 + 0.45 * S.rng.next()) * (0.65 + 0.07 * i), 25, 150);
         st.vx = Math.cos(a) * v; st.vy = Math.sin(a) * v; st.vz = 10 + S.rng.next() * 16 + i * 2;
       });
       L.stack = [];
@@ -1024,7 +1045,7 @@
       if (st.z <= 0) {
         st.z = 0;
         if (st.vz < -20) { st.vz = -st.vz * 0.3; st.vx *= 0.6; st.vy *= 0.6; sfx('marble', { x: st.x, y: st.y, vol: 0.35, pitch: 0.6 + st.i * 0.06 }); }
-        else { st.vz = 0; const s = hyp(st.vx, st.vy), dec = 150 * dt; if (s <= dec) { st.vx = st.vy = 0; st.state = 'loose'; } else { st.vx *= (s - dec) / s; st.vy *= (s - dec) / s; } }
+        else { st.vz = 0; const s = hyp(st.vx, st.vy), dec = 110 * dt; if (s <= dec) { st.vx = st.vy = 0; st.state = 'loose'; } else { st.vx *= (s - dec) / s; st.vy *= (s - dec) / s; } }
       }
       if (st.state === 'fly' && !walk(st.x, st.y)) { const f = spotNear(st.x, st.y, 1, 9); st.x = f.x; st.y = f.y; }
     },
@@ -1082,7 +1103,8 @@
       const L = S.L;
       if (S.phase === 'roundEnd') return;
       L.wins[winner]++;
-      const rec = { round: L.round, seek: L.seek === 0 ? 'home' : 'away', winner: winner === 0 ? 'home' : 'away', reason };
+      const rec = { round: L.round, seek: L.seek === 0 ? 'home' : 'away', winner: winner === 0 ? 'home' : 'away', reason, live: L.liveT0 != null && L.knocked ? +(S.t - L.liveT0).toFixed(1) : 0, stack: L.stack.length };
+      L.liveT0 = null;
       L.hist.push(rec);
       S.phase = 'roundEnd'; S.phaseT = 0;
       for (const P of S.parts) { P.act = null; P.windT = 0; }
@@ -1176,7 +1198,23 @@
         return;
       }
       const run = speedOf(S, P, true);
+      const Hh = b.holder && b.holder.team !== P.team ? b.holder : null;
+      const threat = Hh && P.safeT <= 0 && pdist(P, Hh) < TUNE.lingocha.threatR && L.timer > 12;
+      if (threat && P.caution > 0.15) {
+        // keep away until the throw has gone (then rush in)
+        let ax = e.x - Hh.e.x, ay = e.y - Hh.e.y; const l = hyp(ax, ay) || 1;
+        const q = clampIn(S.F, e.x + (ax / l) * 20 - (ay / l) * 8 * P.side, e.y + (ay / l) * 20 + (ax / l) * 8 * P.side, 5);
+        goTo(P, q.x, q.y, run, 1);
+        return;
+      }
       if (P.carry) {
+        // one pair of hands on the stack at a time; the others wait their turn a step away
+        const busy = S.parts.some((Q) => Q !== P && Q.act === 'stack' && !Q.out);
+        if (busy) {
+          const a = Math.atan2(e.y - L.base.y, e.x - L.base.x);
+          goTo(P, L.base.x + Math.cos(a) * 9, L.base.y + Math.sin(a) * 9, run, 1.5);
+          return;
+        }
         const d = goTo(P, L.base.x, L.base.y, run, 4.5);
         if (d < 5.5) { P.act = 'stack'; P.actT = TUNE.lingocha.stackT * (P.dood ? 1.4 : 1); halt(P); }
         return;
@@ -1230,7 +1268,7 @@
           if (mate && S.rng.next() < 0.7) { launchAt(S, P, mate.e.x, mate.e.y, 4, TUNE.passSpeed, 0.03, { pass: true, passTo: mate }); return; }
         }
         const range = lerp(30, 42, S.d);
-        if (d < range || P.holdT > TUNE.lingocha.holdMax - 0.6) { P.windT = lerp(0.55, 0.32, S.d) * (S.real && PG.debug.assist.weakAI ? 1.6 : 1); halt(P); return; }
+        if (d < range || P.holdT > TUNE.lingocha.holdMax - 0.6) { P.windT = lerp(TUNE.lingocha.windup[0], TUNE.lingocha.windup[1], S.d) * (S.real && PG.debug.assist.weakAI ? 1.6 : 1); halt(P); return; }
         goTo(P, T.e.x, T.e.y, speedOf(S, P, false), 2);
         return;
       }
@@ -1265,9 +1303,9 @@
       const sp = lerp(TUNE.aiSpeed[0], TUNE.aiSpeed[1], S.d) * (0.92 + S.rng.next() * 0.16);
       const d = pdist(P, T), t = d / sp, lead = 0.5 + 0.4 * S.d;
       const tx = T.e.x + (T.e.vx || 0) * t * lead, ty = T.e.y + (T.e.vy || 0) * t * lead;
-      const errA = (weak ? 0.45 : 0.12 - 0.07 * S.d);
+      const errA = weak ? 0.45 : lerp(TUNE.lingocha.aiErr[0], TUNE.lingocha.aiErr[1], S.d);
       const tz = clamp(2.4 + gauss(S.rng) * (1.1 - 0.5 * S.d), 0.8, 6.5);
-      launchAt(S, P, tx, ty, tz, sp, errA);
+      launchAt(S, P, tx, ty, tz, sp, errA, { target: T });
     },
     hud(S) {
       const L = S.L, me = S.me;
@@ -1482,7 +1520,7 @@
           if (P.windT <= 0) LING.aiThrowAt(S, P, T);
           return;
         }
-        if (d < lerp(28, 40, S.d) || P.holdT > TUNE.maram.holdMax - 0.6) { P.windT = lerp(0.55, 0.32, S.d) * (S.real && PG.debug.assist.weakAI && T.isPlayer ? 1.6 : 1); halt(P); return; }
+        if (d < lerp(28, 40, S.d) || P.holdT > TUNE.maram.holdMax - 0.6) { P.windT = lerp(TUNE.lingocha.windup[0], TUNE.lingocha.windup[1], S.d) * (S.real && PG.debug.assist.weakAI && T.isPlayer ? 1.6 : 1); halt(P); return; }
         goTo(P, T.e.x, T.e.y, speedOf(S, P, false), 2);
         return;
       }
@@ -1667,7 +1705,7 @@
       const tx = T.e.x + (T.e.vx || 0) * t * 0.6, ty = T.e.y + (T.e.vy || 0) * t * 0.6;
       const errA = PG.debug.assist.aim ? 0 : (power ? 0.07 : 0.035) * (asst ? 0.5 : 1);
       const tz = PG.debug.assist.aim ? 2.6 : clamp(2.6 + gauss(S.rng) * (power ? 1.7 : 0.6), 0.8, 8);
-      launchAt(S, me, tx, ty, tz, sp, errA);
+      launchAt(S, me, tx, ty, tz, sp, errA, { target: T });
     } else {
       const a = p.facing != null ? p.facing : p.angle;
       release(S, me, a, sp, power ? 22 : 12);
@@ -1892,6 +1930,7 @@
   function cleanupReal(S) {
     if (current === S) current = null;
     holdGivers(false);
+    spectatorsOff(S);
     BUSY.delete(S.F.decorY);
     try { if (N.clock && N.clock.hold) N.clock.hold('playground-game', false); } catch (e) { /* ignore */ }
     try { if (N.render && S.zoomWas != null && Math.abs(N.render.baseZoom - S.zoom) < 1e-6) N.render.baseZoom = S.zoomWas; } catch (e) { /* ignore */ }
@@ -1922,6 +1961,7 @@
   function hardCleanup(S) {
     if (!S) return;
     holdGivers(false);
+    spectatorsOff(S);
     BUSY.delete(S.F.decorY);
     try { if (N.clock && N.clock.hold) N.clock.hold('playground-game', false); } catch (e) { /* ignore */ }
     try { if (N.render && S.zoomWas != null) N.render.baseZoom = S.zoomWas; } catch (e) { /* ignore */ }
@@ -2023,6 +2063,8 @@
       for (const pp of S.pops) pp.t += dt;
       for (let i = S.pops.length - 1; i >= 0; i--) if (S.pops[i].t > S.pops[i].life) { const o = S.pops.splice(i, 1)[0]; if (o.el) o.el.remove(); }
       if (S.tele && (!S.tele.from.hold || S.tele.from.windT <= 0)) S.tele = null;
+      S.specT = (S.specT || 0) - dt;
+      if (S.specT <= 0) { S.specT = 1; spectators(S, true); }
       if (S.ambient) ambientChatter(S, dt);
       else realChecks(S, dt);
     } catch (e) { N.err('pg.step:' + S.id, e); }
@@ -2084,6 +2126,32 @@
     if (S.restartAt && S.t > S.restartAt && S.id === 'lingocha') { S.restartAt = 0; }
   }
 
+  /* ================================================================ spectators */
+  // traffic.js keeps a little crowd of kids wandering at every ground (its 'playground' crowd zone). While a
+  // game is on there, that zone's centre is moved to the sideline, so they stand and watch instead of
+  // running through the game; it is put back when the game ends.
+  function sideline(F) {
+    const c = [[F.cx, F.y1 + 9], [F.cx, F.y0 - 9], [F.x0 - 9, F.cy], [F.x1 + 9, F.cy], [F.cx, F.y1 - 4], [F.x0 + 4, F.cy]];
+    for (const [x, y] of c) if (clearAt(x, y, 5)) return { x, y };
+    return { x: F.x0 + 4, y: F.y0 + 4 };
+  }
+  function spectators(S, on) {
+    if (!S.zones) S.zones = new Map();
+    if (!on) { for (const [z, o] of S.zones) { z.x = o.x; z.y = o.y; z.r = o.r; } S.zones.clear(); return; }
+    const T = N.traffic;
+    if (!T || !T.peds) return;
+    for (const p of T.peds) {
+      const z = p && p.zone;
+      if (!z || z.kind !== 'playground' || S.zones.has(z) || hyp(z.x - S.F.cx, z.y - S.F.cy) > 260) continue;
+      if (z.__pgMoved) continue;
+      S.zones.set(z, { x: z.x, y: z.y, r: z.r });
+      const q = S.F.side || (S.F.side = sideline(S.F));
+      z.x = q.x; z.y = q.y; z.r = 9; z.__pgMoved = true;
+    }
+    for (const z of S.zones.keys()) z.__pgMoved = true;
+  }
+  function spectatorsOff(S) { if (S && S.zones) { for (const z of S.zones.keys()) z.__pgMoved = false; spectators(S, false); } }
+
   /* ================================================================ ambient games */
   function ambientGameFor(F) {
     if (AMB.force) return AMB.force;
@@ -2097,6 +2165,7 @@
     AMB.S = null;
     BUSY.delete(S.F.decorY);
     restoreDoubles(S);
+    spectatorsOff(S);
     for (const pp of S.pops) if (pp.el) pp.el.remove();
     S.pops.length = 0;
     S.ended = true;
@@ -2532,7 +2601,7 @@
   }
   function resetAll() {
     if (current) { const S = current; hardCleanup(S); const r = S.resolve; S.resolve = null; S.ended = true; if (r) r({ id: S.id, win: false, score: 0, stars: 0, aborted: true, reason: 'reset' }); }
-    if (AMB.S) { const S = AMB.S; AMB.S = null; BUSY.delete(S.F.decorY); restoreDoubles(S); for (const k of S.kids) { try { N.entities.remove(k); } catch (e) { /* ignore */ } } }
+    if (AMB.S) { const S = AMB.S; AMB.S = null; BUSY.delete(S.F.decorY); restoreDoubles(S); spectatorsOff(S); for (const k of S.kids) { try { N.entities.remove(k); } catch (e) { /* ignore */ } } }
     for (const L of leftovers) for (const pp of L.S.pops) if (pp.el) pp.el.remove();
     leftovers.length = 0;
     for (const k of leftKids) { try { N.entities.remove(k); } catch (e) { /* ignore */ } }
@@ -2641,6 +2710,26 @@
       toss() { const S = current; if (!S || !S.M) return false; S.auto = null; MARAM.toss(S); return true; },
       end(win) { const S = current; if (!S) return false; endSession(S, !!win, { reason: 'debug' }); return true; },
       fields: () => fieldList,
+      /** AI-only fast simulation (balance tuning / rules sanity): {rounds | survivors, log} */
+      simulate(gid, place, secs, o) {
+        o = o || {};
+        const F = FIELDS.get(place) || fieldList[0];
+        if (!F || !GAMES[gid]) return null;
+        const S = createSession(gid, F, { difficulty: o.difficulty == null ? 0.4 : o.difficulty, seed: o.seed || 1 }, { ambient: true });
+        S.logMax = 20000;
+        const dt = 1 / 60, n = Math.round((secs || 120) * 60);
+        const t0 = performance.now();
+        for (let i = 0; i < n; i++) stepSession(S, dt);
+        const out = { ms: Math.round(performance.now() - t0), t: S.t, log: S.log.filter((e) => /out|knock|lingocha|round_end|catch|head_foul|restack|safe|kick|grab|toss|window|ball_back/.test(e.type)).map((e) => e.type) };
+        if (o.full) out.full = S.log.slice();
+        if (S.L) out.rounds = S.L.hist.slice();
+        if (S.M) out.tosses = S.M.tosses;
+        const counts = {}; for (const e of S.log) counts[e.type] = (counts[e.type] || 0) + 1; out.counts = counts;
+        for (const k of S.kids) { try { N.entities.remove(k); } catch (e) { /* ignore */ } }
+        restoreDoubles(S); spectatorsOff(S);
+        S.ended = true;
+        return out;
+      },
       kidCount() { return N.entities.all.filter((e) => e.pgKid && e.alive !== false).length; },
       busy() { return Array.from(BUSY); },
     },
