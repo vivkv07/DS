@@ -1,0 +1,214 @@
+{
+ "anchors": {
+  "eye": [
+   0.0,
+   -0.44,
+   6.42
+  ],
+  "grip_L": [
+   2.064,
+   -0.004,
+   3.896
+  ],
+  "grip_R": [
+   -2.064,
+   -0.004,
+   3.896
+  ],
+  "head_top": [
+   0.0,
+   0.06,
+   7.22
+  ],
+  "sole_heel_L": [
+   0.36,
+   0.26,
+   -0.0
+  ],
+  "sole_heel_R": [
+   -0.36,
+   0.26,
+   -0.0
+  ],
+  "sole_toe_L": [
+   0.38,
+   -0.86,
+   -0.0
+  ],
+  "sole_toe_R": [
+   -0.38,
+   -0.86,
+   -0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 4000,
+ "bytes": 460764,
+ "clips": {
+  "idle": {
+   "duration": 4.0,
+   "fps": 30,
+   "frames": 120,
+   "loco": false,
+   "loop": true
+  },
+  "run": {
+   "duration": 1.0667,
+   "duty": 0.27,
+   "fps": 30,
+   "frames": 32,
+   "gait": "run",
+   "loco": true,
+   "loop": true,
+   "nominal": 80.0,
+   "phase0": "left heel strike",
+   "slip": {
+    "low": -0.0,
+    "max": 0.0002,
+    "mean": 0.0,
+    "pairs": 24,
+    "ratio": 0.0,
+    "step": 0.5
+   },
+   "speed": 15.0,
+   "stride": 16.0
+  },
+  "stroll": {
+   "duration": 1.0667,
+   "duty": 0.6,
+   "fps": 30,
+   "frames": 32,
+   "gait": "walk",
+   "loco": true,
+   "loop": true,
+   "nominal": 14.0,
+   "phase0": "left heel strike",
+   "slip": {
+    "low": -0.001,
+    "max": 0.0255,
+    "mean": 0.0009,
+    "pairs": 60,
+    "ratio": 0.0063,
+    "step": 0.15
+   },
+   "speed": 4.5,
+   "stride": 4.8
+  },
+  "walk": {
+   "duration": 1.0667,
+   "duty": 0.4,
+   "fps": 30,
+   "frames": 32,
+   "gait": "walk",
+   "loco": true,
+   "loop": true,
+   "nominal": 45.0,
+   "phase0": "left heel strike",
+   "slip": {
+    "low": -0.048,
+    "max": 0.0346,
+    "mean": 0.0019,
+    "pairs": 38,
+    "ratio": 0.0057,
+    "step": 0.325
+   },
+   "speed": 9.75,
+   "stride": 10.4
+  }
+ },
+ "family": "character",
+ "file": "kid_chinnu.glb",
+ "front": "-Y",
+ "id": "kid_chinnu",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 450.0,
+ "kit": 1,
+ "materials": [
+  "M_kid_chinnu"
+ ],
+ "max": [
+  2.228,
+  0.813,
+  7.358
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "shoulder_L",
+   "upperarm_L",
+   "forearm_L",
+   "hand_L",
+   "thigh_L",
+   "shin_L",
+   "foot_L",
+   "toe_L",
+   "shoulder_R",
+   "upperarm_R",
+   "forearm_R",
+   "hand_R",
+   "thigh_R",
+   "shin_R",
+   "foot_R",
+   "toe_R"
+  ],
+  "height": 7.0,
+  "look": {
+   "hair": "#1a1412",
+   "kind": "kid",
+   "pants": "#8a7a55",
+   "shirt": "#3d6fb0",
+   "skin": "#b97a4f",
+   "stripes": "#f2f0ea"
+  },
+  "people": [
+   "player",
+   "kid"
+  ],
+  "rig": "kid_rig",
+  "role": "player"
+ },
+ "min": [
+  -2.228,
+  -0.978,
+  -0.0
+ ],
+ "notes": [],
+ "script": "characters",
+ "size": [
+  4.456,
+  1.791,
+  7.358
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "shoes",
+   "accent"
+  ],
+  "regions": {
+   "accent": "#f2c230",
+   "hair": "#1a1412",
+   "pants": "#8a7a55",
+   "shirt": "#3d6fb0",
+   "shoes": "#2f62b5",
+   "skin": "#b97a4f",
+   "stripes": "#eeebe2"
+  }
+ },
+ "tris": 4104,
+ "units": "u",
+ "up": "Z"
+}

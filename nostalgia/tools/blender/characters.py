@@ -40,12 +40,12 @@ def build_kid_body(J, M, sx_list=(1, -1)):
         dict(c=(0, -0.01, 4.80), r=(0.64, 0.375), p=2.5, w={'chest': 1}, mat=shirt),
         dict(c=(0, 0.01, 5.14), r=(0.665, 0.355), p=2.6, w={'chest': 1}, mat=shirt),
         dict(c=(0, 0.04, 5.36), r=(0.50, 0.29), p=2.4, w={'chest': 1}, mat=stripe),               # collar band
-        dict(c=(0, 0.05, 5.47), r=(0.255, 0.23), p=2.0, w={'chest': 0.7, 'neck': 0.3}, mat=stripe),
-        dict(c=(0, 0.06, 5.50), r=(0.20, 0.185), p=2.0, w={'chest': 0.5, 'neck': 0.5}, mat=skin),
-        dict(c=(0, 0.07, 5.70), r=(0.19, 0.18), p=2.0, w={'neck': 1}, mat=skin),
-        dict(c=(0, 0.06, 5.92), r=(0.18, 0.17), p=2.0, w={'neck': 0.4, 'head': 0.6}, mat=skin),
+        dict(c=(0, 0.05, 5.47), r=(0.29, 0.27), p=2.0, w={'chest': 0.7, 'neck': 0.3}, mat=stripe),
+        dict(c=(0, 0.06, 5.50), r=(0.235, 0.22), p=2.0, w={'chest': 0.5, 'neck': 0.5}, mat=skin),
+        dict(c=(0, 0.07, 5.70), r=(0.225, 0.215), p=2.0, w={'neck': 1}, mat=skin),
+        dict(c=(0, 0.06, 5.92), r=(0.21, 0.2), p=2.0, w={'neck': 0.4, 'head': 0.6}, mat=skin),
     ]
-    parts.append(loft('torso', T, seg=16, side=(1, 0, 0)))
+    parts.append(loft('torso', T, seg=14, side=(1, 0, 0)))
     for sx in sx_list:
         S = 'L' if sx > 0 else 'R'
         sh, el, wr, tip = J['shoulder'], J['elbow'], J['wrist'], J['hand_tip']
@@ -131,8 +131,8 @@ def build_head(J, M, hairM):
     hz = J['head'][2]
     cy = J['head'][1] + 0.02
     H = [
-        dict(c=(0, cy - 0.16, hz + 0.02), r=(0.16, 0.12), w={'head': 1}, mat=skin),
-        dict(c=(0, cy - 0.10, hz + 0.12), r=(0.33, 0.33), w={'head': 1}, mat=skin),
+        dict(c=(0, cy - 0.14, hz - 0.02), r=(0.2, 0.16), w={'head': 1}, mat=skin),
+        dict(c=(0, cy - 0.10, hz + 0.10), r=(0.35, 0.35), w={'head': 1}, mat=skin),
         dict(c=(0, cy - 0.02, hz + 0.32), r=(0.47, 0.50), w={'head': 1}, mat=skin),
         dict(c=(0, cy + 0.02, hz + 0.55), r=(0.545, 0.575), w={'head': 1}, mat=skin),
         dict(c=(0, cy + 0.04, hz + 0.75), r=(0.56, 0.60), w={'head': 1}, mat=skin),
@@ -141,13 +141,13 @@ def build_head(J, M, hairM):
         dict(c=(0, cy + 0.05, hz + 1.20), r=(0.22, 0.25), w={'head': 1}, mat=skin),
         dict(c=(0, cy + 0.05, hz + 1.235), r=(0.05, 0.06), w={'head': 1}, mat=skin),
     ]
-    parts = [loft('head', H, seg=16, side=(1, 0, 0), cap_start=True, cap_end=True)]
+    parts = [loft('head', H, seg=14, side=(1, 0, 0), cap_start=True, cap_end=True)]
     fy = cy - 0.56  # face front plane (approx.)
     ez = hz + 0.62
     # nose
-    parts.append(loft('nose', [dict(c=(0, fy + 0.08, ez - 0.02), r=(0.07, 0.05), w={'head': 1}, mat=skin),
-                              dict(c=(0, fy - 0.03, ez - 0.17), r=(0.085, 0.07), w={'head': 1}, mat=skin),
-                              dict(c=(0, fy - 0.06, ez - 0.24), r=(0.05, 0.035), w={'head': 1}, mat=skin)], seg=6, side=(1, 0, 0)))
+    parts.append(loft('nose', [dict(c=(0, fy + 0.07, ez - 0.05), r=(0.055, 0.04), w={'head': 1}, mat=skin),
+                              dict(c=(0, fy - 0.005, ez - 0.17), r=(0.075, 0.055), w={'head': 1}, mat=skin),
+                              dict(c=(0, fy - 0.015, ez - 0.215), r=(0.05, 0.03), w={'head': 1}, mat=skin)], seg=6, side=(1, 0, 0)))
     for sx in (1, -1):
         # ears
         parts.append(loft('ear', [dict(c=(0.5 * sx, cy + 0.06, ez - 0.18), r=(0.05, 0.08), w={'head': 1}, mat=skin),
@@ -198,27 +198,27 @@ def build_head(J, M, hairM):
     import random
     rnd = random.Random(11)
     k = 0
-    for ring_z, n, tilt in ((0.86, 9, 0.5), (1.02, 8, 0.75), (1.16, 6, 0.95)):
+    for ring_z, n, tilt in ((0.86, 8, 0.45), (1.02, 7, 0.7), (1.16, 4, 0.95)):
         for i in range(n):
             a = 2 * math.pi * (i + rnd.random() * 0.4) / n + 0.25
             nx, ny = math.cos(a), math.sin(a)
             if ny < -0.55 and ring_z < 0.9:
                 continue  # keep the forehead clear
             base = Vector((nx * 0.5 * (1.18 - ring_z * 0.32), cy + 0.05 + ny * 0.54 * (1.18 - ring_z * 0.32), hz + ring_z + 0.03))
-            dirv = Vector((nx * (1 - tilt), ny * (1 - tilt) + 0.25, tilt + 0.3)).normalized()
-            L = 0.26 + rnd.random() * 0.14
-            sp = loft('spike%d' % k, [dict(c=tuple(base - dirv * 0.04), r=0.11, w={'head': 1}, mat=hairM),
-                                      dict(c=tuple(base + dirv * L * 0.55), r=0.06, w={'head': 1}, mat=hairM),
+            dirv = Vector((nx * (1 - tilt), ny * (1 - tilt) + 0.35, tilt + 0.15)).normalized()
+            L = 0.2 + rnd.random() * 0.1
+            sp = loft('spike%d' % k, [dict(c=tuple(base - dirv * 0.05), r=0.14, w={'head': 1}, mat=hairM),
+                                      dict(c=tuple(base + dirv * L * 0.5), r=0.085, w={'head': 1}, mat=hairM),
                                       dict(c=tuple(base + dirv * L), r=0.012, w={'head': 1}, mat=hairM)], seg=4, side=(0, 0, 1))
             hair.append(sp)
             k += 1
     # front fringe: three short spikes falling forward over the forehead
-    for i, x in enumerate((-0.22, 0.0, 0.2)):
-        base = Vector((x, cy - 0.42, hz + 1.0))
-        dirv = Vector((x * 0.4, -0.65, -0.35)).normalized()
-        hair.append(loft('fringe%d' % i, [dict(c=tuple(base), r=0.1, w={'head': 1}, mat=hairM),
-                                          dict(c=tuple(base + dirv * 0.18), r=0.06, w={'head': 1}, mat=hairM),
-                                          dict(c=tuple(base + dirv * 0.3), r=0.01, w={'head': 1}, mat=hairM)], seg=4, side=(1, 0, 0)))
+    for i, x in enumerate((-0.3, -0.1, 0.1, 0.3)):
+        base = Vector((x, cy - 0.40, hz + 1.02 - abs(x) * 0.15))
+        dirv = Vector((x * 0.5, -0.6, -0.5)).normalized()
+        hair.append(loft('fringe%d' % i, [dict(c=tuple(base), r=0.12, w={'head': 1}, mat=hairM),
+                                          dict(c=tuple(base + dirv * 0.16), r=0.075, w={'head': 1}, mat=hairM),
+                                          dict(c=tuple(base + dirv * 0.27), r=0.01, w={'head': 1}, mat=hairM)], seg=4, side=(1, 0, 0)))
     # the cowlick: a tuft at the crown standing up and back
     base = Vector((0.06, cy + 0.28, hz + 1.2))
     dirv = Vector((0.15, 0.45, 0.9)).normalized()
@@ -294,7 +294,7 @@ def build_walkman(M):
 def kid_chinnu(A):
     J = kit.KID_J
     M = {
-        'skin': material('skin', 'skin'),
+        'skin': material('skin', 'skin', var=0.03, grain=0.02, blush=0.05),
         'shirt': material('cloth', 'shirt', base='#3d6fb0', var=0.09, region=3),
         'stripe': material('cloth_stripe', 'stripe', base='#eeebe2', region=4),
         'pants': material('cloth_pants', 'pants', base='#8a7a55', region=5),
@@ -331,7 +331,7 @@ def kid_chinnu(A):
     A.tint = {'attribute': '_REGION', 'names': kit.REGIONS, 'regions': kit.region_colours(kid)}
     kit.write_regions(kid)
     # bake: one 512 atlas (procedural cloth, skin, hair detail x AO)
-    kit.finish_atlas(A, [kid], size=512, ao_samples=40, albedo_samples=12, ao_strength=0.6, ao_dist=1.2)
+    kit.finish_atlas(A, [kid], size=512, ao_samples=32, albedo_samples=8, ao_strength=0.6, ao_dist=1.2, orm=False)
     # skinning
     mod = kid.modifiers.new('Armature', 'ARMATURE')
     mod.object = arm

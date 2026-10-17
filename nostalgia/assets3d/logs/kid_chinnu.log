@@ -1,0 +1,50 @@
+00:00.389  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building kid_chinnu (character)
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (8 samples) in 33.8s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 256x256 (32 samples) in 57.2s
+[kit] clip stroll: stride 4.8 u, duty 0.60, nominal 14 u/s -> 2.92 cycles/s; slip {'max': 0.0255, 'mean': 0.0009, 'pairs': 60, 'step': 0.15, 'ratio': 0.0063, 'low': -0.001}
+[kit] clip walk: stride 10.4 u, duty 0.40, nominal 45 u/s -> 4.33 cycles/s; slip {'max': 0.0346, 'mean': 0.0019, 'pairs': 38, 'step': 0.325, 'ratio': 0.0057, 'low': -0.048}
+[kit] clip run: stride 16.0 u, duty 0.27, nominal 80 u/s -> 5.00 cycles/s; slip {'max': 0.0002, 'mean': 0.0, 'pairs': 24, 'step': 0.5, 'ratio': 0.0, 'low': -0.0}
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+16:28:57 | INFO: Starting glTF 2.0 export
+16:28:57 | INFO: Extracting primitive: kid_chinnu
+16:28:58 | INFO: Primitives created: 1
+16:29:04 | INFO: Finished glTF 2.0 export in 6.6926984786987305 s
+
+[kit] kid_chinnu: 4104 tris (budget 4000) OVER BUDGET, 450.0 KB, clips ['idle', 'stroll', 'walk', 'run'], anchors 8
+16:29:04 | INFO: Data are loaded, start creating Blender stuff
+16:29:04 | INFO: Blender create Mesh node kid_chinnu
+16:29:05 | INFO: glTF import finished in 0.73s
+03:04.112  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kid_chinnu.png'
+[kit] preview kid_chinnu.png (384px, 24 spp) in 61.7s
+16:30:07 | INFO: Data are loaded, start creating Blender stuff
+16:30:07 | INFO: Blender create Mesh node kid_chinnu
+16:30:08 | INFO: glTF import finished in 0.95s
+03:38.725  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kid_chinnu_face.png'
+[kit] preview kid_chinnu_face.png (256px, 20 spp) in 33.3s
+16:30:41 | INFO: Data are loaded, start creating Blender stuff
+16:30:41 | INFO: Blender create Mesh node kid_chinnu
+16:30:42 | INFO: glTF import finished in 0.16s
+03:46.749  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_00.png'
+[kit] preview kid_chinnu_sheet_00.png (160px, 10 spp) in 7.8s
+16:30:49 | INFO: Data are loaded, start creating Blender stuff
+16:30:49 | INFO: Blender create Mesh node kid_chinnu
+16:30:50 | INFO: glTF import finished in 0.99s
+04:01.085  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_01.png'
+[kit] preview kid_chinnu_sheet_01.png (160px, 10 spp) in 13.2s
+16:31:04 | INFO: Data are loaded, start creating Blender stuff
+16:31:04 | INFO: Blender create Mesh node kid_chinnu
+16:31:05 | INFO: glTF import finished in 0.54s
+04:12.781  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_02.png'
+[kit] preview kid_chinnu_sheet_02.png (160px, 10 spp) in 10.7s
+16:31:15 | INFO: Data are loaded, start creating Blender stuff
+16:31:15 | INFO: Blender create Mesh node kid_chinnu
+16:31:16 | INFO: glTF import finished in 0.38s
+04:22.264  render           | Saved: '/tmp/nostalgia_blender/kid_chinnu_sheet_03.png'
+[kit] preview kid_chinnu_sheet_03.png (160px, 10 spp) in 9.0s
+16:31:25 | INFO: Data are loaded, start creating Blender stuff
+16:31:25 | INFO: Blender create Mesh node kid_chinnu
+16:31:25 | INFO: glTF import finished in 0.26s

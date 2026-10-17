@@ -66,6 +66,8 @@ async function openPage(browser) {
   await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 120000 });
   await page.evaluate(() => {
     N.debug.newGame({ skipIntro: true });
+    // potholes are generated progressively off the boot path: finish them now (deterministic checks)
+    if (N.world.potholes && N.world.potholes.ensure) N.world.potholes.ensure();
     N.debug.freezeClock(true);
     N.debug.god(true);
     N.view.noPointerLock = true;

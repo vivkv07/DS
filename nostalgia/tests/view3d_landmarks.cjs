@@ -215,11 +215,17 @@ async function main() {
 
   // ---------------------------------------------------------------- 1b. build cost + triangles of every model (built off-scene)
   if (!ONLY.length || process.env.MEASURE === '1') {
-    const m = await page.evaluate(() => {
+    const m = await page.evaluate(async () => {
       const r = N.WORLD_DATA.landmarks.map((l) => N.view3dLandmarks.measure(l.id)).filter(Boolean);
-      // the machine is shared and loaded: re-measure the slowest few and keep the best of three
+      // the machine is shared and loaded: re-measure the slowest few and keep the best of three,
+      // spread over separate tasks (a starved time slice or a GC pause then cannot spoil all three)
       r.sort((a, b) => b.ms - a.ms);
-      for (const x of r.slice(0, 8)) for (let i = 0; i < 2; i++) x.ms = Math.min(x.ms, N.view3dLandmarks.measure(x.id).ms);
+      for (let i = 0; i < 2; i++) {
+        for (const x of r.slice(0, 8)) {
+          await new Promise((res) => setTimeout(res, 120));
+          x.ms = Math.min(x.ms, N.view3dLandmarks.measure(x.id).ms);
+        }
+      }
       return r;
     });
     m.sort((a, b) => b.ms - a.ms);

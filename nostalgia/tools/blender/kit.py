@@ -456,7 +456,7 @@ def material(key, name=None, **over):
     B.link(alb.outputs[0], bsdf.inputs['Base Color'])
     B.link(rough, bsdf.inputs['Roughness'])
     B.link(metal, bsdf.inputs['Metallic'])
-    if spec.get('alpha') is not None:
+    if spec.get('alpha') is not None and spec['alpha'] < 0.999:
         bsdf.inputs['Alpha'].default_value = spec['alpha']
         try:
             m.surface_render_method = 'BLENDED'
@@ -1251,7 +1251,25 @@ def ao_curve(ao, strength=0.75, gamma=1.0, lift=0.0):
 
 
 # =========================================================================== finishing (atlas mode)
-def finish_atlas(A, objs, size=None, ao_samples=48, albedo_samples=16, ao_strength=0.7, ao_dist=None, orm=None):
+def resize_bilinear(a, H, W):
+    """bilinear resample of an (h, w, c) float array"""
+    h, w = a.shape[:2]
+    ys = (np.arange(H) + 0.5) * h / H - 0.5
+    xs = (np.arange(W) + 0.5) * w / W - 0.5
+    y0 = np.clip(np.floor(ys).astype(int), 0, h - 1)
+    x0 = np.clip(np.floor(xs).astype(int), 0, w - 1)
+    y1 = np.clip(y0 + 1, 0, h - 1)
+    x1 = np.clip(x0 + 1, 0, w - 1)
+    fy = np.clip(ys - y0, 0, 1)[:, None, None]
+    fx = np.clip(xs - x0, 0, 1)[None, :, None]
+    a00 = a[y0][:, x0]
+    a01 = a[y0][:, x1]
+    a10 = a[y1][:, x0]
+    a11 = a[y1][:, x1]
+    return (a00 * (1 - fx) + a01 * fx) * (1 - fy) + (a10 * (1 - fx) + a11 * fx) * fy
+
+
+def finish_atlas(A, objs, size=None, ao_samples=32, albedo_samples=8, ao_strength=0.7, ao_dist=None, orm=None, ao_scale=0.5):
     """Unique UV atlas -> baked base colour (procedural albedo x AO) [+ ORM] -> one material
     M_<id> on every baked object. Non-baked materials (glass) are kept. Returns the material."""
     ensure_dirs()
@@ -1263,7 +1281,10 @@ def finish_atlas(A, objs, size=None, ao_samples=48, albedo_samples=16, ao_streng
         bpy.context.scene.world.light_settings.distance = ao_dist
     uv_atlas(objs)
     alb = img_array(bake_pass(objs, 'albedo', size, samples=albedo_samples, name='_alb'))
-    ao = img_array(bake_pass(objs, 'ao', size, samples=ao_samples, name='_ao'))
+    ao_size = max(64, int(size * ao_scale))
+    ao = img_array(bake_pass(objs, 'ao', ao_size, samples=ao_samples, name='_ao', margin=max(2, int(6 * ao_scale))))
+    if ao_size != size:
+        ao = resize_bilinear(ao, size, size)
     use_orm = orm
     mats = []
     for o in objs:
@@ -1317,6 +1338,7 @@ def baked_material(name, base_path, orm_path=None, rough=0.8, metal=0.0, vcol=No
     """Final export material: Principled with the baked base colour [and ORM, vertex colour]."""
     m = bpy.data.materials.new(name)
     m.use_nodes = True
+    m.use_backface_culling = True
     nt = m.node_tree
     N = nt.nodes
     bsdf = N.get('Principled BSDF')
@@ -1352,19 +1374,31 @@ def baked_material(name, base_path, orm_path=None, rough=0.8, metal=0.0, vcol=No
     return m
 
 
+GLASS_CACHE = {}
+
+
 def glass_material(aid, src):
+    """Non-baked material (glass, lamp lenses): constant PBR; names ending in '@night' keep the
+    suffix (the runtime scales their emission with the night factor)."""
+    if src.name in GLASS_CACHE and GLASS_CACHE[src.name].name in bpy.data.materials:
+        return GLASS_CACHE[src.name]
     spec = json.loads(src.get('nos', '{}'))
-    m = bpy.data.materials.new('M_%s_%s' % (aid, src.get('nos_key', 'glass')))
+    night = src.name.endswith('@night')
+    m = bpy.data.materials.new('M_%s_%s%s' % (aid, src.get('nos_key', 'glass'), '@night' if night else ''))
     m.use_nodes = True
+    m.use_backface_culling = True
     b = m.node_tree.nodes.get('Principled BSDF')
     b.inputs['Base Color'].default_value = lin(spec.get('base', '#9fb8c0'))
     b.inputs['Roughness'].default_value = float(spec.get('rough', 0.05))
     b.inputs['Metallic'].default_value = float(spec.get('metal', 0.0))
-    b.inputs['Alpha'].default_value = float(spec.get('alpha', 0.4))
-    try:
-        m.surface_render_method = 'BLENDED'
-    except Exception:
-        pass
+    a = float(spec.get('alpha', 0.4))
+    if a < 0.999:
+        b.inputs['Alpha'].default_value = a
+        try:
+            m.surface_render_method = 'BLENDED'
+        except Exception:
+            pass
+    GLASS_CACHE[src.name] = m
     if spec.get('emit'):
         b.inputs['Emission Color'].default_value = lin(spec['emit'])
         b.inputs['Emission Strength'].default_value = 1.0
@@ -1601,7 +1635,7 @@ def export_glb(A, path=None):
               export_image_format='WEBP', export_image_quality=82, export_texcoords=True, export_normals=True,
               export_tangents=False, export_attributes=True, export_extras=False, export_cameras=False, export_lights=False,
               export_animations=bool(A.clips), export_animation_mode='ACTIONS', export_force_sampling=True,
-              export_frame_range=False, export_anim_slide_to_zero=True, export_optimize_animation_size=False,
+              export_frame_range=False, export_anim_slide_to_zero=True, export_optimize_animation_size=True, export_optimize_animation_keep_anim_armature=True,
               export_skins=True, export_influence_nb=4, export_morph=False, export_vertex_color='ACTIVE',
               export_rest_position_armature=True, export_def_bones=False, export_leaf_bone=False)
     try:

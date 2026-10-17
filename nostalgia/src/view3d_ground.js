@@ -220,106 +220,125 @@
   }
 
   const ANAMS = [];
-  function analyze() {
+  // The analysis is resumable (phases sliced by the frame budget) so the first 3D switch never
+  // freezes the page: pieces per road -> junction geometry -> trims -> junction polygons -> zebras ->
+  // buckets + paths + rails -> bus bays.
+  let AN = null;
+  function analyzeStep(deadline) {
+    const W = N.world, D = W && W.data, G = W && W.roads;
+    if (!AN) {
+      NET.pieces = []; NET.juncs = []; NET.paths = []; NET.rails = []; NET.bays = []; NET.buckets = new Map(); NET.roadPieces = new Map();
+      if (!W || !W.built || !D || !G) { NET.built = true; return true; }
+      const byRoad = new Map();
+      for (const e of G.edges) { let l = byRoad.get(e.road); if (!l) byRoad.set(e.road, (l = [])); l.push(e); }
+      AN = { phase: 0, i: 0, roads: Array.from(byRoad.entries()), jmap: new Map(), FOOT: W.FOOT || { arterial: 10, street: 7, bund: 9 }, work: 0, t0: now() };
+      ANAMS.length = 0;
+    }
     const t0 = now();
-    let tm = t0;
-    const lap = (i) => { const t = now(); ANAMS[i] = t - tm; tm = t; };
-    const W = N.world, D = W.data, G = W.roads;
-    NET.pieces = []; NET.juncs = []; NET.paths = []; NET.rails = []; NET.bays = []; NET.buckets = new Map(); NET.roadPieces = new Map();
-    if (!W || !W.built || !D || !G) return;
-    const FOOT = W.FOOT || { arterial: 10, street: 7, bund: 9 };
-    const nodes = G.nodes, edges = G.edges;
-    // edges grouped per road in creation order (= order along the road)
-    const byRoad = new Map();
-    for (const e of edges) { let l = byRoad.get(e.road); if (!l) byRoad.set(e.road, (l = [])); l.push(e); }
+    const over = () => now() > deadline;
+    try {
+      while (AN.phase < 7) {
+        const ph = AN.phase, ts = now();
+        if (ph === 0) { // pieces
+          while (AN.i < AN.roads.length) { const [r, list] = AN.roads[AN.i++]; piecesOfRoad(r, list, G, AN); if ((AN.i & 15) === 0 && over()) break; }
+          if (AN.i >= AN.roads.length) { AN.phase = 1; AN.i = 0; }
+        } else if (ph === 1) { // junction geometry
+          while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionGeom(J); } catch (e) { N.err('ground.junction', e); J.bad = true; } if ((AN.i & 63) === 0 && over()) break; }
+          if (AN.i >= NET.juncs.length) { finishPieces(); AN.phase = 2; AN.i = 0; }
+        } else if (ph === 2) { // junction polygons
+          while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionPoly(J); } catch (e) { N.err('ground.junctionPoly', e); } if ((AN.i & 63) === 0 && over()) break; }
+          if (AN.i >= NET.juncs.length) { AN.phase = 3; AN.i = 0; }
+        } else if (ph === 3) { zebras(); AN.phase = 4; }
+        else if (ph === 4) { // buckets
+          for (const P of NET.pieces) { const bb = bboxOf(P.pts, P.hw + P.fp + 4); P.bb = bb; bucket('pieces', P, bb[0], bb[1], bb[2], bb[3]); }
+          for (const J of NET.juncs) { if (!J.poly) continue; const bb = bboxOf(J.poly.concat(J.extraPts || []), 14); J.bb = bb; bucket('juncs', J, bb[0], bb[1], bb[2], bb[3]); }
+          AN.phase = 5;
+        } else if (ph === 5) { // paths + rails
+          for (const r of D.roads || []) {
+            if (r.kind !== 'path' || !r.pts || r.pts.length < 2) continue;
+            const pts = smoothLine(r.pts, r.w / 2 + 4), P = { pts, cum: cumOf(pts), hw: r.w / 2, r };
+            const bb = bboxOf(pts, P.hw + 2); bucket('paths', P, bb[0], bb[1], bb[2], bb[3]); NET.paths.push(P);
+          }
+          for (const r of D.rails || []) {
+            if (!r.pts || r.pts.length < 2) continue;
+            const pts = smoothLine(r.pts, 30), P = { pts, cum: cumOf(pts), hw: Math.max(6, (r.w || 14) / 2) };
+            const bb = bboxOf(pts, P.hw + 2); bucket('rails', P, bb[0], bb[1], bb[2], bb[3]); NET.rails.push(P);
+          }
+          AN.phase = 6;
+        } else if (ph === 6) { busBays(); AN.phase = 7; }
+        ANAMS[ph] = (ANAMS[ph] || 0) + now() - ts;
+        if (AN.phase < 7 && over()) break;
+      }
+    } catch (e) {
+      N.err('view3d.ground.analyze', e);
+      AN.phase = 7;
+    }
+    AN.work += now() - t0;
+    if (AN.phase < 7) return false;
+    NET.built = true;
+    NET.ms = Math.round(AN.work * 10) / 10; NET.wallMs = Math.round(now() - AN.t0);
+    AN = null;
+    return true;
+  }
+  function piecesOfRoad(r, list, G, A) {
+    if (!r || !r.pts || r.pts.length < 2 || r.kind === 'path') return;
+    const nodes = G.nodes, edges = G.edges, FOOT = A.FOOT;
     const isJ = (n) => {
       if (n.deg !== 2) return true;
       const e0 = edges[n.inc[0]], e1 = edges[n.inc[1]];
       return !e0 || !e1 || e0.road !== e1.road;
     };
-    const jmap = new Map(); // node id -> junction
     const junc = (n) => {
-      let J = jmap.get(n.id);
-      if (!J) { J = { id: NET.juncs.length, node: n, x: n.x, y: n.y, arms: [], deg: n.deg }; jmap.set(n.id, J); NET.juncs.push(J); }
+      let J = A.jmap.get(n.id);
+      if (!J) { J = { id: NET.juncs.length, node: n, x: n.x, y: n.y, arms: [], deg: n.deg }; A.jmap.set(n.id, J); NET.juncs.push(J); }
       return J;
     };
-    for (const [r, list] of byRoad) {
-      if (!r || !r.pts || r.pts.length < 2 || r.kind === 'path') continue;
-      // chains of continuous edges
-      const chains = [];
-      let cur = null;
-      for (const e of list) {
-        if (!cur || cur.nodes[cur.nodes.length - 1] !== e.a) { cur = { nodes: [e.a], edges: [] }; chains.push(cur); }
-        cur.nodes.push(e.b); cur.edges.push(e);
+    // chains of continuous edges
+    const chains = [];
+    let cur = null;
+    for (const e of list) {
+      if (!cur || cur.nodes[cur.nodes.length - 1] !== e.a) { cur = { nodes: [e.a], edges: [] }; chains.push(cur); }
+      cur.nodes.push(e.b); cur.edges.push(e);
+    }
+    const rp = r.pts.map((p) => [p[0], p[1]]);
+    const rcum = cumOf(rp);
+    const total = rcum[rcum.length - 1];
+    for (const ch of chains) {
+      const ns = ch.nodes.map((id) => nodes[id]);
+      const es = ch.edges;
+      const closed = ns.length > 2 && ns[0] === ns[ns.length - 1];
+      // arc length of each chain node along the road polyline (monotonic, forward segment cursor)
+      const s = [];
+      let sMin = 0, kc = 0;
+      for (let k = 0; k < ns.length; k++) {
+        const last = k === ns.length - 1;
+        const lo = last && closed ? Math.max(sMin, total - 1) : sMin;
+        if (last && closed) kc = Math.max(kc, segAt(rcum, lo));
+        const r2 = forwardProject(rp, rcum, ns[k].x, ns[k].y, lo, kc);
+        s.push(r2.s); sMin = r2.s; kc = r2.k;
       }
-      const rp = r.pts.map((p) => [p[0], p[1]]);
-      const rcum = cumOf(rp);
-      const total = rcum[rcum.length - 1];
-      for (const ch of chains) {
-        let ns = ch.nodes.map((id) => nodes[id]);
-        let es = ch.edges.slice();
-        const closed = ns.length > 2 && ns[0] === ns[ns.length - 1];
-        // arc length of each chain node along the road polyline (monotonic, forward segment cursor)
-        const s = [];
-        let sMin = 0, kc = 0;
-        for (let k = 0; k < ns.length; k++) {
-          const last = k === ns.length - 1;
-          const lo = last && closed ? Math.max(sMin, total - 1) : sMin;
-          if (last && closed) kc = Math.max(kc, segAt(rcum, lo));
-          const r2 = forwardProject(rp, rcum, ns[k].x, ns[k].y, lo, kc);
-          s.push(r2.s); sMin = r2.s; kc = r2.k;
+      // split at junction nodes; a closed loop starts at its first junction
+      const cuts = [];
+      for (let k = 0; k < ns.length; k++) if (k === 0 || k === ns.length - 1 || isJ(ns[k])) cuts.push(k);
+      if (closed && !isJ(ns[0])) {
+        const inner = cuts.filter((k) => k > 0 && k < ns.length - 1);
+        if (!inner.length) { addPiece(r, rp, rcum, s[0], s[s.length - 1], null, null, null, null, true, FOOT); continue; }
+        for (let q = 0; q < inner.length - 1; q++) {
+          const a = inner[q], b = inner[q + 1];
+          addPiece(r, rp, rcum, s[a], s[b], junc(ns[a]), junc(ns[b]), es[a], es[b - 1], false, FOOT);
         }
-        // split at junction nodes; a closed loop starts at its first junction
-        let cuts = [];
-        for (let k = 0; k < ns.length; k++) if (k === 0 || k === ns.length - 1 || isJ(ns[k])) cuts.push(k);
-        if (closed && !isJ(ns[0])) {
-          const inner = cuts.filter((k) => k > 0 && k < ns.length - 1);
-          if (!inner.length) { addPiece(r, rp, rcum, s[0], s[s.length - 1], null, null, null, null, true, FOOT); continue; }
-          // rotate: pieces between consecutive inner cuts, plus the wrap-around piece through the start
-          for (let q = 0; q < inner.length - 1; q++) {
-            const a = inner[q], b = inner[q + 1];
-            addPiece(r, rp, rcum, s[a], s[b], junc(ns[a]), junc(ns[b]), es[a], es[b - 1], false, FOOT);
-          }
-          const a = inner[inner.length - 1], b = inner[0];
-          // wrap: from s[a] to the end, then from the start to s[b]
-          const ptsW = subLine(rp, rcum, s[a], total).concat(subLine(rp, rcum, 0, s[b]).slice(1));
-          addPieceFromPts(r, ptsW, junc(ns[a]), junc(ns[b]), es[a], es[b - 1], FOOT);
-          continue;
-        }
-        for (let q = 0; q < cuts.length - 1; q++) {
-          const a = cuts[q], b = cuts[q + 1];
-          const ja = (a === 0 && ns[a].deg === 1) ? null : junc(ns[a]);
-          const jb = (b === ns.length - 1 && ns[b].deg === 1) ? null : junc(ns[b]);
-          addPiece(r, rp, rcum, s[a], s[b], ja, jb, es[a], es[b - 1], false, FOOT, ns[a], ns[b]);
-        }
+        const a = inner[inner.length - 1], b = inner[0];
+        const ptsW = subLine(rp, rcum, s[a], total).concat(subLine(rp, rcum, 0, s[b]).slice(1));
+        addPieceFromPts(r, ptsW, junc(ns[a]), junc(ns[b]), es[a], es[b - 1], FOOT);
+        continue;
+      }
+      for (let q = 0; q < cuts.length - 1; q++) {
+        const a = cuts[q], b = cuts[q + 1];
+        const ja = (a === 0 && ns[a].deg === 1) ? null : junc(ns[a]);
+        const jb = (b === ns.length - 1 && ns[b].deg === 1) ? null : junc(ns[b]);
+        addPiece(r, rp, rcum, s[a], s[b], ja, jb, es[a], es[b - 1], false, FOOT, ns[a], ns[b]);
       }
     }
-    lap(0);
-    for (const J of NET.juncs) { try { junctionGeom(J); } catch (e) { N.err('ground.junction', e); J.bad = true; } }
-    finishPieces();
-    lap(1);
-    for (const J of NET.juncs) { try { junctionPoly(J); } catch (e) { N.err('ground.junctionPoly', e); } }
-    lap(2);
-    zebras();
-    lap(3);
-    // buckets
-    for (const P of NET.pieces) { const bb = bboxOf(P.pts, P.hw + P.fp + 4); P.bb = bb; bucket('pieces', P, bb[0], bb[1], bb[2], bb[3]); }
-    for (const J of NET.juncs) { if (!J.poly) continue; const bb = bboxOf(J.poly.concat(J.extraPts || []), 14); J.bb = bb; bucket('juncs', J, bb[0], bb[1], bb[2], bb[3]); }
-    for (const r of D.roads || []) {
-      if (r.kind !== 'path' || !r.pts || r.pts.length < 2) continue;
-      const pts = smoothLine(r.pts, r.w / 2 + 4), P = { pts, cum: cumOf(pts), hw: r.w / 2, r };
-      const bb = bboxOf(pts, P.hw + 2); bucket('paths', P, bb[0], bb[1], bb[2], bb[3]); NET.paths.push(P);
-    }
-    for (const r of D.rails || []) {
-      if (!r.pts || r.pts.length < 2) continue;
-      const pts = smoothLine(r.pts, 30), P = { pts, cum: cumOf(pts), hw: Math.max(6, (r.w || 14) / 2) };
-      const bb = bboxOf(pts, P.hw + 2); bucket('rails', P, bb[0], bb[1], bb[2], bb[3]); NET.rails.push(P);
-    }
-    lap(4);
-    busBays();
-    lap(5);
-    NET.built = true;
-    NET.ms = Math.round((now() - t0) * 10) / 10;
   }
 
   function addPiece(r, rp, rcum, s0, s1, ja, jb, ea, eb, closed, FOOT, na, nb) {
@@ -1261,10 +1280,17 @@
     const ch = job.ch, n = job.sn, m = n + 2, step = CHS / (n - 1), W = N.world;
     if (!job.cls) { job.cls = scratch('cls', Uint8Array, m * m); job.row = 0; initCls(); }
     const cls = job.cls;
+    // read the 4 u surface grid directly (falls back to surfaceAt when the grid is not exposed)
+    const grid = W.grid, GW = W.GW, GH = W.GH, C = N.CELL || 4, direct = grid && GW > 0 && grid.length === GW * GH;
+    if (direct && !job.gi) { job.gi = new Int32Array(m); for (let i = 0; i < m; i++) { const gi = Math.floor((ch.x0 + (i - 1) * step) / C); job.gi[i] = gi >= 0 && gi < GW ? gi : -1; } }
     while (job.row < m) {
       const j = job.row++, y = ch.y0 + (j - 1) * step, o = j * m;
-      for (let i = 0; i < m; i++) cls[o + i] = SCLS[W.surfaceAt(ch.x0 + (i - 1) * step, y) & 15];
-      if ((job.row & 7) === 0 && now() > deadline) return false;
+      if (direct) {
+        const gj = Math.floor(y / C), gi = job.gi;
+        if (gj < 0 || gj >= GH) cls.fill(0, o, o + m);
+        else { const ro = gj * GW; for (let i = 0; i < m; i++) cls[o + i] = gi[i] < 0 ? 0 : SCLS[grid[ro + gi[i]] & 15]; }
+      } else for (let i = 0; i < m; i++) cls[o + i] = SCLS[W.surfaceAt(ch.x0 + (i - 1) * step, y) & 15];
+      if ((job.row & 31) === 0 && now() > deadline) return false;
     }
     if (!job.yard) {
       // compacted earth yards in front of houses (lawns are GRASS cells already)
@@ -1852,7 +1878,7 @@ if (ngShine > 0.01) {
         const ts = now();
         const st0 = job.step;
         switch (job.step) {
-          case 0: if (!NET.built) analyze(); if (!SOIL.tex) buildSoil(); job.step = 1; break;
+          case 0: if (!NET.built && !analyzeStep(deadline)) break; if (!SOIL.tex) buildSoil(); job.step = 1; break;
           case 1: if (!ch.aux) I.buildAux(ch); job.step = 2; break;
           case 2: if (buildSurf(job, deadline)) job.step = job.what === 'map' ? 4 : 3; break;
           case 3: job.bucket = job.bucket || chunkBucket(ch); if (roadsJob(job, deadline)) job.step = 4; break;
@@ -1979,7 +2005,7 @@ if (ngShine > 0.01) {
   }
   function entityHeight(x, y, e) {
     if (e && e.kind === 'vehicle' && isFinite(e.angle)) {
-      const T = e.T || {}, len = T.l || T.len || T.h || (e.r ? e.r * 2.6 : 14);
+      const T = e.T || {}, len = T.w || T.len || (e.r ? e.r * 2.6 : 14); // vehicles.js: w = length along the heading
       const c = Math.cos(e.angle) * len * 0.36, s = Math.sin(e.angle) * len * 0.36;
       return (groundHeightAt(x + c, y + s) + groundHeightAt(x - c, y - s)) * 0.5;
     }
@@ -2089,7 +2115,7 @@ if (ngShine > 0.01) {
   });
   N.on('potholes:change', () => { if (I) I.replan(); });
   // a new world (map rebuild): analyse again and rebuild every chunk's ground from scratch
-  N.on('world:built', () => { NET.built = false; POTS.clear(); if (SOIL.tex) { SOIL.tex.dispose(); SOIL.tex = null; } if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } });
+  N.on('world:built', () => { NET.built = false; AN = null; POTS.clear(); if (SOIL.tex) { SOIL.tex.dispose(); SOIL.tex = null; } if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } });
 
   /* ================================================================ API */
   V.groundHeightAt = groundHeightAt;
@@ -2099,12 +2125,12 @@ if (ngShine > 0.01) {
     heightAt: groundHeightAt,
     potholeDip,
     /** re-analyse the road network and rebuild every chunk's ground */
-    rebuild() { NET.built = false; POTS.clear(); if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } },
+    rebuild() { NET.built = false; AN = null; POTS.clear(); if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } },
     stats() {
       let chunks = 0, tris = 0, tex = 0;
       if (I) for (const ch of I.chunks.values()) if (ch.ng && ch.ng.ready) { chunks++; tris += ch.ng.tris || 0; if (ch.ng.surfTex) tex += 1; }
       return {
-        enabled: provider.enabled, analyzed: NET.built, analyzeMs: NET.ms, pieces: NET.pieces.length, junctions: NET.juncs.filter((j) => j.poly).length,
+        enabled: provider.enabled, analyzed: NET.built, analyzeMs: NET.ms, analyzeWallMs: NET.wallMs, pieces: NET.pieces.length, junctions: NET.juncs.filter((j) => j.poly).length,
         zebras: NET.pieces.reduce((a, P) => a + (P.ends[0].zebra ? 1 : 0) + (P.ends[1].zebra ? 1 : 0), 0), bays: NET.bays.length,
         chunks, roadTris: tris, textures: tex, built: STATS.built, avgChunkMs: STATS.built ? +(STATS.ms / STATS.built).toFixed(2) : 0, lastChunkMs: +STATS.lastMs.toFixed(2),
         wet: +(GU.uWet ? GU.uWet.value : 0).toFixed(2), potVer: curPot(),
