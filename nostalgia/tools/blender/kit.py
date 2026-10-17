@@ -172,11 +172,21 @@ def link(obj, coll=None):
 
 
 def select_only(objs, active=None):
-    for o in bpy.context.view_layer.objects:
-        o.select_set(False)
+    vl = bpy.context.view_layer
+    try:
+        vl.update()
+    except Exception:
+        pass
+    for o in list(vl.objects):
+        if o is not None:
+            try:
+                o.select_set(False)
+            except Exception:
+                pass
     for o in objs:
-        o.select_set(True)
-    bpy.context.view_layer.objects.active = active or (objs[0] if objs else None)
+        if o is not None:
+            o.select_set(True)
+    vl.objects.active = active or (objs[0] if objs else None)
 
 
 def mesh_objects(objs):

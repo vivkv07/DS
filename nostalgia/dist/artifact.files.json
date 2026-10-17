@@ -1,0 +1,5 @@
+{
+ "src/assets3d_pack.js": "nostalgia/src/assets3d_pack.js",
+ "vendor/three/GLTFLoader.classic.js": "nostalgia/vendor/three/GLTFLoader.classic.js",
+ "vendor/three/three.min.js": "nostalgia/vendor/three/three.min.js"
+}

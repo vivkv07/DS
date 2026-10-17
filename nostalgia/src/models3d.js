@@ -2,9 +2,9 @@
  *
  * Runtime for the Blender-authored models (tools/blender/*.py -> assets3d/*.glb -> src/assets3d_pack.js).
  * Nothing here runs in the top-down view: the first time 3D starts (N.view3d.ready), it loads
- * vendor/three/GLTFLoader.classic.js and the pack (N.ASSETS3D) lazily — from inline
- * <script type="text/plain" id="gltfloader-src"> / id="assets3d-pack"> blocks in dist/nostalgia.html,
- * else from the files next to the page — parses the GLBs it needs and registers overrides with
+ * vendor/three/GLTFLoader.classic.js and the pack (N.ASSETS3D) lazily — from the inline text/plain
+ * script blocks with ids gltfloader-src / assets3d-pack in dist/nostalgia.html, else from the files
+ * next to the page — parses the GLBs it needs and registers overrides with
  * N.view3d. The procedural renderers (view3d_actors.js / view3d_landmarks.js) stay registered and
  * are the per-entity / per-landmark fallback whenever a model is missing, failed, disabled or
  * cannot show a state (riding, sitting, falling...).
@@ -71,7 +71,7 @@
       document.head.appendChild(s);
     });
   }
-  /** run an inline <script type="text/plain" id=...> block (dist/nostalgia.html) */
+  /** run an inline text/plain script block by id (dist/nostalgia.html) */
   function runInline(id, ok) {
     const el = document.getElementById(id);
     if (!el || !el.textContent) return false;
@@ -84,11 +84,13 @@
     return ok();
   }
   const hasLoader = () => !!(window.THREE && window.THREE.GLTFLoader);
+  /** pages built into dist/ find the repo files one level up: try those first (no 404 noise) */
+  const order = (urls) => (/\/dist\//.test(location.pathname) ? urls.slice().sort((a, b) => (b.indexOf('../') === 0) - (a.indexOf('../') === 0)) : urls);
   const hasPack = () => !!(N.ASSETS3D && N.ASSETS3D.glb && N.ASSETS3D.manifest);
   async function loadLoader() {
     if (hasLoader()) { S.loaderFrom = S.loaderFrom || 'present'; return true; }
     if (runInline('gltfloader-src', hasLoader)) { S.loaderFrom = 'inline'; return true; }
-    for (const u of LOADER_URLS) {
+    for (const u of order(LOADER_URLS)) {
       if (/^https?:/.test(u) && location.protocol === 'file:' && N.models3d.noCdn) continue;
       if (await loadScript(u, hasLoader, /^https?:/.test(u) ? 12000 : 8000)) { S.loaderFrom = u; return true; }
     }
@@ -97,7 +99,7 @@
   async function loadPack() {
     if (hasPack()) { S.packFrom = S.packFrom || 'present'; return true; }
     if (runInline('assets3d-pack', hasPack)) { S.packFrom = 'inline'; return true; }
-    for (const u of N.models3d.packUrls || PACK_URLS) {
+    for (const u of order(N.models3d.packUrls || PACK_URLS)) {
       if (await loadScript(u, hasPack, 20000)) { S.packFrom = u; return true; }
     }
     return false;
@@ -285,7 +287,7 @@
   }
 
   /* ================================================================ tint (N.people looks -> regions) */
-  const LOOK_FIELDS = { skin: ['skin'], hair: ['hair'], shirt: ['shirt', 'kameez', 'saree'], stripes: ['stripes'], pants: ['pants', 'lungi'], shoes: ['shoes', 'chappal'], accent: ['accent'] };
+  const LOOK_FIELDS = { skin: ['skin'], hair: ['hair'], shirt: ['shirt', 'kameez', 'saree'], stripes: ['stripes', 'shoulders'], pants: ['pants', 'lungi'], shoes: ['shoes', 'chappal'], accent: ['accent'] };
   function hexLin(h) {
     if (typeof h !== 'string') return null;
     let s = h.trim(); if (s[0] === '#') s = s.slice(1);

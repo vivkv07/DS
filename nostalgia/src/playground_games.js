@@ -88,8 +88,9 @@
     g: 165, ballR: 0.85, hand: 4.4, headZ: 5.5, bodyTop: 7.2, hitR: 3.9,
     bounce: 0.56, bounceFric: 0.8, rollFric: 58, rollDrag: 0.75, kerb: 0.45, kerbM: 8, wallE: 0.5, bumpy: 0.16,
     kidWalk: 42, kidRun: 64, kidRunD: 12, kidR: 3.2, holdWalk: 0.68, carryMul: 0.78,
-    stoneR: [2.6, 2.3, 2.05, 1.8, 1.55, 1.35, 1.15], stoneH: 0.62,
-    stoneCols: ['#8f8a86', '#a39a8c', '#7d7872', '#b3a796', '#8a8078', '#9e988e', '#c2b6a2'],
+    stoneR: [2.6, 2.3, 2.05, 1.8, 1.55, 1.35, 1.15], stoneH: 0.78,
+    // broken Shahabad / Kadapa floor slabs and sandstone: what colony kids stack (contrast on red dust)
+    stoneCols: ['#55636f', '#c9a77c', '#4b5763', '#dcc7a2', '#66737f', '#b88f62', '#7e8b97'],
     lineDist: 30,
     throwSpeed: 160, powerSpeed: 214, aiSpeed: [138, 180], passSpeed: 115,
     lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.5, stackT: 0.75, threatR: 34, scatter: 0.8, aiErr: [0.2, 0.11], stackErr: [0.17, 0.11], dodge: [0.25, 0.55], windup: [0.7, 0.42] },
@@ -166,6 +167,41 @@
     }
     return { x0, y0, x1, y1 };
   }
+  /** open ground (no road, lane, footpath, water or wall): where kids can play without traffic */
+  function openCell(x, y) {
+    const W = N.world, SU = N.SURF;
+    if (!W || !W.built) return false;
+    const s = W.surfaceAt(x, y);
+    return (s === SU.GROUND || s === SU.GRASS || s === SU.SAND || s === SU.PLAZA) && W.isWalkable(x, y);
+  }
+  /** the largest axis-aligned rectangle of open ground inside [x0, y0, x1, y1] (4 u cells), or null */
+  function bestRect(x0, y0, x1, y1) {
+    const C = 4, nx = Math.max(1, Math.floor((x1 - x0) / C)), ny = Math.max(1, Math.floor((y1 - y0) / C));
+    if (nx * ny > 40000) return null;
+    const good = new Uint8Array(nx * ny);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) good[j * nx + i] = openCell(x0 + (i + 0.5) * C, y0 + (j + 0.5) * C) ? 1 : 0;
+    const minW = 10, minH = 9; // cells (40 x 36 u)
+    let best = null, ba = 0;
+    const colOk = new Uint8Array(nx);
+    for (let a = 0; a < ny; a++) {
+      colOk.fill(1);
+      for (let b2 = a; b2 < ny; b2++) {
+        for (let i = 0; i < nx; i++) if (!good[b2 * nx + i]) colOk[i] = 0;
+        const h = b2 - a + 1;
+        if (h < minH) continue;
+        let run = 0;
+        for (let i = 0; i <= nx; i++) {
+          if (i < nx && colOk[i]) { run++; continue; }
+          if (run >= minW) {
+            const w = run, asp = Math.max(w / h, h / w), area = w * h * (asp > 3 ? 3 / asp : 1);
+            if (area > ba) { ba = area; best = { x0: x0 + (i - run) * C, y0: y0 + a * C, x1: x0 + i * C, y1: y0 + (b2 + 1) * C }; }
+          }
+          run = 0;
+        }
+      }
+    }
+    return best;
+  }
   function clearAt(x, y, r) {
     if (!walk(x, y)) return false;
     for (let i = 0; i < 8; i++) { const a = (i * TAU) / 8; if (!walk(x + Math.cos(a) * r, y + Math.sin(a) * r)) return false; }
@@ -221,12 +257,15 @@
     let bb = null;
     if (park && park.poly && park.poly.length >= 3) bb = polyBox(park.poly);
     if (!bb) { const r = Math.max(30, pl.r || 34); bb = [pl.x - r * 1.5, pl.y - r * 1.2, pl.x + r * 1.5, pl.y + r * 1.2]; }
-    const R = trimRect(bb[0] + 3, bb[1] + 3, bb[2] - 3, bb[3] - 3);
+    // play on the open ground of the park (colony lanes cross some of them), else on the trimmed park
+    const R = bestRect(bb[0] - 4, bb[1] - 4, bb[2] + 4, bb[3] + 4) || trimRect(bb[0] + 3, bb[1] + 3, bb[2] - 3, bb[3] - 3);
+    const open = !!(R && R.x1 - R.x0 >= 40);
     const F = Object.assign(R, { key, id: key, ids: [id], name: (N.places[key] || pl).name || pl.name, place: N.places[key] || pl });
     F.w = F.x1 - F.x0; F.h = F.y1 - F.y0; F.cx = (F.x0 + F.x1) / 2; F.cy = (F.y0 + F.y1) / 2;
     if (F.w < 30 || F.h < 26) return null;
     F.long = F.w >= F.h;
     F.home = !!(HOME_GROUNDS[key] || HOME_GROUNDS[id]);
+    F.open = open;
     F.decorY = dec ? dec.y : null;
     F.centre = spotNear(F.cx, F.cy, 5, 30, F);
     F.stack = spotNear(F.cx, F.cy, 7, 30, F);
@@ -1881,6 +1920,7 @@
   function startReal(S) {
     holdGivers(true);
     BUSY.add(S.F.decorY);
+    try { if (N.traffic && N.traffic.closeRoads) N.traffic.closeRoads('pg', { x: S.F.cx, y: S.F.cy, r: Math.max(S.F.w, S.F.h) / 2 + 40 }); } catch (e) { /* ignore */ }
     try { if (N.clock && N.clock.hold) N.clock.hold('playground-game', true); } catch (e) { /* ignore */ }
     try { if (N.render && !N.render.camOverride) { S.zoomWas = N.render.baseZoom; S.zoom = gameZoom(S.F); N.render.baseZoom = S.zoom; } } catch (e) { /* ignore */ }
     try { if (S.id === 'marampitti' && N.input.setLabel) N.input.setLabel('run', 'DODGE'); } catch (e) { /* ignore */ }
@@ -1931,6 +1971,7 @@
     if (current === S) current = null;
     holdGivers(false);
     spectatorsOff(S);
+    try { if (N.traffic && N.traffic.closeRoads) N.traffic.closeRoads('pg', null); } catch (e) { /* ignore */ }
     BUSY.delete(S.F.decorY);
     try { if (N.clock && N.clock.hold) N.clock.hold('playground-game', false); } catch (e) { /* ignore */ }
     try { if (N.render && S.zoomWas != null && Math.abs(N.render.baseZoom - S.zoom) < 1e-6) N.render.baseZoom = S.zoomWas; } catch (e) { /* ignore */ }
@@ -1962,6 +2003,7 @@
     if (!S) return;
     holdGivers(false);
     spectatorsOff(S);
+    try { if (N.traffic && N.traffic.closeRoads) N.traffic.closeRoads('pg', null); } catch (e) { /* ignore */ }
     BUSY.delete(S.F.decorY);
     try { if (N.clock && N.clock.hold) N.clock.hold('playground-game', false); } catch (e) { /* ignore */ }
     try { if (N.render && S.zoomWas != null) N.render.baseZoom = S.zoomWas; } catch (e) { /* ignore */ }
@@ -2199,13 +2241,14 @@
 
   /* ================================================================ places_art: hide its gully-cricket kids where we play */
   let paDrawing = false;
+  const FILTERED = { n: 0 };
   function installQueueFilter() {
     const R = N.render;
     if (!R || R.__pgFilter) return;
     R.__pgFilter = true;
     const oq = R.queue;
     R.queue = function (layer, key, fn) {
-      if (paDrawing && layer === 'actors' && BUSY.size && BUSY.has(key)) return undefined;
+      if (paDrawing && layer === 'actors' && BUSY.size && BUSY.has(key)) { FILTERED.n++; return undefined; }
       return oq.apply(this, arguments);
     };
   }
@@ -2273,7 +2316,9 @@
     }
   }
   function stoneDraw(D, st, x, y, z) {
-    D.cyl(x, y, st.r, z, z + TUNE.stoneH, { wall: st.col, roof: U.shade(st.col, 1.18), grad: false });
+    // drawn a little larger than the physics size so the stones read from the kite's-eye view
+    D.cyl(x, y, st.r * 1.25 + 0.35, z, z + TUNE.stoneH + 0.12, { wall: '#1a1214', roof: '#1a1214', grad: false });
+    D.cyl(x, y, st.r * 1.25, z + 0.05, z + TUNE.stoneH, { wall: st.col, roof: U.shade(st.col, 1.22), grad: false });
   }
   function drawLingocha2D(S, R, D) {
     const L = S.L;
@@ -2303,13 +2348,19 @@
     R.queue('sky', 2, (ctx) => {
       let x = p.x + Math.cos(A.ang) * 2.4, y = p.y + Math.sin(A.ang) * 2.4, z = TUNE.hand, vz = vz0;
       const vx = Math.cos(A.ang) * sp, vy = Math.sin(A.ang) * sp, dt = 0.018;
-      ctx.fillStyle = A.charging || A.dragging ? (pw > 0.86 ? '#ff6a5a' : pw < 0.25 ? '#f2c230' : '#8fe07a') : 'rgba(248,246,236,0.85)';
-      for (let i = 0; i < 26; i++) {
+      const col = A.charging || A.dragging ? (pw > 0.86 ? '#ff6a5a' : pw < 0.25 ? '#f2c230' : '#8fe07a') : '#f8f6ec';
+      for (let i = 0; i < 28; i++) {
         x += vx * dt; y += vy * dt; vz -= TUNE.g * dt; z += vz * dt;
-        if (z <= 0) { const q = R.proj(x, y, 0); ctx.fillRect(q.x - 1.5, q.y - 0.4, 3, 0.8); ctx.fillRect(q.x - 0.4, q.y - 1.5, 0.8, 3); break; }
+        if (z <= 0) {
+          const q = R.proj(x, y, 0);
+          ctx.fillStyle = '#1a1214'; ctx.fillRect(q.x - 3, q.y - 1, 6, 2); ctx.fillRect(q.x - 1, q.y - 3, 2, 6);
+          ctx.fillStyle = col; ctx.fillRect(q.x - 2.5, q.y - 0.5, 5, 1); ctx.fillRect(q.x - 0.5, q.y - 2.5, 1, 5);
+          break;
+        }
         if (i % 2) continue;
         const q = R.proj(x, y, z);
-        ctx.fillRect(q.x - 0.6, q.y - 0.6, 1.2, 1.2);
+        ctx.fillStyle = '#1a1214'; ctx.fillRect(q.x - 1.4, q.y - 1.4, 2.8, 2.8);
+        ctx.fillStyle = col; ctx.fillRect(q.x - 0.8, q.y - 0.8, 1.6, 1.6);
       }
     });
   }
@@ -2628,7 +2679,10 @@
   });
   N.addSystem({ id: 'pg.paOn', order: 42.95, runIn: ['*'], draw() { paDrawing = true; } });
   N.addSystem({ id: 'pg.paOff', order: 43.05, runIn: ['*'], draw() { paDrawing = false; } });
-  if (N.view3d && N.view3d.registerLayer) {
+  // view3d.js loads after this file: register the 3D layer once everything is loaded
+  function registerV3() {
+    if (registerV3.done || !N.view3d || !N.view3d.registerLayer) return;
+    registerV3.done = true;
     N.view3d.registerLayer('playgroundGames', {
       order: 60,
       init(THREE, H) { try { v3Init(THREE, H); } catch (e) { N.err('pg.v3init', e); } },
@@ -2636,6 +2690,9 @@
       dispose(H) { v3Dispose(H); },
     });
   }
+  registerV3();
+  N.on('boot', registerV3);
+  if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('DOMContentLoaded', registerV3);
   if (N.world && N.world.built) onWorld();
 
   /* ================================================================ public API + test hooks */
@@ -2732,6 +2789,8 @@
       },
       kidCount() { return N.entities.all.filter((e) => e.pgKid && e.alive !== false).length; },
       busy() { return Array.from(BUSY); },
+      filtered: FILTERED,
+      v3: V3L,
     },
   });
 })();

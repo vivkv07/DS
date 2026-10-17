@@ -497,22 +497,6 @@
     for (const k of J.kerbs) if (k.type === 'arc') J.extraPts.push(k.cn.O, k.cn.C);
   }
   function polyArea(p) { let a = 0; for (let i = 0, j = p.length - 1; i < p.length; j = i++) a += p[j][0] * p[i][1] - p[i][0] * p[j][1]; return a / 2; }
-  function selfIntersects(p) {
-    const n = p.length;
-    for (let i = 0; i < n; i++) {
-      const a = p[i], b = p[(i + 1) % n];
-      for (let j = i + 2; j < n; j++) {
-        if (i === 0 && j === n - 1) continue;
-        const c = p[j], d = p[(j + 1) % n];
-        const d1 = (d[0] - c[0]) * (a[1] - c[1]) - (d[1] - c[1]) * (a[0] - c[0]);
-        const d2 = (d[0] - c[0]) * (b[1] - c[1]) - (d[1] - c[1]) * (b[0] - c[0]);
-        const d3 = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
-        const d4 = (b[0] - a[0]) * (d[1] - a[1]) - (b[1] - a[1]) * (d[0] - a[0]);
-        if (((d1 > 1e-7 && d2 < -1e-7) || (d1 < -1e-7 && d2 > 1e-7)) && ((d3 > 1e-7 && d4 < -1e-7) || (d3 < -1e-7 && d4 > 1e-7))) return true;
-      }
-    }
-    return false;
-  }
   function convex(p) {
     let sg = 0;
     for (let i = 0, n = p.length; i < n; i++) {
@@ -525,13 +509,20 @@
     return true;
   }
   function triangulate(pl) {
-    if (pl.length < 3 || Math.abs(polyArea(pl)) < 1) return null;
+    const A = Math.abs(polyArea(pl));
+    if (pl.length < 3 || A < 1) return null;
     if (convex(pl)) { const t = []; for (let i = 1; i < pl.length - 1; i++) t.push([pl[0], pl[i], pl[i + 1]]); return t; }
-    if (selfIntersects(pl)) return null;
     let tris;
     try { tris = THREE.ShapeUtils.triangulateShape(pl.map((p) => new THREE.Vector2(p[0], p[1])), []); } catch (e) { return null; }
     if (!tris || !tris.length) return null;
-    return tris.map((t) => [pl[t[0]], pl[t[1]], pl[t[2]]]);
+    // a self-intersecting outline triangulates to the wrong area: then the caller falls back to the hull
+    let sum = 0;
+    const out = tris.map((t) => {
+      const a = pl[t[0]], b = pl[t[1]], c = pl[t[2]];
+      sum += Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / 2;
+      return [a, b, c];
+    });
+    return Math.abs(sum - A) > A * 0.02 + 1 ? null : out;
   }
   function hull(pts) {
     const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);

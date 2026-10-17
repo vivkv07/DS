@@ -284,7 +284,7 @@ async function main() {
     const V = [
       { name: 'lb_stadium_matchday_fps_night', lm: 'lb_stadium', at: [0, 60], look: [0, -110], mode: 'fps', h: [19, 40], pitch: -0.08, set: () => { N.flags.lb_match = true; } },
       { name: 'lb_stadium_matchday_tps_dusk', lm: 'lb_stadium', at: [-141, 0], look: [0, 0], mode: 'tps', h: [18, 20], pitch: 0.18, set: () => { N.flags.lb_match = true; } },
-      { name: 'charminar_chand_raat_tps_night', lm: 'charminar', at: [0, -170], look: [0, 0], mode: 'tps', h: [22, 0], pitch: -0.12, set: () => { N.flags.chand_raat = true; } },
+      { name: 'charminar_chand_raat_tps_night', lm: 'charminar', at: [0, -175], clear: true, look: [0, 0], mode: 'tps', h: [22, 0], pitch: -0.12, set: () => { N.flags.chand_raat = true; } },
       { name: 'prasads_open_tps_day', lm: 'prasads_imax', at: [0, 96], look: [0, 0], mode: 'tps', h: [11, 0], pitch: 0, set: () => { if (N.placesArt) N.placesArt.fx.prasads = 'open'; N.flags.prasads_open = true; } },
       { name: 'prasads_fence_tps_day', lm: 'prasads_imax', at: [0, 96], look: [0, 0], mode: 'tps', h: [11, 0], pitch: 0, set: () => { if (N.placesArt) N.placesArt.fx.prasads = 'fence'; N.flags.prasads_open = false; } },
       { name: 'ntr_gardens_tps_golden', lm: 'ntr_memorial', at: [0, 80], look: [0, 0], mode: 'tps', h: [17, 40], pitch: 0.1, set: () => {} },
@@ -299,10 +299,11 @@ async function main() {
         const L0 = N.WORLD_DATA.landmarks.find((l) => l.id === v.lm) || { x: 0, y: 0 };
         let at = v.at ? [L0.x + v.at[0], L0.y + v.at[1]] : null;
         if (v.atFn === 'laad') { const rd = (N.WORLD_DATA.roads || []).find((r) => r.id === 'laad_bazaar'); if (rd) { let pts = rd.pts.slice(); if (Math.hypot(pts[0][0] - L0.x, pts[0][1] - L0.y) > Math.hypot(pts[pts.length - 1][0] - L0.x, pts[pts.length - 1][1] - L0.y)) pts.reverse(); let left = 190; at = pts[pts.length - 1]; for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]); if (d >= left) { at = [a[0] + (b[0] - a[0]) * left / d, a[1] + (b[1] - a[1]) * left / d]; break; } left -= d; } } else at = [L0.x - 210, L0.y]; }
+        if (v.clear && window.clearSpot) at = window.clearSpot({ id: v.lm, x: L0.x, y: L0.y }, at, v.mode);
         N.player.teleport(at[0], at[1]); N.debug.setTime(v.h[0], v.h[1]); N.view.set(v.mode);
         const p = N.player; N.view3d.setCamera({ yaw: Math.atan2(L0.y + v.look[1] - p.y, L0.x + v.look[0] - p.x), pitch: v.pitch, snap: true });
         N.view3d.settle(20000);
-      }, { v: { lm: v.lm, at: v.at, atFn: v.atFn, look: v.look, mode: v.mode, h: v.h, pitch: v.pitch }, set: '(' + v.set.toString() + ')()' });
+      }, { v: { lm: v.lm, at: v.at, clear: !!v.clear, atFn: v.atFn, look: v.look, mode: v.mode, h: v.h, pitch: v.pitch }, set: '(' + v.set.toString() + ')()' });
       await frames(page, 4);
       await page.screenshot({ path: path.join(OUT, v.name + '.png'), timeout: 240000 });
       const st2 = await page.evaluate(() => N.view3d.stats());

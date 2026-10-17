@@ -62466,11 +62466,12 @@ body.reduced-motion .pg-hud.show { animation: none; }
     g: 165, ballR: 0.85, hand: 4.4, headZ: 5.5, bodyTop: 7.2, hitR: 3.9,
     bounce: 0.56, bounceFric: 0.8, rollFric: 58, rollDrag: 0.75, kerb: 0.45, kerbM: 8, wallE: 0.5, bumpy: 0.16,
     kidWalk: 42, kidRun: 64, kidRunD: 12, kidR: 3.2, holdWalk: 0.68, carryMul: 0.78,
-    stoneR: [2.6, 2.3, 2.05, 1.8, 1.55, 1.35, 1.15], stoneH: 0.62,
-    stoneCols: ['#8f8a86', '#a39a8c', '#7d7872', '#b3a796', '#8a8078', '#9e988e', '#c2b6a2'],
+    stoneR: [2.6, 2.3, 2.05, 1.8, 1.55, 1.35, 1.15], stoneH: 0.78,
+    // broken Shahabad / Kadapa floor slabs and sandstone: what colony kids stack (contrast on red dust)
+    stoneCols: ['#55636f', '#c9a77c', '#4b5763', '#dcc7a2', '#66737f', '#b88f62', '#7e8b97'],
     lineDist: 30,
     throwSpeed: 160, powerSpeed: 214, aiSpeed: [138, 180], passSpeed: 115,
-    lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.45, stackT: 0.6, scatter: 0.8 },
+    lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.5, stackT: 0.75, threatR: 34, scatter: 0.8, aiErr: [0.2, 0.11], stackErr: [0.17, 0.11], dodge: [0.25, 0.55], windup: [0.7, 0.42] },
     maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8 },
     aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130 },
     pay: { win: 200, win3: 300, daily: 3 },
@@ -62501,7 +62502,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
   const sfx = (name, o) => { try { if (N.audio && N.audio.sfx) N.audio.sfx(name, o || { ui: true }); } catch (e) { /* audio is optional */ } };
   const toast = (t, ms) => { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2400); } catch (e) { /* ignore */ } };
   const banner = (t, s, ms, kind) => { try { if (N.hud && N.hud.banner) N.hud.banner(t, s || '', ms || 2200, { kind: kind || 'info' }); } catch (e) { /* ignore */ } };
-  function gauss(r) { return (r.next() + r.next() + r.next() - 1.5) * 1.15; }
+  /** ~N(0, 1) (sum of three uniforms, scaled to unit spread) */
+  function gauss(r) { return (r.next() + r.next() + r.next() - 1.5) * 2; }
   function settings() { try { return N.settings || (N.menus && N.menus.settings) || {}; } catch (e) { return {}; } }
   function isTouch() { try { return (N.input && N.input.device === 'touch') || document.body.classList.contains('touch-on'); } catch (e) { return false; } }
   function is3D() { try { return !!(N.view3d && N.view3d.active); } catch (e) { return false; } }
@@ -62542,6 +62544,41 @@ body.reduced-motion .pg-hud.show { animation: none; }
       if (k === 0) x0 += 4; else if (k === 1) x1 -= 4; else if (k === 2) y0 += 4; else y1 -= 4;
     }
     return { x0, y0, x1, y1 };
+  }
+  /** open ground (no road, lane, footpath, water or wall): where kids can play without traffic */
+  function openCell(x, y) {
+    const W = N.world, SU = N.SURF;
+    if (!W || !W.built) return false;
+    const s = W.surfaceAt(x, y);
+    return (s === SU.GROUND || s === SU.GRASS || s === SU.SAND || s === SU.PLAZA) && W.isWalkable(x, y);
+  }
+  /** the largest axis-aligned rectangle of open ground inside [x0, y0, x1, y1] (4 u cells), or null */
+  function bestRect(x0, y0, x1, y1) {
+    const C = 4, nx = Math.max(1, Math.floor((x1 - x0) / C)), ny = Math.max(1, Math.floor((y1 - y0) / C));
+    if (nx * ny > 40000) return null;
+    const good = new Uint8Array(nx * ny);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) good[j * nx + i] = openCell(x0 + (i + 0.5) * C, y0 + (j + 0.5) * C) ? 1 : 0;
+    const minW = 10, minH = 9; // cells (40 x 36 u)
+    let best = null, ba = 0;
+    const colOk = new Uint8Array(nx);
+    for (let a = 0; a < ny; a++) {
+      colOk.fill(1);
+      for (let b2 = a; b2 < ny; b2++) {
+        for (let i = 0; i < nx; i++) if (!good[b2 * nx + i]) colOk[i] = 0;
+        const h = b2 - a + 1;
+        if (h < minH) continue;
+        let run = 0;
+        for (let i = 0; i <= nx; i++) {
+          if (i < nx && colOk[i]) { run++; continue; }
+          if (run >= minW) {
+            const w = run, asp = Math.max(w / h, h / w), area = w * h * (asp > 3 ? 3 / asp : 1);
+            if (area > ba) { ba = area; best = { x0: x0 + (i - run) * C, y0: y0 + a * C, x1: x0 + i * C, y1: y0 + (b2 + 1) * C }; }
+          }
+          run = 0;
+        }
+      }
+    }
+    return best;
   }
   function clearAt(x, y, r) {
     if (!walk(x, y)) return false;
@@ -62598,12 +62635,15 @@ body.reduced-motion .pg-hud.show { animation: none; }
     let bb = null;
     if (park && park.poly && park.poly.length >= 3) bb = polyBox(park.poly);
     if (!bb) { const r = Math.max(30, pl.r || 34); bb = [pl.x - r * 1.5, pl.y - r * 1.2, pl.x + r * 1.5, pl.y + r * 1.2]; }
-    const R = trimRect(bb[0] + 3, bb[1] + 3, bb[2] - 3, bb[3] - 3);
+    // play on the open ground of the park (colony lanes cross some of them), else on the trimmed park
+    const R = bestRect(bb[0] - 4, bb[1] - 4, bb[2] + 4, bb[3] + 4) || trimRect(bb[0] + 3, bb[1] + 3, bb[2] - 3, bb[3] - 3);
+    const open = !!(R && R.x1 - R.x0 >= 40);
     const F = Object.assign(R, { key, id: key, ids: [id], name: (N.places[key] || pl).name || pl.name, place: N.places[key] || pl });
     F.w = F.x1 - F.x0; F.h = F.y1 - F.y0; F.cx = (F.x0 + F.x1) / 2; F.cy = (F.y0 + F.y1) / 2;
     if (F.w < 30 || F.h < 26) return null;
     F.long = F.w >= F.h;
     F.home = !!(HOME_GROUNDS[key] || HOME_GROUNDS[id]);
+    F.open = open;
     F.decorY = dec ? dec.y : null;
     F.centre = spotNear(F.cx, F.cy, 5, 30, F);
     F.stack = spotNear(F.cx, F.cy, 7, 30, F);
@@ -62793,6 +62833,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       hold: false, holdT: 0, carry: null, act: null, actT: 0, dood: false, hits: 0, catches: 0, stacked: 0, fouls: 0,
       downT: 0, react: 0, dodgeT: 0, dodgeX: 0, dodgeY: 0, dodgeRoll: 0, tgt: null, tgtT: 0, windT: 0, spot: null,
       dvx: 0, dvy: 0, face: null, think: 0, goal: null, stone: null, catchT: -9, catchRoll: false, dashT: -9, sit: null, wander: null, role: null,
+      caution: Math.random(), side: Math.random() < 0.5 ? 1 : -1,
     }, o);
     S.parts.push(P);
     return P;
@@ -62844,7 +62885,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
 
   function log(S, type, data) {
     const ev = Object.assign({ t: +S.t.toFixed(2), type }, data || {});
-    S.log.push(ev); if (S.log.length > 400) S.log.shift();
+    S.log.push(ev); if (S.log.length > (S.logMax || 400)) S.log.shift();
     if (S.real) { try { N.emit('minigame:event', { id: S.id, type, data: ev, inWorld: true }); } catch (e) { /* ignore */ } }
     return ev;
   }
@@ -62872,7 +62913,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function speedOf(S, P, run) {
     let sp = run ? TUNE.kidRun + TUNE.kidRunD * S.d : TUNE.kidWalk;
     if (P.dood) sp *= 0.72;
-    if (P.carry) sp *= TUNE.carryMul;
+    if (P.carry) sp = Math.min(sp, TUNE.kidWalk * 1.1) * TUNE.carryMul;
     if (P.hold) sp = Math.min(sp, TUNE.kidWalk * TUNE.holdWalk);
     return sp;
   }
@@ -62968,14 +63009,32 @@ body.reduced-motion .pg-hud.show { animation: none; }
     P.hold = false; P.windT = 0; P.holdT = 0;
     S.tele = null;
     sfx('chappal_whoosh', { x: e.x, y: e.y, vol: 0.7, pitch: 1.3 });
-    // every kid gets a reaction time to this throw (AI dodging) and a catch roll
+    // every kid gets a reaction time to this throw (AI dodging) and a catch roll; the kid it was aimed at
+    // may have read the wind-up and jukes at once (the thrower led the old run)
+    b.target = o.target || null;
     for (const Q of S.parts) {
       if (Q.isPlayer || Q === P) continue;
       Q.react = S.t + lerp(0.34, 0.12, S.d) * (0.8 + S.rng.next() * 0.5);
-      Q.dodgeRoll = S.rng.next() < (0.42 + 0.42 * S.d) ? 1 : 0;
-      Q.catchRoll = S.id === 'marampitti' && S.rng.next() < 0.1 + 0.12 * S.d;
+      Q.dodgeRoll = S.rng.next() < lerp(TUNE.lingocha.dodge[0], TUNE.lingocha.dodge[1], S.d) ? 1 : 0;
+      Q.catchRoll = S.id === 'marampitti' && S.rng.next() < 0.08 + 0.1 * S.d;
+      if (Q === b.target && b.live && !Q.out && Q.downT <= 0) {
+        // busy hands (picking / stacking) drop the job to duck only some of the time
+        if (Q.act && Q.dodgeRoll && S.rng.next() < 0.55) { Q.act = null; Q.actStone = null; juke(S, Q, P); }
+        else if (!Q.act && Q.dodgeRoll) juke(S, Q, P);
+      }
     }
-    if (!o.quiet) log(S, o.pass ? 'pass' : o.kind === 'stack' ? 'stack_throw' : 'throw', { by: P.name, speed: Math.round(speed) });
+    if (!o.quiet) log(S, o.pass ? 'pass' : o.kind === 'stack' ? 'stack_throw' : 'throw', { by: P.name, speed: Math.round(speed), at: b.target ? b.target.name : null, busy: !!(b.target && b.target.act), juke: !!(b.target && b.target.dodgeT > 0) });
+  }
+  /** sidestep across the line of a throw from P */
+  function juke(S, Q, P) {
+    const e = Q.e;
+    let dx = e.x - P.e.x, dy = e.y - P.e.y; const l = hyp(dx, dy) || 1; dx /= l; dy /= l;
+    let side = S.rng.next() < 0.5 ? 1 : -1;
+    let ux = -dy * side, uy = dx * side;
+    if (!walk(e.x + ux * 10, e.y + uy * 10) || !inRect(S.F, e.x + ux * 10, e.y + uy * 10, 6)) { ux = -ux; uy = -uy; }
+    const sp = speedOf(S, Q, true) * 1.15;
+    Q.dodgeX = ux * sp; Q.dodgeY = uy * sp; Q.dodgeT = 0.34; Q.dodgeRoll = 0;
+    Q.dvx = Q.dodgeX; Q.dvy = Q.dodgeY;
   }
   /** Throw at a point (tz: height to arrive at) with an aim error (radians). */
   function launchAt(S, P, tx, ty, tz, speed, errA, o) {
@@ -63092,16 +63151,17 @@ body.reduced-motion .pg-hud.show { animation: none; }
       }
     }
     // passers-by (adults): a little Chappal Meter when it was Chinnu's ball
-    if ((b.live || hyp(b.vx, b.vy) > 70) && b.z > 0.5 && b.z < 8 && S.t - (S.adultT || -9) > 1.2) {
+    if (b.thrower && b.seq !== b.adultSeq && hyp(b.vx, b.vy) > 60 && b.z > 0.8 && b.z < 8) {
       let hitE = null;
       try {
         N.entities.query(b.x, b.y, 6, (q) => {
           if (hitE || !q || q.pgKid || q === N.player || q.vehicle || q.hidden || (q.kind !== 'ped' && q.kind !== 'npc')) return false;
           if (hyp(q.x - b.x, q.y - b.y) > 4) return false;
+          if (q.__pgHitT && S.t - q.__pgHitT < 6 && q.__pgHitS === S) return false;
           hitE = q; return true;
         });
       } catch (e) { hitE = null; }
-      if (hitE) adultHit(S, b, hitE);
+      if (hitE) { b.adultSeq = b.seq; hitE.__pgHitT = S.t; hitE.__pgHitS = S; adultHit(S, b, hitE); }
     }
   }
   function isAdultLook(l) { return !!l && /^(man|woman|uncle|aunty|saree|burqa|lungi|police)$/.test(l.kind || 'man'); }
@@ -63112,7 +63172,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const adult = isAdultLook(q.look) || q.kind === 'npc';
     try { if (N.dialogue && N.dialogue.bark) N.dialogue.bark(q, pick(S, adult ? BARK.adult : ['Oye!', '*Arre*, careful!']), { secs: 1.8, name: false }); } catch (e) { /* ignore */ }
     const mine = b.thrower && b.thrower.isPlayer && S.real;
-    log(S, 'adult_hit', { adult, heat: mine && adult });
+    log(S, 'adult_hit', { adult, heat: mine && adult, who: (q.npcId || q.role || (q.look && q.look.kind) || q.kind) });
     if (mine && adult) { try { if (N.wanted && N.wanted.addHeat) N.wanted.addHeat(TUNE.heat.adult, 'ball'); } catch (e) { N.err('pg.heat', e); } }
   }
   function windowBreak(S, x, y, P) {
@@ -63300,7 +63360,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
           break;
         }
         case 'scatter': {
-          if (S.phaseT > TUNE.lingocha.scatter) { S.phase = 'live'; S.phaseT = 0; log(S, 'live'); }
+          if (S.phaseT > TUNE.lingocha.scatter) { S.phase = 'live'; S.phaseT = 0; L.liveT0 = S.t; log(S, 'live'); }
           break;
         }
         case 'live': {
@@ -63340,7 +63400,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       const L = S.L;
       let ang = Math.atan2(L.base.y - T.e.y, L.base.x - T.e.x);
       const weak = S.real && PG.debug.assist.weakAI && T.team !== (S.me ? S.me.team : -1);
-      ang += gauss(S.rng) * (weak ? 0.5 : (0.1 - 0.05 * S.d));
+      ang += gauss(S.rng) * (weak ? 0.5 : lerp(TUNE.lingocha.stackErr[0], TUNE.lingocha.stackErr[1], S.d));
       const p = 0.32 + S.rng.next() * 0.42;
       LING.stackThrow(S, T, ang, p);
     },
@@ -63368,7 +63428,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       L.stack.forEach((st, i) => {
         st.state = 'fly'; st.claim = null; st.by = null;
         st.x = L.base.x + (S.rng.next() - 0.5); st.y = L.base.y + (S.rng.next() - 0.5); st.z = i * TUNE.stoneH;
-        const a = ba + gauss(S.rng) * 0.85, v = clamp(sp * (0.14 + 0.3 * S.rng.next()) * (0.65 + 0.07 * i), 12, 125);
+        const a = ba + gauss(S.rng) * 0.85, v = clamp(sp * (0.3 + 0.45 * S.rng.next()) * (0.65 + 0.07 * i), 25, 150);
         st.vx = Math.cos(a) * v; st.vy = Math.sin(a) * v; st.vz = 10 + S.rng.next() * 16 + i * 2;
       });
       L.stack = [];
@@ -63402,7 +63462,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       if (st.z <= 0) {
         st.z = 0;
         if (st.vz < -20) { st.vz = -st.vz * 0.3; st.vx *= 0.6; st.vy *= 0.6; sfx('marble', { x: st.x, y: st.y, vol: 0.35, pitch: 0.6 + st.i * 0.06 }); }
-        else { st.vz = 0; const s = hyp(st.vx, st.vy), dec = 150 * dt; if (s <= dec) { st.vx = st.vy = 0; st.state = 'loose'; } else { st.vx *= (s - dec) / s; st.vy *= (s - dec) / s; } }
+        else { st.vz = 0; const s = hyp(st.vx, st.vy), dec = 110 * dt; if (s <= dec) { st.vx = st.vy = 0; st.state = 'loose'; } else { st.vx *= (s - dec) / s; st.vy *= (s - dec) / s; } }
       }
       if (st.state === 'fly' && !walk(st.x, st.y)) { const f = spotNear(st.x, st.y, 1, 9); st.x = f.x; st.y = f.y; }
     },
@@ -63460,7 +63520,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
       const L = S.L;
       if (S.phase === 'roundEnd') return;
       L.wins[winner]++;
-      const rec = { round: L.round, seek: L.seek === 0 ? 'home' : 'away', winner: winner === 0 ? 'home' : 'away', reason };
+      const rec = { round: L.round, seek: L.seek === 0 ? 'home' : 'away', winner: winner === 0 ? 'home' : 'away', reason, live: L.liveT0 != null && L.knocked ? +(S.t - L.liveT0).toFixed(1) : 0, stack: L.stack.length };
+      L.liveT0 = null;
       L.hist.push(rec);
       S.phase = 'roundEnd'; S.phaseT = 0;
       for (const P of S.parts) { P.act = null; P.windT = 0; }
@@ -63554,7 +63615,23 @@ body.reduced-motion .pg-hud.show { animation: none; }
         return;
       }
       const run = speedOf(S, P, true);
+      const Hh = b.holder && b.holder.team !== P.team ? b.holder : null;
+      const threat = Hh && P.safeT <= 0 && pdist(P, Hh) < TUNE.lingocha.threatR && L.timer > 12;
+      if (threat && P.caution > 0.15) {
+        // keep away until the throw has gone (then rush in)
+        let ax = e.x - Hh.e.x, ay = e.y - Hh.e.y; const l = hyp(ax, ay) || 1;
+        const q = clampIn(S.F, e.x + (ax / l) * 20 - (ay / l) * 8 * P.side, e.y + (ay / l) * 20 + (ax / l) * 8 * P.side, 5);
+        goTo(P, q.x, q.y, run, 1);
+        return;
+      }
       if (P.carry) {
+        // one pair of hands on the stack at a time; the others wait their turn a step away
+        const busy = S.parts.some((Q) => Q !== P && Q.act === 'stack' && !Q.out);
+        if (busy) {
+          const a = Math.atan2(e.y - L.base.y, e.x - L.base.x);
+          goTo(P, L.base.x + Math.cos(a) * 9, L.base.y + Math.sin(a) * 9, run, 1.5);
+          return;
+        }
         const d = goTo(P, L.base.x, L.base.y, run, 4.5);
         if (d < 5.5) { P.act = 'stack'; P.actT = TUNE.lingocha.stackT * (P.dood ? 1.4 : 1); halt(P); }
         return;
@@ -63608,7 +63685,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
           if (mate && S.rng.next() < 0.7) { launchAt(S, P, mate.e.x, mate.e.y, 4, TUNE.passSpeed, 0.03, { pass: true, passTo: mate }); return; }
         }
         const range = lerp(30, 42, S.d);
-        if (d < range || P.holdT > TUNE.lingocha.holdMax - 0.6) { P.windT = lerp(0.55, 0.32, S.d) * (S.real && PG.debug.assist.weakAI ? 1.6 : 1); halt(P); return; }
+        if (d < range || P.holdT > TUNE.lingocha.holdMax - 0.6) { P.windT = lerp(TUNE.lingocha.windup[0], TUNE.lingocha.windup[1], S.d) * (S.real && PG.debug.assist.weakAI ? 1.6 : 1); halt(P); return; }
         goTo(P, T.e.x, T.e.y, speedOf(S, P, false), 2);
         return;
       }
@@ -63643,9 +63720,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
       const sp = lerp(TUNE.aiSpeed[0], TUNE.aiSpeed[1], S.d) * (0.92 + S.rng.next() * 0.16);
       const d = pdist(P, T), t = d / sp, lead = 0.5 + 0.4 * S.d;
       const tx = T.e.x + (T.e.vx || 0) * t * lead, ty = T.e.y + (T.e.vy || 0) * t * lead;
-      const errA = (weak ? 0.45 : 0.12 - 0.07 * S.d);
+      const errA = weak ? 0.45 : lerp(TUNE.lingocha.aiErr[0], TUNE.lingocha.aiErr[1], S.d);
       const tz = clamp(2.4 + gauss(S.rng) * (1.1 - 0.5 * S.d), 0.8, 6.5);
-      launchAt(S, P, tx, ty, tz, sp, errA);
+      launchAt(S, P, tx, ty, tz, sp, errA, { target: T });
     },
     hud(S) {
       const L = S.L, me = S.me;
@@ -63860,7 +63937,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
           if (P.windT <= 0) LING.aiThrowAt(S, P, T);
           return;
         }
-        if (d < lerp(28, 40, S.d) || P.holdT > TUNE.maram.holdMax - 0.6) { P.windT = lerp(0.55, 0.32, S.d) * (S.real && PG.debug.assist.weakAI && T.isPlayer ? 1.6 : 1); halt(P); return; }
+        if (d < lerp(28, 40, S.d) || P.holdT > TUNE.maram.holdMax - 0.6) { P.windT = lerp(TUNE.lingocha.windup[0], TUNE.lingocha.windup[1], S.d) * (S.real && PG.debug.assist.weakAI && T.isPlayer ? 1.6 : 1); halt(P); return; }
         goTo(P, T.e.x, T.e.y, speedOf(S, P, false), 2);
         return;
       }
@@ -64045,7 +64122,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       const tx = T.e.x + (T.e.vx || 0) * t * 0.6, ty = T.e.y + (T.e.vy || 0) * t * 0.6;
       const errA = PG.debug.assist.aim ? 0 : (power ? 0.07 : 0.035) * (asst ? 0.5 : 1);
       const tz = PG.debug.assist.aim ? 2.6 : clamp(2.6 + gauss(S.rng) * (power ? 1.7 : 0.6), 0.8, 8);
-      launchAt(S, me, tx, ty, tz, sp, errA);
+      launchAt(S, me, tx, ty, tz, sp, errA, { target: T });
     } else {
       const a = p.facing != null ? p.facing : p.angle;
       release(S, me, a, sp, power ? 22 : 12);
@@ -64221,6 +64298,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function startReal(S) {
     holdGivers(true);
     BUSY.add(S.F.decorY);
+    try { if (N.traffic && N.traffic.closeRoads) N.traffic.closeRoads('pg', { x: S.F.cx, y: S.F.cy, r: Math.max(S.F.w, S.F.h) / 2 + 40 }); } catch (e) { /* ignore */ }
     try { if (N.clock && N.clock.hold) N.clock.hold('playground-game', true); } catch (e) { /* ignore */ }
     try { if (N.render && !N.render.camOverride) { S.zoomWas = N.render.baseZoom; S.zoom = gameZoom(S.F); N.render.baseZoom = S.zoom; } } catch (e) { /* ignore */ }
     try { if (S.id === 'marampitti' && N.input.setLabel) N.input.setLabel('run', 'DODGE'); } catch (e) { /* ignore */ }
@@ -64270,6 +64348,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function cleanupReal(S) {
     if (current === S) current = null;
     holdGivers(false);
+    spectatorsOff(S);
+    try { if (N.traffic && N.traffic.closeRoads) N.traffic.closeRoads('pg', null); } catch (e) { /* ignore */ }
     BUSY.delete(S.F.decorY);
     try { if (N.clock && N.clock.hold) N.clock.hold('playground-game', false); } catch (e) { /* ignore */ }
     try { if (N.render && S.zoomWas != null && Math.abs(N.render.baseZoom - S.zoom) < 1e-6) N.render.baseZoom = S.zoomWas; } catch (e) { /* ignore */ }
@@ -64300,6 +64380,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function hardCleanup(S) {
     if (!S) return;
     holdGivers(false);
+    spectatorsOff(S);
+    try { if (N.traffic && N.traffic.closeRoads) N.traffic.closeRoads('pg', null); } catch (e) { /* ignore */ }
     BUSY.delete(S.F.decorY);
     try { if (N.clock && N.clock.hold) N.clock.hold('playground-game', false); } catch (e) { /* ignore */ }
     try { if (N.render && S.zoomWas != null) N.render.baseZoom = S.zoomWas; } catch (e) { /* ignore */ }
@@ -64401,6 +64483,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
       for (const pp of S.pops) pp.t += dt;
       for (let i = S.pops.length - 1; i >= 0; i--) if (S.pops[i].t > S.pops[i].life) { const o = S.pops.splice(i, 1)[0]; if (o.el) o.el.remove(); }
       if (S.tele && (!S.tele.from.hold || S.tele.from.windT <= 0)) S.tele = null;
+      S.specT = (S.specT || 0) - dt;
+      if (S.specT <= 0) { S.specT = 1; spectators(S, true); }
       if (S.ambient) ambientChatter(S, dt);
       else realChecks(S, dt);
     } catch (e) { N.err('pg.step:' + S.id, e); }
@@ -64462,6 +64546,32 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (S.restartAt && S.t > S.restartAt && S.id === 'lingocha') { S.restartAt = 0; }
   }
 
+  /* ================================================================ spectators */
+  // traffic.js keeps a little crowd of kids wandering at every ground (its 'playground' crowd zone). While a
+  // game is on there, that zone's centre is moved to the sideline, so they stand and watch instead of
+  // running through the game; it is put back when the game ends.
+  function sideline(F) {
+    const c = [[F.cx, F.y1 + 9], [F.cx, F.y0 - 9], [F.x0 - 9, F.cy], [F.x1 + 9, F.cy], [F.cx, F.y1 - 4], [F.x0 + 4, F.cy]];
+    for (const [x, y] of c) if (clearAt(x, y, 5)) return { x, y };
+    return { x: F.x0 + 4, y: F.y0 + 4 };
+  }
+  function spectators(S, on) {
+    if (!S.zones) S.zones = new Map();
+    if (!on) { for (const [z, o] of S.zones) { z.x = o.x; z.y = o.y; z.r = o.r; } S.zones.clear(); return; }
+    const T = N.traffic;
+    if (!T || !T.peds) return;
+    for (const p of T.peds) {
+      const z = p && p.zone;
+      if (!z || z.kind !== 'playground' || S.zones.has(z) || hyp(z.x - S.F.cx, z.y - S.F.cy) > 260) continue;
+      if (z.__pgMoved) continue;
+      S.zones.set(z, { x: z.x, y: z.y, r: z.r });
+      const q = S.F.side || (S.F.side = sideline(S.F));
+      z.x = q.x; z.y = q.y; z.r = 9; z.__pgMoved = true;
+    }
+    for (const z of S.zones.keys()) z.__pgMoved = true;
+  }
+  function spectatorsOff(S) { if (S && S.zones) { for (const z of S.zones.keys()) z.__pgMoved = false; spectators(S, false); } }
+
   /* ================================================================ ambient games */
   function ambientGameFor(F) {
     if (AMB.force) return AMB.force;
@@ -64475,6 +64585,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     AMB.S = null;
     BUSY.delete(S.F.decorY);
     restoreDoubles(S);
+    spectatorsOff(S);
     for (const pp of S.pops) if (pp.el) pp.el.remove();
     S.pops.length = 0;
     S.ended = true;
@@ -64508,13 +64619,14 @@ body.reduced-motion .pg-hud.show { animation: none; }
 
   /* ================================================================ places_art: hide its gully-cricket kids where we play */
   let paDrawing = false;
+  const FILTERED = { n: 0 };
   function installQueueFilter() {
     const R = N.render;
     if (!R || R.__pgFilter) return;
     R.__pgFilter = true;
     const oq = R.queue;
     R.queue = function (layer, key, fn) {
-      if (paDrawing && layer === 'actors' && BUSY.size && BUSY.has(key)) return undefined;
+      if (paDrawing && layer === 'actors' && BUSY.size && BUSY.has(key)) { FILTERED.n++; return undefined; }
       return oq.apply(this, arguments);
     };
   }
@@ -64582,7 +64694,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
     }
   }
   function stoneDraw(D, st, x, y, z) {
-    D.cyl(x, y, st.r, z, z + TUNE.stoneH, { wall: st.col, roof: U.shade(st.col, 1.18), grad: false });
+    // drawn a little larger than the physics size so the stones read from the kite's-eye view
+    D.cyl(x, y, st.r * 1.25 + 0.35, z, z + TUNE.stoneH + 0.12, { wall: '#1a1214', roof: '#1a1214', grad: false });
+    D.cyl(x, y, st.r * 1.25, z + 0.05, z + TUNE.stoneH, { wall: st.col, roof: U.shade(st.col, 1.22), grad: false });
   }
   function drawLingocha2D(S, R, D) {
     const L = S.L;
@@ -64612,13 +64726,19 @@ body.reduced-motion .pg-hud.show { animation: none; }
     R.queue('sky', 2, (ctx) => {
       let x = p.x + Math.cos(A.ang) * 2.4, y = p.y + Math.sin(A.ang) * 2.4, z = TUNE.hand, vz = vz0;
       const vx = Math.cos(A.ang) * sp, vy = Math.sin(A.ang) * sp, dt = 0.018;
-      ctx.fillStyle = A.charging || A.dragging ? (pw > 0.86 ? '#ff6a5a' : pw < 0.25 ? '#f2c230' : '#8fe07a') : 'rgba(248,246,236,0.85)';
-      for (let i = 0; i < 26; i++) {
+      const col = A.charging || A.dragging ? (pw > 0.86 ? '#ff6a5a' : pw < 0.25 ? '#f2c230' : '#8fe07a') : '#f8f6ec';
+      for (let i = 0; i < 28; i++) {
         x += vx * dt; y += vy * dt; vz -= TUNE.g * dt; z += vz * dt;
-        if (z <= 0) { const q = R.proj(x, y, 0); ctx.fillRect(q.x - 1.5, q.y - 0.4, 3, 0.8); ctx.fillRect(q.x - 0.4, q.y - 1.5, 0.8, 3); break; }
+        if (z <= 0) {
+          const q = R.proj(x, y, 0);
+          ctx.fillStyle = '#1a1214'; ctx.fillRect(q.x - 3, q.y - 1, 6, 2); ctx.fillRect(q.x - 1, q.y - 3, 2, 6);
+          ctx.fillStyle = col; ctx.fillRect(q.x - 2.5, q.y - 0.5, 5, 1); ctx.fillRect(q.x - 0.5, q.y - 2.5, 1, 5);
+          break;
+        }
         if (i % 2) continue;
         const q = R.proj(x, y, z);
-        ctx.fillRect(q.x - 0.6, q.y - 0.6, 1.2, 1.2);
+        ctx.fillStyle = '#1a1214'; ctx.fillRect(q.x - 1.4, q.y - 1.4, 2.8, 2.8);
+        ctx.fillStyle = col; ctx.fillRect(q.x - 0.8, q.y - 0.8, 1.6, 1.6);
       }
     });
   }
@@ -64910,7 +65030,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   }
   function resetAll() {
     if (current) { const S = current; hardCleanup(S); const r = S.resolve; S.resolve = null; S.ended = true; if (r) r({ id: S.id, win: false, score: 0, stars: 0, aborted: true, reason: 'reset' }); }
-    if (AMB.S) { const S = AMB.S; AMB.S = null; BUSY.delete(S.F.decorY); restoreDoubles(S); for (const k of S.kids) { try { N.entities.remove(k); } catch (e) { /* ignore */ } } }
+    if (AMB.S) { const S = AMB.S; AMB.S = null; BUSY.delete(S.F.decorY); restoreDoubles(S); spectatorsOff(S); for (const k of S.kids) { try { N.entities.remove(k); } catch (e) { /* ignore */ } } }
     for (const L of leftovers) for (const pp of L.S.pops) if (pp.el) pp.el.remove();
     leftovers.length = 0;
     for (const k of leftKids) { try { N.entities.remove(k); } catch (e) { /* ignore */ } }
@@ -65019,8 +65139,29 @@ body.reduced-motion .pg-hud.show { animation: none; }
       toss() { const S = current; if (!S || !S.M) return false; S.auto = null; MARAM.toss(S); return true; },
       end(win) { const S = current; if (!S) return false; endSession(S, !!win, { reason: 'debug' }); return true; },
       fields: () => fieldList,
+      /** AI-only fast simulation (balance tuning / rules sanity): {rounds | survivors, log} */
+      simulate(gid, place, secs, o) {
+        o = o || {};
+        const F = FIELDS.get(place) || fieldList[0];
+        if (!F || !GAMES[gid]) return null;
+        const S = createSession(gid, F, { difficulty: o.difficulty == null ? 0.4 : o.difficulty, seed: o.seed || 1 }, { ambient: true });
+        S.logMax = 20000;
+        const dt = 1 / 60, n = Math.round((secs || 120) * 60);
+        const t0 = performance.now();
+        for (let i = 0; i < n; i++) stepSession(S, dt);
+        const out = { ms: Math.round(performance.now() - t0), t: S.t, log: S.log.filter((e) => /out|knock|lingocha|round_end|catch|head_foul|restack|safe|kick|grab|toss|window|ball_back/.test(e.type)).map((e) => e.type) };
+        if (o.full) out.full = S.log.slice();
+        if (S.L) out.rounds = S.L.hist.slice();
+        if (S.M) out.tosses = S.M.tosses;
+        const counts = {}; for (const e of S.log) counts[e.type] = (counts[e.type] || 0) + 1; out.counts = counts;
+        for (const k of S.kids) { try { N.entities.remove(k); } catch (e) { /* ignore */ } }
+        restoreDoubles(S); spectatorsOff(S);
+        S.ended = true;
+        return out;
+      },
       kidCount() { return N.entities.all.filter((e) => e.pgKid && e.alive !== false).length; },
       busy() { return Array.from(BUSY); },
+      filtered: FILTERED,
     },
   });
 })();
@@ -71277,22 +71418,6 @@ body.reduced-motion .pg-hud.show { animation: none; }
     for (const k of J.kerbs) if (k.type === 'arc') J.extraPts.push(k.cn.O, k.cn.C);
   }
   function polyArea(p) { let a = 0; for (let i = 0, j = p.length - 1; i < p.length; j = i++) a += p[j][0] * p[i][1] - p[i][0] * p[j][1]; return a / 2; }
-  function selfIntersects(p) {
-    const n = p.length;
-    for (let i = 0; i < n; i++) {
-      const a = p[i], b = p[(i + 1) % n];
-      for (let j = i + 2; j < n; j++) {
-        if (i === 0 && j === n - 1) continue;
-        const c = p[j], d = p[(j + 1) % n];
-        const d1 = (d[0] - c[0]) * (a[1] - c[1]) - (d[1] - c[1]) * (a[0] - c[0]);
-        const d2 = (d[0] - c[0]) * (b[1] - c[1]) - (d[1] - c[1]) * (b[0] - c[0]);
-        const d3 = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
-        const d4 = (b[0] - a[0]) * (d[1] - a[1]) - (b[1] - a[1]) * (d[0] - a[0]);
-        if (((d1 > 1e-7 && d2 < -1e-7) || (d1 < -1e-7 && d2 > 1e-7)) && ((d3 > 1e-7 && d4 < -1e-7) || (d3 < -1e-7 && d4 > 1e-7))) return true;
-      }
-    }
-    return false;
-  }
   function convex(p) {
     let sg = 0;
     for (let i = 0, n = p.length; i < n; i++) {
@@ -71305,13 +71430,20 @@ body.reduced-motion .pg-hud.show { animation: none; }
     return true;
   }
   function triangulate(pl) {
-    if (pl.length < 3 || Math.abs(polyArea(pl)) < 1) return null;
+    const A = Math.abs(polyArea(pl));
+    if (pl.length < 3 || A < 1) return null;
     if (convex(pl)) { const t = []; for (let i = 1; i < pl.length - 1; i++) t.push([pl[0], pl[i], pl[i + 1]]); return t; }
-    if (selfIntersects(pl)) return null;
     let tris;
     try { tris = THREE.ShapeUtils.triangulateShape(pl.map((p) => new THREE.Vector2(p[0], p[1])), []); } catch (e) { return null; }
     if (!tris || !tris.length) return null;
-    return tris.map((t) => [pl[t[0]], pl[t[1]], pl[t[2]]]);
+    // a self-intersecting outline triangulates to the wrong area: then the caller falls back to the hull
+    let sum = 0;
+    const out = tris.map((t) => {
+      const a = pl[t[0]], b = pl[t[1]], c = pl[t[2]];
+      sum += Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / 2;
+      return [a, b, c];
+    });
+    return Math.abs(sum - A) > A * 0.02 + 1 ? null : out;
   }
   function hull(pts) {
     const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -71385,7 +71517,6 @@ body.reduced-motion .pg-hud.show { animation: none; }
       this.P = new Float32Array(this.cap * 3); this.Nn = new Int8Array(this.cap * 3); this.C = new Uint8Array(this.cap * 3);
       this.UV = new Float32Array(this.cap * 2); this.GEO = new Float32Array(this.cap * 4); this.MK = new Float32Array(this.cap * 4); this.ST = new Float32Array(this.cap * 4);
       this.I = new Uint32Array(this.icap);
-      this.tmpA = []; this.tmpB = [];
       this.raised = []; // [x0, z0, x1, z1, ... polygon footprints, h] for groundHeightAt
     }
     /** reuse the buffers for another chunk (jobs run one at a time) */
@@ -71968,9 +72099,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     let nx = -dz, nz = dx;
     const A = k.A, cx = A.Q[0], cz = A.Q[1];
     if ((pa[0] - cx) * nx + (pa[1] - cz) * nz < 0) { nx = -nx; nz = -nz; }
-    const fake = { x: 0, y: 0, nx: 0, ny: 0 };
     const fa = { x: pa[0] - nx * A.hw, y: pa[1] - nz * A.hw, nx, ny: nz }, fb = { x: pb[0] - nx * A.hw, y: pb[1] - nz * A.hw, nx, ny: nz };
-    void fake;
     footStrip(B, fa, fb, 0, L, 1, A.hw, k.fp, k.kh, k.paint, A.piece.kind);
   }
 
@@ -72619,7 +72748,7 @@ if (ngShine > 0.01) {
   }
 
   /* ================================================================ chunk jobs (provider) */
-  const STATS = { built: 0, ms: 0, lastMs: 0, tris: 0, roadsRebuilt: 0 };
+  const STATS = { built: 0, ms: 0, lastMs: 0, roadsRebuilt: 0 };
   const STEPMS = []; // cumulative ms per job step: analyse, aux, surface, tint, roads, upload
   const curPot = () => { const PH = N.world && N.world.potholes; return PH && PH.version != null ? PH.version : 0; };
   const SIGBUF = [];
@@ -75257,7 +75386,13 @@ if (ngShine > 0.01) {
     facWalls(fp, -hl, -hv, hl, -hv + 34, 0, 30, 8);
     k.c('#d8d0c0').hq(-hl, -hv, hl, -hv + 34, 30);
     parapet(k, -hl, -hv, hl, -hv + 34, 30, 2.4, 0.7, '#b22b2b');
-    md.at(0, -hv + 34, 0); md.sign('MAHATMA GANDHI BUS STATION', -40, 40, 22, 28, 0.4, '#b22b2b', '#ffffff'); md.at(0, 0, 0);
+    md.at(0, -hv + 34, 0); md.sign('MAHATMA GANDHI BUS STATION', -40, 40, 22, 28, 0.4, '#b22b2b', '#ffffff');
+    // the road side (front): the same board over a red-pillared entrance porch
+    md.at(0, -hv, PI); md.sign('MAHATMA GANDHI BUS STATION', -40, 40, 22, 28, 0.4, '#b22b2b', '#ffffff');
+    k.c('#d8d0c0').box(-26, 11, 0, 26, 12.6, 12).c('#b22b2b').box(-26.4, 12.6, 11.4, 26.4, 13.6, 12.4);
+    for (const u of [-24, -8, 8, 24]) k.box(u - 0.8, 0, 10.2, u + 0.8, 11, 11.8);
+    md.glow(0, 10.4, 6, '#e0f4ff', 'gM');
+    md.at(0, 0, 0);
     const k2 = md.part('kit2');
     for (let c = 0; c < 4; c++) {
       const u0 = -hl + 8 + c * ((lm.w - 16) / 4), u1 = u0 + (lm.w - 16) / 4 - 6, um = (u0 + u1) / 2;
@@ -79245,6 +79380,750 @@ if (ngShine > 0.01) {
       feet: (r) => feetOf(r || DBG.rec),
     },
   };
+})();
+
+</script>
+<script>/* src/models3d.js */
+/* NOSTALGIA — models3d.js (pipeline technical artist) — ARCHITECTURE §21 "Blender asset pipeline"
+ *
+ * Runtime for the Blender-authored models (tools/blender/*.py -> assets3d/*.glb -> src/assets3d_pack.js).
+ * Nothing here runs in the top-down view: the first time 3D starts (N.view3d.ready), it loads
+ * vendor/three/GLTFLoader.classic.js and the pack (N.ASSETS3D) lazily — from the inline text/plain
+ * script blocks with ids gltfloader-src / assets3d-pack in dist/nostalgia.html, else from the files
+ * next to the page — parses the GLBs it needs and registers overrides with
+ * N.view3d. The procedural renderers (view3d_actors.js / view3d_landmarks.js) stay registered and
+ * are the per-entity / per-landmark fallback whenever a model is missing, failed, disabled or
+ * cannot show a state (riding, sitting, falling...).
+ *
+ * Public API — N.models3d:
+ *   ready            true once the pack is loaded and the active models are parsed
+ *   state            'idle' | 'loading' | 'ready' | 'missing' (no pack / loader) | 'failed'
+ *   has(id)          the pack has a usable model `id`
+ *   load()           start loading now (Promise<boolean>); 3D does this by itself
+ *   instance(id)     Object3D clone (shared geometry + materials, skinned meshes rebound), GLB frame
+ *                    (front = +Z); null when not parsed
+ *   character(id, look) -> {object, play(clip, {speed, fade, loop}), setSpeed(u/s), update(dt, dist),
+ *                    tint(look), anchors, clip, phase, weights(), dispose()}: object faces +X (rotate
+ *                    with rotation.y = -angle); locomotion clips are phase-driven from the distance
+ *                    actually travelled (phase += dist / blended stride), so feet never slide.
+ *   vehicleParts(id) -> {object, bones, wheels, steer, crank, pedals, anchors, set({dist, steer, crank}),
+ *                    pose(v), dispose()}: spin / steer / pedal from the vehicle simulation.
+ *   useProto         (get/set) landmark blockouts flagged proto (charminar_proto) replace the
+ *                    procedural model only while this is true
+ *   options          {enabled, player, vehicles, landmarks, kidPeds, env, nightGlow}
+ *   stats(), debug   internals for tests
+ * Conventions (binding, see ARCHITECTURE §21): GLB front = +Z (Blender -Y); actors get an inner
+ * pivot rotation.y = PI/2 so the outer object uses the core's rotation.y = -angle; landmarks are
+ * rotated by the landmark face like view3d_landmarks (FR = {s: 0, n: PI, e: PI/2, w: -PI/2}).
+ * Meshes named COL_* are invisible camera-ray proxies; detailed meshes skip ray casts. Materials
+ * named *@night glow with N.view3d.H.night; metallic materials get a small sky environment map.
+ *
+ * Hooks into modules this file does not own: it sets / clears the documented per-entity key
+ * `e.view3d` (ARCHITECTURE §20 key resolution) on the player and on vehicles it renders, so the
+ * procedural specs stay registered underneath; it never edits another file.
+ */
+(() => {
+  'use strict';
+  const N = window.N;
+  if (!N) return;
+  const TAU = Math.PI * 2;
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const now = () => performance.now();
+  const lsGet = (k) => { try { return window.localStorage.getItem(k); } catch (e) { return null; } };
+
+  /* ================================================================ options + state */
+  const OPT = { enabled: true, player: true, vehicles: true, landmarks: true, kidPeds: false, env: true, nightGlow: true };
+  const LOADER_URLS = ['vendor/three/GLTFLoader.classic.js', '../vendor/three/GLTFLoader.classic.js', 'https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/GLTFLoader.js'];
+  const PACK_URLS = ['src/assets3d_pack.js', '../src/assets3d_pack.js'];
+  const S = {
+    state: 'idle', error: null, started: false, loadT: 0, loadMs: 0, parseMs: 0,
+    loaderFrom: null, packFrom: null, models: new Map(), pending: new Map(), failed: new Map(),
+    registered: new Set(), landmarkKeys: new Map(), prevLandmark: new Map(), instances: 0,
+    routedPlayer: false, routedVehicles: 0, mats: new Set(), env: null, frame: 0,
+  };
+  let THREE = null;
+  let useProto = lsGet('nostalgia.models3d.proto') === '1';
+
+  /* ================================================================ lazy script loading */
+  function loadScript(url, ok, timeout) {
+    return new Promise((resolve) => {
+      let done = false;
+      const fin = (v) => { if (!done) { done = true; resolve(v); } };
+      const s = document.createElement('script');
+      s.src = url; s.async = true;
+      s.onload = () => fin(ok());
+      s.onerror = () => { s.remove(); fin(false); };
+      setTimeout(() => fin(ok()), timeout || 15000);
+      document.head.appendChild(s);
+    });
+  }
+  /** run an inline <script type="text/plain" id=...> block (dist/nostalgia.html) */
+  function runInline(id, ok) {
+    const el = document.getElementById(id);
+    if (!el || !el.textContent) return false;
+    try {
+      const s = document.createElement('script');
+      s.textContent = el.textContent;
+      document.head.appendChild(s);
+      s.remove();
+    } catch (e) { N.err('models3d.inline:' + id, e); return false; }
+    return ok();
+  }
+  const hasLoader = () => !!(window.THREE && window.THREE.GLTFLoader);
+  const hasPack = () => !!(N.ASSETS3D && N.ASSETS3D.glb && N.ASSETS3D.manifest);
+  async function loadLoader() {
+    if (hasLoader()) { S.loaderFrom = S.loaderFrom || 'present'; return true; }
+    if (runInline('gltfloader-src', hasLoader)) { S.loaderFrom = 'inline'; return true; }
+    for (const u of LOADER_URLS) {
+      if (/^https?:/.test(u) && location.protocol === 'file:' && N.models3d.noCdn) continue;
+      if (await loadScript(u, hasLoader, /^https?:/.test(u) ? 12000 : 8000)) { S.loaderFrom = u; return true; }
+    }
+    return false;
+  }
+  async function loadPack() {
+    if (hasPack()) { S.packFrom = S.packFrom || 'present'; return true; }
+    if (runInline('assets3d-pack', hasPack)) { S.packFrom = 'inline'; return true; }
+    for (const u of N.models3d.packUrls || PACK_URLS) {
+      if (await loadScript(u, hasPack, 20000)) { S.packFrom = u; return true; }
+    }
+    return false;
+  }
+  let loadPromise = null;
+  function load() {
+    if (loadPromise) return loadPromise;
+    if (!OPT.enabled) return Promise.resolve(false);
+    S.started = true; S.state = 'loading'; S.loadT = now();
+    loadPromise = (async () => {
+      try {
+        THREE = window.THREE;
+        if (!THREE) throw new Error('three.js is not loaded');
+        const okL = await loadLoader();
+        if (!okL) { S.state = 'missing'; S.error = 'GLTFLoader unavailable'; return false; }
+        const okP = await loadPack();
+        if (!okP) { S.state = 'missing'; S.error = 'assets3d pack unavailable'; return false; }
+        S.loadMs = now() - S.loadT;
+        await parseActive();
+        S.state = 'ready';
+        registerAll();
+        N.emit('models3d:ready', { ids: Array.from(S.models.keys()) });
+        return true;
+      } catch (e) {
+        S.state = 'failed'; S.error = String((e && e.message) || e);
+        N.err('models3d.load', e);
+        return false;
+      }
+    })();
+    return loadPromise;
+  }
+
+  /* ================================================================ parsing */
+  function b64ToBuffer(s) {
+    const bin = atob(s), n = bin.length, u = new Uint8Array(n);
+    for (let i = 0; i < n; i++) u[i] = bin.charCodeAt(i);
+    return u.buffer;
+  }
+  const manifest = (id) => (hasPack() && N.ASSETS3D.manifest[id]) || null;
+  function wanted(id) {
+    const m = manifest(id); if (!m) return false;
+    const meta = m.meta || {};
+    if (m.family === 'character') return OPT.player || OPT.kidPeds;
+    if (m.family === 'vehicle') return OPT.vehicles;
+    if (m.family === 'landmark' || m.family === 'hero_landmark') return OPT.landmarks && (!meta.proto || useProto);
+    return true;
+  }
+  async function parseActive() {
+    const ids = Object.keys(N.ASSETS3D.glb).filter(wanted);
+    for (const id of ids) await parse(id);
+  }
+  function parse(id) {
+    if (S.models.has(id)) return Promise.resolve(S.models.get(id));
+    if (S.failed.has(id)) return Promise.resolve(null);
+    if (S.pending.has(id)) return S.pending.get(id);
+    const src = hasPack() && N.ASSETS3D.glb[id];
+    if (!src || !THREE || !THREE.GLTFLoader) return Promise.resolve(null);
+    const t0 = now();
+    const p = new Promise((resolve) => {
+      let buf;
+      try { buf = b64ToBuffer(src); } catch (e) { S.failed.set(id, 'base64: ' + e.message); resolve(null); return; }
+      try {
+        new THREE.GLTFLoader().parse(buf, '', (g) => {
+          let md = null;
+          try { md = prepare(id, g); } catch (e) { S.failed.set(id, String(e.message || e)); N.err('models3d.prepare:' + id, e); }
+          S.parseMs += now() - t0;
+          S.pending.delete(id);
+          if (md) S.models.set(id, md);
+          resolve(md);
+        }, (err) => {
+          S.failed.set(id, String((err && err.message) || err));
+          S.pending.delete(id);
+          // a broken model is not a game error: the procedural renderer stays in charge
+          console.warn('[models3d] ' + id + ' failed to parse: ' + S.failed.get(id));
+          resolve(null);
+        });
+      } catch (e) { S.failed.set(id, String(e.message || e)); S.pending.delete(id); resolve(null); }
+    });
+    S.pending.set(id, p);
+    return p;
+  }
+  const NOOP_RAY = () => {};
+  let COL_MAT = null;
+  function prepare(id, g) {
+    const man = manifest(id) || {};
+    const scene = g.scene || (g.scenes && g.scenes[0]);
+    if (!scene) throw new Error('no scene');
+    const md = { id, man, meta: man.meta || {}, scene, clips: new Map(), night: [], metal: [], floodlit: [], skinned: false };
+    for (const c of g.animations || []) md.clips.set(c.name, c);
+    if (!COL_MAT) { COL_MAT = new THREE.MeshBasicMaterial({ visible: false }); COL_MAT.userData.shared = true; }
+    scene.traverse((o) => {
+      if (!o.isMesh) return;
+      if (/^COL_/.test(o.name) || (o.parent && /^COL_/.test(o.parent.name))) {
+        o.material = COL_MAT; o.userData.noShadow = true; o.castShadow = false; o.receiveShadow = false; o.userData.collision = true;
+        return;
+      }
+      o.userData.noRay = true;              // the camera ray uses the COL_ proxies (no BVH in three)
+      if (o.isSkinnedMesh) { md.skinned = true; o.frustumCulled = false; }
+      const geo = o.geometry;
+      if (geo) geo.userData.shared = true;  // shared by every clone: the core's disposeObj must keep it
+      if (geo && geo.attributes._region) { geo.setAttribute('aRegion', geo.attributes._region); geo.deleteAttribute('_region'); }
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (!m || S.mats.has(m)) continue;
+        S.mats.add(m);
+        m.userData.shared = true;           // H.dispose / core disposeObj must not free shared model materials
+        m.userData.m3d = id;
+        for (const k of ['map', 'emissiveMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'alphaMap']) if (m[k]) m[k].userData.shared = true;
+        if (/@night$/.test(m.name)) { m.userData.nightBase = m.emissive ? m.emissive.clone() : null; md.night.push(m); m.emissiveIntensity = 0; }
+        if ((m.metalness || 0) > 0.05 || m.metalnessMap) md.metal.push(m);
+        if (md.meta.floodlit && m.map && !/@night$/.test(m.name)) { md.floodlit.push(m); m.emissiveMap = m.map; m.emissive = new THREE.Color(0xffc98a); m.emissiveIntensity = 0; }
+        m.needsUpdate = true;
+      }
+    });
+    if (md.metal.length && OPT.env) for (const m of md.metal) { m.envMap = envMap(); m.envMapIntensity = 0.6; }
+    scene.updateMatrixWorld(true);
+    return md;
+  }
+  /** a small gradient sky as a PMREM environment for metallic materials (chrome reads as chrome) */
+  function envMap() {
+    if (S.env) return S.env;
+    const H = N.view3d && N.view3d.H;
+    const r = H && H.renderer;
+    if (!r) return null;
+    const c = document.createElement('canvas'); c.width = 128; c.height = 64;
+    const g = c.getContext('2d');
+    const gr = g.createLinearGradient(0, 0, 0, 64);
+    gr.addColorStop(0, '#7fa9dc'); gr.addColorStop(0.45, '#dfe8ef'); gr.addColorStop(0.5, '#cfc4b0'); gr.addColorStop(0.56, '#8c7c66'); gr.addColorStop(1, '#3e352d');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 64);
+    const t = new THREE.CanvasTexture(c);
+    t.mapping = THREE.EquirectangularReflectionMapping;
+    t.encoding = THREE.sRGBEncoding;
+    const pm = new THREE.PMREMGenerator(r);
+    S.env = pm.fromEquirectangular(t).texture;
+    S.env.userData.shared = true;
+    pm.dispose(); t.dispose();
+    return S.env;
+  }
+
+  /* ================================================================ cloning (SkeletonUtils.clone logic, r149) */
+  function parallel(a, b, cb) { cb(a, b); for (let i = 0; i < a.children.length; i++) parallel(a.children[i], b.children[i], cb); }
+  function cloneScene(src) {
+    const clone = src.clone(true);
+    const srcOf = new Map(), cloneOf = new Map();
+    parallel(src, clone, (a, b) => { srcOf.set(b, a); cloneOf.set(a, b); });
+    clone.traverse((node) => {
+      if (!node.isSkinnedMesh) return;
+      const sm = srcOf.get(node);
+      node.skeleton = sm.skeleton.clone();
+      node.bindMatrix.copy(sm.bindMatrix);
+      node.skeleton.bones = sm.skeleton.bones.map((b) => cloneOf.get(b));
+      node.bind(node.skeleton, node.bindMatrix);
+    });
+    return clone;
+  }
+  function instance(id) {
+    const md = S.models.get(id);
+    if (!md) return null;
+    const o = cloneScene(md.scene);
+    o.name = 'm3d:' + id;
+    o.userData.m3d = id;
+    o.traverse((m) => { if (m.isMesh && m.userData.noRay) m.raycast = NOOP_RAY; });
+    S.instances++;
+    return o;
+  }
+  function findAnchors(root) {
+    const out = {};
+    root.traverse((o) => { if (o.name && o.name.indexOf('anchor_') === 0) out[o.name.slice(7)] = o; });
+    return out;
+  }
+  function findBones(root) {
+    const out = {};
+    root.traverse((o) => { if (o.isBone) out[o.name] = o; });
+    return out;
+  }
+  /** dispose an instance: only per-instance (non-shared) materials; geometry / textures are shared */
+  function disposeInstance(o) {
+    if (!o) return;
+    o.traverse((m) => {
+      if (!m.isMesh) return;
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      for (const x of mats) if (x && !x.userData.shared) x.dispose();
+    });
+    if (o.parent) o.parent.remove(o);
+  }
+
+  /* ================================================================ tint (N.people looks -> regions) */
+  const LOOK_FIELDS = { skin: ['skin'], hair: ['hair'], shirt: ['shirt', 'kameez', 'saree'], stripes: ['stripes'], pants: ['pants', 'lungi'], shoes: ['shoes', 'chappal'], accent: ['accent'] };
+  function hexLin(h) {
+    if (typeof h !== 'string') return null;
+    let s = h.trim(); if (s[0] === '#') s = s.slice(1);
+    if (s.length === 3) s = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
+    const v = parseInt(s.slice(0, 6), 16); if (!isFinite(v)) return null;
+    const f = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    return [f((v >> 16) & 255), f((v >> 8) & 255), f(v & 255)];
+  }
+  function tintRatios(md, look) {
+    const T = md.man.tint || {}, names = T.names || ['none'], base = T.regions || {};
+    const out = [];
+    for (let i = 0; i < 8; i++) {
+      const r = names[i], b = r && hexLin(base[r]);
+      let want = null;
+      if (look && r && LOOK_FIELDS[r]) for (const f of LOOK_FIELDS[r]) if (look[f]) { want = hexLin(look[f]); break; }
+      if (!b || !want) { out.push(new THREE.Vector3(1, 1, 1)); continue; }
+      out.push(new THREE.Vector3(clamp(want[0] / Math.max(b[0], 0.004), 0, 8), clamp(want[1] / Math.max(b[1], 0.004), 0, 8), clamp(want[2] / Math.max(b[2], 0.004), 0, 8)));
+    }
+    return out;
+  }
+  function tintMaterial(src) {
+    const m = src.clone();
+    m.userData = Object.assign({}, src.userData, { shared: false, tinted: true });
+    const U = { uTint: { value: [] } };
+    for (let i = 0; i < 8; i++) U.uTint.value.push(new THREE.Vector3(1, 1, 1));
+    m.userData.tintU = U;
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uTint = U.uTint;
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float aRegion;\nuniform vec3 uTint[8];\nvarying vec3 vTint;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvTint = uTint[int(clamp(aRegion + 0.5, 0.0, 7.0))];');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vTint;')
+        .replace('#include <map_fragment>', '#include <map_fragment>\n\tdiffuseColor.rgb *= vTint;');
+    };
+    m.customProgramCacheKey = () => 'm3d-tint';
+    m.needsUpdate = true;
+    return m;
+  }
+
+  /* ================================================================ characters */
+  const V_IDLE = 3;          // u/s below which a character stands
+  const FADE = 0.18;         // s, idle <-> locomotion cross-fade
+  class Character {
+    constructor(md, look) {
+      this.md = md; this.id = md.id;
+      this.object = new THREE.Group(); this.object.name = 'm3d-char:' + md.id;
+      this.pivot = instance(md.id); this.pivot.rotation.y = Math.PI / 2; // GLB front +Z -> +X
+      this.object.add(this.pivot);
+      this.mesh = null; this.pivot.traverse((o) => { if (o.isSkinnedMesh && !this.mesh) this.mesh = o; });
+      this.anchors = findAnchors(this.pivot);
+      this.bones = findBones(this.pivot);
+      this.mixer = new THREE.AnimationMixer(this.pivot);
+      this.actions = {}; this.loco = [];
+      const clips = md.man.clips || {};
+      for (const [name, clip] of md.clips) {
+        const a = this.mixer.clipAction(clip);
+        a.enabled = true; a.setEffectiveWeight(0); a.play();
+        this.actions[name] = a;
+        const c = clips[name] || {};
+        if (c.loco && c.stride > 0) { a.paused = true; this.loco.push({ name, a, stride: c.stride, nominal: c.nominal || c.speed || 40, dur: clip.duration, gait: c.gait, w: 0 }); }
+        else if (c.loop === false) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+      }
+      this.loco.sort((p, q) => p.nominal - q.nominal);
+      this.idle = this.actions.idle || null;
+      this.phase = 0; this.v = 0; this.locoW = 0; this.clip = 'idle';
+      this.oneShot = null; this.oneW = 0; this.lookRef = null;
+      if (this.idle) this.idle.setEffectiveWeight(1);
+      if (look) this.tint(look);
+      this.mixer.update(0);
+    }
+    /** dress from an N.people look (skin, hair, shirt, stripes, pants...) */
+    tint(look) {
+      this.lookRef = look;
+      if (!this.mesh || !this.md.man.tint) return this;
+      if (!this.tintMat) { this.tintMat = tintMaterial(this.mesh.material); this.mesh.material = this.tintMat; }
+      const R = tintRatios(this.md, look), U = this.tintMat.userData.tintU.uTint.value;
+      for (let i = 0; i < 8; i++) U[i].copy(R[i]);
+      return this;
+    }
+    setSpeed(v) { this.v = Math.max(0, v || 0); return this; }
+    /** one-shot or looping clip on top of locomotion: {fade, loop (default: the manifest's), speed} */
+    play(name, o) {
+      o = o || {};
+      const a = this.actions[name];
+      if (!a) return false;
+      if (this.loco.some((l) => l.name === name) || name === 'idle') { this.oneShot = null; return true; }
+      if (this.oneShot && this.oneShot.a !== a) this.oneShot.a.setEffectiveWeight(0);
+      a.reset(); a.timeScale = o.speed || 1;
+      if (o.loop === true) a.setLoop(THREE.LoopRepeat, Infinity);
+      else if (o.loop === false) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+      a.play();
+      this.oneShot = { a, name, fade: o.fade != null ? o.fade : 0.2, t: 0 };
+      return true;
+    }
+    stop(name) { if (this.oneShot && (!name || this.oneShot.name === name)) this.oneShot.stopping = true; }
+    /** blend weights of the locomotion clips for speed v (piecewise linear between nominal speeds) */
+    blend(v) {
+      const L = this.loco; let S = 0;
+      for (const l of L) l.w = 0;
+      if (!L.length) return 1;
+      if (v <= L[0].nominal) L[0].w = 1;
+      else if (v >= L[L.length - 1].nominal) L[L.length - 1].w = 1;
+      else for (let i = 0; i < L.length - 1; i++) if (v < L[i + 1].nominal) { const t = (v - L[i].nominal) / (L[i + 1].nominal - L[i].nominal); L[i].w = 1 - t; L[i + 1].w = t; break; }
+      for (const l of L) S += l.w * l.stride;
+      return S;
+    }
+    /** advance by sim dt; dist = distance travelled this frame (defaults to speed * dt) */
+    update(dt, dist) {
+      dt = Math.max(0, dt || 0);
+      const v = this.v;
+      const L = this.loco;
+      const want = v > V_IDLE && L.length ? 1 : 0;
+      this.locoW += clamp(want - this.locoW, -dt / FADE, dt / FADE);
+      const stride = this.blend(Math.max(v, V_IDLE));
+      if (dist == null) dist = v * dt;
+      if (stride > 0 && want) this.phase = (this.phase + dist / stride) % 1;
+      // one-shot overlay
+      let oneW = 0;
+      if (this.oneShot) {
+        const os = this.oneShot; os.t += dt;
+        const done = os.stopping || (os.a.loop === THREE.LoopOnce && !os.a.isRunning() && os.t > 0.05);
+        this.oneW = clamp(this.oneW + (done ? -1 : 1) * dt / Math.max(0.01, os.fade), 0, 1);
+        oneW = this.oneW;
+        os.a.setEffectiveWeight(oneW);
+        if (done && oneW <= 0) { os.a.setEffectiveWeight(0); this.oneShot = null; }
+      }
+      const base = 1 - oneW;
+      let top = null, topW = -1;
+      for (const l of L) {
+        l.a.time = this.phase * l.dur;
+        const w = base * this.locoW * l.w;
+        l.a.setEffectiveWeight(w);
+        if (w > topW) { topW = w; top = l.name; }
+      }
+      const idleW = base * (1 - this.locoW);
+      if (this.idle) this.idle.setEffectiveWeight(L.length ? idleW : base);
+      this.clip = this.oneShot ? this.oneShot.name : (idleW >= topW ? 'idle' : top);
+      this.mixer.update(dt);
+      return this;
+    }
+    weights() { const o = {}; for (const k in this.actions) o[k] = +this.actions[k].getEffectiveWeight().toFixed(3); return o; }
+    dispose() { this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.pivot); if (this.tintMat) this.tintMat.dispose(); disposeInstance(this.object); }
+  }
+  function character(id, look) {
+    const md = S.models.get(id);
+    if (!md || !md.clips.size) return null;
+    try { return new Character(md, look); } catch (e) { N.err('models3d.character:' + id, e); return null; }
+  }
+
+  /* ================================================================ vehicles */
+  const AX = { x: null, tmpQ: null, tmpQ2: null };
+  /** axis (GLB model frame) expressed in a bone's local frame at bind time */
+  function localAxis(bone, rootQinv, axis) {
+    const q = new THREE.Quaternion();
+    bone.getWorldQuaternion(q);
+    q.premultiply(rootQinv);
+    return axis.clone().applyQuaternion(q.invert()).normalize();
+  }
+  function vehicleParts(id) {
+    const md = S.models.get(id);
+    if (!md) return null;
+    const meta = md.meta || {};
+    const object = new THREE.Group(); object.name = 'm3d-veh:' + id;
+    object.rotation.order = 'YXZ';
+    const pivot = instance(id); pivot.rotation.y = Math.PI / 2;
+    object.add(pivot);
+    pivot.updateMatrixWorld(true);
+    const rootQinv = new THREE.Quaternion(); pivot.getWorldQuaternion(rootQinv); rootQinv.invert();
+    const bones = findBones(pivot), anchors = findAnchors(pivot);
+    const lateral = new THREE.Vector3(1, 0, 0);
+    const sa = meta.steerAxis || [0, -0.381, -0.925];
+    const steerAxis = new THREE.Vector3(sa[0], sa[2], -sa[1]).normalize(); // Blender -> glTF
+    const part = (name, axis) => { const b = bones[name]; return b ? { node: b, rest: b.quaternion.clone(), axis: localAxis(b, rootQinv, axis) } : null; };
+    const P = {
+      object, pivot, md, bones, anchors,
+      wheels: ['wheel_rear', 'wheel_front'].map((n) => part(n, lateral)).filter(Boolean),
+      steer: part('steer', steerAxis), crank: part('crank', lateral),
+      pedals: ['pedal_L', 'pedal_R'].map((n) => part(n, lateral)).filter(Boolean),
+      R: meta.wheelR || 3, gear: meta.gear || 2.4, night: [],
+      state: { dist: 0, steer: 0, crank: 0 },
+    };
+    // per-instance copies of the @night materials (a parked cycle's lamp is off, a ridden one on)
+    pivot.traverse((o) => {
+      if (!o.isMesh) return;
+      if (Array.isArray(o.material)) return;
+      if (o.material && /@night$/.test(o.material.name)) { o.material = o.material.clone(); o.material.userData = { shared: false, m3d: id }; P.night.push(o.material); }
+    });
+    const q = new THREE.Quaternion();
+    const turn = (p, a) => { if (p) p.node.quaternion.copy(p.rest).multiply(q.setFromAxisAngle(p.axis, a)); };
+    /** dist: distance rolled (u); steer: radians about the steering axis; crank: radians (default dist / R / gear) */
+    P.set = (o) => {
+      const st = P.state;
+      if (o.dist != null) st.dist = o.dist;
+      if (o.steer != null) st.steer = o.steer;
+      const wa = st.dist / P.R;
+      st.crank = o.crank != null ? o.crank : wa / P.gear;
+      for (const w of P.wheels) turn(w, wa);
+      turn(P.steer, st.steer);
+      turn(P.crank, st.crank);
+      for (const p of P.pedals) turn(p, -st.crank);   // pedals stay level
+      return P;
+    };
+    P.lamp = (k) => { for (const m of P.night) m.emissiveIntensity = k; };
+    P.dispose = () => { for (const m of P.night) m.dispose(); disposeInstance(object); };
+    P.set({ dist: 0, steer: 0 });
+    return P;
+  }
+
+  /* ================================================================ actor specs + routing */
+  const simDt = (st) => { const t = (N.time && N.time.now) || 0; const d = clamp(t - (st.t == null ? t : st.t), 0, 0.1); st.t = t; return d; };
+  const PLAYER_ID = () => { for (const [id, md] of S.models) if (md.man.family === 'character' && (md.meta.role === 'player')) return id; return null; };
+  function charSpec(id) {
+    return {
+      shadow: true, fps: false, m3d: id,
+      create(e, H) {
+        const c = character(id, e.look);
+        if (!c) return null;
+        c.object.userData.m3dChar = c;
+        if (H && H.quality && !H.quality.shadows) c.object.add(H.blobShadow(4.6));
+        const st = { t: null, x: e.x, y: e.y };
+        c.object.userData.m3dState = st;
+        return c.object;
+      },
+      update(obj, e, dt, H) {
+        const c = obj.userData.m3dChar, st = obj.userData.m3dState;
+        const d = simDt(st);
+        let dist = Math.hypot(e.x - st.x, e.y - st.y);
+        if (dist > 40) dist = 0;   // teleported
+        st.x = e.x; st.y = e.y;
+        let v = Math.hypot(e.vx || 0, e.vy || 0);
+        if (!(v > 0) && d > 1e-5) v = dist / d;
+        if (e.look !== c.lookRef) c.tint(e.look);
+        c.setSpeed(v).update(d, dist);
+        obj.position.set(e.x, H.elev(e), e.y);
+        obj.rotation.y = -(isFinite(e.facing) ? e.facing : (e.angle || 0));
+      },
+      dispose(obj) { const c = obj && obj.userData.m3dChar; if (c) c.dispose(); },
+    };
+  }
+  function vehicleSpec(id) {
+    return {
+      shadow: true, fps: true, m3d: id,
+      create(e, H) {
+        const P = vehicleParts(id);
+        if (!P) return null;
+        P.object.userData.m3dParts = P;
+        if (H && H.quality && !H.quality.shadows) { const T = e.T || {}; P.object.add(H.blobShadow((T.w || 16) * 1.05, (T.d || 5) * 1.4)); }
+        return P.object;
+      },
+      update(obj, e, dt, H) {
+        const P = obj.userData.m3dParts;
+        const T = e.T || {};
+        const sx = T.w && P.md.meta.length ? T.w / P.md.meta.length : 1;
+        P.pivot.scale.setScalar(clamp(sx, 0.7, 1.4));
+        let roll = 0, pitch = 0, y = 0;
+        if (e.fallen) { roll = -1.3; y = 0.5; } else if (!e.driver) roll = -0.12; else roll = clamp(e.lean || 0, -0.6, 0.6);
+        const j = e.jolt || 0;
+        if (j > 0) { const ph = (1 - j) * Math.PI * 3.2; y += -Math.sin(ph) * j * 0.8; pitch += Math.sin(ph * 1.3) * j * 0.05; roll += Math.sin(ph * 1.7) * j * 0.04 * (e.joltSide || 1); }
+        obj.position.set(e.x, H.elev(e) + y, e.y);
+        obj.rotation.set(roll, -(e.angle || 0), pitch);
+        P.set({ dist: (e.wheelPhase || 0) * 2, steer: -(e.steerVis || 0) * 0.8 });
+        const moving = !!e.driver && Math.abs(e.speed || 0) > 10;
+        P.lamp(OPT.nightGlow && moving ? H.night * 1.5 : 0);
+        if (moving && H.night > 0.2 && P.anchors.headlight) {
+          const a = e.angle || 0;
+          H.light({ x: e.x + Math.cos(a) * 7, y: e.y + Math.sin(a) * 7, h: 4.5, color: '#ffe6b0', intensity: 0.6 * H.night, r: 40 });
+        }
+      },
+      dispose(obj) { const P = obj && obj.userData.m3dParts; if (P) P.dispose(); },
+    };
+  }
+  const VEH_TYPES = new Map(); // vehicle type -> model id
+  function registerAll() {
+    const V3 = N.view3d;
+    if (!V3) return;
+    for (const [id, md] of S.models) {
+      const fam = md.man.family;
+      if (fam === 'character' && !S.registered.has('m3d:char:' + id)) {
+        V3.registerActorRenderer('m3d:char:' + id, charSpec(id));
+        S.registered.add('m3d:char:' + id);
+      } else if (fam === 'vehicle' && !S.registered.has('m3d:veh:' + id)) {
+        V3.registerActorRenderer('m3d:veh:' + id, vehicleSpec(id));
+        S.registered.add('m3d:veh:' + id);
+        for (const t of md.meta.vehicleTypes || [id]) VEH_TYPES.set(t, id);
+      } else if ((fam === 'landmark' || fam === 'hero_landmark')) {
+        registerLandmark(id, md);
+      }
+    }
+  }
+
+  /* ---------------------------------------------------------------- landmarks */
+  const FR = { s: 0, n: Math.PI, e: Math.PI / 2, w: -Math.PI / 2 };
+  function rotFor(lm) { if (isFinite(lm.faceAngle)) return Math.PI / 2 - lm.faceAngle; return FR[lm.face] || 0; }
+  function landmarkKey(md) { return md.meta.landmark ? '#' + md.meta.landmark : md.meta.draw; }
+  function buildLandmark(id) {
+    return (T, lm) => {
+      const md = S.models.get(id);
+      if (!md || !OPT.landmarks || (md.meta.proto && !useProto) || !OPT.enabled) return fallbackLandmark(md, lm);
+      try {
+        const g = new THREE.Group(); g.name = 'm3d-lm:' + id + ':' + lm.id;
+        const inst = instance(id);
+        inst.rotation.y = rotFor(lm);
+        const fp = md.meta.footprint;
+        if (md.meta.fit === 'footprint' && fp && lm.w && lm.d) {
+          // the model's width runs along its front: world x for faces n / s, world y for e / w
+          const ns = !lm.face || lm.face === 'n' || lm.face === 's' || isFinite(lm.faceAngle);
+          inst.scale.set((ns ? lm.w : lm.d) / fp[0], 1, (ns ? lm.d : lm.w) / fp[1]);
+        }
+        g.add(inst);
+        g.userData.m3d = id;
+        return g;
+      } catch (e) { N.err('models3d.landmark:' + id, e); return fallbackLandmark(md, lm); }
+    };
+  }
+  /** the procedural model again (core API when present; else the object it had built before) */
+  function fallbackLandmark(md, lm) {
+    const prev = S.prevLandmark.get(lm.id);
+    if (prev) { prev.position.set(0, 0, 0); return prev; }
+    return null;
+  }
+  function registerLandmark(id, md) {
+    const V3 = N.view3d;
+    const key = landmarkKey(md);
+    if (!key) return;
+    const on = OPT.landmarks && OPT.enabled && (!md.meta.proto || useProto);
+    const have = S.landmarkKeys.get(key);
+    if (on && !have) {
+      // remember the procedural object currently built for that landmark (best-effort fallback)
+      const lmId = md.meta.landmark;
+      if (lmId && !(V3.unregisterLandmark)) {
+        const E = V3.engine;
+        const grp = E && E.lmGroup;
+        if (grp) for (const ch of grp.children) if (ch.name === 'lm3d:' + lmId || ch.name === 'lm:' + lmId) { S.prevLandmark.set(lmId, ch); break; }
+      }
+      V3.registerLandmark(key, buildLandmark(id), { castShadow: true });
+      S.landmarkKeys.set(key, id);
+    } else if (!on && have) {
+      if (typeof V3.unregisterLandmark === 'function') V3.unregisterLandmark(key);
+      else V3.registerLandmark(key, (T, lm) => fallbackLandmark(md, lm), {});
+      S.landmarkKeys.delete(key);
+    }
+  }
+
+  /* ---------------------------------------------------------------- routing (e.view3d) */
+  function canShowPlayer(p) {
+    return !!(p && !p.vehicle && !p.hidden && !p.sitting && !(p.downT > 0) && !p.fallen && !p.riding && p.alive !== false);
+  }
+  function route() {
+    const V3 = N.view3d;
+    if (!V3 || !V3.active || S.state !== 'ready') return;
+    const p = N.player;
+    // the player
+    const pid = OPT.player && OPT.enabled ? PLAYER_ID() : null;
+    const want = pid && canShowPlayer(p) ? 'm3d:char:' + pid : null;
+    if (p) {
+      if (want && p.view3d !== want) p.view3d = want;
+      else if (!want && p.view3d && String(p.view3d).indexOf('m3d:') === 0) delete p.view3d;
+      S.routedPlayer = !!want;
+    }
+    // vehicles: parked (no rider) ones of a modelled type; ridden ones stay procedural (riders)
+    let n = 0;
+    const f = V3.focus ? V3.focus() : p;
+    let list = [];
+    try { list = N.entities.query(f.x, f.y, (V3.quality && V3.quality.actorDist) || 620); } catch (e) { list = []; }
+    for (const e of list) {
+      if (!e || e.kind !== 'vehicle') { if (e && OPT.kidPeds && e !== p && e.kind === 'ped' && pid) routePed(e, pid); continue; }
+      const mid = OPT.vehicles && OPT.enabled ? VEH_TYPES.get(e.type) : null;
+      const riders = e.driver || e.pillion || e.passenger;
+      const key = mid && !riders && e.alive !== false ? 'm3d:veh:' + mid : null;
+      if (key) { if (e.view3d !== key) e.view3d = key; n++; } else if (e.view3d && String(e.view3d).indexOf('m3d:') === 0) delete e.view3d;
+    }
+    S.routedVehicles = n;
+  }
+  function routePed(e, pid) {
+    const l = e.look;
+    const ok = l && l.kind === 'kid' && !l.girl && !e.npcId && !e.vehicle && !e.sitting && !(e.downT > 0) && !e.hidden;
+    const key = ok ? 'm3d:char:' + pid : null;
+    if (key) { if (e.view3d !== key) e.view3d = key; } else if (e.view3d && String(e.view3d).indexOf('m3d:') === 0) delete e.view3d;
+  }
+  function unrouteAll() {
+    try {
+      for (const e of N.entities.all || []) if (e && e.view3d && String(e.view3d).indexOf('m3d:') === 0) delete e.view3d;
+      if (N.player && N.player.view3d && String(N.player.view3d).indexOf('m3d:') === 0) delete N.player.view3d;
+    } catch (e) { /* ignore */ }
+  }
+
+  /* ================================================================ per-frame material state (layer) */
+  function frameMaterials(H) {
+    const night = OPT.nightGlow ? (H.night || 0) : 0, day = H.day != null ? H.day : 1 - night;
+    for (const md of S.models.values()) {
+      for (const m of md.night) m.emissiveIntensity = night * 1.4;
+      for (const m of md.floodlit) m.emissiveIntensity = night * 0.32;
+      for (const m of md.metal) m.envMapIntensity = 0.12 + 0.55 * clamp(day, 0, 1);
+    }
+  }
+
+  /* ================================================================ API */
+  const api = (N.models3d = {
+    OPT, options: OPT, packUrls: null, noCdn: false,
+    get ready() { return S.state === 'ready'; },
+    get state() { return S.state; },
+    get error() { return S.error; },
+    get useProto() { return useProto; },
+    set useProto(v) {
+      useProto = !!v;
+      if (S.state !== 'ready') return;
+      for (const [id] of Object.entries(N.ASSETS3D.manifest)) {
+        const m = manifest(id);
+        if (!m || !(m.family === 'landmark' || m.family === 'hero_landmark') || !(m.meta && m.meta.proto)) continue;
+        if (useProto) parse(id).then((md) => { if (md) registerLandmark(id, md); });
+        else { const md = S.models.get(id); if (md) registerLandmark(id, md); }
+      }
+    },
+    has(id) { return !!(manifest(id) && !S.failed.has(id)); },
+    loaded(id) { return S.models.has(id); },
+    load, parse, instance, character, vehicleParts,
+    manifest: (id) => manifest(id),
+    /** turn the Blender models off / on at runtime (procedural renderers take over) */
+    setEnabled(v) {
+      OPT.enabled = !!v;
+      if (!v) unrouteAll();
+      if (S.state === 'ready') for (const [id, md] of S.models) if (md.man.family === 'landmark' || md.man.family === 'hero_landmark') registerLandmark(id, md);
+      return OPT.enabled;
+    },
+    stats() {
+      return {
+        state: S.state, error: S.error, loaderFrom: S.loaderFrom, packFrom: S.packFrom,
+        pack: hasPack() ? Object.keys(N.ASSETS3D.glb) : [], parsed: Array.from(S.models.keys()), failed: Object.fromEntries(S.failed),
+        loadMs: +S.loadMs.toFixed(1), parseMs: +S.parseMs.toFixed(1), instances: S.instances,
+        registered: Array.from(S.registered).concat(Array.from(S.landmarkKeys.keys())), routedPlayer: S.routedPlayer, routedVehicles: S.routedVehicles, useProto,
+      };
+    },
+    debug: { S, route, unrouteAll, Character, tintRatios, cloneScene },
+  });
+
+  N.addSystem({
+    id: 'models3d', order: 62, runIn: ['*'],
+    update() {
+      if (!OPT.enabled) return;
+      const V3 = N.view3d;
+      if (!S.started && V3 && V3.ready && window.THREE) load();
+      if (S.state === 'ready') { try { route(); } catch (e) { N.err('models3d.route', e); } }
+    },
+  });
+  if (N.view3d && N.view3d.registerLayer) {
+    N.view3d.registerLayer('models3d', {
+      order: 40,
+      update(dt, H) { S.frame++; if (S.models.size) frameMaterials(H); },
+    });
+  }
+  N.on('view:change', (d) => { if (d && d.mode === 'top') unrouteAll(); });
 })();
 
 </script>

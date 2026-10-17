@@ -17,3 +17,20 @@ Round 1 (on preview 4):
    foot sliding), arm swing, slight body lean when running, idle breathing/looking around,
    smooth turning, riding poses on cycles/Scooty/auto with pedalling, getting on/off, and
    the same quality for NPCs. Verified with frame sequences, not single screenshots.
+
+Round 2 (orchestrator art direction on the Blender `charminar_proto` blockout, binding for the
+final Charminar model):
+3. The proto reads as an open, skeletal frame with thin poles. The real Charminar is a
+   **solid, massive square block** (about 20 m a side) of granite and lime plaster with
+   **one great pointed arch cut through each face** (about 11 m wide, 20 m high), the four
+   arches meeting in a vaulted crossing under a central floor. Above the arches the facade
+   continues as solid wall: an ornate projecting balcony band, then **two upper storeys**
+   with rows of small pointed arched openings and a parapet with small merlons; the small
+   mosque sits on the top floor at the west side.
+4. The **four minarets are thick, fluted/faceted shafts built into the corners** (not separate
+   poles), rising about 56 m from the ground, i.e. well above the roof, with **two
+   projecting carved balconies (rings)** on the free part and a **bulbous onion dome with a
+   lotus-leaf base and a finial** on top.
+5. **Clock faces** (added 1889) sit centred above each great arch. Colour: warm lime-plaster
+   cream with grey weathering streaks, darker at the base. Proportions: height of the arch
+   crown ≈ half the minaret height; the block's top ≈ 0.6 of the minaret height.

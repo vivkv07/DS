@@ -5,7 +5,8 @@
  * (raw and as base64-in-JS, which is how src/assets3d_pack.js ships them) and, if a folder of
  * downloaded Google Fonts woff2 files is given, the fonts.
  *
- *   node nostalgia/tools/perf/sizes.mjs [--fonts <dir with *.woff2 + fonts.css>] [--json out.json]
+ *   node nostalgia/tools/perf/sizes.mjs [--root <snapshot dir>] [--glb <assets3d dir>]
+ *        [--fonts <dir with *.woff2 + fonts.css>] [--json out.json]
  *
  * Groups (who needs a module, judged from what it does at runtime, not from load order):
  *   boot   needed to reach the title screen (engine, world, render, menus, audio synthesis)
@@ -18,8 +19,9 @@ import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync, brotliCompressSync, constants as Z } from 'node:zlib';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : null; };
+// --root <snapshot>: measure a frozen copy (index.html, style.css, src/, vendor/, nostalgia.html)
+const ROOT = arg('--root') ? resolve(arg('--root')) : resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const GROUP = {
   'core.js': 'boot', 'input.js': 'boot', 'audio.js': 'boot', 'render.js': 'boot', 'worlddata.js': 'boot',
@@ -43,7 +45,7 @@ const rows = [];
 const add = (name, group, buf, note) => { const m = measure(buf); rows.push({ name, group, ...m, note: note || '' }); return m; };
 
 // --- built pages
-for (const f of ['dist/nostalgia.html', 'dist/artifact.html']) {
+for (const f of ['dist/nostalgia.html', 'dist/artifact.html', 'nostalgia.html', 'artifact.html']) {
   const p = join(ROOT, f);
   if (existsSync(p)) add(f, 'page', readFileSync(p));
 }
@@ -64,7 +66,7 @@ for (const f of ['vendor/three/three.min.js', 'vendor/three/GLTFLoader.classic.j
 }
 
 // --- Blender GLBs: raw binary vs base64 inside a JS string (the pack format)
-const glbDir = join(ROOT, 'assets3d');
+const glbDir = arg('--glb') ? resolve(arg('--glb')) : join(ROOT, 'assets3d');
 let glbRaw = Buffer.alloc(0);
 if (existsSync(glbDir)) {
   for (const f of readdirSync(glbDir).filter((f) => f.endsWith('.glb'))) {
