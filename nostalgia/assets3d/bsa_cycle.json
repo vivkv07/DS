@@ -58,7 +58,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 6000,
- "bytes": 344020,
+ "bytes": 297224,
  "clips": {},
  "family": "vehicle",
  "file": "bsa_cycle.glb",
@@ -68,7 +68,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 336.0,
+ "kb": 290.3,
  "kit": 1,
  "materials": [
   "M_bsa_cycle"
@@ -159,7 +159,7 @@
    "paint": "#24479a"
   }
  },
- "tris": 3792,
+ "tris": 3308,
  "units": "u",
  "up": "Z"
 }

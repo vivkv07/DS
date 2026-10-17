@@ -56,7 +56,11 @@ def _tag(o, rings, seg, closed=False):
     return o
 
 
-def tube(name, pts, r, seg=8, mat=None, cap=True):
+def tube(name, pts, r, seg=8, mat=None, cap=None):
+    """kit.tube, tagged; cap=None: only fat tubes get end caps (thin rods, spokes, rails and frame
+    tubes ending inside lugs don't need them: fewer split vertices)"""
+    if cap is None:
+        cap = r >= 0.2
     o = kit.tube(name, pts, r, seg=seg, mat=mat, cap=cap)
     return _tag(o, [seg] * len(pts), seg)
 

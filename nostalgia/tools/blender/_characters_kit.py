@@ -2796,7 +2796,8 @@ def ride_sheet(A, body_glb, vehicle_id, clip, drop=0.0, frames=(0, 8, 16, 24), s
         act.name = 'ride_cycle'
     import types
     try:
-        p = kit.preview_ride(types.SimpleNamespace(id=A.id), body_glb, vehicle_id, drop, frames=frames, size=size, samples=samples)
+        tmp_id = A.id if out_name == 'ride' else A.id + '__' + out_name
+        p = kit.preview_ride(types.SimpleNamespace(id=tmp_id), body_glb, vehicle_id, drop, frames=frames, size=size, samples=samples)
         if p and out_name != 'ride':
             q = os.path.join(kit.PREVIEW_DIR, '%s_%s.png' % (A.id, out_name))
             os.replace(p, q)

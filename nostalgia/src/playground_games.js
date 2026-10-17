@@ -1001,12 +1001,16 @@
       }
       // throwers: Chinnu when his team seeks (a real game), else the seekers in turn
       L.throwers = S.me && S.me.team === L.seek ? [S.me] : seek.filter((P) => !P.dood);
-      seek.forEach((P, i) => {
-        const off = (i - (seek.length - 1) / 2) * 7;
-        const q = clampIn(F, ln.x - ux * 6 + vx * off, ln.y - uy * 6 + vy * off, 3);
-        P.spot = spotNear(q.x, q.y, 3, 12, F);
-      });
+      // the thrower toes the line; the rest of his team wait beside it (not right behind him, where they would
+      // fill the 3D camera's view of the stack)
       const thrower = L.throwers[0] || seek[0];
+      let j = 0;
+      for (const P of seek) {
+        if (P === thrower) continue;
+        const off = (j % 2 ? 1 : -1) * (10 + 7 * Math.floor(j / 2)); j++;
+        const q = clampIn(F, ln.x - ux * 4 + vx * off, ln.y - uy * 4 + vy * off, 3);
+        P.spot = spotNear(q.x, q.y, 3, 12, F);
+      }
       if (thrower) thrower.spot = { x: ln.x, y: ln.y };
       const away = Math.atan2(uy, ux);
       hit.forEach((P, i) => {

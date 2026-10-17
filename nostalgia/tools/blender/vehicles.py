@@ -461,7 +461,7 @@ def pedal_cycle(A, C):
     tw = C.get('tyre_w', 0.42)
     rim_m = AC if C.get('accent_rims') else P['chrome']
     for nm, c in (('wheel_rear', RA), ('wheel_front', FA)):
-        Rg.add(nm, vk.spoke_wheel(nm[6:], tuple(c), R, M, spokes=C.get('spokes', 32), seg=C.get('wseg', 22), tyre_w=tw, rim_d=0.36 * k + 0.04,
+        Rg.add(nm, vk.spoke_wheel(nm[6:], tuple(c), R, M, spokes=C.get('spokes', 32), seg=C.get('wseg', 20), tyre_w=tw, rim_d=0.36 * k + 0.04,
                                   rim_m=rim_m, knobs=C.get('knobs', 0.0), hub_w=0.6 * max(k, 0.85)))
     fr = []
     tr = C.get('tube_r', 0.15) * (k ** 0.5)
@@ -514,8 +514,8 @@ def pedal_cycle(A, C):
     if sk == 'sprung':
         for sx in (1, -1):
             base = SEATv + V(0.36 * sx, 0.42, -0.5)
-            pts = [base + V(0.1 * math.cos(t), 0.1 * math.sin(t), t * 0.022) for t in [i * 0.8 for i in range(19)]]
-            sd.append(tube('spring', pts, 0.022, seg=4, mat=P['chrome'], cap=False))
+            pts = [base + V(0.1 * math.cos(t), 0.1 * math.sin(t), t * 0.022) for t in [i * 1.05 for i in range(15)]]
+            sd.append(tube('spring', pts, 0.024, seg=3, mat=P['chrome'], cap=False))
             sd.append(tube('spring_rod', [SEATv + V(0.36 * sx, 0.42, -0.56), clamp + V(0.1 * sx, 0.05, -0.05)], 0.035, seg=4, mat=P['chrome']))
     # ---------------------------------------------------------------- carrier
     cz = 2 * R + 0.38 * k
@@ -678,7 +678,7 @@ def pedal_cycle(A, C):
         # shifters ride on the bars: their own option bone parented to the steer bone
         Rg.bone('opt_gears_bar', bc, bc + V(0.8, 0, 0), parent='steer')
         Rg.add('opt_gears_bar', st_shift)
-    arm, ob = Rg.build(tex=C.get('tex', 512), orm=256, emit=0, ao_samples=24, albedo_samples=6, ao_strength=0.62, ao_dist=1.5,
+    arm, ob = Rg.build(tex=C.get('tex', 512), orm=128, emit=0, ao_samples=24, albedo_samples=6, ao_strength=0.62, ao_dist=1.5,
                        boost={'sign_': 2.4, 'chain_guard_name': 2.4, 'down_tube_name': 2.4})
     anchors_from(A, arm, {
         'seat_driver': (tuple(SEATv), 'saddle'),
