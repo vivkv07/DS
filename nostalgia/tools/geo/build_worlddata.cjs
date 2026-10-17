@@ -1443,6 +1443,14 @@ for (const [id, pad, kind, e0] of COMPOUNDS) {
   const r = [l.x - l.w / 2 - pad - e[0], l.y - l.d / 2 - pad - e[1], l.w + pad * 2 + e[0] + e[2], l.d + pad * 2 + e[1] + e[3]].map(RD);
   PK.set(id + '_compound', { id: id + '_compound', name: l.name + ' compound', kind, poly: [[r[0], r[1]], [r[0] + r[2], r[1]], [r[0] + r[2], r[1] + r[3]], [r[0], r[1] + r[3]]] });
 }
+// Begumpet: a taxiway from the apron (moved with the terminal) north to the runway line
+{
+  const ap = PK.get('begumpet_apron');
+  if (ap) {
+    const c = G.centroid(ap.poly), q = G.nearestOnLine(RUNWAY.line, c[0], c[1]);
+    if (q && q.d > 40) PK.set('begumpet_taxiway', { id: 'begumpet_taxiway', name: 'Begumpet taxiway', kind: 'plaza', poly: G.ribbon([[c[0], c[1]], [q.x, q.y]], 20).map(ptR), conf: 'low' });
+  }
+}
 // the Musi riverbed (sand) and a few named hills as rock ground
 if (MUSI_BED) PK.set('musi_bed', { id: 'musi_bed', name: 'Musi riverbed', kind: 'ground', surface: 'sand', poly: MUSI_BED.map((q) => [RD(clampX(q[0])), RD(clampY(q[1]))]), conf: 'high' });
 for (const h of TERR.hills) if (HILL_EXTRA.has(h.id)) PK.set('hill_' + h.id, { id: 'hill_' + h.id, name: h.name, kind: 'rock', poly: HILLS.get(h.id).outline.map(ptR), conf: h.confidence });
