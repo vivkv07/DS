@@ -1,0 +1,51 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 45676,
+ "clips": {},
+ "family": "landmark",
+ "file": "koti_bus_stand.glb",
+ "front": "-Y",
+ "id": "koti_bus_stand",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 44.6,
+ "kit": 1,
+ "materials": [
+  "M_koti_bus_stand",
+  "M_koti_bus_stand_lamp_lens@night"
+ ],
+ "max": [
+  30.15,
+  45.0,
+  26.0
+ ],
+ "meta": {
+  "face": "w",
+  "fit": "footprint",
+  "footprint": [
+   62,
+   92
+  ],
+  "height": 27.0,
+  "landmark": "koti_bus_stand"
+ },
+ "min": [
+  -32.5,
+  -46.2,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_city",
+ "size": [
+  62.65,
+  91.2,
+  26.0
+ ],
+ "tint": null,
+ "tris": 286,
+ "units": "u",
+ "up": "Z"
+}

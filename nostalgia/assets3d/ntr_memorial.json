@@ -1,0 +1,54 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 115112,
+ "clips": {},
+ "family": "landmark",
+ "file": "ntr_memorial.glb",
+ "front": "-Y",
+ "id": "ntr_memorial",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 112.4,
+ "kit": 1,
+ "materials": [
+  "M_ntr_memorial",
+  "M_ntr_memorial_glass",
+  "M_ntr_memorial_lamp_lens@night"
+ ],
+ "max": [
+  20.318,
+  14.0,
+  27.2
+ ],
+ "meta": {
+  "draw": "ntr_memorial",
+  "face": "s",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   40,
+   28
+  ],
+  "height": 27.0
+ },
+ "min": [
+  -20.0,
+  -14.0,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_hussain",
+ "size": [
+  40.318,
+  28.0,
+  27.2
+ ],
+ "tint": null,
+ "tris": 1342,
+ "units": "u",
+ "up": "Z"
+}

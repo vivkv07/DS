@@ -1,0 +1,52 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 77132,
+ "clips": {},
+ "family": "landmark",
+ "file": "imlibun_mgbs.glb",
+ "front": "-Y",
+ "id": "imlibun_mgbs",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 75.3,
+ "kit": 1,
+ "materials": [
+  "M_imlibun_mgbs",
+  "M_imlibun_mgbs_lime_plaster",
+  "M_imlibun_mgbs_lamp_lens@night"
+ ],
+ "max": [
+  101.0,
+  58.0,
+  33.6
+ ],
+ "meta": {
+  "draw": "mgbs",
+  "face": "n",
+  "fit": "footprint",
+  "footprint": [
+   204,
+   120
+  ],
+  "height": 36.0
+ },
+ "min": [
+  -101.0,
+  -60.4,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_city",
+ "size": [
+  202.0,
+  118.4,
+  33.6
+ ],
+ "tint": null,
+ "tris": 886,
+ "units": "u",
+ "up": "Z"
+}

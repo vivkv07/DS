@@ -1,0 +1,52 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 66744,
+ "clips": {},
+ "family": "landmark",
+ "file": "st_josephs_cathedral.glb",
+ "front": "-Y",
+ "id": "st_josephs_cathedral",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 65.2,
+ "kit": 1,
+ "materials": [
+  "M_st_josephs_cathedral",
+  "M_st_josephs_cathedral_lamp_lens@night"
+ ],
+ "max": [
+  35.0,
+  29.2,
+  65.0
+ ],
+ "meta": {
+  "face": "e",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   70,
+   50
+  ],
+  "height": 66.0,
+  "landmark": "church_st_josephs"
+ },
+ "min": [
+  -35.0,
+  -25.7,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_worship",
+ "size": [
+  70.0,
+  54.9,
+  65.0
+ ],
+ "tint": null,
+ "tris": 857,
+ "units": "u",
+ "up": "Z"
+}

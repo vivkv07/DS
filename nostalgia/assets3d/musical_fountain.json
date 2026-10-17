@@ -1,0 +1,55 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 51332,
+ "clips": {},
+ "family": "landmark",
+ "file": "musical_fountain.glb",
+ "front": "-Y",
+ "id": "musical_fountain",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 50.1,
+ "kit": 1,
+ "materials": [
+  "M_musical_fountain",
+  "M_musical_fountain_glass",
+  "M_musical_fountain_glass.001",
+  "M_musical_fountain_lamp_lens@night",
+  "M_musical_fountain_lamp_lens@night.001",
+  "M_musical_fountain_lamp_lens@night.002"
+ ],
+ "max": [
+  13.3,
+  9.3,
+  9.85
+ ],
+ "meta": {
+  "draw": "musical_fountain",
+  "face": "s",
+  "fit": "footprint",
+  "footprint": [
+   26,
+   18
+  ],
+  "height": 9.0
+ },
+ "min": [
+  -13.3,
+  -9.3,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_hussain",
+ "size": [
+  26.6,
+  18.6,
+  9.85
+ ],
+ "tint": null,
+ "tris": 732,
+ "units": "u",
+ "up": "Z"
+}

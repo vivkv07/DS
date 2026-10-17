@@ -1,0 +1,54 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 270096,
+ "clips": {},
+ "family": "landmark",
+ "file": "golconda_bala_hissar.glb",
+ "front": "-Y",
+ "id": "golconda_bala_hissar",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 263.8,
+ "kit": 1,
+ "materials": [
+  "M_golconda_bala_hissar",
+  "M_golconda_bala_hissar_lamp_lens@night"
+ ],
+ "max": [
+  43.539,
+  34.926,
+  67.75
+ ],
+ "meta": {
+  "draw": "golconda_bala_hissar",
+  "face": "s",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   84,
+   64
+  ],
+  "height": 70.0
+ },
+ "min": [
+  -43.395,
+  -32.4,
+  0.0
+ ],
+ "notes": [
+  "COL_bh_*: camera proxies for the hill terraces and the hall"
+ ],
+ "script": "_lm_golconda",
+ "size": [
+  86.933,
+  67.326,
+  67.75
+ ],
+ "tint": null,
+ "tris": 3788,
+ "units": "u",
+ "up": "Z"
+}

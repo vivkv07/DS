@@ -1,0 +1,61 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 156456,
+ "clips": {},
+ "family": "landmark",
+ "file": "qutb_tomb.glb",
+ "front": "-Y",
+ "id": "qutb_tomb",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 152.8,
+ "kit": 1,
+ "materials": [
+  "M_qutb_tomb"
+ ],
+ "max": [
+  26.9,
+  26.9,
+  72.2
+ ],
+ "meta": {
+  "dataH": 50,
+  "draw": "qutb_tomb",
+  "fit": "footprint",
+  "fitHeight": true,
+  "floodlit": true,
+  "footprint": [
+   56,
+   56
+  ],
+  "height": 75.0,
+  "variants": {
+   "names": [
+    "a",
+    "b"
+   ],
+   "rule": "hash"
+  }
+ },
+ "min": [
+  -26.9,
+  -31.7,
+  0.0
+ ],
+ "notes": [
+  "variants a (plain cube) / b (two-storey arcaded gallery) by lm.id hash; fitHeight dataH=50"
+ ],
+ "script": "_lm_golconda",
+ "size": [
+  53.8,
+  58.6,
+  72.2
+ ],
+ "tint": null,
+ "tris": 2540,
+ "units": "u",
+ "up": "Z"
+}
