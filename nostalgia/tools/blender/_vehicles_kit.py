@@ -537,6 +537,7 @@ class VRig:
         A.armature = arm
         self.arm = arm
         self.ob = ob
+        after_export(A)
         return arm, ob
 
 
@@ -793,8 +794,9 @@ def finish_vehicle(A, ob, tex=512, orm=256, emit=256, ao_samples=24, albedo_samp
 
 
 # =========================================================================== previews (tinted variants)
-def _tint_imported(objs, colours, defaults):
-    """multiply the imported base colour per _REGION by colour / default (what the runtime does)"""
+def _tint_imported(objs, colours, defaults, lamps=0.0):
+    """multiply the imported base colour per _REGION by colour / default (what the runtime does);
+    lamps > 0 lights the head / tail lamp groups (night shot)"""
     for o in objs:
         if o.type != 'MESH':
             continue
@@ -803,94 +805,188 @@ def _tint_imported(objs, colours, defaults):
                 continue
             nt = m.node_tree
             bsdf = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
-            if bsdf is None or not bsdf.inputs['Base Color'].links:
+            if bsdf is None:
                 continue
-            src = bsdf.inputs['Base Color'].links[0].from_socket
             at = nt.nodes.new('ShaderNodeAttribute')
             at.attribute_name = '_REGION'
-            col = src
-            for ri, (rname, hexv) in enumerate(colours.items()):
-                idx = REGION_NAMES.index(rname)
-                d = defaults.get(rname)
-                if not d or not hexv:
-                    continue
-                want, base = kit.lin(hexv), kit.lin(d)
-                ratio = tuple(min(24.0, want[i] / max(base[i], 0.004)) for i in range(3)) + (1.0,)
-                cmp_ = nt.nodes.new('ShaderNodeMath')
-                cmp_.operation = 'COMPARE'
-                nt.links.new(at.outputs['Fac'], cmp_.inputs[0])
-                cmp_.inputs[1].default_value = float(idx)
-                cmp_.inputs[2].default_value = 0.4
-                mx = nt.nodes.new('ShaderNodeMix')
-                mx.data_type = 'RGBA'
-                mx.blend_type = 'MULTIPLY'
-                mx.clamp_result = False
-                nt.links.new(cmp_.outputs[0], mx.inputs[0])
-                nt.links.new(col, kit._sock(mx, 'A', 'RGBA'))
-                kit._sock(mx, 'B', 'RGBA').default_value = ratio
-                col = kit._sock(mx, 'Result', 'RGBA', out=True)
-            nt.links.new(col, bsdf.inputs['Base Color'])
-            # lamps off in day previews
-            try:
+            if bsdf.inputs['Base Color'].links:
+                col = bsdf.inputs['Base Color'].links[0].from_socket
+                for rname, hexv in (colours or {}).items():
+                    d = defaults.get(rname)
+                    if not d or not hexv or rname not in REGION_NAMES:
+                        continue
+                    want, base = kit.lin(hexv), kit.lin(d)
+                    ratio = tuple(min(24.0, want[i] / max(base[i], 0.004)) for i in range(3)) + (1.0,)
+                    cmp_ = nt.nodes.new('ShaderNodeMath')
+                    cmp_.operation = 'COMPARE'
+                    nt.links.new(at.outputs['Fac'], cmp_.inputs[0])
+                    cmp_.inputs[1].default_value = float(REGION_NAMES.index(rname))
+                    cmp_.inputs[2].default_value = 0.4
+                    mx = nt.nodes.new('ShaderNodeMix')
+                    mx.data_type = 'RGBA'
+                    mx.blend_type = 'MULTIPLY'
+                    mx.clamp_result = False
+                    nt.links.new(cmp_.outputs[0], mx.inputs[0])
+                    nt.links.new(col, kit._sock(mx, 'A', 'RGBA'))
+                    kit._sock(mx, 'B', 'RGBA').default_value = ratio
+                    col = kit._sock(mx, 'Result', 'RGBA', out=True)
+                nt.links.new(col, bsdf.inputs['Base Color'])
+            # lamps: only the head / tail groups glow (lamps > 0), everything else off
+            if bsdf.inputs['Emission Color'].links:
+                k = nt.nodes.new('ShaderNodeMath')
+                k.operation = 'COMPARE'
+                nt.links.new(at.outputs['Fac'], k.inputs[0])
+                k.inputs[1].default_value = 4.5
+                k.inputs[2].default_value = 0.6
                 bsdf.inputs['Emission Strength'].default_value = 0.0
-            except Exception:
-                pass
+                if lamps > 0:
+                    mul = nt.nodes.new('ShaderNodeMath')
+                    mul.operation = 'MULTIPLY'
+                    nt.links.new(k.outputs[0], mul.inputs[0])
+                    mul.inputs[1].default_value = lamps
+                    nt.links.new(mul.outputs[0], bsdf.inputs['Emission Strength'])
+            else:
+                bsdf.inputs['Emission Strength'].default_value = 0.0
 
 
-def preview_variants(A, variants, out_name='variants', size=256, samples=14, view=None, glb_path=None, hide_bones=None):
-    """Render the exported GLB once per colour variant ({region: hex}) and tile the shots into
-    assets3d/previews/<id>_<out_name>.png. hide_bones: option bones scaled to zero per variant
-    (list of lists)."""
-    glb_path = glb_path or os.path.join(kit.ASSETS_DIR, A.id + '.glb')
-    defaults = (A.tint or {}).get('regions', {})
-    outs = []
-    for i, var in enumerate(variants):
-        hb = (hide_bones or [None] * len(variants))[i] if hide_bones else None
-        p = os.path.join(kit.TMP_DIR, '%s_var_%d.png' % (A.id, i))
-        _render_tinted(A, glb_path, var, defaults, p, size, samples, view, hb)
-        outs.append(p)
-    out = os.path.join(kit.PREVIEW_DIR, '%s_%s.png' % (A.id, out_name))
-    kit.contact_sheet(outs, out, cols=len(outs), cell=size)
-    return out
-
-
-def _render_tinted(A, glb_path, colours, defaults, out, size, samples, view, hide=None):
-    """kit.preview_render with a tint hook (the imported materials get the _REGION multiply)"""
-    before_objs = set(bpy.data.objects)
-    real_import = bpy.ops.import_scene.gltf
-
-    def hooked(**kw):
-        r = real_import(**kw)
-        new = [o for o in bpy.data.objects if o not in before_objs]
-        _tint_imported(new, colours, defaults)
-        if hide:
-            # variant parts the runtime hides (scaled-to-zero option bones): drop their vertices
-            for o in new:
-                if o.type != 'MESH':
-                    continue
-                gi = {g.index for g in o.vertex_groups if g.name in hide}
-                if not gi:
-                    continue
-                bm = bmesh.new()
-                bm.from_mesh(o.data)
-                dl = bm.verts.layers.deform.verify()
-                kill = [v for v in bm.verts if any(k in gi and w > 0.5 for k, w in v[dl].items())]
-                bmesh.ops.delete(bm, geom=kill, context='VERTS')
-                bm.to_mesh(o.data)
-                bm.free()
-        return r
-    import types
-    ns = types.SimpleNamespace(gltf=hooked)
-    saved = bpy.ops.import_scene
+def render_glb(glb_path, out, view=None, size=256, samples=14, colours=None, defaults=None, hide=None, night=False, ground=True):
+    """Cycles CPU render of an exported vehicle GLB (what ships), tinted per _REGION like the
+    runtime, option-bone parts in `hide` removed; night=True: dusk light with the lamps on."""
+    sc = bpy.data.scenes.new('_vprev')
+    win = bpy.context.window
+    prev = bpy.context.scene
+    if win:
+        win.scene = sc
+    sc.world = bpy.data.worlds.new('_vw')
+    kit._preview_world(sc, 0.12 if night else 0.9)
+    sc.render.engine = 'CYCLES'
+    sc.cycles.device = 'CPU'
+    sc.cycles.samples = samples
+    sc.cycles.use_adaptive_sampling = True
+    sc.cycles.adaptive_threshold = 0.04
+    sc.cycles.use_denoising = False
+    sc.cycles.max_bounces = 3
+    sc.cycles.diffuse_bounces = 2
+    sc.cycles.glossy_bounces = 1
+    sc.cycles.blur_glossy = 2.0
+    sc.cycles.sample_clamp_indirect = 1.5
     try:
-        kit.bpy.ops.import_scene = ns  # kit.preview_render imports through bpy.ops.import_scene.gltf
+        sc.cycles.use_fast_gi = True
+        sc.cycles.fast_gi_method = 'REPLACE'
+        sc.world.light_settings.distance = 12.0
     except Exception:
-        ns = None
+        pass
+    sc.render.threads_mode = 'FIXED'
+    sc.render.threads = 4
+    sc.render.resolution_x = size
+    sc.render.resolution_y = size
+    sc.render.filter_size = 1.8
     try:
-        kit.preview_render(A, glb_path, size=size, samples=samples, view=view, out=out)
-    finally:
-        try:
-            kit.bpy.ops.import_scene = saved
-        except Exception:
-            pass
+        sc.view_settings.view_transform = 'AgX'
+        sc.view_settings.look = 'AgX - Medium High Contrast'
+    except Exception:
+        pass
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=glb_path)
+    objs = [o for o in bpy.data.objects if o not in before]
+    for o in objs:
+        if o.name.startswith('COL_'):
+            o.hide_render = True
+    arm = next((o for o in objs if o.type == 'ARMATURE'), None)
+    if arm:
+        if arm.animation_data:
+            arm.animation_data.action = None
+        for pb in arm.pose.bones:
+            pb.matrix_basis = Matrix.Identity(4)
+            if hide and pb.name in hide:
+                pb.scale = (0.0, 0.0, 0.0)
+    man = {}
+    mp = os.path.splitext(glb_path)[0] + '.json'
+    if os.path.exists(mp):
+        man = json.load(open(mp))
+    defaults = defaults if defaults is not None else ((man.get('tint') or {}).get('regions') or {})
+    _tint_imported(objs, colours or {}, defaults, lamps=6.0 if night else 0.0)
+    bpy.context.view_layer.update()
+    lo, hi = Vector(man.get('min', (-5, -10, 0))), Vector(man.get('max', (5, 10, 8)))
+    ctr = (lo + hi) / 2
+    rad = max((hi - lo).length / 2, 0.5)
+    if ground:
+        bm = bmesh.new()
+        bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=rad * 6)
+        gme = bpy.data.meshes.new('_ground')
+        bm.to_mesh(gme)
+        bm.free()
+        g = bpy.data.objects.new('_ground', gme)
+        sc.collection.objects.link(g)
+        gm = bpy.data.materials.new('_groundm')
+        gm.use_nodes = True
+        gm.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = kit.lin('#8d8a84' if not night else '#4a4a50')
+        gm.node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value = 0.95
+        gme.materials.append(gm)
+    ld = bpy.data.lights.new('_sun', 'SUN')
+    ld.energy = 0.25 if night else 3.2
+    ld.angle = math.radians(3)
+    ld.color = (0.7, 0.75, 1.0) if night else (1.0, 0.96, 0.9)
+    lo_ = bpy.data.objects.new('_sun', ld)
+    sc.collection.objects.link(lo_)
+    lo_.rotation_euler = Vector((0.9, 0.35, 0.5)).normalized().to_track_quat('Z', 'Y').to_euler()
+    v = view or {}
+    az = math.radians(v.get('az', -35.0))
+    el = math.radians(v.get('el', 18.0))
+    fov = math.radians(v.get('fov', 32.0))
+    dist = v.get('dist') or (rad / math.sin(fov / 2)) * v.get('pad', 1.05)
+    d = Vector((math.sin(az) * math.cos(el), -math.cos(az) * math.cos(el), math.sin(el)))
+    tgt = Vector(v.get('target', ctr))
+    cd = bpy.data.cameras.new('_cam')
+    cd.angle = fov
+    cd.clip_start = 0.05
+    cd.clip_end = dist * 10 + 100
+    cam = bpy.data.objects.new('_cam', cd)
+    sc.collection.objects.link(cam)
+    cam.location = tgt + d * dist
+    cam.rotation_euler = (tgt - cam.location).to_track_quat('-Z', 'Y').to_euler()
+    sc.camera = cam
+    sc.render.filepath = out
+    sc.render.image_settings.file_format = 'PNG'
+    t0 = time.time()
+    bpy.ops.render.render(write_still=True, scene=sc.name)
+    kit.log('render %s (%dpx, %d spp) in %.1fs' % (os.path.basename(out), size, samples, time.time() - t0))
+    if win:
+        win.scene = prev
+    for o in list(sc.collection.all_objects):
+        bpy.data.objects.remove(o, do_unlink=True)
+    bpy.data.scenes.remove(sc)
     return out
+
+
+def preview_variants(aid, sets, view=None, size=256, samples=14, out_name='variants', night_view=None):
+    """Tinted variant sheet assets3d/previews/<id>_<out_name>.png: sets = [{'colours': {region: hex},
+    'hide': [option bones], 'label': str}]; with night_view also <id>_night.png (lamps on)."""
+    glb = os.path.join(kit.ASSETS_DIR, aid + '.glb')
+    outs = []
+    for i, st in enumerate(sets):
+        p = os.path.join(kit.TMP_DIR, '%s_var_%d.png' % (aid, i))
+        render_glb(glb, p, view=st.get('view', view), size=size, samples=samples, colours=st.get('colours'), hide=st.get('hide'))
+        outs.append(p)
+    if outs:
+        kit.contact_sheet(outs, os.path.join(kit.PREVIEW_DIR, '%s_%s.png' % (aid, out_name)), cols=min(4, len(outs)), cell=size)
+    if night_view:
+        render_glb(glb, os.path.join(kit.PREVIEW_DIR, aid + '_night.png'), view=night_view, size=320, samples=max(16, samples), night=True,
+                   hide=(sets[0].get('hide') if sets else None), colours=(sets[0].get('colours') if sets else None))
+
+
+def after_export(A):
+    """register the variant / night previews to run after kit.run_asset exported the GLB (atexit:
+    the build process exits right after); skipped with --no-preview / --quick"""
+    import atexit
+    import sys
+    pv = A.preview.get('variants')
+    if not pv or '--no-preview' in sys.argv or '--quick' in sys.argv or getattr(A, 'quick', False):
+        return
+
+    def run():
+        try:
+            preview_variants(A.id, pv.get('sets', []), view=pv.get('view'), size=pv.get('size', 256), samples=pv.get('samples', 14), night_view=pv.get('night'))
+        except Exception as e:
+            kit.log('variant previews failed: %s' % e)
+    atexit.register(run)
