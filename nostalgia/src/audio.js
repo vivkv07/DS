@@ -4198,11 +4198,12 @@
       district: amb.district, bed: amb.bed, playing: mode === 'play' || mode === 'dialogue' || mode === 'cutscene' || mode === 'minigame', active: amb.active };
     for (const u of extList) { try { u.fn(dt, mode, info); } catch (e) { N.err('audio.ext.' + u.id, e); } }
   }
-  // 0 = Sunday. The story starts in 2003; N.clock.baseDate (if any) else day 0 = Monday 6 Jan 2003.
+  // 0 = Sunday.
   function extWeekday(day) {
-    let base = 1;
-    try { const b = N.clock && N.clock.baseDate; if (b) base = new Date(b).getDay(); } catch (e) { base = 1; }
-    return (((base + (day | 0)) % 7) + 7) % 7;
+    // N.clock.baseDate is [y, m (0-based), d] (core.js); day 0 = Tue 14 Jan 2003 by default
+    let w = NaN;
+    try { const b = N.clock && N.clock.baseDate; if (Array.isArray(b)) w = new Date(Date.UTC(b[0], b[1], b[2] + (day | 0))).getUTCDay(); else if (b) w = new Date(new Date(b).getTime() + (day | 0) * 864e5).getUTCDay(); } catch (e) { w = NaN; }
+    return isFinite(w) ? w : (((2 + (day | 0)) % 7) + 7) % 7;
   }
   A.ext = {
     P: { osc0, gain, filt, shaper, panner, sp, tone, burst, strike, pulses, noiseVoice, noiseBuf, crowd, wave, curve, pulseCurve, kr, mtof, rr, pick, rnd, clamp,

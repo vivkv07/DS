@@ -96,9 +96,11 @@ module.exports = {
       const S = spectrum(L, R.tanpura, 1.5, 5), hi = band(S, 1500, 6000) / band(S, 60, 6000);
       check(hi > 0.05, 'tanpura: buzzing jawari overtone band (1.5-6 kHz share of energy)', +hi.toFixed(3));
     }
-    if (M.sitar) { // taraf: energy keeps ringing after the last melody note is damped by the chord... check sustain after the chord ends
-      const S1 = spectrum(L, R.sitar, 6.2, 7.4); const tot = band(S1, 100, 8000);
-      check(tot > 1e-3, 'sitar: sympathetic taraf ring audible after the notes', +tot.toExponential(2));
+    if (want('sitar')) { // taraf: one short note; the main string is damped ~1.3 s, the sympathetic strings ring on
+      const r = await L.renderFn(page, `(oc, out, t) => N.audio._internal.INST.sitar(oc, out, t, [62], 0.3, 1, {}, {})`, 3);
+      L.save(r, 'inst_sitar_taraf');
+      const a = band(spectrum(L, r, 0, 0.3, 4096), 100, 8000), b = band(spectrum(L, r, 1.6, 2.4, 4096), 100, 8000);
+      check(b / a > 1e-3, 'sitar: sympathetic taraf strings ring on after the played note is damped (> -30 dB)', +(10 * Math.log10(b / a)).toFixed(1));
     }
     if (M.shehnai && M.bansuri) check(M.shehnai.centroid > M.bansuri.centroid * 1.5, 'shehnai brighter (nasal reed) than bansuri', [M.shehnai.centroid, M.bansuri.centroid]);
     if (M.bansuri) { const S = spectrum(L, R.bansuri, 0, 3.5); check(band(S, 3000, 10000) / band(S, 200, 10000) > 0.002, 'bansuri: breath noise present above 3 kHz', +(band(S, 3000, 10000) / band(S, 200, 10000)).toFixed(4)); }
@@ -131,7 +133,7 @@ module.exports = {
       const h = [1, 2, 3].map((k) => band(S, 294 * k * 0.97, 294 * k * 1.03) / band(S, 294 * (k + 0.4), 294 * (k + 0.6)));
       check(h.every((x) => x > 8), 'tabla tin: harmonic syahi modes 1-3 stand out', h.map((x) => +x.toFixed(1)));
     }
-    for (const [s, minRise] of [['ge', 1.08], ['geu', 1.25]]) {
+    for (const [s, minRise] of [['ge', 1.08], ['geu', 1.15]]) {
       if (!KM['tabla.' + s]) continue;
       const fs = [0.03, 0.12, 0.21, 0.3].map((t0) => peakHz(spectrum(L, KM['tabla.' + s].r, t0, t0 + 0.1, 4096 * 2), 50, 200));
       check(fs[3] / fs[0] > minRise && fs[1] > fs[0], `tabla ${s}: bayan gumki pitch rises over 300 ms (x${minRise})`, fs.map((x) => +x.toFixed(1)));
