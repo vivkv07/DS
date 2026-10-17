@@ -73,3 +73,14 @@ More everyday elements and props. They must appear across colonies and markets a
 | `cassette_*` | Cassettes | collectibles that unlock songs/dedications/messages for the Walkman and 2-in-1 |
 | cricket | Cricket everywhere | gully cricket in colony playgrounds, LB Stadium, crowds watching a match on a TV in a shop window, bats/balls from shops, cricket minigame |
 | tree kind `coconut` | Coconut trees | along Necklace Road, in colony compounds and gardens; tender-coconut carts (`coconut_cart_*`) |
+
+## Additional must-haves (user, round 3, binding)
+
+| id prefix | What | Notes |
+|---|---|---|
+| `internet_cafe_*` | Internet cafes ("Internet Browsing Centre", ₹20-30 per hour) | early-2000s magic: beige CRT monitors in plywood cubicles, dial-up/cable modem sounds, email IDs, chat rooms, LAN games after school, the uncle with the timer. Generic shop names only (no real chains). Good for story beats (an email, a chat, printing a photo) and hints |
+| `mosque_*` | Neighbourhood mosques, plus `mecca_masjid` near Charminar | white/green domes and minarets, depicted respectfully; part of the city's look and sound of evenings; never a place for chases or mischief |
+| `church_*` | Churches, e.g. St. Joseph's Cathedral (Gunfoundry/Abids), St. Mary's (Secunderabad), Wesley Church (Secunderabad) | spires, compounds, Christmas stars and cribs in Secunderabad in December; depicted respectfully |
+
+Temples, mosques and churches together show Hyderabad's ganga-jamuni harmony. Treat
+all of them with the same warmth and respect.
