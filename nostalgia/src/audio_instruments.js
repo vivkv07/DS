@@ -231,7 +231,8 @@
     const Ni = Math.max(2, Math.floor(rem - 0.5)), dd = rem - Ni, C = (1 - dd) / (1 + dd);
     const dl = new Float32Array(Ni), ex = excitation(sr, f, o, vel);
     const ax = new Float32Array(nd), ay = new Float32Array(nd);
-    const jaw = o.jaw, th = o.th || 0.2, jr = o.jawRise || 0;
+    const jaw = o.jaw, th = o.th || 0.2, jr = o.jawRise || 0, jm = o.jm || 0;
+    let cprev = 0;
     let idx = 0, lp = 0, tx = 0, ty = 0, dx = 0, dy = 0, thr = th;
     const R = 1 - (TAU * 4) / sr;
     for (let i = 0; i < len; i++) {
@@ -239,11 +240,14 @@
       lp = g * (1 - p) * x + p * lp;
       let v = lp;
       for (let s = 0; s < nd; s++) { const y = ad * v + ax[s] - ad * ay[s]; ax[s] = v; ay[s] = y; v = y; }
-      const y = C * v + tx - C * ty; tx = v; ty = y; v = y;
+      let Cc = C;
+      if (jm && cprev > 0) { const dc = Math.max(0.45, dd - jm * cprev); Cc = (1 - dc) / (1 + dc); } // contact shortens the string
+      const y = Cc * v + tx - Cc * ty; tx = v; ty = y; v = y;
       const hp = v - dx + R * dy; dx = v; dy = hp; v = hp;
       if (jaw) { // one-sided contact with the curved bridge: the part beyond the bridge profile is folded back
         const c = v - thr;
-        if (c > 0) v = thr + c * jaw - c * c * 0.15;
+        cprev = c > 0 ? c : 0;
+        if (c > 0) v = thr + c * jaw;
         if (jr) thr += jr / sr;
       }
       if (i < ex.length) v += ex[i];
@@ -254,15 +258,15 @@
   }
   // Instruments made of strings. strings: [[cents, amp], ...] (courses / polarisations), body: filter list (gourd, box, skin)
   const KSD = {
-    sitar: { dur: 2.8, t60: 2.6, t60k: 0.35, lp: 0.16, disp: -0.18, nd: 2, exc: 'pick', pos: 0.11, bright: 0.85, jaw: 0.12, th: 0.1,
+    sitar: { dur: 3.0, t60: 4.5, t60k: 0.35, lp: 0.1, disp: -0.18, nd: 2, exc: 'pick', pos: 0.11, bright: 0.55, jaw: 0.4, th: 0.1, jm: 1,
       body: [['hp', 85, 0.7], ['pk', 185, 1.3, 5], ['pk', 560, 1.6, 2], ['pk', 1250, 2, 4], ['pk', 2900, 1.5, 6], ['pk', 5200, 1.2, 3]], vol: 0.62, mono: true, taraf: 0.24, ring: 1.0 },
-    veena: { dur: 3.0, t60: 3.2, t60k: 0.3, lp: 0.34, disp: -0.1, nd: 1, exc: 'pick', pos: 0.16, bright: 0.45, jaw: 0.4, th: 0.28,
+    veena: { dur: 3.0, t60: 3.2, t60k: 0.3, lp: 0.34, disp: -0.1, nd: 1, exc: 'pick', pos: 0.16, bright: 0.45, jaw: 0.6, th: 0.2, jm: 0.6,
       body: [['hp', 50, 0.7], ['pk', 105, 1.1, 6], ['pk', 240, 1.3, 4], ['pk', 650, 1.6, 2], ['lp', 5200, 0.6]], vol: 0.66, mono: true, gamak: 1, taraf: 0.1, ring: 1.2 },
     sarod: { dur: 2.0, t60: 1.5, t60k: 0.4, lp: 0.07, disp: -0.32, nd: 3, exc: 'pick', pos: 0.08, bright: 0.9,
       body: [['hp', 140, 0.7], ['pk', 820, 1.3, 7], ['pk', 2100, 2, 6], ['pk', 4200, 2, 3], ['pk', 300, 1, -3]], vol: 0.6, mono: true, taraf: 0.14, ring: 0.8 },
     santoor: { dur: 2.3, t60: 2.4, t60k: 0.45, lp: 0.12, disp: -0.42, nd: 3, exc: 'hammer', hw: 0.0009, pos: 0.115, strings: [[0, 1], [3.2, 0.85], [-2.4, 0.7]],
       body: [['hp', 120, 0.7], ['pk', 300, 1.4, 3], ['pk', 760, 1.5, 3], ['pk', 2300, 1.6, 2], ['hs', 6000, 0.7, -5]], vol: 0.52, ring: 1.1 },
-    tanpura: { dur: 5.2, t60: 7, t60k: 0.25, lp: 0.1, disp: -0.06, nd: 1, exc: 'soft', pos: 0.21, bright: 0.6, jaw: 0.06, th: 0.035, jawRise: 0.004, strings: [[0, 1], [1.4, 0.75]],
+    tanpura: { dur: 5.2, t60: 7, t60k: 0.25, lp: 0.1, disp: -0.06, nd: 1, exc: 'soft', pos: 0.21, bright: 0.6, jaw: 0.6, th: 0.03, jm: 1, jawRise: 0.004, strings: [[0, 1], [1.4, 0.75]],
       body: [['hp', 60, 0.7], ['pk', 150, 1, 5], ['pk', 420, 1.4, 3], ['pk', 1050, 1.3, 3], ['pk', 2600, 1, 4]], vol: 0.5, ring: 3.2 },
     mandolin: { dur: 1.5, t60: 1.1, t60k: 0.3, lp: 0.12, disp: -0.22, nd: 2, exc: 'pick', pos: 0.1, bright: 0.85, strings: [[0, 1], [4, 0.9]],
       body: [['hp', 160, 0.7], ['pk', 360, 1.5, 4], ['pk', 1150, 2, 3], ['pk', 3100, 2, 3]], vol: 0.55, ring: 0.3 },
@@ -273,7 +277,7 @@
     bass: { dur: 1.9, t60: 2.2, t60k: 0.2, lp: 0.55, exc: 'soft', pos: 0.22, bright: 0.3,
       body: [['hp', 35, 0.7], ['pk', 95, 1, 3], ['lp', 2400, 0.7]], vol: 0.72, mono: true, ring: 0.06 },
     // sympathetic (taraf) strings: excited by the bridge, not plucked -> slow swell, long ring, light buzz
-    taraf: { dur: 3.0, t60: 3.6, t60k: 0.2, lp: 0.12, disp: -0.15, nd: 1, exc: 'swell', swell: 0.09, jaw: 0.3, th: 0.02,
+    taraf: { dur: 3.0, t60: 3.6, t60k: 0.2, lp: 0.12, disp: -0.15, nd: 1, exc: 'swell', swell: 0.09, jaw: 0.6, th: 0.03, jm: 1,
       body: [['hp', 200, 0.7], ['pk', 1250, 2, 3], ['pk', 2900, 1.5, 5], ['pk', 5200, 1.2, 3]] },
     taraf2: { dur: 2.6, t60: 3.0, t60k: 0.2, lp: 0.2, exc: 'swell', swell: 0.14, body: [['hp', 200, 0.7], ['pk', 1800, 1.5, 3], ['lp', 6000, 0.7]] },
   };
@@ -816,7 +820,7 @@
       mode(d, sr, 0, f * 1.6, a * 0.4, 0.07);
       return;
     }
-    const fr = kind === 'geu' ? (t) => 1 + 0.5 * (1 - Math.exp(-t / 0.09)) + 0.03 * Math.exp(-t / 0.02)
+    const fr = kind === 'geu' ? (t) => 1 + 0.5 * (1 - Math.exp(-t / 0.16)) + 0.03 * Math.exp(-t / 0.02)
       : kind === 'ged' ? (t) => 1 + 0.32 * Math.exp(-t / 0.13)
         : (t) => 1 + 0.2 * (1 - Math.exp(-t / 0.13)) + 0.03 * Math.exp(-t / 0.02);
     modes(d, sr, 0, f, BAYAN, a, fr, 0.002);
@@ -909,7 +913,7 @@
   const kick = (f0, drop, t60, click) => (d, sr) => { mode(d, sr, 0, f0, 1, t60, 0.001, (t) => 1 + drop * Math.exp(-t / 0.014)); mode(d, sr, 0, f0 * 1.6, 0.15, t60 * 0.3, 0.001); noise(d, sr, 0, click, 0.003, { f: [['hp', 2500, 0.7]] }); noise(d, sr, 0, 0.3, 0.012, { color: 'brown', f: [['lp', 300, 0.7]] }); };
   const tom = (f) => (d, sr) => drum(d, sr, 0, f, 1, { t60: 0.4, tm: 0.25, ratios: [1, 1.5, 1.98], amps: [1, 0.3, 0.15], slap: [0.2, 900, 0.006] });
   S.kit = {
-    k: [0.6, 0.9, kick(56, 1.2, 0.38, 0.3)], s: [0.5, 0.62, (d, sr) => { snare(190, 0.1, 0.12)(d, sr); room(d, sr, 0.18, 0.3); }],
+    k: [0.6, 0.78, kick(56, 1.2, 0.38, 0.3)], s: [0.5, 0.62, (d, sr) => { snare(190, 0.1, 0.12)(d, sr); room(d, sr, 0.18, 0.3); }],
     h: [0.15, 0.3, (d, sr) => metal(d, sr, 0, 1, 0.012, HATF.map((f) => f * 1.9), [['hp', 7000, 0.7], ['pk', 10000, 1, 3]])],
     o: [0.7, 0.3, (d, sr) => metal(d, sr, 0, 1, 0.12, HATF.map((f) => f * 1.9), [['hp', 6500, 0.7], ['pk', 9500, 1, 3]])],
     c: [0.5, 0.55, (d, sr) => claps(d, sr, 4, 0.006, 1)], t: [0.6, 0.65, tom(150)], l: [0.7, 0.68, tom(112)], f: [0.8, 0.7, tom(84)],
@@ -917,7 +921,7 @@
     x: [1.9, 0.5, (d, sr) => crash(d, sr, 0, 1, 1.5, 380)],
   };
   S.machine = {
-    k: [0.8, 0.9, (d, sr) => { mode(d, sr, 0, 50, 1, 0.7, 0.001, (t) => 1 + 2 * Math.exp(-t / 0.01)); noise(d, sr, 0, 0.15, 0.002, { f: [['hp', 3000, 0.7]] }); for (let i = 0; i < d.length; i++) d[i] = Math.tanh(d[i] * 1.6); }],
+    k: [0.8, 0.78, (d, sr) => { mode(d, sr, 0, 50, 1, 0.7, 0.001, (t) => 1 + 2 * Math.exp(-t / 0.01)); noise(d, sr, 0, 0.15, 0.002, { f: [['hp', 3000, 0.7]] }); for (let i = 0; i < d.length; i++) d[i] = Math.tanh(d[i] * 1.6); }],
     s: [0.4, 0.62, (d, sr) => { mode(d, sr, 0, 185, 0.6, 0.12, 0.001, (t) => 1 + 0.3 * Math.exp(-t / 0.01)); mode(d, sr, 0, 330, 0.35, 0.07); noise(d, sr, 0, 0.6, 0.05, { f: [['hp', 1500, 0.7], ['pk', 5000, 1, 4]] }); }],
     h: [0.15, 0.3, (d, sr) => metal(d, sr, 0, 1, 0.01, HATF, [['bp', 10000, 1.2], ['hp', 7000, 0.7]])],
     o: [0.7, 0.3, (d, sr) => metal(d, sr, 0, 1, 0.1, HATF, [['bp', 10000, 1.2], ['hp', 7000, 0.7]])],
