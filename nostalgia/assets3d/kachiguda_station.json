@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 47652,
+ "bytes": 40044,
  "clips": {},
  "family": "landmark",
  "file": "kachiguda_station.glb",
@@ -12,7 +12,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 46.5,
+ "kb": 39.1,
  "kit": 1,
  "materials": [
   "M_kachiguda_station",
@@ -47,7 +47,7 @@
   49.55
  ],
  "tint": null,
- "tris": 522,
+ "tris": 443,
  "units": "u",
  "up": "Z"
 }

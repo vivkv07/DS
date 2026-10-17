@@ -209,7 +209,7 @@ def hrand(i, k=1):
 
 
 # =========================================================================== Cyber Towers
-@kit.asset('cyber_towers', 'landmark', draw='cyber_towers', face='s', footprint=[96, 96], height=135.0, fit='footprint', floodlit=False)
+@kit.asset('cyber_towers', 'landmark', draw='cyber_towers', face='s', footprint=[96, 96], height=135.0, fit='footprint', floodlit=True)
 def build_cyber_towers(A):
     """Cyber Towers (1998): the horseshoe of stacked glass floors open to the front, white spandrel
     bands, the tall glazed central core with a crown and mast, the podium and the plain sign."""
@@ -221,11 +221,11 @@ def build_cyber_towers(A):
     a0, a1 = -PI / 2 + gap, 3 * PI / 2 - gap
     SEG = 30
     white = L.paint('#eceeed', 'ct_white', rough=0.8, streaks=0.15, grime=0.3)
-    endm = facade('ct_end', base='#eceeed', glass='#2f6f80', period=FL, z0=Z0, z1=ZT - 1.0, band=(0.0, 3.8), rows=(6.3, 2.2), streaks=0.15)
+    endm = facade('ct_end', base='#eceeed', glass='#2f6f80', period=FL, z0=Z0, z1=ZT - 1.0, band=(0.0, 2.2), rows=(6.3, 3.4), streaks=0.15)
     ring_out = facade('ct_glass_out', base='#e9ecec', glass='#2f6f80', glass2='#7fb4c0', period=FL, z0=Z0, z1=ZT - 1.0,
-                      band=(0.0, 3.8), mull=(6.8, 0.5, '#1d3f4a'), horiz='radial', R=RO, streaks=0.0, grime=0.1)
+                      band=(0.0, 2.2), mull=(6.8, 0.5, '#1d3f4a'), horiz='radial', R=RO, streaks=0.0, grime=0.1)
     ring_in = facade('ct_glass_in', base='#e4e8e8', glass='#2a6474', glass2='#6aa0ae', period=FL, z0=Z0, z1=ZT - 1.0,
-                     band=(0.0, 3.8), mull=(6.0, 0.5, '#1d3f4a'), horiz='radial', R=RI, streaks=0.0, grime=0.1)
+                     band=(0.0, 2.2), mull=(6.0, 0.5, '#1d3f4a'), horiz='radial', R=RI, streaks=0.0, grime=0.1)
     core_m = facade('ct_core', base='#dfe4e6', glass='#356f7e', glass2='#8cbcc6', period=FL, z0=Z0, z1=ZT + 12,
                     band=(0.0, 1.4), mull=(5.2, 0.45, '#1d3f4a'), horiz='radial', R=12.0, streaks=0.0, grime=0.1)
     roof = L.paint('#b9bcbc', 'ct_roof', rough=0.8)

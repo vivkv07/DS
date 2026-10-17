@@ -2,18 +2,20 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 64992,
+ "bytes": 63220,
  "clips": {},
  "family": "landmark",
  "file": "lb_stadium.glb",
  "front": "-Y",
  "id": "lb_stadium",
  "images": [
+  "image/webp",
   "image/webp"
  ],
- "kb": 63.5,
+ "kb": 61.7,
  "kit": 1,
  "materials": [
+  "M_lb_sign",
   "M_lb_stadium",
   "M_lb_stadium_lamp_lens@night"
  ],
@@ -55,7 +57,7 @@
   98.8
  ],
  "tint": null,
- "tris": 274,
+ "tris": 248,
  "units": "u",
  "up": "Z"
 }

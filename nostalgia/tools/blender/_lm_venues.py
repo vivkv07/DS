@@ -130,7 +130,7 @@ def build_stand(M, seg, u0, u1, rz, t, rnd, pav=False):
         hb.append(box('seat', (u1 - u0 - 1.0, dy * 0.55, 0.35), ((u0 + u1) / 2, y - dy * 0.55, z), seats[tier], base=True))
         # aisles
         y -= dy
-    for ua in [u0 + 14 + 22 * i for i in range(int((u1 - u0 - 10) // 22) + 1)]:
+    for ua in [u0 + 20 + 40 * i for i in range(int((u1 - u0 - 10) // 40) + 1)]:
         if ua < u1 - 6:
             hb.append(side_prism('aisle', [(yy, zz + 0.4 if zz > 0 else 0.0) for (yy, zz) in pts], ua - 0.8, ua + 0.8, conc))
     # sponsor boards on the field wall (plain painted panels) and the back wall's vents + tunnels
@@ -138,16 +138,20 @@ def build_stand(M, seg, u0, u1, rz, t, rnd, pav=False):
     x = u0 + 2
     i = 0
     while x < u1 - 8:
-        w = 9 + (i % 3) * 2
+        w = 18 + (i % 3) * 4
         hb.append(wall_quad('ad', x, min(x + w, u1 - 1), 0.3, Z0S - 0.2, 0.05, L.paint(cols[i % len(cols)], 'lb_ad%d' % (i % len(cols))), face=1))
         x += w + 0.8
         i += 1
-    for u in [u0 + 6 + 12 * i for i in range(int((u1 - u0 - 10) // 12) + 1)]:
-        if u > u1 - 5:
-            break
-        hb.append(wall_quad('tun', u + 0.8, u + 3.2, 0.0, 7.0, -SD - 0.06, dark))
-        hb.append(wall_quad('vent', u + 1.8, u + 4.6, 13.0, 18.0, -SD - 0.06, win))
-        hb.append(box('pil', (1.0, 1.0, ZTS + 2.4), (u - 0.7, -SD - 0.5, 0), back, base=True))
+    # street side: a row of small shops under the stands (rolling shutters + painted shop boards)
+    shut = L.paint('#8a8f94', 'lb_shutter', rough=0.6, grime=0.2, streaks=0.1)
+    bcols = ['#f2c230', '#2a5cb8', '#d8402a', '#2a8a3a']
+    j = 0
+    u = u0 + 2.0
+    while u + 6.0 <= u1 - 1.0:
+        hb.append(wall_quad('shut', u, u + 6.0, 0.0, 9.0, -SD - 0.36, shut))
+        hb.append(wall_quad('board', u - 0.6, u + 6.6, 9.6, 11.8, -SD - 0.36, L.paint(bcols[j % 4], 'lb_board%d' % (j % 4), rough=0.7)))
+        u += 8.0
+        j += 1
     hb.append(box('bwall', (u1 - u0, 0.3, ZTS + 2.4), ((u0 + u1) / 2, -SD - 0.15, 0), back, base=True))
     hb.append(box('bband', (u1 - u0, 0.5, 1.6), ((u0 + u1) / 2, -SD - 0.35, ZTS - 1.2), blue, base=True))
     # crowd (match day): seated people on every tread, kids' school colours mixed in
@@ -160,7 +164,7 @@ def build_stand(M, seg, u0, u1, rz, t, rnd, pav=False):
         xx = u0 + 0.8
         while xx < u1 - 0.8:
             # supporters sit in groups (school colours, families): one colour per block of seats
-            n = 8 + rnd.randrange(14)
+            n = 14 + rnd.randrange(20)
             ci = rnd.randrange(len(cmats) - 1)
             if rnd.random() < 0.15:
                 xx += n * 1.25
@@ -288,16 +292,13 @@ def build_lb_stadium(A):
         for sx in (-1, 1):
             g.append(box(name + 'b', (5.4, 6.4, 1.0), (sx * (w / 2 + 2.5), 0, h - 9.5), L.paint('#2a5cb8', 'lb_blue2'), base=True))
         if sign:
-            g.append(L.sign_panel(name + 's', sign, w + 6, 5.6, (0, -3.2, h - 6.8), fg='#ffffff', bg='#1d4e8a', px=1024))
+            g.append(box(name + 's', (w + 6, 0.3, 5.6), (0, -3.15, h - 9.6), L.paint('#1d4e8a', 'lb_signbg', rough=0.6), base=True))
         ol = [(-w / 2 - 5.2, 0), (-w / 2 + 0.2, 0), (-w / 2 + 0.2, h - 7.7), (w / 2 - 0.2, h - 7.7), (w / 2 - 0.2, 0), (w / 2 + 5.2, 0), (w / 2 + 5.2, h + 0.2), (-w / 2 - 5.2, h + 0.2)]
         s = prism_from_outline(name + '_s', ol, 7.0)
         return g, s
     g, s = gate('wg', 40, 31, 'LAL BAHADUR STADIUM')
     HB += [xf(o, 0, 0, -YB + 3.5) for o in g]
     LB.append(xf(s, 0, 0, -YB + 3.5))
-    g, s = gate('sg', 38, 24)
-    HB += [xf(o, PI / 2, FX + SD - 3.5, 0) for o in g]
-    LB.append(xf(s, PI / 2, FX + SD - 3.5, 0))
     # ---- floodlight towers at the four corners
     lamps = []
     for (x, y) in ((-102, -91), (102, -91), (-102, 91), (102, 91)):
@@ -313,11 +314,18 @@ def build_lb_stadium(A):
     LC.append(wall_quad('s_ban2', -17.2, 17.2, 2.7, 7.3, 66.75))
     HC.append(xf(L.sign_panel('sbm', 'U-12 FINAL  HYD 112/3', 40, 4.2, (0, 0, 31.2), fg='#ffb020', bg='#141414', px=512), PI / 2, sbx + 2.4, 0))
     LC.append(xf(wall_quad('s_sbm', -20.2, 20.2, 29.0, 33.4, -0.2), PI / 2, sbx + 2.4, 0))
+    # the stadium name: its own small text texture (the 512 atlas is too coarse for lettering)
+    img = kit.text_image('LAL BAHADUR STADIUM', 256, 40, fg='#ffffff', bg='#1d4e8a', name='lb_signtex')
+    sgn = wall_quad('lb_signq', -22.6, 22.6, 31 - 9.4, 31 - 4.2, -YB + 3.5 - 3.45, kit.baked_material('M_lb_sign', img.filepath_raw, rough=0.6))
+    uvl = sgn.data.uv_layers.new(name='UVMap')
+    for li, lp in enumerate(sgn.data.loops):
+        co = sgn.data.vertices[lp.vertex_index].co
+        uvl.data[li].uv = ((co.x + 22.6) / 45.2, (co.z - (31 - 9.4)) / 5.2)
     # the lamp-bank glow quads belong to the match variant (one small @night material)
     lit = kit.join(lamps, 'lb_lamps')
     lit.data.materials.append(L.lamp('#fff6e0', 'lb_flood'))
     apart(HC + LC, 2000.0)
-    los = L.finish_proxy(A, HB, lo=LB, keep=[lit], size=512, ao_dist=5.0, variants={'match': (HC, LC)})
+    los = L.finish_proxy(A, HB, lo=LB, keep=[lit, sgn], size=512, ao_dist=5.0, variants={'match': (HC, LC)})
     vm = unapart(los, 'var_match', 2000.0)
     lit.parent = vm
     A.notes.append('proxy shell; var_match = crowd quads + banners + @night floodlight banks (parented); var_quiet is empty (bare stands are the body)')
@@ -375,14 +383,12 @@ def build_prasads(A):
     hx, hy = W / 2, D / 2
     kerb = L.paint('#a9a59c', 'pr_kerb', rough=0.9, grime=0.4)
     # ---- body: the plot's kerb (both variants)
-    HB = [box('kerb', (W, 1.0, 0.6), (0, -hy + 0.5, 0), kerb, base=True), box('kerb', (W, 1.0, 0.6), (0, hy - 0.5, 0), kerb, base=True),
-          box('kerb', (1.0, D, 0.6), (-hx + 0.5, 0, 0), kerb, base=True), box('kerb', (1.0, D, 0.6), (hx - 0.5, 0, 0), kerb, base=True)]
-    LB = [L.shell_box('s_kerb', (W + 0.2, 1.2, 0.7), (0, -hy + 0.5, 0)), L.shell_box('s_kerb', (W + 0.2, 1.2, 0.7), (0, hy - 0.5, 0)),
-          L.shell_box('s_kerb', (1.2, D - 2.0, 0.7), (-hx + 0.5, 0, 0)), L.shell_box('s_kerb', (1.2, D - 2.0, 0.7), (hx - 0.5, 0, 0))]
+    HB = [box('kerb', (W, 1.0, 0.6), (0, -hy + 0.5, 0), kerb, base=True)]
+    LB = [L.shell_box('s_kerb', (W + 0.2, 1.2, 0.7), (0, -hy + 0.5, 0))]
     # ---- SITE ----------------------------------------------------------------------------
     HS, LS = [], []
-    tinA = kit.material('tin_rusty', 'pr_tin_b', base='#2f6f8f', rough=0.7)
-    tinB = kit.material('tin_rusty', 'pr_tin_g', base='#2f7a5a', rough=0.7)
+    tinA = L.paint('#2f6f8f', 'pr_tin_b', rough=0.7, grime=0.3, streaks=0.2)
+    fence_top = L.paint('#f2f2ee', 'pr_fence_top', rough=0.7)
     # fence: alternating corrugated panels (both faces), posts
     n = 0
     for (a, b, nrm) in (((-hx + 1.5, -hy + 1.5), (hx - 1.5, -hy + 1.5), (0, -1)), ((hx - 1.5, -hy + 1.5), (hx - 1.5, hy - 1.5), (1, 0)),
@@ -394,11 +400,12 @@ def build_prasads(A):
             cx = a[0] + (b[0] - a[0]) * (t0 + t1) / 2
             cy = a[1] + (b[1] - a[1]) * (t0 + t1) / 2
             pw = Ln / k
-            p = box('tin', (pw if nrm[1] else 0.3, 0.3 if nrm[1] else pw, 9.0), (cx, cy, 0), tinA if n % 2 else tinB, base=True)
+            p = box('tin', (pw if nrm[1] else 0.3, 0.3 if nrm[1] else pw, 9.0), (cx, cy, 0), tinA, base=True)
+            HS.append(box('tintop', (pw + 0.05 if nrm[1] else 0.4, 0.4 if nrm[1] else pw + 0.05, 1.0), (cx, cy, 8.0), fence_top, base=True))
             HS.append(p)
             for j in range(4):
                 o = (j + 0.5) / 4 - 0.5
-                HS.append(box('rib', (0.25 if nrm[1] else 0.5, 0.5 if nrm[1] else 0.25, 9.0), (cx + (o * pw if nrm[1] else 0), cy + (0 if nrm[1] else o * pw), 0), tinA if n % 2 else tinB, base=True))
+                HS.append(box('rib', (0.25 if nrm[1] else 0.5, 0.5 if nrm[1] else 0.25, 9.0), (cx + (o * pw if nrm[1] else 0), cy + (0 if nrm[1] else o * pw), 0), tinA, base=True))
             n += 1
     LS += ring_walls('s_fence', W - 2.4, D - 2.4, 9.3, 1.0)
     # hoarding on the front, on two legs, above the fence
@@ -491,7 +498,9 @@ def build_prasads(A):
     for sx in (-1, 1):
         LO.append(cylinder('s_ccol', 0.5, 9.6, (sx * 15, gy - 7.2, 0), seg=3, cap=False))
     # lit glass front at night (open only): one @night material parented to var_open
-    lit = kit.join([wall_quad('lit', gx0 + 0.5, gx1 - 0.5, zz + 3.0, zz + 6.0, gy - 0.7) for zz in (0.0, 9.6, 18.6)] +
+    pw = (gx1 - gx0 - 1.0 - 3 * 1.5) / 4
+    lit = kit.join([wall_quad('lit', gx0 + 0.5 + k * (pw + 1.5), gx0 + 0.5 + k * (pw + 1.5) + pw, zz + 3.0, zz + 6.0, gy - 0.7)
+                    for zz in (0.0, 9.6, 18.6) for k in range(4)] +
                    [wall_quad('lit', -15, 15, 11.2, 12.0, gy - 8.6)], 'pr_lit')
     lit.data.materials.append(lit_mat())
     apart(HS + LS, 2000.0)
@@ -503,4 +512,4 @@ def build_prasads(A):
 
 
 def lit_mat():
-    return kit.material('lamp_lens', 'pr_glass@night', base='#3f7f99', emit='#ffe6b8', emit_strength=1.0, bake=False, alpha=1.0)
+    return kit.material('lamp_lens', 'pr_glass@night', base='#3f7f99', emit='#ffcf8a', emit_strength=0.45, bake=False, alpha=1.0)

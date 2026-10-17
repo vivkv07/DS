@@ -1,48 +1,53 @@
-00:00.027  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.026  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building lb_stadium (landmark)
-00:10.126  render           | Saved: '/tmp/nostalgia_blender/text_7c764c27.png'
-00:10.191  render           | Saved: '/tmp/nostalgia_blender/text_ea268816.png'
-00:10.358  render           | Saved: '/tmp/nostalgia_blender/text_ddcc1369.png'
-00:10.707  render           | Saved: '/tmp/nostalgia_blender/text_55434d43.png'
-00:10.812  render           | Saved: '/tmp/nostalgia_blender/text_282e7c3c.png'
-00:10.904  render           | Saved: '/tmp/nostalgia_blender/text_a750b16c.png'
+00:10.870  render           | Saved: '/tmp/nostalgia_blender/text_7c764c27.png'
+00:10.945  render           | Saved: '/tmp/nostalgia_blender/text_ea268816.png'
+00:11.295  render           | Saved: '/tmp/nostalgia_blender/text_55434d43.png'
+00:11.387  render           | Saved: '/tmp/nostalgia_blender/text_282e7c3c.png'
+00:11.462  render           | Saved: '/tmp/nostalgia_blender/text_a750b16c.png'
+00:11.529  render           | Saved: '/tmp/nostalgia_blender/lb_signtex.png'
 Info: Baking map saved to internal image, save it externally or pack it
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] proxy-baked albedo 512² in 2.1s
+[kit] proxy-baked albedo 512² in 1.9s
 Info: Baking map saved to internal image, save it externally or pack it
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] proxy-baked ao 256² in 3.4s
+[kit] proxy-baked ao 256² in 6.9s
 ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
 ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
-22:04:03 | INFO: Starting glTF 2.0 export
-22:04:03 | INFO: Extracting primitive: lb_stadium_body
-22:04:03 | INFO: Primitives created: 1
-22:04:03 | INFO: Extracting primitive: var_match
-22:04:03 | INFO: Primitives created: 1
-22:04:03 | INFO: Extracting primitive: lb_lamps
-22:04:03 | INFO: Primitives created: 1
-22:04:03 | INFO: Finished glTF 2.0 export in 0.06709742546081543 s
+22:25:48 | INFO: Starting glTF 2.0 export
+22:25:48 | INFO: Extracting primitive: lb_signq
+22:25:48 | INFO: Primitives created: 1
+22:25:48 | INFO: Extracting primitive: lb_stadium_body
+22:25:48 | INFO: Primitives created: 1
+22:25:48 | INFO: Extracting primitive: var_match
+22:25:48 | INFO: Primitives created: 1
+22:25:48 | INFO: Extracting primitive: lb_lamps
+22:25:48 | INFO: Primitives created: 1
+22:25:48 | INFO: Finished glTF 2.0 export in 0.11792731285095215 s
 
-[kit] lb_stadium: 274 tris (budget 20000) ok, 63.5 KB, clips [], anchors 0
-22:04:03 | INFO: Data are loaded, start creating Blender stuff
-22:04:03 | INFO: Blender create Mesh node lb_stadium_body
-22:04:03 | INFO: Blender create Mesh node var_match
-22:04:03 | INFO: Blender create Mesh node lb_lamps
-22:04:03 | INFO: glTF import finished in 0.02s
-00:23.597  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/lb_stadium.png'
-[kit] preview lb_stadium.png (320px, 14 spp) in 2.3s
-22:04:05 | INFO: Data are loaded, start creating Blender stuff
-22:04:05 | INFO: Blender create Mesh node lb_stadium_body
-22:04:05 | INFO: Blender create Mesh node var_match
-22:04:05 | INFO: Blender create Mesh node lb_lamps
-22:04:05 | INFO: glTF import finished in 0.01s
-00:24.896  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/lb_stadium_field.png'
-[kit] preview lb_stadium_field.png (256px, 14 spp) in 1.3s
-22:04:06 | INFO: Data are loaded, start creating Blender stuff
-22:04:06 | INFO: Blender create Mesh node lb_stadium_body
-22:04:06 | INFO: Blender create Mesh node var_match
-22:04:06 | INFO: Blender create Mesh node lb_lamps
-22:04:06 | INFO: glTF import finished in 0.01s
-00:26.327  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/lb_stadium_pav.png'
-[kit] preview lb_stadium_pav.png (256px, 14 spp) in 1.4s
-[kit] done lb_stadium in 25.8s
+[kit] lb_stadium: 248 tris (budget 20000) ok, 61.7 KB, clips [], anchors 0
+22:25:48 | INFO: Data are loaded, start creating Blender stuff
+22:25:48 | INFO: Blender create Mesh node lb_signq
+22:25:48 | INFO: Blender create Mesh node lb_stadium_body
+22:25:48 | INFO: Blender create Mesh node var_match
+22:25:48 | INFO: Blender create Mesh node lb_lamps
+22:25:48 | INFO: glTF import finished in 0.03s
+00:28.224  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/lb_stadium.png'
+[kit] preview lb_stadium.png (320px, 14 spp) in 3.2s
+22:25:51 | INFO: Data are loaded, start creating Blender stuff
+22:25:51 | INFO: Blender create Mesh node lb_signq
+22:25:51 | INFO: Blender create Mesh node lb_stadium_body
+22:25:51 | INFO: Blender create Mesh node var_match
+22:25:51 | INFO: Blender create Mesh node lb_lamps
+22:25:51 | INFO: glTF import finished in 0.03s
+00:30.601  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/lb_stadium_field.png'
+[kit] preview lb_stadium_field.png (256px, 14 spp) in 2.3s
+22:25:54 | INFO: Data are loaded, start creating Blender stuff
+22:25:54 | INFO: Blender create Mesh node lb_signq
+22:25:54 | INFO: Blender create Mesh node lb_stadium_body
+22:25:54 | INFO: Blender create Mesh node var_match
+22:25:54 | INFO: Blender create Mesh node lb_lamps
+22:25:54 | INFO: glTF import finished in 0.02s
+00:33.250  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/lb_stadium_pav.png'
+[kit] preview lb_stadium_pav.png (256px, 14 spp) in 2.6s
+[kit] done lb_stadium in 32.7s

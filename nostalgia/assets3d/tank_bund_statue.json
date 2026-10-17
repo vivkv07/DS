@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 47968,
+ "bytes": 48348,
  "clips": {},
  "family": "landmark",
  "file": "tank_bund_statue.glb",
@@ -11,7 +11,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 46.8,
+ "kb": 47.2,
  "kit": 1,
  "materials": [
   "M_tank_bund_statue",
@@ -20,7 +20,7 @@
  "max": [
   14.86,
   4.8,
-  42.9
+  42.924
  ],
  "meta": {
   "draw": "tank_bund_statue",
@@ -50,10 +50,10 @@
  "size": [
   44.36,
   9.05,
-  42.9
+  42.924
  ],
  "tint": null,
- "tris": 607,
+ "tris": 594,
  "units": "u",
  "up": "Z"
 }

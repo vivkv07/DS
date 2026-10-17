@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 60000,
- "bytes": 57048,
+ "bytes": 57320,
  "clips": {},
  "family": "hero_landmark",
  "file": "buddha_statue.glb",
@@ -11,7 +11,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 55.7,
+ "kb": 56.0,
  "kit": 1,
  "materials": [
   "M_buddha_statue"

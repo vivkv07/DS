@@ -535,14 +535,14 @@ def build_assembly(A):
     L.shots(A, az=-35, el=12, extra=[{'name': 'front', 'view': {'az': 0, 'el': 6, 'fov': 32, 'pad': 1.05}}, {'name': 'detail', 'view': {'az': -90, 'el': 3, 'fov': 30, 'target': (-29, -21, 34), 'dist': 60}}])
 
 
-def _minaret(name, x, y, z0, h, r, mat, cap, seg=8):
+def _minaret(name, x, y, z0, h, r, mat, cap, seg=8, lo_seg=6):
     """slender octagonal turret with two rings and a small onion cap; returns (hi, lo)"""
     hi = [cylinder(name + '_s', r, h, (x, y, z0), seg=seg, mat=mat, r2=r * 0.85),
           cylinder(name + '_r1', r * 1.35, 0.5, (x, y, z0 + h * 0.45), seg=seg, mat=cap),
           cylinder(name + '_r2', r * 1.45, 0.6, (x, y, z0 + h), seg=seg, mat=cap)]
     hi.append(onion(name + '_d', r * 1.05, r * 1.6, z0 + h + 0.6, cap, seg=seg, loc=(x, y), n=5))
     lo = lathe(name + '_lo', [(r + 0.15, z0), (r * 0.9, z0 + h), (r * 1.45, z0 + h + 0.3), (r * 1.2, z0 + h + 0.9), (r * 1.25, z0 + h + 1.2),
-                              (0.0, z0 + h + 0.6 + r * 1.6 * 1.35)], seg=6, loc=(x, y, 0), close_bottom=False)
+                              (0.0, z0 + h + 0.6 + r * 1.6 * 1.35)], seg=lo_seg, loc=(x, y, 0), close_bottom=False)
     return hi, lo
 
 
@@ -714,9 +714,9 @@ def _shed(name, cx, cy, W, D, h, P, lo, M):
     """platform shed behind a station: steel columns, a pitched tin roof; inside reads dark"""
     TIN = ppaint('#8c8a84', name + '_tin')
     COL = ppaint('#5b2a2a', name + '_col')
-    DK = ppaint('#4f4943', name + '_dark')
+    DK = ppaint('#5e5751', name + '_dark')
     P.append(box(name + '_in', (W - 3.0, D - 3.0, h - 0.5), (cx, cy, 0.0), DK, base=True))
-    n = max(2, int(W / 8))
+    n = max(2, int(W / 13))
     for i in range(n + 1):
         x = cx - W / 2 + 0.6 + (W - 1.2) * i / n
         for y in (cy - D / 2 + 0.6, cy + D / 2 - 0.6):
@@ -781,7 +781,7 @@ def build_nampally_station(A):
     P.append(fbox('centre', 0, -16.5, 28, 17, Z0, HC, W, faces={'f': f, 'l': wing_face(17, 8, 3), 'r': wing_face(17, 9, 3)}))
     P += rect_teeth('ct', 0, -16.5, 28, 17, HC, 1.4, 1.6, T, 'block', sides='flr', two=False)
     lo.append(blk('centre_lo', 0, -16.5, 28.2, 17.2, Z0, HC + 0.6, None))
-    P.append(sign('np_sign', 'HYDERABAD', 20.0, 3.8, (0, -25.15, 17.6), '#111111', '#f2c230', px=512, depth=0.3))
+    P.append(box('np_board', (20.0, 0.3, 3.8), (0, -25.15, 15.7), ppaint('#f2c230', 'np_board'), base=True))
     P.append(box('porch_chajja', (16.0, 2.4, 0.5), (0, -26.0, 14.4), MR, base=True))
     lo.append(blk('porch_lo', 0, -25.6, 20.4, 1.8, 14.3, 21.6, None))
     keep = [sign_keep(A.id, 'name_board', 'HYDERABAD', 19.6, 3.6, (0, -26.56, 17.6))]
@@ -796,16 +796,16 @@ def build_nampally_station(A):
     lo.append(blk('gable_lo', 0, -24.0, 10.2, 2.4, HC, HC + 5.1, None))
     # domed corner turrets of the central block
     for sx in (-1, 1):
-        hi_, lo_ = _minaret('tur', sx * 14.0, -25.0, Z0, HC + 2.0, 1.4, W, MR)
+        hi_, lo_ = _minaret('tur', sx * 14.0, -25.0, Z0, HC + 2.0, 1.4, W, MR, lo_seg=5)
         P += hi_
         lo.append(lo_)
     P.append(drum_dome('dome', 0, -14.0, HC, 5.0, 2.0, 6.0, W, dmat=MR, seg=16, n=6))
-    lo.append(_dome_lo('dome_lo', 0, -14.0, HC, 5.0, 2.0, 6.0, seg=8))
+    lo.append(_dome_lo('dome_lo', 0, -14.0, HC, 5.0, 2.0, 6.0, seg=7))
     # platform shed behind
     _shed('shed', 0, 9.0, 104, 30, 9.0, P, lo, None)
     tri_report(A.id, P)
     tri_report(A.id + '_lo', lo)
-    for o in L.finish_proxy(A, P, lo=lo, keep=keep, size=384, ao_samples=48, ao_strength=0.65):
+    for o in L.finish_proxy(A, P, lo=lo, keep=keep, size=320, ao_samples=48, ao_strength=0.65):
         kit.smooth(o, 80)
     L.shots(A, az=-35, el=12, extra=[{'name': 'front', 'view': {'az': 0, 'el': 6, 'fov': 32, 'pad': 1.05}}])
 
@@ -844,7 +844,7 @@ def build_kachiguda_station(A):
         P.append(fbox('endb', ex, -22.0, 16, 22, Z0, HE, W, faces={'f': gface(16, 3, 3, HE), 'l' if sx < 0 else 'r': gface(22, 4, 4, HE), 'b': gface(16, 5, 3, HE)}))
         P += rect_teeth('et', ex, -22.0, 16, 22, HE, 1.6, 2.0, T, 'block', two=False)
         lo.append(blk('endb_lo', ex, -22.0, 16.2, 22.2, Z0, HE + 1.0, None))
-        for (tx, ty) in ((ex - 8, -33.0), (ex + 8, -33.0), (ex - 8, -11.0), (ex + 8, -11.0)):
+        for (tx, ty) in ((ex - 8, -33.0), (ex + 8, -33.0)):     # the front corner towers (the rear corners are plain)
             P.append(cylinder('tw', 1.3, HE + 3.0 - Z0, (tx, ty, Z0), seg=8, mat=T))
             P.append(cylinder('tw_ring', 1.7, 0.6, (tx, ty, HE - 2.0), seg=8, mat=T))
             P += rect_teeth('twc', tx, ty, 2.8, 2.8, HE + 3.0, 0.9, 0.9, T, 'block', two=False)
@@ -858,7 +858,7 @@ def build_kachiguda_station(A):
         P.append(chhatri('eb_ch', ex, -22.0, HE, 2.8, T, dmat=W, seg=8))
         r_, h_ = 2.8, 2.8 * 1.5
         zd_ = HE + 0.45 + h_
-        lo.append(lathe('eb_lo', [(0.98 * r_, HE), (1.42 * r_, HE + h_ + 0.2), (1.15 * r_, zd_ + 0.4 * r_), (0.55 * r_, zd_ + 1.1 * r_), (0.0, zd_ + 1.75 * r_)], seg=6, loc=(ex, -22.0, 0), close_bottom=False))
+        lo.append(lathe('eb_lo', [(0.98 * r_, HE), (1.42 * r_, HE + h_ + 0.2), (1.15 * r_, zd_ + 0.4 * r_), (0.55 * r_, zd_ + 1.1 * r_), (0.0, zd_ + 1.75 * r_)], seg=5, loc=(ex, -22.0, 0), close_bottom=False))
     # central porch: pointed gable, flanking pinnacle columns, the name board
     PG = H + 5.0 - Z0
     P.append(box('porch', (24, 4.0, PG), (0, -34.6, Z0), W, base=True))
@@ -872,20 +872,18 @@ def build_kachiguda_station(A):
     lo.append(blk('porch_lo', 0, -34.6, 24.7, 4.7, Z0, Z0 + PG + 1.2, None))
     # the central dome behind the porch
     P.append(drum_dome('cdome', 0, -24.0, H, 6.0, 3.0, 7.0, W, seg=16, n=6))
-    lo.append(_dome_lo('cdome_lo', 0, -24.0, H, 6.0, 3.0, 7.0, seg=8))
+    lo.append(_dome_lo('cdome_lo', 0, -24.0, H, 6.0, 3.0, 7.0, seg=7))
     for sx in (-1, 1):
         zp = PG + 3.0 + Z0
         P.append(cylinder('pp', 1.3, PG + 3.0, (sx * 12.6, -36.4, Z0), seg=8, mat=T))
         P.append(cylinder('pp_ring', 1.7, 0.5, (sx * 12.6, -36.4, zp), seg=8, mat=T))
         P.append(ronion('pp_dome', 1.5, 2.4, zp + 0.5, W, loc=(sx * 12.6, -36.4)))
         lo.append(lathe('pp_lo', [(1.45, Z0), (1.75, zp), (1.85, zp + 1.2), (0.9, zp + 2.7), (0.0, zp + 3.7)], seg=5, loc=(sx * 12.6, -36.4, 0), close_bottom=False))
-    P.append(sign('kg_sign', 'KACHEGUDA', 20.0, 3.8, (0, -36.95, 18.2), '#111111', '#f2c230', px=512, depth=0.3))
-    lo.append(blk('sign_lo', 0, -36.95, 20.4, 1.0, 17.7, 22.2, None))
-    keep = [sign_keep(A.id, 'name_board', 'KACHEGUDA', 19.8, 3.6, (0, -37.47, 19.95))]
+    keep = [sign_keep(A.id, 'name_board', 'KACHEGUDA', 19.8, 3.6, (0, -37.02, 19.95))]
     # platform shed behind
     _shed('shed', 0, 14.0, 90, 40, 10.0, P, lo, None)
     tri_report(A.id, P)
     tri_report(A.id + '_lo', lo)
-    for o in L.finish_proxy(A, P, lo=lo, keep=keep, size=384, ao_samples=48, ao_strength=0.65):
+    for o in L.finish_proxy(A, P, lo=lo, keep=keep, size=320, ao_samples=48, ao_strength=0.65):
         kit.smooth(o, 80)
     L.shots(A, az=-35, el=12, extra=[{'name': 'front', 'view': {'az': 0, 'el': 6, 'fov': 32, 'pad': 1.05}}])

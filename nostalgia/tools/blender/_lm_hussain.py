@@ -155,14 +155,17 @@ def build_buddha(A):
     parts.append(cylinder('plat1', 10.8, 2.6, (0, 0, 3.6), seg=8, mat=PLAT))
     parts.append(cylinder('plat2', 8.6, 2.6, (0, 0, 6.2), seg=8, mat=PLAT))
     parts.append(L.steps('plat_steps', 5.0, 0.9, 0.6, 4, (0, -12.2, 3.6), PLAT))
-    parts.append(lathe('lotus_drum', [(6.6, 8.8), (7.0, 9.3), (5.6, 9.8), (5.2, 11.0), (6.2, 12.2), (7.4, 13.4), (7.6, 14.6), (6.8, 15.0), (0.0, 15.0)], seg=16, mat=STONE))
-    parts.append(petal_ring('petals_lo', 12, 6.0, 10.4, 3.9, 4.6, 58, STONE))
+    RED = kit.material('whitewash', 'lotus_red', base='#9c4636', var=0.04, grain=0.02, grime=0.25, streaks=0.0, dirt='#5a2a20', scale=0.5)
+    RED_D = L.paint('#6e2c22', 'lotus_groove', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
+    parts.append(lathe('lotus_drum', [(6.6, 8.8), (7.0, 9.3), (5.6, 9.8), (5.2, 11.0), (6.2, 12.2), (7.4, 13.4), (7.6, 14.6), (6.8, 15.0), (0.0, 15.0)], seg=16, mat=RED_D))
+    parts.append(petal_ring('petals_lo', 12, 6.0, 10.4, 3.9, 4.6, 58, RED))
+    parts.append(petal_ring('petals_hi', 12, 7.0, 13.2, 2.6, 1.8, 20, RED, phase=PI / 12, depth=0.3))
     # ---- the standing figure, feet at z = ZF, ~72 u tall
     ZF = 15.0
     fig = []
     # robe body (outer robe hem at ~7.5 over the under-robe falling to the ankles)
-    body_r = [(0.6, 5.9, 3.9, 0.0), (1.6, 6.0, 4.0, 0.0), (6.6, 5.7, 3.8, 0.0), (7.2, 5.7, 3.8, 0.0), (7.3, 6.4, 4.4, 0.0),
-              (9.0, 6.3, 4.3, 0.0), (18.0, 6.0, 4.0, 0.1), (28.0, 6.1, 4.0, 0.2), (36.0, 6.4, 4.2, 0.2), (43.0, 6.1, 4.0, 0.1),
+    body_r = [(0.6, 5.9, 3.9, 0.0), (1.6, 6.0, 4.0, 0.0), (6.6, 5.7, 3.8, 0.0), (7.2, 5.7, 3.8, 0.0), (7.3, 6.8, 4.5, 0.0),
+              (9.0, 6.6, 4.3, 0.0), (18.0, 5.8, 4.0, 0.1), (28.0, 5.2, 3.9, 0.2), (36.0, 5.2, 3.9, 0.2), (43.0, 5.7, 4.0, 0.1),
               (51.0, 6.7, 4.2, 0.0), (57.0, 7.7, 4.3, 0.0), (60.5, 8.1, 4.1, 0.1), (63.0, 6.7, 3.5, 0.3), (64.4, 2.8, 2.5, 0.4)]
     fig.append(ellipse_loft('robe', [(0, yc, z, rx, ry) for (z, rx, ry, yc) in body_r], STONE, seg=18))
     # feet peeping out under the hem
@@ -199,16 +202,16 @@ def build_buddha(A):
     fig.append(kit.tube('lips', [(-0.75, -3.05, 67.5), (0, -3.25, 67.4), (0.75, -3.05, 67.5)], 0.18, seg=4, mat=STONE))
     # RIGHT arm (figure's right = -X): abhaya mudra, forearm raised, palm facing out (-Y)
     fig.append(ellipse_loft('r_upper', [(-7.6, 0.2, 61.2, 2.3, 2.3), (-9.1, 0.3, 56.0, 2.1, 2.1), (-9.7, 0.2, 50.5, 1.9, 1.9)], STONE, seg=10))
-    fig.append(kit.tube('r_fore', [(-9.7, 0.2, 50.0), (-9.8, -2.2, 52.0), (-9.5, -4.4, 55.8), (-9.3, -5.0, 57.6)], 1.45, seg=8, mat=STONE))
+    fig.append(kit.tube('r_fore', [(-9.7, 0.2, 50.0), (-9.1, -2.2, 52.4), (-7.8, -4.4, 55.2), (-6.8, -5.6, 57.0)], 1.45, seg=8, mat=STONE))
     # the robe hanging in a soft drape below the raised forearm
-    fig.append(kit.prism_from_outline('r_drape', [(0.6, 0.0), (-1.8, 2.6), (-4.2, 5.0), (-4.6, 7.4), (-0.6, 7.4), (1.6, 3.0)], 1.0,
+    fig.append(kit.prism_from_outline('r_drape', [(0.6, 0.0), (-1.8, 2.6), (-4.2, 5.0), (-4.6, 7.4), (-0.6, 7.4), (1.6, 3.0)], 0.4,
                                       center=(0, 0, 0), mat=STONE, axis='X'))
     dr = fig[-1]
     dr.location = (-10.1, -0.6, 46.5)
     kit.apply_transform(dr)
-    palm = ellipse_loft('r_palm', [(-9.25, -5.1, 57.2, 1.35, 0.6), (-9.25, -5.2, 59.6, 1.5, 0.6), (-9.25, -5.25, 61.6, 1.4, 0.5), (-9.25, -5.25, 63.6, 1.1, 0.4), (-9.25, -5.25, 64.2, 0.5, 0.2)], STONE, seg=8)
+    palm = ellipse_loft('r_palm', [(-6.6, -5.8, 56.8, 1.3, 0.65), (-6.6, -5.9, 59.4, 1.5, 0.6), (-6.6, -5.95, 61.6, 1.4, 0.5), (-6.6, -5.95, 63.5, 1.1, 0.4), (-6.6, -5.95, 64.2, 0.5, 0.2)], STONE, seg=8)
     fig.append(palm)
-    fig.append(kit.tube('r_thumb', [(-8.1, -5.0, 58.0), (-7.65, -5.15, 59.6), (-7.6, -5.2, 60.6)], 0.38, seg=5, mat=STONE))
+    fig.append(kit.tube('r_thumb', [(-5.45, -5.7, 58.0), (-5.0, -5.85, 59.6), (-4.95, -5.9, 60.6)], 0.38, seg=5, mat=STONE))
     # LEFT arm: hanging, the hand gathering the robe at hip height
     fig.append(ellipse_loft('l_upper', [(7.6, 0.2, 61.2, 2.3, 2.3), (9.1, 0.3, 56.0, 2.1, 2.1), (9.6, 0.3, 50.0, 1.9, 1.9)], STONE, seg=10))
     fig.append(kit.tube('l_fore', [(9.6, 0.3, 50.2), (9.5, -0.8, 46.0), (8.8, -2.6, 41.6)], 1.5, seg=8, mat=STONE))
@@ -229,9 +232,9 @@ def build_buddha(A):
     lf.append(ellipse_loft('head_lo', [(0, 0.4, 63.9, 2.0, 2.0), (0, 0.15, 66.6, 3.0, 3.1), (0, 0.25, 71.5, 3.6, 3.6),
                                        (0, 0.35, 75.0, 3.25, 3.25), (0, 0.35, 76.6, 2.1, 2.1), (0, 0.35, 78.4, 1.7, 1.7), (0, 0.35, 79.4, 0.3, 0.3)], None, seg=8, cap_start=False))
     lf.append(ellipse_loft('r_upper_lo', [(-7.4, 0.2, 61.6, 2.4, 2.4), (-9.2, 0.3, 56.0, 2.2, 2.2), (-9.8, 0.2, 50.0, 2.0, 2.0)], None, seg=6))
-    lf.append(kit.tube('r_fore_lo', [(-9.7, 0.2, 49.6), (-9.8, -2.2, 52.0), (-9.5, -4.4, 55.8), (-9.3, -5.0, 57.6)], 1.6, seg=6))
-    lf.append(ellipse_loft('r_palm_lo', [(-9.0, -5.1, 57.0, 1.6, 0.8), (-9.0, -5.2, 60.6, 1.75, 0.75), (-9.1, -5.25, 63.4, 1.3, 0.6), (-9.25, -5.25, 64.4, 0.4, 0.3)], None, seg=6))
-    d2 = kit.prism_from_outline('r_drape_lo', [(0.7, -0.1), (-1.9, 2.6), (-4.4, 5.0), (-4.8, 7.6), (-0.6, 7.6), (1.7, 3.0)], 1.4, center=(0, 0, 0), axis='X')
+    lf.append(kit.tube('r_fore_lo', [(-9.7, 0.2, 49.6), (-9.1, -2.2, 52.4), (-7.8, -4.4, 55.2), (-6.8, -5.6, 57.0)], 1.6, seg=6))
+    lf.append(ellipse_loft('r_palm_lo', [(-6.3, -5.85, 56.6, 1.7, 0.85), (-6.2, -5.9, 60.4, 1.9, 0.8), (-6.4, -5.95, 63.4, 1.3, 0.6), (-6.6, -5.95, 64.4, 0.4, 0.3)], None, seg=6))
+    d2 = kit.prism_from_outline('r_drape_lo', [(0.7, -0.1), (-1.9, 2.6), (-4.4, 5.0), (-4.8, 7.6), (-0.6, 7.6), (1.7, 3.0)], 0.8, center=(0, 0, 0), axis='X')
     d2.location = (-10.1, -0.6, 46.5)
     kit.apply_transform(d2)
     lf.append(d2)
@@ -277,8 +280,12 @@ def _tb_figure(pose, BZ, z0):
                                         (0, 0.2, 9.8, 0.9, 0.8)], BZ, seg=8))
         hz = 9.6
         p.append(ellipse_loft('head', [(0, 0.15, hz, 0.7, 0.75), (0, 0.05, hz + 0.9, 1.05, 1.15), (0, 0.05, hz + 1.9, 1.05, 1.12), (0, 0.1, hz + 2.6, 0.55, 0.6)], BZ, seg=8))
-        p.append(cylinder('staff', 0.22, 14.0, (-3.3, -0.9, 0.0), seg=4, mat=BZ))
-        p.append(kit.tube('r_arm', [(-2.1, 0.1, 9.0), (-2.9, 0.0, 6.6), (-3.2, -0.8, 7.4)], 0.5, seg=5, mat=BZ))
+        # the tambura held upright: the gourd resting at the lap, the long neck rising past the shoulder
+        p.append(lathe('tambura_gourd', [(0.5, 2.0), (1.15, 2.4), (1.3, 3.3), (1.0, 4.1), (0.45, 4.5), (0.35, 4.7)], seg=10, mat=BZ, loc=(-2.0, -1.5, 0)))
+        p.append(cylinder('tambura_neck', 0.32, 7.6, (-2.1, -1.35, 4.6), seg=6, mat=BZ, r2=0.26))
+        p.append(box('tambura_head', (0.5, 0.5, 0.9), (-2.1, -1.35, 12.2), BZ, base=True))
+        p.append(kit.tube('r_arm', [(-2.1, 0.1, 9.0), (-2.7, -0.4, 7.4), (-2.3, -1.2, 7.8)], 0.5, seg=5, mat=BZ))
+        p.append(ellipse_loft('shikha', [(0, 0.45, hz + 2.4, 0.4, 0.4), (0, 0.5, hz + 2.8, 0.32, 0.32), (0, 0.5, hz + 3.1, 0.05, 0.05)], BZ, seg=6))
         p.append(kit.tube('l_arm', [(2.1, 0.1, 9.0), (2.6, -0.1, 6.4), (1.6, -1.7, 3.6)], 0.5, seg=5, mat=BZ))
         # robe edge falling over the left shoulder
         p.append(kit.tube('robe', [(1.6, -0.6, 9.4), (0.4, -1.35, 7.4), (-1.0, -1.3, 4.6)], 0.4, seg=4, mat=BZ))
@@ -288,6 +295,11 @@ def _tb_figure(pose, BZ, z0):
         p.append(ellipse_loft('head', [(0, 0.05, 14.6, 0.7, 0.75), (0, 0.0, 15.4, 1.05, 1.15), (0, 0.0, 16.4, 1.05, 1.12), (0, 0.05, 17.2, 0.55, 0.6)], BZ, seg=8))
         for s in (-1, 1):
             p.append(box('foot', (0.8, 1.2, 0.45), (s * 0.7, -1.3, 0.0), BZ, base=True))
+        if pose in ('scholar', 'poet'):
+            # talapaga: the wrapped Telugu turban, broad and flat-topped, with a short tail at the back
+            p.append(ellipse_loft('talapaga', [(0, 0.05, 15.8, 1.12, 1.18), (0, 0.0, 16.5, 1.42, 1.48), (0, 0.0, 17.3, 1.5, 1.52), (0, 0.05, 17.9, 1.38, 1.4), (0, 0.05, 18.1, 0.6, 0.6)], BZ, seg=10))
+            p.append(kit.tube('talapaga_band', [(-1.3, -0.7, 16.9), (0.0, -1.5, 17.4), (1.3, -0.7, 16.9)], 0.18, seg=4, mat=BZ))
+            p.append(kit.tube('talapaga_tail', [(0.3, 1.3, 16.8), (0.5, 1.6, 15.6), (0.6, 1.6, 14.6)], 0.25, seg=4, mat=BZ))
         if pose == 'scholar':
             p.append(kit.tube('r_arm', [(-2.2, 0, 13.4), (-2.6, 0.1, 10.6), (-2.5, -0.3, 8.0)], 0.55, seg=5, mat=BZ))
             p.append(kit.tube('l_arm', [(2.2, 0, 13.4), (2.6, 0.1, 10.8), (1.3, -1.5, 11.2)], 0.55, seg=5, mat=BZ))
@@ -307,11 +319,12 @@ def _tb_figure(pose, BZ, z0):
             p.append(kit.tube('shawl_x', [(2.0, -0.9, 13.6), (0.6, -1.5, 11.6), (-1.6, -1.4, 9.2), (-1.9, -0.6, 8.6)], 0.45, seg=4, mat=BZ))
         elif pose == 'warrior':
             p.append(ellipse_loft('turban', [(0, 0.05, 15.9, 1.15, 1.2), (0, 0.0, 16.9, 1.38, 1.4), (0, 0.05, 17.7, 1.05, 1.1), (0, 0.1, 18.1, 0.4, 0.4)], BZ, seg=8))
-            p.append(box('blade', (0.36, 0.14, 7.2), (0, -2.1, 0.8), BZ, base=True))
-            p.append(box('guard', (1.7, 0.35, 0.3), (0, -2.1, 8.0), BZ, base=True))
-            p.append(cylinder('hilt', 0.2, 1.0, (0, -2.1, 8.3), seg=4, mat=BZ))
-            for s in (-1, 1):
-                p.append(kit.tube('arm', [(s * 2.2, 0, 13.4), (s * 2.6, -0.5, 10.9), (s * 0.45, -2.0, 9.4)], 0.55, seg=5, mat=BZ))
+            # curved talwar sheathed at the left hip (scabbard sweeping back), the left hand on the hilt
+            p.append(kit.tube('talwar_hilt', [(2.0, -1.5, 10.6), (2.15, -1.05, 9.7)], 0.2, seg=5, mat=BZ))
+            p.append(cylinder('talwar_pommel', 0.3, 0.3, (2.0, -1.55, 10.6), seg=6, mat=BZ))
+            p.append(kit.tube('scabbard', [(2.15, -1.05, 9.7), (2.4, -0.5, 7.6), (2.55, 0.4, 5.6), (2.55, 1.6, 4.0), (2.45, 2.6, 3.2)], 0.3, seg=5, mat=BZ))
+            p.append(kit.tube('l_arm', [(2.2, 0, 13.4), (2.75, -0.3, 11.4), (2.2, -1.25, 10.3)], 0.55, seg=5, mat=BZ))
+            p.append(kit.tube('r_arm', [(-2.2, 0, 13.4), (-2.6, 0.1, 10.6), (-2.5, -0.2, 8.2)], 0.55, seg=5, mat=BZ))
             # sash at the waist
             p.append(ellipse_loft('sash', [(0, 0, 8.6, 2.0, 1.45), (0, 0, 9.4, 2.0, 1.45)], BZ, seg=8))
     for o in p:
@@ -328,14 +341,14 @@ def _tb_figure_lo(pose, z0):
         p.append(ellipse_loft('legs_lo', [(0, -0.5, 1.0, 3.3, 2.3), (0, -0.3, 3.0, 2.3, 1.7)], None, seg=5, cap_start=False))
         p.append(ellipse_loft('torso_lo', [(0, 0.1, 2.8, 2.2, 1.6), (0, 0.1, 8.4, 2.4, 1.5), (0, 0.15, 9.6, 1.6, 1.2), (0, 0.1, 10.6, 1.15, 1.25),
                                            (0, 0.05, 11.8, 1.15, 1.25), (0, 0.1, 12.4, 0.3, 0.3)], None, seg=5, cap_start=False))
-        p.append(cylinder('staff_lo', 0.3, 14.0, (-3.3, -0.9, 0.0), seg=3, cap=False))
-        p.append(kit.tube('r_arm_lo', [(-2.1, 0.1, 9.0), (-2.9, 0.0, 6.6), (-3.2, -0.8, 7.4)], 0.65, seg=3))
+        p.append(lathe('tambura_lo', [(0.6, 1.9), (1.45, 3.2), (0.45, 4.8), (0.38, 13.2)], seg=5, loc=(-2.05, -1.45, 0), close_bottom=False))
+        p.append(kit.tube('r_arm_lo', [(-2.1, 0.1, 9.0), (-2.7, -0.4, 7.4), (-2.3, -1.2, 7.8)], 0.65, seg=3))
         p.append(kit.tube('l_arm_lo', [(2.1, 0.1, 9.0), (2.6, -0.1, 6.4), (1.6, -1.7, 3.6)], 0.65, seg=3))
     else:
-        top = 18.3 if pose == 'warrior' else 17.4
+        top = 18.3          # every standing pose wears a turban
         p.append(ellipse_loft('body_lo', [(0, 0, 0.0, 2.15, 1.65), (0, 0, 9.6, 2.1, 1.5), (0, 0, 13.6, 2.6, 1.45), (0, 0.1, 14.5, 1.0, 0.95),
-                                          (0, 0.0, 15.6, 1.25 if pose != 'warrior' else 1.5, 1.3 if pose != 'warrior' else 1.5),
-                                          (0, 0.0, 16.6, 1.2 if pose != 'warrior' else 1.5, 1.25 if pose != 'warrior' else 1.5), (0, 0.05, top - 0.45, 0.85 if pose != 'warrior' else 1.1, 0.9 if pose != 'warrior' else 1.1), (0, 0.05, top, 0.2, 0.2)], None, seg=5, cap_start=False))
+                                          (0, 0.0, 15.6, 1.35, 1.4), (0, 0.0, 17.3, 1.62 if pose != 'warrior' else 1.5, 1.62 if pose != 'warrior' else 1.5),
+                                          (0, 0.05, top, 0.5, 0.5)], None, seg=5, cap_start=False))
         if pose == 'scholar':
             p.append(kit.tube('r_arm_lo', [(-2.2, 0, 13.4), (-2.6, 0.1, 10.6), (-2.5, -0.3, 8.0)], 0.7, seg=3))
             p.append(kit.tube('l_arm_lo', [(2.2, 0, 13.4), (2.6, 0.1, 10.8), (1.3, -1.5, 11.2)], 0.7, seg=3))
@@ -345,10 +358,9 @@ def _tb_figure_lo(pose, z0):
             p.append(kit.tube('r_arm_lo', [(-2.2, 0, 13.4), (-3.3, -1.0, 14.6), (-3.4, -2.0, 17.6)], 0.7, seg=3))
             p.append(kit.tube('l_arm_lo', [(2.2, 0, 13.4), (2.7, 0.0, 10.6), (2.6, -0.4, 8.2)], 0.7, seg=3))
         elif pose == 'warrior':
-            p.append(box('blade_lo', (0.5, 0.3, 7.8), (0, -2.1, 0.7), None, base=True))
-            p.append(box('guard_lo', (1.9, 0.5, 0.5), (0, -2.1, 7.9), None, base=True))
-            for s in (-1, 1):
-                p.append(kit.tube('arm_lo', [(s * 2.2, 0, 13.4), (s * 2.6, -0.5, 10.9), (s * 0.45, -2.0, 9.4)], 0.7, seg=3))
+            p.append(kit.tube('sword_lo', [(2.0, -1.6, 10.8), (2.4, -0.4, 7.4), (2.45, 2.7, 3.1)], 0.45, seg=3))
+            p.append(kit.tube('l_arm_lo', [(2.2, 0, 13.4), (2.75, -0.3, 11.4), (2.2, -1.25, 10.3)], 0.7, seg=3))
+            p.append(kit.tube('r_arm_lo', [(-2.2, 0, 13.4), (-2.6, 0.1, 10.6), (-2.5, -0.2, 8.2)], 0.7, seg=3))
     for o in p:
         o.location = (0, 0, z0)
         kit.apply_transform(o)
@@ -405,7 +417,7 @@ def build_tank_bund_statue(A):
     trim(lo)
     report(lo)
     keep = [kit.join(keep, 'tb_lanterns')]
-    for o in L.finish_proxy(A, parts, lo=lo, keep=keep, size=256, variants=variants, ao_samples=48, ao_strength=0.6):
+    for o in L.finish_proxy(A, parts, lo=lo, keep=keep, size=256, variants=variants, ao_samples=96, ao_strength=0.6):
         kit.smooth(o, 80)
     L.col_box('tb_plinth', (7, 7, 24), (0, 0, 0))
     L.shots(A, az=-30, el=10, extra=[{'name': 'poses', 'size': 256, 'view': {'az': -10, 'el': 6, 'fov': 26, 'target': (0, 0, 33), 'dist': 50}}])
@@ -758,8 +770,8 @@ def build_birla_planetarium(A):
     lo.append(L.shell_box('plinth_lo', (58.2, 58.2, 0.85), (0, 0, 0)))
     # drum with pilasters and a band of dark windows, the cornice, the dome, a small lantern
     hi.append(cylinder('drum', RD, HD, (0, DY, 0.8), seg=48, mat=WH))
-    for i in range(24):
-        a = 2 * PI * i / 24
+    for i in range(16):
+        a = 2 * PI * i / 16
         p = box('pil', (1.2, 0.6, HD - 1.0), (0, 0, 0), TR, base=True)
         hi.append(L.place(p, ((RD + 0.2) * math.cos(a), DY + (RD + 0.2) * math.sin(a), 0.8), rz=a + PI / 2))
     hi.append(cylinder('drum_win', RD + 0.05, 2.0, (0, DY, 8.4), seg=48, mat=GL))
@@ -770,12 +782,12 @@ def build_birla_planetarium(A):
     zt = zd + RD * 0.95
     hi.append(cylinder('lantern', 1.6, 1.6, (0, DY, zt - 0.4), seg=16, mat=TR))
     hi.append(lathe('finial', [(0.6, zt + 1.2), (0.9, zt + 1.8), (0.15, zt + 3.2), (0.0, zt + 3.6)], seg=12, mat=M['gold'], loc=(0, DY, 0)))
-    lp = [(RD + 0.25, 0.8), (RD + 0.25, HD + 0.8), (RD + 1.1, HD + 0.8), (RD + 1.1, zd)]
-    for i in range(8):
-        a = PI / 2 * i / 8.6
+    lp = [(RD + 0.25, 0.8), (RD + 0.25, HD + 0.6), (RD + 1.1, zd)]
+    for i in range(6):
+        a = PI / 2 * i / 6.5
         lp.append((RD * math.cos(a) + 0.2, zd + RD * 0.95 * math.sin(a) + 0.1))
     lp += [(1.8, zt + 0.1), (1.7, zt + 1.3), (0.0, zt + 3.6)]
-    lo.append(lathe('dome_lo', lp, seg=14, loc=(0, DY, 0), close_bottom=False))
+    lo.append(lathe('dome_lo', lp, seg=12, loc=(0, DY, 0), close_bottom=False))
     # science museum block behind
     BY0, BY1 = 12.0, 28.5
     hi.append(box('block', (54, BY1 - BY0, 22.0), (0, (BY0 + BY1) / 2, 0.8), WH, base=True))
@@ -789,12 +801,14 @@ def build_birla_planetarium(A):
     for x in (-9.0, -3.0, 3.0, 9.0):
         hi.append(box('pcol', (1.0, 1.0, 8.2), (x, PY0 + 0.8, 0.8), TR, base=True))
     hi.append(box('pback', (14, 1.0, 8.2), (0, PY1 + 0.3, 0.8), GL, base=True))
-    hi.append(L.sign_panel('pl_sign', 'BIRLA PLANETARIUM', 21.0, 3.4, (0, PY0 - 0.2, 11.6), fg='#ffffff', bg='#1d4e8a', px=512))
+    hi.append(box('pl_board', (21.0, 0.3, 3.4), (0, PY0 - 0.2, 9.9), L.paint('#1d4e8a', 'pl_board', var=0.0, grain=0.0, grime=0.0, streaks=0.0), base=True))
+    from _lm_civic import sign_keep
+    keep = [sign_keep(A.id, 'name_board', 'PLANETARIUM', 20.8, 3.2, (0, PY0 - 0.2 - 0.47, 11.6), fg='#ffffff', bg='#1d4e8a', pw=256, ph=40)]
     lo.append(L.shell_box('portico_lo', (20.4, PY1 - PY0 + 0.8, 9.3), (0, (PY0 + PY1) / 2, 0.8)))
     lo.append(L.shell_box('sign_lo', (21.4, 0.9, 3.7), (0, PY0 - 0.2, 9.85)))
     trim(lo)
     report(lo)
-    for o in L.finish_proxy(A, hi, lo=lo, size=256, ao_samples=48, ao_strength=0.6):
+    for o in L.finish_proxy(A, hi, lo=lo, keep=keep, size=224, ao_samples=48, ao_strength=0.6):
         kit.smooth(o, 80)
     L.shots(A, az=-30, el=12)
 

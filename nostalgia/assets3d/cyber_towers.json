@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 47400,
+ "bytes": 47416,
  "clips": {},
  "family": "landmark",
  "file": "cyber_towers.glb",
@@ -28,7 +28,7 @@
   "draw": "cyber_towers",
   "face": "s",
   "fit": "footprint",
-  "floodlit": false,
+  "floodlit": true,
   "footprint": [
    96,
    96

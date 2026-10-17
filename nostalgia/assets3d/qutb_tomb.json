@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 46620,
+ "bytes": 46564,
  "clips": {},
  "family": "landmark",
  "file": "qutb_tomb.glb",
@@ -19,7 +19,7 @@
  "max": [
   26.95,
   26.95,
-  72.2
+  75.7
  ],
  "meta": {
   "dataH": 50,
@@ -52,7 +52,7 @@
  "size": [
   53.9,
   53.9,
-  72.2
+  75.7
  ],
  "tint": null,
  "tris": 530,

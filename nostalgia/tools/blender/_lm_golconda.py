@@ -31,9 +31,9 @@ def gmats():
         'rock_dk': m('granite_grey', 'gc_rock_dk', base='#77706a', rough=0.8, var=0.2, grain=0.14, grime=0.6, dirt='#3a342e', specks=0.7, scale=0.35),
         'scrub': m('granite_grey', 'gc_scrub', base='#7d7a58', rough=0.9, var=0.25, grain=0.2, grime=0.4, dirt='#3d3a26', specks=0.2, scale=0.5),
         'plaster': m('lime_plaster', 'gc_plaster', base='#d5cab0', rough=0.9, var=0.12, grain=0.06, grime=0.6, dirt='#7d7058', streaks=0.45),
-        'stucco': m('lime_plaster', 'gc_stucco', base='#bdb5a2', rough=0.9, var=0.14, grain=0.07, grime=0.6, dirt='#5f584a', streaks=0.5),
-        'tgranite': m('granite_grey', 'gc_tomb', base='#a39c8c', rough=0.8, var=0.10, grain=0.09, grime=0.5, dirt='#555048', specks=0.4),
-        'dome': m('lime_plaster', 'gc_dome', base='#9e978a', rough=0.9, var=0.16, grain=0.07, grime=0.55, dirt='#4c473e', streaks=0.55),
+        'stucco': m('lime_plaster', 'gc_stucco', base='#a59f90', rough=0.9, var=0.14, grain=0.07, grime=0.6, dirt='#5f584a', streaks=0.7),
+        'tgranite': m('granite_grey', 'gc_tomb', base='#8f897c', rough=0.8, var=0.10, grain=0.09, grime=0.5, dirt='#555048', specks=0.4),
+        'dome': m('lime_plaster', 'gc_dome', base='#8a857b', rough=0.9, var=0.16, grain=0.07, grime=0.55, dirt='#3a362f', streaks=0.75),
         'dark': L.paint('#2a241e', 'gc_dark', rough=0.9, grime=0.1, streaks=0.0),
         'shade': L.paint('#6a6255', 'gc_shade', rough=0.9, grime=0.3, streaks=0.2),
         'wood': m('wood_raw', 'gc_teak', base='#5e3e24', rough=0.8, grain=0.22, grime=0.45),
@@ -659,17 +659,17 @@ def build_qutb_tomb(A):
         P.append(lathe('turret', [(1.5, CZ), (1.5, TOP + 1.2), (2.1, TOP + 1.6), (2.1, TOP + 2.4), (1.2, TOP + 2.7), (1.45, TOP + 4.4), (0.5, TOP + 6.6), (0.0, TOP + 7.8)], seg=6, mat=ST, loc=(x, y, 0)))
     # ---- drum, lotus petals and the bulbous dome with a finial
     R = 12.4
-    P.append(cylinder('drum', R, 5.4, (0, 0, TOP - 0.4), seg=16, mat=G, cap=False))
-    P.append(cylinder('drum_band', R + 0.35, 0.8, (0, 0, TOP + 2.6), seg=16, mat=ST, cap=False))
+    P.append(cylinder('drum', R, 9.0, (0, 0, TOP - 0.4), seg=16, mat=G, cap=False))
+    P.append(cylinder('drum_band', R + 0.35, 0.8, (0, 0, TOP + 6.2), seg=16, mat=ST, cap=False))
     pet = []
     nP = 16
     for i in range(nP):
         a = 2 * math.pi * (i + 0.5) / nP
         w = 2 * math.pi * R / nP * 0.62
         o = poly('petal', [(-w, 0), (w, 0), (w * 0.8, 1.6), (0, 3.0), (-w * 0.8, 1.6)], ST, tilt=math.radians(-30))
-        pet.append(L.place(o, (R * 0.98 * math.cos(a), R * 0.98 * math.sin(a), TOP + 4.6), a + math.pi / 2))
+        pet.append(L.place(o, (R * 0.98 * math.cos(a), R * 0.98 * math.sin(a), TOP + 8.0), a + math.pi / 2))
     P.append(kit.join(pet, 'petals'))
-    DZ = TOP + 5.0
+    DZ = TOP + 8.5
     dome = lathe('dome', kit.onion_profile(R * 1.0, 26.0, neck=0.9, bulge=1.13, tip=0.08, n=11, base_z=DZ)[:-3], seg=16, mat=M['dome'])
     P.append(dome)
     top = DZ + 26.0 * 1.0
@@ -687,7 +687,7 @@ def build_qutb_tomb(A):
         va.append(arch_decal('jaali', 4.4, h * 0.62, h * 0.38, M['dark'], (0, -CW / 2 - 0.12, z)))
     # ---- variant b: the two-storey arcaded gallery round the chamber (the larger tombs)
     vb = [L.copy(chamber, name='chamber_b')]
-    GW, GH = 44.0, 21.0
+    GW, GH = 44.0, 16.0
     vb.append(box('gallery', (GW, GW, GH), (0, 0, CZ), ST, base=True))
     vb.append(box('gal_band', (GW + 1.0, GW + 1.0, 0.7), (0, 0, CZ + GH / 2 - 0.35), G, base=True))
     vb.append(box('gal_cornice', (GW + 1.6, GW + 1.6, 0.8), (0, 0, CZ + GH - 0.8), G, base=True))
@@ -712,7 +712,7 @@ def build_qutb_tomb(A):
     for (sx, sy) in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
         x, y = sx * (CW / 2 + 0.3), sy * (CW / 2 + 0.3)
         lo.append(pinnacle('s_tur', 2.2, CZ, TOP + 2.6, TOP + 7.8, (x, y)))
-    lo.append(lathe('s_drum', [(R + 0.4, TOP - 0.4), (R + 0.4, TOP + 4.0), (R + 1.4, TOP + 6.6), (R * 0.9, TOP + 6.0)], seg=12, close_bottom=False, close_top=True))
+    lo.append(lathe('s_drum', [(R + 0.4, TOP - 0.4), (R + 0.4, TOP + 7.6), (R + 1.4, TOP + 10.2), (R * 0.9, TOP + 9.6)], seg=12, close_bottom=False, close_top=True))
     dp = kit.onion_profile(R * 1.0, 26.0, neck=0.9, bulge=1.13, tip=0.08, n=6, base_z=DZ)[:-3]
     lo.append(lathe('s_dome', [(r + 0.25, z) for (r, z) in dp] + [(0.9, top), (0.0, top + 7.2)], seg=12, close_bottom=False))
     lo_a = [L.shell_box('s_ch_a', (CW + 0.2, CW + 0.2, CH - 0.2), (0, 0, CZ))]

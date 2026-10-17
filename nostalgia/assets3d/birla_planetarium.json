@@ -2,19 +2,21 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 24576,
+ "bytes": 25204,
  "clips": {},
  "family": "landmark",
  "file": "birla_planetarium.glb",
  "front": "-Y",
  "id": "birla_planetarium",
  "images": [
+  "image/webp",
   "image/webp"
  ],
- "kb": 24.0,
+ "kb": 24.6,
  "kit": 1,
  "materials": [
-  "M_birla_planetarium"
+  "M_birla_planetarium",
+  "M_birla_planetarium_name_board"
  ],
  "max": [
   29.1,
@@ -45,7 +47,7 @@
   37.45
  ],
  "tint": null,
- "tris": 390,
+ "tris": 294,
  "units": "u",
  "up": "Z"
 }
