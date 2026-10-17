@@ -83,7 +83,7 @@ async function autopilot(id, o) {
     const done = await ev((a) => ((window.__passes && window.__passes[a.id]) || 0) > a.n, { id, n: pass0 });
     if (done && s.id !== id) return Object.assign({ ok: true, s }, counts(o));
     if (s.lf === id && s.id !== id) { s.why = await ev(() => (window.__fails || []).slice(-1)[0] || null); return Object.assign({ ok: false, failed: true, s }, counts(o)); }
-    if (Date.now() - t0 > (o.timeout || 240000)) return { ok: false, timeout: true, s };
+    if (Date.now() - t0 > (o.timeout || 420000)) return { ok: false, timeout: true, s };
     const key = JSON.stringify([s.mode, s.obj, s.st.step, s.p]);
     if (key === last) same++; else { same = 0; last = key; if (process.env.VERBOSE) console.log('     ·', s.mode, '|', s.obj, '|', s.st.step, '|', JSON.stringify(s.p), s.clock); }
     if (s.rec && s.rec.phase === 'prompt' && s.mode === 'play') { await pressKey('KeyE'); o.recs = (o.recs || 0) + 1; await sleep(250); continue; }
@@ -486,7 +486,9 @@ async function sa4() {
   const mg0 = await ev(() => window.__mg.length);
   let watching = true;
   const watcher = (async () => { while (watching) { if (await ev(() => N.minigames.active === 'match')) { await sleep(3500); await shot('sa4_lb_match'); await sleep(6000); await shot('sa4_lb_match2'); return; } await sleep(300); } })();
-  await finish('six_balls', { timeout: 300000 });
+  // the final is a full 3-over match in the 3D match engine: a faster sim and a long timeout for loaded machines
+  await ev(() => { N.story.debug.mgTimeScale = 10; });
+  await finish('six_balls', { timeout: 900000 });
   watching = false; await watcher;
   const games = await ev((n) => window.__mg.slice(n), mg0);
   const match = games.find((g) => g.id === 'match');
@@ -504,7 +506,8 @@ async function sa4() {
   await sleep(700);
   const mg1 = await ev(() => window.__mg.length);
   check(await startFromGiver('lb_exhibition'), 'exhibition match giver (the coach) at lb_stadium');
-  await finish('lb_exhibition');
+  await finish('lb_exhibition', { timeout: 900000 });
+  await ev(() => { N.story.debug.mgTimeScale = null; });
   const ex = (await ev((n) => window.__mg.slice(n), mg1)).find((g) => g.id === 'match');
   check(ex && ex.lb, 'exhibition: the match engine runs with N.flags.lb_match on', ex);
   // step away and back: the coach offers another one

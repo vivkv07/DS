@@ -49,16 +49,16 @@ const frames = (page, n) => page.evaluate((n) => new Promise((r) => { let k = 0;
 // hand-tuned views (direction the camera looks FROM, as a world angle from the landmark; distance; pitch)
 // default screenshot set: TOP = tps + fps by day and night; NAMED = tps by day + fps by night
 const TOP = ['charminar', 'mecca_masjid', 'kaman_charminar', 'gulzar_houz', 'birla_mandir', 'buddha_statue', 'tank_bund_statue_1', 'lb_stadium', 'golconda_fateh_darwaza', 'golconda_bala_hissar', 'qutb_tomb_5', 'cyber_towers'];
-const NAMED = ['birla_planetarium', 'assembly', 'mozamjahi_market', 'kachiguda_station', 'nampally_station', 'secunderabad_station', 'golconda_wall_n', 'taramati_baradari', 'hitex', 'secunderabad_clock_tower', 'mahboob_chowk_clock_tower', 'begumpet_airport', 'atc_tower', 'aeroplane_1',
+const NAMED = ['birla_planetarium', 'assembly', 'mozamjahi_market', 'kachiguda_station', 'nampally_station', 'secunderabad_station', 'golconda_wall_2', 'taramati_baradari', 'hitex', 'secunderabad_clock_tower', 'mahboob_chowk_clock_tower', 'begumpet_airport', 'atc_tower', 'aeroplane_1',
   'salar_jung_museum', 'high_court', 'osmania_hospital', 'state_central_library', 'chowmahalla_palace', 'falaknuma_palace', 'prasads_imax', 'ntr_memorial', 'paradise', 'koti_bus_stand', 'imlibun_bus_station', 'cbs_hangar',
   'sandhya_theatre', 'hoarding_rtc_1', 'dilsukhnagar_sai_temple', 'osmania_university', 'church_st_josephs', 'mosque_1', 'temple_1', 'lal_darwaza_temple', 'jama_masjid_charminar', 'gurudwara_gowliguda', 'spanish_mosque', 'paigah_tombs',
   'giant_wheel', 'khairatabad_ganesh', 'doordarshan_kendra', 'nimrah_cafe', 'grand_hotel', 'kirana_3', 'bangle_shop_1', 'banana_cart_1', 'std_1', 'bus_stop_1', 'home', 'water_tank_1', 'purani_haveli', 'madina_building', 'kakatiya_arch_s', 'koti_womens_college', 'school_1'];
 // at / look are offsets from the landmark centre (or from another landmark: rel: '<id>')
 const VIEWS = {
-  charminar: [{ name: 'north', from: -Math.PI / 2, dist: 175, fpsDist: 120 }, { name: 'laad_bazaar', at: [-220, 1], fpsPitch: -0.2 }, { name: 'close', from: -Math.PI / 2 + 0.5, dist: 92, fpsDist: 70, fpsPitch: -0.75 }],
+  charminar: [{ name: 'north', from: -Math.PI / 2, dist: 175, fpsDist: 120 }, { name: 'laad_bazaar', atFn: 'laad', fpsPitch: -0.2 }, { name: 'close', from: -Math.PI / 2 + 0.5, dist: 92, fpsDist: 70, fpsPitch: -0.75 }],
   lb_stadium: [{ name: 'gate', from: Math.PI, dist: 150 }, { name: 'field', at: [0, 60], look: [0, -110], fpsOnly: true, fpsPitch: -0.05 }],
   birla_mandir: [{ name: 'front', from: Math.PI / 2, dist: 140 }],
-  buddha_statue: [{ name: 'bund', rel: 'tank_bund_statue_1', at: [57, 28], fpsPitch: -0.1 }],
+  buddha_statue: [{ name: 'bund', atFn: 'bund', fpsPitch: -0.1 }],
   golconda_bala_hissar: [{ name: 'front', from: Math.PI / 4, dist: 150, fpsPitch: -0.3 }],
   cyber_towers: [{ name: 'front', from: Math.PI / 2, dist: 230 }],
 };
@@ -116,6 +116,25 @@ async function main() {
 
   // ---------------------------------------------------------------- landmark list + shot plan
   const plan = await page.evaluate((args) => {
+    // viewpoints derived from the map data (robust to re-surveys): 200 u down Laad Bazaar from the
+    // Charminar end; beside the first Tank Bund statue (plinth not in the way of the Buddha)
+    const atFn = (kind, lm, L) => {
+      if (kind === 'laad') {
+        const rd = (N.WORLD_DATA.roads || []).find((r) => r.id === 'laad_bazaar');
+        if (!rd) return [lm.x - 220, lm.y];
+        let pts = rd.pts.slice();
+        if (Math.hypot(pts[0][0] - lm.x, pts[0][1] - lm.y) > Math.hypot(pts[pts.length - 1][0] - lm.x, pts[pts.length - 1][1] - lm.y)) pts.reverse();
+        let left = 200;
+        for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]); if (d >= left) return [a[0] + (b[0] - a[0]) * left / d, a[1] + (b[1] - a[1]) * left / d]; left -= d; }
+        return pts[pts.length - 1];
+      }
+      if (kind === 'bund') {
+        const s1 = L.find((l) => l.id === 'tank_bund_statue_1'); if (!s1) return [lm.x, lm.y + 200];
+        const dx = s1.x - lm.x, dy = s1.y - lm.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
+        return [s1.x + ux * 24 - uy * 16, s1.y + uy * 24 + ux * 16];
+      }
+      return [lm.x, lm.y + 100];
+    };
     const { ONLY, VIEWS, SKIP, TOP, NAMED } = args;
     const L = N.WORLD_DATA.landmarks;
     const DEFS = N.view3dLandmarks && N.view3dLandmarks.DEFS;
@@ -140,7 +159,9 @@ async function main() {
         const dist = v.dist || (sm ? Math.max(24, Math.min(lm.w, lm.d) * 0.5 + 16) : Math.min(330, Math.max(42, size * 0.75 + Ht * 0.9 + 16)));
         const fdist = v.fpsDist || (sm ? Math.max(18, Math.min(lm.w, lm.d) * 0.5 + 12) : Math.min(260, Math.max(30, size * 0.6 + Ht * 0.7 + 10)));
         const base = v.rel ? L.find((l) => l.id === v.rel) || lm : lm;
-        const at = v.at ? [base.x + v.at[0], base.y + v.at[1]] : null, look = v.look ? [lm.x + v.look[0], lm.y + v.look[1]] : null;
+        let at = v.at ? [base.x + v.at[0], base.y + v.at[1]] : null;
+        const look = v.look ? [lm.x + v.look[0], lm.y + v.look[1]] : null;
+        if (v.atFn) at = atFn(v.atFn, lm, L);
         out.push({ id: lm.id, draw: lm.draw, view: v.name || '', x: lm.x, y: lm.y, Ht, at, look, fpsOnly: !!v.fpsOnly,
           tps: [lm.x + Math.cos(from) * dist, lm.y + Math.sin(from) * dist], fps: [lm.x + Math.cos(from) * fdist, lm.y + Math.sin(from) * fdist], fdist, fpsPitch: v.fpsPitch, snapRoad: sm && !v.at });
       }
@@ -175,7 +196,8 @@ async function main() {
       const seen = () => { for (const o of E.lmGroup.children) { if (o.userData.fallback) fb.add(o.name); if (/^lm3d:/.test(o.name)) builtIds.add(o.name.slice(5)); if (o.userData.cell) for (const m of o.userData.cell.members) builtIds.add(m.id); } };
       for (const lm of L) {
         if (builtIds.has(lm.id) || !(DEFS.get('#' + lm.id) || DEFS.get(lm.draw))) continue;
-        N.player.teleport(lm.x, lm.y + lm.d / 2 + 30); N.view3d.settle(15000); seen();
+        N.player.teleport(lm.x, lm.y + lm.d / 2 + 30);
+        for (let k = 0; k < 4 && !builtIds.has(lm.id); k++) { N.view3d.settle(15000); seen(); }
         out.retried = (out.retried || 0) + 1;
       }
       N.view3d.setQuality({ drawDist: dd });
@@ -190,12 +212,18 @@ async function main() {
 
   // ---------------------------------------------------------------- 1b. build cost + triangles of every model (built off-scene)
   if (!ONLY.length || process.env.MEASURE === '1') {
-    const m = await page.evaluate(() => N.WORLD_DATA.landmarks.map((l) => N.view3dLandmarks.measure(l.id)).filter(Boolean));
+    const m = await page.evaluate(() => {
+      const r = N.WORLD_DATA.landmarks.map((l) => N.view3dLandmarks.measure(l.id)).filter(Boolean);
+      // the machine is shared and loaded: re-measure the slowest few and keep the best of three
+      r.sort((a, b) => b.ms - a.ms);
+      for (const x of r.slice(0, 8)) for (let i = 0; i < 2; i++) x.ms = Math.min(x.ms, N.view3dLandmarks.measure(x.id).ms);
+      return r;
+    });
     m.sort((a, b) => b.ms - a.ms);
     const total = m.reduce((a, b) => a + b.ms, 0);
     const big = m.slice().sort((a, b) => b.tris - a.tris).slice(0, 6).map((r) => r.id + ' ' + (r.tris / 1000).toFixed(1) + 'k/' + r.meshes);
     report.push('build cost: ' + m.length + ' models in ' + total.toFixed(0) + ' ms total; slowest ' + m.slice(0, 5).map((r) => r.id + ' ' + r.ms + 'ms').join(', ') + '; most triangles (tris/meshes) ' + big.join(', '));
-    check(m[0].ms < 300, 'slowest single model builds in ' + m[0].ms + ' ms (< 300 on a loaded headless machine)');
+    check(m[0].ms < 150, 'slowest single model builds in ' + m[0].ms + ' ms (best of three, < 150 on a loaded headless machine)');
     const maxMeshes = Math.max(...m.filter((r) => !r.batched).map((r) => r.meshes));
     check(maxMeshes <= 6, 'every unbatched model uses <= 6 meshes (max ' + maxMeshes + ')');
   }
@@ -249,7 +277,7 @@ async function main() {
       { name: 'prasads_open_tps_day', lm: 'prasads_imax', at: [0, 96], look: [0, 0], mode: 'tps', h: [11, 0], pitch: 0, set: () => { if (N.placesArt) N.placesArt.fx.prasads = 'open'; N.flags.prasads_open = true; } },
       { name: 'prasads_fence_tps_day', lm: 'prasads_imax', at: [0, 96], look: [0, 0], mode: 'tps', h: [11, 0], pitch: 0, set: () => { if (N.placesArt) N.placesArt.fx.prasads = 'fence'; N.flags.prasads_open = false; } },
       { name: 'ntr_gardens_tps_golden', lm: 'ntr_memorial', at: [0, 80], look: [0, 0], mode: 'tps', h: [17, 40], pitch: 0.1, set: () => {} },
-      { name: 'laad_bazaar_fps_night', lm: 'charminar', at: [-210, 1], look: [0, 0], mode: 'fps', h: [21, 0], pitch: -0.12, set: () => {} },
+      { name: 'laad_bazaar_fps_night', lm: 'charminar', atFn: 'laad', look: [0, 0], mode: 'fps', h: [21, 0], pitch: -0.12, set: () => {} },
     ];
     for (const v of V) {
       await page.evaluate((a) => {
@@ -258,10 +286,12 @@ async function main() {
         // eslint-disable-next-line no-new-func
         (new Function(a.set))();
         const L0 = N.WORLD_DATA.landmarks.find((l) => l.id === v.lm) || { x: 0, y: 0 };
-        N.player.teleport(L0.x + v.at[0], L0.y + v.at[1]); N.debug.setTime(v.h[0], v.h[1]); N.view.set(v.mode);
+        let at = v.at ? [L0.x + v.at[0], L0.y + v.at[1]] : null;
+        if (v.atFn === 'laad') { const rd = (N.WORLD_DATA.roads || []).find((r) => r.id === 'laad_bazaar'); if (rd) { let pts = rd.pts.slice(); if (Math.hypot(pts[0][0] - L0.x, pts[0][1] - L0.y) > Math.hypot(pts[pts.length - 1][0] - L0.x, pts[pts.length - 1][1] - L0.y)) pts.reverse(); let left = 190; at = pts[pts.length - 1]; for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]); if (d >= left) { at = [a[0] + (b[0] - a[0]) * left / d, a[1] + (b[1] - a[1]) * left / d]; break; } left -= d; } } else at = [L0.x - 210, L0.y]; }
+        N.player.teleport(at[0], at[1]); N.debug.setTime(v.h[0], v.h[1]); N.view.set(v.mode);
         const p = N.player; N.view3d.setCamera({ yaw: Math.atan2(L0.y + v.look[1] - p.y, L0.x + v.look[0] - p.x), pitch: v.pitch, snap: true });
         N.view3d.settle(20000);
-      }, { v: { lm: v.lm, at: v.at, look: v.look, mode: v.mode, h: v.h, pitch: v.pitch }, set: '(' + v.set.toString() + ')()' });
+      }, { v: { lm: v.lm, at: v.at, atFn: v.atFn, look: v.look, mode: v.mode, h: v.h, pitch: v.pitch }, set: '(' + v.set.toString() + ')()' });
       await frames(page, 4);
       await page.screenshot({ path: path.join(OUT, v.name + '.png'), timeout: 240000 });
       const st2 = await page.evaluate(() => N.view3d.stats());

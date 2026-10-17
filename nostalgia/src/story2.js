@@ -729,8 +729,10 @@
       try {
         pr = o.drive && N.npcs.driveTo ? N.npcs.driveTo(key, tgt, { speed, r: 30 }) : N.npcs.walkTo(key, tgt, { speed, r: 12 });
       } catch (e) { pr = Promise.resolve(false); }
-      pr.then((ok) => { tok.done = true; if (job === tok) { job = null; if (ok) { i++; fails = 0; } else tok.fail = true; } }, () => { tok.done = true; });
+      pr.then((ok) => { tok.done = true; if (job === tok) { job = null; if (ok) { i++; fails = 0; } else fails++; } }, () => { tok.done = true; if (job === tok) { job = null; fails++; } });
+      stall = { x: (pos() || tgt).x, y: (pos() || tgt).y, t: nowT() };
     };
+    let stall = null;
     while (i < pts.length) {
       const t = nowT(), dt = Math.min(0.5, t - last); last = t;
       const a = pos();
@@ -745,9 +747,14 @@
         if (warned) { warned = false; if (label) { try { N.hud.objective(label); } catch (e) { /* ignore */ } } }
         far = 0;
         if (!job) {
-          if (fails >= 3) { const q = pts[i], f = free(q.x, q.y, o.drive ? 'drive' : 'walk'); a.x = f.x; a.y = f.y; i++; fails = 0; continue; }
+          // three failed or stalled legs: the crowd carries them on to the next point (the procession never stops for good)
+          if (fails >= 3) { const q = pts[i], f = free(q.x, q.y, o.drive ? 'drive' : 'walk'); a.x = f.x; a.y = f.y; if ('vx' in a) { a.vx = a.vy = 0; } i++; fails = 0; continue; }
           go();
-        } else if (job.fail) { fails++; job = null; }
+        } else if (stall) {
+          // a leg that makes no headway for 6 s (a jam, a wall the path never saw) counts as a failed leg
+          if (Math.hypot(a.x - stall.x, a.y - stall.y) > 6) stall = { x: a.x, y: a.y, t: nowT() };
+          else if (nowT() - stall.t > 6) { stopNpc(key); job = null; fails++; stall = null; }
+        }
       }
       if (o.onStep) {
         let done = 0; for (let k = 0; k < i; k++) done += segLen[k];
@@ -3282,7 +3289,13 @@
     /** Test aid: move the player (and the vehicle he rides) to a walkable point near (x, y). */
     tp(x, y) {
       const p = N.player, v = p.vehicle;
-      if (v) { const f = free(x, y, v.T && v.T.mode === 'boat' ? 'boat' : 'drive', 30); v.x = f.x; v.y = f.y; v.vx = v.vy = 0; v.speed = 0; v.okX = null; p.x = f.x; p.y = f.y; return f; }
+      if (v) {
+        const f = free(x, y, v.T && v.T.mode === 'boat' ? 'boat' : 'drive', 30);
+        // a target off the road (a statue on the bund footpath): get off and go on foot, unless he must stay on board
+        if (Math.hypot(f.x - x, f.y - y) > 40 && v.passenger !== p && !v.lockPassenger && !(v.T && v.T.mode === 'boat') && N.vehicles && has(N.vehicles, 'exit')) { try { N.vehicles.exit(p, true); } catch (e) { /* ignore */ } }
+        else { v.x = f.x; v.y = f.y; v.vx = v.vy = 0; v.speed = 0; v.okX = null; p.x = f.x; p.y = f.y; return f; }
+      }
+      if (p.vehicle) return { x: p.x, y: p.y };
       const f = free(x, y, 'walk', 30); p.teleport(f.x, f.y); return { x: p.x, y: p.y };
     },
     state() {

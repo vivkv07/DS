@@ -10,6 +10,15 @@
  *    vertex shader (bone-less part rotation about hip / knee / shoulder / elbow pivots). Walk, run,
  *    stand, sit (benches), knocked down, sitting up, waving (constables), carrying on the head,
  *    and riding poses solved with 2-bone IK onto each vehicle's grips, pedals and foot boards.
+ *    Gait (feedback_3d.md #2): a procedural planted-foot walk / run — each leg's flat foot moves
+ *    backwards relative to the hip at exactly the body's speed while in stance (no sliding), rolls
+ *    heel -> toe through an ankle joint (feet are their own parts, ankle angles packed in J[15]),
+ *    swings forward with lift (heel kick when running); the cadence follows from stride and speed
+ *    (stride capped by the leg's reach), the hip rides on the stance leg (pendulum bob walking,
+ *    compression + ballistic flight running), legs by IK; arms counter-swing, run lean; standing
+ *    still blends into a relaxed stance with breathing, weight shift and glances; turning on the
+ *    spot steps; getting on / off a vehicle blends seat <-> standing beside it. Timing follows the
+ *    simulation clock (slow motion / pause freeze it with the game). Contact shadows under the feet.
  *    Two LODs (near / far), instanced: all people are 2 draw calls (+ shadows).
  *  - VEHICLES: a model per type of vehicles.js / traffic.js (cycle, ladies cycle, Hero roadster,
  *    Hercules, kid cycle, Scooty, Luna, Chetak, RX100, auto-rickshaw, Ambassador, Maruti 800,
@@ -18,7 +27,9 @@
  *    kind), leaning two-wheelers, pothole jolts, head / tail / brake lamps, beacons, light pools on
  *    the road and glow points at night, real point lights for the nearest lamps, painted decals from
  *    one atlas (HORN OK PLEASE, USE DIPPER AT NIGHT, CITY BUS, route boards, number plates), the
- *    rider / driver / pillion / passenger visible where the vehicle is open, and first-person
+ *    rider / driver / pillion / passenger visible where the vehicle is open (cars, bus and lorry
+ *    cabs have translucent fresnel glass: a second instanced draw of the glass triangles sharing the
+ *    pool's instance buffers, so drivers show through), and first-person
  *    cockpits (car / bus / lorry interiors with the steering wheel and hands; handlebar + hands on
  *    two-wheelers and autos come from the vehicle model itself).
  *  - ANIMALS: cows (standing, ambling, lying on the road chewing), stray dogs (napping, trotting),
@@ -504,6 +515,20 @@
       }
       (this.o.parent || ROOT).add(m);
       this.mesh = m; this.A = A; this.M = m.instanceMatrix.array; this.cap = cap;
+      // a second draw of the same instances with another index + material (vehicle glass)
+      if (this.o.glassIndex && this.o.glassMat) {
+        if (this.glass) { if (this.glass.parent) this.glass.parent.remove(this.glass); this.glass.geometry.dispose(); }
+        const g2 = new THREE.BufferGeometry();
+        for (const k in this.base.attributes) g2.setAttribute(k, this.base.attributes[k]);
+        for (const k in A) g2.setAttribute(k, A[k]);
+        g2.setIndex(this.o.glassIndex);
+        g2.boundingSphere = g.boundingSphere;
+        const m2 = new THREE.InstancedMesh(g2, this.o.glassMat, cap);
+        m2.instanceMatrix = m.instanceMatrix;
+        m2.frustumCulled = false; m2.count = 0; m2.name = 'actors:' + this.name + ':glass'; m2.renderOrder = 2;
+        (this.o.parent || ROOT).add(m2);
+        this.glass = m2;
+      }
     }
     /** next instance index (-1 when full) */
     add() {
@@ -514,6 +539,7 @@
       const m = this.mesh, n = this.n;
       m.count = n;
       m.visible = n > 0;
+      if (this.glass) { this.glass.count = n; this.glass.visible = n > 0 && !OPT.opaqueGlass; }
       if (n) {
         const im = m.instanceMatrix; im.needsUpdate = true; im.updateRange.offset = 0; im.updateRange.count = n * 16;
         for (const k in this.A) { const a = this.A[k]; a.needsUpdate = true; a.updateRange.offset = 0; a.updateRange.count = n * this.attrs[k]; }
@@ -950,23 +976,6 @@
   }
   /** lift / drop the whole body so the lowest foot touches the ground */
   function ground(j) { j[11] = -Math.min(soleMin(j[0], j[2]), soleMin(j[1], j[3])); return j; }
-  /** walk / run cycle with the hip swing amplitude amp (rad); left leg forward at phase PI/2 */
-  function poseGait(j, phase, amp, run, wrapK) {
-    j[12] = j[13] = j[14] = j[15] = 0;
-    const s = Math.sin(phase), c = Math.cos(phase);
-    const a = amp * (wrapK || 1), g = clamp(amp / 0.6, 0, 1.4);
-    j[0] = s * a; j[1] = -s * a;
-    // the knee folds while its leg swings forward (and a little at landing)
-    const kb = run ? 1.0 + 0.7 * g : 0.25 + 0.75 * g;
-    j[2] = -kb * Math.pow(Math.max(0, c), 1.3) - 0.05 * g; j[3] = -kb * Math.pow(Math.max(0, -c), 1.3) - 0.05 * g;
-    const aamp = a * (run ? 1.05 : 0.85);
-    j[4] = -s * aamp; j[5] = s * aamp;
-    j[6] = j[7] = run ? 1.25 + 0.15 * g : 0.15 + 0.25 * g;
-    j[8] = j[9] = 0.07 + 0.04 * g;
-    j[10] = run ? 0.12 + 0.12 * Math.min(1, g) : 0.03 * g;
-    return ground(j);
-  }
-  function poseWalk(j, phase, spd, run, wrapK) { return poseGait(j, phase, clamp(spd, 0, 1) * (run ? 0.85 : 0.55), run, wrapK); }
   /** 2-bone IK in the sagittal plane: root at (rx, ry), target (tx, ty), bones a, b; bend +1 knee-forward / -1 elbow-back */
   function ik2(rx, ry, tx, ty, a, b, bend, out, oi) {
     let dx = tx - rx, dy = ty - ry;
@@ -1053,9 +1062,12 @@
     } else {
       const s = (u - P.beta) / (1 - P.beta);
       rollFoot(-X, -P.thT, F0); rollFoot(X, P.thH, F1);
-      // running: the heel kicks up behind first, then the knee drives the foot forward
-      const e = P.run ? (1 - Math.cos(Math.PI * Math.pow(s, 1.35))) / 2 : (1 - Math.cos(Math.PI * s)) / 2;
-      out.ax = F0.ax + (F1.ax - F0.ax) * e;
+      // Hermite swing whose end tangents equal the stance speed: the foot leaves and meets the
+      // ground moving with it (no skid at toe-off / heel strike), overshooting behind (heel kick)
+      // and in front (reach) before it retracts onto the ground
+      const m = -2 * X * (1 - P.beta) / P.beta, s2 = s * s, s3 = s2 * s;
+      const e = (1 - Math.cos(Math.PI * s)) / 2;
+      out.ax = (2 * s3 - 3 * s2 + 1) * F0.ax + (s3 - 2 * s2 + s) * m + (-2 * s3 + 3 * s2) * F1.ax + (s3 - s2) * m;
       out.ay = F0.ay + (F1.ay - F0.ay) * s + P.lift * Math.sin(Math.PI * (P.run ? Math.pow(s, 0.7) : s));
       out.th = F0.th + (F1.th - F0.th) * e + (P.run ? -0.35 * Math.sin(Math.PI * s) : 0);
       out.c = 0; out.s = s;
@@ -1077,7 +1089,9 @@
     if (FA.c || FB.c) hy = Math.min(FA.c ? hipFor(FA, P) : 99, FB.c ? hipFor(FB, P) : 99);
     else { // flight: from the push-off height to the landing height, a ballistic arc
       const h2 = ph * 2 - Math.floor(ph * 2), q = clamp((h2 * 0.5 - P.beta) / Math.max(0.01, 0.5 - P.beta), 0, 1);
-      const a = hipFor(rollFoot(-P.X, -P.thT, F0), (F0.s = 1, P)), b = hipFor(rollFoot(P.X, P.thH, F1), (F1.s = 0, P));
+      rollFoot(-P.X, -P.thT, F0); F0.s = 1; // the foot that pushed off, at the end of its stance
+      rollFoot(P.X, P.thH, F1); F1.s = 0;   // the foot about to land
+      const a = hipFor(F0, P), b = hipFor(F1, P);
       hy = a + (b - a) * q + 4 * P.bump * q * (1 - q);
     }
     const bob = hy - HIP_Y;
@@ -1163,7 +1177,10 @@
     ca[k] = s.c[0]; ca[k + 1] = s.c[1]; ca[k + 2] = s.c[2]; ca[k + 3] = s.c[3];
     cb[k] = s.c[4]; cb[k + 1] = s.c[5]; cb[k + 2] = s.c[6]; cb[k + 3] = s.c[7];
     if (pool === PEOPLE) ST.people++; else ST.peopleFar++;
-    if (BLOBS && !(o && o.noBlob)) blob(P3[0], P3[2], 5.5 * sc, 5.5 * sc, 0, P3[1]);
+    if (!(o && o.noBlob)) {
+      if (BLOBS) blob(P3[0], P3[2], 5.5 * sc, 5.5 * sc, 0, P3[1]);
+      else if (pool === PEOPLE && !(o && o.seated)) blob(P3[0], P3[2], 3.4 * sc, 3.0 * sc, 0, P3[1]); // contact shadow under the feet
+    }
     return i;
   }
   function initPeople() {
@@ -1216,7 +1233,16 @@
       .replace('#include <common>', '#include <common>\nvarying vec3 vEm;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vEm;');
   }
-  let VEH_MAT = null, WHEEL_MAT = null;
+  let VEH_MAT = null, WHEEL_MAT = null, GLASS_MAT = null;
+  /** vehicle glass: the vehicle shader, translucent with a fresnel rise towards grazing angles */
+  function glassCompile(shader) {
+    vehicleCompile(shader);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <output_fragment>', [
+      '{ vec3 vd = normalize(vViewPosition); float fr = 1.0 - abs(dot(normal, vd));',
+      '  diffuseColor.a = mix(0.34, 0.94, fr * fr); }',
+      '#include <output_fragment>',
+    ].join('\n'));
+  }
   const P1 = (b, k) => b.slot(VP).shade(k == null ? 1 : k);
   const P2 = (b, k) => b.slot(VP2).shade(k == null ? 1 : k);
   const FX = (b, hex) => b.slot(0).color(hex);
@@ -1255,12 +1281,27 @@
 
   const MODELS = {};
   function defModel(key, fn) { MODELS[key] = { key, fn, md: null }; }
+  /** move the glass triangles (slot VGLASS) of a vehicle geometry into their own index (drawn
+   *  translucent so drivers and passengers show through); returns that index or null */
+  function splitGlass(g) {
+    const sp = g.attributes.aSP.array, idx = g.index.array, keep = [], glass = [];
+    for (let i = 0; i < idx.length; i += 3) {
+      const a = idx[i], b = idx[i + 1], c = idx[i + 2];
+      const isG = Math.abs(sp[a * 3] - 6) < 0.5 && Math.abs(sp[b * 3] - 6) < 0.5 && Math.abs(sp[c * 3] - 6) < 0.5;
+      (isG ? glass : keep).push(a, b, c);
+    }
+    if (!glass.length) return null;
+    const big = g.attributes.position.count > 65535;
+    g.setIndex(big ? new THREE.Uint32BufferAttribute(keep, 1) : new THREE.Uint16BufferAttribute(keep, 1));
+    return big ? new THREE.Uint32BufferAttribute(glass, 1) : new THREE.Uint16BufferAttribute(glass, 1);
+  }
   function model(key) {
     const m = MODELS[key] || MODELS.ambassador;
     if (!m.md) {
       const b = new AB();
       const meta = m.fn(b) || {};
       meta.key = m.key; meta.geo = b.build(); meta.verts = b.count; meta.pool = null;
+      meta.glassIndex = splitGlass(meta.geo);
       meta.L = meta.L || 20; meta.W = meta.W || 8; meta.H = meta.H || 8;
       meta.wheels = meta.wheels || []; meta.seats = meta.seats || []; meta.lamps = meta.lamps || { head: [], tail: [] };
       meta.decals = meta.decals || [];
@@ -1496,7 +1537,7 @@
     FX(b, '#141214').box(4.9, 6.0, -4.7, 5.6, 8.3, -3.9); FX(b, '#c03030').box(5.0, 8.3, -4.5, 5.4, 9.2, -4.2);
     b.slot(VLIT).color('#ffc070').box(5.55, 6.9, -4.55, 5.62, 7.4, -4.05);
     FX(b, BLACK); for (const p of [[6.6, -5.55], [6.6, 5.55], [-10.6, -5.75], [-10.6, 5.75]]) b.tube([p[0], 4.0, p[1]], [p[0] + (p[0] > 0 ? 0.25 : 0), 10.75, p[1] * 1.02], 0.17, 5);
-    P1(b).sweep([[-11.4, 10.55], [7.25, 10.55], [7.85, 10.95], [7.35, 11.45], [5.4, 11.85], [-9.4, 11.95], [-11.2, 11.6], [-11.95, 11.0]], 6.55, 1.0);
+    P1(b).sweep([[-11.4, 10.55], [7.2, 10.55], [7.8, 10.9], [7.8, 11.3], [5.6, 11.85], [-9.4, 11.95], [-11.2, 11.6], [-11.85, 11.0]], 6.55, 0.45);
     P2(b).box(-10.6, 11.9, -0.8, 5.6, 12.02, 0.8);
     P2(b).box(-11.4, 10.55, -6.62, 7.0, 10.75, -6.4).box(-11.4, 10.55, 6.4, 7.0, 10.75, 6.62);
     for (const s of [-1, 1]) P1(b).box(-10.6, 9.35, s > 0 ? 6.4 : -6.52, 5.6, 10.6, s > 0 ? 6.52 : -6.4);
@@ -2023,7 +2064,7 @@
     return k;
   }
   function vpool(md) {
-    if (!md.pool) md.pool = new Pool('veh:' + md.key, md.geo, VEH_MAT, 8, { iVA: 4, iVB: 4 }, { cast: true, max: 512 });
+    if (!md.pool) md.pool = new Pool('veh:' + md.key, md.geo, VEH_MAT, 8, { iVA: 4, iVB: 4 }, { cast: true, max: 512, glassIndex: md.glassIndex, glassMat: GLASS_MAT });
     return md.pool;
   }
   const A0 = [0, 0], A1 = [0, 0];
@@ -2430,7 +2471,7 @@
   function seedOf(e) { return e === N.player ? 7 : (e.id | 0) || 1; }
   // getting on / off a vehicle: a short blend between standing beside it and the seat
   const MOUNT = new WeakMap();
-  const nowS = () => performance.now() / 1000;
+  const nowS = () => (N.time && N.time.now) || 0; // simulation seconds (pauses / slow motion with the game)
   const MOUNT_S = 0.4;
   N.on('vehicle:enter', (d) => { if (d && d.actor && d.vehicle) MOUNT.set(d.actor, { t0: nowS(), v: d.vehicle, on: true }); });
   N.on('vehicle:exit', (d) => {
@@ -2524,8 +2565,11 @@
       else if (e.lookTarget && isFinite(e.lookTarget.x)) tg = e.lookTarget;
       let rel;
       if (tg) rel = wrapA(Math.atan2(tg.y - y, tg.x - x) - st.yaw);
-      else if (isP && N.view && N.view.mode === 'tps') rel = wrapA(N.view.yaw - st.yaw) * 0.6;
-      else rel = idle ? Math.sin(t * 0.31 + seed * 1.3) * Math.max(0, Math.sin(t * 0.13 + seed)) * 0.7 : 0;
+      else {
+        rel = isP && N.view && N.view.mode === 'tps' ? wrapA(N.view.yaw - st.yaw) * 0.6 : 0;
+        // standing about: slow glances left and right
+        if (idle) rel += (Math.sin(t * 0.5 + seed * 1.3) * 0.42 + Math.sin(t * 0.21 + seed * 2.1) * 0.3) * (1 - st.gw);
+      }
       st.hy += (clamp(rel, -1.1, 1.1) - st.hy) * Math.min(1, dt * 5);
       J[12] = st.hy; J[13] = idle ? Math.sin(t * 0.45 + seed) * 0.05 : (st.v > 62 ? -0.08 : 0);
       J[14] = Math.sin(t * (st.v > 62 ? 5 : 1.7) + seed) * (st.v > 62 ? 0.05 : 0.04);
@@ -3165,6 +3209,9 @@
       ROOT = new THREE.Group(); ROOT.name = 'actors3d'; H.layer.add(ROOT);
       VEH_MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
       VEH_MAT.onBeforeCompile = vehicleCompile; VEH_MAT.customProgramCacheKey = () => 'nostalgia-vehicle';
+      GLASS_MAT = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, depthWrite: false });
+      GLASS_MAT.onBeforeCompile = glassCompile; GLASS_MAT.customProgramCacheKey = () => 'nostalgia-vehicle-glass';
+      GLASS_MAT.userData.shared = true;
       WHEEL_MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
       ANIMAL_MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
       ANIMAL_MAT.onBeforeCompile = animalCompileFactory(false); ANIMAL_MAT.customProgramCacheKey = () => 'nostalgia-animal';

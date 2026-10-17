@@ -88,6 +88,8 @@ async function errorsOf(page, errors) {
 }
 
 // offers the autopilot may take with a real E press (story steps only; never shops or random talks)
+// the missions that hand him a cycle / Scooty to ride (M8 parcel, M9 tiffin + race, SA6); elsewhere a parked one is scenery
+const RIDE_OK = /^(drums_for_amma|opening_day|bunty_races)/;
 const STORY_OFFER = /^(CLAP \(|Set the self|Drag Nanna|Nanna,|Look down|Leave the cake|Send Immu|Get in the boat|Board the bus|Ask about|▶ PLAY|● REC|Climb to the|Go up|Up to|Ride (Hero|Hercules|Scooty|BSA|cycle|Ladies))/;
 /** The autopilot: teleports to where the step wants the player, presses E (a real key) for story offers,
  *  ● REC prompts and cards, skips cutscenes (unless keepCut), lets autoplay minigames run. */
@@ -118,7 +120,7 @@ async function drive(page, done, o) {
     dlgT = 0;
     if (s.mode === 'play') {
       if (s.gallery) { await galleryKeys(page, s); continue; }
-      if (s.offer && STORY_OFFER.test(s.offer) && (!s.target || s.dist <= 44)) { await page.keyboard.press('KeyE'); await sleep(220); continue; }
+      if (s.offer && STORY_OFFER.test(s.offer) && (!s.target || s.dist <= 44) && (!/^Ride /.test(s.offer) || RIDE_OK.test(s.mission || ''))) { await page.keyboard.press('KeyE'); await sleep(220); continue; }
       if (s.target && s.dist > (o.near || 16)) { await page.evaluate(([x, y]) => N.story2.tp(x, y), [s.target.x, s.target.y]); await sleep(o.tpWait || 160); continue; }
       if (same > 40 && s.target) { await page.evaluate(([x, y]) => N.story2.tp(x + 6, y + 6), [s.target.x, s.target.y]); same = 0; }
     }

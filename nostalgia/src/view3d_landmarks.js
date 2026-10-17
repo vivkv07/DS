@@ -516,7 +516,7 @@
 
   /* ================================================================ registry */
   const DEFS = new Map();           // draw id or '#id' -> {fn, cls, lod, anim}
-  const CLS = { shop: [760, 470], cart: [430, 300], tiny: [520, 340], statue: [1100, 700], mid: [1400, 900] };
+  const CLS = { shop: [760, 470], cart: [430, 300], tiny: [520, 340], statue: [1100, 700], mid: [1400, 900], fort: [1700, 1100] };
   /** def('drawA drawB', fn(md, lm, D), {cls: 'shop'|'cart'|'tiny'|'statue' (batched), lod: 'mid', anim: true}) */
   function def(ids, fn, o) { for (const id of ids.split(/\s+/)) if (id) DEFS.set(id, Object.assign({ fn }, o || {})); }
   function defFor(lm) { return DEFS.get('#' + lm.id) || DEFS.get(lm.draw) || null; }
@@ -535,8 +535,10 @@
   /* built objects are kept (LRU) so coming back to an area re-uses their CPU-side geometry: on
    * dispose only the GPU buffers are freed (geometry.dispose()); three.js re-uploads on reuse */
   const OBJ_CACHE = new Map();
-  const OBJ_CACHE_MAX = 48;
+  const OBJ_CACHE_MAX = 40;
   function cacheKeep(key, obj) {
+    let idx = 0; obj.traverse((m) => { if (m.geometry && m.geometry.index) idx += m.geometry.index.count; });
+    if (idx < 9000) return; // only the heavier models (>= 3000 triangles) are worth keeping
     obj.traverse((m) => { if (m.geometry) m.geometry.userData.shared = true; });
     OBJ_CACHE.delete(key); OBJ_CACHE.set(key, obj);
     while (OBJ_CACHE.size > OBJ_CACHE_MAX) {
@@ -1989,27 +1991,42 @@
 
   /* ---------------------------------------------------------------- Golconda: walls, gates, Bala Hissar, tombs, baradari */
   const FORT = '#9a8a72', FORT_DK = '#857660', FORT_LT = '#b0a088';
+  let fortC = null;
   def('fort_wall', (md, lm) => {
-    const k = md.k, horiz = lm.w >= lm.d, L = horiz ? lm.w : lm.d, h = (lm.h || 28) * VS;
-    const walls = N.WORLD_DATA.landmarks.filter((l) => l.draw === 'fort_wall');
-    const fcx = walls.reduce((a, l) => a + l.x, 0) / walls.length, fcy = walls.reduce((a, l) => a + l.y, 0) / walls.length;
-    const out = horiz ? Math.sign(lm.y - fcy) || 1 : Math.sign(lm.x - fcx) || 1;
-    // frame: u along the wall, +v = outside
-    md.at(0, 0, horiz ? (out > 0 ? 0 : PI) : (out > 0 ? PI / 2 : -PI / 2));
-    const hl = L / 2, t = 5;
+    const k = md.k, horiz = lm.w >= lm.d, L = horiz ? lm.w : lm.d, T = horiz ? lm.d : lm.w, h = (lm.h || 28) * VS;
+    if (!fortC) {
+      const walls = N.WORLD_DATA.landmarks.filter((l) => l.draw === 'fort_wall');
+      fortC = [walls.reduce((a, l) => a + l.x, 0) / walls.length, walls.reduce((a, l) => a + l.y, 0) / walls.length];
+    }
+    const out = horiz ? Math.sign(lm.y - fortC[1]) || 1 : Math.sign(lm.x - fortC[0]) || 1;
+    // frame: u along the wall, +v = outside (relative to the frame the batch set up for this member)
+    const F = md.F, ox = F.ox, oz = F.oz, r0 = F.rot;
+    md.at(ox, oz, horiz ? (out > 0 ? 0 : PI) : (out > 0 ? PI / 2 : -PI / 2));
+    const hl = L / 2, t = Math.max(3, T / 2 - 1);
+    if (L <= T * 1.5) {
+      // a joint / corner: a round tower with merlons
+      k.c(FORT).fx(0, 0, FL_CIV * 0.6).cyl(0, 0, 0, T * 0.62, T * 0.55, h + 4, 14);
+      k.c(FORT_LT); for (let j = 0; j < 10; j++) { const a = (j / 10) * TAU; k.box(Math.cos(a) * T * 0.5 - 1, h + 4, Math.sin(a) * T * 0.5 - 1, Math.cos(a) * T * 0.5 + 1, h + 7.2, Math.sin(a) * T * 0.5 + 1); }
+      k.fx(0, 0, 0); md.at(ox, oz, r0);
+      return;
+    }
     k.c(FORT).fx(0, 0, FL_CIV * 0.6).box(-hl, 0, -t, hl, h, t);
     for (let y = 6; y < h - 3; y += 6) k.c(y % 12 ? FORT_DK : FORT_LT).box(-hl, y - 0.5, t, hl, y, t + 0.3, { top: false });
     k.c(FORT_LT).slab(-hl, t, hl, t, 1.2, cached('fw:crest:' + L, () => ext(crestShape(L, h, h + 1.2, 3.6, 2.6, 1.0, null), 1.2, 3)));
-    // semicircular bastions every ~70 u on the outside
-    const nb = Math.max(1, Math.round(L / 70));
-    for (let i = 0; i < nb; i++) {
-      const u = -hl + (i + 0.5) * (L / nb);
-      k.c(FORT).cyl(u, 0, t, 9, 8.2, h + 4, 16);
-      k.c(FORT_LT);
-      for (let j = 0; j < 12; j++) { const a = (j / 12) * PI, cu = u + Math.cos(a) * 7.8, cv = t + Math.sin(a) * 7.8; k.box(cu - 1, h + 4, cv - 1, cu + 1, h + 7.2, cv + 1); }
+    // semicircular bastions on the outside of the longer runs
+    if (L >= 40) {
+      const nb = Math.max(1, Math.round(L / 80));
+      for (let i = 0; i < nb; i++) {
+        const u = -hl + (i + 0.5) * (L / nb);
+        k.c(FORT).cyl(u, 0, t, 9, 8.2, h + 4, 16);
+        k.c(FORT_LT);
+        for (let j = 0; j < 12; j++) { const a = (j / 12) * PI, cu = u + Math.cos(a) * 7.8, cv = t + Math.sin(a) * 7.8; k.box(cu - 1, h + 4, cv - 1, cu + 1, h + 7.2, cv + 1); }
+      }
     }
     k.fx(0, 0, 0);
-  }, { anim: true });
+    md.at(ox, oz, r0);
+  }, { cls: 'fort' });
+  N.on('world:built', () => { fortC = null; });
   def('fort_gate', (md, lm, D) => {
     const k = md.k, L = Math.max(lm.w, lm.d), T = Math.min(lm.w, lm.d), h = (lm.h || 44) * VS, hl = L / 2;
     md.at(0, 0, lm.w >= lm.d ? 0 : PI / 2);
@@ -2240,18 +2257,18 @@
   }, { anim: true });
 
   /* ---------------------------------------------------------------- bus termini, MGBS, the Gowliguda hangar (+ parked APSRTC buses) */
+  // parked buses per terminus: [dx, dy (from the landmark centre), angle (deg), livery, route]
   const BUS_SLOTS = {
-    koti_bus_stand: [[4404, 3252, 0, 'city', '8A'], [4440, 3287, 180, 'city', '127K']],
-    rathifile_bus_station: [[5330, 1027, 0, 'city', '5K']],
-    mehdipatnam_bus_terminus: [[2205, 2748, 0, 'city', '49M'], [2269, 2748, 0, 'city', '219']],
-    imlibun_bus_station: [[4220, 3503, -90, 'express', 'KURNOOL'], [4248, 3503, -90, 'deluxe', 'WARANGAL'], [4352, 3503, -90, 'luxury', 'TIRUPATI'], [4380, 3503, -90, 'express', 'VIJAYAWADA']],
-    cbs_hangar: [[4232, 3328, 0, 'city', '9X'], [4268, 3364, 180, 'city', '65G']],
+    koti_bus_stand: [[-26, -10, 0, 'city', '8A'], [10, 25, 180, 'city', '127K']],
+    rathifile_bus_station: [[-13, -12, 0, 'city', '5K']],
+    mehdipatnam_bus_terminus: [[-30, -5, 0, 'city', '49M'], [34, -5, 0, 'city', '219']],
+    imlibun_bus_station: [[-80, 11, -90, 'express', 'KURNOOL'], [-52, 11, -90, 'deluxe', 'WARANGAL'], [52, 11, -90, 'luxury', 'TIRUPATI'], [80, 11, -90, 'express', 'VIJAYAWADA']],
+    cbs_hangar: [[-18, -18, 0, 'city', '9X'], [18, 18, 180, 'city', '65G']],
   };
   const LIVERY = { city: ['#b22b2b', '#d6d0c2'], express: ['#b22b2b', '#e8d070'], deluxe: ['#7a1a2a', '#efe6cf'], luxury: ['#e8ecf0', '#2a5cb8'] };
   function parkedBus(md, lm, b) {
-    if (Math.abs(b[0] - lm.x) > lm.w / 2 + 40 || Math.abs(b[1] - lm.y) > lm.d / 2 + 40) return; // the map moved: skip stale slots
     const L = LIVERY[b[3]] || LIVERY.city, a = (b[2] * PI) / 180, F = md.F, r0 = F.rot, ox = F.ox, oz = F.oz;
-    md.at(b[0] - lm.x + ox, b[1] - lm.y + oz, PI / 2 - (a + PI / 2));
+    md.at(b[0] + ox, b[1] + oz, -a);
     const k = md.k;
     // local: u along the bus (front at +u), v across
     k.c(L[0]).fx(0, 0, 0).box(-31, 2.2, -8.6, 31, 9, 8.6).box(-31, 15.6, -8.6, 31, 18.4, 8.6);

@@ -109,6 +109,24 @@
     }
     return best;
   }
+  /** project onto the polyline searching forward from segment k0 (s >= sMin): stops a few segments after
+   *  the first close hit, so chains of nodes along a long road stay O(n) */
+  function forwardProject(pts, cum, x, y, sMin, k0) {
+    let bs = sMin, bk = k0, bd = Infinity, hitAt = -1;
+    for (let k = k0; k < pts.length - 1; k++) {
+      const segL = cum[k + 1] - cum[k];
+      if (cum[k + 1] < sMin - 1e-6) continue;
+      if (segL < 1e-9) continue;
+      const a = pts[k], b = pts[k + 1], dx = b[0] - a[0], dy = b[1] - a[1];
+      const tmin = Math.max(0, (sMin - cum[k]) / segL);
+      const t = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / (segL * segL), tmin, 1);
+      const qx = a[0] + dx * t, qy = a[1] + dy * t, d2 = (x - qx) * (x - qx) + (y - qy) * (y - qy);
+      if (d2 < bd - 1e-9) { bd = d2; bs = cum[k] + segL * t; bk = k; }
+      if (bd < 400 && hitAt < 0) hitAt = k;
+      if (hitAt >= 0 && k > hitAt + 3) break;
+    }
+    return { s: bs, k: bk };
+  }
   function subLine(pts, cum, s0, s1) {
     const a = ptAt(pts, cum, s0), out = [[a[0], a[1]]];
     for (let k = 0; k < pts.length; k++) if (cum[k] > s0 + 0.05 && cum[k] < s1 - 0.05) out.push([pts[k][0], pts[k][1]]);
@@ -201,8 +219,11 @@
     return { c, age, wear: st.wear };
   }
 
+  const ANAMS = [];
   function analyze() {
     const t0 = now();
+    let tm = t0;
+    const lap = (i) => { const t = now(); ANAMS[i] = t - tm; tm = t; };
     const W = N.world, D = W.data, G = W.roads;
     NET.pieces = []; NET.juncs = []; NET.paths = []; NET.rails = []; NET.bays = []; NET.buckets = new Map(); NET.roadPieces = new Map();
     if (!W || !W.built || !D || !G) return;
@@ -238,13 +259,15 @@
         let ns = ch.nodes.map((id) => nodes[id]);
         let es = ch.edges.slice();
         const closed = ns.length > 2 && ns[0] === ns[ns.length - 1];
-        // arc length of each chain node along the road polyline (monotonic)
-        let s = [], sMin = 0;
+        // arc length of each chain node along the road polyline (monotonic, forward segment cursor)
+        const s = [];
+        let sMin = 0, kc = 0;
         for (let k = 0; k < ns.length; k++) {
           const last = k === ns.length - 1;
-          const q = projectOn(rp, rcum, ns[k].x, ns[k].y, last && closed ? Math.max(sMin, total - 1) : sMin, total);
-          const v = q ? q.s : sMin;
-          s.push(v); sMin = v;
+          const lo = last && closed ? Math.max(sMin, total - 1) : sMin;
+          if (last && closed) kc = Math.max(kc, segAt(rcum, lo));
+          const r2 = forwardProject(rp, rcum, ns[k].x, ns[k].y, lo, kc);
+          s.push(r2.s); sMin = r2.s; kc = r2.k;
         }
         // split at junction nodes; a closed loop starts at its first junction
         let cuts = [];
@@ -271,10 +294,14 @@
         }
       }
     }
+    lap(0);
     for (const J of NET.juncs) { try { junctionGeom(J); } catch (e) { N.err('ground.junction', e); J.bad = true; } }
     finishPieces();
+    lap(1);
     for (const J of NET.juncs) { try { junctionPoly(J); } catch (e) { N.err('ground.junctionPoly', e); } }
+    lap(2);
     zebras();
+    lap(3);
     // buckets
     for (const P of NET.pieces) { const bb = bboxOf(P.pts, P.hw + P.fp + 4); P.bb = bb; bucket('pieces', P, bb[0], bb[1], bb[2], bb[3]); }
     for (const J of NET.juncs) { if (!J.poly) continue; const bb = bboxOf(J.poly.concat(J.extraPts || []), 14); J.bb = bb; bucket('juncs', J, bb[0], bb[1], bb[2], bb[3]); }
@@ -288,7 +315,9 @@
       const pts = smoothLine(r.pts, 30), P = { pts, cum: cumOf(pts), hw: Math.max(6, (r.w || 14) / 2) };
       const bb = bboxOf(pts, P.hw + 2); bucket('rails', P, bb[0], bb[1], bb[2], bb[3]); NET.rails.push(P);
     }
+    lap(4);
     busBays();
+    lap(5);
     NET.built = true;
     NET.ms = Math.round((now() - t0) * 10) / 10;
   }
@@ -465,8 +494,21 @@
     }
     return false;
   }
+  function convex(p) {
+    let sg = 0;
+    for (let i = 0, n = p.length; i < n; i++) {
+      const a = p[i], b = p[(i + 1) % n], c = p[(i + 2) % n];
+      const cr = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+      if (Math.abs(cr) < 1e-7) continue;
+      const s = cr > 0 ? 1 : -1;
+      if (!sg) sg = s; else if (s !== sg) return false;
+    }
+    return true;
+  }
   function triangulate(pl) {
-    if (pl.length < 3 || Math.abs(polyArea(pl)) < 1 || selfIntersects(pl)) return null;
+    if (pl.length < 3 || Math.abs(polyArea(pl)) < 1) return null;
+    if (convex(pl)) { const t = []; for (let i = 1; i < pl.length - 1; i++) t.push([pl[0], pl[i], pl[i + 1]]); return t; }
+    if (selfIntersects(pl)) return null;
     let tris;
     try { tris = THREE.ShapeUtils.triangulateShape(pl.map((p) => new THREE.Vector2(p[0], p[1])), []); } catch (e) { return null; }
     if (!tris || !tris.length) return null;
@@ -516,7 +558,8 @@
     for (const lm of D.landmarks || []) {
       if (!lm || lm.draw !== 'bus_stop') continue;
       let best = null;
-      for (const P of NET.pieces) {
+      const bk = NET.buckets.get(bkey(Math.floor(lm.x / CHS), Math.floor(lm.y / CHS)));
+      for (const P of bk ? bk.pieces : []) {
         if (P.kind !== 'street' && P.kind !== 'arterial' && P.kind !== 'bund') continue;
         const bb = P.bb || bboxOf(P.pts, P.hw + P.fp + 20);
         if (lm.x < bb[0] - 30 || lm.x > bb[2] + 30 || lm.y < bb[1] - 30 || lm.y > bb[3] + 30) continue;
@@ -700,41 +743,63 @@
   }
 
   /* ================================================================ chunk road emission */
-  function emitChunkRoads(job) {
+  let EMIT_LOD = 0; // 1 = far chunk: no pothole dips, chamfers, back faces, shrubs, patches or bays
+  function roadsJob(job, deadline) {
     const B = job.B, b = job.bucket;
-    if (!b) return;
-    const W = N.world, PH = W.potholes;
-    // potholes + patches in this chunk (only potholes that sit on a ribbon are rendered)
-    const potsByPiece = new Map();
-    if (PH && PH.query) {
-      let list = [];
-      try { list = PH.query(B.x0 - 12, B.z0 - 12, B.x1 + 12, B.z1 + 12, []); } catch (e) { list = []; }
-      for (const p of list) {
-        if (!(p.x >= B.x0 - 12 && p.x <= B.x1 + 12 && p.y >= B.z0 - 12 && p.y <= B.z1 + 12)) continue;
-        const cand = NET.roadPieces.get(p.road) || b.pieces;
-        let best = null;
-        for (const P of cand) {
-          const q = projectOn(P.pts, P.cum, p.x, p.y, 0, P.L);
-          if (q && (!best || q.d2 < best.q.d2)) best = { P, q };
+    if (!b) return true;
+    if (!job.items) {
+      const W = N.world, PH = W.potholes;
+      job.potsByPiece = new Map();
+      // potholes in this chunk (only potholes that sit fully on a ribbon are rendered)
+      if (PH && PH.query && !job.lod) {
+        let list = [];
+        try { list = PH.query(B.x0 - 12, B.z0 - 12, B.x1 + 12, B.z1 + 12, []); } catch (e) { list = []; }
+        for (const p of list) {
+          if (!(p.x >= B.x0 - 12 && p.x <= B.x1 + 12 && p.y >= B.z0 - 12 && p.y <= B.z1 + 12)) continue;
+          const cand = NET.roadPieces.get(p.road) || b.pieces;
+          let best = null;
+          for (const P of cand) {
+            if (P.bb && (p.x < P.bb[0] || p.x > P.bb[2] || p.y < P.bb[1] || p.y > P.bb[3])) continue;
+            const q = projectOn(P.pts, P.cum, p.x, p.y, 0, P.L);
+            if (q && (!best || q.d2 < best.q.d2)) best = { P, q };
+          }
+          if (!best) continue;
+          const P = best.P, u = best.q.s, v = best.q.v, R = Math.max(p.rx, p.ry) * 1.05 + 0.6;
+          if (Math.abs(v) + R > P.hw - 0.3 || u - R < P.ends[0].trim + 1 || u + R > P.L - P.ends[1].trim - 1) continue;
+          let l = job.potsByPiece.get(P); if (!l) job.potsByPiece.set(P, (l = []));
+          l.push({ p, u, v, R });
+          job.pots.push(p);
         }
-        if (!best) continue;
-        const P = best.P, u = best.q.s, v = best.q.v, R = Math.max(p.rx, p.ry) * 1.05 + 0.6;
-        if (Math.abs(v) + R > P.hw - 0.3 || u - R < P.ends[0].trim + 1 || u + R > P.L - P.ends[1].trim - 1) continue;
-        let l = potsByPiece.get(P); if (!l) potsByPiece.set(P, (l = []));
-        l.push({ p, u, v, R });
-        job.pots.push(p);
       }
+      const it = [];
+      for (const J of b.juncs) it.push(0, J);
+      for (const P of b.pieces) it.push(1, P);
+      for (const P of b.paths) it.push(2, P);
+      for (const P of b.rails) it.push(3, P);
+      if (!job.lod) {
+        for (const bay of b.bays) it.push(4, bay);
+        if (PH && PH.queryPatches) { let pl = []; try { pl = PH.queryPatches(B.x0, B.z0, B.x1, B.z1, []); } catch (e) { pl = []; } for (const q of pl) it.push(5, q); }
+      }
+      job.items = it; job.ii = 0;
     }
-    for (const J of b.juncs) emitJunction(B, J);
-    for (const P of b.pieces) emitPiece(B, P, potsByPiece.get(P) || null);
-    for (const P of b.paths) emitPath(B, P);
-    for (const P of b.rails) emitRail(B, P);
-    for (const bay of b.bays) emitBay(B, bay);
-    if (PH && PH.queryPatches) {
-      let pl = [];
-      try { pl = PH.queryPatches(B.x0, B.z0, B.x1, B.z1, []); } catch (e) { pl = []; }
-      for (const q of pl) emitPatch(B, q, job.pots);
+    EMIT_LOD = job.lod;
+    const it = job.items;
+    while (job.ii < it.length) {
+      const k = it[job.ii], o = it[job.ii + 1];
+      job.ii += 2;
+      switch (k) {
+        case 0: emitJunction(B, o); break;
+        case 1: emitPiece(B, o, job.potsByPiece.get(o) || null); break;
+        case 2: emitPath(B, o); break;
+        case 3: emitRail(B, o); break;
+        case 4: emitBay(B, o); break;
+        case 5: emitPatch(B, o, job.pots); break;
+        default: break;
+      }
+      if ((job.ii & 7) === 0 && now() > deadline) { EMIT_LOD = 0; return false; }
     }
+    EMIT_LOD = 0;
+    return true;
   }
 
   const UP = [0, 1, 0];
@@ -919,22 +984,24 @@
     const kc = cst(linRGB(KERBCOL), LY.KERB, { p1: paint, age: 0.5 });
     const fc = cst(linRGB(FOOTCOL[kind] || FOOTCOL.street), LY.FOOT, { age: 0.5, g1: fp });
     const backC = cst(linRGB('#8f8574'), LY.CONC, { age: 0.6 });
-    const ch = 0.14;
+    const ch = EMIT_LOD ? 0 : 0.14; // far chunks: no chamfer
     const o = (f, v) => [f.x + f.nx * v * side, f.y + f.ny * v * side];
     const nx = -fa.nx * side, nz = -fa.ny * side; // kerb face normal points at the road
     // kerb face
-    let a = o(fa, hw), b = o(fb, hw);
+    const a = o(fa, hw), b = o(fb, hw);
     pv(a[0], Y_ROAD - 0.02, a[1], nx, 0, nz, ua, 0); pv(b[0], Y_ROAD - 0.02, b[1], nx, 0, nz, ub, 0);
     pv(b[0], kh - ch, b[1], nx, 0, nz, ub, 0.1); pv(a[0], kh - ch, a[1], nx, 0, nz, ua, 0.1);
     flush(B, kc);
-    // chamfer
-    let a2 = o(fa, hw + ch), b2 = o(fb, hw + ch);
-    pv(a[0], kh - ch, a[1], nx, 1, nz, ua, 0.1); pv(b[0], kh - ch, b[1], nx, 1, nz, ub, 0.1);
-    pv(b2[0], kh, b2[1], nx, 1, nz, ub, 0.2); pv(a2[0], kh, a2[1], nx, 1, nz, ua, 0.2);
-    flush(B, kc);
+    // chamfer (catches the light along the kerb edge)
+    const a2 = o(fa, hw + ch), b2 = o(fb, hw + ch);
+    if (ch > 0) {
+      pv(a[0], kh - ch, a[1], nx, 1, nz, ua, 0.1); pv(b[0], kh - ch, b[1], nx, 1, nz, ub, 0.1);
+      pv(b2[0], kh, b2[1], nx, 1, nz, ub, 0.2); pv(a2[0], kh, a2[1], nx, 1, nz, ua, 0.2);
+      flush(B, kc);
+    }
     // kerb band (top of the kerb stone)
     const kb = Math.min(0.9, fp * 0.2);
-    let a3 = o(fa, hw + kb), b3 = o(fb, hw + kb);
+    const a3 = o(fa, hw + kb), b3 = o(fb, hw + kb);
     pv(a2[0], kh, a2[1], 0, 1, 0, ua, 0.2); pv(b2[0], kh, b2[1], 0, 1, 0, ub, 0.2);
     pv(b3[0], kh, b3[1], 0, 1, 0, ub, 0.4); pv(a3[0], kh, a3[1], 0, 1, 0, ua, 0.4);
     flush(B, kc);
@@ -944,9 +1011,11 @@
     pv(b4[0], kh, b4[1], 0, 1, 0, ub, fp); pv(a4[0], kh, a4[1], 0, 1, 0, ua, fp);
     flush(B, fc);
     // back face (toward the plots)
-    pv(b4[0], 0, b4[1], -nx, 0, -nz, ub, 0); pv(a4[0], 0, a4[1], -nx, 0, -nz, ua, 0);
-    pv(a4[0], kh, a4[1], -nx, 0, -nz, ua, 0.2); pv(b4[0], kh, b4[1], -nx, 0, -nz, ub, 0.2);
-    flush(B, backC);
+    if (!EMIT_LOD) {
+      pv(b4[0], 0, b4[1], -nx, 0, -nz, ub, 0); pv(a4[0], 0, a4[1], -nx, 0, -nz, ua, 0);
+      pv(a4[0], kh, a4[1], -nx, 0, -nz, ua, 0.2); pv(b4[0], kh, b4[1], -nx, 0, -nz, ub, 0.2);
+      flush(B, backC);
+    }
     B.raise([a, b, b4, a4], kh);
   }
   /** end face of a footpath (dir -1: faces back along the piece, +1: forward) */
@@ -979,6 +1048,7 @@
     flush(B, tc);
     B.raise([[fa.x - fa.nx * m, fa.y - fa.ny * m], [fb.x - fb.nx * m, fb.y - fb.ny * m], [fb.x + fb.nx * m, fb.y + fb.ny * m], [fa.x + fa.nx * m, fa.y + fa.ny * m]], h);
     // shrubs (deterministic per 7 u cell along the piece)
+    if (EMIT_LOD) return;
     const s0 = Math.ceil(ua / 7), s1 = Math.floor(ub / 7);
     for (let k = s0; k <= s1; k++) {
       const h1 = hash1(P.id * 131 + 7, k);
@@ -1176,78 +1246,93 @@
     }
   }
 
-  /* ================================================================ terrain maps */
-  // surface weights: R grass, G paving, B sand, A water (BRIDGE counts as water: the river runs under)
-  function surfWeights(code, S) {
-    switch (code) {
-      case S.GRASS: return 0;
-      case S.PLAZA: return 1;
-      case S.SAND: return 2;
-      case S.WATER: case S.BRIDGE: return 3;
-      default: return -1;
+  /* ================================================================ terrain maps (resumable) */
+  // surface classes -> weights: R grass, G paving, B sand, A water (BRIDGE counts as water: the river
+  // runs under the deck). Samples sit on a (n + 2)^2 grid with a one-texel border, so the 1-2-1 blur and
+  // the texel centres on the chunk edges match the neighbour chunk exactly (no seams).
+  const SCLS = new Uint8Array(16);
+  function initCls() { const S = N.SURF; SCLS.fill(0); SCLS[S.GRASS] = 1; SCLS[S.PLAZA] = 2; SCLS[S.SAND] = 3; SCLS[S.WATER] = 4; SCLS[S.BRIDGE] = 4; }
+  function buildSurf(job, deadline) {
+    const ch = job.ch, n = job.sn, m = n + 2, step = CHS / (n - 1), W = N.world;
+    if (!job.cls) { job.cls = new Uint8Array(m * m); job.row = 0; initCls(); }
+    const cls = job.cls;
+    while (job.row < m) {
+      const j = job.row++, y = ch.y0 + (j - 1) * step, o = j * m;
+      for (let i = 0; i < m; i++) cls[o + i] = SCLS[W.surfaceAt(ch.x0 + (i - 1) * step, y) & 15];
+      if ((job.row & 7) === 0 && now() > deadline) return false;
     }
+    if (!job.surf) { job.surf = new Uint8Array(n * n * 4); job.brow = 0; }
+    const out = job.surf, acc = [0, 0, 0, 0, 0];
+    const WT = [1, 2, 1];
+    while (job.brow < n) {
+      const j = job.brow++;
+      for (let i = 0; i < n; i++) {
+        acc[0] = acc[1] = acc[2] = acc[3] = acc[4] = 0;
+        for (let dj = 0; dj < 3; dj++) { const r = (j + dj) * m + i, wj = WT[dj]; acc[cls[r]] += wj; acc[cls[r + 1]] += wj * 2; acc[cls[r + 2]] += wj; }
+        const o = (j * n + i) * 4;
+        out[o] = acc[1] * 16 - (acc[1] >> 4); out[o + 1] = acc[2] * 16 - (acc[2] >> 4); out[o + 2] = acc[3] * 16 - (acc[3] >> 4); out[o + 3] = acc[4] * 16 - (acc[4] >> 4);
+      }
+      if ((job.brow & 15) === 0 && now() > deadline) return false;
+    }
+    return true;
   }
-  function buildSurf(job) {
-    const ch = job.ch, n = SURF_N, m = n + 2, step = CHS / (n - 1), W = N.world, S = N.SURF;
-    const raw = new Float32Array(m * m * 4);
-    for (let j = 0; j < m; j++) {
-      const y = ch.y0 + (j - 1) * step;
-      for (let i = 0; i < m; i++) {
-        const k = surfWeights(W.surfaceAt(ch.x0 + (i - 1) * step, y), S);
-        if (k >= 0) raw[(j * m + i) * 4 + k] = 255;
+  /** fill a polygon on a grid with a scanline rule; set(i, j) per covered sample (x = gx0 + i * step) */
+  function scanPoly(poly, gx0, gy0, step, m, set) {
+    let y0 = Infinity, y1 = -Infinity;
+    for (const p of poly) { if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
+    const j0 = Math.max(0, Math.ceil((y0 - gy0) / step)), j1 = Math.min(m - 1, Math.floor((y1 - gy0) / step));
+    const xs = [];
+    for (let j = j0; j <= j1; j++) {
+      const y = gy0 + j * step;
+      xs.length = 0;
+      for (let k = 0, q = poly.length - 1; k < poly.length; q = k++) {
+        const a = poly[q], b = poly[k];
+        if ((a[1] > y) !== (b[1] > y)) xs.push(a[0] + (y - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
+      }
+      if (xs.length < 2) continue;
+      xs.sort((u, v) => u - v);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const i0 = Math.max(0, Math.ceil((xs[k] - gx0) / step)), i1 = Math.min(m - 1, Math.floor((xs[k + 1] - gx0) / step));
+        for (let i = i0; i <= i1; i++) set(i, j);
       }
     }
-    const out = new Uint8Array(n * n * 4);
-    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
-      const o = (j * n + i) * 4;
-      for (let c = 0; c < 4; c++) {
-        let s = 0;
-        for (let dj = 0; dj < 3; dj++) { const r = ((j + dj) * m + i) * 4 + c; s += raw[r] + raw[r + 4] * 2 + raw[r + 8]; if (dj === 1) s += raw[r] + raw[r + 4] * 2 + raw[r + 8]; }
-        out[o + c] = Math.round(s / 16);
-      }
-    }
-    job.surf = out;
   }
-  function buildTint(job) {
-    const ch = job.ch, n = TINT_N, m = n + 2, step = CHS / (n - 1), W = N.world, S = N.SURF;
-    const col = new Float32Array(m * m * 3), solid = new Float32Array(m * m);
-    const dcache = new Map();
+  function buildTint(job, deadline) {
+    const ch = job.ch, n = job.tn, m = n + 2, step = CHS / (n - 1), W = N.world, S = N.SURF;
+    if (!job.tcol) { job.tcol = new Float32Array(m * m * 3); job.tsol = new Float32Array(m * m); job.trow = 0; job.dcache = new Map(); }
+    const col = job.tcol, solid = job.tsol, dcache = job.dcache;
     const dcol = (d) => { let c = dcache.get(d); if (!c) { c = hexRGB((d && d.ground) || '#a98a66'); dcache.set(d, c); } return c; };
-    for (let j = 0; j < m; j++) {
-      const y = ch.y0 + (j - 1) * step;
+    while (job.trow < m) {
+      const j = job.trow++, y = ch.y0 + (j - 1) * step;
+      let lastD = undefined, c = null;
       for (let i = 0; i < m; i++) {
         const x = ch.x0 + (i - 1) * step, o = j * m + i;
-        let d = null; try { d = W.districtAt(x, y); } catch (e) { d = null; }
-        const c = dcol(d);
+        // districts change slowly: look up every 4th sample
+        if ((i & 3) === 0 || lastD === undefined) { let d = null; try { d = W.districtAt(x, y); } catch (e) { d = null; } if (d !== lastD) { lastD = d; c = dcol(d); } }
         col[o * 3] = c[0]; col[o * 3 + 1] = c[1]; col[o * 3 + 2] = c[2];
-        const s = W.surfaceAt(x, y);
-        solid[o] = s === S.SOLID ? 1 : s === S.ROCK ? 0.5 : 0;
+        const sv = W.surfaceAt(x, y);
+        solid[o] = sv === S.SOLID ? 1 : sv === S.ROCK ? 0.5 : 0;
       }
+      if ((job.trow & 7) === 0 && now() > deadline) return false;
     }
-    // maidans / rocky parks + yards
-    const paint = (x0, y0, x1, y1, c, test) => {
-      const i0 = Math.max(0, Math.ceil((x0 - ch.x0) / step) + 1), i1 = Math.min(m - 1, Math.floor((x1 - ch.x0) / step) + 1);
-      const j0 = Math.max(0, Math.ceil((y0 - ch.y0) / step) + 1), j1 = Math.min(m - 1, Math.floor((y1 - ch.y0) / step) + 1);
-      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-        if (test && !test(ch.x0 + (i - 1) * step, ch.y0 + (j - 1) * step)) continue;
-        const o = j * m + i; col[o * 3] = c[0]; col[o * 3 + 1] = c[1]; col[o * 3 + 2] = c[2];
-      }
-    };
-    const D = W.data, X1 = ch.x0 + CHS + step, Y1 = ch.y0 + CHS + step, X0 = ch.x0 - step, Y0 = ch.y0 - step;
+    const gx0 = ch.x0 - step, gy0 = ch.y0 - step;
+    const put = (c) => (i, j) => { const o = j * m + i; col[o * 3] = c[0]; col[o * 3 + 1] = c[1]; col[o * 3 + 2] = c[2]; };
+    const D = W.data, X1 = ch.x0 + CHS + step, Y1 = ch.y0 + CHS + step;
     for (const p of D.parks || []) {
       const c = PARKSOIL[p.kind];
       if (!c || !p.poly) continue;
-      const bb = p._bb || bboxOf(p.poly, 0);
-      if (bb[2] < X0 || bb[0] > X1 || bb[3] < Y0 || bb[1] > Y1) continue;
-      const rgb = hexRGB(c);
-      paint(bb[0], bb[1], bb[2], bb[3], rgb, (x, y) => N.util.pointInPoly(x, y, p.poly));
+      const bb = p._bb || (p._bb = bboxOf(p.poly, 0));
+      if (bb[2] < gx0 || bb[0] > X1 || bb[3] < gy0 || bb[1] > Y1) continue;
+      scanPoly(p.poly, gx0, gy0, step, m, put(hexRGB(c)));
     }
-    W.queryStructures(X0, Y0, X1, Y1, (s) => {
-      if (s.t !== 'bldg' || !s.yard || s.yard.lawn) return;
-      const yd = s.yard;
-      paint(yd.x + 1, yd.y + 1, yd.x + yd.w - 1, yd.y + yd.h - 1, hexRGB(yd.col || YARD), null);
+    W.queryStructures(gx0, gy0, X1, Y1, (sv) => {
+      if (sv.t !== 'bldg' || !sv.yard || sv.yard.lawn) return;
+      const yd = sv.yard, f = put(hexRGB(yd.col || YARD));
+      const i0 = Math.max(0, Math.ceil((yd.x + 1 - gx0) / step)), i1 = Math.min(m - 1, Math.floor((yd.x + yd.w - 1 - gx0) / step));
+      const j0 = Math.max(0, Math.ceil((yd.y + 1 - gy0) / step)), j1 = Math.min(m - 1, Math.floor((yd.y + yd.h - 1 - gy0) / step));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) f(i, j);
     });
-    // low tier: baked sun shadows (the core repaints when the quantised sun moves)
+    // low tier: baked sun shadows (the core flags the chunk when the quantised sun moves)
     let shadow = null;
     if (I && I.Q.baked && I.sunBake) shadow = bakeShadows(ch, m, step);
     const out = new Uint8Array(n * n * 4);
@@ -1264,6 +1349,7 @@
       out[o + 3] = Math.round(clamp(ao, 0, 1) * 255);
     }
     job.tint = out;
+    return true;
   }
   /** phones: sun shadows of buildings / walls / trees rasterised on the tint grid (2D paintShadows rules) */
   function bakeShadows(ch, m, step) {
@@ -1698,11 +1784,12 @@ if (ngShine > 0.01) {
 
   /* ================================================================ chunk jobs (provider) */
   const STATS = { built: 0, ms: 0, lastMs: 0, tris: 0, roadsRebuilt: 0 };
+  const STEPMS = []; // cumulative ms per job step: analyse, aux, surface, tint, roads, upload
   const curPot = () => { const PH = N.world && N.world.potholes; return PH && PH.version != null ? PH.version : 0; };
   function chunkBucket(ch) { return NET.buckets.get(bkey(ch.ci, ch.cj)) || null; }
-  function startJob(ch, roadsOnly) {
+  function startJob(ch, roadsOnly, lod) {
     const B = new RB(ch.x0, ch.y0);
-    return { ch, step: roadsOnly ? 3 : 0, B, bucket: null, pots: [], roadsOnly: !!roadsOnly, t: 0, potVer: curPot() };
+    return { ch, step: roadsOnly ? 3 : 0, B, bucket: null, pots: [], roadsOnly: !!roadsOnly, t: 0, potVer: curPot(), lod, sn: lod ? SURF_N / 2 : SURF_N, tn: lod ? TINT_N / 2 : TINT_N };
   }
   // shared terrain plane (one per chunk size; vUv as the core's ground plane for the aux texture)
   let PLANE = null;
@@ -1711,15 +1798,18 @@ if (ngShine > 0.01) {
     const t0 = now();
     try {
       while (job.step < 6) {
+        const ts = now();
+        const st0 = job.step;
         switch (job.step) {
           case 0: if (!NET.built) analyze(); job.step = 1; break;
           case 1: if (!ch.aux) I.buildAux(ch); job.step = 2; break;
-          case 2: buildSurf(job); job.step = 3; break;
-          case 3: if (!job.roadsOnly || !job.tint) buildTint(job); job.step = 4; break;
-          case 4: job.bucket = chunkBucket(ch); emitChunkRoads(job); job.step = 5; break;
+          case 2: if (buildSurf(job, deadline)) job.step = 3; break;
+          case 3: if (buildTint(job, deadline)) job.step = 4; break;
+          case 4: job.bucket = job.bucket || chunkBucket(ch); if (roadsJob(job, deadline)) job.step = 5; break;
           case 5: finishJob(job); job.step = 6; break;
           default: job.step = 6;
         }
+        STEPMS[st0] = (STEPMS[st0] || 0) + now() - ts;
         if (now() > deadline && job.step < 6) break;
       }
     } catch (e) {
@@ -1738,14 +1828,14 @@ if (ngShine > 0.01) {
         if (G.terrain) { ch.group.remove(G.terrain); G.terrain.material.dispose(); }
         if (G.surfTex) G.surfTex.dispose();
         if (G.tintTex && G.tintTex !== job.tintTex) G.tintTex.dispose();
-        job.surfTex = dataTex(job.surf, SURF_N, true);
-        job.tintTex = dataTex(job.tint, TINT_N, false);
+        job.surfTex = dataTex(job.surf, job.sn, true);
+        job.tintTex = dataTex(job.tint, job.tn, false);
         if (!PLANE) { PLANE = new THREE.PlaneGeometry(CHS, CHS, 1, 1); PLANE.rotateX(-Math.PI / 2); PLANE.translate(CHS / 2, 0, CHS / 2); PLANE.userData.shared = true; }
         const tm = new THREE.Mesh(PLANE, newTerrainMat(ch, job));
         tm.name = 'ground-terrain'; tm.receiveShadow = true; tm.matrixAutoUpdate = false; tm.updateMatrix(); tm.renderOrder = 2;
         G.terrain = tm; G.surfTex = job.surfTex; G.tintTex = job.tintTex;
         ch.group.add(tm);
-      } else if (job.tint && G.tintTex) {
+      } else if (job.tint && G.tintTex && G.tintTex.image.data.length === job.tint.length) {
         // low tier sun re-bake: refresh the tint in place
         G.tintTex.image.data.set(job.tint); G.tintTex.needsUpdate = true;
         job.tintTex = G.tintTex;
@@ -1763,7 +1853,7 @@ if (ngShine > 0.01) {
       G.pots = new Set(job.pots);
       try { I.E.renderer.initTexture(job.surfTex || G.surfTex); } catch (e) { /* uploaded on first draw */ }
     }
-    G.ready = true; G.potVer = job.potVer; G.sunKey = I.sunBake ? I.sunBake.key : ''; G.dirty = false;
+    G.ready = true; G.potVer = job.potVer; G.lod = job.lod; G.sunKey = I.sunBake ? I.sunBake.key : ''; G.dirty = false;
     ch.groundRes = Math.max(I.Q.groundHi || 1, 1); ch.groundStale = false;
     STATS.built++; STATS.lastMs = job.t; STATS.ms += job.t;
     G.job = null;
@@ -1846,6 +1936,15 @@ if (ngShine > 0.01) {
   }
 
   /* ================================================================ provider (view3d.js hook) */
+  // LOD: chunks near the focus get the full ground (2 u surface texels, kerb detail, pothole dips);
+  // far chunks a cheaper one (4 u texels, plain kerbs); downgrades wait for hysteresis (core rule)
+  function lodFor(G, d) {
+    const near = (I.Q.nearDist || 600) + 120;
+    if (d == null) return G && G.lod != null ? G.lod : 0;
+    if (G && G.ready && G.lod === 0 && d < near * 1.8) return 0;
+    return d < near ? 0 : 1;
+  }
+  const lodChange = (G, d) => G.ready && G.lod !== lodFor(G, d);
   const provider = {
     enabled: true,
     attach(internals) {
@@ -1863,20 +1962,21 @@ if (ngShine > 0.01) {
       }
       if (!G || !G.ready) return true;
       if (G.job) return true;
-      if (G.potVer !== curPot() || G.resun || G.dirty) return pass === 1;
+      if (G.potVer !== curPot() || G.resun || G.dirty || lodChange(G, d)) return pass === 1;
       return false;
     },
-    pending(ch) {
+    pending(ch, d) {
       if (!ch) return true;
       const G = ch.ng;
-      return !G || !G.ready || !!G.job || G.potVer !== curPot() || !!G.dirty;
+      return !G || !G.ready || !!G.job || G.potVer !== curPot() || !!G.dirty || (d != null && lodChange(G, d));
     },
     step(ch, d, deadline) {
       let G = ch.ng;
       if (!G) G = ch.ng = { ready: false };
       if (!G.job) {
-        const roadsOnly = G.ready && !!G.terrain && (G.potVer !== curPot() || G.resun || G.dirty);
-        G.job = startJob(ch, roadsOnly);
+        const lod = lodFor(G, d);
+        const roadsOnly = G.ready && !!G.terrain && G.lod === lod && (G.potVer !== curPot() || G.resun || G.dirty);
+        G.job = startJob(ch, roadsOnly, lod);
         if (roadsOnly) { G.job.step = G.resun ? 3 : 4; if (!G.resun) G.job.tint = null; }
         G.resun = false;
       }
@@ -1941,6 +2041,7 @@ if (ngShine > 0.01) {
         zebras: NET.pieces.reduce((a, P) => a + (P.ends[0].zebra ? 1 : 0) + (P.ends[1].zebra ? 1 : 0), 0), bays: NET.bays.length,
         chunks, roadTris: tris, textures: tex, built: STATS.built, avgChunkMs: STATS.built ? +(STATS.ms / STATS.built).toFixed(2) : 0, lastChunkMs: +STATS.lastMs.toFixed(2),
         wet: +(GU.uWet ? GU.uWet.value : 0).toFixed(2), potVer: curPot(),
+        stepMs: STEPMS.map((v) => +(v || 0).toFixed(1)), anaMs: ANAMS.map((v) => +(v || 0).toFixed(1)),
       };
     },
     /** debug: the analysed network (pieces, junctions) */

@@ -14,8 +14,12 @@
  *  - Districts may be polygons: `poly` ([[x, y], ...] or a list of rings) or `polys` ([{outer, holes}]
  *    or a list of rings); `rect` is the fallback. Rasterised on a 32 u lookup grid (later wins), small
  *    gaps between polygons go to the nearest district. N.world.districtLabel(d) -> [x, y].
- *  - Potholes (A2): deterministic per road segment, N.world.potholeAt(x, y) and N.world.potholes
- *    (see "Potholes" below and ARCHITECTURE §7 "Potholes").
+ *  - Map v2 data as tools/geo/build_worlddata.cjs writes it: district rect (bbox) + poly + polys + holes,
+ *    WORLD_DATA.districtGrid (the exact gap-free raster, used as is), road `pothole` hints.
+ *  - Potholes (A2): deterministic per road segment, generated off the boot path (a few ms per frame),
+ *    N.world.potholeAt(x, y) and N.world.potholes (see "Potholes" below and ARCHITECTURE §7 "Potholes").
+ *  - Build speed for the bigger world: road graph on a segment hash, LUT fills, lazy roof items / tree
+ *    canopies (Bldg / Tree classes), allocation-free nearest-road lookups; W.buildPhases / graphPhases.
  */
 (() => {
   'use strict';
@@ -636,7 +640,7 @@
 
   /** Nearest point on any road centre line: {x, y, dist, road, seg, t, angle}. */
   // Road segments bucketed on a 128u grid so nearest-road queries stay cheap.
-  const SG = 128;
+  const SG = 64;
   let segGrid = null;
   function buildSegGrid(roads) {
     segGrid = new Map();
@@ -1083,21 +1087,25 @@
     const style = STY[blk.style] ? blk.style : 'colony';
     const P = STY[style];
     const rng = U.rng((blk.seed || 1) * 7919 + bx * 13 + by);
+    // recursive halving into lots (an explicit stack, depth-first, first half first: same order and
+    // the same rng draws as the recursive version)
     const lots = [];
-    const split = (x, y, w, h, depth) => {
-      if ((w <= P.lotMax && h <= P.lotMax) || depth > 18) { lots.push([x, y, w, h]); return; }
+    const stack = [bx, by, bw, bh, 0];
+    const minS = P.lotMin;
+    while (stack.length) {
+      const depth = stack.pop(), h = stack.pop(), w = stack.pop(), y = stack.pop(), x = stack.pop();
+      if ((w <= P.lotMax && h <= P.lotMax) || depth > 18) { lots.push(x, y, w, h); continue; }
       const vert = w >= h; // cut perpendicular to the longer side
       const len = vert ? w : h;
       const lane = rng.next() < P.laneP ? P.lane : 0;
-      const minS = P.lotMin;
-      if (len < minS * 2 + lane) { lots.push([x, y, w, h]); return; }
+      if (len < minS * 2 + lane) { lots.push(x, y, w, h); continue; }
       const cut = minS + rng.next() * (len - minS * 2 - lane);
-      if (vert) { split(x, y, cut, h, depth + 1); split(x + cut + lane, y, w - cut - lane, h, depth + 1); }
-      else { split(x, y, w, cut, depth + 1); split(x, y + cut + lane, w, h - cut - lane, depth + 1); }
-    };
-    split(bx, by, bw, bh, 0);
-    for (const L of lots) {
-      const f = fitLot(L[0], L[1], L[2], L[3], Math.min(10, P.lotMin * 0.6));
+      // push the second half first so the first half is split first
+      if (vert) stack.push(x + cut + lane, y, w - cut - lane, h, depth + 1, x, y, cut, h, depth + 1);
+      else stack.push(x, y + cut + lane, w, h - cut - lane, depth + 1, x, y, w, cut, depth + 1);
+    }
+    for (let k = 0; k < lots.length; k += 4) {
+      const f = fitLot(lots[k], lots[k + 1], lots[k + 2], lots[k + 3], Math.min(10, P.lotMin * 0.6));
       if (!f) continue;
       W.lots.push({ rect: f, style });
       genLot(f, style, rng, out);
@@ -3188,7 +3196,7 @@
     STYLE: { oldcity: 1.7, market: 1.35, colony: 1.3, rocky: 1.05, colonial: 0.75, cantonment: 0.5, posh: 0.55, hitec: 0.05 },
     HINT_REF: { lane: 0.65, street: 0.4, arterial: 0.22, bund: 0.05 }, // road.pothole_hint that means "typical"
     MAXF: 1.8,          // the highest district factor (thinning reference)
-    RAIN: 0.6,          // monsoon / rain: rain-only potholes, relative to the dry ones
+    RAIN: 0.45,         // monsoon / rain: rain-only potholes, relative to the dry ones
     CLUSTER: 0.3,       // chance that a pothole brings 1-3 neighbours (a bad stretch)
     SIZE: [3, 9],       // diameter (u)
     PATCH: { lane: 0.2, street: 0.7, arterial: 0.85, bund: 0.3 },   // tar patches per 100 u
@@ -3253,18 +3261,14 @@
       }
     }
     return {
-      bridgeNear(x, y, d) {
-        const l = pts.get(Math.floor(y / 256) * 4096 + Math.floor(x / 256)); if (!l) return false;
-        for (const q of l) if ((q[0] - x) ** 2 + (q[1] - y) ** 2 < d * d) return true;
-        // a joint near a bucket edge: check the 8 neighbours too
-        for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
-          if (!i && !j) continue;
-          const m = pts.get((Math.floor(y / 256) + j) * 4096 + Math.floor(x / 256) + i); if (!m) continue;
-          for (const q of m) if ((q[0] - x) ** 2 + (q[1] - y) ** 2 < d * d) return true;
+      bridgeNear(x, y, d) { // the joint may sit in a neighbouring bucket (d < 256)
+        for (let j = Math.floor((y - d) / 256); j <= Math.floor((y + d) / 256); j++) for (let i = Math.floor((x - d) / 256); i <= Math.floor((x + d) / 256); i++) {
+          const m = pts.get(j * 4096 + i); if (!m) continue;
+          for (const q of m) if ((q[0] - x) * (q[0] - x) + (q[1] - y) * (q[1] - y) < d * d) return true;
         }
         return false;
       },
-      railNear(x, y, d) {
+      railNear(x, y, d) { // rail segments are bucketed with a 40 u margin (d <= 40)
         const l = rails.get(Math.floor(y / 256) * 4096 + Math.floor(x / 256)); if (!l) return false;
         for (const s of l) { const q = U.closestOnSeg(x, y, s[0], s[1], s[2], s[3]); const rr = d + s[4]; if (q.d2 < rr * rr) return true; }
         return false;
@@ -3296,8 +3300,11 @@
   function stepGen(ms) {
     if (job.stage === 'idle' || !gen) return true;
     const t0 = performance.now(), deadline = t0 + ms;
-    if (!gen.built) Object.assign(gen, makeGen(gen.D, gen.stats), { built: true });
     let changed = false;
+    if (!gen.built) { // first slice: the helpers (junction mask, bridge / rail index) only
+      Object.assign(gen, makeGen(gen.D, gen.stats), { built: true });
+      if (ms !== Infinity) { job.t += performance.now() - t0; job.frames++; return false; }
+    }
     while (job.stage !== 'idle') {
       if (performance.now() > deadline) break;
       if (job.stage === 'dry' || job.stage === 'rain') {
@@ -3402,7 +3409,7 @@
   function genPass(rain, ri0, deadline) {
     const { D, stats, near, place, onRoad, clearOfThings } = gen;
     for (let ri = ri0 || 0; ri < D.roads.length; ri++) {
-      if ((ri & 15) === 0 && ri > (ri0 || 0) && performance.now() > deadline) return ri;
+      if (ri > (ri0 || 0) && performance.now() > deadline) return ri;
       const r = D.roads[ri];
       if (!r.pts || r.pts.length < 2 || !POT.KIND[r.kind]) continue;
       const rid = r.id || 'road' + ri;
@@ -3474,7 +3481,7 @@
   function genPatches(ri0, deadline) {
     const { D, onRoad, nearJunctionPot, avoid } = gen;
     for (let ri = ri0 || 0; ri < D.roads.length; ri++) {
-      if ((ri & 15) === 0 && ri > (ri0 || 0) && performance.now() > deadline) return ri;
+      if (ri > (ri0 || 0) && performance.now() > deadline) return ri;
       const r = D.roads[ri];
       if (!r.pts || r.pts.length < 2 || !POT.PATCH[r.kind]) continue;
       const rid = r.id || 'road' + ri;

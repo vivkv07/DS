@@ -31,8 +31,8 @@ Mir Alam, Durgam Cheruvu, Saroornagar, Himayat Sagar's in-frame edge, 50+ tanks,
 3,403 roads (214 named real alignments, 6 game layouts, 3,183 residential infill lanes from OSM), 6
 railway lines, 136 parks, 506 landmarks with 122 draw ids, 566 places, ~1,000 boulders, ~7,100 building
 blocks, ~350 trees. worlddata.js is ~825 KB (infill lanes, blocks, boulders and trees are packed and
-unpacked at load in a few ms). In headless Chromium world.js builds it in ~2.0-2.8 s (35,000 structures,
-24,700 lots, 14,700 road nodes, ~80 MB heap); v1 took ~0.8 s.
+unpacked at load in a few ms). In headless Chromium world.js builds it in 2.0-2.8 s on a quiet machine (up to
+5.6 s measured under load; 35,000 structures, 24,700 lots, 14,600 road nodes, ~80 MB heap); v1 took ~0.8 s.
 
 ## 1. Scale and shape
 
@@ -215,9 +215,8 @@ Yakutpura → Falaknuma (`rail_kachiguda`); Secunderabad → Moula Ali (`rail_ka
 ## 3. Notes for the engine (world.js, main.js, index.html, view3d.js)
 
 - `N.WORLD_W/H` = 15000 x 11250 are set by worlddata.js before world.js loads. Everything that
-  sizes a grid must read them (world.js, render.js and traffic.js do). **view3d.js still has
-  `Math.ceil(8000 / CH), Math.ceil(6000 / CH)` for its chunk bounds** (3D ground beyond x 8192 / y
-  6144 would never stream: the Old City, Secunderabad and the east) — it must use N.WORLD_W/H.
+  sizes a grid must read them at build time (world.js, render.js, traffic.js and view3d.js do; view3d
+  caps its chunk keys at 64 columns of 512 u = 32768 u).
 - world.js reads `poly/polys/holes` and `districtGrid`, and the `pothole` hint (A2).
 - Modules with hard-coded v1 coordinates must convert them with `N.WORLD_DATA.fromV1(x, y)` or a
   landmark's `v1` field (`lm.x + (oldX - lm.v1[0])`): collectibles.js (agent tape 1 `rxy` on the home

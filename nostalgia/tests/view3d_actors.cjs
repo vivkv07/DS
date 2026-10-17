@@ -14,10 +14,15 @@
  *     test mission + giver markers; pigeons at Charminar; dialogue barks anchored to 3D heads;
  *     collectible glints; Sankranti kites, Ganesh immersion and Christmas season layers;
  *     screenshots (people, vehicles, night traffic, riding tps / fps, cockpits, marker, kites)
+ *   gait 720x420 (feedback_3d.md #2, frame sequences in slow motion): scripted walkers / runners
+ *     (man, kid, saree, uncle) at constant speeds and the player under real input: soles planted
+ *     (no sliding), never sinking, walk grounded vs run with flight, arm swing, run lean + longer
+ *     stride; stopping into a stance, idle breathing / looking around; getting on a cycle,
+ *     pedalling, getting off; strips of successive frames -> tests/out/view3d_actors_gait_*.png
  *   phone portrait 390x844 (touch, low tier): blob shadows instead of the shadow map, crowd +
  *     traffic, screenshots tps + fps on a Scooty, perf numbers
  * Fails on any console error / page error / N.err.
- *   node nostalgia/tests/view3d_actors.cjs     ONLY=desktop|phone   SHOTS=0 (skip screenshots)
+ *   node nostalgia/tests/view3d_actors.cjs     ONLY=gait|desktop|phone   SHOTS=0 (skip screenshots)
  */
 'use strict';
 const path = require('path');
@@ -124,8 +129,244 @@ const HELPERS = () => {
       }
       return { vehicles: near('vehicle'), peds: near('ped'), animals: near('animal'), npcs: near('npc') };
     },
+    /* frame-sequence capture: runs right after the main loop renders (registered from inside a frame),
+     * samples the tracked actor every rendered frame and pastes crops of the canvas into a strip */
+    cap: null,
+    capInit() {
+      if (T3.cap) return;
+      const C = T3.cap = { on: false, frames: [], strip: null, lastF: -1 };
+      const canvas = () => N.view3d.H.renderer.domElement;
+      function cap() {
+        requestAnimationFrame(cap);
+        if (!C.on) return;
+        const A = N.view3dActors.debug, r = A.DBG.rec;
+        if (!r || r.frame === C.lastF) return;
+        C.lastF = r.frame;
+        const rd = r.riders && r.riders[0];
+        const smp = r.kind === 'person'
+          ? { kind: 'person', x: r.x, y: r.y, h: r.h, J: r.J, cyc: r.cyc, f: r.f, X: r.X, beta: r.beta, v: r.v, run: r.run, gw: r.gw, seated: r.seated, feet: A.feet(r), t: N.time.now }
+          : { kind: r.kind, crank: r.crank, spin: r.spin, J: rd ? rd.J : null, seated: rd ? rd.seated : null, t: N.time.now };
+        C.frames.push(smp);
+        const key = C.key === 'cyc' ? smp.cyc : smp.t;
+        if (C.strip && C.cells < C.max && key != null && (C.next == null || key >= C.next)) {
+          if (C.next == null) C.next = key;
+          C.next += C.step;
+          const cv = canvas(), g = C.strip.getContext('2d'), cw = C.cw, ch = C.ch;
+          g.drawImage(cv, (cv.width - cw) / 2, (cv.height - ch) / 2 + (C.dy || 0), cw, ch, C.cells * cw, 0, cw, ch);
+          g.strokeStyle = '#000'; g.strokeRect(C.cells * cw + 0.5, 0.5, cw - 1, ch - 1);
+          g.fillStyle = '#fff'; g.font = '11px monospace'; g.fillText(String(C.cells + 1), C.cells * cw + 4, 13);
+          C.cells++;
+        }
+        if (C.follow) { const e = C.follow, o = C.off; A.camera([e.x + o[0], o[1], e.y + o[2]], [e.x, o[3], e.y], C.fov || 40); }
+      }
+      let started = false;
+      N.view3d.registerLayer('test.cap', { order: 2000, update() { if (!started) { started = true; requestAnimationFrame(cap); } } });
+    },
+    capBegin(o) {
+      const C = T3.cap;
+      Object.assign(C, { frames: [], lastF: -1, cells: 0, next: null, key: 'cyc', step: 1 / 12, max: 12, cw: 170, ch: 236, dy: 0, follow: null, off: [0, 6, -34, 4.4], fov: 40 }, o || {});
+      if (!(o && o.strip === false)) { C.strip = document.createElement('canvas'); C.strip.width = C.cw * C.max; C.strip.height = C.ch; } else C.strip = null;
+      C.on = true;
+    },
+    capEnd() {
+      const C = T3.cap; C.on = false;
+      const strip = C.strip && C.cells ? C.strip.toDataURL('image/png') : null; C.strip = null;
+      if (C.follow) N.view3dActors.debug.camera(null);
+      return { strip, frames: C.frames, cells: C.cells };
+    },
+    raf(n) { return new Promise((r) => { let k = 0; const f = () => (++k >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }); },
+    /** contact + sliding over sampled person frames: a sole point (heel / toe) within 0.08 u of the
+     *  ground in two successive frames must not move; ratio = its travel / the body's travel */
+    gaitStats(F) {
+      let slip = 0, travel = 0, pairs = 0, minLow = 9, maxLow = -9, hover = 0, air = 0, n = 0;
+      for (let i = 1; i < F.length; i++) {
+        const a = F[i - 1], c = F[i];
+        if (!a.feet || !c.feet) continue;
+        n++;
+        const d = Math.hypot(c.x - a.x, c.y - a.y);
+        const low = Math.min(c.feet[0].low, c.feet[1].low) - c.h;
+        minLow = Math.min(minLow, low); maxLow = Math.max(maxLow, low);
+        if (low > 0.6) hover++;
+        if (low > 0.25) air++;
+        for (let s = 0; s < 2; s++) {
+          let best = null;
+          for (const pt of ['heel', 'toe']) {
+            const p0 = a.feet[s][pt], p1 = c.feet[s][pt];
+            if (p0.h - a.h < 0.08 && p1.h - c.h < 0.08) { const m = Math.hypot(p1.x - p0.x, p1.y - p0.y); best = best == null ? m : Math.min(best, m); }
+          }
+          if (best != null) { slip += best; travel += d; pairs++; }
+        }
+      }
+      const L = F[F.length - 1] || {};
+      return { n, pairs, slip: +slip.toFixed(3), travel: +travel.toFixed(2), ratio: travel > 0 ? +(slip / travel).toFixed(3) : null, minLow: +minLow.toFixed(3), maxLow: +maxLow.toFixed(3), hover, air,
+        f: L.f && +L.f.toFixed(2), stride: L.X && L.beta ? +(2 * L.X / L.beta).toFixed(1) : null, v: L.v && +L.v.toFixed(1), run: L.run };
+    },
   };
 };
+const saveStrip = (name, data) => { if (!data) return; fs.writeFileSync(path.join(OUT, 'view3d_actors_gait_' + name + '.png'), Buffer.from(data.split(',')[1], 'base64')); ok('strip ' + name); };
+
+/* ---------------------------------------------------------------- gait (frame sequences) */
+// Binding feedback (design/feedback_3d.md #2): planted feet, walk + distinct run whose stride matches
+// the speed (no sliding), arm swing, lean, idle breathing / looking around, smooth turning, riding
+// poses with pedalling, getting on / off — verified on frame sequences: every rendered frame is
+// sampled (sole positions from the same joint maths as the vertex shader) in slow motion
+// (N.time.scale), and strips of successive frames are saved as tests/out/view3d_actors_gait_*.png.
+async function gait(browser) {
+  cur = 'gait';
+  console.log('\n== gait: frame sequences (720x420)');
+  const { context, page, errors } = await openPage(browser, { viewport: { width: 720, height: 420 } });
+  await page.evaluate(HELPERS);
+  await page.evaluate(() => {
+    if (N.traffic) { N.traffic.enabled = false; N.traffic.clear(); }
+    N.view3d.setQuality({ adaptive: false, drawDist: 300 });
+    N.debug.teleport('fateh_maidan'); N.debug.setTime(11, 0);
+    N.view3d.settle(20000);
+    document.getElementById('ui').style.display = 'none';
+    window.__base = { x: N.player.x, y: N.player.y };
+    T3.capInit();
+  });
+  await frames(page, 3);
+  // ---- scripted walkers / runners at constant speed, side view
+  const CASES = [['man', 45], ['man', 80], ['kid', 45], ['kid', 80], ['saree', 34], ['uncle', 22]];
+  const res = {};
+  for (const [kind, sp] of CASES) {
+    const r = await page.evaluate(async ({ kind, sp }) => {
+      for (const e of N.entities.all.slice()) if (e.__gt) N.entities.remove(e);
+      const b = window.__base;
+      N.player.hidden = true;
+      const look = kind === 'kid' ? N.npcs.look('chinnu') : N.people.randomLook(N.util.rng(kind === 'saree' ? 5 : 3), kind);
+      const e = new N.Actor({ kind: 'ped', x: b.x - 120, y: b.y, r: 3.4 });
+      e.__gt = true; e.look = look; e.angle = 0; e.vx = 0; e.vy = 0; e.anim = { phase: 0, speed: 1, run: sp > 62 };
+      e.update = function (dt) { this.x += this.vx * dt; };
+      N.entities.add(e);
+      N.view3dActors.debug.track(e);
+      N.time.scale = 1; e.vx = sp;
+      T3.capBegin({ strip: false, follow: e });
+      await T3.raf(10);
+      T3.capEnd();
+      N.time.scale = 0.05; // slow motion: successive rendered frames sample the cycle finely
+      T3.capBegin({ follow: e });
+      for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max; i++) await T3.raf(2);
+      const out = T3.capEnd();
+      N.time.scale = 1; e.vx = 0;
+      const st = T3.gaitStats(out.frames);
+      const arm = out.frames.map((q) => q.J[4]), lean = out.frames.map((q) => q.J[10]);
+      st.arm = +(Math.max(...arm) - Math.min(...arm)).toFixed(2); st.lean = +(lean.reduce((s, x) => s + x, 0) / lean.length).toFixed(3);
+      N.view3dActors.debug.track(null); N.entities.remove(e);
+      return { st, strip: out.strip };
+    }, { kind, sp });
+    const tag = kind + sp, st = r.st;
+    res[tag] = st;
+    saveStrip(tag, r.strip);
+    const run = sp > 62;
+    check(st.n >= 24 && st.pairs >= 10, tag + ': ' + st.n + ' frames sampled, ' + st.pairs + ' foot-contact pairs');
+    check(st.ratio != null && st.ratio < 0.08, tag + ': planted feet — a grounded sole moves ' + st.slip + ' u while the body moves ' + st.travel + ' u (sliding ' + ((st.ratio || 0) * 100).toFixed(1) + '% < 8%)');
+    check(st.minLow > -0.15, tag + ': soles never sink below the ground (lowest ' + st.minLow + ' u)');
+    if (!run) check(st.hover === 0, tag + ': walking never leaves both feet off the ground by > 0.6 u (highest lowest-sole ' + st.maxLow + ' u)');
+    else check(st.air > 0 && st.maxLow < 2.6, tag + ': running has flight phases (' + st.air + ' frames airborne, up to ' + st.maxLow + ' u)');
+    check(st.arm > (run ? 0.8 : 0.4), tag + ': arms swing against the legs (range ' + st.arm + ' rad)');
+    report.push('gait ' + tag + ': cadence ' + st.f + ' cycles/s, stride ' + st.stride + ' template u, sliding ' + ((st.ratio || 0) * 100).toFixed(1) + '%, lean ' + st.lean + ' rad, ' + st.air + '/' + st.n + ' frames airborne');
+  }
+  check(res.man80.stride > res.man45.stride * 1.3 && res.man80.lean > res.man45.lean + 0.08, 'run is distinct from walk: longer stride (' + res.man80.stride + ' vs ' + res.man45.stride + '), forward lean (' + res.man80.lean + ' vs ' + res.man45.lean + ')');
+
+  // ---- the player: walk, run, stop (real input, the game's tps camera and a side view)
+  const pl = await page.evaluate(async () => {
+    const p = N.player, out = {};
+    p.hidden = false;
+    N.debug.teleport('fateh_maidan');
+    N.view.set('tps'); N.view3d.setCamera({ yaw: 0, pitch: 0.2, snap: true });
+    N.view3dActors.debug.track(p);
+    for (const [name, run] of [['walk', false], ['run', true]]) {
+      N.time.scale = 1;
+      N.input.hold('up', true); if (run) N.input.hold('run', true);
+      await T3.raf(12);
+      N.time.scale = 0.05;
+      T3.capBegin({ dy: 40 }); // the game's own tps camera (from behind)
+      for (let i = 0; i < 400 && T3.cap.cells < 8; i++) await T3.raf(2);
+      T3.cap.max = T3.cap.cells; const a = T3.capEnd();
+      const sp = Math.hypot(p.vx || 0, p.vy || 0) || 1, side = [-(p.vy || 0) / sp * 30, 6, (p.vx || 0) / sp * 30, 4.0];
+      window.__side = side;
+      T3.capBegin({ follow: p, off: side }); // side view
+      for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max; i++) await T3.raf(2);
+      const b = T3.capEnd();
+      out[name] = { st: T3.gaitStats(b.frames), tps: a.strip, side: b.strip, speed: Math.hypot(p.vx || 0, p.vy || 0) };
+      N.time.scale = 1;
+    }
+    // stop: blend to a relaxed stance with both feet down
+    N.input.hold('run', false); N.input.hold('up', false);
+    N.time.scale = 0.25;
+    T3.capBegin({ key: 't', step: 0.05, max: 10, follow: p, off: window.__side });
+    for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max; i++) await T3.raf(2);
+    const s = T3.capEnd();
+    const last = s.frames[s.frames.length - 1];
+    out.stop = { strip: s.strip, gw: last.gw, feet: last.feet.map((f) => +(f.low - last.h).toFixed(3)) };
+    // idle: breathing + looking around over a few seconds
+    N.time.scale = 1;
+    T3.capBegin({ strip: false, key: 't' });
+    const t0 = N.time.now; for (let i = 0; i < 600 && N.time.now - t0 < 4; i++) await T3.raf(2);
+    const id = T3.capEnd().frames;
+    const rng = (k) => { const v = id.map((q) => q.J[k]); return +(Math.max(...v) - Math.min(...v)).toFixed(3); };
+    out.idle = { breathe: rng(14), headYaw: rng(12), drift: +Math.hypot(id[id.length - 1].x - id[0].x, id[id.length - 1].y - id[0].y).toFixed(2), n: id.length };
+    N.time.scale = 1;
+    return out;
+  });
+  for (const k of ['walk', 'run']) {
+    const q = pl[k];
+    saveStrip('player_' + k + '_tps', q.tps); saveStrip('player_' + k + '_side', q.side);
+    check(q.st.ratio != null && q.st.ratio < 0.08 && q.st.minLow > -0.15, 'player ' + k + ' at ' + q.speed.toFixed(0) + ' u/s: feet planted (sliding ' + ((q.st.ratio || 0) * 100).toFixed(1) + '%, lowest sole ' + q.st.minLow + ' u)', JSON.stringify(q.st));
+    report.push('player ' + k + ' (' + q.speed.toFixed(0) + ' u/s): cadence ' + q.st.f + ' cycles/s, stride ' + q.st.stride + ' u, sliding ' + ((q.st.ratio || 0) * 100).toFixed(1) + '%');
+  }
+  check(pl.run.st.air > 0 && pl.walk.st.hover === 0, 'player: walking stays grounded, running shows flight frames');
+  saveStrip('player_stop', pl.stop.strip);
+  check(pl.stop.gw < 0.1 && pl.stop.feet.every((h) => Math.abs(h) < 0.12), 'player stops into a stance with both feet on the ground (' + pl.stop.feet.join(', ') + ' u)');
+  check(pl.idle.breathe > 0.02 && pl.idle.headYaw > 0.05 && pl.idle.drift < 0.01, 'idle: breathing (' + pl.idle.breathe + ') and looking around (head yaw range ' + pl.idle.headYaw + ' rad) while standing still');
+
+  // ---- getting on, pedalling, getting off
+  const ride = await page.evaluate(async () => {
+    const p = N.player, out = {};
+    const v = N.vehicles.spawn('hero_cycle', p.x + 6, p.y, 0, {});
+    if (!v) return { skip: 'no spawn' };
+    N.view3dActors.debug.track(v);
+    N.time.scale = 0.1;
+    T3.capBegin({ key: 't', step: 0.05, max: 9, follow: v, off: [0, 7, -28, 4.5] });
+    N.vehicles.enter(p, v);
+    for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max; i++) await T3.raf(2);
+    const on = T3.capEnd();
+    out.on = { strip: on.strip, hips: on.frames.filter((q) => q.J).map((q) => +q.J[0].toFixed(2)) };
+    // pedalling
+    N.time.scale = 1; N.input.hold('up', true); await T3.raf(16);
+    N.time.scale = 0.05;
+    T3.capBegin({ key: 't', step: 0.03, max: 10, follow: v, off: [0, 7, -28, 4.5] });
+    for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max; i++) await T3.raf(2);
+    const pd = T3.capEnd();
+    N.input.hold('up', false); N.time.scale = 1;
+    const kn = pd.frames.filter((q) => q.J).map((q) => q.J[2]), cr = pd.frames.map((q) => q.crank || 0);
+    out.pedal = { strip: pd.strip, knee: +(Math.max(...kn) - Math.min(...kn)).toFixed(2), crank: +Math.abs(cr[cr.length - 1] - cr[0]).toFixed(2), n: pd.frames.length };
+    for (let i = 0; i < 40 && Math.abs(v.speed || 0) > 1; i++) await T3.raf(2);
+    // getting off
+    N.view3dActors.debug.track(p);
+    N.time.scale = 0.1;
+    T3.capBegin({ key: 't', step: 0.05, max: 9, follow: p, off: [0, 7, -28, 4.5] });
+    N.vehicles.exit(p);
+    for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max; i++) await T3.raf(2);
+    const off = T3.capEnd();
+    N.time.scale = 1;
+    out.off = { strip: off.strip, hips: off.frames.filter((q) => q.J).map((q) => +q.J[0].toFixed(2)), lastLow: off.frames.length ? +(Math.min(off.frames[off.frames.length - 1].feet[0].low, off.frames[off.frames.length - 1].feet[1].low) - off.frames[off.frames.length - 1].h).toFixed(3) : null };
+    N.view3dActors.debug.track(null);
+    return out;
+  });
+  if (ride.skip) fail('ride: ' + ride.skip);
+  else {
+    saveStrip('mount', ride.on.strip); saveStrip('pedal', ride.pedal.strip); saveStrip('dismount', ride.off.strip);
+    const h = ride.on.hips, mid = h.filter((x) => x > 0.35 && x < 1.0).length;
+    check(h.length > 4 && h[0] < 0.5 && h[h.length - 1] > 0.9 && mid >= 2, 'getting on: the hips bend from standing to seated over several frames (' + h.slice(0, 14).join(' ') + ')');
+    check(ride.pedal.knee > 0.4 && ride.pedal.crank > 1, 'pedalling: knees cycle with the crank (knee range ' + ride.pedal.knee + ' rad, crank ' + ride.pedal.crank + ' rad over ' + ride.pedal.n + ' frames)');
+    const o = ride.off.hips, mo = o.filter((x) => x > 0.35 && x < 1.0).length;
+    check(o.length > 4 && o[0] > 0.8 && o[o.length - 1] < 0.4 && mo >= 2 && Math.abs(ride.off.lastLow) < 0.12, 'getting off: from seated to standing over several frames, feet back on the ground (' + o.slice(0, 14).join(' ') + '; sole ' + ride.off.lastLow + ')');
+  }
+  await errorsOk(page, errors);
+  await context.close();
+}
 
 /* ---------------------------------------------------------------- desktop */
 async function desktop(browser) {
@@ -423,6 +664,7 @@ async function phone(browser) {
 (async () => {
   const browser = await chromium.launch({ args: ARGS });
   try {
+    if (!ONLY || ONLY === 'gait') await gait(browser);
     if (!ONLY || ONLY === 'desktop') await desktop(browser);
     if (!ONLY || ONLY === 'phone') await phone(browser);
   } catch (e) {

@@ -1,22 +1,24 @@
 /* NOSTALGIA — tests/potholes.cjs  (world-engine + potholes agent; amendment A2, Map v2 engine)
  *
- * Part 1 (plain node, no browser; canvas stubbed): builds the world from src/worlddata.js and checks
+ * Part 1 (plain node, no browser; canvas stubbed): builds the live map (src/worlddata.js, Map v2) and the
+ * v1 map (design/geo/worlddata_v1.js, 8000 x 6000) each in its own process, and checks
  *   - potholes per road kind / district style / district (printed), densities in the A2 order:
  *     Old City and colony lanes worst, arterials fewer, Tank Bund (bund) few, HITEC almost none
  *   - none on bridges or their joints, none on zebra crossings / in junctions, none near level crossings,
  *     every rim sample on plain ROAD, sizes 3-9 u, no two overlapping
  *   - N.world.potholeAt(x, y): agrees with a brute-force scan on 300k points, < 2 us per call
  *   - deterministic (rebuild = the same potholes), rain-only extras only in the monsoon / rain, wet flags
- *   - the bigger world: the v1 map scaled to 15000 x 11250 (sizes stay) builds with every grid sized from
- *     the data, polygon districts give the same districtAt as rects, a concave district with a hole and
- *     gap filling work; build CPU time (load independent) against the 1.0 s target
+ *   - every grid sized from the data (v1 8000 x 6000, v2 15000 x 11250), the map's exact districtGrid,
+ *     polygon districts (a concave one, one with a hole, a multi-part one, gap filling, labels); build CPU
+ *     time (load independent) against the 1.0 s target; BIG=1 adds the v1 map stretched to 15000 x 11250
+ *     with its districts as rects and then as polygons (same answers)
  * Part 2 (Playwright, the real game): API present, in-page lookup speed, a cycle ridden through a pothole
  *   fires 'vehicle:pothole' (vehicles.js integration), rain toggles wet potholes, screenshots of a colony
  *   lane, the Old City and an arterial at noon and in the rain (tests/out/potholes_*.png), no errors.
  *
  *   node nostalgia/tests/potholes.cjs            (both parts)
  *   ONLY=node | ONLY=browser                      (one part)
- *   BIG=0                                         (skip the 15000 x 11250 stress build)
+ *   BIG=1                                         (also the v1 map stretched to 15000 x 11250: stress)
  *   DATA=path/to/worlddata.js                     (test another map file, e.g. a Map v2 candidate)
  */
 'use strict';
@@ -43,7 +45,7 @@ function fakeCtx() {
 // The world runs in this process's own global context (a vm context makes every global lookup such as
 // `Math` go through an interceptor, which would inflate the build CPU time several fold), so each world
 // is built in a child process: `node potholes.cjs --child v1|big`.
-function makeEnv() {
+function makeEnv(dataFile) {
   const g = global;
   g.window = g; g.performance = require('perf_hooks').performance;
   g.document = {
@@ -56,7 +58,8 @@ function makeEnv() {
   const load = (f) => vm.runInThisContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), { filename: f });
   load('src/core.js'); load('src/render.js');
   g.N.render.ctx = fakeCtx();
-  if (process.env.DATA) vm.runInThisContext(fs.readFileSync(path.resolve(process.env.DATA), 'utf8'), { filename: 'worlddata.js' });
+  const data = dataFile || process.env.DATA;
+  if (data) vm.runInThisContext(fs.readFileSync(path.resolve(ROOT, data), 'utf8'), { filename: 'worlddata.js' });
   else load('src/worlddata.js');
   return { N: g.N, load };
 }
@@ -192,10 +195,17 @@ function checkPotholes(N, label) {
   else ok(label + ': all ' + all.length + ' on plain ROAD (16 rim samples), none on bridges or within ' + POT.BRIDGE_PAD + ' u of a bridge joint, none on zebras / junctions, none at level crossings, 3-9 u, no overlaps');
   // ---- potholeAt: exact against brute force, and speed
   N.flags.rain = true; PH.refresh();
+  // brute force (the test's own 64 u buckets of every pothole, independent of world.js's index)
+  const tb = new Map();
+  for (const p of all) { const k = Math.floor(p.x / 64) * 100000 + Math.floor(p.y / 64); (tb.get(k) || tb.set(k, []).get(k)).push(p); }
   const brute = (x, y) => {
-    for (const p of all) {
-      const dx = x - p.x, dy = y - p.y, u = dx * p.ca + dy * p.sa, v = dy * p.ca - dx * p.sa;
-      if (u * u * p.hx + v * v * p.hy <= 1) return p;
+    if (!(isFinite(x) && isFinite(y))) return null;
+    const bi = Math.floor(x / 64), bj = Math.floor(y / 64);
+    for (let i = bi - 1; i <= bi + 1; i++) for (let j = bj - 1; j <= bj + 1; j++) {
+      for (const p of tb.get(i * 100000 + j) || []) {
+        const dx = x - p.x, dy = y - p.y, u = dx * p.ca + dy * p.sa, v = dy * p.ca - dx * p.sa;
+        if (u * u * p.hx + v * v * p.hy <= 1) return p;
+      }
     }
     return null;
   };
@@ -243,9 +253,10 @@ function checkPotholes(N, label) {
   return dry.length;
 }
 
-function nodePart() {
-  console.log('\n== node: ' + (process.env.DATA ? process.env.DATA : 'the map in src/worlddata.js'));
-  const env = makeEnv(), N = env.N;
+const V1_FILE = 'design/geo/worlddata_v1.js'; // the hand-made 8000 x 6000 map, kept by the Map v2 builder
+function nodePart(dataFile) {
+  console.log('\n== node: ' + (dataFile || process.env.DATA || 'the map in src/worlddata.js'));
+  const env = makeEnv(dataFile), N = env.N;
   env.load('src/world.js'); env.load('src/world_extras.js');
   const t = buildTimed(env);
   const W = N.world;
@@ -291,9 +302,8 @@ function nodePart() {
 
 }
 function nodePartBig() {
-  if (process.env.DATA) { console.log('\n== node: bigger-world stress skipped (DATA= is set: that map is the test)'); return; }
-  console.log('\n== node: the bigger world (v1 stretched to 15000 x 11250, polygon districts)');
-  const env2 = makeEnv(), N2 = env2.N;
+  console.log('\n== node: stress: the v1 map stretched to 15000 x 11250 (rect districts, then the same as polygons)');
+  const env2 = makeEnv(V1_FILE), N2 = env2.N;
   env2.load('src/world.js'); env2.load('src/world_extras.js');
   const rectAt = [];
   scaleWorld(N2, 15000 / 8000, false);
@@ -337,8 +347,13 @@ async function browserPart() {
   if (process.env.DATA) await page.route(/src\/worlddata\.js$/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(path.resolve(process.env.DATA), 'utf8') }));
   await page.goto('file://' + path.join(ROOT, 'index.html') + '#debug');
   await page.waitForFunction(() => window.N && document.body.classList.contains('booted'), null, { timeout: 60000 });
-  const boot = await page.evaluate(() => ({ W: N.WORLD_W, H: N.WORLD_H, buildMs: N.world.buildMs, phases: N.world.buildPhases, n: N.world.potholes.list.length, patches: N.world.potholes.patches.length, heap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null }));
-  ok('booted ' + boot.W + ' x ' + boot.H + ': world build ' + boot.buildMs + ' ms (wall), ' + boot.n + ' potholes, ' + boot.patches + ' patches, JS heap ' + boot.heap + ' MB');
+  const atBoot = await page.evaluate(() => ({ ready: N.world.potholes.ready, n: N.world.potholes.list.length }));
+  // potholes are generated after the build, a few ms per frame (title screen)
+  const readyOk = await page.waitForFunction(() => N.world.potholes.ready, null, { timeout: 60000 }).then(() => true, () => false);
+  if (!readyOk) fail('potholes never became ready after boot');
+  const boot = await page.evaluate(() => ({ W: N.WORLD_W, H: N.WORLD_H, buildMs: N.world.buildMs, phases: N.world.buildPhases, n: N.world.potholes.list.length, patches: N.world.potholes.patches.length, gen: N.world.potholes.stats.ms, frames: N.world.potholes.stats.frames, heap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null }));
+  ok('booted ' + boot.W + ' x ' + boot.H + ': world build ' + boot.buildMs + ' ms (wall, ' + (atBoot.ready ? 'potholes inside!' : 'no potholes yet') + '), then ' + boot.n + ' potholes + ' + boot.patches + ' patches over ' + boot.frames + ' frames (' + boot.gen + ' ms of work), JS heap ' + boot.heap + ' MB');
+  if (atBoot.ready) fail('potholes were made inside the world build');
   if (!(boot.n > 100)) fail('too few potholes in the game: ' + boot.n);
   const api = await page.evaluate(() => {
     const W = N.world, PH = W.potholes;
@@ -417,6 +432,8 @@ async function browserPart() {
   }
   await page.evaluate(() => { N.seasons.set('monsoon', true); N.flags.rain = true; });
   await page.waitForTimeout(1200);
+  await page.waitForFunction(() => N.world.potholes.list.some((p) => p.rain), null, { timeout: 30000 }).catch(() => fail('the monsoon extras never appeared'));
+  await page.waitForTimeout(300);
   const rain = await page.evaluate(() => ({ state: N.world.potholes.rain, raining: N.seasons.is('rain'), wet: N.world.potholes.list.filter((p) => p.wet).length, all: N.world.potholes.list.length }));
   if (rain.state !== 2 || rain.wet !== rain.all) fail('rain did not fill the potholes: ' + JSON.stringify(rain)); else ok('rain: all ' + rain.wet + ' potholes (incl. the monsoon extras) hold water');
   for (const [k, s] of Object.entries(spots)) if (s) await shoot(k + '_rain', s);
@@ -437,13 +454,17 @@ async function browserPart() {
 (async () => {
   const ci = process.argv.indexOf('--child');
   if (ci >= 0) { // one node world per process
-    try { if (process.argv[ci + 1] === 'big') nodePartBig(); else nodePart(); } catch (e) { fail('crashed: ' + (e.stack || e)); }
+    const part = process.argv[ci + 1];
+    try { if (part === 'big') nodePartBig(); else if (part === 'v1') nodePart(V1_FILE); else nodePart(); } catch (e) { fail('crashed: ' + (e.stack || e)); }
     process.exit(failures.length ? 1 : 0);
   }
   try {
     if (ONLY !== 'browser') {
       const { spawnSync } = require('child_process');
-      for (const part of process.env.BIG === '0' ? ['v1'] : ['v1', 'big']) {
+      const parts = ['map'];
+      if (!process.env.DATA && fs.existsSync(path.join(ROOT, V1_FILE))) parts.push('v1');
+      if (process.env.BIG === '1') parts.push('big');
+      for (const part of parts) {
         const r = spawnSync(process.execPath, [__filename, '--child', part], { stdio: 'inherit', env: process.env });
         if (r.status !== 0) failures.push('node part ' + part + ' failed (see above)');
       }
