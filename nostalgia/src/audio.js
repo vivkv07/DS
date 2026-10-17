@@ -3,7 +3,7 @@
  *   - ~96 one-shot SFX (cycle bell, Chetak putt-putt, auto "pom pom", havaldar whistle, STD ring,
  *     pressure cooker, pindi girni thump, dial-up modem, cassette rewind ...) with distance
  *     attenuation + stereo pan relative to the player,
- *   - continuous engine voices per vehicle type (player + the 2 nearest traffic vehicles),
+ *   - continuous engine voices per vehicle type (player + the ~4 nearest traffic vehicles, Doppler),
  *   - ambient beds per district style cross-faded by N.world.districtAt + data-driven place
  *     emitters (Koti bus stand horns, Gokul Chat sizzle, temple bells, stations, girnis, ...),
  *   - an original step-sequencer score (sitar/santoor/tanpura via Karplus-Strong, bansuri,
@@ -43,7 +43,15 @@
  *   ambient.set(bedId|null)          force an ambient bed (null = automatic). ambient.BEDS ids.
  *   renderOffline(name|fn, seconds, opts) -> Promise<{peak, rms, buffer}>   (tests/tools)
  *   renderTrackOffline(trackId, seconds) -> Promise<{peak, rms, buffer}>
- *   stats() -> {voices, strips, seqs, ksBuffers, ...}
+ *   stats() -> {strips, seqs, ksBuffers, zone, reverbs, spatialEmitters, hrtf, occluded, traffic, listener, duck, limiterDb, ...}
+ *   reverb.zone / reverb.set(id|null) / reverb.ZONES   generated-IR reverb zones (open, oldcity_lane, charminar, golconda,
+ *                                    stadium, station, irani_cafe, lake) chosen by place/district; the score has its own reverb.
+ *   spatial.hrtf = 'auto'|true|false / spatial.pose   listener = 3D camera in 3D views (HRTF for the nearest sounds on a
+ *                                    high tier), the followed actor in top-down (north-up, east = right).
+ * SPATIAL + MIX (spatial/mix agent): AudioListener + PannerNodes, JS distance classes (DCLS), air absorption, occlusion
+ *   behind buildings (grid line test), Doppler on traffic engines (4 nearest, 2 on low tier), core emitters (ext.emitter),
+ *   zone reverbs crossfaded per ConvolverNode, master: glue comp -> trim -> limiter -> soft clip (-0.3 dBFS ceiling),
+ *   ducks: dialogue (music 0.32, amb 0.6, sfx 0.85, radio 0.45) and story stings (music 0.5, amb 0.7).
  *
  * EVENTS LISTENED TO (all optional; every handler is defensive):
  *   horn, vehicle:horn · bump, collision, vehicle:bump, player:bump · pickup, collectible,
@@ -2650,6 +2658,7 @@
   // 4 nodes. The core updates every live emitter each frame (pose-relative gain, smoothed Doppler ratio `dop`,
   // occlusion tested round-robin at ~5 Hz per emitter, HRTF for the nearest few in 3D on capable devices).
   const emitters = new Set();
+  const EPOOL = [];   // rung-out engine emitter chains for reuse
   const emitStat = { hrtf: 0, occluded: 0, lastIs3D: false, rr: 0, list: [] };
   class Emitter {
     constructor(ac, o) {
@@ -2659,19 +2668,34 @@
       this.ref = o.ref || c[0]; this.roll = o.roll || c[1]; this.max = o.max || c[2];
       this.level = o.gain == null ? 1 : o.gain; this.rev = o.rev == null ? 1 : o.rev; this.prio = o.prio || 0;
       this.occlude = o.occlude !== false; this.useHrtf = o.hrtf !== false;
-      this.lp = filt(ac, 'lowpass', 18000, 0.5); this.input = this.lp;
-      this.pn = mkPanner(ac, false) || panner(ac);
-      this.lp.connect(this.pn);
-      this.g = gain(ac, 0, o.dest || (G && G[o.bus || 'sfx']) || G.sfx);
-      this.pn.connect(this.g);
-      this.send = gain(ac, 0, o.revIn || G.revIn); this.pn.connect(this.send);
+      const dest = o.dest || (G && G[o.bus || 'sfx']) || G.sfx, revIn = o.revIn || G.revIn;
+      this.pool = !!o.pool && ac === ctx;
+      let ch = null;
+      if (this.pool) { // reuse a rung-out chain (an HRTF PannerNode costs ~1 ms to create)
+        const now = ac.currentTime;
+        for (let i = 0; i < EPOOL.length; i++) if (EPOOL[i].ready <= now && EPOOL[i].dest === dest && EPOOL[i].revIn === revIn) { ch = EPOOL.splice(i, 1)[0]; break; }
+      }
+      if (ch) { this.lp = ch.lp; this.pn = ch.pn; this.g = ch.g; this.send = ch.send; this.lp.frequency.cancelScheduledValues(0); this.lp.frequency.value = 18000; }
+      else {
+        this.lp = filt(ac, 'lowpass', 18000, 0.5);
+        this.pn = mkPanner(ac, false) || panner(ac);
+        this.lp.connect(this.pn);
+        this.g = gain(ac, 0, dest); this.pn.connect(this.g);
+        this.send = gain(ac, 0, revIn); this.pn.connect(this.send);
+      }
+      this.input = this.lp; this.dest = dest; this.revIn = revIn;
       this.x = 0; this.y = 0; this.h = o.h == null ? 4 : o.h; this.vx = 0; this.vy = 0; this.has = false;
       this.dop = 1; this.d = 1e9; this.occ = 0; this.occS = 0; this.occT = 0; this.hrtf = false;
       this.gOut = -1; this.fOut = -1; this.sOut = -1; this.px = NaN; this.py = NaN; this.ph = NaN;
       this.fadeIn = o.fadeIn == null ? 0.12 : o.fadeIn;
       this.alive = true;
       emitters.add(this);
-      if (pose.is3D && pose.hq && this.useHrtf && this.pn.panningModel && emitStat.hrtf < EMIT_HRTF) { this.pn.panningModel = 'HRTF'; this.hrtf = true; emitStat.hrtf++; }
+      this.g.gain.cancelScheduledValues(0); this.g.gain.value = 0; this.send.gain.cancelScheduledValues(0); this.send.gain.value = 0;
+      if (this.pn.panningModel) {
+        const h = pose.is3D && pose.hq && this.useHrtf && emitStat.hrtf < EMIT_HRTF, m = h ? 'HRTF' : 'equalpower';
+        if (this.pn.panningModel !== m) this.pn.panningModel = m;
+        if (h) { this.hrtf = true; emitStat.hrtf++; }
+      }
     }
     set(x, y, h, vx, vy) {
       if (!isFinite(x) || !isFinite(y)) return this;
@@ -2715,6 +2739,10 @@
       if (this.hrtf) emitStat.hrtf = Math.max(0, emitStat.hrtf - 1);
       const t = this.ac.currentTime, f = fade == null ? 0.15 : Math.max(0.01, fade);
       try { this.g.gain.cancelScheduledValues(t); this.g.gain.setTargetAtTime(0, t, f / 3); this.send.gain.cancelScheduledValues(t); this.send.gain.setTargetAtTime(0, t, f / 3); } catch (e) { /* ignore */ }
+      if (this.pool && EPOOL.length < 8) { // back to the pool once silent; voices disconnect their own outputs on stop()
+        EPOOL.push({ lp: this.lp, pn: this.pn, g: this.g, send: this.send, dest: this.dest, revIn: this.revIn, ready: t + f * 2 + 1.2 });
+        return;
+      }
       const nodes = [this.lp, this.pn, this.g, this.send];
       setTimeout(() => { for (const n of nodes) { try { n.disconnect(); } catch (e) { /* ignore */ } } }, (f * 2 + 0.4) * 1000);
     }
@@ -2810,20 +2838,23 @@
       rv.building.delete(id);
       if (!ctx || !G || G.zones.has(id)) return;
       const t0 = performance.now();
-      try { mkZoneNode(ctx, G, id); } catch (e) { N.err('audio.reverb', e); return; }
+      try { mkZoneNode(ctx, G, id).used = ctx.currentTime; } catch (e) { N.err('audio.reverb', e); return; }
       rv.buildMs = performance.now() - t0;
       pruneZones();
     }, 400);
   }
   function pruneZones() {
-    if (G.zones.size <= 4) return;
+    while (G.zones.size > 4 && pruneOne());
+  }
+  function pruneOne() {
     const now = ctx.currentTime;
     let old = null;
-    for (const z of G.zones.values()) if (z.id !== rv.zone && z.id !== 'open' && now > z.quietAt && (!old || z.used < old.used)) old = z;
-    if (!old) return;
+    for (const z of G.zones.values()) if (z.id !== rv.zone && z.id !== rv.detected && z.id !== 'open' && now > z.quietAt && (!old || z.used < old.used)) old = z;
+    if (!old) return false;
     G.zones.delete(old.id);
     try { G.revIn.disconnect(old.inG); } catch (e) { /* ignore */ }
     try { old.inG.disconnect(); old.conv.disconnect(); old.outG.disconnect(); } catch (e) { /* ignore */ }
+    return true;
   }
   function setZone(g, id, t, tc) { // crossfade the send; returns false while the zone's convolver is still being built
     if (id === g.zone) return true;
@@ -2843,6 +2874,7 @@
     rv.scanT = 0.25;
     const t = ctx.currentTime;
     const L = listener();
+    if (G.zones.size > 4) pruneZones();
     let want = rv.override;
     if (!want) { try { want = L ? detectZone(L) : 'open'; } catch (e) { N.err('audio.zone', e); want = 'open'; } }
     rv.detected = want;
@@ -3070,7 +3102,7 @@
           if (fi < 0 || td > fd * 0.7) continue;
           dropTraffic(fi);
         }
-        const em = new Emitter(ctx, { cls: 'engine', bus: 'engine', gain: 0.55, h: 3, prio: 1, name: 'engine', fadeIn: 0.35 });
+        const em = new Emitter(ctx, { cls: 'engine', bus: 'engine', gain: 0.55, h: 3, prio: 1, name: 'engine', fadeIn: 0.35, pool: true });
         em.set(tv.x, tv.y, 3, tv.vx, tv.vy);
         const voice = makeEngine(ctx, em.input, tv.type, tv, false);
         eng.made++;

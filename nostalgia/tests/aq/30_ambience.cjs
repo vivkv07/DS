@@ -43,10 +43,10 @@ module.exports = {
     check(api && api.calls.length === 8 && api.sfx === 7, 'audio_ambience loaded: 8 hawker calls, new SFX registered', api);
 
     // ---------------------------------------------------------------- one-shots
-    const M = {};
+    const M = {}, R = {};
     for (const [name, o, sec, file] of ONE) {
       const r = await L.render(T.page, name, sec, o);
-      const m = (M[file] = L.save(r, file)); M[file].r = r;
+      const m = (M[file] = L.save(r, file)); R[file] = r;
       check(m && m.peakDb >= -18 && m.peakDb <= -1 && m.clicks === 0 && Math.abs(m.dc) < 0.01, file + ': peak ' + (m && m.peakDb) + ' dBFS, clicks ' + (m && m.clicks), m);
     }
     for (const v of CALLS) {
@@ -59,22 +59,22 @@ module.exports = {
     const cents = CALLS.map((v) => M['call_' + v].centroid);
     check(new Set(cents.map((c) => Math.round(c / 60))).size >= 6, 'hawker calls have distinct timbres (centroids ' + cents.join(' ') + ')');
     // koel: fundamental ~600-1200 Hz, the series climbs
-    { const tr = domTrack(L, M.amb_koel.r).filter((p) => p[1] > 400 && p[1] < 2000); const q = Math.floor(tr.length / 4);
+    { const tr = domTrack(L, R.amb_koel).filter((p) => p[1] > 400 && p[1] < 2000); const q = Math.floor(tr.length / 4);
       const a = median(tr.slice(0, q).map((p) => p[1])), b = median(tr.slice(-q).map((p) => p[1]));
       check(a > 550 && b < 1500 && b > a * 1.2, 'koel: fundamental ' + Math.round(a) + ' -> ' + Math.round(b) + ' Hz, a rising series', { a, b }); }
-    { const m = M.amb_crow, pk = peaks(avgSpec(L, m.r), m.r.sr, 400, 6000, 12).filter((p, i, all) => p[1] > all[0][1] - 30);
+    { const m = M.amb_crow, pk = peaks(avgSpec(L, R.amb_crow), 44100, 400, 6000, 12).filter((p, i, all) => p[1] > all[0][1] - 30);
       check(m.centroid > 1000 && m.centroid < 3000 && pk.length >= 5, 'crow: centroid ' + m.centroid + ' Hz, ' + pk.length + ' strong partials (harsh)', pk.slice(0, 6).map((p) => Math.round(p[0]))); }
-    { const m = M.amb_cooker, acc = avgSpec(L, m.r), pk = peaks(acc, m.r.sr, 500, 10000, 1)[0];
-      const band = []; for (let k = 0; k < acc.length; k++) { const f = hz(k, m.r.sr); if (f > 1000 && f < 8000) band.push(10 * Math.log10(acc[k] + 1e-20)); }
+    { const m = M.amb_cooker, acc = avgSpec(L, R.amb_cooker), pk = peaks(acc, 44100, 500, 10000, 1)[0];
+      const band = []; for (let k = 0; k < acc.length; k++) { const f = hz(k, 44100); if (f > 1000 && f < 8000) band.push(10 * Math.log10(acc[k] + 1e-20)); }
       check(pk && pk[0] > 2000 && pk[1] - median(band) > 20, 'cooker: tonal whistle peak at ' + Math.round(pk[0]) + ' Hz, ' + Math.round(pk[1] - median(band)) + ' dB over the band median'); }
-    { const m = M.amb_temple_bell, pk = peaks(avgSpec(L, m.r), m.r.sr, 200, 8000, 4);
+    { const m = M.amb_temple_bell, pk = peaks(avgSpec(L, R.amb_temple_bell), 44100, 200, 8000, 4);
       const f0 = pk[0][0], ratios = pk.slice(1).map((p) => p[0] / f0), inh = ratios.filter((x) => Math.abs(x - Math.round(x)) > 0.08 && x > 1.05).length;
-      const rt = ringTime(L, m.r);
+      const rt = ringTime(L, R.amb_temple_bell);
       check(inh >= 1 && rt > 1.5, 'temple bell: inharmonic partials ' + ratios.map((x) => x.toFixed(2)).join(' ') + ' x ' + Math.round(f0) + ' Hz; ring ' + rt.toFixed(1) + ' s', pk);
-      const c = M.amb_church_toll, rc = ringTime(L, c.r);
+      const c = M.amb_church_toll, rc = ringTime(L, R.amb_church_toll);
       check(c.centroid < m.centroid && rc > rt, 'church bell lower (centroid ' + c.centroid + ' < ' + m.centroid + ') and longer (' + rc.toFixed(1) + ' s > ' + rt.toFixed(1) + ' s) than the temple ghanta'); }
-    { const n = onsets(L, M.amb_school_bell.r); check(n >= 5, 'school bell: ' + n + ' repeated strikes (tan-tan-tan)'); }
-    { const n = onsets(L, M.amb_dog.r); check(n >= 2, 'dog: ' + n + ' barks'); }
+    { const n = onsets(L, R.amb_school_bell); check(n >= 5, 'school bell: ' + n + ' repeated strikes (tan-tan-tan)'); }
+    { const n = onsets(L, R.amb_dog); check(n >= 2, 'dog: ' + n + ' barks'); }
 
     // ---------------------------------------------------------------- node counts + synthesis cost (live path = these graphs)
     const cost = await ev(async (names) => {
