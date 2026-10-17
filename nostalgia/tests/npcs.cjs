@@ -430,9 +430,12 @@ async function desktop(browser) {
         },
       });
     });
+    await page.evaluate(() => { window.__falls = 0; N.on('player:fall', () => { window.__falls++; }); });
     const route = async (to, maxMs) => page.evaluate(async ({ to, maxMs }) => {
       const p = N.player, v = p.vehicle || p, t = N.places[to];
-      const pts = N.npcs.planPath(v.x, v.y, t.x, t.y);
+      // riding: follow the road graph (vehicles.js roadPath, lane points); planPath is a walker's route whose
+      // sparse waypoints the NPCs steer between, and a straight line between two of them can cut a wall
+      const pts = p.vehicle && N.vehicles.roadPath ? N.vehicles.roadPath(v.x, v.y, t.x, t.y).slice(1).map((q) => ({ x: q[0], y: q[1] })) : N.npcs.planPath(v.x, v.y, t.x, t.y);
       window.__drive = { pts, i: 0, done: false };
       const a = N.npcs.get('immu');
       let maxD = 0, rideT = 0, n = 0;
@@ -447,13 +450,22 @@ async function desktop(browser) {
       const done = window.__drive.done, ms = Math.round(gms());
       window.__drive = null; N.input.setMove(null);
       await __gw(1.8);
-      return { done, ms, maxD: Math.round(maxD), endD: Math.round(Math.hypot(a.x - N.player.x, a.y - N.player.y)), riding: !!a.vehicle, vtype: a.vehicle ? a.vehicle.type : null, vcolor: a.vehicle ? a.vehicle.color : null, rideT, stats: Object.assign({}, a.stats), pts: pts.length };
+      return { done, ms, maxD: Math.round(maxD), endD: Math.round(Math.hypot(a.x - N.player.x, a.y - N.player.y)), pveh: N.player.vehicle ? N.player.vehicle.type : null, falls: window.__falls || 0, riding: !!a.vehicle, vtype: a.vehicle ? a.vehicle.type : null, vcolor: a.vehicle ? a.vehicle.color : null, rideT, stats: Object.assign({}, a.stats), pts: pts.length };
     }, { to, maxMs });
-    await page.evaluate(() => { N.debug.teleport('home'); const a = N.npcs.spawn('immu', 'player', { idle: 'stand' }); N.npcs.follow('immu', N.player, { ride: true }); });
+    await page.evaluate(() => {
+      N.debug.teleport('home');
+      // start on the path's first point: the family Chetak is parked at the home gate, and the test's
+      // straight-line driver (no steering round vehicles) would push into it for ever
+      const t = N.places.irani_cafe_7, q = N.npcs.planPath(N.player.x, N.player.y, t.x, t.y)[0];
+      if (q) N.player.teleport(q.x, q.y);
+      N.npcs.spawn('immu', 'player', { idle: 'stand' }); N.npcs.follow('immu', N.player, { ride: true });
+    });
     await gwait(page, 0.3);
     const f1 = await route('irani_cafe_7', 20000);
     if (!f1.done || f1.endD > 50) fail('follow on foot: ' + JSON.stringify(f1)); else ok('follow on foot: ' + f1.ms + 'ms, end gap ' + f1.endD + 'u, max gap ' + f1.maxD + 'u');
-    await page.evaluate(() => { N.debug.enterVehicle('cycle'); });
+    // god mode for the ride: the test's straight-line driver clips kerbs / potholes at full speed, and a fall
+    // (DHADAAM, entities.js player.fall) would put him on foot; following a rider is what this checks
+    await page.evaluate(() => { N.player.god = true; N.debug.enterVehicle('cycle'); });
     await gwait(page, 0.3);
     const f2 = await route('koti_bus_stand', 45000);
     await page.screenshot({ path: path.join(OUT, 'follow_riding.png') });
@@ -468,7 +480,7 @@ async function desktop(browser) {
       return { riding: !!a.vehicle, d: Math.round(Math.hypot(a.x - N.player.x, a.y - N.player.y)), parked: a.ownVehicle && a.ownVehicle.alive && !a.ownVehicle.driver, noEnter: a.ownVehicle && a.ownVehicle.noEnter };
     });
     if (f3.riding || f3.d > 60) fail('Immu did not get off after the player: ' + JSON.stringify(f3)); else ok('Immu gets off and walks over (gap ' + f3.d + 'u, his cycle parked, not borrowable: ' + f3.noEnter + ')');
-    await page.evaluate(() => { N.npcs.follow('immu', null); N.npcs.despawn('immu'); });
+    await page.evaluate(() => { N.player.god = false; N.npcs.follow('immu', null); N.npcs.despawn('immu'); });
   }
 
   /* ---------------------------------------------------------- gloss + names */
