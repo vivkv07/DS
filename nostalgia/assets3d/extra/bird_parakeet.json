@@ -1,0 +1,112 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 18096,
+ "clips": {
+  "flap": {
+   "beat": 0.2,
+   "duration": 0.2,
+   "fps": 30,
+   "frames": 6,
+   "loco": false,
+   "loop": true
+  },
+  "glide": {
+   "duration": 2.0,
+   "fps": 30,
+   "frames": 60,
+   "loco": false,
+   "loop": true
+  },
+  "perch": {
+   "duration": 2.0,
+   "fps": 30,
+   "frames": 60,
+   "loco": false,
+   "loop": true
+  }
+ },
+ "family": "prop",
+ "file": "bird_parakeet.glb",
+ "front": "-Y",
+ "id": "bird_parakeet",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 17.7,
+ "kit": 1,
+ "materials": [
+  "M_bird_parakeet"
+ ],
+ "max": [
+  1.18,
+  1.55,
+  0.465
+ ],
+ "meta": {
+  "bodyZ": 0.3,
+  "bones": [
+   "root",
+   "head",
+   "wing_L",
+   "wingtip_L",
+   "wing_R",
+   "wingtip_R",
+   "tail"
+  ],
+  "doubleSided": true,
+  "flightClips": [
+   "flap",
+   "glide"
+  ],
+  "flock": {
+   "alt": [
+    10,
+    40
+   ],
+   "habitat": [
+    "neem",
+    "park",
+    "colony"
+   ],
+   "perch": [
+    "tree",
+    "wire"
+   ],
+   "size": [
+    4,
+    20
+   ],
+   "sound": "screech",
+   "speed": [
+    60,
+    90
+   ],
+   "startle": true
+  },
+  "kind": "bird",
+  "length": 2.0,
+  "origin": "body centre; bind pose = flight pose (wings along +-X, legs tucked). perch lifts the root by perchLift so the feet are on z = 0",
+  "perchClip": "perch",
+  "perchLift": 0.3,
+  "species": "parakeet",
+  "wingspan": 2.36
+ },
+ "min": [
+  -1.18,
+  -0.569,
+  -0.177
+ ],
+ "notes": [],
+ "script": "props_fauna",
+ "size": [
+  2.36,
+  2.119,
+  0.642
+ ],
+ "tint": null,
+ "tris": 140,
+ "units": "u",
+ "up": "Z"
+}

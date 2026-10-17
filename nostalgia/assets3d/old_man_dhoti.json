@@ -1,0 +1,335 @@
+{
+ "anchors": {
+  "eye": [
+   0.0,
+   -0.47,
+   8.176
+  ],
+  "grip_L": [
+   2.76,
+   0.0,
+   5.06
+  ],
+  "grip_R": [
+   -2.76,
+   0.0,
+   5.06
+  ],
+  "head_top": [
+   0.0,
+   0.08,
+   8.946
+  ],
+  "sole_heel_L": [
+   0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_heel_R": [
+   -0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_toe_L": [
+   0.49,
+   -1.08,
+   -0.0
+  ],
+  "sole_toe_R": [
+   -0.49,
+   -1.08,
+   -0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 4000,
+ "bytes": 257680,
+ "clips": {},
+ "family": "character",
+ "file": "old_man_dhoti.glb",
+ "front": "-Y",
+ "id": "old_man_dhoti",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 251.6,
+ "kit": 1,
+ "materials": [
+  "M_old_man_dhoti"
+ ],
+ "max": [
+  2.963,
+  0.872,
+  9.052
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "shoulder_L",
+   "upperarm_L",
+   "forearm_L",
+   "hand_L",
+   "thigh_L",
+   "shin_L",
+   "foot_L",
+   "toe_L",
+   "shoulder_R",
+   "upperarm_R",
+   "forearm_R",
+   "hand_R",
+   "thigh_R",
+   "shin_R",
+   "foot_R",
+   "toe_R"
+  ],
+  "clips": "clips_adult",
+  "height": 8.7,
+  "kinds": [
+   "man"
+  ],
+  "lazy": true,
+  "look": {
+   "hair": "#e8e4dc",
+   "kind": "man",
+   "pants": "#efe9dc",
+   "prop": "stick",
+   "shirt": "#f4f2ea",
+   "skin": "#8d5a3b",
+   "specs": "round"
+  },
+  "match": {
+   "all": [
+    {
+     "f": "hair",
+     "in": [
+      "#e8e4dc",
+      "#efe9dc",
+      "#d8d4cc",
+      "#b8b4ae"
+     ]
+    },
+    {
+     "not": {
+      "f": "hat",
+      "in": [
+       "skull",
+       "irani",
+       "pith",
+       "backcap",
+       "dhaka"
+      ]
+     }
+    },
+    {
+     "not": {
+      "f": "cap",
+      "in": [
+       "police"
+      ]
+     }
+    }
+   ]
+  },
+  "npcs": {
+   "ticket_thatha": {}
+  },
+  "posture": {
+   "chest": 0.06,
+   "neck": -0.12,
+   "spine": 0.14
+  },
+  "priority": 4,
+  "regionsUsed": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "pants",
+   "shoes",
+   "accent",
+   "moustache",
+   "specs",
+   "cap_gandhi",
+   "towel",
+   "stick",
+   "satchel"
+  ],
+  "rig": "adult_rig",
+  "role": "people",
+  "variants": {
+   "gandhi": {
+    "hair": "#e8e4dc",
+    "hat": "gandhi",
+    "kind": "man",
+    "pants": "#efe9dc",
+    "prop": null,
+    "shirt": "#f4f2ea",
+    "skin": "#8d5a3b",
+    "specs": null,
+    "towel": "#c03030"
+   },
+   "old": {
+    "hair": "#e8e4dc",
+    "kind": "man",
+    "pants": "#efe9dc",
+    "prop": "stick",
+    "shirt": "#f4f2ea",
+    "skin": "#8d5a3b",
+    "specs": "round"
+   },
+   "thatha": {
+    "hair": "#e8e4dc",
+    "kind": "man",
+    "pants": "#efe9dc",
+    "prop": "satchel",
+    "shirt": "#b8a67a",
+    "skin": "#8d5a3b",
+    "specs": "round"
+   }
+  }
+ },
+ "min": [
+  -2.963,
+  -1.268,
+  -0.0
+ ],
+ "notes": [],
+ "script": "characters",
+ "size": [
+  5.926,
+  2.14,
+  9.052
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "fields": {
+   "accent": [
+    "border",
+    "#8a6a3a"
+   ],
+   "cap_gandhi": [
+    "hatColor",
+    "#f4f2ea"
+   ],
+   "moustache": [
+    "moustache",
+    "hair"
+   ],
+   "pants": [
+    "dhoti",
+    "pants",
+    "#efe9dc"
+   ],
+   "shirt": [
+    "shirt",
+    "#f4f2ea"
+   ],
+   "shoes": [
+    "chappal",
+    "#5a3a2a"
+   ],
+   "towel": [
+    "towel",
+    "#efe6d0"
+   ]
+  },
+  "names": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "shoes",
+   "accent",
+   "moustache",
+   "specs",
+   "cap_gandhi",
+   "towel",
+   "stick",
+   "satchel"
+  ],
+  "regions": {
+   "accent": "#6e6c68",
+   "cap_gandhi": "#f4f2ea",
+   "hair": "#3b3735",
+   "moustache": "#3b3735",
+   "pants": "#dedcd6",
+   "satchel": "#5a3a22",
+   "shirt": "#dedcd6",
+   "shoes": "#6e6c68",
+   "skin": "#9e6440",
+   "specs": "#5a4a3a",
+   "stick": "#6a4a2a",
+   "towel": "#dedcd6"
+  },
+  "show": {
+   "cap_gandhi": {
+    "f": "hat",
+    "in": [
+     "gandhi",
+     "topi"
+    ]
+   },
+   "moustache": {
+    "all": [
+     {
+      "not": {
+       "f": "beard"
+      }
+     },
+     {
+      "not": {
+       "f": "noMoustache"
+      }
+     },
+     {
+      "any": [
+       {
+        "f": "moustache"
+       },
+       {
+        "f": "_r",
+        "lt": 0.6
+       }
+      ]
+     }
+    ]
+   },
+   "satchel": {
+    "f": "prop",
+    "in": [
+     "satchel"
+    ]
+   },
+   "specs": {
+    "f": "specs"
+   },
+   "stick": {
+    "f": "prop",
+    "in": [
+     "stick"
+    ]
+   },
+   "towel": {
+    "any": [
+     {
+      "f": "towel"
+     },
+     {
+      "f": "_r",
+      "lt": 0.5
+     }
+    ]
+   }
+  }
+ },
+ "tris": 3362,
+ "units": "u",
+ "up": "Z"
+}

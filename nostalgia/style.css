@@ -3310,3 +3310,15 @@ body.high-contrast .mn-keys { color: var(--ink); text-shadow: 1px 1px 0 #000, -1
 body.high-contrast .st-l small { color: #2b2724; }
 body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
 /* === end high contrast === */
+/* === streetfood === (owned by streetfood.js: the optional debug readout of the street-food scene
+   director, N.streetfood.debugHud(true) or Alt+F with #debug; nothing else of the scenes is DOM) */
+.sf-debug {
+  position: absolute; left: 8px; bottom: 8px; z-index: 11; max-width: min(360px, calc(100vw - 16px));
+  padding: 6px 8px; border-radius: 6px; background: rgba(16, 14, 24, 0.72); color: #f4ead2;
+  font: 11px/1.35 ui-monospace, Menlo, Consolas, monospace; white-space: pre; overflow: hidden;
+  pointer-events: none; display: none; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.sf-debug.show { display: block; }
+.sf-debug b { color: #f2c230; font-weight: 600; }
+@media (max-width: 480px) { .sf-debug { font-size: 10px; bottom: 120px; } }
+/* === end streetfood === */

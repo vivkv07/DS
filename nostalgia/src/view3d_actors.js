@@ -19,6 +19,12 @@
  *    still blends into a relaxed stance with breathing, weight shift and glances; turning on the
  *    spot steps; getting on / off a vehicle blends seat <-> standing beside it. Timing follows the
  *    simulation clock (slow motion / pause freeze it with the game). Contact shadows under the feet.
+ *    Idle habits per person (uncles and constables clasp their hands behind the back, aunties hold
+ *    them in front or fold their arms, students hold their bag straps, kids swing their arms; they
+ *    come and go), talking gestures while a dialogue line or bark of theirs is up (hand raised in
+ *    small emphatic arcs, the other lifting, head nods), paunchy uncles get a swelling torso.
+ *    KAINCHI: a kid on an adult's roadster (T.kainchi) rides standing beside the frame, the right leg
+ *    through the triangle to the far pedal (hip abduction joint), the cycle leaning away.
  *    Two LODs (near / far), instanced: all people are 2 draw calls (+ shadows).
  *  - VEHICLES: a model per type of vehicles.js / traffic.js (cycle, ladies cycle, Hero roadster,
  *    Hercules, kid cycle, Scooty, Luna, Chetak, RX100, auto-rickshaw, Ambassador, Maruti 800,
@@ -29,9 +35,10 @@
  *    one atlas (HORN OK PLEASE, USE DIPPER AT NIGHT, CITY BUS, route boards, number plates), the
  *    rider / driver / pillion / passenger visible where the vehicle is open (cars, bus and lorry
  *    cabs have translucent fresnel glass: a second instanced draw of the glass triangles sharing the
- *    pool's instance buffers, so drivers show through), and first-person
- *    cockpits (car / bus / lorry interiors with the steering wheel and hands; handlebar + hands on
- *    two-wheelers and autos come from the vehicle model itself).
+ *    pool's instance buffers, so drivers show through; from inside, in first person, it turns nearly
+ *    clear), and first-person cockpits (car / bus / lorry interiors with the steering wheel and
+ *    hands, dials with ticks and a live speedometer needle; handlebar + hands, the headset speedo and
+ *    mirrors on two-wheelers and autos come from the vehicle model itself).
  *  - ANIMALS: cows (standing, ambling, lying on the road chewing), stray dogs (napping, trotting),
  *    goats; pigeon flocks (N.traffic.flocks + N.landmarks.flocks) pecking and bursting into flight.
  *  - PARITY LAYERS: mission markers (cylinders of light at objectives and givers), the interaction
@@ -59,7 +66,10 @@
  *    rider looks the same in both views.
  *
  * Public: N.view3dActors = {stats(), lookSpec(look), pools, F (feature ids), MODELS, models(),
- *   setOptions({glows, pools, decals, seasons, blobs}), debug {...}}.
+ *   setOptions({glows, pools, decals, seasons, blobs, fx, habits: true | false | 'always'}),
+ *   debug {camera, track, rec, counts, glints, fx, feet, riderAnkles, ...}}.
+ * Listens to (read only): 'dialogue:bark' / 'dialogue:line' (who is talking), 'vehicle:enter' /
+ * 'vehicle:exit' (mount blends).
  * Coordinates: model space +x forward, +y up, +z right (world angle a -> yaw -a); three (x, y, z) =
  * world (x, height, y). People template: an adult 9 u tall (kids are scaled 0.78 with a 1.16 head).
  */
@@ -79,8 +89,8 @@
 
   /* ================================================================ options + stats */
   const DBG = { cam: null, track: null, rec: null, riderNext: false }; // tests: camera override {pos, look, fov}; track(entity) records its pose
-  const OPT = { glows: true, decals: true, seasons: true, blobs: true, pools: true };
-  const ST = { people: 0, peopleFar: 0, vehicles: 0, wheels: 0, glows: 0, pools: 0, decals: 0, animals: 0, birds: 0, markers: 0, kites: 0, ms: 0, msAvg: 0, frame: 0, culled: 0 };
+  const OPT = { glows: true, decals: true, seasons: true, blobs: true, pools: true, fx: true, habits: true }; // habits: true | false | 'always' (tests)
+  const ST = { people: 0, peopleFar: 0, vehicles: 0, wheels: 0, glows: 0, pools: 0, decals: 0, animals: 0, birds: 0, markers: 0, kites: 0, skids: 0, puffs: 0, ms: 0, msAvg: 0, frame: 0, culled: 0 };
   let tFrame0 = 0;
 
   /* ================================================================ colour helpers */
@@ -212,7 +222,7 @@
       const ax = P[o1] - P[o0], ay = P[o1 + 1] - P[o0 + 1], az = P[o1 + 2] - P[o0 + 2];
       const bx = P[o2] - P[o0], by = P[o2 + 1] - P[o0 + 1], bz = P[o2 + 2] - P[o0 + 2];
       const cx = ay * bz - az * by, cy = az * bx - ax * bz, cz = ax * by - ay * bx;
-      const flip = (cx * this.n[o0] + cy * this.n[o0 + 1] + cz * this.n[o0 + 2]) > 0;
+      const flip = (cx * this.n[o0] + cy * this.n[o0 + 1] + cz * this.n[o0 + 2]) < 0; // (a, b, c) faces against the normal
       for (let i = 0; i < seg; i++) {
         const a = base + i * 2, b = a + 1, c = a + 2, d = a + 3;
         if (flip) { this.tri(a, c, b); this.tri(b, c, d); } else { this.tri(a, b, c); this.tri(b, d, c); }
@@ -555,6 +565,7 @@
     'vec3 aRotZ(vec3 p, vec2 c, float a){ float s = sin(a), k = cos(a); vec2 q = p.xy - c; return vec3(q.x * k - q.y * s + c.x, q.x * s + q.y * k + c.y, p.z); }',
     'vec3 aRotX(vec3 p, vec2 c, float a){ float s = sin(a), k = cos(a); vec2 q = p.yz - c; return vec3(p.x, q.x * k - q.y * s + c.x, q.x * s + q.y * k + c.y); }',
     'vec3 aRotY(vec3 p, vec2 c, float a){ float s = sin(a), k = cos(a); vec2 q = p.xz - c; return vec3(q.x * k - q.y * s + c.x, p.y, q.x * s + q.y * k + c.y); }',
+    'vec3 aRotAx(vec3 v, vec3 u, float a){ float s = sin(a), k = cos(a); return v * k + cross(u, v) * s + u * dot(u, v) * (1.0 - k); }',
     'float aBit(float m, float b){ return mod(floor(m / exp2(b) + 0.0001), 2.0); }',
   ].join('\n') + '\n';
 
@@ -572,10 +583,10 @@
     FACE_VEIL: 31, SPECS: 32, BEARD: 33, LONGBEARD: 34, MOUSTACHE: 35, BINDI: 36, TIE: 37, BELT: 38, BAG: 39, TOWEL: 40,
     APRON: 41, WALKMAN: 42, CAMERA: 43, SHOES: 44, P_STICK: 45, P_BASKET: 46, P_CLOTHBAG: 47, P_TRAY: 48, P_TRUNK: 49, P_POT: 50,
     P_BAT: 51, P_BALL: 52, P_NOTEBOOK: 53, P_PACKET: 54, P_RADIO: 55, P_CHAPPAL: 56, P_CHARKHI: 57, P_DAPPU: 58, P_NEEM: 59, P_TIFFIN: 60,
-    SHORTS: 61, FACE: 62, HAIR_FRINGE: 63,
+    SHORTS: 61, FACE: 62, HAIR_FRINGE: 63, SLIM: 64,
   };
   // pattern / logic bits in iFlags.w (bit index)
-  const BIT_STRIPES = 15, BIT_BORDER = 16, BIT_CHECKS = 17, BIT_KID = 18, BIT_FPS = 19;
+  const BIT_STRIPES = 15, BIT_BORDER = 16, BIT_CHECKS = 17, BIT_KID = 18, BIT_FPS = 19, BIT_ARMS = 20, BIT_NOBODY = 21; // first person: ARMS = only the arms drawn, NOBODY = no torso / neck (the eye sits behind them)
 
   function personVertexHeader(depth) {
     return [
@@ -584,9 +595,11 @@
       GLSL_UNPACK, GLSL_ROT,
       'float pFeat(float f){ if (f < 0.5) return 1.0; float i = f - 1.0; float w = floor(i / 20.0 + 0.0001); float b = i - w * 20.0;',
       '  float m = w < 0.5 ? iFlags.x : (w < 1.5 ? iFlags.y : (w < 2.5 ? iFlags.z : iFlags.w)); return aBit(m, b); }',
+      // two angles packed in one float (12 bits each, 1/1000 rad, +-2.048): head yaw / pitch, leg abduction
+      'vec2 pUnp2(float v){ if (v < 0.5) return vec2(0.0); float hi = floor(v / 4096.0 + 0.00001); return vec2((hi - 2048.0) / 1000.0, (v - hi * 4096.0 - 2048.0) / 1000.0); }',
       'void pAnim(inout vec3 p, inout vec3 n){',
       '  float part = aSP.y;',
-      '  if (pFeat(aSP.z) < 0.5 || (part > 8.5 && part < 9.5 && aBit(iFlags.w, ' + BIT_FPS + '.0) > 0.5)) { p = vec3(0.0, -60.0, 0.0); return; }',
+      '  if (pFeat(aSP.z) < 0.5 || (part > 8.5 && part < 9.5 && aBit(iFlags.w, ' + BIT_FPS + '.0) > 0.5) || ((part < 4.5 || part > 8.5) && aBit(iFlags.w, ' + BIT_ARMS + '.0) > 0.5) || (part < 0.5 && aBit(iFlags.w, ' + BIT_NOBODY + '.0) > 0.5)) { p = vec3(0.0, -60.0, 0.0); return; }',
       '  bool foot = part > 9.5;',
       '  if ((part > 0.5 && part < 4.5) || foot) {',
       '    float side = foot ? (part < 10.5 ? -1.0 : 1.0) : ((part < 1.5 || (part > 2.5 && part < 3.5)) ? -1.0 : 1.0);',
@@ -595,16 +608,24 @@
       '      p = aRotZ(p, vec2(0.0, ' + ANK_Y.toFixed(3) + '), ank); n = aRotZ(n, vec2(0.0), ank); }',
       '    if (part > 2.5) { p = aRotZ(p, vec2(0.0, ' + KNEE_Y.toFixed(3) + '), knee); n = aRotZ(n, vec2(0.0), knee); }',
       '    p = aRotZ(p, vec2(0.0, ' + HIP_Y.toFixed(3) + '), hip); n = aRotZ(n, vec2(0.0), hip);',
+      // hip abduction (+ = the leg swings out sideways), about the forward axis through the hip joint
+      '    vec2 abd2 = pUnp2(iJ3.y); float abd = side < 0.0 ? abd2.x : abd2.y;',
+      '    if (abs(abd) > 0.0005) { p = aRotX(p, vec2(' + HIP_Y.toFixed(3) + ', side * ' + HIP_Z.toFixed(3) + '), -side * abd); n = aRotX(n, vec2(0.0), -side * abd); }',
       '  } else if (part > 4.5 && part < 8.5) {',
       '    float side = (part < 5.5 || (part > 6.5 && part < 7.5)) ? -1.0 : 1.0;',
       '    float sh = side < 0.0 ? iJ1.x : iJ1.y; float el = side < 0.0 ? iJ1.z : iJ1.w; float ab = side < 0.0 ? iJ2.x : iJ2.y;',
       '    if (part > 6.5) { p = aRotZ(p, vec2(0.0, ' + EL_Y.toFixed(3) + '), el); n = aRotZ(n, vec2(0.0), el); }',
       '    p = aRotZ(p, vec2(0.0, ' + SH_Y.toFixed(3) + '), sh); n = aRotZ(n, vec2(0.0), sh);',
-      '    p = aRotX(p, vec2(' + SH_Y.toFixed(3) + ', side * ' + SH_Z.toFixed(3) + '), -side * ab); n = aRotX(n, vec2(0.0), -side * ab);',
+      // swing out of the sagittal plane about the horizontal axis perpendicular to shoulder -> hand
+      // (a hanging arm lifts sideways; an arm reaching forward swings out to a wide handlebar)
+      '    vec2 hd = aRotZ(aRotZ(vec3(0.0, ' + HAND_Y.toFixed(3) + ', 0.0), vec2(0.0, ' + EL_Y.toFixed(3) + '), el), vec2(0.0, ' + SH_Y.toFixed(3) + '), sh).xy - vec2(0.0, ' + SH_Y.toFixed(3) + ');',
+      '    vec2 dn = normalize(hd + vec2(0.0, -0.0001)); vec3 ax = vec3(-dn.y, dn.x, 0.0); vec3 sp = vec3(0.0, ' + SH_Y.toFixed(3) + ', side * ' + SH_Z.toFixed(3) + ');',
+      '    p = aRotAx(p - sp, ax, -side * ab) + sp; n = aRotAx(n, ax, -side * ab);',
       '  } else if (part > 8.5 && part < 9.5) {',
       '    if (aBit(iFlags.w, ' + BIT_KID + '.0) > 0.5) { p.xy = (p.xy - vec2(0.05, ' + NECK_Y.toFixed(3) + ')) * 1.16 + vec2(0.05, ' + NECK_Y.toFixed(3) + '); p.z *= 1.16; }',
-      '    p = aRotY(p, vec2(0.05, 0.0), iJ3.x); n = aRotY(n, vec2(0.0), iJ3.x);',
-      '    p = aRotZ(p, vec2(0.05, ' + NECK_Y.toFixed(3) + '), iJ3.y); n = aRotZ(n, vec2(0.0), iJ3.y);',
+      '    vec2 hpy = pUnp2(iJ3.x);',
+      '    p = aRotY(p, vec2(0.05, 0.0), hpy.x); n = aRotY(n, vec2(0.0), hpy.x);',
+      '    p = aRotZ(p, vec2(0.05, ' + NECK_Y.toFixed(3) + '), hpy.y); n = aRotZ(n, vec2(0.0), hpy.y);',
       '  }',
       // wraps / skirts / tunics: each side of the hem follows its leg (the cloth strides with the legs)
       '  if (part < 0.5 && aSP.z > 2.5 && aSP.z < 5.5 && p.y < ' + HIP_Y.toFixed(3) + ') {',
@@ -679,8 +700,10 @@
     // ---------------------------------------------------------------- hips, torso, belly, neck
     b.part(0).feat(0).slot(BOT).color(W).ell(0, 4.72, 0, 0.62, 0.52, 0.86, sL, near ? 5 : 3);
     const torso = [[0.8, 4.82], [0.86, 5.3], [0.92, 5.95], [0.98, 6.55], [0.94, 6.95], [0.62, 7.3], [0.3, 7.42]];
-    b.slot(TOP).color(W).lathe(near ? torso : [[0.8, 4.82], [0.95, 6.3], [0.9, 6.95], [0.32, 7.42]], near ? 12 : 6, 0, 0, 0.66, 1);
-    b.feat(F.BELLY).slot(TOP).color(W).ell(0.36, 5.55, 0, 0.62, 0.78, 0.8, sL, 5).feat(0);
+    b.feat(F.SLIM).slot(TOP).color(W).lathe(near ? torso : [[0.8, 4.82], [0.95, 6.3], [0.9, 6.95], [0.32, 7.42]], near ? 12 : 6, 0, 0, 0.66, 1);
+    // paunch: the torso itself swells forward over the waist (one smooth surface, not a ball stuck on)
+    const paunch = [[0.84, 4.82], [0.98, 5.12], [1.1, 5.5], [1.12, 5.88], [1.05, 6.3], [0.99, 6.62], [0.94, 6.95], [0.62, 7.3], [0.3, 7.42]];
+    b.feat(F.BELLY).slot(TOP).color(W).lathe(near ? paunch : [[0.84, 4.82], [1.1, 5.6], [1.0, 6.4], [0.9, 6.95], [0.32, 7.42]], near ? 14 : 6, 0.1, 0, 0.74, 0.9).feat(0);
     b.slot(SK).color(W).cyl([0, 7.15, 0], [0, 7.85, 0], 0.3, 0.27, sS, 0);
     // shoulders: shirt (sleeves) or skin (banian / sleeveless)
     for (const sd of [-1, 1]) {
@@ -952,6 +975,7 @@
     if (pf) on(pf);
     if (bits.has(F.P_TRUNK) || bits.has(F.P_POT)) { bits.delete(F.CAP_TOPI); bits.delete(F.CAP_CRICKET); bits.delete(F.CAP_BACK); }
     on(F.FACE);
+    if (!bits.has(F.BELLY)) on(F.SLIM);
     // pack
     const f = [0, 0, 0, 0];
     for (const id of bits) { const i = id - 1, w = (i / 20) | 0, bb = i - w * 20; f[w] += Math.pow(2, bb); }
@@ -965,15 +989,16 @@
     if (bits.has(F.WRAP)) { fSeat[0] -= Math.pow(2, F.WRAP - 1); if (!bits.has(F.LEG_PANTS)) fSeat[0] += Math.pow(2, F.LEG_PANTS - 1); }
     s = {
       seed: seed | 0, f, fSeat, c: [pack(skin), pack(hair), pack(top), pack(bottom), pack(accent), pack(hat), pack(bag), pack(extra)],
-      size, wide, kid, wrap, girl, headCarry: !!HEAD_PROPS[prop], prop: prop || null, kind,
+      size, wide, kid, wrap, girl, headCarry: !!HEAD_PROPS[prop], prop: prop || null, kind, belly: bits.has(F.BELLY),
     };
     lookCache.set(L, s);
     return s;
   }
 
   /* ---------------------------------------------------------------- poses (joint angles) */
-  // J: [hipL, hipR, kneeL, kneeR, shL, shR, elL, elR, abL, abR, lean, bob, headYaw, headPitch, breathe, -]
-  const J = new Float32Array(16);
+  // J: [hipL, hipR, kneeL, kneeR, shL, shR, elL, elR, abL, abR, lean, bob, headYaw, headPitch, breathe,
+  //     ankles (packed), legAbdL, legAbdR]; the instance packs head yaw + pitch and the two leg abductions
+  const J = new Float32Array(18);
   function poseRest(j) { j.fill(0); j[8] = j[9] = 0.07; j[6] = j[7] = 0.12; return j; }
   /** lowest point of a foot sole (template y) for hip angle h and knee angle k (feet planting) */
   function soleMin(h, k) {
@@ -995,15 +1020,111 @@
     if (bend > 0) { out[oi] = base + A; out[oi + 1] = -(Math.PI - B); } else { out[oi] = base - A; out[oi + 1] = Math.PI - B; }
   }
   const IKO = [0, 0];
-  /** arms to hand targets (template coords, already relative to the person root) with torso lean */
-  function armsTo(j, lean, lx, ly, lz, rx, ry, rz) {
+  /** arms to hand targets (template coords, already relative to the person root) with torso lean;
+   *  maxLean: lean further forward (up to it) until both hands reach their targets (a kid on an
+   *  adult's cycle or an auto stretches over the handlebar instead of grabbing at the air) */
+  const ARM_REACH = (UARM + FARM) * 0.985;
+  function armNeed(lean, x, y, z) {
+    const c = Math.cos(lean), s = Math.sin(lean), qy = y - HIP_Y;
+    return Math.hypot(x * c - qy * s, x * s + qy * c + HIP_Y - SH_Y, Math.abs(z) - SH_Z);
+  }
+  /** one arm (k 0 = left, z < 0; 1 = right) to a 3D hand target in the unleaned body frame: 2-bone IK
+   *  in the sagittal plane at the full 3D distance, then the out-of-plane swing (j[8 + k], see the
+   *  shader) carries the hand out to the target's lateral offset */
+  function armIK(j, k, x, y, z, abMin) {
+    const side = k ? 1 : -1, dy = y - SH_Y, ds = Math.hypot(x, dy) || 1e-6;
+    const lat = side * z - SH_Z, d3 = Math.hypot(ds, lat);
+    ik2(0, SH_Y, x / ds * d3, SH_Y + dy / ds * d3, UARM, FARM, -1, IKO, 0);
+    j[4 + k] = IKO[0]; j[6 + k] = IKO[1];
+    j[8 + k] = clamp(Math.atan2(lat, ds), abMin == null ? -0.6 : abMin, 1.3);
+  }
+  function armsTo(j, lean, lx, ly, lz, rx, ry, rz, maxLean, abMin) {
+    if (maxLean > lean) for (let k = 0; k < 16 && lean < maxLean && Math.max(armNeed(lean, lx, ly, lz), armNeed(lean, rx, ry, rz)) > ARM_REACH; k++) lean = Math.min(maxLean, lean + 0.05);
     const c = Math.cos(lean), s = Math.sin(lean);
     const un = (x, y) => { const qx = x, qy = y - HIP_Y; return [qx * c - qy * s, qx * s + qy * c + HIP_Y]; }; // undo the forward lean
     const L = un(lx, ly), R = un(rx, ry);
-    ik2(0, SH_Y, L[0], L[1], UARM, FARM, -1, IKO, 0); j[4] = IKO[0]; j[6] = IKO[1];
-    ik2(0, SH_Y, R[0], R[1], UARM, FARM, -1, IKO, 0); j[5] = IKO[0]; j[7] = IKO[1];
-    j[8] = clamp((Math.abs(lz) - SH_Z) / 2.6, -0.25, 0.6); j[9] = clamp((Math.abs(rz) - SH_Z) / 2.6, -0.25, 0.6);
+    armIK(j, 0, L[0], L[1], lz, abMin); armIK(j, 1, R[0], R[1], rz, abMin);
     j[10] = lean;
+  }
+  /* talking: whoever speaks a dialogue line or a bark gestures while the words are up (one hand
+   * raised palm-up in small emphatic arcs, the other lifting now and then, the head nodding) */
+  const TALK = new WeakMap(); // actor -> {t0, until}
+  function talkStart(a, secs) {
+    if (!a || typeof a !== 'object' || !a.look) return;
+    const t = nowS(), r = TALK.get(a);
+    TALK.set(a, { t0: r && r.until > t ? r.t0 : t, until: t + clamp(secs, 0.8, 7) });
+  }
+  N.on('dialogue:bark', (d) => { try { if (d && d.target) talkStart(d.target, 1.6 + String(d.text || '').length * 0.05); } catch (e) { /* cosmetic */ } });
+  N.on('dialogue:line', (d) => {
+    try {
+      if (!d || d.skipped) return;
+      const id = d.as || d.speaker;
+      const a = id === 'player' || id === 'chinnu' ? N.player : (N.npcs && N.npcs.get ? N.npcs.get(id) : null);
+      if (a) talkStart(a, 1.2 + String(d.text || '').length * 0.045);
+    } catch (e) { /* cosmetic */ }
+  });
+  /** 0..1 talking weight now (eased in and out) */
+  function talkW(a) {
+    const r = TALK.get(a); if (!r) return 0;
+    const t = nowS();
+    if (t > r.until + 0.4) { TALK.delete(a); return 0; }
+    return clamp((t - r.t0) / 0.25, 0, 1) * clamp((r.until + 0.4 - t) / 0.4, 0, 1);
+  }
+  function talkArms(j, t, seed, rightFree) {
+    const a = t * 2.3 + seed, b = t * 1.55 + seed * 2.3;
+    const g = 0.5 + 0.5 * Math.sin(a * 0.9) * Math.sin(b * 0.7 + 1);
+    if (rightFree) {
+      j[5] = 0.42 + 0.3 * g + 0.08 * Math.sin(a * 1.9);
+      j[7] = 1.3 + 0.38 * Math.sin(a);
+      j[9] = 0.22 + 0.16 * Math.sin(b);
+    }
+    const l = Math.max(0, Math.sin(b * 0.8 + 2));
+    j[4] = 0.1 + 0.32 * l; j[6] = 0.3 + 0.9 * l; j[8] = 0.12 + 0.1 * l;
+    j[12] += 0.1 * Math.sin(t * 3.1 + seed); j[13] += 0.05 * Math.sin(t * 4.4 + seed);
+    return j;
+  }
+  /* idle arm habits: what people do with their hands while standing about (feedback_3d.md #2,
+   * "idle"): uncles and constables clasp their hands behind the back, aunties and women hold them
+   * in front, men fold their arms, students hold their bag straps, kids swing their arms. A habit
+   * comes and goes (habitOn) and blends in with the standing weight. */
+  const HABIT_KINDS = {
+    police: [['behind', 1]], uncle: [['behind', 0.75], ['fold', 1]], lungi: [['behind', 0.5], ['fold', 0.8]],
+    aunty: [['front', 0.55], ['fold', 0.8]], saree: [['front', 0.5], ['fold', 0.7]], woman: [['front', 0.55]], burqa: [['front', 1]],
+    man: [['fold', 0.35], ['behind', 0.6]], kid: [['swing', 0.45], ['behind', 0.6]], student: [['straps', 0.85], ['swing', 1]],
+  };
+  function habitOf(s, seed) {
+    const L = HABIT_KINDS[s.kind];
+    if (!L) return null;
+    const r = hash1(seed * 0.731 + 5.3);
+    for (const h of L) if (r < h[1]) return h[0];
+    return null;
+  }
+  /** 0..1: is the habit on now (slow, per person: held for tens of seconds, eased in / out) */
+  function habitOn(t, seed) {
+    if (OPT.habits !== true) return OPT.habits === 'always' ? 1 : 0;
+    const v = 0.5 + 0.5 * Math.sin(t * 0.083 + seed * 1.71) * Math.cos(t * 0.031 + seed * 0.37);
+    const k = clamp((v - 0.3) / 0.22, 0, 1);
+    return k * k * (3 - 2 * k);
+  }
+  const JH = new Float32Array(18);
+  function habitArms(j, hab, s, t, seed) {
+    const belly = !!s.belly;
+    const fx = belly ? 1.12 : 0.8, bx = s.wrap || belly ? -1.2 : -1.06;
+    switch (hab) {
+      // hands joined low behind the back: nearly straight arms swung back and in (elbows tucked by the
+      // back, not winged out at shoulder height)
+      case 'behind': armsTo(j, j[10], bx, 4.35, -0.18, bx - 0.04, 4.45, 0.14, 0, -0.9); break;
+      case 'front': armsTo(j, j[10], fx, belly ? 4.8 : 5.0, -0.14, fx + 0.04, belly ? 4.92 : 5.1, 0.1, 0, -0.9); break;
+      case 'fold': armsTo(j, j[10], belly ? 1.12 : 0.95, 6.12, 0.42, belly ? 1.16 : 1.0, 5.92, -0.42, 0, -0.95); break;
+      case 'straps': armsTo(j, j[10], 0.74, 6.42, -0.52, 0.74, 6.5, 0.52, 0, -0.9); break;
+      case 'swing': { const a = Math.sin(t * 1.9 + seed) * 0.42; j[4] = a; j[5] = a * 0.85; j[6] = j[7] = 0.25 + Math.max(0, a) * 0.4; j[8] = j[9] = 0.1; break; }
+      case 'work': // a shopkeeper / chai-wala busy at the counter: both hands working at waist height
+        armsTo(j, j[10], 1.3 + 0.16 * Math.sin(t * 2.1 + seed), 5.3 + 0.14 * Math.sin(t * 3.3 + seed), -0.5,
+          1.36 + 0.16 * Math.sin(t * 1.7 + seed + 1), 5.25 + 0.12 * Math.sin(t * 2.9 + 1), 0.48, 0, -0.9);
+        break;
+      default: break;
+    }
+    return j;
   }
   function legsTo(j, lx, ly, rx, ry) {
     ik2(0, HIP_Y, lx, ly, THIGH, SHIN, 1, IKO, 0); j[0] = IKO[0]; j[2] = IKO[1];
@@ -1089,7 +1210,7 @@
   }
   /** full-body gait pose for cycle position ph (cycles) */
   function gaitPose(j, ph, P, wrapK) {
-    j[12] = j[13] = j[14] = 0;
+    j[12] = j[13] = j[14] = j[16] = j[17] = 0;
     const uL = ph - Math.floor(ph), uR = (ph + 0.5) - Math.floor(ph + 0.5);
     footAt(uL, P, FA); footAt(uR, P, FB);
     let hy;
@@ -1125,11 +1246,12 @@
     j[15] = encAnk(-j[0] - j[2], -j[1] - j[3]);
     return j;
   }
-  const JS = new Float32Array(16);
+  const JS = new Float32Array(18);
   /** blend everything but the packed ankles (re-derived so feet stay flat) */
   function blendPose(j, from, k) {
     const af = decAnk(from[15]), aj = decAnk(j[15]);
     for (let i = 0; i < 15; i++) j[i] = from[i] + (j[i] - from[i]) * k;
+    j[16] = (from[16] || 0) + ((j[16] || 0) - (from[16] || 0)) * k; j[17] = (from[17] || 0) + ((j[17] || 0) - (from[17] || 0)) * k;
     j[15] = encAnk(af[0] + (aj[0] - af[0]) * k, af[1] + (aj[1] - af[1]) * k);
   }
 
@@ -1175,12 +1297,12 @@
     fr.write(pool.M, i * 16, lx, ly, lz, o && o.yaw || 0, o && o.roll || 0, o && o.pitch || 0, sc * s.wide, sc, sc * s.wide);
     const A = pool.A;
     const a0 = A.iJ0.array, a1 = A.iJ1.array, a2 = A.iJ2.array, a3 = A.iJ3.array, fl = A.iFlags.array, ca = A.iColA.array, cb = A.iColB.array, k = i * 4;
-    a3[k] = j[12]; a3[k + 1] = j[13]; a3[k + 2] = j[14]; a3[k + 3] = j[15] || 0;
+    a3[k] = encAnk(j[12], j[13]); a3[k + 1] = encAnk(j[16] || 0, j[17] || 0); a3[k + 2] = j[14]; a3[k + 3] = j[15] || 0;
     a0[k] = j[0]; a0[k + 1] = j[1]; a0[k + 2] = j[2]; a0[k + 3] = j[3];
     a1[k] = j[4]; a1[k + 1] = j[5]; a1[k + 2] = j[6]; a1[k + 3] = j[7];
     a2[k] = j[8]; a2[k + 1] = j[9]; a2[k + 2] = j[10]; a2[k + 3] = j[11];
     const ff = o && o.seated ? s.fSeat : s.f;
-    fl[k] = ff[0]; fl[k + 1] = ff[1]; fl[k + 2] = ff[2]; fl[k + 3] = ff[3] + (o && o.fpsHide ? Math.pow(2, BIT_FPS) : 0);
+    fl[k] = ff[0]; fl[k + 1] = ff[1]; fl[k + 2] = ff[2]; fl[k + 3] = ff[3] + (o && o.fpsHide ? Math.pow(2, BIT_FPS) : 0) + (o && o.fpsHide && o.armsOnly ? Math.pow(2, BIT_ARMS) : 0) + (o && o.fpsHide && o.noBody ? Math.pow(2, BIT_NOBODY) : 0);
     ca[k] = s.c[0]; ca[k + 1] = s.c[1]; ca[k + 2] = s.c[2]; ca[k + 3] = s.c[3];
     cb[k] = s.c[4]; cb[k + 1] = s.c[5]; cb[k + 2] = s.c[6]; cb[k + 3] = s.c[7];
     if (pool === PEOPLE) ST.people++; else ST.peopleFar++;
@@ -1218,6 +1340,8 @@
         'vec3 vPos = vec3(position);',
         'if (aSP.y > 0.5 && aSP.y < 1.5) { vPos = aRotY(vPos, aPiv.xz, iVB.x); objectNormal = aRotY(objectNormal, vec2(0.0), iVB.x); }',
         'else if (aSP.y > 1.5 && aSP.y < 2.5) { vPos = aRotZ(vPos, aPiv.xy, iVB.y); objectNormal = aRotZ(objectNormal, vec2(0.0), iVB.y); }',
+        // part 3: dial needles of the first-person interiors turn about x by iVB.w (the speedometer)
+        'else if (aSP.y > 2.5 && aSP.y < 3.5) { vPos = aRotX(vPos, aPiv.yz, iVB.w); objectNormal = aRotX(objectNormal, vec2(0.0), iVB.w); }',
       ].join('\n'))
       .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed = vPos;')
       .replace('#include <color_vertex>', [
@@ -1244,11 +1368,16 @@
   /** vehicle glass: the vehicle shader, translucent with a fresnel rise towards grazing angles */
   function glassCompile(shader) {
     vehicleCompile(shader);
-    shader.fragmentShader = shader.fragmentShader.replace('#include <output_fragment>', [
-      '{ vec3 vd = normalize(vViewPosition); float fr = 1.0 - abs(dot(normal, vd));',
-      '  diffuseColor.a = mix(0.34, 0.94, fr * fr); }',
-      '#include <output_fragment>',
-    ].join('\n'));
+    // iVB.w = 1 on the body the first-person camera sits in: seen from inside, the windscreen is
+    // nearly clear (a faint tint and reflections at grazing angles), so the road ahead reads
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying float vIns;')
+      .replace('#include <color_vertex>', '#include <color_vertex>\nvIns = iVB.w;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vIns;')
+      .replace('#include <output_fragment>', [
+        '{ vec3 vd = normalize(vViewPosition); float fr = 1.0 - abs(dot(normal, vd));',
+        '  diffuseColor.a = vIns > 0.5 ? mix(0.05, 0.3, fr * fr) : mix(0.34, 0.94, fr * fr); }',
+        '#include <output_fragment>',
+      ].join('\n'));
   }
   const P1 = (b, k) => b.slot(VP).shade(k == null ? 1 : k);
   const P2 = (b, k) => b.slot(VP2).shade(k == null ? 1 : k);
@@ -1269,6 +1398,23 @@
       return [x0 + (x1 - x0) * v + n[0] * off, y0 + (y1 - y0) * v + n[1] * off, z0 + (z1 - z0) * v + n[2] * off];
     };
     return b.quadO(P(iu0, iv0), P(iu1, iv0), P(iu1, iv1), P(iu0, iv1), n[0], n[1], n[2]);
+  }
+  /** a quad face A B C D (u along A->B, v along A->D) minus rectangular holes [[u0, u1, v0, v1]], both sides */
+  function frameFace(b, A, B, C, D, holes) {
+    const P = (u, v) => {
+      const x0 = A[0] + (B[0] - A[0]) * u, y0 = A[1] + (B[1] - A[1]) * u, z0 = A[2] + (B[2] - A[2]) * u;
+      const x1 = D[0] + (C[0] - D[0]) * u, y1 = D[1] + (C[1] - D[1]) * u, z1 = D[2] + (C[2] - D[2]) * u;
+      return [x0 + (x1 - x0) * v, y0 + (y1 - y0) * v, z0 + (z1 - z0) * v];
+    };
+    const us = [0, 1], vs = [0, 1];
+    for (const h of holes) { us.push(h[0], h[1]); vs.push(h[2], h[3]); }
+    const U = [...new Set(us)].sort((p, q) => p - q), V = [...new Set(vs)].sort((p, q) => p - q);
+    for (let i = 0; i + 1 < U.length; i++) for (let j = 0; j + 1 < V.length; j++) {
+      const mu = (U[i] + U[i + 1]) / 2, mv = (V[j] + V[j + 1]) / 2;
+      if (holes.some((h) => mu > h[0] && mu < h[1] && mv > h[2] && mv < h[3])) continue;
+      b.quad2(P(U[i], V[j]), P(U[i + 1], V[j]), P(U[i + 1], V[j + 1]), P(U[i], V[j + 1]));
+    }
+    return b;
   }
   function faceN(A, B, D) {
     const ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2], wx = D[0] - A[0], wy = D[1] - A[1], wz = D[2] - A[2];
@@ -1435,7 +1581,16 @@
     HL(b).cyl([ba[0] + 0.72, ba[1] - 0.12, 0], [ba[0] + 0.92, ba[1] - 0.12, 0], 0.42, 0.42, 10, 2);
     CH(b).cyl([ba[0] + 0.68, ba[1] - 0.12, 0], [ba[0] + 0.78, ba[1] - 0.12, 0], 0.52, 0.5, 10, 0);
     FX(b, '#141418').box(ba[0] - 0.3, ba[1] + 0.22, -0.45, ba[0] + 0.35, ba[1] + 0.32, 0.45);
-    CH(b); for (const s of [-1, 1]) { b.tube([ba[0] - 0.1, ba[1], s * ba[2] * 0.62], [ba[0] - 0.25, ba[1] + 1.1, s * ba[2] * 0.8], 0.06, 4).ell(ba[0] - 0.25, ba[1] + 1.25, s * ba[2] * 0.8, 0.08, 0.28, 0.35, 6, 4); }
+    // speedometer set into the headset top (what the rider sees between the grips in first person)
+    FX(b, '#2a2a2e').cyl([ba[0] + 0.02, ba[1] + 0.3, 0], [ba[0] + 0.02, ba[1] + 0.36, 0], 0.34, 0.32, 14, 2);
+    b.slot(VLIT).color('#efe6c8').cyl([ba[0] + 0.02, ba[1] + 0.36, 0], [ba[0] + 0.02, ba[1] + 0.38, 0], 0.27, 0.27, 14, 2);
+    FX(b, '#1a1616'); for (let k = 0; k <= 6; k++) { const a = Math.PI * (0.15 + k * 0.7 / 6) + Math.PI / 2; b.box(ba[0] + 0.02 + Math.cos(a) * 0.21 - 0.02, ba[1] + 0.38, Math.sin(a) * 0.21 - 0.02, ba[0] + 0.02 + Math.cos(a) * 0.21 + 0.02, ba[1] + 0.395, Math.sin(a) * 0.21 + 0.02); }
+    FX(b, '#e0501c').tube([ba[0] + 0.02, ba[1] + 0.395, 0], [ba[0] - 0.1, ba[1] + 0.395, -0.17], 0.025, 3);
+    // mirrors: chrome backs with dark glass faces towards the rider
+    for (const s of [-1, 1]) {
+      CH(b).tube([ba[0] - 0.1, ba[1], s * ba[2] * 0.62], [ba[0] - 0.25, ba[1] + 1.1, s * ba[2] * 0.8], 0.06, 4).ell(ba[0] - 0.25, ba[1] + 1.25, s * ba[2] * 0.8, 0.08, 0.28, 0.35, 10, 5);
+      FX(b, '#4a5864').ell(ba[0] - 0.3, ba[1] + 1.25, s * ba[2] * 0.8, 0.05, 0.23, 0.29, 10, 5);
+    }
     b.part(0);
     return {
       L: o.L, W: o.W, H: ba[1] + 1.4, bike: true, show: true, steerX: o.steerX, rearR: R,
@@ -1553,7 +1708,8 @@
     P2(b).box(-11.62, 6.0, -6.15, -11.5, 6.6, 6.15);
     GL(b).box(-11.62, 7.9, -2.6, -11.55, 9.5, 2.6);
     FX(b, BLACK).box(6.3, 10.0, -5.4, 7.2, 10.7, 5.4).box(6.85, 6.1, -4.9, 7.25, 6.4, 4.9).box(6.85, 6.2, -0.08, 7.2, 10.1, 0.08);
-    FX(b, '#5a6a72').box(6.88, 6.4, -4.7, 6.98, 10.0, 4.7);
+    GL(b).box(6.88, 6.4, -4.7, 6.98, 10.0, 4.7); // the windscreen (translucent: the road shows through in first person)
+    FX(b, BLACK).tube([7.0, 6.5, -0.4], [7.05, 9.3, -2.6], 0.07, 4); // the single wiper
     TL(b).box(-11.3, 3.2, -5.4, -11.05, 3.9, -4.4).box(-11.3, 3.2, 4.4, -11.05, 3.9, 5.4);
     // handlebar (steering column at x 6.0)
     b.part(1, [6.0, 0, 0]);
@@ -1586,15 +1742,37 @@
     // greenhouse: pillars + roof in paint, glass panels on each face
     const g = o.gh;
     const c = [[g.x0, g.y0, -g.w0], [g.x1, g.y0, -g.w0], [g.x1, g.y0, g.w0], [g.x0, g.y0, g.w0], [g.rx0, g.y1, -g.w1], [g.rx1, g.y1, -g.w1], [g.rx1, g.y1, g.w1], [g.rx0, g.y1, g.w1]];
-    P1(b, 0.98).hexa(c, { top: false });
+    // pillars and frames only (double-sided): the cabin is hollow behind the translucent glass
+    const bp = g.bp || 0.5;
+    P1(b, 0.98);
+    frameFace(b, c[1], c[2], c[6], c[5], [[0.07, 0.93, 0.06, 0.92]]);
+    frameFace(b, c[3], c[0], c[4], c[7], [[0.1, 0.9, 0.12, 0.9]]);
+    frameFace(b, c[0], c[1], c[5], c[4], [[0.06, bp - 0.035, 0.1, 0.9], [bp + 0.035, 0.93, 0.1, 0.9]]);
+    frameFace(b, c[2], c[3], c[7], c[6], [[0.07, 1 - bp - 0.035, 0.1, 0.9], [1 - bp + 0.035, 0.94, 0.1, 0.9]]);
     if (o.roofP2) P2(b); else P1(b, 1.04);
     b.quad(c[4], c[7], c[6], c[5]);
+    FX(b, '#cfc6b4').quad(c[4], c[5], c[6], c[7]); // headliner
+    // interior seen through the glass: dashboard, seat backs, steering wheel (right-hand drive)
+    const sy = Math.min(o.seatY, g.y1 - 5.5), dz = hw * 0.36;
+    const dashX = g.x1 - 0.3 - (g.x1 - g.rx1) * 0.8 / (g.y1 - g.y0); // behind the raked windscreen
+    FX(b, '#2a2420').box(dashX - 2.0, g.y0 - 0.4, -g.w0 + 0.35, dashX, g.y0 + 0.7, g.w0 - 0.35);
+    FX(b, '#4a2a22');
+    for (const sd of [-1, 1]) b.box(o.seatX - 1.45, g.y0 - 0.6, sd * dz - 1.35, o.seatX - 0.75, sy + 3.2, sd * dz + 1.35).box(o.seatX - 1.25, sy + 3.2, sd * dz - 0.7, o.seatX - 0.85, sy + 4.0, sd * dz + 0.7);
+    const rxw = g.x0 + (g.rx0 - g.x0) * (2.3 / (g.y1 - g.y0)); // the raked rear window at the bench-back top
+    b.box(rxw + 0.2, g.y0 - 0.6, -g.w0 + 0.5, rxw + 0.9, g.y0 + 2.3, g.w0 - 0.5);
+    FX(b, '#5a4638').quad([g.x0 + 0.1, g.y0 + 0.03, g.w0 - 0.1], [dashX, g.y0 + 0.03, g.w0 - 0.1], [dashX, g.y0 + 0.03, -g.w0 + 0.1], [g.x0 + 0.1, g.y0 + 0.03, -g.w0 + 0.1]); // the cabin tub
+    {
+      const ca = Math.cos(0.5), sa = Math.sin(0.5), cx = o.seatX + 3.1, cy = sy + 1.65, R = 1.1;
+      const P = (f) => [cx + R * Math.sin(f) * sa, cy + R * Math.sin(f) * ca, dz + R * Math.cos(f)];
+      FX(b, '#1a1816');
+      for (let k = 0; k < 10; k++) b.tube(P(k / 10 * TAU), P((k + 1) / 10 * TAU), 0.12, 4);
+      b.tube([cx, cy, dz], [cx + 1.6, cy - 0.9, dz], 0.12, 4);
+    }
     if (o.gutter !== false) { CH(b); b.box(g.rx0, g.y1 - 0.08, -g.w1 - 0.06, g.rx1, g.y1 + 0.02, -g.w1 + 0.06).box(g.rx0, g.y1 - 0.08, g.w1 - 0.06, g.rx1, g.y1 + 0.02, g.w1 + 0.06); }
     GL(b);
     const cc = [(g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2, 0];
     let n = faceN(c[1], c[2], c[5]); panel(b, c[1], c[2], c[6], c[5], 0.07, 0.93, 0.06, 0.92, 0.05, n, cc);
     n = faceN(c[3], c[0], c[7]); panel(b, c[3], c[0], c[4], c[7], 0.1, 0.9, 0.12, 0.9, 0.05, n, cc);
-    const bp = g.bp || 0.5;
     n = faceN(c[0], c[1], c[4]); panel(b, c[0], c[1], c[5], c[4], 0.06, bp - 0.035, 0.1, 0.9, 0.05, n, cc); panel(b, c[0], c[1], c[5], c[4], bp + 0.035, 0.93, 0.1, 0.9, 0.05, n, cc);
     n = faceN(c[2], c[3], c[6]); panel(b, c[2], c[3], c[7], c[6], 0.07, 1 - bp - 0.035, 0.1, 0.9, 0.05, n, cc); panel(b, c[2], c[3], c[7], c[6], 1 - bp + 0.035, 0.94, 0.1, 0.9, 0.05, n, cc);
     // bumpers, grille, lamps, rubbing strip, door seams + handles, mirrors
@@ -1620,7 +1798,7 @@
     const meta = {
       L, W, H: g.y1 + 0.2, show: false, cockpit: o.cockpit || 'car', rearR: o.wheels[0].r,
       wheels: o.wheels.flatMap((w) => [{ x: w.x, z: -(hw - w.w / 2 + 0.12), r: w.r, w: w.w, kind: 'solid', front: !!w.front }, { x: w.x, z: hw - w.w / 2 + 0.12, r: w.r, w: w.w, kind: 'solid', front: !!w.front }]),
-      seats: [{ x: o.seatX, y: o.seatY, z: hw * 0.36, pose: 'car', foot: [o.seatX + 4, 2.4] }, { x: o.seatX, y: o.seatY, z: -hw * 0.36, pose: 'bench', foot: [o.seatX + 3.5, 2.4] }],
+      seats: [{ x: o.seatX, y: sy, z: dz, pose: 'car', foot: [o.seatX + 4, 2.4], grip: [o.seatX + 3.05, sy + 1.62, 1.05] }, { x: o.seatX, y: sy, z: -dz, pose: 'bench', foot: [o.seatX + 3.5, 2.4] }],
       lamps: { head: [[fx + 0.15, o.lampY, -o.lampZ], [fx + 0.15, o.lampY, o.lampZ]], tail: [[-fx - 0.15, o.tailY, -(hw - 1.5)], [-fx - 0.15, o.tailY, hw - 1.5]] },
       decals, gh: g, hoodY: o.hoodY, dash: o.dash,
     };
@@ -1683,6 +1861,7 @@
     FX(b, '#141214').box(31.2, 15.6, -6.5, 31.45, 16.5, 6.5);
     FX(b, '#1c1a1e'); for (const x of [21.6, -10.4]) b.box(x, 2.0, -hw - 0.1, x + 4.4, 15.2, -hw + 0.04);
     FX(b, '#9aa0a6'); for (const x of [21.6, -10.4]) b.box(x + 2.15, 2.0, -hw - 0.14, x + 2.25, 15.2, -hw + 0.05);
+    FX(b, '#3a3a3e'); for (const x of [21.6, -10.4]) b.box(x + 0.1, 1.85, -hw - 1.25, x + 4.3, 2.25, -hw + 0.05); // footboard steps
     FX(b, '#2a2628').box(30.9, 1.4, -8.6, 32.1, 3.0, 8.6).box(-32.0, 1.4, -8.6, -30.9, 3.0, 8.6);
     FX(b, '#1a1a1e').box(31.3, 4.4, -4.0, 31.5, 7.4, 4.0);
     for (const s of [-1, 1]) { CH(b).cyl([31.2, 3.9, s * 6.6], [31.5, 3.9, s * 6.6], 0.85, 0.85, 10, 0); HL(b).cyl([31.25, 3.9, s * 6.6], [31.55, 3.9, s * 6.6], 0.7, 0.7, 10, 2); TL(b).box(-31.45, 3.4, s * 7.0 - 0.7, -31.2, 4.8, s * 7.0 + 0.7); }
@@ -1690,7 +1869,7 @@
     return {
       L, W: 18, H: 17.6, show: false, cockpit: 'bus', rearR: 3.0,
       wheels: [{ x: 22, z: -8.12, r: 3.0, w: 2.0, kind: 'solid', front: true }, { x: 22, z: 8.12, r: 3.0, w: 2.0, kind: 'solid', front: true }, { x: -18, z: -7.82, r: 3.0, w: 2.6, kind: 'solid' }, { x: -18, z: 7.82, r: 3.0, w: 2.6, kind: 'solid' }],
-      seats: [], lamps: { head: [[31.6, 3.9, -6.6], [31.6, 3.9, 6.6]], tail: [[-31.5, 4.1, -7.0], [-31.5, 4.1, 7.0]] },
+      seats: [], lamps: { head: [[31.6, 3.9, -6.6], [31.6, 3.9, 6.6]], tail: [[-31.5, 4.1, -7.0], [-31.5, 4.1, 7.0]] }, busLife: true,
       decals: [
         { cell: 'citybus', x: -4, y: 5.6, z: hw + 0.1, w: 15, h: 3.2, face: 'R' }, { cell: 'citybus', x: -4, y: 5.6, z: -hw - 0.1, w: 15, h: 3.2, face: 'L' },
         { cell: 'route', x: 31.5, y: 15.95, z: 0, w: 4.6, h: 1.0, face: 'F' }, { cell: 'route', x: -31.35, y: 16.05, z: 0, w: 4.0, h: 0.9, face: 'B' },
@@ -1819,6 +1998,25 @@
   /* ---------------------------------------------------------------- first-person interiors */
   // drawn instead of the body when the player drives a car / bus / lorry in first person (the body
   // has no inside). Built in the vehicle's local frame; the hood seen through the windscreen is a copy.
+  /** a round dial facing -x (towards the driver) centred at (x, y, z), radius r: dark bezel, cream
+   *  face (lit at night), 9 ticks over a 270 degree sweep (lower left -> lower right, clockwise as
+   *  the driver sees it) and an orange needle. live: the needle is part 3, turned about x by iVB.w
+   *  (the speedometer); else it rests at angle `rest` (radians, 0 = pointing right, PI/2 = up) */
+  function dial(b, x, y, z, r, live, rest) {
+    b.part(0);
+    FX(b, '#141212').cyl([x + 0.08, y, z], [x - 0.05, y, z], r * 1.2, r * 1.12, 16, 3);
+    b.slot(VLIT).color('#efe6c8').cyl([x - 0.03, y, z], [x - 0.07, y, z], r, r, 16, 2);
+    FX(b, '#1a1616');
+    for (let k = 0; k <= 8; k++) {
+      const a = (225 - k * 33.75) * Math.PI / 180, c = Math.cos(a), sn = Math.sin(a), r0 = k % 2 ? 0.74 : 0.64;
+      b.tube([x - 0.08, y + sn * r * r0, z + c * r * r0], [x - 0.08, y + sn * r * 0.9, z + c * r * 0.9], r * 0.045, 3);
+    }
+    const a0 = live ? 225 * Math.PI / 180 : (rest == null ? Math.PI / 2 : rest), c0 = Math.cos(a0), s0 = Math.sin(a0);
+    if (live) b.part(3, [0, y, z]);
+    FX(b, '#e0501c').tube([x - 0.1, y - s0 * r * 0.16, z - c0 * r * 0.16], [x - 0.1, y + s0 * r * 0.82, z + c0 * r * 0.82], r * 0.045, 3);
+    b.part(0);
+    FX(b, '#141212').cyl([x - 0.09, y, z], [x - 0.12, y, z], r * 0.12, r * 0.12, 6, 2);
+  }
   function mkCarInterior(b, md) {
     const g = md.gh, hw = md.W / 2, L = md.L, dash = md.dash || { x: g.x1 - 0.8, y: g.y0 + 0.5 };
     b.part(0);
@@ -1829,7 +2027,10 @@
     // dashboard, instrument cluster, glovebox
     FX(b, '#3a2f2c').box(dash.x - 0.2, dash.y - 1.4, -g.w0 + 0.1, g.x1 + 0.1, dash.y, g.w0 - 0.1);
     FX(b, '#2a2220').box(dash.x - 0.6, dash.y - 0.1, -g.w0 + 0.2, dash.x + 0.5, dash.y + 0.25, g.w0 - 0.2);
-    for (const k of [-0.55, 0.55]) { CH(b).cyl([dash.x - 0.62, dash.y + 0.15, hw * 0.36 + k], [dash.x - 0.7, dash.y + 0.15, hw * 0.36 + k], 0.42, 0.42, 10, 0); b.slot(VLIT).color('#efe6c8').cyl([dash.x - 0.6, dash.y + 0.15, hw * 0.36 + k], [dash.x - 0.66, dash.y + 0.15, hw * 0.36 + k], 0.36, 0.36, 10, 2); }
+    // instrument cluster behind the wheel: speedometer (live needle) + fuel / temperature
+    FX(b, '#201a18').box(dash.x - 0.66, dash.y - 0.38, hw * 0.36 - 1.12, dash.x - 0.5, dash.y + 0.62, hw * 0.36 + 1.02);
+    dial(b, dash.x - 0.66, dash.y + 0.14, hw * 0.36 - 0.5, 0.4, true);
+    dial(b, dash.x - 0.66, dash.y + 0.12, hw * 0.36 + 0.5, 0.32, false, 1.15);
     FX(b, '#4a3a34').box(dash.x - 0.66, dash.y - 1.0, -hw * 0.6, dash.x - 0.6, dash.y - 0.3, -hw * 0.2);
     // A-pillars, roof liner, header, door panels with sills, B-pillars, rear-view mirror + nimbu-mirchi
     const top = g.y1 - 0.15;
@@ -1856,14 +2057,19 @@
     b.part(0);
     FX(b, '#2c2a2c').box(fx - 2.0, dashY - 2.4, -hw, fx, dashY, hw);
     FX(b, '#1e1c1e').box(fx - 2.4, dashY - 0.1, -hw, fx - 1.4, dashY + 0.3, hw);
-    for (const k of [-0.6, 0.6]) { CH(b).cyl([fx - 2.42, dashY + 0.1, k], [fx - 2.5, dashY + 0.1, k], 0.45, 0.45, 10, 0); b.slot(VLIT).color('#efe6c8').cyl([fx - 2.4, dashY + 0.1, k], [fx - 2.46, dashY + 0.1, k], 0.38, 0.38, 10, 2); }
+    dial(b, fx - 2.42, dashY + 0.3, -1.25, 0.46, true);
+    dial(b, fx - 2.42, dashY + 0.26, 1.2, 0.38, false, 1.3);
     P1(b).box(fx - 0.6, base, -hw - 0.4, fx + 0.3, top, -hw).box(fx - 0.6, base, hw, fx + 0.3, top, hw + 0.4).box(fx - 0.6, base - 0.05, -0.18, fx + 0.2, top, 0.18);
     P1(b, 0.85).box(fx - 1.2, top - 0.8, -hw, fx + 0.3, top, hw);
     FX(b, '#cfc8b8').box(fx - 18, top, -hw - 0.3, fx + 0.2, top + 0.25, hw + 0.3);
     for (const s of [-1, 1]) { P1(b, 0.9).box(fx - 18, 2.4, s > 0 ? hw : -hw - 0.5, fx - 0.5, base + 0.4, s > 0 ? hw + 0.5 : -hw); for (let x = fx - 18; x < fx - 1; x += 6) P1(b).box(x, base, s > 0 ? hw : -hw - 0.5, x + 0.6, top, s > 0 ? hw + 0.5 : -hw); }
     FX(b, '#5a5a5e').box(fx - 6, 2.4, 2.2, fx - 2.4, 6.4, 6.0);
     if (bus) { CH(b); for (const s of [-1, 1]) b.tube([fx - 18, top - 0.8, s * 3.0], [fx - 3, top - 0.8, s * 3.0], 0.1, 5); FX(b, '#c9a227').box(fx - 1.4, top - 1.3, -1.6, fx - 1.2, top - 0.9, 1.6); }
-    else { FX(b, '#ff9a1a'); for (let z = -hw + 0.6; z < hw - 0.4; z += 0.8) b.ell(fx - 1.0, top - 1.0 - Math.sin(((z + hw) / (2 * hw)) * Math.PI) * 0.7, z, 0.25, 0.25, 0.25, 5, 3); }
+    else { // a marigold string across the top of the windscreen (above the eye line), orange and yellow
+      let k = 0;
+      for (let z = -hw + 0.5; z < hw - 0.3; z += 0.34, k++) FX(b, k % 3 === 2 ? '#f2c230' : '#ff8a1a').ell(fx - 1.0, top - 0.32 - Math.sin(((z + hw) / (2 * hw)) * Math.PI) * 0.32, z, 0.15, 0.15, 0.15, 6, 3);
+      FX(b, '#c03030').ell(fx - 1.0, top - 0.9, 0, 0.22, 0.3, 0.22, 6, 4); // the little hanging tassel
+    }
     FX(b, '#2a2a2a').box(fx - 18, 2.0, -hw, fx, 2.4, hw);
     return { wheelAt: [fx - 4.0, dashY + 0.8, 0], wheelTilt: 1.15, wheelR: 2.0 };
   }
@@ -1881,9 +2087,10 @@
   function buildSteeringWheel() {
     const b = new AB();
     b.part(0);
-    FX(b, '#1c1a1a').xf(new THREE.Matrix4()).ringZ([[0.86, -0.1], [1.0, -0.12], [1.06, 0], [1.0, 0.12], [0.86, 0.1]], 16).xf(null);
-    FX(b, '#2a2626'); for (let k = 0; k < 3; k++) { const a = -Math.PI / 2 + k * (TAU / 3); b.tube([0, 0, 0], [Math.cos(a) * 0.9, Math.sin(a) * 0.9, 0.02], 0.09, 4); }
-    CH(b).cyl([0, 0, -0.08], [0, 0, 0.14], 0.24, 0.24, 8, 3);
+    FX(b, '#1c1a1a').xf(new THREE.Matrix4()).ringZ([[0.86, -0.1], [0.94, -0.13], [1.03, -0.1], [1.06, 0], [1.03, 0.1], [0.94, 0.13], [0.86, 0.1]], 32).xf(null);
+    FX(b, '#2a2626'); for (let k = 0; k < 3; k++) { const a = -Math.PI / 2 + k * (TAU / 3); b.tube([0, 0, 0], [Math.cos(a) * 0.9, Math.sin(a) * 0.9, 0.02], 0.09, 5); }
+    FX(b, '#262222').cyl([0, 0, -0.08], [0, 0, 0.14], 0.3, 0.27, 12, 3);
+    FX(b, '#6a6a70').cyl([0, 0, 0.14], [0, 0, 0.16], 0.075, 0.075, 8, 2); // the small horn emblem
     FX(b, '#2a2626').cyl([0, 0, -0.1], [0, 0, -1.8], 0.12, 0.12, 5, 0);
     return b.build();
   }
@@ -2087,6 +2294,58 @@
     return v._x3d[k];
   }
   /** seat a person (look) on a vehicle in the vehicle frame FR */
+  /* KAINCHI ("scissors"): a kid too small for an adult's roadster rides standing on the pedals beside
+   * the frame, the right leg through the triangle to the far pedal, both hands on the bar, the cycle
+   * leaning away to the right so the body stays upright over the wheels, rising and falling with the
+   * stroke (vehicles.js draws the same in 2D). The numbers come from an offline search over the Hero
+   * geometry for a kid (every crank angle reachable, the right leg crossing the frame plane >= 0.6 u
+   * under the top tube, the grips reachable with the least forward lean, body turned a little
+   * towards the bar). Writes J (legs by IK + hip abduction, arms to the grips);
+   * returns the person root [x, y, z, yaw, roll] in the vehicle frame. */
+  const KAINCHI = { dx: 1.0, hy: 4.1, bob: 0.08, hz: -0.7, yaw: -0.2, roll: -0.2, pz: 0.88, tilt: 0.2 };
+  const KF = new Frame(), KQ = [0, 0, 0], KR = [0, 0, 0, 0, 0], KL = [0, 0, 0, 0];
+  const KAI_J = new WeakMap(); // actor -> its last kainchi pose (getting off blends from it)
+  function kainchiPose(md, seat, sc, sx, o) {
+    const K = KAINCHI, c = o.crank || 0, Rk = md.crank[2], bxk = md.crank[0] * sx, byk = md.crank[1];
+    KF.set(0, 0, 0, K.yaw, K.roll, 0);
+    const m = KF.m, hx = bxk + K.dx, hz = K.hz;
+    let hy = K.hy + K.bob * Math.cos(2 * c), rx = 0, ry = 0, rz = 0;
+    const loc = (x, y, z) => { // vehicle frame -> the person's template coordinates
+      const dx = x - rx, dy = y - ry, dz = z - rz;
+      KQ[0] = (m[0] * dx + m[3] * dy + m[6] * dz) / sc; KQ[1] = (m[1] * dx + m[4] * dy + m[7] * dz) / sc; KQ[2] = (m[2] * dx + m[5] * dy + m[8] * dz) / sc;
+      return KQ;
+    };
+    for (let it = 0; it < 3; it++) { // root (feet point) from the hip centre; drop the hips if the low pedal is out of reach
+      KF.apply(0, HIP_Y * sc, 0, P3); rx = hx - P3[0]; ry = hy - P3[1]; rz = hz - P3[2];
+      let over = 0;
+      for (const sd of [-1, 1]) {
+        loc(bxk + sd * Math.cos(c) * Rk - 0.25, byk + sd * Math.sin(c) * Rk + 0.18 + ANK_Y * sc, sd * K.pz);
+        const dx = KQ[0], dy = KQ[1] - HIP_Y, dz = KQ[2] - sd * HIP_Z, k = sd < 0 ? 0 : 1;
+        KL[k * 2] = dx; KL[k * 2 + 1] = HIP_Y - Math.hypot(dy, dz);
+        J[16 + k] = Math.atan2(sd * dz, -dy); // the right leg swings out through the frame, the left one in
+        over = Math.max(over, Math.hypot(dx, dy, dz) - LEG * 0.975);
+      }
+      if (over <= 0) break;
+      hy -= over * sc;
+    }
+    legsTo(J, KL[0], KL[1], KL[2], KL[3]);
+    flatFeet(J, -0.1 + 0.15 * Math.sin(c), -0.1 - 0.15 * Math.sin(c));
+    // hands on the grips, turned with the bar
+    const gx = seat.grip ? seat.grip[0] * sx : bxk + 3.2, gy = seat.grip ? seat.grip[1] : 5.9, gz = seat.grip ? seat.grip[2] : 1.75;
+    let lx = gx, lz = -gz, gxr = gx, rz2 = gz;
+    const st = o.steer || 0;
+    if (st && md.steerX != null) {
+      const px = md.steerX * sx, cs = Math.cos(st), sn = Math.sin(st);
+      lx = px + (gx - px) * cs + gz * sn; lz = (gx - px) * sn - gz * cs;
+      gxr = px + (gx - px) * cs - gz * sn; rz2 = (gx - px) * sn + gz * cs;
+    }
+    loc(lx, gy, lz); const qx = KQ[0], qy = KQ[1], qz = KQ[2];
+    loc(gxr, gy, rz2);
+    armsTo(J, 0.35, qx, qy, qz, KQ[0], KQ[1], KQ[2], 0.95, -0.9);
+    J[13] = J[10] * 0.7; // eyes up the road past the bar
+    KR[0] = rx; KR[1] = ry; KR[2] = rz; KR[3] = K.yaw; KR[4] = K.roll;
+    return KR;
+  }
   function submitRider(md, seat, look, seed, sx, o) {
     if (!look || !seat) return;
     const s = lookSpec(look, seed), sc = s.size;
@@ -2094,13 +2353,17 @@
     const hx = seat.x * sx, hz = seat.z || 0;
     const rootY = hy - HIP_Y * sc;
     const T = (x, y, out) => { out[0] = (x - hx) / sc; out[1] = (y - rootY) / sc; return out; };
-    let yaw2 = 0, seated = true;
+    let yaw2 = 0, roll2 = 0, seated = true, tx = hx, ty = rootY, tz = hz;
     poseRest(J);
     const pose = seat.pose;
-    if (pose === 'cycle' || pose === 'scooter' || pose === 'moto' || pose === 'auto' || pose === 'car') {
+    if (pose === 'cycle' && o.kainchi && md.crank) {
+      const K = kainchiPose(md, seat, sc, sx, o);
+      tx = K[0]; ty = K[1]; tz = K[2]; yaw2 = K[3]; roll2 = K[4]; seated = false;
+      if (o.actor) { let kj = KAI_J.get(o.actor); if (!kj) { kj = new Float32Array(18); KAI_J.set(o.actor, kj); } kj.set(J); }
+    } else if (pose === 'cycle' || pose === 'scooter' || pose === 'moto' || pose === 'auto' || pose === 'car') {
       const lean = pose === 'cycle' ? 0.3 : pose === 'moto' ? 0.38 : pose === 'scooter' ? 0.08 : pose === 'auto' ? 0.12 : 0.06;
       let gx = seat.grip ? seat.grip[0] * sx : hx + 3, gy = seat.grip ? seat.grip[1] : hy + 1.5, gz = seat.grip ? seat.grip[2] : 1.2;
-      let lx = gx, lz = -gz, rx = gx, rz = gz;
+      let lx = gx, lz = hz - gz, rx = gx, rz = hz + gz; // grips either side of the seat's centre line
       if (o.grips) { lx = o.grips[0]; gy = o.grips[1]; lz = o.grips[2]; rx = o.grips[3]; rz = o.grips[5]; T(lx, gy, A0); T(rx, o.grips[4], A1); }
       else {
         const st = o.steer || 0;
@@ -2111,7 +2374,7 @@
         }
         T(lx, gy, A0); T(rx, gy, A1);
       }
-      armsTo(J, lean, A0[0], A0[1], (lz - hz) / sc, A1[0], A1[1], (rz - hz) / sc);
+      armsTo(J, lean, A0[0], A0[1], (lz - hz) / sc, A1[0], A1[1], (rz - hz) / sc, pose === 'car' ? 0.32 : pose === 'cycle' || pose === 'moto' ? 0.8 : 0.62);
       if (md.crank && pose === 'cycle') {
         const c = o.crank || 0, R = md.crank[2], bx = md.crank[0] * sx, by = md.crank[1];
         const pxr = bx + Math.cos(c) * R, pyr = by + Math.sin(c) * R, pxl = bx - Math.cos(c) * R, pyl = by - Math.sin(c) * R;
@@ -2141,7 +2404,7 @@
       T(-14.0 * sx, seat.y + 0.4, A0); armsTo(J, 0.05, 0.6, 5.0, -0.9, A0[0], A0[1], 0.9);
     }
     // getting on: from standing beside the vehicle (its left side) onto the seat
-    let rx = hx, ry = rootY, rz = hz;
+    let rx = tx, ry = ty, rz = tz;
     const m = o.actor ? MOUNT.get(o.actor) : null;
     if (m && m.on) {
       const k = (nowS() - m.t0) / MOUNT_S;
@@ -2151,13 +2414,68 @@
         blendPose(J, sj, 1 - q);
         J[12] = sj[12]; J[13] = sj[13]; J[14] = sj[14];
         const sideZ = -(md.W / 2 + 2.2);
-        rx = hx; rz = sideZ + (hz - sideZ) * q;
-        ry = (-FR.y) * (1 - q) + rootY * q + Math.sin(q * Math.PI) * 1.0;
-        seated = q > 0.5;
+        rx = tx; rz = sideZ + (tz - sideZ) * q;
+        ry = (-FR.y) * (1 - q) + ty * q + Math.sin(q * Math.PI) * 1.0;
+        seated = seated && q > 0.5; roll2 *= q; yaw2 *= q;
       } else MOUNT.delete(o.actor);
     }
-    if (DBG.riderNext && DBG.rec) { DBG.rec.riders = DBG.rec.riders || []; DBG.rec.riders.push({ pose, J: Array.from(J), seated, fpsHide: !!o.fpsHide, kid: s.kid }); }
-    submitPerson(look, seed, FR, rx, ry, rz, J, { yaw: yaw2, fpsHide: o.fpsHide, noBlob: true, near: o.near, seated });
+    if (DBG.riderNext && DBG.rec) { DBG.rec.riders = DBG.rec.riders || []; DBG.rec.riders.push({ pose: o.kainchi && pose === 'cycle' ? 'kainchi' : pose, J: Array.from(J), seated, fpsHide: !!o.fpsHide, kid: s.kid, root: [rx, ry, rz], yaw: yaw2, roll: roll2, size: sc }); }
+    // first person on a kainchi ride: the eye sits over the saddle, not where his head is, so only his
+    // arms are drawn (hands on the grips), not his back hanging off the side below the camera
+    // on two-wheelers / autos the core's eye sits a little behind his head: no torso or neck in the
+    // way (hands on the grips and the knees stay); in a car cockpit the body is below the eye
+    submitPerson(look, seed, FR, rx, ry, rz, J, { yaw: yaw2, roll: roll2, fpsHide: o.fpsHide, armsOnly: !!(o.kainchi && pose === 'cycle'), noBody: pose !== 'car', noBlob: true, near: o.near, seated });
+  }
+  /* ---------------------------------------------------------------- the city bus crowd
+   * Traffic / parked buses carry life the 2D roof hides: the driver at the wheel (right-hand drive)
+   * seen through the windscreen, passengers standing in the aisle holding the overhead rail and
+   * swaying with the bus (heads and shoulders in the windows), and up to three footboard boys
+   * hanging off the rear door step, one hand on the door pole, leaning out. Looks are per bus
+   * (seeded), the crowd size too; only near the camera (cheap instanced people). */
+  const BUS_DRIVER = { x: 26.4, y: 9.0, z: 5.0, pose: 'car', grip: [29.0, 10.5, 1.0], foot: [29.6, 5.2] };
+  const BF = new Frame(), BQ = [0, 0, 0];
+  function busLook(v, k, kind) {
+    if (!v._bus) v._bus = [];
+    if (!v._bus[k]) { const r = U.rng((v.seed | 0) * 31 + 7 * k + 3); v._bus[k] = N.people.randomLook(r, kind || (r.next() < 0.3 ? 'aunty' : r.next() < 0.3 ? 'student' : r.next() < 0.5 ? 'man' : 'uncle')); }
+    return v._bus[k];
+  }
+  function busLife(v, md, sx, steer) {
+    const d = camDist(v.x, 8, v.y);
+    if (d > 300 || v.fallen) return;
+    const seed = (v.seed | 0) & 0xffff, t = H.time, pl = N.player;
+    const low = H.quality.tier === 'low';
+    const crowdN = (low ? 2 + (seed % 4) : 4 + (seed % 9)) * (d < (low ? 120 : 170) ? 1 : 0), boys = v.driver ? (seed >> 3) % 4 : 0;
+    const accel = clamp((v.throttle || 0) * 0.5 - (v.ctl && v.ctl.brake ? 0.6 : 0), -0.6, 0.5);
+    if (DBG.track === v && DBG.rec) DBG.rec.bus = { crowd: crowdN, boys };
+    if (v.driver && v.driver !== pl && d < 220) submitRider(md, BUS_DRIVER, riderLookOf(v), v.seed, sx, { steer });
+    // standing in the aisle, one hand up on the rail (inside: only near enough to see through the glass)
+    {
+      for (let k = 0; k < crowdN; k++) {
+        const look = busLook(v, k), s = lookSpec(look, seed + k), sc = s.size;
+        const x = (-24 + (k * 37 % 47)) * sx, z = ((k * 13) % 5 - 2) * 0.9, floor = 4.4;
+        poseStand(J, t, seed + k);
+        const sway = Math.sin(t * 1.3 + k) * 0.03 - accel * 0.18;
+        armsTo(J, sway, 0.25, (15.1 - floor) / sc, 0.5, 0.2, (15.1 - floor) / sc - 0.2, 0.9, 0, -0.9);
+        J[4] = 0.1 + 0.05 * Math.sin(t + k); J[6] = 0.3; J[8] = 0.1; // the other hand down (a bag, a tiffin)
+        J[12] = Math.sin(t * 0.3 + k * 1.7) * 0.6;
+        submitPerson(look, seed + k, FR, x, floor, z, J, { yaw: k % 3 === 0 ? Math.PI / 2 : k % 3 === 1 ? -Math.PI / 2 : 0, noBlob: true });
+      }
+    }
+    // footboard boys at the rear door (left side): standing on the step, a hand on the door pole, leaning out
+    for (let k = 0; k < boys; k++) {
+      const look = busLook(v, 20 + k, k % 2 ? 'student' : 'man'), s = lookSpec(look, seed + 50 + k), sc = s.size;
+      const doorX = -8.2 * sx, hw = md.W / 2, rx = doorX + (k - (boys - 1) / 2) * 1.5, rz = -hw - 0.75 - (k === 1 ? 0.3 : 0);
+      BF.set(0, 0, 0, -Math.PI / 2, 0, 0); // facing +z: into the bus
+      const loc = (x, y, z) => { const m = BF.m, dx = x - rx, dy = y - 2.25, dz = z - rz; BQ[0] = (m[0] * dx + m[3] * dy + m[6] * dz) / sc; BQ[1] = (m[1] * dx + m[4] * dy + m[7] * dz) / sc; BQ[2] = (m[2] * dx + m[5] * dy + m[8] * dz) / sc; return BQ; };
+      poseStand(J, t, seed + 50 + k);
+      const back = -0.22 - 0.06 * Math.sin(t * 2.1 + k) - Math.abs(accel) * 0.12; // hanging back off the pole
+      loc(doorX, 11.6 - k * 0.5, -hw - 0.05); const lx = BQ[0], ly = BQ[1], lz = BQ[2]; // the door pole
+      loc(doorX, 10.2 - k * 0.4, -hw - 0.05);
+      armsTo(J, back, lx, ly, lz, BQ[0], BQ[1], BQ[2], 0, -0.9);
+      if (k === boys - 1 && boys > 1) { J[5] = 0.35 + 0.25 * Math.sin(t * 3 + k); J[7] = 0.2; J[9] = 0.9; } // the last one waves an arm free
+      J[12] = -0.7 + 0.2 * Math.sin(t * 0.7 + k); // looking along the road ahead
+      submitPerson(look, seed + 50 + k, FR, rx, 2.25, rz, J, { yaw: -Math.PI / 2, noBlob: true });
+    }
   }
   const SW = [0, 0, 0, 0, 0, 0];
   function vehicleEntity(v) {
@@ -2168,14 +2486,22 @@
     const sx = T && T.w ? T.w / md.L : 1, sz = T && T.d && md.W ? clamp(T.d / md.W, 0.7, 1.4) : 1;
     const t = H.time;
     let roll = 0, pitch = 0, yOff = 0;
+    const dLook = v.driver ? (v.driver === pl ? pl.look : riderLookOf(v)) : null;
+    const kainchi = !!(dLook && md.crank && md.pedal && T && T.kainchi && !v.fallen && lookSpec(dLook, v.driver === pl ? 7 : v.seed).kid);
     if (md.bike) {
       if (v.fallen) { roll = -1.3; yOff = 0.5; } else if (!v.driver) roll = -(md.standLean || 0); else roll = clamp(v.lean || 0, -0.6, 0.6);
+      if (kainchi) roll += KAINCHI.tilt; // the cycle leans away from the kid hanging off its left side
     }
+    if (kainchi) v._kainchi = true; else if (v._kainchi && v.driver) v._kainchi = false;
     const j = v.jolt || 0;
     if (j > 0) { const ph = (1 - j) * Math.PI * 3.2, big = md.bike ? 1 : 0.7; yOff += -Math.sin(ph) * j * 0.8 * big; pitch += Math.sin(ph * 1.3) * j * 0.05 * big; roll += Math.sin(ph * 1.7) * j * 0.04 * (v.joltSide || 1); }
     if (md.boat) { const ph = t + ((v.seed | 0) % 100); yOff = 0.15 + Math.sin(ph * 1.3) * 0.22; roll = Math.sin(ph * 0.9) * 0.035; pitch = Math.sin(ph * 1.1 + 1) * 0.02 - clamp((v.speed || 0) / 600, -0.02, 0.06); }
     FR.set(v.x, yOff, v.y, -(v.angle || 0), roll, pitch);
-    if (!visible(v.x, md.H * 0.5, v.y, md.L * 0.55 * sx + 3)) return;
+    vehicleFx(v, T, md);
+    if (!visible(v.x, md.H * 0.5, v.y, md.L * 0.55 * sx + 3)) {
+      if (DBG.track === v) DBG.rec = { kind: 'vehicle', model: md.key, spin: -((v.wheelPhase || 0) * 2) / (md.rearR || 2), culled: true, frame: ST.frame };
+      return;
+    }
     ST.vehicles++;
     const night = H.night;
     const sp = Math.abs(v.speed || 0);
@@ -2183,7 +2509,8 @@
     const on = !!(T && (T.lights || dyn) && (v.driver || v.controller || v.lightsOn));
     const ctl = v.ctl || {};
     const braking = on && (ctl.throttle < -0.1 || ctl.brake || ctl.handbrake) ? 1 : 0;
-    const steerVis = (v.steerVis || 0) * (md.bike ? 0.8 : 0.9);
+    // A3: a kid on a Scooty near top speed: the handlebar shakes with v.wobble (the lean already follows it)
+    const steerVis = ((v.steerVis || 0) + (md.bike ? (v.wobble || 0) * 0.45 : 0)) * (md.bike ? 0.8 : 0.9);
     const R0 = md.rearR || 2;
     const spin = -((v.wheelPhase || 0) * 2) / R0;
     const crank = md.crank ? spin * R0 / (md.crank[2] * 2.4) : 0;
@@ -2203,7 +2530,11 @@
       FR.write(pool.M, i * 16, 0, 0, 0, 0, 0, 0, sx, 1, sz);
       const a = pool.A.iVA.array, b2 = pool.A.iVB.array, k = i * 4;
       a[k] = c1; a[k + 1] = c2; a[k + 2] = on ? (dyn ? clamp(sp / 80, 0.3, 1) : 1) : 0; a[k + 3] = braking;
-      b2[k] = steerVis; b2[k + 1] = crank; b2[k + 2] = beacon; b2[k + 3] = 0;
+      // iVB.w: the speedometer needle of a cockpit interior; on a body: 1 = the camera sits inside
+      // it (first person on an auto / scooter: the windscreen glass turns nearly clear)
+      b2[k] = steerVis; b2[k + 1] = crank; b2[k + 2] = beacon;
+      b2[k + 3] = cockpit ? clamp(sp / (((T && T.maxSpeed) || 150) * 1.1), 0, 1) * 4.4 : (fps ? 1 : 0);
+      if (DBG.track === v && DBG.rec) { DBG.rec.needle = cockpit ? b2[k + 3] : null; DBG.rec.inside = !cockpit && fps ? 1 : 0; }
     }
     // wheels
     if (!cockpit) {
@@ -2221,18 +2552,21 @@
         ST.wheels++;
       }
     }
+    // a city bus at rush hour: the driver, a standing crowd inside, footboard boys at the rear door
+    if (md.busLife && !cockpit) busLife(v, md, sx, steerVis);
     // riders: driver, pillion, passengers
     const near = mine;
-    if (md.show || fps) {
+    // closed cars: seen through the translucent glass when the camera is close enough to tell
+    const seeIn = !md.show && !!md.glassIndex && !cockpit && md.seats.length > 0 && camDist(v.x, 6, v.y) < 170;
+    if (md.show || fps || seeIn) {
       const seats = md.seats;
       if (v.driver && seats[0] && !v.fallen && !cockpit) {
-        const look = v.driver === pl ? pl.look : riderLookOf(v);
-        submitRider(md, seats[0], look, v.driver === pl ? 7 : v.seed, sx, { steer: steerVis, crank, fpsHide: fps && (v.driver === pl || mine), near, actor: v.driver.look ? v.driver : null });
+        submitRider(md, seats[0], dLook, v.driver === pl ? 7 : v.seed, sx, { steer: steerVis, crank, fpsHide: fps && (v.driver === pl || mine), near, actor: v.driver.look ? v.driver : null, kainchi });
       }
       const pil = v.pillion;
       if (pil && seats[1] && !v.fallen) submitRider(md, seats[1], pil.look || pil, pil === pl ? 7 : (v.seed | 0) + 3, sx, { fpsHide: fps && pil === pl, near, actor: pil.look ? pil : null });
       const pass = v.passenger;
-      if (pass && pass !== pil && seats[1] && !v.fallen && (md.show || pass === pl)) submitRider(md, seats[1], pass.look || pass, pass === pl ? 7 : (v.seed | 0) + 5, sx, { fpsHide: fps && pass === pl, near, actor: pass.look ? pass : null });
+      if (pass && pass !== pil && seats[1] && !v.fallen && (md.show || seeIn || pass === pl)) submitRider(md, seats[1], pass.look || pass, pass === pl ? 7 : (v.seed | 0) + 5, sx, { fpsHide: fps && pass === pl, near, actor: pass.look ? pass : null });
       // ambient passengers in traffic autos / rickshaws (3D life; the 2D sprite shows the canopy)
       if ((md.key === 'auto' || md.key === 'rickshaw') && v.driver && !pass && !mine && ((v.seed | 0) % 3 === 0)) {
         const n = 1 + ((v.seed | 0) % 2);
@@ -2487,21 +2821,27 @@
       if (!v || !a || !READY) return;
       const md = model(modelKeyFor(v.T)), seat = md.seats[d.passenger && md.seats[1] ? 1 : 0];
       if (!seat) return;
-      const c = Math.cos(v.angle || 0), sn = Math.sin(v.angle || 0), lz = seat.z || 0;
-      MOUNT.set(a, { t0: nowS(), on: false, x: v.x + c * seat.x - sn * lz, y: v.y + sn * seat.x + c * lz, hip: seat.y, yaw: -(v.angle || 0), show: md.show });
+      const c = Math.cos(v.angle || 0), sn = Math.sin(v.angle || 0);
+      const kj = !d.passenger && v._kainchi ? KAI_J.get(a) : null; // stepping off a kainchi ride: from that pose
+      const sxk = kj && md.crank ? md.crank[0] * ((v.T && v.T.w) ? v.T.w / md.L : 1) + KAINCHI.dx : seat.x, lz = kj ? KAINCHI.hz : (seat.z || 0);
+      MOUNT.set(a, { t0: nowS(), on: false, x: v.x + c * sxk - sn * lz, y: v.y + sn * sxk + c * lz, hip: kj ? KAINCHI.hy : seat.y, yaw: -(v.angle || 0), show: md.show, kj });
     } catch (e) { /* no blend */ }
   });
-  const SEATED_J = new Float32Array([1.35, 1.35, -1.4, -1.4, 0.6, 0.6, 0.6, 0.6, 0.1, 0.1, 0.08, 0, 0, 0, 0, 0]);
+  const SEATED_J = new Float32Array([1.35, 1.35, -1.4, -1.4, 0.6, 0.6, 0.6, 0.6, 0.1, 0.1, 0.08, 0, 0, 0, 0, 0, 0, 0]);
   const ease = (k) => k * k * (3 - 2 * k);
   function wrapA(a) { return Math.atan2(Math.sin(a), Math.cos(a)); }
+  /** simulation seconds since the last frame (0 while paused; slow motion slows it) */
+  function simDt() {
+    if (SIM.frame !== ST.frame) { const t = nowS(); SIM.dt = clamp(t - SIM.last, 0, 0.1); SIM.last = t; SIM.frame = ST.frame; }
+    return SIM.dt;
+  }
   function personEntity(e, dt) {
     if (e.hidden || e.vehicle) return;
     const p = N.player, isP = e === p;
     const look = e.look;
     if (!look) return;
     // simulation time of this frame (slow motion / pause freeze the gait with the sim)
-    if (SIM.frame !== ST.frame) { const now = (N.time && N.time.now) || 0; SIM.dt = clamp(now - SIM.last, 0, 0.1); SIM.last = now; SIM.frame = ST.frame; }
-    dt = SIM.dt;
+    dt = simDt();
     let el = H.elev(e);
     if (!el && e.roofH) el = e.roofH * VS;
     const face = isFinite(e.facing) && isP ? e.facing : (e.angle || 0);
@@ -2564,6 +2904,17 @@
       else if (s.prop === 'dappu') { J[4] = 0.9; J[6] = 1.2; J[5] = 0.8 + Math.sin(t * 9) * 0.25; J[7] = 1.4; }
       if (e.spotter && e.spotter.stick) { J[5] = 2.55 + Math.sin(t * 9) * 0.35; J[7] = 0.35; }
       if (e.balloons) { J[5] = 0.5; J[7] = 1.6; }
+      // idle hands: a habit per person (not with a prop in hand, not the player, not a spotter)
+      if (!isP && !s.prop && !s.headCarry && !e.spotter && !e.balloons && st.gw < 0.95) {
+        const work = e.idle === 'work' && !e.talking;
+        const hab = work ? 'work' : habitOf(s, seed);
+        const on = hab ? (work && OPT.habits !== false ? 1 : habitOn(t, seed)) * (1 - st.gw) : 0;
+        if (on > 0.01) {
+          JH.set(J); habitArms(JH, hab, s, t, seed);
+          for (let q = 4; q < 10; q++) J[q] += (JH[q] - J[q]) * on;
+          st.hab = hab; st.habW = on;
+        } else st.habW = 0;
+      }
     }
     // head: look at what they look at; the player looks where the camera looks; idle glances; breathing
     if (!down) {
@@ -2580,6 +2931,13 @@
       st.hy += (clamp(rel, -1.1, 1.1) - st.hy) * Math.min(1, dt * 5);
       J[12] = st.hy; J[13] = idle ? Math.sin(t * 0.45 + seed) * 0.05 : (st.v > 62 ? -0.08 : 0);
       J[14] = Math.sin(t * (st.v > 62 ? 5 : 1.7) + seed) * (st.v > 62 ? 0.05 : 0.04);
+      // talking: gestures blend over the stance or the seat (subtler while walking; not with a load on the head)
+      const tw = !s.headCarry && !e.constable ? talkW(e) * (1 - 0.65 * (st.gw || 0)) : 0;
+      if (tw > 0.01) {
+        JH.set(J); talkArms(JH, t, seed, !s.prop || s.prop === 'notebook');
+        for (let q = 4; q < 14; q++) if (q !== 10 && q !== 11) J[q] += (JH[q] - J[q]) * tw;
+        st.talk = tw;
+      } else st.talk = 0;
     }
     // getting off a vehicle: blend from the seat
     const m = MOUNT.get(e);
@@ -2588,7 +2946,7 @@
       const k = (nowS() - m.t0) / MOUNT_S;
       if (k < 1) {
         const q = ease(Math.max(0, k));
-        blendPose(J, SEATED_J, q);
+        blendPose(J, m.kj || SEATED_J, q);
         bx = m.x + (x - m.x) * q; by = m.y + (y - m.y) * q;
         rootY = (m.hip - HIP_Y * s.size) * (1 - q) + rootY * q + Math.sin(q * Math.PI) * 0.8;
         yaw = m.yaw + wrapA(yaw - m.yaw) * q;
@@ -2600,7 +2958,7 @@
       else if (CAMP && Math.hypot(CAMP.x - bx, CAMP.y - (el + 6), CAMP.z - by) < 4.5) return;
     }
     FR.set(bx, rootY, by, yaw, roll, pitch);
-    if (DBG.track === e) DBG.rec = { kind: 'person', J: Array.from(J), x: bx, y: by, h: rootY, yaw, pitch, size: s.size, wide: s.wide, seated: o.seated, fpsHide: o.fpsHide, v: st.v, cyc: st.cyc, beta: st.beta, X: st.X, f: st.f, run: !!st.run, gw: st.gw, frame: ST.frame };
+    if (DBG.track === e) DBG.rec = { kind: 'person', J: Array.from(J), x: bx, y: by, h: rootY, yaw, pitch, size: s.size, wide: s.wide, seated: o.seated, fpsHide: o.fpsHide, v: st.v, cyc: st.cyc, beta: st.beta, X: st.X, f: st.f, run: !!st.run, gw: st.gw, hab: st.hab || null, habW: st.habW || 0, talk: st.talk || 0, frame: ST.frame };
     const i = submitPerson(look, seed, FR, 0, 0, 0, J, o);
     if (i < 0) return;
     const head = el + 9.4 * s.size + (s.headCarry ? 1.4 : 0);
@@ -2630,6 +2988,30 @@
         pts.push({ x: r.x + lx * c + lz * sn, y: r.y - lx * sn + lz * c, h: r.h + ly });
       }
       out.push({ heel: pts[0], toe: pts[1], low: Math.min(pts[0].h, pts[1].h) });
+    }
+    return out;
+  }
+  function riderAnkles(vr, sx) {
+    const rd = vr && vr.riders && vr.riders[0];
+    if (!rd || !rd.root) return null;
+    const md = model(vr.model), j = rd.J, sc = rd.size || 1, ank = [];
+    const M = rot3(new Float64Array(9), rd.yaw || 0, rd.roll || 0, 0);
+    for (const sd of [-1, 1]) {
+      const k = sd < 0 ? 0 : 1;
+      let p = [0, ANK_Y, sd * HIP_Z];
+      let q = rotZ2(p[0], p[1], 0, KNEE_Y, j[2 + k]); p = [q[0], q[1], p[2]];
+      q = rotZ2(p[0], p[1], 0, HIP_Y, j[k]); p = [q[0], q[1], p[2]];
+      const a = -sd * (j[16 + k] || 0), c = Math.cos(a), s = Math.sin(a), qy = p[1] - HIP_Y, qz = p[2] - sd * HIP_Z;
+      p = [p[0], qy * c - qz * s + HIP_Y, qy * s + qz * c + sd * HIP_Z];
+      p[1] += j[11] || 0;
+      const x = p[0] * sc, y = p[1] * sc, z = p[2] * sc;
+      ank.push([rd.root[0] + M[0] * x + M[1] * y + M[2] * z, rd.root[1] + M[3] * x + M[4] * y + M[5] * z, rd.root[2] + M[6] * x + M[7] * y + M[8] * z]);
+    }
+    const out = { ankles: ank, pose: rd.pose };
+    if (md.crank) {
+      const c = vr.crank || 0, R = md.crank[2], bx = md.crank[0] * sx, by = md.crank[1];
+      out.targets = [-1, 1].map((sd) => [bx + sd * Math.cos(c) * R - 0.25, by + sd * Math.sin(c) * R + 0.18 + ANK_Y * sc, sd * KAINCHI.pz]);
+      out.err = out.targets.map((t, i) => +Math.hypot(t[0] - ank[i][0], t[1] - ank[i][1], t[2] - ank[i][2]).toFixed(3));
     }
     return out;
   }
@@ -3192,6 +3574,153 @@
     }
   }
 
+  /* ================================================================ skid marks, dust, exhaust smoke, wake foam
+   * 3D parity of vehicles.js's private 2D decals / particles (not exposed): skid marks follow the
+   * rear-wheel points vehicles.js itself tracks while a vehicle skids (v.skidding, v.skL / v.skR)
+   * and fade over 40 s of game time; puffs mirror its effects() rules: two-stroke blue smoke from
+   * autos, diesel soot from buses and lorries, dust behind fast wheels on dirt / sand / grass, tyre
+   * smoke when skidding on tarmac, foam behind boats. Two draw calls in all. */
+  const SK_MAX = 720, PT_MAX = 384, SK_LIFE = 40;
+  const FXS = { sk: null, skHead: 0, skN: 0, skDirty: false, pt: null, ptHead: 0, live: 0, E: { x: 0, y: 0 } };
+  const PCOL3 = {};
+  function fxCol(hex) { let c = PCOL3[hex]; if (!c) { const k = parseInt(hex.slice(1), 16); c = PCOL3[hex] = [(k >> 16 & 255) / 255, (k >> 8 & 255) / 255, (k & 255) / 255]; } return c; }
+  function initFx() {
+    // skid marks: a ring of ground quads, faded by age in the shader
+    const g = new THREE.BufferGeometry();
+    const pos = new Float32Array(SK_MAX * 12), birth = new Float32Array(SK_MAX * 4).fill(-1e9), idx = new Uint16Array(SK_MAX * 6);
+    for (let i = 0; i < SK_MAX; i++) { const v = i * 4, o = i * 6; idx[o] = v; idx[o + 1] = v + 2; idx[o + 2] = v + 1; idx[o + 3] = v + 1; idx[o + 4] = v + 2; idx[o + 5] = v + 3; }
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('aBirth', new THREE.BufferAttribute(birth, 1).setUsage(THREE.DynamicDrawUsage));
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
+    const m = new THREE.ShaderMaterial({
+      uniforms: { uNow: { value: 0 } }, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
+      vertexShader: 'attribute float aBirth; uniform float uNow; varying float vA; void main(){ float age = uNow - aBirth; vA = (age < 0.0 || age > ' + SK_LIFE.toFixed(1) + ') ? 0.0 : 0.5 * (1.0 - smoothstep(' + (SK_LIFE * 0.5).toFixed(1) + ', ' + SK_LIFE.toFixed(1) + ', age)); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'varying float vA; void main(){ if (vA < 0.004) discard; gl_FragColor = vec4(0.06, 0.05, 0.055, vA); }',
+    });
+    const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; mesh.renderOrder = 2; mesh.name = 'actors:skids'; mesh.visible = false;
+    ROOT.add(mesh);
+    FXS.sk = { g, pos, birth, mesh, mat: m };
+    // puffs: soft points with normal blending (smoke / dust / foam), simulated on the CPU
+    const pg = new THREE.BufferGeometry();
+    const P = { x: new Float32Array(PT_MAX), h: new Float32Array(PT_MAX), y: new Float32Array(PT_MAX), vx: new Float32Array(PT_MAX), vh: new Float32Array(PT_MAX), vy: new Float32Array(PT_MAX),
+      t: new Float32Array(PT_MAX).fill(1e9), life: new Float32Array(PT_MAX).fill(1), r: new Float32Array(PT_MAX), a: new Float32Array(PT_MAX), c: new Float32Array(PT_MAX * 3) };
+    P.pos = new Float32Array(PT_MAX * 3); P.col = new Float32Array(PT_MAX * 4); P.size = new Float32Array(PT_MAX);
+    pg.setAttribute('position', new THREE.BufferAttribute(P.pos, 3).setUsage(THREE.DynamicDrawUsage));
+    pg.setAttribute('pCol', new THREE.BufferAttribute(P.col, 4).setUsage(THREE.DynamicDrawUsage));
+    pg.setAttribute('pSize', new THREE.BufferAttribute(P.size, 1).setUsage(THREE.DynamicDrawUsage));
+    pg.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
+    const pm = new THREE.ShaderMaterial({
+      uniforms: { map: { value: H.materials.glow.map }, uScale: { value: 400 }, uFogNear: { value: 400 }, uFogFar: { value: 1500 } }, transparent: true, depthWrite: false,
+      vertexShader: 'attribute vec4 pCol; attribute float pSize; uniform float uScale; uniform float uFogNear; uniform float uFogFar; varying vec4 vC; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv; float d = max(1.0, -mv.z); gl_PointSize = clamp(pSize * uScale / d, 0.0, 260.0); vC = vec4(pCol.rgb, pCol.a * (1.0 - smoothstep(uFogNear, uFogFar, d))); }',
+      fragmentShader: 'uniform sampler2D map; varying vec4 vC; void main(){ float a = texture2D(map, gl_PointCoord).r; a = a * a * vC.a; if (a < 0.004) discard; gl_FragColor = vec4(vC.rgb, a); }',
+    });
+    const pts = new THREE.Points(pg, pm); pts.frustumCulled = false; pts.renderOrder = 6; pts.name = 'actors:puffs'; pts.visible = false;
+    ROOT.add(pts);
+    P.g = pg; P.pts = pts; P.mat = pm;
+    FXS.pt = P;
+  }
+  function skidSeg(x0, y0, x1, y1, w, t) {
+    const S = FXS.sk; if (!S) return;
+    const L = Math.hypot(x1 - x0, y1 - y0) || 1, px = -(y1 - y0) / L * w / 2, py = (x1 - x0) / L * w / 2;
+    FXS.E.x = x0; FXS.E.y = y0; const h0 = (V3.elevation ? V3.elevation(FXS.E) : 0) + 0.07;
+    FXS.E.x = x1; FXS.E.y = y1; const h1 = (V3.elevation ? V3.elevation(FXS.E) : 0) + 0.07;
+    const i = FXS.skHead, o = i * 12;
+    const q = S.pos;
+    q[o] = x0 - px; q[o + 1] = h0; q[o + 2] = y0 - py;
+    q[o + 3] = x0 + px; q[o + 4] = h0; q[o + 5] = y0 + py;
+    q[o + 6] = x1 - px; q[o + 7] = h1; q[o + 8] = y1 - py;
+    q[o + 9] = x1 + px; q[o + 10] = h1; q[o + 11] = y1 + py;
+    S.birth[i * 4] = S.birth[i * 4 + 1] = S.birth[i * 4 + 2] = S.birth[i * 4 + 3] = t;
+    FXS.skHead = (i + 1) % SK_MAX; if (FXS.skN < SK_MAX) FXS.skN++;
+    FXS.skDirty = true; ST.skids++;
+  }
+  function puff(x, h, y, vx, vh, vy, life, r, hex, a) {
+    const P = FXS.pt; if (!P) return;
+    const i = FXS.ptHead; FXS.ptHead = (i + 1) % PT_MAX;
+    P.x[i] = x; P.h[i] = h; P.y[i] = y; P.vx[i] = vx; P.vh[i] = vh; P.vy[i] = vy; P.t[i] = 0; P.life[i] = life; P.r[i] = r; P.a[i] = a;
+    const c = fxCol(hex); P.c[i * 3] = c[0]; P.c[i * 3 + 1] = c[1]; P.c[i * 3 + 2] = c[2];
+  }
+  /** per vehicle, every frame (also off screen, so marks and smoke stay continuous) */
+  function vehicleFx(v, T, md) {
+    if (!FXS.pt || OPT.fx === false || !T) return;
+    if (camDist(v.x, 3, v.y) > 320) { v._sk3 = null; return; }
+    const tnow = nowS();
+    // skid marks along vehicles.js's own rear-wheel track points
+    if (v.skidding && (v.skL || v.skR) && T.mode !== 'boat') {
+      const st = v._sk3 || (v._sk3 = { L: null, R: null });
+      const w = T.cls === 'bike' ? 0.9 : T.cls === 'heavy' ? 2.3 : 1.7;
+      for (let k = 0; k < 2; k++) {
+        const p = k ? v.skR : v.skL, q = k ? st.R : st.L;
+        if (!p) { if (k) st.R = null; else st.L = null; continue; }
+        if (q && Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.8) continue;
+        if (q && Math.hypot(p[0] - q[0], p[1] - q[1]) < 30) skidSeg(q[0], q[1], p[0], p[1], w, tnow);
+        const n2 = [p[0], p[1]]; if (k) st.R = n2; else st.L = n2;
+      }
+    } else if (v._sk3) v._sk3 = null;
+    const dt = simDt(); if (!(dt > 0)) return;
+    const sp = Math.abs(v.speed || 0), c = Math.cos(v.angle || 0), s = Math.sin(v.angle || 0);
+    const len = T.w || md.L, wd = T.d || md.W;
+    const rearX = v.x - c * len * 0.5, rearY = v.y - s * len * 0.5;
+    if (md.boat || T.mode === 'boat') {
+      if (sp > 8 && Math.random() < dt * (6 + sp * 0.25)) {
+        const sd = Math.random() < 0.5 ? -1 : 1;
+        puff(rearX + s * sd * 2, 0.35, rearY - c * sd * 2, -c * 8 + s * sd * 10, 0.4, -s * 8 - c * sd * 10, 1.6 + Math.random(), 2.2 + Math.random() * 1.6, '#e8f6f4', 0.8);
+      }
+      return;
+    }
+    if (T.smoke && v.driver && !v.fallen) {
+      v._smk3 = (v._smk3 || 0) - dt * (0.6 + Math.abs(v.throttle || 0) * 2.2 + sp / 90);
+      if (v._smk3 <= 0) {
+        v._smk3 = T.smoke === 'diesel' ? 0.32 : T.smoke === 'light' ? 0.6 : 0.4;
+        const hex = T.smoke === 'diesel' ? '#4a4648' : T.smoke === '2t' ? '#b8c4d4' : '#d0d4dc';
+        const ex = v.x - c * (len * 0.5 + 1) + s * (wd * 0.22), ey = v.y - s * (len * 0.5 + 1) - c * (wd * 0.22);
+        const heavy = T.cls === 'heavy';
+        puff(ex, heavy ? 2.6 : 1.4, ey, -c * 10 + (Math.random() - 0.5) * 6, 3 + Math.random() * 2, -s * 10 + (Math.random() - 0.5) * 6, 0.9 + Math.random() * 0.6, heavy ? 4.2 : 2.4, hex, T.smoke === 'diesel' ? 0.55 : 0.42);
+      }
+    }
+    let surf = null; try { surf = N.world.surfaceAt(v.x, v.y); } catch (e) { surf = null; }
+    const S = N.SURF || {};
+    const dirt = surf != null && (surf === S.GROUND || surf === S.SAND || surf === S.GRASS);
+    if ((dirt && sp > 35) || v.skidding) {
+      if (Math.random() < dt * (dirt ? 4 + sp * 0.12 : 18)) {
+        const hex = surf === S.SAND ? '#d8c49a' : surf === S.GRASS ? '#a8b88a' : dirt ? '#c4a07a' : '#d6d2d0';
+        puff(rearX + (Math.random() - 0.5) * wd, 0.9, rearY + (Math.random() - 0.5) * wd, -(v.vx || 0) * 0.15 + (Math.random() - 0.5) * 10, 3.5 + Math.random() * 2.5, -(v.vy || 0) * 0.15 + (Math.random() - 0.5) * 10, 0.9 + Math.random() * 0.6, 3.6, hex, dirt ? 0.5 : 0.38);
+      }
+    }
+  }
+  function commitFx() {
+    const S = FXS.sk, P = FXS.pt; if (!S || !P) return;
+    const tnow = nowS();
+    S.mat.uniforms.uNow.value = tnow;
+    if (FXS.skDirty) { S.g.attributes.position.needsUpdate = true; S.g.attributes.aBirth.needsUpdate = true; FXS.skDirty = false; }
+    S.mesh.visible = FXS.skN > 0 && OPT.fx !== false;
+    // puffs: drift, rise, grow, fade (game time)
+    const dt = simDt(), night = H.night || 0, lit = 1 - 0.72 * night;
+    const dr = Math.exp(-dt * 2.5), dh = Math.exp(-dt * 1.2);
+    let n = 0;
+    for (let i = 0; i < PT_MAX; i++) {
+      if (P.t[i] >= P.life[i]) continue;
+      P.t[i] += dt;
+      const f = P.t[i] / P.life[i]; if (f >= 1) continue;
+      P.x[i] += P.vx[i] * dt; P.h[i] += P.vh[i] * dt; P.y[i] += P.vy[i] * dt;
+      P.vx[i] *= dr; P.vy[i] *= dr; P.vh[i] *= dh;
+      const o = n * 3, q = n * 4;
+      P.pos[o] = P.x[i]; P.pos[o + 1] = P.h[i]; P.pos[o + 2] = P.y[i];
+      P.col[q] = P.c[i * 3] * lit; P.col[q + 1] = P.c[i * 3 + 1] * lit; P.col[q + 2] = P.c[i * 3 + 2] * lit;
+      P.col[q + 3] = P.a[i] * (1 - f) * Math.min(1, f * 8 + 0.2);
+      P.size[n] = P.r[i] * (1 + f * 2.2);
+      n++;
+    }
+    P.g.setDrawRange(0, n);
+    P.pts.visible = n > 0 && OPT.fx !== false;
+    if (n) for (const k of ['position', 'pCol', 'pSize']) { const a = P.g.attributes[k]; a.needsUpdate = true; a.updateRange.offset = 0; a.updateRange.count = n * a.itemSize; }
+    P.mat.uniforms.uScale.value = GLOW.mat ? GLOW.mat.uniforms.uScale.value : 400;
+    const fog = H.scene.fog; if (fog) { P.mat.uniforms.uFogNear.value = fog.near; P.mat.uniforms.uFogFar.value = fog.far; }
+    FXS.live = n; ST.puffs = n;
+  }
+
   /* ================================================================ init, frame commit, registration */
   let FAILED = false;
   function initDecals() {
@@ -3227,7 +3756,7 @@
       for (const m of [VEH_MAT, WHEEL_MAT, ANIMAL_MAT, ANIMAL_DEPTH]) m.userData.shared = true;
       initPeople();
       WHEELS = { spoke: new Pool('wheelSpoke', buildWheel('spoke'), WHEEL_MAT, 32, {}, { cast: true, max: 2048 }), solid: new Pool('wheelSolid', buildWheel('solid'), WHEEL_MAT, 48, {}, { cast: true, max: 2048 }) };
-      initGlows(); initLightPools(); initDecals(); initMarkers(); initGlints();
+      initGlows(); initLightPools(); initDecals(); initMarkers(); initGlints(); initFx();
       READY = true;
     } catch (e) {
       FAILED = true;
@@ -3278,13 +3807,14 @@
       try { flushExtras(); } catch (e) { N.err('view3d_actors.extras', e); }
       if (SEA.strings) { const S = SEA.strings; S.geo.setDrawRange(0, S.n); S.obj.visible = S.n > 0; if (S.n) { S.geo.attributes.position.needsUpdate = true; S.geo.attributes.color.needsUpdate = true; } }
       for (const P of POOLS) P.commit();
+      try { commitFx(); } catch (e) { N.err('view3d_actors.fx', e); }
       commitGlows();
       ROOT.visible = !OPT.hidden;
       if (DEC.dirty) { DEC.tex.needsUpdate = true; DEC.dirty = false; }
       const ms = tFrame0 ? now() - tFrame0 : 0;
       ST.ms = ms; ST.msAvg += (ms - ST.msAvg) * 0.05;
       LAST = Object.assign({}, ST);
-      ST.people = ST.peopleFar = ST.vehicles = ST.wheels = ST.decals = ST.animals = ST.birds = ST.markers = ST.kites = ST.culled = 0;
+      ST.people = ST.peopleFar = ST.vehicles = ST.wheels = ST.decals = ST.animals = ST.birds = ST.markers = ST.kites = ST.culled = ST.skids = 0;
       ST.frame++; tFrame0 = 0;
     },
   });
@@ -3318,7 +3848,12 @@
       /** instance counts per pool (name -> count) of the last committed frame */
       counts() { const o = {}; for (const P of POOLS) if (P.mesh && P.mesh.count) o[P.name] = P.mesh.count; o.glows = LAST.glows; return o; },
       glints() { return GL2.geo ? GL2.geo.drawRange.count : 0; },
+      /** live skid-mark quads (fading over 40 s of game time) and smoke / dust puffs */
+      fx() { return { skids: FXS.skN, puffs: FXS.live }; },
       feet: (r) => feetOf(r || DBG.rec),
+      /** tests: the rider's ankles (mirroring the vertex shader: knee, hip, abduction, then the
+       *  person's roll / yaw / scale / root) and the pedal ankle targets, in the vehicle frame */
+      riderAnkles(vrec, sx) { return riderAnkles(vrec || DBG.rec, sx || 1); },
     },
   };
 })();

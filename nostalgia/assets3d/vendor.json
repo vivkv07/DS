@@ -1,0 +1,309 @@
+{
+ "anchors": {
+  "eye": [
+   0.0,
+   -0.485,
+   8.1958
+  ],
+  "grip_L": [
+   2.76,
+   0.0,
+   5.06
+  ],
+  "grip_R": [
+   -2.76,
+   0.0,
+   5.06
+  ],
+  "head_top": [
+   0.0,
+   0.08,
+   8.9868
+  ],
+  "sole_heel_L": [
+   0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_heel_R": [
+   -0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_toe_L": [
+   0.49,
+   -1.08,
+   -0.0
+  ],
+  "sole_toe_R": [
+   -0.49,
+   -1.08,
+   -0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 4000,
+ "bytes": 237776,
+ "clips": {},
+ "family": "character",
+ "file": "vendor.glb",
+ "front": "-Y",
+ "id": "vendor",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 232.2,
+ "kit": 1,
+ "materials": [
+  "M_vendor"
+ ],
+ "max": [
+  2.963,
+  1.04,
+  8.956
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "shoulder_L",
+   "upperarm_L",
+   "forearm_L",
+   "hand_L",
+   "thigh_L",
+   "shin_L",
+   "foot_L",
+   "toe_L",
+   "shoulder_R",
+   "upperarm_R",
+   "forearm_R",
+   "hand_R",
+   "thigh_R",
+   "shin_R",
+   "foot_R",
+   "toe_R"
+  ],
+  "clips": "clips_adult",
+  "height": 9.0,
+  "kinds": [
+   "man",
+   "uncle",
+   "lungi"
+  ],
+  "lazy": true,
+  "look": {
+   "hair": "#1a1412",
+   "kind": "man",
+   "lungi": "#3a8a3a",
+   "shirt": "#c86a2a",
+   "skin": "#8d5a3b",
+   "towel": "#efe6d0"
+  },
+  "match": {
+   "any": [
+    {
+     "all": [
+      {
+       "f": "kind",
+       "in": [
+        "man"
+       ]
+      },
+      {
+       "f": "lungi"
+      }
+     ]
+    },
+    {
+     "f": "_cart"
+    },
+    {
+     "f": "prop",
+     "in": [
+      "cable"
+     ]
+    }
+   ]
+  },
+  "npcs": {
+   "cable_babji": {}
+  },
+  "priority": 2,
+  "regionsUsed": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "pants",
+   "shoes",
+   "moustache",
+   "headcloth",
+   "cable",
+   "basket"
+  ],
+  "rig": "adult_rig",
+  "role": "people",
+  "variants": {
+   "babji": {
+    "hair": "#1a1412",
+    "kind": "lungi",
+    "lungi": "#3a4a7a",
+    "prop": "cable",
+    "shirt": "#6b8f3a",
+    "skin": "#9a6040"
+   },
+   "cart": {
+    "hair": "#1a1412",
+    "kind": "man",
+    "lungi": "#7a3a3a",
+    "shirt": "#e8e0d0",
+    "skin": "#8d5a3b",
+    "towel": "#c03030"
+   },
+   "vendor": {
+    "hair": "#1a1412",
+    "kind": "man",
+    "lungi": "#3a8a3a",
+    "shirt": "#c86a2a",
+    "skin": "#8d5a3b",
+    "towel": "#efe6d0"
+   }
+  }
+ },
+ "min": [
+  -3.38,
+  -1.268,
+  -0.0
+ ],
+ "notes": [],
+ "script": "characters",
+ "size": [
+  6.343,
+  2.308,
+  8.956
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "fields": {
+   "hair_top": [
+    "hair"
+   ],
+   "headcloth": [
+    "towel",
+    "#efe6d0"
+   ],
+   "moustache": [
+    "moustache",
+    "hair"
+   ],
+   "pants": [
+    "lungi",
+    "pants"
+   ],
+   "shirt": [
+    "shirt"
+   ],
+   "shoes": [
+    "chappal",
+    "#2a2a2a"
+   ]
+  },
+  "names": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "shoes",
+   "accent",
+   "moustache",
+   "headcloth",
+   "hair_top",
+   "cable",
+   "basket"
+  ],
+  "regions": {
+   "basket": "#b48a52",
+   "cable": "#1a1a1c",
+   "hair": "#3b3735",
+   "headcloth": "#dedcd6",
+   "moustache": "#3b3735",
+   "pants": "#8f8d87",
+   "shirt": "#c9c7c1",
+   "shoes": "#6e6c68",
+   "skin": "#9e6440"
+  },
+  "show": {
+   "basket": {
+    "f": "prop",
+    "in": [
+     "basket"
+    ]
+   },
+   "cable": {
+    "f": "prop",
+    "in": [
+     "cable"
+    ]
+   },
+   "hair_top": {
+    "not": {
+     "any": [
+      {
+       "f": "towel"
+      },
+      {
+       "f": "_cart"
+      },
+      {
+       "f": "hat"
+      }
+     ]
+    }
+   },
+   "headcloth": {
+    "any": [
+     {
+      "f": "towel"
+     },
+     {
+      "f": "_cart"
+     }
+    ]
+   },
+   "moustache": {
+    "all": [
+     {
+      "not": {
+       "f": "beard"
+      }
+     },
+     {
+      "not": {
+       "f": "noMoustache"
+      }
+     },
+     {
+      "any": [
+       {
+        "f": "moustache"
+       },
+       {
+        "f": "_r",
+        "lt": 0.75
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "tris": 3052,
+ "units": "u",
+ "up": "Z"
+}

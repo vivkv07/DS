@@ -1,0 +1,67 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 60000,
+ "bytes": 1424420,
+ "clips": {},
+ "family": "hero_landmark",
+ "file": "charminar.glb",
+ "front": "-Y",
+ "id": "charminar",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 1391.0,
+ "kit": 1,
+ "materials": [
+  "M_charminar_lime_plaster",
+  "M_charminar_granite_grey",
+  "M_charminar_lime_plaster.001",
+  "M_charminar_clock_face@night",
+  "M_charminar_iron_black",
+  "M_charminar_lime_plaster_shadow",
+  "M_charminar_gold_leaf"
+ ],
+ "max": [
+  33.5,
+  33.5,
+  135.0
+ ],
+ "meta": {
+  "draw": "charminar",
+  "face": "n",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   64,
+   64
+  ],
+  "height": 135.0,
+  "landmark": "charminar"
+ },
+ "min": [
+  -33.5,
+  -33.5,
+  0.0
+ ],
+ "notes": [
+  "COL_charminar: camera-ray proxy (piers + upper body + minarets), invisible at runtime",
+  "roof mosque on model +X = world west (face n turns the model by PI)"
+ ],
+ "script": "oldcity.charminar",
+ "size": [
+  67.0,
+  67.0,
+  135.0
+ ],
+ "tint": null,
+ "tris": 30934,
+ "units": "u",
+ "up": "Z"
+}

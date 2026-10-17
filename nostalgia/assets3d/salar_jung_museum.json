@@ -1,0 +1,63 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 155116,
+ "clips": {},
+ "family": "landmark",
+ "file": "salar_jung_museum.glb",
+ "front": "-Y",
+ "id": "salar_jung_museum",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 151.5,
+ "kit": 1,
+ "materials": [
+  "M_salar_jung_museum_lime_plaster",
+  "M_salar_jung_museum_granite_grey",
+  "M_salar_jung_museum_lime_plaster.001",
+  "M_salar_jung_museum_sign_text_8f8be19b.png",
+  "M_salar_jung_museum_granite_grey.001",
+  "M_salar_jung_museum_clock_face@night"
+ ],
+ "max": [
+  76.621,
+  38.35,
+  62.9
+ ],
+ "meta": {
+  "face": "s",
+  "fit": "footprint",
+  "floodlit": false,
+  "footprint": [
+   150,
+   76
+  ],
+  "height": 60.0,
+  "landmark": "salar_jung_museum"
+ },
+ "min": [
+  -76.621,
+  -43.2,
+  0.0
+ ],
+ "notes": [
+  "COL_salar_jung_museum: camera-ray proxy boxes (crescent wing in six chords, entrance block, portico, rear hall)"
+ ],
+ "script": "oldcity.civic",
+ "size": [
+  153.243,
+  81.55,
+  62.9
+ ],
+ "tint": null,
+ "tris": 2526,
+ "units": "u",
+ "up": "Z"
+}

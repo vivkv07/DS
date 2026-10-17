@@ -1,0 +1,556 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 4000,
+ "bytes": 181268,
+ "clips": {
+  "clap": {
+   "duration": 1.3333,
+   "feet": {
+    "high": 0.0,
+    "low": -0.0
+   },
+   "fps": 30,
+   "frames": 40,
+   "loco": false,
+   "loop": true,
+   "range": [
+    0,
+    40
+   ]
+  },
+  "direct": {
+   "duration": 1.6,
+   "feet": {
+    "high": 0.0,
+    "low": 0.0
+   },
+   "fps": 30,
+   "frames": 48,
+   "loco": false,
+   "loop": true,
+   "range": [
+    46,
+    94
+   ]
+  },
+  "fall": {
+   "duration": 1.3333,
+   "fps": 30,
+   "frames": 40,
+   "loco": false,
+   "loop": false,
+   "range": [
+    100,
+    140
+   ]
+  },
+  "getup": {
+   "duration": 1.6,
+   "fps": 30,
+   "frames": 48,
+   "loco": false,
+   "loop": false,
+   "range": [
+    146,
+    194
+   ]
+  },
+  "idle": {
+   "duration": 4.0,
+   "fps": 30,
+   "frames": 120,
+   "loco": false,
+   "loop": true,
+   "range": [
+    200,
+    320
+   ]
+  },
+  "idle_cart": {
+   "duration": 4.0,
+   "feet": {
+    "high": 0.0,
+    "low": -0.0
+   },
+   "fps": 30,
+   "frames": 120,
+   "loco": false,
+   "loop": true,
+   "range": [
+    326,
+    446
+   ],
+   "set": "cart"
+  },
+  "idle_look": {
+   "duration": 6.0,
+   "feet": {
+    "high": 0.217,
+    "low": -0.015
+   },
+   "fps": 30,
+   "frames": 180,
+   "loco": false,
+   "loop": true,
+   "range": [
+    452,
+    632
+   ]
+  },
+  "kite_fly": {
+   "duration": 3.0,
+   "feet": {
+    "high": 0.015,
+    "low": 0.012
+   },
+   "fps": 30,
+   "frames": 90,
+   "loco": false,
+   "loop": true,
+   "range": [
+    638,
+    728
+   ]
+  },
+  "pick": {
+   "duration": 1.3333,
+   "fps": 30,
+   "frames": 40,
+   "loco": false,
+   "loop": false,
+   "range": [
+    734,
+    774
+   ]
+  },
+  "push_cart": {
+   "duration": 1.0667,
+   "duty": 0.52,
+   "fps": 30,
+   "frames": 32,
+   "gait": "walk",
+   "loco": true,
+   "loop": true,
+   "nominal": 22.0,
+   "phase0": "left heel strike",
+   "range": [
+    780,
+    812
+   ],
+   "set": "cart",
+   "slip": {
+    "low": -0.053,
+    "max": 0.1767,
+    "mean": 0.0081,
+    "pairs": 52,
+    "ratio": 0.0307,
+    "step": 0.264
+   },
+   "speed": 7.92,
+   "stride": 8.4477
+  },
+  "ride_cycle": {
+   "duration": 1.0667,
+   "fps": 30,
+   "frames": 32,
+   "hipDip": 0.0,
+   "loco": false,
+   "loop": true,
+   "phase": "crank angle / 2pi (0 = left crank back)",
+   "range": [
+    818,
+    850
+   ],
+   "ride": true,
+   "saddleDrop": 0.0,
+   "vehicle": "hero_cycle"
+  },
+  "ride_pillion": {
+   "anchor": "seat_pillion",
+   "duration": 2.0,
+   "fps": 30,
+   "frame": "seat",
+   "frames": 60,
+   "geom": null,
+   "loco": false,
+   "loop": true,
+   "range": [
+    856,
+    916
+   ],
+   "ride": true
+  },
+  "ride_pillion_side": {
+   "anchor": "seat_pillion",
+   "duration": 2.0,
+   "fps": 30,
+   "frame": "seat",
+   "frames": 60,
+   "geom": null,
+   "loco": false,
+   "loop": true,
+   "range": [
+    922,
+    982
+   ],
+   "ride": true
+  },
+  "ride_scooty": {
+   "anchor": "seat_driver",
+   "duration": 2.0,
+   "fps": 30,
+   "frame": "seat",
+   "frames": 60,
+   "geom": {
+    "foot": [
+     0.62,
+     1.15,
+     -1.95
+    ],
+    "grip_L": [
+     1.15,
+     -2.25,
+     1.3
+    ],
+    "grip_R": [
+     -1.15,
+     -2.25,
+     1.3
+    ],
+    "hip": [
+     0.0,
+     0.2,
+     0.34
+    ]
+   },
+   "loco": false,
+   "loop": true,
+   "range": [
+    988,
+    1048
+   ],
+   "ride": true
+  },
+  "run": {
+   "duration": 1.0667,
+   "duty": 0.27,
+   "fps": 30,
+   "frames": 32,
+   "gait": "run",
+   "loco": true,
+   "loop": true,
+   "nominal": 80.0,
+   "phase0": "left heel strike",
+   "range": [
+    1054,
+    1086
+   ],
+   "slip": {
+    "low": -0.0,
+    "max": 0.0003,
+    "mean": 0.0,
+    "pairs": 24,
+    "ratio": 0.0,
+    "step": 0.64
+   },
+   "speed": 19.199,
+   "stride": 20.479196718338407
+  },
+  "sit": {
+   "duration": 3.0,
+   "feet": {
+    "high": 0.0,
+    "low": -0.0
+   },
+   "fps": 30,
+   "frames": 90,
+   "hip": 2.6,
+   "loco": false,
+   "loop": true,
+   "range": [
+    1092,
+    1182
+   ],
+   "seat": true,
+   "seatTop": 2.22
+  },
+  "sit_ground": {
+   "duration": 3.0,
+   "fps": 30,
+   "frames": 90,
+   "hip": 0.597,
+   "loco": false,
+   "loop": true,
+   "range": [
+    1188,
+    1278
+   ],
+   "seat": "ground"
+  },
+  "sit_step": {
+   "duration": 3.0,
+   "feet": {
+    "high": 0.0,
+    "low": -0.0
+   },
+   "fps": 30,
+   "frames": 90,
+   "hip": 2.2,
+   "loco": false,
+   "loop": true,
+   "range": [
+    1284,
+    1374
+   ],
+   "seat": true,
+   "seatTop": 1.84
+  },
+  "sprint": {
+   "duration": 1.0667,
+   "duty": 0.23,
+   "fps": 30,
+   "frames": 32,
+   "gait": "run",
+   "loco": true,
+   "loop": true,
+   "nominal": 105.0,
+   "phase0": "left heel strike",
+   "range": [
+    1380,
+    1412
+   ],
+   "slip": {
+    "low": -0.0,
+    "max": 0.0,
+    "mean": 0.0,
+    "pairs": 20,
+    "ratio": 0.0,
+    "step": 0.8
+   },
+   "speed": 23.999,
+   "stride": 25.599
+  },
+  "stroll": {
+   "duration": 1.0667,
+   "duty": 0.6,
+   "fps": 30,
+   "frames": 32,
+   "gait": "walk",
+   "loco": true,
+   "loop": true,
+   "nominal": 14.0,
+   "phase0": "left heel strike",
+   "range": [
+    1418,
+    1450
+   ],
+   "slip": {
+    "low": -0.0,
+    "max": 0.0357,
+    "mean": 0.0013,
+    "pairs": 60,
+    "ratio": 0.0068,
+    "step": 0.192
+   },
+   "speed": 5.76,
+   "stride": 6.143759015501522
+  },
+  "stroll_f": {
+   "base": "stroll",
+   "duration": 1.0667,
+   "duty": 0.62,
+   "fps": 30,
+   "frames": 32,
+   "gait": "walk",
+   "loco": true,
+   "loop": true,
+   "nominal": 13.0,
+   "phase0": "left heel strike",
+   "range": [
+    1456,
+    1488
+   ],
+   "slip": {
+    "low": -0.044,
+    "max": 0.0253,
+    "mean": 0.0009,
+    "pairs": 60,
+    "ratio": 0.0051,
+    "step": 0.176
+   },
+   "speed": 5.28,
+   "stride": 5.6318,
+   "style": "f"
+  },
+  "talk": {
+   "duration": 4.0,
+   "feet": {
+    "high": 0.0,
+    "low": -0.0
+   },
+   "fps": 30,
+   "frames": 120,
+   "loco": false,
+   "loop": true,
+   "range": [
+    1494,
+    1614
+   ]
+  },
+  "walk": {
+   "duration": 1.0667,
+   "duty": 0.4,
+   "fps": 30,
+   "frames": 32,
+   "gait": "walk",
+   "loco": true,
+   "loop": true,
+   "nominal": 45.0,
+   "phase0": "left heel strike",
+   "range": [
+    1620,
+    1652
+   ],
+   "slip": {
+    "low": -0.057,
+    "max": 0.0404,
+    "mean": 0.0022,
+    "pairs": 38,
+    "ratio": 0.0052,
+    "step": 0.416
+   },
+   "speed": 12.48,
+   "stride": 13.311477866919965
+  },
+  "walk_f": {
+   "base": "walk",
+   "duration": 1.0667,
+   "duty": 0.42,
+   "fps": 30,
+   "frames": 32,
+   "gait": "walk",
+   "loco": true,
+   "loop": true,
+   "nominal": 42.0,
+   "phase0": "left heel strike",
+   "range": [
+    1658,
+    1690
+   ],
+   "slip": {
+    "low": -0.024,
+    "max": 0.0062,
+    "mean": 0.0004,
+    "pairs": 42,
+    "ratio": 0.0012,
+    "step": 0.376
+   },
+   "speed": 11.28,
+   "stride": 12.0315,
+   "style": "f"
+  },
+  "wave": {
+   "duration": 2.0,
+   "feet": {
+    "high": 0.009,
+    "low": -0.0
+   },
+   "fps": 30,
+   "frames": 60,
+   "loco": false,
+   "loop": false,
+   "range": [
+    1696,
+    1756
+   ]
+  }
+ },
+ "family": "character",
+ "file": "clips_adult.glb",
+ "front": "-Y",
+ "id": "clips_adult",
+ "images": [],
+ "kb": 177.0,
+ "kit": 1,
+ "materials": [],
+ "max": [
+  -1000000000.0,
+  -1000000000.0,
+  -1000000000.0
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "shoulder_L",
+   "upperarm_L",
+   "forearm_L",
+   "hand_L",
+   "thigh_L",
+   "shin_L",
+   "foot_L",
+   "toe_L",
+   "shoulder_R",
+   "upperarm_R",
+   "forearm_R",
+   "hand_R",
+   "thigh_R",
+   "shin_R",
+   "foot_R",
+   "toe_R"
+  ],
+  "clipFps": 30,
+  "clipLib": "adult_rig",
+  "clipNames": [
+   "clap",
+   "direct",
+   "fall",
+   "getup",
+   "idle",
+   "idle_cart",
+   "idle_look",
+   "kite_fly",
+   "pick",
+   "push_cart",
+   "ride_cycle",
+   "ride_pillion",
+   "ride_pillion_side",
+   "ride_scooty",
+   "run",
+   "sit",
+   "sit_ground",
+   "sit_step",
+   "sprint",
+   "stroll",
+   "stroll_f",
+   "talk",
+   "walk",
+   "walk_f",
+   "wave"
+  ],
+  "clipTrack": "library",
+  "rig": "adult_rig",
+  "role": "clips"
+ },
+ "min": [
+  1000000000.0,
+  1000000000.0,
+  1000000000.0
+ ],
+ "notes": [],
+ "script": "characters",
+ "size": [
+  -2000000000.0,
+  -2000000000.0,
+  -2000000000.0
+ ],
+ "tint": null,
+ "tris": 0,
+ "units": "u",
+ "up": "Z"
+}

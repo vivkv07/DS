@@ -1,0 +1,110 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 37732,
+ "clips": {},
+ "family": "prop",
+ "file": "tree_palm.glb",
+ "front": "-Y",
+ "id": "tree_palm",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 36.8,
+ "kit": 1,
+ "materials": [
+  "M_tree_palm_imp",
+  "M_tree_palm"
+ ],
+ "max": [
+  132.287,
+  16.458,
+  45.327
+ ],
+ "meta": {
+  "crown": [
+   31.987,
+   32.315
+  ],
+  "doubleSided": true,
+  "height": 45.327,
+  "impostor": {
+   "billboard": "cylindrical",
+   "from": 800,
+   "h": 45.351,
+   "node": "tree_palm_IMPOSTOR",
+   "offset": [
+    117.486,
+    0,
+    0
+   ],
+   "w": 31.987,
+   "x0": -17.186,
+   "z0": -0.024
+  },
+  "kind": "palm",
+  "lods": [
+   {
+    "from": 0,
+    "lod": 0,
+    "node": "tree_palm_LOD0",
+    "offset": [
+     0.0,
+     0,
+     0
+    ],
+    "tris": 204
+   },
+   {
+    "from": 180,
+    "lod": 1,
+    "node": "tree_palm_LOD1",
+    "offset": [
+     39.162,
+     0,
+     0
+    ],
+    "tris": 146
+   },
+   {
+    "from": 420,
+    "lod": 2,
+    "node": "tree_palm_LOD2",
+    "offset": [
+     78.324,
+     0,
+     0
+    ],
+    "tris": 92
+   }
+  ],
+  "tree": true,
+  "wind": {
+   "a": "spare (1)",
+   "attribute": "_WIND",
+   "b": "flutter mask (1 = leaf)",
+   "g": "flutter phase 0..1",
+   "r": "bend 0 (trunk base) -> 1 (tips)",
+   "scale": 255,
+   "three": "_wind"
+  }
+ },
+ "min": [
+  -17.186,
+  -16.018,
+  -0.024
+ ],
+ "notes": [],
+ "script": "props_trees",
+ "size": [
+  149.474,
+  32.476,
+  45.351
+ ],
+ "tint": null,
+ "tris": 444,
+ "units": "u",
+ "up": "Z"
+}

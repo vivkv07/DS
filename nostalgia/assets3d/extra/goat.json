@@ -1,0 +1,102 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 38492,
+ "clips": {
+  "graze": {
+   "duration": 3.0,
+   "fps": 60,
+   "frames": 180,
+   "loco": false,
+   "loop": true
+  },
+  "stand": {
+   "duration": 3.0,
+   "fps": 60,
+   "frames": 180,
+   "loco": false,
+   "loop": true
+  },
+  "walk": {
+   "duration": 0.2333,
+   "duty": 0.62,
+   "footfall": {
+    "FL": 0.25,
+    "FR": 0.75,
+    "HL": 0.0,
+    "HR": 0.5
+   },
+   "fps": 60,
+   "frames": 14,
+   "gait": "lateral walk",
+   "loco": true,
+   "loop": true,
+   "nominal": 12.0,
+   "phase0": "LH strike",
+   "stride": 2.8
+  }
+ },
+ "family": "prop",
+ "file": "goat.glb",
+ "front": "-Y",
+ "id": "goat",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 37.6,
+ "kit": 1,
+ "materials": [
+  "M_goat"
+ ],
+ "max": [
+  0.62,
+  1.819,
+  3.988
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "body",
+   "chest",
+   "neck",
+   "head",
+   "tail1",
+   "leg_FL_upper",
+   "leg_FL_lower",
+   "leg_FR_upper",
+   "leg_FR_lower",
+   "leg_HL_upper",
+   "leg_HL_lower",
+   "leg_HR_upper",
+   "leg_HR_lower"
+  ],
+  "doubleSided": false,
+  "height": 3.5,
+  "idleClip": "stand",
+  "kind": "animal",
+  "length": 4.4,
+  "loco": {
+   "walk": 12.0
+  },
+  "shoulder": 3.0,
+  "species": "goat",
+  "walkClip": "walk"
+ },
+ "min": [
+  -0.62,
+  -2.444,
+  -0.02
+ ],
+ "notes": [],
+ "script": "props_fauna",
+ "size": [
+  1.24,
+  4.263,
+  4.007
+ ],
+ "tint": null,
+ "tris": 438,
+ "units": "u",
+ "up": "Z"
+}

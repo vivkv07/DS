@@ -4,6 +4,8 @@
  *   dist/nostalgia.html — a complete standalone page
  *   dist/artifact.html  — the same content without the <!doctype>/<html>/<head>/<body>
  *                         wrapper: <title>, font links, <style>, body markup, scripts.
+ *   dist/web.html       — the complete page for the website (GitHub Pages, tools/deploy_site.sh):
+ *                         like nostalgia.html but loading the 3D files lazily, like the artifact.
  * Blender models (ARCHITECTURE §21): src/assets3d_pack.js and vendor/three/GLTFLoader.classic.js are
  * NOT executed at boot. dist/nostalgia.html carries them inline as non-executing
  * <script type="text/plain" id="assets3d-pack"> / id="gltfloader-src"> blocks that src/models3d.js
@@ -39,6 +41,7 @@ const inlineAll = (fragment) => fragment
   });
 
 let full = inlineAll(html);
+const web = full;
 // lazily-run blocks for the single-file page (models3d.js executes their text when 3D starts)
 const LAZY = [['gltfloader-src', 'vendor/three/GLTFLoader.classic.js'], ['assets3d-pack', 'src/assets3d_pack.js']];
 const lazyBlocks = LAZY.filter(([, f]) => existsSync(join(ROOT, f)))
@@ -59,7 +62,7 @@ const fragment = [title, fontLinks, inlineAll(localStyles), inlineAll(bodyInner)
 
 // Sanity: every inlined script must still close exactly once (no early "</script>")
 const expect = (html.match(/<script\s+src=/g) || []).length;
-for (const [name, out, extra] of [['nostalgia.html', full, lazyBlocks.length], ['artifact.html', fragment, 0]]) {
+for (const [name, out, extra] of [['nostalgia.html', full, lazyBlocks.length], ['artifact.html', fragment, 0], ['web.html', web, 0]]) {
   const opens = (out.match(/<script>/g) || []).length, closes = (out.match(/<\/script>/gi) || []).length;
   const lazyOpen = (out.match(/<script type="text\/plain" id="/g) || []).length;
   if (opens !== expect || closes !== expect + extra || lazyOpen !== extra) { console.error('build: ' + name + ' has ' + opens + ' <script> / ' + lazyOpen + ' lazy / ' + closes + ' </script>, expected ' + expect + ' + ' + extra); process.exit(1); }
@@ -68,6 +71,7 @@ for (const [name, out, extra] of [['nostalgia.html', full, lazyBlocks.length], [
 mkdirSync(DIST, { recursive: true });
 writeFileSync(join(DIST, 'nostalgia.html'), full);
 writeFileSync(join(DIST, 'artifact.html'), fragment);
+writeFileSync(join(DIST, 'web.html'), web);
 // supporting files the artifact loads lazily (published next to the page at the same paths)
 const artifactFiles = {};
 for (const f of ['src/assets3d_pack.js', 'vendor/three/GLTFLoader.classic.js', 'vendor/three/three.min.js']) if (existsSync(join(ROOT, f))) artifactFiles[f] = 'nostalgia/' + f;
@@ -77,5 +81,6 @@ const kb = (s) => (Buffer.byteLength(s) / 1024).toFixed(1) + ' KB';
 console.log('build: ' + (html.match(/<script\s+src=/g) || []).length + ' scripts inlined');
 console.log('  dist/nostalgia.html  ' + kb(full));
 console.log('  dist/artifact.html   ' + kb(fragment));
+console.log('  dist/web.html        ' + kb(web));
 if (lazyBlocks.length) console.log('  lazy inline blocks: ' + LAZY.filter(([, f]) => existsSync(join(ROOT, f))).map(([id, f]) => id + ' (' + kb(read(f)) + ')').join(', '));
 console.log('  artifact supporting files (dist/artifact.files.json): ' + Object.keys(artifactFiles).join(', '));

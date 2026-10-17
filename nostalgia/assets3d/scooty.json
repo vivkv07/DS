@@ -1,0 +1,208 @@
+{
+ "anchors": {
+  "exhaust": [
+   -0.95,
+   5.66,
+   1.3
+  ],
+  "foot_L": [
+   0.7,
+   -1.75,
+   1.3
+  ],
+  "foot_R": [
+   -0.7,
+   -1.75,
+   1.3
+  ],
+  "foot_pillion_L": [
+   1.15,
+   1.6,
+   1.3
+  ],
+  "foot_pillion_R": [
+   -1.15,
+   1.6,
+   1.3
+  ],
+  "grip_L": [
+   1.4431,
+   -2.3249,
+   5.5809
+  ],
+  "grip_R": [
+   -1.4431,
+   -2.3249,
+   5.5809
+  ],
+  "handlebar": [
+   -0.0,
+   -2.95,
+   5.62
+  ],
+  "headlight": [
+   -0.0,
+   -3.72,
+   5.45
+  ],
+  "indicator_FL": [
+   1.0,
+   -3.72,
+   4.35
+  ],
+  "indicator_FR": [
+   -1.0,
+   -3.72,
+   4.35
+  ],
+  "indicator_RL": [
+   0.72,
+   6.65,
+   3.58
+  ],
+  "indicator_RR": [
+   -0.72,
+   6.65,
+   3.58
+  ],
+  "seat_driver": [
+   0.0,
+   0.6,
+   4.42
+  ],
+  "seat_pillion": [
+   0.0,
+   3.4,
+   4.5
+  ],
+  "taillight": [
+   0.0,
+   6.78,
+   3.62
+  ],
+  "wheel_front": [
+   -0.0,
+   -4.75,
+   1.62
+  ],
+  "wheel_rear": [
+   0.0,
+   4.35,
+   1.62
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 241256,
+ "clips": {},
+ "family": "vehicle",
+ "file": "scooty.glb",
+ "front": "-Y",
+ "id": "scooty",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 235.6,
+ "kit": 1,
+ "materials": [
+  "M_scooty@night"
+ ],
+ "max": [
+  1.752,
+  6.76,
+  7.414
+ ],
+ "meta": {
+  "fps": "bars",
+  "height": 7.2,
+  "lamps": {
+   "head": [
+    "headlight"
+   ],
+   "tail": [
+    "taillight"
+   ]
+  },
+  "length": 14.5,
+  "open": true,
+  "riders": {
+   "driver": {
+    "clips": [
+     "ride_scooty"
+    ],
+    "feet": [
+     "foot_L",
+     "foot_R"
+    ],
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "scooter",
+    "seat": "seat_driver"
+   },
+   "pillion": {
+    "clips": [
+     "sit"
+    ],
+    "feet": [
+     "foot_pillion_L",
+     "foot_pillion_R"
+    ],
+    "pose": "pillion",
+    "seat": "seat_pillion"
+   }
+  },
+  "steerAxis": [
+   0.0,
+   -0.4057,
+   -0.914
+  ],
+  "tintSrc": {
+   "paint": "color"
+  },
+  "vehicleTypes": [
+   "scooty",
+   "akka_scooty"
+  ],
+  "wheelR": 1.62,
+  "wheels": {
+   "wheel_front": 1.62,
+   "wheel_rear": 1.62
+  },
+  "width": 5.6
+ },
+ "min": [
+  -1.742,
+  -6.598,
+  -0.01
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  3.494,
+  13.358,
+  7.424
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#e8323c"
+  }
+ },
+ "tris": 3090,
+ "units": "u",
+ "up": "Z"
+}

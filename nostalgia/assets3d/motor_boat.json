@@ -1,0 +1,223 @@
+{
+ "anchors": {
+  "foot_L": [
+   0.9,
+   9.6,
+   1.6
+  ],
+  "foot_R": [
+   -0.2,
+   9.6,
+   1.6
+  ],
+  "foot_passenger_0": [
+   2.4,
+   -3.0,
+   1.55
+  ],
+  "foot_passenger_1": [
+   -2.4,
+   -3.0,
+   1.55
+  ],
+  "foot_passenger_2": [
+   2.4,
+   3.0,
+   1.55
+  ],
+  "foot_passenger_3": [
+   -2.4,
+   3.0,
+   1.55
+  ],
+  "headlight": [
+   0.0,
+   -14.05,
+   3.0
+  ],
+  "prop": [
+   0.0,
+   15.6,
+   -0.9
+  ],
+  "seat_driver": [
+   0.4,
+   11.6,
+   3.1
+  ],
+  "seat_passenger_0": [
+   2.4,
+   -0.6,
+   3.35
+  ],
+  "seat_passenger_1": [
+   -2.4,
+   -0.6,
+   3.35
+  ],
+  "seat_passenger_2": [
+   2.4,
+   5.4,
+   3.35
+  ],
+  "seat_passenger_3": [
+   -2.4,
+   5.4,
+   3.35
+  ],
+  "tiller": [
+   0.6,
+   12.2,
+   3.6
+  ],
+  "waterline": [
+   0.0,
+   0.0,
+   0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 176072,
+ "clips": {},
+ "family": "vehicle",
+ "file": "motor_boat.glb",
+ "front": "-Y",
+ "id": "motor_boat",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 171.9,
+ "kit": 1,
+ "materials": [
+  "M_motor_boat@night"
+ ],
+ "max": [
+  5.659,
+  15.74,
+  9.052
+ ],
+ "meta": {
+  "boat": true,
+  "fps": "open",
+  "height": 9.2,
+  "lamps": {
+   "head": [
+    "headlight"
+   ]
+  },
+  "length": 28.0,
+  "open": true,
+  "props": {
+   "prop": {
+    "axis": [
+     0,
+     1,
+     0
+    ],
+    "k": 6.0
+   }
+  },
+  "riders": {
+   "driver": {
+    "clips": [
+     "sit"
+    ],
+    "feet": [
+     "foot_L",
+     "foot_R"
+    ],
+    "grips": [
+     "tiller",
+     "tiller"
+    ],
+    "pose": "boatman",
+    "seat": "seat_driver"
+   },
+   "passengers": [
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_0"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_0"
+    },
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_1"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_1"
+    },
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_2"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_2"
+    },
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_3"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_3"
+    }
+   ]
+  },
+  "tintSrc": {
+   "paint": "color",
+   "paint2": "color2"
+  },
+  "vehicleTypes": [
+   "boat"
+  ],
+  "width": 11.0
+ },
+ "min": [
+  -5.659,
+  -14.185,
+  -1.302
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  11.318,
+  29.925,
+  10.354
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#f2efe6",
+   "paint2": "#c0392b"
+  }
+ },
+ "tris": 1728,
+ "units": "u",
+ "up": "Z"
+}

@@ -10,7 +10,7 @@
  *            8 frames at 0.1 s strips (tests/out/models3d_walk.png / _run.png) + dense slow-motion
  *            sampling of the sole anchors: grounded soles must not slide, never sink, run has flight
  *  cycle     hero_cycle parts: wheels spin with distance, steering turns the fork, pedals stay level
- *  proto     N.models3d.useProto swaps the procedural Charminar for charminar_proto (and back)
+ *  proto     the Blender Charminar (oldcity/charminar.py) replaces the procedural one; setEnabled(false) brings it back
  *  tint      NPC looks dress the character (shirt / pants / skin ratios), line-up screenshot
  *  fallback  pack missing -> procedural, no errors besides the blocked request; a corrupt model is
  *            skipped while the others still load
@@ -192,7 +192,7 @@ async function main3d(browser) {
     const c = M3.playerChar();
     return { key: p.view3d, char: !!c, clip: c && c.clip, procedural: !!(N.view3dActors && N.view3dActors.ready), regs: N.models3d.stats().registered };
   });
-  check(r1.key === 'm3d:char:kid_chinnu' && r1.char, 'player routed to the kid_chinnu model (' + r1.key + ', clip ' + r1.clip + ')');
+  check(/^m3d:(char|ppl):kid_chinnu$/.test(r1.key || '') && r1.char, 'player routed to the kid_chinnu model (' + r1.key + ', clip ' + r1.clip + ')');
   check(r1.regs.indexOf('m3d:char:kid_chinnu') >= 0 && r1.regs.indexOf('m3d:veh:hero_cycle') >= 0, 'override renderers registered: ' + r1.regs.join(', '));
   // ride: the player is handed back to the procedural renderer (riding pose), then routed again on foot
   const r2 = await page.evaluate(async () => {
@@ -212,7 +212,7 @@ async function main3d(browser) {
   });
   check(r2.parkedKey === 'm3d:veh:hero_cycle' && r2.parkedObj, 'a parked Hero cycle renders with the Blender hero_cycle model');
   check(r2.riding.inVeh && !r2.riding.player && !r2.riding.vehicle, 'riding: player and cycle fall back to the procedural renderer (rider IK) — ' + JSON.stringify(r2.riding));
-  check(!r2.after.inVeh && r2.after.player === 'm3d:char:kid_chinnu' && r2.after.vehicle === 'm3d:veh:hero_cycle', 'off the cycle again: both back on the Blender models — ' + JSON.stringify(r2.after));
+  check(!r2.after.inVeh && /^m3d:(char|ppl):kid_chinnu$/.test(r2.after.player || '') && r2.after.vehicle === 'm3d:veh:hero_cycle', 'off the cycle again: both back on the Blender models — ' + JSON.stringify(r2.after));
 
   // ---- clips by speed + phase from distance (a standalone character, not in the scene)
   cur = 'clips';
@@ -349,7 +349,9 @@ async function main3d(browser) {
       v.wheelPhase = w0;
       return { worst: +worst.toFixed(3), n };
     };
-    if (!N.models3d.has('adult_man')) return { skip: 'no adult_man in the pack' };
+    const adults = Object.keys(N.ASSETS3D.manifest).filter((id) => { const m = N.ASSETS3D.manifest[id]; return m.family === 'character' && ((m.meta || {}).people || []).indexOf('man') >= 0; });
+    if (!adults.length) return { skip: 'no adult rider model in the pack' };
+    out.adults = adults;
     const v = N.vehicles.spawn('hero_cycle', p.x + 14, p.y - 10, 0.4, { driver: true });
     v.update = function () {};  // hold it still: the test drives the crank
     await M3.raf(4);
@@ -369,7 +371,7 @@ async function main3d(browser) {
   });
   if (rd.skip) console.log('  skip riders: ' + rd.skip);
   else {
-    check(rd.npc.key === 'm3d:veh:hero_cycle' && rd.npc.rider === 'adult_man' && rd.npc.clip === 'ride_cycle', 'traffic cyclist (' + rd.npc.kind + ') rides the Blender Hero cycle as adult_man (' + JSON.stringify(rd.npc) + ')');
+    check(rd.npc.key === 'm3d:veh:hero_cycle' && rd.adults.indexOf(rd.npc.rider) >= 0 && rd.npc.clip === 'ride_cycle', 'traffic cyclist (' + rd.npc.kind + ') rides the Blender Hero cycle as ' + rd.npc.rider + ' (' + JSON.stringify(rd.npc) + ')');
     check(rd.npcGap && rd.npcGap.worst < 0.35, 'adult rider: feet stay on the pedals through a crank turn (worst ball-to-pedal ' + (rd.npcGap && rd.npcGap.worst) + ' u over ' + (rd.npcGap && rd.npcGap.n) + ' samples)');
     check(rd.kid.key === 'm3d:veh:hero_cycle' && rd.kid.rider === 'kid_chinnu' && !rd.kid.player && rd.kid.drop > 0.3, "Chinnu's cycle: Blender model with the saddle let down (" + JSON.stringify(rd.kid) + ')');
     check(rd.kidGap && rd.kidGap.worst < 0.35, 'Chinnu pedals with his feet on the pedals (worst ' + (rd.kidGap && rd.kidGap.worst) + ' u)');
@@ -391,12 +393,14 @@ async function main3d(browser) {
     const kids = looks.map((l, i) => { const c = N.models3d.character('kid_chinnu', l); c.object.position.set(p.x + (i ? -6 : 6), N.view3d.elevation(p), p.y); c.object.rotation.y = -(p.facing || 0); c.setSpeed(0).update(0.5); H.layer.add(c.object); return c; });
     window.__kids = kids;
     const mat = kids[0].mesh.material;
-    return { shirt: R[3].toArray().map((x) => +x.toFixed(3)), pants: R[5].toArray().map((x) => +x.toFixed(3)), tinted: !!(mat.userData && mat.userData.tinted), key: mat.customProgramCacheKey && mat.customProgramCacheKey() };
+    const T = N.ASSETS3D.manifest.kid_chinnu.tint || {};
+    const reg = mat.userData && mat.userData.reg ? mat.userData.reg.value[3].toArray().slice(0, 3).map((x) => +x.toFixed(3)) : null;   // models3d_people.js region shader
+    return { shirt: reg || R[3].toArray().map((x) => +x.toFixed(3)), pants: R[5].toArray().map((x) => +x.toFixed(3)), tinted: !!(mat.userData && (mat.userData.tinted || mat.userData.m3dPeople)), key: mat.customProgramCacheKey && mat.customProgramCacheKey(), base: (T.regions || {}).shirt || '#3d6fb0' };
   });
   // expected: linear(#d8402a) / linear(#3d6fb0)
   const lin = (h) => [1, 3, 5].map((i) => { const c = parseInt(h.slice(i, i + 2), 16) / 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });
-  const e1 = lin('#d8402a').map((x, i) => Math.min(24, x / lin('#3d6fb0')[i]));
-  check(ti.tinted && ti.key === 'm3d-tint' && ti.shirt.every((x, i) => Math.abs(x - e1[i]) < 0.02), 'tint: look.shirt -> region ratio ' + ti.shirt.join(',') + ' (expected ' + e1.map((x) => x.toFixed(3)).join(',') + '), one shared program');
+  const e1 = lin('#d8402a').map((x, i) => Math.min(24, x / lin(ti.base)[i]));
+  check(ti.tinted && /^m3d-(tint|ppl24)$/.test(ti.key || '') && ti.shirt.every((x, i) => Math.abs(x - e1[i]) < 0.02), 'tint: look.shirt -> region ratio ' + ti.shirt.join(',') + ' (expected ' + e1.map((x) => x.toFixed(3)).join(',') + ' over the baked ' + ti.base + '), one shared program (' + ti.key + ')');
   if (SHOTS) {
     await page.evaluate(() => { const p = N.player, a = p.facing || 0; N.view3dActors.debug.camera([p.x + Math.cos(a) * 24, 6.5, p.y + Math.sin(a) * 24], [p.x, 3.6, p.y], 40); });
     await shot(page, 'models3d_lineup.png');
@@ -413,29 +417,23 @@ async function main3d(browser) {
   await context.close();
 }
 
-/* ---------------------------------------------------------------- Charminar proto */
+/* ---------------------------------------------------------------- Charminar (Blender hero landmark) */
 async function proto(browser) {
   cur = 'proto';
-  console.log('\n== Charminar proto (N.models3d.useProto)');
+  console.log('\n== Charminar: the Blender model (tools/blender/oldcity/charminar.py) replaces the procedural one');
   const { context, page, errors } = await openPage(browser);
   await to3D(page, 'tps');
   const st = await waitModels(page);
   check(st.state === 'ready', 'models ready');
-  const has = await page.evaluate(() => N.models3d.has('charminar_proto'));
-  if (!has) { fail('charminar_proto is not in the pack'); await context.close(); return; }
+  const has = await page.evaluate(() => N.models3d.has('charminar') && N.models3d.loaded('charminar'));
+  if (!check(has, 'charminar is in the pack and parsed with the active models')) { await context.close(); return; }
   const lmNames = () => page.evaluate(() => N.view3d.engine.lmGroup.children.map((c) => c.name).filter((n) => /charminar/.test(n)));
   await page.evaluate(() => { N.debug.teleport('charminar_plaza'); N.debug.setTime(10, 30); N.view3d.settle(30000); });
-  await frames(page, 3);
-  const procBefore = await lmNames();
-  check(procBefore.some((n) => /^lm3d:charminar$/.test(n)), 'procedural Charminar by default (' + procBefore.join(', ') + ')');
-  await page.evaluate(() => { N.models3d.useProto = true; });
-  await page.waitForFunction(() => N.models3d.loaded('charminar_proto'), null, { timeout: 240000 });
-  await page.evaluate(() => N.view3d.settle(30000));
   await frames(page, 4);
-  const withProto = await lmNames();
-  check(withProto.some((n) => /^m3d-lm:charminar_proto:charminar$/.test(n)) && !withProto.some((n) => /^lm3d:charminar$/.test(n)), 'useProto: charminar_proto replaces the procedural model (' + withProto.join(', ') + ')');
+  const withModel = await lmNames();
+  check(withModel.some((n) => /^m3d-lm:charminar:charminar$/.test(n)) && !withModel.some((n) => /^lm3d:charminar$/.test(n)), 'the Blender Charminar replaces the procedural model (' + withModel.join(', ') + ')');
   const geo = await page.evaluate(() => {
-    const o = N.view3d.engine.lmGroup.children.find((c) => /^m3d-lm:charminar_proto/.test(c.name));
+    const o = N.view3d.engine.lmGroup.children.find((c) => /^m3d-lm:charminar:/.test(c.name));
     const b = new N.view3d.THREE.Box3().setFromObject(o);
     let col = 0, vis = 0, ray = 0;
     o.traverse((m) => { if (!m.isMesh) return; if (m.material && m.material.visible === false) col++; else vis++; if (m.raycast && m.raycast.toString().length < 12) ray++; });
@@ -453,10 +451,14 @@ async function proto(browser) {
     await page.evaluate(() => { N.debug.setTime(10, 30); N.view3dActors.debug.camera(null); N.view3d.setCamera({ yaw: Math.PI / 2 + 0.3, pitch: 0.12, snap: true }); });
     await shot(page, 'models3d_charminar_tps.png');
   }
-  await page.evaluate(() => { N.models3d.useProto = false; N.view3d.settle(30000); });
+  await page.evaluate(() => { N.models3d.setEnabled(false); N.view3d.settle(30000); });
   await frames(page, 4);
-  const after = await lmNames();
-  check(!after.some((n) => /^m3d-lm:/.test(n)) && after.some((n) => /^lm3d:charminar$/.test(n)), 'useProto off: the procedural Charminar is back (' + after.join(', ') + ')');
+  const off = await lmNames();
+  check(!off.some((n) => /^m3d-lm:/.test(n)) && off.some((n) => /charminar/.test(n)), 'models off: a non-Blender Charminar is back (' + off.join(', ') + ')');
+  await page.evaluate(() => { N.models3d.setEnabled(true); N.view3d.settle(30000); });
+  await frames(page, 4);
+  const on = await lmNames();
+  check(on.some((n) => /^m3d-lm:charminar:charminar$/.test(n)), 'models on again: the Blender Charminar is back (' + on.join(', ') + ')');
   await checkErrors(page, errors);
   await context.close();
 }

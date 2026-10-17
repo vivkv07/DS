@@ -1831,7 +1831,9 @@
       '<div class="mc-head"><b>' + esc(it.name) + '</b><button type="button" class="mn-x mc-x" data-mc="close" aria-label="Close">✕</button></div>' +
       '<p class="mc-kind">' + esc(kindLabel(it)) + (d ? ' · ' + esc(d.name) : '') + '</p>' +
       lines.map((l) => '<p class="mc-line">' + esc(l) + '</p>').join('') +
-      '<div class="mc-btns"><button type="button" class="mn-btn small" data-nav data-mc="route">' + (isWp ? '✕ Clear waypoint' : '◎ Route here') + '</button></div>';
+      '<div class="mc-btns"><button type="button" class="mn-btn small" data-nav data-mc="route">' + (isWp ? '✕ Clear waypoint' : '◎ Route here') + '</button>' +
+      // quick travel: set the waypoint and call an auto to the nearest road (shops.js does the ride + fare)
+      (N.shops && N.shops.hailAuto ? '<button type="button" class="mn-btn small" data-nav data-mc="auto">🛺 Auto here</button>' : '') + '</div>';
     c.hidden = false;
     const p = w2s(it.x, it.y);
     if (MV.W >= 560) {
@@ -1851,6 +1853,24 @@
       if (d <= h.r + (extra || 0) && d < bd - 0.5) { best = h.item; bd = d; }
     }
     return best;
+  }
+  /** "🛺 Auto here": set the waypoint, close the map and call an auto; the ride card lists
+   *  "Your map waypoint" first. Falls back to an auto at the nearest road if we are off-road. */
+  function callAutoTo(it) {
+    const pl = N.player;
+    if (pl && Math.hypot(pl.x - it.x, pl.y - it.y) < 200) { try { N.hud.toast("That's right here. Just walk!", 2200); } catch (e) { /* ignore */ } return; }
+    setWaypoint(it.x, it.y);
+    sfx('ui_select');
+    M.closeMap();
+    try { if (N.state.mode === 'paused' && N.game && N.game.resume) N.game.resume(); } catch (e) { N.err('menus.autoResume', e); }
+    setTimeout(() => {
+      try {
+        const S = N.shops;
+        const ok = S.hailAuto({}) || S.hailAuto({ stand: true });
+        if (!ok && N.hud && N.hud.toast && N.wanted && (N.wanted.level || 0) < 3) N.hud.toast('No auto can reach you here. Walk to a bigger road and press HORN.', 3000);
+        else if (ok && N.hud && N.hud.toast) N.hud.toast('Auto is coming. Press ACTION at the auto and pick "Your map waypoint".', 3600);
+      } catch (e) { N.err('menus.callAuto', e); }
+    }, 150);
   }
   function waypointAt(px, py) {
     if (waypoint) { const p = w2s(waypoint.x, waypoint.y); if (Math.hypot(p[0] - px, p[1] - py) < 26) { setWaypoint(null); sfx('ui_back'); return; } }
@@ -1928,6 +1948,7 @@
         if (b.dataset.mc === 'close') { sfx('ui_back'); hideCard(); return; }
         const it = MV.sel; hideCard();
         if (!it) return;
+        if (b.dataset.mc === 'auto') { callAutoTo(it); return; }
         if (it.kind === 'waypoint') setWaypoint(null); else setWaypoint(it.x, it.y);
       });
       const ov = MV.over;

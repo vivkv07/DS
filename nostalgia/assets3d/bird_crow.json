@@ -1,0 +1,112 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 20112,
+ "clips": {
+  "flap": {
+   "beat": 0.3333,
+   "duration": 0.3333,
+   "fps": 30,
+   "frames": 10,
+   "loco": false,
+   "loop": true
+  },
+  "glide": {
+   "duration": 2.0,
+   "fps": 30,
+   "frames": 60,
+   "loco": false,
+   "loop": true
+  },
+  "perch": {
+   "duration": 2.0,
+   "fps": 30,
+   "frames": 60,
+   "loco": false,
+   "loop": true
+  }
+ },
+ "family": "prop",
+ "file": "bird_crow.glb",
+ "front": "-Y",
+ "id": "bird_crow",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 19.6,
+ "kit": 1,
+ "materials": [
+  "M_bird_crow"
+ ],
+ "max": [
+  2.02,
+  1.16,
+  0.631
+ ],
+ "meta": {
+  "bodyZ": 0.416,
+  "bones": [
+   "root",
+   "head",
+   "wing_L",
+   "wingtip_L",
+   "wing_R",
+   "wingtip_R",
+   "tail"
+  ],
+  "doubleSided": true,
+  "flightClips": [
+   "flap",
+   "glide"
+  ],
+  "flock": {
+   "alt": [
+    10,
+    50
+   ],
+   "habitat": [
+    "everywhere"
+   ],
+   "perch": [
+    "wire",
+    "roof",
+    "tree",
+    "wall"
+   ],
+   "size": [
+    1,
+    8
+   ],
+   "sound": "caw",
+   "speed": [
+    40,
+    60
+   ],
+   "startle": true
+  },
+  "kind": "bird",
+  "length": 2.1,
+  "origin": "body centre; bind pose = flight pose (wings along +-X, legs tucked). perch lifts the root by perchLift so the feet are on z = 0",
+  "perchClip": "perch",
+  "perchLift": 0.416,
+  "species": "crow",
+  "wingspan": 4.04
+ },
+ "min": [
+  -2.02,
+  -0.993,
+  -0.444
+ ],
+ "notes": [],
+ "script": "props_fauna",
+ "size": [
+  4.04,
+  2.153,
+  1.076
+ ],
+ "tint": null,
+ "tris": 150,
+ "units": "u",
+ "up": "Z"
+}

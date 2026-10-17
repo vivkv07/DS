@@ -525,6 +525,7 @@
       try { N.calendar.set(end); } catch (e) { N.err('mission.end', e); }
     }
     if (kindOf(def) === 'main' && N.calendar && N.calendar.markStop) N.calendar.markStop(N.clock.day);
+    coolGiversUnderPlayer();
     N.emit('mission:complete', { id: def.id, title: def.title, reward: rw, kind: kindOf(def) });
     N.emit('mission:pass', { id: def.id });
     if (typeof def.onPass === 'function') { try { def.onPass(); } catch (e) { N.err('mission.onPass', e); } }
@@ -541,6 +542,7 @@
     if (run.failCause === 'timer') streaks.timer[run.id] = (streaks.timer[run.id] || 0) + 1;
     else if (run.lostGame) { const k = run.id + ':' + run.lostGame; streaks.game[k] = (streaks.game[k] || 0) + 1; lastFailed.game = run.lostGame; }
     if (run.def.giver) giverCooldown.add(run.id);
+    coolGiversUnderPlayer();
     N.hud.banner('MISSION FAILED', reason || '', 3600, { kind: 'fail' });
     N.emit('mission:fail', { id: run.id, reason: reason || '' });
     const myFail = lastFailed;
@@ -576,6 +578,18 @@
     if (g.place) { const p = N.places[g.place]; if (p) return p; }
     if (typeof g.x === 'number') return g;
     return null;
+  }
+  /** Every giver whose ring the player stands in (or next to) waits until he steps out (playthrough review:
+   *  M6 failed at the girni and the girni's odd job started under the retry card). */
+  function coolGiversUnderPlayer() {
+    const p = N.player;
+    if (!p) return;
+    for (const id of order) {
+      const d = defs[id];
+      if (!d || !d.giver) continue;
+      const g = giverPos(d);
+      if (g && Math.hypot(p.x - g.x, p.y - g.y) <= (d.giver.r || 14) + 24) giverCooldown.add(d.id);
+    }
   }
   function isAvailable(def) {
     if (done.has(def.id) || (active && active.id === def.id)) return false;
@@ -854,6 +868,8 @@
     /** Abort silently (quit / load). */
     abort() { if (!active) return false; const r = active; abortRun(r, 'abort'); endRun(r, 'abort'); return true; },
     retry,
+    /** true while the MISSION FAILED retry card is up */
+    get askOpen() { return askOpen; },
     /** Markers currently shown (for the full map): [{x, y, color, kind}] */
     markers() {
       const out = [];

@@ -58,6 +58,11 @@ nostalgia/
   src/story.js      chapter/mission scripts (content) -> N.story
   src/collectibles.js hidden goli/cards/tapes, journal data -> N.collectibles
   src/shops.js      Irani cafe, kirana, STD booth (save), barber (clear meter), video parlour -> N.shops
+  src/streetfood.js (street-food scenes, design/atmosphere.md) the scene director: every food cart / spot (dosa,
+                    samosa, chai, pani puri, bhutta, coconut, banana, flower, ice-gola carts, Gokul Chat, Irani
+                    cafe fronts, the biryani queue, Ramzan haleem bhattis) becomes a living crowd of real 'ped'
+                    entities + an animated vendor, steam / smoke particles, stove glow and lamps in both views;
+                    loaded after sidejobs.js, system 'streetfood' (order 42) -> N.streetfood (hooks: header)
   src/minigames.js  kite fight, Golconda clap, brick game, etc. -> N.minigames
   src/cricket_match.js the LB Stadium match (minigame 'match', TV + FPV cameras) -> N.cricketMatch
   src/playground_games.js Lingocha + Maram Pitti played IN THE WORLD on the colony grounds (minigame ids
@@ -71,6 +76,8 @@ nostalgia/
   src/view3d_landmarks.js / src/view3d_actors.js  3D landmark models / people, vehicles, animals (§20)
   src/models3d.js   Blender model runtime (§21): lazily loads GLTFLoader + the pack when 3D starts,
                     instances / characters / vehicle parts, overrides via N.view3d -> N.models3d
+  src/models3d_vehicles.js Blender vehicles at runtime (§21 "Vehicles (runtime)"): wheels / steering /
+                    tint / options / lamps, riders posed by IK on the anchors -> N.models3dVehicles
   src/assets3d_pack.js GENERATED (tools/pack_assets3d.cjs): N.ASSETS3D = base64 GLBs + manifest. NOT
                     in index.html: models3d.js loads it on demand (dist inlines it as text/plain)
   tools/blender/*.py Blender (bpy 5.2) asset scripts: kit.py, build_all.py, characters.py, vehicles.py,
@@ -889,6 +896,39 @@ CPU: pooled channel strips (22 voices) + per-sound cooldowns, k-rate pitch/filte
 drum strokes and plucked strings pre-rendered to buffers in idle time, 0.18 s lookahead
 scheduler; the context is suspended while the tab is hidden. Test: `node nostalgia/tests/audio.cjs`.
 
+**Helper files** (loaded right after audio.js, each extends the core only through `N.audio.ext`):
+`audio_instruments.js` (physical-model instruments + drum kits), `audio_score.js` (the whole original
+score: replaces the core's tracks by id), `audio_vehicles.js` (engine voices, horns, bells, tyres,
+potholes), `audio_ambience.js` (animals, city one-shots, beds, time-of-day schedules, continuous loops).
+```
+N.audio.ext   stable extension API (full comment block in audio.js "extension API"); also for other workers
+  P  primitives (osc0 gain filt shaper panner sp tone burst strike pulses noiseVoice noiseBuf crowd wave ...)
+  registerSfx(name, fn(ac,out,t,o)->end, {cooldown, gain, ui, caption, capMax})  registerInst / registerKs /
+  registerKit / registerScale / registerTrack / registerStation / registerSong / registerEngine /
+  setEngineVoice(factory(ac, dest, type, profile, veh, isPlayer)) / setHornFor(fn) / registerBed /
+  registerPlace(rule, {first}) / registerFestival / DAY_ONLY / onUpdate(id, fn(dt, mode, info), order)
+  bus(name): master sfx amb engine ui music walk radio revIn musicRevIn worldLP worldDuck musicDuck sfxDuck ambDuck engPlayer
+  listener() {x, y, h, yaw, is3D}   spatial(x, y, ref, max)   emitter(opts) -> {input, set(x, y, h, vx, vy), setGain, dispose(fade)}
+  reverbZone()   play(name, o)   engProfile(type)   hornFor(type)   weekday(day) (0 = Sunday)
+N.audio.reverb   {zone, detected, override, set(id | null), ZONES}: generated impulse responses, crossfaded
+  open, oldcity_lane, charminar, golconda (the Fateh Darwaza clap echo ~0.8 s), stadium, station, irani_cafe, lake
+N.audio.spatial  {hrtf: 'auto' | true | false, pose}. 3D views: the listener is the 3D camera (HRTF for the nearest
+  4 continuous + 4 one-shot sources on the high tier, equal-power otherwise); top-down: north-up stereo.
+  Traffic engines: up to 4 nearest (2 on low tier) with Doppler (info.dop) and occlusion (lowpass when a
+  building is in the way). SFX options add: cls, h, occlude, duck; SFX receive o.zone.
+Master: glue compressor -> limiter -> soft clip (ceiling -0.3 dBFS). Ducks: dialogue music 0.32 / ambience 0.6 /
+  sfx 0.85 / radio 0.45; story stings (mission passed, busted ...) dip music and ambience while they play.
+Music: part cfg `ev` = instrument options for every note of the part {gamak, kan, krintan, bend, vib, vowel
+  (choir a/o/u/e), stop (harmonium bass/male/female/full)}. New tracks: chase5 (Chappal Meter 5, comic tuba),
+  ganesh (immersion procession; the ganesh_immersion festival plays it), ramzan (Old City night market),
+  numaish_close. The ending's sections stay alaap, theme, rise, lift (+2 semitones), coda (hook resolves to Sa).
+Test hooks: N.audio.vehicles {types, DEF, factory, sweep, road, nodes, bench}, N.audio.ambience {stats, synth,
+  renderBed, places, radioShops, SCHED, ...}, N.audio.ext.instruments {names, kits, stats, ...}.
+  Ambience flag: N.flags.cricket (shop transistor radios play wordless cricket commentary all day).
+```
+Quality suite: `node nostalgia/tests/audio_quality.cjs` (sections in tests/aq/, `AQ=vehicles,music` to pick):
+offline renders -> WAV + spectrogram/level PNGs in tests/out/aq/, loudness/clipping/click/spectral/spatial checks.
+
 ## 18. Minigames — `N.minigames` (minigames.js)
 
 Eight full-screen minigames (systems_design §8), each a DOM overlay (`#overlay .mg-screen`,
@@ -977,15 +1017,32 @@ N.playgroundGames: current, isOpen(), abort(reason), fields() (open-ground recta
   finishRound, setTimer, breakWindow, ballTo, toss, end, simulate(gid, place, secs) (AI-only fast sim)}
 ```
 Rules: lingocha — the seekers get 3 tries from the chalk line (aim + power: ←/→ / stick / mouse / the 3D
-camera, hold ACTION and let go; touch: drag back on the picture and let go), the stones scatter, the seekers
+camera, hold ACTION and let go; touch (top-down): pull back from the stack — on the picture or with the stick, which
+is a catapult while Chinnu is at the line — and let go), the stones scatter, the seekers
 restack them one at a time (one pair of hands on the stack at once) while the hitters throw the ball at them
-(hit on the full = out, no head shots, a touch on a hitter = SAFE 2.4 s, Chitti is doodh-bhaat), seven back =
-"LINGOCHA!"; roles swap every round, best of 3. Maram pitti — the ball is tossed up and every throw must
+(hit on the full = out, no head shots, a touch on a hitter = SAFE 2.4 s — for an AI seeker only a touch he ran for,
+not brushing past the guard; Chinnu's aim assist passes over a SAFE seeker — Chitti is doodh-bhaat), seven back =
+"LINGOCHA!"; roles swap every round, best of 3. The other team in a real match plays `TUNE.lingocha.rival` (+0.12)
+above the game's difficulty and its hitters pick Chinnu a little more often (`meW`). Maram pitti — the ball is tossed up and every throw must
 bounce before anyone grabs it (a catch on the full puts the thrower out), hit on the full = out, head shots are
-fouls (3 = out), RUN taps dodge, last one standing wins. Free-roam pay (systems §2.4): ₹2 a win, ₹3 for 3 stars,
+fouls (3 = out), a RUN tap (DODGE) is a short committed hop (with no direction held: across the red wind-up line /
+the ball's line), last one standing wins. Wind-ups (both games): the red line from an AI thrower to his mark fills
+like a fuse; he commits his aim `TUNE.lockT` (0.26-0.18 s) before letting go and the fuse turns gold — a hop /
+sidestep from then on beats the throw, an early one is re-aimed at (debug `state().tele`, the AI `throw` log's
+`aimOff`). Chinnu's throws: the kid under his reticle runs across his aim and turns back now and then
+(`TUNE.dance`), and may juke as the ball leaves his hand (`TUNE.alert`; less for a hard throw). Maram pitti manners:
+a hit from closer than `TUNE.maram.closeD` (15 u) is a TOO CLOSE foul, not an out (3 fouls = out; the AI steps back
+anyway; Chinnu's reticle turns orange and the label says "Too close!"). A kid reaches a loose ball Chinnu stands on
+from as far as he can (`TUNE.myReach`), so he cannot shield it while he may not pick it up. Kid manners in the AI: the holder steps back rather than throw point-blank
+(`TUNE.maram.minD` 18 u), kids spread out as they scatter, a missed throw dies 12 u past its mark; hiding more than
+10 u off the ground for 4 s is out (warned; fetching a ball that rolled off is fine); a ball rolling more than 16 u
+off the ground soon stops. During a real game Chinnu's run drains half the stamina (`TUNE.runRefund`), and fetching
+the ball does not count as walking off. Free-roam pay (systems §2.4): ₹2 a win, ₹3 for 3 stars,
 max 3 paid wins per game per game-day in the shared `N.minigames.ledger`. Offers "Join lingocha" / "Join maram
 pitti" (`pg:<game>:<ground>`, priority -1) sit next to the gully-cricket offer while kids are out (school days
-16:00-18:30, holidays / Sundays 08:00-18:30, not in the rain). Ambient: near a ground in that window with no
+16:00-18:30, holidays / Sundays 08:00-18:30, not in the rain); after a free-roam game a "Play again" per-step
+offer (priority 1) stays under Chinnu for 10 s. The play area is the largest open rectangle in the park, kept 11 u
+off the regulars' schedule spots (`N.npcs.schedules`: the gate aunties' bench). Ambient: near a ground in that window with no
 mission running, the kids play gully cricket (places_art), lingocha or maram pitti (simulated here, all AI) with
 barks. Chappal Meter: Chinnu's ball on an adult passer-by `N.wanted.addHeat(15, 'ball')`; Chinnu's ball through a
 house window at window height ends the game ("KHANNN!", +30 heat, the aunty keeps the ball for the day).
@@ -993,10 +1050,10 @@ Hooks (from playground_games.js only): the 3D layer `playgroundGames` (stones, b
 `N.render.queue` drops places_art's static cricket kids (actors layer, that ground's sort key) while its draw
 runs (marker systems `pg.paOn` / `pg.paOff` at order 42.95 / 43.05) at a ground taken by our games; during a real
 game: `N.clock.hold('playground-game')` (the clock crawls at 0.25 game-min/s), `N.render.baseZoom` fits the
-ground (1-1.8, top-down), `N.traffic.closeRoads('pg', ...)`, traffic's 'playground' crowd zone moved to the
+ground (1-2.2 top-down; up to 2.6 on an upright phone, fitted to the width), `N.traffic.closeRoads('pg', ...)`, traffic's 'playground' crowd zone moved to the
 sideline (spectators), mission givers' `when()` wrapped so no J-card starts a mission mid-game, an N.npcs actor
 of a playing friend standing at the ground hidden while its double plays. Test: `node tests/playground_games.cjs`
-(ONLY=desktop|ambient|3d|portrait|landscape).
+(ONLY=desktop|fixes|fair|ambient|3d|portrait|landscape).
 
 ## 19. Story layer (integration contract)
 
@@ -1496,3 +1553,107 @@ the conventions below; anything else needs a change here first.
   feet on 0.1 s frame strips + dense slow-motion sole sampling while walking / running, vehicle
   parts, the proto flag, tinting, pack-missing and corrupt-model fallbacks, the dist build, zero
   console errors; screenshots `tests/out/models3d_*.png`).
+- **Characters (authoring, `tools/blender/characters.py` + helpers `_characters_kit.py`, characters
+  artist):** a gentle, handmade-toy look (rounded lofted forms, slightly large heads, mitten hands, dark
+  toy eyes with a catch-light, visible hems; baked weave / grime / AO). Models: `kid_chinnu` (the
+  player, role `player`), `kid_immu`, `kid_generic` (colony boys / girls, school uniforms), adults
+  `man_shirt_pants`, `uncle_lungi_banian`, `vendor`, `aunty_saree`, `woman_salwar`, `woman_burqa`,
+  `man_kurta_skullcap`, `police_khaki`, `student` (college youth), `old_man_dhoti`; the named cast are
+  variants of these (`meta.npcs`: cast id -> extra look fields). **Clip libraries** `clips_kid` /
+  `clips_adult` (role `clips`, no mesh) hold every clip of a rig, all clips one after the other in
+  ONE animation (`meta.clipTrack: 'library'`, `clips[name].range = [f0, f1]` at `meta.clipFps`;
+  rotations normalized SHORT); characters name their library in `meta.clips` and carry no clips:
+  models3d.js links the library at parse time (cut with `AnimationUtils.subclip`, bound by bone name;
+  `manifest(id).clips` then lists the library's entries). Clips (both rigs unless noted): `idle
+  idle_look stroll walk run sprint` (+ adults `stroll_f walk_f`, `push_cart idle_cart`, `direct`),
+  `ride_cycle` (kids at Chinnu's saddle drop, + `ride_kainchi` on a full-size Hero), `ride_scooty
+  ride_pillion` (+ adults `ride_pillion_side`), `sit` (bench, hips 2.6 u) `sit_step` (stool / kerb,
+  2.2 u) `sit_ground`, `talk wave clap fall getup pick kite_fly`; locomotion entries keep `{loco,
+  stride, nominal, duty, gait, slip}` (+ `style: 'f'` / `set: 'cart'`). **Accessory slots:** regions
+  8..23 after the 8 tint regions; `tint.show[slot]` is a rule on the look (`{f}` truthy, `{f, in}`,
+  `{f, re}`, `{f, lt | gt}`, `{any}`, `{all}`, `{not}`), `tint.fields[region]` the look fields that
+  colour it (`'shirt'`, `'@saree:0.7'` a shade, `'#hex'` fixed); tintable cloth is baked in neutral
+  greys. The runtime adds `_r` (stable random in [0, 1) per person), `_role` (traffic ped role) and
+  `_cart` to the look the rules see. Baking is slot-aware (`finish_atlas_layered`: the base is baked
+  with every slot hidden, each slot against the base alone). Routing meta: `kinds` (N.people kinds
+  served), `priority` + `match` (rule; e.g. police: cap 'police'), `lazy` (parsed on first use),
+  `posture` (extra spine / neck pitch, old men stoop), `female` (uses the `_f` gaits), `height`,
+  `look` (default), `variants` (preview looks). Budgets: 4k triangles, 256² atlas (512² for the
+  player).
+- **Characters (runtime, `src/models3d_people.js`, after models3d.js):** `N.models3d.people = {options
+  {enabled, player, npcs, peds, max (26 nearest), maxNew (2 new per frame), dist, hyst, posture,
+  headLook}, ready, models(), choose(e) -> {id, ctx} | null, play(e, clip, {loop, hold}), stop(e),
+  person(e), stats(), debug}`. Through `hooks.people` it routes the player (on foot), cast NPCs and
+  peds to `e.view3d = 'm3d:ppl:<id>'` when their look has a model and the state is fully supported
+  (not riding / hidden, no umbrella, balloons, carts, head loads or props the model lacks), nearest
+  first; everything else keeps view3d_actors' procedural renderer. Per person: locomotion blended by
+  speed with the phase driven by the distance travelled (planted feet), idle / idle_look, states
+  cross-faded on top — fall (held) / getup, sit / sit_step on a drawn bench / stool, talk, direct
+  (constables), and `e.clip3d = 'clap' | {name, loop: false | hold: true}` for scripts — head turns
+  to `lookAt` / `lookTarget` (the camera for the player), posture, emotes. `hooks.tint` dresses
+  models3d Characters (riders) with the same 24-region shader (hidden slots collapse in the vertex
+  shader and the shadow pass). Test: `node tests/characters3d.cjs` (`PACK=<pack.js>` to use a test
+  pack): selection, slots, line-up day / night, gait strips + dense sole sampling (player and
+  standalone people), states, the street in tps / fps day / night, frame time, zero errors.
+- **Vehicles (authoring, `tools/blender/vehicles.py` + helpers `_vehicles_kit.py`, vehicles artist):**
+  every vehicles.js / traffic.js type has a model: `hero_cycle` (hero_cycle old_cycle chinnu_cycle),
+  `hercules_cycle` (+ hercules_gears via `opt_gears`), `bsa_cycle` (cycle bsa_cycle), `ladies_cycle`,
+  `kid_cycle`, `scooty` (+ akka_scooty), `luna` (+ pochaiah_luna light bar), `chetak` (+ family_chetak),
+  `rx100` (+ bunty_rx100), `auto_rickshaw` (auto yadagiri_auto), `cycle_rickshaw` (rickshaw),
+  `ambassador` (+ govt_ambassador beacon, taxi_ambassador livery + roof carrier), `maruti800`,
+  `padmini` (+ taxi_padmini), `city_bus` (bus safari_bus; route boards), `lorry` (+ peacock_lorry:
+  open with marigolds), `motor_boat` (boat), `pedal_boat` (swan; types pedal_boat / swan_boat, not
+  yet spawned). One rigid skin + one baked material `M_<id>[@night]` (+ `M_<id>_glass`) each.
+  Bones: `root`, `steer` (two-wheelers, autos, rickshaws) or `steer_L / steer_R` (front wheels of
+  cars / bus / lorry, vertical axis) + `steer_wheel` (column axis), any `wheel_*` (radius per bone in
+  `meta.wheels`), `crank pedal_L pedal_R saddle` (pedal cycles), `prop` / `paddle` (`meta.props`),
+  `opt_*` option bones. Lamp lenses carry their group in `_REGION` (4 head, 5 tail / brake, 6
+  indicators, 7 beacon); paint faces 1 (`paint`) / 2 (`paint2`) (`meta.tintSrc` maps them to
+  `v.color` / `v.color2`; `meta.taxi` is the taxi livery). Rider anchors: `seat_driver`, `grip_L/R`
+  (on the bars / steering wheel), `foot_L/R` (floorboard, pegs, car pedals) or the pedals,
+  `seat_pillion` + `foot_pillion_L/R`, `seat_passenger_*` + `foot_passenger_*`, `tiller` (boats);
+  `meta.riders = {driver: {pose, seat, grips, feet}, pillion, passengers: [...]}` (poses: cycle,
+  scooter, moped, moto, auto, car, bench, boatman). `meta.options = [{bone, types, notTypes, flag,
+  route, seed: [n, i]}]`; `meta.stand: 'side'` (parked lean); `meta.boat`; `meta.closed` (glass
+  cabins: passengers not seen are not drawn); cars carry `meta.cockpit.eye`. Heights are human
+  scale for the 9 u adults, lengths stretched to `TYPES[t].w` (long wheelbases).
+- **Vehicles (runtime, `src/models3d_vehicles.js`, after models3d_people.js):** on
+  `models3d:ready` it re-registers each vehicle's `m3d:veh:<id>` key with a full renderer: every
+  wheel bone spins by distance / radius, steer bones turn with `v.steerVis` (right turn =
+  clockwise from above / from the driver), cranks and pedals follow the road, props spin, the
+  saddle lets down; per-instance material (region tint + lamp groups: heads / tails at night while
+  driven, brake lights on braking, beacons flash) and real point lights for near headlamps; option
+  bones by the rules; two-wheeler lean / stand / fall, jolts, boat bobbing; scale `TYPES.w /
+  meta.length`. Riders are Blender characters chosen by `N.models3d.people.choose` (the same model a
+  person has on foot), dressed by `hooks.tint`, posed by two-bone IK on the shared skeleton onto the
+  anchors (hips on the seat, hands on the grips, feet on floor / pegs / turning pedals with ankling
+  and hip dip; passengers' hands on the knees; women pillions side-saddle); on the Hero roadster the
+  library clips (`ride_cycle` at the clip's saddle drop, a kid's `ride_kainchi`) stay phase-locked
+  to the crank. A vehicle is routed (after models3d's own pass, system order 63; it also sets
+  `hooks.riderModel`) only when every occupant who must be seen has a model ready (lazy models
+  parse on demand), else view3d_actors draws it. First person: the player's own body is hidden, the
+  bars / dash / steering wheel stay. API `N.models3dVehicles = {options {enabled, riders, ambient,
+  lamps, lights, farIK}, ready, stats(), modelFor(type), debug}`. Test: `node tests/vehicles3d.cjs`
+  (its own vehicles + people test pack while the shared pack is capped; `REALPACK=1` uses the
+  shared one): line-up of every type (routing, footprint vs collision, ground contact, tint,
+  options), parts (spin, steering direction), riders (hands / feet / hips on their anchors, feet on
+  the pedals through a crank turn), the player on the Scooty (tps / fps) and in the Ambassador
+  (fps), boats on Hussain Sagar, day / night screenshots `tests/out/vehicles3d_*.png`, IK cost.
+- **Props family (`src/models3d_props.js`, props artist; `tools/blender/props_*.py`, helper
+  `props_kit.py`):** family `prop` models are **not** parsed at start-up (models3d.js skips them);
+  `N.models3d.parse(id)` / `N.models3d.props.ensure(ids)` parse on demand. API `N.models3d.props`:
+  `ready, ensure, instance, animated(id)` (mixer + `play(clip)`), `wires(id)` (pole `wire_*` points in
+  the GLB frame), `windMaterial(src, {height, impostor})`, `windUniforms`, `stats()`.
+  **Ownership split (agreed with the atmosphere layer):** models3d_props.js owns the Blender trees —
+  `registerStructure('tree')`, per-chunk instancing, per-instance LOD switching (`<id>_LOD0/1/2`) and
+  the camera-facing `<id>_IMPOSTOR` — and also `'rock'` / `'podium'` and the cart / booth / shelter /
+  playground landmark draw ids when those models exist. The atmosphere layer (`N.wind`, wind.js) owns
+  the wind state and uniforms, the procedural-tree sway, wires and bird flocks. The tree shader shares
+  `N.wind.uniforms(THREE)` (`uWind` = dx, dz, strength, gustiness; `uWindWave` = 1 / wavelength,
+  gust front, time) when present. **Wind data (binding):** tree vertices carry `_WIND` (three
+  `_wind`, unsigned byte 0..255): R = bend 0 at the trunk base → 1 at frond / branch tips, G =
+  flutter phase, B = flutter mask (1 = leaf), A spare. Tree GLBs spread their LOD nodes along +X for
+  the preview line-up; the runtime recentres them and shows only LOD0, so a plain `instance()` is one
+  tree. Poles: front −Y faces the road, conductors run along ±X, empties `wire_L1 wire_L2 wire_L3
+  wire_N wire_cable wire_service` (+ `wire_lamp`). Birds: `bird_pigeon bird_crow bird_kite …` with
+  clips `flap glide perch`. Test: `node tests/models3d_props.cjs`.

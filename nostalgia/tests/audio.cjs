@@ -228,17 +228,21 @@ function serve() {
   check(evr.chase === 'chase', 'Chappal Meter 3 -> chase music', evr.chase);
   check(evr.hold === 'chase', 'chase music holds for a moment after the meter drops', evr.hold);
   check(evr.mood === 'tension', 'music mood hook (tension)', evr.mood);
+  // story events fired above (mission:complete ...) may have opened a real dialogue: close it first
+  const settle = () => ev(async () => { try { N.debug.setTime(11, 0); } catch (e) { /* ignore */ } for (let i = 0; i < 30 && N.state.mode !== 'play'; i++) { try { N.dialogue.cancel(); } catch (e) { /* ignore */ } try { if (N.missions && N.missions.active) N.missions.abort(); } catch (e) { /* ignore */ } await new Promise((r) => setTimeout(r, 120)); } return N.state.mode; });
+  const settled = await settle();
   const duck = await ev(async () => {
     const G = N.audio._internal.bus();
     N.emit('dialogue:open', {}); await new Promise((r) => setTimeout(r, 700)); const during = G.musicDuck.gain.value;
     N.emit('dialogue:close', {}); await new Promise((r) => setTimeout(r, 900)); const after = G.musicDuck.gain.value;
-    return { during: +during.toFixed(2), after: +after.toFixed(2), mode: N.state.mode, duckFlag: N.audio._duck };
+    return { during: +during.toFixed(2), after: +after.toFixed(2), mode: N.state.mode, who: N.dialogue && (N.dialogue.current || N.dialogue.active) && JSON.stringify(N.dialogue.current || N.dialogue.active).slice(0, 300) };
   });
-  check(duck.during < 0.5 && duck.after > 0.9, 'dialogue ducks the music (' + duck.during + ') and restores it (' + duck.after + ')', duck);
+  check(duck.during < 0.5 && duck.after > 0.9, 'dialogue ducks the music (' + duck.during + ') and restores it (' + duck.after + ')', Object.assign({ settled }, duck));
 
   console.log('\n== walkman + tape');
   const wm = await ev(async () => { const A = N.audio; A.walkman.unlock('r_neon'); A.walkman.play('r_neon'); await new Promise((r) => setTimeout(r, 700)); const a = A.walkman.playing; const m = A.stats().music; A.walkman.stop(); return { a, m, lib: A.walkman.library }; });
   check(wm.a === 'r_neon' && wm.m === null, 'Walkman plays a cassette song and the score yields', wm);
+  await settle();
   const tp = await ev(async () => {
     const A = N.audio, out = {};
     const p = N.player;

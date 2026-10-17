@@ -1,0 +1,267 @@
+{
+ "anchors": {
+  "bed": [
+   0.0,
+   5.8,
+   4.9
+  ],
+  "exhaust": [
+   -6.2,
+   -6.0,
+   1.9
+  ],
+  "eye_driver": [
+   -3.6,
+   -17.8,
+   15.6
+  ],
+  "foot_L": [
+   -3.1,
+   -21.6,
+   9.4
+  ],
+  "foot_R": [
+   -4.1,
+   -21.6,
+   9.4
+  ],
+  "foot_passenger_F": [
+   3.6,
+   -21.4,
+   9.4
+  ],
+  "grip_L": [
+   -4.7821,
+   -21.0694,
+   12.9385
+  ],
+  "grip_R": [
+   -2.4179,
+   -21.0694,
+   12.9385
+  ],
+  "handlebar": [
+   -3.6,
+   -20.4,
+   12.6
+  ],
+  "headlight_L": [
+   5.4,
+   -23.8,
+   6.2
+  ],
+  "headlight_R": [
+   -5.4,
+   -23.8,
+   6.2
+  ],
+  "indicator_FL": [
+   5.4,
+   -23.6,
+   7.6
+  ],
+  "indicator_FR": [
+   -5.4,
+   -23.6,
+   7.6
+  ],
+  "seat_driver": [
+   -3.6,
+   -18.0,
+   10.75
+  ],
+  "seat_passenger_F": [
+   3.6,
+   -18.0,
+   10.75
+  ],
+  "taillight_L": [
+   6.2,
+   23.3,
+   3.55
+  ],
+  "taillight_R": [
+   -6.2,
+   23.3,
+   3.55
+  ],
+  "wheel_FL": [
+   6.55,
+   -16.6,
+   2.5
+  ],
+  "wheel_FR": [
+   -6.55,
+   -16.6,
+   2.5
+  ],
+  "wheel_RL": [
+   6.8,
+   12.6,
+   2.5
+  ],
+  "wheel_RR": [
+   -6.8,
+   12.6,
+   2.5
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 411436,
+ "clips": {},
+ "family": "vehicle",
+ "file": "lorry.glb",
+ "front": "-Y",
+ "id": "lorry",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 401.8,
+ "kit": 1,
+ "materials": [
+  "M_lorry@night",
+  "M_lorry_glass"
+ ],
+ "max": [
+  9.55,
+  23.275,
+  17.9
+ ],
+ "meta": {
+  "bed": [
+   -11.4,
+   23.0,
+   4.9
+  ],
+  "closed": true,
+  "cockpit": {
+   "eye": [
+    -3.6,
+    -17.8,
+    15.6
+   ]
+  },
+  "fps": "cockpit",
+  "height": 17.4,
+  "lamps": {
+   "head": [
+    "headlight_L",
+    "headlight_R"
+   ],
+   "tail": [
+    "taillight_L",
+    "taillight_R"
+   ]
+  },
+  "length": 46.0,
+  "options": [
+   {
+    "bone": "opt_tarp",
+    "notTypes": [
+     "peacock_lorry"
+    ]
+   },
+   {
+    "bone": "opt_marigold",
+    "types": [
+     "peacock_lorry"
+    ]
+   }
+  ],
+  "riders": {
+   "driver": {
+    "clips": [
+     "drive",
+     "sit"
+    ],
+    "feet": [
+     "foot_L",
+     "foot_R"
+    ],
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "car",
+    "seat": "seat_driver"
+   }
+  },
+  "steerBones": {
+   "steer_L": {
+    "axis": [
+     0,
+     0,
+     1
+    ],
+    "k": 1.0
+   },
+   "steer_R": {
+    "axis": [
+     0,
+     0,
+     1
+    ],
+    "k": 1.0
+   },
+   "steer_wheel": {
+    "axis": [
+     0.0,
+     -0.4512,
+     -0.8924
+    ],
+    "k": -3.0
+   }
+  },
+  "tintSrc": {
+   "paint": "color",
+   "paint2": "color2"
+  },
+  "vehicleTypes": [
+   "lorry",
+   "peacock_lorry"
+  ],
+  "wheelR": 2.5,
+  "wheels": {
+   "wheel_FL": 2.5,
+   "wheel_FR": 2.5,
+   "wheel_RL": 2.5,
+   "wheel_RR": 2.5
+  },
+  "width": 16.0
+ },
+ "min": [
+  -9.55,
+  -24.525,
+  0.0
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  19.1,
+  47.8,
+  17.9
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#e0782a",
+   "paint2": "#e8c060"
+  }
+ },
+ "tris": 5170,
+ "units": "u",
+ "up": "Z"
+}

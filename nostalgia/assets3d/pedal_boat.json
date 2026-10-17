@@ -1,0 +1,143 @@
+{
+ "anchors": {
+  "foot_passenger_0": [
+   1.4,
+   -1.6,
+   1.1
+  ],
+  "paddle": [
+   0.0,
+   6.9,
+   0.6
+  ],
+  "pedal_L": [
+   -0.85,
+   -2.4,
+   2.45
+  ],
+  "pedal_R": [
+   -1.55,
+   -2.4,
+   1.35
+  ],
+  "seat_driver": [
+   -1.4,
+   2.0,
+   2.95
+  ],
+  "seat_passenger_0": [
+   1.4,
+   2.0,
+   2.95
+  ],
+  "waterline": [
+   0.0,
+   0.0,
+   0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 114620,
+ "clips": {},
+ "family": "vehicle",
+ "file": "pedal_boat.glb",
+ "front": "-Y",
+ "id": "pedal_boat",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 111.9,
+ "kit": 1,
+ "materials": [
+  "M_pedal_boat"
+ ],
+ "max": [
+  3.8,
+  8.046,
+  9.667
+ ],
+ "meta": {
+  "boat": true,
+  "crankR": 0.55,
+  "fps": "open",
+  "height": 10.0,
+  "length": 16.0,
+  "open": true,
+  "props": {
+   "paddle": {
+    "axis": [
+     1,
+     0,
+     0
+    ],
+    "k": 1.0
+   }
+  },
+  "riders": {
+   "driver": {
+    "clips": [
+     "sit"
+    ],
+    "feet": [
+     "pedal_L",
+     "pedal_R"
+    ],
+    "pose": "bench",
+    "seat": "seat_driver"
+   },
+   "passengers": [
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_0"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_0"
+    }
+   ]
+  },
+  "tintSrc": {
+   "paint": "color"
+  },
+  "vehicleTypes": [
+   "pedal_boat",
+   "swan_boat"
+  ],
+  "width": 8.0
+ },
+ "min": [
+  -3.8,
+  -7.142,
+  -1.0
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  7.6,
+  15.188,
+  10.667
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#f4f2ec"
+  }
+ },
+ "tris": 1192,
+ "units": "u",
+ "up": "Z"
+}
