@@ -1109,9 +1109,11 @@
   const JH = new Float32Array(18);
   function habitArms(j, hab, s, t, seed) {
     const belly = !!s.belly;
-    const fx = belly ? 1.12 : 0.8, bx = s.wrap || belly ? -0.98 : -0.84;
+    const fx = belly ? 1.12 : 0.8, bx = s.wrap || belly ? -1.2 : -1.06;
     switch (hab) {
-      case 'behind': armsTo(j, j[10], bx, 5.05, -0.2, bx - 0.04, 5.16, 0.14, 0, -0.9); break;
+      // hands joined low behind the back: nearly straight arms swung back and in (elbows tucked by the
+      // back, not winged out at shoulder height)
+      case 'behind': armsTo(j, j[10], bx, 4.35, -0.18, bx - 0.04, 4.45, 0.14, 0, -0.9); break;
       case 'front': armsTo(j, j[10], fx, belly ? 4.8 : 5.0, -0.14, fx + 0.04, belly ? 4.92 : 5.1, 0.1, 0, -0.9); break;
       case 'fold': armsTo(j, j[10], belly ? 1.12 : 0.95, 6.12, 0.42, belly ? 1.16 : 1.0, 5.92, -0.42, 0, -0.95); break;
       case 'straps': armsTo(j, j[10], 0.74, 6.42, -0.52, 0.74, 6.5, 0.52, 0, -0.9); break;
@@ -2296,10 +2298,11 @@
    * the frame, the right leg through the triangle to the far pedal, both hands on the bar, the cycle
    * leaning away to the right so the body stays upright over the wheels, rising and falling with the
    * stroke (vehicles.js draws the same in 2D). The numbers come from an offline search over the Hero
-   * geometry for a kid (every crank angle reachable, the right hip ~0.7 u under the top tube, the
-   * grips reachable with a forward lean). Writes J (legs by IK + hip abduction, arms to the grips);
+   * geometry for a kid (every crank angle reachable, the right leg crossing the frame plane >= 0.6 u
+   * under the top tube, the grips reachable with the least forward lean, body turned a little
+   * towards the bar). Writes J (legs by IK + hip abduction, arms to the grips);
    * returns the person root [x, y, z, yaw, roll] in the vehicle frame. */
-  const KAINCHI = { dx: 1.0, hy: 3.85, bob: 0.1, hz: -1.0, yaw: -0.05, roll: -0.2, pz: 0.88, tilt: 0.2 };
+  const KAINCHI = { dx: 1.0, hy: 4.1, bob: 0.08, hz: -0.7, yaw: -0.2, roll: -0.2, pz: 0.88, tilt: 0.2 };
   const KF = new Frame(), KQ = [0, 0, 0], KR = [0, 0, 0, 0, 0], KL = [0, 0, 0, 0];
   const KAI_J = new WeakMap(); // actor -> its last kainchi pose (getting off blends from it)
   function kainchiPose(md, seat, sc, sx, o) {

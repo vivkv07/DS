@@ -170,12 +170,12 @@ def cycle_bars(kind, bc, k=1.0):
     if kind == 'swept':      # roadster: swept right back to the rider
         pts = [bc, bc + V(0.55, -0.08, 0.02), bc + V(1.0, -0.02, 0.0), bc + V(1.36, 0.42, -0.05), bc + V(1.53, 0.95, -0.12), bc + V(1.6, 1.45, -0.17), bc + V(1.63, 2.02, -0.2)]
         g0, g1 = bc + V(1.58, 1.3, -0.16), bc + V(1.64, 2.06, -0.21)
-    elif kind == 'flat':     # MTB: straight, wide, slight back-sweep
-        pts = [bc, bc + V(0.6, 0.02, 0.0), bc + V(1.3, 0.08, 0.0), bc + V(2.05, 0.2, 0.0)]
-        g0, g1 = bc + V(1.45, 0.11, 0.0), bc + V(2.1, 0.21, 0.0)
-    elif kind == 'riser':    # kid: a riser bar
-        pts = [bc, bc + V(0.35, 0.0, 0.0), bc + V(0.6, 0.05, 0.3), bc + V(0.95, 0.2, 0.42), bc + V(1.6, 0.42, 0.45)]
-        g0, g1 = bc + V(1.08, 0.24, 0.43), bc + V(1.62, 0.43, 0.45)
+    elif kind == 'flat':     # MTB: a wide bar with some back-sweep (the 2003 Hercules MTBs)
+        pts = [bc, bc + V(0.6, 0.05, 0.02), bc + V(1.3, 0.28, 0.05), bc + V(1.92, 0.68, 0.05)]
+        g0, g1 = bc + V(1.42, 0.34, 0.05), bc + V(1.96, 0.72, 0.05)
+    elif kind == 'riser':    # kid: a riser bar swept back to the rider
+        pts = [bc, bc + V(0.35, 0.0, 0.0), bc + V(0.6, 0.15, 0.3), bc + V(0.95, 0.55, 0.45), bc + V(1.42, 1.05, 0.5)]
+        g0, g1 = bc + V(1.0, 0.6, 0.46), bc + V(1.45, 1.08, 0.5)
     else:                    # 'ladies': upright, swept, a touch higher
         pts = [bc, bc + V(0.5, -0.05, 0.05), bc + V(0.95, 0.05, 0.12), bc + V(1.3, 0.5, 0.12), bc + V(1.45, 1.05, 0.06), bc + V(1.5, 1.6, 0.02)]
         g0, g1 = bc + V(1.46, 1.0, 0.06), bc + V(1.51, 1.7, 0.02)
@@ -914,7 +914,7 @@ def scooty(A):
     stp += vk.lens_box('head', (0.95, 0.12, 0.42), (0, -3.63, 5.45), P['head_lens'], bezel_m=P['chrome'])
     stp.append(vk.rbox('speedo', (0.7, 0.42, 0.12), (0, -2.85, 6.03), P['black'], bevel=0.0))
     stp.append(vk.rbox('speedo_face', (0.5, 0.3, 0.02), (0, -2.83, 6.1), vk.mat('lamp_lens', 'speedo_dial', base='#e8e4d6', rough=0.2), bevel=0.0))
-    bars, grips = vk.moto_bars('bar', (0, -2.95, 5.62), [(0.9, 0.05, 0.0), (1.45, 0.25, -0.05), (1.85, 0.42, -0.12)], 0.6, P, bar_m=P['black'], grip_m=TRIM, r=0.08, grip_r=0.15)
+    bars, grips = vk.moto_bars('bar', (0, -2.95, 5.62), [(0.85, 0.1, 0.0), (1.3, 0.42, -0.02), (1.6, 0.85, -0.06)], 0.6, P, bar_m=P['black'], grip_m=TRIM, r=0.08, grip_r=0.15)
     stp += bars
     stp += vk.mirrors('mirror', [(1.0, -3.0, 5.95), (-1.0, -3.0, 5.95)], 1.0, 0.35, 0.3, P, stalk_m=P['black'])
     Rg.add('steer', stp)
@@ -922,8 +922,8 @@ def scooty(A):
                        boost={'sign_': 2.4, 'plate': 1.8, 'head_lens': 1.4, 'tail_lens': 1.4})
     hl = grips['L']
     anchors_from(A, arm, {
-        'seat_driver': ((0, 1.15, 4.45), 'root'), 'seat_pillion': ((0, 3.6, 4.5), 'root'),
-        'foot_L': ((0.7, -1.55, 1.3), 'root'), 'foot_R': ((-0.7, -1.55, 1.3), 'root'),
+        'seat_driver': ((0, 0.6, 4.42), 'root'), 'seat_pillion': ((0, 3.4, 4.5), 'root'),
+        'foot_L': ((0.7, -1.75, 1.3), 'root'), 'foot_R': ((-0.7, -1.75, 1.3), 'root'),
         'foot_pillion_L': ((1.15, 1.6, 1.3), 'root'), 'foot_pillion_R': ((-1.15, 1.6, 1.3), 'root'),
         'handlebar': ((0, -2.95, 5.62), 'steer'), 'grip_L': (tuple(grips['L']), 'steer'), 'grip_R': (tuple(grips['R']), 'steer'),
         'headlight': ((0, -3.72, 5.45), 'steer'), 'taillight': ((0, 6.78, 3.62), 'root'),
@@ -1028,7 +1028,7 @@ def luna(A):
     arm, ob = Rg.build(tex=512, orm=128, emit=128, ao_samples=20, albedo_samples=6, ao_strength=0.68, ao_dist=1.5,
                        boost={'sign_': 2.4, 'plate': 1.8, 'head_lens': 1.4, 'tail_lens': 1.4})
     anchors_from(A, arm, {
-        'seat_driver': ((0, 1.6, 4.9), 'root'), 'seat_pillion': ((0, 4.3, 4.85), 'root'),
+        'seat_driver': ((0, 1.1, 4.88), 'root'), 'seat_pillion': ((0, 4.3, 4.85), 'root'),
         'foot_L': (tuple(bb + V(0.95, -0.95, 0.1)), 'root'), 'foot_R': (tuple(bb + V(-0.95, 0.95, 0.1)), 'root'),
         'foot_pillion_L': ((0.95, 3.0, 1.7), 'root'), 'foot_pillion_R': ((-0.95, 3.0, 1.7), 'root'),
         'handlebar': (tuple(top), 'steer'), 'grip_L': (tuple(grips['L']), 'steer'), 'grip_R': (tuple(grips['R']), 'steer'),
@@ -1135,9 +1135,9 @@ def chetak(A):
     s.append(fe)
     s.append(vk.loft_y('fender_crest', [(-6.7, 0.12, 2.2, 2.6, 2.0), (-5.6, 0.18, 3.65, 4.25, 2.2), (-4.4, 0.12, 3.75, 4.15, 2.0)], P['chrome'], seg=8))
     hb = S0 + V(0, -0.15, 0.45)
-    cast = loft('bar_casting', [dict(c=tuple(hb + V(1.75, 0.55, -0.05)), r=(0.14, 0.13), p=2.2), dict(c=tuple(hb + V(1.0, 0.25, 0.0)), r=(0.2, 0.18), p=2.4),
+    cast = loft('bar_casting', [dict(c=tuple(hb + V(1.6, 0.75, -0.05)), r=(0.14, 0.13), p=2.2), dict(c=tuple(hb + V(1.0, 0.3, 0.0)), r=(0.2, 0.18), p=2.4),
                                 dict(c=tuple(hb + V(0.4, 0.05, 0.05)), r=(0.38, 0.28), p=2.6), dict(c=tuple(hb + V(-0.4, 0.05, 0.05)), r=(0.38, 0.28), p=2.6),
-                                dict(c=tuple(hb + V(-1.0, 0.25, 0.0)), r=(0.2, 0.18), p=2.4), dict(c=tuple(hb + V(-1.75, 0.55, -0.05)), r=(0.14, 0.13), p=2.2)],
+                                dict(c=tuple(hb + V(-1.0, 0.3, 0.0)), r=(0.2, 0.18), p=2.4), dict(c=tuple(hb + V(-1.6, 0.75, -0.05)), r=(0.14, 0.13), p=2.2)],
                 seg=10, side=(0, 0, 1), mat=BODY)
     s.append(cast)
     s.append(vk.loft_y('nacelle', [(hb.y - 0.95, 0.58, hb.z - 0.55, hb.z + 0.5, 2.4), (hb.y - 0.6, 0.66, hb.z - 0.6, hb.z + 0.55, 2.4), (hb.y + 0.2, 0.5, hb.z - 0.35, hb.z + 0.4, 2.4)], BODY, seg=12))
@@ -1146,7 +1146,7 @@ def chetak(A):
     s.append(vk.cyl_between('speedo_face', tuple(hb + V(0, 0.12, 0.42)), tuple(hb + V(0, 0.13, 0.44)), 0.24, seg=10, m=vk.mat('lamp_lens', 'speedo_dial', base='#e8e4d6', rough=0.2), cap=True))
     grips = {}
     for sx, S in ((1, 'L'), (-1, 'R')):
-        g0, g1 = hb + V(sx * 1.75, 0.55, -0.05), hb + V(sx * 2.45, 0.85, -0.1)
+        g0, g1 = hb + V(sx * 1.6, 0.75, -0.05), hb + V(sx * 2.15, 1.25, -0.12)
         s.append(tube('grip', [g0, g1], 0.15, seg=7, mat=P['plastic'], cap=True))
         grips[S] = g0.lerp(g1, 0.5)
         s.append(tube('lever', [hb + V(sx * 1.45, 0.25, 0.05), hb + V(sx * 2.25, 0.5, 0.0)], 0.045, seg=4, mat=P['chrome']))
@@ -1155,7 +1155,7 @@ def chetak(A):
     arm, ob = Rg.build(tex=512, orm=128, emit=128, ao_samples=20, albedo_samples=6, ao_strength=0.7, ao_dist=1.7,
                        boost={'sign_': 2.4, 'plate': 1.8, 'head_lens': 1.4, 'tail_lens': 1.4})
     anchors_from(A, arm, {
-        'seat_driver': ((0, 1.7, 5.15), 'root'), 'seat_pillion': ((0, 4.6, 5.2), 'root'),
+        'seat_driver': ((0, 1.05, 5.12), 'root'), 'seat_pillion': ((0, 4.4, 5.2), 'root'),
         'foot_L': ((0.75, -1.7, 1.42), 'root'), 'foot_R': ((-0.75, -1.7, 1.42), 'root'),
         'foot_pillion_L': ((1.35, 0.4, 1.42), 'root'), 'foot_pillion_R': ((-1.35, 0.4, 1.42), 'root'),
         'handlebar': (tuple(hb), 'steer'), 'grip_L': (tuple(grips['L']), 'steer'), 'grip_R': (tuple(grips['R']), 'steer'),
@@ -1258,14 +1258,14 @@ def rx100(A):
         s += vk.lens_box('ind_f', (0.3, 0.3, 0.22), tuple(lc + V(sx * 1.2, 0.22, -0.3)), P['amber'])
         s.append(vk.cyl_between('clock', tuple(top_crown + V(sx * 0.42, 0.05, 0.12)), tuple(top_crown + V(sx * 0.42, 0.2, 0.55)), 0.3, seg=10, m=P['black']))
         s.append(vk.cyl_between('clock_face', tuple(top_crown + V(sx * 0.42, 0.2, 0.55)), tuple(top_crown + V(sx * 0.42, 0.21, 0.57)), 0.25, seg=10, m=vk.mat('lamp_lens', 'clock_dial', base='#e8e4d6', rough=0.2)))
-    bars, grips = vk.moto_bars('bar', tuple(top_crown + V(0, 0.2, 0.15)), [(0.5, 0.0, 0.18), (1.2, 0.25, 0.3), (1.85, 0.62, 0.25)], 0.7, P, r=0.09, grip_r=0.16)
+    bars, grips = vk.moto_bars('bar', tuple(top_crown + V(0, 0.2, 0.15)), [(0.5, 0.05, 0.2), (1.05, 0.45, 0.34), (1.5, 1.0, 0.3)], 0.65, P, r=0.09, grip_r=0.16)
     s += bars
     s += vk.mirrors('mirror', [tuple(top_crown + V(1.0, 0.35, 0.35)), tuple(top_crown + V(-1.0, 0.35, 0.35))], 1.0, 0.3, 0.3, P)
     Rg.add('steer', s)
     arm, ob = Rg.build(tex=512, orm=128, emit=128, ao_samples=20, albedo_samples=6, ao_strength=0.7, ao_dist=1.6,
                        boost={'sign_': 2.4, 'plate': 1.8, 'head_lens': 1.4, 'tail_lens': 1.4})
     anchors_from(A, arm, {
-        'seat_driver': ((0, 1.35, 5.55), 'root'), 'seat_pillion': ((0, 4.3, 5.6), 'root'),
+        'seat_driver': ((0, 0.85, 5.55), 'root'), 'seat_pillion': ((0, 3.9, 5.6), 'root'),
         'foot_L': ((1.05, 0.15, 2.12), 'root'), 'foot_R': ((-1.05, 0.15, 2.12), 'root'),
         'foot_pillion_L': ((0.95, 3.0, 2.65), 'root'), 'foot_pillion_R': ((-0.95, 3.0, 2.65), 'root'),
         'handlebar': (tuple(top_crown + V(0, 0.2, 0.15)), 'steer'), 'grip_L': (tuple(grips['L']), 'steer'), 'grip_R': (tuple(grips['R']), 'steer'),
@@ -2185,10 +2185,10 @@ def cycle_rickshaw(A):
     R1, R2 = 2.4, 2.6
     FA = V(0, -9.55, R1)
     RW = {'L': V(5.05, 6.6, R2), 'R': V(-5.05, 6.6, R2)}
-    S0 = V(0, -7.95, 5.3)
+    S0 = V(0, -7.95, 5.5)
     AXs = steer_axis(S0, FA)
-    BB = V(0, -5.5, 2.15)
-    SEAT = V(0, -3.75, 6.45)
+    BB = V(0, -4.85, 2.45)
+    SEAT = V(0, -3.75, 5.6)
     Rg = vk.VRig(A)
     Rg.bone('steer', S0, S0 + AXs * 1.5)
     Rg.bone('wheel_front', FA, parent='steer')
@@ -2204,7 +2204,7 @@ def cycle_rickshaw(A):
     Rg.add('wheel_RR', vk.spoke_wheel('wrr', tuple(RW['R']), R2, M, spokes=24, seg=18, tyre_w=0.46, rim_d=0.34, hub_w=0.6))
     b = []
     # ---------------------------------------------------------------- the rider's frame
-    sc = V(0, -4.0, 5.75)
+    sc = V(0, -4.0, 4.95)
     b.append(tube('head_tube', [S0 + V(0, 0, 0.1), S0 + AXs * 1.1], 0.16, seg=6, mat=BODY))
     b.append(tube('top_tube', [sc, S0 + AXs * 0.2], 0.14, seg=6, mat=BODY))
     b.append(tube('down_tube', [BB, S0 + AXs * 0.95], 0.16, seg=6, mat=BODY))
@@ -2261,9 +2261,9 @@ def cycle_rickshaw(A):
     for sx in (1, -1):
         st.append(tube('fork', [crown + V(sx * 0.25, 0, 0), crown.lerp(FA, 0.55) + V(sx * 0.3, -0.18, 0), FA + V(sx * 0.32, 0, 0.06)], 0.08, seg=5, mat=BODY))
     st.append(vk.mudguard('guard_front', tuple(FA), R1, math.radians(-15), math.radians(118), ACC, w=0.55, gap=0.22, thick=0.06, n=8))
-    top = S0 - AXs * 0.7
+    top = S0 - AXs * 1.05
     st.append(tube('stem', [S0 + AXs * 0.1, top], 0.09, seg=6, mat=P['chrome']))
-    bars, grips = vk.moto_bars('bar', tuple(top), [(0.55, -0.05, 0.02), (1.05, 0.25, 0.0), (1.4, 0.75, -0.08), (1.55, 1.3, -0.12)], 0.62, P, r=0.07, grip_r=0.13, levers=False,
+    bars, grips = vk.moto_bars('bar', tuple(top), [(0.55, -0.05, 0.02), (1.05, 0.3, 0.0), (1.35, 0.85, -0.08), (1.45, 1.45, -0.12)], 0.62, P, r=0.07, grip_r=0.13, levers=False,
                                grip_m=vk.mat('rubber', 'grip_rk', base='#d8ccb0', rough=0.7))
     st += bars
     bell = kit.lathe('bell', [(0.0, 0.0), (0.22, 0.0), (0.23, 0.05), (0.18, 0.16), (0.09, 0.22), (0.0, 0.25)], seg=10, mat=P['chrome'])

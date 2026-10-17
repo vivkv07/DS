@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 325212,
+ "bytes": 306116,
  "clips": {},
  "family": "character",
  "file": "kid_generic.glb",
@@ -52,7 +52,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 317.6,
+ "kb": 298.9,
  "kit": 1,
  "materials": [
   "M_kid_generic"
@@ -60,7 +60,7 @@
  "max": [
   2.233,
   0.88,
-  7.412
+  7.401
  ],
  "meta": {
   "bones": [
@@ -189,7 +189,7 @@
  "size": [
   4.466,
   1.86,
-  7.412
+  7.401
  ],
  "tint": {
   "attribute": "_REGION",
@@ -450,7 +450,7 @@
    }
   }
  },
- "tris": 4172,
+ "tris": 3962,
  "units": "u",
  "up": "Z"
 }

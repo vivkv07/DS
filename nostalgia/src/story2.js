@@ -48,6 +48,11 @@
  *   'story2:season' {name}. Flags written: clue_tunnel, riddle_3/4, lock_3/4, interlude_done, ayesha_moving,
  *   prasads_open, boats_open, tin_locked, ending_done, epilogue_done, postgame, season_pick, star_lantern,
  *   immu_email, sa6_race, bunty_pillion, lb_match_played, s2_email.
+ * Playthrough review (round 2): the interlude, the ending and the epilogue are calm scenes (sceneCalm: the
+ *   Chappal Meter cleared and frozen, N.flags.no_curfew = 'scene'), so no curfew uncle barks over the kites at
+ *   23:40; the next mission's clue toast is only queued in free roam (clueToast), never over the next mission;
+ *   a speech bubble carries words only (a leading "(stage direction)" becomes an emote); he parks his cycle
+ *   before the NTR Gardens mini train; the three HUD objectives that only showed as ride cards now show too.
  */
 (() => {
   'use strict';

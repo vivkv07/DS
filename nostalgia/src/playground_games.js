@@ -372,6 +372,24 @@
     return spotNear(px, py, 3, 12);
   }
 
+  /** Maram pitti's boundary (TUNE.maram.bound off the open ground): chalk dashes, only where the line runs over
+   *  walkable ground (never across a house or a wall). [[x0, y0, x1, y1], ...], cached on the field. */
+  function boundSegs(F) {
+    if (F.bSegs) return F.bSegs;
+    const m = TUNE.maram.bound, x0 = F.x0 - m, y0 = F.y0 - m, x1 = F.x1 + m, y1 = F.y1 + m, segs = [];
+    const side = (ax, ay, bx, by) => {
+      const L = hyp(bx - ax, by - ay), n = Math.max(1, Math.round(L / 5));
+      for (let i = 0; i < n; i++) {
+        const t0 = i / n, t1 = (i + 0.55) / n;
+        const sx = lerp(ax, bx, t0), sy = lerp(ay, by, t0), ex = lerp(ax, bx, t1), ey = lerp(ay, by, t1);
+        if (walk(sx, sy) && walk(ex, ey)) segs.push([sx, sy, ex, ey]);
+      }
+    };
+    side(x0, y0, x1, y0); side(x1, y0, x1, y1); side(x1, y1, x0, y1); side(x0, y1, x0, y0);
+    F.bSegs = segs;
+    return segs;
+  }
+
   /* ================================================================ time windows */
   function rainy() { const f = N.flags || {}; return !!(f.raining || f.rain === true); }
   function minutes() { return N.clock && isFinite(N.clock.minutes) ? N.clock.minutes : 12 * 60; }
@@ -1244,6 +1262,8 @@
         toast(mine ? 'Knocked down! Grab the stones and restack — dodge the ball!' : 'Down it goes! Get the ball and hit them before they restack!', 2600);
       }
       S.phase = 'scatter'; S.phaseT = 0;
+      // the stack is down: Chinnu's own legs again (no walk back to the line still running)
+      if (S.auto && !(S.me && S.me.out)) S.auto = null;
       for (const P of LING.hitters(S)) if (!P.isPlayer) P.think = 0;
     },
     stoneStep(S, st, dt) {
@@ -2707,6 +2727,17 @@
           ctx.globalAlpha = 1;
         }));
       }
+      // maram pitti: the chalk boundary (pulses red while Chinnu is out past it)
+      if (S.real && !done && S.id === 'marampitti') {
+        const segs = boundSegs(F), warn = (S.boundT || 0) > 0, t = S.t;
+        R.queue('ground', 4, () => D.flat((ctx) => {
+          ctx.strokeStyle = warn ? 'rgba(255,110,90,' + (0.6 + 0.35 * Math.sin(t * 12)).toFixed(2) + ')' : 'rgba(248,246,236,0.5)';
+          ctx.lineWidth = warn ? 1 : 0.6;
+          ctx.beginPath();
+          for (const q of segs) { ctx.moveTo(q[0], q[1]); ctx.lineTo(q[2], q[3]); }
+          ctx.stroke();
+        }));
+      }
       // the ball (and its shadow)
       const bl = S.ball;
       if (!bl.hiddenBall && !(done && !S.real)) {
@@ -2920,6 +2951,7 @@
     tele.rotation.x = -Math.PI / 2; tele.visible = false; g.add(tele); V3L.tele = tele;
     // the wind-up fuse: a brighter strip that burns along the line (gold once his aim is committed)
     const fmat = own('#ff5a4a', { basic: true, transparent: true, opacity: 0.95, double: true });
+    V3L.bmat = own('#f4f2ea', { basic: true, transparent: true, opacity: 0.6, double: true });
     const fz = new THREE.Mesh(new THREE.PlaneGeometry(1, 1.25), fmat);
     fz.rotation.x = -Math.PI / 2; fz.visible = false; fz.userData.mat = fmat; g.add(fz); V3L.fuse = fz;
     g.traverse((o) => { if (o.isMesh && o.material && o.material.transparent) { o.castShadow = false; o.receiveShadow = false; o.renderOrder = 2; } });
@@ -2941,6 +2973,26 @@
       V3L.ball.position.set(b.x, gh + b.z + TUNE.ballR, b.y);
       V3L.bsh.position.set(b.x, gh + 0.09, b.y);
       const s = clamp(1 - b.z / 30, 0.35, 1); V3L.bsh.scale.set(2.2 * s, 1, 2.2 * s);
+    }
+    // maram pitti's chalk boundary (one mesh per ground, rebuilt when the ground changes)
+    const showB = S.real && !S.ended && S.id === 'marampitti';
+    if (showB && V3L.bKey !== S.F.key) {
+      if (V3L.bound) { g.remove(V3L.bound); V3L.bound.geometry.dispose(); }
+      const segs = boundSegs(S.F), pos = [], w = 0.35;
+      for (const q of segs) {
+        const dx = q[2] - q[0], dy = q[3] - q[1], l = hyp(dx, dy) || 1, nx = (-dy / l) * w, ny = (dx / l) * w;
+        const h0 = hAt(q[0], q[1]) + 0.07, h1 = hAt(q[2], q[3]) + 0.07;
+        pos.push(q[0] - nx, h0, q[1] - ny, q[2] - nx, h1, q[3] - ny, q[2] + nx, h1, q[3] + ny, q[0] - nx, h0, q[1] - ny, q[2] + nx, h1, q[3] + ny, q[0] + nx, h0, q[1] + ny);
+      }
+      const geo = new V3L.T.BufferGeometry();
+      geo.setAttribute('position', new V3L.T.Float32BufferAttribute(pos, 3));
+      const bm = new V3L.T.Mesh(geo, V3L.bmat);
+      bm.renderOrder = 2; bm.userData.noShadow = true; bm.frustumCulled = false;
+      g.add(bm); V3L.bound = bm; V3L.bKey = S.F.key;
+    }
+    if (V3L.bound) {
+      V3L.bound.visible = showB && V3L.bKey === S.F.key;
+      if (V3L.bound.visible) V3L.bmat.color.set((S.boundT || 0) > 0 && Math.sin(S.t * 12) > 0 ? '#ff6e5a' : '#f4f2ea');
     }
     const ling = S.id === 'lingocha' && S.L;
     V3L.chalk.visible = V3L.ring.visible = !!ling;
@@ -3011,7 +3063,7 @@
   }
   function v3Dispose(H) {
     if (V3L.grp) { try { H.layer.remove(V3L.grp); H.dispose(V3L.grp); } catch (e) { /* ignore */ } }
-    V3L.grp = null; V3L.ok = false; V3L.rings = []; V3L.stones = [];
+    V3L.grp = null; V3L.ok = false; V3L.rings = []; V3L.stones = []; V3L.bound = null; V3L.bKey = null;
   }
 
   /* ================================================================ interact offers ("Join lingocha") */

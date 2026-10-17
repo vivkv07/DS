@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 229236,
+ "bytes": 237776,
  "clips": {},
  "family": "character",
  "file": "vendor.glb",
@@ -52,7 +52,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 223.9,
+ "kb": 232.2,
  "kit": 1,
  "materials": [
   "M_vendor"
@@ -142,7 +142,8 @@
    "shoes",
    "moustache",
    "headcloth",
-   "cable"
+   "cable",
+   "basket"
   ],
   "rig": "adult_rig",
   "role": "people",
@@ -174,14 +175,14 @@
   }
  },
  "min": [
-  -2.963,
+  -3.38,
   -1.268,
   -0.0
  ],
  "notes": [],
  "script": "characters",
  "size": [
-  5.926,
+  6.343,
   2.308,
   8.956
  ],
@@ -223,9 +224,11 @@
    "moustache",
    "headcloth",
    "hair_top",
-   "cable"
+   "cable",
+   "basket"
   ],
   "regions": {
+   "basket": "#b48a52",
    "cable": "#1a1a1c",
    "hair": "#3b3735",
    "headcloth": "#dedcd6",
@@ -236,6 +239,12 @@
    "skin": "#9e6440"
   },
   "show": {
+   "basket": {
+    "f": "prop",
+    "in": [
+     "basket"
+    ]
+   },
    "cable": {
     "f": "prop",
     "in": [
@@ -294,7 +303,7 @@
    }
   }
  },
- "tris": 2950,
+ "tris": 3052,
  "units": "u",
  "up": "Z"
 }

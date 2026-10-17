@@ -22,6 +22,12 @@
  * night (21:00-23:30, 31 Aug-8 Sep) the shared playground_1 ring belongs to SA1, so the optional nights can be
  * played before M10; queue cages bend along footpaths instead of crossing a carriageway; the LB match's home
  * side carries the nickname ("Pintu XI", hero "Pintu"); the Journal's ▶ Replay replays the mission (§9.5).
+ * Round 2: ACTION by an unmounted mission cycle never opens the shop next to it (mountGuard: shops.js's
+ * per-mission lock while he stands by it); the score bug says "PINTU XI" (a short nickname whole) and the camp
+ * side has no Bunty-anna (19): Pappu plays; roof rings get real mission markers in the 3D view (rings3d); after
+ * a pandal night the committee's boy walks home without the curfew (N.flags.no_curfew = 'pandal' until home or
+ * morning); an automated quick start (N.menus.quickStart, navigator.webdriver) skips the prologue as menus.js
+ * skips the name card (tests that drive the real flow turn quickStart off).
  *
  * Everything is referenced by place / landmark id (the map is being rebuilt on real geography);
  * roof routes come from N.world.roofs (route 'lakshmi_lootna') with a ground fallback.

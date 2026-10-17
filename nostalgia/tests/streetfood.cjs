@@ -82,26 +82,37 @@ async function visit(page, spot, h, m, o) {
   }, [spot, h, m, o]);
 }
 const scene = (page, spot) => page.evaluate((spot) => N.streetfood.active().find((a) => a.id === spot) || null, spot);
+/** wait for `secs` of SIMULATION time (the machine may be very busy: frames can take a second), capped in real time */
+async function simWait(page, secs, capMs) {
+  const t0 = await page.evaluate(() => N.time.now);
+  const cap = Date.now() + (capMs || secs * 9000 + 30000);
+  while (Date.now() < cap) {
+    await sleep(400);
+    const t = await page.evaluate(() => N.time.now);
+    if (t - t0 >= secs) return true;
+  }
+  return false;
+}
 async function shot(page, name, spot, zoom) {
   if (!SHOTS) return;
-  await page.screenshot({ path: path.join(OUT, 'streetfood_' + name + '.png') });
+  await page.screenshot({ path: path.join(OUT, 'streetfood_' + name + '.png'), timeout: 180000 });
   if (!spot || !zoom) return;
   await page.evaluate((z) => { N.render.baseZoom = z; }, zoom);
-  await sleep(1600);
+  await simWait(page, 1, 20000);
   const clip = await page.evaluate((spot) => {
     const s = N.streetfood.spot(spot), R = N.render, k = R.k(0), cv = R.canvas.getBoundingClientRect();
     const X = R.sx(s.x, k) * cv.width / R.W + cv.left, Y = R.sy(s.y, k) * cv.height / R.H + cv.top;
     const w = Math.min(420, cv.width), h = Math.min(280, cv.height);
     return { x: Math.max(0, Math.min(cv.width - w, X - w / 2)), y: Math.max(0, Math.min(cv.height - h, Y - h / 2)), width: w, height: h };
   }, spot);
-  await page.screenshot({ path: path.join(OUT, 'streetfood_' + name + '_close.png'), clip });
+  await page.screenshot({ path: path.join(OUT, 'streetfood_' + name + '_close.png'), clip, timeout: 180000 });
   await page.evaluate(() => { N.render.baseZoom = 1; });
 }
 /** sample a scene for a while: vendor phases seen, max particles by kind, max crowd */
 async function sample(page, spot, secs) {
   const res = { phases: {}, pk: [0, 0, 0, 0], crowd: 0, holding: 0, n: 0 };
-  const t0 = Date.now();
-  while (Date.now() - t0 < secs * 1000) {
+  const t0 = await page.evaluate(() => N.time.now), cap = Date.now() + secs * 9000 + 30000;
+  while (Date.now() < cap && (await page.evaluate(() => N.time.now)) - t0 < secs) {
     const r = await page.evaluate((spot) => {
       const a = N.streetfood.active().find((q) => q.id === spot);
       const P = N.streetfood._debug.P, sc = N.streetfood.scene(spot), pk = [0, 0, 0, 0];
@@ -169,7 +180,7 @@ async function partTop(browser) {
   // ---- dosa bandi 07:30 (schedule, not forced)
   console.log(' -- dosa bandi 07:30');
   await visit(page, 'dosa_bandi_1', 7, 30);
-  await sleep(7000);
+  await simWait(page, 7);
   let a = await scene(page, 'dosa_bandi_1');
   check(!!a, 'the dosa bandi scene is active near the player');
   const ent = await page.evaluate(() => {
@@ -197,9 +208,10 @@ async function partTop(browser) {
   console.log(' -- walk into the crowd and buy');
   const buy0 = await page.evaluate(() => window.__sf.buy.length);
   await page.evaluate(() => { const s = N.streetfood.spot('dosa_bandi_1'); N.debug.teleport(s.x + s.frame.nx * 30, s.y + s.frame.ny * 30); });
-  await sleep(1200);
+  await simWait(page, 1, 20000);
   let label = '', reached = false;
-  for (let i = 0; i < 60; i++) {
+  const walkCap = Date.now() + 150000;
+  for (let i = 0; i < 400 && Date.now() < walkCap; i++) {
     const st = await page.evaluate(() => {
       const pl = N.places.dosa_bandi_1, p = N.player, dx = pl.x - p.x, dy = pl.y - p.y, d = Math.hypot(dx, dy);
       if (d > 9) N.input.setMove(dx / d, dy / d); else N.input.setMove(null);
@@ -208,13 +220,13 @@ async function partTop(browser) {
     });
     label = st.label;
     if (st.d <= 12 && /dosa/i.test(label)) { reached = true; break; }
-    await sleep(200);
+    await sleep(300);
   }
   await page.evaluate(() => N.input.setMove(null));
   const aside = await page.evaluate(() => { const sc = N.streetfood.scene('dosa_bandi_1'); return sc ? sc.patrons.filter((p) => Math.hypot(p.ofx, p.ofy) > 0.8).length : 0; });
   check(reached, 'Chinnu walks through the crowd to the counter (real input) and the shop is offered', 'label "' + label + '", people who shuffled aside ' + aside);
   await page.keyboard.press('e');
-  await sleep(900);
+  await simWait(page, 0.6, 20000);
   const card = await page.evaluate(() => !!(N.shops && N.shops.isOpen && N.shops.isOpen()));
   check(card, 'ACTION opens the shops.js card at the cart');
   await shot(page, 'buy_card');
@@ -227,7 +239,7 @@ async function partTop(browser) {
   // ---- dosa bandi 22:30 (night shift)
   console.log(' -- dosa bandi 22:30');
   await visit(page, 'dosa_bandi_1', 22, 30);
-  await sleep(7000);
+  await simWait(page, 7);
   smp = await sample(page, 'dosa_bandi_1', 5);
   const night = await page.evaluate(() => ({ night: N.render.night, lights: N.streetfood.stats().lights }));
   check(smp.crowd >= 4, 'late-night crowd at the dosa bandi', 'crowd ' + smp.crowd);
@@ -237,7 +249,7 @@ async function partTop(browser) {
   // ---- samosa bandi 17:00
   console.log(' -- samosa bandi 17:00');
   await visit(page, 'samosa_bandi_1', 17, 0);
-  await sleep(7000);
+  await simWait(page, 7);
   smp = await sample(page, 'samosa_bandi_1', 6);
   check(smp.crowd >= 5, 'evening rush at the samosa bandi', 'crowd ' + smp.crowd);
   check(smp.pk[0] + smp.pk[1] >= 5 && smp.pk[1] >= 1, 'the kadai steams and smokes', 'steam ' + smp.pk[0] + ' smoke ' + smp.pk[1]);
@@ -247,7 +259,7 @@ async function partTop(browser) {
   // ---- chai bandi 08:00
   console.log(' -- chai bandi 08:00');
   await visit(page, 'chai_bandi_1', 8, 0);
-  await sleep(7000);
+  await simWait(page, 7);
   smp = await sample(page, 'chai_bandi_1', 6);
   const glass = await page.evaluate(() => { const sc = N.streetfood.scene('chai_bandi_1'); return sc ? sc.patrons.filter((p) => p.hold === 'glass').length : 0; });
   check(smp.crowd >= 4, 'men standing at the chai bandi', 'crowd ' + smp.crowd);
@@ -258,7 +270,7 @@ async function partTop(browser) {
   console.log(' -- bhutta cart, Necklace Road, 18:30');
   const bid = await page.evaluate(() => { const n = N.places.necklace_road; let b = null, bd = 1e9; for (const s of N.streetfood.spots) if (s.kind === 'bhutta') { const d = Math.hypot(s.x - n.x, s.y - n.y); if (d < bd) { bd = d; b = s; } } return b.id; });
   await visit(page, bid, 18, 30);
-  await sleep(7000);
+  await simWait(page, 7);
   smp = await sample(page, bid, 6);
   const bh = await page.evaluate((bid) => { const s = N.streetfood.spot(bid); const cur2 = N.interact.current; return { cart: !!(s.cartE && s.cartE.alive && N.entities.all.indexOf(s.cartE) >= 0), road: (N.world.nearestRoadPoint(s.x, s.y) || {}).road && N.world.nearestRoadPoint(s.x, s.y).road.id }; }, bid);
   check(bh.cart, 'the bhutta cart is there in the evening (a solid prop entity)', bid + ' by ' + bh.road);
@@ -268,17 +280,17 @@ async function partTop(browser) {
   // its own buy interaction (bought through shops.js at the Hussain Sagar bhutta cart)
   const bb0 = await page.evaluate(() => window.__sf.buy.length);
   await page.evaluate((bid) => { const s = N.streetfood.spot(bid); N.debug.teleport(s.x + s.frame.nx * 8, s.y + s.frame.ny * 8); }, bid);
-  await sleep(900);
+  await simWait(page, 0.8, 20000);
   const lbl = await page.evaluate(() => { const c = N.interact.current; return c ? String(typeof c.label === 'function' ? c.label(N.player) : c.label || '') : ''; });
   await page.keyboard.press('e');
-  await sleep(700);
+  await simWait(page, 0.6, 20000);
   const bb = await page.evaluate(() => window.__sf.buy.slice(-1)[0]);
   check(/bhutta/i.test(lbl) && (await page.evaluate(() => window.__sf.buy.length)) > bb0, 'buy a bhutta at the extra cart (ACTION -> N.shops.buy)', 'label "' + lbl + '" -> ' + bb);
 
   // ---- Gokul Chat 19:00
   console.log(' -- Gokul Chat 19:00');
   await visit(page, 'gokul_chat', 19, 0);
-  await sleep(7000);
+  await simWait(page, 7);
   smp = await sample(page, 'gokul_chat', 5);
   const gz = await page.evaluate(() => (N.traffic && N.traffic.crowd ? N.traffic.crowd('gokul_chat') : null));
   check(smp.crowd >= 6, 'a big crowd at Gokul Chat', 'ours ' + smp.crowd + ', traffic zone ' + JSON.stringify(gz));
@@ -288,7 +300,7 @@ async function partTop(browser) {
   // ---- the Paradise queue at lunch
   console.log(' -- Paradise 13:00');
   await visit(page, 'paradise', 13, 0);
-  await sleep(7000);
+  await simWait(page, 7);
   a = await scene(page, 'paradise');
   check(a && (a.states.queue || 0) >= 4, 'the biryani queue forms at Paradise', a && JSON.stringify(a.states));
   await shot(page, 'paradise_1300', 'paradise', 2.6);
@@ -296,7 +308,7 @@ async function partTop(browser) {
   // ---- Ramzan haleem bhatti
   console.log(' -- haleem bhatti in Ramzan, 19:00');
   await visit(page, 'shadab_hotel:haleem', 19, 0, { ramzan: true });
-  await sleep(7000);
+  await simWait(page, 7);
   smp = await sample(page, 'shadab_hotel:haleem', 4);
   check(smp.crowd >= 5 && smp.pk[0] + smp.pk[1] >= 4, 'the haleem bhatti draws a crowd and steams', 'crowd ' + smp.crowd + ' puffs ' + (smp.pk[0] + smp.pk[1]));
   await shot(page, 'haleem_ramzan', 'shadab_hotel:haleem', 4);
@@ -304,7 +316,7 @@ async function partTop(browser) {
   // ---- rain at a dosa bandi
   console.log(' -- dosa bandi in the rain, 08:00');
   await visit(page, 'dosa_bandi_1', 8, 0, { rain: true });
-  await sleep(9000);
+  await simWait(page, 9);
   a = await scene(page, 'dosa_bandi_1');
   check(a && a.tarp > 0.5, 'a tarpaulin goes up over the cart', a && 'tarp ' + a.tarp);
   check(a && a.umbrellas + a.sheltered >= 2, 'people crowd under it / open umbrellas', a && ('sheltered ' + a.sheltered + ', umbrellas ' + a.umbrellas));
@@ -329,13 +341,14 @@ async function part3d(browser) {
     const spot = spot0 === '@bhutta' ? await page.evaluate(() => { const n = N.places.necklace_road; let b = null, bd = 1e9; for (const s of N.streetfood.spots) if (s.kind === 'bhutta') { const d = Math.hypot(s.x - n.x, s.y - n.y); if (d < bd) { bd = d; b = s; } } return b.id; }) : spot0;
     console.log(' -- ' + name);
     await visit(page, spot, h, m, Object.assign({ dist: 18 }, o));
-    await sleep(3500);
+    await simWait(page, 3);
     const aim = () => page.evaluate((spot) => { const s = N.streetfood.spot(spot), p = N.player, a = Math.atan2(s.y - p.y, s.x - p.x); p.facing = a; N.view3d.setCamera({ yaw: a, pitch: 0.36, snap: true }); }, spot);
     await aim();
     await page.evaluate(() => N.view3d.settle(4000));
-    await sleep(4000);
+    await simWait(page, 2.5, 90000);
     await aim();
-    await sleep(1500);
+    await simWait(page, 0.6, 40000);
+    await page.evaluate(() => document.querySelectorAll('.hud-toasts').forEach((e) => { e.style.visibility = 'hidden'; }));
     const r = await page.evaluate((spot) => {
       const S = N.streetfood.stats(), a = N.streetfood.active().find((q) => q.id === spot), v = N.view3d.stats();
       return { s3d: S.s3d, pts: S.pts3d, layer: S.layer3d, ms3d: S.ms3d, crowd: a && a.crowd, ph: a && a.vendor && a.vendor.ph, calls: v.calls, jsAvg: v.jsAvg, actors: v.actors };
@@ -380,7 +393,7 @@ async function partPhone(browser) {
       for (const s of tri) N.streetfood.force(s.id, { level: 1 });
       N.debug.teleport(cx + 10, cy);
     }, [tri, cx, cy]);
-    await sleep(10000);
+    await simWait(page, 8);
     const onScreen = await page.evaluate((tri) => tri.filter((s) => N.render.inView(s.x, s.y, 0)).length, tri);
     const act = await page.evaluate((tri) => N.streetfood.active().filter((a) => tri.some((s) => s.id === a.id)).map((a) => a.id + ':' + a.crowd), tri);
     check(onScreen === 3 && act.length === 3, 'three busy scenes on screen', 'on screen ' + onScreen + ', ' + act.join(' '));
@@ -403,12 +416,13 @@ async function partPhone(browser) {
     }));
     report.push(['phone 2D perf', JSON.stringify({ frames: perf.frames, frameAvg: perf.frameAvg, frameP95: perf.frameP95, gameJsAvg: perf.jsAvg, streetfoodUpdate: perf.sfUpdate, streetfood2D: perf.sfDraw2d, patrons: perf.st.patrons, particles: perf.st.particles })]);
     check(perf.sfUpdate + perf.sfDraw2d < 4, 'street-food cost per frame with three busy scenes (phone, 2D)', 'update ' + perf.sfUpdate + ' ms + draw ' + perf.sfDraw2d + ' ms; game JS ' + perf.jsAvg + ' ms; frame ' + perf.frameAvg + ' ms (machine load ' + require('os').loadavg()[0].toFixed(1) + ')');
-    if (SHOTS) await page.screenshot({ path: path.join(OUT, 'streetfood_phone_three.png') });
+    if (SHOTS) await page.screenshot({ path: path.join(OUT, 'streetfood_phone_three.png'), timeout: 180000 });
     if (process.env.SKIP3D !== '1') {
       await page.evaluate(() => { N.view.noPointerLock = true; N.view3d.setQuality({ adaptive: false, pixelRatio: 0.8 }); N.view.set('tps'); });
       await page.waitForFunction(() => N.view.mode === 'tps' && N.view3d.ready, null, { timeout: 300000 });
       await page.evaluate(([cx, cy]) => { const p = N.player; const a = Math.atan2(cy - p.y, cx - p.x); N.view3d.setCamera({ yaw: a, pitch: 0.5, snap: true }); N.view3d.settle(4000); }, [cx, cy]);
-      await sleep(8000);
+      await simWait(page, 4, 120000);
+      await page.evaluate(() => document.querySelectorAll('.hud-toasts').forEach((e) => { e.style.visibility = 'hidden'; }));
       const p3 = await page.evaluate(() => { const v = N.view3d.stats(), s = N.streetfood.stats(); return { tier: v.tier, calls: v.calls, jsAvg: v.jsAvg, sf3d: s.ms3d, sf: s.ms, s3d: s.s3d }; });
       report.push(['phone 3D perf', JSON.stringify(p3)]);
       check(p3.s3d >= 3 && p3.sf3d + p3.sf < 4, 'phone 3D: the three scenes + their cost', JSON.stringify(p3));

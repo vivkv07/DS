@@ -78,12 +78,16 @@ function serve() {
 
   console.log('\n== START (real click) unlocks audio');
   await page.click('#title-start');
-  await page.waitForFunction(() => N.state.mode === 'play', null, { timeout: 10000 });
+  // a new game may open on the 2026 prologue cutscene (story) before free play
+  await page.waitForFunction(() => N.state.mode === 'play' || N.state.mode === 'cutscene', null, { timeout: 10000 });
   await sleep(900);
   let st = await stats();
   check(st.state === 'running' && st.unlocked, 'AudioContext running after START', st.state);
-  check(st.music === 'title', 'a new game opens on the title theme "Yaadon Ki Gully"', st.music);
+  check(['title', 'flashback'].includes(st.music), 'a new game opens on the title theme "Yaadon Ki Gully" (or its flashback voicing in the prologue)', st.music);
   await ev(() => N.debug.newGame({ skipIntro: true }));
+  // the story auto-starts M1 (its own 'kites' music, beacons, ducks): stand it down so the audio checks see free roam
+  await sleep(1200);
+  await ev(() => { try { if (N.missions && N.missions.active) N.missions.abort(); } catch (e) { /* ignore */ } N.audio.duck(false); N.audio.music.mood(null); });
   await sleep(2600);
   st = await stats();
   check(['day', 'night', 'oldcity'].includes(st.music), 'free-roam music chosen by the director: ' + st.music);
@@ -218,17 +222,21 @@ function serve() {
   check(evr.chase === 'chase', 'Chappal Meter 3 -> chase music', evr.chase);
   check(evr.hold === 'chase', 'chase music holds for a moment after the meter drops', evr.hold);
   check(evr.mood === 'tension', 'music mood hook (tension)', evr.mood);
+  // story events fired above (mission:complete ...) may have opened a real dialogue: close it first
+  const settle = () => ev(async () => { try { N.debug.setTime(11, 0); } catch (e) { /* ignore */ } for (let i = 0; i < 30 && N.state.mode !== 'play'; i++) { try { N.dialogue.cancel(); } catch (e) { /* ignore */ } try { if (N.missions && N.missions.active) N.missions.abort(); } catch (e) { /* ignore */ } await new Promise((r) => setTimeout(r, 120)); } return N.state.mode; });
+  const settled = await settle();
   const duck = await ev(async () => {
     const G = N.audio._internal.bus();
     N.emit('dialogue:open', {}); await new Promise((r) => setTimeout(r, 700)); const during = G.musicDuck.gain.value;
     N.emit('dialogue:close', {}); await new Promise((r) => setTimeout(r, 900)); const after = G.musicDuck.gain.value;
-    return { during: +during.toFixed(2), after: +after.toFixed(2) };
+    return { during: +during.toFixed(2), after: +after.toFixed(2), mode: N.state.mode, who: N.dialogue && (N.dialogue.current || N.dialogue.active) && JSON.stringify(N.dialogue.current || N.dialogue.active).slice(0, 300) };
   });
-  check(duck.during < 0.5 && duck.after > 0.9, 'dialogue ducks the music (' + duck.during + ') and restores it (' + duck.after + ')', duck);
+  check(duck.during < 0.5 && duck.after > 0.9, 'dialogue ducks the music (' + duck.during + ') and restores it (' + duck.after + ')', Object.assign({ settled }, duck));
 
   console.log('\n== walkman + tape');
   const wm = await ev(async () => { const A = N.audio; A.walkman.unlock('r_neon'); A.walkman.play('r_neon'); await new Promise((r) => setTimeout(r, 700)); const a = A.walkman.playing; const m = A.stats().music; A.walkman.stop(); return { a, m, lib: A.walkman.library }; });
   check(wm.a === 'r_neon' && wm.m === null, 'Walkman plays a cassette song and the score yields', wm);
+  await settle();
   const tp = await ev(async () => {
     const A = N.audio, out = {};
     const p = N.player;

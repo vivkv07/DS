@@ -41,7 +41,8 @@
  *   force(spotId | null, {level, keep}) tests: pin a spot's crowd level (0..1) and keep it active
  *   stats() -> {spots, active, patrons, vendors, particles, vehicles, ms, ms2d, ms3d, msAvg, pool}
  *   register(kindId, spec) / addSpot({id, kind, x, y, lm?, frame?, ...})   (city-life scenes reuse these)
- *   rebuild()   reset()   setDensity(d)   setOptions({particles, vehicles, barks, sounds, suppressArt})
+ *   rebuild()   reset()   setDensity(d)   setOptions({particles, vehicles, barks, sounds, suppressArt, nightDosa})
+ *   debugHud(on?) the optional on-screen readout (Alt+F with #debug; style.css "streetfood" section)
  * Events: 'streetfood:scene' {id, kind, on}, 'streetfood:order' {id, ped, text}, 'streetfood:serve'
  *   {id, to (ped | player)}.
  * Scene kind fields (KINDS[k]): type 'cart'|'shop'|'bhatti'|'extra', max (crowd at peak), peaks [[from, to,
@@ -64,8 +65,9 @@
  *  - traffic.js (documented API): N.traffic.makeLook / blitPerson for looks and cached sprites, N.traffic.clear
  *    (pred) to take a passing walker into a crowd, N.traffic.spawnPed(role, {x, y, look}) to hand a leaving
  *    one back, N.traffic.crowd(placeId) so Gokul Chat / Irani / food crowd zones are not doubled.
- *  - view3d.js: registerActorRenderer('sf:vendor') (entities set e.view3d = 'sf:vendor'), registerLayer
- *    ('streetfood'); crowd members are plain 'ped' entities (view3d_actors draws them; e.umb umbrellas,
+ *  - view3d.js (loads after this file, so registered lazily at 'boot' / the system init):
+ *    registerActorRenderer('sf:vendor') (vendors set e.view3d = 'sf:vendor'), 'sf:cart' (the extra carts),
+ *    registerLayer('streetfood'); crowd members are plain 'ped' entities (view3d_actors draws them; e.umb umbrellas,
  *    look.prop 'tray' = the plate in the right hand). N.models3d.has('prop_<name>') models replace the
  *    procedural tawa / kadai / kettle / sigri / cart props when the Blender pipeline ships them.
  *  - Listens to 'shop:buy', 'player:teleport', 'game:new', 'world:built', 'season:change'.
@@ -2174,21 +2176,22 @@
 
   // ---- particles: two Points draws (steam + smoke with normal blending, embers additive)
   const PT_VS = [
-    'attribute float aSize; attribute vec4 aCol; varying vec4 vCol; uniform float uScale;',
-    'void main() { vCol = aCol; vec4 mv = modelViewMatrix * vec4(position, 1.0);',
-    '  gl_PointSize = clamp(aSize * uScale / max(1.0, -mv.z), 1.0, 256.0); gl_Position = projectionMatrix * mv; }',
+    'attribute vec2 aSA; attribute vec3 aCol; varying vec4 vCol; uniform float uScale;',
+    'void main() { vCol = vec4(aCol, aSA.y); vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+    '  gl_PointSize = clamp(aSA.x * uScale / max(1.0, -mv.z), 1.0, 256.0); gl_Position = projectionMatrix * mv; }',
   ].join('\n');
   const PT_FS = [
     'varying vec4 vCol; uniform float uHard;',
     'void main() { vec2 d = gl_PointCoord - vec2(0.5); float r = length(d) * 2.0;',
-    '  float a = mix(1.0 - smoothstep(0.0, 1.0, r), 1.0 - step(0.8, r), uHard); a *= a;',
+    '  float a = mix(1.0 - smoothstep(0.0, 1.0, r), 1.0 - step(0.8, r), uHard); a = pow(a, 1.4);',
     '  if (vCol.a * a < 0.004) discard; gl_FragColor = vec4(vCol.rgb, vCol.a * a); }',
   ].join('\n');
   function makePoints(THREE, n, additive) {
     const geo = new THREE.BufferGeometry();
-    const pos = new THREE.BufferAttribute(new Float32Array(n * 3), 3), col = new THREE.BufferAttribute(new Float32Array(n * 4), 4), siz = new THREE.BufferAttribute(new Float32Array(n), 1);
+    // colour as a vec3, size + alpha as a vec2 (a vec4 colour's 4th component did not reach SwiftShader)
+    const pos = new THREE.BufferAttribute(new Float32Array(n * 3), 3), col = new THREE.BufferAttribute(new Float32Array(n * 3), 3), siz = new THREE.BufferAttribute(new Float32Array(n * 2), 2);
     for (const a of [pos, col, siz]) a.setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute('position', pos); geo.setAttribute('aCol', col); geo.setAttribute('aSize', siz);
+    geo.setAttribute('position', pos); geo.setAttribute('aCol', col); geo.setAttribute('aSA', siz);
     geo.setDrawRange(0, 0);
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e7);
     const mat = new THREE.ShaderMaterial({
@@ -2204,8 +2207,8 @@
   function fillPoints(H) {
     const steam = G3.pts, spk = G3.spk;
     if (!steam) return;
-    const sp = steam.geometry.attributes.position.array, sc = steam.geometry.attributes.aCol.array, ss = steam.geometry.attributes.aSize.array;
-    const kp = spk.geometry.attributes.position.array, kc = spk.geometry.attributes.aCol.array, ks = spk.geometry.attributes.aSize.array;
+    const sp = steam.geometry.attributes.position.array, sc = steam.geometry.attributes.aCol.array, ss = steam.geometry.attributes.aSA.array;
+    const kp = spk.geometry.attributes.position.array, kc = spk.geometry.attributes.aCol.array, ks = spk.geometry.attributes.aSA.array;
     const night = clamp(H.night || 0, 0, 1), day = clamp(H.day == null ? 1 - night : H.day, 0, 1);
     const amb = 0.28 + 0.62 * day;
     let n = 0, m = 0;
@@ -2217,8 +2220,8 @@
       if (k === 2) {
         if (m >= 64) continue;
         kp[m * 3] = x; kp[m * 3 + 1] = h; kp[m * 3 + 2] = y;
-        kc[m * 4] = 1; kc[m * 4 + 1] = PS.t < 0.5 ? 0.75 : 0.45; kc[m * 4 + 2] = 0.2; kc[m * 4 + 3] = PS.a;
-        ks[m] = 0.9; m++;
+        kc[m * 3] = 1; kc[m * 3 + 1] = PS.t < 0.5 ? 0.75 : 0.45; kc[m * 3 + 2] = 0.2;
+        ks[m * 2] = 0.9; ks[m * 2 + 1] = PS.a; m++;
         continue;
       }
       if (n >= PMAX) break;
@@ -2228,13 +2231,13 @@
       lit *= night;
       const base = k === 1 ? 0.5 : 0.94;
       sp[n * 3] = x; sp[n * 3 + 1] = h; sp[n * 3 + 2] = y;
-      sc[n * 4] = base * amb + LAMP_C[0] * lit * 0.8; sc[n * 4 + 1] = base * amb * (k === 1 ? 0.95 : 1) + LAMP_C[1] * lit * 0.8; sc[n * 4 + 2] = base * amb * (k === 1 ? 0.9 : 1.02) + LAMP_C[2] * lit * 0.8;
-      sc[n * 4 + 3] = clamp(PS.a * (1 - TUNE.rainSteam * rain) * (k === 3 ? 0.7 : 0.85) * (0.75 + lit * 0.5), 0, 1);
-      ss[n] = PS.s * 2.1;
+      sc[n * 3] = base * amb + LAMP_C[0] * lit * 0.8; sc[n * 3 + 1] = base * amb * (k === 1 ? 0.95 : 1) + LAMP_C[1] * lit * 0.8; sc[n * 3 + 2] = base * amb * (k === 1 ? 0.9 : 1.02) + LAMP_C[2] * lit * 0.8;
+      ss[n * 2] = PS.s * 2.5;
+      ss[n * 2 + 1] = clamp(PS.a * (1 - TUNE.rainSteam * rain) * (k === 3 ? 0.85 : 1.15) * (1 + lit * 0.4), 0, 1);
       n++;
     }
     steam.geometry.setDrawRange(0, n); spk.geometry.setDrawRange(0, m);
-    for (const p of [steam, spk]) { const a = p.geometry.attributes; a.position.needsUpdate = a.aCol.needsUpdate = a.aSize.needsUpdate = true; }
+    for (const p of [steam, spk]) { const a = p.geometry.attributes; a.position.needsUpdate = true; a.aCol.needsUpdate = true; a.aSA.needsUpdate = true; }
     // pixels per world unit at distance 1
     const cam = H.camera, r = H.renderer;
     if (cam && r) { const hpx = r.domElement.height || 720; const u = hpx / (2 * Math.tan((cam.fov * PI) / 360)); steam.material.uniforms.uScale.value = u; spk.material.uniforms.uScale.value = u; }

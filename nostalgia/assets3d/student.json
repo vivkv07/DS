@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 278612,
+ "bytes": 279912,
  "clips": {},
  "family": "character",
  "file": "student.glb",
@@ -52,7 +52,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 272.1,
+ "kb": 273.4,
  "kit": 1,
  "materials": [
   "M_student"
@@ -60,7 +60,7 @@
  "max": [
   2.963,
   1.27,
-  9.234
+  9.21
  ],
  "meta": {
   "bones": [
@@ -192,7 +192,7 @@
  "size": [
   5.926,
   2.405,
-  9.234
+  9.21
  ],
  "tint": {
   "attribute": "_REGION",
@@ -322,7 +322,7 @@
    }
   }
  },
- "tris": 3766,
+ "tris": 3774,
  "units": "u",
  "up": "Z"
 }
