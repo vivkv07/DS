@@ -360,3 +360,17 @@ The user said: "Take as much time as you want but I want the best rendered eleme
 gameplay, best sounds; match the actual Hyderabad city map as closely as possible; roads
 can have potholes (for 3D); Hero cycles, Hercules cycles, Scooty, auto can be driven by the
 character as per the age." See `design/amendments.md` for how each is implemented.
+
+## Round 14 (user, binding): playground games
+
+The colony playgrounds (`playground_*`) host, along with gully cricket:
+- **Lingocha** (seven stones / lagori / pittu): a stack of seven flat stones, a tennis ball;
+  the seekers knock the stack down from a line, then must rebuild it while the hitters throw
+  the ball at them; hit = out; rebuild all seven and shout "Lingocha!" to win the round.
+- **Maram Pitti** (Telugu *Picchi Banti*; Indian dodgeball with a tennis ball): the ball is
+  tossed up and must bounce before it is picked up; whoever holds it hits the others; no head
+  shots; last one standing wins.
+Both are playable by Chinnu on the actual playground with colony kids (Immu, Chitti, Bunty's
+gang, rival colony kids), in top-down and 3D, as side activities with small rewards, and as
+ambient games kids play in the afternoons and on holidays. Rules vary by locality: use the
+common rules above and keep them kid-friendly (soft tennis ball, nobody gets hurt).

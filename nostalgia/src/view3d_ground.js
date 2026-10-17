@@ -49,7 +49,7 @@
   const Y_ROAD = 0.08, Y_PATH = 0.045, Y_RAIL = 0.03, Y_DECAL = 0.125;
   const KERB_H = { arterial: 0.8, bund: 0.8, street: 0.6 };
   const MED_H = 0.95, MED_HW = 2.0;
-  const SURF_N = 256, TINT_N = 128;      // per-chunk texture sizes (texel centres on the chunk edges)
+  const SURF_N = 256;                    // ground map size per chunk (texel centres on the chunk edges; far LOD: half)
   const LY = { ROAD: 0, JUNC: 1, FOOT: 2, KERB: 3, MEDIAN: 4, PAINT: 5, PATCH: 6, RAIL: 7, PATH: 8, CONC: 10, PLANT: 11 };
   const BIT = { CENTRE: 1, LANES: 2, EDGE: 4, LANEKIND: 8 };
   const RANK = { lane: 0, path: 0, bund: 1, street: 1, bridge: 2, arterial: 3 };
@@ -1348,7 +1348,7 @@
     const t = new THREE.DataTexture(data, nx, ny, THREE.RGBAFormat);
     t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
     t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.needsUpdate = true; t.userData.shared = true;
-    SOIL.tex = t; SOIL.nx = nx; SOIL.ny = ny; SOIL.u.value.set(1 / (nx * c), 1 / (ny * c));
+    SOIL.tex = t; SOIL.t.value = t; SOIL.nx = nx; SOIL.ny = ny; SOIL.u.value.set(1 / (nx * c), 1 / (ny * c));
     SOIL.ms = Math.round((now() - t0) * 10) / 10;
   }
   /** phones: sun shadows of buildings / walls / trees rasterised on the tint grid (2D paintShadows rules) */
@@ -1420,11 +1420,15 @@ vec3 ngWaterCol(vec3 lit, vec3 P, vec3 nrm, float t, float deep){
     shader.uniforms.uNight = U.uNight; shader.uniforms.uTime = U.uTime; shader.uniforms.uSunDir = U.uSunDir;
     shader.uniforms.uSunCol = U.uSunCol; shader.uniforms.uZen = U.uZen; shader.uniforms.uHor = U.uHor;
     shader.uniforms.uWet = GU.uWet; shader.uniforms.uRain = GU.uRain;
-    shader.uniforms.auxMap = ud.aux; shader.uniforms.tTint = ud.tint; shader.uniforms.uOrigin = ud.origin;
+    shader.uniforms.auxMap = ud.aux; shader.uniforms.tSurf = ud.surf; shader.uniforms.uOrigin = ud.origin; shader.uniforms.uSurfN = ud.surfN;
+    shader.uniforms.tSoil = SOIL.t; shader.uniforms.uSoilK = SOIL.u;
   }
   const FRAG_PARS = `
 uniform sampler2D auxMap;
-uniform sampler2D tTint;
+uniform sampler2D tSurf;
+uniform sampler2D tSoil;
+uniform vec2 uSoilK;
+uniform float uSurfN;
 uniform vec2 uOrigin;
 uniform float uNight;
 uniform float uTime;
@@ -1443,12 +1447,11 @@ float ngShine = 0.0;
   function terrainCompile(shader) {
     const ud = this.userData;
     commonUniforms(shader, ud);
-    shader.uniforms.tSurf = ud.surf;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\n' + VERT_COMMON)
       .replace('#include <project_vertex>', '#include <project_vertex>\n\tvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + FRAG_PARS + 'uniform sampler2D tSurf;\n' + GLSL_NOISE + GLSL_WATER)
+      .replace('#include <common>', '#include <common>\n' + FRAG_PARS + GLSL_NOISE + GLSL_WATER)
       .replace('#include <map_fragment>', TERRAIN_MAP)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += diffuseColor.rgb * texture2D(auxMap, vec2((vWP.x - uOrigin.x) / 512.0, 1.0 - (vWP.z - uOrigin.y) / 512.0)).rgb * (uNight * 3.0);')
       .replace('#include <envmap_fragment>', TERRAIN_ENV);
@@ -1456,17 +1459,18 @@ float ngShine = 0.0;
   const TERRAIN_MAP = `
 vec2 P = vWP.xz;
 vec2 lp = (P - uOrigin) / 512.0;
-vec2 suv = lp * (255.0 / 256.0) + 0.5 / 256.0;
+vec2 suv = lp * ((uSurfN - 1.0) / uSurfN) + 0.5 / uSurfN;
 vec4 sw = texture2D(tSurf, suv);
-vec4 tn = texture2D(tTint, lp * (127.0 / 128.0) + 0.5 / 128.0);
+vec2 auv = vec2(lp.x, 1.0 - lp.y);
 float fw = max(fwidth(P.x), fwidth(P.y)) + 1e-4;
 float bn = ngN(P * 0.21) * 0.6 + ngN(P * 0.83) * 0.4 - 0.5;
 float wGrass = smoothstep(0.4, 0.6, sw.r + bn * 0.55);
 float wPave = smoothstep(0.44, 0.56, sw.g + bn * 0.1);
 float wSand = smoothstep(0.38, 0.62, sw.b + bn * 0.5);
-ngWm = smoothstep(0.42, 0.58, sw.a + bn * 0.22);
-float shore = texture2D(tSurf, suv, 3.0).a;
-vec3 soil = pow(tn.rgb, vec3(2.2));
+ngWm = smoothstep(0.4, 0.6, texture2D(auxMap, auv).a + bn * 0.3);
+float shore = (texture2D(auxMap, auv + vec2(0.014, 0.0)).a + texture2D(auxMap, auv - vec2(0.014, 0.0)).a + texture2D(auxMap, auv + vec2(0.0, 0.014)).a + texture2D(auxMap, auv - vec2(0.0, 0.014)).a) * 0.25;
+vec3 soil = pow(texture2D(tSoil, P * uSoilK).rgb, vec3(2.2));
+soil *= 1.0 + 0.22 * clamp(sw.g * 2.4, 0.0, 1.0) * (1.0 - wPave);   // compacted yards: lighter
 float n1 = ngF(P * 0.043, fw * 0.043), n2 = ngF(P * 0.21, fw * 0.21), n3 = ngF(P * 1.07, fw * 1.07);
 #ifdef NG_LOW
 float n4 = 0.5;
@@ -1505,7 +1509,7 @@ vec3 col = dirt;
 col = mix(col, grass, wGrass);
 col = mix(col, sandC, wSand);
 col = mix(col, stone, wPave);
-col *= tn.a;
+col *= sw.a;
 col *= 1.0 - uWet * 0.28 * (1.0 - wGrass * 0.5);
 diffuseColor.rgb = col;
 ngShine = wetS * wSand * 0.35 + uWet * 0.18 * (1.0 - wGrass);
@@ -1573,7 +1577,7 @@ float layer = floor(vSt.x + 0.5);
 float age = vSt.z;
 vec3 base = vColor.rgb;
 vec3 col = base;
-vec4 tn = texture2D(tTint, (P - uOrigin) / 512.0 * (127.0 / 128.0) + 0.5 / 128.0);
+vec4 tn = texture2D(tSurf, (P - uOrigin) / 512.0 * ((uSurfN - 1.0) / uSurfN) + 0.5 / uSurfN);
 ngWm = 0.0; ngShine = 0.0;
 if (layer < 1.5) {
   col = ngAsphalt(P, base, age, fw);
@@ -1671,7 +1675,7 @@ if (layer < 1.5) {
   col *= 1.0 - 0.38 * grout;
   // broken / missing slabs and dirt along the back edge
   float broken = step(0.94, th);
-  col = mix(col, tn.rgb * tn.rgb * vec3(0.8, 0.72, 0.62), broken * 0.7);
+  col = mix(col, pow(texture2D(tSoil, P * uSoilK).rgb, vec3(2.2)) * vec3(0.8, 0.72, 0.62), broken * 0.7);
   col = mix(col, vec3(0.28, 0.22, 0.15), smoothstep(vGeo.y - 1.6, vGeo.y, vRd.y) * 0.35 * (0.5 + ngF(P * 0.7, fw * 0.7)));
   ngShine = uWet * 0.3;
 } else if (layer < 3.5) {
@@ -1754,25 +1758,25 @@ if (ngShine > 0.01) {
 `;
 
   /* ================================================================ materials */
-  const MATS = { terrain: [], road: [] };
-  function newTerrainMat(ch, job) {
-    const m = new THREE.MeshLambertMaterial({ color: '#ffffff', polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2 });
-    m.userData.surf = { value: job.surfTex }; m.userData.tint = { value: job.tintTex }; m.userData.aux = { value: ch.aux };
+  function matUD(m, ch, G) {
+    m.userData.surf = { value: G.surfTex }; m.userData.aux = { value: ch.aux };
     m.userData.origin = { value: new THREE.Vector2(ch.x0, ch.y0) };
+    m.userData.surfN = { value: G.sn || SURF_N };
+    m.extensions = { derivatives: true };
+    if (lowTier()) m.defines = { NG_LOW: 1 };
+  }
+  function newTerrainMat(ch, G) {
+    const m = new THREE.MeshLambertMaterial({ color: '#ffffff', polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2 });
+    matUD(m, ch, G);
     m.onBeforeCompile = terrainCompile;
     m.customProgramCacheKey = () => 'ng-terrain' + (lowTier() ? '-low' : '');
-    m.extensions = { derivatives: true };
-    if (lowTier()) m.defines = { NG_LOW: 1 };
     return m;
   }
-  function newRoadMat(ch, job) {
+  function newRoadMat(ch, G) {
     const m = new THREE.MeshLambertMaterial({ vertexColors: true });
-    m.userData.tint = { value: job.tintTex }; m.userData.aux = { value: ch.aux };
-    m.userData.origin = { value: new THREE.Vector2(ch.x0, ch.y0) };
+    matUD(m, ch, G);
     m.onBeforeCompile = roadCompile;
     m.customProgramCacheKey = () => 'ng-road' + (lowTier() ? '-low' : '');
-    m.extensions = { derivatives: true };
-    if (lowTier()) m.defines = { NG_LOW: 1 };
     return m;
   }
   const lowTier = () => !!(I && I.Q.tier === 'low');
@@ -1799,9 +1803,10 @@ if (ngShine > 0.01) {
     if (!a || a.length < n) { a = new Ctor(n); SCR.set(name, a); }
     return a;
   }
-  function startJob(ch, roadsOnly, lod) {
+  /** what: 'all' | 'roads' (pothole / weather changes) | 'map' (phones: the baked sun moved) */
+  function startJob(ch, what, lod) {
     const B = SHARED_RB ? SHARED_RB.reset(ch.x0, ch.y0) : (SHARED_RB = new RB(ch.x0, ch.y0));
-    return { ch, step: roadsOnly ? 3 : 0, B, bucket: null, pots: [], roadsOnly: !!roadsOnly, t: 0, potVer: curPot(), lod, sn: lod ? SURF_N / 2 : SURF_N, tn: lod ? TINT_N / 2 : TINT_N };
+    return { ch, what, step: what === 'roads' ? 3 : 0, B, bucket: null, pots: [], t: 0, potVer: curPot(), lod, sn: lod ? SURF_N / 2 : SURF_N };
   }
   // shared terrain plane (one per chunk size; vUv as the core's ground plane for the aux texture)
   let PLANE = null;
@@ -1813,12 +1818,11 @@ if (ngShine > 0.01) {
         const ts = now();
         const st0 = job.step;
         switch (job.step) {
-          case 0: if (!NET.built) analyze(); job.step = 1; break;
+          case 0: if (!NET.built) analyze(); if (!SOIL.tex) buildSoil(); job.step = 1; break;
           case 1: if (!ch.aux) I.buildAux(ch); job.step = 2; break;
-          case 2: if (buildSurf(job, deadline)) job.step = 3; break;
-          case 3: if (buildTint(job, deadline)) job.step = 4; break;
-          case 4: job.bucket = job.bucket || chunkBucket(ch); if (roadsJob(job, deadline)) job.step = 5; break;
-          case 5: finishJob(job); job.step = 6; break;
+          case 2: if (buildSurf(job, deadline)) job.step = job.what === 'map' ? 4 : 3; break;
+          case 3: job.bucket = job.bucket || chunkBucket(ch); if (roadsJob(job, deadline)) job.step = 4; break;
+          case 4: finishJob(job); job.step = 6; break;
           default: job.step = 6;
         }
         STEPMS[st0] = (STEPMS[st0] || 0) + now() - ts;
@@ -1835,37 +1839,38 @@ if (ngShine > 0.01) {
   function finishJob(job, failed) {
     const ch = job.ch, G = ch.ng || (ch.ng = {});
     if (!failed) {
-      // terrain (kept when only the roads are rebuilt)
-      if (!job.roadsOnly || !G.terrain) {
-        if (G.terrain) { ch.group.remove(G.terrain); G.terrain.material.dispose(); }
-        if (G.surfTex) G.surfTex.dispose();
-        if (G.tintTex && G.tintTex !== job.tintTex) G.tintTex.dispose();
-        job.surfTex = dataTex(job.surf, job.sn, true);
-        job.tintTex = dataTex(job.tint, job.tn, false);
-        if (!PLANE) { PLANE = new THREE.PlaneGeometry(CHS, CHS, 1, 1); PLANE.rotateX(-Math.PI / 2); PLANE.translate(CHS / 2, 0, CHS / 2); PLANE.userData.shared = true; }
-        const tm = new THREE.Mesh(PLANE, newTerrainMat(ch, job));
-        tm.name = 'ground-terrain'; tm.receiveShadow = true; tm.matrixAutoUpdate = false; tm.updateMatrix(); tm.renderOrder = 2;
-        G.terrain = tm; G.surfTex = job.surfTex; G.tintTex = job.tintTex;
-        ch.group.add(tm);
-      } else if (job.tint && G.tintTex && G.tintTex.image.data.length === job.tint.length) {
-        // low tier sun re-bake: refresh the tint in place
-        G.tintTex.image.data.set(job.tint); G.tintTex.needsUpdate = true;
-        job.tintTex = G.tintTex;
-      } else job.tintTex = G.tintTex;
-      // roads
-      const geo = job.B.build();
-      if (G.road) { ch.group.remove(G.road); G.road.geometry.dispose(); G.road.material.dispose(); G.road = null; }
-      if (geo) {
-        const rm = new THREE.Mesh(geo, newRoadMat(ch, job));
-        rm.name = 'ground-roads'; rm.receiveShadow = true; rm.castShadow = false; rm.matrixAutoUpdate = false; rm.updateMatrix(); rm.renderOrder = 1;
-        G.road = rm; ch.group.add(rm);
-        G.tris = geo.index.count / 3;
-      } else G.tris = 0;
-      G.raised = buildRaisedIndex(job.B.raised, ch);
-      G.pots = new Set(job.pots);
-      try { I.E.renderer.initTexture(job.surfTex || G.surfTex); } catch (e) { /* uploaded on first draw */ }
+      // ground map + terrain plane (kept when only the roads are rebuilt; refreshed in place on a re-bake)
+      if (job.surf) {
+        if (job.what === 'map' && G.surfTex && G.surfTex.image.data.length === job.surf.length) { G.surfTex.image.data.set(job.surf); G.surfTex.needsUpdate = true; }
+        else {
+          if (G.terrain) { ch.group.remove(G.terrain); G.terrain.material.dispose(); G.terrain = null; }
+          if (G.surfTex) G.surfTex.dispose();
+          G.surfTex = dataTex(job.surf, job.sn, true); G.sn = job.sn;
+          if (!PLANE) { PLANE = new THREE.PlaneGeometry(CHS, CHS, 1, 1); PLANE.rotateX(-Math.PI / 2); PLANE.translate(CHS / 2, 0, CHS / 2); PLANE.userData.shared = true; }
+          const tm = new THREE.Mesh(PLANE, newTerrainMat(ch, G));
+          tm.name = 'ground-terrain'; tm.receiveShadow = true; tm.matrixAutoUpdate = false; tm.updateMatrix(); tm.renderOrder = 2;
+          G.terrain = tm; ch.group.add(tm);
+          if (G.road) G.road.material.userData.surf.value = G.surfTex;
+          try { I.E.renderer.initTexture(G.surfTex); } catch (e) { /* uploaded on first draw */ }
+        }
+      }
+      if (job.what !== 'map') {
+        const geo = job.B.build();
+        if (G.road) { ch.group.remove(G.road); G.road.geometry.dispose(); G.road.material.dispose(); G.road = null; }
+        if (geo) {
+          const rm = new THREE.Mesh(geo, newRoadMat(ch, G));
+          rm.name = 'ground-roads'; rm.receiveShadow = true; rm.castShadow = false; rm.matrixAutoUpdate = false; rm.updateMatrix(); rm.renderOrder = 1;
+          G.road = rm; ch.group.add(rm);
+          G.tris = geo.index.count / 3;
+        } else G.tris = 0;
+        G.raised = buildRaisedIndex(job.B.raised, ch);
+        G.pots = new Set(job.pots);
+        G.potVer = job.potVer;
+      }
+      G.lod = job.lod;
     }
-    G.ready = true; G.potVer = job.potVer; G.lod = job.lod; G.sunKey = I.sunBake ? I.sunBake.key : ''; G.dirty = false;
+    G.ready = true; G.sunKey = I.sunBake ? I.sunBake.key : ''; G.dirty = false;
+    if (failed && G.potVer == null) G.potVer = job.potVer;
     ch.groundRes = Math.max(I.Q.groundHi || 1, 1); ch.groundStale = false;
     STATS.built++; STATS.lastMs = job.t; STATS.ms += job.t;
     G.job = null;
@@ -1877,7 +1882,6 @@ if (ngShine > 0.01) {
     if (G.terrain) { ch.group.remove(G.terrain); G.terrain.material.dispose(); }
     if (G.road) { ch.group.remove(G.road); G.road.geometry.dispose(); G.road.material.dispose(); }
     if (G.surfTex) G.surfTex.dispose();
-    if (G.tintTex) G.tintTex.dispose();
     ch.ng = null;
   }
   /** 32 u cell index of raised footprints for groundHeightAt */
@@ -1964,6 +1968,7 @@ if (ngShine > 0.01) {
       I = internals; THREE = I.THREE;
       NET.built = false;
       GU.uWet = { value: 0 }; GU.uRain = { value: 0 };
+      SOIL.u = { value: new THREE.Vector2(1, 1) }; SOIL.t = { value: null };
     },
     need(ch, d, pass) {
       if (ch.ground || ch.groundTex) I.dropPainted(ch);
@@ -1994,9 +1999,9 @@ if (ngShine > 0.01) {
       if (!G) G = ch.ng = { ready: false };
       if (!G.job) {
         const lod = lodFor(G, d);
-        const roadsOnly = G.ready && !!G.terrain && G.lod === lod && (G.potVer !== curPot() || G.resun || G.dirty);
-        G.job = startJob(ch, roadsOnly, lod);
-        if (roadsOnly) { G.job.step = G.resun ? 3 : 4; if (!G.resun) G.job.tint = null; }
+        let what = 'all';
+        if (G.ready && G.terrain && G.lod === lod && !G.dirty) what = G.potVer !== curPot() ? (G.resun ? 'all' : 'roads') : G.resun ? 'map' : 'all';
+        G.job = startJob(ch, what, lod);
         G.resun = false;
       }
       ACTIVE = G.job;
@@ -2043,7 +2048,7 @@ if (ngShine > 0.01) {
   });
   N.on('potholes:change', () => { if (I) I.replan(); });
   // a new world (map rebuild): analyse again and rebuild every chunk's ground from scratch
-  N.on('world:built', () => { NET.built = false; POTS.clear(); if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } });
+  N.on('world:built', () => { NET.built = false; POTS.clear(); if (SOIL.tex) { SOIL.tex.dispose(); SOIL.tex = null; } if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } });
 
   /* ================================================================ API */
   V.groundHeightAt = groundHeightAt;
@@ -2056,13 +2061,13 @@ if (ngShine > 0.01) {
     rebuild() { NET.built = false; POTS.clear(); if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } },
     stats() {
       let chunks = 0, tris = 0, tex = 0;
-      if (I) for (const ch of I.chunks.values()) if (ch.ng && ch.ng.ready) { chunks++; tris += ch.ng.tris || 0; if (ch.ng.surfTex) tex += 2; }
+      if (I) for (const ch of I.chunks.values()) if (ch.ng && ch.ng.ready) { chunks++; tris += ch.ng.tris || 0; if (ch.ng.surfTex) tex += 1; }
       return {
         enabled: provider.enabled, analyzed: NET.built, analyzeMs: NET.ms, pieces: NET.pieces.length, junctions: NET.juncs.filter((j) => j.poly).length,
         zebras: NET.pieces.reduce((a, P) => a + (P.ends[0].zebra ? 1 : 0) + (P.ends[1].zebra ? 1 : 0), 0), bays: NET.bays.length,
         chunks, roadTris: tris, textures: tex, built: STATS.built, avgChunkMs: STATS.built ? +(STATS.ms / STATS.built).toFixed(2) : 0, lastChunkMs: +STATS.lastMs.toFixed(2),
         wet: +(GU.uWet ? GU.uWet.value : 0).toFixed(2), potVer: curPot(),
-        stepMs: STEPMS.map((v) => +(v || 0).toFixed(1)), anaMs: ANAMS.map((v) => +(v || 0).toFixed(1)),
+        stepMs: STEPMS.map((v) => +(v || 0).toFixed(1)), anaMs: ANAMS.map((v) => +(v || 0).toFixed(1)), soilMs: SOIL.ms,
       };
     },
     /** debug: the analysed network (pieces, junctions) */

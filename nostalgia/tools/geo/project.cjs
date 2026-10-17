@@ -272,11 +272,27 @@
       }
       return [x, y];
     }
+    // optional local shape corrections (P.shears): psi = a/2 (dy^2 - dx^2) w(r), w = (1 - r^2/R^2)^3 inside R.
+    // grad(psi) is added to the gradient-mode warp, so the map stays the gradient of one function (symmetric Jacobian,
+    // no rotation) and nothing outside R moves; a > 0 trades east-west stretch for north-south stretch at the centre
+    // (area kept there). check_projection.cjs verifies that no cell folds over.
+    const SH = (P.shears || []).map((c) => { const [x, y] = base(c.lat, c.lon); return { x, y, a: c.a, R2: (c.R * UPM) * (c.R * UPM) }; });
+    function shearAdd(bx, by, out) {
+      for (let i = 0; i < SH.length; i++) {
+        const c = SH[i], dx = bx - c.x, dy = by - c.y, s = (dx * dx + dy * dy) / c.R2;
+        if (s >= 1) continue;
+        const w = (1 - s) * (1 - s) * (1 - s), q = (dy * dy - dx * dx) / 2, dw = (-6 / c.R2) * (1 - s) * (1 - s);
+        out[0] += c.a * (-dx * w + q * dw * dx);
+        out[1] += c.a * (dy * w + q * dw * dy);
+      }
+    }
     // gradient mode: T(b) = b + gain / mean(rho0) * grad(phi)(b)  (gradient of a convex function)
     function gstep(bx, by) {
       grad(bx, by, g);
       const k = (P.gain == null ? 1 : P.gain) / RHOBAR;
-      return [clampX(bx + k * g[0]), clampY(by + k * g[1])];
+      const o = [bx + k * g[0], by + k * g[1]];
+      if (SH.length) shearAdd(bx, by, o);
+      return [clampX(o[0]), clampY(o[1])];
     }
     const fwdIn = (bx, by) => (P.mode === 'gradient' ? gstep(bx, by) : flow(bx, by, 0, 1));
     // outside the frame a point moves with its foot on the frame edge (continuous, monotonic, and the
