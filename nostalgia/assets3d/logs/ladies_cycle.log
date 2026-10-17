@@ -1,0 +1,6 @@
+00:00.193  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building ladies_cycle (vehicle)
+00:03.972  render           | Saved: '/tmp/nostalgia_blender/text_2d3e2ddf.png'
+[kit] uv atlas: 76 islands rescaled
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (6 samples) in 6.4s

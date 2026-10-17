@@ -1,0 +1,181 @@
+{
+ "anchors": {
+  "bell": [
+   0.45,
+   -3.3664,
+   6.0449
+  ],
+  "grip_L": [
+   1.8075,
+   -3.1614,
+   5.8449
+  ],
+  "grip_R": [
+   -1.8075,
+   -3.1614,
+   5.8449
+  ],
+  "handlebar": [
+   0.0,
+   -3.3264,
+   5.8449
+  ],
+  "pedal_L": [
+   0.95,
+   1.65,
+   2.3458
+  ],
+  "pedal_R": [
+   -0.95,
+   -0.45,
+   2.3458
+  ],
+  "reflector": [
+   0.0,
+   7.5625,
+   3.7875
+  ],
+  "seat_driver": [
+   -0.0,
+   1.226,
+   4.9426
+  ],
+  "seat_pillion": [
+   0.0,
+   2.426,
+   5.0426
+  ],
+  "wheel_front": [
+   0.0,
+   -4.5,
+   2.75
+  ],
+  "wheel_rear": [
+   0.0,
+   4.5,
+   2.75
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 326752,
+ "clips": {},
+ "family": "vehicle",
+ "file": "hercules_cycle.glb",
+ "front": "-Y",
+ "id": "hercules_cycle",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 319.1,
+ "kit": 1,
+ "materials": [
+  "M_hercules_cycle"
+ ],
+ "max": [
+  2.21,
+  7.537,
+  6.269
+ ],
+ "meta": {
+  "bb": [
+   0.0,
+   0.6,
+   2.2458
+  ],
+  "crankR": 1.05,
+  "gear": 2.6,
+  "length": 14.5,
+  "options": [
+   {
+    "bone": "opt_gears",
+    "types": [
+     "hercules_gears"
+    ]
+   },
+   {
+    "bone": "opt_gears_bar",
+    "types": [
+     "hercules_gears"
+    ]
+   }
+  ],
+  "pedal": true,
+  "pedalX": 0.95,
+  "riders": {
+   "driver": {
+    "clips": [
+     "ride_cycle"
+    ],
+    "feet": "pedals",
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "cycle",
+    "seat": "seat_driver"
+   }
+  },
+  "saddleTube": [
+   0.0,
+   0.33,
+   0.944
+  ],
+  "seat": [
+   0.0,
+   1.226,
+   4.9426
+  ],
+  "steerAxis": [
+   0.0,
+   -0.3809,
+   -0.9246
+  ],
+  "tintSrc": {
+   "paint": "color",
+   "paint2": "color2"
+  },
+  "vehicleTypes": [
+   "hercules_cycle",
+   "hercules_gears"
+  ],
+  "wheelR": 2.75,
+  "wheels": {
+   "wheel_front": 2.75,
+   "wheel_rear": 2.75
+  }
+ },
+ "min": [
+  -2.21,
+  -7.349,
+  -0.07
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  4.419,
+  14.887,
+  6.339
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#d8262a",
+   "paint2": "#f4f2ea"
+  }
+ },
+ "tris": 3228,
+ "units": "u",
+ "up": "Z"
+}

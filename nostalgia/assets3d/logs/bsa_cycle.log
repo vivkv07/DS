@@ -1,0 +1,4 @@
+00:00.104  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building bsa_cycle (vehicle)
+00:05.269  render           | Saved: '/tmp/nostalgia_blender/text_df7992b6.png'
+[kit] uv atlas: 72 islands rescaled

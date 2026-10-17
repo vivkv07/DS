@@ -388,6 +388,392 @@ def hero_cycle(A):
     A.preview = {'shots': [{'view': {'az': -62, 'el': 14, 'fov': 28}}, {'name': 'side', 'size': 320, 'samples': 16, 'view': {'az': -90, 'el': 3, 'fov': 26}}]}
 
 
+# =========================================================================== pedal cycles (generic builder)
+def cycle_geom(R=3.0, wb=10.0, cs=4.25, bb_drop=0.65, st_len=2.616, st_dir=None, ax=None, head=(1.45, 2.5), seat_off=(0, -0.1, 0.52),
+               stem=0.72, bar_c=(0, -0.15, 0.05)):
+    """key points of a pedal cycle (Blender coords, front -Y). With the defaults this is exactly the
+    Hero roadster above (HERO / hero_geom: the riders' ride_cycle clips are authored against it)."""
+    st_dir = Vector(st_dir) if st_dir is not None else SEAT_TUBE
+    ax = Vector(ax).normalized() if ax is not None else AX
+    k = R / 3.0
+    G = {}
+    G['R'] = R
+    G['RA'] = V(0, wb / 2, R)
+    G['FA'] = V(0, -wb / 2, R)
+    G['BB'] = V(0, wb / 2 - cs, R - bb_drop * k)
+    G['SC'] = G['BB'] + st_dir * st_len
+    G['ST'] = st_dir
+    G['AX'] = ax
+    G['S0'] = G['FA'] + V(0, head[0] * k, head[1] * k)
+    G['HB'] = G['S0'] + ax * 1.0 * k
+    G['SEAT'] = G['SC'] + V(*seat_off)
+    G['STEM_TOP'] = G['S0'] - ax * stem
+    G['BAR_C'] = G['STEM_TOP'] + V(*bar_c)
+    return G
+
+
+def cycle_bars(kind, bc, k=1.0):
+    """handlebar polyline (left half, +X) + grip segment, relative to the bar centre bc"""
+    if kind == 'swept':      # roadster: swept right back to the rider
+        pts = [bc, bc + V(0.55, -0.08, 0.02), bc + V(1.0, -0.02, 0.0), bc + V(1.36, 0.42, -0.05), bc + V(1.53, 0.95, -0.12), bc + V(1.6, 1.45, -0.17), bc + V(1.63, 2.02, -0.2)]
+        g0, g1 = bc + V(1.58, 1.3, -0.16), bc + V(1.64, 2.06, -0.21)
+    elif kind == 'flat':     # MTB: straight, wide, slight back-sweep
+        pts = [bc, bc + V(0.6, 0.02, 0.0), bc + V(1.3, 0.08, 0.0), bc + V(2.05, 0.2, 0.0)]
+        g0, g1 = bc + V(1.45, 0.11, 0.0), bc + V(2.1, 0.21, 0.0)
+    elif kind == 'riser':    # kid: a riser bar
+        pts = [bc, bc + V(0.35, 0.0, 0.0), bc + V(0.6, 0.05, 0.3), bc + V(0.95, 0.2, 0.42), bc + V(1.6, 0.42, 0.45)]
+        g0, g1 = bc + V(1.08, 0.24, 0.43), bc + V(1.62, 0.43, 0.45)
+    else:                    # 'ladies': upright, swept, a touch higher
+        pts = [bc, bc + V(0.5, -0.05, 0.05), bc + V(0.95, 0.05, 0.12), bc + V(1.3, 0.5, 0.12), bc + V(1.45, 1.05, 0.06), bc + V(1.5, 1.6, 0.02)]
+        g0, g1 = bc + V(1.46, 1.0, 0.06), bc + V(1.51, 1.7, 0.02)
+    sc = lambda p: bc + (p - bc) * k
+    return [sc(p) for p in pts], sc(g0), sc(g1)
+
+
+def pedal_cycle(A, C):
+    """Generic pedal cycle from a spec C (see the CYCLES table): frame style, bars, guards, carrier,
+    chain guard / case, basket, stand, saddle, brakes, gears (option bone), lettering. Bones: root
+    steer wheel_front wheel_rear crank pedal_L pedal_R saddle (+ opt_*). Tint: paint = frame (v.color),
+    paint2 = accent (v.color2: fork / rims / guards on the sporty ones)."""
+    G = cycle_geom(**C['geom'])
+    R, RA, FA, BB, SC, S0, HB, AXc, SEATp = G['R'], G['RA'], G['FA'], G['BB'], G['SC'], G['S0'], G['HB'], G['AX'], G['SEAT']
+    k = R / 3.0
+    P = vk.palette()
+    FR = vk.paint(A.id + '_frame', C.get('color', '#24479a'), region=vk.R_PAINT, rough=0.3, chips=0.3, under='#8a8d90', grime=0.35, dirt='#3a342c')
+    AC = vk.paint(A.id + '_accent', C.get('color2', '#f4f2ea'), region=vk.R_PAINT2, rough=0.35, chips=0.2, grime=0.3) if C.get('accent') else FR
+    BLK = P['black']
+    M = {'tyre': P['tyre'], 'chrome': P['chrome'], 'steel': P['steel'], 'rubber': P['rubber'], 'dark': P['dark']}
+    Rg = vk.VRig(A)
+    crown = S0 + AXc * 1.18 * k
+    Rg.bone('steer', HB, HB - AXc * 1.6)
+    Rg.bone('wheel_front', FA, parent='steer')
+    Rg.bone('wheel_rear', RA)
+    Rg.bone('crank', BB)
+    Rg.bone('saddle', SC, SC + G['ST'] * 0.8)
+    for o in C.get('options', []):
+        Rg.bone(o, BB + V(0, 0, 1.0))
+    cr = C.get('crank', CRANK_R) * (1 if k > 0.9 else 0.85)
+    px = C.get('pedal_x', PEDAL_X) * (1 if k > 0.9 else 0.88)
+    ped = {'L': BB + V(px, cr, 0), 'R': BB + V(-px, -cr, 0)}
+    Rg.bone('pedal_L', ped['L'], parent='crank')
+    Rg.bone('pedal_R', ped['R'], parent='crank')
+    tw = C.get('tyre_w', 0.42)
+    rim_m = AC if C.get('accent_rims') else P['chrome']
+    for nm, c in (('wheel_rear', RA), ('wheel_front', FA)):
+        Rg.add(nm, vk.spoke_wheel(nm[6:], tuple(c), R, M, spokes=C.get('spokes', 32), seg=C.get('wseg', 22), tyre_w=tw, rim_d=0.36 * k + 0.04,
+                                  rim_m=rim_m, knobs=C.get('knobs', 0.0), hub_w=0.6 * max(k, 0.85)))
+    fr = []
+    tr = C.get('tube_r', 0.15) * (k ** 0.5)
+    ttF = S0 + AXc * 0.16 * k
+    dtF = HB - AXc * 0.08 * k
+    style = C.get('frame', 'diamond')
+    fr.append(tube('seat_tube', [BB, SC + G['ST'] * 0.2], tr, seg=8, mat=FR))
+    fr.append(tube('head_tube', [S0 + V(0, 0, 0.06) - AXc * 0.05, HB + AXc * 0.06], tr * 1.3, seg=8, mat=FR))
+    if style in ('diamond', 'kid'):
+        if style == 'kid':
+            mid = SC.lerp(ttF, 0.5) + V(0, 0, 0.18 * k)
+            fr.append(tube('top_tube', [SC + V(0, 0, 0.02), mid, ttF], tr, seg=8, mat=FR))
+        else:
+            fr.append(tube('top_tube', [SC + V(0, 0, 0.02), ttF], tr, seg=8, mat=FR))
+        fr.append(tube('down_tube', [BB, dtF], tr * 1.12, seg=8, mat=FR))
+    elif style == 'mtb':
+        tt0 = BB.lerp(SC, 0.78)
+        fr.append(tube('top_tube', [tt0, ttF], tr * 1.05, seg=8, mat=FR))
+        fr.append(tube('down_tube', [BB, dtF], tr * 1.35, seg=8, mat=FR))
+    elif style == 'ladies':
+        # twin step-through loops from the head tube sweeping down to the bottom bracket
+        a = dtF
+        fr.append(tube('loop_upper', [S0 - AXc * 0.25 * k, S0 + V(0, 1.2 * k, -0.9 * k), BB + V(0, -0.9 * k, 0.75 * k), BB + V(0, -0.15, 0.22)], tr, seg=8, mat=FR))
+        fr.append(tube('loop_lower', [a, a + V(0, 1.0 * k, -0.95 * k), BB + V(0, -0.55 * k, 0.15), BB], tr, seg=8, mat=FR))
+    for sx in (1, -1):
+        fr.append(tube('chain_stay', [BB + V(0.1 * sx, 0, 0), RA + V(0.3 * sx, -0.25, 0.0)], 0.085 * max(k, 0.8), seg=6, mat=FR))
+        stay_top = SC + V(0.09 * sx, 0.06, -0.05) if style != 'mtb' else BB.lerp(SC, 0.8) + V(0.1 * sx, 0.05, 0)
+        fr.append(tube('seat_stay', [stay_top, RA + V(0.3 * sx, -0.15, 0.12)], 0.075 * max(k, 0.8), seg=6, mat=FR))
+        fr.append(vk.rbox('dropout', (0.06, 0.5 * k, 0.36 * k), tuple(RA + V(0.33 * sx, 0, 0)), FR, bevel=0.0))
+    for p, d in ((SC, G['ST']), (BB, V(0, 0, 1))):
+        fr.append(vk.cyl_between('lug', p - d * 0.11, p + d * 0.11, tr * 1.25, seg=8, m=FR))
+    fr.append(vk.disc_x('bb_shell', tuple(BB), 0.22 * max(k, 0.85), 0.6, FR, seg=8))
+    # ---------------------------------------------------------------- saddle (own bone)
+    sd = []
+    SEATv = SEATp
+    clamp = SEATv + V(0, 0.12, -0.3)
+    sd.append(tube('seat_post', [SC - G['ST'] * 0.3, clamp], 0.09, seg=6, mat=P['chrome']))
+    sk = C.get('saddle', 'sprung')
+    saddle_m = P['leather'] if sk == 'sprung' else vk.mat('leather_brown', 'saddle_vinyl', base='#1c1a1a', rough=0.68, grime=0.35)
+    sw = 1.0 if sk != 'kid' else 0.8
+    sd.append(loft('saddle', [
+        dict(c=tuple(SEATv + V(0, -0.72 * sw, -0.08)), r=(0.16 * sw, 0.07), p=2.5),
+        dict(c=tuple(SEATv + V(0, -0.42 * sw, -0.04)), r=(0.24 * sw, 0.1), p=2.5),
+        dict(c=tuple(SEATv + V(0, -0.05, -0.01)), r=(0.42 * sw, 0.12), p=3.0),
+        dict(c=tuple(SEATv + V(0, 0.32 * sw, 0.0)), r=(0.55 * sw, 0.14), p=3.5),
+        dict(c=tuple(SEATv + V(0, 0.52 * sw, -0.02)), r=(0.54 * sw, 0.11), p=3.5),
+        dict(c=tuple(SEATv + V(0, 0.6 * sw, -0.09)), r=(0.4 * sw, 0.06), p=3.0),
+    ], seg=10, side=(1, 0, 0), mat=saddle_m))
+    sd.append(vk.rbox('saddle_clamp', (0.28, 0.28, 0.14), tuple(clamp), P['chrome'], bevel=0.0))
+    if sk == 'sprung':
+        for sx in (1, -1):
+            base = SEATv + V(0.36 * sx, 0.42, -0.5)
+            pts = [base + V(0.1 * math.cos(t), 0.1 * math.sin(t), t * 0.022) for t in [i * 0.8 for i in range(19)]]
+            sd.append(tube('spring', pts, 0.022, seg=4, mat=P['chrome'], cap=False))
+            sd.append(tube('spring_rod', [SEATv + V(0.36 * sx, 0.42, -0.56), clamp + V(0.1 * sx, 0.05, -0.05)], 0.035, seg=4, mat=P['chrome']))
+    # ---------------------------------------------------------------- carrier
+    cz = 2 * R + 0.38 * k
+    if C.get('carrier'):
+        for sx in (1, -1):
+            fr.append(tube('carrier_rail', [V(0.58 * sx, RA.y - 2.45 * k, cz), V(0.58 * sx, RA.y + 2.5 * k, cz), V(0.42 * sx, RA.y + 2.7 * k, cz - 0.05)], 0.055, seg=5, mat=FR))
+            fr.append(tube('carrier_strut', [V(0.58 * sx, RA.y + 2.3 * k, cz), RA + V(0.4 * sx, 0.02, 0.1)], 0.05, seg=5, mat=FR))
+            fr.append(tube('carrier_stay', [V(0.58 * sx, RA.y - 2.45 * k, cz), SC + V(0.12 * sx, 0.15, -0.2)], 0.045, seg=4, mat=FR))
+        for kk in range(5):
+            y = RA.y - 2.25 * k + kk * 1.15 * k
+            fr.append(tube('slat', [V(-0.6, y, cz + 0.02), V(0.6, y, cz + 0.02)], 0.04, seg=4, mat=FR))
+    # ---------------------------------------------------------------- mudguards (rear on the frame, front on the steer)
+    gk = C.get('guards', 'full')
+    gm = AC if C.get('accent_guards') else FR
+    st = []
+    if gk == 'full':
+        fr.append(vk.mudguard('guard_rear', tuple(RA), R, math.radians(38), math.radians(198), gm, w=0.58 * max(k, 0.85) + tw * 0.25, gap=0.24, thick=0.08, n=12))
+        st.append(vk.mudguard('guard_front', tuple(FA), R, math.radians(-20), math.radians(118), gm, w=0.58 * max(k, 0.85) + tw * 0.25, gap=0.24, thick=0.08, n=10))
+    elif gk == 'short':
+        fr.append(vk.mudguard('guard_rear', tuple(RA), R, math.radians(70), math.radians(150), gm, w=0.5 + tw * 0.3, gap=0.22, thick=0.07, n=6))
+        st.append(vk.mudguard('guard_front', tuple(FA), R, math.radians(20), math.radians(100), gm, w=0.5 + tw * 0.3, gap=0.22, thick=0.07, n=6))
+    fr.append(vk.disc_y('reflector', tuple(RA + V(0, R * 0.95 + 0.4, R * 0.25 + 0.35)), 0.16, 0.05, P['reflector'], seg=10))
+    # ---------------------------------------------------------------- chain guard / case, chain, chainring, sprocket
+    cg = C.get('chainguard', 'plate')
+    ring_r = 0.95 * max(k, 0.8)
+    if cg in ('plate', 'case'):
+        top = 3.35 if cg == 'plate' else 3.6
+        poly = [(-0.6, 2.05), (-0.2, 1.65), (0.9, 1.75), (5.25, 2.6), (5.45, 3.0), (5.2, top), (0.9, top - 0.1), (-0.25, top - 0.2), (-0.62, 2.7)]
+        poly = [((y + 0.75) * (RA.y - BB.y) / 4.25 + BB.y - 0.75 * (RA.y - BB.y) / 4.25 - (BB.y - 0.75), (z - 2.35) * k + BB.z) for (y, z) in poly]
+        cgo = vk.side_prism('chain_guard', poly, -0.5, -0.44 if cg == 'plate' else -0.2, BLK if C.get('guard_black') else FR, bevel=0.03, seg=1)
+        fr.append(cgo)
+    if C.get('lettering'):
+        txt, (fg, bg), where = C['lettering']
+        if where == 'chainguard':
+            d = kit.signboard('chain_guard_name', txt, 1.9 * k, 0.42 * k, depth=0.02, fg=fg, bg=bg, frame_mat=BLK, px=256)
+            d.rotation_euler = (0, 0, math.radians(-90))
+            mid = BB.lerp(RA, 0.5)
+            d.location = (-0.52, mid.y, BB.z + 0.43 * k)
+            kit.apply_transform(d)
+            fr.append(d)
+        else:   # a sticker band on the down tube (both sides)
+            dt = (dtF - BB)
+            ctr = BB.lerp(dtF, 0.55)
+            ang = math.atan2(dt.z, -dt.y)
+            for sx in (1, -1):
+                d = kit.signboard('down_tube_name', txt, 2.2 * k, 0.3, depth=0.02, fg=fg, bg=bg, frame_mat=BLK, px=256)
+                d.rotation_euler = (0, -ang if sx > 0 else ang, math.radians(90 if sx > 0 else -90))
+                d.location = ctr + V(sx * (tr * 1.15 + 0.01), 0, 0)
+                kit.apply_transform(d)
+                fr.append(d)
+    ring = vk.disc_x('chainring', tuple(BB + V(-0.36, 0, 0)), ring_r, 0.06, P['chrome'], seg=20)
+    fr.append(vk.disc_x('sprocket', tuple(RA + V(-0.36, 0, 0)), 0.34, 0.06, P['steel'], seg=10))
+    fr.append(tube('chain_low', [BB + V(-0.36, 0.0, -ring_r), RA + V(-0.36, 0, -0.34)], 0.045, seg=4, mat=P['steel']))
+    fr.append(tube('chain_high', [BB + V(-0.36, 0.0, ring_r), RA + V(-0.36, 0, 0.34)], 0.045, seg=4, mat=P['steel']))
+    # stand
+    if C.get('stand') == 'double':
+        for sx in (1, -1):
+            fr.append(tube('stand', [RA + V(0.42 * sx, 0.05, -0.1), RA + V(0.55 * sx, R * 0.75, 0.1 - R * 0.05)], 0.05, seg=4, mat=BLK))
+        fr.append(tube('stand_foot', [RA + V(0.55, R * 0.75, 0.1 - R * 0.05), RA + V(-0.55, R * 0.75, 0.1 - R * 0.05)], 0.05, seg=4, mat=BLK))
+    else:
+        fr.append(tube('kickstand', [BB.lerp(RA, 0.62) + V(0.2, 0, 0.0), BB.lerp(RA, 0.62) + V(0.55, 1.7 * k, -0.85 * k)], 0.05, seg=4, mat=BLK))
+    # ---------------------------------------------------------------- crank + pedals
+    crank = [ring, vk.disc_x('crank_axle', tuple(BB), 0.09, 1.1, P['steel'], seg=6)]
+    pedals = {}
+    for sx, S, dy in ((1, 'L', cr), (-1, 'R', -cr)):
+        crank.append(tube('crank_arm', [BB + V(0.45 * sx, 0, 0), BB + V(0.55 * sx, dy, 0)], 0.085, seg=6, mat=P['chrome']))
+        pc = ped[S]
+        pd = [vk.rbox('pedal_block', (0.52, 0.4, 0.18), tuple(pc), P['rubber'], bevel=0.0),
+              vk.rbox('pedal_frame', (0.6, 0.46, 0.07), tuple(pc), P['chrome'], bevel=0.0),
+              vk.rbox('pedal_refl', (0.46, 0.05, 0.1), tuple(pc + V(0, 0.21, 0)), P['reflector'], bevel=0.0)]
+        pedals[S] = pd
+    # ---------------------------------------------------------------- steering: fork, stem, bars, grips, brakes, bell, basket, lamp
+    fm = AC if C.get('accent_fork') else FR
+    for sx in (1, -1):
+        mid = crown.lerp(FA, 0.55) + V(0, -0.22 * k, 0)
+        st.append(tube('fork_blade', [crown + V(0.24 * sx, 0, 0), mid + V(0.3 * sx, 0, 0), FA + V(0.32 * sx, 0, 0.08)], 0.08 * max(k, 0.85) * (1.25 if style == 'mtb' else 1), seg=6, mat=fm))
+    st.append(vk.cyl_between('fork_crown', crown - AXc * 0.12 + V(0, 0, 0), crown + AXc * 0.12, 0.3, seg=8, m=fm))
+    st.append(tube('stem', [S0 - AXc * 0.05, G['STEM_TOP']], 0.09, seg=6, mat=P['chrome']))
+    bc = G['BAR_C']
+    st.append(tube('stem_ext', [G['STEM_TOP'], bc], 0.085, seg=6, mat=P['chrome']))
+    bars = C.get('bars', 'swept')
+    grips = {}
+    for sx, S in ((1, 'L'), (-1, 'R')):
+        pts, g0, g1 = cycle_bars(bars, bc, C.get('bar_k', 1.0))
+        mir = lambda p: V(bc.x + (p.x - bc.x) * sx, p.y, p.z)
+        st.append(tube('bar', [mir(p) for p in pts], 0.07, seg=6, mat=P['chrome'] if bars != 'flat' else P['black']))
+        gm2 = vk.mat('rubber', 'grip_' + A.id, base=C.get('grip', '#e6dcc4'), rough=0.7)
+        st.append(tube('grip', [mir(g0), mir(g0.lerp(g1, 0.5)), mir(g1)], 0.13, seg=6, mat=gm2))
+        grips[S] = mir(g0.lerp(g1, 0.55))
+        if C.get('brakes', 'rod') == 'rod':
+            st.append(tube('brake_lever', [mir(bc + V(1.2, 0.3, -0.06)), mir(bc + V(1.42, 0.95, -0.3)), mir(bc + V(1.5, 1.55, -0.36))], 0.04, seg=4, mat=P['chrome']))
+        else:
+            gl = mir(g0) + V(0, -0.25, -0.05)
+            st.append(tube('brake_lever', [mir(g0 + V(-0.15, -0.1, 0.02)), gl + V(0.35 * sx, -0.05, -0.05), gl + V(0.75 * sx, 0.05, -0.08)], 0.04, seg=4, mat=P['steel']))
+            st.append(tube('cable', [mir(g0 + V(-0.2, -0.05, 0.0)), mir(bc + V(0.6, -0.6, 0.4)), S0 + V(0.2 * sx, -0.4, 0.2)], 0.03, seg=3, mat=P['black']))
+    if C.get('brakes', 'rod') == 'rod':
+        st.append(tube('front_rod', [bc + V(0.25, -0.2, -0.06), S0 + V(0.25, -0.12, 0), crown + V(0.25, -0.15, -0.1), FA + V(0.25, -0.35, R - 0.3)], 0.03, seg=4, mat=P['chrome']))
+        st.append(tube('front_stirrup', [FA + V(-0.3, -0.5, R - 0.45), FA + V(-0.3, -0.25, R - 0.2), FA + V(0.3, -0.25, R - 0.2), FA + V(0.3, -0.5, R - 0.45)], 0.035, seg=4, mat=P['chrome']))
+        fr.append(tube('rear_rod', [ttF + V(-0.22, 0.05, -0.18), SC + V(-0.2, 0.0, -0.18), RA + V(-0.32, -0.45, R - 0.35)], 0.03, seg=4, mat=P['chrome']))
+    else:
+        st.append(vk.rbox('caliper_f', (0.85, 0.2, 0.3), tuple(crown + AXc * 0.3 + V(0, -0.1, 0)), P['steel'], bevel=0.0))
+        fr.append(vk.rbox('caliper_r', (0.85, 0.2, 0.3), tuple(SC.lerp(RA, 0.62) + V(0, 0.0, 0.25)), P['steel'], bevel=0.0))
+    bell = kit.lathe('bell', [(0.0, 0.0), (0.22, 0.0), (0.23, 0.05), (0.18, 0.16), (0.09, 0.22), (0.0, 0.25)], seg=10, mat=P['chrome'])
+    st.append(vk.xform(bell, loc=bc + V(0.45, -0.04, 0.08)))
+    lamp_c = None
+    if C.get('lamp'):
+        lamp_c = S0 + AXc * 0.55 + V(0, -0.52, 0.02)
+        st += vk.lamp_round('lamp', tuple(lamp_c), 0.3, 0.32, P, facing=(0, -1, 0), seg=12)
+        st.append(tube('lamp_bracket', [lamp_c + V(0, 0.2, 0), S0 + AXc * 0.55 + V(0, -0.12, 0)], 0.05, seg=4, mat=P['chrome']))
+    if C.get('dynamo'):
+        dyn = FA + V(0.42, 0.55 * R * 0.5, R * 0.62)
+        st.append(vk.cyl_between('dynamo', dyn + V(0, 0, -0.35), dyn + V(0, 0, 0.35), 0.13, seg=8, m=P['chrome']))
+        st.append(tube('dynamo_wire', [dyn + V(0, 0, 0.35), crown + V(0.3, -0.1, 0.0), lamp_c + V(0.2, 0.1, 0) if lamp_c is not None else crown], 0.02, seg=3, mat=P['black']))
+    if C.get('basket'):
+        bk = vk.mat('wood_raw', 'wicker', base='#b08a52', rough=0.85, grain=0.3, var=0.12, grime=0.4, scale=6.0)
+        b0 = bc + V(0, -1.0, -0.55)
+        bas = kit.cylinder('basket', 0.95, 1.05, (0, 0, 0), seg=10, mat=bk, r2=1.15, cap=False, base=True)
+        bas.scale = (1.15, 0.85, 1.0)
+        bas = vk.xform(bas, loc=b0 + V(0, 0, -0.55))
+        bm2 = __import__('bmesh').new()
+        bm2.from_mesh(bas.data)
+        __import__('bmesh').ops.solidify(bm2, geom=bm2.faces[:], thickness=0.05)
+        bm2.to_mesh(bas.data)
+        bm2.free()
+        st.append(bas)
+        bot = kit.cylinder('basket_floor', 0.95, 0.05, (0, 0, 0), seg=10, mat=bk, base=True)
+        bot.scale = (1.15, 0.85, 1.0)
+        st.append(vk.xform(bot, loc=b0 + V(0, 0, -0.55)))
+        st.append(tube('basket_rim', [b0 + V(1.15 * 1.15 * math.cos(t), 1.15 * 0.85 * math.sin(t), 0.5) for t in [i * 2 * math.pi / 12 for i in range(13)]], 0.05, seg=4, mat=P['chrome'], cap=False))
+        st.append(tube('basket_stay', [b0 + V(0, 0.9, -0.5), FA + V(0, -0.2, 0.35)], 0.04, seg=4, mat=P['chrome']))
+    # ---------------------------------------------------------------- gears (option bone): derailleur, triple ring, shifters
+    opt_parts = {}
+    if 'opt_gears' in C.get('options', []):
+        g = []
+        g.append(vk.disc_x('ring2', tuple(BB + V(-0.44, 0, 0)), ring_r * 0.78, 0.05, P['steel'], seg=16))
+        g.append(vk.disc_x('cassette', tuple(RA + V(-0.3, 0, 0)), 0.48, 0.3, P['steel'], seg=10))
+        der = RA + V(-0.48, 0.15, -0.7)
+        g.append(vk.rbox('derailleur', (0.14, 0.5, 0.8), tuple(der), P['steel'], bevel=0.04))
+        g.append(vk.disc_x('jockey', tuple(der + V(0, 0, -0.35)), 0.15, 0.08, P['black'], seg=8))
+        g.append(vk.rbox('front_mech', (0.15, 0.4, 0.3), tuple(BB.lerp(SC, 0.28) + V(-0.32, 0.05, 0)), P['steel'], bevel=0.0))
+        g.append(tube('gear_cable', [BB.lerp(dtF, 0.7) + V(-0.12, 0, 0.1), BB + V(-0.15, 0, -0.2), RA + V(-0.4, -0.5, -0.3), der + V(0, -0.2, 0.3)], 0.025, seg=3, mat=P['black']))
+        opt_parts['opt_gears'] = g
+        sh = []
+        for sx in (1, -1):
+            sh.append(vk.rbox('shifter', (0.32, 0.3, 0.2), tuple(bc + V(sx * 1.25, 0.05, -0.1)), P['black'], bevel=0.04))
+        Rg.add('opt_gears_bar', sh) if False else None
+        opt_parts['opt_gears'] += []
+        st_shift = sh
+    else:
+        st_shift = []
+    Rg.add('root', fr)
+    Rg.add('saddle', sd)
+    Rg.add('steer', st)
+    Rg.add('crank', crank)
+    for S in ('L', 'R'):
+        Rg.add('pedal_' + S, pedals[S])
+    for b, parts in opt_parts.items():
+        Rg.add(b, parts)
+    if st_shift:
+        # shifters ride on the bars: their own option bone parented to the steer bone
+        Rg.bone('opt_gears_bar', bc, bc + V(0.8, 0, 0), parent='steer')
+        Rg.add('opt_gears_bar', st_shift)
+    arm, ob = Rg.build(tex=C.get('tex', 512), orm=256, emit=0, ao_samples=24, albedo_samples=6, ao_strength=0.62, ao_dist=1.5,
+                       boost={'sign_': 2.4, 'chain_guard_name': 2.4, 'down_tube_name': 2.4})
+    anchors_from(A, arm, {
+        'seat_driver': (tuple(SEATv), 'saddle'),
+        'seat_pillion': ((0, RA.y - 0.2 * k, cz + 0.12) if C.get('carrier') else tuple(SEATv + V(0, 1.2, 0.1)), 'root'),
+        'handlebar': (tuple(bc), 'steer'), 'grip_L': (tuple(grips['L']), 'steer'), 'grip_R': (tuple(grips['R']), 'steer'),
+        'pedal_L': (tuple(ped['L'] + V(0, 0, 0.1)), 'pedal_L'), 'pedal_R': (tuple(ped['R'] + V(0, 0, 0.1)), 'pedal_R'),
+        'wheel_front': (tuple(FA), 'wheel_front'), 'wheel_rear': (tuple(RA), 'wheel_rear'),
+        'bell': (tuple(bc + V(0.45, -0.04, 0.2)), 'steer'), 'reflector': (tuple(RA + V(0, R * 0.95 + 0.45, R * 0.25 + 0.35)), 'root'),
+    })
+    if lamp_c is not None:
+        anchors_from(A, arm, {'headlight': (tuple(lamp_c + V(0, -0.3, 0)), 'steer')})
+    A.meta.update({'steerAxis': [round(c, 4) for c in AXc], 'bb': [round(c, 4) for c in BB], 'seat': [round(c, 4) for c in SEATv],
+                   'saddleTube': [round(c, 4) for c in G['ST']], 'crankR': round(cr, 3), 'wheelR': R, 'wheels': {'wheel_front': R, 'wheel_rear': R},
+                   'pedalX': round(px, 3)})
+    RIDE_GEOM[A.id] = {'pose': 'cycle', 'vehicle': A.id, 'seat': tuple(SEATv), 'grip_L': tuple(grips['L']), 'grip_R': tuple(grips['R']),
+                       'bb': tuple(BB), 'crank': cr, 'pedal_x': px, 'pedal_up': 0.14, 'seat_tube': tuple(G['ST'])}
+    return arm, ob
+
+
+CYCLE_RIDER = {'driver': {'pose': 'cycle', 'seat': 'seat_driver', 'grips': ['grip_L', 'grip_R'], 'feet': 'pedals', 'clips': ['ride_cycle']}}
+
+
+@kit.asset('hercules_cycle', 'vehicle', vehicleTypes=['hercules_cycle', 'hercules_gears'], length=14.5, wheelR=2.75, crankR=1.0, gear=2.6,
+           tintSrc={'paint': 'color', 'paint2': 'color2'}, options=[{'bone': 'opt_gears', 'types': ['hercules_gears']}, {'bone': 'opt_gears_bar', 'types': ['hercules_gears']}],
+           riders=CYCLE_RIDER, pedal=True)
+def hercules_cycle(A):
+    """The sporty Hercules of 2003: a bright sloping MTB-style frame with oversized tubes, a flat black
+    bar, fat knobbly tyres, coloured rims and fork (paint2), caliper brakes, short guards, no
+    carrier; the lettering as a plain sticker band on the down tube. hercules_gears adds the
+    derailleur, a second chainring and the shifters (option bones). 14.5 u long (TYPES)."""
+    pedal_cycle(A, {
+        'geom': dict(R=2.75, wb=9.0, cs=3.9, bb_drop=0.55, st_len=2.2, st_dir=(0, 0.33, 0.944), head=(1.35, 2.62), seat_off=(0, -0.1, 0.62), stem=0.62, bar_c=(0, -0.3, 0.12)),
+        'color': '#d8262a', 'color2': '#f4f2ea', 'accent': True, 'accent_rims': True, 'accent_fork': True,
+        'frame': 'mtb', 'bars': 'flat', 'guards': None, 'carrier': False, 'chainguard': 'ring', 'brakes': 'caliper', 'stand': 'side',
+        'saddle': 'sport', 'tyre_w': 0.62, 'knobs': 0.07, 'spokes': 28, 'tube_r': 0.17, 'grip': '#1c1c1e',
+        'lettering': ('HERCULES', ('#f4f2ea', '#141418'), 'downtube'), 'options': ['opt_gears'],
+    })
+    A.preview = {'shots': [{'view': {'az': -62, 'el': 14, 'fov': 28}}, {'name': 'side', 'size': 320, 'samples': 16, 'view': {'az': 90, 'el': 3, 'fov': 26}}],
+                 'variants': {'sets': [{'colours': {'paint': '#d8262a', 'paint2': '#f4f2ea'}, 'hide': ['opt_gears', 'opt_gears_bar']},
+                                       {'colours': {'paint': '#1f6fd0', 'paint2': '#ffe14a'}},
+                                       {'colours': {'paint': '#26a050', 'paint2': '#1a1a1e'}, 'hide': ['opt_gears', 'opt_gears_bar']},
+                                       {'colours': {'paint': '#f0b818', 'paint2': '#1a1a1e'}, 'hide': ['opt_gears', 'opt_gears_bar']}],
+                              'view': {'az': -70, 'el': 12, 'fov': 28}}}
+
+
+@kit.asset('bsa_cycle', 'vehicle', vehicleTypes=['cycle', 'bsa_cycle'], length=15.0, wheelR=2.9, crankR=1.05, gear=2.4,
+           tintSrc={'paint': 'color'}, riders=CYCLE_RIDER, pedal=True)
+def bsa_cycle(A):
+    """The BSA SLR: a light sports roadster in a painted colour (blue / red / green / black), chrome
+    rims, rod brakes, full guards, carrier, the plate chain guard with 'BSA SLR' painted in plain
+    letters, a rear double stand. 15 u long (TYPES.cycle / bsa_cycle)."""
+    pedal_cycle(A, {
+        'geom': dict(R=2.9, wb=9.2, cs=4.05, bb_drop=0.62, st_len=2.5, head=(1.42, 2.55), seat_off=(0, -0.1, 0.55), stem=0.66),
+        'color': '#24479a', 'frame': 'diamond', 'bars': 'swept', 'bar_k': 0.92, 'guards': 'full', 'carrier': True, 'chainguard': 'plate', 'guard_black': False,
+        'brakes': 'rod', 'stand': 'double', 'saddle': 'sprung', 'tyre_w': 0.42, 'spokes': 32, 'tube_r': 0.145, 'grip': '#d8ccb0',
+        'lettering': ('BSA SLR', ('#f2efe6', '#141418'), 'chainguard'),
+    })
+    A.preview = {'shots': [{'view': {'az': -62, 'el': 14, 'fov': 28}}, {'name': 'side', 'size': 320, 'samples': 16, 'view': {'az': -90, 'el': 3, 'fov': 26}}],
+                 'variants': {'sets': [{'colours': {'paint': '#24479a'}}, {'colours': {'paint': '#9a2424'}}, {'colours': {'paint': '#2f6a3a'}}, {'colours': {'paint': '#1d1d22'}}],
+                              'view': {'az': -70, 'el': 12, 'fov': 28}}}
+
+
+@kit.asset('ladies_cycle', 'vehicle', vehicleTypes=['ladiescycle'], length=15.0, wheelR=2.9, crankR=1.0, gear=2.4,
+           tintSrc={'paint': 'color'}, riders=CYCLE_RIDER, pedal=True)
+def ladies_cycle(A):
+    """The ladies' step-through cycle: twin curved loops instead of a top tube, upright swept bars,
+    a wicker basket on the front, full guards, carrier, a full chain case with 'LADYBIRD' painted on
+    it, rear double stand. Colours from TYPES.ladiescycle (maroon, pink, blue, purple, teal)."""
+    pedal_cycle(A, {
+        'geom': dict(R=2.9, wb=9.2, cs=4.05, bb_drop=0.62, st_len=2.45, head=(1.42, 2.6), seat_off=(0, -0.1, 0.5), stem=0.78),
+        'color': '#8a2a4a', 'frame': 'ladies', 'bars': 'ladies', 'guards': 'full', 'carrier': True, 'chainguard': 'case',
+        'brakes': 'rod', 'stand': 'double', 'saddle': 'sprung', 'tyre_w': 0.42, 'spokes': 32, 'tube_r': 0.14, 'basket': True, 'grip': '#e8e0cc',
+        'lettering': ('LADYBIRD', ('#f2efe6', '#8a2a4a'), 'chainguard'), 'crank': 1.0,
+    })
+    A.preview = {'shots': [{'view': {'az': -62, 'el': 14, 'fov': 28}}, {'name': 'side', 'size': 320, 'samples': 16, 'view': {'az': -90, 'el': 3, 'fov': 26}}],
+                 'variants': {'sets': [{'colours': {'paint': '#8a2a4a'}}, {'colours': {'paint': '#c05a8a'}}, {'colours': {'paint': '#3a7ab0'}}, {'colours': {'paint': '#2a8a7a'}}],
+                              'view': {'az': -70, 'el': 12, 'fov': 28}}}
+
+
+@kit.asset('kid_cycle', 'vehicle', vehicleTypes=['kid_cycle'], length=13.5, wheelR=2.3, crankR=0.9, gear=2.2,
+           tintSrc={'paint': 'color'}, riders=CYCLE_RIDER, pedal=True)
+def kid_cycle(A):
+    """The kid's hire cycle (an hour for a rupee at the cycle shop): 20-inch wheels, a curved top
+    tube, a riser bar with chunky grips, short guards, a small padded saddle, a side stand; a
+    painted stripe instead of a brand. 13.5 u long (TYPES.kid_cycle)."""
+    pedal_cycle(A, {
+        'geom': dict(R=2.3, wb=8.9, cs=3.55, bb_drop=0.45, st_len=1.9, st_dir=(0, 0.34, 0.94), head=(1.4, 2.55), seat_off=(0, -0.1, 0.5), stem=0.45, bar_c=(0, -0.2, 0.08)),
+        'color': '#9a2424', 'frame': 'kid', 'bars': 'riser', 'guards': 'short', 'carrier': False, 'chainguard': 'plate', 'guard_black': True,
+        'brakes': 'caliper', 'stand': 'side', 'saddle': 'kid', 'tyre_w': 0.5, 'spokes': 24, 'tube_r': 0.14, 'grip': '#1c1c1e', 'crank': 0.95,
+        'lettering': ('RENT 1 Rs / HR', ('#f2c230', '#141418'), 'chainguard'), 'wseg': 20,
+    })
+    A.preview = {'shots': [{'view': {'az': -62, 'el': 14, 'fov': 28}}, {'name': 'side', 'size': 320, 'samples': 16, 'view': {'az': -90, 'el': 3, 'fov': 26}}],
+                 'variants': {'sets': [{'colours': {'paint': '#9a2424'}}, {'colours': {'paint': '#2f6a3a'}}, {'colours': {'paint': '#24479a'}}],
+                              'view': {'az': -70, 'el': 12, 'fov': 28}}}
+
+
 # =========================================================================== shared vehicle helpers
 def opt_rule(**kw):
     """an option-bone rule for meta.options (runtime: show the bone's parts when the rule matches)"""

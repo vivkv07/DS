@@ -88,3 +88,45 @@ out?" Every food cart and food spot becomes a living scene in both views:
   ("Ek plain dosa, anna!", "Thoda karam kam", "Do chai").
 - Crowd members are real pedestrians (so the 3D view renders them too); the player can walk
   into the crowd and buy (shops.js handles purchases). Only active near the player; pooled.
+
+## City-life scenes: "all the chaos in the city as real scenes" (user request, binding)
+Built on the same scene director as the street-food scenes (shared, data-driven, active only
+near the player, pooled; crowd members are real pedestrians so both views show them; props
+procedural with Blender models when available; sounds through N.audio). Each scene has rules for
+district, time of day, day of week, season and weather. Kid-friendly and respectful: no
+politics, alcohol, smoking or gore; no begging scenes; places of worship stay calm.
+1. **Tea shops / Irani cafés / chai bandis:** men on benches with newspapers, the waiter in a
+   white cap balancing a tray of chai glasses, a radio, glass jars of Osmania biscuits, cyclists
+   stopping for "do chai", arguments about cricket; busiest at 07:00-09:00 and 16:00-19:00.
+2. **Saloons (barber shops):** open front, a bench of men waiting with Eenadu and Siasat, one
+   in the chair under a white cloth with shaving foam, scissors clicking, the razor on the
+   strop, a radio playing (instrumental), mirrors, a haircut chart and painted film-star
+   posters (fictional); kids getting a "machine cut"; Sunday mornings packed.
+3. **Traffic chaos at junctions:** peak-hour jams with honk storms, autos squeezing between
+   buses, a cow sitting in the middle, the havaldar whistling and waving from the podium, a
+   stalled bus being pushed, a lorry reversing, two-wheelers climbing the footpath,
+   pedestrians weaving through, dust and exhaust haze; jams build and clear.
+4. **Bus stops:** a crowd rushing the arriving bus, people hanging on the footboard (never the
+   player), the conductor's "right, right!", vendors selling through the windows.
+5. **Colony mornings:** muggulu (rangoli) being drawn at doorsteps, the milkman with cans on
+   his cycle, the newspaper boy tossing papers, aunties chatting at gates, school autos packed
+   with kids and bags; summer water-tanker queues with coloured plastic pots.
+6. **Colony evenings:** gully cricket on the street (ball into a house, "out!"), uncles on
+   plastic chairs, a power cut sending everyone outside with hand fans, candles and the hum
+   of an inverter.
+7. **Street trades:** the cobbler under a tree, the puncture shop with a tube in a water tub
+   (bubbles), the ironing-wala with a coal iron and a stack of clothes, the tailor at his
+   sewing machine, the knife-sharpener's cycle throwing sparks, the raddi-wala's call and
+   scale, vegetable carts calling out, flower sellers stringing garlands, the cycle-repair
+   stand, the key maker.
+8. **Old City bustle:** buffalo herds, bangle sellers calling, attar shops, handcarts,
+   narrow-lane jams of honking two-wheelers, pigeons, hawkers around Charminar.
+9. **Roadwork and construction:** labourers with head-loads, a cement mixer, a dug-up road
+   with a diversion board, the tar drum smoking for road repair.
+10. **Cinema release day:** teenmaar drums, garlanded cut-outs, fans dancing, the ticket-counter
+    crush (comic, kid-friendly).
+11. **Wedding baraat at night (weekends in season):** a brass band, tube-light bearers, the
+    groom on a horse, dancing relatives, traffic stopped and honking.
+The player can walk into most scenes (sit for chai, get a haircut at the saloon via shops.js,
+join street cricket), and scenes react to the player (people step aside, barks, the havaldar
+whistles at a kid on a cycle).

@@ -97,12 +97,15 @@
       // Chinnu's own hands: a pick-up and a careful placing take a moment (he stands still, a sitting duck)
       myPickT: 0.35, myStackT: 0.65, knockMul: 1.3, stoneFric: 95, passMe: 0.55 },
     // with the ball you only shuffle (holdWalk x walk): you throw from about where you picked it up
-    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46, holdWalk: 0.22, look: [0.55, 1.3], range: [44, 56] },
+    // minD: a holder steps back (backWalk x walk) rather than throw at a kid nearer than this (point-blank is
+    // unsporting and undodgeable); spread: kids keep this far apart while they scatter (no clumps)
+    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46, holdWalk: 0.22, look: [0.55, 1.3], range: [44, 56], minD: 18, backWalk: 0.4, spread: 13 },
     // the line throw: the aim starts a little off the stack (straighten it), accuracy drops with power
     aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130, startOff: [0.06, 0.2], err: 0.026, errPow: 0.075 },
     pay: { win: 200, win3: 300, daily: 3 },
     ambient: { r: 640, far: 820, rest: 5, barkGap: [3.5, 7.5], kids: 6 },
-    clockRate: 0.25, zoom: [1, 1.8], zoomPad: 110, leaveR: 70, leaveT: 5,
+    // top-down zoom during a game: [min, max, max on an upright phone]; the margin round the ground (u)
+    clockRate: 0.25, zoom: [1, 2.2, 2.6], zoomPad: 110, zoomPadTall: 46, leaveR: 70, leaveT: 5,
     // catching (maram pitti): ACTION raises the hands for catchWin s (x1.4 with Assist / touch), then a short cooldown
     catchWin: 0.42, catchCD: 0.75,
     // after a throw the thrower may not pick his own ball up again for relock s (somebody else's turn);
@@ -110,8 +113,9 @@
     relock: 1.4, deflect: { sp: [26, 44], vz: 19 },
     // the AI leads a target by its velocity smoothed over leadTau s (a late sidestep beats the lead)
     leadTau: 0.35,
-    // a throw is live for its target's distance + overshoot u (the red wind-up line shows that much past him too)
-    overshoot: 24,
+    // a throw is live for its target's distance + overshoot u (the red wind-up line shows that much past him too):
+    // a ball that misses its mark dies soon after, it does not knock out a kid on the far side of the ground
+    overshoot: 12,
     // a free ball nobody can reach comes back onto the ground ("Ball la, ra!")
     freeMax: { lingocha: 9, marampitti: 6, outside: 3.5 },
     heat: { adult: 15, window: 30 },
@@ -1695,10 +1699,16 @@
         P.holdT += dt;
         const al = MARAM.alive(S).filter((Q) => Q !== P);
         if (!al.length) { halt(P); return; }
+        const minD = TUNE.maram.minD;
         if (!P.tgt || P.tgt.out || S.t > P.tgtT) {
-          // the nearest kid, rather one who is not running (an easier mark)
+          // the nearest kid, rather one who is not running (an easier mark); colony manners: nobody throws
+          // from point-blank (a kid right next to him counts as far away)
           let best = null, bs = Infinity;
-          for (const Q of al) { const s = pdist(P, Q) * (0.75 + 0.5 * S.rng.next()) * (1 + Math.min(1, hyp(Q.svx || 0, Q.svy || 0) / 90) * 0.35); if (s < bs) { bs = s; best = Q; } }
+          for (const Q of al) {
+            const dq = pdist(P, Q), eff = dq >= minD ? dq : minD + (minD - dq) * 1.4;
+            const s = eff * (0.75 + 0.5 * S.rng.next()) * (1 + Math.min(1, hyp(Q.svx || 0, Q.svy || 0) / 90) * 0.35);
+            if (s < bs) { bs = s; best = Q; }
+          }
           P.tgt = best; P.tgtT = S.t + 1.1;
         }
         const T = P.tgt, d = pdist(P, T);
@@ -1709,7 +1719,14 @@
         }
         // a look round first (the others scatter), then a throw from where he stands
         if (P.lookT == null) P.lookT = lerp(TUNE.maram.look[1], TUNE.maram.look[0], S.d) * (0.8 + 0.4 * S.rng.next());
-        if ((P.holdT > P.lookT && d < lerp(TUNE.maram.range[0], TUNE.maram.range[1], S.d)) || P.holdT > TUNE.maram.holdMax - 0.6) { P.lookT = null; P.windT = lerp(TUNE.lingocha.windup[0], TUNE.lingocha.windup[1], S.d) * (S.real && PG.debug.assist.weakAI && T.isPlayer ? 1.6 : 1); halt(P); return; }
+        const late = P.holdT > TUNE.maram.holdMax - 0.6;
+        // too close to his mark: a step back first (the wind-up then gives the mark a fair chance)
+        if (!late && d < minD && P.holdT > P.lookT * 0.5) {
+          const l = d || 1, q = clampIn(S.F, e.x - ((T.e.x - e.x) / l) * 10, e.y - ((T.e.y - e.y) / l) * 10, 4);
+          goTo(P, q.x, q.y, TUNE.kidWalk * TUNE.maram.backWalk, 1); P.face = Math.atan2(T.e.y - e.y, T.e.x - e.x);
+          return;
+        }
+        if ((P.holdT > P.lookT && d < lerp(TUNE.maram.range[0], TUNE.maram.range[1], S.d)) || late) { P.lookT = null; P.windT = lerp(TUNE.lingocha.windup[0], TUNE.lingocha.windup[1], S.d) * (S.real && PG.debug.assist.weakAI && T.isPlayer ? 1.6 : 1); halt(P); return; }
         goTo(P, T.e.x, T.e.y, speedOf(S, P, false), 2);
         return;
       }
@@ -1733,7 +1750,16 @@
         let ax = e.x - H.e.x, ay = e.y - H.e.y; const l = hyp(ax, ay) || 1; ax /= l; ay /= l;
         // stay on the ground: pull back towards the middle near the edges
         const ex = (c.x - e.x) / Math.max(20, S.F.w * 0.5), ey = (c.y - e.y) / Math.max(20, S.F.h * 0.5);
-        let vx = ax + ex * 1.2, vy = ay + ey * 1.2; const vl = hyp(vx, vy) || 1; vx /= vl; vy /= vl;
+        // ... and spread out (kids scatter different ways; a clump is one easy target and a ball that misses
+        // one of them hits the next)
+        let sx = 0, sy = 0;
+        const sp = TUNE.maram.spread;
+        for (const Q of S.parts) {
+          if (Q === P || Q === H || Q.out || !Q.e) continue;
+          const qx = e.x - Q.e.x, qy = e.y - Q.e.y, qd = hyp(qx, qy);
+          if (qd < sp && qd > 1e-3) { const w = (1 - qd / sp) * 1.6; sx += (qx / qd) * w; sy += (qy / qd) * w; }
+        }
+        let vx = ax + ex * 1.2 + sx, vy = ay + ey * 1.2 + sy; const vl = hyp(vx, vy) || 1; vx /= vl; vy /= vl;
         P.dvx = vx * run * 0.8; P.dvy = vy * run * 0.8;
         return;
       }
@@ -2084,7 +2110,11 @@
   /** top-down: zoom in so the whole ground (plus a margin) fills the view */
   function gameZoom(F) {
     const R = N.render, W = (R && R.W) || 640, H = (R && R.H) || 360;
-    return clamp(Math.min(W / (F.w + TUNE.zoomPad), H / (F.h + TUNE.zoomPad)), TUNE.zoom[0], TUNE.zoom[1]);
+    // a phone held upright is narrow: fit the ground's width (a slimmer margin) and zoom in further, so the
+    // kids and the ball are a thumb's size, not specks
+    const tall = H > W * 1.15;
+    const padW = tall ? TUNE.zoomPadTall : TUNE.zoomPad;
+    return clamp(Math.min(W / (F.w + padW), H / (F.h + TUNE.zoomPad)), TUNE.zoom[0], tall ? TUNE.zoom[2] : TUNE.zoom[1]);
   }
   function startReal(S) {
     holdGivers(!S.byMission);
@@ -2452,9 +2482,14 @@
         R.queue('ground', 5, () => D.flat((ctx) => {
           for (const P of S.parts) {
             if (!P.e || (P.out && !P.isPlayer)) continue;
-            ctx.globalAlpha = P.out ? 0.25 : 0.7;
-            ctx.strokeStyle = S.id === 'marampitti' ? (P.isPlayer ? '#f2c230' : 'rgba(244,234,216,0.55)') : (TEAM_COL[P.team] || '#fff');
-            ctx.lineWidth = P.isPlayer ? 0.9 : 0.6;
+            // a dark under-stroke so the ring reads on red dust and pale sand alike; Chinnu's ring is the
+            // boldest on the ground (find yourself at a glance)
+            const w = P.isPlayer ? 1.2 : 0.7;
+            ctx.globalAlpha = P.out ? 0.2 : 0.45; ctx.strokeStyle = '#1a1214'; ctx.lineWidth = w + 0.7;
+            ctx.beginPath(); ctx.ellipse(P.e.x, P.e.y + 0.6, 4.6, 3.6, 0, 0, TAU); ctx.stroke();
+            ctx.globalAlpha = P.out ? 0.3 : P.isPlayer ? 1 : 0.85;
+            ctx.strokeStyle = S.id === 'marampitti' ? (P.isPlayer ? '#f2c230' : '#f4ead8') : (TEAM_COL[P.team] || '#fff');
+            ctx.lineWidth = w;
             ctx.beginPath(); ctx.ellipse(P.e.x, P.e.y + 0.6, 4.6, 3.6, 0, 0, TAU); ctx.stroke();
             if (P.safeT > 0) { ctx.globalAlpha = 0.6 + 0.3 * Math.sin(S.t * 14); ctx.strokeStyle = '#7fe0ff'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.arc(P.e.x, P.e.y, 6.2, 0, TAU); ctx.stroke(); }
             // Chinnu's busy hands (picking / placing a stone): a filling arc
@@ -2492,8 +2527,20 @@
       if (!bl.hiddenBall && !(done && !S.real)) {
         const bx = bl.x, by = bl.y, bz = bl.z;
         R.queue('shadow', 1, () => D.shadow(bx, by, 2, 2, 0, bz + 0.6));
-        R.queue('actors', by + 0.05, (ctx) => {
-          const k = R.k(bz + TUNE.ballR), X = R.sx(bx, k), Y = R.sy(by, k), r = Math.max(1.3, 1.25 * k);
+        // a loose ball in a real game: a soft pulsing ring on the ground (where is it? there!)
+        if (S.real && !done && !bl.holder && (bl.state !== 'air' || bl.bounced > 0)) {
+          const t = S.t;
+          R.queue('ground', 6, () => D.flat((ctx) => {
+            const r = 3.6 + Math.sin(t * 7) * 0.7;
+            ctx.globalAlpha = 0.85; ctx.strokeStyle = '#1a1214'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(bx, by, r, 0, TAU); ctx.stroke();
+            ctx.strokeStyle = '#e8f55a'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.arc(bx, by, r, 0, TAU); ctx.stroke();
+            ctx.globalAlpha = 1;
+          }));
+        }
+        // held: drawn over the holder's sprite (in the hand, not hidden under the head)
+        const key = bl.holder && bl.holder.e ? Math.max(by, bl.holder.e.y) + 0.3 : by + 0.05;
+        R.queue('actors', key, (ctx) => {
+          const k = R.k(bz + TUNE.ballR), X = R.sx(bx, k), Y = R.sy(by, k), r = Math.max(1.6, 1.4 * k);
           ctx.fillStyle = '#1a1214'; ctx.beginPath(); ctx.arc(X, Y, r + 0.7, 0, TAU); ctx.fill();
           ctx.fillStyle = '#d6ea4c'; ctx.beginPath(); ctx.arc(X, Y, r, 0, TAU); ctx.fill();
           ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.arc(X - r * 0.3, Y - r * 0.2, r * 0.7, -0.6, 1.2); ctx.stroke();
