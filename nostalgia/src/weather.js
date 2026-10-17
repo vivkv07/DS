@@ -486,7 +486,7 @@
     API.stats.refl = count;
   }
   // misty halos round the lights, drawn additively into the 1/4-res atmosphere canvas (one blit for all)
-  function drawHalos(g, LW, LHh) {
+  function drawHalos(g, LW, LHh, div) {
     API.stats.halos = 0;
     const m = Math.max(rain * TUNE.halo.rain, mist);
     if (m < 0.03 || night < 0.05 || !nLights) return;
@@ -496,7 +496,7 @@
     for (let i = 0; i < nLights && n < hT.max; i++) {
       if (!LG[i]) continue;
       const k = R.k(LH[i]);
-      const X = R.sx(LX[i], k) / DIV, Y = R.sy(LY[i], k) / DIV, r = (LR[i] * k * (0.9 + hT.grow * m)) / DIV;
+      const X = R.sx(LX[i], k) / div, Y = R.sy(LY[i], k) / div, r = (LR[i] * k * (0.9 + hT.grow * m)) / div;
       if (X + r < 0 || Y + r < 0 || X - r > LW || Y - r > LHh) continue;
       g.globalAlpha = clamp(night * hT.alpha * m * LI[i], 0, 1);
       g.drawImage(colSpr[LC[i]].halo, X - r, Y - r, r * 2, r * 2);
@@ -522,6 +522,10 @@
     const halos = haloWanted();
     if (A < 0.01 && mistA < 0.02 && !halos) { API.stats.halos = 0; return; }
     const W = R.W, H = R.H, LW = Math.ceil(W / DIV), LHh = Math.ceil(H / DIV);
+    if (mistA < 0.02) { // no fog banks: no offscreen canvas at all (its blit costs ~2 ms in software raster)
+      if (halos) drawHalos(ctx, W, H, 1); else API.stats.halos = 0;
+      return;
+    }
     if (!ov) { ov = canvas(LW, LHh); ovx = ov.getContext('2d'); }
     if (ov.width !== LW || ov.height !== LHh) { ov.width = LW; ov.height = LHh; }
     const g = ovx;
@@ -548,11 +552,23 @@
       }
     }
     if (mistA >= 0.02) drawMist(g, mistA, LW, LHh);
-    if (halos) drawHalos(g, LW, LHh); else API.stats.halos = 0;
+    if (halos) drawHalos(g, LW, LHh, DIV); else API.stats.halos = 0;
     g.globalAlpha = 1;
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(ov, 0, 0, LW * DIV, LHh * DIV);
     ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(ov, 0, 0, LW * DIV, LHh * DIV);
+  }
+  // the overcast grade straight onto the frame (sky layer: under the night mask and the light glows)
+  function drawCloud(ctx) {
+    if (mist >= 0.02) return; // the fog canvas carries it then
+    const cT = TUNE.cloud;
+    const A = (cloud * (cT.day * (1 - night) + cT.night * night) + storm * cT.storm * cloud) * (1 - 0.9 * fd);
+    if (A < 0.01) return;
+    const key = Math.round(night * 16);
+    if (cloudCol.key !== key) { cloudCol.key = key; cloudCol.c = U.mix('#2e3a4c', '#040914', night); }
+    ctx.globalAlpha = clamp(A, 0, 0.85);
+    ctx.fillStyle = cloudCol.c;
+    ctx.fillRect(0, 0, R.W, R.H);
+    ctx.globalAlpha = 1;
   }
   function drawMist(g, m, LW, LHh) {
     const mT = TUNE.mist, v = R.view, Z = R.Z, W = N.world;
@@ -1134,6 +1150,7 @@
   const qRoof = timed('roof', drawRoofSplashes);
   const qEaves = timed('eaves', drawEaves);
   const qOverlay = timed('overlay', drawOverlay);
+  const qCloud = timed('cloud', drawCloud);
   const qGlare = timed('glare', drawGlare);
   const qLightning = timed('lightning', drawLightning);
   const qRain = timed('rain', drawRain);
@@ -1189,6 +1206,7 @@
     if (API.boat) q('ground', 8, qBoat);
     if (nS) q('sky', -100, qRoof);
     if (nE) q('sky', -90, qEaves);
+    if (cloud > 0.01 && mist < 0.02) q('sky', 1e9, qCloud);
     if (cloud > 0.01 || mist > 0.02 || (night > 0.05 && (rain > 0.03 || mist > 0.03))) q('light', -1, qOverlay);
     if (night > 0.05 && wet > 0.05) q('light', 9, qGlare);
     if (fd > 0.01 || (boltN && boltAge < 0.3)) q('fx', -2, qLightning);

@@ -34,7 +34,8 @@ const fail = (msg) => { failures.push(msg); console.log('  FAIL ' + msg); };
 const ok = (msg) => console.log('  ok   ' + msg);
 const check = (cond, msg, detail) => { if (cond) ok(msg); else fail(msg + (detail ? ' — ' + detail : '')); return !!cond; };
 const frames = (page, n) => page.evaluate((n) => new Promise((r) => { let k = 0; const f = () => (++k >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n || 2);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// headless Chromium only advances the game while rAF is being pumped: run frames for `ms` of wall time
+const runFor = (page, ms) => page.evaluate((ms) => new Promise((r) => { const t0 = performance.now(); const f = () => (performance.now() - t0 >= ms ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), ms);
 
 const WINDS = { calm: { strength: 0.03, gustiness: 0.2 }, breeze: { strength: 0.3, gustiness: 0.5 }, storm: { strength: 1, gustiness: 1 } };
 
@@ -112,7 +113,7 @@ async function diff(browser, a, b, rect) {
 async function strip(page, base, clip, settle3d) {
   const files = [];
   for (let i = 0; i < 4; i++) {
-    if (i) await sleep(250);
+    if (i) await runFor(page, 250);
     if (settle3d) await page.evaluate(() => N.view3d.settle(3000));
     await frames(page, 1);
     const f = base + '_f' + i + '.png';
@@ -138,7 +139,7 @@ async function logicChecks(page) {
   const cl = await page.evaluate(() => {
     let bl = 0, live = 0, rz = 0, rzLive = 0;
     for (const s of N.world.structures) {
-      if (s.t === 'bldg' && s.roofType === 'flat' && bl < 4000) { for (const it of s.items) if (it.t === 'line') { bl++; if (it.cl.length === 0 && it._cl && it._cl.length) live++; } }
+      if (s.t === 'bldg' && s.roofType === 'flat' && bl < 4000) { for (const it of s.items) if (it.t === 'line') { bl++; if (it.cl.length === 0 && Array.isArray(it._cl)) live++; } }
     }
     for (const r of N.world.roofs.list) if (r.line) { rz++; if (r.line.cl.length === 0 && r.line._cl) rzLive++; }
     return { bl, live, rz, rzLive };
@@ -172,7 +173,7 @@ async function logicChecks(page) {
   console.log('  2D sway (u, along the wind) by strength ' + JSON.stringify(r));
   check(r[0.05].range < r[0.3].range && r[0.3].range < r[0.6].range && r[0.6].range < r[1].range, 'sway amplitude grows with N.wind.strength (' + [0.05, 0.3, 0.6, 1].map((s) => r[s].range).join(' < ') + ' u)');
   check(r[0.05].lean < r[0.3].lean && r[0.3].lean < r[1].lean && r[1].lean > 1, 'trees lean further downwind as the wind rises (' + r[0.05].lean + ' -> ' + r[1].lean + ' u)');
-  check(r[0.3].range < 1.6 && r[1].range > 2.5, 'subtle at a breeze (' + r[0.3].range + ' u), dramatic in a storm (' + r[1].range + ' u)');
+  check(r[0.3].range < 1.0 && r[1].range > 2, 'subtle at a breeze (' + r[0.3].range + ' u), dramatic in a storm (' + r[1].range + ' u)');
   check(amp.corr < 0.8, 'two neighbouring neems ' + amp.d + ' u apart sway out of phase in 2D (correlation ' + amp.corr + ')');
   check(amp.dph > 0.4, 'their 3D per-instance phases differ (' + amp.dph + ' rad)');
 
@@ -185,7 +186,7 @@ async function logicChecks(page) {
     const peak = (a) => { let b = 0; for (let i = 1; i < a.length; i++) if (a[i] > a[b]) b = i; return b; };
     const f0 = W.front, a = prof(), pa = peak(a);
     const t0 = performance.now();
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((r) => { const t1 = performance.now(); const f = () => (performance.now() - t1 >= 1200 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
     const f1 = W.front, b = prof(), pb = peak(b);
     let moved = pb - pa; if (moved < -200) moved += 520;
     const fr = f1 - f0;

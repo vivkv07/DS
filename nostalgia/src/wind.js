@@ -432,6 +432,10 @@
       set(v) { d.set.call(this, v); },
     });
   }
+  // hand-placed buildings may carry `items` as an own property (not the Bldg getter): strip those now
+  function stripOwnItems() {
+    for (const s of N.world.structures || []) if (s && s.t === 'bldg' && Object.prototype.hasOwnProperty.call(s, 'items') && Array.isArray(s.items)) stripItems(s.items);
+  }
   function stripRoofZones() {
     const RF = N.world && N.world.roofs; if (!RF) return;
     for (const r of RF.list || []) if (r.line && r.line.cl && r.line.cl !== NOCL) { r.line._cl = r.line.cl; r.line.cl = NOCL; }
@@ -452,7 +456,7 @@
     if (!FX.enabled) { out.x = 0; out.y = 0; return out; }
     WI.sway(t.x, t.y, phaseOf(t), out);
     const palm = t.kind === 'palm' || t.kind === 'coconut';
-    const amp = (palm ? 4.4 : 2.6) * (t.h / 22) * FX.amp2d;
+    const amp = (palm ? 4.4 : 2.8) * (1 + 0.9 * WI.strength) * (t.h / 22) * FX.amp2d; // gusts in a storm bend harder than linear
     out.x *= amp; out.y *= amp;
     return out;
   }
@@ -875,6 +879,7 @@
   function setupWorld() {
     WX = N.world && N.world._fx;
     patchBldgItems();
+    stripOwnItems();
     stripRoofZones();
     buildFlags();
     addFlagStructures();
