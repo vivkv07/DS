@@ -93,12 +93,24 @@
     stoneCols: ['#55636f', '#c9a77c', '#4b5763', '#dcc7a2', '#66737f', '#b88f62', '#7e8b97'],
     lineDist: 30,
     throwSpeed: 160, powerSpeed: 214, aiSpeed: [138, 180], passSpeed: 115,
-    lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.5, stackT: 0.75, threatR: 34, scatter: 0.8, aiErr: [0.2, 0.11], stackErr: [0.17, 0.11], dodge: [0.25, 0.55], windup: [0.7, 0.42] },
-    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8 },
-    aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130 },
+    lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.75, stackT: 1.1, threatR: 34, scatter: 0.8, aiErr: [0.2, 0.11], stackErr: [0.17, 0.11], dodge: [0.25, 0.55], windup: [0.7, 0.42],
+      // Chinnu's own hands: a pick-up and a careful placing take a moment (he stands still, a sitting duck)
+      myPickT: 0.35, myStackT: 0.65, knockMul: 1.3, stoneFric: 95, passMe: 0.55 },
+    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 34 },
+    // the line throw: the aim starts a little off the stack (straighten it), accuracy drops with power
+    aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130, startOff: [0.06, 0.2], err: 0.026, errPow: 0.075 },
     pay: { win: 200, win3: 300, daily: 3 },
     ambient: { r: 640, far: 820, rest: 5, barkGap: [3.5, 7.5], kids: 6 },
-    clockRate: 0.25, zoom: [1, 1.8], zoomPad: 110, leaveR: 70, leaveT: 5, catchWin: 0.32,
+    clockRate: 0.25, zoom: [1, 1.8], zoomPad: 110, leaveR: 70, leaveT: 5,
+    // catching (maram pitti): ACTION raises the hands for catchWin s (x1.4 with Assist / touch), then a short cooldown
+    catchWin: 0.42, catchCD: 0.75,
+    // after a throw the thrower may not pick his own ball up again for relock s (somebody else's turn);
+    // a ball that hits a kid pops off sideways (deflect: speed range, up speed) so there is a scramble for it
+    relock: 1.4, deflect: { sp: [26, 44], vz: 19 },
+    // the AI leads a target by its velocity smoothed over leadTau s (a late sidestep beats the lead)
+    leadTau: 0.35,
+    // a free ball nobody can reach comes back onto the ground ("Ball la, ra!")
+    freeMax: { lingocha: 9, marampitti: 6, outside: 3.5 },
     heat: { adult: 15, window: 30 },
   };
   const TEAM_COL = ['#f2c230', '#e2483a'];
@@ -402,7 +414,7 @@
   const AMB = { S: null, t: 0, force: null, off: false, cool: {} };
   const BUSY = new Set();      // places_art decor sort keys of grounds taken by our games
 
-  function newBall() { return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, state: 'rest', holder: null, thrower: null, live: false, pass: false, passTo: null, bounced: 1, releaseT: -9, seq: 0, hitSet: null }; }
+  function newBall() { return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, state: 'rest', holder: null, thrower: null, live: false, pass: false, passTo: null, bounced: 1, releaseT: -9, seq: 0, hitSet: null, lockP: null, lockT: 0 }; }
   function diffFor(params) {
     const MG = N.minigames, T = (MG && MG.TUNE) || {};
     const st = settings();
@@ -429,6 +441,8 @@
       t: 0, rng: U.rng(seed), seed, d: df.d, assist: df.assist,
       parts: [], me: null, ball: newBall(), pops: [], log: [], phase: 'setup', phaseT: 0,
       ended: false, hiddenNpcs: [], auto: null, tele: null, aimTarget: null, barkT: 2, startT: now(),
+      // a game a mission started (m.minigame) survives that mission's start; a free-roam one does not
+      byMission: !!(!o.ambient && N.missions && N.missions.active),
       aim: { ang: 0, p: 0, dir: 1, charging: false, holdT: 0, drag: null, yaw: null },
       ui: { label: '', prompt: '' }, title: params.title || G.title,
       stats: { hits: 0, outs: 0, catches: 0, stacked: 0, fouls: 0, tries: 0 },
@@ -576,6 +590,7 @@
       e.x = c.x; e.y = c.y;
     }
     const sp = hyp(e.vx, e.vy);
+    smoothVel(P, e.vx, e.vy, dt);
     if (e.down) { e.anim.speed = 0; return; }
     if (P.face != null && sp < 20) e.angle += adiff(e.angle, P.face) * Math.min(1, dt * 12);
     else if (sp > 3) e.angle += adiff(e.angle, Math.atan2(e.vy, e.vx)) * Math.min(1, dt * 12);
@@ -583,6 +598,12 @@
     if (sp > 3) { e.anim.speed = Math.min(1, sp / 45); e.anim.run = sp > 58; e.anim.phase += sp * dt * (e.anim.run ? 0.2 : 0.26); }
     else { e.anim.speed = 0; e.anim.run = false; e.anim.phase *= 0.85; }
     if (e.emoteSt) { e.emoteSt.t += dt; if (e.emoteSt.t > e.emoteSt.secs) e.emoteSt = null; }
+  }
+  /** velocity smoothed over TUNE.leadTau (what a thrower reads from your run; a late sidestep fools it) */
+  function smoothVel(P, vx, vy, dt) {
+    const k = 1 - Math.exp(-dt / TUNE.leadTau);
+    P.svx = (P.svx || 0) + (vx - (P.svx || 0)) * k;
+    P.svy = (P.svy || 0) + (vy - (P.svy || 0)) * k;
   }
   function separate(S) {
     const L = S.parts;
@@ -625,6 +646,7 @@
     const b = S.ball;
     for (const Q of S.parts) Q.hold = false;
     b.state = 'held'; b.holder = P; b.thrower = null; b.live = false; b.pass = false; b.passTo = null; b.bounced = 1;
+    b.lockP = null; b.lockT = 0; S.freeT = 0;
     P.hold = true; P.holdT = 0; P.windT = 0;
     const h = holdPos(P); b.x = h.x; b.y = h.y; b.z = h.z; b.vx = b.vy = b.vz = 0;
   }
@@ -640,6 +662,8 @@
     const e = P.e;
     b.state = 'air'; b.holder = null; b.thrower = P; b.live = !o.pass && !o.dead; b.pass = !!o.pass; b.passTo = o.passTo || null;
     b.bounced = 0; b.releaseT = S.t; b.seq++; b.hitSet = new Set(); b.kind = o.kind || 'throw';
+    // somebody else's turn next: the thrower may not grab his own throw straight back
+    if (!o.pass && (o.kind || 'throw') === 'throw') { b.lockP = P; b.lockT = S.t + TUNE.relock; } else { b.lockP = null; b.lockT = 0; }
     b.x = e.x + Math.cos(ang) * 2.4; b.y = e.y + Math.sin(ang) * 2.4; b.z = TUNE.hand;
     b.vx = Math.cos(ang) * speed; b.vy = Math.sin(ang) * speed; b.vz = vz;
     if (!P.isPlayer) { e.angle = ang; } else { e.angle = e.facing = ang; }
@@ -653,7 +677,9 @@
       if (Q.isPlayer || Q === P) continue;
       Q.react = S.t + lerp(0.34, 0.12, S.d) * (0.8 + S.rng.next() * 0.5);
       Q.dodgeRoll = S.real && PG.debug.assist.noDodge ? 0 : S.rng.next() < lerp(TUNE.lingocha.dodge[0], TUNE.lingocha.dodge[1], S.d) ? 1 : 0;
-      Q.catchRoll = S.id === 'marampitti' && !(S.real && PG.debug.assist.noDodge) && S.rng.next() < 0.08 + 0.1 * S.d;
+      // a point-blank throw is hard to catch; a long one gives time to get the hands up
+      const flight = hyp(Q.e.x - e.x, Q.e.y - e.y) / Math.max(40, speed);
+      Q.catchRoll = S.id === 'marampitti' && !(S.real && PG.debug.assist.noDodge) && S.rng.next() < (0.08 + 0.1 * S.d) * clamp((flight - 0.09) / 0.16, 0, 1.2);
       if (Q === b.target && b.live && !Q.out && Q.downT <= 0) {
         // busy hands (picking / stacking) drop the job to duck only some of the time
         if (Q.act && Q.dodgeRoll && S.rng.next() < 0.55) { Q.act = null; Q.actStone = null; juke(S, Q, P); }
@@ -686,6 +712,9 @@
     if (S.id === 'marampitti') return b.state !== 'air' || b.bounced > 0;   // must bounce first
     return b.state !== 'air' || (!b.live && b.z < 3.5);
   }
+  /** P has just thrown it: not his turn to pick it up again yet */
+  function lockedOut(S, P) { const b = S.ball; return b.lockP === P && S.t < b.lockT; }
+  function canGrabP(S, b, P) { return canGrab(S, b) && !lockedOut(S, P); }
   /** where a ball in the air comes down */
   function landing(b) {
     const g = TUNE.g, vz = b.vz, z = Math.max(0, b.z);
@@ -2117,6 +2146,7 @@
       S.G.update(S, dt);
       if (S.ended) return;
       for (const P of S.parts) moveKid(S, P, dt);
+      if (S.me && N.player) smoothVel(S.me, N.player.vx || 0, N.player.vy || 0, dt);
       separate(S);
       ballStep(S, dt);
       for (const pp of S.pops) pp.t += dt;

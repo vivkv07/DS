@@ -321,7 +321,7 @@ async function gait(browser) {
     // stop: blend to a relaxed stance with both feet down
     N.input.hold('run', false); N.input.hold('up', false);
     await T3.slowmo(0.04);
-    T3.capBegin({ key: 't', step: 0.05, max: 10, follow: p, off: window.__side });
+    T3.capBegin({ key: 't', step: 0.05, max: 10, dy: 30 }); // the game's tps camera
     for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
     const s = T3.capEnd();
     const last = s.frames[s.frames.length - 1];
@@ -353,10 +353,11 @@ async function gait(browser) {
     const st = window.__start, dir = window.__dir || 0;
     p.x = st.x; p.y = st.y; await T3.raf(2);
     const v = N.vehicles.spawn('hero_cycle', p.x + Math.cos(dir + 1.57) * 6, p.y + Math.sin(dir + 1.57) * 6, dir, {});
+    const side = [Math.sin(dir) * 44, 10, -Math.cos(dir) * 44, 4.5], wide = { cw: 300, ch: 236, fov: 42 }; // camera square to the cycle
     if (!v) return { skip: 'no spawn' };
     N.view3dActors.debug.track(v);
     await T3.slowmo(0.04);
-    T3.capBegin({ key: 't', step: 0.05, max: 9, follow: v, off: [0, 7, -28, 4.5] });
+    T3.capBegin(Object.assign({ key: 't', step: 0.05, max: 9, follow: v, off: side }, wide));
     N.vehicles.enter(p, v);
     for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
     const on = T3.capEnd();
@@ -364,7 +365,7 @@ async function gait(browser) {
     // pedalling
     N.time.scale = 1; N.input.hold('up', true); await T3.raf(16);
     await T3.slowmo(0.025);
-    T3.capBegin({ key: 't', step: 0.03, max: 10, follow: v, off: [0, 7, -28, 4.5] });
+    T3.capBegin(Object.assign({ key: 't', step: 0.03, max: 10, follow: v, off: side }, wide));
     for (let i = 0; i < 500 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
     const pd = T3.capEnd();
     N.input.hold('up', false); N.time.scale = 1;
@@ -374,7 +375,7 @@ async function gait(browser) {
     // getting off
     N.view3dActors.debug.track(p);
     await T3.slowmo(0.04);
-    T3.capBegin({ key: 't', step: 0.05, max: 9, follow: p, off: [0, 7, -28, 4.5] });
+    T3.capBegin(Object.assign({ key: 't', step: 0.05, max: 9, follow: v, off: side }, wide));
     N.vehicles.exit(p);
     for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
     const off = T3.capEnd();
