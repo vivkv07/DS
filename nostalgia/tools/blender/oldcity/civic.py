@@ -520,7 +520,7 @@ def balustrade(P, face, u0, u1, z0, z1, gap, post, step=2.0, off=0.05):
 
 
 # =========================================================================== State Central Library
-@kit.asset('state_central_library', 'landmark', landmark='state_central_library', face='s', footprint=[100, 62], height=72.0, fit='footprint', floodlit=True)
+@kit.asset('state_central_library', 'landmark', landmark='state_central_library', face='s', footprint=[100, 62], height=76.0, fit='footprint', floodlit=True)
 def state_central_library(A):
     M = C.mats(
         cream=('lime_plaster', dict(base='#e8cf95', var=0.08, grain=0.05, grime=0.45, streaks=0.4, dirt='#7a6844')),
@@ -559,24 +559,23 @@ def state_central_library(A):
     # rectangular frame round the arch (pilasters + lintel band) and the panels in the spandrels
     parts.append(ff.slab(-fx + 0.4, -fx + 2.4, 3.0, fh - 3.0, 0.5, trim, name='fr_pil'))
     parts.append(ff.slab(fx - 2.4, fx - 0.4, 3.0, fh - 3.0, 0.5, trim, name='fr_pil'))
-    parts.append(ff.slab(-fx + 0.4, fx - 0.4, 34.6, 35.6, 0.5, trim, name='fr_lintel'))
-    balustrade(P, ff, -fx + 2.8, fx - 2.8, 37.6, 41.6, dark, trim, step=2.4, off=0.05)
+    parts.append(ff.slab(-fx + 0.4, fx - 0.4, 38.4, 39.2, 0.5, trim, name='fr_lintel'))
     # inside the portal: tall door, fanlight, gallery windows
     fin = Face('S', fy0 + 12.0 / 2)
     arch_win(P, fin, 0, 2.4, 7.0, 10.0, 4.0, dark, trim, f=0.4, off=0.05)
     for u in (-4.2, 0.0, 4.2):
         arch_win(P, fin, u, 19.5, 2.4, 3.6, 1.4, lit, None, off=0.05)
-    parts.append(kit.signboard('scl_sign', 'STATE CENTRAL LIBRARY', 16.0, 1.8, (0, fy0 - 0.4, 32.4), depth=0.25,
+    parts.append(kit.signboard('scl_sign', 'STATE CENTRAL LIBRARY', 16.0, 1.8, (0, fy0 - 0.4, 39.8), depth=0.25,
                                fg='#6a1a14', bg='#f6ecd2', frame_mat=trim, px=512))
     for sx in (-1, 1):
         parts += kiosk(sx * (fx - 2.2), fy0 + 2.2, fh + 0.6, 2.0, 6.4, cream, trim, dark, P)
     # wide entrance steps
     parts.append(kit.stairs('steps', 30.0, 1.4, 0.8, 3, (0, -35.5, 0), gran))
     # ---- the dome behind the portal
-    dx, dy, DZ = 0.0, 2.0, HR + 14.8      # a tall drum lifts the dome clear of the frontispiece
-    parts.append(kit.cylinder('drum', 8.6, 14.0, (dx, dy, HR), seg=14, mat=cream, cap=False))
-    parts.append(lathe_ring(dx, dy, HR + 6.0, 8.6, 0.6, 0.2, trim, seg=14))
-    ring_panels(P, dark, dx, dy, 7, 8.7, HR + 7.4, 2.4, 3.6, 1.4, phase=-math.pi / 2)
+    dx, dy, DZ = 0.0, 2.0, HR + 18.8      # a tall drum lifts the dome clear of the frontispiece
+    parts.append(kit.cylinder('drum', 8.6, 18.0, (dx, dy, HR), seg=14, mat=cream, cap=False))
+    parts.append(lathe_ring(dx, dy, HR + 10.0, 8.6, 0.6, 0.2, trim, seg=14))
+    ring_panels(P, dark, dx, dy, 7, 8.7, HR + 11.4, 2.4, 3.6, 1.4, phase=-math.pi / 2)
     parts.append(lathe('drum_top', [(9.6, DZ - 0.8), (9.6, DZ), (8.4, DZ)], seg=14, mat=trim, loc=(dx, dy, 0), close_bottom=True, close_top=False))
     parts.append(big_dome(dx, dy, DZ, 8.4, 11.0, trim, seg=14, n=7, neck=1.0, bulge=1.05, tip=0.06))
     parts.append(finial(dx, dy, DZ + 11.0 * 1.08, 0.8, M['gold']))
@@ -613,7 +612,7 @@ def state_central_library(A):
     C.finish(A, parts, tile=10.0, tex=256, ao_samples=32, ao_dist=8.0, ground_dirt=5.0)
     cols = [C.col_box('scl_main', (2 * XW, YB - YF, HR + 3), (0, (YF + YB) / 2, 0)),
             C.col_box('scl_fr', (2 * fx, fy1 - fy0, fh), (0, (fy0 + fy1) / 2, 0)),
-            C.col_box('scl_dome', (18, 18, 28), (0, 2.0, HR))]
+            C.col_box('scl_dome', (18, 18, 32), (0, 2.0, HR))]
     C.col_join(cols, 'state_central_library')
     A.notes.append('COL_state_central_library: camera-ray proxy boxes (main block, frontispiece, dome)')
     A.preview = C.shots(front_az=-30, el=12, fov=34, extra=[

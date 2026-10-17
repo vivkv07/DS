@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 148816,
+ "bytes": 146748,
  "clips": {},
  "family": "landmark",
  "file": "state_central_library.glb",
@@ -17,7 +17,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 145.3,
+ "kb": 143.3,
  "kit": 1,
  "materials": [
   "M_state_central_library_granite_grey",
@@ -31,7 +31,7 @@
  "max": [
   48.0,
   31.0,
-  59.65
+  63.65
  ],
  "meta": {
   "face": "s",
@@ -41,7 +41,7 @@
    100,
    62
   ],
-  "height": 72.0,
+  "height": 76.0,
   "landmark": "state_central_library"
  },
  "min": [
@@ -56,10 +56,10 @@
  "size": [
   96.0,
   68.6,
-  59.65
+  63.65
  ],
  "tint": null,
- "tris": 2373,
+ "tris": 2349,
  "units": "u",
  "up": "Z"
 }
