@@ -1363,6 +1363,7 @@
   INST.tanpura = plucked('tanpura', 0.5, 2.8, false);
   INST.guitar = plucked('guitar', 0.6, 0.5, false);
   INST.harp = plucked('harp', 0.5, 1.2, false);
+  const CORE_PLUCKED = new Map(Object.keys(KS_DEF).map((k) => [k, INST[k]])); // warmup only pre-renders KS for these (not ext replacements)
 
   // Monophonic breath/reed leads with meend (glide), delayed vibrato and breath noise.
   const LEADS = {
@@ -3930,7 +3931,7 @@
         const c = compile(id);
         for (const evs of c.events) if (evs) for (const e of evs) {
           const inst = c.parts[e.part].inst;
-          if (!KS_DEF[inst] || e.k !== 'n') continue;
+          if (!KS_DEF[inst] || e.k !== 'n' || (CORE_PLUCKED.has(inst) && INST[inst] !== CORE_PLUCKED.get(inst))) continue;
           for (const m of e.notes) {
             const a = m - (((m % 2) + 2) % 2), key = inst + ':' + a;
             if (!seen.has(key)) { seen.add(key); jobs.push(() => { if (ctx) ksBuffer(ctx, inst, a); }); }
