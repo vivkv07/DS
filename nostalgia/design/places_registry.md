@@ -117,3 +117,10 @@ but keep the calendar consistent with the chosen year.
 |---|---|---|---|
 | `karachi_bakery` | Karachi Bakery | beside `mozamjahi_market` | the original shop: fruit biscuits, Osmania biscuits, dil khush, plum cake; the tin boxes everyone carried to relatives; a must-buy gift run |
 | `lumbini_park` | Lumbini Park | south-east shore of Hussain Sagar, near the Secretariat | lawns, musical fountain, the boat jetty for trips to the `buddha_statue`, ice cream and balloon sellers, families on Sunday evenings |
+
+## Round 7 (user, binding)
+
+| id | Place | Notes |
+|---|---|---|
+| `necklace_road` | Necklace Road | the curving lakeside road along Hussain Sagar's west/south shore: palm and coconut trees, the railway line alongside, evening breeze, families on the parapet, corn-on-the-cob (bhutta) and tender-coconut carts, Prasads IMAX and NTR Gardens along it; perfect for races, evening drives and sunset scenes |
+| `tank_bund_statues` | Tank Bund statues | the row of statues of great Telugu personalities on tall pedestals along the Tank Bund (installed 1986), lit at night, the Buddha in the lake behind them; depict respectfully (bronze figures on stone plinths, name plaques). Good spot for clues ("count the statues", "the one pointing at the lake") and trivia cards about real historical figures (verified facts only) |
