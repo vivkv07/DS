@@ -889,6 +889,8 @@
     if (P.hold) { drop(S, P); }
     if (P.carry) { const st = P.carry; P.carry = null; st.state = 'loose'; st.by = null; st.claim = null; st.x = P.e.x; st.y = P.e.y; st.z = 0; }
     S.stats.outs += P.isPlayer ? 1 : 0;
+    // Chinnu out in lingocha: he walks to the side and watches (the round goes on)
+    if (P.isPlayer && S.real && S.id === 'lingocha' && N.player) { const q = sitSpot(S, P); S.auto = { x: q.x, y: q.y, t: 0, face: Math.atan2(S.F.cy - q.y, S.F.cx - q.x), out: true }; }
     if (by && by.isPlayer && S.real) S.stats.hits++;
     if (by) by.hits++;
     pop(S, P.e.x, P.e.y, 13, 'OUT!', '#ff7a6a', true);
@@ -1491,6 +1493,7 @@
       if (S.phase === 'roundEnd') return '';
       if (me.out) return 'OUT! Sit at the side — cheer for your team';
       if (me.team === L.seek) {
+        if (me.act) return me.act === 'stack' ? 'Placing the stone… hold still!' : 'Picking it up…';
         if (me.carry) return 'Carry it to the stack and press ' + a + ' · dodge the ball!';
         return 'Grab a stone (' + a + ') and restack · touch a hitter = SAFE · run into the ball to kick it';
       }
@@ -1783,7 +1786,8 @@
     const me = S.me, b = S.ball, p = N.player;
     if (!me.hold) {
       const d = hyp(b.x - p.x, b.y - p.y);
-      if (!b.holder && d < 7.5 && canGrab(S, b)) {
+      if (!b.holder && d < 7.5 && canGrab(S, b) && lockedOut(S, me)) offer(S, '');
+      else if (!b.holder && d < 7.5 && canGrab(S, b)) {
         offer(S, 'Pick up ball');
         if (I.pressed('action')) { give(S, me); sfx('pickup', { ui: true, vol: 0.5 }); log(S, 'grab', { name: me.name, me: true, bounced: b.bounced }); }
       } else offer(S, '');
