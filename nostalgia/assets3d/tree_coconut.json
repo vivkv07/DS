@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 50756,
+ "bytes": 50616,
  "clips": {},
  "family": "prop",
  "file": "tree_coconut.glb",
@@ -12,7 +12,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 49.6,
+ "kb": 49.4,
  "kit": 1,
  "materials": [
   "M_tree_coconut_imp",

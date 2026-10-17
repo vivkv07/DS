@@ -13,6 +13,7 @@ Animals (meta kind='animal', species matches traffic.js): animal_cow, animal_dog
 All clips are authored at 60 fps (fast wingbeats and strides need the frames; manifest clip fps = 60).
 """
 import math
+import os
 
 import bpy
 import bmesh
@@ -130,8 +131,297 @@ def seg_weights(segs, bw=0.1):
     return fn
 
 
+# =========================================================================== GLB slimming (post-export)
+def slim_glb(path, eps=2e-4, key_tol=0.0018):
+    """Rewrite the exported GLB in place: drop animation channels that never leave the node's rest
+    value (the exporter writes T/R/S for every bone in every clip; three.js keeps / restores the
+    rest value of unanimated properties), share identical keyframe-time inputs, and compact the
+    binary chunk. Pure GLB rewrite: geometry, skin and textures are byte-identical."""
+    import json as _json
+    import struct as _st
+    b = open(path, 'rb').read()
+    jl = _st.unpack('<I', b[12:16])[0]
+    J = _json.loads(b[20:20 + jl])
+    bin_off = 20 + jl + 8
+    bl = _st.unpack('<I', b[20 + jl:24 + jl])[0]
+    BIN = b[bin_off:bin_off + bl]
+    acc, bvs = J['accessors'], J['bufferViews']
+    NC = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4, 'MAT4': 16}
+
+    def raw(ai):
+        a = acc[ai]
+        v = bvs[a['bufferView']]
+        o = v.get('byteOffset', 0) + a.get('byteOffset', 0)
+        sz = {5126: 4, 5123: 2, 5125: 4, 5121: 1, 5120: 1, 5122: 2}[a['componentType']]
+        n = a['count'] * NC[a['type']]
+        return BIN[o:o + n * sz]
+
+    def floats(ai):
+        a = acc[ai]
+        r = raw(ai)
+        return _st.unpack('<%df' % (len(r) // 4), r), NC[a['type']]
+    rest = {'translation': [0, 0, 0], 'rotation': [0, 0, 0, 1], 'scale': [1, 1, 1]}
+    dropped = 0
+    for an in J.get('animations', []):
+        keep = []
+        for ch in an['channels']:
+            pth = ch['target']['path']
+            node = J['nodes'][ch['target']['node']]
+            rv = node.get(pth, rest[pth])
+            vals, n = floats(an['samplers'][ch['sampler']]['output'])
+            same = True
+            for i in range(0, len(vals), n):
+                k = vals[i:i + n]
+                d = max(abs(x - y) for x, y in zip(k, rv))
+                if pth == 'rotation':
+                    d = min(d, max(abs(x + y) for x, y in zip(k, rv)))
+                if d > eps:
+                    same = False
+                    break
+            if same:
+                dropped += 1
+                continue
+            keep.append(ch)
+        if not keep:
+            keep = an['channels'][:1]
+        used = sorted(set(c['sampler'] for c in keep))
+        remap = {o: i for i, o in enumerate(used)}
+        an['samplers'] = [an['samplers'][o] for o in used]
+        for c in keep:
+            c['sampler'] = remap[c['sampler']]
+        an['channels'] = keep
+    # drop keys that linear interpolation reproduces (rotations within ~0.2 deg, translations 1e-3 u)
+    newdata = {}
+    for an in J.get('animations', []):
+        for sm in an['samplers']:
+            tv, _ = floats(sm['input'])
+            vals, n = floats(sm['output'])
+            K = [vals[i * n:(i + 1) * n] for i in range(len(tv))]
+            if len(K) <= 2:
+                continue
+            tol = key_tol if n == 4 else key_tol * 0.5
+            keep = [0]
+            i = 0
+            while i < len(K) - 1:
+                j = i + 2
+                while j < len(K):
+                    ok = True
+                    for m in range(i + 1, j):
+                        f = (tv[m] - tv[i]) / (tv[j] - tv[i])
+                        if max(abs(K[i][c] + (K[j][c] - K[i][c]) * f - K[m][c]) for c in range(n)) > tol:
+                            ok = False
+                            break
+                    if not ok:
+                        break
+                    j += 1
+                i = j - 1
+                keep.append(i)
+            if len(K) - len(keep) < 6:
+                continue
+            ti = _st.pack('<%df' % len(keep), *[tv[k] for k in keep])
+            to = _st.pack('<%df' % (len(keep) * n), *[c for k in keep for c in K[k]])
+            newdata[id(sm)] = (ti, to, len(keep), [tv[keep[0]]], [tv[keep[-1]]])
+    # rebuilt samplers get fresh accessors appended (data kept in EXTRA)
+    EXTRA = {}
+    for an in J.get('animations', []):
+        for sm in an['samplers']:
+            if id(sm) in newdata:
+                ti, to, cnt, mn, mx = newdata[id(sm)]
+                ai = dict(acc[sm['input']], count=cnt, min=mn, max=mx)
+                ao = dict(acc[sm['output']], count=cnt)
+                ao.pop('min', None)
+                ao.pop('max', None)
+                acc.append(ai)
+                EXTRA[len(acc) - 1] = ti
+                acc.append(ao)
+                EXTRA[len(acc) - 1] = to
+                sm['input'], sm['output'] = len(acc) - 2, len(acc) - 1
+    _raw0 = raw
+
+    def raw(ai):
+        return EXTRA[ai] if ai in EXTRA else _raw0(ai)
+    # share identical time inputs
+    seen = {}
+    for an in J.get('animations', []):
+        for sm in an['samplers']:
+            key = raw(sm['input'])
+            if key in seen:
+                sm['input'] = seen[key]
+            else:
+                seen[key] = sm['input']
+    # collect used accessors
+    used_acc = []
+
+    def use(ai):
+        if ai is not None and ai not in used_acc:
+            used_acc.append(ai)
+    for m in J.get('meshes', []):
+        for pr in m['primitives']:
+            for ai in pr['attributes'].values():
+                use(ai)
+            use(pr.get('indices'))
+            for t in pr.get('targets', []):
+                for ai in t.values():
+                    use(ai)
+    for sk in J.get('skins', []):
+        use(sk.get('inverseBindMatrices'))
+    for an in J.get('animations', []):
+        for sm in an['samplers']:
+            use(sm['input'])
+            use(sm['output'])
+    amap = {o: i for i, o in enumerate(used_acc)}
+    parts = []
+    off = 0
+    nbv = []
+
+    def push(data, tmpl):
+        nonlocal off
+        pad = (4 - off % 4) % 4
+        parts.append(bytes(pad))
+        off += pad
+        v = {k: x for k, x in tmpl.items() if k in ('target', 'byteStride')}
+        v.update(buffer=0, byteOffset=off, byteLength=len(data))
+        parts.append(data)
+        off += len(data)
+        nbv.append(v)
+        return len(nbv) - 1
+    anim_acc = set()
+    out_acc = set()
+    rot_acc = set()
+    for an in J.get('animations', []):
+        for ch in an['channels']:
+            if ch['target']['path'] == 'rotation':
+                rot_acc.add(an['samplers'][ch['sampler']]['output'])
+        for sm in an['samplers']:
+            anim_acc.add(sm['input'])
+            anim_acc.add(sm['output'])
+            out_acc.add(sm['output'])
+    for sk in J.get('skins', []):
+        if 'inverseBindMatrices' in sk:
+            anim_acc.add(sk['inverseBindMatrices'])
+    nacc = []
+    blob = []
+    boff = 0
+    for ai in used_acc:
+        a = dict(acc[ai])
+        if ai in anim_acc:
+            data = raw(ai)
+            if ai in rot_acc and a['componentType'] == 5126:
+                fv = _st.unpack('<%df' % (len(data) // 4), data)
+                data = _st.pack('<%dh' % len(fv), *[int(round(max(-1.0, min(1.0, x)) * 32767)) for x in fv])
+                a['componentType'] = 5122
+                a['normalized'] = True
+            pad = (4 - boff % 4) % 4
+            blob.append(bytes(pad))
+            boff += pad
+            a['bufferView'] = -1
+            a['byteOffset'] = boff
+            blob.append(data)
+            boff += len(data)
+            if ai in out_acc:
+                a.pop('min', None)
+                a.pop('max', None)
+            nacc.append(a)
+            continue
+        v = bvs[a['bufferView']] if ai not in EXTRA else {}
+        if v.get('byteStride'):
+            o = v.get('byteOffset', 0)
+            data = BIN[o:o + v['byteLength']]
+            a['bufferView'] = push(data, v)
+        else:
+            data = raw(ai)
+            a['bufferView'] = push(data, v)
+        a.pop('byteOffset', None)
+        nacc.append(a)
+    if blob:
+        shared = push(b''.join(blob), {})
+        for a in nacc:
+            if a['bufferView'] == -1:
+                a['bufferView'] = shared
+                if not a['byteOffset']:
+                    a.pop('byteOffset')
+    for im in J.get('images', []):
+        if 'bufferView' in im:
+            v = bvs[im['bufferView']]
+            o = v.get('byteOffset', 0)
+            im['bufferView'] = push(BIN[o:o + v['byteLength']], {})
+    J['accessors'] = nacc
+    J['bufferViews'] = nbv
+    for m in J.get('meshes', []):
+        for pr in m['primitives']:
+            pr['attributes'] = {k: amap[x] for k, x in pr['attributes'].items()}
+            if 'indices' in pr:
+                pr['indices'] = amap[pr['indices']]
+            if 'targets' in pr:
+                pr['targets'] = [{k: amap[x] for k, x in t.items()} for t in pr['targets']]
+    for sk in J.get('skins', []):
+        if 'inverseBindMatrices' in sk:
+            sk['inverseBindMatrices'] = amap[sk['inverseBindMatrices']]
+    for an in J.get('animations', []):
+        for sm in an['samplers']:
+            sm['input'] = amap[sm['input']]
+            sm['output'] = amap[sm['output']]
+    nb = b''.join(parts)
+    nb += bytes((4 - len(nb) % 4) % 4)
+    J['buffers'] = [{'byteLength': len(nb)}]
+    def rnd(o):
+        if isinstance(o, float):
+            return float('%.5g' % o)
+        if isinstance(o, list):
+            return [rnd(x) for x in o]
+        if isinstance(o, dict):
+            return {k: rnd(x) for k, x in o.items()}
+        return o
+    J['nodes'] = rnd(J['nodes'])
+    for nd in J['nodes']:
+        for k in ('rotation', 'translation', 'scale'):
+            if k in nd:
+                nd[k] = [0 if abs(x) < 1e-5 else x for x in nd[k]]
+        if 'scale' in nd and max(abs(x - 1) for x in nd['scale']) < 1e-4:
+            del nd['scale']
+    for a in J['accessors']:
+        if 'min' in a:
+            a['min'] = [math.floor(x * 1e4) / 1e4 if a['componentType'] == 5126 else x for x in a['min']]
+        if 'max' in a:
+            a['max'] = [math.ceil(x * 1e4) / 1e4 if a['componentType'] == 5126 else x for x in a['max']]
+    J['asset'] = {'version': '2.0'}
+    for an in J.get('animations', []):
+        for sm in an['samplers']:
+            if sm.get('interpolation') == 'LINEAR':
+                del sm['interpolation']
+    js = _json.dumps(J, separators=(',', ':')).encode('utf8')
+    js += b' ' * ((4 - len(js) % 4) % 4)
+    out = (_st.pack('<III', 0x46546C67, 2, 12 + 8 + len(js) + 8 + len(nb)) + _st.pack('<II', len(js), 0x4E4F534A) + js
+           + _st.pack('<II', len(nb), 0x004E4942) + nb)
+    with open(path, 'wb') as f:
+        f.write(out)
+    kit.log('slim_glb %s: %d -> %d bytes, %d constant channels dropped' % (os.path.basename(path), len(b), len(out), dropped))
+    return path
+
+
+def use_slim_export():
+    """Wrap kit.export_glb for this build process (each asset builds in its own process)."""
+    if getattr(kit.export_glb, '_slim', False):
+        return
+    orig = kit.export_glb
+
+    def export_glb(A, path=None):
+        return slim_glb(orig(A, path))
+    export_glb._slim = True
+    kit.export_glb = export_glb
+    uv0 = kit.uv_atlas
+
+    def uv_atlas(objs, margin=0.004, angle=60.0):
+        # low-poly fauna: a wider angle limit keeps loft columns in one island (far fewer seam verts)
+        return uv0(objs, margin=margin, angle=UV_ANGLE)
+    kit.uv_atlas = uv_atlas
+
+
+UV_ANGLE = 80.0
+
+
 # =========================================================================== clips (armature-space poses)
-def mkclip(A, arm, name, frames, fn, loop=True, **meta):
+def mkclip(A, arm, name, frames, fn, loop=True, fps=None, **meta):
     """fn(t) -> {bone: (rotation, loc)} with rotation (euler XYZ tuple or Quaternion) and loc in
     ARMATURE axes, applied in the parent's rest frame (pivot = bone head). Converted to pose-bone
     local space for props_kit.clip."""
@@ -161,7 +451,7 @@ def mkclip(A, arm, name, frames, fn, loop=True, **meta):
             if b not in out:
                 out[b] = (Quaternion(), V((0, 0, 0)))
         return out
-    return P.clip(A, arm, name, frames, pose, loop=loop, fps=FPS_F, **meta)
+    return P.clip(A, arm, name, frames, pose, loop=loop, fps=fps or FPS_F, **meta)
 
 
 class Skel:
@@ -252,29 +542,58 @@ def check(A, arm, ob, clips, feet=()):
 
 
 # =========================================================================== birds
+BIRD_FPS = 30
+
+
+def apply_rest(arm, ob, rest):
+    """Pose bones (armature-space rotations about their heads) and make that the rest / bind pose
+    (mesh deformed + armature applied), so the static first mesh shows it (egret: neck retracted and
+    legs trailing in flight)."""
+    R = {b.name: b.matrix_local.to_3x3() for b in arm.data.bones}
+    for n, q in rest.items():
+        arm.pose.bones[n].rotation_quaternion = (R[n].inverted() @ q.to_matrix() @ R[n]).to_quaternion()
+    bpy.context.view_layer.update()
+    kit.select_only([ob], ob)
+    bpy.ops.object.modifier_apply(modifier=ob.modifiers[0].name)
+    kit.select_only([arm], arm)
+    bpy.ops.object.mode_set(mode='POSE')
+    bpy.ops.pose.armature_apply(selected=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    for pb in arm.pose.bones:
+        pb.matrix_basis = Matrix.Identity(4)
+    mod = ob.modifiers.new('Armature', 'ARMATURE')
+    mod.object = arm
+
+
 def build_bird(A, S):
-    """S: species spec (see the bird_* builders)."""
-    bpy.context.scene.render.fps = FPS_F
+    """S: species spec. Lean rig (7 bones): root (= body, at the origin), head, tail, wing_L/R,
+    wingtip_L/R. Bind pose = clean flight pose: body level at the origin, wings spread along +-X,
+    legs tucked (weighted to root). Authored standing (feet at z=0) then shifted down by bodyZ."""
+    bpy.context.scene.render.fps = BIRD_FPS
+    use_slim_export()
     sc = S.get('scale', 1.0)
     Mt = S['mats']
+    bz = S['bodyZ']
     objs = []
-    # body / neck / head loft (weights per ring)
-    body = wloft('body', S['rings'], S.get('seg', 8), Mt[S['rings'][0][4]] if isinstance(S['rings'][0][4], str) else None)
-    # rings carry material names -> resolve
-    objs.append(body)
-    # beak
+
+    def bw(w):
+        if isinstance(w, str):
+            return {('root' if w == 'body' else w): 1.0}
+        return {('root' if k == 'body' else k): x for k, x in w.items()}
+    rings = [(y, z, rx, rz, Mt[m], bw(w)) for (y, z, rx, rz, m, w) in S['rings']]
+    objs.append(wloft('body', rings, S.get('seg', 6), None))
     bk = S['beak']
     beak = P.taper('beak', bk['pts'], bk['r'], seg=bk.get('seg', 4), mat=Mt[bk['mat']], cap_end=False, squash=bk.get('squash', 1.0))
     kit.weights(beak, 'head')
     objs.append(beak)
     for s in (1, -1):
-        e = S['eye']
-        ob = octa('eye', (s * e['p'][0], e['p'][1], e['p'][2]), e['r'], Mt[e['mat']], sq=e.get('sq', (1, 1, 1)))
-        kit.weights(ob, 'head')
-        objs.append(ob)
+        if S.get('eye'):
+            e = S['eye']
+            ob = octa('eye', (s * e['p'][0], e['p'][1], e['p'][2]), e['r'], Mt[e['mat']], sq=e.get('sq', (1, 1, 1)))
+            kit.weights(ob, 'head')
+            objs.append(ob)
         for x in S.get('extras_lr', []):
-            o2 = x(s)
-            objs.append(o2)
+            objs.append(x(s))
     for x in S.get('extras', []):
         objs.append(x())
     # wings
@@ -282,6 +601,7 @@ def build_bird(A, S):
     st = Wd['stations']
     wi = Wd['wrist']
     cam = Wd.get('camber', 0.05)
+    tips = Wd.get('tips', True)
     for s, sfx in ((1, 'L'), (-1, 'R')):
         rows = []
         for (x, ly, ty, z) in st:
@@ -290,107 +610,96 @@ def build_bird(A, S):
         mf = Wd['mat']
         w = sheet('wing_' + sfx, rows, (lambda i, k, mf=mf: Mt[mf(i, k)]) if callable(mf) else Mt[mf])
         wx = st[wi][0]
-        kit.weights(w, lambda co, s=s, wx=wx, sfx=sfx: (
-            {'wing_' + sfx: 1.0} if abs(co.x) < wx - 0.06 * sc else
-            {'wingtip_' + sfx: 1.0} if abs(co.x) > wx + 0.06 * sc else
-            {'wing_' + sfx: 0.5, 'wingtip_' + sfx: 0.5}))
+        if not tips:
+            kit.weights(w, 'wing_' + sfx)
+        else:
+            kit.weights(w, lambda co, wx=wx, sfx=sfx: (
+                {'wing_' + sfx: 1.0} if abs(co.x) < wx - 0.06 * sc else
+                {'wingtip_' + sfx: 1.0} if abs(co.x) > wx + 0.06 * sc else
+                {'wing_' + sfx: 0.5, 'wingtip_' + sfx: 0.5}))
         objs.append(w)
         for (b0, b1, wd, lift) in Wd.get('fingers', []):
             p0 = V((s * b0[0], b0[1], b0[2]))
             p1 = V((s * b1[0], b1[1], b1[2] + lift))
-            pm = p0.lerp(p1, 0.55) + V((0, 0, lift * 0.3))
             side = V((0, 1, 0))
             f = sheet('finger', [[p0 - side * wd * 0.5, p0 + side * wd * 0.5],
-                                 [pm - side * wd * 0.55, pm + side * wd * 0.55],
-                                 [p1 - side * wd * 0.12, p1 + side * wd * 0.12]], Mt[Wd['finger_mat']])
-            kit.weights(f, 'wingtip_' + sfx)
+                                 [p1 - side * wd * 0.15, p1 + side * wd * 0.15]], Mt[Wd['finger_mat']])
+            kit.weights(f, ('wingtip_' if tips else 'wing_') + sfx)
             objs.append(f)
-    # tail
     if S.get('tail'):
         T = S['tail']
         rows = []
         for (y, hw, z, notch) in T['rows']:
-            rows.append([(-hw, y, z), (-hw * 0.5, y + notch * 0.5, z + 0.01), (0, y + notch, z + 0.015),
-                         (hw * 0.5, y + notch * 0.5, z + 0.01), (hw, y, z)])
+            rows.append([(-hw, y, z), (0, y + notch, z + 0.015), (hw, y, z)])
         tm = T['mat']
         tl = sheet('tail', rows, (lambda i, k, tm=tm: Mt[tm(i, k)]) if callable(tm) else Mt[tm])
         kit.weights(tl, 'tail')
         objs.append(tl)
-    # legs (built standing, then tucked back: the bind pose is a clean flight pose)
-    legobjs = []
-    bz = S['bodyZ']
-    tuck = S['clip'].get('tuck', 1.35)
+    # legs: one thin 3-sided spindle each, tucked back under the belly (feet clutch the wire when perched)
+    lift = bz
     if S.get('legs'):
         L = S['legs']
-        for s, sfx in ((1, 'L'), (-1, 'R')):
-            hx, hy, hz = L['hip']
-            fy = L['foot_y']
-            pts = [(s * hx, hy, hz)] + [(s * hx * k, y, z) for (k, y, z) in L.get('mid', [])] + [(s * hx, fy, 0.02 * sc)]
-            lg = P.taper('leg', pts, L['r'], seg=3, mat=Mt[L['mat']], cap_end=False)
-            kit.weights(lg, 'leg_' + sfx)
-            legobjs.append(lg)
-            tl_ = L['toe']
-            tw = tl_ * 0.12
-            fx = s * hx
-            toes = []
-            for ang in (-0.45, 0.0, 0.45, math.pi):
-                d = V((math.sin(ang) * s, -math.cos(ang), 0))
-                ln = tl_ * (0.6 if ang == math.pi else 1.0)
-                sd = V((d.y, -d.x, 0)) * tw
-                b = V((fx, fy, 0.025 * sc))
-                toes.append(sheet('toe', [[b - sd, b + sd], [b + d * ln - sd * 0.3, b + d * ln + sd * 0.3]], Mt[L['mat']]))
-            for o in toes:
-                kit.weights(o, 'leg_' + sfx)
-            legobjs += toes
-    if S.get('legs'):
-        hip = V(S['legs']['hip'])
-        hip.x = 0
+        tuck = L.get('tuck', 0.9)
+        hx, hy, hz = L['hip']
+        hip = V((0, hy, hz))
+        lb = L.get('bones', False)
         Mk = Matrix.Translation(hip) @ Matrix.Rotation(tuck, 4, 'X') @ Matrix.Translation(-hip)
-        for o in legobjs:
-            o.data.transform(Mk)
-        objs += legobjs
+        for s, sfx in ((1, 'L'), (-1, 'R')):
+            pts = [(s * hx, hy, hz)] + [(s * hx, y, z) for (y, z) in L.get('mid', [])] + [(s * hx, L['foot_y'], 0.0)]
+            lg = P.taper('leg', pts, L['r'], seg=3, mat=Mt[L['mat']], cap_end=True)
+            if lb:
+                kit.weights(lg, 'leg_' + sfx)
+                for (toe_d, ln) in ((-1, L.get('toe', 0.0)), (1, L.get('toe', 0.0) * 0.5)):
+                    if ln:
+                        t = sheet('toe', [[(s * hx - 0.02, L['foot_y'], 0.01), (s * hx + 0.02, L['foot_y'], 0.01)],
+                                          [(s * hx - 0.01, L['foot_y'] + toe_d * ln, 0.01), (s * hx + 0.01, L['foot_y'] + toe_d * ln, 0.01)]], Mt[L['mat']])
+                        kit.weights(t, 'leg_' + sfx)
+                        objs.append(t)
+            else:
+                lg.data.transform(Mk)
+                kit.weights(lg, 'root')
+            objs.append(lg)
+        lift = bz if lb else bz - (Mk @ V((0, L['foot_y'], 0.0))).z
     for o in objs:
         o.data.transform(Matrix.Translation((0, 0, -bz)))
-    # rig (body centre at the origin)
+    lift = S.get('perch_lift', lift)
+    S['lift'] = lift
     B = S['bones']
-    bones = [('root', (0, 0, 0), (0, -0.4 * sc, 0), None),
-             ('body', B['body'][0], B['body'][1], 'root')]
-    hp = 'body'
+    bones = [('root', (0, 0, bz), (0, -0.4 * sc, bz), None)]
+    hp = 'root'
     if 'neck' in B:
-        bones.append(('neck', B['neck'][0], B['neck'][1], 'body'))
+        bones.append(('neck', B['neck'][0], B['neck'][1], 'root'))
         hp = 'neck'
     bones.append(('head', B['head'][0], B['head'][1], hp))
     sh, wr, tp = V(B['shoulder']), V(B['wrist']), V(B['tip'])
     for s, sfx in ((1, 'L'), (-1, 'R')):
         m = V((s, 1, 1))
-        bones.append(('wing_' + sfx, sh * m, wr * m, 'body'))
-        bones.append(('wingtip_' + sfx, wr * m, tp * m, 'wing_' + sfx))
+        if tips:
+            bones.append(('wing_' + sfx, sh * m, wr * m, 'root'))
+            bones.append(('wingtip_' + sfx, wr * m, tp * m, 'wing_' + sfx))
+        else:
+            bones.append(('wing_' + sfx, sh * m, tp * m, 'root'))
     if 'tail' in B:
-        bones.append(('tail', B['tail'][0], B['tail'][1], 'body'))
-    if S.get('legs'):
-        hx, hy, hz = S['legs']['hip']
+        bones.append(('tail', B['tail'][0], B['tail'][1], 'root'))
+    rest = dict(S.get('rest_pose', {}))
+    if S.get('legs') and S['legs'].get('bones'):
+        L = S['legs']
         for s, sfx in ((1, 'L'), (-1, 'R')):
-            bones.append(('leg_' + sfx, (s * hx, hy, hz), (s * hx, S['legs']['foot_y'], 0.0), S.get('leg_parent', 'root')))
-    if S.get('legs'):
-        bones = [b if not b[0].startswith('leg_') else (b[0], V(b[1]), Mk @ V(b[2]), b[3]) for b in bones]
-    bones = [(n, V(h) - V((0, 0, bz)), V(t) - V((0, 0, bz)), p) for n, h, t, p in bones]
-    bones[0] = ('root', V((0, 0, 0)), V((0, -0.4 * sc, 0)), None)
-    arm = P.rig(A, A.id + '_rig', [(n, tuple(h), tuple(t), p) for n, h, t, p in bones])
-    ob = P.finish_prop(A, objs, size=S.get('tex', 64), double=True, ao_strength=0.45)
+            bones.append(('leg_' + sfx, (s * L['hip'][0], L['hip'][1], L['hip'][2]), (s * L['hip'][0], L['foot_y'], 0.0), 'root'))
+        rest['leg_L'] = rest['leg_R'] = qe(L.get('tuck', 0.9), 0, 0)
+    S['rest'] = rest
+    off = V((0, 0, bz))
+    arm = P.rig(A, A.id + '_rig', [(n, tuple(V(h) - off), tuple(V(t) - off), p) for n, h, t, p in bones])
+    for o in objs:
+        kit.smooth(o, 85.0)
+    ob = P.finish_prop(A, objs, size=S.get('tex', 64), double=True, ao_strength=0.45, orm=False)
     P.skin(A, ob, arm)
+    if rest:
+        apply_rest(arm, ob, rest)
+    A.meta['origin'] = 'body centre; bind pose = flight pose (wings along +-X, legs tucked). perch lifts the root by perchLift so the feet are on z = 0'
+    A.meta['perchLift'] = round(lift, 3)
+    A.meta['bodyZ'] = round(lift, 3)
     return arm, ob
-
-
-def ring_mats(S):
-    """Resolve ring material names to materials (in place)."""
-    Mt = S['mats']
-    rr = []
-    for r in S['rings']:
-        r = list(r)
-        if isinstance(r[4], str):
-            r[4] = Mt[r[4]]
-        rr.append(tuple(r))
-    S['rings'] = rr
 
 
 # ---------------------------------------------------------------- bird clips
@@ -399,165 +708,130 @@ def bird_clips(A, arm, S, ob):
     beat = C['beat']                   # seconds per wingbeat
     amp, off = C.get('amp', 0.75), C.get('off', 0.1)
     tamp = C.get('tamp', 0.55)
-    tuck = C.get('tuck', 1.35)
     bob = C.get('bob', 0.06)
     fold = C['fold']                   # (rx, rz, loc, tip_rz)
-    neck_fly = C.get('neck_fly')       # egret: (neck rx, head rx)
-    has_legs = bool(S.get('legs'))
-
-    bz = S['bodyZ']
-
-    def landed(Pd):
-        Pd['root'] = (None, (0, 0, bz))
-        if has_legs:
-            LR(Pd, 'leg', qe(-tuck, 0, 0))
+    neck_fly = C.get('neck_fly')       # egret: (neck rx, head rx) in flight; rest pose = standing neck
+    lift = S['lift']
+    names = [b.name for b in arm.data.bones]
 
     def flight_common(Pd):
         if neck_fly:
             Pd['neck'] = (qe(neck_fly[0], 0, 0), None)
             Pd['head'] = (qe(neck_fly[1], 0, 0), None)
 
-    # flap: t = 0 wings fully up; downstroke ~0..0.45
     def flap(t):
+        # t = 0: wings fully up; downstroke takes ~45 % of the beat
         ph = t / 0.45 * 0.5 if t < 0.45 else 0.5 + (t - 0.45) / 0.55 * 0.5
         c = math.cos(TAU * ph)
-        sdn = max(0.0, math.sin(TAU * ph))          # downstroke
-        sup = max(0.0, -math.sin(TAU * ph))         # upstroke
+        sdn = max(0.0, math.sin(TAU * ph))
+        sup = max(0.0, -math.sin(TAU * ph))
         th = amp * c + off
-        tht = tamp * math.cos(TAU * ph - 0.7) + 0.05
+        tht = tamp * math.cos(TAU * ph - 0.5) + 0.05
         Pd = {}
         LR(Pd, 'wing', qe(0.12 * sdn - 0.05 * sup, -th, -0.12 * sdn + 0.18 * sup))
         LR(Pd, 'wingtip', qe(0.10 * sdn, -tht, 0.55 * sup * C.get('tipsweep', 1.0)))
         Pd['root'] = (None, (0, 0, -bob * c))
-        Pd['tail'] = (qe(0.08 * c, 0, 0), None)
         flight_common(Pd)
         return Pd
 
     def glide(t):
         g = C.get('glide', {})
         s1 = math.sin(TAU * t)
-        s2 = math.sin(TAU * t * 2 + 0.6)
         Pd = {}
-        LR(Pd, 'wing', qe(0.03 * s2, -(g.get('dih', 0.1) + 0.03 * s2), -g.get('fwd', 0.05)))
-        LR(Pd, 'wingtip', qe(0.0, -(g.get('tipup', 0.05) + 0.03 * s1), g.get('tipback', 0.1)))
-        Pd['body'] = (qe(0.02 * s2, g.get('bank', 0.04) * s1, 0), None)
-        Pd['tail'] = (qe(0.05 * s2, g.get('twist', 0.1) * s1, 0), None)
-        Pd['head'] = (qe(0, -0.5 * g.get('bank', 0.04) * s1, 0.12 * math.sin(TAU * t + 1.0)), None)
-        Pd['root'] = (None, (0, 0, 0.04 * s1))
+        LR(Pd, 'wing', qe(0.0, -(g.get('dih', 0.1) + 0.04 * s1), -g.get('fwd', 0.05)))
+        Pd['root'] = (qe(0, g.get('bank', 0.04) * s1, 0), None)
+        Pd['tail'] = (qe(0.0, g.get('twist', 0.1) * s1, 0), None)
         flight_common(Pd)
         return Pd
-
-    def folded(Pd):
-        rx, rz, loc, trz = fold
-        LR(Pd, 'wing', qe(0, 0, rz) @ qe(rx, 0, 0), loc)
-        LR(Pd, 'wingtip', qe(0, 0, trz))
 
     pp = C.get('perch_pitch', 0.0)
 
     def perch(t):
         Pd = {}
-        folded(Pd)
-        landed(Pd)
-        # head: quick turns (look left, back, right, back) + a small nod
+        # inner wing (shoulder -> wrist) points forward-down along the shoulder, the hand lies back along
+        # the flank (chord vertical, leading edge up): fold = (rx tilt, rz inner, rz hand (world), loc)
+        rx, rzi, rzt, loc = fold
+        qw = qe(0, 0, rzi) @ qe(rx, 0, 0)
+        LR(Pd, 'wing', qw, loc)
+        LR(Pd, 'wingtip', qw.inverted() @ (qe(0, 0, rzt) @ qe(rx, 0, 0)))
         yaw = 0.7 * win(t, 0.10, 0.14, 0.32, 0.36) - 0.6 * win(t, 0.55, 0.59, 0.80, 0.84)
         nod = 0.15 * win(t, 0.42, 0.45, 0.48, 0.51)
-        br = 0.012 * math.sin(TAU * t * 2)
-        Pd['body'] = (qe(pp + br, 0, 0), None)
-        Pd['head'] = (qe(-pp + nod, 0, yaw), None)
-        if 'tail' in [b.name for b in arm.data.bones]:
-            Pd['tail'] = (qe(-pp * 0.5 + 0.35 * win(t, 0.66, 0.68, 0.70, 0.74), 0, 0), None)
-        if neck_fly:
-            Pd['neck'] = (qe(0, 0, 0.4 * yaw), None)
-        return Pd
-
-    def peck(t):
-        Pd = {}
-        folded(Pd)
-        landed(Pd)
-        k = win(t, 0.05, 0.22, 0.38, 0.50) + win(t, 0.55, 0.68, 0.80, 0.95)
-        jab = 0.12 * (win(t, 0.24, 0.27, 0.30, 0.34) + win(t, 0.70, 0.73, 0.75, 0.79))
-        pk = C.get('peck', (0.7, 0.6, 0.0))
-        Pd['body'] = (qe(pk[0] * k, 0, 0), None)
-        if neck_fly:
-            Pd['neck'] = (qe(pk[2] * k + jab, 0, 0), None)
-            Pd['head'] = (qe(pk[1] * k, 0, 0), None)
+        Pd['root'] = (qe(pp, 0, 0), (0, 0, lift))
+        rest = S.get('rest', {})
+        for lg in ('leg_L', 'leg_R'):
+            if lg in rest:
+                Pd[lg] = (rest[lg].inverted(), None)
+        if 'neck' in names:
+            rn = rest.get('neck', Quaternion())
+            rh = rest.get('head', Quaternion())
+            Pd['neck'] = (qe(0, 0, 0.4 * yaw) @ rn.inverted(), None)
+            Pd['head'] = (rh.inverted() @ qe(-pp + nod, 0, 0.6 * yaw), None)
         else:
-            Pd['head'] = (qe(pk[1] * k + jab, 0, 0), None)
-        Pd['tail'] = (qe(-0.4 * k, 0, 0), None)
+            Pd['head'] = (qe(-pp + nod, 0, yaw), None)
+        if 'tail' in names:
+            Pd['tail'] = (qe(-pp * 0.5 + 0.35 * win(t, 0.66, 0.68, 0.70, 0.74), 0, 0), None)
         return Pd
 
-    nb = max(6, int(round(beat * FPS_F)))
-    mkclip(A, arm, 'flap', nb, flap, beat=round(nb / FPS_F, 4))
-    mkclip(A, arm, 'glide', int(C.get('glide_s', 3.0) * FPS_F), glide)
-    mkclip(A, arm, 'perch', int(C.get('perch_s', 2.5) * FPS_F), perch)
-    if C.get('peck'):
-        mkclip(A, arm, 'peck', int(1.4 * FPS_F), peck)
-    check(A, arm, ob, ['perch', 'flap', 'glide'] + (['peck'] if C.get('peck') else []), feet=['leg_L', 'leg_R'])
+    nb = max(6, int(round(beat * BIRD_FPS)))
+    mkclip(A, arm, 'flap', nb, flap, fps=BIRD_FPS, beat=round(nb / BIRD_FPS, 4))
+    mkclip(A, arm, 'glide', int(C.get('glide_s', 2.0) * BIRD_FPS), glide, fps=BIRD_FPS)
+    mkclip(A, arm, 'perch', int(C.get('perch_s', 2.0) * BIRD_FPS), perch, fps=BIRD_FPS)
+    check(A, arm, ob, ['perch', 'flap', 'glide'])
 
 
-def bird_previews(A, S, main='perch', main_frame=20):
-    H = S['height']
+def bird_previews(A, S, main='perch', main_frame=10):
     span = A.meta['wingspan']
     fr = A.clips['flap']['frames']
     A.preview = {
         'shots': [{'clip': main, 'frame': main_frame, 'size': 384, 'samples': 20, 'view': {'az': -40, 'el': 16, 'fov': 30}},
-                  {'name': 'fly', 'clip': 'glide' if main != 'glide' else 'flap', 'frame': 0 if main != 'glide' else fr // 2, 'size': 320, 'samples': 16,
-                   'view': {'az': -30, 'el': 40, 'fov': 30}}],
+                  {'name': 'rest', 'size': 320, 'samples': 16, 'view': {'az': -30, 'el': 40, 'fov': 30}}],
         'sheet': {'name': 'sheet', 'size': 160, 'samples': 10, 'cols': 8,
                   'view': {'az': -20, 'el': 10, 'fov': 30, 'target': (0, 0, 0.0), 'dist': span * 1.0 / math.tan(math.radians(15)) * 0.62},
-                  'frames': [('flap', int(round(fr * k / 6))) for k in range(6)] + [('glide', 0), (main if main != 'glide' else 'perch', 30)]},
+                  'frames': [('flap', int(round(fr * k / 6))) for k in range(6)] + [('glide', 0), (main if main != 'glide' else 'perch', 12)]},
     }
 
 
 def flock_meta(**k):
     return k
 
-
-# ---------------------------------------------------------------- species
 @kit.asset('bird_pigeon', 'prop', kind='bird', species='pigeon',
            flock=flock_meta(size=[6, 30], perch=['ground', 'roof', 'wire', 'ledge'], alt=[8, 60], speed=[45, 70], startle=True,
                             habitat=['charminar', 'market', 'station', 'old_city'], sound='coo'))
 def bird_pigeon(A):
     Mt = {
-        'body': mat('feather_grey', 'pg_body', base='#8c93a3'),
-        'back': mat('feather_grey', 'pg_back', base='#9aa1b0'),
+        'body': mat('feather_grey', 'pg_body', base='#a3aab8'),
         'neckp': mat('feather_grey', 'pg_neckp', base='#6a5a86', rough=0.4),
         'neckg': mat('feather_grey', 'pg_neckg', base='#4f8a72', rough=0.4),
-        'head': mat('feather_grey', 'pg_head', base='#6f778a'),
+        'head': mat('feather_grey', 'pg_head', base='#858ca0'),
         'beak': mat('feather_black', 'pg_beak', base='#3a3436'),
-        'eye': mat('beak_red', 'pg_eye', base='#e07a28'),
         'leg': mat('beak_red', 'pg_leg', base='#c45a5e'),
-        'wing': mat('feather_grey', 'pg_wing', base='#a7aebb'),
+        'wing': mat('feather_grey', 'pg_wing', base='#bcc2ce'),
         'bar': mat('feather_black', 'pg_bar', base='#2e3036'),
-        'tip': mat('feather_grey', 'pg_tip', base='#4d5260'),
+        'tip': mat('feather_grey', 'pg_tip', base='#5a6070'),
         'tail': mat('feather_grey', 'pg_tail', base='#7f8696'),
     }
-    S = dict(mats=Mt, height=1.2, tex=64, rings=[
-        (0.50, 0.68, 0.07, 0.05, 'body', 'body'),
-        (0.30, 0.63, 0.20, 0.18, 'body', 'body'),
-        (0.05, 0.62, 0.29, 0.27, 'body', 'body'),
-        (-0.20, 0.70, 0.28, 0.28, 'neckp', 'body'),
-        (-0.33, 0.86, 0.19, 0.18, 'neckg', {'body': 0.5, 'head': 0.5}),
-        (-0.40, 1.00, 0.14, 0.14, 'head', 'head'),
-        (-0.45, 1.10, 0.15, 0.15, 'head', 'head'),
-        (-0.57, 1.12, 0.11, 0.10, 'head', 'head'),
-        (-0.64, 1.10, 0.05, 0.05, 'head', 'head'),
+    S = dict(mats=Mt, bodyZ=0.62, tex=64, rings=[
+        (0.48, 0.67, 0.07, 0.05, 'body', 'body'),
+        (0.20, 0.62, 0.23, 0.21, 'body', 'body'),
+        (-0.08, 0.64, 0.29, 0.28, 'neckp', 'body'),
+        (-0.30, 0.80, 0.21, 0.20, 'neckg', {'body': 0.5, 'head': 0.5}),
+        (-0.42, 1.01, 0.14, 0.14, 'head', 'head'),
+        (-0.50, 1.11, 0.15, 0.14, 'head', 'head'),
+        (-0.63, 1.10, 0.06, 0.06, 'head', 'head'),
     ],
-        beak=dict(pts=[(0, -0.62, 1.10), (0, -0.80, 1.06)], r=[0.045, 0.012], mat='beak'),
-        eye=dict(p=(0.10, -0.52, 1.15), r=0.035, mat='eye'),
-        wing=dict(stations=[(0.14, -0.20, 0.36, 0.84), (0.60, -0.26, 0.42, 0.88), (1.05, -0.24, 0.36, 0.90),
-                            (1.45, -0.10, 0.26, 0.90), (1.72, 0.08, 0.16, 0.89)], wrist=2,
-                  mat=lambda i, k: 'tip' if i >= 2 else ('bar' if (k == 1 and i <= 1) else 'wing')),
-        tail=dict(rows=[(0.42, 0.10, 0.67, 0.0), (0.78, 0.17, 0.63, 0.0), (0.97, 0.21, 0.60, 0.02)],
+        beak=dict(pts=[(0, -0.61, 1.10), (0, -0.80, 1.06)], r=[0.045, 0.012], mat='beak'),
+        wing=dict(stations=[(0.14, -0.20, 0.34, 0.84), (0.60, -0.24, 0.36, 0.87), (1.15, -0.22, 0.30, 0.90),
+                            (1.72, 0.02, 0.18, 0.89)], wrist=1,
+                  mat=lambda i, k: 'tip' if i >= 2 else ('bar' if (k == 1 and i == 0) else 'wing')),
+        tail=dict(rows=[(0.42, 0.10, 0.67, 0.0), (0.80, 0.17, 0.63, 0.0), (0.97, 0.21, 0.60, 0.02)],
                   mat=lambda i, k: 'bar' if i == 1 else 'tail'),
-        legs=dict(hip=(0.10, 0.02, 0.45), foot_y=-0.02, r=[0.035, 0.03], mat='leg', toe=0.14),
-        bones=dict(body=((0, 0.02, 0.62), (0, -0.3, 0.62)), head=((0, -0.34, 0.88), (0, -0.55, 1.12)),
-                   tail=((0, 0.42, 0.67), (0, 0.97, 0.6)), shoulder=(0.14, -0.1, 0.84), wrist=(1.05, -0.08, 0.9), tip=(1.72, 0.1, 0.89)),
-        clip=dict(beat=0.28, amp=0.8, off=0.15, fold=(-1.25, 1.66, (0.13, 0.0, 0.0), 0.12), peck=(0.75, 0.55, 0.0)),
+        legs=dict(hip=(0.09, 0.02, 0.42), foot_y=-0.02, r=[0.035, 0.03], mat='leg', tuck=1.3),
+        bones=dict(head=((0, -0.30, 0.82), (0, -0.55, 1.12)), tail=((0, 0.42, 0.67), (0, 0.97, 0.6)),
+                   shoulder=(0.14, -0.1, 0.84), wrist=(0.60, -0.1, 0.87), tip=(1.72, 0.1, 0.89)),
+        clip=dict(beat=0.28, amp=0.8, off=0.15, fold=(0.0, 1.69, 1.69, (0.0, 0.0, -0.08)), perch_pitch=-0.08, tamp=0.35),
     )
-    ring_mats(S)
     arm, ob = build_bird(A, S)
-    A.meta.update(wingspan=3.44, length=1.8, bodyZ=0.62, perchClip='perch', flightClips=['flap', 'glide'])
+    A.meta.update(wingspan=3.44, length=1.8, perchClip='perch', flightClips=['flap', 'glide'])
     bird_clips(A, arm, S, ob)
     bird_previews(A, S)
 
@@ -570,37 +844,32 @@ def bird_crow(A):
         'black': mat('feather_black', 'cr_black', base='#1e1f24', rough=0.55),
         'grey': mat('feather_grey', 'cr_grey', base='#6e6c6c'),
         'beak': mat('feather_black', 'cr_beak', base='#141416', rough=0.4),
-        'eye': mat('feather_black', 'cr_eye', base='#3a2a20'),
         'leg': mat('feather_black', 'cr_leg', base='#222224'),
-        'wing': mat('feather_black', 'cr_wing', base='#24262c', rough=0.5),
+        'wing': mat('feather_black', 'cr_wing', base='#26282e', rough=0.5),
         'tip': mat('feather_black', 'cr_tip', base='#18191d', rough=0.5),
     }
-    S = dict(mats=Mt, height=1.4, tex=64, rings=[
+    S = dict(mats=Mt, bodyZ=0.79, tex=64, rings=[
         (0.55, 0.88, 0.08, 0.06, 'black', 'body'),
-        (0.32, 0.81, 0.22, 0.21, 'black', 'body'),
-        (0.05, 0.79, 0.30, 0.30, 'black', 'body'),
-        (-0.22, 0.87, 0.27, 0.28, 'grey', 'body'),
-        (-0.36, 1.03, 0.19, 0.19, 'grey', {'body': 0.5, 'head': 0.5}),
-        (-0.42, 1.17, 0.16, 0.17, 'grey', 'head'),
-        (-0.48, 1.27, 0.17, 0.17, 'black', 'head'),
-        (-0.62, 1.28, 0.12, 0.12, 'black', 'head'),
+        (0.25, 0.80, 0.25, 0.24, 'black', 'body'),
+        (-0.05, 0.81, 0.30, 0.30, 'black', 'body'),
+        (-0.30, 0.96, 0.23, 0.23, 'grey', {'body': 0.5, 'head': 0.5}),
+        (-0.43, 1.17, 0.16, 0.17, 'grey', 'head'),
+        (-0.53, 1.28, 0.17, 0.17, 'black', 'head'),
         (-0.70, 1.25, 0.07, 0.07, 'black', 'head'),
     ],
         beak=dict(pts=[(0, -0.66, 1.25), (0, -0.85, 1.21), (0, -0.99, 1.14)], r=[0.075, 0.045, 0.008], mat='beak', squash=0.8),
-        eye=dict(p=(0.12, -0.60, 1.31), r=0.035, mat='eye'),
-        wing=dict(stations=[(0.16, -0.22, 0.48, 0.98), (0.80, -0.30, 0.55, 1.02), (1.30, -0.28, 0.48, 1.05),
-                            (1.70, -0.15, 0.34, 1.05)], wrist=2, mat=lambda i, k: 'tip' if i >= 2 else 'wing',
-                  fingers=[((1.70, -0.13 + 0.12 * j, 1.05), (2.02 - 0.06 * j, -0.12 + 0.17 * j, 1.05), 0.11, 0.05) for j in range(4)],
+        wing=dict(stations=[(0.16, -0.22, 0.48, 0.98), (0.72, -0.30, 0.55, 1.02), (1.30, -0.28, 0.46, 1.05),
+                            (1.70, -0.15, 0.34, 1.05)], wrist=1, mat=lambda i, k: 'tip' if i >= 2 else 'wing',
+                  fingers=[((1.70, -0.08 + 0.13 * j, 1.05), (2.02 - 0.07 * j, -0.06 + 0.14 * j, 1.05), 0.12, 0.04) for j in range(3)],
                   finger_mat='tip'),
-        tail=dict(rows=[(0.50, 0.11, 0.86, 0.0), (0.85, 0.18, 0.80, 0.0), (1.12, 0.21, 0.76, 0.04)], mat='black'),
-        legs=dict(hip=(0.11, 0.03, 0.55), foot_y=0.0, r=[0.04, 0.03], mat='leg', toe=0.18),
-        bones=dict(body=((0, 0.03, 0.79), (0, -0.3, 0.79)), head=((0, -0.36, 1.03), (0, -0.62, 1.28)),
-                   tail=((0, 0.5, 0.86), (0, 1.12, 0.76)), shoulder=(0.16, -0.12, 0.98), wrist=(1.30, -0.10, 1.05), tip=(2.02, 0.12, 1.05)),
-        clip=dict(beat=0.32, amp=0.75, off=0.12, fold=(-1.25, 1.66, (0.16, 0.0, 0.0), 0.12), peck=(0.65, 0.55, 0.0)),
+        tail=dict(rows=[(0.50, 0.11, 0.86, 0.0), (1.12, 0.21, 0.76, 0.04)], mat='black'),
+        legs=dict(hip=(0.11, 0.03, 0.55), foot_y=0.0, r=[0.04, 0.03], mat='leg', tuck=1.3),
+        bones=dict(head=((0, -0.30, 0.96), (0, -0.62, 1.28)), tail=((0, 0.5, 0.86), (0, 1.12, 0.76)),
+                   shoulder=(0.16, -0.12, 0.98), wrist=(0.72, -0.12, 1.02), tip=(2.02, 0.12, 1.05)),
+        clip=dict(beat=0.32, amp=0.75, off=0.12, fold=(0.0, 1.69, 1.69, (0.0, 0.0, -0.1)), perch_pitch=-0.08, tamp=0.35),
     )
-    ring_mats(S)
     arm, ob = build_bird(A, S)
-    A.meta.update(wingspan=4.04, length=2.1, bodyZ=0.79, perchClip='perch', flightClips=['flap', 'glide'])
+    A.meta.update(wingspan=4.04, length=2.1, perchClip='perch', flightClips=['flap', 'glide'])
     bird_clips(A, arm, S, ob)
     bird_previews(A, S)
 
@@ -610,45 +879,39 @@ def bird_crow(A):
                             habitat=['sky'], sound='whistle'))
 def bird_kite(A):
     Mt = {
-        'brown': mat('feather_brown', 'kt_brown', base='#5e4430'),
+        'brown': mat('feather_brown', 'kt_brown', base='#4e3826'),
         'pale': mat('feather_brown', 'kt_pale', base='#8a6e54'),
         'cere': mat('beak_yellow', 'kt_cere', base='#d8b440'),
         'beak': mat('feather_black', 'kt_beak', base='#2a2624'),
-        'eye': mat('feather_black', 'kt_eye', base='#c8a040'),
-        'leg': mat('beak_yellow', 'kt_leg', base='#d0aa3a'),
-        'wing': mat('feather_brown', 'kt_wing', base='#5a402c'),
-        'cov': mat('feather_brown', 'kt_cov', base='#7a5e44'),
-        'tip': mat('feather_black', 'kt_tip', base='#2e2620'),
+        'wing': mat('feather_brown', 'kt_wing', base='#4a3424'),
+        'cov': mat('feather_brown', 'kt_cov', base='#6a5038'),
+        'tip': mat('feather_black', 'kt_tip', base='#221a14'),
         'tail': mat('feather_brown', 'kt_tail', base='#5c4634'),
     }
-    S = dict(mats=Mt, height=1.9, tex=128, rings=[
+    S = dict(mats=Mt, bodyZ=1.1, tex=64, rings=[
         (0.80, 1.22, 0.12, 0.10, 'brown', 'body'),
-        (0.45, 1.13, 0.32, 0.30, 'brown', 'body'),
-        (0.05, 1.10, 0.42, 0.42, 'brown', 'body'),
-        (-0.35, 1.20, 0.38, 0.38, 'pale', 'body'),
-        (-0.55, 1.42, 0.24, 0.24, 'pale', {'body': 0.5, 'head': 0.5}),
-        (-0.62, 1.60, 0.22, 0.22, 'pale', 'head'),
-        (-0.70, 1.70, 0.24, 0.23, 'pale', 'head'),
-        (-0.86, 1.70, 0.16, 0.15, 'cere', 'head'),
-        (-0.95, 1.67, 0.08, 0.08, 'cere', 'head'),
+        (0.40, 1.12, 0.34, 0.32, 'brown', 'body'),
+        (0.00, 1.10, 0.42, 0.42, 'brown', 'body'),
+        (-0.38, 1.22, 0.36, 0.36, 'pale', {'body': 0.5, 'head': 0.5}),
+        (-0.60, 1.52, 0.23, 0.23, 'pale', 'head'),
+        (-0.72, 1.69, 0.24, 0.23, 'pale', 'head'),
+        (-0.93, 1.67, 0.09, 0.09, 'cere', 'head'),
     ],
-        beak=dict(pts=[(0, -0.93, 1.68), (0, -1.07, 1.65), (0, -1.13, 1.55)], r=[0.075, 0.05, 0.01], mat='beak', squash=0.8),
-        eye=dict(p=(0.15, -0.82, 1.76), r=0.05, mat='eye'),
+        beak=dict(pts=[(0, -0.92, 1.68), (0, -1.07, 1.65), (0, -1.13, 1.55)], r=[0.075, 0.05, 0.01], mat='beak', squash=0.8),
         wing=dict(stations=[(0.30, -0.36, 0.95, 1.32), (1.30, -0.44, 1.00, 1.38), (2.30, -0.42, 0.88, 1.42),
-                            (3.00, -0.28, 0.62, 1.42)], wrist=2, camber=0.05,
+                            (3.00, -0.28, 0.62, 1.48)], wrist=1, camber=0.05,
                   mat=lambda i, k: 'tip' if i >= 2 else ('cov' if k == 0 else 'wing'),
-                  fingers=[((3.0, -0.22 + 0.15 * j, 1.42), (4.02 - 0.08 * j, -0.30 + 0.21 * j, 1.42), 0.14, 0.10 + 0.02 * j) for j in range(6)],
+                  fingers=[((3.0, -0.22 + 0.19 * j, 1.48), (3.98 - 0.1 * j, -0.30 + 0.27 * j, 1.48), 0.22, 0.16 + 0.03 * j) for j in range(5)],
                   finger_mat='tip'),
         tail=dict(rows=[(0.75, 0.16, 1.18, 0.0), (1.45, 0.30, 1.12, 0.0), (2.15, 0.40, 1.06, -0.28)], mat='tail'),
-        legs=dict(hip=(0.16, 0.05, 0.8), foot_y=-0.02, r=[0.09, 0.05, 0.045], mid=[(1.0, 0.04, 0.45)], mat='leg', toe=0.26),
-        bones=dict(body=((0, 0.05, 1.10), (0, -0.4, 1.10)), head=((0, -0.55, 1.42), (0, -0.86, 1.70)),
-                   tail=((0, 0.75, 1.18), (0, 2.15, 1.06)), shoulder=(0.3, -0.2, 1.32), wrist=(2.3, -0.2, 1.42), tip=(4.0, 0.2, 1.42)),
-        clip=dict(beat=0.6, amp=0.55, off=0.12, tamp=0.4, bob=0.12, fold=(-1.25, 1.62, (0.2, 0.0, 0.0), 0.1),
-                  glide=dict(dih=0.07, fwd=0.07, tipup=0.12, tipback=0.22, bank=0.07, twist=0.22), glide_s=3.0, perch_s=3.0),
+        bones=dict(head=((0, -0.38, 1.22), (0, -0.86, 1.70)), tail=((0, 0.75, 1.18), (0, 2.15, 1.06)),
+                   shoulder=(0.3, -0.2, 1.32), wrist=(1.3, -0.2, 1.38), tip=(4.0, 0.2, 1.48)),
+        perch_lift=0.62,
+        clip=dict(beat=0.6, amp=0.55, off=0.12, tamp=0.4, bob=0.12, fold=(0.0, 1.66, 1.66, (0.0, 0.0, -0.14)), perch_pitch=-0.12,
+                  glide=dict(dih=0.07, fwd=0.07, bank=0.07, twist=0.22), glide_s=3.0, perch_s=3.0),
     )
-    ring_mats(S)
     arm, ob = build_bird(A, S)
-    A.meta.update(wingspan=8.04, length=3.3, bodyZ=1.1, perchClip='perch', flightClips=['glide', 'flap'], mainClip='glide')
+    A.meta.update(wingspan=8.0, length=3.3, perchClip='perch', flightClips=['glide', 'flap'], mainClip='glide')
     bird_clips(A, arm, S, ob)
     bird_previews(A, S, main='glide', main_frame=0)
 
@@ -669,7 +932,7 @@ def bird_parakeet(A):
         'tip': mat('feather_green', 'pk_tip', base='#2e6a4a'),
         'tail': mat('feather_green', 'pk_tail', base='#4a9a7a'),
     }
-    S = dict(mats=Mt, height=1.0, tex=64, rings=[
+    S = dict(mats=Mt, bodyZ=0.45, height=1.0, tex=64, rings=[
         (0.32, 0.50, 0.06, 0.05, 'green', 'body'),
         (0.18, 0.47, 0.15, 0.15, 'green', 'body'),
         (0.00, 0.48, 0.19, 0.19, 'light', 'body'),
@@ -693,9 +956,8 @@ def bird_parakeet(A):
                    tail=((0, 0.28, 0.5), (0, 1.55, 0.42)), shoulder=(0.10, -0.06, 0.62), wrist=(0.75, -0.04, 0.66), tip=(1.18, 0.1, 0.66)),
         clip=dict(beat=0.2, amp=0.85, off=0.12, fold=(-1.25, 1.66, (0.08, 0.0, 0.0), 0.12), perch_pitch=-0.55),
     )
-    ring_mats(S)
     arm, ob = build_bird(A, S)
-    A.meta.update(wingspan=2.36, length=2.0, bodyZ=0.45, perchClip='perch', flightClips=['flap', 'glide'])
+    A.meta.update(wingspan=2.36, length=2.0, perchClip='perch', flightClips=['flap', 'glide'])
     bird_clips(A, arm, S, ob)
     bird_previews(A, S)
 
@@ -711,7 +973,7 @@ def bird_egret(A):
         'leg': mat('feather_black', 'eg_leg', base='#2a2a26'),
         'wing': mat('feather_white', 'eg_wing', base='#f4f2ec'),
     }
-    S = dict(mats=Mt, height=4.5, tex=64, seg=8, rings=[
+    S = dict(mats=Mt, bodyZ=2.45, height=4.5, tex=64, seg=8, rings=[
         (0.85, 2.55, 0.08, 0.06, 'white', 'body'),
         (0.55, 2.48, 0.25, 0.24, 'white', 'body'),
         (0.15, 2.45, 0.33, 0.32, 'white', 'body'),
@@ -730,15 +992,14 @@ def bird_egret(A):
         wing=dict(stations=[(0.25, -0.32, 0.62, 2.68), (1.00, -0.40, 0.72, 2.72), (1.60, -0.38, 0.62, 2.76),
                             (2.10, -0.20, 0.42, 2.76), (2.35, 0.00, 0.22, 2.76)], wrist=2, mat='wing'),
         tail=dict(rows=[(0.80, 0.12, 2.56, 0.0), (1.15, 0.18, 2.50, 0.03)], mat='white'),
-        legs=dict(hip=(0.12, 0.15, 2.30), foot_y=0.05, r=[0.06, 0.045, 0.03], mid=[(1.0, 0.22, 1.25)], mat='leg', toe=0.34),
+        legs=dict(hip=(0.12, 0.15, 2.30), foot_y=0.05, r=[0.06, 0.045, 0.03], mid=[(0.22, 1.25)], mat='leg', toe=0.34),
         bones=dict(body=((0, 0.15, 2.45), (0, -0.3, 2.45)), neck=((0, -0.5, 2.75), (0, -0.40, 3.80)), head=((0, -0.40, 3.80), (0, -0.75, 4.20)),
                    tail=((0, 0.8, 2.56), (0, 1.15, 2.5)), shoulder=(0.25, -0.2, 2.68), wrist=(1.6, -0.15, 2.76), tip=(2.35, 0.1, 2.76)),
         clip=dict(beat=0.42, amp=0.6, off=0.1, tamp=0.4, bob=0.08, tuck=1.5, neck_fly=(1.1, -1.1),
                   fold=(-1.25, 1.62, (0.12, 0.0, 0.0), 0.12), peck=(0.35, 0.3, 0.9), perch_s=3.0),
     )
-    ring_mats(S)
     arm, ob = build_bird(A, S)
-    A.meta.update(wingspan=4.7, length=2.5, standHeight=4.45, bodyZ=2.45, perchClip='perch', flightClips=['flap', 'glide'])
+    A.meta.update(wingspan=4.7, length=2.5, standHeight=4.45, perchClip='perch', flightClips=['flap', 'glide'])
     bird_clips(A, arm, S, ob)
     bird_previews(A, S)
 
@@ -761,7 +1022,7 @@ def bird_myna(A):
         o = octa('patch', (s * 0.105, -0.47, 1.02), 0.06, Mt['yellow'], sq=(0.45, 1.0, 0.8))
         kit.weights(o, 'head')
         return o
-    S = dict(mats=Mt, height=1.1, tex=64, rings=[
+    S = dict(mats=Mt, bodyZ=0.6, height=1.1, tex=64, rings=[
         (0.45, 0.66, 0.07, 0.06, 'white', 'body'),
         (0.36, 0.64, 0.13, 0.12, 'brown', 'body'),
         (0.28, 0.62, 0.18, 0.17, 'brown', 'body'),
@@ -786,9 +1047,8 @@ def bird_myna(A):
                    tail=((0, 0.40, 0.66), (0, 0.92, 0.61)), shoulder=(0.14, -0.08, 0.74), wrist=(0.82, -0.06, 0.78), tip=(1.25, 0.1, 0.78)),
         clip=dict(beat=0.26, amp=0.8, off=0.15, fold=(-1.25, 1.66, (0.1, 0.0, 0.0), 0.12), peck=(0.7, 0.55, 0.0)),
     )
-    ring_mats(S)
     arm, ob = build_bird(A, S)
-    A.meta.update(wingspan=2.5, length=1.66, bodyZ=0.6, perchClip='perch', flightClips=['flap', 'glide'])
+    A.meta.update(wingspan=2.5, length=1.66, perchClip='perch', flightClips=['flap', 'glide'])
     bird_clips(A, arm, S, ob)
     bird_previews(A, S)
 
@@ -888,7 +1148,7 @@ def bat(A):
     mkclip(A, arm, 'hang', int(3.0 * FPS_F), hang, upsideDown=True)
     mkclip(A, arm, 'perch', int(3.0 * FPS_F), hang, upsideDown=True, alias='hang')
     check(A, arm, ob, ['flap', 'hang'])
-    A.meta.update(wingspan=2.0, length=0.56, bodyZ=0.5, perchClip='hang', flightClips=['flap', 'glide'],
+    A.meta.update(wingspan=2.0, length=0.56, perchClip='hang', flightClips=['flap', 'glide'],
                   hangNote='hang/perch: feet at the origin (the branch), body hangs below (z < 0)')
     fr = A.clips['flap']['frames']
     A.preview = {
@@ -904,6 +1164,7 @@ def bat(A):
 def build_quad(A, Q):
     """Q: species spec. Returns (arm, ob, skel)."""
     bpy.context.scene.render.fps = FPS_F
+    use_slim_export()
     Mt = Q['mats']
     objs = []
     J = Q['joints']
@@ -969,7 +1230,9 @@ def build_quad(A, Q):
         bones.append(('leg_%s_upper' % lg, L['P'], L['K'], par))
         bones.append(('leg_%s_lower' % lg, L['K'], L['F'], 'leg_%s_upper' % lg))
     arm = P.rig(A, A.id + '_rig', [(n, tuple(h), tuple(t), p) for n, h, t, p in bones])
-    ob = P.finish_prop(A, objs, size=Q.get('tex', 128), double=False, ao_strength=0.55)
+    for o in objs:
+        kit.smooth(o, 70.0)
+    ob = P.finish_prop(A, objs, size=Q.get('tex', 128), double=False, ao_strength=0.55, orm=False)
     P.skin(A, ob, arm)
     return arm, ob, Skel(arm)
 

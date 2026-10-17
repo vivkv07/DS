@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 31312,
+ "bytes": 28080,
  "clips": {},
  "family": "prop",
  "file": "tree_banana.glb",
@@ -12,37 +12,37 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 30.6,
+ "kb": 27.4,
  "kit": 1,
  "materials": [
   "M_tree_banana_imp",
   "M_tree_banana"
  ],
  "max": [
-  77.344,
-  8.408,
-  15.068
+  80.371,
+  8.608,
+  18.61
  ],
  "meta": {
   "crown": [
-   17.737,
-   17.855
+   18.26,
+   18.604
   ],
   "doubleSided": true,
-  "height": 15.068,
+  "height": 18.61,
   "impostor": {
    "billboard": "cylindrical",
    "from": 800,
-   "h": 15.179,
+   "h": 18.705,
    "node": "tree_banana_IMPOSTOR",
    "offset": [
-    67.599,
+    70.183,
     0,
     0
    ],
-   "w": 17.737,
-   "x0": -7.992,
-   "z0": -0.111
+   "w": 18.26,
+   "x0": -8.072,
+   "z0": -0.095
   },
   "kind": "banana",
   "lods": [
@@ -55,29 +55,29 @@
      0,
      0
     ],
-    "tris": 244
+    "tris": 228
    },
    {
     "from": 180,
     "lod": 1,
     "node": "tree_banana_LOD1",
     "offset": [
-     22.533,
+     23.394,
      0,
      0
     ],
-    "tris": 80
+    "tris": 64
    },
    {
     "from": 420,
     "lod": 2,
     "node": "tree_banana_LOD2",
     "offset": [
-     45.066,
+     46.789,
      0,
      0
     ],
-    "tris": 64
+    "tris": 40
    }
   ],
   "tree": true,
@@ -92,19 +92,19 @@
   }
  },
  "min": [
-  -7.992,
-  -9.447,
-  -0.111
+  -8.072,
+  -9.996,
+  -0.095
  ],
  "notes": [],
  "script": "props_trees",
  "size": [
-  85.336,
-  17.855,
-  15.179
+  88.443,
+  18.604,
+  18.705
  ],
  "tint": null,
- "tris": 390,
+ "tris": 334,
  "units": "u",
  "up": "Z"
 }

@@ -67,10 +67,15 @@ def add_rings(m, period, col, amount=0.6, sharp=(0.55, 0.9), wobble=0.25):
     return m
 
 
-def leafmat(name, base, specks=0.9, scale=0.08, var=0.25, grain=0.5, dirt=None, rough=0.6, **kw):
-    """Foliage material: leafy light/dark speckle at roughly leaf-cluster size (survives 256 px)."""
-    return P.M('leaf', name=name, base=base, specks=specks, scale=scale, var=var, grain=grain,
-               dirt=dirt or kit.shade(base, 0.45), rough=rough, **kw)
+def leafmat(name, base, specks=0.9, scale=0.08, var=0.25, grain=0.5, dirt=None, rough=0.6, dapple=0.55, **kw):
+    """Foliage material: leafy light/dark speckle plus big sunlit / shadowed leaf-cluster dapples
+    (2-4 u, so they survive a 128 px atlas)."""
+    m = P.M('leaf', name=name, base=base, specks=specks, scale=scale, var=var, grain=grain,
+            dirt=dirt or kit.shade(base, 0.45), rough=rough, **kw)
+    if dapple:
+        add_patches(m, kit.shade(base, 1.45), 0.55, 0.55, 0.62, dapple, seed=4.2, detail=2.0)
+        add_patches(m, kit.shade(base, 0.6), 0.45, 0.56, 0.64, dapple, seed=8.7, detail=2.0)
+    return m
 
 
 # =========================================================================== geometry helpers
@@ -238,12 +243,22 @@ def uv_atlas_trees(objs, margin=0.004, angle=60.0):
                                  correct_aspect=True, scale_to_bounds=False)
     # texel share: wood (rings, bark) gets more, foliage (flat noise) less
     bpy.ops.object.mode_set(mode='OBJECT')
+    # normalise every object's UV scale to its surface area (unwrap leaves islands at arbitrary
+    # sizes), times its texel factor `uvs`, so pack_islands gives even texel density
     for o in objs:
-        f = o.get('uvs', 1.0)
-        if abs(f - 1.0) > 1e-3:
-            uv = o.data.uv_layers.active.data
-            for l in uv:
-                l.uv = l.uv * f
+        me = o.data
+        uv = me.uv_layers.active.data
+        ua = 0.0
+        for poly in me.polygons:
+            pts = [uv[i].uv for i in poly.loop_indices]
+            for k in range(1, len(pts) - 1):
+                ua += abs((pts[k] - pts[0]).cross(pts[k + 1] - pts[0])) / 2
+        sa = sum(p.area for p in me.polygons)
+        if ua < 1e-12 or sa < 1e-9:
+            continue
+        f = o.get('uvs', 1.0) * math.sqrt(sa / ua) * 0.01
+        for l in uv:
+            l.uv = l.uv * f
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     try:
@@ -255,6 +270,25 @@ def uv_atlas_trees(objs, margin=0.004, angle=60.0):
     except Exception as e:
         kit.log('pack_islands failed', e)
     bpy.ops.object.mode_set(mode='OBJECT')
+
+
+def soft_normals(ob, center, k=0.75, squash=(1.0, 1.0, 1.0)):
+    """Stylised-foliage normals: blend each vertex normal toward the direction from the crown
+    centre, so a crown of low-poly clumps shades like one soft leafy mass (no gem facets)."""
+    me = ob.data
+    c = V(center)
+    out = []
+    for v in me.vertices:
+        d = v.co - c
+        d = V((d.x / squash[0], d.y / squash[1], d.z / squash[2]))
+        d = d.normalized() if d.length > 1e-6 else V((0, 0, 1))
+        n = (v.normal * (1 - k) + d * k).normalized()
+        out.append(n)
+    try:
+        me.normals_split_custom_set_from_vertices(out)
+    except Exception as e:
+        kit.log('soft normals failed', e)
+    return ob
 
 
 def tris(ob):
@@ -277,6 +311,7 @@ class Tree:
         self.above = above
         self.parts = []
         self.n = 0
+        self.soft = None   # (crown centre, blend, squash) -> soft foliage normals
 
     def bend(self, co, *_):
         z = max(0.0, co.z)
@@ -290,7 +325,7 @@ class Tree:
         return '%s_%03d' % (s, self.n)
 
     def add(self, ob, l0=0, l1=2, smooth=True):
-        if smooth:
+        if smooth and not ob.data.has_custom_normals:
             kit.smooth(ob, 180.0)
         P.lod(ob, l0, l1)
         self.parts.append(ob)
@@ -322,6 +357,9 @@ class Tree:
         else:
             ob = lump(self.name('clump'), r, loc=c, seg=seg, rings=rings, noise=noise, seed=sd, mat=mat, scale=scale, flat_bottom=flat)
         P.wind(ob, self.bend, ph, flutter)
+        kit.smooth(ob, 180.0)
+        if self.soft is not None and flutter > 0:
+            soft_normals(ob, self.soft[0], self.soft[1], self.soft[2])
         return self.add(ob, *lods)
 
     def spray(self, base, d, length, width, mat, n=5, spread=1.4, droop=0.35, lods=(0, 0), phase=None):
@@ -329,6 +367,9 @@ class Tree:
         ob = fan(self.name('spray'), base, d, length, width, n=n, spread=spread, droop=droop, mat=mat,
                         seed=self.rnd.randrange(10 ** 6))
         P.wind(ob, self.bend, ph, 1.0)
+        kit.smooth(ob, 180.0)
+        if self.soft is not None:
+            soft_normals(ob, self.soft[0], self.soft[1], self.soft[2])
         return self.add(ob, *lods)
 
     def finish(self, kind, tex=256, lod_tris=(None, None, None), **kw):
@@ -339,7 +380,7 @@ class Tree:
         # fewer UV islands = fewer split vertices (positions stay float in the pack: vertex count
         # drives size): smart-project with a wide angle limit while this tree bakes
         orig = kit.uv_atlas
-        kit.uv_atlas = lambda objs, margin=0.004, angle=60.0: uv_atlas_trees(objs, margin=margin, angle=UV_ANGLE)
+        kit.uv_atlas = lambda objs, margin=0.004, angle=60.0: uv_atlas_trees(objs, margin=UV_MARGIN, angle=UV_ANGLE)
         try:
             return P.finish_tree(self.A, self.parts, kind, lod_tris=lod_tris, tex=tex, **kw)
         finally:
@@ -347,6 +388,7 @@ class Tree:
 
 
 UV_ANGLE = 85.0
+UV_MARGIN = 0.012   # ~1.5 px at 128: no colour bleed between islands
 WOOD_UV = 1.8
 
 
@@ -601,7 +643,7 @@ def build_palm(A):
                      1.2, '#7a746a', amount=0.4, sharp=(0.65, 0.95))
     T.trunk(pts, radii, seg=6, mat=bark, lods=(0, 0))
     T.trunk([pts[0], pts[NP - 1]], [radii[0], radii[NP - 1]], seg=5, mat=bark, lods=(1, 1))
-    T.trunk([pts[0], pts[NP - 1] + V((0, 0, 7.0))], [radii[0], 0.5], seg=4, mat=shaft_mat(), lods=(2, 2))
+    T.trunk([pts[0], pts[NP - 1] + V((0, 0, 7.0))], [radii[0], 0.5], seg=4, mat=bark, lods=(2, 2))
     # glossy green crownshaft
     shaft = shaft_mat()
     top0 = pts[-1]
@@ -619,8 +661,8 @@ def build_palm(A):
     for k in range(N):
         az = k * math.radians(137.5)
         a = k / (N - 1)
-        fronds.append(dict(az=az, L=rnd.uniform(16.5, 18.5) - 2.0 * (1 - a) ** 2, e0=68 - 58 * a, e1=-35 - 35 * a + rnd.uniform(-6, 6),
-                           dz=-0.9 * a, hang=-5 + 30 * a, nleaf=6, lods=(0, 0), plume=0.2, leaf_len=5.2, sweep=0.7, sag=0.08))
+        fronds.append(dict(az=az, L=rnd.uniform(19.0, 21.0) - 2.5 * (1 - a) ** 2, e0=62 - 55 * a, e1=-45 - 30 * a + rnd.uniform(-6, 6),
+                           dz=-0.9 * a, hang=15 + 25 * a, nleaf=6, lods=(0, 0), plume=0.25, leaf_len=6.0, sweep=0.75, sag=0.15))
     lod1 = [dict(az=f['az'], L=f['L'], e0=f['e0'], e1=f['e1'], dz=f['dz'], nleaf=3, hang=f['hang'], leaf_len=4.5, sweep=0.5) for f in fronds[:7]]
     lod2 = [dict(az=f['az'], L=f['L'], e0=f['e0'], e1=f['e1'], dz=f['dz'], nleaf=2, hang=10, leaf_len=5.0, sweep=0.4) for f in fronds[:5]]
     build_palm_crown(T, top, fronds, gm, None, lod1=lod1, lod2=lod2, tb=0.22)
@@ -669,7 +711,7 @@ def banana_leaf(name, base, az, L, W, rise, mat, seed=0, n=4, torn=0.35, hang=12
 
 @kit.asset('tree_banana', 'prop', kind='banana')
 def build_banana(A):
-    T = Tree(A, 9909, zt=12.0, tb=0.3, Rc=9.0)
+    T = Tree(A, 9909, zt=15.0, tb=0.3, Rc=9.0)
     rnd = T.rnd
     stem = P.M('leaf', name='ban_stem', base='#7a8a48', var=0.2, grain=0.25, grime=0.4, dirt='#4a3a22', scale=1.5)
     stem = add_patches(stem, '#6a5034', 0.9, 0.55, 0.65, 0.8)
@@ -677,31 +719,31 @@ def build_banana(A):
           P.M('frond', name='bana_l2', base='#6aa443', var=0.15, grain=0.12, scale=0.9),
           add_patches(P.M('frond', name='bana_l3', base='#5a9236', var=0.15, grain=0.12, scale=0.9), '#a89a4a', 0.7, 0.6, 0.7, 0.9)]
     dry = P.M('frond_dry', name='bana_dry', base='#7a5e36', var=0.2, grain=0.2)
-    stems = [(V((0, 0, 0)), V((0.4, -0.3, 13.0)), 1.0), (V((2.2, 1.2, 0)), V((3.4, 2.0, 10.5)), 0.85), (V((-1.8, 1.6, 0)), V((-2.6, 2.4, 8.5)), 0.7)]
+    stems = [(V((0, 0, 0)), V((0.4, -0.3, 16.0)), 1.05), (V((2.2, 1.2, 0)), V((3.4, 2.0, 13.0)), 0.9), (V((-1.8, 1.6, 0)), V((-2.6, 2.4, 10.0)), 0.72)]
     for si, (b, t, r) in enumerate(stems):
-        for lv, sg, pp in (((0, 0), 5, [b, b.lerp(t, 0.5), t]), ((1, 2), 4, [b, t])):
+        for lv, sg, pp in (((0, 0), 5, [b, b.lerp(t, 0.5), t]), ((1, 2 if si < 2 else 1), 4, [b, t])):
             ob = taper(T.name('stem'), pp, [r, r * 0.62] if len(pp) == 2 else [r, r * 0.8, r * 0.62], seg=sg, mat=stem, cap_end=False)
             ob['uvs'] = WOOD_UV
             P.wind(ob, lambda co, i, tz=t.z: 0.3 * min(1.0, max(0.0, co.z) / tz) ** 1.4, 0.0, 0.0)
             T.add(ob, *lv)
-        nl = (5, 4, 3)[si]
+        nl = (5, 4, 2)[si]
         for k in range(nl):
             az = k * 2 * math.pi / nl + si * 0.9 + rnd.uniform(-0.3, 0.3)
-            L = (11.0, 9.5, 8.0)[si] * rnd.uniform(0.85, 1.1)
-            rise = rnd.uniform(45, 70) if k else 80
+            L = (12.0, 10.5, 8.5)[si] * rnd.uniform(0.85, 1.1)
+            rise = rnd.uniform(60, 78) if k else 86
             ob, o = banana_leaf(T.name('leaf'), t + V((0, 0, -0.3)), az, L, L * 0.34, rise, lm[(k + si) % 3], seed=rnd.randrange(10 ** 6))
             ph = rnd.random()
             P.wind(ob, lambda co, i, o=o, L=L: 0.3 + 0.7 * min(1.0, (co - o).length / L) ** 1.2, ph,
                    lambda co, i, o=o, L=L: 0.3 + 0.7 * min(1.0, (co - o).length / L))
             T.add(ob, 0, 0)
-            if k < (3, 2, 2)[si]:
+            if k < (2, 2, 1)[si]:
                 ob, o = banana_leaf(T.name('leaf1'), t + V((0, 0, -0.3)), az, L, L * 0.36, rise, lm[(k + si) % 3], seed=rnd.randrange(10 ** 6), n=3, torn=0.0)
                 P.wind(ob, lambda co, i, o=o, L=L: 0.3 + 0.7 * min(1.0, (co - o).length / L) ** 1.2, ph,
                        lambda co, i, o=o, L=L: 0.3 + 0.7 * min(1.0, (co - o).length / L))
-                T.add(ob, 1, 2 if k < (2, 2, 1)[si] else 1)
+                T.add(ob, 1, 2 if (k == 0 and si < 2) or (k == 1 and si == 0) else 1)
         if si == 0:
             # a dry leaf hanging down the stem + a bunch with its purple bud
-            ob, o = banana_leaf(T.name('dry'), t + V((0, 0, -1.2)), 2.4, 7.0, 2.0, -60, dry, seed=5, n=4, torn=0.5, hang=40)
+            ob, o = banana_leaf(T.name('dry'), t + V((0, 0, -1.2)), 2.4, 7.0, 2.0, -60, dry, seed=5, n=3, torn=0.5, hang=40)
             P.wind(ob, lambda co, i, o=o: 0.3 + 0.4 * min(1.0, (co - o).length / 7.0), rnd.random(), 0.3)
             T.add(ob, 0, 0)
             bunch_c = t + V((1.4, -1.6, -2.2))
@@ -716,11 +758,12 @@ def build_banana(A):
 
 # =========================================================================== broadleaf trees
 def crown(T, c, radii, mats, n0, r0, n_s, r_s, n1, r1, n2, r2, spray_mat=None, sprays=None, flat=0.35, shell=0.55,
-          scale0=(1, 1, 0.8), top_bias=0.25, seg0=(6, 3), seg1=(6, 3), noise0=0.28):
+          scale0=(1, 1, 0.8), top_bias=0.25, seg0=(6, 3), seg1=(6, 3), noise0=0.28, shell_n=0, shell_kw=None):
     """Vertex-lean crown: LOD0 = n0 big lumps (seg0) + n_s small lumps (5x3) + star sprays on the
     silhouette; LOD1 = n1 masses; LOD2 = n2 masses. Returns the LOD0 big clump centres."""
     rnd = T.rnd
     c = V(c)
+    T.soft = (c, 0.7, tuple(r / max(radii) for r in radii))
     big = scatter(rnd, c, (radii[0] - r0 * 0.7, radii[1] - r0 * 0.7, radii[2] - r0 * 0.6), n0, shell=shell,
                   top_bias=top_bias, min_d=r0 * 0.9)
     for p in big:
@@ -734,6 +777,21 @@ def crown(T, c, radii, mats, n0, r0, n_s, r_s, n1, r1, n2, r2, spray_mat=None, s
                 scale=scale0, noise=0.25)
     if spray_mat is not None and sprays:
         edge_sprays(T, c, radii, big + small, spray_mat, **sprays)
+    if shell_n:
+        # leafy star sprays lying on the crown shell: break the clump silhouettes everywhere
+        kw = dict(length=4.5, blades=4, spread=2.2, droop=0.25, zmin=-0.45, lift=0.35)
+        kw.update(shell_kw or {})
+        pts = scatter(rnd, c, radii, shell_n, shell=0.97, top_bias=top_bias, min_d=kw['length'] * 0.9)
+        for i, p in enumerate(pts):
+            q = p - c
+            qn = V((q.x / radii[0], q.y / radii[1], q.z / radii[2]))
+            if qn.z < kw['zmin']:
+                continue
+            outv = qn.normalized()
+            d = (outv + V((0, 0, kw['lift'])) + V((rnd.uniform(-0.3, 0.3), rnd.uniform(-0.3, 0.3), 0))).normalized()
+            m = kw.get('mat') or spray_mat or mats[i % len(mats)]
+            T.spray(p - outv * 0.8, d, kw['length'] * rnd.uniform(0.8, 1.2), 1.0, m, n=kw['blades'], spread=kw['spread'],
+                    droop=kw['droop'], lods=(0, 0))
     l1 = scatter(rnd, c, (radii[0] - r1 * 0.7, radii[1] - r1 * 0.7, radii[2] - r1 * 0.6), n1, shell=0.45,
                  top_bias=top_bias, min_d=r1 * 0.8)
     for i, p in enumerate(l1):
@@ -763,14 +821,12 @@ def build_neem(A):
     bark = P.M('bark', name='neem_bark', base='#55493f', var=0.14, grain=0.3, grime=0.5, dirt='#221c18', scale=2.5)
     tp = [V((0, 0, 0)), V((0.3, 0.1, 5)), V((0.6, 0, 10.5))]
     T.trunk(tp, [1.35, 0.95, 0.8], seg=6, mat=bark, lods=(0, 0), flute_kw=dict(lobes=3, amp=0.12, zmax=2.5, flare=0.35))
-    T.trunk([tp[0], tp[-1]], [1.35, 0.8], seg=4, mat=bark, lods=(1, 2))
     c = V((0.4, 0, 20.5))
     radii = (12.0, 11.5, 9.0)
-    mats = [leafmat('neem_l1', '#34602a'), leafmat('neem_l2', '#3f6e2e'), leafmat('neem_l3', '#4e8036')]
-    big = crown(T, c, radii, mats, 13, 4.1, 0, 2.6, 6, 5.6, 3, 7.6,
-                spray_mat=leafmat('neem_spray', '#467630', specks=0.4),
-                sprays=dict(n_per=1, length=3.4, width=0.9, blades=4, droop=0.3, outer=0.85, zmin=c.z - 2),
-                flat=0.35, shell=0.5, scale0=(1, 1, 0.85))
+    T.trunk([tp[0], tp[-1], c - V((0, 0, 3.0))], [1.35, 0.8, 0.5], seg=4, mat=bark, lods=(1, 2))
+    mats = [leafmat('neem_l1', '#3c6a2e'), leafmat('neem_l2', '#477834'), leafmat('neem_l3', '#568a3c')]
+    big = crown(T, c, radii, mats, 13, 4.1, 0, 2.6, 5, 6.0, 3, 7.6,
+                flat=0.35, shell=0.45, scale0=(1, 1, 0.85), seg0=(6, 4), noise0=0.2)
     tg = sorted(big, key=lambda p: p.z)[:3]
     limbs_to(T, tp[-1], [p.lerp(c, 0.25) for p in tg], 0.6, 0.2, seg=4, mat=bark, lods=(0, 0), n=3)
     T.finish('neem', tex=128)
@@ -784,25 +840,25 @@ def gulmohar(A, flowering):
     bark = P.M('bark_grey', name='gul_bark', base='#6e665c', var=0.12, grain=0.22, grime=0.45, scale=2.0)
     tp = [V((0, 0, 0)), V((0.3, 0.2, 4.2)), V((0.6, 0.1, 8.5))]
     T.trunk(tp, [1.25, 0.95, 0.85], seg=6, mat=bark, lods=(0, 0), flute_kw=dict(lobes=4, amp=0.12, zmax=2.0, flare=0.35))
-    T.trunk([tp[0], tp[-1]], [1.25, 0.85], seg=4, mat=bark, lods=(1, 2))
     c = V((0.6, 0, 22.5))
-    radii = (15.0, 14.0, 6.2)
+    radii = (15.0, 14.0, 6.8)
+    T.trunk([tp[0], tp[-1], c - V((0, 0, 2.0))], [1.25, 0.85, 0.6], seg=4, mat=bark, lods=(1, 2))
     if flowering:
-        mats = [add_patches(leafmat('gul_f1', '#5a8a34'), '#d8341a', 0.22, 0.56, 0.62, 1.0, seed=1.0),
-                add_patches(leafmat('gul_f2', '#62903a'), '#e04a1c', 0.22, 0.5, 0.56, 1.0, seed=2.0),
-                add_patches(leafmat('gul_f3', '#6a963c'), '#d83018', 0.22, 0.44, 0.5, 1.0, seed=3.0)]
+        mats = [add_patches(leafmat('gul_f1', '#5a8a34'), '#d8341a', 0.3, 0.52, 0.58, 1.0, seed=1.0),
+                add_patches(leafmat('gul_f2', '#62903a'), '#e04a1c', 0.3, 0.44, 0.5, 1.0, seed=2.0),
+                add_patches(leafmat('gul_f3', '#6a963c'), '#e03a1a', 0.3, 0.36, 0.44, 1.0, seed=3.0)]
         spray = P.M('flower_red', name='gul_flower', base='#e0401c', var=0.15)
     else:
         mats = [leafmat('gul_g1', '#4e7e30'), leafmat('gul_g2', '#5c8e36'), leafmat('gul_g3', '#6c9c3e')]
         spray = leafmat('gul_spray', '#6a9a3c', specks=0.4)
-    crown(T, c, radii, mats, 14, 4.4, 0, 2.6, 6, 6.2, 3, 7.8, spray_mat=spray,
+    crown(T, c, radii, mats, 16, 4.0, 0, 2.6, 5, 6.6, 3, 7.8, spray_mat=spray,
           sprays=dict(n_per=1, length=3.2, width=1.1, blades=4, droop=0.0, outer=0.85, spread=1.6, zmin=c.z),
-          flat=0.55, shell=0.45, top_bias=0.1, scale0=(1.2, 1.2, 0.72))
+          flat=0.45, shell=0.45, top_bias=0.1, scale0=(1.12, 1.12, 0.82), noise0=0.22)
     tg = []
     for k in range(4):
         a = k * 2 * math.pi / 4 + 0.5
         tg.append(c + V((math.cos(a) * 8.5, math.sin(a) * 8.0, -3.0)))
-    limbs_to(T, tp[-1], tg, 0.7, 0.3, seg=4, mat=bark, lods=(0, 0), rise=0.2, n=3)
+    limbs_to(T, tp[-1], tg, 0.85, 0.35, seg=4, mat=bark, lods=(0, 0), rise=0.2, n=3)
     T.finish('gulmohar', tex=128)
     if not flowering:
         A.meta['variant'] = 'green'

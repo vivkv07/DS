@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 33248,
+ "bytes": 39064,
  "clips": {},
  "family": "prop",
  "file": "tree_neem.glb",
@@ -12,36 +12,36 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 32.5,
+ "kb": 38.1,
  "kit": 1,
  "materials": [
   "M_tree_neem_imp",
   "M_tree_neem"
  ],
  "max": [
-  89.193,
-  11.474,
-  30.442
+  90.28,
+  11.974,
+  30.707
  ],
  "meta": {
   "crown": [
-   21.328,
-   20.357
+   21.509,
+   20.312
   ],
   "doubleSided": true,
-  "height": 30.442,
+  "height": 30.314,
   "impostor": {
    "billboard": "cylindrical",
    "from": 800,
-   "h": 30.526,
+   "h": 30.397,
    "node": "tree_neem_IMPOSTOR",
    "offset": [
-    79.583,
+    80.207,
     0,
     0
    ],
-   "w": 21.328,
-   "x0": -11.719,
+   "w": 21.509,
+   "x0": -11.436,
    "z0": -0.083
   },
   "kind": "neem",
@@ -55,29 +55,29 @@
      0,
      0
     ],
-    "tris": 384
+    "tris": 540
    },
    {
     "from": 180,
     "lod": 1,
     "node": "tree_neem_LOD1",
     "offset": [
-     26.528,
+     26.736,
      0,
      0
     ],
-    "tris": 152
+    "tris": 136
    },
    {
     "from": 420,
     "lod": 2,
     "node": "tree_neem_LOD2",
     "offset": [
-     53.055,
+     53.471,
      0,
      0
     ],
-    "tris": 68
+    "tris": 76
    }
   ],
   "tree": true,
@@ -92,19 +92,19 @@
   }
  },
  "min": [
-  -11.719,
-  -10.942,
+  -11.436,
+  -10.438,
   -0.083
  ],
  "notes": [],
  "script": "props_trees",
  "size": [
-  100.912,
-  22.416,
-  30.526
+  101.716,
+  22.412,
+  30.791
  ],
  "tint": null,
- "tris": 606,
+ "tris": 754,
  "units": "u",
  "up": "Z"
 }

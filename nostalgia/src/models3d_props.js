@@ -90,7 +90,8 @@
     }
     front = (front + (dt || 0) * 60) % (520 * 64);
     WU.uWind.value.set(Math.cos(WIND.dir), Math.sin(WIND.dir), WIND.strength, WIND.gust);
-    WU.uWindWave.value.set(1 / 520, front, (H.time || 0) % 10000, 0);
+    const t = isFinite(H.time) ? H.time : (N.view3d && N.view3d.time) || performance.now() / 1000;
+    WU.uWindWave.value.set(1 / 520, front, t % 10000, 0);
   }
   // Shared GLSL: world wind direction -> instance-local displacement (uniform-scaled instances).
   const WIND_VERT_COMMON = [
