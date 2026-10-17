@@ -252,7 +252,8 @@
       hint: 'Left on a marble table by a man running for a train.', text: "From a soldier at Secunderabad station to his mother in Warangal: 'Train is late. Heart is on time.'" },
     { song: 'oldcity', title: 'Gulzar Houz Ki Shaam', place: 'pathergatti', at: 'pathergatti', look: "Look in the 'old stock' basket", tech: 'shop',
       hint: "In the stone arcade, at the tape stall's 'old stock' basket.", text: "From the bangle sellers of Laad Bazaar, to every *aapa* who bargained: 'You won. Come again.'" },
-    { song: 'kites', title: 'Patang Ki Pech', place: 'abids_book_market', at: 'abids_book_market', look: 'Look in the stack of old Tinkles', tech: 'time',
+    // off: the market's place point is on the Abids carriageway; the Tinkle stack is on the footpath
+    { song: 'kites', title: 'Patang Ki Pech', place: 'abids_book_market', at: 'abids_book_market', off: [16, -30], look: 'Look in the stack of old Tinkles', tech: 'time',
       when: () => date().dow === 0 && minutes() >= 7 * 60 && minutes() < 20 * 60, whenText: 'Sundays only, 07:00–20:00',
       hint: 'In a stack of old Tinkles. Sundays only.', text: "From the Abids Sunday book men, to the boy who reads Tinkle standing up: 'Buy one, at least!'" },
     { song: 'numaish', title: 'Numaish Ka Jhoola', place: 'nampally_exhibition', at: 'nampally_exhibition', look: 'Look at the lost-and-found counter', tech: 'time',
@@ -260,7 +261,8 @@
       hint: 'At the lost-and-found counter (after M2, all year).', text: "From the Numaish loudspeaker uncle: 'To all the lost children of 2003: you were never lost. You were near the papad.'" },
     { song: 'title', title: 'Yaadon Ki Gully', place: 'gymkhana_ground_secunderabad', at: 'gymkhana_ground_secunderabad', off: [-30, -22], h: 2, tech: 'ground',
       hint: 'On the old pavilion step.', text: "From an old ground-man to the girls who bowl at dawn: 'Keep coming.'" },
-    { agent: 1, title: 'Agent tape 1', place: 'home_terrace', roof: 'home_terrace', rxy: [4585, 2649], stairs: 'home_stairs', look: 'Open the tank lid', tech: 'roof',
+    // rxy in v2 map units: beside the water tank (the terrace rect origin + [25, 21], as in v1)
+    { agent: 1, title: 'Agent tape 1', place: 'home_terrace', roof: 'home_terrace', rxy: [10113, 4989], stairs: 'home_stairs', look: 'Open the tank lid', tech: 'roof',
       hint: "Inside the water-tank lid. Immu's handwriting: AGENT.", text: "Agent Immu's Secret Fact No. 1: {nick} sleeps with his mouth open. Over." },
     { agent: 2, title: 'Agent tape 2', place: 'irani_cafe_7', at: 'irani_cafe_7', look: 'Look behind the jukebox', shop: 'irani_cafe_7', tech: 'shop',
       hint: 'Behind the jukebox at Café Gulistan.', text: 'Fact No. 2: Salim-bhai gives an extra biscuit if you say his chai is the best in Hyderabad. Over.' },

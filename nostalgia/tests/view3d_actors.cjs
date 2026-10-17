@@ -186,7 +186,20 @@ const HELPERS = () => {
       N.time.scale = 1;
       const t0 = performance.now(); await T3.raf(4);
       const dt = Math.min(0.1, Math.max(0.004, (performance.now() - t0) / 4000));
-      N.time.scale = Math.max(0.01, Math.min(1, simPerFrame / dt));
+      const scaleFor = (d) => Math.max(0.01, Math.min(1, simPerFrame / d));
+      N.time.scale = T3.slowSet = scaleFor(dt);
+      // keep it there frame by frame: under a varying CPU load one estimate is not enough (a burst of slow
+      // frames would step the cycle by more than a contact lasts). Stops as soon as the test sets its own scale.
+      const id = (T3.slowId = (T3.slowId || 0) + 1);
+      let last = performance.now(), avg = dt;
+      const adapt = () => {
+        if (T3.slowId !== id || N.time.scale !== T3.slowSet) return;
+        const t = performance.now(), d = Math.min(0.1, Math.max(0.004, (t - last) / 1000)); last = t;
+        avg = avg * 0.6 + d * 0.4;
+        N.time.scale = T3.slowSet = scaleFor(avg);
+        requestAnimationFrame(adapt);
+      };
+      requestAnimationFrame(adapt);
       return N.time.scale;
     },
     /** contact + sliding over sampled person frames: a sole point (heel / toe) within 0.08 u of the
@@ -611,13 +624,21 @@ async function desktop(browser) {
     N.entities.remove(e);
     // collectible glints near an item
     const C = N.collectibles;
-    const it = C && C.items ? C.items.find((q) => q.series !== 'frames' && !(C.has && C.has(q.id)) && !q.level && isFinite(q.x)) : null;
-    if (it) { N.debug.teleport(it.x + 20, it.y); N.view3d.settle(8000); await fr(); await fr(); await fr(); out.glints = N.view3dActors.debug.glints(); out.item = it.id; }
+    // glints only mark items that are live now (collectibles.js active(): series unlocked, its `when`, shop open),
+    // so unlock the item's series and take one that collectibles.glintPoints() offers at the spot
+    let it = null;
+    for (const q of C && C.items ? C.items : []) {
+      if (q.series === 'frames' || (C.has && C.has(q.id)) || q.level || !isFinite(q.x)) continue;
+      try { if (C.unlockSeries) C.unlockSeries(q.series, { silent: true }); } catch (e) { /* the check below decides */ }
+      N.debug.teleport(q.x + 20, q.y);
+      if ((C.glintPoints(150) || []).some((g) => g.id === q.id)) { it = q; break; }
+    }
+    if (it) { N.view3d.settle(8000); await fr(); await fr(); await fr(); out.glints = N.view3dActors.debug.glints(); out.item = it.id; }
     return out;
   });
   check(misc.birds > 0, 'pigeons at Charminar drawn (' + misc.birds + ' birds)');
   check(misc.bark && misc.bark.vis !== 'hidden' && Math.abs(misc.bark.cx - misc.bark.head[0]) < 60 && misc.bark.bottom < misc.bark.head[1] + 12 && misc.bark.bottom > misc.bark.head[1] - 90, 'dialogue bark anchored over the 3D head', JSON.stringify(misc.bark));
-  if (misc.item) check(misc.glints > 0, 'collectible glint drawn near ' + misc.item + ' (' + misc.glints + ')');
+  check(!!misc.item && misc.glints > 0, 'collectible glint drawn near ' + (misc.item || '(no live collectible found)') + ' (' + misc.glints + ')');
 
   // ---- seasons: Sankranti kites, Ganesh immersion, Christmas stars
   const sea = await page.evaluate(async () => {

@@ -36,7 +36,22 @@ const VIEWPORTS = [
 
 const failures = [];
 let checks = 0;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Game-clock waits (robust on a loaded machine, where a wall-clock sleep sees fewer game frames):
+// window.__gw(secs) resolves after `secs` of GAME time (N.time.now); while the game clock is stopped
+// (title, pause menu) it counts frame time (N.time.real) instead. Both advance only as frames run, so a
+// slow machine just takes longer. The wall-clock cap (8x + 5 s) only stops a hung page from hanging the suite.
+const GW = () => {
+  window.__gw = (secs) => new Promise((res) => {
+    let acc = 0, n0 = N.time.now, r0 = N.time.real;
+    const t0 = performance.now(), cap = secs * 8000 + 5000;
+    (function chk() {
+      const dn = N.time.now - n0, dr = N.time.real - r0; n0 = N.time.now; r0 = N.time.real;
+      acc += dn > 0 ? dn : dr;
+      if (acc >= secs || performance.now() - t0 > cap) res(acc); else requestAnimationFrame(chk);
+    })();
+  });
+};
+const gwait = (pg, secs) => pg.evaluate((s) => window.__gw(s), secs);
 const ok = (m) => { checks++; console.log('  ok   ' + m); };
 const fail = (vp, m) => { checks++; failures.push('[' + vp + '] ' + m); console.log('  FAIL ' + m); };
 const expect = (vp, cond, m) => (cond ? ok(m) : fail(vp, m));
@@ -53,13 +68,13 @@ function inputKit(page, cdp, V) {
     async down(x, y, id) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: id || 1 }] }); },
     async move(x, y, id) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y, id: id || 1 }] }); },
     async up() { await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); },
-    async tap(x, y) { await touch.down(x, y); await sleep(60); await touch.up(); },
-    async hold(x, y, ms) { await touch.down(x, y); await sleep(ms); await touch.up(); },
-    async drag(x0, y0, x1, y1, ms) { await touch.down(x0, y0); const n = 8; for (let i = 1; i <= n; i++) { await touch.move(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n); await sleep(ms / n); } await touch.up(); },
+    async tap(x, y) { await touch.down(x, y); await gwait(page, 0.06); await touch.up(); },
+    async hold(x, y, ms) { await touch.down(x, y); await gwait(page, (ms) / 1000); await touch.up(); },
+    async drag(x0, y0, x1, y1, ms) { await touch.down(x0, y0); const n = 8; for (let i = 1; i <= n; i++) { await touch.move(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n); await gwait(page, (ms / n) / 1000); } await touch.up(); },
   };
   const K = {
     async press(key) { await page.keyboard.press(key); },
-    async hold(key, ms) { await page.keyboard.down(key); await sleep(ms); await page.keyboard.up(key); },
+    async hold(key, ms) { await page.keyboard.down(key); await gwait(page, (ms) / 1000); await page.keyboard.up(key); },
   };
   // abstract game action -> device input
   const btn = async (a) => center('.mg-btn[data-a="' + a + '"]');
@@ -71,7 +86,7 @@ function inputKit(page, cdp, V) {
     async canvasDrag(x0, y0, x1, y1, ms) {
       if (V.touch) return touch.drag(x0, y0, x1, y1, ms);
       await page.mouse.move(x0, y0); await page.mouse.down();
-      for (let i = 1; i <= 8; i++) { await page.mouse.move(x0 + ((x1 - x0) * i) / 8, y0 + ((y1 - y0) * i) / 8); await sleep(ms / 8); }
+      for (let i = 1; i <= 8; i++) { await page.mouse.move(x0 + ((x1 - x0) * i) / 8, y0 + ((y1 - y0) * i) / 8); await gwait(page, (ms / 8) / 1000); }
       await page.mouse.up();
     },
   };
@@ -85,21 +100,21 @@ const SCRIPTS = {
     else { await io.K.hold('Space', 800); await io.K.hold('ArrowLeft', 350); await io.K.hold('Space', 500); }
   },
   kiteProbe: S_('(S.maxT || 0)'),
-  async clap(io, V) { for (let i = 0; i < 4; i++) { if (V.touch) await io.tapBtn('clap'); else await io.K.press('Space'); await sleep(330); } },
+  async clap(io, V) { for (let i = 0; i < 4; i++) { if (V.touch) await io.tapBtn('clap'); else await io.K.press('Space'); await gwait(page, 0.33); } },
   clapProbe: S_('S.clapsTotal || 0'),
   async brickgame(io, V, page) {
-    await sleep(1500); // boot animation
+    await gwait(page, 1.5); // boot animation
     const tapDev = async (a) => { const b = await page.evaluate(S_('(S.btns.find((b) => b.a === "' + a + '") || {})')); await io.touch.tap(b.x, b.y); };
-    if (V.touch) { await tapDev('right'); await sleep(150); await tapDev('left'); await sleep(150); await tapDev('rotate'); }
-    else { await io.K.press('ArrowRight'); await sleep(150); await io.K.press('ArrowLeft'); await sleep(150); await io.K.press('ArrowUp'); }
-    await sleep(1500);
+    if (V.touch) { await tapDev('right'); await gwait(page, 0.15); await tapDev('left'); await gwait(page, 0.15); await tapDev('rotate'); }
+    else { await io.K.press('ArrowRight'); await gwait(page, 0.15); await io.K.press('ArrowLeft'); await gwait(page, 0.15); await io.K.press('ArrowUp'); }
+    await gwait(page, 1.5);
     if (V.touch) { await tapDev('left'); await tapDev('rotate'); await tapDev('right'); }
     else { await io.K.press('ArrowLeft'); await io.K.press('ArrowUp'); await io.K.hold('ArrowDown', 400); }
   },
   brickgameProbe: S_('S.mode === "blocks" ? 1 : 0'),
   async cricket(io, V) {
-    await sleep(1150);
-    for (const a of ['drive', 'cut']) { if (V.touch) await io.tapBtn(a); else await io.K.press(a === 'drive' ? 'ArrowUp' : 'ArrowRight'); await sleep(2600); }
+    await gwait(page, 1.15);
+    for (const a of ['drive', 'cut']) { if (V.touch) await io.tapBtn(a); else await io.K.press(a === 'drive' ? 'ArrowUp' : 'ArrowRight'); await gwait(page, 2.6); }
   },
   cricketProbe: S_('S.swings || 0'),
   async antenna(io, V) {
@@ -108,26 +123,26 @@ const SCRIPTS = {
   },
   antennaProbe: S_('Math.abs(N.util.angleDiff(S.theta0, S.theta))'),
   async panipuri(io, V) {
-    for (let i = 0; i < 4; i++) { await sleep(700); if (V.touch) await io.tapBtn('eat'); else await io.K.press('Space'); }
+    for (let i = 0; i < 4; i++) { await gwait(page, 0.7); if (V.touch) await io.tapBtn('eat'); else await io.K.press('Space'); }
     if (V.touch) await io.tapBtn('skip'); else await io.K.press('ArrowDown');
   },
   panipuriProbe: S_('S.eaten + S.misses'),
   async bargain(io, V, page) {
-    await sleep(1500);
+    await gwait(page, 1.5);
     if (V.touch) { const r = await page.evaluate(S_('S.cardRects[0]')); await io.touch.tap(r.x + r.w / 2, r.y + r.h / 2); }
     else await io.K.press('1');
-    await sleep(500);
+    await gwait(page, 0.5);
     if (V.touch) { const vp = page.viewportSize(); await io.touch.tap(vp.width / 2, vp.height * 0.3); } else await io.K.press('Space');
-    await sleep(400);
+    await gwait(page, 0.4);
   },
   bargainProbe: S_('S.turns'),
   async marbles(io, V, page) {
-    await sleep(300);
+    await gwait(page, 0.3);
     if (V.touch) {
       const p = await page.evaluate(S_('({ x: S.L.cx + S.striker.x * S.L.s, y: S.L.cy + S.striker.y * S.L.s, cy: S.L.cy })'));
       await io.touch.drag(p.x, p.y - 10, p.x + 10, p.y + 90, 400); // drag back (down) = flick up into the ring
     } else { await io.K.hold('ArrowLeft', 250); await io.K.hold('Space', 550); }
-    await sleep(600);
+    await gwait(page, 0.6);
   },
   marblesProbe: S_('S.myTurns'),
 };
@@ -137,6 +152,7 @@ async function run(browser, V) {
   console.log('\n== ' + V.name + ' ' + V.viewport.width + 'x' + V.viewport.height + (V.touch ? ' (touch)' : '') + (LAB ? ' [lab]' : ''));
   const context = await browser.newContext({ viewport: V.viewport, deviceScaleFactor: V.deviceScaleFactor, hasTouch: V.touch, isMobile: V.touch });
   const page = await context.newPage();
+  await page.addInitScript(GW);
   const cdp = await context.newCDPSession(page);
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
@@ -151,7 +167,7 @@ async function run(browser, V) {
     await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 30000 });
     await page.evaluate(() => { N.debug.newGame({ skipIntro: true }); });
     await page.waitForFunction(() => N.state.mode === 'play', null, { timeout: 5000 });
-    await sleep(300);
+    await gwait(page, 0.3);
   }
   // ---- API surface
   const api = await page.evaluate(() => ({
@@ -196,7 +212,7 @@ async function run(browser, V) {
     // ================= A. how-to -> real input -> pause -> quit
     await page.evaluate((id) => { window.__mg = 'pending'; N.minigames.play(id, { difficulty: 0.3, seed: 1234 }).then((r) => { window.__mg = r; }); }, id);
     await page.waitForSelector('.mg-card-howto', { timeout: 5000 });
-    await sleep(450);
+    await gwait(page, 0.45);
     await shot(id + '_howto');
     const st = await page.evaluate(() => ({ mode: N.state.mode, open: N.minigames.isOpen(), active: N.minigames.active }));
     expect(V.name, st.open && st.active && (LAB || st.mode === 'minigame'), id + ': open, state "minigame"');
@@ -221,7 +237,7 @@ async function run(browser, V) {
     // pause (Esc on desktop, the pause pill on touch) -> quit
     if (V.touch) { const c = await io.center('.mg-pausebtn'); await io.touch.tap(c.x, c.y); } else await page.keyboard.press('Escape');
     await page.waitForSelector('.mg-card-pause', { timeout: 3000 }).then(() => ok(id + ': pause card')).catch(() => fail(V.name, id + ': no pause card'));
-    await sleep(250);
+    await gwait(page, 0.25);
     await shot(id + '_pause');
     if (V.touch) { const c = await io.center('.mg-card button[data-do="quit"]'); await io.touch.tap(c.x, c.y); } else await page.click('.mg-card button[data-do="quit"]');
     await page.waitForFunction(() => window.__mg !== 'pending', null, { timeout: 4000 }).catch(() => {});
@@ -233,7 +249,7 @@ async function run(browser, V) {
     // ================= B. autoplay win -> result card -> continue
     await page.evaluate((id) => { window.__mg = 'pending'; N.minigames.play(id, { difficulty: 0.4, seed: 77, autoplay: 'win', timeScale: 4, skipHowto: true, autoClose: false }).then((r) => { window.__mg = r; }); }, id);
     await page.waitForSelector('.mg-card-result', { timeout: 120000 }).catch(() => fail(V.name, id + ': win run never reached the result card'));
-    await sleep(900);
+    await gwait(page, 0.9);
     await shot(id + '_result_win');
     if (V.touch) { const c = await io.center('.mg-card button[data-do="done"]'); await io.touch.tap(c.x, c.y); } else await page.click('.mg-card button[data-do="done"]');
     await page.waitForFunction(() => window.__mg !== 'pending', null, { timeout: 4000 }).catch(() => {});
@@ -249,18 +265,18 @@ async function run(browser, V) {
       await page.evaluate(([id, retry]) => { window.__mg = 'pending'; N.minigames.play(id, { difficulty: 0.4, seed: 5, autoplay: 'lose', timeScale: 6, skipHowto: true, autoClose: !retry }).then((r) => { window.__mg = r; }); }, [id, retry]);
       if (retry) {
         await page.waitForSelector('.mg-card-result', { timeout: 120000 }).catch(() => fail(V.name, id + ': lose run never reached the result card'));
-        await sleep(400);
+        await gwait(page, 0.4);
         await shot(id + '_result_lose');
         const lost = await page.evaluate(() => N.minigames.game && N.minigames.game.result);
         expect(V.name, lost && lost.win === false, id + ': autoplay lose -> win:false (' + JSON.stringify(lost).slice(0, 100) + ')');
         await page.click('.mg-card button[data-do="retry"]');
         await page.evaluate(() => { const g = N.minigames.game; g.auto = null; g.timeScale = 1; });
-        await sleep(300);
+        await gwait(page, 0.3);
         const again = await page.evaluate(() => ({ phase: N.minigames.game.phase, attempts: N.minigames.game.attempts, card: !!document.querySelector('.mg-card-wrap.show') }));
         expect(V.name, again.attempts === 2 && (again.phase === 'countdown' || again.phase === 'play') && !again.card, id + ': "Phir se" restarts (attempt ' + again.attempts + ', ' + again.phase + ')');
         if (id === 'kite') { // resize mid-game: layout + caches rebuild, no errors
-          await page.setViewportSize({ width: 900, height: 620 }); await sleep(600); await shot(id + '_resized');
-          await page.setViewportSize(V.viewport); await sleep(300);
+          await page.setViewportSize({ width: 900, height: 620 }); await gwait(page, 0.6); await shot(id + '_resized');
+          await page.setViewportSize(V.viewport); await gwait(page, 0.3);
         }
         await page.evaluate(() => N.minigames.abort('test'));
         await page.waitForFunction(() => window.__mg !== 'pending', null, { timeout: 4000 }).catch(() => {});

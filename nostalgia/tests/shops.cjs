@@ -26,11 +26,27 @@ const want = (k) => !ONLY.length || ONLY.indexOf(k) >= 0;
 const failures = [];
 const fail = (msg) => { failures.push(msg); console.log('  FAIL ' + msg); };
 const ok = (msg) => console.log('  ok   ' + msg);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Game-clock waits (robust on a loaded machine, where a wall-clock sleep sees fewer game frames):
+// window.__gw(secs) resolves after `secs` of GAME time (N.time.now); while the game clock is stopped
+// (title, pause menu) it counts frame time (N.time.real) instead. Both advance only as frames run, so a
+// slow machine just takes longer. The wall-clock cap (8x + 5 s) only stops a hung page from hanging the suite.
+const GW = () => {
+  window.__gw = (secs) => new Promise((res) => {
+    let acc = 0, n0 = N.time.now, r0 = N.time.real;
+    const t0 = performance.now(), cap = secs * 8000 + 5000;
+    (function chk() {
+      const dn = N.time.now - n0, dr = N.time.real - r0; n0 = N.time.now; r0 = N.time.real;
+      acc += dn > 0 ? dn : dr;
+      if (acc >= secs || performance.now() - t0 > cap) res(acc); else requestAnimationFrame(chk);
+    })();
+  });
+};
+const gwait = (pg, secs) => pg.evaluate((s) => window.__gw(s), secs);
 
 async function boot(browser, vp, touch) {
   const context = await browser.newContext({ viewport: vp, deviceScaleFactor: touch ? 2 : 1, hasTouch: !!touch, isMobile: !!touch });
   const page = await context.newPage();
+  await page.addInitScript(GW);
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
@@ -132,13 +148,13 @@ async function main() {
     const hold = await page.evaluate(async () => {
       N.clock.set(10, 0);
       N.debug.teleport('irani_cafe_7');
-      await new Promise((r) => setTimeout(r, 300));
+      await __gw(0.3);
       const m0 = N.player.money;
       N.input.press('action', 0.9);
-      await new Promise((r) => setTimeout(r, 1300));
+      await __gw(1.3);
       const quick = { paid: m0 - N.player.money, open: N.shops.isOpen() };
       N.input.press('action');
-      await new Promise((r) => setTimeout(r, 500));
+      await __gw(0.5);
       const card = N.shops.current;
       N.shops.close();
       return { quick, card };
@@ -205,8 +221,8 @@ async function main() {
       const m0 = N.player.money;
       N.debug.skipDialogue(false);
       const call = N.shops.buy('std_1', 'call_home');
-      await new Promise((r) => setTimeout(r, 400));
-      for (let i = 0; i < 12 && N.dialogue.isOpen(); i++) { N.dialogue.advance(); N.dialogue.advance(); await new Promise((r) => setTimeout(r, 150)); }
+      await __gw(0.4);
+      for (let i = 0; i < 12 && N.dialogue.isOpen(); i++) { N.dialogue.advance(); N.dialogue.advance(); await __gw(0.15); }
       N.debug.skipDialogue(true);
       if (N.hints && N.hints.stop) N.hints.stop();
       return { save: save.ok && save.res && save.res.msg, has, call: call.ok, paid: m0 - N.player.money, taken, lines };
@@ -221,7 +237,7 @@ async function main() {
       N.debug.setWanted(3);
       const before = N.wanted.level, m0 = N.player.money;
       N.shops.haircut('barber_1');
-      await new Promise((r) => setTimeout(r, 1500));
+      await __gw(1.5);
       const msg = document.querySelector('.shop-msg') && document.querySelector('.shop-msg').textContent;
       N.shops.close();
       return { before, after: N.wanted.level, paid: m0 - N.player.money, msg, hair: N.player.status.hair && N.player.status.hair.value, real: typeof N.wanted.addHeat === 'function' };
@@ -239,7 +255,7 @@ async function main() {
       N.shops.debug.activate(i);
       const film = document.querySelector('.pp-title') && document.querySelector('.pp-title').textContent;
       N.shops.debug.activate(0); // ▶ Watch
-      await new Promise((r) => setTimeout(r, 3200));
+      await __gw(3.2);
       return { film, paid: m0 - N.player.money, skipped: N.clock.day * 1440 + N.clock.minutes - d0, wanted: N.wanted.level, energy: Math.round(N.player.energy), floor: rows.find((r) => r.id === 'floor') };
     });
     if (cin.film && cin.paid === 1000 && cin.skipped >= 180 && cin.wanted === 0) ok('cinema: *' + cin.film + '*, floor ₹10, ▶▶ +' + Math.round(cin.skipped) + ' min, meter 2 → 0'); else fail('cinema ' + JSON.stringify(cin));
@@ -284,7 +300,7 @@ async function main() {
       const items = N.shops.debug.UI.items.map((it) => it.row.id);
       const pi = items.indexOf('puncture');
       if (pi >= 0) N.shops.debug.activate(pi);
-      await new Promise((r) => setTimeout(r, 800));
+      await __gw(0.8);
       const fixed = !v.flat;
       const ri = N.shops.debug.UI.items.findIndex((it) => it.row.id === 'return');
       if (ri >= 0) N.shops.debug.activate(ri);
@@ -307,9 +323,9 @@ async function main() {
       let vp = null; N.on('viewpoint', (d) => { vp = d; });
       const r = N.shops.buy('ntr_gardens', 'train');
       if (N.shops.isOpen()) N.shops.close();
-      await new Promise((r) => setTimeout(r, 400));
+      await __gw(0.4);
       const riding = N.shops.ride, hidden = N.player.hidden;
-      await new Promise((r) => setTimeout(r, 3600));
+      await __gw(3.6);
       N.shops.debug.endRide();
       return { ok: r.ok, riding: !!riding, hidden, vp: !!vp, back: Math.hypot(N.player.x - p0.x, N.player.y - p0.y) < 40, unhidden: !N.player.hidden };
     });
@@ -368,20 +384,20 @@ async function main() {
       const board = N.shops.debug.UI.items.map((it) => ({ id: it.row.id, why: it.why }));
       const i = N.shops.debug.UI.items.findIndex((it) => it.row.id === 'bus_rathifile_bus_station');
       N.shops.debug.activate(i);
-      await new Promise((r) => setTimeout(r, 3600));
+      await __gw(3.6);
       const p = N.places.rathifile_bus_station;
       return { locked: locked && locked.why, board: board.slice(0, 6), dist: Math.round(Math.hypot(N.player.x - p.x, N.player.y - p.y)), paid: m0 - N.player.money, mins: N.clock.day * 1440 + N.clock.minutes - t0, bus: N.vehicles.list.some((v) => v.type === 'bus' && Math.hypot(v.x - N.player.x, v.y - N.player.y) < 160) };
     });
     if (bus.locked && bus.dist < 60 && bus.paid === 300 && bus.mins > 5) ok('bus fast travel Koti → Rathifile: ₹3, ▶▶ +' + Math.round(bus.mins) + ' min, arrived ' + bus.dist + ' u from the stand' + (bus.bus ? ', the bus pulls away' : '')); else fail('bus ' + JSON.stringify(bus));
     // AUTO!: horn on foot near a road
     await page.evaluate(() => { N.calendar.set(2003, 3, 5, 11, 0); N.debug.teleport('abids'); });
-    await sleep(300);
+    await gwait(page, 0.3);
     const hail = await page.evaluate(() => { N.input.press('horn'); return true; });
     void hail;
-    await sleep(300);
+    await gwait(page, 0.3);
     const job0 = await page.evaluate(() => N.shops.autoJob && { arrived: N.shops.autoJob.arrived, type: N.shops.autoJob.vehicle.type });
     const came = await waitFor(page, () => N.shops.current && N.shops.current.kind === 'auto_ride', null, 22000);
-    await sleep(600);
+    await gwait(page, 0.6);
     await shot('auto_card');
     if (job0 && came) ok('"AUTO!" (horn on foot near a road): ' + job0.type + ' drives up, "Kidhar jaana?"'); else fail('auto hail ' + JSON.stringify(job0));
     if (came) {
@@ -397,11 +413,11 @@ async function main() {
         return { dest, quote, sub };
       });
       const mg = await waitFor(page, () => N.minigames && N.minigames.active === 'bargain', null, 4000);
-      await sleep(600);
+      await gwait(page, 0.6);
       await shot('auto_bargain');
       if (mg && q.quote.indexOf('pay') >= 0) ok('fare quote "' + (q.sub || '').slice(0, 70) + '" → [Bargain] opens the bargain minigame (who: auto)'); else fail('auto bargain ' + JSON.stringify(q));
       await page.evaluate(() => N.minigames.abort('test'));
-      await sleep(500);
+      await gwait(page, 0.5);
       const back = await page.evaluate(() => N.shops.current && N.shops.current.kind);
       if (back === 'auto_ride') ok('quitting the bargain returns to the auto card'); else fail('after the bargain: ' + back);
       await page.evaluate(() => N.shops.close());
@@ -457,11 +473,11 @@ async function main() {
       // no driving buses and lorries (debug enter still works)
       const bus = N.debug.spawnVehicle('bus');
       p.x = bus.x + 2; p.y = bus.y + 14;
-      await new Promise((r) => setTimeout(r, 200));
+      await __gw(0.2);
       out.busOffer = N.input.actionLabel;
       const lorry = N.debug.spawnVehicle('lorry');
       p.x = lorry.x; p.y = lorry.y + 14;
-      await new Promise((r) => setTimeout(r, 200));
+      await __gw(0.2);
       out.lorryOffer = N.input.actionLabel;
       out.debugEnter = N.vehicles.enter(p, bus) && p.vehicle === bus;
       N.vehicles.exit(p, true);
@@ -472,7 +488,7 @@ async function main() {
       out.types = ['family_chetak', 'chinnu_cycle', 'old_cycle', 'bunty_rx100', 'yadagiri_auto', 'pochaiah_luna', 'pasha_lambretta', 'peacock_lorry', 'govt_ambassador', 'taxi_ambassador', 'safari_bus'].filter((t) => !N.vehicles.TYPES[t]);
       const vip = N.debug.spawnVehicle('govt_ambassador');
       p.x = vip.x; p.y = vip.y + 12;
-      await new Promise((r) => setTimeout(r, 200));
+      await __gw(0.2);
       out.vip = N.input.actionLabel;
       N.vehicles.remove(vip);
       // falls: a hard bump on a cycle -> DHADAAM, the cycle lies down, "Pick up"
@@ -481,9 +497,9 @@ async function main() {
       N.emit('bump', { a: cyc, b: null, speed: 110, wall: true, vehicle: cyc, x: cyc.x, y: cyc.y });
       out.fallen = !!cyc.fallen && !p.vehicle;
       p.god = true;
-      await new Promise((r) => setTimeout(r, 2600));
+      await __gw(2.6);
       p.x = cyc.x; p.y = cyc.y + 10;
-      await new Promise((r) => setTimeout(r, 200));
+      await __gw(0.2);
       out.pick = N.input.actionLabel;
       return out;
     });
@@ -502,7 +518,7 @@ async function main() {
         let top = 0;
         v.controller = (veh) => { veh.ctl.throttle = 1; veh.ctl.steer = 0; };
         if (kid) { N.input.hold('up', true); }
-        for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 50)); top = Math.max(top, Math.abs(v.speed)); }
+        for (let i = 0; i < 40; i++) { await __gw(0.05); top = Math.max(top, Math.abs(v.speed)); }
         N.input.hold('up', false);
         if (p.vehicle) N.vehicles.exit(p, true);
         N.vehicles.remove(v);
@@ -518,30 +534,30 @@ async function main() {
     console.log('\n== the shop card with real keys (desktop)');
     await fresh(page, 1000);
     await page.evaluate(() => { N.calendar.set(2003, 1, 20, 10, 0); N.debug.teleport('kirana_1'); });
-    await sleep(500);
+    await gwait(page, 0.5);
     const label = await page.evaluate(() => N.input.actionLabel);
     await page.keyboard.press('e');
     const opened = await waitFor(page, () => N.shops.current && N.shops.current.id === 'kirana_1', null, 3000);
-    await sleep(300);
+    await gwait(page, 0.3);
     await shot('kirana_desktop');
     const m0 = await page.evaluate(() => N.player.money);
     await page.keyboard.press('ArrowRight'); // two Mango Bites
-    await sleep(120);
+    await gwait(page, 0.12);
     await page.keyboard.press('e');
-    await sleep(300);
+    await gwait(page, 0.3);
     const after = await page.evaluate(() => ({ money: N.player.money, mb: N.player.itemCount('mango_bite'), msg: document.querySelector('.shop-msg').textContent, mode: N.state.mode, clockHeld: N.clock.held }));
     await page.keyboard.press('ArrowDown');
-    await sleep(120);
+    await gwait(page, 0.12);
     await shot('kirana_desktop_bought');
     await page.keyboard.press('Escape');
-    await sleep(300);
+    await gwait(page, 0.3);
     const closed = await page.evaluate(() => ({ open: N.shops.isOpen(), mode: N.state.mode, paused: N.state.has('paused'), held: N.clock.held }));
     if (opened && /Kirana/.test(label || '')) ok('ACTION "' + label + '" opens the kirana card (the clock holds: ' + after.clockHeld + ')'); else fail('kirana open ' + label + ' ' + opened);
     if (m0 - after.money >= 100 && after.mb === 2) ok('→ 2 Mango Bites with E (' + after.msg.trim() + ')'); else fail('buy with keys ' + JSON.stringify(after));
     if (!closed.open && closed.mode === 'play' && !closed.paused && !closed.held) ok('Esc closes the card back to play (no pause menu)'); else fail('esc ' + JSON.stringify(closed));
     // the BAND card
     await page.evaluate(() => { N.clock.set(23, 30); N.shops.open('stationery_1'); });
-    await sleep(300);
+    await gwait(page, 0.3);
     await shot('band');
     await page.evaluate(() => N.shops.close());
   }
@@ -554,27 +570,27 @@ async function main() {
     const ph = await boot(browser, { width: 390, height: 844 }, true);
     const p2 = ph.page;
     await p2.evaluate(() => { N.player.money = 3000; N.calendar.set(2003, 1, 20, 10, 0); N.debug.teleport('irani_cafe_7'); });
-    await sleep(600);
+    await gwait(p2, 0.6);
     const tl = await p2.evaluate(() => N.input.actionLabel);
     const act = await p2.$('#touch .t-action, #touch [data-a=action], #touch .t-btn.action');
     if (act) await act.tap(); else await p2.evaluate(() => N.input.press('action'));
     const opened = await waitFor(p2, () => N.shops.isOpen(), null, 3000);
-    await sleep(400);
+    await gwait(p2, 0.4);
     await p2.screenshot({ path: path.join(OUT, 'shops_cafe_phone.png') });
     const m0 = await p2.evaluate(() => N.player.money);
     await p2.tap('.shop-row.house .r-buy');
-    await sleep(400);
+    await gwait(p2, 0.4);
     const m1 = await p2.evaluate(() => N.player.money);
     const fits = await p2.evaluate(() => { const r = document.querySelector('.shop-card').getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth + 1 && r.bottom <= window.innerHeight + 1; });
     await p2.tap('.shop-x');
-    await sleep(300);
+    await gwait(p2, 0.3);
     const closed = await p2.evaluate(() => !N.shops.isOpen() && N.state.mode === 'play');
     if (opened && /Chai/.test(tl || '')) ok('phone: ACTION "' + tl + '" opens the café card'); else fail('phone open ' + tl);
     if (m0 - m1 === 800 && fits && closed) ok('phone: tap ₹8 buys the combo; the card fits the screen; ✕ closes'); else fail('phone buy ' + JSON.stringify({ m0, m1, fits, closed }));
     // landscape phone: the cinema poster
     await p2.setViewportSize({ width: 844, height: 390 });
     await p2.evaluate(() => { N.calendar.set(2003, 1, 10, 12, 0); N.debug.teleport('sandhya_theatre'); N.shops.open('sandhya_theatre'); N.shops.debug.activate(0); });
-    await sleep(500);
+    await gwait(p2, 0.5);
     await p2.screenshot({ path: path.join(OUT, 'shops_poster_landscape.png') });
     await p2.evaluate(() => N.shops.close());
     for (const e of ph.errors) fail('[phone] ' + e);

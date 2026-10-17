@@ -77,14 +77,20 @@ function serve() {
   check(api.sfx >= 80 && api.tracks >= 17, 'SFX library ' + api.sfx + ' sounds, ' + api.tracks + ' music tracks');
 
   console.log('\n== START (real click) unlocks audio');
+  // PLAY starts a new game, which opens on the story's prologue cutscene (menus.quickStart skips the name card under automation)
   await page.click('#title-start');
-  await page.waitForFunction(() => N.state.mode === 'play', null, { timeout: 10000 });
-  await sleep(900);
+  await page.waitForFunction(() => N.state.mode === 'cutscene', null, { timeout: 10000 });
+  await page.waitForFunction(() => N.audio.stats().music === 'flashback', null, { timeout: 10000 }).catch(() => {});
   let st = await stats();
   check(st.state === 'running' && st.unlocked, 'AudioContext running after START', st.state);
-  check(st.music === 'title', 'a new game opens on the title theme "Yaadon Ki Gully"', st.music);
+  check(st.music === 'flashback', 'the prologue opens on the tape flashback theme "Purani Cassette"', st.music);
+  // skip the prologue with the real SKIP pill: M1 (Bo Kaata) starts in 2003
+  await page.click('.cs-skip');
+  await page.waitForFunction(() => N.state.mode === 'play', null, { timeout: 10000 });
+  check(await ev(() => N.flags.year === 2003 && !!N.missions.active), 'SKIP lands in 2003 with M1 running');
   await ev(() => N.debug.newGame({ skipIntro: true }));
-  await sleep(2600);
+  // the music director picks a free-roam track (wait on the director, not the wall clock)
+  await page.waitForFunction(() => ['day', 'night', 'oldcity'].includes(N.audio.stats().music) && !!N.audio.stats().bed, null, { timeout: 15000 }).catch(() => {});
   st = await stats();
   check(['day', 'night', 'oldcity'].includes(st.music), 'free-roam music chosen by the director: ' + st.music);
   const secs = await ev(() => N.audio.music.sections('ending'));
@@ -172,7 +178,11 @@ function serve() {
   }
   const rtc = await ev(async () => { if (!N.debug.teleport('rtc_x_roads')) return null; await new Promise((r) => setTimeout(r, 1300)); return N.audio.stats().spatialMusic; });
   if (rtc !== null) check(rtc === 'r_chandni', 'a film song drifts out of the RTC X Roads theatres', rtc);
-  const night = await ev(async () => { N.debug.teleport('home'); N.debug.setTime(23, 0); await new Promise((r) => setTimeout(r, 1500)); const v = N.audio._internal.amb.lastVals.crickets; N.debug.setTime(16, 40); return v; });
+  // night falls while Chinnu is already home (walking in at 23:00 would rightly start Amma's curfew scolding,
+  // which is wanted.js's business, not audio's): reach home in the afternoon, let a few game frames pass, then dusk -> night
+  await ev(() => { N.debug.teleport('home'); });
+  await page.waitForFunction((t0) => N.time.now > t0 + 0.5, await ev(() => N.time.now), { timeout: 20000 });
+  const night = await ev(async () => { N.flags.no_curfew = true; N.debug.setTime(23, 0); await new Promise((r) => setTimeout(r, 1500)); const v = N.audio._internal.amb.lastVals.crickets; N.debug.setTime(16, 40); delete N.flags.no_curfew; return v; });
   check(night > 0, 'night: crickets fade in (' + (night || 0).toFixed(4) + ')');
 
   console.log('\n== events');
@@ -222,7 +232,7 @@ function serve() {
     const G = N.audio._internal.bus();
     N.emit('dialogue:open', {}); await new Promise((r) => setTimeout(r, 700)); const during = G.musicDuck.gain.value;
     N.emit('dialogue:close', {}); await new Promise((r) => setTimeout(r, 900)); const after = G.musicDuck.gain.value;
-    return { during: +during.toFixed(2), after: +after.toFixed(2) };
+    return { during: +during.toFixed(2), after: +after.toFixed(2), mode: N.state.mode, duckFlag: N.audio._duck };
   });
   check(duck.during < 0.5 && duck.after > 0.9, 'dialogue ducks the music (' + duck.during + ') and restores it (' + duck.after + ')', duck);
 
@@ -235,7 +245,7 @@ function serve() {
     A.beacon({ x: p.x + 200, y: p.y });
     const before = A.stats().sfxPlayed;
     await new Promise((r) => setTimeout(r, 1500));
-    out.beacon = A.stats().beacon; out.beeps = A.stats().sfxPlayed - before;
+    out.beacon = A.stats().beacon; out.beeps = A.stats().sfxPlayed - before; out.mode = N.state.mode;
     A.beacon(null);
     out.rec = A.rec('flour_mill');
     const t0 = performance.now();

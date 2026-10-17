@@ -30,11 +30,27 @@ let section = '';
 const ok = (msg) => console.log('  ok   ' + msg);
 const fail = (msg) => { failures.push('[' + section + '] ' + msg); console.log('  FAIL ' + msg); };
 const check = (cond, msg, detail) => { if (cond) ok(msg); else fail(msg + (detail !== undefined ? ' — ' + JSON.stringify(detail) : '')); return !!cond; };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Game-clock waits (robust on a loaded machine, where a wall-clock sleep sees fewer game frames):
+// window.__gw(secs) resolves after `secs` of GAME time (N.time.now); while the game clock is stopped
+// (title, pause menu) it counts frame time (N.time.real) instead. Both advance only as frames run, so a
+// slow machine just takes longer. The wall-clock cap (8x + 5 s) only stops a hung page from hanging the suite.
+const GW = () => {
+  window.__gw = (secs) => new Promise((res) => {
+    let acc = 0, n0 = N.time.now, r0 = N.time.real;
+    const t0 = performance.now(), cap = secs * 8000 + 5000;
+    (function chk() {
+      const dn = N.time.now - n0, dr = N.time.real - r0; n0 = N.time.now; r0 = N.time.real;
+      acc += dn > 0 ? dn : dr;
+      if (acc >= secs || performance.now() - t0 > cap) res(acc); else requestAnimationFrame(chk);
+    })();
+  });
+};
+const gwait = (pg, secs) => pg.evaluate((s) => window.__gw(s), secs);
 
 async function boot(browser) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
+  await page.addInitScript(GW);
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
@@ -152,7 +168,7 @@ async function main() {
     await fresh(page);
     const t = await page.evaluate(() => {
       const T = N.vehicles.TYPES, V = N.vehicles, o = {};
-      for (const k of ['hero_cycle', 'hercules_cycle', 'hercules_gears', 'scooty', 'akka_scooty', 'cycle', 'bsa_cycle', 'ladiescycle', 'kid_cycle', 'auto', 'chinnu_cycle', 'luna', 'chetak', 'family_chetak', 'rx100', 'bunty_rx100', 'ambassador', 'maruti800', 'padmini', 'bus', 'lorry', 'boat']) {
+      for (const k of ['hero_cycle', 'hercules_cycle', 'hercules_gears', 'scooty', 'akka_scooty', 'cycle', 'bsa_cycle', 'ladiescycle', 'kid_cycle', 'auto', 'chinnu_cycle', 'luna', 'chetak', 'family_chetak', 'rx100', 'bunty_rx100', 'ambassador', 'maruti800', 'padmini', 'bus', 'lorry', 'boat', 'rickshaw']) {
         const x = T[k]; if (!x) { o[k] = null; continue; }
         o[k] = { name: x.name, short: x.short, top: x.maxSpeed, accel: x.accel, brake: x.brake, turn: x.turn, mass: x.mass, kid: V.canDrive(k), spawn: x.spawn, sound: x.sound, bell: x.bell, refuse: !!x.refuse };
       }
@@ -162,7 +178,8 @@ async function main() {
     check(t.hercules_cycle && t.hercules_cycle.top === 120 && t.hercules_cycle.accel > t.hero_cycle.accel && t.hercules_cycle.mass < t.hero_cycle.mass && t.hercules_cycle.turn > t.hero_cycle.turn, 'hercules_cycle: lighter and quicker, 120 u/s, turns sharper', t.hercules_cycle);
     check(t.scooty && t.scooty.top >= 115 && t.scooty.top <= 125 && t.scooty.mass < t.chetak.mass && t.scooty.sound === 'scooty', 'scooty: 115-125 u/s, light, its own engine voice', t.scooty);
     const allowed = ['hero_cycle', 'hercules_cycle', 'hercules_gears', 'scooty', 'akka_scooty', 'cycle', 'bsa_cycle', 'ladiescycle', 'kid_cycle', 'auto', 'chinnu_cycle'];
-    const denied = ['luna', 'chetak', 'family_chetak', 'rx100', 'bunty_rx100', 'ambassador', 'maruti800', 'padmini', 'bus', 'lorry', 'boat'];
+    // the cycle-rickshaw (traffic.js, based on 'cycle'): the rickshaw-wala pedals it, never Chinnu (A5)
+    const denied = ['luna', 'chetak', 'family_chetak', 'rx100', 'bunty_rx100', 'ambassador', 'maruti800', 'padmini', 'bus', 'lorry', 'boat', 'rickshaw'];
     check(allowed.every((k) => t[k] && t[k].kid), 'A3: Chinnu may drive ' + allowed.join(', '), allowed.filter((k) => !(t[k] && t[k].kid)));
     check(denied.every((k) => t[k] && !t[k].kid && t[k].refuse), 'A3: he may not drive ' + denied.join(', ') + ' (each has kid refusal lines)', denied.filter((k) => !(t[k] && !t[k].kid)));
     check(t.hero_cycle.spawn && t.hero_cycle.spawn.colony > 0 && t.hercules_cycle.spawn.osmania > 0 && t.scooty.spawn.posh > 0, 'spawn weights per district style on TYPES (traffic reads them)', { hero: t.hero_cycle.spawn, herc: t.hercules_cycle.spawn, scooty: t.scooty.spawn });
@@ -171,7 +188,7 @@ async function main() {
     const labels = {};
     for (const [type, exp] of [['hero_cycle', 'Ride Hero cycle'], ['hercules_cycle', 'Ride Hercules'], ['scooty', 'Ride Scooty'], ['auto', 'Drive auto']]) {
       await parkAhead(page, type);
-      await sleep(180);
+      await gwait(page, 0.18);
       labels[type] = await label(page);
       check(labels[type] === exp, type + ': ACTION label "' + labels[type] + '"', exp);
     }
@@ -186,10 +203,10 @@ async function main() {
     for (const type of ['hero_cycle', 'hercules_cycle', 'scooty', 'auto', 'cycle', 'ladiescycle', 'kid_cycle']) {
       await fresh(page);
       const st0 = await parkAhead(page, type);
-      await sleep(180);
+      await gwait(page, 0.18);
       const lb = await label(page);
       await page.keyboard.press('KeyE');
-      await frames(page, 6); await sleep(200 / 4);
+      await frames(page, 6); await gwait(page, 0.05);
       let st = await page.evaluate(() => ({ veh: N.player.vehicle && N.player.vehicle.type, drv: N.player.vehicle && N.player.vehicle.driver === N.player }));
       check(st.veh === type && st.drv, type + ': "' + lb + '" + E gets him on (d=' + st0.d.toFixed(1) + ')', st);
       // full throttle down the road for 4 s: top speed, time to 80 u/s, max kid wobble
@@ -225,9 +242,9 @@ async function main() {
       await page.keyboard.up('KeyW');
       // horn (bell / peep / pom-pom), then stop and get off with E
       await page.keyboard.press('Space');
-      await page.keyboard.down('KeyS'); await sleep(1300); await page.keyboard.up('KeyS');
+      await page.keyboard.down('KeyS'); await gwait(page, 1.3); await page.keyboard.up('KeyS');
       await page.keyboard.press('KeyE');
-      await frames(page, 6); await sleep(220 / 4);
+      await frames(page, 6); await gwait(page, 0.055);
       const off = await page.evaluate(() => ({ veh: !!N.player.vehicle, mode: N.player.mode, walk: N.world.isWalkable(N.player.x, N.player.y) }));
       await page.evaluate(() => { const i = N.systems.list.findIndex((q) => q.id === '__rec'); if (i >= 0) N.systems.list.splice(i, 1); });
       console.log('       ' + type + ': top ' + st.max.toFixed(1) + '/' + st.top + ', 0-80 ' + (st.t80 == null ? '—' : st.t80.toFixed(2) + ' s') + ', yaw ' + st.da.toFixed(2) + ' rad, brake -' + st.brake.toFixed(0) + ' u/s in 0.5 s' + (st.wob ? ', wobble ' + st.wob.toFixed(2) : ''));
@@ -258,11 +275,11 @@ async function main() {
     });
     void shout;
     let shouted = false;
-    for (let i = 0; i < 32 && !shouted; i++) { await sleep(500); shouted = await page.evaluate(() => window.__ev.some((e) => e[0] === 'vehicle:autoShout')); }
+    for (let i = 0; i < 32 && !shouted; i++) { await gwait(page, 0.5); shouted = await page.evaluate(() => window.__ev.some((e) => e[0] === 'vehicle:autoShout')); }
     const sl = await page.evaluate(() => (window.__ev.find((e) => e[0] === 'vehicle:autoShout') || [])[1]);
     check(shouted, 'an autowala shouts at the kid driving an auto (' + sl + ')');
     await closeCam(page, true, 4.5);
-    await sleep(250);
+    await gwait(page, 0.25);
     await shot('auto_kid_shout');
     await closeCam(page, false);
 
@@ -272,10 +289,10 @@ async function main() {
       for (const type of ['hero_cycle', 'hercules_cycle', 'scooty', 'auto']) {
         await parkAhead(page, type);
         await page.evaluate(() => N.vehicles.enter(N.player, window.__v));
-        await page.keyboard.down('KeyW'); await sleep(900);
-        await page.keyboard.down('KeyD'); await sleep(140);
+        await page.keyboard.down('KeyW'); await gwait(page, 0.9);
+        await page.keyboard.down('KeyD'); await gwait(page, 0.14);
         await closeCam(page, true, 4.5);
-        await sleep(160);
+        await gwait(page, 0.16);
         await page.keyboard.up('KeyD'); await page.keyboard.up('KeyW');
         await shot('ride_' + type + (night ? '_night' : '_day'));
         await closeCam(page, false);
@@ -292,7 +309,7 @@ async function main() {
         window.__v = { x: r.x + Math.cos(r.angle) * 63, y: r.y + Math.sin(r.angle) * 63 };
       });
       await closeCam(page, true, 3.2);
-      await sleep(500);
+      await gwait(page, 0.5);
       await shot('lineup' + (night ? '_night' : '_day'));
       await closeCam(page, false);
     }
@@ -304,13 +321,13 @@ async function main() {
     section = 'refuse';
     console.log('\n== refusals: he is 11');
     await fresh(page);
-    for (const type of ['luna', 'chetak', 'family_chetak', 'rx100', 'bunty_rx100', 'ambassador', 'maruti800', 'padmini', 'taxi_ambassador', 'bus', 'lorry']) {
+    for (const type of ['luna', 'chetak', 'family_chetak', 'rx100', 'bunty_rx100', 'ambassador', 'maruti800', 'padmini', 'taxi_ambassador', 'bus', 'lorry', 'rickshaw']) {
       await page.evaluate(() => { window.__ev.length = 0; });
       await parkAhead(page, type);
-      await sleep(170);
+      await gwait(page, 0.17);
       const lb = await label(page);
       await page.keyboard.press('KeyE');
-      await frames(page, 6); await sleep(220 / 4);
+      await frames(page, 6); await gwait(page, 0.055);
       const r = await page.evaluate(() => ({ veh: N.player.vehicle && N.player.vehicle.type, ref: (window.__ev.find((e) => e[0] === 'vehicle:refused') || [])[2], toasts: N.hud.toastQueue() }));
       check(!r.veh && lb === 'Too small to drive' && !!r.ref && r.toasts.some((t) => t === String(r.ref).replace(/\*([^*]+)\*/g, '$1')), type + ': "' + lb + '" -> "' + r.ref + '"', r);
     }
@@ -323,15 +340,15 @@ async function main() {
     });
     check(/Nanna will kill me/.test(misc.fam.join(' ')) && misc.boat && misc.boat.kind === 'refuse', 'kid lines: "' + misc.fam[0] + '"; boats refuse without the boatman', misc);
     await parkAhead(page, 'govt_ambassador');
-    await sleep(170);
+    await gwait(page, 0.17);
     check((await label(page)) === 'Nakko', 'the VIP Ambassador is still "Nakko"');
     // debug: allowHeavy drives anything, and N.debug.enterVehicle always works
     await page.evaluate(() => { N.vehicles.allowHeavy = true; });
     await parkAhead(page, 'chetak');
-    await sleep(170);
+    await gwait(page, 0.17);
     const dl = await label(page);
     await page.keyboard.press('KeyE');
-    await frames(page, 6); await sleep(200 / 4);
+    await frames(page, 6); await gwait(page, 0.05);
     const dv = await page.evaluate(() => { const t = N.player.vehicle && N.player.vehicle.type; if (N.player.vehicle) N.vehicles.exit(N.player, true); N.vehicles.allowHeavy = false; const v = N.debug.enterVehicle('lorry'); const t2 = N.player.vehicle === v; N.vehicles.exit(N.player, true); return { t, t2 }; });
     check(dl === 'Ride Chetak' && dv.t === 'chetak' && dv.t2, 'debug: N.vehicles.allowHeavy -> "' + dl + '"; N.debug.enterVehicle(lorry) works', dv);
     await checkErrors(page, errors, 'refuse');
@@ -345,61 +362,73 @@ async function main() {
     // a stranger's Chetak cruising at ~30 u/s: "Ask for a lift"
     await parkAhead(page, 'chetak', { driver: 'npc' });
     await page.evaluate(() => { window.__v.controller = (v) => { v.ctl.brake = false; v.ctl.steer = 0; v.ctl.throttle = v.speed < 26 ? 0.5 : 0; }; });
-    await sleep(120);
+    await gwait(page, 0.12);
     const ll = await label(page);
     await page.keyboard.press('KeyE');
-    await sleep(900);
+    await gwait(page, 0.9);
     let r = await page.evaluate(() => { const p = N.player, v = window.__v; return { on: p.vehicle === v, as: p.passenger, pill: v.pillion === p, drv: !!v.driver && v.driver !== p, d: Math.hypot(p.x - v.x, p.y - v.y), sp: v.speed, isP: N.vehicles.isPassenger() }; });
     check(ll === 'Ask for a lift' && r.on && r.as === 'pillion' && r.pill && r.drv && r.d < 0.5 && r.sp > 15, 'stranger\'s Chetak: "' + ll + '" -> riding pillion behind the uncle (moving ' + r.sp.toFixed(0) + ' u/s)', r);
-    await closeCam(page, true, 4.5); await sleep(200); await shot('pillion_chetak'); await closeCam(page, false);
+    await closeCam(page, true, 4.5); await gwait(page, 0.2); await shot('pillion_chetak'); await closeCam(page, false);
     const sl = await label(page);
     await page.keyboard.press('KeyE');
-    await sleep(1600);
+    await gwait(page, 1.6);
     r = await page.evaluate(() => { const p = N.player, v = window.__v; return { on: !!p.vehicle, mode: p.mode, drv: !!v.driver, pill: v.pillion, walk: N.world.isWalkable(p.x, p.y) }; });
     check(sl === 'Ask to stop' && !r.on && r.mode === 'foot' && r.drv && !r.pill && r.walk, '"' + sl + '": the uncle stops, he gets down, the uncle rides on', r);
     // a bus: "Board bus ₹3" (slow) and footboard (fast)
     await parkAhead(page, 'bus', { driver: 'npc' });
     await page.evaluate(() => { window.__v.controller = (v) => { v.ctl.brake = false; v.ctl.steer = 0; v.ctl.throttle = v.speed < 6 ? 0.3 : 0; }; });
-    await sleep(150);
+    await gwait(page, 0.15);
     const bl = await label(page);
     const m0 = await page.evaluate(() => N.player.money);
     await page.keyboard.press('KeyE');
-    await frames(page, 6); await sleep(300 / 4);
+    await frames(page, 6); await gwait(page, 0.075);
     r = await page.evaluate((m0) => ({ on: N.player.vehicle === window.__v, as: N.player.passenger, paid: m0 - N.player.money, board: (window.__ev.find((e) => e[0] === 'bus:board') || [])[1] }), m0);
     check(bl === 'Board bus ₹3' && r.on && r.as === 'passenger' && r.paid === 300, 'city bus: "' + bl + '" -> a passenger, ₹3 paid', r);
     await page.keyboard.press('KeyE');
-    await frames(page, 6); await sleep(300 / 4);
+    await frames(page, 6); await gwait(page, 0.075);
     check(await page.evaluate(() => !N.player.vehicle), 'E at a crawl: gets down from the bus at once');
     // the family Chetak with Nanna at the controls: "Sit pillion" (rideOk)
     await parkAhead(page, 'family_chetak', { driver: 'npc' });
-    await sleep(150);
+    await gwait(page, 0.15);
     const fl = await label(page);
     await page.keyboard.press('KeyE');
-    await frames(page, 6); await sleep(250 / 4);
+    await frames(page, 6); await gwait(page, 0.0625);
     r = await page.evaluate(() => ({ on: N.player.vehicle === window.__v, as: N.player.passenger }));
     check(fl === 'Sit pillion' && r.on && r.as === 'pillion', 'Nanna\'s Chetak with Nanna on it: "' + fl + '"', r);
     await page.evaluate(() => N.vehicles.exit(N.player, true));
     // a stranger's car: no lifts from strangers
     await page.evaluate(() => { window.__ev.length = 0; });
     await parkAhead(page, 'ambassador', { driver: 'npc' });
-    await sleep(150);
+    await gwait(page, 0.15);
     const cl = await label(page);
     await page.keyboard.press('KeyE');
-    await frames(page, 6); await sleep(250 / 4);
+    await frames(page, 6); await gwait(page, 0.0625);
     r = await page.evaluate(() => ({ on: !!N.player.vehicle, line: (window.__ev.find((e) => e[0] === 'vehicle:refused') || [])[2] }));
     check(cl === 'Ask for a lift' && !r.on && /stranger|Small boys/.test(r.line || ''), 'a stranger\'s Ambassador: "' + cl + '" -> "' + r.line + '"', r);
     // a working traffic auto: "Ride auto (fare)" -> the fare card (shops.js)
     await parkAhead(page, 'auto', { driver: 'npc' });
     await page.evaluate(() => { window.__v.trafficOwned = true; });
-    await sleep(150);
+    await gwait(page, 0.15);
     const al = await label(page);
     await page.keyboard.press('KeyE');
-    await frames(page, 6); await sleep(400 / 4);
+    await frames(page, 6); await gwait(page, 0.1);
     r = await page.evaluate(() => ({ cur: N.shops.current, hail: !!N.shops.autoJob, rows: N.shops.debug.UI.items.map((it) => it.row.id).slice(0, 4) }));
     check(al === 'Ride auto (fare)' && r.cur && r.cur.kind === 'auto_ride' && r.hail, 'a traffic auto with its driver: "' + al + '" -> the fare card (meter + das upar)', r);
     await shot('fare_card');
     await page.keyboard.press('Escape');
-    await sleep(300);
+    await gwait(page, 0.3);
+    // a cycle-rickshaw with its rickshaw-wala: "Ride rickshaw (fare)" -> the same fare card, he is not at the pedals
+    await page.evaluate(() => { N.shops.close(); const SS = N.shops.debug.S; if (SS.hail && SS.hail.v) N.vehicles.remove(SS.hail.v); SS.hail = null; });
+    await parkAhead(page, 'rickshaw', { driver: 'npc' });
+    await page.evaluate(() => { const v = window.__v; v.trafficOwned = true; v.controller = (q) => { q.ctl.brake = true; q.ctl.throttle = 0; }; });
+    await gwait(page, 0.15);
+    const rl = await label(page);
+    await page.keyboard.press('KeyE');
+    await frames(page, 6); await gwait(page, 0.1);
+    r = await page.evaluate(() => ({ cur: N.shops.current, onVeh: !!N.player.vehicle, drv: !!window.__v.driver && window.__v.driver !== N.player }));
+    check(rl === 'Ride rickshaw (fare)' && r.cur && r.cur.kind === 'auto_ride' && !r.onVeh && r.drv, 'a cycle-rickshaw with its rickshaw-wala: "' + rl + '" -> the fare card; the rickshaw-wala keeps the pedals', r);
+    await page.keyboard.press('Escape');
+    await gwait(page, 0.3);
     // Bunty-anna's RX100 (60 finds): STD call, then pillion
     const bu = await page.evaluate(async () => {
       N.shops.close();
@@ -416,7 +445,7 @@ async function main() {
     });
     let bj = null;
     for (let i = 0; i < 40; i++) {
-      await sleep(500);
+      await gwait(page, 0.5);
       bj = await page.evaluate(() => {
         const J = N.shops.buntyJob, v = J && J.vehicle;
         // he pulls up at the kerb: walk over to the bike (the card opens within ~46 u)
@@ -428,7 +457,7 @@ async function main() {
     check(bu.row && !bu.why && bu.called && bj && bj.job && bj.job.type === 'bunty_rx100' && bj.cur && bj.cur.kind === 'bunty_ride', 'STD "Call Bunty-anna" (60 finds): his RX100 arrives, the pillion card opens', { bu, bj });
     await shot('bunty_card');
     await page.keyboard.press('Escape');
-    await sleep(300);
+    await gwait(page, 0.3);
     await page.evaluate(() => { if (N.shops.isOpen()) N.shops.close(); });
     await checkErrors(page, errors, 'passenger');
   }
@@ -462,9 +491,9 @@ async function main() {
     });
     await page.keyboard.down('KeyW');
     let hit = null;
-    for (let i = 0; i < 40 && !hit; i++) { await sleep(150); hit = await page.evaluate(() => window.__ev.find((e) => e[0] === 'vehicle:pothole') || null); }
+    for (let i = 0; i < 40 && !hit; i++) { await gwait(page, 0.15); hit = await page.evaluate(() => window.__ev.find((e) => e[0] === 'vehicle:pothole') || null); }
     await closeCam(page, true, 4.5);
-    await sleep(60);
+    await gwait(page, 0.06);
     await shot('pothole_jolt');
     await closeCam(page, false);
     await page.keyboard.up('KeyW');
@@ -478,7 +507,7 @@ async function main() {
     check(p1.jolt >= 0.55, 'vehicle.jolt = ' + p1.jolt.toFixed(2) + ' (the renderer bobs the body; it decays)', p1.jolt);
     check(p1.shakes.length >= 1 && p1.shakes[0][0] > 0.5 && p1.shakes[0][0] <= 1.5, 'N.render.shake(' + (p1.shakes[0] ? p1.shakes[0][0].toFixed(2) : '?') + ') for the player (max 1.5)', p1.shakes);
     check(p1.sfx.length >= 1 && p1.sfx[0].vol > 0.4 && !p1.sfx[0].variant, 'sfx "pothole" (DHADAK, vol ' + (p1.sfx[0] ? p1.sfx[0].vol : '?') + ' with speed), dry', p1.sfx);
-    const jd = await page.evaluate(async () => { await new Promise((r) => setTimeout(r, 700)); return window.__v.jolt; });
+    const jd = await page.evaluate(async () => { await __gw(0.7); return window.__v.jolt; });
     check(jd < 0.05, 'the jolt decays back to 0 (' + jd.toFixed(2) + ')');
     // slower ride: a softer thud
     // wet after rain: a splash variant + muddy drops
@@ -497,8 +526,8 @@ async function main() {
     });
     await page.keyboard.down('KeyW');
     let wet = null;
-    for (let i = 0; i < 30 && !wet; i++) { await sleep(150); wet = await page.evaluate(() => window.__ev.find((e) => e[0] === 'vehicle:pothole') || null); }
-    await closeCam(page, true, 4.5); await sleep(40); await shot('pothole_wet'); await closeCam(page, false);
+    for (let i = 0; i < 30 && !wet; i++) { await gwait(page, 0.15); wet = await page.evaluate(() => window.__ev.find((e) => e[0] === 'vehicle:pothole') || null); }
+    await closeCam(page, true, 4.5); await gwait(page, 0.04); await shot('pothole_wet'); await closeCam(page, false);
     await page.keyboard.up('KeyW');
     const ws = await page.evaluate(() => ({ sfx: window.__sfx.filter((s) => s[0] === 'pothole').map((s) => s[1].variant || null), drops: N.vehicles.particleCount() }));
     check(!!wet && wet[3] === true && ws.sfx.indexOf('wet') >= 0, 'after rain: a water-filled pothole splashes (sfx variant "wet", ' + ws.drops + ' particles)', { wet, ws });
@@ -514,7 +543,7 @@ async function main() {
       window.__potAt(170, 0);
       window.__t = t; window.__ev.length = 0; window.__shakes.length = 0;
     });
-    await sleep(2600);
+    await gwait(page, 2.6);
     const tr = await page.evaluate(() => ({ ev: window.__ev.filter((e) => e[0] === 'vehicle:pothole'), shakes: window.__shakes.length, jolt: window.__t.jolt }));
     check(tr.ev.length >= 1 && tr.ev[0][1] === 'hercules_cycle' && tr.ev[0][4] === false && tr.shakes === 0, 'a traffic Hercules rides through one: jolt + slowdown, no shake for the player', tr);
     // walking: a tiny stumble with real keys
@@ -532,7 +561,7 @@ async function main() {
     // put the pothole on the walking line instead (the arrow key walks axis-aligned)
     await page.evaluate((along) => { const r = window.__road, p = N.player; window.__pots.length = 0; const s = along === 'x' ? Math.sign(Math.cos(r.angle)) : Math.sign(Math.sin(r.angle)); window.__pots.push({ x: p.x + (along === 'x' ? 30 * s : 0), y: p.y + (along === 'y' ? 30 * s : 0), r: 6, depth: 0.7, wet: true }); }, along);
     for (const k of key) await page.keyboard.down(k);
-    await sleep(1600);
+    await gwait(page, 1.6);
     for (const k of key) await page.keyboard.up(k);
     const sm = await page.evaluate(() => ({ st: window.__ev.filter((e) => e[0] === 'player:stumble'), splash: window.__sfx.filter((s) => s[0] === 'splash').length }));
     check(sm.st.length >= 1 && sm.splash >= 1, 'walking through a (wet) pothole: a tiny stumble and a splash', sm);
@@ -650,13 +679,13 @@ async function main() {
       out.home = home;
       return out;
     });
-    await sleep(200);
+    await gwait(page, 0.2);
     const lb29 = await label(page);
     const l30 = await page.evaluate(() => { const C = N.collectibles; C.found(C.items[29].id); return { scooty: !!N.flags.unlock_scooty, chetak: !!N.flags.unlock_chetak, total: C.total(), toasts: N.hud.toastQueue() }; });
-    await sleep(200);
+    await gwait(page, 0.2);
     const lb30 = await label(page);
     await page.keyboard.press('KeyE');
-    await frames(page, 6); await sleep(250 / 4);
+    await frames(page, 6); await gwait(page, 0.0625);
     const rideAk = await page.evaluate(() => N.player.vehicle && N.player.vehicle.type);
     check(l.names[0] === "Akka's Scooty" && /Bunty/.test(l.names[1] || ''), 'ladder names: 30 "' + l.names[0] + '", 60 "' + l.names[1] + '"', l.names);
     check(l.akka && !l.at29.scooty && lb29 === 'Nakko', '29 finds: Akka\'s Scooty is parked at home and says "' + lb29 + '"', { l, lb29 });
@@ -709,7 +738,7 @@ async function main() {
     await page.evaluate(() => { N.debug.teleport('himayatnagar') || N.debug.teleport(4580, 2619); N.traffic.enabled = true; N.traffic.setDensity(2); N.traffic.fill(); });
     const seen = {};
     for (let i = 0; i < 16; i++) {
-      await sleep(700);
+      await gwait(page, 0.7);
       const ts = await page.evaluate(() => N.traffic.vehicles.map((v) => v.type));
       for (const t of ts) seen[t] = (seen[t] || 0) + 1;
       if (seen.hero_cycle && seen.scooty && seen.hercules_cycle) break;
@@ -741,7 +770,7 @@ async function main() {
       p.god = true;
       return o;
     });
-    await sleep(2800);
+    await gwait(page, 2.8);
     await page.evaluate(() => { const p = N.player, v = window.__v; p.downT = 0; p.controlsLocked = false; const f = N.world.findFree(v.x - Math.sin(v.angle) * 9, v.y + Math.cos(v.angle) * 9, 'walk', 8); if (f) { p.x = f.x; p.y = f.y; } });
     let lb = await label(page);
     await page.keyboard.press('KeyE');
@@ -758,7 +787,7 @@ async function main() {
       p.god = true;
       return { fallen: !!v.fallen, onFoot: !p.vehicle };
     });
-    await sleep(2800);
+    await gwait(page, 2.8);
     await page.evaluate(() => { const p = N.player, v = window.__v; p.downT = 0; p.controlsLocked = false; const f = N.world.findFree(v.x - Math.sin(v.angle) * 9, v.y + Math.cos(v.angle) * 9, 'walk', 8); if (f) { p.x = f.x; p.y = f.y; } });
     lb = await label(page);
     await page.keyboard.press('KeyE');
@@ -780,7 +809,7 @@ async function main() {
     const alone = await label(page);
     const pri = await page.evaluate(() => { const c = N.interact.current; return c ? c.priority : null; });
     await page.evaluate(() => { window.__ev.length = 0; });
-    for (let i = 0; i < 6; i++) { await page.keyboard.press('KeyE'); await sleep(60); }
+    for (let i = 0; i < 6; i++) { await page.keyboard.press('KeyE'); await gwait(page, 0.06); }
     await frames(page, 3);
     const spam = await page.evaluate(() => { const lines = N.vehicles.REFUSE.chetak.map((t) => t.replace(/\*([^*]+)\*/g, '$1')); return { refused: window.__ev.filter((e) => e[0] === 'vehicle:refused').length, toasts: N.hud.toastQueue().filter((t) => lines.indexOf(t) >= 0).length }; });
     check(both === 'Ride Hero cycle' && alone === 'Too small to drive' && (pri == null || pri < -1) && spam.refused <= 2 && spam.toasts <= 2, 'a Chetak 4 u away + a Hero 14 u away: "' + both + '"; the Chetak alone: "' + alone + '" (priority ' + pri + '); 6 x E -> ' + spam.refused + ' refusal(s), ' + spam.toasts + ' toast(s)', { both, alone, pri, spam });
@@ -937,10 +966,10 @@ async function main() {
     for (const type of ['scooty', 'hero_cycle']) {
       await parkAhead(page, type);
       await page.evaluate(() => { N.vehicles.enter(N.player, window.__v); const a = window.__road.angle; N.input.setMove(Math.cos(a), Math.sin(a), true); });
-      await sleep(2600);
+      await gwait(page, 2.6);
       const st1 = await page.evaluate(() => { const v = window.__v; return { sp: v.speed, top: v.T.maxSpeed, err: Math.abs(N.util.angleDiff(v.angle, window.__road.angle)), wob: v.wobble || 0 }; });
       await page.evaluate(() => { const a = window.__road.angle - Math.PI / 2; N.input.setMove(Math.cos(a), Math.sin(a), true); });
-      await sleep(1500);
+      await gwait(page, 1.5);
       const st2 = await page.evaluate(() => { const v = window.__v; return { err: Math.abs(N.util.angleDiff(v.angle, window.__road.angle - Math.PI / 2)) }; });
       await page.evaluate(() => { N.input.setMove(null); if (N.player.vehicle) N.vehicles.exit(N.player, true); });
       check(st1.sp > st1.top * 0.7 && st1.err < 0.3 && st2.err < 0.5, type + ' on the stick: ' + st1.sp.toFixed(0) + ' u/s holding the line (heading error ' + st1.err.toFixed(2) + ' rad), turns to a new stick direction (' + st2.err.toFixed(2) + ' rad off)', { st1, st2 });
@@ -957,15 +986,17 @@ async function main() {
         else { v = N.vehicles.spawn('bus', r0.x + Math.cos(r0.angle) * 30, r0.y + Math.sin(r0.angle) * 30, r0.angle, { driver: true }); v.controller = (q) => { q.ctl.brake = true; q.ctl.throttle = 0; }; N.vehicles.ride(p, v, { as: 'passenger' }); }
         const saved = N.save.save({ reason: 'test', toast: false });
         const loaded = N.save.load();
-        await new Promise((res) => setTimeout(res, 300));
-        const near = N.vehicles.list.filter((q) => q.alive && (q.type === 'ambassador' || q.type === 'bus') && Math.hypot(q.x - p.x, q.y - p.y) < 120).length;
-        out[kind] = { saved, loaded, veh: p.vehicle ? p.vehicle.type : null, mode: p.mode, stray: near, as: p.passenger || null, atWheel: !!(p.vehicle && p.vehicle.driver === p) };
+        await __gw(0.3);
+        const near = (t) => N.vehicles.list.filter((q) => q.alive && q.type === t && Math.hypot(q.x - p.x, q.y - p.y) < 120).length;
+        const pv = p.vehicle, d = pv && pv.driver;
+        out[kind] = { saved, loaded, veh: pv ? pv.type : null, mode: p.mode, stray: near('ambassador') + near('bus'), cars: near('ambassador'), buses: near('bus'), as: p.passenger || null, atWheel: !!(pv && d === p), driver: !pv ? null : d === p ? 'player' : d && d.npc ? 'npc' : d ? 'other' : null };
         if (p.vehicle) N.vehicles.exit(p, true);
       }
       return out;
     });
     // A4: a save made riding along loads him riding along again (vehicles 'ride' section), never at the wheel
-    check(r.car.loaded && !r.car.veh && r.car.stray === 0 && r.bus.loaded && r.bus.veh === 'bus' && r.bus.as === 'passenger' && !r.bus.atWheel && r.bus.stray === 1, 'save + load in a debug Ambassador: on foot after the load, no stray copy; riding a bus: still a passenger (not at the wheel), only that bus', r);
+    check(r.car.loaded && !r.car.veh && r.car.stray === 0, 'save + load in a debug Ambassador: on foot after the load, no stray copy', r.car);
+    check(r.bus.loaded && r.bus.veh === 'bus' && r.bus.as && !r.bus.atWheel && r.bus.driver === 'npc' && r.bus.buses === 1 && r.bus.cars === 0, 'save + load riding a bus: still riding it as a passenger (' + r.bus.as + ') with an NPC driver, exactly one bus nearby, no stray copy', r.bus);
     await fresh(page);
     await checkErrors(page, errors, 'adv');
   }

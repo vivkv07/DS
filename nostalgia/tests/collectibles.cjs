@@ -439,8 +439,10 @@ async function testPlay(browser) {
   s = await page.evaluate(() => ({ cam: N.render.camOverride && N.render.camOverride.zoom, locked: N.player.controlsLocked, ev: window.__ev.filter((e) => e[0] === 'viewpoint').map((e) => e[1]) }));
   await page.screenshot({ path: path.join(OUT, 'viewpoint_bala_hissar.png') });
   await sleep(3200);
-  const s2 = await page.evaluate(() => ({ cam: N.render.camOverride, locked: N.player.controlsLocked, known: ['K11', 'G23', 'G24'].map((id) => N.collectibles.isKnown(id)), blips: Array.from(N.hud.blips.keys()).filter((k) => k.startsWith('coll:rv:')).length }));
-  check(s.cam === 0.55 && s.locked && s.ev.indexOf('golconda_bala_hissar') >= 0 && !s2.cam && !s2.locked && s2.known.every(Boolean) && s2.blips >= 3, 'Bala Hissar viewpoint: zoom 0.55 for 3 s, then K11/G23/G24 blip on the map', { s, s2 });
+  const s2 = await page.evaluate(() => ({ cam: N.render.camOverride, locked: N.player.controlsLocked, known: ['K11', 'G23', 'G24'].map((id) => N.collectibles.isKnown(id)), g24d: Math.round(Math.hypot(N.collectibles.get('G24').x - N.places.golconda_bala_hissar.x, N.collectibles.get('G24').y - N.places.golconda_bala_hissar.y)), blips: Array.from(N.hud.blips.keys()).filter((k) => k.startsWith('coll:rv:')).length }));
+  // systems §8.14: a viewpoint reveals unfound items within 900 u. On the real-geography (v2) map Taramati
+  // Baradari (G24) is ~1.4 km from Bala Hissar, so it must stay hidden; K11 and G23 are inside the radius.
+  check(s.cam === 0.55 && s.locked && s.ev.indexOf('golconda_bala_hissar') >= 0 && !s2.cam && !s2.locked && s2.known[0] && s2.known[1] && !s2.known[2] && s2.g24d > 900 && s2.blips >= 2 /* one reveal blip each for K11 and G23 */, 'Bala Hissar viewpoint: zoom 0.55 for 3 s, then K11/G23 blip on the map (G24, ' + s2.g24d + ' u away, does not)', { s, s2 });
 
   // time gates: C10 only on Sundays; K6 moves on 25 Jul (Prasads opens)
   s = await page.evaluate(() => {

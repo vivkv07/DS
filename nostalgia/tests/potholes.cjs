@@ -33,6 +33,22 @@ const ONLY = process.env.ONLY || '';
 const failures = [];
 const fail = (msg) => { failures.push(msg); console.log('  FAIL ' + msg); };
 const ok = (msg) => console.log('  ok   ' + msg);
+// Game-clock waits (robust on a loaded machine, where a wall-clock sleep sees fewer game frames):
+// window.__gw(secs) resolves after `secs` of GAME time (N.time.now); while the game clock is stopped
+// (title, pause menu) it counts frame time (N.time.real) instead. Both advance only as frames run, so a
+// slow machine just takes longer. The wall-clock cap (8x + 5 s) only stops a hung page from hanging the suite.
+const GW = () => {
+  window.__gw = (secs) => new Promise((res) => {
+    let acc = 0, n0 = N.time.now, r0 = N.time.real;
+    const t0 = performance.now(), cap = secs * 8000 + 5000;
+    (function chk() {
+      const dn = N.time.now - n0, dr = N.time.real - r0; n0 = N.time.now; r0 = N.time.real;
+      acc += dn > 0 ? dn : dr;
+      if (acc >= secs || performance.now() - t0 > cap) res(acc); else requestAnimationFrame(chk);
+    })();
+  });
+};
+const gwait = (pg, secs) => pg.evaluate((s) => window.__gw(s), secs);
 const info = (msg) => console.log('       ' + msg);
 
 /* ------------------------------------------------------------------ node harness */
@@ -340,6 +356,7 @@ async function browserPart() {
   console.log('\n== browser: the real game');
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+  await page.addInitScript(GW);
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
@@ -391,7 +408,7 @@ async function browserPart() {
       const a = Math.atan2(cand.y - v.y, cand.x - v.x);
       v.angle = a; v.vx = Math.cos(a) * 70; v.vy = Math.sin(a) * 70; v.speed = 70;
       N.input.setMove && N.input.setMove(Math.cos(a), Math.sin(a));
-      await new Promise((r) => setTimeout(r, 30));
+      await __gw(0.03);
       if (Math.hypot(v.x - cand.x, v.y - cand.y) > 200) break;
     }
     N.off('vehicle:pothole', on);
@@ -420,7 +437,7 @@ async function browserPart() {
   await page.evaluate(() => { if (N.hud && N.hud.hide) N.hud.hide(); if (N.traffic && N.traffic.setEnabled) N.traffic.setEnabled(false); });
   const shoot = async (name, s) => {
     await page.evaluate(([x, y]) => { N.player.teleport(x, y + 50); N.render.camOverride = { x, y, zoom: 1, snap: true }; N.render.warmChunks(x, y, 700); }, [s.x, s.y]);
-    await page.waitForTimeout(900);
+    await gwait(page, 0.9);
     await page.screenshot({ path: path.join(OUT, 'potholes_' + name + '.png') });
     // a 2x crop of the middle (the potholes are 3-9 u = 6-18 device px at this zoom)
     await page.screenshot({ path: path.join(OUT, 'potholes_' + name + '_crop.png'), clip: { x: 440, y: 260, width: 400, height: 200 } });
@@ -431,19 +448,19 @@ async function browserPart() {
     info(k + ': ' + s.road + ' in ' + s.district + ' (' + s.n + ' potholes in view)');
   }
   await page.evaluate(() => { N.seasons.set('monsoon', true); N.flags.rain = true; });
-  await page.waitForTimeout(1200);
+  await gwait(page, 1.2);
   await page.waitForFunction(() => N.world.potholes.list.some((p) => p.rain), null, { timeout: 30000 }).catch(() => fail('the monsoon extras never appeared'));
-  await page.waitForTimeout(300);
+  await gwait(page, 0.3);
   const rain = await page.evaluate(() => ({ state: N.world.potholes.rain, raining: N.seasons.is('rain'), wet: N.world.potholes.list.filter((p) => p.wet).length, all: N.world.potholes.list.length }));
   if (rain.state !== 2 || rain.wet !== rain.all) fail('rain did not fill the potholes: ' + JSON.stringify(rain)); else ok('rain: all ' + rain.wet + ' potholes (incl. the monsoon extras) hold water');
   for (const [k, s] of Object.entries(spots)) if (s) await shoot(k + '_rain', s);
   await page.evaluate(() => N.debug.setTime(17, 40));
-  await page.waitForTimeout(600);
+  await gwait(page, 0.6);
   if (spots.colony_lane) await shoot('colony_lane_rain_dusk', spots.colony_lane);
   const perf = await page.evaluate(() => N.render.stats.ms);
   info('last frame: ground layer ' + (perf.ground || 0).toFixed(2) + ' ms (water glints + wet potholes), chunks ' + (perf.chunks || 0).toFixed(2) + ' ms');
   await page.evaluate(() => { N.flags.rain = false; N.seasons.set('monsoon', null); });
-  await page.waitForTimeout(800);
+  await gwait(page, 0.8);
   const after = await page.evaluate(() => ({ state: N.world.potholes.rain, wet: N.world.potholes.list.filter((p) => p.wet).length }));
   info('after the rain: state ' + after.state + ', ' + after.wet + ' wet');
   const errs = errors.concat(await page.evaluate(() => (N.errors || []).map((e) => 'N.err ' + (e.where || '') + ': ' + (e.msg || e.message || e))));

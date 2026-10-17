@@ -262,7 +262,16 @@ async function reloadContinue(page) {
     await sleep(800);
     const loaded = await page.evaluate(() => ({ counter: N.tape.counter, done: Array.from(N.missions.done), date: N.calendar.label(), tin: Array.from(N.tape.tin), cassettes: N.story2.cassettesFound(), avail: N.missions.available().map((d) => d.id) }));
     check((START !== 'M7' || loaded.counter === 498) && loaded.done.length >= 6 && /15 MAY 2003/.test(loaded.date), 'CONTINUE restores the save: 498, 15 MAY 2003', loaded);
-    if (START === 'M7') check(loaded.avail.indexOf('the_clap') >= 0, 'M7 the_clap is available after ammammas_thursday (requires)', loaded.avail);
+    if (START === 'M7') {
+      // story.js' step-out gate keeps a giver from offering itself under the spot he loaded on (he stands at the
+      // home giver after CONTINUE), so ask again once he has stepped away from it
+      const away = await page.evaluate(() => {
+        const h = N.places.home, q = N.world.findFree(h.x + 110, h.y + 30, 'walk', 30) || { x: h.x + 110, y: h.y + 30 };
+        N.player.teleport(q.x, q.y);
+        return N.missions.available().map((d) => d.id);
+      });
+      check(away.indexOf('the_clap') >= 0, 'M7 the_clap is available after ammammas_thursday (requires), once he steps away from the spot he loaded on', { atLoad: loaded.avail, away });
+    }
     check(loaded.cassettes.dedications.length === 3 && loaded.cassettes.agent.length === 4, 'cassettes found: 3 dedications + 4 Agent tapes', loaded.cassettes);
     await retune(page);
 
