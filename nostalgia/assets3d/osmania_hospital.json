@@ -1,0 +1,67 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 156028,
+ "clips": {},
+ "family": "landmark",
+ "file": "osmania_hospital.glb",
+ "front": "-Y",
+ "id": "osmania_hospital",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 152.4,
+ "kit": 1,
+ "materials": [
+  "M_osmania_hospital_granite_grey",
+  "M_osmania_hospital_lime_plaster",
+  "M_osmania_hospital_lime_plaster.001",
+  "M_osmania_hospital_gold_leaf",
+  "M_osmania_hospital_sign_text_e5f3eee7.png",
+  "M_osmania_hospital_granite_grey.001",
+  "M_osmania_hospital_granite_grey.002",
+  "M_osmania_hospital_clock_face@night"
+ ],
+ "max": [
+  97.4,
+  36.0,
+  99.3
+ ],
+ "meta": {
+  "face": "s",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   194,
+   76
+  ],
+  "height": 100.0,
+  "landmark": "osmania_hospital"
+ },
+ "min": [
+  -97.4,
+  -40.0,
+  0.0
+ ],
+ "notes": [
+  "COL_osmania_hospital: camera-ray proxy boxes (main block, tower, dome, end pavilions)"
+ ],
+ "script": "oldcity.civic",
+ "size": [
+  194.8,
+  76.0,
+  99.3
+ ],
+ "tint": null,
+ "tris": 2656,
+ "units": "u",
+ "up": "Z"
+}

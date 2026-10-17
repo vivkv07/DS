@@ -21,7 +21,7 @@ from kit import box, lathe, onion_profile, arch_outline, prism_from_outline
 from oldcity import common
 
 S = 24.0          # half side of the block (wall faces)
-MR = 5.9          # minaret radius at the base (engaged into the corners)
+MR = 6.6          # minaret radius at the base (engaged into the corners)
 ROOF = 79.0       # roof terrace (top of the second storey)
 PAR = 83.6        # top of the parapet merlons
 ARCH_W = 26.0     # great arch: ~11 m wide
@@ -93,7 +93,7 @@ def balcony(M, z, r_in, r_out, n_rail, rail_h=2.4, corbel_h=2.6):
 
     def opening():
         return common.decal('rail_open', arch_outline(w * 0.5, rail_h * 0.42, rail_h * 0.3, 'pointed', n=3), M['plaster_shadow'])
-    o = ring_of(opening, n_rail, rr + 0.04, z + 0.15 + rail_h * 0.14, phase=math.pi / n_rail)
+    o = ring_of(opening, n_rail, rr + 0.09, z + 0.15 + rail_h * 0.14, phase=math.pi / n_rail)
     parts.append(o)
     return parts
 
@@ -111,7 +111,7 @@ def minaret(M, cx, cy):
     balcony, a lotus-petal drum and a bulbous onion dome with a brass finial."""
     parts = []
     r0 = MR
-    fd = 0.42
+    fd = 0.55
     prof = [(r0 + 0.9, 0.0, 0), (r0 + 0.9, 1.6, 0), (r0 + 0.5, 1.6, 0), (r0 + 0.5, 6.0, 0.0),  # granite-ish base drum
             (r0, 6.3, fd), (r0, ARCH_SPRING - 0.8, fd),
             (r0 + 0.5, ARCH_SPRING - 0.5, 0), (r0 + 0.5, ARCH_SPRING + 0.7, 0), (r0, ARCH_SPRING + 1.0, fd),
@@ -122,12 +122,12 @@ def minaret(M, cx, cy):
             (r0 - 0.1, ROOF + 0.5, fd),
             # free stage 1 (above the roof), slightly tapering
             (r0 - 0.4, 84.5, fd * 0.9),
-            (r0 - 0.5, 85.0, fd * 0.9), (r0 - 0.6, 99.5, fd * 0.8),
-            (r0 - 1.0, 100.0, fd * 0.7), (r0 - 1.25, 104.0, fd * 0.7),
+            (r0 - 0.3, 85.0, fd * 0.9), (r0 - 0.45, 99.5, fd * 0.8),
+            (r0 - 0.8, 100.0, fd * 0.7), (r0 - 1.0, 104.0, fd * 0.7),
             # free stage 2
-            (r0 - 1.7, 104.5, fd * 0.6), (r0 - 1.9, 113.0, fd * 0.6),
-            (r0 - 1.5, 113.4, 0), (r0 - 1.5, 114.4, 0), (r0 - 2.0, 114.6, 0)]
-    parts.append(fluted_lathe('minaret_shaft', prof, seg=32, flutes=16, mat=M['plaster']))
+            (r0 - 1.2, 104.5, fd * 0.6), (r0 - 1.35, 113.0, fd * 0.6),
+            (r0 - 0.95, 113.4, 0), (r0 - 0.95, 114.4, 0), (r0 - 1.45, 114.6, 0)]
+    parts.append(fluted_lathe('minaret_shaft', prof, seg=24, flutes=12, mat=M['plaster']))
     # the two carved balconies on the free part
     parts += balcony(M, 85.0, r0 - 0.5, r0 + 2.4, 16, rail_h=2.6, corbel_h=3.0)
     parts += balcony(M, 104.5, r0 - 1.7, r0 + 0.8, 12, rail_h=2.2, corbel_h=2.4)
@@ -139,12 +139,12 @@ def minaret(M, cx, cy):
         parts.append(ring_of(niche, n, rr + 0.1, z0, phase=math.pi / n))
     # lotus-leaf base (two rows of petals) and the onion dome
     dz = 114.6
-    rd = r0 - 2.0
+    rd = r0 - 1.45
 
     # lotus-leaf base: a flared ring scalloped into 12 petals (fluted lathe), then the onion dome
-    parts.append(fluted_lathe('lotus', [(rd - 0.2, dz - 1.2, 0), (rd + 0.6, dz - 0.6, 0.5), (rd + 1.5, dz + 0.4, 1.2), (rd + 1.9, dz + 1.3, 1.6),
-                                        (rd + 0.6, dz + 1.3, 0.6), (rd + 0.2, dz + 0.6, 0.0)], seg=48, flutes=12, mat=M['plaster_hi']))
-    parts.append(lathe('dome', onion_profile(rd + 0.25, 13.5, neck=0.9, bulge=1.2, tip=0.08, n=11, base_z=dz + 0.6), seg=24, mat=M['plaster_hi']))
+    parts.append(fluted_lathe('lotus', [(rd - 0.2, dz - 1.2, 0), (rd + 0.5, dz - 0.6, 0.3), (rd + 1.0, dz + 0.3, 0.6), (rd + 1.3, dz + 1.2, 0.9),
+                                        (rd + 0.5, dz + 1.2, 0.4), (rd + 0.1, dz + 0.6, 0.0)], seg=32, flutes=16, mat=M['plaster']))
+    parts.append(lathe('dome', onion_profile(rd + 0.1, 11.8, neck=0.8, bulge=1.3, tip=0.08, n=11, base_z=dz + 0.6), seg=24, mat=M['plaster']))
     fin = lathe('finial', [(0.55, 128.2), (0.8, 128.6), (0.35, 129.3), (0.7, 130.2), (0.25, 131.2), (0.45, 131.8), (0.12, 133.0), (0.3, 133.6), (0.0, TOP)], seg=8, mat=M['gold'])
     parts.append(fin)
     for o in parts:
@@ -159,13 +159,13 @@ def face_decor(M):
     fy = -S
     # alfiz: the raised rectangular frame round the great arch, with the arch moulding inside it
     fw = ARCH_W + 6.4
-    ftop = ARCH_SPRING + ARCH_RISE + 7.6
+    ftop = ARCH_SPRING + ARCH_RISE + 9.1
     for sx in (-1, 1):
         P.append(box('alfiz_post', (1.3, 0.9, ftop - 1.6), (sx * (fw / 2 - 0.65), fy - 0.3, 1.6), M['plaster_hi'], base=True))
     P.append(box('alfiz_top', (fw, 0.9, 1.3), (0, fy - 0.3, ftop - 1.3), M['plaster_hi'], base=True))
-    outer = arch_outline(ARCH_W + 2.6, ARCH_SPRING, ARCH_RISE + 1.6, 'pointed', n=16)
-    inner = arch_outline(ARCH_W, ARCH_SPRING, ARCH_RISE, 'pointed', n=16)
-    fr = prism_from_outline('arch_mould', outer, 1.2, center=(0, fy - 0.2, 0), mat=M['plaster_hi'])
+    outer = arch_outline(ARCH_W + 1.4, ARCH_SPRING, ARCH_RISE + 0.8, 'pointed', n=12)
+    inner = arch_outline(ARCH_W, ARCH_SPRING, ARCH_RISE, 'pointed', n=12)
+    fr = prism_from_outline('arch_mould', outer, 0.5, center=(0, fy - 0.15, 0), mat=M['plaster'])
     kit.boolean(fr, prism_from_outline('arch_cut', inner, 4.0, center=(0, fy, -0.01)))
     P.append(fr)
     # spandrel medallions (rosettes) left and right of the arch head
@@ -178,15 +178,15 @@ def face_decor(M):
         kit.apply_transform(boss)
         P += [ros, boss]
     # the clock (1889): a framed dial centred above the arch crown, glowing at night
-    cz = ARCH_SPRING + ARCH_RISE + 4.2
-    fr = kit.cylinder('clock_frame', 3.3, 0.8, (0, 0, 0), seg=24, mat=M['plaster_hi'], axis='Y', base=False)
+    cz = ARCH_SPRING + ARCH_RISE + 4.0
+    fr = kit.cylinder('clock_frame', 2.75, 0.8, (0, 0, 0), seg=24, mat=M['plaster_hi'], axis='Y', base=False)
     fr.location = (0, fy - 0.7, cz)
     kit.apply_transform(fr)
-    dial = kit.cylinder('clock_dial', 2.75, 0.3, (0, 0, 0), seg=24, mat=M['clock'], axis='Y', base=False)
+    dial = kit.cylinder('clock_dial', 2.3, 0.3, (0, 0, 0), seg=24, mat=M['clock'], axis='Y', base=False)
     dial.location = (0, fy - 1.0, cz)
     kit.apply_transform(dial)
     P += [fr, dial]
-    for (nm, w, L, ang, dy) in (('hand_h', 0.36, 1.55, 60, 1.2), ('hand_m', 0.26, 2.3, -115, 1.26)):
+    for (nm, w, L, ang, dy) in (('hand_h', 0.32, 1.3, 60, 1.35), ('hand_m', 0.22, 1.9, -115, 1.45)):
         h = box(nm, (w, 0.1, L), (0, 0, 0), M['iron'], base=True)
         h.rotation_euler = (0, math.radians(ang), 0)
         h.location = (0, fy - dy, cz)
@@ -195,17 +195,17 @@ def face_decor(M):
     ticks = []
     for i in range(12):
         a = 2 * math.pi * i / 12
-        hl, hw_ = (0.3 if i % 3 == 0 else 0.18), (0.14 if i % 3 == 0 else 0.09)
-        cx_, cz_ = 2.3 * math.cos(a), cz + 2.3 * math.sin(a)
+        hl, hw_ = (0.26 if i % 3 == 0 else 0.18), (0.14 if i % 3 == 0 else 0.09)
+        cx_, cz_ = 1.9 * math.cos(a), cz + 1.9 * math.sin(a)
         ux, uz = math.cos(a), math.sin(a)
         ticks.append(common.decal('tick', [(cx_ - ux * hl - uz * hw_, cz_ - uz * hl + ux * hw_), (cx_ - ux * hl + uz * hw_, cz_ - uz * hl - ux * hw_),
-                                          (cx_ + ux * hl + uz * hw_, cz_ + uz * hl - ux * hw_), (cx_ + ux * hl - uz * hw_, cz_ + uz * hl + ux * hw_)], M['iron'], y=fy - 1.16))
+                                          (cx_ + ux * hl + uz * hw_, cz_ + uz * hl - ux * hw_), (cx_ + ux * hl - uz * hw_, cz_ + uz * hl + ux * hw_)], M['iron'], y=fy - 1.28))
     P.append(kit.join(ticks, 'ticks'))
     # the projecting balcony band: carved brackets, a deep chajja slab, and a pierced balustrade
     L = WALL
     P.append(box('chajja', (L, 3.4, 0.9), (0, fy - 1.5, BAND), M['plaster_hi'], base=True))
     P.append(box('chajja_lip', (L, 0.5, 0.5), (0, fy - 3.0, BAND - 0.4), M['plaster_hi'], base=True))
-    nb = 11
+    nb = 10
     for i in range(nb):
         x = -L / 2 + 1.0 + i * (L - 2.0) / (nb - 1)
         b = prism_from_outline('bracket', [(0, -2.4), (2.8, -0.1), (2.8, 0.0), (0, 0.0)], 0.55, center=(0, 0, 0), mat=M['plaster'])
@@ -219,7 +219,7 @@ def face_decor(M):
     step = (L - 0.4) / nbal
     for i in range(nbal):
         x = -L / 2 + 0.2 + step * (i + 0.5)
-        P.append(common.decal('bal_open', [(x + px, BAND + 1.15 + pz) for (px, pz) in arch_outline(step * 0.52, 0.85, 0.6, 'pointed', n=3)], M['plaster_shadow'], y=fy - 3.12))
+        P.append(common.decal('bal_open', [(x + px, BAND + 1.15 + pz) for (px, pz) in arch_outline(step * 0.52, 0.85, 0.6, 'pointed', n=3)], M['plaster_shadow'], y=fy - 3.17))
     P.append(box('bal_cap', (L, 0.6, 0.3), (0, fy - 2.9, BAND + 2.9), M['plaster_hi'], base=True))
     # storey cornices
     P.append(box('cornice1', (L, 1.2, 0.7), (0, fy - 0.5, ST1[1] + 0.8), M['plaster_hi'], base=True))
@@ -241,11 +241,6 @@ def face_decor(M):
     for sx in (-1, 1):
         w = (L - ARCH_W) / 2 + 0.2
         P.append(box('dado', (w, 0.5, 3.6), (sx * (ARCH_W / 2 + w / 2 - 0.1), fy - 0.15, 1.6), M['granite'], base=True))
-    # blind niche panels on the pier faces (two stacked pointed niches each side)
-    for sx in (-1, 1):
-        x = sx * (ARCH_W / 2 + (L - ARCH_W) / 4 + 0.6)
-        for (z0, h) in ((7.0, 9.0), (18.5, 9.0)):
-            P.append(common.decal('pier_niche', [(x + px, z0 + pz) for (px, pz) in arch_outline(2.6, h * 0.66, h * 0.34, 'pointed', n=4)], M['plaster_shadow'], y=fy - 0.05))
     return P
 
 
@@ -285,21 +280,22 @@ def roof_mosque(M):
     x0, x1 = 9.0, S - 2.0          # depth along X
     y0 = -12.0
     hz = ROOF + 0.2
-    hall = box('mosque_hall', (x1 - x0, 24.0, 7.2), ((x0 + x1) / 2, 0, hz), M['plaster'], base=True)
-    cut = common.arcade_cutter(5, 22.0, hz, 5.6, 3.0, 0, 'pointed', wfrac=0.62, spring_frac=0.6, axis='X')
+    hall = box('mosque_hall', (x1 - x0, 24.0, 3.6), ((x0 + x1) / 2, 0, hz), M['plaster'], base=True)
+    cut = common.arcade_cutter(5, 22.0, hz, 3.0, 3.0, 0, 'pointed', wfrac=0.62, spring_frac=0.6, axis='X')
     cut.location = (x0, 0, 0)
     kit.apply_transform(cut)
     kit.boolean(hall, cut)
     P.append(hall)
-    P.append(box('mosque_cornice', (x1 - x0 + 0.8, 24.8, 0.6), ((x0 + x1) / 2, 0, hz + 7.2), M['plaster_hi'], base=True))
-    m = kit.merlons('mosque_crest', 24.0, hz + 7.8, 0.6, 1.6, n=10, w=1.5, mat=M['plaster'], kind='leaf')
+    P.append(box('mosque_cornice', (x1 - x0 + 0.8, 24.8, 0.5), ((x0 + x1) / 2, 0, hz + 3.6), M['plaster'], base=True))
+    m = kit.merlons('mosque_crest', 24.0, hz + 4.1, 0.6, 1.1, n=10, w=1.5, mat=M['plaster'], kind='leaf')
     m.rotation_euler = (0, 0, math.pi / 2)
     m.location = (x0 - 0.2, 0, 0)
     kit.apply_transform(m)
     P.append(m)
     for sy in (-1, 1):
-        P.append(lathe('mosque_pinnacle', [(0.8, hz), (0.8, hz + 9.0), (1.0, hz + 9.3), (0.6, hz + 9.6), (0.75, hz + 10.6), (0.0, hz + 12.4)], seg=10, mat=M['plaster_hi'], loc=(x0, sy * 12.4, 0)))
-    P.append(lathe('mosque_dome', onion_profile(2.4, 3.6, neck=0.9, bulge=1.1, tip=0.08, n=8, base_z=hz + 7.8), seg=16, mat=M['plaster_hi'], loc=((x0 + x1) / 2, 0, 0)))
+        P.append(lathe('mosque_pinnacle', [(0.6, hz), (0.6, hz + 5.0), (0.8, hz + 5.3), (0.45, hz + 5.6), (0.55, hz + 6.4), (0.0, hz + 7.8)], seg=8, mat=M['plaster'], loc=(x0, sy * 12.4, 0)))
+    # (no dome: the real rooftop mosque is barely visible from the street)
+    # P.append(lathe('mosque_dome', onion_profile(2.4, 3.6, neck=0.9, bulge=1.1, tip=0.08, n=8, base_z=hz + 7.8), seg=16, mat=M['plaster_hi'], loc=((x0 + x1) / 2, 0, 0)))
     return P
 
 
@@ -307,8 +303,8 @@ def roof_mosque(M):
            floodlit=True, fit='footprint')
 def build(A):
     M = common.mats(
-        plaster=('lime_plaster', dict(base='#e6d6b2', var=0.08, grain=0.045, streaks=0.55, grime=0.6, dirt='#6e6252')),
-        plaster_hi=('lime_plaster', dict(base='#efe4c8', var=0.06, grain=0.04, streaks=0.35, grime=0.5, dirt='#7a6c58')),
+        plaster=('lime_plaster', dict(base='#e9dcbc', var=0.07, grain=0.04, streaks=0.4, grime=0.35, dirt='#77706a')),
+        plaster_hi=('lime_plaster', dict(base='#efe5cb', var=0.06, grain=0.04, streaks=0.3, grime=0.3, dirt='#7a7268')),
         plaster_shadow=('lime_plaster_shadow', dict(base='#8c7e66', var=0.05, grain=0.04, streaks=0.1)),
     )
     M['clock'] = kit.material('clock_face', 'clock@night', emit='#fff1c8', emit_strength=0.0)
@@ -320,10 +316,13 @@ def build(A):
     kit.boolean(core, t2)
     for c in storey_cutters():
         kit.boolean(core, c)
+    for (cx, cy) in ((-S, -S), (S, -S), (S, S), (-S, S)):
+        kit.boolean(core, kit.cylinder('mcut', MR - 0.25, ROOF + 4, (cx, cy, -1), seg=8))
+    kit.dice(core, 13.0)
     P = [core]
     # ---- granite plinth and step
-    P.append(box('plinth', (64, 64, 0.9), (0, 0, 0), M['granite'], base=True, bevel=0.12, segments=1))
-    P.append(box('plinth_top', (60, 60, 0.7), (0, 0, 0.9), M['granite'], base=True, bevel=0.1, segments=1))
+    P.append(box('plinth', (62, 62, 0.9), (0, 0, 0), M['granite'], base=True, bevel=0.12, segments=1))
+    P.append(box('plinth_top', (58.5, 58.5, 0.7), (0, 0, 0.9), M['granite'], base=True, bevel=0.1, segments=1))
     # ---- facade decoration x4
     P += common.rot_copies(face_decor(M))
     # ---- minarets
@@ -332,7 +331,7 @@ def build(A):
     # ---- roof terrace and the mosque on its west side
     P.append(box('roof', (2 * S - 0.6, 2 * S - 0.6, 0.6), (0, 0, ROOF - 0.4), M['plaster'], base=True))
     P += roof_mosque(M)
-    common.finish(A, P, tile=12.0, tex=1024, dice_edge=0, ao_samples=48, ao_dist=10.0, ground_dirt=9.0, ao_strength=0.85, smooth_angle=58.0)
+    common.finish(A, P, tile=12.0, tex=1024, dice_edge=0, ao_samples=48, ao_dist=7.0, ground_dirt=9.0, ao_strength=0.6, smooth_angle=58.0)
     # ---- camera collision proxies (never drawn): four piers + the upper body + the minarets
     hw = ARCH_W / 2
     cols = []

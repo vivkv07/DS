@@ -1,0 +1,38 @@
+00:00.030  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building puranapul_arches (landmark)
+[kit] baked AO to vertex colours (32 samples) in 0.5s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (1 samples) in 0.1s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (1 samples) in 0.0s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 256x256 (1 samples) in 0.1s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+20:16:11 | INFO: Starting glTF 2.0 export
+20:16:11 | INFO: Extracting primitive: COL_puranapul_arches
+20:16:11 | INFO: Primitives created: 1
+20:16:11 | INFO: Extracting primitive: puranapul_arches_body
+20:16:11 | INFO: Primitives created: 3
+20:16:11 | INFO: Finished glTF 2.0 export in 0.05523681640625 s
+
+[kit] puranapul_arches: 2021 tris (budget 20000) ok, 136.7 KB, clips [], anchors 0
+20:16:11 | INFO: Data are loaded, start creating Blender stuff
+20:16:11 | INFO: Blender create Mesh node COL_puranapul_arches
+20:16:11 | INFO: Blender create Mesh node puranapul_arches_body
+20:16:12 | INFO: glTF import finished in 0.02s
+00:07.838  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/puranapul_arches.png'
+[kit] preview puranapul_arches.png (384px, 20 spp) in 5.8s
+20:16:17 | INFO: Data are loaded, start creating Blender stuff
+20:16:17 | INFO: Blender create Mesh node COL_puranapul_arches
+20:16:17 | INFO: Blender create Mesh node puranapul_arches_body
+20:16:17 | INFO: glTF import finished in 0.03s
+00:11.708  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/puranapul_arches_back.png'
+[kit] preview puranapul_arches_back.png (320px, 14 spp) in 3.8s
+20:16:21 | INFO: Data are loaded, start creating Blender stuff
+20:16:21 | INFO: Blender create Mesh node COL_puranapul_arches
+20:16:21 | INFO: Blender create Mesh node puranapul_arches_body
+20:16:21 | INFO: glTF import finished in 0.02s
+00:15.856  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/puranapul_arches_arches.png'
+[kit] preview puranapul_arches_arches.png (320px, 16 spp) in 4.1s
+[kit] done puranapul_arches in 15.3s

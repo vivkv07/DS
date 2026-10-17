@@ -1,0 +1,32 @@
+00:00.041  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building falaknuma (landmark)
+[kit] baked AO to vertex colours (32 samples) in 0.2s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+20:15:06 | INFO: Starting glTF 2.0 export
+20:15:06 | INFO: Extracting primitive: COL_falaknuma
+20:15:06 | INFO: Primitives created: 1
+20:15:06 | INFO: Extracting primitive: falaknuma_body
+20:15:06 | INFO: Primitives created: 8
+20:15:06 | INFO: Finished glTF 2.0 export in 0.08757472038269043 s
+
+[kit] falaknuma: 2149 tris (budget 20000) ok, 150.4 KB, clips [], anchors 0
+20:15:06 | INFO: Data are loaded, start creating Blender stuff
+20:15:06 | INFO: Blender create Mesh node COL_falaknuma
+20:15:06 | INFO: Blender create Mesh node falaknuma_body
+20:15:06 | INFO: glTF import finished in 0.03s
+00:03.552  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/falaknuma.png'
+[kit] preview falaknuma.png (384px, 20 spp) in 2.3s
+20:15:08 | INFO: Data are loaded, start creating Blender stuff
+20:15:08 | INFO: Blender create Mesh node COL_falaknuma
+20:15:08 | INFO: Blender create Mesh node falaknuma_body
+20:15:08 | INFO: glTF import finished in 0.03s
+00:05.481  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/falaknuma_back.png'
+[kit] preview falaknuma_back.png (320px, 14 spp) in 1.9s
+20:15:10 | INFO: Data are loaded, start creating Blender stuff
+20:15:10 | INFO: Blender create Mesh node COL_falaknuma
+20:15:10 | INFO: Blender create Mesh node falaknuma_body
+20:15:10 | INFO: glTF import finished in 0.04s
+00:07.288  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/falaknuma_palace.png'
+[kit] preview falaknuma_palace.png (320px, 14 spp) in 1.8s
+[kit] done falaknuma in 6.8s

@@ -388,7 +388,7 @@ def palace_block(M, name, x0, y0, x1, y1, h, storeys=2, sides='nsew', arcade_sid
     """a neoclassical palace block (cream lime with white trims): body, cornices, arcaded verandah
     decals on `arcade_sides`, windows elsewhere, balustrade with dark gaps, optional pediment."""
     pl, hi, dk = M['plaster'], M['trim'], M['dark']
-    out = [box(name, (x1 - x0, y1 - y0, h), ((x0 + x1) / 2, (y0 + y1) / 2, 0), pl, base=True)]
+    out = [box(name, (x1 - x0, y1 - y0, h + 3.0), ((x0 + x1) / 2, (y0 + y1) / 2, 0), pl, base=True)]
     sh = h / storeys
     dec, trims = [], []
     for (rot, (cx, cy), L, s) in faces_of_rect(x0, y0, x1, y1, sides):
@@ -413,17 +413,18 @@ def palace_block(M, name, x0, y0, x1, y1, h, storeys=2, sides='nsew', arcade_sid
         if tr:
             trims += place([planes(name + '_tr', tr, hi, facing=(0, -1, 0))], rot, (cx, cy, 0))
     out += dec + trims
-    # cornices at each floor line (one thin box per floor, overhanging)
-    for k in range(1, storeys + 1):
-        if k * sh < min_z:
-            continue
-        z = k * sh - (0.9 if k == storeys else 0.5)
-        out.append(box(name + '_cor', (x1 - x0 + 1.4, y1 - y0 + 1.4, 0.9 if k == storeys else 0.6), ((x0 + x1) / 2, (y0 + y1) / 2, z), hi, base=True))
-    out += bal_ring(name + '_bal', x0, y0, x1, y1, h, 3.0, hi, dark=M['gap'], sides=bal_sides, pitch=4.4)
+    # top cornice + balustrade as decals on the parapet (the wall rises 3 u above the roof)
+    for (rot, (cx, cy), L, sd) in faces_of_rect(x0, y0, x1, y1, bal_sides):
+        nn = max(2, int(L / 4.4))
+        st = L / nn
+        ps = [fpoly(rect(st * 0.3, 1.4), -L / 2 + st * (i + 0.5), h + 0.8, -0.06) for i in range(nn)]
+        objs = [planes(name + '_g', ps, M['gap'], facing=(0, -1, 0)),
+                planes(name + '_c', [fpoly(rect(L, 0.9), 0, h - 0.4, -0.05), fpoly(rect(L, 0.5), 0, h + 2.5, -0.05)], hi, facing=(0, -1, 0))]
+        out += place(objs, rot, (cx, cy, 0))
     if pediment:
         (pw, ph) = pediment
         cy = y0
-        tri = prism_from_outline(name + '_ped', [(-pw / 2, 0), (pw / 2, 0), (0, ph)], 1.6, center=((x0 + x1) / 2, cy - 0.4, h), mat=hi)
+        tri = prism_from_outline(name + '_ped', [(-pw / 2, 0), (pw / 2, 0), (0, ph)], 1.6, center=((x0 + x1) / 2, cy - 0.4, h + 2.4), mat=hi)
         out.append(tri)
     return out
 
@@ -458,7 +459,7 @@ def chowmahalla(A):
             ln = b - a
             mid = (a + b) / 2
             o = [box('ch_wall', (ln, t, CH_WALL), (mid, 0, 0), wl, base=True)]
-            mer = comb('ch_mer', ln - 1.0, CH_WALL, 2.8, max(2, int(ln / 10.0)), 3.6, wl, -t / 2 + 0.3, t / 2 - 0.3, leaf=True, back=False)
+            mer = comb('ch_mer', ln - 1.0, CH_WALL, 2.8, max(2, int(ln / 12.0)), 4.0, wl, -t / 2 + 0.3, t / 2 - 0.3, leaf=True, back=False)
             for m_ in mer:
                 m_.location.x += mid
                 kit.apply_transform(m_)
@@ -505,7 +506,7 @@ def chowmahalla(A):
     parts.append(box('ch_gcor2', (GW + 0.8, GD + 0.8, 0.6), (0, gy, 17.0), hi, base=True))
     for (rot, L, off) in ((0.0, GW, (0, gy - GD / 2 + 0.6)), (math.pi, GW, (0, gy + GD / 2 - 0.6)),
                           (-math.pi / 2, GD - 1.2, (-GW / 2 + 0.6, gy)), (math.pi / 2, GD - 1.2, (GW / 2 - 0.6, gy))):
-        parts += place(comb('ch_gmer', L - 5.0, GH, 2.6, max(2, int(L / 4.0)), 2.2, pl, -0.4, 0.4, leaf=True), rot, (off[0], off[1], 0))
+        parts += place(comb('ch_gmer', L - 5.0, GH, 2.6, max(2, int(L / 4.0)), 2.2, pl, -0.4, 0.4, leaf=True, back=False), rot, (off[0], off[1], 0))
     # corner chhatris on the gate tower
     for sx in (-1, 1):
         for sy in (-1, 1):
@@ -561,7 +562,7 @@ def chowmahalla(A):
     # Khilwat Mubarak: the great durbar hall (tall, at the back)
     parts += palace_block(M, 'ch_khilwat', -36, 30, 36, 66, 34, storeys=2, sides='swe', arcade_sides='s', pediment=(24, 6), min_z=CH_WALL)
     # its gently pitched roof behind the balustrade
-    roof = prism_from_outline('ch_kroof', [(-17, 0), (17, 0), (0, 4.5)], 70.0, axis='X', center=(0, 48, 34), mat=M['iron'])
+    roof = prism_from_outline('ch_kroof', [(-17, 0), (17, 0), (0, 4.5)], 70.0, axis='X', center=(0, 48, 35.5), mat=M['iron'])
     parts.append(roof)
     # two neoclassical mahals (Afzal / Mahtab Mahal style) either side of the long courtyard
     for s in (-1, 1):
@@ -569,7 +570,7 @@ def chowmahalla(A):
         parts += palace_block(M, 'ch_mahal%d' % (s + 1), x0, -46, x1, 4, 26, storeys=2, sides='swe', arcade_sides=('e' if s < 0 else 'w') + 's',
                               pediment=None, min_z=CH_WALL)
         # portico pediment on the courtyard side
-        tri = prism_from_outline('ch_mped', [(-8, 0), (8, 0), (0, 4.0)], 1.4, center=(0, 0, 26.0), mat=hi)
+        tri = prism_from_outline('ch_mped', [(-8, 0), (8, 0), (0, 4.0)], 1.4, center=(0, 0, 28.4), mat=hi)
         place([tri], -s * math.pi / 2, (s * 16, -21, 0))
         parts.append(tri)
     # low front block (offices) behind the gate
@@ -604,7 +605,7 @@ def mound(M, seed=7):
     sloping to the ground at the footprint edge; the front (-Y) slope is long (the approach)."""
     import random
     rnd = random.Random(seed)
-    seg = 28
+    seg = 22
 
     def ring(rx, ry, cy, z, jit, p=3.0):
         pts = []
@@ -636,12 +637,12 @@ def mound(M, seed=7):
     return ob
 
 
-def fk_block(M, name, L, D, h, storeys=2, front_arcade=False, lit=(), ends=True, bal_sides='nsew', urns=0, back=True, pitch=3.0):
+def fk_block(M, name, L, D, h, storeys=2, front_arcade=False, lit=(), ends=True, bal_sides='nsew', urns=0, back=True, pitch=3.0, slim=False):
     """a straight palace block centred at the origin, length L along X, depth D along Y, facing -Y:
     tall dark window decals on the long faces (verandah arches on the front when front_arcade),
     optional end windows, top cornice, balustrade (gaps outside) and `urns` urns along the front."""
     pl, hi, dk = M['plaster'], M['trim'], M['dark']
-    out = [box(name, (L, D, h), (0, 0, 0), pl, base=True)]
+    out = [box(name, (L, D, h + (2.6 if slim else 0.0)), (0, 0, 0), pl, base=True)]
     sh = h / storeys
     n = max(2, int(L / 6.2))
     for side in ((0, 1) if back else (0,)):
@@ -668,6 +669,16 @@ def fk_block(M, name, L, D, h, storeys=2, front_arcade=False, lit=(), ends=True,
             o = planes(name + '_end', ops, dk, facing=(0, -1, 0))
             place([o], s * math.pi / 2, (s * L / 2, 0, 0))
             out.append(o)
+    if slim:
+        # parapet is part of the wall: balustrade gaps + a cornice band as decals on the faces
+        for side in ((0, 1) if 'n' in bal_sides else (0,)):
+            nn = max(2, int(L / pitch))
+            st = L / nn
+            ps = [fpoly(rect(st * 0.3, 1.2), -L / 2 + st * (i + 0.5), h + 0.65, -0.06) for i in range(nn)]
+            objs = [planes(name + '_sg', ps, M['gap'], facing=(0, -1, 0)), planes(name + '_sc', [fpoly(rect(L, 0.8), 0, h - 0.6, -0.05)], hi, facing=(0, -1, 0))]
+            place(objs, 0 if side == 0 else math.pi, (0, -D / 2 if side == 0 else D / 2, 0))
+            out += objs
+        return out
     out.append(box(name + '_cor', (L + 1.2, D + 1.2, 1.0), (0, 0, h - 1.0), hi, base=True))
     out += bal_ring(name + '_bal', -L / 2, -D / 2, L / 2, D / 2, h, 2.6, hi, dark=M['gap'], sides=bal_sides, pitch=pitch)
     for i in range(urns):
@@ -696,17 +707,17 @@ def falaknuma(A):
     B = FK_BASE
     parts = [mound(M)]
     # boulders on the slopes
-    parts += rocks('fk_boulder', [(-50, -40, 4.0), (49, -55, 3.4), (-47, 30, 3.6), (33, -72, 2.6)], M['rock'], seed=3)
+    parts += rocks('fk_boulder', [(-50, -40, 4.0), (33, -72, 2.6)], M['rock'], seed=3)
     # ---- palace on the terrace
     pal = []
     # central main block (two tall storeys) + portico of tall columns with a pediment
     CB_W, CB_D, CB_H = 40.0, 30.0, 32.0
     cy0 = -16.0                          # main block front face
-    main = fk_block(M, 'fk_main', CB_W, CB_D, CB_H, 2, lit={(0, 1, 1), (1, 4, 0)}, urns=6)
+    main = fk_block(M, 'fk_main', CB_W, CB_D, CB_H, 2, lit={(0, 1, 1), (1, 4, 0)}, urns=4)
     place(main, 0, (0, cy0 + CB_D / 2, B))
     pal += main
     # attic storey over the centre (higher, gives the central mass)
-    att = fk_block(M, 'fk_attic', 22.0, 18.0, 8.0, 1, ends=False, back=False, bal_sides='s', urns=3)
+    att = fk_block(M, 'fk_attic', 22.0, 18.0, 8.0, 1, ends=False, back=False, bal_sides='s', urns=0)
     place(att, 0, (0, cy0 + 12.0, B + CB_H))
     pal += att
     # portico: 6 columns full height, entablature, pediment
@@ -722,12 +733,12 @@ def falaknuma(A):
     pal.append(ped)
     pal.append(prism_from_outline('fk_pedroof', [(-17, 0), (17, 0), (0, 7.0)], 9.0, center=(0, py + 5.6, B + col_h + 3.0), mat=pl))
     pal.append(planes('fk_tymp', [fpoly([(-12.5, 0.8), (12.5, 0.8), (0, 5.4)], 0, B + col_h + 3.0, py - 0.82)], M['plaster'], facing=(0, -1, 0)))
-    for x in (-17, 0, 17):
+    for x in (0,):
         pal.append(lathe('fk_acro', [(0.6, B + col_h + 3.0 + (7.0 if x == 0 else 0)), (0.85, B + col_h + 3.6 + (7.0 if x == 0 else 0)), (0.5, B + col_h + 4.8 + (7.0 if x == 0 else 0)), (0.0, B + col_h + 5.6 + (7.0 if x == 0 else 0))],
                          seg=4, mat=hi, loc=(x, py - 0.5, 0), close_bottom=False))
     # flanking two-storey blocks with arcaded verandahs
     for s in (-1, 1):
-        fl = fk_block(M, 'fk_flank', 16.0, 24.0, 26.0, 2, front_arcade=True, back=False, urns=3)
+        fl = fk_block(M, 'fk_flank', 16.0, 24.0, 26.0, 2, front_arcade=True, back=False, urns=0)
         place(fl, 0, (s * (CB_W / 2 + 8.0), cy0 + 14.0, B))
         pal += fl
     # the curved wings (claws) sweeping back on both sides: segments along an arc
@@ -738,19 +749,19 @@ def falaknuma(A):
             xa, xb = s * xa, s * xb
             L = math.hypot(xb - xa, yb - ya) + 1.2
             ang = math.atan2(yb - ya, xb - xa)
-            seg = fk_block(M, 'fk_wing', L, 10.0, 24.0, 2, front_arcade=False, lit={(1, 1, 0)} if (k == 1 and s > 0) else (), ends=False, bal_sides='s', pitch=3.4, back=False)
+            seg = fk_block(M, 'fk_wing', L, 10.0, 24.0, 2, front_arcade=False, lit={(1, 1, 0)} if (k == 1 and s > 0) else (), ends=False, bal_sides='s', pitch=3.4, back=False, slim=True)
             # outward face (-Y of the block) must look away from the courtyard
-            rot = ang + (math.pi if s > 0 else 0.0)
+            rot = ang + (0.0 if s > 0 else math.pi)
             place(seg, rot, ((xa + xb) / 2, (ya + yb) / 2, B))
             pal += seg
     # the tail: a long rear wing on the axis, ending in a rounded pavilion
-    tail = fk_block(M, 'fk_tail', 44.0, 12.0, 22.0, 2, ends=False, bal_sides='ns', pitch=3.4)
+    tail = fk_block(M, 'fk_tail', 44.0, 12.0, 22.0, 2, ends=False, bal_sides='ns', pitch=3.4, slim=True)
     place(tail, math.pi / 2, (0, 24.0 + 22.0, B))
     pal += tail
-    pal.append(lathe('fk_tailend', [(8.0, B), (8.0, B + 22.0), (8.6, B + 22.2), (8.6, B + 23.2), (0, B + 23.2)], seg=12, mat=pl, loc=(0, 68.0, 0), close_bottom=False))
+    pal.append(lathe('fk_tailend', [(8.0, B), (8.0, B + 24.6), (0, B + 24.6)], seg=12, mat=pl, loc=(0, 68.0, 0), close_bottom=False))
     # small domed belvedere over the main block's back (the silhouette's crown)
     pal.append(lathe('fk_cupola', [(4.2, B + CB_H + 8.0), (4.2, B + CB_H + 11.5), (4.8, B + CB_H + 12.0), (3.8, B + CB_H + 12.6),
-                                   (2.9, B + CB_H + 15.6), (1.2, B + CB_H + 17.4), (0.0, B + CB_H + 19.5)], seg=12, mat=hi, loc=(0, cy0 + 12.0, 0), close_bottom=False))
+                                   (2.9, B + CB_H + 15.6), (1.2, B + CB_H + 17.4), (0.0, B + CB_H + 19.5)], seg=10, mat=hi, loc=(0, cy0 + 12.0, 0), close_bottom=False))
     parts += pal
     # ---- approach ramp up the front slope + the closed gate at the foot
     parts.append(ramp_strip(M, B))
@@ -759,11 +770,11 @@ def falaknuma(A):
     for s in (-1, 1):
         gate.append(box('fk_gpier', (4.0, 4.0, 15.0), (s * 9.5, gy, 0), hi, base=True))
         gate.append(box('fk_gcap', (5.0, 5.0, 1.0), (s * 9.5, gy, 15.0), hi, base=True))
-        gate.append(lathe('fk_gdome', [(1.8, 16.0), (1.9, 17.0), (1.4, 18.6), (0.5, 19.6), (0.0, 20.6)], seg=8, mat=pl, loc=(s * 9.5, gy, 0), close_bottom=False))
+        gate.append(lathe('fk_gdome', [(1.9, 16.0), (1.6, 18.2), (0.0, 20.6)], seg=8, mat=pl, loc=(s * 9.5, gy, 0), close_bottom=False))
         gate.append(box('fk_gwall', (FK_W / 2 - 13.0, 1.6, 5.0), (s * (11.5 + (FK_W / 2 - 13.0) / 2), gy + 1.0, 0), pl, base=True))
     bars = [[(x - 0.18, 0, 0.4), (x + 0.18, 0, 0.4), (x + 0.18, 0, 12.6), (x - 0.18, 0, 12.6)] for x in [(-7.0 + i * 14.0 / 12) for i in range(13)]]
     bars += [[(-7.5, 0, z), (7.5, 0, z), (7.5, 0, z + 0.5), (-7.5, 0, z + 0.5)] for z in (1.6, 6.0, 11.4)]
-    for (yy, f) in ((-0.05, -1), (0.05, 1)):
+    for (yy, f) in ((-0.05, -1),):
         gate.append(planes('fk_gbars', [[(x, gy + yy, z) for (x, _, z) in b] for b in bars], M['iron'], facing=(0, f, 0)))
     parts += gate
     debug_parts(parts)
@@ -809,7 +820,7 @@ def ph_facade(M, name, L, h, storeys=2, kind='verandah'):
         for k in range(storeys):
             for i in range(n):
                 x = -(L - 1.6) / 2 + st * (i + 0.5)
-                ops.append(fpoly(arch(st * 0.7, sh * 0.78, 'round', n=4, spring=0.7), x, k * sh + 0.5, -0.14))
+                ops.append(fpoly(arch(st * 0.7, sh * 0.78, 'round', n=3, spring=0.7), x, k * sh + 0.5, -0.14))
                 # green door glimpsed in the verandah (every other bay)
                 if i % 2 == 0:
                     grn.append(fpoly(rect(st * 0.3, sh * 0.48), x, k * sh + 0.5, -0.2))
@@ -821,12 +832,9 @@ def ph_facade(M, name, L, h, storeys=2, kind='verandah'):
         for k in range(storeys):
             for i in range(n):
                 x = -(L - 2) / 2 + st * (i + 0.5)
-                trs.append(fpoly(seg_arch(3.6, sh * 0.62), x, k * sh + sh * 0.14, -0.08))
-                grn.append(fpoly(seg_arch(2.6, sh * 0.54), x, k * sh + sh * 0.17, -0.14))
-            for i in range(n + 1):
-                trs.append(fpoly(rect(0.8, sh * 0.96), -(L - 2) / 2 + st * i, k * sh, -0.06))
+                grn.append(fpoly(rect(2.6, sh * 0.54), x, k * sh + sh * 0.17, -0.1))
     out = [planes(name + '_op', ops, dk, facing=(0, -1, 0)) if ops else None,
-           planes(name + '_tr', trs, hi, facing=(0, -1, 0)),
+           planes(name + '_tr', trs, hi, facing=(0, -1, 0)) if trs else None,
            planes(name + '_gr', grn, gr, facing=(0, -1, 0)) if grn else None]
     return [o for o in out if o is not None]
 
@@ -834,14 +842,19 @@ def ph_facade(M, name, L, h, storeys=2, kind='verandah'):
 def ph_block(M, name, x0, y0, x1, y1, h, faces):
     """a block with decal facades: faces = {side: kind}"""
     pl, hi, dk = M['plaster'], M['trim'], M['dark']
-    out = [box(name, (x1 - x0, y1 - y0, h), ((x0 + x1) / 2, (y0 + y1) / 2, 0), pl, base=True)]
+    out = [box(name, (x1 - x0, y1 - y0, h + 2.8), ((x0 + x1) / 2, (y0 + y1) / 2, 0), pl, base=True)]
     for (rot, (cx, cy), L, s) in faces_of_rect(x0, y0, x1, y1, ''.join(faces.keys())):
         objs = ph_facade(M, name + s, L - 0.4, h - 1.0, 2, faces[s])
+        # balustrade above the cornice: gap + coping decals on the parapet
+        nn = max(2, int(L / 4.4))
+        st = L / nn
+        ps = [fpoly(rect(st * 0.3, 1.3), -L / 2 + st * (i + 0.5), h + 0.75, -0.06) for i in range(nn)]
+        objs.append(planes(name + s + '_g', ps, M['gap'], facing=(0, -1, 0)))
+        objs.append(planes(name + s + '_c', [fpoly(rect(L, 0.5), 0, h + 2.3, -0.05)], hi, facing=(0, -1, 0)))
         out += place(objs, rot, (cx, cy, 0))
     # floor band and cornice
     out.append(box(name + '_band', (x1 - x0 + 0.8, y1 - y0 + 0.8, 0.6), ((x0 + x1) / 2, (y0 + y1) / 2, (h - 1.0) / 2 - 0.3), hi, base=True))
     out.append(box(name + '_cor', (x1 - x0 + 1.4, y1 - y0 + 1.4, 1.0), ((x0 + x1) / 2, (y0 + y1) / 2, h - 1.0), hi, base=True))
-    out += bal_ring(name + '_bal', x0 - 0.2, y0 - 0.2, x1 + 0.2, y1 + 0.2, h, 2.8, hi, dark=M['gap'])
     return out
 
 
@@ -879,7 +892,7 @@ def purani_haveli(A):
     parts.append(box('ph_entcor', (19.4, 1.6, 1.0), (0, ey0 + 0.5, H + 6.0), hi, base=True))
     parts += place(bal('ph_entbal', 18.6, H + 7.0, 2.8, hi, 0.9, M['gap']), 0, (0, ey0 + 0.45, 0))
     parts.append(prism_from_outline('ph_entped', [(-6, 0), (6, 0), (0, 3.6)], 1.0, center=(0, ey0 + 0.5, H + 9.8), mat=hi))
-    for s in (-1, 1):
+    for s in ():
         parts.append(lathe('ph_entfin', [(0.8, H + 9.8), (0.8, H + 11.2), (1.0, H + 11.6), (0.0, H + 13.2)], seg=6, mat=hi, loc=(s * 8.6, ey0 + 0.5, 0), close_bottom=False))
     # front gate wall between the wings, central arched gateway (iron gate) and the museum board
     gw = PH_W - 2 * WG
@@ -891,7 +904,9 @@ def purani_haveli(A):
     for s in (-1, 1):
         parts.append(box('ph_gpier', (2.4, 2.6, 12.0), (s * 6.0, gy, 0), hi, base=True))
         parts.append(lathe('ph_gurn', [(0.7, 12.0), (1.1, 12.8), (0.6, 14.0), (0.0, 14.8)], seg=6, mat=hi, loc=(s * 6.0, gy, 0), close_bottom=False))
-    parts.append(kit.grill('ph_grill', 8.8, 8.6, bars=8, r=0.13, frame=0.25, loc=(0, gy, 0.4), mat=M['iron']))
+    bars = [fpoly(rect(0.3, 8.6), -4.0 + i * 8.0 / 7, 0.4, gy - 0.1) for i in range(8)]
+    bars += [fpoly(rect(9.0, 0.4), 0, z, gy - 0.12) for z in (1.6, 8.6)]
+    parts.append(planes('ph_bars', bars, M['iron'], facing=(0, -1, 0)))
     sign = kit.signboard('ph_sign', "NIZAM'S MUSEUM", 13.0, 2.6, loc=(0, gy - 0.95, 11.0), fg='#fff4d8', bg='#7a1a1a')
     parts.append(sign)
     debug_parts(parts)

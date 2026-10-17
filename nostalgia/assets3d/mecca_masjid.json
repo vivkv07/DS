@@ -1,0 +1,59 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 150924,
+ "clips": {},
+ "family": "landmark",
+ "file": "mecca_masjid.glb",
+ "front": "-Y",
+ "id": "mecca_masjid",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 147.4,
+ "kit": 1,
+ "materials": [
+  "M_mecca_masjid_granite_grey",
+  "M_mecca_masjid_granite_grey.001",
+  "M_mecca_masjid_granite_grey.002",
+  "M_mecca_masjid_lime_plaster_shadow",
+  "M_mecca_masjid_gold_leaf"
+ ],
+ "max": [
+  66.53,
+  45.0,
+  84.09
+ ],
+ "meta": {
+  "face": "e",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   132,
+   90
+  ],
+  "height": 75.0,
+  "landmark": "mecca_masjid"
+ },
+ "min": [
+  -66.53,
+  -45.6,
+  0.0
+ ],
+ "notes": [],
+ "script": "oldcity.mosques_palaces",
+ "size": [
+  133.06,
+  90.6,
+  84.09
+ ],
+ "tint": null,
+ "tris": 2439,
+ "units": "u",
+ "up": "Z"
+}

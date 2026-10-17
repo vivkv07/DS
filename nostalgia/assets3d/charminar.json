@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 60000,
- "bytes": 1501904,
+ "bytes": 1420832,
  "clips": {},
  "family": "hero_landmark",
  "file": "charminar.glb",
@@ -17,7 +17,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 1466.7,
+ "kb": 1387.5,
  "kit": 1,
  "materials": [
   "M_charminar_lime_plaster",
@@ -29,8 +29,8 @@
   "M_charminar_gold_leaf"
  ],
  "max": [
-  32.3,
-  32.3,
+  33.0,
+  33.0,
   135.0
  ],
  "meta": {
@@ -46,8 +46,8 @@
   "landmark": "charminar"
  },
  "min": [
-  -32.3,
-  -32.3,
+  -33.0,
+  -33.0,
   0.0
  ],
  "notes": [
@@ -56,12 +56,12 @@
  ],
  "script": "oldcity.charminar",
  "size": [
-  64.6,
-  64.6,
+  66.0,
+  66.0,
   135.0
  ],
  "tint": null,
- "tris": 32256,
+ "tris": 30976,
  "units": "u",
  "up": "Z"
 }

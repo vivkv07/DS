@@ -1,0 +1,65 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 144852,
+ "clips": {},
+ "family": "landmark",
+ "file": "state_central_library.glb",
+ "front": "-Y",
+ "id": "state_central_library",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 141.5,
+ "kit": 1,
+ "materials": [
+  "M_state_central_library_granite_grey",
+  "M_state_central_library_lime_plaster",
+  "M_state_central_library_lime_plaster.001",
+  "M_state_central_library_sign_text_914923a1.png",
+  "M_state_central_library_gold_leaf",
+  "M_state_central_library_granite_grey.001",
+  "M_state_central_library_clock_face@night"
+ ],
+ "max": [
+  48.0,
+  31.0,
+  54.36
+ ],
+ "meta": {
+  "face": "s",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   100,
+   62
+  ],
+  "height": 58.0,
+  "landmark": "state_central_library"
+ },
+ "min": [
+  -48.0,
+  -37.6,
+  0.0
+ ],
+ "notes": [
+  "COL_state_central_library: camera-ray proxy boxes (main block, frontispiece, dome)"
+ ],
+ "script": "oldcity.civic",
+ "size": [
+  96.0,
+  68.6,
+  54.36
+ ],
+ "tint": null,
+ "tris": 2285,
+ "units": "u",
+ "up": "Z"
+}

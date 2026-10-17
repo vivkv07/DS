@@ -1,0 +1,14 @@
+00:00.035  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building mecca_masjid (landmark)
+[kit] baked AO to vertex colours (32 samples) in 0.4s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+20:17:14 | INFO: Starting glTF 2.0 export
+20:17:14 | INFO: Extracting primitive: COL_mecca
+20:17:14 | INFO: Primitives created: 1
+20:17:14 | INFO: Extracting primitive: mecca_masjid_body
+20:17:14 | INFO: Primitives created: 5
+20:17:14 | INFO: Finished glTF 2.0 export in 0.06433892250061035 s
+
+[kit] mecca_masjid: 2439 tris (budget 20000) ok, 147.4 KB, clips [], anchors 0
+[kit] done mecca_masjid in 0.9s

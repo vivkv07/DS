@@ -1,0 +1,65 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 148740,
+ "clips": {},
+ "family": "landmark",
+ "file": "purani_haveli.glb",
+ "front": "-Y",
+ "id": "purani_haveli",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 145.3,
+ "kit": 1,
+ "materials": [
+  "M_purani_haveli_lime_plaster",
+  "M_purani_haveli_lime_plaster_shadow",
+  "M_purani_haveli_whitewash",
+  "M_purani_haveli_wood_green",
+  "M_purani_haveli_lime_plaster_shadow.001",
+  "M_purani_haveli_iron_black",
+  "M_purani_haveli_sign_text_803129cf.png",
+  "M_purani_haveli_wood_raw"
+ ],
+ "max": [
+  33.7,
+  64.7,
+  37.4
+ ],
+ "meta": {
+  "face": "w",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   66,
+   128
+  ],
+  "height": 39.0,
+  "landmark": "purani_haveli"
+ },
+ "min": [
+  -33.7,
+  -64.3,
+  0.0
+ ],
+ "notes": [],
+ "script": "oldcity.mosques_palaces",
+ "size": [
+  67.4,
+  129.0,
+  37.4
+ ],
+ "tint": null,
+ "tris": 1658,
+ "units": "u",
+ "up": "Z"
+}
