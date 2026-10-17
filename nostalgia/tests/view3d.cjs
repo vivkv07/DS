@@ -69,7 +69,7 @@ async function openPage(browser, V, opts) {
   return { context, page, errors, cdp };
 }
 const frames = (page, n) => page.evaluate((n) => new Promise((r) => { let k = 0; const f = () => (++k >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n || 2);
-const st = (page) => page.evaluate(() => ({ mode: N.view.mode, want: N.view.want, active: !!(N.view3d && N.view3d.active), x: N.player.x, y: N.player.y, veh: N.player.vehicle ? N.player.vehicle.type : null, yaw: N.view.yaw, state: N.state.mode }));
+const st = (page) => page.evaluate(() => ({ mode: N.view.mode, want: N.view.want, active: !!(N.view3d && N.view3d.active), x: N.player.x, y: N.player.y, veh: N.player.vehicle ? N.player.vehicle.type : null, yaw: N.view.yaw, state: N.state.mode, stack: N.state.stack.join('>'), fps: N.perf && N.perf.fps }));
 async function waitMode(page, m, ms) {
   try { await page.waitForFunction((m) => N.view.mode === m, m, { timeout: ms || 60000 }); return true; } catch (e) { return false; }
 }
@@ -134,7 +134,7 @@ async function desktop(browser) {
   check(dom.body && dom.c3 === 'block' && dom.c2 === 'hidden', '3D canvas shown, 2D canvas hidden', JSON.stringify(dom));
   check(dom.rev === '149' && /jsdelivr/.test(dom.src[0] || ''), 'three.js r' + dom.rev + ' loaded from the CDN URL first');
   await setLowRes(page, true);
-  await page.keyboard.press('KeyV'); check(await waitMode(page, 'fps', 60000), 'V -> first person');
+  await page.keyboard.press('KeyV'); check(await waitMode(page, 'fps', 60000), 'V -> first person', JSON.stringify(await st(page)));
   await page.keyboard.press('KeyV'); check(await waitMode(page, 'top', 60000), 'V -> top-down');
   const back = await page.evaluate(() => ({ c2: getComputedStyle(document.getElementById('game')).visibility, view: N.render.view.x1 - N.render.view.x0, W: N.render.W, Z: N.render.Z }));
   await frames(page, 2);
@@ -154,7 +154,7 @@ async function desktop(browser) {
     const b = await holdUntil(page, [key], (s) => Math.hypot(s.x - a.x, s.y - a.y) > 30, 15000);
     const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
     const along = (dx * dirX + dy * dirY) / (d || 1);
-    check(d > 12 && along > 0.8, label + ' (moved ' + d.toFixed(0) + 'u, alignment ' + along.toFixed(2) + ')');
+    check(d > 12 && along > 0.8, label + ' (moved ' + d.toFixed(0) + 'u, alignment ' + along.toFixed(2) + ')', JSON.stringify(b));
   };
   await walk(0, 'KeyW', 1, 0, 'camera facing east: W walks east');
   await walk(Math.PI / 2, 'KeyW', 0, 1, 'camera facing south: W walks south');

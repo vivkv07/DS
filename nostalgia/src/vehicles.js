@@ -20,13 +20,20 @@
 
   const approach = (a, b, d) => (a < b ? Math.min(b, a + d) : Math.max(b, a - d));
 
-  // Tunables (systems §2.6, §3.1, §5.6): kid at the wheel, flats, falls, potholes, rain grip.
+  // Tunables (systems §2.6, §3.1, §5.6; amendments A2 potholes, A3 age-appropriate vehicles).
   const TUNE = {
-    kidTop: 0.9, kidAccel: 0.85, flatTop: 0.55, punctureRate: 0.003, potholeEvery: 2.5, potholeFall: 0.1,
-    potholeSpeed: 100, pickupAfter: 1.5, rightAfter: 8, rainGrip: 0.8, rainGripBike: 0.7, witnessR: 120,
+    kidTop: 0.9, kidAccel: 0.85, kidTopAuto: 0.8, kidAccelAuto: 0.8, flatTop: 0.55, punctureRate: 0.003,
+    pickupAfter: 1.5, rightAfter: 8, rainGrip: 0.8, rainGripBike: 0.7, witnessR: 120,
     ownerShout: 0.25, heatParked: 40, heatWitnessed: 100, heatCycle: 30, heatChetakNanna: 100, heatChetak: 40,
+    // A2 potholes: speed x0.82 at full depth + top speed, a jolt, shake 1.5 (player), 4% flats on cycles,
+    // 2% comic falls above 80% of top speed; walking through one is a tiny stumble
+    potholeLoss: 0.18, potholeShake: 1.5, potholePuncture: 0.04, potholeFall: 0.02, potholeFallAt: 0.8,
+    potholeMinSpeed: 6, potholeView: 90, joltDecay: 2.8, stumble: 0.45,
+    // A3: the kid on a Scooty wobbles above 78% of top speed; autowalas shout at a kid driving an auto
+    wobbleFrom: 0.78, autoShout: [7, 13], autoShoutR: 170, fareAutos: true, busFare: 300, footboard: 50,
   };
-  // bike surface factors (cls 'bike'); everything else uses world.js SPEED.drive
+  // bike surface factors (cls 'bike'); everything else uses world.js SPEED.drive. A type's `rough`
+  // ({surf: factor}) overrides them (the Hercules' fat tyres, the Scooty's small wheels).
   const BIKE_SURF = { [N.SURF.FOOTPATH]: 1, [N.SURF.PLAZA]: 1, [N.SURF.GROUND]: 0.85, [N.SURF.GRASS]: 0.75, [N.SURF.SAND]: 0.55 };
   function raining() { const f = N.flags || {}; return !!(f.raining || f.rain || (N.seasons && N.seasons.is && (() => { try { return N.seasons.is('rain'); } catch (e) { return false; } })())); }
 
@@ -40,6 +47,10 @@
     seats: 4, colors: ['#e8e4d8'], colors2: null, radio: false, lights: true, camZoom: 1,
     smoke: null, rider: false, door: true,
     playerNoEnter: false, noEnter: false, nakko: null, bikeLook: null,
+    // A3: kidOk = Chinnu (11) may drive it; otherwise ACTION offers a ride with its NPC driver
+    // (pillion / passenger / fare) or says `refuse` (a kid-flavoured line). sound / bell: audio.js
+    // engine profile and bell voice. spawn: traffic weight per district style (N.vehicles.trafficMix).
+    kidOk: false, refuse: null, sound: null, bell: null, spawn: null, rough: null,
   };
   const TYPES = {};
 

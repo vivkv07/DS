@@ -100,6 +100,12 @@
     if (typeof t === 'object' && t.alive !== false && isFinite(t.x) && isFinite(t.y)) return t;
     return null;
   }
+  /** First candidate id that exists (place, landmark, npc or roof); arrays only. */
+  function pick(t) {
+    if (!Array.isArray(t) || typeof t[0] === 'number') return t;
+    for (const c of t) if (pos(c)) return c;
+    return t[t.length - 1];
+  }
   /** Height of the roof under a target (0 = ground). */
   function roofH(p) {
     if (!p) return 0;
@@ -329,6 +335,7 @@
   /** ACTION "label" at a target (marker + blip). Roof targets get a ring drawn at roof height. */
   function act(m, target, label, o) {
     o = o || {};
+    target = pick(target);
     if (ff()) return Promise.resolve(true);
     const P0 = pos(target);
     if (!P0) { N.err('story.act', new Error('unknown target ' + JSON.stringify(target))); return Promise.resolve(false); }
@@ -348,9 +355,10 @@
     if (o.marker !== false) { if (h > 0) { rg = { target, r: o.mr || 14, h, color: o.color || '#ff5fb0' }; S.rings.add(rg); } else mk = m.marker(target, { r: o.mr || 16, color: o.color }); }
     if (o.blip !== false) bl = m.blip(target, { color: o.color || '#ff5fb0', icon: 'star', pulse: true, route: o.route !== false });
     if (o.objective) m.objective(o.objective);
-    S.step = { kind: 'act', skip: () => { st.used = true; } };
+    const stp = S.step = { kind: 'act', skip: () => { st.used = true; } };
     return m.until(() => st.used).then(() => {
       N.interact.remove(id); S.acts.delete(id);
+      if (S.step === stp) S.step = null;
       if (mk) m.unmarker(mk); if (rg) S.rings.delete(rg); if (bl) m.unblip(bl);
       return true;
     });
@@ -362,12 +370,13 @@
     const off = { label, priority: o.priority || 8, dist: 0, used: false };
     off.use = () => { off.used = true; };
     S.offers.add(off);
-    S.step = { kind: 'press', skip: () => { off.used = true; } };
-    return m.until(() => off.used).then(() => { S.offers.delete(off); return true; });
+    const stp = S.step = { kind: 'press', skip: () => { off.used = true; } };
+    return m.until(() => off.used).then(() => { S.offers.delete(off); if (S.step === stp) S.step = null; return true; });
   }
   /** A goto that also accepts roof targets (ring drawn at roof height). */
   function go(m, target, o) {
     o = o || {};
+    target = pick(target);
     const P0 = pos(target);
     if (!P0) { N.err('story.go', new Error('unknown target ' + JSON.stringify(target))); return Promise.resolve(null); }
     const h = o.h != null ? o.h : roofH(P0);
@@ -389,12 +398,12 @@
     const hinted = () => {
       try { const A = N.hints && N.hints.active; return !!(A && A.taken && A.taken.some((t) => t.source === 'aunty' || t.source === 'auto' || t.source === 'city')); } catch (e) { return false; }
     };
-    S.step = { kind: 'find', skip: () => { N.player.teleport(P.x, P.y); } };
+    const stp = S.step = { kind: 'find', target: P, skip: () => { N.player.teleport(P.x, P.y); } };
     return m.until(() => {
       const p = N.player, d = dist(p, P);
       if (!mk && (d < (o.near || 380) || hinted())) { mk = m.marker(id, { r: o.r || 30 }); bl = m.blip(id, { color: '#ff5fb0', icon: 'star', pulse: true, route: false }); }
       return d <= (o.r || 30);
-    }).then(() => { if (mk) m.unmarker(mk); if (bl) m.unblip(bl); return true; });
+    }).then(() => { if (mk) m.unmarker(mk); if (bl) m.unblip(bl); if (S.step === stp) S.step = null; return true; });
   }
 
   /* ================================================================ kit: soft timers, rings */
@@ -906,7 +915,10 @@
         rect(52, 122, 26, 5, '#3a3a40'); rect(62, 78, 3, 46, '#4a4a52'); g.fillStyle = '#5a5a62'; g.beginPath(); g.moveTo(50, 82); g.lineTo(78, 82); g.lineTo(70, 70); g.lineTo(58, 70); g.closePath(); g.fill();
         // the parcel with the pencil label
         rect(96, 104, 48, 24, '#8a5a32'); rect(96, 104, 48, 3, '#a8703e'); rect(118, 104, 3, 24, '#d8c8a0'); rect(96, 114, 48, 2, '#d8c8a0');
-        rect(100, 117, 16, 8, '#efe6d2'); g.fillStyle = '#6a6a72'; g.font = '5px monospace'; g.fillText('L.NIVAS!!', 100, 123);
+        rect(99, 116, 18, 9, '#efe6d2');
+        g.strokeStyle = '#6a6a72'; g.lineWidth = 0.6; g.beginPath();
+        for (let i = 0; i < 2; i++) { const y = 119 + i * 3; g.moveTo(101, y); for (let x = 101; x < 114; x += 2) g.lineTo(x + 1, y + ((x * 7 + i) % 3 === 0 ? -1 : 0.5)); }
+        g.moveTo(114.5, 118); g.lineTo(114.5, 121.5); g.moveTo(116, 118); g.lineTo(116, 121.5); g.stroke();
       },
       cassette() {
         rect(0, 0, W, H, '#0b0912');
@@ -1221,15 +1233,18 @@
       try { bl = col().blip ? col().blip('kite_1') : null; } catch (e) { bl = null; }
       m.objective('A kite on the fountain railing! Pick it up.');
       const t0 = N.time.now;
-      S.step = { kind: 'k1', skip: () => { try { col().found('kite_1'); } catch (e) { /* ignore */ } } };
+      let kp = null;
+      try { kp = col().posOf ? col().posOf('kite_1') : null; } catch (e) { kp = null; }
+      const stp = S.step = { kind: 'k1', target: kp, skip: () => { try { col().found('kite_1'); } catch (e) { /* ignore */ } } };
       await m.until(() => hasItem('kite_1') || N.time.now - t0 > 90);
+      if (S.step === stp) S.step = null;
       try { if (col().unblip) col().unblip('kite_1'); } catch (e) { void bl; }
       if (hasItem('kite_1')) m.toast('1/12. Read the tag in the Journal.', 3200);
     }
     // 7. Chai at Café Noor-e-Iran: plants the finale
     at(15, 30);
     npc(m, 'faramarz', spot(['irani_cafe_19', 'cafe_noor_e_iran'], 0, -8, 20), { idle: 'work' });
-    await m.goto(['irani_cafe_19', 'cafe_noor_e_iran'], { label: 'Have chai at Café Noor-e-Iran.', r: 26 });
+    await go(m, ['irani_cafe_19', 'cafe_noor_e_iran'], { label: 'Have chai at Café Noor-e-Iran.', r: 26 });
     face('faramarz', 'player');
     await m.talk([
       { s: 'faramarz', t: "Arre, Rasheed's boy! Imran! Last time you were this high, you ate my sugar bowl.", mood: 'happy' },
@@ -1317,7 +1332,7 @@
     bark(porter, '"*Coolie? Coolie?*"', 2.4);
     m.toast('The platform where trains stop for good: the buffer stops at the end of the line.', 3400);
     m.checkpoint('numaish_gate');
-    await m.goto(['numaish_gate', 'nampally_exhibition'], { label: 'Through the side gate into Numaish.', r: 30 });
+    await go(m, ['numaish_gate', 'nampally_exhibition'], { label: 'Through the side gate into Numaish.', r: 30 });
     music('numaish');
     at(17, 10);
     // 4. Find Immu: three announcements, each names a stall; a beacon on Immu after the third
@@ -2227,13 +2242,17 @@
   function nextDawn() {
     const C = N.calendar;
     if (!C) return null;
-    const d = C.dateOf(N.clock.day + (N.clock.minutes >= 6 * 60 ? 1 : 0));
+    let day = N.clock.day + (N.clock.minutes >= 6 * 60 ? 1 : 0);
+    // the elastic week loop (systems §10.5): after D-1 comes D-7 again, never past the next main mission
+    const L = N.clock.loop;
+    if (L && isFinite(L.to) && isFinite(L.from) && day > L.to) day = L.from;
+    const d = C.dateOf(day);
     return [d.y, d.m, d.d, 6, 0];
   }
   async function sa4(m) {
     npc(m, 'coach', spot('jawahar_bal_bhavan', 14, 8, 30), { idle: 'stand' });
     npc(m, 'ayesha', spot('jawahar_bal_bhavan', -6, 10, 30), { idle: 'stand' });
-    await m.goto(['jawahar_bal_bhavan', 'fateh_maidan'], { label: 'The summer-camp notice board at Jawahar Bal Bhavan.', r: 30 });
+    await go(m, ['jawahar_bal_bhavan', 'fateh_maidan'], { label: 'The summer-camp notice board at Jawahar Bal Bhavan.', r: 30 });
     await m.talk([
       { s: 'coach', t: "Girls' batch is badminton." },
       { s: 'ayesha', t: "Girls' batch is badminton? Fine. I'll bowl with a racket.", mood: 'angry' },
@@ -2258,7 +2277,7 @@
     // the six-ball challenge at the camp
     m.checkpoint('camp');
     npc(m, 'coach', spot('fateh_maidan', 0, 30, 40), { idle: 'stand' });
-    await m.goto(['fateh_maidan', 'lb_stadium'], { label: 'The camp at Fateh Maidan: Ayesha bowls six balls at the best batsman.', r: 40 });
+    await go(m, ['fateh_maidan', 'lb_stadium'], { label: 'The camp at Fateh Maidan: Ayesha bowls six balls at the best batsman.', r: 40 });
     await m.cutscene([
       { type: 'text', lines: ['Ball one: beaten outside off. Ball two: beaten again. Ball three: a thick edge, nobody there.', 'Ball four: a bouncer, ducked. Ball five: dot.'] },
       { type: 'sfx', name: 'bat_hit' },
@@ -2455,6 +2474,7 @@
       skip() { const s = S.step; if (s && s.skip) { s.skip(); return s.kind; } return null; },
       use() { for (const st of S.acts.values()) if (!st.used) { st.used = true; return true; } for (const o of S.offers) if (!o.used) { o.used = true; return true; } return false; },
       target() {
+        if (S.step && S.step.target) { const p = pos(S.step.target); if (p) return { x: p.x, y: p.y }; }
         try {
           const mk = (N.missions.markers() || []).find((x) => x.kind === 'goal');
           if (mk) return { x: mk.x, y: mk.y };
