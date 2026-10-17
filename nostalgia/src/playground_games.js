@@ -96,7 +96,7 @@
     lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.75, stackT: 1.1, threatR: 34, scatter: 0.8, aiErr: [0.2, 0.11], stackErr: [0.17, 0.11], dodge: [0.25, 0.55], windup: [0.7, 0.42],
       // Chinnu's own hands: a pick-up and a careful placing take a moment (he stands still, a sitting duck)
       myPickT: 0.35, myStackT: 0.65, knockMul: 1.3, stoneFric: 95, passMe: 0.55 },
-    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 34 },
+    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46 },
     // the line throw: the aim starts a little off the stack (straighten it), accuracy drops with power
     aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130, startOff: [0.06, 0.2], err: 0.026, errPow: 0.075 },
     pay: { win: 200, win3: 300, daily: 3 },
@@ -647,7 +647,7 @@
     for (const Q of S.parts) Q.hold = false;
     b.state = 'held'; b.holder = P; b.thrower = null; b.live = false; b.pass = false; b.passTo = null; b.bounced = 1;
     b.lockP = null; b.lockT = 0; S.freeT = 0;
-    P.hold = true; P.holdT = 0; P.windT = 0;
+    P.hold = true; P.holdT = 0; P.windT = 0; P.passRoll = S.rng.next();
     const h = holdPos(P); b.x = h.x; b.y = h.y; b.z = h.z; b.vx = b.vy = b.vz = 0;
   }
   function drop(S, P) {
@@ -726,7 +726,7 @@
     const b = S.ball;
     if (b.holder) b.holder.hold = false;
     const tx = P.e.x, ty = P.e.y, d = Math.max(2, hyp(tx - x, ty - y)), t = clamp(d / 70, 0.45, 1.1);
-    Object.assign(b, { state: 'air', holder: null, thrower: null, live: false, pass: true, passTo: P, bounced: 1, x, y, z: Math.max(1, b.z), hitSet: new Set() });
+    Object.assign(b, { state: 'air', holder: null, thrower: null, live: false, pass: true, passTo: P, bounced: 1, x, y, z: Math.max(1, b.z), hitSet: new Set(), lockP: null, lockT: 0 });
     b.vx = (tx - x) / t; b.vy = (ty - y) / t; b.vz = (3.5 - b.z) / t + 0.5 * TUNE.g * t;
   }
   function solidCell(x, y) {
@@ -868,8 +868,10 @@
       try { if (N.render && N.render.shake && !document.body.classList.contains('reduced-motion')) N.render.shake(0.18, 0.15); } catch (e2) { /* ignore */ }
       const p = N.player, s = hyp(b.vx, b.vy) || 1; p.vx += (b.vx / s) * 40; p.vy += (b.vy / s) * 40;
     }
-    // the ball pops off the kid
-    b.vx *= -0.22; b.vy *= -0.22; b.vz = 16; b.live = false; b.z = Math.max(b.z, 2);
+    // the ball pops off the kid sideways (not back into the thrower's hands): a scramble for it
+    const D = TUNE.deflect, a = Math.atan2(b.vy, b.vx) + (S.rng.next() < 0.5 ? -1 : 1) * (1.25 + S.rng.next() * 0.9);
+    const v = lerp(D.sp[0], D.sp[1], S.rng.next());
+    b.vx = Math.cos(a) * v; b.vy = Math.sin(a) * v; b.vz = D.vz * (0.8 + S.rng.next() * 0.4); b.live = false; b.z = Math.max(b.z, 2);
   }
   function sitSpot(S, P) {
     if (!P.sit) P.sit = edgeSpot(S.F, P.e.x, P.e.y, 4);
@@ -1094,7 +1096,7 @@
       L.stack.forEach((st, i) => {
         st.state = 'fly'; st.claim = null; st.by = null;
         st.x = L.base.x + (S.rng.next() - 0.5); st.y = L.base.y + (S.rng.next() - 0.5); st.z = i * TUNE.stoneH;
-        const a = ba + gauss(S.rng) * 0.85, v = clamp(sp * (0.3 + 0.45 * S.rng.next()) * (0.65 + 0.07 * i), 25, 150);
+        const a = ba + gauss(S.rng) * 0.85, v = clamp(sp * (0.3 + 0.45 * S.rng.next()) * (0.65 + 0.07 * i) * TUNE.lingocha.knockMul, 30, 185);
         st.vx = Math.cos(a) * v; st.vy = Math.sin(a) * v; st.vz = 10 + S.rng.next() * 16 + i * 2;
       });
       L.stack = [];
@@ -1119,7 +1121,8 @@
       let nx = st.x + st.vx * dt, ny = st.y + st.vy * dt;
       if (solidCell(nx, st.y)) { st.vx = -st.vx * 0.4; nx = st.x; }
       if (solidCell(nx, ny)) { st.vy = -st.vy * 0.4; ny = st.y; }
-      const m = TUNE.kerbM;
+      // the stones stay on the open ground (the kerb at its edge): every stone is reachable in a straight line
+      const m = 1.5;
       if (inRect(F, st.x, st.y, m)) {
         if ((nx < F.x0 - m && st.vx < 0) || (nx > F.x1 + m && st.vx > 0)) { st.vx = -st.vx * 0.35; nx = st.x; }
         if ((ny < F.y0 - m && st.vy < 0) || (ny > F.y1 + m && st.vy > 0)) { st.vy = -st.vy * 0.35; ny = st.y; }
@@ -1128,9 +1131,10 @@
       if (st.z <= 0) {
         st.z = 0;
         if (st.vz < -20) { st.vz = -st.vz * 0.3; st.vx *= 0.6; st.vy *= 0.6; sfx('marble', { x: st.x, y: st.y, vol: 0.35, pitch: 0.6 + st.i * 0.06 }); }
-        else { st.vz = 0; const s = hyp(st.vx, st.vy), dec = 110 * dt; if (s <= dec) { st.vx = st.vy = 0; st.state = 'loose'; } else { st.vx *= (s - dec) / s; st.vy *= (s - dec) / s; } }
+        else { st.vz = 0; const s = hyp(st.vx, st.vy), dec = TUNE.lingocha.stoneFric * dt; if (s <= dec) { st.vx = st.vy = 0; st.state = 'loose'; } else { st.vx *= (s - dec) / s; st.vy *= (s - dec) / s; } }
       }
-      if (st.state === 'fly' && !walk(st.x, st.y)) { const f = spotNear(st.x, st.y, 1, 9); st.x = f.x; st.y = f.y; }
+      if (st.state === 'fly' && !walk(st.x, st.y)) { const f = spotNear(st.x, st.y, 1, 9, F); st.x = f.x; st.y = f.y; }
+      if (st.state === 'loose' && (!inRect(F, st.x, st.y, 0) || !walk(st.x, st.y))) { const q = clampIn(F, st.x, st.y, 2.5); const f = spotNear(q.x, q.y, 1.5, 12, F); st.x = f.x; st.y = f.y; }
     },
     /** a seeker who touches a hitter is SAFE for a moment */
     touches(S) {
@@ -1345,21 +1349,25 @@
           if (P.windT <= 0) LING.aiThrowAt(S, P, T);
           return;
         }
-        // pass to a teammate who is much closer to the target
+        // pass to a teammate who is much closer to the target (Chinnu too, some of the time: "Chinnu, catch!")
         if (d > 50 && P.holdT > 0.4) {
           let mate = null, md = d - 18;
-          for (const Q of LING.hitters(S)) { if (Q === P || Q.out || Q.isPlayer) continue; const dq = pdist(Q, T); if (dq < md) { md = dq; mate = Q; } }
-          if (mate && S.rng.next() < 0.7) { launchAt(S, P, mate.e.x, mate.e.y, 4, TUNE.passSpeed, 0.03, { pass: true, passTo: mate }); return; }
+          for (const Q of LING.hitters(S)) { if (Q === P || Q.out || (Q.isPlayer && !(P.passRoll < TUNE.lingocha.passMe))) continue; const dq = pdist(Q, T); if (dq < md) { md = dq; mate = Q; } }
+          if (mate && S.rng.next() < 0.7) {
+            launchAt(S, P, mate.e.x, mate.e.y, 4, TUNE.passSpeed, 0.03, { pass: true, passTo: mate });
+            if (mate.isPlayer) bark(S, P, pick(S, ['Chinnu, catch!', 'Le, Chinnu! *Maar*!', 'Pass, ra, catch!']), { force: true });
+            return;
+          }
         }
         const range = lerp(30, 42, S.d);
         if (d < range || P.holdT > TUNE.lingocha.holdMax - 0.6) { P.windT = lerp(TUNE.lingocha.windup[0], TUNE.lingocha.windup[1], S.d) * (S.real && PG.debug.assist.weakAI ? 1.6 : 1); halt(P); return; }
         goTo(P, T.e.x, T.e.y, speedOf(S, P, false), 2);
         return;
       }
-      // fetch the loose ball (the two nearest hitters go)
-      if (!b.holder && canGrab(S, b) && rectDist(S.F, b.x, b.y) < 80) {
+      // fetch the loose ball (the two nearest hitters go; not the one who just threw it)
+      if (!b.holder && canGrabP(S, b, P) && rectDist(S.F, b.x, b.y) < 80) {
         let rank = 0; const my = hyp(b.x - e.x, b.y - e.y);
-        for (const Q of LING.hitters(S)) if (Q !== P && !Q.out && hyp(b.x - Q.e.x, b.y - Q.e.y) < my) rank++;
+        for (const Q of LING.hitters(S)) if (Q !== P && !Q.out && !lockedOut(S, Q) && hyp(b.x - Q.e.x, b.y - Q.e.y) < my) rank++;
         if (rank < 2) {
           const d = goTo(P, b.x, b.y, run, 0.5);
           if (d < 4.2 && b.state !== 'held') give(S, P);
@@ -1386,7 +1394,9 @@
       const weak = S.real && PG.debug.assist.weakAI && T.isPlayer;
       const sp = lerp(TUNE.aiSpeed[0], TUNE.aiSpeed[1], S.d) * (0.92 + S.rng.next() * 0.16);
       const d = pdist(P, T), t = d / sp, lead = 0.5 + 0.4 * S.d;
-      const tx = T.e.x + (T.e.vx || 0) * t * lead, ty = T.e.y + (T.e.vy || 0) * t * lead;
+      // he reads your run, not a last-moment sidestep (smoothed velocity)
+      const vx = T.svx != null ? T.svx : T.e.vx || 0, vy = T.svy != null ? T.svy : T.e.vy || 0;
+      const tx = T.e.x + vx * t * lead, ty = T.e.y + vy * t * lead;
       const errA = weak ? 0.45 : lerp(TUNE.lingocha.aiErr[0], TUNE.lingocha.aiErr[1], S.d);
       const tz = clamp(2.4 + gauss(S.rng) * (1.1 - 0.5 * S.d), 0.8, 6.5);
       launchAt(S, P, tx, ty, tz, sp, errA, { target: T });
@@ -1421,22 +1431,43 @@
         if (S.phase === 'roundEnd' || ((S.phase === 'flight' || S.phase === 'return') && L.thrower === me)) { zeroMove(I); I.consume('run'); }
         return;
       }
-      if (me.out) { offer(S, ''); I.consume('action'); return; }
+      if (me.out) { me.act = null; offer(S, ''); I.consume('action'); return; }
       const seeker = me.team === L.seek;
       if (seeker) {
+        // busy hands: picking a stone up / placing it on the stack takes a moment (standing still: dodge first!)
+        if (me.act) {
+          zeroMove(I); I.consume('run');
+          offer(S, me.act === 'stack' ? 'Placing…' : 'Picking up…');
+          I.consume('action');
+          me.actT -= dt;
+          if (me.actT <= 0) {
+            if (me.act === 'pick') LING.pickStone(S, me, me.actStone);
+            else if (L.stack.length < 7) LING.stackStone(S, me);
+            me.act = null; me.actStone = null;
+          }
+          return;
+        }
         if (me.carry) {
           const d = hyp(L.base.x - p.x, L.base.y - p.y);
-          if (d < 10) {
+          const other = S.parts.find((Q) => Q !== me && Q.act === 'stack' && !Q.out);
+          if (d < 10 && other) offer(S, 'Wait — ' + other.name + ' is stacking');
+          else if (d < 10) {
             offer(S, L.stack.length === 6 ? 'Stack + LINGOCHA!' : 'Stack it (' + (L.stack.length + 1) + '/7)');
-            if (I.pressed('action')) { LING.stackStone(S, me); }
+            if (I.pressed('action')) { me.act = 'stack'; me.actT = me.actT0 = TUNE.lingocha.myStackT; sfx('pickup', { ui: true, vol: 0.3, pitch: 0.8 }); }
           } else offer(S, '');
           I.consume('action');
           return;
         }
         let st = null, sd = 6.5;
         for (const s of L.stones) { if (s.state !== 'loose') continue; const d = hyp(s.x - p.x, s.y - p.y); if (d < sd) { sd = d; st = s; } }
-        if (st) { offer(S, 'Pick up stone'); if (I.pressed('action')) { if (st.claim && st.claim !== me) { st.claim.stone = null; } LING.pickStone(S, me, st); } }
-        else offer(S, '');
+        if (st) {
+          offer(S, 'Pick up stone');
+          if (I.pressed('action')) {
+            if (st.claim && st.claim !== me) { st.claim.stone = null; }
+            st.claim = me; me.stone = st;
+            me.act = 'pick'; me.actStone = st; me.actT = me.actT0 = TUNE.lingocha.myPickT;
+          }
+        } else offer(S, '');
         I.consume('action');
         // running into the loose ball kicks it away
         if ((b.state === 'rest' || b.state === 'roll') && hyp(b.x - p.x, b.y - p.y) < p.r + TUNE.ballR + 0.6 && hyp(p.vx, p.vy) > 35) kick(S, me);
@@ -1610,9 +1641,9 @@
         return;
       }
       // the loose ball: the nearest two go for it (after the bounce); before the bounce they wait
-      if (!b.holder && rectDist(S.F, b.x, b.y) < 70) {
+      if (!b.holder && rectDist(S.F, b.x, b.y) < 70 && !lockedOut(S, P)) {
         const my = hyp(b.x - e.x, b.y - e.y);
-        let rank = 0; for (const Q of S.parts) if (Q !== P && !Q.out && hyp(b.x - Q.e.x, b.y - Q.e.y) < my) rank++;
+        let rank = 0; for (const Q of S.parts) if (Q !== P && !Q.out && !lockedOut(S, Q) && hyp(b.x - Q.e.x, b.y - Q.e.y) < my) rank++;
         if (rank < 2 || my < 22) {
           if (canGrab(S, b)) { const d = goTo(P, b.x, b.y, run, 0.5); if (d < 4.2) { give(S, P); log(S, 'grab', { name: P.name, bounced: b.bounced }); } return; }
           if (b.state === 'air' && !b.live) { // wait for the bounce near the landing spot
@@ -1625,7 +1656,7 @@
       }
       // keep away from the holder; drift about
       const H = b.holder;
-      if (H && H !== P && pdist(P, H) < 52) {
+      if (H && H !== P && pdist(P, H) < TUNE.maram.keepAway) {
         let ax = e.x - H.e.x, ay = e.y - H.e.y; const l = hyp(ax, ay) || 1; ax /= l; ay /= l;
         // stay on the ground: pull back towards the middle near the edges
         const ex = (c.x - e.x) / Math.max(20, S.F.w * 0.5), ey = (c.y - e.y) / Math.max(20, S.F.h * 0.5);
