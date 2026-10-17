@@ -57,6 +57,25 @@
     V.ground.setWet = function (v) { userWet = v == null ? null : clamp(+v || 0, 0, 1); return oSet.apply(this, arguments); };
   }
 
+  /* ------------------------------------------------------------ lights other modules ask for this frame */
+  // N.view3d.light (= H.light) requests: landmark lamps (Tank Bund globes, floodlights), lanterns. The
+  // actors' headlight pools (a point on the road ahead of a vehicle) are skipped: vehicle lamps are
+  // computed from the vehicles themselves below.
+  const REQ = [];
+  if (typeof V.light === 'function') {
+    const oLight = V.light;
+    V.light = function (L) {
+      if (L && isFinite(L.x) && isFinite(L.y) && REQ.length < 64 && !(L.h === 5 && L.color === '#fff0d0')) REQ.push(L);
+      return oLight.apply(this, arguments);
+    };
+  }
+  const hexCol = new Map();
+  function colArr(hex) {
+    let c = hexCol.get(hex);
+    if (!c) { const k = new THREE.Color(hex || '#ffb050'); c = [k.r, k.g, k.b]; hexCol.set(hex, c); }
+    return c;
+  }
+
   /* ------------------------------------------------------------ shared light uniforms */
   const WX = { uWxL: null, uWxC: null, uWxK: null };
   const GLSL_STREAK = (n) => `
@@ -82,7 +101,7 @@ vec3 wxStreaks(vec3 P, float rough, float jit) {
     acc += uWxC[i] * (g / (1.0 + dot(d.xz, d.xz) / (L.w * L.w)));
   }
   float fres = 0.25 + 0.75 * pow(1.0 - clamp(Vd.y, 0.0, 1.0), 3.0);
-  return acc * fres;
+  return acc * fres * (0.35 + 0.65 * smoothstep(3.0, 30.0, length(rp.xz)));
 }
 float wxRing(vec2 p, float sc, float t, float fw) {
   vec2 q = p * sc; vec2 c = floor(q); vec2 f = fract(q) - 0.5;
@@ -189,6 +208,15 @@ float wxRing(vec2 p, float sc, float t, float fw) {
         L.push({ x: s.x + Math.cos(ang) * len, y: s.y + Math.sin(ang) * len, h: h - 1, tube: !!s.tube });
       }
     });
+    // heritage globe lamps beside the Tank Bund statues (view3d_landmarks.js lampPost(md, +-12, 2, 17))
+    const LMS = (N.WORLD_DATA && N.WORLD_DATA.landmarks) || [];
+    if (!LAMPS.tb) LAMPS.tb = LMS.filter((lm) => lm.draw === 'tank_bund_statue');
+    for (const lm of LAMPS.tb) {
+      if (Math.abs(lm.x - cx) > R || Math.abs(lm.y - cy) > R) continue;
+      const rot = isFinite(lm.faceAngle) ? Math.PI / 2 - lm.faceAngle : ({ s: 0, n: Math.PI, e: Math.PI / 2, w: -Math.PI / 2 }[lm.face] || 0);
+      const c = Math.cos(rot), sn = Math.sin(rot);
+      for (const u of [-12, 12]) L.push({ x: lm.x + u * c + 2 * sn, y: lm.y - u * sn + 2 * c, h: 18.5, globe: true });
+    }
     // sodium / tube lamps on the electric poles (src/wires.js)
     const WR = N.wires;
     if (WR && WR.poles && WR.enabled !== false) {
@@ -199,7 +227,7 @@ float wxRing(vec2 p, float sc, float t, float fw) {
   const POOL = [];
   let pickN = 0;
   function cand() { const c = POOL[pickN] || (POOL[pickN] = {}); pickN++; return c; }
-  const COL = { sodium: [1.0, 0.42, 0.07], tube: [0.62, 0.86, 1.0], head: [1.0, 0.88, 0.62], tail: [1.0, 0.05, 0.02] };
+  const COL = { globe: [1.0, 0.7, 0.4], sodium: [1.0, 0.42, 0.07], tube: [0.62, 0.86, 1.0], head: [1.0, 0.88, 0.62], tail: [1.0, 0.05, 0.02] };
   function gatherLights(cam, fwd, lampOn) {
     pickN = 0;
     if (lampOn <= 0.001) return 0;
@@ -214,8 +242,9 @@ float wxRing(vec2 p, float sc, float t, float fw) {
       if (d2 > 300 * 300) return;
       const o = cand(); o.d = d2 * w; o.x = x; o.h = h; o.y = y; o.r = c[0] * k; o.g = c[1] * k; o.b = c[2] * k; o.reach = reach;
     };
-    for (const l of LAMPS.list) consider(l.x, l.y, l.h, l.tube ? COL.tube : COL.sodium, l.tube ? 0.7 : 1.15, 95, 1);
+    for (const l of LAMPS.list) consider(l.x, l.y, l.h, l.globe ? COL.globe : l.tube ? COL.tube : COL.sodium, l.tube ? 0.7 : l.globe ? 1.3 : 1.15, l.globe ? 160 : 95, 1);
     for (const l of LAMPS.shops) consider(l.x, l.y, l.h, l.c, 0.75, 70, 1.6);
+    for (const L of REQ) consider(L.x, L.y, L.h || 8, colArr(L.color), 1.1 * (L.intensity == null ? 1 : L.intensity), clamp((L.r || 60) * 1.2, 50, 140), 0.9);
     // vehicle head / tail lamps (the lamps the actors light: T.lights and someone at the controls)
     let vs = null;
     try { vs = N.entities.query(cx, cy, 260, (e) => e.kind === 'vehicle'); } catch (e) { vs = null; }
@@ -509,7 +538,7 @@ void main() {
     const L = LAMPS.list, P = HALO.pos, C = HALO.col;
     let n = 0;
     for (let i = 0; i < L.length && n < HALO.max; i++) {
-      const l = L[i], c = l.tube ? COL.tube : COL.sodium;
+      const l = L[i], c = l.globe ? COL.globe : l.tube ? COL.tube : COL.sodium;
       P[n * 3] = l.x; P[n * 3 + 1] = l.h - 0.4; P[n * 3 + 2] = l.y;
       C[n * 3] = c[0]; C[n * 3 + 1] = c[1] * 1.1; C[n * 3 + 2] = c[2] * 1.4 + 0.02;
       n++;
@@ -667,7 +696,7 @@ void main() {
     }
     if (flash > 0.001) {
       const fc = tmpCol('fc').setRGB(0.55, 0.6, 0.85);
-      zen.lerp(fc, flash * 0.55); hor.lerp(fc, flash * 0.7);
+      zen.lerp(fc, flash * 0.25); hor.lerp(fc, flash * 0.35);
     }
     // fog: the (modified) horizon; closer in rain, thick in mist
     if (ov > 0.001 || mist > 0.001 || flash > 0.001) {
@@ -693,13 +722,27 @@ void main() {
     }
     if (flash > 0.001) {
       hemi.color.lerp(tmpCol('fh').setRGB(0.72, 0.78, 1.0), clamp(flash, 0, 1));
-      hemi.intensity += flash * (2.2 + 2.0 * night);
-      E.renderer.toneMappingExposure += flash * 0.35;
+      hemi.intensity += flash * (0.35 + 0.65 * night);
+      E.renderer.toneMappingExposure += flash * 0.12;
     }
     // lamp glows: bigger, softer halos in rain and mist
     const G = H.materials.glow;
     if (G) { if (!GLOW.base) GLOW.base = G.size || 26; G.size = GLOW.base * (1 + 0.55 * rain + 1.2 * mist); }
     return { ov, flash, rain, storm, mist, cloud };
+  }
+
+  /* ------------------------------------------------------------ sky dome: stars + moon hide behind the overcast */
+  const SKYU = { uWxOv: null };
+  function patchSky() {
+    const m = E.skyMat; if (!m || m.userData.wx) return;
+    m.userData.wx = true;
+    let fs = m.fragmentShader;
+    const star = 'uNight * smoothstep(0.02, 0.3, h); }', moon = '* 0.35) * uNight;';
+    if (fs.indexOf(star) < 0 || fs.indexOf(moon) < 0) return;
+    fs = fs.replace(star, 'uNight * smoothstep(0.02, 0.3, h) * (1.0 - uWxOv); }').replace(moon, '* 0.35) * uNight * (1.0 - uWxOv);');
+    m.fragmentShader = 'uniform float uWxOv;\n' + fs;
+    SKYU.uWxOv = m.uniforms.uWxOv = { value: 0 };
+    m.needsUpdate = true;
   }
 
   /* ------------------------------------------------------------ the layer */
@@ -712,6 +755,7 @@ void main() {
     WX.uWxL = { value: [] }; WX.uWxC = { value: [] }; WX.uWxK = { value: new THREE.Vector4() };
     for (let i = 0; i < WXN; i++) { WX.uWxL.value.push(new THREE.Vector4(0, -1000, 0, 1)); WX.uWxC.value.push(new THREE.Vector3()); }
     TMP.cam = new THREE.Vector3(); TMP.fwd = new THREE.Vector3(); TMP.amb = new THREE.Color();
+    try { patchSky(); } catch (e) { N.err('weather3d.sky', e); }
     buildRain(); buildSplashes(); buildClouds(); buildHalos(); buildBolt(); buildCovers();
   }
   function hideAll() {
@@ -729,8 +773,9 @@ void main() {
     if (GUwet) GUwet.value = userWet != null ? userWet : clamp(Wt.wet, 0, 1);
     if (GUrain) GUrain.value += (clamp(Wt.rain * 1.2, 0, 1) - GUrain.value) * Math.min(1, dt * 2 + (Wt.forced ? 1 : 0));
     if (DBG.pinFlash) { Wt.flash = Math.max(Wt.flash, 0.95); if (t - BOLT.t0 > 0.05 || t < BOLT.t0) BOLT.t0 = t - 0.03; }
-    if (!enabled) { hideAll(); WX.uWxK.value.set(0, 0, 0, 0); return; }
+    if (!enabled) { hideAll(); WX.uWxK.value.set(0, 0, 0, 0); REQ.length = 0; return; }
     const S = skyAndLight(t, night);
+    if (SKYU.uWxOv) SKYU.uWxOv.value = clamp(Math.max(S.ov * 1.15, S.mist), 0, 1);
     // lights near the camera (street lamps refreshed when the camera has moved; vehicles every frame)
     if (Math.hypot(cam.x - LAMPS.x, cam.z - LAMPS.y) > 45 || t - LAMPS.t > 3 || t < LAMPS.t) { refreshLamps(cam.x, cam.z, t); if (HALO.pts) fillHalos(); }
     const lampOn = smooth(0.08, 0.5, night + S.ov * 0.15);
@@ -741,7 +786,7 @@ void main() {
     WX.uWxK.value.set(lampOn, clamp(Wt.rain, 0, 1), wet, S.flash);
     // ambient brightness for drops / splashes: the overcast sky light
     const amb = TMP.amb.copy(E.hemi.color).multiplyScalar(E.hemi.intensity * 0.22).lerp(H.scene.fog.color, 0.3);
-    amb.r += S.flash * 0.6; amb.g += S.flash * 0.65; amb.b += S.flash * 0.8;
+    amb.r += S.flash * 0.18; amb.g += S.flash * 0.2; amb.b += S.flash * 0.26;
     updateRain(dt, cam, fwd, S.rain, amb);
     updateSplashes(cam, fwd, S.rain, amb, t);
     // cloud deck
@@ -791,6 +836,7 @@ void main() {
       } else BOLT.spr.visible = false;
     }
     updateCovers(cam);
+    ST.req = REQ.length; REQ.length = 0;
     const ms = performance.now() - t0;
     ST.ms = ms; ST.msAvg += (ms - ST.msAvg) * 0.05;
   }
@@ -801,7 +847,7 @@ void main() {
     setEnabled(on) { enabled = !!on; if (!enabled) hideAll(); return enabled; },
     stats() {
       return {
-        patched: ST.patched, lamps: LAMPS.list.length, drops: ST.drops, covers: ST.covers, lights: ST.lights, ms: +ST.ms.toFixed(3), msAvg: +ST.msAvg.toFixed(3), wxN: WXN,
+        patched: ST.patched, req: ST.req, lamps: LAMPS.list.length, drops: ST.drops, covers: ST.covers, lights: ST.lights, ms: +ST.ms.toFixed(3), msAvg: +ST.msAvg.toFixed(3), wxN: WXN,
         rain: !!(RAIN.mesh && RAIN.mesh.visible), splashes: !!(SPL.mesh && SPL.mesh.visible), clouds: !!(CLOUD.mesh && CLOUD.mesh.visible),
         halos: !!(HALO.pts && HALO.pts.visible), bolt: !!(BOLT.spr && BOLT.spr.visible), wet: GUwet ? +GUwet.value.toFixed(2) : null,
         fogFar: H && H.scene && H.scene.fog ? Math.round(H.scene.fog.far) : null,

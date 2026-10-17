@@ -247,37 +247,30 @@ async function run2D(browser, page) {
     }
     check(motion.storm > motion.calm * 1.5 && motion.storm > 0.002, '2D ' + S.name + ': visible motion grows calm -> storm (changed px ' + (motion.calm * 100).toFixed(2) + '% -> ' + (motion.storm * 100).toFixed(2) + '% per 0.25 s)');
   }
-  // perf: dense tree view, the wind drawing vs world.js's own (bypass), median structure-layer + world ms
+  // perf: the trees (+ buildings with clotheslines) in view drawn with wind.js vs world.js's own, interleaved,
+  // best of 5 (N.windfx.bench2d); the whole-frame numbers are too noisy on a shared software-raster machine
   const perf = await page.evaluate(async () => {
-    N.debug.teleport('ramakrishna_math'); N.render.camOverride = null; N.debug.setTime(10, 0);
-    N.wind.force({ strength: 0.6, gustiness: 0.6, dir: 0.45 });
-    const run = async (bypass) => {
-      N.windfx.bypass2d(bypass);
-      for (let i = 0; i < 8; i++) await new Promise((r) => requestAnimationFrame(r));
-      const a = [], tr = [];
-      for (let i = 0; i < 50; i++) {
-        await new Promise((r) => requestAnimationFrame(r));
-        const ms = N.render.stats.ms; a.push((ms.structures || 0) + (ms.enqWorld || 0) + (ms.enqOther || 0));
-        tr.push(N.windfx.stats().trees);
-      }
-      a.sort((x, y) => x - y);
-      return { med: +a[a.length >> 1].toFixed(3), p25: +a[a.length >> 2].toFixed(3) };
-    };
-    const s0 = N.windfx.stats();
-    const off1 = await run(true), on1 = await run(false), off2 = await run(true), on2 = await run(false);
-    const s1 = N.windfx.stats();
-    let trees = 0, palms = 0; const v = N.render.view;
-    N.world.queryStructures(v.x0, v.y0, v.x1, v.y1, (s) => { if (s.t === 'tree') { trees++; if (s.kind === 'palm' || s.kind === 'coconut') palms++; } });
-    return { off: Math.min(off1.med, off2.med), on: Math.min(on1.med, on2.med), off1, on1, off2, on2, trees, palms, livePalms: s1.palmsLive - s0.palmsLive };
+    N.render.camOverride = null; N.debug.setTime(10, 0);
+    const out = {};
+    for (const at of ['ramakrishna_math', 'hide_zoo_pond', 'barkas']) {
+      N.debug.teleport(at); N.wind.force({ strength: 0.6, gustiness: 0.6, dir: 0.45 });
+      for (let i = 0; i < 10; i++) await new Promise((r) => requestAnimationFrame(r));
+      out[at] = N.windfx.bench2d(20);
+    }
+    return out;
   });
-  console.log('  2D perf ' + JSON.stringify(perf));
-  check(perf.on - perf.off <= 0.5, '2D cost in a dense tree view (' + perf.trees + ' trees, ' + perf.palms + ' palms): +' + (perf.on - perf.off).toFixed(2) + ' ms/frame (world.js own ' + perf.off + ' ms, with wind ' + perf.on + ' ms; budget +0.5)');
+  console.log('  2D perf (ms per frame, view ' + VW + 'x' + VH + ' at scale 1 = a 2.25x larger view than a 1080p desktop) ' + JSON.stringify(perf));
+  for (const at in perf) {
+    const p = perf[at], d = p.treesWind - p.treesOrig, db = p.bldgWind - p.bldgOrig;
+    check(d <= 0.5, '2D trees ' + at + ' (' + p.trees + ' trees): +' + d.toFixed(2) + ' ms/frame (world.js ' + p.treesOrig + ' -> wind ' + p.treesWind + '; budget +0.5); clothed buildings ' + (db >= 0 ? '+' : '') + db.toFixed(2) + ' ms (' + p.bldgs + ' bldgs)');
+  }
 }
 
 /* ------------------------------------------------------------------ 3D */
 const SCENES_3D = [
-  { name: 'palms_barkas', at: 'barkas', h: 11, pitch: 0.22, yaw: 0.6 },
-  { name: 'lumbini_tankbund', at: 'lumbini_park', h: 16, pitch: 0.2, yaw: -0.4 },
+  { name: 'palms_barkas', at: 'barkas', h: 11, pitch: 0.04, yaw: 'trees', palms: true },
+  { name: 'neems_ramakrishna', at: 'ramakrishna_math', h: 10, pitch: 0.06, yaw: 'trees' },
+  { name: 'lumbini_tankbund', at: 'lumbini_park', h: 16, pitch: 0.06, yaw: 'trees', palms: true },
   { name: 'temple_flag', at: 'flag', h: 9, pitch: 0.12, yaw: null },
   { name: 'colony_clothes', at: 'clothes', h: 12, pitch: 0.42, yaw: null },
 ];
@@ -310,6 +303,17 @@ async function run3D(browser, page) {
       await page.evaluate(({ S, at }) => {
         let yaw = S.yaw;
         if (S.at === 'flag') { const f = N.windfx.flags.find((q) => q.zone === 'lal_darwaza_temple') || N.windfx.flags[0]; yaw = Math.atan2(f.y - N.player.y, f.x - N.player.x); }
+        if (yaw === 'trees') {
+          // look at the densest cluster of trees (palms when asked) 40..220 u away
+          const p = N.player, bins = new Array(16).fill(0);
+          N.world.queryStructures(p.x - 220, p.y - 220, p.x + 220, p.y + 220, (t) => {
+            if (t.t !== 'tree' || (S.palms && t.kind !== 'palm' && t.kind !== 'coconut')) return;
+            const d = Math.hypot(t.x - p.x, t.y - p.y); if (d < 40 || d > 220) return;
+            bins[((Math.round(Math.atan2(t.y - p.y, t.x - p.x) / (Math.PI / 8)) % 16) + 16) % 16] += 1;
+          });
+          let bi = 0; for (let i = 0; i < 16; i++) if (bins[i] + bins[(i + 1) % 16] > bins[bi] + bins[(bi + 1) % 16]) bi = i;
+          yaw = (bi + 0.5) * Math.PI / 8;
+        }
         if (yaw == null) yaw = -Math.PI / 2;
         N.view3d.setCamera({ yaw, pitch: S.pitch, snap: true });
         N.view3d.settle(30000);

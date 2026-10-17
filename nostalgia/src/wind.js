@@ -66,6 +66,7 @@
   const FX = (N.windfx = {
     enabled: true,
     amp2d: 1,
+    opts: { livePalms: true, leaves: true, breathe: true },
     flags: [],
     patchMaterial, depthMaterial, windWeights,
     stats() { return Object.assign({}, ST); },
@@ -124,6 +125,7 @@
     '  #else',
     '    float wfxW = pow(max(wfxP.y - uWindFx2.y, 0.0) / uWindFx.y, uWindFx.z) * uWindFx.x;',
     '  #endif',
+    '  wfxW *= 1.0 + 0.85 * uWind.z;   // storms bend harder than linear (same as the 2D amplitude)',
     '  vec3 wfxOff = windOffset(wfxOrg, wfxW, wfxPh);',
     '  #if defined(WFX_TIPATTR) || WFX_MODE == 1',
     '    float wfxTip = windW;',
@@ -485,11 +487,11 @@
     const s = WI.strength;
     const ddx = t.x - R.cam.x, ddy = t.y - R.cam.y;
     const near = ddx * ddx + ddy * ddy < PALM_NEAR * PALM_NEAR;
-    if (palm && near && FX.enabled) { drawPalmLive(ctx, t, cx, cy, kt, oct, s); ST.palmsLive++; }
+    if (palm && near && FX.enabled && FX.opts.livePalms) { drawPalmLive(ctx, t, cx, cy, kt, oct, s); ST.palmsLive++; }
     else {
       const img = WX.treeImage(t, oct);
       let half = (t.r + 3) * kt, hx = half, hy = half;
-      if (!palm && FX.enabled && s > 0.02) {
+      if (!palm && FX.enabled && FX.opts.breathe && s > 0.02) {
         // the canopy breathes: stretched a touch along the wind, squeezed across it, out of phase per tree
         const br = Math.sin((WI.time || 0) * (2.2 + 3.5 * s) + phaseOf(t) * 1.7) * 0.035 * Math.min(1, s * 1.6);
         hx = half * (1 + br * Math.abs(WI.dx) - br * 0.5 * Math.abs(WI.dy));
@@ -498,7 +500,7 @@
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(img, cx - hx, cy - hy, hx * 2, hy * 2);
       ctx.imageSmoothingEnabled = false;
-      if (!palm && near && FX.enabled && s > 0.08) leafFlash(ctx, t, cx, cy, kt, s);
+      if (!palm && near && FX.enabled && FX.opts.leaves && s > 0.08) leafFlash(ctx, t, cx, cy, kt, s);
     }
     ctx.globalAlpha = 1;
   }
@@ -542,6 +544,7 @@
     }
     ctx.fillStyle = '#6a5030'; ctx.beginPath(); ctx.arc(0, 0, 1.6, 0, TAU); ctx.fill();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.lineCap = 'butt'; // the queue runner does not reset it: later strokes must not inherit round caps
   }
 
   // ---- clothes (2D): quads hanging from the line, blown out downwind, fluttering
@@ -874,6 +877,30 @@
   }
   // N.windfx.enabled = false freezes the 3D sway too (the shared uniforms' strength)
   let savedStrength = null;
+
+  /** tests: per-frame 2D cost of drawing the trees + clothed buildings in view, wind vs world.js's own
+   *  (both drawn `reps` times on the live canvas between frames) -> {orig, wind, trees, bldgs} ms per frame */
+  FX.bench2d = function (reps) {
+    reps = reps || 20;
+    if (!WX || !ORIG.tree) return null;
+    const R = N.render, v = R.view, ctx = R.ctx, trees = [], bl = [];
+    N.world.queryStructures(v.x0, v.y0, v.x1, v.y1, (s) => { if (s.t === 'tree') trees.push(s); else if (s.t === 'bldg') bl.push(s); });
+    const wrapped = WX.DRAW.bldg;
+    const time = (ft, fb) => {
+      const t0 = now();
+      for (let r = 0; r < reps; r++) { for (const t of trees) ft(ctx, t); for (const b of bl) fb(ctx, b); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; }
+      return (now() - t0) / reps;
+    };
+    time(ORIG.tree, ORIG.bldg); time(drawTree2D, wrapped); // warm caches
+    // interleaved, best of 5 each (the canvas rasteriser and GC make single runs noisy)
+    const nb = () => {}, best = { o: 1e9, w: 1e9, ot: 1e9, wt: 1e9 };
+    for (let k = 0; k < 5; k++) {
+      best.o = Math.min(best.o, time(ORIG.tree, ORIG.bldg)); best.w = Math.min(best.w, time(drawTree2D, wrapped));
+      best.ot = Math.min(best.ot, time(ORIG.tree, nb)); best.wt = Math.min(best.wt, time(drawTree2D, nb));
+      best.ob = Math.min(best.ob || 1e9, time(nb, ORIG.bldg)); best.wb = Math.min(best.wb || 1e9, time(nb, wrapped));
+    }
+    return { orig: +best.o.toFixed(3), wind: +best.w.toFixed(3), treesOrig: +best.ot.toFixed(3), treesWind: +best.wt.toFixed(3), bldgOrig: +best.ob.toFixed(3), bldgWind: +best.wb.toFixed(3), trees: trees.length, bldgs: bl.length };
+  };
 
   /* ================================================================ system: setup + 2D enqueue */
   function setupWorld() {
