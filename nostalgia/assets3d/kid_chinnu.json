@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 324588,
+ "bytes": 324316,
  "clips": {},
  "family": "character",
  "file": "kid_chinnu.glb",
@@ -52,7 +52,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 317.0,
+ "kb": 316.7,
  "kit": 1,
  "materials": [
   "M_kid_chinnu"
@@ -89,9 +89,7 @@
   ],
   "clips": "clips_kid",
   "height": 7.0,
-  "kinds": [
-   "kid"
-  ],
+  "kinds": [],
   "look": {
    "cowlick": true,
    "hair": "#1a1412",
@@ -106,8 +104,7 @@
    "chinnu": {}
   },
   "people": [
-   "player",
-   "kid"
+   "player"
   ],
   "regionsUsed": [
    "none",

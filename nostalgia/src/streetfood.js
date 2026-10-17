@@ -170,6 +170,7 @@
     samosaV: ['*Garam samose!* Garam!', 'Abhi nikale, ekdum garam!', 'Kadai ke paas mat aao, beta!', 'Paanch rupay dozen!'],
     chai: ['Do chai!', 'Ek cutting, anna.', 'Chai mein shakkar kam.', 'Ek chai, ek bun.', 'Anna, char chai idhar!', 'Biscuit bhi dena.'],
     chaiV: ['*Garam chai!*', 'Glass wapas dena, saar.', 'Do rupay, bas!', 'Aa jao, chai taiyaar!'],
+    kidChat: ['Homework kiya kya?', 'Kal cricket khelenge, pakka!', 'Mera wala zyada bada hai!', 'Sir ne dekha toh?', 'Ek aur lete, please?', 'Shaktimaan dekha kal?', 'Mujhe bhi chakhao na!'],
     chaiChat: ['Newspaper mein kya hai aaj?', 'Kal ka match kya tha, bhai!', 'World Cup mein India jeetega, dekhna.', 'Rate phir badh gaya.', 'Is baar baarish late hai.'],
     bhutta: ['Ek bhutta, nimbu laga ke!', 'Teekha kam, anna.', 'Do bhutte, garam garam.', 'Masala thoda zyada!'],
     bhuttaV: ['Bhutta! *Garam garam* bhutta!', 'Lemon-chilli, ekdum fresh!', 'Hawa achhi hai aaj, saar.'],
@@ -1037,7 +1038,7 @@
       if (best) {
         p.chatT = rr(2.5, 6); p.chatA = Math.atan2(best.y - p.y, best.x - p.x); p.lookTarget = best;
         if (!(best.chatT > 0)) { best.chatT = p.chatT; best.chatA = p.chatA + PI; best.lookTarget = p; }
-        if (rnd() < TUNE.chatBark && p.barkCD <= 0) { p.barkCD = 14; bark(p, (sc.K.chat && rnd() < 0.5) ? lineOf(sc.K.chat) : lineOf('chat')); }
+        if (rnd() < TUNE.chatBark && p.barkCD <= 0) { p.barkCD = 14; const kid = p.role === 'kid' || p.role === 'student' || (p.look0 && (p.look0.kind === 'kid' || p.look0.kind === 'student')); bark(p, kid ? lineOf('kidChat') : (sc.K.chat && rnd() < 0.5) ? lineOf(sc.K.chat) : lineOf('chat')); }
       }
     }
     if (p.chatA != null) return p.chatA;
@@ -1096,6 +1097,7 @@
       q.angle = p.angle; q.vx = p.vx; q.vy = p.vy;
       if (p.umb) q.umb = p.umb;
       dropPatron(p);
+      ST.handedBack++;
       return true;
     } catch (e) { N.err('streetfood.handBack', e); return false; }
   }
@@ -1117,6 +1119,7 @@
     const q = best, look = q.look;
     try { T.clear((e) => e === q); } catch (e) { return null; }
     const p = newPatron(sc, q.role || 'man', q.x, q.y, q.angle, look, q.spd);
+    ST.recruited++;
     p.vx = q.vx || 0; p.vy = q.vy || 0; p.umb = q.umb || null;
     return p;
   }
@@ -1253,7 +1256,7 @@
       }
     } else if (sc.counterBy && Math.hypot(sc.counterBy.x - sc.sl.counter.x, sc.counterBy.y - sc.sl.counter.y) < 4.5) to = sc.counterBy;
     if (!to) return;
-    to.served = true; v.handTo = to;
+    to.served = true; v.handTo = to; ST.served++;
     sound(K.sounds && K.sounds.serve, v.x, v.y, { vol: 0.4 });
     N.emit('streetfood:serve', { id: sc.spot.id, to });
   }
@@ -1264,7 +1267,7 @@
     const tg = v.target;
     let tx = door.x, ty = door.y, sp = 30;
     if (tg) {
-      if (!tg.alive || tg.st !== 'wait') { v.target = null; }
+      if (!tg.alive || tg.st !== 'wait' || tg.sc !== sc) { v.target = null; }
       else { tx = tg.x + Math.cos(tg.angle) * 5; ty = tg.y + Math.sin(tg.angle) * 5; }
     }
     const dx = tx - v.x, dy = ty - v.y, d = Math.hypot(dx, dy);
@@ -1727,18 +1730,19 @@
     if (sp.cartE) { if (sp.cartE.alive) N.entities.remove(sp.cartE); sp.cartE = null; }
     if (N.interact && N.interact.remove) { try { N.interact.remove('sf:' + sp.id); } catch (e) { /* ignore */ } }
   }
-  let presT = 0;
+  let presT = 0, presSnap = true; // presSnap: apply at once (after a teleport / a new game nobody saw it roll in)
   function updatePresence(dt) {
     presT -= dt;
-    if (presT > 0) return;
+    if (presT > 0 && !presSnap) return;
     presT = 2;
+    const snap = presSnap; presSnap = false;
     const m = mins(), pl = N.player;
     for (const sp of SPOTS) {
       if (!sp.cartE) continue;
       const want = cartPresent(sp, m) && API.enabled !== false;
       if (want === sp.present) continue;
       const vis = is3D() ? Math.hypot(sp.x - pl.x, sp.y - pl.y) < 300 : N.render.inView(sp.x, sp.y, 20);
-      if (vis && !sp.forceShow) continue; // the cart rolls in / away out of sight
+      if (vis && !sp.forceShow && !snap) continue; // the cart rolls in / away out of sight
       sp.present = want;
       if (want) { sp.cartE.alive = true; sp.cartE.id = 0; N.entities.add(sp.cartE); } else if (sp.cartE.alive) N.entities.remove(sp.cartE);
     }
@@ -2135,7 +2139,7 @@
   function pushLights(sc) {
     const Rr = N.render, night = Rr.night || 0;
     if (night < 0.04 || !Rr.lights) return;
-    const K = sc.K, t = simT(), S = stoveOf(sc);
+    const K = sc.K, t = simT(), S = stoveOf(sc), n0 = Rr.lights.length;
     if (S && K.glow && (K.cart === 'bhutta' || sc.vendor || sc.spot.art)) {
       const fl = 0.78 + 0.22 * Math.sin(t * 11 + sc.uid * 3) * Math.sin(t * 6.7 + sc.uid);
       Rr.lights.push({ x: S.x, y: S.y, r: K.cart === 'bhutta' ? 20 : 12, color: K.glow, intensity: (K.cart === 'bhutta' ? 0.7 : 0.45) * fl, h: S.h });
@@ -2144,10 +2148,12 @@
     if (K.lamp === 'petromax') Rr.lights.push({ x: fx(F, -F.hl + 1, -F.hw + 0.8), y: fy(F, -F.hl + 1, -F.hw + 0.8), r: 40, color: '#fff2c8', intensity: 0.95, h: 10 });
     else if (K.lamp === 'tube') Rr.lights.push({ x: F.cx + F.nx * 2, y: F.cy + F.ny * 2, r: 34, color: '#e8f4ff', intensity: 0.85, h: 10 });
     else if (K.lamp === 'bulb' && is3D()) Rr.lights.push({ x: fx(F, F.hl - 2, 0), y: fy(F, F.hl - 2, 0), r: 30, color: '#fff0c0', intensity: 0.9, h: 9 }); // 2D: places_art lights its own cart bulb
+    ST.lightAcc += Rr.lights.length - n0;
   }
 
   /* ================================================================ 3D */
-  const V3 = N.view3d;
+  // view3d.js loads after this file: everything 3D registers lazily (register3d, from the system init)
+  const V3 = { get active() { return !!(N.view3d && N.view3d.active); } };
   const G3 = { THREE: null, H: null, ready: false, grp: null, pts: null, spk: null, geo: {}, mat: {}, scenes: new Map(), ms: 0 };
   const SH = (o) => { if (o) { o.userData = o.userData || {}; o.userData.shared = true; } return o; };
   function geo3(THREE) {
@@ -2175,7 +2181,7 @@
   const PT_FS = [
     'varying vec4 vCol; uniform float uHard;',
     'void main() { vec2 d = gl_PointCoord - vec2(0.5); float r = length(d) * 2.0;',
-    '  float a = mix(smoothstep(1.0, 0.0, r), step(r, 0.8), uHard); a *= a;',
+    '  float a = mix(1.0 - smoothstep(0.0, 1.0, r), 1.0 - step(0.8, r), uHard); a *= a;',
     '  if (vCol.a * a < 0.004) discard; gl_FragColor = vec4(vCol.rgb, vCol.a * a); }',
   ].join('\n');
   function makePoints(THREE, n, additive) {
@@ -2505,10 +2511,14 @@
     fillPoints(H);
     G3.ms = now() - t0;
   }
-  if (V3 && V3.registerLayer) {
-    V3.registerActorRenderer('sf:vendor', VEND3);
-    V3.registerActorRenderer('sf:cart', CART3);
-    V3.registerLayer('streetfood', {
+  let reg3d = false;
+  function register3d() {
+    const V = N.view3d;
+    if (reg3d || !V || !V.registerLayer || !V.registerActorRenderer) return;
+    reg3d = true;
+    V.registerActorRenderer('sf:vendor', VEND3);
+    V.registerActorRenderer('sf:cart', CART3);
+    V.registerLayer('streetfood', {
       order: 60,
       init(THREE, H) {
         G3.THREE = THREE; G3.H = H;
@@ -2529,9 +2539,10 @@
       },
     });
   }
+  N.on('boot', register3d);
 
   /* ================================================================ director */
-  const ST = { spots: 0, ms: 0, msAvg: 0, ms2d: 0, ms3d: 0, draw2dAcc: 0, frames: 0, activations: 0 };
+  const ST = { spots: 0, ms: 0, msAvg: 0, ms2d: 0, ms3d: 0, draw2dAcc: 0, frames: 0, activations: 0, lights: 0, lightAcc: 0, recruited: 0, handedBack: 0, spawned: 0, served: 0 };
   let dirT = 0, ready = false;
   function actRadius() {
     if (is3D()) { const q = N.view3d.quality || {}; return Math.min(TUNE.act3D, (q.actorDist || 620) * 0.85); }
@@ -2571,6 +2582,7 @@
     ACTIVE.sort((a, b) => a.spot.d - b.spot.d);
   }
   function init() {
+    register3d();
     if (ready || !N.world || !N.world.built) return;
     ready = true;
     pCap = lowTier() ? TUNE.maxParticles.low : TUNE.maxParticles.desk;
@@ -2593,7 +2605,7 @@
   function draw() {
     if (!ready || !N.render) return;
     const Rr = N.render;
-    ST.ms2d = ST.draw2dAcc; ST.draw2dAcc = 0; ST.ms3d = G3.ms;
+    ST.ms2d = ST.draw2dAcc; ST.draw2dAcc = 0; ST.ms3d = G3.ms; ST.lights = ST.lightAcc; ST.lightAcc = 0;
     debugTick();
     for (const sc of ACTIVE) pushLights(sc);
     if (is3D() || !ACTIVE.length) return;
@@ -2656,8 +2668,8 @@
     } catch (e) { N.err('streetfood.shopBuy', e); }
   });
   N.on('world:built', () => { ready = false; resetAll(); });
-  N.on('game:new', () => { dirT = 0; });
-  N.on('player:teleport', () => { dirT = 0; });
+  N.on('game:new', () => { dirT = 0; presSnap = true; });
+  N.on('player:teleport', () => { dirT = 0; presSnap = true; });
   N.on('season:change', () => { bhattiT = 0; });
 
   N.addSystem({
@@ -2706,7 +2718,7 @@
       return {
         spots: SPOTS.length, active: ACTIVE.length, patrons: PATRONS.length, vendors: VENDORS.length, particles: P.n, vehicles: veh, orphans: ORPHANS.length,
         ms: +ST.ms.toFixed(3), msAvg: +ST.msAvg.toFixed(3), ms2d: +ST.ms2d.toFixed(3), ms3d: +ST.ms3d.toFixed(3), pool: POOL.length,
-        activations: ST.activations, r: Math.round(actRadius()), kinds: SPOTS.reduce((o, s) => { o[s.kind] = (o[s.kind] || 0) + 1; return o; }, {}),
+        activations: ST.activations, lights: ST.lights, recruited: ST.recruited, handedBack: ST.handedBack, served: ST.served, r: Math.round(actRadius()), s3d: G3.scenes.size, pts3d: G3.pts ? G3.pts.geometry.drawRange.count : -1, layer3d: G3.ready, kinds: SPOTS.reduce((o, s) => { o[s.kind] = (o[s.kind] || 0) + 1; return o; }, {}),
       };
     },
     register(id, spec) { if (!id || !spec) return false; KINDS[id] = Object.assign({ type: 'cart', max: 4, peaks: [], hold: null, eat: [10, 30], sounds: {} }, spec); return true; },
@@ -2716,6 +2728,6 @@
     reset: resetAll,
     setDensity(d) { API.density = clamp(+d || 0, 0, 2); return API.density; },
     setOptions(o) { for (const k of ['particles', 'vehicles', 'barks', 'sounds', 'suppressArt', 'nightDosa']) if (o && o[k] != null) TUNE[k] = !!o[k]; return Object.assign({}, TUNE); },
-    _debug: { P, ACTIVE, PATRONS, VENDORS, SPOTS, G3, slotsFor, levelOf, heldPos },
+    _debug: { P, ACTIVE, PATRONS, VENDORS, SPOTS, G3, slotsFor, levelOf, heldPos, emit },
   });
 })();

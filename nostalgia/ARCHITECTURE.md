@@ -984,11 +984,20 @@ Rules: lingocha — the seekers get 3 tries from the chalk line (aim + power: �
 camera, hold ACTION and let go; touch (top-down): pull back from the stack — on the picture or with the stick, which
 is a catapult while Chinnu is at the line — and let go), the stones scatter, the seekers
 restack them one at a time (one pair of hands on the stack at once) while the hitters throw the ball at them
-(hit on the full = out, no head shots, a touch on a hitter = SAFE 2.4 s, Chitti is doodh-bhaat), seven back =
-"LINGOCHA!"; roles swap every round, best of 3. Maram pitti — the ball is tossed up and every throw must
+(hit on the full = out, no head shots, a touch on a hitter = SAFE 2.4 s — for an AI seeker only a touch he ran for,
+not brushing past the guard; Chinnu's aim assist passes over a SAFE seeker — Chitti is doodh-bhaat), seven back =
+"LINGOCHA!"; roles swap every round, best of 3. The other team in a real match plays `TUNE.lingocha.rival` (+0.12)
+above the game's difficulty and its hitters pick Chinnu a little more often (`meW`). Maram pitti — the ball is tossed up and every throw must
 bounce before anyone grabs it (a catch on the full puts the thrower out), hit on the full = out, head shots are
 fouls (3 = out), a RUN tap (DODGE) is a short committed hop (with no direction held: across the red wind-up line /
-the ball's line), last one standing wins. Kid manners in the AI: the holder steps back rather than throw point-blank
+the ball's line), last one standing wins. Wind-ups (both games): the red line from an AI thrower to his mark fills
+like a fuse; he commits his aim `TUNE.lockT` (0.26-0.18 s) before letting go and the fuse turns gold — a hop /
+sidestep from then on beats the throw, an early one is re-aimed at (debug `state().tele`, the AI `throw` log's
+`aimOff`). Chinnu's throws: the kid under his reticle runs across his aim and turns back now and then
+(`TUNE.dance`), and may juke as the ball leaves his hand (`TUNE.alert`; less for a hard throw). Maram pitti manners:
+a hit from closer than `TUNE.maram.closeD` (15 u) is a TOO CLOSE foul, not an out (3 fouls = out; the AI steps back
+anyway; Chinnu's reticle turns orange and the label says "Too close!"). A kid reaches a loose ball Chinnu stands on
+from as far as he can (`TUNE.myReach`), so he cannot shield it while he may not pick it up. Kid manners in the AI: the holder steps back rather than throw point-blank
 (`TUNE.maram.minD` 18 u), kids spread out as they scatter, a missed throw dies 12 u past its mark; hiding more than
 10 u off the ground for 4 s is out (warned; fetching a ball that rolled off is fine); a ball rolling more than 16 u
 off the ground soon stops. During a real game Chinnu's run drains half the stamina (`TUNE.runRefund`), and fetching
@@ -1008,7 +1017,7 @@ game: `N.clock.hold('playground-game')` (the clock crawls at 0.25 game-min/s), `
 ground (1-2.2 top-down; up to 2.6 on an upright phone, fitted to the width), `N.traffic.closeRoads('pg', ...)`, traffic's 'playground' crowd zone moved to the
 sideline (spectators), mission givers' `when()` wrapped so no J-card starts a mission mid-game, an N.npcs actor
 of a playing friend standing at the ground hidden while its double plays. Test: `node tests/playground_games.cjs`
-(ONLY=desktop|fixes|ambient|3d|portrait|landscape).
+(ONLY=desktop|fixes|fair|ambient|3d|portrait|landscape).
 
 ## 19. Story layer (integration contract)
 
@@ -1508,3 +1517,47 @@ the conventions below; anything else needs a change here first.
   feet on 0.1 s frame strips + dense slow-motion sole sampling while walking / running, vehicle
   parts, the proto flag, tinting, pack-missing and corrupt-model fallbacks, the dist build, zero
   console errors; screenshots `tests/out/models3d_*.png`).
+- **Vehicles (authoring, `tools/blender/vehicles.py` + helpers `_vehicles_kit.py`, vehicles artist):**
+  every vehicles.js / traffic.js type has a model: `hero_cycle` (hero_cycle old_cycle chinnu_cycle),
+  `hercules_cycle` (+ hercules_gears via `opt_gears`), `bsa_cycle` (cycle bsa_cycle), `ladies_cycle`,
+  `kid_cycle`, `scooty` (+ akka_scooty), `luna` (+ pochaiah_luna light bar), `chetak` (+ family_chetak),
+  `rx100` (+ bunty_rx100), `auto_rickshaw` (auto yadagiri_auto), `cycle_rickshaw` (rickshaw),
+  `ambassador` (+ govt_ambassador beacon, taxi_ambassador livery + roof carrier), `maruti800`,
+  `padmini` (+ taxi_padmini), `city_bus` (bus safari_bus; route boards), `lorry` (+ peacock_lorry:
+  open with marigolds), `motor_boat` (boat), `pedal_boat` (swan; types pedal_boat / swan_boat, not
+  yet spawned). One rigid skin + one baked material `M_<id>[@night]` (+ `M_<id>_glass`) each.
+  Bones: `root`, `steer` (two-wheelers, autos, rickshaws) or `steer_L / steer_R` (front wheels of
+  cars / bus / lorry, vertical axis) + `steer_wheel` (column axis), any `wheel_*` (radius per bone in
+  `meta.wheels`), `crank pedal_L pedal_R saddle` (pedal cycles), `prop` / `paddle` (`meta.props`),
+  `opt_*` option bones. Lamp lenses carry their group in `_REGION` (4 head, 5 tail / brake, 6
+  indicators, 7 beacon); paint faces 1 (`paint`) / 2 (`paint2`) (`meta.tintSrc` maps them to
+  `v.color` / `v.color2`; `meta.taxi` is the taxi livery). Rider anchors: `seat_driver`, `grip_L/R`
+  (on the bars / steering wheel), `foot_L/R` (floorboard, pegs, car pedals) or the pedals,
+  `seat_pillion` + `foot_pillion_L/R`, `seat_passenger_*` + `foot_passenger_*`, `tiller` (boats);
+  `meta.riders = {driver: {pose, seat, grips, feet}, pillion, passengers: [...]}` (poses: cycle,
+  scooter, moped, moto, auto, car, bench, boatman). `meta.options = [{bone, types, notTypes, flag,
+  route, seed: [n, i]}]`; `meta.stand: 'side'` (parked lean); `meta.boat`; `meta.closed` (glass
+  cabins: passengers not seen are not drawn); cars carry `meta.cockpit.eye`. Heights are human
+  scale for the 9 u adults, lengths stretched to `TYPES[t].w` (long wheelbases).
+- **Vehicles (runtime, `src/models3d_vehicles.js`, after models3d_people.js):** on
+  `models3d:ready` it re-registers each vehicle's `m3d:veh:<id>` key with a full renderer: every
+  wheel bone spins by distance / radius, steer bones turn with `v.steerVis` (right turn =
+  clockwise from above / from the driver), cranks and pedals follow the road, props spin, the
+  saddle lets down; per-instance material (region tint + lamp groups: heads / tails at night while
+  driven, brake lights on braking, beacons flash) and real point lights for near headlamps; option
+  bones by the rules; two-wheeler lean / stand / fall, jolts, boat bobbing; scale `TYPES.w /
+  meta.length`. Riders are Blender characters chosen by `N.models3d.people.choose` (the same model a
+  person has on foot), dressed by `hooks.tint`, posed by two-bone IK on the shared skeleton onto the
+  anchors (hips on the seat, hands on the grips, feet on floor / pegs / turning pedals with ankling
+  and hip dip; passengers' hands on the knees; women pillions side-saddle); on the Hero roadster the
+  library clips (`ride_cycle` at the clip's saddle drop, a kid's `ride_kainchi`) stay phase-locked
+  to the crank. A vehicle is routed (after models3d's own pass, system order 63; it also sets
+  `hooks.riderModel`) only when every occupant who must be seen has a model ready (lazy models
+  parse on demand), else view3d_actors draws it. First person: the player's own body is hidden, the
+  bars / dash / steering wheel stay. API `N.models3dVehicles = {options {enabled, riders, ambient,
+  lamps, lights, farIK}, ready, stats(), modelFor(type), debug}`. Test: `node tests/vehicles3d.cjs`
+  (its own vehicles + people test pack while the shared pack is capped; `REALPACK=1` uses the
+  shared one): line-up of every type (routing, footprint vs collision, ground contact, tint,
+  options), parts (spin, steering direction), riders (hands / feet / hips on their anchors, feet on
+  the pedals through a crank turn), the player on the Scooty (tps / fps) and in the Ambassador
+  (fps), boats on Hussain Sagar, day / night screenshots `tests/out/vehicles3d_*.png`, IK cost.

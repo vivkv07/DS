@@ -46,8 +46,11 @@
  *   grab the ball, throw (tap = normal, hold = hard throw), catch. Lingocha line throw: ←/→ (or a pad stick /
  *   mouse pointer / the 3D camera) aims, hold ACTION (or the mouse button) to charge the power and let go to
  *   throw; on touch screens (top-down) pull back from the stack — a drag on the picture, or the stick, which is a
- *   catapult at the line — and let go. Aim assist on phones / with Assist. After a free-roam game "Play again"
- *   stays under Chinnu for a few seconds.
+ *   catapult at the line — and let go. Aim assist on phones / with Assist (it passes over a SAFE seeker). After a
+ *   free-roam game "Play again" stays under Chinnu for a few seconds.
+ *   An AI kid's wind-up is a red line that fills like a fuse from him to his mark; he commits his aim TUNE.lockT before
+ *   letting go (the fuse turns gold), so a hop / sidestep from then on beats the throw and an early one is re-aimed at.
+ *   The kid under Chinnu's reticle runs across his aim and turns back now and then (throw just after he turns).
  *
  * HOOKS INTO OTHER MODULES (installed from this file only; nothing else is edited)
  *   - N.minigames: registers 'lingocha' and 'marampitti' (defs with inWorld: true) and wraps play / start /
@@ -99,25 +102,25 @@
     // wind-up is long enough to read the fuse; SAFE only for a touch a seeker went for)
     lingocha: { tries: 3, rounds: 3, team: 4, live: [100, 72], safeT: 2.4, safeCD: 5, holdMax: 3.2, guardR: 13, kick: 92, pickT: 0.55, stackT: 0.85, threatR: 34, scatter: 0.8, aiErr: [0.28, 0.16], stackErr: [0.17, 0.11], dodge: [0.25, 0.55], windup: [0.78, 0.5],
       // Chinnu's own hands: a pick-up and a careful placing take a moment (he stands still, a sitting duck)
-      myPickT: 0.35, myStackT: 0.65, knockMul: 1.3, stoneFric: 95, passMe: 0.55,
+      myPickT: 0.45, myStackT: 0.75, knockMul: 1.3, stoneFric: 95, passMe: 0.55,
       // the other team in a real match plays this much above the game's difficulty (Chinnu is better than the AI kid
       // he stands in for); meW: AI hitters' pick of a mark counts Chinnu this much nearer (bots: ~60% match wins)
-      rival: 0.12, meW: 0.9 },
+      rival: 0.12, meW: 0.8 },
     // the kid under Chinnu's reticle runs across his aim, turning back every dance s (d 0..1, x0.7..1.3) so a lead
     // can guess wrong (throw just after he turns); he backs off when Chinnu is nearer than danceAway u
-    dance: [1.1, 0.65], danceAway: 36,
+    dance: [1.1, 0.65], danceAway: 36, danceSp: 0.9,
     // with the ball you only shuffle (holdWalk x walk): you throw from about where you picked it up
     // minD: a holder steps back (backWalk x walk) rather than throw at a kid nearer than this (point-blank is
     // unsporting and undodgeable); spread: kids keep this far apart while they scatter (no clumps)
     // range: a holder winds up once his mark is nearer than this (u; d 0..1); aiErr: his aim error (rad); meW: Chinnu
     // counts as this much nearer when a holder picks his mark (everybody wants the new hero out)
-    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46, holdWalk: 0.22, look: [0.55, 1.3], range: [36, 48], aiErr: [0.15, 0.09], meW: 0.8, minD: 18, backWalk: 0.4, spread: 13, hopT: 0.16, bound: 10, boundT: 4, lineWarn: 7 },
+    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, closeD: 15, dashV: 95, dashCD: 0.8, keepAway: 46, holdWalk: 0.22, look: [0.55, 1.3], range: [36, 48], aiErr: [0.15, 0.09], meW: 0.8, minD: 18, backWalk: 0.4, spread: 13, hopT: 0.16, bound: 10, boundT: 4, lineWarn: 7 },
     // AI wind-up: the red line fills like a fuse; the thrower commits his aim lockT s (d 0..1) before he lets go, so
     // a hop / sidestep from then on dodges (an early one is simply re-aimed at)
     lockT: [0.26, 0.18],
     // the kid under Chinnu's reticle is watching him: the chance he jukes as Chinnu lets go (d 0..1); a hard throw
     // (held ACTION) is that much harder to read (x alertHard)
-    alert: [0.42, 0.68], alertHard: 0.6,
+    alert: [0.25, 0.45], alertHard: 0.6,
     // the line throw: the aim starts a little off the stack (straighten it), accuracy drops with power
     aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130, startOff: [0.06, 0.2], err: 0.026, errPow: 0.075 },
     pay: { win: 200, win3: 300, daily: 3 },
@@ -141,6 +144,8 @@
     runRefund: 0.5,
     // s the "Play again" offer stays under Chinnu after a free-roam game
     againT: 10,
+    // how far Chinnu reaches for a loose ball (u); a kid reaches as far for a ball Chinnu stands on
+    myReach: 7.5,
   };
   const TEAM_COL = ['#f2c230', '#e2483a'];
   const BOYS = ['Venky', 'Sameer', 'Gopi', 'Raju', 'Sunny', 'Chintu', 'Munna', 'Lucky', 'Sattar', 'Pappu', 'Srinu', 'Kittu', 'Bunny', 'Arif', 'Naveen', 'Pandu', 'Jaffer', 'Ravi'];
@@ -150,6 +155,7 @@
     safe: ['Safe! Safe!', 'Touched! Safe!'],
     cheat: ['*Nakko*, cheating!', 'Bounce *hone de*!', 'Arre, bounce first!'],
     head: ['*Nakko!* Not the head!', 'Head *pe nakko*, ra!', '*Ayyo*, no head shots!'],
+    close: ['Too close, ra! Doesn\'t count!', '*Itna paas se?* Foul!', 'Step back and throw, *yaar*!'],
     dood: ['*Doodh-bhaat!* Doesn\'t count!', 'She\'s *doodh-bhaat*, leave her!'],
     lingocha: ['Lingochaaa!', 'LINGOCHA!'],
     chatter: ['*Phek* ra!', '*Jaldi*, *jaldi*!', 'Idhar! Idhar!', 'Pass *kar*!', '*Bach gaya*!', 'Throw, ra!', 'Too slow, *yaar*!'],
@@ -790,9 +796,11 @@
       P.danceDir = -P.danceDir; P.danceT = S.t + lerp(TUNE.dance[0], TUNE.dance[1], kd(S, P)) * 0.7;
       ux = -ay * P.danceDir + ax * away; uy = ax * P.danceDir + ay * away;
     }
-    const ul = hyp(ux, uy) || 1, sp = speedOf(S, P, true);
+    const ul = hyp(ux, uy) || 1, sp = speedOf(S, P, true) * TUNE.danceSp;
     P.dvx = (ux / ul) * sp; P.dvy = (uy / ul) * sp;
   }
+  /** maram pitti: Chinnu's mark is too close for a fair throw (a hit would be a foul) */
+  function tooClose(S, T) { return S.id === 'marampitti' && !!T && !!T.e && hyp(T.e.x - N.player.x, T.e.y - N.player.y) < TUNE.maram.closeD; }
   function aimedByMe(S, P) { return S.real && S.me && S.me.hold && !S.me.out && S.aimTarget === P && hyp(P.e.x - N.player.x, P.e.y - N.player.y) < 60; }
   /** sidestep across the line of a throw from P */
   function juke(S, Q, P) {
@@ -821,6 +829,9 @@
   /** P has just thrown it: not his turn to pick it up again yet */
   function lockedOut(S, P) { const b = S.ball; return b.lockP === P && S.t < b.lockT; }
   function canGrabP(S, b, P) { return canGrab(S, b) && !lockedOut(S, P); }
+  /** how near a kid must be to pick the loose ball up; Chinnu standing on it does not keep it from them (the kids
+   *  make way for him, so they reach in from as far as he can) */
+  function reachOf(S, b) { const p = N.player; return S.real && p && hyp(b.x - p.x, b.y - p.y) < 5 ? TUNE.myReach : 4.2; }
   /** where a ball in the air comes down */
   function landing(b) {
     const g = TUNE.g, vz = b.vz, z = Math.max(0, b.z);
@@ -1496,7 +1507,7 @@
         for (const Q of LING.hitters(S)) if (Q !== P && !Q.out && !lockedOut(S, Q) && hyp(b.x - Q.e.x, b.y - Q.e.y) < my) rank++;
         if (rank < 2) {
           const d = goTo(P, b.x, b.y, run, 0.5);
-          if (d < 4.2 && b.state !== 'held') give(S, P);
+          if (d < reachOf(S, b) && b.state !== 'held') give(S, P);
           return;
         }
       }
@@ -1756,6 +1767,17 @@
         setOut(S, T, P, 'caught');
         return true;
       }
+      // colony manners: a hit from right next to him does not count (throw from a distance, ra)
+      if (hyp(b.rx - P.e.x, b.ry - P.e.y) < TUNE.maram.closeD) {
+        T.fouls++; if (T.isPlayer) S.stats.fouls++;
+        pop(S, P.e.x, P.e.y, 11, 'TOO CLOSE!', '#ffb0a0');
+        bark(S, P, pick(S, BARK.close));
+        log(S, 'close_foul', { name: P.name, by: T.name, fouls: T.fouls });
+        b.vx *= -0.25; b.vy *= -0.25; b.vz = 14; b.live = false;
+        if (T.fouls >= TUNE.maram.fouls) { if (T.isPlayer) toast('Three fouls — out, ra! (throw from a distance)', 2600); setOut(S, T, null, 'fouls'); }
+        else if (T.isPlayer) toast('*Itna paas se nakko!* Too close — foul ' + T.fouls + '/' + TUNE.maram.fouls + '. Step back first', 2400);
+        return true;
+      }
       if (b.z - TUNE.ballR * 0.5 > TUNE.headZ) {
         T.fouls++; if (T.isPlayer) S.stats.fouls++;
         pop(S, P.e.x, P.e.y, 11, 'NO HEADS!', '#ffb0a0');
@@ -1834,7 +1856,7 @@
         const my = hyp(b.x - e.x, b.y - e.y);
         let rank = 0; for (const Q of S.parts) if (Q !== P && !Q.out && !lockedOut(S, Q) && hyp(b.x - Q.e.x, b.y - Q.e.y) < my) rank++;
         if (rank < 2 || my < 22) {
-          if (canGrab(S, b)) { const d = goTo(P, b.x, b.y, run, 0.5); if (d < 4.2) { give(S, P); log(S, 'grab', { name: P.name, bounced: b.bounced }); } return; }
+          if (canGrab(S, b)) { const d = goTo(P, b.x, b.y, run, 0.5); if (d < reachOf(S, b)) { give(S, P); log(S, 'grab', { name: P.name, bounced: b.bounced }); } return; }
           if (b.state === 'air' && !b.live) { // wait for the bounce near the landing spot
             const land = landing(b);
             const a = Math.atan2(e.y - land.y, e.x - land.x);
@@ -1926,8 +1948,8 @@
         return;
       }
       const d = hyp(b.x - p.x, b.y - p.y);
-      if (!b.holder && d < 7.5 && lockedOut(S, me) && canGrab(S, b)) { offer(S, ''); I.consume('action'); return; }
-      if (!b.holder && d < 7.5) {
+      if (!b.holder && d < TUNE.myReach && lockedOut(S, me) && canGrab(S, b)) { offer(S, ''); I.consume('action'); return; }
+      if (!b.holder && d < TUNE.myReach) {
         offer(S, 'Grab ball');
         if (I.pressed('action')) {
           if (canGrab(S, b)) { give(S, me); log(S, 'grab', { name: me.name, me: true, bounced: b.bounced }); sfx('pickup', { ui: true, vol: 0.5 }); }
@@ -1948,6 +1970,7 @@
       if (me.out) return 'OUT!';
       if (S.boundT > 0) return 'Back inside the ground! Out in ' + Math.max(0, TUNE.maram.boundT - S.boundT).toFixed(1) + ' s';
       if (S.phase === 'toss') return 'Wait for the bounce… then grab it (' + a + ')';
+      if (me.hold && tooClose(S, S.aimTarget)) return 'Too close to ' + S.aimTarget.name + ' — step back first (a hit from right next to him is a foul) · ' + Math.max(0, TUNE.maram.holdMax - me.holdT).toFixed(1) + 's';
       if (me.hold) return a + ': throw at ' + (S.aimTarget ? S.aimTarget.name : 'someone') + ' (below the head!) · hold for a hard one · ' + Math.max(0, TUNE.maram.holdMax - me.holdT).toFixed(1) + 's';
       if (MARAM.threatened(S)) return (b.state === 'air' || !S.tele ? 'Incoming! ' + r + ' = dodge · ' + a + ' = CATCH' : (S.tele.from.name || 'He') + (S.tele.to === me ? ' is aiming at you!' : ' is throwing your way!') + ' As the red fuse reaches you: ' + r + ' = dodge · ' + a + ' = catch');
       if (!b.holder && lockedOut(S, me)) return 'Not twice in a row — let somebody else get the ball';
@@ -2002,8 +2025,8 @@
     const me = S.me, b = S.ball, p = N.player;
     if (!me.hold) {
       const d = hyp(b.x - p.x, b.y - p.y);
-      if (!b.holder && d < 7.5 && canGrab(S, b) && lockedOut(S, me)) offer(S, '');
-      else if (!b.holder && d < 7.5 && canGrab(S, b)) {
+      if (!b.holder && d < TUNE.myReach && canGrab(S, b) && lockedOut(S, me)) offer(S, '');
+      else if (!b.holder && d < TUNE.myReach && canGrab(S, b)) {
         offer(S, 'Pick up ball');
         if (I.pressed('action')) { give(S, me); sfx('pickup', { ui: true, vol: 0.5 }); log(S, 'grab', { name: me.name, me: true, bounced: b.bounced }); }
       } else offer(S, '');
@@ -2018,7 +2041,7 @@
     I.move.x *= hw; I.move.y *= hw;
     S.aimTarget = chooseTarget(S, cands);
     const T = S.aimTarget;
-    offer(S, T ? 'Throw at ' + T.name : 'Throw');
+    offer(S, T ? (tooClose(S, T) ? 'Too close! (' + T.name + ')' : 'Throw at ' + T.name) : 'Throw');
     const A = S.aim;
     if (I.pressed('action') || PTR.clicked) { A.charging = true; A.holdT = 0; PTR.clicked = false; }
     if (A.charging) A.holdT += dt;
@@ -2651,7 +2674,7 @@
           }
           const T = S.aimTarget;
           if (T && S.me && S.me.hold && T.e) {
-            ctx.globalAlpha = 0.85; ctx.strokeStyle = '#ff5a4a'; ctx.lineWidth = 0.8;
+            ctx.globalAlpha = 0.85; ctx.strokeStyle = tooClose(S, T) ? '#ffa23a' : '#ff5a4a'; ctx.lineWidth = 0.8;
             const r = 5.6 + Math.sin(S.t * 10) * 0.5;
             ctx.beginPath(); ctx.arc(T.e.x, T.e.y, r, 0, TAU); ctx.stroke();
             for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + S.t; ctx.beginPath(); ctx.moveTo(T.e.x + Math.cos(a) * (r - 1.6), T.e.y + Math.sin(a) * (r - 1.6)); ctx.lineTo(T.e.x + Math.cos(a) * (r + 1.6), T.e.y + Math.sin(a) * (r + 1.6)); ctx.stroke(); }
@@ -2863,6 +2886,8 @@
   const V3L = { grp: null, ball: null, bsh: null, stones: [], chalk: null, ring: null, arrow: null, rings: [], reticle: null, tele: null, fuse: null, T: null, H: null, ok: false };
   function v3Init(THREE, H) {
     V3L.T = THREE; V3L.H = H;
+    // a material we recolour at run time is our own copy (H.mat's are cached and shared by every layer)
+    const own = (hex, o) => { const m = H.mat(hex, o).clone(); m.userData = {}; return m; };
     const g = new THREE.Group(); g.name = 'pg-games'; g.visible = false;
     H.layer.add(g); V3L.grp = g;
     const ball = new THREE.Mesh(new THREE.SphereGeometry(TUNE.ballR, 14, 10), H.mat('#d6ea4c'));
@@ -2877,7 +2902,7 @@
     const ring = new THREE.Mesh(new THREE.RingGeometry(6.1, 6.8, 40), chalkMat); ring.rotation.x = -Math.PI / 2; ring.userData.noShadow = true; g.add(ring); V3L.ring = ring;
     // aim arrow: a shaft and a head, lying on the ground
     const arrow = new THREE.Group();
-    const amat = H.mat('#f2c230', { basic: true, transparent: true, opacity: 0.85, double: true });
+    const amat = own('#f2c230', { basic: true, transparent: true, opacity: 0.85, double: true });
     const shaft = new THREE.Mesh(new THREE.PlaneGeometry(1, 1.1), amat); shaft.rotation.x = -Math.PI / 2; shaft.position.x = 0.5; arrow.add(shaft);
     const sh = new THREE.Shape(); sh.moveTo(0, -2.4); sh.lineTo(3.6, 0); sh.lineTo(0, 2.4); sh.lineTo(0, -2.4);
     const head = new THREE.Mesh(new THREE.ShapeGeometry(sh), amat); head.rotation.x = -Math.PI / 2; arrow.add(head);
@@ -2889,12 +2914,12 @@
     const rgeo = new THREE.RingGeometry(3.6, 4.3, 24);
     V3L.rmat = rmat; V3L.wmat = wmat; V3L.smat = smat;
     for (let i = 0; i < 12; i++) { const m = new THREE.Mesh(rgeo, rmat[0]); m.rotation.x = -Math.PI / 2; m.visible = false; g.add(m); V3L.rings.push(m); }
-    const ret = new THREE.Mesh(new THREE.RingGeometry(4.8, 5.6, 28), H.mat('#ff5a4a', { basic: true, transparent: true, opacity: 0.9, double: true }));
+    const ret = new THREE.Mesh(new THREE.RingGeometry(4.8, 5.6, 28), own('#ff5a4a', { basic: true, transparent: true, opacity: 0.9, double: true }));
     ret.rotation.x = -Math.PI / 2; ret.visible = false; g.add(ret); V3L.reticle = ret;
     const tele = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.6), H.mat('#ff5a4a', { basic: true, transparent: true, opacity: 0.55, double: true }));
     tele.rotation.x = -Math.PI / 2; tele.visible = false; g.add(tele); V3L.tele = tele;
     // the wind-up fuse: a brighter strip that burns along the line (gold once his aim is committed)
-    const fmat = H.mat('#ff5a4a', { basic: true, transparent: true, opacity: 0.95, double: true });
+    const fmat = own('#ff5a4a', { basic: true, transparent: true, opacity: 0.95, double: true });
     const fz = new THREE.Mesh(new THREE.PlaneGeometry(1, 1.25), fmat);
     fz.rotation.x = -Math.PI / 2; fz.visible = false; fz.userData.mat = fmat; g.add(fz); V3L.fuse = fz;
     g.traverse((o) => { if (o.isMesh && o.material && o.material.transparent) { o.castShadow = false; o.receiveShadow = false; o.renderOrder = 2; } });
@@ -2962,7 +2987,7 @@
     for (; ri < V3L.rings.length; ri++) V3L.rings[ri].visible = false;
     const T = S.real && S.me && S.me.hold ? S.aimTarget : null;
     V3L.reticle.visible = !!(T && T.e);
-    if (T && T.e) { V3L.reticle.position.set(T.e.x, hAt(T.e.x, T.e.y) + 0.08, T.e.y); V3L.reticle.rotation.z = S.t * 2; }
+    if (T && T.e) { V3L.reticle.position.set(T.e.x, hAt(T.e.x, T.e.y) + 0.08, T.e.y); V3L.reticle.rotation.z = S.t * 2; V3L.reticle.material.color.set(tooClose(S, T) ? '#ffa23a' : '#ff5a4a'); }
     const tl = S.tele;
     V3L.tele.visible = !!(tl && tl.from.e && tl.to.e && !S.ended);
     if (V3L.tele.visible) {
@@ -3169,7 +3194,10 @@
         const p = N.player, from = S.parts.find((P) => !P.isPlayer && !P.out && (S.id !== 'lingocha' || P.team !== S.me.team)) || S.parts.find((P) => !P.isPlayer);
         if (!from) return false;
         release(S, from, Math.atan2(p.y - from.e.y, p.x - from.e.x), 150, 0, { quiet: true });
-        const b = S.ball; b.x = p.x - Math.cos(Math.atan2(p.y - from.e.y, p.x - from.e.x)) * 6; b.y = p.y - Math.sin(Math.atan2(p.y - from.e.y, p.x - from.e.x)) * 6; b.z = z == null ? 2.6 : z; b.vz = 0;
+        const b = S.ball, ha = Math.atan2(p.y - from.e.y, p.x - from.e.x);
+        b.x = p.x - Math.cos(ha) * 6; b.y = p.y - Math.sin(ha) * 6; b.z = z == null ? 2.6 : z; b.vz = 0;
+        // (as if thrown from a fair distance)
+        b.rx = p.x - Math.cos(ha) * 30; b.ry = p.y - Math.sin(ha) * 30; b.liveDist = 60;
         return true;
       },
       /** make `who` (default: the player) throw a live ball at `name` */

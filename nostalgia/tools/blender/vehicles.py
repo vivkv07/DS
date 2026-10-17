@@ -484,7 +484,7 @@ def hero_cycle(A):
                               'view': {'az': -70, 'el': 12, 'fov': 28}}}
 
 
-@kit.asset('hercules_cycle', 'vehicle', vehicleTypes=['hercules_cycle', 'hercules_gears'], length=14.5, wheelR=2.75, crankR=1.0, gear=2.6,
+@kit.asset('hercules_cycle', 'vehicle', vehicleTypes=['hercules_cycle', 'hercules_gears'], length=14.5, wheelR=2.75, crankR=1.0, gear=2.6, stand='side',
            tintSrc={'paint': 'color', 'paint2': 'color2'}, options=[{'bone': 'opt_gears', 'types': ['hercules_gears']}, {'bone': 'opt_gears_bar', 'types': ['hercules_gears']}],
            riders=CYCLE_RIDER, pedal=True)
 def hercules_cycle(A):
@@ -541,7 +541,7 @@ def ladies_cycle(A):
                               'view': {'az': -70, 'el': 12, 'fov': 28}}}
 
 
-@kit.asset('kid_cycle', 'vehicle', vehicleTypes=['kid_cycle'], length=13.5, wheelR=2.5, crankR=0.95, gear=2.2,
+@kit.asset('kid_cycle', 'vehicle', vehicleTypes=['kid_cycle'], length=13.5, wheelR=2.5, crankR=0.95, gear=2.2, stand='side',
            tintSrc={'paint': 'color'}, riders=CYCLE_RIDER, pedal=True)
 def kid_cycle(A):
     """The kid's hire cycle (an hour for a rupee at the cycle shop): 20-inch wheels, a curved top
@@ -679,7 +679,7 @@ def auto_rickshaw(A):
     body.append(vk.rbox('horn_grille', (0.9, 0.12, 0.5), (0, -10.42, 3.5), P['chrome'], bevel=0.0))
     for sx in (1, -1):
         body.append(vk.rbox('indicator', (0.5, 0.35, 0.3), (sx * 3.4, -9.95, 5.9), P['amber'], bevel=0.0))
-    body.append(vk.plate('plate_front', 'AP 09 V 2716', 2.2, 0.55, (0, -10.25, 2.7), '-Y', bg='#f4f2ea', fg='#141414'))
+    body.append(vk.plate('plate_front', 'AP 09 V 2716', 2.2, 0.55, (0, -10.25, 2.7), '-Y', bg='#f2c230', fg='#141414'))
     body.append(tube('nose_guard', [V(1.4, -9.1, 2.0), V(1.0, -10.75, 2.15), V(-1.0, -10.75, 2.15), V(-1.4, -9.1, 2.0)], 0.1, seg=5, mat=P['chrome']))
     # ---------------------------------------------------------------- windscreen + posts
     WS0, WS1 = -6.55, -7.05      # windscreen bottom / top y
@@ -735,7 +735,7 @@ def auto_rickshaw(A):
     for sx in (1, -1):
         body.append(vk.rbox('tail_lamp', (1.0, 0.22, 0.55), (sx * 4.7, 11.15, 4.05), P['tail_lens'], bevel=0.0))
         body.append(vk.rbox('rear_ind', (0.42, 0.2, 0.32), (sx * 5.55, 11.12, 4.05), P['amber'], bevel=0.0))
-    body.append(vk.plate('plate_rear', 'AP 09 V 2716', 2.5, 0.65, (0, 11.2, 2.75), '+Y', bg='#f4f2ea', fg='#141414'))
+    body.append(vk.plate('plate_rear', 'AP 09 V 2716', 2.5, 0.65, (0, 11.2, 2.75), '+Y', bg='#f2c230', fg='#141414'))
     body.append(tube('exhaust', [V(-2.8, 8.0, 1.5), V(-3.2, 10.4, 1.4), V(-3.35, 11.5, 1.45)], 0.16, seg=6, mat=P['steel']))
     # nimbu-mirchi: a lemon and green chillies on a thread under the nose (against the evil eye)
     charm = [tube('charm_thread', [V(0, -10.35, 3.15), V(0, -10.4, 2.4)], 0.015, seg=3, mat=P['black'])]
@@ -1169,7 +1169,7 @@ def chetak(A):
                               'view': {'az': -135, 'el': 16, 'fov': 30}, 'night': {'az': -30, 'el': 10, 'fov': 30}}}
 
 
-@kit.asset('rx100', 'vehicle', vehicleTypes=['rx100', 'bunty_rx100'], length=18.0, width=6.0, wheelR=2.55, height=8.0,
+@kit.asset('rx100', 'vehicle', vehicleTypes=['rx100', 'bunty_rx100'], length=18.0, width=6.0, wheelR=2.55, height=8.0, stand='side',
            wheels={'wheel_front': 2.5, 'wheel_rear': 2.55}, tintSrc={'paint': 'color'}, riders=moto_rider('moto'),
            lamps={'head': ['headlight'], 'tail': ['taillight']}, open=True, fps='bars')
 def rx100(A):

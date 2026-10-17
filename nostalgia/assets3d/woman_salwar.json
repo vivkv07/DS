@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 282392,
+ "bytes": 282188,
  "clips": {},
  "family": "character",
  "file": "woman_salwar.glb",
@@ -52,7 +52,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 275.8,
+ "kb": 275.6,
  "kit": 1,
  "materials": [
   "M_woman_salwar"
