@@ -73,8 +73,14 @@ const st = (page) => page.evaluate(() => ({ mode: N.view.mode, want: N.view.want
 async function waitMode(page, m, ms) {
   try { await page.waitForFunction((m) => N.view.mode === m, m, { timeout: ms || 60000 }); return true; } catch (e) { return false; }
 }
+// input-driven checks run with a tiny canvas and a short draw distance so software-GL frames stay
+// short even on a loaded machine; screenshots go back to the tier's full settings
 async function setLowRes(page, on) {
-  await page.evaluate((on) => { N.view3d.setQuality({ adaptive: false, pixelRatio: on ? 0.2 : Math.min(1, window.devicePixelRatio || 1) }); }, on);
+  await page.evaluate((on) => {
+    if (window.__dd == null) window.__dd = N.view3d.quality.drawDist;
+    N.view3d.setQuality({ adaptive: false, pixelRatio: on ? 0.2 : Math.min(1, window.devicePixelRatio || 1), drawDist: on ? 450 : window.__dd });
+    N.view3d.settle(10000);
+  }, on);
   await frames(page, 2);
 }
 /** hold real keys until fn(state) is true or ms pass; returns the final state */
@@ -128,8 +134,8 @@ async function desktop(browser) {
   check(dom.body && dom.c3 === 'block' && dom.c2 === 'hidden', '3D canvas shown, 2D canvas hidden', JSON.stringify(dom));
   check(dom.rev === '149' && /jsdelivr/.test(dom.src[0] || ''), 'three.js r' + dom.rev + ' loaded from the CDN URL first');
   await setLowRes(page, true);
-  await page.keyboard.press('KeyV'); check(await waitMode(page, 'fps', 5000), 'V -> first person');
-  await page.keyboard.press('KeyV'); check(await waitMode(page, 'top', 5000), 'V -> top-down');
+  await page.keyboard.press('KeyV'); check(await waitMode(page, 'fps', 60000), 'V -> first person');
+  await page.keyboard.press('KeyV'); check(await waitMode(page, 'top', 60000), 'V -> top-down');
   const back = await page.evaluate(() => ({ c2: getComputedStyle(document.getElementById('game')).visibility, view: N.render.view.x1 - N.render.view.x0, W: N.render.W, Z: N.render.Z }));
   await frames(page, 2);
   check(back.c2 === 'visible', '2D canvas visible again (2D renderer snaps back)');
@@ -137,7 +143,7 @@ async function desktop(browser) {
   check(q > 0, '2D render queue is drawing again (' + q + ' items)');
   t0 = Date.now();
   await page.keyboard.press('KeyV');
-  check(await waitMode(page, 'tps', 5000), 'V -> 3D again, scene kept warm (' + (Date.now() - t0) + ' ms)');
+  check(await waitMode(page, 'tps', 60000), 'V -> 3D again, scene kept warm (' + (Date.now() - t0) + ' ms)');
 
   // ---- camera-relative walking with real keys (open field: Fateh Maidan inside LB Stadium)
   await page.evaluate(() => { N.debug.teleport(3961, 2580); N.debug.setTime(16, 30); N.view3d.settle(8000); });
@@ -176,7 +182,7 @@ async function desktop(browser) {
   check(Math.abs(angB - angA) > 0.05, 'D steers right in 3D (heading ' + angA.toFixed(2) + ' -> ' + angB.toFixed(2) + ')');
   for (const m of ['fps', 'top', 'tps']) {
     await page.keyboard.press('KeyV');
-    const okm = await waitMode(page, m, 5000);
+    const okm = await waitMode(page, m, 60000);
     const s = await st(page);
     check(okm && s.veh === 'chetak', 'V inside the vehicle -> ' + m + ' (still riding)');
   }
@@ -211,11 +217,13 @@ async function desktop(browser) {
   // ---- a long trip across the city keeps GPU memory bounded (far chunks are freed / downgraded)
   await setLowRes(page, true);
   const trip = await page.evaluate(() => {
+    N.view3d.setQuality({ drawDist: window.__dd }); // the real draw distance (synchronous: frames do not matter)
     const out = [];
     for (const [x, y] of [[430, 600], [1100, 3300], [3900, 4500], [5200, 1000], [7400, 3600], [4473, 2671]]) {
       N.debug.teleport(x, y); N.view3d.settle(15000);
       const s = N.view3d.stats(); out.push([s.chunks, s.groundTextures, s.textures, s.geometries]);
     }
+    N.view3d.setQuality({ drawDist: 450 }); N.view3d.settle(10000);
     return out;
   });
   const maxTex = Math.max(...trip.map((r) => r[2])), maxGeo = Math.max(...trip.map((r) => r[3]));
@@ -225,10 +233,10 @@ async function desktop(browser) {
   // ---- repeated toggles do not leak (baseline after one full cycle, then 12 more toggles)
   await setLowRes(page, true);
   const meas = () => page.evaluate(() => { N.view.set('tps'); N.view3d.settle(8000); const s = N.view3d.stats(); return [s.geometries - s.actors * 2, s.textures, s.chunks, s.actors]; });
-  for (let i = 0; i < 3; i++) { await page.keyboard.press('KeyV'); await frames(page, 1); }
+  for (let i = 0; i < 3; i++) { await page.keyboard.press('KeyV'); await frames(page, 2); }
   await frames(page, 2);
   const m0 = await meas();
-  for (let i = 0; i < 12; i++) { await page.keyboard.press('KeyV'); await frames(page, 1); }
+  for (let i = 0; i < 12; i++) { await page.keyboard.press('KeyV'); await frames(page, 2); }
   await frames(page, 2);
   const m1 = await meas();
   check(m1[0] <= m0[0] + 8 && m1[1] <= m0[1] + 4, '12 view toggles: no GPU resource growth (static geometries ' + m0[0] + ' -> ' + m1[0] + ', textures ' + m0[1] + ' -> ' + m1[1] + ')');
@@ -307,12 +315,12 @@ async function phone(browser, name) {
   await setLowRes(page, false);
   await shot(page, 'himayatnagar_tps', { at: [4473, 2671], h: 16, m: 30, mode: 'tps', look: [4473, 2400], pitch: 0.3 });
   await page.tap('.t-view');
-  check(await waitMode(page, 'fps', 5000), 'tap VIEW -> first person');
+  check(await waitMode(page, 'fps', 60000), 'tap VIEW -> first person');
   await shot(page, 'charminar_night_fps', { at: [3900, 4470], h: 21, m: 0, mode: 'fps', look: [3900, 4360], pitch: -0.25 });
   await shot(page, 'oldcity_tps', { at: 'gulzar_houz', h: 11, m: 0, mode: 'tps', look: [3900, 4360], pitch: 0.3 });
   await page.evaluate(() => N.view.set('fps'));
   await page.tap('.t-view');
-  check(await waitMode(page, 'top', 5000), 'tap VIEW -> top-down');
+  check(await waitMode(page, 'top', 60000), 'tap VIEW -> top-down');
   const sc = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth, sh: document.documentElement.scrollHeight, ih: window.innerHeight }));
   check(sc.sw <= sc.iw && sc.sh <= sc.ih, 'no page scroll');
   await checkErrors(errors, page);

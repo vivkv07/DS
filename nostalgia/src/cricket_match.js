@@ -1158,7 +1158,7 @@
   }
   // the two captains and the umpire out in the middle for the toss (and the intro fly-over)
   function tossActors(S) {
-    const h = mkActor('field', S.home, S.home.players[0]), a = mkActor('field', S.away, S.away.players[0]), u = mkActor('ump', null, null);
+    const h = mkActor('toss', S.home, S.home.players[0]), a = mkActor('toss', S.away, S.away.players[0]), u = mkActor('toss', null, null);
     u.ump = true;
     h.x = -0.75; h.z = 9.9; facing(h, 1, 9.9);
     a.x = 0.75; a.z = 9.9; facing(a, -1, 9.9);
@@ -3259,7 +3259,8 @@
       }
       if (a.tx == null && a.pose !== 'catch' && a.pose !== 'celebrate') {
         const b = S.ball;
-        if (a.ump) facing(a, a === S.ump1 ? 0 : 0, a === S.ump1 ? 0 : 1.2);
+        if (a.role === 'toss') { /* the toss group keeps facing each other */ }
+        else if (a.ump) facing(a, 0, a === S.ump1 ? 0 : 1.2);
         else if (live && b.vis && a.role !== 'keeper') facing(a, b.x, b.z);
         else if (a.role === 'field' || a.role === 'bowler') facing(a, 0, a.z < 0 ? 0 : 1);
         if (a.pose === 'run' || a.pose === 'walk') a.pose = a.role === 'keeper' && !live && S.phase === 'ball' && S.bp !== 'dead' ? 'keep' : 'stand';
