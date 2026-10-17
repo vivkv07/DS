@@ -33,7 +33,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 1500,
- "bytes": 19164,
+ "bytes": 18204,
  "clips": {},
  "family": "prop",
  "file": "pole_rail.glb",
@@ -42,7 +42,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 18.7,
+ "kb": 17.8,
  "kit": 1,
  "materials": [
   "M_pole_rail"
@@ -79,7 +79,7 @@
   43.42
  ],
  "tint": null,
- "tris": 295,
+ "tris": 283,
  "units": "u",
  "up": "Z"
 }
