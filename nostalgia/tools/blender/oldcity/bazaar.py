@@ -107,7 +107,7 @@ def flat_grill(name, x0, x1, z0, z1, y, mat, bars=6, bw=0.14, rails=3):
             x = x0 + (x1 - x0) * (i + 0.5) / bars
             q(x - bw / 2, x + bw / 2, z0, z1)
         for j in range(rails):
-            z = z0 + (z1 - z0) * j / (rails - 1)
+            z = z0 + (z1 - z0) * j / max(1, rails - 1)
             q(x0, x1, z - bw / 2, z + bw / 2)
     return _mesh(name, build, [mat])
 
@@ -232,7 +232,7 @@ def chhatri(name, cx, cy, z, s, h, M, post_mat, dome_mat, seg=8):
     ph = h * 0.45
     for (sx, sy) in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
         px, py = cx + sx * (s - p), cy + sy * (s - p)
-        parts.append(bx(name + '_po', px - p, px + p, py - p, py + p, z + 0.6, z + 0.6 + ph, post_mat))
+        parts.append(cylinder(name + '_po', p * 1.2, ph, (px, py, z + 0.6), seg=4, mat=post_mat, cap=False))
     zc = z + 0.6 + ph
     parts.append(bx(name + '_ch', cx - s * 1.25, cx + s * 1.25, cy - s * 1.25, cy + s * 1.25, zc, zc + 0.35, post_mat))
     parts.append(dome(name + '_dm', s * 0.95, h - ph - 0.95 - 0.6, (cx, cy, zc + 0.35), dome_mat, seg=seg))
@@ -488,7 +488,7 @@ def build_pathergatti(A):
     for k in range(n + 1):
         x = -W + k * step
         x0, x1 = max(-W, x - 0.7), min(W, x + 0.7)
-        objs.append(bx('pilaster', x0, x1, UF - 0.35, UF, G1 + 0.6, 29.2, M['stone_pink']))
+        objs.append(wall_quad('pilaster', x0, x1, G1 + 0.6, 29.2, UF - 0.07, M['stone_pink']))
     for k in range(n):
         xc = -W + (k + 0.5) * step
         objs.append(arch_ring('hood', xc, 18.0, 4.4, 3.8, 2.4, UF - 0.05, M['stone_pink'], 'pointed', border=0.45))
@@ -497,7 +497,7 @@ def build_pathergatti(A):
             wx = xc + s * 1.05
             ol = [(wx + px, 18.6 + pz) for (px, pz) in arch_outline(1.5, 2.9, 1.3, 'pointed', n=4)]
             objs.append(common.decal('win', ol, M['dark'], UF - 0.06))
-            objs.append(flat_grill('jaali', wx - 0.75, wx + 0.75, 18.9, 21.4, UF - 0.1, M['stone_pink'], bars=2, bw=0.14, rails=2))
+            objs.append(flat_grill('jaali', wx - 0.75, wx + 0.75, 18.9, 21.4, UF - 0.1, M['stone_pink'], bars=2, bw=0.14, rails=0))
         # mezzanine: small square ventilators
         for s in (-1, 1):
             objs.append(common.decal('vent', [(xc + s * 1.2 - 0.6, 25.6), (xc + s * 1.2 + 0.6, 25.6), (xc + s * 1.2 + 0.6, 27.0), (xc + s * 1.2 - 0.6, 27.0)], M['dark'], UF - 0.05))
@@ -570,7 +570,7 @@ def build_madina(A):
         c5=('cloth', dict(base='#f4f0e6', region=0)),
         board=('red_oxide', dict(base='#1d4e8a')),
     )
-    M['win@night'] = material('clock_face', 'madina_win@night', base='#2a2218', emit='#5a4020')
+    M['win@night'] = material('clock_face', 'madina_win@night', base='#241c14', emit='#2e2010')
     CL = [M['c1'], M['c2'], M['c3'], M['c4'], M['c5']]
     rng = random.Random(3003)
     W, D = 22.0, 40.0
@@ -595,7 +595,7 @@ def build_madina(A):
     for k in range(n):
         xc = -W + (k + 0.5) * step
         objs.append(wall_quad('shop', xc - 2.5, xc + 2.5, G0, 9.6, SF - 0.03, M['shop_in']))
-        bands = [(1.3, CL[rng.randrange(len(CL))]) for _ in range(5)]
+        bands = [(1.6, CL[rng.randrange(len(CL))]) for _ in range(4)]
         objs.append(sawtooth_column('bolts', xc - 2.3, xc + 2.3, SF - 0.06, G0 + 2.4, bands, lean=0.6))
         objs.append(wall_quad('shutter', xc - 2.55, xc + 2.55, 9.6, 10.7, SF - 0.1, M['tin']))
         if k in shop_signs:
@@ -624,14 +624,13 @@ def build_madina(A):
             bw = 4.6
             objs.append(bx('balc', xc - bw / 2, xc + bw / 2, UF - 1.7, UF, F1 + 1.5, F1 + 2.0, M['trim']))
             objs.append(wall_quad('rail', xc - bw / 2, xc + bw / 2, F1 + 2.0, F1 + 4.2, UF - 1.65, M['iron']))
-            objs.append(flat_grill('rail_bars', xc - bw / 2, xc + bw / 2, F1 + 2.0, F1 + 4.2, UF - 1.7, M['iron'], bars=1, bw=0.01, rails=2))
     for k in range(1, n):
         x = -W + k * step
         if abs(x) < 4:
             continue
         objs.append(wall_quad('pil', x - 0.5, x + 0.5, F1 + 0.5, ROOF - 1.1, UF - 0.06, M['trim']))
     # HOTEL MADINA board across bays 5-6 between the floors
-    objs.append(kit.signboard('hotel', 'HOTEL MADINA', 10.0, 1.8, (W - step * 1.0, UF - 0.25, F2 - 2.0), depth=0.2, fg='#b22b2b', bg='#f4f0e2', frame_mat=M['iron'], px=384))
+    objs.append(kit.signboard('hotel', 'HOTEL MADINA', 10.0, 1.8, (W - step * 2.0, UF - 0.25, F2 - 2.0), depth=0.2, fg='#b22b2b', bg='#f4f0e2', frame_mat=M['iron'], px=384))
     # ---- central bay: projecting, taller, with an arched gable and a plaque
     CF = FY - 0.2
     objs.append(bx('cbay', -3.6, 3.6, CF, UF, F1, ROOF + 3.0, M['trim']))
@@ -645,7 +644,7 @@ def build_madina(A):
     gable = prism_from_outline('gable', arch_outline(7.2, 0.0, 5.2, 'pointed', n=5), 1.0, center=(0, (CF + UF) / 2, ROOF + 3.0), mat=M['trim'])
     objs.append(gable)
     objs.append(_arch_decal('gwin', 0, ROOF + 3.6, 1.6, 1.2, 1.4, CF - 0.04, M['dark'], n=3))
-    objs.append(dome('gdome', 0.7, 1.8, (0, (CF + UF) / 2, ROOF + 8.0), M['trim'], seg=6))
+    objs.append(cylinder('gfinial', 0.45, 1.8, (0, (CF + UF) / 2, ROOF + 7.9), seg=6, mat=M['trim'], r2=0.0))
     # ---- parapet with merlons, domed corner turrets
     objs.append(bx('parapet', -W, W, UF, UF + 0.5, ROOF, ROOF + 1.8, M['cream']))
     for sx in (-1, 1):
@@ -661,10 +660,9 @@ def build_madina(A):
     for sx in (-1, 1):
         tx, ty = sx * (W - 1.2), FY + 1.4
         objs.append(cylinder('turret', 1.7, ROOF + 3.4 - F1, (tx, ty, F1), seg=8, mat=M['trim'], cap=False))
-        objs.append(cylinder('turret_ring', 2.1, 0.6, (tx, ty, ROOF + 3.4), seg=8, mat=M['cream']))
-        objs.append(dome('turret_d', 1.8, 3.2, (tx, ty, ROOF + 4.0), M['trim'], seg=8))
+        objs.append(dome('turret_d', 1.85, 3.4, (tx, ty, ROOF + 3.4), M['trim'], seg=8))
     # ---- sides (80 u long, on the road): shops below, two rows of arched windows
-    ys = [FY + 8 + i * (2 * D - 12) / 6 for i in range(7)]
+    ys = [FY + 9 + i * (2 * D - 14) / 5 for i in range(6)]
     for sx in (-1, 1):
         x = sx * (W + 0.03)
         for y in ys:

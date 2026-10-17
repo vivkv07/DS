@@ -87,7 +87,10 @@ function oldcityAssets() {
     const wx = geo.max[0] - geo.min[0], wz = geo.max[2] - geo.min[2];
     const cx = (geo.max[0] + geo.min[0]) / 2, cz = (geo.max[2] + geo.min[2]) / 2;
     const fw = lm.w, fd = lm.d;
-    const okFoot = Math.abs(wx - fw) <= fw * 0.12 + 2 && Math.abs(wz - fd) <= fd * 0.12 + 2 && Math.abs(cx - lm.x) < 6 && Math.abs(cz - lm.y) < 6;
+    // a model built along a skewed road (manifest note 'rotated ...', e.g. Purana Pul): its axis-aligned box is wider by design
+    const rotated = (a.notes || []).some((n) => /rotated/i.test(n));
+    const okFoot = (rotated ? Math.max(wx, wz) >= Math.max(fw, fd) * 0.95 && Math.max(wx, wz) <= Math.max(fw, fd) * 1.15
+      : Math.abs(wx - fw) <= fw * 0.12 + 2 && Math.abs(wz - fd) <= fd * 0.12 + 2) && Math.abs(cx - lm.x) < 6 && Math.abs(cz - lm.y) < 6;
     check(okFoot, a.id + ': footprint ' + wx.toFixed(1) + ' x ' + wz.toFixed(1) + ' at (' + cx.toFixed(0) + ', ' + cz.toFixed(0) + ') vs ' + fw + ' x ' + fd + ' at (' + lm.x + ', ' + lm.y + '), top ' + geo.max[1].toFixed(1));
     check(geo.col > 0, a.id + ': COL_ camera proxies (' + geo.col + ')');
     if (SHOTS) {

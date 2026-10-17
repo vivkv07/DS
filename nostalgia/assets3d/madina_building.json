@@ -1,0 +1,93 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 153472,
+ "clips": {},
+ "family": "landmark",
+ "file": "madina_building.glb",
+ "front": "-Y",
+ "id": "madina_building",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 149.9,
+ "kit": 1,
+ "materials": [
+  "M_madina_building_lime_plaster",
+  "M_madina_building_granite_grey",
+  "M_madina_building_lime_plaster.001",
+  "M_madina_building_lime_plaster_shadow",
+  "M_madina_building_cloth",
+  "M_madina_building_cloth.001",
+  "M_madina_building_cloth.002",
+  "M_madina_building_cloth.003",
+  "M_madina_building_tin_rusty",
+  "M_madina_building_red_oxide",
+  "M_madina_building_cloth.004",
+  "M_madina_building_sign_text_62fe1758.png",
+  "M_madina_building_wood_raw",
+  "M_madina_building_red_oxide.001",
+  "M_madina_building_sign_text_cb42b2ea.png",
+  "M_madina_building_lime_plaster_shadow.001",
+  "M_madina_building_wood_green",
+  "M_madina_building_iron_black",
+  "M_madina_building_clock_face@night",
+  "M_madina_building_sign_text_c4c86f57.png",
+  "M_madina_building_sign_text_66fd857b.png"
+ ],
+ "max": [
+  22.68,
+  40.3,
+  47.7
+ ],
+ "meta": {
+  "face": "w",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   44,
+   80
+  ],
+  "height": 42.0,
+  "landmark": "madina_building"
+ },
+ "min": [
+  -22.68,
+  -42.0,
+  0.0
+ ],
+ "notes": [
+  "COL_madina: camera-ray proxy (shop block, upper floors, arcade piers; the walkway stays open)"
+ ],
+ "script": "oldcity.bazaar",
+ "size": [
+  45.36,
+  82.3,
+  47.7
+ ],
+ "tint": null,
+ "tris": 1907,
+ "units": "u",
+ "up": "Z"
+}
