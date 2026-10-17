@@ -183,7 +183,9 @@
   /* ------------------------------------------------------- chunk cache */
   let groundPainter = null;
   const chunks = new Map(); // key -> canvas (Map order = LRU order)
+  const chunkEpoch = new Map(); // key -> shadow epoch the chunk was painted with
   const pool = [];
+  R.shadowEpoch = 0; // bumps when the (quantised) sun changes; stale chunks repaint progressively
   R.setGroundPainter = function (fn) { groundPainter = fn; R.invalidateChunks(); };
   R.invalidateChunks = function (rect) {
     if (!rect) { for (const c of chunks.values()) pool.push(c); chunks.clear(); return; }
@@ -196,9 +198,10 @@
   function buildChunk(i, j) {
     const key = j * 1000 + i;
     let c;
-    if (chunks.size >= MAX_CHUNKS) {
+    if (chunks.has(key)) { c = chunks.get(key); chunks.delete(key); }
+    else if (chunks.size >= MAX_CHUNKS) {
       const oldest = chunks.keys().next().value;
-      c = chunks.get(oldest); chunks.delete(oldest);
+      c = chunks.get(oldest); chunks.delete(oldest); chunkEpoch.delete(oldest);
     } else c = pool.pop() || makeCanvas(CH, CH);
     const g = c.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0);
@@ -211,6 +214,7 @@
       g.restore();
     }
     chunks.set(key, c);
+    chunkEpoch.set(key, R.shadowEpoch);
     R.stats.chunkBuilds++;
     return c;
   }
@@ -235,6 +239,7 @@
     const i0 = Math.max(0, Math.floor(v.x0 / CH)), i1 = Math.min(maxI, Math.floor(v.x1 / CH));
     const j0 = Math.max(0, Math.floor(v.y0 / CH)), j1 = Math.min(maxJ, Math.floor(v.y1 / CH));
     let budget = 4; // chunk builds per frame; missing chunks fall back to a flat fill
+    let stale = 2;  // repaints per frame of chunks baked with an older sun (shadows)
     // build nearest-to-centre first
     const list = [];
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
@@ -246,6 +251,7 @@
     for (const [, i, j] of list) {
       let c = getChunk(i, j, false);
       if (!c && budget > 0) { c = buildChunk(i, j); budget--; }
+      else if (c && stale > 0 && chunkEpoch.get(j * 1000 + i) !== R.shadowEpoch) { c = buildChunk(i, j); stale--; }
       const x0 = Math.round(cx + (i * CH - camX) * Z), x1 = Math.round(cx + ((i + 1) * CH - camX) * Z);
       const y0 = Math.round(cy + (j * CH - camY) * Z), y1 = Math.round(cy + ((j + 1) * CH - camY) * Z);
       if (c) ctx.drawImage(c, x0, y0, x1 - x0, y1 - y0);
@@ -275,9 +281,14 @@
     const s = R.sun;
     if (day < 0.08) { dx = 0.5; dy = 0.7; } // moonlight: soft fixed direction
     s.dx = dx; s.dy = dy; s.elev = elev;
-    const len = Math.min(2.0, 1 / Math.tan(Math.max(0.2, elev)));
-    s.sx = -dx * len; s.sy = -dy * len; // shadow offset per unit height
-    s.strength = U.clamp(day * 1.4, 0.15, 1);
+    // Shadows use a quantised sun so they can be baked into ground chunks (see shadowEpoch)
+    const len = Math.round(Math.min(2.0, 1 / Math.tan(Math.max(0.2, elev))) * 12) / 12;
+    const az = Math.round(Math.atan2(dy, dx) / 0.045) * 0.045;
+    const strength = Math.round(U.clamp(day * 1.4, 0.15, 1) * 10) / 10;
+    const key = az * 1e4 + len * 100 + strength;
+    if (key !== s.key) { s.key = key; R.shadowEpoch++; }
+    s.sx = -Math.cos(az) * len; s.sy = -Math.sin(az) * len; // shadow offset per unit height
+    s.strength = strength;
     faceShade.N = shadeFor(0, -1); faceShade.S = shadeFor(0, 1);
     faceShade.E = shadeFor(1, 0); faceShade.W = shadeFor(-1, 0);
     faceShade.roof = 1;
@@ -578,11 +589,20 @@
     return c;
   };
   /** Draw pixel text centred at a projected world point (screen-aligned, integer pixels). */
+  // opts: {scale, shadow, rot: 1 (90deg clockwise) | -1 (counter-clockwise)}
   D.pixelText = function (x, y, h, str, color, opts) {
     const ctx = R.ctx, k = Z * (1 + (h || 0) * R.PERSP);
     const c = D.pixelTextCanvas(str, color || '#fff', opts && opts.shadow);
     const s = (opts && opts.scale) || 1;
-    ctx.drawImage(c, Math.round(cx + (x - camX) * k - (c.width * s) / 2), Math.round(cy + (y - camY) * k - (c.height * s) / 2), c.width * s, c.height * s);
+    const X = Math.round(cx + (x - camX) * k), Y = Math.round(cy + (y - camY) * k);
+    if (opts && opts.rot) {
+      const r = opts.rot > 0 ? 1 : -1;
+      ctx.setTransform(0, r, -r, 0, X, Y);
+      ctx.drawImage(c, -Math.round((c.width * s) / 2), -Math.round((c.height * s) / 2), c.width * s, c.height * s);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      return;
+    }
+    ctx.drawImage(c, X - Math.round((c.width * s) / 2), Y - Math.round((c.height * s) / 2), c.width * s, c.height * s);
   };
 
   /** Soft contact shadow under an object (rounded rect rotated by angle). Enqueue on 'shadow'. */
@@ -621,37 +641,44 @@
     castPath.closePath();
     castCount++;
   }
-  /** Cast shadow of an axis-aligned box of height h. */
+  /** Cast shadow of an axis-aligned box of height h (allocation-free hexagon, clockwise). */
   D.castBox = function (x, y, w, d, h) {
-    const sx = R.sun.sx * h, sy = R.sun.sy * h;
-    hullPath([[x, y], [x + w, y], [x + w, y + d], [x, y + d], [x + sx, y + sy], [x + w + sx, y + sy], [x + w + sx, y + d + sy], [x + sx, y + d + sy]]);
+    const sx = R.sun.sx * h * Z, sy = R.sun.sy * h * Z;
+    const X0 = cx + (x - camX) * Z, X1 = X0 + w * Z, Y0 = cy + (y - camY) * Z, Y1 = Y0 + d * Z;
+    const p = castPath;
+    if (sx >= 0 && sy >= 0) { p.moveTo(X0, Y0); p.lineTo(X1, Y0); p.lineTo(X1 + sx, Y0 + sy); p.lineTo(X1 + sx, Y1 + sy); p.lineTo(X0 + sx, Y1 + sy); p.lineTo(X0, Y1); }
+    else if (sx < 0 && sy >= 0) { p.moveTo(X0, Y0); p.lineTo(X1, Y0); p.lineTo(X1, Y1); p.lineTo(X1 + sx, Y1 + sy); p.lineTo(X0 + sx, Y1 + sy); p.lineTo(X0 + sx, Y0 + sy); }
+    else if (sx < 0) { p.moveTo(X1, Y0); p.lineTo(X1, Y1); p.lineTo(X0, Y1); p.lineTo(X0 + sx, Y1 + sy); p.lineTo(X0 + sx, Y0 + sy); p.lineTo(X1 + sx, Y0 + sy); }
+    else { p.moveTo(X1, Y1); p.lineTo(X0, Y1); p.lineTo(X0, Y0); p.lineTo(X0 + sx, Y0 + sy); p.lineTo(X1 + sx, Y0 + sy); p.lineTo(X1 + sx, Y1 + sy); }
+    p.closePath();
+    castCount++;
   };
   /** Cast shadow of an extruded convex polygon of height h. */
   D.castPoly = function (pts, h) {
     const sx = R.sun.sx * h, sy = R.sun.sy * h;
     const all = [];
-    for (const p of pts) { all.push([p[0], p[1]]); all.push([p[0] + sx, p[1] + sy]); }
+    for (const q of pts) { all.push([q[0], q[1]]); all.push([q[0] + sx, q[1] + sy]); }
     hullPath(all);
   };
   /** Cast shadow of a round thing (tree canopy, dome) of radius r at height h. */
-  D.castCircle = function (x, y, r, h, h0) {
-    const base = h0 || 0;
+  D.castCircle = function (x, y, r, h) {
     const X = cx + (x + R.sun.sx * h - camX) * Z, Y = cy + (y + R.sun.sy * h - camY) * Z;
     castPath.moveTo(X + r * Z, Y);
     castPath.arc(X, Y, r * Z, 0, Math.PI * 2);
     castPath.closePath();
-    if (base === 0 && h > r) { // trunk/pole line to the ground
-      hullPathLine(x, y, x + R.sun.sx * h, y + R.sun.sy * h, Math.max(1, r * 0.18));
-    }
     castCount++;
   };
-  function hullPathLine(x0, y0, x1, y1, w) {
-    const dx = x1 - x0, dy = y1 - y0, l = Math.hypot(dx, dy) || 1;
-    const nx = (-dy / l) * w * 0.5, ny = (dx / l) * w * 0.5;
-    hullPath([[x0 + nx, y0 + ny], [x0 - nx, y0 - ny], [x1 + nx, y1 + ny], [x1 - nx, y1 - ny]]);
-  }
-  /** Cast shadow of a thin pole (lamp post) of height h. */
-  D.castPole = function (x, y, h, w) { hullPathLine(x, y, x + R.sun.sx * h, y + R.sun.sy * h, w || 1.5); };
+  /** Cast shadow of a thin pole (lamp post, trunk) of height h. */
+  D.castPole = function (x, y, h, w) {
+    const ex = R.sun.sx * h, ey = R.sun.sy * h, l = Math.hypot(ex, ey) || 1;
+    const nx = (-ey / l) * (w || 1.5) * 0.5, ny = (ex / l) * (w || 1.5) * 0.5;
+    // order chosen so the quad winds clockwise like the other shadow shapes
+    const flip = ex * ny - ey * nx > 0 ? 1 : -1;
+    const P = (px, py) => [cx + (px - camX) * Z, cy + (py - camY) * Z];
+    const a = P(x + nx * flip, y + ny * flip), b = P(x + ex + nx * flip, y + ey + ny * flip), c = P(x + ex - nx * flip, y + ey - ny * flip), d = P(x - nx * flip, y - ny * flip);
+    castPath.moveTo(a[0], a[1]); castPath.lineTo(b[0], b[1]); castPath.lineTo(c[0], c[1]); castPath.lineTo(d[0], d[1]); castPath.closePath();
+    castCount++;
+  };
 
   function drawCastShadows(ctx) {
     if (!castCount) return;

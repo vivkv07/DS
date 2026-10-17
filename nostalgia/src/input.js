@@ -140,8 +140,9 @@
       setDevice('keyboard');
     }
     keyDown[e.code] = true;
-    // stop the page from scrolling / buttons from activating
-    if (a !== 'pause' || N.state.mode === 'play') e.preventDefault();
+    // stop the page from scrolling; outside of play let focused buttons keep Enter/Space
+    const onButton = e.target && e.target.closest && e.target.closest('button,a,[role=button]');
+    if (N.state.mode === 'play' || !onButton) e.preventDefault();
   });
   window.addEventListener('keyup', (e) => {
     if (KEYMAP[e.code]) keyDown[e.code] = false;

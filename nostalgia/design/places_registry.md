@@ -196,3 +196,149 @@ activity, shop, clue, collectible or ambience). Era status matters (story is ear
 | `taramati_baradari`, `moula_ali_dargah` | heritage sites (exteriors) | |
 | cinemas | `ramakrishna_theatre` (Abids), `shanti_theatre` (Narayanguda), `sangeet_theatre` (Secunderabad), `liberty_theatre` (Basheerbagh) plus the RTC X Roads four | hand-painted fictional film hoardings |
 | food landmarks | `nimrah_cafe` (facing Charminar), `shah_ghouse`, `pista_house` (haleem), `shadab_hotel`, `hotel_niagara`, `alpha_hotel` | generic depiction, Irani chai + Osmania biscuits at Irani cafes |
+
+## Round 11b: completeness sweep (binding)
+
+Completes round 11's "all other important places". Full detail for every id below (era status,
+why kids remember it, look for the artist, map neighbours, suggested game use, sources) is in
+**`research_all_places.md`**. 74 places survive (12 proposals were dropped as duplicate,
+unverifiable for 2000-2003 or weak; see that file). None of these ids repeats an earlier id.
+Sub-locations sit inside an existing registry place. All religious places are walk-only and
+shown with respect; founders and owners stay unnamed in game text.
+
+**Secunderabad and the Cantonment**
+
+| id | Place | Note |
+|---|---|---|
+| `garden_cafe` | Garden Cafe (Irani cafe, 1941) | opposite `secunderabad_clock_tower`; show the original full-size cafe |
+| `blue_sea_cafe` | Blue Sea Tea & Snacks (Irani cafe) | St John's Road by the station; early and late chai stop |
+| `secunderabad_ganesh_temple` | Sri Ganesh Temple, Secunderabad station | coconut before a journey or exam; bus-stop name |
+| `st_johns_church_secunderabad` | St. John's Church (1813) | "oldest church" trivia; Christmas |
+| `holy_trinity_church_bolarum` | Holy Trinity Church, Bolarum (1847) | "the church Queen Victoria paid for" |
+| `rashtrapati_nilayam` | Rashtrapati Nilayam | gated only (opened to visitors 2023); President's winter-visit day |
+| `secunderabad_club` | Secunderabad Club (1878) | exterior and gate only; members-only |
+| `gymkhana_ground_secunderabad` | Gymkhana Ground (1928) | cricket minigame venue beside `parade_grounds` |
+| `rathifile_bus_station` | Rathifile city bus station | north hub of the city bus network |
+| `chenoy_trade_centre` | Chenoy Trade Centre (CTC), Parklane | PC parts shop; legal goods only |
+| `anand_theatre` | Anand Theatre, SD Road | Hindi single screen, sister to `sangeet_theatre`; fictional hoardings |
+
+**Begumpet, Ameerpet, Balkampet**
+
+| id | Place | Note |
+|---|---|---|
+| `shoppers_stop_begumpet` | Begumpet department store (May 1998) | invented name on the sign; first escalator ride |
+| `hyderabad_public_school` | The Hyderabad Public School (1923) | inter-school quiz or sports meet venue |
+| `balkampet_yellamma_temple` | Balkampet Yellamma Temple | Bonalu and Yellamma Kalyanam crowds |
+| `sarathi_studios` | Sarathi Studios (1956) | "shooting jaruguthondi!" crowd at the gate |
+
+**Lakdikapul, Naubat Pahad, Khairatabad, Panjagutta**
+
+| id | Place | Note |
+|---|---|---|
+| `niloufer_cafe` | Cafe Niloufer (by Niloufer Hospital) | one small cafe then; refill after `birla_planetarium` |
+| `hill_fort_palace` | Hill Fort Palace (old Ritz) | empty and locked; the castle on the hill |
+| `khairatabad_mosque` | Khairatabad Mosque (1626) | "named after a princess" trivia |
+| `errum_manzil` | Errum Manzil (1870) | exterior only; bus-stop name |
+| `nims_hospital` | NIMS, Panjagutta | bus-stop landmark; hospital-visit errand |
+
+**East of the lake: Lower Tank Bund to Nallakunta**
+
+| id | Place | Note |
+|---|---|---|
+| `katta_maisamma_temple` | Katta Maisamma Temple | Lower Tank Bund; Bonalu |
+| `ramakrishna_math` | Ramakrishna Math, Domalguda | summer language classes; calm zone |
+| `narayanguda_ymca` | Narayanguda YMCA and the Sadar festival | decorated-buffalo carnival after Diwali |
+| `city_central_library` | City Central Library, Chikkadpally | library cards, old newspapers (clues) |
+| `shankar_mutt_nallakunta` | Sringeri Shankar Mutt (1960) | Navaratri; bus-stop name on OU Road |
+
+**Abids, Nampally, Gunfoundry, Koti, King Koti**
+
+| id | Place | Note |
+|---|---|---|
+| `grand_hotel_abids` | Grand Hotel (1935) | oldest surviving Irani cafe |
+| `taj_mahal_hotel_abids` | Taj Mahal Hotel (1948) | veg tiffin and coffee; not the Taj chain |
+| `chermas_abids` | Cherma's (1980) | festival clothes shop |
+| `st_georges_church_abids` | St. George's Church and Grammar School | Christmas in Abids; school rivals |
+| `st_josephs_cathedral` | St. Joseph's Cathedral, Gunfoundry (1875) | midnight Mass; the registry's example church |
+| `iskcon_abids` | ISKCON temple (1976) + sweet shop opposite | Janmashtami; sweets errand |
+| `subhan_bakery` | Subhan Bakery (1948) | rival biscuit run to `karachi_bakery` |
+| `dargah_yousufain` | Dargah Yousufain | qawwali, threads for wishes; harmony beat |
+| `jawahar_bal_bhavan` | Jawahar Bal Bhavan + Health Museum | sub-location of `public_gardens`; summer classes, school trip |
+| `famous_ice_cream` | Famous Ice Cream (1951) + Hameedi | sub-location of `mozamjahi_market`; reward refill |
+| `king_kothi` | King Kothi Palace | gated; the last Nizam's home; treasure legend |
+| `koti_book_bazaar` | Koti pavement book bazaar | June textbook errand (on the footpath until 2007) |
+
+**The Musi and its banks**
+
+| id | Place | Note |
+|---|---|---|
+| `musi_riverbed` | Musi riverbed and dhobi ghats | dry sandy bed, drying clothes, the "Musi smell" joke |
+| `city_college` | Government City College (1921) | same architect as the High Court |
+| `gowliguda_hangar` | Gowliguda "Mississippi hangar" city bus station | standing and in use; bus set-piece |
+| `gurudwara_gowliguda` | Central Gurudwara Sahib, Gowliguda (1926) | langar; harmony beat |
+| `dhoolpet` | Dhoolpet idol lanes and manja makers | pick up the colony Ganesh; Sankranti manja |
+| `victory_playground` | Victory Playground, Chaderghat | summer sports camps, skating |
+
+**Old City**
+
+| id | Place | Note |
+|---|---|---|
+| `mahboob_chowk_clock_tower` | Mahboob Chowk Clock Tower (1892) + Murgi Chowk | pet-bird side quest; no slaughter imagery |
+| `badshahi_ashurkhana` | Badshahi Ashurkhana (1594) | seven-colour tile wall; quiet, respectful |
+| `jama_masjid_charminar` | Jama Masjid (1597-98) | small mosque in a lane beside `charminar` |
+| `hotel_madina` | Hotel Madina (1947) | sub-location of the Madina building (`pathergatti`); Ramzan haleem |
+| `hotel_nayaab` | Hotel Nayaab | pre-dawn nihari outing |
+| `akkanna_madanna_temple` | Akkanna Madanna Mahankali Temple | Old City Bonalu elephant procession |
+| `paigah_tombs` | Paigah Tombs | marble-lace screens; secret collectible |
+| `barkas` | Barkas | marfa drum band for a wedding scene |
+
+**West: Zoo side, Mehdipatnam, Shaikpet, Golconda, Langar Houz**
+
+| id | Place | Note |
+|---|---|---|
+| `mir_alam_tank` | Mir Alam Tank (1804-06) | lake beside `nehru_zoo`; 21-arch dam |
+| `sarojini_devi_eye_hospital` | Sarojini Devi Eye Hospital (1967) | bus-stop name; spectacles errand |
+| `mehdipatnam_bus_terminus` | Mehdipatnam bus depot | west bus hub (Golconda, Gandipet, HITEC City) |
+| `hussain_shah_wali_dargah` | Hussain Shah Wali Dargah + Shaikpet Sarai | clue linking `hussain_sagar` to the west |
+| `golconda_jagadamba_temple` | Jagadamba (Mahankali) Temple | sub-location of `golconda_fort`; Bonalu begins here |
+| `bapu_ghat` | Bapu Ghat | Gandhi Jayanti school trip; "a peaceful memorial" only |
+
+**Banjara Hills, Jubilee Hills, Film Nagar**
+
+| id | Place | Note |
+|---|---|---|
+| `sarvi` | Sarvi (Irani restaurant and bakery) | Ramzan haleem errand |
+| `jubilee_hills_check_post` | Jubilee Hills Check Post | boulder junction; gateway to `film_nagar` |
+| `apollo_hospital_jubilee_hills` | Apollo Hospital (1988) | landmark and bus stop |
+| `ramanaidu_studios` | Ramanaidu Studios (1989) | be an extra for a day |
+
+**North-west: HITEC City, Gachibowli, Kukatpally**
+
+| id | Place | Note |
+|---|---|---|
+| `hitex` | HITEX Exhibition Centre | opens 14 Jan 2003; a building site before |
+| `university_of_hyderabad` | University of Hyderabad + Mushroom Rock | hidden collectible at the rock; peacocks |
+| `jntu_kukatpally` | JNTU campus | older-cousin and EAMCET beat |
+| `kphb_colony` | KPHB Colony | home colony option; gully cricket, kites |
+
+**East and south-east**
+
+| id | Place | Note |
+|---|---|---|
+| `malakpet_race_course` | Malakpet Race Course | horses from the bus window; never betting |
+| `ashtalakshmi_temple` | Ashtalakshmi Temple, Kothapet (1996) | the "new" grand temple; Navaratri |
+| `saroornagar_lake` | Saroornagar Lake + Victoria Memorial Home | neglected lake; restoration starts 2003 |
+| `karmanghat_hanuman_temple` | Karmanghat Hanuman Temple | Tuesday queues; legend card |
+| `gaddiannaram_fruit_market` | Gaddiannaram (Kothapet) fruit market | summer mango errand |
+| `harina_vanasthali` | Mahavir Harina Vanasthali deer park (1975) | blackbuck spotting; east map edge |
+
+**Off-map west edge**
+
+| id | Place | Note |
+|---|---|---|
+| `chilkur_balaji` | Chilkur Balaji ("Visa Balaji") | an uncle's US-visa subplot |
+| `mrugavani_park` | Mrugavani National Park (1994) | deer spotting trip |
+| `himayat_sagar` | Himayat Sagar (1927) | picnic; monsoon floodgates |
+
+Pending, not in the game until a source confirms they were running in 2000-2003:
+`jubilee_bus_station`, `bhramaramba_mallikarjuna_theatres` (see `research_all_places.md`).
