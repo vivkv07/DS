@@ -726,3 +726,64 @@ auto haggling at koti_bus_stand/rtc_x_roads/stations, banana/flower haggling at 
 any `WORLD_DATA.places[].minigame`. Turn off with `N.minigames.side(false)` or
 `N.flags.mg_side_off = true`. Stats persist in localStorage and `N.save` key `minigames`.
 Test: `node nostalgia/tests/minigames.cjs` (LAB=1 for the staging lab, ONLY=, IDS=, QUICK=1).
+
+## 19. Story layer (integration contract)
+
+The story layer implements `design/story_bible.md` (the story, binding) and
+`design/systems_design.md` (numbers and rules, binding), plus `design/places_registry.md`.
+New files (already listed in index.html): `src/storycore.js` (after missions.js),
+`src/seasons.js` (after places_art.js), `src/sidejobs.js` (after shops.js),
+`src/story2.js` (after story.js). Every module registers through these APIs so they can be
+built in parallel. All of them are tolerant of the others being stubs.
+
+**`N.calendar`** (storycore.js): `date → {y, m (1-12), d, dow (0=Sun), label:'TUE 14 JAN 2003'}`,
+`set(y, m, d, h?, mi?)`, `await jumpTo(y, m, d, h, mi, {fx:'ff'|'rewind'|null})` (VHS ▶▶ 1.5 s),
+`year`, midnight rollover + the week-loop rule (systems §10.5). Base date Tue 14 Jan 2003.
+Changing the date calls `N.seasons.autoFor(date)`. Emits `calendar:change`.
+
+**`N.seasons`** (seasons.js): `set(name, on)`, `is(name)`, `autoFor(date)`; names:
+`sankranti numaish summer bonalu ganesh ganesh_immersion ramzan chand_raat christmas
+prasads_open year2026`. Mirrors each into `N.flags[name]`. Draws flag-driven world overlays
+(kites in the sky, Numaish lights and giant wheel, Ganesh pandals and the Tank Bund immersion
+procession with cranes, Bonalu pots and Pothurajus, Ramzan lights and haleem bhattis, Chand
+Raat crowds at Charminar, Christmas stars in Secunderabad, Prasads fence vs open cinema).
+Emits `season:change`. Also **`N.respect.at(x, y) → zone|null`** (respect zones: walk only,
+meter frozen, pursuers stop at the boundary).
+
+**`N.tape`** (storycore.js): `counter (0-999)`, `side 'A'|'B'`, `paused`, `tracks[]`,
+`await rec(id, {sfx, label, place, to})` (the ● REC moment: UI, sound, counter roll),
+`tin` (Set of token ids), `addToken(id, {name, desc})`, `play('sideA'|trackId)`.
+HUD shows `SIDE A 000` beside the OSD strip.
+**`N.walkman`** (storycore.js): `owned`, `cassettes` (Set), `add(id)`, `play(id)`, `stop()`,
+`next()`, `playing`. Cassette metadata from bible §6.3. Uses `N.audio`.
+**`N.hints`** (storycore.js): `register(missionId, [tier1..tier4])`, `next(source)` with
+source `'std'|'aunty'|'city'|'auto'`, automatic nudges at 3/6/10/15 min (systems §6).
+
+**`N.npcs`** (npcs.js): every character in bible §2 is predefined:
+`define(id, {name, look, portrait, color, voice})`, `spawn(id, target, {angle, idle, talk})`
+→ actor (target = placeId | {x, y}), `despawn(id)`, `get(id)`, `await walkTo(id, target)`,
+`follow(id, actor|null)`. Every character is also registered in `N.dialogue.speakers`.
+Dialogue text tokens `{nick}`, `{full}`, `{FULL}` are substituted (player name card).
+`N.dialogue.glossary` holds bible §10 + systems §17.
+
+**`N.menus`** (menus.js): title (cassette J-card), name card (`await nameEntry()`), pause,
+full map, settings, credits, save/load, Journal with
+`addJournalTab({id, title, order, render(el)})`, and
+`await cutscene(steps)` with step types `card {title, sub, ms}`, `text {lines, ms}`,
+`vhs {mode:'rewind'|'ff'|'play'|'stop'|'rec', ms}`, `fade {to:'black'|'clear', ms}`,
+`wait {ms}`, `say {s, t}`, `talk {lines}`, `camera {target, zoom, ms}`, `call {fn}`,
+`jcard {...}`, `credits {}`; `abortCutscene()`.
+
+**`N.collectibles`** (collectibles.js): series `kite goli cassette ticket frame` (bible §6),
+`items`, `has(id)`, `count(series)`, `total()`, emits `collectible {series, id}`, the unlock
+ladder (systems §7) sets `N.flags.unlock_*`, trivia cards, viewpoints, Journal tabs.
+
+**`N.shops`** (shops.js) and **`N.sidejobs`** (sidejobs.js): every shop/service kind in
+systems §5 (prices in paise, hours), `open(placeId)`, Irani chai + Osmania at every Irani cafe,
+STD booth = save + hint calls, barber clears the meter, cycle hire, bus travel, auto fares with
+`bargain`, cinemas, Prasads, NTR Gardens train, Numaish rides, weighing-machine fortunes; odd
+jobs (systems §9) via `N.sidejobs.register/start`.
+
+**Story** (story.js: prologue + M1-M6 + SA1-SA4; story2.js: M7-M12, interlude, ending,
+2026 epilogue, post-credits, SA5-SA8): `N.missions.register(...)` per bible §4, mission ids as
+in the bible, listening to `game:new` for the prologue.

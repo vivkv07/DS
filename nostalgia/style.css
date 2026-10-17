@@ -1304,7 +1304,11 @@ body.reduced-motion .dlg-box { animation: none; }
 @media (max-height: 520px) and (min-width: 600px) {
   .mg-card-howto { width: min(760px, 100%); }
   .mg-howto { display: grid; grid-template-columns: 1fr 1.25fr; gap: 0 18px; align-items: center; }
-  .mg-card-result { width: min(560px, 100%); }
+  .mg-card-result { width: min(680px, 100%); }
+  .mg-result { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; align-items: center; }
+  .mg-result .mg-rows { margin-bottom: 6px; }
+  .mg-row { font-size: 15px; padding: 1px 4px; }
+  .mg-row b { font-size: 21px; }
 }
 @media (max-width: 380px) {
   .mg-name { font-size: 16px; padding: 2px 7px 0; }

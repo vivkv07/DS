@@ -44,6 +44,7 @@ const expect = (vp, cond, m) => (cond ? ok(m) : fail(vp, m));
 /* ------------------------------------------------------------ input kit */
 function inputKit(page, cdp, V) {
   const center = async (sel) => {
+    await page.locator(sel).first().scrollIntoViewIfNeeded().catch(() => {});
     const b = await page.locator(sel).first().boundingBox();
     if (!b) throw new Error('no element ' + sel);
     return { x: b.x + b.width / 2, y: b.y + b.height / 2 };

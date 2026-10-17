@@ -327,7 +327,17 @@
       f.__mgWrap = true; f.__orig = orig;
       obj[key] = f;
     };
-    try { wrap(N.world, 'draw'); wrap(N.entities, 'draw'); } catch (e) { /* ignore */ }
+    try { wrap(N.world, 'draw'); wrap(N.entities, 'draw'); wrap(N.render, 'queue'); } catch (e) { /* ignore */ }
+    // flush: nothing was queued, so just drop this frame's lights (flush is what clears them)
+    try {
+      const R = N.render;
+      if (R && typeof R.flush === 'function' && !R.flush.__mgWrap) {
+        const orig = R.flush;
+        const f = function () { if (MG.covering) { if (R.lights) R.lights.length = 0; return undefined; } return orig.apply(this, arguments); };
+        f.__mgWrap = true; f.__orig = orig;
+        R.flush = f;
+      }
+    } catch (e) { /* ignore */ }
   }
 
   /* ================================================================== DOM */
@@ -743,14 +753,14 @@
       const canRetry = !this.params.noRetry;
       const primaryDone = r.win || !canRetry;
       this.showCard(
-        '<div class="mg-result ' + (r.win ? 'win' : 'lose') + '">' +
+        '<div class="mg-result ' + (r.win ? 'win' : 'lose') + '"><div class="mg-res-a">' +
           '<div class="osd-line mg-osd"><span class="rec">&#9632; STOP</span><span>' + (r.win ? 'JEET GAYE' : 'HAAR GAYE') + '</span>' + (newBest ? '<span class="mg-best">NEW BEST</span>' : '') + '</div>' +
           '<h2>' + esc(title) + '</h2>' + (info.line ? '<p class="mg-sub">' + esc(info.line) + '</p>' : '') +
-          '<div class="mg-stars">' + stars + '</div><div class="mg-rows">' + rows + '</div>' +
+          '<div class="mg-stars">' + stars + '</div></div><div class="mg-res-b"><div class="mg-rows">' + rows + '</div>' +
           '<div class="mg-actions">' +
             '<button type="button" class="sign-btn' + (primaryDone ? ' primary' : ' alt') + '" data-do="done">' + (r.win ? 'Aage chalo' : 'Chhodo') + '</button>' +
             (canRetry ? '<button type="button" class="sign-btn' + (primaryDone ? ' alt' : ' primary') + '" data-do="retry">Phir se</button>' : '') +
-          '</div></div>', 'mg-card-result');
+          '</div></div></div>', 'mg-card-result');
       this.sfx(r.win ? 'mission_passed' : 'mission_failed');
       if (this.auto) setTimeout(() => { if (!this.closed && this.phase === 'result' && this.params.autoClose !== false) this.cardDo('done'); }, 900);
     }

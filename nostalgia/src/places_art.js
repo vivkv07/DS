@@ -332,14 +332,14 @@
     return out;
   }
   /** Fit a sign text into at most maxLines lines of maxPx pixels (3x5 font). null = no fit. */
-  function fitLines(text, maxPx, maxLines) {
+  function fitLines(text, maxPx, maxLines, noDrop) {
     maxPx = Math.floor(maxPx);
-    const key = text + '|' + maxPx + '|' + maxLines;
+    const key = text + '|' + maxPx + '|' + maxLines + (noDrop ? '|n' : '');
     if (fitCache.has(key)) return fitCache.get(key);
     const words = String(text).toUpperCase().replace(/[^A-Z0-9 &'.\-/+:!]/g, ' ').split(/\s+/).filter(Boolean);
     let res = null;
     const tries = [words, words.filter((w) => !FILLER.has(w))];
-    if (words.length > 1) tries.push(words.filter((w) => !FILLER.has(w)).slice(0, -1));
+    if (words.length > 1 && !noDrop) { const core = words.filter((w) => !FILLER.has(w)); tries.push(core.slice(0, -1), core.slice(1)); }
     for (const ws of tries) {
       if (!ws.length) continue;
       const ex = expandWords(ws, maxPx);
@@ -673,21 +673,24 @@
     const tries = [[iconName, 1], [null, 1]];
     if (two) tries.push([iconName, 2], [null, 2]);
     let lines = null, useIcon = !!iconName;
-    for (const [ic, n] of tries) {
-      if (n === 1 && ic === null && !iconName) continue;
-      const avail = (len - (ic ? 9.5 : 1.5)) * k0;
-      const l = text ? fitLines(text, avail, n) : null;
-      if (l) { lines = l; useIcon = !!ic; break; }
+    for (const pass of [true, false]) { // complete text first, then shortened
+      for (const [ic, n] of tries) {
+        if (n === 1 && ic === null && !iconName && tries[0][0] === null) { /* same as first try */ }
+        const avail = (len - (ic ? 9.5 : 1.5)) * k0;
+        const l = text ? fitLines(text, avail, n, pass) : null;
+        if (l) { lines = l; useIcon = !!ic; break; }
+      }
+      if (lines) break;
     }
     if (!text) useIcon = !!iconName;
     const maxW = lines ? Math.max.apply(null, lines.map(pw)) : 0;
     A.sign = { text: text || '', bg, fg: fg || '#fff6e0', icon: iconName, useIcon, lines, maxW, over, len,
-      deep: lines && lines.length === 2 ? 12.5 : 7.5, h0: o.h0 || 0.8, lift: o.lift || 3.6, frame: o.frame || '#2a201c', lit: o.lit !== false };
+      deep: lines && lines.length === 2 ? 12.5 : 7.5, vF: o.vF != null ? o.vF : -0.2, h0: o.h0 || 0.8, lift: o.lift || 3.6, frame: o.frame || '#2a201c', lit: o.lit !== false };
   }
   const SP = new Float64Array(12);
   function signPts(A, h) {
     const F = A.F, s = A.sign;
-    const u0 = -F.L / 2 - s.over, u1 = F.L / 2 + s.over, vF = 1.2, vB = vF - s.deep;
+    const u0 = -F.L / 2 - s.over, u1 = F.L / 2 + s.over, vF = s.vF, vB = vF - s.deep;
     const hF = h + s.h0, hB = h + s.h0 + s.lift;
     SP[0] = fxp(F, u0, vF); SP[1] = fyp(F, u0, vF); SP[2] = hF; SP[3] = fxp(F, u1, vF); SP[4] = fyp(F, u1, vF); SP[5] = hF;
     SP[6] = fxp(F, u1, vB); SP[7] = fyp(F, u1, vB); SP[8] = hB; SP[9] = fxp(F, u0, vB); SP[10] = fyp(F, u0, vB); SP[11] = hB;
@@ -717,7 +720,7 @@
     const showIcon = s.icon && (s.useIcon || !showText);
     const tw = showText ? s.maxW / kk : 0;
     const total = tw + (showIcon ? (showText ? 9 : 7) / kk : 0);
-    const vM = 1.2 - s.deep / 2;
+    const vM = s.vF - s.deep / 2;
     const cxw = fxp(F, 0, vM), cyw = fyp(F, 0, vM);
     const rdx = F.rot === 0 ? 1 : 0, rdy = F.rot === 1 ? 1 : F.rot === -1 ? -1 : 0;
     let t = -total / 2;
