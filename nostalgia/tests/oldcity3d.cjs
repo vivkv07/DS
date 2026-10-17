@@ -65,7 +65,7 @@ function oldcityAssets() {
 
   for (const a of assets) {
     console.log('\n== ' + a.id);
-    const lms = await page.evaluate((meta) => N.world.data.landmarks.filter((l) => (meta.landmark ? l.id === meta.landmark : l.draw === meta.draw)).map((l) => ({ id: l.id, x: l.x, y: l.y, w: l.w, d: l.d, h: l.h, face: l.face })), a.meta);
+    const lms = await page.evaluate((meta) => N.world.data.landmarks.filter((l) => (meta.landmark ? l.id === meta.landmark : l.draw === meta.draw)).map((l) => ({ id: l.id, x: l.x, y: l.y, w: l.w, d: l.d, h: l.h, face: l.face, faceAngle: l.faceAngle })), a.meta);
     if (!check(lms.length > 0, a.id + ': landmarks in worlddata (' + lms.map((l) => l.id).join(', ') + ')')) continue;
     check(await page.evaluate((id) => N.models3d.has(id) && N.models3d.loaded(id), a.id), a.id + ': in the pack and parsed');
     const lm = lms[0];
@@ -87,8 +87,8 @@ function oldcityAssets() {
     const wx = geo.max[0] - geo.min[0], wz = geo.max[2] - geo.min[2];
     const cx = (geo.max[0] + geo.min[0]) / 2, cz = (geo.max[2] + geo.min[2]) / 2;
     const fw = lm.w, fd = lm.d;
-    // a model built along a skewed road (manifest note 'rotated ...', e.g. Purana Pul): its axis-aligned box is wider by design
-    const rotated = (a.notes || []).some((n) => /rotated/i.test(n));
+    // a landmark turned by faceAngle (e.g. Purana Pul along its skewed span): its axis-aligned box is wider by design
+    const rotated = isFinite(lm.faceAngle) && Math.abs(Math.cos(lm.faceAngle)) > 0.05;
     const okFoot = (rotated ? Math.max(wx, wz) >= Math.max(fw, fd) * 0.95 && Math.max(wx, wz) <= Math.max(fw, fd) * 1.15
       : Math.abs(wx - fw) <= fw * 0.12 + 2 && Math.abs(wz - fd) <= fd * 0.12 + 2) && Math.abs(cx - lm.x) < 6 && Math.abs(cz - lm.y) < 6;
     check(okFoot, a.id + ': footprint ' + wx.toFixed(1) + ' x ' + wz.toFixed(1) + ' at (' + cx.toFixed(0) + ', ' + cz.toFixed(0) + ') vs ' + fw + ' x ' + fd + ' at (' + lm.x + ', ' + lm.y + '), top ' + geo.max[1].toFixed(1));
