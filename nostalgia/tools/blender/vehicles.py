@@ -141,254 +141,6 @@ def guard(name, c, R, a0, a1, M, w=0.62, n=16):
     return g
 
 
-@kit.asset('hero_cycle', 'vehicle', vehicleTypes=['hero_cycle', 'old_cycle', 'chinnu_cycle'], length=16.0, wheelR=3.0, crankR=1.05,
-           gear=2.4, parts=['root', 'steer', 'wheel_front', 'wheel_rear', 'crank', 'pedal_L', 'pedal_R', 'saddle'], saddleDrop=SADDLE_DROP)
-def hero_cycle(A):
-    Ra, Fa, ax = RA, FA, AX
-    HB = S0 + ax * 1.0                         # head tube bottom
-    crown = S0 + ax * 1.18
-    M = {
-        'paint': material('paint_black', 'frame_paint'),
-        'chrome': material('chrome'),
-        'steel': material('steel'),
-        'rubber': material('rubber'),
-        'leather': material('leather_brown', base='#3a2418'),
-        'grip': material('rubber', 'grip', base='#e6dcc4', rough=0.7),
-        'red': material('reflector_red'),
-        'lens': material('lamp_lens', 'lamp_lens@night', bake=False, alpha=1.0, emit='#fff1c8'),
-        'gold': material('gold_leaf', 'pinstripe', base='#c8a040'),
-    }
-    groups = {}
-
-    def add(bone, *objs):
-        for o in objs:
-            if o is None:
-                continue
-            groups.setdefault(bone, []).append(o)
-    # ---------------------------------------------------------------- wheels
-    add('wheel_rear', *wheel('wr', tuple(Ra), R, M))
-    add('wheel_front', *wheel('wf', tuple(Fa), R, M))
-    # ---------------------------------------------------------------- frame (diamond, lugged)
-    tr = 0.15
-    ttF = S0 + ax * 0.16
-    dtF = HB - ax * 0.08
-    fr = [
-        tube('top_tube', [SC + V(0, 0, 0.02), ttF], tr, seg=8, mat=M['paint']),
-        tube('down_tube', [BB, dtF], tr * 1.12, seg=8, mat=M['paint']),
-        tube('seat_tube', [BB, SC + V(0, 0, 0.22)], tr, seg=8, mat=M['paint']),
-        tube('head_tube', [S0 + V(0, 0, 0.06) - ax * 0.05, HB + ax * 0.06], 0.2, seg=10, mat=M['paint']),
-    ]
-    for sx in (1, -1):
-        fr.append(tube('chain_stay', [BB + V(0.1 * sx, 0, 0), Ra + V(0.3 * sx, -0.25, 0.0)], 0.085, seg=6, mat=M['paint']))
-        fr.append(tube('seat_stay', [SC + V(0.09 * sx, 0.06, -0.05), Ra + V(0.3 * sx, -0.15, 0.12)], 0.075, seg=6, mat=M['paint']))
-        fr.append(tube('seat_stay2', [SC + V(0.12 * sx, 0.1, -0.25), Ra + V(0.33 * sx, -0.1, 0.2)], 0.06, seg=6, mat=M['paint']))  # roadster double stays
-        # rear dropout plates
-        fr.append(kit.box('dropout', (0.06, 0.55, 0.4), tuple(Ra + V(0.33 * sx, 0, 0)), M['paint']))
-    # lugs (slightly fatter rings) with gold lining
-    for p, d in ((SC, V(0, -0.4, 0.92)), (S0 - ax * 0.05, -ax), (HB, -ax), (BB, V(0, 0, 1))):
-        fr.append(kit.cylinder('lug', 0.19, 0.22, (0, 0, 0), seg=10, mat=M['paint'], base=False))
-        o = fr[-1]
-        o.rotation_euler = d.to_track_quat('Z', 'Y').to_euler()
-        o.location = p
-        kit.apply_transform(o)
-    for t0, t1 in ((SC, ttF), (BB, dtF)):
-        for f in (0.12, 0.88):
-            pnt = t0.lerp(t1, f)
-            ring = kit.cylinder('pin', 0.165, 0.035, (0, 0, 0), seg=10, mat=M['gold'], base=False)
-            ring.rotation_euler = (t1 - t0).to_track_quat('Z', 'Y').to_euler()
-            ring.location = pnt
-            kit.apply_transform(ring)
-            fr.append(ring)
-    # bottom bracket shell, seat post, saddle with springs
-    fr.append(kit.cylinder('bb_shell', 0.24, 0.62, (0, 0, 0), seg=10, mat=M['paint'], axis='X', base=False))
-    fr[-1].location = BB
-    kit.apply_transform(fr[-1])
-    # saddle group (its own bone: variants let it down along the seat tube)
-    sd = []
-    clamp = SEAT + V(0, 0.12, -0.3)
-    sd.append(tube('seat_post', [SC - SEAT_TUBE * 0.3, clamp], 0.1, seg=8, mat=M['chrome']))
-    sd.append(loft('saddle', [
-        dict(c=tuple(SEAT + V(0, -0.72, -0.08)), r=(0.16, 0.07), p=2.5, w={'root': 1}),
-        dict(c=tuple(SEAT + V(0, -0.42, -0.04)), r=(0.25, 0.1), p=2.5, w={'root': 1}),
-        dict(c=tuple(SEAT + V(0, -0.05, -0.01)), r=(0.43, 0.12), p=3.0, w={'root': 1}),
-        dict(c=tuple(SEAT + V(0, 0.32, 0.0)), r=(0.56, 0.13), p=3.5, w={'root': 1}),
-        dict(c=tuple(SEAT + V(0, 0.52, -0.02)), r=(0.55, 0.11), p=3.5, w={'root': 1}),
-        dict(c=tuple(SEAT + V(0, 0.6, -0.08)), r=(0.42, 0.06), p=3.0, w={'root': 1}),
-    ], seg=12, side=(1, 0, 0), mat=M['leather']))
-    sd.append(tube('saddle_rail', [SEAT + V(-0.25, -0.62, -0.16), SEAT + V(0, -0.2, -0.2), SEAT + V(0.25, -0.62, -0.16)], 0.035, seg=4, mat=M['chrome']))
-    sd.append(kit.box('saddle_clamp', (0.3, 0.3, 0.16), tuple(clamp), M['chrome']))
-    for sx in (1, -1):
-        base = SEAT + V(0.38 * sx, 0.42, -0.5)
-        pts = [base + V(0.11 * math.cos(t), 0.11 * math.sin(t), t * 0.022) for t in [i * 0.6 for i in range(26)]]
-        sd.append(tube('spring', pts, 0.022, seg=4, mat=M['chrome'], cap=False))
-        sd.append(tube('spring_rod', [SEAT + V(0.38 * sx, 0.42, -0.56), clamp + V(0.1 * sx, 0.05, -0.05)], 0.035, seg=4, mat=M['chrome']))
-    # rear carrier
-    cz = 2 * R + 0.38
-    cr = []
-    for sx in (1, -1):
-        cr.append(tube('carrier_rail', [V(0.6 * sx, 2.55, cz), V(0.6 * sx, 7.55, cz), V(0.45 * sx, 7.75, cz - 0.05)], 0.06, seg=5, mat=M['paint']))
-        cr.append(tube('carrier_strut', [V(0.6 * sx, 7.3, cz), Ra + V(0.4 * sx, 0.02, 0.1)], 0.055, seg=5, mat=M['paint']))
-        cr.append(tube('carrier_strut2', [V(0.6 * sx, 4.6, cz), Ra + V(0.4 * sx, -0.05, 0.15)], 0.05, seg=5, mat=M['paint']))
-        cr.append(tube('carrier_stay', [V(0.6 * sx, 2.55, cz), SC + V(0.12 * sx, 0.15, -0.2)], 0.045, seg=4, mat=M['paint']))
-    for k in range(6):
-        y = 2.75 + k * 0.95
-        cr.append(tube('slat', [V(-0.62, y, cz + 0.02), V(0.62, y, cz + 0.02)], 0.04, seg=4, mat=M['paint']))
-    cr.append(tube('carrier_spring', [V(-0.5, 2.75, cz + 0.12), V(-0.5, 7.3, cz + 0.12), V(0.5, 7.3, cz + 0.12), V(0.5, 2.75, cz + 0.12)], 0.035, seg=4, mat=M['chrome']))
-    fr += cr
-    # mudguards (rear on the frame, front steers) and the rear reflector
-    fr.append(guard('guard_rear', Ra, R, math.radians(38), math.radians(198), M))
-    fr.append(kit.cylinder('reflector', 0.17, 0.05, (0, 0, 0), seg=10, mat=M['red'], axis='Y', base=False))
-    fr[-1].location = Ra + V(0, 3.32, 0.75)
-    kit.apply_transform(fr[-1])
-    # chain guard (right side, -X), chain, chainring
-    cg_poly = [(-0.6, 2.05), (-0.2, 1.65), (0.9, 1.75), (5.25, 2.6), (5.45, 3.0), (5.2, 3.35), (0.9, 3.25), (-0.25, 3.15), (-0.62, 2.7)]
-    cg = kit.extrude_polygon('chain_guard', [(y, z) for (y, z) in cg_poly], -0.47, -0.42, M['paint'])
-    # extrude_polygon builds in XY: rotate the outline into the YZ plane at x = -0.45
-    import bmesh
-    bm = bmesh.new()
-    bm.from_mesh(cg.data)
-    for v in bm.verts:
-        y, z, x = v.co.x, v.co.y, v.co.z
-        v.co = Vector((x, y + 0.0, z))
-    bm.to_mesh(cg.data)
-    bm.free()
-    kit.bevel_mod(cg, 0.03, 1, angle=30)
-    fr.append(cg)
-    # the maker's name hand-painted on the chain guard (plain lettering, no logo)
-    dec = kit.signboard('chain_guard_name', 'HERO', 1.9, 0.42, depth=0.02, fg='#d6b04a', bg='#141418', frame_mat=M['paint'], px=256)
-    dec.rotation_euler = (0, 0, math.radians(-90))   # board front -Y -> faces -X (the chain side)
-    dec.location = (-0.49, 3.05, 2.78)
-    kit.apply_transform(dec)
-    fr.append(dec)
-    ring = kit.cylinder('chainring', 0.95, 0.06, (0, 0, 0), seg=24, mat=M['chrome'], axis='X', base=False)
-    ring.location = BB + V(-0.36, 0, 0)
-    kit.apply_transform(ring)
-    sprocket = kit.cylinder('sprocket', 0.36, 0.06, (0, 0, 0), seg=12, mat=M['steel'], axis='X', base=False)
-    sprocket.location = Ra + V(-0.36, 0, 0)
-    kit.apply_transform(sprocket)
-    fr.append(sprocket)
-    fr.append(tube('chain_low', [BB + V(-0.36, 0.0, -0.95), Ra + V(-0.36, 0, -0.36)], 0.05, seg=4, mat=M['steel']))
-    # ---------------------------------------------------------------- crank + pedals
-    crank = [ring, kit.cylinder('crank_axle', 0.1, 1.15, (0, 0, 0), seg=8, mat=M['steel'], axis='X', base=False)]
-    crank[-1].location = BB
-    kit.apply_transform(crank[-1])
-    pedals = {}
-    for sx, S, dy in ((1, 'L', 1.05), (-1, 'R', -1.05)):
-        end = BB + V(0.55 * sx, dy, 0)
-        crank.append(tube('crank_arm', [BB + V(0.45 * sx, 0, 0), end], 0.09, seg=6, mat=M['chrome']))
-        pc = BB + V(0.95 * sx, dy, 0)
-        pd = [kit.box('pedal_block', (0.55, 0.42, 0.2), tuple(pc), M['rubber'], bevel=0.03, segments=1),
-              kit.box('pedal_frame', (0.62, 0.48, 0.07), tuple(pc), M['chrome']),
-              kit.cylinder('pedal_spindle', 0.05, 0.5, (0, 0, 0), seg=6, mat=M['steel'], axis='X', base=False)]
-        pd[-1].location = BB + V(0.7 * sx, dy, 0)
-        kit.apply_transform(pd[-1])
-        pd.append(kit.box('pedal_refl', (0.5, 0.05, 0.1), tuple(pc + V(0, 0.22, 0)), M['red']))
-        pedals[S] = (pc, pd)
-    # ---------------------------------------------------------------- steering: fork, stem, bars, lamp, bell, front guard, brakes
-    st = []
-    for sx in (1, -1):
-        mid = crown.lerp(Fa, 0.55) + V(0, -0.28, 0)
-        st.append(tube('fork_blade', [crown + V(0.24 * sx, 0, 0), mid + V(0.3 * sx, 0, 0), Fa + V(0.32 * sx, 0, 0.08)], 0.09, seg=6, mat=M['paint']))
-    st.append(kit.cylinder('fork_crown', 0.28, 0.24, (0, 0, 0), seg=10, mat=M['chrome'], base=False))
-    st[-1].scale = (1.8, 1.0, 1.0)
-    st[-1].rotation_euler = ax.to_track_quat('Z', 'Y').to_euler()
-    st[-1].location = crown
-    kit.apply_transform(st[-1])
-    stem_top = STEM_TOP
-    st.append(tube('stem', [S0 - ax * 0.05, stem_top], 0.1, seg=8, mat=M['chrome']))
-    bar_c = BAR_C
-    st.append(tube('stem_ext', [stem_top, bar_c], 0.09, seg=6, mat=M['chrome']))
-    bars = []
-    for sx in (1, -1):
-        bars.append(tube('bar', [bar_c, bar_c + V(0.55 * sx, -0.08, 0.02), bar_c + V(1.0 * sx, -0.02, 0.0), bar_c + V(1.36 * sx, 0.42, -0.05),
-                                 bar_c + V(1.53 * sx, 0.95, -0.12), bar_c + V(1.6 * sx, 1.45, -0.17), bar_c + V(1.63 * sx, 2.02, -0.2)], 0.075, seg=6, mat=M['chrome']))
-        g0 = bar_c + V(1.58 * sx, 1.3, -0.16)
-        g1 = bar_c + V(1.64 * sx, 2.06, -0.21)
-        st.append(tube('grip', [g0, g0.lerp(g1, 0.5), g1], 0.135, seg=8, mat=M['grip']))
-        # rod-brake lever under the bar, pulling the rods
-        st.append(tube('brake_lever', [bar_c + V(1.2 * sx, 0.3, -0.06), bar_c + V(1.42 * sx, 0.95, -0.3), bar_c + V(1.5 * sx, 1.55, -0.36)], 0.04, seg=4, mat=M['chrome']))
-    st += bars
-    # front brake rod down the steering column to the front stirrup
-    st.append(tube('front_rod', [bar_c + V(0.25, -0.2, -0.06), S0 + V(0.25, -0.12, 0), crown + V(0.25, -0.15, -0.1), Fa + V(0, -0.35, R - 0.3) + V(0.25, 0, 0)], 0.03, seg=4, mat=M['chrome']))
-    st.append(tube('front_stirrup', [Fa + V(-0.3, -0.5, R - 0.45), Fa + V(-0.3, -0.25, R - 0.2), Fa + V(0.3, -0.25, R - 0.2), Fa + V(0.3, -0.5, R - 0.45)], 0.035, seg=4, mat=M['chrome']))
-    st.append(guard('guard_front', Fa, R, math.radians(-20), math.radians(118), M))
-    # bell (left of the stem) and the dynamo headlamp on its bracket
-    bell = lathe('bell', [(0.0, 0.0), (0.24, 0.0), (0.25, 0.05), (0.2, 0.17), (0.1, 0.24), (0.04, 0.27), (0.0, 0.28)], seg=14, mat=M['chrome'])
-    bell.location = bar_c + V(0.45, -0.04, 0.08)
-    kit.apply_transform(bell)
-    st.append(bell)
-    lamp_c = S0 + ax * 0.55 + V(0, -0.52, 0.02)
-    lamp = lathe('lamp', [(0.0, -0.22), (0.2, -0.22), (0.28, -0.12), (0.33, 0.05), (0.34, 0.2), (0.3, 0.24)], seg=14, mat=M['chrome'], close_top=False)
-    lamp.rotation_euler = (math.radians(90), 0, 0)
-    lamp.location = lamp_c
-    kit.apply_transform(lamp)
-    lens = kit.cylinder('lamp_lens', 0.29, 0.04, (0, 0, 0), seg=14, mat=M['lens'], axis='Y', base=False)
-    lens.location = lamp_c + V(0, -0.24, 0)
-    kit.apply_transform(lens)
-    st += [lamp, lens, tube('lamp_bracket', [lamp_c + V(0, 0.2, 0), S0 + ax * 0.55 + V(0, -0.12, 0)], 0.05, seg=4, mat=M['chrome'])]
-    # rear brake rod along the top tube to the rear stirrup (frame side)
-    fr.append(tube('rear_rod', [ttF + V(-0.22, 0.05, -0.18), SC + V(-0.2, 0.0, -0.18), Ra + V(-0.32, -0.45, R - 0.35)], 0.03, seg=4, mat=M['chrome']))
-    fr.append(tube('rear_stirrup', [Ra + V(-0.32, -0.55, R - 0.45), Ra + V(-0.32, -0.3, R - 0.2), Ra + V(0.32, -0.3, R - 0.2), Ra + V(0.32, -0.55, R - 0.45)], 0.035, seg=4, mat=M['chrome']))
-    add('root', *fr)
-    add('saddle', *sd)
-    add('steer', *st)
-    add('crank', *crank)
-    for S in ('L', 'R'):
-        add('pedal_' + S, *pedals[S][1])
-    # ---------------------------------------------------------------- rig (rigid skin) + bake
-    arm_d = kit.bpy.data.armatures.new('cycle_rig')
-    arm = kit.bpy.data.objects.new('cycle_rig', arm_d)
-    kit.link(arm, A.coll)
-    kit.select_only([arm], arm)
-    kit.bpy.ops.object.mode_set(mode='EDIT')
-    eb = arm_d.edit_bones
-
-    def bone(n, h, t, parent=None):
-        b = eb.new(n)
-        b.head = h
-        b.tail = t
-        if parent:
-            b.parent = eb[parent]
-        return b
-    X = V(0.8, 0, 0)
-    bone('root', V(0, 0, 0), V(0, -0.8, 0))
-    bone('steer', HB, HB - ax * 1.6, 'root')
-    bone('wheel_front', Fa, Fa + X, 'steer')
-    bone('wheel_rear', Ra, Ra + X, 'root')
-    bone('crank', BB, BB + X, 'root')
-    bone('saddle', SC, SC + SEAT_TUBE * 0.8, 'root')
-    bone('pedal_L', pedals['L'][0], pedals['L'][0] + X, 'crank')
-    bone('pedal_R', pedals['R'][0], pedals['R'][0] + X, 'crank')
-    kit.bpy.ops.object.mode_set(mode='OBJECT')
-    meshes = []
-    for b, objs in groups.items():
-        for o in objs:
-            kit.apply_modifiers(o)
-            kit.weights(o, b)
-            kit.smooth(o, 38)
-            meshes.append(o)
-    cyc = kit.join(meshes, 'hero_cycle')
-    kit.finish_atlas(A, [cyc], size=512, ao_samples=32, albedo_samples=8, ao_strength=0.65, ao_dist=1.5, orm=True)
-    mod = cyc.modifiers.new('Armature', 'ARMATURE')
-    mod.object = arm
-    cyc.parent = arm
-    kit.normalize_weights(cyc, 1)
-    # anchors
-    A.anchor('seat_driver', tuple(SEAT), arm, 'saddle')
-    A.anchor('seat_pillion', (0, 4.8, cz + 0.12), arm, 'root')
-    A.anchor('handlebar', tuple(bar_c), arm, 'steer')
-    for sx, S in ((1, 'L'), (-1, 'R')):
-        A.anchor('grip_' + S, tuple(bar_c + V(GRIP.x * sx, GRIP.y, GRIP.z)), arm, 'steer')
-        A.anchor('pedal_' + S, tuple(pedals[S][0] + V(0, 0, 0.1)), arm, 'pedal_' + S)
-    A.anchor('headlight', tuple(lamp_c + V(0, -0.28, 0)), arm, 'steer')
-    A.anchor('wheel_front', tuple(Fa), arm, 'wheel_front')
-    A.anchor('wheel_rear', tuple(Ra), arm, 'wheel_rear')
-    A.anchor('bell', tuple(bar_c + V(0.45, -0.04, 0.2)), arm, 'steer')
-    A.anchor('reflector', tuple(Ra + V(0, 3.35, 0.75)), arm, 'root')
-    A.meta.update({'steerAxis': [round(c, 4) for c in ax], 'bb': [round(c, 4) for c in BB], 'seat': [round(c, 4) for c in SEAT], 'saddleTube': [round(c, 4) for c in SEAT_TUBE]})
-    A.preview = {'shots': [{'view': {'az': -62, 'el': 14, 'fov': 28}}, {'name': 'side', 'size': 320, 'samples': 16, 'view': {'az': -90, 'el': 3, 'fov': 26}}]}
-
-
 # =========================================================================== pedal cycles (generic builder)
 def cycle_geom(R=3.0, wb=10.0, cs=4.25, bb_drop=0.65, st_len=2.616, st_dir=None, ax=None, head=(1.45, 2.5), seat_off=(0, -0.1, 0.52),
                stem=0.72, bar_c=(0, -0.15, 0.05)):
@@ -491,6 +243,15 @@ def pedal_cycle(A, C):
         stay_top = SC + V(0.09 * sx, 0.06, -0.05) if style != 'mtb' else BB.lerp(SC, 0.8) + V(0.1 * sx, 0.05, 0)
         fr.append(tube('seat_stay', [stay_top, RA + V(0.3 * sx, -0.15, 0.12)], 0.075 * max(k, 0.8), seg=6, mat=FR))
         fr.append(vk.rbox('dropout', (0.06, 0.5 * k, 0.36 * k), tuple(RA + V(0.33 * sx, 0, 0)), FR, bevel=0.0))
+        if C.get('double_stays'):     # the roadster's second pair of seat stays
+            fr.append(tube('seat_stay2', [SC + V(0.12 * sx, 0.1, -0.25), RA + V(0.33 * sx, -0.1, 0.2)], 0.06, seg=6, mat=FR))
+    if C.get('pinstripe'):
+        gold = vk.mat('gold_leaf', 'pinstripe', base='#c8a040')
+        for t0, t1 in ((SC, ttF), (BB, dtF)):
+            for f in (0.12, 0.88):
+                pnt = t0.lerp(t1, f)
+                dd = (t1 - t0).normalized()
+                fr.append(vk.cyl_between('pin', pnt - dd * 0.018, pnt + dd * 0.018, tr * 1.1, seg=8, m=gold, cap=False))
     for p, d in ((SC, G['ST']), (BB, V(0, 0, 1))):
         fr.append(vk.cyl_between('lug', p - d * 0.11, p + d * 0.11, tr * 1.25, seg=8, m=FR))
     fr.append(vk.disc_x('bb_shell', tuple(BB), 0.22 * max(k, 0.85), 0.6, FR, seg=8))
@@ -535,8 +296,8 @@ def pedal_cycle(A, C):
         fr.append(vk.mudguard('guard_rear', tuple(RA), R, math.radians(38), math.radians(198), gm, w=0.58 * max(k, 0.85) + tw * 0.25, gap=0.24, thick=0.08, n=12))
         st.append(vk.mudguard('guard_front', tuple(FA), R, math.radians(-20), math.radians(118), gm, w=0.58 * max(k, 0.85) + tw * 0.25, gap=0.24, thick=0.08, n=10))
     elif gk == 'short':
-        fr.append(vk.mudguard('guard_rear', tuple(RA), R, math.radians(70), math.radians(150), gm, w=0.5 + tw * 0.3, gap=0.22, thick=0.07, n=6))
-        st.append(vk.mudguard('guard_front', tuple(FA), R, math.radians(20), math.radians(100), gm, w=0.5 + tw * 0.3, gap=0.22, thick=0.07, n=6))
+        fr.append(vk.mudguard('guard_rear', tuple(RA), R, math.radians(85), math.radians(140), gm, w=0.5 + tw * 0.3, gap=0.22, thick=0.07, n=5))
+        st.append(vk.mudguard('guard_front', tuple(FA), R, math.radians(35), math.radians(95), gm, w=0.5 + tw * 0.3, gap=0.22, thick=0.07, n=5))
     fr.append(vk.disc_y('reflector', tuple(RA + V(0, R * 0.95 + 0.4, R * 0.25 + 0.35)), 0.16, 0.05, P['reflector'], seg=10))
     # ---------------------------------------------------------------- chain guard / case, chain, chainring, sprocket
     cg = C.get('chainguard', 'plate')
@@ -701,6 +462,28 @@ def pedal_cycle(A, C):
 CYCLE_RIDER = {'driver': {'pose': 'cycle', 'seat': 'seat_driver', 'grips': ['grip_L', 'grip_R'], 'feet': 'pedals', 'clips': ['ride_cycle']}}
 
 
+@kit.asset('hero_cycle', 'vehicle', vehicleTypes=['hero_cycle', 'old_cycle', 'chinnu_cycle'], length=16.0, wheelR=3.0, crankR=1.05,
+           gear=2.4, parts=['root', 'steer', 'wheel_front', 'wheel_rear', 'crank', 'pedal_L', 'pedal_R', 'saddle'], saddleDrop=SADDLE_DROP,
+           tintSrc={'paint': 'color'}, riders=CYCLE_RIDER, pedal=True, kainchi=['hero_cycle', 'old_cycle'])
+def hero_cycle(A):
+    """The classic black Hero roadster: tall lugged diamond frame with double seat stays and gold
+    pinstripes, 28-inch wheels, rod brakes with stirrups, a sprung leather saddle, the rear carrier,
+    full mudguards, the plate chain guard with 'HERO' hand-painted in plain letters, a bottle dynamo
+    on the front fork wired to the round lamp, the bell, a rear double stand. Geometry = HERO /
+    hero_geom() exactly (the riders' ride_cycle clips are authored against it). Tint: paint =
+    v.color (black, or the odd dark blue / maroon)."""
+    pedal_cycle(A, {
+        'geom': dict(),
+        'color': '#141418', 'frame': 'diamond', 'bars': 'swept', 'guards': 'full', 'carrier': True, 'chainguard': 'plate', 'guard_black': True,
+        'brakes': 'rod', 'stand': 'double', 'saddle': 'sprung', 'tyre_w': 0.42, 'spokes': 36, 'tube_r': 0.15, 'grip': '#e6dcc4',
+        'lamp': True, 'dynamo': True, 'double_stays': True, 'pinstripe': True,
+        'lettering': ('HERO', ('#d6b04a', '#141418'), 'chainguard'),
+    })
+    A.preview = {'shots': [{'view': {'az': -62, 'el': 14, 'fov': 28}}, {'name': 'side', 'size': 320, 'samples': 16, 'view': {'az': -90, 'el': 3, 'fov': 26}}],
+                 'variants': {'sets': [{'colours': {'paint': '#141418'}}, {'colours': {'paint': '#16213e'}}, {'colours': {'paint': '#3a1618'}}],
+                              'view': {'az': -70, 'el': 12, 'fov': 28}}}
+
+
 @kit.asset('hercules_cycle', 'vehicle', vehicleTypes=['hercules_cycle', 'hercules_gears'], length=14.5, wheelR=2.75, crankR=1.0, gear=2.6,
            tintSrc={'paint': 'color', 'paint2': 'color2'}, options=[{'bone': 'opt_gears', 'types': ['hercules_gears']}, {'bone': 'opt_gears_bar', 'types': ['hercules_gears']}],
            riders=CYCLE_RIDER, pedal=True)
@@ -758,14 +541,14 @@ def ladies_cycle(A):
                               'view': {'az': -70, 'el': 12, 'fov': 28}}}
 
 
-@kit.asset('kid_cycle', 'vehicle', vehicleTypes=['kid_cycle'], length=13.5, wheelR=2.3, crankR=0.9, gear=2.2,
+@kit.asset('kid_cycle', 'vehicle', vehicleTypes=['kid_cycle'], length=13.5, wheelR=2.5, crankR=0.95, gear=2.2,
            tintSrc={'paint': 'color'}, riders=CYCLE_RIDER, pedal=True)
 def kid_cycle(A):
     """The kid's hire cycle (an hour for a rupee at the cycle shop): 20-inch wheels, a curved top
     tube, a riser bar with chunky grips, short guards, a small padded saddle, a side stand; a
     painted stripe instead of a brand. 13.5 u long (TYPES.kid_cycle)."""
     pedal_cycle(A, {
-        'geom': dict(R=2.3, wb=8.9, cs=3.55, bb_drop=0.45, st_len=1.9, st_dir=(0, 0.34, 0.94), head=(1.4, 2.55), seat_off=(0, -0.1, 0.5), stem=0.45, bar_c=(0, -0.2, 0.08)),
+        'geom': dict(R=2.5, wb=8.5, cs=3.35, bb_drop=0.5, st_len=2.05, st_dir=(0, 0.34, 0.94), head=(1.45, 2.85), seat_off=(0, -0.1, 0.55), stem=0.5, bar_c=(0, -0.2, 0.08)),
         'color': '#9a2424', 'frame': 'kid', 'bars': 'riser', 'guards': 'short', 'carrier': False, 'chainguard': 'plate', 'guard_black': True,
         'brakes': 'caliper', 'stand': 'side', 'saddle': 'kid', 'tyre_w': 0.5, 'spokes': 24, 'tube_r': 0.14, 'grip': '#1c1c1e', 'crank': 0.95,
         'lettering': ('RENT 1 Rs / HR', ('#f2c230', '#141418'), 'chainguard'), 'wseg': 20,

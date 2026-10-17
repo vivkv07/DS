@@ -41,11 +41,13 @@
  *   ledger N.minigames.ledger). Story games pay through the mission (params.reward if given).
  *
  * CONTROLS (the normal on-foot controls; keyboard, touch joystick + ACTION / RUN, gamepad)
- *   move = walk, RUN = run (maram pitti: a RUN tap is a quick dodge hop), ACTION = the context action shown
- *   on the button / prompt: pick up / stack a stone, grab the ball, throw (tap = normal, hold = hard throw),
- *   catch. Lingocha line throw: ←/→ (or the stick / mouse pointer / the 3D camera) aims, hold ACTION (or the
- *   mouse button) to charge the power and let go to throw; on touch screens drag back on the picture and let
- *   go (slingshot). Aim assist on phones / with Assist.
+ *   move = walk, RUN = run (maram pitti: a RUN tap is a short committed dodge hop; with no direction held it goes
+ *   across the thrower's line), ACTION = the context action shown on the button / prompt: pick up / stack a stone,
+ *   grab the ball, throw (tap = normal, hold = hard throw), catch. Lingocha line throw: ←/→ (or a pad stick /
+ *   mouse pointer / the 3D camera) aims, hold ACTION (or the mouse button) to charge the power and let go to
+ *   throw; on touch screens (top-down) pull back from the stack — a drag on the picture, or the stick, which is a
+ *   catapult at the line — and let go. Aim assist on phones / with Assist. After a free-roam game "Play again"
+ *   stays under Chinnu for a few seconds.
  *
  * HOOKS INTO OTHER MODULES (installed from this file only; nothing else is edited)
  *   - N.minigames: registers 'lingocha' and 'marampitti' (defs with inWorld: true) and wraps play / start /
@@ -60,7 +62,7 @@
  *   - N.view3d.registerLayer('playgroundGames'): stones, ball, chalk line, aim arrow, team rings in 3D (the
  *     kids are entities of kind 'ped' with N.people looks, so view3d_actors draws them).
  *   - N.clock.hold('playground-game') during a real game (the clock then crawls at TUNE.clockRate game minutes
- *     per second), N.render.baseZoom (top-down: zoomed in to fit the ground, 1-1.8) during a real game,
+ *     per second), N.render.baseZoom (top-down: zoomed in to fit the ground, 1-2.2, 2.6 on an upright phone) during a real game,
  *     N.input.setLabel('run', 'DODGE'); mission givers' when() is wrapped once so no giver's J-card starts a
  *     mission while a game is on (the colony ground carries the gully-league giver).
  *   - N.wanted.addHeat(15, 'ball') when Chinnu's throw hits an adult passer-by; a broken window (Chinnu's ball
@@ -99,7 +101,7 @@
     // with the ball you only shuffle (holdWalk x walk): you throw from about where you picked it up
     // minD: a holder steps back (backWalk x walk) rather than throw at a kid nearer than this (point-blank is
     // unsporting and undodgeable); spread: kids keep this far apart while they scatter (no clumps)
-    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46, holdWalk: 0.22, look: [0.55, 1.3], range: [44, 56], minD: 18, backWalk: 0.4, spread: 13, hopT: 0.16, bound: 10, boundT: 4 },
+    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46, holdWalk: 0.22, look: [0.55, 1.3], range: [44, 56], minD: 18, backWalk: 0.4, spread: 13, hopT: 0.16, bound: 10, boundT: 4, lineWarn: 7 },
     // the line throw: the aim starts a little off the stack (straighten it), accuracy drops with power
     aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130, startOff: [0.06, 0.2], err: 0.026, errPow: 0.075 },
     pay: { win: 200, win3: 300, daily: 3 },
@@ -1619,7 +1621,7 @@
         if (S.tele.to === me) return true;
         // standing on the line past his mark: a miss comes your way
         const tl = teleLine(S);
-        if (segDist(p.x, p.y, tl.ax, tl.ay, tl.ex, tl.ey) < 5.5 && hyp(p.x - tl.ax, p.y - tl.ay) > 8) return true;
+        if (segDist(p.x, p.y, tl.ax, tl.ay, tl.ex, tl.ey) < TUNE.maram.lineWarn && hyp(p.x - tl.ax, p.y - tl.ay) > 8) return true;
       }
       if (b.state === 'air' && b.live && b.thrower && b.thrower !== me) {
         const rx = p.x - b.x, ry = p.y - b.y, vv = b.vx * b.vx + b.vy * b.vy;

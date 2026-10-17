@@ -1,46 +1,29 @@
-00:00.522  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.060  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building kid_cycle (vehicle)
-00:04.305  render           | Saved: '/tmp/nostalgia_blender/text_72435c16.png'
-[kit] uv atlas: 66 islands rescaled
+00:05.057  render           | Saved: '/tmp/nostalgia_blender/text_72435c16.png'
+[kit] uv: 970 faces unwrapped along seams, 338 smart-projected
+[kit] uv atlas: 47 islands rescaled
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] baked albedo 512x512 (6 samples) in 6.4s
+[kit] baked albedo 512x512 (6 samples) in 28.4s
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] baked ao 256x256 (24 samples) in 11.5s
+[kit] baked ao 256x256 (24 samples) in 39.0s
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] baked orm 256x256 (1 samples) in 0.1s
-[kit] finish kid_cycle: tex 512, orm 256, emit False in 24.9s
+[kit] baked orm 128x128 (1 samples) in 0.6s
+[kit] finish kid_cycle: tex 512, orm 128, emit False in 83.8s
 ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
 ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
-20:39:01 | INFO: Starting glTF 2.0 export
-20:39:01 | INFO: Extracting primitive: kid_cycle
-20:39:01 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
-20:39:01 | INFO: Primitives created: 1
-20:39:01 | INFO: Finished glTF 2.0 export in 0.24029755592346191 s
+20:49:43 | INFO: Starting glTF 2.0 export
+20:49:43 | INFO: Extracting primitive: kid_cycle
+20:49:43 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+20:49:43 | INFO: Primitives created: 1
+20:49:43 | INFO: Finished glTF 2.0 export in 0.3505988121032715 s
 
-[kit] kid_cycle: 2920 tris (budget 6000) ok, 292.6 KB, clips [], anchors 11
-20:39:01 | INFO: Data are loaded, start creating Blender stuff
-20:39:01 | INFO: Blender create Mesh node kid_cycle
-20:39:01 | INFO: glTF import finished in 0.04s
-00:43.639  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kid_cycle.png'
-[kit] preview kid_cycle.png (384px, 24 spp) in 13.7s
-20:39:15 | INFO: Data are loaded, start creating Blender stuff
-20:39:15 | INFO: Blender create Mesh node kid_cycle
-20:39:15 | INFO: glTF import finished in 0.04s
-00:50.352  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kid_cycle_side.png'
-[kit] preview kid_cycle_side.png (320px, 16 spp) in 6.7s
-[kit] done kid_cycle in 47.4s
-20:39:22 | INFO: Data are loaded, start creating Blender stuff
-20:39:22 | INFO: Blender create Mesh node kid_cycle
-20:39:22 | INFO: glTF import finished in 0.09s
-00:56.076  render           | Saved: '/tmp/nostalgia_blender/kid_cycle_var_0.png'
-[kit] render kid_cycle_var_0.png (256px, 14 spp) in 5.6s
-20:39:28 | INFO: Data are loaded, start creating Blender stuff
-20:39:28 | INFO: Blender create Mesh node kid_cycle
-20:39:28 | INFO: glTF import finished in 0.07s
-01:02.540  render           | Saved: '/tmp/nostalgia_blender/kid_cycle_var_1.png'
-[kit] render kid_cycle_var_1.png (256px, 14 spp) in 6.3s
-20:39:34 | INFO: Data are loaded, start creating Blender stuff
-20:39:34 | INFO: Blender create Mesh node kid_cycle
-20:39:34 | INFO: glTF import finished in 0.04s
-01:05.266  render           | Saved: '/tmp/nostalgia_blender/kid_cycle_var_2.png'
-[kit] render kid_cycle_var_2.png (256px, 14 spp) in 2.7s
+[kit] kid_cycle: 2704 tris (budget 6000) ok, 233.1 KB, clips [], anchors 11
+20:49:43 | INFO: Data are loaded, start creating Blender stuff
+20:49:43 | INFO: Blender create Mesh node kid_cycle
+20:49:43 | INFO: glTF import finished in 0.14s
+02:18.987  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kid_cycle.png'
+[kit] preview kid_cycle.png (384px, 24 spp) in 49.3s
+20:50:33 | INFO: Data are loaded, start creating Blender stuff
+20:50:33 | INFO: Blender create Mesh node kid_cycle
+20:50:33 | INFO: glTF import finished in 0.08s

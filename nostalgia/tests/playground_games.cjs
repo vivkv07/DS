@@ -20,7 +20,11 @@
  *     (stones, ball, chalk, rings) is built and visible
  *   phone portrait 390x844 + landscape 844x390 (touch): Join via the ACTION button, the slingshot drag on
  *     the picture throws at the stack, ACTION grabs / throws in maram pitti; screenshots; no page scroll
- * Fails on any console error / page error / N.err.   ONLY=desktop|ambient|3d|portrait|landscape
+ *   playtest fixes (desktop, real keys): the home ground keeps off the aunties' bench; Shift (DODGE) alone hops
+ *     across the red wind-up line; a ball rolling off the ground stops near it; fetching it is not "leaving";
+ *     hiding off the ground in maram pitti is out after a warning; "Play again" offered where Chinnu stands;
+ *     no point-blank AI throws (the holder steps back first); phones: the touch stick is a catapult too
+ * Fails on any console error / page error / N.err.   ONLY=desktop|fixes|ambient|3d|portrait|landscape
  *   node nostalgia/tests/playground_games.cjs
  */
 'use strict';
@@ -285,7 +289,7 @@ async function desktop(browser) {
   await tapKey(page, 'KeyE');
   check(await waitFor(page, () => !!N.playgroundGames.current && N.playgroundGames.current.id === 'marampitti', null, 20000), 'E starts maram pitti (in-world)');
   const m0 = await st(page);
-  check(m0.parts.length === 8 && m0.parts.some((p) => p.npc === 'immu'), '8 kids in the ring (Immu, Ayesha, Babloo + colony kids)', m0.parts.map((p) => p.name));
+  check(m0.parts.length >= 6 && m0.parts.length <= 10 && m0.parts.some((p) => p.npc === 'immu'), m0.parts.length + ' kids in the ring (Immu, Ayesha, Babloo + colony kids; the ring size follows the ground)', m0.parts.map((p) => p.name));
   check(await waitPhase(page, 'toss', 60000), 'the ball goes up (the toss)');
   await page.evaluate(() => { N.playgroundGames.debug.assist.freezeAI = true; const b = N.playgroundGames.current.ball; N.player.x = b.x + 2; N.player.y = b.y + 1; });
   await tapKey(page, 'KeyE', 60);
@@ -359,6 +363,108 @@ async function desktop(browser) {
   check(busy && busy.error === 'busy' && busy.win === false, 'a second start while one runs: {win:false, error:"busy"}', busy);
   await page.evaluate(() => N.playgroundGames.abort('test'));
   await result(page, 10000);
+  await noErrors(page, errors);
+  await context.close();
+}
+
+/* ======================================================================= playtest fixes */
+async function fixes(browser) {
+  cur = 'fixes';
+  console.log('\n== playtest fixes (desktop, real keys)');
+  const { context, page, errors } = await openPage(browser, { viewport: { width: 1280, height: 720 } });
+  await page.evaluate(() => { N.playgroundGames.ambient.off = true; });
+  const gt = (page2) => page2.evaluate(() => (N.playgroundGames.current ? N.playgroundGames.current.t : -1));
+  const waitGT = async (dt, ms) => { const t0 = await gt(page); return waitFor(page, (t) => { const S = N.playgroundGames.current; return !S || S.t >= t; }, t0 + dt, ms || 60000); };
+  // the home ground keeps off the gate aunties' bench (npcs.js colony_aunties sit there 07-20)
+  const bench = await page.evaluate(() => {
+    const f = N.playgroundGames.fieldFor('playground_1'), pl = N.places.playground_1, sc = N.npcs && N.npcs.schedules && N.npcs.schedules.colony_aunties;
+    if (!sc || !pl) return null;
+    return sc.cast.map((e) => { const x = pl.x + e.off[0], y = pl.y + e.off[1]; const dx = x < f.x0 ? f.x0 - x : x > f.x1 ? x - f.x1 : 0, dy = y < f.y0 ? f.y0 - y : y > f.y1 ? y - f.y1 : 0; return +Math.hypot(dx, dy).toFixed(1); });
+  });
+  check(bench && bench.every((d) => d >= 6), 'the home ground’s play area keeps off the aunties’ bench (' + JSON.stringify(bench) + ' u outside)');
+
+  // maram pitti at Vidyanagar ground with the AI frozen
+  await page.evaluate(() => { const f = N.playgroundGames.fieldFor('playground_2'); N.debug.teleport(f.centre.x, f.centre.y); });
+  await startResult(page, 'marampitti', { place: 'playground_2', side: true, seed: 21 });
+  await waitPhase(page, 'play', 90000);
+  // DODGE (Shift) with no direction held sidesteps ACROSS the wind-up line
+  const d0 = await page.evaluate(() => {
+    const D = N.playgroundGames.debug, S = D.session(), p = N.player, F = S.F;
+    D.assist.freezeAI = true;
+    p.x = F.cx; p.y = F.cy; p.vx = p.vy = 0;
+    const K = S.parts.find((q) => !q.isPlayer && !q.out);
+    K.e.x = F.cx + 30; K.e.y = F.cy; D.give(K.name); K.windT = 5; S.tele = { from: K, to: S.me };
+    S.me.dashT = -9;
+    return { x: p.x, y: p.y };
+  });
+  await sleep(150);
+  await tapKey(page, 'ShiftLeft', 70);
+  await waitGT(0.5);
+  const d1 = await page.evaluate(() => ({ x: N.player.x, y: N.player.y }));
+  const ddx = d1.x - d0.x, ddy = d1.y - d0.y;
+  check(Math.abs(ddy) >= 10 && Math.abs(ddx) < Math.abs(ddy) * 0.5, 'Shift (DODGE) alone hops ACROSS the red line: ' + ddx.toFixed(1) + ', ' + ddy.toFixed(1) + ' u (the line runs east-west)');
+  // a ball rolling off the ground stops soon (not 100 u down the lane)
+  const roll = await page.evaluate(() => {
+    const S = N.playgroundGames.current, F = S.F, b = S.ball;
+    for (const P of S.parts) { P.hold = false; P.windT = 0; } S.tele = null;
+    Object.assign(b, { x: F.x1 + 18, y: F.cy, z: 0, vx: 160, vy: 0, vz: 0, state: 'roll', holder: null, live: false, bounced: 1, hitSet: new Set() });
+    return F.x1;
+  });
+  await waitGT(1.6);
+  const rollOff = await page.evaluate((x1) => { const b = N.playgroundGames.current.ball; return b.x - x1; }, roll);
+  check(rollOff < 55, 'a ball rolling off the ground stops near it (' + rollOff.toFixed(0) + ' u past the edge, was ~100)');
+  // fetching the ball off the ground does not count as leaving the game
+  const fetchQ = await page.evaluate(() => {
+    const S = N.playgroundGames.current, F = S.F, p = N.player, b = S.ball;
+    let q = null;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const x = dx > 0 ? F.x1 + 78 : dx < 0 ? F.x0 - 78 : F.cx, y = dy > 0 ? F.y1 + 78 : dy < 0 ? F.y0 - 78 : F.cy; if (N.world.isWalkable(x, y) && N.world.isWalkable(x + 3, y)) { q = { x, y }; break; } }
+    if (!q) return null;
+    p.x = q.x; p.y = q.y; p.vx = p.vy = 0;
+    Object.assign(b, { x: q.x + 4, y: q.y, z: 0, vx: 0, vy: 0, vz: 0, state: 'rest', holder: null, live: false, bounced: 1 });
+    S.awayT = 0; S.boundT = 0;
+    return q;
+  });
+  if (fetchQ) {
+    await waitGT(1.2);
+    const aw = await page.evaluate(() => { const S = N.playgroundGames.current; return { away: S.awayT || 0, bound: S.boundT || 0, on: !!S }; });
+    check(aw.on && aw.away === 0 && aw.bound === 0, 'chasing the ball 78 u off the ground is not "leaving" (away ' + aw.away + ' s, boundary ' + aw.bound + ' s)');
+  }
+  // the boundary: hiding off the ground (no ball nearby) is OUT after a warning
+  await page.evaluate(() => {
+    const S = N.playgroundGames.current, F = S.F, p = N.player;
+    const K = S.parts.find((q) => !q.isPlayer && !q.out); N.playgroundGames.debug.give(K.name); K.windT = 0; S.tele = null;
+    for (const [x, y] of [[F.cx, F.y1 + 22], [F.cx, F.y0 - 22], [F.x0 - 22, F.cy], [F.x1 + 22, F.cy]]) if (N.world.isWalkable(x, y)) { p.x = x; p.y = y; break; }
+    p.vx = p.vy = 0; S.boundT = 0;
+  });
+  await waitGT(1);
+  const bp = (await st(page)).prompt;
+  check(/Back inside the ground/.test(bp), 'off the ground the HUD warns: "' + bp + '"');
+  check(await waitLog(page, 'out', { me: true, why: 'boundary' }, 30000), '... and after 4 s off it Chinnu is OUT (no hiding out of everybody’s range)');
+  const rb = await result(page, 30000);
+  check(rb && rb.win === false && rb.reason === 'out', 'the game ends for Chinnu (out)', rb);
+  // "Play again" right there, for a few seconds
+  const again = await waitFor(page, () => { const c = N.interact.current; const l = c ? (typeof c.label === 'function' ? c.label(N.player) : c.label) : ''; return /Play again \(maram pitti\)/.test(l); }, null, 8000);
+  check(again, 'the ACTION prompt offers "Play again (maram pitti)" where Chinnu stands');
+  await page.evaluate(() => { window.__pgRes = null; N.on('minigame:end', (d) => { if (d && d.inWorld) window.__pgRes = d.result; }); });
+  await tapKey(page, 'KeyE');
+  check(await waitFor(page, () => !!N.playgroundGames.current && N.playgroundGames.current.id === 'marampitti', null, 20000), 'E: a new maram pitti starts at once');
+  // no point-blank throws: a holder next to Chinnu steps back before he throws
+  await waitPhase(page, 'play', 90000);
+  await page.evaluate(() => {
+    const D = N.playgroundGames.debug, S = D.session(), p = N.player, F = S.F;
+    D.assist.freezeAI = false;
+    const al = S.parts.filter((q) => !q.isPlayer && !q.out), K = al[0];
+    for (const q of al.slice(1)) D.out(q.name);
+    p.x = F.cx; p.y = F.cy; p.vx = p.vy = 0;
+    K.e.x = F.cx + 8; K.e.y = F.cy; D.give(K.name); K.lookT = 0.2; K.tgt = S.me; K.tgtT = S.t + 99;
+    window.__pbK = K.name; window.__pb = null;
+    N.on('minigame:event', (d) => { if (!d || !d.inWorld || window.__pb || d.data.type !== 'throw' || d.data.by !== window.__pbK) return; const S2 = N.playgroundGames.current, T = S2 && S2.parts.find((q) => q.name === window.__pbK); window.__pb = T ? Math.hypot(T.e.x - N.player.x, T.e.y - N.player.y) : -1; });
+  });
+  await waitFor(page, () => window.__pb != null, null, 60000);
+  const pb = await page.evaluate(() => window.__pb);
+  check(pb != null && pb >= 10, 'a kid holding the ball 8 u from Chinnu steps back first: he throws from ' + (pb == null ? '?' : pb.toFixed(1)) + ' u');
+  await page.evaluate(() => N.playgroundGames.abort('test'));
+  await result(page, 20000);
   await noErrors(page, errors);
   await context.close();
 }
@@ -473,6 +579,20 @@ async function phone(browser, name, viewport) {
   await shot(page, name + '_lingocha_throw');
   await page.evaluate(() => N.playgroundGames.abort('test'));
   await result(page, 20000);
+  // the touch stick is the same catapult (a thumb lands on the stick's half of the screen): pull it back from
+  // the stack, let go -> the throw goes at the stack
+  await startResult(page, 'lingocha', { place: 'playground_1', seed: 31 });
+  check(await waitPhase(page, 'aim', 90000), 'a second lingocha: Chinnu at the line again');
+  await sleep(500);
+  const sv = await page.evaluate(() => { const S = N.playgroundGames.debug.state(), p = N.player; return { a: Math.atan2(S.lingocha.base.y - p.y, S.lingocha.base.x - p.x), W: innerWidth, H: innerHeight }; });
+  const sx = sv.W * 0.2, sy = sv.H * 0.72;
+  await cdpTouchDrag(page, sx, sy, sx - Math.cos(sv.a) * 40, sy - Math.sin(sv.a) * 40, 6);
+  check(await waitLog(page, 'player_throw', null, 15000), 'touch: pulling the STICK back from the stack and letting go throws (catapult)');
+  const ct = await page.evaluate(() => N.playgroundGames.debug.log().find((q) => q.type === 'player_throw'));
+  const cda = ct ? Math.abs(Math.atan2(Math.sin(ct.ang - sv.a), Math.cos(ct.ang - sv.a))) : 9;
+  check(cda < 0.6, '... towards the stack (' + cda.toFixed(2) + ' rad off; power ' + (ct && ct.p) + ')');
+  await page.evaluate(() => N.playgroundGames.abort('test'));
+  await result(page, 20000);
   // maram pitti: ACTION grabs after the bounce, ACTION throws
   await page.evaluate(() => { const f = N.playgroundGames.fieldFor('playground_2'); N.debug.teleport(f.centre.x, f.centre.y + 20); });
   await startResult(page, 'marampitti', { place: 'playground_2', seed: 8 });
@@ -506,6 +626,7 @@ async function phone(browser, name, viewport) {
   const browser = await chromium.launch();
   try {
     if (want('desktop')) await desktop(browser);
+    if (want('fixes')) await fixes(browser);
     if (want('ambient')) await ambient(browser);
     if (want('portrait')) await phone(browser, 'portrait', { width: 390, height: 844 });
     if (want('landscape')) await phone(browser, 'landscape', { width: 844, height: 390 });

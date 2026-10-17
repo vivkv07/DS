@@ -43586,6 +43586,19 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (mode() === 'play' && !run()) prologue();
   });
   for (const ev of ['mission:complete', 'mission:fail', 'mission:abort']) N.on(ev, () => { cleanupAll(); });
+  // A ▶▶ / ◀◀ jump to another day (a mission's start date, a scene's next morning, a replay) leaves last night
+  // behind: the Chappal Meter from before the jump (e.g. the curfew level after an SA1 pandal night at 22:00)
+  // must not ride into the next afternoon's mission, where a 'frozen' meter policy would hold it all mission
+  // long and hand it back after MISSION PASSED (found in the playthrough: M10 ended at Chappal Meter 1).
+  // Days that pass normally in free roam keep the meter; a scripted (locked) meter is left alone.
+  N.on('calendar:change', (d) => {
+    try {
+      if (!d || d.reason !== 'jump' || !d.prev || !d.date) return;
+      if (d.prev.y === d.date.y && d.prev.m === d.date.m && d.prev.d === d.date.d) return;
+      const W = wanted();
+      if (W && (W.level | 0) > 0 && W.locked == null) wantedClear('sleep');
+    } catch (e) { N.err('story.newday', e); }
+  });
   N.on('mission:complete', () => { const p = N.player; if (p) S.stepOut = { x: p.x, y: p.y }; });
   N.on('mission:start', (d) => {
     cleanupAll(); clearGivers();
@@ -62560,11 +62573,13 @@ body.reduced-motion .pg-hud.show { animation: none; }
  *   ledger N.minigames.ledger). Story games pay through the mission (params.reward if given).
  *
  * CONTROLS (the normal on-foot controls; keyboard, touch joystick + ACTION / RUN, gamepad)
- *   move = walk, RUN = run (maram pitti: a RUN tap is a quick dodge hop), ACTION = the context action shown
- *   on the button / prompt: pick up / stack a stone, grab the ball, throw (tap = normal, hold = hard throw),
- *   catch. Lingocha line throw: ←/→ (or the stick / mouse pointer / the 3D camera) aims, hold ACTION (or the
- *   mouse button) to charge the power and let go to throw; on touch screens drag back on the picture and let
- *   go (slingshot). Aim assist on phones / with Assist.
+ *   move = walk, RUN = run (maram pitti: a RUN tap is a short committed dodge hop; with no direction held it goes
+ *   across the thrower's line), ACTION = the context action shown on the button / prompt: pick up / stack a stone,
+ *   grab the ball, throw (tap = normal, hold = hard throw), catch. Lingocha line throw: ←/→ (or a pad stick /
+ *   mouse pointer / the 3D camera) aims, hold ACTION (or the mouse button) to charge the power and let go to
+ *   throw; on touch screens (top-down) pull back from the stack — a drag on the picture, or the stick, which is a
+ *   catapult at the line — and let go. Aim assist on phones / with Assist. After a free-roam game "Play again"
+ *   stays under Chinnu for a few seconds.
  *
  * HOOKS INTO OTHER MODULES (installed from this file only; nothing else is edited)
  *   - N.minigames: registers 'lingocha' and 'marampitti' (defs with inWorld: true) and wraps play / start /
@@ -62579,7 +62594,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
  *   - N.view3d.registerLayer('playgroundGames'): stones, ball, chalk line, aim arrow, team rings in 3D (the
  *     kids are entities of kind 'ped' with N.people looks, so view3d_actors draws them).
  *   - N.clock.hold('playground-game') during a real game (the clock then crawls at TUNE.clockRate game minutes
- *     per second), N.render.baseZoom (top-down: zoomed in to fit the ground, 1-1.8) during a real game,
+ *     per second), N.render.baseZoom (top-down: zoomed in to fit the ground, 1-2.2, 2.6 on an upright phone) during a real game,
  *     N.input.setLabel('run', 'DODGE'); mission givers' when() is wrapped once so no giver's J-card starts a
  *     mission while a game is on (the colony ground carries the gully-league giver).
  *   - N.wanted.addHeat(15, 'ball') when Chinnu's throw hits an adult passer-by; a broken window (Chinnu's ball
@@ -62618,7 +62633,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     // with the ball you only shuffle (holdWalk x walk): you throw from about where you picked it up
     // minD: a holder steps back (backWalk x walk) rather than throw at a kid nearer than this (point-blank is
     // unsporting and undodgeable); spread: kids keep this far apart while they scatter (no clumps)
-    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46, holdWalk: 0.22, look: [0.55, 1.3], range: [44, 56], minD: 18, backWalk: 0.4, spread: 13, hopT: 0.16, bound: 10, boundT: 4 },
+    maram: { kids: 8, time: 150, holdMax: 3.2, tossVz: 70, fouls: 3, dashV: 95, dashCD: 0.8, keepAway: 46, holdWalk: 0.22, look: [0.55, 1.3], range: [44, 56], minD: 18, backWalk: 0.4, spread: 13, hopT: 0.16, bound: 10, boundT: 4, lineWarn: 7 },
     // the line throw: the aim starts a little off the stack (straighten it), accuracy drops with power
     aim: { rotKey: 0.95, cycle: 1.25, assistSnap: 0.14, elev: 0.085, min: 85, span: 150, drag: 130, startOff: [0.06, 0.2], err: 0.026, errPow: 0.075 },
     pay: { win: 200, win3: 300, daily: 3 },
@@ -63520,12 +63535,16 @@ body.reduced-motion .pg-hud.show { animation: none; }
       }
       // throwers: Chinnu when his team seeks (a real game), else the seekers in turn
       L.throwers = S.me && S.me.team === L.seek ? [S.me] : seek.filter((P) => !P.dood);
-      seek.forEach((P, i) => {
-        const off = (i - (seek.length - 1) / 2) * 7;
-        const q = clampIn(F, ln.x - ux * 6 + vx * off, ln.y - uy * 6 + vy * off, 3);
-        P.spot = spotNear(q.x, q.y, 3, 12, F);
-      });
+      // the thrower toes the line; the rest of his team wait beside it (not right behind him, where they would
+      // fill the 3D camera's view of the stack)
       const thrower = L.throwers[0] || seek[0];
+      let j = 0;
+      for (const P of seek) {
+        if (P === thrower) continue;
+        const off = (j % 2 ? 1 : -1) * (10 + 7 * Math.floor(j / 2)); j++;
+        const q = clampIn(F, ln.x - ux * 4 + vx * off, ln.y - uy * 4 + vy * off, 3);
+        P.spot = spotNear(q.x, q.y, 3, 12, F);
+      }
       if (thrower) thrower.spot = { x: ln.x, y: ln.y };
       const away = Math.atan2(uy, ux);
       hit.forEach((P, i) => {
@@ -64134,7 +64153,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
         if (S.tele.to === me) return true;
         // standing on the line past his mark: a miss comes your way
         const tl = teleLine(S);
-        if (segDist(p.x, p.y, tl.ax, tl.ay, tl.ex, tl.ey) < 5.5 && hyp(p.x - tl.ax, p.y - tl.ay) > 8) return true;
+        if (segDist(p.x, p.y, tl.ax, tl.ay, tl.ex, tl.ey) < TUNE.maram.lineWarn && hyp(p.x - tl.ax, p.y - tl.ay) > 8) return true;
       }
       if (b.state === 'air' && b.live && b.thrower && b.thrower !== me) {
         const rx = p.x - b.x, ry = p.y - b.y, vv = b.vx * b.vx + b.vy * b.vy;
@@ -77174,6 +77193,7 @@ if (ngShine > 0.01) {
     'vec3 aRotZ(vec3 p, vec2 c, float a){ float s = sin(a), k = cos(a); vec2 q = p.xy - c; return vec3(q.x * k - q.y * s + c.x, q.x * s + q.y * k + c.y, p.z); }',
     'vec3 aRotX(vec3 p, vec2 c, float a){ float s = sin(a), k = cos(a); vec2 q = p.yz - c; return vec3(p.x, q.x * k - q.y * s + c.x, q.x * s + q.y * k + c.y); }',
     'vec3 aRotY(vec3 p, vec2 c, float a){ float s = sin(a), k = cos(a); vec2 q = p.xz - c; return vec3(q.x * k - q.y * s + c.x, p.y, q.x * s + q.y * k + c.y); }',
+    'vec3 aRotAx(vec3 v, vec3 u, float a){ float s = sin(a), k = cos(a); return v * k + cross(u, v) * s + u * dot(u, v) * (1.0 - k); }',
     'float aBit(float m, float b){ return mod(floor(m / exp2(b) + 0.0001), 2.0); }',
   ].join('\n') + '\n';
 
@@ -77219,7 +77239,11 @@ if (ngShine > 0.01) {
       '    float sh = side < 0.0 ? iJ1.x : iJ1.y; float el = side < 0.0 ? iJ1.z : iJ1.w; float ab = side < 0.0 ? iJ2.x : iJ2.y;',
       '    if (part > 6.5) { p = aRotZ(p, vec2(0.0, ' + EL_Y.toFixed(3) + '), el); n = aRotZ(n, vec2(0.0), el); }',
       '    p = aRotZ(p, vec2(0.0, ' + SH_Y.toFixed(3) + '), sh); n = aRotZ(n, vec2(0.0), sh);',
-      '    p = aRotX(p, vec2(' + SH_Y.toFixed(3) + ', side * ' + SH_Z.toFixed(3) + '), -side * ab); n = aRotX(n, vec2(0.0), -side * ab);',
+      // swing out of the sagittal plane about the horizontal axis perpendicular to shoulder -> hand
+      // (a hanging arm lifts sideways; an arm reaching forward swings out to a wide handlebar)
+      '    vec2 hd = aRotZ(aRotZ(vec3(0.0, ' + HAND_Y.toFixed(3) + ', 0.0), vec2(0.0, ' + EL_Y.toFixed(3) + '), el), vec2(0.0, ' + SH_Y.toFixed(3) + '), sh).xy - vec2(0.0, ' + SH_Y.toFixed(3) + ');',
+      '    vec2 dn = normalize(hd + vec2(0.0, -0.0001)); vec3 ax = vec3(-dn.y, dn.x, 0.0); vec3 sp = vec3(0.0, ' + SH_Y.toFixed(3) + ', side * ' + SH_Z.toFixed(3) + ');',
+      '    p = aRotAx(p - sp, ax, -side * ab) + sp; n = aRotAx(n, ax, -side * ab);',
       '  } else if (part > 8.5 && part < 9.5) {',
       '    if (aBit(iFlags.w, ' + BIT_KID + '.0) > 0.5) { p.xy = (p.xy - vec2(0.05, ' + NECK_Y.toFixed(3) + ')) * 1.16 + vec2(0.05, ' + NECK_Y.toFixed(3) + '); p.z *= 1.16; }',
       '    p = aRotY(p, vec2(0.05, 0.0), iJ3.x); n = aRotY(n, vec2(0.0), iJ3.x);',
@@ -77620,16 +77644,24 @@ if (ngShine > 0.01) {
   const ARM_REACH = (UARM + FARM) * 0.985;
   function armNeed(lean, x, y, z) {
     const c = Math.cos(lean), s = Math.sin(lean), qy = y - HIP_Y;
-    return Math.hypot(x * c - qy * s, x * s + qy * c + HIP_Y - SH_Y, Math.max(0, Math.abs(z) - SH_Z) * 0.8);
+    return Math.hypot(x * c - qy * s, x * s + qy * c + HIP_Y - SH_Y, Math.abs(z) - SH_Z);
+  }
+  /** one arm (k 0 = left, z < 0; 1 = right) to a 3D hand target in the unleaned body frame: 2-bone IK
+   *  in the sagittal plane at the full 3D distance, then the out-of-plane swing (j[8 + k], see the
+   *  shader) carries the hand out to the target's lateral offset */
+  function armIK(j, k, x, y, z) {
+    const side = k ? 1 : -1, dy = y - SH_Y, ds = Math.hypot(x, dy) || 1e-6;
+    const lat = side * z - SH_Z, d3 = Math.hypot(ds, lat);
+    ik2(0, SH_Y, x / ds * d3, SH_Y + dy / ds * d3, UARM, FARM, -1, IKO, 0);
+    j[4 + k] = IKO[0]; j[6 + k] = IKO[1];
+    j[8 + k] = clamp(Math.atan2(lat, ds), -0.6, 1.3);
   }
   function armsTo(j, lean, lx, ly, lz, rx, ry, rz, maxLean) {
     if (maxLean > lean) for (let k = 0; k < 16 && lean < maxLean && Math.max(armNeed(lean, lx, ly, lz), armNeed(lean, rx, ry, rz)) > ARM_REACH; k++) lean = Math.min(maxLean, lean + 0.05);
     const c = Math.cos(lean), s = Math.sin(lean);
     const un = (x, y) => { const qx = x, qy = y - HIP_Y; return [qx * c - qy * s, qx * s + qy * c + HIP_Y]; }; // undo the forward lean
     const L = un(lx, ly), R = un(rx, ry);
-    ik2(0, SH_Y, L[0], L[1], UARM, FARM, -1, IKO, 0); j[4] = IKO[0]; j[6] = IKO[1];
-    ik2(0, SH_Y, R[0], R[1], UARM, FARM, -1, IKO, 0); j[5] = IKO[0]; j[7] = IKO[1];
-    j[8] = clamp((Math.abs(lz) - SH_Z) / 2.6, -0.25, 0.6); j[9] = clamp((Math.abs(rz) - SH_Z) / 2.6, -0.25, 0.6);
+    armIK(j, 0, L[0], L[1], lz); armIK(j, 1, R[0], R[1], rz);
     j[10] = lean;
   }
   function legsTo(j, lx, ly, rx, ry) {

@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 385272,
+ "bytes": 354652,
  "clips": {},
  "family": "character",
  "file": "kid_chinnu.glb",
@@ -52,15 +52,15 @@
  "images": [
   "image/webp"
  ],
- "kb": 376.2,
+ "kb": 346.3,
  "kit": 1,
  "materials": [
   "M_kid_chinnu"
  ],
  "max": [
-  2.235,
-  0.857,
-  7.41
+  2.233,
+  0.91,
+  7.413
  ],
  "meta": {
   "bones": [
@@ -160,16 +160,16 @@
   }
  },
  "min": [
-  -2.235,
+  -2.233,
   -0.978,
   -0.0
  ],
  "notes": [],
  "script": "characters",
  "size": [
-  4.47,
-  1.835,
-  7.41
+  4.466,
+  1.888,
+  7.413
  ],
  "tint": {
   "attribute": "_REGION",
@@ -263,7 +263,7 @@
    }
   }
  },
- "tris": 4578,
+ "tris": 4118,
  "units": "u",
  "up": "Z"
 }

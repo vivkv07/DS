@@ -2640,6 +2640,19 @@
     if (mode() === 'play' && !run()) prologue();
   });
   for (const ev of ['mission:complete', 'mission:fail', 'mission:abort']) N.on(ev, () => { cleanupAll(); });
+  // A ▶▶ / ◀◀ jump to another day (a mission's start date, a scene's next morning, a replay) leaves last night
+  // behind: the Chappal Meter from before the jump (e.g. the curfew level after an SA1 pandal night at 22:00)
+  // must not ride into the next afternoon's mission, where a 'frozen' meter policy would hold it all mission
+  // long and hand it back after MISSION PASSED (found in the playthrough: M10 ended at Chappal Meter 1).
+  // Days that pass normally in free roam keep the meter; a scripted (locked) meter is left alone.
+  N.on('calendar:change', (d) => {
+    try {
+      if (!d || d.reason !== 'jump' || !d.prev || !d.date) return;
+      if (d.prev.y === d.date.y && d.prev.m === d.date.m && d.prev.d === d.date.d) return;
+      const W = wanted();
+      if (W && (W.level | 0) > 0 && W.locked == null) wantedClear('sleep');
+    } catch (e) { N.err('story.newday', e); }
+  });
   N.on('mission:complete', () => { const p = N.player; if (p) S.stepOut = { x: p.x, y: p.y }; });
   N.on('mission:start', (d) => {
     cleanupAll(); clearGivers();

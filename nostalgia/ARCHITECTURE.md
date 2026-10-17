@@ -976,15 +976,23 @@ N.playgroundGames: current, isOpen(), abort(reason), fields() (open-ground recta
   finishRound, setTimer, breakWindow, ballTo, toss, end, simulate(gid, place, secs) (AI-only fast sim)}
 ```
 Rules: lingocha — the seekers get 3 tries from the chalk line (aim + power: ←/→ / stick / mouse / the 3D
-camera, hold ACTION and let go; touch: drag back on the picture and let go), the stones scatter, the seekers
+camera, hold ACTION and let go; touch (top-down): pull back from the stack — on the picture or with the stick, which
+is a catapult while Chinnu is at the line — and let go), the stones scatter, the seekers
 restack them one at a time (one pair of hands on the stack at once) while the hitters throw the ball at them
 (hit on the full = out, no head shots, a touch on a hitter = SAFE 2.4 s, Chitti is doodh-bhaat), seven back =
 "LINGOCHA!"; roles swap every round, best of 3. Maram pitti — the ball is tossed up and every throw must
 bounce before anyone grabs it (a catch on the full puts the thrower out), hit on the full = out, head shots are
-fouls (3 = out), RUN taps dodge, last one standing wins. Free-roam pay (systems §2.4): ₹2 a win, ₹3 for 3 stars,
+fouls (3 = out), a RUN tap (DODGE) is a short committed hop (with no direction held: across the red wind-up line /
+the ball's line), last one standing wins. Kid manners in the AI: the holder steps back rather than throw point-blank
+(`TUNE.maram.minD` 18 u), kids spread out as they scatter, a missed throw dies 12 u past its mark; hiding more than
+10 u off the ground for 4 s is out (warned; fetching a ball that rolled off is fine); a ball rolling more than 16 u
+off the ground soon stops. During a real game Chinnu's run drains half the stamina (`TUNE.runRefund`), and fetching
+the ball does not count as walking off. Free-roam pay (systems §2.4): ₹2 a win, ₹3 for 3 stars,
 max 3 paid wins per game per game-day in the shared `N.minigames.ledger`. Offers "Join lingocha" / "Join maram
 pitti" (`pg:<game>:<ground>`, priority -1) sit next to the gully-cricket offer while kids are out (school days
-16:00-18:30, holidays / Sundays 08:00-18:30, not in the rain). Ambient: near a ground in that window with no
+16:00-18:30, holidays / Sundays 08:00-18:30, not in the rain); after a free-roam game a "Play again" per-step
+offer (priority 1) stays under Chinnu for 10 s. The play area is the largest open rectangle in the park, kept 11 u
+off the regulars' schedule spots (`N.npcs.schedules`: the gate aunties' bench). Ambient: near a ground in that window with no
 mission running, the kids play gully cricket (places_art), lingocha or maram pitti (simulated here, all AI) with
 barks. Chappal Meter: Chinnu's ball on an adult passer-by `N.wanted.addHeat(15, 'ball')`; Chinnu's ball through a
 house window at window height ends the game ("KHANNN!", +30 heat, the aunty keeps the ball for the day).
@@ -992,10 +1000,10 @@ Hooks (from playground_games.js only): the 3D layer `playgroundGames` (stones, b
 `N.render.queue` drops places_art's static cricket kids (actors layer, that ground's sort key) while its draw
 runs (marker systems `pg.paOn` / `pg.paOff` at order 42.95 / 43.05) at a ground taken by our games; during a real
 game: `N.clock.hold('playground-game')` (the clock crawls at 0.25 game-min/s), `N.render.baseZoom` fits the
-ground (1-1.8, top-down), `N.traffic.closeRoads('pg', ...)`, traffic's 'playground' crowd zone moved to the
+ground (1-2.2 top-down; up to 2.6 on an upright phone, fitted to the width), `N.traffic.closeRoads('pg', ...)`, traffic's 'playground' crowd zone moved to the
 sideline (spectators), mission givers' `when()` wrapped so no J-card starts a mission mid-game, an N.npcs actor
 of a playing friend standing at the ground hidden while its double plays. Test: `node tests/playground_games.cjs`
-(ONLY=desktop|ambient|3d|portrait|landscape).
+(ONLY=desktop|fixes|ambient|3d|portrait|landscape).
 
 ## 19. Story layer (integration contract)
 

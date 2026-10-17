@@ -555,6 +555,7 @@
     'vec3 aRotZ(vec3 p, vec2 c, float a){ float s = sin(a), k = cos(a); vec2 q = p.xy - c; return vec3(q.x * k - q.y * s + c.x, q.x * s + q.y * k + c.y, p.z); }',
     'vec3 aRotX(vec3 p, vec2 c, float a){ float s = sin(a), k = cos(a); vec2 q = p.yz - c; return vec3(p.x, q.x * k - q.y * s + c.x, q.x * s + q.y * k + c.y); }',
     'vec3 aRotY(vec3 p, vec2 c, float a){ float s = sin(a), k = cos(a); vec2 q = p.xz - c; return vec3(q.x * k - q.y * s + c.x, p.y, q.x * s + q.y * k + c.y); }',
+    'vec3 aRotAx(vec3 v, vec3 u, float a){ float s = sin(a), k = cos(a); return v * k + cross(u, v) * s + u * dot(u, v) * (1.0 - k); }',
     'float aBit(float m, float b){ return mod(floor(m / exp2(b) + 0.0001), 2.0); }',
   ].join('\n') + '\n';
 
@@ -600,7 +601,11 @@
       '    float sh = side < 0.0 ? iJ1.x : iJ1.y; float el = side < 0.0 ? iJ1.z : iJ1.w; float ab = side < 0.0 ? iJ2.x : iJ2.y;',
       '    if (part > 6.5) { p = aRotZ(p, vec2(0.0, ' + EL_Y.toFixed(3) + '), el); n = aRotZ(n, vec2(0.0), el); }',
       '    p = aRotZ(p, vec2(0.0, ' + SH_Y.toFixed(3) + '), sh); n = aRotZ(n, vec2(0.0), sh);',
-      '    p = aRotX(p, vec2(' + SH_Y.toFixed(3) + ', side * ' + SH_Z.toFixed(3) + '), -side * ab); n = aRotX(n, vec2(0.0), -side * ab);',
+      // swing out of the sagittal plane about the horizontal axis perpendicular to shoulder -> hand
+      // (a hanging arm lifts sideways; an arm reaching forward swings out to a wide handlebar)
+      '    vec2 hd = aRotZ(aRotZ(vec3(0.0, ' + HAND_Y.toFixed(3) + ', 0.0), vec2(0.0, ' + EL_Y.toFixed(3) + '), el), vec2(0.0, ' + SH_Y.toFixed(3) + '), sh).xy - vec2(0.0, ' + SH_Y.toFixed(3) + ');',
+      '    vec2 dn = normalize(hd + vec2(0.0, -0.0001)); vec3 ax = vec3(-dn.y, dn.x, 0.0); vec3 sp = vec3(0.0, ' + SH_Y.toFixed(3) + ', side * ' + SH_Z.toFixed(3) + ');',
+      '    p = aRotAx(p - sp, ax, -side * ab) + sp; n = aRotAx(n, ax, -side * ab);',
       '  } else if (part > 8.5 && part < 9.5) {',
       '    if (aBit(iFlags.w, ' + BIT_KID + '.0) > 0.5) { p.xy = (p.xy - vec2(0.05, ' + NECK_Y.toFixed(3) + ')) * 1.16 + vec2(0.05, ' + NECK_Y.toFixed(3) + '); p.z *= 1.16; }',
       '    p = aRotY(p, vec2(0.05, 0.0), iJ3.x); n = aRotY(n, vec2(0.0), iJ3.x);',
@@ -1001,16 +1006,24 @@
   const ARM_REACH = (UARM + FARM) * 0.985;
   function armNeed(lean, x, y, z) {
     const c = Math.cos(lean), s = Math.sin(lean), qy = y - HIP_Y;
-    return Math.hypot(x * c - qy * s, x * s + qy * c + HIP_Y - SH_Y, Math.max(0, Math.abs(z) - SH_Z) * 0.8);
+    return Math.hypot(x * c - qy * s, x * s + qy * c + HIP_Y - SH_Y, Math.abs(z) - SH_Z);
+  }
+  /** one arm (k 0 = left, z < 0; 1 = right) to a 3D hand target in the unleaned body frame: 2-bone IK
+   *  in the sagittal plane at the full 3D distance, then the out-of-plane swing (j[8 + k], see the
+   *  shader) carries the hand out to the target's lateral offset */
+  function armIK(j, k, x, y, z) {
+    const side = k ? 1 : -1, dy = y - SH_Y, ds = Math.hypot(x, dy) || 1e-6;
+    const lat = side * z - SH_Z, d3 = Math.hypot(ds, lat);
+    ik2(0, SH_Y, x / ds * d3, SH_Y + dy / ds * d3, UARM, FARM, -1, IKO, 0);
+    j[4 + k] = IKO[0]; j[6 + k] = IKO[1];
+    j[8 + k] = clamp(Math.atan2(lat, ds), -0.6, 1.3);
   }
   function armsTo(j, lean, lx, ly, lz, rx, ry, rz, maxLean) {
     if (maxLean > lean) for (let k = 0; k < 16 && lean < maxLean && Math.max(armNeed(lean, lx, ly, lz), armNeed(lean, rx, ry, rz)) > ARM_REACH; k++) lean = Math.min(maxLean, lean + 0.05);
     const c = Math.cos(lean), s = Math.sin(lean);
     const un = (x, y) => { const qx = x, qy = y - HIP_Y; return [qx * c - qy * s, qx * s + qy * c + HIP_Y]; }; // undo the forward lean
     const L = un(lx, ly), R = un(rx, ry);
-    ik2(0, SH_Y, L[0], L[1], UARM, FARM, -1, IKO, 0); j[4] = IKO[0]; j[6] = IKO[1];
-    ik2(0, SH_Y, R[0], R[1], UARM, FARM, -1, IKO, 0); j[5] = IKO[0]; j[7] = IKO[1];
-    j[8] = clamp((Math.abs(lz) - SH_Z) / 2.6, -0.25, 0.6); j[9] = clamp((Math.abs(rz) - SH_Z) / 2.6, -0.25, 0.6);
+    armIK(j, 0, L[0], L[1], lz); armIK(j, 1, R[0], R[1], rz);
     j[10] = lean;
   }
   function legsTo(j, lx, ly, rx, ry) {

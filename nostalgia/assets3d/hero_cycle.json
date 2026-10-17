@@ -6,14 +6,14 @@
    6.4157
   ],
   "grip_L": [
-   1.61,
-   -1.7458,
-   6.0307
+   1.613,
+   -1.7078,
+   6.0282
   ],
   "grip_R": [
-   -1.61,
-   -1.7458,
-   6.0307
+   -1.613,
+   -1.7078,
+   6.0282
   ],
   "handlebar": [
    0.0,
@@ -22,7 +22,7 @@
   ],
   "headlight": [
    0.0,
-   -4.5595,
+   -4.5795,
    5.0114
   ],
   "pedal_L": [
@@ -37,13 +37,13 @@
   ],
   "reflector": [
    0.0,
-   8.35,
-   3.75
+   8.3,
+   4.1
   ],
   "seat_driver": [
-   -0.0,
-   1.62,
-   5.3
+   0.0,
+   1.6198,
+   5.2996
   ],
   "seat_pillion": [
    0.0,
@@ -63,7 +63,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 6000,
- "bytes": 512680,
+ "bytes": 322560,
  "clips": {},
  "family": "vehicle",
  "file": "hero_cycle.glb",
@@ -73,16 +73,15 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 500.7,
+ "kb": 315.0,
  "kit": 1,
  "materials": [
-  "M_hero_cycle",
-  "M_hero_cycle_lamp_lens@night"
+  "M_hero_cycle"
  ],
  "max": [
-  1.775,
-  8.346,
-  6.576
+  1.77,
+  8.303,
+  6.546
  ],
  "meta": {
   "bb": [
@@ -92,6 +91,10 @@
   ],
   "crankR": 1.05,
   "gear": 2.4,
+  "kainchi": [
+   "hero_cycle",
+   "old_cycle"
+  ],
   "length": 16.0,
   "parts": [
    "root",
@@ -103,6 +106,22 @@
    "pedal_R",
    "saddle"
   ],
+  "pedal": true,
+  "pedalX": 0.95,
+  "riders": {
+   "driver": {
+    "clips": [
+     "ride_cycle"
+    ],
+    "feet": "pedals",
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "cycle",
+    "seat": "seat_driver"
+   }
+  },
   "saddleDrop": {
    "chinnu_cycle": 0.6
   },
@@ -113,35 +132,57 @@
   ],
   "seat": [
    0.0,
-   1.62,
-   5.3
+   1.6198,
+   5.2996
   ],
   "steerAxis": [
    0.0,
    -0.3809,
    -0.9246
   ],
+  "tintSrc": {
+   "paint": "color"
+  },
   "vehicleTypes": [
    "hero_cycle",
    "old_cycle",
    "chinnu_cycle"
   ],
-  "wheelR": 3.0
+  "wheelR": 3.0,
+  "wheels": {
+   "wheel_front": 3.0,
+   "wheel_rear": 3.0
+  }
  },
  "min": [
-  -1.775,
-  -8.344,
+  -1.77,
+  -8.295,
   -0.0
  ],
  "notes": [],
  "script": "vehicles",
  "size": [
-  3.549,
-  16.69,
-  6.576
+  3.539,
+  16.599,
+  6.546
  ],
- "tint": null,
- "tris": 5818,
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#141418"
+  }
+ },
+ "tris": 3634,
  "units": "u",
  "up": "Z"
 }

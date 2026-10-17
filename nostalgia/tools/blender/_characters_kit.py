@@ -47,6 +47,8 @@ import kit
 from kit import loft, material
 
 BASE = list(kit.REGIONS)   # none skin hair shirt stripes pants shoes accent
+# loft / lathe segment counts round the main forms (characters are <= 4000 tris with their slots)
+SEG = {'torso': 12, 'arm': 8, 'hand': 6, 'thumb': 5, 'leg': 8, 'shoe': 8, 'foot': 7, 'skirt': 14, 'head': 14, 'eye': 8, 'hair': 14, 'cap': 12}
 MAX_REGIONS = 24
 
 
@@ -356,7 +358,7 @@ class Body:
         rings2 = out[start:]
         if top == 'burqa':
             rings2 = rings2[:-1]
-        ob = loft('torso', rings2, seg=14, side=(1, 0, 0), cap_start=bool(start), cap_end=False)
+        ob = loft('torso', rings2, seg=SEG['torso'], side=(1, 0, 0), cap_start=bool(start), cap_end=False)
         self.add(ob)
         # shirt collar points
         col = s.get('collar')
@@ -451,7 +453,7 @@ class Body:
                           dict(c=af(0.3), r=r_fa, w={fa: 1}, mat=sk),
                           dict(c=af(0.75), r=r_wr * 1.05, w={fa: 0.9, hd: 0.1}, mat=sk),
                           dict(c=af(1.0), r=r_wr * 0.9, w={fa: 0.4, hd: 0.6}, mat=sk)]
-            self.add(loft('arm_' + S, rings, seg=10, side=(0, 1, 0), cap_start=True, cap_end=True))
+            self.add(loft('arm_' + S, rings, seg=SEG['arm'], side=(0, 1, 0), cap_start=True, cap_end=True))
             self.hand(sx, S)
 
     def hand(self, sx, S):
@@ -468,12 +470,12 @@ class Body:
         for h in H:
             h['w'] = {hd: 1}
             h['mat'] = sk
-        self.add(loft('hand_' + S, H, seg=8, side=(0, -1, 0)))
+        self.add(loft('hand_' + S, H, seg=SEG['hand'], side=(0, -1, 0)))
         th0 = mir(lerp(wr, tip, 0.22), sx)
         th = [dict(c=th0, r=0.065 * hk, w={hd: 1}, mat=sk),
               dict(c=(th0[0] + 0.06 * sx * hk, th0[1] - 0.15 * hk, th0[2] - 0.08 * hk), r=0.06 * hk, w={hd: 1}, mat=sk),
               dict(c=(th0[0] + 0.09 * sx * hk, th0[1] - 0.24 * hk, th0[2] - 0.17 * hk), r=0.04 * hk, w={hd: 1}, mat=sk)]
-        self.add(loft('thumb_' + S, th, seg=6, side=(1, 0, 0)))
+        self.add(loft('thumb_' + S, th, seg=SEG['thumb'], side=(1, 0, 0)))
 
     # ------------------------------------------------------------------ legs
     def legs(self):
@@ -540,7 +542,7 @@ class Body:
                 rings += [dict(c=ls(0.7), r=r_an * 1.12, w={sh: 1}, mat=sk),
                           dict(c=ls(0.95), r=r_an, w={sh: 0.6, ft: 0.4}, mat=sk),
                           dict(c=mir((an[0], an[1] + 0.03, 0.2 * k), sx), r=r_an * 1.05, w={ft: 1}, mat=sk)]
-            self.add(loft('leg_' + S, rings, seg=10, side=(1, 0, 0), cap_start=True, cap_end=True))
+            self.add(loft('leg_' + S, rings, seg=SEG['leg'], side=(1, 0, 0), cap_start=True, cap_end=True))
             self.foot(sx, S)
 
     def foot(self, sx, S):
@@ -556,7 +558,7 @@ class Body:
                      dict(c=mir((bl[0], bl[1] + 0.05, 0.17 * k), sx), r=(0.21 * k, 0.12 * k), w={ft: 0.5, to: 0.5}, mat=sm),
                      dict(c=mir((tp[0], tp[1] + 0.12 * k, 0.15 * k), sx), r=(0.185 * k, 0.1 * k), w={to: 1}, mat=sm),
                      dict(c=mir((tp[0], tp[1] - 0.04, 0.12 * k), sx), r=(0.09 * k, 0.06 * k), w={to: 1}, mat=sm)]
-            o = loft('shoe_' + S, rings, seg=10, side=(1, 0, 0))
+            o = loft('shoe_' + S, rings, seg=SEG['shoe'], side=(1, 0, 0))
             self.add(o)
             # sole (flat on z = 0)
             so = self.M.get('sole', sm)
@@ -572,7 +574,7 @@ class Body:
                  dict(c=mir((tp[0], tp[1] - 0.01, 0.11 * k), sx), r=(0.09 * k, 0.04 * k), w={to: 1})]
         for r in rings:
             r['mat'] = sk
-        self.add(loft('foot_' + S, rings, seg=8, side=(1, 0, 0)))
+        self.add(loft('foot_' + S, rings, seg=SEG['foot'], side=(1, 0, 0)))
         if fw == 'bare':
             return
         s2 = self.k * (1.0 if self.rig == 'kid' else 0.98)
@@ -585,7 +587,7 @@ class Body:
             t0 = (x0 + 0.02 * sx * s2, -0.62 * s2, 0.07 * k)
             for side in (1, -1):
                 pts = [t0, (x0 + 0.06 * side * sx * s2, -0.42 * s2, 0.2 * k), (x0 + 0.15 * side * sx * s2, -0.2 * s2, 0.2 * k), (x0 + 0.2 * side * sx * s2, -0.08 * s2, 0.07 * k)]
-                self.add(kit.tube('strap', pts, 0.036 * k, seg=6, mat=st), self._sole_w(S))
+                self.add(kit.tube('strap', pts, 0.036 * k, seg=4, mat=st), self._sole_w(S))
         else:  # sandal: a broad strap over the instep + a toe loop + heel strap
             pts = [(x0 - 0.21 * s2 * sx, -0.3 * s2, 0.06 * k), (x0 - 0.12 * s2 * sx, -0.32 * s2, 0.24 * k), (x0 + 0.05 * s2 * sx, -0.33 * s2, 0.27 * k), (x0 + 0.2 * s2 * sx, -0.3 * s2, 0.08 * k)]
             self.add(kit.tube('strap', pts, 0.06 * k, seg=6, mat=st), self._sole_w(S))
@@ -602,21 +604,22 @@ class Body:
         return w
 
     def sole(self, sx, S, outline, z0, z1, m_sole, m_bed):
+        """a flat sole slab on z = 0 (one object: the top face gets the bed material)"""
         J = self.J
         x0 = J['ankle'][0] * sx
         if sx < 0:
             outline = [(-x, y) for (x, y) in reversed(outline)]
         poly = [(x0 + x, y) for (x, y) in outline]
-        objs = []
+        top = z1 + (0.03 * self.k if m_bed is not None else 0.0)
+        o = kit.extrude_polygon('sole', poly, z0, top, m_sole)
         if m_bed is not None:
-            objs.append(kit.extrude_polygon('sole', poly, z0, z1, m_sole))
-            objs.append(kit.extrude_polygon('bed', poly, z1, z1 + 0.03 * self.k, m_bed))
-        else:
-            objs.append(kit.extrude_polygon('sole', poly, z0, z1, m_sole))
-        for o in objs:
-            kit.bevel_mod(o, 0.012 * self.k, 1, angle=30)
-            kit.apply_modifiers(o)
-            self.add(o, self._sole_w(S))
+            if m_bed.name not in [m.name for m in o.data.materials if m]:
+                o.data.materials.append(m_bed)
+            bi = [m.name for m in o.data.materials].index(m_bed.name)
+            for p in o.data.polygons:
+                if p.normal.z > 0.9:
+                    p.material_index = bi
+        self.add(o, self._sole_w(S))
 
     # ------------------------------------------------------------------ skirts (wraps / tails)
     def skirt(self, kind=None, m=None, hem_z=None, flare=None, z_top=None, front_pleat=False, border=None, slit=False, rings_n=6):
@@ -663,7 +666,7 @@ class Body:
             rings[-1]['mat'] = bm_
         last = rings[-1]
         rings.append(dict(c=(last['c'][0], last['c'][1], hem), r=(last['r'][0] * 0.94, last['r'][1] * 0.94), p=2.2, w={'hips': 1}, mat=last.get('mat', m)))
-        ob = loft('skirt_' + kind, rings, seg=16, side=(1, 0, 0), cap_start=False, cap_end=False)
+        ob = loft('skirt_' + kind, rings, seg=SEG['skirt'], side=(1, 0, 0), cap_start=False, cap_end=False)
         # the hem has a visible inside: a second, slightly smaller ring going up (thickness)
         ob = self._thicken_hem(ob, 0.05 * k)
         hipL = Vector(J['hip'])
@@ -736,8 +739,8 @@ class Body:
 # =========================================================================== heads, faces, hair
 # Skull rings (dz above the head joint, dy, rx, ry) before scaling; the toy face sits on them.
 HEADS = {
-    'kid': [(-0.02, -0.12, 0.19, 0.15), (0.10, -0.09, 0.37, 0.36), (0.30, -0.02, 0.51, 0.52), (0.52, 0.02, 0.565, 0.58),
-            (0.74, 0.04, 0.58, 0.60), (0.95, 0.05, 0.55, 0.585), (1.11, 0.05, 0.455, 0.49), (1.22, 0.05, 0.26, 0.28), (1.255, 0.05, 0.05, 0.06)],
+    'kid': [(-0.02, -0.10, 0.15, 0.13), (0.11, -0.08, 0.33, 0.32), (0.30, -0.03, 0.475, 0.49), (0.52, 0.02, 0.555, 0.575),
+            (0.74, 0.04, 0.585, 0.60), (0.95, 0.05, 0.56, 0.59), (1.11, 0.05, 0.47, 0.50), (1.22, 0.05, 0.28, 0.30), (1.255, 0.05, 0.05, 0.06)],
     'man': [(-0.12, -0.13, 0.22, 0.17), (0.03, -0.11, 0.40, 0.35), (0.25, -0.05, 0.49, 0.50), (0.50, 0.01, 0.535, 0.56),
             (0.74, 0.04, 0.545, 0.585), (0.96, 0.05, 0.53, 0.57), (1.12, 0.05, 0.44, 0.48), (1.23, 0.05, 0.25, 0.28), (1.265, 0.05, 0.05, 0.06)],
     'woman': [(-0.08, -0.13, 0.18, 0.15), (0.06, -0.10, 0.36, 0.34), (0.27, -0.04, 0.48, 0.50), (0.51, 0.01, 0.53, 0.56),
@@ -784,7 +787,7 @@ class Head:
     def skull(self):
         sk = self.M['skin']
         rings = [dict(c=(0, self.cy + t[1], self.hz + t[0]), r=(t[2], t[3]), w={'head': 1}, mat=sk) for t in self.T]
-        return self.add(loft('head', rings, seg=16, side=(1, 0, 0), cap_start=True, cap_end=True))
+        return self.add(loft('head', rings, seg=SEG['head'], side=(1, 0, 0), cap_start=True, cap_end=True))
 
     def face(self):
         o, M = self.o, self.M
@@ -799,7 +802,7 @@ class Head:
         for sx in (1, -1):
             x = ex * sx
             y = self.front_y(x, ez) + 0.012
-            e = kit.lathe('eye', [(0.0, -ed), (ew * 0.75, -ed * 0.72), (ew, 0.0), (ew * 0.75, ed * 0.72), (0.0, ed)], seg=10, mat=M['eye_dark'])
+            e = kit.lathe('eye', [(0.0, -ed), (ew * 0.75, -ed * 0.72), (ew, 0.0), (ew * 0.75, ed * 0.72), (0.0, ed)], seg=SEG['eye'], mat=M['eye_dark'])
             e.scale = (1.0, 1.0, 1.0)
             e.rotation_euler = (math.radians(90), 0, 0)
             kit.apply_transform(e)
@@ -829,9 +832,9 @@ class Head:
             # ears
             ey = self.cy + 0.06
             rx = self.ring_at(ez - 0.08)[1]
-            self.add(loft('ear', [dict(c=(rx * 0.86 * sx, ey, ez - 0.22), r=(0.05, 0.08), w={'head': 1}, mat=M['skin']),
-                                  dict(c=((rx + 0.07) * sx, ey + 0.02, ez - 0.12), r=(0.045, 0.13), w={'head': 1}, mat=M['skin']),
-                                  dict(c=((rx + 0.06) * sx, ey + 0.05, ez + 0.02), r=(0.035, 0.09), w={'head': 1}, mat=M['skin'])],
+            self.add(loft('ear', [dict(c=(rx * 0.9 * sx, ey, ez - 0.2), r=(0.04, 0.065), w={'head': 1}, mat=M['skin']),
+                                  dict(c=((rx + 0.04) * sx, ey + 0.03, ez - 0.11), r=(0.04, 0.1), w={'head': 1}, mat=M['skin']),
+                                  dict(c=((rx + 0.035) * sx, ey + 0.05, ez + 0.0), r=(0.032, 0.075), w={'head': 1}, mat=M['skin'])],
                               seg=6, side=(0, 1, 0)))
         # nose: a small rounded button (kids) / a bit longer (adults)
         ny = self.front_y(0, ez - 0.12)
@@ -872,7 +875,7 @@ class Head:
             if dz >= 1.26:
                 rx, ry = (0.14, 0.16) if dz < 1.29 else (0.03, 0.04)
             rings.append(dict(c=(0, self.cy + dy0 + 0.01, self.hz + dz + (offset * crown if dz > 1.1 else 0)), r=(rx + offset, ry + offset), w={'head': 1}, mat=m))
-        hc = loft(name, rings, seg=16, side=(1, 0, 0), cap_start=False, cap_end=True)
+        hc = loft(name, rings, seg=SEG['hair'], side=(1, 0, 0), cap_start=False, cap_end=True)
         if line is None:
             def line(front, side):
                 return 0.66 + 0.38 * front ** 1.5 - 0.12 * side * (1 - front)
@@ -896,8 +899,8 @@ class Head:
         d = Vector(d).normalized()
         mid = base + d * L * 0.5 + (Vector(bend) * L if bend else Vector())
         end = base + d * L + (Vector(bend) * L * 1.6 if bend else Vector())
-        return self.add(loft(name, [dict(c=tuple(base - d * 0.04), r=r0, w={'head': 1}, mat=m), dict(c=tuple(mid), r=r0 * 0.62, w={'head': 1}, mat=m),
-                                    dict(c=tuple(end), r=0.015, w={'head': 1}, mat=m)], seg=seg, side=(0, 0, 1)))
+        return self.add(loft(name, [dict(c=tuple(base - d * 0.06), r=r0 * 0.9, w={'head': 1}, mat=m), dict(c=tuple(mid), r=r0 * 0.72, w={'head': 1}, mat=m),
+                                    dict(c=tuple(end), r=0.03, w={'head': 1}, mat=m)], seg=seg, side=(0, 0, 1)))
 
     def hair(self, style, m):
         hz, cy = self.hz, self.cy
@@ -905,19 +908,19 @@ class Head:
             # Chinnu: a chunky crop of upswept locks round the crown, a three-spike fringe, the cowlick
             self.cap(m, 0.03, line=lambda f, s: 0.62 + 0.36 * f ** 1.6 - 0.1 * s * (1 - f))
             rnd = random.Random(11)
-            for ring_z, n, kout, kback, kup, L0, r0, skip in ((1.17, 6, 0.3, 0.9, 0.55, 0.22, 0.15, False), (1.0, 7, 0.8, 0.5, 0.25, 0.24, 0.14, True), (0.82, 6, 0.7, 0.45, -0.45, 0.2, 0.13, True)):
+            for ring_z, n, kout, kback, kup, L0, r0, skip in ((1.16, 5, 0.35, 0.85, 0.6, 0.26, 0.19, False), (0.98, 6, 0.85, 0.45, 0.25, 0.25, 0.17, True), (0.80, 5, 0.75, 0.4, -0.45, 0.2, 0.15, True)):
                 for i in range(n):
-                    a = 2 * math.pi * (i + 0.3 + rnd.random() * 0.35) / n + 0.4
+                    a = 2 * math.pi * (i + 0.3 + rnd.random() * 0.3) / n + 0.4
                     nx, ny = math.cos(a), math.sin(a)
                     if skip and ny < -0.45:
                         continue
                     skf = 1.22 - ring_z * 0.36
                     base = (nx * 0.5 * skf, cy + 0.06 + ny * 0.55 * skf, hz + ring_z + 0.03)
-                    self.tuft(m, base, (nx * kout, ny * kout + kback, kup), L0 * (0.85 + rnd.random() * 0.3), r0)
-            for i, x in enumerate((-0.3, -0.1, 0.1, 0.3)):
+                    self.tuft(m, base, (nx * kout, ny * kout + kback, kup), L0 * (0.85 + rnd.random() * 0.3), r0, seg=6)
+            for i, x in enumerate((-0.24, 0.0, 0.24)):
                 base = (x, cy - 0.41, hz + 1.03 - abs(x) * 0.15)
-                self.tuft(m, base, (x * 0.5, -0.6, -0.5), 0.27, 0.12, name='fringe')
-            self.tuft(m, (0.06, cy + 0.28, hz + 1.22), (0.15, 0.4, 0.9), 0.36, 0.09, name='cowlick', bend=(0, -0.25, 0))
+                self.tuft(m, base, (x * 0.6, -0.6, -0.5), 0.27, 0.15, name='fringe', seg=6)
+            self.tuft(m, (0.06, cy + 0.28, hz + 1.22), (0.15, 0.4, 0.9), 0.36, 0.11, name='cowlick', bend=(0, -0.25, 0), seg=6)
         elif style in ('side', 'oiled', 'crop'):
             off = {'side': 0.045, 'oiled': 0.03, 'crop': 0.025}[style]
             self.cap(m, off, line=(lambda f, s: 0.70 + 0.30 * f ** 1.4 - 0.12 * s * (1 - f)) if style != 'crop' else (lambda f, s: 0.62 + 0.32 * f ** 1.4 - 0.1 * s * (1 - f)), crown=1.3)
@@ -1219,12 +1222,12 @@ def cap(H, m, kind='cricket', brim=None):
     objs = []
     if kind in ('cricket', 'backcap'):
         prof = [(0.62, 0.0), (0.63, 0.12), (0.6, 0.26), (0.5, 0.42), (0.32, 0.53), (0.0, 0.57)]
-        d = kit.lathe('dome', prof, seg=16, mat=m, close_bottom=False)
+        d = kit.lathe('dome', prof, seg=SEG['cap'], mat=m, close_bottom=False)
         d.location = (0, cy + 0.05, hz + 0.86)
         kit.apply_transform(d)
         objs.append(d)
         bm = brim or m
-        b = kit.lathe('brim', [(0.0, 0.0), (0.52, 0.0), (0.52, 0.04), (0.0, 0.04)], seg=14, mat=bm)
+        b = kit.lathe('brim', [(0.0, 0.0), (0.52, 0.0), (0.52, 0.04), (0.0, 0.04)], seg=SEG['cap'], mat=bm)
         b.scale = (0.95, 0.75, 1.0)
         b.rotation_euler = (math.radians(-12), 0, 0)
         b.location = (0, cy - 0.58, hz + 0.9)
@@ -1241,14 +1244,14 @@ def cap(H, m, kind='cricket', brim=None):
         return H.add(o)
     if kind == 'skull':
         prof = [(0.575, 0.0), (0.58, 0.1), (0.55, 0.22), (0.44, 0.33), (0.25, 0.39), (0.0, 0.41)]
-        d = kit.lathe('skullcap', prof, seg=16, mat=m, close_bottom=False)
+        d = kit.lathe('skullcap', prof, seg=SEG['cap'], mat=m, close_bottom=False)
         d.scale = (1.0, 1.03, 1.0)
         d.location = (0, cy + 0.07, hz + 0.98)
         kit.apply_transform(d)
         return H.add(d)
     if kind == 'irani':
         prof = [(0.58, 0.0), (0.6, 0.06), (0.6, 0.3), (0.56, 0.36), (0.0, 0.37)]
-        d = kit.lathe('iranicap', prof, seg=16, mat=m, close_bottom=False)
+        d = kit.lathe('iranicap', prof, seg=SEG['cap'], mat=m, close_bottom=False)
         d.rotation_euler = (math.radians(8), 0, 0)
         d.location = (0, cy + 0.08, hz + 1.0)
         kit.apply_transform(d)
@@ -1272,8 +1275,8 @@ def cap(H, m, kind='cricket', brim=None):
         kit.apply_transform(d)
         return H.add(d)
     if kind == 'police':
-        band = kit.lathe('band', [(0.6, 0.0), (0.61, 0.14), (0.62, 0.22)], seg=16, mat=m, close_bottom=False, close_top=False)
-        top = kit.lathe('crown', [(0.62, 0.22), (0.72, 0.36), (0.74, 0.42), (0.6, 0.47), (0.0, 0.5)], seg=16, mat=m, close_bottom=False)
+        band = kit.lathe('band', [(0.6, 0.0), (0.61, 0.14), (0.62, 0.22)], seg=SEG['cap'], mat=m, close_bottom=False, close_top=False)
+        top = kit.lathe('crown', [(0.62, 0.22), (0.72, 0.36), (0.74, 0.42), (0.6, 0.47), (0.0, 0.5)], seg=SEG['cap'], mat=m, close_bottom=False)
         for o in (band, top):
             o.scale = (1.0, 1.08, 1.0)
             o.location = (0, cy + 0.05, hz + 0.86)
@@ -1294,7 +1297,7 @@ def hood(H, m):
     hz, cy = H.hz, H.cy
     rows = [(0.05, 0.62, 0.66, 0.14), (0.35, 0.68, 0.72, 0.1), (0.7, 0.70, 0.74, 0.06), (1.0, 0.66, 0.7, 0.05), (1.22, 0.5, 0.54, 0.05), (1.38, 0.22, 0.26, 0.05), (1.43, 0.04, 0.05, 0.05)]
     rings = [dict(c=(0, cy + 0.05 + dy, hz + dz), r=(rx, ry), w={'head': 1}, mat=m) for (dz, rx, ry, dy) in rows]
-    ob = loft('hood', rings, seg=16, side=(1, 0, 0), cap_start=False, cap_end=True)
+    ob = loft('hood', rings, seg=SEG['hair'], side=(1, 0, 0), cap_start=False, cap_end=True)
     bm = bmesh.new()
     bm.from_mesh(ob.data)
     kill = []
@@ -1314,7 +1317,7 @@ def head_cover(H, m):
     hz, cy = H.hz, H.cy
     rows = [(-0.35, 0.78, 0.6, 0.18), (-0.05, 0.66, 0.66, 0.12), (0.35, 0.64, 0.68, 0.08), (0.75, 0.66, 0.7, 0.06), (1.05, 0.6, 0.64, 0.05), (1.26, 0.4, 0.44, 0.05), (1.38, 0.1, 0.12, 0.05)]
     rings = [dict(c=(0, cy + 0.05 + dy, hz + dz), r=(rx, ry), w={'head': 1}, mat=m) for (dz, rx, ry, dy) in rows]
-    ob = loft('headcover', rings, seg=16, side=(1, 0, 0), cap_start=False, cap_end=True)
+    ob = loft('headcover', rings, seg=SEG['hair'], side=(1, 0, 0), cap_start=False, cap_end=True)
     bm = bmesh.new()
     bm.from_mesh(ob.data)
     kill = [v for v in bm.verts if (v.co.y - cy) < -0.12 and abs(v.co.x) < 0.48 and -0.1 < (v.co.z - hz) < 1.1]
@@ -1329,7 +1332,7 @@ def burqa_hood(H, m):
     hz, cy = H.hz, H.cy
     rows = [(-0.5, 0.9, 0.62, 0.2), (-0.15, 0.68, 0.64, 0.12), (0.3, 0.63, 0.67, 0.07), (0.72, 0.65, 0.69, 0.06), (1.04, 0.6, 0.64, 0.05), (1.25, 0.4, 0.44, 0.05), (1.37, 0.1, 0.12, 0.05)]
     rings = [dict(c=(0, cy + 0.05 + dy, hz + dz), r=(rx, ry), w={'head': 1} if dz > -0.2 else {'head': 0.4, 'neck': 0.3, 'chest': 0.3}, mat=m) for (dz, rx, ry, dy) in rows]
-    ob = loft('burqahood', rings, seg=16, side=(1, 0, 0), cap_start=False, cap_end=True)
+    ob = loft('burqahood', rings, seg=SEG['hair'], side=(1, 0, 0), cap_start=False, cap_end=True)
     bm = bmesh.new()
     bm.from_mesh(ob.data)
     kill = [v for v in bm.verts if (v.co.y - cy) < -0.15 and abs(v.co.x) < 0.42 and 0.08 < (v.co.z - hz) < 1.05]
@@ -1361,47 +1364,67 @@ def earrings(H, m):
 
 
 # ------------------------------------------------------------------ body-worn
-def camera_strap(B, m_body, m_lens, m_strap):
-    """Nanna's black film camera on its strap round the neck, resting on the tummy"""
+def camera_strap(B, m_body, m_lens, m_strap, cross=False):
+    """Nanna's black film camera on its strap: round the neck resting on the tummy (adults), or
+    (cross=True, a kid) slung across the body from the left shoulder to the right hip"""
     rig, k = B.rig, B.k
-    zc = TORSO[rig][5][0][2] + 0.25 * k
-    front = body_point(rig, 0.05 * k, zc, True, 0.12 * k, B.s.get('belly', 0.0))
-    body = kit.box('cam', (0.62 * k, 0.26 * k, 0.36 * k), front + Vector((0, -0.08 * k, 0)), m_body, bevel=0.05 * k, segments=2)
+    bel = B.s.get('belly', 0.0)
+    T = TORSO[rig]
+    if cross:
+        zc = T[1][0][2] + 0.32 * k
+        front = body_point(rig, -0.42 * k, zc, True, 0.1 * k, bel)
+        front.x -= 0.18 * k
+    else:
+        zc = T[5][0][2] + 0.25 * k
+        front = body_point(rig, 0.05 * k, zc, True, 0.12 * k, bel)
+    body = kit.box('cam', (0.62 * k, 0.26 * k, 0.36 * k), front + Vector((0, -0.08 * k, 0)), m_body, bevel=0.05 * k, segments=1)
     kit.apply_modifiers(body)
-    lens = kit.cylinder('cam_lens', 0.13 * k, 0.2 * k, (0, 0, 0), seg=12, mat=m_lens, axis='Y', base=False)
+    lens = kit.cylinder('cam_lens', 0.13 * k, 0.2 * k, (0, 0, 0), seg=10, mat=m_lens, axis='Y', base=False)
     lens.location = front + Vector((0.08 * k, -0.28 * k, -0.02 * k))
     kit.apply_transform(lens)
-    ring = kit.cylinder('cam_ring', 0.15 * k, 0.05 * k, (0, 0, 0), seg=12, mat=m_body, axis='Y', base=False)
+    ring = kit.cylinder('cam_ring', 0.15 * k, 0.05 * k, (0, 0, 0), seg=10, mat=m_body, axis='Y', base=False)
     ring.location = front + Vector((0.08 * k, -0.37 * k, -0.02 * k))
     kit.apply_transform(ring)
-    nz = TORSO[rig][10][0][2]
-    pts = [front + Vector((0.28 * k, -0.02, 0.12 * k)), body_point(rig, 0.4 * k, (zc + nz) / 2, True, 0.03, B.s.get('belly', 0.0)),
-           Vector((0.36 * k, 0.0, nz - 0.02)), Vector((0.0, 0.3 * k, nz + 0.02)), Vector((-0.36 * k, 0.0, nz - 0.02)),
-           body_point(rig, -0.4 * k, (zc + nz) / 2, True, 0.03, B.s.get('belly', 0.0)), front + Vector((-0.28 * k, -0.02, 0.12 * k))]
+    nz = T[10][0][2]
+    if cross:
+        zs = T[8][0][2]
+        pts = [front + Vector((0.2 * k, 0.0, 0.16 * k)), body_point(rig, -0.15 * k, (zc + zs) / 2 - 0.2 * k, True, 0.04, bel),
+               body_point(rig, 0.3 * k, zs - 0.15 * k, True, 0.04), Vector((0.5 * k, 0.04, nz - 0.02)),
+               body_point(rig, 0.3 * k, zs - 0.15 * k, False, 0.04), body_point(rig, -0.15 * k, (zc + zs) / 2 - 0.2 * k, False, 0.04),
+               front + Vector((-0.28 * k, 0.3 * k, 0.16 * k))]
+    else:
+        pts = [front + Vector((0.28 * k, -0.02, 0.12 * k)), body_point(rig, 0.4 * k, (zc + nz) / 2, True, 0.03, bel),
+               Vector((0.36 * k, 0.0, nz - 0.02)), Vector((0.0, 0.3 * k, nz + 0.02)), Vector((-0.36 * k, 0.0, nz - 0.02)),
+               body_point(rig, -0.4 * k, (zc + nz) / 2, True, 0.03, bel), front + Vector((-0.28 * k, -0.02, 0.12 * k))]
     strap = kit.tube('cam_strap', pts, 0.03 * k, seg=5, mat=m_strap, cap=False)
     o = kit.join([body, lens, ring, strap], 'camera')
-    return B.add(o, lambda co, rig=rig: torso_w(rig, co))
+
+    def wf(co, rig=rig):
+        if co.z < T[3][0][2]:
+            return {'hips': 0.7, 'spine': 0.3}
+        return torso_w(rig, co)
+    return B.add(o, wf)
 
 
 def walkman(B, M):
     """Chinnu's yellow walkman on a shoelace + 90s foam headphones round the neck"""
     rig, k = B.rig, B.k
     objs = []
-    wm = kit.box('walkman', (0.40, 0.12, 0.52), (0.08, -0.47, 4.42), M['walkman'], bevel=0.035, segments=2)
+    wm = kit.box('walkman', (0.40, 0.12, 0.52), (0.08, -0.47, 4.42), M['walkman'], bevel=0.035, segments=1)
     kit.apply_modifiers(wm)
     objs.append(wm)
     objs.append(kit.box('wm_window', (0.26, 0.02, 0.16), (0.08, -0.535, 4.5), M['black']))
     objs.append(kit.box('wm_buttons', (0.3, 0.06, 0.04), (0.08, -0.47, 4.7), M['black']))
     objs.append(kit.tube('lace', [(0.22, 0.02, 5.48), (0.24, -0.25, 5.2), (0.2, -0.44, 4.86), (0.12, -0.47, 4.69), (0.04, -0.47, 4.69), (-0.06, -0.44, 4.9),
-                                   (-0.17, -0.28, 5.2), (-0.21, 0.02, 5.48), (0.0, 0.2, 5.52), (0.22, 0.02, 5.48)], 0.022, seg=5, mat=M['lace'], cap=False))
+                                   (-0.17, -0.28, 5.2), (-0.21, 0.02, 5.48), (0.0, 0.2, 5.52), (0.22, 0.02, 5.48)], 0.022, seg=4, mat=M['lace'], cap=False))
     objs.append(kit.tube('hp_band', [(0.34, -0.12, 5.42), (0.33, 0.12, 5.52), (0.0, 0.31, 5.58), (-0.33, 0.12, 5.52), (-0.34, -0.12, 5.42)], 0.03, seg=5, mat=M['steel']))
     for sx in (1, -1):
-        pad = kit.cylinder('hp_pad', 0.13, 0.08, (0, 0, 0), seg=12, mat=M['foam'], base=False)
+        pad = kit.cylinder('hp_pad', 0.13, 0.08, (0, 0, 0), seg=8, mat=M['foam'], base=False)
         pad.rotation_euler = (math.radians(70), 0, math.radians(-25 * sx))
         pad.location = (0.34 * sx, -0.17, 5.36)
         kit.apply_transform(pad)
         objs.append(pad)
-        cup = kit.cylinder('hp_cup', 0.09, 0.05, (0, 0, 0), seg=10, mat=M['black'], base=False)
+        cup = kit.cylinder('hp_cup', 0.09, 0.05, (0, 0, 0), seg=7, mat=M['black'], base=False)
         cup.rotation_euler = (math.radians(70), 0, math.radians(-25 * sx))
         cup.location = (0.37 * sx, -0.1, 5.4)
         kit.apply_transform(cup)
@@ -1745,6 +1768,11 @@ def finish_character(A, J, rig_name, B, H, look, tex=512, ao_dist=1.2, organic_a
             kit.smooth(o, 35)
         else:
             kit.smooth(o, organic_angle)
+    tri = {}
+    for o in parts:
+        n = o.name.split('.')[0]
+        tri[n] = tri.get(n, 0) + sum(len(p.vertices) - 2 for p in o.data.polygons)
+    kit.log('tris by part: ' + ', '.join('%s %d' % kv for kv in sorted(tri.items(), key=lambda kv: -kv[1])))
     me = kit.join(parts, A.id)
     used = write_regions(me)
     A.tint = look.spec(me)

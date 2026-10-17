@@ -207,7 +207,7 @@ def kid_chinnu(A):
     MW = {'walkman': mat('walkman', 'walkman', s_walk), 'black': mat('plastic_black', 'wm_black', s_walk), 'lace': mat('shoelace', 'lace', s_walk),
           'steel': mat('steel', 'hp_band', s_walk, base='#7a7d82'), 'foam': mat('foam_orange', 'hp_foam', s_walk)}
     ck.walkman(B, MW)
-    ck.camera_strap(B, mat('plastic_black', 'cam_body', s_cam, base='#1c1c1e'), mat('chrome', 'cam_lens', s_cam, base='#5a6068'), mat('leather_brown', 'cam_strap', s_cam, base='#2a1c14'))
+    ck.camera_strap(B, mat('plastic_black', 'cam_body', s_cam, base='#1c1c1e'), mat('chrome', 'cam_lens', s_cam, base='#5a6068'), mat('leather_brown', 'cam_strap', s_cam, base='#2a1c14'), cross=True)
     sch_shirt = mat('cloth', 'school_collar', s_school, base='#f2f0ea', weave=0.06)
     _collar_points(B, sch_shirt)
     ck.tie_card(B, mat('cloth', 'tie', s_tie, base=G_DARK), mat('cloth', 'tie_stripe', s_school, base='#c03030'), mat('cloth_stripe', 'idcard', s_school, base='#f4f2ea'),
