@@ -103,6 +103,20 @@
   function nick() { return (N.player && (N.player.nick || N.player.name)) || 'Chinnu'; }
   function emailOf() { return (nick().toLowerCase().replace(/[^a-z0-9]+/g, '') || 'chinnu') + '_charminar2'; }
   function toast(t, ms, key) { try { if (N.hud && N.hud.toast) N.hud.toast(plain(t), ms || 2600, key ? { key } : undefined); } catch (e) { N.err('story2.toast', e); } }
+  /** The next mission's clue as a toast a few seconds after MISSION PASSED. HUD toasts wait while the centre is
+   *  busy (dialogue, cutscenes, J-cards), so a clue queued once the next mission has begun would pop up in the
+   *  middle of it (seen: the M12 tape clue over the Chand Raat chase): it is only queued in free roam. */
+  function clueToast(t, ms, nextId) {
+    let tries = 0;
+    const go = () => {
+      const M = N.missions;
+      if (!M || M.active || (nextId && M.isDone && M.isDone(nextId))) return;
+      // a shop card / cutscene in the way: try again for a while (the clue also waits on its giver's J-card)
+      if (N.state && N.state.mode !== 'play') { if (++tries < 20) setTimeout(go, 1000); return; }
+      toast(t, ms);
+    };
+    setTimeout(go, 4600);
+  }
   function sfx(name, o) { try { if (N.audio && N.audio.sfx) return N.audio.sfx(name, o || { ui: true }); } catch (e) { /* audio never breaks the story */ } return false; }
   function isDone(id) { try { return !!(N.missions && N.missions.isDone && N.missions.isDone(id)); } catch (e) { return false; } }
   const F = () => N.flags || (N.flags = {});
@@ -1369,7 +1383,7 @@
     },
     onPass() {
       F().ramulu_agarwal = true;
-      setTimeout(() => toast('Ammi phoned the colony STD booth: Abba forgot his tiffin again. (Fri 25 Jul, Immu\'s house)', 4200), 4600);
+      clueToast('Ammi phoned the colony STD booth: Abba forgot his tiffin again. (Fri 25 Jul, Immu\'s house)', 4200, 'opening_day');
     },
   };
 
@@ -1484,7 +1498,7 @@
       F().prasads_open = true;
       F().clue_peacock = true;
       journalNote('clue_peacock', 'Bunty\'s flyer: "Colony Ganesh Committee. Lorry for immersion: behind the station dressed as a palace. Look for the peacock." (Tue 9 Sep, the colony pandal)');
-      setTimeout(() => toast('Bunty\'s flyer: "Lorry for immersion: behind the station dressed as a palace. Look for the peacock."', 4600), 4600);
+      clueToast('Bunty\'s flyer: "Lorry for immersion: behind the station dressed as a palace. Look for the peacock."', 4600, 'agle_baras');
     },
   };
 
@@ -1927,7 +1941,7 @@
       await rec(m);
       m.meter('normal');
     },
-    onPass() { setTimeout(() => toast('Mon 24 Nov: a cassette drops through the window. Immu\'s last tape. (Chand Raat, home)', 4600), 4600); },
+    onPass() { clueToast('Mon 24 Nov: a cassette drops through the window. Immu\'s last tape. (Chand Raat, home)', 4600, 'chand_raat'); },
   };
 
   /* ================================================================== M12 chand_raat — Chand Raat (THE FINALE AT CHARMINAR) */

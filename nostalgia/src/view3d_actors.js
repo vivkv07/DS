@@ -79,7 +79,7 @@
 
   /* ================================================================ options + stats */
   const DBG = { cam: null, track: null, rec: null, riderNext: false }; // tests: camera override {pos, look, fov}; track(entity) records its pose
-  const OPT = { glows: true, decals: true, seasons: true, blobs: true, pools: true, fx: true };
+  const OPT = { glows: true, decals: true, seasons: true, blobs: true, pools: true, fx: true, habits: true }; // habits: true | false | 'always' (tests)
   const ST = { people: 0, peopleFar: 0, vehicles: 0, wheels: 0, glows: 0, pools: 0, decals: 0, animals: 0, birds: 0, markers: 0, kites: 0, skids: 0, puffs: 0, ms: 0, msAvg: 0, frame: 0, culled: 0 };
   let tFrame0 = 0;
 
@@ -685,7 +685,8 @@
     b.part(0).feat(0).slot(BOT).color(W).ell(0, 4.72, 0, 0.62, 0.52, 0.86, sL, near ? 5 : 3);
     const torso = [[0.8, 4.82], [0.86, 5.3], [0.92, 5.95], [0.98, 6.55], [0.94, 6.95], [0.62, 7.3], [0.3, 7.42]];
     b.slot(TOP).color(W).lathe(near ? torso : [[0.8, 4.82], [0.95, 6.3], [0.9, 6.95], [0.32, 7.42]], near ? 12 : 6, 0, 0, 0.66, 1);
-    b.feat(F.BELLY).slot(TOP).color(W).ell(0.36, 5.55, 0, 0.62, 0.78, 0.8, sL, 5).feat(0);
+    // paunch: a broad, soft swell that blends into the chest and the waist (not a ball stuck on)
+    b.feat(F.BELLY).slot(TOP).color(W).ell(0.2, 5.62, 0, 0.72, 0.98, 0.86, near ? 14 : 8, near ? 8 : 5).feat(0);
     b.slot(SK).color(W).cyl([0, 7.15, 0], [0, 7.85, 0], 0.3, 0.27, sS, 0);
     // shoulders: shirt (sleeves) or skin (banian / sleeveless)
     for (const sd of [-1, 1]) {
@@ -970,7 +971,7 @@
     if (bits.has(F.WRAP)) { fSeat[0] -= Math.pow(2, F.WRAP - 1); if (!bits.has(F.LEG_PANTS)) fSeat[0] += Math.pow(2, F.LEG_PANTS - 1); }
     s = {
       seed: seed | 0, f, fSeat, c: [pack(skin), pack(hair), pack(top), pack(bottom), pack(accent), pack(hat), pack(bag), pack(extra)],
-      size, wide, kid, wrap, girl, headCarry: !!HEAD_PROPS[prop], prop: prop || null, kind,
+      size, wide, kid, wrap, girl, headCarry: !!HEAD_PROPS[prop], prop: prop || null, kind, belly: bits.has(F.BELLY),
     };
     lookCache.set(L, s);
     return s;
@@ -1011,20 +1012,57 @@
   /** one arm (k 0 = left, z < 0; 1 = right) to a 3D hand target in the unleaned body frame: 2-bone IK
    *  in the sagittal plane at the full 3D distance, then the out-of-plane swing (j[8 + k], see the
    *  shader) carries the hand out to the target's lateral offset */
-  function armIK(j, k, x, y, z) {
+  function armIK(j, k, x, y, z, abMin) {
     const side = k ? 1 : -1, dy = y - SH_Y, ds = Math.hypot(x, dy) || 1e-6;
     const lat = side * z - SH_Z, d3 = Math.hypot(ds, lat);
     ik2(0, SH_Y, x / ds * d3, SH_Y + dy / ds * d3, UARM, FARM, -1, IKO, 0);
     j[4 + k] = IKO[0]; j[6 + k] = IKO[1];
-    j[8 + k] = clamp(Math.atan2(lat, ds), -0.6, 1.3);
+    j[8 + k] = clamp(Math.atan2(lat, ds), abMin == null ? -0.6 : abMin, 1.3);
   }
-  function armsTo(j, lean, lx, ly, lz, rx, ry, rz, maxLean) {
+  function armsTo(j, lean, lx, ly, lz, rx, ry, rz, maxLean, abMin) {
     if (maxLean > lean) for (let k = 0; k < 16 && lean < maxLean && Math.max(armNeed(lean, lx, ly, lz), armNeed(lean, rx, ry, rz)) > ARM_REACH; k++) lean = Math.min(maxLean, lean + 0.05);
     const c = Math.cos(lean), s = Math.sin(lean);
     const un = (x, y) => { const qx = x, qy = y - HIP_Y; return [qx * c - qy * s, qx * s + qy * c + HIP_Y]; }; // undo the forward lean
     const L = un(lx, ly), R = un(rx, ry);
-    armIK(j, 0, L[0], L[1], lz); armIK(j, 1, R[0], R[1], rz);
+    armIK(j, 0, L[0], L[1], lz, abMin); armIK(j, 1, R[0], R[1], rz, abMin);
     j[10] = lean;
+  }
+  /* idle arm habits: what people do with their hands while standing about (feedback_3d.md #2,
+   * "idle"): uncles and constables clasp their hands behind the back, aunties and women hold them
+   * in front, men fold their arms, students hold their bag straps, kids swing their arms. A habit
+   * comes and goes (habitOn) and blends in with the standing weight. */
+  const HABIT_KINDS = {
+    police: [['behind', 1]], uncle: [['behind', 0.75], ['fold', 1]], lungi: [['behind', 0.5], ['fold', 0.8]],
+    aunty: [['front', 0.55], ['fold', 0.8]], saree: [['front', 0.5], ['fold', 0.7]], woman: [['front', 0.55]], burqa: [['front', 1]],
+    man: [['fold', 0.35], ['behind', 0.6]], kid: [['swing', 0.45], ['behind', 0.6]], student: [['straps', 0.85], ['swing', 1]],
+  };
+  function habitOf(s, seed) {
+    const L = HABIT_KINDS[s.kind];
+    if (!L) return null;
+    const r = hash1(seed * 0.731 + 5.3);
+    for (const h of L) if (r < h[1]) return h[0];
+    return null;
+  }
+  /** 0..1: is the habit on now (slow, per person: held for tens of seconds, eased in / out) */
+  function habitOn(t, seed) {
+    if (OPT.habits !== true) return OPT.habits === 'always' ? 1 : 0;
+    const v = 0.5 + 0.5 * Math.sin(t * 0.083 + seed * 1.71) * Math.cos(t * 0.031 + seed * 0.37);
+    const k = clamp((v - 0.3) / 0.22, 0, 1);
+    return k * k * (3 - 2 * k);
+  }
+  const JH = new Float32Array(16);
+  function habitArms(j, hab, s, t, seed) {
+    const belly = !!s.belly;
+    const fx = belly ? 1.12 : 0.8, bx = s.wrap || belly ? -0.98 : -0.84;
+    switch (hab) {
+      case 'behind': armsTo(j, j[10], bx, 5.05, -0.2, bx - 0.04, 5.16, 0.14, 0, -0.9); break;
+      case 'front': armsTo(j, j[10], fx, belly ? 4.8 : 5.0, -0.14, fx + 0.04, belly ? 4.92 : 5.1, 0.1, 0, -0.9); break;
+      case 'fold': armsTo(j, j[10], belly ? 1.12 : 0.95, 6.12, 0.42, belly ? 1.16 : 1.0, 5.92, -0.42, 0, -0.95); break;
+      case 'straps': armsTo(j, j[10], 0.74, 6.42, -0.52, 0.74, 6.5, 0.52, 0, -0.9); break;
+      case 'swing': { const a = Math.sin(t * 1.9 + seed) * 0.42; j[4] = a; j[5] = a * 0.85; j[6] = j[7] = 0.25 + Math.max(0, a) * 0.4; j[8] = j[9] = 0.1; break; }
+      default: break;
+    }
+    return j;
   }
   function legsTo(j, lx, ly, rx, ry) {
     ik2(0, HIP_Y, lx, ly, THIGH, SHIN, 1, IKO, 0); j[0] = IKO[0]; j[2] = IKO[1];
@@ -1239,6 +1277,8 @@
         'vec3 vPos = vec3(position);',
         'if (aSP.y > 0.5 && aSP.y < 1.5) { vPos = aRotY(vPos, aPiv.xz, iVB.x); objectNormal = aRotY(objectNormal, vec2(0.0), iVB.x); }',
         'else if (aSP.y > 1.5 && aSP.y < 2.5) { vPos = aRotZ(vPos, aPiv.xy, iVB.y); objectNormal = aRotZ(objectNormal, vec2(0.0), iVB.y); }',
+        // part 3: dial needles of the first-person interiors turn about x by iVB.w (the speedometer)
+        'else if (aSP.y > 2.5 && aSP.y < 3.5) { vPos = aRotX(vPos, aPiv.yz, iVB.w); objectNormal = aRotX(objectNormal, vec2(0.0), iVB.w); }',
       ].join('\n'))
       .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed = vPos;')
       .replace('#include <color_vertex>', [
@@ -1265,11 +1305,16 @@
   /** vehicle glass: the vehicle shader, translucent with a fresnel rise towards grazing angles */
   function glassCompile(shader) {
     vehicleCompile(shader);
-    shader.fragmentShader = shader.fragmentShader.replace('#include <output_fragment>', [
-      '{ vec3 vd = normalize(vViewPosition); float fr = 1.0 - abs(dot(normal, vd));',
-      '  diffuseColor.a = mix(0.34, 0.94, fr * fr); }',
-      '#include <output_fragment>',
-    ].join('\n'));
+    // iVB.w = 1 on the body the first-person camera sits in: seen from inside, the windscreen is
+    // nearly clear (a faint tint and reflections at grazing angles), so the road ahead reads
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying float vIns;')
+      .replace('#include <color_vertex>', '#include <color_vertex>\nvIns = iVB.w;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vIns;')
+      .replace('#include <output_fragment>', [
+        '{ vec3 vd = normalize(vViewPosition); float fr = 1.0 - abs(dot(normal, vd));',
+        '  diffuseColor.a = vIns > 0.5 ? mix(0.05, 0.3, fr * fr) : mix(0.34, 0.94, fr * fr); }',
+        '#include <output_fragment>',
+      ].join('\n'));
   }
   const P1 = (b, k) => b.slot(VP).shade(k == null ? 1 : k);
   const P2 = (b, k) => b.slot(VP2).shade(k == null ? 1 : k);
@@ -1473,7 +1518,16 @@
     HL(b).cyl([ba[0] + 0.72, ba[1] - 0.12, 0], [ba[0] + 0.92, ba[1] - 0.12, 0], 0.42, 0.42, 10, 2);
     CH(b).cyl([ba[0] + 0.68, ba[1] - 0.12, 0], [ba[0] + 0.78, ba[1] - 0.12, 0], 0.52, 0.5, 10, 0);
     FX(b, '#141418').box(ba[0] - 0.3, ba[1] + 0.22, -0.45, ba[0] + 0.35, ba[1] + 0.32, 0.45);
-    CH(b); for (const s of [-1, 1]) { b.tube([ba[0] - 0.1, ba[1], s * ba[2] * 0.62], [ba[0] - 0.25, ba[1] + 1.1, s * ba[2] * 0.8], 0.06, 4).ell(ba[0] - 0.25, ba[1] + 1.25, s * ba[2] * 0.8, 0.08, 0.28, 0.35, 6, 4); }
+    // speedometer set into the headset top (what the rider sees between the grips in first person)
+    FX(b, '#2a2a2e').cyl([ba[0] + 0.02, ba[1] + 0.3, 0], [ba[0] + 0.02, ba[1] + 0.36, 0], 0.34, 0.32, 14, 2);
+    b.slot(VLIT).color('#efe6c8').cyl([ba[0] + 0.02, ba[1] + 0.36, 0], [ba[0] + 0.02, ba[1] + 0.38, 0], 0.27, 0.27, 14, 2);
+    FX(b, '#1a1616'); for (let k = 0; k <= 6; k++) { const a = Math.PI * (0.15 + k * 0.7 / 6) + Math.PI / 2; b.box(ba[0] + 0.02 + Math.cos(a) * 0.21 - 0.02, ba[1] + 0.38, Math.sin(a) * 0.21 - 0.02, ba[0] + 0.02 + Math.cos(a) * 0.21 + 0.02, ba[1] + 0.395, Math.sin(a) * 0.21 + 0.02); }
+    FX(b, '#e0501c').tube([ba[0] + 0.02, ba[1] + 0.395, 0], [ba[0] - 0.1, ba[1] + 0.395, -0.17], 0.025, 3);
+    // mirrors: chrome backs with dark glass faces towards the rider
+    for (const s of [-1, 1]) {
+      CH(b).tube([ba[0] - 0.1, ba[1], s * ba[2] * 0.62], [ba[0] - 0.25, ba[1] + 1.1, s * ba[2] * 0.8], 0.06, 4).ell(ba[0] - 0.25, ba[1] + 1.25, s * ba[2] * 0.8, 0.08, 0.28, 0.35, 10, 5);
+      FX(b, '#4a5864').ell(ba[0] - 0.3, ba[1] + 1.25, s * ba[2] * 0.8, 0.05, 0.23, 0.29, 10, 5);
+    }
     b.part(0);
     return {
       L: o.L, W: o.W, H: ba[1] + 1.4, bike: true, show: true, steerX: o.steerX, rearR: R,
@@ -1880,6 +1934,25 @@
   /* ---------------------------------------------------------------- first-person interiors */
   // drawn instead of the body when the player drives a car / bus / lorry in first person (the body
   // has no inside). Built in the vehicle's local frame; the hood seen through the windscreen is a copy.
+  /** a round dial facing -x (towards the driver) centred at (x, y, z), radius r: dark bezel, cream
+   *  face (lit at night), 9 ticks over a 270 degree sweep (lower left -> lower right, clockwise as
+   *  the driver sees it) and an orange needle. live: the needle is part 3, turned about x by iVB.w
+   *  (the speedometer); else it rests at angle `rest` (radians, 0 = pointing right, PI/2 = up) */
+  function dial(b, x, y, z, r, live, rest) {
+    b.part(0);
+    FX(b, '#141212').cyl([x + 0.08, y, z], [x - 0.05, y, z], r * 1.2, r * 1.12, 16, 3);
+    b.slot(VLIT).color('#efe6c8').cyl([x - 0.03, y, z], [x - 0.07, y, z], r, r, 16, 2);
+    FX(b, '#1a1616');
+    for (let k = 0; k <= 8; k++) {
+      const a = (225 - k * 33.75) * Math.PI / 180, c = Math.cos(a), sn = Math.sin(a), r0 = k % 2 ? 0.74 : 0.64;
+      b.tube([x - 0.08, y + sn * r * r0, z + c * r * r0], [x - 0.08, y + sn * r * 0.9, z + c * r * 0.9], r * 0.045, 3);
+    }
+    const a0 = live ? 225 * Math.PI / 180 : (rest == null ? Math.PI / 2 : rest), c0 = Math.cos(a0), s0 = Math.sin(a0);
+    if (live) b.part(3, [0, y, z]);
+    FX(b, '#e0501c').tube([x - 0.1, y - s0 * r * 0.16, z - c0 * r * 0.16], [x - 0.1, y + s0 * r * 0.82, z + c0 * r * 0.82], r * 0.045, 3);
+    b.part(0);
+    FX(b, '#141212').cyl([x - 0.09, y, z], [x - 0.12, y, z], r * 0.12, r * 0.12, 6, 2);
+  }
   function mkCarInterior(b, md) {
     const g = md.gh, hw = md.W / 2, L = md.L, dash = md.dash || { x: g.x1 - 0.8, y: g.y0 + 0.5 };
     b.part(0);
@@ -1890,7 +1963,10 @@
     // dashboard, instrument cluster, glovebox
     FX(b, '#3a2f2c').box(dash.x - 0.2, dash.y - 1.4, -g.w0 + 0.1, g.x1 + 0.1, dash.y, g.w0 - 0.1);
     FX(b, '#2a2220').box(dash.x - 0.6, dash.y - 0.1, -g.w0 + 0.2, dash.x + 0.5, dash.y + 0.25, g.w0 - 0.2);
-    for (const k of [-0.55, 0.55]) { CH(b).cyl([dash.x - 0.62, dash.y + 0.15, hw * 0.36 + k], [dash.x - 0.7, dash.y + 0.15, hw * 0.36 + k], 0.42, 0.42, 10, 0); b.slot(VLIT).color('#efe6c8').cyl([dash.x - 0.6, dash.y + 0.15, hw * 0.36 + k], [dash.x - 0.66, dash.y + 0.15, hw * 0.36 + k], 0.36, 0.36, 10, 2); }
+    // instrument cluster behind the wheel: speedometer (live needle) + fuel / temperature
+    FX(b, '#201a18').box(dash.x - 0.66, dash.y - 0.38, hw * 0.36 - 1.12, dash.x - 0.5, dash.y + 0.62, hw * 0.36 + 1.02);
+    dial(b, dash.x - 0.66, dash.y + 0.14, hw * 0.36 - 0.5, 0.4, true);
+    dial(b, dash.x - 0.66, dash.y + 0.12, hw * 0.36 + 0.5, 0.32, false, 1.15);
     FX(b, '#4a3a34').box(dash.x - 0.66, dash.y - 1.0, -hw * 0.6, dash.x - 0.6, dash.y - 0.3, -hw * 0.2);
     // A-pillars, roof liner, header, door panels with sills, B-pillars, rear-view mirror + nimbu-mirchi
     const top = g.y1 - 0.15;
@@ -1917,7 +1993,8 @@
     b.part(0);
     FX(b, '#2c2a2c').box(fx - 2.0, dashY - 2.4, -hw, fx, dashY, hw);
     FX(b, '#1e1c1e').box(fx - 2.4, dashY - 0.1, -hw, fx - 1.4, dashY + 0.3, hw);
-    for (const k of [-0.6, 0.6]) { CH(b).cyl([fx - 2.42, dashY + 0.1, k], [fx - 2.5, dashY + 0.1, k], 0.45, 0.45, 10, 0); b.slot(VLIT).color('#efe6c8').cyl([fx - 2.4, dashY + 0.1, k], [fx - 2.46, dashY + 0.1, k], 0.38, 0.38, 10, 2); }
+    dial(b, fx - 2.42, dashY + 0.14, -0.62, 0.44, true);
+    dial(b, fx - 2.42, dashY + 0.12, 0.62, 0.36, false, 1.3);
     P1(b).box(fx - 0.6, base, -hw - 0.4, fx + 0.3, top, -hw).box(fx - 0.6, base, hw, fx + 0.3, top, hw + 0.4).box(fx - 0.6, base - 0.05, -0.18, fx + 0.2, top, 0.18);
     P1(b, 0.85).box(fx - 1.2, top - 0.8, -hw, fx + 0.3, top, hw);
     FX(b, '#cfc8b8').box(fx - 18, top, -hw - 0.3, fx + 0.2, top + 0.25, hw + 0.3);
@@ -1942,9 +2019,10 @@
   function buildSteeringWheel() {
     const b = new AB();
     b.part(0);
-    FX(b, '#1c1a1a').xf(new THREE.Matrix4()).ringZ([[0.86, -0.1], [1.0, -0.12], [1.06, 0], [1.0, 0.12], [0.86, 0.1]], 16).xf(null);
-    FX(b, '#2a2626'); for (let k = 0; k < 3; k++) { const a = -Math.PI / 2 + k * (TAU / 3); b.tube([0, 0, 0], [Math.cos(a) * 0.9, Math.sin(a) * 0.9, 0.02], 0.09, 4); }
-    CH(b).cyl([0, 0, -0.08], [0, 0, 0.14], 0.24, 0.24, 8, 3);
+    FX(b, '#1c1a1a').xf(new THREE.Matrix4()).ringZ([[0.86, -0.1], [0.94, -0.13], [1.03, -0.1], [1.06, 0], [1.03, 0.1], [0.94, 0.13], [0.86, 0.1]], 32).xf(null);
+    FX(b, '#2a2626'); for (let k = 0; k < 3; k++) { const a = -Math.PI / 2 + k * (TAU / 3); b.tube([0, 0, 0], [Math.cos(a) * 0.9, Math.sin(a) * 0.9, 0.02], 0.09, 5); }
+    FX(b, '#262222').cyl([0, 0, -0.08], [0, 0, 0.14], 0.3, 0.27, 12, 3);
+    CH(b).cyl([0, 0, 0.14], [0, 0, 0.17], 0.13, 0.13, 10, 2);
     FX(b, '#2a2626').cyl([0, 0, -0.1], [0, 0, -1.8], 0.12, 0.12, 5, 0);
     return b.build();
   }
@@ -2269,7 +2347,11 @@
       FR.write(pool.M, i * 16, 0, 0, 0, 0, 0, 0, sx, 1, sz);
       const a = pool.A.iVA.array, b2 = pool.A.iVB.array, k = i * 4;
       a[k] = c1; a[k + 1] = c2; a[k + 2] = on ? (dyn ? clamp(sp / 80, 0.3, 1) : 1) : 0; a[k + 3] = braking;
-      b2[k] = steerVis; b2[k + 1] = crank; b2[k + 2] = beacon; b2[k + 3] = 0;
+      // iVB.w: the speedometer needle of a cockpit interior; on a body: 1 = the camera sits inside
+      // it (first person on an auto / scooter: the windscreen glass turns nearly clear)
+      b2[k] = steerVis; b2[k + 1] = crank; b2[k + 2] = beacon;
+      b2[k + 3] = cockpit ? clamp(sp / (((T && T.maxSpeed) || 150) * 1.1), 0, 1) * 4.4 : (fps ? 1 : 0);
+      if (DBG.track === v && DBG.rec) DBG.rec.needle = cockpit ? b2[k + 3] : null;
     }
     // wheels
     if (!cockpit) {
@@ -2636,6 +2718,16 @@
       else if (s.prop === 'dappu') { J[4] = 0.9; J[6] = 1.2; J[5] = 0.8 + Math.sin(t * 9) * 0.25; J[7] = 1.4; }
       if (e.spotter && e.spotter.stick) { J[5] = 2.55 + Math.sin(t * 9) * 0.35; J[7] = 0.35; }
       if (e.balloons) { J[5] = 0.5; J[7] = 1.6; }
+      // idle hands: a habit per person (not with a prop in hand, not the player, not a spotter)
+      if (!isP && !s.prop && !s.headCarry && !e.spotter && !e.balloons && st.gw < 0.95) {
+        const hab = habitOf(s, seed);
+        const on = hab ? habitOn(t, seed) * (1 - st.gw) : 0;
+        if (on > 0.01) {
+          JH.set(J); habitArms(JH, hab, s, t, seed);
+          for (let q = 4; q < 10; q++) J[q] += (JH[q] - J[q]) * on;
+          st.hab = hab; st.habW = on;
+        } else st.habW = 0;
+      }
     }
     // head: look at what they look at; the player looks where the camera looks; idle glances; breathing
     if (!down) {
@@ -2672,7 +2764,7 @@
       else if (CAMP && Math.hypot(CAMP.x - bx, CAMP.y - (el + 6), CAMP.z - by) < 4.5) return;
     }
     FR.set(bx, rootY, by, yaw, roll, pitch);
-    if (DBG.track === e) DBG.rec = { kind: 'person', J: Array.from(J), x: bx, y: by, h: rootY, yaw, pitch, size: s.size, wide: s.wide, seated: o.seated, fpsHide: o.fpsHide, v: st.v, cyc: st.cyc, beta: st.beta, X: st.X, f: st.f, run: !!st.run, gw: st.gw, frame: ST.frame };
+    if (DBG.track === e) DBG.rec = { kind: 'person', J: Array.from(J), x: bx, y: by, h: rootY, yaw, pitch, size: s.size, wide: s.wide, seated: o.seated, fpsHide: o.fpsHide, v: st.v, cyc: st.cyc, beta: st.beta, X: st.X, f: st.f, run: !!st.run, gw: st.gw, hab: st.hab || null, habW: st.habW || 0, frame: ST.frame };
     const i = submitPerson(look, seed, FR, 0, 0, 0, J, o);
     if (i < 0) return;
     const head = el + 9.4 * s.size + (s.headCarry ? 1.4 : 0);

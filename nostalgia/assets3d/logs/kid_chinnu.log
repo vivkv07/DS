@@ -1,3 +1,20 @@
-00:00.256  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.069  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building kid_chinnu (character)
 [kit] tris by part: lock 416, torso 312, walkman 290, head 248, arm_L 204, arm_R 204, leg_L 188, leg_R 188, tie_card 180, camera 176, haircap 146, strap 112, eye 96, fringe 96, foot_L 80, sole 80, foot_R 80, ear 64, hand_L 56, hand_R 56, brow 52, mouth 46, nose 38, cowlick 32, thumb_L 26, thumb_R 26, collar_band 24, glint 24, collar_pt 16
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (8 samples) in 4.4s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 256x256 (32 samples) in 8.8s
+[kit] clip walk: stride 10.4 u, duty 0.40, nominal 45 u/s -> 4.33 cycles/s; slip {'max': 0.0346, 'mean': 0.0019, 'pairs': 38, 'step': 0.325, 'ratio': 0.0057, 'low': -0.048}
+[kit] clip run: stride 16.0 u, duty 0.27, nominal 80 u/s -> 5.00 cycles/s; slip {'max': 0.0002, 'mean': 0.0, 'pairs': 24, 'step': 0.5, 'ratio': 0.0, 'low': -0.0}
+[kit] clip ride_cycle: seat z 4.74, crank 1.05, max hip dip 0.32 u
+[kit] clip ride_kainchi: max hip dip 0.05 u
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:14:01 | INFO: Starting glTF 2.0 export
+21:14:01 | INFO: Extracting primitive: kid_chinnu
+21:14:01 | INFO: Primitives created: 1
+21:14:01 | INFO: Finished glTF 2.0 export in 0.11322355270385742 s
+
+[kit] kid_chinnu: 3556 tris (budget 4000) ok, 314.3 KB, clips [], anchors 8
+[kit] done kid_chinnu in 16.7s

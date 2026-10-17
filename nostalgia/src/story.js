@@ -934,11 +934,21 @@
   function homeTeam(spec) {
     if (spec && spec !== 'chinnu_xi') return spec;
     const nick = (N.player && N.player.nick) || 'Chinnu';
-    if (nick === 'Chinnu') return 'chinnu_xi';
-    const name = nick + ' XI', short = (nick.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) || 'HOME') + ' XI';
+    // the score bug's short name: a short nickname whole ("PINTU XI", "RAJU XI"), a long one cut like the
+    // engine's own "CHIN XI" (never "PINT XI")
+    const letters = nick.toUpperCase().replace(/[^A-Z]/g, '');
+    const name = nick + ' XI', short = ((letters.length <= 5 ? letters : letters.slice(0, 4)) || 'HOME') + ' XI';
     const T = N.cricketMatch && N.cricketMatch.TEAMS && N.cricketMatch.TEAMS.chinnu_xi;
-    if (!T || !Array.isArray(T.players)) return { id: 'chinnu_xi', name, short };
-    return { id: 'chinnu_xi', name, short, players: T.players.map((q) => (q && q.hero ? Object.assign({}, q, { name: nick }) : q)) };
+    if (!T || !Array.isArray(T.players)) return nick === 'Chinnu' ? 'chinnu_xi' : { id: 'chinnu_xi', name, short };
+    // a summer-camp side of colony kids: Bunty-anna is 19 (bible §2.2, the Committee President with an RX100),
+    // so his place goes to Pappu from the colony; he watches from the stands
+    const players = T.players.map((q) => {
+      if (!q) return q;
+      if (q.hero) return Object.assign({}, q, { name: nick });
+      if (q.name === 'Bunty') return Object.assign({}, q, { name: 'Pappu', look: Object.assign({}, q.look || {}, { shades: false, puff: false }) });
+      return q;
+    });
+    return { id: 'chinnu_xi', name, short, players };
   }
   /** The LB Stadium match (cricket_match.js 'match'); the gully `cricket` minigame stands in when it is missing. */
   async function playMatch(m, params) {
@@ -2575,7 +2585,26 @@
     if (S.kiteTick && mode() === 'play') S.kiteTick(dt);
     if (S.tickFns) for (const fn of S.tickFns) { try { fn(dt); } catch (e) { N.err('story.tickFn', e); } }
     if (S.dark) S.dark.t += dt;
-    if (mode() === 'play') { giversTick(dt); powerCutTick(dt); }
+    if (mode() === 'play') { giversTick(dt); powerCutTick(dt); mountGuard(); }
+  }
+  /** A mission cycle / Scooty waiting to be mounted beside a shop: ACTION must get on it, not open the shop card
+   *  (shops sit at priority 3 over a parked vehicle's 0: Nanna's cycle at the girni is 20 u from the chemist,
+   *  the hired cycle at Raju Cycle Taxi, Bunty's cycle at Paradise). While the player stands by an unmounted
+   *  vehicle of the running mission (story.js or story2.js), shops.js's per-mission lock is on. */
+  function mountGuard() {
+    const r = run();
+    if (!r) return;
+    const p = N.player;
+    let near = false;
+    if (p && !p.vehicle && Array.isArray(r.spawned)) {
+      for (const s of r.spawned) {
+        const e = s && s.e;
+        if (!e || e.kind !== 'vehicle' || e.alive === false || e.noEnter || e.locked || e.driver || !(e.T && e.T.kidOk)) continue;
+        if (Math.hypot(e.x - p.x, e.y - p.y) < 30) { near = true; break; }
+      }
+    }
+    if (near) { if (!r.lockShops) r.lockShops = 'story:mount'; }
+    else if (r.lockShops === 'story:mount') r.lockShops = false;
   }
   // pin the player in the queue after the player system moved him
   function pinTick() {

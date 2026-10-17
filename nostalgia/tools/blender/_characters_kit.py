@@ -108,7 +108,20 @@ def rule_eval(rule, look):
     if 're' in rule:
         import re
         return isinstance(v, str) and re.search(rule['re'], v) is not None
+    if 'lt' in rule:
+        return isinstance(v, (int, float)) and not isinstance(v, bool) and v < rule['lt']
+    if 'gt' in rule:
+        return isinstance(v, (int, float)) and not isinstance(v, bool) and v > rule['gt']
     return bool(v)
+
+
+def LT(field, x):
+    """numeric field below x (the runtime's per-person `_r` in [0, 1) makes variety: LT('_r', 0.6))"""
+    return {'f': field, 'lt': x}
+
+
+def GT(field, x):
+    return {'f': field, 'gt': x}
 
 
 # =========================================================================== regions + slots
@@ -902,8 +915,11 @@ class Head:
         return self.add(loft(name, [dict(c=tuple(base - d * 0.06), r=r0 * 0.9, w={'head': 1}, mat=m), dict(c=tuple(mid), r=r0 * 0.72, w={'head': 1}, mat=m),
                                     dict(c=tuple(end), r=0.03, w={'head': 1}, mat=m)], seg=seg, side=(0, 0, 1)))
 
-    def hair(self, style, m):
+    def hair(self, style, m, top_m=None, skin_m=None):
+        """top_m: material for the parts that stand above the hair cap (quiff, puff, spikes) so
+        they can live in a slot that caps hide; skin_m: the parting strip (girls' hair in a slot)"""
         hz, cy = self.hz, self.cy
+        tm = top_m or m
         if style == 'spiky':
             # Chinnu: a chunky crop of upswept locks round the crown, a three-spike fringe, the cowlick
             self.cap(m, 0.03, line=lambda f, s: 0.62 + 0.36 * f ** 1.6 - 0.1 * s * (1 - f))
@@ -934,11 +950,11 @@ class Head:
                         p['r'] = (p['r'][0] * 0.8, p['r'][1] * 0.6)
                 for p in pts:
                     p['w'] = {'head': 1}
-                    p['mat'] = m
+                    p['mat'] = tm
                 self.add(loft('quiff', pts, seg=8, side=(0, 0, 1)))
         elif style == 'puff':
             self.cap(m, 0.045, line=lambda f, s: 0.70 + 0.30 * f ** 1.4 - 0.12 * s * (1 - f), crown=1.3)
-            self.puff(m)
+            self.puff(tm)
         elif style == 'receding':
             # uncle: hair round the back and the sides only (a shiny crown and a high forehead)
             self.cap(m, 0.03, keep=lambda f, sd, z: 0.5 < z < 1.02 - 0.06 * f and f < 0.32)
@@ -955,7 +971,7 @@ class Head:
             # a centre parting: two smooth halves over the skull
             self.cap(m, 0.04, line=lambda f, s: 0.70 + 0.27 * f ** 1.3 - 0.18 * s * (1 - f), crown=1.2)
             # the parting line: a thin skin-coloured strip on top
-            self.add(kit.tube('parting', [(0, cy - 0.42, hz + 1.12), (0, cy - 0.15, hz + 1.30), (0, cy + 0.15, hz + 1.31)], 0.012, seg=4, mat=self.M['skin']))
+            self.add(kit.tube('parting', [(0, cy - 0.42, hz + 1.12), (0, cy - 0.15, hz + 1.30), (0, cy + 0.15, hz + 1.31)], 0.012, seg=4, mat=skin_m or self.M['skin']))
             # hair framing the face, tucked behind the ears
             for sx in (1, -1):
                 pts = [dict(c=(0.36 * sx, cy - 0.33, hz + 1.03), r=(0.1, 0.08)), dict(c=(0.52 * sx, cy - 0.2, hz + 0.82), r=(0.1, 0.09)),

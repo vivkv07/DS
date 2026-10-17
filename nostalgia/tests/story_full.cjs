@@ -73,6 +73,7 @@ const PREFIX = ['school_', 'kirana_', 'banana_cart_', 'flower_cart_', 'stationer
   'samosa_bandi_', 'dosa_bandi_', 'photo_studio_', 'internet_cafe_', 'mosque_', 'church_', 'coconut_cart_'];
 const TRACK = MUST.concat(FESTIVAL, AMBIENT, NAMED);
 const cov = {}; // id -> {ctx: firstSeenLabel}   (merged from the page)
+const reach = {}; // mission goals the test teleported to -> {ctx, ok | bad} (window.__audit)
 let nickBad = []; // lines / objectives / toasts that still say Chinnu / Srikanth / {nick}
 const realKeys = {};
 const tally = (k, n) => { realKeys[k] = (realKeys[k] || 0) + (n || 1); };
@@ -119,12 +120,36 @@ async function installHooks() {
       return { x, y };
     };
     window.__passes = {}; window.__fails = []; window.__mg = []; window.__mgEnd = []; window.__wm = 0; window.__cov = {}; window.__nick = []; window.__lines = []; window.__s2ev = [];
+    // reachability audit: the test travels by teleport, so every mission goal it jumps to is checked the way a
+    // player would have to get there: a walkable spot (or a roof / the water), joined on foot to the road network
+    window.__reach = {};
+    window.__audit = (t, ctx) => {
+      if (!t || typeof t.x !== 'number' || typeof t.y !== 'number') return;
+      const key = Math.round(t.x / 24) + ',' + Math.round(t.y / 24);
+      if (window.__reach[key]) return;
+      const rec = { ctx: ctx || ((N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || '-') + ' | ' + (N.hud.objectiveText || ''), x: Math.round(t.x), y: Math.round(t.y) };
+      window.__reach[key] = rec;
+      try {
+        const W = N.world;
+        if ((W.roofs && W.roofs.at && W.roofs.at(t.x, t.y)) || t.level) { rec.ok = 'roof'; return; }
+        if (W.isWater && W.isWater(t.x, t.y)) { rec.ok = 'water'; return; }
+        let gx = t.x, gy = t.y;
+        if (!W.isWalkable(t.x, t.y)) { const f = W.findFree(t.x, t.y, 'walk', 24); if (!f) { rec.bad = 'the goal is not walkable (no free spot within 24 u)'; return; } gx = f.x; gy = f.y; }
+        const r = W.nearestRoadPoint(gx, gy);
+        if (!r) { rec.bad = 'no road anywhere near'; return; }
+        const dr = Math.hypot(r.x - gx, r.y - gy); rec.road = Math.round(dr);
+        if (dr < 10 && W.isWalkable(r.x, r.y)) { rec.ok = 'road'; return; }
+        const p = N.npcs && N.npcs.gridPath ? N.npcs.gridPath(r.x, r.y, gx, gy, { margin: 320, max: 220000 }) : [];
+        if (!p) rec.bad = 'no walking path from the nearest road (' + Math.round(dr) + ' u away)';
+        else rec.ok = 'path';
+      } catch (e) { rec.err = String(e && e.message || e); }
+    };
     N.on('mission:pass', (d) => { const k = d && d.id; if (k) window.__passes[k] = (window.__passes[k] || 0) + 1; });
     N.on('mission:fail', (d) => { window.__fails.push({ id: d && d.id, reason: d && d.reason, at: N.calendar.osd() }); });
     N.on('walkman:play', () => { window.__wm++; });
     window.__wlog = [];
     N.on('wanted:change', (d) => { if (window.__wlog.length > 60) window.__wlog.shift(); window.__wlog.push({ lvl: d && d.level, prev: d && d.prev, why: d && d.reason, m: (N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || null, at: N.calendar.osd(), veh: N.player.vehicle ? N.player.vehicle.type : null }); });
-    N.on('minigame:start', (d) => { const P = (d && d.params) || {}; window.__mg.push({ id: d && d.id, lb: !!N.flags.lb_match, mission: N.missions.active && N.missions.active.id, home: P.home && (P.home.name || P.home), away: P.away && (P.away.name || P.away), intro: P.intro || null, title: P.title || null, place: P.place || null, at: N.calendar.osd() }); });
+    N.on('minigame:start', (d) => { const P = (d && d.params) || {}; window.__mg.push({ id: d && d.id, lb: !!N.flags.lb_match, mission: N.missions.active && N.missions.active.id, home: P.home && (P.home.name || P.home), homeShort: P.home && P.home.short, homePlayers: P.home && Array.isArray(P.home.players) ? P.home.players.map((q) => q && (q.name || q)) : null, away: P.away && (P.away.name || P.away), intro: P.intro || null, title: P.title || null, place: P.place || null, at: N.calendar.osd() }); });
     N.on('minigame:end', (d) => { const r = (d && d.result) || {}; window.__mgEnd.push({ id: d && d.id, win: r.win, quit: r.quit, aborted: r.aborted, at: N.calendar.osd() }); });
     window.__shops = [];
     N.on('shop:open', (d) => { window.__shops.push({ place: d && d.place, kind: d && d.kind, mission: (N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || null, at: N.calendar.osd() }); });
@@ -141,6 +166,19 @@ async function installHooks() {
       if (N.hud.banner) { const B = N.hud.banner.bind(N.hud); N.hud.banner = function (a, b) { note('banner', a); note('banner', b); return B.apply(null, arguments); }; }
     } catch (e) { /* ignore */ }
     N.on('minigame:start', (d) => { const P = (d && d.params) || {}; note('minigame intro', P.intro); note('minigame title', P.title); note('minigame home', P.home && (P.home.name || P.home)); });
+    // what is on screen: cutscene cards, the J-card, the dialogue box, banners, story panels, minigame cards
+    const seenDom = new Set();
+    setInterval(() => {
+      try {
+        for (const sel of ['.mn-cs', '.hud-jcard', '#ui .dlg', '.hud-banner', '.s2-panel', '.mg-screen .mg-card', '.mn-defs']) {
+          const el = document.querySelector(sel);
+          const t = el && el.offsetParent !== null ? (el.innerText || '').trim() : '';
+          if (!t || seenDom.has(t)) continue;
+          seenDom.add(t); if (seenDom.size > 3000) seenDom.clear();
+          note('screen ' + sel, t);
+        }
+      } catch (e) { /* ignore */ }
+    }, 300);
     // coverage: which mission / side activity / scene brought the player within reach of each place
     const pts = {};
     const lm = (id) => (N.WORLD_DATA.landmarks || []).find((l) => l.id === id);
@@ -196,8 +234,9 @@ async function installHooks() {
 /** Merge the page's coverage + nick notes into the node side (before a reload wipes them). */
 async function harvest() {
   try {
-    const h = await ev(() => { const o = { cov: window.__cov || {}, nick: window.__nick || [] }; window.__nick = []; return o; });
+    const h = await ev(() => { const o = { cov: window.__cov || {}, nick: window.__nick || [], reach: window.__reach || {} }; window.__nick = []; return o; });
     for (const id in h.cov) { cov[id] = cov[id] || {}; for (const c in h.cov[id]) if (!cov[id][c]) cov[id][c] = h.cov[id][c]; }
+    for (const k in h.reach) if (!reach[k] || (h.reach[k].bad && !reach[k].bad)) reach[k] = h.reach[k];
     for (const n of h.nick) if (nickBad.indexOf(n) < 0) nickBad.push(n);
   } catch (e) { /* page busy */ }
 }
@@ -217,7 +256,7 @@ async function snapshot(name, { save } = {}) {
     if (save) { try { N.save.save({ reason: 'std', toast: false }); } catch (e) { /* ignore */ } }
     try { return localStorage.getItem('nostalgia.save.v1'); } catch (e) { return null; }
   }, !!save);
-  fs.writeFileSync(path.join(SAVES, 'after_' + name + '.json'), JSON.stringify({ raw, cov, nickBad, realKeys, t: new Date().toISOString() }));
+  fs.writeFileSync(path.join(SAVES, 'after_' + name + '.json'), JSON.stringify({ raw, cov, nickBad, realKeys, reach, t: new Date().toISOString() }));
 }
 /** A player quits and comes back: page reload, then a real click on the title's ▶▶ CONTINUE. */
 async function reloadContinue(why) {
@@ -289,6 +328,7 @@ async function autopilot1(id, o) {
     if (s.mode === 'dialogue' && await ev(() => !!(N.shops && N.shops.isOpen && N.shops.isOpen()))) {
       const what = await ev(() => (window.__shops || []).slice(-1)[0] || null);
       log('   (' + id + ': a shop/auto card opened mid-mission: ' + JSON.stringify(what) + ' -> Escape)');
+      check(false, id + ': ACTION meant for the story opened a shop card instead (a player would get it too)', what);
       await pressKey('Escape'); await ev(() => { try { if (N.shops.isOpen()) N.shops.close(); } catch (e) { /* ignore */ } }); await sleep(300); continue;
     }
     if (s.mode === 'dialogue') {
@@ -321,7 +361,7 @@ async function autopilot1(id, o) {
     if (veh && /Get on|cycle/i.test(s.obj || '')) { await goTo({ x: veh.x + 9, y: veh.y }); await pressKey('KeyE'); tally('E get on a cycle'); await sleep(250); continue; }
     if (s.tgt) {
       const d = Math.hypot(s.tgt.x - s.p.x, s.tgt.y - s.p.y);
-      if (d > 12) { await goTo(s.tgt); continue; }
+      if (d > 12) { await ev((t) => window.__audit(t), s.tgt); await goTo(s.tgt); continue; }
       if (s.st.step === 'act' || s.st.step === 'press' || s.st.step === 'cutouts') { await pressKey('KeyE'); tally('E story prompt'); await sleep(250); continue; }
     } else if (s.st.step === 'press') { await pressKey('KeyE'); tally('E story prompt'); await sleep(250); continue; }
     if (same > 40 && s.st.step) { await ev(() => N.story.debug.skip()); same = 0; }
@@ -392,7 +432,12 @@ async function drive2(done, o) {
     const key = [s.mission, s.scene, s.objective, s.target && Math.round(s.target.x), s.offer, s.mode].join('|');
     if (key === lastKey) same++; else { same = 0; lastKey = key; if (process.env.VERBOSE) console.log('     ·', s.mission || s.scene, '|', s.mode, '|', s.objective, '|', s.offer, '|', JSON.stringify(s.player), s.date); }
     if (Date.now() - (o.hb || t0) > 60000) { o.hb = Date.now(); log('   … ' + (s.mission || s.scene) + ': ' + s.mode + ' | ' + s.objective + ' | offer ' + s.offer + ' | ' + JSON.stringify(s.player) + ' tgt ' + JSON.stringify(s.target) + ' d ' + Math.round(s.dist || 0) + ' | ' + s.date + (s.panel ? ' | panel ' + s.panel : '') + (s.mg ? ' | mg ' + s.mg : '')); }
-    if (s.shop) { await ev(() => { try { N.shops.close(); } catch (e) { /* ignore */ } }); await sleep(250); continue; }
+    if (s.shop) {
+      const what = await ev(() => (window.__shops || []).slice(-1)[0] || null);
+      log('   (' + (s.mission || s.scene) + ': a shop card opened mid-mission: ' + JSON.stringify(what) + ' -> close)');
+      check(false, (s.mission || s.scene) + ': ACTION meant for the story opened a shop card instead', what);
+      await ev(() => { try { N.shops.close(); } catch (e) { /* ignore */ } }); await sleep(250); continue;
+    }
     if (s.journal) { await page.keyboard.press('Escape'); await sleep(250); continue; }
     if (s.defs) { await page.keyboard.press('KeyE'); await sleep(400); continue; }
     if (s.credits) { await page.keyboard.press('Escape'); await sleep(400); continue; }
@@ -412,7 +457,7 @@ async function drive2(done, o) {
     if (s.mode === 'play') {
       if (s.gallery) { await galleryKeys(s); continue; }
       if (s.offer && STORY_OFFER.test(s.offer) && (!s.target || s.dist <= 44) && (!/^Ride /.test(s.offer) || RIDE_OK.test(s.mission || ''))) { await page.keyboard.press('KeyE'); tally('E story offer'); await sleep(220); continue; }
-      if (s.target && s.dist > (o.near || 16)) { await ev(([x, y]) => N.story2.tp(x, y), [s.target.x, s.target.y]); await sleep(o.tpWait || 160); continue; }
+      if (s.target && s.dist > (o.near || 16)) { await ev(([x, y]) => { window.__audit({ x, y }); N.story2.tp(x, y); }, [s.target.x, s.target.y]); await sleep(o.tpWait || 160); continue; }
       if (same > 40 && s.target) { await ev(([x, y]) => N.story2.tp(x + 6, y + 6), [s.target.x, s.target.y]); same = 0; }
     }
     await sleep(160);
@@ -813,6 +858,9 @@ async function pSA4() {
   const match = games.find((g) => g.id === 'match');
   check(!!match, 'THE LB STADIUM MATCH is played with the match engine (minigame "match")', games);
   check(match && match.lb, 'the match day: N.flags.lb_match on (floodlights, crowds)', match);
+  check(match && match.home === NICK + ' XI' && match.homeShort === NICK.toUpperCase() + ' XI', 'the scorecard carries the nickname: ' + NICK + ' XI / ' + NICK.toUpperCase() + ' XI', match && { home: match.home, short: match.homeShort });
+  const pl = (match && match.homePlayers) || [];
+  check(pl[0] === NICK && pl.indexOf('Immu') >= 0 && pl.indexOf('Ayesha') >= 0 && pl.indexOf('Bunty') < 0, 'the camp side: ' + NICK + ', Immu and Ayesha play; Bunty-anna (19) does not', pl);
   log('  LB match: ' + JSON.stringify(match) + ' -> ' + JSON.stringify(await ev(() => (window.__mgEnd || []).filter((e) => e.id === 'match').slice(-1)[0] || null)));
   const v = await ev(() => ({ played: N.flags.lb_match_played, badge: N.flags.ayesha_camp_badge, money: N.player.money, nets: N.npcs.scheduleOn ? N.npcs.scheduleOn('ayesha_nets') : null, cm: N.cricketMatch ? N.cricketMatch.last || null : null }));
   check(v.played && v.badge && v.money >= money0 + 2000, 'SA4 passed: the match played, Ayesha\'s camp badge, ₹20', v);
@@ -1202,7 +1250,7 @@ const SIDE_PHASES = new Set(['sa3', 'sa2', 'sa4', 'sa7', 'sa5', 'sa6', 'sa1', 's
       const prev = PHASES[si - 1][0];
       const f = path.join(SAVES, 'after_' + prev + '.json');
       const snap = JSON.parse(fs.readFileSync(f, 'utf8'));
-      Object.assign(cov, snap.cov || {}); nickBad = snap.nickBad || []; Object.assign(realKeys, snap.realKeys || {});
+      Object.assign(cov, snap.cov || {}); nickBad = snap.nickBad || []; Object.assign(realKeys, snap.realKeys || {}); Object.assign(reach, snap.reach || {});
       await ev((raw) => { localStorage.setItem('nostalgia.save.v1', raw); }, snap.raw);
       await page.reload();
       await bootTitle();
@@ -1249,6 +1297,11 @@ const SIDE_PHASES = new Set(['sa3', 'sa2', 'sa4', 'sa7', 'sa5', 'sa6', 'sa1', 's
     check(!c.festMissing.length, 'the festival sites are visited', c.festMissing);
   }
   log('coverage: must missing ' + JSON.stringify(c.mustMissing) + ', festival missing ' + JSON.stringify(c.festMissing) + ', named missing ' + JSON.stringify(c.namedMissing) + ', prefixes missing ' + JSON.stringify(c.preMissing));
+  phase = 'reach';
+  const rv = Object.values(reach), bad = rv.filter((r) => r.bad || r.err);
+  fs.writeFileSync(path.join(OUT, 'reach.json'), JSON.stringify(rv, null, 1));
+  log('reachability audit: ' + rv.length + ' mission goals checked (' + ['road', 'path', 'roof', 'water'].map((k) => rv.filter((r) => r.ok === k).length + ' ' + k).join(', ') + ')');
+  check(!bad.length, 'every mission goal the test jumped to can be reached on foot from the road network (' + rv.length + ' goals)', bad.slice(0, 12));
   phase = 'nick';
   check(!nickBad.length, 'custom nickname: no "Chinnu" / "Srikanth" / {nick} left in lines, objectives, toasts or minigame cards', nickBad.slice(0, 20));
   log('real input: ' + JSON.stringify(realKeys));
