@@ -888,6 +888,39 @@ CPU: pooled channel strips (22 voices) + per-sound cooldowns, k-rate pitch/filte
 drum strokes and plucked strings pre-rendered to buffers in idle time, 0.18 s lookahead
 scheduler; the context is suspended while the tab is hidden. Test: `node nostalgia/tests/audio.cjs`.
 
+**Helper files** (loaded right after audio.js, each extends the core only through `N.audio.ext`):
+`audio_instruments.js` (physical-model instruments + drum kits), `audio_score.js` (the whole original
+score: replaces the core's tracks by id), `audio_vehicles.js` (engine voices, horns, bells, tyres,
+potholes), `audio_ambience.js` (animals, city one-shots, beds, time-of-day schedules, continuous loops).
+```
+N.audio.ext   stable extension API (full comment block in audio.js "extension API"); also for other workers
+  P  primitives (osc0 gain filt shaper panner sp tone burst strike pulses noiseVoice noiseBuf crowd wave ...)
+  registerSfx(name, fn(ac,out,t,o)->end, {cooldown, gain, ui, caption, capMax})  registerInst / registerKs /
+  registerKit / registerScale / registerTrack / registerStation / registerSong / registerEngine /
+  setEngineVoice(factory(ac, dest, type, profile, veh, isPlayer)) / setHornFor(fn) / registerBed /
+  registerPlace(rule, {first}) / registerFestival / DAY_ONLY / onUpdate(id, fn(dt, mode, info), order)
+  bus(name): master sfx amb engine ui music walk radio revIn musicRevIn worldLP worldDuck musicDuck sfxDuck ambDuck engPlayer
+  listener() {x, y, h, yaw, is3D}   spatial(x, y, ref, max)   emitter(opts) -> {input, set(x, y, h, vx, vy), setGain, dispose(fade)}
+  reverbZone()   play(name, o)   engProfile(type)   hornFor(type)   weekday(day) (0 = Sunday)
+N.audio.reverb   {zone, detected, override, set(id | null), ZONES}: generated impulse responses, crossfaded
+  open, oldcity_lane, charminar, golconda (the Fateh Darwaza clap echo ~0.8 s), stadium, station, irani_cafe, lake
+N.audio.spatial  {hrtf: 'auto' | true | false, pose}. 3D views: the listener is the 3D camera (HRTF for the nearest
+  4 continuous + 4 one-shot sources on the high tier, equal-power otherwise); top-down: north-up stereo.
+  Traffic engines: up to 4 nearest (2 on low tier) with Doppler (info.dop) and occlusion (lowpass when a
+  building is in the way). SFX options add: cls, h, occlude, duck; SFX receive o.zone.
+Master: glue compressor -> limiter -> soft clip (ceiling -0.3 dBFS). Ducks: dialogue music 0.32 / ambience 0.6 /
+  sfx 0.85 / radio 0.45; story stings (mission passed, busted ...) dip music and ambience while they play.
+Music: part cfg `ev` = instrument options for every note of the part {gamak, kan, krintan, bend, vib, vowel
+  (choir a/o/u/e), stop (harmonium bass/male/female/full)}. New tracks: chase5 (Chappal Meter 5, comic tuba),
+  ganesh (immersion procession; the ganesh_immersion festival plays it), ramzan (Old City night market),
+  numaish_close. The ending's sections stay alaap, theme, rise, lift (+2 semitones), coda (hook resolves to Sa).
+Test hooks: N.audio.vehicles {types, DEF, factory, sweep, road, nodes, bench}, N.audio.ambience {stats, synth,
+  renderBed, places, radioShops, SCHED, ...}, N.audio.ext.instruments {names, kits, stats, ...}.
+  Ambience flag: N.flags.cricket (shop transistor radios play wordless cricket commentary all day).
+```
+Quality suite: `node nostalgia/tests/audio_quality.cjs` (sections in tests/aq/, `AQ=vehicles,music` to pick):
+offline renders -> WAV + spectrogram/level PNGs in tests/out/aq/, loudness/clipping/click/spectral/spatial checks.
+
 ## 18. Minigames — `N.minigames` (minigames.js)
 
 Eight full-screen minigames (systems_design §8), each a DOM overlay (`#overlay .mg-screen`,
