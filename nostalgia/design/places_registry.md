@@ -84,3 +84,18 @@ More everyday elements and props. They must appear across colonies and markets a
 
 Temples, mosques and churches together show Hyderabad's ganga-jamuni harmony. Treat
 all of them with the same warmth and respect.
+
+## Festivals (user, round 4, binding)
+
+Both must be playable story moments with crowds, sound and decoration in the world,
+switched on by story flags (the city looks different on those days).
+
+| id | Festival | Where | Notes |
+|---|---|---|---|
+| `ganesh_immersion` | Ganesh Nimajjanam (immersion) | `tank_bund` / Hussain Sagar; idols come from colonies and from `khairatabad_ganesh` (the giant Khairatabad idol) | procession of idols on lorries and tractors, teenmaar drums, dancing crowds, gulal, cranes on Tank Bund lowering idols into the lake, all-night traffic jams, colony boys guarding "our" pandal's Ganesh all week. Aug/Sep |
+| `bonalu` | Bonalu (Ashada Jatara) | `ujjaini_mahankali_temple` (Secunderabad, Lashkar Bonalu) and `lal_darwaza_temple` (Old City) | women carrying decorated bonam pots on their heads, Pothuraju dancers with turmeric and anklets, drums, neem leaves, the Rangam; a Telangana celebration. Jul/Aug. Depict respectfully; no alcohol/toddy references |
+
+Festivals happen at different times of year, so the story may span several months or
+seasons (e.g. chapters from Sankranti and Numaish in January through Bonalu and Ganesh
+immersion to a finale at Charminar on a festive night such as Ramzan). Writers choose,
+but keep the calendar consistent with the chosen year.

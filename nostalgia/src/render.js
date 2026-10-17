@@ -528,6 +528,63 @@
     ctx.fillText(str, X, Y);
   };
 
+  /* ---------------------------------------------- 3x5 pixel font (signs) */
+  // Crisp at the internal resolution; used for in-world shop signs and hoardings.
+  const GLYPHS = {
+    A: ['.#.', '#.#', '###', '#.#', '#.#'], B: ['##.', '#.#', '##.', '#.#', '##.'], C: ['.##', '#..', '#..', '#..', '.##'],
+    D: ['##.', '#.#', '#.#', '#.#', '##.'], E: ['###', '#..', '##.', '#..', '###'], F: ['###', '#..', '##.', '#..', '#..'],
+    G: ['.##', '#..', '#.#', '#.#', '.##'], H: ['#.#', '#.#', '###', '#.#', '#.#'], I: ['###', '.#.', '.#.', '.#.', '###'],
+    J: ['..#', '..#', '..#', '#.#', '.#.'], K: ['#.#', '#.#', '##.', '#.#', '#.#'], L: ['#..', '#..', '#..', '#..', '###'],
+    M: ['#...#', '##.##', '#.#.#', '#...#', '#...#'], N: ['#..#', '##.#', '#.##', '#..#', '#..#'], O: ['.#.', '#.#', '#.#', '#.#', '.#.'],
+    P: ['##.', '#.#', '##.', '#..', '#..'], Q: ['.#.', '#.#', '#.#', '##.', '.##'], R: ['##.', '#.#', '##.', '#.#', '#.#'],
+    S: ['.##', '#..', '.#.', '..#', '##.'], T: ['###', '.#.', '.#.', '.#.', '.#.'], U: ['#.#', '#.#', '#.#', '#.#', '###'],
+    V: ['#.#', '#.#', '#.#', '#.#', '.#.'], W: ['#...#', '#...#', '#.#.#', '##.##', '#...#'], X: ['#.#', '#.#', '.#.', '#.#', '#.#'],
+    Y: ['#.#', '#.#', '.#.', '.#.', '.#.'], Z: ['###', '..#', '.#.', '#..', '###'],
+    0: ['###', '#.#', '#.#', '#.#', '###'], 1: ['.#.', '##.', '.#.', '.#.', '###'], 2: ['##.', '..#', '.#.', '#..', '###'],
+    3: ['##.', '..#', '.#.', '..#', '##.'], 4: ['#.#', '#.#', '###', '..#', '..#'], 5: ['###', '#..', '##.', '..#', '##.'],
+    6: ['.##', '#..', '###', '#.#', '###'], 7: ['###', '..#', '.#.', '.#.', '.#.'], 8: ['###', '#.#', '###', '#.#', '###'],
+    9: ['###', '#.#', '###', '..#', '##.'], ' ': ['..', '..', '..', '..', '..'], '.': ['.', '.', '.', '.', '#'],
+    '-': ['...', '...', '###', '...', '...'], '/': ['..#', '..#', '.#.', '#..', '#..'], "'": ['#', '#', '.', '.', '.'],
+    '!': ['#', '#', '#', '.', '#'], '&': ['.#.', '#.#', '.#.', '#.#', '.##'], ':': ['.', '#', '.', '#', '.'], '+': ['...', '.#.', '###', '.#.', '...'],
+  };
+  const ptCache = new Map();
+  D.pixelTextWidth = function (str) {
+    let w = 0;
+    for (const ch of String(str).toUpperCase()) { const g = GLYPHS[ch] || GLYPHS[' ']; w += g[0].length + 1; }
+    return Math.max(0, w - 1);
+  };
+  /** Returns a cached canvas with str rendered in the 3x5 pixel font (with optional 1px shadow). */
+  D.pixelTextCanvas = function (str, color, shadow) {
+    str = String(str).toUpperCase();
+    const key = str + '|' + color + '|' + (shadow || '');
+    let c = ptCache.get(key);
+    if (c) return c;
+    const w = D.pixelTextWidth(str) + (shadow ? 1 : 0), h = 5 + (shadow ? 1 : 0);
+    c = makeCanvas(Math.max(1, w), h);
+    const g = c.getContext('2d');
+    const paint = (ox, oy, col) => {
+      g.fillStyle = col;
+      let x = ox;
+      for (const ch of str) {
+        const gl = GLYPHS[ch] || GLYPHS[' '];
+        for (let r = 0; r < 5; r++) for (let q = 0; q < gl[r].length; q++) if (gl[r][q] === '#') g.fillRect(x + q, oy + r, 1, 1);
+        x += gl[0].length + 1;
+      }
+    };
+    if (shadow) paint(1, 1, shadow);
+    paint(0, 0, color);
+    if (ptCache.size > 600) ptCache.clear();
+    ptCache.set(key, c);
+    return c;
+  };
+  /** Draw pixel text centred at a projected world point (screen-aligned, integer pixels). */
+  D.pixelText = function (x, y, h, str, color, opts) {
+    const ctx = R.ctx, k = Z * (1 + (h || 0) * R.PERSP);
+    const c = D.pixelTextCanvas(str, color || '#fff', opts && opts.shadow);
+    const s = (opts && opts.scale) || 1;
+    ctx.drawImage(c, Math.round(cx + (x - camX) * k - (c.width * s) / 2), Math.round(cy + (y - camY) * k - (c.height * s) / 2), c.width * s, c.height * s);
+  };
+
   /** Soft contact shadow under an object (rounded rect rotated by angle). Enqueue on 'shadow'. */
   D.shadow = function (x, y, w, d, angle, h) {
     const ctx = R.ctx, s = R.sun;
