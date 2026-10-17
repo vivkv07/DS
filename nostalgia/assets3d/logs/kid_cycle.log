@@ -1,0 +1,29 @@
+00:00.060  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building kid_cycle (vehicle)
+00:05.057  render           | Saved: '/tmp/nostalgia_blender/text_72435c16.png'
+[kit] uv: 970 faces unwrapped along seams, 338 smart-projected
+[kit] uv atlas: 47 islands rescaled
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked albedo 512x512 (6 samples) in 28.4s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked ao 256x256 (24 samples) in 39.0s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] baked orm 128x128 (1 samples) in 0.6s
+[kit] finish kid_cycle: tex 512, orm 128, emit False in 83.8s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+20:49:43 | INFO: Starting glTF 2.0 export
+20:49:43 | INFO: Extracting primitive: kid_cycle
+20:49:43 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+20:49:43 | INFO: Primitives created: 1
+20:49:43 | INFO: Finished glTF 2.0 export in 0.3505988121032715 s
+
+[kit] kid_cycle: 2704 tris (budget 6000) ok, 233.1 KB, clips [], anchors 11
+20:49:43 | INFO: Data are loaded, start creating Blender stuff
+20:49:43 | INFO: Blender create Mesh node kid_cycle
+20:49:43 | INFO: glTF import finished in 0.14s
+02:18.987  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/kid_cycle.png'
+[kit] preview kid_cycle.png (384px, 24 spp) in 49.3s
+20:50:33 | INFO: Data are loaded, start creating Blender stuff
+20:50:33 | INFO: Blender create Mesh node kid_cycle
+20:50:33 | INFO: glTF import finished in 0.08s

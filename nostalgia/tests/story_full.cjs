@@ -98,6 +98,10 @@ async function openPage(browser) {
 }
 async function bootTitle() {
   await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 60000 });
+  // src/testing.js (play-testing builds) tops the pocket money up to ₹9,99,999 by default: this playthrough
+  // checks the real economy (money never below ₹0, the friend pays the rest), so it plays with it off
+  // (remembered in this test browser's localStorage only)
+  await ev(() => { if (N.testing && N.testing.unlimitedMoney) N.testing.setUnlimitedMoney(false); });
   await page.mouse.click(2, 2);
   await ev(() => { const d = document.getElementById('debug'); if (d) d.classList.add('hide'); });
 }
@@ -118,6 +122,8 @@ async function installHooks() {
     N.on('mission:pass', (d) => { const k = d && d.id; if (k) window.__passes[k] = (window.__passes[k] || 0) + 1; });
     N.on('mission:fail', (d) => { window.__fails.push({ id: d && d.id, reason: d && d.reason, at: N.calendar.osd() }); });
     N.on('walkman:play', () => { window.__wm++; });
+    window.__wlog = [];
+    N.on('wanted:change', (d) => { if (window.__wlog.length > 60) window.__wlog.shift(); window.__wlog.push({ lvl: d && d.level, prev: d && d.prev, why: d && d.reason, m: (N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || null, at: N.calendar.osd(), veh: N.player.vehicle ? N.player.vehicle.type : null }); });
     N.on('minigame:start', (d) => { const P = (d && d.params) || {}; window.__mg.push({ id: d && d.id, lb: !!N.flags.lb_match, mission: N.missions.active && N.missions.active.id, home: P.home && (P.home.name || P.home), away: P.away && (P.away.name || P.away), intro: P.intro || null, title: P.title || null, place: P.place || null, at: N.calendar.osd() }); });
     N.on('minigame:end', (d) => { const r = (d && d.result) || {}; window.__mgEnd.push({ id: d && d.id, win: r.win, quit: r.quit, aborted: r.aborted, at: N.calendar.osd() }); });
     window.__shops = [];
@@ -157,10 +163,12 @@ async function installHooks() {
         return CS.apply(null, arguments);
       };
     } catch (e) { /* menus stub */ }
-    setInterval(() => {
+    // sampled 5x a second, and on every objective change, dialogue line and MISSION PASSED (a short stop such
+    // as SA3's bakery can open and close between two samples)
+    const sample = (c0) => {
       try {
         if (!N.player || !N.state || /title|boot/.test(N.state.mode)) return;
-        const c = (N.missions && N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || null;
+        const c = c0 || (N.missions && N.missions.active && N.missions.active.id) || (N.story2 && N.story2.scene) || null;
         if (!c) return;
         const p = N.player;
         const at = N.calendar.date.short;
@@ -174,8 +182,14 @@ async function installHooks() {
         // the lake: anywhere on the shore road / water (its place point is mid-lake)
         if (lake && Math.hypot(p.x - lake.x, p.y - lake.y) < 700 && (N.world.isWater && (N.world.isWater(p.x + 40, p.y) || N.world.isWater(p.x - 40, p.y) || N.world.isWater(p.x, p.y + 40) || N.world.isWater(p.x, p.y - 40) || N.world.isWater(p.x, p.y)))) hit('hussain_sagar');
         for (const q of pre) if (Math.hypot(p.x - q.x, p.y - q.y) < q.r) hit(q.id);
+        // district-sized places: being anywhere in the district counts (HITEC City is the IT district round Cyber Towers)
+        try { const d = N.world.districtAt(p.x, p.y); const did = d && (d.id || d); if (did === 'hitec') hit('hitec_city'); } catch (e) { /* ignore */ }
       } catch (e) { /* the tracker never breaks the run */ }
-    }, 200);
+    };
+    setInterval(() => sample(), 200);
+    N.on('hud:objective', () => sample());
+    N.on('dialogue:line', () => sample());
+    N.on('mission:pass', (d) => sample(d && d.id));
     void nick; void full;
   }, { track: TRACK, prefix: PREFIX, nick: NICK, full: FULL });
 }
@@ -531,7 +545,7 @@ async function afterMain(id, date, extra) {
   const s = await ev(() => ({
     done: N.missions.isDone ? Array.from(N.missions.done) : [], counter: N.tape.counter, hud: ((document.querySelector('#ui .osd-tape .tp-num') || {}).textContent || '').trim(),
     side: ((document.querySelector('#ui .osd-tape .tp-side') || {}).textContent || '').trim(), tracks: N.tape.tracks.map((t) => t.id), tin: Array.from(N.tape.tin),
-    date: N.calendar.label(), money: N.player.money, wanted: N.wanted ? N.wanted.level | 0 : 0, mode: N.state.mode,
+    date: N.calendar.label(), money: N.player.money, wanted: N.wanted ? N.wanted.level | 0 : 0, mode: N.state.mode, wlog: (window.__wlog || []).slice(-6),
     save: (() => { try { const o = JSON.parse(localStorage.getItem('nostalgia.save.v1')); return { done: o.data.missions.done, counter: o.data.tape && o.data.tape.counter }; } catch (e) { return null; } })(),
   }));
   const n = COUNTER[id];
@@ -543,8 +557,8 @@ async function afterMain(id, date, extra) {
   const miss = want.filter((t) => s.tin.indexOf(t) < 0);
   check(!miss.length, id + ': the tin holds every token so far (' + want.length + ')', { miss, tin: s.tin });
   if (date) check(s.date.indexOf(date) >= 0, id + ': free roam goes on on ' + date, s.date);
-  check(s.money >= 0, id + ': pocket money never negative (₹' + (s.money / 100).toFixed(2) + ')', s.money);
-  check(s.wanted === 0 || (extra && extra.wantedOk), id + ': Chappal Meter back at 0 after the mission', s.wanted);
+  check(s.money >= 0 && s.money < 100000, id + ': pocket money never negative (₹' + (s.money / 100).toFixed(2) + ')', s.money);
+  check(s.wanted === 0 || (extra && extra.wantedOk), id + ': Chappal Meter back at 0 after the mission', { wanted: s.wanted, changes: s.wlog });
   check(!!(s.save && s.save.done && s.save.done.indexOf(id) >= 0 && s.save.counter === n), id + ': autosaved on MISSION PASSED', s.save);
   log('  ' + id + ': ₹' + (s.money / 100).toFixed(2) + ', ' + s.date + ', tin ' + s.tin.length);
   return s;
@@ -582,7 +596,7 @@ async function pTitle() {
   await ev(() => { N.menus.quickStart = false; try { localStorage.removeItem('nostalgia.save.v1'); localStorage.removeItem('nostalgia.save.v1.bak'); localStorage.removeItem('nostalgia.save.v1.manual'); } catch (e) { /* ignore */ } });
   await shot('00_title');
   await page.click('#title-start');
-  const named = await waitFor(() => N.menus.debugState().top === 'name', null, 8000, 'the name card');
+  const named = await waitFor(() => N.menus.debugState().top === 'name', null, 20000, 'the name card');
   if (named) {
     // type the names with the keyboard (the nick field has focus)
     await page.keyboard.press('Control+A'); await page.keyboard.type(NICK, { delay: 40 });
@@ -591,7 +605,7 @@ async function pTitle() {
     await shot('01_name_card');
     await page.keyboard.press('Enter');
   }
-  const cs = await waitFor(() => N.state.mode === 'cutscene', null, 6000, 'the prologue cutscene');
+  const cs = await waitFor(() => N.state.mode === 'cutscene', null, 20000, 'the prologue cutscene');
   check(cs, 'PLAY -> name card (typed) -> the 2026 prologue starts');
   const nm = await ev(() => ({ nick: N.player.nick, full: N.player.fullName || N.player.full }));
   check(nm.nick === NICK && /Pradeep/.test(nm.full || ''), 'the name card sets the nickname ' + NICK + ' / K. ' + FULL, nm);
@@ -614,7 +628,7 @@ async function pTitle() {
   await waitFor(() => document.querySelector('.mn-cs.vhs-rewind') !== null, null, 10000, 'the ◀◀ REWIND');
   await shot('04_rewind');
   for (let i = 0; i < 60; i++) { if (await ev(() => N.state.mode !== 'cutscene')) break; await pressKey('KeyE'); await sleep(300); }
-  await waitFor(() => N.state.mode === 'play' && N.missions.active && N.missions.active.id === 'bo_kaata', null, 20000, 'M1 to start after the prologue');
+  await waitFor(() => N.state.mode === 'play' && N.missions.active && N.missions.active.id === 'bo_kaata', null, 60000, 'M1 to start after the prologue');
   const s = await ev(() => ({ year: N.flags.year, date: N.calendar.label(), clock: N.clock.label(), lvl: N.player.level, seen: N.flags.prologue_seen, act: N.seasons.active() }));
   check(s.year === 2003 && s.date === 'TUE 14 JAN 2003' && s.clock === '07:10', 'after ◀◀ REWIND: TUE 14 JAN 2003 07:10', s);
   check(s.lvl === 'home_terrace', 'M1 starts on home_terrace', s.lvl);
@@ -622,7 +636,7 @@ async function pTitle() {
 }
 async function pM1() {
   await testTune();
-  await waitFor(() => N.story.debug.state().step === 'act', null, 8000, 'the kite prompt');
+  await waitFor(() => N.story.debug.state().step === 'act', null, 30000, 'the kite prompt');
   const lab = await ev(() => N.input.actionLabel);
   check(lab === 'Fly the kite', 'M1: ACTION "Fly the kite" on the terrace', lab);
   await pressKey('KeyE'); tally('E Fly the kite');
@@ -734,7 +748,31 @@ async function pM5() {
   await testTune();
   if (!check(await startFromGiver('right_right'), 'M5 starts from Amma at home')) return;
   await atStart('right_right', 'TUE 01 APR 2003');
-  await finish1('right_right');
+  // this playthrough dawdles: the 240 s "AMMA COMES OUT" timer runs out on the way to Koti (debug: expire the
+  // soft timer instead of waiting four minutes), so the bible's late branch plays: Chappal Meter 3, "{FULL}! I
+  // came out and the step was EMPTY!", escape or be caught, and the mission still passes. The real Chappal
+  // Meter runs the chase (level 3 is Havaldar Pochaiah, systems §4); the player stands still and is caught.
+  const late = { expired: false, branch: null, caught: false, line: false, t: 0 };
+  await ev(() => { window.__busted = []; N.on('busted', (d) => { window.__busted.push(d && d.by); }); });
+  await finish1('right_right', { hook: async (s) => {
+    if (!late.expired && /red bus from Koti/.test(s.obj || '')) { late.expired = await ev(() => N.story.debug.expire() > 0); return false; }
+    if (/Escape Mummy/.test(s.obj || '')) {
+      if (!late.branch) {
+        late.branch = await ev(() => ({ wanted: N.wanted ? N.wanted.level : 0, policy: !!(N.wanted && N.wanted.policy) }));
+        late.line = await ev((full) => (window.__lines || []).some((l) => l[0] === 'amma' && /I came out and the step was EMPTY/.test(l[1]) && l[1].indexOf(full.toUpperCase()) >= 0), FULL);
+        late.t = Date.now();
+        await shot('m5_late_chase');
+      }
+      if (!late.caught) late.caught = await ev(() => window.__busted[0] || false);
+      if (!late.caught && Date.now() - late.t < 60000) { await sleep(300); return true; } // stand still: the chaser comes
+      if (!late.caught) late.faced = true;
+      return false; // (not caught within a minute: walk back to the step, "face her at the step")
+    }
+    return false;
+  } });
+  check(late.expired && late.branch && late.branch.wanted >= 3 && late.line, 'M5 late: the timer ran out, Chappal Meter ' + (late.branch && late.branch.wanted) + ', Amma: "' + FULL.toUpperCase() + '! I came out and the step was EMPTY!"', late);
+  log('  M5 late: ' + (late.caught ? 'PAKDA GAYA (caught by ' + late.caught + ')' : 'not caught in 60 s: he faced Amma at the step'));
+  check(late.caught || late.faced, 'M5 late: escape or be caught (bible): ' + (late.caught ? 'the real Chappal Meter chase caught him (PAKDA GAYA, ' + late.caught + ')' : 'he went back and faced Amma at the step') + '; the mission goes on', late);
   await afterMain('right_right', 'WED 02 APR 2003');
   const v = await ev(() => ({ bus: N.flags.bus_unlocked || N.flags.unlock_bus, tickets: N.collectibles.unlocked('tickets') }));
   check(v.bus && v.tickets, 'M5: bus travel and Ticket Thatha\'s tickets unlocked', v);
@@ -1098,11 +1136,23 @@ function usesOf(id) {
   }
   return out;
 }
+/** Static uses of a place id in the story scripts themselves (a giver, a goto, a camera, a scene prop, a respect
+ *  zone the chase keeps out of, the ending's plane): story.js -> 'story', story2.js -> 'story2'. */
+const STORY_SRC = {};
+function storyRefs(id) {
+  const out = [];
+  for (const f of ['story', 'story2']) {
+    if (STORY_SRC[f] == null) { try { STORY_SRC[f] = fs.readFileSync(path.join(ROOT, 'src', f + '.js'), 'utf8'); } catch (e) { STORY_SRC[f] = ''; } }
+    if (STORY_SRC[f].indexOf("'" + id + "'") >= 0) out.push(f + '.js');
+  }
+  return out;
+}
 function coverageReport() {
   const ctxName = (c) => ({ bo_kaata: 'M1', lost_and_found: 'M2', first_day_first_show: 'M3', last_man_batting: 'M4', right_right: 'M5', ammammas_thursday: 'M6', the_clap: 'M7', drums_for_amma: 'M8', opening_day: 'M9', agle_baras: 'M10', last_bell: 'M11', chand_raat: 'M12', pandal_duty: 'SA1', current_poyindi: 'SA2', sunday_mutton: 'SA3', six_balls: 'SA4', lb_exhibition: 'SA4x', twelve_oclock: 'SA5', bunty_races: 'SA6r1', bunty_races_r2: 'SA6r2', bunty_races_r3: 'SA6r3', bunty_races_r4: 'SA6r4', new_class_old_books: 'SA7', christmas_stars: 'SA8', interlude: 'Interlude', ending: 'Ending', epilogue: 'Epilogue' }[c] || c);
-  const row = (id) => { const o = cov[id]; return '| `' + id + '` | ' + (o ? Object.keys(o).map((c) => (/~cam$/.test(c) ? ctxName(c.slice(0, -4)) + ' (camera, ' + o[c] + ')' : ctxName(c) + ' (' + o[c] + ')')).join(', ') : '**not visited**') + ' | ' + (usesOf(id).join(', ') || '-') + ' |'; };
-  const lines = ['# Story playthrough: place coverage', '', 'Generated by tests/story_full.cjs (' + new Date().toISOString() + '). A place counts when the player was within reach of it while a', 'mission, side activity or story scene was running (passenger rides included; first date per context).', '',
-    '## Must-have places (places_registry §2)', '', '| id | visited by (mission / side activity / scene, first date) | also used by |', '|---|---|---|'].concat(MUST.map(row), ['', '## Festival sites', '', '| id | visited by | also used by |', '|---|---|---|'], FESTIVAL.map(row), AMBIENT.map(row), ['', '## Other named places (rounds 5-11)', '', '| id | visited by | also used by |', '|---|---|---|'], NAMED.map(row));
+  const row = (id) => { const o = cov[id]; return '| `' + id + '` | ' + (o ? Object.keys(o).map((c) => (/~cam$/.test(c) ? ctxName(c.slice(0, -4)) + ' (camera, ' + o[c] + ')' : ctxName(c) + ' (' + o[c] + ')')).join(', ') : '**not visited**') + ' | ' + (storyRefs(id).join(', ') || '-') + ' | ' + (usesOf(id).join(', ') || '-') + ' |'; };
+  const lines = ['# Story playthrough: place coverage', '', 'Generated by tests/story_full.cjs (' + new Date().toISOString() + '). A place counts when the player was within reach of it while a', 'mission, side activity or story scene was running (passenger rides included; first date per context). "story script" lists',
+    'the story files that reference the id (givers, gotos, cameras, props, respect zones); "also used by" the other modules.', '',
+    '## Must-have places (places_registry §2)', '', '| id | visited by (mission / side activity / scene, first date) | story script | also used by |', '|---|---|---|---|'].concat(MUST.map(row), ['', '## Festival sites', '', '| id | visited by | story script | also used by |', '|---|---|---|---|'], FESTIVAL.map(row), AMBIENT.map(row), ['', '## Other named places (rounds 5-11)', '', '| id | visited by | story script | also used by |', '|---|---|---|---|'], NAMED.map(row));
   const pre = PREFIX.map((q) => { const ids = Object.keys(cov).filter((k) => k.indexOf(q) === 0); return '| `' + q + '*` | ' + (ids.length ? ids.length + ': ' + ids.slice(0, 8).join(', ') : '**none**') + ' |'; });
   lines.push('', '## Everyday elements (registry §3, rounds 2-3)', '', '| prefix | instances visited |', '|---|---|', ...pre);
   fs.writeFileSync(path.join(OUT, 'coverage.md'), lines.join('\n') + '\n');

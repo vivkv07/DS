@@ -1,0 +1,33 @@
+00:00.030  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building state_central_library (landmark)
+00:00.995  render           | Saved: '/tmp/nostalgia_blender/text_914923a1.png'
+[kit] baked AO to vertex colours (32 samples) in 0.2s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+20:41:13 | INFO: Starting glTF 2.0 export
+20:41:13 | INFO: Extracting primitive: COL_state_central_library
+20:41:13 | INFO: Primitives created: 1
+20:41:13 | INFO: Extracting primitive: state_central_library_body
+20:41:13 | INFO: Primitives created: 7
+20:41:13 | INFO: Finished glTF 2.0 export in 0.08794903755187988 s
+
+[kit] state_central_library: 2349 tris (budget 20000) ok, 143.3 KB, clips [], anchors 0
+20:41:13 | INFO: Data are loaded, start creating Blender stuff
+20:41:13 | INFO: Blender create Mesh node COL_state_central_library
+20:41:13 | INFO: Blender create Mesh node state_central_library_body
+20:41:13 | INFO: glTF import finished in 0.03s
+00:03.900  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/state_central_library.png'
+[kit] preview state_central_library.png (384px, 20 spp) in 2.4s
+20:41:15 | INFO: Data are loaded, start creating Blender stuff
+20:41:15 | INFO: Blender create Mesh node COL_state_central_library
+20:41:15 | INFO: Blender create Mesh node state_central_library_body
+20:41:15 | INFO: glTF import finished in 0.03s
+00:05.276  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/state_central_library_back.png'
+[kit] preview state_central_library_back.png (320px, 14 spp) in 1.3s
+20:41:17 | INFO: Data are loaded, start creating Blender stuff
+20:41:17 | INFO: Blender create Mesh node COL_state_central_library
+20:41:17 | INFO: Blender create Mesh node state_central_library_body
+20:41:17 | INFO: glTF import finished in 0.03s
+00:07.175  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/state_central_library_portal.png'
+[kit] preview state_central_library_portal.png (320px, 16 spp) in 1.9s
+[kit] done state_central_library in 6.7s

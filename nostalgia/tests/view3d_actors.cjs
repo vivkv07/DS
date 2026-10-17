@@ -10,6 +10,7 @@
  *     animation: a walking pedestrian's legs swing, a moving vehicle's wheels spin, riders are seated
  *     (hips bent) with hands on the grips; ride EVERY vehicle type in third person and first person
  *     (the rider is drawn, first person hides the head, cars / bus / lorry swap in their cockpit);
+ *     skid marks + dust / smoke puffs from a handbrake turn (real input);
  *     night: head / tail lamps, light pools and glows; a mission goal marker (cylinder of light) at a
  *     test mission + giver markers; pigeons at Charminar; dialogue barks anchored to 3D heads;
  *     collectible glints; Sankranti kites, Ganesh immersion and Christmas season layers;
@@ -462,15 +463,17 @@ async function desktop(browser) {
     const A = N.view3dActors, p = N.player, out = {};
     const ped = N.entities.all.filter((e) => e.kind === 'ped' && e !== p && !e.down && Math.hypot(e.vx || 0, e.vy || 0) > 15).sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0];
     if (ped) { A.debug.track(ped); const hips = []; for (let i = 0; i < 6; i++) { await fr(); const r = A.debug.rec; if (r) hips.push(r.J[0]); } out.hips = hips; }
-    const veh = N.entities.all.filter((e) => e.kind === 'vehicle' && e.driver && Math.abs(e.speed || 0) > 10 && e.T && e.T.cls === 'bike').sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0]
-      || N.entities.all.filter((e) => e.kind === 'vehicle' && e.driver && Math.abs(e.speed || 0) > 10)[0];
-    if (veh) { A.debug.track(veh); const spins = []; let rider = null; for (let i = 0; i < 6; i++) { await fr(); const r = A.debug.rec; if (r) { spins.push(r.spin); if (r.riders && r.riders[0]) rider = r.riders[0]; } } out.spins = spins; out.vtype = veh.type; out.rider = rider; }
+    // prefer one on screen (its rider is only posed when drawn)
+    const onScreen = (e) => { const q = N.view3d.project(e.x, e.y, 4); return q && q.x > 0 && q.y > 0 && q.x < innerWidth && q.y < innerHeight && (q.visible !== false) && (q.z == null || q.z < 1); };
+    const moving = N.entities.all.filter((e) => e.kind === 'vehicle' && e.driver && Math.abs(e.speed || 0) > 10).sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
+    const veh = moving.find((e) => e.T && e.T.cls === 'bike' && onScreen(e)) || moving.find(onScreen) || moving.find((e) => e.T && e.T.cls === 'bike') || moving[0];
+    if (veh) { A.debug.track(veh); const spins = []; let rider = null; for (let i = 0; i < 6; i++) { await fr(); const r = A.debug.rec; if (r && isFinite(r.spin)) { spins.push(r.spin); if (r.riders && r.riders[0]) rider = r.riders[0]; } } out.spins = spins; out.vtype = veh.type; out.rider = rider; }
     A.debug.track(null);
     return out;
   });
   const hr = anim.hips ? Math.max(...anim.hips) - Math.min(...anim.hips) : 0;
   check(hr > 0.05, 'walking pedestrian: leg swing changes frame to frame (hip range ' + hr.toFixed(2) + ' rad)', JSON.stringify(anim.hips));
-  const sr = anim.spins ? Math.abs(anim.spins[anim.spins.length - 1] - anim.spins[0]) : 0;
+  const sr = anim.spins && anim.spins.length > 1 ? Math.abs(anim.spins[anim.spins.length - 1] - anim.spins[0]) : 0;
   check(sr > 0.05, 'moving ' + anim.vtype + ': wheels spin (' + sr.toFixed(2) + ' rad over 6 frames)');
   if (anim.rider) check(anim.rider.J[0] > 0.6 && anim.rider.seated, 'its rider sits (hip ' + anim.rider.J[0].toFixed(2) + ' rad, pose ' + anim.rider.pose + ')');
 
@@ -513,6 +516,31 @@ async function desktop(browser) {
     const okRider = heavyOrCar ? r.cockpit && r.fpsHide : r.riders >= 1 && r.fpsHide;
     check(r.model && okRider && (r.spin > 0.05 || r.cls === 'boat'), 'ride ' + r.t + ' (' + r.model + '): tps rider ' + (r.riders ? r.riderPose : 'hidden in a closed cabin') + ', moving (wheel spin ' + r.spin.toFixed(2) + '), fps ' + (r.cockpit ? 'cockpit interior + hands on the wheel' : 'head hidden, own hands on the grips'), JSON.stringify(r));
   }
+
+  // ---- skid marks + dust / smoke: a handbrake turn on the maidan (real input)
+  const fx = await page.evaluate(async () => {
+    const fr = () => new Promise((r) => requestAnimationFrame(() => r()));
+    T3.exit(); T3.clearVehicles(); N.debug.teleport('fateh_maidan');
+    const p = N.player, v = N.vehicles.spawn('ambassador', p.x, p.y, -Math.PI / 2, {});
+    N.vehicles.enter(p, v); N.view.set('tps');
+    N.input.hold('up', true);
+    let maxSp = 0;
+    for (let i = 0; i < 40; i++) { await fr(); maxSp = Math.max(maxSp, Math.abs(v.speed || 0)); }
+    N.input.hold('run', true); N.input.hold('left', true);
+    let skidF = 0, puffs = 0;
+    for (let i = 0; i < 30; i++) { await fr(); if (v.skidding) skidF++; puffs = Math.max(puffs, N.view3dActors.debug.fx().puffs); }
+    window.__fxCar = v;
+    return Object.assign({ maxSp: Math.round(maxSp), skidF, surf: N.world.surfaceAt(v.x, v.y) }, N.view3dActors.debug.fx(), { puffsMax: puffs });
+  });
+  check(fx.skids > 0 && fx.puffsMax > 0, 'handbrake turn: ' + fx.skids + ' skid-mark quads on the ground, up to ' + fx.puffsMax + ' dust / smoke puffs', JSON.stringify(fx));
+  if (SHOTS) {
+    await lowRes(page, false);
+    await page.evaluate(() => { const v = window.__fxCar; N.view3dActors.debug.camera([v.x - 30, 22, v.y + 42], [v.x, 2, v.y], 55); });
+    await shot(page, 'skid_dust');
+    await page.evaluate(() => N.view3dActors.debug.camera(null));
+    await lowRes(page, true);
+  }
+  await page.evaluate(() => { N.input.hold('run', false); N.input.hold('left', false); N.input.hold('up', false); T3.exit(); T3.clearVehicles(); });
 
   // ---- screenshots: models, people, riding views
   if (SHOTS) {
@@ -559,7 +587,13 @@ async function desktop(browser) {
     T3.populate(24, 20);
     for (let i = 0; i < 6; i++) await fr();
     N.view3d.setCamera({ yaw: N.view.yaw, pitch: 0.2, snap: true });
-    await fr(); await fr();
+    // a few lit vehicles coming towards the camera, so the shot shows lamps and light pools up close
+    { const p = N.player, a = N.view.yaw, cx = Math.cos(a), sy = Math.sin(a);
+      for (const [t, d, off] of [['ambassador', 46, 9], ['auto', 72, -8], ['chetak', 30, 16], ['bus', 120, 4]]) {
+        const q = T3.road(cx * d - sy * off, sy * d + cx * off);
+        N.vehicles.spawn(t, q.x, q.y, a + Math.PI, { driver: true, seed: d });
+      } }
+    for (let i = 0; i < 3; i++) await fr();
     const c = N.view3dActors.debug.counts();
     const lit = N.entities.all.filter((e) => e.kind === 'vehicle' && e.T && e.T.lights && e.driver).length;
     return { c, lit, night: N.view3d.H.night };
@@ -612,7 +646,17 @@ async function desktop(browser) {
     N.entities.remove(e);
     // collectible glints near an item
     const C = N.collectibles;
-    const it = C && C.items ? C.items.find((q) => q.series !== 'frames' && !(C.has && C.has(q.id)) && !q.level && isFinite(q.x)) : null;
+    // an item whose glint is live now (series unlocked, season / time / shop rules met): probe a few
+    let it = null;
+    if (C && C.items && C.glintPoints) {
+      const ox = p.x, oy = p.y;
+      for (const q of C.items) {
+        if (q.series === 'frames' || q.level || !isFinite(q.x) || (C.has && C.has(q.id))) continue;
+        p.x = q.x + 20; p.y = q.y;
+        if ((C.glintPoints(150) || []).some((g) => g.id === q.id)) { it = q; break; }
+      }
+      p.x = ox; p.y = oy;
+    }
     if (it) { N.debug.teleport(it.x + 20, it.y); N.view3d.settle(8000); await fr(); await fr(); await fr(); out.glints = N.view3dActors.debug.glints(); out.item = it.id; }
     return out;
   });
@@ -628,11 +672,20 @@ async function desktop(browser) {
     S.set('sankranti', true); N.debug.teleport('home'); N.debug.setTime(16, 40); N.view3d.settle(10000);
     for (let i = 0; i < 4; i++) await fr();
     out.kites = N.view3dActors.stats().kites;
-    N.view3d.setCamera({ yaw: N.view.yaw, pitch: -0.3, snap: true });
+    // frame the nearest kites from roof height (a tps camera at street level only sees the lane)
+    const p = N.player, sc = S.scene(p.x, p.y, 560), VS = N.view3d.VS || 1.5;
+    const ks = (sc && sc.kites || []).filter((k) => isFinite(k.x)).sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y)).slice(0, 5);
+    if (ks.length) {
+      const c = ks.reduce((o, k) => ({ x: o.x + k.x / ks.length, y: o.y + k.y / ks.length, h: o.h + k.h * VS / ks.length }), { x: 0, y: 0, h: 0 });
+      const a = Math.atan2(c.y - p.y, c.x - p.x), d = Math.max(60, Math.hypot(c.x - p.x, c.y - p.y));
+      N.view3dActors.debug.camera([c.x - Math.cos(a) * (d + 40), Math.max(30, c.h * 0.55), c.y - Math.sin(a) * (d + 40)], [c.x, c.h * 0.8, c.y], 60);
+      out.framed = ks.length;
+    } else N.view3d.setCamera({ yaw: N.view.yaw, pitch: -0.3, snap: true });
     return out;
   });
   if (!sea.skip) check(sea.kites > 0, 'Sankranti: kites in the sky with strings (' + sea.kites + ')');
   if (!sea.skip && SHOTS) { await lowRes(page, false); await shot(page, 'sankranti_kites'); await lowRes(page, true); }
+  await page.evaluate(() => N.view3dActors.debug.camera(null));
   const sea2 = await page.evaluate(async () => {
     const fr = () => new Promise((r) => requestAnimationFrame(() => r()));
     const S = N.seasons, out = {};

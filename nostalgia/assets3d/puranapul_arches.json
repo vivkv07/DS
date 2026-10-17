@@ -1,0 +1,57 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 135148,
+ "clips": {},
+ "family": "landmark",
+ "file": "puranapul_arches.glb",
+ "front": "-Y",
+ "id": "puranapul_arches",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 132.0,
+ "kit": 1,
+ "materials": [
+  "M_puranapul_arches_granite_grey",
+  "M_puranapul_arches_granite_grey.001",
+  "M_puranapul_arches_lime_plaster"
+ ],
+ "max": [
+  44.394,
+  78.582,
+  14.4
+ ],
+ "meta": {
+  "fit": "footprint",
+  "floodlit": false,
+  "footprint": [
+   44,
+   150
+  ],
+  "height": 14.4,
+  "landmark": "puranapul_arches"
+ },
+ "min": [
+  -44.394,
+  -82.582,
+  0.0
+ ],
+ "notes": [
+  "Built along the road span (rotated 16.8 deg, centred on (0.0, -2.0)): X extent exceeds lm.w on purpose; deck free for the ground renderer road (|v| < 18.5)",
+  "COL_puranapul_arches: the two side walls (camera-ray proxies)"
+ ],
+ "script": "oldcity.civic",
+ "size": [
+  88.787,
+  161.164,
+  14.4
+ ],
+ "tint": null,
+ "tris": 2021,
+ "units": "u",
+ "up": "Z"
+}
