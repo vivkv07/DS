@@ -12,8 +12,9 @@
  *    colony lanes, sandy-edged Old City lanes).
  *  - VECTOR MARKINGS computed in the shader from (along u, across v) road coordinates, anti-aliased with
  *    fwidth and pre-filtered with distance (never aliased or blurry): dashed centre lines, lane lines and
- *    solid edge lines on arterials, ZEBRA CROSSINGS + stop lines at junction approaches (same rules and
- *    stand-off as the 2D map), all stopping cleanly at junctions; yellow bus-bay outlines at bus stops.
+ *    solid edge lines on arterials, all stopping cleanly at junctions; ZEBRA CROSSINGS + stop lines as
+ *    worn paint decals exactly where the 2D map paints them (same rules and stand-off); yellow bus-bay
+ *    outlines at bus stops.
  *  - REAL 3D KERBS (chamfered) along arterials / streets / the bund, painted black-and-yellow where the
  *    2D map paints them; raised footpaths with procedural worn paver slabs; raised medians with painted
  *    kerbs and shrubs on divided roads; railway ballast beds with sleepers; dirt paths.
@@ -65,11 +66,9 @@
   const DAGE = { oldcity: 0.22, market: 0.12, colony: 0.08, rocky: 0.1, colonial: 0.0, cantonment: -0.05, posh: -0.1, hitec: -0.25 };
   const FOOTCOL = { arterial: '#a8a090', street: '#ada290', bund: '#b6ab96' };
   const KERBCOL = '#c9c2b4';
-  const DUSTCOL = '#9a8564';
   const YARD = '#c2a882';
   const PARKSOIL = { ground: '#b38c62', rock: '#a28468' };
 
-  const Q = () => (I ? I.Q : V.quality);
   let THREE = null, I = null;            // three.js + engine internals (attach)
 
   /* ================================================================ small math */
@@ -188,7 +187,7 @@
   function hash1(x, y) { let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
 
   /* ================================================================ road network analysis (global) */
-  const NET = { built: false, worldKey: null, pieces: [], juncs: [], paths: [], rails: [], bays: [], buckets: new Map(), ms: 0, roadPieces: new Map() };
+  const NET = { built: false, pieces: [], juncs: [], paths: [], rails: [], bays: [], buckets: new Map(), ms: 0, roadPieces: new Map() };
   const bkey = (ci, cj) => cj * 64 + ci;
   function bucket(kind, obj, x0, y0, x1, y1) {
     const i0 = Math.max(0, Math.floor(x0 / CHS)), i1 = Math.max(0, Math.floor(x1 / CHS));

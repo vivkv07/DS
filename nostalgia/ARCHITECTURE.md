@@ -1225,9 +1225,10 @@ ground no longer reuses the 2D pixel-art painter. A ground provider (installed w
   is split into *pieces* at road-graph junctions (`N.world.roads`: nodes with deg ≠ 2 or where two
   roads meet), interior bends are filleted into arcs (radius ~hw + 6); every junction gets a polygon
   from the arms' kerb lines with rounded corner fillets (kerbed corners r = footpath + 2.5), trims
-  for each arm, zebra crossings on approaches by the 2D map's rules (`world.js paintGround`: not on
-  lanes / bridges, arm length ≥ R + 24, one per direction, stand-off widest/2 + 6 — pushed past the
-  corner radius when needed), bus-bay outlines at `bus_stop` landmarks. Bucketed per 512 u chunk.
+  for each arm, zebra crossings on approaches by the 2D map's rules and at its exact spots
+  (`world.js paintGround`: not on lanes / bridges, arm length ≥ R + 24, one per direction, centred
+  widest/2 + 6 from the node, 8 u stripes 2.4 wide every 4.5) + a stop line behind each on the
+  inbound half, bus-bay outlines at `bus_stop` landmarks. Bucketed per 512 u chunk.
 - **Roads as geometry** (one merged mesh + one material per chunk, clipped exactly to the chunk):
   asphalt ribbons with camber normals, junction polygons, dead-end caps; real kerbs (0.8 u on
   arterials / the bund, 0.6 u on streets, chamfered) with the black-and-yellow paint where the 2D
@@ -1244,8 +1245,9 @@ ground no longer reuses the 2D pixel-art painter. A ground provider (installed w
   aggregate chips, tyre tracks per lane, oil drips, block cracks (age), dusty crumbling edges on
   old lanes, colour by kind and district age; markings from (u along, v across) with fwidth AA and
   distance pre-filtering: centre dashes (8 on / 9 off), lane lines (arterials, ±hw/2, 9/11), solid
-  edge lines (arterials, bund), zebras (8 long, 2.4 stripes every 4.5) + stop lines on the inbound
-  half, all suppressed inside junction trims; when it rains (`uWet`) the asphalt darkens, puddles
+  edge lines (arterials, bund), all suppressed inside junction trims and behind zebras; zebras /
+  stop lines / bus bays are worn paint decals (depth-biased in clip space, so they never z-fight at
+  any distance; MSAA smooths their edges); when it rains (`uWet`) the asphalt darkens, puddles
   form in low spots and along the gutters, and reflections show the sky with the low sky hidden by
   the city (no milky roads).
 - **Terrain**: one plane per chunk with a ground map (RGBA 256², 2 u texels from

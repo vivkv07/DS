@@ -57,7 +57,7 @@ const NAMED = ['birla_planetarium', 'assembly', 'mozamjahi_market', 'kachiguda_s
 // at / look are offsets from the landmark centre (or from another landmark: rel: '<id>')
 const VIEWS = {
   // Map v2: the Charminar Kaman stands 140 u due north, so the 'north' view looks from north-north-west
-  charminar: [{ name: 'north', from: -Math.PI / 2 - 0.6, dist: 125, fpsDist: 110, tpsPitch: -0.25 }, { name: 'laad_bazaar', atFn: 'laad', fpsPitch: -0.2 }, { name: 'close', from: -Math.PI / 2 + 0.5, dist: 92, fpsDist: 70, fpsPitch: -0.75 }],
+  charminar: [{ name: 'north', from: -Math.PI / 2 - 0.6, dist: 175, fpsDist: 110 }, { name: 'laad_bazaar', atFn: 'laad', fpsPitch: -0.2 }, { name: 'close', from: -Math.PI / 2 + 0.5, dist: 92, fpsDist: 70, fpsPitch: -0.75 }],
   lb_stadium: [{ name: 'gate', from: Math.PI, dist: 150 }, { name: 'field', at: [0, 60], look: [0, -110], fpsOnly: true, fpsPitch: -0.05 }],
   birla_mandir: [{ name: 'front', from: Math.PI / 2, dist: 140 }],
   buddha_statue: [{ name: 'bund', atFn: 'bund', fpsPitch: -0.1 }],

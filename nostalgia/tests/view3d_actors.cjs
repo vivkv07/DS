@@ -293,9 +293,16 @@ async function gait(browser) {
     await T3.raf(3);
     p.hidden = false;
     N.debug.teleport('fateh_maidan');
-    N.view.set('tps'); N.view3d.setCamera({ yaw: 0, pitch: 0.2, snap: true });
+    // the longest clear straight line from here (walking into a wall would stop the gait)
+    const clear = (a) => { let d = 0; for (; d < 260; d += 4) { const c = N.world.collide(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 4, 'walk'); if (c.hit || c.bad) break; } return d; };
+    let best = 0, bestD = -1; for (let k = 0; k < 24; k++) { const a = k / 24 * Math.PI * 2, d = clear(a); if (d > bestD) { bestD = d; best = a; } }
+    const start = { x: p.x, y: p.y };
+    out.clear = bestD;
+    window.__start = start; window.__dir = best;
+    N.view.set('tps'); N.view3d.setCamera({ yaw: best, pitch: 0.2, snap: true });
     N.view3dActors.debug.track(p);
     for (const [name, run] of [['walk', false], ['run', true]]) {
+      p.x = start.x; p.y = start.y; p.facing = p.angle = best; N.view3d.setCamera({ yaw: best, snap: true }); await T3.raf(2);
       N.time.scale = 1;
       N.input.hold('up', true); if (run) N.input.hold('run', true);
       await T3.raf(12);
@@ -343,7 +350,9 @@ async function gait(browser) {
   // ---- getting on, pedalling, getting off
   const ride = await page.evaluate(async () => {
     const p = N.player, out = {};
-    const v = N.vehicles.spawn('hero_cycle', p.x + 6, p.y, 0, {});
+    const st = window.__start, dir = window.__dir || 0;
+    p.x = st.x; p.y = st.y; await T3.raf(2);
+    const v = N.vehicles.spawn('hero_cycle', p.x + Math.cos(dir + 1.57) * 6, p.y + Math.sin(dir + 1.57) * 6, dir, {});
     if (!v) return { skip: 'no spawn' };
     N.view3dActors.debug.track(v);
     await T3.slowmo(0.04);
@@ -361,7 +370,7 @@ async function gait(browser) {
     N.input.hold('up', false); N.time.scale = 1;
     const kn = pd.frames.filter((q) => q.J).map((q) => q.J[2]), cr = pd.frames.map((q) => q.crank || 0);
     out.pedal = { strip: pd.strip, knee: +(Math.max(...kn) - Math.min(...kn)).toFixed(2), crank: +Math.abs(cr[cr.length - 1] - cr[0]).toFixed(2), n: pd.frames.length };
-    for (let i = 0; i < 40 && Math.abs(v.speed || 0) > 1; i++) await T3.raf(2);
+    N.input.hold('down', true); for (let i = 0; i < 15 && Math.abs(v.speed || 0) > 1; i++) await T3.raf(1); N.input.hold('down', false);
     // getting off
     N.view3dActors.debug.track(p);
     await T3.slowmo(0.04);
