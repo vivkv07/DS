@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 349052,
+ "bytes": 321724,
  "clips": {},
  "family": "character",
  "file": "aunty_saree.glb",
@@ -52,14 +52,14 @@
  "images": [
   "image/webp"
  ],
- "kb": 340.9,
+ "kb": 314.2,
  "kit": 1,
  "materials": [
   "M_aunty_saree"
  ],
  "max": [
   2.963,
-  1.081,
+  1.225,
   8.919
  ],
  "meta": {
@@ -172,7 +172,7 @@
  "script": "characters",
  "size": [
   5.926,
-  2.348,
+  2.493,
   8.919
  ],
  "tint": {
@@ -260,7 +260,7 @@
    }
   }
  },
- "tris": 3912,
+ "tris": 3700,
  "units": "u",
  "up": "Z"
 }

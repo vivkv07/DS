@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 226820,
+ "bytes": 226424,
  "clips": {},
  "family": "character",
  "file": "uncle_lungi_banian.glb",
@@ -52,7 +52,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 221.5,
+ "kb": 221.1,
  "kit": 1,
  "materials": [
   "M_uncle_lungi_banian"

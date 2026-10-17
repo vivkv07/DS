@@ -43,7 +43,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 4000,
- "bytes": 229368,
+ "bytes": 229236,
  "clips": {},
  "family": "character",
  "file": "vendor.glb",
@@ -52,7 +52,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 224.0,
+ "kb": 223.9,
  "kit": 1,
  "materials": [
   "M_vendor"

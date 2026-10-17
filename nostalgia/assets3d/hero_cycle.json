@@ -63,7 +63,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 6000,
- "bytes": 322560,
+ "bytes": 305256,
  "clips": {},
  "family": "vehicle",
  "file": "hero_cycle.glb",
@@ -73,7 +73,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 315.0,
+ "kb": 298.1,
  "kit": 1,
  "materials": [
   "M_hero_cycle"

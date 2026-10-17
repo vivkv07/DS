@@ -484,8 +484,10 @@
         let P;
         try { P = new Person(md, e === N.player ? N.player.look : e.look, ch && ch.id === id ? ch.ctx : {}); } catch (er) { N.err('models3d_people.create:' + id, er); return null; }
         P.object.userData.m3dPerson = P;
+        P.object.userData.m3dChar = P;   // the Character-shaped fields tests/models3d.cjs reads (id, anchors, clip, v, phase)
         if (H && H.quality && !H.quality.shadows) P.object.add(H.blobShadow(e.look && e.look.kind === 'kid' ? 3.8 : 4.6));
         P.st = { t: null, x: e.x, y: e.y, yaw: isFinite(e.facing) && e === N.player ? e.facing : (e.angle || 0), v: 0, hy: 0, ent: e };
+        P.object.userData.m3dState = P.st;
         S.persons.add(P); S.created++;
         return P.object;
       },

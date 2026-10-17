@@ -201,7 +201,7 @@ def kid_chinnu(A):
     M['strap'] = mat('chappal', 'chappal_strap', 6, base='#8a8a8a')
     M['sole'] = mat('chappal_sole', 'chappal_sole', 0)
     M['bed'] = mat('chappal_sole', 'chappal_bed', 0, base='#f4f1ea')
-    B = Body(J, M, dict(top='tee', bottom='shorts', sleeve='short', sleeve_stripes=True, hem=0.45, foot='chappal'))
+    B = Body(J, M, dict(top='tee', bottom='shorts', sleeve='short', sleeve_stripes=True, hem=0.45, foot='chappal', arm_fat=1.12, leg_fat=1.1))
     B.build()
     # accessories (slots)
     MW = {'walkman': mat('walkman', 'walkman', s_walk), 'black': mat('plastic_black', 'wm_black', s_walk), 'lace': mat('shoelace', 'lace', s_walk),
@@ -767,8 +767,7 @@ def kid_generic(A):
     s_shoes = L.slot('school_shoes', school)
     s_strap = L.slot('chappal', NOT(school), tint=['chappal', '#2f62b5'])
     s_bag = L.slot('bag', ANY(school, F('bag')), tint=['bag', '#2a5cb8'])
-    s_cric = L.slot('cap_cricket', F('cap', 'cricket'), tint=['capColor', '#2a5cb8'])
-    s_back = L.slot('cap_back', F('hat', 'backcap'), tint=['hatColor', '#c03030'])
+    s_cric = L.slot('cap_cricket', ANY(F('cap', 'cricket'), F('hat', 'backcap', 'cricket')), tint=['capColor', 'hatColor', '#2a5cb8'])
     L.field('shirt', ['shirt']).field('stripes', ['stripes', 'shoulders', 'shirt']).field('pants', ['pants'])
     L.base.update({'skin': SKIN_K, 'hair': G_HAIR, 'shirt': G_SHIRT, 'stripes': G_LIGHT, 'pants': G_PANTS})
     M = faces({}, kid=True)
@@ -778,7 +777,7 @@ def kid_generic(A):
     M['cuff'] = M['stripe']
     M['bottom'] = mat('cloth_pants', 'halfpants', 5, base=G_PANTS, weave=0.09)
     feet(M, 'chappal', strap='#8a8a8a', region=s_strap)
-    B = Body(J, M, dict(top='tee', bottom='shorts', sleeve='short', sleeve_stripes=True, hem=0.42, foot='chappal'))
+    B = Body(J, M, dict(top='tee', bottom='shorts', sleeve='short', sleeve_stripes=True, hem=0.42, foot='chappal', arm_fat=1.12, leg_fat=1.1))
     B.build()
     B.skirt('frock', m=mat('cloth', 'frock', s_frock, base=G_SHIRT, var=0.06, weave=0.06), hem_z=J['knee'][2] + 0.05, flare=1.55, rings_n=4)
     _collar_points(B, mat('cloth', 'school_collar', s_collar, base=G_SHIRT, weave=0.06))
@@ -796,7 +795,6 @@ def kid_generic(A):
         H.plait(mat('hair', 'plait', s_plaits, base=G_HAIR), ribbon=mat('cloth', 'ribbon', s_ribbon, base=G_LIGHT), side=0.36 * sx, length=1.25, name='plait')
     ck.ponytails(H, mat('hair', 'pony', s_pony, base=G_HAIR), band=mat('cloth', 'band', s_band, base=G_LIGHT))
     ck.cap(H, mat('cloth', 'cricketcap', s_cric, base=G_SHIRT, weave=0.05), 'cricket')
-    ck.cap(H, mat('cloth', 'backcap', s_back, base=G_SHIRT, weave=0.05), 'backcap')
     variants = [('boy', dict(KID), {}), ('girl', {'kind': 'kid', 'girl': True, 'skin': '#b97a4f', 'hair': '#1a1412', 'shirt': '#e88aa8', 'pants': '#e88aa8', 'ponytails': '#d8202a'}, {}),
                 ('school', {'kind': 'student', 'skin': '#8d5a3b', 'hair': '#1a1412', 'shirt': '#f2f0ea', 'pants': '#2a3a6a', 'tie': '#b22b2b', 'bag': '#2a5cb8'}, {}),
                 ('schoolgirl', {'kind': 'student', 'girl': True, 'skin': '#c68b5e', 'hair': '#1a1412', 'shirt': '#f2f0ea', 'pants': '#2a3a6a', 'plaits': '#d8202a', 'bag': '#b22b2b'}, {}),
@@ -830,7 +828,7 @@ def kid_immu(A):
     M['cuff'] = M['stripe']
     M['bottom'] = mat('cloth_pants', 'halfpants', 5, base=G_PANTS, weave=0.09)
     feet(M, 'chappal', strap=G_DARK)
-    B = Body(J, M, dict(top='tee', bottom='shorts', sleeve='short', sleeve_stripes=False, hem=0.44, foot='chappal', pocket=True))
+    B = Body(J, M, dict(top='tee', bottom='shorts', sleeve='short', sleeve_stripes=False, hem=0.44, foot='chappal', pocket=True, arm_fat=1.1, leg_fat=1.08))
     B.build()
     _collar_points(B, M['top'])
     ck.notebook_pocket(B, mat('cloth', 'cid_notebook', s_book, base='#c8a050'), side=1)

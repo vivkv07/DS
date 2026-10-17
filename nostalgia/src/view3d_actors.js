@@ -586,7 +586,7 @@
     SHORTS: 61, FACE: 62, HAIR_FRINGE: 63, SLIM: 64,
   };
   // pattern / logic bits in iFlags.w (bit index)
-  const BIT_STRIPES = 15, BIT_BORDER = 16, BIT_CHECKS = 17, BIT_KID = 18, BIT_FPS = 19, BIT_ARMS = 20; // ARMS: first person, only the arms drawn
+  const BIT_STRIPES = 15, BIT_BORDER = 16, BIT_CHECKS = 17, BIT_KID = 18, BIT_FPS = 19, BIT_ARMS = 20, BIT_NOBODY = 21; // first person: ARMS = only the arms drawn, NOBODY = no torso / neck (the eye sits behind them)
 
   function personVertexHeader(depth) {
     return [
@@ -599,7 +599,7 @@
       'vec2 pUnp2(float v){ if (v < 0.5) return vec2(0.0); float hi = floor(v / 4096.0 + 0.00001); return vec2((hi - 2048.0) / 1000.0, (v - hi * 4096.0 - 2048.0) / 1000.0); }',
       'void pAnim(inout vec3 p, inout vec3 n){',
       '  float part = aSP.y;',
-      '  if (pFeat(aSP.z) < 0.5 || (part > 8.5 && part < 9.5 && aBit(iFlags.w, ' + BIT_FPS + '.0) > 0.5) || ((part < 4.5 || part > 8.5) && aBit(iFlags.w, ' + BIT_ARMS + '.0) > 0.5)) { p = vec3(0.0, -60.0, 0.0); return; }',
+      '  if (pFeat(aSP.z) < 0.5 || (part > 8.5 && part < 9.5 && aBit(iFlags.w, ' + BIT_FPS + '.0) > 0.5) || ((part < 4.5 || part > 8.5) && aBit(iFlags.w, ' + BIT_ARMS + '.0) > 0.5) || (part < 0.5 && aBit(iFlags.w, ' + BIT_NOBODY + '.0) > 0.5)) { p = vec3(0.0, -60.0, 0.0); return; }',
       '  bool foot = part > 9.5;',
       '  if ((part > 0.5 && part < 4.5) || foot) {',
       '    float side = foot ? (part < 10.5 ? -1.0 : 1.0) : ((part < 1.5 || (part > 2.5 && part < 3.5)) ? -1.0 : 1.0);',
@@ -1300,7 +1300,7 @@
     a1[k] = j[4]; a1[k + 1] = j[5]; a1[k + 2] = j[6]; a1[k + 3] = j[7];
     a2[k] = j[8]; a2[k + 1] = j[9]; a2[k + 2] = j[10]; a2[k + 3] = j[11];
     const ff = o && o.seated ? s.fSeat : s.f;
-    fl[k] = ff[0]; fl[k + 1] = ff[1]; fl[k + 2] = ff[2]; fl[k + 3] = ff[3] + (o && o.fpsHide ? Math.pow(2, BIT_FPS) : 0) + (o && o.fpsHide && o.armsOnly ? Math.pow(2, BIT_ARMS) : 0);
+    fl[k] = ff[0]; fl[k + 1] = ff[1]; fl[k + 2] = ff[2]; fl[k + 3] = ff[3] + (o && o.fpsHide ? Math.pow(2, BIT_FPS) : 0) + (o && o.fpsHide && o.armsOnly ? Math.pow(2, BIT_ARMS) : 0) + (o && o.fpsHide && o.noBody ? Math.pow(2, BIT_NOBODY) : 0);
     ca[k] = s.c[0]; ca[k + 1] = s.c[1]; ca[k + 2] = s.c[2]; ca[k + 3] = s.c[3];
     cb[k] = s.c[4]; cb[k + 1] = s.c[5]; cb[k + 2] = s.c[6]; cb[k + 3] = s.c[7];
     if (pool === PEOPLE) ST.people++; else ST.peopleFar++;
@@ -2063,7 +2063,11 @@
     for (const s of [-1, 1]) { P1(b, 0.9).box(fx - 18, 2.4, s > 0 ? hw : -hw - 0.5, fx - 0.5, base + 0.4, s > 0 ? hw + 0.5 : -hw); for (let x = fx - 18; x < fx - 1; x += 6) P1(b).box(x, base, s > 0 ? hw : -hw - 0.5, x + 0.6, top, s > 0 ? hw + 0.5 : -hw); }
     FX(b, '#5a5a5e').box(fx - 6, 2.4, 2.2, fx - 2.4, 6.4, 6.0);
     if (bus) { CH(b); for (const s of [-1, 1]) b.tube([fx - 18, top - 0.8, s * 3.0], [fx - 3, top - 0.8, s * 3.0], 0.1, 5); FX(b, '#c9a227').box(fx - 1.4, top - 1.3, -1.6, fx - 1.2, top - 0.9, 1.6); }
-    else { FX(b, '#ff9a1a'); for (let z = -hw + 0.6; z < hw - 0.4; z += 0.8) b.ell(fx - 1.0, top - 1.0 - Math.sin(((z + hw) / (2 * hw)) * Math.PI) * 0.7, z, 0.25, 0.25, 0.25, 5, 3); }
+    else { // a marigold string across the top of the windscreen (above the eye line), orange and yellow
+      let k = 0;
+      for (let z = -hw + 0.5; z < hw - 0.3; z += 0.34, k++) FX(b, k % 3 === 2 ? '#f2c230' : '#ff8a1a').ell(fx - 1.0, top - 0.32 - Math.sin(((z + hw) / (2 * hw)) * Math.PI) * 0.32, z, 0.15, 0.15, 0.15, 6, 3);
+      FX(b, '#c03030').ell(fx - 1.0, top - 0.9, 0, 0.22, 0.3, 0.22, 6, 4); // the little hanging tassel
+    }
     FX(b, '#2a2a2a').box(fx - 18, 2.0, -hw, fx, 2.4, hw);
     return { wheelAt: [fx - 4.0, dashY + 0.8, 0], wheelTilt: 1.15, wheelR: 2.0 };
   }
@@ -2415,7 +2419,9 @@
     if (DBG.riderNext && DBG.rec) { DBG.rec.riders = DBG.rec.riders || []; DBG.rec.riders.push({ pose: o.kainchi && pose === 'cycle' ? 'kainchi' : pose, J: Array.from(J), seated, fpsHide: !!o.fpsHide, kid: s.kid, root: [rx, ry, rz], yaw: yaw2, roll: roll2, size: sc }); }
     // first person on a kainchi ride: the eye sits over the saddle, not where his head is, so only his
     // arms are drawn (hands on the grips), not his back hanging off the side below the camera
-    submitPerson(look, seed, FR, rx, ry, rz, J, { yaw: yaw2, roll: roll2, fpsHide: o.fpsHide, armsOnly: !!(o.kainchi && pose === 'cycle'), noBlob: true, near: o.near, seated });
+    // on two-wheelers / autos the core's eye sits a little behind his head: no torso or neck in the
+    // way (hands on the grips and the knees stay); in a car cockpit the body is below the eye
+    submitPerson(look, seed, FR, rx, ry, rz, J, { yaw: yaw2, roll: roll2, fpsHide: o.fpsHide, armsOnly: !!(o.kainchi && pose === 'cycle'), noBody: pose !== 'car', noBlob: true, near: o.near, seated });
   }
   /* ---------------------------------------------------------------- the city bus crowd
    * Traffic / parked buses carry life the 2D roof hides: the driver at the wheel (right-hand drive)

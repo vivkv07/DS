@@ -108,7 +108,7 @@
  },
  "blender": "5.2.2 LTS",
  "budget": 6000,
- "bytes": 474688,
+ "bytes": 411436,
  "clips": {},
  "family": "vehicle",
  "file": "lorry.glb",
@@ -119,7 +119,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 463.6,
+ "kb": 401.8,
  "kit": 1,
  "materials": [
   "M_lorry@night",
@@ -261,7 +261,7 @@
    "paint2": "#e8c060"
   }
  },
- "tris": 5766,
+ "tris": 5170,
  "units": "u",
  "up": "Z"
 }
