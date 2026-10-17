@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 24680,
+ "bytes": 24576,
  "clips": {},
  "family": "landmark",
  "file": "birla_planetarium.glb",
@@ -11,7 +11,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 24.1,
+ "kb": 24.0,
  "kit": 1,
  "materials": [
   "M_birla_planetarium"

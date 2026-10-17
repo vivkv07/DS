@@ -701,8 +701,8 @@ def build_nampally_station(A):
     ST = ppaint('#a9a49a', 'np_paving')
     P, lo = [], []
     Z0 = 0.8
-    P.append(blk('forecourt', 0, 0, 110, 50, 0, Z0, ST))
-    lo.append(blk('forecourt_lo', 0, 0, 110.2, 50.2, 0, Z0 + 0.05, None))
+    P.append(blk('forecourt', 0, -16.0, 110, 19.0, 0, Z0, ST))
+    lo.append(blk('forecourt_lo', 0, -16.0, 110.2, 19.2, 0, Z0 + 0.05, None))
     # wings: arcaded verandah below, arched windows above, maroon bands and trims
     HW = 20.0
 
@@ -735,9 +735,9 @@ def build_nampally_station(A):
     P.append(fbox('centre', 0, -16.5, 28, 17, Z0, HC, W, faces={'f': f, 'l': wing_face(17, 8, 3), 'r': wing_face(17, 9, 3)}))
     P += rect_teeth('ct', 0, -16.5, 28, 17, HC, 1.4, 1.6, T, 'block', sides='flr', two=False)
     lo.append(blk('centre_lo', 0, -16.5, 28.2, 17.2, Z0, HC + 0.6, None))
-    P.append(sign('np_sign', 'HYDERABAD', 18.0, 3.4, (0, -25.15, 17.6), '#111111', '#f2c230', px=512, depth=0.3))
+    P.append(sign('np_sign', 'HYDERABAD', 20.0, 3.8, (0, -25.15, 17.6), '#111111', '#f2c230', px=512, depth=0.3))
     P.append(box('porch_chajja', (16.0, 2.4, 0.5), (0, -26.0, 14.4), MR, base=True))
-    lo.append(blk('porch_lo', 0, -25.6, 18.4, 1.8, 14.3, 21.4, None))
+    lo.append(blk('porch_lo', 0, -25.6, 20.4, 1.8, 14.3, 21.6, None))
     # raised centre gable with a clock face
     P.append(fbox('gable', 0, -24.0, 10, 2.0, HC, HC + 5.0, W))
     clk = cylinder('clockf', 1.9, 0.3, (0, 0, 0), seg=16, mat=T, base=False)
@@ -775,8 +775,8 @@ def build_kachiguda_station(A):
     ST = ppaint('#a9a49a', 'kg_paving')
     P, lo = [], []
     Z0, H = 0.8, 30.0
-    P.append(blk('forecourt', 0, 0, 96, 76, 0, Z0, ST))
-    lo.append(blk('forecourt_lo', 0, 0, 96.2, 76.2, 0, Z0 + 0.05, None))
+    P.append(blk('forecourt', 0, -24.0, 96, 28.0, 0, Z0, ST))
+    lo.append(blk('forecourt_lo', 0, -24.0, 96.2, 28.2, 0, Z0 + 0.05, None))
 
     def gface(w, seed, n, h=H):
         f = Fac(w, h - Z0, WALL, seed=seed, noise=0.0)
@@ -823,8 +823,8 @@ def build_kachiguda_station(A):
         P.append(cylinder('pp', 1.3, PG + 4.0, (sx * 12.6, -36.4, Z0), seg=8, mat=T))
         P.append(cylinder('pp_sp', 1.5, 6.0, (sx * 12.6, -36.4, PG + 4.0 + Z0), seg=8, mat=W, r2=0.05))
         lo.append(lathe('pp_lo', [(1.45, Z0), (1.45, PG + 4.0 + Z0), (1.6, PG + 4.0 + Z0), (0.0, PG + 10.2 + Z0)], seg=4, loc=(sx * 12.6, -36.4, 0), close_bottom=False))
-    P.append(sign('kg_sign', 'KACHEGUDA', 16.0, 3.0, (0, -36.95, 18.2), '#111111', '#f2c230', px=512, depth=0.3))
-    lo.append(blk('sign_lo', 0, -36.95, 16.4, 1.0, 18.1, 21.3, None))
+    P.append(sign('kg_sign', 'KACHEGUDA', 20.0, 3.8, (0, -36.95, 18.2), '#111111', '#f2c230', px=512, depth=0.3))
+    lo.append(blk('sign_lo', 0, -36.95, 20.4, 1.0, 17.7, 22.2, None))
     # platform shed behind
     _shed('shed', 0, 14.0, 90, 40, 10.0, P, lo, None)
     tri_report(A.id, P)

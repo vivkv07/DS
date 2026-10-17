@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 39440,
+ "bytes": 41196,
  "clips": {},
  "family": "landmark",
  "file": "kachiguda_station.glb",
@@ -11,14 +11,14 @@
  "images": [
   "image/webp"
  ],
- "kb": 38.5,
+ "kb": 40.2,
  "kit": 1,
  "materials": [
   "M_kachiguda_station"
  ],
  "max": [
   48.65,
-  38.1,
+  35.1,
   54.2
  ],
  "meta": {
@@ -41,7 +41,7 @@
  "script": "_lm_civic",
  "size": [
   97.3,
-  76.2,
+  73.2,
   54.2
  ],
  "tint": null,

@@ -1,22 +1,22 @@
-00:00.026  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+00:00.025  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
 [kit] building birla_planetarium (landmark)
-00:00.929  render           | Saved: '/tmp/nostalgia_blender/text_d2318f4d.png'
+00:01.055  render           | Saved: '/tmp/nostalgia_blender/text_d2318f4d.png'
 [kit] tris by part: dome_lo 350, plinth_lo 10, block_lo 10, portico_lo 10, sign_lo 10
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] proxy-baked albedo 256² in 0.4s
+[kit] proxy-baked albedo 256² in 0.3s
 Info: Baking map saved to internal image, save it externally or pack it
-[kit] proxy-baked ao 128² in 1.7s
+[kit] proxy-baked ao 128² in 1.6s
 ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
 ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
-21:54:43 | INFO: Starting glTF 2.0 export
-21:54:43 | INFO: Extracting primitive: birla_planetarium_body
-21:54:43 | INFO: Primitives created: 1
-21:54:43 | INFO: Finished glTF 2.0 export in 0.033890485763549805 s
+22:03:00 | INFO: Starting glTF 2.0 export
+22:03:00 | INFO: Extracting primitive: birla_planetarium_body
+22:03:00 | INFO: Primitives created: 1
+22:03:00 | INFO: Finished glTF 2.0 export in 0.027088403701782227 s
 
-[kit] birla_planetarium: 390 tris (budget 20000) ok, 24.1 KB, clips [], anchors 0
-21:54:43 | INFO: Data are loaded, start creating Blender stuff
-21:54:43 | INFO: Blender create Mesh node birla_planetarium_body
-21:54:43 | INFO: glTF import finished in 0.01s
-00:08.953  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/birla_planetarium.png'
-[kit] preview birla_planetarium.png (320px, 14 spp) in 3.7s
-[kit] done birla_planetarium in 8.6s
+[kit] birla_planetarium: 390 tris (budget 20000) ok, 24.0 KB, clips [], anchors 0
+22:03:00 | INFO: Data are loaded, start creating Blender stuff
+22:03:00 | INFO: Blender create Mesh node birla_planetarium_body
+22:03:00 | INFO: glTF import finished in 0.01s
+00:07.601  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/birla_planetarium.png'
+[kit] preview birla_planetarium.png (320px, 14 spp) in 1.9s
+[kit] done birla_planetarium in 7.1s

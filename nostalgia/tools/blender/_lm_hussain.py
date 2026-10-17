@@ -143,7 +143,7 @@ def ellipse_loft(name, rings, mat, seg=14, cap_end=True, cap_start=True):
 def build_buddha(A):
     M = L.mats()
     STONE = kit.material('granite_grey', 'white_granite', base='#e4e1d9', var=0.05, grain=0.04, specks=0.18, grime=0.4, dirt='#8a857c', scale=0.5)
-    ROCK = kit.material('granite_grey', 'gibraltar_rock', base='#8a8278', var=0.16, grain=0.14, specks=0.5, grime=0.6, dirt='#3e3a34', scale=0.35)
+    ROCK = kit.material('granite_grey', 'gibraltar_rock', base='#6c645b', var=0.16, grain=0.14, specks=0.5, grime=0.6, dirt='#3e3a34', scale=0.35)
     PLAT = kit.material('granite_grey', 'buddha_platform', base='#b4ada2', var=0.06, grain=0.06, grime=0.5, scale=0.6)
     parts = []
     # ---- the rock island (spreads to ~ +-19) and a few loose boulders at the waterline
@@ -535,7 +535,7 @@ def build_musical_fountain(A):
     lo.append(_oval_ring('rim_lo', 13.35, 9.35, 11.55, 7.55, 0.0, 1.62, None, seg=12))
     lo.append(_oval_disc('water_lo', 11.6, 7.6, 0.9, None, seg=12))
     # the jets: glowing water columns (three colours), kept unbaked
-    BLUE, PINK, GOLD = L.lamp('#c4e8ff', 'jet_blue'), L.lamp('#ffc4ea', 'jet_pink'), L.lamp('#ffe9a8', 'jet_gold')
+    BLUE, PINK, GOLD = L.lamp('#9edcff', 'jet_blue'), L.lamp('#ffa0da', 'jet_pink'), L.lamp('#ffdc80', 'jet_gold')
     jets = []
     for (x, h, r, m) in ((0, 9.0, 0.8, BLUE), (-4.5, 6.5, 0.6, PINK), (4.5, 6.5, 0.6, PINK), (-8.5, 4.2, 0.55, GOLD), (8.5, 4.2, 0.55, GOLD)):
         jets.append(cylinder('jet', r, h, (x, 0, 0.85), seg=4, mat=m, r2=0.08, cap=False))
@@ -788,9 +788,9 @@ def build_birla_planetarium(A):
     for x in (-9.0, -3.0, 3.0, 9.0):
         hi.append(box('pcol', (1.0, 1.0, 8.2), (x, PY0 + 0.8, 0.8), TR, base=True))
     hi.append(box('pback', (14, 1.0, 8.2), (0, PY1 + 0.3, 0.8), GL, base=True))
-    hi.append(L.sign_panel('pl_sign', 'BIRLA PLANETARIUM', 18.0, 2.6, (0, PY0 - 0.2, 11.3), fg='#ffffff', bg='#1d4e8a', px=512))
+    hi.append(L.sign_panel('pl_sign', 'BIRLA PLANETARIUM', 21.0, 3.4, (0, PY0 - 0.2, 11.6), fg='#ffffff', bg='#1d4e8a', px=512))
     lo.append(L.shell_box('portico_lo', (20.4, PY1 - PY0 + 0.8, 9.3), (0, (PY0 + PY1) / 2, 0.8)))
-    lo.append(L.shell_box('sign_lo', (18.4, 0.9, 2.9), (0, PY0 - 0.2, 9.95)))
+    lo.append(L.shell_box('sign_lo', (21.4, 0.9, 3.7), (0, PY0 - 0.2, 9.85)))
     trim(lo)
     report(lo)
     for o in L.finish_proxy(A, hi, lo=lo, size=256, ao_samples=48, ao_strength=0.6):
@@ -820,7 +820,7 @@ def build_birla_mandir(A):
     M['bm_t'] = kit.material('whitewash', 'bm_marble_trim', base='#f0ece4', rough=0.4, var=0.015, grain=0.01, grime=0.06, streaks=0.02, dirt='#c8c1b4', scale=0.5)
     M['bm_d'] = L.paint('#d6d0c4', 'bm_marble_shade', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
     M['bm_gold'] = L.paint('#d7b45a', 'bm_gold', var=0.0, grain=0.0, grime=0.0, streaks=0.0)
-    ROCK = kit.material('granite_grey', 'naubat_rock', base='#7e756b', var=0.05, grain=0.0, specks=0.0, grime=0.2, dirt='#6a6259', scale=0.15)
+    ROCK = kit.material('granite_grey', 'naubat_rock', base='#665d54', var=0.05, grain=0.0, specks=0.0, grime=0.2, dirt='#6a6259', scale=0.15)
     SCRUB = L.paint('#6d7a45', 'naubat_scrub', var=0.05, grain=0.0, grime=0.0, streaks=0.0)
     PAVE = kit.material('whitewash', 'bm_pave', base='#e6e2d8', rough=0.5, var=0.02, grain=0.01, grime=0.1, streaks=0.0, scale=0.4)
     DOOR = L.paint('#5e4128', 'bm_door', var=0.0, grain=0.0, grime=0.0, streaks=0.0)

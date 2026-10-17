@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 60000,
- "bytes": 68276,
+ "bytes": 67436,
  "clips": {},
  "family": "hero_landmark",
  "file": "birla_mandir.glb",
@@ -11,7 +11,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 66.7,
+ "kb": 65.9,
  "kit": 1,
  "materials": [
   "M_birla_mandir"

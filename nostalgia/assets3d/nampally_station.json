@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 36168,
+ "bytes": 37272,
  "clips": {},
  "family": "landmark",
  "file": "nampally_station.glb",
@@ -11,7 +11,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 35.3,
+ "kb": 36.4,
  "kit": 1,
  "materials": [
   "M_nampally_station"
