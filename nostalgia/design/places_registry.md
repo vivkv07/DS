@@ -138,3 +138,10 @@ but keep the calendar consistent with the chosen year.
 |---|---|---|
 | `golconda_fort` | Golconda Fort | massive granite walls and bastions on a hill, the Fateh Darwaza where a clap at the gate is heard at the Bala Hissar summit (`golconda_fateh_darwaza`, `golconda_bala_hissar`), cannons, steps up the hill, the sound-and-light show in the evening, the old diamond-trade legends; the Charminar–Golconda tunnel legend links it to the finale. Recognisable art + the clap minigame are a must |
 | `qutb_shahi_tombs` | Qutb Shahi Tombs | the domed tombs of the Qutb Shahi kings on raised platforms near Golconda, grey granite and stucco, onion domes, quiet gardens; a calm, mysterious place for clues and trivia (verified facts only), depicted respectfully |
+
+## Round 10 (user, binding)
+
+| id | Place | Notes |
+|---|---|---|
+| `falaknuma_palace` | Falaknuma Palace | the Nizam's scorpion-shaped Italianate palace on a hill south of the Old City, "mirror of the sky". In the early 2000s it was closed to the public (restoration started around 2000; it reopened only in 2010), so for a kid it is a mysterious, gated palace on the hilltop seen from afar: perfect for legends, a view-point clue, or a secret. Do not show it as a hotel |
+| `salar_jung_museum` | Salar Jung Museum | on the south bank of the Musi near Afzalgunj; the school-trip classic: the famous musical clock where a little figure comes out and strikes the gong on the hour (crowds gather at 12 o'clock), the Veiled Rebecca marble statue, the double-sided wooden figure. Good for a timed mission (be there when the clock strikes), clues and trivia cards (verified facts only) |
