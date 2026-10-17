@@ -58,7 +58,7 @@ Each module keeps its numbers in one plain object called `TUNE`: `N.player.TUNE`
 | Starting money | **₹10 (1000)** (bible §1.6) |
 | Starting energy / tummy | 100 / 80 |
 | Walk / run | 45 / 80 u/s. Running drains 8.5 energy/s, so a full sprint lasts about 12 s |
-| Tummy lasts | about 13 real minutes of mixed play. Chai + Osmania refills 40 |
+| Tummy lasts | about 14 real minutes of mixed play. Chai + Osmania refills 40 |
 | Chappal Meter | 5 levels. One level drops after **12 s unseen** |
 | Caught (PAKDA GAYA!) | −₹2. Respawn at `home` gate or the mission checkpoint. +30 gm |
 | Exhausted (THAK GAYA!) | −₹1 glucose water. Respawn at the nearest open Irani café. +45 gm |
@@ -102,7 +102,7 @@ Each module keeps its numbers in one plain object called `TUNE`: `N.player.TUNE`
 | Joystick | Appears where the thumb lands in the left 52% below the top 64 px. Radius 56, dead zone 12% | Point-to-steer in vehicles |
 | ACTION | 84 px circle, bottom-right, 20 px from the edges | Shows the context label (max 14 characters, e.g. "Ride Chetak", "Chai ₹4", "Hide") |
 | RUN / BRAKE | 64 px, left of ACTION | Relabelled in vehicles |
-| HORN | 64 px, above ACTION | Long-press 0.6 s on foot = "AUTO!" call |
+| HORN | 64 px, above ACTION | On foot near a road it calls "AUTO!" (§1.5) |
 | MAP, PAUSE | 56 x 44 pills, top-right | Keep the ~120 x 52 px area there free (ARCHITECTURE §9) |
 | Cassette icon | 44 x 44 on the OSD strip, `.interactive` | The radio / walkman action |
 | Button size setting | S 0.85x, M 1x, L 1.25x | Accessibility (§14) |
@@ -110,10 +110,11 @@ Each module keeps its numbers in one plain object called `TUNE`: `N.player.TUNE`
 
 ### 1.3 Gamepad
 
-Stick dead zone 0.22, radial. RT is analog in vehicles: throttle = max(stick magnitude, RT), and RB
-is the handbrake. If the player holds RT on foot it means run. Vibration (where available): bump
-80 ms at 0.3, crash 200 ms at 0.7, chappal hit 250 ms at 0.5, minigame "perfect" 40 ms at 0.2.
-It can be turned off in settings.
+The mapping is ARCHITECTURE §9's (A action, B horn, X/RB/RT run = handbrake in vehicles, Y radio,
+LB journal, Back map, Start pause). Stick dead zone 0.22, radial; in vehicles the stick's
+magnitude is the throttle (point-to-steer). Vibration (where available): bump 80 ms at 0.3, crash
+200 ms at 0.7, chappal hit 250 ms at 0.5, minigame "perfect" 40 ms at 0.2. It can be turned off
+in settings.
 
 ### 1.4 Context ACTION priorities
 
@@ -131,7 +132,7 @@ ties go to the nearest (entities.js). The labels below are the ACTION button tex
 | 6 | Talk to a mission giver | at a giver marker (r 14 u) | "Talk" | missions.js |
 | 5 | Retry mission | at the failed mission's marker | "Retry mission" | missions.js (already 5) |
 | 4 | Frame "Click" | within 40 u of a frame spot, facing it within 60° | "Click (F07)" | collectibles.js |
-| 4 | Look at a hidden-in-shop collectible | at the shop, item unfound | "Look behind jukebox" | collectibles.js |
+| 4 | Look at a hidden-in-shop collectible | within 8 u of the item's own spot, placed 10 u from the counter so the shop menu stays reachable; item unfound | "Look behind jukebox" | collectibles.js |
 | 3 | Shop or service menu | on foot within the shop's r (18 u) | the verb: "Chai", "Haircut ₹10", "Save / Call", "Bus routes" | shops.js |
 | 3 | Talk to a named NPC / hint NPC | within 18 u | "Talk", "Ask aunty" | npcs.js |
 | 2 | Side activity / job giver | yellow marker | "Paper round" | story.js |
@@ -557,16 +558,17 @@ staggered across actors. The sight radius is per actor (§4.4).
 
 ### 4.4 Pursuers per level
 
-Only **one active chaser** exists at a time: the current level's. Spotters add to it. When the
-level rises, the old chaser says its "escaped" line and leaves; when the level falls, the chaser
-gives up the same way. Chasers spawn **out of view** (`N.render.inView` margin 40) at the listed
+Only **one active chaser** exists at a time, plus spotters. Level 2 has no chaser of its own, so
+the level-1 chaser keeps following at level 2, unless Chitti has just tattled and run home. From
+level 3 up, the chaser is always the current level's. When the level rises past a chaser, it says
+its "escaped" line and leaves; when the level falls, the chaser gives up the same way. Chasers spawn **out of view** (`N.render.inView` margin 40) at the listed
 distance along the road graph. They despawn once out of view and more than 500 u away.
 
 | Level | Who (bible) | When / where | Spawn | Move | Sight | Catch | Behaviour |
 |---|---|---|---|---|---|---|---|
 | **1** | **Chitti** (6) | colony districts (`himayatnagar`, `rtc_x`), 07:00–19:30, not during school hours on school days (08:30–15:30: she is in class) | 260 u, from the direction of `home` | walk 40, run 62, never tires | 160 | **cannot catch.** **Tattle:** within 60 u for 8 s in total → +100 (she runs home) | follows the last-seen point; shouts every 6 s; a Mango Bite bribes her off (§4.6) |
 | **1** | **colony uncle on a cycle** | anywhere else, or at night | 300 u by road | cycle 95 | 180 | cannot catch; tattles after 10 s in total within 80 u | "I'm going that way anyway. Towards your house." |
-| **2** | **aunties' phone tree** (spotters) | day; ambient `aunty`, `saree`, `woman` peds within 400 u get flagged (at most 4, with a "!" pip) plus the colony-gate aunties | existing peds | stand still or stroll 20 | 130 | none; **report** = seen 1.5 s in total → +40, then a 10 s cooldown for that spotter | the Level 1 chaser stays while level 2 has no chaser of its own |
+| **2** | **aunties' phone tree** (spotters) | day; ambient `aunty`, `saree`, `woman` peds within 400 u get flagged (at most 4, with a "!" pip) plus the colony-gate aunties | existing peds | stand still or stroll 20 | 130 | none; **report** = seen 1.5 s in total → +40, then a 10 s cooldown for that spotter | gate gossip lines (bible §8.2) |
 | **2** | **Bahadur** the Gurkha | night, colony districts | the colony gate | walk 40, patrols toward the last-seen point | torch cone 60° x 200 u, otherwise 150 | none; reports +40; whistle `gurkha` | taps his stick; "*Kaun hai?*" |
 | **2** | **traffic constables** (spotters) | 08:00–21:00 at podium junctions (`junction` places) and the `assembly` sentry | static | static | 140 | none; reports +40 | "*Licence dikhao!*" |
 | **3** | **Havaldar Pochaiah** on foot | anywhere | the nearest podium junction, else 350 u by road; `rtc_x_roads` is his home podium | run **70**, accel 140, never tires | 220 | **contact ≤ 12 u** when Chinnu is on foot, or on a bike under 35 u/s → **PAKDA GAYA** | whistles every 4 s (`whistle`); after losing sight he searches the last-seen point for 8 s, then walks a 150 u spiral; slips on peels for 2 s |
@@ -703,7 +705,8 @@ save section 'wanted': {heat, curfewFloor, aunty network timers, used-today flag
 ### 5.1 How shops work (shops.js)
 
 - **Opening.** ACTION on foot within a shop place's r (default 18 u) opens a **tin-sign menu**: a
-  DOM `.screen` in `#overlay` that pushes the `dialogue` state, so the world and the clock pause.
+  DOM `.screen` in `#overlay` that pushes the `dialogue` state. The clock and the Chappal Meter
+  pause (§4.1 `freeze`); traffic keeps moving.
   Each row shows the item, its price, an effect icon (chai glass +N, slipper −N, clock ▶▶) and,
   when it can't be bought, a greyed reason ("*Paise kam hain, beta*", "Finished", "Only in
   Ramzan").

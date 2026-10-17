@@ -1269,7 +1269,571 @@
     count() { return S.min > 1290 || S.min < 630 ? 0 : 2; },
   });
 
-  /* @@PART2@@ */
+  /* ================================================================ PUSHCARTS */
+  // Cart frame: centre, long axis (ca, sa), half length/width, customer side (face).
+  function cartOf(lm) {
+    const long = lm.w >= lm.d;
+    const ca = long ? 1 : 0, sa = long ? 0 : 1;
+    const f = String(lm.face || 's').toUpperCase();
+    const ox = f === 'E' ? 1 : f === 'W' ? -1 : 0, oy = f === 'S' ? 1 : f === 'N' ? -1 : 0;
+    // customer side across the cart (+1 = local +y) or at an end (0)
+    const side = Math.round(ox * -sa + oy * ca);
+    return { x: lm.x, y: lm.y, ca, sa, hl: Math.max(lm.w, lm.d) / 2, hw: Math.min(lm.w, lm.d) / 2, ox, oy, side: side || 1 };
+  }
+  // local (u along, v across) -> world
+  const cx_ = (C, u, v) => C.x + C.ca * u - C.sa * v;
+  const cy_ = (C, u, v) => C.y + C.sa * u + C.ca * v;
+  const LOAD_RES = 3;
+  const loadCache = new Map();
+  /** Cached top-down painting of a cart's load (local coords, u: -hl..hl, v: -hw..hw). */
+  function loadImg(key, hl, hw, paint) {
+    let c = loadCache.get(key);
+    if (c) return c;
+    c = N.render.makeCanvas(Math.ceil(hl * 2 * LOAD_RES) + 2, Math.ceil(hw * 2 * LOAD_RES) + 2);
+    const g = c.getContext('2d');
+    g.setTransform(LOAD_RES, 0, 0, LOAD_RES, hl * LOAD_RES + 1, hw * LOAD_RES + 1);
+    try { paint(g, hl, hw, U.rng(key)); } catch (e) { N.err('placesArt.load', e); }
+    loadCache.set(key, c);
+    return c;
+  }
+  function drawLoad(C, img, h, inset) {
+    const hl = C.hl - (inset || 0.4), hw = C.hw - (inset || 0.4);
+    spr(C.x, C.y, C.ca, C.sa, h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(img, -hl, -hw, hl * 2, hw * 2);
+    ctx.imageSmoothingEnabled = false;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  function cartBody(C, bed, hBed) {
+    const hb = hBed || 5.2;
+    // two big wheels on the long sides + stand legs at the ends
+    obox(cx_(C, 0, C.hw + 0.25), cy_(C, 0, C.hw + 0.25), C.ca, C.sa, 2.7, 0.35, 0, hb - 0.4, '#2a2420', '#4a4038');
+    obox(cx_(C, 0, -C.hw - 0.25), cy_(C, 0, -C.hw - 0.25), C.ca, C.sa, 2.7, 0.35, 0, hb - 0.4, '#2a2420', '#4a4038');
+    obox(cx_(C, C.hl - 1, 0), cy_(C, C.hl - 1, 0), C.ca, C.sa, 0.4, C.hw - 1, 0, hb - 1, '#4a3a2a', null);
+    obox(C.x, C.y, C.ca, C.sa, C.hl, C.hw, hb - 1.1, hb, bed, sh(bed, 1.12));
+    // handles out of the back end
+    const e = -C.hl;
+    seg3(cx_(C, e, C.hw * 0.6), cy_(C, e, C.hw * 0.6), hb - 0.5, cx_(C, e - 3.2, C.hw * 0.6), cy_(C, e - 3.2, C.hw * 0.6), hb + 0.6, '#6a4a2a', 0.6);
+    seg3(cx_(C, e, -C.hw * 0.6), cy_(C, e, -C.hw * 0.6), hb - 0.5, cx_(C, e - 3.2, -C.hw * 0.6), cy_(C, e - 3.2, -C.hw * 0.6), hb + 0.6, '#6a4a2a', 0.6);
+  }
+  function cartShadow(C, h) {
+    // oriented: castBox works on axis-aligned rects; carts are axis aligned (ca/sa in {0,1})
+    const w = C.ca ? C.hl * 2 : C.hw * 2, d = C.ca ? C.hw * 2 : C.hl * 2;
+    N.draw.castBox(C.x - w / 2, C.y - d / 2, w, d, h);
+  }
+  const CART = {};
+  function regCart(kind, recipe) {
+    CART[kind] = recipe;
+    reg(kind, {
+      init(lm) {
+        const C = cartOf(lm);
+        const rng = rngOf(lm, 'c');
+        const A = { C, rng, kind, seed: (rng.next() * 1e6) | 0 };
+        A.bed = pickR(rng, recipe.beds || ['#3a6a9a', '#2a7a5a', '#8a3a2a', '#6a4a2a', '#2a5cb8']);
+        if (recipe.umbrella) { const u = pickR(rng, recipe.umbrella); A.umb = u; }
+        A.people = [];
+        const add = (k, i, u, v, a, o) => A.people.push(person(k, i, cx_(C, u, v), cy_(C, u, v), a, o));
+        // vendor at the handle end, facing along the cart
+        const along = Math.atan2(C.sa, C.ca);
+        add(recipe.vendor || 'man', (A.seed % 11), -C.hl - 4.4, 0, along, { sway: 0.5, look: recipe.vendorLook });
+        if (recipe.customers !== 0) {
+          const n = recipe.customers || 2;
+          for (let i = 0; i < n; i++) add(pickR(rng, recipe.custKinds || ['any', 'woman', 'kid', 'man', 'aunty']), (A.seed + i * 7) % 23, (i - (n - 1) / 2) * 5, C.side * (C.hw + 4.6), along + (C.side > 0 ? -Math.PI / 2 : Math.PI / 2), { sway: 0.6, turn: 0.15 });
+        }
+        A.count = recipe.count;
+        return A;
+      },
+      draw(lm, A) {
+        const C = A.C;
+        cartBody(C, A.bed, recipe.hBed);
+        if (recipe.load) drawLoad(C, loadImg(kind + ':' + (A.seed % 3) + ':' + C.hl + 'x' + C.hw, C.hl - 0.4, C.hw - 0.4, recipe.load), (recipe.hBed || 5.2) + 0.15);
+        if (recipe.extra) recipe.extra(lm, A, C);
+        if (A.umb) {
+          const ux = cx_(C, -C.hl + 2.2, 0), uy = cy_(C, -C.hl + 2.2, 0);
+          pole(ux, uy, 5, 12.5, '#6a6a6a', 0.5);
+          umbrella(ux + C.ca * 2.6, uy + C.sa * 2.6, recipe.umbR || 7.5, 12.5, A.umb[0], A.umb[1], 8, (A.seed % 7) * 0.2);
+        }
+      },
+      shadow(lm, A) { cartShadow(A.C, 6); if (A.umb) N.draw.castCircle(cx_(A.C, -A.C.hl + 4.8, 0), cy_(A.C, -A.C.hl + 4.8, 0), recipe.umbR || 7.5, 12.5); },
+      lights: recipe.lamp ? (lm, A) => { const C = A.C; light(lm, 0, 1, cx_(C, C.hl - 2, 0), cy_(C, C.hl - 2, 0), 9, 30, '#fff0c0', 0.9); } : undefined,
+      night: recipe.lamp ? (lm, A, a) => {
+        const C = A.C, x = cx_(C, C.hl - 2, 0), y = cy_(C, C.hl - 2, 0);
+        pole(x, y, 5.2, 9, '#5a5a5a', 0.4);
+        disc(x, y, 0.9, 9.2, '#fffbe8');
+        glow(x, y, 9, 10, '#ffe8b0', a * 0.9);
+        if (recipe.night) recipe.night(lm, A, a);
+      } : recipe.night,
+    });
+  }
+  // ---- load painters (local coords) ----
+  function paintBananas(g, hl, hw, rng) {
+    g.fillStyle = '#b89858'; g.fillRect(-hl, -hw, hl * 2, hw * 2);
+    const n = Math.round(hl * hw * 0.32);
+    for (let i = 0; i < n; i++) {
+      const x = -hl + 1.4 + rng.next() * (hl * 2 - 2.8), y = -hw + 1.2 + rng.next() * (hw * 2 - 2.4);
+      const a = rng.next() * TAU, green = rng.next() < 0.18, red = !green && rng.next() < 0.1;
+      const col = green ? '#8ab03a' : red ? '#a8402a' : '#f2d23a';
+      for (let j = 0; j < 5; j++) {
+        const fa = a + (j - 2) * 0.32;
+        g.fillStyle = j % 2 ? col : sh(col, 0.88);
+        g.beginPath(); g.ellipse(x + Math.cos(fa) * 1.1, y + Math.sin(fa) * 1.1, 1.5, 0.48, fa, 0, TAU); g.fill();
+      }
+      g.fillStyle = '#5a4020'; g.beginPath(); g.arc(x, y, 0.4, 0, TAU); g.fill();
+    }
+  }
+  function paintFlowers(g, hl, hw, rng) {
+    g.fillStyle = '#2f6a4a'; g.fillRect(-hl, -hw, hl * 2, hw * 2); // wet gunny cloth
+    const heaps = [['#f8f6ee', '#cfd8c0'], ['#f08a1a', '#c86010'], ['#f2c230', '#d89a10'], ['#d8203a', '#a01028'], ['#f8f6ee', '#cfd8c0'], ['#f06a2a', '#c04a10']];
+    const n = Math.max(3, Math.round(hl / 2.4));
+    for (let i = 0; i < n; i++) {
+      const cx0 = -hl + (i + 0.5) * (hl * 2 / n), c = heaps[(i + ((rng.next() * 2) | 0)) % heaps.length];
+      g.fillStyle = c[1]; g.beginPath(); g.ellipse(cx0, 0, hl / n * 0.95, hw * 0.82, 0, 0, TAU); g.fill();
+      for (let j = 0; j < 28; j++) {
+        const a = rng.next() * TAU, r = Math.sqrt(rng.next());
+        g.fillStyle = j % 3 ? c[0] : sh(c[0], 0.85);
+        g.beginPath(); g.arc(cx0 + Math.cos(a) * r * hl / n * 0.85, Math.sin(a) * r * hw * 0.72, 0.42, 0, TAU); g.fill();
+      }
+      if (c[0] === '#f8f6ee') { // jasmine strings coiled
+        g.strokeStyle = 'rgba(90,140,90,0.6)'; g.lineWidth = 0.18;
+        g.beginPath(); g.arc(cx0, 0, hw * 0.4, 0, TAU); g.arc(cx0, 0, hw * 0.22, 0, TAU); g.stroke();
+      }
+    }
+  }
+  function paintCoconuts(g, hl, hw, rng) {
+    g.fillStyle = '#6a5030'; g.fillRect(-hl, -hw, hl * 2, hw * 2);
+    const n = Math.round(hl * hw * 0.55);
+    for (let i = 0; i < n; i++) {
+      const x = -hl + 1 + rng.next() * (hl * 2 - 2), y = -hw + 1 + rng.next() * (hw * 2 - 2);
+      const cut = rng.next() < 0.12;
+      g.fillStyle = '#3f7a2a'; g.beginPath(); g.arc(x, y, 1.25, 0, TAU); g.fill();
+      g.fillStyle = cut ? '#f4f0dc' : '#6aa040'; g.beginPath(); g.arc(x - 0.3, y - 0.3, cut ? 0.7 : 0.6, 0, TAU); g.fill();
+      if (cut) { g.strokeStyle = '#e83a5a'; g.lineWidth = 0.25; g.beginPath(); g.moveTo(x - 0.3, y - 0.3); g.lineTo(x + 1.2, y - 1.4); g.stroke(); }
+    }
+  }
+  function paintSteelTray(g, hl, hw, rng, what) {
+    g.fillStyle = '#7a5a3a'; g.fillRect(-hl, -hw, hl * 2, hw * 2);
+    g.fillStyle = '#c8ccd2'; g.fillRect(-hl + 0.6, -hw + 0.6, hl - 0.8, hw * 2 - 1.2);
+    g.fillStyle = '#e4e8ec'; g.fillRect(-hl + 0.9, -hw + 0.9, hl - 1.4, 0.5);
+    if (what === 'samosa') {
+      for (let i = 0; i < 14; i++) {
+        const x = -hl + 1.6 + (i % 5) * 1.5, y = -hw + 1.8 + Math.floor(i / 5) * 1.8;
+        g.fillStyle = i % 2 ? '#d89a3a' : '#c8822a';
+        g.beginPath(); g.moveTo(x, y - 0.8); g.lineTo(x + 0.8, y + 0.6); g.lineTo(x - 0.8, y + 0.6); g.closePath(); g.fill();
+      }
+    } else if (what === 'dosa') {
+      g.fillStyle = '#1e1c1e'; g.fillRect(0.4, -hw + 0.6, hl - 1.1, hw * 2 - 1.2); // tawa
+      g.fillStyle = '#f2e2b0'; g.beginPath(); g.arc(hl * 0.5, -hw * 0.2, Math.min(hw - 1.2, 2.4), 0, TAU); g.fill();
+      g.fillStyle = '#e8c070'; g.beginPath(); g.arc(hl * 0.5, -hw * 0.2, Math.min(hw - 1.2, 2.4) * 0.6, 0, TAU); g.fill();
+      for (let i = 0; i < 6; i++) { g.fillStyle = '#f8f4ea'; g.beginPath(); g.arc(-hl + 1.6 + (i % 3) * 1.6, -1 + Math.floor(i / 3) * 1.8, 0.65, 0, TAU); g.fill(); } // idlis
+    } else if (what === 'chai') {
+      for (let i = 0; i < 10; i++) { g.fillStyle = '#e8d4a8'; g.beginPath(); g.arc(-hl + 1.4 + (i % 5) * 1.2, -hw + 1.6 + Math.floor(i / 5) * 1.3, 0.45, 0, TAU); g.fill(); g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = 0.15; g.stroke(); }
+    }
+    void rng;
+  }
+  function paintBooks(g, hl, hw, rng) {
+    g.fillStyle = '#2a4a6a'; g.fillRect(-hl, -hw, hl * 2, hw * 2); // blue tarp
+    const cols = ['#c8302a', '#2a5cb8', '#f2c230', '#efe9dc', '#3a8a4a', '#7a3a8a', '#e86a1a', '#5a3a2a'];
+    for (let x = -hl + 0.8; x < hl - 1.6; x += 2.1) {
+      for (let y = -hw + 0.7; y < hw - 1.4; y += 2.8) {
+        g.fillStyle = cols[(rng.next() * cols.length) | 0];
+        g.fillRect(x, y, 1.8, 2.4);
+        g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(x + 0.3, y + 0.5, 1.2, 0.3);
+      }
+    }
+  }
+
+  regCart('banana_cart', {
+    beds: ['#3a6a9a', '#2a7a5a', '#8a3a2a', '#6a4a2a'], load: paintBananas, vendor: 'man',
+    umbrella: [['#d8402a', '#f4e8d0'], ['#2a5cb8', '#f2c230']], umbR: 6.5,
+    extra(lm, A, C) { // a bunch hanging from the umbrella pole
+      const x = cx_(C, -C.hl + 2.2, 0.8), y = cy_(C, -C.hl + 2.2, 0.8);
+      seg3(x, y, 11.5, x, y, 8.8, '#5a4a2a', 0.3);
+      disc(x, y, 1.3, 8.6, '#f2d23a'); disc(x + 0.4, y + 0.3, 0.7, 8.9, '#e0b820');
+    },
+    count() { return S.min > 1290 || S.min < 420 ? 1 : 3; },
+  });
+  regCart('flower_cart', {
+    beds: ['#2a7a5a', '#3a6a9a', '#7a5a2a'], load: paintFlowers, vendor: 'aunty', custKinds: ['woman', 'saree', 'aunty', 'man'],
+    umbrella: [['#f2c230', '#d8402a'], ['#2a8c82', '#f4e8d0'], ['#e85a9a', '#f4e8d0']], umbR: 6.5,
+    extra(lm, A, C) { // garlands hanging from a bar across the cart
+      const u0 = C.hl - 2;
+      const xa = cx_(C, u0, -C.hw), ya = cy_(C, u0, -C.hw), xb = cx_(C, u0, C.hw), yb = cy_(C, u0, C.hw);
+      pole(xa, ya, 5.2, 10.5, '#5a4a3a', 0.4); pole(xb, yb, 5.2, 10.5, '#5a4a3a', 0.4);
+      seg3(xa, ya, 10.5, xb, yb, 10.5, '#5a4a3a', 0.4);
+      for (let i = 1; i < 6; i++) {
+        const t = i / 6, x = xa + (xb - xa) * t, y = ya + (yb - ya) * t;
+        seg3(x, y, 10.3, x, y, 6.4, i % 2 ? '#f08a1a' : '#f8f6ee', 0.9);
+      }
+    },
+    count() { const thu = S.weekday === 4; return S.min > 1320 || S.min < 360 ? 1 : thu ? 3 : 2; },
+  });
+  regCart('coconut_cart', {
+    beds: ['#6a4a2a', '#3a6a9a'], load: paintCoconuts, vendor: 'man', umbrella: [['#3a8a3a', '#f2c230'], ['#d8402a', '#f4e8d0']], umbR: 6.5,
+    count() { return S.min > 1200 || S.min < 480 ? 1 : 3; },
+  });
+  regCart('samosa_bandi', {
+    beds: ['#8a3a2a', '#2a5cb8', '#5a5a5a'], load: (g, hl, hw, r) => paintSteelTray(g, hl, hw, r, 'samosa'), vendor: 'man', lamp: true,
+    extra(lm, A, C) {
+      // glass box + stove with a kadai of hot oil
+      obox(cx_(C, -C.hl * 0.45, 0), cy_(C, -C.hl * 0.45, 0), C.ca, C.sa, C.hl * 0.42, C.hw - 0.6, 5.2, 8.6, '#a8ccd8', 'rgba(200,232,240,0.55)');
+      const kx = cx_(C, C.hl * 0.55, 0), ky = cy_(C, C.hl * 0.55, 0);
+      cyl(kx, ky, 2.2, 5.2, 6.8, '#3a3a40', '#2a2a2e');
+      disc(kx, ky, 2.4, 7, '#1e1c1e'); disc(kx, ky, 1.8, 7.05, '#c89a3a');
+      for (let i = 0; i < 3; i++) { const a = TIME * 0.6 + i * 2.1; disc(kx + Math.cos(a) * 0.9, ky + Math.sin(a) * 0.9, 0.55, 7.1, '#e0a040'); }
+      steam(kx, ky, 7.5, 3, A.seed, '#f2efe8', 0.9);
+    },
+    count() { return S.min >= 900 && S.min <= 1320 ? 3 : 1; },
+  });
+  regCart('dosa_bandi', {
+    beds: ['#2a5cb8', '#3a6a5a', '#8a3a2a'], load: (g, hl, hw, r) => paintSteelTray(g, hl, hw, r, 'dosa'), vendor: 'man', lamp: true,
+    extra(lm, A, C) {
+      // chutney buckets + idli steamer
+      cyl(cx_(C, -C.hl * 0.6, C.hw + 1.4), cy_(C, -C.hl * 0.6, C.hw + 1.4), 0.9, 0, 2.4, '#b8bcc4', '#f4f2e8');
+      cyl(cx_(C, -C.hl * 0.6 + 2, C.hw + 1.4), cy_(C, -C.hl * 0.6 + 2, C.hw + 1.4), 0.9, 0, 2.4, '#b8bcc4', '#d8402a');
+      const ix = cx_(C, -C.hl * 0.25, -C.hw * 0.4), iy = cy_(C, -C.hl * 0.25, -C.hw * 0.4);
+      cyl(ix, iy, 1.6, 5.2, 8.4, '#c8ccd2', '#e4e8ec');
+      steam(ix, iy, 8.6, 3, A.seed, '#f6f4ee', 1);
+      steam(cx_(C, C.hl * 0.5, 0), cy_(C, C.hl * 0.5, 0), 5.8, 2, A.seed + 3, '#f6f4ee', 0.7);
+    },
+    count() { return S.min >= 360 && S.min <= 690 ? 3 : 1; },
+  });
+  regCart('chai_bandi', {
+    beds: ['#6a4a2a', '#2a7a5a', '#8a3a2a'], load: (g, hl, hw, r) => paintSteelTray(g, hl, hw, r, 'chai'), vendor: 'man', lamp: true, customers: 3, custKinds: ['man', 'uncle', 'student', 'man'],
+    extra(lm, A, C) {
+      // wooden cabin with a tin roof at the far end + the big kettle on the stove
+      const cu = C.hl * 0.42;
+      obox(cx_(C, cu, 0), cy_(C, cu, 0), C.ca, C.sa, C.hl * 0.55, C.hw, 5.2, 10, '#8a5a32', null);
+      obox(cx_(C, cu, 0), cy_(C, cu, 0), C.ca, C.sa, C.hl * 0.62, C.hw + 0.8, 10, 10.6, '#9aa0a6', '#b8bcc0');
+      const kx = cx_(C, -C.hl * 0.35, 0), ky = cy_(C, -C.hl * 0.35, 0);
+      cyl(kx, ky, 1.2, 5.2, 6.4, '#3a3a40', '#2a2a2e');
+      cyl(kx, ky, 1.8, 6.4, 9.2, '#c8ccd2', '#dfe2e6');
+      seg3(kx + C.ca * 1.6, ky + C.sa * 1.6, 8.2, kx + C.ca * 3, ky + C.sa * 3, 9, '#b8bcc4', 0.5);
+      steam(kx, ky, 9.4, 3, A.seed, '#f6f4ee', 1);
+      // bench for customers
+      const bs = C.side * (C.hw + 3.2);
+      obox(cx_(C, 0, bs), cy_(C, 0, bs), C.ca, C.sa, C.hl * 0.7, 0.9, 1.6, 2.4, '#7a5a3a', '#8a6a48');
+    },
+    count() { return S.min >= 330 && S.min <= 1350 ? 4 : 1; },
+  });
+  regCart('kite_stall', {
+    beds: ['#6a4a2a'], vendor: 'man', customers: 3, custKinds: ['kid', 'kid', 'student', 'man'],
+    load(g, hl, hw, rng) { // charkhas (manja spools) + stacked kites on the table
+      g.fillStyle = '#7a5a3a'; g.fillRect(-hl, -hw, hl * 2, hw * 2);
+      const kc = ['#e83a5a', '#2a5cb8', '#f2c230', '#3aa04a', '#f06a1a', '#9a3ac8', '#f8f6ee'];
+      for (let i = 0; i < 16; i++) {
+        const x = -hl + 1.4 + (i % 8) * (hl * 2 - 2.8) / 7, y = i < 8 ? -hw * 0.45 : hw * 0.2;
+        g.fillStyle = kc[(i + ((rng.next() * 3) | 0)) % kc.length];
+        g.beginPath(); g.moveTo(x, y - 1.4); g.lineTo(x + 1.1, y); g.lineTo(x, y + 1.4); g.lineTo(x - 1.1, y); g.closePath(); g.fill();
+      }
+      for (let i = 0; i < 4; i++) { g.fillStyle = '#c8a050'; g.beginPath(); g.arc(-hl + 2 + i * 2.6, hw - 1.4, 0.9, 0, TAU); g.fill(); g.fillStyle = kc[i]; g.beginPath(); g.arc(-hl + 2 + i * 2.6, hw - 1.4, 0.55, 0, TAU); g.fill(); }
+    },
+    hBed: 4,
+    extra(lm, A, C) {
+      // bamboo frame with kites hanging in rows (they sway)
+      const pts = [[-C.hl, -C.hw], [C.hl, -C.hw], [C.hl, C.hw], [-C.hl, C.hw]];
+      for (const p of pts) pole(cx_(C, p[0], p[1]), cy_(C, p[0], p[1]), 0, 13, '#8a6a3a', 0.5);
+      const kc = ['#e83a5a', '#2a5cb8', '#f2c230', '#3aa04a', '#f06a1a', '#9a3ac8'];
+      const back = -C.side * (C.hw - 0.5);
+      seg3(cx_(C, -C.hl, back), cy_(C, -C.hl, back), 12.6, cx_(C, C.hl, back), cy_(C, C.hl, back), 12.6, '#8a6a3a', 0.4);
+      for (let row = 0; row < 2; row++) for (let i = 0; i < 6; i++) {
+        const u = -C.hl + 1.6 + i * (C.hl * 2 - 3.2) / 5, h = 11 - row * 3.2, sway = Math.sin(TIME * 2 + i + row) * 0.4;
+        const x = cx_(C, u + sway, back), y = cy_(C, u + sway, back), k = kh(h);
+        ctx.beginPath(); ctx.moveTo(sx(x, k), sy(y, k) - 1.6 * k); ctx.lineTo(sx(x, k) + 1.3 * k, sy(y, k)); ctx.lineTo(sx(x, k), sy(y, k) + 1.6 * k); ctx.lineTo(sx(x, k) - 1.3 * k, sy(y, k)); ctx.closePath();
+        fillc(kc[(i + row * 2) % 6]);
+      }
+      // tarp roof (translucent so the kites read)
+      const k1 = kh(13);
+      ctx.globalAlpha = 0.55;
+      obox(C.x, C.y, C.ca, C.sa, C.hl + 0.8, C.hw + 0.8, 13, 13.3, null, '#2a5cb8');
+      ctx.globalAlpha = 1; void k1;
+    },
+    count() { return S.sankranti ? 4 : S.min > 1260 || S.min < 480 ? 1 : 2; },
+  });
+  regCart('book_stall', {
+    beds: ['#5a4a3a'], load: paintBooks, vendor: 'uncle', hBed: 2.6, umbrella: [['#2a5cb8', '#e8e0c8']], umbR: 6, customers: 2, custKinds: ['student', 'man', 'uncle'],
+    count() { return S.min > 1200 || S.min < 540 ? 0 : 3; },
+  });
+
+  /* ================================================================ BUS STOPS */
+  function busStopInit(lm) {
+    const A = { F: frontOf(lm), id: lm.id, h: 12 };
+    const rng = rngOf(lm, 'bs');
+    A.style = pickR(rng, [['#efe2c4', '#b22b2b'], ['#e8d8a0', '#2a5c8a'], ['#d8dce0', '#b22b2b']]);
+    A.rr = { x: A.F.x, y: A.F.y, w: A.F.w, d: A.F.d };
+    planSign(A, lm.sign || lm.name || 'BUS STOP', '#b22b2b', '#fff4d8', 'bus', { over: 3, twoAt: 6, lift: 3, h0: 0.6 });
+    A.people = [];
+    const F = A.F, n = 2 + (((rng.next() * 3) | 0));
+    for (let i = 0; i < n; i++) {
+      const u = -F.L / 2 + 5 + i * (F.L - 10) / Math.max(1, n - 1);
+      A.people.push(person(pickR(rng, ['any', 'student', 'woman', 'man', 'aunty', 'uncle']), (rng.next() * 30) | 0, fxp(F, u, 3 + rng.next() * 2), fyp(F, u, 3 + rng.next() * 2), F.ang + (rng.next() - 0.5) * 1.2, { sway: 0.5, turn: 0.4 }));
+    }
+    A.count = () => (S.min > 1350 || S.min < 330 ? 0 : S.min > 450 && S.min < 600 ? A.people.length : Math.max(1, A.people.length - 1));
+    return A;
+  }
+  function drawBusStop(lm, A) {
+    const F = A.F, L = F.L, D = F.D, wall = A.style[0], acc = A.style[1];
+    const vb = -D + 1.2;
+    // back panel with a painted advert
+    fbox(F, -L / 2 + 1, L / 2 - 1, vb - 0.5, vb + 0.5, 0, 9, wall, sh(wall, 1.05));
+    if (!camFront(F) === false) { /* advert seen from the road side */ }
+    // posts
+    for (const u of [-L / 2 + 1.2, L / 2 - 1.2]) { const x = fxp(F, u, -0.6), y = fyp(F, u, -0.6); pole(x, y, 0, 11.4, '#5a5a5a', 0.6); }
+    // bench
+    fbox(F, -L / 2 + 3, L / 2 - 3, vb + 1, vb + 2.6, 2.2, 2.8, '#7a7a80', '#9a9aa2');
+    // roof slab sloping to the road, red fascia
+    const x0 = fxp(F, -L / 2, vb - 1), y0 = fyp(F, -L / 2, vb - 1), x1 = fxp(F, L / 2, vb - 1), y1 = fyp(F, L / 2, vb - 1);
+    const x2 = fxp(F, L / 2, 0.8), y2 = fyp(F, L / 2, 0.8), x3 = fxp(F, -L / 2, 0.8), y3 = fyp(F, -L / 2, 0.8);
+    quad3(x0, y0, 12.4, x1, y1, 12.4, x2, y2, 11.4, x3, y3, 11.4); fillc(sh(wall, 1.02 + 0.06 * (F.ox * SUN.dx + F.oy * SUN.dy)));
+    quad3(x3, y3, 11.4, x2, y2, 11.4, x2, y2, 10.4, x3, y3, 10.4); fillc(acc);
+    drawSign(A, 12, 0);
+  }
+  reg('bus_stop', {
+    init: busStopInit, draw: drawBusStop,
+    shadow(lm, A) { const r = frect(A.F, -A.F.L / 2, A.F.L / 2, -A.F.D + 0.2, 0.8); N.draw.castBox(r[0], r[1], r[2], r[3], 12); },
+    lights(lm, A) { light(lm, 0, 1, fxp(A.F, 0, -2), fyp(A.F, 0, -2), 10, 26, '#e0f4ff', 0.7); },
+    night(lm, A, a) { nightSign(A, 12, a * 0.8); },
+  });
+
+  /* ================================================================ STD / ISD / PCO booth */
+  reg('std_booth', {
+    init(lm) {
+      const A = { F: frontOf(lm), id: lm.id, h: 10 };
+      const rng = rngOf(lm, 'std');
+      A.people = [person(pickR(rng, ['man', 'student', 'woman', 'uncle']), (rng.next() * 20) | 0, fxp(A.F, 2, 3.8), fyp(A.F, 2, 3.8), A.F.ang + Math.PI, { sway: 0.4, turn: 0.3 }),
+        person(pickR(rng, ['man', 'kid', 'aunty']), (rng.next() * 20) | 0, fxp(A.F, -3, 5.8), fyp(A.F, -3, 5.8), A.F.ang + Math.PI - 0.5, { sway: 0.5 })];
+      A.count = () => (S.min > 1380 || S.min < 360 ? 0 : S.min > 1260 ? 2 : 1); // after 21:00 (cheap rates) a queue
+      return A;
+    },
+    draw(lm, A) {
+      const x = lm.x - lm.w / 2, y = lm.y - lm.d / 2, w = lm.w, d = lm.d;
+      // plinth + glass cabin (cyan glass, white frames), yellow roof
+      abox(x, y, w, d, 0, 1, '#9a9690', '#b8b2a8');
+      ctx.globalAlpha = 0.8; abox(x + 1, y + 1, w - 2, d - 2, 1, 9.6, '#9fd0dc', false); ctx.globalAlpha = 1;
+      for (const [px, py] of [[x + 1, y + 1], [x + w - 1, y + 1], [x + w - 1, y + d - 1], [x + 1, y + d - 1]]) pole(px, py, 1, 9.6, '#f4f2ea', 0.5);
+      abox(x + 0.4, y + 0.4, w - 0.8, d - 0.8, 9.6, 10.4, '#d8a820', '#f2c230');
+      // the yellow STD ISD PCO light box standing on the roof
+      const bw = 13, bd = 19;
+      abox(lm.x - bw / 2, lm.y - bd / 2, bw, bd, 10.4, 12.6, '#d8a820', '#f2c230');
+      const k = kh(12.6);
+      ctx.strokeStyle = '#c8202a'; ctx.lineWidth = Math.max(1, 0.8 * k); ctx.strokeRect(sx(lm.x - bw / 2 + 0.8, k), sy(lm.y - bd / 2 + 0.8, k), (bw - 1.6) * k, (bd - 1.6) * k);
+      ptext(lm.x, lm.y, 12.6, ['STD', 'ISD', 'PCO'], '#1a1416', null, 0);
+    },
+    shadow(lm) { N.draw.castBox(lm.x - lm.w / 2, lm.y - lm.d / 2, lm.w, lm.d, 11); },
+    lights(lm) { light(lm, 0, 1, lm.x, lm.y, 9, 26, '#fff4c0', 0.8); },
+    night(lm, A, a) {
+      const bw = 13, bd = 19, k = kh(12.6);
+      ctx.globalAlpha = a * 0.85; ctx.fillStyle = '#ffe050'; ctx.fillRect(sx(lm.x - bw / 2 + 1, k), sy(lm.y - bd / 2 + 1, k), (bw - 2) * k, (bd - 2) * k); ctx.globalAlpha = 1;
+      ptext(lm.x, lm.y, 12.6, ['STD', 'ISD', 'PCO'], '#c8102a', null, 0);
+      // the red pulse-meter display at the window
+      const F = A.F;
+      glow(fxp(F, 0, 0.5), fyp(F, 0, 0.5), 6, 3, '#ff3020', a * (0.6 + 0.4 * Math.sin(TIME * 2)));
+    },
+  });
+
+  /* ================================================================ IRANI CAFES */
+  reg('irani_cafe', {
+    init(lm) {
+      const rng = rngOf(lm, 'ic');
+      const teal = rng.next() < 0.55;
+      const spec = {
+        wall: teal ? pickR(rng, ['#2a8c82', '#2f7f8a', '#3a8a7a']) : pickR(rng, ['#efe2c4', '#e8dcc0', '#f0e6d0']),
+        trim: '#f4ecd8', acc: teal ? '#7a1a2a' : '#2a8c82', acc3: teal ? '#1f6a62' : '#2a8c82', win: '#6a4a2a', litCol: '#ffd890',
+        front: FAC.cafe, side: FAC.plain,
+      };
+      const A = baseState(lm, spec);
+      A.kind = 'irani_cafe';
+      const tiled = rng.next() < 0.4 && A.h <= 24;
+      if (tiled) { A.tiled = true; A.st.roof = false; }
+      planSign(A, lm.sign || 'IRANI CAFE', pickR(rng, ['#7a1a2a', '#1f5a52', '#2a2a5a']), '#f8e8b0', 'cup', { lift: 3 });
+      A.people = [];
+      const F = A.F, L = F.L;
+      const add = (k, i, u, v, a, o) => A.people.push(person(k, i, fxp(F, u, v), fyp(F, u, v), a, o));
+      // the Irani uncle at the counter, customers at the two street tables, a waiter
+      add('uncle', 3, L / 2 - 4, 0.4, F.ang, { sway: 0.2, look: { cap: 'topi', shirt: '#f4f4f0' } });
+      A.tables = [];
+      for (const tu of [-L / 2 + 5, -L / 2 + 13]) {
+        if (tu > L / 2 - 9) break;
+        A.tables.push(tu);
+        add(pickR(rng, ['man', 'uncle', 'student', 'man']), (rng.next() * 30) | 0, tu - 2.6, 3.6, F.ang + Math.PI / 2 + Math.PI, { sway: 0.25, turn: 0.2 });
+        add(pickR(rng, ['man', 'man', 'uncle']), (rng.next() * 30) | 0, tu + 2.6, 3.6, F.ang - Math.PI / 2 + Math.PI, { sway: 0.25, turn: 0.2 });
+      }
+      add('man', 77, 0, 5.8, F.ang - 0.6, { sway: 0.7, look: { shirt: '#f4f4f0' } });
+      A.count = () => (S.min < 330 ? 1 : S.min > 1380 ? 2 : A.people.length);
+      return A;
+    },
+    draw(lm, A) {
+      const F = A.F, L = F.L, front = camFront(F);
+      const goods = () => {
+        // glass biscuit jars on the counter by the door (Osmania biscuits, khara, rusk)
+        fbox(F, L / 2 - 8.6, L / 2 - 1.4, -0.2, 1.8, 0, 3.6, '#5a3a22', '#7a5030');
+        for (let i = 0; i < 3; i++) {
+          const u = L / 2 - 7.3 + i * 2.3, x = fxp(F, u, 0.8), y = fyp(F, u, 0.8);
+          cyl(x, y, 0.95, 3.6, 6.2, '#d8eef2', null);
+          disc(x, y, 0.75, 6.25, ['#e8c070', '#d89a4a', '#f0d8a0'][i]); disc(x, y, 0.45, 6.3, '#c8302a');
+        }
+        // marble-top tables with bentwood chairs + chai glasses
+        for (const tu of A.tables) {
+          const x = fxp(F, tu, 3.6), y = fyp(F, tu, 3.6);
+          for (const s of [-1, 1]) { const cxp = fxp(F, tu + s * 2.6, 3.6), cyp = fyp(F, tu + s * 2.6, 3.6); ring(cxp, cyp, 1, 3.2, '#3a2416', 0.5); }
+          pole(x, y, 0, 4, '#2a2a2a', 0.5);
+          disc(x, y, 1.7, 4.1, '#f2f0ea');
+          disc(fxp(F, tu - 0.6, 3.4), fyp(F, tu - 0.6, 3.4), 0.42, 4.3, '#c8925a');
+          disc(fxp(F, tu + 0.6, 3.9), fyp(F, tu + 0.6, 3.9), 0.42, 4.3, '#c8925a');
+          disc(fxp(F, tu, 3), fyp(F, tu, 3), 0.55, 4.25, '#e8c070'); // a plate of Osmania biscuits
+        }
+        steam(fxp(F, L / 2 - 4, 0.2), fyp(F, L / 2 - 4, 0.2), 6, 2, A.rr.x, '#f6f4ee', 0.8);
+      };
+      if (!front) goods();
+      if (A.tiled) {
+        if (K.box) K.box(A.rr.x, A.rr.y, A.rr.w, A.rr.d, 0, A.h - 4, A.st, null, true);
+        if (K.hip) K.hip(A.rr.x - 0.8, A.rr.y - 0.8, A.rr.w + 1.6, A.rr.d + 1.6, A.h - 4, A.h + 2, '#b0583a');
+        else if (K.pyramid) K.pyramid(A.rr.x - 0.8, A.rr.y - 0.8, A.rr.w + 1.6, A.rr.d + 1.6, A.h - 4, A.h + 2, '#b0583a');
+        drawSign(A, A.h - 4.5, 0);
+      } else {
+        building(A);
+        drawSign(A, A.h, 0);
+      }
+      awning(F, -L / 2 + 0.6, L / 2 - 0.6, 2.4, 9.8, 8.4, '#2a8c82', '#f4ecd8', 1.3);
+      if (front) goods();
+    },
+    shadow(lm, A) { castMain(A); },
+    lights(lm, A) { const F = A.F; light(lm, 0, 2, fxp(F, 0, 3), fyp(F, 0, 3), 4, 30, '#ffd890', 0.9); },
+    night(lm, A, a) {
+      nightSign(A, A.tiled ? A.h - 4.5 : A.h, a);
+      glow(fxp(A.F, 0, 2), fyp(A.F, 0, 2), 3, Math.min(20, A.F.L * 0.5), '#ffcf80', a * 0.45);
+    },
+  });
+
+  /* ================================================================ GOKUL CHAT */
+  reg('gokul_chat', {
+    init(lm) {
+      const A = baseState(lm, { walls: ['#efe4c8'], roof: '#d0c4ac', win: '#6a4a30', litCol: '#fff2cc' });
+      A.kind = 'gokul_chat';
+      planSign(A, lm.sign || 'GOKUL CHAT', '#c8202a', '#ffe23a', null, { over: 3, lift: 4.2 });
+      const F = A.F, L = F.L, rng = A.rng;
+      A.people = [];
+      const add = (k, i, u, v, a, o) => A.people.push(person(k, i, fxp(F, u, v), fyp(F, u, v), a, o));
+      add('man', 5, -4, 0.6, F.ang, { sway: 0.8, sp: 2.4, look: { shirt: '#f4f4f0' } });  // pani-puri master
+      add('man', 6, 4, 0.6, F.ang, { sway: 0.5, look: { shirt: '#f4f4f0' } });
+      // the crowd: a half ring of hungry people with leaf plates
+      for (let i = 0; i < 12; i++) {
+        const t = i / 11, u = -L / 2 + 2 + t * (L - 4), v = 4.6 + (i % 3) * 2.2 + rng.next() * 0.8;
+        add(pickR(rng, ['any', 'woman', 'student', 'man', 'kid', 'aunty', 'burqa', 'saree']), (i * 3 + 1) % 29, u, v, F.ang + Math.PI + (rng.next() - 0.5) * 0.8, { sway: 0.7, turn: 0.35, sp: 1.6 });
+      }
+      // kulfi matka man at the corner
+      add('uncle', 9, L / 2 + 3.5, 3.4, F.ang + Math.PI / 2, { sway: 0.3 });
+      A.count = () => (S.min < 510 || S.min > 1380 ? 0 : S.min > 1020 && S.min < 1320 ? A.people.length : 8);
+      return A;
+    },
+    draw(lm, A) {
+      const F = A.F, L = F.L, front = camFront(F);
+      const counter = () => {
+        // steel counter across the front: glass box of golden puris, ragda pot, pani cans
+        fbox(F, -L / 2 + 1.2, L / 2 - 1.2, 0.2, 2.6, 0, 3.8, '#b8bcc4', '#d8dce2');
+        fbox(F, -L / 2 + 2, -L / 2 + 8.5, 0.6, 2.4, 3.8, 6.6, '#cfe6ee', 'rgba(232,248,252,0.6)');
+        for (let i = 0; i < 9; i++) fdisc(F, -L / 2 + 2.8 + (i % 5) * 1.3, 1.1 + Math.floor(i / 5) * 0.9, 0.5, 6.7, '#e8b440');
+        const rx = fxp(F, 0.5, 1.4), ry = fyp(F, 0.5, 1.4);
+        cyl(rx, ry, 1.9, 3.8, 6.4, '#c8ccd2', '#dfe2e6'); disc(rx, ry, 1.5, 6.45, '#d8c890');
+        steam(rx, ry, 6.8, 3, 1, '#f6f4ee', 1);
+        for (let i = 0; i < 3; i++) { const x = fxp(F, 4 + i * 2, 1.4), y = fyp(F, 4 + i * 2, 1.4); cyl(x, y, 0.9, 3.8, 6, '#b8bcc4', '#e4e8ec'); disc(x, y, 0.6, 6.05, ['#7aa04a', '#8a5a2a', '#c8a050'][i]); }
+        // kulfi matka stall
+        const kx = fxp(F, L / 2 + 3.5, 1.2), ky = fyp(F, L / 2 + 3.5, 1.2);
+        cyl(kx, ky, 1.8, 0, 3, '#7a5030', '#8a6040');
+        cyl(kx, ky, 1.5, 3, 5.4, '#b0583a', '#c8202a');
+        // parked scooters in a row along the kerb
+        const cols = ['#86b9c9', '#e8e0d0', '#c8302a', '#2a5cb8'];
+        for (let i = 0; i < 4; i++) {
+          const u = -L / 2 - 4 - i * 3.4;
+          const x = fxp(F, u, 5), y = fyp(F, u, 5);
+          obox(x, y, F.ox, F.oy, 3.6, 1.2, 1.2, 3.8, cols[i], sh(cols[i], 1.15));
+          disc(x + F.ox * 2.2, y + F.oy * 2.2, 0.6, 4.6, '#2a2a2a');
+        }
+      };
+      if (!front) counter();
+      building(A);
+      awning(F, -L / 2 + 0.4, L / 2 - 0.4, 3.4, 9.6, 8, '#b8bcc0', null, 1.4);
+      drawSign(A, A.h, 0);
+      if (front) counter();
+    },
+    shadow(lm, A) { castMain(A); },
+    lights(lm, A) { const F = A.F; light(lm, 0, 2, fxp(F, 0, 4), fyp(F, 0, 4), 5, 40, '#f0f8ff', 0.95); light(lm, 1, 2, fxp(F, F.L / 2 + 3, 2), fyp(F, F.L / 2 + 3, 2), 5, 18, '#ffd890', 0.7); },
+    night(lm, A, a) {
+      nightSign(A, A.h, a);
+      const F = A.F;
+      glow(fxp(F, 0, 2), fyp(F, 0, 2), 6, 16, '#e8f8ff', a * 0.5);
+      if (K.bulbs) K.bulbs(fxp(F, -F.L / 2, 3.3), fyp(F, -F.L / 2, 3.3), 8, fxp(F, F.L / 2, 3.3), fyp(F, F.L / 2, 3.3), 8, 10, '#ffe070', '#ff8040', 0.8);
+    },
+  });
+
+  /* ================================================================ RESTAURANTS */
+  const REST = {
+    paradise: { wall: '#f2efe6', acc: '#2f7a4a', sign: ['#2f7a4a', '#ffffff'], crowd: 12 },
+    bawarchi: { wall: '#efe0b8', acc: '#c8202a', sign: ['#f2c230', '#b01a1a'], crowd: 10 },
+    shadab_hotel: { wall: '#e8e4d8', acc: '#1f6a3a', sign: ['#1f6a3a', '#ffffff'], crowd: 6, haleem: true },
+    pista_house: { wall: '#e8f0e0', acc: '#3a8a3a', sign: ['#3a8a3a', '#fff8d0'], crowd: 6, haleem: true },
+    shah_ghouse: { wall: '#efe6d8', acc: '#7a1a2a', sign: ['#7a1a2a', '#ffe8a0'], crowd: 6, haleem: true },
+    hotel_nayaab: { wall: '#e0e8e8', acc: '#2a5a8a', sign: ['#2a5a8a', '#ffffff'], crowd: 4, haleem: true },
+    hotel_niagara: { wall: '#e8e0f0', acc: '#2a4a8a', sign: ['#1f3a7a', '#f2e8c0'], crowd: 4 },
+    taj_mahal_hotel_abids: { wall: '#f0e8d8', acc: '#8a6a2a', sign: ['#6a1a2a', '#f8e8b0'], crowd: 4 },
+  };
+  reg('restaurant', {
+    init(lm) {
+      const R0 = REST[lm.id] || { wall: '#efe6d2', acc: '#c03a2a', sign: ['#c03a2a', '#fff4d8'], crowd: 4 };
+      const A = baseState(lm, { wall: R0.wall, acc: R0.acc, win: '#7a5a3a', litCol: '#ffe0a0', roofPlan: { cot: false } });
+      A.kind = 'restaurant'; A.R0 = R0;
+      planSign(A, lm.sign || lm.name, R0.sign[0], R0.sign[1], null, { over: 4, lift: 4.4 });
+      const F = A.F, L = F.L, rng = A.rng;
+      A.people = [];
+      const add = (k, i, u, v, a, o) => A.people.push(person(k, i, fxp(F, u, v), fyp(F, u, v), a, o));
+      add('man', 41, L / 2 - 5, 0.8, F.ang, { sway: 0.3, look: { shirt: '#f4f4f0' } });
+      for (let i = 0; i < R0.crowd; i++) {
+        const u = -L / 2 + 3 + (i % 6) * ((L - 6) / 5), v = 4 + Math.floor(i / 6) * 2.6 + rng.next();
+        add(pickR(rng, ['man', 'any', 'uncle', 'student', 'woman', 'burqa']), (i * 5 + 2) % 31, u, v, F.ang + Math.PI + (rng.next() - 0.5) * 0.9, { sway: 0.6, turn: 0.3 });
+      }
+      if (R0.haleem) A.haleemPeople = [person('man', 51, fxp(F, -L / 2 + 5, 6.5), fyp(F, -L / 2 + 5, 6.5), F.ang + Math.PI, { sway: 1.2, sp: 2.2, look: { shirt: '#f4f4f0', cap: 'topi' } })];
+      A.count = () => {
+        const lunch = S.min > 720 && S.min < 900, dinner = S.min > 1170 && S.min < 1380;
+        return S.min < 600 || S.min > 1420 ? 0 : lunch || dinner ? A.people.length : Math.min(A.people.length, 3);
+      };
+      return A;
+    },
+    draw(lm, A) {
+      const F = A.F, L = F.L, front = camFront(F);
+      const goods = () => {
+        // the biryani degs at the parcel counter, lids sealed with dough
+        for (let i = 0; i < 2; i++) {
+          const x = fxp(F, L / 2 - 4 - i * 4.4, 2.2), y = fyp(F, L / 2 - 4 - i * 4.4, 2.2);
+          cyl(x, y, 1.9, 0, 3.4, '#9a6a3a', '#b8803a'); disc(x, y, 1.5, 3.45, '#e8d8b0');
+        }
+        steam(fxp(F, L / 2 - 4, 2.2), fyp(F, L / 2 - 4, 2.2), 3.8, 2, A.rr.x, '#f6f4ee', 1);
+        if (A.R0.haleem && S.ramzan) haleemBhatti(fxp(F, -L / 2 + 5, 4), fyp(F, -L / 2 + 5, 4), A.rr.x);
+      };
+      if (!front) goods();
+      building(A);
+      awning(F, -L / 2 + 0.6, L / 2 - 0.6, 2.8, 9.8, 8.2, A.R0.acc, '#f4ecd8', 1.6);
+      drawSign(A, A.h, 0);
+      if (front) goods();
+    },
+    shadow(lm, A) { castMain(A); },
+    lights(lm, A) { const F = A.F; light(lm, 0, 2, fxp(F, 0, 4), fyp(F, 0, 4), 5, 40, '#ffe0a0', 0.95); if (A.R0.haleem && S.ramzan) light(lm, 1, 2, fxp(F, -F.L / 2 + 5, 4), fyp(F, -F.L / 2 + 5, 4), 3, 22, '#ff9040', 0.9); },
+    night(lm, A, a) {
+      nightSign(A, A.h, a);
+      const F = A.F;
+      if (K.bulbs) K.bulbs(fxp(F, -F.L / 2, 2.8), fyp(F, -F.L / 2, 2.8), 9.2, fxp(F, F.L / 2, 2.8), fyp(F, F.L / 2, 2.8), 9.2, Math.round(F.L / 2.4), '#ffe070', S.ramzan ? '#60ff90' : '#ff9a40', 0.6);
+      if (A.R0.haleem && S.ramzan) glow(fxp(F, -F.L / 2 + 5, 4), fyp(F, -F.L / 2 + 5, 4), 2, 8, '#ff7020', a * 0.8);
+    },
+  });
+  // haleem bhatti: brick oven, a huge copper deg, a man pounding with a long wooden paddle
+  function haleemBhatti(x, y, seed) {
+    abox(x - 3.4, y - 3.4, 6.8, 6.8, 0, 3.4, '#a8502a', '#8a3a1a');
+    cyl(x, y, 2.6, 3.4, 5.6, '#b8783a', '#c88a40');
+    disc(x, y, 2.1, 5.65, '#8a5a2a');
+    const a = Math.sin(TIME * 4 + seed) * 0.6;
+    seg3(x + Math.cos(a) * 0.5, y + Math.sin(a) * 0.5, 5.4, x + Math.cos(a) * 4.5, y + 3.5 + Math.sin(a) * 2, 9.5, '#8a6a3a', 0.7);
+    steam(x, y, 6, 3, seed, '#f2efe8', 1.2);
+  }
+
+  /* @@PART3@@ */
 
   /* ================================================================ system */
   N.addSystem({
