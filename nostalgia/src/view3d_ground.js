@@ -951,7 +951,7 @@
         flush(B, c);
         continue;
       }
-      const nu = Math.max(1, Math.ceil((u1 - u0) / 0.7)), nv = Math.max(1, Math.ceil((v1 - v0) / 0.7));
+      const nu = Math.max(2, Math.ceil((u1 - u0) / 0.95)), nv = Math.max(2, Math.ceil((v1 - v0) / 0.95));
       // vertex grid: height + normal from the depth field
       const G = [];
       for (let a = 0; a <= nu; a++) for (let b2 = 0; b2 <= nv; b2++) {
@@ -1554,6 +1554,18 @@ if (ngShine > 0.01) {
       .replace('#include <envmap_fragment>', ROAD_ENV);
   }
   const ROAD_FUNCS = `
+// distance to the nearest cell border of a jittered grid (0 on the border): block / alligator cracks
+float ngCell2(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  float d1 = 8.0, d2 = 8.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec2 g = vec2(float(x), float(y));
+    vec2 r = g + ngH2(i + g) * 0.8 + 0.1 - f;
+    float d = dot(r, r);
+    if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+  }
+  return sqrt(d2) - sqrt(d1);
+}
 float ngBit(float bits, float b){ return mod(floor(floor(bits + 0.5) / b + 0.001), 2.0); } // bits arrive interpolated (7.9999)
 vec3 ngAsphalt(vec2 P, vec3 base, float age, float fw){
   float g = 0.0;
@@ -1610,13 +1622,17 @@ if (layer < 1.5) {
     float en = ngF(P * 0.45, fw * 0.45) * 1.8 + ngF(P * 1.9, fw * 1.9) * 0.9;
     float edge = smoothstep(hw - 1.2 - 2.4 * sandy - en * (0.4 + sandy), hw - 0.2, av);
     col = mix(col, vec3(0.31, 0.24, 0.15) * (0.8 + 0.4 * en / 2.7), edge * (0.25 + 0.65 * sandy));
-    // hairline cracks on older surfaces
+    // hairline cracks on older surfaces: block / alligator patterns in patches, wobbly, ~1 px wide
 #ifndef NG_LOW
-    float cn = ngN(P * 0.13 + vec2(ngN(P * 0.6), ngN(P * 0.6 + 4.0)) * 0.9);
-    float cw = fwidth(cn);
-    float crack = (1.0 - smoothstep(0.0, cw * 1.3 + 0.002, abs(cn - 0.5))) * smoothstep(0.5, 0.75, ngN(P * 0.027 + 7.0) + age * 0.3);
-    crack *= (1.0 - smoothstep(0.06, 0.2, fw)) * smoothstep(0.25, 0.6, age);
-    col *= 1.0 - crack * 0.5;
+    float cmask = smoothstep(0.52, 0.7, ngN(P * 0.021 + 7.0) + age * 0.25) * (1.0 - smoothstep(0.05, 0.16, fw)) * smoothstep(0.25, 0.55, age);
+    if (cmask > 0.001) {
+      vec2 cp = P * 0.33 + (vec2(ngN(P * 1.3), ngN(P * 1.3 + 9.0)) - 0.5) * 0.22;
+      float e = ngCell2(cp);
+      float ew = fwidth(e);
+      float crack = 1.0 - smoothstep(0.012, 0.012 + ew * 1.4, e);
+      crack *= 0.55 + 0.45 * ngN(P * 0.9 + 3.0);
+      col *= 1.0 - crack * 0.55 * cmask;
+    }
 #endif
     // markings (white paint), all from (u, v) with analytic AA
     float zA = vGeo.z, zB = vGeo.w;
@@ -1658,6 +1674,12 @@ if (layer < 1.5) {
     if (wet > 0.5) ngWm = smoothstep(0.55, 0.7, pd + (ngF(P * 1.3, fw * 1.3) - 0.5) * 0.15);
   }
   ngShine = uWet * (0.45 + 0.4 * smoothstep(0.55, 0.75, ngN(P * 0.09 + 21.0)));
+  // rain: standing water in shallow dips and along the gutters (kerbside)
+  if (uWet > 0.05) {
+    float pud = smoothstep(0.64, 0.72, ngN(P * 0.06 + 5.0) * 0.7 + ngN(P * 0.31 + 2.0) * 0.3);
+    if (layer < 0.5) pud = max(pud, smoothstep(vGeo.y - 2.6, vGeo.y - 0.6, abs(vRd.y)) * smoothstep(0.45, 0.6, ngN(P * 0.17 + 8.0)));
+    ngWm = max(ngWm, pud * smoothstep(0.3, 0.9, uWet) * 0.9);
+  }
 } else if (layer < 2.5) {
   // footpath slabs (u along the road, v across)
   vec2 q = vRd / vec2(3.0, 2.4);
@@ -1794,6 +1816,18 @@ if (ngShine > 0.01) {
   const STATS = { built: 0, ms: 0, lastMs: 0, tris: 0, roadsRebuilt: 0 };
   const STEPMS = []; // cumulative ms per job step: analyse, aux, surface, tint, roads, upload
   const curPot = () => { const PH = N.world && N.world.potholes; return PH && PH.version != null ? PH.version : 0; };
+  const SIGBUF = [];
+  /** signature of the potholes (+ wetness) in a chunk: roads are rebuilt only when it changes */
+  function potSig(ch) {
+    const PH = N.world && N.world.potholes;
+    if (!PH || !PH.query) return 0;
+    SIGBUF.length = 0;
+    let l;
+    try { l = PH.query(ch.x0 - 12, ch.y0 - 12, ch.x0 + CHS + 12, ch.y0 + CHS + 12, SIGBUF); } catch (e) { return 0; }
+    let h = 0;
+    for (const p of l) h = (Math.imul(h, 31) + p.id * 2 + (p.wet ? 1 : 0)) | 0;
+    return h ^ (l.length << 22);
+  }
   function chunkBucket(ch) { return NET.buckets.get(bkey(ch.ci, ch.cj)) || null; }
   let SHARED_RB = null, ACTIVE = null;
   const SCR = new Map();
@@ -1806,7 +1840,7 @@ if (ngShine > 0.01) {
   /** what: 'all' | 'roads' (pothole / weather changes) | 'map' (phones: the baked sun moved) */
   function startJob(ch, what, lod) {
     const B = SHARED_RB ? SHARED_RB.reset(ch.x0, ch.y0) : (SHARED_RB = new RB(ch.x0, ch.y0));
-    return { ch, what, step: what === 'roads' ? 3 : 0, B, bucket: null, pots: [], t: 0, potVer: curPot(), lod, sn: lod ? SURF_N / 2 : SURF_N };
+    return { ch, what, step: what === 'roads' ? 3 : 0, B, bucket: null, pots: [], t: 0, potVer: curPot(), potSig: potSig(ch), lod, sn: lod ? SURF_N / 2 : SURF_N };
   }
   // shared terrain plane (one per chunk size; vUv as the core's ground plane for the aux texture)
   let PLANE = null;
@@ -1865,12 +1899,12 @@ if (ngShine > 0.01) {
         } else G.tris = 0;
         G.raised = buildRaisedIndex(job.B.raised, ch);
         G.pots = new Set(job.pots);
-        G.potVer = job.potVer;
+        G.potVer = job.potVer; G.potSig = job.potSig; G.potDirty = false;
       }
       G.lod = job.lod;
     }
     G.ready = true; G.sunKey = I.sunBake ? I.sunBake.key : ''; G.dirty = false;
-    if (failed && G.potVer == null) G.potVer = job.potVer;
+    if (failed) { G.potSig = job.potSig; G.potDirty = false; }
     ch.groundRes = Math.max(I.Q.groundHi || 1, 1); ch.groundStale = false;
     STATS.built++; STATS.lastMs = job.t; STATS.ms += job.t;
     G.job = null;
@@ -1980,13 +2014,13 @@ if (ngShine > 0.01) {
       }
       if (!G || !G.ready) return true;
       if (G.job) return true;
-      if (G.potVer !== curPot() || G.resun || G.dirty || lodChange(G, d)) return pass === 1;
+      if (G.potDirty || G.resun || G.dirty || lodChange(G, d)) return pass === 1;
       return false;
     },
     pending(ch, d) {
       if (!ch) return true;
       const G = ch.ng;
-      return !G || !G.ready || !!G.job || G.potVer !== curPot() || !!G.dirty || (d != null && lodChange(G, d));
+      return !G || !G.ready || !!G.job || !!G.potDirty || !!G.dirty || (d != null && lodChange(G, d));
     },
     step(ch, d, deadline) {
       // one job at a time (shared scratch buffers): finish the active chunk first
@@ -2000,7 +2034,7 @@ if (ngShine > 0.01) {
       if (!G.job) {
         const lod = lodFor(G, d);
         let what = 'all';
-        if (G.ready && G.terrain && G.lod === lod && !G.dirty) what = G.potVer !== curPot() ? (G.resun ? 'all' : 'roads') : G.resun ? 'map' : 'all';
+        if (G.ready && G.terrain && G.lod === lod && !G.dirty) what = G.potDirty ? (G.resun ? 'all' : 'roads') : G.resun ? 'map' : 'all';
         G.job = startJob(ch, what, lod);
         G.resun = false;
       }
@@ -2041,8 +2075,15 @@ if (ngShine > 0.01) {
       wetT += (target - wetT) * Math.min(1, dt * (raining ? 0.5 : 0.06));
       GU.uWet.value = wetT;
       GU.uRain.value += ((raining ? 1 : 0) - GU.uRain.value) * Math.min(1, dt * 2);
+      // pothole set / wetness changed (monsoon, rain, progressive generation): rebuild only the
+      // chunks whose own potholes changed (signature), never all of them
       const pv2 = curPot();
-      if (pv2 !== lastPot) { lastPot = pv2; STATS.roadsRebuilt++; if (I) I.replan(); }
+      if (pv2 !== lastPot && I) {
+        lastPot = pv2;
+        let n = 0;
+        for (const ch of I.chunks.values()) { const G = ch.ng; if (G && G.ready && !G.potDirty && G.potSig !== potSig(ch)) { G.potDirty = true; n++; } }
+        if (n) { STATS.roadsRebuilt += n; I.replan(); }
+      }
     },
     dispose() { },
   });

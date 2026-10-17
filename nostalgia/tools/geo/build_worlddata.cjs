@@ -1229,83 +1229,14 @@ placeAll(V1.landmarks.filter((l) => !LM.has(l.id) && !/^golconda_wall/.test(l.id
   vlog('landmarks moved > 80 u to clear space:', big.length, big.slice(0, 30).map((m) => m.id + ':' + m.moved).join(' '));
 }
 
-// 9.76 near-miss junctions (regression fix, Map v2 QA): a road end that stops just short of another road
-// is extended onto it. The curated alignments and the OSM strokes come from different sources, clusters
-// moved, duplicate runs were trimmed, so ~2,000 ends stopped 5-60 u short of the road they meet. The engine
-// only joins an end lying within the other road's w / 2 + 6 (world.js buildRoadGraph), so those were dead
-// ends in N.world.roads and routes (GPS, NPC drivers, pursuers) made long detours: e.g. the Afzalgunj,
-// Musallam Jung and Purana Pul bridges each dead-ended on one bank. An end is joined when another road is
-// straight ahead (curated 72 u, OSM 44 u) or close beside it, and the connector is clear of water, solid
-// footprints, rails, roof zones and (unless a bridge is involved) the sandy Musi bed; OSM lanes also keep
-// out of the no-infill zones. Deterministic (road order). It runs after every landmark is placed (none of
-// them moves); the places (10) and the building blocks (15) are laid out around the connectors.
-const joinStats = { ends: 0, open: 0, ahead: 0, near: 0, endToEnd: 0, blocked: 0, curated: [], left: [] };
+// 9.76 near-miss junctions (Map v2 QA regression fix; tools/geo/near_miss.cjs has the rules): road ends that stop
+// just short of another road are extended onto it, so the engine's road graph joins them (routes made long detours)
 {
-  const roads = roadList().filter((r) => r.kind !== 'path');
-  const HJ = segIndex(roads, 64);
-  const isOsm = (r) => r.src === 'osm' || r.src === 'grid';
-  const atFrame = (p) => p[0] < 12 || p[1] < 12 || p[0] > W - 12 || p[1] > H - 12;
-  const done = new Set(); // 'id:end' of ends another road was joined to end-to-end
-  const conns = [];
-  const isJoined = (r, e) => HJ.near(e[0], e[1], 64).some(({ it, q }) => it.ref !== r && q.d2 <= (it.ref.w / 2 + 6) ** 2);
-  const blocked = (r, a, b, bridge) => {
-    const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L, nx = -uy, ny = ux, hw = r.w / 2;
-    for (let t = 0; t <= L; t += 3) for (const o of [-hw, 0, hw]) {
-      const x = a[0] + ux * t + nx * o, y = a[1] + uy * t + ny * o, v = OCC.get(x, y);
-      if (v === 2 || v === 3 || v === 4 || v === 6 || v === 255 || WR.get(x, y) === 1) return true;
-      if ((v === 7 || WR.get(x, y) === 2) && !bridge) return true;
-      if (isOsm(r) && o === 0 && t > 4 && NI.get(x, y)) return true;
-    }
-    return false;
-  };
-  for (const r of roads) {
-    for (const end of [0, 1]) {
-      const pts = r.pts; if (pts.length < 2) continue;
-      const e = end ? pts[pts.length - 1] : pts[0], pr = end ? pts[pts.length - 2] : pts[1];
-      joinStats.ends++;
-      if (atFrame(e) || done.has(r.id + ':' + end) || isJoined(r, e)) continue;
-      joinStats.open++;
-      const dx = e[0] - pr[0], dy = e[1] - pr[1], dl = Math.hypot(dx, dy) || 1, ux = dx / dl, uy = dy / dl;
-      const osm = isOsm(r), AHEAD = osm ? 44 : 72, GAP = osm ? 18 : 30, FWD = osm ? 0.35 : 0;
-      const other = (B) => B !== r && B.kind !== 'path';
-      let hit = null, host = null, how = '';
-      for (let t = 4; t <= AHEAD && !hit; t += 4) { // straight on into another road's carriageway
-        const x = e[0] + ux * t, y = e[1] + uy * t, n2 = HJ.nearest(x, y, 64, other);
-        if (n2 && n2.q.d2 < (n2.it.ref.w / 2) ** 2) { hit = [n2.q.x, n2.q.y]; host = n2.it; how = 'ahead'; }
-      }
-      if (!hit) { // the nearest road beside / ahead of the end
-        let best = null;
-        for (const c of HJ.near(e[0], e[1], GAP + 6 + 40, other)) {
-          const B = c.it.ref, d = Math.sqrt(c.q.d2), gap = d - (B.w / 2 + 6);
-          if (gap > GAP) continue;
-          const fx = (c.q.x - e[0]) / (d || 1), fy = (c.q.y - e[1]) / (d || 1), fwd = fx * ux + fy * uy;
-          if (fwd < FWD && !(gap <= 8 && fwd >= -0.2)) continue; // ahead-ish, or practically touching
-          if (!best || c.q.d2 < best.q.d2) best = c;
-        }
-        if (best) { hit = [best.q.x, best.q.y]; host = best.it; how = 'near'; }
-      }
-      if (!hit) { if (!osm) joinStats.left.push(r.id + (end ? '>' : '<') + ' ' + ptR(e).join(',') + ' (no road ahead / beside)'); continue; }
-      // meeting the other road's own open end: join end to end
-      const B = host.ref, hb0 = B.pts[0], hb1 = B.pts[B.pts.length - 1];
-      for (const [k, hp] of [[0, hb0], [1, hb1]]) {
-        if (Math.hypot(hp[0] - hit[0], hp[1] - hit[1]) < 10 && !isJoined(B, hp)) { hit = [hp[0], hp[1]]; done.add(B.id + ':' + k); how = 'endToEnd'; }
-      }
-      const bridge = r.kind === 'bridge' || B.kind === 'bridge';
-      if (blocked(r, e, hit, bridge)) { joinStats.blocked++; if (!osm) joinStats.left.push(r.id + (end ? '>' : '<') + ' ' + ptR(e).join(',') + ' (blocked towards ' + B.id + ')'); continue; }
-      const q = ptR(hit);
-      if (Math.hypot(q[0] - e[0], q[1] - e[1]) < 1) continue;
-      if (end) pts.push(q); else pts.unshift(q);
-      conns.push([r, [e[0], e[1]], q]);
-      joinStats[how]++;
-      if (!osm) joinStats.curated.push(r.id + (end ? '>' : '<') + B.id + ' ' + Math.round(Math.hypot(q[0] - e[0], q[1] - e[1])) + 'u');
-    }
-  }
-  // the placement raster and the road index learn the connectors (places are laid out next)
-  for (const [r, a, b] of conns) OCC.fillThick([a, b], r.w / 2 + (FOOT[r.kind] || 0) + 2, (o) => { const v = OCC.a[o]; if (!v || v === 7 || v === 8) OCC.a[o] = 1; });
+  const js = require('./near_miss.cjs').joinNearMisses({ roads: roadList(), segIndex, OCC, WR, NI, W, H, FOOT, ptR });
   buildRH();
-  vlog('near-miss junctions: ' + JSON.stringify(Object.assign({}, joinStats, { curated: joinStats.curated.length, left: joinStats.left.length })));
-  vlog('  curated joins: ' + joinStats.curated.join(', '));
-  vlog('  curated ends left open: ' + joinStats.left.join(', '));
+  vlog('near-miss junctions: ' + JSON.stringify(Object.assign({}, js, { curated: js.curated.length, left: js.left.length })));
+  vlog('  curated joins: ' + js.curated.join(', '));
+  vlog('  curated ends left open: ' + js.left.join(', '));
 }
 // roads that lie wholly outside the frame become a short spur from the network to their edge landmark
 {

@@ -49,7 +49,7 @@ const VIEWS = [
   { name: 'charminar_plaza_tps', at: 'charminar_plaza', h: 11, mode: 'tps', lookAt: 'charminar', pitch: 0.3 },
   { name: 'charminar_plaza_fps', at: 'charminar_plaza', h: 11, mode: 'fps', lookAt: 'charminar', pitch: 0.02 },
   { name: 'park_lumbini_tps', at: 'lumbini_park', h: 10, mode: 'tps', look: 'road', turn: 1.2, pitch: 0.32 },
-  { name: 'riverbank_puranapul_tps', at: 'hide_puranapul_sand', h: 10, mode: 'tps', look: 'road', turn: 1.57, pitch: 0.3 },
+  { name: 'riverbank_puranapul_tps', at: 'hide_puranapul_sand', h: 10, mode: 'tps', lookAt: 'purana_pul', pitch: 0.3 },
   { name: 'abids_night_tps', at: 'abids', h: 21, m: 15, mode: 'tps', look: 'road', kind: ['arterial'], snap: true, side: -14, pitch: 0.25 },
   { name: 'himayatnagar_rain_tps', at: 'giver_himayatnagar', h: 15, mode: 'tps', rain: true, look: 'road', pitch: 0.36 },
 ];
@@ -193,7 +193,6 @@ async function main() {
   check(Math.abs(pa2.geometries - pa.geometries) <= Math.max(6, pa.geometries * 0.05) && Math.abs(pa2.textures - pa.textures) <= Math.max(6, pa.textures * 0.05), 'no leaks over off/on toggles (geometries ' + pa.geometries + ' -> ' + pa2.geometries + ', textures ' + pa.textures + ' -> ' + pa2.textures + ')');
   check(pa2.calls <= pb.calls * 1.35 + 30, 'draw calls comparable (' + pb.calls + ' before, ' + pa2.calls + ' after)');
   check(pa2.jsMed <= Math.max(pb.jsMed * 1.6, pb.jsMed + 4), 'JS ms per frame comparable (median ' + pb.jsMed + ' before, ' + pa2.jsMed + ' after)');
-  await page.evaluate(() => N.view3d.setQuality({ pixelRatio: 1 }));
 
   // ---- rain: roads get wet, rain-only potholes appear (roads rebuilt)
   const rain = await page.evaluate(async () => {
@@ -206,6 +205,7 @@ async function main() {
     delete N.flags.rain;
     return { wet: s.wet, raining, v0, v1: N.view3d.ground.stats().potVer };
   });
+  await page.evaluate(() => N.view3d.setQuality({ pixelRatio: 1 }));
   check(rain.wet > 0.05, 'rain wets the roads (uWet ' + rain.wet + ', raining ' + rain.raining + ', pothole version ' + rain.v0 + ' -> ' + rain.v1 + ')');
 
   // ---- screenshots: AFTER, then BEFORE (old painted ground) for every view
@@ -216,7 +216,7 @@ async function main() {
       const t0 = Date.now();
       await page.evaluate(() => N.view3d.ground.setEnabled(true));
       const info = await setView(page, S);
-      if (S.rain) await page.evaluate(async () => { for (let i = 0; i < 40; i++) await new Promise((r) => requestAnimationFrame(r)); N.view3d.settle(20000); });
+      if (S.rain) await page.evaluate(async () => { for (let i = 0; i < 400 && N.view3d.ground.stats().wet < 0.85; i++) await new Promise((r) => requestAnimationFrame(r)); N.view3d.settle(20000); });
       const fa = path.join(OUT, 'ground_' + S.name + '_after.png'), fb = path.join(OUT, 'ground_' + S.name + '_before.png');
       await shoot(page, fa);
       const sa = await page.evaluate(() => N.view3d.stats());

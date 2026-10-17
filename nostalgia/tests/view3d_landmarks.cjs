@@ -173,7 +173,9 @@ async function main() {
 
   // ---------------------------------------------------------------- 1. visit every landmark: model built by view3d_landmarks.js
   if (VISIT) {
-    const res = await page.evaluate(() => {
+    const res = await page.evaluate(async () => {
+      // N.view3d.settle() only re-scans landmarks if its last scan is > 350 ms old: wait after teleports
+      const pause = (ms) => new Promise((r) => setTimeout(r, ms));
       const L = N.WORLD_DATA.landmarks, E = N.view3d.engine, out = { fallback: [], missing: [], ok: 0, cells: 0 };
       const DEFS = N.view3dLandmarks.DEFS;
       for (const lm of L) {
@@ -186,7 +188,7 @@ async function main() {
       const dd = N.view3d.quality.drawDist;
       N.view3d.setQuality({ drawDist: 320 });
       for (const [x, y] of stops) {
-        N.player.teleport(x, y); N.view3d.settle(6000);
+        N.player.teleport(x, y); await pause(400); N.view3d.settle(6000);
         for (const o of E.lmGroup.children) {
           if (o.userData.fallback) fb.add(o.name);
           if (/^lm3d:/.test(o.name)) builtIds.add(o.name.slice(5));
@@ -198,7 +200,7 @@ async function main() {
       for (const lm of L) {
         if (builtIds.has(lm.id) || !(DEFS.get('#' + lm.id) || DEFS.get(lm.draw))) continue;
         N.player.teleport(lm.x, lm.y + lm.d / 2 + 30);
-        for (let k = 0; k < 4 && !builtIds.has(lm.id); k++) { N.view3d.settle(15000); seen(); }
+        for (let k = 0; k < 4 && !builtIds.has(lm.id); k++) { await pause(400); N.view3d.settle(15000); seen(); }
         out.retried = (out.retried || 0) + 1;
       }
       N.view3d.setQuality({ drawDist: dd });

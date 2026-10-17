@@ -571,7 +571,9 @@
   // Accept a bare function (Math.random) or an N.util.rng(seed) object as a random source.
   const toRnd = (r) => (typeof r === 'function' ? r : r && typeof r.next === 'function' ? () => r.next() : Math.random);
 
+  const ROUTE_COSTS = { lane: 1.15 };
   function makeRoadsAPI(nodes, edges, list) {
+    const RT = {}; // route() scratch buffers, reused across calls (sized to the graph)
     const nb = new Map();
     for (const n of nodes) {
       const key = Math.floor(n.y / BK) * 1000 + Math.floor(n.x / BK);
@@ -620,6 +622,78 @@
         }
         return route;
       },
+      /**
+       * Shortest route a -> b (nodes or ids) by A* with a binary heap: [node, ...] or null.
+       * opts: {walk: true -> every incident edge (one-way rules ignored, like walkers and scripted drivers),
+       *        else the traversable links; costs: {kind: factor} (default {lane: 1.15}); avoid: [kinds]
+       *        ('path' is always avoided unless opts.paths); maxExpand: node budget (default: the whole graph)}.
+       * Map v2 has ~15k nodes (v1: ~500): a cross-city route expands 2-8k of them in a few ms, so callers
+       * should not cap it at a v1-sized budget or scan the open list linearly.
+       */
+      route(a, b, opts) {
+        opts = opts || {};
+        const A = typeof a === 'number' ? nodes[a] : a, B = typeof b === 'number' ? nodes[b] : b;
+        if (!A || !B) return null;
+        if (A === B) return [A];
+        const n = nodes.length;
+        if (!RT.g || RT.g.length < n) { RT.g = new Float64Array(n); RT.from = new Int32Array(n); RT.seen = new Uint32Array(n); RT.shut = new Uint32Array(n); RT.stamp = 0; }
+        const g = RT.g, from = RT.from, seen = RT.seen, shut = RT.shut, st = ++RT.stamp;
+        const costs = opts.costs || ROUTE_COSTS, avoid = opts.avoid, paths = !!opts.paths, walk = !!opts.walk;
+        const maxExpand = opts.maxExpand || n;
+        const hf = [], hi = []; // binary heap: f values / node ids
+        const push = (f, id) => {
+          let i = hf.length; hf.push(f); hi.push(id);
+          while (i > 0) { const p = (i - 1) >> 1; if (hf[p] <= f) break; hf[i] = hf[p]; hi[i] = hi[p]; i = p; }
+          hf[i] = f; hi[i] = id;
+        };
+        const pop = () => {
+          const top = hi[0], lf = hf.pop(), li = hi.pop(), m = hf.length;
+          if (m) {
+            let i = 0;
+            for (;;) {
+              const l = 2 * i + 1; if (l >= m) break;
+              const c = l + 1 < m && hf[l + 1] < hf[l] ? l + 1 : l;
+              if (hf[c] >= lf) break;
+              hf[i] = hf[c]; hi[i] = hi[c]; i = c;
+            }
+            hf[i] = lf; hi[i] = li;
+          }
+          return top;
+        };
+        seen[A.id] = st; g[A.id] = 0; from[A.id] = -1;
+        push(Math.hypot(B.x - A.x, B.y - A.y), A.id);
+        let expanded = 0;
+        while (hf.length) {
+          const id = pop();
+          if (shut[id] === st) continue;
+          if (id === B.id) {
+            const out = [];
+            for (let c = id; c >= 0; c = from[c]) out.push(nodes[c]);
+            RT.last = { expanded, len: g[id] };
+            return out.reverse();
+          }
+          shut[id] = st;
+          if (++expanded > maxExpand) break;
+          const nd = nodes[id], gn = g[id];
+          const list = walk ? nd.inc : nd.links;
+          for (let k = 0; k < list.length; k++) {
+            const e = edges[walk ? list[k] : list[k].edge];
+            if ((e.kind === 'path' && !paths) || (avoid && avoid.indexOf(e.kind) >= 0)) continue;
+            const to = walk ? (e.a === id ? e.b : e.a) : list[k].to;
+            if (shut[to] === st) continue;
+            const ng = gn + (e.len || 1) * (costs[e.kind] || 1);
+            if (seen[to] !== st || ng < g[to]) {
+              seen[to] = st; g[to] = ng; from[to] = id;
+              const T = nodes[to];
+              push(ng + Math.hypot(B.x - T.x, B.y - T.y), to);
+            }
+          }
+        }
+        RT.last = { expanded, len: Infinity };
+        return null;
+      },
+      /** {expanded, len} of the last route() call (profiling / tests). */
+      routeStats: () => RT.last || null,
       /** Offset from the centre line to lane `lane` (0 = inner) on the LEFT of travel. */
       laneOffset(edge, lane) {
         const lanes = edge.lanes || 1;
@@ -3941,10 +4015,13 @@
     if (area > MAP_MAX_PX) ppu = Math.min(ppu, Math.sqrt(MAP_MAX_PX / (N.WORLD_W * N.WORLD_H)));
     return ppu;
   };
-  W.renderMap = function (ppu) {
-    const want = ppu || 0.1;
+  // renderMap(ppu, {fresh: true}) renders a canvas the caller owns (not cached here): a caller that keeps its
+  // own graded copy (the HUD minimap) can grade it in place instead of holding a second copy (Map v2 at
+  // 0.2 ppu: 3000 x 2250 px = 27 MB of pixels per copy).
+  W.renderMap = function (ppu, opts) {
+    const want = ppu || 0.1, fresh = !!(opts && opts.fresh);
     const key = want.toFixed(4) + '@' + N.WORLD_W + 'x' + N.WORLD_H;
-    if (mapCache.has(key)) return mapCache.get(key);
+    if (!fresh && mapCache.has(key)) return mapCache.get(key);
     ppu = W.mapPPU(want);
     const D = W.data;
     const c = N.render.makeCanvas(Math.ceil(N.WORLD_W * ppu), Math.ceil(N.WORLD_H * ppu));
@@ -3970,7 +4047,7 @@
       g.stroke();
     }
     for (const lm of D.landmarks) { g.fillStyle = '#e8d9b5'; g.fillRect(lm.x - lm.w / 2, lm.y - lm.d / 2, lm.w, lm.d); }
-    mapCache.set(key, c);
+    if (!fresh) mapCache.set(key, c);
     return c;
   };
 })();

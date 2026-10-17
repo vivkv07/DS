@@ -35,6 +35,7 @@ const FILE = argVal('--file') || path.join(ROOT, 'src/worlddata.js');
 const JSON_OUT = argVal('--json');
 const REPORT = argVal('--report');
 const BEFORE = argVal('--before');
+const MID = argVal('--mid'); // optional middle column in the summary (e.g. the old map against the corrected data)
 const AMBIG = 5; // deg: no compass claim within this of a sector boundary
 
 GEO.init();
@@ -217,7 +218,7 @@ function orderAlong(roadId, latlonPts, label, ids, opt) {
   let prev = null;
   for (const n of near) {
     if (prev && n.s - prev.s >= minGap) {
-      add('order', `order:${roadId}:${prev.id}|${n.id}`, `along ${label}: ${nameOf(prev.id)} → ${nameOf(n.id)}`, n.sw > prev.sw,
+      add('order', `order:${roadId}:${prev.id}|${n.id}`, `along ${label}: ${nameOf(prev.id)} (\`${prev.id}\`) → ${nameOf(n.id)} (\`${n.id}\`)`, n.sw > prev.sw,
         `real ${r0(prev.s)} → ${r0(n.s)} m along; world ${r0(prev.sw)} → ${r0(n.sw)} u along`, { road: roadId });
       prev = n;
     } else if (!prev) prev = n;
@@ -361,12 +362,13 @@ function crossings(line, river, rc) {
   }
 }
 
-// 6. Musi banks
+// 6. Musi banks (bridges and points within 100 m of the river centre line, i.e. on the riverbed, make no claim)
+const IS_BRIDGE = (id) => /bridge|causeway|^naya_pul$|^purana_pul$|^puranapul/.test(id);
 {
   for (const id of ALL_REAL) {
     if (PJ[id] && PJ[id].alias) continue;
     const rp = realPt(id), q = G.nearestOnLine(musiR, rp[0], rp[1]);
-    if (!q || q.d < 60 || q.d > 1500 || q.along < 50 || q.along > q.L - 50) continue;
+    if (IS_BRIDGE(id) || !q || q.d < 100 || q.d > 1500 || q.along < 50 || q.along > q.L - 50) continue;
     const wp = worldPt(id), qw = G.nearestOnLine(musiW, wp[0], wp[1]);
     // the Musi centreline runs west -> east: side +1 (right of travel, y down) = south bank
     const bankR = q.side > 0 ? 'south' : 'north', bankW = qw.side > 0 ? 'south' : 'north';
@@ -401,7 +403,7 @@ function worldDistrict(x, y) {
 {
   let ambiguous = 0;
   for (const id of ALL_REAL) {
-    if (PJ[id].alias) continue;
+    if (PJ[id].alias || IS_BRIDGE(id)) continue; // a bridge stands on the river, which is the district boundary
     const e = PJ[id], rd = realDistrict(e.lat, e.lon); if (!rd) continue;
     if (edgeDistM(e.lat, e.lon, rd) < 60) { ambiguous++; continue; }
     const wp = worldPt(id), wd = worldDistrict(wp[0], wp[1]);
@@ -440,7 +442,7 @@ function worldDistrict(x, y) {
   const ar = (b) => (b[3] - b[1]) / (b[2] - b[0]);
   const fill = (poly, b) => Math.abs(G.polyArea(poly)) / ((b[2] - b[0]) * (b[3] - b[1]));
   add('structure', 'lake-shape', 'Hussain Sagar keeps its real proportions (height / width of the lake)', Math.abs(ar(rb) / ar(wb) - 1) < 0.12 && Math.abs(fill(rr, rb) - fill(ww, wb)) < 0.06,
-    `height/width real ${r1(ar(rb) * 100) / 100}, world ${r1(ar(wb) * 100) / 100}; area/box real ${r1(fill(rr, rb) * 100)}%, world ${r1(fill(ww, wb) * 100)}%`);
+    `height/width real ${ar(rb).toFixed(2)}, world ${ar(wb).toFixed(2)}; area/box real ${r1(fill(rr, rb) * 100)}%, world ${r1(fill(ww, wb) * 100)}%`);
   // Tank Bund: orientation and which side the water is on
   const tbR = ROADS_BY.get('tank_bund').pts.map((p) => rxy(p[0], p[1])), tbW = WROAD.get('tank_bund').pts;
   const ch = (l) => bearing(l[0], l[l.length - 1]);
@@ -479,7 +481,7 @@ function worldDistrict(x, y) {
   const dW = (a, b) => dist(worldPt(a), worldPt(b)), dR = (a, b) => dist(realPt(a), realPt(b));
   const ratioCheck = (a, b, c, d, text) => {
     const rR = dR(a, b) / dR(c, d), rW = dW(a, b) / dW(c, d);
-    add('structure', `ratio:${a}|${b}|${c}|${d}`, text, Math.abs(rW / rR - 1) < 0.35, `real ratio ${r1(rR * 100) / 100}, world ${r1(rW * 100) / 100} (${rW > rR ? '+' : ''}${r0((rW / rR - 1) * 100)}%)`);
+    add('structure', `ratio:${a}|${b}|${c}|${d}`, text, Math.abs(rW / rR - 1) < 0.35, `real ratio ${rR.toFixed(2)}, world ${rW.toFixed(2)} (${rW > rR ? '+' : ''}${r0((rW / rR - 1) * 100)}%)`);
   };
   ratioCheck('charminar', 'golconda_bala_hissar', 'charminar', 'secunderabad_station', 'Golconda is about as far from Charminar as Secunderabad station is (ratio kept within 35 %)');
   ratioCheck('charminar', 'cyber_towers', 'charminar', 'secunderabad_station', 'Cyber Towers is about twice as far from Charminar as Secunderabad station (ratio kept within 35 %)');
@@ -545,7 +547,7 @@ DISP.sort((a, b) => b.dm - a.dm);
 const CATS = ['compass', 'closer', 'order', 'bridges', 'stations', 'banks', 'district', 'roads', 'structure'];
 const stat = (rels) => { const o = {}; for (const c of CATS) { const r = rels.filter((x) => x.cat === c); o[c] = { n: r.length, pass: r.filter((x) => x.pass).length }; } const n = rels.length, p = rels.filter((x) => x.pass).length; o.all = { n, pass: p }; return o; };
 const S = stat(REL);
-const result = { file: path.relative(ROOT, FILE), generated: new Date().toISOString(), stats: S, relations: REL.map((r) => ({ cat: r.cat, key: r.key, text: r.text, pass: r.pass, detail: r.detail })), displacement: DISP };
+const result = { label: argVal('--label') || '', file: path.relative(ROOT, FILE), generated: new Date().toISOString(), stats: S, relations: REL.map((r) => ({ cat: r.cat, key: r.key, text: r.text, pass: r.pass, detail: r.detail })), displacement: DISP };
 if (JSON_OUT) fs.writeFileSync(JSON_OUT, JSON.stringify(result, null, 1));
 const pct = (o) => (o.n ? `${o.pass}/${o.n} (${r1((o.pass / o.n) * 100)} %)` : '-');
 console.log(`verify_geo: ${path.relative(ROOT, FILE)}`);
@@ -560,29 +562,37 @@ if (REPORT) {
   const mark = (p) => (p ? 'pass' : '**FAIL**');
   L.push('# Map v2 geography verification');
   L.push('');
-  L.push(`Generated by \`node tools/geo/verify_geo.cjs\` on ${result.generated.slice(0, 10)} against \`${result.file}\`${before ? ` (before: \`${before.file}\` as of ${before.generated.slice(0, 16).replace('T', ' ')} UTC)` : ''}.`);
+  L.push(`Generated by \`node tools/geo/verify_geo.cjs\` on ${result.generated.slice(0, 10)} against \`${result.file}\`${before ? ` (compared with ${/^\.\./.test(before.file) ? 'a snapshot of the map taken before this pass' : `\`${before.file}\``}, tested ${before.generated.slice(0, 16).replace('T', ' ')} UTC)` : ''}.`);
   L.push('Every relation is generated from the real data in `design/geo/` (places.json lat/lon, roads.json, water.json, rail.json,');
   L.push('districts.json) and tested on the positions the map builder actually wrote into worlddata.js: landmark centres where the');
   L.push('id is a landmark, otherwise the place point (entrance). Re-run the command after every map build.');
   L.push('');
   L.push('## Summary');
   L.push('');
-  L.push(before ? '| category | what is tested | before | after |' : '| category | what is tested | result |');
-  L.push(before ? '|---|---|---|---|' : '|---|---|---|');
+  const mid = MID ? JSON.parse(fs.readFileSync(MID, 'utf8')) : null;
+  L.push(before ? `| category | what is tested | before${mid ? ' | ' + (mid.label || 'middle') : ''} | after |` : '| category | what is tested | result |');
+  L.push(before ? `|---|---|---|${mid ? '---|' : ''}---|` : '|---|---|---|');
   const WHAT = {
     compass: `B lies in compass sector S of A (8 sectors); ${REL.compassSkipped} pairs within ${AMBIG}° of a sector boundary make no claim`,
     closer: 'A is closer to B than to C (real ratio at least 1.3)',
     order: 'order of places along real roads, the Tank Bund statues, and multi-road corridors',
     bridges: 'every Musi crossing in roads.json exists in the map, and their order from west to east',
     stations: 'station order along each railway service, the track passes every station, stations stand beside the track',
-    banks: 'which bank of the Musi a place is on (places 60-1500 m from the river)',
+    banks: 'which bank of the Musi a place is on (places 100-1500 m from the river centre line; bridges excluded)',
     district: `which ward-based district a place lies in (${REL.districtSkipped} places within 60 m of a district edge not claimed)`,
     roads: 'each curated road (roads.json, OSM) follows its real alignment both ways: p95 within 25 m (half a game road) and max within 60 m (hand-made cluster layouts excluded)',
     structure: 'lake, Buddha, Tank Bund, Lower Tank Bund, Necklace Road, the Musi, Charminar district, Golconda gate, edge signposts, city-scale distance ratios',
   };
-  for (const c of CATS.concat(['all'])) L.push(before ? `| ${c} | ${WHAT[c] || 'all relations'} | ${pct(before.stats[c])} | ${pct(S[c])} |` : `| ${c} | ${WHAT[c] || 'all relations'} | ${pct(S[c])} |`);
+  for (const c of CATS.concat(['all'])) L.push(before ? `| ${c} | ${WHAT[c] || 'all relations'} | ${pct(before.stats[c] || { n: 0 })}${mid ? ' | ' + pct(mid.stats[c] || { n: 0 }) : ''} | ${pct(S[c])} |` : `| ${c} | ${WHAT[c] || 'all relations'} | ${pct(S[c])} |`);
   L.push('');
-  if (typeof REPORT_PREFACE !== 'undefined') L.push(REPORT_PREFACE);
+  if (before) {
+    L.push(`Columns: **before** = the map as delivered by the map builder, tested against the original places.json; ${mid ? `**${mid.label || 'middle'}** = the same old map tested against the corrected reference data (design/geo/places_fixes.json), which separates data errors from map errors; ` : ''}**after** = the rebuilt map against the corrected data. Relations are generated from the reference data, so a corrected coordinate can add or drop a relation (totals differ slightly).`);
+    L.push('');
+  }
+  L.push('Re-run: `node tools/geo/verify_geo.cjs --report design/geo/verify_report.md` (add `--file <worlddata.js>` for a candidate map, `--places <places.json>` for other reference data, `--json <out.json>` to save results, `--before <json>` / `--mid <json>` for comparison columns, `--fails` to print failures).');
+  L.push('');
+  L.push('Sources: DataMeet Municipal Spatial Data (CC BY 4.0), (c) OpenStreetMap contributors (ODbL; via Overture Maps Foundation and the Geofabrik-schema Hyderabad extract), datameet/railways (CC0), Wikipedia/Wikidata coordinates (CC BY-SA) as cited per entry in places.json.');
+  L.push('');
   const pre = path.join(ROOT, 'design/geo/verify_notes.md');
   if (fs.existsSync(pre)) { L.push(fs.readFileSync(pre, 'utf8').trim()); L.push(''); }
   L.push('## Displacement of well-known places');
@@ -590,12 +600,13 @@ if (REPORT) {
   L.push('Distance between the map position and the ideal projection of the real lat/lon, in world units and in real metres at');
   L.push('the local scale. Clusters are hand-made layouts moved as one block (their anchor is placed, the rest keeps its layout).');
   L.push('');
-  L.push('| place | conf | in map as | cluster | off by (u) | off by (m) |');
-  L.push('|---|---|---|---|---|---|');
-  for (const d of DISP) L.push(`| ${d.name} (\`${d.id}\`) | ${d.conf} | ${d.src} | ${d.cluster} | ${d.du} | ${d.dm} |`);
+  const bdisp = before && before.displacement ? new Map(before.displacement.map((d) => [d.id, d])) : null;
+  L.push(bdisp ? '| place | conf | in map as | cluster | off by (u) | off by (m) | before (m) |' : '| place | conf | in map as | cluster | off by (u) | off by (m) |');
+  L.push(bdisp ? '|---|---|---|---|---|---|---|' : '|---|---|---|---|---|---|');
+  for (const d of DISP) L.push(`| ${d.name} (\`${d.id}\`) | ${d.conf} | ${d.src} | ${d.cluster} | ${d.du} | ${d.dm} |${bdisp ? ` ${bdisp.has(d.id) ? bdisp.get(d.id).dm : '-'} |` : ''}`);
   const med = (a) => { const s = a.slice().sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; };
   L.push('');
-  L.push(`Median ${med(DISP.map((d) => d.dm))} m, worst ${DISP[0] ? DISP[0].dm : 0} m over ${DISP.length} well-known places.`);
+  L.push(`Median ${med(DISP.map((d) => d.dm))} m, worst ${DISP[0] ? DISP[0].dm : 0} m over ${DISP.length} well-known places${bdisp ? ` (before: median ${med(before.displacement.map((d) => d.dm))} m, worst ${Math.max(...before.displacement.map((d) => d.dm))} m)` : ''}. The largest offsets are by design: a lake or ground place stands on its bank or edge, station buildings stand beside the track, and the Cyber Towers block was nudged off the real streets.`);
   L.push('');
   const TITLES = { compass: 'Compass sectors', closer: 'Which is closer', order: 'Order along roads and corridors', bridges: 'Musi crossings, west to east', stations: 'Railway stations', banks: 'Musi banks', district: 'Districts', roads: 'Road alignments', structure: 'Structure of the city' };
   for (const c of CATS) {

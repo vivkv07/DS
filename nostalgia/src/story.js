@@ -2316,8 +2316,8 @@
     // three dawn sessions on the Public Gardens back lawn: win two of three
     m.checkpoint('nets');
     const lawn = spot(['hide_public_gardens_tree', 'public_gardens'], 30, -20, 60);
-    let wins = 0;
-    for (let s = 1; s <= 3 && wins < 2; s++) {
+    let wins = 0, losses = 0;
+    for (let s = 1; s <= 3 && wins < 2 && losses < 2; s++) {
       const dawn = nextDawn();
       if (dawn && (s > 1 || N.clock.minutes < 5 * 60 + 30 || N.clock.minutes > 7 * 60 + 30)) await m.jumpTo(dawn, { fx: 'ff' });
       if (!ff()) { const L = lawn; if (L && dist(N.player, L) > 80) N.player.teleport(L.x, L.y + 20); }
@@ -2325,7 +2325,7 @@
       await m.goto(lawn, { label: 'Dawn nets, session ' + s + ': bat against Ayesha (win two of three).', r: 30 });
       const r = await game(m, 'cricket', { bowler: 'ayesha', place: 'public_gardens', mali: true, intro: 'Dawn nets: bat against Ayesha. Dodge the mali.' });
       if (r && r.win !== false) { wins++; m.toast('Session ' + s + ': won (' + wins + '/2).', 2200); }
-      else m.toast('Session ' + s + ': Ayesha took your stumps.', 2200);
+      else { losses++; m.toast('Session ' + s + ': Ayesha took your stumps.', 2200); }
       if (s === 1) await m.say('mali', '*Ghaas pe nakko!* ...Who taught that girl to bowl like that?', { mood: 'surprised' });
       if (s === 1) await m.say('ayesha', "Nobody. That's why it works.", { mood: 'wink' });
     }

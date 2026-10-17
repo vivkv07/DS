@@ -1073,17 +1073,7 @@
       for (let g = -1.6; g <= 1.7; g += 0.8) k.box(c + g - 0.08, gf + 8, hv + 0.1, c + g + 0.08, gf + 14.5, hv + 0.3, { top: false });
     }
     // the back and the sides are lived-in too: upper-floor windows (some lit), a back door
-    const winRow = (ua, va, ub, vb, n) => {
-      const L2 = Math.hypot(ub - ua, vb - va), ux = (ub - ua) / L2, uz = (vb - va) / L2, nx = -uz * 0.06, nz = ux * 0.06;
-      for (let i = 0; i < n; i++) {
-        const t0 = (i + 0.5) / n * L2 - 1.7, t1 = t0 + 3.4;
-        const ax = ua + ux * t0 + nx, az = va + uz * t0 + nz, bx = ua + ux * t1 + nx, bz = va + uz * t1 + nz;
-        k.c('#2c3a44').fx(1, rng.next() < 0.45 ? 160 : 0, 0).q(ax, gf + 8.5, az, bx, gf + 8.5, bz, bx, gf + 14, bz, ax, gf + 14, az).fx(0, 0, 0);
-        k.c(sh(wall, 1.1)).q(ax - ux * 0.4, gf + 14, az - uz * 0.4, bx + ux * 0.4, gf + 14, bz + uz * 0.4, bx + ux * 0.4 + nx * 12, gf + 14.6, bz + uz * 0.4 + nz * 12, ax - ux * 0.4 + nx * 12, gf + 14.6, az - uz * 0.4 + nz * 12);
-      }
-    };
-    winRow(hl, -hv, -hl, -hv, Math.max(1, Math.floor(L / 10)));
-    if (Dd > 14) { winRow(-hl, -hv, -hl, hv, Math.max(1, Math.floor(Dd / 12))); winRow(hl, hv, hl, -hv, Math.max(1, Math.floor(Dd / 12))); }
+    backWindows(k, rng, hl, hv, L, Dd, wall, gf);
     k.c('#5a4030').q(1.6, 0, -hv - 0.06, -1.6, 0, -hv - 0.06, -1.6, 8.5, -hv - 0.06, 1.6, 8.5, -hv - 0.06);
     k.c(sh(wall, 0.95)).hq(-hl, -hv, hl, hv, Ht);
     parapet(k, -hl, -hv, hl, hv, Ht, 2.4, 0.6, sh(wall, 1.04));
@@ -1098,6 +1088,20 @@
       for (let u = -hl + 0.6; u <= hl - 0.5; u += 1.2) md.glow(u, gf + 0.7, hv + 0.5, rng.next() < 0.5 ? '#ffe070' : '#ff9a40');
     }
     md.glow(0, gf - 2, hv - 1, cfg.glow === 2 ? '#d8f0ff' : '#ffd090', 'gM');
+  }
+  /** upper-floor windows (some lit at night) with sills on the back and side walls of a shop block */
+  function backWindows(k, rng, hl, hv, L, Dd, wall, gf) {
+    const winRow = (ua, va, ub, vb, n) => {
+      const L2 = Math.hypot(ub - ua, vb - va), ux = (ub - ua) / L2, uz = (vb - va) / L2, nx = -uz * 0.06, nz = ux * 0.06;
+      for (let i = 0; i < n; i++) {
+        const t0 = (i + 0.5) / n * L2 - 1.7, t1 = t0 + 3.4;
+        const ax = ua + ux * t0 + nx, az = va + uz * t0 + nz, bx = ua + ux * t1 + nx, bz = va + uz * t1 + nz;
+        k.c('#2c3a44').fx(1, rng.next() < 0.45 ? 160 : 0, 0).q(ax, gf + 8.5, az, bx, gf + 8.5, bz, bx, gf + 14, bz, ax, gf + 14, az).fx(0, 0, 0);
+        k.c(sh(wall, 1.1)).q(ax - ux * 0.4, gf + 14, az - uz * 0.4, bx + ux * 0.4, gf + 14, bz + uz * 0.4, bx + ux * 0.4 + nx * 12, gf + 14.6, bz + uz * 0.4 + nz * 12, ax - ux * 0.4 + nx * 12, gf + 14.6, az - uz * 0.4 + nz * 12);
+      }
+    };
+    winRow(hl, -hv, -hl, -hv, Math.max(1, Math.floor(L / 10)));
+    if (Dd > 14) { winRow(-hl, -hv, -hl, hv, Math.max(1, Math.floor(Dd / 12))); winRow(hl, hv, hl, -hv, Math.max(1, Math.floor(Dd / 12))); }
   }
   function cycleProp(k, u, v, a, col) {
     const c = Math.cos(a), s = Math.sin(a);
@@ -1148,6 +1152,7 @@
       k.c('#f6f0e2').box(c - 2.4, gf + 15.5, hv, c + 2.4, gf + 16.4, hv + 1.2);
     }
     k.c('#f6f0e2').box(-hl - 0.3, Ht - 1.8, hv - 0.4, hl + 0.3, Ht, hv + 0.8);
+    backWindows(k, rng, hl, hv, L, Dd, wall, gf);
     k.c(sh(wall, 0.95)).hq(-hl, -hv, hl, hv, Ht);
     parapet(k, -hl, -hv, hl, hv, Ht, 2.2, 0.6, '#f6f0e2');
     sintex(k, hl - 4, Ht, -hv + 4, 2.2);

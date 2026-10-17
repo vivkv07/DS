@@ -60,6 +60,12 @@ nostalgia/
   src/shops.js      Irani cafe, kirana, STD booth (save), barber (clear meter), video parlour -> N.shops
   src/minigames.js  kite fight, Golconda clap, brick game, etc. -> N.minigames
   src/menus.js      title, pause, full map, journal, settings, credits, cutscenes/VHS FX -> N.menus
+  src/view3d.js     3D view mode core (three.js r149, loaded lazily): renderer, city streaming, sky,
+                    cameras, registries -> N.view, N.view3d (§20)
+  src/view3d_ground.js 3D ground (§20 "3D ground"): roads as geometry (ribbons, junctions, kerbs,
+                    footpaths, medians, shader markings + zebras), terrain shaders, potholes
+                    -> N.view3d.ground, N.view3d.groundHeightAt
+  src/view3d_landmarks.js / src/view3d_actors.js  3D landmark models / people, vehicles, animals (§20)
   src/save.js       save/load -> N.save
   src/debug.js      test hooks + #debug overlay -> N.debug
   src/main.js       boot + main loop
@@ -391,10 +397,11 @@ N.world.potholes = {
   stats {dry, rain, patches, rejected, byKind, byStyle, byDistrict, roadLen, ms (work), frames},
   refresh() (re-read the weather), ensure() (finish generation now), rebuild() (after tuning POTHOLE) }
 ```
-3D (view3d*.js): read `N.world.potholes.query(chunk rect)` per 512 u chunk and carve real dips:
-an elliptical bowl `rx x ry` rotated by `a`, `dip * N.view3d.VS` deep, the outline in `pts`;
-water at 70% of the dip when `wet`; listen to `'potholes:change'` to rebuild the chunks whose lists
-changed (`p.rain` ones appear / vanish). The ground texture already shows the painted hole and patches.
+3D (`src/view3d_ground.js`, §20 "3D ground"): reads `N.world.potholes.query(chunk rect)` per 512 u
+chunk and carves real dips in the road mesh (ragged outline from `pts`, bowl depth 0.35 + depth
+(≤ 1.15 u: a kid-scale 10–20 cm, not `dip * VS`), rainwater when `wet`), rebuilds the roads of every
+chunk on `'potholes:change'`, draws `patches` as decals; `N.view3d.groundHeightAt` / `elevation(e)`
+report the dip so wheels and feet drop into it.
 
 **Vehicles (vehicles.js owns this; reference integration).** Each step, for each moving vehicle near
 the view (and always the player's): sample the front and rear wheel contact points (sweep every 2 u
@@ -1061,9 +1068,11 @@ in the bible, listening to `game:new` for the prologue.
 The user asked for a GTA-5-style 3D option. It is an alternative **renderer and camera**
 over the same simulation: the world, player, vehicles, traffic, missions, dialogue, HUD and
 saves are unchanged. Files: `src/view3d.js` (core: loader, renderer, city streaming, sky,
-lights, cameras, registries), `src/view3d_landmarks.js` (3D models of landmarks and places),
-`src/view3d_actors.js` (people, vehicles, animals, markers, collectible glints, season
-overlays). Loaded in index.html after menus.js. Test: `node tests/view3d.cjs`.
+lights, cameras, registries), `src/view3d_ground.js` (the 3D ground: roads, markings, kerbs,
+footpaths, terrain, potholes — see "3D ground" below), `src/view3d_landmarks.js` (3D models of
+landmarks and places), `src/view3d_actors.js` (people, vehicles, animals, markers, collectible
+glints, season overlays). Loaded in index.html after menus.js. Tests: `node tests/view3d.cjs`,
+`node tests/view3d_ground.cjs`.
 
 - **Library:** three.js **0.149.0** UMD, loaded lazily the first time 3D is chosen: first
   `https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js`, then the local fallback
@@ -1105,10 +1114,12 @@ overlays). Loaded in index.html after menus.js. Test: `node tests/view3d.cjs`.
   (WORLD_DATA.roofs `building`) must put the floor at `roof.h * VS`.
 - **City streaming:** 512u chunks (2x2 render.js ground chunks) built nearest-first within a
   frame budget (high tier 3.5 ms, low 2.5 ms; 18 ms for a few frames after a teleport), disposed
-  beyond the draw distance. Per chunk: **ground** = a plane textured by render.js's own composed
-  chunk painter (world.js + places_art + world_extras rails + landmarks.paintGround) at 2 px/u
-  near / 0.5 px/u far, plus an aux texture (4u texels: alpha = water mask for an animated
-  water shader with sky reflection and sun glint; rgb = sodium / tube-light pools lit at night);
+  beyond the draw distance. Per chunk: **ground** = built by `src/view3d_ground.js` (see "3D
+  ground": road geometry + a procedural terrain plane, no painted texture); the old path (a plane
+  textured by render.js's own composed chunk painter at 2 px/u near / 0.5 px/u far) remains only
+  as the fallback when the ground provider is off (`N.view3d.ground.setEnabled(false)`); both use
+  the core's aux texture (4u texels: alpha = water mask for an animated water shader with sky
+  reflection and sun glint; rgb = sodium / tube-light pools lit at night);
   **buildings** = one merged mesh per chunk (walls with the facade atlas: per district window
   style, shop shutters with lit interiors, doors, arcades, glass; lit windows at night; what lies
   outside each wall decides its ground floor: a street gets shops / arcades in bazaar districts, a
@@ -1147,6 +1158,56 @@ overlays). Loaded in index.html after menus.js. Test: `node tests/view3d.cjs`.
   0.7 when frames are slow), no shadow map, shorter draw distance, no point lights.
   `N.view3d.stats()` -> {calls, triangles, jsMs, jsAvg, renderMs, workMs, chunks, visChunks,
   landmarks, actors, geometries, textures, programs, pixelRatio, tier}.
+
+### 3D ground (`src/view3d_ground.js`) — `N.view3d.ground`, `N.view3d.groundHeightAt`
+
+User feedback (design/feedback_3d.md #1, "roads are not clear in 3D… super pixelated"): the 3D
+ground no longer reuses the 2D pixel-art painter. A ground provider (installed with
+`N.view3d.setGroundProvider`, the "[ground hook]" edits in view3d.js) builds every chunk's ground:
+- **Road network analysis** (once per world build, ~0.2–0.8 s on the v2 map): each road polyline
+  is split into *pieces* at road-graph junctions (`N.world.roads`: nodes with deg ≠ 2 or where two
+  roads meet), interior bends are filleted into arcs (radius ~hw + 6); every junction gets a polygon
+  from the arms' kerb lines with rounded corner fillets (kerbed corners r = footpath + 2.5), trims
+  for each arm, zebra crossings on approaches by the 2D map's rules (`world.js paintGround`: not on
+  lanes / bridges, arm length ≥ R + 24, one per direction, stand-off widest/2 + 6 — pushed past the
+  corner radius when needed), bus-bay outlines at `bus_stop` landmarks. Bucketed per 512 u chunk.
+- **Roads as geometry** (one merged mesh + one material per chunk, clipped exactly to the chunk):
+  asphalt ribbons with camber normals, junction polygons, dead-end caps; real kerbs (0.8 u on
+  arterials / the bund, 0.6 u on streets, chamfered) with the black-and-yellow paint where the 2D
+  map paints it (arterial, bund, medians), raised footpaths (paver slabs, worn, broken slabs, dirt at
+  the back edge), footpath corners around the fillets, raised medians on divided roads
+  (`divided` / `median` / arterial default) with painted kerbs, rounded noses and shrubs; concrete
+  bridge edges; railway ballast beds with sleepers; dirt paths; tar patch decals
+  (`N.world.potholes.patches`); potholes as real dips (a 0.7 u grid around each one, depth
+  0.35 + depth (≤ 1.15 u), ragged outline from `pts`), broken rim + gravel, rainwater with sky
+  reflection and rain rings when `wet`.
+- **Road shader** (Lambert + onBeforeCompile, world-space, OES_standard_derivatives): value-noise
+  grain band-limited by the pixel footprint (so no texels or shimmer at any distance), round
+  aggregate chips, tyre tracks per lane, oil drips, block cracks (age), dusty crumbling edges on
+  old lanes, colour by kind and district age; markings from (u along, v across) with fwidth AA and
+  distance pre-filtering: centre dashes (8 on / 9 off), lane lines (arterials, ±hw/2, 9/11), solid
+  edge lines (arterials, bund), zebras (8 long, 2.4 stripes every 4.5) + stop lines on the inbound
+  half, all suppressed inside junction trims; wet sheen + sky reflection when it rains (`uWet`).
+- **Terrain**: one plane per chunk with a ground map (RGBA 256², 2 u texels from
+  `N.world.surfaceAt`, 1-2-1 blurred, border-matched so chunks are seamless: grass / paving
+  (+ compacted yards) / sand weights, A = contact AO and, on phones, baked sun shadows), a
+  world-wide soil texture (32 u: district `ground` colours, maidans, rocky parks), water from the
+  core's aux alpha; the shader sharpens the weights with world noise and adds detail: dusty red
+  Deccan soil with pebbles, grass with tufts and worn patches, stone plaza tiles (3.2 u, running
+  bond), rippled sand with a wet shoreline, water + foam; night lamp pools from the aux rgb.
+- **LOD / budget**: chunks within nearDist + 120 get the full ground; farther ones a 128² map and
+  no dips / chamfers / back faces / shrubs / decals (upgraded with hysteresis like the core).
+  Chunk jobs are resumable slices inside the core's frame budget (aux → ground map → roads →
+  upload), one at a time with shared scratch buffers; 2 draw calls and 1 texture (+ the core's aux)
+  per chunk; phones compile `NG_LOW` (fewer octaves, no chips / cracks).
+- **Heights**: `N.view3d.groundHeightAt(x, y)` = raised footpath / median height (exact footprint
+  test) or a (negative) pothole dip for potholes the mesh shows, else 0. The core's
+  `elevation(e)` (`H.elev(e)`) adds it for entities on the ground (vehicles average the front and
+  rear wheel points), so actors stand on kerbs and wheels dip; roof levels and `e.z` win.
+- **API**: `N.view3d.ground = {enabled, setEnabled(on) (false = the old painted ground, for
+  before/after), heightAt, potholeDip(x, y), rebuild(), stats() -> {pieces, junctions, zebras, bays,
+  chunks, roadTris, analyzeMs, avgChunkMs, stepMs, wet, ...}, net() (debug)}`. Rebuilds itself on
+  `'world:built'` and `'potholes:change'` (roads only), `uWet` follows `N.seasons.is('rain')`.
 
 ### `N.view3d` API (for view3d_landmarks.js / view3d_actors.js)
 

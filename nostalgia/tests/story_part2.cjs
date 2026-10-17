@@ -454,9 +454,9 @@ async function reloadContinue(page) {
         if (s.gallery && !seen.gallery) { seen.gallery = true; await shot(page, 'm12_gallery_pan'); }
         if (s.chase && !chaseDone) {
           chaseDone = true;
-          await sleep(1500);
           await shot(page, 'm12_chase');
-          // the mothers wait outside a masjid's forecourt; the compound is closed to a chased boy
+          // then straight to the Mecca Masjid gate (before a chappal can land): the mothers wait outside the
+          // forecourt's 40 u buffer; the compound is closed to a chased boy
           const r = await page.evaluate(async () => {
             const z = N.respect.zones.find((q) => q.place === 'mecca_masjid');
             const out = { gate: !!(z && z.gate) };
@@ -473,8 +473,10 @@ async function reloadContinue(page) {
             let inside = null;
             for (let r2 = 4; r2 < 160 && !inside; r2 += 6) for (let a = 0; a < 6.28 && !inside; a += 0.4) { const x = z.gate.x + Math.cos(a) * r2, y = z.gate.y + Math.sin(a) * r2; const q = N.respect.at(x, y); if (q && q.part === 'compound' && N.world.isWalkable(x, y)) inside = { x, y }; }
             if (inside) { N.player.x = inside.x; N.player.y = inside.y; await new Promise((res) => setTimeout(res, 400)); const q = N.respect.at(N.player.x, N.player.y); out.pushed = !(q && q.part === 'compound'); }
+            out.live = !!N.story2.probe().chase;
             return out;
           });
+          await shot(page, 'm12_masjid_gate');
           seen.respectStop = r; seen.mosqueGuards = r.guards;
           // then get caught by Ammi (PAKDA GAYA: the scene plays on to the café)
           // (on her far side from the masjid gate: a boy still heading for the gate is never caught inside the buffer)

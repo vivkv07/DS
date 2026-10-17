@@ -655,6 +655,23 @@ async function sa1() {
     window.__mgEnd = [];
     N.on('minigame:end', (d) => { const r = (d && d.result) || {}; window.__mgEnd.push({ id: d && d.id, win: r.win, quit: r.quit, aborted: r.aborted, time: r.time, at: N.calendar.osd() }); });
   });
+  // Minigame result-card watchdog. minigames.js closes an autoplay result card with one setTimeout(900 ms)
+  // that is ignored while the card's frame-time debounce (0.15 s of capped frame dt) has not passed; on a
+  // heavily loaded machine (a few fps) that one try is lost and the card stays up forever. A player clicks
+  // the button: so does the test (a real mouse click on "done"), once a result card has been up for 3 s.
+  let watchOn = true, resultSince = 0, resultClicks = 0;
+  const watchdog = (async () => {
+    while (watchOn) {
+      await sleep(1000);
+      if (!watchOn) break;
+      try {
+        const up = await page.evaluate(() => { const g = N.minigames && N.minigames.game; return !!(g && g.phase === 'result' && !g.closed && document.querySelector('.mg-screen .mg-card button[data-do=done]')); });
+        if (!up) { resultSince = 0; continue; }
+        if (!resultSince) { resultSince = Date.now(); continue; }
+        if (Date.now() - resultSince > 3000) { await page.click('.mg-screen .mg-card button[data-do=done]', { timeout: 2000 }).catch(() => {}); resultClicks++; resultSince = 0; }
+      } catch (e) { /* page busy / closing */ }
+    }
+  })();
   const phases = [['prologue', prologue], ['m1', m1], ['m2', m2], ['m3', m3], ['m4', m4], ['m5', m5], ['m6', m6], ['sa4', sa4], ['sa3', sa3], ['sa2', sa2], ['sa1', sa1]];
   let started = false;
   for (const [name, fn] of phases) {
@@ -668,6 +685,8 @@ async function sa1() {
     if (errs.length) fail(name + ': N.err ' + errs.slice(0, 5).join(' | '));
     if (errors.length) { fail(name + ': ' + errors.length + ' console/page error(s):\n    ' + errors.slice(0, 6).join('\n    ')); errors.length = 0; }
   }
+  watchOn = false; await watchdog;
+  if (resultClicks) console.log('  (result-card watchdog clicked "done" ' + resultClicks + ' time(s): see the minigames.js auto-close note)');
   await shot('final');
   await browser.close();
   console.log('\nScreenshots: ' + OUT + '/story1_*.png');

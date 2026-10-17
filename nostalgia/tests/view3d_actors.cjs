@@ -148,7 +148,8 @@ const HELPERS = () => {
           : { kind: r.kind, crank: r.crank, spin: r.spin, J: rd ? rd.J : null, seated: rd ? rd.seated : null, t: N.time.now };
         C.frames.push(smp);
         const key = C.key === 'cyc' ? smp.cyc : smp.t;
-        if (C.strip && C.cells < C.max && key != null && (C.next == null || key >= C.next)) {
+        if (C.warm > 0) C.warm--; // the follow camera applies from the next frame
+        else if (C.strip && C.cells < C.max && key != null && (C.next == null || key >= C.next)) {
           if (C.next == null) C.next = key;
           C.next += C.step;
           const cv = canvas(), g = C.strip.getContext('2d'), cw = C.cw, ch = C.ch;
@@ -164,7 +165,8 @@ const HELPERS = () => {
     },
     capBegin(o) {
       const C = T3.cap;
-      Object.assign(C, { frames: [], lastF: -1, cells: 0, next: null, key: 'cyc', step: 1 / 12, max: 12, cw: 170, ch: 236, dy: 0, follow: null, off: [0, 12, -34, 4.4], fov: 40 }, o || {});
+      Object.assign(C, { frames: [], lastF: -1, cells: 0, next: null, key: 'cyc', step: 1 / 12, max: 12, cw: 170, ch: 236, dy: 0, follow: null, off: [0, 12, -34, 4.4], fov: 40, warm: 2 }, o || {});
+      if (C.follow) { const e = C.follow, q = C.off; N.view3dActors.debug.camera([e.x + q[0], q[1], e.y + q[2]], [e.x, q[3], e.y], C.fov); }
       if (!(o && o.strip === false)) { C.strip = document.createElement('canvas'); C.strip.width = C.cw * C.max; C.strip.height = C.ch; } else C.strip = null;
       C.on = true;
     },
