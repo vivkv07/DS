@@ -1656,3 +1656,63 @@ the conventions below; anything else needs a change here first.
   tree. Poles: front −Y faces the road, conductors run along ±X, empties `wire_L1 wire_L2 wire_L3
   wire_N wire_cable wire_service` (+ `wire_lamp`). Birds: `bird_pigeon bird_crow bird_kite …` with
   clips `flap glide perch`. Test: `node tests/models3d_props.cjs`.
+
+## 22. Atmosphere layer — wind, weather, wires, birds (`design/atmosphere.md`)
+
+Files (index.html, after the models3d_* modules): `src/atmosphere.js` (core), `src/wind.js`,
+`src/weather.js` (2D + rain life + gameplay), `src/weather3d.js`, `src/wires.js`, `src/birds.js`,
+`src/atmosphere_audio.js`. Each file's header is the full reference; this is the contract.
+
+- **`N.wind`** (atmosphere.js, system `atmosphere` order 7, every mode): `dir` (angle it blows
+  towards), `dx, dy`, `strength` 0 calm .. 0.3 breeze .. 0.6 windy .. 1 storm, `gustiness`, `speed`
+  (gust fronts, u/s), `at(x, y)`, `gust(x, y)` 0..1 (travelling waves), `sway(x, y, phase, out)` (2D
+  offset factor), `force({strength, dir, gustiness} | null)` (tests). Deterministic per game day
+  (season prevailing wind, diurnal curve, calm winter nights, gusty before / during rain, hard in
+  storms). 3D: `N.wind.GLSL` (`windGust(vec2)`, `windOffset(wp, weight, phase)`) and
+  `N.wind.uniforms(THREE)` = shared `{uWind (dx, dz, strength, gustiness), uWindWave (1/λ, front, time,
+  0)}` updated every frame — models3d_props.js (Blender trees) and wind.js build on these; keep stable.
+- **`N.windfx`** (wind.js): `patchMaterial(mat, {weight: 'height'|'attr'|'hang'|'flag'|'color', amp,
+  height, flex, ...})` world-space sway after instancing (per-instance phase); `'color'` reads baked
+  vertex colour R = bend, G = flutter phase, B = leaf mask. Sways the core's procedural trees (canopy /
+  crowns / trunks), temple + dargah flags, rooftop clothes (moved from `cl` to `_cl` so nothing bakes
+  them still), Sankranti kite tails; 2D replaces `DRAW.tree` via the `W._fx` hook in world.js.
+- **`N.weather`** (atmosphere.js): `decide(date, minutes)` the schedule — monsoon (12 Jun–30 Sep)
+  evening / night showers on ~80% of days, storms ~17%, drizzly days; pre-monsoon thunderstorms in
+  May / early June; October showers; winter mist mornings (Nov–Feb); live smoothed `rain, storm,
+  mist, cloud` 0..1, `wet` (ground), `raining`, `flash`, `lastStrike`; `setting` 'auto'|'clear'|'rain'|
+  'storm' (settings row "Weather", localStorage `nostalgia.weather.v1`); `force(spec | null)`,
+  `strike(x, y, power)`. `N.flags.rain` true / false and `N.flags.storm` override. seasons.js takes
+  `is('rain')` / `is('mist')` / `N.flags.raining` from it ([atmosphere hook] lines in weatherTick).
+  Events `weather:change`, `weather:lightning {x, y, dist, power, delay}` (thunder delay = dist /
+  214 u/s), `weather:petrichor` (first rain after a dry spell: the "Matti ki khushboo" toast).
+- **weather.js (`N.weather2d`)**: 2D rain streaks / splashes / wet tint / overcast / light reflections
+  on wet roads / halos / lightning / mist banks / dripping eaves (`N.weather.draws2d` = true so
+  seasons.js skips its old rain); rain life (umbrellas `ped.umb`, sheltering under awnings and bus
+  stops, raincoats, auto side covers, slower traffic, paper boats in wet potholes — ACTION "Float a
+  paper boat", event `paperboat`; chai bonus in the rain `rain:chai`); gameplay (wet braking ~x1.5 for
+  cycles / Scooty, hidden potholes in heavy rain, Chappal Meter pursuers give up sooner).
+- **weather3d.js (`N.weather3d`)**: layer `weather3d`: GPU rain volume (1 call), splashes (1),
+  ground `uWet/uRain` follow `N.weather` (`N.view3d.ground.setWet(null)` = follow), wet-road light
+  streaks for the 8 (phone 4) nearest lights (road / terrain onBeforeCompile wrap), overcast sky and
+  fog, cloud deck, mist, lamp halos, lightning + bolt, auto side covers. Dry roads are unchanged.
+- **`N.wires`** (wires.js): poles + spans derived per 256 u cell from the road data (seed `'wire:' +
+  road id`), lazily and time-sliced; `perches(x, y, r)`, `query(rect, fn)` spans `{kind: power|cable|
+  service, ax, ay, ah, bx, by, bh, sag}`, `poles(rect, fn)`, `heightAt(span, t)`, `stats()`. Rules:
+  poles only on real kerbs or against walls (lanes), ≥ 20 u apart, none in plazas / junction mouths /
+  zebras / bridges / respect compounds; no span crosses a building; ≥ 26 u (2D units) over the
+  carriageway, above bus height everywhere. Sankranti kites + manja on wires (fading Jan → spring).
+  3D uses the Blender `pole_*` models and their `wire_*` empties when present.
+- **`N.birds`** (birds.js): boids flocks near the focus (cap 280 / 150 low tier): pigeons (Charminar,
+  mosques, markets, stations — takes over traffic.js / landmarks.js pigeons; `enabled = false` hands
+  them back), crows (wires, roofs), black kites (thermals by day), parakeets (trees), egrets /
+  cormorants (shores), mynas (lawns), bats (dusk, Golconda / tombs); roost at night, shelter in rain;
+  `scare(x, y, r)`, `spawnFlock`, `count`, `stats`; events `birds:takeoff`, `pigeons:scatter`. 3D: one
+  InstancedMesh per species (shader flap), Blender `bird_*` models when present.
+- **`N.atmosAudio`** (atmosphere_audio.js, system order 71): its own chain on `N.audio.ctx` (volumes
+  follow master / ambient / sfx, limiter): rain beds by surroundings (tin, asbestos, leaves, gutters,
+  drips, tyres, in-car drumming), thunder at the strike delay, wind / storm beds, bird calls
+  `sfx(name, {x, y, vol, n})` (flap parakeet myna egret bat kite_whistle crow coo pigeons).
+- **Edits to files this layer does not own** (all marked `[atmosphere hook]`): index.html script tags;
+  seasons.js weatherTick (asks N.weather), draw (skips old 2D rain), `S._weatherTick`; world.js `W._fx`.
+- **Tests**: `node tests/atmosphere.cjs` (both views, day / dusk / night x dry / rain / storm + mist,
+  checks, perf), `tests/atmos_{weather2d,weather3d,wind,wires,birds,audio}.cjs`.
