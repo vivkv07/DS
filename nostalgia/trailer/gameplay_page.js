@@ -33,10 +33,10 @@
     top_traffic: { view: 'top', at: 'abids', time: [18, 10], veh: null, spd: 40, dir: 0.8 },
     kites_sky: { view: 'cam', at: 'giver_himayatnagar', time: [16, 20], veh: null, spd: 0 },
     // festivals (N.seasons overlays; the 3D renderer draws their props from N.seasons.scene)
-    fest_ganesh: { view: 'tps', at: 'tank_bund', time: [20, 40], veh: null, spd: 38, dir: -1.2, prefer: 'bund', seasons: { ganesh_immersion: true, ganesh: true } },
-    fest_ramzan: { view: 'tps', at: 'charminar_plaza', time: [21, 30], veh: null, spd: 38, dir: -2.2, seasons: { ramzan: true } },
-    fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 36, dir: 0.5, seasons: { bonalu: true } },
-    fest_numaish: { view: 'tps', at: 'nampally_exhibition', time: [20, 30], veh: null, spd: 42, dir: 0.3, seasons: { numaish: true } },
+    fest_ganesh: { view: 'tps', at: 'tank_bund', time: [20, 40], veh: null, spd: 30, pitch: -0.08, dist: 0.8, dir: -1.2, prefer: 'bund', seasons: { ganesh_immersion: true, ganesh: true } },
+    fest_ramzan: { view: 'tps', at: 'charminar_plaza', time: [21, 30], veh: null, spd: 30, pitch: -0.02, dir: -2.2, seasons: { ramzan: true } },
+    fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 30, pitch: 0.02, dir: 0.5, seasons: { bonalu: true } },
+    fest_numaish: { view: 'tps', at: 'nampally_exhibition', time: [20, 30], veh: null, spd: 34, pitch: -0.04, dir: 0.3, seasons: { numaish: true } },
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
     charminar_night_fps: { view: 'fps', at: 'pathergatti', time: [21, 0], veh: 'cycle', spd: 105, toward: 'charminar' },
   };
@@ -159,6 +159,7 @@
     }
     if (!warm && o.scare && C.f === o.scare && N.birds) N.birds.scare(N.player.x, N.player.y, 120);
     if (!warm && o.strike && C.f === o.strike) N.weather.strike(N.player.x + 180, N.player.y - 260, 1);
+    if (o.pitch != null && N.view3d.setCamera) N.view3d.setCamera({ pitch: o.pitch });
     if (o.view === 'tps' && C.f === 0 && N.view3d.snapCamera) N.view3d.snapCamera();
     C.f++;
     window.__step(1 / FPS);
