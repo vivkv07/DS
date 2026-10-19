@@ -61,11 +61,11 @@
     bund: { col: '#3d3c41', age: 0.2, wear: 0.85 },
     bridge: { col: '#4a4847', age: 0.35, wear: 0.85 },
     street: { col: '#46454a', age: 0.42, wear: 0.8 },
-    lane: { col: '#5f5b55', age: 0.72, wear: 0.55 },
+    lane: { col: '#56534e', age: 0.72, wear: 0.55 },
   };
   const DAGE = { oldcity: 0.22, market: 0.12, colony: 0.08, rocky: 0.1, colonial: 0.0, cantonment: -0.05, posh: -0.1, hitec: -0.25 };
-  const FOOTCOL = { arterial: '#a8a090', street: '#ada290', bund: '#b6ab96' };
-  const KERBCOL = '#c9c2b4';
+  const FOOTCOL = { arterial: '#9d9586', street: '#a19786', bund: '#aaa08c' };
+  const KERBCOL = '#c4bdaf';
   const YARD = '#c2a882';
   const PARKSOIL = { ground: '#b38c62', rock: '#a28468' };
 
@@ -212,8 +212,10 @@
     const ds = districtStyleAt(x, y);
     const age = clamp(st.age + (DAGE[ds] || 0) + (r.age != null ? +r.age : 0), 0, 1);
     let c = linRGB(st.col);
-    // faded grey with age; Old City / market lanes go sandy
-    c = mixRGB(c, linRGB(ds === 'oldcity' || ds === 'market' ? '#8a7d68' : '#7c7a76'), clamp((age - 0.3) * 0.75, 0, 0.45));
+    // faded grey with age (Old City / market lanes a little sandy), but never bright: at noon (sun
+    // 2.75 + hemi 0.9 through ACES) a pale albedo sits on the curve's shoulder next to the soil and the
+    // lanes vanish; old lanes stay <= ~0.16 linear luminance, arterials ~0.04-0.1
+    c = mixRGB(c, linRGB(ds === 'oldcity' || ds === 'market' ? '#5e574c' : '#5a5855'), clamp((age - 0.3) * 0.5, 0, 0.25));
     if (ds === 'hitec' && r.kind !== 'lane') c = mixRGB(c, linRGB('#2e2d31'), 0.5);
     return { c, age, wear: st.wear };
   }
@@ -239,37 +241,59 @@
       while (AN.phase < 7) {
         const ph = AN.phase, ts = now();
         if (ph === 0) { // pieces
-          while (AN.i < AN.roads.length) { const [r, list] = AN.roads[AN.i++]; piecesOfRoad(r, list, G, AN); if ((AN.i & 15) === 0 && over()) break; }
+          while (AN.i < AN.roads.length) { const [r, list] = AN.roads[AN.i++]; piecesOfRoad(r, list, G, AN); if ((AN.i & 3) === 0 && over()) break; }
           if (AN.i >= AN.roads.length) { AN.phase = 1; AN.i = 0; }
         } else if (ph === 1) { // junction geometry
-          while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionGeom(J); } catch (e) { N.err('ground.junction', e); J.bad = true; } if ((AN.i & 63) === 0 && over()) break; }
+          while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionGeom(J); } catch (e) { N.err('ground.junction', e); J.bad = true; } if ((AN.i & 15) === 0 && over()) break; }
           if (AN.i >= NET.juncs.length) { finishPieces(); AN.phase = 2; AN.i = 0; }
         } else if (ph === 2) { // junction polygons
-          while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionPoly(J); } catch (e) { N.err('ground.junctionPoly', e); } if ((AN.i & 63) === 0 && over()) break; }
+          while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionPoly(J); } catch (e) { N.err('ground.junctionPoly', e); } if ((AN.i & 15) === 0 && over()) break; }
           if (AN.i >= NET.juncs.length) { AN.phase = 3; AN.i = 0; }
-        } else if (ph === 3) { zebras(); AN.phase = 4; }
-        else if (ph === 4) { // buckets
-          for (const P of NET.pieces) { const bb = bboxOf(P.pts, P.hw + P.fp + 4); P.bb = bb; bucket('pieces', P, bb[0], bb[1], bb[2], bb[3]); }
-          for (const J of NET.juncs) {
-            if (!J.poly && !J.decals) continue;
-            const pts = (J.poly || [[J.x, J.y]]).concat(J.extraPts || []);
-            if (J.decals) for (const d of J.decals) pts.push([d.x, d.y]);
-            const bb = bboxOf(pts, 30); J.bb = bb; bucket('juncs', J, bb[0], bb[1], bb[2], bb[3]);
+        } else if (ph === 3) { // zebras (per junction)
+          const G2 = W.roads;
+          while (AN.i < NET.juncs.length) { zebraJ(NET.juncs[AN.i++], G2); if ((AN.i & 63) === 0 && over()) break; }
+          if (AN.i >= NET.juncs.length) { AN.phase = 4; AN.i = 0; }
+        } else if (ph === 4) { // buckets: pieces, then junctions
+          const np = NET.pieces.length, nt = np + NET.juncs.length;
+          while (AN.i < nt) {
+            const k = AN.i++;
+            if (k < np) { const P = NET.pieces[k]; const bb = bboxOf(P.pts, P.hw + P.fp + 4); P.bb = bb; bucket('pieces', P, bb[0], bb[1], bb[2], bb[3]); }
+            else {
+              const J = NET.juncs[k - np];
+              if (J.poly || J.decals) {
+                const pts = (J.poly || [[J.x, J.y]]).concat(J.extraPts || []);
+                if (J.decals) for (const d of J.decals) pts.push([d.x, d.y]);
+                const bb = bboxOf(pts, 30); J.bb = bb; bucket('juncs', J, bb[0], bb[1], bb[2], bb[3]);
+              }
+            }
+            if ((AN.i & 127) === 0 && over()) break;
           }
-          AN.phase = 5;
+          if (AN.i >= nt) { AN.phase = 5; AN.i = 0; }
         } else if (ph === 5) { // paths + rails
-          for (const r of D.roads || []) {
-            if (r.kind !== 'path' || !r.pts || r.pts.length < 2) continue;
-            const pts = smoothLine(r.pts, r.w / 2 + 4), P = { pts, cum: cumOf(pts), hw: r.w / 2, r };
-            const bb = bboxOf(pts, P.hw + 2); bucket('paths', P, bb[0], bb[1], bb[2], bb[3]); NET.paths.push(P);
+          const RD = D.roads || [], RL = D.rails || [], nt = RD.length + RL.length;
+          while (AN.i < nt) {
+            const k = AN.i++;
+            if (k < RD.length) {
+              const r = RD[k];
+              if (r.kind === 'path' && r.pts && r.pts.length >= 2) {
+                const pts = smoothLine(r.pts, r.w / 2 + 4), P = { pts, cum: cumOf(pts), hw: r.w / 2, r };
+                const bb = bboxOf(pts, P.hw + 2); bucket('paths', P, bb[0], bb[1], bb[2], bb[3]); NET.paths.push(P);
+              }
+            } else {
+              const r = RL[k - RD.length];
+              if (r.pts && r.pts.length >= 2) {
+                const pts = smoothLine(r.pts, 30), P = { pts, cum: cumOf(pts), hw: Math.max(6, (r.w || 14) / 2) };
+                const bb = bboxOf(pts, P.hw + 2); bucket('rails', P, bb[0], bb[1], bb[2], bb[3]); NET.rails.push(P);
+              }
+            }
+            if ((AN.i & 31) === 0 && over()) break;
           }
-          for (const r of D.rails || []) {
-            if (!r.pts || r.pts.length < 2) continue;
-            const pts = smoothLine(r.pts, 30), P = { pts, cum: cumOf(pts), hw: Math.max(6, (r.w || 14) / 2) };
-            const bb = bboxOf(pts, P.hw + 2); bucket('rails', P, bb[0], bb[1], bb[2], bb[3]); NET.rails.push(P);
-          }
-          AN.phase = 6;
-        } else if (ph === 6) { busBays(); AN.phase = 7; }
+          if (AN.i >= nt) { AN.phase = 6; AN.i = 0; }
+        } else if (ph === 6) { // bus bays
+          const LM = D.landmarks || [];
+          while (AN.i < LM.length) { busBay(LM[AN.i++]); if ((AN.i & 31) === 0 && over()) break; }
+          if (AN.i >= LM.length) { AN.phase = 7; AN.i = 0; }
+        }
         ANAMS[ph] = (ANAMS[ph] || 0) + now() - ts;
         if (AN.phase < 7 && over()) break;
       }
@@ -474,7 +498,8 @@
       if (!cn) continue;
       const B = cn.B;
       if (cn.type === 'fillet') {
-        const tA = Math.min(cn.tA, A.end.trim), tB = Math.min(cn.tB, B.end.trim);
+        // the piece footpaths start exactly at the tangent points (the kerbed corner covers the arc)
+        const tA = Math.min(cn.tA, A.piece.L * 0.5), tB = Math.min(cn.tB, B.piece.L * 0.5);
         for (const p of cn.arc) poly.push(p);
         // footpaths along this corner start at the tangent points (piece sides)
         const sideA = 1 * A.side, sideB = -1 * B.side;
@@ -516,8 +541,7 @@
     const A = Math.abs(polyArea(pl));
     if (pl.length < 3 || A < 1) return null;
     if (convex(pl)) { const t = []; for (let i = 1; i < pl.length - 1; i++) t.push([pl[0], pl[i], pl[i + 1]]); return t; }
-    let tris;
-    try { tris = THREE.ShapeUtils.triangulateShape(pl.map((p) => new THREE.Vector2(p[0], p[1])), []); } catch (e) { return null; }
+    const tris = earClip(pl);
     if (!tris || !tris.length) return null;
     // a self-intersecting outline triangulates to the wrong area: then the caller falls back to the hull
     let sum = 0;
@@ -527,6 +551,41 @@
       return [a, b, c];
     });
     return Math.abs(sum - A) > A * 0.02 + 1 ? null : out;
+  }
+  /** ear clipping for a simple polygon (no THREE needed, so the network analysis can run while the
+   *  game is still top-down): [[ia, ib, ic], ...] indices into pl, or null */
+  function earClip(pl) {
+    const n = pl.length;
+    if (n < 3) return null;
+    const idx = [];
+    for (let i = 0; i < n; i++) idx.push(i);
+    if (polyArea(pl) < 0) idx.reverse(); // counter-clockwise
+    const cr = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const out = [];
+    let guard = n * n + 8;
+    while (idx.length > 3 && guard-- > 0) {
+      let cut = false;
+      for (let k = 0; k < idx.length; k++) {
+        const ia = idx[(k + idx.length - 1) % idx.length], ib = idx[k], ic = idx[(k + 1) % idx.length];
+        const a = pl[ia], b = pl[ib], c = pl[ic];
+        if (cr(a, b, c) <= 1e-9) continue; // reflex or degenerate
+        let inside = false;
+        for (const iq of idx) {
+          if (iq === ia || iq === ib || iq === ic) continue;
+          const q = pl[iq];
+          if (cr(a, b, q) >= -1e-9 && cr(b, c, q) >= -1e-9 && cr(c, a, q) >= -1e-9) { inside = true; break; }
+        }
+        if (inside) continue;
+        out.push([ia, ib, ic]); idx.splice(k, 1); cut = true; break;
+      }
+      if (!cut) { // numerically stuck (collinear runs): drop the flattest vertex
+        let best = 0, bv = Infinity;
+        for (let k = 0; k < idx.length; k++) { const v = Math.abs(cr(pl[idx[(k + idx.length - 1) % idx.length]], pl[idx[k]], pl[idx[(k + 1) % idx.length]])); if (v < bv) { bv = v; best = k; } }
+        idx.splice(best, 1);
+      }
+    }
+    if (idx.length === 3) out.push([idx[0], idx[1], idx[2]]);
+    return out;
   }
   function hull(pts) {
     const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -539,13 +598,12 @@
   }
 
   /** zebra crossings on junction approaches: the 2D map's rules (world.js paintGround) */
-  function zebras() {
-    const W = N.world, G = W.roads;
-    for (const J of NET.juncs) {
+  function zebraJ(J, G) {
+    {
       const n = J.node;
-      if (!n || n.deg < 3 || J.arms.length < 2) continue;
+      if (!n || n.deg < 3 || J.arms.length < 2) return;
       const inc = n.inc.map((id) => G.edges[id]).filter(Boolean).sort((a, b) => (RANK[a.kind] - RANK[b.kind]) || a.w - b.w);
-      if (!inc.length || inc.every((e) => e.kind === 'lane')) continue;
+      if (!inc.length || inc.every((e) => e.kind === 'lane')) return;
       const widest = inc[inc.length - 1];
       const R = n.w / 2 + 2;
       const seen = [];
@@ -570,10 +628,9 @@
     }
   }
 
-  function busBays() {
-    const D = N.world.data;
-    for (const lm of D.landmarks || []) {
-      if (!lm || lm.draw !== 'bus_stop') continue;
+  function busBay(lm) {
+    {
+      if (!lm || lm.draw !== 'bus_stop') return;
       let best = null;
       const bk = NET.buckets.get(bkey(Math.floor(lm.x / CHS), Math.floor(lm.y / CHS)));
       for (const P of bk ? bk.pieces : []) {
@@ -583,9 +640,9 @@
         const q = projectOn(P.pts, P.cum, lm.x, lm.y, 0, P.L);
         if (q && (!best || q.d2 < best.q.d2)) best = { P, q };
       }
-      if (!best || Math.sqrt(best.q.d2) > best.P.hw + best.P.fp + 24) continue;
+      if (!best || Math.sqrt(best.q.d2) > best.P.hw + best.P.fp + 24) return;
       const P = best.P, u = best.q.s, side = best.q.v >= 0 ? 1 : -1;
-      if (u - 20 < P.ends[0].trim + 12 || u + 20 > P.L - P.ends[1].trim - 12 || P.hw < 14) continue;
+      if (u - 20 < P.ends[0].trim + 12 || u + 20 > P.L - P.ends[1].trim - 12 || P.hw < 14) return;
       const B = { P, u, side };
       NET.bays.push(B);
       const bb = bboxOf([ptAt(P.pts, P.cum, u - 20), ptAt(P.pts, P.cum, u + 20)].map((p) => [p[0], p[1]]), P.hw + 4);
@@ -760,6 +817,31 @@
     return 0.72 + 0.28 * (1 - (q / 0.8) * (q / 0.8));
   }
 
+  /** which potholes the 3D road shows (D3): a lane full of 2-9 u craters reads as dirt, so per road
+   *  kind / age a deterministic share (by id, so every chunk agrees), no wider than half the road, and
+   *  no two within 7 u (the bigger one stays). potholeDip / groundHeightAt follow the same set. */
+  const POTKEEP = { arterial: 0.4, bund: 0.4, bridge: 0.25, street: 0.55, lane: 0.6 };
+  const POTVIS = new Map();
+  const potScore = (q) => q.rx * q.ry * (q.depth || 0.4) + (q.id % 1000) * 1e-7;
+  function potShown(p, P, PH) {
+    let v = POTVIS.get(p);
+    if (v !== undefined) return v;
+    const keep = Math.min(0.85, (POTKEEP[P.kind] != null ? POTKEEP[P.kind] : 0.5) + 0.2 * (P.st ? P.st.age : 0.5));
+    const pass = (q) => hash1(q.id | 0, 977) < keep && Math.max(q.rx, q.ry) <= Math.max(2.6, P.hw * 0.5);
+    v = pass(p);
+    if (v && PH && PH.query) {
+      let nb = [];
+      try { nb = PH.query(p.x - 8, p.y - 8, p.x + 8, p.y + 8, []); } catch (e) { nb = []; }
+      const sp = potScore(p);
+      for (const q of nb) {
+        if (q === p || Math.hypot(q.x - p.x, q.y - p.y) > 7) continue;
+        if (pass(q) && potScore(q) > sp) { v = false; break; }
+      }
+    }
+    POTVIS.set(p, v);
+    return v;
+  }
+
   /* ================================================================ chunk road emission */
   let EMIT_LOD = 0; // 1 = far chunk: no pothole dips, chamfers, back faces, shrubs, patches or bays
   function roadsJob(job, deadline) {
@@ -784,6 +866,7 @@
           if (!best) continue;
           const P = best.P, u = best.q.s, v = best.q.v, R = Math.max(p.rx, p.ry) * 1.05 + 0.6;
           if (Math.abs(v) + R > P.hw - 0.3 || u - R < P.ends[0].trim + 1 || u + R > P.L - P.ends[1].trim - 1) continue;
+          if (!potShown(p, P, PH)) continue;
           let l = job.potsByPiece.get(P); if (!l) job.potsByPiece.set(P, (l = []));
           l.push({ p, u, v, R });
           job.pots.push(p);
@@ -814,7 +897,7 @@
         case 5: emitPatch(B, o, job.pots); break;
         default: break;
       }
-      if ((job.ii & 7) === 0 && now() > deadline) { EMIT_LOD = 0; return false; }
+      if (now() > deadline) { EMIT_LOD = 0; return false; }
     }
     EMIT_LOD = 0;
     return true;
@@ -1149,55 +1232,90 @@
       else lineKerb(B, k);
     }
   }
+  /** where a piece footpath strip starts at a junction arm (arm side +1: +n): kerb + back points, the
+   *  unit direction along the arm away from the junction (the same frame footStrip uses) */
+  function stripStart(a, side) {
+    const P = a.piece, e = a.end, si = side * a.side > 0 ? 1 : 0;
+    const s = clamp(a.start ? e.fs[si] : P.L - e.fs[si], 0, P.L);
+    const f = frameAt(P, s), sd = side * a.side;
+    const dir = a.start ? 1 : -1;
+    return { k: [f.x + f.nx * P.hw * sd, f.y + f.ny * P.hw * sd], b: [f.x + f.nx * (P.hw + P.fp) * sd, f.y + f.ny * (P.hw + P.fp) * sd], d: [f.dx * dir, f.dy * dir] };
+  }
+  /** a kerbed corner: ONE footpath polygon between the kerb arc and the plot corner where the two piece
+   *  footpaths' back lines meet; kerb face + chamfer + band along the arc once; pavers in world (x, z)
+   *  so the slabs never fan; the piece strips start exactly at the arc's ends (no overlap) */
   function arcKerb(B, J, k) {
     const cn = k.cn, A = k.A, Bm = k.B;
+    if (!(A.fp > 0 && Bm.fp > 0)) return; // only one side has a footpath: open ground (footCap closes it)
     const kh = Math.min(A.piece.kerbH, Bm.piece.kerbH) || 0.6;
     const paint = Math.max(A.piece.paint, Bm.piece.paint);
-    if (!(A.fp > 0 && Bm.fp > 0)) {
-      // only one side has a footpath: its kerb wraps a small radius; the other side is open ground
-      return;
-    }
-    const fp = Math.min(A.fp, Bm.fp), rc = cn.rc, O = cn.O;
+    const fp = Math.min(A.fp, Bm.fp), O = cn.O;
     const kc = cst(linRGB(KERBCOL), LY.KERB, { p1: paint, age: 0.5 });
-    const fc = cst(linRGB(FOOTCOL[A.piece.kind] || FOOTCOL.street), LY.FOOT, { age: 0.5, g1: fp });
+    const fc = cst(linRGB(FOOTCOL[A.piece.kind] || FOOTCOL.street), LY.FOOT, { age: 0.5, g1: 1e6 });
     const backC = cst(linRGB('#8f8574'), LY.CONC, { age: 0.6 });
-    const n = cn.arc.length - 1;
-    const kb = Math.min(0.9, fp * 0.2), ch = 0.14;
-    const rIn = Math.max(0, rc - fp);
-    const pt = (g, r) => [O[0] + Math.cos(g) * r, O[1] + Math.sin(g) * r];
-    let uacc = 0;
+    const kb = Math.min(0.9, fp * 0.2), ch = EMIT_LOD ? 0 : 0.14;
+    const sA = stripStart(A, 1), sB = stripStart(Bm, -1);
+    // kerb line along the arc, with the exact strip start points at both ends
+    const arc = cn.arc.slice(); arc[0] = sA.k; arc[arc.length - 1] = sB.k;
+    const n = arc.length - 1;
+    const rad = arc.map((p) => { const dx = p[0] - O[0], dy = p[1] - O[1], l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; }); // away from O (toward the road)
+    const off = (q, w) => [arc[q][0] - rad[q][0] * w, arc[q][1] - rad[q][1] * w];
+    let u = 0;
     for (let q = 0; q < n; q++) {
-      const g0 = cn.a0 + cn.da * q / n, g1 = cn.a0 + cn.da * (q + 1) / n;
-      const segL = Math.abs(cn.da / n) * rc;
-      const u0 = uacc, u1 = uacc + segL; uacc = u1;
-      const nx0 = Math.cos(g0), nz0 = Math.sin(g0), nx1 = Math.cos(g1), nz1 = Math.sin(g1);
-      const a = pt(g0, rc), b = pt(g1, rc);
-      // kerb face (normal away from O, toward the road)
-      pv(a[0], Y_ROAD - 0.02, a[1], nx0, 0, nz0, u0, 0); pv(b[0], Y_ROAD - 0.02, b[1], nx1, 0, nz1, u1, 0);
-      pv(b[0], kh - ch, b[1], nx1, 0, nz1, u1, 0.1); pv(a[0], kh - ch, a[1], nx0, 0, nz0, u0, 0.1);
+      const segL = Math.hypot(arc[q + 1][0] - arc[q][0], arc[q + 1][1] - arc[q][1]);
+      const u0 = u, u1 = u + segL; u = u1;
+      const a = arc[q], b = arc[q + 1], r0 = rad[q], r1 = rad[q + 1];
+      pv(a[0], Y_ROAD - 0.02, a[1], r0[0], 0, r0[1], u0, 0); pv(b[0], Y_ROAD - 0.02, b[1], r1[0], 0, r1[1], u1, 0);
+      pv(b[0], kh - ch, b[1], r1[0], 0, r1[1], u1, 0.1); pv(a[0], kh - ch, a[1], r0[0], 0, r0[1], u0, 0.1);
       flush(B, kc);
-      const a2 = pt(g0, rc - ch), b2 = pt(g1, rc - ch);
-      pv(a[0], kh - ch, a[1], nx0, 1, nz0, u0, 0.1); pv(b[0], kh - ch, b[1], nx1, 1, nz1, u1, 0.1);
-      pv(b2[0], kh, b2[1], nx1, 1, nz1, u1, 0.2); pv(a2[0], kh, a2[1], nx0, 1, nz0, u0, 0.2);
-      flush(B, kc);
-      const a3 = pt(g0, Math.max(rIn, rc - kb)), b3 = pt(g1, Math.max(rIn, rc - kb));
+      const a2 = off(q, ch), b2 = off(q + 1, ch);
+      if (ch > 0) {
+        pv(a[0], kh - ch, a[1], r0[0], 1, r0[1], u0, 0.1); pv(b[0], kh - ch, b[1], r1[0], 1, r1[1], u1, 0.1);
+        pv(b2[0], kh, b2[1], r1[0], 1, r1[1], u1, 0.2); pv(a2[0], kh, a2[1], r0[0], 1, r0[1], u0, 0.2);
+        flush(B, kc);
+      }
+      const a3 = off(q, kb), b3 = off(q + 1, kb);
       pv(a2[0], kh, a2[1], 0, 1, 0, u0, 0.2); pv(b2[0], kh, b2[1], 0, 1, 0, u1, 0.2); pv(b3[0], kh, b3[1], 0, 1, 0, u1, 0.4); pv(a3[0], kh, a3[1], 0, 1, 0, u0, 0.4);
       flush(B, kc);
-      if (rc - kb > rIn + 0.05) {
-        const a4 = pt(g0, rIn), b4 = pt(g1, rIn);
-        pv(a3[0], kh, a3[1], 0, 1, 0, u0, kb); pv(b3[0], kh, b3[1], 0, 1, 0, u1, kb);
-        if (rIn > 0.05) { pv(b4[0], kh, b4[1], 0, 1, 0, u1, fp); pv(a4[0], kh, a4[1], 0, 1, 0, u0, fp); }
-        else pv(O[0], kh, O[1], 0, 1, 0, (u0 + u1) / 2, fp);
-        flush(B, fc);
-        if (rIn > 0.5) {
-          pv(b4[0], 0, b4[1], -nx1, 0, -nz1, u1, 0); pv(a4[0], 0, a4[1], -nx0, 0, -nz0, u0, 0);
-          pv(a4[0], kh, a4[1], -nx0, 0, -nz0, u0, 0.2); pv(b4[0], kh, b4[1], -nx1, 0, -nz1, u1, 0.2);
-          flush(B, backC);
-        }
-      }
-      B.raise(rIn > 0.05 ? [a, b, pt(g1, rIn), pt(g0, rIn)] : [a, b, O], kh);
+      B.raise([a, b, b3, a3], kh);
     }
-    // footpath along the kerb lines between the tangent points and the piece footpaths (trim > tangent)
+    // plot corner: where the two back lines meet (bA + dA t = bB + dB s, both behind the strip starts)
+    const det = sA.d[0] * -sB.d[1] - sA.d[1] * -sB.d[0];
+    let K = null;
+    if (Math.abs(det) > 1e-4) {
+      const rx = sB.b[0] - sA.b[0], ry = sB.b[1] - sA.b[1];
+      const t = (rx * -sB.d[1] - ry * -sB.d[0]) / det, s2 = (sA.d[0] * ry - sA.d[1] * rx) / det;
+      if (t < 0.05 && s2 < 0.05 && t > -60 && s2 > -60) K = [sA.b[0] + sA.d[0] * t, sA.b[1] + sA.d[1] * t];
+    }
+    // an acute corner whose plot corner would fall outside the arc: stop at a safe point on the bisector
+    const inner = rad.map((r, q) => off(q, kb));
+    const rIn = Math.hypot(inner[n >> 1][0] - O[0], inner[n >> 1][1] - O[1]);
+    if (K && Math.hypot(K[0] - O[0], K[1] - O[1]) > rIn - 0.3) K = null;
+    const poly = inner.slice();
+    poly.push(sB.b);
+    if (K) poly.push(K);
+    poly.push(sA.b);
+    const pl = dedupe(poly, 0.02);
+    const tris = pl.length >= 3 ? earClip(pl) : null;
+    if (tris) for (const t of tris) {
+      const a = pl[t[0]], b = pl[t[1]], c = pl[t[2]];
+      pv(a[0], kh, a[1], 0, 1, 0, a[0], a[1]); pv(b[0], kh, b[1], 0, 1, 0, b[0], b[1]); pv(c[0], kh, c[1], 0, 1, 0, c[0], c[1]);
+      flush(B, fc);
+      B.raise([a, b, c], kh);
+    }
+    // back faces toward the plot (sB.b -> K -> sA.b)
+    if (!EMIT_LOD) {
+      const back = K ? [sB.b, K, sA.b] : [sB.b, sA.b];
+      for (let q = 0; q < back.length - 1; q++) {
+        const a = back[q], b = back[q + 1];
+        let nx = -(b[1] - a[1]), nz = b[0] - a[0];
+        const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
+        if ((O[0] - mx) * nx + (O[1] - mz) * nz < 0) { nx = -nx; nz = -nz; }
+        pv(a[0], 0, a[1], nx, 0, nz, 0, 0); pv(b[0], 0, b[1], nx, 0, nz, 1, 0);
+        pv(b[0], kh, b[1], nx, 0, nz, 1, 0.2); pv(a[0], kh, a[1], nx, 0, nz, 0, 0.2);
+        flush(B, backC);
+      }
+    }
   }
   function lineKerb(B, k) {
     const pa = k.pa, pb = k.pb;
@@ -1219,7 +1337,7 @@
     if (bb[2] < B.x0 || bb[0] > B.x1 || bb[3] < B.z0 || bb[1] > B.z1) return;
     if (!P.nrm) P.nrm = normalsOf(P.pts);
     const L = P.cum[P.cum.length - 1];
-    const c = cst(linRGB('#c4b08c'), LY.PATH, { g1: P.hw, age: 0.6 });
+    const c = cst(linRGB('#b09c7a'), LY.PATH, { g1: P.hw, age: 0.6 });
     const brk = breaksOf(P, 0, L, null);
     for (let i = 0; i < brk.length - 1; i++) {
       const fa = frameAt(P, brk[i]), fb = frameAt(P, brk[i + 1]), hw = P.hw;
@@ -1322,13 +1440,22 @@
         const j0 = Math.max(0, Math.ceil((yd.y + 1 - gy0) / step)), j1 = Math.min(m - 1, Math.floor((yd.y + yd.h - 1 - gy0) / step));
         for (let j = j0; j <= j1; j++) yard.fill(1, j * m + i0, j * m + i1 + 1);
       });
-      job.shadow = I && I.Q.baked && I.sunBake ? bakeShadows(ch, m, step) : null;
+      job.bake = I && I.Q.baked && I.sunBake && (I.sunBake.sx || I.sunBake.sy) ? { list: [], i: 0, g: null } : null;
+      if (job.bake) {
+        const M = 240, L = job.bake.list;
+        W.queryStructures(ch.x0 - M, ch.y0 - M, ch.x0 + CHS + M, ch.y0 + CHS + M, (sv) => { if (sv.t === 'bldg' || sv.t === 'wall' || sv.t === 'tree') L.push(sv); });
+      }
+      job.shadow = null;
       return false; // (resume next slice)
+    }
+    if (job.bake) { // phones: sun shadows rasterised in slices
+      if (!bakeShadows(job, ch, m, step, deadline)) return false;
+      job.shadow = job.bake.out; job.bake = null;
     }
     if (!job.surf) { job.surf = new Uint8Array(n * n * 4); job.brow = 0; }
     const out = job.surf, yard = job.yard, sh = job.shadow, acc = [0, 0, 0, 0, 0, 0, 0];
     const WT = [1, 2, 1];
-    const shK = sh ? 0.34 * I.sunBake.strength + 0.05 : 0;
+    const shK = sh ? 0.22 * I.sunBake.strength + 0.04 : 0; // softer: terrain only (roads ignore the map's alpha)
     while (job.brow < n) {
       const j = job.brow++;
       for (let i = 0; i < n; i++) {
@@ -1343,7 +1470,7 @@
         out[o] = acc[1] * 16 - (acc[1] >> 4);
         out[o + 1] = Math.max(acc[2] * 16 - (acc[2] >> 4), Math.round(yw * 5));
         out[o + 2] = acc[3] * 16 - (acc[3] >> 4);
-        let ao = 1 - 0.42 * ((acc[5] + acc[6] * 0.5) / 16);
+        let ao = 1 - 0.25 * ((acc[5] + acc[6] * 0.5) / 16); // contact AO right next to walls
         if (sh) ao *= 1 - sh[(j + 1) * m + (i + 1)] * shK;
         out[o + 3] = Math.round(clamp(ao, 0, 1) * 255);
       }
@@ -1373,40 +1500,73 @@
     }
   }
   /** one world-wide soil colour texture (32 u texels): district soil, maidans, rocky parks (shared) */
-  const SOIL = { tex: null, cell: 32, nx: 0, ny: 0, ms: 0 };
-  function buildSoil() {
-    const t0 = now(), W = N.world, D = W.data, c = SOIL.cell;
-    const nx = Math.max(2, Math.ceil(N.WORLD_W / c)), ny = Math.max(2, Math.ceil(N.WORLD_H / c));
-    const data = new Uint8Array(nx * ny * 4);
-    const cache = new Map();
+  const SOIL = { tex: null, cell: 32, nx: 0, ny: 0, ms: 0, data: null, row: 0, done: false };
+  /** fill the soil colours a few rows per slice (runs during top-down idle time, no THREE needed) */
+  function soilStep(deadline) {
+    if (SOIL.done) return true;
+    const t0 = now(), W = N.world, D = W && W.data, c = SOIL.cell;
+    if (!W || !W.built || !D) return false;
+    if (!SOIL.data) {
+      SOIL.nx = Math.max(2, Math.ceil(N.WORLD_W / c)); SOIL.ny = Math.max(2, Math.ceil(N.WORLD_H / c));
+      SOIL.data = new Uint8Array(SOIL.nx * SOIL.ny * 4); SOIL.row = 0; SOIL.ms = 0; SOIL.cache = new Map();
+    }
+    const nx = SOIL.nx, ny = SOIL.ny, data = SOIL.data, cache = SOIL.cache;
     const put = (o, hex) => { let v = cache.get(hex); if (!v) { v = hexRGB(hex); cache.set(hex, v); } data[o] = v[0] * 255; data[o + 1] = v[1] * 255; data[o + 2] = v[2] * 255; data[o + 3] = 255; };
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      let d = null; try { d = W.districtAt((i + 0.5) * c, (j + 0.5) * c); } catch (e) { d = null; }
-      put((j * nx + i) * 4, (d && d.ground) || '#a98a66');
+    while (SOIL.row < ny) {
+      const j = SOIL.row++;
+      for (let i = 0; i < nx; i++) {
+        let d = null; try { d = W.districtAt((i + 0.5) * c, (j + 0.5) * c); } catch (e) { d = null; }
+        put((j * nx + i) * 4, (d && d.ground) || '#a98a66');
+      }
+      if ((SOIL.row & 3) === 0 && now() > deadline) break;
     }
-    for (const p of D.parks || []) {
-      const hex = PARKSOIL[p.kind];
-      if (!hex || !p.poly) continue;
-      scanPoly(p.poly, c / 2, c / 2, c, ny, (i, j) => put((j * nx + i) * 4, hex), nx);
+    if (SOIL.row >= ny) {
+      for (const pk of D.parks || []) {
+        const hex = PARKSOIL[pk.kind];
+        if (!hex || !pk.poly) continue;
+        scanPoly(pk.poly, c / 2, c / 2, c, ny, (i, j) => put((j * nx + i) * 4, hex), nx);
+      }
+      SOIL.done = true;
     }
+    SOIL.ms = Math.round((SOIL.ms + now() - t0) * 10) / 10;
+    return SOIL.done;
+  }
+  /** the world-wide soil texture (32 u texels) from the precomputed colours (finishes them if needed) */
+  function buildSoil() {
+    if (!SOIL.done) soilStep(Infinity);
+    if (!SOIL.data) return;
+    const nx = SOIL.nx, ny = SOIL.ny, c = SOIL.cell;
     if (SOIL.tex) SOIL.tex.dispose();
-    const t = new THREE.DataTexture(data, nx, ny, THREE.RGBAFormat);
+    const t = new THREE.DataTexture(SOIL.data, nx, ny, THREE.RGBAFormat);
     t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
     t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.needsUpdate = true; t.userData.shared = true;
-    SOIL.tex = t; SOIL.t.value = t; SOIL.nx = nx; SOIL.ny = ny; SOIL.u.value.set(1 / (nx * c), 1 / (ny * c));
-    SOIL.ms = Math.round((now() - t0) * 10) / 10;
+    SOIL.tex = t; SOIL.t.value = t; SOIL.u.value.set(1 / (nx * c), 1 / (ny * c));
   }
-  /** phones: sun shadows of buildings / walls / trees rasterised on the tint grid (2D paintShadows rules) */
-  function bakeShadows(ch, m, step) {
-    const sb = I.sunBake, sx = sb.sx, sy = sb.sy;
-    if (!sx && !sy) return null;
-    const c = document.createElement('canvas'); c.width = c.height = m;
-    const g = c.getContext('2d');
-    g.setTransform(1 / step, 0, 0, 1 / step, -(ch.x0 - step) / step + 0.5, -(ch.y0 - step) / step + 0.5);
-    g.fillStyle = '#fff'; g.beginPath();
-    const M = 240;
-    N.world.queryStructures(ch.x0 - M, ch.y0 - M, ch.x0 + CHS + M, ch.y0 + CHS + M, (s) => {
-      if (s.t === 'bldg' || s.t === 'wall') {
+  function resetSoil() { if (SOIL.tex) SOIL.tex.dispose(); SOIL.tex = null; if (SOIL.t) SOIL.t.value = null; SOIL.data = null; SOIL.done = false; SOIL.row = 0; }
+  /** phones: sun shadows of buildings / walls / trees rasterised on the ground grid (2D paintShadows
+   *  rules), a batch of structures per slice on a reused canvas; returns true when done (job.bake.out) */
+  let BAKE_CV = null;
+  function bakeShadows(job, ch, m, step, deadline) {
+    const bk = job.bake, sb = I.sunBake, sx = sb.sx, sy = sb.sy;
+    if (!bk.g) {
+      if (!BAKE_CV) BAKE_CV = document.createElement('canvas');
+      const c = BAKE_CV; if (c.width !== m) { c.width = c.height = m; }
+      const g = bk.g = c.getContext('2d');
+      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, m, m);
+      g.setTransform(1 / step, 0, 0, 1 / step, -(ch.x0 - step) / step + 0.5, -(ch.y0 - step) / step + 0.5);
+      g.fillStyle = '#fff';
+    }
+    const g = bk.g, L = bk.list;
+    while (bk.i < L.length) {
+      g.beginPath();
+      const end = Math.min(L.length, bk.i + 48);
+      for (; bk.i < end; bk.i++) {
+        const s = L[bk.i];
+        if (s.t === 'tree') {
+          const h = s.h * 0.92, r = s.r * 0.82;
+          g.moveTo(s.x + sx * h + r, s.y + sy * h); g.arc(s.x + sx * h, s.y + sy * h, r, 0, TAU); g.closePath();
+          continue;
+        }
         const h = s.t === 'bldg' && (s.roofType === 'gable' || s.roofType === 'hip') ? s.h + 4 : s.h;
         const ex = sx * h, ey = sy * h, X0 = s.x, Y0 = s.y, X1 = s.x + s.w, Y1 = s.y + s.d;
         g.moveTo(X0, Y0); g.lineTo(X1, Y0); g.lineTo(X1, Y1); g.lineTo(X0, Y1); g.closePath();
@@ -1414,15 +1574,14 @@
         // connecting hull between the footprint and its projection
         g.moveTo(X0, Y0); g.lineTo(X0 + ex, Y0 + ey); g.lineTo(X1 + ex, Y1 + ey); g.lineTo(X1, Y1); g.closePath();
         g.moveTo(X1, Y0); g.lineTo(X1 + ex, Y0 + ey); g.lineTo(X0 + ex, Y1 + ey); g.lineTo(X0, Y1); g.closePath();
-      } else if (s.t === 'tree') {
-        const h = s.h * 0.92, r = s.r * 0.82;
-        g.moveTo(s.x + sx * h + r, s.y + sy * h); g.arc(s.x + sx * h, s.y + sy * h, r, 0, TAU); g.closePath();
       }
-    });
-    g.fill('nonzero');
+      g.fill('nonzero');
+      if (now() > deadline) return false;
+    }
     const d = g.getImageData(0, 0, m, m).data, out = new Float32Array(m * m);
     for (let i = 0; i < m * m; i++) out[i] = d[i * 4 + 3] / 255;
-    return out;
+    bk.out = out;
+    return true;
   }
 
   /* ================================================================ shaders */
@@ -1522,8 +1681,11 @@ float wPave = smoothstep(0.44, 0.56, sw.g + bn * 0.1);
 float wSand = smoothstep(0.38, 0.62, sw.b + bn * 0.5);
 ngWm = smoothstep(0.4, 0.6, texture2D(auxMap, auv).a + bn * 0.3);
 float shore = (texture2D(auxMap, auv + vec2(0.014, 0.0)).a + texture2D(auxMap, auv - vec2(0.014, 0.0)).a + texture2D(auxMap, auv + vec2(0.0, 0.014)).a + texture2D(auxMap, auv - vec2(0.0, 0.014)).a) * 0.25;
-vec3 soil = pow(texture2D(tSoil, P * uSoilK).rgb, vec3(2.2));
-soil *= 1.0 + 0.22 * clamp(sw.g * 2.4, 0.0, 1.0) * (1.0 - wPave);   // compacted yards: lighter
+// district soil, darkened + clamped so it never sits on the ACES shoulder at noon: roads stay >= ~1.6x
+// darker than the ground next to them (D4)
+vec3 soil = pow(texture2D(tSoil, P * uSoilK).rgb, vec3(2.2)) * 0.7;
+soil *= min(1.0, 0.24 / max(dot(soil, vec3(0.2126, 0.7152, 0.0722)), 1e-3));
+soil *= 1.0 + 0.1 * clamp(sw.g * 2.4, 0.0, 1.0) * (1.0 - wPave);   // compacted yards: a little lighter
 float n1 = ngF(P * 0.043, fw * 0.043), n2 = ngF(P * 0.21, fw * 0.21), n3 = ngF(P * 1.07, fw * 1.07);
 #ifdef NG_LOW
 float n4 = 0.5;
@@ -1545,14 +1707,14 @@ grass = mix(grass, dirt * 0.92, wornG * 0.8);
 vec2 tq = P / 3.2; float trow = floor(tq.y); tq.x += 0.5 * mod(trow, 2.0);
 vec2 tid = floor(tq), tf = fract(tq); vec2 tfw = fwidth(tq);
 float th = ngH(tid + vec2(0.37 * trow, 5.1));
-vec3 stone = vec3(0.47, 0.40, 0.31) * (0.82 + 0.28 * th) * (0.9 + 0.2 * n3) * (0.94 + 0.12 * n4);
+vec3 stone = vec3(0.33, 0.28, 0.215) * (0.68 + 0.56 * th) * (0.88 + 0.24 * n3) * (0.94 + 0.12 * n4);
 float gd = min(min(tf.x, 1.0 - tf.x), min(tf.y, 1.0 - tf.y));
 float tw = max(tfw.x, tfw.y);
-float grout = 1.0 - smoothstep(0.03, 0.03 + tw * 1.2, gd);
-grout = mix(grout, 0.14, smoothstep(0.15, 0.45, tw));
-stone *= 1.0 - 0.42 * grout;
+float grout = 1.0 - smoothstep(0.035, 0.035 + tw * 1.2, gd);
+grout = mix(grout, 0.17, smoothstep(0.15, 0.45, tw));
+stone *= 1.0 - 0.6 * grout;
 stone = mix(stone, soil * 0.9, smoothstep(0.7, 0.9, ngN(P * 0.09 + 2.0)) * 0.35);
-vec3 sandC = vec3(0.46, 0.37, 0.23) * (0.86 + 0.26 * (n2 - 0.5) + 0.12 * (n4 - 0.5));
+vec3 sandC = vec3(0.37, 0.3, 0.19) * (0.86 + 0.26 * (n2 - 0.5) + 0.12 * (n4 - 0.5));
 float rip = sin(dot(P, vec2(0.92, 0.51)) * 1.3 + ngN(P * 0.17) * 6.0);
 sandC *= 1.0 + 0.07 * rip * (1.0 - smoothstep(0.15, 0.5, fw));
 float wetS = smoothstep(0.04, 0.35, shore);
@@ -1660,10 +1822,6 @@ if (layer < 1.5) {
   float L = vGeo.x, hw = vGeo.y;
   float cA = vMk.x, cB = vMk.y, med = vMk.z, bits = vMk.w;
   float uA = u, uB = L - u;
-  // oil stains (single-cell blobs, mostly along the lanes)
-  float sh = 0.0;
-  float stn = ngBlob(P * 0.31, 0.16 + 0.1 * age, sh) * (1.0 - smoothstep(0.5, 1.5, fw));
-  col *= 1.0 - stn * (0.25 + 0.25 * fract(sh * 7.0));
   if (layer < 0.5) {
     float fu = max(fwidth(u), 1e-4), fv = max(fwidth(v), 1e-4);
     float endF = smoothstep(cA, cA + 12.0, uA) * smoothstep(cB, cB + 12.0, uB);
@@ -1678,13 +1836,18 @@ if (layer < 1.5) {
       float dd = abs(abs(lc) - 2.8);
       tr = exp(-dd * dd / 1.1) + 0.45 * exp(-lc * lc / 0.5);
     }
+    float trK = tr;
     tr *= (0.65 + 0.7 * ngF(vec2(u * 0.045, v * 0.6), fw * 0.05)) * endF * vSt.y;
     col *= 1.0 - 0.2 * tr;
+    // oil drips: small (< 0.8 u), rare, only in the wheel tracks / lane centre, at most -15%
+    float sh = 0.0;
+    float stn = ngBlob(P * 0.9, 0.06, sh) * smoothstep(0.35, 0.75, trK) * endF * (1.0 - smoothstep(0.2, 0.6, fw));
+    col *= 1.0 - stn * (0.07 + 0.08 * fract(sh * 7.0));
     // dusty, crumbling edges on old roads
     float sandy = smoothstep(0.42, 0.85, age);
     float en = ngF(P * 0.45, fw * 0.45) * 1.8 + ngF(P * 1.9, fw * 1.9) * 0.9;
-    float edge = smoothstep(hw - 1.2 - 2.4 * sandy - en * (0.4 + sandy), hw - 0.2, av);
-    col = mix(col, vec3(0.31, 0.24, 0.15) * (0.8 + 0.4 * en / 2.7), edge * (0.25 + 0.65 * sandy));
+    float edge = smoothstep(hw - 0.9 - 0.9 * sandy - en * 0.25, hw - 0.1, av);
+    col = mix(col, vec3(0.2, 0.16, 0.1) * (0.8 + 0.4 * en / 2.7), edge * (0.15 + 0.25 * sandy));
     // hairline cracks on older surfaces: block / alligator patterns in patches, wobbly, ~1 px wide
 #ifndef NG_LOW
     float cmask = smoothstep(0.62, 0.82, ngN(P * 0.017 + 7.0) * 0.8 + ngN(P * 0.09 + 1.0) * 0.2 + age * 0.22) * (1.0 - smoothstep(0.05, 0.16, fw)) * smoothstep(0.25, 0.55, age);
@@ -1718,14 +1881,19 @@ if (layer < 1.5) {
   float wet = step(1.5, pot);
   float pd = pot - 2.0 * wet;
   if (pd > 0.001) {
+    // pd: 0..0.72 = the rim slope (outer fifth of the radius), 0.72..1 = the floor. Read as a DIP, not
+    // a stain: the floor is the local asphalt x ~0.6 with loose chips, a thin bright broken edge where
+    // the asphalt crumbles, a thin dark lip on the steep wall; the bowl normals do the rest
+    vec3 asp = col;
     float gr = ngF(P * 3.4, fw * 3.4);
-    float rim = smoothstep(0.0, 0.25, pd) * (1.0 - smoothstep(0.45, 0.75, pd));
-    col *= 1.0 - 0.45 * rim * (0.6 + 0.6 * ngF(P * 2.0, fw * 2.0));
+    float rimB = smoothstep(0.02, 0.1, pd) * (1.0 - smoothstep(0.16, 0.3, pd)) * (0.55 + 0.9 * ngF(P * 2.0, fw * 2.0));
+    float lip = smoothstep(0.38, 0.5, pd) * (1.0 - smoothstep(0.58, 0.72, pd));
+    col *= 1.0 + 0.32 * rimB;
+    col *= 1.0 - 0.3 * lip;
     float gh = 0.0;
     float chip = ngBlob(P * 3.6, 0.45, gh) * (1.0 - smoothstep(0.05, 0.15, fw));
-    vec3 gravel = vec3(0.075, 0.068, 0.06) * (0.6 + 0.8 * gr) + vec3(0.11, 0.1, 0.09) * chip * (0.5 + gh);
-    gravel *= 1.0 - 0.35 * smoothstep(0.55, 1.0, pd); // cavity: the deep middle stays darker
-    col = mix(col, gravel, smoothstep(0.35, 0.7, pd));
+    vec3 gravel = asp * vec3(0.66, 0.64, 0.6) * (0.8 + 0.4 * gr) * (1.0 + chip * (0.6 * gh - 0.15));
+    col = mix(col, gravel, smoothstep(0.6, 0.76, pd));
     if (wet > 0.5) ngWm = smoothstep(0.55, 0.7, pd + (ngF(P * 1.3, fw * 1.3) - 0.5) * 0.15);
   }
   ngShine = uWet * (0.45 + 0.4 * smoothstep(0.55, 0.75, ngN(P * 0.09 + 21.0)));
@@ -1804,7 +1972,7 @@ if (layer < 1.5) {
 } else {
   col = base * (0.75 + 0.5 * ngF(P * 2.2 + vWP.y, fw * 2.2));
 }
-col *= mix(1.0, tn.a, layer < 2.5 ? 1.0 : 0.5);
+col *= mix(1.0, tn.a, layer < 1.5 ? 0.0 : 0.5); // baked shadows / contact AO: terrain only, footpaths half
 col *= 1.0 - uWet * (layer < 1.5 ? 0.42 : 0.25);
 diffuseColor.rgb = col;
 `;
@@ -1908,11 +2076,12 @@ if (ngShine > 0.01) {
         const ts = now();
         const st0 = job.step;
         switch (job.step) {
-          case 0: if (!NET.built && !analyzeStep(deadline)) break; if (!SOIL.tex) buildSoil(); job.step = 1; break;
+          case 0: if (!NET.built && !analyzeStep(deadline)) break; if (!SOIL.done && !soilStep(deadline)) break; if (!SOIL.tex) buildSoil(); job.step = 1; break;
           case 1: if (!ch.aux) I.buildAux(ch); job.step = 2; break;
           case 2: if (buildSurf(job, deadline)) job.step = job.what === 'map' ? 4 : 3; break;
           case 3: job.bucket = job.bucket || chunkBucket(ch); if (roadsJob(job, deadline)) job.step = 4; break;
-          case 4: finishJob(job); job.step = 6; break;
+          case 4: prepareFinish(job); job.step = 5; break;
+          case 5: finishJob(job); job.step = 6; break;
           default: job.step = 6;
         }
         STEPMS[st0] = (STEPMS[st0] || 0) + now() - ts;
@@ -1926,8 +2095,14 @@ if (ngShine > 0.01) {
     job.t += now() - t0;
     return job.step >= 6;
   }
+  /** upload step 1 (its own slice): the road geometry + the ground map texture */
+  function prepareFinish(job) {
+    if (job.what !== 'map') job.geo = job.B.build();
+    if (job.surf && job.what !== 'map') job.tex = dataTex(job.surf, job.sn, true);
+  }
   function finishJob(job, failed) {
     const ch = job.ch, G = ch.ng || (ch.ng = {});
+    if (!failed && job.what !== 'map' && job.geo === undefined) prepareFinish(job);
     if (!failed) {
       // ground map + terrain plane (kept when only the roads are rebuilt; refreshed in place on a re-bake)
       if (job.surf) {
@@ -1935,7 +2110,7 @@ if (ngShine > 0.01) {
         else {
           if (G.terrain) { ch.group.remove(G.terrain); G.terrain.material.dispose(); G.terrain = null; }
           if (G.surfTex) G.surfTex.dispose();
-          G.surfTex = dataTex(job.surf, job.sn, true); G.sn = job.sn;
+          G.surfTex = job.tex || dataTex(job.surf, job.sn, true); G.sn = job.sn; job.tex = null;
           if (!PLANE) { PLANE = new THREE.PlaneGeometry(CHS, CHS, 1, 1); PLANE.rotateX(-Math.PI / 2); PLANE.translate(CHS / 2, 0, CHS / 2); PLANE.userData.shared = true; }
           const tm = new THREE.Mesh(PLANE, newTerrainMat(ch, G));
           tm.name = 'ground-terrain'; tm.receiveShadow = true; tm.matrixAutoUpdate = false; tm.updateMatrix(); tm.renderOrder = 2;
@@ -1945,7 +2120,7 @@ if (ngShine > 0.01) {
         }
       }
       if (job.what !== 'map') {
-        const geo = job.B.build();
+        const geo = job.geo; job.geo = null;
         if (G.road) { ch.group.remove(G.road); G.road.geometry.dispose(); G.road.material.dispose(); G.road = null; }
         if (geo) {
           const rm = new THREE.Mesh(geo, newRoadMat(ch, G));
@@ -1959,6 +2134,7 @@ if (ngShine > 0.01) {
       }
       G.lod = job.lod;
     }
+    dropProv(ch);
     G.ready = true; G.sunKey = I.sunBake ? I.sunBake.key : ''; G.dirty = false;
     if (failed) { G.potSig = job.potSig; G.potDirty = false; }
     ch.groundRes = Math.max(I.Q.groundHi || 1, 1); ch.groundStale = false;
@@ -1969,6 +2145,7 @@ if (ngShine > 0.01) {
     const G = ch.ng;
     if (ACTIVE && ACTIVE.ch === ch) ACTIVE = null;
     if (!G) return;
+    dropProv(ch);
     if (G.terrain) { ch.group.remove(G.terrain); G.terrain.material.dispose(); }
     if (G.road) { ch.group.remove(G.road); G.road.geometry.dispose(); G.road.material.dispose(); }
     if (G.surfTex) G.surfTex.dispose();
@@ -2042,6 +2219,160 @@ if (ngShine > 0.01) {
     return groundHeightAt(x, y);
   }
 
+  /* ================================================================ provisional ground (D1) */
+  // Until a chunk's full job finishes, it shows a cheap provisional layer built straight from
+  // N.world.data.roads (flat asphalt ribbons + joint discs per kind, footpaths as a lighter band, no
+  // analysis, junction or marking work) over a terrain plane drawn by the real terrain shader with a
+  // flat 2x2 ground map (soil, water from the aux texture). Same programs as the final ground: the
+  // swap never compiles a shader. Built in a few ms per chunk, so the scene's bare 'outer' plane never
+  // shows where the city stands and the roads are there from the first 3D frame.
+  const PROV = { bb: null, surf: null, rb: null, built: 0, ms: 0 };
+  const PROV_Y = { path: Y_PATH, lane: Y_ROAD - 0.03, street: Y_ROAD - 0.02, bund: Y_ROAD - 0.02, bridge: Y_ROAD - 0.01, arterial: Y_ROAD - 0.01 };
+  function provRoadBoxes() {
+    const R = (N.world && N.world.data && N.world.data.roads) || [];
+    const bb = new Float32Array(R.length * 4);
+    const FOOT = (N.world && N.world.FOOT) || {};
+    R.forEach((r, k) => {
+      if (!r || !r.pts || r.pts.length < 2) { bb[k * 4] = Infinity; return; }
+      const b = bboxOf(r.pts, (r.w || 8) / 2 + (FOOT[r.kind] || 0) + 2);
+      bb[k * 4] = b[0]; bb[k * 4 + 1] = b[1]; bb[k * 4 + 2] = b[2]; bb[k * 4 + 3] = b[3];
+    });
+    PROV.bb = bb;
+  }
+  function provSurf() {
+    if (!PROV.surf) {
+      const d = new Uint8Array(16); for (let i = 3; i < 16; i += 4) d[i] = 255;
+      PROV.surf = dataTex(d, 2, false); PROV.surf.userData.shared = true;
+    }
+    return PROV.surf;
+  }
+  function buildProv(ch) {
+    const t0 = now(), G = ch.ng || (ch.ng = { ready: false });
+    if (G.prov || G.ready) return;
+    if (!SOIL.tex) buildSoil();
+    if (!ch.aux) I.buildAux(ch);
+    const W = N.world, R = (W && W.data && W.data.roads) || [], FOOT = (W && W.FOOT) || {};
+    if (!PROV.bb || PROV.bb.length !== R.length * 4) provRoadBoxes();
+    const B = PROV.rb ? PROV.rb.reset(ch.x0, ch.y0) : (PROV.rb = new RB(ch.x0, ch.y0));
+    const bb = PROV.bb, x0 = ch.x0, y0 = ch.y0, x1 = x0 + CHS, y1 = y0 + CHS;
+    const order = [];
+    for (let k = 0; k < R.length; k++) if (!(bb[k * 4] > x1 || bb[k * 4 + 2] < x0 || bb[k * 4 + 1] > y1 || bb[k * 4 + 3] < y0)) order.push(k);
+    for (const k of order) {
+      const r = R[k], hw = (r.w || 8) / 2, pts = r.pts, path = r.kind === 'path';
+      const y = PROV_Y[r.kind] || Y_ROAD - 0.02;
+      const st = path ? null : roadStyle(r, pts[0][0], pts[0][1]);
+      const c = path ? cst(linRGB('#b09c7a'), LY.PATH, { g1: hw, age: 0.6 })
+        : cst(st.c, LY.ROAD, { g0: 1e6, g1: hw, m0: -1e6, m1: -1e6, m3: r.kind === 'lane' ? BIT.LANEKIND : 0, p1: 0, age: st.age });
+      const jc = path ? c : cst(st.c, LY.JUNC, { p1: 0, age: st.age });
+      const fp = FOOT[r.kind] || 0;
+      const fc = fp > 0 ? cst(linRGB(FOOTCOL[r.kind] || FOOTCOL.street), LY.FOOT, { age: 0.5, g1: 1e6 }) : null;
+      let u = 0;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (L < 1e-3) continue;
+        const nx = -(b[1] - a[1]) / L, ny = (b[0] - a[0]) / L;
+        pv(a[0] - nx * hw, y, a[1] - ny * hw, 0, 1, 0, u, -hw); pv(a[0] + nx * hw, y, a[1] + ny * hw, 0, 1, 0, u, hw);
+        pv(b[0] + nx * hw, y, b[1] + ny * hw, 0, 1, 0, u + L, hw); pv(b[0] - nx * hw, y, b[1] - ny * hw, 0, 1, 0, u + L, -hw);
+        flush(B, c);
+        if (fc) for (const sd of [-1, 1]) { // footpath band (lighter), under every carriageway
+          const va = sd * hw, vb = sd * (hw + fp), yf = Y_PATH - 0.015;
+          pv(a[0] + nx * va, yf, a[1] + ny * va, 0, 1, 0, u, 0); pv(a[0] + nx * vb, yf, a[1] + ny * vb, 0, 1, 0, u, fp);
+          pv(b[0] + nx * vb, yf, b[1] + ny * vb, 0, 1, 0, u + L, fp); pv(b[0] + nx * va, yf, b[1] + ny * va, 0, 1, 0, u + L, 0);
+          flush(B, fc);
+        }
+        u += L;
+      }
+      for (let i = 0; i < pts.length; i++) { // joint discs: no gaps at bends, round ends at junction nodes
+        const b = pts[i], K = 10;
+        if (b[0] < x0 - hw || b[0] > x1 + hw || b[1] < y0 - hw || b[1] > y1 + hw) continue;
+        for (let q = 0; q < K; q++) { const g = q / K * TAU; pv(b[0] + Math.cos(g) * hw, y - 0.002, b[1] + Math.sin(g) * hw, 0, 1, 0, 0, 0); }
+        flush(B, jc);
+      }
+    }
+    const geo = B.build();
+    const T = { surfTex: provSurf(), sn: 2 };
+    if (!PLANE) { PLANE = new THREE.PlaneGeometry(CHS, CHS, 1, 1); PLANE.rotateX(-Math.PI / 2); PLANE.translate(CHS / 2, 0, CHS / 2); PLANE.userData.shared = true; }
+    const tm = new THREE.Mesh(PLANE, newTerrainMat(ch, T));
+    tm.name = 'ground-prov-terrain'; tm.receiveShadow = true; tm.matrixAutoUpdate = false; tm.updateMatrix(); tm.renderOrder = 2;
+    ch.group.add(tm);
+    let rm = null;
+    if (geo) {
+      rm = new THREE.Mesh(geo, newRoadMat(ch, T));
+      rm.name = 'ground-prov-roads'; rm.receiveShadow = true; rm.matrixAutoUpdate = false; rm.updateMatrix(); rm.renderOrder = 1;
+      ch.group.add(rm);
+    }
+    G.prov = { terrain: tm, road: rm };
+    PROV.built++; PROV.ms += now() - t0;
+  }
+  function dropProv(ch) {
+    const G = ch.ng, P = G && G.prov;
+    if (!P) return;
+    ch.group.remove(P.terrain); P.terrain.material.dispose();
+    if (P.road) { ch.group.remove(P.road); P.road.geometry.dispose(); P.road.material.dispose(); }
+    G.prov = null;
+  }
+
+  /* ================================================================ priority + idle precompute (D1) */
+  function focusXY() {
+    const R = N.render, m = N.state && N.state.mode;
+    if (R && R.cam && (R.camOverride || m === 'title' || m === 'boot')) return R.cam;
+    const p = N.player;
+    if (p && isFinite(p.x) && isFinite(p.y)) return p;
+    return R && R.cam ? R.cam : null;
+  }
+  /** the chunk under the focus first: provisional ground for every chunk that has none (cheap), then
+   *  the focus chunk's full job gets its own slice (another chunk's job is set aside for it) */
+  function prioritize(budget) {
+    if (!I || !provider.enabled || !I.chunks.size) return;
+    const t0 = now(), deadline = t0 + budget;
+    const f = focusXY();
+    if (!f) return;
+    const fch = I.chunks.get(bkey(Math.floor(f.x / CHS), Math.floor(f.y / CHS))) || null;
+    try {
+      if (fch && !(fch.ng && (fch.ng.ready || fch.ng.prov))) buildProv(fch);
+      // neighbours by distance, while the slice lasts
+      const list = [];
+      for (const ch of I.chunks.values()) if (!(ch.ng && (ch.ng.ready || ch.ng.prov))) list.push(ch);
+      if (list.length) {
+        const d = (ch) => Math.hypot(ch.x0 + CHS / 2 - f.x, ch.y0 + CHS / 2 - f.y);
+        list.sort((a, b) => d(a) - d(b));
+        for (const ch of list) { if (now() > t0 + Math.min(budget * 0.5, 6)) break; buildProv(ch); }
+      }
+      if (fch && !(fch.ng && fch.ng.ready) && now() < deadline) {
+        if (ACTIVE && ACTIVE.ch !== fch) { const A = ACTIVE; if (A.ch.ng && A.ch.ng.job === A) A.ch.ng.job = null; ACTIVE = null; }
+        provider.step(fch, 0, deadline);
+      }
+    } catch (e) { N.err('view3d.ground.priority', e); }
+  }
+  // the global analysis + soil colours run in idle slices while the game is still top-down, so the
+  // first switch to 3D starts with them done (they never need THREE)
+  let idleH = 0, lastSlice = 0;
+  const precomputed = () => NET.built && !AN && SOIL.done;
+  function idleKick() {
+    if (idleH || precomputed()) return;
+    const ric = window.requestIdleCallback;
+    idleH = ric ? ric(idleRun, { timeout: 300 }) : setTimeout(() => idleRun(null), 30);
+    if (!ric) idleH = idleH || 1;
+  }
+  function precomputeSlice(ms) {
+    const W = N.world;
+    if (!W || !W.built || !W.roads || precomputed()) return false;
+    if (ACTIVE && ACTIVE.step === 0) return false; // a chunk job is driving the analysis
+    const dead = now() + ms;
+    try {
+      if (!NET.built) analyzeStep(dead);
+      if (NET.built && !SOIL.done && now() < dead) soilStep(dead);
+    } catch (e) { N.err('view3d.ground.idle', e); }
+    return true;
+  }
+  function idleRun(dl) {
+    idleH = 0;
+    const W = N.world;
+    if (!W || !W.built || !W.roads) { setTimeout(idleKick, 400); return; }
+    if (dl && !dl.didTimeout) precomputeSlice(clamp(dl.timeRemaining() - 1, 1, 10));
+    if (!precomputed()) idleKick();
+  }
+
   /* ================================================================ provider (view3d.js hook) */
   // LOD: chunks near the focus get the full ground (2 u surface texels, kerb detail, pothole dips);
   // far chunks a cheaper one (4 u texels, plain kerbs); downgrades wait for hysteresis (core rule)
@@ -2056,7 +2387,7 @@ if (ngShine > 0.01) {
     enabled: true,
     attach(internals) {
       I = internals; THREE = I.THREE;
-      NET.built = false;
+      // (the network analysis is kept: it may already be done from the top-down idle time)
       GU.uWet = { value: 0 }; GU.uRain = { value: 0 }; GU.uCamPos = { value: new THREE.Vector3() };
       SOIL.u = { value: new THREE.Vector2(1, 1) }; SOIL.t = { value: null };
     },
@@ -2087,6 +2418,7 @@ if (ngShine > 0.01) {
       }
       let G = ch.ng;
       if (!G) G = ch.ng = { ready: false };
+      if (!G.ready && !G.prov) { buildProv(ch); if (now() > deadline) return; }
       if (!G.job) {
         const lod = lodFor(G, d);
         let what = 'all';
@@ -2126,6 +2458,8 @@ if (ngShine > 0.01) {
       if (!GU.uWet) return;
       const cam = (H && H.camera) || (I && I.E.camera);
       if (cam) GU.uCamPos.value.copy(cam.position);
+      // the chunk under the player first (its own slice while it has no finished ground)
+      prioritize(I && I.Q.tier === 'low' ? 8 : 10);
       let raining = false;
       try { raining = !!(N.seasons && N.seasons.is && N.seasons.is('rain')) || !!(N.flags && N.flags.rain === true); } catch (e) { raining = false; }
       const target = raining ? 1 : 0;
@@ -2146,9 +2480,25 @@ if (ngShine > 0.01) {
     },
     dispose() { },
   });
-  N.on('potholes:change', () => { if (I) I.replan(); });
+  N.on('potholes:change', () => { POTVIS.clear(); if (I) I.replan(); });
+  // while the 3D view warms up (still drawn top-down) the focus chunk gets the whole warm slice too
+  if (N.addSystem) N.addSystem({
+    id: 'view3d_ground', order: 62, runIn: ['*'],
+    update() {
+      if (I && I.E && I.E.warming) { prioritize(16); return; }
+      // top-down: a small slice of every frame (idle callbacks alone are too rare while the 2D game
+      // renders), so the analysis is done a few seconds after the world is built
+      if (!precomputed() && now() - lastSlice > 12) { // once per frame (sub-steps)
+        const m = N.state && N.state.mode, loading = !!(N.view && N.view.loading);
+        // title screen / 3D library loading: nothing else to do, bigger slices; playing top-down: small
+        precomputeSlice(loading ? 14 : m === 'title' || m === 'boot' ? 10 : 5);
+        lastSlice = now();
+      }
+    },
+  });
+  idleKick();
   // a new world (map rebuild): analyse again and rebuild every chunk's ground from scratch
-  N.on('world:built', () => { NET.built = false; AN = null; POTS.clear(); if (SOIL.tex) { SOIL.tex.dispose(); SOIL.tex = null; } if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } });
+  N.on('world:built', () => { NET.built = false; AN = null; POTS.clear(); POTVIS.clear(); PROV.bb = null; resetSoil(); idleKick(); if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } });
 
   /* ================================================================ API */
   V.groundHeightAt = groundHeightAt;
@@ -2160,7 +2510,7 @@ if (ngShine > 0.01) {
     /** tests / cutscenes: force the road wetness 0..1 (null = follow the weather again) */
     setWet(v) { wetForce = v == null ? null : clamp(+v || 0, 0, 1); if (wetForce != null) { wetT = wetForce; if (GU.uWet) GU.uWet.value = wetT; } return wetT; },
     /** re-analyse the road network and rebuild every chunk's ground */
-    rebuild() { NET.built = false; AN = null; POTS.clear(); if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } },
+    rebuild() { NET.built = false; AN = null; POTS.clear(); POTVIS.clear(); if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } },
     stats() {
       let chunks = 0, tris = 0, tex = 0;
       if (I) for (const ch of I.chunks.values()) if (ch.ng && ch.ng.ready) { chunks++; tris += ch.ng.tris || 0; if (ch.ng.surfTex) tex += 1; }
@@ -2170,7 +2520,63 @@ if (ngShine > 0.01) {
         chunks, roadTris: tris, textures: tex, built: STATS.built, avgChunkMs: STATS.built ? +(STATS.ms / STATS.built).toFixed(2) : 0, lastChunkMs: +STATS.lastMs.toFixed(2),
         wet: +(GU.uWet ? GU.uWet.value : 0).toFixed(2), potVer: curPot(),
         stepMs: STEPMS.map((v) => +(v || 0).toFixed(1)), anaMs: ANAMS.map((v) => +(v || 0).toFixed(1)), soilMs: SOIL.ms,
+        precomputed: precomputed(), provBuilt: PROV.built, provAvgMs: PROV.built ? +(PROV.ms / PROV.built).toFixed(2) : 0,
+        provChunks: I ? Array.from(I.chunks.values()).filter((ch) => ch.ng && ch.ng.prov).length : 0,
+        focusReady: (() => { const f = focusXY(), ch = f && chunkAt(f.x, f.y); return !!(ch && ch.ng && ch.ng.ready); })(),
+        focusCovered: (() => { const f = focusXY(), ch = f && chunkAt(f.x, f.y); return !!(ch && ch.ng && (ch.ng.ready || ch.ng.prov)); })(),
       };
+    },
+    /** tests (D5): emit the kerbed junctions (+ their arm pieces) near (x, y) into a scratch builder
+     *  and count overlapping raised top polygons (kerb bands + pavers) per junction: should be 0 */
+    kerbOverlaps(x, y, radius, maxJ) {
+      if (!NET.built || !THREE) return null;
+      const R = radius || 1500, out = { junctions: 0, corners: 0, pairs: 0, worst: [] };
+      const js = NET.juncs.filter((J) => J.kerbs && J.kerbs.some((k) => k.type === 'arc' && k.A.fp > 0 && k.B.fp > 0) && Math.hypot(J.x - x, J.y - y) < R)
+        .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y)).slice(0, maxJ || 60);
+      const B = new RB(0, 0);
+      const area = (t) => Math.abs((t[1][0] - t[0][0]) * (t[2][1] - t[0][1]) - (t[1][1] - t[0][1]) * (t[2][0] - t[0][0])) / 2;
+      const clipTri = (subj, clip) => { // convex clip (Sutherland-Hodgman), both CCW-normalised
+        let o = subj;
+        for (let i = 0; i < clip.length && o.length; i++) {
+          const a = clip[i], b = clip[(i + 1) % clip.length], inp = o; o = [];
+          const side = (p) => (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+          for (let k = 0; k < inp.length; k++) {
+            const p = inp[k], q = inp[(k + 1) % inp.length], sp = side(p), sq = side(q);
+            if (sp >= 0) o.push(p);
+            if ((sp >= 0) !== (sq >= 0)) { const t = sp / (sp - sq); o.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); }
+          }
+        }
+        let A = 0; for (let i = 0; i < o.length; i++) { const p = o[i], q = o[(i + 1) % o.length]; A += p[0] * q[1] - q[0] * p[1]; }
+        return Math.abs(A) / 2;
+      };
+      const ccw = (t) => ((t[1][0] - t[0][0]) * (t[2][1] - t[0][1]) - (t[1][1] - t[0][1]) * (t[2][0] - t[0][0]) < 0 ? [t[0], t[2], t[1]] : t);
+      for (const J of js) {
+        B.reset(J.x - CHS / 2, J.y - CHS / 2);
+        EMIT_LOD = 0;
+        emitJunction(B, J);
+        for (const a of J.arms) emitPiece(B, a.piece, null);
+        const tris = [];
+        for (let i = 0; i < B.ni; i += 3) {
+          const ia = B.I[i], ib = B.I[i + 1], ic = B.I[i + 2], L = B.ST[ia * 4];
+          if (!(Math.abs(L - LY.KERB) < 0.5 || Math.abs(L - LY.FOOT) < 0.5)) continue;
+          if (B.Nn[ia * 3 + 1] < 120 || B.P[ia * 3 + 1] < 0.3) continue; // raised top surfaces only
+          const t = [ia, ib, ic].map((k) => [B.P[k * 3] + B.x0, B.P[k * 3 + 2] + B.z0]);
+          if (Math.hypot(t[0][0] - J.x, t[0][1] - J.y) > 45 || area(t) < 1e-3) continue;
+          const bb = [Math.min(t[0][0], t[1][0], t[2][0]), Math.min(t[0][1], t[1][1], t[2][1]), Math.max(t[0][0], t[1][0], t[2][0]), Math.max(t[0][1], t[1][1], t[2][1])];
+          tris.push({ t: ccw(t), bb });
+        }
+        let pairs = 0, worst = 0;
+        for (let i = 0; i < tris.length; i++) for (let k = i + 1; k < tris.length; k++) {
+          const a = tris[i], b = tris[k];
+          if (a.bb[2] < b.bb[0] || b.bb[2] < a.bb[0] || a.bb[3] < b.bb[1] || b.bb[3] < a.bb[1]) continue;
+          const ov = clipTri(a.t, b.t);
+          if (ov > 0.05) { pairs++; worst = Math.max(worst, ov); }
+        }
+        out.junctions++; out.corners += J.kerbs.filter((k) => k.type === 'arc').length; out.pairs += pairs;
+        if (pairs) out.worst.push({ id: J.id, x: Math.round(J.x), y: Math.round(J.y), pairs, area: +worst.toFixed(2) });
+      }
+      out.worst.sort((a, b) => b.pairs - a.pairs); out.worst = out.worst.slice(0, 8);
+      return out;
     },
     /** debug: the analysed network (pieces, junctions) */
     net() { return NET; },

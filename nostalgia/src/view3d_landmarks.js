@@ -587,10 +587,16 @@
   const CELL = 384;
   let cells = null;
   function cellKey(cls, lm) { return cls + ':' + Math.floor(lm.x / CELL) + ',' + Math.floor(lm.y / CELL); }
+  // landmarks another module draws with its own '#<id>' model (models3d) stay out of the batches
+  function overrides() {
+    const M = N.models3d, st = M && M.ready && M.stats ? M.stats() : null;
+    return new Set(st ? st.registered.filter((k) => k[0] === '#').map((k) => k.slice(1)) : []);
+  }
   function indexCells() {
     cells = new Map();
+    const skip = overrides();
     for (const lm of (N.world && N.world.data && N.world.data.landmarks) || []) {
-      const d = defFor(lm); if (!d || !d.cls) continue;
+      const d = defFor(lm); if (!d || !d.cls || skip.has(lm.id)) continue;
       const k = cellKey(d.cls, lm);
       let c = cells.get(k); if (!c) { c = { key: k, cls: d.cls, members: [], owner: null }; cells.set(k, c); }
       c.members.push(lm);
@@ -2993,6 +2999,21 @@
   });
 
   N.on('world:built', () => { cells = null; cacheClear(); });
+  // models3d registered '#<id>' models: re-batch without those members (re-registering the affected small
+  // classes makes the core dispose and rebuild their cells, so no cell keeps drawing a replaced shop)
+  N.on('models3d:ready', () => {
+    const skip = overrides(); if (!skip.size) return;
+    const cls = new Set();
+    for (const lm of (N.world && N.world.data && N.world.data.landmarks) || []) { const d = skip.has(lm.id) && defFor(lm); if (d && d.cls) cls.add(d.cls); }
+    if (!cls.size) return;
+    cells = null;
+    for (const k of Array.from(OBJ_CACHE.keys())) {
+      if (k.indexOf('cell:') !== 0) continue;
+      const o = OBJ_CACHE.get(k); OBJ_CACHE.delete(k);
+      o.traverse((m) => { if (m.geometry) { m.geometry.userData.shared = false; if (!o.parent) m.geometry.dispose(); } });
+    }
+    for (const [id, d] of DEFS) if (d.cls && cls.has(d.cls)) V3.registerLandmark(id, buildSmall, { dispose: disposeSmall });
+  });
   registerAll();
   /** debug / tests: build one landmark's model off-scene and report its cost */
   function measure(id) {
