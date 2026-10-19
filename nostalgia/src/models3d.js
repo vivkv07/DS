@@ -848,7 +848,7 @@
         g.userData.m3d = id;
         if (lazy) { g.userData.m3dRef = id; ref(id, 1); }
         return g;
-      } catch (e) { N.err('models3d.landmark:' + id, e); return fallbackLandmark(md, lm); }
+      } catch (e) { N.err('models3d.landmark:' + id, e); return lazy ? proceduralLandmark(T, lm, H) : fallbackLandmark(md, lm); }
     };
   }
   /* landmark variants (meta.variants = {rule, names}): top-level GLB nodes named var_<name>, one of
