@@ -29,6 +29,7 @@
 
   window.STAGE_PREP = function (seg, sh) {
     const [hh, mm] = seg.time || [12, 0];
+    if (N.wires) N.wires.draw3d = !sh.noWires; // poles / wires would cut across the monument from these vantages
     N.debug.setTime(hh, mm);
     if (seg.shot === 'rain') { N.weather.force({ rain: 0.95, storm: 0.55 }); N.weather.wet = 1; }
     else { N.weather.force({ rain: 0, storm: 0, mist: 0 }); N.weather.wet = 0; }
