@@ -107,6 +107,17 @@ function placeAt(page, id) {
     return { x: Math.round(p.x), y: Math.round(p.y) };
   }, id);
 }
+/** frame a landmark with the debug camera (from its front, raised), so traffic / filler blocks do not hide it */
+function frame(page, id) {
+  return page.evaluate((id) => {
+    const lm = N.WORLD_DATA.landmarks.find((l) => l.id === id);
+    const F = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] };
+    const f = isFinite(lm.faceAngle) ? [Math.cos(lm.faceAngle), Math.sin(lm.faceAngle)] : F[lm.face] || F.s;
+    const H3 = (lm.h || 20) * 1.5, r = Math.max(lm.w, lm.d) * 0.9 + H3 * 1.1 + 30;
+    const eye = [lm.x + f[0] * r + f[1] * r * 0.35, H3 * 0.9 + 25, lm.y + f[1] * r - f[0] * r * 0.35];
+    N.view3dActors.debug.camera(eye, [lm.x, H3 * 0.4, lm.y], 50);
+  }, id);
+}
 /** which lazy model draws each landmark (if any): the core's key order '#<id>' then the draw id */
 const LAZY_OF = () => {
   const LK = N.models3d.debug.S.landmarkKeys, lazy = new Set(N.models3d.stats().lazy.keys);
@@ -181,8 +192,9 @@ async function testSite(browser) {
         return Object.keys(lms).map((lm) => lm + '=' + (by[lm] || 'none'));
       }, sp.lms);
       check(res, sp.name + ': ' + ids.join(', ') + ' drawn by their Blender models', have.join(' '));
-      await page.evaluate(() => N.view3d.snapCamera());
+      await frame(page, sp.look);
       await shot(page, 'lazy3d_' + sp.name + '.png');
+      await page.evaluate(() => N.view3dActors.debug.camera(null));
     }
     const after = await page.evaluate(() => N.models3d.stats());
     const allow = new Set(await page.evaluate(allowedLazy, { pts: visited, lmDist: LM_DIST }));
@@ -231,8 +243,9 @@ async function testFile(browser) {
     const names = await page.evaluate(() => N.view3d.engine.lmGroup.children.map((c) => c.name).filter((n) => /theatre/.test(n)));
     check(built && !names.some((n) => /^m3d-lm:/.test(n)), 'the RTC X Roads cinemas are drawn procedurally (view3d_landmarks)', names.join(' '));
     check(requests.length === 0, 'no lazy GLB request was made', JSON.stringify(requests));
-    await page.evaluate(() => N.view3d.snapCamera());
+    await frame(page, 'sandhya_theatre');
     await shot(page, 'lazy3d_file_rtc.png');
+    await page.evaluate(() => N.view3dActors.debug.camera(null));
     const nerr = await page.evaluate(() => (N.debug.state().errors || []));
     const all = errors.concat(nerr.map((e) => 'N.err: ' + e));
     check(all.length === 0, 'zero console / page / N.err errors', all.slice(0, 6).join(' | '));

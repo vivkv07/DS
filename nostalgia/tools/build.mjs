@@ -69,7 +69,8 @@ const fragment = [title, fontLinks, inlineAll(localStyles), inlineAll(bodyInner)
 // Sanity: every inlined script must still close exactly once (no early "</script>")
 const expect = (html.match(/<script\s+src=/g) || []).length;
 for (const [name, out, extra] of [['nostalgia.html', full, lazyBlocks.length], ['artifact.html', fragment, 0], ['web.html', web, 0]]) {
-  const opens = (out.match(/<script>/g) || []).length, closes = (out.match(/<\/script>/gi) || []).length;
+  // count the openers build.mjs writes ('<script>/* <file> */'), not a literal "<script>" inside a source comment
+  const opens = (out.match(/<script>\/\* /g) || []).length, closes = (out.match(/<\/script>/gi) || []).length;
   const lazyOpen = (out.match(/<script type="text\/plain" id="/g) || []).length;
   if (opens !== expect || closes !== expect + extra || lazyOpen !== extra) { console.error('build: ' + name + ' has ' + opens + ' <script> / ' + lazyOpen + ' lazy / ' + closes + ' </script>, expected ' + expect + ' + ' + extra); process.exit(1); }
 }

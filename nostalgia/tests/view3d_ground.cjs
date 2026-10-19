@@ -201,7 +201,7 @@ async function main() {
   // ---- D6: job slices stay near their deadline (no long hitches); SwiftShader on a loaded box is noisy
   const ov = await page.evaluate(() => N.view3d.ground.stats().overMs);
   console.log('  slice overrun past deadline ' + JSON.stringify(ov));
-  check(ov.p95 < 40, 'ground job slices end near their deadline (overrun p50 ' + ov.p50 + ' ms, p95 ' + ov.p95 + ' ms, max ' + ov.max + ' ms)');
+  check(ov.p95 < 30, 'ground job slices end near their deadline (overrun p50 ' + ov.p50 + ' ms, p95 ' + ov.p95 + ' ms, max ' + ov.max + ' ms)');
 
   // ---- D5: kerbed junction corners: one footpath polygon per corner, no overlapping kerb / paver tops
   const ko = await page.evaluate(() => {
