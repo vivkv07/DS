@@ -1,0 +1,53 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 63540,
+ "clips": {},
+ "family": "landmark",
+ "file": "osmania_arts_college.glb",
+ "front": "-Y",
+ "id": "osmania_arts_college",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 62.1,
+ "kit": 1,
+ "materials": [
+  "M_osmania_arts_college",
+  "M_osmania_arts_college_ou_name"
+ ],
+ "max": [
+  99.6,
+  23.1,
+  71.67
+ ],
+ "meta": {
+  "draw": "ou_arts_college",
+  "face": "s",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   200,
+   70
+  ],
+  "height": 66.0
+ },
+ "min": [
+  -99.6,
+  -35.2,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_modern",
+ "size": [
+  199.2,
+  58.3,
+  71.67
+ ],
+ "tint": null,
+ "tris": 516,
+ "units": "u",
+ "up": "Z"
+}

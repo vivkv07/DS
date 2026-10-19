@@ -1055,10 +1055,17 @@ function snapShop(l, fr) {
   moves.push({ id: l.id, kind: 'shop', moved: Math.round(Math.hypot(st.x - cx, st.y - cy)), from: c0 });
   return true;
 }
+// explicit fronts where the automatic turn picks the wrong street: Sandhya and Odeon at RTC X Roads would face
+// each other across a ~4 u gap (Sandhya fronts Chikkadpally Road to its east, Odeon the lane to its west)
+const FACE_FIX = { sandhya_theatre: 'e', odeon_theatre: 'w' };
 function placeSite(l) {
   const c0 = landmarkCentre(l.id) || (() => { warn('no real position for landmark ' + l.id); return [l.x, l.y]; })();
-  // turn generic buildings to face their street when the v1 face side has no street
-  if (l.face && REFACE_OK.has(l.draw) && !l.solids && !l.noSolid) {
+  if (FACE_FIX[l.id] && l.face) {
+    const f = FACE_FIX[l.id], ns0 = l.face === 'n' || l.face === 's', ns1 = f === 'n' || f === 's';
+    if (ns0 !== ns1) { const t = l.w; l.w = l.d; l.d = t; }
+    l.face = f;
+  } else if (l.face && REFACE_OK.has(l.draw) && !l.solids && !l.noSolid) {
+    // turn generic buildings to face their street when the v1 face side has no street
     const sideHas = (f) => { const v = FACE[f], e = (v[0] ? l.w : l.d) / 2; for (let d = e + 6; d <= e + 70; d += 8) { const x = c0[0] + v[0] * d, y = c0[1] + v[1] * d; if (OCC.get(x, y) === 1) return d - e; } return Infinity; };
     const cur = sideHas(l.face);
     if (cur === Infinity) {

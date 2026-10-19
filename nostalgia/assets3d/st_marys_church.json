@@ -1,0 +1,52 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 33192,
+ "clips": {},
+ "family": "landmark",
+ "file": "st_marys_church.glb",
+ "front": "-Y",
+ "id": "st_marys_church",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 32.4,
+ "kit": 1,
+ "materials": [
+  "M_st_marys_church_lamp_lens@night",
+  "M_st_marys_church"
+ ],
+ "max": [
+  18.7,
+  25.5,
+  67.72
+ ],
+ "meta": {
+  "face": "s",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   56,
+   56
+  ],
+  "height": 69.0,
+  "landmark": "church_st_marys"
+ },
+ "min": [
+  -18.7,
+  -28.2,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_worship",
+ "size": [
+  37.4,
+  53.7,
+  67.72
+ ],
+ "tint": null,
+ "tris": 136,
+ "units": "u",
+ "up": "Z"
+}

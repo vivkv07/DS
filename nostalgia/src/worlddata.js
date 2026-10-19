@@ -1,6 +1,6 @@
 /* NOSTALGIA — worlddata.js   (GENERATED: do not edit by hand; edit tools/geo/build_worlddata.cjs and run it)
  * MAP_PLAN_FINAL — Map v2: the real Hyderabad + Secunderabad as N.WORLD_DATA (amendment A1).
- * Owner: map builder. Generated 2026-10-17 by tools/geo/build_worlddata.cjs from design/geo/*.json,
+ * Owner: map builder. Generated 2026-10-19 by tools/geo/build_worlddata.cjs from design/geo/*.json,
  * tools/geo/project.cjs and design/geo/worlddata_v1.js (the hand-made v1 map: every id, kind, name, sign, draw id,
  * variant, roof, plank, respect zone, podium, hide spot, bus stop and landmark size comes from there).
  *
@@ -625,9 +625,9 @@
     {"id":"sanjeevaiah_park_station","name":"Sanjeevaiah Park station","draw":"halt_station","x":9012,"y":2141,"w":60,"d":26,"h":16,"face":"s","v1":[3900,800],"conf":"high","track":[9007,2172]},
     {"id":"necklace_road_station","name":"Necklace Road station","draw":"halt_station","x":7841,"y":3008,"w":26,"d":60,"h":16,"face":"e","v1":[3236,1450],"conf":"high","track":[7874,2999]},
     {"id":"khairatabad_station","name":"Khairatabad station","draw":"halt_station","x":7712,"y":3787,"w":26,"d":50,"h":16,"face":"e","v1":[3266,1880],"conf":"high","track":[7683,3780]},
-    {"id":"sandhya_theatre","name":"Sandhya 70mm & 35mm","draw":"cinema","x":10764,"y":4421,"w":96,"d":68,"h":34,"face":"w","variant":"sandhya","films":["CHARMINAR CHINNODU","RANGULA PATANG"],"v1":[5004,2172],"conf":"low","ll":[17.405336,78.496329]},
+    {"id":"sandhya_theatre","name":"Sandhya 70mm & 35mm","draw":"cinema","x":10764,"y":4421,"w":96,"d":68,"h":34,"face":"e","variant":"sandhya","films":["CHARMINAR CHINNODU","RANGULA PATANG"],"v1":[5004,2172],"conf":"low","ll":[17.405336,78.496329]},
     {"id":"bawarchi","name":"Bawarchi","draw":"restaurant","x":10942,"y":4426,"w":52,"d":36,"h":24,"face":"w","sign":"BAWARCHI","v1":[4990,2100],"conf":"low","ll":[17.405697,78.496377]},
-    {"id":"odeon_theatre","name":"Odeon","draw":"cinema","x":10682,"y":4397,"w":64,"d":88,"h":32,"face":"e","variant":"odeon","films":["PREMA PANDAGA"],"v1":[4824,2140],"conf":"low","ll":[17.405562,78.494588]},
+    {"id":"odeon_theatre","name":"Odeon","draw":"cinema","x":10682,"y":4397,"w":64,"d":88,"h":32,"face":"w","variant":"odeon","films":["PREMA PANDAGA"],"v1":[4824,2140],"conf":"low","ll":[17.405562,78.494588]},
     {"id":"sudarshan_theatre","name":"Sudarshan 35mm","draw":"cinema","x":10735,"y":4630,"w":84,"d":66,"h":30,"face":"e","variant":"sudarshan","films":["GULLY SIMHAM"],"v1":[4818,2282],"conf":"low","ll":[17.404477,78.495341]},
     {"id":"devi_theatre","name":"Devi 70mm","draw":"cinema","x":10964,"y":4533,"w":66,"d":100,"h":34,"face":"w","variant":"devi","films":["TOOFAN EXPRESS","JAI HYDERABAD"],"v1":[4992,2346],"conf":"low","ll":[17.404205,78.49713]},
     {"id":"hoarding_rtc_1","name":"Film hoarding","draw":"film_hoarding","x":10794,"y":4379,"w":30,"d":6,"h":40,"noSolid":true,"solids":[[10782,4377,4,4],[10802,4377,4,4]],"film":"CHARMINAR CHINNODU","pad":2,"v1":[4870,2186],"conf":"low","ll":[17.405471,78.495341]},
@@ -1140,7 +1140,7 @@
     {"id":"rtc_x_roads","name":"RTC X Roads","x":10860,"y":4438,"r":60,"district":"rtc_x","kind":"junction","podium":true,"podiumHome":"pochaiah","conf":"medium","ll":[17.4052,78.496]},
     {"id":"sandhya_theatre","name":"Sandhya 70mm & 35mm","x":10713,"y":4448,"r":30,"district":"himayatnagar","kind":"cinema","conf":"low","ll":[17.405336,78.496329]},
     {"id":"bawarchi","name":"Bawarchi","x":10890,"y":4426,"r":30,"district":"rtc_x","kind":"food","conf":"low","ll":[17.405697,78.496377]},
-    {"id":"odeon_theatre","name":"Odeon","x":10722,"y":4377,"r":30,"district":"himayatnagar","kind":"cinema","conf":"low","ll":[17.405562,78.494588]},
+    {"id":"odeon_theatre","name":"Odeon","x":10684,"y":4449,"r":30,"district":"himayatnagar","kind":"cinema","conf":"low","ll":[17.405562,78.494588]},
     {"id":"sudarshan_theatre","name":"Sudarshan 35mm","x":10793,"y":4630,"r":30,"district":"himayatnagar","kind":"cinema","conf":"low","ll":[17.404477,78.495341]},
     {"id":"devi_theatre","name":"Devi 70mm","x":10923,"y":4533,"r":30,"district":"rtc_x","kind":"cinema","conf":"low","ll":[17.404205,78.49713]},
     {"id":"shanti_theatre","name":"Shanti Theatre","x":10287,"y":5450,"r":24,"district":"himayatnagar","kind":"cinema","conf":"low","ll":[17.3938,78.4895]},

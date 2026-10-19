@@ -1,0 +1,52 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 47504,
+ "clips": {},
+ "family": "landmark",
+ "file": "ujjaini_mahankali_temple.glb",
+ "front": "-Y",
+ "id": "ujjaini_mahankali_temple",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 46.4,
+ "kit": 1,
+ "materials": [
+  "M_ujjaini_mahankali_temple_lamp_lens@night",
+  "M_ujjaini_mahankali_temple"
+ ],
+ "max": [
+  19.75,
+  19.75,
+  31.275
+ ],
+ "meta": {
+  "face": "e",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   40,
+   40
+  ],
+  "height": 51.0,
+  "landmark": "ujjaini_mahankali_temple"
+ },
+ "min": [
+  -19.75,
+  -21.6,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_worship",
+ "size": [
+  39.5,
+  41.35,
+  31.275
+ ],
+ "tint": null,
+ "tris": 298,
+ "units": "u",
+ "up": "Z"
+}
