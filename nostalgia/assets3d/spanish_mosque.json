@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 49628,
+ "bytes": 48904,
  "clips": {},
  "family": "landmark",
  "file": "spanish_mosque.glb",
@@ -11,14 +11,14 @@
  "images": [
   "image/webp"
  ],
- "kb": 48.5,
+ "kb": 47.8,
  "kit": 1,
  "materials": [
   "M_spanish_mosque"
  ],
  "max": [
   19.1,
-  15.113,
+  15.1,
   65.5
  ],
  "meta": {
@@ -41,7 +41,7 @@
  "script": "_lm_modern",
  "size": [
   38.2,
-  36.288,
+  36.275,
   65.5
  ],
  "tint": null,
