@@ -39,7 +39,7 @@
 
   function updateHero(dt, H) {
     const s = S.heroSpec;
-    if (!s) { if (S.heroObj) S.heroObj.visible = false; return; }
+    if (!s) { if (S.heroObj) S.heroObj.visible = false; if (S.blob) S.blob.visible = false; return; }
     if (!S.chr) {
       if (!N.models3d || !N.models3d.ready) return;
       S.chr = N.models3d.character('kid_chinnu', N.player.look);
@@ -50,6 +50,9 @@
     }
     S.heroObj.visible = true;
     S.heroObj.position.set(s.x, s.h, s.y);
+    // a soft contact shadow under the feet (the sun's shadow from up there often falls out of frame)
+    if (!S.blob && H.blobShadow) { S.blob = H.blobShadow(4.2, 4.2); if (S.blob) { S.blob.renderOrder = 3; H.layer.add(S.blob); } }
+    if (S.blob) { S.blob.visible = true; S.blob.position.set(s.x, s.h + 0.06, s.y); }
     S.heroObj.rotation.y = -(s.angle || 0);
     const clip = s.clip || 'idle';
     if (S.chr.clip !== clip && S.chr.has(clip)) S.chr.play(clip, { fade: 0.2, loop: true });
@@ -140,17 +143,35 @@
   S.cam = function (c) { S.camSpec = c; };
 
   S.summit = function (x, y, r) {
+    // highest surface under (x, y) [+ a ring of radius r]. Blender landmark meshes switch their ray tests off
+    // (performance), so call each mesh class's own raycast directly on every mesh whose bounds cover the point.
     const H = N.view3d.H, T = H.THREE || window.THREE;
-    const rc = new T.Raycaster(), o = new T.Vector3(), d = new T.Vector3(0, -1, 0);
+    const rc = new T.Raycaster(), o = new T.Vector3(), d = new T.Vector3(0, -1, 0), sph = new T.Sphere();
     rc.camera = H.camera; // sprites in the scene need it
     let best = 0;
-    const objs = H.scene.children.filter((c) => c !== H.layer && c.name !== 'sky' && c.name !== 'outer');
     const pts = [[0, 0]];
     for (let k = 0; k < 8 && r; k++) pts.push([Math.cos(k * Math.PI / 4) * r, Math.sin(k * Math.PI / 4) * r]);
+    const meshes = [];
+    H.scene.traverse((m) => {
+      if (!m.isMesh || m.isSprite || m === S.heroObj) return;
+      let p = m; while (p) { if (p === H.layer) return; p = p.parent; }
+      if (m.name === 'sky' || m.name === 'outer') return;
+      if (m.material && m.material.transparent && !/^COL_/.test(m.name || '')) return;
+      meshes.push(m);
+    });
+    const hits = [];
     for (const [ox, oy] of pts) {
       o.set(x + ox, 900, y + oy); rc.set(o, d); rc.far = 1000;
-      const hits = rc.intersectObjects(objs, true);
-      for (const h of hits) { const col = /^COL_/.test(h.object.name || ''); if (h.object.isMesh && (col || (h.object.visible && !(h.object.material && h.object.material.transparent)))) { if (!ox && !oy) best = Math.max(best, h.point.y); else best = Math.max(best, h.point.y); break; } }
+      for (const m of meshes) {
+        if (!m.isInstancedMesh) {
+          if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+          sph.copy(m.geometry.boundingSphere).applyMatrix4(m.matrixWorld);
+          if (Math.hypot(sph.center.x - o.x, sph.center.z - o.z) > sph.radius) continue;
+        }
+        hits.length = 0;
+        try { Object.getPrototypeOf(m).raycast.call(m, rc, hits); } catch (e) { continue; }
+        for (const h of hits) if (h.point.y > best && h.point.y < 600) best = h.point.y;
+      }
     }
     return best;
   };
