@@ -16,6 +16,8 @@
  *     look may be an object or a function returning one (variants); name may hold tokens.
  *   N.dialogue.speakers[id]  (plain assignment {name, color, portrait} also works)
  *   N.dialogue.cancel() / advance() / isOpen() / skip (debug) / textSpeed
+ *   N.dialogue.autoAdvance (menus' setting): plain lines move on by themselves ~2-7 s (by length)
+ *       after they finish typing; choices always wait for the player.
  *   N.dialogue.current -> {speaker (the id the script used), as (resolved id), text (names
  *       substituted), typing, choices, selected, mood} | null
  *   N.dialogue.speakerName(id) -> the name plate text; clearBarks(); barkCount(); moods
@@ -1024,7 +1026,7 @@
 
   /* ================================================================= API */
   const D = (N.dialogue = {
-    speakers, glossary: GLOSSARY, dictionary: DICTIONARY, skip: false, active: false, textSpeed: 1,
+    speakers, glossary: GLOSSARY, dictionary: DICTIONARY, skip: false, active: false, textSpeed: 1, autoAdvance: false,
     define, speaker, paintPortrait, portraitCanvas, filter, subst: filter, names, gloss, bark, is2026,
     moods: MOODS.slice(),
     speakerName(id) { return speakerName(speaker(id)); },
@@ -1078,6 +1080,11 @@
   });
 
   /* ============================================================== system */
+  /** Seconds an auto-advancing line stays up after it has finished typing: ~2 s, longer lines longer. */
+  function autoDelay(line) {
+    const n = line.chars ? line.chars.length : String(line.t || '').length;
+    return Math.min(7, Math.max(2, 1.2 + n * 0.045));
+  }
   function update(dt) {
     const line = cur;
     if (!line) return;
@@ -1098,6 +1105,10 @@
         if (line.shown >= line.chars.length) finishTyping();
       }
     } else if (line.auto && !line.choices && N.time.now - (line.doneT || 0) > line.auto) {
+      done(undefined);
+      return;
+    } else if (D.autoAdvance && !line.auto && !line.choices && N.time.now - (line.doneT || 0) > autoDelay(line)) {
+      // settings "Auto-advance dialogue": move on once the line has had time to be read (never picks a choice)
       done(undefined);
       return;
     }

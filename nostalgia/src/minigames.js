@@ -800,7 +800,17 @@
             (canRetry ? '<button type="button" class="sign-btn' + (primaryDone ? ' alt' : ' primary') + '" data-do="retry">Phir se</button>' : '') +
           '</div></div></div>', 'mg-card-result');
       this.sfx(r.win ? 'mission_passed' : 'mission_failed');
-      if (this.auto) setTimeout(() => { if (!this.closed && this.phase === 'result' && this.params.autoClose !== false) this.cardDo('done'); }, 900);
+      // autoplay: keep trying until the card is really up (cardDo ignores it for 0.15 s of the
+      // minigame's own clock, which a single 900 ms timer can miss at a few fps), capped at ~20 s
+      if (this.auto) {
+        let tries = 0;
+        const autoClose = () => {
+          if (this.closed || this.phase !== 'result' || this.params.autoClose === false) return;
+          if (this.cardWrap.querySelector('.mg-card-result') && this.rt - (this.cardAt || 0) >= 0.15) { this.cardDo('done'); return; }
+          if (++tries < 64) setTimeout(autoClose, 300);
+        };
+        setTimeout(autoClose, 900);
+      }
     }
 
     /* --------------------------------------------------------- the loop */

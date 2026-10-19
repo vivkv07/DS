@@ -37,7 +37,9 @@
  *   spawnPed(role?, {x, y, zone?}), bark(ped, text | situation), crowd(placeId) -> zone info,
  *   friendlyDogs() -> fed dogs following the player, closeRoads(id, {x, y, r} | null) (no traffic there),
  *   sense(v) -> nearest obstacle ahead {e, gap, sp} (shared with wanted.js pursuer vehicles),
- *   scarePigeons(x, y, r) }
+ *   scarePigeons(x, y, r), typeWeights(style, {kind, minutes, x, y}) (spawn weights: TUNE.mix overridden by
+ *   N.vehicles.TYPES[t].spawn; readsTypeWeights = true), pickType(style, kind), driverLook(type, style),
+ *   quietAt(x, y) (respect zones: no horns within TUNE.respectR, traffic crawls at TUNE.respectCruise) }
  * Ped flags other modules may set: ped.spotter = {stick: bool} | null (wanted.js: stands, faces Chinnu,
  *   the stick aunty walks after him waving it; drawn with a red "!" pip), ped.hold = true (freeze it).
  * Events: 'ped:knocked' {ped, by, speed}, 'ped:dodge' {ped, vehicle}, 'traffic:honk' {vehicle},
@@ -100,6 +102,8 @@
     pigeonPlaces: ['tank_bund_statues', 'secunderabad_station', 'abids', 'mozamjahi_market', 'nampally_station'],
     pigeonScare: { speed: 50, r: 40, near: 14, hornR: 80, landAfter: [6, 10] },
     podiumHours: [8 * 60, 21 * 60], podiumPhase: 6, podiumGap: 1,
+    // respect zones (systems §4.8): no horns within respectR of one, and traffic slows to respectCruise
+    respectR: 40, respectCruise: 40,
     // spawn rings are offsets beyond the view's half-diagonal; despawn needs out-of-view AND beyond these
     ringPed: [20, 170], ringVeh: [30, 210], ringAni: [24, 220], despawnPed: 330, despawnVeh: 440, despawnAni: 380,
     spawnPerFrame: 2, fillPerFrame: 8, fillSecs: 0.9,
@@ -161,6 +165,10 @@
   function styleOf(d) { if (!d) return 'colony'; if (d.id === 'osmania') return 'osmania'; return d.style || 'colony'; }
   function districtAt(x, y) { try { return N.world.districtAt(x, y); } catch (e) { return null; } }
   function respectAt(x, y) { try { return N.respect && N.respect.at ? N.respect.at(x, y) : null; } catch (e) { return null; } }
+  /** In or near (TUNE.respectR) a temple / mosque / church / procession: no horns, traffic crawls (systems §4.8). */
+  function quietAt(x, y) {
+    try { return !!(N.respect && (N.respect.at && N.respect.at(x, y) || N.respect.near && N.respect.near(x, y, TUNE.respectR))); } catch (e) { return false; }
+  }
   function sfx(name, o) { try { if (N.audio && N.audio.sfx) N.audio.sfx(name, o || {}); } catch (e) { /* audio never breaks traffic */ } }
   function viewR() { const v = N.render.view; return Math.hypot(v.x1 - v.x0, v.y1 - v.y0) / 2; }
   function camC() { const v = N.render.view; return { x: (v.x0 + v.x1) / 2, y: (v.y0 + v.y1) / 2 }; }
@@ -732,6 +740,7 @@
   function honk(v, why) {
     const tr = v.tr;
     if (tr && tr.hornCD > 0) return false;
+    if (tr ? tr.quiet : quietAt(v.x, v.y)) return false; // nobody honks outside a temple or a mosque
     const now = N.time.real || 0;
     while (T.hornLog.length && now - T.hornLog[0] > 2) T.hornLog.shift();
     if (T.hornLog.length >= TUNE.hornBudget) return false;
@@ -749,6 +758,9 @@
     if (tr.hornCD > 0) tr.hornCD -= dt;
     if (tr.ghost > 0) tr.ghost -= dt;
     if (tr.yieldT > 0) tr.yieldT -= dt;
+    // respect zones nearby (checked twice a second): no horn, crawl past
+    tr.quietT = (tr.quietT || 0) - dt;
+    if (tr.quietT <= 0) { tr.quietT = 0.5; tr.quiet = T2.mode !== 'boat' && quietAt(v.x, v.y); }
     // boats wander the lake
     if (T2.mode === 'boat') { boatCtl(v, dt); return; }
     // keep enough route ahead
@@ -800,6 +812,7 @@
     tx += segUy * lat; ty += -segUx * lat;
     // ---- speed planning
     let want = tr.cruise * (tr.yieldT > 0 ? 0.55 : 1);
+    if (tr.quiet) want = Math.min(want, TUNE.respectCruise);
     const dec = T2.brake * 0.42;
     let acc = Math.hypot(W[tr.i].x - v.x, W[tr.i].y - v.y);
     let stopping = false;
@@ -984,6 +997,37 @@
       case 'bus': case 'lorry': L.shirt = type === 'bus' ? '#a08a5a' : pick(SHIRT_LOUD); L.pants = type === 'bus' ? '#a08a5a' : pick(PANTS); break;
       case 'cycle': return makeLook(pick(night() ? ['man', 'lungi', 'youth'] : ['student', 'man', 'kid', 'lungi', 'youth', 'uncle', 'student']), style).look;
       case 'ladiescycle': { const r = makeLook(rnd() < 0.6 && !night() ? 'student' : 'woman', style).look; if (r.kind === 'student') { r.girl = true; r.plaits = pick(RIBBON); } if (r.kind === 'burqa') r.kind = 'woman'; return r; }
+      // the black Hero roadster: grown men only (the saddle is miles up) - the milkman on his dawn round
+      // (white vest, lungi, towel), the office-goer (tucked-in shirt, tiffin), colony uncles; night shift at night
+      case 'hero_cycle': case 'old_cycle': {
+        const m = mins(), dawn = m >= 5 * 60 && m < 10 * 60;
+        if (night()) { const r = makeLook(pick(['lungi', 'man', 'uncle']), style).look; r.rider = 'nightshift'; return r; }
+        if (rnd() < (dawn ? 0.55 : 0.2)) {
+          L.kind = 'uncle'; L.rider = 'milkman'; L.shirt = '#f4f2ea'; L.lungi = pick(['#efe9dc', '#efe9dc', '#2a5cb8', '#3a8a3a']);
+          L.towel = pick(['#efe6d0', '#c03030']); L.hair = rnd() < 0.35 ? '#8a8680' : '#1a1412'; L.oiled = rnd() < 0.5;
+          if (dk && rnd() < 0.3) { L.hat = 'skull'; L.hatColor = '#f4f2ea'; }
+          return L;
+        }
+        if (rnd() < 0.55) { const r = makeLook('office', style).look; r.lanyardDot = null; r.rider = 'office'; r.oiled = rnd() < 0.6; return r; }
+        const r = makeLook(rnd() < 0.6 ? 'uncle' : 'lungi', style).look; r.rider = 'uncle'; return r;
+      }
+      // the sporty Hercules: office-goers and young men on their way, schoolboys in uniform by day
+      case 'hercules_cycle': case 'hercules_gears': {
+        if (night()) { const r = makeLook(pick(['man', 'youth']), style).look; r.rider = 'man'; return r; }
+        const q = rnd();
+        if (q < 0.4) { const r = makeLook('office', style).look; r.lanyardDot = null; r.rider = 'office'; return r; }
+        if (q < 0.7) { const r = makeLook('student', style).look; r.girl = false; r.plaits = null; r.rider = 'student'; return r; }
+        const r = makeLook('youth', style).look; r.rider = 'youth'; return r;
+      }
+      // the Scooty: college girls with files on the footboard, women in salwar kameez, the odd aunty in a saree
+      case 'scooty': case 'akka_scooty': {
+        const q = night() ? 0.5 + rnd() * 0.5 : rnd();
+        let r;
+        if (q < 0.45) { r = makeLook('college', style).look; if (r.kind !== 'woman') { r.kind = 'woman'; r.shirt = pick(SAREE); r.pants = pick(['#efe9dc', '#2a3a5a']); r.dupatta = pick(SAREE); r.puff = false; } r.rider = 'college'; }
+        else if (q < 0.85) { r = makeLook('woman', style).look; r.rider = 'woman'; }
+        else { r = makeLook('aunty', style).look; r.rider = 'aunty'; }
+        return r;
+      }
       case 'luna': L.kind = 'man'; L.shirt = pick(SHIRT_PALE); L.hair = rnd() < 0.5 ? '#8a8680' : '#1a1412'; if (rnd() < 0.4) L.towel = '#efe6d0'; break;
       case 'rx100': return makeLook('youth', style).look;
       case 'rickshaw': L.kind = 'uncle'; L.lungi = pick(LUNGI); L.towel = pick(['#efe6d0', '#c03030']); break;
@@ -991,14 +1035,41 @@
     }
     return L;
   }
-  function pickType(style, e, x, y) {
+  /**
+   * Spawn weights for a district style: TUNE.mix for the classic types, overridden by every vehicle type
+   * that carries its own TYPES[t].spawn table (Hero / Hercules cycles, the Scooty...). The generic
+   * 'cycle' share gives way to the pedal types that now have their own weights (never below a quarter
+   * of it: the BSAs and the hire cycles). opts: {kind: road edge kind, minutes, x, y}.
+   */
+  function typeWeights(style, opts) {
+    opts = opts || {};
+    const TY = (N.vehicles && N.vehicles.TYPES) || {};
     const mix = Object.assign({}, TUNE.mix[style] || TUNE.mix.colony);
-    const m = mins();
-    if (m >= 23 * 60 || m < 5 * 60) { mix.lorry = (mix.lorry || 0) * 2; mix.cycle *= 0.5; mix.ladiescycle *= 0.3; mix.bus *= 0.2; mix.rickshaw = (mix.rickshaw || 0) * 0.5; }
-    if (e.kind === 'lane') { mix.bus = 0; mix.lorry = 0; mix.ambassador = 0; mix.padmini *= 0.3; mix.maruti800 *= 0.4; }
-    if (e.kind === 'arterial') { mix.rickshaw = (mix.rickshaw || 0) * 0.4; }
-    for (const ev of activeEvents(x, y)) if (ev.idolLorries) { if (N.vehicles.TYPES.peacock_lorry) mix.peacock_lorry = (mix.peacock_lorry || 0) + 40; else mix.lorry = (mix.lorry || 0) + 40; }
-    const t = wpick(mix) || 'auto';
+    const st = TUNE.mix[style] ? style : 'colony';
+    let pedalOwn = 0;
+    for (const t in TY) {
+      const sp = TY[t] && TY[t].spawn;
+      if (!sp || typeof sp !== 'object') continue;
+      const w = +sp[st] || 0;
+      mix[t] = w;
+      if (TY[t].pedal && t !== 'cycle') pedalOwn += w;
+    }
+    if (pedalOwn > 0 && mix.cycle > 0) mix.cycle = Math.max(mix.cycle * 0.25, mix.cycle - pedalOwn);
+    const m = opts.minutes != null ? opts.minutes : mins();
+    // late night (23:00-05:00): lorries double, buses thin out and every pedal type halves (ladies cycles x0.3)
+    if (m >= 23 * 60 || m < 5 * 60) {
+      mix.lorry = (mix.lorry || 0) * 2; mix.bus = (mix.bus || 0) * 0.2;
+      for (const t in mix) if (TY[t] && TY[t].pedal) mix[t] *= t === 'ladiescycle' ? 0.3 : 0.5;
+    }
+    const kind = opts.kind;
+    if (kind === 'lane') { mix.bus = 0; mix.lorry = 0; mix.ambassador = 0; mix.padmini = (mix.padmini || 0) * 0.3; mix.maruti800 = (mix.maruti800 || 0) * 0.4; }
+    if (kind === 'arterial') { mix.rickshaw = (mix.rickshaw || 0) * 0.4; }
+    if (opts.x != null) for (const ev of activeEvents(opts.x, opts.y)) if (ev.idolLorries) { if (TY.peacock_lorry) mix.peacock_lorry = (mix.peacock_lorry || 0) + 40; else mix.lorry = (mix.lorry || 0) + 40; }
+    for (const t in mix) if (!TY[t]) delete mix[t];
+    return mix;
+  }
+  function pickType(style, e, x, y) {
+    const t = wpick(typeWeights(style, { kind: e && e.kind, x, y })) || 'auto';
     return N.vehicles.TYPES[t] ? t : 'auto';
   }
 
@@ -1459,6 +1530,7 @@
   function playerCheck(p, dt) {
     const pl = N.player;
     if (!pl || pl.hidden) return;
+    if ((pl.level || null) !== (p.level || null)) { p.nearT = 0; return; } // he is up on a roof
     const d = Math.hypot(pl.x - p.x, pl.y - p.y);
     if (d > 26) { p.nearT = 0; return; }
     const sp = Math.hypot(pl.vx || 0, pl.vy || 0);
@@ -2319,7 +2391,7 @@
       for (const p of T.peds) {
         if (p.down || p.hold) continue;
         const dd = Math.hypot(p.x - x, p.y - y);
-        if (dd < 40) { p.lookT = rr(1, 2); p.lookAt = pl; if (dd < 30) hornHit(p); }
+        if (dd < 40) { p.lookT = rr(1, 2); p.lookAt = pl; if (dd < 30 && (p.level || null) === (pl.level || null)) hornHit(p); }
       }
     }
   }
@@ -2618,6 +2690,9 @@
 
   const API = (N.traffic = {
     enabled: true, density: 1, TUNE,
+    // spawn weights come from N.vehicles.TYPES[t].spawn (typeWeights): vehicles.js leaves TUNE.mix alone,
+    // and the Hero / Hercules / Scooty riders get their looks from driverLook (vehicles.js does not restyle them)
+    readsTypeWeights: true, styledRiders: true,
     get vehicles() { return T.vehicles; }, get peds() { return T.peds; }, get animals() { return T.animals; },
     get constables() { return T.constables; }, get flocks() { return T.flocks; }, get boats() { return T.boats; },
     setDensity(d) { API.density = clamp(+d || 0, 0, 2); T.targetT = 0; return API.density; },
@@ -2671,6 +2746,10 @@
       for (const z of T.zoneList) if ((z.kind === 'market' || z.kind === 'plaza' || z.kind === 'transport' || z.kind === 'cinema') && Math.hypot(z.x - x, z.y - y) < z.r + 10 && zoneCount(z) >= 4) return true;
       return false;
     },
+    /** spawn weights {type: w} for a district style; opts {kind: edge kind, minutes, x, y} */
+    typeWeights, pickType: (style, kind) => pickType(style, { kind: kind || 'street' }), driverLook,
+    /** is (x, y) in or within TUNE.respectR of a respect zone (no horns, traffic crawls)? */
+    quietAt,
     makeLook, pickRole, blitPerson, laneOffset, edgeAny, geom, lanePt, ringNode, nodesNear,
     get index() { return RI; },
     // debug / tests

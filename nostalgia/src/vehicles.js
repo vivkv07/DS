@@ -82,13 +82,21 @@
     // (pillion / passenger / fare) or says `refuse` (a kid-flavoured line). sound / bell: audio.js
     // engine profile and bell voice. spawn: traffic weight per district style (N.vehicles.trafficMix).
     kidOk: false, refuse: null, sound: null, bell: null, spawn: null, rough: null,
+    // fare: a working one (NPC at the controls) is hired for a fare ride via N.shops.rideVehicle
+    // (the cycle-rickshaw: its rickshaw-wala pedals, Chinnu sits behind)
+    fare: false,
   };
   const TYPES = {};
+  // A3 rules for types other modules define: traffic.js' cycle-rickshaw is based on 'cycle' (kidOk) but
+  // is a fare ride with the rickshaw-wala pedalling; Chinnu never sits at its pedals.
+  const TYPE_RULES = {
+    rickshaw: { kidOk: false, fare: true, refuse: ["The rickshaw-wala's seat is up there, the pedals way down there. *Nakko.*", 'Pedal a whole rickshaw, with people in it? Wait for the rickshaw-wala, *baba*.'] },
+  };
 
   /** Define (or redefine) a vehicle type. spec.base inherits from another type (story vehicles). */
   function define(id, spec) {
     const base = spec.base && TYPES[spec.base] ? TYPES[spec.base] : DEFAULTS;
-    const t = Object.assign({}, base, spec, { id });
+    const t = Object.assign({}, base, spec, TYPE_RULES[id] || null, { id });
     // collision circles along the length (radius = half width)
     const r = t.d / 2, span = Math.max(0, t.w - t.d);
     const n = span <= 0 ? 1 : Math.ceil(span / (t.d * 0.9)) + 1;
@@ -841,8 +849,74 @@
       if (zoomOwned) { N.render.baseZoom = 1; zoomOwned = false; }
     }
     N.emit('vehicle:exit', { vehicle: v, actor, passenger: true });
+    if (v.rideRestored) leaveRestored(v);
     return true;
   }
+
+  /* ---------------------------- A3: riding along survives a checkpoint retry and a save / load */
+  /** What the actor (default player) rides along in: {type, as, look, angle, color, color2, seed} | null. */
+  function rideState(a) {
+    a = a || N.player;
+    const v = a && a.vehicle;
+    if (!v || !a.passenger || v.driver === a) return null;
+    const d = v.driver;
+    let look = null;
+    try { look = d && d.look && typeof d.look === 'object' ? JSON.parse(JSON.stringify(d.look)) : null; } catch (e) { look = null; }
+    return { type: v.type, as: a.passenger, look, angle: v.angle || 0, color: v.color, color2: v.color2, seed: v.seed };
+  }
+  /**
+   * Seat the actor riding along with an NPC driver, never at the wheel: s = rideState() (+ opts {x, y}
+   * spawns a new vehicle there; opts.vehicle uses that one, moving him to the back seat if a load put him
+   * at its wheel). The restored ride has no route of its own: it waits for "Get off", then the driver rides
+   * off and the vehicle goes once out of view. opts.lock: the running mission holds the seat. -> vehicle | null
+   */
+  function restoreRide(actor, s, opts) {
+    opts = opts || {};
+    if (!actor || !s || !TYPES[s.type]) return null;
+    let v = opts.vehicle && opts.vehicle.alive ? opts.vehicle : null;
+    if (v && actor.vehicle === v && v.driver === actor) {
+      // a load spawned it with him at the wheel: hand the wheel back (no exit: he stays aboard)
+      actor.vehicle = null; v.driver = null; actor.passenger = null;
+      actor.mode = 'foot'; actor.noCollide = !!actor._noCollideWas;
+    } else if (v && actor.vehicle) return null;
+    if (!v) {
+      if (actor.vehicle) exit(actor, true);
+      const T = TYPES[s.type], x = opts.x != null ? opts.x : actor.x, y = opts.y != null ? opts.y : actor.y;
+      const f = N.world.findFree(x, y, T.mode === 'boat' ? 'boat' : 'drive', 24) || { x, y };
+      v = spawn(s.type, f.x, f.y, isFinite(s.angle) ? s.angle : 0, { color: s.color, color2: s.color2, seed: s.seed });
+      if (!v) return null;
+    }
+    v.controller = null; v.autopilot = false;
+    if (!npcDriven(v)) {
+      const rng = U.rng ? U.rng((v.seed || 1) + 77) : null;
+      v.driver = { look: s.look || N.people.randomLook(rng, 'man'), npc: true };
+    }
+    v.rideRestored = true;
+    if (!ride(actor, v, { as: s.as === 'pillion' || s.as === 'passenger' ? s.as : undefined, lock: !!opts.lock, quiet: true, force: true })) {
+      if (!v.seeded && !v.owned) remove(v);
+      return null;
+    }
+    return v;
+  }
+  // a restored ride (no route of its own) rides off once he is down, and goes when nobody sees it
+  function leaveRestored(v) {
+    v.rideRestored = false;
+    if (!v.alive || !npcDriven(v) || v.seeded || v.owned || v.special) return;
+    const R = N.world.roads, n = R && R.nearestNode(v.x + Math.cos(v.angle) * 60, v.y + Math.sin(v.angle) * 60);
+    const route = n ? R.randomRoute(n, 6) : [];
+    const pts = [[v.x, v.y]].concat(route.map((q) => [q.x, q.y]));
+    const gone = () => { if (v.alive && v.driver !== N.player && !v.passenger && !(N.render.inView && N.render.inView(v.x, v.y, 60))) remove(v); };
+    if (pts.length > 1) driveTo(v, pts, { timeout: 30, speed: 60, warp: false, stop: true }).then(gone, gone);
+  }
+  // save section 'ride': applied after every section is in (save:loaded), before healAge looks at the seat
+  let pendingRide = null;
+  function applyPendingRide() {
+    const s = pendingRide, p = N.player;
+    pendingRide = null;
+    if (!s || !p || !p.vehicle || p.passenger || p.vehicle.type !== s.type) return;
+    restoreRide(p, s, { vehicle: p.vehicle });
+  }
+
   /** "Board bus ₹3": a traffic bus (systems §3.6 hop-on). Moving > 15 u/s = footboard (+heat, scolding). */
   function boardBus(p, v) {
     const moving = Math.abs(v.speed) > 15, fare = busFare();
@@ -992,6 +1066,8 @@
     if (drv && T.mode !== 'boat') {
       if (full) return seat('nolift', 'Ask for a lift');
       if (v.rideOk || v.npcKey) return seat(T.cls === 'bike' ? 'pillion' : 'passenger', T.cls === 'bike' ? 'Sit pillion' : 'Ride as passenger');
+      // a cycle-rickshaw plying for hire: a fare ride, the rickshaw-wala pedals (shops.js)
+      if (T.fare && N.shops && typeof N.shops.rideVehicle === 'function') return seat('fare', 'Ride ' + name + ' (fare)');
       if (T.cls === 'heavy' && /bus/.test(T.id)) return sp < TUNE.busMaxBoard ? { kind: 'bus', label: 'Board bus ' + (busFare() ? '₹' + (busFare() / 100) : '(ticket punch)') } : null;
       if (v.taxi && N.shops && typeof N.shops.rideVehicle === 'function') return seat('fare', 'Ride taxi (fare)');
       if (T.cls === 'bike') return seat('pillion', 'Ask for a lift');
@@ -2841,6 +2917,7 @@
   function restyleRider(v) {
     const d = v && v.driver;
     if (!d || !d.npc || d instanceof N.Actor || !v.T) return;
+    if (N.traffic && N.traffic.styledRiders) return; // traffic.js driverLook dresses these riders itself
     const r = U.rng((v.seed | 0) + 77);
     const T = (N.traffic && N.traffic.makeLook) || null;
     const mk = (role, girl) => {
@@ -2865,36 +2942,13 @@
   }
 
   /* ================================================== NPC drivers (road routes) */
-  // A* over the road graph (every incident edge: scripted drivers may ignore one-way rules).
+  // A* over the road graph (every incident edge: scripted drivers may ignore one-way rules; no
+  // dirt paths, every road kind at its length). N.world.roads.route is a heap A* sized for the
+  // 15k-node map: a cross-city fare (Charminar -> Cyber Towers) expands a few thousand nodes.
+  const DRIVE_ROUTE = { walk: true, costs: {}, maxExpand: 40000 };
   function astar(a, b) {
-    const R = N.world.roads, nodes = R.nodes, edges = R.edges;
     if (!a || !b) return null;
-    if (a === b) return [a];
-    const g = new Map(), from = new Map(), open = [[0, a.id]], closed = new Set();
-    g.set(a.id, 0);
-    let guard = 0;
-    while (open.length && guard++ < 8000) {
-      let bi = 0;
-      for (let i = 1; i < open.length; i++) if (open[i][0] < open[bi][0]) bi = i;
-      const id = open[bi][1];
-      open[bi] = open[open.length - 1]; open.pop();
-      if (closed.has(id)) continue;
-      if (id === b.id) {
-        const path = [nodes[id]];
-        let c = id;
-        while (from.has(c)) { c = from.get(c); path.push(nodes[c]); }
-        return path.reverse();
-      }
-      closed.add(id);
-      const n = nodes[id], gn = g.get(id);
-      for (const eid of n.inc) {
-        const e = edges[eid], to = e.a === id ? e.b : e.a;
-        if (closed.has(to) || e.kind === 'path') continue;
-        const ng = gn + (e.len || 1);
-        if (ng < (g.has(to) ? g.get(to) : Infinity)) { g.set(to, ng); from.set(to, id); open.push([ng + Math.hypot(nodes[to].x - b.x, nodes[to].y - b.y), to]); }
-      }
-    }
-    return null;
+    return N.world.roads.route(a, b, DRIVE_ROUTE);
   }
   /**
    * Road route from (x0, y0) to (x1, y1) as a polyline [[x, y], ...] in the left-hand lane
@@ -3019,6 +3073,8 @@
     ride, boardBus,
     /** Is the actor (default player) riding along rather than driving? -> 'pillion' | 'passenger' | null */
     isPassenger(a) { a = a || N.player; return (a && a.vehicle && a.passenger) || null; },
+    /** A3 retry / load: rideState(actor) -> {type, as, look, ...} | null; restoreRide(actor, state, {x, y, vehicle, lock}). */
+    rideState, restoreRide,
     /** A2 hooks (tests, debug): hit a pothole now; the walking stumble check. */
     hitPothole(v, ph) { if (!v) return false; hitPothole(v, ph || { depth: 0.8, r: 6 }, 'front', v.T.w / 2 - 2, v.driver === N.player || v.passenger === N.player, N.player); return true; },
     potSeverity,
@@ -3064,7 +3120,7 @@
 
   N.on('game:new', () => { try { patchTraffic(); seedParked(); } catch (e) { N.err('vehicles.seed', e); } });
   N.on('game:continue', () => { try { patchTraffic(); if (!list.some((v) => v.alive && v.seeded)) seedParked(); else seedHome(); healAge(); } catch (e) { N.err('vehicles.seed', e); } });
-  N.on('save:loaded', () => { try { healAge(); } catch (e) { N.err('vehicles.heal', e); } });
+  N.on('save:loaded', () => { try { applyPendingRide(); healAge(); } catch (e) { N.err('vehicles.heal', e); } });
   // a ladder unlock appears at home at once (Akka's Scooty, Chinnu's cycle, Bunty-anna's Hercules)
   N.on('collectible:threshold', (d) => { if (d && d.series === 'total') { try { seedHome(); } catch (e) { N.err('vehicles.seedHome', e); } } });
   // traffic riders: Scooties are college girls and aunties, Hercules students and boys
@@ -3088,7 +3144,12 @@
       R.queue('actors', R.view.y1 + 400, drawParticles);
       if (glows.length) R.queue('light', 5, drawGlows);
     },
-    init() { patchTraffic(); },
+    init() {
+      patchTraffic();
+      // A3: a save made while riding along loads him riding along again (save.js 'player' re-seats him at
+      // the wheel of a fresh copy; applyPendingRide hands the wheel back to an NPC driver)
+      if (N.save && N.save.register) N.save.register('ride', { serialize: () => rideState() || null, deserialize: (o) => { pendingRide = o && typeof o === 'object' && typeof o.type === 'string' ? o : null; } });
+    },
     reset() {
       for (const v of list.slice()) { N.entities.remove(v); }
       list.length = 0;

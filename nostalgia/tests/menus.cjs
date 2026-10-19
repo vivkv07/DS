@@ -40,6 +40,8 @@ function check(cond, msg, detail) {
 async function newPage(browser, V, context) {
   context = context || await browser.newContext({ viewport: V.viewport, deviceScaleFactor: V.dpr, hasTouch: V.touch, isMobile: V.touch, ignoreHTTPSErrors: true });
   const page = await context.newPage();
+  // play-testing builds top money up every frame (src/testing.js): the save/continue checks need real pocket money
+  await page.addInitScript(() => { try { localStorage.setItem('nostalgia.testing.unlimitedMoney', '0'); } catch (e) { /* storage off */ } });
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
@@ -81,13 +83,14 @@ async function run(browser, V) {
       cam: N.render.camOverride && { x: Math.round(N.render.camOverride.x), y: Math.round(N.render.camOverride.y) },
       sw: document.documentElement.scrollWidth, iw: innerWidth, sh: document.documentElement.scrollHeight, ih: innerHeight,
       focus: document.activeElement && document.activeElement.id, clock: N.clock.label(),
+      lm: (() => { const l = (N.WORLD_DATA.landmarks || []).find((q) => q.id === 'charminar'); return l && { x: l.x, y: l.y }; })(),
     };
   });
   check(tl.jc && tl.jc.l >= -12 && tl.jc.r <= V.viewport.width + 12 && tl.jc.t >= 0 && tl.jc.b <= V.viewport.height, 'J-card fits the screen', tl.jc);
   check(tl.play && tl.play.h >= 40, 'PLAY track is a big target (' + (tl.play && Math.round(tl.play.h)) + ' px)');
   check(tl.osd === '■ STOP' && tl.ctr === '000', 'VHS OSD reads ■ STOP and counter 000');
   check(!tl.cont, 'no CONTINUE without a save');
-  check(tl.cam && Math.hypot(tl.cam.x - 3900, tl.cam.y - 4360) < 700, 'camera drifts over Charminar at dusk (' + tl.clock + ')', tl.cam);
+  check(tl.cam && tl.lm && Math.hypot(tl.cam.x - tl.lm.x, tl.cam.y - tl.lm.y) < 700, 'camera drifts over Charminar at dusk (' + tl.clock + ')', { cam: tl.cam, charminar: tl.lm });
   check(tl.sw <= tl.iw && tl.sh <= tl.ih, 'no page scroll', tl);
   if (!V.touch) check(tl.focus === 'title-start', 'PLAY has keyboard focus');
 
@@ -171,10 +174,12 @@ async function run(browser, V) {
   // pan
   const s0 = await page.evaluate(() => N.menus.debugState().map);
   if (!V.touch) { await page.keyboard.down('ArrowRight'); await sleep(450); await page.keyboard.up('ArrowRight'); }
-  else { const cx = V.viewport.width / 2, cy = V.viewport.height / 2; await touchDrag([[{ x: cx, y: cy, id: 1 }], [{ x: cx - 40, y: cy, id: 1 }], [{ x: cx - 80, y: cy, id: 1 }], [{ x: cx - 120, y: cy, id: 1 }]]); }
+  // (touch: drag the finger east, i.e. pan the map west. On the v2 map home is near the city's east side, and the
+  //  landscape map opens on him already at its east clamp, so an eastward pan has no room to move.)
+  else { const cx = V.viewport.width / 2, cy = V.viewport.height / 2; await touchDrag([[{ x: cx, y: cy, id: 1 }], [{ x: cx + 40, y: cy, id: 1 }], [{ x: cx + 80, y: cy, id: 1 }], [{ x: cx + 120, y: cy, id: 1 }]]); }
   await sleep(150);
   const s1 = await page.evaluate(() => N.menus.debugState().map);
-  check(s1.cx > s0.cx + 40, 'map pans (' + (V.touch ? 'touch drag' : 'arrow keys') + '): cx ' + s0.cx + ' -> ' + s1.cx);
+  check(V.touch ? s1.cx < s0.cx - 40 : s1.cx > s0.cx + 40, 'map pans (' + (V.touch ? 'touch drag' : 'arrow keys') + '): cx ' + s0.cx + ' -> ' + s1.cx);
   // zoom
   if (!V.touch) { await page.mouse.move(V.viewport.width * 0.4, V.viewport.height * 0.5); await page.mouse.wheel(0, -400); }
   else {
@@ -189,7 +194,8 @@ async function run(browser, V) {
   const s3 = await page.evaluate(() => N.menus.debugState().map);
   check(s3.s < s2.s, 'the − button zooms out', [s2.s, s3.s]);
   // place card on Charminar, route there
-  await page.evaluate(() => { N.menus.closeMap(); N.menus.openMap({ x: 3950, y: 4330, zoom: 'district' }); });
+  const chm = await page.evaluate(() => { const l = N.WORLD_DATA.landmarks.find((q) => q.id === 'charminar'); const p = N.places.charminar; return { x: l.x, y: l.y, px: p.x, py: p.y }; });
+  await page.evaluate((c) => { N.menus.closeMap(); N.menus.openMap({ x: c.x + 50, y: c.y - 30, zoom: 'district' }); }, chm);
   await sleep(350);
   const hit = await page.evaluate(() => N.menus._mapHit('charminar'));
   check(!!hit, 'Charminar icon drawn on the map', hit);
@@ -202,7 +208,7 @@ async function run(browser, V) {
     await tap('.mp-card [data-mc=route]');
     await sleep(150);
     const wp = await page.evaluate(() => ({ wp: N.menus.debugState().waypoint, blip: N.hud.blips.has('mn:waypoint'), route: !!(N.hud.blips.get('mn:waypoint') || {}).route }));
-    check(wp.wp && Math.hypot(wp.wp.x - 3900, wp.wp.y - 4290) < 120 && wp.blip && wp.route, '"Route here" sets a waypoint with a minimap route', wp);
+    check(wp.wp && Math.hypot(wp.wp.x - chm.px, wp.wp.y - chm.py) < 120 && wp.blip && wp.route, '"Route here" sets a waypoint with a minimap route', wp);
   }
   // waypoint on empty ground: right-click / long-press
   const wpBefore = await page.evaluate(() => N.menus.debugState().waypoint);
@@ -340,6 +346,10 @@ async function run(browser, V) {
   await shot('14_continue');
 
   /* ------------------------------------------------------------ cutscene: every step type */
+  // the save was made on the home terrace, a W6 viewpoint: once he has stood there ~1 s after CONTINUE the camera
+  // pulls out for 3 s (collectibles.js). Let that play out in game time so it is not mistaken for cutscene state.
+  { const t0 = await page.evaluate(() => N.time.now); await waitFor((a) => N.time.now > a + 1.5, t0, 20000); }
+  await waitFor(() => !N.render.camOverride && !N.player.controlsLocked, null, 20000);
   await page.evaluate(() => {
     N.dialogue.skip = false;
     window.__types = new Set(); window.__calls = 0; window.__res = null; window.__events = [];

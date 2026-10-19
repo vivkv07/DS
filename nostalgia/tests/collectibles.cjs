@@ -439,8 +439,10 @@ async function testPlay(browser) {
   s = await page.evaluate(() => ({ cam: N.render.camOverride && N.render.camOverride.zoom, locked: N.player.controlsLocked, ev: window.__ev.filter((e) => e[0] === 'viewpoint').map((e) => e[1]) }));
   await page.screenshot({ path: path.join(OUT, 'viewpoint_bala_hissar.png') });
   await sleep(3200);
-  const s2 = await page.evaluate(() => ({ cam: N.render.camOverride, locked: N.player.controlsLocked, known: ['K11', 'G23', 'G24'].map((id) => N.collectibles.isKnown(id)), blips: Array.from(N.hud.blips.keys()).filter((k) => k.startsWith('coll:rv:')).length }));
-  check(s.cam === 0.55 && s.locked && s.ev.indexOf('golconda_bala_hissar') >= 0 && !s2.cam && !s2.locked && s2.known.every(Boolean) && s2.blips >= 3, 'Bala Hissar viewpoint: zoom 0.55 for 3 s, then K11/G23/G24 blip on the map', { s, s2 });
+  const s2 = await page.evaluate(() => ({ cam: N.render.camOverride, locked: N.player.controlsLocked, known: ['K11', 'G23', 'G24'].map((id) => N.collectibles.isKnown(id)), g24d: Math.round(Math.hypot(N.collectibles.get('G24').x - N.places.golconda_bala_hissar.x, N.collectibles.get('G24').y - N.places.golconda_bala_hissar.y)), blips: Array.from(N.hud.blips.keys()).filter((k) => k.startsWith('coll:rv:')).length }));
+  // systems §8.14: a viewpoint reveals unfound items within 900 u. On the real-geography (v2) map Taramati
+  // Baradari (G24) is ~1.4 km from Bala Hissar, so it must stay hidden; K11 and G23 are inside the radius.
+  check(s.cam === 0.55 && s.locked && s.ev.indexOf('golconda_bala_hissar') >= 0 && !s2.cam && !s2.locked && s2.known[0] && s2.known[1] && !s2.known[2] && s2.g24d > 900 && s2.blips >= 2 /* one reveal blip each for K11 and G23 */, 'Bala Hissar viewpoint: zoom 0.55 for 3 s, then K11/G23 blip on the map (G24, ' + s2.g24d + ' u away, does not)', { s, s2 });
 
   // time gates: C10 only on Sundays; K6 moves on 25 Jul (Prasads opens)
   s = await page.evaluate(() => {
@@ -470,6 +472,9 @@ async function testRewards(browser) {
   await newGame(page);
   const r = await page.evaluate(() => {
     const C = N.collectibles, P = N.player, out = {};
+    // away from home first: the family lines play within 46 u of it, and with dialogue auto-skipped they'd be gone
+    // before the walk-in check at the end of this section
+    N.debug.teleport(N.places.home.x + 200, N.places.home.y);
     for (const s of ['kites', 'golis', 'cassettes', 'tickets', 'frames']) C.unlockSeries(s, { silent: true });
     const money0 = P.money;
     // the ladder: 5 finds -> double-gong bell
@@ -524,9 +529,10 @@ async function testRewards(browser) {
   // the family lines wait at home: walk in
   await page.evaluate(() => { N.debug.skipDialogue(false); const p = N.places.home; N.debug.teleport(p.x + 70, p.y); });
   await sleep(200);
-  await walkTo(page, (await page.evaluate(() => N.places.home.x)), (await page.evaluate(() => N.places.home.y)), { until: "N.state.mode === 'dialogue'", ms: 5000 });
-  await sleep(400);
-  const dl = await page.evaluate(() => ({ mode: N.state.mode, text: (document.querySelector('.dlg-text, .dialogue-text, #overlay .dlg') || document.body).textContent.slice(0, 400) }));
+  await walkTo(page, (await page.evaluate(() => N.places.home.x)), (await page.evaluate(() => N.places.home.y)), { until: "N.state.mode === 'dialogue'", ms: 15000 });
+  // wait for the family line itself (typed text, not just the box), up to 10 s
+  await page.waitForFunction(() => N.state.mode === 'dialogue' && /softly|doctor|Physics|colony|booth|Helmet|prettier/.test((document.querySelector('.dlg-text, .dialogue-text, #overlay .dlg') || document.body).textContent), null, { timeout: 10000 }).catch(() => {});
+  const dl = await page.evaluate(() => ({ mode: N.state.mode, text: (document.querySelector('.dlg-text, .dialogue-text, #overlay .dlg') || document.body).textContent.slice(0, 400), dHome: Math.round(Math.hypot(N.player.x - N.places.home.x, N.player.y - N.places.home.y)), mission: N.missions.active && N.missions.active.id, veh: !!N.player.vehicle, locked: !!N.player.controlsLocked, homeQ: N.collectibles.serialize().homeQ, homeline: window.__ev.filter((e) => e[0] === 'collectible:homeline').length }));
   await page.screenshot({ path: path.join(OUT, 'ladder_home_line.png') });
   check(dl.mode === 'dialogue' && /softly|doctor|Physics|colony|booth|Helmet|prettier/.test(dl.text), 'ladder lines play at home', dl);
   await page.evaluate(() => { N.debug.skipDialogue(true); if (N.dialogue && N.dialogue.cancel) N.dialogue.cancel(); });

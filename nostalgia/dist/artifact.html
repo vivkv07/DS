@@ -41,6 +41,7 @@
   --font-display: 'Yatra One', 'Baloo 2', system-ui, sans-serif;
   --font-body: 'Baloo 2', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-osd: 'VT323', ui-monospace, 'Courier New', monospace;
+  --font-telugu: 'Noto Sans Telugu', 'Nirmala UI', 'Gautami', 'Telugu Sangam MN', 'Baloo 2', system-ui, sans-serif;
   /* safe areas */
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
@@ -675,7 +676,7 @@ body.touch-on .hud-stats { top: calc(56px + var(--safe-t)); right: calc(10px + v
   color: var(--whitewash);
   text-shadow: -2px -2px 0 var(--auto-black), 2px -2px 0 var(--auto-black), -2px 2px 0 var(--auto-black), 2px 2px 0 var(--auto-black), 4px 4px 0 rgba(42, 140, 130, 0.95);
 }
-.hud-district .d-sub { margin-top: 2px; font-family: var(--font-body); font-weight: 600; font-size: 17px; color: var(--osd); text-shadow: 1px 1px 0 var(--osd-shadow), 0 0 4px rgba(0, 0, 0, 0.8); }
+.hud-district .d-sub { margin-top: 2px; font-family: var(--font-telugu); font-weight: 600; font-size: 17px; color: var(--osd); text-shadow: 1px 1px 0 var(--osd-shadow), 0 0 4px rgba(0, 0, 0, 0.8); }
 .hud-district .d-sub:empty { display: none; }
 
 /* ---- minimap (bottom-left on desktop) */
@@ -1974,7 +1975,7 @@ body.reduced-motion .sc-vhs-mode { animation: none; }
   font-family: var(--font-hand); font-weight: 700; font-size: 25px; line-height: 1.2; text-align: left;
   color: var(--mn-ball); background: transparent; border: 0; border-radius: 3px;
 }
-.jc-trk::before { counter-increment: trk; content: 'A' counter(trk); flex: none; width: 30px; font-family: var(--font-osd); font-weight: 400; font-size: 18px; color: #8a8379; }
+.jc-trk::before { counter-increment: trk; content: 'A' counter(trk); flex: none; width: 30px; font-family: var(--font-osd); font-weight: 400; font-size: 18px; color: var(--mn-pencil); }
 .jc-trk i { flex: none; width: 38px; font-style: normal; font-family: var(--font-osd); font-size: 24px; color: var(--mn-red); }
 .jc-trk b { flex: none; font-weight: 700; }
 .jc-trk em {
@@ -1992,6 +1993,8 @@ body.reduced-motion .sc-vhs-mode { animation: none; }
 .jc-confirm p { margin: 0 0 10px; font-family: var(--font-hand); font-weight: 700; font-size: 22px; color: var(--mn-red); }
 .jc-confirm p span { display: block; font-weight: 400; font-size: 17px; color: var(--mn-pencil); }
 .jc-cbtns { display: flex; flex-wrap: wrap; gap: 12px; }
+.jc-newer { margin: 6px 0 2px; padding: 4px 8px; font-family: var(--font-hand); font-weight: 700; font-size: 16px; line-height: 1.25; color: var(--mn-red); border-left: 3px solid var(--mn-red); background: rgba(255, 255, 255, 0.35); }
+.jc-newer[hidden] { display: none; }
 .jc-scribble { position: absolute; right: 18px; bottom: 0; margin: 0; font-family: var(--font-hand); font-size: 22px; color: var(--mn-pencil); transform: rotate(-7deg); opacity: 0.85; pointer-events: none; }
 .mn-title .jc-front:has(#title-start:focus) .reel, .jc.rolling .reel { animation: mn-spin 1.4s linear infinite; }
 .jc.rolling .reel { animation-duration: 0.45s; }
@@ -3275,6 +3278,43 @@ body.cl-vf-on #hud, body.cl-vf-on #touch, body.cl-vf-on .cl-chip { visibility: h
 body.reduced-motion .pg-hud.show { animation: none; }
 /* === end playground_games === */
 
+/* === high contrast === (settings "High-contrast HUD": menus.js toggles body.high-contrast)
+   Brighter text, near-opaque panels and hard black outlines on the HUD, dialogue, toasts and menus. */
+body.high-contrast {
+  --ink: #ffffff;
+  --ink-dim: #efe6d4;
+  --osd: #ffffff;
+  --panel: rgba(8, 5, 10, 0.97);
+  --panel-edge: var(--auto-yellow);
+  --mn-pencil: #2b2724;
+  --mn-ball: #10257a;
+}
+body.high-contrast .hud-obj, body.high-contrast .hud-toast {
+  font-weight: 700;
+  background: rgba(8, 5, 10, 0.96);
+  outline: 2px solid var(--whitewash);
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+}
+body.high-contrast .osd-line, body.high-contrast .hud-osd, body.high-contrast .hud-timer, body.high-contrast .hud-district .d-sub {
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+}
+body.high-contrast .tin { box-shadow: 0 0 0 2px var(--whitewash), 4px 4px 0 var(--apsrtc-red); }
+/* (the paper skins - chit, email - already print dark ink on light paper: only the ring) */
+body.high-contrast .dlg:not(.style-chit):not(.style-email) .dlg-box {
+  background: rgba(8, 5, 10, 0.99);
+  box-shadow: 0 0 0 3px var(--spk), 0 0 0 6px var(--whitewash), 7px 7px 0 6px rgba(0, 0, 0, 0.6);
+}
+body.high-contrast .dlg.style-chit .dlg-box, body.high-contrast .dlg.style-email .dlg-box { outline: 3px solid var(--auto-black); }
+body.high-contrast .dlg:not(.style-chit):not(.style-email):not(.style-radio) .dlg-text { font-weight: 600; color: var(--ink); text-shadow: 1px 1px 0 #000, -1px 0 0 #000; }
+body.high-contrast .dlg:not(.style-chit):not(.style-email) .dlg-text .slang .c.on { border-bottom-color: var(--auto-yellow); border-bottom-style: solid; }
+body.high-contrast .dlg:not(.style-chit):not(.style-email) .dlg-gloss { color: var(--ink); }
+body.high-contrast .dlg-choice.sel { outline: 3px solid var(--whitewash); outline-offset: 2px; }
+body.high-contrast .mn-btn:focus-visible, body.high-contrast .mn-btn:focus,
+body.high-contrast .sign-btn:focus-visible, body.high-contrast .st-seg button:focus-visible { outline: 3px solid var(--whitewash); outline-offset: 3px; box-shadow: 0 0 0 6px var(--auto-black); }
+body.high-contrast .mn-keys { color: var(--ink); text-shadow: 1px 1px 0 #000, -1px -1px 0 #000; }
+body.high-contrast .st-l small { color: #2b2724; }
+body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
+/* === end high contrast === */
 /* === streetfood === (owned by streetfood.js: the optional debug readout of the street-food scene
    director, N.streetfood.debugHud(true) or Alt+F with #debug; nothing else of the scenes is DOM) */
 .sf-debug {
@@ -3714,6 +3754,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       for (const k in keyDown) keyDown[k] = false;
       for (const k in touchDown) touchDown[k] = false;
       for (const k in synHold) synHold[k] = 0;
+      for (const k in pendingPress) pendingPress[k] = 0; // queued taps must not leak into the next mode
       synMove = null;
       resetStick();
     },
@@ -3744,13 +3785,16 @@ body.reduced-motion .pg-hud.show { animation: none; }
       for (const a of ACTIONS) {
         if (synHold[a] > 0) synHold[a] -= dt;
         const d = keyDownFor(a) || !!touchDown[a] || !!padDown[a] || synHold[a] > 0;
-        const p = (pendingPress[a] || 0) > 0 || (d && !prevDown[a]);
+        // one queued press per step: two taps inside one slow frame give two presses (the second
+        // next step); a held key queues one press on keydown, so it still counts once
+        const q = pendingPress[a] || 0;
+        const p = q > 0 || (d && !prevDown[a]);
         cur.pressed[a] = p;
         cur.released[a] = !d && !!prevDown[a];
         cur.down[a] = d;
         cur.consumed[a] = false;
         prevDown[a] = d;
-        pendingPress[a] = 0;
+        pendingPress[a] = q > 0 ? Math.min(q - 1, 3) : 0;
       }
       computeMove();
     },
@@ -12660,8 +12704,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
     ctx.rect(cx + (x - camX) * k, cy + (y - camY) * k, w * k, d * k);
   };
 
+  const WALLKEY = { N: 'wallN', S: 'wallS', W: 'wallW', E: 'wallE' };
   function wallColor(st, face) {
-    const own = st['wall' + face];
+    const own = st[WALLKEY[face] || 'wall' + face];
     if (own) return own;
     return shaded(st.wall || '#c9b99a', faceShade[face]);
   }
@@ -18245,17 +18290,64 @@ body.reduced-motion .pg-hud.show { animation: none; }
     let minY = Infinity, maxY = -Infinity;
     for (const p of poly) { if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1]; }
     const j0 = Math.max(0, Math.floor(minY / CELL)), j1 = Math.min(GH - 1, Math.floor(maxY / CELL));
-    const xs = [];
+    const xs = polyXs;
     const lut = lutOf(map);
+    if (poly.length > 16) { fillPolyAET(poly, j0, j1, lut); return; }
     for (let j = j0; j <= j1; j++) {
       const y = (j + 0.5) * CELL;
-      xs.length = 0;
+      let n = 0;
       for (let a = 0, b = poly.length - 1; a < poly.length; b = a++) {
         const ya = poly[a][1], yb = poly[b][1];
-        if ((ya > y) !== (yb > y)) xs.push(poly[a][0] + ((y - ya) / (yb - ya)) * (poly[b][0] - poly[a][0]));
+        if ((ya > y) !== (yb > y)) {
+          // insertion sort as we go (rows cross a polygon edge a handful of times; Array#sort allocates)
+          const x = poly[a][0] + ((y - ya) / (yb - ya)) * (poly[b][0] - poly[a][0]);
+          let k = n++;
+          while (k > 0 && xs[k - 1] > x) { xs[k] = xs[k - 1]; k--; }
+          xs[k] = x;
+        }
       }
-      xs.sort((p, q) => p - q);
-      for (let k = 0; k + 1 < xs.length; k += 2) spanLUT(j, Math.ceil(xs[k] / CELL - 0.5), Math.floor(xs[k + 1] / CELL - 0.5), lut);
+      for (let k = 0; k + 1 < n; k += 2) spanLUT(j, Math.ceil(xs[k] / CELL - 0.5), Math.floor(xs[k + 1] / CELL - 0.5), lut);
+    }
+  }
+  const polyXs = [];
+  // fillPoly for big polygons (lakes, parks, rock areas: hundreds of vertices): each row tests only the
+  // edges whose y range is near it (an active edge list) instead of every edge. The crossing test and the
+  // crossing x are the same expressions on the same (a, b) vertex pairs, so the spans are identical.
+  let aetE = new Float64Array(0), aetLo = new Int32Array(0), aetHi = new Int32Array(0), aetOrd = new Int32Array(0), aetAct = new Int32Array(0);
+  function fillPolyAET(poly, j0, j1, lut) {
+    const n = poly.length;
+    if (aetLo.length < n) { aetE = new Float64Array(n * 4); aetLo = new Int32Array(n); aetHi = new Int32Array(n); aetOrd = new Int32Array(n); aetAct = new Int32Array(n); }
+    const E = aetE, lo = aetLo, hi = aetHi, ord = aetOrd, act = aetAct;
+    for (let a = 0, b = n - 1; a < n; b = a++) {
+      const ya = poly[a][1], yb = poly[b][1];
+      E[a * 4] = poly[a][0]; E[a * 4 + 1] = ya; E[a * 4 + 2] = poly[b][0]; E[a * 4 + 3] = yb;
+      // rows this edge can cross, widened by a row each side (the exact test below decides)
+      lo[a] = Math.floor(Math.min(ya, yb) / CELL) - 1; hi[a] = Math.floor(Math.max(ya, yb) / CELL) + 1;
+      if (!(ya === ya && yb === yb)) { lo[a] = -1073741824; hi[a] = 1073741823; } // NaN: test it on every row, as before
+      ord[a] = a;
+    }
+    // edges by first row (insertion sort: polygons are rings, mostly already in runs)
+    for (let k = 1; k < n; k++) { const v = ord[k], l = lo[v]; let m = k; while (m > 0 && lo[ord[m - 1]] > l) { ord[m] = ord[m - 1]; m--; } ord[m] = v; }
+    const xs = polyXs;
+    let next = 0, na = 0;
+    for (let j = j0; j <= j1; j++) {
+      while (next < n && lo[ord[next]] <= j) act[na++] = ord[next++];
+      const y = (j + 0.5) * CELL;
+      let c = 0, w = 0;
+      for (let q = 0; q < na; q++) {
+        const a = act[q];
+        if (hi[a] < j) continue; // finished: drop it
+        act[w++] = a;
+        const o = a * 4, ya = E[o + 1], yb = E[o + 3];
+        if ((ya > y) !== (yb > y)) {
+          const x = E[o] + ((y - ya) / (yb - ya)) * (E[o + 2] - E[o]);
+          let k = c++;
+          while (k > 0 && xs[k - 1] > x) { xs[k] = xs[k - 1]; k--; }
+          xs[k] = x;
+        }
+      }
+      na = w;
+      for (let k = 0; k + 1 < c; k += 2) spanLUT(j, Math.ceil(xs[k] / CELL - 0.5), Math.floor(xs[k + 1] / CELL - 0.5), lut);
     }
   }
   // Thick polyline (a capsule per segment). Each row only visits the cells inside the segment's band
@@ -18279,13 +18371,24 @@ body.reduced-motion .pg-hud.show { animation: none; }
           const xc = ax + ((py - ay) * dx) / dy;
           lo = Math.max(i0, Math.floor((xc - half) / CELL)); hi = Math.min(i1, Math.floor((xc + half) / CELL));
         }
-        const row = j * GW;
-        for (let i = lo; i <= hi; i++) {
-          const px = (i + 0.5) * CELL;
-          let t = ((px - ax) * dx + (py - ay) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+        // the capsule is convex, so the cells inside it on this row are one run: find its two ends
+        // with the per-cell test (from the outside in) and fill the run between them untested
+        const row = j * GW, ey = py - ay;
+        let a0 = lo, a1 = hi;
+        for (; a0 <= hi; a0++) {
+          const px = (a0 + 0.5) * CELL;
+          let t = ((px - ax) * dx + ey * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
           const qx = ax + dx * t - px, qy = ay + dy * t - py;
-          if (qx * qx + qy * qy <= r2) { const v = lut[grid[row + i]]; if (v >= 0) grid[row + i] = v; }
+          if (qx * qx + qy * qy <= r2) break;
         }
+        if (a0 > hi) continue;
+        for (; a1 > a0; a1--) {
+          const px = (a1 + 0.5) * CELL;
+          let t = ((px - ax) * dx + ey * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const qx = ax + dx * t - px, qy = ay + dy * t - py;
+          if (qx * qx + qy * qy <= r2) break;
+        }
+        for (let i = row + a0, e = row + a1; i <= e; i++) { const v = lut[grid[i]]; if (v >= 0) grid[i] = v; }
       }
     }
   }
@@ -18563,17 +18666,27 @@ body.reduced-motion .pg-hud.show { animation: none; }
     let gt = gt0;
     const gmark = (k) => { const t = performance.now(); gp[k] = Math.round((t - gt) * 10) / 10; gt = t; };
     const nodes = [], edges = [];
-    const ngrid = new Map();
+    // node lookup grid (16 u cells) as typed per-cell lists in insertion order (head / tail / next),
+    // sized to the roads' bounding box (+1 cell) once the points are final (see the 'nodes' pass)
+    let NG0 = 0, NGJ0 = 0, NGW = 0, NGH = 0, nHead = null, nTail = null, nNext = new Int32Array(1024);
     const getNode = (x, y) => {
       const gx = Math.floor(x / 16), gy = Math.floor(y / 16);
-      for (let j = gy - 1; j <= gy + 1; j++) for (let i = gx - 1; i <= gx + 1; i++) {
-        const l = ngrid.get(j * 4096 + i);
-        if (l) for (const id of l) { const n = nodes[id]; if ((n.x - x) ** 2 + (n.y - y) ** 2 < 100) return n; }
+      for (let j = gy - 1; j <= gy + 1; j++) {
+        const rj = j - NGJ0;
+        if (rj < 0 || rj >= NGH) continue;
+        for (let i = gx - 1; i <= gx + 1; i++) {
+          const ri = i - NG0;
+          if (ri < 0 || ri >= NGW) continue;
+          for (let id = nHead[rj * NGW + ri]; id >= 0; id = nNext[id]) { const n = nodes[id]; const ex = n.x - x, ey = n.y - y; if (ex * ex + ey * ey < 100) return n; }
+        }
       }
       const n = { id: nodes.length, x, y, links: [], inc: [], deg: 0, w: 0 };
       nodes.push(n);
-      const key = gy * 4096 + gx;
-      (ngrid.get(key) || ngrid.set(key, []).get(key)).push(n.id);
+      if (n.id >= nNext.length) { const nn = new Int32Array(nNext.length * 2); nn.set(nNext); nNext = nn; }
+      nNext[n.id] = -1;
+      const c = (gy - NGJ0) * NGW + (gx - NG0);
+      if (nHead[c] < 0) nHead[c] = n.id; else nNext[nTail[c]] = n.id;
+      nTail[c] = n.id;
       return n;
     };
     const RR = roads.filter((r) => r.kind !== 'path' && r.pts && r.pts.length > 1).map((r) => {
@@ -18585,12 +18698,24 @@ body.reduced-motion .pg-hud.show { animation: none; }
     for (const A of RR) A.pts.forEach((p, i) => A.splits.push({ d: A.cum[i], x: p[0], y: p[1] }));
     // Segment hash (64 u cells; each segment in the cells it passes through): the v2 map has ~3.6k roads
     // and ~15k segments, so the pairwise tests below only look at segments that share a cell.
-    const HC = 64, hash = new Map();
+    const HC = 64;
     const segBase = new Int32Array(RR.length + 1);
     for (let k = 0; k < RR.length; k++) segBase[k + 1] = segBase[k] + RR[k].pts.length - 1;
+    const NSEG = segBase[RR.length];
+    const segRoad = new Int32Array(NSEG);
+    for (let k = 0; k < RR.length; k++) segRoad.fill(k, segBase[k], segBase[k + 1]);
+    // The hash as flat arrays (CSR): cell c's segments are cellSeg[cellStart[c] .. cellStart[c + 1]),
+    // global segment ids in insertion order (road, then segment), so every scan below sees the same
+    // candidates in the same order as a Map of lists did, without ~40k small arrays per pass.
+    let I0 = 0, J0 = 0, NI = 1, NJ = 1, cellStart = null, cellSeg = null;
+    let tmpCell = new Int32Array(NSEG * 4), tmpSeg = new Int32Array(NSEG * 4);
+    const cellOf = (i, j) => (i < I0 || j < J0 || i >= I0 + NI || j >= J0 + NJ ? -1 : (j - J0) * NI + (i - I0));
     const indexSegs = () => {
-      hash.clear();
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const A of RR) for (const p of A.pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
+      I0 = Math.floor(x0 / HC); J0 = Math.floor(y0 / HC); NI = Math.floor(x1 / HC) - I0 + 1; NJ = Math.floor(y1 / HC) - J0 + 1;
       const near2 = (HC * 0.7072 + 1) * (HC * 0.7072 + 1);
+      let n = 0;
       for (let ai = 0; ai < RR.length; ai++) {
         const P = RR[ai].pts;
         for (let s = 0; s < P.length - 1; s++) {
@@ -18602,50 +18727,73 @@ body.reduced-motion .pg-hud.show { animation: none; }
             let t = ((cx - a[0]) * dx + (cy - a[1]) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
             const qx = a[0] + dx * t - cx, qy = a[1] + dy * t - cy;
             if (qx * qx + qy * qy > near2) continue;
-            const key = j * 8192 + i, l = hash.get(key);
-            if (l) l.push(ai, s); else hash.set(key, [ai, s]);
+            if (n === tmpCell.length) { const c2 = new Int32Array(n * 2), s2 = new Int32Array(n * 2); c2.set(tmpCell); s2.set(tmpSeg); tmpCell = c2; tmpSeg = s2; }
+            tmpCell[n] = (j - J0) * NI + (i - I0); tmpSeg[n] = segBase[ai] + s; n++;
           }
         }
       }
+      // stable counting sort by cell
+      const nc = NI * NJ;
+      cellStart = new Int32Array(nc + 1);
+      for (let k = 0; k < n; k++) cellStart[tmpCell[k] + 1]++;
+      for (let c = 0; c < nc; c++) cellStart[c + 1] += cellStart[c];
+      const fillAt = cellStart.slice(0, nc);
+      cellSeg = new Int32Array(n);
+      for (let k = 0; k < n; k++) cellSeg[fillAt[tmpCell[k]]++] = tmpSeg[k];
     };
     indexSegs();
     gmark('index');
     // T-junctions: endpoints lying on another road snap onto it (the nearest such segment)
+    // snap tolerance per road in a typed array: the road data objects come in a dozen shapes, so `B.r.w`
+    // in the inner loop is a megamorphic load
     let maxTol = 0;
-    for (const A of RR) maxTol = Math.max(maxTol, A.r.w / 2 + 6);
+    const rTol = new Float64Array(RR.length);
+    for (let k = 0; k < RR.length; k++) { rTol[k] = RR[k].r.w / 2 + 6; maxTol = Math.max(maxTol, rTol[k]); }
+    // every segment's end points, flat (ax, ay, bx, by per global segment id): the scan below reads
+    // these instead of B.pts[sI][0] ...; kept in step with the snapped end points
+    const segXY = new Float64Array(NSEG * 4);
+    for (let k = 0; k < RR.length; k++) {
+      const P = RR[k].pts;
+      for (let s2 = 0, o = segBase[k] * 4; s2 < P.length - 1; s2++, o += 4) { segXY[o] = P[s2][0]; segXY[o + 1] = P[s2][1]; segXY[o + 2] = P[s2 + 1][0]; segXY[o + 3] = P[s2 + 1][1]; }
+    }
     for (let ai = 0; ai < RR.length; ai++) {
       const A = RR[ai];
-      for (const end of [0, A.pts.length - 1]) {
+      for (let e2 = 0; e2 < 2; e2++) {
+        const end = e2 ? A.pts.length - 1 : 0;
         const p = A.pts[end], px = p[0], py = p[1];
-        let bB = null, bs = 0, bt = 0, bd2 = Infinity, bx = 0, by = 0;
+        let bi0 = -1, bs = 0, bt = 0, bd2 = Infinity, bx = 0, by = 0;
         for (let j = Math.floor((py - maxTol) / HC); j <= Math.floor((py + maxTol) / HC); j++) {
           for (let i = Math.floor((px - maxTol) / HC); i <= Math.floor((px + maxTol) / HC); i++) {
-            const l = hash.get(j * 8192 + i);
-            if (!l) continue;
-            for (let k = 0; k < l.length; k += 2) {
-              if (l[k] === ai) continue;
-              const B = RR[l[k]], sI = l[k + 1], a = B.pts[sI], b = B.pts[sI + 1];
-              const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
-              let t = l2 > 0 ? ((px - a[0]) * dx + (py - a[1]) * dy) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
-              const qx = a[0] + dx * t, qy = a[1] + dy * t, d2 = (qx - px) * (qx - px) + (qy - py) * (qy - py);
-              const tol = B.r.w / 2 + 6;
-              if (d2 <= tol * tol && d2 < bd2) { bd2 = d2; bB = B; bs = sI; bt = t; bx = qx; by = qy; }
+            const c = cellOf(i, j);
+            if (c < 0) continue;
+            for (let k = cellStart[c], ke = cellStart[c + 1]; k < ke; k++) {
+              const gid = cellSeg[k], bi = segRoad[gid];
+              if (bi === ai) continue;
+              const o = gid * 4, ax = segXY[o], ay = segXY[o + 1];
+              const dx = segXY[o + 2] - ax, dy = segXY[o + 3] - ay, l2 = dx * dx + dy * dy;
+              let t = l2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+              const qx = ax + dx * t, qy = ay + dy * t, d2 = (qx - px) * (qx - px) + (qy - py) * (qy - py);
+              const tol = rTol[bi];
+              if (d2 <= tol * tol && d2 < bd2) { bd2 = d2; bi0 = bi; bs = gid - segBase[bi]; bt = t; bx = qx; by = qy; }
             }
           }
         }
-        if (!bB) continue;
+        if (bi0 < 0) continue;
+        const bB = RR[bi0];
         const segL = bB.cum[bs + 1] - bB.cum[bs];
         bB.splits.push({ d: bB.cum[bs] + segL * bt, x: bx, y: by });
         if (bd2 > 0.01) { // snap the endpoint onto the other road (unless it already is one of its points)
           p[0] = bx; p[1] = by;
           A.splits[end].x = bx; A.splits[end].y = by;
+          const o = end ? (segBase[ai] + end - 1) * 4 + 2 : segBase[ai] * 4;
+          segXY[o] = bx; segXY[o + 1] = by;
         }
       }
     }
     gmark('tjunctions');
     // proper crossings, once per segment pair (the hash again: snapping moved some endpoints)
     indexSegs();
-    const seen = new Int32Array(segBase[RR.length]);
+    const seen = new Int32Array(NSEG);
     let stampS = 0;
     for (let ai = 0; ai < RR.length; ai++) {
       const A = RR[ai], P = A.pts;
@@ -18655,12 +18803,12 @@ body.reduced-motion .pg-hud.show { animation: none; }
         const i0 = Math.floor(Math.min(a0[0], a1[0]) / HC), i1 = Math.floor(Math.max(a0[0], a1[0]) / HC);
         const j0 = Math.floor(Math.min(a0[1], a1[1]) / HC), j1 = Math.floor(Math.max(a0[1], a1[1]) / HC);
         for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-          const l = hash.get(j * 8192 + i);
-          if (!l) continue;
-          for (let k = 0; k < l.length; k += 2) {
-            const bi = l[k];
+          const c = cellOf(i, j);
+          if (c < 0) continue;
+          for (let k = cellStart[c], ke = cellStart[c + 1]; k < ke; k++) {
+            const gid = cellSeg[k], bi = segRoad[gid];
             if (bi <= ai) continue;
-            const q = l[k + 1], gid = segBase[bi] + q;
+            const q = gid - segBase[bi];
             if (seen[gid] === stampS) continue;
             seen[gid] = stampS;
             const B = RR[bi];
@@ -18673,8 +18821,26 @@ body.reduced-motion .pg-hud.show { animation: none; }
       }
     }
     gmark('crossings');
+    {
+      // every split lies on a road segment, so inside the points' bounding box
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const A of RR) for (const sp of A.splits) { if (sp.x < x0) x0 = sp.x; if (sp.x > x1) x1 = sp.x; if (sp.y < y0) y0 = sp.y; if (sp.y > y1) y1 = sp.y; }
+      if (x0 <= x1) {
+        NG0 = Math.floor(x0 / 16) - 1; NGJ0 = Math.floor(y0 / 16) - 1;
+        NGW = Math.floor(x1 / 16) + 2 - NG0; NGH = Math.floor(y1 / 16) + 2 - NGJ0;
+      }
+      nHead = new Int32Array(NGW * NGH).fill(-1); nTail = new Int32Array(NGW * NGH);
+    }
     for (const A of RR) {
-      A.splits.sort((p, q) => p.d - q.d);
+      // stable insertion sort (same order as Array#sort): the splits are the road's own points, already
+      // in order, plus a few junctions appended, so this is ~linear and allocates nothing
+      const sp = A.splits;
+      for (let k = 1; k < sp.length; k++) {
+        const v = sp[k], d = v.d;
+        let m = k;
+        while (m > 0 && sp[m - 1].d > d) { sp[m] = sp[m - 1]; m--; }
+        sp[m] = v;
+      }
       let prev = null, prevD = -1e9;
       for (const sp of A.splits) {
         if (sp.d - prevD < 2 && prev) continue;
@@ -18730,7 +18896,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
             const l = nb.get(j * 1000 + i); if (!l) continue;
             for (const n of l) {
               if (pred && !pred(n)) continue;
-              const d = (n.x - x) ** 2 + (n.y - y) ** 2;
+              const ex = n.x - x, ey = n.y - y, d = ex * ex + ey * ey;
               if (d < bd) { bd = d; best = n; }
             }
           }
@@ -18865,8 +19031,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
           const qx = a[0] + dx * t - cx, qy = a[1] + dy * t - cy;
           if (qx * qx + qy * qy > SG * SG * 0.6) continue;
           const key = j * 4096 + i;
-          const l = segGrid.get(key);
-          if (l) l.push(r, s); else segGrid.set(key, [r, s]);
+          let l = segGrid.get(key);
+          if (!l) segGrid.set(key, (l = { rs: [], xy: [] }));
+          l.rs.push(r, s); l.xy.push(a[0], a[1], b[0], b[1]);
         }
       }
     }
@@ -18891,16 +19058,19 @@ body.reduced-motion .pg-hud.show { animation: none; }
       for (let j = cj - ring; j <= cj + ring; j++) {
         const rowEdge = j === cj - ring || j === cj + ring;
         for (let i = ci - ring; i <= ci + ring; i += rowEdge || !ring ? 1 : 2 * ring) {
-          const l = segGrid.get(j * 4096 + i);
-          if (!l) continue;
+          const cell = segGrid.get(j * 4096 + i);
+          if (!cell) continue;
+          // the segment end points are read from the cell's own flat copy (xy: ax, ay, bx, by per
+          // entry), not through r.pts (road objects come in many shapes: a megamorphic load each)
+          const l = cell.rs, xy = cell.xy;
           for (let k = 0; k < l.length; k += 2) {
-            const r = l[k], si = l[k + 1];
+            const r = l[k];
             if (pred && !pred(r)) continue;
-            const a = r.pts[si], b = r.pts[si + 1];
-            const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
-            let t = ((x - a[0]) * dx + (y - a[1]) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
-            const qx = a[0] + dx * t, qy = a[1] + dy * t, d2 = (qx - x) * (qx - x) + (qy - y) * (qy - y);
-            if (d2 < bd2) { bd2 = d2; br = r; bs = si; bt = t; bx = qx; by = qy; }
+            const o = k * 2, ax = xy[o], ay = xy[o + 1];
+            const dx = xy[o + 2] - ax, dy = xy[o + 3] - ay, l2 = dx * dx + dy * dy || 1;
+            let t = ((x - ax) * dx + (y - ay) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+            const qx = ax + dx * t, qy = ay + dy * t, d2 = (qx - x) * (qx - x) + (qy - y) * (qy - y);
+            if (d2 < bd2) { bd2 = d2; br = r; bs = l[k + 1]; bt = t; bx = qx; by = qy; }
           }
         }
       }
@@ -19004,9 +19174,12 @@ body.reduced-motion .pg-hud.show { animation: none; }
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
       const l = keepGrid.get(j * 4096 + i);
       if (!l) continue;
+      const x1 = x + w, y1 = y + h;
       for (const k of l) {
-        const qx = U.clamp(k.x, x, x + w), qy = U.clamp(k.y, y, y + h);
-        if ((qx - k.x) ** 2 + (qy - k.y) ** 2 < k.r * k.r) return false;
+        const kx = k.x, ky = k.y;
+        const qx = kx < x ? x : kx > x1 ? x1 : kx, qy = ky < y ? y : ky > y1 ? y1 : ky; // U.clamp
+        const ex = qx - kx, ey = qy - ky;
+        if (ex * ex + ey * ey < k.r * k.r) return false;
       }
     }
     return true;
@@ -19674,6 +19847,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     try { buildPotholes(D); } catch (e) { N.err('world.potholes', e); }
     mark('16');
     soil = null;
+    for (const k in PIX) PIX[k] = null;
     mapCache.clear();
     prepPainter();
     N.render.setGroundPainter(paintGround);
@@ -19758,7 +19932,11 @@ body.reduced-motion .pg-hud.show { animation: none; }
           const gr = g.createRadialGradient(px, py, 0, px, py, r);
           gr.addColorStop(0, 'rgba(' + c + ',' + (light ? 0.05 : 0.035) + ')'); gr.addColorStop(1, 'rgba(' + c + ',0)');
           g.fillStyle = gr;
-          for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) g.fillRect(px - r + ox, py - r + oy, r * 2, r * 2);
+          // the dab and its wrapped copies (seamless tile); copies wholly off the canvas draw nothing: skip them
+          for (let ox = -w; ox <= w; ox += w) {
+            if (px + r + ox <= 0 || px - r + ox >= w) continue;
+            for (let oy = -h; oy <= h; oy += h) if (py + r + oy > 0 && py - r + oy < h) g.fillRect(px - r + ox, py - r + oy, r * 2, r * 2);
+          }
         }
       }
     });
@@ -19833,6 +20011,48 @@ body.reduced-motion .pg-hud.show { animation: none; }
   }
   const inBB = (bb, x0, y0, x1, y1) => bb[2] >= x0 && bb[0] <= x1 && bb[3] >= y0 && bb[1] <= y1;
 
+  // Ordered bucket index for the chunk painter: a list's items (by index) bucketed on the BK grid by a
+  // bounding box. query() returns the indices of the items in the buckets a rect touches, ascending
+  // (= list order, so painting order is unchanged); callers keep their exact overlap test. The painter
+  // used to scan every road (3.4k, a megamorphic `r._bb` load each), junction, rock and landmark per chunk.
+  function bucketIndex(list, bbOf) {
+    const cells = new Array(BW * BH).fill(null);
+    for (let k = 0; k < list.length; k++) {
+      const bb = bbOf(list[k]);
+      if (!bb) continue;
+      const i0 = Math.max(0, Math.min(BW - 1, Math.floor(bb[0] / BK))), i1 = Math.max(0, Math.min(BW - 1, Math.floor(bb[2] / BK)));
+      const j0 = Math.max(0, Math.min(BH - 1, Math.floor(bb[1] / BK))), j1 = Math.max(0, Math.min(BH - 1, Math.floor(bb[3] / BK)));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) (cells[j * BW + i] || (cells[j * BW + i] = [])).push(k);
+    }
+    return { list, n: list.length, cells, mark: new Uint32Array(list.length), stamp: 0, out: [] };
+  }
+  function bucketQuery(ix, x0, y0, x1, y1) {
+    const out = ix.out, mark = ix.mark, st = ++ix.stamp;
+    out.length = 0;
+    const i0 = Math.max(0, Math.min(BW - 1, Math.floor(x0 / BK))), i1 = Math.max(0, Math.min(BW - 1, Math.floor(x1 / BK)));
+    const j0 = Math.max(0, Math.min(BH - 1, Math.floor(y0 / BK))), j1 = Math.max(0, Math.min(BH - 1, Math.floor(y1 / BK)));
+    let sorted = true;
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const l = ix.cells[j * BW + i];
+      if (!l) continue;
+      for (let k = 0; k < l.length; k++) {
+        const v = l[k];
+        if (mark[v] === st) continue;
+        mark[v] = st;
+        if (out.length && out[out.length - 1] > v) sorted = false;
+        out.push(v);
+      }
+    }
+    if (!sorted) out.sort((a, b) => a - b);
+    return out;
+  }
+  const PIX = { roads: null, parks: null, water: null, junctions: null, rocks: null, landmarks: null };
+  const pix = (k, list, bbOf) => { const ix = PIX[k]; return ix && ix.list === list && ix.n === list.length ? ix : (PIX[k] = bucketIndex(list, bbOf)); };
+  const BB_SELF = (o) => o._bb;
+  const BB_JUNCTION = (n) => { const R = n.w / 2 + 2 + 30; return [n.x - R, n.y - R, n.x + R, n.y + R]; };
+  const BB_ROCK = (rk) => [rk.x - rk.r * 2, rk.y - rk.r * 2, rk.x + rk.r * 2, rk.y + rk.r * 2];
+  const BB_LANDMARK = (lm) => { const r = (lm.plaza || 0) + Math.max(lm.w, lm.d); return [lm.x - r, lm.y - r, lm.x + r, lm.y + r]; };
+
   const ROADCOL = { arterial: '#47464c', street: '#55535a', bund: '#4c4b52', bridge: '#5d5a5c', lane: '#8a7c6a' };
   const FOOTCOL = { arterial: '#a39684', street: '#a89a86', bund: '#b4a690' };
   const PARKCOL = { grass: '#5b8a3c', garden: '#5f9140', ground: '#b38c62', plaza: '#d3c3a2', rock: '#a28468' };
@@ -19902,7 +20122,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
       }
     }
     // 3. parks
-    for (const p of D.parks) {
+    for (const pk of bucketQuery(pix('parks', D.parks, BB_SELF), x0, y0, x1, y1)) {
+      const p = D.parks[pk];
       if (!inBB(p._bb, x0, y0, x1, y1)) continue;
       pathPoly(ctx, p.poly);
       if (p.surface === 'sand') { ctx.fillStyle = '#cdb489'; ctx.fill(); ctx.fillStyle = pat.speck; ctx.fill(); continue; }
@@ -19923,7 +20144,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     }
     ctx.fillStyle = pat.speck; ctx.fillRect(x0, y0, w, h);
     // 4. water: sand banks, depth, foam
-    for (const wt of D.water) {
+    for (const wk of bucketQuery(pix('water', D.water, BB_SELF), x0, y0, x1, y1)) {
+      const wt = D.water[wk];
       if (!inBB(wt._bb, x0, y0, x1, y1)) continue;
       if (wt.bank) {
         pathPoly(ctx, wt.poly);
@@ -19942,7 +20164,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
       ctx.restore();
     }
     // 5. roads
-    const roads = D.roads.filter((r) => inBB(r._bb, x0, y0, x1, y1));
+    const roads = [];
+    for (const rk of bucketQuery(pix('roads', D.roads, BB_SELF), x0, y0, x1, y1)) { const r = D.roads[rk]; if (inBB(r._bb, x0, y0, x1, y1)) roads.push(r); }
     // bridge shadows on water + decks
     for (const r of roads) {
       if (r.kind !== 'bridge') continue;
@@ -20000,7 +20223,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
     // first) to clear dashes/medians, then zebra crossings on street/arterial approaches
     const RANK = { lane: 0, path: 0, bund: 1, street: 1, bridge: 2, arterial: 3 };
     ctx.lineCap = 'butt';
-    for (const n of W.junctions) {
+    const JL = W.junctions;
+    for (const jk of bucketQuery(pix('junctions', JL, BB_JUNCTION), x0, y0, x1, y1)) {
+      const n = JL[jk];
       const R = n.w / 2 + 2;
       if (n.x + R + 30 < x0 || n.x - R - 30 > x1 || n.y + R + 30 < y0 || n.y - R - 30 > y1) continue;
       const inc = n.inc.map((id) => W.roads.edges[id]).sort((a, b) => (RANK[a.kind] - RANK[b.kind]) || a.w - b.w);
@@ -20053,7 +20278,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     }
     // 6. landmark plazas
     ctx.lineCap = 'round';
-    for (const lm of D.landmarks) {
+    for (const lk of bucketQuery(pix('landmarks', D.landmarks, BB_LANDMARK), x0, y0, x1, y1)) {
+      const lm = D.landmarks[lk];
       const r = (lm.plaza || 0) + Math.max(lm.w, lm.d);
       if (lm.x + r < x0 || lm.x - r > x1 || lm.y + r < y0 || lm.y - r > y1) continue;
       if (lm.plaza) {
@@ -20066,7 +20292,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     // 7. building plinths (contact darkening) and rock bases
     ctx.fillStyle = 'rgba(40,30,35,0.45)';
     for (const b of dl) ctx.fillRect(b.x - 1, b.y - 1, b.w + 2, b.d + 2);
-    for (const rk of W.rocks) {
+    for (const ri of bucketQuery(pix('rocks', W.rocks, BB_ROCK), x0, y0, x1, y1)) {
+      const rk = W.rocks[ri];
       if (rk.x + rk.r * 2 < x0 || rk.x - rk.r * 2 > x1 || rk.y + rk.r * 2 < y0 || rk.y - rk.r * 2 > y1) continue;
       ctx.beginPath(); ctx.ellipse(rk.x, rk.y + 1, rk.r * 1.25, rk.r * 1.1, 0, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(60,45,35,0.25)'; ctx.fill();
@@ -20199,14 +20426,6 @@ body.reduced-motion .pg-hud.show { animation: none; }
   const treeCache = makeLRU(500);
   W.spriteCaches = { roofCache, treeCache };
 
-  function wallSeg(b, face) {
-    switch (face) {
-      case 'N': return [b.x, b.y, b.x + b.w, b.y];
-      case 'S': return [b.x + b.w, b.y + b.d, b.x, b.y + b.d];
-      case 'W': return [b.x, b.y + b.d, b.x, b.y];
-      default: return [b.x + b.w, b.y, b.x + b.w, b.y + b.d];
-    }
-  }
   function wallPx(b, face) {
     const R = N.render;
     const dist = face === 'N' ? b.y - R.camY : face === 'S' ? b.y + b.d - R.camY : face === 'W' ? b.x - R.camX : b.x + b.w - R.camX;
@@ -20283,15 +20502,30 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const wx = ax + ux * uc - R.camX, wy = ay + uy * uc - R.camY;
     const jux = ux * k, juy = uy * k, jvx = wx * Z * P, jvy = wy * Z * P;
     const px = R.W / 2 + wx * k, py = R.H / 2 + wy * k;
-    ctx.setTransform(jux, juy, jvx, jvy, px - jux * uc - jvx * vc, py - juy * uc - jvy * vc);
-    return [jux, juy, jvx, jvy, px - jux * uc - jvx * vc, py - juy * uc - jvy * vc];
+    const M = wallM;
+    M[0] = jux; M[1] = juy; M[2] = jvx; M[3] = jvy; M[4] = px - jux * uc - jvx * vc; M[5] = py - juy * uc - jvy * vc;
+    ctx.setTransform(M[0], M[1], M[2], M[3], M[4], M[5]);
+    return M;
+  }
+  // the last wall transform (scratch: drawWallDetail copies it into litWalls when a wall glows)
+  const wallM = new Float64Array(6);
+  // lit walls this frame, flat: 6 transform numbers, the Path2D, the colour (8 slots per wall)
+  function pushLit(m, path, col) {
+    litWalls.push(m[0], m[1], m[2], m[3], m[4], m[5], path, col);
   }
 
   function drawWallDetail(ctx, b, face) {
     const px = wallPx(b, face);
     if (px < 4.5) return; // thin slivers near the screen centre: plain wall reads fine
     const R = N.render;
-    const [ax, ay, bx, by] = wallSeg(b, face);
+    // the wall's ground segment (a -> b) in the wall's winding
+    let ax, ay, bx, by;
+    switch (face) {
+      case 'N': ax = b.x; ay = b.y; bx = b.x + b.w; by = b.y; break;
+      case 'S': ax = b.x + b.w; ay = b.y + b.d; bx = b.x; by = b.y + b.d; break;
+      case 'W': ax = b.x; ay = b.y + b.d; bx = b.x; by = b.y; break;
+      default: ax = b.x + b.w; ay = b.y; bx = b.x + b.w; by = b.y + b.d;
+    }
     const L = Math.hypot(bx - ax, by - ay), ux = (bx - ax) / L, uy = (by - ay) / L;
     const floors = b.floors || Math.max(1, Math.round(b.h / 10.5));
     const fh = b.h / floors;
@@ -20311,20 +20545,21 @@ body.reduced-motion .pg-hud.show { animation: none; }
           const open = !(N.clock.minutes < 9 * 60 || N.clock.minutes > 22 * 60);
           ctx.fillStyle = open ? '#3a2a22' : '#7d8088'; ctx.fill(g.gf);
           if (open) { ctx.fillStyle = '#b08850'; ctx.fill(g.gfLines); }
-          if (open && night > 0.2) litWalls.push([m, g.gfLit, '#ffc860']);
+          if (open && night > 0.2) pushLit(m, g.gfLit, '#ffc860');
         } else { ctx.fillStyle = g.gfCol; ctx.fill(g.gf); }
       }
     }
-    if (night > 0.2 && g.anyLit) litWalls.push([m, g.lit, '#ffd27a']);
+    if (night > 0.2 && g.anyLit) pushLit(m, g.lit, '#ffd27a');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   // light layer: lit windows / open shops (warm) over the night overlay
   function drawLitWalls(ctx, night) {
     ctx.globalAlpha = Math.min(1, night * 1.25);
-    for (const [m, path, col] of litWalls) {
-      ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
-      ctx.fillStyle = col; ctx.fill(path);
+    const lw = litWalls;
+    for (let i = 0; i < lw.length; i += 8) {
+      ctx.setTransform(lw[i], lw[i + 1], lw[i + 2], lw[i + 3], lw[i + 4], lw[i + 5]);
+      ctx.fillStyle = lw[i + 7]; ctx.fill(lw[i + 6]);
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
@@ -22077,13 +22312,18 @@ body.reduced-motion .pg-hud.show { animation: none; }
   }
 
   /* --------------------------------------------------------- enqueue */
+  let lampLights = [], porchLights = [];
   W.draw = function () {
     if (!W.built) return;
     const R = N.render, D = N.draw, v = R.view;
     const night = R.night || 0;
     const m = 140; // landmarks just outside the view may still cast shadows into it
-    litWalls = [];
+    litWalls.length = 0;
     const lights = R.lights;
+    // light records are recycled frame to frame (render.js drains R.lights every flush); if the last
+    // frame's were not drained, start new ones rather than rewrite records still in the list
+    if (lights.length) { lampLights = []; porchLights = []; }
+    let nLamp = 0, nPorch = 0;
     beginRoofs();
     W.queryStructures(v.x0 - m, v.y0 - m, v.x1 + m, v.y1 + m, (s) => {
       const vis = s.x1 >= v.x0 - 6 && s.x0 <= v.x1 + 6 && s.y1 >= v.y0 - 6 && s.y0 <= v.y1 + 6;
@@ -22094,13 +22334,21 @@ body.reduced-motion .pg-hud.show { animation: none; }
         return;
       }
       if (night > 0.05 && s.t === 'lamp') {
-        for (const a of s.arms) lights.push({ x: s.x + a[0] * 1.6, y: s.y + a[1] * 1.6, r: s.tube ? 46 : 64, color: s.tube ? '#bfe8ff' : '#ffa040', intensity: s.tube ? 0.75 : 0.95 });
+        for (const a of s.arms) {
+          const L = lampLights[nLamp] || (lampLights[nLamp] = { x: 0, y: 0, r: 0, color: '', intensity: 0 });
+          nLamp++;
+          L.x = s.x + a[0] * 1.6; L.y = s.y + a[1] * 1.6; L.r = s.tube ? 46 : 64; L.color = s.tube ? '#bfe8ff' : '#ffa040'; L.intensity = s.tube ? 0.75 : 0.95;
+          lights.push(L);
+        }
       }
       if (vis) R.queue('structures', R.distKey(s.cx, s.cy), sfn(s));
       if (night > 0.2 && vis && s.porch && s.cwall) {
         const c = s.cwall, f = s.front;
         const gx = f === 'W' ? c.x : f === 'E' ? c.x + c.w : c.x + c.w / 2, gy = f === 'N' ? c.y : f === 'S' ? c.y + c.h : c.y + c.h / 2;
-        lights.push({ x: (gx + s.cx) / 2, y: (gy + s.cy) / 2, r: 24, color: '#ffc870', intensity: 0.5, h: 4 });
+        const L = porchLights[nPorch] || (porchLights[nPorch] = { x: 0, y: 0, r: 24, color: '#ffc870', intensity: 0.5, h: 4 });
+        nPorch++;
+        L.x = (gx + s.cx) / 2; L.y = (gy + s.cy) / 2;
+        lights.push(L);
       }
     });
     enqueueRoofs();
@@ -22255,6 +22503,31 @@ body.reduced-motion .pg-hud.show { animation: none; }
       for (const q of r.pts) { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }
       return { rd: r, bb: [x0, y0, x1, y1] };
     });
+    // the roads bucketed by bounding box on a coarse grid: the crossing search below only tests the
+    // roads whose bucket a rail segment's box touches (ascending index = the same order as a full scan)
+    const RB_CELL = 512, rbCells = new Map();
+    roads.forEach((RB, k) => {
+      const bb = RB.bb;
+      for (let j = Math.floor(bb[1] / RB_CELL); j <= Math.floor(bb[3] / RB_CELL); j++) {
+        for (let i = Math.floor(bb[0] / RB_CELL); i <= Math.floor(bb[2] / RB_CELL); i++) {
+          const key = j * 65536 + i, l = rbCells.get(key);
+          if (l) l.push(k); else rbCells.set(key, [k]);
+        }
+      }
+    });
+    const rbSeen = new Uint32Array(roads.length);
+    let rbStamp = 0;
+    const roadsNear = (sx0, sy0, sx1, sy1) => {
+      const out = [];
+      rbStamp++;
+      for (let j = Math.floor(sy0 / RB_CELL); j <= Math.floor(sy1 / RB_CELL); j++) {
+        for (let i = Math.floor(sx0 / RB_CELL); i <= Math.floor(sx1 / RB_CELL); i++) {
+          const l = rbCells.get(j * 65536 + i);
+          if (l) for (const k of l) if (rbSeen[k] !== rbStamp) { rbSeen[k] = rbStamp; out.push(k); }
+        }
+      }
+      return out.sort((a, b) => a - b);
+    };
     prepared = (D.rails || []).map((r) => {
       const segs = [];
       for (let i = 0; i < r.pts.length - 1; i++) {
@@ -22278,8 +22551,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
       const xings = [];
       for (const sg of segs) {
         const sx0 = Math.min(sg.a[0], sg.b[0]), sx1 = Math.max(sg.a[0], sg.b[0]), sy0 = Math.min(sg.a[1], sg.b[1]), sy1 = Math.max(sg.a[1], sg.b[1]);
-        for (const RB of roads) {
-          const bb = RB.bb, rd = RB.rd;
+        for (const rk of roadsNear(sx0, sy0, sx1, sy1)) {
+          const RB = roads[rk], bb = RB.bb, rd = RB.rd;
           if (bb[2] < sx0 || bb[0] > sx1 || bb[3] < sy0 || bb[1] > sy1) continue;
           for (let k = 0; k < rd.pts.length - 1; k++) {
             const I = segInter(sg.a, sg.b, rd.pts[k], rd.pts[k + 1]);
@@ -31804,13 +32077,18 @@ body.reduced-motion .pg-hud.show { animation: none; }
   let hash = new Map();
   const hkey = (i, j) => j * 4096 + i;
 
+  // rebuilt every step: the Map is cleared and refilled (same key order as a new Map) and the bucket
+  // arrays are recycled, so a step allocates no buckets
+  const bucketPool = [];
   function rebuildHash() {
-    hash = new Map();
+    for (const b of hash.values()) { b.length = 0; bucketPool.push(b); }
+    hash.clear();
     for (const e of list) {
       if (!e.alive) continue;
       const k = hkey(Math.floor(e.x / HC), Math.floor(e.y / HC));
       const b = hash.get(k);
-      if (b) b.push(e); else hash.set(k, [e]);
+      if (b) b.push(e);
+      else { const nb = bucketPool.pop() || []; nb.push(e); hash.set(k, nb); }
     }
   }
 
@@ -31834,8 +32112,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
       N.emit('entity:remove', e);
     },
     /** Entities within r of (x,y) (centre distance minus their radius), optional predicate. */
-    query(x, y, r, pred) {
-      const out = [];
+    query(x, y, r, pred, into) {
+      const out = into || [];
       const i0 = Math.floor((x - r - 40) / HC), i1 = Math.floor((x + r + 40) / HC);
       const j0 = Math.floor((y - r - 40) / HC), j1 = Math.floor((y + r + 40) / HC);
       for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
@@ -31894,33 +32172,40 @@ body.reduced-motion .pg-hud.show { animation: none; }
   E.pushTo = pushTo;
 
   // Push overlapping solid actors apart (mass-weighted) and report bumps.
+  let nearBuf = [], nearBusy = false;
   function resolveOverlaps() {
-    for (const [k, b] of hash) {
-      void k;
+    for (const b of hash.values()) {
       for (const a of b) {
         if (!a.solid || !a.alive || a.noCollide) continue;
-        const near = E.query(a.x, a.y, (a.r || 4) + 2);
-        for (const o of near) {
-          if (o === a || o.id < a.id || !o.solid || o.noCollide) continue;
-          if (a.ignore === o || o.ignore === a) continue;
-          const dx = o.x - a.x, dy = o.y - a.y;
-          const rr = (a.r || 4) + (o.r || 4);
-          const d2 = dx * dx + dy * dy;
-          if (d2 >= rr * rr) continue;
-          const d = Math.sqrt(d2) || 0.01;
-          const nx = d2 > 0 ? dx / d : 1, ny = d2 > 0 ? dy / d : 0;
-          const pen = rr - d;
-          const ma = a.fixed ? 1e9 : a.mass || 1, mo = o.fixed ? 1e9 : o.mass || 1;
-          const ta = mo / (ma + mo), to = ma / (ma + mo);
-          if (!a.fixed) pushTo(a, a.x - nx * pen * ta, a.y - ny * pen * ta);
-          if (!o.fixed) pushTo(o, o.x + nx * pen * to, o.y + ny * pen * to);
-          const rel = ((a.vx || 0) - (o.vx || 0)) * nx + ((a.vy || 0) - (o.vy || 0)) * ny; // closing speed
-          const info = { a, b: o, nx, ny, speed: Math.max(0, rel) };
-          if (a.onBump) { try { a.onBump(o, info); } catch (err) { N.err('onBump', err); } }
-          if (o.onBump) { try { o.onBump(a, info); } catch (err) { N.err('onBump', err); } }
-          if (info.speed > 30) N.emit('bump', info);
-        }
+        // a scratch result array (a fresh one if an onBump handler re-entered this loop)
+        const own = !nearBusy, buf = own ? nearBuf : [];
+        buf.length = 0;
+        const near = E.query(a.x, a.y, (a.r || 4) + 2, null, buf);
+        if (own) nearBusy = true;
+        try { resolvePairs(a, near); } finally { if (own) nearBusy = false; }
       }
+    }
+  }
+  function resolvePairs(a, near) {
+    for (const o of near) {
+      if (o === a || o.id < a.id || !o.solid || o.noCollide) continue;
+      if (a.ignore === o || o.ignore === a) continue;
+      const dx = o.x - a.x, dy = o.y - a.y;
+      const rr = (a.r || 4) + (o.r || 4);
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= rr * rr) continue;
+      const d = Math.sqrt(d2) || 0.01;
+      const nx = d2 > 0 ? dx / d : 1, ny = d2 > 0 ? dy / d : 0;
+      const pen = rr - d;
+      const ma = a.fixed ? 1e9 : a.mass || 1, mo = o.fixed ? 1e9 : o.mass || 1;
+      const ta = mo / (ma + mo), to = ma / (ma + mo);
+      if (!a.fixed) pushTo(a, a.x - nx * pen * ta, a.y - ny * pen * ta);
+      if (!o.fixed) pushTo(o, o.x + nx * pen * to, o.y + ny * pen * to);
+      const rel = ((a.vx || 0) - (o.vx || 0)) * nx + ((a.vy || 0) - (o.vy || 0)) * ny; // closing speed
+      const info = { a, b: o, nx, ny, speed: Math.max(0, rel) };
+      if (a.onBump) { try { a.onBump(o, info); } catch (err) { N.err('onBump', err); } }
+      if (o.onBump) { try { o.onBump(a, info); } catch (err) { N.err('onBump', err); } }
+      if (info.speed > 30) N.emit('bump', info);
     }
   }
 
@@ -32090,11 +32375,15 @@ body.reduced-motion .pg-hud.show { animation: none; }
       }
       if (!p.vehicle) {
         for (const s of reg.values()) {
-          if (s.enabled && !s.enabled(p)) continue;
           const ex = s.entity ? s.entity.x : s.x, ey = s.entity ? s.entity.y : s.y;
           if (ex == null) continue;
-          const d = Math.hypot(ex - p.x, ey - p.y);
-          if (d > (s.r || 16) + p.r) continue;
+          const reach = (s.r || 16) + p.r, dx = ex - p.x, dy = ey - p.y;
+          if (dx > reach || dx < -reach || dy > reach || dy < -reach) continue; // hypot >= |dx|, |dy|: out of reach
+          const d = Math.hypot(dx, dy);
+          if (d > reach) continue;
+          // enabled() last: the in-range test is cheap, and some enabled() checks (shop hours, the story
+          // calendar) allocate; calling them for every registered interactable each step was ~10 MB/s
+          if (s.enabled && !s.enabled(p)) continue;
           const sc = (s.priority || 0) * 1000 - d;
           if (sc > bs) { bs = sc; best = s; }
         }
@@ -32594,13 +32883,21 @@ body.reduced-motion .pg-hud.show { animation: none; }
     // (pillion / passenger / fare) or says `refuse` (a kid-flavoured line). sound / bell: audio.js
     // engine profile and bell voice. spawn: traffic weight per district style (N.vehicles.trafficMix).
     kidOk: false, refuse: null, sound: null, bell: null, spawn: null, rough: null,
+    // fare: a working one (NPC at the controls) is hired for a fare ride via N.shops.rideVehicle
+    // (the cycle-rickshaw: its rickshaw-wala pedals, Chinnu sits behind)
+    fare: false,
   };
   const TYPES = {};
+  // A3 rules for types other modules define: traffic.js' cycle-rickshaw is based on 'cycle' (kidOk) but
+  // is a fare ride with the rickshaw-wala pedalling; Chinnu never sits at its pedals.
+  const TYPE_RULES = {
+    rickshaw: { kidOk: false, fare: true, refuse: ["The rickshaw-wala's seat is up there, the pedals way down there. *Nakko.*", 'Pedal a whole rickshaw, with people in it? Wait for the rickshaw-wala, *baba*.'] },
+  };
 
   /** Define (or redefine) a vehicle type. spec.base inherits from another type (story vehicles). */
   function define(id, spec) {
     const base = spec.base && TYPES[spec.base] ? TYPES[spec.base] : DEFAULTS;
-    const t = Object.assign({}, base, spec, { id });
+    const t = Object.assign({}, base, spec, TYPE_RULES[id] || null, { id });
     // collision circles along the length (radius = half width)
     const r = t.d / 2, span = Math.max(0, t.w - t.d);
     const n = span <= 0 ? 1 : Math.ceil(span / (t.d * 0.9)) + 1;
@@ -33353,8 +33650,74 @@ body.reduced-motion .pg-hud.show { animation: none; }
       if (zoomOwned) { N.render.baseZoom = 1; zoomOwned = false; }
     }
     N.emit('vehicle:exit', { vehicle: v, actor, passenger: true });
+    if (v.rideRestored) leaveRestored(v);
     return true;
   }
+
+  /* ---------------------------- A3: riding along survives a checkpoint retry and a save / load */
+  /** What the actor (default player) rides along in: {type, as, look, angle, color, color2, seed} | null. */
+  function rideState(a) {
+    a = a || N.player;
+    const v = a && a.vehicle;
+    if (!v || !a.passenger || v.driver === a) return null;
+    const d = v.driver;
+    let look = null;
+    try { look = d && d.look && typeof d.look === 'object' ? JSON.parse(JSON.stringify(d.look)) : null; } catch (e) { look = null; }
+    return { type: v.type, as: a.passenger, look, angle: v.angle || 0, color: v.color, color2: v.color2, seed: v.seed };
+  }
+  /**
+   * Seat the actor riding along with an NPC driver, never at the wheel: s = rideState() (+ opts {x, y}
+   * spawns a new vehicle there; opts.vehicle uses that one, moving him to the back seat if a load put him
+   * at its wheel). The restored ride has no route of its own: it waits for "Get off", then the driver rides
+   * off and the vehicle goes once out of view. opts.lock: the running mission holds the seat. -> vehicle | null
+   */
+  function restoreRide(actor, s, opts) {
+    opts = opts || {};
+    if (!actor || !s || !TYPES[s.type]) return null;
+    let v = opts.vehicle && opts.vehicle.alive ? opts.vehicle : null;
+    if (v && actor.vehicle === v && v.driver === actor) {
+      // a load spawned it with him at the wheel: hand the wheel back (no exit: he stays aboard)
+      actor.vehicle = null; v.driver = null; actor.passenger = null;
+      actor.mode = 'foot'; actor.noCollide = !!actor._noCollideWas;
+    } else if (v && actor.vehicle) return null;
+    if (!v) {
+      if (actor.vehicle) exit(actor, true);
+      const T = TYPES[s.type], x = opts.x != null ? opts.x : actor.x, y = opts.y != null ? opts.y : actor.y;
+      const f = N.world.findFree(x, y, T.mode === 'boat' ? 'boat' : 'drive', 24) || { x, y };
+      v = spawn(s.type, f.x, f.y, isFinite(s.angle) ? s.angle : 0, { color: s.color, color2: s.color2, seed: s.seed });
+      if (!v) return null;
+    }
+    v.controller = null; v.autopilot = false;
+    if (!npcDriven(v)) {
+      const rng = U.rng ? U.rng((v.seed || 1) + 77) : null;
+      v.driver = { look: s.look || N.people.randomLook(rng, 'man'), npc: true };
+    }
+    v.rideRestored = true;
+    if (!ride(actor, v, { as: s.as === 'pillion' || s.as === 'passenger' ? s.as : undefined, lock: !!opts.lock, quiet: true, force: true })) {
+      if (!v.seeded && !v.owned) remove(v);
+      return null;
+    }
+    return v;
+  }
+  // a restored ride (no route of its own) rides off once he is down, and goes when nobody sees it
+  function leaveRestored(v) {
+    v.rideRestored = false;
+    if (!v.alive || !npcDriven(v) || v.seeded || v.owned || v.special) return;
+    const R = N.world.roads, n = R && R.nearestNode(v.x + Math.cos(v.angle) * 60, v.y + Math.sin(v.angle) * 60);
+    const route = n ? R.randomRoute(n, 6) : [];
+    const pts = [[v.x, v.y]].concat(route.map((q) => [q.x, q.y]));
+    const gone = () => { if (v.alive && v.driver !== N.player && !v.passenger && !(N.render.inView && N.render.inView(v.x, v.y, 60))) remove(v); };
+    if (pts.length > 1) driveTo(v, pts, { timeout: 30, speed: 60, warp: false, stop: true }).then(gone, gone);
+  }
+  // save section 'ride': applied after every section is in (save:loaded), before healAge looks at the seat
+  let pendingRide = null;
+  function applyPendingRide() {
+    const s = pendingRide, p = N.player;
+    pendingRide = null;
+    if (!s || !p || !p.vehicle || p.passenger || p.vehicle.type !== s.type) return;
+    restoreRide(p, s, { vehicle: p.vehicle });
+  }
+
   /** "Board bus ₹3": a traffic bus (systems §3.6 hop-on). Moving > 15 u/s = footboard (+heat, scolding). */
   function boardBus(p, v) {
     const moving = Math.abs(v.speed) > 15, fare = busFare();
@@ -33504,6 +33867,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (drv && T.mode !== 'boat') {
       if (full) return seat('nolift', 'Ask for a lift');
       if (v.rideOk || v.npcKey) return seat(T.cls === 'bike' ? 'pillion' : 'passenger', T.cls === 'bike' ? 'Sit pillion' : 'Ride as passenger');
+      // a cycle-rickshaw plying for hire: a fare ride, the rickshaw-wala pedals (shops.js)
+      if (T.fare && N.shops && typeof N.shops.rideVehicle === 'function') return seat('fare', 'Ride ' + name + ' (fare)');
       if (T.cls === 'heavy' && /bus/.test(T.id)) return sp < TUNE.busMaxBoard ? { kind: 'bus', label: 'Board bus ' + (busFare() ? '₹' + (busFare() / 100) : '(ticket punch)') } : null;
       if (v.taxi && N.shops && typeof N.shops.rideVehicle === 'function') return seat('fare', 'Ride taxi (fare)');
       if (T.cls === 'bike') return seat('pillion', 'Ask for a lift');
@@ -35353,6 +35718,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function restyleRider(v) {
     const d = v && v.driver;
     if (!d || !d.npc || d instanceof N.Actor || !v.T) return;
+    if (N.traffic && N.traffic.styledRiders) return; // traffic.js driverLook dresses these riders itself
     const r = U.rng((v.seed | 0) + 77);
     const T = (N.traffic && N.traffic.makeLook) || null;
     const mk = (role, girl) => {
@@ -35377,36 +35743,13 @@ body.reduced-motion .pg-hud.show { animation: none; }
   }
 
   /* ================================================== NPC drivers (road routes) */
-  // A* over the road graph (every incident edge: scripted drivers may ignore one-way rules).
+  // A* over the road graph (every incident edge: scripted drivers may ignore one-way rules; no
+  // dirt paths, every road kind at its length). N.world.roads.route is a heap A* sized for the
+  // 15k-node map: a cross-city fare (Charminar -> Cyber Towers) expands a few thousand nodes.
+  const DRIVE_ROUTE = { walk: true, costs: {}, maxExpand: 40000 };
   function astar(a, b) {
-    const R = N.world.roads, nodes = R.nodes, edges = R.edges;
     if (!a || !b) return null;
-    if (a === b) return [a];
-    const g = new Map(), from = new Map(), open = [[0, a.id]], closed = new Set();
-    g.set(a.id, 0);
-    let guard = 0;
-    while (open.length && guard++ < 8000) {
-      let bi = 0;
-      for (let i = 1; i < open.length; i++) if (open[i][0] < open[bi][0]) bi = i;
-      const id = open[bi][1];
-      open[bi] = open[open.length - 1]; open.pop();
-      if (closed.has(id)) continue;
-      if (id === b.id) {
-        const path = [nodes[id]];
-        let c = id;
-        while (from.has(c)) { c = from.get(c); path.push(nodes[c]); }
-        return path.reverse();
-      }
-      closed.add(id);
-      const n = nodes[id], gn = g.get(id);
-      for (const eid of n.inc) {
-        const e = edges[eid], to = e.a === id ? e.b : e.a;
-        if (closed.has(to) || e.kind === 'path') continue;
-        const ng = gn + (e.len || 1);
-        if (ng < (g.has(to) ? g.get(to) : Infinity)) { g.set(to, ng); from.set(to, id); open.push([ng + Math.hypot(nodes[to].x - b.x, nodes[to].y - b.y), to]); }
-      }
-    }
-    return null;
+    return N.world.roads.route(a, b, DRIVE_ROUTE);
   }
   /**
    * Road route from (x0, y0) to (x1, y1) as a polyline [[x, y], ...] in the left-hand lane
@@ -35531,6 +35874,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     ride, boardBus,
     /** Is the actor (default player) riding along rather than driving? -> 'pillion' | 'passenger' | null */
     isPassenger(a) { a = a || N.player; return (a && a.vehicle && a.passenger) || null; },
+    /** A3 retry / load: rideState(actor) -> {type, as, look, ...} | null; restoreRide(actor, state, {x, y, vehicle, lock}). */
+    rideState, restoreRide,
     /** A2 hooks (tests, debug): hit a pothole now; the walking stumble check. */
     hitPothole(v, ph) { if (!v) return false; hitPothole(v, ph || { depth: 0.8, r: 6 }, 'front', v.T.w / 2 - 2, v.driver === N.player || v.passenger === N.player, N.player); return true; },
     potSeverity,
@@ -35576,7 +35921,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
 
   N.on('game:new', () => { try { patchTraffic(); seedParked(); } catch (e) { N.err('vehicles.seed', e); } });
   N.on('game:continue', () => { try { patchTraffic(); if (!list.some((v) => v.alive && v.seeded)) seedParked(); else seedHome(); healAge(); } catch (e) { N.err('vehicles.seed', e); } });
-  N.on('save:loaded', () => { try { healAge(); } catch (e) { N.err('vehicles.heal', e); } });
+  N.on('save:loaded', () => { try { applyPendingRide(); healAge(); } catch (e) { N.err('vehicles.heal', e); } });
   // a ladder unlock appears at home at once (Akka's Scooty, Chinnu's cycle, Bunty-anna's Hercules)
   N.on('collectible:threshold', (d) => { if (d && d.series === 'total') { try { seedHome(); } catch (e) { N.err('vehicles.seedHome', e); } } });
   // traffic riders: Scooties are college girls and aunties, Hercules students and boys
@@ -35600,7 +35945,12 @@ body.reduced-motion .pg-hud.show { animation: none; }
       R.queue('actors', R.view.y1 + 400, drawParticles);
       if (glows.length) R.queue('light', 5, drawGlows);
     },
-    init() { patchTraffic(); },
+    init() {
+      patchTraffic();
+      // A3: a save made while riding along loads him riding along again (save.js 'player' re-seats him at
+      // the wheel of a fresh copy; applyPendingRide hands the wheel back to an NPC driver)
+      if (N.save && N.save.register) N.save.register('ride', { serialize: () => rideState() || null, deserialize: (o) => { pendingRide = o && typeof o === 'object' && typeof o.type === 'string' ? o : null; } });
+    },
     reset() {
       for (const v of list.slice()) { N.entities.remove(v); }
       list.length = 0;
@@ -35654,7 +36004,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
  *   spawnPed(role?, {x, y, zone?}), bark(ped, text | situation), crowd(placeId) -> zone info,
  *   friendlyDogs() -> fed dogs following the player, closeRoads(id, {x, y, r} | null) (no traffic there),
  *   sense(v) -> nearest obstacle ahead {e, gap, sp} (shared with wanted.js pursuer vehicles),
- *   scarePigeons(x, y, r) }
+ *   scarePigeons(x, y, r), typeWeights(style, {kind, minutes, x, y}) (spawn weights: TUNE.mix overridden by
+ *   N.vehicles.TYPES[t].spawn; readsTypeWeights = true), pickType(style, kind), driverLook(type, style),
+ *   quietAt(x, y) (respect zones: no horns within TUNE.respectR, traffic crawls at TUNE.respectCruise) }
  * Ped flags other modules may set: ped.spotter = {stick: bool} | null (wanted.js: stands, faces Chinnu,
  *   the stick aunty walks after him waving it; drawn with a red "!" pip), ped.hold = true (freeze it).
  * Events: 'ped:knocked' {ped, by, speed}, 'ped:dodge' {ped, vehicle}, 'traffic:honk' {vehicle},
@@ -35717,6 +36069,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     pigeonPlaces: ['tank_bund_statues', 'secunderabad_station', 'abids', 'mozamjahi_market', 'nampally_station'],
     pigeonScare: { speed: 50, r: 40, near: 14, hornR: 80, landAfter: [6, 10] },
     podiumHours: [8 * 60, 21 * 60], podiumPhase: 6, podiumGap: 1,
+    // respect zones (systems §4.8): no horns within respectR of one, and traffic slows to respectCruise
+    respectR: 40, respectCruise: 40,
     // spawn rings are offsets beyond the view's half-diagonal; despawn needs out-of-view AND beyond these
     ringPed: [20, 170], ringVeh: [30, 210], ringAni: [24, 220], despawnPed: 330, despawnVeh: 440, despawnAni: 380,
     spawnPerFrame: 2, fillPerFrame: 8, fillSecs: 0.9,
@@ -35778,6 +36132,10 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function styleOf(d) { if (!d) return 'colony'; if (d.id === 'osmania') return 'osmania'; return d.style || 'colony'; }
   function districtAt(x, y) { try { return N.world.districtAt(x, y); } catch (e) { return null; } }
   function respectAt(x, y) { try { return N.respect && N.respect.at ? N.respect.at(x, y) : null; } catch (e) { return null; } }
+  /** In or near (TUNE.respectR) a temple / mosque / church / procession: no horns, traffic crawls (systems §4.8). */
+  function quietAt(x, y) {
+    try { return !!(N.respect && (N.respect.at && N.respect.at(x, y) || N.respect.near && N.respect.near(x, y, TUNE.respectR))); } catch (e) { return false; }
+  }
   function sfx(name, o) { try { if (N.audio && N.audio.sfx) N.audio.sfx(name, o || {}); } catch (e) { /* audio never breaks traffic */ } }
   function viewR() { const v = N.render.view; return Math.hypot(v.x1 - v.x0, v.y1 - v.y0) / 2; }
   function camC() { const v = N.render.view; return { x: (v.x0 + v.x1) / 2, y: (v.y0 + v.y1) / 2 }; }
@@ -36349,6 +36707,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function honk(v, why) {
     const tr = v.tr;
     if (tr && tr.hornCD > 0) return false;
+    if (tr ? tr.quiet : quietAt(v.x, v.y)) return false; // nobody honks outside a temple or a mosque
     const now = N.time.real || 0;
     while (T.hornLog.length && now - T.hornLog[0] > 2) T.hornLog.shift();
     if (T.hornLog.length >= TUNE.hornBudget) return false;
@@ -36366,6 +36725,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (tr.hornCD > 0) tr.hornCD -= dt;
     if (tr.ghost > 0) tr.ghost -= dt;
     if (tr.yieldT > 0) tr.yieldT -= dt;
+    // respect zones nearby (checked twice a second): no horn, crawl past
+    tr.quietT = (tr.quietT || 0) - dt;
+    if (tr.quietT <= 0) { tr.quietT = 0.5; tr.quiet = T2.mode !== 'boat' && quietAt(v.x, v.y); }
     // boats wander the lake
     if (T2.mode === 'boat') { boatCtl(v, dt); return; }
     // keep enough route ahead
@@ -36417,6 +36779,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     tx += segUy * lat; ty += -segUx * lat;
     // ---- speed planning
     let want = tr.cruise * (tr.yieldT > 0 ? 0.55 : 1);
+    if (tr.quiet) want = Math.min(want, TUNE.respectCruise);
     const dec = T2.brake * 0.42;
     let acc = Math.hypot(W[tr.i].x - v.x, W[tr.i].y - v.y);
     let stopping = false;
@@ -36601,6 +36964,37 @@ body.reduced-motion .pg-hud.show { animation: none; }
       case 'bus': case 'lorry': L.shirt = type === 'bus' ? '#a08a5a' : pick(SHIRT_LOUD); L.pants = type === 'bus' ? '#a08a5a' : pick(PANTS); break;
       case 'cycle': return makeLook(pick(night() ? ['man', 'lungi', 'youth'] : ['student', 'man', 'kid', 'lungi', 'youth', 'uncle', 'student']), style).look;
       case 'ladiescycle': { const r = makeLook(rnd() < 0.6 && !night() ? 'student' : 'woman', style).look; if (r.kind === 'student') { r.girl = true; r.plaits = pick(RIBBON); } if (r.kind === 'burqa') r.kind = 'woman'; return r; }
+      // the black Hero roadster: grown men only (the saddle is miles up) - the milkman on his dawn round
+      // (white vest, lungi, towel), the office-goer (tucked-in shirt, tiffin), colony uncles; night shift at night
+      case 'hero_cycle': case 'old_cycle': {
+        const m = mins(), dawn = m >= 5 * 60 && m < 10 * 60;
+        if (night()) { const r = makeLook(pick(['lungi', 'man', 'uncle']), style).look; r.rider = 'nightshift'; return r; }
+        if (rnd() < (dawn ? 0.55 : 0.2)) {
+          L.kind = 'uncle'; L.rider = 'milkman'; L.shirt = '#f4f2ea'; L.lungi = pick(['#efe9dc', '#efe9dc', '#2a5cb8', '#3a8a3a']);
+          L.towel = pick(['#efe6d0', '#c03030']); L.hair = rnd() < 0.35 ? '#8a8680' : '#1a1412'; L.oiled = rnd() < 0.5;
+          if (dk && rnd() < 0.3) { L.hat = 'skull'; L.hatColor = '#f4f2ea'; }
+          return L;
+        }
+        if (rnd() < 0.55) { const r = makeLook('office', style).look; r.lanyardDot = null; r.rider = 'office'; r.oiled = rnd() < 0.6; return r; }
+        const r = makeLook(rnd() < 0.6 ? 'uncle' : 'lungi', style).look; r.rider = 'uncle'; return r;
+      }
+      // the sporty Hercules: office-goers and young men on their way, schoolboys in uniform by day
+      case 'hercules_cycle': case 'hercules_gears': {
+        if (night()) { const r = makeLook(pick(['man', 'youth']), style).look; r.rider = 'man'; return r; }
+        const q = rnd();
+        if (q < 0.4) { const r = makeLook('office', style).look; r.lanyardDot = null; r.rider = 'office'; return r; }
+        if (q < 0.7) { const r = makeLook('student', style).look; r.girl = false; r.plaits = null; r.rider = 'student'; return r; }
+        const r = makeLook('youth', style).look; r.rider = 'youth'; return r;
+      }
+      // the Scooty: college girls with files on the footboard, women in salwar kameez, the odd aunty in a saree
+      case 'scooty': case 'akka_scooty': {
+        const q = night() ? 0.5 + rnd() * 0.5 : rnd();
+        let r;
+        if (q < 0.45) { r = makeLook('college', style).look; if (r.kind !== 'woman') { r.kind = 'woman'; r.shirt = pick(SAREE); r.pants = pick(['#efe9dc', '#2a3a5a']); r.dupatta = pick(SAREE); r.puff = false; } r.rider = 'college'; }
+        else if (q < 0.85) { r = makeLook('woman', style).look; r.rider = 'woman'; }
+        else { r = makeLook('aunty', style).look; r.rider = 'aunty'; }
+        return r;
+      }
       case 'luna': L.kind = 'man'; L.shirt = pick(SHIRT_PALE); L.hair = rnd() < 0.5 ? '#8a8680' : '#1a1412'; if (rnd() < 0.4) L.towel = '#efe6d0'; break;
       case 'rx100': return makeLook('youth', style).look;
       case 'rickshaw': L.kind = 'uncle'; L.lungi = pick(LUNGI); L.towel = pick(['#efe6d0', '#c03030']); break;
@@ -36608,14 +37002,41 @@ body.reduced-motion .pg-hud.show { animation: none; }
     }
     return L;
   }
-  function pickType(style, e, x, y) {
+  /**
+   * Spawn weights for a district style: TUNE.mix for the classic types, overridden by every vehicle type
+   * that carries its own TYPES[t].spawn table (Hero / Hercules cycles, the Scooty...). The generic
+   * 'cycle' share gives way to the pedal types that now have their own weights (never below a quarter
+   * of it: the BSAs and the hire cycles). opts: {kind: road edge kind, minutes, x, y}.
+   */
+  function typeWeights(style, opts) {
+    opts = opts || {};
+    const TY = (N.vehicles && N.vehicles.TYPES) || {};
     const mix = Object.assign({}, TUNE.mix[style] || TUNE.mix.colony);
-    const m = mins();
-    if (m >= 23 * 60 || m < 5 * 60) { mix.lorry = (mix.lorry || 0) * 2; mix.cycle *= 0.5; mix.ladiescycle *= 0.3; mix.bus *= 0.2; mix.rickshaw = (mix.rickshaw || 0) * 0.5; }
-    if (e.kind === 'lane') { mix.bus = 0; mix.lorry = 0; mix.ambassador = 0; mix.padmini *= 0.3; mix.maruti800 *= 0.4; }
-    if (e.kind === 'arterial') { mix.rickshaw = (mix.rickshaw || 0) * 0.4; }
-    for (const ev of activeEvents(x, y)) if (ev.idolLorries) { if (N.vehicles.TYPES.peacock_lorry) mix.peacock_lorry = (mix.peacock_lorry || 0) + 40; else mix.lorry = (mix.lorry || 0) + 40; }
-    const t = wpick(mix) || 'auto';
+    const st = TUNE.mix[style] ? style : 'colony';
+    let pedalOwn = 0;
+    for (const t in TY) {
+      const sp = TY[t] && TY[t].spawn;
+      if (!sp || typeof sp !== 'object') continue;
+      const w = +sp[st] || 0;
+      mix[t] = w;
+      if (TY[t].pedal && t !== 'cycle') pedalOwn += w;
+    }
+    if (pedalOwn > 0 && mix.cycle > 0) mix.cycle = Math.max(mix.cycle * 0.25, mix.cycle - pedalOwn);
+    const m = opts.minutes != null ? opts.minutes : mins();
+    // late night (23:00-05:00): lorries double, buses thin out and every pedal type halves (ladies cycles x0.3)
+    if (m >= 23 * 60 || m < 5 * 60) {
+      mix.lorry = (mix.lorry || 0) * 2; mix.bus = (mix.bus || 0) * 0.2;
+      for (const t in mix) if (TY[t] && TY[t].pedal) mix[t] *= t === 'ladiescycle' ? 0.3 : 0.5;
+    }
+    const kind = opts.kind;
+    if (kind === 'lane') { mix.bus = 0; mix.lorry = 0; mix.ambassador = 0; mix.padmini = (mix.padmini || 0) * 0.3; mix.maruti800 = (mix.maruti800 || 0) * 0.4; }
+    if (kind === 'arterial') { mix.rickshaw = (mix.rickshaw || 0) * 0.4; }
+    if (opts.x != null) for (const ev of activeEvents(opts.x, opts.y)) if (ev.idolLorries) { if (TY.peacock_lorry) mix.peacock_lorry = (mix.peacock_lorry || 0) + 40; else mix.lorry = (mix.lorry || 0) + 40; }
+    for (const t in mix) if (!TY[t]) delete mix[t];
+    return mix;
+  }
+  function pickType(style, e, x, y) {
+    const t = wpick(typeWeights(style, { kind: e && e.kind, x, y })) || 'auto';
     return N.vehicles.TYPES[t] ? t : 'auto';
   }
 
@@ -37076,6 +37497,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function playerCheck(p, dt) {
     const pl = N.player;
     if (!pl || pl.hidden) return;
+    if ((pl.level || null) !== (p.level || null)) { p.nearT = 0; return; } // he is up on a roof
     const d = Math.hypot(pl.x - p.x, pl.y - p.y);
     if (d > 26) { p.nearT = 0; return; }
     const sp = Math.hypot(pl.vx || 0, pl.vy || 0);
@@ -37936,7 +38358,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       for (const p of T.peds) {
         if (p.down || p.hold) continue;
         const dd = Math.hypot(p.x - x, p.y - y);
-        if (dd < 40) { p.lookT = rr(1, 2); p.lookAt = pl; if (dd < 30) hornHit(p); }
+        if (dd < 40) { p.lookT = rr(1, 2); p.lookAt = pl; if (dd < 30 && (p.level || null) === (pl.level || null)) hornHit(p); }
       }
     }
   }
@@ -38235,6 +38657,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
 
   const API = (N.traffic = {
     enabled: true, density: 1, TUNE,
+    // spawn weights come from N.vehicles.TYPES[t].spawn (typeWeights): vehicles.js leaves TUNE.mix alone,
+    // and the Hero / Hercules / Scooty riders get their looks from driverLook (vehicles.js does not restyle them)
+    readsTypeWeights: true, styledRiders: true,
     get vehicles() { return T.vehicles; }, get peds() { return T.peds; }, get animals() { return T.animals; },
     get constables() { return T.constables; }, get flocks() { return T.flocks; }, get boats() { return T.boats; },
     setDensity(d) { API.density = clamp(+d || 0, 0, 2); T.targetT = 0; return API.density; },
@@ -38288,6 +38713,10 @@ body.reduced-motion .pg-hud.show { animation: none; }
       for (const z of T.zoneList) if ((z.kind === 'market' || z.kind === 'plaza' || z.kind === 'transport' || z.kind === 'cinema') && Math.hypot(z.x - x, z.y - y) < z.r + 10 && zoneCount(z) >= 4) return true;
       return false;
     },
+    /** spawn weights {type: w} for a district style; opts {kind: edge kind, minutes, x, y} */
+    typeWeights, pickType: (style, kind) => pickType(style, { kind: kind || 'street' }), driverLook,
+    /** is (x, y) in or within TUNE.respectR of a respect zone (no horns, traffic crawls)? */
+    quietAt,
     makeLook, pickRole, blitPerson, laneOffset, edgeAny, geom, lanePt, ringNode, nodesNear,
     get index() { return RI; },
     // debug / tests
@@ -39671,7 +40100,18 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function bark(key, text, opts) {
     const a = typeof key === 'object' ? key : registry.get(key);
     if (!a || !N.dialogue || !N.dialogue.bark) return null;
-    return N.dialogue.bark(a, text, Object.assign({ speaker: a.npcId }, opts || {}));
+    const r = N.dialogue.bark(a, text, Object.assign({ speaker: a.npcId }, opts || {}));
+    shareBarkCooldown(a);
+    return r;
+  }
+  // NPCs standing together (Pasha + Babloo) don't talk over each other: one bark pushes the
+  // ambient bark cooldown of everyone within 40 u out to at least the barker's own
+  function shareBarkCooldown(a) {
+    const cd = Math.max(a.barkT || 0, 6);
+    for (const b of registry.values()) {
+      if (b === a || !b.alive || Math.hypot(b.x - a.x, b.y - a.y) > 40) continue;
+      b.barkT = Math.max(b.barkT || 0, cd);
+    }
   }
 
   /* ---------------------------------------------------------------- talk */
@@ -40138,7 +40578,10 @@ body.reduced-motion .pg-hud.show { animation: none; }
  *   freeze(on, reason) / frozen(), lock(level | null), policy('normal'|'frozen'|'scripted', level),
  *   hide(kind 'kirana'|'parlour'|'queue', placeId, {teleport}) -> {ok, line}, haircut(placeId) -> Promise,
  *   bust(by?) (PAKDA GAYA now), exhaust() (THAK GAYA now), fine(), dropPeel(),
+ *   route({x, y, angle}, tx, ty) / routeStats() (pursuer road routes: N.world.roads.route, cached),
  *   serialize() / deserialize(o) (save section 'wanted') }
+ * Roofs (N.player.level): nobody climbs after Chinnu and only a pursuer on his level can catch him;
+ *   foot chasers who saw him go up wait by the stairs for TUNE.chaseMemory s, then search as usual.
  * Events: 'wanted' and 'wanted:change' {level, prev, reason}, 'wanted:seen' {by}, 'wanted:report' {by},
  *   'wanted:tattle' {by}, 'chappal:throw' {x, y}, 'chappal:dodge', 'chappal:hit', 'busted' {by, x, y},
  *   'wasted' {x, y}, 'wanted:pursuer' {role, actor}. Sounds: whistle, gurkha, chappal_whoosh, chappal,
@@ -40179,6 +40622,11 @@ body.reduced-motion .pg-hud.show { animation: none; }
     lunaDismount: 70, lunaFootSecs: 6,
     chappal: { every: 6, range: 150, windup: 0.4, speed: 170, arc: 24, life: 1.4, turn1: 2.0, turn2: 0.8, switchT: 0.6, hit: 7, hitBike: 12, nearMiss: 20, rest: 3 },
     respectBuffer: 40, chaseMemory: 12, searchSecs: 8, spiralR: 150,
+    // pursuer vehicle routes: replan at most every `min` s (every `every` s, or when the goal moved by
+    // max(goalMove, goalFrac x distance)); node-pair cache lifetime and size
+    route: { every: 2.5, min: 0.6, goalMove: 60, goalFrac: 0.15, ttl: 3, cacheMax: 48 },
+    // Chinnu up on a roof: chasers who saw him go up wait this far from the stair foot, then give up
+    roofWaitR: 22,
     fine: 200, bustGm: 30, bustTummy: 10, wastedFine: 100, wastedTummy: 40, wastedEnergy: 40, wastedGm: 45, wastedMeter: 2,
     curfew: [[21 * 60 + 30, 1], [23 * 60, 2], [24 * 60 + 30, 3]], curfewMorning: 5 * 60,
     homeBefore: 18 * 60 + 30, homeR: 22,
@@ -40312,6 +40760,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
     get spotters() { return W.spotters.slice(); },
     get pursuers() { return allPursuers(); },
     get inRespect() { return W.inRespect; },
+    /** Pursuer road route from {x, y, angle} to (tx, ty) -> [[x, y], ...] (cached per node pair). */
+    route(from, tx, ty) { return roadRoute(from, tx, ty); },
+    routeStats() { return { calls: RC.calls, hits: RC.hits, fails: RC.fails, expanded: RC.expanded, cached: RC.cache.size }; },
     get stats() { return W.stats; },
     get busy() { return !!W.seq; },
     get locked() { return W.locked; },
@@ -40404,6 +40855,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     mummyNight: ['Sreenivas, faster!', '{FULL}! In your banyan, at this hour!', '*Intiki raa!* NOW!'],
     yadagiri: ['Sorry, {nick}! Full meter! FULL meter!', 'Aunty, left or right? ...Okay, straight, through the cows.'],
     nanna: ['Padma, it\'s a Chetak, not a rocket.'],
+    roof: ['*Neeche aao!* Come down!', 'I can wait. I have ALL day.', 'Whose terrace is that? I\'m telling them also!', 'You have to come down sometime, {nick}!'],
     escaped: { pochaiah: '*Hai*, my knees...', pochaiahLuna: 'Luna, you have betrayed me.', uncle: 'Fine, fine. I\'ll tell her tomorrow.', chitti: 'I\'m TELLING anyway!', havaldar: 'Next time, *beta*.', mummy: 'You have to come home sometime!' },
   };
   const BUSTED_LINES = {
@@ -40919,12 +41371,14 @@ body.reduced-motion .pg-hud.show { animation: none; }
     return d;
   }
   /** Road route for a pursuer vehicle: from a node ahead of it (no U-turns on replans) to the node nearest
-   *  the target, A* over the road graph ignoring one-ways (Pochaiah knows every short cut). -> [[x, y], ...] */
+   *  the target, by N.world.roads.route (heap A* sized for the whole city) ignoring one-ways (Pochaiah knows
+   *  every short cut). Node-pair results are cached for TUNE.route.ttl s, shared by every pursuer. -> [[x, y], ...] */
+  const RC = { cache: new Map(), calls: 0, hits: 0, fails: 0, expanded: 0 };
   function roadRoute(v, tx, ty) {
     const R = N.world.roads;
-    if (!R || !R.nodes || !R.nodes.length) return [[v.x, v.y], [tx, ty]];
-    const nodes = R.nodes, edges = R.edges;
-    const hx = Math.cos(v.angle), hy = Math.sin(v.angle);
+    if (!R || !R.nodes || !R.nodes.length || !R.route) return [[v.x, v.y], [tx, ty]];
+    const nodes = R.nodes;
+    const hx = Math.cos(v.angle || 0), hy = Math.sin(v.angle || 0);
     let a = null, best = Infinity;
     const near = N.traffic && N.traffic.nodesNear ? N.traffic.nodesNear(v.x, v.y, 180) : [];
     for (const n of near) {
@@ -40937,33 +41391,28 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (!a) a = R.nearestNode(v.x, v.y);
     const b = R.nearestNode(tx, ty);
     if (!a || !b) return [[v.x, v.y], [tx, ty]];
-    const g = new Map([[a.id, 0]]), from = new Map(), open = [[Math.hypot(b.x - a.x, b.y - a.y), a.id]], closed = new Set();
-    let found = a === b, guard = 0;
-    while (open.length && !found && guard++ < 6000) {
-      let bi = 0; for (let i = 1; i < open.length; i++) if (open[i][0] < open[bi][0]) bi = i;
-      const id = open[bi][1]; open[bi] = open[open.length - 1]; open.pop();
-      if (closed.has(id)) continue;
-      if (id === b.id) { found = true; break; }
-      closed.add(id);
-      const n = nodes[id], gn = g.get(id);
-      for (const eid of n.inc) {
-        const e = edges[eid]; if (e.kind === 'path') continue;
-        const to = e.a === id ? e.b : e.a;
-        if (closed.has(to)) continue;
-        const ng = gn + (e.len || 1) * (e.kind === 'lane' ? 1.15 : 1);
-        if (ng < (g.has(to) ? g.get(to) : Infinity)) { g.set(to, ng); from.set(to, id); open.push([ng + Math.hypot(nodes[to].x - b.x, nodes[to].y - b.y), to]); }
-      }
+    RC.calls++;
+    const key = a.id + '>' + b.id, now = W.now;
+    let hit = RC.cache.get(key);
+    if (hit && now - hit.t > TUNE.route.ttl) { RC.cache.delete(key); hit = null; }
+    let ids;
+    if (hit) { RC.hits++; ids = hit.ids; }
+    else {
+      const list = R.route(a, b, ROUTE_OPTS);
+      const st = R.routeStats ? R.routeStats() : null;
+      if (st) RC.expanded = st.expanded;
+      ids = list ? list.map((n) => n.id) : null;
+      if (!ids) RC.fails++;
+      if (RC.cache.size >= TUNE.route.cacheMax) RC.cache.delete(RC.cache.keys().next().value);
+      RC.cache.set(key, { t: now, ids });
     }
     const pts = [[v.x, v.y]];
-    if (found) {
-      const ids = [b.id]; let c = b.id;
-      while (from.has(c)) { c = from.get(c); ids.push(c); }
-      ids.reverse();
-      for (const id of ids) pts.push([nodes[id].x, nodes[id].y]);
-    }
+    if (ids) for (const id of ids) pts.push([nodes[id].x, nodes[id].y]);
     pts.push([tx, ty]);
     return pts;
   }
+  // every incident edge (one-ways ignored), no dirt paths, lanes cost x1.15; the whole city fits in the budget
+  const ROUTE_OPTS = { walk: true, costs: { lane: 1.15 }, maxExpand: 24000 };
   function pursuitCtl(v, dt) {
     const pu = v.pu, ctl = v.ctl, a = pu && pu.actor;
     if (!pu || !a || !a.alive) { ctl.throttle = 0; ctl.brake = true; return; }
@@ -40976,8 +41425,11 @@ body.reduced-motion .pg-hud.show { animation: none; }
     let directOk = false;
     if (dT < 110) { try { directOk = !N.world.raycast(v.x, v.y, tg.x, tg.y, 'drive').hit; } catch (e) { directOk = false; } }
     if (!directOk) {
-      if (!pu.path || pu.planT <= 0 || !pu.goal || Math.hypot(pu.goal.x - tg.x, pu.goal.y - tg.y) > 60) {
-        pu.planT = 2.5; pu.goal = { x: tg.x, y: tg.y }; pu.pi = 1;
+      const RT = TUNE.route;
+      pu.minT = (pu.minT || 0) - dt;
+      const moved = pu.goal ? Math.hypot(pu.goal.x - tg.x, pu.goal.y - tg.y) : Infinity;
+      if (!pu.path || (pu.minT <= 0 && (pu.planT <= 0 || moved > Math.max(RT.goalMove, dT * RT.goalFrac)))) {
+        pu.planT = RT.every; pu.minT = RT.min; pu.goal = { x: tg.x, y: tg.y }; pu.pi = 1;
         try { pu.path = roadRoute(v, tg.x, tg.y); } catch (e) { N.err('wanted.route', e); pu.path = [[v.x, v.y], [tg.x, tg.y]]; }
       }
       const P = pu.path;
@@ -41128,13 +41580,13 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (a.mount && mounted(a)) {
       const v = a.mount, dP = Math.hypot(v.x - p.x, v.y - p.y), psp = Math.hypot(p.vx || 0, p.vy || 0);
       // box-in: stopped beside a slow Chinnu
-      if (a.role === 'pochaiah' && dP < TUNE.boxR && psp < TUNE.boxSpeed) { a.boxT += dt; if (a.boxT >= TUNE.boxSecs) { startBusted('pochaiah'); return; } } else a.boxT = 0;
+      if (a.role === 'pochaiah' && dP < TUNE.boxR && psp < TUNE.boxSpeed && sameLevel(a)) { a.boxT += dt; if (a.boxT >= TUNE.boxSecs) { startBusted('pochaiah'); return; } } else a.boxT = 0;
       // Pochaiah gets off when Chinnu is close on foot or in a park / plaza / narrow lane (L3: for good; L4: runs 6 s, then back)
-      if (a.role === 'pochaiah' && (dP < TUNE.lunaDismount && !p.vehicle || (dP < 140 && narrowSpot(p.x, p.y))) && Math.abs(v.speed) < 40) {
+      if (a.role === 'pochaiah' && !p.level && (dP < TUNE.lunaDismount && !p.vehicle || (dP < 140 && narrowSpot(p.x, p.y))) && Math.abs(v.speed) < 40) {
         if (dismount(a)) { a.onFootT = 0; a.footLimit = W.level >= 4 ? TUNE.lunaFootSecs : 1e9; bark(a, '*Ruko!*', 'pochaiah'); return; }
       }
       // Mummy steps out and grabs when the auto / Chetak has caught up with a slow Chinnu
-      if (a.role === 'mummy' && dP < TUNE.stepOutR && psp < 40 && Math.abs(v.speed) < 25) {
+      if (a.role === 'mummy' && !p.level && dP < TUNE.stepOutR && psp < 40 && Math.abs(v.speed) < 25) {
         if (dismount(a)) { a.onFootT = 0; a.footLimit = TUNE.mummyRunSecs; bark(a, pick(['*Intiki raa!* NOW!', 'Caught you!', '{FULL}!']), 'amma'); return; }
       }
       // the road won't take the vehicle there: everybody gets off and runs
@@ -41159,6 +41611,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
         }
       }
     }
+    // Chinnu is up on a roof: nobody climbs after him (they wait by the stairs, then give up)
+    a.waitingBelow = false;
+    if (p.level && !a.level && !a.isSpotter && roofWait(a, dt)) return;
     const fast = a.seeing || seenRecently || Math.hypot(tg.x - a.x, tg.y - a.y) > 60;
     let speed = fast ? a.runSpd : a.walkSpd;
     if (a.role === 'chitti' && Math.hypot(p.x - a.x, p.y - a.y) < 50) speed = a.walkSpd; // she just keeps him in sight
@@ -41189,6 +41644,32 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (!a.isSpotter) rubberBand(a, false);
     checkCatch(a, dt);
   }
+  /** Pursuers stay on the ground: they can only catch Chinnu on the same level (systems §7.3 roof zones). */
+  function sameLevel(a) { return (N.player.level || null) === ((a && a.level) || null); }
+  /** Chinnu went up onto a roof while being chased (seen in the last TUNE.chaseMemory s): a foot pursuer
+   *  waits TUNE.roofWaitR from the foot of the stairs he took, arms folded, shouting up. After that the
+   *  chase memory runs out and he searches like any lost chase (the meter keeps dropping unseen). */
+  function roofWait(a, dt) {
+    const p = N.player;
+    if (W.now - W.lastSeenT > TUNE.chaseMemory) return false;
+    const RF = N.world.roofs, r = RF && RF.get ? RF.get(p.level) : null;
+    if (!r || !r.stairs || !r.stairs.length) return false;
+    const ref = W.lastSeen || a;
+    let st = r.stairs[0], bd = Infinity;
+    for (const s of r.stairs) { const dd = (s.x - ref.x) ** 2 + (s.y - ref.y) ** 2; if (dd < bd) { bd = dd; st = s; } }
+    const dx = a.x - st.x, dy = a.y - st.y, d = Math.hypot(dx, dy) || 1;
+    const gx = st.x + (dx / d) * TUNE.roofWaitR, gy = st.y + (dy / d) * TUNE.roofWaitR;
+    a.searchT = 0;
+    if (d > TUNE.roofWaitR + 4) moveOnFoot(a, gx, gy, a.runSpd, dt);
+    else {
+      a.vx *= 0.7; a.vy *= 0.7; a.anim.speed = 0;
+      a.angle += U.angleDiff(a.angle, Math.atan2(p.y - a.y, p.x - a.x)) * Math.min(1, dt * 4);
+      a.roofT = (a.roofT || 0) - dt;
+      if (a.roofT <= 0) { a.roofT = TUNE.barkEvery * rr(1, 1.5); bark(a, pick(LINES.roof), a.speaker); }
+    }
+    a.waitingBelow = true;
+    return true;
+  }
   function narrowSpot(x, y) {
     const s = N.world.surfaceAt(x, y), S = N.SURF;
     if (s === S.GRASS || s === S.PLAZA || s === S.SAND || s === S.GROUND) return true;
@@ -41198,7 +41679,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function checkCatch(a, dt) {
     if (!a.canCatch || W.seq || frozenNow()) return;
     const p = N.player;
-    if (W.inRespect) return;
+    if (W.inRespect || !sameLevel(a)) return;
     const d = Math.hypot(a.x - p.x, a.y - p.y);
     const pv = p.vehicle;
     const reach = a.role === 'mummy' ? TUNE.grabR : TUNE.catchR;
@@ -41313,7 +41794,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const p = N.player;
     // a chaser close by catches him instead (systems §4.11)
     const ch = W.chaser;
-    if (W.level >= 3 && ch && ch.state !== 'leave' && Math.hypot(ch.x - p.x, ch.y - p.y) < 250) return startBusted(ch.role === 'mummy' ? 'amma' : 'pochaiah');
+    if (W.level >= 3 && ch && ch.state !== 'leave' && sameLevel(ch) && Math.hypot(ch.x - p.x, ch.y - p.y) < 250) return startBusted(ch.role === 'mummy' ? 'amma' : 'pochaiah');
     W.seq = { kind: 'wasted', t: 0, step: 0, x: p.x, y: p.y };
     N.emit('wasted', { x: p.x, y: p.y });
     sfx('pant', { ui: true });
@@ -41519,10 +42000,13 @@ body.reduced-motion .pg-hud.show { animation: none; }
     W.footAcc = (W.footAcc || 0) + TUNE.heat.footpath * dt;
     if (W.footAcc >= 1) { const n = Math.floor(W.footAcc); W.footAcc -= n; API.addHeat(n, 'footpath'); }
   }
+  // a story2 scene in progress (it may run late) and the Ganesh pandal week on the colony ground: no curfew
+  function storyScene() { try { return !!(N.story2 && N.story2.state && N.story2.state().scene); } catch (e) { return false; } }
   function curfewRule() {
     const m = mins(), d = day();
     const off = (N.missions && N.missions.active) || (N.flags && (N.flags.postgame || N.flags.ending_done || N.flags.no_curfew)) ||
-      (flagOn('numaish') && m < 22 * 60 + 30 && m >= 16 * 60) || flagOn('ganesh_immersion') || (flagOn('ramzan') && (m < 23 * 60 + 30 && m > 12 * 60)) || flagOn('chand_raat');
+      (flagOn('numaish') && m < 22 * 60 + 30 && m >= 16 * 60) || flagOn('ganesh_immersion') ||
+      flagOn('ganesh') || storyScene() || (flagOn('ramzan') && (m < 23 * 60 + 30 && m > 12 * 60)) || flagOn('chand_raat');
     let floor = 0;
     const mm = m < TUNE.curfewMorning ? m + 1440 : m;
     for (const [t, f] of TUNE.curfew) if (mm >= t) floor = f;
@@ -41992,7 +42476,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     dom.banner = el('div', 'hud-banner', root, '<div class="b-title"></div><div class="b-sub"></div>');
     dom.bTitle = dom.banner.querySelector('.b-title');
     dom.bSub = dom.banner.querySelector('.b-sub');
-    dom.district = el('div', 'hud-district', root, '<span class="d-name"></span><span class="d-sub"></span>');
+    dom.district = el('div', 'hud-district', root, '<span class="d-name"></span><span class="d-sub" lang="te"></span>');
     dom.dName = dom.district.querySelector('.d-name');
     dom.dSub = dom.district.querySelector('.d-sub');
 
@@ -42018,9 +42502,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function mapImage() {
     if (MM.img) return MM.img;
     if (!N.world.built) return null;
-    const src = N.world.renderMap(MM.ppu);
-    const c = N.render.makeCanvas(src.width, src.height), g = c.getContext('2d');
-    g.drawImage(src, 0, 0);
+    // a canvas of our own (not N.world's cached copy), graded in place: one 3000 x 2250 image, not two
+    const c = N.world.renderMap(MM.ppu, { fresh: true }), g = c.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
     // night-VHS grade: cool + darken the land, keep the roads bright
     g.globalCompositeOperation = 'multiply';
     g.fillStyle = '#a99fb4'; g.fillRect(0, 0, c.width, c.height);
@@ -42050,54 +42534,14 @@ body.reduced-motion .pg-hud.show { animation: none; }
   }
 
   // Route along the road graph (A*), recomputed when the target or nearest node changes.
-  const route = { key: '', pts: null, t: 0, sx: 0, sy: 0 };
+  const route = { key: '', pts: null, t: 0, sx: 0, sy: 0, a: -1, b: -1 };
+  // Walkers ignore one-way rules (every incident edge) and may cut along footpaths (x1.15).
+  // N.world.roads.route is a heap A* sized for the 15k-node map (a cross-city trip expands a few
+  // thousand nodes); the budget only stops a pathological search from stalling a frame.
+  const GPS_OPTS = { walk: true, paths: true, costs: { path: 1.15 }, maxExpand: 40000 };
   function astar(a, b) {
-    const R = N.world.roads, nodes = R.nodes, edges = R.edges;
     if (!a || !b) return null;
-    if (a === b) return [a];
-    const g = new Map(), from = new Map(), open = [[0, a.id]], closed = new Set();
-    g.set(a.id, 0);
-    const h = (n) => Math.hypot(n.x - b.x, n.y - b.y);
-    let guard = 0;
-    while (open.length && guard++ < 6000) {
-      // binary heap pop
-      const top = open[0], last = open.pop();
-      if (open.length) {
-        open[0] = last;
-        let i = 0;
-        for (;;) {
-          const l = i * 2 + 1, r = l + 1;
-          let m = i;
-          if (l < open.length && open[l][0] < open[m][0]) m = l;
-          if (r < open.length && open[r][0] < open[m][0]) m = r;
-          if (m === i) break;
-          const tmp = open[i]; open[i] = open[m]; open[m] = tmp; i = m;
-        }
-      }
-      const id = top[1];
-      if (closed.has(id)) continue;
-      if (id === b.id) {
-        const path = [nodes[id]];
-        let c = id;
-        while (from.has(c)) { c = from.get(c); path.push(nodes[c]); }
-        return path.reverse();
-      }
-      closed.add(id);
-      const n = nodes[id], gn = g.get(id);
-      // walkers ignore one-way rules: use every incident edge
-      for (const eid of n.inc) {
-        const e = edges[eid], to = e.a === id ? e.b : e.a;
-        if (closed.has(to)) continue;
-        const ng = gn + (e.len || Math.hypot(nodes[to].x - n.x, nodes[to].y - n.y)) * (e.kind === 'path' ? 1.15 : 1);
-        if (ng < (g.has(to) ? g.get(to) : Infinity)) {
-          g.set(to, ng); from.set(to, id);
-          open.push([ng + h(nodes[to]), to]);
-          let i = open.length - 1;
-          while (i > 0) { const p = (i - 1) >> 1; if (open[p][0] <= open[i][0]) break; const tmp = open[p]; open[p] = open[i]; open[i] = tmp; i = p; }
-        }
-      }
-    }
-    return null;
+    return N.world.roads.route(a, b, GPS_OPTS);
   }
   function updateRoute(dt) {
     let target = null;
@@ -42113,6 +42557,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (direct < 120) { route.pts = [[p.x, p.y], [target.x, target.y]]; return; }
     const R = N.world.roads;
     const a = R.nearestNode(p.x, p.y), b = R.nearestNode(target.x, target.y);
+    // same end nodes as the last search (riding along one road): keep the route, just move its start
+    if (a && b && route.pts && route.pts.length > 2 && route.a === a.id && route.b === b.id) { route.pts[0] = [p.x, p.y]; route.pts[route.pts.length - 1] = [target.x, target.y]; return; }
+    route.a = a ? a.id : -1; route.b = b ? b.id : -1;
     const path = astar(a, b);
     if (!path) { route.pts = [[p.x, p.y], [target.x, target.y]]; return; }
     const pts = [[p.x, p.y]];
@@ -42248,12 +42695,19 @@ body.reduced-motion .pg-hud.show { animation: none; }
       }
     }
     if (state.toastGap > 0) state.toastGap -= dt;
+    // a queued toast whose `until` (predicate or N.time.now deadline) lapsed is dropped unseen
+    while (state.tq.length && toastStale(state.tq[0])) state.tq.shift();
     if (!state.toasts.length && state.tq.length && !busy && !(state.toastGap > 0)) {
       const q = state.tq.shift();
       const e = el('div', 'hud-toast', dom.toasts);
       e.textContent = q.text;
-      state.toasts.push({ el: e, text: q.text, ms: q.ms, left: q.ms, shown: false, key: q.key });
+      state.toasts.push({ el: e, text: q.text, ms: q.ms, left: q.ms, shown: false, key: q.key, tag: q.tag });
     }
+  }
+  function toastStale(q) {
+    const u = q.until;
+    if (typeof u === 'function') { try { return !u(); } catch (e) { return true; } }
+    return typeof u === 'number' && N.time.now > u;
   }
   function pumpBanner(dt) {
     if (state.bannerCur) {
@@ -42477,6 +42931,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       text = String(text).replace(/\*([^*]+)\*/g, '$1');
       ms = ms || 2800;
       const key = opts && opts.key;
+      const until = opts && opts.until, tag = opts && opts.tag;
       const cur = state.toasts[0];
       if (cur && cur.text === text) { cur.left = Math.max(cur.left, Math.min(ms, 2000)); return; }
       // a keyed toast (e.g. 'radio') replaces the older one with the same key instead of queueing behind it
@@ -42487,8 +42942,22 @@ body.reduced-motion .pg-hud.show { animation: none; }
       }
       const dup = state.tq.find((q) => q.text === text);
       if (dup) { dup.ms = Math.max(dup.ms, ms); return; }
-      state.tq.push({ text, ms, key });
+      state.tq.push({ text, ms, key, until, tag });
       while (state.tq.length > 6) state.tq.shift();
+    },
+    /** Drop queued toasts (and the one showing) for which pred({text, key, tag}) is true; no pred = all. */
+    dropToasts(pred) {
+      const hit = (t) => { try { return !pred || !!pred(t); } catch (e) { return false; } };
+      const n = state.tq.length;
+      state.tq = state.tq.filter((q) => !hit(q));
+      let dropped = n - state.tq.length;
+      const cur = state.toasts[0];
+      if (cur && hit(cur)) {
+        state.toasts.shift(); dropped++;
+        const e0 = cur.el; e0.classList.remove('show'); e0.classList.add('out'); setTimeout(() => e0.remove(), 300);
+        state.toastGap = 0.18;
+      }
+      return dropped;
     },
     /** Messages waiting + showing (tests / debugging). */
     toastQueue: () => state.toasts.map((t) => t.text).concat(state.tq.map((q) => q.text)),
@@ -42668,6 +43137,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
  *     look may be an object or a function returning one (variants); name may hold tokens.
  *   N.dialogue.speakers[id]  (plain assignment {name, color, portrait} also works)
  *   N.dialogue.cancel() / advance() / isOpen() / skip (debug) / textSpeed
+ *   N.dialogue.autoAdvance (menus' setting): plain lines move on by themselves ~2-7 s (by length)
+ *       after they finish typing; choices always wait for the player.
  *   N.dialogue.current -> {speaker (the id the script used), as (resolved id), text (names
  *       substituted), typing, choices, selected, mood} | null
  *   N.dialogue.speakerName(id) -> the name plate text; clearBarks(); barkCount(); moods
@@ -43676,7 +44147,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
 
   /* ================================================================= API */
   const D = (N.dialogue = {
-    speakers, glossary: GLOSSARY, dictionary: DICTIONARY, skip: false, active: false, textSpeed: 1,
+    speakers, glossary: GLOSSARY, dictionary: DICTIONARY, skip: false, active: false, textSpeed: 1, autoAdvance: false,
     define, speaker, paintPortrait, portraitCanvas, filter, subst: filter, names, gloss, bark, is2026,
     moods: MOODS.slice(),
     speakerName(id) { return speakerName(speaker(id)); },
@@ -43730,6 +44201,11 @@ body.reduced-motion .pg-hud.show { animation: none; }
   });
 
   /* ============================================================== system */
+  /** Seconds an auto-advancing line stays up after it has finished typing: ~2 s, longer lines longer. */
+  function autoDelay(line) {
+    const n = line.chars ? line.chars.length : String(line.t || '').length;
+    return Math.min(7, Math.max(2, 1.2 + n * 0.045));
+  }
   function update(dt) {
     const line = cur;
     if (!line) return;
@@ -43750,6 +44226,10 @@ body.reduced-motion .pg-hud.show { animation: none; }
         if (line.shown >= line.chars.length) finishTyping();
       }
     } else if (line.auto && !line.choices && N.time.now - (line.doneT || 0) > line.auto) {
+      done(undefined);
+      return;
+    } else if (D.autoAdvance && !line.auto && !line.choices && N.time.now - (line.doneT || 0) > autoDelay(line)) {
+      // settings "Auto-advance dialogue": move on once the line has had time to be read (never picks a choice)
       done(undefined);
       return;
     }
@@ -44110,7 +44590,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
         if (ffing()) return;
         N.player.inventory.add(itemId);
         N.emit('item:give', { id: itemId, mission: run.id });
-        if (opts && opts.name) N.hud.toast('Got: ' + opts.name, 2600);
+        if (opts && opts.name) N.hud.toast('Got: ' + opts.name, 2600, { tag: 'item:' + run.id });
       },
       money(paise) {
         guard(run);
@@ -44149,8 +44629,19 @@ body.reduced-motion .pg-hud.show { animation: none; }
           run.ff = null;
           const cp = run.cpData;
           if (cp) {
-            pl.teleport(cp.x, cp.y);
-            if (cp.vehicleType && N.vehicles.TYPES[cp.vehicleType]) {
+            const V = N.vehicles, rideCp = cp.ride || (cp.ride === undefined && cp.vehicleType && V.canDrive && !V.canDrive(cp.vehicleType) ? { type: cp.vehicleType, as: null, angle: cp.angle } : null);
+            if (rideCp && V.restoreRide && V.TYPES[rideCp.type]) {
+              // A3: he was riding along (pillion / passenger / bus) at the checkpoint: back on the seat behind
+              // an NPC driver, never at the wheel. The replayed script's own ride is kept when it seated him again.
+              const cur = pl.vehicle && pl.passenger && pl.vehicle.type === rideCp.type ? pl.vehicle : null;
+              if (cur) { cur.x = cp.x; cur.y = cp.y; cur.angle = cp.angle || 0; cur.vx = cur.vy = cur.av = 0; cur.okX = null; pl.x = cp.x; pl.y = cp.y; }
+              else {
+                pl.teleport(cp.x, cp.y);
+                const v = V.restoreRide(pl, rideCp, { x: cp.x, y: cp.y }); // unlocked: this copy has no script driving it
+                if (v) run.spawned.push({ e: v, keep: false });
+              }
+            } else pl.teleport(cp.x, cp.y);
+            if (!rideCp && cp.vehicleType && N.vehicles.TYPES[cp.vehicleType]) {
               const f = N.world.findFree(cp.x, cp.y, N.vehicles.TYPES[cp.vehicleType].mode === 'boat' ? 'boat' : 'drive', 20) || cp;
               const v = N.vehicles.spawn(cp.vehicleType, f.x, f.y, cp.angle || 0, {});
               if (v) { run.spawned.push({ e: v, keep: false }); N.vehicles.enter(pl, v); }
@@ -44160,7 +44651,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
           N.hud.toast('Checkpoint: back in the action!', 2200);
           return;
         }
-        run.checkpointData = { name, x: pl.x, y: pl.y, angle: (pl.vehicle || pl).angle || 0, vehicleType: pl.vehicle ? pl.vehicle.type : null };
+        const ride = N.vehicles.rideState ? N.vehicles.rideState(pl) : null; // riding along: retried as a passenger
+        run.checkpointData = { name, x: pl.x, y: pl.y, angle: (pl.vehicle || pl).angle || 0, vehicleType: pl.vehicle ? pl.vehicle.type : null, ride };
         N.emit('mission:checkpoint', { id: run.id, name });
       },
     };
@@ -44183,6 +44675,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     run.assist = opts && opts.assist ? opts.assist : null;
     run.timerBonus = helpOn(def) && (streaks.timer[id] || 0) >= TUNE.helpAfterTimerFails ? TUNE.timerBonus : 1;
     if (jc) closeJcard();
+    // item toasts still queued from the last mission would pop up mid-chase in this one
+    if (N.hud.dropToasts) N.hud.dropToasts((t) => typeof t.tag === 'string' && t.tag.indexOf('item:') === 0);
     N.emit('mission:start', { id, title: def.title, attempt: run.attempt, kind: kindOf(def) });
     if (run.attempt === 1) N.hud.banner(def.title || id, def.chapter != null ? (typeof def.chapter === 'number' ? 'Chapter ' + def.chapter : String(def.chapter)) : '', 2600, { kind: 'chapter' });
     run.meterPolicy = def.meter || 'normal';
@@ -52027,7 +52521,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
   const lsGet = (k) => { try { return window.localStorage.getItem(k); } catch (e) { return null; } };
   const lsSet = (k, v) => { try { window.localStorage.setItem(k, v); return true; } catch (e) { return false; } };
   function toast(text, ms, key) {
-    try { if (N.hud && N.hud.toast) N.hud.toast(text, ms || 3000, key ? { key } : undefined); } catch (e) { N.err('collectibles.toast', e); }
+    // found during a mission: tagged so the next mission:start can drop it if it is still queued
+    const run = N.missions && N.missions.active;
+    try { if (N.hud && N.hud.toast) N.hud.toast(text, ms || 3000, { key: key || undefined, tag: run ? 'item:' + run.id : undefined }); } catch (e) { N.err('collectibles.toast', e); }
   }
   function sfx(name, o) { try { return !!(N.audio && N.audio.sfx && N.audio.sfx(name, Object.assign({ ui: true }, o || {}))); } catch (e) { N.err('collectibles.sfx', e); return false; } }
   const flags = () => N.flags || (N.flags = {});
@@ -52183,7 +52679,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
       hint: 'Left on a marble table by a man running for a train.', text: "From a soldier at Secunderabad station to his mother in Warangal: 'Train is late. Heart is on time.'" },
     { song: 'oldcity', title: 'Gulzar Houz Ki Shaam', place: 'pathergatti', at: 'pathergatti', look: "Look in the 'old stock' basket", tech: 'shop',
       hint: "In the stone arcade, at the tape stall's 'old stock' basket.", text: "From the bangle sellers of Laad Bazaar, to every *aapa* who bargained: 'You won. Come again.'" },
-    { song: 'kites', title: 'Patang Ki Pech', place: 'abids_book_market', at: 'abids_book_market', look: 'Look in the stack of old Tinkles', tech: 'time',
+    // off: the market's place point is on the Abids carriageway; the Tinkle stack is on the footpath
+    { song: 'kites', title: 'Patang Ki Pech', place: 'abids_book_market', at: 'abids_book_market', off: [16, -30], look: 'Look in the stack of old Tinkles', tech: 'time',
       when: () => date().dow === 0 && minutes() >= 7 * 60 && minutes() < 20 * 60, whenText: 'Sundays only, 07:00–20:00',
       hint: 'In a stack of old Tinkles. Sundays only.', text: "From the Abids Sunday book men, to the boy who reads Tinkle standing up: 'Buy one, at least!'" },
     { song: 'numaish', title: 'Numaish Ka Jhoola', place: 'nampally_exhibition', at: 'nampally_exhibition', look: 'Look at the lost-and-found counter', tech: 'time',
@@ -52191,7 +52688,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
       hint: 'At the lost-and-found counter (after M2, all year).', text: "From the Numaish loudspeaker uncle: 'To all the lost children of 2003: you were never lost. You were near the papad.'" },
     { song: 'title', title: 'Yaadon Ki Gully', place: 'gymkhana_ground_secunderabad', at: 'gymkhana_ground_secunderabad', off: [-30, -22], h: 2, tech: 'ground',
       hint: 'On the old pavilion step.', text: "From an old ground-man to the girls who bowl at dawn: 'Keep coming.'" },
-    { agent: 1, title: 'Agent tape 1', place: 'home_terrace', roof: 'home_terrace', rxy: [4585, 2649], stairs: 'home_stairs', look: 'Open the tank lid', tech: 'roof',
+    // rxy in v2 map units: beside the water tank (the terrace rect origin + [25, 21], as in v1)
+    { agent: 1, title: 'Agent tape 1', place: 'home_terrace', roof: 'home_terrace', rxy: [10113, 4989], stairs: 'home_stairs', look: 'Open the tank lid', tech: 'roof',
       hint: "Inside the water-tank lid. Immu's handwriting: AGENT.", text: "Agent Immu's Secret Fact No. 1: {nick} sleeps with his mouth open. Over." },
     { agent: 2, title: 'Agent tape 2', place: 'irani_cafe_7', at: 'irani_cafe_7', look: 'Look behind the jukebox', shop: 'irani_cafe_7', tech: 'shop',
       hint: 'Behind the jukebox at Café Gulistan.', text: 'Fact No. 2: Salim-bhai gives an extra biscuit if you say his chai is the best in Hyderabad. Over.' },
@@ -53864,7 +54362,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   const TUNE = {
     r: 18, rBig: 30, quickHold: 0.5, lineCooldown: 10, toffeeChance: 0.3, khaataLimit: 1000, khaataLimitL5: 2000,
     busPrice: 300, busSpeed: 115, busFxMs: 2500, autoFirst: 600, autoPerKm: 400, mapKm: 430, autoAsk: 1000, autoNight: 1.5,
-    autoSpeed: 135, autoFxMs: 3000, autoReach: 40, autoSpawnR: 260, autoTimeout: 14, hireHour: 300, hireCap: 1000, hireLate: 300, hireLost: 1600,
+    autoSpeed: 135, rickSpeed: 80, autoFxMs: 3000, autoReach: 40, autoSpawnR: 260, autoTimeout: 14, hireHour: 300, hireCap: 1000, hireLate: 300, hireLost: 1600,
     puncture: 200, cinemaFloor: 1000, cinemaBalcony: 2500, prasads: 5000, boat: 1000, boatSecs: 120, trainSecs: 45, nannaDelay: 20, buntyDelay: 15,
     familyRoomSecs: 10, haircutSecs: 8, champiSecs: 6, punctureSecs: 2, hideSecs: 8, lobbySecs: 10,
   };
@@ -55496,7 +55994,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (N.traffic && typeof N.traffic.release === 'function') { try { N.traffic.release(v); } catch (e) { N.err('shops.release', e); } }
     if (N.vehicles && N.vehicles.stopDriving) N.vehicles.stopDriving(v);
     v.controller = null; v.noEnter = true; v.summoned = true;
-    const job = { v, pick: { x: v.x, y: v.y }, t: 0, arrived: true, yada: v.type === 'yadagiri_auto', nanna: false, taxi: !!(v.taxi || (v.T && v.T.cls === 'car')), wait: 25 };
+    const rick = !!(v.T && v.T.fare); // a cycle-rickshaw (vehicles.js TYPES[t].fare): the rickshaw-wala pedals
+    const job = { v, pick: { x: v.x, y: v.y }, t: 0, arrived: true, yada: v.type === 'yadagiri_auto', nanna: false, rick, taxi: !rick && !!(v.taxi || (v.T && v.T.cls === 'car')), wait: 25 };
     S.hail = job;
     N.emit('auto:hail', { x: p.x, y: p.y, vehicle: v, yadagiri: job.yada, flagged: true });
     return openAuto(job) || true;
@@ -55707,7 +56206,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const p = N.player;
     const V = N.vehicles;
     const dist = V && V.roadDistance ? V.roadDistance(p.x, p.y, dest.x, dest.y) : Math.hypot(dest.x - p.x, dest.y - p.y) * 1.3;
-    const speed = o.mode === 'bus' ? TUNE.busSpeed : o.mode === 'nanna' ? 128 : o.mode === 'bunty' ? 150 : TUNE.autoSpeed;
+    const speed = o.mode === 'bus' ? TUNE.busSpeed : o.mode === 'nanna' ? 128 : o.mode === 'bunty' ? 150 : o.mode === 'rickshaw' ? TUNE.rickSpeed : TUNE.autoSpeed;
     const minutes = o.minutes != null ? o.minutes : Math.max(2, Math.round(dist / speed));
     if (UI.open) closeShop(true);
     if (p.vehicle && V) V.exit(p, true);
@@ -55856,7 +56355,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (!job || !job.v) return;
     job.riding = true;
     N.emit('auto:ride', { to: d.id, price, yadagiri: !!job.yada });
-    travelTo(d, { mode: job.nanna ? 'nanna' : job.bunty ? 'bunty' : 'auto', vehicle: job.v, label: (job.nanna ? 'NANNA' : job.bunty ? 'BUNTY-ANNA' : job.taxi ? 'TAXI' : 'AUTO') + ' → ' + d.name }).then(() => {
+    travelTo(d, { mode: job.nanna ? 'nanna' : job.bunty ? 'bunty' : job.rick ? 'rickshaw' : 'auto', vehicle: job.v, label: (job.nanna ? 'NANNA' : job.bunty ? 'BUNTY-ANNA' : job.taxi ? 'TAXI' : job.rick ? 'RICKSHAW' : 'AUTO') + ' → ' + d.name }).then(() => {
       if (job.bunty) {
         toast('Bunty-anna: "Reached! Don\'t tell Mummy. Word of the day: nostalgia. Means a free ride."', 3200);
       } else if (job.nanna) {
@@ -55880,8 +56379,9 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function openAuto(job) {
     if (!job || !job.v || !job.v.alive) return false;
     const kind = job.nanna ? 'nanna_ride' : job.bunty ? 'bunty_ride' : 'auto_ride';
-    const def = { id: job.nanna ? 'nanna' : job.bunty ? 'bunty' : 'auto', kind, K: KINDS[kind], place: { x: job.v.x, y: job.v.y }, name: job.nanna ? "Nanna's Chetak" : job.bunty ? "Bunty-anna's RX100" : job.yada ? "Yadagiri-anna's auto" : job.taxi ? 'Taxi' : 'Auto-rickshaw', x: job.v.x, y: job.v.y, r: 30, virtual: true };
+    const def = { id: job.nanna ? 'nanna' : job.bunty ? 'bunty' : 'auto', kind, K: KINDS[kind], place: { x: job.v.x, y: job.v.y }, name: job.nanna ? "Nanna's Chetak" : job.bunty ? "Bunty-anna's RX100" : job.yada ? "Yadagiri-anna's auto" : job.taxi ? 'Taxi' : job.rick ? 'Cycle-rickshaw' : 'Auto-rickshaw', x: job.v.x, y: job.v.y, r: 30, virtual: true };
     if (job.taxi) def.K = Object.assign({}, KINDS.auto_ride, { title: 'Taxi', lines: ['*Kahan jaana*, *beta*? Meter is honest. Mostly.', 'Sit at the back. Don\'t touch the trunks.'] });
+    if (job.rick) def.K = Object.assign({}, KINDS.auto_ride, { title: 'Cycle-rickshaw', lines: ['*Kidhar jaana*, *chhotu*? Sit back, I pedal.', 'Uphill you get down and walk. Rule.', 'Hold the side. The hood folds if you lean.'] });
     if (job.yada) def.K = Object.assign({}, KINDS.auto_ride, { keeper: 'yadagiri', lines: ['*Meter nakko*, for you *paanch*.', 'Exact change, *tammudu*. Always exact change.'] });
     return openVirtual(def);
   }
@@ -55998,7 +56498,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       if (job.dismissed) {
         if (d > 60) job.dismissed = false;
         else if (d < 46 && !p.vehicle && N.state.mode === 'play' && !UI.open && N.interact && N.interact.offer) {
-          N.interact.offer({ label: job.nanna ? 'Nanna is waiting' : job.bunty ? 'Bunty-anna is waiting' : job.taxi ? 'Ride taxi (fare)' : 'Ride auto (fare)', priority: 1, dist: d, use: () => { job.dismissed = false; openAuto(job); } });
+          N.interact.offer({ label: job.nanna ? 'Nanna is waiting' : job.bunty ? 'Bunty-anna is waiting' : job.taxi ? 'Ride taxi (fare)' : job.rick ? 'Ride rickshaw (fare)' : 'Ride auto (fare)', priority: 1, dist: d, use: () => { job.dismissed = false; openAuto(job); } });
         }
         continue;
       }
@@ -56057,6 +56557,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     o = o || {};
     const p = N.player;
     if (!p || S.ride) return Promise.resolve(false);
+    if (p.vehicle && N.vehicles && N.vehicles.exit) N.vehicles.exit(p, true); // no hidden cycle under the train
     const L = rideLoop(id, o);
     return new Promise((resolve) => {
       const T = Object.assign(L, { id, a: Math.atan2(p.y - L.cy, p.x - L.cx), secs: o.secs || TUNE.trainSecs, t: 0, resolve, from: { x: p.x, y: p.y }, vp: !!o.viewpoint, vpDone: false, locked: !!p.controlsLocked, withPlayer: true, zoom: N.render.baseZoom });
@@ -67152,7 +67653,17 @@ body.reduced-motion .pg-hud.show { animation: none; }
             (canRetry ? '<button type="button" class="sign-btn' + (primaryDone ? ' alt' : ' primary') + '" data-do="retry">Phir se</button>' : '') +
           '</div></div></div>', 'mg-card-result');
       this.sfx(r.win ? 'mission_passed' : 'mission_failed');
-      if (this.auto) setTimeout(() => { if (!this.closed && this.phase === 'result' && this.params.autoClose !== false) this.cardDo('done'); }, 900);
+      // autoplay: keep trying until the card is really up (cardDo ignores it for 0.15 s of the
+      // minigame's own clock, which a single 900 ms timer can miss at a few fps), capped at ~20 s
+      if (this.auto) {
+        let tries = 0;
+        const autoClose = () => {
+          if (this.closed || this.phase !== 'result' || this.params.autoClose === false) return;
+          if (this.cardWrap.querySelector('.mg-card-result') && this.rt - (this.cardAt || 0) >= 0.15) { this.cardDo('done'); return; }
+          if (++tries < 64) setTimeout(autoClose, 300);
+        };
+        setTimeout(autoClose, 900);
+      }
     }
 
     /* --------------------------------------------------------- the loop */
@@ -72587,7 +73098,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
       players: [
         P('Chinnu', 0.66, 0.38, 'spin', { skin: '#b97a4f', hair: '#1a1412', spiky: true }, { spin: -1, hero: true, field: 0.7 }),
         P('Immu', 0.52, 0.55, 'spin', { skin: '#c68b5e', hair: '#1a1412', specs: true }, { spin: 1 }),
-        P('Bunty', 0.6, 0.48, 'pace', { skin: '#b97a4f', hair: '#1a1412', shades: true, puff: true }, { field: 0.55 }),
+        P('Pappu', 0.6, 0.48, 'pace', { skin: '#a0683f', hair: '#1a1412' }, { field: 0.55 }),
         P('Ayesha', 0.46, 0.8, 'pace', { skin: '#a0683f', hair: '#1a1412', plaits: true, cap: '#1d4f91', girl: true }, { field: 0.75 }),
         P('Babloo', 0.5, 0.35, 'pace', { skin: '#b97a4f', hair: '#1a1412', curly: true }),
         P('Venky', 0.44, 0.42, 'pace', { skin: '#8d5a3b' }),
@@ -72648,7 +73159,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
   }
   function shortOf(name) {
     const w = String(name).toUpperCase().replace(/[^A-Z ]/g, '').split(/\s+/).filter(Boolean);
-    return (w[0] || 'TEAM').slice(0, 4) + ' XI';
+    const a = w[0] || 'TEAM';
+    return (a.length <= 5 ? a : a.slice(0, 4)) + ' XI'; // 'Pintu XI' stays 'PINTU XI'
   }
   function clone(t) {
     const c = Object.assign({}, t);
@@ -76169,7 +76681,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   const CM = (N.cricketMatch = {
     VERSION: 1,
     TEAMS, VENUES, FIELDS, COMM, POS, TUNE,
-    rules,
+    rules, shortOf,
     start(params) {
       params = Object.assign({}, params || {});
       if (params.autoplay && params.skipHowto == null) params.skipHowto = true;
@@ -76208,6 +76720,13 @@ body.reduced-motion .pg-hud.show { animation: none; }
     return true;
   }
   if (!register()) N.on('boot', () => { if (!register()) N.err('cricket.register', new Error('N.minigames.register missing')); });
+  // any finished match (story, exhibition, a debug/autoplay run) marks the flags, not just CM.start()
+  N.on('minigame:end', (e) => {
+    const r = e && e.result;
+    if (!e || e.id !== 'match' || !r || r.quit || r.aborted || r.error || !N.flags) return;
+    N.flags.lb_match_played = true;
+    N.flags.lb_match_won = !!(N.flags.lb_match_won || r.win);
+  });
 
   /* ================================================================ match-day dressing of the 2D world */
   // When N.flags.lb_match is set (the story's match day), LB Stadium in the top-down world gets crowds on
@@ -76252,11 +76771,11 @@ body.reduced-motion .pg-hud.show { animation: none; }
     const kinds = ['chetak', 'chetak', 'luna', 'cycle', 'rx', 'chetak', 'cycle'];
     const vcol = ['#7fa3b8', '#b22b2b', '#1a1a22', '#efe6d2', '#3f6fb0', '#2f6a4a', '#c9a227'];
     for (let py = y0 + 12; py < y0 + lm.d - 10; py += 6.5) {
-      if (py > 2552 && py < 2608) continue;
+      if (Math.abs(py - lm.y) < 28) continue; // the west gate (the gap in the stands, centred on lm.y)
       for (const px of [x0 - 7, x0 - 15]) if (free(px, py) && r.next() < 0.8) parked.push({ x: px + (r.next() - 0.5), y: py, a: Math.PI + (r.next() - 0.5) * 0.25, kind: kinds[(r.next() * kinds.length) | 0], col: vcol[(r.next() * vcol.length) | 0] });
     }
     for (let px = x0 + 12; px < x0 + lm.w - 10; px += 6.5) {
-      if (px > 3934 && px < 3988) continue;
+      if (Math.abs(px - lm.x) < 27) continue; // the south gate (centred on lm.x)
       for (const py of [y0 + lm.d + 7, y0 + lm.d + 15]) if (free(px, py) && r.next() < 0.75) parked.push({ x: px, y: py + (r.next() - 0.5), a: Math.PI / 2 + (r.next() - 0.5) * 0.25, kind: kinds[(r.next() * kinds.length) | 0], col: vcol[(r.next() * vcol.length) | 0] });
     }
     for (const v of parked) v.fn = () => drawParked(v);
@@ -76264,8 +76783,8 @@ body.reduced-motion .pg-hud.show { animation: none; }
     // fans at the gates (ticket queue at the west gate, a knot at the south gate)
     const peds = [];
     const addPed = (px, py, a) => { if (!free(px, py)) return; const look = N.people && N.people.randomLook ? N.people.randomLook(r, r.next() < 0.5 ? 'kid' : r.next() < 0.5 ? 'man' : 'student') : { kind: 'man', skin: '#b97a4f', hair: '#1a1412', shirt: '#2a5cb8', pants: '#3a3a40' }; const p = { x: px, y: py, a, look, ph: r.next() * 6 }; p.fn = () => drawPed(p); peds.push(p); };
-    for (let i = 0; i < 12; i++) addPed(x0 - 6 - i * 4.2 + (r.next() - 0.5) * 1.5, 2580 + (r.next() - 0.5) * 6, 0);
-    for (let i = 0; i < 9; i++) addPed(3961 + (r.next() - 0.5) * 30, y0 + lm.d + 8 + r.next() * 10, -Math.PI / 2);
+    for (let i = 0; i < 12; i++) addPed(x0 - 6 - i * 4.2 + (r.next() - 0.5) * 1.5, lm.y + (r.next() - 0.5) * 6, 0);
+    for (let i = 0; i < 9; i++) addPed(lm.x + (r.next() - 0.5) * 30, y0 + lm.d + 8 + r.next() * 10, -Math.PI / 2);
     DRESS.peds = peds;
     DRESS.lm = lm;
     DRESS.built = true;
@@ -76301,7 +76820,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   function drawBanner2D() {
     const lm = DRESS.lm;
     if (!N.draw || !N.draw.pixelText) return;
-    N.draw.pixelText(lm.x - lm.w / 2 - 2, 2580, 12, 'U-12 FINAL TODAY', '#f2c230', { scale: 1, shadow: true });
+    N.draw.pixelText(lm.x - lm.w / 2 - 2, lm.y, 12, 'U-12 FINAL TODAY', '#f2c230', { scale: 1, shadow: true });
   }
   function drawParked(v) {
     N.draw.sprite(v.x, v.y, v.a, 0, (ctx) => {
@@ -76332,7 +76851,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (!R || !R.rectInView || !R.rectInView(lm.x - lm.w / 2 - 30, lm.y - lm.d / 2 - 30, lm.w + 60, lm.d + 60, 60)) return;
     R.queue('structures', R.distKey(lm.x, lm.y) + 0.5, DRESS.crowdFn);
     R.queue('sky', 1, DRESS.lampFn);
-    R.queue('structures', R.distKey(lm.x - lm.w / 2, 2580) + 0.5, DRESS.bannerFn);
+    R.queue('structures', R.distKey(lm.x - lm.w / 2, lm.y) + 0.5, DRESS.bannerFn);
     for (const v of DRESS.parked) if (R.inView(v.x, v.y, 12)) R.queue('actors', v.y, v.fn);
     for (const p of DRESS.peds) if (R.inView(p.x, p.y, 12)) R.queue('actors', p.y, p.fn);
     // floodlights pour onto the field at dusk / night
@@ -80320,6 +80839,11 @@ body.reduced-motion .pg-hud.show { animation: none; }
       this.dom.view.hidden = !hasView;
       const vm = V && (V.want || V.mode);
       this.dom.tracks.classList.toggle('many', Array.from(this.dom.tracks.children).filter((li) => !li.hidden).length >= 5);
+      // a save from a newer build is never overwritten (save.js): say so before they play
+      const newer = N.save && N.save.tooNew;
+      let nn = this.el.querySelector('.jc-newer');
+      if (newer && !nn) { nn = el('p', 'jc-newer', null); nn.setAttribute('role', 'note'); this.dom.tracks.after(nn); }
+      if (nn) { nn.hidden = !newer; nn.textContent = newer ? N.save.NEWER_MSG : ''; }
       if (hasView) this.dom.viewSub.textContent = (V.loading ? 'loading 3D… ' : '') + (({ top: 'top-down', tps: '3D · third person', fps: 'first person' })[vm] || String(vm || 'top-down'));
     },
     back() {
@@ -80494,7 +81018,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
   let manualMem = null, lastSaveT = 0;
   function parseBlob(raw) {
     if (!raw || typeof raw !== 'string') return null;
-    try { const o = JSON.parse(raw); return o && o.game === 'nostalgia' && o.data && typeof o.data === 'object' ? o : null; } catch (e) { return null; }
+    try { const o = JSON.parse(raw); return o && o.game === 'nostalgia' && !(o.v > ((N.save && N.save.VERSION) || 1)) && o.data && typeof o.data === 'object' ? o : null; } catch (e) { return null; }
   }
   function latestInfo() { try { return N.save && N.save.has && N.save.has() ? N.save.info() : null; } catch (e) { return null; } }
   function manualRaw() { return lsOK() ? lsGet(MANUAL_KEY) : manualMem; }
@@ -80508,6 +81032,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     if (!N.save || !N.save.save) return { ok: false, reason: 'Saving is not ready yet.' };
     const bm = baseMode();
     if (bm === 'title' || bm === 'boot') return { ok: false, reason: 'Start a game first.' };
+    if (N.save.tooNew) return { ok: false, reason: 'A newer version of the game saved here. Update it to save.' };
     if (N.state.has('cutscene') || cs.active) return { ok: false, reason: 'Not during a scene. The tape is rolling.' };
     if (N.state.has('minigame') || (N.minigames && N.minigames.active)) return { ok: false, reason: 'Finish the game first.' };
     if (N.state.has('dialogue') || (N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen())) return { ok: false, reason: 'Finish the conversation first.' };
@@ -80719,7 +81244,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
     { id: 'mute', label: 'Mute everything', type: 'toggle' },
     { sec: 'Text' },
     { id: 'textSpeed', label: 'Text speed', type: 'seg', opts: SEG([['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast'], ['instant', 'Instant']]) },
-    { id: 'autoAdvance', label: 'Auto-advance dialogue', type: 'toggle', help: 'Lines move on by themselves after 2 s.' },
+    { id: 'autoAdvance', label: 'Auto-advance dialogue', type: 'toggle', help: 'Lines move on by themselves once read (2 s or more). Choices still wait for you.' },
     { id: 'captions', label: 'Sound captions', type: 'toggle', help: '[whistle ↗] and [bus horn] on screen, for playing without sound.' },
     { sec: 'Screen' },
     { id: 'reducedMotion', label: 'Reduced motion', type: 'seg', opts: SEG([['auto', 'Auto'], ['on', 'On'], ['off', 'Off']]), help: 'No shake, no VHS roll, gentler camera.' },
@@ -80862,7 +81387,7 @@ body.reduced-motion .pg-hud.show { animation: none; }
         row.querySelector('.st-info').innerHTML = (avail ? 'Saves are kept in this browser.' : '<b>Saves last only this session</b> (browser storage is off).') +
           (i ? ' Latest: ' + esc(saveLine(i)) + ', saved ' + esc(agoText(i.t)) + '.' : ' No saved game yet.');
       } else if (r.type === 'danger') {
-        const has = !!(latestInfo() || manualInfo());
+        const has = !!(latestInfo() || manualInfo() || (N.save && N.save.tooNew)); // a newer build's save can be erased too (lifts the save block)
         const b = row.querySelector('.st-erase');
         b.disabled = !has;
         if (!row.classList.contains('armed')) { b.textContent = 'Erase'; h.textContent = has ? 'Both tapes: latest and manual.' : 'Nothing to erase.'; }
@@ -98507,6 +99032,12 @@ if (ngShine > 0.01) {
  *   N.save.register('story', {serialize: () => ({...}), deserialize: (o) => {...}})
  *   N.save.save({reason: 'booth'}) -> bool     N.save.load() -> bool
  *   N.save.has() -> bool    N.save.info() -> {t, day, clock, date, money, district, missions} | null
+ *   N.save.tooNew -> {v, slot} | null   N.save.allowed() -> {ok, why}   N.save.autosave(reason) -> bool
+ *
+ * Newer saves: a blob written by a newer build (v > VERSION) in the main slot, the backup or the
+ * pause menu's manual copy is never overwritten. While one exists every save() is refused (also
+ * mission autosaves and a new game's saves) and the player is told; CONTINUE plays the older
+ * backup if there is one. Erasing the saves (menus) removes the block.
  */
 (() => {
   'use strict';
@@ -98514,6 +99045,8 @@ if (ngShine > 0.01) {
   const KEY = 'nostalgia.save.v1';
   const BAK = KEY + '.bak';
   const VERSION = 1;
+  const MANUAL = KEY + '.manual'; // menus.js writes the pause menu's own copy here
+  const NEWER_MSG = 'Saved by a newer version of the game - update to continue it. Progress will not be saved.';
 
   /* --------------------------------------------------------------- storage */
   const memory = Object.create(null);
@@ -98552,6 +99085,20 @@ if (ngShine > 0.01) {
     if (!o.data || typeof o.data !== 'object' || Array.isArray(o.data)) return null;
     return o;
   }
+  /** {v, slot} for the first slot holding a save from a newer build, else null. */
+  function newerSave() {
+    for (const [slot, key] of [['main', KEY], ['backup', BAK], ['manual', MANUAL]]) {
+      const raw = read(key);
+      if (!raw || typeof raw !== 'string' || raw.indexOf('"nostalgia"') < 0) continue;
+      let o;
+      try { o = JSON.parse(raw); } catch (e) { continue; }
+      if (o && typeof o === 'object' && o.game === 'nostalgia' && typeof o.v === 'number' && o.v > VERSION) return { v: o.v, slot };
+    }
+    return null;
+  }
+  function warnNewer(ms) {
+    if (N.hud && N.hud.toast) { try { N.hud.toast(NEWER_MSG, ms || 5200, { key: 'save-newer' }); } catch (e) { N.err('save.warnNewer', e); } }
+  }
   function current() {
     const main = parse(read(KEY));
     if (main) return { blob: main, from: 'main' };
@@ -98564,9 +99111,28 @@ if (ngShine > 0.01) {
   const handlers = new Map(); // key -> {serialize, deserialize}
 
   const S = (N.save = {
-    KEY, VERSION, lastError: null,
+    KEY, VERSION, NEWER_MSG, lastError: null,
     handlers,
     get available() { return hasStorage(); },
+    /** {v, slot} while a save from a newer build exists (every save is refused), else null. */
+    get tooNew() { return newerSave(); },
+    /** Is saving allowed right now? The pause menu's rules when menus.js is loaded (missions,
+     *  minigames, cutscenes, dialogue, Chappal Meter, N.flags.no_save), else the missions' rules. */
+    allowed() {
+      const mode = N.state.mode;
+      if (mode === 'boot' || mode === 'title' || N.state.has('gameover')) return { ok: false, why: 'Not now.' };
+      if (newerSave()) return { ok: false, why: NEWER_MSG };
+      try {
+        if (N.menus && typeof N.menus.canSave === 'function') { const c = N.menus.canSave(); return { ok: !!c.ok, why: c.ok ? null : c.reason }; }
+        if (N.missions && typeof N.missions.canSave === 'function') return N.missions.canSave();
+      } catch (e) { N.err('save.allowed', e); return { ok: false, why: 'Not now.' }; }
+      return { ok: true, why: null };
+    },
+    /** Silent background save (tab hidden / page closing) when allowed(); never toasts. */
+    autosave(reason) {
+      if (!S.allowed().ok) return false;
+      return S.save({ reason: reason || 'autosave', toast: false });
+    },
     /** Register a save section. Later registrations of the same key replace it. */
     register(key, h) {
       if (!key || !h || typeof h.serialize !== 'function' || typeof h.deserialize !== 'function') { N.err('save.register', new Error('bad handler ' + key)); return; }
@@ -98576,6 +99142,13 @@ if (ngShine > 0.01) {
     save(meta) {
       const mode = N.state.mode;
       if (mode === 'boot' || mode === 'title') return false;
+      const newer = newerSave();
+      if (newer) {
+        // never overwrite progress from a newer build (it would be lost for good)
+        N.emit('save:refused', { reason: (meta && meta.reason) || 'manual', why: 'newer', v: newer.v, slot: newer.slot });
+        if (!meta || meta.toast !== false) warnNewer();
+        return false;
+      }
       const data = {};
       for (const [key, h] of handlers) {
         try {
@@ -98633,6 +99206,10 @@ if (ngShine > 0.01) {
     /** Test hook: raw access to the stored string. */
     _raw: () => read(KEY),
   });
+
+  // Tell the player as soon as they start playing over a newer save (the title shows a note too).
+  N.on('game:new', () => { if (newerSave()) setTimeout(() => warnNewer(6500), 1200); });
+  N.on('game:continue', () => { if (newerSave()) setTimeout(() => warnNewer(6500), 1200); });
 
   /* ------------------------------------------------- core sections */
   S.register('player', {
@@ -98863,7 +99440,7 @@ if (ngShine > 0.01) {
  * Boot (fonts with a 1.5 s timeout, world build, systems init), title -> play, the
  * requestAnimationFrame loop with a semi-fixed update step (equal sub-steps of at most
  * 1/60 s, frame dt clamped to 0.1 s) and the per-frame draw order (ARCHITECTURE §6),
- * pause on visibility change, and N.game (newGame / continueGame / quitToTitle / snapshot).
+ * pause (and a silent save when allowed) on visibility change / pagehide, and N.game (newGame / continueGame / quitToTitle / snapshot).
  */
 (() => {
   'use strict';
@@ -99010,7 +99587,8 @@ if (ngShine > 0.01) {
       setTimeout(fin, timeout);
       try {
         if (document.fonts && document.fonts.load) {
-          Promise.all(["16px 'Yatra One'", "16px 'Baloo 2'", "16px 'VT323'"].map((f) => document.fonts.load(f).catch(() => null)))
+          // Telugu: load the glyph subset the district card's subtitle uses (unicode-range)
+          Promise.all([["16px 'Yatra One'"], ["16px 'Baloo 2'"], ["16px 'VT323'"], ["700 16px 'Noto Sans Telugu'", 'తెలుగు']].map((f) => document.fonts.load(f[0], f[1]).catch(() => null)))
             .then(() => document.fonts.ready).then(fin, fin);
         } else fin();
       } catch (e) { fin(); }
@@ -99031,7 +99609,6 @@ if (ngShine > 0.01) {
     N.player.reset();
     N.render.cam.x = N.player.x; N.render.cam.y = N.player.y;
     N.render.snapCamera();
-    N.render.warmChunks(N.player.x, N.player.y, 520);
     document.body.classList.remove('booting');
     document.body.classList.add('booted');
     N.emit('boot', {});
@@ -99050,13 +99627,49 @@ if (ngShine > 0.01) {
       if (N.menus && N.menus.title) { try { N.menus.title(); } catch (e) { N.err('menus.title', e); } }
     }
     requestAnimationFrame(frame);
+    afterBoot();
   }
 
+  // Work that used to run before the title screen and is only needed once play starts: the ground
+  // chunks around the player (newGame / continueGame warm them again anyway; this just makes that
+  // instant) and the minimap image (~3000 x 2250 px, a ~0.25 s paint that otherwise lands on the
+  // first play frame). Done in idle slices while the title screen is up, one chunk per slice.
+  function afterBoot() {
+    const ric = window.requestIdleCallback ? (fn) => window.requestIdleCallback(fn, { timeout: 2000 }) : (fn) => setTimeout(() => fn({ timeRemaining: () => 8, didTimeout: false }), 50);
+    const R = N.render, CH = 256, r = 520, px = N.player.x, py = N.player.y;
+    const todo = [];
+    const i0 = Math.max(0, Math.floor((px - r) / CH)), i1 = Math.min(Math.ceil(N.WORLD_W / CH) - 1, Math.floor((px + r) / CH));
+    const j0 = Math.max(0, Math.floor((py - r) / CH)), j1 = Math.min(Math.ceil(N.WORLD_H / CH) - 1, Math.floor((py + r) / CH));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) todo.push(i, j);
+    let k = 0, mapDone = false;
+    const slice = (dl) => {
+      if (game.started || N.state.mode !== 'title') return; // play began: newGame / continueGame did their own warm-up
+      try {
+        while (k < todo.length && (dl.didTimeout || dl.timeRemaining() > 4)) { R.warmChunks((todo[k] + 0.5) * CH, (todo[k + 1] + 0.5) * CH, 1); k += 2; }
+        if (k >= todo.length && !mapDone && (dl.didTimeout || dl.timeRemaining() > 8)) { mapDone = true; if (N.hud && N.hud.mapImage) N.hud.mapImage(); }
+      } catch (e) { N.err('boot.idle', e); mapDone = true; k = todo.length; }
+      if (k < todo.length || !mapDone) ric(slice);
+    };
+    setTimeout(() => ric(slice), 1000);
+  }
+
+  // Save (silently, when allowed) as the tab is hidden or the page goes away: mobile browsers
+  // kill background tabs without warning. hide + pagehide usually fire together: save once.
+  let lastHideSave = 0;
+  function saveOnHide(why) {
+    try {
+      const now = Date.now();
+      if (now - lastHideSave < 1000 || !game.started || !N.save || !N.save.autosave) return;
+      lastHideSave = now;
+      N.save.autosave('autosave');
+    } catch (e) { N.err('save.' + why, e); }
+  }
   // Pause when the tab is hidden; resync the clock when it comes back.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) game.pause();
+    if (document.hidden) { saveOnHide('hidden'); game.pause(); }
     last = 0;
   });
+  window.addEventListener('pagehide', () => saveOnHide('pagehide'));
 
   // Hot-reload support (optional runtime): provide a snapshot, then boot.
   try {

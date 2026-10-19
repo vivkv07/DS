@@ -632,6 +632,11 @@
       this.dom.view.hidden = !hasView;
       const vm = V && (V.want || V.mode);
       this.dom.tracks.classList.toggle('many', Array.from(this.dom.tracks.children).filter((li) => !li.hidden).length >= 5);
+      // a save from a newer build is never overwritten (save.js): say so before they play
+      const newer = N.save && N.save.tooNew;
+      let nn = this.el.querySelector('.jc-newer');
+      if (newer && !nn) { nn = el('p', 'jc-newer', null); nn.setAttribute('role', 'note'); this.dom.tracks.after(nn); }
+      if (nn) { nn.hidden = !newer; nn.textContent = newer ? N.save.NEWER_MSG : ''; }
       if (hasView) this.dom.viewSub.textContent = (V.loading ? 'loading 3D… ' : '') + (({ top: 'top-down', tps: '3D · third person', fps: 'first person' })[vm] || String(vm || 'top-down'));
     },
     back() {
@@ -806,7 +811,7 @@
   let manualMem = null, lastSaveT = 0;
   function parseBlob(raw) {
     if (!raw || typeof raw !== 'string') return null;
-    try { const o = JSON.parse(raw); return o && o.game === 'nostalgia' && o.data && typeof o.data === 'object' ? o : null; } catch (e) { return null; }
+    try { const o = JSON.parse(raw); return o && o.game === 'nostalgia' && !(o.v > ((N.save && N.save.VERSION) || 1)) && o.data && typeof o.data === 'object' ? o : null; } catch (e) { return null; }
   }
   function latestInfo() { try { return N.save && N.save.has && N.save.has() ? N.save.info() : null; } catch (e) { return null; } }
   function manualRaw() { return lsOK() ? lsGet(MANUAL_KEY) : manualMem; }
@@ -820,6 +825,7 @@
     if (!N.save || !N.save.save) return { ok: false, reason: 'Saving is not ready yet.' };
     const bm = baseMode();
     if (bm === 'title' || bm === 'boot') return { ok: false, reason: 'Start a game first.' };
+    if (N.save.tooNew) return { ok: false, reason: 'A newer version of the game saved here. Update it to save.' };
     if (N.state.has('cutscene') || cs.active) return { ok: false, reason: 'Not during a scene. The tape is rolling.' };
     if (N.state.has('minigame') || (N.minigames && N.minigames.active)) return { ok: false, reason: 'Finish the game first.' };
     if (N.state.has('dialogue') || (N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen())) return { ok: false, reason: 'Finish the conversation first.' };
@@ -1031,7 +1037,7 @@
     { id: 'mute', label: 'Mute everything', type: 'toggle' },
     { sec: 'Text' },
     { id: 'textSpeed', label: 'Text speed', type: 'seg', opts: SEG([['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast'], ['instant', 'Instant']]) },
-    { id: 'autoAdvance', label: 'Auto-advance dialogue', type: 'toggle', help: 'Lines move on by themselves after 2 s.' },
+    { id: 'autoAdvance', label: 'Auto-advance dialogue', type: 'toggle', help: 'Lines move on by themselves once read (2 s or more). Choices still wait for you.' },
     { id: 'captions', label: 'Sound captions', type: 'toggle', help: '[whistle ↗] and [bus horn] on screen, for playing without sound.' },
     { sec: 'Screen' },
     { id: 'reducedMotion', label: 'Reduced motion', type: 'seg', opts: SEG([['auto', 'Auto'], ['on', 'On'], ['off', 'Off']]), help: 'No shake, no VHS roll, gentler camera.' },
@@ -1174,7 +1180,7 @@
         row.querySelector('.st-info').innerHTML = (avail ? 'Saves are kept in this browser.' : '<b>Saves last only this session</b> (browser storage is off).') +
           (i ? ' Latest: ' + esc(saveLine(i)) + ', saved ' + esc(agoText(i.t)) + '.' : ' No saved game yet.');
       } else if (r.type === 'danger') {
-        const has = !!(latestInfo() || manualInfo());
+        const has = !!(latestInfo() || manualInfo() || (N.save && N.save.tooNew)); // a newer build's save can be erased too (lifts the save block)
         const b = row.querySelector('.st-erase');
         b.disabled = !has;
         if (!row.classList.contains('armed')) { b.textContent = 'Erase'; h.textContent = has ? 'Both tapes: latest and manual.' : 'Nothing to erase.'; }

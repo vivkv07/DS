@@ -108,7 +108,7 @@
       players: [
         P('Chinnu', 0.66, 0.38, 'spin', { skin: '#b97a4f', hair: '#1a1412', spiky: true }, { spin: -1, hero: true, field: 0.7 }),
         P('Immu', 0.52, 0.55, 'spin', { skin: '#c68b5e', hair: '#1a1412', specs: true }, { spin: 1 }),
-        P('Bunty', 0.6, 0.48, 'pace', { skin: '#b97a4f', hair: '#1a1412', shades: true, puff: true }, { field: 0.55 }),
+        P('Pappu', 0.6, 0.48, 'pace', { skin: '#a0683f', hair: '#1a1412' }, { field: 0.55 }),
         P('Ayesha', 0.46, 0.8, 'pace', { skin: '#a0683f', hair: '#1a1412', plaits: true, cap: '#1d4f91', girl: true }, { field: 0.75 }),
         P('Babloo', 0.5, 0.35, 'pace', { skin: '#b97a4f', hair: '#1a1412', curly: true }),
         P('Venky', 0.44, 0.42, 'pace', { skin: '#8d5a3b' }),
@@ -169,7 +169,8 @@
   }
   function shortOf(name) {
     const w = String(name).toUpperCase().replace(/[^A-Z ]/g, '').split(/\s+/).filter(Boolean);
-    return (w[0] || 'TEAM').slice(0, 4) + ' XI';
+    const a = w[0] || 'TEAM';
+    return (a.length <= 5 ? a : a.slice(0, 4)) + ' XI'; // 'Pintu XI' stays 'PINTU XI'
   }
   function clone(t) {
     const c = Object.assign({}, t);
@@ -3690,7 +3691,7 @@
   const CM = (N.cricketMatch = {
     VERSION: 1,
     TEAMS, VENUES, FIELDS, COMM, POS, TUNE,
-    rules,
+    rules, shortOf,
     start(params) {
       params = Object.assign({}, params || {});
       if (params.autoplay && params.skipHowto == null) params.skipHowto = true;
@@ -3729,6 +3730,13 @@
     return true;
   }
   if (!register()) N.on('boot', () => { if (!register()) N.err('cricket.register', new Error('N.minigames.register missing')); });
+  // any finished match (story, exhibition, a debug/autoplay run) marks the flags, not just CM.start()
+  N.on('minigame:end', (e) => {
+    const r = e && e.result;
+    if (!e || e.id !== 'match' || !r || r.quit || r.aborted || r.error || !N.flags) return;
+    N.flags.lb_match_played = true;
+    N.flags.lb_match_won = !!(N.flags.lb_match_won || r.win);
+  });
 
   /* ================================================================ match-day dressing of the 2D world */
   // When N.flags.lb_match is set (the story's match day), LB Stadium in the top-down world gets crowds on
@@ -3773,11 +3781,11 @@
     const kinds = ['chetak', 'chetak', 'luna', 'cycle', 'rx', 'chetak', 'cycle'];
     const vcol = ['#7fa3b8', '#b22b2b', '#1a1a22', '#efe6d2', '#3f6fb0', '#2f6a4a', '#c9a227'];
     for (let py = y0 + 12; py < y0 + lm.d - 10; py += 6.5) {
-      if (py > 2552 && py < 2608) continue;
+      if (Math.abs(py - lm.y) < 28) continue; // the west gate (the gap in the stands, centred on lm.y)
       for (const px of [x0 - 7, x0 - 15]) if (free(px, py) && r.next() < 0.8) parked.push({ x: px + (r.next() - 0.5), y: py, a: Math.PI + (r.next() - 0.5) * 0.25, kind: kinds[(r.next() * kinds.length) | 0], col: vcol[(r.next() * vcol.length) | 0] });
     }
     for (let px = x0 + 12; px < x0 + lm.w - 10; px += 6.5) {
-      if (px > 3934 && px < 3988) continue;
+      if (Math.abs(px - lm.x) < 27) continue; // the south gate (centred on lm.x)
       for (const py of [y0 + lm.d + 7, y0 + lm.d + 15]) if (free(px, py) && r.next() < 0.75) parked.push({ x: px, y: py + (r.next() - 0.5), a: Math.PI / 2 + (r.next() - 0.5) * 0.25, kind: kinds[(r.next() * kinds.length) | 0], col: vcol[(r.next() * vcol.length) | 0] });
     }
     for (const v of parked) v.fn = () => drawParked(v);
@@ -3785,8 +3793,8 @@
     // fans at the gates (ticket queue at the west gate, a knot at the south gate)
     const peds = [];
     const addPed = (px, py, a) => { if (!free(px, py)) return; const look = N.people && N.people.randomLook ? N.people.randomLook(r, r.next() < 0.5 ? 'kid' : r.next() < 0.5 ? 'man' : 'student') : { kind: 'man', skin: '#b97a4f', hair: '#1a1412', shirt: '#2a5cb8', pants: '#3a3a40' }; const p = { x: px, y: py, a, look, ph: r.next() * 6 }; p.fn = () => drawPed(p); peds.push(p); };
-    for (let i = 0; i < 12; i++) addPed(x0 - 6 - i * 4.2 + (r.next() - 0.5) * 1.5, 2580 + (r.next() - 0.5) * 6, 0);
-    for (let i = 0; i < 9; i++) addPed(3961 + (r.next() - 0.5) * 30, y0 + lm.d + 8 + r.next() * 10, -Math.PI / 2);
+    for (let i = 0; i < 12; i++) addPed(x0 - 6 - i * 4.2 + (r.next() - 0.5) * 1.5, lm.y + (r.next() - 0.5) * 6, 0);
+    for (let i = 0; i < 9; i++) addPed(lm.x + (r.next() - 0.5) * 30, y0 + lm.d + 8 + r.next() * 10, -Math.PI / 2);
     DRESS.peds = peds;
     DRESS.lm = lm;
     DRESS.built = true;
@@ -3822,7 +3830,7 @@
   function drawBanner2D() {
     const lm = DRESS.lm;
     if (!N.draw || !N.draw.pixelText) return;
-    N.draw.pixelText(lm.x - lm.w / 2 - 2, 2580, 12, 'U-12 FINAL TODAY', '#f2c230', { scale: 1, shadow: true });
+    N.draw.pixelText(lm.x - lm.w / 2 - 2, lm.y, 12, 'U-12 FINAL TODAY', '#f2c230', { scale: 1, shadow: true });
   }
   function drawParked(v) {
     N.draw.sprite(v.x, v.y, v.a, 0, (ctx) => {
@@ -3853,7 +3861,7 @@
     if (!R || !R.rectInView || !R.rectInView(lm.x - lm.w / 2 - 30, lm.y - lm.d / 2 - 30, lm.w + 60, lm.d + 60, 60)) return;
     R.queue('structures', R.distKey(lm.x, lm.y) + 0.5, DRESS.crowdFn);
     R.queue('sky', 1, DRESS.lampFn);
-    R.queue('structures', R.distKey(lm.x - lm.w / 2, 2580) + 0.5, DRESS.bannerFn);
+    R.queue('structures', R.distKey(lm.x - lm.w / 2, lm.y) + 0.5, DRESS.bannerFn);
     for (const v of DRESS.parked) if (R.inView(v.x, v.y, 12)) R.queue('actors', v.y, v.fn);
     for (const p of DRESS.peds) if (R.inView(p.x, p.y, 12)) R.queue('actors', p.y, p.fn);
     // floodlights pour onto the field at dusk / night

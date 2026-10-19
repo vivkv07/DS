@@ -77,18 +77,27 @@ function serve() {
   check(api.sfx >= 80 && api.tracks >= 17, 'SFX library ' + api.sfx + ' sounds, ' + api.tracks + ' music tracks');
 
   console.log('\n== START (real click) unlocks audio');
+  // PLAY starts a new game, which opens on the story's prologue cutscene. Under automation N.menus.quickStart skips
+  // both the name card and the prologue; this suite drives the real flow, so turn it off
+  await ev(() => { N.menus.quickStart = false; });
   await page.click('#title-start');
-  // a new game may open on the 2026 prologue cutscene (story) before free play
-  await page.waitForFunction(() => N.state.mode === 'play' || N.state.mode === 'cutscene', null, { timeout: 10000 });
-  await sleep(900);
+  // (with quickStart off the name card comes first: START on it, as core_systems does)
+  await page.waitForFunction(() => N.menus.debugState().top === 'name' || !document.querySelector('.jc-confirm').hidden, null, { timeout: 10000 });
+  if (await ev(() => !document.querySelector('.jc-confirm').hidden)) await page.click('.jc-confirm [data-act=overwrite]');
+  await page.waitForFunction(() => N.menus.debugState().top === 'name', null, { timeout: 10000 });
+  await page.click('.mn-name [data-act=start]');
+  await page.waitForFunction(() => N.state.mode === 'cutscene', null, { timeout: 10000 });
+  await page.waitForFunction(() => N.audio.stats().music === 'flashback', null, { timeout: 10000 }).catch(() => {});
   let st = await stats();
   check(st.state === 'running' && st.unlocked, 'AudioContext running after START', st.state);
-  check(['title', 'flashback'].includes(st.music), 'a new game opens on the title theme "Yaadon Ki Gully" (or its flashback voicing in the prologue)', st.music);
+  check(st.music === 'flashback', 'the prologue opens on the tape flashback theme "Purani Cassette"', st.music);
+  // skip the prologue with the real SKIP pill: M1 (Bo Kaata) starts in 2003
+  await page.click('.cs-skip');
+  await page.waitForFunction(() => N.state.mode === 'play', null, { timeout: 10000 });
+  check(await ev(() => N.flags.year === 2003 && !!N.missions.active), 'SKIP lands in 2003 with M1 running');
   await ev(() => N.debug.newGame({ skipIntro: true }));
-  // the story auto-starts M1 (its own 'kites' music, beacons, ducks): stand it down so the audio checks see free roam
-  await sleep(1200);
-  await ev(() => { try { if (N.missions && N.missions.active) N.missions.abort(); } catch (e) { /* ignore */ } N.audio.duck(false); N.audio.music.mood(null); });
-  await sleep(2600);
+  // the music director picks a free-roam track (wait on the director, not the wall clock)
+  await page.waitForFunction(() => ['day', 'night', 'oldcity'].includes(N.audio.stats().music) && !!N.audio.stats().bed, null, { timeout: 15000 }).catch(() => {});
   st = await stats();
   check(['day', 'night', 'oldcity'].includes(st.music), 'free-roam music chosen by the director: ' + st.music);
   const secs = await ev(() => N.audio.music.sections('ending'));
@@ -176,7 +185,11 @@ function serve() {
   }
   const rtc = await ev(async () => { if (!N.debug.teleport('rtc_x_roads')) return null; await new Promise((r) => setTimeout(r, 1300)); return N.audio.stats().spatialMusic; });
   if (rtc !== null) check(rtc === 'r_chandni', 'a film song drifts out of the RTC X Roads theatres', rtc);
-  const night = await ev(async () => { N.debug.teleport('home'); N.debug.setTime(23, 0); await new Promise((r) => setTimeout(r, 1500)); const v = N.audio._internal.amb.lastVals.crickets; N.debug.setTime(16, 40); return v; });
+  // night falls while Chinnu is already home (walking in at 23:00 would rightly start Amma's curfew scolding,
+  // which is wanted.js's business, not audio's): reach home in the afternoon, let a few game frames pass, then dusk -> night
+  await ev(() => { N.debug.teleport('home'); });
+  await page.waitForFunction((t0) => N.time.now > t0 + 0.5, await ev(() => N.time.now), { timeout: 20000 });
+  const night = await ev(async () => { N.flags.no_curfew = true; N.debug.setTime(23, 0); await new Promise((r) => setTimeout(r, 1500)); const v = N.audio._internal.amb.lastVals.crickets; N.debug.setTime(16, 40); delete N.flags.no_curfew; return v; });
   check(night > 0, 'night: crickets fade in (' + (night || 0).toFixed(4) + ')');
 
   console.log('\n== events');
@@ -243,7 +256,7 @@ function serve() {
     A.beacon({ x: p.x + 200, y: p.y });
     const before = A.stats().sfxPlayed;
     await new Promise((r) => setTimeout(r, 1500));
-    out.beacon = A.stats().beacon; out.beeps = A.stats().sfxPlayed - before;
+    out.beacon = A.stats().beacon; out.beeps = A.stats().sfxPlayed - before; out.mode = N.state.mode;
     A.beacon(null);
     out.rec = A.rec('flour_mill');
     const t0 = performance.now();

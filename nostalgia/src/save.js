@@ -8,6 +8,12 @@
  *   N.save.register('story', {serialize: () => ({...}), deserialize: (o) => {...}})
  *   N.save.save({reason: 'booth'}) -> bool     N.save.load() -> bool
  *   N.save.has() -> bool    N.save.info() -> {t, day, clock, date, money, district, missions} | null
+ *   N.save.tooNew -> {v, slot} | null   N.save.allowed() -> {ok, why}   N.save.autosave(reason) -> bool
+ *
+ * Newer saves: a blob written by a newer build (v > VERSION) in the main slot, the backup or the
+ * pause menu's manual copy is never overwritten. While one exists every save() is refused (also
+ * mission autosaves and a new game's saves) and the player is told; CONTINUE plays the older
+ * backup if there is one. Erasing the saves (menus) removes the block.
  */
 (() => {
   'use strict';
@@ -15,6 +21,8 @@
   const KEY = 'nostalgia.save.v1';
   const BAK = KEY + '.bak';
   const VERSION = 1;
+  const MANUAL = KEY + '.manual'; // menus.js writes the pause menu's own copy here
+  const NEWER_MSG = 'Saved by a newer version of the game - update to continue it. Progress will not be saved.';
 
   /* --------------------------------------------------------------- storage */
   const memory = Object.create(null);
@@ -53,6 +61,20 @@
     if (!o.data || typeof o.data !== 'object' || Array.isArray(o.data)) return null;
     return o;
   }
+  /** {v, slot} for the first slot holding a save from a newer build, else null. */
+  function newerSave() {
+    for (const [slot, key] of [['main', KEY], ['backup', BAK], ['manual', MANUAL]]) {
+      const raw = read(key);
+      if (!raw || typeof raw !== 'string' || raw.indexOf('"nostalgia"') < 0) continue;
+      let o;
+      try { o = JSON.parse(raw); } catch (e) { continue; }
+      if (o && typeof o === 'object' && o.game === 'nostalgia' && typeof o.v === 'number' && o.v > VERSION) return { v: o.v, slot };
+    }
+    return null;
+  }
+  function warnNewer(ms) {
+    if (N.hud && N.hud.toast) { try { N.hud.toast(NEWER_MSG, ms || 5200, { key: 'save-newer' }); } catch (e) { N.err('save.warnNewer', e); } }
+  }
   function current() {
     const main = parse(read(KEY));
     if (main) return { blob: main, from: 'main' };
@@ -65,9 +87,28 @@
   const handlers = new Map(); // key -> {serialize, deserialize}
 
   const S = (N.save = {
-    KEY, VERSION, lastError: null,
+    KEY, VERSION, NEWER_MSG, lastError: null,
     handlers,
     get available() { return hasStorage(); },
+    /** {v, slot} while a save from a newer build exists (every save is refused), else null. */
+    get tooNew() { return newerSave(); },
+    /** Is saving allowed right now? The pause menu's rules when menus.js is loaded (missions,
+     *  minigames, cutscenes, dialogue, Chappal Meter, N.flags.no_save), else the missions' rules. */
+    allowed() {
+      const mode = N.state.mode;
+      if (mode === 'boot' || mode === 'title' || N.state.has('gameover')) return { ok: false, why: 'Not now.' };
+      if (newerSave()) return { ok: false, why: NEWER_MSG };
+      try {
+        if (N.menus && typeof N.menus.canSave === 'function') { const c = N.menus.canSave(); return { ok: !!c.ok, why: c.ok ? null : c.reason }; }
+        if (N.missions && typeof N.missions.canSave === 'function') return N.missions.canSave();
+      } catch (e) { N.err('save.allowed', e); return { ok: false, why: 'Not now.' }; }
+      return { ok: true, why: null };
+    },
+    /** Silent background save (tab hidden / page closing) when allowed(); never toasts. */
+    autosave(reason) {
+      if (!S.allowed().ok) return false;
+      return S.save({ reason: reason || 'autosave', toast: false });
+    },
     /** Register a save section. Later registrations of the same key replace it. */
     register(key, h) {
       if (!key || !h || typeof h.serialize !== 'function' || typeof h.deserialize !== 'function') { N.err('save.register', new Error('bad handler ' + key)); return; }
@@ -77,6 +118,13 @@
     save(meta) {
       const mode = N.state.mode;
       if (mode === 'boot' || mode === 'title') return false;
+      const newer = newerSave();
+      if (newer) {
+        // never overwrite progress from a newer build (it would be lost for good)
+        N.emit('save:refused', { reason: (meta && meta.reason) || 'manual', why: 'newer', v: newer.v, slot: newer.slot });
+        if (!meta || meta.toast !== false) warnNewer();
+        return false;
+      }
       const data = {};
       for (const [key, h] of handlers) {
         try {
@@ -134,6 +182,10 @@
     /** Test hook: raw access to the stored string. */
     _raw: () => read(KEY),
   });
+
+  // Tell the player as soon as they start playing over a newer save (the title shows a note too).
+  N.on('game:new', () => { if (newerSave()) setTimeout(() => warnNewer(6500), 1200); });
+  N.on('game:continue', () => { if (newerSave()) setTimeout(() => warnNewer(6500), 1200); });
 
   /* ------------------------------------------------- core sections */
   S.register('player', {

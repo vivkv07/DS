@@ -48,7 +48,22 @@ const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null;
 const want = (k) => !ONLY || ONLY.indexOf(k) >= 0;
 const failures = [];
 let cur = '';
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Game-clock waits (robust on a loaded machine, where a wall-clock sleep sees fewer game frames):
+// window.__gw(secs) resolves after `secs` of GAME time (N.time.now); while the game clock is stopped
+// (title, pause menu) it counts frame time (N.time.real) instead. Both advance only as frames run, so a
+// slow machine just takes longer. The wall-clock cap (8x + 5 s) only stops a hung page from hanging the suite.
+const GW = () => {
+  window.__gw = (secs) => new Promise((res) => {
+    let acc = 0, n0 = N.time.now, r0 = N.time.real;
+    const t0 = performance.now(), cap = secs * 8000 + 5000;
+    (function chk() {
+      const dn = N.time.now - n0, dr = N.time.real - r0; n0 = N.time.now; r0 = N.time.real;
+      acc += dn > 0 ? dn : dr;
+      if (acc >= secs || performance.now() - t0 > cap) res(acc); else requestAnimationFrame(chk);
+    })();
+  });
+};
+const gwait = (pg, secs) => pg.evaluate((s) => window.__gw(s), secs);
 const ok = (m) => console.log('  ok   ' + m);
 const fail = (m) => { failures.push('[' + cur + '] ' + m); console.log('  FAIL ' + m); };
 const check = (c, m, d) => { if (c) ok(m); else fail(m + (d ? ' — ' + (typeof d === 'string' ? d : JSON.stringify(d)) : '')); return !!c; };
@@ -56,6 +71,7 @@ const check = (c, m, d) => { if (c) ok(m); else fail(m + (d ? ' — ' + (typeof 
 async function openPage(browser, V) {
   const context = await browser.newContext({ viewport: V.viewport, deviceScaleFactor: V.dpr || 1, hasTouch: !!V.touch, isMobile: !!V.touch });
   const page = await context.newPage();
+  await page.addInitScript(GW);
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
@@ -77,7 +93,7 @@ const waitLog = (page, type, extra, ms) => waitFor(page, ([t, x]) => N.playgroun
 const waitPhase = (page, phase, ms) => waitFor(page, (ph) => { const s = N.playgroundGames.debug.state(); return !!s && s.phase === ph; }, phase, ms);
 const startResult = (page, id, params) => page.evaluate(([id, pr]) => { window.__pgRes = null; N.minigames.play(id, pr).then((r) => { window.__pgRes = r; }); return !!N.playgroundGames.current; }, [id, params]);
 const result = (page, ms) => waitFor(page, () => !!window.__pgRes, null, ms || 30000).then(() => page.evaluate(() => window.__pgRes));
-async function tapKey(page, key, ms) { await page.keyboard.down(key); await sleep(ms || 120); await page.keyboard.up(key); }
+async function tapKey(page, key, ms) { await page.keyboard.down(key); await gwait(page, (ms || 120) / 1000); await page.keyboard.up(key); }
 /** walk the player with real arrow keys towards (x, y) */
 async function walkTo(page, x, y, r, maxMs) {
   const t0 = Date.now();
@@ -97,11 +113,11 @@ async function walkTo(page, x, y, r, maxMs) {
     if (dy > 1.5) keys.push('ArrowDown'); else if (dy < -1.5) keys.push('ArrowUp');
     await set(keys);
     // short steps near the target (a loaded machine polls slowly: do not overshoot)
-    if (d < 25) { await sleep(60); await set([]); }
-    await sleep(40);
+    if (d < 25) { await gwait(page, 0.06); await set([]); }
+    await gwait(page, 0.04);
   }
   await set([]);
-  await sleep(250);
+  await gwait(page, 0.25);
   const p = await page.evaluate(() => ({ x: N.player.x, y: N.player.y }));
   return Math.hypot(x - p.x, y - p.y);
 }
@@ -158,13 +174,13 @@ async function desktop(browser) {
   await shot(page, 'desktop_lingocha_aim');
   // aim with the arrow keys
   const a0 = s1.aim.ang;
-  await page.keyboard.down('ArrowLeft'); await sleep(450); await page.keyboard.up('ArrowLeft');
+  await page.keyboard.down('ArrowLeft'); await gwait(page, 0.45); await page.keyboard.up('ArrowLeft');
   const a1 = (await st(page)).aim.ang;
   check(Math.abs(a1 - a0) > 0.03, '← turns the aim (' + a0.toFixed(2) + ' -> ' + a1.toFixed(2) + ')');
   // power: hold E, see the meter charge, let go (assist: straight at the stack)
   await page.evaluate(() => { N.playgroundGames.debug.assist.aim = true; });
   await page.keyboard.down('KeyE');
-  await sleep(500);
+  await gwait(page, 0.5);
   const ch = await st(page);
   check(ch.aim.charging && ch.aim.p > 0.05 && (await page.evaluate(() => document.querySelector('.pg-power.on') != null)), 'holding E charges the power bar (' + ch.aim.p + ')');
   await shot(page, 'desktop_lingocha_charge');
@@ -180,13 +196,13 @@ async function desktop(browser) {
   // pick a stone and stack it (real keys: walk + E)
   // freeze the AI and park the ball far away (no ball in flight) while Chinnu fetches and stacks
   await page.evaluate(() => { const D = N.playgroundGames.debug, S = D.session(); D.assist.freezeAI = true; D.assist.noTimer = true; D.ballTo(S.F.x0 + 3, S.F.y0 + 3, 0); for (const P of S.parts) { P.windT = 0; } });
-  await sleep(200);
+  await gwait(page, 0.2);
   const stn = await page.evaluate(() => { const s = N.playgroundGames.debug.state(); const p = N.player; let b = null, bd = 1e9; for (const q of s.lingocha.stones) { if (q.state !== 'loose') continue; const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; b = q; } } return b; });
   check(!!stn, 'a loose stone to fetch');
   if (stn) {
     const d = await walkTo(page, stn.x, stn.y, 3.5, 12000);
     if (d > 4.5) await page.evaluate((q) => { N.player.x = q.x + 2; N.player.y = q.y; N.player.vx = N.player.vy = 0; }, stn);
-    await sleep(150);
+    await gwait(page, 0.15);
     const lab = (await st(page)).label;
     check(/Pick up stone/.test(lab), 'over a stone the ACTION label says "' + lab + '"');
     await tapKey(page, 'KeyE');
@@ -196,7 +212,7 @@ async function desktop(browser) {
     await walkTo(page, base.x, base.y + 5, 2, 12000);
     const d2 = await page.evaluate((q) => Math.hypot(N.player.x - q.x, N.player.y - q.y), base);
     if (d2 > 8) await page.evaluate((q) => { N.player.x = q.x; N.player.y = q.y + 5; N.player.vx = N.player.vy = 0; }, base);
-    await sleep(150);
+    await gwait(page, 0.15);
     check(/Stack/.test((await st(page)).label), 'at the stack the label is "' + (await st(page)).label + '"');
     await tapKey(page, 'KeyE');
     check(await waitLog(page, 'restack', { me: true }, 10000), 'E puts the stone on the stack');
@@ -206,13 +222,15 @@ async function desktop(browser) {
   // hit = out
   await page.evaluate(() => { N.playgroundGames.debug.hitPlayer(); });
   check(await waitLog(page, 'out', { me: true }, 10000), 'a hitter’s ball on Chinnu (on the full, below the head) = OUT');
+  // the HUD text refreshes every 0.1 s of game time: give it a few refreshes before reading it
+  await waitFor(page, () => /OUT/.test(N.playgroundGames.debug.state().prompt || ''), null, 5000);
   const s3 = await st(page);
   check(s3.parts.find((p) => p.me).out && /OUT/.test(s3.prompt), 'the HUD says he is out (' + s3.prompt + ')');
   await shot(page, 'desktop_lingocha_out');
   // the team finishes the stack: LINGOCHA!
   await page.evaluate(() => { N.playgroundGames.debug.restack(7); });
   check(await waitLog(page, 'lingocha', null, 10000), 'all seven back on the stack: "LINGOCHA!" (banner + crowd cheer)');
-  await sleep(300);
+  await gwait(page, 0.3);
   await shot(page, 'desktop_lingocha_banner');
   const s4 = await st(page);
   check(s4.lingocha.wins[0] === 1 && s4.lingocha.hist[0].winner === 'home', 'round 1 to Chinnu XI (' + s4.lingocha.wins.join('-') + ')');
@@ -236,11 +254,11 @@ async function desktop(browser) {
     D.ballTo(p.x + Math.cos(a) * 2, p.y + Math.sin(a) * 2, 0);
     return T.name;
   });
-  await sleep(200);
+  await gwait(page, 0.2);
   check(/Pick up ball/.test((await st(page)).label), 'next to the loose ball: "' + (await st(page)).label + '"');
   await tapKey(page, 'KeyE');
   check(await waitFor(page, () => N.playgroundGames.debug.state().ball.holderIsMe, null, 8000), 'E: Chinnu holds the ball');
-  await sleep(250);
+  await gwait(page, 0.25);
   const tgt = (await st(page)).target;
   check(tgt === seek, 'aim assist picks the seeker in front: ' + tgt);
   await page.evaluate(() => { N.playgroundGames.debug.assist.noDodge = true; });
@@ -274,13 +292,13 @@ async function desktop(browser) {
 
   // ---------------------------------------------------------------- lingocha (loss) at a second ground
   await page.evaluate(() => { const f = N.playgroundGames.fieldFor('playground_14'); N.debug.teleport(f.line.x + 6, f.line.y + 6); });
-  await sleep(300);
+  await gwait(page, 0.3);
   await startResult(page, 'lingocha', { place: 'playground_14', seekFirst: false, seed: 3 });
   const s6 = await st(page);
   check(s6 && s6.place === 'playground_14' && s6.lingocha.teams[1] === 'Ashok Nagar boys' && s6.parts.some((p) => p.npc === 'tiger'), 'lingocha at Ashok Nagar ground: Tiger’s boys (' + (s6 && s6.lingocha.teams.join(' v ')) + ')');
   check(s6 && s6.lingocha.mySide === 'hit', 'seekFirst:false -> the home side hits first');
   await waitPhase(page, 'aim', 60000);
-  await sleep(700);
+  await gwait(page, 0.7);
   await shot(page, 'desktop_lingocha_ashok_nagar');
   await page.evaluate(() => N.playgroundGames.debug.finishRound('away'));
   await waitLog(page, 'role_swap', null, 20000);
@@ -304,7 +322,7 @@ async function desktop(browser) {
   check(!(await st(page)).ball.holderIsMe, 'the ball is not in Chinnu’s hand');
   check(await waitFor(page, () => N.playgroundGames.current.ball.bounced > 0, null, 10000), 'it bounces');
   await page.evaluate(() => { const b = N.playgroundGames.current.ball; N.player.x = b.x + 2; N.player.y = b.y; });
-  await sleep(120);
+  await gwait(page, 0.12);
   await tapKey(page, 'KeyE', 60);
   check(await waitLog(page, 'grab', { me: true }, 6000) && (await st(page)).ball.holderIsMe, 'after the bounce E grabs it');
   // a throw that hits = out (real E tap at a kid 22 u away, straight aim, no dodge)
@@ -316,11 +334,11 @@ async function desktop(browser) {
     return T.name;
   });
   await page.evaluate(() => { const A = N.playgroundGames.debug.assist; A.aim = true; A.noDodge = true; });
-  await sleep(250);
+  await gwait(page, 0.25);
   await shot(page, 'desktop_maram_aim');
   await tapKey(page, 'KeyE', 80);
   check(await waitLog(page, 'out', { name: victim }, 8000), 'Chinnu’s throw hits ' + victim + ' on the full: OUT (thwack, nobody hurt)');
-  await sleep(400);
+  await gwait(page, 0.4);
   await shot(page, 'desktop_maram_out');
   // last one standing
   await page.evaluate(() => { const S = N.playgroundGames.current; for (const P of S.parts) if (!P.isPlayer && !P.out) N.playgroundGames.debug.out(P.name); });
@@ -334,11 +352,11 @@ async function desktop(browser) {
   await startResult(page, 'marampitti', { place: 'playground_3', seed: 4 });
   check(await waitPhase(page, 'play', 60000), 'maram pitti at Nallakunta ground: toss, bounce, play');
   await page.evaluate(() => { N.playgroundGames.debug.assist.freezeAI = true; });
-  await sleep(300);
+  await gwait(page, 0.3);
   await page.evaluate(() => N.playgroundGames.debug.hitPlayer(6.6));
   check(await waitLog(page, 'head_foul', null, 8000), 'a ball at head height is a foul (no head shots)');
   check(!(await st(page)).parts.find((p) => p.me).out, '... and Chinnu is not out');
-  await sleep(300);
+  await gwait(page, 0.3);
   await page.evaluate(() => N.playgroundGames.debug.hitPlayer(2.4));
   check(await waitLog(page, 'out', { me: true }, 8000), 'a body hit on the full: Chinnu is out');
   const r4 = await result(page, 30000);
@@ -610,7 +628,7 @@ async function ambient(browser) {
     await page.evaluate(([g, pl]) => { N.playgroundGames.ambient.force = g; const f = N.playgroundGames.fieldFor(pl); N.debug.teleport(f.cx || (f.x0 + f.x1) / 2, f.y1 + 40); }, [gid, place]);
     const on = await waitFor(page, (g) => { const S = N.playgroundGames.debug.session('ambient'); return !!S && S.id === g; }, gid, 30000);
     check(on, 'ambient ' + gid + ' starts at ' + place + ' when Chinnu comes near (no mission, afternoon)');
-    await sleep(gid === 'lingocha' ? 9000 : 7000);
+    await gwait(page, (gid === 'lingocha' ? 9000 : 7000) / 1000);
     const a = await page.evaluate(() => { const s = N.playgroundGames.debug.state('ambient'); const busy = N.playgroundGames.debug.busy(); return { s: s && { phase: s.phase, n: s.parts.length, log: s.log.map((e) => e.type) }, busy, filtered: N.playgroundGames.debug.filtered.n }; });
     const types = new Set(a.s ? a.s.log : []);
     check(a.s && a.s.n >= 6, gid + ': ' + (a.s && a.s.n) + ' kids playing on their own');
@@ -621,7 +639,7 @@ async function ambient(browser) {
   await page.evaluate(() => { N.playgroundGames.ambient.force = 'cricket'; });
   check(await waitFor(page, () => !N.playgroundGames.debug.session('ambient'), null, 15000), 'cricket hour: our ambient game stops (places_art draws the gully cricket)');
   await page.evaluate(() => { N.playgroundGames.ambient.force = null; N.debug.setTime(21, 30); });
-  await sleep(1500);
+  await gwait(page, 1.5);
   check(await page.evaluate(() => !N.playgroundGames.kidsPresent()), 'no kids at the grounds at night');
   await noErrors(page, errors);
   await context.close();
@@ -660,7 +678,7 @@ async function three() {
     await page.evaluate(() => N.playgroundGames.abort('test'));
     await result(page, 20000);
     await page.evaluate(() => { const f = N.playgroundGames.fieldFor('playground_2'); N.debug.teleport(f.centre.x, f.centre.y + 30); });
-    await sleep(1500);
+    await gwait(page, 1.5);
     await startResult(page, 'marampitti', { place: 'playground_2', seed: 2 });
     await waitPhase(page, 'play', 240000);
     await frames(10);
@@ -688,8 +706,8 @@ async function three() {
 async function cdpTouchDrag(page, x0, y0, x1, y1, steps) {
   const c = await page.context().newCDPSession(page);
   await c.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x0, y: y0, id: 7 }] });
-  for (let i = 1; i <= (steps || 8); i++) { const t = i / (steps || 8); await c.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t, id: 7 }] }); await sleep(40); }
-  await sleep(150);
+  for (let i = 1; i <= (steps || 8); i++) { const t = i / (steps || 8); await c.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t, id: 7 }] }); await gwait(page, 0.04); }
+  await gwait(page, 0.15);
   await c.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await c.detach();
 }
@@ -706,7 +724,7 @@ async function phone(browser, name, viewport) {
   await page.tap('.t-btn.t-action');
   check(await waitFor(page, () => !!N.playgroundGames.current, null, 20000), 'tap ACTION: lingocha starts');
   await waitPhase(page, 'aim', 90000);
-  await sleep(400);
+  await gwait(page, 0.4);
   await shot(page, name + '_lingocha_aim');
   // drag back from Chinnu (away from the stack) on the picture and let go
   const drag = await page.evaluate(() => {
@@ -723,7 +741,7 @@ async function phone(browser, name, viewport) {
   check(await waitLog(page, 'player_throw', null, 15000), 'the slingshot drag throws at the stack');
   const kn = await waitFor(page, () => N.playgroundGames.debug.log().some((e) => e.type === 'knock' || e.type === 'try_miss'), null, 30000);
   check(kn, 'the throw lands (' + ((await logHas(page, 'knock')) ? 'knocked down' : 'missed') + ')');
-  await sleep(1200);
+  await gwait(page, 1.2);
   await shot(page, name + '_lingocha_throw');
   await page.evaluate(() => N.playgroundGames.abort('test'));
   await result(page, 20000);
@@ -746,19 +764,19 @@ async function phone(browser, name, viewport) {
   await startResult(page, 'marampitti', { place: 'playground_2', seed: 8 });
   await waitPhase(page, 'play', 90000);
   await page.evaluate(() => { const A = N.playgroundGames.debug.assist; A.freezeAI = true; A.aim = true; A.noDodge = true; const S = N.playgroundGames.current, b = S.ball; for (const P of S.parts) P.hold = false; N.playgroundGames.debug.ballTo(N.player.x + 3, N.player.y, 0); });
-  await sleep(300);
+  await gwait(page, 0.3);
   const lab2 = await page.evaluate(() => document.querySelector('.t-btn.t-action .t-txt').textContent);
   check(/Grab/i.test(lab2), 'ACTION button: "' + lab2 + '"');
   await page.tap('.t-btn.t-action');
   check(await waitFor(page, () => N.playgroundGames.debug.state().ball.holderIsMe, null, 8000), 'tap ACTION grabs the ball');
   const victim = await page.evaluate(() => { const S = N.playgroundGames.current, p = N.player, T = S.parts.find((q) => !q.isPlayer && !q.out); T.e.x = p.x + 22; T.e.y = p.y + 2; p.angle = p.facing = 0; let k = 0; for (const q of S.parts) if (!q.isPlayer && q !== T && !q.out) { q.e.x = p.x - 30 - (k % 3) * 8; q.e.y = p.y - 20 + Math.floor(k / 3) * 12; k++; } return T.name; });
-  await sleep(300);
+  await gwait(page, 0.3);
   const lab3 = await page.evaluate(() => document.querySelector('.t-btn.t-action .t-txt').textContent);
   check(/Throw at/i.test(lab3), 'ACTION button: "' + lab3 + '" (aim assist)');
   await shot(page, name + '_maram_hold');
   await page.tap('.t-btn.t-action');
   check(await waitLog(page, 'out', { name: victim }, 8000), 'tap ACTION throws: ' + victim + ' is out');
-  await sleep(500);
+  await gwait(page, 0.5);
   await shot(page, name + '_maram_out');
   const scroll = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth, sh: document.documentElement.scrollHeight, ih: window.innerHeight }));
   check(scroll.sw <= scroll.iw && scroll.sh <= scroll.ih, 'no page scroll', scroll);

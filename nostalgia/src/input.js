@@ -66,6 +66,7 @@
       for (const k in keyDown) keyDown[k] = false;
       for (const k in touchDown) touchDown[k] = false;
       for (const k in synHold) synHold[k] = 0;
+      for (const k in pendingPress) pendingPress[k] = 0; // queued taps must not leak into the next mode
       synMove = null;
       resetStick();
     },
@@ -96,13 +97,16 @@
       for (const a of ACTIONS) {
         if (synHold[a] > 0) synHold[a] -= dt;
         const d = keyDownFor(a) || !!touchDown[a] || !!padDown[a] || synHold[a] > 0;
-        const p = (pendingPress[a] || 0) > 0 || (d && !prevDown[a]);
+        // one queued press per step: two taps inside one slow frame give two presses (the second
+        // next step); a held key queues one press on keydown, so it still counts once
+        const q = pendingPress[a] || 0;
+        const p = q > 0 || (d && !prevDown[a]);
         cur.pressed[a] = p;
         cur.released[a] = !d && !!prevDown[a];
         cur.down[a] = d;
         cur.consumed[a] = false;
         prevDown[a] = d;
-        pendingPress[a] = 0;
+        pendingPress[a] = q > 0 ? Math.min(q - 1, 3) : 0;
       }
       computeMove();
     },

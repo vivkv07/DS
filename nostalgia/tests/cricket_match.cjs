@@ -38,7 +38,22 @@ const want = (k) => !ONLY || ONLY.split(',').includes(k);
 
 const failures = [];
 let checks = 0;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Game-clock waits (robust on a loaded machine, where a wall-clock sleep sees fewer game frames):
+// window.__gw(secs) resolves after `secs` of GAME time (N.time.now); while the game clock is stopped
+// (title, pause menu) it counts frame time (N.time.real) instead. Both advance only as frames run, so a
+// slow machine just takes longer. The wall-clock cap (8x + 5 s) only stops a hung page from hanging the suite.
+const GW = () => {
+  window.__gw = (secs) => new Promise((res) => {
+    let acc = 0, n0 = N.time.now, r0 = N.time.real;
+    const t0 = performance.now(), cap = secs * 8000 + 5000;
+    (function chk() {
+      const dn = N.time.now - n0, dr = N.time.real - r0; n0 = N.time.now; r0 = N.time.real;
+      acc += dn > 0 ? dn : dr;
+      if (acc >= secs || performance.now() - t0 > cap) res(acc); else requestAnimationFrame(chk);
+    })();
+  });
+};
+const gwait = (pg, secs) => pg.evaluate((s) => window.__gw(s), secs);
 const ok = (m) => { checks++; console.log('  ok   ' + m); };
 const fail = (vp, m) => { checks++; failures.push('[' + vp + '] ' + m); console.log('  FAIL ' + m); };
 const expect = (vp, cond, m) => (cond ? ok(m) : fail(vp, m));
@@ -47,6 +62,7 @@ async function boot(V) {
   const browser = await chromium.launch(process.env.SWIFT ? { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] } : {});
   const ctx = await browser.newContext({ viewport: V.viewport, deviceScaleFactor: V.dpr || 1, hasTouch: !!V.touch, isMobile: !!V.touch });
   const page = await ctx.newPage();
+  await page.addInitScript(GW);
   const errors = [];
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
@@ -74,8 +90,8 @@ function kit(page, V, cdp) {
     async down(x, y, id) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: id || 1 }] }); },
     async move(x, y, id) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y, id: id || 1 }] }); },
     async up() { await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); },
-    async tap(x, y) { await touch.down(x, y); await sleep(50); await touch.up(); },
-    async swipe(x0, y0, x1, y1, ms, steps) { const n = steps || 6; await touch.down(x0, y0); for (let i = 1; i <= n; i++) { await touch.move(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n); await sleep(ms / n); } await touch.up(); },
+    async tap(x, y) { await touch.down(x, y); await gwait(page, 0.05); await touch.up(); },
+    async swipe(x0, y0, x1, y1, ms, steps) { const n = steps || 6; await touch.down(x0, y0); for (let i = 1; i <= n; i++) { await touch.move(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n); await gwait(page, (ms / n) / 1000); } await touch.up(); },
   };
   const center = async (sel) => { await page.locator(sel).first().scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {}); const b = await page.locator(sel).first().boundingBox(); if (!b) throw new Error('no element ' + sel); return { x: b.x + b.width / 2, y: b.y + b.height / 2, b }; };
   const tapSel = async (sel) => { const c = await center(sel); await touch.tap(c.x, c.y); };
@@ -86,7 +102,7 @@ function kit(page, V, cdp) {
     if (!s || !s.del) return null;
     const ts = (await page.evaluate(() => N.minigames.game && N.minigames.game.timeScale)) || 1;
     const ms = ((s.del.tRel + s.del.tA) - s.clock) / ts * 1000 - (lat == null ? 70 : lat);
-    if (ms > 0) await sleep(ms);
+    if (ms > 0) await gwait(page, (ms) / 1000);
     await fn();
     return s;
   };
@@ -96,7 +112,7 @@ function kit(page, V, cdp) {
   // a finished (non-autoplay) match waits on its result card: press "Aage chalo"
   const done = async (t) => {
     if (!(await until(() => { const s = N.cricketMatch.debug.state(); return !s || s.gamePhase === 'result'; }, null, t || 40000))) return null;
-    await sleep(500);
+    await gwait(page, 0.5);
     await page.evaluate(() => { const b = document.querySelector('.mg-card-result button[data-do="done"]'); if (b) b.click(); });
     return result(8000);
   };
@@ -180,12 +196,12 @@ async function testDesktopMatch(page, V) {
   console.log(' -- full match with real keyboard + mouse');
   await K.start({ overs: 1, wickets: 3, seed: 20, assist: true, difficulty: 0.25, timeScale: 0.75, forceToss: 'heads' });
   await page.waitForSelector('.mg-card button.primary', { timeout: 8000 });
-  await sleep(500);
+  await gwait(page, 0.5);
   await K.shot('howto');
   expect(V.name, await page.locator('.mg-screen[data-mg="match"] .mg-howto').count() === 1, 'how-to card is shown in the match overlay');
   await page.click('.mg-card button.primary'); // real mouse
   expect(V.name, await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.phase === 'toss'; }, null, 20000), 'intro fly-over -> the toss');
-  await sleep(400);
+  await gwait(page, 0.4);
   await K.shot('toss');
   await page.keyboard.press('ArrowLeft'); // heads
   expect(V.name, await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.phase === 'toss_choose'; }), 'called heads, won the toss (forced): bat or bowl?');
@@ -209,21 +225,21 @@ async function testDesktopMatch(page, V) {
     if (f !== 'wide') {
       await K.onArrival(70, () => page.keyboard.press(f ? 'ArrowUp' : key));
       if (!f) realShots++;
-      if (!shotTaken) { await sleep(120); await K.shot('batting'); shotTaken = true; }
+      if (!shotTaken) { await gwait(page, 0.12); await K.shot('batting'); shotTaken = true; }
     }
     // the partner's call: press R (real key) when he shouts YES
     if (!f) {
       const t0 = Date.now();
       while (Date.now() - t0 < 2500) {
         const c = await page.evaluate(() => { const g = N.cricketMatch.debug.game(); const S = g && g.S; return S ? { bp: S.bp, call: S.calls && S.calls.text, act: S.run && S.run.active } : null; });
-        if (!c || c.bp !== 'live') { if (c && c.bp === 'dead') break; await sleep(60); continue; }
-        if (c.call && /YES|ANOTHER/.test(c.call) && !c.act) { await page.keyboard.press('r'); runPressed++; await sleep(300); continue; }
-        await sleep(60);
+        if (!c || c.bp !== 'live') { if (c && c.bp === 'dead') break; await gwait(page, 0.06); continue; }
+        if (c.call && /YES|ANOTHER/.test(c.call) && !c.act) { await page.keyboard.press('r'); runPressed++; await gwait(page, 0.3); continue; }
+        await gwait(page, 0.06);
       }
     }
     if (f === 'six') {
       expect(V.name, await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.bp === 'replay'; }, null, 12000), 'SIX -> ACTION REPLAY starts');
-      await sleep(700);
+      await gwait(page, 0.7);
       s = await K.st();
       expect(V.name, s.evt && /SIX/.test(s.evt.text), 'the replay is announced in text: "' + (s.evt && s.evt.text) + '"');
       await K.shot('replay');
@@ -244,7 +260,7 @@ async function testDesktopMatch(page, V) {
   expect(V.name, realShots >= 1 && inputs.length >= 1, 'real key shots registered by the batting input (' + inputs.length + ': ' + inputs.map((i) => i.dir + '@' + i.t).join(' ') + ')');
   console.log('       real shots ' + realShots + ', run presses ' + runPressed + ', innings 1: ' + JSON.stringify(s.innings[0]));
   expect(V.name, await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.phase === 'inn_break'; }, null, 40000), 'innings break after the over');
-  await sleep(300);
+  await gwait(page, 0.3);
   await K.shot('innings_break');
   s = await K.st();
   expect(V.name, s.innings[0].done && (s.innings[0].balls === 6 || s.innings[0].endReason === 'allout'), 'first innings complete (' + s.innings[0].runs + '/' + s.innings[0].wkts + ' in ' + s.innings[0].balls + ' balls, ' + s.innings[0].endReason + ')');
@@ -255,9 +271,9 @@ async function testDesktopMatch(page, V) {
   expect(V.name, s.playerBowls && s.inn.team === 'ASHK XI' && s.inn.target === s.innings[0].runs + 1, 'target set to first-innings runs + 1 (' + s.inn.target + ')');
   // ball 1: real aim + type + bowl + release
   await page.keyboard.press('Digit3'); // yorker
-  await page.keyboard.down('ArrowLeft'); await sleep(160); await page.keyboard.up('ArrowLeft');
+  await page.keyboard.down('ArrowLeft'); await gwait(page, 0.16); await page.keyboard.up('ArrowLeft');
   await page.keyboard.press('KeyF'); // change the field
-  await sleep(300);
+  await gwait(page, 0.3);
   await K.shot('bowling_aim');
   s = await K.st();
   expect(V.name, s.field !== 'balanced' || s.field === 'balanced', 'field preset ' + s.field);
@@ -269,22 +285,22 @@ async function testDesktopMatch(page, V) {
   // release near the green
   await page.waitForFunction(() => { const g = N.cricketMatch.debug.game(); return g && g.S.meter >= (g.S.green ? g.S.green.c - 0.06 : 0.66); }, null, { timeout: 8000, polling: 'raf' }).catch(() => {});
   await page.keyboard.press('Space');
-  await sleep(150);
+  await gwait(page, 0.15);
   await K.shot('bowling_release');
   // FPV camera toggle (V) while the ball is live
   await page.keyboard.press('KeyV');
-  await sleep(250);
+  await gwait(page, 0.25);
   s = await K.st();
   expect(V.name, s.camMode === 'fpv', 'V switches to the first-person (FPV) camera');
   await K.ballDone(n0, 40000);
   // next ball: in FPV, bowler's-eye run-up
   if (await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.phase === 'ball' && s.bp === 'aim'; }, null, 20000)) {
-    await sleep(300);
+    await gwait(page, 0.3);
     await K.shot('bowling_fpv_aim');
     await K.force('bowled');
     n0 = await K.logLen();
     await page.keyboard.press('Space');
-    await sleep(500);
+    await gwait(page, 0.5);
     await K.shot('bowling_fpv_runup');
     await page.keyboard.press('Space');
     await K.ballDone(n0, 40000);
@@ -301,14 +317,14 @@ async function testDesktopMatch(page, V) {
     n0 = await K.logLen();
     await page.keyboard.press('Space');
     await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.bp === 'runup'; });
-    await sleep(350);
+    await gwait(page, 0.35);
     await page.keyboard.press('Space');
     await K.ballDone(n0, 40000);
   }
   expect(V.name, await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.gamePhase === 'result'; }, null, 30000), 'ALL OUT ends the match -> result card');
   s = await K.st();
   expect(V.name, s.innings[1].endReason === 'allout' || s.innings[1].endReason === 'target', 'second innings ended: ' + s.innings[1].endReason + ' (' + s.innings[1].runs + '/' + s.innings[1].wkts + ')');
-  await sleep(900);
+  await gwait(page, 0.9);
   await K.shot('result');
   expect(V.name, await page.locator('.mg-card-result .cm-wagon canvas').count() === 1, 'result card has the wagon wheel');
   expect(V.name, await page.locator('.mg-card-result .cm-mom b').count() === 1, 'result card names the Man of the Match: ' + (await page.locator('.mg-card-result .cm-mom b').first().textContent().catch(() => '')));
@@ -355,7 +371,7 @@ async function testModes(page, V) {
   expect(V.name, r && r.quit === true && r.win === false, 'Quit resolves {quit:true, win:false}');
   // busy guard
   await K.start({ skipHowto: true });
-  await sleep(300);
+  await gwait(page, 0.3);
   const busy = await page.evaluate(() => N.cricketMatch.start({}));
   expect(V.name, busy && busy.error === 'busy', 'a second start while open -> {error:"busy"}');
   await page.evaluate(() => N.minigames.abort('test'));
@@ -377,7 +393,7 @@ async function testModes(page, V) {
   await K.force('house');
   await K.shot('gully');
   expect(V.name, await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.bp === 'live'; }, null, 20000), 'gully: lofted into the off-side houses');
-  await sleep(600);
+  await gwait(page, 0.6);
   await K.shot('gully_house');
   await K.ballDone(n0, 40000);
   s = await K.st();
@@ -388,8 +404,10 @@ async function testModes(page, V) {
   expect(V.name, r && r.aborted, 'gully match aborted cleanly');
   // the 2D world on match day
   const d = await page.evaluate(async () => {
-    N.flags.lb_match = true; N.debug.setTime(19, 30); N.debug.teleport(3840, 2600);
-    await new Promise((r) => setTimeout(r, 1200));
+    N.flags.lb_match = true; N.debug.setTime(19, 30);
+    // just outside the west gate (the map moved the stadium from its v1 spot 3961,2580: use its landmark)
+    const lm = N.WORLD_DATA.landmarks.find((l) => l.id === 'lb_stadium'); N.debug.teleport(lm.x - lm.w / 2 - 22, lm.y + 20);
+    await __gw(1.2);
     const D = N.cricketMatch.dressing;
     return { built: D.built, parked: D.parked.length, peds: D.peds.length, interact: !!(N.interact.get && N.interact.get('match:lb_stadium')) };
   });
@@ -406,19 +424,19 @@ async function testPhone(page, V, cdp) {
   const batFirst = V.name === 'portrait';
   await K.start({ overs: 1, wickets: 2, seed: 8, assist: true, difficulty: 0.25, timeScale: 0.75, forceToss: 'heads' });
   await page.waitForSelector('.mg-card button.primary', { timeout: 8000 });
-  await sleep(500);
+  await gwait(page, 0.5);
   await K.shot('howto');
   await K.tapSel('.mg-card button.primary');
   expect(V.name, await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.phase === 'toss'; }, null, 20000), 'tap "Toss karo!" -> the toss');
-  await sleep(500);
+  await gwait(page, 0.5);
   await K.shot('toss');
   expect(V.name, await page.locator('.mg-btn[data-a="left"]').count() === 1 && /HEADS/.test(await page.locator('.mg-btn[data-a="left"]').textContent()), 'touch pad shows HEADS / TAILS');
   await K.tapSel('.mg-btn[data-a="left"]');
   expect(V.name, await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.phase === 'toss_choose'; }), 'tapped HEADS: won the toss');
-  await sleep(200);
+  await gwait(page, 0.2);
   await K.tapSel(batFirst ? '.mg-btn[data-a="left"]' : '.mg-btn[data-a="right"]');
   expect(V.name, await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.phase === 'inn_intro'; }), (batFirst ? 'BAT' : 'BOWL') + ' first');
-  await sleep(700);
+  await gwait(page, 0.7);
   // layout checks
   const L = await page.evaluate(() => {
     const g = N.minigames.game, S = g.S, fr = S.fr;
@@ -443,7 +461,7 @@ async function testPhone(page, V, cdp) {
     let n0 = await K.logLen();
     const c = await K.center('.mg-btn[data-a="up"]');
     await K.onArrival(90, () => K.touch.tap(c.x, c.y));
-    await sleep(150);
+    await gwait(page, 0.15);
     await K.shot('batting');
     await K.ballDone(n0, 40000);
     // ball 2: a swipe across the picture (left)
@@ -451,14 +469,14 @@ async function testPhone(page, V, cdp) {
     n0 = await K.logLen();
     const fr = (await K.st()).frame;
     await K.onArrival(260, () => K.touch.swipe(fr.x + fr.w * 0.6, fr.y + fr.h * 0.6, fr.x + fr.w * 0.25, fr.y + fr.h * 0.62, 20, 2));
-    await sleep(200);
+    await gwait(page, 0.2);
     await K.shot('swipe');
     await K.ballDone(n0, 40000);
     const s = await K.st();
     expect(V.name, (s.inputLog || []).length >= 2, 'touch: a pad tap and a swipe both played shots (' + (s.inputLog || []).map((i) => i.dir + '@' + i.t).join(' ') + ')');
     // LOFT toggle + RUN exist
     await K.tapSel('.mg-btn[data-a="loft"]');
-    await sleep(150);
+    await gwait(page, 0.15);
     expect(V.name, await page.locator('.mg-btn[data-a="loft"].cm-on').count() === 1, 'LOFT toggles on (latched for the next shot)');
   } else {
     // bowling: chip YORKER, drag to aim, BOWL, release on the meter
@@ -466,7 +484,7 @@ async function testPhone(page, V, cdp) {
     await K.tapSel('.mg-btn[data-a="t3"]');
     const fr = (await K.st()).frame;
     await K.touch.swipe(fr.x + fr.w * 0.5, fr.y + fr.h * 0.62, fr.x + fr.w * 0.46, fr.y + fr.h * 0.58, 120);
-    await sleep(250);
+    await gwait(page, 0.25);
     await K.shot('bowling_aim');
     const A = await page.evaluate(() => { const S = N.cricketMatch.debug.game().S; return { type: S.aim.type, x: S.aim.x, z: S.aim.z }; });
     expect(V.name, A.type === 'yorker', 'YORKER chip selects the delivery (' + A.type + ', aim ' + A.x.toFixed(2) + ',' + A.z.toFixed(2) + ')');
@@ -476,18 +494,18 @@ async function testPhone(page, V, cdp) {
     expect(V.name, await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.bp === 'runup'; }), 'BOWL: run-up with the release meter');
     await page.waitForFunction(() => { const g = N.cricketMatch.debug.game(); return g && g.S.meter >= (g.S.green ? g.S.green.c - 0.08 : 0.64); }, null, { timeout: 8000, polling: 'raf' }).catch(() => {});
     await K.touch.tap(c.x, c.y);
-    await sleep(120);
+    await gwait(page, 0.12);
     await K.shot('bowling_release');
     await K.ballDone(n0, 40000);
     const s = await K.st();
     expect(V.name, s.ballLog.length > n0 && s.ballLog[s.ballLog.length - 1].team === 'ASHK XI', 'a delivery bowled by touch (' + s.ballLog[s.ballLog.length - 1].sym + ')');
     // camera pill on the canvas (tap) -> FPV
     const pill = await page.evaluate(() => { const S = N.cricketMatch.debug.game().S; const h = S.hits.find((h) => h.a === 'cam'); const r = N.minigames.game.canvas.getBoundingClientRect(); return h && { x: r.left + h.x + h.w / 2, y: r.top + h.y + h.h / 2 }; });
-    if (pill) { await K.touch.tap(pill.x, pill.y); await sleep(400); await K.shot('fpv'); expect(V.name, (await K.st()).camMode === 'fpv', 'tapping the CAM pill switches to FPV'); }
+    if (pill) { await K.touch.tap(pill.x, pill.y); await gwait(page, 0.4); await K.shot('fpv'); expect(V.name, (await K.st()).camMode === 'fpv', 'tapping the CAM pill switches to FPV'); }
   }
   // pause pill -> quit
   await K.tapSel('.mg-pausebtn');
-  await sleep(250);
+  await gwait(page, 0.25);
   expect(V.name, await page.locator('.mg-card-pause').count() === 1, 'pause pill opens the pause card');
   await K.tapSel('.mg-card-pause button[data-do="quit"]');
   const r = await K.result(5000);
@@ -495,7 +513,7 @@ async function testPhone(page, V, cdp) {
   // a whole match on this screen by the bot, to the result card
   await K.start({ autoplay: 'win', overs: 1, wickets: 2, timeScale: 6, seed: 12, autoClose: false });
   expect(V.name, await K.until(() => { const s = N.cricketMatch.debug.state(); return s && s.gamePhase === 'result'; }, null, 150000), 'autoplay match reaches the result card');
-  await sleep(900);
+  await gwait(page, 0.9);
   await K.shot('result');
   const card = await page.evaluate(() => { const c = document.querySelector('.mg-card-result'); if (!c) return null; const r = c.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, sh: c.scrollHeight, ch: c.clientHeight }; });
   expect(V.name, card && card.x >= 0 && card.x + card.w <= L.W + 1, 'result card fits the screen width');
