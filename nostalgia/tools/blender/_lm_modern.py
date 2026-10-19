@@ -316,3 +316,307 @@ def build_cyber_towers(A):
     L.finish_proxy(A, parts, lo=lo, keep=[lit_ob, sgn], size=int(__import__('os').environ.get('CT_SIZE', '384')), ao_dist=12.0)
     A.notes.append('proxy shell + baked facade atlas; %d lit office strips (@night)' % len(lits))
     L.shots(A, az=-30, el=12, extra=[{'name': 'front', 'view': {'az': 0, 'el': 6, 'fov': 36, 'pad': 1.0}}])
+
+
+# =========================================================================== PARKED builders (NOSTALGIA_PARKED=1 only)
+# Osmania University Arts College, the Spanish Mosque, the old Begumpet airport (terminal, ATC
+# tower, a parked turboprop) and a HITEC City office block with a tower crane. Owner must-haves that
+# ship once models load lazily per GLB: registered only under NOSTALGIA_PARKED=1 (see the end of
+# this file) and never packed into the real pack. Budget path: L.finish_proxy (detail baked onto
+# hand-built low shells); legible signs and night glows live on one unbaked picture sheet per asset
+# (the _lm_city technique: '<id>_sheet@night', dark by day, glowing after dusk).
+import os
+import numpy as np
+from mathutils import Matrix
+
+
+def _civic():
+    import _lm_civic as C_
+    return C_
+
+
+def _city():
+    import _lm_city as CT_
+    return CT_
+
+
+def mp(base, name, rough=0.8, **kw):
+    """plain painted surface (roughness 0.8: no ORM map)"""
+    kw.setdefault('streaks', 0.0)
+    return L.paint(base, name, rough=rough, **kw)
+
+
+def gran(name, base, **kw):
+    """Deccan granite (grey-pink, weathered), rough 0.8"""
+    kw.setdefault('var', 0.10)
+    kw.setdefault('grain', 0.10)
+    kw.setdefault('grime', 0.45)
+    kw.setdefault('specks', 0.4)
+    kw.setdefault('streaks', 0.3)
+    return kit.material('granite_pink', name, base=base, rough=0.8, **kw)
+
+
+def BX(name, x0, x1, y0, y1, z0, z1, mat=None):
+    """box from extents (hi detail)"""
+    return box(name, (x1 - x0, y1 - y0, z1 - z0), ((x0 + x1) / 2, (y0 + y1) / 2, z0), mat, base=True)
+
+
+def SH(name, x0, x1, y0, y1, z0, z1):
+    """open-bottom shell box from extents (lo)"""
+    return _civic().blk(name, (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0, z0, z1, None)
+
+
+def arch_pts(kind, w, h, n=8):
+    """2D outline [(x, z)] of an opening of width w and total height h (base z = 0), in
+    kit.arch_outline order: 'rect' | 'round' | 'deccani' (two-centred, rise = 1.2 x half-width,
+    the Qutb Shahi / Deccani arch) | 'multifoil' (cusped deccani) | 'horseshoe' (Moorish) |
+    'chaitya' (horseshoe with the pointed kudu tip of the Ajanta chaitya window)."""
+    half = w / 2.0
+    if kind == 'rect':
+        return [(-half, 0.0), (-half, h), (half, h), (half, 0.0)]
+    if kind == 'round':
+        return arch_outline(w, h - half, half, 'round', n)
+    if kind in ('deccani', 'multifoil'):
+        rise = 1.2 * half
+        return arch_outline(w, max(0.0, h - rise), rise, 'pointed' if kind == 'deccani' else 'cusped', max(n, 10 if kind == 'multifoil' else n))
+    R = half * 1.18
+    zc = h - R * (1.28 if kind == 'chaitya' else 1.0)
+    d = math.asin(math.sqrt(R * R - half * half) / R)
+    arc = []
+    for i in range(n + 1):
+        t = PI + d - (PI + 2 * d) * i / n
+        x, z = R * math.cos(t), zc + R * math.sin(t)
+        if kind == 'chaitya' and z > zc + R * 0.82 and abs(x) < R * 0.55:
+            continue
+        arc.append((x, z))
+    if kind == 'chaitya':
+        k = max(i for i, p in enumerate(arc) if p[0] < 0) + 1
+        arc.insert(k, (0.0, h))
+    arc[0] = (-half, arc[0][1])
+    arc[-1] = (half, arc[-1][1])
+    return [(-half, 0.0)] + arc + [(half, 0.0)]
+
+
+def recess(name, kind, w, h, x, y, z, depth, mat, n=8):
+    """a cutter prism (arched opening outline) centred on the wall plane y: boolean it out of a
+    wall to get a real recess of `depth` (the cut faces take `mat`)"""
+    o = prism_from_outline(name, arch_pts(kind, w, h, n), depth * 2, center=(x, y, z), mat=mat)
+    return o
+
+
+def mfac():
+    """Fac (painted facade) with arch_pts openings, voussoirs, ashlar coursing and jaali"""
+    C_ = _civic()
+
+    class MFac(C_.Fac):
+        def poly_mask(self, pts):
+            X, Z = self.X, self.Z
+            inside = np.zeros(X.shape, bool)
+            n = len(pts)
+            for i in range(n):
+                (x1, z1), (x2, z2) = pts[i], pts[(i + 1) % n]
+                if z1 == z2:
+                    continue
+                c = ((z1 > Z) != (z2 > Z)) & (X < (x2 - x1) * (Z - z1) / (z2 - z1) + x1)
+                inside ^= c
+            return inside
+
+        def shape(self, kind, cx, z0, w, h):
+            return self.poly_mask([(cx + x, z0 + z) for (x, z) in arch_pts(kind, w, h, 16)])
+
+        def opening(self, kind, cx, z0, w, h, col, frame=None, fw=0.45, sill=None, shade=True, alfiz=None, aw=0.5):
+            """an arched opening (+ surround frame, Moorish alfiz rectangle, sill)"""
+            if alfiz:
+                self.rect(cx - w / 2 - fw - aw * 2.2, z0, cx + w / 2 + fw + aw * 2.2, z0 + h + fw + aw * 2.2, alfiz)
+                self.rect(cx - w / 2 - fw - aw * 1.2, z0, cx + w / 2 + fw + aw * 1.2, z0 + h + fw + aw * 1.2, self._bg)
+            if frame:
+                self._put(self.shape(kind, cx, z0 - fw * 0.3, w + 2 * fw, h + fw * 1.3), frame)
+            m = self.shape(kind, cx, z0, w, h)
+            self._put(m, col)
+            if shade:
+                self._put(m & (self.Z > z0 + h * 0.55), '#000000', 0.22)
+            if sill:
+                self.rect(cx - w / 2 - 0.4, z0 - 0.45, cx + w / 2 + 0.4, z0, sill)
+            return self
+
+        def openings(self, kind, n, z0, w, h, col, x0=0.0, x1=None, skip=(), **kw):
+            x1 = self.w if x1 is None else x1
+            step = (x1 - x0) / n
+            for i in range(n):
+                if i not in skip:
+                    self.opening(kind, x0 + step * (i + 0.5), z0, w, h, col, **kw)
+            return self
+
+        def voussoirs(self, kind, cx, z0, w, h, ring, c1, c2, n=15):
+            """the Cordoba arch: a ring of alternating light / dark voussoirs round the opening"""
+            outer = self.shape(kind, cx, z0, w + 2 * ring, h + ring)
+            inner = self.shape(kind, cx, z0, w, h)
+            zc = z0 + h - w / 2 * 1.18 - ring * 0.5
+            ang = np.arctan2(self.Z - zc, self.X - cx)
+            k = np.floor((ang + 0.35) / ((PI + 0.7) / n)).astype(int) % 2
+            m = outer & ~inner & (self.Z > zc - w * 0.35)
+            self._put(m & (k == 0), c1)
+            self._put(m & (k == 1), c2)
+            return self
+
+        def courses(self, h=1.4, col='#000000', alpha=0.10, w=0.12, bond=2.6):
+            """ashlar granite coursing: thin joints every h (vertical joints staggered)"""
+            zz = np.mod(self.Z, h)
+            row = np.floor(self.Z / h).astype(int)
+            xx = np.mod(self.X + (row % 2) * bond / 2, bond)
+            self._put((zz < w) | (xx < w * 0.8), col, alpha)
+            return self
+
+        def jaali(self, x0, z0, x1, z1, col, cell=0.7, alpha=1.0):
+            """a pierced-screen band: a lattice of small dark lozenges"""
+            m = (self.X >= x0) & (self.X <= x1) & (self.Z >= z0) & (self.Z <= z1)
+            u = np.mod(self.X - x0, cell) / cell - 0.5
+            v = np.mod(self.Z - z0, cell) / cell - 0.5
+            self._put(m & (np.abs(u) + np.abs(v) < 0.32), col, alpha)
+            return self
+
+    def make(w, h, bg, seed=1, noise=0.0, ppu=5.0):
+        f = MFac(w, h, bg, ppu=ppu, noise=noise, seed=seed)
+        f._bg = bg
+        return f
+    return make
+
+
+def sheet(aid, w=512, h=256, night=True):
+    return _city().Sheet(aid, w, h, night=night)
+
+
+def frustum_strip(sh, uv, n, r0, r1, z0, z1, loc=(0, 0), phase=PI / 8, flip=False):
+    """an n-sided (outward-leaning when r1 > r0) band of sheet quads round Z, the sub-image `uv`
+    wrapped once round it (glazed control-tower cab)"""
+    u0, v0, u1, v1 = uv
+    bm = bmesh.new()
+    lay = bm.loops.layers.uv.new('UVMap')
+    for i in range(n):
+        a, b = phase + 2 * PI * i / n, phase + 2 * PI * (i + 1) / n
+        p = [(loc[0] + r0 * math.cos(a), loc[1] + r0 * math.sin(a), z0), (loc[0] + r0 * math.cos(b), loc[1] + r0 * math.sin(b), z0),
+             (loc[0] + r1 * math.cos(b), loc[1] + r1 * math.sin(b), z1), (loc[0] + r1 * math.cos(a), loc[1] + r1 * math.sin(a), z1)]
+        f = bm.faces.new([bm.verts.new(q) for q in p])
+        ua, ub = u0 + (u1 - u0) * i / n, u0 + (u1 - u0) * (i + 1) / n
+        for lp, uvv in zip(f.loops, ((ua, v0), (ub, v0), (ub, v1), (ua, v1))):
+            lp[lay].uv = uvv
+    ob = kit.obj_from_bm(bm, 'sheetf')
+    sh.objs.append(ob)
+    return ob
+
+
+def sheet_box(sh, uv, x0, x1, y0, y1, z0, z1):
+    """a small box whose faces all show the sheet patch uv (obstruction lights, lamp heads)"""
+    u0, v0, u1, v1 = uv
+    o = box('sheetb', (x1 - x0, y1 - y0, z1 - z0), ((x0 + x1) / 2, (y0 + y1) / 2, z0), None, base=True)
+    me = o.data
+    lay = me.uv_layers.new(name='UVMap')
+    for poly_ in me.polygons:
+        for k, li in enumerate(poly_.loop_indices):
+            lay.data[li].uv = ((u0, v0), (u1, v0), (u1, v1), (u0, v1))[k % 4]
+    sh.objs.append(o)
+    return o
+
+
+def loft_y(name, rings, seg, mat=None, cap0=True, cap1=True, phase=0.0):
+    """a body of revolution-like loft along Y: rings [(y, rx, rz, zc)] (elliptic sections),
+    outward normals (aircraft fuselage, nacelles)"""
+    bm = bmesh.new()
+    R = []
+    for (y, rx, rz, zc) in rings:
+        if rx < 1e-3:
+            R.append([bm.verts.new((0.0, y, zc))])
+            continue
+        R.append([bm.verts.new((rx * math.cos(phase + 2 * PI * k / seg), y, zc + rz * math.sin(phase + 2 * PI * k / seg))) for k in range(seg)])
+    for i in range(len(R) - 1):
+        a, b = R[i], R[i + 1]
+        for k in range(seg):
+            if len(a) == 1:
+                bm.faces.new((a[0], b[(k + 1) % seg], b[k]))
+            elif len(b) == 1:
+                bm.faces.new((a[k], a[(k + 1) % seg], b[0]))
+            else:
+                bm.faces.new((a[k], a[(k + 1) % seg], b[(k + 1) % seg], b[k]))
+    if cap0 and len(R[0]) > 1:
+        bm.faces.new(R[0])
+    if cap1 and len(R[-1]) > 1:
+        bm.faces.new(list(reversed(R[-1])))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return kit.obj_from_bm(bm, name, mat)
+
+
+def plan_prism(name, poly, z0, z1, mat=None):
+    """vertical prism from a plan polygon (wings, tailplanes, slabs)"""
+    return kit.extrude_polygon(name, poly, z0, z1, mat)
+
+
+def side_prism(name, outline, x0, x1, mat=None):
+    """prism of a (y, z) section between x0 and x1 (fins, ramps)"""
+    return _city().side_prism(name, outline, x0, x1, mat, bottom=True)
+
+
+def tri_post(name, x, y, r, z0, z1):
+    """3-sided open shell round a thin post (6 tris)"""
+    return _city().tri_col(name, x, y, r, z0, z1)
+
+
+def stepped_teeth(name, length, z, h, pitch, mat, two=True, fill=0.62):
+    """Moorish stepped merlons (almenas escalonadas) along X at y = 0, flat faces front [+ back]"""
+    C_ = _civic()
+    n = max(1, int(round(length / pitch)))
+    step = length / n
+    tw = step * fill
+    out = []
+    for i in range(n):
+        x = -length / 2 + step * (i + 0.5)
+        a, b, c = tw / 2, tw * 0.32, tw * 0.14
+        ol = [(x - a, 0), (x + a, 0), (x + a, h * 0.45), (x + b, h * 0.45), (x + b, h * 0.75), (x + c, h * 0.75), (x + c, h), (x - c, h),
+              (x - c, h * 0.75), (x - b, h * 0.75), (x - b, h * 0.45), (x - a, h * 0.45)]
+        out.append(C_._face(name, [(px, -C_.EPS, z + pz) for (px, pz) in ol], mat))
+        if two:
+            out.append(C_._face(name, [(px, C_.EPS, z + pz) for (px, pz) in reversed(ol)], mat))
+    return kit.join(out, name)
+
+
+def rect_ring(make, cx, cy, W, D, sides='fblr'):
+    """apply make(length) -> object along X at y=0 to the four sides of a W x D rectangle"""
+    C_ = _civic()
+    out = []
+    for s, rz, length, half in (('f', 0.0, W, D / 2), ('r', PI / 2, D, W / 2), ('b', PI, W, D / 2), ('l', -PI / 2, D, W / 2)):
+        if s not in sides:
+            continue
+        o = make(length)
+        C_._xform(o, 0, (0, -half, 0))
+        out.append(C_._xform(o, rz, (cx, cy, 0)))
+    return out
+
+
+def oct_spire(name, r, z0, h, mat, loc=(0, 0), seg=8, bands=None):
+    """steep octagonal pointed spire (Spanish Mosque): straight-sided, a slight swell at the foot,
+    optional thin collar bands [(z_frac, mat)]"""
+    prof = [(r * 1.05, z0), (r, z0 + h * 0.06), (r * 0.62, z0 + h * 0.45), (r * 0.28, z0 + h * 0.8), (r * 0.06, z0 + h * 0.97), (0.0, z0 + h)]
+    parts = [lathe(name, prof, seg=seg, mat=mat, loc=(loc[0], loc[1], 0), close_bottom=False)]
+    for (zf, bm_) in bands or []:
+        zz = z0 + h * zf
+        rr = r * (1.05 - (1.05 - 0.62) * min(1.0, max(0.0, (zf - 0.06) / 0.39))) if zf < 0.45 else r * 0.62
+        parts.append(cylinder(name + '_band', rr * 1.06 + 0.05, h * 0.025, (loc[0], loc[1], zz), seg=seg, mat=bm_))
+    parts.append(lathe(name + '_fin', [(0.12, z0 + h - 0.3), (0.12, z0 + h + 1.0), (0.35, z0 + h + 1.3), (0.0, z0 + h + 1.8)], seg=6, mat=mat, loc=(loc[0], loc[1], 0)))
+    return kit.join(parts, name)
+
+
+def oct_spire_lo(name, r, z0, h, loc=(0, 0), seg=8, foot=None):
+    """shell of oct_spire (foot: [(r, z)] extra rings below, e.g. the turret shaft)"""
+    prof = list(foot or []) + [(r * 1.08 + 0.05, z0), (r * 0.66 + 0.05, z0 + h * 0.45), (r * 0.3 + 0.04, z0 + h * 0.8), (0.0, z0 + h + 1.6)]
+    return lathe(name, prof, seg=seg, loc=(loc[0], loc[1], 0), close_bottom=False)
+
+
+def finish_m(A, P, lo, keep=(), size=384, ao=6.0):
+    for o in lo:
+        o.data.materials.clear()
+    for o in L.finish_proxy(A, P, lo=lo, keep=[k for k in keep if k is not None], size=size, ao_dist=ao, ao_samples=48, ao_strength=0.7):
+        kit.smooth(o, 80)
+
+
+def tally(tag, objs):
+    if os.environ.get('MODERN_TALLY'):
+        kit.log('TALLY %s %d tris' % (tag, kit.tri_count([o for o in objs if o is not None])))
