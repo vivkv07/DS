@@ -57,8 +57,8 @@ for (const seg of TL.segments) {
   if (seg.kind === '3d' || seg.kind === 'game') filters.push(GRADE);
   // motion in the edit: a slow push-in across every drone shot; a zoom punch (1.12 -> 1) on each gameplay cut
   // (zoompan: crop w/h are evaluated once, zoompan per frame; on = output frame number)
-  if (seg.kind === '3d') filters.push(`zoompan=z='1+0.07*on/${nf}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${FPS}`);
-  if (seg.kind === 'game') filters.push(`zoompan=z='1+0.12*max(0,1-on/8)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${FPS}`);
+  if (seg.kind === '3d') filters.push(`zoompan=z='1+0.025*on/${nf}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${FPS}`);
+  if (seg.kind === 'game') filters.push(`zoompan=z='1+0.06*max(0,1-on/8)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${FPS}`);
   if (seg.shot === 'whip') filters.push('tmix=frames=5:weights=1 1 1 1 1');
   // drop flashes: the first frames of the first shot after each drop
   if (seg.id === 'lm_charminar' || seg.id === 'g_cycle_oldcity') filters.push(`fade=t=in:st=0:d=0.2:color=white`);

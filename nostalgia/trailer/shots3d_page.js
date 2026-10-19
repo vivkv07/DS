@@ -100,7 +100,7 @@
 
   function pose(f, nf) {
     const { seg, sh, hero, base, lookLm, hs } = CUR;
-    const u = f / Math.max(1, nf - 1), hy = hero.h, cs = hs < 1 ? hs * 1.15 : 1; // camera distance scale (closer for a scaled-down hero)
+    const u = f / Math.max(1, nf - 1), hy = hero.h, cs = (hs < 1 ? hs * 1.6 : 1) * 1.25; // camera distance scale: wide shots that show the city (user: less zoom)
     const chest = 4.5 * hs;
     let lx = hero.x, ly = hero.y;
     if (lookLm) { lx += (lookLm.x - hero.x) * 0.12; ly += (lookLm.y - hero.y) * 0.12; }
