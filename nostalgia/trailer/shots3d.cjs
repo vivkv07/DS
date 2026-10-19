@@ -18,7 +18,7 @@ const SHOTS = {
   reveal: { lm: 'charminar', hero: 'top', scale: 0.45, clip: 'idle_look', face: Math.PI / 2 },
   whip: { lm: 'charminar', hero: 'top', scale: 0.45, clip: 'idle', face: Math.PI / 2 },
   lm_charminar: { lm: 'charminar', hero: 'top', scale: 0.45, edge: 26, clip: 'idle_look', face: Math.PI / 2, r: [15, 34], h: [13, 22], arc: 1.9, base: 1.2, fov: [42, 52] },
-  lm_golconda: { lm: 'golconda_bala_hissar', hero: 'top', scale: 0.5, edge: 14, summitR: 30, clip: 'wave', face: 0.4, r: [16, 40], h: [7, 20], arc: 1.6, base: 1.9, fov: [44, 54] },
+  lm_golconda: { lm: 'golconda_bala_hissar', hero: 'top', scale: 0.5, edge: 14, summitR: 30, clip: 'wave', face: 0.4, r: [16, 40], h: [11, 24], arc: 1.6, base: 1.9, fov: [44, 54] },
   lm_buddha: { lm: 'buddha_statue', hero: 'shore', slide: 14, noWires: true, clip: 'idle_look', r: [14, 26], h: [5, 10], arc: 1.1, fov: [38, 46] },
   lm_birla: { lm: 'birla_mandir', hero: 'roof', noWires: true, ring: [70, 260], clip: 'idle', r: [14, 26], h: [6, 12], arc: 1.2, fov: [40, 48] },
   lm_clock: { lm: 'secunderabad_clock_tower', hero: 'roof', ring: [40, 180], noWires: true, clip: 'idle', r: [14, 30], h: [5, 14], arc: 1.2, fov: [42, 52] }, // the tower's top is a steep pyramid: a nearby roof, the tower behind
