@@ -33,7 +33,7 @@
     top_traffic: { view: 'top', at: 'abids', time: [18, 10], veh: null, spd: 40, dir: 0.8 },
     kites_sky: { view: 'cam', at: 'giver_himayatnagar', time: [16, 20], veh: null, spd: 0 },
     // festivals (N.seasons overlays; the 3D renderer draws their props from N.seasons.scene)
-    fest_ganesh: { view: 'tps', at: 'tank_bund', time: [20, 40], veh: null, spd: 30, pitch: -0.08, dist: 0.8, dir: -1.2, prefer: 'bund', seasons: { ganesh_immersion: true, ganesh: true } },
+    fest_ganesh: { view: 'cam', at: 'tank_bund', time: [16, 40], veh: null, spd: 0, procession: true, seasons: { ganesh_immersion: true, ganesh: true } },
     fest_ramzan: { view: 'tps', at: 'charminar_plaza', time: [21, 30], veh: null, spd: 30, pitch: -0.02, dir: -2.2, seasons: { ramzan: true } },
     fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 30, pitch: 0.02, dir: 0.5, seasons: { bonalu: true } },
     fest_numaish: { view: 'tps', at: 'nampally_exhibition', time: [20, 30], veh: null, spd: 34, pitch: -0.04, dir: 0.3, seasons: { numaish: true } },
@@ -93,7 +93,7 @@
 
   let C = null;
   const tmp = { x: 0, y: 0 }, tmp2 = { x: 0, y: 0 };
-  window.CLIP_PREP = function (id, nf) {
+  window.CLIP_PREP = async function (id, nf) {
     const o = CLIPS[id]; if (!o) throw new Error('no clip ' + id);
     // reset previous clip state
     if (N.player.vehicle && N.vehicles.exit) { try { N.vehicles.exit(N.player, true); } catch (e) { /* ok */ } }
@@ -104,6 +104,7 @@
     STAGE.cam(null); STAGE.hero(null);
     N.render.camOverride = null;
     N.player.hidden = false;
+    STAGE.crowd(null); STAGE.gulal(null);
     N.debug.setTime(o.time[0], o.time[1]);
     N.weather.force(o.rain ? { rain: o.rain, storm: o.storm || 0.3 } : { rain: 0, storm: 0, mist: 0 });
     N.weather.wet = o.rain ? 1 : 0;
@@ -127,18 +128,72 @@
     }
     N.view.set(o.view === 'cam' ? 'tps' : o.view);
     C = { id, o, path, v, d: 0, f: 0, x, y };
+    STAGE.crowd(null); STAGE.gulal(null);
+    if (o.procession) { await Promise.all(MODELS.concat(['kid_chinnu']).map((m) => N.models3d.parse(m).catch(() => null))); C.loaded = MODELS.filter((m) => N.models3d.loaded(m)); setupProcession(x, y); }
     if (o.wanted) N.wanted.set(o.wanted);
     // warm-up: drive the route for 2 s (camera settles, traffic + birds populate, chunks stream)
     for (let k = 0; k < 3; k++) N.view3d && N.view3d.active && N.view3d.settle(30000);
     for (let k = 0; k < (window.WARM || 60); k++) advance(true);
     if (N.view3d && N.view3d.active) N.view3d.settle(30000);
     C.f = 0;
-    return { at: [Math.round(start.x), Math.round(start.y)], len: path ? Math.round(path.len) : 0, veh: v ? v.type : null, view: N.view.mode };
+    return { loaded: C.loaded, at: [Math.round(start.x), Math.round(start.y)], len: path ? Math.round(path.len) : 0, veh: v ? v.type : null, view: N.view.mode };
   };
+
+  /* ------------------------------------------------------------ the immersion procession (teenmaar + gulal) */
+  const LOOKS = [
+    { skin: '#a0683f', hair: '#1a1412', shirt: '#e83a8a', pants: '#2a3a6a' }, { skin: '#8a5a32', hair: '#1a1412', shirt: '#f08a24', pants: '#efe9dc' },
+    { skin: '#b07850', hair: '#201810', shirt: '#f2c230', pants: '#3a3a44' }, { skin: '#7a4a2a', hair: '#141010', shirt: '#ff5a2a', pants: '#e8e2d0' },
+    { skin: '#9a6440', hair: '#1a1412', shirt: '#d83a3a', pants: '#2a2a3a' }, { skin: '#a87048', hair: '#181210', shirt: '#ffffff', pants: '#e8742a' },
+    { skin: '#8c5a36', hair: '#120e0c', shirt: '#2a9a5a', pants: '#efe9dc' }, { skin: '#b07a52', hair: '#1a1412', shirt: '#8a3ae8', pants: '#2a2a3a' },
+  ];
+  // only shipped (packed) character models: adult_man and kid_chinnu, tinted per dancer
+  const MODELS = ['adult_man', 'adult_man', 'kid_chinnu', 'adult_man', 'adult_man', 'kid_chinnu', 'adult_man'];
+  function findRig(x, y) {
+    const sc = N.seasons.scene(x, y, 900);
+    let best = null, bd = 1e18;
+    // the giant idol wins when it is within reach (the Khairatabad-style one), else the nearest rig
+    for (const pr of sc.props) if (pr.idol) { const d = (pr.x - x) ** 2 + (pr.y - y) ** 2 - (pr.kind === 'giant' ? 300 * 300 : 0); if (d < bd) { bd = d; best = pr; } }
+    return best;
+  }
+  function setupProcession(x, y) {
+    const rig = findRig(x, y);
+    if (!rig) { C.proc = null; return; }
+    const a = rig.a || 0, dx = Math.cos(a), dy = Math.sin(a), sx = -dy, sy = dx;
+    const cx = rig.x - dx * 34, cy = rig.y - dy * 34;
+    const list = [];
+    let k = 0;
+    for (let row = 0; row < 3; row++) for (let col = -3; col <= 3; col++) {
+      if (row === 0 && col === 0) continue;
+      const jx = Math.sin(k * 12.9) * 1.6, jy = Math.cos(k * 7.3) * 1.6;
+      list.push({ ox: -dx * (row * 4.5) + sx * col * 3.6 + jx, oy: -dy * (row * 4.5) + sy * col * 3.6 + jy, a: a + Math.PI, model: MODELS[k % MODELS.length], look: LOOKS[k % LOOKS.length], clip: k % 3 === 0 ? 'walk' : 'run', ph: k * 1.37, dance: 0.8 + (k % 3) * 0.15 });
+      k++;
+    }
+    list.push({ ox: -dx * 7.5, oy: -dy * 7.5, a: a + Math.PI, model: 'kid_chinnu', look: N.player.look, clip: 'run', ph: 0.3, dance: 1.1 }); // Chinnu, front and centre
+    for (const c of list) { c.x = cx + c.ox; c.y = cy + c.oy; }
+    STAGE.crowd(list);
+    STAGE.gulal({ x: cx - dx * 4, y: cy - dy * 4, h: 0, r: 13 });
+    N.player.hidden = true;
+    C.proc = { rig, list, a, cx, cy };
+  }
+  function procFrame() {
+    const P = C.proc; if (!P) return;
+    const rig = findRig(P.rig.x, P.rig.y) || P.rig; // track the same rig (nearest to where it was)
+    P.rig = rig;
+    const a = P.a, dx = Math.cos(a), dy = Math.sin(a);
+    const cx = rig.x - dx * 34, cy = rig.y - dy * 34;
+    for (const c of P.list) { c.x = cx + c.ox; c.y = cy + c.oy; }
+    STAGE.gulal({ x: cx - dx * 4, y: cy - dy * 4, h: 0, r: 13 });
+    // low dolly behind the dancers (they face us), the idol on its rig rising behind them
+    const t = C.f / FPS, sw = -0.45 + t * 0.3;
+    const ca = a + Math.PI + sw, r = 26;
+    const big = rig.kind === 'giant';
+    STAGE.cam({ x: cx + Math.cos(ca) * r, y: cy + Math.sin(ca) * r, h: 3.6, tx: rig.x - dx * 14, ty: rig.y - dy * 14, th: big ? 15 : 9, fov: big ? 64 : 56 });
+  }
 
   function advance(warm) {
     const { o, path, v } = C;
-    if (o.view === 'cam') {
+    if (o.procession) procFrame();
+    else if (o.view === 'cam') {
       const t = C.f / FPS, a = 0.6 + t * 0.25;
       STAGE.cam({ x: C.x, y: C.y, h: 8, tx: C.x + Math.cos(a) * 60, ty: C.y + Math.sin(a) * 60, th: 70 + t * 6, fov: 60 });
     } else if (path) {
