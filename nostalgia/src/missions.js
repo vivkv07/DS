@@ -328,7 +328,7 @@
         if (ffing()) return;
         N.player.inventory.add(itemId);
         N.emit('item:give', { id: itemId, mission: run.id });
-        if (opts && opts.name) N.hud.toast('Got: ' + opts.name, 2600);
+        if (opts && opts.name) N.hud.toast('Got: ' + opts.name, 2600, { tag: 'item:' + run.id });
       },
       money(paise) {
         guard(run);
@@ -413,6 +413,8 @@
     run.assist = opts && opts.assist ? opts.assist : null;
     run.timerBonus = helpOn(def) && (streaks.timer[id] || 0) >= TUNE.helpAfterTimerFails ? TUNE.timerBonus : 1;
     if (jc) closeJcard();
+    // item toasts still queued from the last mission would pop up mid-chase in this one
+    if (N.hud.dropToasts) N.hud.dropToasts((t) => typeof t.tag === 'string' && t.tag.indexOf('item:') === 0);
     N.emit('mission:start', { id, title: def.title, attempt: run.attempt, kind: kindOf(def) });
     if (run.attempt === 1) N.hud.banner(def.title || id, def.chapter != null ? (typeof def.chapter === 'number' ? 'Chapter ' + def.chapter : String(def.chapter)) : '', 2600, { kind: 'chapter' });
     run.meterPolicy = def.meter || 'normal';

@@ -2376,6 +2376,7 @@
     o = o || {};
     const p = N.player;
     if (!p || S.ride) return Promise.resolve(false);
+    if (p.vehicle && N.vehicles && N.vehicles.exit) N.vehicles.exit(p, true); // no hidden cycle under the train
     const L = rideLoop(id, o);
     return new Promise((resolve) => {
       const T = Object.assign(L, { id, a: Math.atan2(p.y - L.cy, p.x - L.cx), secs: o.secs || TUNE.trainSecs, t: 0, resolve, from: { x: p.x, y: p.y }, vp: !!o.viewpoint, vpDone: false, locked: !!p.controlsLocked, withPlayer: true, zoom: N.render.baseZoom });

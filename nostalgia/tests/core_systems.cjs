@@ -39,6 +39,10 @@ async function newPage(browser, opts) {
       Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new Error('SecurityError: storage disabled'); } });
     });
   }
+  // src/testing.js tops pocket money up (play-test builds); the money checks below need the real economy
+  await context.addInitScript(() => {
+    document.addEventListener('DOMContentLoaded', () => { if (window.N && N.testing) N.testing.unlimitedMoney = false; });
+  });
   const page = await context.newPage();
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
@@ -74,12 +78,20 @@ async function advanceDialogue(page, choose, maxSteps) {
 // skips the name card under automation); skip it with the real SKIP pill, then start a clean free-roam
 // game (the prologue hands over to M1, which these system tests don't want running).
 async function playFromTitle(page, touch) {
-  if (touch) await page.tap('#title-start'); else await page.click('#title-start');
+  const tap = (sel) => (touch ? page.tap(sel) : page.click(sel));
+  // menus.js (name card) and story.js (prologue) skip ahead under automation (N.menus.quickStart =
+  // navigator.webdriver): turn it off to drive the real flow, ▶ PLAY -> [record over?] -> name card -> START
+  const quick = await page.evaluate(() => { const q = N.menus.quickStart; N.menus.quickStart = false; return q; });
+  await tap('#title-start');
+  await page.waitForFunction(() => N.menus.debugState().top === 'name' || !document.querySelector('.jc-confirm').hidden, null, { timeout: 10000 });
+  if (await page.evaluate(() => !document.querySelector('.jc-confirm').hidden)) await tap('.jc-confirm [data-act=overwrite]');
+  await page.waitForFunction(() => N.menus.debugState().top === 'name', null, { timeout: 10000 });
+  await tap('.mn-name [data-act=start]');
   await page.waitForFunction(() => N.state.mode === 'play' || N.state.mode === 'cutscene', null, { timeout: 10000 });
   if (await page.evaluate(() => N.state.mode === 'cutscene')) { if (touch) await page.tap('.cs-skip'); else await page.click('.cs-skip'); }
   await page.waitForFunction(() => N.state.mode === 'play', null, { timeout: 10000 });
   check(await page.evaluate(() => N.flags.year === 2003 && !!N.flags.prologue_seen), 'PLAY -> prologue -> SKIP lands in 2003');
-  await page.evaluate(() => N.debug.newGame({ skipIntro: true }));
+  await page.evaluate((q) => { N.menus.quickStart = q; N.debug.newGame({ skipIntro: true }); }, quick);
 }
 // Wait until `sec` seconds of game time have passed (robust under CPU load, unlike a wall-clock sleep).
 async function gameWait(page, sec, timeout) {

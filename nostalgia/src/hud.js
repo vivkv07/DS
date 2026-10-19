@@ -339,12 +339,19 @@
       }
     }
     if (state.toastGap > 0) state.toastGap -= dt;
+    // a queued toast whose `until` (predicate or N.time.now deadline) lapsed is dropped unseen
+    while (state.tq.length && toastStale(state.tq[0])) state.tq.shift();
     if (!state.toasts.length && state.tq.length && !busy && !(state.toastGap > 0)) {
       const q = state.tq.shift();
       const e = el('div', 'hud-toast', dom.toasts);
       e.textContent = q.text;
-      state.toasts.push({ el: e, text: q.text, ms: q.ms, left: q.ms, shown: false, key: q.key });
+      state.toasts.push({ el: e, text: q.text, ms: q.ms, left: q.ms, shown: false, key: q.key, tag: q.tag });
     }
+  }
+  function toastStale(q) {
+    const u = q.until;
+    if (typeof u === 'function') { try { return !u(); } catch (e) { return true; } }
+    return typeof u === 'number' && N.time.now > u;
   }
   function pumpBanner(dt) {
     if (state.bannerCur) {
@@ -568,6 +575,7 @@
       text = String(text).replace(/\*([^*]+)\*/g, '$1');
       ms = ms || 2800;
       const key = opts && opts.key;
+      const until = opts && opts.until, tag = opts && opts.tag;
       const cur = state.toasts[0];
       if (cur && cur.text === text) { cur.left = Math.max(cur.left, Math.min(ms, 2000)); return; }
       // a keyed toast (e.g. 'radio') replaces the older one with the same key instead of queueing behind it
@@ -578,8 +586,22 @@
       }
       const dup = state.tq.find((q) => q.text === text);
       if (dup) { dup.ms = Math.max(dup.ms, ms); return; }
-      state.tq.push({ text, ms, key });
+      state.tq.push({ text, ms, key, until, tag });
       while (state.tq.length > 6) state.tq.shift();
+    },
+    /** Drop queued toasts (and the one showing) for which pred({text, key, tag}) is true; no pred = all. */
+    dropToasts(pred) {
+      const hit = (t) => { try { return !pred || !!pred(t); } catch (e) { return false; } };
+      const n = state.tq.length;
+      state.tq = state.tq.filter((q) => !hit(q));
+      let dropped = n - state.tq.length;
+      const cur = state.toasts[0];
+      if (cur && hit(cur)) {
+        state.toasts.shift(); dropped++;
+        const e0 = cur.el; e0.classList.remove('show'); e0.classList.add('out'); setTimeout(() => e0.remove(), 300);
+        state.toastGap = 0.18;
+      }
+      return dropped;
     },
     /** Messages waiting + showing (tests / debugging). */
     toastQueue: () => state.toasts.map((t) => t.text).concat(state.tq.map((q) => q.text)),

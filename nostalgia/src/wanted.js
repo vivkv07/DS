@@ -1470,10 +1470,13 @@
     W.footAcc = (W.footAcc || 0) + TUNE.heat.footpath * dt;
     if (W.footAcc >= 1) { const n = Math.floor(W.footAcc); W.footAcc -= n; API.addHeat(n, 'footpath'); }
   }
+  // a story2 scene in progress (it may run late) and the Ganesh pandal week on the colony ground: no curfew
+  function storyScene() { try { return !!(N.story2 && N.story2.state && N.story2.state().scene); } catch (e) { return false; } }
   function curfewRule() {
     const m = mins(), d = day();
     const off = (N.missions && N.missions.active) || (N.flags && (N.flags.postgame || N.flags.ending_done || N.flags.no_curfew)) ||
-      (flagOn('numaish') && m < 22 * 60 + 30 && m >= 16 * 60) || flagOn('ganesh_immersion') || (flagOn('ramzan') && (m < 23 * 60 + 30 && m > 12 * 60)) || flagOn('chand_raat');
+      (flagOn('numaish') && m < 22 * 60 + 30 && m >= 16 * 60) || flagOn('ganesh_immersion') ||
+      flagOn('ganesh') || storyScene() || (flagOn('ramzan') && (m < 23 * 60 + 30 && m > 12 * 60)) || flagOn('chand_raat');
     let floor = 0;
     const mm = m < TUNE.curfewMorning ? m + 1440 : m;
     for (const [t, f] of TUNE.curfew) if (mm >= t) floor = f;

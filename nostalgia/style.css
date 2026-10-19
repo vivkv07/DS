@@ -1970,7 +1970,7 @@ body.reduced-motion .sc-vhs-mode { animation: none; }
   font-family: var(--font-hand); font-weight: 700; font-size: 25px; line-height: 1.2; text-align: left;
   color: var(--mn-ball); background: transparent; border: 0; border-radius: 3px;
 }
-.jc-trk::before { counter-increment: trk; content: 'A' counter(trk); flex: none; width: 30px; font-family: var(--font-osd); font-weight: 400; font-size: 18px; color: #8a8379; }
+.jc-trk::before { counter-increment: trk; content: 'A' counter(trk); flex: none; width: 30px; font-family: var(--font-osd); font-weight: 400; font-size: 18px; color: var(--mn-pencil); }
 .jc-trk i { flex: none; width: 38px; font-style: normal; font-family: var(--font-osd); font-size: 24px; color: var(--mn-red); }
 .jc-trk b { flex: none; font-weight: 700; }
 .jc-trk em {

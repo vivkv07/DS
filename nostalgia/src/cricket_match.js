@@ -108,7 +108,7 @@
       players: [
         P('Chinnu', 0.66, 0.38, 'spin', { skin: '#b97a4f', hair: '#1a1412', spiky: true }, { spin: -1, hero: true, field: 0.7 }),
         P('Immu', 0.52, 0.55, 'spin', { skin: '#c68b5e', hair: '#1a1412', specs: true }, { spin: 1 }),
-        P('Bunty', 0.6, 0.48, 'pace', { skin: '#b97a4f', hair: '#1a1412', shades: true, puff: true }, { field: 0.55 }),
+        P('Pappu', 0.6, 0.48, 'pace', { skin: '#a0683f', hair: '#1a1412' }, { field: 0.55 }),
         P('Ayesha', 0.46, 0.8, 'pace', { skin: '#a0683f', hair: '#1a1412', plaits: true, cap: '#1d4f91', girl: true }, { field: 0.75 }),
         P('Babloo', 0.5, 0.35, 'pace', { skin: '#b97a4f', hair: '#1a1412', curly: true }),
         P('Venky', 0.44, 0.42, 'pace', { skin: '#8d5a3b' }),
@@ -169,7 +169,8 @@
   }
   function shortOf(name) {
     const w = String(name).toUpperCase().replace(/[^A-Z ]/g, '').split(/\s+/).filter(Boolean);
-    return (w[0] || 'TEAM').slice(0, 4) + ' XI';
+    const a = w[0] || 'TEAM';
+    return (a.length <= 5 ? a : a.slice(0, 4)) + ' XI'; // 'Pintu XI' stays 'PINTU XI'
   }
   function clone(t) {
     const c = Object.assign({}, t);
@@ -3690,7 +3691,7 @@
   const CM = (N.cricketMatch = {
     VERSION: 1,
     TEAMS, VENUES, FIELDS, COMM, POS, TUNE,
-    rules,
+    rules, shortOf,
     start(params) {
       params = Object.assign({}, params || {});
       if (params.autoplay && params.skipHowto == null) params.skipHowto = true;
@@ -3729,6 +3730,13 @@
     return true;
   }
   if (!register()) N.on('boot', () => { if (!register()) N.err('cricket.register', new Error('N.minigames.register missing')); });
+  // any finished match (story, exhibition, a debug/autoplay run) marks the flags, not just CM.start()
+  N.on('minigame:end', (e) => {
+    const r = e && e.result;
+    if (!e || e.id !== 'match' || !r || r.quit || r.aborted || r.error || !N.flags) return;
+    N.flags.lb_match_played = true;
+    N.flags.lb_match_won = !!(N.flags.lb_match_won || r.win);
+  });
 
   /* ================================================================ match-day dressing of the 2D world */
   // When N.flags.lb_match is set (the story's match day), LB Stadium in the top-down world gets crowds on

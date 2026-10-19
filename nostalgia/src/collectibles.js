@@ -96,7 +96,9 @@
   const lsGet = (k) => { try { return window.localStorage.getItem(k); } catch (e) { return null; } };
   const lsSet = (k, v) => { try { window.localStorage.setItem(k, v); return true; } catch (e) { return false; } };
   function toast(text, ms, key) {
-    try { if (N.hud && N.hud.toast) N.hud.toast(text, ms || 3000, key ? { key } : undefined); } catch (e) { N.err('collectibles.toast', e); }
+    // found during a mission: tagged so the next mission:start can drop it if it is still queued
+    const run = N.missions && N.missions.active;
+    try { if (N.hud && N.hud.toast) N.hud.toast(text, ms || 3000, { key: key || undefined, tag: run ? 'item:' + run.id : undefined }); } catch (e) { N.err('collectibles.toast', e); }
   }
   function sfx(name, o) { try { return !!(N.audio && N.audio.sfx && N.audio.sfx(name, Object.assign({ ui: true }, o || {}))); } catch (e) { N.err('collectibles.sfx', e); return false; } }
   const flags = () => N.flags || (N.flags = {});
