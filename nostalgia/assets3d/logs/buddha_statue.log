@@ -1,0 +1,36 @@
+00:00.026  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building buddha_statue (hero_landmark)
+[kit] decimated rock_lo: 298 -> 66 tris
+[kit] tris by part: robe_lo 112, lotus_lo 104, head_lo 102, rock_lo 61, l_hand_drape_lo 52, r_fore_lo 44, r_palm_lo 40, l_fore_lo 32, r_upper_lo 28, l_upper_lo 28, r_drape_lo 20, foot_lo 20, plat_steps_lo 14
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked albedo 384² in 0.7s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked ao 192² in 3.7s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+22:34:07 | INFO: Starting glTF 2.0 export
+22:34:07 | WARNING: Mesh buddha_statue_body is not valid, and may be exported wrongly
+22:34:07 | INFO: Extracting primitive: buddha_statue_body
+22:34:07 | INFO: Primitives created: 1
+22:34:07 | INFO: Extracting primitive: COL_buddha_fig
+22:34:07 | INFO: Primitives created: 1
+22:34:07 | INFO: Extracting primitive: COL_buddha_rock
+22:34:07 | INFO: Primitives created: 1
+22:34:07 | INFO: Finished glTF 2.0 export in 0.0474092960357666 s
+
+[kit] buddha_statue: 678 tris (budget 60000) ok, 55.3 KB, clips [], anchors 0
+22:34:07 | INFO: Data are loaded, start creating Blender stuff
+22:34:07 | INFO: Blender create Mesh node buddha_statue_body
+22:34:07 | INFO: Blender create Mesh node COL_buddha_fig
+22:34:07 | INFO: Blender create Mesh node COL_buddha_rock
+22:34:07 | INFO: glTF import finished in 0.01s
+00:09.608  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/buddha_statue.png'
+[kit] preview buddha_statue.png (320px, 14 spp) in 1.8s
+22:34:09 | INFO: Data are loaded, start creating Blender stuff
+22:34:09 | INFO: Blender create Mesh node buddha_statue_body
+22:34:09 | INFO: Blender create Mesh node COL_buddha_fig
+22:34:09 | INFO: Blender create Mesh node COL_buddha_rock
+22:34:09 | INFO: glTF import finished in 0.01s
+00:11.540  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/buddha_statue_face.png'
+[kit] preview buddha_statue_face.png (320px, 14 spp) in 1.9s
+[kit] done buddha_statue in 11.0s

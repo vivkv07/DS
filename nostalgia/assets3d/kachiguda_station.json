@@ -1,0 +1,53 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 40044,
+ "clips": {},
+ "family": "landmark",
+ "file": "kachiguda_station.glb",
+ "front": "-Y",
+ "id": "kachiguda_station",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 39.1,
+ "kit": 1,
+ "materials": [
+  "M_kachiguda_station",
+  "M_kachiguda_station_name_board"
+ ],
+ "max": [
+  48.95,
+  35.1,
+  49.55
+ ],
+ "meta": {
+  "face": "w",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   96,
+   76
+  ],
+  "height": 51.0,
+  "landmark": "kachiguda_station"
+ },
+ "min": [
+  -48.578,
+  -38.159,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_civic",
+ "size": [
+  97.528,
+  73.259,
+  49.55
+ ],
+ "tint": null,
+ "tris": 443,
+ "units": "u",
+ "up": "Z"
+}

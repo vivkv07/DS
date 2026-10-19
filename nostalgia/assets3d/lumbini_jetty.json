@@ -1,0 +1,50 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 18576,
+ "clips": {},
+ "family": "landmark",
+ "file": "lumbini_jetty.glb",
+ "front": "-Y",
+ "id": "lumbini_jetty",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 18.1,
+ "kit": 1,
+ "materials": [
+  "M_lumbini_jetty"
+ ],
+ "max": [
+  6.65,
+  13.1,
+  7.45
+ ],
+ "meta": {
+  "draw": "boat_jetty",
+  "face": "s",
+  "fit": "footprint",
+  "footprint": [
+   14,
+   26
+  ],
+  "height": 6.0
+ },
+ "min": [
+  -7.1,
+  -12.4,
+  -0.7
+ ],
+ "notes": [],
+ "script": "_lm_hussain",
+ "size": [
+  13.75,
+  25.5,
+  8.15
+ ],
+ "tint": null,
+ "tris": 126,
+ "units": "u",
+ "up": "Z"
+}
