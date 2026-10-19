@@ -141,6 +141,7 @@
   S.summit = function (x, y, r) {
     const H = N.view3d.H, T = H.THREE || window.THREE;
     const rc = new T.Raycaster(), o = new T.Vector3(), d = new T.Vector3(0, -1, 0);
+    rc.camera = H.camera; // sprites in the scene need it
     let best = 0;
     const objs = H.scene.children.filter((c) => c !== H.layer && c.name !== 'sky' && c.name !== 'outer');
     const pts = [[0, 0]];
