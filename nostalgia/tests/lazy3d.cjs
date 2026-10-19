@@ -107,6 +107,19 @@ function placeAt(page, id) {
     return { x: Math.round(p.x), y: Math.round(p.y) };
   }, id);
 }
+/** wait on game state: test(arg) true in the page; between checks finish pending chunk / landmark work with
+ *  N.view3d.settle() (on a loaded machine chunk streaming otherwise uses every frame budget and landmarks wait) */
+async function waitBuilt(page, test, arg, timeout) {
+  const t0 = Date.now();
+  await page.waitForTimeout(400);   // settle() re-scans landmarks only when its last scan is > 350 ms old
+  while (Date.now() - t0 < (timeout || 180000)) {
+    if (await page.evaluate(test, arg)) return true;
+    await page.evaluate(() => N.view3d.settle(6000));
+    await frames(page, 2);
+    await page.waitForTimeout(400);
+  }
+  return page.evaluate(test, arg);
+}
 /** frame a landmark with the debug camera (from its front, raised), so traffic / filler blocks do not hide it */
 function frame(page, id) {
   return page.evaluate((id) => {
@@ -178,14 +191,10 @@ async function testSite(browser) {
       visited.push(p);
       // wait on game state: every listed landmark drawn by its Blender model
       const ids = Object.keys(sp.lms);
-      let res = null;
-      try {
-        await page.waitForFunction((lms) => {
-          const names = new Set(N.view3d.engine.lmGroup.children.map((c) => c.name));
-          return Object.entries(lms).every(([lm, mid]) => names.has('m3d-lm:' + mid + ':' + lm));
-        }, sp.lms, { timeout: 180000, polling: 250 });
-        res = true;
-      } catch (e) { res = false; }
+      const res = await waitBuilt(page, (lms) => {
+        const names = new Set(N.view3d.engine.lmGroup.children.map((c) => c.name));
+        return Object.entries(lms).every(([lm, mid]) => names.has('m3d-lm:' + mid + ':' + lm));
+      }, sp.lms, 240000);
       const have = await page.evaluate((lms) => {
         const by = {};
         for (const c of N.view3d.engine.lmGroup.children) by[c.name.replace(/^m3d-lm:[^:]+:|^lm3d:|^lm:/, '')] = c.name;
@@ -232,14 +241,10 @@ async function testFile(browser) {
     const st = await page.evaluate(() => N.models3d.stats());
     check(st.state === 'ready' && st.packFrom === 'inline' && st.lazy.index === 30 && !st.lazy.possible && st.lazy.keys.length === 0, 'core pack from the inline block; lazy models known from the index but not fetchable from file:// (no keys registered)', JSON.stringify({ state: st.state, packFrom: st.packFrom, lazy: st.lazy }));
     await placeAt(page, 'sandhya_theatre');
-    let built = false;
-    try {
-      await page.waitForFunction(() => {
-        const names = new Set(N.view3d.engine.lmGroup.children.map((c) => c.name));
-        return ['sandhya_theatre', 'odeon_theatre', 'sudarshan_theatre', 'devi_theatre'].every((id) => names.has('lm3d:' + id));
-      }, null, { timeout: 180000, polling: 250 });
-      built = true;
-    } catch (e) { built = false; }
+    const built = await waitBuilt(page, () => {
+      const names = new Set(N.view3d.engine.lmGroup.children.map((c) => c.name));
+      return ['sandhya_theatre', 'odeon_theatre', 'sudarshan_theatre', 'devi_theatre'].every((id) => names.has('lm3d:' + id));
+    }, null, 240000);
     const names = await page.evaluate(() => N.view3d.engine.lmGroup.children.map((c) => c.name).filter((n) => /theatre/.test(n)));
     check(built && !names.some((n) => /^m3d-lm:/.test(n)), 'the RTC X Roads cinemas are drawn procedurally (view3d_landmarks)', names.join(' '));
     check(requests.length === 0, 'no lazy GLB request was made', JSON.stringify(requests));
