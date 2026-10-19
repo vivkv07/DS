@@ -18,7 +18,7 @@
  *   main road's pole to the side roads' poles (with a pole-mounted transformer at some junctions).
  *   Sag: a catenary (cosh) with sag 0.4 + 0.0011 L^2 (long spans sag more), clamped by a clearance
  *   check so that the wire is >= 26 u (2.6 storeys; a bus is 17 / 1.5 = 11.3 u) over any drivable cell
- *   (>= 20 u in a lane's 3 u edge band, >= 13 u over footpaths / yards, a service drop may come down to
+ *   (>= 20 u in a road's 2.5 u edge band, >= 13 u over footpaths / yards, a service drop may come down to
  *   its house in the last 2.5 u) and never crosses a building or landmark footprint (spans that would are
  *   dropped). 3D heights are the 2D heights x VS (1.5), so the same checks hold in 3D.
  *   Generated lazily per 256 u cell (owner = the cell of the span's start pole / the junction node),
@@ -387,8 +387,8 @@
     else return;
     if (segRect(QB.ax, QB.ay, QB.bx, QB.by, x0 + 0.25, y0 + 0.25, x1 - 0.25, y1 - 0.25)) QB.hit = true;
   }
-  // is (x, y) on the carriageway proper (road all round at 4 u), i.e. not in a road's edge band?
-  const DIR8 = [[4, 0], [2.83, 2.83], [0, 4], [-2.83, 2.83], [-4, 0], [-2.83, -2.83], [0, -4], [2.83, -2.83]];
+  // is (x, y) on the carriageway proper (road all round at 2.5 u: conservative), i.e. not in a road's edge band?
+  const DIR8 = [[2.5, 0], [1.77, 1.77], [0, 2.5], [-1.77, 1.77], [-2.5, 0], [-1.77, -1.77], [0, -2.5], [1.77, -1.77]];
   function innerRoad(x, y) {
     const W = N.world, S = N.SURF;
     for (const d of DIR8) { const s2 = W.surfaceAt(x + d[0], y + d[1]); if (s2 !== S.ROAD && s2 !== S.BRIDGE) return false; }
@@ -403,7 +403,7 @@
     for (let k = 0; k <= n; k++) {
       const t = k / n, x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
       const sf = W.surfaceAt(x, y);
-      // over a road: 26 u on the carriageway, 20 u in its 4 u edge band, 12.5 u (> a bus) where a service
+      // over a road: 26 u on the carriageway, 20 u in its 2.5 u edge band, 12.5 u (> a bus) where a service
       // drop meets its house; elsewhere (footpaths, yards) 13 u
       let req = CLR_OFF;
       if (sf === S.ROAD || sf === S.BRIDGE) {
