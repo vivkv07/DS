@@ -237,6 +237,9 @@ async function run() {
       const B = R.nodes[l.to], L = Math.hypot(B.x - n.x, B.y - n.y), ux = (B.x - n.x) / L, uy = (B.y - n.y) / L;
       N.player.teleport(n.x + ux * 20, n.y + uy * 20);
       T.enabled = false; T.clear();
+      // the city-life event director (citylife_events.js) warm-starts junction scenes by clearing ambient cars
+      // nearby: hold it off so it can't take the test car (restored in done())
+      if (N.citylifeEvents) { window.__cle = N.citylifeEvents.enabled; N.citylifeEvents.enabled = false; }
       const e = R.edges[l.edge], off = T.laneOffset(e, 0);
       const sx = n.x + ux * 22 + uy * off, sy = n.y + uy * 22 - ux * off;
       const v = T.spawnVehicle('maruti800', { x: sx, y: sy, to: B.id });
@@ -250,8 +253,9 @@ async function run() {
     }, quiet);
     const done = async () => page.evaluate(() => {
       const v = window.__tv;
-      const r = { honks: window.__ev.filter((e) => e.n === 'traffic:honk' && e.d && e.d.id === v.id).length, quiet: !!(v.tr && v.tr.quiet), cruise: v.tr ? Math.round(Math.abs(v.speed)) : -1 };
+      const r = { honks: window.__ev.filter((e) => e.n === 'traffic:honk' && e.d && e.d.id === v.id).length, quiet: !!(v.tr && v.tr.quiet), cruise: v.tr ? Math.round(Math.abs(v.speed)) : -1, gap: Math.round(Math.hypot(v.x - N.player.x, v.y - N.player.y)), alive: v.alive !== false, st: v.tr && v.tr.state, blk: v.tr && v.tr.blocked };
       N.traffic.enabled = true;
+      if (N.citylifeEvents && window.__cle != null) N.citylifeEvents.enabled = window.__cle;
       return r;
     });
     await page.evaluate(() => { N.debug.setTime(11, 0); });
