@@ -1,0 +1,53 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 42728,
+ "clips": {},
+ "family": "landmark",
+ "file": "kit_dargah.glb",
+ "front": "-Y",
+ "id": "kit_dargah",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 41.7,
+ "kit": 1,
+ "materials": [
+  "M_kit_dargah"
+ ],
+ "max": [
+  19.45,
+  19.45,
+  31.45
+ ],
+ "meta": {
+  "dataH": 30,
+  "draw": "dargah",
+  "face": "s",
+  "fit": "footprint",
+  "fitHeight": true,
+  "floodlit": true,
+  "footprint": [
+   40,
+   40
+  ],
+  "height": 45.0
+ },
+ "min": [
+  -19.45,
+  -19.3,
+  -0.1
+ ],
+ "notes": [],
+ "script": "_lm_worship",
+ "size": [
+  38.9,
+  38.75,
+  31.55
+ ],
+ "tint": null,
+ "tris": 460,
+ "units": "u",
+ "up": "Z"
+}

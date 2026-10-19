@@ -53,6 +53,8 @@
  * Reads (never writes): N.world (data, roads, surfaces), N.flags, N.clock, N.places,
  * N.placesArt.variant(), N.landmarks.fx.
  * Debug / tests: N.view3dLandmarks = {DEFS, cells(), measure(id) -> {ms, tris, meshes, points}}.
+ * models3d.js: N.view3dLandmarks.procedural {build(T, lm, H), dispose(obj, lm, H), update(obj, lm, dt, H), anim(lm),
+ * has(lm)} = one landmark's procedural model (unbatched), its fallback while a lazy Blender GLB loads.
  */
 (() => {
   'use strict';
@@ -587,10 +589,16 @@
   const CELL = 384;
   let cells = null;
   function cellKey(cls, lm) { return cls + ':' + Math.floor(lm.x / CELL) + ',' + Math.floor(lm.y / CELL); }
+  // landmarks another module draws with its own '#<id>' model (models3d) stay out of the batches
+  function overrides() {
+    const M = N.models3d, st = M && M.ready && M.stats ? M.stats() : null;
+    return new Set(st ? st.registered.filter((k) => k[0] === '#').map((k) => k.slice(1)) : []);
+  }
   function indexCells() {
     cells = new Map();
+    const skip = overrides();
     for (const lm of (N.world && N.world.data && N.world.data.landmarks) || []) {
-      const d = defFor(lm); if (!d || !d.cls) continue;
+      const d = defFor(lm); if (!d || !d.cls || skip.has(lm.id)) continue;
       const k = cellKey(d.cls, lm);
       let c = cells.get(k); if (!c) { c = { key: k, cls: d.cls, members: [], owner: null }; cells.set(k, c); }
       c.members.push(lm);
@@ -2801,7 +2809,7 @@
     k.fx(0, 0, 0);
   }, { anim: true });
   // walk-through gate arches (posts solid)
-  def('campus_gate zoo_gate shilparamam_gate', (md, lm, D) => {
+  def('campus_gate zoo_gate shilparamam_gate park_gate', (md, lm, D) => {
     const k = md.k, L = Math.max(lm.w, lm.d), h = Math.min(D.Ht, 36);
     const zoo = lm.draw === 'zoo_gate', shil = lm.draw === 'shilparamam_gate';
     md.at(0, 0, lm.w >= lm.d ? 0 : PI / 2);
@@ -2812,6 +2820,10 @@
     if (zoo) for (const s of [-1, 1]) k.c('#c89850').sphere(s * (L / 2 - 2), h + 2.6, 0, 2.4, 2.6, 3.4, 8, 6);
     k.fx(0, 0, 0);
   }, { anim: true });
+  // HITEC City office block (2003): glass curtain walls, blue spandrels, a low crest; the Blender
+  // hitec_office model (lazy GLB) replaces it when it has loaded
+  def('hitec_office', (md, lm, D) => civic(md, lm, D, { wall: '#8fb2c4', trim: '#e8eef2', win: 'glass', gf: 'glass', crest: 'low', lit: 0.7, bay: 6, h: D.Ht,
+    sign: [(lm.sign || 'SOFTWARE TECHNOLOGY PARK').toUpperCase(), '#1d4e8a', '#ffffff'] }), { lod: 'mid' });
   def('idol_workshop', (md, lm, D) => {
     const k = md.k, hl = D.L / 2, hv = D.D / 2, rng = U.rng(lm.id);
     k.c('#8a8e94'); for (const u of [-hl + 1, hl - 1]) for (const v of [-hv + 1, hv - 1]) k.cyl(u, 0, v, 0.5, 0.5, 18, 6);
@@ -2993,6 +3005,21 @@
   });
 
   N.on('world:built', () => { cells = null; cacheClear(); });
+  // models3d registered '#<id>' models: re-batch without those members (re-registering the affected small
+  // classes makes the core dispose and rebuild their cells, so no cell keeps drawing a replaced shop)
+  N.on('models3d:ready', () => {
+    const skip = overrides(); if (!skip.size) return;
+    const cls = new Set();
+    for (const lm of (N.world && N.world.data && N.world.data.landmarks) || []) { const d = skip.has(lm.id) && defFor(lm); if (d && d.cls) cls.add(d.cls); }
+    if (!cls.size) return;
+    cells = null;
+    for (const k of Array.from(OBJ_CACHE.keys())) {
+      if (k.indexOf('cell:') !== 0) continue;
+      const o = OBJ_CACHE.get(k); OBJ_CACHE.delete(k);
+      o.traverse((m) => { if (m.geometry) { m.geometry.userData.shared = false; if (!o.parent) m.geometry.dispose(); } });
+    }
+    for (const [id, d] of DEFS) if (d.cls && cls.has(d.cls)) V3.registerLandmark(id, buildSmall, { dispose: disposeSmall });
+  });
   registerAll();
   /** debug / tests: build one landmark's model off-scene and report its cost */
   function measure(id) {
@@ -3011,5 +3038,21 @@
     H.dispose(obj);
     return { id, draw: lm.draw, ms: +ms.toFixed(2), tris: Math.round(tris), meshes, points, batched: !!d.cls };
   }
-  N.view3dLandmarks = { DEFS, cells: () => cells, measure, version: 1 };
+  /** one landmark's procedural model on its own (never batched; mid / small classes keep their LOD): models3d.js
+   *  shows it while that landmark's lazy Blender GLB is being fetched, or for good when the fetch fails */
+  const procedural = {
+    build(T, lm, h) {
+      init(T, h);
+      const d = defFor(lm); if (!d) return null;
+      let obj = buildOne(T, lm, h);
+      if (obj && d.cls && !obj.isLOD) obj = wrapLod(obj, CLS[d.cls][isLow() ? 1 : 0]);
+      if (obj) obj.userData.lm3dProc = true;
+      return obj;
+    },
+    dispose(obj, lm, h) { disposeOne(obj, lm, h); },
+    update(obj, lm, dt, h) { lmUpdate(obj, lm, dt, h); },
+    anim(lm) { const d = defFor(lm); return !!(d && d.anim); },
+    has(lm) { return !!defFor(lm); },
+  };
+  N.view3dLandmarks = { DEFS, cells: () => cells, measure, procedural, version: 1 };
 })();

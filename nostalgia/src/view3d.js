@@ -658,8 +658,8 @@
   function nearFade(shader, uni) {
     shader.uniforms.uNearFade = uni;
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uNearFade;\nfloat nfHash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }')
-      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n\tif (uNearFade > 0.0) { float nfd = length(vViewPosition) / uNearFade; if (nfd < 1.0 && nfHash(floor(gl_FragCoord.xy)) > clamp((nfd - 0.45) / 0.55, 0.0, 1.0)) discard; }');
+      .replace('#include <common>', '#include <common>\nuniform float uNearFade;\nfloat nfHash(vec2 p){ vec2 c = mod(floor(p * 0.5), 4.0), l = mod(c, 2.0), h = floor(c * 0.5); float b = 4.0 * (2.0 * abs(l.x - l.y) + l.y) + 2.0 * abs(h.x - h.y) + h.y; return (b + 0.5) / 16.0; }') // 4x4 ordered (Bayer-like) dither in 2x2-pixel cells, not white noise: no confetti
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n\tif (uNearFade > 0.0) { float nfd = length(vViewPosition) / uNearFade; if (nfd < 1.0 && nfHash(gl_FragCoord.xy) > smoothstep(0.7, 1.0, nfd)) discard; }'); // closer than 70%: hidden completely
   }
   function facadeCompile(shader) {
     shader.uniforms.uNight = UNI.uNight; shader.uniforms.uSkyTint = UNI.uHor;

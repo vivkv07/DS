@@ -380,8 +380,9 @@
     ctx.rect(cx + (x - camX) * k, cy + (y - camY) * k, w * k, d * k);
   };
 
+  const WALLKEY = { N: 'wallN', S: 'wallS', W: 'wallW', E: 'wallE' };
   function wallColor(st, face) {
-    const own = st['wall' + face];
+    const own = st[WALLKEY[face] || 'wall' + face];
     if (own) return own;
     return shaded(st.wall || '#c9b99a', faceShade[face]);
   }

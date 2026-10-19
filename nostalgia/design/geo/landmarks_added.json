@@ -1,0 +1,8 @@
+{
+ "_doc": "Landmarks added to Map v2 that have no v1 record: placed as given (world units, after the v1 sites, before the residential infill), by tools/geo/build_worlddata.cjs. Rows are N.WORLD_DATA.landmarks records. Both park gates are walk-through (noSolid) with solid piers: indira_park_gate spans the start of indira_park_path, and the Sanjeevaiah Park access spur runs past its gate.",
+ "landmarks": [
+  {"id": "hitec_office_1", "name": "HITEC City office block", "draw": "hitec_office", "x": 2735, "y": 1772, "w": 70, "d": 50, "h": 50, "face": "s", "conf": "low", "street": "hitec_rd"},
+  {"id": "indira_park_gate", "name": "Indira Park gate", "draw": "park_gate", "x": 9438, "y": 3845, "w": 40, "d": 14, "h": 14, "face": "s", "faceAngle": 1.767, "conf": "medium", "noSolid": true, "solids": [[9418, 3838, 6, 14], [9452, 3838, 6, 14]]},
+  {"id": "sanjeevaiah_park_gate", "name": "Sanjeevaiah Park gate", "draw": "park_gate", "x": 8973, "y": 2302, "w": 12, "d": 36, "h": 12, "face": "e", "faceAngle": 0.142, "conf": "low", "noSolid": true, "solids": [[8967, 2284, 12, 6], [8967, 2314, 12, 6]]}
+ ]
+}

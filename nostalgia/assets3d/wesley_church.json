@@ -1,0 +1,52 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 29008,
+ "clips": {},
+ "family": "landmark",
+ "file": "wesley_church.glb",
+ "front": "-Y",
+ "id": "wesley_church",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 28.3,
+ "kit": 1,
+ "materials": [
+  "M_wesley_church_lamp_lens@night",
+  "M_wesley_church"
+ ],
+ "max": [
+  21.6,
+  21.1,
+  55.62
+ ],
+ "meta": {
+  "face": "w",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   60,
+   48
+  ],
+  "height": 60.0,
+  "landmark": "church_wesley"
+ },
+ "min": [
+  -16.5,
+  -22.3,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_worship",
+ "size": [
+  38.1,
+  43.4,
+  55.62
+ ],
+ "tint": null,
+ "tris": 140,
+ "units": "u",
+ "up": "Z"
+}

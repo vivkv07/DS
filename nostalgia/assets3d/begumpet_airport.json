@@ -1,0 +1,52 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 47244,
+ "clips": {},
+ "family": "landmark",
+ "file": "begumpet_airport.glb",
+ "front": "-Y",
+ "id": "begumpet_airport",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 46.1,
+ "kit": 1,
+ "materials": [
+  "M_begumpet_airport",
+  "M_begumpet_airport_sheet@night"
+ ],
+ "max": [
+  61.75,
+  16.3,
+  27.1
+ ],
+ "meta": {
+  "draw": "airport_terminal",
+  "face": "s",
+  "fit": "footprint",
+  "footprint": [
+   120,
+   36
+  ],
+  "height": 33.0
+ },
+ "min": [
+  -60.05,
+  -18.05,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_modern",
+ "size": [
+  121.8,
+  34.35,
+  27.1
+ ],
+ "tint": null,
+ "tris": 266,
+ "units": "u",
+ "up": "Z"
+}

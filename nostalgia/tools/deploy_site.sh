@@ -42,11 +42,18 @@ else
 fi
 find "$SITE" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
 
-# dist/web.html plus the files it loads by relative path when 3D starts (models, GLTF loader,
-# and the vendored three.js fallback; three.js itself comes from jsDelivr first).
+# dist/web.html plus the files it loads by relative path when 3D starts (the core model pack, the lazy
+# per-landmark GLBs in lazy3d/ next to index.html, GLTF loader, and the vendored three.js fallback;
+# three.js itself comes from jsDelivr first).
 mkdir -p "$SITE/src" "$SITE/vendor/three"
 cp "$HERE/dist/web.html" "$SITE/index.html"
 cp "$HERE/src/assets3d_pack.js" "$SITE/src/"
+if [ -d "$HERE/dist/lazy3d" ]; then
+  mkdir -p "$SITE/lazy3d"
+  cp "$HERE"/dist/lazy3d/*.glb "$SITE/lazy3d/"
+else
+  echo "warning: dist/lazy3d missing (run tools/build.mjs): lazy landmarks will stay procedural" >&2
+fi
 cp "$HERE/vendor/three/three.min.js" "$HERE/vendor/three/GLTFLoader.classic.js" "$SITE/vendor/three/"
 [ -f "$HERE/vendor/three/LICENSE" ] && cp "$HERE/vendor/three/LICENSE" "$SITE/vendor/three/LICENSE"
 touch "$SITE/.nojekyll"

@@ -48,7 +48,10 @@
  *   freeze(on, reason) / frozen(), lock(level | null), policy('normal'|'frozen'|'scripted', level),
  *   hide(kind 'kirana'|'parlour'|'queue', placeId, {teleport}) -> {ok, line}, haircut(placeId) -> Promise,
  *   bust(by?) (PAKDA GAYA now), exhaust() (THAK GAYA now), fine(), dropPeel(),
+ *   route({x, y, angle}, tx, ty) / routeStats() (pursuer road routes: N.world.roads.route, cached),
  *   serialize() / deserialize(o) (save section 'wanted') }
+ * Roofs (N.player.level): nobody climbs after Chinnu and only a pursuer on his level can catch him;
+ *   foot chasers who saw him go up wait by the stairs for TUNE.chaseMemory s, then search as usual.
  * Events: 'wanted' and 'wanted:change' {level, prev, reason}, 'wanted:seen' {by}, 'wanted:report' {by},
  *   'wanted:tattle' {by}, 'chappal:throw' {x, y}, 'chappal:dodge', 'chappal:hit', 'busted' {by, x, y},
  *   'wasted' {x, y}, 'wanted:pursuer' {role, actor}. Sounds: whistle, gurkha, chappal_whoosh, chappal,
@@ -89,6 +92,11 @@
     lunaDismount: 70, lunaFootSecs: 6,
     chappal: { every: 6, range: 150, windup: 0.4, speed: 170, arc: 24, life: 1.4, turn1: 2.0, turn2: 0.8, switchT: 0.6, hit: 7, hitBike: 12, nearMiss: 20, rest: 3 },
     respectBuffer: 40, chaseMemory: 12, searchSecs: 8, spiralR: 150,
+    // pursuer vehicle routes: replan at most every `min` s (every `every` s, or when the goal moved by
+    // max(goalMove, goalFrac x distance)); node-pair cache lifetime and size
+    route: { every: 2.5, min: 0.6, goalMove: 60, goalFrac: 0.15, ttl: 3, cacheMax: 48 },
+    // Chinnu up on a roof: chasers who saw him go up wait this far from the stair foot, then give up
+    roofWaitR: 22,
     fine: 200, bustGm: 30, bustTummy: 10, wastedFine: 100, wastedTummy: 40, wastedEnergy: 40, wastedGm: 45, wastedMeter: 2,
     curfew: [[21 * 60 + 30, 1], [23 * 60, 2], [24 * 60 + 30, 3]], curfewMorning: 5 * 60,
     homeBefore: 18 * 60 + 30, homeR: 22,
@@ -222,6 +230,9 @@
     get spotters() { return W.spotters.slice(); },
     get pursuers() { return allPursuers(); },
     get inRespect() { return W.inRespect; },
+    /** Pursuer road route from {x, y, angle} to (tx, ty) -> [[x, y], ...] (cached per node pair). */
+    route(from, tx, ty) { return roadRoute(from, tx, ty); },
+    routeStats() { return { calls: RC.calls, hits: RC.hits, fails: RC.fails, expanded: RC.expanded, cached: RC.cache.size }; },
     get stats() { return W.stats; },
     get busy() { return !!W.seq; },
     get locked() { return W.locked; },
@@ -314,6 +325,7 @@
     mummyNight: ['Sreenivas, faster!', '{FULL}! In your banyan, at this hour!', '*Intiki raa!* NOW!'],
     yadagiri: ['Sorry, {nick}! Full meter! FULL meter!', 'Aunty, left or right? ...Okay, straight, through the cows.'],
     nanna: ['Padma, it\'s a Chetak, not a rocket.'],
+    roof: ['*Neeche aao!* Come down!', 'I can wait. I have ALL day.', 'Whose terrace is that? I\'m telling them also!', 'You have to come down sometime, {nick}!'],
     escaped: { pochaiah: '*Hai*, my knees...', pochaiahLuna: 'Luna, you have betrayed me.', uncle: 'Fine, fine. I\'ll tell her tomorrow.', chitti: 'I\'m TELLING anyway!', havaldar: 'Next time, *beta*.', mummy: 'You have to come home sometime!' },
   };
   const BUSTED_LINES = {
@@ -829,12 +841,14 @@
     return d;
   }
   /** Road route for a pursuer vehicle: from a node ahead of it (no U-turns on replans) to the node nearest
-   *  the target, A* over the road graph ignoring one-ways (Pochaiah knows every short cut). -> [[x, y], ...] */
+   *  the target, by N.world.roads.route (heap A* sized for the whole city) ignoring one-ways (Pochaiah knows
+   *  every short cut). Node-pair results are cached for TUNE.route.ttl s, shared by every pursuer. -> [[x, y], ...] */
+  const RC = { cache: new Map(), calls: 0, hits: 0, fails: 0, expanded: 0 };
   function roadRoute(v, tx, ty) {
     const R = N.world.roads;
-    if (!R || !R.nodes || !R.nodes.length) return [[v.x, v.y], [tx, ty]];
-    const nodes = R.nodes, edges = R.edges;
-    const hx = Math.cos(v.angle), hy = Math.sin(v.angle);
+    if (!R || !R.nodes || !R.nodes.length || !R.route) return [[v.x, v.y], [tx, ty]];
+    const nodes = R.nodes;
+    const hx = Math.cos(v.angle || 0), hy = Math.sin(v.angle || 0);
     let a = null, best = Infinity;
     const near = N.traffic && N.traffic.nodesNear ? N.traffic.nodesNear(v.x, v.y, 180) : [];
     for (const n of near) {
@@ -847,33 +861,28 @@
     if (!a) a = R.nearestNode(v.x, v.y);
     const b = R.nearestNode(tx, ty);
     if (!a || !b) return [[v.x, v.y], [tx, ty]];
-    const g = new Map([[a.id, 0]]), from = new Map(), open = [[Math.hypot(b.x - a.x, b.y - a.y), a.id]], closed = new Set();
-    let found = a === b, guard = 0;
-    while (open.length && !found && guard++ < 6000) {
-      let bi = 0; for (let i = 1; i < open.length; i++) if (open[i][0] < open[bi][0]) bi = i;
-      const id = open[bi][1]; open[bi] = open[open.length - 1]; open.pop();
-      if (closed.has(id)) continue;
-      if (id === b.id) { found = true; break; }
-      closed.add(id);
-      const n = nodes[id], gn = g.get(id);
-      for (const eid of n.inc) {
-        const e = edges[eid]; if (e.kind === 'path') continue;
-        const to = e.a === id ? e.b : e.a;
-        if (closed.has(to)) continue;
-        const ng = gn + (e.len || 1) * (e.kind === 'lane' ? 1.15 : 1);
-        if (ng < (g.has(to) ? g.get(to) : Infinity)) { g.set(to, ng); from.set(to, id); open.push([ng + Math.hypot(nodes[to].x - b.x, nodes[to].y - b.y), to]); }
-      }
+    RC.calls++;
+    const key = a.id + '>' + b.id, now = W.now;
+    let hit = RC.cache.get(key);
+    if (hit && now - hit.t > TUNE.route.ttl) { RC.cache.delete(key); hit = null; }
+    let ids;
+    if (hit) { RC.hits++; ids = hit.ids; }
+    else {
+      const list = R.route(a, b, ROUTE_OPTS);
+      const st = R.routeStats ? R.routeStats() : null;
+      if (st) RC.expanded = st.expanded;
+      ids = list ? list.map((n) => n.id) : null;
+      if (!ids) RC.fails++;
+      if (RC.cache.size >= TUNE.route.cacheMax) RC.cache.delete(RC.cache.keys().next().value);
+      RC.cache.set(key, { t: now, ids });
     }
     const pts = [[v.x, v.y]];
-    if (found) {
-      const ids = [b.id]; let c = b.id;
-      while (from.has(c)) { c = from.get(c); ids.push(c); }
-      ids.reverse();
-      for (const id of ids) pts.push([nodes[id].x, nodes[id].y]);
-    }
+    if (ids) for (const id of ids) pts.push([nodes[id].x, nodes[id].y]);
     pts.push([tx, ty]);
     return pts;
   }
+  // every incident edge (one-ways ignored), no dirt paths, lanes cost x1.15; the whole city fits in the budget
+  const ROUTE_OPTS = { walk: true, costs: { lane: 1.15 }, maxExpand: 24000 };
   function pursuitCtl(v, dt) {
     const pu = v.pu, ctl = v.ctl, a = pu && pu.actor;
     if (!pu || !a || !a.alive) { ctl.throttle = 0; ctl.brake = true; return; }
@@ -886,8 +895,11 @@
     let directOk = false;
     if (dT < 110) { try { directOk = !N.world.raycast(v.x, v.y, tg.x, tg.y, 'drive').hit; } catch (e) { directOk = false; } }
     if (!directOk) {
-      if (!pu.path || pu.planT <= 0 || !pu.goal || Math.hypot(pu.goal.x - tg.x, pu.goal.y - tg.y) > 60) {
-        pu.planT = 2.5; pu.goal = { x: tg.x, y: tg.y }; pu.pi = 1;
+      const RT = TUNE.route;
+      pu.minT = (pu.minT || 0) - dt;
+      const moved = pu.goal ? Math.hypot(pu.goal.x - tg.x, pu.goal.y - tg.y) : Infinity;
+      if (!pu.path || (pu.minT <= 0 && (pu.planT <= 0 || moved > Math.max(RT.goalMove, dT * RT.goalFrac)))) {
+        pu.planT = RT.every; pu.minT = RT.min; pu.goal = { x: tg.x, y: tg.y }; pu.pi = 1;
         try { pu.path = roadRoute(v, tg.x, tg.y); } catch (e) { N.err('wanted.route', e); pu.path = [[v.x, v.y], [tg.x, tg.y]]; }
       }
       const P = pu.path;
@@ -1038,13 +1050,13 @@
     if (a.mount && mounted(a)) {
       const v = a.mount, dP = Math.hypot(v.x - p.x, v.y - p.y), psp = Math.hypot(p.vx || 0, p.vy || 0);
       // box-in: stopped beside a slow Chinnu
-      if (a.role === 'pochaiah' && dP < TUNE.boxR && psp < TUNE.boxSpeed) { a.boxT += dt; if (a.boxT >= TUNE.boxSecs) { startBusted('pochaiah'); return; } } else a.boxT = 0;
+      if (a.role === 'pochaiah' && dP < TUNE.boxR && psp < TUNE.boxSpeed && sameLevel(a)) { a.boxT += dt; if (a.boxT >= TUNE.boxSecs) { startBusted('pochaiah'); return; } } else a.boxT = 0;
       // Pochaiah gets off when Chinnu is close on foot or in a park / plaza / narrow lane (L3: for good; L4: runs 6 s, then back)
-      if (a.role === 'pochaiah' && (dP < TUNE.lunaDismount && !p.vehicle || (dP < 140 && narrowSpot(p.x, p.y))) && Math.abs(v.speed) < 40) {
+      if (a.role === 'pochaiah' && !p.level && (dP < TUNE.lunaDismount && !p.vehicle || (dP < 140 && narrowSpot(p.x, p.y))) && Math.abs(v.speed) < 40) {
         if (dismount(a)) { a.onFootT = 0; a.footLimit = W.level >= 4 ? TUNE.lunaFootSecs : 1e9; bark(a, '*Ruko!*', 'pochaiah'); return; }
       }
       // Mummy steps out and grabs when the auto / Chetak has caught up with a slow Chinnu
-      if (a.role === 'mummy' && dP < TUNE.stepOutR && psp < 40 && Math.abs(v.speed) < 25) {
+      if (a.role === 'mummy' && !p.level && dP < TUNE.stepOutR && psp < 40 && Math.abs(v.speed) < 25) {
         if (dismount(a)) { a.onFootT = 0; a.footLimit = TUNE.mummyRunSecs; bark(a, pick(['*Intiki raa!* NOW!', 'Caught you!', '{FULL}!']), 'amma'); return; }
       }
       // the road won't take the vehicle there: everybody gets off and runs
@@ -1069,6 +1081,9 @@
         }
       }
     }
+    // Chinnu is up on a roof: nobody climbs after him (they wait by the stairs, then give up)
+    a.waitingBelow = false;
+    if (p.level && !a.level && !a.isSpotter && roofWait(a, dt)) return;
     const fast = a.seeing || seenRecently || Math.hypot(tg.x - a.x, tg.y - a.y) > 60;
     let speed = fast ? a.runSpd : a.walkSpd;
     if (a.role === 'chitti' && Math.hypot(p.x - a.x, p.y - a.y) < 50) speed = a.walkSpd; // she just keeps him in sight
@@ -1099,6 +1114,32 @@
     if (!a.isSpotter) rubberBand(a, false);
     checkCatch(a, dt);
   }
+  /** Pursuers stay on the ground: they can only catch Chinnu on the same level (systems §7.3 roof zones). */
+  function sameLevel(a) { return (N.player.level || null) === ((a && a.level) || null); }
+  /** Chinnu went up onto a roof while being chased (seen in the last TUNE.chaseMemory s): a foot pursuer
+   *  waits TUNE.roofWaitR from the foot of the stairs he took, arms folded, shouting up. After that the
+   *  chase memory runs out and he searches like any lost chase (the meter keeps dropping unseen). */
+  function roofWait(a, dt) {
+    const p = N.player;
+    if (W.now - W.lastSeenT > TUNE.chaseMemory) return false;
+    const RF = N.world.roofs, r = RF && RF.get ? RF.get(p.level) : null;
+    if (!r || !r.stairs || !r.stairs.length) return false;
+    const ref = W.lastSeen || a;
+    let st = r.stairs[0], bd = Infinity;
+    for (const s of r.stairs) { const dd = (s.x - ref.x) ** 2 + (s.y - ref.y) ** 2; if (dd < bd) { bd = dd; st = s; } }
+    const dx = a.x - st.x, dy = a.y - st.y, d = Math.hypot(dx, dy) || 1;
+    const gx = st.x + (dx / d) * TUNE.roofWaitR, gy = st.y + (dy / d) * TUNE.roofWaitR;
+    a.searchT = 0;
+    if (d > TUNE.roofWaitR + 4) moveOnFoot(a, gx, gy, a.runSpd, dt);
+    else {
+      a.vx *= 0.7; a.vy *= 0.7; a.anim.speed = 0;
+      a.angle += U.angleDiff(a.angle, Math.atan2(p.y - a.y, p.x - a.x)) * Math.min(1, dt * 4);
+      a.roofT = (a.roofT || 0) - dt;
+      if (a.roofT <= 0) { a.roofT = TUNE.barkEvery * rr(1, 1.5); bark(a, pick(LINES.roof), a.speaker); }
+    }
+    a.waitingBelow = true;
+    return true;
+  }
   function narrowSpot(x, y) {
     const s = N.world.surfaceAt(x, y), S = N.SURF;
     if (s === S.GRASS || s === S.PLAZA || s === S.SAND || s === S.GROUND) return true;
@@ -1108,7 +1149,7 @@
   function checkCatch(a, dt) {
     if (!a.canCatch || W.seq || frozenNow()) return;
     const p = N.player;
-    if (W.inRespect) return;
+    if (W.inRespect || !sameLevel(a)) return;
     const d = Math.hypot(a.x - p.x, a.y - p.y);
     const pv = p.vehicle;
     const reach = a.role === 'mummy' ? TUNE.grabR : TUNE.catchR;
@@ -1223,7 +1264,7 @@
     const p = N.player;
     // a chaser close by catches him instead (systems §4.11)
     const ch = W.chaser;
-    if (W.level >= 3 && ch && ch.state !== 'leave' && Math.hypot(ch.x - p.x, ch.y - p.y) < 250) return startBusted(ch.role === 'mummy' ? 'amma' : 'pochaiah');
+    if (W.level >= 3 && ch && ch.state !== 'leave' && sameLevel(ch) && Math.hypot(ch.x - p.x, ch.y - p.y) < 250) return startBusted(ch.role === 'mummy' ? 'amma' : 'pochaiah');
     W.seq = { kind: 'wasted', t: 0, step: 0, x: p.x, y: p.y };
     N.emit('wasted', { x: p.x, y: p.y });
     sfx('pant', { ui: true });
@@ -1429,10 +1470,13 @@
     W.footAcc = (W.footAcc || 0) + TUNE.heat.footpath * dt;
     if (W.footAcc >= 1) { const n = Math.floor(W.footAcc); W.footAcc -= n; API.addHeat(n, 'footpath'); }
   }
+  // a story2 scene in progress (it may run late) and the Ganesh pandal week on the colony ground: no curfew
+  function storyScene() { try { return !!(N.story2 && N.story2.state && N.story2.state().scene); } catch (e) { return false; } }
   function curfewRule() {
     const m = mins(), d = day();
     const off = (N.missions && N.missions.active) || (N.flags && (N.flags.postgame || N.flags.ending_done || N.flags.no_curfew)) ||
-      (flagOn('numaish') && m < 22 * 60 + 30 && m >= 16 * 60) || flagOn('ganesh_immersion') || (flagOn('ramzan') && (m < 23 * 60 + 30 && m > 12 * 60)) || flagOn('chand_raat');
+      (flagOn('numaish') && m < 22 * 60 + 30 && m >= 16 * 60) || flagOn('ganesh_immersion') ||
+      flagOn('ganesh') || storyScene() || (flagOn('ramzan') && (m < 23 * 60 + 30 && m > 12 * 60)) || flagOn('chand_raat');
     let floor = 0;
     const mm = m < TUNE.curfewMorning ? m + 1440 : m;
     for (const [t, f] of TUNE.curfew) if (mm >= t) floor = f;

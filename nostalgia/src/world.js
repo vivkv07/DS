@@ -112,17 +112,64 @@
     let minY = Infinity, maxY = -Infinity;
     for (const p of poly) { if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1]; }
     const j0 = Math.max(0, Math.floor(minY / CELL)), j1 = Math.min(GH - 1, Math.floor(maxY / CELL));
-    const xs = [];
+    const xs = polyXs;
     const lut = lutOf(map);
+    if (poly.length > 16) { fillPolyAET(poly, j0, j1, lut); return; }
     for (let j = j0; j <= j1; j++) {
       const y = (j + 0.5) * CELL;
-      xs.length = 0;
+      let n = 0;
       for (let a = 0, b = poly.length - 1; a < poly.length; b = a++) {
         const ya = poly[a][1], yb = poly[b][1];
-        if ((ya > y) !== (yb > y)) xs.push(poly[a][0] + ((y - ya) / (yb - ya)) * (poly[b][0] - poly[a][0]));
+        if ((ya > y) !== (yb > y)) {
+          // insertion sort as we go (rows cross a polygon edge a handful of times; Array#sort allocates)
+          const x = poly[a][0] + ((y - ya) / (yb - ya)) * (poly[b][0] - poly[a][0]);
+          let k = n++;
+          while (k > 0 && xs[k - 1] > x) { xs[k] = xs[k - 1]; k--; }
+          xs[k] = x;
+        }
       }
-      xs.sort((p, q) => p - q);
-      for (let k = 0; k + 1 < xs.length; k += 2) spanLUT(j, Math.ceil(xs[k] / CELL - 0.5), Math.floor(xs[k + 1] / CELL - 0.5), lut);
+      for (let k = 0; k + 1 < n; k += 2) spanLUT(j, Math.ceil(xs[k] / CELL - 0.5), Math.floor(xs[k + 1] / CELL - 0.5), lut);
+    }
+  }
+  const polyXs = [];
+  // fillPoly for big polygons (lakes, parks, rock areas: hundreds of vertices): each row tests only the
+  // edges whose y range is near it (an active edge list) instead of every edge. The crossing test and the
+  // crossing x are the same expressions on the same (a, b) vertex pairs, so the spans are identical.
+  let aetE = new Float64Array(0), aetLo = new Int32Array(0), aetHi = new Int32Array(0), aetOrd = new Int32Array(0), aetAct = new Int32Array(0);
+  function fillPolyAET(poly, j0, j1, lut) {
+    const n = poly.length;
+    if (aetLo.length < n) { aetE = new Float64Array(n * 4); aetLo = new Int32Array(n); aetHi = new Int32Array(n); aetOrd = new Int32Array(n); aetAct = new Int32Array(n); }
+    const E = aetE, lo = aetLo, hi = aetHi, ord = aetOrd, act = aetAct;
+    for (let a = 0, b = n - 1; a < n; b = a++) {
+      const ya = poly[a][1], yb = poly[b][1];
+      E[a * 4] = poly[a][0]; E[a * 4 + 1] = ya; E[a * 4 + 2] = poly[b][0]; E[a * 4 + 3] = yb;
+      // rows this edge can cross, widened by a row each side (the exact test below decides)
+      lo[a] = Math.floor(Math.min(ya, yb) / CELL) - 1; hi[a] = Math.floor(Math.max(ya, yb) / CELL) + 1;
+      if (!(ya === ya && yb === yb)) { lo[a] = -1073741824; hi[a] = 1073741823; } // NaN: test it on every row, as before
+      ord[a] = a;
+    }
+    // edges by first row (insertion sort: polygons are rings, mostly already in runs)
+    for (let k = 1; k < n; k++) { const v = ord[k], l = lo[v]; let m = k; while (m > 0 && lo[ord[m - 1]] > l) { ord[m] = ord[m - 1]; m--; } ord[m] = v; }
+    const xs = polyXs;
+    let next = 0, na = 0;
+    for (let j = j0; j <= j1; j++) {
+      while (next < n && lo[ord[next]] <= j) act[na++] = ord[next++];
+      const y = (j + 0.5) * CELL;
+      let c = 0, w = 0;
+      for (let q = 0; q < na; q++) {
+        const a = act[q];
+        if (hi[a] < j) continue; // finished: drop it
+        act[w++] = a;
+        const o = a * 4, ya = E[o + 1], yb = E[o + 3];
+        if ((ya > y) !== (yb > y)) {
+          const x = E[o] + ((y - ya) / (yb - ya)) * (E[o + 2] - E[o]);
+          let k = c++;
+          while (k > 0 && xs[k - 1] > x) { xs[k] = xs[k - 1]; k--; }
+          xs[k] = x;
+        }
+      }
+      na = w;
+      for (let k = 0; k + 1 < c; k += 2) spanLUT(j, Math.ceil(xs[k] / CELL - 0.5), Math.floor(xs[k + 1] / CELL - 0.5), lut);
     }
   }
   // Thick polyline (a capsule per segment). Each row only visits the cells inside the segment's band
@@ -146,13 +193,24 @@
           const xc = ax + ((py - ay) * dx) / dy;
           lo = Math.max(i0, Math.floor((xc - half) / CELL)); hi = Math.min(i1, Math.floor((xc + half) / CELL));
         }
-        const row = j * GW;
-        for (let i = lo; i <= hi; i++) {
-          const px = (i + 0.5) * CELL;
-          let t = ((px - ax) * dx + (py - ay) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+        // the capsule is convex, so the cells inside it on this row are one run: find its two ends
+        // with the per-cell test (from the outside in) and fill the run between them untested
+        const row = j * GW, ey = py - ay;
+        let a0 = lo, a1 = hi;
+        for (; a0 <= hi; a0++) {
+          const px = (a0 + 0.5) * CELL;
+          let t = ((px - ax) * dx + ey * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
           const qx = ax + dx * t - px, qy = ay + dy * t - py;
-          if (qx * qx + qy * qy <= r2) { const v = lut[grid[row + i]]; if (v >= 0) grid[row + i] = v; }
+          if (qx * qx + qy * qy <= r2) break;
         }
+        if (a0 > hi) continue;
+        for (; a1 > a0; a1--) {
+          const px = (a1 + 0.5) * CELL;
+          let t = ((px - ax) * dx + ey * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const qx = ax + dx * t - px, qy = ay + dy * t - py;
+          if (qx * qx + qy * qy <= r2) break;
+        }
+        for (let i = row + a0, e = row + a1; i <= e; i++) { const v = lut[grid[i]]; if (v >= 0) grid[i] = v; }
       }
     }
   }
@@ -430,17 +488,27 @@
     let gt = gt0;
     const gmark = (k) => { const t = performance.now(); gp[k] = Math.round((t - gt) * 10) / 10; gt = t; };
     const nodes = [], edges = [];
-    const ngrid = new Map();
+    // node lookup grid (16 u cells) as typed per-cell lists in insertion order (head / tail / next),
+    // sized to the roads' bounding box (+1 cell) once the points are final (see the 'nodes' pass)
+    let NG0 = 0, NGJ0 = 0, NGW = 0, NGH = 0, nHead = null, nTail = null, nNext = new Int32Array(1024);
     const getNode = (x, y) => {
       const gx = Math.floor(x / 16), gy = Math.floor(y / 16);
-      for (let j = gy - 1; j <= gy + 1; j++) for (let i = gx - 1; i <= gx + 1; i++) {
-        const l = ngrid.get(j * 4096 + i);
-        if (l) for (const id of l) { const n = nodes[id]; if ((n.x - x) ** 2 + (n.y - y) ** 2 < 100) return n; }
+      for (let j = gy - 1; j <= gy + 1; j++) {
+        const rj = j - NGJ0;
+        if (rj < 0 || rj >= NGH) continue;
+        for (let i = gx - 1; i <= gx + 1; i++) {
+          const ri = i - NG0;
+          if (ri < 0 || ri >= NGW) continue;
+          for (let id = nHead[rj * NGW + ri]; id >= 0; id = nNext[id]) { const n = nodes[id]; const ex = n.x - x, ey = n.y - y; if (ex * ex + ey * ey < 100) return n; }
+        }
       }
       const n = { id: nodes.length, x, y, links: [], inc: [], deg: 0, w: 0 };
       nodes.push(n);
-      const key = gy * 4096 + gx;
-      (ngrid.get(key) || ngrid.set(key, []).get(key)).push(n.id);
+      if (n.id >= nNext.length) { const nn = new Int32Array(nNext.length * 2); nn.set(nNext); nNext = nn; }
+      nNext[n.id] = -1;
+      const c = (gy - NGJ0) * NGW + (gx - NG0);
+      if (nHead[c] < 0) nHead[c] = n.id; else nNext[nTail[c]] = n.id;
+      nTail[c] = n.id;
       return n;
     };
     const RR = roads.filter((r) => r.kind !== 'path' && r.pts && r.pts.length > 1).map((r) => {
@@ -452,12 +520,24 @@
     for (const A of RR) A.pts.forEach((p, i) => A.splits.push({ d: A.cum[i], x: p[0], y: p[1] }));
     // Segment hash (64 u cells; each segment in the cells it passes through): the v2 map has ~3.6k roads
     // and ~15k segments, so the pairwise tests below only look at segments that share a cell.
-    const HC = 64, hash = new Map();
+    const HC = 64;
     const segBase = new Int32Array(RR.length + 1);
     for (let k = 0; k < RR.length; k++) segBase[k + 1] = segBase[k] + RR[k].pts.length - 1;
+    const NSEG = segBase[RR.length];
+    const segRoad = new Int32Array(NSEG);
+    for (let k = 0; k < RR.length; k++) segRoad.fill(k, segBase[k], segBase[k + 1]);
+    // The hash as flat arrays (CSR): cell c's segments are cellSeg[cellStart[c] .. cellStart[c + 1]),
+    // global segment ids in insertion order (road, then segment), so every scan below sees the same
+    // candidates in the same order as a Map of lists did, without ~40k small arrays per pass.
+    let I0 = 0, J0 = 0, NI = 1, NJ = 1, cellStart = null, cellSeg = null;
+    let tmpCell = new Int32Array(NSEG * 4), tmpSeg = new Int32Array(NSEG * 4);
+    const cellOf = (i, j) => (i < I0 || j < J0 || i >= I0 + NI || j >= J0 + NJ ? -1 : (j - J0) * NI + (i - I0));
     const indexSegs = () => {
-      hash.clear();
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const A of RR) for (const p of A.pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
+      I0 = Math.floor(x0 / HC); J0 = Math.floor(y0 / HC); NI = Math.floor(x1 / HC) - I0 + 1; NJ = Math.floor(y1 / HC) - J0 + 1;
       const near2 = (HC * 0.7072 + 1) * (HC * 0.7072 + 1);
+      let n = 0;
       for (let ai = 0; ai < RR.length; ai++) {
         const P = RR[ai].pts;
         for (let s = 0; s < P.length - 1; s++) {
@@ -469,50 +549,73 @@
             let t = ((cx - a[0]) * dx + (cy - a[1]) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
             const qx = a[0] + dx * t - cx, qy = a[1] + dy * t - cy;
             if (qx * qx + qy * qy > near2) continue;
-            const key = j * 8192 + i, l = hash.get(key);
-            if (l) l.push(ai, s); else hash.set(key, [ai, s]);
+            if (n === tmpCell.length) { const c2 = new Int32Array(n * 2), s2 = new Int32Array(n * 2); c2.set(tmpCell); s2.set(tmpSeg); tmpCell = c2; tmpSeg = s2; }
+            tmpCell[n] = (j - J0) * NI + (i - I0); tmpSeg[n] = segBase[ai] + s; n++;
           }
         }
       }
+      // stable counting sort by cell
+      const nc = NI * NJ;
+      cellStart = new Int32Array(nc + 1);
+      for (let k = 0; k < n; k++) cellStart[tmpCell[k] + 1]++;
+      for (let c = 0; c < nc; c++) cellStart[c + 1] += cellStart[c];
+      const fillAt = cellStart.slice(0, nc);
+      cellSeg = new Int32Array(n);
+      for (let k = 0; k < n; k++) cellSeg[fillAt[tmpCell[k]]++] = tmpSeg[k];
     };
     indexSegs();
     gmark('index');
     // T-junctions: endpoints lying on another road snap onto it (the nearest such segment)
+    // snap tolerance per road in a typed array: the road data objects come in a dozen shapes, so `B.r.w`
+    // in the inner loop is a megamorphic load
     let maxTol = 0;
-    for (const A of RR) maxTol = Math.max(maxTol, A.r.w / 2 + 6);
+    const rTol = new Float64Array(RR.length);
+    for (let k = 0; k < RR.length; k++) { rTol[k] = RR[k].r.w / 2 + 6; maxTol = Math.max(maxTol, rTol[k]); }
+    // every segment's end points, flat (ax, ay, bx, by per global segment id): the scan below reads
+    // these instead of B.pts[sI][0] ...; kept in step with the snapped end points
+    const segXY = new Float64Array(NSEG * 4);
+    for (let k = 0; k < RR.length; k++) {
+      const P = RR[k].pts;
+      for (let s2 = 0, o = segBase[k] * 4; s2 < P.length - 1; s2++, o += 4) { segXY[o] = P[s2][0]; segXY[o + 1] = P[s2][1]; segXY[o + 2] = P[s2 + 1][0]; segXY[o + 3] = P[s2 + 1][1]; }
+    }
     for (let ai = 0; ai < RR.length; ai++) {
       const A = RR[ai];
-      for (const end of [0, A.pts.length - 1]) {
+      for (let e2 = 0; e2 < 2; e2++) {
+        const end = e2 ? A.pts.length - 1 : 0;
         const p = A.pts[end], px = p[0], py = p[1];
-        let bB = null, bs = 0, bt = 0, bd2 = Infinity, bx = 0, by = 0;
+        let bi0 = -1, bs = 0, bt = 0, bd2 = Infinity, bx = 0, by = 0;
         for (let j = Math.floor((py - maxTol) / HC); j <= Math.floor((py + maxTol) / HC); j++) {
           for (let i = Math.floor((px - maxTol) / HC); i <= Math.floor((px + maxTol) / HC); i++) {
-            const l = hash.get(j * 8192 + i);
-            if (!l) continue;
-            for (let k = 0; k < l.length; k += 2) {
-              if (l[k] === ai) continue;
-              const B = RR[l[k]], sI = l[k + 1], a = B.pts[sI], b = B.pts[sI + 1];
-              const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
-              let t = l2 > 0 ? ((px - a[0]) * dx + (py - a[1]) * dy) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
-              const qx = a[0] + dx * t, qy = a[1] + dy * t, d2 = (qx - px) * (qx - px) + (qy - py) * (qy - py);
-              const tol = B.r.w / 2 + 6;
-              if (d2 <= tol * tol && d2 < bd2) { bd2 = d2; bB = B; bs = sI; bt = t; bx = qx; by = qy; }
+            const c = cellOf(i, j);
+            if (c < 0) continue;
+            for (let k = cellStart[c], ke = cellStart[c + 1]; k < ke; k++) {
+              const gid = cellSeg[k], bi = segRoad[gid];
+              if (bi === ai) continue;
+              const o = gid * 4, ax = segXY[o], ay = segXY[o + 1];
+              const dx = segXY[o + 2] - ax, dy = segXY[o + 3] - ay, l2 = dx * dx + dy * dy;
+              let t = l2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+              const qx = ax + dx * t, qy = ay + dy * t, d2 = (qx - px) * (qx - px) + (qy - py) * (qy - py);
+              const tol = rTol[bi];
+              if (d2 <= tol * tol && d2 < bd2) { bd2 = d2; bi0 = bi; bs = gid - segBase[bi]; bt = t; bx = qx; by = qy; }
             }
           }
         }
-        if (!bB) continue;
+        if (bi0 < 0) continue;
+        const bB = RR[bi0];
         const segL = bB.cum[bs + 1] - bB.cum[bs];
         bB.splits.push({ d: bB.cum[bs] + segL * bt, x: bx, y: by });
         if (bd2 > 0.01) { // snap the endpoint onto the other road (unless it already is one of its points)
           p[0] = bx; p[1] = by;
           A.splits[end].x = bx; A.splits[end].y = by;
+          const o = end ? (segBase[ai] + end - 1) * 4 + 2 : segBase[ai] * 4;
+          segXY[o] = bx; segXY[o + 1] = by;
         }
       }
     }
     gmark('tjunctions');
     // proper crossings, once per segment pair (the hash again: snapping moved some endpoints)
     indexSegs();
-    const seen = new Int32Array(segBase[RR.length]);
+    const seen = new Int32Array(NSEG);
     let stampS = 0;
     for (let ai = 0; ai < RR.length; ai++) {
       const A = RR[ai], P = A.pts;
@@ -522,12 +625,12 @@
         const i0 = Math.floor(Math.min(a0[0], a1[0]) / HC), i1 = Math.floor(Math.max(a0[0], a1[0]) / HC);
         const j0 = Math.floor(Math.min(a0[1], a1[1]) / HC), j1 = Math.floor(Math.max(a0[1], a1[1]) / HC);
         for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-          const l = hash.get(j * 8192 + i);
-          if (!l) continue;
-          for (let k = 0; k < l.length; k += 2) {
-            const bi = l[k];
+          const c = cellOf(i, j);
+          if (c < 0) continue;
+          for (let k = cellStart[c], ke = cellStart[c + 1]; k < ke; k++) {
+            const gid = cellSeg[k], bi = segRoad[gid];
             if (bi <= ai) continue;
-            const q = l[k + 1], gid = segBase[bi] + q;
+            const q = gid - segBase[bi];
             if (seen[gid] === stampS) continue;
             seen[gid] = stampS;
             const B = RR[bi];
@@ -540,8 +643,26 @@
       }
     }
     gmark('crossings');
+    {
+      // every split lies on a road segment, so inside the points' bounding box
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const A of RR) for (const sp of A.splits) { if (sp.x < x0) x0 = sp.x; if (sp.x > x1) x1 = sp.x; if (sp.y < y0) y0 = sp.y; if (sp.y > y1) y1 = sp.y; }
+      if (x0 <= x1) {
+        NG0 = Math.floor(x0 / 16) - 1; NGJ0 = Math.floor(y0 / 16) - 1;
+        NGW = Math.floor(x1 / 16) + 2 - NG0; NGH = Math.floor(y1 / 16) + 2 - NGJ0;
+      }
+      nHead = new Int32Array(NGW * NGH).fill(-1); nTail = new Int32Array(NGW * NGH);
+    }
     for (const A of RR) {
-      A.splits.sort((p, q) => p.d - q.d);
+      // stable insertion sort (same order as Array#sort): the splits are the road's own points, already
+      // in order, plus a few junctions appended, so this is ~linear and allocates nothing
+      const sp = A.splits;
+      for (let k = 1; k < sp.length; k++) {
+        const v = sp[k], d = v.d;
+        let m = k;
+        while (m > 0 && sp[m - 1].d > d) { sp[m] = sp[m - 1]; m--; }
+        sp[m] = v;
+      }
       let prev = null, prevD = -1e9;
       for (const sp of A.splits) {
         if (sp.d - prevD < 2 && prev) continue;
@@ -597,7 +718,7 @@
             const l = nb.get(j * 1000 + i); if (!l) continue;
             for (const n of l) {
               if (pred && !pred(n)) continue;
-              const d = (n.x - x) ** 2 + (n.y - y) ** 2;
+              const ex = n.x - x, ey = n.y - y, d = ex * ex + ey * ey;
               if (d < bd) { bd = d; best = n; }
             }
           }
@@ -732,8 +853,9 @@
           const qx = a[0] + dx * t - cx, qy = a[1] + dy * t - cy;
           if (qx * qx + qy * qy > SG * SG * 0.6) continue;
           const key = j * 4096 + i;
-          const l = segGrid.get(key);
-          if (l) l.push(r, s); else segGrid.set(key, [r, s]);
+          let l = segGrid.get(key);
+          if (!l) segGrid.set(key, (l = { rs: [], xy: [] }));
+          l.rs.push(r, s); l.xy.push(a[0], a[1], b[0], b[1]);
         }
       }
     }
@@ -758,16 +880,19 @@
       for (let j = cj - ring; j <= cj + ring; j++) {
         const rowEdge = j === cj - ring || j === cj + ring;
         for (let i = ci - ring; i <= ci + ring; i += rowEdge || !ring ? 1 : 2 * ring) {
-          const l = segGrid.get(j * 4096 + i);
-          if (!l) continue;
+          const cell = segGrid.get(j * 4096 + i);
+          if (!cell) continue;
+          // the segment end points are read from the cell's own flat copy (xy: ax, ay, bx, by per
+          // entry), not through r.pts (road objects come in many shapes: a megamorphic load each)
+          const l = cell.rs, xy = cell.xy;
           for (let k = 0; k < l.length; k += 2) {
-            const r = l[k], si = l[k + 1];
+            const r = l[k];
             if (pred && !pred(r)) continue;
-            const a = r.pts[si], b = r.pts[si + 1];
-            const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
-            let t = ((x - a[0]) * dx + (y - a[1]) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
-            const qx = a[0] + dx * t, qy = a[1] + dy * t, d2 = (qx - x) * (qx - x) + (qy - y) * (qy - y);
-            if (d2 < bd2) { bd2 = d2; br = r; bs = si; bt = t; bx = qx; by = qy; }
+            const o = k * 2, ax = xy[o], ay = xy[o + 1];
+            const dx = xy[o + 2] - ax, dy = xy[o + 3] - ay, l2 = dx * dx + dy * dy || 1;
+            let t = ((x - ax) * dx + (y - ay) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+            const qx = ax + dx * t, qy = ay + dy * t, d2 = (qx - x) * (qx - x) + (qy - y) * (qy - y);
+            if (d2 < bd2) { bd2 = d2; br = r; bs = l[k + 1]; bt = t; bx = qx; by = qy; }
           }
         }
       }
@@ -871,9 +996,12 @@
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
       const l = keepGrid.get(j * 4096 + i);
       if (!l) continue;
+      const x1 = x + w, y1 = y + h;
       for (const k of l) {
-        const qx = U.clamp(k.x, x, x + w), qy = U.clamp(k.y, y, y + h);
-        if ((qx - k.x) ** 2 + (qy - k.y) ** 2 < k.r * k.r) return false;
+        const kx = k.x, ky = k.y;
+        const qx = kx < x ? x : kx > x1 ? x1 : kx, qy = ky < y ? y : ky > y1 ? y1 : ky; // U.clamp
+        const ex = qx - kx, ey = qy - ky;
+        if (ex * ex + ey * ey < k.r * k.r) return false;
       }
     }
     return true;
@@ -1541,6 +1669,7 @@
     try { buildPotholes(D); } catch (e) { N.err('world.potholes', e); }
     mark('16');
     soil = null;
+    for (const k in PIX) PIX[k] = null;
     mapCache.clear();
     prepPainter();
     N.render.setGroundPainter(paintGround);
@@ -1625,7 +1754,11 @@
           const gr = g.createRadialGradient(px, py, 0, px, py, r);
           gr.addColorStop(0, 'rgba(' + c + ',' + (light ? 0.05 : 0.035) + ')'); gr.addColorStop(1, 'rgba(' + c + ',0)');
           g.fillStyle = gr;
-          for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) g.fillRect(px - r + ox, py - r + oy, r * 2, r * 2);
+          // the dab and its wrapped copies (seamless tile); copies wholly off the canvas draw nothing: skip them
+          for (let ox = -w; ox <= w; ox += w) {
+            if (px + r + ox <= 0 || px - r + ox >= w) continue;
+            for (let oy = -h; oy <= h; oy += h) if (py + r + oy > 0 && py - r + oy < h) g.fillRect(px - r + ox, py - r + oy, r * 2, r * 2);
+          }
         }
       }
     });
@@ -1700,6 +1833,48 @@
   }
   const inBB = (bb, x0, y0, x1, y1) => bb[2] >= x0 && bb[0] <= x1 && bb[3] >= y0 && bb[1] <= y1;
 
+  // Ordered bucket index for the chunk painter: a list's items (by index) bucketed on the BK grid by a
+  // bounding box. query() returns the indices of the items in the buckets a rect touches, ascending
+  // (= list order, so painting order is unchanged); callers keep their exact overlap test. The painter
+  // used to scan every road (3.4k, a megamorphic `r._bb` load each), junction, rock and landmark per chunk.
+  function bucketIndex(list, bbOf) {
+    const cells = new Array(BW * BH).fill(null);
+    for (let k = 0; k < list.length; k++) {
+      const bb = bbOf(list[k]);
+      if (!bb) continue;
+      const i0 = Math.max(0, Math.min(BW - 1, Math.floor(bb[0] / BK))), i1 = Math.max(0, Math.min(BW - 1, Math.floor(bb[2] / BK)));
+      const j0 = Math.max(0, Math.min(BH - 1, Math.floor(bb[1] / BK))), j1 = Math.max(0, Math.min(BH - 1, Math.floor(bb[3] / BK)));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) (cells[j * BW + i] || (cells[j * BW + i] = [])).push(k);
+    }
+    return { list, n: list.length, cells, mark: new Uint32Array(list.length), stamp: 0, out: [] };
+  }
+  function bucketQuery(ix, x0, y0, x1, y1) {
+    const out = ix.out, mark = ix.mark, st = ++ix.stamp;
+    out.length = 0;
+    const i0 = Math.max(0, Math.min(BW - 1, Math.floor(x0 / BK))), i1 = Math.max(0, Math.min(BW - 1, Math.floor(x1 / BK)));
+    const j0 = Math.max(0, Math.min(BH - 1, Math.floor(y0 / BK))), j1 = Math.max(0, Math.min(BH - 1, Math.floor(y1 / BK)));
+    let sorted = true;
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const l = ix.cells[j * BW + i];
+      if (!l) continue;
+      for (let k = 0; k < l.length; k++) {
+        const v = l[k];
+        if (mark[v] === st) continue;
+        mark[v] = st;
+        if (out.length && out[out.length - 1] > v) sorted = false;
+        out.push(v);
+      }
+    }
+    if (!sorted) out.sort((a, b) => a - b);
+    return out;
+  }
+  const PIX = { roads: null, parks: null, water: null, junctions: null, rocks: null, landmarks: null };
+  const pix = (k, list, bbOf) => { const ix = PIX[k]; return ix && ix.list === list && ix.n === list.length ? ix : (PIX[k] = bucketIndex(list, bbOf)); };
+  const BB_SELF = (o) => o._bb;
+  const BB_JUNCTION = (n) => { const R = n.w / 2 + 2 + 30; return [n.x - R, n.y - R, n.x + R, n.y + R]; };
+  const BB_ROCK = (rk) => [rk.x - rk.r * 2, rk.y - rk.r * 2, rk.x + rk.r * 2, rk.y + rk.r * 2];
+  const BB_LANDMARK = (lm) => { const r = (lm.plaza || 0) + Math.max(lm.w, lm.d); return [lm.x - r, lm.y - r, lm.x + r, lm.y + r]; };
+
   const ROADCOL = { arterial: '#47464c', street: '#55535a', bund: '#4c4b52', bridge: '#5d5a5c', lane: '#8a7c6a' };
   const FOOTCOL = { arterial: '#a39684', street: '#a89a86', bund: '#b4a690' };
   const PARKCOL = { grass: '#5b8a3c', garden: '#5f9140', ground: '#b38c62', plaza: '#d3c3a2', rock: '#a28468' };
@@ -1769,7 +1944,8 @@
       }
     }
     // 3. parks
-    for (const p of D.parks) {
+    for (const pk of bucketQuery(pix('parks', D.parks, BB_SELF), x0, y0, x1, y1)) {
+      const p = D.parks[pk];
       if (!inBB(p._bb, x0, y0, x1, y1)) continue;
       pathPoly(ctx, p.poly);
       if (p.surface === 'sand') { ctx.fillStyle = '#cdb489'; ctx.fill(); ctx.fillStyle = pat.speck; ctx.fill(); continue; }
@@ -1790,7 +1966,8 @@
     }
     ctx.fillStyle = pat.speck; ctx.fillRect(x0, y0, w, h);
     // 4. water: sand banks, depth, foam
-    for (const wt of D.water) {
+    for (const wk of bucketQuery(pix('water', D.water, BB_SELF), x0, y0, x1, y1)) {
+      const wt = D.water[wk];
       if (!inBB(wt._bb, x0, y0, x1, y1)) continue;
       if (wt.bank) {
         pathPoly(ctx, wt.poly);
@@ -1809,7 +1986,8 @@
       ctx.restore();
     }
     // 5. roads
-    const roads = D.roads.filter((r) => inBB(r._bb, x0, y0, x1, y1));
+    const roads = [];
+    for (const rk of bucketQuery(pix('roads', D.roads, BB_SELF), x0, y0, x1, y1)) { const r = D.roads[rk]; if (inBB(r._bb, x0, y0, x1, y1)) roads.push(r); }
     // bridge shadows on water + decks
     for (const r of roads) {
       if (r.kind !== 'bridge') continue;
@@ -1867,7 +2045,9 @@
     // first) to clear dashes/medians, then zebra crossings on street/arterial approaches
     const RANK = { lane: 0, path: 0, bund: 1, street: 1, bridge: 2, arterial: 3 };
     ctx.lineCap = 'butt';
-    for (const n of W.junctions) {
+    const JL = W.junctions;
+    for (const jk of bucketQuery(pix('junctions', JL, BB_JUNCTION), x0, y0, x1, y1)) {
+      const n = JL[jk];
       const R = n.w / 2 + 2;
       if (n.x + R + 30 < x0 || n.x - R - 30 > x1 || n.y + R + 30 < y0 || n.y - R - 30 > y1) continue;
       const inc = n.inc.map((id) => W.roads.edges[id]).sort((a, b) => (RANK[a.kind] - RANK[b.kind]) || a.w - b.w);
@@ -1920,7 +2100,8 @@
     }
     // 6. landmark plazas
     ctx.lineCap = 'round';
-    for (const lm of D.landmarks) {
+    for (const lk of bucketQuery(pix('landmarks', D.landmarks, BB_LANDMARK), x0, y0, x1, y1)) {
+      const lm = D.landmarks[lk];
       const r = (lm.plaza || 0) + Math.max(lm.w, lm.d);
       if (lm.x + r < x0 || lm.x - r > x1 || lm.y + r < y0 || lm.y - r > y1) continue;
       if (lm.plaza) {
@@ -1933,7 +2114,8 @@
     // 7. building plinths (contact darkening) and rock bases
     ctx.fillStyle = 'rgba(40,30,35,0.45)';
     for (const b of dl) ctx.fillRect(b.x - 1, b.y - 1, b.w + 2, b.d + 2);
-    for (const rk of W.rocks) {
+    for (const ri of bucketQuery(pix('rocks', W.rocks, BB_ROCK), x0, y0, x1, y1)) {
+      const rk = W.rocks[ri];
       if (rk.x + rk.r * 2 < x0 || rk.x - rk.r * 2 > x1 || rk.y + rk.r * 2 < y0 || rk.y - rk.r * 2 > y1) continue;
       ctx.beginPath(); ctx.ellipse(rk.x, rk.y + 1, rk.r * 1.25, rk.r * 1.1, 0, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(60,45,35,0.25)'; ctx.fill();
@@ -2066,14 +2248,6 @@
   const treeCache = makeLRU(500);
   W.spriteCaches = { roofCache, treeCache };
 
-  function wallSeg(b, face) {
-    switch (face) {
-      case 'N': return [b.x, b.y, b.x + b.w, b.y];
-      case 'S': return [b.x + b.w, b.y + b.d, b.x, b.y + b.d];
-      case 'W': return [b.x, b.y + b.d, b.x, b.y];
-      default: return [b.x + b.w, b.y, b.x + b.w, b.y + b.d];
-    }
-  }
   function wallPx(b, face) {
     const R = N.render;
     const dist = face === 'N' ? b.y - R.camY : face === 'S' ? b.y + b.d - R.camY : face === 'W' ? b.x - R.camX : b.x + b.w - R.camX;
@@ -2150,15 +2324,30 @@
     const wx = ax + ux * uc - R.camX, wy = ay + uy * uc - R.camY;
     const jux = ux * k, juy = uy * k, jvx = wx * Z * P, jvy = wy * Z * P;
     const px = R.W / 2 + wx * k, py = R.H / 2 + wy * k;
-    ctx.setTransform(jux, juy, jvx, jvy, px - jux * uc - jvx * vc, py - juy * uc - jvy * vc);
-    return [jux, juy, jvx, jvy, px - jux * uc - jvx * vc, py - juy * uc - jvy * vc];
+    const M = wallM;
+    M[0] = jux; M[1] = juy; M[2] = jvx; M[3] = jvy; M[4] = px - jux * uc - jvx * vc; M[5] = py - juy * uc - jvy * vc;
+    ctx.setTransform(M[0], M[1], M[2], M[3], M[4], M[5]);
+    return M;
+  }
+  // the last wall transform (scratch: drawWallDetail copies it into litWalls when a wall glows)
+  const wallM = new Float64Array(6);
+  // lit walls this frame, flat: 6 transform numbers, the Path2D, the colour (8 slots per wall)
+  function pushLit(m, path, col) {
+    litWalls.push(m[0], m[1], m[2], m[3], m[4], m[5], path, col);
   }
 
   function drawWallDetail(ctx, b, face) {
     const px = wallPx(b, face);
     if (px < 4.5) return; // thin slivers near the screen centre: plain wall reads fine
     const R = N.render;
-    const [ax, ay, bx, by] = wallSeg(b, face);
+    // the wall's ground segment (a -> b) in the wall's winding
+    let ax, ay, bx, by;
+    switch (face) {
+      case 'N': ax = b.x; ay = b.y; bx = b.x + b.w; by = b.y; break;
+      case 'S': ax = b.x + b.w; ay = b.y + b.d; bx = b.x; by = b.y + b.d; break;
+      case 'W': ax = b.x; ay = b.y + b.d; bx = b.x; by = b.y; break;
+      default: ax = b.x + b.w; ay = b.y; bx = b.x + b.w; by = b.y + b.d;
+    }
     const L = Math.hypot(bx - ax, by - ay), ux = (bx - ax) / L, uy = (by - ay) / L;
     const floors = b.floors || Math.max(1, Math.round(b.h / 10.5));
     const fh = b.h / floors;
@@ -2178,20 +2367,21 @@
           const open = !(N.clock.minutes < 9 * 60 || N.clock.minutes > 22 * 60);
           ctx.fillStyle = open ? '#3a2a22' : '#7d8088'; ctx.fill(g.gf);
           if (open) { ctx.fillStyle = '#b08850'; ctx.fill(g.gfLines); }
-          if (open && night > 0.2) litWalls.push([m, g.gfLit, '#ffc860']);
+          if (open && night > 0.2) pushLit(m, g.gfLit, '#ffc860');
         } else { ctx.fillStyle = g.gfCol; ctx.fill(g.gf); }
       }
     }
-    if (night > 0.2 && g.anyLit) litWalls.push([m, g.lit, '#ffd27a']);
+    if (night > 0.2 && g.anyLit) pushLit(m, g.lit, '#ffd27a');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   // light layer: lit windows / open shops (warm) over the night overlay
   function drawLitWalls(ctx, night) {
     ctx.globalAlpha = Math.min(1, night * 1.25);
-    for (const [m, path, col] of litWalls) {
-      ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
-      ctx.fillStyle = col; ctx.fill(path);
+    const lw = litWalls;
+    for (let i = 0; i < lw.length; i += 8) {
+      ctx.setTransform(lw[i], lw[i + 1], lw[i + 2], lw[i + 3], lw[i + 4], lw[i + 5]);
+      ctx.fillStyle = lw[i + 7]; ctx.fill(lw[i + 6]);
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
@@ -3945,13 +4135,18 @@
   }
 
   /* --------------------------------------------------------- enqueue */
+  let lampLights = [], porchLights = [];
   W.draw = function () {
     if (!W.built) return;
     const R = N.render, D = N.draw, v = R.view;
     const night = R.night || 0;
     const m = 140; // landmarks just outside the view may still cast shadows into it
-    litWalls = [];
+    litWalls.length = 0;
     const lights = R.lights;
+    // light records are recycled frame to frame (render.js drains R.lights every flush); if the last
+    // frame's were not drained, start new ones rather than rewrite records still in the list
+    if (lights.length) { lampLights = []; porchLights = []; }
+    let nLamp = 0, nPorch = 0;
     beginRoofs();
     W.queryStructures(v.x0 - m, v.y0 - m, v.x1 + m, v.y1 + m, (s) => {
       const vis = s.x1 >= v.x0 - 6 && s.x0 <= v.x1 + 6 && s.y1 >= v.y0 - 6 && s.y0 <= v.y1 + 6;
@@ -3962,13 +4157,21 @@
         return;
       }
       if (night > 0.05 && s.t === 'lamp') {
-        for (const a of s.arms) lights.push({ x: s.x + a[0] * 1.6, y: s.y + a[1] * 1.6, r: s.tube ? 46 : 64, color: s.tube ? '#bfe8ff' : '#ffa040', intensity: s.tube ? 0.75 : 0.95 });
+        for (const a of s.arms) {
+          const L = lampLights[nLamp] || (lampLights[nLamp] = { x: 0, y: 0, r: 0, color: '', intensity: 0 });
+          nLamp++;
+          L.x = s.x + a[0] * 1.6; L.y = s.y + a[1] * 1.6; L.r = s.tube ? 46 : 64; L.color = s.tube ? '#bfe8ff' : '#ffa040'; L.intensity = s.tube ? 0.75 : 0.95;
+          lights.push(L);
+        }
       }
       if (vis) R.queue('structures', R.distKey(s.cx, s.cy), sfn(s));
       if (night > 0.2 && vis && s.porch && s.cwall) {
         const c = s.cwall, f = s.front;
         const gx = f === 'W' ? c.x : f === 'E' ? c.x + c.w : c.x + c.w / 2, gy = f === 'N' ? c.y : f === 'S' ? c.y + c.h : c.y + c.h / 2;
-        lights.push({ x: (gx + s.cx) / 2, y: (gy + s.cy) / 2, r: 24, color: '#ffc870', intensity: 0.5, h: 4 });
+        const L = porchLights[nPorch] || (porchLights[nPorch] = { x: 0, y: 0, r: 24, color: '#ffc870', intensity: 0.5, h: 4 });
+        nPorch++;
+        L.x = (gx + s.cx) / 2; L.y = (gy + s.cy) / 2;
+        lights.push(L);
       }
     });
     enqueueRoofs();

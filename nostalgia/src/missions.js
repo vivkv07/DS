@@ -328,7 +328,7 @@
         if (ffing()) return;
         N.player.inventory.add(itemId);
         N.emit('item:give', { id: itemId, mission: run.id });
-        if (opts && opts.name) N.hud.toast('Got: ' + opts.name, 2600);
+        if (opts && opts.name) N.hud.toast('Got: ' + opts.name, 2600, { tag: 'item:' + run.id });
       },
       money(paise) {
         guard(run);
@@ -367,8 +367,19 @@
           run.ff = null;
           const cp = run.cpData;
           if (cp) {
-            pl.teleport(cp.x, cp.y);
-            if (cp.vehicleType && N.vehicles.TYPES[cp.vehicleType]) {
+            const V = N.vehicles, rideCp = cp.ride || (cp.ride === undefined && cp.vehicleType && V.canDrive && !V.canDrive(cp.vehicleType) ? { type: cp.vehicleType, as: null, angle: cp.angle } : null);
+            if (rideCp && V.restoreRide && V.TYPES[rideCp.type]) {
+              // A3: he was riding along (pillion / passenger / bus) at the checkpoint: back on the seat behind
+              // an NPC driver, never at the wheel. The replayed script's own ride is kept when it seated him again.
+              const cur = pl.vehicle && pl.passenger && pl.vehicle.type === rideCp.type ? pl.vehicle : null;
+              if (cur) { cur.x = cp.x; cur.y = cp.y; cur.angle = cp.angle || 0; cur.vx = cur.vy = cur.av = 0; cur.okX = null; pl.x = cp.x; pl.y = cp.y; }
+              else {
+                pl.teleport(cp.x, cp.y);
+                const v = V.restoreRide(pl, rideCp, { x: cp.x, y: cp.y }); // unlocked: this copy has no script driving it
+                if (v) run.spawned.push({ e: v, keep: false });
+              }
+            } else pl.teleport(cp.x, cp.y);
+            if (!rideCp && cp.vehicleType && N.vehicles.TYPES[cp.vehicleType]) {
               const f = N.world.findFree(cp.x, cp.y, N.vehicles.TYPES[cp.vehicleType].mode === 'boat' ? 'boat' : 'drive', 20) || cp;
               const v = N.vehicles.spawn(cp.vehicleType, f.x, f.y, cp.angle || 0, {});
               if (v) { run.spawned.push({ e: v, keep: false }); N.vehicles.enter(pl, v); }
@@ -378,7 +389,8 @@
           N.hud.toast('Checkpoint: back in the action!', 2200);
           return;
         }
-        run.checkpointData = { name, x: pl.x, y: pl.y, angle: (pl.vehicle || pl).angle || 0, vehicleType: pl.vehicle ? pl.vehicle.type : null };
+        const ride = N.vehicles.rideState ? N.vehicles.rideState(pl) : null; // riding along: retried as a passenger
+        run.checkpointData = { name, x: pl.x, y: pl.y, angle: (pl.vehicle || pl).angle || 0, vehicleType: pl.vehicle ? pl.vehicle.type : null, ride };
         N.emit('mission:checkpoint', { id: run.id, name });
       },
     };
@@ -401,6 +413,8 @@
     run.assist = opts && opts.assist ? opts.assist : null;
     run.timerBonus = helpOn(def) && (streaks.timer[id] || 0) >= TUNE.helpAfterTimerFails ? TUNE.timerBonus : 1;
     if (jc) closeJcard();
+    // item toasts still queued from the last mission would pop up mid-chase in this one
+    if (N.hud.dropToasts) N.hud.dropToasts((t) => typeof t.tag === 'string' && t.tag.indexOf('item:') === 0);
     N.emit('mission:start', { id, title: def.title, attempt: run.attempt, kind: kindOf(def) });
     if (run.attempt === 1) N.hud.banner(def.title || id, def.chapter != null ? (typeof def.chapter === 'number' ? 'Chapter ' + def.chapter : String(def.chapter)) : '', 2600, { kind: 'chapter' });
     run.meterPolicy = def.meter || 'normal';

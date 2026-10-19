@@ -2,7 +2,7 @@
  * Boot (fonts with a 1.5 s timeout, world build, systems init), title -> play, the
  * requestAnimationFrame loop with a semi-fixed update step (equal sub-steps of at most
  * 1/60 s, frame dt clamped to 0.1 s) and the per-frame draw order (ARCHITECTURE §6),
- * pause on visibility change, and N.game (newGame / continueGame / quitToTitle / snapshot).
+ * pause (and a silent save when allowed) on visibility change / pagehide, and N.game (newGame / continueGame / quitToTitle / snapshot).
  */
 (() => {
   'use strict';
@@ -149,7 +149,8 @@
       setTimeout(fin, timeout);
       try {
         if (document.fonts && document.fonts.load) {
-          Promise.all(["16px 'Yatra One'", "16px 'Baloo 2'", "16px 'VT323'"].map((f) => document.fonts.load(f).catch(() => null)))
+          // Telugu: load the glyph subset the district card's subtitle uses (unicode-range)
+          Promise.all([["16px 'Yatra One'"], ["16px 'Baloo 2'"], ["16px 'VT323'"], ["700 16px 'Noto Sans Telugu'", 'తెలుగు']].map((f) => document.fonts.load(f[0], f[1]).catch(() => null)))
             .then(() => document.fonts.ready).then(fin, fin);
         } else fin();
       } catch (e) { fin(); }
@@ -170,7 +171,6 @@
     N.player.reset();
     N.render.cam.x = N.player.x; N.render.cam.y = N.player.y;
     N.render.snapCamera();
-    N.render.warmChunks(N.player.x, N.player.y, 520);
     document.body.classList.remove('booting');
     document.body.classList.add('booted');
     N.emit('boot', {});
@@ -189,13 +189,49 @@
       if (N.menus && N.menus.title) { try { N.menus.title(); } catch (e) { N.err('menus.title', e); } }
     }
     requestAnimationFrame(frame);
+    afterBoot();
   }
 
+  // Work that used to run before the title screen and is only needed once play starts: the ground
+  // chunks around the player (newGame / continueGame warm them again anyway; this just makes that
+  // instant) and the minimap image (~3000 x 2250 px, a ~0.25 s paint that otherwise lands on the
+  // first play frame). Done in idle slices while the title screen is up, one chunk per slice.
+  function afterBoot() {
+    const ric = window.requestIdleCallback ? (fn) => window.requestIdleCallback(fn, { timeout: 2000 }) : (fn) => setTimeout(() => fn({ timeRemaining: () => 8, didTimeout: false }), 50);
+    const R = N.render, CH = 256, r = 520, px = N.player.x, py = N.player.y;
+    const todo = [];
+    const i0 = Math.max(0, Math.floor((px - r) / CH)), i1 = Math.min(Math.ceil(N.WORLD_W / CH) - 1, Math.floor((px + r) / CH));
+    const j0 = Math.max(0, Math.floor((py - r) / CH)), j1 = Math.min(Math.ceil(N.WORLD_H / CH) - 1, Math.floor((py + r) / CH));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) todo.push(i, j);
+    let k = 0, mapDone = false;
+    const slice = (dl) => {
+      if (game.started || N.state.mode !== 'title') return; // play began: newGame / continueGame did their own warm-up
+      try {
+        while (k < todo.length && (dl.didTimeout || dl.timeRemaining() > 4)) { R.warmChunks((todo[k] + 0.5) * CH, (todo[k + 1] + 0.5) * CH, 1); k += 2; }
+        if (k >= todo.length && !mapDone && (dl.didTimeout || dl.timeRemaining() > 8)) { mapDone = true; if (N.hud && N.hud.mapImage) N.hud.mapImage(); }
+      } catch (e) { N.err('boot.idle', e); mapDone = true; k = todo.length; }
+      if (k < todo.length || !mapDone) ric(slice);
+    };
+    setTimeout(() => ric(slice), 1000);
+  }
+
+  // Save (silently, when allowed) as the tab is hidden or the page goes away: mobile browsers
+  // kill background tabs without warning. hide + pagehide usually fire together: save once.
+  let lastHideSave = 0;
+  function saveOnHide(why) {
+    try {
+      const now = Date.now();
+      if (now - lastHideSave < 1000 || !game.started || !N.save || !N.save.autosave) return;
+      lastHideSave = now;
+      N.save.autosave('autosave');
+    } catch (e) { N.err('save.' + why, e); }
+  }
   // Pause when the tab is hidden; resync the clock when it comes back.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) game.pause();
+    if (document.hidden) { saveOnHide('hidden'); game.pause(); }
     last = 0;
   });
+  window.addEventListener('pagehide', () => saveOnHide('pagehide'));
 
   // Hot-reload support (optional runtime): provide a snapshot, then boot.
   try {

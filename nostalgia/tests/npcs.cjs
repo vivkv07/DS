@@ -34,7 +34,22 @@ const warnings = [];
 const fail = (msg) => { failures.push(msg); console.log('  FAIL ' + msg); };
 const warn = (msg) => { warnings.push(msg); console.log('  warn ' + msg); };
 const ok = (msg) => console.log('  ok   ' + msg);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Game-clock waits (robust on a loaded machine, where a wall-clock sleep sees fewer game frames):
+// window.__gw(secs) resolves after `secs` of GAME time (N.time.now); while the game clock is stopped
+// (title, pause menu) it counts frame time (N.time.real) instead. Both advance only as frames run, so a
+// slow machine just takes longer. The wall-clock cap (8x + 5 s) only stops a hung page from hanging the suite.
+const GW = () => {
+  window.__gw = (secs) => new Promise((res) => {
+    let acc = 0, n0 = N.time.now, r0 = N.time.real;
+    const t0 = performance.now(), cap = secs * 8000 + 5000;
+    (function chk() {
+      const dn = N.time.now - n0, dr = N.time.real - r0; n0 = N.time.now; r0 = N.time.real;
+      acc += dn > 0 ? dn : dr;
+      if (acc >= secs || performance.now() - t0 > cap) res(acc); else requestAnimationFrame(chk);
+    })();
+  });
+};
+const gwait = (pg, secs) => pg.evaluate((s) => window.__gw(s), secs);
 
 const BIBLE_CAST = ['chinnu', 'srikanth', 'amma', 'nanna', 'ammamma', 'chitti', 'bunty', 'immu', 'imran', 'abba', 'ammi', 'nani', 'ayesha', 'pasha', 'babloo',
   'faramarz', 'pochaiah', 'yadagiri', 'ramulu', 'agarwal', 'bahadur', 'kite_chacha', 'ticket_thatha', 'salim', 'vimala_maam', 'cable_babji', 'photo_uncle',
@@ -78,6 +93,7 @@ const CHOICES = [
 async function openPage(browser, V) {
   const context = await browser.newContext({ viewport: V.viewport, deviceScaleFactor: V.dpr || 1, hasTouch: !!V.touch, isMobile: !!V.touch });
   const page = await context.newPage();
+  await page.addInitScript(GW);
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push({ text: 'console.error: ' + m.text(), loc: (m.location() || {}).url || '' }); });
   page.on('pageerror', (e) => errors.push({ text: 'pageerror: ' + (e.stack || e.message), loc: e.stack || '' }));
@@ -91,7 +107,7 @@ async function openPage(browser, V) {
     if (N.traffic && N.traffic.setDensity) N.traffic.setDensity(0.25);
   });
   await page.waitForFunction(() => N.state.mode === 'play', null, { timeout: 8000 });
-  await sleep(400);
+  await gwait(page, 0.4);
   return { context, page, errors };
 }
 function checkErrors(tag, errors, nerr) {
@@ -204,7 +220,7 @@ async function desktop(browser) {
       }, { ids, opts });
       const ww = await page.evaluate(() => document.getElementById('__sheet').scrollWidth);
       await page.setViewportSize({ width: Math.max(1000, ww), height: Math.min(4000, h + 4) });
-      await sleep(120);
+      await gwait(page, 0.12);
       await page.screenshot({ path: path.join(OUT, name + '.png') });
       await page.evaluate(() => { const s = document.getElementById('__sheet'); if (s) s.remove(); delete N.flags.year; });
       await page.setViewportSize({ width: 1280, height: 720 });
@@ -240,35 +256,35 @@ async function desktop(browser) {
       return { placed: placed.length, of: ids.length };
     });
     if (r.placed !== r.of) fail('world: spawned ' + r.placed + '/' + r.of); else ok('spawned ' + r.placed + ' characters at playground_1');
-    await sleep(700);
+    await gwait(page, 0.7);
     await shot('world_cast_day');
     await page.evaluate(() => { N.flags.year = 2026; });
-    await sleep(300);
+    await gwait(page, 0.3);
     await shot('world_cast_2026');
     await page.evaluate(() => { delete N.flags.year; for (const a of N.npcs.all()) N.npcs.despawn(a); N.render.camOverride = null; });
     // schedules: regulars around the colony at noon
     const s = await page.evaluate(async () => {
       N.debug.teleport('home');
-      await new Promise((r) => setTimeout(r, 1500));
+      await __gw(1.5);
       return N.npcs.all().map((a) => a.key + (a.level ? '^' + a.level : ''));
     });
     const need = ['aunty', 'aunty_2', 'aunty_3', 'ammamma', 'agarwal', 'salim'];
     const lack = need.filter((k) => s.indexOf(k) < 0);
     if (lack.length) fail('colony schedules missing: ' + lack.join(', ') + ' (have ' + s.join(', ') + ')'); else ok('colony regulars by schedule: ' + s.join(', '));
     await page.evaluate(() => { const p = N.places.playground_1; N.render.camOverride = { x: p.x - 10, y: p.y - 30, zoom: 2.4, snap: true }; });
-    await sleep(500);
+    await gwait(page, 0.5);
     await shot('world_aunty_bench');
     // Patang Chacha on his roof + Faramarz at his café (Old City)
     const oc = await page.evaluate(async () => {
       N.debug.teleport('gulzar_houz');
-      await new Promise((r) => setTimeout(r, 1500));
+      await __gw(1.5);
       const k = N.npcs.get('kite_chacha'), f = N.npcs.get('faramarz');
       if (k) N.render.camOverride = { x: k.x, y: k.y + 10, zoom: 2.4, snap: true };
       return { kite: k ? { x: Math.round(k.x), y: Math.round(k.y), level: k.level || null } : null, faramarz: f ? { x: Math.round(f.x), y: Math.round(f.y) } : null, cafe19: !!(N.places.irani_cafe_19 || N.places.cafe_noor_e_iran) };
     });
     if (!oc.kite) fail('Patang Chacha not on his roof by schedule'); else ok('Patang Chacha at ' + JSON.stringify(oc.kite));
     if (oc.cafe19 && !oc.faramarz) fail('Faramarz uncle not at irani_cafe_19'); else if (!oc.cafe19) warn('irani_cafe_19 not in the map yet: Faramarz waits for it'); else ok('Faramarz uncle at ' + JSON.stringify(oc.faramarz));
-    await sleep(400);
+    await gwait(page, 0.4);
     await shot('world_patang_roof');
     await page.evaluate(() => { N.render.camOverride = null; N.debug.teleport('home'); });
   }
@@ -276,21 +292,21 @@ async function desktop(browser) {
   /* ---------------------------------------------------------- talk */
   if (want('talk')) {
     await page.evaluate(() => { N.debug.teleport('playground_1'); N.npcs.spawn('immu', 'player', { idle: 'stand' }); });
-    await sleep(400);
+    await gwait(page, 0.4);
     const lab = await page.evaluate(() => N.input.actionLabel);
     if (lab !== 'Talk to Immu') fail('talk label: ' + lab); else ok('ACTION label "' + lab + '"');
     await page.keyboard.press('KeyE');
-    await sleep(250);
+    await gwait(page, 0.25);
     const c1 = await page.evaluate(() => ({ open: N.dialogue.isOpen(), cur: N.dialogue.current, name: document.querySelector('#dialogue .dlg-name').textContent, right: document.querySelector('#dialogue').classList.contains('right'), mode: N.state.mode }));
     if (!c1.open || !c1.cur || c1.cur.speaker !== 'immu' || c1.name !== 'Immu') fail('talking to Immu did not open his line: ' + JSON.stringify(c1));
     else ok('E opens Immu’s line: “' + c1.cur.text + '” (mode ' + c1.mode + ', left side ' + !c1.right + ')');
-    await sleep(600);
+    await gwait(page, 0.6);
     await shot('talk_immu');
-    for (let i = 0; i < 4 && (await page.evaluate(() => N.dialogue.isOpen())); i++) { await page.keyboard.press('KeyE'); await sleep(200); }
+    for (let i = 0; i < 4 && (await page.evaluate(() => N.dialogue.isOpen())); i++) { await page.keyboard.press('KeyE'); await gwait(page, 0.2); }
     if (await page.evaluate(() => N.dialogue.isOpen())) fail('dialogue did not close after E'); else ok('E advances and closes');
     // the hero speaks from the right
     await page.evaluate(() => { N.dialogue.say('chinnu', 'Copy, Agent Immu. *Saddi* ready. *Dheel*... *dheel*... *khench!*', { mood: 'happy' }); });
-    await sleep(900);
+    await gwait(page, 0.9);
     const side = await page.evaluate(() => ({ right: document.querySelector('#dialogue').classList.contains('right'), name: document.querySelector('#dialogue .dlg-name').textContent }));
     if (!side.right) fail('chinnu not on the right'); else ok('the hero (' + side.name + ') speaks from the right');
     await shot('talk_chinnu_right');
@@ -302,15 +318,15 @@ async function desktop(browser) {
       N.hints.start('__test_clue', { clue: 'Find the clock tower that talks with half its faces.', answer: 'mozamjahi_market', name: 'Mozamjahi Market' });
       const out = {};
       N.npcs.spawn('aunty_2', 'player', { idle: 'stand' });
-      await new Promise((r) => setTimeout(r, 300));
+      await __gw(0.3);
       out.label = N.input.actionLabel;
       N.npcs.talkTo('aunty_2');
-      await new Promise((r) => setTimeout(r, 100));
+      await __gw(0.1);
       out.aunty = N.dialogue.current && N.dialogue.current.text;
-      N.dialogue.cancel(); await new Promise((r) => setTimeout(r, 300));
+      N.dialogue.cancel(); await __gw(0.3);
       N.npcs.spawn('ammamma', 'player', { idle: 'sit' });
       N.npcs.talkTo('ammamma');
-      await new Promise((r) => setTimeout(r, 100));
+      await __gw(0.1);
       out.ammamma = N.dialogue.current && N.dialogue.current.text;
       N.dialogue.cancel();
       N.hints.stop();
@@ -337,7 +353,7 @@ async function desktop(browser) {
         const iv = setInterval(() => { samples++; if (!N.world.isWalkable(a.x, a.y)) bad++; }, 100);
         const t0 = performance.now();
         const tgt = P[to];
-        const res = await Promise.race([N.npcs.walkTo('walker_' + id, to, opts), new Promise((r) => setTimeout(() => r('timeout'), 60000))]);
+        const res = await Promise.race([N.npcs.walkTo('walker_' + id, to, opts), __gw(60 * (scale || 1)).then(() => 'timeout')]); // 60 s at x1, in game time (x scale)
         clearInterval(iv);
         N.time.scale = 1;
         N.render.follow = null;
@@ -369,7 +385,7 @@ async function desktop(browser) {
       N.render.follow = v; N.render.snapCamera();
       N.time.scale = 3;
       const t0 = performance.now();
-      const res = await Promise.race([N.npcs.driveTo('yadagiri', 'sultan_bazaar', { r: 40 }), new Promise((r) => setTimeout(() => r('timeout'), 40000))]);
+      const res = await Promise.race([N.npcs.driveTo('yadagiri', 'sultan_bazaar', { r: 40 }), __gw(40 * 3).then(() => 'timeout')]); // 40 s at x3, in game time
       N.time.scale = 1; N.render.follow = null;
       const out = { res, ms: Math.round(performance.now() - t0), type: v && v.type, label: v && v.label, left: Math.round(Math.hypot(v.x - P.sultan_bazaar.x, v.y - P.sultan_bazaar.y)), hops: a.stats.hops };
       N.npcs.despawn(a); if (v && v.alive) N.vehicles.remove(v);
@@ -385,9 +401,9 @@ async function desktop(browser) {
         try { await N.npcs.walkTo('chitti', 'koti_bus_stand'); after = 'ran on'; } catch (e) { caught = e && e.name; throw e; }
       } });
       N.missions.start('__npc_walk_test');
-      await new Promise((r) => setTimeout(r, 400));
+      await __gw(0.4);
       N.missions.abort();
-      await new Promise((r) => setTimeout(r, 300));
+      await __gw(0.3);
       N.npcs.despawn('chitti');
       return { after, caught };
     });
@@ -409,34 +425,55 @@ async function desktop(browser) {
           if (!wp) { N.input.setMove(null); d.done = true; return; }
           const dx = wp.x - v.x, dy = wp.y - v.y, L = Math.hypot(dx, dy);
           if (L < (p.vehicle ? 20 : 8)) { d.i++; return; }
-          const m = p.vehicle && d.i === d.pts.length - 1 && L < 60 ? 0.5 : 1;
+          let m = p.vehicle && d.i === d.pts.length - 1 && L < 60 ? 0.5 : 1;
+          if (p.vehicle) {
+            // a rider: take the next point once this one is behind (closer to the next than it is), ease off for turns
+            const nx = d.pts[d.i + 1];
+            if (nx && Math.hypot(nx.x - v.x, nx.y - v.y) < Math.hypot(nx.x - wp.x, nx.y - wp.y)) { d.i++; return; }
+            const turn = Math.abs(N.util.angleDiff(v.angle, Math.atan2(dy, dx)));
+            m = Math.min(m, turn > 0.9 ? 0.35 : turn > 0.45 ? 0.6 : 1);
+          }
           N.input.setMove((dx / L) * m, (dy / L) * m, true);
         },
       });
     });
+    await page.evaluate(() => { window.__falls = 0; N.on('player:fall', () => { window.__falls++; }); });
     const route = async (to, maxMs) => page.evaluate(async ({ to, maxMs }) => {
       const p = N.player, v = p.vehicle || p, t = N.places[to];
-      const pts = N.npcs.planPath(v.x, v.y, t.x, t.y);
+      // riding: follow the road graph (vehicles.js roadPath, lane points); planPath is a walker's route whose
+      // sparse waypoints the NPCs steer between, and a straight line between two of them can cut a wall
+      const pts = p.vehicle && N.vehicles.roadPath ? N.vehicles.roadPath(v.x, v.y, t.x, t.y).slice(1).map((q) => ({ x: q[0], y: q[1] })) : N.npcs.planPath(v.x, v.y, t.x, t.y);
       window.__drive = { pts, i: 0, done: false };
       const a = N.npcs.get('immu');
       let maxD = 0, rideT = 0, n = 0;
-      const t0 = performance.now();
-      while (!window.__drive.done && performance.now() - t0 < maxMs) {
-        await new Promise((r) => setTimeout(r, 100));
+      // budget in GAME time (a loaded machine walks him slower per wall second); the wall cap only stops a hung page
+      const t0 = N.time.now, w0 = performance.now(), gms = () => (N.time.now - t0) * 1000;
+      while (!window.__drive.done && gms() < maxMs && performance.now() - w0 < maxMs * 8) {
+        await __gw(0.1);
         const d = Math.hypot(a.x - N.player.x, a.y - N.player.y);
         n++; if (n > 10) maxD = Math.max(maxD, d);
         if (a.vehicle) rideT++;
       }
+      const done = window.__drive.done, ms = Math.round(gms());
       window.__drive = null; N.input.setMove(null);
-      await new Promise((r) => setTimeout(r, 1800));
-      return { done: performance.now() - t0 < maxMs, ms: Math.round(performance.now() - t0), maxD: Math.round(maxD), endD: Math.round(Math.hypot(a.x - N.player.x, a.y - N.player.y)), riding: !!a.vehicle, vtype: a.vehicle ? a.vehicle.type : null, vcolor: a.vehicle ? a.vehicle.color : null, rideT, stats: Object.assign({}, a.stats), pts: pts.length };
+      await __gw(1.8);
+      return { done, ms, maxD: Math.round(maxD), endD: Math.round(Math.hypot(a.x - N.player.x, a.y - N.player.y)), pveh: N.player.vehicle ? N.player.vehicle.type : null, falls: window.__falls || 0, riding: !!a.vehicle, vtype: a.vehicle ? a.vehicle.type : null, vcolor: a.vehicle ? a.vehicle.color : null, rideT, stats: Object.assign({}, a.stats), pts: pts.length };
     }, { to, maxMs });
-    await page.evaluate(() => { N.debug.teleport('home'); const a = N.npcs.spawn('immu', 'player', { idle: 'stand' }); N.npcs.follow('immu', N.player, { ride: true }); });
-    await sleep(300);
+    await page.evaluate(() => {
+      N.debug.teleport('home');
+      // start on the path's first point: the family Chetak is parked at the home gate, and the test's
+      // straight-line driver (no steering round vehicles) would push into it for ever
+      const t = N.places.irani_cafe_7, q = N.npcs.planPath(N.player.x, N.player.y, t.x, t.y)[0];
+      if (q) N.player.teleport(q.x, q.y);
+      N.npcs.spawn('immu', 'player', { idle: 'stand' }); N.npcs.follow('immu', N.player, { ride: true });
+    });
+    await gwait(page, 0.3);
     const f1 = await route('irani_cafe_7', 20000);
     if (!f1.done || f1.endD > 50) fail('follow on foot: ' + JSON.stringify(f1)); else ok('follow on foot: ' + f1.ms + 'ms, end gap ' + f1.endD + 'u, max gap ' + f1.maxD + 'u');
-    await page.evaluate(() => { N.debug.enterVehicle('cycle'); });
-    await sleep(300);
+    // god mode for the ride: the test's straight-line driver clips kerbs / potholes at full speed, and a fall
+    // (DHADAAM, entities.js player.fall) would put him on foot; following a rider is what this checks
+    await page.evaluate(() => { N.player.god = true; N.debug.enterVehicle('cycle'); });
+    await gwait(page, 0.3);
     const f2 = await route('koti_bus_stand', 45000);
     await page.screenshot({ path: path.join(OUT, 'follow_riding.png') });
     if (!f2.done) fail('follow ride: the player did not arrive ' + JSON.stringify(f2));
@@ -445,18 +482,18 @@ async function desktop(browser) {
     else ok('Immu rides his own ' + f2.vcolor + ' cycle: end gap ' + f2.endD + 'u, max gap ' + f2.maxD + 'u (' + f2.ms + 'ms, hops ' + f2.stats.hops + ')');
     const f3 = await page.evaluate(async () => {
       N.vehicles.exit(N.player, true);
-      await new Promise((r) => setTimeout(r, 3500));
+      await __gw(3.5);
       const a = N.npcs.get('immu');
       return { riding: !!a.vehicle, d: Math.round(Math.hypot(a.x - N.player.x, a.y - N.player.y)), parked: a.ownVehicle && a.ownVehicle.alive && !a.ownVehicle.driver, noEnter: a.ownVehicle && a.ownVehicle.noEnter };
     });
     if (f3.riding || f3.d > 60) fail('Immu did not get off after the player: ' + JSON.stringify(f3)); else ok('Immu gets off and walks over (gap ' + f3.d + 'u, his cycle parked, not borrowable: ' + f3.noEnter + ')');
-    await page.evaluate(() => { N.npcs.follow('immu', null); N.npcs.despawn('immu'); });
+    await page.evaluate(() => { N.player.god = false; N.npcs.follow('immu', null); N.npcs.despawn('immu'); });
   }
 
   /* ---------------------------------------------------------- gloss + names */
   if (want('gloss')) {
     await page.evaluate(() => { N.debug.teleport('playground_1'); N.dialogue.say('yadagiri', 'Gulzar Houz? On Sankranti? *Meter nakko, das upar.* The roads are all kites. *Arre*, {nick}, *pakka*?'); N.dialogue.advance(); });
-    await sleep(300);
+    await gwait(page, 0.3);
     const g = await page.evaluate(() => ({
       slang: Array.from(document.querySelectorAll('#dialogue .dlg-text .slang')).map((e) => [e.textContent, e.dataset.gloss || '']),
       row: Array.from(document.querySelectorAll('#dialogue .dlg-gloss .gl')).map((e) => e.textContent),
@@ -466,7 +503,7 @@ async function desktop(browser) {
     if (g.slang.length < 3 || noGloss.length) fail('slang tooltips: ' + JSON.stringify(g)); else ok('slang highlighted with tooltips: ' + g.slang.map((s) => s[0] + ' = ' + s[1]).join(' | '));
     if (g.shown === 'none' || g.row.length < 3) fail('meanings row not shown: ' + JSON.stringify(g.row)); else ok('meanings row: ' + g.row.join(' · '));
     const el = await page.$('#dialogue .dlg-text .slang');
-    if (el) { await el.hover(); await sleep(200); }
+    if (el) { await el.hover(); await gwait(page, 0.2); }
     await page.screenshot({ path: path.join(OUT, 'gloss_tooltip.png') });
     await page.evaluate(() => N.dialogue.cancel());
   }
@@ -483,7 +520,7 @@ async function desktop(browser) {
       out.label = (() => { const a = N.npcs.spawn('chinnu', 'player', { key: '__c' }); const l = a ? a.name : null; N.npcs.despawn('__c'); return l; })();
       return out;
     });
-    await sleep(500);
+    await gwait(page, 0.5);
     await page.screenshot({ path: path.join(OUT, 'names_amma_angry.png') });
     await page.evaluate(() => { N.dialogue.cancel(); N.dialogue.setNames({ nick: 'Chinnu', full: 'Srikanth' }); });
     const expect = 'RAVI KUMAR! Pintu, where is Pintu? Agent Pintu, email pintu_charminar. K. Ravi Kumar, RAVI KUMAR.';
@@ -504,7 +541,7 @@ async function desktop(browser) {
       N.npcs.bark('faramarz', '*Do chai, ek plate Osmania!*');
       N.npcs.bark('chitti', '*Mummy ki cheppesta!*');
       N.npcs.emote('pasha', '?', 8); N.npcs.emote('pochaiah', '!', 8); N.npcs.emote('ammamma', '♪', 8);
-      await new Promise((r) => setTimeout(r, 500));
+      await __gw(0.5);
       return { n: document.querySelectorAll('#barks .bark').length, txt: Array.from(document.querySelectorAll('#barks .bark-text')).map((e) => e.textContent), vis: Array.from(document.querySelectorAll('#barks .bark')).map((e) => e.style.visibility !== 'hidden' && e.getBoundingClientRect().width > 20) };
     });
     const wantB = ['Agent Chinnu! Red kite, two o’clock. Over!', 'Do chai, ek plate Osmania!', 'Mummy ki cheppesta!'];
@@ -550,7 +587,7 @@ async function lineFit(browser, V, tag) {
   // screenshots: the tallest line, the tallest choice, a right-side line
   const shotLine = async (l, n) => {
     await page.evaluate((l) => { N.dialogue.cancel(); if (l.c) N.dialogue.choice(l.s, l.t, l.c); else N.dialogue.say(l.s, l.t); N.dialogue.advance(); }, l);
-    await sleep(450);
+    await gwait(page, 0.45);
     await page.screenshot({ path: path.join(OUT, tag + '_' + n + '.png') });
   };
   await shotLine(lines.concat(CHOICES).find((l) => l.s === tallest.s && l.t === tallest.t), 'tallest_line');

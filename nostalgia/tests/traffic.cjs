@@ -48,11 +48,27 @@ const notes = [];
 const fail = (sec, msg) => { failures.push('[' + sec + '] ' + msg); console.log('  FAIL ' + msg); };
 const ok = (msg) => console.log('  ok   ' + msg);
 const note = (msg) => { notes.push(msg); console.log('  ..   ' + msg); };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Game-clock waits (robust on a loaded machine, where a wall-clock sleep sees fewer game frames):
+// window.__gw(secs) resolves after `secs` of GAME time (N.time.now); while the game clock is stopped
+// (title, pause menu) it counts frame time (N.time.real) instead. Both advance only as frames run, so a
+// slow machine just takes longer. The wall-clock cap (8x + 5 s) only stops a hung page from hanging the suite.
+const GW = () => {
+  window.__gw = (secs) => new Promise((res) => {
+    let acc = 0, n0 = N.time.now, r0 = N.time.real;
+    const t0 = performance.now(), cap = secs * 8000 + 5000;
+    (function chk() {
+      const dn = N.time.now - n0, dr = N.time.real - r0; n0 = N.time.now; r0 = N.time.real;
+      acc += dn > 0 ? dn : dr;
+      if (acc >= secs || performance.now() - t0 > cap) res(acc); else requestAnimationFrame(chk);
+    })();
+  });
+};
+const gwait = (pg, secs) => pg.evaluate((s) => window.__gw(s), secs);
 
 async function boot(browser, vp) {
   const context = await browser.newContext(vp || { viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
+  await page.addInitScript(GW);
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
@@ -86,7 +102,7 @@ async function settle(page) {
     const md = await page.evaluate(() => N.state.mode);
     if (md === 'play') return true;
     await page.evaluate(() => { try { if (N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen()) N.dialogue.advance(); } catch (e) { /* ignore */ } try { if (N.dialogue && N.dialogue.cancel && N.state.mode === 'dialogue') N.dialogue.cancel(); } catch (e) { /* ignore */ } try { if (N.shops && N.shops.lock && N.state.mode === 'dialogue' && !(N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen())) { N.shops.lock(true, 'test'); N.shops.lock(false, 'test'); } } catch (e) { /* ignore */ } });
-    await sleep(150);
+    await gwait(page, 0.15);
   }
   return false;
 }
@@ -115,7 +131,7 @@ async function run() {
     for (const s of SPOTS) {
       const at = await go(page, s.place, s.h, s.m);
       if (!at) { fail('districts', 'cannot teleport to ' + s.place); continue; }
-      await page.waitForTimeout(3600);
+      await gwait(page, 3.6);
       await shot(page, 'district_' + s.id);
       const r = await page.evaluate(() => {
         const T = N.traffic, inV = (e) => N.render.inView(e.x, e.y, 0);
@@ -145,13 +161,13 @@ async function run() {
     }
     // a close look at the street life (zoomed)
     await go(page, 'koti_bus_stand', 10, 30, { zoom: 2 });
-    await page.waitForTimeout(2500);
+    await gwait(page, 2.5);
     await shot(page, 'zoom_koti');
     await go(page, 'charminar_plaza', 17, 40, { zoom: 2 });
-    await page.waitForTimeout(2500);
+    await gwait(page, 2.5);
     await shot(page, 'zoom_charminar');
     await go(page, 'home', 8, 15, { zoom: 2 });
-    await page.waitForTimeout(2500);
+    await gwait(page, 2.5);
     await shot(page, 'zoom_colony');
     await page.evaluate(() => { N.render.baseZoom = 1; });
   }
@@ -160,7 +176,7 @@ async function run() {
   if (want('lanes')) {
     console.log('\n-- lanes (drive on the left)');
     await go(page, 'koti_bus_stand', 11, 0);
-    await page.waitForTimeout(3000);
+    await gwait(page, 3);
     let left = 0, right = 0, samples = 0;
     for (let k = 0; k < 6; k++) {
       const r = await page.evaluate(() => {
@@ -182,7 +198,7 @@ async function run() {
         return { L, R };
       });
       left += r.L; right += r.R; samples++;
-      await page.waitForTimeout(900);
+      await gwait(page, 0.9);
     }
     const tot = left + right;
     if (tot < 8) fail('lanes', 'too few vehicle samples (' + tot + ')');
@@ -196,7 +212,7 @@ async function run() {
     await page.evaluate(() => N.traffic.setDensity(2));
     for (const place of ['abids', 'charminar_plaza']) {
       await go(page, place, 21, 0);
-      await page.waitForTimeout(4000);
+      await gwait(page, 4);
       // drive slowly through the area while measuring (traffic, peds, lights)
       const r = await page.evaluate(async () => {
         const times = []; let last = performance.now();
@@ -271,12 +287,12 @@ async function run() {
     else {
       await clearEv(page);
       await page.evaluate(() => { N.input.hold('up', true); });
-      await page.waitForTimeout(2300);
+      await gwait(page, 2.3);
       await shot(page, 'meter_knockdown');
       await page.evaluate(() => { N.input.hold('up', false); N.input.hold('down', true); });
-      await page.waitForTimeout(700);
+      await gwait(page, 0.7);
       await page.evaluate(() => { N.input.hold('down', false); });
-      await page.waitForTimeout(1600);
+      await gwait(page, 1.6);
       const r = await page.evaluate(() => { clearInterval(window.__peakT); return { lvl: N.wanted.level, heat: Math.round(N.wanted.heat), peak: Math.round(window.__peak), knocked: window.__ev.filter((e) => e.n === 'ped:knocked').length, peds: N.traffic.peds.filter((p) => window.__peds.indexOf(p.id) >= 0).map((p) => ({ down: p.down, alive: p.alive })) }; });
       if (r.knocked < 2) fail('meter', 'only ' + r.knocked + ' knock-down(s)');
       else ok(r.knocked + ' pedestrian knock-downs');
@@ -298,9 +314,9 @@ async function run() {
         if (label === 'night' && L !== 2 && L !== 5) continue;
         await page.evaluate(() => { N.debug.setWanted(0); });
         await go(page, 'playground_1', h, 5);
-        await page.waitForTimeout(400);
+        await gwait(page, 0.4);
         await page.evaluate((L) => { N.debug.setWanted(L); }, L);
-        await page.waitForTimeout(L >= 3 ? 1800 : 2600);
+        await gwait(page, (L >= 3 ? 1800 : 2600) / 1000);
         const r = await page.evaluate(() => {
           const W = N.wanted, p = N.player;
           return {
@@ -321,7 +337,7 @@ async function run() {
         if (L === 5 && label === 'day' && r.mount !== 'yadagiri_auto') fail('pursuers', tag + ': Mummy should come in Yadagiri\'s auto (got ' + r.mount + ')');
         if (L === 5 && label === 'night' && !/chetak/.test(r.mount || '')) fail('pursuers', tag + ': Mummy should come pillion on Nanna\'s Chetak (got ' + r.mount + ')');
         if (L === 1 || L === 3 || L === 5) {
-          await page.waitForTimeout(1500);
+          await gwait(page, 1.5);
           await page.evaluate(() => { N.render.baseZoom = 0.85; });
           await shot(page, 'pursuers_L' + L + '_' + label);
           await page.evaluate(() => { N.render.baseZoom = 1; });
@@ -339,23 +355,26 @@ async function run() {
     await page.evaluate(() => { N.debug.setWanted(0); N.debug.setTime(11, 0); });
     // an open, road-side spot away from home
     await go(page, 'koti_bus_stand', 11, 0);
-    await page.waitForTimeout(500);
+    await gwait(page, 0.5);
     await clearEv(page);
     const money0 = await page.evaluate(() => { N.debug.give(1000); return N.player.money; });
     await page.evaluate(() => { N.debug.setWanted(3); });
     let busted = false, shotTaken = false;
     for (let i = 0; i < 230; i++) {
-      await page.waitForTimeout(120);
+      await gwait(page, 0.12);
       const r = await page.evaluate(() => ({ b: window.__ev.some((e) => e.n === 'busted'), mode: N.state.mode, sx: !!N.wanted._W.slipFx }));
       if (r.b && !shotTaken) { await shot(page, 'busted_slipper'); shotTaken = true; }
       if (r.b) { busted = true; break; }
     }
-    if (!busted) fail('busted', 'Pochaiah never caught a boy standing still for 28 s');
+    if (!busted) {
+      const why = await page.evaluate(() => { const W = N.wanted, c = W.chaser, p = N.player; return { level: W.level, mode: N.state.mode, chaser: c && { role: c.role, d: Math.round(Math.hypot(c.x - p.x, c.y - p.y)), st: c.st || c.state || null }, pursuers: (W.pursuers || []).length, t: +N.time.now.toFixed(1) }; });
+      fail('busted', 'Pochaiah never caught a boy standing still for 28 s ' + JSON.stringify(why));
+    }
     else {
-      await page.waitForTimeout(900);
+      await gwait(page, 0.9);
       const banner = await page.evaluate(() => document.body.innerText.indexOf('PAKDA GAYA') >= 0);
       await shot(page, 'busted_banner');
-      await page.waitForTimeout(2200);
+      await gwait(page, 2.2);
       await shot(page, 'busted_home');
       const r = await page.evaluate(() => {
         const h = N.places.home, p = N.player;
@@ -376,12 +395,12 @@ async function run() {
     await settle(page);
     await page.evaluate(() => { N.debug.setWanted(0); });
     await go(page, 'abids', 11, 0);
-    await page.waitForTimeout(600);
+    await gwait(page, 0.6);
     await clearEv(page);
     await page.evaluate(() => { N.debug.setWanted(5); });
     let thrown = false;
     for (let i = 0; i < 110; i++) {
-      await page.waitForTimeout(400);
+      await gwait(page, 0.4);
       const r = await page.evaluate(() => { const p = N.player, a = N.wanted.chaser; return { th: window.__ev.filter((e) => e.n === 'chappal:throw').length, fly: !!(N.wanted._W.chappal && N.wanted._W.chappal.ph === 'fly'), b: window.__ev.some((e) => e.n === 'busted'), d: a ? Math.hypot(a.x - p.x, a.y - p.y) : 1e9 }; });
       if (r.fly && !thrown) { thrown = true; await shot(page, 'chappal_flight'); }
       if (r.b) break;
@@ -392,7 +411,7 @@ async function run() {
     const r = await page.evaluate(() => ({ th: window.__ev.filter((e) => e.n === 'chappal:throw').length, hit: window.__ev.some((e) => e.n === 'chappal:hit'), dodge: window.__ev.some((e) => e.n === 'chappal:dodge'), b: window.__ev.find((e) => e.n === 'busted') }));
     if (!r.th) fail('chappal', 'Mummy never threw the chappal in 44 s');
     else ok('chappal thrown (' + r.th + ' throw events)' + (r.dodge ? ', dodged one' : '') + (r.hit ? ', hit -> busted' : r.b ? ', caught by ' + r.b.d.by : ''));
-    await page.waitForTimeout(2600);
+    await gwait(page, 2.6);
     await settle(page);
   }
 
@@ -407,7 +426,7 @@ async function run() {
     else {
       await go(page, pl, 11, 0);
       await page.evaluate(() => { N.debug.give(2000); N.debug.setWanted(2); });
-      await page.waitForTimeout(300);
+      await gwait(page, 0.3);
       const m0 = await page.evaluate(() => N.player.money);
       const how = await page.evaluate(async (pl) => {
         if (N.shops && typeof N.shops.haircut === 'function') { const r = N.shops.haircut(pl); if (r && r.then) await r; return 'shops.haircut'; }
@@ -416,8 +435,8 @@ async function run() {
       }, pl);
       // a cutscene may play: wait for it
       // (the shops card shows an 8 s progress bar and stays open afterwards; wanted.js's own fallback plays a cutscene)
-      for (let i = 0; i < 60; i++) { const st = await page.evaluate(() => ({ md: N.state.mode, l: N.wanted.level })); if (st.md === 'play' || st.l === 0) break; await page.evaluate(() => { try { if (N.menus && N.menus.abortCutscene && N.state.mode === 'cutscene') N.menus.abortCutscene(); } catch (e) { /* ignore */ } }); await sleep(250); }
-      await page.waitForTimeout(400);
+      for (let i = 0; i < 60; i++) { const st = await page.evaluate(() => ({ md: N.state.mode, l: N.wanted.level })); if (st.md === 'play' || st.l === 0) break; await page.evaluate(() => { try { if (N.menus && N.menus.abortCutscene && N.state.mode === 'cutscene') N.menus.abortCutscene(); } catch (e) { /* ignore */ } }); await gwait(page, 0.25); }
+      await gwait(page, 0.4);
       const r = await page.evaluate(() => ({ lvl: N.wanted.level, money: N.player.money, hair: N.player.status && N.player.status.hair ? N.player.status.hair.value : null }));
       await shot(page, 'barber_after');
       if (!(await settle(page))) fail('barber', 'the shop card did not close (mode ' + (await page.evaluate(() => N.state.mode)) + ')');
@@ -432,16 +451,16 @@ async function run() {
     await settle(page);
     await page.evaluate(() => { N.debug.setWanted(0); });
     await go(page, 'abids', 15, 0);
-    await page.waitForTimeout(500);
+    await gwait(page, 0.5);
     await clearEv(page);
     const m0 = await page.evaluate(() => { N.debug.give(500); const p = N.player; p.tummy = 0; p.energy = 0; return p.money; });
     let got = false;
-    for (let i = 0; i < 30; i++) { await page.waitForTimeout(250); if (await page.evaluate(() => window.__ev.some((e) => e.n === 'wasted'))) { got = true; break; } }
+    for (let i = 0; i < 30; i++) { await gwait(page, 0.25); if (await page.evaluate(() => window.__ev.some((e) => e.n === 'wasted'))) { got = true; break; } }
     if (!got) fail('wasted', 'no THAK GAYA after tummy 0 ' + JSON.stringify(await page.evaluate(() => ({ mode: N.state.mode, stack: N.state.stack ? N.state.stack.slice() : null, mission: N.missions && N.missions.active ? N.missions.active.id || true : null, tummy: N.player.tummy, starving: N.player.starving, busy: N.wanted.busy, locked: N.player.controlsLocked }))));
     else {
-      await page.waitForTimeout(700);
+      await gwait(page, 0.7);
       await shot(page, 'wasted_banner');
-      await page.waitForTimeout(3000);
+      await gwait(page, 3);
       const r = await page.evaluate(() => {
         const p = N.player;
         let near = null, bd = 1e9;
@@ -475,7 +494,7 @@ async function run() {
     });
     if (!rz) note('no temple respect zone with a forecourt in the data');
     else {
-      await page.waitForTimeout(13500);
+      await gwait(page, 13.5);
       const r2 = await page.evaluate(() => ({ heat: N.wanted.heat, inR: N.wanted.inRespect, lvl: N.wanted.level, pursuers: N.wanted.pursuers.map((a) => Math.round(N.respect.distance(a.x, a.y, N.respect.at(N.player.x, N.player.y) ? N.respect.at(N.player.x, N.player.y).zone : null) || 0)) }));
       await shot(page, 'respect_freeze');
       if (!r2.inR) fail('misc', 'not inside the respect zone ' + rz.id);
@@ -489,15 +508,15 @@ async function run() {
         const p = N.places[id];
         if (!p) continue;
         N.player.teleport(p.x, p.y);
-        await new Promise((r) => setTimeout(r, 1300));
+        await __gw(1.3);
         const f = N.traffic.flocks.find((q) => q.id === id);
         if (!f) continue;
         const b = f.birds[0];
         N.player.teleport(b.x + 30, b.y);
-        await new Promise((r) => setTimeout(r, 200));
+        await __gw(0.2);
         window.__ev.length = 0;
         N.emit('horn', { x: N.player.x, y: N.player.y, type: 'foot', vehicle: null, who: N.player });
-        await new Promise((r) => setTimeout(r, 300));
+        await __gw(0.3);
         return { id, flying: f.birds.filter((q) => q.st !== 0).length, n: f.birds.length, ev: window.__ev.filter((e) => e.n === 'pigeons:scatter').length };
       }
       return null;
@@ -510,14 +529,25 @@ async function run() {
       const f = (N.landmarks && N.landmarks.flocks || []).find((q) => q.id === 'charminar');
       if (!f) return null;
       const b = f.birds.find((q) => q.st === 0) || f.birds[0];
-      N.player.teleport(b.x - 60, b.y);
-      await new Promise((r) => setTimeout(r, 300));
-      N.input.setMove(1, 0, true); N.input.hold('run', true);
-      await new Promise((r) => setTimeout(r, 1400));
+      // come at it from the open plaza side (away from the monument): a bird on the east side with a start 60 u
+      // west of it would put him inside the Charminar's footprint, and teleport pops him out somewhere else
+      // (outward first, then turning round to either side until the start is where we asked and the run is clear)
+      const oa = Math.atan2(b.y - f.cy, b.x - f.cx);
+      for (const da of [0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8, Math.PI]) {
+        const x = b.x + Math.cos(oa + da) * 60, y = b.y + Math.sin(oa + da) * 60;
+        N.player.teleport(x, y);
+        const rc = N.world.raycast(N.player.x, N.player.y, b.x, b.y, 'walk');
+        if (Math.hypot(N.player.x - x, N.player.y - y) < 8 && !(rc && rc.hit)) break;
+      }
+      await __gw(0.3);
+      // run at that bird for 1.4 s of game time, re-aiming every 0.1 s (a straight dash east could be
+      // stopped by the monument's piers or a stall when the bird has hopped behind one)
+      N.input.hold('run', true);
+      for (let i = 0; i < 14 && b.st === 0; i++) { const dx = b.x - N.player.x, dy = b.y - N.player.y, L = Math.hypot(dx, dy) || 1; N.input.setMove(dx / L, dy / L, true); await __gw(0.1); }
       N.input.setMove(null); N.input.hold('run', false);
-      return { flying: f.birds.filter((q) => q.st !== 0).length, n: f.birds.length };
+      return { flying: f.birds.filter((q) => q.st !== 0).length, n: f.birds.length, gap: Math.round(Math.hypot(b.x - N.player.x, b.y - N.player.y)), mode: N.state.mode, locked: !!N.player.controlsLocked, pmode: N.player.mode, veh: !!N.player.vehicle };
     });
-    if (cm) { if (!cm.flying) fail('misc', 'Charminar pigeons did not lift off'); else { ok('Charminar pigeons burst into flight (' + cm.flying + '/' + cm.n + ')'); await shot(page, 'charminar_pigeons'); } }
+    if (cm) { if (!cm.flying) fail('misc', 'Charminar pigeons did not lift off ' + JSON.stringify(cm)); else { ok('Charminar pigeons burst into flight (' + cm.flying + '/' + cm.n + ')'); await shot(page, 'charminar_pigeons'); } }
     // a cow lying on the road: traffic stops / goes round, the horn makes her get up
     const cow = await page.evaluate(async () => {
       const T = N.traffic;
@@ -525,14 +555,14 @@ async function run() {
         const c = T.animals.find((a) => a.species === 'cow');
         if (c) {
           N.player.teleport(c.x + 40, c.y + 30);
-          await new Promise((r) => setTimeout(r, 600));
+          await __gw(0.6);
           const st0 = c.state;
           N.emit('horn', { x: N.player.x, y: N.player.y, type: 'foot', vehicle: null, who: N.player });
-          await new Promise((r) => setTimeout(r, 4200));
+          await __gw(4.2);
           return { st0, st1: c.state, moved: Math.round(Math.hypot(c.x - c.home.x, c.y - c.home.y)) };
         }
         N.player.teleport(N.places.charminar_plaza.x + 300 * k, N.places.charminar_plaza.y);
-        await new Promise((r) => setTimeout(r, 1500));
+        await __gw(1.5);
       }
       return null;
     });
@@ -549,9 +579,9 @@ async function run() {
     const home = await page.evaluate(async () => {
       N.debug.setWanted(0); N.debug.setTime(17, 0);
       const h = N.places.home;
-      N.player.teleport(h.x + 70, h.y); await new Promise((r) => setTimeout(r, 400));
-      N.debug.setWanted(2); await new Promise((r) => setTimeout(r, 200));
-      N.player.teleport(h.x, h.y); await new Promise((r) => setTimeout(r, 600));
+      N.player.teleport(h.x + 70, h.y); await __gw(0.4);
+      N.debug.setWanted(2); await __gw(0.2);
+      N.player.teleport(h.x, h.y); await __gw(0.6);
       return N.wanted.level;
     });
     if (home !== 0) fail('rules', 'home before 18:30 did not clear level 2 (level ' + home + ')'); else ok('home before the street lights: level 2 -> 0 ("Good boy, home on time.")');
@@ -561,14 +591,14 @@ async function run() {
       N.debug.setWanted(0);
       N.player.teleport(N.places.abids.x, N.places.abids.y);
       // mid-January is Numaish season: the curfew waits till 22:30 (systems §4.9 exemptions)
-      N.debug.setTime(21, 40); await new Promise((r) => setTimeout(r, 700));
+      N.debug.setTime(21, 40); await __gw(0.7);
       const numaish = N.wanted.curfewFloor;
       // an ordinary March night
-      N.calendar.set(2003, 3, 5, 21, 40); await new Promise((r) => setTimeout(r, 700));
+      N.calendar.set(2003, 3, 5, 21, 40); await __gw(0.7);
       const l1 = N.wanted.level, f1 = N.wanted.curfewFloor;
-      N.debug.setTime(23, 10); await new Promise((r) => setTimeout(r, 700));
+      N.debug.setTime(23, 10); await __gw(0.7);
       const l2 = N.wanted.level;
-      const h = N.places.home; N.player.teleport(h.x, h.y); await new Promise((r) => setTimeout(r, 700));
+      const h = N.places.home; N.player.teleport(h.x, h.y); await __gw(0.7);
       return { numaish, l1, f1, l2, after: N.wanted.level, floor: N.wanted.curfewFloor };
     });
     if (cur.numaish !== 0 || cur.l1 < 1 || cur.l2 < 2 || cur.after !== 0) fail('rules', 'curfew: ' + JSON.stringify(cur)); else ok('curfew: Numaish night 21:40 floor 0; March 21:40 floor ' + cur.f1 + ' (level ' + cur.l1 + '), 23:10 level ' + cur.l2 + ', home clears it');
@@ -581,7 +611,7 @@ async function run() {
       const ok = N.save.save({ reason: 'mission', toast: false });
       N.debug.setWanted(0);
       const loaded = N.save.load();
-      await new Promise((r) => setTimeout(r, 300));
+      await __gw(0.3);
       return { ok, loaded, lvl: N.wanted.level };
     });
     if (!sv.ok || !sv.loaded || sv.lvl !== 2) fail('rules', 'save/load meter: ' + JSON.stringify(sv)); else ok('save/load keeps the Chappal Meter (level 2)');
@@ -605,8 +635,8 @@ async function run() {
       try { if (N.calendar && N.calendar.set) N.calendar.set(2003, 1, 19, 17, 0); } catch (e) { /* ignore */ }
       N.debug.setTime(17, 0); N.debug.setWanted(0);
       const pg = N.places.playground_1 || N.places.home;
-      N.player.teleport(pg.x, pg.y); await new Promise((r) => setTimeout(r, 300));
-      N.debug.setWanted(1); await new Promise((r) => setTimeout(r, 1200));
+      N.player.teleport(pg.x, pg.y); await __gw(0.3);
+      N.debug.setWanted(1); await __gw(1.2);
       const c = N.wanted.chaser;
       return { role: c && c.role, district: (N.world.districtAt(N.player.x, N.player.y) || {}).id };
     });
@@ -615,7 +645,7 @@ async function run() {
     // shops.js asks traffic for an empty auto ("AUTO!")
     const au = await page.evaluate(async () => {
       N.player.teleport(N.places.koti_bus_stand.x, N.places.koti_bus_stand.y); N.debug.setTime(11, 0);
-      await new Promise((r) => setTimeout(r, 2500));
+      await __gw(2.5);
       const v = N.traffic.claimAuto(N.player.x, N.player.y, 900);
       return v ? { type: v.type, released: !v.tr && v.controller == null, inList: N.traffic.vehicles.indexOf(v) >= 0 } : null;
     });
@@ -630,10 +660,10 @@ async function run() {
       for (const { e, s } of tries.slice(0, 4)) {
         const A = RI.nodes[s.leftOfAB ? e.a : e.b], B = RI.nodes[s.leftOfAB ? e.b : e.a];
         N.player.teleport(s.place.x + 30, s.place.y + 30); N.debug.setTime(11, 0);
-        await new Promise((r) => setTimeout(r, 300));
+        await __gw(0.3);
         const ang = Math.atan2(B.y - A.y, B.x - A.x);
         N.traffic.spawnVehicle('bus', { x: A.x + Math.cos(ang) * 6, y: A.y + Math.sin(ang) * 6, angle: ang, to: B.id });
-        for (let i = 0; i < 24 && !n; i++) await new Promise((r) => setTimeout(r, 400));
+        for (let i = 0; i < 24 && !n; i++) await __gw(0.4);
         if (n) break;
       }
       N.off('bus:stop', f);
@@ -654,7 +684,7 @@ async function run() {
     const M = await boot(browser, { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
     await M.page.evaluate(() => { N.input.device = 'touch'; document.body.classList.add('touch-on'); });
     await go(M.page, 'koti_bus_stand', 18, 0);
-    await M.page.waitForTimeout(4500);
+    await gwait(M.page, 4.5);
     const r = await M.page.evaluate(async () => {
       const times = []; let last = performance.now();
       await new Promise((res) => { let f = 0; const step = () => { const t = performance.now(); times.push(t - last); last = t; if (++f < 180) requestAnimationFrame(step); else res(); }; requestAnimationFrame(step); });
@@ -663,7 +693,7 @@ async function run() {
     });
     await shot(M.page, 'mobile_koti');
     await M.page.evaluate(() => { N.debug.setWanted(3); });
-    await M.page.waitForTimeout(2500);
+    await gwait(M.page, 2.5);
     await shot(M.page, 'mobile_chase');
     if (r.st.vehicles > 20 || r.st.peds > 32) fail('mobile', 'caps exceeded: ' + JSON.stringify(r.st));
     else ok('caps respected on touch: ' + r.st.vehicles + ' vehicles, ' + r.st.peds + ' peds');

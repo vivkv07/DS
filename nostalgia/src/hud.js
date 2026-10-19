@@ -120,7 +120,7 @@
     dom.banner = el('div', 'hud-banner', root, '<div class="b-title"></div><div class="b-sub"></div>');
     dom.bTitle = dom.banner.querySelector('.b-title');
     dom.bSub = dom.banner.querySelector('.b-sub');
-    dom.district = el('div', 'hud-district', root, '<span class="d-name"></span><span class="d-sub"></span>');
+    dom.district = el('div', 'hud-district', root, '<span class="d-name"></span><span class="d-sub" lang="te"></span>');
     dom.dName = dom.district.querySelector('.d-name');
     dom.dSub = dom.district.querySelector('.d-sub');
 
@@ -146,9 +146,9 @@
   function mapImage() {
     if (MM.img) return MM.img;
     if (!N.world.built) return null;
-    const src = N.world.renderMap(MM.ppu);
-    const c = N.render.makeCanvas(src.width, src.height), g = c.getContext('2d');
-    g.drawImage(src, 0, 0);
+    // a canvas of our own (not N.world's cached copy), graded in place: one 3000 x 2250 image, not two
+    const c = N.world.renderMap(MM.ppu, { fresh: true }), g = c.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
     // night-VHS grade: cool + darken the land, keep the roads bright
     g.globalCompositeOperation = 'multiply';
     g.fillStyle = '#a99fb4'; g.fillRect(0, 0, c.width, c.height);
@@ -178,54 +178,14 @@
   }
 
   // Route along the road graph (A*), recomputed when the target or nearest node changes.
-  const route = { key: '', pts: null, t: 0, sx: 0, sy: 0 };
+  const route = { key: '', pts: null, t: 0, sx: 0, sy: 0, a: -1, b: -1 };
+  // Walkers ignore one-way rules (every incident edge) and may cut along footpaths (x1.15).
+  // N.world.roads.route is a heap A* sized for the 15k-node map (a cross-city trip expands a few
+  // thousand nodes); the budget only stops a pathological search from stalling a frame.
+  const GPS_OPTS = { walk: true, paths: true, costs: { path: 1.15 }, maxExpand: 40000 };
   function astar(a, b) {
-    const R = N.world.roads, nodes = R.nodes, edges = R.edges;
     if (!a || !b) return null;
-    if (a === b) return [a];
-    const g = new Map(), from = new Map(), open = [[0, a.id]], closed = new Set();
-    g.set(a.id, 0);
-    const h = (n) => Math.hypot(n.x - b.x, n.y - b.y);
-    let guard = 0;
-    while (open.length && guard++ < 6000) {
-      // binary heap pop
-      const top = open[0], last = open.pop();
-      if (open.length) {
-        open[0] = last;
-        let i = 0;
-        for (;;) {
-          const l = i * 2 + 1, r = l + 1;
-          let m = i;
-          if (l < open.length && open[l][0] < open[m][0]) m = l;
-          if (r < open.length && open[r][0] < open[m][0]) m = r;
-          if (m === i) break;
-          const tmp = open[i]; open[i] = open[m]; open[m] = tmp; i = m;
-        }
-      }
-      const id = top[1];
-      if (closed.has(id)) continue;
-      if (id === b.id) {
-        const path = [nodes[id]];
-        let c = id;
-        while (from.has(c)) { c = from.get(c); path.push(nodes[c]); }
-        return path.reverse();
-      }
-      closed.add(id);
-      const n = nodes[id], gn = g.get(id);
-      // walkers ignore one-way rules: use every incident edge
-      for (const eid of n.inc) {
-        const e = edges[eid], to = e.a === id ? e.b : e.a;
-        if (closed.has(to)) continue;
-        const ng = gn + (e.len || Math.hypot(nodes[to].x - n.x, nodes[to].y - n.y)) * (e.kind === 'path' ? 1.15 : 1);
-        if (ng < (g.has(to) ? g.get(to) : Infinity)) {
-          g.set(to, ng); from.set(to, id);
-          open.push([ng + h(nodes[to]), to]);
-          let i = open.length - 1;
-          while (i > 0) { const p = (i - 1) >> 1; if (open[p][0] <= open[i][0]) break; const tmp = open[p]; open[p] = open[i]; open[i] = tmp; i = p; }
-        }
-      }
-    }
-    return null;
+    return N.world.roads.route(a, b, GPS_OPTS);
   }
   function updateRoute(dt) {
     let target = null;
@@ -241,6 +201,9 @@
     if (direct < 120) { route.pts = [[p.x, p.y], [target.x, target.y]]; return; }
     const R = N.world.roads;
     const a = R.nearestNode(p.x, p.y), b = R.nearestNode(target.x, target.y);
+    // same end nodes as the last search (riding along one road): keep the route, just move its start
+    if (a && b && route.pts && route.pts.length > 2 && route.a === a.id && route.b === b.id) { route.pts[0] = [p.x, p.y]; route.pts[route.pts.length - 1] = [target.x, target.y]; return; }
+    route.a = a ? a.id : -1; route.b = b ? b.id : -1;
     const path = astar(a, b);
     if (!path) { route.pts = [[p.x, p.y], [target.x, target.y]]; return; }
     const pts = [[p.x, p.y]];
@@ -376,12 +339,19 @@
       }
     }
     if (state.toastGap > 0) state.toastGap -= dt;
+    // a queued toast whose `until` (predicate or N.time.now deadline) lapsed is dropped unseen
+    while (state.tq.length && toastStale(state.tq[0])) state.tq.shift();
     if (!state.toasts.length && state.tq.length && !busy && !(state.toastGap > 0)) {
       const q = state.tq.shift();
       const e = el('div', 'hud-toast', dom.toasts);
       e.textContent = q.text;
-      state.toasts.push({ el: e, text: q.text, ms: q.ms, left: q.ms, shown: false, key: q.key });
+      state.toasts.push({ el: e, text: q.text, ms: q.ms, left: q.ms, shown: false, key: q.key, tag: q.tag });
     }
+  }
+  function toastStale(q) {
+    const u = q.until;
+    if (typeof u === 'function') { try { return !u(); } catch (e) { return true; } }
+    return typeof u === 'number' && N.time.now > u;
   }
   function pumpBanner(dt) {
     if (state.bannerCur) {
@@ -605,6 +575,7 @@
       text = String(text).replace(/\*([^*]+)\*/g, '$1');
       ms = ms || 2800;
       const key = opts && opts.key;
+      const until = opts && opts.until, tag = opts && opts.tag;
       const cur = state.toasts[0];
       if (cur && cur.text === text) { cur.left = Math.max(cur.left, Math.min(ms, 2000)); return; }
       // a keyed toast (e.g. 'radio') replaces the older one with the same key instead of queueing behind it
@@ -615,8 +586,22 @@
       }
       const dup = state.tq.find((q) => q.text === text);
       if (dup) { dup.ms = Math.max(dup.ms, ms); return; }
-      state.tq.push({ text, ms, key });
+      state.tq.push({ text, ms, key, until, tag });
       while (state.tq.length > 6) state.tq.shift();
+    },
+    /** Drop queued toasts (and the one showing) for which pred({text, key, tag}) is true; no pred = all. */
+    dropToasts(pred) {
+      const hit = (t) => { try { return !pred || !!pred(t); } catch (e) { return false; } };
+      const n = state.tq.length;
+      state.tq = state.tq.filter((q) => !hit(q));
+      let dropped = n - state.tq.length;
+      const cur = state.toasts[0];
+      if (cur && hit(cur)) {
+        state.toasts.shift(); dropped++;
+        const e0 = cur.el; e0.classList.remove('show'); e0.classList.add('out'); setTimeout(() => e0.remove(), 300);
+        state.toastGap = 0.18;
+      }
+      return dropped;
     },
     /** Messages waiting + showing (tests / debugging). */
     toastQueue: () => state.toasts.map((t) => t.text).concat(state.tq.map((q) => q.text)),

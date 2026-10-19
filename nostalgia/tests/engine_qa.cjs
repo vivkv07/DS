@@ -65,7 +65,7 @@ async function contract(browser) {
     const has = (o, names, where) => { for (const n of names.split(/\s+/).filter(Boolean)) T(o && o[n] !== undefined, where + '.' + n); };
     const U = N.util;
     // §5 core
-    T(typeof N.VERSION === 'string' && N.WORLD_W === 8000 && N.WORLD_H === 6000 && N.CELL === 4, 'N constants');
+    T(typeof N.VERSION === 'string' && N.WORLD_W === 15000 && N.WORLD_H === 11250 && N.CELL === 4, 'N constants (map v2: 15000 x 11250)');
     const SURF = { VOID: 0, GROUND: 1, ROAD: 2, FOOTPATH: 3, GRASS: 4, PLAZA: 5, WATER: 6, ROCK: 7, SOLID: 8, SAND: 9, BRIDGE: 10 };
     T(Object.keys(SURF).every((k) => N.SURF[k] === SURF[k]), 'N.SURF enum');
     T(typeof N.DEBUG === 'boolean' && N.DEBUG === true, 'N.DEBUG true with #debug');
@@ -95,7 +95,7 @@ async function contract(browser) {
     N.clock.day = 0; N.clock.set(12, 0); T(Math.abs(N.clock.light() - 1) < 1e-6 && !N.clock.isNight(), 'clock noon light 1');
     N.clock.set(0, 0); T(N.clock.light() === 0 && N.clock.isNight(), 'clock midnight light 0');
     N.clock.set(21, 0); T(N.clock.isNight() && N.clock.label() === '21:00', 'clock 21:00 night');
-    T(N.clock.dateLabel() === 'THU 14 JAN 1999', 'dateLabel base');
+    T(N.clock.dateLabel() === 'TUE 14 JAN 2003', 'dateLabel base (the story starts Tue 14 Jan 2003, Sankranti)');
     N.clock.minutes = savedMin; N.clock.day = savedDay;
     T(N.flags && typeof N.flags === 'object', 'N.flags');
     const pk = Object.keys(N.places); const p0 = N.places[pk[0]];
@@ -173,7 +173,7 @@ async function contract(browser) {
     // §9 input
     const I = N.input;
     fn(I, 'down pressed released consume press setMove setActionLabel hold clear anyPressed setLabel showTouch', 'N.input'); has(I, 'move analog device', 'N.input');
-    T(JSON.stringify(I.ACTIONS) === JSON.stringify('up down left right action run horn map journal pause radio'.split(' ')), 'input actions');
+    T(JSON.stringify(I.ACTIONS) === JSON.stringify('up down left right action run horn map journal pause radio view'.split(' ')), 'input actions (+ view: the 3D view toggle)');
     const K = I.KEYMAP;
     T(K.KeyE === 'action' && K.KeyF === 'action' && K.Enter === 'action' && K.ShiftLeft === 'run' && K.Space === 'horn' && K.KeyM === 'map' && K.KeyJ === 'journal' && K.Escape === 'pause' && K.KeyP === 'pause' && K.KeyQ === 'radio' && K.KeyR === 'radio' && K.KeyW === 'up' && K.ArrowLeft === 'left', 'key map per §9');
     // §10 HUD / dialogue / menus
@@ -390,8 +390,10 @@ async function bugs(browser) {
       V.remove(car); br++; i += 200;
     }
     // a boat in the middle of the lake: exit refused; removing the boat puts the player on land
-    const jt = Object.values(N.places).find((p) => p.kind === 'jetty');
-    const lake = N.WORLD_DATA.water.slice().sort((a, b) => b.poly.length - a.poly.length)[0];
+    // map v2: the boats sail on Hussain Sagar (Lumbini jetty); the water body with the most polygon points is now
+    // the Musi, whose centroid is not water
+    const jt = N.places.lumbini_jetty || Object.values(N.places).find((p) => p.kind === 'jetty');
+    const lake = N.WORLD_DATA.water.find((w) => w.id === 'hussain_sagar') || N.WORLD_DATA.water.slice().sort((a, b) => b.poly.length - a.poly.length)[0];
     let mx = 0, my = 0; for (const q of lake.poly) { mx += q[0]; my += q[1]; } mx /= lake.poly.length; my /= lake.poly.length;
     let spot = null;
     for (let r = 0; r < 600 && !spot; r += 10) for (let a = 0; a < 6.28 && !spot; a += 0.3) { const x = mx + Math.cos(a) * r, y = my + Math.sin(a) * r; if (W.isWater(x, y) && !W.collide(x, y, 60, 'boat').hit) spot = { x, y }; }
@@ -431,19 +433,26 @@ async function bugs(browser) {
     };
   });
   await page.keyboard.down('KeyW');
-  await sleep(2500);
+  { const t0 = await page.evaluate(() => N.time.now); await page.waitForFunction((a) => N.time.now > a + 2.5, t0, { timeout: 30000 }); }
   await page.keyboard.up('KeyW');
   const cam = await page.evaluate(() => { N.render.flush = N.render.__origFlush; return window.__cam.slice(30); });
   // jitter = frame-to-frame change of the car's on-screen velocity (second difference), in
   // device pixels. Rounding to whole device pixels alone gives ~0.7; the old camera (snapped to
   // the internal pixel grid, no sub-pixel shift) gives ~0.8 x scale (gx/gy = without the shift).
+  // The loop is variable-step (the world advances by each frame's real dt), so under CPU load an uneven frame
+  // moves the car further on screen for a reason that is not the camera. Compare per-frame screen velocities
+  // normalised to a 60 fps frame: (d_i / dt_i - d_(i-1) / dt_(i-1)) / 60, which equals the plain second
+  // difference when every frame is 1/60 s.
   const jitter = (kx, ky) => {
-    let sum = 0, mx = 0;
+    let sum = 0, mx = 0, n = 0;
     for (let i = 2; i < cam.length; i++) {
-      const j = Math.hypot(cam[i][kx] - 2 * cam[i - 1][kx] + cam[i - 2][kx], cam[i][ky] - 2 * cam[i - 1][ky] + cam[i - 2][ky]);
-      sum += j; mx = Math.max(mx, j);
+      const a = cam[i], b = cam[i - 1], c = cam[i - 2];
+      if (!(a.dt > 0) || !(b.dt > 0)) continue;
+      const vx = (a[kx] - b[kx]) / a.dt - (b[kx] - c[kx]) / b.dt, vy = (a[ky] - b[ky]) / a.dt - (b[ky] - c[ky]) / b.dt;
+      const j = Math.hypot(vx, vy) / 60;
+      sum += j; mx = Math.max(mx, j); n++;
     }
-    return [sum / Math.max(1, cam.length - 2), mx];
+    return [sum / Math.max(1, n), mx];
   };
   const [jit, maxJ] = jitter('sx', 'sy'), [jitGrid] = jitter('gx', 'gy');
   const sc = cam.length ? cam[0].sc : 1;
@@ -590,7 +599,7 @@ async function bugs(browser) {
     let after = 0;
     N.missions.register({ id: '__qa_leak', title: 'Leak test', script: async (m) => {
       const sp = N.WORLD_DATA.spawns.player;
-      m.vehicle('cycle', sp[0] + 30, sp[1], 0, {});
+      const qc = m.vehicle('cycle', sp[0] + 30, sp[1], 0, {}); if (qc) qc.__qaLeak = true;
       m.blip({ x: sp[0] + 400, y: sp[1] }, {});
       m.marker({ x: sp[0] + 500, y: sp[1] });
       m.timer(100, 'QA');
@@ -604,7 +613,8 @@ async function bugs(browser) {
       active: !!N.missions.active,
       blips: Array.from(N.hud.blips.keys()).filter((k) => k.startsWith('__qa_leak')).length,
       markers: N.missions.markers().filter((m) => m.kind === 'goal').length,
-      ents: N.entities.all.filter((e) => e.kind === 'vehicle' && e.type === 'cycle' && !e.seeded).length,
+      // only the mission's own cycle (traffic now rides plain 'cycle's too)
+      ents: N.entities.all.filter((e) => e.kind === 'vehicle' && e.__qaLeak && e.alive !== false).length,
       timer: N.hud.timerValue ? N.hud.timerValue() : null,
       objective: N.hud.objectiveText, dialogue: N.dialogue.isOpen(), mode: N.state.mode,
     });
@@ -697,7 +707,7 @@ async function bugs(browser) {
     N.clock.minutes = 720; N.clock.frozen = true;
     return out;
   });
-  check(ck.a.label === '00:01' && ck.a.day === 1 && ck.a.date === 'FRI 15 JAN 1999' && ck.a.days === 1, 'clock wraps at midnight to the next day', ck.a);
+  check(ck.a.label === '00:01' && ck.a.day === 1 && ck.a.date === 'WED 15 JAN 2003' && ck.a.days === 1, 'clock wraps at midnight to the next day', ck.a);
   check(ck.b === '00:30' && ck.c === '23:00' && ck.d === '23:59' && ck.e.day === 5, 'clock set/label wrap', ck);
   check(isFinite(ck.f.light) && ck.f.label === '23:30', 'negative minutes still sane', ck.f);
 
@@ -903,8 +913,11 @@ async function build(browser) {
   const { context, page, errors } = await openPage(browser, DIST);
   const info = await page.evaluate(() => ({ scripts: document.querySelectorAll('script[src]').length, links: Array.from(document.querySelectorAll('link[rel=stylesheet]')).map((l) => l.href) }));
   check(info.scripts === 0 && info.links.every((h) => /fonts\.googleapis/.test(h)), 'dist page has no external scripts / stylesheets except Google Fonts', info);
+  // PLAY opens the story's prologue (menus.quickStart skips the name card under automation): SKIP it
   await page.click('#title-start');
-  await page.waitForFunction(() => N.state.mode === 'play', null, { timeout: 5000 });
+  await page.waitForFunction(() => N.state.mode === 'play' || N.state.mode === 'cutscene', null, { timeout: 15000 });
+  if (await page.evaluate(() => N.state.mode === 'cutscene')) await page.click('.cs-skip');
+  await page.waitForFunction(() => N.state.mode === 'play', null, { timeout: 15000 });
   await page.evaluate(() => N.debug.enterVehicle('auto'));
   await page.keyboard.down('KeyW'); await sleep(900); await page.keyboard.up('KeyW');
   const s = await page.evaluate(() => N.debug.state());

@@ -5,6 +5,8 @@
  * and CPU throttling.
  *
  *   node nostalgia/tools/perf/measure.cjs --sites <dir> --variant a --profile slow4g --cpu 4
+ *   node nostalgia/tools/perf/measure.cjs [rootDir] [--runs 3]   (no --sites: the runtime bench of a
+ *        checkout, tools/perf/bench.cjs: world build, boot, heap, night frame times, allocation rate)
  *        [--runs 1] [--steps title,play,frames2d,3d,frames3d,repeat,offline] [--out <dir>] [--fonts <dir>]
  *
  * Profiles = Chrome DevTools presets (devtools-frontend front_end/core/sdk/NetworkManager.ts):
@@ -37,6 +39,9 @@ const fs = require('fs');
 const os = require('os');
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 const { startServer } = require('./serve.cjs');
+
+// Without --sites: the runtime bench of a checkout (file://, see tools/perf/bench.cjs).
+if (process.argv.indexOf('--sites') < 0) { require('./bench.cjs'); return; }
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const SITES = path.resolve(arg('--sites'));

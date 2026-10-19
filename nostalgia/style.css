@@ -36,6 +36,7 @@
   --font-display: 'Yatra One', 'Baloo 2', system-ui, sans-serif;
   --font-body: 'Baloo 2', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-osd: 'VT323', ui-monospace, 'Courier New', monospace;
+  --font-telugu: 'Noto Sans Telugu', 'Nirmala UI', 'Gautami', 'Telugu Sangam MN', 'Baloo 2', system-ui, sans-serif;
   /* safe areas */
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
@@ -670,7 +671,7 @@ body.touch-on .hud-stats { top: calc(56px + var(--safe-t)); right: calc(10px + v
   color: var(--whitewash);
   text-shadow: -2px -2px 0 var(--auto-black), 2px -2px 0 var(--auto-black), -2px 2px 0 var(--auto-black), 2px 2px 0 var(--auto-black), 4px 4px 0 rgba(42, 140, 130, 0.95);
 }
-.hud-district .d-sub { margin-top: 2px; font-family: var(--font-body); font-weight: 600; font-size: 17px; color: var(--osd); text-shadow: 1px 1px 0 var(--osd-shadow), 0 0 4px rgba(0, 0, 0, 0.8); }
+.hud-district .d-sub { margin-top: 2px; font-family: var(--font-telugu); font-weight: 600; font-size: 17px; color: var(--osd); text-shadow: 1px 1px 0 var(--osd-shadow), 0 0 4px rgba(0, 0, 0, 0.8); }
 .hud-district .d-sub:empty { display: none; }
 
 /* ---- minimap (bottom-left on desktop) */
@@ -1969,7 +1970,7 @@ body.reduced-motion .sc-vhs-mode { animation: none; }
   font-family: var(--font-hand); font-weight: 700; font-size: 25px; line-height: 1.2; text-align: left;
   color: var(--mn-ball); background: transparent; border: 0; border-radius: 3px;
 }
-.jc-trk::before { counter-increment: trk; content: 'A' counter(trk); flex: none; width: 30px; font-family: var(--font-osd); font-weight: 400; font-size: 18px; color: #8a8379; }
+.jc-trk::before { counter-increment: trk; content: 'A' counter(trk); flex: none; width: 30px; font-family: var(--font-osd); font-weight: 400; font-size: 18px; color: var(--mn-pencil); }
 .jc-trk i { flex: none; width: 38px; font-style: normal; font-family: var(--font-osd); font-size: 24px; color: var(--mn-red); }
 .jc-trk b { flex: none; font-weight: 700; }
 .jc-trk em {
@@ -1987,6 +1988,8 @@ body.reduced-motion .sc-vhs-mode { animation: none; }
 .jc-confirm p { margin: 0 0 10px; font-family: var(--font-hand); font-weight: 700; font-size: 22px; color: var(--mn-red); }
 .jc-confirm p span { display: block; font-weight: 400; font-size: 17px; color: var(--mn-pencil); }
 .jc-cbtns { display: flex; flex-wrap: wrap; gap: 12px; }
+.jc-newer { margin: 6px 0 2px; padding: 4px 8px; font-family: var(--font-hand); font-weight: 700; font-size: 16px; line-height: 1.25; color: var(--mn-red); border-left: 3px solid var(--mn-red); background: rgba(255, 255, 255, 0.35); }
+.jc-newer[hidden] { display: none; }
 .jc-scribble { position: absolute; right: 18px; bottom: 0; margin: 0; font-family: var(--font-hand); font-size: 22px; color: var(--mn-pencil); transform: rotate(-7deg); opacity: 0.85; pointer-events: none; }
 .mn-title .jc-front:has(#title-start:focus) .reel, .jc.rolling .reel { animation: mn-spin 1.4s linear infinite; }
 .jc.rolling .reel { animation-duration: 0.45s; }
@@ -3270,6 +3273,43 @@ body.cl-vf-on #hud, body.cl-vf-on #touch, body.cl-vf-on .cl-chip { visibility: h
 body.reduced-motion .pg-hud.show { animation: none; }
 /* === end playground_games === */
 
+/* === high contrast === (settings "High-contrast HUD": menus.js toggles body.high-contrast)
+   Brighter text, near-opaque panels and hard black outlines on the HUD, dialogue, toasts and menus. */
+body.high-contrast {
+  --ink: #ffffff;
+  --ink-dim: #efe6d4;
+  --osd: #ffffff;
+  --panel: rgba(8, 5, 10, 0.97);
+  --panel-edge: var(--auto-yellow);
+  --mn-pencil: #2b2724;
+  --mn-ball: #10257a;
+}
+body.high-contrast .hud-obj, body.high-contrast .hud-toast {
+  font-weight: 700;
+  background: rgba(8, 5, 10, 0.96);
+  outline: 2px solid var(--whitewash);
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+}
+body.high-contrast .osd-line, body.high-contrast .hud-osd, body.high-contrast .hud-timer, body.high-contrast .hud-district .d-sub {
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+}
+body.high-contrast .tin { box-shadow: 0 0 0 2px var(--whitewash), 4px 4px 0 var(--apsrtc-red); }
+/* (the paper skins - chit, email - already print dark ink on light paper: only the ring) */
+body.high-contrast .dlg:not(.style-chit):not(.style-email) .dlg-box {
+  background: rgba(8, 5, 10, 0.99);
+  box-shadow: 0 0 0 3px var(--spk), 0 0 0 6px var(--whitewash), 7px 7px 0 6px rgba(0, 0, 0, 0.6);
+}
+body.high-contrast .dlg.style-chit .dlg-box, body.high-contrast .dlg.style-email .dlg-box { outline: 3px solid var(--auto-black); }
+body.high-contrast .dlg:not(.style-chit):not(.style-email):not(.style-radio) .dlg-text { font-weight: 600; color: var(--ink); text-shadow: 1px 1px 0 #000, -1px 0 0 #000; }
+body.high-contrast .dlg:not(.style-chit):not(.style-email) .dlg-text .slang .c.on { border-bottom-color: var(--auto-yellow); border-bottom-style: solid; }
+body.high-contrast .dlg:not(.style-chit):not(.style-email) .dlg-gloss { color: var(--ink); }
+body.high-contrast .dlg-choice.sel { outline: 3px solid var(--whitewash); outline-offset: 2px; }
+body.high-contrast .mn-btn:focus-visible, body.high-contrast .mn-btn:focus,
+body.high-contrast .sign-btn:focus-visible, body.high-contrast .st-seg button:focus-visible { outline: 3px solid var(--whitewash); outline-offset: 3px; box-shadow: 0 0 0 6px var(--auto-black); }
+body.high-contrast .mn-keys { color: var(--ink); text-shadow: 1px 1px 0 #000, -1px -1px 0 #000; }
+body.high-contrast .st-l small { color: #2b2724; }
+body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
+/* === end high contrast === */
 /* === streetfood === (owned by streetfood.js: the optional debug readout of the street-food scene
    director, N.streetfood.debugHud(true) or Alt+F with #debug; nothing else of the scenes is DOM) */
 .sf-debug {

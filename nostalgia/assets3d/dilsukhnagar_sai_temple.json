@@ -1,0 +1,54 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 46632,
+ "clips": {},
+ "family": "landmark",
+ "file": "dilsukhnagar_sai_temple.glb",
+ "front": "-Y",
+ "id": "dilsukhnagar_sai_temple",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 45.5,
+ "kit": 1,
+ "materials": [
+  "M_dilsukhnagar_sai_temple",
+  "M_dilsukhnagar_sai_temple_sai_board",
+  "M_dilsukhnagar_sai_temple_lamp_lens@night"
+ ],
+ "max": [
+  34.5,
+  23.5,
+  47.25
+ ],
+ "meta": {
+  "draw": "sai_temple",
+  "face": "n",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   70,
+   48
+  ],
+  "height": 51.0
+ },
+ "min": [
+  -34.5,
+  -24.95,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_worship",
+ "size": [
+  69.0,
+  48.45,
+  47.25
+ ],
+ "tint": null,
+ "tris": 404,
+ "units": "u",
+ "up": "Z"
+}

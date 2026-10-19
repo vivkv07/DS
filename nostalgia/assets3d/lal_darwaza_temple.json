@@ -1,0 +1,56 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 48964,
+ "clips": {},
+ "family": "landmark",
+ "file": "lal_darwaza_temple.glb",
+ "front": "-Y",
+ "id": "lal_darwaza_temple",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 47.8,
+ "kit": 1,
+ "materials": [
+  "M_lal_darwaza_temple",
+  "M_lal_darwaza_temple_ld_board",
+  "M_lal_darwaza_temple_lamp_lens@night"
+ ],
+ "max": [
+  19.75,
+  19.75,
+  24.942
+ ],
+ "meta": {
+  "face": "n",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   40,
+   40
+  ],
+  "height": 51.0,
+  "landmark": "lal_darwaza_temple"
+ },
+ "min": [
+  -19.75,
+  -20.22,
+  -0.1
+ ],
+ "notes": [
+  "gate passage is open (no COL proxy over it): fps can walk through the red arch"
+ ],
+ "script": "_lm_worship",
+ "size": [
+  39.5,
+  39.97,
+  25.042
+ ],
+ "tint": null,
+ "tris": 360,
+ "units": "u",
+ "up": "Z"
+}

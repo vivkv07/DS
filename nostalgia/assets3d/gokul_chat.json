@@ -1,0 +1,52 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 21088,
+ "clips": {},
+ "family": "landmark",
+ "file": "gokul_chat.glb",
+ "front": "-Y",
+ "id": "gokul_chat",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 20.6,
+ "kit": 1,
+ "materials": [
+  "M_gokul_chat",
+  "M_gokul_chat_sheet@night"
+ ],
+ "max": [
+  16.3,
+  12.0,
+  40.1
+ ],
+ "meta": {
+  "face": "s",
+  "fit": "footprint",
+  "footprint": [
+   34,
+   24
+  ],
+  "height": 39.0,
+  "landmark": "gokul_chat"
+ },
+ "min": [
+  -16.3,
+  -12.2,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_city",
+ "size": [
+  32.6,
+  24.2,
+  40.1
+ ],
+ "tint": null,
+ "tris": 106,
+ "units": "u",
+ "up": "Z"
+}

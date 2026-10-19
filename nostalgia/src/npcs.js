@@ -1356,7 +1356,18 @@
   function bark(key, text, opts) {
     const a = typeof key === 'object' ? key : registry.get(key);
     if (!a || !N.dialogue || !N.dialogue.bark) return null;
-    return N.dialogue.bark(a, text, Object.assign({ speaker: a.npcId }, opts || {}));
+    const r = N.dialogue.bark(a, text, Object.assign({ speaker: a.npcId }, opts || {}));
+    shareBarkCooldown(a);
+    return r;
+  }
+  // NPCs standing together (Pasha + Babloo) don't talk over each other: one bark pushes the
+  // ambient bark cooldown of everyone within 40 u out to at least the barker's own
+  function shareBarkCooldown(a) {
+    const cd = Math.max(a.barkT || 0, 6);
+    for (const b of registry.values()) {
+      if (b === a || !b.alive || Math.hypot(b.x - a.x, b.y - a.y) > 40) continue;
+      b.barkT = Math.max(b.barkT || 0, cd);
+    }
   }
 
   /* ---------------------------------------------------------------- talk */

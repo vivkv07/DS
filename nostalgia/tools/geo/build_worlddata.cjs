@@ -13,6 +13,8 @@
  *   design/geo/terrain.json      hills, rock fields (SRTM via AWS Terrain Tiles, OSM)
  *   design/geo/osm_streets.json  every OSM street (residential infill for the built-up districts)
  *   design/geo/osm_landuse.json  real park / ground shapes (Public Gardens, Lumbini, NTR Gardens, ...)
+ *   design/geo/landmarks_added.json  landmarks with no v1 record (HITEC office block, Indira / Sanjeevaiah Park
+ *                                gates): placed exactly as given, locked, after the v1 sites
  *   tools/geo/project.cjs        lat/lon -> world units (15000 x 11250 u, smooth monotonic warp)
  *
  * Usage:
@@ -61,6 +63,7 @@ const readJ = (f) => JSON.parse(fs.readFileSync(path.join(ROOT, 'design/geo', f)
 const DIST = readJ('districts.json'), PLJ = readJ('places.json'), ROADS = readJ('roads.json'), WATER = readJ('water.json');
 const RAIL = readJ('rail.json'), TERR = readJ('terrain.json'), OSMST = readJ('osm_streets.json'), OSMLU = readJ('osm_landuse.json');
 const PLACES = PLJ.places;
+const ADDED_LM = (fs.existsSync(path.join(ROOT, 'design/geo/landmarks_added.json')) ? readJ('landmarks_added.json').landmarks : []) || [];
 
 /* ===================================================================== v1 map */
 function loadV1() {
@@ -1055,10 +1058,17 @@ function snapShop(l, fr) {
   moves.push({ id: l.id, kind: 'shop', moved: Math.round(Math.hypot(st.x - cx, st.y - cy)), from: c0 });
   return true;
 }
+// explicit fronts where the automatic turn picks the wrong street: Sandhya and Odeon at RTC X Roads would face
+// each other across a ~4 u gap (Sandhya fronts Chikkadpally Road to its east, Odeon the lane to its west)
+const FACE_FIX = { sandhya_theatre: 'e', odeon_theatre: 'w' };
 function placeSite(l) {
   const c0 = landmarkCentre(l.id) || (() => { warn('no real position for landmark ' + l.id); return [l.x, l.y]; })();
-  // turn generic buildings to face their street when the v1 face side has no street
-  if (l.face && REFACE_OK.has(l.draw) && !l.solids && !l.noSolid) {
+  if (FACE_FIX[l.id] && l.face) {
+    const f = FACE_FIX[l.id], ns0 = l.face === 'n' || l.face === 's', ns1 = f === 'n' || f === 's';
+    if (ns0 !== ns1) { const t = l.w; l.w = l.d; l.d = t; }
+    l.face = f;
+  } else if (l.face && REFACE_OK.has(l.draw) && !l.solids && !l.noSolid) {
+    // turn generic buildings to face their street when the v1 face side has no street
     const sideHas = (f) => { const v = FACE[f], e = (v[0] ? l.w : l.d) / 2; for (let d = e + 6; d <= e + 70; d += 8) { const x = c0[0] + v[0] * d, y = c0[1] + v[1] * d; if (OCC.get(x, y) === 1) return d - e; } return Infinity; };
     const cur = sideHas(l.face);
     if (cur === Infinity) {
@@ -1087,6 +1097,17 @@ function placeAll(list) {
 }
 // sites first (against the curated streets), then the infill is laid around them, then the shops
 placeAll(V1.landmarks.filter((l) => !LM.has(l.id) && !/^golconda_wall/.test(l.id) && !v1Frontage.has(l.id)));
+const ADDED_GATES = [];
+// 9.7b landmarks with no v1 record (design/geo/landmarks_added.json): exactly where given, locked like the clusters
+for (const a of ADDED_LM) {
+  if (LM.has(a.id) || V1L.has(a.id)) throw new Error('landmarks_added.json: ' + a.id + ' already exists');
+  const l = JSON.parse(JSON.stringify(a));
+  // (footpath margins are allowed: tools/validate_map.cjs checks the road cells themselves)
+  if (!clearAt(l, l.x, l.y, { pad: 0, allow: new Set([1, 8]) })) warn('added landmark ' + l.id + ' overlaps water / a rail / a solid / a roof at its given spot');
+  LM.set(l.id, l); LOCK.set(l.id, true);
+  // walk-through gates mark their piers only after the access spurs (a park's spur may run through its gate)
+  if (l.noSolid) ADDED_GATES.push(l); else markLandmark(l);
+}
 
 // 6.3 zones the infill keeps out of (cluster layouts, real parks, the airfield, big landmark sites)
 const NOINFILL = []; // {poly}
@@ -1407,6 +1428,7 @@ const roofStairs = new Map(); for (const r of D.roofs) for (const s2 of r.stairs
     if (!done) warn('no access spur possible for ' + p2.id + ' (' + Math.round(nr.d) + ' u from a road)');
   }
   vlog('access spurs:', n);
+  for (const l of ADDED_GATES) markLandmark(l);
 }
 /* ===================================================================== 11. v1 -> v2 warp (moving least squares, affine) */
 // control points: v1 positions of places / landmarks whose real position is known (high / medium) -> where they are now

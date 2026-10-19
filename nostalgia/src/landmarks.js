@@ -3246,6 +3246,52 @@
       glow(lm.x + 2, lm.y, 56, 4, '#ff3020', (Math.sin(TIME * 2.4) > 0 ? 1 : 0.2) * a);
     },
   });
+  /* ---------------------------------------------------------------- park gates (Indira Park, Sanjeevaiah Park) */
+  // two lime-washed piers, an iron grille between them and a green name beam on top
+  L.register('park_gate', {
+    draw(lm) {
+      const h = lm.h || 14, along = lm.w >= lm.d, Ln = along ? lm.w : lm.d, Th = along ? lm.d : lm.w;
+      const pw = Math.max(3, Ln * 0.14), st = plainSt('#ddd0b4', '#ece2c8'), beam = plainSt('#2f6a3a', '#3f7d4a'), grille = plainSt('#3a3a3c', '#4a4a4c');
+      const x0 = lm.x - lm.w / 2, y0 = lm.y - lm.d / 2;
+      if (along) {
+        box(x0 + pw, lm.y - 0.5, Ln - pw * 2, 1, 0, h - 4, grille);
+        box(x0, y0, pw, Th, 0, h, st); box(x0 + Ln - pw, y0, pw, Th, 0, h, st);
+        box(x0, lm.y - 2, Ln, 4, h - 3.5, h - 0.5, beam);
+      } else {
+        box(lm.x - 0.5, y0 + pw, 1, Ln - pw * 2, 0, h - 4, grille);
+        box(x0, y0, Th, pw, 0, h, st); box(x0, y0 + Ln - pw, Th, pw, 0, h, st);
+        box(lm.x - 2, y0, 4, Ln, h - 3.5, h - 0.5, beam);
+      }
+      const txt = (lm.sign || lm.name || '').toUpperCase().replace(/\s+GATE$/, '');
+      if (txt && N.draw.pixelTextWidth(txt) <= Ln * kh(h) + 4) N.draw.pixelText(lm.x, lm.y, h - 0.4, txt, '#fff4d8', along ? null : { rot: 1 });
+    },
+    shadow(lm) {
+      const h = lm.h || 14, along = lm.w >= lm.d, Ln = along ? lm.w : lm.d, pw = Math.max(3, Ln * 0.14), x0 = lm.x - lm.w / 2, y0 = lm.y - lm.d / 2;
+      if (along) { N.draw.castBox(x0, y0, pw, lm.d, h); N.draw.castBox(x0 + Ln - pw, y0, pw, lm.d, h); }
+      else { N.draw.castBox(x0, y0, lm.w, pw, h); N.draw.castBox(x0, y0 + Ln - pw, lm.w, pw, h); }
+    },
+  });
+
+  /* ---------------------------------------------------------------- HITEC City office block */
+  // a 2003 software-park block: podium, blue-glass curtain walls with floor bands, a plant room on top
+  function officePts(lm, ins) { const x0 = lm.x - lm.w / 2 + ins, y0 = lm.y - lm.d / 2 + ins, x1 = lm.x + lm.w / 2 - ins, y1 = lm.y + lm.d / 2 - ins; return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]; }
+  L.register('hitec_office', {
+    draw(lm) {
+      if (!lm._op) { lm._op = officePts(lm, 0); lm._op2 = officePts(lm, Math.min(lm.w, lm.d) * 0.25); }
+      const h = lm.h || 50;
+      prism(lm._op, 0, 4, { wall: '#c9ccd0', roof: '#d6d8dc' });
+      prism(lm._op, 4, h, { wall: '#4a8aa2', roof: '#c9ccd0' });
+      floorLines(lm._op, 4, h, 6);
+      prism(lm._op2, h, h + 5, { wall: '#d6d8dc', roof: '#c4c6ca' });
+    },
+    shadow(lm) { N.draw.castBox(lm.x - lm.w / 2, lm.y - lm.d / 2, lm.w, lm.d, lm.h || 50); },
+    lights(lm) { pushLight(lightsOf(lm, 1)[0], lm.x, lm.y, (lm.h || 50) * 0.6, Math.max(lm.w, lm.d), '#d8f0ff', 0.6, false); },
+    night(lm, a) {
+      if (!lm._op) return;
+      ctx.globalAlpha = a * 0.85; floorLines(lm._op, 4, lm.h || 50, 6, '#bff0ff', 1.3); ctx.globalAlpha = 1;
+    },
+  });
+
   /* ======================================================================== */
   /*                           PIGEONS + CLOCK CHIMES                          */
   /* ======================================================================== */

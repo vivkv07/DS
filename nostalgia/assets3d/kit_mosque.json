@@ -1,0 +1,59 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 54440,
+ "clips": {},
+ "family": "landmark",
+ "file": "kit_mosque.glb",
+ "front": "-Y",
+ "id": "kit_mosque",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 53.2,
+ "kit": 1,
+ "materials": [
+  "M_kit_mosque"
+ ],
+ "max": [
+  17.6,
+  17.6,
+  35.56
+ ],
+ "meta": {
+  "draw": "mosque",
+  "face": "s",
+  "fit": "footprint",
+  "footprint": [
+   36,
+   36
+  ],
+  "height": 54.0,
+  "variants": {
+   "names": [
+    "minars",
+    "dome"
+   ],
+   "rule": "hash"
+  }
+ },
+ "min": [
+  -17.6,
+  -18.1,
+  -0.1
+ ],
+ "notes": [
+  "variants minars / dome by lm.id hash"
+ ],
+ "script": "_lm_worship",
+ "size": [
+  35.2,
+  35.7,
+  35.66
+ ],
+ "tint": null,
+ "tris": 738,
+ "units": "u",
+ "up": "Z"
+}

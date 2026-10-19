@@ -6,7 +6,8 @@
  *   walkman   — cassettes, play/next/stop with the real RADIO key, memos, the home 2-in-1 deck
  *   player    — money 1000, tummy 80, drains, energy cap, feed, statuses, quick-item slot, the bike fall
  *   HUD       — 1280x720, 390x844, 844x390 screenshots of a busy HUD; no overlapping clutter, one toast
- *   missions  — the J-card prompt with the DEMO mission (step out cancels, ACTION / dwell starts),
+ *   missions  — the J-card prompt with a test main mission at the Himayatnagar giver (the old DEMO's
+ *               place and title; step out cancels, ACTION / dwell starts),
  *               date jump on start, saves refused during missions, "Let Immu do it", timer help
  *   save      — save -> reload page -> continue restores tape, tin, walkman, calendar, tummy, statuses
  * Fails on any console error / page error / N.err.
@@ -37,6 +38,8 @@ function check(cond, msg, data) {
 async function openPage(browser, V) {
   const context = await browser.newContext({ viewport: V.viewport, deviceScaleFactor: V.dpr || 1, hasTouch: !!V.touch, isMobile: !!V.touch });
   const page = await context.newPage();
+  // play-testing builds top money up every frame (src/testing.js): the ₹10 start / economy checks need real pocket money
+  await page.addInitScript(() => { try { localStorage.setItem('nostalgia.testing.unlimitedMoney', '0'); } catch (e) { /* storage off */ } });
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
@@ -63,6 +66,23 @@ async function openPage(browser, V) {
 async function newGame(page, opts) {
   await page.evaluate((o) => { N.debug.newGame(Object.assign({ skipIntro: true }, o || {})); N.debug.setTime(16, 30); N.save.clear(); }, opts || {});
   await sleep(300);
+}
+// The DEMO mission is gone (the real story replaced it): register a main mission of our own at the same giver.
+// Only one main giver shows at a time (the first available in registration order), so the story's own available
+// main missions are parked in `done` while the J-card is under test; restoreMains() puts them back.
+async function jcardMission(page) {
+  return page.evaluate(() => {
+    if (!N.missions.defs.__sc_chai) {
+      N.missions.register({ id: '__sc_chai', title: 'Chai Before Sunset', giver: { place: 'giver_himayatnagar', r: 16 }, rec: false,
+        script: async (m) => { await m.goto('irani_cafe_3', { label: 'Race to the Irani café!', r: 26 }); } });
+    }
+    const parked = N.missions.available().filter((d) => d.id !== '__sc_chai' && d.giver && N.missions.kindOf(d.id) === 'main').map((d) => d.id);
+    for (const id of parked) N.missions.done.add(id);
+    return parked;
+  });
+}
+async function restoreMains(page, parked) {
+  await page.evaluate((ids) => { for (const id of ids) N.missions.done.delete(id); }, parked);
 }
 async function errorsOf(page, errors) {
   const s = await page.evaluate(() => N.debug.state().errors);
@@ -435,10 +455,12 @@ async function testHud(browser) {
     await shot(page, 'hud_captions');
     check(caps.some((c) => /^\[whistle [↗→]\]$/.test(c)) && caps.some((c) => /^\[chappal whoosh [←↙]\]$/.test(c)) && caps.indexOf('[● REC]') >= 0, V.name + ': sound captions with direction arrows', caps);
     // J-card prompt card
+    await jcardMission(page);
     await page.evaluate(() => { N.walkman.stop(); N.hud.timer(null); const g = N.places.giver_himayatnagar; N.player.teleport(g.x, g.y); });
-    await sleep(500);
+    // the card is built the first time the giver's prompt opens: wait for it (game-driven, not a fixed sleep)
+    await page.waitForFunction(() => !!document.querySelector('.hud-jcard.show .jc-title'), null, { timeout: 10000 }).catch(() => {});
     o = await hudOverlaps(page);
-    const jc = await page.evaluate(() => ({ show: !!document.querySelector('.hud-jcard.show'), title: document.querySelector('.hud-jcard .jc-title').textContent, mission: N.missions.active && N.missions.active.id }));
+    const jc = await page.evaluate(() => ({ show: !!document.querySelector('.hud-jcard.show'), title: (document.querySelector('.hud-jcard .jc-title') || {}).textContent, mission: N.missions.active && N.missions.active.id }));
     await shot(page, 'hud_jcard');
     check(jc.show && o.over.length === 0, V.name + ': J-card prompt card fits without overlaps', Object.assign(jc, o));
     await page.waitForFunction(() => N.missions.active, null, { timeout: 3000 }).catch(() => {});
@@ -451,17 +473,23 @@ async function testHud(browser) {
 
 /* ======================================================================= missions */
 async function testMissions(page) {
-  console.log('\n== missions: J-card prompt (DEMO), kinds, date jump, saves, help');
+  console.log('\n== missions: J-card prompt (test main mission), kinds, date jump, saves, help');
   await newGame(page);
+  const parked = await jcardMission(page);
   await page.evaluate(() => { window.__ms = []; N.on('mission:start', (e) => window.__ms.push(e.id)); });
   // walk in -> card; step out -> cancelled
-  const g = await page.evaluate(() => { const g = N.places.giver_himayatnagar; N.player.teleport(g.x + 40, g.y); return { x: g.x, y: g.y }; });
+  // (+34 u: the v2 map has a wall at +40 that the teleport resolves to a spot he can't walk west from)
+  const g = await page.evaluate(() => { const g = N.places.giver_himayatnagar; N.player.teleport(g.x + 34, g.y); return { x: g.x, y: g.y }; });
   await sleep(200);
-  await page.keyboard.down('KeyA'); await sleep(820); await page.keyboard.up('KeyA');
+  // walk in (real key) until the prompt opens; the card's DOM only exists once it has opened
+  await page.waitForFunction(() => N.hud.blips.has('giver:__sc_chai'), null, { timeout: 10000 }).catch(() => {});
+  await page.keyboard.down('KeyA');
+  await page.waitForFunction(() => !!document.querySelector('.hud-jcard.show .jc-head'), null, { timeout: 8000 }).catch(() => {});
+  await page.keyboard.up('KeyA');
   await sleep(150);
-  let s = await page.evaluate(() => ({ card: !!document.querySelector('.hud-jcard.show'), head: document.querySelector('.jc-head').textContent, title: document.querySelector('.jc-title').textContent, sub: document.querySelector('.jc-sub').textContent, label: N.input.actionLabel, active: !!N.missions.active, prompt: N.missions.prompt }));
+  let s = await page.evaluate(() => ({ card: !!document.querySelector('.hud-jcard.show'), head: (document.querySelector('.jc-head') || {}).textContent, title: (document.querySelector('.jc-title') || {}).textContent, sub: (document.querySelector('.jc-sub') || {}).textContent, label: N.input.actionLabel, active: !!N.missions.active, prompt: N.missions.prompt }));
   await shot(page, 'jcard_prompt');
-  check(s.card && s.title === 'CHAI BEFORE SUNSET' && /TUE 14 JAN 2003/.test(s.sub) && s.label === '▶ PLAY' && s.prompt === 'demo_chai_run', 'walking into the giver shows the J-card (title, date, "▶ PLAY")', s);
+  check(s.card && s.title === 'CHAI BEFORE SUNSET' && /TUE 14 JAN 2003/.test(s.sub) && s.label === '▶ PLAY' && s.prompt === '__sc_chai', 'walking into the giver shows the J-card (title, date, "▶ PLAY")', s);
   check(!s.active, 'walking in does not start the mission by itself', s);
   await page.evaluate((g) => N.player.teleport(g.x + 60, g.y), g);
   await sleep(1300);
@@ -472,8 +500,8 @@ async function testMissions(page) {
   await sleep(250);
   await page.keyboard.press('KeyE');
   await sleep(250);
-  s = await page.evaluate(() => ({ active: N.missions.active && N.missions.active.id, card: !!document.querySelector('.hud-jcard.show'), kind: N.missions.kindOf('demo_chai_run') }));
-  check(s.active === 'demo_chai_run' && !s.card && s.kind === 'main', 'ACTION on the card starts the DEMO mission', s);
+  s = await page.evaluate(() => ({ active: N.missions.active && N.missions.active.id, card: !!document.querySelector('.hud-jcard.show'), kind: N.missions.kindOf('__sc_chai') }));
+  check(s.active === '__sc_chai' && !s.card && s.kind === 'main', 'ACTION on the card starts the main mission', s);
   // saves are refused during a mission
   const sv = await page.evaluate(() => ({ booth: N.save.save({ reason: 'booth' }), can: N.missions.canSave(), q: N.hud.toastQueue().join('|'), has: N.save.has() }));
   check(sv.booth === false && !sv.can.ok && /Save after the mission/.test(sv.q) && !sv.has, 'saving at a booth is refused during a mission ("Save after the mission, beta.")', sv);
@@ -485,8 +513,9 @@ async function testMissions(page) {
   await page.evaluate((g) => N.player.teleport(g.x, g.y), g);
   await page.waitForFunction(() => N.missions.active, null, { timeout: 5000 }).catch(() => {});
   s = await page.evaluate(() => ({ active: N.missions.active && N.missions.active.id }));
-  check(s.active === 'demo_chai_run', 'standing in the marker for 1.0 s starts it', s);
+  check(s.active === '__sc_chai', 'standing in the marker for 1.0 s starts it', s);
   await page.evaluate(() => N.missions.abort());
+  await restoreMains(page, parked);
 
   // a dated main mission: the calendar jumps (VHS ▶▶) before the script, MISSION PASSED card, end time
   const dj = await page.evaluate(async () => {
@@ -557,7 +586,8 @@ async function testMissions(page) {
   check(th.streak === 2 && th.t > 1.05 && th.t <= 1.25 && /extra time/.test(th.q), 'after 2 timer fails the timer gets +25% ("Bunty-anna says: extra time")', th);
   // kinds: one main giver at a time; side givers only in their window
   const kd = await page.evaluate(() => {
-    N.missions.done.add('demo_chai_run');
+    // the story's own main missions (and our J-card one) count as done, so the QA mains are first in line
+    for (const d of N.missions.available()) if (d.giver && N.missions.kindOf(d.id) === 'main') N.missions.done.add(d.id);
     const g = N.places.giver_himayatnagar;
     N.player.teleport(g.x, g.y + 400);
     N.missions.register({ id: '__sc_m1', title: 'Main A', giver: { place: 'giver_himayatnagar' }, script: async () => {} });
@@ -565,10 +595,12 @@ async function testMissions(page) {
     N.missions.register({ id: '__sc_s1', title: 'Side', kind: 'side', window: { from: '06:00', to: '08:00' }, giver: { x: g.x - 200, y: g.y }, script: async () => {} });
     N.clock.set(16, 0);
     N.systems.get('missions').update(0.6);
-    const a = N.missions.markers().filter((m) => m.kind === 'giver').map((m) => m.id);
+    // (the game's own side jobs also show inside their windows; only the QA givers are under test here)
+    const qa = (m) => m.kind === 'giver' && /^__sc_/.test(m.id);
+    const a = N.missions.markers().filter(qa).map((m) => m.id);
     N.clock.set(7, 0);
     N.systems.get('missions').update(0.6);
-    const b = N.missions.markers().filter((m) => m.kind === 'giver').map((m) => m.id);
+    const b = N.missions.markers().filter(qa).map((m) => m.id);
     for (const id of ['__sc_m1', '__sc_m2', '__sc_s1']) N.missions.done.add(id);
     return { a, b };
   });
@@ -591,6 +623,9 @@ async function testSave(browser) {
     N.hints.register('lost_and_found', { clue: 'Every capsule needs a box.', answer: 'mozamjahi_market', ammamma: 'A tower that talks? Clocks talk, *kanna*. Mozamjahi.' });
     N.hints.start('lost_and_found');
     const p = N.player; p.tummy = 47; p.energy = 30; p.addStatus('knee', { gm: 100 }); p.addItem('glucose', 2);
+    // freeze game time: the reload below fires pagehide, whose silent autosave (main.js saveOnHide) would
+    // otherwise store a few more frames of energy regen / clock than the booth save
+    N.time.scale = 0;
     const ok = N.save.save({ reason: 'booth' });
     return { ok, counter: N.tape.counter, loop: Object.assign({}, N.clock.loop) };
   });

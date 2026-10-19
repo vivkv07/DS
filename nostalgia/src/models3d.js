@@ -32,6 +32,15 @@
  * Meshes named COL_* are invisible camera-ray proxies; detailed meshes skip ray casts. Materials
  * named *@night glow with N.view3d.H.night; metallic materials get a small sky environment map.
  *
+ * Lazy models (website build, ARCHITECTURE §21 "Shipping"): src/assets3d_index.js (N.ASSETS3D_INDEX, always loaded)
+ * lists every shipped model; ids marked lazy are not in the pack but one GLB each in lazy3d/<id>.glb next to the
+ * page. When 3D starts, their landmark overrides are registered from the index manifest straight away; the
+ * builder shows view3d_landmarks' procedural model (N.view3dLandmarks.procedural) and asks for the GLB, which is
+ * fetched (LAZY_MAX at a time, same relative-path fallbacks as the pack), parsed and swapped in by re-registering
+ * the key. A failed fetch (file://, offline, 404) stays procedural silently. Parsed lazy models no landmark is
+ * showing are kept in an LRU of LAZY_KEEP and freed beyond it. parse(id) fetches lazy ids too, so on-demand
+ * consumers (props, people, vehicles) work unchanged; lazy vehicle types are requested when one comes near.
+ *
  * Hooks into modules this file does not own: it sets / clears the documented per-entity key
  * `e.view3d` (ARCHITECTURE §20 key resolution) on the player and on vehicles it renders, so the
  * procedural specs stay registered underneath; it never edits another file.
@@ -49,12 +58,18 @@
   const OPT = { enabled: true, player: true, vehicles: true, riders: true, landmarks: true, kidPeds: false, env: true, nightGlow: true };
   const LOADER_URLS = ['vendor/three/GLTFLoader.classic.js', '../vendor/three/GLTFLoader.classic.js', 'https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/GLTFLoader.js'];
   const PACK_URLS = ['src/assets3d_pack.js', '../src/assets3d_pack.js'];
+  // lazy GLB folders, relative to the page (dist/web.html + the site: lazy3d/ next to it; the dev page: dist/lazy3d/)
+  const LAZY_DIRS = ['lazy3d/', 'dist/lazy3d/', '../dist/lazy3d/'];
+  const LAZY_MAX = 2;        // concurrent lazy GLB fetches
+  const LAZY_KEEP = 12;      // parsed lazy models kept while no landmark shows them (LRU)
   const S = {
     state: 'idle', error: null, started: false, loadT: 0, loadMs: 0, parseMs: 0,
     loaderFrom: null, packFrom: null, models: new Map(), pending: new Map(), failed: new Map(),
     registered: new Set(), landmarkKeys: new Map(), prevLandmark: new Map(), instances: 0,
     routedPlayer: false, routedVehicles: 0, mats: new Set(), env: null, frame: 0,
   };
+  // lazy per-GLB models: fetch queue, base folder that worked, refs (live landmark instances), LRU of parsed ids
+  const LZ = { queue: [], active: 0, base: null, bad: new Set(), fetched: [], bytes: 0, refs: new Map(), lru: new Map(), evicted: 0, swaps: 0, keys: new Set() };
   let THREE = null;
   let useProto = lsGet('nostalgia.models3d.proto') === '1';
 
@@ -121,7 +136,8 @@
         await parseActive();
         S.state = 'ready';
         registerAll();
-        N.emit('models3d:ready', { ids: Array.from(S.models.keys()) });
+        registerLazy();
+        N.emit('models3d:ready', { ids: Array.from(S.models.keys()), lazy: Array.from(LZ.keys) });
         return true;
       } catch (e) {
         S.state = 'failed'; S.error = String((e && e.message) || e);
@@ -138,7 +154,12 @@
     for (let i = 0; i < n; i++) u[i] = bin.charCodeAt(i);
     return u.buffer;
   }
-  const manifest = (id) => (hasPack() && N.ASSETS3D.manifest[id]) || null;
+  const IDX = () => (N.ASSETS3D_INDEX && N.ASSETS3D_INDEX.manifest) || null;
+  const inPack = (id) => !!(hasPack() && N.ASSETS3D.glb[id]);
+  /** a lazy model: listed lazy in the index, not inside the loaded pack */
+  const isLazy = (id) => { const I = IDX(); return !!(I && I[id] && I[id].lazy && !inPack(id)); };
+  const manifest = (id) => (hasPack() && N.ASSETS3D.manifest[id]) || (isLazy(id) ? IDX()[id] : null);
+  const isLmFamily = (m) => !!m && (m.family === 'landmark' || m.family === 'hero_landmark');
   function wanted(id) {
     const m = manifest(id); if (!m) return false;
     const meta = m.meta || {};
@@ -153,21 +174,35 @@
     for (const id of ids) await parse(id);
   }
   function parse(id) {
-    if (S.models.has(id)) return Promise.resolve(S.models.get(id));
+    if (S.models.has(id)) { if (LZ.lru.has(id)) touch(id); return Promise.resolve(S.models.get(id)); }
     if (S.failed.has(id)) return Promise.resolve(null);
     if (S.pending.has(id)) return S.pending.get(id);
-    const src = hasPack() && N.ASSETS3D.glb[id];
-    if (!src || !THREE || !THREE.GLTFLoader) return Promise.resolve(null);
-    const t0 = now();
-    const p = new Promise((resolve) => {
+    if (!THREE || !THREE.GLTFLoader) return Promise.resolve(null);
+    let p;
+    const src = inPack(id) && N.ASSETS3D.glb[id];
+    if (src) {
       let buf;
-      try { buf = b64ToBuffer(src); } catch (e) { S.failed.set(id, 'base64: ' + e.message); resolve(null); return; }
+      try { buf = b64ToBuffer(src); } catch (e) { S.failed.set(id, 'base64: ' + e.message); return Promise.resolve(null); }
+      p = parseBuffer(id, buf);
+    } else if (isLazy(id)) {
+      p = fetchLazy(id).then((buf) => {
+        if (!buf) return null;
+        return parseBuffer(id, buf).then((md) => { if (md) { LZ.lru.set(id, now()); evictLazy(); } return md; });
+      });
+    } else return Promise.resolve(null);
+    p = p.then((m) => { S.pending.delete(id); return m; }, (e) => { S.pending.delete(id); S.failed.set(id, String((e && e.message) || e)); return null; });
+    S.pending.set(id, p);
+    return p;
+  }
+  function parseBuffer(id, buf) {
+    const t0 = now();
+    return new Promise((resolve) => {
       try {
         new THREE.GLTFLoader().parse(buf, '', (g) => {
           let md = null;
           try { md = prepare(id, g); } catch (e) { S.failed.set(id, String(e.message || e)); N.err('models3d.prepare:' + id, e); }
           S.parseMs += now() - t0;
-          const done = (m) => { S.pending.delete(id); if (m) S.models.set(id, m); resolve(m); };
+          const done = (m) => { if (m) S.models.set(id, m); resolve(m); };
           // characters carry no clips of their own when meta.clips names a clip library (one per rig)
           const lib = md && md.man.family === 'character' && typeof md.meta.clips === 'string' ? md.meta.clips : null;
           if (!lib) { done(md); return; }
@@ -179,16 +214,121 @@
           });
         }, (err) => {
           S.failed.set(id, String((err && err.message) || err));
-          S.pending.delete(id);
           // a broken model is not a game error: the procedural renderer stays in charge
           console.warn('[models3d] ' + id + ' failed to parse: ' + S.failed.get(id));
           resolve(null);
         });
-      } catch (e) { S.failed.set(id, String(e.message || e)); S.pending.delete(id); resolve(null); }
+      } catch (e) { S.failed.set(id, String(e.message || e)); resolve(null); }
     });
-    S.pending.set(id, p);
-    return p;
   }
+
+  /* ================================================================ lazy per-GLB models */
+  /** candidate folders for lazy GLBs, best first: the one that worked, next to the index script when it ran from
+   *  a file (dev page: src/assets3d_index.js -> dist/lazy3d/), then the relative fallbacks (like PACK_URLS) */
+  function lazyDirs() {
+    const I = N.ASSETS3D_INDEX || {}, dir = I.lazyDir || 'lazy3d/';
+    const out = [];
+    const add = (u) => { if (u && out.indexOf(u) < 0 && !LZ.bad.has(u)) out.push(u); };
+    if (api.lazyBase) add(api.lazyBase);
+    add(LZ.base);
+    if (I.from && /\/src\/[^/]*$/.test(I.from)) { try { add(new URL('../dist/' + dir, I.from).href); } catch (e) { /* ignore */ } }
+    for (const u of order(LAZY_DIRS.map((d) => d.replace('lazy3d/', dir)))) add(u);
+    return out;
+  }
+  /** can this page fetch lazy GLBs at all? (file:// pages cannot fetch; offline pages need not try) */
+  function lazyPossible() {
+    if (typeof fetch !== 'function' || location.protocol === 'file:') return false;
+    if (navigator && navigator.onLine === false) return false;
+    return true;
+  }
+  /** fetch one lazy GLB (queued, LAZY_MAX at a time) -> ArrayBuffer | null; failures are silent (stay procedural) */
+  function fetchLazy(id) {
+    return new Promise((resolve) => {
+      if (!lazyPossible()) { S.failed.set(id, 'lazy: not fetchable from this page'); resolve(null); return; }
+      LZ.queue.push({ id, resolve });
+      pumpLazy();
+    });
+  }
+  function pumpLazy() {
+    while (LZ.active < LAZY_MAX && LZ.queue.length) {
+      const job = LZ.queue.shift();
+      LZ.active++;
+      fetchFrom(job.id, lazyDirs()).then((buf) => { LZ.active--; job.resolve(buf); pumpLazy(); });
+    }
+  }
+  async function fetchFrom(id, dirs) {
+    const m = IDX()[id] || {}, q = m.h ? '?v=' + m.h : '';
+    for (const dir of dirs) {
+      let r = null;
+      try { r = await fetch(dir + id + '.glb' + q, { credentials: 'same-origin' }); } catch (e) { r = null; }
+      if (r && r.ok) {
+        try {
+          const buf = await r.arrayBuffer();
+          if (buf.byteLength < 20 || new DataView(buf).getUint32(0, true) !== 0x46546c67) throw new Error('not a GLB');
+          LZ.base = dir; LZ.fetched.push(id); LZ.bytes += buf.byteLength;
+          return buf;
+        } catch (e) { S.failed.set(id, 'lazy: ' + (e.message || e)); return null; }
+      }
+      // a folder that answered 404 (or nothing) is skipped from now on, unless it already served a model
+      if (dir !== LZ.base) LZ.bad.add(dir);
+      if (!r) break;   // network error: the next folder will not do better
+    }
+    if (!S.failed.has(id)) S.failed.set(id, 'lazy: fetch failed');
+    return null;
+  }
+  /** a lazy model is needed (its landmark / entity came within build range): fetch + parse, then swap it in */
+  function want(id) {
+    if (S.models.has(id) || S.pending.has(id) || S.failed.has(id) || !isLazy(id) || !THREE) return;
+    parse(id).then((md) => { if (md) lazyReady(id, md); });
+  }
+  function lazyReady(id, md) {
+    const fam = md.man.family;
+    if (isLmFamily(md.man)) {
+      // re-register the key: the core disposes the procedural objects it built for it and builds the model
+      const key = landmarkKey(md);
+      if (key && S.landmarkKeys.get(key) === id) { S.landmarkKeys.delete(key); registerLandmark(id); LZ.swaps++; }
+    } else if (fam === 'vehicle' || fam === 'character') registerAll();
+    N.emit('models3d:lazy', { id, family: fam });
+  }
+  function touch(id) { LZ.lru.delete(id); LZ.lru.set(id, now()); }
+  function ref(id, d) { const n = (LZ.refs.get(id) || 0) + d; if (n > 0) LZ.refs.set(id, n); else LZ.refs.delete(id); if (d > 0) touch(id); }
+  /** free the least recently used parsed lazy models that nothing shows, beyond LAZY_KEEP */
+  function evictLazy() {
+    let n = LZ.lru.size;
+    if (n <= LAZY_KEEP) return;
+    for (const id of Array.from(LZ.lru.keys())) {
+      if (n <= LAZY_KEEP) break;
+      if (LZ.refs.get(id) || !S.models.has(id)) continue;
+      const md = S.models.get(id);
+      if (!isLmFamily(md.man)) continue;   // actors may hold instances we do not count
+      S.models.delete(id); LZ.lru.delete(id); LZ.evicted++; n--;
+      freeModel(md);
+    }
+  }
+  function freeModel(md) {
+    const texs = new Set();
+    md.scene.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+      for (const m of mats) {
+        if (m === COL_MAT) continue;
+        for (const k of ['map', 'emissiveMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'alphaMap']) if (m[k] && m[k] !== S.env) texs.add(m[k]);
+        S.mats.delete(m); m.dispose();
+      }
+    });
+    for (const t of texs) t.dispose();
+  }
+  /** register the landmark overrides of every lazy model in the index (nothing is fetched yet) */
+  function registerLazy() {
+    const I = IDX();
+    if (!I || !lazyPossible()) return;   // single-file / offline: the procedural models stay, untouched
+    for (const id of Object.keys(I)) if (isLazy(id) && isLmFamily(I[id])) registerLandmark(id);
+    for (const id of Object.keys(I)) {
+      if (!isLazy(id) || I[id].family !== 'vehicle') continue;
+      for (const t of ((I[id].meta || {}).vehicleTypes || [id])) if (!VEH_TYPES.has(t)) LAZY_VEH.set(t, id);
+    }
+  }
+
   const NOOP_RAY = () => {};
   let COL_MAT = null;
   function prepare(id, g) {
@@ -653,6 +793,7 @@
     };
   }
   const VEH_TYPES = new Map(); // vehicle type -> model id
+  const LAZY_VEH = new Map();  // vehicle type -> lazy model id (fetched when one comes near)
   function registerAll() {
     const V3 = N.view3d;
     if (!V3) return;
@@ -664,9 +805,9 @@
       } else if (fam === 'vehicle' && !S.registered.has('m3d:veh:' + id)) {
         V3.registerActorRenderer('m3d:veh:' + id, vehicleSpec(id));
         S.registered.add('m3d:veh:' + id);
-        for (const t of md.meta.vehicleTypes || [id]) VEH_TYPES.set(t, id);
-      } else if ((fam === 'landmark' || fam === 'hero_landmark')) {
-        registerLandmark(id, md);
+        for (const t of md.meta.vehicleTypes || [id]) { VEH_TYPES.set(t, id); LAZY_VEH.delete(t); }
+      } else if ((fam === 'landmark' || fam === 'hero_landmark') && !S.landmarkKeys.has(landmarkKey(md))) {
+        registerLandmark(id);
       }
     }
   }
@@ -674,11 +815,22 @@
   /* ---------------------------------------------------------------- landmarks */
   const FR = { s: 0, n: Math.PI, e: Math.PI / 2, w: -Math.PI / 2 };
   function rotFor(lm) { if (isFinite(lm.faceAngle)) return Math.PI / 2 - lm.faceAngle; return FR[lm.face] || 0; }
-  function landmarkKey(md) { return md.meta.landmark ? '#' + md.meta.landmark : md.meta.draw; }
+  function landmarkKey(md) { const meta = md.meta || {}; return meta.landmark ? '#' + meta.landmark : meta.draw; }
+  /** view3d_landmarks' procedural model for one landmark (lazy models show it until their GLB is ready) */
+  function proceduralLandmark(T, lm, H) {
+    const P = N.view3dLandmarks && N.view3dLandmarks.procedural;
+    if (!P || !P.has(lm)) return null;   // null: the core's generic footprint model
+    try { return P.build(T, lm, H); } catch (e) { N.err('models3d.procedural:' + lm.id, e); return null; }
+  }
   function buildLandmark(id) {
-    return (T, lm) => {
-      const md = S.models.get(id);
-      if (!md || !OPT.landmarks || (md.meta.proto && !useProto) || !OPT.enabled) return fallbackLandmark(md, lm);
+    return (T, lm, H) => {
+      const md = S.models.get(id), lazy = isLazy(id), meta = (md || manifest(id) || {}).meta || {};
+      if (!OPT.landmarks || (meta.proto && !useProto) || !OPT.enabled) return lazy ? proceduralLandmark(T, lm, H) : fallbackLandmark(md, lm);
+      if (!md) {
+        if (!lazy) return fallbackLandmark(md, lm);
+        want(id);   // within build range: fetch the GLB; the procedural model stands in meanwhile
+        return proceduralLandmark(T, lm, H);
+      }
       try {
         const g = new THREE.Group(); g.name = 'm3d-lm:' + id + ':' + lm.id;
         const inst = instance(id);
@@ -694,6 +846,7 @@
         if (md.meta.variants) { g.userData.vars = variantNodes(inst); showVariant(g, md, lm); }
         g.add(inst);
         g.userData.m3d = id;
+        if (lazy) { g.userData.m3dRef = id; ref(id, 1); }
         return g;
       } catch (e) { N.err('models3d.landmark:' + id, e); return fallbackLandmark(md, lm); }
     };
@@ -726,7 +879,8 @@
     for (const o of g.userData.vars || []) o.visible = o.name === want;
   }
   function updateLandmark(id) {
-    return (obj, lm) => {
+    return (obj, lm, dt, H) => {
+      if (obj && obj.userData.lm3dProc) { const P = N.view3dLandmarks && N.view3dLandmarks.procedural; if (P && P.anim(lm)) P.update(obj, lm, dt, H); return; }
       const md = S.models.get(id);
       if (!md || !obj || !obj.userData.vars) return;
       if ((obj.userData.vt = (obj.userData.vt || 0) + 1) % 15) return;
@@ -739,25 +893,44 @@
     if (prev) { prev.position.set(0, 0, 0); return prev; }
     return null;
   }
-  function registerLandmark(id, md) {
+  /** lazy keys: free what the core disposes (procedural objects through view3d_landmarks, instance refs) */
+  function disposeLazy(id) {
+    return (obj, lm, H) => {
+      if (!obj) return;
+      if (obj.userData.m3dRef) { ref(id, -1); obj.userData.m3dRef = null; }
+      else if (obj.userData.lm3dProc) { const P = N.view3dLandmarks && N.view3dLandmarks.procedural; if (P) try { P.dispose(obj, lm, H); } catch (e) { N.err('models3d.procDispose', e); } }
+    };
+  }
+  /** (re-)register landmark model `id` under its key (parsed, or lazy: from the index manifest) or turn it off */
+  function registerLandmark(id) {
     const V3 = N.view3d;
-    const key = landmarkKey(md);
+    const md = S.models.get(id), man = (md && md.man) || manifest(id);
+    if (!man) return;
+    const meta = man.meta || {}, lazy = isLazy(id);
+    const key = landmarkKey(man);
     if (!key) return;
-    const on = OPT.landmarks && OPT.enabled && (!md.meta.proto || useProto);
+    const on = OPT.landmarks && OPT.enabled && (!meta.proto || useProto);
     const have = S.landmarkKeys.get(key);
     if (on && !have) {
       // remember the procedural object currently built for that landmark (best-effort fallback)
-      const lmId = md.meta.landmark;
-      if (lmId && !(V3.unregisterLandmark)) {
+      const lmId = meta.landmark;
+      if (lmId && !lazy && !(V3.unregisterLandmark)) {
         const E = V3.engine;
         const grp = E && E.lmGroup;
         if (grp) for (const ch of grp.children) if (ch.name === 'lm3d:' + lmId || ch.name === 'lm:' + lmId) { S.prevLandmark.set(lmId, ch); break; }
       }
-      const vr = md.meta.variants;
-      V3.registerLandmark(key, buildLandmark(id), vr && DYNAMIC_RULES[vr.rule] ? { castShadow: true, update: updateLandmark(id) } : { castShadow: true });
+      const vr = meta.variants;
+      const dyn = !!(vr && DYNAMIC_RULES[vr.rule]);
+      const opts = { castShadow: true };
+      // lazy: the procedural stand-in may be animated (update) and owns view3d_landmarks' cache (dispose)
+      if (dyn || lazy) opts.update = updateLandmark(id);
+      if (lazy) opts.dispose = disposeLazy(id);
+      V3.registerLandmark(key, buildLandmark(id), opts);
       S.landmarkKeys.set(key, id);
+      if (lazy) LZ.keys.add(key);
     } else if (!on && have) {
       if (typeof V3.unregisterLandmark === 'function') V3.unregisterLandmark(key);
+      else if (lazy) V3.registerLandmark(key, (T, lm, H) => proceduralLandmark(T, lm, H), { dispose: disposeLazy(id), update: updateLandmark(id) });
       else V3.registerLandmark(key, (T, lm) => fallbackLandmark(md, lm), {});
       S.landmarkKeys.delete(key);
     }
@@ -795,6 +968,7 @@
     for (const e of list) {
       if (!e || e.kind !== 'vehicle') { if (!PH && e && OPT.kidPeds && e !== p && e.kind === 'ped' && pid) routePed(e, pid); continue; }
       const mid = OPT.vehicles && OPT.enabled ? VEH_TYPES.get(e.type) : null;
+      if (!mid && OPT.vehicles && OPT.enabled && LAZY_VEH.has(e.type)) want(LAZY_VEH.get(e.type));   // in range: fetch it
       const ridersOk = !e.pillion && !e.passenger && (!e.driver || (OPT.riders && !!riderModel(e, e.driver)));
       const key = mid && ridersOk && e.alive !== false && !tracked(e) ? 'm3d:veh:' + mid : null;
       if (key) { if (e.view3d !== key) e.view3d = key; n++; } else if (e.view3d && String(e.view3d).indexOf('m3d:') === 0) delete e.view3d;
@@ -827,6 +1001,8 @@
   /* ================================================================ API */
   const api = (N.models3d = {
     OPT, options: OPT, packUrls: null, noCdn: false,
+    /** lazy GLB folder to try first (tests / hosting), e.g. 'https://cdn.example/lazy3d/' */
+    lazyBase: null,
     /** extension points (models3d_people.js): tint(character, look) -> true when handled;
      *  people {ready, route(list, player, tracked)} routes the player + people; riderModel(v, d) ->
      *  model id | null (undefined: the built-in choice) */
@@ -841,19 +1017,25 @@
       for (const [id] of Object.entries(N.ASSETS3D.manifest)) {
         const m = manifest(id);
         if (!m || !(m.family === 'landmark' || m.family === 'hero_landmark') || !(m.meta && m.meta.proto)) continue;
-        if (useProto) parse(id).then((md) => { if (md) registerLandmark(id, md); });
-        else { const md = S.models.get(id); if (md) registerLandmark(id, md); }
+        if (useProto) parse(id).then((md) => { if (md) registerLandmark(id); });
+        else if (S.models.has(id)) registerLandmark(id);
       }
     },
     has(id) { return !!(manifest(id) && !S.failed.has(id)); },
     loaded(id) { return S.models.has(id); },
+    /** a lazy model (index-listed, fetched on demand) / ask for it now -> Promise<model | null> */
+    isLazy: (id) => isLazy(id),
+    want(id) { return isLazy(id) ? parse(id).then((md) => { if (md) lazyReady(id, md); return md; }) : parse(id); },
     load, parse, instance, character, vehicleParts,
     manifest: (id) => manifest(id),
     /** turn the Blender models off / on at runtime (procedural renderers take over) */
     setEnabled(v) {
       OPT.enabled = !!v;
       if (!v) unrouteAll();
-      if (S.state === 'ready') for (const [id, md] of S.models) if (md.man.family === 'landmark' || md.man.family === 'hero_landmark') registerLandmark(id, md);
+      if (S.state === 'ready') {
+        for (const [id, md] of S.models) if (isLmFamily(md.man)) registerLandmark(id);
+        for (const id of Object.keys(IDX() || {})) if (isLazy(id) && !S.models.has(id) && isLmFamily(IDX()[id]) && lazyPossible()) registerLandmark(id);
+      }
       return OPT.enabled;
     },
     stats() {
@@ -862,9 +1044,14 @@
         pack: hasPack() ? Object.keys(N.ASSETS3D.glb) : [], parsed: Array.from(S.models.keys()), failed: Object.fromEntries(S.failed),
         loadMs: +S.loadMs.toFixed(1), parseMs: +S.parseMs.toFixed(1), instances: S.instances,
         registered: Array.from(S.registered).concat(Array.from(S.landmarkKeys.keys())), routedPlayer: S.routedPlayer, routedVehicles: S.routedVehicles, useProto,
+        lazy: {
+          index: Object.keys(IDX() || {}).filter(isLazy).length, keys: Array.from(LZ.keys), base: LZ.base, fetched: LZ.fetched.slice(),
+          kb: +(LZ.bytes / 1024).toFixed(1), active: LZ.active, queued: LZ.queue.length, parsed: Array.from(LZ.lru.keys()),
+          refs: Object.fromEntries(LZ.refs), evicted: LZ.evicted, swaps: LZ.swaps, possible: lazyPossible(),
+        },
       };
     },
-    debug: { S, route, unrouteAll, Character, tintRatios, cloneScene, riderModel, findBones, findAnchors, disposeInstance },
+    debug: { S, LZ, route, unrouteAll, Character, tintRatios, cloneScene, riderModel, findBones, findAnchors, disposeInstance, evictLazy, LAZY_KEEP },
   });
 
   N.addSystem({
