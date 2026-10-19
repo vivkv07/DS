@@ -61958,7 +61958,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       if (sp < 0 || sp > total) continue;
       const c = at(sp), ux = c.ux * dir, uy = c.uy * dir;
       if (Math.abs(d) < 7) stopI = path.length;
-      path.push({ x: c.x + uy * off, y: c.y - ux * off });
+      path.push({ x: c.x + uy * off, y: c.y - ux * off, nx: -uy, ny: ux }); // n: towards the road's centre (the overtaking side)
     }
     if (path.length < 6 || stopI < 3) return;
     const start = path[0], pl = N.player;
@@ -61979,29 +61979,80 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
     if (!q || q.dist > 70) { try { q = N.world.nearestRoadPoint(x, y); } catch (e) { q = null; } }
     return q;
   }
+  /** Is something in the scene bus's way? Chinnu (always: the bus must never shove him), then whatever
+   *  traffic.js's corridor sense finds (peds, cows, vehicles), feature-detected. Sampled ~10x/s. */
+  function busBlocked(v, sp, ca, sa) {
+    const T = v.T || {}, half = (T.w || 34) / 2, hw = (T.d || 11) / 2, range = 8 + Math.max(0, sp) * 0.3, pl = N.player;
+    if (ca == null) { ca = Math.cos(v.angle); sa = Math.sin(v.angle); }
+    if (pl && !pl.hidden && pl.alive !== false) {
+      const pv = pl.vehicle, r = pv ? ((pv.T && pv.T.d) || 8) / 2 : (pl.r || 3.4);
+      const dx = (pv ? pv.x : pl.x) - v.x, dy = (pv ? pv.y : pl.y) - v.y;
+      const lx = dx * ca + dy * sa, ly = -dx * sa + dy * ca;
+      if (lx > half * 0.2 && lx - half - r < range && Math.abs(ly) < hw + r + 1.5) return pl;
+    }
+    const TR = N.traffic;
+    if (TR && typeof TR.sense === 'function') {
+      let ob = null;
+      try { ob = TR.sense(v, ca, sa); } catch (e) { ob = null; }
+      if (ob && ob.e && ob.e.alive && ob.gap < range && !(ob.e.cl && ob.e.ghost)) return ob.e;
+    }
+    return null;
+  }
+  function busGone(v) {
+    try { N.vehicles.remove(v); } catch (er) { v.alive = false; }
+    const sc = v.clBus && v.clBus.sc;
+    if (sc && sc.st && sc.st.own === v) sc.st.own = null;
+  }
+  /** a blocker the bus may go round: anything standing still (Chinnu, a stalled scooter, a parked auto); people
+   *  walking across and cows are waited for */
+  const busPassable = (e) => !!e && (e === N.player ? Math.hypot(e.vx || 0, e.vy || 0) < 6 : e.kind === 'vehicle' && Math.abs(e.speed || 0) < 4);
   function busCtl(v, dt) {
-    const B = v.clBus, P2 = B.path, ctl = v.ctl;
+    const B = v.clBus, ctl = v.ctl;
     if (!B || !ctl) return;
-    B.t += dt;
+    const P2 = B.path, T = v.T || {};
+    B.t += dt; B.life = (B.life || 0) + dt;
     while (B.i < P2.length - 1 && Math.hypot(P2[B.i].x - v.x, P2[B.i].y - v.y) < 12) B.i++;
-    const tg = P2[Math.min(P2.length - 1, B.i + 1)];
-    ctl.steer = clamp(angDiff(v.angle, Math.atan2(tg.y - v.y, tg.x - v.x)) * 2.2, -1, 1);
-    let want = 40;
+    // overtaking: ease out towards the road's centre while B.swEnd is ahead, then back to the kerb lane
+    const swMax = B.swMax || (B.swMax = (T.d || 11) + 4);
+    const swWant = B.i < (B.swEnd || 0) ? swMax : 0;
+    B.sw = (B.sw || 0) + clamp(swWant - (B.sw || 0), -dt * 10, dt * 10);
+    const tg = P2[Math.min(P2.length - 1, B.i + 1)], tx = tg.x + (tg.nx || 0) * B.sw, ty = tg.y + (tg.ny || 0) * B.sw;
+    ctl.steer = clamp(angDiff(v.angle, Math.atan2(ty - v.y, tx - v.x)) * 2.2, -1, 1);
+    let want = B.sw > 1 ? 22 : 40, dStop = 1e9;
     if (B.ph === 'in') {
-      const S = P2[B.stopI], d = Math.hypot(S.x - v.x, S.y - v.y);
-      want = Math.min(40, d * 0.7 + 2);
-      if (d < 4 || (B.i > B.stopI)) { B.ph = 'stop'; B.t = 0; B.dwell = 9; v._clStop = true; }
+      const S = P2[B.stopI]; dStop = Math.hypot(S.x - v.x, S.y - v.y);
+      want = Math.min(want, dStop * 0.7 + 2);
+      if (dStop < 4 || (B.i > B.stopI)) { B.ph = 'stop'; B.t = 0; B.dwell = 9; v._clStop = true; }
     } else if (B.ph === 'stop') {
       want = 0;
       if (B.t > B.dwell) { B.ph = 'out'; v._clStop = false; }
     }
-    const sp = v.speed || 0, e = want - sp;
+    const sp = v.speed || 0;
+    // look ahead before moving: brake for Chinnu / people / animals / vehicles in the lane (never shove anyone)
+    if (want > 0) {
+      B.senseT = (B.senseT || 0) - dt;
+      if (B.senseT <= 0) { B.senseT = 0.1; B.by = busBlocked(v, sp); B.blocked = !!B.by; }
+      if (B.blocked) {
+        want = 0; B.blockT = (B.blockT || 0) + dt;
+        if (B.blockT > 1.5 && !B.honked) { B.honked = true; sound('bus_horn', v.x, v.y, { vol: 0.5, force: true }); }
+        if (B.ph === 'in' && dStop < 45 && sp < 3) {
+          // something parked in the bay: the bus stops right here, as they do
+          B.ph = 'stop'; B.t = 0; B.dwell = 9; v._clStop = true; B.blockT = 0;
+        } else if (B.blockT > 2 && !(B.i < (B.swEnd || 0)) && busPassable(B.by) && (B.ph !== 'in' || B.stopI - B.i > 4)) {
+          // go round it if the overtaking lane is clear
+          const q = P2[Math.min(P2.length - 1, B.i + 2)], ox = q.x + (q.nx || 0) * swMax - v.x, oy = q.y + (q.ny || 0) * swMax - v.y, ol = Math.hypot(ox, oy) || 1;
+          if (!busBlocked(v, 10, ox / ol, oy / ol)) { B.swEnd = B.i + 5; B.blockT = 0; B.blocked = false; B.by = null; }
+        }
+      } else { B.blockT = Math.max(0, (B.blockT || 0) - dt * 0.5); if (B.blockT < 0.5) B.honked = false; }
+    } else { B.blocked = false; B.by = null; }
+    const e = want - sp;
     ctl.throttle = want > 0 ? clamp(e * 0.12, 0, 1) : 0;
     ctl.brake = e < -2 || want === 0 ? 1 : 0;
-    if (B.ph === 'out' && B.i >= P2.length - 2) {
-      const pl = N.player, hidden = is3D() ? Math.hypot(v.x - pl.x, v.y - pl.y) > 260 : !N.render.inView(v.x, v.y, 40);
-      if (hidden || B.t > 40) { try { N.vehicles.remove(v); } catch (er) { v.alive = false; } }
-    }
+    const pl = N.player, hidden = is3D() ? Math.hypot(v.x - pl.x, v.y - pl.y) > 260 : !N.render.inView(v.x, v.y, 40);
+    // give up: blocked for long (gone at once out of sight, else after a real wait), or a run that never ends
+    // (e.g. stuck in 'in' for ever after the scene dropped st.own at 60 s)
+    if ((B.blockT || 0) > (hidden ? 6 : 20) || B.life > (hidden ? 70 : 110)) { ST.busGaveUp++; ST.busGaveUpBy = B.by ? (B.by === N.player ? 'player' : B.by.kind + ':' + (B.by.type || B.by.role || '')) : 'timeout'; busGone(v); return; }
+    if (B.ph === 'out' && B.i >= P2.length - 2 && (hidden || B.t > 40)) busGone(v);
   }
   const busStopped = (b) => !!(b && b.alive && ((b.tr && b.tr.stopT != null) || b._clStop));
   function busAct(p, dt, sc) {
@@ -62512,7 +62563,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
   }
 
   /* ================================================================ director */
-  const ST = { spots: 0, ms: 0, msAvg: 0, ms2d: 0, ms3d: 0, draw2dAcc: 0, activations: 0, handedBack: 0, haircuts: 0, buses: 0, ownBuses: 0, boarded: 0, whistles: 0, sfSpots: 0 };
+  const ST = { spots: 0, ms: 0, msAvg: 0, ms2d: 0, ms3d: 0, draw2dAcc: 0, activations: 0, handedBack: 0, haircuts: 0, buses: 0, ownBuses: 0, boarded: 0, whistles: 0, sfSpots: 0, busGaveUp: 0, busGaveUpBy: '' };
   let dirT = 0, ready = false;
   function actRadius() {
     if (is3D()) { const q = N.view3d.quality || {}; return Math.min(TUNE.act3D, (q.actorDist || 620) * 0.8); }
@@ -63534,7 +63585,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       return {
         spots: SPOTS.length, active: ACTIVE.length, people: PEOPLE.length, pool: POOL.length, particles: P.n,
         ms: +ST.ms.toFixed(3), msAvg: +ST.msAvg.toFixed(3), ms2d: +ST.ms2d.toFixed(3), ms3d: +ST.ms3d.toFixed(3), r: Math.round(actRadius()),
-        activations: ST.activations, handedBack: ST.handedBack, haircuts: ST.haircuts, buses: ST.buses, ownBuses: ST.ownBuses, boarded: ST.boarded, whistles: ST.whistles, sfSpots: ST.sfSpots,
+        activations: ST.activations, handedBack: ST.handedBack, haircuts: ST.haircuts, buses: ST.buses, ownBuses: ST.ownBuses, boarded: ST.boarded, whistles: ST.whistles, sfSpots: ST.sfSpots, busGaveUp: ST.busGaveUp, busGaveUpBy: ST.busGaveUpBy,
         s3d: G3.scenes.size, s3dBuilt: G3.built, layer3d: G3.ready, sfx: sfxReg,
         kinds: SPOTS.reduce((o, s) => { const k = s.kind === 'trade' ? 'trade:' + s.sub : s.kind; o[k] = (o[k] || 0) + 1; return o; }, {}),
       };
@@ -86249,7 +86300,11 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
  * clear in 3D… super pixelated", design/feedback_3d.md #1). This module builds a dedicated ground that
  * stays crisp from a kid's first-person eye height to the zoomed-out chase camera:
  *  - ROADS AS GEOMETRY per 3D chunk (512 u): asphalt ribbons along the road polylines (bends filleted
- *    into smooth arcs), junction polygons with rounded kerb corners, dead-end caps. One shared road
+ *    into smooth arcs), junction polygons with rounded kerb corners, dead-end caps. Junction clusters
+ *    (nodes closer than their corners need, e.g. Abids) merge into ONE polygon around their outer arms;
+ *    road ends that overshoot into the crossing road's carriageway are cut back to the node (no hooks);
+ *    every kerbed corner is one curve tangent to both footpath strips (a rounded nose where they
+ *    diverge), or plain strip end faces when no curve fits (never a kerb arc standing in the asphalt). One shared road
  *    shader with WORLD-SPACE procedural detail, so there are never visible texels: multi-octave value
  *    noise grain + aggregate specks (band-limited by the pixel footprint), darker tyre-worn tracks along
  *    each lane, oil drips, hairline cracks on old roads, dusty crumbling edges on old lanes, a wet sheen
@@ -86277,7 +86332,8 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
  *       a pothole dip); the core's elevation(e) / H.elev(e) already adds it for actors on the ground
  *       (vehicles average their front and rear wheels), so people stand on kerbs and wheels dip.
  *   N.view3d.ground = {enabled, setEnabled(on) (false = the old painted ground, for before/after tests),
- *       stats(), rebuild(), heightAt(x, y), potholeDip(x, y), net()}
+ *       stats(), rebuild(), heightAt(x, y), potholeDip(x, y), net()}; tests / debug: kerbOverlaps(),
+ *       footOnRoad(x, y, R) (raised footpath tops on another carriageway), topTris(x, y, R), cornerInfo()
  * Hooks: view3d.js "[ground hook]" edits (setGroundProvider, dropPainted, elevation). Performance:
  * chunks are built lazily inside the core's frame budget in resumable steps (analyse -> aux -> surface
  * -> roads -> build -> upload; every step checks its deadline, phones bake sun shadows in slices); two
@@ -86288,6 +86344,8 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
  * real terrain shader with a flat ground map, same programs); the chunk under the player gets its own
  * slice (prioritize) during the 3D warm-up and until its full ground is in; the scene's flat 'outer'
  * fallback plane is sunk below the terrain's polygon-offset reach.
+ * Night: a small skyglow / moonlight floor (NG_NIGHT_AMB, by albedo) on the terrain and road layers plus
+ * paint that catches it (markings, zebras, kerb paint), so unlit streets keep their edges readable.
  * Midday: ground albedos are scaled by uGain (from the sun + sky irradiance on a flat surface) so the
  * noon ground is not on the ACES shoulder; lanes stay >= ~1.4x darker than the soil around them.
  */
@@ -86499,7 +86557,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
           if (AN.i >= AN.roads.length) { AN.phase = 1; AN.i = 0; }
         } else if (ph === 1) { // junction geometry
           while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionGeom(J); } catch (e) { N.err('ground.junction', e); J.bad = true; } if (over()) break; }
-          if (AN.i >= NET.juncs.length) { finishPieces(); AN.phase = 2; AN.i = 0; }
+          if (AN.i >= NET.juncs.length) { NET.merged = mergeClusters(); finishPieces(); AN.phase = 2; AN.i = 0; }
         } else if (ph === 2) { // junction polygons
           while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionPoly(J); } catch (e) { N.err('ground.junctionPoly', e); } if (over()) break; }
           if (AN.i >= NET.juncs.length) { AN.phase = 3; AN.i = 0; }
@@ -86626,9 +86684,19 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
   function addPiece(r, rp, rcum, s0, s1, ja, jb, ea, eb, closed, FOOT, na, nb) {
     if (s1 - s0 < 0.5 && !closed) return;
     let pts = subLine(rp, rcum, s0, s1);
-    // extend to the junction centres when the road polyline stops short (snapped T ends)
-    if (ja && Math.hypot(pts[0][0] - ja.x, pts[0][1] - ja.y) > 1.5 && na && s0 < 0.5) pts.unshift([ja.x, ja.y]);
-    if (jb && Math.hypot(pts[pts.length - 1][0] - jb.x, pts[pts.length - 1][1] - jb.y) > 1.5 && nb && s1 > rcum[rcum.length - 1] - 0.5) pts.push([jb.x, jb.y]);
+    // extend to the junction centres when the road polyline stops short or overshoots (snapped T ends).
+    // Polyline points inside the crossing road's carriageway (within the node's half width) are dropped
+    // first: a road that ends a few metres past the centre line would otherwise hook back to the centre,
+    // the arm would point the wrong way and its footpaths would run diagonally across the other road
+    const inJ = (p, j, n) => Math.hypot(p[0] - j.x, p[1] - j.y) < Math.max(1.5, (n.w || 0) / 2);
+    if (ja && na && s0 < 0.5 && Math.hypot(pts[0][0] - ja.x, pts[0][1] - ja.y) > 1.5) {
+      while (pts.length > 2 && inJ(pts[0], ja, na)) pts.shift();
+      pts.unshift([ja.x, ja.y]);
+    }
+    if (jb && nb && s1 > rcum[rcum.length - 1] - 0.5 && Math.hypot(pts[pts.length - 1][0] - jb.x, pts[pts.length - 1][1] - jb.y) > 1.5) {
+      while (pts.length > 2 && inJ(pts[pts.length - 1], jb, nb)) pts.pop();
+      pts.push([jb.x, jb.y]);
+    }
     addPieceFromPts(r, pts, ja, jb, ea, eb, FOOT, closed);
   }
   function addPieceFromPts(r, raw, ja, jb, ea, eb, FOOT, closed) {
@@ -86669,7 +86737,11 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
     const arms = J.arms;
     for (const a of arms) {
       const P = a.piece, pts = P.pts, cum = P.cum;
-      const s = a.start ? 0 : P.L, dirS = a.start ? 1 : -1;
+      // merged clusters: the arm's frame is taken where it leaves the cluster (its first metres inside
+      // the cluster often bend towards the member node and would put the kerb lines metres off)
+      const s0 = J.members ? Math.min(P.L * 0.45, J.span + 10) : 0;
+      const s = a.start ? s0 : P.L - s0, dirS = a.start ? 1 : -1;
+      a.s0 = s0;
       const q = ptAt(pts, cum, s);
       const f = ptAt(pts, cum, clamp(s + dirS * Math.min(6, P.L * 0.4), 0, P.L));
       let dx = f[0] - q[0], dy = f[1] - q[1];
@@ -86679,7 +86751,14 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       a.need = 1.2;
       a.side = a.start ? 1 : -1; // arm +n side == piece side (v sign) * this
     }
-    arms.sort((p, q) => p.ang - q.ang);
+    if (J.members) {
+      // a merged cluster: order the arms by where they leave it (polar angle of a point well out along
+      // each arm, around the cluster centre), not by their direction alone (the arms start at different
+      // member nodes)
+      const X = (J.span || 0) + 40;
+      for (const a of arms) a.ex = Math.atan2(a.Q[1] + a.d[1] * X - J.y, a.Q[0] + a.d[0] * X - J.x);
+      arms.sort((p, q) => p.ex - q.ex);
+    } else arms.sort((p, q) => p.ang - q.ang);
     J.corners = [];
     const n = arms.length;
     if (n < 2) return;
@@ -86698,7 +86777,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       const dx = pBx - pAx, dy = pBy - pAy;
       const t = (-dx * B.d[1] + B.d[0] * dy) / det;
       const s = (A.d[0] * dy - A.d[1] * dx) / det;
-      if (t < -3 || s < -3) continue;
+      if (A.s0 + t < -3 || B.s0 + s < -3) continue;
       const kerb = A.fp > 0 && B.fp > 0;
       let rc = kerb ? Math.max(A.fp, B.fp) + 2.5 : A.fp > 0 || B.fp > 0 ? 4 : 3;
       const th = Math.tan(phi / 2);
@@ -86710,7 +86789,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       const od = rc / Math.sin(phi / 2);
       cn.type = 'fillet'; cn.kerb = kerb; cn.rc = rc;
       cn.C = [Cx, Cy]; cn.O = [Cx + bx * od, Cy + by * od];
-      cn.tA = t + e; cn.tB = s + e;
+      cn.tA = A.s0 + t + e; cn.tB = B.s0 + s + e;
       cn.TA = [Cx + A.d[0] * e, Cy + A.d[1] * e]; cn.TB = [Cx + B.d[0] * e, Cy + B.d[1] * e];
       const aA = Math.atan2(cn.TA[1] - cn.O[1], cn.TA[0] - cn.O[0]);
       let aB = Math.atan2(cn.TB[1] - cn.O[1], cn.TB[0] - cn.O[0]);
@@ -86722,6 +86801,52 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       A.need = Math.max(A.need, cn.tA); B.need = Math.max(B.need, cn.tB);
     }
     for (const a of arms) a.end.need = Math.max(a.end.need, a.need);
+  }
+
+  /** Clustered junctions (D5): when a piece between two junctions is shorter than the trims their
+   *  corners need (a short link inside a big crossing, e.g. Abids: abids_rd / gunfoundry_rd / bank_st
+   *  meet at three nodes 50 u apart, carriageways 52 u wide), each junction's corners land on the other
+   *  junction, its arms and footpaths: overlapping paver layers, stray kerbs, wedges. Merge such
+   *  clusters into ONE junction whose arms are the cluster's outer pieces (corners and the junction
+   *  polygon computed once around the whole cluster); the short inner pieces are covered by it and not
+   *  drawn. Zebras stay with the member nodes (the 2D map's rules). Clusters stay small (<= 6 nodes,
+   *  <= 200 u across) or keep the old squeezed geometry. */
+  function mergeClusters() {
+    const par = new Map();
+    const find = (J) => { while (par.has(J) && par.get(J) !== J) J = par.get(J); return J; };
+    const inner = [];
+    for (const P of NET.pieces) {
+      const a = P.ends[0].j, b = P.ends[1].j;
+      if (P.closed || !a || !b || a === b || a.bad || b.bad || a.merged || b.merged) continue;
+      if (P.ends[0].need + P.ends[1].need <= P.L - 2) continue;
+      inner.push(P);
+      const ra = find(a), rb = find(b);
+      if (ra !== rb) par.set(ra, rb);
+    }
+    if (!inner.length) return 0;
+    const groups = new Map();
+    for (const P of inner) for (const e of P.ends) { const r = find(e.j); let g = groups.get(r); if (!g) groups.set(r, (g = { js: new Set(), inner: new Set() })); g.js.add(e.j); g.inner.add(P); }
+    let merged = 0;
+    for (const g of groups.values()) {
+      const js = Array.from(g.js);
+      if (js.length < 2 || js.length > 6) continue;
+      let cx = 0, cy = 0;
+      for (const J of js) { cx += J.x; cy += J.y; }
+      cx /= js.length; cy /= js.length;
+      const span = Math.max.apply(null, js.map((J) => Math.hypot(J.x - cx, J.y - cy)));
+      if (span > 100) continue;
+      const arms = [];
+      for (const J of js) for (const a of J.arms) if (!g.inner.has(a.piece)) arms.push({ piece: a.piece, start: a.start, edge: a.edge });
+      if (arms.length < 2) continue;
+      const M = { id: NET.juncs.length, node: null, x: cx, y: cy, arms, deg: arms.length, members: js, span };
+      for (const a of arms) a.piece.ends[a.start ? 0 : 1].need = 0;
+      try { junctionGeom(M); } catch (e) { N.err('ground.merge', e); continue; }
+      NET.juncs.push(M);
+      for (const J of js) { J.merged = M; J.corners = []; }
+      for (const P of g.inner) P.internal = true;
+      merged++;
+    }
+    return merged;
   }
 
   function finishPieces() {
@@ -86744,6 +86869,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
 
   function junctionPoly(J) {
     const arms = J.arms;
+    if (J.merged) { J.kerbs = []; J.poly = null; J.tris = null; return; } // drawn by its cluster
     if (arms.length < 2) return;
     const poly = [];
     J.kerbs = [];
@@ -86771,16 +86897,37 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
         cn.curve = null;
         if (A.fp > 0 && B.fp > 0) {
           const sA = stripStart(A, 1), sB = stripStart(B, -1);
-          // only when the strip starts sit near the analytic tangent points (clustered junctions with
-          // clamped strips keep the arc + ring pavers) and the curve heads from one start to the other
+          // whenever the curve can head from one start to the other (also when the strips converge side
+          // by side: a rounded island nose). The analytic ring stays only as a last resort: on a curved
+          // arm it sits metres off the strips and leaves stray kerb ends standing in the asphalt
           const cx = sB.k[0] - sA.k[0], cy = sB.k[1] - sA.k[1], ch = Math.hypot(cx, cy);
-          const near = Math.hypot(sA.k[0] - cn.TA[0], sA.k[1] - cn.TA[1]) <= 8 && Math.hypot(sB.k[0] - cn.TB[0], sB.k[1] - cn.TB[1]) <= 8;
-          if (near && ch > 0.5 && -(cx * sA.d[0] + cy * sA.d[1]) > 0.05 * ch && cx * sB.d[0] + cy * sB.d[1] > 0.05 * ch) cn.curve = cornerCurve(sA, sB, cn.arc.length - 1);
+          if (ch > 0.5 && ch < 150 && -(cx * sA.d[0] + cy * sA.d[1]) > -0.2 * ch && cx * sB.d[0] + cy * sB.d[1] > -0.2 * ch) cn.curve = cornerCurve(sA, sB, Math.max(cn.arc.length - 1, Math.min(16, Math.ceil(ch / 3))));
+        }
+        if (A.fp > 0 && B.fp > 0 && !cn.curve) {
+          // no curve can join the two strips (parallel roads leaving side by side, strips far apart
+          // along them): no kerbed corner (its analytic arc would stand in the asphalt); the polygon
+          // joins the cut corners and both strips end in a plain end face
+          A.end.capSide[A.side > 0 ? 1 : 0] = true;
+          B.end.capSide[-B.side > 0 ? 1 : 0] = true;
+          continue;
         }
         for (const p of cn.curve || cn.arc) poly.push(p);
         J.kerbs.push({ type: 'arc', cn, A, B, tA, tB });
       } else if (A.fp > 0 && B.fp > 0) {
-        J.kerbs.push({ type: 'line', A, B, pa: cutCorner(A, 1), pb: cutCorner(B, -1), fp: Math.min(A.fp, B.fp), kh: Math.min(A.piece.kerbH, B.piece.kerbH), paint: Math.max(A.piece.paint, B.piece.paint) });
+        // no fillet (a straight side, or two arms that diverge from a blunt island nose): the kerb runs
+        // from one strip start to the other along a curve tangent to both strips (straight when they are
+        // in line, a rounded nose when they diverge) and ONE paver polygon fills it to the back lines,
+        // like a kerbed corner (a separate straight slab overlapped the strips and stuck out into the road)
+        const sA = stripStart(A, 1), sB = stripStart(B, -1);
+        const cx = sB.k[0] - sA.k[0], cy = sB.k[1] - sA.k[1], ch = Math.hypot(cx, cy);
+        if (ch > 0.5 && ch < 150 && -(cx * sA.d[0] + cy * sA.d[1]) > -0.2 * ch && cx * sB.d[0] + cy * sB.d[1] > -0.2 * ch) {
+          cn.curve = cornerCurve(sA, sB, Math.max(4, Math.min(16, Math.ceil(ch / 3))));
+          // a point well on the plot side (orientation reference for the kerb normals and back faces)
+          const mk = [(sA.k[0] + sB.k[0]) / 2, (sA.k[1] + sB.k[1]) / 2], mb = [(sA.b[0] + sB.b[0]) / 2, (sA.b[1] + sB.b[1]) / 2];
+          cn.O = [mb[0] + (mb[0] - mk[0]) * 3, mb[1] + (mb[1] - mk[1]) * 3];
+          for (const p of cn.curve) poly.push(p);
+          J.kerbs.push({ type: 'arc', cn, A, B, tA: 0, tB: 0, straight: true });
+        } else J.kerbs.push({ type: 'line', A, B, pa: cutCorner(A, 1), pb: cutCorner(B, -1), fp: Math.min(A.fp, B.fp), kh: Math.min(A.piece.kerbH, B.piece.kerbH), paint: Math.max(A.piece.paint, B.piece.paint) });
       }
       // a footpath that meets an arm without one gets an end face
       if (A.fp > 0 && !(B.fp > 0)) A.end.capSide[A.side > 0 ? 1 : 0] = true;
@@ -86796,7 +86943,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
     J.tris = triangulate(pl);
     if (!J.tris) { J.poly = hull(pl); J.tris = triangulate(J.poly) || []; }
     J.extraPts = [];
-    for (const k of J.kerbs) if (k.type === 'arc') J.extraPts.push(k.cn.O, k.cn.C);
+    for (const k of J.kerbs) if (k.type === 'arc' && !k.straight) J.extraPts.push(k.cn.O, k.cn.C);
   }
   function polyArea(p) { let a = 0; for (let i = 0, j = p.length - 1; i < p.length; j = i++) a += p[j][0] * p[i][1] - p[i][0] * p[j][1]; return a / 2; }
   function convex(p) {
@@ -86910,7 +87057,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       let best = null;
       const bk = NET.buckets.get(bkey(Math.floor(lm.x / CHS), Math.floor(lm.y / CHS)));
       for (const P of bk ? bk.pieces : []) {
-        if (P.kind !== 'street' && P.kind !== 'arterial' && P.kind !== 'bund') continue;
+        if ((P.kind !== 'street' && P.kind !== 'arterial' && P.kind !== 'bund') || P.internal) continue;
         const bb = P.bb || bboxOf(P.pts, P.hw + P.fp + 20);
         if (lm.x < bb[0] - 30 || lm.x > bb[2] + 30 || lm.y < bb[1] - 30 || lm.y > bb[3] + 30) continue;
         const q = projectOn(P.pts, P.cum, lm.x, lm.y, 0, P.L);
@@ -87207,6 +87354,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
   }
 
   function emitPiece(B, P, pots) {
+    if (P.internal) return; // inside a merged junction cluster: its polygon covers it
     if (!P.nrm) P.nrm = normalsOf(P.pts);
     const eA = P.ends[0], eB = P.ends[1];
     const s0 = eA.trim, s1 = P.L - eB.trim;
@@ -87549,7 +87697,6 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
     const backC = cst(linRGB('#8f8574'), LY.CONC, { age: 0.6 });
     const kb = Math.min(0.9, fp * 0.2), ch = EMIT_LOD ? 0 : 0.14;
     const sA = stripStart(A, 1), sB = stripStart(Bm, -1);
-    const dA = Math.hypot(sA.k[0] - cn.TA[0], sA.k[1] - cn.TA[1]), dB = Math.hypot(sB.k[0] - cn.TB[0], sB.k[1] - cn.TB[1]);
     // the strips normally start at the tangent points; on curved / very short arms they may not: a
     // short gap is bridged along the kerb line, a long one (clustered junctions) gets a plain ring
     const ring = !cn.curve;
@@ -87978,6 +88125,12 @@ uniform vec3 uCamPos;
 varying vec3 vWP;
 float ngWm = 0.0;
 float ngShine = 0.0;
+float ngGlow = 0.0;
+// night readability (r1-6): away from the lamp pools the dark asphalt x dusk / moon light fell to ~1%
+// screen luma and kerbs, edges and markings vanished. A small skyglow / moonlight floor on the ground
+// (by albedo, so asphalt stays darker than soil and paint) plus paint that catches it (markings, zebras,
+// kerb paint: retroreflective road paint under headlights) keeps the street readable at night
+#define NG_NIGHT_AMB vec3(0.12, 0.14, 0.19)
 `;
   const GU = {}; // global uniforms owned here
 
@@ -87990,7 +88143,7 @@ float ngShine = 0.0;
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\n' + FRAG_PARS + GLSL_NOISE + GLSL_WATER)
       .replace('#include <map_fragment>', TERRAIN_MAP)
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += diffuseColor.rgb * texture2D(auxMap, vec2((vWP.x - uOrigin.x) / 512.0, 1.0 - (vWP.z - uOrigin.y) / 512.0)).rgb * (uNight * 3.0);')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += diffuseColor.rgb * texture2D(auxMap, vec2((vWP.x - uOrigin.x) / 512.0, 1.0 - (vWP.z - uOrigin.y) / 512.0)).rgb * (uNight * 3.0);\n\ttotalEmissiveRadiance += diffuseColor.rgb * uNight * NG_NIGHT_AMB;')
       .replace('#include <envmap_fragment>', TERRAIN_ENV);
   }
   const TERRAIN_MAP = `
@@ -88089,7 +88242,7 @@ if (ngShine > 0.01) {
       .replace('#include <common>', '#include <common>\n' + FRAG_PARS + 'varying vec2 vRd;\nvarying vec4 vGeo;\nvarying vec4 vMk;\nvarying vec4 vSt;\n' + GLSL_NOISE + GLSL_WATER + ROAD_FUNCS)
       .replace('#include <map_fragment>', ROAD_MAP)
       .replace('#include <color_fragment>', '')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += diffuseColor.rgb * texture2D(auxMap, vec2((vWP.x - uOrigin.x) / 512.0, 1.0 - (vWP.z - uOrigin.y) / 512.0)).rgb * (uNight * 3.0);')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += diffuseColor.rgb * texture2D(auxMap, vec2((vWP.x - uOrigin.x) / 512.0, 1.0 - (vWP.z - uOrigin.y) / 512.0)).rgb * (uNight * 3.0);\n\ttotalEmissiveRadiance += diffuseColor.rgb * uNight * (NG_NIGHT_AMB + ngGlow * vec3(0.3, 0.3, 0.27));')
       .replace('#include <envmap_fragment>', ROAD_ENV);
   }
   // Pothole bowls dip below the terrain plane (y = 0): give their vertices the depth of the road plane
@@ -88140,7 +88293,7 @@ float age = vSt.z;
 vec3 base = vColor.rgb;
 vec3 col = base;
 vec4 tn = texture2D(tSurf, (P - uOrigin) / 512.0 * ((uSurfN - 1.0) / uSurfN) + 0.5 / uSurfN);
-ngWm = 0.0; ngShine = 0.0;
+ngWm = 0.0; ngShine = 0.0; ngGlow = 0.0;
 if (layer < 1.5) {
   col = ngAsphalt(P, base, age, fw);
   float u = vRd.x, v = vRd.y, av = abs(v);
@@ -88197,6 +88350,7 @@ if (layer < 1.5) {
     // (zebra crossings + stop lines are decal quads placed exactly where the 2D map paints them)
     float paintWear = mix(1.0, smoothstep(0.2, 0.62, ngF(P * 0.8, fw * 0.8) * 0.7 + ngF(P * 3.1, fw * 3.1) * 0.3), 0.25 + 0.55 * age);
     col = mix(col, vec3(0.80, 0.79, 0.74), m * paintWear * 0.94);
+    ngGlow = m * paintWear;
   } else {
     // junction box: worn evenly, a little lighter where traffic polishes it
     col *= 1.0 + 0.05 * (ngF(P * 0.12, fw * 0.12) - 0.5);
@@ -88257,6 +88411,7 @@ if (layer < 1.5) {
     vec3 paintC = mix(vec3(0.016, 0.016, 0.018), vec3(0.76, 0.5, 0.03), y);
     float chip = smoothstep(0.66, 0.8, ngF(P * 1.7 + vRd.yy * 3.0, fw * 1.7)) * age;
     col = mix(paintC, conc, chip * 0.8);
+    ngGlow = y * (1.0 - chip * 0.8);
   } else col = conc;
   col *= 1.0 - 0.12 * smoothstep(0.4, 0.0, vRd.y) * step(vRd.y, 0.15);
   ngShine = uWet * 0.2;
@@ -88268,7 +88423,9 @@ if (layer < 1.5) {
   // road paint decal (zebra, stop line, bus bay): worn in patches, asphalt grain shows through
   float wn = ngF(P * 0.9, fw * 0.9) * 0.7 + ngF(P * 3.3, fw * 3.3) * 0.3;
   vec3 asp = ngAsphalt(P, vec3(0.05, 0.05, 0.055), age, fw);
-  col = mix(asp, base * (0.92 + 0.12 * ngF(P * 2.0, fw * 2.0)), smoothstep(0.18, 0.42, wn + 0.32 - age * 0.32));
+  float pc = smoothstep(0.18, 0.42, wn + 0.32 - age * 0.32);
+  col = mix(asp, base * (0.92 + 0.12 * ngF(P * 2.0, fw * 2.0)), pc);
+  ngGlow = pc;
 } else if (layer < 6.5) {
   // tar patch: fresher, darker asphalt with a seam
   col = ngAsphalt(P, base, 0.1, fw);
@@ -88893,6 +89050,7 @@ if (ngShine > 0.01) {
      *  and count overlapping raised top polygons (kerb bands + pavers) per junction: should be 0 */
     kerbOverlaps(x, y, radius, maxJ, only) {
       if (!NET.built) return null;
+      if (!(isFinite(x) && isFinite(y))) { x = N.player.x; y = N.player.y; } // no args: around the player
       const R = radius || 1500, out = { junctions: 0, corners: 0, pairs: 0, worst: [], detail: maxJ === 1 ? [] : null };
       const js = NET.juncs.filter((J) => J.kerbs && J.kerbs.some((k) => k.type === 'arc' && k.A.fp > 0 && k.B.fp > 0) && Math.hypot(J.x - x, J.y - y) < R)
         .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y)).slice(0, maxJ || 60);
@@ -88941,13 +89099,47 @@ if (ngShine > 0.01) {
       out.worst.sort((a, b) => b.pairs - a.pairs); out.worst = out.worst.slice(0, 8);
       return out;
     },
+    /** tests (r1-2 / r1-3): raised footpath + kerb tops (junction corners and piece strips) within R of
+     *  (x, y) that lie on ANOTHER road's carriageway (inside its trimmed ribbon or a junction polygon):
+     *  a footpath slab across the road, a stray kerb end standing in the asphalt. Should be ~0.
+     *  -> {tris, hits, area (u^2 on carriageways), worst: [{src, on, x, y, area}]} */
+    footOnRoad(x, y, R) {
+      if (!NET.built) return null;
+      if (!(isFinite(x) && isFinite(y))) { x = N.player.x; y = N.player.y; }
+      R = R || 300;
+      const tris = this.topTris(x, y, R).filter((t) => t.up && (t.L === LY.FOOT || t.L === LY.KERB) && t.t[0][2] > 0.3);
+      const inPoly = (pl, px, py) => { let c = false; for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) { const a = pl[i], b = pl[j]; if ((a[1] > py) !== (b[1] > py) && px < (b[0] - a[0]) * (py - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
+      const pieces = NET.pieces.filter((P) => !P.internal && P.bb && !(P.bb[2] < x - R - 60 || P.bb[0] > x + R + 60 || P.bb[3] < y - R - 60 || P.bb[1] > y + R + 60));
+      const juncs = NET.juncs.filter((J) => J.poly && Math.hypot(J.x - x, J.y - y) < R + 150);
+      const out = { tris: tris.length, hits: 0, area: 0, worst: [] };
+      for (const t of tris) {
+        const cx = (t.t[0][0] + t.t[1][0] + t.t[2][0]) / 3, cy = (t.t[0][1] + t.t[1][1] + t.t[2][1]) / 3;
+        const ar = Math.abs((t.t[1][0] - t.t[0][0]) * (t.t[2][1] - t.t[0][1]) - (t.t[1][1] - t.t[0][1]) * (t.t[2][0] - t.t[0][0])) / 2;
+        if (ar < 0.02) continue;
+        let on = null;
+        for (const P of pieces) {
+          if ('P' + P.id === t.s || cx < P.bb[0] || cx > P.bb[2] || cy < P.bb[1] || cy > P.bb[3]) continue;
+          const q = projectOn(P.pts, P.cum, cx, cy, P.ends[0].trim, P.L - P.ends[1].trim);
+          if (q && q.s > P.ends[0].trim + 0.5 && q.s < P.L - P.ends[1].trim - 0.5 && Math.abs(q.v) < P.hw - 0.75) { on = 'P' + P.id; break; }
+        }
+        if (!on) for (const J of juncs) if ('J' + J.id !== t.s && inPoly(J.poly, cx, cy)) {
+          // the point must be well inside (not on the kerb line the corner shares with the polygon)
+          let dmin = Infinity;
+          for (let i = 0, j = J.poly.length - 1; i < J.poly.length; j = i++) { const a = J.poly[j], b = J.poly[i], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1; const u = clamp(((cx - a[0]) * dx + (cy - a[1]) * dy) / L2, 0, 1); dmin = Math.min(dmin, Math.hypot(cx - a[0] - dx * u, cy - a[1] - dy * u)); }
+          if (dmin > 0.75) { on = 'J' + J.id; break; }
+        }
+        if (on) { out.hits++; out.area += ar; if (out.worst.length < 12) out.worst.push({ src: t.s, L: t.L, on, x: +cx.toFixed(1), y: +cy.toFixed(1), area: +ar.toFixed(2) }); }
+      }
+      out.area = +out.area.toFixed(1);
+      return out;
+    },
     /** debug (D5): kerbed corner geometry near (x, y): tangent vs strip-start mismatch, radii */
     cornerInfo(x, y, r) {
       const out = [];
       for (const J of NET.juncs) {
         if (!J.kerbs || Math.hypot(J.x - x, J.y - y) > (r || 300)) continue;
         for (const k of J.kerbs) {
-          if (k.type !== 'arc' || !(k.A.fp > 0 && k.B.fp > 0)) continue;
+          if (k.type !== 'arc' || k.straight || !(k.A.fp > 0 && k.B.fp > 0)) continue;
           const sA = stripStart(k.A, 1), sB = stripStart(k.B, -1), cn = k.cn;
           out.push({ j: J.id, x: Math.round(J.x), y: Math.round(J.y), rc: +cn.rc.toFixed(1), phi: +cn.phi.toFixed(2), tA: +cn.tA.toFixed(1), tB: +cn.tB.toFixed(1),
             dA: +Math.hypot(sA.k[0] - cn.TA[0], sA.k[1] - cn.TA[1]).toFixed(2), dB: +Math.hypot(sB.k[0] - cn.TB[0], sB.k[1] - cn.TB[1]).toFixed(2) });
@@ -88960,7 +89152,7 @@ if (ngShine > 0.01) {
       const J = NET.juncs[jid]; if (!J || !J.kerbs) return null;
       const B = new RB(J.x - CHS / 2, J.y - CHS / 2), res = [];
       for (const k of J.kerbs) {
-        if (k.type !== 'arc') continue;
+        if (k.type !== 'arc' || k.straight) continue;
         B.reset(J.x - CHS / 2, J.y - CHS / 2); arcKerb(B, J, k);
         const tris = [];
         for (let i = 0; i < B.ni; i += 3) {
@@ -88977,6 +89169,31 @@ if (ngShine > 0.01) {
       const out = [];
       for (const J of NET.juncs) { if (!J.poly) continue; const t = now(); junctionPoly(J); out.push({ id: J.id, ms: +(now() - t).toFixed(2), n: J.poly.length, arms: J.arms.length }); }
       return out.sort((a, b) => b.ms - a.ms).slice(0, k || 6);
+    },
+    /** debug: every emitted triangle (ground mesh, before chunk upload) within R of (x, y), tagged by
+     *  source (J<junction id> / P<piece id>), layer and height: for plotting junction geometry in 2D */
+    topTris(x, y, R) {
+      if (!NET.built) return null;
+      R = R || 60;
+      const B = new RB(0, 0), out = [];
+      const grab = (tag) => {
+        for (let i = 0; i < B.ni; i += 3) {
+          const ia = B.I[i], ib = B.I[i + 1], ic = B.I[i + 2];
+          const t = [ia, ib, ic].map((k) => [+(B.P[k * 3] + B.x0).toFixed(2), +(B.P[k * 3 + 2] + B.z0).toFixed(2), +B.P[k * 3 + 1].toFixed(2)]);
+          if (t.every((p) => Math.hypot(p[0] - x, p[1] - y) > R)) continue;
+          out.push({ s: tag, L: Math.round(B.ST[ia * 4]), up: B.Nn[ia * 3 + 1] > 100, t });
+        }
+      };
+      EMIT_LOD = 0;
+      for (const J of NET.juncs) {
+        if (!(J.poly || J.decals) || Math.hypot(J.x - x, J.y - y) > R + 80) continue;
+        B.reset(x - CHS / 2, y - CHS / 2); emitJunction(B, J); grab('J' + J.id);
+      }
+      for (const P of NET.pieces) {
+        if (!P.bb || P.bb[2] < x - R || P.bb[0] > x + R || P.bb[3] < y - R || P.bb[1] > y + R) continue;
+        B.reset(x - CHS / 2, y - CHS / 2); emitPiece(B, P, null); grab('P' + P.id);
+      }
+      return out;
     },
     /** debug: the analysed network (pieces, junctions) */
     net() { return NET; },
