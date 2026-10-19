@@ -45,6 +45,7 @@
     const k = Math.min(W / 1920, H / 1080) * (H > W ? 1.3 : 1);
     ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(k, k);
     if (seg.style === 'intro') {
+      if (H > W) ctx.scale(0.62, 0.62); // portrait: the wide-tracked word must fit the width
       // slow tracking-in, letters breathing apart, warm glow
       const dur = seg.n * B, u = clamp(t / dur, 0, 1);
       const a = clamp(t / 0.35, 0, 1) * (1 - clamp((t - (dur - 0.3)) / 0.3, 0, 1));
