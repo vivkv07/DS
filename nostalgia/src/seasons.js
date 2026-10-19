@@ -711,11 +711,13 @@
     makeLooks();
     c = crowds[key] = { key, cx, cy, n, rad, people: [], o: o || {} };
     const rng = U.rng('crowd:' + key);
-    const looks = (o && o.lookList) || null;
+    const looks = (o && o.lookList) || null, avoid = o && o.avoid;
     for (let i = 0; i < n; i++) {
-      const a = rng.next() * TAU, d = Math.sqrt(rng.next()) * rad;
+      let a = rng.next() * TAU, d = Math.sqrt(rng.next()) * rad;
+      for (let tries = 0; avoid && tries < 6 && avoid(cx + Math.cos(a) * d, cy + Math.sin(a) * d); tries++) { a = rng.next() * TAU; d = Math.sqrt(rng.next()) * rad; }
       const li = looks ? looks[i % looks.length] : (lookIdx['crowd' + ((rng.next() * 26) | 0)] || 0);
-      c.people.push({ x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d, a: rng.next() * TAU, li, tx: 0, ty: 0, wait: rng.next() * 4, ph: rng.next() * 10, sp: 8 + rng.next() * 10, stand: rng.next() < (o && o.standP != null ? o.standP : 0.4) });
+      const fa = o && o.faceA != null ? o.faceA + (rng.next() - 0.5) * 0.5 : rng.next() * TAU;
+      c.people.push({ x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d, a: fa, li, tx: 0, ty: 0, wait: rng.next() * 4, ph: rng.next() * 10, sp: 8 + rng.next() * 10, stand: rng.next() < (o && o.standP != null ? o.standP : 0.4) });
     }
     return c;
   }
@@ -729,7 +731,7 @@
       const dx = p.tx - p.x, dy = p.ty - p.y, l = Math.hypot(dx, dy);
       if (l < 3) { p.tx = 0; p.wait = 1 + Math.random() * 5; continue; }
       const nx = p.x + (dx / l) * p.sp * dt, ny = p.y + (dy / l) * p.sp * dt;
-      if (W && W.isWalkable && !W.isWalkable(nx, ny)) { p.tx = 0; p.wait = 0.5; continue; }
+      if ((W && W.isWalkable && !W.isWalkable(nx, ny)) || (c.o.avoid && c.o.avoid(nx, ny))) { p.tx = 0; p.wait = 0.5; continue; }
       p.x = nx; p.y = ny; p.a = Math.atan2(dy, dx); p.ph += dt * p.sp * 0.25;
     }
   }
@@ -747,7 +749,7 @@
       if (p.x < v.x0 - 10 || p.x > v.x1 + 10 || p.y < v.y0 - 10 || p.y > v.y1 + 10) continue;
       const moving = !p.stand && p.wait <= 0 && p.tx;
       const fr = moving ? 1 + (Math.floor(p.ph) % 4) : 0;
-      const ang = p.stand ? p.a + Math.sin(TIME * 0.7 + p.ph) * 0.4 : p.a;
+      const ang = p.stand ? p.a + Math.sin(TIME * 0.7 + p.ph) * (c.o.faceA != null ? 0.15 : 0.4) : p.a;
       person(p.x, p.y, 0, p.li, ang, fr);
       if (extra) extra(p, i);
     }
@@ -755,7 +757,7 @@
   }
   /** helper: a wandering crowd round a place (open hours [from, to] in minutes) */
   function crowdDraw(key, placeId, n, rad, o) {
-    const p = placeXY(placeId);
+    const p = o && o.at ? { x: o.at[0], y: o.at[1] } : placeXY(placeId);
     if (!p || !inView(p.x, p.y, rad + 40)) return null;
     const c = getCrowd(key, p.x + ((o && o.dx) || 0), p.y + ((o && o.dy) || 0), n, rad, o);
     let count = n;
@@ -775,7 +777,7 @@
     'NUMAISH LOUDSPEAKER: "The maut ka kuan show starts in ten minutes. Brave people only. Others, please eat bhel puri."',
     'NUMAISH LOUDSPEAKER: "Little Ayesha from Tolichowki is looking for her Abba. Abba, she says come fast, she is getting bored."',
   ];
-  const num = { poles: null, ann: 25, annI: 0 };
+  const num = { L: null, ann: 25, annI: 0, train: 0, car: 0, beam: 0, open: false };
   function numaishGrounds() {
     const D = N.WORLD_DATA, pk = D && D.parks && D.parks.find((p) => p.id === 'exhibition_grounds');
     if (!pk) return null;
@@ -783,11 +785,112 @@
     for (const q of pk.poly) { x0 = Math.min(x0, q[0]); y0 = Math.min(y0, q[1]); x1 = Math.max(x1, q[0]); y1 = Math.max(y1, q[1]); }
     return [x0, y0, x1, y1];
   }
+  // The fair's layout (shared with the 3D view, src/festivals3d.js): rows of stalls round the grounds, the food court,
+  // the toy train loop, a carousel, the loudspeaker mast with bulb strings radiating out, searchlights, the enquiry booth.
+  // Placed relative to the exhibition_grounds polygon, clear of the landmarks (gate, giant wheel, maut ka kuan, the two
+  // numaish_stalls rows) and of the hidden collectible behind the wheel.
+  const NUM_KINDS = ['bangles', 'toys', 'papad', 'shawls', 'dryfruit', 'pickles', 'crockery', 'khadi', 'pearls', 'carpets', 'books', 'petha'];
+  const NUM_NAMES = { bangles: 'BANGLES', toys: 'TOYS', papad: 'DELHI PAPAD', shawls: 'KASHMIRI SHAWLS', dryfruit: 'DRY FRUITS', pickles: 'PICKLES', crockery: 'CROCKERY', khadi: 'KHADI', pearls: 'PEARLS', carpets: 'CARPETS', books: 'BOOKS', petha: 'AGRA PETHA',
+    chaat: 'DILLI CHAAT', pavbhaji: 'PAV BHAJI', kulfi: 'KULFI', bhutta: 'BHUTTA', candy: 'COTTON CANDY' };
+  const NUM_COLS = ['#d8302a', '#2a5cb8', '#f2b820', '#1f9a8a', '#c8307a', '#e8641a', '#7a3db8', '#2a9a3a'];
+  function numaishLayout() {
+    if (num.L) return num.L;
+    const g = numaishGrounds(); if (!g) return null;
+    const [x0, y0, x1, y1] = g;
+    const L = { g, stalls: [], counters: [], tables: [], strings: [], avoid: [], pools: [] };
+    // a row of stalls with their backs on the line from (ax, ay) along (dx, dy); fronts face (nx, ny)
+    const row = (ax, ay, dx, dy, n, len, dep, nx, ny, k0, list, kinds) => {
+      for (let i = 0; i < n; i++) {
+        const u0 = i * len, cx = ax + dx * (u0 + len / 2) + nx * dep / 2, cy = ay + dy * (u0 + len / 2) + ny * dep / 2;
+        const w = Math.abs(dx) * (len - 0.8) + Math.abs(nx) * dep, d = Math.abs(dy) * (len - 0.8) + Math.abs(ny) * dep;
+        const kind = kinds ? kinds[i % kinds.length] : NUM_KINDS[(k0 + i * 5) % NUM_KINDS.length];
+        list.push({ x: cx - w / 2, y: cy - d / 2, w, d, cx, cy, nx, ny, kind, name: NUM_NAMES[kind] || kind.toUpperCase(), col: NUM_COLS[(k0 + i * 3) % NUM_COLS.length], len: len - 0.8, dep });
+      }
+      const ex = ax + dx * n * len + nx * dep, ey = ay + dy * n * len + ny * dep;
+      L.avoid.push([Math.min(ax, ex) - 1, Math.min(ay, ey) - 1, Math.abs(ex - ax) + 2, Math.abs(ey - ay) + 2]);
+      // a bulb string along the canopy fronts, and the warm spill of the stall lights on the aisle
+      const fx0 = ax + nx * (dep + 1.4), fy0 = ay + ny * (dep + 1.4);
+      if (n > 4) L.pools.push({ x: fx0 + dx * n * len / 2 + nx * 7, y: fy0 + dy * n * len / 2 + ny * 7, r: Math.max(26, n * len * 0.5), col: '#ffd890', i: 0.7 });
+      L.strings.push({ x0: fx0, y0: fy0, h0: 7.6, x1: fx0 + dx * n * len, y1: fy0 + dy * n * len, h1: 7.6, sag: 0.8, n: Math.round(n * len / 2.2) });
+    };
+    row(x0 + 73, y0 + 3, 1, 0, 6, 10.5, 10, 0, 1, 0, L.stalls);    // north row, facing the food court
+    row(x0 + 2, y0 + 36, 0, 1, 8, 11, 10, 1, 0, 3, L.stalls);      // west row, facing the giant wheel
+    row(x0 + 12, y1 - 2, 1, 0, 8, 11, 9, 0, -1, 7, L.stalls);      // south row, facing the toy train
+    // the food court: counters along its north side, tables with plastic chairs in front
+    const fc = { x: x0 + 77, y: y0 + 37, w: 52, d: 44 };
+    L.food = fc;
+    row(fc.x + 1, fc.y, 1, 0, 4, 12.5, 6, 0, 1, 2, L.counters, ['chaat', 'pavbhaji', 'kulfi', 'candy']);
+    for (let j = 0; j < 2; j++) for (let i = 0; i < 3; i++) L.tables.push({ x: fc.x + 10 + i * 16, y: fc.y + 20 + j * 14, col: NUM_COLS[(i + j * 3 + 1) % NUM_COLS.length] });
+    for (const t of L.tables) L.avoid.push([t.x - 3.5, t.y - 3.5, 7, 7]);
+    // food court strings (a square round it + a cross) and its glow
+    const fx0 = fc.x + 2, fy0 = fc.y + 9, fx1 = fc.x + fc.w - 2, fy1 = fc.y + fc.d - 2;
+    for (const q of [[fx0, fy0, fx1, fy0], [fx1, fy0, fx1, fy1], [fx1, fy1, fx0, fy1], [fx0, fy1, fx0, fy0], [fx0, fy0, fx1, fy1], [fx1, fy0, fx0, fy1]]) L.strings.push({ x0: q[0], y0: q[1], h0: 9, x1: q[2], y1: q[3], h1: 9, sag: 1.6, n: Math.round(Math.hypot(q[2] - q[0], q[3] - q[1]) / 2.6) });
+    L.poles = [[fx0, fy0, 9], [fx1, fy0, 9], [fx1, fy1, 9], [fx0, fy1, 9]];
+    L.pools.push({ x: fc.x + fc.w / 2, y: fc.y + fc.d / 2 + 4, r: 46, col: '#ffcf80', i: 1 });
+    // rides: the carousel and the toy train loop
+    L.carousel = { x: x1 - 27, y: y0 + 37, r: 8 };
+    L.avoid.push([L.carousel.x - 9, L.carousel.y - 9, 18, 18]);
+    L.pools.push({ x: L.carousel.x, y: L.carousel.y, r: 26, col: '#ff9ad0', i: 0.8 });
+    L.train = { cx: x0 + 60, cy: y1 - 36, rx: 36, ry: 12, cars: 4, gap: 0.27 };
+    L.avoid.push([L.train.cx - L.train.rx - 3, L.train.cy - L.train.ry - 3, L.train.rx * 2 + 6, L.train.ry * 2 + 6]);
+    L.pools.push({ x: L.train.cx, y: L.train.cy, r: 40, col: '#ffe0a0', i: 0.6 });
+    // the loudspeaker mast inside the gate, bulb strings radiating to the stall rows
+    L.mast = { x: x1 - 26, y: y0 + 103, h: 26 };
+    const ends = [[x0 + 73, y0 + 13], [x0 + 136, y0 + 13], [x0 + 12, y0 + 36], [x0 + 12, y0 + 124], [x0 + 140, y1 - 11], [x0 + 100, y1 - 11], [x1 - 6, y0 + 50], [x1 - 6, y1 - 30], [fc.x + fc.w - 2, fc.y + fc.d - 2]];
+    for (const e of ends) L.strings.push({ x0: L.mast.x, y0: L.mast.y, h0: L.mast.h - 1, x1: e[0], y1: e[1], h1: 8, sag: 5, n: Math.round(Math.hypot(e[0] - L.mast.x, e[1] - L.mast.y) / 3.2), radial: true });
+    L.pools.push({ x: L.mast.x, y: L.mast.y, r: 52, col: '#ffe8b0', i: 0.8 });
+    // a canopy of bulb strings zig-zagging over the main lane between the two big stall rows
+    const lane = (N.WORLD_DATA.landmarks || []).filter((l) => l.draw === 'numaish_stalls').sort((a, b) => a.y - b.y);
+    if (lane.length >= 2) {
+      const a = lane[0], b = lane[1], ya = a.y + a.d / 2, yb = b.y - b.d / 2;
+      const ux0 = Math.max(a.x - a.w / 2, b.x - b.w / 2) + 4, ux1 = Math.min(a.x + a.w / 2, b.x + b.w / 2) - 4;
+      for (let x = ux0, i = 0; x < ux1 - 6; x += 9, i++) L.strings.push({ x0: x, y0: ya, h0: 10, x1: x + 9, y1: yb, h1: 10, sag: 1.5, n: 9, lane: true });
+      L.pools.push({ x: (ux0 + ux1) / 2, y: (ya + yb) / 2, r: 50, col: '#ffd890', i: 0.8 });
+    }
+    // searchlights at three corners, the enquiry booth (lost and found, the loudspeaker voice) by the gate
+    L.search = [[x0 + 5, y0 + 5], [x0 + 5, y1 - 5], [x1 - 5, y1 - 5]];
+    L.booth = { x: x1 - 18, y: y0 + 149, w: 9, d: 7 };
+    L.avoid.push([L.booth.x - 1, L.booth.y - 1, L.booth.w + 2, L.booth.d + 2]);
+    num.L = L;
+    return L;
+  }
+  function numBlocked(x, y) {
+    const L = num.L; if (!L) return false;
+    for (const r of L.avoid) if (x > r[0] && y > r[1] && x < r[0] + r[2] && y < r[1] + r[3]) return true;
+    return false;
+  }
+  function trainAt(T, t, out) {
+    const c = Math.cos(t), s = Math.sin(t);
+    out.x = T.cx + T.rx * c; out.y = T.cy + T.ry * s; out.a = Math.atan2(T.ry * c, -T.rx * s);
+    return out;
+  }
+  const NUM_CROWDS = [ // key, dx, dy from the grounds' top-left, n, radius, standing share
+    ['numaish', 93, 97, 34, 64, 0.25], ['numaish_lane', 85, 115, 22, 30, 0.3], ['numaish_plaza', 160, 103, 22, 22, 0.35],
+    ['numaish_food', 103, 66, 20, 22, 0.6], ['numaish_rides', 115, 150, 16, 26, 0.5],
+  ];
+  const numOpen = () => { const m = N.clock.minutes; return m > 15.5 * 60 && m < 23 * 60; };
+  function goodsCols(kind) {
+    switch (kind) {
+      case 'bangles': return ['#e8202a', '#2a5cd8', '#30b050', '#f2c230', '#c03a9a', '#f4f0e0'];
+      case 'toys': return ['#e83a5a', '#2a5cd8', '#f2c230', '#30b050'];
+      case 'papad': case 'khadi': return ['#f2e8c8', '#e8d8a8'];
+      case 'shawls': case 'carpets': return ['#8a1a2a', '#c8902a', '#1f6a6a', '#5a2a6a'];
+      case 'dryfruit': return ['#a0683a', '#d8b878', '#6a3a1a'];
+      case 'pickles': return ['#c8301a', '#e8741a', '#6a8a2a'];
+      case 'crockery': return ['#f8f8f8', '#3a6ad8'];
+      case 'pearls': return ['#f8f4ea', '#e8e0d0'];
+      case 'books': return ['#c8302a', '#2a5cb8', '#2a8a3a', '#e8c040'];
+      case 'candy': return ['#ffa0d0', '#ffd0e8'];
+      default: return ['#f4e8c8', '#e8742a', '#c8302a'];
+    }
+  }
   ov('numaish', {
     update(dt) {
       const p = placeXY('nampally_exhibition');
       if (!p || !N.player) return;
       const d = Math.hypot(N.player.x - p.x, N.player.y - p.y), m = N.clock.minutes;
+      num.open = numOpen();
+      if (d < 900) { num.train += dt * (num.open ? 0.22 : 0); num.car += dt * (num.open ? 0.55 : 0); num.beam += dt; }
       if (d < 420 && m > 15 * 60 && m < 22.5 * 60 && N.state.is('play')) {
         num.ann -= dt;
         if (num.ann <= 0) {
@@ -798,49 +901,110 @@
       }
     },
     draw() {
-      const g = numaishGrounds();
-      if (!g || !R.rectInView(g[0], g[1], g[2] - g[0], g[3] - g[1], 120)) return;
-      const m = N.clock.minutes, open = m > 15.5 * 60 && m < 23 * 60;
-      const c = crowdDraw('numaish', 'nampally_exhibition', 44, 80, { dx: -80, dy: -10, standP: 0.25 });
-      if (c) updateCrowd(c, 0); // positions advance in update via the shared ticker
-      if (!num.poles) {
-        num.poles = [];
-        const [x0, y0, x1, y1] = g;
-        for (let x = x0 + 12; x <= x1 - 12; x += 34) { num.poles.push([x, y0 + 8], [x, y1 - 8]); }
-        for (let y = y0 + 40; y <= y1 - 40; y += 40) { num.poles.push([x0 + 8, y], [x1 - 8, y]); }
+      const L = numaishLayout(); if (!L) return;
+      const g = L.g;
+      if (!R.rectInView(g[0], g[1], g[2] - g[0], g[3] - g[1], 120)) return;
+      const open = numOpen(); num.open = open;
+      const lit = NIGHT > 0.15;
+      for (const c of NUM_CROWDS) {
+        crowdDraw(c[0], null, c[3], c[4], { at: [g[0] + c[1], g[1] + c[2]], standP: c[5], avoid: numBlocked, hours: [930, 1380] });
       }
+      const tmpT = { x: 0, y: 0, a: 0 };
       R.queue('structures', R.distKey((g[0] + g[2]) / 2, (g[1] + g[3]) / 2) + 1, () => {
         frame();
-        const [x0, y0, x1, y1] = g, H = 15;
-        // poles
-        ctx.strokeStyle = '#5a5a62'; ctx.lineWidth = Math.max(1, Z * 0.8); ctx.beginPath();
-        for (const pl of num.poles) { const k0 = kh(0), k1 = kh(H); ctx.moveTo(sxp(pl[0], k0), syp(pl[1], k0)); ctx.lineTo(sxp(pl[0], k1), syp(pl[1], k1)); }
-        ctx.stroke();
-        // bulb strings criss-crossing the grounds
+        const D = N.draw;
+        // food court floor (dhurrie-red paving), track bed for the toy train
+        const fc = L.food, k0 = kh(0.05);
+        ctx.fillStyle = 'rgba(150,70,50,0.35)'; ctx.fillRect(sxp(fc.x, k0), syp(fc.y + 7, k0), fc.w * k0, (fc.d - 7) * k0);
+        const T = L.train;
+        ctx.strokeStyle = 'rgba(70,60,50,0.8)'; ctx.lineWidth = Math.max(1, 2.4 * k0);
+        ctx.beginPath(); ctx.ellipse(sxp(T.cx, k0), syp(T.cy, k0), T.rx * k0, T.ry * k0, 0, 0, TAU); ctx.stroke();
+        ctx.strokeStyle = '#b8b8c0'; ctx.lineWidth = Math.max(0.5, 0.5 * k0);
+        for (const o of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sxp(T.cx, k0), syp(T.cy, k0), (T.rx + o) * k0, (T.ry + o) * k0, 0, 0, TAU); ctx.stroke(); }
+        // stalls and food counters (painter order: far to near in y)
+        const all = L.stalls.concat(L.counters);
+        if (!L._sorted) { all.sort((a, b) => a.y - b.y); L._sorted = all; }
+        for (const s2 of L._sorted) {
+          const front = open ? '#f4ecd8' : '#a8a8a8';
+          D.box(s2.x, s2.y, s2.w, s2.d, 0, 7, { wall: front, roof: false });
+          // striped canopy, sloping to the front
+          D.box(s2.x - (s2.nx < 0 ? 1.4 : 0), s2.y - (s2.ny < 0 ? 1.4 : 0), s2.w + Math.abs(s2.nx) * 1.4, s2.d + Math.abs(s2.ny) * 1.4, 7, 8.6, { wall: R.shaded(s2.col, 0.8), roof: open ? s2.col : '#9aa0a6' });
+          if (open) {
+            const k = kh(8.62); ctx.fillStyle = 'rgba(255,250,238,0.85)';
+            const along = s2.nx === 0, n = Math.max(2, Math.round((along ? s2.w : s2.d) / 2.4));
+            for (let i = 0; i < n; i += 2) {
+              if (along) ctx.fillRect(sxp(s2.x + (i / n) * s2.w, k), syp(s2.y - (s2.ny < 0 ? 1.4 : 0), k), (s2.w / n) * k, (s2.d + 1.4) * k);
+              else ctx.fillRect(sxp(s2.x - (s2.nx < 0 ? 1.4 : 0), k), syp(s2.y + (i / n) * s2.d, k), (s2.w + 1.4) * k, (s2.d / n) * k);
+            }
+            // goods out front on the counter
+            const gc = goodsCols(s2.kind), k1 = kh(3.2);
+            const fxp0 = s2.nx > 0 ? s2.x + s2.w + 1 : s2.nx < 0 ? s2.x - 1 : s2.x + 1, fyp0 = s2.ny > 0 ? s2.y + s2.d + 1 : s2.ny < 0 ? s2.y - 1 : s2.y + 1;
+            const m = Math.max(2, Math.round((s2.nx === 0 ? s2.w : s2.d) / 1.6));
+            for (let i = 0; i < m; i++) {
+              const t = (i + 0.5) / m, gx = s2.nx === 0 ? s2.x + t * s2.w : fxp0, gy = s2.nx === 0 ? fyp0 : s2.y + t * s2.d;
+              ctx.fillStyle = gc[i % gc.length]; ctx.fillRect(sxp(gx, k1) - 0.6 * k1, syp(gy, k1) - 0.6 * k1, 1.2 * k1, 1.2 * k1);
+            }
+            if (lit) { const kk = kh(7); light(s2.cx + s2.nx * 6, s2.cy + s2.ny * 6, 18, '#ffe8b0', 0.5, 6); void kk; }
+          }
+        }
+        // tables + chairs + umbrellas in the food court
+        for (const t of L.tables) {
+          D.cyl(t.x, t.y, 2.2, 0, 3, { wall: '#d8d0c0', top: true, roof: '#f4f0e8', grad: false });
+          const ku = kh(9);
+          ctx.fillStyle = t.col; ctx.beginPath(); ctx.arc(sxp(t.x, ku), syp(t.y, ku), 4.2 * ku, 0, TAU); ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.75)';
+          for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(sxp(t.x, ku), syp(t.y, ku)); ctx.arc(sxp(t.x, ku), syp(t.y, ku), 4.2 * ku, i * TAU / 4, i * TAU / 4 + TAU / 8); ctx.fill(); }
+        }
+        // the carousel: a striped round canopy turning, a ring of horses under it
+        const C = L.carousel, kc = kh(1.2), kt = kh(11);
+        ctx.fillStyle = '#c8b898'; ctx.beginPath(); ctx.arc(sxp(C.x, kc), syp(C.y, kc), C.r * kc, 0, TAU); ctx.fill();
+        for (let i = 0; i < 8; i++) { const a = num.car + i * TAU / 8, k = kh(4); ctx.fillStyle = ['#f4f0e8', '#f2c230', '#e83a5a', '#40a0e8'][i % 4]; ctx.fillRect(sxp(C.x + Math.cos(a) * C.r * 0.75, k) - 1.2 * k, syp(C.y + Math.sin(a) * C.r * 0.75, k) - 1.2 * k, 2.4 * k, 2.4 * k); }
+        for (let i = 0; i < 12; i++) { const a = num.car + i * TAU / 12; ctx.fillStyle = i % 2 ? '#e8303a' : '#f8f0e0'; ctx.beginPath(); ctx.moveTo(sxp(C.x, kt), syp(C.y, kt)); ctx.arc(sxp(C.x, kt), syp(C.y, kt), (C.r + 0.6) * kt * 0.92, a, a + TAU / 12); ctx.fill(); }
+        ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.arc(sxp(C.x, kh(13)), syp(C.y, kh(13)), 1.2 * kh(13), 0, TAU); ctx.fill();
+        // the toy train: engine + coaches with kids
+        for (let i = T.cars - 1; i >= 0; i--) {
+          trainAt(T, num.train - i * T.gap, tmpT);
+          const k = kh(4.5), X = sxp(tmpT.x, k), Y = syp(tmpT.y, k), ca = Math.cos(tmpT.a), sa = Math.sin(tmpT.a);
+          ctx.setTransform(ca * k, sa * k, -sa * k, ca * k, X, Y);
+          ctx.fillStyle = i === 0 ? '#c8202a' : ['#2a5cd8', '#f2c230', '#30a050'][i % 3]; ctx.fillRect(-3, -1.7, 6, 3.4);
+          if (i === 0) { ctx.fillStyle = '#1a1a1a'; ctx.fillRect(1.6, -0.6, 1.2, 1.2); ctx.fillStyle = '#f2c230'; ctx.fillRect(-3, -1.7, 1.4, 3.4); }
+          else { ctx.fillStyle = '#2a1a14'; for (const u of [-1.4, 1.4]) { ctx.beginPath(); ctx.arc(u, 0, 0.8, 0, TAU); ctx.fill(); } }
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          if (i === 0 && lit) { light(tmpT.x + ca * 6, tmpT.y + sa * 6, 16, '#fff0c0', 0.8, 3); glowAt(tmpT.x + ca * 3.4, tmpT.y + sa * 3.4, 4, '#fff4c0'); }
+        }
+        // the enquiry booth with its loudspeaker
+        const B = L.booth;
+        D.box(B.x, B.y, B.w, B.d, 0, 8, { wall: '#efe6d2', roof: '#2a5cb8' });
+        // the mast and its loudspeaker horns
+        const M = L.mast;
+        ctx.strokeStyle = '#5a5a62'; ctx.lineWidth = Math.max(1, Z * 0.9); ctx.beginPath(); ctx.moveTo(sxp(M.x, kh(0)), syp(M.y, kh(0))); ctx.lineTo(sxp(M.x, kh(M.h)), syp(M.y, kh(M.h))); ctx.stroke();
+        for (let i = 0; i < 4; i++) { const a = i * TAU / 4 + 0.6, k = kh(M.h - 1.5); ctx.fillStyle = '#9aa0a6'; ctx.beginPath(); ctx.arc(sxp(M.x + Math.cos(a) * 1.6, k), syp(M.y + Math.sin(a) * 1.6, k), 0.9 * k, 0, TAU); ctx.fill(); }
+        // bulb strings everywhere (wires faint by day)
         const cols = ['#ff5040', '#ffe040', '#40ff80', '#40a0ff', '#ff60e0'];
         const ph = TIME * 4;
-        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-        for (let i = 0; i < num.poles.length; i++) {
-          const pl = num.poles[i];
-          wire(pl[0], pl[1], H, cx + (pl[0] - cx) * 0.2, cy + (pl[1] - cy) * 0.2, H + 10, 4);
-          bulbString(pl[0], pl[1], H, cx + (pl[0] - cx) * 0.2, cy + (pl[1] - cy) * 0.2, H + 10, 7, cols, 4, ph + i);
-          if (open && NIGHT > 0.15 && i % 3 === 0) glowAt(pl[0], pl[1], H, cols[i % cols.length]);
+        for (let i = 0; i < L.strings.length; i++) {
+          const st = L.strings[i];
+          if (st.radial || st.lane) wire(st.x0, st.y0, st.h0, st.x1, st.y1, st.h1, st.sag);
+          bulbString(st.x0, st.y0, st.h0, st.x1, st.y1, st.h1, st.n, st.lane || st.radial ? cols : ['#ffe070', '#ff9a40', '#fff4d0'], st.sag, ph + i);
+          if (lit) for (let j = 1; j < st.n; j += st.radial ? 4 : st.lane ? 3 : 5) { const t = j / st.n; glowAt(st.x0 + (st.x1 - st.x0) * t, st.y0 + (st.y1 - st.y0) * t, st.h0 + (st.h1 - st.h0) * t - Math.sin(t * Math.PI) * st.sag, cols[(i + j) % cols.length]); }
         }
+        // carousel rim bulbs
+        for (let i = 0; i < 16; i++) { const a = num.car + i * TAU / 16; bulb(C.x + Math.cos(a) * C.r, C.y + Math.sin(a) * C.r, 10, i % 2 ? '#ffe040' : '#ff60e0', lit ? 1 : 0); if (lit && i % 2) glowAt(C.x + Math.cos(a) * C.r, C.y + Math.sin(a) * C.r, 10, '#ff9ad0'); }
         flushBulbs();
-        if (open) for (let i = 0; i < num.poles.length; i += 4) light(num.poles[i][0], num.poles[i][1], 46, '#ffe0a0', 0.8, H);
+        if (open && lit) for (const pl of L.pools) light(pl.x, pl.y, pl.r, pl.col, 0.6 * pl.i, 10);
       });
       // searchlight beams at night
       if (open && NIGHT > 0.3) {
         R.queue('sky', 1, () => {
           frame();
           ctx.globalCompositeOperation = 'lighter';
-          for (let i = 0; i < 2; i++) {
-            const bx = i ? g[2] - 30 : g[0] + 40, by = i ? g[3] - 30 : g[1] + 30;
-            const a = Math.sin(TIME * 0.35 + i * 2.2) * 0.9 - Math.PI / 2 + (i ? 0.5 : -0.4);
+          for (let i = 0; i < L.search.length; i++) {
+            const bx = L.search[i][0], by = L.search[i][1];
+            const a = Math.sin(TIME * 0.35 + i * 2.2) * 0.9 + Math.atan2((g[1] + g[3]) / 2 - by, (g[0] + g[2]) / 2 - bx);
             const k0 = kh(2), k1 = kh(260), X0 = sxp(bx, k0), Y0 = syp(by, k0);
             const ex = bx + Math.cos(a) * 160, ey = by + Math.sin(a) * 160, X1 = sxp(ex, k1), Y1 = syp(ey, k1);
             const gr = ctx.createLinearGradient(X0, Y0, X1, Y1);
-            gr.addColorStop(0, 'rgba(255,250,210,0.32)'); gr.addColorStop(1, 'rgba(255,250,210,0)');
+            gr.addColorStop(0, 'rgba(255,250,210,0.36)'); gr.addColorStop(1, 'rgba(255,250,210,0)');
             ctx.fillStyle = gr;
             const nx = -(Y1 - Y0), ny = X1 - X0, nl = Math.hypot(nx, ny) || 1;
             ctx.beginPath(); ctx.moveTo(X0 - (nx / nl) * 2, Y0 - (ny / nl) * 2); ctx.lineTo(X1 - (nx / nl) * 22, Y1 - (ny / nl) * 22); ctx.lineTo(X1 + (nx / nl) * 22, Y1 + (ny / nl) * 22); ctx.lineTo(X0 + (nx / nl) * 2, Y0 + (ny / nl) * 2); ctx.closePath(); ctx.fill();
@@ -1271,7 +1435,7 @@
   });
 
   /* ---------------------------------------------------------------- RAMZAN + CHAND RAAT */
-  const ram = { strings: null, stalls: null, bhattis: null };
+  const ram = { strings: null, stalls: null, bhattis: null, crescents: null };
   function buildRamzan() {
     const ch = N.WORLD_DATA && N.WORLD_DATA.landmarks.find((l) => l.id === 'charminar');
     if (!ch) return;
@@ -1280,9 +1444,13 @@
     const mins = [[ch.x - 30, ch.y - 30], [ch.x + 30, ch.y - 30], [ch.x + 30, ch.y + 30], [ch.x - 30, ch.y + 30]];
     const ends = [[ch.x - 130, ch.y - 120], [ch.x + 130, ch.y - 120], [ch.x + 130, ch.y + 125], [ch.x - 130, ch.y + 125], [ch.x, ch.y - 150], [ch.x + 150, ch.y], [ch.x, ch.y + 150], [ch.x - 150, ch.y]];
     ends.forEach((e, i) => { const m = mins[i < 4 ? i : (i - 4 + (i === 4 ? 0 : i === 5 ? 1 : i === 6 ? 2 : 3)) % 4]; ram.strings.push({ x0: m[0], y0: m[1], h0: 80, x1: e[0], y1: e[1], h1: 14 }); });
-    // across the Pathergatti road and the Laad Bazaar lane
-    for (let y = 3960; y < 4230; y += 30) ram.strings.push({ x0: 3878, y0: y, h0: 16, x1: 3922, y1: y + 4, h1: 16 });
-    for (let x = 3600; x < 3770; x += 28) ram.strings.push({ x0: x, y0: 4346, h0: 14, x1: x + 3, y1: 4376, h1: 14 });
+    // across the Pathergatti road (north of the monument) and the Laad Bazaar lane (west); relative to Charminar
+    // (these were Map v1 coordinates, which put them far out west of the v2 city)
+    for (let y = ch.y - 400; y < ch.y - 130; y += 30) ram.strings.push({ x0: ch.x - 22, y0: y, h0: 16, x1: ch.x + 22, y1: y + 4, h1: 16 });
+    for (let x = ch.x - 300; x < ch.x - 130; x += 28) ram.strings.push({ x0: x, y0: ch.y - 14, h0: 14, x1: x + 3, y1: ch.y + 16, h1: 14 });
+    // crescent-and-star cut-outs on poles along Pathergatti
+    ram.crescents = [];
+    for (let y = ch.y - 380; y < ch.y - 130; y += 60) for (const x of [ch.x - 26, ch.x + 26]) ram.crescents.push({ x, y });
     // night-bazaar stalls round the plaza (attar, caps, dates, bangles, clothes, toys)
     ram.stalls = [];
     const KINDS = [['#7a3a8a', 'ATTAR'], ['#efe9dc', 'TOPI'], ['#8a4a2a', 'KHAJOOR'], ['#e83a5a', 'CHUDI'], ['#2a8c82', 'KAPDA'], ['#f2c230', 'KHILONE']];
@@ -1292,7 +1460,7 @@
     for (let i = 0; i < 4; i++) spots.push([ch.x - 104, ch.y - 30 + i * 34]);
     const okSpot = (x, y) => N.world.isWalkable(x, y) && N.world.surfaceAt(x, y) !== N.SURF.ROAD && !(N.respect.at(x, y) && N.respect.at(x, y).part === 'compound');
     spots.forEach((s, i) => { if (okSpot(s[0], s[1])) ram.stalls.push({ x: s[0], y: s[1], col: KINDS[i % KINDS.length][0], t: KINDS[i % KINDS.length][1], a: i < 6 ? Math.PI / 2 : i < 10 ? Math.PI : 0, lit: i % 2 === 0 }); });
-    ram.bhattis = [[ch.x + 70, ch.y - 112], [ch.x - 96, ch.y + 100], [ch.x + 100, ch.y + 104], [3936, 4020]].filter((q) => okSpot(q[0], q[1])).slice(0, 3);
+    ram.bhattis = [[ch.x + 70, ch.y - 112], [ch.x - 96, ch.y + 100], [ch.x + 100, ch.y + 104], [ch.x + 36, ch.y - 340]].filter((q) => okSpot(q[0], q[1])).slice(0, 4);
   }
   function drawStall(s) {
     const D = N.draw, vert = Math.abs(Math.cos(s.a)) < 0.5; // long side along x unless the stall faces e/w
@@ -1337,7 +1505,8 @@
         for (let i = 0; i < ram.strings.length; i++) { const s = ram.strings[i]; wire(s.x0, s.y0, s.h0, s.x1, s.y1, s.h1, 4); bulbString(s.x0, s.y0, s.h0, s.x1, s.y1, s.h1, Math.round(Math.hypot(s.x1 - s.x0, s.y1 - s.y0) / 7), cols, 4, TIME * 3 + i); if (i % 2 === 0) glowAt(s.x1, s.y1, s.h1, '#60ff90'); }
         flushBulbs();
         // crescent-and-star cut-outs on the poles along Pathergatti
-        for (let y = 3980; y < 4230; y += 60) for (const x of [3874, 3926]) {
+        for (const cr of ram.crescents || []) {
+          const x = cr.x, y = cr.y;
           N.draw.cyl(x, y, 0.4, 0, 18, { wall: '#5a5a62', grad: false, top: false });
           const k = kh(19), X = sxp(x, k), Y = syp(y, k);
           ctx.fillStyle = '#1f8a4a'; ctx.beginPath(); ctx.arc(X, Y, 3.2 * k, 0, TAU); ctx.fill();
@@ -1356,7 +1525,7 @@
         R.queue('sky', 3, () => { frame(); drawParts(); reset(); });
       }
     },
-    off() { ram.strings = null; ram.stalls = null; },
+    off() { ram.strings = null; ram.stalls = null; ram.crescents = null; },
   });
   ov('chand_raat', {
     on() { makeLooks(); },
@@ -1411,12 +1580,14 @@
         });
       }
       // the Laad Bazaar lane glittering all night (extra bulb strings)
-      R.queue('structures', R.distKey(3700, 4360), () => {
+      // (relative to the monument: these were Map v1 coordinates)
+      const cm = N.WORLD_DATA.landmarks.find((l) => l.id === 'charminar') || { x: ch.x, y: ch.y + 70 };
+      if (inView(cm.x - 215, cm.y, 140)) R.queue('structures', R.distKey(cm.x - 200, cm.y), () => {
         frame();
         const cols = ['#ff4080', '#ffe040', '#40ffff', '#ffffff'];
-        for (let x = 3590; x < 3780; x += 16) bulbString(x, 4346, 15, x + 6, 4376, 15, 6, cols, 3, TIME * 5 + x);
+        for (let x = cm.x - 310; x < cm.x - 120; x += 16) bulbString(x, cm.y - 14, 15, x + 6, cm.y + 16, 15, 6, cols, 3, TIME * 5 + x);
         flushBulbs();
-        for (let x = 3600; x < 3780; x += 45) light(x, 4360, 40, '#ffe0c0', 0.9, 12);
+        for (let x = cm.x - 300; x < cm.x - 120; x += 45) light(x, cm.y, 40, '#ffe0c0', 0.9, 12);
       });
     },
   });
@@ -1438,8 +1609,8 @@
   }
 
   /* ---------------------------------------------------------------- CHRISTMAS */
-  const xmas = { cribs: null };
-  const XMAS_DIST = { secunderabad: 1, marredpally: 1, begumpet: 0.3 };
+  const xmas = { L: null };
+  const XMAS_DIST = { secunderabad: 1, marredpally: 1, begumpet: 0.3, abids: 0.75, osmania: 0.35, himayatnagar: 0.25 };
   function drawStar(x, y, h, col, s) {
     const k = kh(h), X = sxp(x, k), Y = syp(y, k), r = s * k;
     ctx.fillStyle = col; ctx.beginPath();
@@ -1449,66 +1620,130 @@
     for (let i = 0; i < 3; i++) { ctx.moveTo(X - r * 0.3 + i * r * 0.3, Y + r * 0.6); ctx.lineTo(X - r * 0.35 + i * r * 0.3, Y + r * 1.6); }
     ctx.stroke();
   }
+  const FACE_V = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] };
+  // Every church (draw 'church') with its gate (from the respect zone), the outward direction, and where the
+  // Christmas things go: the crib and the tree just inside the gate on either side of the path (never on it, so the
+  // camera behind someone walking in is never stuck behind them), the carol singers just outside at night.
+  // Shared with the 3D view (src/festivals3d.js).
+  function xmasLayout() {
+    if (xmas.L) return xmas.L;
+    const D = N.WORLD_DATA; if (!D || !N.world || !N.world.built) return null;
+    const zones = (D.respect || []).filter((z) => z.kind === 'church');
+    const L = { churches: [] };
+    for (const lm of D.landmarks || []) {
+      if (lm.draw !== 'church') continue;
+      const z = zones.find((q) => q.place === lm.id || q.id === lm.id);
+      const fv = FACE_V[lm.face] || [0, 1];
+      let gx, gy, ox = fv[0], oy = fv[1];
+      if (z && z.gate && z.rects && z.rects[0]) {
+        gx = z.gate.x; gy = z.gate.y;
+        const r = z.rects[0], dx = gx - (r[0] + r[2] / 2), dy = gy - (r[1] + r[3] / 2);
+        if (Math.abs(dx) > Math.abs(dy)) { ox = Math.sign(dx); oy = 0; } else { ox = 0; oy = Math.sign(dy) || 1; }
+      } else {
+        const hd = (ox ? lm.w : lm.d) / 2;
+        gx = lm.x + ox * (hd + 12); gy = lm.y + oy * (hd + 12);
+      }
+      const tx = -oy, ty = ox;
+      const ch = { id: lm.id, lm, gate: { x: gx, y: gy }, ox, oy, tx, ty, a: Math.atan2(oy, ox) };
+      // the crib on one side, the tree on the other, ~7 u inside the gate line (on the church lawn)
+      const side = (U.hash2(lm.x * 0.13, lm.y * 0.29) > 0.5) ? 1 : -1;
+      ch.crib = { x: gx - ox * 7 + tx * side * 17, y: gy - oy * 7 + ty * side * 17, a: ch.a };
+      ch.tree = { x: gx - ox * 7 - tx * side * 17, y: gy - oy * 7 - ty * side * 17 };
+      ch.carols = { x: gx + ox * 13 - tx * side * 9, y: gy + oy * 13 - ty * side * 9 };
+      L.churches.push(ch);
+    }
+    xmas.L = L;
+    return L;
+  }
+  function xmasStarAt(s, out) { // where a house hangs its paper star: the middle of its street front, near the first-floor chajja
+    const f = s.front, x = f === 'W' ? s.x - 1.2 : f === 'E' ? s.x + s.w + 1.2 : s.cx, y = f === 'N' ? s.y - 1.2 : f === 'S' ? s.y + s.d + 1.2 : s.cy;
+    out.x = x; out.y = y; out.h = Math.min(s.h - 2, 13); out.f = f;
+    out.col = ['#f2c230', '#e83a5a', '#40c0ff', '#efe9dc', '#ff8a2a'][(hsh(s.x, 9) * 5) | 0];
+    return out;
+  }
+  function xmasHouse(s) { // does this house hang a star? (0..1 share by district)
+    if (s.t !== 'bldg' || !s.front || !(s.h > 7)) return false;
+    const d = N.world.districtAt(s.cx, s.cy);
+    return !!(d && XMAS_DIST[d.id] && hsh(s.cx, s.cy) < 0.62 * XMAS_DIST[d.id]);
+  }
+  const xsTmp = { x: 0, y: 0, h: 0, f: '', col: '' };
   ov('christmas', {
     draw() {
       const v = R.view;
-      const dist = N.world.districtAt(R.camX, R.camY);
-      const inSec = dist && XMAS_DIST[dist.id];
-      if (inSec) {
-        // paper stars hung at the fronts of houses
-        let n = 0;
-        const list = [];
-        N.world.queryStructures(v.x0 - 20, v.y0 - 20, v.x1 + 20, v.y1 + 20, (s) => {
-          if (n > 44 || s.t !== 'bldg' || !s.front) return;
-          const d = N.world.districtAt(s.cx, s.cy);
-          if (!d || !XMAS_DIST[d.id] || hsh(s.cx, s.cy) > 0.62 * XMAS_DIST[d.id]) return;
-          n++; list.push(s);
-        });
-        for (const s of list) {
-          const ss = s;
-          R.queue('structures', R.distKey(s.cx, s.cy), () => {
-            frame();
-            const f = ss.front, x = f === 'W' ? ss.x - 2 : f === 'E' ? ss.x + ss.w + 2 : ss.cx, y = f === 'N' ? ss.y - 2 : f === 'S' ? ss.y + ss.d + 2 : ss.cy;
-            const col = ['#f2c230', '#e83a5a', '#40c0ff', '#efe9dc'][(hsh(ss.x, 9) * 4) | 0];
-            const h = Math.min(ss.h - 2, 13) + Math.sin(TIME * 1.5 + ss.x) * 0.4;
-            drawStar(x, y, h, col, 4.4);
-            if (NIGHT > 0.15) { light(x, y, 26, col, 0.9, h); glowAt(x, y, h, col); }
-          });
-        }
-      }
-      // cribs at the church gates + carol singers at night
-      if (!xmas.cribs) {
-        xmas.cribs = [];
-        for (const id of ['church_st_marys', 'church_wesley', 'st_johns_church_secunderabad', 'holy_trinity_church_bolarum', 'church_1', 'church_st_josephs', 'st_georges_church_abids', 'church_2']) {
-          const p = placeXY(id); if (!p) continue;
-          for (const [dx, dy] of [[12, 0], [-12, 0], [0, 12], [0, -12]]) if (N.world.isWalkable(p.x + dx, p.y + dy)) { xmas.cribs.push({ x: p.x + dx, y: p.y + dy, id }); break; }
-        }
-      }
-      for (const c of xmas.cribs) {
-        if (!inView(c.x, c.y, 40)) continue;
-        const cc = c;
-        R.queue('structures', R.distKey(c.x, c.y), () => {
+      // paper stars hung at the fronts of houses (Secunderabad, Marredpally, Abids, ...)
+      let n = 0;
+      const list = [];
+      N.world.queryStructures(v.x0 - 20, v.y0 - 20, v.x1 + 20, v.y1 + 20, (s) => {
+        if (n > 60 || !xmasHouse(s)) return;
+        n++; list.push(s);
+      });
+      for (const s of list) {
+        const ss = s;
+        R.queue('structures', R.distKey(s.cx, s.cy), () => {
           frame();
-          const D = N.draw;
-          // the crib: a thatched shed, straw, the family figures, a star above
-          D.box(cc.x - 6, cc.y - 4, 12, 8, 0, 0.6, { wall: '#c8a860', roof: '#d8bc70' });
-          for (const [u, v] of [[-6, -4], [6, -4], [-6, 4], [6, 4]]) D.cyl(cc.x + u, cc.y + v, 0.4, 0, 8, { wall: '#7a5a3a', grad: false, top: false });
-          D.poly([[cc.x - 7.5, cc.y - 5.5], [cc.x + 7.5, cc.y - 5.5], [cc.x + 7.5, cc.y + 5.5], [cc.x - 7.5, cc.y + 5.5]], 8, 9, { wall: '#8a6a30', roof: '#b8964a', wallFlat: true });
-          const k = kh(2.5);
-          for (const [u, v, col] of [[-3, 0, '#2a5cb8'], [3, 0, '#8a5a32'], [0, 1.5, '#f4e8c0']]) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(sxp(cc.x + u, k), syp(cc.y + v, k), 1.3 * k, 0, TAU); ctx.fill(); }
-          drawStar(cc.x, cc.y, 13 + Math.sin(TIME * 2) * 0.3, '#ffe060', 3.2);
-          // a tall pole with the church's big paper star, and bulb strings down to the gate
-          D.cyl(cc.x + 9, cc.y - 6, 0.5, 0, 26, { wall: '#5a5a62', grad: false, top: false });
-          drawStar(cc.x + 9, cc.y - 6, 27, '#ffe8a0', 5.5);
-          bulbString(cc.x + 9, cc.y - 6, 25, cc.x - 14, cc.y + 6, 6, 10, ['#ff4040', '#40ff80', '#ffe040', '#40a0ff'], 3, TIME * 3);
-          bulbString(cc.x + 9, cc.y - 6, 25, cc.x + 26, cc.y + 8, 6, 10, ['#40a0ff', '#ffe040', '#ff4040', '#40ff80'], 3, TIME * 3);
+          const st = xmasStarAt(ss, xsTmp);
+          const h = st.h + Math.sin(TIME * 1.5 + ss.x) * 0.4;
+          drawStar(st.x, st.y, h, st.col, 5.6);
+          if (NIGHT > 0.15) { light(st.x, st.y, 30, st.col, 1, h); glowAt(st.x, st.y, h, st.col); glowAt(st.x, st.y, h - 0.5, '#ffffff'); }
+        });
+      }
+      const L = xmasLayout(); if (!L) return;
+      const lit = NIGHT > 0.15;
+      for (const ch of L.churches) {
+        const lm = ch.lm;
+        if (!inView(lm.x, lm.y, Math.max(lm.w, lm.d) + 60)) continue;
+        const cc = ch;
+        // the church lit up: bulb strings along the roof edges, a big star over the door, floodlight on the front
+        R.queue('structures', R.distKey(lm.x, lm.y) + 3, () => {
+          frame();
+          const hh = (lm.h || 40) * 0.62, x0 = lm.x - lm.w / 2, y0 = lm.y - lm.d / 2, x1 = lm.x + lm.w / 2, y1 = lm.y + lm.d / 2;
+          const cols = ['#ffe070', '#ff5050', '#60ff90', '#60b0ff'];
+          bulbString(x0, y0, hh, x1, y0, hh, Math.round(lm.w / 2.4), cols, 0.4, TIME * 3);
+          bulbString(x1, y0, hh, x1, y1, hh, Math.round(lm.d / 2.4), cols, 0.4, TIME * 3 + 1);
+          bulbString(x1, y1, hh, x0, y1, hh, Math.round(lm.w / 2.4), cols, 0.4, TIME * 3 + 2);
+          bulbString(x0, y1, hh, x0, y0, hh, Math.round(lm.d / 2.4), cols, 0.4, TIME * 3 + 3);
+          const fx = lm.x + cc.ox * (cc.ox ? lm.w / 2 : 0), fy = lm.y + cc.oy * (cc.oy ? lm.d / 2 : 0);
+          drawStar(fx + cc.ox * 1.5, fy + cc.oy * 1.5, (lm.h || 40) * 0.55, '#fff0a0', 6.5);
+          if (lit) {
+            for (let i = 0; i < 8; i++) { const t = i / 8; glowAt(x0 + (x1 - x0) * t, y0, hh, cols[i % 4]); glowAt(x0 + (x1 - x0) * t, y1, hh, cols[(i + 1) % 4]); glowAt(x0, y0 + (y1 - y0) * t, hh, cols[(i + 2) % 4]); glowAt(x1, y0 + (y1 - y0) * t, hh, cols[(i + 3) % 4]); }
+            glowAt(fx + cc.ox * 1.5, fy + cc.oy * 1.5, (lm.h || 40) * 0.55, '#fff0a0');
+            light(fx + cc.ox * 8, fy + cc.oy * 8, 60, '#ffe8c0', 1, 8);
+          }
           flushBulbs();
-          if (NIGHT > 0.15) { light(cc.x + 9, cc.y - 6, 40, '#ffe8a0', 0.9, 26); glowAt(cc.x + 9, cc.y - 6, 27, '#fff0b0'); }
-          if (NIGHT > 0.15) { light(cc.x, cc.y, 34, '#ffe8a0', 1, 6); glowAt(cc.x, cc.y, 13, '#ffe060'); }
+        });
+        // the crib: a thatched shed open to the street, straw, the family and the animals, a star above
+        const cb = ch.crib;
+        if (inView(cb.x, cb.y, 40)) R.queue('structures', R.distKey(cb.x, cb.y), () => {
+          frame();
+          const D = N.draw, x = cb.x, y = cb.y, hw = 6, hd = 4.5, ox = cc.ox, oy = cc.oy, tx = cc.tx, ty = cc.ty;
+          const P = (u, w) => [x + tx * u + ox * w, y + ty * u + oy * w]; // u across, w towards the street
+          D.poly([P(-hw, -hd), P(hw, -hd), P(hw, -hd + 1), P(-hw, -hd + 1)], 0, 6, { wall: '#9a7a4a', roof: '#b8964a', wallFlat: true });
+          for (const [u, w] of [[-hw, hd], [hw, hd], [-hw, -hd], [hw, -hd]]) { const q = P(u, w); D.cyl(q[0], q[1], 0.4, 0, 7, { wall: '#7a5a3a', grad: false, top: false }); }
+          const kf = kh(0.4); ctx.fillStyle = '#d8bc70'; ctx.beginPath(); for (const [u, w] of [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]]) { const q = P(u, w); ctx.lineTo(sxp(q[0], kf), syp(q[1], kf)); } ctx.closePath(); ctx.fill();
+          const k = kh(2.6);
+          for (const [u, w, col] of [[-2.6, -1, '#2a5cb8'], [2.6, -1, '#8a5a32'], [0, 0.8, '#f4e8c0'], [-4.4, 2.4, '#f4f0e8'], [4.4, 2.2, '#9a6a3a']]) { const q = P(u, w); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(sxp(q[0], k), syp(q[1], k), 1.3 * k, 0, TAU); ctx.fill(); }
+          const kr = kh(8.5); ctx.fillStyle = 'rgba(184,150,74,0.85)'; ctx.beginPath(); for (const [u, w] of [[-hw - 1, -hd - 1], [hw + 1, -hd - 1], [hw + 1, hd + 0.5], [-hw - 1, hd + 0.5]]) { const q = P(u, w); ctx.lineTo(sxp(q[0], kr), syp(q[1], kr)); } ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = 'rgba(120,90,40,0.6)'; ctx.lineWidth = 0.5; ctx.beginPath(); for (let u = -hw; u <= hw; u += 1.5) { const a1 = P(u, -hd - 1), b1 = P(u, hd + 0.5); ctx.moveTo(sxp(a1[0], kr), syp(a1[1], kr)); ctx.lineTo(sxp(b1[0], kr), syp(b1[1], kr)); } ctx.stroke();
+          drawStar(x, y, 13 + Math.sin(TIME * 2) * 0.3, '#ffe060', 3.4);
+          if (lit) { light(x + ox * 6, y + oy * 6, 34, '#ffe8a0', 1, 6); glowAt(x, y, 13, '#ffe060'); glowAt(x, y, 5, '#ffd080'); }
           reset();
         });
+        // the Christmas tree: tiers of green, coloured balls, a bulb spiral and a star on top
+        const tr = ch.tree;
+        if (inView(tr.x, tr.y, 30)) R.queue('structures', R.distKey(tr.x, tr.y), () => {
+          frame();
+          const D = N.draw;
+          D.cyl(tr.x, tr.y, 0.7, 0, 3, { wall: '#6a4a2a', grad: false, top: false });
+          for (const [r0, h0, h1] of [[6, 3, 7], [4.6, 7, 11], [3.2, 11, 15]]) D.dome(tr.x, tr.y, r0, h0, h1, { fill: '#2a7a3a', steps: 3 });
+          for (let i = 0; i < 14; i++) { const a = i * 2.4, r = 5 - i * 0.28, h = 4 + i * 0.8, k = kh(h); ctx.fillStyle = ['#ff3040', '#ffe040', '#40a0ff', '#ff80e0'][i % 4]; ctx.fillRect(sxp(tr.x + Math.cos(a) * r, k) - 0.7 * k, syp(tr.y + Math.sin(a) * r, k) - 0.7 * k, 1.4 * k, 1.4 * k); if (lit && i % 2) glowAt(tr.x + Math.cos(a) * r, tr.y + Math.sin(a) * r, h, ['#ff3040', '#ffe040', '#40a0ff', '#ff80e0'][i % 4]); }
+          drawStar(tr.x, tr.y, 16.5, '#ffe060', 2.2);
+          if (lit) { glowAt(tr.x, tr.y, 16.5, '#ffe060'); light(tr.x, tr.y, 26, '#ffd8a0', 0.8, 8); }
+          reset();
+        });
+        // carol singers at the gate in the evening (white shirts, red stoles, facing the street)
+        const m = N.clock.minutes;
+        if (m > 18.5 * 60 && m < 23 * 60) crowdDraw('carols:' + ch.id, null, 7, 5, { at: [ch.carols.x, ch.carols.y], standP: 1, faceA: ch.a, lookList: [lookIdx.caroler, lookIdx.crowd3, lookIdx.caroler, lookIdx.kid2, lookIdx.crowd9, lookIdx.caroler, lookIdx.kid4] });
       }
-      if (NIGHT > 0.3) crowdDraw('carols', 'church_wesley', 6, 10, { dx: 16, dy: 4, standP: 1, lookList: [lookIdx.caroler, lookIdx['crowd3'], lookIdx.caroler, lookIdx['kid2'], lookIdx['crowd9'], lookIdx.caroler] });
       R.queue('light', 6, () => { frame(); flushBulbGlow(); });
     },
   });
@@ -1637,7 +1872,7 @@
   });
   N.on('boot', () => { try { RESP.rebuild(); apply('boot'); } catch (e) { N.err('seasons.boot', e); } });
   N.on('save:loaded', () => apply('load'));
-  N.on('world:built', () => { RX.built = false; });
+  N.on('world:built', () => { RX.built = false; num.L = null; xmas.L = null; });
   /** 3D parity (ARCHITECTURE §20): what the overlays show near (cx, cy) within r, as plain data.
    *  -> {kites: [{x, y, h, ax, ay, ah, color}], people: [{x, y, h, a, look, carry?}], props: [{kind, x, y, h?, a?, ...}]} */
   S.scene = function (cx, cy, r) {
@@ -1673,9 +1908,19 @@
       for (const st of ram.strings || []) if (near(st.x0, st.y0) || near(st.x1, st.y1)) out.props.push({ kind: 'bulbs', x: st.x0, y: st.y0, h: st.h0, x1: st.x1, y1: st.y1, h1: st.h1, colors: ['#40ff80', '#ffffff'] });
     }
     if (enabled('summer') && summ.sheds) for (const sh of summ.sheds) if (near(sh.x, sh.y)) out.props.push({ kind: 'chalivendram', x: sh.x, y: sh.y, a: sh.a });
-    if (enabled('christmas') && xmas.cribs) for (const c of xmas.cribs) if (near(c.x, c.y)) out.props.push({ kind: 'crib', x: c.x, y: c.y });
+    // christmas: cribs, trees, lit churches and house stars are built by src/festivals3d.js from S.layout.christmas()
     return out;
   };
-  S._debug = { crowds, parts, OV, bon, imm, ram, sank, RX };
+  S._debug = { crowds, parts, OV, bon, imm, ram, sank, RX, num, xmas };
+  /** Festival layouts as data, shared by the 2D overlays and the 3D decor (src/festivals3d.js). */
+  S.layout = {
+    numaish: () => numaishLayout(),                  // {g, stalls, counters, tables, strings, food, carousel, train, mast, search, booth, pools, avoid}
+    numaishState: () => num,                         // {train (ellipse angle of the engine), car (carousel angle), open}
+    trainAt: (T, t, out) => trainAt(T, t, out || {}),
+    christmas: () => xmasLayout(),                   // {churches: [{id, lm, gate, ox, oy, tx, ty, a, crib, tree, carols}]}
+    xmasHouse: (s) => xmasHouse(s), xmasStarAt: (s, out) => xmasStarAt(s, out || {}),
+    bonalu: () => bon.procs,                         // [{id, path, L, members: [{kind, d, side}], festoons: [{x, y, a}], thottelu, span}]
+    along: (pts, d, out) => along(pts, d, out || {}),
+  };
   S._weatherTick = weatherTick; // [atmosphere hook] atmosphere.js re-syncs is('rain') the moment its weather flips
 })();

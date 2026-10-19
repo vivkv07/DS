@@ -46,6 +46,10 @@
  * Other screens:
  *   await N.menus.credits({fromTitle}) · await N.menus.definitions() · await N.menus.jcard({...})
  *   N.menus.osdCard('▶ PLAY', {sub, ms})  non-blocking VHS OSD card (used after CONTINUE)
+ *   Panels from other modules (src/online.js): N.menus.definePanel(id, def) (not a built-in id) ·
+ *     openPanel(id, opts) · closePanel(id) · isPanelShown(id) · topPanelId() · overlayRoot() ·
+ *     refreshTitle() · refreshPause(). The title gets an ONLINE track and the pause deck an Online key
+ *     while N.online exists (labels from N.online.titleLine() / pauseLine(); act -> N.online.open({from})).
  *   N.menus.openMap({x, y, zoom}) / closeMap() · openJournal(tabId) / closeJournal()
  *   N.menus.openSettings() · openSaveLoad() · openPause()
  *   N.menus.addSettingsRow({id, label, type: 'seg'|'toggle'|'slider', opts: [[v, text]...], get(), set(v),
@@ -590,6 +594,7 @@
         '<li class="trk-cont"><button type="button" class="jc-trk" data-nav data-act="continue"><i>▶▶</i><b>CONTINUE</b><em class="cont-sub"></em></button></li>' +
         '<li class="trk-load"><button type="button" class="jc-trk" data-nav data-act="load"><i>⏏</i><b>OTHER TAPE</b><em class="load-sub"></em></button></li>' +
         '<li class="trk-view" hidden><button type="button" class="jc-trk" data-nav data-act="view"><i>◫</i><b>VIEW</b><em class="view-sub"></em></button></li>' +
+        '<li class="trk-online" hidden><button type="button" class="jc-trk" data-nav data-act="online"><i>⇄</i><b>ONLINE</b><em class="online-sub">play with friends</em></button></li>' +
         '<li><button type="button" class="jc-trk" data-nav data-act="settings"><i>≡</i><b>SETTINGS</b><em>sound · text · touch</em></button></li>' +
         '<li><button type="button" class="jc-trk" data-nav data-act="credits"><i>♪</i><b>CREDITS</b><em>who made this tape</em></button></li>' +
         '</ol>' +
@@ -604,6 +609,7 @@
         cont: e.querySelector('.trk-cont'), contSub: e.querySelector('.cont-sub'), load: e.querySelector('.trk-load'), loadSub: e.querySelector('.load-sub'),
         confirm: e.querySelector('.jc-confirm'), tracks: e.querySelector('.jc-tracks'), cas: e.querySelector('.cas'), jc: e.querySelector('.jc'),
         view: e.querySelector('.trk-view'), viewSub: e.querySelector('.view-sub'),
+        online: e.querySelector('.trk-online'), onlineSub: e.querySelector('.online-sub'),
       };
       e.addEventListener('click', (ev) => {
         const b = ev.target.closest('button[data-act]');
@@ -631,6 +637,10 @@
       const V = N.view, hasView = !!(V && (typeof V.cycle === 'function' || typeof V.set === 'function'));
       this.dom.view.hidden = !hasView;
       const vm = V && (V.want || V.mode);
+      // ONLINE (src/online.js, ARCHITECTURE §23): only when the module is loaded
+      const OL = N.online;
+      this.dom.online.hidden = !OL;
+      if (OL) { try { this.dom.onlineSub.textContent = OL.titleLine ? OL.titleLine() : 'play with friends'; } catch (e) { N.err('menus.onlineLine', e); } }
       this.dom.tracks.classList.toggle('many', Array.from(this.dom.tracks.children).filter((li) => !li.hidden).length >= 5);
       // a save from a newer build is never overwritten (save.js): say so before they play
       const newer = N.save && N.save.tooNew;
@@ -671,6 +681,7 @@
       title.refresh();
     }
     else if (act === 'credits') { unlockAudio(); sfx('ui_select'); M.credits({ fromTitle: true }); }
+    else if (act === 'online') { unlockAudio(); sfx('ui_select'); try { if (N.online) N.online.open({ from: 'title' }); } catch (e) { N.err('menus.online', e); } }
   }
   let starting = false;
   function beginNewGame() {
@@ -888,6 +899,7 @@
         '<button type="button" class="dk-key" data-nav data-act="settings"><i>≡</i><b>Settings</b></button>' +
         '<button type="button" class="dk-key k-save" data-nav data-act="save"><i>●</i><b>Save</b><small class="why"></small></button>' +
         '<button type="button" class="dk-key" data-nav data-act="load"><i>⏏</i><b>Load</b></button>' +
+        '<button type="button" class="dk-key k-online" data-nav data-act="online" hidden><i>⇄</i><b>Online</b><small class="why ol-why"></small></button>' +
         '<button type="button" class="dk-key k-qm" data-nav data-act="quitmission"><i>■</i><b>Quit mission</b></button>' +
         '<button type="button" class="dk-key k-quit" data-nav data-act="quit"><i>⏏</i><b>Quit to title</b></button>' +
         '</div>' +
@@ -902,7 +914,7 @@
       this.dom = {
         date: q('.dk-date'), time: q('.dk-time'), ctr: q('.dk-ctr'), where: q('.dk-where'), obj: q('.dk-obj'),
         save: q('.k-save'), why: q('.k-save .why'), qm: q('.k-qm'), keys: q('.dk-keys'), confirm: q('.dk-confirm'), cq: q('.dk-cq'),
-        saveQuit: q('[data-act=savequit]'),
+        saveQuit: q('[data-act=savequit]'), online: q('.k-online'), onlineWhy: q('.k-online .why'),
       };
       e.addEventListener('click', (ev) => {
         const b = ev.target.closest('button[data-act]');
@@ -930,6 +942,8 @@
       D.why.textContent = c.ok ? (lastSaveT ? 'last saved ' + agoText(lastSaveT) : 'not saved yet') : c.reason;
       D.qm.hidden = !(N.missions && N.missions.active);
       D.saveQuit.hidden = !c.ok;
+      D.online.hidden = !N.online;
+      if (N.online) { try { D.onlineWhy.textContent = N.online.pauseLine ? N.online.pauseLine() : ''; } catch (e) { N.err('menus.onlineWhy', e); } }
     },
     showConfirm(on) {
       const D = this.dom;
@@ -951,6 +965,7 @@
     else if (act === 'journal') { sfx('ui_select'); M.openJournal(); }
     else if (act === 'settings') { sfx('ui_select'); openPanel('settings', { from: 'pause' }); }
     else if (act === 'load') { sfx('ui_select'); openPanel('slots', { from: 'pause' }); }
+    else if (act === 'online') { sfx('ui_select'); try { if (N.online) N.online.open({ from: 'pause' }); } catch (e) { N.err('menus.online', e); } }
     else if (act === 'save') {
       const c = canSave();
       if (!c.ok) { sfx('ui_back'); btn.classList.remove('nope'); void btn.offsetWidth; btn.classList.add('nope'); return; }
@@ -2917,6 +2932,16 @@
     get waypointPos() { return waypoint ? { x: waypoint.x, y: waypoint.y } : null; },
     canSave, saveManual,
     lastSaved: () => lastSaveT,
+    // ---- panels owned by other modules (src/online.js): the same stack, keyboard / pad navigation and
+    //      focus handling as the built-in screens. def: {build() (sets this.el: a '.screen.mn-screen' in
+    //      #overlay), onOpen(opts), onClose(), onReveal(), back(), onKey(k, e, typing), update(dt)}
+    definePanel(id, def) { if (!def || (panels[id] && !panels[id].external)) return null; def.external = true; return definePanel(id, def); },
+    openPanel, closePanel,
+    isPanelShown: isShown,
+    topPanelId: () => (topPanel() ? topPanel().id : null),
+    overlayRoot,
+    refreshTitle() { if (isShown('title')) title.refresh(); },
+    refreshPause() { if (isShown('pause')) pause.refresh(); },
     // ---- cutscenes and story screens
     cutscene, abortCutscene, skipCutscene,
     get inCutscene() { return !!cs.cur; },

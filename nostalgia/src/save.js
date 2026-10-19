@@ -10,6 +10,13 @@
  *   N.save.has() -> bool    N.save.info() -> {t, day, clock, date, money, district, missions} | null
  *   N.save.tooNew -> {v, slot} | null   N.save.allowed() -> {ok, why}   N.save.autosave(reason) -> bool
  *
+ * Slots for other modules (src/online.js cloud mirror, ARCHITECTURE §23):
+ *   N.save.SLOTS = ['main', 'manual']   N.save.slotRaw(slot) -> string | null   N.save.slotBlob(slot) -> blob | null
+ *   N.save.canReplace(slot, blob) -> {ok, why: null | 'bad' | 'newer_build' | 'local_newer_build' | 'local_newer' | 'same'}
+ *   N.save.importBlob(slot, blob) -> {ok, why}   writes a blob from elsewhere (the cloud) into a slot, with the
+ *     same newer-save guard: never a blob from a newer build, never over a local save from a newer build,
+ *     never over a local save that is newer (blob.t). Emits 'save:imported' {slot, t}.
+ *
  * Newer saves: a blob written by a newer build (v > VERSION) in the main slot, the backup or the
  * pause menu's manual copy is never overwritten. While one exists every save() is refused (also
  * mission autosaves and a new game's saves) and the player is told; CONTINUE plays the older
@@ -82,6 +89,8 @@
     if (bak) return { blob: bak, from: 'backup' };
     return null;
   }
+
+  const SLOT_KEYS = { main: KEY, manual: MANUAL };
 
   /* ------------------------------------------------------------- registry */
   const handlers = new Map(); // key -> {serialize, deserialize}
@@ -179,6 +188,37 @@
       return Object.assign({ t: cur.blob.t, from: cur.from }, cur.blob.meta || {});
     },
     clear() { remove(KEY); remove(BAK); N.emit('save:cleared', {}); },
+    SLOTS: ['main', 'manual'],
+    slotRaw(slot) { const k = SLOT_KEYS[slot]; return k ? read(k) : null; },
+    slotBlob(slot) { return parse(S.slotRaw(slot)); },
+    /** May `blob` replace what is stored in `slot`? (the newer-save guard, both ways) */
+    canReplace(slot, blob) {
+      if (!SLOT_KEYS[slot] || !blob || typeof blob !== 'object' || blob.game !== 'nostalgia' || typeof blob.v !== 'number' || !isFinite(blob.t) || !blob.data || typeof blob.data !== 'object') return { ok: false, why: 'bad' };
+      if (blob.v > VERSION) return { ok: false, why: 'newer_build' };
+      const raw = read(SLOT_KEYS[slot]);
+      if (raw) {
+        let o = null;
+        try { o = JSON.parse(raw); } catch (e) { o = null; }
+        if (o && o.game === 'nostalgia' && typeof o.v === 'number') {
+          if (o.v > blob.v) return { ok: false, why: 'local_newer_build' };
+          if (isFinite(o.t) && o.t > blob.t) return { ok: false, why: 'local_newer' };
+          if (o.t === blob.t) return { ok: false, why: 'same' };
+        }
+      }
+      return { ok: true, why: null };
+    },
+    importBlob(slot, blob) {
+      const c = S.canReplace(slot, blob);
+      if (!c.ok) return c;
+      let raw;
+      try { raw = JSON.stringify(blob); } catch (e) { return { ok: false, why: 'bad' }; }
+      if (!parse(raw)) return { ok: false, why: 'bad' };
+      const key = SLOT_KEYS[slot];
+      if (slot === 'main') { const prev = read(KEY); if (prev && parse(prev)) write(BAK, prev); }
+      const ok = write(key, raw);
+      if (ok) N.emit('save:imported', { slot, t: blob.t });
+      return { ok, why: ok ? null : 'storage' };
+    },
     /** Test hook: raw access to the stored string. */
     _raw: () => read(KEY),
   });

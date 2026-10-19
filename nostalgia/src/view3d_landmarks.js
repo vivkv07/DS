@@ -2741,11 +2741,18 @@
     const k = md.k, hl = D.L / 2, hv = D.D / 2, rng = U.rng(lm.id);
     for (let u = -hl + 1; u < hl - 8; u += 11) {
       const c = pick(rng, ['#e8402a', '#2a5cb8', '#f2c230', '#2a8c82', '#e84a8a', '#7a3db8']);
-      k.c('#e8e0d0').box(u, 0, -hv + 1, u + 10, 10, hv - 3, { front: false });
+      // cloth walls in a pastel with a band of the stall colour, a lit interior full of goods, a counter
+      k.c(pick(rng, ['#f2e6d0', '#ecdcf2', '#d8ecf0', '#f8e0c8', '#e4f0d8'])).box(u, 0, -hv + 1, u + 10, 10, hv - 3, { front: false });
+      k.c(c).box(u - 0.05, 8.4, -hv + 0.95, u + 10.05, 10.05, hv - 2.95, { front: false });
       k.c('#4a3a30').fx(1, 200, 0).wall(u + 0.5, hv - 6, u + 9.5, hv - 6, 0, 9).fx(0, 0, 0);
+      const gc = pick(rng, [['#e8202a', '#2a5cd8', '#30b050', '#f2c230'], ['#f2e8c8', '#e8d8a8'], ['#8a1a2a', '#c8902a', '#1f6a6a'], ['#c8301a', '#e8741a', '#6a8a2a'], ['#f8f8f8', '#3a6ad8']]);
+      for (let i = 0; i < 5; i++) for (let r = 0; r < 2; r++) k.c(gc[(i + r) % gc.length]).fx(0, 0, 0).box(u + 0.9 + i * 1.75, 3.2 + r * 2.4, hv - 5.9, u + 2.3 + i * 1.75, 4.6 + r * 2.4 + rng.next() * 0.6, hv - 5.2);
+      k.c('#8a5a3a').box(u + 0.4, 0, hv - 4.2, u + 9.6, 3, hv - 3.1).c('#c8a878').box(u + 0.3, 3, hv - 4.3, u + 9.7, 3.25, hv - 3);
+      for (let i = 0; i < 5; i++) k.c(gc[i % gc.length]).box(u + 0.8 + i * 1.8, 3.25, hv - 4.0, u + 1.9 + i * 1.8, 3.25 + 0.5 + rng.next() * 0.8, hv - 3.3);
       md.part('kit2').c(c).q(u - 0.2, 13, hv - 3, u + 10.2, 13, hv - 3, u + 10.2, 9, hv + 1, u - 0.2, 9, hv + 1);
+      for (let i = 0; i < 5; i += 2) md.part('kit2').c('#f8f2e4').q(u - 0.2 + i * 2.08, 13.1, hv - 3, u + 1.88 + i * 2.08, 13.1, hv - 3, u + 1.88 + i * 2.08, 9.1, hv + 1, u - 0.2 + i * 2.08, 9.1, hv + 1);
       md.sign(pick(rng, ['KASHMIRI SHAWLS', 'LUCKNOW CHIKAN', 'PAPAD & PICKLES', 'TOYS & GAMES', 'BANARAS SAREES', 'PRESSURE COOKERS', 'AGRA PETHA']), u + 0.5, u + 9.5, 9.6, 12.4, hv - 2.9, c, '#ffffff');
-      for (let i = 0; i < 6; i++) md.glow(u + 1 + i * 1.6, 9, hv + 1, '#ffe070');
+      for (let i = 0; i < 6; i++) md.glow(u + 1 + i * 1.6, 9, hv + 1, ['#ffe070', '#ff7050', '#80ff90', '#80c0ff'][i % 4]);
     }
   }, { anim: true });
   def('khairatabad_ganesh', (md, lm, D) => {
