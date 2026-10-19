@@ -656,11 +656,17 @@
 
   // dithered fade of things right in front of the camera (trunks, poles, walls the camera hugs)
   function nearFade(shader, uni) {
+    // fades the whole object by its origin's (trunk base's) horizontal distance to the camera, not per pixel,
+    // so a tall trunk beside the chase camera disappears cleanly instead of leaving a dotted strip
     shader.uniforms.uNearFade = uni;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vNearObj;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\n#ifdef USE_INSTANCING\n\tvec4 nfo = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);\n#else\n\tvec4 nfo = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);\n#endif\n\tvNearObj = length(nfo.xz - cameraPosition.xz);');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uNearFade;\nfloat nfHash(vec2 p){ vec2 c = mod(floor(p * 0.5), 4.0), l = mod(c, 2.0), h = floor(c * 0.5); float b = 4.0 * (2.0 * abs(l.x - l.y) + l.y) + 2.0 * abs(h.x - h.y) + h.y; return (b + 0.5) / 16.0; }') // 4x4 ordered (Bayer-like) dither in 2x2-pixel cells, not white noise: no confetti
-      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n\tif (uNearFade > 0.0) { float nfd = length(vViewPosition) / uNearFade; if (nfd < 1.0 && nfHash(gl_FragCoord.xy) > smoothstep(0.7, 1.0, nfd)) discard; }'); // closer than 70%: hidden completely
+      .replace('#include <common>', '#include <common>\nuniform float uNearFade;\nvarying float vNearObj;\nfloat nfHash(vec2 p){ vec2 c = mod(floor(p * 0.5), 4.0), l = mod(c, 2.0), h = floor(c * 0.5); float b = 4.0 * (2.0 * abs(l.x - l.y) + l.y) + 2.0 * abs(h.x - h.y) + h.y; return (b + 0.5) / 16.0; }')
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n\tif (uNearFade > 0.0) { float nfd = vNearObj / uNearFade; if (nfd < 1.0 && nfHash(gl_FragCoord.xy) > smoothstep(0.55, 1.0, nfd)) discard; }');
   }
+
   function facadeCompile(shader) {
     shader.uniforms.uNight = UNI.uNight; shader.uniforms.uSkyTint = UNI.uHor;
     shader.uniforms.uFlood = { value: (this && this.userData && this.userData.flood) || 0 };

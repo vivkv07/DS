@@ -149,9 +149,22 @@
     '#include <begin_vertex>',
     'transformed = vec3(position.x * bca + position.z * bsa, position.y, -position.x * bsa + position.z * bca);',
   ].join('\n');
+  // near-camera fade for a whole tree at once: measured from the trunk base (instance origin) to the camera,
+  // not per pixel, so a tall trunk beside the chase camera vanishes cleanly instead of dissolving into dots
+  const NEAR_VERT = [
+    '#include <project_vertex>',
+    '#ifdef USE_INSTANCING',
+    'vec4 nfo = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);',
+    '#else',
+    'vec4 nfo = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);',
+    '#endif',
+    'vNearObj = length(nfo.xz - cameraPosition.xz);',
+  ].join('\n');
   const NEAR_FRAG = [
     '#include <clipping_planes_fragment>',
-    '{ float nfd = length(vViewPosition) / 7.0; if (nfd < 1.0 && fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453) > clamp((nfd - 0.45) / 0.55, 0.0, 1.0)) discard; }',
+    '{ float nfd = vNearObj / 9.0; if (nfd < 1.0) { vec2 c = mod(floor(gl_FragCoord.xy * 0.5), 4.0), l = mod(c, 2.0), h = floor(c * 0.5);',
+    '  float b = (4.0 * (2.0 * abs(l.x - l.y) + l.y) + 2.0 * abs(h.x - h.y) + h.y + 0.5) / 16.0;',
+    '  if (b > smoothstep(0.55, 1.0, nfd)) discard; } }',
   ].join('\n');
 
   /** a wind-animated clone of a GLB material (trees, clotheslines, kites...). opts.height = model
@@ -169,9 +182,10 @@
       let v = sh.vertexShader.replace('#include <common>', '#include <common>\n' + WIND_VERT_COMMON);
       if (o.impostor) v = v.replace('#include <beginnormal_vertex>', IMP_NORMAL).replace('#include <begin_vertex>', IMP_VERT + '\n' + WIND_VERT.replace('#include <begin_vertex>', ''));
       else v = v.replace('#include <begin_vertex>', WIND_VERT);
+      v = v.replace('#include <common>', '#include <common>\nvarying float vNearObj;').replace('#include <project_vertex>', NEAR_VERT);
       sh.vertexShader = v;
       sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying float vWindFl;')
+        .replace('#include <common>', '#include <common>\nvarying float vWindFl;\nvarying float vNearObj;')
         .replace('#include <clipping_planes_fragment>', NEAR_FRAG);
     };
     m.customProgramCacheKey = () => (o.impostor ? 'm3dp-wind-imp' : 'm3dp-wind');
