@@ -6,8 +6,7 @@
  *     kept), sway amplitude grows with N.wind.strength (2D samples), neighbouring trees out of phase (2D
  *     samples + the shader's per-instance hash), the gust wave travels downwind at N.wind.speed (field
  *     sample), clothes moved out of the baked roof sprite / building mesh and drawn live, flags at every
- *     temple / dargah, Blender tree-model path with a stand-in model (InstancedMesh per chunk, windW from
- *     _wind / color_1 / height), motion measured as frame differences calm vs storm in 2D and 3D, perf
+ *     temple / dargah, the 'color' weight mode for baked Blender wind data, motion measured as frame differences calm vs storm in 2D and 3D, perf
  *     (2D ms in a dense tree view with the wind drawing vs world.js's own; 3D JS ms + draw calls), zero errors.
  *   screenshots (tests/out/atmos/): wind_2d_<scene>_<calm|breeze|storm>.png, wind_2d_<scene>_strip.png
  *     (4 frames 0.25 s apart side by side), wind_3d_<scene>_<...>.png, wind_3d_<scene>_strip.png
@@ -211,7 +210,15 @@ const SCENES_2D = [
   { name: 'colony_clothes', at: 'clothes', h: 12, cam: [0, 0, 3] },
 ];
 async function resolveAt(page, at) {
-  if (at === 'flag') return page.evaluate(() => { const f = N.windfx.flags.find((q) => q.zone === 'lal_darwaza_temple') || N.windfx.flags[0]; return [f.x - 10, f.y + 22]; });
+  if (at === 'flag' || at === 'flag3d') return page.evaluate((far) => { const f = N.windfx.flags.find((q) => q.zone === 'lal_darwaza_temple') || N.windfx.flags[0]; return far ? [f.x - 25, f.y + 75] : [f.x - 10, f.y + 22]; }, at === 'flag3d');
+  if (at === 'clothes3d') return page.evaluate(() => {
+    // stand on a walkable terrace with a clothesline, a few steps from the line
+    const r = N.world.roofs.list.find((q) => !q.lm && q.line && q.line._cl && q.line._cl.length >= 4) || N.world.roofs.list.find((q) => q.line);
+    const l = r.line, mx = (l.x0 + l.x1) / 2, my = (l.y0 + l.y1) / 2, horiz = Math.abs(l.x1 - l.x0) > Math.abs(l.y1 - l.y0);
+    const cx = r.x + r.w / 2, cy = r.y + r.d / 2;
+    const px = horiz ? mx : mx + (cx > mx ? 9 : -9), py = horiz ? my + (cy > my ? 9 : -9) : my;
+    return [px, py];
+  });
   if (at === 'clothes') return page.evaluate(() => {
     const p = N.places.giver_himayatnagar || N.player; let best = null;
     N.world.queryStructures(p.x - 400, p.y - 400, p.x + 400, p.y + 400, (s) => { if (best || s.t !== 'bldg' || s.roofType !== 'flat' || s.h > 25) return; for (const it of s.items) if (it.t === 'line' && it._cl && it._cl.length >= 4) { best = [s.cx, s.cy + s.d / 2 + 8]; break; } });
@@ -271,8 +278,8 @@ const SCENES_3D = [
   { name: 'palms_barkas', at: 'barkas', h: 11, pitch: 0.04, yaw: 'trees', palms: true },
   { name: 'neems_ramakrishna', at: 'ramakrishna_math', h: 10, pitch: 0.06, yaw: 'trees' },
   { name: 'lumbini_tankbund', at: 'lumbini_park', h: 16, pitch: 0.06, yaw: 'trees', palms: true },
-  { name: 'temple_flag', at: 'flag', h: 9, pitch: 0.12, yaw: null },
-  { name: 'colony_clothes', at: 'clothes', h: 12, pitch: 0.42, yaw: null },
+  { name: 'temple_flag', at: 'flag3d', h: 9, pitch: -0.22, yaw: null },
+  { name: 'colony_clothes', at: 'clothes3d', h: 12, pitch: 0.18, yaw: 'line' },
 ];
 async function run3D(browser, page) {
   console.log('\n== 3D third person');
@@ -302,7 +309,11 @@ async function run3D(browser, page) {
       await place(page, at, S.h, WINDS[w], { storm });
       await page.evaluate(({ S, at }) => {
         let yaw = S.yaw;
-        if (S.at === 'flag') { const f = N.windfx.flags.find((q) => q.zone === 'lal_darwaza_temple') || N.windfx.flags[0]; yaw = Math.atan2(f.y - N.player.y, f.x - N.player.x); }
+        if (S.at === 'flag3d') { const f = N.windfx.flags.find((q) => q.zone === 'lal_darwaza_temple') || N.windfx.flags[0]; yaw = Math.atan2(f.y - N.player.y, f.x - N.player.x); }
+        if (yaw === 'line') {
+          const r = N.world.roofs.list.find((q) => !q.lm && q.line && q.line._cl && q.line._cl.length >= 4) || N.world.roofs.list.find((q) => q.line);
+          const l = r.line; yaw = Math.atan2((l.y0 + l.y1) / 2 - N.player.y, (l.x0 + l.x1) / 2 - N.player.x) + 0.35;
+        }
         if (yaw === 'trees') {
           // look at the densest cluster of trees (palms when asked) 40..220 u away
           const p = N.player, bins = new Array(16).fill(0);
@@ -361,33 +372,24 @@ async function run3D(browser, page) {
   check(perf.on.calls - perf.off.calls <= 3, '3D draw calls: +' + (perf.on.calls - perf.off.calls) + ' (flags poles + cloth, clothes; budget +3)');
   check(perf.on.layerMs <= 0.4, '3D wind layer JS ' + perf.on.layerMs + ' ms/frame (budget 0.4; clothes ' + perf.clothes + ' instances)');
 
-  // Blender tree model path with a stand-in model (the pack has no tree_* yet)
-  const mdl = await page.evaluate(async () => {
-    const THREE = window.THREE, M3 = N.models3d;
-    // a stand-in "tree_neem": trunk + a canopy blob with a _wind attribute (0 base .. 1 tips)
-    const trunk = new THREE.CylinderGeometry(0.6, 0.9, 14, 6); trunk.translate(0, 7, 0);
-    const crown = new THREE.IcosahedronGeometry(8, 1); crown.translate(0, 20, 0);
-    const w = new Float32Array(crown.attributes.position.count); for (let i = 0; i < w.length; i++) w[i] = Math.min(1, crown.attributes.position.getY(i) / 28);
-    crown.setAttribute('_wind', new THREE.BufferAttribute(w, 1));
-    const root = new THREE.Group();
-    root.add(new THREE.Mesh(trunk, new THREE.MeshLambertMaterial({ color: '#6a4a30' })));
-    root.add(new THREE.Mesh(crown, new THREE.MeshLambertMaterial({ color: '#3a7a2e', flatShading: true })));
-    const has0 = M3.has, loaded0 = M3.loaded, inst0 = M3.instance;
-    M3.has = (id) => id === 'tree_neem' || has0.call(M3, id); M3.loaded = (id) => id === 'tree_neem' || loaded0.call(M3, id); M3.instance = (id) => (id === 'tree_neem' ? root.clone() : inst0.call(M3, id));
-    N.emit('models3d:ready', { ids: ['tree_neem'] });
-    N.view3d.settle(60000);
-    let ims = 0, inst = 0, src = null;
-    for (const ch of N.view3d.engine.city.children) ch.traverse((o) => { if (o.isInstancedMesh && o.name === 'windfx-tree') { ims++; inst += o.count; src = o.geometry.userData.windSrc || src; } });
-    const s = N.windfx.stats();
-    return { ims, inst, src, model: s.modelTrees, proc: s.procTrees };
+  // the reusable 'color' weight mode (baked vertex colour R bend, G phase, B flutter mask: the props session's
+  // Blender trees): a stand-in instanced tree compiles and renders without errors
+  const col = await page.evaluate(async () => {
+    const THREE = window.THREE, H = N.view3d.H;
+    const g = new THREE.IcosahedronGeometry(6, 1); g.translate(0, 18, 0);
+    const n = g.attributes.position.count, c = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { c[i * 3] = Math.min(1, g.attributes.position.getY(i) / 24); c[i * 3 + 1] = (i % 7) / 7; c[i * 3 + 2] = 1; }
+    g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    const m = N.windfx.patchMaterial(new THREE.MeshLambertMaterial({ color: '#3a7a2e', flatShading: true }), { weight: 'color', amp: 3, flutter: 0.5, tip: 0.8, key: 'test-color', wrap: false });
+    const im = new THREE.InstancedMesh(g, m, 2); const M = new THREE.Matrix4();
+    M.makeTranslation(N.player.x + 30, 0, N.player.y); im.setMatrixAt(0, M); M.makeTranslation(N.player.x - 30, 0, N.player.y); im.setMatrixAt(1, M);
+    im.frustumCulled = false; H.layer.add(im);
+    for (let i = 0; i < 4; i++) await new Promise((r) => requestAnimationFrame(r));
+    const progs = (N.view3d.engine.renderer.info.programs || []).length;
+    H.layer.remove(im); g.dispose(); m.dispose();
+    return { ok: true, progs, errs: N.errors.length };
   });
-  check(mdl.ims > 0 && mdl.inst > 0, 'Blender tree model path: neems drawn as instanced model meshes (' + mdl.ims + ' meshes, ' + mdl.inst + ' instances; other kinds procedural: ' + mdl.proc + ')');
-  check(mdl.src === 'attr' || mdl.src === 'height', 'model wind weights read from the _wind attribute (' + mdl.src + ')');
-  if (SHOTS) {
-    await page.evaluate(() => { N.debug.teleport('ramakrishna_math'); N.wind.force({ strength: 0.8, gustiness: 0.8, dir: 0.45 }); N.view3d.setCamera({ yaw: 0.3, pitch: 0.25, snap: true }); N.view3d.settle(30000); });
-    await frames(page, 3);
-    await page.screenshot({ path: path.join(OUT, 'wind_3d_model_standin.png'), timeout: 300000 });
-  }
+  check(col.ok && col.errs === 0, "patchMaterial weight 'color' (R bend, G phase, B flutter mask) compiles and renders (" + col.progs + ' programs)');
 }
 
 async function main() {
@@ -396,7 +398,7 @@ async function main() {
   try {
     await logicChecks(page);
     if (!ONLY || ONLY === '2d' || ONLY.indexOf('2d') === 0) await run2D(browser, page);
-    if (!ONLY || ONLY === '3d' || ONLY.indexOf('3d') === 0 || SCENES_3D.some((s) => ONLY === s.name)) await run3D(browser, page);
+    if (!ONLY || ONLY === '3d' || ONLY.indexOf('3d') === 0 || SCENES_3D.some((s) => ONLY.indexOf(s.name) >= 0)) await run3D(browser, page);
   } catch (e) { fail('test crashed: ' + (e.stack || e.message)); }
   const nerr = await page.evaluate(() => N.errors.map((e) => e.where + ': ' + String(e.msg).split('\n')[0])).catch(() => []);
   check(errors.length === 0 && nerr.length === 0, 'zero console errors / page errors / N.err', JSON.stringify(errors.concat(nerr)).slice(0, 1500));

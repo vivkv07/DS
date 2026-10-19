@@ -548,9 +548,9 @@ void main() {
   }
   const BOLT = { spr: null, texs: [], t0: -99, strike: null, dur: 0.42 };
   function boltTex(seed) {
-    const r = N.util.rng('weather3d:bolt' + seed);
     return softTex(128, 512, (g, w, h) => {
       g.clearRect(0, 0, w, h);
+      let r = null;
       const path = (x, y, len, ang, wid, depth) => {
         let px = x, py = y;
         g.beginPath(); g.moveTo(px, py);
@@ -560,19 +560,18 @@ void main() {
           const sl = len / steps * (0.6 + r.next() * 0.8);
           px += Math.cos(ang) * sl; py += Math.sin(ang) * sl;
           g.lineTo(px, py);
-          if (depth < 2 && r.next() < 0.18) { g.stroke(); path(px, py, len * 0.35, ang + (r.next() < 0.5 ? -0.7 : 0.7), wid * 0.5, depth + 1); g.beginPath(); g.moveTo(px, py); g.lineWidth = wid; }
+          if (depth < 2 && r.next() < 0.18) { g.lineWidth = wid; g.stroke(); path(px, py, len * 0.35, ang + (r.next() < 0.5 ? -0.7 : 0.7), wid * 0.5, depth + 1); g.beginPath(); g.moveTo(px, py); }
         }
         g.lineWidth = wid; g.stroke();
       };
       g.lineCap = 'round'; g.lineJoin = 'round';
-      g.shadowColor = 'rgba(170,190,255,1)'; g.shadowBlur = 14; g.strokeStyle = 'rgba(200,215,255,0.9)';
-      path(w * 0.5, 0, h * 0.98, Math.PI / 2, 5, 0);
+      // glow, then the bright core along the same channel (same seed)
+      r = N.util.rng('weather3d:bolt' + seed);
+      g.shadowColor = 'rgba(150,170,255,1)'; g.shadowBlur = 16; g.strokeStyle = 'rgba(170,190,255,0.75)';
+      path(w * 0.5, 0, h * 0.98, Math.PI / 2, 6, 0);
+      r = N.util.rng('weather3d:bolt' + seed);
       g.shadowBlur = 0; g.strokeStyle = 'rgba(255,255,255,1)';
-      // a bright core on the main channel: redraw with the same rng is not possible; overlay a thin glow pass
-      g.globalCompositeOperation = 'lighter';
-      const gd = g.createLinearGradient(0, 0, 0, h); gd.addColorStop(0, 'rgba(120,140,255,0.25)'); gd.addColorStop(1, 'rgba(120,140,255,0)');
-      g.fillStyle = gd; g.fillRect(w * 0.3, 0, w * 0.4, h * 0.15);
-      g.globalCompositeOperation = 'source-over';
+      path(w * 0.5, 0, h * 0.98, Math.PI / 2, 2, 0);
     });
   }
   function buildBolt() {
@@ -626,7 +625,7 @@ void main() {
     const mesh = new THREE.InstancedMesh(coverGeo(), m, COVER.max);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.frustumCulled = false; mesh.count = 0; mesh.name = 'auto-covers'; mesh.visible = false;
-    mesh.castShadow = !!(H.quality && H.quality.shadows);
+    mesh.castShadow = false; mesh.userData.noShadow = true; // no shadow-pass draw call for a curtain
     COVER.mesh = mesh; COVER.mat = m;
     COVER.m4 = new THREE.Matrix4(); COVER.q = new THREE.Quaternion(); COVER.s = new THREE.Vector3(); COVER.p = new THREE.Vector3(); COVER.e = new THREE.Euler(); COVER.up = new THREE.Vector3(0, 1, 0);
     H.layer.add(mesh);
@@ -695,7 +694,7 @@ void main() {
       hor.lerp(mc, mist * 0.75); zen.lerp(hor, mist * 0.55);
     }
     if (flash > 0.001) {
-      const fc = tmpCol('fc').setRGB(0.55, 0.6, 0.85);
+      const fc = tmpCol('fc').setRGB(0.3, 0.33, 0.52);
       zen.lerp(fc, flash * 0.25); hor.lerp(fc, flash * 0.35);
     }
     // fog: the (modified) horizon; closer in rain, thick in mist
@@ -721,8 +720,8 @@ void main() {
       hemi.intensity *= 1 + (0.22 * ov + 0.15 * mist) * (1 - night);
     }
     if (flash > 0.001) {
-      hemi.color.lerp(tmpCol('fh').setRGB(0.72, 0.78, 1.0), clamp(flash, 0, 1));
-      hemi.intensity += flash * (0.35 + 0.65 * night);
+      hemi.color.lerp(tmpCol('fh').setRGB(0.2, 0.24, 0.4), clamp(flash, 0, 1) * 0.85);
+      hemi.intensity += flash * (0.25 + 0.45 * night);
       E.renderer.toneMappingExposure += flash * 0.12;
     }
     // lamp glows: bigger, softer halos in rain and mist
@@ -850,6 +849,7 @@ void main() {
         patched: ST.patched, req: ST.req, lamps: LAMPS.list.length, drops: ST.drops, covers: ST.covers, lights: ST.lights, ms: +ST.ms.toFixed(3), msAvg: +ST.msAvg.toFixed(3), wxN: WXN,
         rain: !!(RAIN.mesh && RAIN.mesh.visible), splashes: !!(SPL.mesh && SPL.mesh.visible), clouds: !!(CLOUD.mesh && CLOUD.mesh.visible),
         halos: !!(HALO.pts && HALO.pts.visible), bolt: !!(BOLT.spr && BOLT.spr.visible), wet: GUwet ? +GUwet.value.toFixed(2) : null,
+        calls: [RAIN.mesh, SPL.mesh, CLOUD.mesh, HALO.pts, BOLT.spr, COVER.mesh].filter((o) => o && o.visible).length,
         fogFar: H && H.scene && H.scene.fog ? Math.round(H.scene.fog.far) : null,
       };
     },

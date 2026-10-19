@@ -9,6 +9,9 @@
  *       opts: weight  'height' (default)  weight = amp * ((worldY - base) / height) ^ flex   (trees)
  *                     'attr'              weight = amp * windW * instanceScaleY            (Blender models:
  *                                         the vertex attribute `windW`, see windWeights())
+ *                     'color'             baked vertex colour wind data (not a tint): R = bend weight (0 base ..
+ *                                         1 tips) * amp * instanceScaleY, G = flutter phase (0..1 -> 0..2pi added
+ *                                         to the per-instance phase), B = leaf flutter mask (scales flutter / tip)
  *                     'hang'              weight = amp * (-localY) ^ flex  (geometry hangs from y = 0 down
  *                                         to y = -1: clothes on a line)
  *                     'flag'              cloth flies from the instance origin downwind (local x 0..1 =
@@ -33,11 +36,10 @@
  *   3D  core procedural trees: the shared canopy material (blobs + palm crowns: height weight + leaf / frond
  *       flutter by a `windW` attribute added to H.geo.blob / H.geo.crown) and the instanced trunk material
  *       (created here before the first chunk, so the core's lazy `if (!MAT.trunkI)` keeps ours); their
- *       shadows sway too (customDepthMaterial). Blender tree models tree_<kind> (coconut neem banyan
- *       gulmohar ashoka mango tamarind palm) when N.models3d has them: registerStructure('tree') builds one
- *       InstancedMesh per model part per chunk (random yaw, scale from the tree's h / r, per-instance
- *       phase); kinds without a model fall back to the core's procedural instancing (same data as
- *       view3d.js addTree). Temple (saffron) and dargah (green) flags: 1 instanced call for the poles + 1
+ *       shadows sway too (customDepthMaterial). Blender tree models are NOT handled here: the props
+ *       session (src/models3d_props.js) owns registerStructure('tree') with LOD / impostors and reads
+ *       N.wind.uniforms directly; patchMaterial(m, {weight: 'color'}) matches its baked R/G/B wind data
+ *       if it wants the shared shader. Temple (saffron) and dargah (green) flags: 1 instanced call for the poles + 1
  *       for the cloth. Clothes on rooftop clotheslines near the camera: 1 instanced call (+ the wire).
  *       Sankranti kites' tails: 1 dynamic ribbon mesh while the festival is on.
  *   2D  tree canopies offset by N.wind.sway (amplitude by tree height), trunks bend, leafy canopies breathe
@@ -62,7 +64,7 @@
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const now = () => performance.now();
 
-  const ST = { trees: 0, palmsLive: 0, clothes2d: 0, flags2d: 0, tails2d: 0, clothes3d: 0, tails3d: 0, flags3d: 0, modelTrees: 0, procTrees: 0, layerMs: 0, ms2d: 0 };
+  const ST = { trees: 0, palmsLive: 0, clothes2d: 0, flags2d: 0, tails2d: 0, clothes3d: 0, tails3d: 0, flags3d: 0, layerMs: 0, ms2d: 0 };
   const FX = (N.windfx = {
     enabled: true,
     amp2d: 1,
@@ -82,6 +84,9 @@
     'uniform vec4 uWindFx2;  // x tip stream (u), y base height (u)',
     '#if defined(WFX_ATTR)',
     'attribute float windW;',
+    '#endif',
+    '#if WFX_MODE == 4 && !defined(USE_COLOR)',
+    'attribute vec3 color;   // baked wind data, not a tint: R bend, G flutter phase, B leaf flutter mask',
     '#endif',
     'float wfxHash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }',
   ].join('\n');
@@ -118,7 +123,10 @@
     '    wfxP.xyz = wfxOrg + al * (fu * L) + wd * (position.y * wfxSy * (1.0 - fu * taper)) + pr * rip + vec3(0.0, flap, 0.0);',
     '  }',
     '#else',
-    '  #if WFX_MODE == 1',
+    '  #if WFX_MODE == 4',
+    '    wfxPh += color.g * 6.2831853;',
+    '    float wfxW = color.r * uWindFx.x * wfxSy;',
+    '  #elif WFX_MODE == 1',
     '    float wfxW = windW * uWindFx.x * wfxSy;',
     '  #elif WFX_MODE == 2',
     '    float wfxW = pow(clamp(-position.y, 0.0, 1.0), uWindFx.z) * uWindFx.x;',
@@ -127,7 +135,9 @@
     '  #endif',
     '  wfxW *= 1.0 + 0.85 * uWind.z;   // storms bend harder than linear (same as the 2D amplitude)',
     '  vec3 wfxOff = windOffset(wfxOrg, wfxW, wfxPh);',
-    '  #if defined(WFX_TIPATTR) || WFX_MODE == 1',
+    '  #if WFX_MODE == 4',
+    '    float wfxTip = color.b;',
+    '  #elif defined(WFX_TIPATTR) || WFX_MODE == 1',
     '    float wfxTip = windW;',
     '  #elif WFX_MODE == 2',
     '    float wfxTip = clamp(-position.y, 0.0, 1.0);',
@@ -146,7 +156,7 @@
     'vec4 mvPosition = viewMatrix * wfxP;',
     'gl_Position = projectionMatrix * mvPosition;',
   ].join('\n');
-  const MODES = { height: 0, attr: 1, hang: 2, flag: 3 };
+  const MODES = { height: 0, attr: 1, hang: 2, flag: 3, color: 4 };
 
   function windfxCompile(shader, ud) {
     const U2 = WI.uniforms(window.THREE);
@@ -265,128 +275,11 @@
       for (const o of ch.children) {
         if (!o.isMesh || o.customDepthMaterial) continue;
         const m = o.material;
-        if (m && !Array.isArray(m) && m.userData && m.userData.windfx && (m === M.canopy || m === M.trunkI || m.userData.windfxModel)) o.customDepthMaterial = depthMaterial(m);
+        if (m && !Array.isArray(m) && m.userData && m.userData.windfx && (m === M.canopy || m === M.trunkI)) o.customDepthMaterial = depthMaterial(m);
         else if (o.isGroup || (o.children && o.children.length)) for (const c of o.children) if (c.isMesh && !c.customDepthMaterial && c.material && c.material.userData && c.material.userData.windfx) c.customDepthMaterial = depthMaterial(c.material);
       }
     }
   }
-
-  /* ================================================================ 3D: Blender tree models */
-  const TREE_IDS = ['coconut', 'neem', 'banyan', 'gulmohar', 'ashoka', 'mango', 'tamarind', 'palm'];
-  const modelCache = new Map(); // kind -> {parts: [{geo, mat}], h, w} | null
-  function modelFor(THREE, kind) {
-    if (modelCache.has(kind)) return modelCache.get(kind);
-    const M3 = N.models3d, id = 'tree_' + kind;
-    let rec = null;
-    if (M3 && M3.has && M3.has(id) && (!M3.loaded || M3.loaded(id))) {
-      try {
-        const root = M3.instance(id);
-        if (root) {
-          root.updateMatrixWorld(true);
-          const parts = [];
-          const box = new THREE.Box3().setFromObject(root);
-          const mh = Math.max(1, box.max.y), mw = Math.max(1, Math.max(box.max.x - box.min.x, box.max.z - box.min.z));
-          root.traverse((o) => {
-            if (!o.isMesh || (o.name && o.name.indexOf('COL_') === 0)) return;
-            let g = o.geometry;
-            if (!o.matrixWorld.equals(new THREE.Matrix4())) { g = g.clone(); g.applyMatrix4(o.matrixWorld); }
-            windWeights(g, mh);
-            g.userData.shared = true;
-            const mats = Array.isArray(o.material) ? o.material : [o.material];
-            const pm = mats.map((m0) => {
-              const m = m0.clone();
-              patchMaterial(m, { weight: 'attr', amp: TREE3D.amp * Math.pow(mh / TREE3D.height, TREE3D.flex), flutter: 0.45, tip: 0.6, key: 'model', wrap: false });
-              m.userData.shared = true; m.userData.windfxModel = true;
-              return m;
-            });
-            parts.push({ geo: g, mat: pm.length === 1 ? pm[0] : pm });
-          });
-          if (parts.length) rec = { parts, h: mh, w: mw, id };
-        }
-      } catch (e) { N.err('windfx.model:' + id, e); rec = null; }
-    }
-    modelCache.set(kind, rec);
-    return rec;
-  }
-  const M4 = { m: null, q: null, p: null, s: null, e: null };
-  function treeStructure(THREE, s, H, gb, J) {
-    const kind = s.kind === 'peepal' ? 'banyan' : s.kind;
-    const md = TREE_IDS.indexOf(kind) >= 0 ? modelFor(THREE, kind) : null;
-    if (!md) { procTree(H, J, s); ST.procTrees++; return; }
-    ST.modelTrees++;
-    const T = J._wfxTrees || (J._wfxTrees = {});
-    let e = T[kind], ret = null;
-    if (!e) {
-      let cap = 0;
-      for (const q of J.list) if (q.t === 'tree' && (q.kind === 'peepal' ? 'banyan' : q.kind) === kind) cap++;
-      const g = new THREE.Group(); g.name = 'windfx-trees-' + kind;
-      g.position.set(J.ox, 0, J.oz);
-      const meshes = md.parts.map((p) => {
-        const im = new THREE.InstancedMesh(p.geo, p.mat, Math.max(1, cap));
-        im.count = 0; im.frustumCulled = false; im.castShadow = !!H.quality.shadows; im.receiveShadow = false;
-        if (H.quality.shadows && !Array.isArray(p.mat)) im.customDepthMaterial = depthMaterial(p.mat);
-        im.matrixAutoUpdate = false; im.name = 'windfx-tree';
-        g.add(im);
-        return im;
-      });
-      e = T[kind] = { group: g, meshes, n: 0 };
-      ret = g;
-    }
-    if (!M4.m) { M4.m = new THREE.Matrix4(); M4.q = new THREE.Quaternion(); M4.p = new THREE.Vector3(); M4.s = new THREE.Vector3(); M4.e = new THREE.Euler(); }
-    const rng = U.rng(((s.x * 73.1) ^ (s.y * 19.7)) >>> 0);
-    const h = (s.h || 22) * H.VS * 0.95, sc = h / md.h;
-    const sxz = sc * clamp(((s.r || 9) * 2.1 / md.w) / sc, 0.75, 1.35);
-    M4.p.set(s.x - J.ox, 0, s.y - J.oz); M4.e.set(0, rng.next() * TAU, 0); M4.q.setFromEuler(M4.e); M4.s.set(sxz, sc, sxz);
-    M4.m.compose(M4.p, M4.q, M4.s);
-    for (const im of e.meshes) { if (e.n < im.instanceMatrix.count) { im.setMatrixAt(e.n, M4.m); im.count = e.n + 1; im.instanceMatrix.needsUpdate = true; } }
-    e.n++;
-    return ret;
-  }
-  // the core's procedural tree (view3d.js addTree), for kinds without a model
-  const TREEK = {
-    neem: ['#2c5226', '#3a6a2e', '#4a7c36', '#5f9142'], banyan: ['#203f1e', '#2d5427', '#3b6830', '#4c7a3a'],
-    gulmohar: ['#2f5a28', '#3f7032', '#4f8238', '#628f40'], ashoka: ['#1f4a24', '#2b5d2e', '#3a7038', '#4a8040'],
-    palm: ['#3e6a2a', '#4f7f34', '#6a9440', '#2e5222'], coconut: ['#456f2c', '#588a36', '#74a046', '#33582a'],
-    mango: ['#1c3f1c', '#28522a', '#376636', '#4a7a40'], tamarind: ['#2a4f24', '#386230', '#4a763a', '#5f8a46'],
-    peepal: ['#25502a', '#326434', '#43783e', '#58904a'],
-  };
-  const FLOWERS = ['#e0482a', '#f07a2a', '#d83a24'];
-  function procTree(H, J, s) {
-    const K = TREEK[s.kind] || TREEK.neem;
-    const palm = s.kind === 'palm' || s.kind === 'coconut';
-    const x = s.x - J.ox, z = s.y - J.oz, h = (s.h || 22) * H.VS * 0.95, r = s.r || 9;
-    const seed = ((s.x * 73.1) ^ (s.y * 19.7)) >>> 0, rng = U.rng(seed);
-    if (palm) {
-      const th = h * 0.92, lean = (rng.next() - 0.5) * 0.12;
-      J.trunks.push([x, 0, z, 0.55, th, 0.55, lean, rng.next() * TAU, '#7a6448']);
-      J.crowns.push([x - Math.sin(lean) * th, th, z, r * 0.95, r * 0.75, r * 0.95, rng.next() * TAU, K[(seed >> 3) % 4]]);
-      if (s.kind === 'coconut') for (let k = 0; k < 3; k++) J.blobs.push([x - Math.sin(lean) * th + (rng.next() - 0.5) * 1.6, th - 0.6, z + (rng.next() - 0.5) * 1.6, 0.6, 0.6, 0.6, 0, '#6a5a2a']);
-      return;
-    }
-    const banyan = s.kind === 'banyan';
-    const th = h * (banyan ? 0.42 : 0.48), tw = banyan ? 1.9 : 0.75 + r * 0.05;
-    J.trunks.push([x, 0, z, tw, th + r * 0.3, tw, 0, rng.next() * TAU, banyan ? '#6a5a48' : '#5b4632']);
-    const R = r * 1.05, cy = th + R * 0.55;
-    const blobs = (s.blobs && s.blobs.length ? s.blobs : [[0, 0, r * 0.6]]).slice().sort((p, q) => q[2] - p[2]).slice(0, banyan ? 6 : 4);
-    for (let k = 0; k < blobs.length; k++) {
-      const bl = blobs[k], br = Math.max(2.4, bl[2] * 1.35);
-      let c = K[(k + (seed & 3)) % 4];
-      if (s.kind === 'gulmohar' && k % 2 === 0) c = FLOWERS[(seed + k) % 3];
-      J.blobs.push([x + bl[0] * 1.05, cy + (rng.next() - 0.35) * R * 0.35 + (k === 0 ? R * 0.15 : 0), z + bl[1] * 1.05, br, br * (0.78 + rng.next() * 0.2), br, rng.next() * TAU, c]);
-    }
-    if (banyan) for (let k = 0; k < 5; k++) { const a = rng.next() * TAU, d = r * (0.3 + rng.next() * 0.5); J.trunks.push([x + Math.cos(a) * d, 0, z + Math.sin(a) * d, 0.18, cy - 2, 0.18, 0, 0, '#7a6a58']); }
-  }
-  let treeReg = false;
-  function maybeRegisterTrees() {
-    if (treeReg || !N.view3d || !N.models3d) return;
-    const M3 = N.models3d;
-    const any = TREE_IDS.some((k) => M3.has && M3.has('tree_' + k) && (!M3.loaded || M3.loaded('tree_' + k)));
-    if (!any) return;
-    treeReg = true;
-    modelCache.clear();
-    N.view3d.registerStructure('tree', treeStructure); // marks every chunk dirty -> rebuilt with the models
-  }
-  N.on('models3d:ready', () => { try { maybeRegisterTrees(); } catch (e) { N.err('windfx.trees', e); } });
 
   /* ================================================================ flags (data, both views) */
   const FLAG_KINDS = {
@@ -855,7 +748,6 @@
         buildFlags3D(THREE, H);
         initClothes(THREE, H);
         initTails(THREE, H);
-        maybeRegisterTrees();
         L3.clothKey = ''; L3.clothT = 0;
       },
       update(dt, H) {
@@ -916,8 +808,7 @@
     }
     chainDeck();
     patchSank();
-    modelCache.clear();
-    FX._internal = { WX, L3, modelCache, TREE3D, CANOPY };
+    FX._internal = { WX, L3, TREE3D, CANOPY };
   }
   N.on('world:built', () => { try { setupWorld(); } catch (e) { N.err('windfx.setup', e); } });
   // tests / profiling: bypass2d(true) puts world.js's own tree + building drawing back (still clothes are

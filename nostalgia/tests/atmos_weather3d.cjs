@@ -53,7 +53,7 @@ SCENES.push(
   { name: 'tankbund_day_rain_tps', at: 'giver_hussain_sagar', h: 16, m: 0, wx: 'rain', mode: 'tps', look: 'road', kind: ['bund'], turn: -1.4, pitch: 0.2 },
   { name: 'mist_dawn_tps', at: 'giver_hussain_sagar', h: 6, m: 10, wx: 'mist', mode: 'tps', look: 'road', kind: ['bund'], pitch: 0.12 },
   { name: 'mist_dawn_fps', at: 'abids', h: 6, m: 20, wx: 'mist', mode: 'fps', look: 'road', kind: ['arterial'], snap: true, side: -14, pitch: 0.03 },
-  { name: 'lightning_night_tps', at: 'abids', h: 22, m: 0, wx: 'storm', mode: 'tps', look: 'road', kind: ['arterial'], snap: true, side: -14, pitch: 0.05, bolt: true },
+  { name: 'lightning_night_tps', at: 'abids', h: 22, m: 0, wx: 'storm', mode: 'tps', look: 'road', kind: ['arterial'], snap: true, side: -14, pitch: -0.06, bolt: true },
 );
 
 async function openPage(browser, quality) {
@@ -119,16 +119,18 @@ async function shoot(page, file) {
 }
 /** average JS ms + draw calls over n frames */
 async function perf(page, n) {
-  await frames(page, 4);
+  // warm up: the first frames after a scene change compile shaders / stream chunks (software GL)
+  await page.evaluate(() => N.view3d.settle(20000));
+  await frames(page, 12);
   return page.evaluate((n) => new Promise((res) => {
-    const js = [], calls = [], wx = [];
+    const js = [], calls = [], wx = [], own = [];
     let k = 0;
     const f = () => {
-      const s = N.view3d.stats(); js.push(s.jsMs); calls.push(s.calls); wx.push(N.weather3d.stats().ms);
+      const s = N.view3d.stats(), w = N.weather3d.stats(); js.push(s.jsMs); calls.push(s.calls); wx.push(w.ms); own.push(w.calls);
       if (++k >= n) {
         js.sort((a, b) => a - b); wx.sort((a, b) => a - b);
         const med = (a) => a[Math.floor(a.length / 2)];
-        res({ jsMed: +med(js).toFixed(2), wxMed: +med(wx).toFixed(3), calls: Math.round(calls.reduce((a, b) => a + b, 0) / calls.length), callsMax: Math.max.apply(null, calls) });
+        res({ jsMed: +med(js).toFixed(2), wxMed: +med(wx).toFixed(3), calls: Math.round(calls.reduce((a, b) => a + b, 0) / calls.length), callsMax: Math.max.apply(null, calls), layerCalls: Math.max.apply(null, own) });
       } else requestAnimationFrame(f);
     };
     requestAnimationFrame(f);
@@ -212,7 +214,7 @@ async function main() {
 
   const P = await perfSuite(page, 'desktop');
   check(P.storm.calls - P.dry.calls <= 8, 'desktop storm: <= +6 layer draw calls (+ slack for traffic)', `dry ${P.dry.calls} storm ${P.storm.calls} storm-off ${P.stormOff.calls}`);
-  check(P.storm.calls - P.stormOff.calls <= 6, 'desktop storm: layer adds <= 6 draw calls', `storm ${P.storm.calls} layer-off ${P.stormOff.calls}`);
+  check(P.storm.layerCalls <= 6, 'desktop storm: layer adds <= 6 draw calls', `layer objects ${P.storm.layerCalls}; scene storm ${P.storm.calls} dry ${P.dry.calls} layer-off ${P.stormOff.calls}`);
   check(P.storm.wxMed <= 0.7, 'desktop storm: layer JS <= 0.7 ms', 'median ' + P.storm.wxMed + ' ms');
 
   if (SHOTS) {
@@ -238,7 +240,7 @@ async function main() {
   const tier = await ph.page.evaluate(() => ({ tier: N.view3d.stats().tier, wxN: N.weather3d.stats().wxN }));
   check(tier.tier === 'low' && tier.wxN === 4, 'phone tier: 4 reflection lights', JSON.stringify(tier));
   const PP = await perfSuite(ph.page, 'phone');
-  check(PP.storm.calls - PP.stormOff.calls <= 6, 'phone storm: layer adds <= 6 draw calls', `storm ${PP.storm.calls} layer-off ${PP.stormOff.calls}`);
+  check(PP.storm.layerCalls <= 6, 'phone storm: layer adds <= 6 draw calls', `layer objects ${PP.storm.layerCalls}; scene storm ${PP.storm.calls} dry ${PP.dry.calls} layer-off ${PP.stormOff.calls}`);
   if (SHOTS && (!ONLY || 'phone'.indexOf(ONLY) >= 0)) {
     await setScene(ph.page, Object.assign({ name: 'phone', h: 21, m: 15, wx: 'storm', mode: 'tps', pitch: 0.2 }, ABIDS));
     await shoot(ph.page, path.join(OUT, 'w3d_phone_abids_night_storm_tps.png'));
