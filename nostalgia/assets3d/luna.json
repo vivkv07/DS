@@ -1,0 +1,204 @@
+{
+ "anchors": {
+  "beacon": [
+   0.0,
+   5.4,
+   5.45
+  ],
+  "exhaust": [
+   -0.7,
+   3.35,
+   1.05
+  ],
+  "foot_L": [
+   0.95,
+   -0.65,
+   1.65
+  ],
+  "foot_R": [
+   -0.95,
+   1.25,
+   1.65
+  ],
+  "foot_pillion_L": [
+   0.95,
+   3.0,
+   1.7
+  ],
+  "foot_pillion_R": [
+   -0.95,
+   3.0,
+   1.7
+  ],
+  "grip_L": [
+   1.449,
+   -2.6212,
+   6.424
+  ],
+  "grip_R": [
+   -1.449,
+   -2.6212,
+   6.424
+  ],
+  "handlebar": [
+   0.0,
+   -3.3702,
+   6.2539
+  ],
+  "headlight": [
+   0.0,
+   -4.4902,
+   5.9039
+  ],
+  "seat_driver": [
+   0.0,
+   1.1,
+   4.88
+  ],
+  "seat_pillion": [
+   0.0,
+   4.3,
+   4.85
+  ],
+  "taillight": [
+   0.0,
+   6.62,
+   4.5
+  ],
+  "wheel_front": [
+   -0.0,
+   -4.9,
+   2.25
+  ],
+  "wheel_rear": [
+   0.0,
+   4.75,
+   2.25
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 278492,
+ "clips": {},
+ "family": "vehicle",
+ "file": "luna.glb",
+ "front": "-Y",
+ "id": "luna",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 272.0,
+ "kit": 1,
+ "materials": [
+  "M_luna@night"
+ ],
+ "max": [
+  1.791,
+  7.245,
+  7.837
+ ],
+ "meta": {
+  "fps": "bars",
+  "height": 7.0,
+  "lamps": {
+   "beacon": [
+    "beacon"
+   ],
+   "head": [
+    "headlight"
+   ],
+   "tail": [
+    "taillight"
+   ]
+  },
+  "length": 15.0,
+  "open": true,
+  "options": [
+   {
+    "bone": "opt_beacon",
+    "types": [
+     "pochaiah_luna"
+    ]
+   }
+  ],
+  "riders": {
+   "driver": {
+    "clips": [
+     "ride_scooty"
+    ],
+    "feet": [
+     "foot_L",
+     "foot_R"
+    ],
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "moped",
+    "seat": "seat_driver"
+   },
+   "pillion": {
+    "clips": [
+     "sit"
+    ],
+    "feet": [
+     "foot_pillion_L",
+     "foot_pillion_R"
+    ],
+    "pose": "pillion",
+    "seat": "seat_pillion"
+   }
+  },
+  "steerAxis": [
+   0.0,
+   -0.3569,
+   -0.9341
+  ],
+  "tintSrc": {
+   "paint": "color"
+  },
+  "vehicleTypes": [
+   "luna",
+   "pochaiah_luna"
+  ],
+  "wheelR": 2.25,
+  "wheels": {
+   "wheel_front": 2.25,
+   "wheel_rear": 2.25
+  },
+  "width": 5.5
+ },
+ "min": [
+  -1.784,
+  -7.405,
+  -0.003
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  3.575,
+  14.65,
+  7.84
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#b82a2a"
+  }
+ },
+ "tris": 3332,
+ "units": "u",
+ "up": "Z"
+}

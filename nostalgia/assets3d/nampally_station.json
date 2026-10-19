@@ -1,0 +1,52 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 36672,
+ "clips": {},
+ "family": "landmark",
+ "file": "nampally_station.glb",
+ "front": "-Y",
+ "id": "nampally_station",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 35.8,
+ "kit": 1,
+ "materials": [
+  "M_nampally_station_name_board",
+  "M_nampally_station"
+ ],
+ "max": [
+  55.1,
+  25.1,
+  42.1
+ ],
+ "meta": {
+  "face": "w",
+  "fit": "footprint",
+  "footprint": [
+   110,
+   50
+  ],
+  "height": 45.0,
+  "landmark": "nampally_station"
+ },
+ "min": [
+  -55.1,
+  -26.931,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_civic",
+ "size": [
+  110.2,
+  52.031,
+  42.1
+ ],
+ "tint": null,
+ "tris": 283,
+ "units": "u",
+ "up": "Z"
+}

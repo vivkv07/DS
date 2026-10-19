@@ -1,0 +1,129 @@
+{
+ "anchors": {
+  "wire_L1": [
+   -4.7211,
+   -3.1,
+   42.31
+  ],
+  "wire_L1b": [
+   4.7211,
+   -3.1,
+   42.31
+  ],
+  "wire_L2": [
+   -4.7211,
+   0.0,
+   42.31
+  ],
+  "wire_L2b": [
+   4.7211,
+   0.0,
+   42.31
+  ],
+  "wire_L3": [
+   -4.7211,
+   3.1,
+   42.31
+  ],
+  "wire_L3b": [
+   4.7211,
+   3.1,
+   42.31
+  ],
+  "wire_N": [
+   -4.2,
+   -1.2553,
+   37.4
+  ],
+  "wire_Nb": [
+   4.2,
+   -1.2553,
+   37.4
+  ],
+  "wire_cable": [
+   -5.2944,
+   0.0,
+   27.95
+  ],
+  "wire_service": [
+   4.2,
+   1.2767,
+   31.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 27448,
+ "clips": {},
+ "family": "prop",
+ "file": "pole_transformer.glb",
+ "front": "-Y",
+ "id": "pole_transformer",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 26.8,
+ "kit": 1,
+ "materials": [
+  "M_pole_transformer"
+ ],
+ "max": [
+  5.221,
+  3.6,
+  45.0
+ ],
+ "meta": {
+  "doubleSided": false,
+  "footprint": [
+   10.0,
+   5.0
+  ],
+  "height": 45.0,
+  "kind": "pole",
+  "variant": "transformer",
+  "wire_sides": {
+   "+X": [
+    "wire_L1b",
+    "wire_L2b",
+    "wire_L3b",
+    "wire_Nb",
+    "wire_service"
+   ],
+   "-X": [
+    "wire_L1",
+    "wire_L2",
+    "wire_L3",
+    "wire_N",
+    "wire_cable"
+   ]
+  },
+  "wires": [
+   "wire_L1",
+   "wire_L2",
+   "wire_L3",
+   "wire_N",
+   "wire_L1b",
+   "wire_L2b",
+   "wire_L3b",
+   "wire_Nb",
+   "wire_service",
+   "wire_cable"
+  ]
+ },
+ "min": [
+  -5.294,
+  -3.6,
+  0.0
+ ],
+ "notes": [],
+ "script": "props_poles",
+ "size": [
+  10.516,
+  7.2,
+  45.0
+ ],
+ "tint": null,
+ "tris": 406,
+ "units": "u",
+ "up": "Z"
+}

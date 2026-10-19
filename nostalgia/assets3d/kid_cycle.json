@@ -1,0 +1,165 @@
+{
+ "anchors": {
+  "bell": [
+   0.45,
+   -3.0912,
+   5.6173
+  ],
+  "grip_L": [
+   1.2475,
+   -2.1872,
+   5.8993
+  ],
+  "grip_R": [
+   -1.2475,
+   -2.1872,
+   5.8993
+  ],
+  "handlebar": [
+   0.0,
+   -3.0512,
+   5.4173
+  ],
+  "pedal_L": [
+   0.836,
+   1.7075,
+   2.1833
+  ],
+  "pedal_R": [
+   -0.836,
+   0.0925,
+   2.1833
+  ],
+  "reflector": [
+   0.0,
+   7.075,
+   3.475
+  ],
+  "seat_driver": [
+   0.0,
+   1.497,
+   4.5603
+  ],
+  "seat_pillion": [
+   0.0,
+   2.697,
+   4.6603
+  ],
+  "wheel_front": [
+   0.0,
+   -4.25,
+   2.5
+  ],
+  "wheel_rear": [
+   0.0,
+   4.25,
+   2.5
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 225968,
+ "clips": {},
+ "family": "vehicle",
+ "file": "kid_cycle.glb",
+ "front": "-Y",
+ "id": "kid_cycle",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 220.7,
+ "kit": 1,
+ "materials": [
+  "M_kid_cycle"
+ ],
+ "max": [
+  1.76,
+  7.05,
+  6.03
+ ],
+ "meta": {
+  "bb": [
+   0.0,
+   0.9,
+   2.0833
+  ],
+  "crankR": 0.807,
+  "gear": 2.2,
+  "length": 13.5,
+  "pedal": true,
+  "pedalX": 0.836,
+  "riders": {
+   "driver": {
+    "clips": [
+     "ride_cycle"
+    ],
+    "feet": "pedals",
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "cycle",
+    "seat": "seat_driver"
+   }
+  },
+  "saddleTube": [
+   0.0,
+   0.34,
+   0.94
+  ],
+  "seat": [
+   0.0,
+   1.497,
+   4.5603
+  ],
+  "stand": "side",
+  "steerAxis": [
+   0.0,
+   -0.3809,
+   -0.9246
+  ],
+  "tintSrc": {
+   "paint": "color"
+  },
+  "vehicleTypes": [
+   "kid_cycle"
+  ],
+  "wheelR": 2.5,
+  "wheels": {
+   "wheel_front": 2.5,
+   "wheel_rear": 2.5
+  }
+ },
+ "min": [
+  -1.76,
+  -6.75,
+  -0.0
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  3.519,
+  13.8,
+  6.03
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#9a2424"
+  }
+ },
+ "tris": 2704,
+ "units": "u",
+ "up": "Z"
+}

@@ -1,0 +1,53 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 71328,
+ "clips": {},
+ "family": "landmark",
+ "file": "golconda_bala_hissar.glb",
+ "front": "-Y",
+ "id": "golconda_bala_hissar",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 69.7,
+ "kit": 1,
+ "materials": [
+  "M_golconda_bala_hissar"
+ ],
+ "max": [
+  43.961,
+  35.402,
+  61.9
+ ],
+ "meta": {
+  "draw": "golconda_bala_hissar",
+  "face": "s",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   84,
+   64
+  ],
+  "height": 70.0
+ },
+ "min": [
+  -43.779,
+  -33.3,
+  0.0
+ ],
+ "notes": [
+  "rocky cone shell + boulder / wall / landing / building shells; COL_bh_* camera proxies"
+ ],
+ "script": "_lm_golconda",
+ "size": [
+  87.739,
+  68.702,
+  61.9
+ ],
+ "tint": null,
+ "tris": 702,
+ "units": "u",
+ "up": "Z"
+}

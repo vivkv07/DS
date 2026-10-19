@@ -1,0 +1,59 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 47124,
+ "clips": {},
+ "family": "landmark",
+ "file": "tank_bund_statue.glb",
+ "front": "-Y",
+ "id": "tank_bund_statue",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 46.0,
+ "kit": 1,
+ "materials": [
+  "M_tank_bund_statue",
+  "M_tank_bund_statue_lamp_lens@night"
+ ],
+ "max": [
+  14.86,
+  4.8,
+  42.924
+ ],
+ "meta": {
+  "draw": "tank_bund_statue",
+  "fit": "footprint",
+  "footprint": [
+   8,
+   8
+  ],
+  "height": 45.0,
+  "variants": {
+   "names": [
+    "scholar",
+    "poet",
+    "warrior",
+    "saint"
+   ],
+   "rule": "idx"
+  }
+ },
+ "min": [
+  -29.5,
+  -4.25,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_hussain",
+ "size": [
+  44.36,
+  9.05,
+  42.924
+ ],
+ "tint": null,
+ "tris": 588,
+ "units": "u",
+ "up": "Z"
+}

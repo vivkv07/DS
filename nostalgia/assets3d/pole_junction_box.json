@@ -1,0 +1,71 @@
+{
+ "anchors": {
+  "wire_cable_in": [
+   -2.8,
+   0.5,
+   0.0
+  ],
+  "wire_cable_out": [
+   2.8,
+   0.5,
+   0.0
+  ],
+  "wire_cable_up": [
+   0.6,
+   1.1,
+   6.3
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 7348,
+ "clips": {},
+ "family": "prop",
+ "file": "pole_junction_box.glb",
+ "front": "-Y",
+ "id": "pole_junction_box",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 7.2,
+ "kit": 1,
+ "materials": [
+  "M_pole_junction_box"
+ ],
+ "max": [
+  2.907,
+  1.5,
+  6.3
+ ],
+ "meta": {
+  "doubleSided": false,
+  "footprint": [
+   4.6,
+   3.0
+  ],
+  "height": 5.85,
+  "kind": "pole",
+  "variant": "junction_box",
+  "wires": [
+   "wire_cable_in",
+   "wire_cable_out",
+   "wire_cable_up"
+  ]
+ },
+ "min": [
+  -2.907,
+  -1.5,
+  -0.09
+ ],
+ "notes": [],
+ "script": "props_poles",
+ "size": [
+  5.814,
+  3.0,
+  6.39
+ ],
+ "tint": null,
+ "tris": 81,
+ "units": "u",
+ "up": "Z"
+}

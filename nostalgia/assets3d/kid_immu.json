@@ -1,0 +1,307 @@
+{
+ "anchors": {
+  "eye": [
+   0.0,
+   -0.46,
+   6.4448
+  ],
+  "grip_L": [
+   2.064,
+   -0.004,
+   3.896
+  ],
+  "grip_R": [
+   -2.064,
+   -0.004,
+   3.896
+  ],
+  "head_top": [
+   0.0,
+   0.06,
+   7.2768
+  ],
+  "sole_heel_L": [
+   0.36,
+   0.26,
+   -0.0
+  ],
+  "sole_heel_R": [
+   -0.36,
+   0.26,
+   -0.0
+  ],
+  "sole_toe_L": [
+   0.38,
+   -0.86,
+   -0.0
+  ],
+  "sole_toe_R": [
+   -0.38,
+   -0.86,
+   -0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 4000,
+ "bytes": 270584,
+ "clips": {},
+ "family": "character",
+ "file": "kid_immu.glb",
+ "front": "-Y",
+ "id": "kid_immu",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 264.2,
+ "kit": 1,
+ "materials": [
+  "M_kid_immu"
+ ],
+ "max": [
+  2.233,
+  0.961,
+  7.329
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "shoulder_L",
+   "upperarm_L",
+   "forearm_L",
+   "hand_L",
+   "thigh_L",
+   "shin_L",
+   "foot_L",
+   "toe_L",
+   "shoulder_R",
+   "upperarm_R",
+   "forearm_R",
+   "hand_R",
+   "thigh_R",
+   "shin_R",
+   "foot_R",
+   "toe_R"
+  ],
+  "clips": "clips_kid",
+  "height": 7.0,
+  "kinds": [],
+  "lazy": true,
+  "look": {
+   "hair": "#1a1412",
+   "kind": "kid",
+   "pants": "#2c3550",
+   "prop": "notebook",
+   "shirt": "#2f8a5a",
+   "skin": "#c68b5e",
+   "specs": true,
+   "stripes": "#1f6a42"
+  },
+  "npcs": {
+   "immu": {
+    "cap": "cricket",
+    "capColor": "#2a8c82"
+   }
+  },
+  "priority": 0,
+  "regionsUsed": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "shoes",
+   "cap_cricket",
+   "hair_top",
+   "raincoat",
+   "notebook"
+  ],
+  "rig": "kid_rig",
+  "role": "people",
+  "variants": {
+   "immu": {
+    "cap": "cricket",
+    "capColor": "#2a8c82",
+    "hair": "#1a1412",
+    "kind": "kid",
+    "pants": "#2c3550",
+    "prop": "notebook",
+    "shirt": "#2f8a5a",
+    "skin": "#c68b5e",
+    "specs": true,
+    "stripes": "#1f6a42"
+   },
+   "nocap": {
+    "hair": "#1a1412",
+    "kind": "kid",
+    "pants": "#2c3550",
+    "prop": "notebook",
+    "shirt": "#2f8a5a",
+    "skin": "#c68b5e",
+    "specs": true,
+    "stripes": "#1f6a42"
+   },
+   "raincoat": {
+    "hair": "#1a1412",
+    "hat": "hood",
+    "hatColor": "#f2c230",
+    "kind": "kid",
+    "pants": "#f4f0e8",
+    "prop": "notebook",
+    "shirt": "#f2c230",
+    "skin": "#c68b5e",
+    "specs": true,
+    "stripes": null
+   }
+  }
+ },
+ "min": [
+  -2.233,
+  -0.98,
+  -0.0
+ ],
+ "notes": [],
+ "script": "characters",
+ "size": [
+  4.466,
+  1.941,
+  7.329
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "fields": {
+   "cap_cricket": [
+    "capColor",
+    "hatColor",
+    "#2a8c82"
+   ],
+   "hair_top": [
+    "hair"
+   ],
+   "pants": [
+    "pants"
+   ],
+   "raincoat": [
+    "hatColor",
+    "shirt",
+    "#f2c230"
+   ],
+   "shirt": [
+    "shirt"
+   ],
+   "shoes": [
+    "chappal",
+    "#3a3a3a"
+   ],
+   "stripes": [
+    "stripes",
+    "shirt"
+   ]
+  },
+  "names": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "shoes",
+   "accent",
+   "cap_cricket",
+   "hair_top",
+   "raincoat",
+   "notebook"
+  ],
+  "regions": {
+   "cap_cricket": "#c9c7c1",
+   "hair": "#3b3735",
+   "hair_top": "#3b3735",
+   "notebook": "#c8a050",
+   "pants": "#8f8d87",
+   "raincoat": "#d8d4c8",
+   "shirt": "#c9c7c1",
+   "shoes": "#6e6c68",
+   "skin": "#b07448",
+   "stripes": "#6e6c68"
+  },
+  "show": {
+   "cap_cricket": {
+    "all": [
+     {
+      "any": [
+       {
+        "f": "cap",
+        "in": [
+         "cricket"
+        ]
+       },
+       {
+        "f": "hat",
+        "in": [
+         "cricket"
+        ]
+       }
+      ]
+     },
+     {
+      "not": {
+       "f": "hat",
+       "in": [
+        "hood"
+       ]
+      }
+     }
+    ]
+   },
+   "hair_top": {
+    "all": [
+     {
+      "not": {
+       "f": "cap"
+      }
+     },
+     {
+      "not": {
+       "f": "hat",
+       "in": [
+        "hood"
+       ]
+      }
+     }
+    ]
+   },
+   "notebook": {
+    "all": [
+     {
+      "f": "prop",
+      "in": [
+       "notebook"
+      ]
+     },
+     {
+      "not": {
+       "f": "hat",
+       "in": [
+        "hood"
+       ]
+      }
+     }
+    ]
+   },
+   "raincoat": {
+    "f": "hat",
+    "in": [
+     "hood"
+    ]
+   }
+  }
+ },
+ "tris": 3742,
+ "units": "u",
+ "up": "Z"
+}

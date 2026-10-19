@@ -775,6 +775,12 @@ for (const l of V1.landmarks) {
   const back = Math.hypot(l.x - p.x, l.y - p.y);
   if (okGap && Math.abs(back - (5 + fd / 2)) < 2.5 && l.w * l.d <= 3600) v1Frontage.set(l.id, { road: r.id, gap: g, fd, fw });
 }
+// the Laad Bazaar bangle shops (v1 stood them in a row with no street in front): front the real lane,
+// each on the side its real point lies, spread along it by settle() so none stands behind another
+for (const id of ['bangle_shop_1', 'bangle_shop_2', 'bangle_shop_3', 'bangle_shop_4']) {
+  const l = V1.landmarks.find((x) => x.id === id);
+  if (l) v1Frontage.set(id, { road: 'laad_bazaar', gap: 2, fd: l.d, fw: l.w });
+}
 const v1Giver = new Map();
 for (const p of V1.places) if (p.kind === 'giver') { const e = V1RH.nearest(p.x, p.y, 80); if (e) v1Giver.set(p.id, e.it.ref.id); }
 vlog('v1 frontage shops:', v1Frontage.size, 'givers:', v1Giver.size);
@@ -848,7 +854,12 @@ for (const l of LM.values()) markLandmark(l);
   let I = null; for (let s2 = 0; s2 < br.pts.length - 1 && !I; s2++) for (let m = 0; m < MUSI_LINE.length - 1 && !I; m++) I = G.segInter(br.pts[s2], br.pts[s2 + 1], MUSI_LINE[m], MUSI_LINE[m + 1]);
   const pa = cloneLm('puranapul_arches');
   const q = G.nearestOnLine(br.pts, I ? I.x : br.pts[0][0], I ? I.y : br.pts[0][1]);
-  if (Math.abs(q.dx) > Math.abs(q.dy)) { const t = pa.w; pa.w = pa.d; pa.d = t; }
+  // the arches follow the bridge's own axis (the real span is ~17 deg off north-south): w x d stay the v1
+  // across x along sizes and faceAngle (the direction along the span) turns the 2D and 3D models onto the road
+  if (Math.abs(q.dx) > Math.abs(q.dy) && pa.w > pa.d) { const t = pa.w; pa.w = pa.d; pa.d = t; }
+  const ang = Math.atan2(q.dy, q.dx);
+  pa.faceAngle = Math.round((ang < 0 ? ang + Math.PI : ang) * 1000) / 1000;
+  delete pa.face;
   moveLm(pa, I ? I.x : q.x, I ? I.y : q.y); pa.conf = 'medium'; LM.set(pa.id, pa);
   // the jetty: from the Lumbini shore into the lake
   const lp = realOf('lumbini_jetty') || realOf('lumbini_park');
@@ -988,7 +999,25 @@ function edgePos(id, w, d) {
   const along = 60 + Math.max(w, d), off = sd ? X.road.w / 2 + 16 + Math.max(w, d) / 2 : 0;
   return [X.E[0] + X.ux * along + nx * off * sd, X.E[1] + X.uy * along + ny * off * sd];
 }
+// the four Laad Bazaar bangle shops: steered to [arc length from Charminar circle (u), side] on the lane, so
+// they face each other across it in two pairs (snapShop then fronts them onto it)
+const LAAD_SHOPS = { bangle_shop_1: [34, -1], bangle_shop_2: [40, 1], bangle_shop_3: [138, -1], bangle_shop_4: [146, 1] };
+function laadShopPoint(id) {
+  const r = ROADS_OUT.get('laad_bazaar'); if (!r) return null;
+  const [s0, sd] = LAAD_SHOPS[id];
+  let acc = 0;
+  for (let k = 0; k < r.pts.length - 1; k++) {
+    const a2 = r.pts[k], b2 = r.pts[k + 1], L = Math.hypot(b2[0] - a2[0], b2[1] - a2[1]);
+    if (acc + L >= s0 || k === r.pts.length - 2) {
+      const t = Math.min(1, (s0 - acc) / (L || 1)), ux = (b2[0] - a2[0]) / (L || 1), uy = (b2[1] - a2[1]) / (L || 1);
+      return [a2[0] + ux * L * t - uy * sd * 20, a2[1] + uy * L * t + ux * sd * 20];
+    }
+    acc += L;
+  }
+  return null;
+}
 function landmarkCentre(id) {
+  if (LAAD_SHOPS[id]) { const q = laadShopPoint(id); if (q) return q; }
   const e = PLACES[id]; if (!e) return null;
   if (EDGE[id]) { const v = V1L.get(id); return edgePos(id, v ? v.w : 30, v ? v.d : 30); }
   if (id === 'playground_kit_16') { const q = edgePos('playground_16', 20, 20); return [q[0] + 52, q[1] - 20]; }
@@ -1727,6 +1756,16 @@ const AVENUES = [
     }
   }
   for (let o = 0; o < W2 * H2; o++) if (!near[o]) occ2[o] = 1;
+  // forecourts: heritage sites whose 3D models need to be seen from their street keep a clear margin of
+  // `pad` u all round and `front` u on their facade side (no filler blocks there)
+  const FORECOURT = { mecca_masjid: [20, 60], chowmahalla_palace: [24, 56], falaknuma_palace: [32, 64], purani_haveli: [20, 56], pathergatti_arcade_w: [14, 40] };
+  for (const [id, [pad, front]] of Object.entries(FORECOURT)) {
+    const l = LM.get(id); if (!l) continue;
+    const f = FACE[l.face] || [0, 0];
+    const x0 = l.x - l.w / 2 - pad - (f[0] < 0 ? front : 0), x1 = l.x + l.w / 2 + pad + (f[0] > 0 ? front : 0);
+    const y0 = l.y - l.d / 2 - pad - (f[1] < 0 ? front : 0), y1 = l.y + l.d / 2 + pad + (f[1] > 0 ? front : 0);
+    for (let j = Math.max(0, Math.floor(y0 / C2)); j <= Math.min(H2 - 1, Math.floor(y1 / C2)); j++) for (let i = Math.max(0, Math.floor(x0 / C2)); i <= Math.min(W2 - 1, Math.floor(x1 / C2)); i++) occ2[j * W2 + i] = 1;
+  }
   const used = new Uint8Array(W2 * H2);
   const tilesOf = new Map(); // district index -> its cells' bbox
   for (let j = 0; j < H2; j++) for (let i = 0; i < W2; i++) { const k = distIdx[j * W2 + i]; if (k < 0) continue; const b = tilesOf.get(k) || [1e9, 1e9, -1, -1]; b[0] = Math.min(b[0], i); b[1] = Math.min(b[1], j); b[2] = Math.max(b[2], i); b[3] = Math.max(b[3], j); tilesOf.set(k, b); }

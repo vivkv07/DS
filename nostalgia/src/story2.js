@@ -48,6 +48,11 @@
  *   'story2:season' {name}. Flags written: clue_tunnel, riddle_3/4, lock_3/4, interlude_done, ayesha_moving,
  *   prasads_open, boats_open, tin_locked, ending_done, epilogue_done, postgame, season_pick, star_lantern,
  *   immu_email, sa6_race, bunty_pillion, lb_match_played, s2_email.
+ * Playthrough review (round 2): the interlude, the ending and the epilogue are calm scenes (sceneCalm: the
+ *   Chappal Meter cleared and frozen, N.flags.no_curfew = 'scene'), so no curfew uncle barks over the kites at
+ *   23:40; the next mission's clue toast is only queued in free roam (clueToast), never over the next mission;
+ *   a speech bubble carries words only (a leading "(stage direction)" becomes an emote); he parks his cycle
+ *   before the NTR Gardens mini train; the three HUD objectives that only showed as ride cards now show too.
  */
 (() => {
   'use strict';
@@ -103,6 +108,20 @@
   function nick() { return (N.player && (N.player.nick || N.player.name)) || 'Chinnu'; }
   function emailOf() { return (nick().toLowerCase().replace(/[^a-z0-9]+/g, '') || 'chinnu') + '_charminar2'; }
   function toast(t, ms, key) { try { if (N.hud && N.hud.toast) N.hud.toast(plain(t), ms || 2600, key ? { key } : undefined); } catch (e) { N.err('story2.toast', e); } }
+  /** The next mission's clue as a toast a few seconds after MISSION PASSED. HUD toasts wait while the centre is
+   *  busy (dialogue, cutscenes, J-cards), so a clue queued once the next mission has begun would pop up in the
+   *  middle of it (seen: the M12 tape clue over the Chand Raat chase): it is only queued in free roam. */
+  function clueToast(t, ms, nextId) {
+    let tries = 0;
+    const go = () => {
+      const M = N.missions;
+      if (!M || M.active || (nextId && M.isDone && M.isDone(nextId))) return;
+      // a shop card / cutscene in the way: try again for a while (the clue also waits on its giver's J-card)
+      if (N.state && N.state.mode !== 'play') { if (++tries < 20) setTimeout(go, 1000); return; }
+      toast(t, ms);
+    };
+    setTimeout(go, 4600);
+  }
   function sfx(name, o) { try { if (N.audio && N.audio.sfx) return N.audio.sfx(name, o || { ui: true }); } catch (e) { /* audio never breaks the story */ } return false; }
   function isDone(id) { try { return !!(N.missions && N.missions.isDone && N.missions.isDone(id)); } catch (e) { return false; } }
   const F = () => N.flags || (N.flags = {});
@@ -214,6 +233,13 @@
   function follow(key, leader, o) { try { if (N.npcs && N.npcs.follow) N.npcs.follow(key, leader, o || {}); } catch (e) { N.err('story2.follow', e); } }
   function stopNpc(key) { try { if (N.npcs && N.npcs.stop) N.npcs.stop(key); } catch (e) { /* ignore */ } }
   function bark(key, text, o) {
+    // a speech bubble carries the words only: a screenplay direction such as "(level 5, the chappal raised)"
+    // is acted (an emote), not printed
+    if (typeof text === 'string' && /^\(/.test(text)) {
+      const dir = (text.match(/^\(([^)]*)\)/) || [])[1] || '';
+      text = text.replace(/^\([^)]*\)\s*/, '');
+      emote(key, /chappal|angr|shout/.test(dir) ? 'anger' : '*', 1.6);
+    }
     try {
       if (N.npcs && N.npcs.bark && npcGet(key)) return N.npcs.bark(key, text, o);
       if (N.dialogue && N.dialogue.bark) return N.dialogue.bark(key, text, o);
@@ -432,8 +458,23 @@
     try { N.hud.objective(null); N.hud.timer(null); } catch (e) { /* ignore */ }
     if (p) { p.noRun = false; if (sc.locked) p.controlsLocked = false; }
     if (SC.cur === sc) SC.cur = null;
-    if (!SC.cur) F().no_save = false;
+    if (!SC.cur) { F().no_save = false; sceneCalm(false); }
     N.emit('story2:scene', { id: sc.id, on: false, ok: !!ok });
+  }
+  /** The interlude, the ending at Charminar (23:20 to 23:40, past the curfew) and the epilogue are calm scenes:
+   *  no Chappal Meter, no curfew aunties (seen in the playthrough: an uncle pursuer barking "Does your Amma
+   *  know?" while the kites rose over Charminar). */
+  function sceneCalm(on) {
+    const W = N.wanted, f = F();
+    try {
+      if (on) {
+        if (W) { if (has(W, 'clear') && W.locked == null) W.clear('scene'); if (has(W, 'freeze')) W.freeze(true, 'story2:scene'); }
+        if (!f.no_curfew) f.no_curfew = 'scene';
+      } else {
+        if (W && has(W, 'freeze')) W.freeze(false, 'story2:scene');
+        if (f.no_curfew === 'scene') delete f.no_curfew;
+      }
+    } catch (e) { N.err('story2.calm', e); }
   }
   /** Run a sequence; resolves true when it finished, false when it was aborted (quit / load / new game). */
   function runScene(id, fn) {
@@ -441,6 +482,7 @@
     const sc = makeScene(id);
     SC.cur = sc; SC.last = id;
     F().no_save = true; // the interlude, the ending and the epilogue cannot be saved half-way (systems §13.9)
+    sceneCalm(true);
     N.emit('story2:scene', { id, on: true });
     return Promise.resolve().then(() => fn(sc.api)).then(() => { endScene(sc, true); return true; }, (e) => {
       if (!(e && (e.name === 'SceneAbort' || e.name === 'MissionAbort'))) N.err('story2.scene:' + id, e);
@@ -1210,6 +1252,7 @@
       dbgTarget(null);
       // 7. back to the depot by 19:30 (no fail: being late changes the lines)
       music(m, 'day');
+      m.objective('Back to the Mehdipatnam depot by 19:30.');
       await ride(m, 'mehdipatnam_bus_terminus', { mode: 'bus', label: 'BUS 66G → MEHDIPATNAM DEPOT', after: () => beside('immu') });
       const late = N.clock.minutes > TUNE.depotBy || N.clock.minutes < 6 * 60;
       npc(m, 'bunty', near('mehdipatnam_bus_terminus', 20, 12, 'drive'), { vehicle: 'bunty_rx100', talk: false });
@@ -1369,7 +1412,7 @@
     },
     onPass() {
       F().ramulu_agarwal = true;
-      setTimeout(() => toast('Ammi phoned the colony STD booth: Abba forgot his tiffin again. (Fri 25 Jul, Immu\'s house)', 4200), 4600);
+      clueToast('Ammi phoned the colony STD booth: Abba forgot his tiffin again. (Fri 25 Jul, Immu\'s house)', 4200, 'opening_day');
     },
   };
 
@@ -1466,6 +1509,9 @@
       npc(m, 'abba', near('ntr_gardens', 12, 10), { idle: 'stand', talk: false });
       beside('immu', -10, 8);
       let trainP = null;
+      // he parks the cycle at the gate first (shops.trainRide hides the player but leaves a vehicle under him:
+      // the parked cycle would carry an invisible rider round the gardens' gate for the whole ride)
+      if (N.player.vehicle && N.vehicles && N.vehicles.exit) { try { N.vehicles.exit(N.player, true); } catch (e) { /* ignore */ } }
       if (!isFF(m) && N.shops && has(N.shops, 'trainRide')) { trainP = N.shops.trainRide('ntr_gardens', { secs: 40 }); }
       else await m.cutscene([{ type: 'text', lines: ['A seated ride round the gardens: the Machan tree, the waterfall. Chinnu sits one seat behind.'], ms: 2600 }]);
       await talk(m, [
@@ -1484,7 +1530,7 @@
       F().prasads_open = true;
       F().clue_peacock = true;
       journalNote('clue_peacock', 'Bunty\'s flyer: "Colony Ganesh Committee. Lorry for immersion: behind the station dressed as a palace. Look for the peacock." (Tue 9 Sep, the colony pandal)');
-      setTimeout(() => toast('Bunty\'s flyer: "Lorry for immersion: behind the station dressed as a palace. Look for the peacock."', 4600), 4600);
+      clueToast('Bunty\'s flyer: "Lorry for immersion: behind the station dressed as a palace. Look for the peacock."', 4600, 'agle_baras');
     },
   };
 
@@ -1927,7 +1973,7 @@
       await rec(m);
       m.meter('normal');
     },
-    onPass() { setTimeout(() => toast('Mon 24 Nov: a cassette drops through the window. Immu\'s last tape. (Chand Raat, home)', 4600), 4600); },
+    onPass() { clueToast('Mon 24 Nov: a cassette drops through the window. Immu\'s last tape. (Chand Raat, home)', 4600, 'chand_raat'); },
   };
 
   /* ================================================================== M12 chand_raat — Chand Raat (THE FINALE AT CHARMINAR) */
@@ -1987,6 +2033,7 @@
     const gal = placeOf('charminar_gallery') || placeOf('charminar'), cafe = placeOf('irani_cafe_19');
     if (!gal || !cafe || isFF(m)) return;
     const R = N.render, p = N.player;
+    const back = topDownFor(); onEnd(m, back);
     const plaza = placeOf('charminar_plaza') || gal;
     const coat = { x: plaza.x, y: plaza.y, t: 0, draw: PAINT.raincoat, layer: 'sky', sort: 4, margin: 200 };
     prop(m, 's2:raincoat', coat);
@@ -2018,9 +2065,28 @@
     S2.gallery = null;
     sfx('ui_select');
     m.blip('irani_cafe_19', { color: '#f2c230', icon: 'star', label: 'The yellow raincoat went in here', pulse: true, route: true });
-    toast('Marked: Café Noor-e-Iran. A yellow raincoat, the side door.', 2600);
+    // same key as the "A yellow raincoat! E: mark it." hint, so it replaces it at once (it used to queue behind
+    // it and hang over the start of the chase)
+    toast('Marked: Café Noor-e-Iran. A yellow raincoat, the side door.', 2600, 'mark');
     R.camOverride = null;
     p.controlsLocked = prevLock;
+    back();
+  }
+  /** A story-camera beat that is drawn with 2D story props (M12's raincoat seen from the gallery; the ending's
+   *  kite train, plane light and pigeons) has nothing to show in a 3D view (N.view 'tps' / 'fps'): those props
+   *  have no 3D model. The beat plays top-down instead, without touching the saved view preference; the
+   *  returned function puts the player's view back (unless he changed it himself meanwhile). */
+  function topDownFor() {
+    const V = N.view;
+    if (!V || typeof V.set !== 'function' || typeof V.is3D !== 'function' || !V.is3D()) return () => {};
+    const prev = V.mode;
+    try { V.set('top', { noSave: true }); } catch (e) { N.err('story2.view', e); return () => {}; }
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      try { if (V.want === 'top' && V.mode === 'top') V.set(prev, { noSave: true }); } catch (e) { N.err('story2.view', e); }
+    };
   }
   /** The respect zones round the chase (by distance from the café), and the pursuers' buffer: 40 u round a
    *  masjid or any other faith zone; Charminar's interior (its top-floor mosque) only up to its walls, since
@@ -2213,6 +2279,7 @@
       await m.say('photo_uncle', 'Laughing boys, ready. Eight copies. Four each?');
       m.give('passport_photos', { name: 'Eight passport photos (two boys laughing)' });
       // 1. Laad Bazaar with both families
+      m.objective('Go to Laad Bazaar with both families.');
       await ride(m, 'laad_bazaar', { mode: 'nanna', label: 'NANNA\'S CHETAK + YADAGIRI-ANNA\'S AUTO → LAAD BAZAAR', minutes: 30 });
       N.clock.set(19, 30);
       m.checkpoint('laad_bazaar');
@@ -2562,6 +2629,8 @@
     await sc.say('kite_chacha', kites >= 12 ? 'All twelve. Now watch, *beta*.' : kites + ' kites. Enough to make the sky look busy. Watch.');
     try { if (N.audio && N.audio.music && N.audio.ready) N.audio.music.play('ending'); } catch (e) { /* ignore */ }
     N.emit('story2:ending', { phase: 'alaap', kites });
+    // from the kite train to the white-out the ending is drawn with 2D story props: top-down in a 3D view
+    const back2d = topDownFor(); onEnd(sc, back2d);
     kiteTrain(sc, Math.max(0, kites), nowT());
     await sc.cutscene([camSteps('charminar', 0.7, 2200), { type: 'wait', ms: Math.max(1500, kites * 600) },
       kites >= 12 ? { type: 'text', lines: ['Twelve kites on one string, into the floodlight beside the minarets: a fifth minar of paper.'], ms: 3600 } : { type: 'text', lines: [kites ? kites + ' kites rise on one long string into the floodlight beside the minarets.' : 'The floodlight beside the minarets. One bare string, waiting for next Sankranti.'], ms: 3200 }], { keepCamera: false });
@@ -2601,6 +2670,7 @@
       { type: 'fade', to: 'white', ms: 1200 },
     ], { keepCamera: false });
     if (N.render) N.render.camOverride = null;
+    back2d();
     F().ending_done = true;
     N.emit('story2:ending', { phase: 'end' });
   }

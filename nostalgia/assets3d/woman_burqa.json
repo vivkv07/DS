@@ -1,0 +1,194 @@
+{
+ "anchors": {
+  "eye": [
+   0.0,
+   -0.465,
+   8.1694
+  ],
+  "grip_L": [
+   2.76,
+   0.0,
+   5.06
+  ],
+  "grip_R": [
+   -2.76,
+   0.0,
+   5.06
+  ],
+  "head_top": [
+   0.0,
+   0.08,
+   8.9324
+  ],
+  "sole_heel_L": [
+   0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_heel_R": [
+   -0.47,
+   0.32,
+   -0.0
+  ],
+  "sole_toe_L": [
+   0.49,
+   -1.08,
+   -0.0
+  ],
+  "sole_toe_R": [
+   -0.49,
+   -1.08,
+   -0.0
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 4000,
+ "bytes": 203836,
+ "clips": {},
+ "family": "character",
+ "file": "woman_burqa.glb",
+ "front": "-Y",
+ "id": "woman_burqa",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 199.1,
+ "kit": 1,
+ "materials": [
+  "M_woman_burqa"
+ ],
+ "max": [
+  2.963,
+  1.017,
+  8.943
+ ],
+ "meta": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "shoulder_L",
+   "upperarm_L",
+   "forearm_L",
+   "hand_L",
+   "thigh_L",
+   "shin_L",
+   "foot_L",
+   "toe_L",
+   "shoulder_R",
+   "upperarm_R",
+   "forearm_R",
+   "hand_R",
+   "thigh_R",
+   "shin_R",
+   "foot_R",
+   "toe_R"
+  ],
+  "clips": "clips_adult",
+  "female": true,
+  "height": 8.8,
+  "kinds": [
+   "burqa"
+  ],
+  "lazy": true,
+  "look": {
+   "kind": "burqa",
+   "skin": "#b97a4f"
+  },
+  "npcs": {
+   "nani": {}
+  },
+  "priority": 0,
+  "regionsUsed": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "shoes",
+   "specs",
+   "clothbag"
+  ],
+  "rig": "adult_rig",
+  "role": "people",
+  "variants": {
+   "burqa": {
+    "kind": "burqa",
+    "skin": "#b97a4f"
+   },
+   "nani": {
+    "kind": "burqa",
+    "prop": "trunk",
+    "skin": "#9a6040",
+    "specs": true
+   }
+  }
+ },
+ "min": [
+  -2.963,
+  -1.268,
+  -0.0
+ ],
+ "notes": [],
+ "script": "characters",
+ "size": [
+  5.926,
+  2.284,
+  8.943
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "fields": {
+   "clothbag": [
+    "bag",
+    "#3a3430"
+   ],
+   "shirt": [
+    "burqa",
+    "#18161a"
+   ],
+   "shoes": [
+    "shoes",
+    "#3a2a22"
+   ]
+  },
+  "names": [
+   "none",
+   "skin",
+   "hair",
+   "shirt",
+   "stripes",
+   "pants",
+   "shoes",
+   "accent",
+   "specs",
+   "clothbag"
+  ],
+  "regions": {
+   "clothbag": "#3a3430",
+   "hair": "#3b3735",
+   "shirt": "#2a282c",
+   "shoes": "#6e6c68",
+   "skin": "#9e6440",
+   "specs": "#1c1a1a"
+  },
+  "show": {
+   "clothbag": {
+    "f": "prop",
+    "in": [
+     "clothbag",
+     "satchel",
+     "trunk"
+    ]
+   },
+   "specs": {
+    "f": "specs"
+   }
+  }
+ },
+ "tris": 2612,
+ "units": "u",
+ "up": "Z"
+}

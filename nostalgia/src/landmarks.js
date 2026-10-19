@@ -2918,24 +2918,40 @@
 
   /* ---------------------------------------------------------------- Purana Pul arches */
   L.register('puranapul_arches', {
+    // the bridge runs along lm.faceAngle (the generator aligns it with the real span, ~17 deg off N-S;
+    // default: along y); w = across, d = along. P(u, v) = world point at u across / v along the centre.
     floor(lm) {
       // pier cutwaters into the river on both sides of the old bridge = its row of arches
-      const x0 = lm.x - lm.w / 2, x1 = lm.x + lm.w / 2, y0 = lm.y - lm.d / 2, k = kh(0);
+      const k = kh(0), fa = isFinite(lm.faceAngle) ? lm.faceAngle : Math.PI / 2, ax = Math.cos(fa), ay = Math.sin(fa);
+      const P = (u, v) => [lm.x - ay * u + ax * v, lm.y + ax * u + ay * v];
+      const quad = (pts) => { ctx.moveTo(sxp(pts[0][0], k), syp(pts[0][1], k)); for (let i = 1; i < pts.length; i++) ctx.lineTo(sxp(pts[i][0], k), syp(pts[i][1], k)); ctx.closePath(); };
+      const hw = lm.w / 2, v0 = -lm.d / 2;
       // dark arch openings under the deck, then the granite cutwaters between them
       ctx.fillStyle = 'rgba(20,30,34,0.45)';
-      for (let yy = y0 + 4; yy < y0 + lm.d - 5; yy += 6.8) for (const bx of [x0 - 2.4, x1]) ctx.fillRect(sxp(bx, k), syp(yy + 1.8, k), 2.4 * k, 3.2 * k);
       ctx.beginPath();
-      for (let yy = y0 + 4; yy < y0 + lm.d - 2; yy += 6.8) {
-        for (const [bx, sg] of [[x0, -1], [x1, 1]]) { ctx.moveTo(sxp(bx, k), syp(yy - 1.8, k)); ctx.lineTo(sxp(bx + sg * 5, k), syp(yy, k)); ctx.lineTo(sxp(bx, k), syp(yy + 1.8, k)); ctx.closePath(); }
-      }
+      for (let v = v0 + 4; v < v0 + lm.d - 5; v += 6.8) for (const u of [-hw - 2.4, hw]) quad([P(u, v + 1.8), P(u + 2.4, v + 1.8), P(u + 2.4, v + 5), P(u, v + 5)]);
+      ctx.fill();
+      ctx.beginPath();
+      for (let v = v0 + 4; v < v0 + lm.d - 2; v += 6.8) for (const [u, sg] of [[-hw, -1], [hw, 1]]) quad([P(u, v - 1.8), P(u + sg * 5, v), P(u, v + 1.8)]);
       ctx.fillStyle = '#8c8781'; ctx.fill();
       ctx.strokeStyle = 'rgba(40,36,34,0.5)'; ctx.lineWidth = Math.max(0.5, 0.5 * k); ctx.stroke();
     },
     draw(lm) {
-      const x0 = lm.x - lm.w / 2, y0 = lm.y - lm.d / 2;
       const st = lm._st || (lm._st = { wall: '#8f8a86', roof: '#a7a19b', trim: '#b6b0a8', dark: '#2e2a28', fac: fac((g, L, H) => { g.arcade('d', 0, L, Math.max(2, Math.round(L / 6.8)), -0.2, H * 0.3, H * 0.8, 1.6, 1); g.rect('l', 0, H - 0.8, L, H); }) });
-      box(x0, y0, 3, lm.d, 0, 3.6, st);
-      box(x0 + lm.w - 3, y0, 3, lm.d, 0, 3.6, st);
+      const fa = isFinite(lm.faceAngle) ? lm.faceAngle : Math.PI / 2;
+      if (Math.abs(Math.cos(fa)) < 1e-3) {
+        const x0 = lm.x - lm.w / 2, y0 = lm.y - lm.d / 2;
+        box(x0, y0, 3, lm.d, 0, 3.6, st);
+        box(x0 + lm.w - 3, y0, 3, lm.d, 0, 3.6, st);
+        return;
+      }
+      // a skewed span: each parapet is a run of short boxes stepping along the bridge axis
+      const ax = Math.cos(fa), ay = Math.sin(fa), n = Math.max(2, Math.round(lm.d / 6));
+      for (const u of [-lm.w / 2 + 1.5, lm.w / 2 - 1.5]) for (let i = 0; i < n; i++) {
+        const v = -lm.d / 2 + (i + 0.5) * lm.d / n, cx = lm.x - ay * u + ax * v, cy = lm.y + ax * u + ay * v;
+        const bw = 3 + Math.abs(ax) * lm.d / n, bd = 3 + Math.abs(ay) * lm.d / n;
+        box(cx - bw / 2, cy - bd / 2, bw, bd, 0, 3.6, st);
+      }
     },
     shadow() { /* low parapets: no cast shadow */ },
   });

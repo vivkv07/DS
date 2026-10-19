@@ -1,0 +1,89 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 154484,
+ "clips": {},
+ "family": "landmark",
+ "file": "pathergatti_arcade.glb",
+ "front": "-Y",
+ "id": "pathergatti_arcade",
+ "images": [
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 150.9,
+ "kit": 1,
+ "materials": [
+  "M_pathergatti_arcade_granite_pink",
+  "M_pathergatti_arcade_granite_grey",
+  "M_pathergatti_arcade_lime_plaster_shadow",
+  "M_pathergatti_arcade_cloth",
+  "M_pathergatti_arcade_cloth.001",
+  "M_pathergatti_arcade_cloth.002",
+  "M_pathergatti_arcade_cloth.003",
+  "M_pathergatti_arcade_wood_raw",
+  "M_pathergatti_arcade_lamp_lens@night",
+  "M_pathergatti_arcade_tin_rusty",
+  "M_pathergatti_arcade_sign_text_d0cb620b.png",
+  "M_pathergatti_arcade_wood_green",
+  "M_pathergatti_arcade_sign_text_9fc64c78.png",
+  "M_pathergatti_arcade_red_oxide",
+  "M_pathergatti_arcade_cloth.004",
+  "M_pathergatti_arcade_cloth.005",
+  "M_pathergatti_arcade_sign_text_45d2c6da.png",
+  "M_pathergatti_arcade_lime_plaster_shadow.001",
+  "M_pathergatti_arcade_iron_black"
+ ],
+ "max": [
+  16.275,
+  22.05,
+  38.92
+ ],
+ "meta": {
+  "face": "e",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   32,
+   44
+  ],
+  "height": 39.0,
+  "landmark": "pathergatti_arcade_w"
+ },
+ "min": [
+  -16.275,
+  -23.468,
+  0.0
+ ],
+ "notes": [
+  "COL_pathergatti: camera-ray proxy (shop block, upper storey, arcade piers; the walkway stays open)"
+ ],
+ "script": "oldcity.bazaar",
+ "size": [
+  32.55,
+  45.518,
+  38.92
+ ],
+ "tint": null,
+ "tris": 1645,
+ "units": "u",
+ "up": "Z"
+}

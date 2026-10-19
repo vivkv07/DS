@@ -1,0 +1,121 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 1500,
+ "bytes": 18944,
+ "clips": {
+  "flap": {
+   "beat": 0.1778,
+   "beats": 3,
+   "duration": 0.5333,
+   "fps": 30,
+   "frames": 16,
+   "loco": false,
+   "loop": true
+  },
+  "glide": {
+   "duration": 1.5,
+   "fps": 30,
+   "frames": 45,
+   "loco": false,
+   "loop": true
+  },
+  "hang": {
+   "duration": 2.0,
+   "fps": 30,
+   "frames": 60,
+   "loco": false,
+   "loop": true,
+   "upsideDown": true
+  },
+  "perch": {
+   "alias": "hang",
+   "duration": 2.0,
+   "fps": 30,
+   "frames": 60,
+   "loco": false,
+   "loop": true,
+   "upsideDown": true
+  }
+ },
+ "family": "prop",
+ "file": "bat.glb",
+ "front": "-Y",
+ "id": "bat",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 18.5,
+ "kit": 1,
+ "materials": [
+  "M_bat"
+ ],
+ "max": [
+  1.0,
+  0.36,
+  0.18
+ ],
+ "meta": {
+  "bones": [
+   "body",
+   "head",
+   "wing_L",
+   "wingtip_L",
+   "wing_R",
+   "wingtip_R"
+  ],
+  "doubleSided": true,
+  "flightClips": [
+   "flap",
+   "glide"
+  ],
+  "flock": {
+   "alt": [
+    10,
+    45
+   ],
+   "dusk": true,
+   "erratic": true,
+   "habitat": [
+    "golconda",
+    "old_trees"
+   ],
+   "perch": [
+    "tree",
+    "ruin"
+   ],
+   "size": [
+    3,
+    15
+   ],
+   "sound": "squeak",
+   "speed": [
+    35,
+    55
+   ]
+  },
+  "hangNote": "hang/perch: feet at the origin (the branch), body hangs below (z < 0)",
+  "kind": "bird",
+  "length": 0.56,
+  "origin": "body centre; bind pose = flight pose",
+  "perchClip": "hang",
+  "species": "bat",
+  "wingspan": 2.0
+ },
+ "min": [
+  -1.0,
+  -0.325,
+  -0.104
+ ],
+ "notes": [],
+ "script": "props_fauna",
+ "size": [
+  2.0,
+  0.685,
+  0.284
+ ],
+ "tint": null,
+ "tris": 126,
+ "units": "u",
+ "up": "Z"
+}

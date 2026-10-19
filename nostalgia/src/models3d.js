@@ -142,9 +142,10 @@
   function wanted(id) {
     const m = manifest(id); if (!m) return false;
     const meta = m.meta || {};
-    if (m.family === 'character') return OPT.player || OPT.kidPeds || OPT.riders;
+    if (m.family === 'character') return !(meta.role === 'clips' || meta.lazy) && (OPT.player || OPT.kidPeds || OPT.riders); // libraries / lazy people: on demand
     if (m.family === 'vehicle') return OPT.vehicles;
     if (m.family === 'landmark' || m.family === 'hero_landmark') return OPT.landmarks && (!meta.proto || useProto);
+    if (m.family === 'prop') return false;   // props are parsed on demand (models3d_props.js / parse(id))
     return true;
   }
   async function parseActive() {
@@ -166,9 +167,16 @@
           let md = null;
           try { md = prepare(id, g); } catch (e) { S.failed.set(id, String(e.message || e)); N.err('models3d.prepare:' + id, e); }
           S.parseMs += now() - t0;
-          S.pending.delete(id);
-          if (md) S.models.set(id, md);
-          resolve(md);
+          const done = (m) => { S.pending.delete(id); if (m) S.models.set(id, m); resolve(m); };
+          // characters carry no clips of their own when meta.clips names a clip library (one per rig)
+          const lib = md && md.man.family === 'character' && typeof md.meta.clips === 'string' ? md.meta.clips : null;
+          if (!lib) { done(md); return; }
+          parse(lib).then((L) => {
+            if (L && L.clips.size) { linkClips(md, L); done(md); return; }
+            S.failed.set(id, 'clip library ' + lib + ' unavailable');
+            console.warn('[models3d] ' + id + ': clip library ' + lib + ' unavailable');
+            done(null);
+          });
         }, (err) => {
           S.failed.set(id, String((err && err.message) || err));
           S.pending.delete(id);
@@ -189,6 +197,18 @@
     if (!scene) throw new Error('no scene');
     const md = { id, man, meta: man.meta || {}, scene, clips: new Map(), night: [], metal: [], floodlit: [], skinned: false };
     for (const c of g.animations || []) md.clips.set(c.name, c);
+    const track = md.meta.clipTrack && md.clips.get(md.meta.clipTrack);
+    if (track) {
+      // a clip library stores all its clips one after the other in one animation: cut them out by
+      // their frame ranges (manifest clips[name].range, at meta.clipFps)
+      const out = new Map(), fps = md.meta.clipFps || 30;
+      for (const [name, c] of Object.entries(man.clips || {})) {
+        if (!c || !c.range) continue;
+        const sc = THREE.AnimationUtils.subclip(track, name, c.range[0] - 0.5, c.range[1] + 0.5, fps);
+        if (sc.tracks.length) out.set(name, sc);
+      }
+      md.clips = out;
+    }
     if (!COL_MAT) { COL_MAT = new THREE.MeshBasicMaterial({ visible: false }); COL_MAT.userData.shared = true; }
     scene.traverse((o) => {
       if (!o.isMesh) return;
@@ -217,6 +237,13 @@
     if (md.metal.length && OPT.env) for (const m of md.metal) { m.envMap = envMap(); m.envMapIntensity = 0.6; }
     scene.updateMatrixWorld(true);
     return md;
+  }
+  /** a character bound to its rig's clip library: the library's clips (bound by bone name) and
+   *  their manifest entries become the character's own (manifest(id).clips lists them) */
+  function linkClips(md, L) {
+    md.clips = L.clips; md.lib = L.id;
+    const own = md.man.clips && Object.keys(md.man.clips).length ? md.man.clips : null;
+    md.man.clips = Object.assign({}, L.man.clips || {}, own || {});
   }
   /** a small gradient sky as a PMREM environment for metallic materials (chrome reads as chrome) */
   function envMap() {
@@ -365,6 +392,7 @@
     /** dress from an N.people look (skin, hair, shirt, stripes, pants...) */
     tint(look) {
       this.lookRef = look;
+      if (api.hooks.tint && api.hooks.tint(this, look)) return this;   // models3d_people.js: regions + accessory slots
       if (!this.mesh || !this.md.man.tint) return this;
       if (!this.tintMat) { this.tintMat = tintMaterial(this.mesh.material); this.mesh.material = this.tintMat; }
       const R = tintRatios(this.md, look), U = this.tintMat.userData.tintU.uTint.value;
@@ -557,6 +585,7 @@
   /** the rider model id for occupant d of vehicle v (or null: the procedural renderer draws it) */
   function riderModel(v, d) {
     if (!d) return null;
+    if (api.hooks.riderModel) { const r = api.hooks.riderModel(v, d); if (r !== undefined) return r; }
     const vid = VEH_TYPES.get(v.type), vmd = vid && S.models.get(vid);
     if (!vmd) return null;
     const drop = ((vmd.meta.saddleDrop || {})[v.type]) || 0;
@@ -660,10 +689,48 @@
           const ns = !lm.face || lm.face === 'n' || lm.face === 's' || isFinite(lm.faceAngle);
           inst.scale.set((ns ? lm.w : lm.d) / fp[0], 1, (ns ? lm.d : lm.w) / fp[1]);
         }
+        // meta.fitHeight: one model for landmarks of different data heights (Qutb Shahi tombs)
+        if (md.meta.fitHeight && md.meta.dataH && lm.h) inst.scale.y = lm.h / md.meta.dataH;
+        if (md.meta.variants) { g.userData.vars = variantNodes(inst); showVariant(g, md, lm); }
         g.add(inst);
         g.userData.m3d = id;
         return g;
       } catch (e) { N.err('models3d.landmark:' + id, e); return fallbackLandmark(md, lm); }
+    };
+  }
+  /* landmark variants (meta.variants = {rule, names}): top-level GLB nodes named var_<name>, one of
+   * them shown. Rules: 'idx' (lm.idx), 'hash' (lm.id), 'prasads' (site until it opens, like
+   * view3d_landmarks), 'lb_match' (match-day crowds + floodlight banks). Dynamic rules re-check
+   * a few times a second through the landmark update hook. */
+  const VARIANT_RULES = {
+    idx: (lm, names) => names[(((lm.idx | 0) % names.length) + names.length) % names.length],
+    hash: (lm, names) => { let h = 7; for (const ch of String(lm.id)) h = (h * 31 + ch.charCodeAt(0)) | 0; return names[Math.abs(h) % names.length]; },
+    prasads: () => {
+      let v = N.placesArt && N.placesArt.variant ? N.placesArt.variant('prasads_imax') : null;
+      if (!v) v = N.flags && N.flags.prasads_open ? 'open' : 'fence';
+      return v === 'open' || v === 'opening' ? 'open' : 'site';
+    },
+    lb_match: () => (N.flags && (N.flags.lb_match || N.flags.lb_match_day) ? 'match' : 'quiet'),
+  };
+  const DYNAMIC_RULES = { prasads: true, lb_match: true };
+  function variantNodes(inst) {
+    const out = [];
+    inst.traverse((o) => { if (/^var_/.test(o.name) && !(o.parent && /^var_/.test(o.parent.name))) out.push(o); });
+    return out;
+  }
+  function showVariant(g, md, lm) {
+    const V = md.meta.variants, rule = VARIANT_RULES[V.rule];
+    const want = 'var_' + (rule ? rule(lm, V.names || []) : (V.names || [])[0]);
+    if (g.userData.variant === want) return;
+    g.userData.variant = want;
+    for (const o of g.userData.vars || []) o.visible = o.name === want;
+  }
+  function updateLandmark(id) {
+    return (obj, lm) => {
+      const md = S.models.get(id);
+      if (!md || !obj || !obj.userData.vars) return;
+      if ((obj.userData.vt = (obj.userData.vt || 0) + 1) % 15) return;
+      showVariant(obj, md, lm);
     };
   }
   /** the procedural model again (core API when present; else the object it had built before) */
@@ -686,7 +753,8 @@
         const grp = E && E.lmGroup;
         if (grp) for (const ch of grp.children) if (ch.name === 'lm3d:' + lmId || ch.name === 'lm:' + lmId) { S.prevLandmark.set(lmId, ch); break; }
       }
-      V3.registerLandmark(key, buildLandmark(id), { castShadow: true });
+      const vr = md.meta.variants;
+      V3.registerLandmark(key, buildLandmark(id), vr && DYNAMIC_RULES[vr.rule] ? { castShadow: true, update: updateLandmark(id) } : { castShadow: true });
       S.landmarkKeys.set(key, id);
     } else if (!on && have) {
       if (typeof V3.unregisterLandmark === 'function') V3.unregisterLandmark(key);
@@ -709,12 +777,13 @@
     const V3 = N.view3d;
     if (!V3 || !V3.active || S.state !== 'ready') return;
     const p = N.player;
-    // the player
+    const PH = api.hooks.people && api.hooks.people.ready ? api.hooks.people : null;
+    // the player (models3d_people.js routes the player and the people itself when it is loaded)
     const pid = OPT.player && OPT.enabled ? PLAYER_ID() : null;
-    const want = pid && canShowPlayer(p) && !tracked(p) ? 'm3d:char:' + pid : null;
-    if (p) {
+    if (p && !PH) {
+      const want = pid && canShowPlayer(p) && !tracked(p) ? 'm3d:char:' + pid : null;
       if (want && p.view3d !== want) p.view3d = want;
-      else if (!want && p.view3d && String(p.view3d).indexOf('m3d:') === 0) delete p.view3d;
+      else if (!want && p.view3d && String(p.view3d).indexOf('m3d:char:') === 0) delete p.view3d;
       S.routedPlayer = !!want;
     }
     // vehicles: parked (no rider) ones of a modelled type; ridden ones stay procedural (riders)
@@ -722,8 +791,9 @@
     const f = V3.focus ? V3.focus() : p;
     let list = [];
     try { list = N.entities.query(f.x, f.y, (V3.quality && V3.quality.actorDist) || 620); } catch (e) { list = []; }
+    if (PH) { try { PH.route(list, p, tracked); S.routedPlayer = !!(p && p.view3d && String(p.view3d).indexOf('m3d:') === 0); } catch (e) { N.err('models3d.people.route', e); } }
     for (const e of list) {
-      if (!e || e.kind !== 'vehicle') { if (e && OPT.kidPeds && e !== p && e.kind === 'ped' && pid) routePed(e, pid); continue; }
+      if (!e || e.kind !== 'vehicle') { if (!PH && e && OPT.kidPeds && e !== p && e.kind === 'ped' && pid) routePed(e, pid); continue; }
       const mid = OPT.vehicles && OPT.enabled ? VEH_TYPES.get(e.type) : null;
       const ridersOk = !e.pillion && !e.passenger && (!e.driver || (OPT.riders && !!riderModel(e, e.driver)));
       const key = mid && ridersOk && e.alive !== false && !tracked(e) ? 'm3d:veh:' + mid : null;
@@ -757,6 +827,10 @@
   /* ================================================================ API */
   const api = (N.models3d = {
     OPT, options: OPT, packUrls: null, noCdn: false,
+    /** extension points (models3d_people.js): tint(character, look) -> true when handled;
+     *  people {ready, route(list, player, tracked)} routes the player + people; riderModel(v, d) ->
+     *  model id | null (undefined: the built-in choice) */
+    hooks: { tint: null, people: null, riderModel: null },
     get ready() { return S.state === 'ready'; },
     get state() { return S.state; },
     get error() { return S.error; },
@@ -790,7 +864,7 @@
         registered: Array.from(S.registered).concat(Array.from(S.landmarkKeys.keys())), routedPlayer: S.routedPlayer, routedVehicles: S.routedVehicles, useProto,
       };
     },
-    debug: { S, route, unrouteAll, Character, tintRatios, cloneScene, riderModel },
+    debug: { S, route, unrouteAll, Character, tintRatios, cloneScene, riderModel, findBones, findAnchors, disposeInstance },
   });
 
   N.addSystem({

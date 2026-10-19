@@ -1,0 +1,208 @@
+{
+ "anchors": {
+  "bell": [
+   0.5,
+   -7.5184,
+   6.6831
+  ],
+  "foot_passenger_L": [
+   2.2,
+   -0.6,
+   3.0
+  ],
+  "foot_passenger_R": [
+   -2.2,
+   -0.6,
+   3.0
+  ],
+  "grip_L": [
+   1.4032,
+   -6.2989,
+   6.3318
+  ],
+  "grip_R": [
+   -1.4032,
+   -6.2989,
+   6.3318
+  ],
+  "handlebar": [
+   0.0,
+   -7.4684,
+   6.4331
+  ],
+  "pedal_L": [
+   0.95,
+   -3.85,
+   2.55
+  ],
+  "pedal_R": [
+   -0.95,
+   -5.85,
+   2.55
+  ],
+  "reflector": [
+   0.0,
+   9.8,
+   4.0
+  ],
+  "seat_driver": [
+   0.0,
+   -3.75,
+   5.6
+  ],
+  "seat_passenger_L": [
+   2.2,
+   5.6,
+   6.3
+  ],
+  "seat_passenger_R": [
+   -2.2,
+   5.6,
+   6.3
+  ],
+  "wheel_RL": [
+   5.05,
+   6.6,
+   2.6
+  ],
+  "wheel_RR": [
+   -5.05,
+   6.6,
+   2.6
+  ],
+  "wheel_front": [
+   -0.0,
+   -9.55,
+   2.4
+  ]
+ },
+ "blender": "5.2.2 LTS",
+ "budget": 6000,
+ "bytes": 322016,
+ "clips": {},
+ "family": "vehicle",
+ "file": "cycle_rickshaw.glb",
+ "front": "-Y",
+ "id": "cycle_rickshaw",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 314.5,
+ "kit": 1,
+ "materials": [
+  "M_cycle_rickshaw"
+ ],
+ "max": [
+  5.53,
+  9.78,
+  12.05
+ ],
+ "meta": {
+  "bb": [
+   0.0,
+   -4.85,
+   2.45
+  ],
+  "crankR": 1.0,
+  "fps": "bars",
+  "gear": 2.0,
+  "height": 13.0,
+  "length": 24.0,
+  "open": true,
+  "pedal": true,
+  "pedalX": 0.95,
+  "riders": {
+   "driver": {
+    "clips": [
+     "ride_cycle"
+    ],
+    "feet": "pedals",
+    "grips": [
+     "grip_L",
+     "grip_R"
+    ],
+    "pose": "cycle",
+    "seat": "seat_driver"
+   },
+   "passengers": [
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_L"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_L"
+    },
+    {
+     "clips": [
+      "sit"
+     ],
+     "feet": [
+      "foot_passenger_R"
+     ],
+     "hands": "knees",
+     "seat": "seat_passenger_R"
+    }
+   ]
+  },
+  "seat": [
+   0.0,
+   -3.75,
+   5.6
+  ],
+  "steerAxis": [
+   0.0,
+   -0.4586,
+   -0.8886
+  ],
+  "tintSrc": {
+   "paint": "color",
+   "paint2": "color2"
+  },
+  "vehicleTypes": [
+   "rickshaw"
+  ],
+  "wheelR": 2.6,
+  "wheels": {
+   "wheel_RL": 2.6,
+   "wheel_RR": 2.6,
+   "wheel_front": 2.4
+  },
+  "width": 11.0
+ },
+ "min": [
+  -5.53,
+  -12.225,
+  -0.0
+ ],
+ "notes": [],
+ "script": "vehicles",
+ "size": [
+  11.06,
+  22.005,
+  12.05
+ ],
+ "tint": {
+  "attribute": "_REGION",
+  "names": [
+   "none",
+   "paint",
+   "paint2",
+   "paint3",
+   "head",
+   "tail",
+   "indicator",
+   "beacon"
+  ],
+  "regions": {
+   "paint": "#2a5cb8",
+   "paint2": "#f2c230"
+  }
+ },
+ "tris": 4020,
+ "units": "u",
+ "up": "Z"
+}

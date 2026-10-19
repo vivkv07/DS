@@ -1,0 +1,22 @@
+00:00.026  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building lumbini_jetty (landmark)
+00:01.139  render           | Saved: '/tmp/nostalgia_blender/text_da83bdb8.png'
+[kit] tris by part: post_lo 48, rail_lo 18, deck_lo 10, steps_lo 10, kiosk_lo 10, kiosk_sign_lo 10, boat_lo 10, boat_top_lo 10
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked albedo 256² in 0.3s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked ao 128² in 1.1s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:46:05 | INFO: Starting glTF 2.0 export
+21:46:05 | INFO: Extracting primitive: lumbini_jetty_body
+21:46:05 | INFO: Primitives created: 1
+21:46:05 | INFO: Finished glTF 2.0 export in 0.036676645278930664 s
+
+[kit] lumbini_jetty: 126 tris (budget 20000) ok, 18.1 KB, clips [], anchors 0
+21:46:05 | INFO: Data are loaded, start creating Blender stuff
+21:46:05 | INFO: Blender create Mesh node lumbini_jetty_body
+21:46:05 | INFO: glTF import finished in 0.01s
+00:05.402  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/lumbini_jetty.png'
+[kit] preview lumbini_jetty.png (320px, 14 spp) in 1.9s
+[kit] done lumbini_jetty in 4.9s

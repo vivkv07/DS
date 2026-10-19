@@ -1,0 +1,25 @@
+00:00.026  color_management | Using OCIO=/home/user/.venvs/blender/lib/python3.13/site-packages/bpy/5.2/datafiles/colormanagement/config.ocio
+[kit] building state_museum (landmark)
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked albedo 256² in 0.5s
+Info: Baking map saved to internal image, save it externally or pack it
+[kit] proxy-baked ao 128² in 1.5s
+ERROR Draco is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_draco_bridge.so
+ERROR MeshOptimizer is not available because library could not be found at /home/user/.venvs/blender/lib/python3.13/site-packages/bpy/lib/libbf_intern_meshopt_bridge.so
+21:50:59 | INFO: Starting glTF 2.0 export
+21:50:59 | INFO: Extracting primitive: state_museum_body
+21:50:59 | INFO: Primitives created: 1
+21:50:59 | INFO: Finished glTF 2.0 export in 0.026743173599243164 s
+
+[kit] state_museum: 434 tris (budget 20000) ok, 33.6 KB, clips [], anchors 0
+21:50:59 | INFO: Data are loaded, start creating Blender stuff
+21:50:59 | INFO: Blender create Mesh node state_museum_body
+21:50:59 | INFO: glTF import finished in 0.00s
+00:13.663  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/state_museum.png'
+[kit] preview state_museum.png (320px, 14 spp) in 3.4s
+21:51:03 | INFO: Data are loaded, start creating Blender stuff
+21:51:03 | INFO: Blender create Mesh node state_museum_body
+21:51:03 | INFO: glTF import finished in 0.01s
+00:15.333  render           | Saved: '/home/user/DS/nostalgia/assets3d/previews/state_museum_front.png'
+[kit] preview state_museum_front.png (256px, 14 spp) in 1.7s
+[kit] done state_museum in 14.9s
