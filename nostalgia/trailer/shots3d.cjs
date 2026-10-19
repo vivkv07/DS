@@ -31,7 +31,7 @@ const SHOTS = {
   // Chinnu is a speck on the parapet at monument scale. a0 -> a1: from the sun's side (golden front light)
   // round the south to the east side, looking west into the afterglow as night falls.
   finale: { lm: 'charminar', hero: 'top', scale: 0.45, edge: 26, clip: 'idle_look', face: Math.PI, base: 2.75,
-    a: [2.75, 0.35], r: [215, 170], h: [150, 112], fov: [50, 46], clock: [16 * 60 + 30, 20 * 60 + 30], kitesOff: 18 * 60 + 45, ramzanOn: 19 * 60 },
+    a: [2.75, 0.35], r: [290, 240], h: [195, 158], fov: [50, 46], clock: [16 * 60 + 30, 20 * 60 + 30], kitesOff: 18 * 60 + 45, ramzanOn: 19 * 60 },
 };
 
 (async () => {
