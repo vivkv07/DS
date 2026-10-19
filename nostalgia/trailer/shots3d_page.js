@@ -71,7 +71,10 @@
       streamAt(hx, hy); settle();
       hero = { x: hx, y: hy, h: Math.max(0, STAGE.summit(hx, hy, 0)) };
       if (sh.hero === 'shore') { base = Math.atan2(hy - lm.y, hx - lm.x); lookLm = lm; }
-      else { base = Math.atan2(-ny * side, -nx * side) + 0.5; lookLm = { x: hx + nx * side * 200, y: hy + ny * side * 200 }; }
+      else { // look along the bund: the lamp line and statues recede behind Chinnu, the lake beside
+        const ux2 = Math.cos(q.angle), uy2 = Math.sin(q.angle);
+        base = Math.atan2(-uy2, -ux2) - 0.35 * side; lookLm = { x: hx + ux2 * 260 + nx * side * 40, y: hy + uy2 * 260 + ny * side * 40 };
+      }
     }
     // the hidden player stands below, so birds / traffic / rain live around the shot
     N.debug.teleport(hero.x + 30, hero.y + 30);

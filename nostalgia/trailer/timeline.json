@@ -22,7 +22,7 @@
     { "id": "lm_cyber", "b": 64, "n": 8, "kind": "3d", "shot": "orbit", "lm": "cyber_towers", "time": [17, 50], "dir": -1 },
     { "id": "card_story", "b": 72, "n": 1, "kind": "card", "text": "ENDLESS GALLIS.", "style": "hit" },
     { "id": "lm_mecca", "b": 73, "n": 7, "kind": "3d", "shot": "orbit", "lm": "mecca_masjid", "time": [18, 35], "dir": 1, "pigeons": true },
-    { "id": "lm_tankbund", "b": 80, "n": 8, "kind": "3d", "shot": "orbit", "lm": "tank_bund_statues", "time": [21, 0], "dir": -1 },
+    { "id": "lm_tankbund", "b": 80, "n": 8, "kind": "3d", "shot": "orbit", "lm": "tank_bund_statues", "time": [19, 25], "dir": -1 },
 
     { "id": "rain", "b": 88, "n": 15, "kind": "3d", "shot": "rain", "lm": "charminar", "time": [22, 10], "lightning": [94, 100], "overlay": { "b": 95, "n": 7, "text": "EVERY GALLI HAS A STORY." } },
     { "id": "gap_rewind", "b": 103, "n": 1, "kind": "card", "text": "", "style": "black" },
