@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 59600,
+ "bytes": 60020,
  "clips": {},
  "family": "landmark",
  "file": "imlibun_mgbs.glb",
@@ -12,7 +12,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 58.2,
+ "kb": 58.6,
  "kit": 1,
  "materials": [
   "M_imlibun_mgbs",

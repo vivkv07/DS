@@ -738,8 +738,6 @@ def build_odeon(A):
     lo.append(plan_shell('s_canopy', round_front(-17.1, 17.1, -31.1, -26.0, 4.0, 2), 9.5, 12.1, bottom=True))
     uv_mq = sh.put(marquee_cv(40, pw=384, ph=16, rows=1))
     sh.strip(uv_mq, offset_pts(cpts[1:-1], 0.2), 9.7, 11.3)
-    for x in (24.0, -36.0):
-        pass
     sh.quad(uv_tix, 9.0, 1.6, (26.2, yf - 0.1, 8.4))
     # steps
     P.append(L.steps('steps', 30, 1.2, 0.45, 4, (0, -29.6, 0), stone))
@@ -1178,7 +1176,6 @@ def bus_mats(tag, livery=('#b22b2b', '#e4dccb')):
     s.rect(0, 0.0, 1, 0.12, '#2a2a2a')
     s.rect(0, 0.46, 1, 0.56, livery[1])
     s.rect(0, 0.92, 1, 1.0, livery[1])
-    s.grid = None
     for i in range(10):
         x = 0.02 + (i + 0.5) * 0.096
         s.rect(x - 0.04, 0.58, x + 0.04, 0.9, '#26323a')
@@ -1307,17 +1304,29 @@ def build_mgbs(A):
     behind it the platform halls under the row of repeated concrete vault shells on columns,
     whose arched ends rise over the block; platforms with kerbs and long-distance buses."""
     C._ASSET[0] = A.id
-    CREAM = '#e8e0d0'
+    CREAM = '#d8cdb4'
     cream = lin_mat('mgbs_cream', CREAM)
     red = lin_mat('mgbs_red', '#b22b2b')
-    conc = lin_mat('mgbs_conc', '#b7b2a8', 0.9)
-    shell = lin_mat('mgbs_shell', '#cdc8bd', 0.9)
-    under = lin_mat('mgbs_under', '#a9a49a', 0.9)
+    conc = lin_mat('mgbs_conc', '#a8a398', 0.9)
+    shell = L.paint('#a7a297', 'mgbs_shell', rough=0.9, grime=0.6, streaks=0.5, dirt='#5f594f')
+    under = lin_mat('mgbs_under', '#8e897f', 0.9)
     P, lo = [], []
     sh = Sheet(A.id, 512, 96)
     FY = -54.0
     # entrance block
-    P.append(B('block', -100, 100, FY, -28, 0, 22, cream))
+    def side_fac(w, seed):
+        f = Fac(w, 22, CREAM, seed=seed, noise=0.0)
+        f.dirt(2.5, alpha=0.3).band(10.4, 11.2, '#b22b2b')
+        n = max(1, int(w / 6))
+        for i in range(n):
+            x = (i + 0.5) * w / n
+            f.rect(x - 1.6, 2.0, x + 1.6, 8.6, '#3a3f44').rect(x - 1.8, 13.0, x + 1.8, 18.6, '#56666e')
+        rng = np.random.default_rng(seed)
+        for _ in range(int(w / 2)):
+            x = rng.random() * w
+            f.rect(x, 6 + rng.random() * 10, x + 0.5, 21.5, '#000000', 0.06)
+        return f
+    P.append(fbox('block', 0, (FY - 28) / 2, 200, -28 - FY, 0, 22, cream, faces={'l': side_fac(26, 3), 'r': side_fac(26, 4), 'b': side_fac(200, 5)}))
     P.append(B('roof', -100, 100, FY + 1, -28, 22, 22.6, shell))
     P.append(B('parapet', -101, 101, FY - 0.6, FY + 1.0, 21.6, 24.4, red))
     lo.append(S('s_block', -100.1, 100.1, FY - 0.7, -28, 0, 24.5))
@@ -1362,7 +1371,7 @@ def build_mgbs(A):
     # platform halls: repeated concrete vault shells (along Y) on valley beams and columns
     NV, X0, X1, Y0, Y1 = 9, -99.0, 99.0, -29.0, 58.0
     vw = (X1 - X0) / NV
-    spring, rise, t = 16.0, 9.0, 0.8
+    spring, rise, t = 17.0, 11.0, 0.8
     for i in range(NV):
         cx = X0 + vw * (i + 0.5)
         outer, inner = [], []
@@ -1381,18 +1390,18 @@ def build_mgbs(A):
         lo.append(vault_lo('s_vault', [(x, z + 0.1) for (x, z) in outer[::2]], [(x, z - 0.35) for (x, z) in inner[::2]], Y0 - 0.1, Y1 + 0.1))
     for i in range(NV + 1):
         x = X0 + vw * i
-        P.append(B('beam', x - 1.0, x + 1.0, Y0, Y1, 14.0, spring + 0.2, conc))
-        lo.append(vault_lo('s_beam', [], [(x - 1.15, spring + 0.3), (x - 1.15, 13.9), (x + 1.15, 13.9), (x + 1.15, spring + 0.3)], Y0 - 0.1, Y1 + 0.1))
+        P.append(B('beam', x - 1.0, x + 1.0, Y0, Y1, 15.0, spring + 0.2, conc))
+        lo.append(vault_lo('s_beam', [], [(x - 1.15, spring + 0.3), (x - 1.15, 14.9), (x + 1.15, 14.9), (x + 1.15, spring + 0.3)], Y0 - 0.1, Y1 + 0.1))
         for y in (-6.0, 40.0):
-            P.append(B('col', x - 0.8, x + 0.8, y - 0.8, y + 0.8, 0, 14.0, conc))
-            lo.append(tri_col('s_col', x, y, 1.25, 0.0, 14.0))
+            P.append(B('col', x - 0.8, x + 0.8, y - 0.8, y + 0.8, 0, 15.0, conc))
+            lo.append(tri_col('s_col', x, y, 1.25, 0.0, 15.0))
     # platforms between the bays + strip lights
     for x in (-66, 0, 66):
         P.append(B('plat', x - 7, x + 7, -26, 56, 0, 1.3, conc))
         P.append(B('plat_k', x - 7.2, x + 7.2, -26.2, 56.2, 0, 0.5, lin_mat('mgbs_kerb', '#d8d2c2')))
         lo.append(S('s_plat', x - 7.3, x + 7.3, -26.3, 56.3, 0, 1.4))
         for y in np.arange(-20, 52, 14.0):
-            sh.quad(uv_t, 0.6, 5.0, (x, y, 13.9), tilt=-PI / 2, uvq=((uv_t[0], uv_t[1]), (uv_t[0], uv_t[3]), (uv_t[2], uv_t[3]), (uv_t[2], uv_t[1])))
+            sh.quad(uv_t, 0.6, 5.0, (x, y, 14.9), tilt=-PI / 2, uvq=((uv_t[0], uv_t[1]), (uv_t[0], uv_t[3]), (uv_t[2], uv_t[3]), (uv_t[2], uv_t[1])))
     # route boards on the platforms' first column row
     rb = Canvas(256, 24, '#1d3f8a')
     for i, t_ in enumerate(('KURNOOL', 'WARANGAL', 'TIRUPATI', 'VIJAYAWADA')):
@@ -1406,7 +1415,7 @@ def build_mgbs(A):
     side2, front2 = bus_mats('mgbs2', ('#e8ecf0', '#2a5cb8'))
     bus(P, lo, 'bus1', -33, 22, 0, side, front, red)
     bus(P, lo, 'bus2', 33, 26, 0, side2, front2, lin_mat('mgbs_lux', '#e8ecf0'))
-    finish(A, P, lo, sh, 384, ao=8.0)
+    finish(A, P, lo, sh, 352, ao=8.0)
     L.col_box('mgbs_block', (200, 26, 22), (0, -41, 0))
     L.shots(A, az=-30, el=22, extra=[{'name': 'halls', 'view': {'az': 150, 'el': 18, 'fov': 32, 'pad': 1.05}}])
 
