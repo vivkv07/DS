@@ -137,7 +137,8 @@ async function checks(page) {
     N.weather.force({ rain: 1, storm: 1 });
     return out;
   });
-  await page.waitForTimeout(3000);
+  // wait on the condition (a loaded machine may render only a few frames a second)
+  await page.waitForFunction(() => N.wind.strength > 0.6, null, { timeout: 60000 }).catch(() => {});
   const w2 = await page.evaluate(() => { const s = N.wind.strength; N.weather.force(null); return s; });
   check(r.wetEveFrac > 0.55, 'monsoon evenings are mostly rainy', 'frac ' + r.wetEveFrac.toFixed(2));
   check(r.janRain === 0, 'no rain in January', String(r.janRain));
@@ -148,7 +149,7 @@ async function checks(page) {
   // birds and wires near the Old City
   const life = await page.evaluate(async () => {
     N.debug.teleport('charminar_plaza'); N.debug.setTime(8, 0); N.weather.force({ rain: 0 });
-    await new Promise((r) => setTimeout(r, 2500));
+    for (let i = 0; i < 120 && !(N.birds && N.birds.count() > 0); i++) await new Promise((r) => setTimeout(r, 250));
     const o = {};
     if (N.birds && N.birds.count) o.birds = N.birds.count();
     if (N.wires && N.wires.stats) o.wires = N.wires.stats();
