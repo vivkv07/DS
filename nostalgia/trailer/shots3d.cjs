@@ -22,7 +22,7 @@ const SHOTS = {
   lm_buddha: { lm: 'buddha_statue', hero: 'shore', slide: 14, noWires: true, clip: 'idle_look', r: [14, 26], h: [5, 10], arc: 1.1, fov: [38, 46] },
   lm_birla: { lm: 'birla_mandir', hero: 'roof', noWires: true, ring: [70, 260], clip: 'idle', r: [14, 26], h: [6, 12], arc: 1.2, fov: [40, 48] },
   lm_clock: { lm: 'secunderabad_clock_tower', hero: 'top', clip: 'idle_look', face: 1.6, r: [13, 30], h: [5, 14], arc: 1.8, base: 0.4, fov: [44, 54] },
-  lm_cyber: { lm: 'cyber_towers', hero: 'top', clip: 'idle_look', face: 2.4, r: [16, 42], h: [6, 18], arc: 1.7, base: 2.2, fov: [44, 56] },
+  lm_cyber: { lm: 'cyber_towers', hero: 'top', clip: 'idle_look', face: Math.PI, r: [20, 40], h: [-14, 6], arc: 1.5, base: Math.PI, fov: [48, 58] },
   lm_mecca: { lm: 'mecca_masjid', hero: 'roof', noWires: true, ring: [80, 220], clip: 'idle_look', r: [14, 26], h: [6, 12], arc: 1.2, fov: [40, 48] },
   lm_tankbund: { lm: 'tank_bund', hero: 'bund', clip: 'kite_fly', r: [12, 26], h: [4, 10], arc: 1.3, fov: [40, 50] },
   rain: { lm: 'charminar', hero: 'top', clip: 'idle', face: Math.PI / 2 },
