@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 26388,
+ "bytes": 26512,
  "clips": {},
  "family": "landmark",
  "file": "atc_tower.glb",
@@ -12,7 +12,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 25.8,
+ "kb": 25.9,
  "kit": 1,
  "materials": [
   "M_atc_tower",
@@ -26,7 +26,6 @@
  "meta": {
   "draw": "control_tower",
   "fit": "footprint",
-  "floodlit": true,
   "footprint": [
    18,
    18

@@ -795,7 +795,7 @@ def build_atc_tower(A):
     for i in range(8):
         cv.rect(i / 8.0, 0, i / 8.0 + 0.012, 1, '#b8bcbc')
         cv.rect(i / 8.0 + 0.0625, 0, i / 8.0 + 0.0665, 1, '#9aa0a2')
-        cv.rect(i / 8.0 + 0.02, 0.05, i / 8.0 + 0.11, 0.42, '#e9d7a8', 0.3)
+        cv.rect(i / 8.0 + 0.016, 0.06, i / 8.0 + 0.118, 0.5, '#ffe2a8', 0.55)
     cv.rect(0, 0.0, 1, 0.06, '#b8bcbc').rect(0, 0.94, 1, 1, '#b8bcbc')
     uv_cab = sh.put(cv)
     uv_red = sh.put(CT.Canvas(16, 16, '#ff2a1a'))
@@ -1319,9 +1319,6 @@ def build_hitec_office(A):
     # roof plant: water tanks + lift room
     P.append(BX('liftroom', -30.0, -22.0, 6.0, 14.0, ZT, ZT + 6.0, CLAD))
     lo.append(SH('s_lift', -30.1, -21.9, 5.9, 14.1, ZT, ZT + 6.1))
-    for x in (-8.0, -4.0):
-        P.append(cylinder('tank', 1.4, 2.6, (x, 12.0, ZT + 2.8), seg=10, mat=mp('#1e1e1e', 'hx_tank', rough=0.7)))
-        lo.append(lathe('s_tank', [(1.5, ZT + 2.8), (1.5, ZT + 5.5), (0.0, ZT + 5.6)], seg=5, loc=(x, 12.0, 0), close_bottom=False))
     # ---- the construction site next door
     CON = kit.material('whitewash', 'hx_concrete', base='#b4afa5', rough=0.9, var=0.12, grain=0.1, grime=0.6, streaks=0.5, dirt='#5f594f')
     BRK = kit.material('red_oxide', 'hx_brick', base='#a0523a', rough=0.85, var=0.14, grain=0.14, scale=1.2)
@@ -1343,8 +1340,6 @@ def build_hitec_office(A):
     P.append(BX('brick_w2', SX0, SX0 + 0.6, SY0, SY1, 0.0, 6.0, BRK))
     lo.append(SH('s_brick', SX0 - 0.1, 20.1, SY1 - 0.7, SY1 + 0.1, 0, FL - 0.75))
     lo.append(SH('s_brick2', SX0 - 0.1, SX0 + 0.7, SY0, SY1, 0, 6.1))
-    P.append(cylinder('sand', 4.0, 2.4, (26.0, -20.5, 0), seg=10, mat=kit.material('sandstone', 'hx_sand', base='#c8a878', rough=0.9), r2=0.6))
-    lo.append(lathe('s_sand', [(4.1, 0), (0.6, 2.5), (0.0, 2.5)], seg=6, loc=(26.0, -20.5, 0), close_bottom=False))
     for k in range(6):                 # the blue tin hoarding along the front
         x = 6.0 + k * 4.6
         P.append(BX('tin', x, x + 4.5, -24.6, -24.4, 0, 4.2, TIN))
@@ -1353,10 +1348,9 @@ def build_hitec_office(A):
     YEL = mp('#e8b81c', 'hx_crane', rough=0.6, grime=0.3)
     CWT = mp('#9c968c', 'hx_cweight', grime=0.5)
     MX, MY, MZ = 27.0, 21.5, 72.0
-    P.append(BX('crane_base', MX - 2.4, MX + 2.4, MY - 2.4, MY + 2.4, 0, 1.2, CON))
+    P.append(BX('crane_base', MX - 1.4, MX + 1.4, MY - 1.4, MY + 1.4, 0, 1.2, CON))
     P.append(_lattice('mast', MX - 1.2, MX + 1.2, MY - 1.2, MY + 1.2, 1.2, MZ, YEL))
-    lo.append(SH('s_mast', MX - 2.5, MX + 2.5, MY - 2.5, MY + 2.5, 0, 1.3))
-    lo.append(SH('s_mast2', MX - 1.45, MX + 1.45, MY - 1.45, MY + 1.45, 1.2, MZ))
+    lo.append(SH('s_mast2', MX - 1.45, MX + 1.45, MY - 1.45, MY + 1.45, 0.0, MZ))
     P.append(BX('slew', MX - 1.8, MX + 1.8, MY - 1.8, MY + 1.8, MZ, MZ + 1.6, YEL))
     P.append(BX('cab', MX - 1.6, MX + 0.6, MY - 3.8, MY - 1.8, MZ - 0.6, MZ + 2.2, mp('#e9e9e4', 'hx_cab')))
     P.append(BX('cab_win', MX - 1.65, MX + 0.65, MY - 3.85, MY - 3.0, MZ + 0.4, MZ + 2.0, mp('#2f4656', 'hx_cabwin')))
@@ -1384,11 +1378,11 @@ def build_hitec_office(A):
     sh = sheet(A.id, 512, 128)
     uv_n = sh.put(CT.text_cv('DECCAN INFOTECH', 448, 40, '#1d3f8a', '#eef2f4', size=0.8))
     lw = CT.Canvas(256, 16, GLS)
-    lw.grad(0.0, 1.0, '#2a5a8c', '#5a88b8')
+    lw.grad(0.0, 1.0, '#2c5f93', '#4f80b4')
     for k in range(12):
         lw.rect(k / 12 + 0.006, 0, k / 12 + 0.012, 1, MUL)
     for k in range(5):
-        lw.rect(0.05 + k * 0.19, 0.15, 0.13 + k * 0.19, 0.85, '#e9f0f6', 0.35)
+        lw.rect(0.05 + k * 0.19, 0.15, 0.13 + k * 0.19, 0.85, '#e9f0f6', 0.2)
     uv_w = sh.put(lw)
     uv_r = sh.put(CT.Canvas(8, 8, '#ff2a1a'))
     sh.quad(uv_n, 24.0, 2.6, (-22.0, Y0 - 0.45, ZT + 1.7))
@@ -1397,7 +1391,7 @@ def build_hitec_office(A):
     sheet_box(sh, uv_r, -22.6, -21.8, MY - 0.4, MY + 0.4, JZ + 2.0, JZ + 2.7)
     sheet_box(sh, uv_r, MX - 0.4, MX + 0.4, MY - 0.4, MY + 0.4, JZ + 7.0, JZ + 7.7)
     tally(A.id + ' lo', lo)
-    finish_m(A, P, lo, keep=[sh.obj()], size=320, ao=6.0)
+    finish_m(A, P, lo, keep=[sh.obj()], size=288, ao=6.0)
     L.shots(A, az=-35, el=12, extra=[{'name': 'front', 'view': {'az': 0, 'el': 5, 'fov': 32, 'pad': 1.05}}])
 
 
@@ -1410,7 +1404,7 @@ def STL_():
 # NOSTALGIA_PARKED=1, never packed into the real pack. cyber_towers (above) is shipped.
 if os.environ.get('NOSTALGIA_PARKED') == '1':
     kit.asset('spanish_mosque', 'landmark', draw='spanish_mosque', face='s', footprint=[40, 40], height=66.0, fit='footprint', floodlit=True)(build_spanish_mosque)
-    kit.asset('atc_tower', 'landmark', draw='control_tower', footprint=[18, 18], height=78.0, fit='footprint', floodlit=True)(build_atc_tower)
+    kit.asset('atc_tower', 'landmark', draw='control_tower', footprint=[18, 18], height=78.0, fit='footprint')(build_atc_tower)
     kit.asset('parked_plane', 'landmark', draw='aeroplane', face='e', footprint=[40, 46], height=21.0, fit='footprint')(build_parked_plane)
     kit.asset('begumpet_airport', 'landmark', draw='airport_terminal', face='s', footprint=[120, 36], height=33.0, fit='footprint')(build_begumpet_airport)
     kit.asset('osmania_arts_college', 'landmark', draw='ou_arts_college', face='s', footprint=[200, 70], height=66.0, fit='footprint', floodlit=True)(build_ou_arts_college)
