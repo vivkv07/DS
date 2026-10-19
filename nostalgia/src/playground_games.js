@@ -163,6 +163,7 @@
     miss: ['*Arre*, missed!', 'Wide, ra!', '*Bach gaya*!'],
     knock: ['*Gira diya*!', 'Down! Run, run!'],
     adult: ['*Arre!* Who threw that?!', 'Oye! Watch the ball!', '*Kaun hai?*'],
+    blocked: ['*Arre*, side please! Again!', '*Hatt jao*, ra! Throw again!', 'Somebody walked in — again, again!'],
     window: 'Kaun hai?! Whose ball is this?! I am telling your *Mummy*!',
   };
 
@@ -971,6 +972,8 @@
   function isAdultLook(l) { return !!l && /^(man|woman|uncle|aunty|saree|burqa|lungi|police)$/.test(l.kind || 'man'); }
   function adultHit(S, b, q) {
     S.adultT = S.t;
+    // a passer-by walked into a throw at the stack: that try is taken again (not the thrower's fault)
+    if (S.L && b.kind === 'stack' && S.phase === 'flight' && !S.L.knocked) S.L.blocked = true;
     b.vx *= -0.3; b.vy *= -0.3; b.vz = Math.max(b.vz, 10); b.live = false;
     sfx('chappal', { x: q.x, y: q.y, vol: 0.8 });
     const adult = isAdultLook(q.look) || q.kind === 'npc';
@@ -1076,7 +1079,7 @@
     hitters(S) { return S.parts.filter((P) => P.team !== S.L.seek); },
     startRound(S) {
       const L = S.L, F = S.F;
-      L.round++; L.tries = 0; L.knocked = false; L.timer = LING.liveTime(S); L.shouted = false;
+      L.round++; L.tries = 0; L.knocked = false; L.blocked = false; L.retakes = 0; L.timer = LING.liveTime(S); L.shouted = false;
       if (L.round > 1) log(S, 'role_swap', { seek: L.seek === 0 ? 'home' : 'away', round: L.round });
       for (const st of L.stones) { st.state = 'stack'; st.by = null; st.claim = null; st.x = L.base.x; st.y = L.base.y; st.z = 0; st.vx = st.vy = st.vz = 0; }
       L.stack = L.stones.slice();
@@ -1140,7 +1143,8 @@
           if (b.holder !== T) give(S, T);
           if (!T.isPlayer) {
             T.face = Math.atan2(L.base.y - T.e.y, L.base.x - T.e.x);
-            if (S.phaseT > 1.3 + (S.seed % 7) * 0.08) LING.aiStackThrow(S, T);
+            // (he waits for a passer-by to get out of the way: up to 3 s more)
+            if (S.phaseT > 1.3 + (S.seed % 7) * 0.08 && (S.phaseT > 4.3 || !LING.lineBlocked(S, T))) LING.aiStackThrow(S, T);
           }
           break;
         }
@@ -1148,6 +1152,18 @@
           if (L.knocked) { S.phase = 'scatter'; S.phaseT = 0; break; }
           const sp = hyp(b.vx, b.vy);
           if (S.phaseT > 3 || b.state === 'rest' || (b.state === 'roll' && sp < 14) || rectDist(S.F, b.x, b.y) > 40) {
+            if (L.blocked && (L.retakes || 0) < 2) {
+              // a passer-by walked into it: no try lost, the same thrower goes again (twice at most)
+              L.blocked = false; L.retakes = (L.retakes || 0) + 1;
+              log(S, 'try_blocked', { tries: L.tries });
+              const k = LING.hitters(S)[0];
+              if (k) bark(S, k, pick(S, BARK.blocked));
+              if (S.real && L.thrower && L.thrower.isPlayer) toast('Somebody walked into it — throw again (still try ' + (L.tries + 1) + '/' + TUNE.lingocha.tries + ')', 2200);
+              if (L.thrower) lob(S, b.x, b.y, L.thrower);
+              S.phase = 'return'; S.phaseT = 0;
+              break;
+            }
+            L.blocked = false; L.retakes = 0;
             L.tries++; S.stats.tries += L.thrower && L.thrower.isPlayer ? 1 : 0;
             log(S, 'try_miss', { tries: L.tries });
             const nearH = LING.hitters(S)[0];
@@ -1214,6 +1230,19 @@
       }
       for (const st of L.stones) LING.stoneStep(S, st, dt);
       for (const P of S.parts) if (!P.isPlayer) LING.ai(S, P, dt);
+    },
+    /** somebody who is not in the game stands between the thrower and the stack */
+    lineBlocked(S, T) {
+      const L = S.L, ax = T.e.x, ay = T.e.y, bx = L.base.x, by = L.base.y;
+      let hit = false;
+      try {
+        N.entities.query((ax + bx) / 2, (ay + by) / 2, hyp(bx - ax, by - ay) / 2 + 5, (q) => {
+          if (hit || !q || q.pgKid || q === N.player || q.vehicle || q.hidden || (q.kind !== 'ped' && q.kind !== 'npc')) return false;
+          if (segDist(q.x, q.y, ax, ay, bx, by) < 4.5) hit = true;
+          return hit;
+        });
+      } catch (e) { hit = false; }
+      return hit;
     },
     aiStackThrow(S, T) {
       const L = S.L;
@@ -1647,7 +1676,7 @@
       if (S.phase === 'setup') return me.team === L.seek ? 'Your team throws first — walk to the chalk line' : 'Spread out — the other team throws at the stack';
       if (S.phase === 'aim') {
         if (L.thrower !== me) return (L.thrower ? L.thrower.name : 'They') + ' throws at the stack…';
-        const tr = 'Try ' + (L.tries + 1) + '/' + TUNE.lingocha.tries + ': ';
+        const tr = 'Try ' + (L.tries + 1) + '/' + TUNE.lingocha.tries + ': ' + (LING.lineBlocked(S, me) ? 'somebody is in the line — wait for him to pass · ' : '');
         if (isTouch() && !is3D()) return tr + 'pull back from the stack (stick or screen) and let go, like a catapult';
         if (isTouch()) return tr + 'drag the view or the stick to aim · hold ' + a + ' for power, let go';
         if (N.input && N.input.device === 'gamepad') return tr + 'stick aims · hold A for power, let go to throw';
@@ -2611,18 +2640,30 @@
     if (!on) { for (const [z, o] of S.zones) { z.x = o.x; z.y = o.y; z.r = o.r; } S.zones.clear(); return; }
     const T = N.traffic;
     if (!T || !T.peds) return;
+    const F = S.F;
     for (const p of T.peds) {
       const z = p && p.zone;
-      if (!z || z.kind !== 'playground' || S.zones.has(z) || hyp(z.x - S.F.cx, z.y - S.F.cy) > 260) continue;
+      if (!z || z.kind !== 'playground' || S.zones.has(z) || hyp(z.x - F.cx, z.y - F.cy) > 260) continue;
       if (z.__pgMoved) continue;
       S.zones.set(z, { x: z.x, y: z.y, r: z.r });
-      const q = S.F.side || (S.F.side = sideline(S.F));
-      // crowds side by side along the line (0, +16, -16, +32 ...), each a loose group
-      const k = S.zones.size - 1, half = Math.max(8, Math.min(S.F.w, S.F.h) / 2 - 6), off = clamp((k % 2 ? -1 : 1) * Math.ceil(k / 2) * 16, -half, half);
+      const q = F.side || (F.side = sideline(F));
+      // crowds side by side along the line (0, -16, +16, -32 ...), each a loose group (r 9: one sideline off the edge
+      // stays off the pitch), never past the end of that side
+      const k = S.zones.size - 1, half = Math.max(8, (q.tx ? F.w : F.h) / 2 - 6), off = clamp((k % 2 ? -1 : 1) * Math.ceil(k / 2) * 16, -half, half);
       const sx = q.x + q.tx * off, sy = q.y + q.ty * off, okSpot = walk(sx, sy);
-      z.x = okSpot ? sx : q.x; z.y = okSpot ? sy : q.y; z.r = 12; z.__pgMoved = true;
+      z.x = okSpot ? sx : q.x; z.y = okSpot ? sy : q.y; z.r = 9; z.__pgMoved = true;
     }
     for (const z of S.zones.keys()) z.__pgMoved = true;
+    // the onlookers already out on the ground (walking to, or idling at, a spot they picked before the zone moved)
+    // leave the pitch now, not after their 2-7 s idle there: a kid loitering between the chalk line and the stack
+    // blocked the line throw. (traffic.js: a ped with no target picks a new one in its zone, i.e. the sideline.)
+    for (const p of T.peds) {
+      if (!p || !p.alive || !p.zone || !S.zones.has(p.zone) || p.__pgOffT > now()) continue;
+      const tg = p.tgt, onPitch = inRect(F, p.x, p.y, 3) || (tg && inRect(F, tg.x, tg.y, 3));
+      if (!onPitch || (tg && !inRect(F, tg.x, tg.y, 3) && hyp(tg.x - p.zone.x, tg.y - p.zone.y) <= p.zone.r + 2)) continue;
+      p.tgt = null; p.idleT = 0; p.__pgOffT = now() + 3;
+      if (p.mode === 'goto') p.mode = 'wander';
+    }
   }
   function spectatorsOff(S) { if (S && S.zones) { for (const z of S.zones.keys()) z.__pgMoved = false; spectators(S, false); } }
 

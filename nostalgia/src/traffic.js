@@ -132,6 +132,8 @@
       { dow: 4, place: 'dilsukhnagar_sai_temple', r: 300, ped: 1.8 },
       { flag: 'sankranti', style: 'colony', ped: 1.3 },
       { flag: 'chand_raat', place: 'charminar', r: 500, ped: 1.8 },
+      { flag: 'pataakha', place: 'sultan_bazaar', r: 480, ped: 1.7, veh: 1.25, hours: [10 * 60, 23 * 60] }, // [diwali hook] cracker shopping at Sultan Bazaar
+      { flag: 'diwali', style: 'colony', ped: 1.35, veh: 1.3, hours: [17 * 60 + 30, 23 * 60 + 30] },        // [diwali hook] colony lanes on Diwali nights
     ],
   };
 
@@ -1878,6 +1880,7 @@
       if (a.fedT <= 0) { a.state = 'wander'; a.home = { x: a.x, y: a.y }; }
       return;
     }
+    if (a.dwHide > 0 && N.diwali && N.diwali._dogHide && N.diwali._dogHide(a, dt, stepAnimal)) return; // [diwali hook] hiding from the crackers
     // chase bikes
     if (a.state === 'chase') {
       a.chaseT -= dt;

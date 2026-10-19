@@ -68,7 +68,7 @@
 
   /* ================================================================ calendar */
   const NAMES = ['sankranti', 'numaish', 'summer', 'bonalu', 'ganesh', 'ganesh_immersion', 'ramzan', 'chand_raat', 'christmas', 'prasads_open', 'year2026'];
-  const EXTRA = ['world_cup', 'monsoon', 'eid'];
+  const EXTRA = ['world_cup', 'monsoon', 'eid', 'pataakha', 'diwali']; // [diwali hook] pataakha + diwali (src/diwali.js)
   const ALL = NAMES.concat(EXTRA);
   const ymd = (y, m, d) => y * 10000 + m * 100 + d;
   function toDate(d) {
@@ -106,6 +106,8 @@
     o.ramzan = md >= 1027 && md <= 1125;
     o.chand_raat = md === 1125;
     o.eid = md === 1126;
+    o.pataakha = t.y === 2003 && md >= 1020 && md <= 1026; // [diwali hook] the cracker stalls (src/diwali.js)
+    o.diwali = t.y === 2003 && md >= 1022 && md <= 1026;   // [diwali hook] Deepavali week: Naraka Chaturdashi 24, Deepavali 25 Oct 2003
     o.christmas = t.m === 12;
     o.year2026 = t.y >= 2026 || (N.flags && N.flags.year === 2026);
     if (o.year2026) { o.world_cup = false; } // the 2026 epilogue: nothing of 2003's seasons but the date's own

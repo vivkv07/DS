@@ -276,11 +276,11 @@
           while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionPoly(J); } catch (e) { N.err('ground.junctionPoly', e); } if (over()) break; }
           if (AN.i >= NET.juncs.length) { AN.phase = 3; AN.i = 0; AN.cl = null; }
         } else if (ph === 3) { // footpath clearance: no slab / kerb on another carriageway (sliced)
-          if (clearStep(AN, over)) { AN.phase = 4; AN.i = 0; AN.cl = null; }
-        } else if (ph === 4) { // zebras (per junction)
-          const G2 = W.roads;
-          while (AN.i < NET.juncs.length) { zebraJ(NET.juncs[AN.i++], G2); if ((AN.i & 7) === 0 && over()) break; }
-          if (AN.i >= NET.juncs.length) { AN.phase = 5; AN.i = 0; }
+          if (clearStep(AN, over)) { AN.phase = 4; AN.i = 0; }
+        } else if (ph === 4) { // zebras (per junction; stripes only on the carriageways in the clearance index)
+          const G2 = W.roads, C = AN.cl && AN.cl.C;
+          while (AN.i < NET.juncs.length) { zebraJ(NET.juncs[AN.i++], G2, C); if ((AN.i & 7) === 0 && over()) break; }
+          if (AN.i >= NET.juncs.length) { AN.phase = 5; AN.i = 0; AN.cl = null; }
         } else if (ph === 5) { // buckets: pieces, then junctions
           const np = NET.pieces.length, nt = np + NET.juncs.length;
           while (AN.i < nt) {
@@ -626,15 +626,65 @@
     return [f.x + f.nx * P.hw * sd, f.y + f.ny * P.hw * sd];
   }
 
+  /** the junction's asphalt outline (+ its kerbed corners, the arms' footpath starts / end faces).
+   *  Built in up to three modes until it triangulates: 0 = every corner curve; 1 = plain (unkerbed)
+   *  fillets cut straight (their arcs often fold back behind a long trim: a small loop); 2 = kerbed
+   *  corners whose curve crosses the rest of the outline are dropped too (no kerb, end faces). Only
+   *  if that still fails does the convex hull stand in (its kerbed corners then lie on the asphalt:
+   *  the clearance pass drops them, it tests every corner against its own junction's triangles). */
   function junctionPoly(J) {
     const arms = J.arms;
     if (J.merged) { J.kerbs = []; J.poly = null; J.tris = null; return; } // drawn by its cluster
     if (arms.length < 2) return;
-    const poly = [];
+    // dominant style: highest rank, then widest
+    let dom = arms[0].piece;
+    for (const a of arms) { const P = a.piece; if (RANK[P.kind] > RANK[dom.kind] || (RANK[P.kind] === RANK[dom.kind] && P.hw > dom.hw)) dom = P; }
+    J.dom = dom;
+    const drop = new Set();
+    let pl = null, tris = null, mode = 0;
+    for (; mode < 3; mode++) {
+      const r = junctionOutline(J, mode, drop);
+      pl = r.pl; tris = triangulate(pl);
+      if (tris) break;
+      if (mode === 1) { const x = crossingCorners(r.raw, r.tag); if (!x.size) { mode = 3; break; } for (const c of x) drop.add(c); }
+    }
+    J.polyMode = mode; J.hullFb = false; J.rawPoly = null; J.tbb = null;
+    J.poly = pl; J.tris = tris;
+    if (!tris) { J.rawPoly = pl; J.poly = hull(pl); J.tris = triangulate(J.poly) || []; J.hullFb = true; }
+    J.extraPts = [];
+    for (const k of J.kerbs) if (k.type === 'arc' && !k.straight) J.extraPts.push(k.cn.O, k.cn.C);
+  }
+  /** kerbed corners (indices) whose curve segments cross another part of the raw outline */
+  function crossingCorners(raw, tag) {
+    const out = new Set(), n = raw.length;
+    const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const bb = [];
+    for (let i = 0; i < n; i++) { const a = raw[i], b = raw[(i + 1) % n]; bb.push([Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])]); }
+    for (let i = 0; i < n; i++) {
+      const a = raw[i], b = raw[(i + 1) % n];
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-3) continue;
+      for (let k = i + 2; k < n; k++) {
+        if (i === 0 && k === n - 1) continue;
+        if (tag[i] < 0 && tag[k] < 0) continue;
+        const c = raw[k], d = raw[(k + 1) % n], p = bb[i], q = bb[k];
+        if (p[2] < q[0] || q[2] < p[0] || p[3] < q[1] || q[3] < p[1]) continue;
+        const d1 = cr(a, b, c), d2 = cr(a, b, d), d3 = cr(c, d, a), d4 = cr(c, d, b);
+        if (Math.abs(d1) < 1e-7 || Math.abs(d2) < 1e-7 || Math.abs(d3) < 1e-7 || Math.abs(d4) < 1e-7) continue;
+        if ((d1 > 0) !== (d2 > 0) && (d3 > 0) !== (d4 > 0)) { if (tag[i] >= 0) out.add(tag[i]); if (tag[k] >= 0) out.add(tag[k]); }
+      }
+    }
+    return out;
+  }
+  function junctionOutline(J, mode, drop) {
+    const arms = J.arms;
+    const poly = [], tag = [];
+    const put = (p, t) => { poly.push(p); tag.push(t); };
     J.kerbs = [];
+    // (rebuilt from scratch in every mode: the footpath starts and end faces this junction sets)
+    for (const a of arms) { a.end.fs = [a.end.trim, a.end.trim]; a.end.capSide = [false, false]; }
     for (let i = 0; i < arms.length; i++) {
       const A = arms[i], cn = J.corners[i];
-      poly.push(cutCorner(A, -1), cutCorner(A, 1));
+      put(cutCorner(A, -1), -1); put(cutCorner(A, 1), -1);
       if (!cn) continue;
       const B = cn.B;
       if (cn.type === 'fillet') {
@@ -654,7 +704,7 @@
         // arm's real kerb line can sit metres away; join the two strip starts with a curve tangent to
         // the strips instead (asphalt edge and kerb share it: no gaps, no folds)
         cn.curve = null;
-        if (A.fp > 0 && B.fp > 0) {
+        if (A.fp > 0 && B.fp > 0 && !drop.has(i)) {
           const sA = stripStart(A, 1), sB = stripStart(B, -1);
           // whenever the curve can head from one start to the other (also when the strips converge side
           // by side: a rounded island nose). The analytic ring stays only as a last resort: on a curved
@@ -664,15 +714,17 @@
         }
         if (A.fp > 0 && B.fp > 0 && !cn.curve) {
           // no curve can join the two strips (parallel roads leaving side by side, strips far apart
-          // along them): no kerbed corner (its analytic arc would stand in the asphalt); the polygon
-          // joins the cut corners and both strips end in a plain end face
+          // along them), or (mode 2) its curve folds across the outline: no kerbed corner (its analytic
+          // arc would stand in the asphalt); the polygon joins the cut corners and both strips end in a
+          // plain end face
           A.end.capSide[A.side > 0 ? 1 : 0] = true;
           B.end.capSide[-B.side > 0 ? 1 : 0] = true;
           // (a strip whose slab then lies on the other carriageway is cut back by the clearance pass)
           continue;
         }
-        for (const p of cn.curve || cn.arc) poly.push(p);
-        J.kerbs.push({ type: 'arc', cn, A, B, tA, tB });
+        // (mode 1+: a plain fillet without footpaths is cut straight; its arc can fold behind the trim)
+        if (cn.curve || mode === 0) for (const p of cn.curve || cn.arc) put(p, cn.curve ? i : -1);
+        if (cn.curve || mode === 0) J.kerbs.push({ type: 'arc', cn, A, B, tA, tB });
       } else if (A.fp > 0 && B.fp > 0) {
         // no fillet (a straight side, or two arms that diverge from a blunt island nose): the kerb runs
         // from one strip start to the other along a curve tangent to both strips (straight when they are
@@ -680,12 +732,13 @@
         // like a kerbed corner (a separate straight slab overlapped the strips and stuck out into the road)
         const sA = stripStart(A, 1), sB = stripStart(B, -1);
         const cx = sB.k[0] - sA.k[0], cy = sB.k[1] - sA.k[1], ch = Math.hypot(cx, cy);
+        if (drop.has(i)) { A.end.capSide[A.side > 0 ? 1 : 0] = true; B.end.capSide[-B.side > 0 ? 1 : 0] = true; continue; }
         if (ch > 0.5 && ch < 150 && -(cx * sA.d[0] + cy * sA.d[1]) > -0.2 * ch && cx * sB.d[0] + cy * sB.d[1] > -0.2 * ch) {
           cn.curve = cornerCurve(sA, sB, Math.max(4, Math.min(16, Math.ceil(ch / 3))));
           // a point well on the plot side (orientation reference for the kerb normals and back faces)
           const mk = [(sA.k[0] + sB.k[0]) / 2, (sA.k[1] + sB.k[1]) / 2], mb = [(sA.b[0] + sB.b[0]) / 2, (sA.b[1] + sB.b[1]) / 2];
           cn.O = [mb[0] + (mb[0] - mk[0]) * 3, mb[1] + (mb[1] - mk[1]) * 3];
-          for (const p of cn.curve) poly.push(p);
+          for (const p of cn.curve) put(p, i);
           J.kerbs.push({ type: 'arc', cn, A, B, tA: 0, tB: 0, straight: true });
         } else J.kerbs.push({ type: 'line', A, B, pa: cutCorner(A, 1), pb: cutCorner(B, -1), fp: Math.min(A.fp, B.fp), kh: Math.min(A.piece.kerbH, B.piece.kerbH), paint: Math.max(A.piece.paint, B.piece.paint) });
       }
@@ -693,18 +746,9 @@
       if (A.fp > 0 && !(B.fp > 0)) A.end.capSide[A.side > 0 ? 1 : 0] = true;
       if (B.fp > 0 && !(A.fp > 0)) B.end.capSide[-B.side > 0 ? 1 : 0] = true;
     }
-    // dominant style: highest rank, then widest
-    let dom = arms[0].piece;
-    for (const a of arms) { const P = a.piece; if (RANK[P.kind] > RANK[dom.kind] || (RANK[P.kind] === RANK[dom.kind] && P.hw > dom.hw)) dom = P; }
-    J.dom = dom;
     const pl = dedupe(poly, 0.03);
     if (pl.length >= 3 && Math.hypot(pl[0][0] - pl[pl.length - 1][0], pl[0][1] - pl[pl.length - 1][1]) < 0.03) pl.pop();
-    J.poly = pl;
-    J.tris = triangulate(pl);
-    J.hullFb = false;
-    if (!J.tris) { J.poly = hull(pl); J.tris = triangulate(J.poly) || []; J.hullFb = true; }
-    J.extraPts = [];
-    for (const k of J.kerbs) if (k.type === 'arc' && !k.straight) J.extraPts.push(k.cn.O, k.cn.C);
+    return { pl, raw: poly, tag };
   }
   /** arc length from arm a's node where both its kerb lines are off every inner link's carriageway */
   function clearOfInner(a, inner) {
@@ -781,6 +825,30 @@
     }
     return false;
   }
+  /** is (x, y) on junction J's own drawn asphalt (inside one of its triangles), at least m from its
+   *  outline? (the clearance pass's self test: a corner's slab must never lie on its own junction) */
+  function onOwnJ(J, x, y, m) {
+    const T = J.tris, pl = J.poly;
+    if (!T || !T.length || !pl) return false;
+    if (!J.tbb) J.tbb = bboxOf(pl, 0);
+    const b = J.tbb;
+    if (x < b[0] || x > b[2] || y < b[1] || y > b[3]) return false;
+    let inside = false;
+    for (const t of T) {
+      const a = t[0], c = t[1], d = t[2];
+      const d1 = (c[0] - a[0]) * (y - a[1]) - (c[1] - a[1]) * (x - a[0]);
+      const d2 = (d[0] - c[0]) * (y - c[1]) - (d[1] - c[1]) * (x - c[0]);
+      const d3 = (a[0] - d[0]) * (y - d[1]) - (a[1] - d[1]) * (x - d[0]);
+      if ((d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0)) { inside = true; break; }
+    }
+    if (!inside) return false;
+    for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) {
+      const a = pl[j], c = pl[i], dx = c[0] - a[0], dy = c[1] - a[1], L2 = dx * dx + dy * dy || 1;
+      const u = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / L2, 0, 1);
+      if (Math.hypot(x - a[0] - dx * u, y - a[1] - dy * u) < m) return false;
+    }
+    return true;
+  }
   /** point strictly inside polygon pl, at least m from its outline */
   function inPolyM(pl, x, y, m) {
     let c = false;
@@ -808,10 +876,17 @@
         const ax = B.P[ia * 3] + B.x0, az = B.P[ia * 3 + 2] + B.z0, bx = B.P[ib * 3] + B.x0, bz = B.P[ib * 3 + 2] + B.z0, cx = B.P[ic * 3] + B.x0, cz = B.P[ic * 3 + 2] + B.z0;
         const ar = Math.abs((bx - ax) * (cz - az) - (bz - az) * (cx - ax)) / 2;
         if (ar < 0.01) continue;
-        const gx = (ax + bx + cx) / 3, gz = (az + bz + cz) / 3;
-        // centroid + the three points half way to the corners (large paver triangles)
-        const pts = [[gx, gz], [(gx + ax) / 2, (gz + az) / 2], [(gx + bx) / 2, (gz + bz) / 2], [(gx + cx) / 2, (gz + cz) / 2]];
-        for (const p of pts) if (clHit(S.C, p[0], p[1], null, J, 0.5)) bad += ar / 4;
+        // a barycentric grid of interior points about every 0.9 u (a big paver fill triangle that
+        // reaches over an arm's ribbon start was missed by a few samples): each point stands for an equal
+        // share of the area. Hits: another carriageway, or this junction's OWN asphalt (a corner the
+        // outline does not follow: the hull stand-in, a curve folded into the junction)
+        const e = Math.max(Math.hypot(bx - ax, bz - az), Math.hypot(cx - bx, cz - bz), Math.hypot(ax - cx, az - cz));
+        const g = Math.min(14, Math.max(1, Math.ceil(e / 0.9))), np = (g * (g + 1)) / 2;
+        for (let u = 0; u < g; u++) for (let v = 0; v < g - u; v++) {
+          const wu = (u + 1 / 3) / g, wv = (v + 1 / 3) / g, ww = 1 - wu - wv;
+          const px = ax * ww + bx * wu + cx * wv, pz = az * ww + bz * wu + cz * wv;
+          if (clHit(S.C, px, pz, null, J, 0.3) || onOwnJ(J, px, pz, 0.3)) bad += ar / np;
+        }
       }
       if (bad > 1) {
         k.drop = true; S.drops++;
@@ -826,6 +901,7 @@
     if (!(P.fp > 0) || P.internal) return;
     if (!P.nrm) P.nrm = normalsOf(P.pts);
     const ws = [P.hw + 0.35, P.hw + P.fp * 0.5, P.hw + P.fp - 0.35];
+    const s0 = P.ends[0].trim, s1 = P.L - P.ends[1].trim; // the drawn ribbon
     for (const side of [-1, 1]) {
       const si = side > 0 ? 1 : 0;
       const a = P.ends[0].fs[si], b = P.L - P.ends[1].fs[si];
@@ -836,7 +912,14 @@
         let hit = false;
         if (k <= n) {
           const f = frameAt(P, a + d * k);
-          for (const w of ws) if (clHit(S.C, f.x + f.nx * w * side, f.y + f.ny * w * side, P, null, 0.5)) { hit = true; break; }
+          for (const w of ws) {
+            const x = f.x + f.nx * w * side, y = f.y + f.ny * w * side;
+            if (clHit(S.C, x, y, P, null, 0.4)) { hit = true; break; }
+            // its OWN carriageway: on the inside of a bend tighter than the footpath the slab folds back
+            // over the road it lines (the nearest centre-line point is elsewhere, well within hw)
+            const q = P.pts.length > 2 ? projectOn(P.pts, P.cum, x, y, s0, s1) : null;
+            if (q && Math.abs(q.v) < P.hw - 0.4 && q.d2 - q.v * q.v < 0.01) { hit = true; break; }
+          }
         }
         if (hit && k0 < 0) k0 = k;
         else if (!hit && k0 >= 0) { (gaps || (gaps = [])).push([Math.max(a, a + d * (k0 - 1)), Math.min(b, a + d * k)]); k0 = -1; }
@@ -962,7 +1045,55 @@
   }
 
   /** zebra crossings on junction approaches: the 2D map's rules (world.js paintGround) */
-  function zebraJ(J, G) {
+  /** (zebra / stop-line paint) is (x, y) on a drawn carriageway: a trimmed piece ribbon or a junction's
+   *  asphalt (clearance index S.C; no margins, so a stripe across the ribbon / junction seam stays) */
+  function onCarriage(C, x, y) {
+    const c = C.get(clKey(Math.floor(x / CL_CELL), Math.floor(y / CL_CELL)));
+    if (!c) return false;
+    for (const o of c) {
+      const b = o.bb;
+      if (x < b[0] || x > b[2] || y < b[1] || y > b[3]) continue;
+      if (o.P) {
+        const q = projectOn(o.P.pts, o.P.cum, x, y, o.s0, o.s1);
+        if (q && Math.abs(q.v) < o.P.hw && q.d2 - q.v * q.v < 0.0025) return true;
+      } else if (inPolyM(o.poly, x, y, 0)) return true;
+    }
+    return false;
+  }
+  /** the zebra's stripe offsets (across the road) whose whole stripe lies on a carriageway: the 2D map
+   *  paints a zebra across its road's width from the node's direction to the next node, which on a
+   *  curved arm or in a merged cluster can run out over the kerbed corners and footpaths; paint never
+   *  goes under a raised slab (or onto bare ground), so such stripes are left out */
+  function zebraStripes(C, d) {
+    const nx = -d.uy, ny = d.ux, out = [];
+    for (let t = -d.w / 2 + 3; t <= d.w / 2 - 4; t += 4.5) {
+      const m = t + 1.2, cx = d.x + nx * m, cy = d.y + ny * m;
+      let ok = true;
+      for (const su of [-3.6, 0, 3.6]) {
+        for (const sv of [-0.8, 0, 0.8]) if (!onCarriage(C, cx + d.ux * su + nx * sv, cy + d.uy * su + ny * sv)) { ok = false; break; }
+        if (!ok) break;
+      }
+      if (ok) out.push(m);
+    }
+    return out;
+  }
+  /** a stop line shortened to its longest run on the carriageway (w = 0: none) */
+  function fitStop(C, d) {
+    const nx = -d.uy, ny = d.ux, st = 0.5, k = Math.max(1, Math.round(d.w / st));
+    let best = [0, -1], run = -1;
+    for (let i = 0; i <= k + 1; i++) {
+      const u = -d.w / 2 + (d.w * i) / k;
+      let ok = i <= k;
+      if (ok) for (const sv of [-0.35, 0.35]) if (!onCarriage(C, d.x + nx * u + d.ux * sv, d.y + ny * u + d.uy * sv)) { ok = false; break; }
+      if (ok && run < 0) run = i;
+      else if (!ok && run >= 0) { if (i - 1 - run > best[1] - best[0]) best = [run, i - 1]; run = -1; }
+    }
+    const len = best[1] >= best[0] ? ((best[1] - best[0]) * d.w) / k : 0;
+    if (len < 2) { d.w = 0; return; }
+    const um = -d.w / 2 + (((best[0] + best[1]) / 2) * d.w) / k;
+    d.x += nx * um; d.y += ny * um; d.w = len;
+  }
+  function zebraJ(J, G, C) {
     {
       const n = J.node;
       if (!n || n.deg < 3 || J.arms.length < 2) return;
@@ -982,10 +1113,14 @@
         // 2.4 wide every 4.5 from -w/2 + 3 while t <= w/2 - 4 (decal quads at exactly that spot)
         const off = widest.w / 2 + 6;
         const zx = n.x + ux * off, zy = n.y + uy * off;
-        (J.decals || (J.decals = [])).push({ t: 'zebra', x: zx, y: zy, ux, uy, w: e.w });
+        const zb = { t: 'zebra', x: zx, y: zy, ux, uy, w: e.w };
+        if (C) zb.ms = zebraStripes(C, zb);
+        (J.decals || (J.decals = [])).push(zb);
         // stop line on the inbound half (traffic keeps left: inbound = left of -u = +n side), behind the zebra
         const sx = zx + ux * 6.6, sy = zy + uy * 6.6, nx = -uy, ny = ux;
-        J.decals.push({ t: 'stop', x: sx + nx * (e.w / 4), y: sy + ny * (e.w / 4), ux, uy, w: e.w / 2 - 1.2 });
+        const sl = { t: 'stop', x: sx + nx * (e.w / 4), y: sy + ny * (e.w / 4), ux, uy, w: e.w / 2 - 1.2 };
+        if (C) fitStop(C, sl);
+        J.decals.push(sl);
         const arm = J.arms.find((a) => a.edge === e) || J.arms.slice().sort((p, q) => (q.d[0] * ux + q.d[1] * uy) - (p.d[0] * ux + p.d[1] * uy))[0];
         if (arm) arm.end.zebra = Math.max(off, 1); // markings (dashes, medians) start behind it
       }
@@ -1588,11 +1723,12 @@
     for (const d of J.decals) {
       if (d.t === 'zebra') {
         const nx = -d.uy, ny = d.ux;
+        if (d.ms) { for (const m of d.ms) paintRect(B, c, d.x + nx * m, d.y + ny * m, d.ux, d.uy, 8, 2.4); continue; } // (stripes on the carriageway)
         for (let t = -d.w / 2 + 3; t <= d.w / 2 - 4; t += 4.5) {
           const m = t + 1.2; // stripe [t, t + 2.4] across the road
           paintRect(B, c, d.x + nx * m, d.y + ny * m, d.ux, d.uy, 8, 2.4);
         }
-      } else if (d.t === 'stop') paintRect(B, c, d.x, d.y, -d.uy, d.ux, d.w, 1.1);
+      } else if (d.t === 'stop' && d.w > 0.5) paintRect(B, c, d.x, d.y, -d.uy, d.ux, d.w, 1.1);
     }
   }
   function emitJunction(B, J) {
@@ -1694,6 +1830,29 @@
       }
     }
     if (ring) return;
+    // the OUTER side of a bend (the curve bulges toward the plot, its centre of curvature lies in the
+    // junction): the footpath is a band of the strip width round the curve. (Closing it through the
+    // two back points, as for an inner corner, filled the whole bend with pavers: a D-shaped slab
+    // over the junction's own carriageway.)
+    {
+      const m = n >> 1, cx = (arc[0][0] + arc[n][0]) / 2, cy = (arc[0][1] + arc[n][1]) / 2;
+      const bulge = (arc[m][0] - cx) * rad[m][0] + (arc[m][1] - cy) * rad[m][1];
+      if (bulge < -0.05) {
+        for (let q = 0; q < n; q++) {
+          const a3 = off(q, kb), b3 = off(q + 1, kb), a4 = off(q, fp), b4 = off(q + 1, fp);
+          pv(a3[0], kh, a3[1], 0, 1, 0, a3[0], a3[1]); pv(b3[0], kh, b3[1], 0, 1, 0, b3[0], b3[1]); pv(b4[0], kh, b4[1], 0, 1, 0, b4[0], b4[1]); pv(a4[0], kh, a4[1], 0, 1, 0, a4[0], a4[1]);
+          flush(B, fc);
+          B.raise([a3, b3, b4, a4], kh);
+          if (!EMIT_LOD) { // back face toward the plot
+            const r0 = rad[q], r1 = rad[q + 1];
+            pv(a4[0], 0, a4[1], -r0[0], 0, -r0[1], 0, 0); pv(b4[0], 0, b4[1], -r1[0], 0, -r1[1], 1, 0);
+            pv(b4[0], kh, b4[1], -r1[0], 0, -r1[1], 1, 0.2); pv(a4[0], kh, a4[1], -r0[0], 0, -r0[1], 0, 0.2);
+            flush(B, backC);
+          }
+        }
+        return;
+      }
+    }
     // plot corner: where the two back lines meet (bA + dA t = bB + dB s, both behind the strip starts)
     const det = sA.d[0] * -sB.d[1] - sA.d[1] * -sB.d[0];
     let K = null;
@@ -3051,8 +3210,10 @@ if (ngShine > 0.01) {
       return out;
     },
     /** tests (r1-2 / r1-3): raised footpath + kerb tops (junction corners and piece strips) within R of
-     *  (x, y) that lie on ANOTHER road's carriageway (inside its trimmed ribbon or a junction polygon):
-     *  a footpath slab across the road, a stray kerb end standing in the asphalt. Should be ~0.
+     *  (x, y) that lie on a carriageway (another road's trimmed ribbon, or any junction polygon, the
+     *  corner's own junction included): a footpath slab across the road, a stray kerb end standing in
+     *  the asphalt. Should be ~0. (Point-in-outline predicate; tests/view3d_ground.cjs also grades the
+     *  emitted triangles directly, independent of this.)
      *  -> {tris, hits, area (u^2 on carriageways), worst: [{src, on, x, y, area}]} */
     footOnRoad(x, y, R) {
       if (!NET.built) return null;
@@ -3073,7 +3234,7 @@ if (ngShine > 0.01) {
           const q = projectOn(P.pts, P.cum, cx, cy, P.ends[0].trim, P.L - P.ends[1].trim);
           if (q && q.s > P.ends[0].trim + 0.5 && q.s < P.L - P.ends[1].trim - 0.5 && Math.abs(q.v) < P.hw - 0.75) { on = 'P' + P.id; break; }
         }
-        if (!on) for (const J of juncs) if ('J' + J.id !== t.s && inPoly(J.poly, cx, cy)) {
+        if (!on) for (const J of juncs) if (inPoly(J.poly, cx, cy)) { // (its own junction too: a corner slab on its own asphalt)
           // the point must be well inside (not on the kerb line the corner shares with the polygon)
           let dmin = Infinity;
           for (let i = 0, j = J.poly.length - 1; i < J.poly.length; j = i++) { const a = J.poly[j], b = J.poly[i], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1; const u = clamp(((cx - a[0]) * dx + (cy - a[1]) * dy) / L2, 0, 1); dmin = Math.min(dmin, Math.hypot(cx - a[0] - dx * u, cy - a[1] - dy * u)); }
