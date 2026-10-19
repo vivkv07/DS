@@ -38,6 +38,8 @@ function check(cond, msg, data) {
 async function openPage(browser, V) {
   const context = await browser.newContext({ viewport: V.viewport, deviceScaleFactor: V.dpr || 1, hasTouch: !!V.touch, isMobile: !!V.touch });
   const page = await context.newPage();
+  // play-testing builds top money up every frame (src/testing.js): the ₹10 start / economy checks need real pocket money
+  await page.addInitScript(() => { try { localStorage.setItem('nostalgia.testing.unlimitedMoney', '0'); } catch (e) { /* storage off */ } });
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
