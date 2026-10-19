@@ -127,14 +127,15 @@
     '  } else {',
     '    float fu = clamp(position.x, 0.0, 1.0);',
     '    float ext = clamp(0.18 + wfxS * 1.7, 0.18, 1.0);',
-    '    float wa = sin(wfxT * 0.8 + wfxPh) * 0.35 * (1.15 - ext) + sin(wfxT * (2.1 + 2.0 * wfxS) + wfxPh * 1.7) * 0.07;',
+    '    float calm = min(1.0, wfxS * 4.0);   // a limp flag in still air barely stirs',
+    '    float wa = (sin(wfxT * 0.8 + wfxPh) * 0.35 * (1.15 - ext) + sin(wfxT * (2.1 + 2.0 * wfxS) + wfxPh * 1.7) * 0.07) * calm;',
     '    vec2 d = vec2(uWind.x * cos(wa) - uWind.y * sin(wa), uWind.x * sin(wa) + uWind.y * cos(wa));',
     '    vec3 pr = vec3(-d.y, 0.0, d.x);',
     '    vec3 al = normalize(vec3(d.x * ext, -(1.0 - ext) * 1.25, d.y * ext));',
     '    vec3 wd = normalize(cross(pr, al));',
     '    float L = wfxSx;',
-    '    float rip = sin(fu * 7.5 - wfxT * (3.5 + 9.0 * wfxS) + wfxPh) * (0.05 + 0.2 * wfxS) * fu * L;',
-    '    float flap = sin(fu * 5.0 - wfxT * (2.8 + 7.0 * wfxS) + wfxPh * 1.3) * 0.07 * fu * L * (0.3 + wfxS);',
+    '    float rip = sin(fu * 7.5 - wfxT * (3.5 + 9.0 * wfxS) + wfxPh) * (0.05 + 0.2 * wfxS) * calm * fu * L;',
+    '    float flap = sin(fu * 5.0 - wfxT * (2.8 + 7.0 * wfxS) + wfxPh * 1.3) * 0.07 * fu * L * (0.3 + wfxS) * calm;',
     '    float taper = length(instanceMatrix[2].xyz) - 1.0;   // instance scale z = 1 + taper (temple pennants)',
     '    wfxP.xyz = wfxOrg + al * (fu * L) + wd * (position.y * wfxSy * (1.0 - fu * taper)) + pr * rip + vec3(0.0, flap, 0.0);',
     '  }',
@@ -516,13 +517,14 @@
     WI.at(f.x, f.y, SW);
     const s = FX.enabled ? SW.s : 0;
     const ext = clamp(0.18 + s * 1.7, 0.18, 1);
-    const wa = Math.sin(T * 0.8 + ph) * 0.35 * (1.15 - ext) + Math.sin(T * (2.1 + 2 * s) + ph * 1.7) * 0.07;
+    const calm = Math.min(1, s * 4); // a limp flag in still air barely stirs
+    const wa = (Math.sin(T * 0.8 + ph) * 0.35 * (1.15 - ext) + Math.sin(T * (2.1 + 2 * s) + ph * 1.7) * 0.07) * calm;
     const ca = Math.cos(wa), sa = Math.sin(wa);
     const dX = WI.dx * ca - WI.dy * sa, dY = WI.dx * sa + WI.dy * ca;
     let ax = dX * ext, ay = dY * ext, ah = -(1 - ext) * 1.25; const al = Math.hypot(ax, ay, ah) || 1; ax /= al; ay /= al; ah /= al;
     for (let i = 0; i <= n; i++) {
       const u = i / n, L = f.len;
-      const rip = FX.enabled ? Math.sin(u * 7.5 - T * (3.5 + 9 * s) + ph) * (0.05 + 0.2 * s) * u * L : 0;
+      const rip = FX.enabled ? Math.sin(u * 7.5 - T * (3.5 + 9 * s) + ph) * (0.05 + 0.2 * s) * calm * u * L : 0;
       const x = f.x + ax * u * L - dY * rip, y = f.y + ay * u * L + dX * rip, hh = f.h + ah * u * L;
       const wdt = f.wid * (f.tri ? 1 - u * 0.92 : 1);
       // flying: the width hangs below the top edge; limp (calm): it lies along the pole's downwind side

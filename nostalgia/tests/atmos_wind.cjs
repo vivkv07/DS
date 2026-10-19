@@ -55,6 +55,8 @@ async function openPage(browser) {
     N.view.noPointerLock = true;
     if (N.dialogue) N.dialogue.skip = true;
     const d = document.getElementById('debug'); if (d) d.style.display = 'none';
+    // toasts and place banners pop up over the subjects and would count as motion: hide them
+    const st = document.createElement('style'); st.textContent = '.hud-toasts, .hud-banner { display: none !important; }'; document.head.appendChild(st);
     N.weather.force({ rain: 0, storm: 0, mist: 0, cloud: 0 });
     // keep the streets quiet so frame differences measure the wind, not the traffic
     if (N.traffic) { if (N.traffic.setDensity) N.traffic.setDensity(0); N.traffic.enabled = false; if (N.traffic.clear) N.traffic.clear(); }
@@ -348,7 +350,13 @@ async function run3D(browser, page) {
       await set(w, false);
       const files = await strip(page, path.join(OUT, 'wind_3d_' + S.name + '_' + w), null, true);
       const ds = [];
-      for (let i = 1; i < files.length; i++) ds.push((await diff(browser, files[i - 1], files[i], [0, 0, VW, Math.round(VH * 0.8)])).changed);
+      // the flag is small: measure around it (its projected hoist), elsewhere the upper 80 % of the frame
+      let rect = [0, 0, VW, Math.round(VH * 0.8)];
+      if (S.at === 'flag3d') {
+        const q = await page.evaluate(() => { const f = N.windfx.flags.find((z) => z.zone === 'lal_darwaza_temple') || N.windfx.flags[0]; return N.view3d.project(f.x, f.y, f.h * N.view3d.VS); });
+        if (q && isFinite(q.x)) rect = [Math.max(0, Math.round(q.x - 110)), Math.max(0, Math.round(q.y - 80)), 220, 160];
+      }
+      for (let i = 1; i < files.length; i++) ds.push((await diff(browser, files[i - 1], files[i], rect)).changed);
       motion[w] = ds.reduce((a, b) => a + b, 0) / ds.length;
       if (SHOTS && w === 'storm') await compose(browser, files, path.join(OUT, 'wind_3d_' + S.name + '_strip.png'), ['t', '+0.25 s', '+0.5 s', '+0.75 s'], '3D storm wind (no rain) ' + S.name);
       for (const f of files) fs.unlinkSync(f);
@@ -368,7 +376,11 @@ async function run3D(browser, page) {
       const med = (a) => +a.slice().sort((x, y) => x - y)[a.length >> 1].toFixed(3);
       return { jsx: med(js), calls: med(calls), layerMs: med(lay) };
     };
+    // freeze the simulation while counting (moving actors / kites change the call count frame to frame);
+    // the wind layer and the renderer still run every frame
+    const ts = N.time.scale; N.time.scale = 0;
     const off = await run(false), on = await run(true);
+    N.time.scale = ts;
     const s = N.windfx.stats();
     N.view3d.setQuality({ pixelRatio: 1 });
     return { off, on, clothes: s.clothes3d, flags: s.flags3d };
