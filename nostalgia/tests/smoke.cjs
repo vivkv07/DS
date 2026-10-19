@@ -41,7 +41,7 @@ async function run(browser, V) {
   if (!process.env.REAL_FONTS) {
     await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '/* stubbed in tests */' }));
   }
-  const shot = (n) => page.screenshot({ path: path.join(OUT, V.name + '_' + n + '.png') });
+  const shot = (n) => page.screenshot({ path: path.join(OUT, V.name + '_' + n + '.png'), timeout: 180000 });
   const state = () => page.evaluate(() => N.debug.state());
 
   // ---- boot + title

@@ -85,7 +85,7 @@ async function openPage(browser, V) {
   await page.evaluate(() => { N.debug.setTime(16, 40); N.debug.freezeClock(true); N.debug.skipDialogue(true); if (N.wanted && N.wanted.clear) N.wanted.clear('test'); });
   return { context, page, errors };
 }
-const shot = (page, name, o) => page.screenshot(Object.assign({ path: path.join(OUT, 'pg_' + name + '.png'), timeout: 240000 }, o || {}));
+const shot = (page, name, o) => page.screenshot(Object.assign({ path: path.join(OUT, 'pg_' + name + '.png'), timeout: 180000 }, o || {}));
 const st = (page) => page.evaluate(() => N.playgroundGames.debug.state());
 const waitFor = (page, fn, arg, ms) => page.waitForFunction(fn, arg, { timeout: ms || 90000, polling: 100 }).then(() => true, () => false);
 const logHas = (page, type, extra) => page.evaluate(([t, x]) => N.playgroundGames.debug.log().some((e) => e.type === t && (!x || Object.keys(x).every((k) => e[k] === x[k]))), [type, extra || null]);
@@ -423,7 +423,7 @@ async function fixes(browser) {
     S.me.dashT = -9;
     return { x: p.x, y: p.y };
   });
-  await sleep(150);
+  await gwait(page, 0.15);
   await tapKey(page, 'ShiftLeft', 70);
   await waitGT(0.5);
   const d1 = await page.evaluate(() => ({ x: N.player.x, y: N.player.y }));
@@ -532,7 +532,7 @@ async function fair(browser) {
   await tapKey(page, 'ShiftLeft', 60);
   await waitFor(page, (a) => N.playgroundGames.debug.log().filter((e) => e.type === 'throw' && e.by === a[0]).length > a[1], [K, n0], 20000);
   const late = await lastThrow(K);
-  await sleep(1500);
+  await gwait(page, 1.5);
   const outLate = await page.evaluate(() => N.playgroundGames.debug.state().parts.find((p) => p.me).out);
   check(locked && late && late.aimOff >= 6 && !outLate, 'Shift as the fuse turns gold: he throws where Chinnu was (' + (late && late.aimOff) + ' u off), Chinnu is not out', late);
   // an early hop (as the line appears): he simply aims at where Chinnu landed
@@ -554,7 +554,7 @@ async function fair(browser) {
     D.give('me');
     return K.name;
   });
-  await sleep(300);
+  await gwait(page, 0.3);
   const tcl = (await st(page)).label;
   check(/Too close/.test(tcl), 'holding the ball 10 u from ' + K + ': "' + tcl + '" (orange reticle)');
   await tapKey(page, 'KeyE', 80);
@@ -577,7 +577,7 @@ async function fair(browser) {
     A.e.x = F.cx; A.e.y = F.cy; H.e.x = F.cx + 5; H.e.y = F.cy;
     return A.name;
   });
-  await sleep(600);
+  await gwait(page, 0.6);
   check(!(await logHas(page, 'safe', { name: brush })), 'an AI seeker brushing past a hitter is not SAFE (' + brush + ')');
   const aimSkip = await page.evaluate(() => {
     const D = N.playgroundGames.debug, S = D.session(), F = S.F, p = N.player;
@@ -590,7 +590,7 @@ async function fair(browser) {
     D.give('me');
     return { A: A.name, B: B.name };
   });
-  await sleep(300);
+  await gwait(page, 0.3);
   const tg = (await st(page)).target;
   check(tg === aimSkip.B, 'holding the ball, the aim assist passes over SAFE ' + aimSkip.A + ' (straight ahead) for ' + aimSkip.B + ' (' + tg + ')');
   await shot(page, 'fair_aim_skip_safe');
@@ -749,7 +749,7 @@ async function phone(browser, name, viewport) {
   // the stack, let go -> the throw goes at the stack
   await startResult(page, 'lingocha', { place: 'playground_1', seed: 31 });
   check(await waitPhase(page, 'aim', 90000), 'a second lingocha: Chinnu at the line again');
-  await sleep(500);
+  await gwait(page, 0.5);
   const sv = await page.evaluate(() => { const S = N.playgroundGames.debug.state(), p = N.player; return { a: Math.atan2(S.lingocha.base.y - p.y, S.lingocha.base.x - p.x), W: innerWidth, H: innerHeight }; });
   const sx = sv.W * 0.2, sy = sv.H * 0.72;
   await cdpTouchDrag(page, sx, sy, sx - Math.cos(sv.a) * 40, sy - Math.sin(sv.a) * 40, 6);

@@ -701,7 +701,8 @@
     if (pl.length >= 3 && Math.hypot(pl[0][0] - pl[pl.length - 1][0], pl[0][1] - pl[pl.length - 1][1]) < 0.03) pl.pop();
     J.poly = pl;
     J.tris = triangulate(pl);
-    if (!J.tris) { J.poly = hull(pl); J.tris = triangulate(J.poly) || []; }
+    J.hullFb = false;
+    if (!J.tris) { J.poly = hull(pl); J.tris = triangulate(J.poly) || []; J.hullFb = true; }
     J.extraPts = [];
     for (const k of J.kerbs) if (k.type === 'arc' && !k.straight) J.extraPts.push(k.cn.O, k.cn.C);
   }

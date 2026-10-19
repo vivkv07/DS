@@ -2267,18 +2267,48 @@
    * dwell), and autoStart missions start by themselves; in the middle of a game on the ground that must not
    * happen (the colony ground carries the gully-league giver). While a free-roam game runs every giver's /
    * autoStart mission's when() says "not now" (wrapped once per def). A game a mission started holds nothing.
-   * Should a mission start anyway (a script calling N.missions.start), the free-roam game ends ('mission'). */
+   * Should a mission start anyway (a script calling N.missions.start), the free-roam game ends ('mission').
+   * When the game ends, a giver whose ring Chinnu is standing in keeps saying "not now" until he has walked out
+   * of it (its r + 24 u, missions.js's own rule after a mission): the gully-league giver sits in the middle of the
+   * colony ground, and its 1 s J-card dwell used to start the Gully League (cricket overlay) a second after the
+   * final whistle, right under the "Play again" offer. */
   let giverHold = false;
+  const giverAfter = new Set();  // ids of the givers Chinnu stood in at the end of the game
+  function giverSpot(d) {
+    const g = d && d.giver;
+    if (!g) return null;
+    if (g.npc) { const e = N.npcs && N.npcs.get && N.npcs.get(g.npc); if (e && typeof e.x === 'number') return e; }
+    if (g.place) { const q = N.places && N.places[g.place]; if (q) return q; }
+    return typeof g.x === 'number' ? g : null;
+  }
+  function giverUnderMe(d) {
+    const g = giverSpot(d), p = N.player;
+    return !!(g && p && hyp(p.x - g.x, p.y - g.y) <= (d.giver.r || 14) + 24);
+  }
+  function giverHeld(d) {
+    if (giverHold) return true;
+    if (!giverAfter.has(d.id)) return false;
+    if (giverUnderMe(d)) return true;
+    giverAfter.delete(d.id);
+    return false;
+  }
   function holdGivers(on) {
+    const was = giverHold;
     giverHold = !!on;
     const M = N.missions;
-    if (!on || !M || !M.defs) return;
+    if (!M || !M.defs) return;
+    if (!on) {
+      // released at the end of a free-roam game: the rings Chinnu stands in wait till he steps out
+      if (was) for (const id in M.defs) { const d = M.defs[id]; if (d && d.__pgWhen && d.giver && giverUnderMe(d)) giverAfter.add(d.id); }
+      return;
+    }
+    giverAfter.clear();
     for (const id in M.defs) {
       const d = M.defs[id];
       if (!d || !(d.giver || d.autoStart) || d.__pgWhen) continue;
       const ow = d.when;
       d.__pgWhen = true;
-      d.when = function () { if (giverHold) return false; return typeof ow === 'function' ? ow.apply(this, arguments) : true; };
+      d.when = function () { if (giverHeld(d)) return false; return typeof ow === 'function' ? ow.apply(this, arguments) : true; };
     }
   }
   /** top-down: zoom in so the whole ground (plus a margin) fills the view */
@@ -3154,6 +3184,7 @@
   function resetAll() {
     AGAIN.gid = null;
     if (current) { const S = current; hardCleanup(S); const r = S.resolve; S.resolve = null; S.ended = true; if (r) r({ id: S.id, win: false, score: 0, stars: 0, aborted: true, reason: 'reset' }); }
+    giverAfter.clear();
     if (AMB.S) { const S = AMB.S; AMB.S = null; BUSY.delete(S.F.decorY); restoreDoubles(S); spectatorsOff(S); for (const k of S.kids) { try { N.entities.remove(k); } catch (e) { /* ignore */ } } }
     for (const L of leftovers) for (const pp of L.S.pops) if (pp.el) pp.el.remove();
     leftovers.length = 0;
