@@ -7,6 +7,8 @@ const path = require('path');
 const fs = require('fs');
 const { openGame, takeOver } = require('./lib.cjs');
 const W = +(process.argv[2] || 3840), H = +(process.argv[3] || 2160);
+// TOPONLY=1: only the top-down clips (e.g. a portrait viewport for the vertical cut)
+const TOPONLY = process.env.TOPONLY === '1';
 const ONLY = (process.env.ONLY || '').split(',').filter(Boolean), EVERY = +(process.env.EVERY || 1);
 const OUTD = process.env.OUTD || path.join(__dirname, 'out', 'frames');
 const TL = JSON.parse(fs.readFileSync(path.join(__dirname, 'timeline.json'), 'utf8'));
@@ -20,6 +22,7 @@ const TL = JSON.parse(fs.readFileSync(path.join(__dirname, 'timeline.json'), 'ut
   await takeOver(page);
   await page.evaluate(() => { STAGE.setup(); N.player.hidden = false; });
   for (const seg of segs) {
+    if (TOPONLY && !(await page.evaluate((c) => CLIPS[c] && CLIPS[c].view === 'top', seg.clip))) continue;
     const nf = seg.n * TL.beatFrames, dir = path.join(OUTD, seg.id);
     fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
     const t0 = Date.now();

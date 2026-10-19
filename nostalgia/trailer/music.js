@@ -430,6 +430,9 @@
       else if (e.name === 'thunder_near') thunder(t, 1);
       else if (e.name === 'bell') cycleBell(t);
       else if (e.name === 'auto_horn') autoHorn(t);
+      else if (e.name === 'dhol') { // a festival drum flourish on the cut
+        for (const [d, v] of [[0, 0.6], [S16, 0.35], [S16 * 2, 0.5], [S16 * 3, 0.35], [S16 * 3.5, 0.45], [S16 * 4, 0.7]]) { const tk = t + d, g = gain(0, BUS.fx), o2 = osc('sine', 110, tk, tk + 0.3, g); o2.frequency.exponentialRampToValueAtTime(62, tk + 0.12); g.gain.setValueAtTime(v, tk); g.gain.exponentialRampToValueAtTime(0.001, tk + 0.26); snare(tk, v * 0.25, 0.1); }
+      }
     }
   }
 

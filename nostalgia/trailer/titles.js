@@ -42,7 +42,7 @@
   function card(ctx, seg, t, W, H, B) {
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     if (!seg.text) return;
-    const k = H / 1080;
+    const k = Math.min(W / 1920, H / 1080) * (H > W ? 1.3 : 1);
     ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(k, k);
     if (seg.style === 'intro') {
       // slow tracking-in, letters breathing apart, warm glow
@@ -176,16 +176,19 @@
   };
 
   function skyline(ctx, seg, t, W, H, B) {
-    const k = H / 1080, dur = seg.n * B;
+    const port = H > W, k = port ? W / 1180 : H / 1080, dur = seg.n * B;
     const beats = t / B, b0 = seg.b;
     const slamT = (seg.slam - b0) * B;
+    const VH = H / k, oy = port ? VH - 1080 - 260 : 0;
     ctx.save(); ctx.scale(k, k);
     const VW = W / k;
-    // sky
-    const sg = ctx.createLinearGradient(0, 0, 0, GY); sg.addColorStop(0, PAL.sky0); sg.addColorStop(1, PAL.sky1);
-    ctx.fillStyle = sg; ctx.fillRect(0, 0, VW, 1080);
+    // sky (portrait: extends above the 1080-unit scene)
+    const sg = ctx.createLinearGradient(0, 0, 0, GY + oy); sg.addColorStop(0, port ? '#5ec4d0' : PAL.sky0); sg.addColorStop(1, PAL.sky1);
+    ctx.fillStyle = sg; ctx.fillRect(0, 0, VW, VH);
+    ctx.fillStyle = PAL.ground; ctx.fillRect(0, GY + oy, VW, VH);
+    ctx.translate(0, oy);
     // camera pan: eased from 0 to the Charminar framing at the slam, then a slow push
-    const panT = clamp(t / slamT, 0, 1), cx = ease.io(panT) * 2230 + Math.max(0, t - slamT) * 30;
+    const panT = clamp(t / slamT, 0, 1), cx = ease.io(panT) * (port ? 2560 : 2230) + Math.max(0, t - slamT) * 30;
     const zoom = 1 + Math.max(0, t - slamT) * 0.03;
     // sun + clouds (parallax)
     circ(ctx, 1560 - cx * 0.45, 430, 90, PAL.sun);
@@ -221,7 +224,8 @@
     // the title slam
     if (t >= slamT) {
       const u = clamp((t - slamT) / 0.45, 0, 1), sc = 1.6 - 0.6 * ease.out(u);
-      ctx.save(); ctx.translate(W / 2, H * 0.24); ctx.scale(k * sc, k * sc);
+      const tk = port ? (W / 1920) * 1.05 : k;
+      ctx.save(); ctx.translate(W / 2, port ? H * 0.3 : H * 0.24); ctx.scale(tk * sc, tk * sc);
       ctx.shadowColor = 'rgba(30,40,60,0.35)'; ctx.shadowOffsetY = 8; ctx.shadowBlur = 0;
       text(ctx, 'NOSTALGIA', 0, 0, 190, { color: '#ffffff', track: 26 });
       ctx.shadowColor = 'transparent';
@@ -233,16 +237,17 @@
     }
   }
 
-  function overlay(ctx, ov, t, W, H) { // lower-third text over the rain shot
-    const k = H / 1080, a = clamp(t / 0.3, 0, 1);
-    ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, H * 0.8); ctx.scale(k, k);
+  function overlay(ctx, ov, t, W, H) { // lower-third text over the rain shot (portrait: above the Reels/Shorts UI)
+    const port = H > W, k = Math.min(W / 1920, H / 1080) * (port ? 1.25 : 1), a = clamp(t / 0.3, 0, 1);
+    ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, H * (port ? 0.64 : 0.8)); ctx.scale(k, k);
+    if (port) { const words = ov.text.split(' '), half = Math.ceil(words.length / 2); ctx.shadowColor = 'rgba(0,0,0,0.75)'; ctx.shadowBlur = 30; text(ctx, words.slice(0, half).join(' '), 0, -55, 96, { color: '#ffffff', track: 6 }); text(ctx, words.slice(half).join(' '), 0, 55, 96, { color: '#ffffff', track: 6 }); ctx.restore(); return; }
     ctx.shadowColor = 'rgba(0,0,0,0.75)'; ctx.shadowBlur = 30;
     text(ctx, ov.text, 0, 0, 84, { color: '#ffffff', track: 6 });
     ctx.restore();
   }
 
   function endcard(ctx, seg, t, W, H) {
-    const k = H / 1080;
+    const k = Math.min(W / 1920, H / 1080) * (H > W ? 1.15 : 1);
     ctx.fillStyle = '#07080c'; ctx.fillRect(0, 0, W, H);
     const a = clamp(t / 0.5, 0, 1);
     ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(k, k); ctx.globalAlpha = a;
