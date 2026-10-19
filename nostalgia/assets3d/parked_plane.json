@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 40912,
+ "bytes": 37312,
  "clips": {},
  "family": "landmark",
  "file": "parked_plane.glb",
@@ -12,15 +12,15 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 40.0,
+ "kb": 36.4,
  "kit": 1,
  "materials": [
   "M_parked_plane",
   "M_parked_plane_sheet@night"
  ],
  "max": [
-  20.3,
-  22.9,
+  20.573,
+  22.928,
   17.95
  ],
  "meta": {
@@ -34,19 +34,19 @@
   "height": 21.0
  },
  "min": [
-  -20.3,
+  -20.361,
   -23.0,
   0.0
  ],
  "notes": [],
  "script": "_lm_modern",
  "size": [
-  40.6,
-  45.9,
+  40.934,
+  45.928,
   17.95
  ],
  "tint": null,
- "tris": 518,
+ "tris": 494,
  "units": "u",
  "up": "Z"
 }
