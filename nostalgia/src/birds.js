@@ -256,7 +256,7 @@
       if (!surfOkGround(x, y, road)) continue;
       let ok = true;
       for (const s of out) if (s.k === 'G' && Math.hypot(s.x - x, s.y - y) < 14) { ok = false; break; }
-      if (ok) out.push(groundSpot(x, y, 9 + rng.next() * 6));
+      if (ok) { const g = groundSpot(x, y, 9 + rng.next() * 6); g.road = !!road; out.push(g); }
     }
     return out;
   }
@@ -452,7 +452,7 @@
     } else {
       const a = rnd() * TAU, d = Math.sqrt(rnd()) * (huddle ? Math.min(s.r, 3) : s.r);
       b.rx = s.x + Math.cos(a) * d; b.ry = s.y + Math.sin(a) * d;
-      if (s.k === 'G' && !surfOkGround(b.rx, b.ry, true)) { b.rx = s.x; b.ry = s.y; }
+      if (s.k === 'G' && !surfOkGround(b.rx, b.ry, s.road)) { b.rx = s.x; b.ry = s.y; }
     }
   }
   function settle(b, s, huddle) {
@@ -490,6 +490,10 @@
       for (const s of wires) { f.day.push(s); f.roost.push(s); }
       if (!f.roost.length) for (const t of treesNear(site.x, site.y, 160, null, 3, rng)) f.roost.push(treeSpot(t));
       f.or = 50 + rng.next() * 40; f.ow = rng.next() < 0.5 ? -1 : 1;
+      // circle above whatever stands on the orbit (Charminar's minarets, the station roofs)
+      let top = 0;
+      for (let k = 0; k < 48; k++) { const a = k * TAU / 48; for (const rf of [0.6, 1, 1.35]) top = Math.max(top, obstH(site.x + Math.cos(a) * f.or * rf, site.y + Math.sin(a) * f.or * rf)); }
+      f.orbMin = top + 8;
     } else if (sp === 'crow') {
       wireSpots(site.x, site.y, 140, 6, f.day);
       roofSpots(site.x, site.y, 120, f.day.length >= 3 ? 2 : 5, f.day, rng);
@@ -594,7 +598,7 @@
     b.a = Math.atan2(dy, dx); b.fa = 1; b.flapBoost = burst ? 1.5 : 1.1; b.glideT = rr(1.2, 2.5);
     const prev = b.spot;
     if (b.sp === 'pigeon' && mode === 'day') {
-      b.st = ORBIT; b.ft = rr(5, 11); b.oa = Math.atan2(b.y - f.ocy, b.x - f.ocx); b.orr = rr(0.7, 1.3); b.alt = rr(S.alt[0], S.alt[1]);
+      b.st = ORBIT; b.ft = rr(5, 11); b.oa = Math.atan2(b.y - f.ocy, b.x - f.ocx); b.orr = rr(0.7, 1.3); b.alt = Math.max(rr(S.alt[0], S.alt[1]), (f.orbMin || 0) + rr(0, 14));
     } else {
       b.st = TOSPOT;
       const ns = mode === 'shelter' ? pickSpot(f, 'roost', prev) : pickSpot(f, 'day', prev);
@@ -757,6 +761,8 @@
     wingbeat(b, dt, flapWant && (climbing || !b.gliding || (b.flapBoost || 1) > 1.05));
     integrate(b, dt, gh, b.st === TOSPOT ? 1.6 : 1.1);
     if (b.h < (b.tgt ? b.tgt.h : 0)) b.h = b.tgt ? b.tgt.h : 0;
+    // hard floor: a bird that still ended up below a roof / minaret here pops up over it (rare)
+    if (!near) { const ob = obstH(b.x, b.y) + 1.5; if (b.h < ob) { b.h += (ob - b.h) * Math.min(1, dt * 10); if (b.vh < 0) b.vh = 0; } }
   }
   function soarBird(b, f, dt) {
     const S = b.S;
@@ -822,7 +828,7 @@
           let tx, ty;
           if (b.mate && b.mate.f === f && b.mate.st === REST && rnd() < 0.7) { tx = b.mate.x + rr(-4, 4); ty = b.mate.y + rr(-4, 4); }
           else { const a = b.a + (rnd() - 0.5) * 2.6, st = rr(1.5, b.sp === 'myna' ? 7 : 4.5); tx = b.x + Math.cos(a) * st; ty = b.y + Math.sin(a) * st; }
-          if (Math.hypot(tx - s.x, ty - s.y) < s.r + 2 && (s.k === 'S' || surfOkGround(tx, ty, true))) { b.wx = tx; b.wy = ty; b.walking = true; }
+          if (Math.hypot(tx - s.x, ty - s.y) < s.r + 2 && (s.k === 'S' || surfOkGround(tx, ty, s.road))) { b.wx = tx; b.wy = ty; b.walking = true; }
           else b.a += (rnd() - 0.5) * 2;
         } else b.a += (rnd() - 0.5) * 1.2;
       }
@@ -1422,7 +1428,8 @@
     return hex;
   }
   /** geometry from a Blender model (first mesh), turned into the bird frame with aPart from the wing extent */
-  function modelGeometry(THREE, obj, S) {
+  function modelGeometry(THREE, obj, S, meta) {
+    meta = meta || {};
     let mesh = null;
     obj.traverse((o) => { if (!mesh && o.isMesh && o.geometry && o.geometry.attributes.position) mesh = o; });
     if (!mesh) return null;
@@ -1435,13 +1442,19 @@
     if (!(span > 0)) return null;
     const s = S.s3 / span;
     g.scale(s, s, s);
+    // the pack's birds have their origin at the body centre (bodyZ above the feet): put the feet on y = 0
+    g.computeBoundingBox();
+    const lift = meta.bodyZ != null ? meta.bodyZ * s : (meta.perchLift != null ? meta.perchLift * s : -g.boundingBox.min.y);
+    if (lift) g.translate(0, lift, 0);
     g.computeBoundingBox();
     const p = g.attributes.position, n = p.count, part = new Float32Array(n * 4);
     const half = Math.max(Math.abs(g.boundingBox.min.z), Math.abs(g.boundingBox.max.z)), sh = half * 0.16;
     const wy = (g.boundingBox.min.y + g.boundingBox.max.y) * 0.55;
+    const hx0 = g.boundingBox.max.x - (g.boundingBox.max.x - g.boundingBox.min.x) * 0.3;
     for (let i = 0; i < n; i++) {
       const z = p.getZ(i), az = Math.abs(z);
       if (az > sh) { part[i * 4] = Math.sign(z) * clamp((az - sh) / (half - sh), 0.002, 1); part[i * 4 + 1] = wy; part[i * 4 + 2] = Math.sign(z) * sh; }
+      else if (p.getX(i) > hx0) { part[i * 4 + 1] = hx0; part[i * 4 + 2] = wy; part[i * 4 + 3] = 1; } // head pecks
     }
     g.setAttribute('aPart', new THREE.BufferAttribute(part, 4));
     if (!g.attributes.normal) g.computeVertexNormals();
@@ -1490,9 +1503,11 @@
       const done = (md) => {
         try {
           const obj = md ? M3.instance(id) : null;
-          const got = obj ? modelGeometry(G3.THREE, obj, SP[spk]) : null;
+          const man = M3.manifest ? M3.manifest(id) : null;
+          const got = obj ? modelGeometry(G3.THREE, obj, SP[spk], (man && man.meta) || null) : null;
           if (!got) { G3.model[spk] = null; return; }
           got.mat.vertexColors = !!got.geo.attributes.color;
+          got.mat.side = G3.THREE.DoubleSide;
           patchMaterial(got.mat, 'model-' + spk);
           G3.model[spk] = got;
           const r = G3.meshes[spk];
