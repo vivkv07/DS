@@ -83,6 +83,8 @@ nostalgia/
   tools/blender/*.py Blender (bpy 5.2) asset scripts: kit.py, build_all.py, characters.py, vehicles.py,
                     landmarks_*.py -> assets3d/<id>.glb + .json + previews/ (§21)
   tools/pack_assets3d.cjs assets3d/*.glb + manifests -> src/assets3d_pack.js (size report, budgets)
+  src/atmosphere.js + wind.js, weather.js, weather3d.js, wires.js, birds.js, atmosphere_audio.js (after the
+                    models3d_* files) the atmosphere layer (§22): N.wind, N.weather, N.windfx, N.wires, N.birds, N.atmosAudio
   src/save.js       save/load -> N.save
   src/debug.js      test hooks + #debug overlay -> N.debug
   src/main.js       boot + main loop
