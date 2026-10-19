@@ -2,9 +2,9 @@
   "bpm": 150,
   "fps": 30,
   "beatFrames": 12,
-  "totalBeats": 160,
+  "totalBeats": 176,
   "tailBeats": 5,
-  "note": "beat b starts at b*0.4 s = frame b*12. Bars are 4 beats. Music sections: intro bars 1-6, drop1 7-22, breakdown 23-26, drop2 27-34, title 35-38, end 39-40.",
+  "note": "beat b starts at b*0.4 s = frame b*12. Bars are 4 beats. Music sections: intro bars 1-6, drop1 7-22, breakdown 23-26, drop2 27-34, finale 35-38, title 39-42, end 43-44.",
   "segments": [
     { "id": "card_hyd", "b": 0, "n": 4, "kind": "card", "text": "HYDERABAD", "style": "intro" },
     { "id": "card_2003", "b": 4, "n": 4, "kind": "card", "text": "2003", "style": "intro" },
@@ -48,8 +48,10 @@
     { "id": "g_top_pothole", "b": 134, "n": 1, "kind": "game", "clip": "top_pothole" },
     { "id": "g_final", "b": 135, "n": 1, "kind": "game", "clip": "charminar_night_fps" },
 
-    { "id": "title", "b": 136, "n": 16, "kind": "title", "pops": [136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147], "slam": 148 },
-    { "id": "endcard", "b": 152, "n": 13, "kind": "end" }
+    { "id": "finale", "b": 136, "n": 16, "kind": "3d", "shot": "finale", "lm": "charminar" },
+
+    { "id": "title", "b": 152, "n": 16, "kind": "title", "pops": [152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163], "slam": 164 },
+    { "id": "endcard", "b": 168, "n": 13, "kind": "end" }
   ],
   "sfx": [
     { "b": 23, "name": "hit" },

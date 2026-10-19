@@ -7,7 +7,7 @@
   const N = window.N, U = N.util;
   const FPS = 30, B = 0.4;
   const ease = { lin: (t) => t, io: (t) => t * t * (3 - 2 * t), out: (t) => 1 - Math.pow(1 - t, 3), in: (t) => t * t * t, ioq: (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2) };
-  let CUR = null, CUR_CLEAR = null;
+  let CUR = null, CUR_CLEAR = null, CUR_LOW = false;
 
   function lmById(id) { return N.world.data.landmarks.find((l) => l.id === id) || null; }
   function settle() { for (let k = 0; k < 3; k++) { N.view3d.settle(30000); window.__step(1 / FPS); } }
@@ -19,7 +19,7 @@
     N.world.queryStructures(lm.x - r1, lm.y - r1, lm.x + r1, lm.y + r1, (s) => {
       if (s.t !== 'bldg' || s.roofType === 'hip' || s.roofType === 'gable' || s.roofType === 'frame') return;
       const cx = s.x + s.w / 2, cy = s.y + s.d / 2, d = Math.hypot(cx - lm.x, cy - lm.y);
-      if (d < ring[0] || d > r1 || s.w < 9 || s.d < 9) return;
+      if (d < ring[0] || d > r1 || s.w < 7 || s.d < 7) return;
       if (R && R.at && R.at(cx, cy)) return;
       const score = s.h - d * 0.04;
       if (!best || score > best.score) best = { x: cx, y: cy, h: s.h, score, d };
@@ -28,6 +28,7 @@
   }
 
   window.STAGE_PREP = function (seg, sh) {
+    CUR_LOW = false;
     const [hh, mm] = seg.time || [12, 0];
     if (N.wires) N.wires.draw3d = !sh.noWires; // poles / wires would cut across the monument from these vantages
     N.debug.setTime(hh, mm);
@@ -59,11 +60,20 @@
       }
       hero = { x: px, y: py, h };
     } else if (sh.hero === 'roof') {
-      const r = tallestRoof(lm, sh.ring || [70, 240]);
-      if (!r) throw new Error('no roof near ' + lm.id);
-      streamAt(r.x, r.y); settle();
-      hero = { x: r.x, y: r.y, h: STAGE.summit(r.x, r.y, 0) };
-      base = Math.atan2(r.y - lm.y, r.x - lm.x); lookLm = lm;
+      const r = sh.street ? null : tallestRoof(lm, sh.ring || [70, 240]);
+      if (r) {
+        streamAt(r.x, r.y); settle();
+        hero = { x: r.x, y: r.y, h: STAGE.summit(r.x, r.y, 0) };
+        base = Math.atan2(r.y - lm.y, r.x - lm.x); lookLm = lm;
+      } else {
+        // no flat roof around (sloped cantonment roofs): Chinnu on the street, a low hero angle up at the landmark
+        const q = N.world.nearestRoadPoint(lm.x + 55, lm.y + 30) || { x: lm.x + 55, y: lm.y + 30 };
+        const fr = N.world.findFree ? N.world.findFree(q.x, q.y, 'walk', 20) : null;
+        const gx = fr ? fr.x : q.x, gy = fr ? fr.y : q.y;
+        streamAt(gx, gy); settle();
+        hero = { x: gx, y: gy, h: Math.max(0, N.view3d.groundHeightAt ? N.view3d.groundHeightAt(gx, gy) : 0) };
+        base = Math.atan2(gy - lm.y, gx - lm.x); lookLm = lm; CUR_LOW = true;
+      }
     } else if (sh.hero === 'shore' || sh.hero === 'bund') {
       const q = N.world.nearestRoadPoint(lm.x, lm.y, (rd) => rd.kind === 'bund') || N.world.nearestRoadPoint(lm.x, lm.y);
       // stand on the parapet on the lake side of the bund
@@ -103,7 +113,7 @@
     const u = f / Math.max(1, nf - 1), hy = hero.h, cs = (hs < 1 ? hs * 1.6 : 1) * 1.25; // camera distance scale: wide shots that show the city (user: less zoom)
     const chest = 4.5 * hs;
     let lx = hero.x, ly = hero.y;
-    if (lookLm) { lx += (lookLm.x - hero.x) * 0.12; ly += (lookLm.y - hero.y) * 0.12; }
+    if (lookLm) { lx += (lookLm.x - hero.x) * (CUR_LOW ? 0.35 : 0.12); ly += (lookLm.y - hero.y) * (CUR_LOW ? 0.35 : 0.12); }
     if (seg.shot === 'reveal') {
       // from the plaza, low and looking up at the minarets, crane up to Chinnu on the roof
       const e = ease.ioq(u), a = 0.59 + 0.35 * e;
@@ -124,7 +134,7 @@
       const r = (sh.r[0] + (sh.r[1] - sh.r[0]) * e) * cs, h = hy + (sh.h[0] + (sh.h[1] - sh.h[0]) * e) * cs;
       const fov = sh.fov[0] + (sh.fov[1] - sh.fov[0]) * e;
       const t = f / FPS, jx = Math.sin(t * 2.3 + 1) * 0.25 + Math.sin(t * 5.1) * 0.08, jy = Math.cos(t * 1.9) * 0.2, jh = Math.sin(t * 2.7 + 2) * 0.18;
-      STAGE.cam({ x: hero.x + Math.cos(a) * r + jx, y: hero.y + Math.sin(a) * r + jy, h: h + jh, tx: lx, ty: ly, th: hy + chest, fov, roll: 0 });
+      STAGE.cam({ x: hero.x + Math.cos(a) * r + jx, y: hero.y + Math.sin(a) * r + jy, h: CUR_LOW ? hy + 2.2 + jh : h + jh, tx: lx, ty: ly, th: CUR_LOW ? hy + 22 : hy + chest, fov: CUR_LOW ? fov + 8 : fov, roll: 0 });
       STAGE.camSpec.rollAbs = dir * (0.05 * (1 - e) + 0.012 * Math.sin(t * 1.3));
     }
   }

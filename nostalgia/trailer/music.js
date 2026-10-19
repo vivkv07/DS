@@ -1,7 +1,7 @@
 /* NOSTALGIA trailer — original score + sound design, synthesised offline (WebAudio OfflineAudioContext).
  * Modern hybrid trap / EDM, 150 BPM, F minor (Fm - Db - Ab - Eb). Everything is generated here: no samples.
  * window.renderTrailerAudio(timeline, opts) -> Promise<{wav: base64, stats}>
- * Sections (bars, 1-based): intro 1-6, drop1 7-22, breakdown 23-26, drop2 27-34, title 35-38, end 39-40.
+ * Sections (bars, 1-based): intro 1-6, drop1 7-22, breakdown 23-26, drop2 27-34, finale 35-38, title 39-42, end 43-44.
  */
 (() => {
   'use strict';
@@ -392,8 +392,35 @@
     impact(bar(27), 1.2); braam(bar(27), [41, 48], BAR, 1); revCymbal(bar(27), B * 1.2, 0.9);
     impact(bar(31), 0.7);
     revCymbal(bar(35), B, 0.8);
-    // TITLE bars 35-38: bouncy pops on every beat over a lighter groove, riser into the slam
-    for (let n = 35; n <= 37; n++) {
+    // FINALE bars 35-38 (the time-lapse drone orbit, golden hour -> festival night): the emotional lift.
+    // Big wide supersaw chords + pad, half-time kick, the hook up high (lead + bell double), building with a
+    // riser, snare roll and reverse cymbal into the title section.
+    BUS.synthLP.frequency.setValueAtTime(20000, bar(35) - 0.01); BUS.synthLP.frequency.setValueAtTime(3200, bar(35));
+    BUS.synthLP.frequency.exponentialRampToValueAtTime(14000, bar(37)); BUS.synthLP.frequency.linearRampToValueAtTime(20000, bar(39));
+    impact(bar(35), 0.9); downlifter(bar(35) + 0.05, BAR);
+    pad(bar(35), [41, 53, 56, 60, 65], BAR * 4 - 0.4, 0.075, 2400);
+    for (let n = 35; n <= 38; n++) {
+      const t0 = bar(n), c = chordOf(n), st = (s) => t0 + s * S16;
+      // wide sustained chords: the voicing plus its octave on top, a slow swell, lots of air
+      supersaw(t0, c.concat([c[1] + 12, c[2] + 12]), BAR - 0.03, { v: 0.085, a: 0.06, cut0: 1500, cut1: 6500, open: 0.3, cutS: 4200, sus: 0.9, verb: 0.35, rel: 0.25 });
+      supersaw(t0, [c[0] - 12], BAR - 0.03, { v: 0.06, cut0: 600, cut1: 1600, cutS: 900, sus: 0.9 });
+      // half-time groove: kick on 1 (and the and-of-3), a big roomy snare on 3, soft 8th hats
+      kick(st(0), 1, true); kick(st(10), 0.8, true);
+      snare(st(8), 0.9, 0.7);
+      for (let s = 2; s < 16; s += 4) hat(st(s), 0.4, n >= 37, 0.2);
+      bass808(st(0), rootOf(n), BAR * 0.6); bass808(st(10), rootOf(n), S16 * 5.5);
+      // the hook, soaring: lead an octave up + a bell two octaves up on the phrase notes
+      const ph = HOOK[(n - 35) % 4];
+      for (const [s, m, l] of ph) { lead(st(s), m + 12, l * S16 * 0.97, 0.7); bell(st(s), m + 24, 0.26); }
+      arpBar(n, 0.3 + (n - 35) * 0.1, 3500 + (n - 35) * 800, 1);
+    }
+    // build into the title: 16th hats + a snare roll in bar 38, riser across 37-38, reverse cymbal
+    for (let s = 0; s < 16; s++) hat(bar(38) + s * S16, 0.3 + s * 0.025, false, -0.2);
+    for (let k = 0; k < 16; k++) snare(bar(38) + B * 2 + (k * B * 2) / 16, 0.22 + k * 0.04, 0.15);
+    riser(bar(37), bar(39) - 0.02, 1);
+    revCymbal(bar(39), B * 1.5, 0.9);
+    // TITLE bars 39-42: bouncy pops on every beat over a lighter groove, riser into the slam
+    for (let n = 39; n <= 41; n++) {
       const t0 = bar(n), c = chordOf(n);
       for (const s of [0, 4, 8, 12]) kick(t0 + s * S16, 0.85);
       for (const s of [4, 12]) snare(t0 + s * S16, 0.6, 0.3);
@@ -403,17 +430,17 @@
     }
     const title = TL.segments.find((s) => s.kind === 'title');
     (title ? title.pops : []).forEach((b, i) => pop(tb(b), i));
-    riser(bar(37), bar(38) - 0.02, 0.9);
-    revCymbal(bar(38), B * 2, 1);
-    // bar 38: THE SLAM
-    const slam = tb(title ? title.slam : 148);
+    riser(bar(41), bar(42) - 0.02, 0.9);
+    revCymbal(bar(42), B * 2, 1);
+    // bar 42: THE SLAM
+    const slam = tb(title ? title.slam : 164);
     impact(slam, 1.4); braam(slam, [41, 48, 53], BAR * 2.2, 1.2); kick(slam, 1.2, true); snare(slam, 1, 0.8);
     supersaw(slam, [53, 56, 60, 65, 68], BAR * 3, { v: 0.15, cut0: 4000, cut1: 8000, cutS: 3000, verb: 0.6, sus: 0.6, rel: 1.4 });
     bass808(slam, 29, BAR * 2.5);
-    // END bars 39-40: the motif echoes out, final low hit
-    for (const [k, m] of [[0, 72], [2, 75], [4, 77], [6, 80]]) bell(bar(39) + k * B * 0.5, m, 0.6);
-    pad(bar(39), [41, 53, 56, 60], BAR * 2 + 1.5, 0.08, 1800);
-    impact(bar(40) + B * 2, 0.7);
+    // END bars 43-44: the motif echoes out, final low hit
+    for (const [k, m] of [[0, 72], [2, 75], [4, 77], [6, 80]]) bell(bar(43) + k * B * 0.5, m, 0.6);
+    pad(bar(43), [41, 53, 56, 60], BAR * 2 + 1.5, 0.08, 1800);
+    impact(bar(44) + B * 2, 0.7);
 
     // timeline sound design: whooshes into every 3D shot cut, hits on cards, scene sfx
     let prevKind = null;
@@ -466,7 +493,7 @@
     // stats per section (RMS / peak) for the mix check
     const L = buf.getChannelData(0), R = buf.getChannelData(1);
     const sec = (a, b) => { let s = 0, p = 0; const i0 = Math.floor(a * SR), i1 = Math.min(L.length, Math.floor(b * SR)); for (let i = i0; i < i1; i++) { const v = (Math.abs(L[i]) + Math.abs(R[i])) / 2; s += v * v; if (v > p) p = v; } return { rms: +Math.sqrt(s / Math.max(1, i1 - i0)).toFixed(4), peak: +p.toFixed(3) }; };
-    const stats = { dur, intro: sec(0, bar(7)), drop1: sec(bar(7), bar(23)), breakdown: sec(bar(23), bar(27)), drop2: sec(bar(27), bar(35)), title: sec(bar(35), bar(39)), end: sec(bar(39), dur) };
+    const stats = { dur, intro: sec(0, bar(7)), drop1: sec(bar(7), bar(23)), breakdown: sec(bar(23), bar(27)), drop2: sec(bar(27), bar(35)), finale: sec(bar(35), bar(39)), title: sec(bar(39), bar(43)), end: sec(bar(43), dur) };
     return { wav: wav16(buf), stats };
   };
 })();

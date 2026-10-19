@@ -21,7 +21,7 @@ const SHOTS = {
   lm_golconda: { lm: 'golconda_bala_hissar', hero: 'top', scale: 0.5, edge: 14, summitR: 30, clip: 'wave', face: 0.4, r: [16, 40], h: [11, 24], arc: 1.6, base: 1.9, fov: [44, 54] },
   lm_buddha: { lm: 'buddha_statue', hero: 'shore', slide: 14, noWires: true, clip: 'idle_look', r: [14, 26], h: [5, 10], arc: 1.1, fov: [38, 46] },
   lm_birla: { lm: 'birla_mandir', hero: 'roof', noWires: true, ring: [70, 260], clip: 'idle', r: [14, 26], h: [6, 12], arc: 1.2, fov: [40, 48] },
-  lm_clock: { lm: 'secunderabad_clock_tower', hero: 'roof', ring: [40, 180], noWires: true, clip: 'idle', r: [14, 30], h: [5, 14], arc: 1.2, fov: [42, 52] }, // the tower's top is a steep pyramid: a nearby roof, the tower behind
+  lm_clock: { lm: 'secunderabad_clock_tower', hero: 'roof', street: true, noWires: true, clip: 'idle', r: [9, 15], h: [2, 3], arc: 0.9, fov: [50, 56] }, // street-level hero angle up at the tower (no flat roofs around; its top is a pyramid)
   lm_cyber: { lm: 'cyber_towers', hero: 'top', scale: 0.55, edge: 14, clip: 'idle_look', face: Math.PI, r: [20, 40], h: [-14, 6], arc: 1.5, base: Math.PI, fov: [48, 58] },
   lm_mecca: { lm: 'mecca_masjid', hero: 'roof', noWires: true, ring: [80, 220], clip: 'idle_look', r: [14, 26], h: [6, 12], arc: 1.2, fov: [40, 48] },
   lm_tankbund: { lm: 'tank_bund', hero: 'bund', clip: 'kite_fly', r: [18, 34], h: [12, 26], arc: 1.3, fov: [46, 54] },
