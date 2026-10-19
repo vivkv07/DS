@@ -286,6 +286,37 @@ async function partTop(browser) {
         for (let i = 0; i < 30 && !whistled; i++) { await page.evaluate(() => { const v = window.__whv; if (v) { v.speed = 50; v.vx = Math.cos(v.angle) * 50; v.vy = Math.sin(v.angle) * 50; if (v.wake) v.wake(); } }); await sleep(150); whistled = await page.evaluate(() => window.__cl.whistle > 0); }
         check(whistled, 'roadwork: the havaldar whistles at a kid racing his cycle', String(wh));
         await page.evaluate(() => { const v = window.__whv; if (v && N.player.vehicle === v && N.vehicles.exit) N.vehicles.exit(N.player, true); if (v) N.vehicles.remove(v); const f = window.__focus; N.debug.teleport(f.x + f.nx * 26, f.y + f.ny * 26); });
+        // traffic keeps moving past the crew: traffic.js vehicles on the strip's carriageway (two-wheelers in the
+        // kerb lane, an auto) are eased out of the strip; none sits < 3 u/s within 25 u of the crew for > 5 s
+        const spawned = await page.evaluate((id) => {
+          const sc = N.citylife.scene(id), F = sc.F, T = N.vehicles.TYPES;
+          let a = Math.atan2(F.ay, F.ax); if (Math.sin(a) * F.nx - Math.cos(a) * F.ny < 0) a += Math.PI; // strip on the left kerb
+          const dir = [Math.cos(a), Math.sin(a)], out = [];
+          ['chetak', 'ladiescycle', 'auto', 'hero_cycle'].filter((k) => T[k]).forEach((type, i) => {
+            const d = 70 + i * 22, x = F.cx - dir[0] * d - F.nx * 3.5, y = F.cy - dir[1] * d - F.ny * 3.5;
+            const v = N.traffic.spawnVehicle(type, { x, y, angle: a }); if (v) out.push(v.id);
+          });
+          window.__flow = { ids: out, slow: {}, run: {}, n: 0 };
+          return out.length;
+        }, st.id);
+        const tF = await page.evaluate(() => N.time.now);
+        const capF = Date.now() + 240000;
+        while (Date.now() < capF && (await page.evaluate(() => N.time.now)) - tF < 30) {
+          await page.evaluate((id) => {
+            const sc = N.citylife.scene(id), f = window.__flow, now = N.time.now; if (!sc) return; f.n++;
+            for (const e of N.traffic.vehicles) {
+              if (!e.alive || !e.tr) continue;
+              let near = false; for (const p of sc.people) if (Math.hypot(e.x - p.x, e.y - p.y) < 25) { near = true; break; }
+              const sp = Math.hypot(e.vx || 0, e.vy || 0);
+              if (near && sp < 3) { if (f.run[e.id] == null) f.run[e.id] = now; f.slow[e.id] = Math.max(f.slow[e.id] || 0, now - f.run[e.id]); } else f.run[e.id] = null;
+            }
+          }, st.id);
+          await sleep(250);
+        }
+        const flow = await page.evaluate((id) => { const f = window.__flow, sc = N.citylife.scene(id); const passed = f.ids.filter((vid) => { const v = N.traffic.vehicles.find((q) => q.id === vid); if (!v) return true; const F = sc.F; return Math.abs((v.x - F.cx) * F.ax + (v.y - F.cy) * F.ay) > 40; }).length; return { spawned: f.ids.length, passed, worst: Math.max(0, ...Object.values(f.slow)).toFixed(1), samples: f.n, slow: f.slow }; }, st.id);
+        report.push(['roadwork flow', JSON.stringify(flow)]);
+        check(spawned >= 2 && +flow.worst <= 5, 'roadwork: traffic flows past the crew (no vehicle held > 5 s within 25 u)', JSON.stringify(flow));
+        check(flow.passed >= Math.min(2, flow.spawned), 'roadwork: the spawned kerb-lane vehicles got past the site', JSON.stringify(flow));
         break;
       }
       default: { // trades
@@ -321,6 +352,13 @@ async function part3d(browser) {
   await simWait(page, 2);
   const L = await page.evaluate(() => ({ layer: N.citylife.stats().layer3d }));
   check(L.layer, 'the citylife 3D layer is registered and initialised');
+  // count PNG encodes (a texture reaching view3d's JSON.stringify material key encodes its canvas) and track the
+  // worst citylife 3D layer frame
+  await page.evaluate(() => {
+    const C = window.__c3 = { enc: 0, max: 0, maxId: null };
+    const o = HTMLCanvasElement.prototype.toDataURL; HTMLCanvasElement.prototype.toDataURL = function () { C.enc++; return o.apply(this, arguments); };
+    const loop = () => { const G = N.citylife._debug.G3; if (G && G.ms > C.max) { C.max = G.ms; C.maxId = (N.citylife.active()[0] || {}).id; } requestAnimationFrame(loop); }; loop();
+  });
   for (const [name, kind, h, m] of SCENES) {
     console.log(' -- ' + name);
     const o = name === 'saloon' || name === 'cabin' ? { dow: 0 } : { dow: 3 };
@@ -328,12 +366,25 @@ async function part3d(browser) {
     if (!st) { fail(name + ': no spot'); continue; }
     await page.evaluate(() => { if (N.view3d.settle) N.view3d.settle(2500); });
     await simWait(page, 4, 90000);
-    const s3 = await page.evaluate((id) => { const sc = N.citylife.scene(id); const o = sc && N.citylife._debug.G3.scenes.get(sc); return { built: !!o, kids: o ? o.grp.children.length : 0, people: sc ? sc.people.length : 0 }; }, st.id);
+    const s3 = await page.evaluate((id) => { const sc = N.citylife.scene(id); const o = sc && N.citylife._debug.G3.scenes.get(sc.spot); return { built: !!o, kids: o ? o.grp.children.length : 0, people: sc ? sc.people.length : 0 }; }, st.id);
     check(s3.built && s3.kids > 0 && s3.people > 0, name + ': 3D props built, people present', JSON.stringify(s3));
     const cam = { roadwork: { dist: 60, h: 34 }, busstop: { dist: 56, h: 30 }, irani: { dist: 40, h: 22 }, saloon: { dist: 26, h: 15, lh: 7 }, cabin: { dist: 26, h: 15, lh: 7 }, chai: { dist: 34, h: 20 } }[name] || { dist: 26, h: 15, lh: 4 };
     await shot3d(page, name + '_tps', cam);
   }
   await page.evaluate(() => { if (N.view3dActors && N.view3dActors.debug) N.view3dActors.debug.camera(null); });
+  const c3 = await page.evaluate(() => Object.assign({}, window.__c3, { built: N.citylife._debug.G3.built }));
+  report.push(['3d build', JSON.stringify(c3)]);
+  check(c3.enc === 0, '3D scene builds never PNG-encode a canvas (no texture through H.mat)', JSON.stringify(c3));
+  // walk away and come back: the released scene's 3D group is reused, not rebuilt
+  const back = SCENES.length ? await page.evaluate(() => { const id = window.__focus.id; const b0 = N.citylife._debug.G3.built; window.__back = { id, b0 }; N.citylife.force(null); N.debug.teleport(2000, 9500); return id; }) : null;
+  if (back) {
+    await simWait(page, 3, 90000);
+    await page.evaluate(() => { const B = window.__back; N.citylife.force(B.id, { level: 1 }); const s = N.citylife.spot(B.id); N.debug.teleport(s.x + s.F.nx * 16, s.y + s.F.ny * 16); window.__c3.max = 0; });
+    await simWait(page, 3, 90000);
+    const rb = await page.evaluate(() => { const B = window.__back, sc = N.citylife.scene(B.id), G = N.citylife._debug.G3, o = sc && G.scenes.get(sc.spot); return { id: B.id, rebuilt: G.built - B.b0, shown: !!(o && o.grp.visible), maxMs: +window.__c3.max.toFixed(1) }; });
+    report.push(['3d reuse', JSON.stringify(rb)]);
+    check(rb.rebuilt === 0 && rb.shown, '3D: re-activating a scene re-shows its cached group (no rebuild)', JSON.stringify(rb));
+  }
   await noErrors(page, errors, '3d');
   await context.close();
 }

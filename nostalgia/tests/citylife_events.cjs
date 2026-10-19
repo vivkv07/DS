@@ -17,7 +17,7 @@
  * plus: three busy scenes on screen at once on a phone-size viewport (ms/frame of all city-life work, 2D and
  * 3D), 2 phone 390x844 shots, zero console / page / N.err errors, the rules (time / day / season / weather /
  * M3) and pooling (persons / beasts return to the pools).
- * Screenshots: tests/out/cle_*.png.   node nostalgia/tests/citylife_events.cjs   ONLY=top|3d|phone|rules   SHOTS=0
+ * Screenshots: tests/out/cle_*.png.   node nostalgia/tests/citylife_events.cjs   ONLY=top|3d|phone|rules|respect   SHOTS=0
  */
 'use strict';
 const path = require('path');
@@ -369,6 +369,90 @@ async function partRules(browser) {
   await context.close();
 }
 
+/** places of worship stay calm; colony lanes are residential: a static audit of every colony lane and baraat
+ *  route against N.respect and the busy (station / bus terminus / market) landmarks, then the Old City baraat
+ *  staged in Isha prayer time and the Secunderabad colony at its evening peak */
+async function partRespect(browser) {
+  cur = 'respect';
+  console.log('== respect + residential siting ==');
+  const { context, page, errors } = await open(browser, { viewport: { width: 640, height: 400 } });
+  const audit = await page.evaluate(() => {
+    const E = N.citylifeEvents, Rs = N.respect, D = N.WORLD_DATA;
+    const WZ = Rs.zones.filter((z) => z.kind !== 'procession');
+    const wd = (x, y) => { let b = 1e9; for (const z of WZ) b = Math.min(b, Rs.distance(x, y, z)); return b; };
+    const BUSY = { railway_station: 1, halt_station: 1, bus_terminus: 1, mgbs: 1, cbs_hangar: 1, market_hall: 1, mozamjahi_market: 1, rythu_bazaar: 1 };
+    const busy = D.landmarks.filter((l) => BUSY[l.draw]);
+    const bd = (x, y) => { let b = 1e9; for (const l of busy) { const dx = Math.max(Math.abs(x - l.x) - (l.w || 0) / 2, 0), dy = Math.max(Math.abs(y - l.y) - (l.d || 0) / 2, 0); b = Math.min(b, Math.hypot(dx, dy)); } return b; };
+    const samp = (P) => { const o = []; const Q = P.pts; for (let i = 0; i < Q.length - 2; i += 2) { const L = Math.hypot(Q[i + 2] - Q[i], Q[i + 3] - Q[i + 1]); for (let t = 0; t < L; t += 8) o.push([Q[i] + (Q[i + 2] - Q[i]) * t / L, Q[i + 1] + (Q[i + 3] - Q[i + 1]) * t / L]); } o.push([Q[Q.length - 2], Q[Q.length - 1]]); return o; };
+    const out = { colonies: [], baraats: [] };
+    for (const s of E.sites) {
+      if (s.kind === 'colony_pm') {
+        const g = s.geo; let w = 1e9, b = 1e9;
+        for (const q of samp(g.path).concat(g.doors.map((d) => [d.x, d.y]))) { w = Math.min(w, wd(q[0], q[1])); b = Math.min(b, bd(q[0], q[1])); }
+        out.colonies.push({ id: s.id, x: Math.round(g.x), y: Math.round(g.y), w: Math.round(w), b: Math.round(b), dist: (N.world.districtAt(g.x, g.y) || {}).id });
+      } else if (s.kind === 'baraat') {
+        let w = 1e9; for (const q of samp(s.route).concat([[s.gate.x, s.gate.y]])) w = Math.min(w, wd(q[0], q[1]));
+        out.baraats.push({ id: s.id, w: Math.round(w), quiet: (s.quiet || []).length / 2 });
+      }
+    }
+    return out;
+  });
+  console.log('    colonies', JSON.stringify(audit.colonies));
+  console.log('    baraats', JSON.stringify(audit.baraats));
+  check(audit.colonies.length >= 8, 'colony lanes still built across the city', String(audit.colonies.length));
+  const badC = audit.colonies.filter((c) => c.w < 115 || c.b < 115);
+  check(!badC.length, 'every colony lane (path + doors) >= 120 from a place of worship and from stations / bus termini / markets', JSON.stringify(badC));
+  const sec = audit.colonies.find((c) => c.id === 'colony_pm:secunderabad');
+  check(!sec || Math.hypot(sec.x - 11112, sec.y - 2407) > 600, 'Secunderabad colony lane is away from the station (Bowenpally / Sikh Village side)', JSON.stringify(sec));
+  check(audit.baraats.length >= 8, 'baraat routes still built', String(audit.baraats.length));
+  const badB = audit.baraats.filter((b) => b.w < 145);
+  check(!badB.length, 'no baraat route or function-hall gate within 150 of a place of worship', JSON.stringify(badB));
+  check(audit.baraats.some((b) => b.id === 'baraat:himayatnagar'), 'the home-area baraat survives the siting rules');
+  // the Old City baraat in Isha prayer time (Sat 18 Jan 2003 19:50): it walks silently
+  const bar = audit.baraats.find((b) => b.id === 'baraat:charminar') ? 'baraat:charminar' : (audit.baraats[0] || {}).id;
+  if (bar) {
+    await page.evaluate((id) => {
+      window.__band = 0;
+      const A = N.audio; if (A && A.sfx && !A.__cleWrap) { const o = A.sfx; A.sfx = function (n) { if (n === 'cle_band' || n === 'dappu') window.__band++; return o.apply(this, arguments); }; A.__cleWrap = true; }
+      const E = N.citylifeEvents;
+      N.calendar.set(2003, 1, 18, 19, 50); N.debug.setTime(19, 50); N.view.set('top');
+      E.force(null); E.force(id, { level: 1, restart: true, solo: true });
+      const s = E.site(id), R = s.route, Q = R.pts; const i = Math.min(Q.length - 2, 2);
+      N.debug.teleport(Q[i], Q[i + 1]);
+    }, bar);
+    await simWait(page, 6);
+    const r = await page.evaluate((id) => {
+      const sc = N.citylifeEvents.scene(id); if (!sc) return null;
+      let inZone = 0; for (const p of sc.st.members) { const z = p.alive && N.respect.at(p.x, p.y); if (z && z.kind !== 'procession') inZone++; }
+      return { calm: sc.st.calm, phase: sc.phase, ph: sc.st.ph, members: sc.st.members.length, inZone, band: window.__band, dancing: sc.st.members.filter((p) => p.alive && p.beh === 'dance').length };
+    }, bar);
+    check(r && r.calm && r.band === 0 && r.dancing === 0, bar + ' in Isha prayer time: band, dappu and dancing stop', JSON.stringify(r));
+    check(r && r.inZone === 0, bar + ': nobody in the procession is inside a place of worship zone', JSON.stringify(r));
+    await shot(page, 'respect_baraat_prayer', 1.6);
+    await page.evaluate(() => { N.debug.setTime(20, 30); window.__band = 0; });
+    await simWait(page, 6);
+    const r2 = await page.evaluate((id) => { const sc = N.citylifeEvents.scene(id); return sc ? { calm: sc.st.calm, phase: sc.phase, band: window.__band } : null; }, bar);
+    check(r2 && (r2.calm === false || r2.phase === 'arrive'), bar + ' after prayer time: the band plays again', JSON.stringify(r2));
+  }
+  // the Secunderabad colony at its evening peak: a real residential lane
+  const cid = audit.colonies.find((c) => c.id === 'colony_pm:secunderabad') ? 'colony_pm:secunderabad' : null;
+  if (cid) {
+    await page.evaluate((id) => {
+      const E = N.citylifeEvents; N.calendar.set(2003, 1, 15, 18, 0); N.debug.setTime(18, 0); N.view.set('top');
+      E.force(null); E.force(id, { level: 1, restart: true, solo: true });
+      const g = E.site(id).geo; N.debug.teleport(g.x, g.y + 4);
+    }, cid);
+    await simWait(page, 6);
+    const c = await page.evaluate((id) => { const sc = N.citylifeEvents.scene(id); if (!sc) return null; let inZone = 0; for (const p of sc.persons) { const z = p.alive && N.respect.at(p.x, p.y); if (z && z.kind !== 'procession') inZone++; } return { phase: sc.phase, persons: sc.persons.length, inZone, dist: (N.world.districtAt(sc.site.x, sc.site.y) || {}).id }; }, cid);
+    check(c && c.inZone === 0, 'Secunderabad colony: nobody in a temple / church / mosque zone', JSON.stringify(c));
+    await shot(page, 'respect_colony_secbad', 1.6);
+  }
+  const errs = await N_ERRS(page);
+  check(errors.length === 0, 'no console / page errors', errors.slice(0, 4).join(' | '));
+  check(errs.length === 0, 'no N.err', errs.slice(0, 6).join(' | '));
+  await context.close();
+}
+
 /** three busy scenes on screen at once on a phone-size viewport: ms/frame of all city-life work */
 async function perf(page, label) {
   await page.evaluate(() => {
@@ -419,6 +503,7 @@ async function partPhone(browser) {
   try {
     if (want('top') || want('3d')) await partTop(browser);
     if (want('rules')) await partRules(browser);
+    if (want('respect')) await partRespect(browser);
     if (want('phone')) await partPhone(browser);
   } catch (e) {
     fail('crashed: ' + (e.stack || e.message));

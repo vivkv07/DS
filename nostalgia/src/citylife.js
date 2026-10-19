@@ -115,6 +115,7 @@
 
   /* ================================================================ tuning */
   const TUNE = {
+    keep3dSecs: 120, keep3dMax: 8, // released scenes keep their built 3D group this long / this many
     maxScenes: { desk: 6, low: 4 }, maxPeople: { desk: 64, low: 40 }, maxParticles: { desk: 220, low: 140 },
     actScreens: 1.2, actMin: 230, actMax: 640, act3D: 460, offPad: 1.25,
     walk: [30, 42], barkGap: 2.4, barkR: 230, sfxGap: 0.22, sfxR: 320, glanceR: 18, aside: 9,
@@ -1595,7 +1596,8 @@
       out.digger = ok(-5, -zw * 0.55); out.digger.a = aang(F) + PI / 2;
       out.shovel = ok(17, -3.6); out.shovel.a = Math.atan2(out.mixer.y - out.shovel.y, out.mixer.x - out.shovel.x);
       out.loopA = ok(22, 0.2); out.loopB = ok(7.5, -2.6);
-      out.hav = ok(-31, -zw - 2.5); out.hav.a = aang(F) + PI;
+      // the havaldar stands at the head of the strip on the work side of the barricade line, never in the live lane
+      out.hav = ok(-31, -zw + 1.5); out.hav.a = aang(F) + PI;
       out.watch = ok(-24, 2.6); out.watch.a = fang(F) + PI;
       out.shelter = slotsGrid(F, 16, 26, 2, 5, 3.4, fang(F) + PI, true);
       return out;
@@ -1616,6 +1618,7 @@
     tick(sc, dt) {
       const Lo = sc.L, st = sc.st, F = sc.F;
       havaldarTick(sc, dt);
+      narrowLane(sc, dt);
       // the tar drum smokes over its fire all day (and the embers fly)
       if (TUNE.particles) {
         st.smk = (st.smk || 0) + dt * (sc.level > 0.1 ? 3.2 : 1.2);
@@ -1675,6 +1678,62 @@
       }
     },
   };
+
+  /* Lane narrowing for the roadwork strip. traffic.js drives its two-wheelers and the kerb lane right where the
+   * crew works, and its vehicles stop for solid people on asphalt. Until traffic.js offers a narrowing hint
+   * (api request), ambient vehicles approaching the site on its side of the road are eased out of the strip
+   * through tr.pull, the lateral offset traffic.js already honours for pull-overs (positive = towards the left
+   * kerb). Feature-detected: without v.tr / tr.pull semantics nothing is touched. Pulls are tracked and cleared
+   * when the vehicle leaves the zone or the scene goes away. */
+  const NQ = [], PULLED = [];
+  const NARROW = { ahead: 70, behind: 46, margin: 3, every: 0.1, maxPull: 22 };
+  function narrowLane(sc, dt) {
+    const st = sc.st;
+    st.nT = (st.nT || 0) - dt;
+    if (st.nT > 0) return;
+    st.nT = NARROW.every;
+    const E = N.entities, F = sc.F, L = sc.L;
+    if (!E || !E.query) return;
+    const zw = L.zw, cx = F.cx, cy = F.cy, ax = F.ax, ay = F.ay, nx = F.nx, ny = F.ny;
+    const road = sc.spot.roadW || 52;
+    NQ.length = 0;
+    E.query(cx, cy, NARROW.ahead + 10, null, NQ);
+    for (let i = 0; i < NQ.length; i++) {
+      const v = NQ[i];
+      if (v.kind !== 'vehicle' || !v.alive || !v.tr || v === N.player.vehicle || v.driver === N.player) continue;
+      const tr = v.tr;
+      const dx = v.x - cx, dy = v.y - cy;
+      const u = dx * ax + dy * ay, vv = dx * nx + dy * ny;
+      // only vehicles on this carriageway (the half of the road whose kerb is the strip's kerb)
+      if (vv > 4 || vv < -road / 2 - 2) { unpull(v); continue; }
+      // which way +lat moves this vehicle relative to the strip normal (traffic.js: lat moves along (uy, -ux))
+      const s = Math.sin(v.angle) * nx - Math.cos(v.angle) * ny;
+      if (Math.abs(s) < 0.6) { unpull(v); continue; }
+      const along = Math.cos(v.angle) * ax + Math.sin(v.angle) * ay; // + means travelling towards +u
+      const rel = along >= 0 ? -u : u; // distance still to go before the strip's centre
+      if (rel < -NARROW.behind || rel > NARROW.ahead) { unpull(v); continue; }
+      if (tr.pullT != null || tr.stopT != null || (tr.pull && v._clPull == null)) continue; // a real pull-over / bus stop
+      const half = (v.T && v.T.d ? v.T.d : 4) / 2;
+      const cur = v._clPull || 0;
+      const base = vv - s * (tr.lat || 0); // where the vehicle would ride with no lateral shift
+      const lim = -zw - NARROW.margin - half;       // its outer edge must stay this far out from the strip
+      let need = Math.min(0, lim - base);           // in strip-normal units (negative = towards the road centre)
+      need = Math.max(need, -road / 2 + 1 + half * 0.5 - base); // never further than just over the centre line
+      const pull = clamp(need / s, -NARROW.maxPull, NARROW.maxPull);
+      if (Math.abs(pull) < 0.3) { unpull(v); continue; }
+      tr.pull = pull; v._clPull = pull;
+      if (cur === 0 && PULLED.indexOf(v) < 0) PULLED.push(v);
+    }
+    // vehicles that left the query radius
+    for (let i = PULLED.length - 1; i >= 0; i--) { const v = PULLED[i]; if (!v.alive || Math.hypot(v.x - cx, v.y - cy) > NARROW.ahead + 10) unpull(v); }
+  }
+  function unpull(v) {
+    if (v._clPull == null) return;
+    if (v.tr && v.tr.pull === v._clPull) v.tr.pull = 0;
+    v._clPull = null;
+    const i = PULLED.indexOf(v); if (i >= 0) PULLED.splice(i, 1);
+  }
+  function unpullAll() { for (let i = PULLED.length - 1; i >= 0; i--) unpull(PULLED[i]); }
 
   const KINDS = { irani: KIND_IRANI, chai: KIND_CHAI, saloon: KIND_SALOON, busstop: KIND_BUS, trade: KIND_TRADE, roadwork: KIND_ROAD };
 
@@ -1788,7 +1847,7 @@
         if (!ok || inLandmark(cxp, cyp, 30)) continue;
         rw++; rwTaken.push([q.x, q.y]);
         // frame: c at the kerb line, a along the road, n outwards (to the footpath); the work strip is v in [-zw, 0]
-        addSpot({ id: 'roadwork:' + road.id + ':' + rw, kind: 'roadwork', F: ptFrame(cxp, cyp, tx, ty, px, py, 30), x: cxp, y: cyp, zw, road: road.id });
+        addSpot({ id: 'roadwork:' + road.id + ':' + rw, kind: 'roadwork', F: ptFrame(cxp, cyp, tx, ty, px, py, 30), x: cxp, y: cyp, zw, road: road.id, roadW: road.w });
       }
     }
     ST.spots = SPOTS.length;
@@ -1821,6 +1880,7 @@
   function releaseScene(sc, quick) {
     if (!sc || !sc.on) return;
     sc.on = false;
+    if (sc.spot.kind === 'roadwork') unpullAll();
     const i = ACTIVE.indexOf(sc); if (i >= 0) ACTIVE.splice(i, 1);
     if (sc.spot.scene === sc) sc.spot.scene = null;
     for (const p of sc.people.slice()) {
@@ -2235,7 +2295,7 @@
   }
 
   /* ================================================================ 3D layer (view3d.js loads after this file) */
-  const G3 = { THREE: null, H: null, ready: false, grp: null, pts: null, spk: null, scenes: new Map(), ms: 0, pools: null };
+  const G3 = { THREE: null, H: null, ready: false, grp: null, pts: null, spk: null, scenes: new Map(), list: [], built: 0, ms: 0, pools: null };
   const PT_VS = [
     'attribute vec2 aSA; attribute vec3 aCol; varying vec4 vCol; uniform float uScale;',
     'void main() { vCol = vec4(aCol, aSA.y); vec4 mv = modelViewMatrix * vec4(position, 1.0);',
@@ -2290,14 +2350,34 @@
   function cyl3(b, x, y, y0, r0, r1, h, seg) { b.cyl(x, y0, y, r0, r1, h, seg || 8); }
   function texPlane(H, key, w, h, paint, F, u, v, y, wu, hv, face) {
     const THREE = H.THREE;
-    const tex = H.tex(key, w, h, paint);
-    const mat = H.mat('#ffffff', { map: tex, double: true });
+    const mat = texMat(H, key, w, h, paint);
     const m = new THREE.Mesh(G3.plane || (G3.plane = sharedPlane(THREE)), mat);
     const c = W3(F, u, v);
     m.position.set(c[0], y, c[1]);
     m.scale.set(wu, hv, 1);
     m.rotation.y = -(face != null ? face : fang(F)) + PI / 2;
     m.userData.noShadow = true;
+    return m;
+  }
+  // Textured materials are cached here per texture key. Never hand a texture to H.mat: view3d keys its cache on
+  // JSON.stringify(options), and a Texture serialises through toJSON -> canvas.toDataURL (a PNG encode per call).
+  const TEXMAT = new Map();
+  function texMat(H, key, w, h, paint) {
+    let m = TEXMAT.get(key);
+    if (m) return m;
+    const THREE = H.THREE, tex = H.tex(key, w, h, paint);
+    m = new THREE.MeshLambertMaterial({ color: 0xffffff, map: tex, side: THREE.DoubleSide });
+    m.userData.shared = true;
+    TEXMAT.set(key, m);
+    return m;
+  }
+  // per-tool held-item materials (plain colours, looked up once instead of H.mat's string key every frame)
+  const TOOLMAT = new Map();
+  function toolMat(H, tool) {
+    let m = TOOLMAT.get(tool);
+    if (m) return m;
+    m = H.mat(tool === 'comb' || tool === 'iron' || tool === 'clipper' ? '#1e1e22' : tool === 'hammer' || tool === 'shovel' || tool === 'pick' ? '#6a4a2a' : tool === 'garland' ? '#f08a1a' : tool === 'mirror' ? '#cfe2ee' : '#c8ccd2');
+    TOOLMAT.set(tool, m);
     return m;
   }
   function sharedPlane(THREE) { const g = new THREE.PlaneGeometry(1, 1); g.userData = { shared: true }; return g; }
@@ -2548,7 +2628,7 @@
       else if ((p.hold === 'pan' || p.hold === 'bricks') && p.look.prop !== 'pot') { const m = take3('pan'); if (m) m.position.set(p.x, el + 10.4, p.y); }
       if (p.cape) { const m = take3('cape'); if (m) { m.position.set(p.x + c * 0.3, el + 7.6, p.y + s * 0.3); m.rotation.set(0, 0, 0); } }
       if (p.foam > 0.05) for (const sd of [-1, 1]) { const m = take3('foam'); if (m) { m.position.set(p.x + c * 0.9 - s * 0.7 * sd, el + 8.1, p.y + s * 0.9 + c * 0.7 * sd); m.scale.setScalar(p.foam); } }
-      if (p.tool) { const m = take3('tool'); if (m) { m.position.set(p.hx, p.hh * VS, p.hy); m.rotation.set(0, -a + (p.tool === 'scissors' ? Math.sin(simT() * 22) * 0.4 : 0), 0); m.material = H.mat(p.tool === 'comb' || p.tool === 'iron' || p.tool === 'clipper' ? '#1e1e22' : p.tool === 'hammer' || p.tool === 'shovel' || p.tool === 'pick' ? '#6a4a2a' : p.tool === 'garland' ? '#f08a1a' : p.tool === 'mirror' ? '#cfe2ee' : '#c8ccd2'); m.scale.set(p.tool === 'shovel' || p.tool === 'pick' ? 2.2 : p.tool === 'iron' ? 1.2 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1); } }
+      if (p.tool) { const m = take3('tool'); if (m) { m.position.set(p.hx, p.hh * VS, p.hy); m.rotation.set(0, -a + (p.tool === 'scissors' ? Math.sin(simT() * 22) * 0.4 : 0), 0); m.material = toolMat(H, p.tool); m.scale.set(p.tool === 'shovel' || p.tool === 'pick' ? 2.2 : p.tool === 'iron' ? 1.2 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1); } }
     }
     for (const k in PL) { const arr = PL[k]; for (let i = PI3[k]; i < arr.length; i++) arr[i].visible = false; }
   }
@@ -2566,10 +2646,27 @@
   function layerUpdate(dt, H) {
     const t0 = now();
     if (!G3.ready || !is3D()) return;
-    for (const [sc, o] of G3.scenes) if (!sc.on) disposeScene3d(sc, o);
+    // built scene groups are cached per spot: a released scene is hidden and kept for a while, so walking back
+    // across the activation radius re-shows it instead of rebuilding it
+    const L3 = G3.list;
+    let idle = 0;
+    for (let i = L3.length - 1; i >= 0; i--) {
+      const o = L3[i];
+      if (o.sc && o.sc.on && o.sc.spot.scene === o.sc) continue;
+      o.sc = null;
+      if (o.grp.visible) o.grp.visible = false;
+      o.idle += dt;
+      if (o.idle > TUNE.keep3dSecs) disposeScene3d(o); else idle++;
+    }
+    while (idle > TUNE.keep3dMax) { let w = null; for (const o of L3) if (!o.sc && (!w || o.idle > w.idle)) w = o; if (!w) break; disposeScene3d(w); idle--; }
     for (const sc of ACTIVE) {
-      let o = G3.scenes.get(sc);
-      if (!o) { try { o = scene3d(sc, H); } catch (e) { N.err('citylife.scene3d', e); o = { grp: new H.THREE.Group(), own: [], dyn: {} }; } G3.grp.add(o.grp); G3.scenes.set(sc, o); }
+      let o = G3.scenes.get(sc.spot);
+      if (!o) {
+        try { o = scene3d(sc, H); } catch (e) { N.err('citylife.scene3d', e); o = { grp: new H.THREE.Group(), own: [], dyn: {} }; }
+        o.spot = sc.spot; o.idle = 0; o.sc = null;
+        G3.grp.add(o.grp); G3.scenes.set(sc.spot, o); L3.push(o); G3.built++;
+      }
+      if (o.sc !== sc) { o.sc = sc; o.idle = 0; o.grp.visible = true; }
       try { update3dScene(sc, o, H, dt); } catch (e) { N.err('citylife.update3d', e); }
     }
     try { heldItems3d(H); } catch (e) { N.err('citylife.held3d', e); }
@@ -2577,11 +2674,12 @@
     lights3d(H);
     G3.ms = now() - t0;
   }
-  function disposeScene3d(sc, o) {
+  function disposeScene3d(o) {
     G3.grp.remove(o.grp);
     for (const m of o.own) { try { m.dispose(); } catch (e) { /* ignore */ } }
     o.grp.traverse((m) => { if (m.geometry && !(m.geometry.userData && m.geometry.userData.shared) && o.own.indexOf(m.geometry) < 0 && m !== o.dyn.model && m !== o.dyn.treeModel && !(o.dyn.model && isChild(m, o.dyn.model)) && !(o.dyn.treeModel && isChild(m, o.dyn.treeModel))) { try { m.geometry.dispose(); } catch (e) { /* ignore */ } } });
-    G3.scenes.delete(sc);
+    G3.scenes.delete(o.spot);
+    const i = G3.list.indexOf(o); if (i >= 0) G3.list.splice(i, 1);
   }
   function isChild(m, root) { let p = m; while (p) { if (p === root) return true; p = p.parent; } return false; }
   let reg3d = false;
@@ -2601,7 +2699,8 @@
       },
       update(dt, H) { try { layerUpdate(dt, H); } catch (e) { N.err('citylife.layer', e); } },
       dispose(H) {
-        for (const [sc, o] of G3.scenes) disposeScene3d(sc, o);
+        for (const o of G3.list.slice()) disposeScene3d(o);
+        for (const m of TEXMAT.values()) m.dispose(); TEXMAT.clear(); TOOLMAT.clear();
         if (G3.grp && H && H.layer) H.layer.remove(G3.grp);
         for (const p of [G3.pts, G3.spk]) if (p) { p.geometry.dispose(); p.material.dispose(); }
         if (G3.geos) for (const g of G3.geos) g.dispose();
@@ -2778,7 +2877,7 @@
         spots: SPOTS.length, active: ACTIVE.length, people: PEOPLE.length, pool: POOL.length, particles: P.n,
         ms: +ST.ms.toFixed(3), msAvg: +ST.msAvg.toFixed(3), ms2d: +ST.ms2d.toFixed(3), ms3d: +ST.ms3d.toFixed(3), r: Math.round(actRadius()),
         activations: ST.activations, handedBack: ST.handedBack, haircuts: ST.haircuts, buses: ST.buses, ownBuses: ST.ownBuses, boarded: ST.boarded, whistles: ST.whistles, sfSpots: ST.sfSpots,
-        s3d: G3.scenes.size, layer3d: G3.ready, sfx: sfxReg,
+        s3d: G3.scenes.size, s3dBuilt: G3.built, layer3d: G3.ready, sfx: sfxReg,
         kinds: SPOTS.reduce((o, s) => { const k = s.kind === 'trade' ? 'trade:' + s.sub : s.kind; o[k] = (o[k] || 0) + 1; return o; }, {}),
       };
     },
