@@ -38,7 +38,11 @@
     if (!lm) throw new Error('no landmark ' + sh.lm);
     if (sh.hero === 'top') {
       streamAt(lm.x, lm.y); settle();
-      hero = { x: lm.x, y: lm.y, h: STAGE.summit(lm.x, lm.y, 0) };
+      // the landmark model may build a few frames later (lazy GLBs): wait for a real summit
+      let h = STAGE.summit(lm.x, lm.y, 0);
+      for (let k = 0; k < 90 && h < (lm.h || 20) * 0.5; k++) { window.__step(1 / FPS); if (k % 10 === 9) settle(); h = STAGE.summit(lm.x, lm.y, 0); }
+      if (h < (lm.h || 20) * 0.5) h = (lm.h || 20) * 1.5;
+      hero = { x: lm.x, y: lm.y, h };
     } else if (sh.hero === 'roof') {
       const r = tallestRoof(lm, sh.ring || [70, 240]);
       if (!r) throw new Error('no roof near ' + lm.id);
