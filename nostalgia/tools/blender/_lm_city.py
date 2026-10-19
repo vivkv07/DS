@@ -1302,22 +1302,25 @@ def build_koti_bus_stand(A):
 def build_mgbs(A):
     """Mahatma Gandhi Bus Station (1994): the long two-storey entrance block on the road (north)
     with its raised centre, the red-pillared porch and the MAHATMA GANDHI BUS STATION board, and
-    behind it the platform halls under the row of repeated concrete vault shells on columns,
-    whose arched ends rise over the block; platforms with kerbs and long-distance buses."""
+    behind it the platform halls under the row of repeated white concrete canopies on columns
+    (peaked gable section with folded plates: NOT barrel vaults, which read as the Gowliguda hangar), whose
+    gabled ends rise over the block; platforms with kerbs and long-distance buses. The red is kept
+    to thin lines (cornice line, pillar strips) so the block reads as a bus station, not a mall."""
     C._ASSET[0] = A.id
     CREAM = '#d8cdb4'
     cream = lin_mat('mgbs_cream', CREAM)
     red = lin_mat('mgbs_red', '#b22b2b')
     conc = lin_mat('mgbs_conc', '#a8a398', 0.9)
-    shell = L.paint('#a7a297', 'mgbs_shell', rough=0.9, grime=0.6, streaks=0.5, dirt='#5f594f')
-    under = lin_mat('mgbs_under', '#8e897f', 0.9)
+    shell = L.paint('#e8e4da', 'mgbs_shell', rough=0.9, grime=0.25, streaks=0.3, dirt='#8f897c')
+    under = lin_mat('mgbs_under', '#c8c3b6', 0.9)
+    fold = lin_mat('mgbs_fold', '#d2cdc1', 0.9)
     P, lo = [], []
     sh = Sheet(A.id, 512, 96)
     FY = -54.0
     # entrance block
     def side_fac(w, seed):
         f = Fac(w, 22, CREAM, seed=seed, noise=0.0)
-        f.dirt(2.5, alpha=0.3).band(10.4, 11.2, '#b22b2b')
+        f.dirt(2.5, alpha=0.3).band(10.65, 10.95, '#b22b2b')
         n = max(1, int(w / 6))
         for i in range(n):
             x = (i + 0.5) * w / n
@@ -1329,13 +1332,15 @@ def build_mgbs(A):
         return f
     P.append(fbox('block', 0, (FY - 28) / 2, 200, -28 - FY, 0, 22, cream, faces={'l': side_fac(26, 3), 'r': side_fac(26, 4), 'b': side_fac(200, 5)}))
     P.append(B('roof', -100, 100, FY + 1, -28, 22, 22.6, shell))
-    P.append(B('parapet', -101, 101, FY - 0.6, FY + 1.0, 21.6, 24.4, red))
+    P.append(B('parapet', -101, 101, FY - 0.6, FY + 1.0, 21.6, 24.4, cream))
+    P.append(B('parapet_l', -101.1, 101.1, FY - 0.7, FY + 1.1, 22.3, 22.8, red))
     lo.append(S('s_block', -100.1, 100.1, FY - 0.7, -28, 0, 24.5))
     P.append(B('centre', -24, 24, FY - 2, -30, 0, 32, cream))
-    P.append(B('centre_cap', -25, 25, FY - 2.6, -29.4, 32, 33.6, red))
+    P.append(B('centre_cap', -25, 25, FY - 2.6, -29.4, 32, 33.6, cream))
+    P.append(B('centre_capl', -25.1, 25.1, FY - 2.7, -29.3, 32.4, 32.9, red))
     lo.append(S('s_centre', -25.1, 25.1, FY - 2.7, -29.3, 0, 33.7))
     fac = Canvas(1024, 112, CREAM)
-    fac.rect(0, 0.47, 1, 0.53, '#b22b2b')
+    fac.rect(0, 0.49, 1, 0.51, '#b22b2b')
     for i in range(24):
         x = (i + 0.5) / 24
         fac.rect(x - 0.014, 0.0, x + 0.014, 0.40, '#3a3f44').ellipse(x, 0.40, 0.014, 0.06, '#3a3f44')
@@ -1359,36 +1364,47 @@ def build_mgbs(A):
     sh.quad(uv_n, 45.6, 4.4, (0, FY - 2.95, 23.5))
     # porch: canopy on four red pillars
     P.append(B('porch', -26, 26, -60, FY - 2, 11, 12.6, cream))
-    P.append(B('porch_band', -26.4, 26.4, -60.4, -59.4, 12.6, 13.8, red))
+    P.append(B('porch_band', -26.4, 26.4, -60.4, -59.4, 12.6, 13.8, cream))
+    P.append(B('porch_line', -26.5, 26.5, -60.5, -60.3, 13.0, 13.4, red))
     lo.append(S('s_porch', -26.5, 26.5, -60.5, FY - 2, 10.9, 13.9))
     for x in (-24, -8, 8, 24):
-        P.append(B('pillar', x - 0.9, x + 0.9, -59.6, -57.8, 0, 11, red))
+        P.append(B('pillar', x - 0.9, x + 0.9, -59.6, -57.8, 0, 11, cream))
+        P.append(B('pillar_s', x - 0.35, x + 0.35, -59.75, -57.65, 0, 11, red))
         lo.append(tri_col('s_pillar', x, -58.7, 1.4, 0, 11))
     tube = Canvas(32, 8, '#f4fbff')
     tube.rect(0, 0, 1, 0.15, '#a8b8c0').rect(0, 0.85, 1, 1, '#a8b8c0')
     uv_t = sh.put(tube)
     for x in (-16, -5, 5, 16):
         sh.quad(uv_t, 5.0, 0.6, (x, -57.0, 10.85), tilt=-PI / 2)
-    # platform halls: repeated concrete vault shells (along Y) on valley beams and columns
+    # platform halls: repeated white concrete canopies (along Y) on valley beams and columns: a
+    # peaked, folded-plate section (two plates meeting at a ridge cap, each creased once, with
+    # a deep eave fascia). The shipped shell is the plain gable (2 segments a side: no more than the old
+    # vault's 3); the folds, ridge cap and soffit ribs are baked.
     NV, X0, X1, Y0, Y1 = 9, -99.0, 99.0, -29.0, 58.0
     vw = (X1 - X0) / NV
-    spring, rise, t = 17.0, 11.0, 0.8
+    spring, rise, t = 17.0, 9.0, 0.6
     for i in range(NV):
         cx = X0 + vw * (i + 0.5)
-        outer, inner = [], []
-        n = 6
-        for k in range(n + 1):
-            a = PI - PI * k / n
-            outer.append((cx + vw / 2 * math.cos(a), spring + t + rise * math.sin(a)))
-            inner.append((cx + (vw / 2 - 0.0) * math.cos(a), spring + rise * math.sin(a)))
-        ol = outer + list(reversed(inner))
-        P.append(prism_from_outline('vault', ol, Y1 - Y0, center=(0, (Y0 + Y1) / 2, 0), mat=shell))
-        # the underside reads darker (soffit) and has ribs
+        h = vw / 2
+        # (dx, dz) of the section (left half; mirrored): eave lip, fold kink, ridge
+        half = [(-h, 0.0), (-h * 0.5, rise * 0.46), (0.0, rise)]
+        sec = half + [(-dx, dz) for (dx, dz) in reversed(half[:-1])]
+        outer = [(cx + dx, spring + t + dz) for (dx, dz) in sec]
+        inner = [(cx + dx, spring + dz) for (dx, dz) in sec]
+        P.append(prism_from_outline('canopy', outer + list(reversed(inner)), Y1 - Y0, center=(0, (Y0 + Y1) / 2, 0), mat=shell))
+        # fold lines (shadowed creases) and the ridge cap
+        for dx in (-h * 0.5, h * 0.5):
+            P.append(B('fold', cx + dx - 0.3, cx + dx + 0.3, Y0, Y1, spring + t + rise * 0.46 - 0.05, spring + t + rise * 0.46 + 0.1, fold))
+        for dx in (-h, h):
+            P.append(B('eave', cx + dx - 0.35, cx + dx + 0.35, Y0, Y1, spring - 0.6, spring + t + 0.15, fold))
+        P.append(B('ridge', cx - 0.5, cx + 0.5, Y0 - 0.2, Y1 + 0.2, spring + t + rise - 0.2, spring + t + rise + 0.35, shell))
         innr = [(x, z - 0.05) for (x, z) in inner]
         P.append(prism_from_outline('soffit', innr + [(x, z - 0.3) for (x, z) in reversed(innr)], Y1 - Y0 - 0.2, center=(0, (Y0 + Y1) / 2, 0), mat=under))
         for y in np.arange(Y0 + 6, Y1, 12.0):
-            P.append(prism_from_outline('rib', [(x, z - 0.3) for (x, z) in inner] + [(x, z - 1.2) for (x, z) in reversed(inner)], 0.8, center=(0, y, 0), mat=conc))
-        lo.append(vault_lo('s_vault', [(x, z + 0.1) for (x, z) in outer[::2]], [(x, z - 0.35) for (x, z) in inner[::2]], Y0 - 0.1, Y1 + 0.1))
+            P.append(prism_from_outline('rib', [(x, z - 0.3) for (x, z) in inner] + [(x, z - 1.0) for (x, z) in reversed(inner)], 0.8, center=(0, y, 0), mat=conc))
+        lo_o = [(cx - h, spring + t + 0.3), (cx, spring + t + rise + 0.4), (cx + h, spring + t + 0.3)]
+        lo_i = [(cx - h, spring - 0.7), (cx, spring + rise - 0.4), (cx + h, spring - 0.7)]
+        lo.append(vault_lo('s_vault', lo_o, lo_i, Y0 - 0.3, Y1 + 0.3))
     for i in range(NV + 1):
         x = X0 + vw * i
         P.append(B('beam', x - 1.0, x + 1.0, Y0, Y1, 15.0, spring + 0.2, conc))
@@ -1788,11 +1804,14 @@ def build_indira_park_gate(A):
     P.append(B('cornice', -W2 - 0.5, W2 + 0.5, -D / 2 - 0.5, D / 2 + 0.5, MT, MT + 0.8, red))
     P.append(B('attic', -W2 + 0.4, W2 - 0.4, -D / 2 + 0.1, D / 2 - 0.1, MT + 0.8, MT + 4.0, cream))
     P.append(B('attic_c', -W2 + 0.1, W2 - 0.1, -D / 2 - 0.2, D / 2 + 0.2, MT + 4.0, MT + 4.6, red))
-    lo.append(S('s_attic', -W2 - 0.6, W2 + 0.6, -D / 2 - 0.6, D / 2 + 0.6, MT, MT + 4.7))
+    # shell: the cornice ledge, then the attic body kept INSIDE the name board (the board sits at
+    # D/2 + 0.45, in front of the attic shell's D/2 + 0.3 faces: a shell face in front of it hid it)
+    lo.append(S('s_cornice', -W2 - 0.6, W2 + 0.6, -D / 2 - 0.6, D / 2 + 0.6, MT, MT + 0.85))
+    lo.append(S('s_attic', -W2 + 0.0, W2 - 0.0, -D / 2 - 0.3, D / 2 + 0.3, MT + 0.85, MT + 4.7))
     for s in (-1, 1):
         P.append(lathe('urn', [(0.6, MT + 0.8), (0.8, MT + 1.6), (0.45, MT + 2.6), (0.6, MT + 3.0), (0.0, MT + 3.6)], seg=8, mat=red, loc=(s * (W2 - 0.2), 0, 0)))
     uv = sh.put(text_cv('INDIRA PARK', 224, 40, '#ffffff', GN, size=0.86, border='#f2d060', bw=0.07))
-    for yy, rz in ((-D / 2 - 0.32, 0.0), (D / 2 + 0.32, PI)):
+    for yy, rz in ((-D / 2 - 0.45, 0.0), (D / 2 + 0.45, PI)):     # faces -Y (street) and +Y (park)
         sh.quad(uv, 2 * W2 - 1.6, 2.8, (0, yy, MT + 2.4), rz=rz)
     # side pedestrian arches (opening 3.6, springing 4.5) and their outer piers
     SW, SS, ST = 3.6, 4.5, 9.0
@@ -1825,7 +1844,8 @@ def build_indira_park_gate(A):
     P.append(B('pave', -20, 20, -7, 7, 0, 0.12, stone))
     lo.append(quad('s_pave', [(-20, -7, 0.13), (20, -7, 0.13), (20, 7, 0.13), (-20, 7, 0.13)]))
     finish(A, P, lo, sh, 208, ao=3.0)
-    L.shots(A, az=-28, el=10, extra=[{'name': 'front', 'view': {'az': 0, 'el': 5, 'fov': 30, 'pad': 1.05}}])
+    L.shots(A, az=-28, el=10, extra=[{'name': 'front', 'view': {'az': 0, 'el': 5, 'fov': 30, 'pad': 1.05}},
+                                     {'name': 'back', 'view': {'az': 180, 'el': 5, 'fov': 30, 'pad': 1.05}}])
 
 
 def build_sanjeevaiah_park_gate(A):
