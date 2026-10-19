@@ -40,6 +40,8 @@ function check(cond, msg, detail) {
 async function newPage(browser, V, context) {
   context = context || await browser.newContext({ viewport: V.viewport, deviceScaleFactor: V.dpr, hasTouch: V.touch, isMobile: V.touch, ignoreHTTPSErrors: true });
   const page = await context.newPage();
+  // play-testing builds top money up every frame (src/testing.js): the save/continue checks need real pocket money
+  await page.addInitScript(() => { try { localStorage.setItem('nostalgia.testing.unlimitedMoney', '0'); } catch (e) { /* storage off */ } });
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));

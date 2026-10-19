@@ -77,8 +77,15 @@ function serve() {
   check(api.sfx >= 80 && api.tracks >= 17, 'SFX library ' + api.sfx + ' sounds, ' + api.tracks + ' music tracks');
 
   console.log('\n== START (real click) unlocks audio');
-  // PLAY starts a new game, which opens on the story's prologue cutscene (menus.quickStart skips the name card under automation)
+  // PLAY starts a new game, which opens on the story's prologue cutscene. Under automation N.menus.quickStart skips
+  // both the name card and the prologue; this suite drives the real flow, so turn it off
+  await ev(() => { N.menus.quickStart = false; });
   await page.click('#title-start');
+  // (with quickStart off the name card comes first: START on it, as core_systems does)
+  await page.waitForFunction(() => N.menus.debugState().top === 'name' || !document.querySelector('.jc-confirm').hidden, null, { timeout: 10000 });
+  if (await ev(() => !document.querySelector('.jc-confirm').hidden)) await page.click('.jc-confirm [data-act=overwrite]');
+  await page.waitForFunction(() => N.menus.debugState().top === 'name', null, { timeout: 10000 });
+  await page.click('.mn-name [data-act=start]');
   await page.waitForFunction(() => N.state.mode === 'cutscene', null, { timeout: 10000 });
   await page.waitForFunction(() => N.audio.stats().music === 'flashback', null, { timeout: 10000 }).catch(() => {});
   let st = await stats();

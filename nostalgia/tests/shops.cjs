@@ -47,6 +47,8 @@ async function boot(browser, vp, touch) {
   const context = await browser.newContext({ viewport: vp, deviceScaleFactor: touch ? 2 : 1, hasTouch: !!touch, isMobile: !!touch });
   const page = await context.newPage();
   await page.addInitScript(GW);
+  // play-testing builds top money up every frame (src/testing.js): the economy checks need real pocket money
+  await page.addInitScript(() => { try { localStorage.setItem('nostalgia.testing.unlimitedMoney', '0'); } catch (e) { /* storage off */ } });
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));

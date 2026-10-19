@@ -95,7 +95,7 @@ async function newer(browser) {
       const K = N.save.KEY;
       const snap = () => [localStorage.getItem(K), localStorage.getItem(K + '.bak'), localStorage.getItem(K + '.manual')];
       const before = snap();
-      const toastAfterStart = (document.querySelector('.hud-toasts') || {}).textContent || '';
+      const toastAfterStart = N.hud.toastQueue().join(' | '); // showing + queued (other toasts may be ahead of it)
       const refused = [];
       N.on('save:refused', (e) => refused.push(e.why));
       const res = {
@@ -108,7 +108,7 @@ async function newer(browser) {
       await new Promise((r) => setTimeout(r, 300));
       const after = snap();
       return { res, same: JSON.stringify(before) === JSON.stringify(after), before, after, saves: window.__saves, refused,
-        toastAfterStart, toast: (document.querySelector('.hud-toasts') || {}).textContent || '' };
+        toastAfterStart, toast: N.hud.toastQueue().join(' | ') };
     }, suffix);
     check(r.same, slot + ': no slot changed after save / manual save / mission save / forced save / hide / pagehide', { before: r.before, after: r.after });
     check(!r.res.plain && !r.res.manual && !r.res.mission && !r.res.forced && !r.res.auto && r.saves === 0, slot + ': every save call is refused', r.res);

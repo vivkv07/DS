@@ -64,7 +64,8 @@ async function autoAdvance(browser) {
   const on = await page.evaluate(() => { N.settings.set('autoAdvance', true); return N.dialogue.autoAdvance; });
   check(on === true, 'the setting reaches N.dialogue.autoAdvance', on);
   const short = await timeLine('Okay.', 6);
-  check(short != null && short >= 1.9 && short < 3, 'a short line moves on by itself ~2 s after typing', short);
+  // (the line is sampled every 50 ms of real time, so 'typed' is seen up to a few frames late: allow 0.15 s)
+  check(short != null && short >= 1.85 && short < 3, 'a short line moves on by itself ~2 s after typing', short);
   const longText = 'Pochaiah-uncle says the Luna has a puncture again, so today we are walking all the way to the Irani cafe and back, no arguments.';
   const long = await timeLine(longText, 12);
   check(long != null && long > short + 2 && long <= 7.2, 'a long line stays up longer (capped at 7 s)', { short, long });
