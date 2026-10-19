@@ -148,7 +148,7 @@
     for (const [ox, oy] of pts) {
       o.set(x + ox, 900, y + oy); rc.set(o, d); rc.far = 1000;
       const hits = rc.intersectObjects(objs, true);
-      for (const h of hits) { if (h.object.isMesh && h.object.visible && !(h.object.material && h.object.material.transparent)) { if (!ox && !oy) best = Math.max(best, h.point.y); else best = Math.max(best, h.point.y); break; } }
+      for (const h of hits) { const col = /^COL_/.test(h.object.name || ''); if (h.object.isMesh && (col || (h.object.visible && !(h.object.material && h.object.material.transparent)))) { if (!ox && !oy) best = Math.max(best, h.point.y); else best = Math.max(best, h.point.y); break; } }
     }
     return best;
   };
