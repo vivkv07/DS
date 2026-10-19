@@ -40,10 +40,19 @@
     if (sh.hero === 'top') {
       streamAt(lm.x, lm.y); settle();
       // the landmark model may build a few frames later (lazy GLBs): wait for a real summit
-      let h = STAGE.summit(lm.x, lm.y, 0);
-      for (let k = 0; k < 90 && h < (lm.h || 20) * 0.5; k++) { window.__step(1 / FPS); if (k % 10 === 9) settle(); h = STAGE.summit(lm.x, lm.y, 0); }
+      // optionally search a ring for the highest roof (Golconda: the pavilion, not the courtyard)
+      let px = lm.x, py = lm.y;
+      if (sh.summitR) {
+        let bh = -1;
+        for (let rr = 0; rr <= sh.summitR; rr += sh.summitR / 3) for (let k = 0; k < (rr ? 12 : 1); k++) {
+          const xx = lm.x + Math.cos(k * Math.PI / 6) * rr, yy = lm.y + Math.sin(k * Math.PI / 6) * rr, hh2 = STAGE.summit(xx, yy, 0);
+          if (hh2 > bh + 0.5) { bh = hh2; px = xx; py = yy; }
+        }
+      }
+      let h = STAGE.summit(px, py, 0);
+      for (let k = 0; k < 90 && h < (lm.h || 20) * 0.5; k++) { window.__step(1 / FPS); if (k % 10 === 9) settle(); h = STAGE.summit(px, py, 0); }
       if (h < (lm.h || 20) * 0.5) h = (lm.h || 20) * 1.5;
-      hero = { x: lm.x, y: lm.y, h };
+      hero = { x: px, y: py, h };
     } else if (sh.hero === 'roof') {
       const r = tallestRoof(lm, sh.ring || [70, 240]);
       if (!r) throw new Error('no roof near ' + lm.id);

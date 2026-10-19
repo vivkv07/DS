@@ -18,7 +18,7 @@ const SHOTS = {
   reveal: { lm: 'charminar', hero: 'top', clip: 'idle_look', face: Math.PI / 2 },
   whip: { lm: 'charminar', hero: 'top', clip: 'idle', face: Math.PI / 2 },
   lm_charminar: { lm: 'charminar', hero: 'top', clip: 'idle_look', face: Math.PI / 2, r: [15, 34], h: [6, 16], arc: 1.9, base: 1.2, fov: [42, 52] },
-  lm_golconda: { lm: 'golconda_bala_hissar', hero: 'top', clip: 'wave', face: 0.4, r: [16, 40], h: [7, 20], arc: 1.6, base: 1.9, fov: [44, 54] },
+  lm_golconda: { lm: 'golconda_bala_hissar', hero: 'top', summitR: 30, clip: 'wave', face: 0.4, r: [16, 40], h: [7, 20], arc: 1.6, base: 1.9, fov: [44, 54] },
   lm_buddha: { lm: 'buddha_statue', hero: 'shore', slide: 14, noWires: true, clip: 'idle_look', r: [14, 26], h: [5, 10], arc: 1.1, fov: [38, 46] },
   lm_birla: { lm: 'birla_mandir', hero: 'roof', noWires: true, ring: [70, 260], clip: 'idle', r: [14, 26], h: [6, 12], arc: 1.2, fov: [40, 48] },
   lm_clock: { lm: 'secunderabad_clock_tower', hero: 'top', clip: 'idle_look', face: 1.6, r: [13, 30], h: [5, 14], arc: 1.8, base: 0.4, fov: [44, 54] },
