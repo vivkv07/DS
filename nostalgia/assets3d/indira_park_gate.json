@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 27500,
+ "bytes": 26328,
  "clips": {},
  "family": "landmark",
  "file": "indira_park_gate.glb",
@@ -12,7 +12,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 26.9,
+ "kb": 25.7,
  "kit": 1,
  "materials": [
   "M_indira_park_gate",

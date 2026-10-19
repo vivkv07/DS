@@ -3,7 +3,8 @@
 CITY group (PARKED: owner must-haves that ship once models load lazily per GLB; every builder is
 registered only under NOSTALGIA_PARKED=1, see the end of this file, and never goes in the real pack):
 the four RTC X Roads cinemas (Sandhya 70MM, Odeon, Sudarshan 35MM, Devi 70MM), Gokul Chat (Koti),
-Paradise (Secunderabad), the Secunderabad Clock Tower, Koti bus stand and Imlibun MGBS.
+Paradise (Secunderabad), the Secunderabad Clock Tower, Koti bus stand and Imlibun MGBS; the A.P.
+Secretariat (Saifabad), Ravindra Bharathi, and the Indira Park / Sanjeevaiah Park entrance gates.
 
 Budget path: L.finish_proxy. The detail (painted facades, fins, frames, steps, canopies, columns,
 buses, jars...) is modelled freely as `hi` and baked into one atlas on a hand-built low shell
@@ -1666,7 +1667,11 @@ def build_ravindra_bharathi(A):
     side = Fac(YB - YF, HF, WH, seed=8, noise=0.0).dirt(3.0, alpha=0.25)
     side.band(HF - 3.6, HF, GR, 0.4)
     P.append(fbox('foyer', 0, (YF + YB) / 2, 80, YB - YF, 0, HF, white, faces={'f': Fac(80, HF, DK, noise=0.0), 'l': side, 'r': side}, top_mat=grey))
-    lo.append(S('s_foyer', -40.1, 40.1, YF - 2.4, YB, 0, HF + 0.1))
+    lo.append(S('s_foyer', -40.1, 40.1, YF - 2.4, YB, 10.0, HF + 0.1))
+    lo.append(S('s_foyer_g', -40.1, 40.1, YF - 1.3, YB, 0, 10.0))
+    for sx in (-1, 1):
+        xa, xb = sorted((sx * 35.9, sx * 40.1))
+        lo.append(S('s_endpier', xa, xb, YF - 2.4, YF - 1.3, 0, 10.0))
     # end piers (solid white frame of the front)
     for s in (-1, 1):
         xa, xb = sorted((s * 36.0, s * 40.0))
@@ -1696,8 +1701,11 @@ def build_ravindra_bharathi(A):
     for i in range(25):
         gl.rect(i / 24 - 0.003, 0, i / 24 + 0.003, 1, '#9aa0a4')
     gl.rect(0, 0.74, 1, 0.78, '#9aa0a4')
+    for i in range(9):          # the square columns in front of the glass (painted: the quad is proud of them)
+        x = i / 8
+        gl.rect(x - 0.012, 0, x + 0.012, 1, '#d6d1c6').rect(x - 0.012, 0, x - 0.004, 1, '#bdb8ad')
     uv_gl = sh.put(gl)
-    sh.quad(uv_gl, 70.0, 8.0, (0, YF - 0.06, G + 4.0))
+    sh.quad(uv_gl, 71.2, 8.2, (0, YF - 1.36, G + 4.1))
     for i in range(9):
         x = -35.0 + i * 70.0 / 8
         P.append(B('gcol', x - 0.6, x + 0.6, YF - 1.2, YF, G, 10.0, white))
@@ -1816,7 +1824,7 @@ def build_indira_park_gate(A):
     # forecourt paving and the path through
     P.append(B('pave', -20, 20, -7, 7, 0, 0.12, stone))
     lo.append(quad('s_pave', [(-20, -7, 0.13), (20, -7, 0.13), (20, 7, 0.13), (-20, 7, 0.13)]))
-    finish(A, P, lo, sh, 224, ao=3.0)
+    finish(A, P, lo, sh, 208, ao=3.0)
     L.shots(A, az=-28, el=10, extra=[{'name': 'front', 'view': {'az': 0, 'el': 5, 'fov': 30, 'pad': 1.05}}])
 
 
