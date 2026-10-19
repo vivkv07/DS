@@ -71,7 +71,8 @@
  *     heaps, level(), sweep(), settle(), clear(), air(x, y)}
  *   box {items {phuljhadi, chakri, anaar, rocket}, add(kind, n) -> count, use(kind) -> bool, count(kind), total(),
  *     clear()}   (save section 'diwali')
- *   canLight(x, y) -> {ok, why: 'quiet'|'adult'|'hospital'|'respect'|'elder'|'animal'|'vehicle', spot, near}
+ *   canLight(x, y, kind?) -> {ok, why: 'quiet'|'adult'|'hospital'|'respect'|'elder'|'animal'|'vehicle', spot, near}
+ *     (a phuljhadi is quiet: elders and animals may watch it; the rest not within TUNE.elderR / animalR)
  *   lightFromBox(kind?, {x, y}) -> emitter | null (the rule above: the adult stops it + heat)
  *   dogs {hiding (list), hide(dog, {x, y, secs, spot}) -> bool, calm(dog) -> bool, register(dog), unregister(dog),
  *     step(dog, dt) -> hiding, isHiding(dog)}   (a dog: dwHide (s left), dwSpot, dwCalm)
@@ -1573,10 +1574,11 @@
     total() { let t = 0; for (const k of KINDS) t += box.items[k] | 0; return t; },
     clear() { for (const k of KINDS) box.items[k] = 0; },
   };
-  /** what is wrong with lighting one at (x, y) right now? -> {ok, why, spot, near} (why: 'quiet' (not Diwali / daytime),
-   *  'adult' (no Amma / Nanna / bucket within TUNE.lightR), 'hospital', 'respect', 'elder', 'animal', 'vehicle') */
+  /** what is wrong with lighting one (kind; default a noisy one) at (x, y) right now? -> {ok, why, spot, near} (why: 'quiet'
+   *  (not Diwali / daytime), 'adult' (no Amma / Nanna / bucket within TUNE.lightR), 'hospital', 'respect', 'elder', 'animal',
+   *  'vehicle'). A phuljhadi is quiet: elders and animals may watch it. */
   const _cq = [];
-  function canLight(x, y) {
+  function canLight(x, y, kind) {
     const out = { ok: false, why: null, spot: null, near: null };
     if (!active() || !(isNight() || dayNo() === 24 && mins() > 4 * 60 + 15 && mins() < 6 * 60 + 40)) { out.why = 'quiet'; return out; }
     out.spot = spots.near(x, y, TUNE.lightR);
@@ -1585,9 +1587,11 @@
     if (!fireOK(x, y)) { out.why = 'respect'; return out; }
     _cq.length = 0;
     try { N.entities.query(x, y, Math.max(TUNE.elderR, TUNE.animalR), null, _cq); } catch (e) { /* ok */ }
+    const quiet = kind === 'phuljhadi' || kind === 'sparkler';
     for (const q of _cq) {
       if (!q.alive || q === N.player) continue;
       const d = Math.hypot(q.x - x, q.y - y);
+      if (quiet && q.kind !== 'vehicle') continue;
       if (q.kind === 'animal' && d < TUNE.animalR) { out.why = 'animal'; out.near = q; return out; }
       if ((q.kind === 'ped' || q.kind === 'npc') && d < TUNE.elderR && (q.role === 'old' || q.role === 'elder' || q.npcId === 'ammamma' || (q.look && q.look.hair === '#e8e4dc'))) { out.why = 'elder'; out.near = q; return out; }
       if (q.kind === 'vehicle' && d < 12 && Math.hypot(q.vx, q.vy) > 5) { out.why = 'vehicle'; out.near = q; return out; }
@@ -1610,7 +1614,7 @@
     if (!kind || !(box.items[kind] > 0)) return null;
     const fa = p.facing != null ? p.facing : p.angle || 0;
     const x = o.x != null ? o.x : kind === 'phuljhadi' ? p.x : p.x + Math.cos(fa) * 7, y = o.y != null ? o.y : kind === 'phuljhadi' ? p.y : p.y + Math.sin(fa) * 7;
-    const c = canLight(x, y);
+    const c = canLight(x, y, kind);
     if (!c.ok) {
       if (c.spot && c.why !== 'quiet' && c.why !== 'adult') {
         // the adult stops it, and the Chappal Meter warms up

@@ -187,7 +187,7 @@ async function apiTests(browser) {
     const h = D.spots.home, sp = D.spots.list().find((s) => s.kind === 'home');
     N.debug.teleport(sp.x + 6, sp.y);
     for (const a of (N.traffic && N.traffic.animals) || []) if (Math.hypot(a.x - p.x, a.y - p.y) < 60) { N.entities.remove(a); a.alive = false; }
-    out.home = D.canLight(p.x, p.y);
+    out.home = D.canLight(p.x, p.y, 'phuljhadi');
     out.homeWhy = out.home.why; out.homeOk = out.home.ok;
     const lit0 = D.stats().lit;
     out.e = !!D.lightFromBox('phuljhadi'); out.lit = D.stats().lit - lit0; out.left2 = D.box.count('phuljhadi');
@@ -195,7 +195,7 @@ async function apiTests(browser) {
     const old = N.traffic.spawnPed('old', { x: p.x + 12, y: p.y + 4 });
     if (old) { old.hold = true; old.role = 'old'; }
     const heat0 = N.wanted ? N.wanted.heat : 0;
-    out.elder = D.canLight(p.x + 6, p.y).why;
+    out.elder = D.canLight(p.x + 6, p.y, 'anaar').why;
     out.elderLit = !!D.lightFromBox('anaar', { x: p.x + 6, y: p.y });
     out.heat = (N.wanted ? N.wanted.heat : 0) - heat0;
     if (old) { N.entities.remove(old); old.alive = false; }

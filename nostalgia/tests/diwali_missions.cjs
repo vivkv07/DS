@@ -319,7 +319,7 @@ async function deeponBot(ms) {
         for (const c of wind) { const n = wind.filter((d) => Math.hypot(d.x - c.x, d.y - c.y) <= 9).length; if (n > bn) { bn = n; best = c; } }
         const gx = best.x - best.nx * 3, gy = best.y - best.ny * 3;
         if (Math.hypot(p.x - gx, p.y - gy) > 2.5) await walkTo(gx, gy, 2, { direct: true, ms: 2500, stop: () => { const g = N.dwMissions.debug.state().gust; return !g || g.phase === 'calm'; } });
-        if (!guardShot && G.phase === 'warn') { guardShot = true; await shot('diyas_gust'); }
+        if (!guardShot && G.phase === 'warn') { guardShot = true; vlog('zoom ' + JSON.stringify(await ev(() => ({ z: N.render.cam.zoom, base: N.render.baseZoom, ov: N.render.camOverride, ff: !!(N.missions.active && N.missions.active.ff) })))); await shot('diyas_gust'); }
       }
       await page.waitForFunction(() => { const g = N.dwMissions.debug.state().gust; return !g || g.phase === 'calm'; }, null, { timeout: 5000, polling: 80 }).catch(() => {});
       continue;
