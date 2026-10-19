@@ -3325,7 +3325,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
 
 /* === online === (owned by online.js, ARCHITECTURE §23: the Online panel (a tin card over the title / pause
    deck), the cloud-save offer card, the room badge + quick-chat strip in the HUD, ghost nameplates) */
-#overlay .mn-online { align-items: center; justify-content: center; padding: calc(10px + var(--safe-t)) calc(10px + var(--safe-r)) calc(10px + var(--safe-b)) calc(10px + var(--safe-l)); background: radial-gradient(ellipse at 50% 45%, rgba(10, 8, 20, 0.5), rgba(10, 8, 20, 0.82)); }
+#overlay .mn-online { z-index: 8; align-items: center; justify-content: center; padding: calc(10px + var(--safe-t)) calc(10px + var(--safe-r)) calc(10px + var(--safe-b)) calc(10px + var(--safe-l)); background: radial-gradient(ellipse at 50% 45%, rgba(10, 8, 20, 0.5), rgba(10, 8, 20, 0.82)); }
 .ol-card { width: min(620px, calc(100% - 8px)); }
 .ol-card .mn-card-head h2 { font-size: 28px; }
 .ol-body { padding: 0 18px 16px; min-height: 0; overflow-y: auto; touch-action: pan-y; -webkit-user-select: text; user-select: text; }
@@ -3370,7 +3370,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
 .ol-soon { padding: 6px 0 12px; }
 .ol-big { margin: 4px 0 8px; font-family: var(--font-display); font-size: 26px; color: var(--apsrtc-red); }
 .ol-offer {
-  position: absolute; z-index: 5; left: 50%; bottom: calc(16px + var(--safe-b)); transform: translateX(-50%);
+  position: absolute; z-index: 7; left: 50%; bottom: calc(16px + var(--safe-b)); transform: translateX(-50%);
   width: min(460px, calc(100% - 20px)); padding: 10px 14px; color: var(--auto-black);
   background: linear-gradient(170deg, #fbf3e2, #ead9b6); border: 3px solid var(--auto-black); border-radius: 6px;
   box-shadow: 5px 6px 0 var(--irani-teal), 0 12px 30px rgba(0, 0, 0, 0.5); animation: mn-card-in 0.28s cubic-bezier(0.2, 1.3, 0.4, 1);

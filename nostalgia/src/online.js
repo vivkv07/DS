@@ -356,8 +356,10 @@
     offerEl.innerHTML = '<p class="ol-offer-t">A newer save is in the cloud</p><p class="ol-offer-l">' + esc(o.line) + '</p>' +
       '<div class="ol-row"><button type="button" class="mn-btn small" data-ol="take">☁ Use cloud save</button>' +
       '<button type="button" class="mn-btn small alt" data-ol="keep">Keep this one</button></div>';
-    offerEl.hidden = false;
+    offerEl.hidden = panelShown(); // the open panel shows the same offer itself
+    renderPanel();
   }
+  const panelShown = () => !!(panel && N.menus && N.menus.isPanelShown && N.menus.isPanelShown('online'));
   function hideOffer() { if (offerEl) offerEl.hidden = true; }
 
   /* ================================================================ journey */
@@ -641,12 +643,13 @@
     const t = nowMs();
     if (t - g.chatT < 900) return; // a gentle per-sender limit
     g.chatT = t;
+    g.bubbleT = t + (ph.emote ? 2400 : 3200); // the nameplate steps aside while the bubble (which names them) is up
     bubble(g.ent, ph, g.nick);
     N.emit('online:chat', { from: g.nick, id: ph.id, text: ph.text });
   }
   function bubble(target, ph, nick) {
-    try { if (N.dialogue && N.dialogue.bark) N.dialogue.bark(target, ph.text, { secs: ph.emote ? 2.4 : 3.2, name: false, color: '#5fd0ff', blip: true, h: 15 }); } catch (e) { N.err('online.bubble', e); }
-    void nick;
+    const text = target === N.player ? ph.text : nick + ': ' + ph.text;
+    try { if (N.dialogue && N.dialogue.bark) N.dialogue.bark(target, text, { secs: ph.emote ? 2.4 : 3.2, name: false, color: '#5fd0ff', blip: true, h: 15 }); } catch (e) { N.err('online.bubble', e); }
   }
   const lerpA = (a, b, t) => a + U.angleDiff(a, b) * t;
   function poseAt(g, t) {
@@ -670,6 +673,7 @@
     if (Math.hypot(vx, vy) > 450) return Object.assign({}, b);
     return Object.assign({}, b, { x: b.x + vx * ex, y: b.y + vy * ex });
   }
+  const TRACE = { on: false, out: [] }; // tests: per-frame ghost positions
   function updateGhosts(dt) {
     if (!GH.size) return;
     const t = nowMs();
@@ -705,6 +709,7 @@
         e.anim.phase = (e.anim.phase + d * 0.28) % TAU;
       }
       g.lastA = e.angle;
+      if (TRACE.on && TRACE.out.length < 2000) TRACE.out.push({ k: g.key, t, x: e.x, y: e.y });
       // keep it registered across N.systems.reset() / new games / loads
       if (N.entities && N.entities.all.indexOf(e) < 0) { e.alive = true; N.entities.add(e); }
       try { if (N.hud && N.hud.blip && N.hud.blips && !N.hud.blips.has(g.blip)) N.hud.blip(g.blip, e, { color: '#5fd0ff', icon: 'dot', label: g.nick, size: 4 }); } catch (er) { N.err('online.blip', er); }
@@ -733,13 +738,24 @@
     tagHost.classList.toggle('hide', !live);
     if (!live || !Rn || !Rn.canvas || !Rn.W) return;
     const rect = Rn.canvas.getBoundingClientRect();
+    const V3 = N.view3d;
     for (const g of GH.values()) {
       const e = g.ent, el = g.tag;
       if (!el) continue;
-      if (e.hidden || !Rn.inView(e.x, e.y, 30)) { el.style.visibility = 'hidden'; continue; }
-      const h = e.view3d === 'vehicle' && e.T ? (e.T.h || 10) + 10 : 18;
-      const q = Rn.proj(e.x, e.y, h);
-      const X = rect.left + (q.x / Rn.W) * rect.width, Y = rect.top + (q.y / Rn.H) * rect.height;
+      if (e.hidden || !Rn.inView(e.x, e.y, 30) || (g.bubbleT && nowMs() < g.bubbleT)) { el.style.visibility = 'hidden'; continue; }
+      const veh = e.view3d === 'vehicle' && e.T;
+      let X, Y;
+      if (V3 && V3.active && V3.project) {
+        // 3D: project above the head through the 3D camera (heights in 3D units, VS = 1.5)
+        const cls = veh ? e.T.cls : null;
+        const h3 = (V3.elevation ? V3.elevation(e) || 0 : 0) + (!veh ? 9.5 : cls === 'heavy' ? 20 : cls === 'car' || cls === 'auto' ? 13 : 10.5);
+        const q = V3.project(e.x, e.y, h3);
+        if (!q.visible || q.behind || Math.hypot(e.x - N.player.x, e.y - N.player.y) > 320) { el.style.visibility = 'hidden'; continue; }
+        X = q.x; Y = q.y;
+      } else {
+        const q = Rn.proj(e.x, e.y, veh ? (e.T.h || 10) + 10 : 18);
+        X = rect.left + (q.x / Rn.W) * rect.width; Y = rect.top + (q.y / Rn.H) * rect.height;
+      }
       if (!isFinite(X) || !isFinite(Y) || X < -50 || Y < -50 || X > window.innerWidth + 50 || Y > window.innerHeight + 50) { el.style.visibility = 'hidden'; continue; }
       el.style.visibility = '';
       el.style.transform = 'translate(' + Math.round(X) + 'px,' + Math.round(Y) + 'px) translate(-50%, -100%)';
@@ -891,8 +907,8 @@
         });
         e.addEventListener('submit', (ev) => ev.preventDefault());
       },
-      onOpen(o) { ui.from = (o && o.from) || null; ui.msg = ''; renderPanel(); },
-      onClose() { blur(); try { N.menus.refreshTitle(); N.menus.refreshPause(); } catch (e) { /* ignore */ } },
+      onOpen(o) { ui.from = (o && o.from) || null; ui.msg = ''; if (offerEl) offerEl.hidden = true; renderPanel(); },
+      onClose() { blur(); if (offerEl && CL.offer) offerEl.hidden = false; try { N.menus.refreshTitle(); N.menus.refreshPause(); } catch (e) { /* ignore */ } },
       back() { blur(); N.menus.closePanel('online'); },
       onKey(k, e, typing) {
         if (k === 'ok' && typing && e && e.target) {
@@ -1110,6 +1126,9 @@
       ghosts: () => Array.from(GH.values()).map((g) => ({ key: g.key, nick: g.nick, x: g.ent.x, y: g.ent.y, a: g.ent.angle, mode: g.ent.view3d, type: g.ent.type || null, hidden: !!g.ent.hidden, inEntities: N.entities.all.indexOf(g.ent) >= 0, buf: g.buf.length, blip: !!(N.hud && N.hud.blips && N.hud.blips.has(g.blip)) })),
       stats: () => ({ sent: R.sent, recv: R.recv, hz: stateHz(), players: R.players.length }),
       sanitizeState, sanitizeLook, profile: () => JSON.parse(JSON.stringify(P)),
+      /** tests: forget what this phone knows about the cloud (so only the server's guard is left) */
+      forgetCloud() { P.cloud = {}; saveProfile(); },
+      trace(on) { if (on) { TRACE.out = []; TRACE.on = true; return null; } TRACE.on = false; return TRACE.out; },
       reset() { P.code = null; P.nick = null; P.cloud = {}; P.journeyHash = null; P.dismissed = {}; saveProfile(); },
     },
   });

@@ -63,7 +63,7 @@ async function newPhone(browser, name, conf, o) {
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
   page.on('request', (r) => requests.push(r.url()));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '/* stubbed */' }));
-  await page.route(SDK_CDN, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: SDK_JS }));
+  await page.route(SDK_CDN, (r) => (o.cdnDown ? r.abort() : r.fulfill({ status: 200, contentType: 'application/javascript', body: SDK_JS })));
   await page.route(THREE_CDN, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_JS }));
   if (conf !== undefined) await page.addInitScript((c) => { window.NOSTALGIA_ONLINE_CONFIG = c; }, conf);
   await page.goto(o.url + '#debug');
@@ -191,15 +191,14 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       check(gA && gA.inEntities && gA.blip, 'ghost is a world entity with a minimap dot');
       // smooth: sample the ghost while A moves, every frame step must be small (interpolation, no teleport jumps)
       await A.ev(() => N.input.setMove(0, 1));
-      const steps = await B.ev(() => new Promise((res) => {
-        const out = []; let last = null; let n = 0;
-        // speed between frames (u/s): interpolation keeps it near the walking speed, never a jump
-        const f = () => { const g = N.online._debug.ghosts().find((q) => q.nick === 'Ravi'); const t = performance.now(); if (g && last) out.push({ d: Math.hypot(g.x - last.x, g.y - last.y), dt: (t - last.t) / 1000 }); last = g && Object.assign(g, { t }); if (++n < 70) requestAnimationFrame(f); else res(out); };
-        requestAnimationFrame(f);
-      }));
+      await B.ev(() => N.online._debug.trace(true));
+      await sleep(1600);
+      const tr = await B.ev(() => { const k = N.online._debug.ghosts().find((q) => q.nick === 'Ravi').key; return N.online._debug.trace(false).filter((r) => r.k === k); });
+      const steps = [];
+      for (let i = 1; i < tr.length; i++) steps.push({ d: Math.hypot(tr[i].x - tr[i - 1].x, tr[i].y - tr[i - 1].y), dt: (tr[i].t - tr[i - 1].t) / 1000 });
       await A.ev(() => N.input.setMove(0, 0));
-      const moved = steps.reduce((s, v) => s + v.d, 0), maxV = Math.max(...steps.filter((v) => v.dt > 0.004).map((v) => v.d / v.dt));
-      check(moved > 20 && maxV < 110, 'ghost motion is smooth (moved ' + moved.toFixed(0) + ' u in 70 frames, top speed between frames ' + maxV.toFixed(0) + ' u/s; walking is 45)');
+      const moved = steps.reduce((s, v) => s + v.d, 0), maxV = Math.max(...steps.filter((v) => v.dt > 0.008).map((v) => v.d / v.dt));
+      check(moved > 20 && maxV < 110, 'ghost motion is smooth (moved ' + moved.toFixed(0) + ' u in ' + steps.length + ' frames, top speed between frames ' + maxV.toFixed(0) + ' u/s; walking is 45)');
       // no collision with traffic / no effect on the Chappal Meter: the ghost is never a solid
       const ghostFlags = await B.ev(() => { const e = N.entities.all.find((q) => q.kind === 'ghost'); return { solid: e.solid, noCollide: e.noCollide, kind: e.kind, wanted: N.wanted ? N.wanted.level | 0 : 0, pedQ: N.entities.query(e.x, e.y, 5, (q) => q.kind === 'ped' || q.kind === 'vehicle' || q.kind === 'npc').includes(e) }; });
       check(!ghostFlags.solid && ghostFlags.noCollide && !ghostFlags.pedQ && ghostFlags.wanted === 0, 'ghosts are not solid, not people/vehicles to the AI, Chappal Meter ' + ghostFlags.wanted);
@@ -217,6 +216,8 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       const tags = await B.ev(() => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).filter((t) => t.style.visibility !== 'hidden').map((t) => t.textContent));
       check(tags.includes('Ravi') && tags.includes('Imran'), 'B shows nameplates: ' + tags.join(', '));
       await B.shot('room_2d_B');
+      const cg = await C.ev(() => N.online._debug.ghosts().map((g) => g.nick + (g.hidden ? '(hidden)' : '') + '@' + Math.round(g.x) + ',' + Math.round(g.y)));
+      check(cg.length === 2 && cg.every((g) => !/hidden/.test(g)), 'C (phone) sees both others: ' + cg.join(' '));
       await C.shot('room_2d_C_phone');
 
       // quick-chat
@@ -261,19 +262,23 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
           setTimeout(() => res({ rec: N.view3dActors.debug.rec, x: e.x, y: e.y, actors: N.view3d.stats().actors }), 800);
         }));
         check(g3.rec && g3.rec.kind === 'person' && Math.hypot(g3.rec.x - g3.x, g3.rec.y - g3.y) < 3, '3D: Imran is drawn as a person at the ghost position (' + JSON.stringify(g3.rec && { kind: g3.rec.kind, x: +g3.rec.x.toFixed(1), y: +g3.rec.y.toFixed(1) }) + ')');
-        await A.ev(() => N.debug.enterVehicle('rx100'));
-        await sleep(1500);
+        const av = await A.ev(() => { const v = N.debug.enterVehicle('rx100'); return { v: !!v, ride: N.player.vehicle && N.player.vehicle.type }; });
+        await until(B, () => N.entities.all.some((q) => q.kind === 'ghost' && q.view3d === 'vehicle'), null, 10000);
+        const gl = await B.ev(() => N.online._debug.ghosts());
+        if (!av.ride) console.log('  (A vehicle ' + JSON.stringify(av) + ', B ghosts ' + JSON.stringify(gl) + ')');
         const g4 = await B.ev(() => new Promise((res) => {
           const e = N.entities.all.find((q) => q.kind === 'ghost' && q.view3d === 'vehicle');
           N.view3dActors.debug.track(e || null);
-          setTimeout(() => res({ rec: N.view3dActors.debug.rec, type: e && e.type }), 800);
+          setTimeout(() => res({ rec: N.view3dActors.debug.rec, type: e && e.type }), 1500);
         }));
         check(g4.rec && g4.rec.kind === 'vehicle', '3D: Ravi on a ' + g4.type + ' is drawn as a vehicle (' + (g4.rec && g4.rec.model) + ')');
         await B.ev(() => { N.view3dActors.debug.track(null); N.view.setCamera ? 0 : 0; });
-        await B.ev(() => { try { N.view3d.setCamera({ yaw: -Math.PI / 2, pitch: 0.35, snap: true }); } catch (e) { /* ignore */ } });
-        await sleep(800);
+        // look at the ghosts (between Imran and Ravi)
+        await B.ev(() => { const gs = N.online._debug.ghosts(); const p = N.player; const g = gs.find((q) => q.nick === 'Imran') || gs[0]; try { N.view3d.setCamera({ yaw: Math.atan2(g.y - p.y, g.x - p.x), pitch: 0.25, snap: true }); } catch (e) { /* ignore */ } });
+        await until(B, () => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).some((t) => t.textContent === 'Imran' && t.style.visibility !== 'hidden'), null, 6000);
+        await sleep(300);
         const tags3 = await B.ev(() => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).filter((t) => t.style.visibility !== 'hidden').map((t) => t.textContent));
-        ok('3D nameplates visible: ' + tags3.join(', '));
+        check(tags3.includes('Imran'), '3D nameplates visible: ' + tags3.join(', '));
         await B.shot('room_3d_B');
         await B.ev(() => N.view.set('top'));
       }
@@ -323,6 +328,36 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       for (const P of [A, B, lateD, E]) await P.context.close();
     }
 
+    /* ============================================================ built pages (run tools/build.mjs + deploy_site.sh --dry-run first) */
+    if (only('dist')) {
+      console.log('\n== built pages');
+      const single = path.join(ROOT, 'dist/nostalgia.html');
+      if (fs.existsSync(single)) {
+        const F = await newPhone(browser, 'dist-file', undefined, { url: 'file://' + single });
+        phones.push(F);
+        await F.ev(() => N.debug.newGame({ skipIntro: true }));
+        await sleep(800);
+        const st = await F.ev(() => ({ av: N.online.available, mode: N.state.mode }));
+        check(st.av === 'web' && st.mode === 'play', 'dist/nostalgia.html (file://) plays with online off (' + st.av + ')');
+        check(F.requests.every((u) => u.startsWith('file:') || u.startsWith('data:') || /fonts/.test(u)), 'dist/nostalgia.html: no network requests');
+        const fe = await F.errs();
+        check(!fe.length, 'dist/nostalgia.html: zero errors' + (fe.length ? ': ' + fe.slice(0, 3).join(' | ') : ''));
+        await F.context.close();
+      } else console.log('  (skipped dist/nostalgia.html: run tools/build.mjs)');
+      const site = path.join(ROOT, 'dist/site/index.html');
+      if (fs.existsSync(site)) {
+        // the CDN is down: the site falls back to its vendored SDK copy
+        const W = await newPhone(browser, 'site', CONF, { url: S.url + 'dist/site/index.html', cdnDown: true });
+        phones.push(W);
+        const r = await W.ev(() => N.online.goOnline().then(() => ({ ready: N.online.ready, code: N.online.code })));
+        check(r.ready && !!r.code, 'site build: CDN down -> vendor/supabase fallback loads, online works');
+        check(W.requests.some((u) => /dist\/site\/vendor\/supabase\/supabase\.js$/.test(u)), 'site build fetched dist/site/vendor/supabase/supabase.js');
+        const we = (await W.errs()).filter((e) => !/ERR_FAILED|net::|Failed to load resource/.test(e));
+        check(!we.length, 'site build: no errors beyond the blocked CDN' + (we.length ? ': ' + we.slice(0, 3).join(' | ') : ''));
+        await W.context.close();
+      } else console.log('  (skipped dist/site: run tools/deploy_site.sh --dry-run)');
+    }
+
     /* ============================================================ cloud saves */
     if (only('cloud')) {
       console.log('\n== cloud saves + newer-save guard + journey');
@@ -346,10 +381,14 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       await B.page.click('.mn-online [data-act=restore]');
       await B.page.fill('.mn-online input[data-k=code]', aCode.toLowerCase().replace(/-/g, ' '));
       await B.page.click('.mn-online [data-act=usecode]');
-      const offered = await until(B, () => N.online.code && N.online.cloud.state.offer && !document.querySelector('.ol-offer').hidden, null, 10000);
+      const offered = await until(B, () => N.online.code && N.online.cloud.state.offer && document.querySelector('.mn-online [data-act=take]'), null, 10000);
       check(offered, 'B used A\'s code (typed in lower case with spaces): the cloud save is offered');
       check(await B.ev(() => N.online.nick) === 'Ravi', 'nickname came along with the code');
       await B.shot('cloud_offer_B');
+      // closing the panel leaves the offer card on the title; "Use cloud save" there
+      await B.page.keyboard.press('Escape');
+      check(await until(B, () => !document.querySelector('.ol-offer').hidden, null, 3000), 'the offer stays on screen after the panel closes');
+      await B.shot('cloud_offer_title_B');
       await B.page.click('.ol-offer [data-ol=take]');
       const got = await B.ev(() => ({ has: N.save.has(), t: N.save.info() && N.save.info().t, money: N.save.info() && N.save.info().money }));
       check(got.has && got.t === aT && got.money === 4242, 'B has A\'s save (t ' + got.t + ', ₹' + Math.floor(got.money / 100) + ')');
@@ -364,7 +403,8 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       await until(B, () => { const c = N.online.cloud.state.cloud.main; return c && c.t === N.save.slotBlob('main').t; }, null, 8000);
       check(M.db.saves.get(key).t === bT && bT > aT, 'B\'s newer save is in the cloud');
       // A (older) tries to push its old save: refused by the server, the cloud keeps B's
-      const push = await A.ev(() => N.online.cloud.push('main', false));
+      check((await A.ev(() => N.online.cloud.push('main', false))).ok && M.db.saves.get(key).t === bT, 'A does not push: it knows nothing newer was saved here');
+      const push = await A.ev(() => { N.online._debug.forgetCloud(); return N.online.cloud.push('main', false); });
       check(!push.ok && push.why === 'newer_save' && M.db.saves.get(key).t === bT, 'A\'s older save does not overwrite the cloud (server: ' + push.why + ')');
       // and the other way: the cloud never overwrites a newer local save
       const guard = await A.ev(([bt]) => {

@@ -276,7 +276,7 @@
     }
     return true;
   }
-  function occlusion(site) {
+  function occlusion(site, dt) {
     if (!site.occ || !site.occ.length) return;
     const cam = H.camera, p = N.player; if (!cam || !p) return;
     _seg.ax = cam.position.x; _seg.ay = cam.position.y; _seg.az = cam.position.z;
@@ -285,7 +285,7 @@
     for (const o of site.occ) {
       const hit = !fps && segHitsBox(o.bb, site.grp.position.x, site.grp.position.z);
       if (hit) { o.m.visible = false; o.t = 0.6; ST.hidden++; }
-      else if (!o.m.visible) { o.t = (o.t || 0) - 0.016; if (o.t <= 0) o.m.visible = true; }
+      else if (!o.m.visible) { o.t = (o.t || 0) - Math.min(dt || 0.016, 0.1); if (o.t <= 0) o.m.visible = true; }
     }
   }
 
@@ -381,11 +381,11 @@
     const fx = new FX(), sb = new GB(), misc = new GB(), bulbs = new GB(), parts = [];
     // stall rows (one mesh per row: each hides on its own when it is between the camera and the player)
     const rows = new Map();
-    for (const s of L.stalls) { const k = s.nx + ':' + s.ny; if (!rows.has(k)) rows.set(k, new GB()); buildStall(rows.get(k), sb, fx, s, false); yield; }
-    for (const b of rows.values()) { b.occ = true; parts.push(b); }
-    const food = new GB(); food.occ = true;
-    for (const s of L.counters) { buildStall(food, sb, fx, s, true); yield; }
-    parts.push(food);
+    // (each row's signboards are their own mesh too, so they hide with it)
+    for (const s of L.stalls) { const k = s.nx + ':' + s.ny; if (!rows.has(k)) rows.set(k, { b: new GB(), sb: new GB() }); const r = rows.get(k); buildStall(r.b, r.sb, fx, s, false); yield; }
+    const food = { b: new GB(), sb: new GB() };
+    for (const s of L.counters) { buildStall(food.b, food.sb, fx, s, true); yield; }
+    for (const r of Array.from(rows.values()).concat([food])) { r.b.occ = true; parts.push(r.b); const m = r.sb.mesh(M.sign); if (m) { m.userData.occ = true; parts.push(m); } }
     ST.prof.stalls = +(now() - t0).toFixed(1);
     // the food court: tables, plastic chairs, poles with the strings, the glow
     for (const t of L.tables) {
@@ -498,12 +498,11 @@
         for (let k = 0; k < 6; k++) b.col(k % 2 ? '#f8f0e0' : C, 0.3).quad([-2.8 + k * 0.94, 5.0, -1.5], [-2.8 + (k + 1) * 0.94, 5.0, -1.5], [-2.8 + (k + 1) * 0.94, 5.0, 1.5], [-2.8 + k * 0.94, 5.0, 1.5]);
         const SK = ['#8a5a32', '#a0683f', '#c8906a'], SH = ['#e83a5a', '#f2c230', '#40a0e8', '#ffffff', '#30b050'];
         for (const [u, v, k] of [[-1.2, -0.5, 0], [-1.2, 0.5, 1], [1.0, -0.5, 2], [1.0, 0.5, 3]]) { if ((i + k) % 5 === 4) continue; b.col(SH[(i + k) % 5], 0.15).blob(u, 2.4, v, 0.45, 0.6, 0.4, 5).col(SK[(i + k) % 3], 0.1).blob(u, 3.3, v, 0.32, 0.36, 0.32, 5).col('#1a1412', 0).blob(u - 0.05, 3.5, v, 0.33, 0.2, 0.33, 5); }
-        fx.glow(0, 4.6, 0, '#ffe8b0', 4, 0.6);
       }
       for (const u of [-1.8, 1.8]) for (const v of [-1.25, 1.25]) b.col('#2a2a2a', 0).rod(u, 0.5, v - 0.05 * Math.sign(v), u, 0.5, v + 0.25 * Math.sign(v), 0.45);
       const g = new THREE.Group(); g.name = 'fest3d:train' + i;
       const m = b.mesh(); m.matrixAutoUpdate = false; g.add(m);
-      const pts = new THREE.Points(glowGeo(fx), M.glow); pts.renderOrder = 9; g.add(pts);
+      if (fx.gp.length) { const pts = new THREE.Points(glowGeo(fx), M.glow); pts.renderOrder = 9; g.add(pts); }
       out.push(g);
     }
     return out;
@@ -621,14 +620,14 @@
     const cols = ['#ffe070', '#ff4848', '#50ff80', '#50a8ff'];
     const gx = ch.gate.x, gz = ch.gate.y, ox = ch.ox, oz = ch.oy, tx = ch.tx, tz = ch.ty;
     // the gate arch: two posts, a bulb arch, the banner and a big star on top
-    const pw = 7.5;
-    for (const s of [-1, 1]) b.col('#f4f0e6', 0.2).box(gx + tx * s * pw - 0.5, 0, gz + tz * s * pw - 0.5, gx + tx * s * pw + 0.5, 12.5, gz + tz * s * pw + 0.5);
+    const pw = 7.5, arch = new GB(); arch.occ = true;
+    for (const s of [-1, 1]) arch.col('#f4f0e6', 0.2).box(gx + tx * s * pw - 0.5, 0, gz + tz * s * pw - 0.5, gx + tx * s * pw + 0.5, 12.5, gz + tz * s * pw + 0.5);
     for (let i = 0; i <= 16; i++) {
       const t = i / 16, u = (t - 0.5) * 2 * pw, h = 12.5 + Math.sin(t * PI) * 3.2, x = gx + tx * u, z = gz + tz * u;
       const c = cols[i % 4]; bulbs.col(c, 2.4).bead(x + ox * 0.5, h, z + oz * 0.5, 0.32); fx.glow(x + ox * 0.6, h, z + oz * 0.6, c, 3);
       if (i) fx.wires.push(gx + tx * ((i - 1) / 16 - 0.5) * 2 * pw, 12.5 + Math.sin(((i - 1) / 16) * PI) * 3.2, gz + tz * ((i - 1) / 16 - 0.5) * 2 * pw, x, h, z);
     }
-    b.col('#a8141a', 0.2).box(gx - Math.abs(tx) * pw + ox * 0.2 - Math.abs(ox) * 0.15, 10.0, gz - Math.abs(tz) * pw + oz * 0.2 - Math.abs(oz) * 0.15, gx + Math.abs(tx) * pw + ox * 0.2 + Math.abs(ox) * 0.15, 12.1, gz + Math.abs(tz) * pw + oz * 0.2 + Math.abs(oz) * 0.15);
+    arch.col('#a8141a', 0.2).box(gx - Math.abs(tx) * pw + ox * 0.2 - Math.abs(ox) * 0.15, 10.0, gz - Math.abs(tz) * pw + oz * 0.2 - Math.abs(oz) * 0.15, gx + Math.abs(tx) * pw + ox * 0.2 + Math.abs(ox) * 0.15, 12.1, gz + Math.abs(tz) * pw + oz * 0.2 + Math.abs(oz) * 0.15);
     sign(sb, 'HAPPY CHRISTMAS', gx + ox * 0.45, 11.05, gz + oz * 0.45, pw * 2 - 1.4, 1.95, ox, oz);
     sign(sb, 'HAPPY CHRISTMAS', gx - ox * 0.05, 11.05, gz - oz * 0.05, pw * 2 - 1.4, 1.95, -ox, -oz);
     b.col('#ffe060', 2.6).star(gx + ox * 0.5, 18.4, gz + oz * 0.5, 2.1, 0.5, Math.atan2(oz, ox));
@@ -662,7 +661,8 @@
     fx.pool(gx - ox * 10, gz - oz * 10, 26, '#ffe8c0', 0.5);
     fx.pool(ch.crib.x, ch.crib.y, 14, '#ffd890', 0.6);
     fx.pool(ch.tree.x, ch.tree.y, 12, '#ffd8e8', 0.45);
-    parts.push(b, bulbs, crib, tree, sb.mesh(M.sign));
+    const sm = sb.mesh(M.sign); if (sm) sm.userData.occ = true;
+    parts.push(b, arch, bulbs, crib, tree, sm);
     finishSite(site, parts, fx, 0, 0);
     site.ch = ch; site.fl = fl;
     site.update = updateChurch;
@@ -711,13 +711,14 @@
   const XS = { cx: 1e9, cy: 1e9, site: null };
   function updateHouseStars(night) {
     const p = N.player, L = S().layout;
+    if (!p || !N.world || !N.world.built || !L) return;
     if (XS.site && Math.hypot(p.x - XS.cx, p.y - XS.cy) < 160) return;
     if (XS.site) { disposeSite('xmas:houses'); XS.site = null; }
     XS.cx = p.x; XS.cy = p.y;
     const b = new GB(), fx = new FX(), R2 = 480, tmp = {};
     let n = 0;
     N.world.queryStructures(p.x - R2, p.y - R2, p.x + R2, p.y + R2, (s) => {
-      if (n >= 110 || !L.xmasHouse(s)) return;
+      if (n >= 80 || !L.xmasHouse(s)) return;
       L.xmasStarAt(s, tmp);
       const ang = tmp.f === 'W' ? PI : tmp.f === 'E' ? 0 : tmp.f === 'N' ? -PI / 2 : PI / 2;
       const fxv = Math.cos(ang), fzv = Math.sin(ang);
@@ -834,19 +835,26 @@
     const b = new GB(), fx = new FX();
     for (const c of list) {
       // a pole on the kerb with a lit crescent-and-star cut-out, seen by people walking along Pathergatti
-      const h = 26, R0 = 2.6;
+      const h = 26, R0 = 2.6, tx = -Math.sin(c.a || 0), tz = Math.cos(c.a || 0); // the cut-out faces along the road
       b.col('#5a5a62', 0).cyl(c.x, 0, c.y, 0.3, 0.24, h - 1.5, 5);
       for (let k = 0; k < 16; k++) { // the crescent (a ring band thinning at the horns), facing north and south
         const a0 = -PI * 0.78 + (k / 16) * PI * 1.56, a1 = -PI * 0.78 + ((k + 1) / 16) * PI * 1.56;
-        const o = (a, r, cx) => [c.x + Math.cos(a + PI) * r + cx, h + Math.sin(a + PI) * r, c.y];
+        const o = (a, r, cx) => [c.x + tx * (Math.cos(a + PI) * r + cx), h + Math.sin(a + PI) * r, c.y + tz * (Math.cos(a + PI) * r + cx)];
         const w0 = 0.45 + 0.55 * Math.sin((k / 16) * PI), w1 = 0.45 + 0.55 * Math.sin(((k + 1) / 16) * PI);
         b.col('#9affb8', 2.2).quad(o(a0, R0, 0), o(a1, R0, 0), o(a1, R0 - w1, 0.25), o(a0, R0 - w0, 0.25));
       }
-      b.col('#ffffff', 2.4).star(c.x + 1.2, h + 0.2, c.y, 0.75, 0.25, PI / 2);
+      b.col('#ffffff', 2.4).star(c.x + tx * 1.2, h + 0.2, c.y + tz * 1.2, 0.75, 0.25, c.a || 0);
       b.col('#5a5a62', 0).rod(c.x, h - 1.6, c.y, c.x, h - R0 - 0.2, c.y, 0.08);
-      fx.glow(c.x, h, c.y, '#80ffa0', 10, 0.8).glow(c.x + 1.2, h + 0.2, c.y, '#ffffff', 4, 0.8);
+      fx.glow(c.x, h, c.y, '#80ffa0', 10, 0.8).glow(c.x + tx * 1.2, h + 0.2, c.y + tz * 1.2, '#ffffff', 4, 0.8);
     }
-    finishSite(site, [b], fx, 0, 0);
+    // the bulb strings across Pathergatti and the Laad Bazaar lane (the street strings: green and white)
+    const ram = S()._debug.ram, bulbs = new GB();
+    for (const st of (ram && ram.strings) || []) {
+      if (!st.own) continue;
+      const n = Math.max(4, Math.round(Math.hypot(st.x1 - st.x0, st.y1 - st.y0) / 2.6));
+      fx.string(bulbs, st.x0, st.h0 * 1.5, st.y0, st.x1, st.h1 * 1.5, st.y1, n, 2.2, ['#60ff90', '#ffffff', '#60ff90', '#ffe080'], 2, 3);
+    }
+    finishSite(site, [b, bulbs], fx, 0, 0);
     site.update = null;
     return true;
   }
@@ -871,6 +879,20 @@
     }
     void dt;
     return out;
+  }
+  let urgentT = 0;
+  function stepBuilds(ms) {
+    const tb = now();
+    for (const site of SITES.values()) {
+      if (!site.gen) continue;
+      try {
+        while (now() - tb < ms) {
+          const r = site.gen.next();
+          if (r.done) { site.gen = null; if (r.value === false || !site.grp) site.dead = true; else { site.grp.visible = true; ST.built++; ST.buildMs = +(now() - site.t0).toFixed(1); ST.tris = 0; site.grp.traverse((o) => { if (o.isMesh && o.geometry.attributes.position) ST.tris += o.geometry.attributes.position.count / 3; }); } break; }
+        }
+      } catch (e) { N.err('festivals3d.build:' + site.key, e); site.gen = null; site.dead = true; }
+      if (now() - tb >= ms) break;
+    }
   }
   let checkT = 0;
   const LAYER = {
@@ -897,18 +919,10 @@
           SITES.set(k, site);
         }
       }
-      // sites being built: a few ms of generator steps per frame (no hitch when a festival comes into range)
-      const tb = now();
-      for (const site of SITES.values()) {
-        if (!site.gen) continue;
-        try {
-          while (now() - tb < 4) {
-            const r = site.gen.next();
-            if (r.done) { site.gen = null; if (r.value === false || !site.grp) site.dead = true; else { site.grp.visible = true; ST.built++; ST.buildMs = +(now() - site.t0).toFixed(1); ST.tris = 0; site.grp.traverse((o) => { if (o.isMesh && o.geometry.attributes.position) ST.tris += o.geometry.attributes.position.count / 3; }); } break; }
-          }
-        } catch (e) { N.err('festivals3d.build:' + site.key, e); site.gen = null; site.dead = true; }
-        if (now() - tb >= 4) break;
-      }
+      // sites being built: a few ms of generator steps per frame (no hitch when a festival comes into range;
+      // more right after a teleport, when the core is also catching up)
+      stepBuilds(urgentT > 0 ? 24 : 4);
+      urgentT -= dt;
       // house stars while it is Christmas
       if (on('christmas')) { try { updateHouseStars(night); } catch (e) { N.err('festivals3d.stars', e); } }
       else if (XS.site) { disposeSite('xmas:houses'); XS.site = null; }
@@ -917,15 +931,18 @@
         if (!s.grp || s.gen) continue;
         if (s.glows) s.glows.visible = night > 0.12;
         if (s.update) { try { s.update(s, dt, night); } catch (e) { N.err('festivals3d.update:' + s.key, e); s.update = null; } }
-        occlusion(s);
+        occlusion(s, dt);
       }
     },
     dispose() { for (const k of Array.from(SITES.keys())) { const s = SITES.get(k); if (s && s.dispose) s.dispose(); disposeSite(k); } XS.site = null; if (ROOT && ROOT.parent) ROOT.parent.remove(ROOT); ROOT = null; },
   };
   V3.registerLayer('festivals3d', LAYER);
   N.on('world:built', () => { for (const k of Array.from(SITES.keys())) { const s = SITES.get(k); if (s && s.dispose) s.dispose(); disposeSite(k); } XS.site = null; });
+  N.on('player:teleport', () => { urgentT = 2; checkT = 0; });
   N.festivals3d = {
     sites: () => Array.from(SITES.keys()),
+    /** tests / captures: decide the sites now and finish building them (ms cap) */
+    settle(ms) { if (!ROOT) return false; checkT = 0; LAYER.update(0, H); const t0 = now(); while (now() - t0 < (ms || 3000)) { let busy = false; for (const s of SITES.values()) if (s.gen) busy = true; if (!busy) return true; stepBuilds(50); } return false; },
     stats: () => Object.assign({}, ST, { sites: SITES.size }),
     rebuild() { for (const k of Array.from(SITES.keys())) { const s = SITES.get(k); if (s && s.dispose) s.dispose(); disposeSite(k); } XS.site = null; checkT = 0; },
   };

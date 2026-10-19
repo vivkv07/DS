@@ -42,7 +42,7 @@ else
 fi
 find "$SITE" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
 
-# dist/web.html plus the files it loads by relative path when 3D starts (the core model pack, the lazy
+# dist/web.html plus the files it loads by relative path when 3D (or Online) starts (the core model pack, the lazy
 # per-landmark GLBs in lazy3d/ next to index.html, GLTF loader, and the vendored three.js fallback;
 # three.js itself comes from jsDelivr first).
 mkdir -p "$SITE/src" "$SITE/vendor/three"
@@ -56,6 +56,9 @@ else
 fi
 cp "$HERE/vendor/three/three.min.js" "$HERE/vendor/three/GLTFLoader.classic.js" "$SITE/vendor/three/"
 [ -f "$HERE/vendor/three/LICENSE" ] && cp "$HERE/vendor/three/LICENSE" "$SITE/vendor/three/LICENSE"
+# online play (src/online.js): the vendored supabase-js fallback (jsDelivr is tried first)
+mkdir -p "$SITE/vendor/supabase"
+cp "$HERE/vendor/supabase/supabase.js" "$HERE/vendor/supabase/LICENSE" "$SITE/vendor/supabase/"
 touch "$SITE/.nojekyll"
 printf '{"build":"%s","source":"%s"}\n' "$STAMP" "$SRC_REV" > "$SITE/build.json"
 
@@ -79,6 +82,7 @@ This is a play-testing build: pocket money is unlimited for now.
 - Map geography: GHMC ward boundaries from DataMeet (CC BY 4.0), derived from OpenStreetMap
   (© OpenStreetMap contributors, ODbL); Hyderabad open GIS layers.
 - 3D engine: three.js r149 (MIT, see vendor/three/LICENSE).
+- Online play: supabase-js 2.45.4 (MIT, see vendor/supabase/LICENSE).
 - 3D models made in Blender for this game.
 - Fonts from Google Fonts (SIL Open Font License).
 

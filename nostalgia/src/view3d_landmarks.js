@@ -2775,6 +2775,21 @@
     ki.c(G2).lathe(0, 49, -2, [[6.4, 0], [5.6, 4], [3.6, 9], [0.6, 14], [0, 16]], 14, null, 'ganesh:crown');
     ki.c('#2a2a2a').sphere(-2.6, 44.6, 4.6, 0.8, 0.8, 0.6, 6, 4).sphere(2.6, 44.6, 4.6, 0.8, 0.8, 0.6, 6, 4);
     ki.fx(0, 0, 0);
+    // the festival dressing (shown with the idol): a striped saffron-and-red backdrop with a golden halo, side
+    // cloths, a stage edged with marigolds, a garland on the idol, and bulb outlines on every post and beam
+    const kd = md.part('kit2');
+    const nb = 12;
+    for (let i = 0; i < nb; i++) { const u0 = -hl + 1 + (i / nb) * (D.L - 2), u1 = -hl + 1 + ((i + 1) / nb) * (D.L - 2); kd.c(i % 2 ? '#f2a020' : '#d8302a').fx(1, 40, 70).q(u0, 0, -hv + 1.3, u1, 0, -hv + 1.3, u1, 63, -hv + 1.3, u0, 63, -hv + 1.3); }
+    for (const s of [-1, 1]) for (let i = 0; i < 6; i++) { const v0 = -hv + 1 + (i / 6) * (D.D - 8), v1 = -hv + 1 + ((i + 1) / 6) * (D.D - 8); kd.c(i % 2 ? '#f2c230' : '#2a8a4a').fx(1, 40, 60).q(s * (hl - 1.2), 30, v0, s * (hl - 1.2), 30, v1, s * (hl - 1.2), 63, v1, s * (hl - 1.2), 63, v0); }
+    ki.c('#f2c230').fx(1, 120, 90).vdisc(0, 40, -hv + 1.6, 17, 0.4, 28).c('#e86a1a').fx(1, 90, 60).vdisc(0, 40, -hv + 1.9, 13, 0.3, 24);
+    ki.c('#c81a2a').fx(0, 0, 60).box(-hl + 2, 0, -hv + 2, hl - 2, 3, hv - 5).c('#f2c230').box(-hl + 1.6, 3, -hv + 1.6, hl - 1.6, 3.4, hv - 4.6);
+    for (let i = 0; i <= 24; i++) { const u = -hl + 2 + (i / 24) * (D.L - 4); ki.c(i % 2 ? '#ff9a1a' : '#f2c230').fx(1, 80, 40).sphere(u, 3.6, hv - 4.8, 0.7, 0.7, 0.7, 6, 4); }
+    for (let i = 0; i <= 20; i++) { const a = PI * (0.12 + 0.76 * (i / 20)); ki.c(i % 3 ? '#ff9a1a' : '#f4f0e0').fx(1, 70, 60).sphere(Math.cos(a) * 9.5, 33 - Math.sin(a) * 9, 6.6, 0.9, 0.9, 0.9, 6, 4); }
+    ki.fx(0, 0, 0);
+    for (const u of [-hl + 1, hl - 1]) for (const v of [-hv + 1, hv - 1]) for (let y = 4; y <= 62; y += 4) md.glow(u, y, v, (y / 4) % 2 ? '#ffe070' : '#ff70c0');
+    for (const y of [30, 64]) for (let i = 0; i <= 14; i++) { const u = -hl + 1 + (i / 14) * (D.L - 2); md.glow(u, y - 0.6, hv - 0.4, ['#ffe070', '#ff5050', '#60ff90', '#60b0ff'][i % 4]); }
+    for (let i = 0; i <= 24; i++) { const t = i / 24, u = -hl + 2 + t * (D.L - 4); md.glow(u, 30 + Math.sin(t * PI) * 26, hv - 0.6, i % 2 ? '#ffe070' : '#ff8040', 'gM'); }
+    md.light(0, 14, hv + 12, '#ffe0b0', 1.3, 110);
     md.sub = null;
     for (let i = 0; i < 20; i++) md.glow(-hl + (i / 19) * D.L, 65, hv, i % 2 ? '#ffe070' : '#ff7040');
     md.ticks.push((dt, h, obj, u) => {

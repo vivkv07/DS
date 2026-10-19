@@ -16,6 +16,8 @@
  * --lazy-only), which dist/web.html fetches next to itself (tools/deploy_site.sh copies the folder next to
  * index.html) and dist/artifact.files.json publishes as lazy3d/<id>.glb. dist/nostalgia.html carries only the core
  * pack: opened from file:// its lazy landmarks stay procedural.
+ * Online play (src/online.js): the pages carry src/online_config.js + src/online.js like any script; the SDK
+ * loads lazily (jsDelivr, then vendor/supabase/supabase.js). From file:// (dist/nostalgia.html) online stays off.
  * Usage: node nostalgia/tools/build.mjs
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
@@ -86,7 +88,7 @@ writeFileSync(join(DIST, 'artifact.html'), fragment);
 writeFileSync(join(DIST, 'web.html'), web);
 // supporting files the artifact loads lazily (published next to the page at the same paths)
 const artifactFiles = {};
-for (const f of ['src/assets3d_pack.js', 'vendor/three/GLTFLoader.classic.js', 'vendor/three/three.min.js']) if (existsSync(join(ROOT, f))) artifactFiles[f] = 'nostalgia/' + f;
+for (const f of ['src/assets3d_pack.js', 'vendor/three/GLTFLoader.classic.js', 'vendor/three/three.min.js', 'vendor/supabase/supabase.js']) if (existsSync(join(ROOT, f))) artifactFiles[f] = 'nostalgia/' + f;
 const LAZY3D = join(DIST, 'lazy3d');
 const lazyGlbs = existsSync(LAZY3D) ? readdirSync(LAZY3D).filter((f) => f.endsWith('.glb')).sort() : [];
 for (const f of lazyGlbs) artifactFiles['lazy3d/' + f] = 'nostalgia/dist/lazy3d/' + f;

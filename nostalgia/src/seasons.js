@@ -20,12 +20,16 @@
  *                                       14:00-18:00, deterministic per date) and winter-morning mist.
  *   overlays {name: bool}               switch one overlay off (tests / perf); quality 0..1 (crowd caps)
  *   scene(cx, cy, r) -> {kites, people, props}  what the overlays show there, as data (3D view parity)
+ *   layout.{numaish(), numaishState(), christmas(), bonalu(), xmasHouse(s), xmasStarAt(s), trainAt, along}
+ *                                       the festival layouts as data, shared with the 3D decor (src/festivals3d.js)
  *   Every name is mirrored into N.flags[name] (true/false); N.flags.year === 2026 forces year2026.
  *   Events: 'season:change' {name, on, prev, source}, 'weather' {rain, mist}.
  *   Draws flag-driven world overlays (all culled to the view, sprite-cached, capped):
  *     sankranti   kites over every colony (strings to rooftop kids), cut kites drifting, Patang Bazaar
  *                 crowd, muggulu at gates; Bhogi (13 Jan, 04:30-08:30) bonfires, smoke and ash
- *     numaish     bulb strings over the grounds, searchlights, crowds, loudspeaker announcements (toasts)
+ *     numaish     the fair on the Exhibition Grounds (layout(): rows of stalls - bangles, toys, Delhi papad,
+ *                 Kashmiri shawls... - the food court, the toy train, a carousel, the loudspeaker mast with bulb
+ *                 strings, the bulb canopy over the main lane), searchlights, crowds, loudspeaker announcements (toasts)
  *     summer      midday heat wash, chalivendram water sheds by bus stops, mango heaps at markets
  *     bonalu      processions to ujjaini_mahankali_temple, lal_darwaza_temple (+ smaller ones): women
  *                 with bonam pots, Pothuraju dancers, dappu drums, neem festoons, a thottelu tower
@@ -35,7 +39,8 @@
  *     ramzan      green and white lights round Charminar and the bazaars, crescent cut-outs, street
  *                 haleem bhattis, the night bazaar after 20:00
  *     chand_raat  the huge joyful crowd at Charminar: bangles, mehendi, balloons, sparklers, the moon
- *     christmas   paper stars on Secunderabad houses, cribs at church gates, carol singers at night
+ *     christmas   paper stars on houses (Secunderabad, Marredpally, Abids...), every church lit up with its crib and
+ *                 tree just inside the gate (beside the path, never on it), carol singers at the gates in the evening
  *     prasads_open  (places_art.js swaps the fence for the cinema)
  *     year2026    the epilogue at Charminar only: wooden barricades ("closed to traffic this evening")
  *     monsoon     rain streaks and splashes while it rains; winter mist at dawn (Dec-Jan)
@@ -1154,10 +1159,27 @@
             const nx = -Math.sin(ff.a) * 18, ny = Math.cos(ff.a) * 18;
             wire(ff.x - nx, ff.y - ny, 13, ff.x + nx, ff.y + ny, 13, 3, '#5a4a30');
             for (let i = 0; i <= 12; i++) { const t = i / 12, h = 13 - Math.sin(t * Math.PI) * 3, k = kh(h - 1); ctx.fillStyle = i % 3 ? '#3f8a2a' : '#5aa83a'; ctx.beginPath(); ctx.ellipse(sxp(ff.x - nx + 2 * nx * t, k), syp(ff.y - ny + 2 * ny * t, k), 1.4 * k, 0.8 * k, ff.a, 0, TAU); ctx.fill(); }
+            // marigold balls on the toran and a paper bunting a little lower
+            for (let i = 0; i <= 12; i += 2) { const t = i / 12, h = 12.4 - Math.sin(t * Math.PI) * 3, k = kh(h); ctx.fillStyle = i % 4 ? '#ff9a1a' : '#f2c230'; ctx.beginPath(); ctx.arc(sxp(ff.x - nx + 2 * nx * t, k), syp(ff.y - ny + 2 * ny * t, k), 0.9 * k, 0, TAU); ctx.fill(); }
+            const FL = ['#e8202a', '#f2c230', '#30a040', '#e85aa8', '#ff8a1a', '#2a5cd8'];
+            for (let i = 0; i < 14; i++) { const t = (i + 0.5) / 14, h = 10 - Math.sin(t * Math.PI) * 2.4, k = kh(h), X = sxp(ff.x - nx + 2 * nx * t, k), Y = syp(ff.y - ny + 2 * ny * t, k); ctx.fillStyle = FL[i % FL.length]; ctx.beginPath(); ctx.moveTo(X - 1.2 * k, Y - 0.6 * k); ctx.lineTo(X + 1.2 * k, Y - 0.6 * k); ctx.lineTo(X, Y + 1.4 * k); ctx.closePath(); ctx.fill(); }
             if (NIGHT > 0.2) bulbString(ff.x - nx, ff.y - ny, 14, ff.x + nx, ff.y + ny, 14, 8, ['#ffd040', '#ff6040'], 3, TIME * 3);
             flushBulbs();
           });
         }
+        // the decorated temple gate (turmeric posts with kumkum bands, a red beam hung with marigolds and neem)
+        // and the offered bonam pots beside it (the same spots as the 3D decor, src/festivals3d.js)
+        const g1 = pr.path[pr.path.length - 1], g2 = pr.path[Math.max(0, pr.path.length - 2)];
+        if (inView(g1[0], g1[1], 60)) R.queue('structures', R.distKey(g1[0], g1[1]), () => {
+          frame();
+          const a = Math.atan2(g1[1] - g2[1], g1[0] - g2[0]), nx = -Math.sin(a), ny = Math.cos(a), w = 9, gx = g1[0] - Math.cos(a) * 6, gy = g1[1] - Math.sin(a) * 6;
+          for (const sd of [-1, 1]) { const x = gx + nx * sd * w, y = gy + ny * sd * w; N.draw.box(x - 0.8, y - 0.8, 1.6, 1.6, 0, 10, { wall: '#f2c230', roof: '#c8202a' }); }
+          const k = kh(10.5);
+          ctx.strokeStyle = '#e8402a'; ctx.lineWidth = Math.max(1, 1.2 * k); ctx.beginPath(); ctx.moveTo(sxp(gx - nx * w, k), syp(gy - ny * w, k)); ctx.lineTo(sxp(gx + nx * w, k), syp(gy + ny * w, k)); ctx.stroke();
+          for (let i = 0; i <= 12; i++) { const t = i / 12, kk = kh(9.6); ctx.fillStyle = i % 2 ? '#ff9a1a' : '#3f8a2a'; ctx.beginPath(); ctx.arc(sxp(gx + nx * (t - 0.5) * 2 * w, kk), syp(gy + ny * (t - 0.5) * 2 * w, kk), 0.9 * kk, 0, TAU); ctx.fill(); }
+          for (let j = 0; j < 7; j++) { const u = w + 3 + j * 2.2, x = gx + nx * u + Math.cos(a) * 2, y = gy + ny * u + Math.sin(a) * 2, kp = kh(2.4); ctx.fillStyle = '#c89a2a'; ctx.beginPath(); ctx.arc(sxp(x, kp), syp(y, kp), 1.1 * kp, 0, TAU); ctx.fill(); ctx.fillStyle = '#3f8a2a'; ctx.beginPath(); ctx.arc(sxp(x, kh(3.2)), syp(y, kh(3.2)), 0.6 * kh(3.2), 0, TAU); ctx.fill(); if (NIGHT > 0.2) glowAt(x, y, 3.2, '#ffb040'); }
+          reset();
+        });
         R.queue('actors', g[1], () => {
           frame();
           ctx.imageSmoothingEnabled = true;
@@ -1271,7 +1293,9 @@
     }
     RESP.procession('procession_ganesh_tank_bund', imm.path, tb.w / 2 + 2, { name: 'Ganesh immersion procession, Tank Bund' });
     // initial rigs spread along the bund
-    for (let i = 0; i < 9; i++) spawnRig(i * (imm.L / 9.5), i);
+    // the bund is already full when the day starts: a rig every ~70 u (new ones join at the far end every few seconds)
+    const nr = Math.max(9, Math.min(24, Math.floor(imm.L / 70)));
+    for (let i = 0; i < nr; i++) spawnRig(i * (imm.L / (nr + 0.5)), i);
   }
   function spawnRig(d, i) {
     const kind = i === 4 ? 'giant' : i % 3 === 1 ? 'tractor' : 'lorry';
@@ -1435,7 +1459,15 @@
   });
 
   /* ---------------------------------------------------------------- RAMZAN + CHAND RAAT */
-  const ram = { strings: null, stalls: null, bhattis: null, crescents: null };
+  const ram = { strings: null, stalls: null, bhattis: null, crescents: null, laad: null };
+  /** walk the named roads (joined end to end) from d0 to d1 u, calling fn(x, y, angle, width, i) every `step` u */
+  function roadSteps(ids, d0, d1, step, fn) {
+    const D = N.WORLD_DATA, pts = []; let w = 24;
+    for (const id of ids) { const r = D.roads.find((q) => q.id === id); if (!r) continue; w = r.w || w; for (const q of r.pts) { const l = pts[pts.length - 1]; if (!l || l[0] !== q[0] || l[1] !== q[1]) pts.push([q[0], q[1]]); } }
+    if (pts.length < 2) return;
+    const L = polyLen(pts), o = { x: 0, y: 0, a: 0 };
+    for (let d = d0, i = 0; d <= Math.min(d1, L - 4); d += step, i++) { along(pts, d, o); fn(o.x, o.y, o.a, w, i); }
+  }
   function buildRamzan() {
     const ch = N.WORLD_DATA && N.WORLD_DATA.landmarks.find((l) => l.id === 'charminar');
     if (!ch) return;
@@ -1444,13 +1476,19 @@
     const mins = [[ch.x - 30, ch.y - 30], [ch.x + 30, ch.y - 30], [ch.x + 30, ch.y + 30], [ch.x - 30, ch.y + 30]];
     const ends = [[ch.x - 130, ch.y - 120], [ch.x + 130, ch.y - 120], [ch.x + 130, ch.y + 125], [ch.x - 130, ch.y + 125], [ch.x, ch.y - 150], [ch.x + 150, ch.y], [ch.x, ch.y + 150], [ch.x - 150, ch.y]];
     ends.forEach((e, i) => { const m = mins[i < 4 ? i : (i - 4 + (i === 4 ? 0 : i === 5 ? 1 : i === 6 ? 2 : 3)) % 4]; ram.strings.push({ x0: m[0], y0: m[1], h0: 80, x1: e[0], y1: e[1], h1: 14 }); });
-    // across the Pathergatti road (north of the monument) and the Laad Bazaar lane (west); relative to Charminar
-    // (these were Map v1 coordinates, which put them far out west of the v2 city)
-    for (let y = ch.y - 400; y < ch.y - 130; y += 30) ram.strings.push({ x0: ch.x - 22, y0: y, h0: 16, x1: ch.x + 22, y1: y + 4, h1: 16 });
-    for (let x = ch.x - 300; x < ch.x - 130; x += 28) ram.strings.push({ x0: x, y0: ch.y - 14, h0: 14, x1: x + 3, y1: ch.y + 16, h1: 14 });
-    // crescent-and-star cut-outs on poles along Pathergatti
-    ram.crescents = [];
-    for (let y = ch.y - 380; y < ch.y - 130; y += 60) for (const x of [ch.x - 26, ch.x + 26]) ram.crescents.push({ x, y });
+    // across Pathergatti Road (north of the monument) and the Laad Bazaar lane (west), following the real roads
+    // (these used to be Map v1 coordinates, which put them out in the west of the v2 city)
+    ram.crescents = []; ram.laad = [];
+    roadSteps(['pathergatti_rd', 'pathergatti_n'], 40, 340, 30, (x, y, a, w, i) => {
+      const nx = -Math.sin(a) * (w / 2 + 1), ny = Math.cos(a) * (w / 2 + 1);
+      ram.strings.push({ x0: x - nx, y0: y - ny, h0: 16, x1: x + nx, y1: y + ny, h1: 16, own: true });
+      if (i % 2 === 0) for (const sd of [-1, 1]) ram.crescents.push({ x: x + sd * nx * 1.12, y: y + sd * ny * 1.12, a });
+    });
+    roadSteps(['laad_bazaar'], 30, 260, 28, (x, y, a, w) => {
+      const nx = -Math.sin(a) * (w / 2 + 1), ny = Math.cos(a) * (w / 2 + 1);
+      ram.strings.push({ x0: x - nx, y0: y - ny, h0: 14, x1: x + nx, y1: y + ny, h1: 14, own: true });
+      ram.laad.push({ x0: x - nx, y0: y - ny, x1: x + nx, y1: y + ny, x, y });
+    });
     // night-bazaar stalls round the plaza (attar, caps, dates, bangles, clothes, toys)
     ram.stalls = [];
     const KINDS = [['#7a3a8a', 'ATTAR'], ['#efe9dc', 'TOPI'], ['#8a4a2a', 'KHAJOOR'], ['#e83a5a', 'CHUDI'], ['#2a8c82', 'KAPDA'], ['#f2c230', 'KHILONE']];
@@ -1580,14 +1618,15 @@
         });
       }
       // the Laad Bazaar lane glittering all night (extra bulb strings)
-      // (relative to the monument: these were Map v1 coordinates)
-      const cm = N.WORLD_DATA.landmarks.find((l) => l.id === 'charminar') || { x: ch.x, y: ch.y + 70 };
-      if (inView(cm.x - 215, cm.y, 140)) R.queue('structures', R.distKey(cm.x - 200, cm.y), () => {
+      // (along the real lane: these were Map v1 coordinates)
+      if (!ram.laad) buildRamzan();
+      const ld = ram.laad || [];
+      if (ld.length && inView(ld[(ld.length / 2) | 0].x, ld[(ld.length / 2) | 0].y, 200)) R.queue('structures', R.distKey(ld[(ld.length / 2) | 0].x, ld[(ld.length / 2) | 0].y), () => {
         frame();
         const cols = ['#ff4080', '#ffe040', '#40ffff', '#ffffff'];
-        for (let x = cm.x - 310; x < cm.x - 120; x += 16) bulbString(x, cm.y - 14, 15, x + 6, cm.y + 16, 15, 6, cols, 3, TIME * 5 + x);
+        for (let i = 0; i < ld.length; i++) { const q = ld[i]; bulbString(q.x0, q.y0, 15, q.x1, q.y1, 15, 6, cols, 3, TIME * 5 + i); }
         flushBulbs();
-        for (let x = cm.x - 300; x < cm.x - 120; x += 45) light(x, cm.y, 40, '#ffe0c0', 0.9, 12);
+        for (let i = 0; i < ld.length; i += 2) light(ld[i].x, ld[i].y, 40, '#ffe0c0', 0.9, 12);
       });
     },
   });
@@ -1898,14 +1937,24 @@
       if (near(x, y)) out.people.push({ x, y, h: 0, a: tmpP.a, look: LOOKS[m.li], carry: m.kind === 'bonam' ? 'bonam' : m.kind === 'drum' ? 'dappu' : m.kind === 'poth' ? 'neem' : null });
     }
     if (enabled('ganesh_immersion') && imm.path) {
-      for (const rg of imm.rigs) { bundAt(rg.d, 11, bp); if (near(bp.x, bp.y)) out.props.push({ kind: rg.kind, x: bp.x, y: bp.y, a: bp.a, idol: rg.has ? { size: rg.size, colors: rg.idol } : null }); }
+      for (const rg of imm.rigs) {
+        bundAt(rg.d, 11, bp); if (!near(bp.x, bp.y)) continue;
+        out.props.push({ kind: rg.kind, x: bp.x, y: bp.y, a: bp.a, idol: rg.has ? { size: rg.size, colors: rg.idol } : null });
+        // the teenmaar dancers behind the rig and the two drummers beside it (as the 2D overlay places them)
+        const a = bp.a, ca = Math.cos(a), sa = Math.sin(a), L = rg.kind === 'giant' ? 36 : 26;
+        for (let i = 0; i < rg.dancers; i++) {
+          const t = rg.ph * 2 + i * 1.9, u = -L - 4 - (i % 3) * 7 + Math.sin(t * 0.7) * 2, w = ((i * 5) % 9 - 4) * 3.4 + Math.sin(t) * 1.5;
+          out.people.push({ x: bp.x + ca * u - sa * w, y: bp.y + sa * u + ca * w, h: 0, a: a + Math.sin(t * 2) * 2.2, look: LOOKS[lookIdx[i % 3 ? 'dancer' : 'dancer2'] || 0] });
+        }
+        for (let i = 0; i < 2; i++) { const u = -6 + i * 12, w = (i ? 1 : -1) * 15; out.people.push({ x: bp.x + ca * u - sa * w, y: bp.y + sa * u + ca * w, h: 0, a, look: LOOKS[lookIdx.drummer || 0], carry: 'dappu' }); }
+      }
       for (const c of imm.cranes) if (near(c.x, c.y)) out.props.push({ kind: 'crane', x: c.x, y: c.y, ox: c.ox, oy: c.oy, t: c.t % 16 });
       for (const w of imm.watch || []) if (near(w.x, w.y)) out.people.push({ x: w.x, y: w.y, h: 0, a: w.a, look: LOOKS[w.li] });
     }
     if ((enabled('ramzan') || enabled('chand_raat')) && ram.stalls) {
       for (const st of ram.stalls) if (near(st.x, st.y)) out.props.push({ kind: 'stall', x: st.x, y: st.y, a: st.a, color: st.col });
       for (const b2 of ram.bhattis || []) if (near(b2[0], b2[1])) out.props.push({ kind: 'haleem_bhatti', x: b2[0], y: b2[1] });
-      for (const st of ram.strings || []) if (near(st.x0, st.y0) || near(st.x1, st.y1)) out.props.push({ kind: 'bulbs', x: st.x0, y: st.y0, h: st.h0, x1: st.x1, y1: st.y1, h1: st.h1, colors: ['#40ff80', '#ffffff'] });
+      for (const st of ram.strings || []) if (!st.own && (near(st.x0, st.y0) || near(st.x1, st.y1))) out.props.push({ kind: 'bulbs', x: st.x0, y: st.y0, h: st.h0, x1: st.x1, y1: st.y1, h1: st.h1, colors: ['#40ff80', '#ffffff'] });
     }
     if (enabled('summer') && summ.sheds) for (const sh of summ.sheds) if (near(sh.x, sh.y)) out.props.push({ kind: 'chalivendram', x: sh.x, y: sh.y, a: sh.a });
     // christmas: cribs, trees, lit churches and house stars are built by src/festivals3d.js from S.layout.christmas()

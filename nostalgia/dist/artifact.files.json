@@ -2,6 +2,7 @@
  "src/assets3d_pack.js": "nostalgia/src/assets3d_pack.js",
  "vendor/three/GLTFLoader.classic.js": "nostalgia/vendor/three/GLTFLoader.classic.js",
  "vendor/three/three.min.js": "nostalgia/vendor/three/three.min.js",
+ "vendor/supabase/supabase.js": "nostalgia/vendor/supabase/supabase.js",
  "lazy3d/atc_tower.glb": "nostalgia/dist/lazy3d/atc_tower.glb",
  "lazy3d/begumpet_airport.glb": "nostalgia/dist/lazy3d/begumpet_airport.glb",
  "lazy3d/devi_theatre.glb": "nostalgia/dist/lazy3d/devi_theatre.glb",
