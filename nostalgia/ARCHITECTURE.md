@@ -74,6 +74,8 @@ nostalgia/
                     footpaths, medians, shader markings + zebras), terrain shaders, potholes
                     -> N.view3d.ground, N.view3d.groundHeightAt
   src/view3d_landmarks.js / src/view3d_actors.js  3D landmark models / people, vehicles, animals (§20)
+  src/assets3d_index.js GENERATED (tools/pack_assets3d.cjs, from assets3d/ship.json): N.ASSETS3D_INDEX =
+                    every shipped model (core pack ids + lazy per-GLB ids, ~18 KB); loaded at boot (§21)
   src/models3d.js   Blender model runtime (§21): lazily loads GLTFLoader + the pack when 3D starts,
                     instances / characters / vehicle parts, overrides via N.view3d -> N.models3d
   src/models3d_vehicles.js Blender vehicles at runtime (§21 "Vehicles (runtime)"): wheels / steering /

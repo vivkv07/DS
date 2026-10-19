@@ -11,9 +11,15 @@
  * <script type="text/plain" id="assets3d-pack"> / id="gltfloader-src"> blocks that src/models3d.js
  * runs on demand when 3D starts; dist/artifact.html keeps them lazy (supporting files, listed in
  * dist/artifact.files.json as {published path: source path}).
+ * Lazy per-GLB models (ARCHITECTURE §21 "Shipping"): src/assets3d_index.js is an ordinary index.html script, so all
+ * three pages inline it; the lazy GLBs are (re)written to dist/lazy3d/<id>.glb here (tools/pack_assets3d.cjs
+ * --lazy-only), which dist/web.html fetches next to itself (tools/deploy_site.sh copies the folder next to
+ * index.html) and dist/artifact.files.json publishes as lazy3d/<id>.glb. dist/nostalgia.html carries only the core
+ * pack: opened from file:// its lazy landmarks stay procedural.
  * Usage: node nostalgia/tools/build.mjs
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -69,12 +75,20 @@ for (const [name, out, extra] of [['nostalgia.html', full, lazyBlocks.length], [
 }
 
 mkdirSync(DIST, { recursive: true });
+// the lazy GLBs (quantised like the pack) next to the pages that fetch them
+if (existsSync(join(ROOT, 'assets3d', 'ship.json'))) {
+  try { process.stdout.write(execFileSync(process.execPath, [join(ROOT, 'tools', 'pack_assets3d.cjs'), '--lazy-only'], { encoding: 'utf8' })); }
+  catch (e) { console.error('build: writing dist/lazy3d failed:\n' + String(e.stdout || '') + String(e.stderr || e.message)); process.exit(1); }
+}
 writeFileSync(join(DIST, 'nostalgia.html'), full);
 writeFileSync(join(DIST, 'artifact.html'), fragment);
 writeFileSync(join(DIST, 'web.html'), web);
 // supporting files the artifact loads lazily (published next to the page at the same paths)
 const artifactFiles = {};
 for (const f of ['src/assets3d_pack.js', 'vendor/three/GLTFLoader.classic.js', 'vendor/three/three.min.js']) if (existsSync(join(ROOT, f))) artifactFiles[f] = 'nostalgia/' + f;
+const LAZY3D = join(DIST, 'lazy3d');
+const lazyGlbs = existsSync(LAZY3D) ? readdirSync(LAZY3D).filter((f) => f.endsWith('.glb')).sort() : [];
+for (const f of lazyGlbs) artifactFiles['lazy3d/' + f] = 'nostalgia/dist/lazy3d/' + f;
 writeFileSync(join(DIST, 'artifact.files.json'), JSON.stringify(artifactFiles, null, 1) + '\n');
 
 const kb = (s) => (Buffer.byteLength(s) / 1024).toFixed(1) + ' KB';
@@ -83,4 +97,4 @@ console.log('  dist/nostalgia.html  ' + kb(full));
 console.log('  dist/artifact.html   ' + kb(fragment));
 console.log('  dist/web.html        ' + kb(web));
 if (lazyBlocks.length) console.log('  lazy inline blocks: ' + LAZY.filter(([, f]) => existsSync(join(ROOT, f))).map(([id, f]) => id + ' (' + kb(read(f)) + ')').join(', '));
-console.log('  artifact supporting files (dist/artifact.files.json): ' + Object.keys(artifactFiles).join(', '));
+console.log('  artifact supporting files (dist/artifact.files.json): ' + Object.keys(artifactFiles).filter((f) => !/^lazy3d\//.test(f)).join(', ') + (lazyGlbs.length ? ' + ' + lazyGlbs.length + ' lazy3d/*.glb' : ''));

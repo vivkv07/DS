@@ -8,11 +8,27 @@
  * starts (dev page + artifact: <script src="src/assets3d_pack.js"> injected on demand; dist/nostalgia.html
  * carries it inline as a non-executing <script type="text/plain" id="assets3d-pack">).
  *
- *   node tools/pack_assets3d.cjs            pack every asset, print the size report, enforce budgets
- *   node tools/pack_assets3d.cjs --check    exit 1 if src/assets3d_pack.js is stale (tests / CI)
- *   PACK_ONLY=kid_chinnu,hero_cycle node tools/pack_assets3d.cjs     pack a subset
- * Budgets: whole pack <= 8 MB (fails above), per-asset triangles <= the manifest budget (fails above
- * unless --allow-over), textures <= 1024 px (warns).
+ *   node tools/pack_assets3d.cjs            ship mode (assets3d/ship.json, the allowlist): the lazy ids into
+ *                                           dist/lazy3d/<id>.glb and src/assets3d_index.js (N.ASSETS3D_INDEX, see
+ *                                           below); the core pack src/assets3d_pack.js is kept as it is (frozen:
+ *                                           its ids must equal ship.core) — add --repack-core to rebuild it from
+ *                                           assets3d/ too; size report, budgets enforced; nothing is written when
+ *                                           a budget fails
+ *   node tools/pack_assets3d.cjs --check    exit 1 if src/assets3d_index.js is stale or the pack's ids differ
+ *                                           from ship.core (with --repack-core: also if the pack is stale)
+ *   node tools/pack_assets3d.cjs --lazy-only  ship mode, but only (re)write dist/lazy3d/ (tools/build.mjs)
+ *   PACK_ONLY=kid_chinnu,hero_cycle node tools/pack_assets3d.cjs     pack a subset (legacy mode: pack only,
+ *                                           no index / lazy files; tests build their own test packs this way)
+ *   --no-ship                               legacy mode for every GLB in assets3d/ (no allowlist)
+ * Budgets: core pack <= ship.budgets.coreKB (8 MB; fails above), lazy GLBs <= ship.budgets.lazyKB[family]
+ * each and <= lazyTotalKB together, per-asset triangles <= the manifest budget (fails above unless
+ * --allow-over), textures <= 1024 px (warns).
+ *
+ * src/assets3d_index.js (always loaded, a few KB): N.ASSETS3D_INDEX = {version, digest, manifest: {id: {family,
+ * pack: true, bytes} | {...lean manifest, lazy: true, bytes, h (content hash)}}, lazyDir: 'lazy3d/',
+ * from (the script's own URL when it ran from a file)}. Every shipped model is listed; models3d.js registers
+ * the lazy landmark overrides from it straight away and fetches lazyDir + id + '.glb?v=' + h on demand.
+ * A GLB in assets3d/ that is in neither ship list (blockouts, parked work) does not ship.
  * Quantization (default; --no-quantize to skip), only component types core glTF 2.0 allows, so any
  * loader reads them: WEIGHTS_0 -> normalized UNSIGNED_BYTE (sums kept at 255), TEXCOORD_n in [0, 1]
  * -> normalized UNSIGNED_SHORT, COLOR_0 -> normalized UNSIGNED_BYTE, custom integer attributes
@@ -29,12 +45,20 @@ const crypto = require('crypto');
 const ROOT = path.resolve(__dirname, '..');
 const SRC = path.join(ROOT, 'assets3d');
 const OUT = path.join(ROOT, 'src', 'assets3d_pack.js');
-const MAX_BYTES = 8 * 1024 * 1024;
+const INDEX_OUT = path.join(ROOT, 'src', 'assets3d_index.js');
+const LAZY_DIR = path.join(ROOT, 'dist', 'lazy3d');
+const SHIP_FILE = path.join(SRC, 'ship.json');
 const args = process.argv.slice(2);
+const LAZY_ONLY = args.includes('--lazy-only');
+const REPACK_CORE = args.includes('--repack-core');
 const CHECK = args.includes('--check');
 const ALLOW_OVER = args.includes('--allow-over');
 const QUANT = !args.includes('--no-quantize');
 const ONLY = process.env.PACK_ONLY ? new Set(process.env.PACK_ONLY.split(',').map((s) => s.trim()).filter(Boolean)) : null;
+// ship mode: the allowlist decides what ships (legacy mode when PACK_ONLY / --no-ship is given or there is no ship.json)
+const SHIP = !ONLY && !args.includes('--no-ship') && fs.existsSync(SHIP_FILE) ? JSON.parse(fs.readFileSync(SHIP_FILE, 'utf8')) : null;
+const BUDGET = Object.assign({ coreKB: 8192, lazyTotalKB: 40960, lazyKB: {} }, (SHIP && SHIP.budgets) || {});
+const MAX_BYTES = BUDGET.coreKB * 1024;
 
 function readGlbJson(buf) {
   if (buf.readUInt32LE(0) !== 0x46546c67) throw new Error('not a GLB');
@@ -165,15 +189,16 @@ function quantize(buf) {
 // keep only what the runtime needs from a manifest (the rest stays in assets3d/<id>.json)
 const KEEP = ['id', 'family', 'tris', 'kb', 'size', 'min', 'max', 'front', 'anchors', 'clips', 'meta', 'tint', 'materials', 'budget'];
 
-function collect() {
+function collect(list) {
   if (!fs.existsSync(SRC)) return [];
-  const ids = fs.readdirSync(SRC).filter((f) => f.endsWith('.glb')).map((f) => f.slice(0, -4)).sort();
+  const ids = list ? list.slice().sort() : fs.readdirSync(SRC).filter((f) => f.endsWith('.glb')).map((f) => f.slice(0, -4)).sort();
   const out = [];
   for (const id of ids) {
     if (ONLY && !ONLY.has(id)) continue;
     const glbPath = path.join(SRC, id + '.glb');
     const manPath = path.join(SRC, id + '.json');
-    if (!fs.existsSync(manPath)) { console.warn('pack: ' + id + '.glb has no manifest (skipped)'); continue; }
+    if (list && !fs.existsSync(glbPath)) throw new Error('ship.json lists ' + id + ' but assets3d/' + id + '.glb does not exist');
+    if (!fs.existsSync(manPath)) { if (list) throw new Error('assets3d/' + id + '.glb has no manifest'); console.warn('pack: ' + id + '.glb has no manifest (skipped)'); continue; }
     const raw = fs.readFileSync(glbPath);
     let glb = raw;
     if (QUANT) { try { glb = quantize(raw); } catch (e) { console.warn('pack: ' + id + ' quantization failed (' + e.message + '), packed as exported'); glb = raw; } }
@@ -219,7 +244,170 @@ function build(items) {
   return { body, digest };
 }
 
+/* ---------------------------------------------------------------- index (ship mode) */
+const hashOf = (b) => crypto.createHash('sha1').update(b).digest('hex').slice(0, 10);
+function buildIndex(coreMans, lazy) {
+  const manifest = {};
+  // core entries stay short (the pack carries their full manifest); lazy ones carry what models3d.js needs to
+  // register overrides before their GLB is fetched
+  for (const id of Object.keys(coreMans).sort()) { const m = coreMans[id]; manifest[id] = { family: m.family, pack: true, bytes: m.bytes }; }
+  for (const it of lazy) {
+    const m = Object.assign({}, it.man, { lazy: true, h: hashOf(it.glb) });
+    for (const k of ['anchors', 'clips', 'animations']) if (m[k] && !Object.keys(m[k]).length) delete m[k];
+    manifest[it.id] = m;
+  }
+  const hash = crypto.createHash('sha1');
+  for (const id of Object.keys(manifest).sort()) hash.update(id).update(JSON.stringify(manifest[id]));
+  const digest = hash.digest('hex').slice(0, 12);
+  const body = [
+    '/* NOSTALGIA — src/assets3d_index.js — GENERATED by tools/pack_assets3d.cjs from assets3d/ship.json; do not edit.',
+    ' * Every Blender model that ships (ARCHITECTURE §21 "Shipping"): pack: true = inside src/assets3d_pack.js;',
+    ' * lazy: true = its own GLB, lazyDir + id + ".glb" (dist/lazy3d/ next to the web page), fetched by src/models3d.js',
+    ' * when its landmark / entity comes within build range. Always loaded (small). digest ' + digest + ' */',
+    '(function () {',
+    "  'use strict';",
+    '  var N = window.N = window.N || {};',
+    '  var cs = document.currentScript;',
+    '  N.ASSETS3D_INDEX = {',
+    '    version: 1,',
+    "    digest: '" + digest + "',",
+    "    lazyDir: 'lazy3d/',",
+    '    from: (cs && cs.src) || null,',
+    '    manifest: {',
+    Object.keys(manifest).map((id) => "      '" + id + "': " + JSON.stringify(manifest[id])).join(',\n'),
+    '    }',
+    '  };',
+    '})();',
+    '',
+  ].join('\n');
+  return { body, digest };
+}
+function writeAtomic(file, data) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = file + '.' + process.pid + '.tmp';
+  fs.writeFileSync(tmp, data);
+  fs.renameSync(tmp, file);
+}
+/** dist/lazy3d/<id>.glb for every lazy id (stale files of ids no longer listed are removed) */
+function writeLazy(lazy) {
+  fs.mkdirSync(LAZY_DIR, { recursive: true });
+  const keep = new Set(lazy.map((it) => it.id + '.glb'));
+  for (const f of fs.readdirSync(LAZY_DIR)) if (f.endsWith('.glb') && !keep.has(f)) fs.unlinkSync(path.join(LAZY_DIR, f));
+  let n = 0;
+  for (const it of lazy) {
+    const f = path.join(LAZY_DIR, it.id + '.glb');
+    if (fs.existsSync(f) && fs.readFileSync(f).equals(it.glb)) continue;
+    writeAtomic(f, it.glb); n++;
+  }
+  return n;
+}
+
+const kb = (n) => (n / 1024).toFixed(1);
+function report(items, title) {
+  let fail = false;
+  console.log('pack: ' + items.length + ' ' + title);
+  console.log('  ' + 'id'.padEnd(26) + 'family'.padEnd(15) + 'tris'.padStart(8) + 'budget'.padStart(8) + 'raw KB'.padStart(9) + 'GLB KB'.padStart(9) + 'b64 KB'.padStart(9) + '  clips / images');
+  for (const it of items) {
+    const m = it.man;
+    const b64 = Math.ceil(it.glb.length / 3) * 4;
+    const over = m.budget && m.tris > m.budget;
+    if (over && !ALLOW_OVER) fail = true;
+    const clips = Object.keys(m.clips || {}).join(',') || '-';
+    console.log('  ' + it.id.padEnd(26) + String(m.family).padEnd(15) + String(m.tris).padStart(8) + String(m.budget || '-').padStart(8) + kb(it.raw.length).padStart(9) + kb(it.glb.length).padStart(9) + kb(b64).padStart(9) + '  ' + clips + ' / ' + (m.images || []).join(',') + (over ? '  OVER TRIANGLE BUDGET' : ''));
+    for (const im of it.json.images || []) {
+      if (im.mimeType && im.mimeType !== 'image/webp') console.log('    note: ' + it.id + ' image ' + (im.name || '?') + ' is ' + im.mimeType + ' (WebP preferred)');
+    }
+  }
+  return fail;
+}
+
 function main() {
+  if (!SHIP) return mainLegacy();
+  const coreIds = SHIP.core || [], lazyIds = SHIP.lazy || [];
+  const dup = coreIds.filter((id) => lazyIds.includes(id));
+  if (dup.length) { console.error('pack: ship.json lists ids as both core and lazy: ' + dup.join(', ')); process.exit(1); }
+  const lazy = collect(lazyIds);
+  if (LAZY_ONLY) {
+    const n = writeLazy(lazy);
+    console.log('pack: dist/lazy3d/ ' + lazy.length + ' lazy GLB(s), ' + n + ' rewritten, ' + kb(lazy.reduce((a, it) => a + it.glb.length, 0)) + ' KB');
+    return;
+  }
+  // the core: rebuilt from assets3d/ (--repack-core) or the pack as it is (frozen)
+  let core = null, pack = null, coreMans = null;
+  if (REPACK_CORE) {
+    core = collect(coreIds); pack = build(core);
+    coreMans = {}; for (const it of core) coreMans[it.id] = it.man;
+  } else {
+    const cur = readPack();
+    if (!cur) { console.error('pack: ' + path.relative(ROOT, OUT) + ' is missing or unreadable (run with --repack-core)'); process.exit(1); }
+    const have = Object.keys(cur.glb).sort(), want = coreIds.slice().sort();
+    if (have.join() !== want.join()) {
+      console.error('pack: the core pack ids differ from ship.json core (pack only: ' + have.filter((i) => !want.includes(i)).join(', ') + '; ship only: ' + want.filter((i) => !have.includes(i)).join(', ') + '); run with --repack-core');
+      process.exit(1);
+    }
+    coreMans = cur.manifest;
+  }
+  const index = buildIndex(coreMans, lazy);
+  if (CHECK) {
+    let stale = false;
+    if (REPACK_CORE) {
+      const cur = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
+      const m = cur.match(/digest ([0-9a-f]{12})/);
+      if (!m || m[1] !== pack.digest) { console.error('pack: src/assets3d_pack.js is stale (run node tools/pack_assets3d.cjs --repack-core)'); stale = true; }
+    }
+    const ci = fs.existsSync(INDEX_OUT) ? fs.readFileSync(INDEX_OUT, 'utf8') : '';
+    const mi = ci.match(/digest ([0-9a-f]{12})/);
+    if (!mi || mi[1] !== index.digest) { console.error('pack: src/assets3d_index.js is stale (run node tools/pack_assets3d.cjs)'); stale = true; }
+    if (stale) process.exit(1);
+    console.log('pack: up to date (index ' + index.digest + (REPACK_CORE ? ', pack ' + pack.digest : ', core pack frozen: ' + coreIds.length + ' ids as listed') + ')');
+    return;
+  }
+  let fail = false;
+  if (core) {
+    fail = report(core, 'core asset(s) -> ' + path.relative(ROOT, OUT));
+    const bytes = Buffer.byteLength(pack.body);
+    console.log('  core pack ' + kb(bytes) + ' KB of ' + kb(MAX_BYTES) + ' KB budget');
+    if (bytes > MAX_BYTES) { console.error('pack: core pack OVER its ' + kb(MAX_BYTES) + ' KB budget'); fail = true; }
+  } else {
+    const bytes = fs.statSync(OUT).size;
+    console.log('pack: core pack kept as it is (' + coreIds.length + ' ids = ship.json core): ' + kb(bytes) + ' KB of ' + kb(MAX_BYTES) + ' KB budget');
+    if (bytes > MAX_BYTES) { console.error('pack: core pack OVER its ' + kb(MAX_BYTES) + ' KB budget'); fail = true; }
+    const drift = coreIds.filter((id) => { const f = path.join(SRC, id + '.glb'); return !fs.existsSync(f) || (coreMans[id] && coreMans[id].rawBytes !== fs.statSync(f).size); });
+    if (drift.length) console.log('  note: ' + drift.length + ' core id(s) differ from (or are missing in) assets3d/ since the pack was built: ' + drift.join(', ') + ' (--repack-core takes the current files)');
+  }
+  console.log('');
+  if (report(lazy, 'lazy asset(s) -> ' + path.relative(ROOT, LAZY_DIR) + '/<id>.glb')) fail = true;
+  let lazyBytes = 0;
+  for (const it of lazy) {
+    lazyBytes += it.glb.length;
+    const cap = (BUDGET.lazyKB || {})[it.man.family];
+    if (cap && it.glb.length > cap * 1024) { console.error('pack: lazy ' + it.id + ' is ' + kb(it.glb.length) + ' KB, over the ' + cap + ' KB ' + it.man.family + ' budget'); fail = true; }
+  }
+  console.log('  lazy total ' + kb(lazyBytes) + ' KB of ' + BUDGET.lazyTotalKB + ' KB budget');
+  if (lazyBytes > BUDGET.lazyTotalKB * 1024) { console.error('pack: lazy models OVER their total budget'); fail = true; }
+  const ib = Buffer.byteLength(index.body);
+  console.log('  index ' + kb(ib) + ' KB (' + Object.keys(coreMans).length + ' core + ' + lazy.length + ' lazy) -> ' + path.relative(ROOT, INDEX_OUT));
+  const unlisted = fs.readdirSync(SRC).filter((f) => f.endsWith('.glb')).map((f) => f.slice(0, -4)).filter((id) => !coreIds.includes(id) && !lazyIds.includes(id));
+  if (unlisted.length) console.log('  not shipped (in neither list): ' + unlisted.join(' '));
+  if (fail) { console.error('pack: budget check failed (nothing written)'); process.exit(1); }
+  // write-then-rename: pages and tests running in parallel never read a half-written pack
+  if (pack) writeAtomic(OUT, pack.body);
+  writeAtomic(INDEX_OUT, index.body);
+  const n = writeLazy(lazy);
+  console.log('pack: wrote ' + (pack ? path.relative(ROOT, OUT) + ' (digest ' + pack.digest + '), ' : '') + path.relative(ROOT, INDEX_OUT) + ' (digest ' + index.digest + '), ' + n + ' lazy GLB(s) rewritten in ' + path.relative(ROOT, LAZY_DIR) + '/');
+}
+/** the current pack's {manifest, glb} (evaluated in a sandbox) or null */
+function readPack() {
+  if (!fs.existsSync(OUT)) return null;
+  try {
+    const sb = { window: {} };
+    require('vm').runInNewContext(fs.readFileSync(OUT, 'utf8'), sb, { filename: OUT });
+    const A = sb.window.N && sb.window.N.ASSETS3D;
+    return A && A.manifest && A.glb ? A : null;
+  } catch (e) { return null; }
+}
+
+function mainLegacy() {
   const items = collect();
   const { body, digest } = build(items);
   if (CHECK) {
@@ -229,22 +417,7 @@ function main() {
     console.log('pack: up to date (' + digest + ')');
     return;
   }
-  // report + budgets
-  let fail = false;
-  const kb = (n) => (n / 1024).toFixed(1);
-  console.log('pack: ' + items.length + ' asset(s)');
-  console.log('  ' + 'id'.padEnd(22) + 'family'.padEnd(15) + 'tris'.padStart(8) + 'budget'.padStart(8) + 'raw KB'.padStart(9) + 'GLB KB'.padStart(9) + 'b64 KB'.padStart(9) + '  clips / images');
-  for (const it of items) {
-    const m = it.man;
-    const b64 = Math.ceil(it.glb.length / 3) * 4;
-    const over = m.budget && m.tris > m.budget;
-    if (over && !ALLOW_OVER) fail = true;
-    const clips = Object.keys(m.clips || {}).join(',') || '-';
-    console.log('  ' + it.id.padEnd(22) + String(m.family).padEnd(15) + String(m.tris).padStart(8) + String(m.budget || '-').padStart(8) + kb(it.raw.length).padStart(9) + kb(it.glb.length).padStart(9) + kb(b64).padStart(9) + '  ' + clips + ' / ' + (m.images || []).join(',') + (over ? '  OVER TRIANGLE BUDGET' : ''));
-    for (const im of it.json.images || []) {
-      if (im.mimeType && im.mimeType !== 'image/webp') console.log('    note: ' + it.id + ' image ' + (im.name || '?') + ' is ' + im.mimeType + ' (WebP preferred)');
-    }
-  }
+  let fail = report(items, 'asset(s)');
   const bytes = Buffer.byteLength(body);
   console.log('  total ' + kb(bytes) + ' KB of ' + kb(MAX_BYTES) + ' KB budget -> ' + path.relative(ROOT, OUT));
   if (bytes > MAX_BYTES) { console.error('pack: OVER the 8 MB pack budget'); fail = true; }

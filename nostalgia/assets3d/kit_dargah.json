@@ -22,9 +22,11 @@
   31.45
  ],
  "meta": {
+  "dataH": 30,
   "draw": "dargah",
   "face": "s",
   "fit": "footprint",
+  "fitHeight": true,
   "floodlit": true,
   "footprint": [
    40,

@@ -250,17 +250,17 @@
       while (AN.phase < 7) {
         const ph = AN.phase, ts = now();
         if (ph === 0) { // pieces
-          while (AN.i < AN.roads.length) { const [r, list] = AN.roads[AN.i++]; piecesOfRoad(r, list, G, AN); if ((AN.i & 3) === 0 && over()) break; }
+          while (AN.i < AN.roads.length) { const [r, list] = AN.roads[AN.i++]; piecesOfRoad(r, list, G, AN); if (over()) break; }
           if (AN.i >= AN.roads.length) { AN.phase = 1; AN.i = 0; }
         } else if (ph === 1) { // junction geometry
-          while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionGeom(J); } catch (e) { N.err('ground.junction', e); J.bad = true; } if ((AN.i & 15) === 0 && over()) break; }
+          while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionGeom(J); } catch (e) { N.err('ground.junction', e); J.bad = true; } if (over()) break; }
           if (AN.i >= NET.juncs.length) { finishPieces(); AN.phase = 2; AN.i = 0; }
         } else if (ph === 2) { // junction polygons
-          while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionPoly(J); } catch (e) { N.err('ground.junctionPoly', e); } if ((AN.i & 15) === 0 && over()) break; }
+          while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionPoly(J); } catch (e) { N.err('ground.junctionPoly', e); } if (over()) break; }
           if (AN.i >= NET.juncs.length) { AN.phase = 3; AN.i = 0; }
         } else if (ph === 3) { // zebras (per junction)
           const G2 = W.roads;
-          while (AN.i < NET.juncs.length) { zebraJ(NET.juncs[AN.i++], G2); if ((AN.i & 63) === 0 && over()) break; }
+          while (AN.i < NET.juncs.length) { zebraJ(NET.juncs[AN.i++], G2); if ((AN.i & 7) === 0 && over()) break; }
           if (AN.i >= NET.juncs.length) { AN.phase = 4; AN.i = 0; }
         } else if (ph === 4) { // buckets: pieces, then junctions
           const np = NET.pieces.length, nt = np + NET.juncs.length;
@@ -275,7 +275,7 @@
                 const bb = bboxOf(pts, 30); J.bb = bb; bucket('juncs', J, bb[0], bb[1], bb[2], bb[3]);
               }
             }
-            if ((AN.i & 127) === 0 && over()) break;
+            if ((AN.i & 15) === 0 && over()) break;
           }
           if (AN.i >= nt) { AN.phase = 5; AN.i = 0; }
         } else if (ph === 5) { // paths + rails
@@ -295,12 +295,12 @@
                 const bb = bboxOf(pts, P.hw + 2); bucket('rails', P, bb[0], bb[1], bb[2], bb[3]); NET.rails.push(P);
               }
             }
-            if ((AN.i & 31) === 0 && over()) break;
+            if ((AN.i & 3) === 0 && over()) break;
           }
           if (AN.i >= nt) { AN.phase = 6; AN.i = 0; }
         } else if (ph === 6) { // bus bays
           const LM = D.landmarks || [];
-          while (AN.i < LM.length) { busBay(LM[AN.i++]); if ((AN.i & 31) === 0 && over()) break; }
+          while (AN.i < LM.length) { busBay(LM[AN.i++]); if ((AN.i & 3) === 0 && over()) break; }
           if (AN.i >= LM.length) { AN.phase = 7; AN.i = 0; }
         }
         ANAMS[ph] = (ANAMS[ph] || 0) + now() - ts; if (!(ANAMAX[ph] >= now() - ts)) ANAMAX[ph] = now() - ts;
@@ -598,9 +598,12 @@
         const a = pl[ia], b = pl[ib], c = pl[ic];
         if (cr(a, b, c) <= 1e-9) continue; // reflex or degenerate
         let inside = false;
-        for (const iq of idx) {
+        for (let m = 0; m < idx.length; m++) {
+          const iq = idx[m];
           if (iq === ia || iq === ib || iq === ic) continue;
           const q = pl[iq];
+          // only a reflex vertex can lie inside an ear
+          if (cr(pl[idx[(m + idx.length - 1) % idx.length]], q, pl[idx[(m + 1) % idx.length]]) > 1e-9) continue;
           if (cr(a, b, q) >= -1e-9 && cr(b, c, q) >= -1e-9 && cr(c, a, q) >= -1e-9) { inside = true; break; }
         }
         if (inside) continue;
@@ -1615,17 +1618,21 @@
   /** phones: sun shadows of buildings / walls / trees rasterised on the ground grid (2D paintShadows
    *  rules), a batch of structures per slice on a reused canvas; returns true when done (job.bake.out) */
   let BAKE_CV = null;
+  const BAKEMS = { fill: 0, read: 0, n: 0, items: 0 };
   function bakeShadows(job, ch, m, step, deadline) {
     const bk = job.bake, sb = I.sunBake, sx = sb.sx, sy = sb.sy;
     if (!bk.g) {
       if (!BAKE_CV) BAKE_CV = document.createElement('canvas');
       const c = BAKE_CV; if (c.width !== m) { c.width = c.height = m; }
-      const g = bk.g = c.getContext('2d');
+      // willReadFrequently: a CPU canvas (an accelerated one stalls for seconds in getImageData behind
+      // the WebGL work on phones / software GL)
+      const g = bk.g = c.getContext('2d', { willReadFrequently: true });
       g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, m, m);
       g.setTransform(1 / step, 0, 0, 1 / step, -(ch.x0 - step) / step + 0.5, -(ch.y0 - step) / step + 0.5);
       g.fillStyle = '#fff';
     }
     const g = bk.g, L = bk.list;
+    const tb = now();
     while (bk.i < L.length) {
       g.beginPath();
       const end = Math.min(L.length, bk.i + 48);
@@ -1645,9 +1652,12 @@
         g.moveTo(X1, Y0); g.lineTo(X1 + ex, Y0 + ey); g.lineTo(X0 + ex, Y1 + ey); g.lineTo(X0, Y1); g.closePath();
       }
       g.fill('nonzero');
-      if (now() > deadline) return false;
+      if (now() > deadline) { BAKEMS.fill += now() - tb; return false; }
     }
+    BAKEMS.fill += now() - tb;
+    const tr = now();
     const d = g.getImageData(0, 0, m, m).data, out = new Float32Array(m * m);
+    BAKEMS.read += now() - tr; BAKEMS.n++; BAKEMS.items += L.length;
     for (let i = 0; i < m * m; i++) out[i] = d[i * 4 + 3] / 255;
     bk.out = out;
     return true;
@@ -2325,7 +2335,8 @@ if (ngShine > 0.01) {
   function buildProv(ch) {
     const t0 = now(), G = ch.ng || (ch.ng = { ready: false });
     if (G.prov || G.ready) return;
-    if (!SOIL.tex) buildSoil();
+    // soil colours not finished yet: a flat placeholder (the shared uniform switches when they are)
+    if (!SOIL.tex) { if (SOIL.done) buildSoil(); else if (!SOIL.t.value) { const d = new Uint8Array([169, 138, 102, 255]); const t = dataTex(d, 1, false); t.userData.shared = true; SOIL.t.value = t; } }
     if (!ch.aux) I.buildAux(ch);
     const W = N.world, R = (W && W.data && W.data.roads) || [], FOOT = (W && W.FOOT) || {};
     if (!PROV.bb || PROV.bb.length !== R.length * 4) provRoadBoxes();
@@ -2625,6 +2636,7 @@ if (ngShine > 0.01) {
         wet: +(GU.uWet ? GU.uWet.value : 0).toFixed(2), potVer: curPot(),
         stepMs: STEPMS.map((v) => +(v || 0).toFixed(1)), anaMs: ANAMS.map((v) => +(v || 0).toFixed(1)), anaMax: ANAMAX.map((v) => +(v || 0).toFixed(1)), soilMs: SOIL.ms,
         overMs: (() => { if (!OVER.length) return { p50: 0, p95: 0, max: 0, n: 0 }; const a = OVER.slice().sort((x, y) => x - y); return { p50: +a[a.length >> 1].toFixed(1), p95: +a[Math.floor(a.length * 0.95)].toFixed(1), max: +a[a.length - 1].toFixed(1), n: a.length }; })(),
+        bake: { fill: Math.round(BAKEMS.fill), read: Math.round(BAKEMS.read), n: BAKEMS.n, items: BAKEMS.items },
         stepMax: STEPMAX.map((v) => +(v || 0).toFixed(1)), provMaxMs: +PROV.max.toFixed(1),
         precomputed: precomputed(), provBuilt: PROV.built, provAvgMs: PROV.built ? +(PROV.ms / PROV.built).toFixed(2) : 0,
         provChunks: I ? Array.from(I.chunks.values()).filter((ch) => ch.ng && ch.ng.prov).length : 0,

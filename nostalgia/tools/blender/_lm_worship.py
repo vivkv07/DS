@@ -1321,7 +1321,9 @@ def build_kit_church(A):
 
 
 # =========================================================================== 10. dargah kit
-@parked('kit_dargah', 'landmark', draw='dargah', face='s', footprint=[40, 40], height=45.0, fit='footprint', floodlit=True)
+# fitHeight: modelled for the h30 neighbourhood dargahs (45 u = 30 * VS); Moula Ali (h40) scales up to 60 u
+@parked('kit_dargah', 'landmark', draw='dargah', face='s', footprint=[40, 40], height=45.0, fit='footprint', floodlit=True,
+        fitHeight=True, dataH=30)
 def build_kit_dargah(A):
     """A neighbourhood dargah (Sufi shrine): the whitewashed square tomb chamber on a plinth with
     arched green doors and jaali screens, a leaf-merlon parapet, small domed kiosks on its corners
