@@ -75,7 +75,7 @@
     box: { bump: 20, bumpHard: 34, fall: 40, nearMiss: 7, nearD: 6, nearSpeed: 55, nearCool: 1.4, run: 14, ride: 18, bumpCool: 0.5 },
     diyas: 21, breezeSecs: 150, gustFirst: 9, gustEvery: [11, 15], gustWarn: 2.6, gustHit: 1.2, guardR: 10.5, gustDot: 0.5,
     gustWobble: 0.45, lightR: 8.5, ammammaEvery: 9, ammammaR: 8,
-    mithaiSecs: 150,
+    mithaiSecs: 120,
     bucketDrain: 34, bucketMin: 55,
     rocketGust: [3.4, 4.4], rocketCalm: [6, 8.5], lightHold: 0.8, aimSafe: 56,
     tigerR: 130, tigerFind: 16, comfortHold: 1.6, tigerRunR: 46, tigerRunSpeed: 58, tigerGap: 12, whimperEvery: 3.4,
@@ -263,25 +263,32 @@
   const fx = {
     burst(x, y, h, type, big) { const f = dwFn('burst'); if (f) { try { f(x, y, h, type, undefined, big); return; } catch (e) { N.err('dwm.burst', e); } } ownBurst(x, y, h, type, big); },
     rocket(x, y, o) { const f = dwFn('rocket'); if (f) { try { const r = f(x, y, Object.assign({ force: true }, o || {})); if (r) return r; } catch (e) { N.err('dwm.rocket', e); } } return ownRocket(x, y, o); },
-    show(x, y, secs) { const f = dwFn('show'); if (f) { try { f(x, y, secs); return 'diwali'; } catch (e) { N.err('dwm.show', e); } } FX.shows.push({ x, y, left: secs || 10, next: 0 }); return 'own'; },
+    show(x, y, secs, o) { const f = dwFn('show'); if (f) { try { f(x, y, secs, o); return 'diwali'; } catch (e) { N.err('dwm.show', e); } } FX.shows.push({ x, y, left: secs || 10, next: 0 }); return 'own'; },
     anaar(x, y) { const f = dwFn('anaar'); if (f) { try { return f(x, y); } catch (e) { N.err('dwm.anaar', e); } } return null; },
     scatter(x, y, n) { const f = dwFn('scatter'); if (f) { try { return f(x, y, n); } catch (e) { N.err('dwm.scatter', e); } } return null; },
     fireOK(x, y) { const f = dwFn('fireOK'); if (f) { try { return !!f(x, y); } catch (e) { N.err('dwm.fireOK', e); } } try { return !(N.respect && N.respect.at && N.respect.at(x, y)); } catch (e) { return true; } },
   };
   // --- the cracker stash: N.diwali.box when it is there, else our own (saved in our section)
   function boxApi() { const D = DW(); const B = D && D.box; return B && typeof B.add === 'function' ? B : null; }
+  /** does N.diwali.box keep this kind? (its own kinds: phuljhadi chakri anaar rocket) */
+  function boxTakes(B, k) {
+    if (!B) return false;
+    try { const it = typeof B.items === 'function' ? B.items() : B.items; if (it && typeof it === 'object' && !(it instanceof Map)) return k in it; } catch (e) { /* fall through */ }
+    const D = DW(); return !!(D && Array.isArray(D.KINDS) ? D.KINDS.indexOf(k) >= 0 : true);
+  }
   function boxAdd(items) {
     const B = boxApi();
+    let where = 'own';
     for (const k in items) {
       const n = items[k] | 0; if (n <= 0) continue;
-      if (B) { try { B.add(k, n); continue; } catch (e) { N.err('dwm.box', e); } }
+      if (boxTakes(B, k)) { try { B.add(k, n); where = 'diwali'; continue; } catch (e) { N.err('dwm.box', e); } }
       ST.box[k] = (ST.box[k] | 0) + n;
     }
-    return B ? 'diwali' : 'own';
+    return where;
   }
   function boxCount(k) {
     const B = boxApi();
-    if (B) {
+    if (B && boxTakes(B, k)) {
       try {
         if (typeof B.count === 'function') return B.count(k) | 0;
         const it = typeof B.items === 'function' ? B.items() : B.items;
@@ -449,11 +456,12 @@
       const id = 'dwm:any:' + (++seq);
       const P = () => pos(s.target);
       N.interact.add(id, { get x() { const q = P(); return q ? q.x : null; }, get y() { const q = P(); return q ? q.y : null; }, r: s.r || 16, priority: 7, label: s.label, use: () => { if (!used) used = s.key; } });
+      ST.acts.set(id, s); // removed with the run (a failed run's points must not shadow the retry's)
       made.push({ id, mk: m.marker(s.target, { r: 14 }), bl: m.blip(s.target, { color: '#ff5fb0', icon: 'star', pulse: true, route: false, label: plain(s.name || '') }) });
     }
     const step = ST.step = { kind: 'any', stops, use: (k) => { used = k || stops[0].key; } };
     return m.until(() => used).then(() => {
-      for (const o of made) { try { N.interact.remove(o.id); } catch (e) { /* ignore */ } m.unmarker(o.mk); m.unblip(o.bl); }
+      for (const o of made) { try { N.interact.remove(o.id); } catch (e) { /* ignore */ } ST.acts.delete(o.id); m.unmarker(o.mk); m.unblip(o.bl); }
       if (ST.step === step) ST.step = null;
       return used;
     });
@@ -480,6 +488,13 @@
       if (H.t > 0 && H.widget !== false) widget({ label: H.meter, value: (H.t / H.secs) * 100, text: '' });
       if (H.t >= H.secs) H.done = true;
     }
+  }
+  /** A closer top-down camera for a small arena (the terrace, the bottle): N.render.baseZoom, restored when the run ends. */
+  function camZoom(z) {
+    const R = N.render;
+    if (!R || ff()) return;
+    if (ST.zoomWas == null) { ST.zoomWas = R.baseZoom || 1; onEnd(() => { if (ST.zoomWas != null && N.render) N.render.baseZoom = ST.zoomWas; ST.zoomWas = null; }); }
+    R.baseZoom = z == null ? ST.zoomWas : z;
   }
   function lockShops(m, on) { try { const r = run(); if (r) r.lockShops = on ? 'dwm' : false; } catch (e) { /* ignore */ } }
 
@@ -609,10 +624,15 @@
     let best = null, bd = 260;
     for (const s of list || []) {
       if (!s || !isFinite(s.x) || !isFinite(s.y)) continue;
-      const d = Math.hypot(s.x - P.x, s.y - P.y);
+      const d = Math.hypot(s.x - P.x, s.y - P.y) + (s.kind && s.kind !== 'bazaar' ? 120 : 0);
       if (d < bd) { bd = d; best = s; }
     }
-    if (best) { const f = walkable(best.x + (best.fx || 0), best.y + (best.fy || 12), 26); return { x: f.x, y: f.y, sx: best.x, sy: best.y, own: false }; }
+    if (best) {
+      // the customer stands on the road side of the trestle table, the pataakha-wala behind it
+      const fx = isFinite(best.fx) ? best.fx : 0, fy = isFinite(best.fy) ? best.fy : 1;
+      const c = walkable(best.x + fx * 8, best.y + fy * 8, 10), v = walkable(best.x - fx * 5.5, best.y - fy * 5.5, 6);
+      return { x: c.x, y: c.y, sx: best.x, sy: best.y, vx: v.x, vy: v.y, own: false, id: best.id, label: best.label };
+    }
     // our own stall: on the bazaar's footpath / forecourt (never in the carriageway), the customer in front of it
     const W = N.world, SU = N.SURF;
     const ok = (x, y) => { try { const sf = W.surfaceAt(x, y); return (sf === SU.FOOTPATH || sf === SU.PLAZA || sf === SU.GROUND) && W.isWalkable(x, y); } catch (e) { return false; } };
@@ -625,7 +645,7 @@
     }
     const f = pick || walkable(P.x, P.y + 4, 30);
     const c = walkable(f.x, f.y + 9, 8);
-    return { x: c.x, y: c.y, sx: f.x, sy: f.y - 1, own: true };
+    return { x: c.x, y: c.y, sx: f.x, sy: f.y - 1, vx: f.x, vy: f.y - 7, own: true };
   }
   function drawOwnStall(ctx, S) {
     const D = N.draw, x = S.sx, y = S.sy;
@@ -816,7 +836,7 @@
     await m.goto(S, { label: 'Sultan Bazaar: find the pataakha stall.', r: 22 });
     m.checkpoint('stall');
     lockShops(m, true);
-    npc(m, 'pataakha_man', walkable(S.sx, S.sy - 7, 12), { idle: 'work' });
+    npc(m, 'pataakha_man', { x: S.vx, y: S.vy }, { idle: 'work' });
     face('pataakha_man', 'player');
     await m.say('pataakha_man', '*Aao, aao!* Rocket, anaar, chakri, phuljhadi! Diwali rate, best rate!');
     m.objective('Buy Amma\'s list within ₹100. Nanna\'s rule: no bombs, more phuljhadis.');
@@ -1074,7 +1094,7 @@
     widget({ label: 'DIYAS', value: (n / T.list.length) * 100, text: n + '/' + T.list.length + (G.phase === 'warn' ? '  HAWA!' : ''), warn: G.phase === 'warn' });
   }
   function drawTerrace() {
-    const T = ST.terrace, R = N.render;
+    const T = ST.terrace || ST.terraceKeep, R = N.render;
     if (!T || !T.list.length || (N.view3d && N.view3d.active)) return;
     const c = T.list[0];
     if (!R.inView(c.x, c.y, 120)) return;
@@ -1083,21 +1103,23 @@
     R.queue('sky', 0.5, (ctx) => {
       for (const d of T.list) {
         const k = R.k(d.h + 0.4), X = R.sx(d.x, k), Y = R.sy(d.y, k), s = Math.max(1, k);
-        ctx.fillStyle = '#5a2a14'; ctx.fillRect(Math.round(X - 1.6 * s), Math.round(Y - 0.6 * s), Math.ceil(3.2 * s), Math.ceil(1.6 * s));
-        ctx.fillStyle = '#b4582c'; ctx.fillRect(Math.round(X - 1.2 * s), Math.round(Y - 0.9 * s), Math.ceil(2.4 * s), Math.ceil(1 * s));
+        ctx.fillStyle = '#3a1a0c'; ctx.fillRect(Math.round(X - 2 * s), Math.round(Y - 0.7 * s), Math.ceil(4 * s), Math.ceil(1.9 * s));
+        ctx.fillStyle = '#b4582c'; ctx.fillRect(Math.round(X - 1.6 * s), Math.round(Y - 1.1 * s), Math.ceil(3.2 * s), Math.ceil(1.2 * s));
+        ctx.fillStyle = '#d8823e'; ctx.fillRect(Math.round(X - 1.2 * s), Math.round(Y - 1.1 * s), Math.ceil(1.2 * s), Math.ceil(0.5 * s));
         if (d.lit) {
           const fl = 0.75 + 0.25 * Math.sin(t * 13 + d.ph) + (d.saved ? 0.2 * Math.sin(t * 40) : 0);
-          const g = ctx.createRadialGradient(X, Y - 1.5 * s, 0, X, Y - 1.5 * s, 5.5 * s);
-          g.addColorStop(0, 'rgba(255,200,90,' + (0.55 * fl).toFixed(2) + ')'); g.addColorStop(1, 'rgba(255,150,40,0)');
-          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X, Y - 1.5 * s, 5.5 * s, 0, TAU); ctx.fill();
-          ctx.fillStyle = '#ffd24a'; ctx.fillRect(Math.round(X - 0.6 * s), Math.round(Y - (2.6 + fl) * s), Math.ceil(1.2 * s), Math.ceil((1.6 + fl) * s));
-          ctx.fillStyle = '#fff4c0'; ctx.fillRect(Math.round(X - 0.3 * s), Math.round(Y - 2.2 * s), Math.ceil(0.6 * s), Math.ceil(0.9 * s));
+          const g = ctx.createRadialGradient(X, Y - 1.8 * s, 0, X, Y - 1.8 * s, 6.5 * s);
+          g.addColorStop(0, 'rgba(255,200,90,' + (0.6 * fl).toFixed(2) + ')'); g.addColorStop(1, 'rgba(255,150,40,0)');
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X, Y - 1.8 * s, 6.5 * s, 0, TAU); ctx.fill();
+          ctx.fillStyle = '#ff9a2a'; ctx.fillRect(Math.round(X - 0.8 * s), Math.round(Y - (3 + fl) * s), Math.ceil(1.6 * s), Math.ceil((2 + fl) * s));
+          ctx.fillStyle = '#ffd24a'; ctx.fillRect(Math.round(X - 0.5 * s), Math.round(Y - (2.7 + fl * 0.8) * s), Math.ceil(1 * s), Math.ceil((1.5 + fl) * s));
+          ctx.fillStyle = '#fff4c0'; ctx.fillRect(Math.round(X - 0.25 * s), Math.round(Y - 2.1 * s), Math.ceil(0.5 * s), Math.ceil(0.9 * s));
         } else if (d.out > 0) {
           ctx.fillStyle = 'rgba(200,200,210,' + (d.out * 0.5).toFixed(2) + ')';
           ctx.fillRect(Math.round(X - 0.5 * s + (1.2 - d.out) * 3 * s), Math.round(Y - (2 + (1.2 - d.out) * 4) * s), Math.ceil(1 * s), Math.ceil(1 * s));
         }
       }
-      const G = ST.gust;
+      const G = ST.terrace ? ST.gust : null;
       if (G && (G.phase === 'warn' || G.phase === 'hit')) {
         // wind streaks across the terrace + an arrow on the upwind parapet
         const bb = T.bb || [c.x - 16, c.y - 14, c.x + 16, c.y + 14];
@@ -1139,6 +1161,19 @@
       m.objective('Go up the stairs (E).');
       await m.until(() => N.player.level === 'home_terrace');
     }
+    // (the climb's short fade holds the controls; the viewpoint below must not inherit that lock)
+    await m.until(() => !N.player.controlsLocked && N.player.mode !== 'busy', { timeout: 4 });
+    // the terrace's viewpoint (collectibles W6: the camera pulls out over the colony lighting up) plays now, once a
+    // day, instead of by itself in the gap after a failed try (where it would hold the controls under the retry card)
+    try {
+      const C = N.collectibles;
+      if (!ff() && C && typeof C.viewpoint === 'function' && C.VIEWPOINTS && C.VIEWPOINTS.home_terrace) {
+        let vpd = false;
+        Promise.resolve(C.viewpoint('home_terrace')).then(() => { vpd = true; }, () => { vpd = true; });
+        await m.until(() => vpd, { timeout: 6 });
+        if (!ST.panel && N.player.controlsLocked && mode() === 'play') N.player.controlsLocked = false;
+      }
+    } catch (e) { N.err('dwm.viewpoint', e); }
     // Ammamma comes up and sits by the stair head
     const RF = roofs();
     const land = RF && RF.get('home_terrace') && RF.get('home_terrace').stairs ? RF.get('home_terrace').stairs[0] : null;
@@ -1147,6 +1182,7 @@
     ST.draws.add(drawTerrace);
     m.checkpoint('terrace');
     for (const d of T.list) d.lit = false;
+    camZoom(1.8);
     m.objective('Light all ' + T.list.length + ' diyas on the parapet before the breeze (E by a diya). When a gust comes, stand guard on its side.');
     ST.gust = { phase: 'calm', t: TUNE.gustFirst, dir: windDir(), n: 0 };
     everyTick(gustTick);
@@ -1165,6 +1201,7 @@
     ST.offers.clear();
     sfxOr(['temple_bell', 'bell'], { ui: true, vol: 0.5 });
     await m.say('ammamma', 'Twenty-one. Now let the breeze come, *kanna*. Lakshmi will find this house.', { mood: 'happy' });
+    camZoom(null);
     // the terrace view: later that evening, the whole city on its parapets
     if (N.clock && N.clock.minutes < 19 * 60 + 20 && !ff()) {
       const K = N.story && N.story.kit;
@@ -1182,6 +1219,8 @@
     ]);
     m.token('clay_diya', { name: 'A clay diya', desc: 'The twenty-first diya from the home terrace parapet, Deepavali 2003. Ammamma lit the first; you lit the last.' });
     m.flag('dw_terrace', dayKey());
+    // the twenty-one burn on for the rest of the night
+    ST.terraceKeep = { list: T.list.map((d) => Object.assign({}, d, { lit: true, out: 0, saved: 0 })), h: T.h, bb: T.bb, day: dayKey() };
   }
 
   /* ================================================================ 4. rocket_bunty */
@@ -1378,10 +1417,13 @@
     sfxOr(['dw_match', 'paper'], { ui: true, vol: 0.6 });
     const dx = Math.cos(aim.a), dy = Math.sin(aim.a);
     let burst = null;
-    const r0 = fx.rocket(L.x + dx * 3, L.y + dy * 3, { h: 3, type: 'multi', big: 2.2, vx: dx * 16, vy: dy * 16, vh: 140, fuse: 1.5, col: 0, onBurst: (r) => { burst = { x: r.x, y: r.y, h: r.h }; } });
-    void r0;
+    const ropt = { h: 3, type: 'multi', big: 2.2, vx: dx * 16, vy: dy * 16, vh: 140, fuse: 1.5, col: 0, force: true, onBurst: (r) => { burst = { x: r.x, y: r.y, h: r.h }; } };
+    const bottle = dwFn('bottle');
+    let viaBottle = false;
+    if (bottle) { try { viaBottle = !!bottle(L.x, L.y, { fuse: 0.5, rocket: ropt }); } catch (e) { N.err('dwm.bottle', e); } }
+    if (!viaBottle) fx.rocket(L.x + dx * 3, L.y + dy * 3, ropt);
     m.objective(null);
-    await m.wait(1.7);
+    await m.wait(viaBottle ? 2.3 : 1.7);
     const B = burst || { x: L.x + dx * 26, y: L.y + dy * 26, h: 150 };
     fx.burst(B.x, B.y, B.h + 6, 'ring', 1.6);
     await m.wait(0.35); fx.burst(B.x + 18, B.y - 10, B.h + 14, 'willow', 1.4);
@@ -1421,7 +1463,14 @@
     update(dt) { try { tigerUpdate(this, dt); } catch (e) { N.err('dwm.tiger', e); } }
     draw() { if (N.render.inView(this.x, this.y, 24)) N.render.queue('actors', this.y, this._fn); }
   }
-  function removeTiger(t) { if (!t) return; t.alive = false; try { N.entities.remove(t); } catch (e) { /* ignore */ } if (ST.tiger === t) ST.tiger = null; if (ST.tigerKeep === t) ST.tigerKeep = null; }
+  /** src/diwali.js scares / steps registered dogs: Tiger is stepped here (dwOwnStep) and reacts to real bangs too */
+  function dogsRegister(t) {
+    const Dg = DW() && DW().dogs;
+    t.dwOwnStep = true;
+    t.onBang = (x, y) => { if (t.mode === 'follow' && !(t.flinch > 0) && Math.hypot(x - t.x, y - t.y) < 170) { t.flinch = 99; t.calmT = 0; t.whT = 0; t.realBangs = (t.realBangs | 0) + 1; toast('A bang nearby! Tiger froze. Stay beside him.', 2400, 'dwm:tiger'); } };
+    try { if (Dg && typeof Dg.register === 'function') Dg.register(t); } catch (e) { N.err('dwm.dogs', e); }
+  }
+  function removeTiger(t) { if (!t) return; try { const Dg = DW() && DW().dogs; if (Dg && typeof Dg.unregister === 'function') Dg.unregister(t); } catch (e) { /* ignore */ } t.alive = false; try { N.entities.remove(t); } catch (e) { /* ignore */ } if (ST.tiger === t) ST.tiger = null; if (ST.tigerKeep === t) ST.tigerKeep = null; }
   function tigerUpdate(a, dt) {
     a.t += dt;
     const p = N.player;
@@ -1528,6 +1577,7 @@
     tg.home = { x: hide.x, y: hide.y };
     N.entities.add(tg);
     m.spawn(tg);
+    dogsRegister(tg);
     if (ST.tigerKeep && ST.tigerKeep !== tg) removeTiger(ST.tigerKeep);
     ST.tiger = tg;
     const c = { x: hide.x + Math.cos(dayKey()) * 45, y: hide.y + Math.sin(dayKey() * 1.7) * 35, r: TUNE.tigerR };
@@ -1608,6 +1658,14 @@
     const r = run(); if (r) for (const s of r.spawned) if (s.e === tg) s.keep = true;
     ST.keepDay = dayKey();
   }
+  /** the lit terrace stays drawn on the night of the mission (until 05:00 the next morning) */
+  function terraceKeepTick() {
+    const K = ST.terraceKeep;
+    if (!K) return;
+    const m0 = N.clock ? N.clock.minutes : 0;
+    if (dayKey() > K.day + 1 || (dayKey() === K.day + 1 && m0 > 5 * 60) || dayKey() < K.day) ST.terraceKeep = null;
+    else ST.draws.add(drawTerrace);
+  }
   function tigerKeepTick() {
     const t = ST.tigerKeep;
     if (!t) return;
@@ -1636,10 +1694,11 @@
   function register() {
     const M = N.missions;
     if (!M || !M.register) return;
-    const mk = (def) => { const d = M.register(Object.assign({ kind: 'side', chapter: SIDE_CH, autosave: false }, def)); return d; };
+    // diwaliOwnsLighting: src/diwali.js hides its free-roam "Light a cracker" offer while one of these runs
+    const mk = (def) => { const d = M.register(Object.assign({ kind: 'side', chapter: SIDE_CH, autosave: false, diwaliOwnsLighting: true }, def)); return d; };
     mk({ id: 'pataakha_bazaar', title: 'Pataakha Bazaar', giver: { place: 'home', r: 16 }, window: { from: '09:00', to: '15:00' },
       jcardLine: 'Amma\'s ₹100, Amma\'s list, Nanna\'s rule.', when: () => stallsOn(), script: bazaar });
-    mk({ id: 'mithai_run', title: 'Mithai Run', giver: { place: 'home', r: 16 }, window: { from: '15:00', to: '18:30' },
+    mk({ id: 'mithai_run', title: 'Mithai Run', giver: { place: 'home', r: 16 }, window: { from: '15:00', to: '17:45' },
       jcardLine: 'Five boxes of sweets before Amma\'s puja.', when: () => diwaliOn(), script: mithai });
     mk({ id: 'deepon_ki_raat', title: 'Deepon ki Raat', giver: { npc: 'ammamma', place: 'home', r: 16 }, window: { from: '18:30', to: '21:30' },
       jcardLine: 'Twenty-one diyas with Ammamma, before the breeze.', when: () => diwaliOn(), script: deepon });
@@ -1679,7 +1738,7 @@
     if (day !== dayKey() || !diwaliOn()) return;
     const G = ST.garage = garageSpot();
     const t = new TigerDog(G.x, G.y); t.mode = 'sleep'; t.found = true; t.angle = Math.PI;
-    N.entities.add(t); ST.tigerKeep = ST.tiger = t; ST.keepDay = day;
+    N.entities.add(t); dogsRegister(t); ST.tigerKeep = ST.tiger = t; ST.keepDay = day;
     ST.draws.add(drawGarage);
   }
 
@@ -1705,7 +1764,7 @@
     holdsTick(dt);
     for (const fn of Array.from(ST.ticks)) { try { fn(dt); } catch (e) { N.err('dwm.tick', e); } }
     fxTick(dt);
-    if (mode() === 'play') { giversTick(dt); graceTick(); tigerKeepTick(); restoreTigerTick(); }
+    if (mode() === 'play') { giversTick(dt); graceTick(); tigerKeepTick(); restoreTigerTick(); terraceKeepTick(); }
   }
   function draw() {
     if (mode() === 'title' || mode() === 'boot' || !N.render) return;
@@ -1754,7 +1813,7 @@
   for (const ev of ['mission:complete', 'mission:fail', 'mission:abort']) N.on(ev, (d) => { if (!d || mineId(d.id)) cleanupAll(); });
   N.on('mission:start', (d) => {
     clearGivers();
-    if (d && mineId(d.id)) cleanupAll();
+    if (d && mineId(d.id)) { cleanupAll(); const r = run(); if (r && r.id === d.id) r.diwaliOwnsLighting = true; }
   });
   N.on('mission:pass', (d) => {
     if (!d || (d.id !== 'rocket_bunty' && d.id !== 'tiger_ko_bachao' && d.id !== 'deepon_ki_raat')) return;
@@ -1762,7 +1821,7 @@
     // a Diwali night activity ends after the curfew: the colony is out with its families tonight
     if (!f.no_curfew && (m0 >= 21 * 60 || m0 < 5 * 60)) { f.no_curfew = 'diwali'; ST.grace = dayKey(); }
   });
-  N.on('game:new', () => { cleanupAll(); clearGivers(); if (ST.tigerKeep) removeTiger(ST.tigerKeep); ST.prog = {}; ST.box = {}; ST.lastBuy = ST.lastAim = null; ST.garage = null; });
+  N.on('game:new', () => { cleanupAll(); clearGivers(); if (ST.tigerKeep) removeTiger(ST.tigerKeep); ST.prog = {}; ST.box = {}; ST.lastBuy = ST.lastAim = null; ST.garage = null; ST.terraceKeep = null; });
   N.on('game:quit', () => { cleanupAll(); clearGivers(); });
   N.on('save:loaded', () => { cleanupAll(); clearGivers(); const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y }; });
   N.on('mission:complete', () => { const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y }; });

@@ -14,7 +14,7 @@
  *              light strings along many parapets (chase / blink / twinkle / alternate / steady), diyas along the
  *              parapets in the evening. Flames flicker from dusk; lamps glow at night (N.render.lights / 3D glow
  *              points + emissive). The home (Lakshmi Nivas) always; its terrace parapet diyas are lit only once the
- *              missions' deepon_ki_raat sets N.flags.diwali_terrace_lit (or when no such mission is registered).
+ *              missions' deepon_ki_raat is done (N.flags.dw_terrace / diwali_terrace_lit), or when it is not registered.
  *   stalls     pataakha stalls on Sultan Bazaar (Koti), the Koti book bazaar, every market and beside every
  *              kirana: trestle table with a red skirt, colourful packs, stacked tins, bamboo poles, a striped
  *              awning, a board with a fictional, brand-free name (PATAAKHA BAZAAR, ROSHNI FIREWORKS, ...) and a
@@ -110,7 +110,7 @@
     },
     range: 560,            // things happen within this of the player (2D); 3D city rockets out to range3d
     range3d: 1100,
-    rocketRate: 1.6,       // city rockets per second at intensity 1 (desktop; phones x0.55)
+    rocketRate: 2.6,       // city rockets per second at intensity 1 (desktop; phones x0.55)
     groupEvery: [3.5, 8],  // seconds between a family's crackers
     bangScare: 170,        // dogs within this of a bang run off and hide
     otherFaithR: 150, respectR: 60, hospitalR: 230,
@@ -469,7 +469,7 @@
     big = big || 1; type = type || 'peony'; col = col == null ? (rnd() * 8) | 0 : col;
     const phone = PHONE();
     const n = Math.round((phone ? 36 : 72) * big * (type === 'ring' ? 0.7 : type === 'palm' ? 0.22 : 1));
-    const sp = (44 + rnd() * 14) * Math.sqrt(big);
+    const sp = (68 + rnd() * 22) * Math.sqrt(big);
     const col2 = (col + 3) % 8;
     const ra = rnd() * TAU, rc = Math.cos(ra), rs = Math.sin(ra), tilt = rr(0.2, 0.9);
     for (let i = 0; i < n; i++) {
@@ -823,7 +823,8 @@
       let x, y;
       if (clump && rng.next() < 0.55) { const a = rng.next() * TAU, r = Math.sqrt(rng.next()) * 4.5; x = kx + Math.cos(a) * r * 1.6; y = ky + Math.sin(a) * r; }
       else { x = c.x0 + rng.next() * CS; y = c.y0 + rng.next() * CS; }
-      if (!S_OK(W.surfaceAt(x, y))) continue;
+      const sf = W.surfaceAt(x, y);
+      if (!S_OK(sf) || (sf !== S.ROAD && sf !== S.BRIDGE && rng.next() < 0.75)) continue;
       X[n] = x; Y[n] = y; C[n] = pickCol(rng.next()); Z[n] = 0.7 + rng.next() * 0.8; T[n] = 5 + rng.next() * 10;
       n++;
     }
@@ -912,7 +913,6 @@
       if (!c.ready || c.want <= c.have) continue;
       for (let k = c.have; k < c.want; k++) { if (bitAlloc(c.cx[k], c.cy[k], c.cc[k], c.cs[k], c.key, k, c.ct[k]) < 0) break; c.have++; }
     }
-    for (let i = 0; i < LB.n; i++) { /* recount have per cell (bits that drifted keep their cell) */ }
     LIT.cells = L.length;
     LIT.decalsGen = (LIT.decalsGen || 0) + 1;
   }
@@ -1130,7 +1130,7 @@
   function decorOn(d) { return !!d && (d.home || d.u < d.share * decorDay()); }
   /** the home terrace parapet diyas are the deepon_ki_raat mission's: lit only once it is done (N.flags.diwali_terrace_lit), or when no such mission exists */
   function homeParapetLit() {
-    if (F().diwali_terrace_lit) return true;
+    if (F().diwali_terrace_lit || F().dw_terrace) return true;
     const M = N.missions; const has = M && M.defs && (Array.isArray(M.defs) ? M.defs.some((q) => q.id === 'deepon_ki_raat') : M.defs.deepon_ki_raat);
     return !has;
   }
@@ -1152,6 +1152,7 @@
   /* ================================================================ layout: pataakha stalls */
   const STALL_LABELS = ['DEEPAVALI CRACKERS', 'PATAAKHA BAZAAR', 'HAPPY DIWALI', 'CRACKERS SALE', 'ROSHNI FIREWORKS', 'JYOTHI CRACKERS', 'CHAMAK PATAAKHE', 'DEEPAM FIREWORKS', 'NEW STAR CRACKERS', 'RAINBOW FIREWORKS'];
   const PACK_LABELS = ['BIJLI', 'ROCKET', 'ANAAR', 'CHAKRI', 'PHULJHADI'];
+  const SS = 1.25; // stall scale (local units below are x SS)
   const STRIPES = [['#d8302a', '#f4ecd8'], ['#f2c230', '#2a8a3a'], ['#2a5cb8', '#f4ecd8'], ['#e8641a', '#f2c230'], ['#c02a6a', '#f4ecd8']];
   let STALLS = null;
   function buildStalls() {
@@ -1165,8 +1166,8 @@
     void nodes;
     const tryAt = (x, y, ang, anchor, kind) => {
       const ca = Math.cos(ang), sa = Math.sin(ang);
-      for (const [u, v] of [[-6.5, -3.4], [6.5, -3.4], [6.5, 3.4], [-6.5, 3.4], [0, 0]]) { const px = x + ca * u - sa * v, py = y + sa * u + ca * v; if (!okGround(px, py) || !W.isWalkable(px, py)) return false; }
-      if (out.some((q) => Math.hypot(q.x - x, q.y - y) < 15)) return false;
+      for (const [u, v] of [[-6.5, -3.6], [6.5, -3.6], [6.5, 3.6], [-6.5, 3.6], [0, 0]]) { const px = x + (ca * u - sa * v) * SS, py = y + (sa * u + ca * v) * SS; if (!okGround(px, py) || !W.isWalkable(px, py)) return false; }
+      if (out.some((q) => Math.hypot(q.x - x, q.y - y) < 15 * SS)) return false;
       if (kind !== 'kirana' && markets.some((m) => Math.hypot(m.x - x, m.y - y) < 46)) return false;
       if (N.respect && N.respect.near && N.respect.near(x, y, 50)) return false;
       if (nearJunction(x, y)) return false;
@@ -1184,11 +1185,11 @@
       const at = (s) => { s = clamp(s, 0, len); let i = 1; while (i < pts.length - 1 && cum[i] < s) i++; const a = pts[i - 1], b = pts[i], L0 = cum[i] - cum[i - 1] || 1, t = (s - cum[i - 1]) / L0; return { x: a[0] + (b[0] - a[0]) * t, y: a[1] + (b[1] - a[1]) * t, ang: Math.atan2(b[1] - a[1], b[0] - a[0]) }; };
       let got = 0;
       for (let k = 0; got < n && k < 40; k++) {
-        const dist = d0 + Math.floor(k / 2) * 16, dir = k % 2 ? -1 : 1;
+        const dist = d0 + Math.floor(k / 2) * 18, dir = k % 2 ? -1 : 1;
         if (dist > d1) break;
         const q = at(s0 + dir * dist);
         for (const side of (k % 4 < 2 ? [1, -1] : [-1, 1])) {
-          const nx = -Math.sin(q.ang) * side, ny = Math.cos(q.ang) * side, off = road.w / 2 + foot * 0.55 + 3.9;
+          const nx = -Math.sin(q.ang) * side, ny = Math.cos(q.ang) * side, off = road.w / 2 + foot * 0.55 + 4.6 * SS;
           const x = q.x + nx * off, y = q.y + ny * off;
           // the stall faces the road: its local +v points away from the road (vendor side)
           if (tryAt(x, y, q.ang + (side > 0 ? 0 : PI), pl.id, kind)) { const st = out[out.length - 1]; st.fx = -nx; st.fy = -ny; got++; break; }
@@ -1855,7 +1856,7 @@
     R = N.render; ctx = R.ctx;
     const t0 = now();
     const ca = Math.cos(st.a), sa = Math.sin(st.a), fx = st.fx, fy = st.fy;
-    const P = (u, w) => [st.x + ca * u + fx * w, st.y + sa * u + fy * w];
+    const P = (u, w) => [st.x + (ca * u + fx * w) * SS, st.y + (sa * u + fy * w) * SS];
     const Q = (u0, w0, u1, w1, h, col) => { const a = P(u0, w0), b = P(u1, w0), c = P(u1, w1), d = P(u0, w1); quad3(a[0], a[1], h, b[0], b[1], h, c[0], c[1], h, d[0], d[1], h, col); };
     // tins stacked at the back, the table, its front skirt
     for (let i = 0; i < 4; i++) Q(-5.8 + i * 3, -3.4, -3.6 + i * 3, -1.6, 4.4 - (i % 2), ['#7a8aa8', '#c8302a', '#3a6a9a', '#d8a020'][i]);
@@ -1882,7 +1883,13 @@
     const b0 = P(-6.6, -4.3), b1 = P(6.6, -4.3);
     quad3(b0[0], b0[1], 9.4, b1[0], b1[1], 9.4, b1[0], b1[1], 12.6, b0[0], b0[1], 12.6, '#f4ecd8');
     const tc = P(0, -4.3);
-    try { if (N.draw.pixelText) N.draw.pixelText(tc[0], tc[1], 11, st.label.length > 14 ? st.label.split(' ')[0] : st.label, '#b0201a', { scale: 0.85 }); } catch (e) { /* text optional */ }
+    try {
+      if (N.draw.pixelText && N.draw.pixelTextWidth) {
+        const bw = 12.6 * SS * kk(11);
+        let t = st.label; if (N.draw.pixelTextWidth(t) > bw) t = t.split(' ')[0];
+        if (N.draw.pixelTextWidth(t) <= bw) N.draw.pixelText(tc[0], tc[1], 11, t, '#b0201a', { scale: 1 });
+      }
+    } catch (e) { /* text optional */ }
     STATS._d2 += now() - t0;
   }
   const pick2 = (rng, a) => a[(rng.next() * a.length) | 0];
@@ -1939,7 +1946,7 @@
           ctx.moveTo(SX(x - SP.vx[i] * sl, k0), SY(y - SP.vy[i] * sl, k0)); ctx.lineTo(SX(x, k1) + 0.01, SY(y, k1));
           any = true;
         }
-        if (any) { ctx.lineWidth = bright ? 1.1 : 0.9; ctx.stroke(); }
+        if (any) { ctx.lineWidth = bright ? 1.7 : 1.2; ctx.stroke(); }
       }
     };
     pass(true); pass(false);
@@ -2035,7 +2042,7 @@
     const night = N.render.night || 0;
     if (night < 0.05 || !p) return;
     let n = 0; const cap = BUD().lights;
-    for (const f of FLASH) { if (n >= cap) break; const a = flashK(f); if (a < 0.05) continue; if (Math.abs(f.x - p.x) > 700 || Math.abs(f.y - p.y) > 700) continue; lp(f.x, f.y, f.r * (f.h > 20 ? 1.1 : 0.7), f.col, Math.min(1, a), 0); n++; }
+    for (const f of FLASH) { if (n >= cap) break; const a = flashK(f); if (a < 0.05) continue; if (Math.abs(f.x - p.x) > 700 || Math.abs(f.y - p.y) > 700) continue; lp(f.x, f.y, f.h > 20 ? Math.min(150, f.r * 0.6) : f.r * 0.6, f.col, Math.min(1, a) * (f.h > 20 ? 0.45 : 0.85), 0); n++; }
     for (const e of EMIT) { if (n >= cap + 4) break; if (Math.abs(e.x - p.x) > 400 || Math.abs(e.y - p.y) > 400) continue; if (e.kind === 'anaar' && e.t > 0.3) { lp(e.x, e.y, 46, '#ffc070', 0.95, 3); n++; } else if (e.kind === 'sparkler') { lp(e.x, e.y, 20, '#ffe8b0', 0.8, e.h); n++; } else if (e.kind === 'chakri') { lp(e.x, e.y, 24, '#ffe070', 0.85, 0.5); n++; } }
     if (lampTime()) { let m = 0; for (const d of VIS.houses) { if (m >= Math.max(3, cap >> 1)) break; if (!d._fv && !is3D()) continue; lp(d.door.x + d.nx * 2, d.door.y + d.ny * 2, 22, '#ffb050', 0.6, 0.5); m++; } }
     for (const st of VIS.stalls) { if (n >= cap + 8) break; if (!stallsOpen()) break; lp(st.x + st.fx * 2, st.y + st.fy * 2, 38, '#ffe0a0', 0.85, 7); n++; }
@@ -2102,10 +2109,11 @@
   }
   // ---- points: dynamic (sparks, glows, smoke) + static per site (flames, bulbs: animated in the shader)
   const PT_VS = [
-    'attribute vec2 aSA; attribute vec3 aCol; varying vec4 vCol; uniform float uScale; uniform float uFogK;',
+    'attribute vec2 aSA; attribute vec3 aCol; varying vec4 vCol; uniform float uScale; uniform float uFogK; uniform float uMin;',
     'void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); float d = max(1.0, -mv.z);',
     '  vCol = vec4(aCol, aSA.y * exp(-d * uFogK));',
-    '  gl_PointSize = clamp(aSA.x * uScale / d, 1.0, 256.0); gl_Position = projectionMatrix * mv; }',
+    '  float ps = aSA.x * uScale / d; if (ps < uMin) { vCol.a *= max(0.35, ps / uMin); ps = uMin; }',
+    '  gl_PointSize = clamp(ps, 1.0, 256.0); gl_Position = projectionMatrix * mv; }',
   ].join('\n');
   const PT_FS = [
     'varying vec4 vCol; uniform float uHard; uniform float uAdd;',
@@ -2114,13 +2122,13 @@
     '  a += uAdd * (1.0 - smoothstep(0.0, 0.32, r));',
     '  if (vCol.a * a < 0.004) discard; gl_FragColor = vec4(vCol.rgb, min(1.0, vCol.a * a)); }',
   ].join('\n');
-  function makePoints(n, additive, hard, core) {
+  function makePoints(n, additive, hard, core, minPx) {
     const T = G3.THREE, geo = new T.BufferGeometry();
     const pos = new T.BufferAttribute(new Float32Array(n * 3), 3), col = new T.BufferAttribute(new Float32Array(n * 3), 3), siz = new T.BufferAttribute(new Float32Array(n * 2), 2);
     for (const a of [pos, col, siz]) a.setUsage(T.DynamicDrawUsage);
     geo.setAttribute('position', pos); geo.setAttribute('aCol', col); geo.setAttribute('aSA', siz);
     geo.setDrawRange(0, 0); geo.boundingSphere = new T.Sphere(new T.Vector3(), 1e7);
-    const mat = new T.ShaderMaterial({ vertexShader: PT_VS, fragmentShader: PT_FS, transparent: true, depthWrite: false, blending: additive ? T.AdditiveBlending : T.NormalBlending, uniforms: { uScale: G3.uni.uScale, uFogK: additive ? G3.uni.uFogK : G3.uni.uFogK2, uHard: { value: hard || 0 }, uAdd: { value: core || 0 } } });
+    const mat = new T.ShaderMaterial({ vertexShader: PT_VS, fragmentShader: PT_FS, transparent: true, depthWrite: false, blending: additive ? T.AdditiveBlending : T.NormalBlending, uniforms: { uScale: G3.uni.uScale, uFogK: additive ? G3.uni.uFogK : G3.uni.uFogK2, uHard: { value: hard || 0 }, uAdd: { value: core || 0 }, uMin: { value: minPx || 0 } } });
     const p = new T.Points(geo, mat);
     p.frustumCulled = false; p.renderOrder = additive ? 8 : 7; p.userData.noShadow = true;
     return { p, n: 0, max: n, pa: pos.array, ca: col.array, sa: siz.array };
@@ -2214,7 +2222,7 @@
     initMaterials3D();
     const T = THREE;
     G3.grp = new T.Group(); G3.grp.name = 'diwali3d';
-    G3.spk = makePoints(TUNE.budget.desk.sparks * 2 + 200, true, 0, 0.6);
+    G3.spk = makePoints(TUNE.budget.desk.sparks * 2 + 200, true, 0, 0.6, 2.6);
     G3.glo = makePoints(220, true, 0, 0.35);
     G3.smk = makePoints(TUNE.budget.desk.smoke + 40, false, 0, 0);
     const pg = new T.PlaneGeometry(1, 1); pg.rotateX(-PI / 2);
@@ -2322,7 +2330,7 @@
     for (const st of stallList()) {
       if (Math.hypot(st.x - site.x, st.y - site.y) > site.r) continue;
       const ca = Math.cos(st.a), sa = Math.sin(st.a), fx = st.fx, fy = st.fy;
-      const P = (u, w, y) => [st.x + ca * u + fx * w, y, st.y + sa * u + fy * w];
+      const P = (u, w, y) => [st.x + (ca * u + fx * w) * SS, y, st.y + (sa * u + fy * w) * SS];
       const box = (u0, w0, u1, w1, y0, y1) => { const A = P(u0, w0, 0), B = P(u1, w0, 0), C = P(u1, w1, 0), D = P(u0, w1, 0), s = (q, y) => [q[0], y, q[2]]; b.quad(s(A, y0), s(B, y0), s(B, y1), s(A, y1)); b.quad(s(B, y0), s(C, y0), s(C, y1), s(B, y1)); b.quad(s(C, y0), s(D, y0), s(D, y1), s(C, y1)); b.quad(s(D, y0), s(A, y0), s(A, y1), s(D, y1)); b.quad(s(A, y1), s(B, y1), s(C, y1), s(D, y1)); };
       const th = 3.2 * VS;
       b.col('#7a5232', 0); box(-6.2, -0.8, 6.2, 3.2, th - 0.4, th);                          // the table top
@@ -2412,7 +2420,7 @@
     for (let i = 0; i < SP.n; i++) {
       const u = SP.t[i] / SP.life[i], kd = SP.kind[i]; let a = 1 - u * u;
       if (kd === 1 && rnd() < 0.35) a *= 0.15;
-      const sz = (kd === 4 ? 0.42 : kd === 2 ? 1.0 : 1.7) * SP.size[i], c = RGB[SP.col[i]], x = SP.x[i], y = SP.y[i], h = SP.h[i] * VS;
+      const sz = (kd === 4 ? 0.42 : kd === 2 ? 1.6 : 3.2) * SP.size[i], c = RGB[SP.col[i]], x = SP.x[i], y = SP.y[i], h = SP.h[i] * VS;
       ptAdd(S, x, h, y, sz, a, c);
       if (kd !== 4 && kd !== 2) ptAdd(S, x - SP.vx[i] * 0.05, h - SP.vh[i] * 0.05 * VS, y - SP.vy[i] * 0.05, sz * 0.8, a * 0.4, c);
     }
@@ -2543,9 +2551,9 @@
   }
   function draw() {
     if (is3D() || !busy) return;
+    // the 2D draw closures ran during the last flush: book last frame's enqueue + draw cost
+    if (STATS._d2 != null) { STATS.ms2d = STATS._d2; STATS.ms2dAvg += (STATS.ms2d - STATS.ms2dAvg) * 0.05; }
     try { draw2D(); } catch (e) { N.err('diwali.draw', e); }
-    // the 2D draw closures run during the flush: book last frame's cost
-    STATS.ms2d = STATS._d2 || 0; STATS.ms2dAvg += (STATS.ms2d - STATS.ms2dAvg) * 0.05;
   }
   N.addSystem({
     id: 'diwali', order: 44, runIn: ['play', 'dialogue', 'cutscene'],

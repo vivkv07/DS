@@ -1037,7 +1037,8 @@ is a catapult while Chinnu is at the line — and let go), the stones scatter, t
 restack them one at a time (one pair of hands on the stack at once) while the hitters throw the ball at them
 (hit on the full = out, no head shots, a touch on a hitter = SAFE 2.4 s — for an AI seeker only a touch he ran for,
 not brushing past the guard; Chinnu's aim assist passes over a SAFE seeker — Chitti is doodh-bhaat), seven back =
-"LINGOCHA!"; roles swap every round, best of 3. The other team in a real match plays `TUNE.lingocha.rival` (+0.12)
+"LINGOCHA!"; roles swap every round, best of 3. A passer-by in the line throw: an AI thrower waits (up to 3 s), Chinnu's
+prompt says "somebody is in the line", and a line throw that hits one is taken again (`try_blocked`, twice a try). The other team in a real match plays `TUNE.lingocha.rival` (+0.12)
 above the game's difficulty and its hitters pick Chinnu a little more often (`meW`). Maram pitti — the ball is tossed up and every throw must
 bounce before anyone grabs it (a catch on the full puts the thrower out), hit on the full = out, head shots are
 fouls (3 = out), a RUN tap (DODGE) is a short committed hop (with no direction held: across the red wind-up line /
@@ -1066,7 +1067,9 @@ Hooks (from playground_games.js only): the 3D layer `playgroundGames` (stones, b
 runs (marker systems `pg.paOn` / `pg.paOff` at order 42.95 / 43.05) at a ground taken by our games; during a real
 game: `N.clock.hold('playground-game')` (the clock crawls at 0.25 game-min/s), `N.render.baseZoom` fits the
 ground (1-2.2 top-down; up to 2.6 on an upright phone, fitted to the width), `N.traffic.closeRoads('pg', ...)`, traffic's 'playground' crowd zone moved to the
-sideline (spectators), mission givers' `when()` wrapped so no J-card starts a mission mid-game, an N.npcs actor
+sideline (spectators; its kids already on the pitch head there at once), mission givers' `when()` wrapped so no J-card
+starts a mission mid-game (after it, a giver whose ring Chinnu stands in waits till he walks out: the gully-league
+giver sits mid-ground at playground_1), an N.npcs actor
 of a playing friend standing at the ground hidden while its double plays. Test: `node tests/playground_games.cjs`
 (ONLY=desktop|fixes|fair|ambient|3d|portrait|landscape).
 

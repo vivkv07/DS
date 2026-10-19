@@ -139,7 +139,8 @@ async function startAt(id, o) {
   o = o || {};
   const g = await ev((id) => { const d = N.missions.defs[id]; const p = d && N.missions.giverPos(d); return p ? { x: p.x, y: p.y, r: (d.giver && d.giver.r) || 14 } : null; }, id);
   if (!check(!!g, id + ': the giver is on the map', g)) return false;
-  if (!o.noTeleport) await teleport(g.x + 34, g.y + 6);
+  // from 90 u away (after a pass at the same door the next giver waits until he has stepped out once)
+  if (!o.noTeleport) await teleport(g.x + 90, g.y + 6);
   await waitFor((id) => N.missions.markers().some((m) => m.kind === 'giver' && m.id === id), id, 8000, id + ' giver marker');
   if (o.shot) await shot(o.shot);
   await walkTo(g.x, g.y, g.r - 4, { stop: () => !!N.missions.prompt || !!N.missions.active, ms: 15000 });
@@ -155,6 +156,7 @@ async function failAndRetry(id, reasonRe, before) {
   failN[id] = (failN[id] || 0) + 1;
   await shot(id + '_failed' + (failN[id] > 1 ? '_' + failN[id] : ''));
   if (before) await before();
+  await waitFor(() => N.missions.askOpen && !N.player.controlsLocked && N.state.mode === 'play', null, 8000, 'the retry card takes ACTION');
   await press('KeyE'); tally('E retry');
   return waitFor((id) => N.missions.active && N.missions.active.id === id && N.missions.active.attempt >= 2 && !N.missions.active.ff, id, 15000, id + ' retried from the checkpoint');
 }
@@ -260,7 +262,7 @@ async function pMithai() {
   await talkThrough();
   // fail: the puja bell (a short timer) while he dawdles at home
   check(await ev(() => !!N.hud.timerValue && N.hud.timerValue() > 0 || true), 'the PUJA timer runs');
-  if (!(await failAndRetry('mithai_run', /puja bell/i, () => ev(() => { N.dwMissions.TUNE.mithaiSecs = 150; })))) return;
+  if (!(await failAndRetry('mithai_run', /puja bell/i, () => ev(() => { N.dwMissions.TUNE.mithaiSecs = 120; })))) return;
   const order = await ev(() => {
     const st = N.dwMissions.debug.state().mithai.stops, out = [];
     let cur = { x: N.player.x, y: N.player.y };
@@ -274,11 +276,12 @@ async function pMithai() {
     await walkTo(st.x, st.y, 9, { stop: `() => /Give the sweets/.test(N.input.actionLabel || '')`, ms: 40000 });
     if (first) { first = false; await shot('mithai_walk'); }
     if (!(await useWhen(/Give the sweets/))) return;
-    await talkThrough();
     if (st.key === 'immu') {
-      check(await ev(() => N.flags.diwali_sevai_promise === true), 'Immu\'s Ammi: "Eid pe sevaiyan pakki!" -> N.flags.diwali_sevai_promise');
+      await talkThrough(() => !!(N.dialogue.current && /sevaiyan pakki/i.test(N.dialogue.current.text) && !N.dialogue.current.typing));
       await shot('mithai_immu');
     }
+    await talkThrough();
+    if (st.key === 'immu') check(await ev(() => N.flags.diwali_sevai_promise === true), 'Immu\'s Ammi: "Eid pe sevaiyan pakki!" -> N.flags.diwali_sevai_promise');
   }
   const s1 = await ev(() => N.dwMissions.debug.state().mithai);
   check(s1 && s1.done.length === 5, 'all five delivered (' + (s1 && s1.done.join(', ')) + ')', s1);
@@ -306,7 +309,7 @@ async function deeponBot(ms) {
     if (s.dlg) { await talkThrough(); continue; }
     if (s.mode !== 'play') { await tick(); continue; }
     const T = s.d.terrace, G = s.d.gust, p = s.d.player;
-    if (T.lit >= T.n) { await tick(); continue; }
+    if (T.lit >= T.n) return s;
     if (G && (G.phase === 'warn' || G.phase === 'hit')) {
       // guard: stand by the lit diyas on the windward edge (the most of them within reach)
       const ux = -Math.cos(G.dir), uy = -Math.sin(G.dir);

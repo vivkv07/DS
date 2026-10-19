@@ -7,7 +7,8 @@
  *               stones scatter; then the seekers pick the stones up one by one and restack them while the
  *               hitters chase the ball and throw it at them: hit = out (dodging works, a touch on a hitter
  *               makes you SAFE for a moment, little Chitti is doodh-bhaat and never counts). Rebuild all
- *               seven and it is "LINGOCHA!". Roles swap every round; best of 3.
+ *               seven and it is "LINGOCHA!". Roles swap every round; best of 3. A passer-by in the line throw:
+ *               the AI thrower waits for him, Chinnu's prompt says so, and a throw into him is taken again.
  *   marampitti  MARAM PITTI (Telugu "picchi banti", Indian dodgeball). Free for all, 6-10 kids. The ball
  *               is tossed up and must BOUNCE before anyone grabs it (every throw: only a catch on the full
  *               is allowed, and a catch puts the thrower out). Whoever holds it throws at the others; a
@@ -67,7 +68,10 @@
  *   - N.clock.hold('playground-game') during a real game (the clock then crawls at TUNE.clockRate game minutes
  *     per second), N.render.baseZoom (top-down: zoomed in to fit the ground, 1-2.2, 2.6 on an upright phone) during a real game,
  *     N.input.setLabel('run', 'DODGE'); mission givers' when() is wrapped once so no giver's J-card starts a
- *     mission while a game is on (the colony ground carries the gully-league giver).
+ *     mission while a game is on (the colony ground carries the gully-league giver), and a giver whose ring Chinnu
+ *     stands in when the game ends waits till he has walked out of it (r + 24 u, as missions.js after a mission).
+ *   - N.traffic: its 'playground' crowd zone is moved to the sideline during a game (spectators) and its kids
+ *     already out on the pitch are sent there at once (ped.tgt cleared); put back when the game ends.
  *   - N.wanted.addHeat(15, 'ball') when Chinnu's throw hits an adult passer-by; a broken window (Chinnu's ball
  *     into a house at window height) ends the game comically (+30 heat, the aunty keeps the ball for the day).
  *   - N.npcs: looks, names and bark speakers of Immu, Ayesha, Chitti, Bunty-anna, Babloo, Tiger; an actor of

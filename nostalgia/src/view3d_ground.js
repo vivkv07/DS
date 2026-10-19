@@ -113,9 +113,11 @@
   /** nearest point on the polyline with arc length in [s0, s1] -> {s, d2, x, y, v (signed side offset)} */
   function projectOn(pts, cum, x, y, s0, s1) {
     let best = null;
-    for (let k = 0; k < pts.length - 1; k++) {
+    // (cum is monotonic: start at the segment holding s0, stop past s1)
+    for (let k = s0 > 0 ? segAt(cum, s0 - 1e-6) : 0; k < pts.length - 1; k++) {
+      if (cum[k] > s1 + 1e-6) break;
       const segL = cum[k + 1] - cum[k];
-      if (cum[k + 1] < s0 - 1e-6 || cum[k] > s1 + 1e-6 || segL < 1e-9) continue;
+      if (cum[k + 1] < s0 - 1e-6 || segL < 1e-9) continue;
       const a = pts[k], b = pts[k + 1], dx = b[0] - a[0], dy = b[1] - a[1];
       const tmin = Math.max(0, (s0 - cum[k]) / segL), tmax = Math.min(1, (s1 - cum[k]) / segL);
       let t = ((x - a[0]) * dx + (y - a[1]) * dy) / (segL * segL);
@@ -784,7 +786,7 @@
    *  - a piece's footpath strip gets a gap wherever its slab lies on another carriageway (end faces
    *    at each gap; slivers under CL_MIN between gaps go too).
    * Sliced like the rest of the analysis (top-down idle time, never a 3D frame). */
-  const CL_CELL = 64, CL_MIN = 3, CL_STEP = 1;
+  const CL_CELL = 64, CL_MIN = 3, CL_STEP = 1, CL_RUN = 48;
   const clKey = (i, j) => j * 4096 + i;
   function clIndexStep(S, over) {
     const np = NET.pieces.length, nt = np + NET.juncs.length;
@@ -801,7 +803,14 @@
         if (P.internal) continue;
         const s0 = P.ends[0].trim, s1 = P.L - P.ends[1].trim;
         if (s1 - s0 < 0.6) continue;
-        add({ P, s0, s1, bb: bboxOf(subLine(P.pts, P.cum, s0, s1), P.hw) });
+        // in runs of <= CL_RUN u (tight boxes, short projections), each searched a little past its ends
+        // (e0, e1) so a point by a seam finds its foot in one of the two; t0 / t1: the drawn ribbon
+        const n = Math.max(1, Math.ceil((s1 - s0) / CL_RUN)), d = (s1 - s0) / n, ov = P.hw + 2;
+        for (let q = 0; q < n; q++) {
+          const a = s0 + d * q, b = q === n - 1 ? s1 : a + d;
+          const e0 = Math.max(s0, a - ov), e1 = Math.min(s1, b + ov);
+          add({ P, s0: e0, s1: e1, t0: s0, t1: s1, bb: bboxOf(subLine(P.pts, P.cum, e0, e1), P.hw) });
+        }
       } else {
         const J = NET.juncs[k - np];
         if (J.poly && J.poly.length >= 3 && !J.merged) add({ J, poly: J.poly, bb: bboxOf(J.poly, 0) });
@@ -820,35 +829,23 @@
       if (o.P) {
         if (o.P === selfP) continue;
         const q = projectOn(o.P.pts, o.P.cum, x, y, o.s0, o.s1);
-        if (q && q.s > o.s0 + 0.3 && q.s < o.s1 - 0.3 && Math.abs(q.v) < o.P.hw - m) return true;
+        if (q && q.s > o.t0 + 0.3 && q.s < o.t1 - 0.3 && runFoot(o, q.s) && Math.abs(q.v) < o.P.hw - m) return true;
       } else if (o.J !== selfJ && inPolyM(o.poly, x, y, m)) return true;
     }
     return false;
   }
-  /** is (x, y) on junction J's own drawn asphalt (inside one of its triangles), at least m from its
-   *  outline? (the clearance pass's self test: a corner's slab must never lie on its own junction) */
+  /** is (x, y) on junction J's own drawn asphalt (its outline, or the hull standing in for it), at
+   *  least m inside? (the clearance pass's self test: a corner's slab must never lie on its own junction) */
   function onOwnJ(J, x, y, m) {
-    const T = J.tris, pl = J.poly;
-    if (!T || !T.length || !pl) return false;
+    const pl = J.poly;
+    if (!pl || pl.length < 3 || !J.tris || !J.tris.length) return false;
     if (!J.tbb) J.tbb = bboxOf(pl, 0);
     const b = J.tbb;
     if (x < b[0] || x > b[2] || y < b[1] || y > b[3]) return false;
-    let inside = false;
-    for (const t of T) {
-      const a = t[0], c = t[1], d = t[2];
-      const d1 = (c[0] - a[0]) * (y - a[1]) - (c[1] - a[1]) * (x - a[0]);
-      const d2 = (d[0] - c[0]) * (y - c[1]) - (d[1] - c[1]) * (x - c[0]);
-      const d3 = (a[0] - d[0]) * (y - d[1]) - (a[1] - d[1]) * (x - d[0]);
-      if ((d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0)) { inside = true; break; }
-    }
-    if (!inside) return false;
-    for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) {
-      const a = pl[j], c = pl[i], dx = c[0] - a[0], dy = c[1] - a[1], L2 = dx * dx + dy * dy || 1;
-      const u = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / L2, 0, 1);
-      if (Math.hypot(x - a[0] - dx * u, y - a[1] - dy * u) < m) return false;
-    }
-    return true;
+    return inPolyM(pl, x, y, m);
   }
+  /** a projection onto a run of the index found its foot inside the run (not clamped at a seam) */
+  function runFoot(o, s) { return (s > o.s0 + 1e-6 || o.s0 <= o.t0) && (s < o.s1 - 1e-6 || o.s1 >= o.t1); }
   /** point strictly inside polygon pl, at least m from its outline */
   function inPolyM(pl, x, y, m) {
     let c = false;
@@ -876,12 +873,12 @@
         const ax = B.P[ia * 3] + B.x0, az = B.P[ia * 3 + 2] + B.z0, bx = B.P[ib * 3] + B.x0, bz = B.P[ib * 3 + 2] + B.z0, cx = B.P[ic * 3] + B.x0, cz = B.P[ic * 3 + 2] + B.z0;
         const ar = Math.abs((bx - ax) * (cz - az) - (bz - az) * (cx - ax)) / 2;
         if (ar < 0.01) continue;
-        // a barycentric grid of interior points about every 0.9 u (a big paver fill triangle that
+        // a barycentric grid of interior points about every 1.3 u (a big paver fill triangle that
         // reaches over an arm's ribbon start was missed by a few samples): each point stands for an equal
         // share of the area. Hits: another carriageway, or this junction's OWN asphalt (a corner the
         // outline does not follow: the hull stand-in, a curve folded into the junction)
         const e = Math.max(Math.hypot(bx - ax, bz - az), Math.hypot(cx - bx, cz - bz), Math.hypot(ax - cx, az - cz));
-        const g = Math.min(14, Math.max(1, Math.ceil(e / 0.9))), np = (g * (g + 1)) / 2;
+        const g = Math.min(9, Math.max(1, Math.ceil(e / 1.3))), np = (g * (g + 1)) / 2;
         for (let u = 0; u < g; u++) for (let v = 0; v < g - u; v++) {
           const wu = (u + 1 / 3) / g, wv = (v + 1 / 3) / g, ww = 1 - wu - wv;
           const px = ax * ww + bx * wu + cx * wv, pz = az * ww + bz * wu + cz * wv;
@@ -917,7 +914,8 @@
             if (clHit(S.C, x, y, P, null, 0.4)) { hit = true; break; }
             // its OWN carriageway: on the inside of a bend tighter than the footpath the slab folds back
             // over the road it lines (the nearest centre-line point is elsewhere, well within hw)
-            const q = P.pts.length > 2 ? projectOn(P.pts, P.cum, x, y, s0, s1) : null;
+            const sk = a + d * k, wn = (P.hw + P.fp) * 4;
+            const q = P.pts.length > 2 ? projectOn(P.pts, P.cum, x, y, Math.max(s0, sk - wn), Math.min(s1, sk + wn)) : null;
             if (q && Math.abs(q.v) < P.hw - 0.4 && q.d2 - q.v * q.v < 0.01) { hit = true; break; }
           }
         }
@@ -1055,7 +1053,7 @@
       if (x < b[0] || x > b[2] || y < b[1] || y > b[3]) continue;
       if (o.P) {
         const q = projectOn(o.P.pts, o.P.cum, x, y, o.s0, o.s1);
-        if (q && Math.abs(q.v) < o.P.hw && q.d2 - q.v * q.v < 0.0025) return true;
+        if (q && runFoot(o, q.s) && Math.abs(q.v) < o.P.hw && q.d2 - q.v * q.v < 0.0025) return true;
       } else if (inPolyM(o.poly, x, y, 0)) return true;
     }
     return false;

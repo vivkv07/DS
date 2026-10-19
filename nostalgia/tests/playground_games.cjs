@@ -23,7 +23,8 @@
  *   playtest fixes (desktop, real keys): the home ground keeps off the aunties' bench; Shift (DODGE) alone hops
  *     across the red wind-up line; a ball rolling off the ground stops near it; fetching it is not "leaving";
  *     hiding off the ground in maram pitti is out after a warning; "Play again" offered where Chinnu stands;
- *     no point-blank AI throws (the holder steps back first); phones: the touch stick is a catapult too
+ *     no point-blank AI throws (the holder steps back first); phones: the touch stick is a catapult too; a passer-by in
+ *     the line throw is called out and a throw into him is taken again
  *   fairness (playtest round 2, desktop, real keys): the AI wind-up's red line is a fuse; a Shift tap in its gold
  *     (committed) stretch beats the throw, an early hop is re-aimed at; an AI seeker brushing a hitter is not SAFE,
  *     Chinnu running into one is; holding the ball, the aim assist passes over a SAFE seeker; maram pitti: Chinnu's hit
@@ -266,14 +267,20 @@ async function desktop(browser) {
   await tapKey(page, 'KeyE', 90);
   check(await waitLog(page, 'throw', { by: s0.parts.find((p) => p.me).name }, 8000), 'a tap of E throws');
   check(await waitLog(page, 'out', { by: s0.parts.find((p) => p.me).name }, 8000), 'Chinnu’s hit puts ' + seek + ' out');
-  // win the match 2-0
-  await page.evaluate(() => { N.playgroundGames.debug.finishRound('home'); });
+  // win the match 2-0 (Chinnu standing in the gully-league giver's ring, mid-ground: see "no mission starts" below)
+  await page.evaluate(() => { const g = N.places.playground_1, p = N.player; p.x = g.x + 3; p.y = g.y + 2; p.vx = p.vy = 0; N.playgroundGames.debug.finishRound('home'); });
   const r1 = await result(page, 60000).catch(() => null) || (await waitFor(page, () => !!window.__pgEnd, null, 30000), await page.evaluate(() => window.__pgEnd));
   check(r1 && r1.win === true && r1.roundsWon === 2 && r1.roundsLost === 0 && r1.stars === 3, 'match won 2-0 (3 stars)', r1);
   const money1 = await page.evaluate(() => N.player.money);
   check(r1 && r1.paid > 0 && money1 - money0 === r1.paid, 'free-roam win paid ' + (r1 && r1.paid) + ' paise (systems §2.4)');
   check(r1 && r1.stacked >= 1 && r1.hits >= 1, 'result counts Chinnu’s restacks / hits (' + (r1 && r1.stacked) + ' / ' + (r1 && r1.hits) + ')');
   check(await page.evaluate(() => !N.minigames.isOpen() && !N.playgroundGames.current && N.clock.holds && !N.clock.holds.has('playground-game')), 'the game closed cleanly (clock hold released)');
+  // the gully-league giver (sidejobs.js, playground_1, r 18) sits in the middle of the home ground: its 1 s J-card dwell
+  // must not start the Gully League (the cricket overlay) under Chinnu right after the final whistle; it waits till he
+  // has walked out of its ring (the giver hold of a free-roam game, as missions.js does after a mission)
+  await gwait(page, 2.5);
+  const afterEnd = await page.evaluate(() => ({ mode: N.state.mode, mission: N.missions.active ? N.missions.active.id : null, open: N.minigames.isOpen(), ring: Math.round(Math.hypot(N.player.x - N.places.playground_1.x, N.player.y - N.places.playground_1.y)) }));
+  check(afterEnd.mode === 'play' && !afterEnd.mission && !afterEnd.open, 'no mission starts under Chinnu after the final whistle (standing ' + afterEnd.ring + ' u from the gully-league giver)', afterEnd);
   await page.evaluate(() => { const A = N.playgroundGames.debug.assist; A.aim = false; A.freezeAI = false; A.noTimer = false; A.noDodge = false; });
 
   // ---------------------------------------------------------------- pay limit: 3 paid wins a day
@@ -408,6 +415,29 @@ async function fixes(browser) {
     return sc.cast.map((e) => { const x = pl.x + e.off[0], y = pl.y + e.off[1]; const dx = x < f.x0 ? f.x0 - x : x > f.x1 ? x - f.x1 : 0, dy = y < f.y0 ? f.y0 - y : y > f.y1 ? y - f.y1 : 0; return +Math.hypot(dx, dy).toFixed(1); });
   });
   check(bench && bench.every((d) => d >= 6), 'the home ground’s play area keeps off the aunties’ bench (' + JSON.stringify(bench) + ' u outside)');
+
+  // a passer-by standing in the line throw (traffic peds cross the grounds): the prompt says so, and a throw that hits
+  // him is taken again, not a lost try (the onlookers of the ground's crowd zone are sent to the sideline at the start)
+  await page.evaluate(() => { const f = N.playgroundGames.fieldFor('playground_2'); N.debug.teleport(f.line.x, f.line.y); });
+  await startResult(page, 'lingocha', { place: 'playground_2', seed: 41 });
+  check(await waitPhase(page, 'aim', 90000), 'lingocha at Vidyanagar ground: Chinnu at the line');
+  const uncle = await page.evaluate(() => {
+    const S = N.playgroundGames.current, L = S.L, p = N.player, mx = (p.x + L.base.x) / 2, my = (p.y + L.base.y) / 2;
+    const q = N.traffic && N.traffic.spawnPed ? N.traffic.spawnPed('uncle', { x: mx, y: my, zone: { x: mx, y: my, r: 0.5, still: true } }) : null;
+    if (q) { q.x = mx; q.y = my; q.vx = q.vy = 0; q.idleT = 99; window.__pgUncle = q; }
+    return !!q;
+  });
+  check(uncle, 'an uncle stands between the chalk line and the stack');
+  if (uncle) {
+    check(await waitFor(page, () => /in the line/.test(N.playgroundGames.debug.state().prompt || ''), null, 8000), 'the prompt says "somebody is in the line — wait for him to pass"');
+    await page.evaluate(() => { N.playgroundGames.debug.assist.aim = true; });
+    await page.keyboard.down('KeyE'); await gwait(page, 0.3); await page.keyboard.up('KeyE');
+    check(await waitLog(page, 'try_blocked', null, 20000), 'the throw hits the uncle: "Hatt jao, ra! Throw again!"');
+    check((await st(page)).lingocha.tries === 0, 'the try is not lost (still try 1/3)');
+    check(await waitPhase(page, 'aim', 20000), 'the ball comes back: Chinnu throws again from the line');
+    await page.evaluate(() => { const q = window.__pgUncle; if (q) { q.alive = false; try { N.entities.remove(q); } catch (e) { /* gone */ } } N.playgroundGames.debug.assist.aim = false; N.playgroundGames.abort('test'); if (N.wanted && N.wanted.clear) N.wanted.clear('test'); });
+    await result(page, 20000);
+  }
 
   // maram pitti at Vidyanagar ground with the AI frozen
   await page.evaluate(() => { const f = N.playgroundGames.fieldFor('playground_2'); N.debug.teleport(f.centre.x, f.centre.y); });
