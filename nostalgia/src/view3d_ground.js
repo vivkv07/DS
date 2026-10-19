@@ -2727,6 +2727,12 @@ if (ngShine > 0.01) {
       }
       return res;
     },
+    /** debug (D6): the slowest junction polygons to rebuild (ms, outline points) */
+    slowJunctions(k) {
+      const out = [];
+      for (const J of NET.juncs) { if (!J.poly) continue; const t = now(); junctionPoly(J); out.push({ id: J.id, ms: +(now() - t).toFixed(2), n: J.poly.length, arms: J.arms.length }); }
+      return out.sort((a, b) => b.ms - a.ms).slice(0, k || 6);
+    },
     /** debug: the analysed network (pieces, junctions) */
     net() { return NET; },
   };
