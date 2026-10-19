@@ -387,26 +387,35 @@
     else return;
     if (segRect(QB.ax, QB.ay, QB.bx, QB.by, x0 + 0.25, y0 + 0.25, x1 - 0.25, y1 - 0.25)) QB.hit = true;
   }
+  // is (x, y) on the carriageway proper (road all round at 4 u), i.e. not in a road's edge band?
+  const DIR8 = [[4, 0], [2.83, 2.83], [0, 4], [-2.83, 2.83], [-4, 0], [-2.83, -2.83], [0, -4], [2.83, -2.83]];
+  function innerRoad(x, y) {
+    const W = N.world, S = N.SURF;
+    for (const d of DIR8) { const s2 = W.surfaceAt(x + d[0], y + d[1]); if (s2 !== S.ROAD && s2 !== S.BRIDGE) return false; }
+    return true;
+  }
   function maxSag(ax, ay, ah, bx, by, bh, o) {
     const W = N.world, S = N.SURF;
     if (blocked(ax, ay, bx, by)) return -1;
     const len = Math.hypot(bx - ax, by - ay);
-    const n = Math.max(4, Math.ceil(len / 2.2));
+    const n = Math.max(4, Math.ceil(len / 1.5));
     let best = 99;
-    const er = o && o.road;
-    for (let k = 1; k < n; k++) {
+    for (let k = 0; k <= n; k++) {
       const t = k / n, x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
       const sf = W.surfaceAt(x, y);
-      let req = sf === S.ROAD || sf === S.BRIDGE ? MINCLR : CLR_OFF;
-      if (req === MINCLR && er) {
-        const lat = Math.abs((x - er.cx) * -er.uy + (y - er.cy) * er.ux);
-        if (lat > er.hw - 3) req = CLR_EDGE;
-      }
-      if (o && o.endA && (x - ax) * (x - ax) + (y - ay) * (y - ay) < 6.25) req = Math.min(req, CLR_END);
-      if (o && o.endB && (x - bx) * (x - bx) + (y - by) * (y - by) < 6.25) req = Math.min(req, CLR_END);
-      const lin = ah + (bh - ah) * t;
+      // over a road: 26 u on the carriageway, 20 u in its 4 u edge band, 12.5 u (> a bus) where a service
+      // drop meets its house; elsewhere (footpaths, yards) 13 u
+      let req = CLR_OFF;
+      if (sf === S.ROAD || sf === S.BRIDGE) {
+        req = innerRoad(x, y) ? MINCLR : CLR_EDGE;
+        const dA = (x - ax) * (x - ax) + (y - ay) * (y - ay), dB = (x - bx) * (x - bx) + (y - by) * (y - by);
+        if ((o && o.endA && dA < 9) || (o && o.endB && dB < 9)) req = CLR_END;
+        else if (req === MINCLR && Math.min(dA, dB) < 6.25) req = CLR_EDGE; // at the pole's own crossarm
+      } else if ((o && o.endA && (x - ax) * (x - ax) + (y - ay) * (y - ay) < 6.25) || (o && o.endB && (x - bx) * (x - bx) + (y - by) * (y - by) < 6.25)) req = 0;
+      req += 0.3;
+      const lin = ah + (bh - ah) * t, sh = shape(t);
       if (lin < req) return -1;
-      best = Math.min(best, (lin - req) / shape(t));
+      if (sh > 1e-6) best = Math.min(best, (lin - req) / sh);
     }
     return best;
   }
@@ -436,6 +445,10 @@
     spanSeq++;
     return sp;
   }
+  // wire-end tags for the Blender pole models' binding empties: [pole, anchor name, offset across the road]
+  const LSLOT = ['wire_L1', 'wire_L2', 'wire_L3'];
+  const ltSlot = (p, j) => (p.hHT ? ['wire_N', (j - 1) * 2.4] : [LSLOT[j], 0]);
+  const tag = (sp, pa, sa, da, pb, sb, db) => { if (sp) { sp.ea = pa ? [pa, sa, da || 0] : null; sp.eb = pb ? [pb, sb, db || 0] : null; } return sp; };
   const insX = (p, k) => p.x + p.onx * (INS[k] + p.shift), insY = (p, k) => p.y + p.ony * (INS[k] + p.shift);
   const roadOf = (p) => { const m = G.memo[p.ri]; return { cx: p.x - p.onx * m.off, cy: p.y - p.ony * m.off, ux: p.ux, uy: p.uy, hw: m.hw }; };
 
@@ -450,15 +463,15 @@
       if (d > 8 && d <= MAX_SPAN) {
         const base = 0.4 + 0.0011 * d * d;
         let k = 0;
-        if (p.hHT && q.hHT) for (const c of HT_IDX) addSpan(cell, 'power', insX(p, c), insY(p, c), p.hHT + 0.7, insX(q, c), insY(q, c), q.hHT + 0.7, base * (0.92 + rr.next() * 0.16), o, p.id * 32 + k++);
-        if (p.hLT && q.hLT) for (const c of LT_IDX) addSpan(cell, 'power', insX(p, c), insY(p, c), p.hLT + 0.7, insX(q, c), insY(q, c), q.hLT + 0.7, base * (1.05 + rr.next() * 0.2), o, p.id * 32 + 8 + k++);
+        if (p.hHT && q.hHT) HT_IDX.forEach((c, j) => tag(addSpan(cell, 'power', insX(p, c), insY(p, c), p.hHT + 0.7, insX(q, c), insY(q, c), q.hHT + 0.7, base * (0.92 + rr.next() * 0.16), o, p.id * 32 + k++), p, LSLOT[j], 0, q, LSLOT[j], 0));
+        if (p.hLT && q.hLT) LT_IDX.forEach((c, j) => { const sa = ltSlot(p, j), sb = ltSlot(q, j); tag(addSpan(cell, 'power', insX(p, c), insY(p, c), p.hLT + 0.7, insX(q, c), insY(q, c), q.hLT + 0.7, base * (1.05 + rr.next() * 0.2), o, p.id * 32 + 8 + k++), p, sa[0], sa[1], q, sb[0], sb[1]); });
         // cable TV / phone cables strapped to the poles
         const P = p.P;
         const nC = Math.round(P.cables[0] + (P.cables[1] - P.cables[0]) * rr.next() * P.tangle + (rr.next() < P.tangle * 0.3 ? 1 : 0));
         for (let c = 0; c < nC; c++) {
           const sd = (c & 1 ? 1 : -1) * (0.7 + rr.next() * 0.3) + (m.lane ? -0.6 : 0);
           const h1 = 27.2 + rr.next() * 1.6, h2 = 27.2 + rr.next() * 1.6;
-          addSpan(cell, 'cable', p.x + p.onx * sd, p.y + p.ony * sd, h1, q.x + q.onx * sd, q.y + q.ony * sd, h2, 1.2 + rr.next() * 3.4 + d * 0.025, o, p.id * 32 + 16 + c);
+          tag(addSpan(cell, 'cable', p.x + p.onx * sd, p.y + p.ony * sd, h1, q.x + q.onx * sd, q.y + q.ony * sd, h2, 1.2 + rr.next() * 3.4 + d * 0.025, o, p.id * 32 + 16 + c), p, 'wire_cable', sd, q, 'wire_cable', sd);
         }
       }
     }
@@ -502,7 +515,7 @@
       const want = 0.5 + C.d * 0.03;
       let sp = addSpan(cell, 'service', ax, ay, ah, bx, by, bh, want, ob, p.id * 32 + 24 + k);
       if (!sp && !C.far && b.h - 1.2 > bh + 2) sp = addSpan(cell, 'service', ax, ay, ah, bx, by, b.h - 1.2, want, ob, p.id * 32 + 24 + k);
-      if (sp) k++;
+      if (sp) { tag(sp, p, 'wire_service', 0, null); k++; }
     }
     // cable loops between tall buildings facing each other across a lane / street (old city tangle)
     if (rr.next() < P.tangle * 0.55) {
@@ -513,7 +526,7 @@
         const pa = facadePt(A, p), pb = facadePt(B, p);
         addSpan(cell, 'cable', pa[0], pa[1], ha, pb[0], pb[1], hb, 1.5 + rr.next() * 3, { endA: true, endB: true }, p.id * 32 + 30);
         // and one from the pole to the far building
-        if (rr.next() < 0.6) addSpan(cell, 'cable', p.x, p.y, 28, pb[0] + (rr.next() - 0.5) * 3, pb[1] + (rr.next() - 0.5) * 3, hb - 2, 1 + rr.next() * 2.5, { road: o.road, endB: true }, p.id * 32 + 31);
+        if (rr.next() < 0.6) tag(addSpan(cell, 'cable', p.x, p.y, 28, pb[0] + (rr.next() - 0.5) * 3, pb[1] + (rr.next() - 0.5) * 3, hb - 2, 1 + rr.next() * 2.5, { road: o.road, endB: true }, p.id * 32 + 31), p, 'wire_cable', 0, null);
       }
     }
   }
@@ -555,9 +568,9 @@
       if (d < 14 || d > 100) continue;
       const base = 0.4 + 0.0011 * d * d;
       const ha = a.hLT || a.hHT, hb = b.hLT || b.hHT;
-      for (const c of [1, 2]) addSpan(cell, 'power', insX(a, c), insY(a, c), ha + 0.7, insX(b, c), insY(b, c), hb + 0.7, base * 1.1, null, 1e9 + nid * 64 + k++);
+      [1, 2].forEach((c, j) => { const sa = ltSlot(a, j + 1), sb = ltSlot(b, j + 1); tag(addSpan(cell, 'power', insX(a, c), insY(a, c), ha + 0.7, insX(b, c), insY(b, c), hb + 0.7, base * 1.1, null, 1e9 + nid * 64 + k++), a, sa[0], sa[1], b, sb[0], sb[1]); });
       const nc = Math.round(P.tangle * 2.2 * rr.next());
-      for (let c = 0; c < nc; c++) addSpan(cell, 'cable', a.x, a.y, 27.4 + rr.next() * 1.4, b.x, b.y, 27.4 + rr.next() * 1.4, 1.5 + rr.next() * 3 + d * 0.02, null, 1e9 + nid * 64 + 16 + k++);
+      for (let c = 0; c < nc; c++) tag(addSpan(cell, 'cable', a.x, a.y, 27.4 + rr.next() * 1.4, b.x, b.y, 27.4 + rr.next() * 1.4, 1.5 + rr.next() * 3 + d * 0.02, null, 1e9 + nid * 64 + 16 + k++), a, 'wire_cable', 0, b, 'wire_cable', 0);
     }
     // a pole-mounted transformer (H-frame: a second pole 5.2 u along the road)
     if (rr.next() < P.tx) {
@@ -1026,10 +1039,11 @@
   }
   function dispose3d(H) {
     if (!V.inited) return;
-    for (const k of ['poleIM', 'headIM', 'lampIM', 'txIM', 'wire', 'extras', 'glows']) {
+    for (const k of ['poleIM', 'headIM', 'lampIM', 'txIM', 'wire', 'extras', 'glows', 'pm_pole_psc', 'pm_pole_rail', 'pm_pole_streetlight']) {
       const o = V[k];
       if (!o) continue;
       if (o.parent) o.parent.remove(o);
+      if (o.isInstancedMesh && o.dispose) o.dispose();
       if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose();
       V[k] = null;
     }
@@ -1091,7 +1105,11 @@
     for (const k of ['pole', 'head', 'lamp', 'tx']) GEO[k].userData.shared = true;
     return GEO;
   }
-  // a Blender pole model when the pack has one (geometry + material of its first mesh, scaled to 1 u tall)
+  // A Blender pole model when the pack has one: the geometry of its meshes (merged when they share one
+  // material, else the first), its height, its binding empties (wire_L1 wire_L2 wire_L3 wire_N wire_cable
+  // wire_service wire_lamp, with or without the 'anchor_' prefix) in model space, and the extra yaw that
+  // turns its crossarm across the road (the crossarm runs along the model's longer horizontal axis).
+  const ANCHORS = ['wire_L1', 'wire_L2', 'wire_L3', 'wire_N', 'wire_cable', 'wire_service', 'wire_lamp'];
   function modelGeo(id) {
     const M = N.models3d;
     if (!M || !M.ready || !M.has || !M.has(id)) return null;
@@ -1102,23 +1120,41 @@
     }
     let res = null;
     try {
-      const o = M.instance(id);
-      const T = V.T, meshes = [];
+      const o = M.instance(id), T = V.T, meshes = [], anchors = {};
       o.updateMatrixWorld(true);
-      o.traverse((m) => { if (m.isMesh && !(m.name || '').startsWith('COL_')) meshes.push(m); });
+      o.traverse((m) => {
+        const nm = (m.name || '').replace(/^anchor_/, '');
+        if (ANCHORS.indexOf(nm) >= 0 && !anchors[nm]) { const v = new T.Vector3(); m.getWorldPosition(v); anchors[nm] = [v.x, v.y, v.z]; }
+        if (m.isMesh && !m.isSkinnedMesh && !(m.name || '').startsWith('COL_')) meshes.push(m);
+      });
       if (meshes.length) {
-        const m = meshes[0], g = m.geometry.clone();
-        g.applyMatrix4(m.matrixWorld);
+        const same = meshes.filter((m) => m.material === meshes[0].material);
+        const parts = same.map((m) => { const g = m.geometry.clone(); g.applyMatrix4(m.matrixWorld); return g; });
+        let g = parts.length > 1 && V.H && V.H.merge ? V.H.merge(parts) : null;
+        if (!g) g = parts[0];
         g.computeBoundingBox();
-        const hgt = g.boundingBox.max.y - g.boundingBox.min.y || 1;
-        g.scale(1, 1 / hgt, 1);
+        const bb = g.boundingBox, hgt = bb.max.y - bb.min.y || 1;
         g.userData.shared = true;
-        res = { geo: g, mat: m.material, h: hgt };
-        void T;
+        res = { geo: g, mat: meshes[0].material, h: hgt, anchors, yaw: (bb.max.x - bb.min.x) > (bb.max.z - bb.min.z) ? Math.PI / 2 : 0 };
       }
     } catch (e) { N.err('wires.model:' + id, e); res = null; }
     V.models[id] = res;
     return res;
+  }
+  const poleModelId = (pl) => (pl.lamp && modelGeo('pole_streetlight') ? 'pole_streetlight' : pl.kind === 'rail' ? 'pole_rail' : 'pole_psc');
+  // the 3D position of a tagged wire end on a pole model (null = use the procedural point)
+  function anchorPos(end, vs, out) {
+    if (!end) return null;
+    const pl = end[0], md = modelGeo(poleModelId(pl));
+    const A = md && md.anchors[end[1]];
+    if (!A) return null;
+    const sy = (pl.h * vs) / md.h, a = pl.ang + md.yaw;
+    // model local (x, z) -> world: rotation.y = -a
+    const c = Math.cos(a), s = Math.sin(a);
+    out[0] = pl.x + A[0] * c - A[2] * s + pl.onx * end[2];
+    out[1] = A[1] * sy;
+    out[2] = pl.y + A[0] * s + A[2] * c + pl.ony * end[2];
+    return out;
   }
   function wireMaterial(THREE) {
     const Wd = N.wind, uw = Wd && Wd.uniforms ? Wd.uniforms(THREE) : null;
@@ -1204,12 +1240,13 @@
     V.chunks.set(key, c);
     return c;
   }
+  const EA = [0, 0, 0], EB = [0, 0, 0];
   const _m4 = { m: null, q: null, p: null, s: null, e: null, c: null };
   function build3(key, cells) {
     const THREE = V.T, H = V.H, vs = VSf();
     if (!_m4.m) { _m4.m = new THREE.Matrix4(); _m4.q = new THREE.Quaternion(); _m4.p = new THREE.Vector3(); _m4.s = new THREE.Vector3(); _m4.e = new THREE.Euler(); _m4.c = new THREE.Color(); }
     const { m, q, p, s, e, c: col } = _m4;
-    const out = { key, complete: true, ver: V.modelVer, share: V.kiteShare, pole: [], poleC: [], head: [], lamp: [], lampC: [], tx: [], wire: [], glow: [], glowC: [], lamps: [], extras: null };
+    const out = { key, complete: true, ver: V.modelVer, share: V.kiteShare, pole: [], poleC: [], pm: {}, head: [], lamp: [], lampC: [], tx: [], wire: [], glow: [], glowC: [], lamps: [], extras: null };
     const pushM = (arr, x, h, y, ang, sx, sy, sz) => {
       e.set(0, -ang, 0); q.setFromEuler(e); p.set(x, h, y); s.set(sx, sy, sz); m.compose(p, q, s);
       for (let k = 0; k < 16; k++) arr.push(m.elements[k]);
@@ -1219,15 +1256,25 @@
     let extrasN = 0;
     for (const cell of cells) {
       for (const pl of cell.poles) {
-        const sc = pl.kind === 'rail' ? [0.45, 0.55] : pl.kind === 'tube' ? [0.6, 0.6] : [0.78, 0.52];
-        pushM(out.pole, pl.x, 0, pl.y, pl.ang, sc[0], pl.h * vs + 0.6, sc[1]);
-        pushC(out.poleC, POLE_COL3[pl.kind]);
-        for (const hh of [pl.hHT, pl.hLT]) if (hh) pushM(out.head, pl.x + pl.onx * pl.shift, hh * vs, pl.y + pl.ony * pl.shift, pl.ang, 1, 1, 1);
+        const mid = poleModelId(pl), md = modelGeo(mid);
+        if (md) { // a Blender pole: its own crossarms / fittings (and lamp, for pole_streetlight)
+          const arr = out.pm[mid] || (out.pm[mid] = []);
+          pushM(arr, pl.x, 0, pl.y, pl.ang + md.yaw, 1, (pl.h * vs) / md.h, 1);
+        } else {
+          const sc = pl.kind === 'rail' ? [0.45, 0.55] : pl.kind === 'tube' ? [0.6, 0.6] : [0.78, 0.52];
+          pushM(out.pole, pl.x, 0, pl.y, pl.ang, sc[0], pl.h * vs + 0.6, sc[1]);
+          pushC(out.poleC, POLE_COL3[pl.kind]);
+          for (const hh of [pl.hHT, pl.hLT]) if (hh) pushM(out.head, pl.x + pl.onx * pl.shift, hh * vs, pl.y + pl.ony * pl.shift, pl.ang, 1, 1, 1);
+        }
         if (pl.lamp) {
-          pushM(out.lamp, pl.x, pl.lamp.h * vs, pl.y, pl.ang + (pl.onx * -pl.uy + pl.ony * pl.ux > 0 ? 0 : Math.PI), 1, 1, 1);
-          pushC(out.lampC, pl.lamp.tube ? '#d8f4ff' : '#ffab40');
-          const gy = pl.lamp.h * vs + 1.25;
-          out.glow.push(pl.lamp.x, gy, pl.lamp.y);
+          const lampModel = md && mid === 'pole_streetlight';
+          if (!lampModel) {
+            pushM(out.lamp, pl.x, pl.lamp.h * vs, pl.y, pl.ang + (pl.onx * -pl.uy + pl.ony * pl.ux > 0 ? 0 : Math.PI), 1, 1, 1);
+            pushC(out.lampC, pl.lamp.tube ? '#d8f4ff' : '#ffab40');
+          }
+          const la = lampModel ? anchorPos([pl, 'wire_lamp', 0], vs, [0, 0, 0]) : null;
+          const gy = la ? la[1] : pl.lamp.h * vs + 1.25;
+          if (la) out.glow.push(la[0], gy, la[2]); else out.glow.push(pl.lamp.x, gy, pl.lamp.y);
           if (pl.lamp.tube) out.glowC.push(0.75, 0.92, 1.0); else out.glowC.push(1.0, 0.62, 0.25);
           out.lamps.push([pl.lamp.x, gy - 1, pl.lamp.y, pl.lamp.tube ? '#d8f4ff' : '#ffab40']);
         }
@@ -1236,13 +1283,14 @@
       }
       for (const t of cell.tx) {
         // instance at the hub pole, local +x along the road towards the second pole
-        const ang = Math.atan2(t.y2 - t.y, t.x2 - t.x);
-        pushM(out.tx, t.x, 0, t.y, ang, 1, 1, 1);
+        const ang = Math.atan2(t.y2 - t.y, t.x2 - t.x), tm = modelGeo('pole_transformer');
+        pushM(out.tx, t.x, 0, t.y, ang + (tm && !tm.yaw ? Math.PI / 2 : 0), 1, 1, 1);
       }
       for (const sp of cell.spans) {
         const w = sp.kind === 'cable' ? 0.2 : sp.kind === 'power' ? 0.15 : 0.12;
         col.set(WIRE_COL3[sp.kind]);
-        out.wire.push(sp.ax, sp.ah * vs, sp.ay, w, sp.bx, sp.bh * vs, sp.by, sp.sag * vs, col.r, col.g, col.b, sp.ph);
+        const A = anchorPos(sp.ea, vs, EA), B = anchorPos(sp.eb, vs, EB);
+        out.wire.push(A ? A[0] : sp.ax, A ? A[1] : sp.ah * vs, A ? A[2] : sp.ay, w, B ? B[0] : sp.bx, B ? B[1] : sp.bh * vs, B ? B[2] : sp.by, sp.sag * vs, col.r, col.g, col.b, sp.ph);
       }
       if (V.kiteShare > 0) {
         for (const th of cell.threads) {
@@ -1341,11 +1389,19 @@
     const THREE = V.T, H = V.H;
     const g = geos(THREE, H);
     const cat = (k) => { let n = 0; for (const c of list) n += c[k].length; const a = new Float32Array(n); let o = 0; for (const c of list) { a.set(c[k], o); o += c[k].length; } return a; };
-    // poles (Blender model for PSC poles when present)
-    const pm = modelGeo('pole_psc');
+    // procedural poles (one instanced draw for every kind) + one per Blender pole model in use
     if (!V.matPole) { V.matPole = new THREE.MeshLambertMaterial({ vertexColors: true }); }
     const poleM = cat('pole'), poleC = cat('poleC');
-    fillIM(ensureIM('poleIM', pm ? pm.geo : g.pole, pm ? pm.mat : V.matPole, poleM.length / 16, true), poleM, pm ? null : poleC);
+    fillIM(ensureIM('poleIM', g.pole, V.matPole, poleM.length / 16, true), poleM, poleC);
+    for (const mid of ['pole_psc', 'pole_rail', 'pole_streetlight']) {
+      let n = 0; for (const c of list) n += (c.pm[mid] || []).length;
+      const name = 'pm_' + mid;
+      if (!n) { if (V[name]) V[name].count = 0; continue; }
+      const a = new Float32Array(n); let o = 0;
+      for (const c of list) if (c.pm[mid]) { a.set(c.pm[mid], o); o += c.pm[mid].length; }
+      const md = modelGeo(mid);
+      if (md) fillIM(ensureIM(name, md.geo, md.mat, n / 16, true), a, null);
+    }
     if (!V.matHead) V.matHead = new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 70, specular: 0x555555 });
     const headM = cat('head');
     fillIM(ensureIM('headIM', g.head, V.matHead, headM.length / 16, true), headM, null);
@@ -1524,6 +1580,7 @@
     },
     cells: () => G.cells,
     _G: () => G, _V: V, _memo: (ri) => memo(ri),
+    _maxSag: (...a) => maxSag(...a),
     _why(ri, i) { const m = memo(ri); if (!m) return 'unwired'; const s0 = m.start + i * m.sp; return SLIDE.map((o) => { const r = poleCheck(m, s0 + o); return typeof r === 'string' ? r : 'ok'; }); },
   });
 

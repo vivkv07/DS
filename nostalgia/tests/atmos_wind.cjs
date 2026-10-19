@@ -355,9 +355,8 @@ async function run3D(browser, page) {
     N.wind.force({ strength: 0.6, gustiness: 0.6, dir: 0.45 });
     N.view3d.setQuality({ pixelRatio: 0.25 });
     N.view3d.settle(60000);
-    const L = N.windfx._internal.L3;
     const run = async (vis) => {
-      for (const k of ['flagPoles', 'flagCloth', 'clothes', 'tails']) if (L[k]) L[k].visible = vis && (k !== 'tails' || L[k].geometry.drawRange.count > 0);
+      N.windfx.show3d = vis;
       const js = [], calls = [], lay = [];
       for (let i = 0; i < 24; i++) { await new Promise((r) => requestAnimationFrame(r)); if (i > 4) { const t = N.view3d.stats(); js.push(Math.max(0, t.jsMs - t.renderMs)); calls.push(t.calls); lay.push(N.windfx.stats().layerMs); } }
       const med = (a) => +a.slice().sort((x, y) => x - y)[a.length >> 1].toFixed(3);
@@ -369,7 +368,7 @@ async function run3D(browser, page) {
     return { off, on, clothes: s.clothes3d, flags: s.flags3d };
   });
   console.log('  3D perf ' + JSON.stringify(perf));
-  check(perf.on.calls - perf.off.calls <= 3, '3D draw calls: +' + (perf.on.calls - perf.off.calls) + ' (flags poles + cloth, clothes; budget +3)');
+  check(perf.on.calls - perf.off.calls <= 3, '3D draw calls: +' + (perf.on.calls - perf.off.calls) + ' (flag poles; flags + clothes; Sankranti kite tails; budget +3)');
   check(perf.on.layerMs <= 0.4, '3D wind layer JS ' + perf.on.layerMs + ' ms/frame (budget 0.4; clothes ' + perf.clothes + ' instances)');
 
   // the reusable 'color' weight mode (baked vertex colour R bend, G phase, B flutter mask: the props session's

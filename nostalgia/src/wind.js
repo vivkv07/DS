@@ -68,6 +68,7 @@
   const FX = (N.windfx = {
     enabled: true,
     amp2d: 1,
+    show3d: true,
     opts: { livePalms: true, leaves: true, breathe: true },
     flags: [],
     patchMaterial, depthMaterial, windWeights,
@@ -107,8 +108,19 @@
     'float wfxS = uWind.z * (0.72 + 0.62 * uWind.w * windGust(wfxOrg.xz));',
     'float wfxT = uWindWave.z;',
     '#if WFX_MODE == 3',
-    // ---- a flag: the cloth flies from the hoist (instance origin) downwind
-    '  {',
+    // ---- 'flag' mode also carries hanging clothes in the same draw call: instance scale z < 0.75 = a cloth
+    // hanging from y = 0 (its top edge) down by the instance scale y; z >= 1 = a flag (z - 1 = pennant taper)
+    '  float wfxZ = length(instanceMatrix[2].xyz);',
+    '  if (wfxZ < 0.75) {',
+    '    vec3 lp = vec3(position.x - 0.5, position.y - 0.5, 0.0);',
+    '    vec3 hp = (modelMatrix * (instanceMatrix * vec4(lp, 1.0))).xyz;',
+    '    float hy = clamp(-lp.y * wfxSy / 2.4, 0.0, 1.0);',
+    '    float hw = pow(hy, uWindFx.z) * uWindFx.x * (1.0 + 0.85 * uWind.z);',
+    '    vec3 off = windOffset(wfxOrg, hw, wfxPh);',
+    '    vec3 hl = hp - wfxOrg; float hf = wfxT * (3.4 + 6.5 * wfxS);',
+    '    off += vec3(sin(hf + wfxPh + hl.x * 0.61 + hl.y * 0.83), sin(hf * 1.13 + wfxPh * 1.3 + hl.z * 0.71) * 0.6, sin(hf * 0.91 + wfxPh * 0.7 + hl.z * 0.67 - hl.y * 0.53)) * (uWindFx.w * wfxS * hy);',
+    '    wfxP = vec4(hp + off, 1.0);',
+    '  } else {',
     '    float fu = clamp(position.x, 0.0, 1.0);',
     '    float ext = clamp(0.18 + wfxS * 1.7, 0.18, 1.0);',
     '    float wa = sin(wfxT * 0.8 + wfxPh) * 0.35 * (1.15 - ext) + sin(wfxT * (2.1 + 2.0 * wfxS) + wfxPh * 1.7) * 0.07;',
@@ -620,19 +632,23 @@
   function buildFlags3D(THREE, H) {
     if (!FX.flags.length) buildFlags();
     disposeFlags3D(H);
-    const fl = FX.flags; if (!fl.length) return;
+    const fl = FX.flags;
     const VS = H.VS;
     const poleGeo = new THREE.CylinderGeometry(0.22, 0.32, 1, 6, 1, true); poleGeo.translate(0, 0.5, 0);
-    const poles = new THREE.InstancedMesh(poleGeo, H.mat('#8a7a62'), fl.length);
+    const poles = new THREE.InstancedMesh(poleGeo, H.mat('#8a7a62'), Math.max(1, fl.length));
+    poles.count = fl.length;
     const m = new THREE.Matrix4(), c = new THREE.Color();
     fl.forEach((f, i) => { m.makeScale(1, f.h * VS + 1.5, 1); m.setPosition(f.x, 0, f.y); poles.setMatrixAt(i, m); });
     poles.instanceMatrix.needsUpdate = true; poles.frustumCulled = false; poles.castShadow = !!H.quality.shadows; poles.name = 'windfx-flagpoles';
     H.layer.add(poles); L3.flagPoles = poles;
-    // one cloth mesh for every flag: the taper (temple pennants are triangles) rides in the instance scale z
+    // one cloth mesh for every flag (the taper of the temple pennants rides in the instance scale z) and, after
+    // them, the clothes on rooftop lines near the camera (scale z 0.5: hanging cloth, see the shader)
     const geo = flagGeometry(THREE);
     const mat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, flatShading: true });
-    patchMaterial(mat, { weight: 'flag', key: 'flag' });
-    const cloth = new THREE.InstancedMesh(geo, mat, fl.length);
+    patchMaterial(mat, { weight: 'flag', amp: 2.2, flex: 1.3, flutter: 0.45, key: 'cloth' });
+    const cloth = new THREE.InstancedMesh(geo, mat, fl.length + CLOTH_MAX);
+    cloth.count = fl.length;
+    cloth.setColorAt(0, c.set('#ffffff'));
     fl.forEach((f, i) => {
       const w = f.wid * VS * 0.55, len = f.len * VS * 0.75;
       m.makeScale(len, w, 1 + (f.tri ? 0.92 : 0)); m.setPosition(f.x, f.h * VS + 1.2 - w * 0.5, f.y);
@@ -641,34 +657,21 @@
     cloth.instanceMatrix.needsUpdate = true; if (cloth.instanceColor) cloth.instanceColor.needsUpdate = true;
     cloth.frustumCulled = false; cloth.castShadow = !!H.quality.shadows; cloth.name = 'windfx-flags';
     if (H.quality.shadows) cloth.customDepthMaterial = depthMaterial(mat);
-    H.layer.add(cloth); L3.flagCloth = cloth;
+    H.layer.add(cloth); L3.flagCloth = cloth; L3.clothes = cloth; L3.clothBase = fl.length; L3.clothKey = '';
     ST.flags3d = fl.length;
   }
   function disposeFlags3D(H) {
     for (const k of ['flagPoles', 'flagCloth']) { const o = L3[k]; if (o) { H.layer.remove(o); o.geometry.dispose(); if (k === 'flagCloth') o.material.dispose(); L3[k] = null; } }
+    L3.clothes = null;
   }
-  // clothes near the camera: one instanced mesh of hanging quads (+ the wires as instances of the same mesh)
+  // clothes near the camera: instances after the flags in the cloth mesh (+ the wires as instances too)
   const CLOTH_MAX = 480, CLOTH_R = 380;
-  function initClothes(THREE, H) {
-    const nx = 2, ny = 3, pos = [], idx = [];
-    for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) pos.push(i / nx - 0.5, -j / ny, 0);
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const a = j * (nx + 1) + i, b = a + nx + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
-    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e5);
-    const mat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, flatShading: true });
-    patchMaterial(mat, { weight: 'hang', amp: 2.2, flex: 1.3, flutter: 0.45, key: 'clothes' });
-    const im = new THREE.InstancedMesh(g, mat, CLOTH_MAX);
-    im.count = 0; im.frustumCulled = false; im.castShadow = false; im.receiveShadow = false; im.name = 'windfx-clothes';
-    im.setColorAt(0, new THREE.Color('#ffffff'));
-    H.layer.add(im); L3.clothes = im;
-  }
   const CM = { m: null, q: null, p: null, s: null, e: null, c: null };
   function refreshClothes(THREE, H, fx, fy) {
     const im = L3.clothes; if (!im) return;
     if (!CM.m) { CM.m = new THREE.Matrix4(); CM.q = new THREE.Quaternion(); CM.p = new THREE.Vector3(); CM.s = new THREE.Vector3(); CM.e = new THREE.Euler(); CM.c = new THREE.Color(); }
-    const VS = H.VS;
-    let n = 0;
+    const VS = H.VS, base = L3.clothBase || 0;
+    let n = base;
     const lines = [];
     N.world.queryStructures(fx - CLOTH_R, fy - CLOTH_R, fx + CLOTH_R, fy + CLOTH_R, (s) => {
       if (s.t === 'bldg') { if (s.roofType !== 'flat') return; const L = bldgLine(s); if (L) lines.push([L, s.h * VS, (s.cx - fx) ** 2 + (s.cy - fy) ** 2]); }
@@ -676,12 +679,12 @@
     });
     lines.sort((a, b) => a[2] - b[2]);
     const put = (x, y, z, yaw, sx, sy, hex) => {
-      CM.p.set(x, y, z); CM.e.set(0, yaw, 0); CM.q.setFromEuler(CM.e); CM.s.set(sx, sy, 1);
+      CM.p.set(x, y, z); CM.e.set(0, yaw, 0); CM.q.setFromEuler(CM.e); CM.s.set(sx, sy, 0.5);
       CM.m.compose(CM.p, CM.q, CM.s); im.setMatrixAt(n, CM.m); CM.c.set(hex); im.setColorAt(n, CM.c); n++;
     };
     for (const [l, Ht] of lines) {
       const cl = l._cl;
-      if (n + cl.length + 1 > CLOTH_MAX) break;
+      if (n - base + cl.length + 1 > CLOTH_MAX) break;
       const ax = l.x0, az = l.y0, bx = l.x1, bz = l.y1, L = Math.hypot(bx - ax, bz - az) || 1, ux = (bx - ax) / L, uz = (bz - az) / L;
       const y = Ht + 4.2, yaw = -Math.atan2(uz, ux);
       put((ax + bx) / 2, y + 0.06, (az + bz) / 2, yaw, L, 0.12, '#3a3836'); // the wire (barely moves: top row)
@@ -692,7 +695,7 @@
     }
     im.count = n;
     im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
-    ST.clothes3d = n;
+    ST.clothes3d = n - base;
   }
   // kite tails: one ribbon mesh rebuilt each frame from the seasons' kite data
   const TAIL_MAX = 64, TAIL_N = 7;
@@ -715,7 +718,8 @@
     const S = N.seasons, on = !!(S && S.is && S.is('sankranti') && S.scene);
     if (!on) { if (mesh.visible) { mesh.visible = false; mesh.geometry.setDrawRange(0, 0); } L3.kites = []; ST.tails3d = 0; return; }
     L3.scT -= dt;
-    if (L3.scT <= 0) { L3.scT = 0.1; try { L3.kites = (S.scene(fx, fy, 420).kites || []).slice(0, TAIL_MAX); } catch (e) { L3.kites = []; } }
+    L3.scF = (L3.scF || 0) + 1;
+    if (L3.scT <= 0 && L3.scF >= 6) { L3.scT = 0.25; L3.scF = 0; try { L3.kites = (S.scene(fx, fy, 420).kites || []).slice(0, TAIL_MAX); } catch (e) { L3.kites = []; } }
     const ks = L3.kites, VS = H.VS, g = mesh.geometry, P = g.attributes.position.array, C = g.attributes.color.array;
     let v = 0;
     const col = new THREE.Color();
@@ -746,7 +750,6 @@
       init(THREE, H) {
         patchCore(THREE, H);
         buildFlags3D(THREE, H);
-        initClothes(THREE, H);
         initTails(THREE, H);
         L3.clothKey = ''; L3.clothT = 0;
       },
@@ -758,13 +761,15 @@
         L3.clothT -= dt;
         const key = Math.round(f.x / 60) + ',' + Math.round(f.y / 60);
         if (L3.clothT <= 0 && key !== L3.clothKey) { L3.clothKey = key; L3.clothT = 0.4; refreshClothes(THREE, H, f.x, f.y); }
-        if (!FX.enabled && L3.clothes) L3.clothes.visible = true;
         L3.shadowT -= dt;
         if (L3.shadowT <= 0) { L3.shadowT = 0.3; scanShadows(H); }
         updateTails(THREE, H, dt, f.x, f.y);
+        // tests / profiling: show3d = false hides this layer's own meshes (flags, clothes, kite tails)
+        for (const k of ['flagPoles', 'flagCloth']) if (L3[k]) L3[k].visible = FX.show3d;
+        if (!FX.show3d && L3.tails) L3.tails.visible = false;
         ST.layerMs = now() - t0;
       },
-      dispose(H) { disposeFlags3D(H); for (const k of ['clothes', 'tails']) { const o = L3[k]; if (o) { H.layer.remove(o); o.geometry.dispose(); o.material.dispose(); L3[k] = null; } } },
+      dispose(H) { disposeFlags3D(H); for (const k of ['tails']) { const o = L3[k]; if (o) { H.layer.remove(o); o.geometry.dispose(); o.material.dispose(); L3[k] = null; } } },
     });
   }
   // N.windfx.enabled = false freezes the 3D sway too (the shared uniforms' strength)
