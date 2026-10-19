@@ -63,6 +63,15 @@
  *  - view3d.js: registerLayer('citylife_events'), registerActorRenderer('cle:horse'), 'cle:block'.
  *  - audio: N.audio.sfx / horn (feature-checked) + N.audio.ext.registerSfx: cle_inverter, cle_band,
  *    cle_teenmaar, cle_reverse.
+ *
+ * Never trapped: the jam leaves the outbound half and the footpaths open, people step aside, and if Chinnu (on
+ * foot or a cycle) pushes against one of our vehicles without moving for ~1 s it drives off (or, wedged, goes).
+ * Pooling: people and animals come from pools (released ones walk off and return to them); vehicles are real
+ * N.vehicles entities (spawned on activation / arrival, removed out of sight). Lights are pooled objects.
+ * Performance (tests/citylife_events.cjs, phone 390x844, three busy scenes on screen): all of this module's
+ * per-frame work (director + scene updates + our entities' updates + vehicle controllers + 2D pass or 3D
+ * layer) is booked per frame in stats().ms / msAvg; steady state allocates nothing per frame on the hot
+ * paths (shared scratch objects, cached option objects, typed-array particles, instanced 3D props).
  */
 (() => {
   'use strict';
@@ -431,6 +440,9 @@
 
   /* ================================================================ pooled people */
   const PPOOL = [], PERSONS = [];
+  const UMB = ['#1a1a22', '#2a2a40', '#7a2a3a', '#2a5a8a', '#3a3a3a'];
+  const SIDES = [-1, 1], KIDBAG = ['#2a5cb8', '#b22b2b', '#3a8a3a', '#d8402a'], ATTAR = ['#e8b030', '#c83a5a', '#30a050', '#f4f2ea'], CLOTH = ['#c83a5a', '#2a6ab8', '#f2c230'];
+  const LEGS_H = [3.6, 1.5, 3.6, -1.5, -3.4, 1.5, -3.4, -1.5], LEGS_C = [3.8, 2.0, 3.8, -2.0, -3.8, 2.0, -3.8, -2.0], TUBE_O = [-1.2, 1.2], TUBE3 = [-0.7, 0.7];
   class Person extends N.Actor {
     constructor() {
       super({ kind: 'ped', r: 3.2, mass: 1, solid: true });
@@ -474,6 +486,7 @@
     p.arrived = false; p.lookAt = null; p.lookT = 0; p.bob = 0; p.bumpT = 0; p.knockT = 0; p.down = false; p.getupT = 0;
     p.solid = !o.ghost; p.noCollide = !!o.ghost; p.seed = (rnd() * 1e6) | 0; p.leaveN = 0; p.chair = o.chair || null; p.v = null; p.slot = null; p.aux = 0;
     p.anim.phase = rnd() * TAU; p.anim.speed = 0; p.anim.run = false;
+    p.umb = CX.rain > 0.3 && !o.item && rnd() < 0.65 ? pick(UMB) : null; // umbrellas in the rain (3D draws e.umb too)
     N.entities.add(p);
     PERSONS.push(p); if (sc) sc.persons.push(p);
     ST.spawnedP++;
@@ -751,15 +764,22 @@
     try { N.vehicles.remove(v); } catch (e) { N.entities.remove(v); }
   }
   /** is something right in front of v (the player, one of our vehicles, a beast)? */
-  function blockedAhead(v, c, range) {
-    const ca = Math.cos(v.angle), sa = Math.sin(v.angle), L = v.T.w / 2;
-    const pl = N.player;
-    const tst = (x, y, r) => { const dx = x - v.x, dy = y - v.y, f = dx * ca + dy * sa; if (f < L - 2 || f > L + range + r) return false; const l = -dx * sa + dy * ca; return Math.abs(l) < v.T.d / 2 + r + 1; };
-    if (!pl.hidden && tst(pl.x, pl.y, pl.vehicle ? 4 : 3)) return true;
-    const S = c.sc;
+  const BA = { v: null, ca: 0, sa: 0, L: 0, range: 0, back: false };
+  function baTest(x, y, r) {
+    const v = BA.v, dx = x - v.x, dy = y - v.y;
+    const f = BA.back ? -(dx * BA.ca + dy * BA.sa) : dx * BA.ca + dy * BA.sa;
+    if (f < BA.L - 2 || f > BA.L + BA.range + r) return false;
+    return Math.abs(-dx * BA.sa + dy * BA.ca) < v.T.d / 2 + r + (BA.back ? 0 : 1);
+  }
+  /** is something right in front of v (the player, one of our vehicles, a beast)? */
+  function blockedAhead(v, c, range, back) {
+    BA.v = v; BA.ca = Math.cos(v.angle); BA.sa = Math.sin(v.angle); BA.L = v.T.w / 2; BA.range = range; BA.back = !!back;
+    const pl0 = N.player;
+    if (!pl0.hidden && baTest(pl0.x, pl0.y, pl0.vehicle ? 4 : 3)) return true;
+    const S = c && c.sc;
     if (S) {
-      for (let i = 0; i < S.vehs.length; i++) { const o = S.vehs[i]; if (o !== v && o.alive && tst(o.x, o.y, o.T.d / 2)) return true; }
-      for (let i = 0; i < S.beasts.length; i++) { const b = S.beasts[i]; if (b.alive && tst(b.x, b.y, 5)) return true; }
+      for (let i = 0; i < S.vehs.length; i++) { const o = S.vehs[i]; if (o !== v && o.alive && baTest(o.x, o.y, o.T.d / 2)) return true; }
+      if (!back) for (let i = 0; i < S.beasts.length; i++) { const b = S.beasts[i]; if (b.alive && baTest(b.x, b.y, 5)) return true; }
     }
     return false;
   }
@@ -957,8 +977,9 @@
     for (let d = J.jr + 30; d < ex.len; d += 40) { q = at(ex, d, eoff); pts.push(q.x, q.y); }
     c.path = pts; c.pi = 0; c.mode = 'leave'; c.then = 'gone'; c.vmax = 26; c.onEnd = null;
   }
+  const JO0 = { calm: false, onGreen: null };
   function jamUpdate(sc, J, dt, level, opts) {
-    opts = opts || {};
+    opts = opts || JO0;
     const want = Math.round(clamp(level, 0, 1) * J.cap);
     J.clearing = level < 0.18;
     // arrivals
@@ -1028,15 +1049,33 @@
     const pv = pl.vehicle;
     if (pv && !(pv.T && (pv.T.pedal || pv.T.cls === 'bike'))) return;
     const mv = N.input && N.input.move, want = mv ? Math.hypot(mv.x || 0, mv.y || 0) : 0;
-    const vx = pv ? pv.vx : pl.vx, vy = pv ? pv.vy : pl.vy;
-    if (want > 0.35 && Math.hypot(vx || 0, vy || 0) < 4) J.trapT += dt; else J.trapT = Math.max(0, J.trapT - dt * 2);
-    if (J.trapT < 1.1) return;
+    // real progress over the last second (a blocked walker keeps his wish velocity, so measure the position)
+    J.chkT += dt;
+    if (J.chkT >= 0.5) {
+      const moved = J.lastX == null ? 99 : Math.hypot(pl.x - J.lastX, pl.y - J.lastY);
+      J.lastX = pl.x; J.lastY = pl.y;
+      if (want > 0.35 && moved < 2.5 && (pv ? Math.abs(pv.speed || 0) < 6 : true)) J.trapT += J.chkT; else J.trapT = Math.max(0, J.trapT - J.chkT * 2);
+      J.chkT = 0;
+    }
+    if (J.trapT < 1.0) return;
     J.trapT = 0;
-    let best = null, bd = 30;
-    for (const v of sc.vehs) { if (!v.alive || !v.cle) continue; const d = Math.hypot(v.x - pl.x, v.y - pl.y) - v.T.w / 2; if (d < bd) { bd = d; best = v; } }
+    let best = null, bd = 7; // only one of OUR vehicles touching him (walls are not our business)
+    for (const v of sc.vehs) {
+      if (!v.alive || !v.cle) continue;
+      const dx = pl.x - v.x, dy = pl.y - v.y, ca = Math.cos(v.angle), sa = Math.sin(v.angle);
+      const f = Math.abs(dx * ca + dy * sa) - v.T.w / 2, l = Math.abs(-dx * sa + dy * ca) - v.T.d / 2, d = Math.max(f, l);
+      if (d < bd) { bd = d; best = v; }
+    }
     if (!best) return;
     ST.unstuck++;
-    if (best.cle.lane || best.cle.mode === 'hold') jamDepart(sc, J, best);
+    if (J.lastUn === best || bd < -2) { // still in the way (or he is wedged against it): it simply goes
+      for (let i = 0; i < 5; i++) emit(PK.DUST, best.x + rr(-4, 4), best.y + rr(-4, 4), 1, rr(-6, 6), rr(-6, 6), rr(2, 5), 1.6, 3, 0);
+      const bi = J.box.indexOf(best); if (bi >= 0) J.box.splice(bi, 1);
+      freeVeh(best); J.lastUn = null; return;
+    }
+    J.lastUn = best;
+    if (best.cle.box) boxRelease(sc, J, best);
+    else if (best.cle.lane || best.cle.mode === 'hold') jamDepart(sc, J, best);
     else if (best.cle.mode === 'gone' || best.cle.mode === 'rev') freeVeh(best);
     else best.cle.blockT = 0;
   }
@@ -1172,14 +1211,13 @@
     update(sc, dt) {
       const s = sc.site, st = sc.st, J = st.J;
       const calm = s.old && CX.prayer;
-      jamUpdate(sc, J, dt, sc.level, {
-        calm,
-        onGreen: (g) => {
-          const cop = copOf(sc);
-          if (st.cop && st.cop.alive) st.cop.face = s.arms[g].ang + PI;
-          if (cop && dPl(cop.x, cop.y) < 380) { if (!calm) sfx('whistle', cop.x, cop.y, { vol: 0.5, gap: 2 }); if (rnd() < 0.5) bark(cop, line('havaldar')); beat(sc, 'whistle'); }
-        },
-      });
+      if (!st.jo) st.jo = { calm: false, onGreen: (g) => {
+        const cop = copOf(sc);
+        if (st.cop && st.cop.alive) st.cop.face = s.arms[g].ang + PI;
+        if (cop && dPl(cop.x, cop.y) < 380) { if (!st.jo.calm) sfx('whistle', cop.x, cop.y, { vol: 0.5, gap: 2 }); if (rnd() < 0.5) bark(cop, line('havaldar')); beat(sc, 'whistle'); }
+      } };
+      st.jo.calm = calm;
+      jamUpdate(sc, J, dt, sc.level, st.jo);
       antiTrap(sc, J, dt);
       // the stalled bus: pushed in fits, then it coughs into life
       const S = st.stall;
@@ -1225,7 +1263,7 @@
       }
       // pedestrians weaving between the bumpers
       st.weaveT -= dt;
-      const weavers = sc.persons.reduce((n, p) => n + (p.tag === 'weave' ? 1 : 0), 0);
+      let weavers = 0; for (let i = 0; i < sc.persons.length; i++) if (sc.persons[i].tag === 'weave') weavers++;
       if (st.weaveT <= 0 && weavers < Math.round(1 + sc.level * 3)) { st.weaveT = rr(2, 5); spawnWeaver(sc, J); }
       // two-wheelers up on the footpath
       st.fpT -= dt;
@@ -1252,14 +1290,7 @@
     },
     stop(sc) {},
   };
-  function blockedBehind(v, sc) {
-    const ca = Math.cos(v.angle), sa = Math.sin(v.angle), L = v.T.w / 2;
-    const pl0 = N.player;
-    const tst = (x, y, r) => { const dx = x - v.x, dy = y - v.y, f = -(dx * ca + dy * sa); if (f < L - 2 || f > L + 8 + r) return false; return Math.abs(-dx * sa + dy * ca) < v.T.d / 2 + r; };
-    if (tst(pl0.x, pl0.y, 3)) return true;
-    for (const o of sc.vehs) if (o !== v && o.alive && tst(o.x, o.y, o.T.d / 2)) return true;
-    return false;
-  }
+  function blockedBehind(v, sc) { return blockedAhead(v, v.cle, 8, true); }
   function spawnWeaver(sc, J) {
     const A = pick(J.arms), hw = A.w / 2, fw = Math.max(3, footW(A.kind));
     const d = rr(J.jr + 14, Math.min(A.len - 20, J.jr + 100));
@@ -1862,6 +1893,7 @@
         const sOff = slots[k % slots.length] + (k >= slots.length ? 8 : 0), side = k % 2 ? 1 : -1; k++;
         const q = at(P0, P0.mid + sOff, side * (hw + fw * 0.5 + 1.5), PT2);
         const f2 = freeSpot(q.x, q.y, 2); if (!f2) return;
+        try { if (N.respect && N.respect.at && N.respect.at(f2.x, f2.y)) return; } catch (e) { /* optional */ }
         const nx = q.uy * side, ny = -q.ux * side, a = Math.atan2(q.uy, q.ux);
         const S = { type, x: f2.x, y: f2.y, a, nx, ny, seller: null, buyers: [], cols: [] };
         if (type === 'bangles') for (let i = 0; i < 10; i++) S.cols.push(pick(BANGLE_COLS));
@@ -1904,7 +1936,9 @@
       const s = sc.site, st = sc.st, P0 = s.path;
       st.calm = calmAt(sc, s.x, s.y);
       if (st.J) {
-        jamUpdate(sc, st.J, dt, sc.level * 0.9, { calm: st.calm });
+        if (!st.jo) st.jo = { calm: false, onGreen: null };
+        st.jo.calm = st.calm;
+        jamUpdate(sc, st.J, dt, sc.level * 0.9, st.jo);
         st.J.flowT = Math.max(st.J.flowT, 0); // the lane drains slowly
         antiTrap(sc, st.J, dt);
         for (const l of st.J.lanes) for (const v of l.q) if (v.cle && !st.calm && v.cle.hd <= 0 && rnd() < dt * 0.05) v.cle.hd = 0.05;
@@ -1959,15 +1993,16 @@
     const q0 = at(P0, s0, 0);
     if (seen(q0.x, q0.y, 10) && !forced(sc)) { st.herdT = 6; return; }
     const H = { fwd, s: fwd ? 0 : P0.len, s1, beasts: [], herder: null, t: 0, spd: 9 };
+    if (forced(sc)) { const ps = along(P0, N.player.x, N.player.y); H.s = clamp(ps + (fwd ? -26 : 26), 0, P0.len); } // staged: the herd is right there
     const n = lowTier() ? 4 : 6;
     for (let i = 0; i < n; i++) {
-      const d = fwd ? -i * 7.5 : P0.len + i * 7.5;
+      const d = H.s - (fwd ? 1 : -1) * i * 7.5;
       const q = at(P0, clamp(d, 0, P0.len), rr(-P0.w * 0.25, P0.w * 0.25));
       const b = newBeast(sc, 'buffalo', q.x, q.y, fwd ? Math.atan2(q.uy, q.ux) : Math.atan2(-q.uy, -q.ux), { spd: 10 });
       b.lat = rr(-P0.w * 0.28, P0.w * 0.28); b.lag = i * 7 + rr(0, 3);
       H.beasts.push(b);
     }
-    const hq = at(P0, s0, 2);
+    const hq = at(P0, clamp(H.s - (fwd ? 1 : -1) * (n * 7.5 + 6), 0, P0.len), 2);
     const h = newPerson(sc, 'lungi', hq.x, hq.y, { tag: 'herder', spd: 12 });
     if (h) { h.look = withProp(h.look, 'stick'); h.beh = 'follow'; H.herder = h; }
     st.herd = H;
@@ -2319,7 +2354,8 @@
 
   // ---- people overlays
   const ANIM0 = { phase: 0, speed: 0, run: false };
-  function handPt(p, side, fwd, h) { const a = p.angle; return { x: p.x + Math.cos(a) * fwd + Math.cos(a + PI / 2) * side, y: p.y + Math.sin(a) * fwd + Math.sin(a + PI / 2) * side, h }; }
+  const HP1 = { x: 0, y: 0, h: 0 }, HP2 = { x: 0, y: 0, h: 0 };
+  function handPt(p, side, fwd, h, out) { const a = p.angle, o = out || HP1; o.x = p.x + Math.cos(a) * fwd - Math.sin(a) * side; o.y = p.y + Math.sin(a) * fwd + Math.cos(a) * side; o.h = h; return o; }
   function drawItem(p) {
     const a = p.angle, t = simT();
     switch (p.item) {
@@ -2334,11 +2370,11 @@
       case 'tube': { // a tube light on a T-pole over the head
         const ca = Math.cos(a + PI / 2), sa = Math.sin(a + PI / 2), hh = 14.5;
         seg(p.x, p.y, 9, p.x, p.y, hh, 0.4, '#7a7a7a');
-        for (const o of [-1.2, 1.2]) seg(p.x - ca * 3.4 + Math.cos(a) * o, p.y - sa * 3.4 + Math.sin(a) * o, hh, p.x + ca * 3.4 + Math.cos(a) * o, p.y + sa * 3.4 + Math.sin(a) * o, hh, 0.8, '#f4fbff');
+        for (let oi = 0; oi < 2; oi++) { const o = TUBE_O[oi]; seg(p.x - ca * 3.4 + Math.cos(a) * o, p.y - sa * 3.4 + Math.sin(a) * o, hh, p.x + ca * 3.4 + Math.cos(a) * o, p.y + sa * 3.4 + Math.sin(a) * o, hh, 0.8, '#f4fbff'); }
         break;
       }
-      case 'trumpet': { const q = handPt(p, 0.6, 2.2, 7.2), e = handPt(p, 0.6, 5.2, 7.4); seg(q.x, q.y, q.h, e.x, e.y, e.h, 0.5, '#e8c040'); dot(e.x, e.y, e.h, 0.9, '#f2d050'); break; }
-      case 'drum': case 'dappu': { const q = handPt(p, -0.8, 2.0, 6.2); dot(q.x, q.y, q.h, p.item === 'drum' ? 2.1 : 1.8, p.item === 'drum' ? '#c8302a' : '#6a4a2a'); dot(q.x, q.y, q.h + 0.1, p.item === 'drum' ? 1.6 : 1.45, '#ece0c0'); const s = Math.sin(t * 13 + p.seed); const st = handPt(p, 1.8, 2.4 + s, 7 + s); seg(st.x, st.y, st.h, q.x, q.y, q.h + 0.3, 0.3, '#5a3a1a'); break; }
+      case 'trumpet': { const q = handPt(p, 0.6, 2.2, 7.2), e = handPt(p, 0.6, 5.2, 7.4, HP2); seg(q.x, q.y, q.h, e.x, e.y, e.h, 0.5, '#e8c040'); dot(e.x, e.y, e.h, 0.9, '#f2d050'); break; }
+      case 'drum': case 'dappu': { const q = handPt(p, -0.8, 2.0, 6.2); dot(q.x, q.y, q.h, p.item === 'drum' ? 2.1 : 1.8, p.item === 'drum' ? '#c8302a' : '#6a4a2a'); dot(q.x, q.y, q.h + 0.1, p.item === 'drum' ? 1.6 : 1.45, '#ece0c0'); const s = Math.sin(t * 13 + p.seed); const st = handPt(p, 1.8, 2.4 + s, 7 + s, HP2); seg(st.x, st.y, st.h, q.x, q.y, q.h + 0.3, 0.3, '#5a3a1a'); break; }
       case 'sparkler': { const q = handPt(p, 1.6, 2.5, 6.5); seg(p.x, p.y, 6, q.x, q.y, q.h, 0.25, '#9a9a9a'); dot(q.x, q.y, q.h, 0.7, '#fff2b0'); break; }
       default: break;
     }
@@ -2347,13 +2383,13 @@
     const C = p.cart, a = p.angle, ca = Math.cos(a), sa = Math.sin(a);
     const x = p.x + ca * 7.5, y = p.y + sa * 7.5;
     if (C.kind === 'gen') { obox(x, y, a, 3.6, 2.4, 0.8, 4.6, '#4a5a6a', '#6a7a8a'); dot(x + ca * 2, y + sa * 2, 4.8, 0.8, '#2a2a2a'); return; }
-    for (const s of [-1, 1]) dot(x - sa * s * 3, y + ca * s * 3, 1.2, 1.2, '#3a3030');
+    for (let si = 0; si < 2; si++) { const s = SIDES[si]; dot(x - sa * s * 3, y + ca * s * 3, 1.2, 1.2, '#3a3030'); }
     obox(x, y, a, 5, 2.8, 2.6, 3.3, '#7a5a3a', '#9a7a52');
     seg(p.x + ca * 1.2, p.y + sa * 1.2, 4.2, x - ca * 4.6, y - sa * 4.6, 3.4, 0.45, '#5a4028');
     const col = C.col;
     if (C.kind === 'sacks') { for (let i = 0; i < 3; i++) ell(x + ca * (i - 1) * 2.8, y + sa * (i - 1) * 2.8, 4.6, 1.6, 2.2, a, i % 2 ? '#d8c8a0' : col); }
     else if (C.kind === 'bananas') { for (let i = 0; i < 5; i++) ell(x + ca * (i - 2) * 1.8, y + sa * (i - 2) * 1.8, 4, 0.9, 2, a + 0.4, i % 2 ? '#e8d040' : '#c8b030'); }
-    else if (C.kind === 'cloth') { for (let i = 0; i < 3; i++) obox(x + ca * (i - 1) * 2.8, y + sa * (i - 1) * 2.8, a, 1.3, 2.3, 3.3, 5.4 + (i % 2) * 0.6, ['#c83a5a', '#2a6ab8', '#f2c230'][i], null); }
+    else if (C.kind === 'cloth') { for (let i = 0; i < 3; i++) obox(x + ca * (i - 1) * 2.8, y + sa * (i - 1) * 2.8, a, 1.3, 2.3, 3.3, 5.4 + (i % 2) * 0.6, CLOTH[i], null); }
     else { for (let i = 0; i < 4; i++) dot(x + ca * (i - 1.5) * 2.4, y + sa * (i - 1.5) * 2.4, 4.4, 1.2, '#b8643a'); }
   }
   function drawPerson(ctx, p) {
@@ -2370,15 +2406,16 @@
       if (p.beh === 'dance') { // hands up!
         resetCtx(ctx);
         const sk = p.look.skin || '#a0683f', s = Math.sin(p.t * 7 + p.seed);
-        for (const side of [-1, 1]) { const q = handPt(p, side * (3.4 + s * side * 0.8), 0.6, 9 + Math.abs(s) * 2); dot(q.x, q.y, q.h, 0.65, sk); }
+        for (let si = 0; si < 2; si++) { const side = SIDES[si]; const q = handPt(p, side * (3.4 + s * side * 0.8), 0.6, 9 + Math.abs(s) * 2); dot(q.x, q.y, q.h, 0.65, sk); }
       } else if (p.beh === 'wave' || (p.beh === 'push')) {
         resetCtx(ctx);
         const sk = p.look.skin || '#a0683f';
         if (p.beh === 'wave') { const s = Math.sin(simT() * 5 + p.seed) * 2.2; const q = handPt(p, 4 + s * 0.3, 1 + s, 8.5); dot(q.x, q.y, q.h, 0.7, p.tag === 'havaldar' ? '#f4f2ea' : sk); }
-        else for (const side of [-1, 1]) { const q = handPt(p, side * 1.6, 3.2, 6.2); dot(q.x, q.y, q.h, 0.6, sk); }
+        else for (let si = 0; si < 2; si++) { const q = handPt(p, SIDES[si] * 1.6, 3.2, 6.2); dot(q.x, q.y, q.h, 0.6, sk); }
       }
     }
     resetCtx(ctx);
+    if (p.umb) { umbrella(p.x, p.y, 5.2, 11, p.umb, shade(p.umb, 1.3), 8); resetCtx(ctx); }
     if (p.item) { drawItem(p); resetCtx(ctx); }
     if (p.cart) { drawCart(p); resetCtx(ctx); }
   }
@@ -2401,7 +2438,7 @@
     if (sp === 'horse') {
       const ph = b.ph * 2.2;
       g.fillStyle = shade(c0, 0.82);
-      for (const l of [[3.6, 1.5], [3.6, -1.5], [-3.4, 1.5], [-3.4, -1.5]]) { const s = b.moving ? Math.sin(ph + l[0] + l[1]) * 1.2 : 0; g.fillRect(l[0] + s - 0.5, l[1] - 0.5, 1, 1); }
+      for (let i = 0; i < 8; i += 2) { const lx = LEGS_H[i], ly = LEGS_H[i + 1], s = b.moving ? Math.sin(ph + lx + ly) * 1.2 : 0; g.fillRect(lx + s - 0.5, ly - 0.5, 1, 1); }
       g.fillStyle = c0; g.beginPath(); g.ellipse(0, 0, 6.2, 2.3, 0, 0, TAU); g.fill();
       g.beginPath(); g.ellipse(6.4, 0, 2.6, 1.1, 0, 0, TAU); g.fill(); // neck + head
       g.fillStyle = '#c8202a'; g.fillRect(-3.5, -2.6, 6, 5.2); g.fillStyle = '#f2c230'; g.fillRect(-3.5, -2.6, 6, 0.6); g.fillRect(-3.5, 2.0, 6, 0.6); // the jhool
@@ -2415,7 +2452,7 @@
     if (!lie) {
       g.fillStyle = shade(c0, 0.7);
       const ph = b.ph * 1.6;
-      for (const l of [[3.8, 2.0], [3.8, -2.0], [-3.8, 2.0], [-3.8, -2.0]]) { const s = b.moving ? Math.sin(ph + l[0] * 0.7 + l[1]) * 1.1 : 0; g.fillRect(l[0] + s - 0.6, l[1] - 0.6, 1.2, 1.2); }
+      for (let i = 0; i < 8; i += 2) { const lx = LEGS_C[i], ly = LEGS_C[i + 1], s = b.moving ? Math.sin(ph + lx * 0.7 + ly) * 1.1 : 0; g.fillRect(lx + s - 0.6, ly - 0.6, 1.2, 1.2); }
     }
     g.fillStyle = c0; g.beginPath(); g.ellipse(0, 0, 6.6, lie ? 3.6 : 3.1, 0, 0, TAU); g.fill();
     if (!buff) { g.fillStyle = c1; g.beginPath(); g.ellipse(2.4, 0, 1.6, 1.4, 0, 0, TAU); g.fill(); } // the hump
@@ -2593,7 +2630,7 @@
             umbrella(S.x + S.nx * 1.2, S.y + S.ny * 1.2, 5.2, 11, '#e8e0c8', '#c8302a', 8);
           } else {
             obox(S.x, S.y, a, 3, 1.8, 0, 3, '#5a4030', '#e8e0d0');
-            for (let i = 0; i < 8; i++) { const u = (i % 4 - 1.5) * 1.3, v = (i < 4 ? -0.6 : 0.6); const x = S.x + ca * u - sa * v, y = S.y + sa * u + ca * v; dot(x, y, 3.5, 0.45, ['#e8b030', '#c83a5a', '#30a050', '#f4f2ea'][i % 4]); dot(x - 0.15, y - 0.15, 3.7, 0.15, '#ffffff'); }
+            for (let i = 0; i < 8; i++) { const u = (i % 4 - 1.5) * 1.3, v = (i < 4 ? -0.6 : 0.6); const x = S.x + ca * u - sa * v, y = S.y + sa * u + ca * v; dot(x, y, 3.5, 0.45, ATTAR[i % 4]); dot(x - 0.15, y - 0.15, 3.7, 0.15, '#ffffff'); }
           }
         }
         break;
@@ -2645,10 +2682,10 @@
       for (const v of sc.vehs) {
         if (!v.alive || !v.cle) continue;
         const c = v.cle, a = v.angle, ca = Math.cos(a), sa = Math.sin(a);
-        if (c.cans) for (const s2 of [-1, 1]) { const x = v.x - ca * 5.2 - sa * s2 * 2.2, y = v.y - sa * 5.2 + ca * s2 * 2.2; cylD(x, y, 1.3, 2, 6.2, '#a8acb4', '#d0d4da'); }
+        if (c.cans) for (let si = 0; si < 2; si++) { const s2 = SIDES[si], x = v.x - ca * 5.2 - sa * s2 * 2.2, y = v.y - sa * 5.2 + ca * s2 * 2.2; cylD(x, y, 1.3, 2, 6.2, '#a8acb4', '#d0d4da'); }
         if (c.papers) ell(v.x - ca * 4.6, v.y - sa * 4.6, 5.6, 2, 1.4, a, '#d8d0b8');
         if (c.kids) { // school kids packed in, bags hanging out
-          for (let i = 0; i < Math.min(7, c.kids); i++) { const u = -3.5 + (i % 4) * 2, s2 = i < 4 ? 1 : -1; const x = v.x + ca * u - sa * s2 * 5.8, y = v.y + sa * u + ca * s2 * 5.8; dot(x, y, 10, 1.3, '#1a1412'); dot(x - sa * s2 * 0.9, y + ca * s2 * 0.9, 7.5, 1.2, ['#2a5cb8', '#b22b2b', '#3a8a3a', '#d8402a'][i % 4]); }
+          for (let i = 0; i < Math.min(7, c.kids); i++) { const u = -3.5 + (i % 4) * 2, s2 = i < 4 ? 1 : -1; const x = v.x + ca * u - sa * s2 * 5.8, y = v.y + sa * u + ca * s2 * 5.8; dot(x, y, 10, 1.3, '#1a1412'); dot(x - sa * s2 * 0.9, y + ca * s2 * 0.9, 7.5, 1.2, KIDBAG[i % 4]); }
         }
       }
     }
@@ -2700,8 +2737,9 @@
       for (const v of sc.vehs) { // honks: little sound arcs at the bonnet
         if (!v.alive || !v.cle || !(v.cle.honkT > 0)) continue;
         const a = v.angle, L = v.T.w / 2 + 2, k = kk(6), x = SX(v.x + Math.cos(a) * L, k), y = SY(v.y + Math.sin(a) * L, k), f = 1 - v.cle.honkT / 0.45;
-        ctx.strokeStyle = 'rgba(255,248,210,' + (0.85 * (1 - f)).toFixed(2) + ')'; ctx.lineWidth = 1;
+        ctx.strokeStyle = '#fff8d2'; ctx.globalAlpha = 0.85 * (1 - f); ctx.lineWidth = 1;
         for (let i = 0; i < 2; i++) { ctx.beginPath(); ctx.arc(x, y, (2 + i * 2.5 + f * 4) * k, a - 0.7, a + 0.7); ctx.stroke(); }
+        ctx.globalAlpha = 1;
       }
     }
     for (let i = 0; i < P.n; i++) {
@@ -2926,24 +2964,24 @@
     for (const p of sc.persons) {
       if (!p.alive || !p.item) continue;
       const a = p.angle, ca = Math.cos(a), sa = Math.sin(a), kid = p.look && (p.look.kind === 'kid' || p.look.kind === 'student'), z = kid ? 0.78 : 1;
-      const hx = (f, sd) => p.x + ca * f - sa * sd, hy = (f, sd) => p.y + sa * f + ca * sd;
+      const px = p.x, py = p.y;
       switch (p.item) {
         case 'tube': {
           icyl(p.x, 8 * z, p.y, 0.14, 6.5, '#7a7a7a');
-          for (const off of [-0.7, 0.7]) I('emis', p.x + ca * off, 14.6 * z, p.y + sa * off, a + PI / 2, 7, 0.35, 0.35, night > 0.3 ? '#f4fbff' : '#d8e4ec');
-          if (night > 0.2) ptAdd(GL, p.x, 14.6 * z, p.y, 9, 0.35 * night, '#cfe8ff');
+          for (let oi = 0; oi < 2; oi++) { const off = TUBE3[oi]; I('emis', p.x + ca * off, 14.6 * z, p.y + sa * off, a + PI / 2, 7, 0.35, 0.35, night > 0.3 ? '#f4fbff' : '#d8e4ec'); }
+          if (night > 0.2) ptAdd(GL, p.x, 14.6 * z, p.y, 4.5, 0.22 * night, '#cfe8ff');
           break;
         }
-        case 'trumpet': I('cone', hx(3.4, 0.6), 6.8, hy(3.4, 0.6), a, 0.8, 3.2, 0.8, '#e8c040', 0, -PI / 2); break;
-        case 'fan': { const s = Math.sin(t * 11 + p.seed) * 0.6; I('cyl', hx(1.8, 2.2), 7 * z, hy(1.8, 2.2), a + s, 1.4, 0.12, 1.4, '#d8b060', PI / 2, 0); break; }
-        case 'candle': icyl(hx(2, 1.4), 6 * z, hy(2, 1.4), 0.22, 1.1, '#f4f2ea'); ptAdd(GL, hx(2, 1.4), 7.4 * z, hy(2, 1.4), 2.2, 0.9, '#ffc860'); break;
-        case 'vessel': icyl(hx(1.6, 2.2), 4.4 * z, hy(1.6, 2.2), 1.1, 1.6, '#a8acb4'); break;
-        case 'paper': ibox(hx(2.4, 0), 6.2 * z, hy(2.4, 0), a + PI / 2, 4.2, 0.2, 2.8, '#e8e2d2'); break;
-        case 'pot': iball(hx(0.4, 2.6), 4.6 * z, hy(0.4, 2.6), 1.5, p.itemCol || '#d8302a'); break;
+        case 'trumpet': I('cone', (px + ca * (3.4) - sa * (0.6)), 6.8, (py + sa * (3.4) + ca * (0.6)), a, 0.8, 3.2, 0.8, '#e8c040', 0, -PI / 2); break;
+        case 'fan': { const s = Math.sin(t * 11 + p.seed) * 0.6; I('cyl', (px + ca * (1.8) - sa * (2.2)), 7 * z, (py + sa * (1.8) + ca * (2.2)), a + s, 1.4, 0.12, 1.4, '#d8b060', PI / 2, 0); break; }
+        case 'candle': icyl((px + ca * (2) - sa * (1.4)), 6 * z, (py + sa * (2) + ca * (1.4)), 0.22, 1.1, '#f4f2ea'); ptAdd(GL, (px + ca * (2) - sa * (1.4)), 7.4 * z, (py + sa * (2) + ca * (1.4)), 2.2, 0.9, '#ffc860'); break;
+        case 'vessel': icyl((px + ca * (1.6) - sa * (2.2)), 4.4 * z, (py + sa * (1.6) + ca * (2.2)), 1.1, 1.6, '#a8acb4'); break;
+        case 'paper': ibox((px + ca * (2.4) - sa * (0)), 6.2 * z, (py + sa * (2.4) + ca * (0)), a + PI / 2, 4.2, 0.2, 2.8, '#e8e2d2'); break;
+        case 'pot': iball((px + ca * (0.4) - sa * (2.6)), 4.6 * z, (py + sa * (0.4) + ca * (2.6)), 1.5, p.itemCol || '#d8302a'); break;
         case 'pothead': break; // the look's 'pot' prop sits on the head in 3D
-        case 'ticket': ibox(hx(0.6, 1.2), 11.5 * z, hy(0.6, 1.2), a, 1.6, 1, 0.1, '#f4e8a0'); break;
-        case 'bangles': for (let i = 0; i < 4; i++) I('cyl', hx(1.6, 2.4), 5.4 + i * 0.25, hy(1.6, 2.4), 0, 0.55, 0.18, 0.55, BANGLE_COLS[(i + p.seed) % BANGLE_COLS.length]); break;
-        case 'sparkler': ptAdd(GL, hx(2.6, 1.6), 6.6, hy(2.6, 1.6), 3, 1, '#fff2b0'); break;
+        case 'ticket': ibox((px + ca * (0.6) - sa * (1.2)), 11.5 * z, (py + sa * (0.6) + ca * (1.2)), a, 1.6, 1, 0.1, '#f4e8a0'); break;
+        case 'bangles': for (let i = 0; i < 4; i++) I('cyl', (px + ca * (1.6) - sa * (2.4)), 5.4 + i * 0.25, (py + sa * (1.6) + ca * (2.4)), 0, 0.55, 0.18, 0.55, BANGLE_COLS[(i + p.seed) % BANGLE_COLS.length]); break;
+        case 'sparkler': ptAdd(GL, (px + ca * (2.6) - sa * (1.6)), 6.6, (py + sa * (2.6) + ca * (1.6)), 3, 1, '#fff2b0'); break;
         default: break;
       }
       if (p.cart) {
@@ -2951,10 +2989,10 @@
         if (p.cart.kind === 'gen') { ibox(x, 0.8, y, a, 7, 4.8, 4, '#4a5a6a'); }
         else {
           ibox(x, 3.4, y, a, 10, 5.6, 0.8, '#7a5a3a');
-          for (const sd of [-1, 1]) I('cyl', x - sa * sd * 3, 1.3, y + ca * sd * 3, a + PI / 2, 1.3, 0.5, 1.3, '#3a3030', PI / 2, 0);
+          for (let si = 0; si < 2; si++) { const sd = SIDES[si]; I('cyl', x - sa * sd * 3, 1.3, y + ca * sd * 3, a + PI / 2, 1.3, 0.5, 1.3, '#3a3030', PI / 2, 0); }
           if (p.cart.kind === 'sacks') for (let i = 0; i < 3; i++) I('ball', x + ca * (i - 1) * 2.8, 5.4, y + sa * (i - 1) * 2.8, a, 1.6, 1.2, 2.3, i % 2 ? '#d8c8a0' : p.cart.col);
           else if (p.cart.kind === 'bananas') for (let i = 0; i < 5; i++) I('ball', x + ca * (i - 2) * 1.8, 4.8, y + sa * (i - 2) * 1.8, a + 0.4, 0.9, 0.8, 2, '#e8d040');
-          else if (p.cart.kind === 'cloth') for (let i = 0; i < 3; i++) ibox(x + ca * (i - 1) * 2.8, 4.2, y + sa * (i - 1) * 2.8, a, 2.6, 4.6, 2 + (i % 2) * 0.6, ['#c83a5a', '#2a6ab8', '#f2c230'][i]);
+          else if (p.cart.kind === 'cloth') for (let i = 0; i < 3; i++) ibox(x + ca * (i - 1) * 2.8, 4.2, y + sa * (i - 1) * 2.8, a, 2.6, 4.6, 2 + (i % 2) * 0.6, CLOTH[i]);
           else for (let i = 0; i < 4; i++) iball(x + ca * (i - 1.5) * 2.4, 5.2, y + sa * (i - 1.5) * 2.4, 1.3, '#b8643a');
         }
       }
@@ -2972,9 +3010,9 @@
         for (const v of sc.vehs) {
           if (!v.alive || !v.cle) continue;
           const c = v.cle, a = v.angle, ca = Math.cos(a), sa = Math.sin(a);
-          if (c.cans) for (const s2 of [-1, 1]) icyl(v.x - ca * 5.2 - sa * s2 * 2.3, 3, v.y - sa * 5.2 + ca * s2 * 2.3, 1.3, 4.4, '#b8bcc4');
+          if (c.cans) for (let si = 0; si < 2; si++) { const s2 = SIDES[si]; icyl(v.x - ca * 5.2 - sa * s2 * 2.3, 3, v.y - sa * 5.2 + ca * s2 * 2.3, 1.3, 4.4, '#b8bcc4'); }
           if (c.papers) ibox(v.x - ca * 4.6, 4.4, v.y - sa * 4.6, a, 3.6, 2.6, 1.6, '#d8d0b8');
-          if (c.kids) for (let i = 0; i < Math.min(7, c.kids); i++) { const u = -3.5 + (i % 4) * 2, s2 = i < 4 ? 1 : -1; iball(v.x + ca * u - sa * s2 * 5.2, 9.2, v.y + sa * u + ca * s2 * 5.2, 1.15, '#1a1412'); ibox(v.x + ca * u - sa * s2 * 6.6, 5.2, v.y + sa * u + ca * s2 * 6.6, a, 1.6, 0.9, 2.2, ['#2a5cb8', '#b22b2b', '#3a8a3a', '#d8402a'][i % 4]); }
+          if (c.kids) for (let i = 0; i < Math.min(7, c.kids); i++) { const u = -3.5 + (i % 4) * 2, s2 = i < 4 ? 1 : -1; iball(v.x + ca * u - sa * s2 * 5.2, 9.2, v.y + sa * u + ca * s2 * 5.2, 1.15, '#1a1412'); ibox(v.x + ca * u - sa * s2 * 6.6, 5.2, v.y + sa * u + ca * s2 * 6.6, a, 1.6, 0.9, 2.2, KIDBAG[i % 4]); }
         }
         break;
       }

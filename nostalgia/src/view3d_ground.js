@@ -34,8 +34,17 @@
  *   N.view3d.ground = {enabled, setEnabled(on) (false = the old painted ground, for before/after tests),
  *       stats(), rebuild(), heightAt(x, y), potholeDip(x, y), net()}
  * Hooks: view3d.js "[ground hook]" edits (setGroundProvider, dropPainted, elevation). Performance:
- * chunks are built lazily inside the core's frame budget in resumable steps (aux -> surface -> tint ->
- * roads -> upload); two draw calls per chunk (terrain, roads); phones get fewer noise octaves.
+ * chunks are built lazily inside the core's frame budget in resumable steps (analyse -> aux -> surface
+ * -> roads -> build -> upload; every step checks its deadline, phones bake sun shadows in slices); two
+ * draw calls per chunk (terrain, roads); phones get fewer noise octaves.
+ * Startup (no bare plain on slow machines): the global road analysis + soil colours run in small
+ * per-frame slices while the game is still top-down (no THREE needed: own ear clipping); every chunk
+ * gets a provisional ground within a frame (flat ribbons straight from N.world.data.roads over the
+ * real terrain shader with a flat ground map, same programs); the chunk under the player gets its own
+ * slice (prioritize) during the 3D warm-up and until its full ground is in; the scene's flat 'outer'
+ * fallback plane is sunk below the terrain's polygon-offset reach.
+ * Midday: ground albedos are scaled by uGain (from the sun + sky irradiance on a flat surface) so the
+ * noon ground is not on the ACES shoulder; lanes stay >= ~1.4x darker than the soil around them.
  */
 (() => {
   'use strict';
@@ -220,7 +229,7 @@
     return { c, age, wear: st.wear };
   }
 
-  const ANAMS = [];
+  const ANAMS = [], ANAMAX = [];
   // The analysis is resumable (phases sliced by the frame budget) so the first 3D switch never
   // freezes the page: pieces per road -> junction geometry -> trims -> junction polygons -> zebras ->
   // buckets + paths + rails -> bus bays.
@@ -294,7 +303,7 @@
           while (AN.i < LM.length) { busBay(LM[AN.i++]); if ((AN.i & 31) === 0 && over()) break; }
           if (AN.i >= LM.length) { AN.phase = 7; AN.i = 0; }
         }
-        ANAMS[ph] = (ANAMS[ph] || 0) + now() - ts;
+        ANAMS[ph] = (ANAMS[ph] || 0) + now() - ts; if (!(ANAMAX[ph] >= now() - ts)) ANAMAX[ph] = now() - ts;
         if (AN.phase < 7 && over()) break;
       }
     } catch (e) {
@@ -379,7 +388,8 @@
   }
   function addPieceFromPts(r, raw, ja, jb, ea, eb, FOOT, closed) {
     const hw = r.w / 2;
-    const pts = smoothLine(raw, hw + 6);
+    // bends filleted wider than the footpath reaches (hw + fp), so the inner footpath edge never folds over
+    const pts = smoothLine(raw, hw + Math.max(6, (FOOT[r.kind] || 0) + 3));
     if (pts.length < 2) return;
     const cum = cumOf(pts), L = cum[cum.length - 1];
     if (L < 0.5) return;
@@ -499,12 +509,30 @@
       const B = cn.B;
       if (cn.type === 'fillet') {
         // the piece footpaths start exactly at the tangent points (the kerbed corner covers the arc)
-        const tA = Math.min(cn.tA, A.piece.L * 0.5), tB = Math.min(cn.tB, B.piece.L * 0.5);
-        for (const p of cn.arc) poly.push(p);
+        // (arc length along the real, possibly curved piece: project the tangent points onto it)
+        const along = (a, T, t0) => {
+          const P = a.piece, q = projectOn(P.pts, P.cum, T[0], T[1], 0, P.L);
+          const t = q ? (a.start ? q.s : P.L - q.s) : t0;
+          return Math.min(t, P.L * 0.5);
+        };
+        const tA = along(A, cn.TA, cn.tA), tB = along(B, cn.TB, cn.tB);
         // footpaths along this corner start at the tangent points (piece sides)
         const sideA = 1 * A.side, sideB = -1 * B.side;
         if (A.fp > 0) A.end.fs[sideA > 0 ? 1 : 0] = tA;
         if (B.fp > 0) B.end.fs[sideB > 0 ? 1 : 0] = tB;
+        // kerbed corner: the analytic arc is tangent to the arms' straight approximations, but a curved
+        // arm's real kerb line can sit metres away; join the two strip starts with a curve tangent to
+        // the strips instead (asphalt edge and kerb share it: no gaps, no folds)
+        cn.curve = null;
+        if (A.fp > 0 && B.fp > 0) {
+          const sA = stripStart(A, 1), sB = stripStart(B, -1);
+          // only when the strip starts sit near the analytic tangent points (clustered junctions with
+          // clamped strips keep the arc + ring pavers) and the curve heads from one start to the other
+          const cx = sB.k[0] - sA.k[0], cy = sB.k[1] - sA.k[1], ch = Math.hypot(cx, cy);
+          const near = Math.hypot(sA.k[0] - cn.TA[0], sA.k[1] - cn.TA[1]) <= 8 && Math.hypot(sB.k[0] - cn.TB[0], sB.k[1] - cn.TB[1]) <= 8;
+          if (near && ch > 0.5 && -(cx * sA.d[0] + cy * sA.d[1]) > 0.05 * ch && cx * sB.d[0] + cy * sB.d[1] > 0.05 * ch) cn.curve = cornerCurve(sA, sB, cn.arc.length - 1);
+        }
+        for (const p of cn.curve || cn.arc) poly.push(p);
         J.kerbs.push({ type: 'arc', cn, A, B, tA, tB });
       } else if (A.fp > 0 && B.fp > 0) {
         J.kerbs.push({ type: 'line', A, B, pa: cutCorner(A, 1), pb: cutCorner(B, -1), fp: Math.min(A.fp, B.fp), kh: Math.min(A.piece.kerbH, B.piece.kerbH), paint: Math.max(A.piece.paint, B.piece.paint) });
@@ -747,9 +775,12 @@
       g.setAttribute('aGeo', new THREE.BufferAttribute(this.GEO.slice(0, n * 4), 4));
       g.setAttribute('aMk', new THREE.BufferAttribute(this.MK.slice(0, n * 4), 4));
       g.setAttribute('aSt', new THREE.BufferAttribute(this.ST.slice(0, n * 4), 4));
-      const idx = n > 65535 ? this.I.slice(0, this.ni) : Uint16Array.from(this.I.subarray(0, this.ni));
+      // (typed-array conversion, not Uint16Array.from's iterator; bounds from the chunk box, not a
+      // pass over every vertex: both were long single slices on big chunks)
+      const idx = n > 65535 ? this.I.slice(0, this.ni) : new Uint16Array(this.I.subarray(0, this.ni));
       g.setIndex(new THREE.BufferAttribute(idx, 1));
-      g.computeBoundingSphere(); g.computeBoundingBox();
+      g.boundingBox = new THREE.Box3(new THREE.Vector3(-8, -3, -8), new THREE.Vector3(CHS + 8, 6, CHS + 8));
+      g.boundingSphere = g.boundingBox.getBoundingSphere(new THREE.Sphere());
       return g;
     }
   }
@@ -1241,6 +1272,21 @@
     const dir = a.start ? 1 : -1;
     return { k: [f.x + f.nx * P.hw * sd, f.y + f.ny * P.hw * sd], b: [f.x + f.nx * (P.hw + P.fp) * sd, f.y + f.ny * (P.hw + P.fp) * sd], d: [f.dx * dir, f.dy * dir] };
   }
+  /** cubic Bezier from strip start sA.k (heading toward the junction, -sA.d) to sB.k (leaving, +sB.d) */
+  function cornerCurve(sA, sB, k) {
+    const P0 = sA.k, P3 = sB.k, d0 = [-sA.d[0], -sA.d[1]], d1 = sB.d;
+    const chord = Math.hypot(P3[0] - P0[0], P3[1] - P0[1]);
+    const th = Math.acos(clamp(d0[0] * d1[0] + d0[1] * d1[1], -1, 1)); // turning angle
+    const R = th > 1e-3 ? chord / (2 * Math.sin(th / 2)) : chord;
+    const h = Math.min(chord * 0.9, (4 / 3) * Math.tan(th / 4) * R);
+    const C1 = [P0[0] + d0[0] * h, P0[1] + d0[1] * h], C2 = [P3[0] - d1[0] * h, P3[1] - d1[1] * h];
+    const n = Math.max(4, k), out = [];
+    for (let q = 0; q <= n; q++) {
+      const t = q / n, u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+      out.push([a * P0[0] + b * C1[0] + c * C2[0] + d * P3[0], a * P0[1] + b * C1[1] + c * C2[1] + d * P3[1]]);
+    }
+    return out;
+  }
   /** a kerbed corner: ONE footpath polygon between the kerb arc and the plot corner where the two piece
    *  footpaths' back lines meet; kerb face + chamfer + band along the arc once; pavers in world (x, z)
    *  so the slabs never fan; the piece strips start exactly at the arc's ends (no overlap) */
@@ -1255,10 +1301,25 @@
     const backC = cst(linRGB('#8f8574'), LY.CONC, { age: 0.6 });
     const kb = Math.min(0.9, fp * 0.2), ch = EMIT_LOD ? 0 : 0.14;
     const sA = stripStart(A, 1), sB = stripStart(Bm, -1);
-    // kerb line along the arc, with the exact strip start points at both ends
-    const arc = cn.arc.slice(); arc[0] = sA.k; arc[arc.length - 1] = sB.k;
+    const dA = Math.hypot(sA.k[0] - cn.TA[0], sA.k[1] - cn.TA[1]), dB = Math.hypot(sB.k[0] - cn.TB[0], sB.k[1] - cn.TB[1]);
+    // the strips normally start at the tangent points; on curved / very short arms they may not: a
+    // short gap is bridged along the kerb line, a long one (clustered junctions) gets a plain ring
+    const ring = !cn.curve;
+    const arc = ring ? cn.arc.slice() : dedupe(cn.curve, 0.05);
     const n = arc.length - 1;
-    const rad = arc.map((p) => { const dx = p[0] - O[0], dy = p[1] - O[1], l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; }); // away from O (toward the road)
+    const unit = (x, y) => { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
+    // per kerb point: unit vector toward the road (kerb face normal); plot-ward is its negation
+    let rad;
+    if (ring) rad = arc.map((p) => unit(p[0] - O[0], p[1] - O[1]));
+    else {
+      rad = arc.map((p, q) => { // curve normal, on the road side (away from the plot corner side O)
+        const a = arc[Math.max(0, q - 1)], b = arc[Math.min(n, q + 1)];
+        let nx = -(b[1] - a[1]), ny = b[0] - a[0];
+        if ((p[0] - O[0]) * nx + (p[1] - O[1]) * ny < 0) { nx = -nx; ny = -ny; }
+        return unit(nx, ny);
+      });
+      rad[0] = unit(sA.k[0] - sA.b[0], sA.k[1] - sA.b[1]); rad[n] = unit(sB.k[0] - sB.b[0], sB.k[1] - sB.b[1]);
+    }
     const off = (q, w) => [arc[q][0] - rad[q][0] * w, arc[q][1] - rad[q][1] * w];
     let u = 0;
     for (let q = 0; q < n; q++) {
@@ -1278,7 +1339,15 @@
       pv(a2[0], kh, a2[1], 0, 1, 0, u0, 0.2); pv(b2[0], kh, b2[1], 0, 1, 0, u1, 0.2); pv(b3[0], kh, b3[1], 0, 1, 0, u1, 0.4); pv(a3[0], kh, a3[1], 0, 1, 0, u0, 0.4);
       flush(B, kc);
       B.raise([a, b, b3, a3], kh);
+      if (ring) { // pavers as a ring of world-uv quads (never a fan to the centre)
+        const w = Math.max(kb + 0.3, Math.min(fp, cn.rc - 0.6));
+        const a4 = off(q, w), b4 = off(q + 1, w);
+        pv(a3[0], kh, a3[1], 0, 1, 0, a3[0], a3[1]); pv(b3[0], kh, b3[1], 0, 1, 0, b3[0], b3[1]); pv(b4[0], kh, b4[1], 0, 1, 0, b4[0], b4[1]); pv(a4[0], kh, a4[1], 0, 1, 0, a4[0], a4[1]);
+        flush(B, fc);
+        B.raise([a3, b3, b4, a4], kh);
+      }
     }
+    if (ring) return;
     // plot corner: where the two back lines meet (bA + dA t = bB + dB s, both behind the strip starts)
     const det = sA.d[0] * -sB.d[1] - sA.d[1] * -sB.d[0];
     let K = null;
@@ -1630,7 +1699,7 @@ vec3 ngWaterCol(vec3 lit, vec3 P, vec3 nrm, float t, float deep){
     const U = I.UNI;
     shader.uniforms.uNight = U.uNight; shader.uniforms.uTime = U.uTime; shader.uniforms.uSunDir = U.uSunDir;
     shader.uniforms.uSunCol = U.uSunCol; shader.uniforms.uZen = U.uZen; shader.uniforms.uHor = U.uHor;
-    shader.uniforms.uWet = GU.uWet; shader.uniforms.uRain = GU.uRain; shader.uniforms.uCamPos = GU.uCamPos;
+    shader.uniforms.uWet = GU.uWet; shader.uniforms.uRain = GU.uRain; shader.uniforms.uCamPos = GU.uCamPos; shader.uniforms.uGain = GU.uGain;
     shader.uniforms.auxMap = ud.aux; shader.uniforms.tSurf = ud.surf; shader.uniforms.uOrigin = ud.origin; shader.uniforms.uSurfN = ud.surfN;
     shader.uniforms.tSoil = SOIL.t; shader.uniforms.uSoilK = SOIL.u;
   }
@@ -1645,6 +1714,7 @@ uniform float uNight;
 uniform float uTime;
 uniform float uWet;
 uniform float uRain;
+uniform float uGain;
 uniform vec3 uSunDir;
 uniform vec3 uSunCol;
 uniform vec3 uZen;
@@ -1726,7 +1796,7 @@ col = mix(col, sandC, wSand);
 col = mix(col, stone, wPave);
 col *= sw.a;
 col *= 1.0 - uWet * 0.4 * (1.0 - wGrass * 0.4);
-diffuseColor.rgb = col;
+diffuseColor.rgb = col * uGain;
 ngShine = wetS * wSand * 0.35 + uWet * 0.18 * (1.0 - wGrass);
 `;
   const TERRAIN_ENV = `
@@ -1974,7 +2044,7 @@ if (layer < 1.5) {
 }
 col *= mix(1.0, tn.a, layer < 1.5 ? 0.0 : 0.5); // baked shadows / contact AO: terrain only, footpaths half
 col *= 1.0 - uWet * (layer < 1.5 ? 0.42 : 0.25);
-diffuseColor.rgb = col;
+diffuseColor.rgb = col * uGain;
 `;
   const ROAD_ENV = `
 #include <envmap_fragment>
@@ -2038,6 +2108,8 @@ if (ngShine > 0.01) {
 
   /* ================================================================ chunk jobs (provider) */
   const STATS = { built: 0, ms: 0, lastMs: 0, roadsRebuilt: 0 };
+  const STEPMAX = []; // longest single step slice per step (ms)
+  const OVER = []; // last slices' overrun past their deadline (ms)
   const STEPMS = []; // cumulative ms per job step: analyse, aux, surface, tint, roads, upload
   const curPot = () => { const PH = N.world && N.world.potholes; return PH && PH.version != null ? PH.version : 0; };
   const SIGBUF = [];
@@ -2084,7 +2156,8 @@ if (ngShine > 0.01) {
           case 5: finishJob(job); job.step = 6; break;
           default: job.step = 6;
         }
-        STEPMS[st0] = (STEPMS[st0] || 0) + now() - ts;
+        const dts = now() - ts;
+        STEPMS[st0] = (STEPMS[st0] || 0) + dts; if (!(STEPMAX[st0] >= dts)) STEPMAX[st0] = dts;
         if (now() > deadline && job.step < 6) break;
       }
     } catch (e) {
@@ -2092,7 +2165,10 @@ if (ngShine > 0.01) {
       job.step = 6; job.failed = true;
       finishJob(job, true);
     }
-    job.t += now() - t0;
+    const t1 = now();
+    job.t += t1 - t0;
+    // frame-budget overrun of this slice (tests: no long main-thread hitches)
+    OVER.push(Math.max(0, t1 - deadline)); if (OVER.length > 256) OVER.shift();
     return job.step >= 6;
   }
   /** upload step 1 (its own slice): the road geometry + the ground map texture */
@@ -2226,7 +2302,7 @@ if (ngShine > 0.01) {
   // flat 2x2 ground map (soil, water from the aux texture). Same programs as the final ground: the
   // swap never compiles a shader. Built in a few ms per chunk, so the scene's bare 'outer' plane never
   // shows where the city stands and the roads are there from the first 3D frame.
-  const PROV = { bb: null, surf: null, rb: null, built: 0, ms: 0 };
+  const PROV = { bb: null, surf: null, rb: null, built: 0, ms: 0, max: 0 };
   const PROV_Y = { path: Y_PATH, lane: Y_ROAD - 0.03, street: Y_ROAD - 0.02, bund: Y_ROAD - 0.02, bridge: Y_ROAD - 0.01, arterial: Y_ROAD - 0.01 };
   function provRoadBoxes() {
     const R = (N.world && N.world.data && N.world.data.roads) || [];
@@ -2302,7 +2378,7 @@ if (ngShine > 0.01) {
       ch.group.add(rm);
     }
     G.prov = { terrain: tm, road: rm };
-    PROV.built++; PROV.ms += now() - t0;
+    PROV.built++; PROV.ms += now() - t0; PROV.max = Math.max(PROV.max, now() - t0);
   }
   function dropProv(ch) {
     const G = ch.ng, P = G && G.prov;
@@ -2388,7 +2464,8 @@ if (ngShine > 0.01) {
     attach(internals) {
       I = internals; THREE = I.THREE;
       // (the network analysis is kept: it may already be done from the top-down idle time)
-      GU.uWet = { value: 0 }; GU.uRain = { value: 0 }; GU.uCamPos = { value: new THREE.Vector3() };
+      sinkOuter(provider.enabled);
+      GU.uWet = { value: 0 }; GU.uRain = { value: 0 }; GU.uGain = { value: 1 }; GU.uCamPos = { value: new THREE.Vector3() };
       SOIL.u = { value: new THREE.Vector2(1, 1) }; SOIL.t = { value: null };
     },
     need(ch, d, pass) {
@@ -2435,10 +2512,24 @@ if (ngShine > 0.01) {
   };
   V.setGroundProvider(provider);
 
+  // The terrain plane is drawn with polygonOffset (factor 1) so the road ribbons 0.08 above always win;
+  // at grazing angles 40-300 u out that slope term pushes its depth past the scene's flat 'outer'
+  // fallback plane (y = -0.4), which then shows through as a bare orange plain between the roads.
+  // With our ground the outer plane only has to fill beyond the draw distance: sink it well below.
+  function sinkOuter(on) {
+    try {
+      const o = I && I.E && I.E.scene && I.E.scene.getObjectByName('outer');
+      if (!o) return;
+      if (o.userData.ngY == null) o.userData.ngY = o.position.y;
+      o.position.y = on ? -25 : o.userData.ngY;
+      o.updateMatrix(); o.updateMatrixWorld();
+    } catch (e) { /* engine not ready */ }
+  }
   function setEnabled(on) {
     on = !!on;
     if (on === provider.enabled) return on;
     provider.enabled = on;
+    sinkOuter(on);
     if (I) {
       for (const ch of I.chunks.values()) {
         if (on) I.dropPainted(ch);
@@ -2458,6 +2549,19 @@ if (ngShine > 0.01) {
       if (!GU.uWet) return;
       const cam = (H && H.camera) || (I && I.E.camera);
       if (cam) GU.uCamPos.value.copy(cam.position);
+      // ground gain (D4): with sun 2.75 + hemi 0.9 through ACES the noon ground sat on the curve's
+      // shoulder (soil, lanes, plaza tiles all ~205 sRGB). Scale the ground's albedo down as the
+      // irradiance on a flat surface rises, so detail and road / soil contrast survive midday; dusk and
+      // night (low irradiance) keep gain 1
+      try {
+        const E = I && I.E, SUN = I && I.SUN;
+        if (E && E.sun && E.hemi) {
+          const up = SUN && SUN.lightDir ? Math.max(0, SUN.lightDir.y) : 0.7;
+          const L = E.sun.intensity * up + E.hemi.intensity * 0.85;
+          const g = clamp(1.6 / Math.max(L, 0.1), 0.5, 1);
+          GU.uGain.value = g; // (the time of day moves slowly: no smoothing needed)
+        }
+      } catch (e) { /* first frames */ }
       // the chunk under the player first (its own slice while it has no finished ground)
       prioritize(I && I.Q.tier === 'low' ? 8 : 10);
       let raining = false;
@@ -2519,7 +2623,9 @@ if (ngShine > 0.01) {
         zebras: NET.pieces.reduce((a, P) => a + (P.ends[0].zebra ? 1 : 0) + (P.ends[1].zebra ? 1 : 0), 0), bays: NET.bays.length,
         chunks, roadTris: tris, textures: tex, built: STATS.built, avgChunkMs: STATS.built ? +(STATS.ms / STATS.built).toFixed(2) : 0, lastChunkMs: +STATS.lastMs.toFixed(2),
         wet: +(GU.uWet ? GU.uWet.value : 0).toFixed(2), potVer: curPot(),
-        stepMs: STEPMS.map((v) => +(v || 0).toFixed(1)), anaMs: ANAMS.map((v) => +(v || 0).toFixed(1)), soilMs: SOIL.ms,
+        stepMs: STEPMS.map((v) => +(v || 0).toFixed(1)), anaMs: ANAMS.map((v) => +(v || 0).toFixed(1)), anaMax: ANAMAX.map((v) => +(v || 0).toFixed(1)), soilMs: SOIL.ms,
+        overMs: (() => { if (!OVER.length) return { p50: 0, p95: 0, max: 0, n: 0 }; const a = OVER.slice().sort((x, y) => x - y); return { p50: +a[a.length >> 1].toFixed(1), p95: +a[Math.floor(a.length * 0.95)].toFixed(1), max: +a[a.length - 1].toFixed(1), n: a.length }; })(),
+        stepMax: STEPMAX.map((v) => +(v || 0).toFixed(1)), provMaxMs: +PROV.max.toFixed(1),
         precomputed: precomputed(), provBuilt: PROV.built, provAvgMs: PROV.built ? +(PROV.ms / PROV.built).toFixed(2) : 0,
         provChunks: I ? Array.from(I.chunks.values()).filter((ch) => ch.ng && ch.ng.prov).length : 0,
         focusReady: (() => { const f = focusXY(), ch = f && chunkAt(f.x, f.y); return !!(ch && ch.ng && ch.ng.ready); })(),
@@ -2528,9 +2634,9 @@ if (ngShine > 0.01) {
     },
     /** tests (D5): emit the kerbed junctions (+ their arm pieces) near (x, y) into a scratch builder
      *  and count overlapping raised top polygons (kerb bands + pavers) per junction: should be 0 */
-    kerbOverlaps(x, y, radius, maxJ) {
-      if (!NET.built || !THREE) return null;
-      const R = radius || 1500, out = { junctions: 0, corners: 0, pairs: 0, worst: [] };
+    kerbOverlaps(x, y, radius, maxJ, only) {
+      if (!NET.built) return null;
+      const R = radius || 1500, out = { junctions: 0, corners: 0, pairs: 0, worst: [], detail: maxJ === 1 ? [] : null };
       const js = NET.juncs.filter((J) => J.kerbs && J.kerbs.some((k) => k.type === 'arc' && k.A.fp > 0 && k.B.fp > 0) && Math.hypot(J.x - x, J.y - y) < R)
         .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y)).slice(0, maxJ || 60);
       const B = new RB(0, 0);
@@ -2553,8 +2659,8 @@ if (ngShine > 0.01) {
       for (const J of js) {
         B.reset(J.x - CHS / 2, J.y - CHS / 2);
         EMIT_LOD = 0;
-        emitJunction(B, J);
-        for (const a of J.arms) emitPiece(B, a.piece, null);
+        if (only !== 'pieces') emitJunction(B, J);
+        if (only !== 'junction') for (const a of J.arms) emitPiece(B, a.piece, null);
         const tris = [];
         for (let i = 0; i < B.ni; i += 3) {
           const ia = B.I[i], ib = B.I[i + 1], ic = B.I[i + 2], L = B.ST[ia * 4];
@@ -2563,20 +2669,51 @@ if (ngShine > 0.01) {
           const t = [ia, ib, ic].map((k) => [B.P[k * 3] + B.x0, B.P[k * 3 + 2] + B.z0]);
           if (Math.hypot(t[0][0] - J.x, t[0][1] - J.y) > 45 || area(t) < 1e-3) continue;
           const bb = [Math.min(t[0][0], t[1][0], t[2][0]), Math.min(t[0][1], t[1][1], t[2][1]), Math.max(t[0][0], t[1][0], t[2][0]), Math.max(t[0][1], t[1][1], t[2][1])];
-          tris.push({ t: ccw(t), bb });
+          tris.push({ t: ccw(t), bb, L: Math.round(L), pc: B.P[ia * 3 + 1] });
         }
         let pairs = 0, worst = 0;
         for (let i = 0; i < tris.length; i++) for (let k = i + 1; k < tris.length; k++) {
           const a = tris[i], b = tris[k];
           if (a.bb[2] < b.bb[0] || b.bb[2] < a.bb[0] || a.bb[3] < b.bb[1] || b.bb[3] < a.bb[1]) continue;
           const ov = clipTri(a.t, b.t);
-          if (ov > 0.05) { pairs++; worst = Math.max(worst, ov); }
+          if (ov > 0.05) { pairs++; worst = Math.max(worst, ov); if (out.detail && out.detail.length < 12) out.detail.push([a.L, b.L, +ov.toFixed(2), a.t.map((p) => p.map((v) => +v.toFixed(1))), b.t.map((p) => p.map((v) => +v.toFixed(1)))]); }
         }
         out.junctions++; out.corners += J.kerbs.filter((k) => k.type === 'arc').length; out.pairs += pairs;
         if (pairs) out.worst.push({ id: J.id, x: Math.round(J.x), y: Math.round(J.y), pairs, area: +worst.toFixed(2) });
       }
       out.worst.sort((a, b) => b.pairs - a.pairs); out.worst = out.worst.slice(0, 8);
       return out;
+    },
+    /** debug (D5): kerbed corner geometry near (x, y): tangent vs strip-start mismatch, radii */
+    cornerInfo(x, y, r) {
+      const out = [];
+      for (const J of NET.juncs) {
+        if (!J.kerbs || Math.hypot(J.x - x, J.y - y) > (r || 300)) continue;
+        for (const k of J.kerbs) {
+          if (k.type !== 'arc' || !(k.A.fp > 0 && k.B.fp > 0)) continue;
+          const sA = stripStart(k.A, 1), sB = stripStart(k.B, -1), cn = k.cn;
+          out.push({ j: J.id, x: Math.round(J.x), y: Math.round(J.y), rc: +cn.rc.toFixed(1), phi: +cn.phi.toFixed(2), tA: +cn.tA.toFixed(1), tB: +cn.tB.toFixed(1),
+            dA: +Math.hypot(sA.k[0] - cn.TA[0], sA.k[1] - cn.TA[1]).toFixed(2), dB: +Math.hypot(sB.k[0] - cn.TB[0], sB.k[1] - cn.TB[1]).toFixed(2) });
+        }
+      }
+      return out;
+    },
+    /** debug (D5): per kerbed corner of junction id: raised top triangles that overlap inside the corner */
+    cornerSelf(jid) {
+      const J = NET.juncs[jid]; if (!J || !J.kerbs) return null;
+      const B = new RB(J.x - CHS / 2, J.y - CHS / 2), res = [];
+      for (const k of J.kerbs) {
+        if (k.type !== 'arc') continue;
+        B.reset(J.x - CHS / 2, J.y - CHS / 2); arcKerb(B, J, k);
+        const tris = [];
+        for (let i = 0; i < B.ni; i += 3) {
+          const ia = B.I[i]; if (B.Nn[ia * 3 + 1] < 120 || B.P[ia * 3 + 1] < 0.3) continue;
+          tris.push({ L: B.ST[ia * 4], t: [B.I[i], B.I[i + 1], B.I[i + 2]].map((q) => [B.P[q * 3] + B.x0, B.P[q * 3 + 2] + B.z0]) });
+        }
+        const sA = stripStart(k.A, 1), sB = stripStart(k.B, -1);
+        res.push({ rc: k.cn.rc, phi: +k.cn.phi.toFixed(2), n: tris.length, kerbTris: tris.filter((t) => t.L === LY.KERB).length, dA: +Math.hypot(sA.k[0] - k.cn.TA[0], sA.k[1] - k.cn.TA[1]).toFixed(2), dB: +Math.hypot(sB.k[0] - k.cn.TB[0], sB.k[1] - k.cn.TB[1]).toFixed(2), tris: tris.slice(0, 60).map((t) => [t.L].concat(t.t.map((p) => [+p[0].toFixed(2), +p[1].toFixed(2)]))) });
+      }
+      return res;
     },
     /** debug: the analysed network (pieces, junctions) */
     net() { return NET; },

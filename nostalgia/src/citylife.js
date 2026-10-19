@@ -1445,7 +1445,7 @@
       out.W = { x: fx(F, 0, wv), y: fy(F, 0, wv), a: fang(F), u: 0, v: wv };
       if (sp.sub === 'tailor' || sp.sub === 'keymaker') out.W.a = fang(F);
       if (sp.sub === 'cobbler') out.W.a = fang(F) + 0.4;
-      const cs = T.pose === 'mobile' ? [[-4, 5], [4, 5]] : [[-4.6, 5.4], [5.2, 5.0], [-8, 2.6]];
+      const cs = T.pose === 'mobile' ? [[-4, 4.5], [4, 4.5]] : [[-4.6, 4.2], [5.2, 3.8], [-8, 2.2]];
       for (const [u, v] of cs) { const x = fx(F, u, v), y = fy(F, u, v); if (walkOk(x, y, 1.8, true)) out.C.push({ x, y, u, v, a: Math.atan2(out.W.y - y, out.W.x - x), by: null }); }
       if (T.pose === 'mobile') {
         const pts = [];
@@ -1744,7 +1744,7 @@
               let sub = pref[0], best = 1e9;
               for (const k of pref) { const c = tradeN[k] * 10 + R0.next() * 4; if (c < best) { best = c; sub = k; } }
               tradeN[sub]++; want.trade--;
-              addSpot({ id: 'trade:' + sub + ':' + tradeN[sub], kind: 'trade', sub, F: ptFrame(fr.x, fr.y, fr.ax, fr.ay, fr.nx, fr.ny, 6, 1.5), x: fr.x, y: fr.y });
+              addSpot({ id: 'trade:' + sub + ':' + tradeN[sub], kind: 'trade', sub, F: ptFrame(fr.x, fr.y, fr.ax, fr.ay, fr.nx, fr.ny, 6, 1.35), x: fr.x, y: fr.y });
             } else if (kind === 'saloon') {
               want.saloon--;
               addSpot({ id: 'saloon:cabin_' + (COUNTS.saloon - want.saloon), kind: 'saloon', F: ptFrame(fr.x, fr.y, fr.ax, fr.ay, fr.nx, fr.ny, 7.5, 1.25), x: fr.x, y: fr.y, cabin: true });
@@ -2367,6 +2367,13 @@
         }
         break;
       }
+      case 'busstop': { // the route board on its pole beside the shelter + the vendors' baskets on a crate
+        const c = W3(F, F.hl + 2.5, 3);
+        b.color('#4a4a52'); cyl3(b, c[0], c[1], 0, 0.3, 0.3, 13, 6);
+        grp.add(texPlane(H, 'cl_board_route', 96, 64, paintBoard('BUS STOP', '#c8202a', '#fff4e0'), F, F.hl + 2.5, 3.2, 14.5, 5, 3.3));
+        const k = W3(F, -F.hl - 2.5, 3.5); b.color(WOOD); b.obox(k[0], k[1], 3, 2.2, 0, 2.2, aang(F));
+        break;
+      }
       case 'trade': trade3d(b, sc, H, grp, o); break;
       case 'roadwork': road3d(b, sc, H, grp, o); break;
       default: break;
@@ -2518,8 +2525,8 @@
     if (G3.pools) return G3.pools;
     const THREE = H.THREE, g = G3.grp;
     const mk = (geo, col, n, o) => { const out = []; for (let i = 0; i < n; i++) { const m = new THREE.Mesh(geo, H.mat(col, o)); m.visible = false; m.userData.noShadow = true; g.add(m); out.push(m); } return out; };
-    const paperG = new THREE.BoxGeometry(4.4, 3.2, 0.08), capeG = new THREE.ConeGeometry(3.4, 5.6, 10, 1, true), foamG = new THREE.SphereGeometry(0.55, 6, 4), glassG = new THREE.CylinderGeometry(0.45, 0.38, 1.1, 8), toolG = new THREE.BoxGeometry(1.6, 0.25, 0.25), panG = new THREE.CylinderGeometry(2.2, 1.6, 0.9, 10);
-    capeG.translate(0, -2.8, 0);
+    const paperG = new THREE.BoxGeometry(3.2, 2.3, 0.06), capeG = new THREE.ConeGeometry(2.7, 4.4, 10, 1, true), foamG = new THREE.SphereGeometry(0.55, 6, 4), glassG = new THREE.CylinderGeometry(0.45, 0.38, 1.1, 8), toolG = new THREE.BoxGeometry(1.6, 0.25, 0.25), panG = new THREE.CylinderGeometry(2.2, 1.6, 0.9, 10);
+    capeG.translate(0, -2.2, 0);
     G3.geos = [paperG, capeG, foamG, glassG, toolG, panG];
     G3.pools = { paper: mk(paperG, '#ebe7da', 14), cape: mk(capeG, '#f6f6f2', 6, { double: true }), foam: mk(foamG, '#ffffff', 12), glass: mk(glassG, '#c8925a', 14), tool: mk(toolG, '#c8ccd2', 12), pan: mk(panG, '#3a3a40', 8) };
     return G3.pools;
@@ -2539,7 +2546,7 @@
       if (p.hold === 'paper') { const m = take3('paper'); if (m) { const f = p.flip > 0 ? Math.abs(Math.cos(p.flip * PI)) : 1; m.position.set(p.x + c * 2.0, chest, p.y + s * 2.0); m.rotation.set(-0.35, -a + PI / 2, 0, 'YXZ'); m.scale.set(f, 1, 1); } }
       else if (p.hold === 'glass') { const m = take3('glass'); if (m) m.position.set(p.x + c * 1.9 - s * 1.2, chest - 0.6, p.y + s * 1.9 + c * 1.2); }
       else if ((p.hold === 'pan' || p.hold === 'bricks') && p.look.prop !== 'pot') { const m = take3('pan'); if (m) m.position.set(p.x, el + 10.4, p.y); }
-      if (p.cape) { const m = take3('cape'); if (m) { m.position.set(p.x + c * 0.2, el + 9.2, p.y + s * 0.2); m.rotation.set(0, 0, 0); } }
+      if (p.cape) { const m = take3('cape'); if (m) { m.position.set(p.x + c * 0.3, el + 7.6, p.y + s * 0.3); m.rotation.set(0, 0, 0); } }
       if (p.foam > 0.05) for (const sd of [-1, 1]) { const m = take3('foam'); if (m) { m.position.set(p.x + c * 0.9 - s * 0.7 * sd, el + 8.1, p.y + s * 0.9 + c * 0.7 * sd); m.scale.setScalar(p.foam); } }
       if (p.tool) { const m = take3('tool'); if (m) { m.position.set(p.hx, p.hh * VS, p.hy); m.rotation.set(0, -a + (p.tool === 'scissors' ? Math.sin(simT() * 22) * 0.4 : 0), 0); m.material = H.mat(p.tool === 'comb' || p.tool === 'iron' || p.tool === 'clipper' ? '#1e1e22' : p.tool === 'hammer' || p.tool === 'shovel' || p.tool === 'pick' ? '#6a4a2a' : p.tool === 'garland' ? '#f08a1a' : p.tool === 'mirror' ? '#cfe2ee' : '#c8ccd2'); m.scale.set(p.tool === 'shovel' || p.tool === 'pick' ? 2.2 : p.tool === 'iron' ? 1.2 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1); } }
     }

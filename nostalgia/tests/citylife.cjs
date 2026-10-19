@@ -223,9 +223,10 @@ async function partTop(browser) {
       }
       case 'saloon': case 'cabin': {
         let s2 = null;
-        for (let i = 0; i < 40; i++) {
+        const capS = Date.now() + 240000, t0s = await page.evaluate(() => N.time.now);
+        for (let i = 0; Date.now() < capS && (await page.evaluate(() => N.time.now)) - t0s < 40; i++) {
           s2 = await page.evaluate((id) => { const sc = N.citylife.scene(id); const c = sc && sc.st.client, b = sc && sc.st.barber; return sc ? { client: c && c.alive && c.st === 'chair' ? { ph: c.ph, cape: c.cape, sit: c.idle } : null, barber: b ? { idle: b.idle, tool: b.tool } : null, waiting: sc.people.filter((p) => p.job === 'waiter').length } : null; }, st.id);
-          if (s2 && s2.client && s2.barber && s2.barber.tool) break;
+          if (s2 && s2.client && s2.client.cape && s2.barber && s2.barber.idle === 'work') break;
           await sleep(400);
         }
         check(s2 && s2.client && s2.client.cape && s2.client.sit === 'sit', name + ': a man in the chair under the white cloth', JSON.stringify(s2 && s2.client));
@@ -345,7 +346,7 @@ async function partPhone(browser) {
   const cl = await page.evaluate(() => {
     const S = N.citylife.spots;
     let best = null, bn = 0;
-    for (const s of S) { const near = S.filter((q) => q !== s && Math.hypot(q.x - s.x, q.y - s.y) < 170); if (near.length + 1 > bn) { bn = near.length + 1; best = [s].concat(near.sort((a, b) => Math.hypot(a.x - s.x, a.y - s.y) - Math.hypot(b.x - s.x, b.y - s.y))); } }
+    for (const s of S) { const near = S.filter((q) => q !== s && Math.hypot(q.x - s.x, q.y - s.y) < 190).sort((a, b) => Math.hypot(a.x - s.x, a.y - s.y) - Math.hypot(b.x - s.x, b.y - s.y)); const pick = [s]; for (const q of near) if (pick.length < 3 && pick.every((r) => r.kind !== q.kind)) pick.push(q); for (const q of near) if (pick.length < 3 && pick.indexOf(q) < 0) pick.push(q); const sc = new Set(pick.map((q) => q.kind)).size * 10 + pick.length; if (pick.length >= 3 && sc > bn) { bn = sc; best = pick; } }
     const three = best.slice(0, 3);
     N.debug.setTime(8, 30);
     N.citylife.force(null);
