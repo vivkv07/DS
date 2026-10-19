@@ -127,7 +127,7 @@ function frame(page, id) {
     const F = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] };
     const f = isFinite(lm.faceAngle) ? [Math.cos(lm.faceAngle), Math.sin(lm.faceAngle)] : F[lm.face] || F.s;
     const H3 = (lm.h || 20) * 1.5, r = Math.max(lm.w, lm.d) * 0.9 + H3 * 1.1 + 30;
-    const eye = [lm.x + f[0] * r + f[1] * r * 0.35, H3 * 0.9 + 25, lm.y + f[1] * r - f[0] * r * 0.35];
+    const eye = [lm.x + f[0] * r + f[1] * r * 0.35, H3 * 0.9 + 25 + r * 0.45, lm.y + f[1] * r - f[0] * r * 0.35];
     N.view3dActors.debug.camera(eye, [lm.x, H3 * 0.4, lm.y], 50);
   }, id);
 }
