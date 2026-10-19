@@ -52,6 +52,11 @@
       let h = STAGE.summit(px, py, 0);
       for (let k = 0; k < 90 && h < (lm.h || 20) * 0.5; k++) { window.__step(1 / FPS); if (k % 10 === 9) settle(); h = STAGE.summit(px, py, 0); }
       if (h < (lm.h || 20) * 0.5) h = (lm.h || 20) * 1.5;
+      // perch at the roof edge (Spider-Man on a ledge): step out towards the camera side while the roof holds
+      if (sh.edge) {
+        const ex = Math.cos(base), ey = Math.sin(base);
+        for (let d = sh.edge; d > 2; d -= 2) { const h2 = STAGE.summit(px + ex * d, py + ey * d, 0); if (Math.abs(h2 - h) < 0.6) { px += ex * d; py += ey * d; break; } }
+      }
       hero = { x: px, y: py, h };
     } else if (sh.hero === 'roof') {
       const r = tallestRoof(lm, sh.ring || [70, 240]);
@@ -83,8 +88,9 @@
     clearV(); CUR_CLEAR = clearV;
     streamAt(hero.x, hero.y);
     const face = sh.face != null ? sh.face : base + 0.55;
-    CUR = { seg, sh, lm, hero, base, lookLm, face, strikes: (seg.lightning || []).map((b) => Math.round((b - seg.b) * B * FPS)) };
-    STAGE.hero({ x: hero.x, y: hero.y, h: hero.h, angle: face, clip: sh.clip || 'idle' });
+    CUR = { hs: sh.scale || 1, seg, sh, lm, hero, base, lookLm, face, strikes: (seg.lightning || []).map((b) => Math.round((b - seg.b) * B * FPS)) };
+    const hs = sh.scale || 1;
+    STAGE.hero({ x: hero.x, y: hero.y, h: hero.h, angle: face, clip: sh.clip || 'idle', scale: hs });
     pose(0, seg.n * B * FPS);
     settle();
     for (let k = 0; k < (window.WARM || 45); k++) { pose(0, seg.n * B * FPS); window.__step(1 / FPS); }
@@ -93,31 +99,32 @@
   };
 
   function pose(f, nf) {
-    const { seg, sh, hero, base, lookLm } = CUR;
-    const u = f / Math.max(1, nf - 1), hy = hero.h;
+    const { seg, sh, hero, base, lookLm, hs } = CUR;
+    const u = f / Math.max(1, nf - 1), hy = hero.h, cs = hs < 1 ? hs * 1.15 : 1; // camera distance scale (closer for a scaled-down hero)
+    const chest = 4.5 * hs;
     let lx = hero.x, ly = hero.y;
     if (lookLm) { lx += (lookLm.x - hero.x) * 0.12; ly += (lookLm.y - hero.y) * 0.12; }
     if (seg.shot === 'reveal') {
       // from the plaza, low and looking up at the minarets, crane up to Chinnu on the roof
       const e = ease.ioq(u), a = 0.59 + 0.35 * e;
-      const r = 125 - 92 * e, h = 3 + (hy + 7 - 3) * e, th = 55 + (hy + 4 - 55) * e;
+      const r = 125 - (125 - 33 * cs) * e, h = 3 + (hy + 7 * cs - 3) * e, th = 55 + (hy + chest - 55) * e;
       STAGE.cam({ x: hero.x + Math.cos(a) * r, y: hero.y + Math.sin(a) * r, h, tx: hero.x, ty: hero.y, th, fov: 50 - 8 * e });
     } else if (seg.shot === 'whip') {
       const e = ease.in(u), a = 0.94 + e * 5.2;
-      STAGE.cam({ x: hero.x + Math.cos(a) * 24, y: hero.y + Math.sin(a) * 24, h: hy + 8, tx: hero.x, ty: hero.y, th: hy + 4, fov: 50 + 10 * e });
+      STAGE.cam({ x: hero.x + Math.cos(a) * 24 * cs, y: hero.y + Math.sin(a) * 24 * cs, h: hy + 8 * cs, tx: hero.x, ty: hero.y, th: hy + chest, fov: 50 + 10 * e });
     } else if (seg.shot === 'rain') {
       const e = ease.io(u), a = 0.7 + 1.1 * e;
-      const r = 70 - 54 * e, h = hy + 28 - 21 * e;
-      STAGE.cam({ x: hero.x + Math.cos(a) * r, y: hero.y + Math.sin(a) * r, h, tx: hero.x, ty: hero.y, th: hy + 4, fov: 46 });
+      const r = 70 - (70 - 16 * cs) * e, h = hy + 28 - (28 - 7 * cs) * e;
+      STAGE.cam({ x: hero.x + Math.cos(a) * r, y: hero.y + Math.sin(a) * r, h, tx: hero.x, ty: hero.y, th: hy + chest, fov: 46 });
     } else {
       // drone orbit: launches fast off the cut and settles (ease-out), a wide arc with a crane-up pull-out,
       // plus a little handheld drift + roll so it never feels locked off
       const dir = seg.dir || 1, e = ease.out(u), arc = (sh.arc || 1.4) * 1.55;
       const a = base + dir * (e - 0.45) * arc;
-      const r = sh.r[0] + (sh.r[1] - sh.r[0]) * e, h = hy + sh.h[0] + (sh.h[1] - sh.h[0]) * e;
+      const r = (sh.r[0] + (sh.r[1] - sh.r[0]) * e) * cs, h = hy + (sh.h[0] + (sh.h[1] - sh.h[0]) * e) * cs;
       const fov = sh.fov[0] + (sh.fov[1] - sh.fov[0]) * e;
       const t = f / FPS, jx = Math.sin(t * 2.3 + 1) * 0.25 + Math.sin(t * 5.1) * 0.08, jy = Math.cos(t * 1.9) * 0.2, jh = Math.sin(t * 2.7 + 2) * 0.18;
-      STAGE.cam({ x: hero.x + Math.cos(a) * r + jx, y: hero.y + Math.sin(a) * r + jy, h: h + jh, tx: lx, ty: ly, th: hy + 4.5, fov, roll: 0 });
+      STAGE.cam({ x: hero.x + Math.cos(a) * r + jx, y: hero.y + Math.sin(a) * r + jy, h: h + jh, tx: lx, ty: ly, th: hy + chest, fov, roll: 0 });
       STAGE.camSpec.rollAbs = dir * (0.05 * (1 - e) + 0.012 * Math.sin(t * 1.3));
     }
   }

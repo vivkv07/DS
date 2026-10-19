@@ -49,11 +49,15 @@
       H.layer.add(S.heroObj);
     }
     S.heroObj.visible = true;
+    // landmark scale: the monuments are modelled smaller than life next to the characters, so on a summit
+    // Chinnu is drawn at the monument's own scale (real proportions: a kid knee-high to the minarets' base)
+    const hs = s.scale || 1;
     S.heroObj.position.set(s.x, s.h, s.y);
     // a soft contact shadow under the feet (the sun's shadow from up there often falls out of frame)
     if (!S.blob && H.blobShadow) { S.blob = H.blobShadow(4.2, 4.2); if (S.blob) { S.blob.renderOrder = 3; H.layer.add(S.blob); } }
-    if (S.blob) { S.blob.visible = true; S.blob.position.set(s.x, s.h + 0.06, s.y); }
+    if (S.blob) { S.blob.visible = true; S.blob.position.set(s.x, s.h + 0.06, s.y); S.blob.scale.set(4.2 * hs, 1, 4.2 * hs); }
     S.heroObj.rotation.y = -(s.angle || 0);
+    S.heroObj.scale.setScalar(hs);
     const clip = s.clip || 'idle';
     if (S.chr.clip !== clip && S.chr.has(clip)) S.chr.play(clip, { fade: 0.2, loop: true });
     S.chr.setSpeed(s.speed || 0);
