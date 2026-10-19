@@ -896,7 +896,7 @@
     start(sc) {
       const Lo = sc.L, roles = sc.style === 'oldcity' ? READER_ROLES_OC : PAPER_ROLES;
       const n = Math.min(Lo.seats.length, Math.round(sc.level * Lo.seats.length * 0.85));
-      for (let i = 0; i < n; i++) { const s = Lo.seats[i]; const p = place(sc, wpick(roles), s, 'sit', { job: 'reader' }); if (p) { p.hold = rnd() < 0.65 ? 'paper' : 'glass'; p.dur = rr(30, 110); p.t = rr(0, 20); p.timer = rr(1, 8); } }
+      for (let i = 0; i < n; i++) { const s = Lo.seats[i]; const p = place(sc, wpick(roles), s, 'sit', { job: 'reader' }); if (p) { p.hold = i === 0 || rnd() < 0.6 ? 'paper' : 'glass'; p.dur = rr(30, 110); p.t = rr(0, 20); p.timer = rr(1, 8); } }
     },
     tick(sc, dt) {
       const Lo = sc.L;
@@ -1106,7 +1106,7 @@
     const Lo = sc.L;
     if (p.st === 'toChair') {
       if (sitAt(p, Lo.chair, dt)) { startClient(sc, p, 0); }
-      else if (p.t > 25) { p.x = Lo.chair.x; p.y = Lo.chair.y; }
+      else if (p.t > 6) { p.x = Lo.chair.x; p.y = Lo.chair.y; p.idle = 'sit'; startClient(sc, p, 0); }
       return true;
     }
     if (p.st === 'chair') {
