@@ -8,6 +8,17 @@
   const FPS = 30, B = 0.4;
   const ease = { lin: (t) => t, io: (t) => t * t * (3 - 2 * t), out: (t) => 1 - Math.pow(1 - t, 3), in: (t) => t * t * t, ioq: (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2) };
   let CUR = null, CUR_CLEAR = null, CUR_LOW = false;
+  const FIN = { used: false, kites: null, ramzan: null };
+  // finale time-lapse: the clock runs sh.clock[0] -> [1] across the shot; kites until kitesOff, Ramzan lights from ramzanOn
+  function finaleClock(u, sh) {
+    const m = sh.clock[0] + (sh.clock[1] - sh.clock[0]) * u;
+    N.clock.set(Math.floor(m / 60), m % 60);
+    const kites = m < sh.kitesOff, ram = m >= sh.ramzanOn;
+    if (kites !== FIN.kites) { N.seasons.set('sankranti', kites); FIN.kites = kites; }
+    if (ram !== FIN.ramzan) { N.seasons.set('ramzan', ram); FIN.ramzan = ram; }
+    FIN.used = true;
+    return m;
+  }
 
   function lmById(id) { return N.world.data.landmarks.find((l) => l.id === id) || null; }
   function settle() { for (let k = 0; k < 3; k++) { N.view3d.settle(30000); window.__step(1 / FPS); } }
@@ -32,6 +43,9 @@
     const [hh, mm] = seg.time || [12, 0];
     if (N.wires) N.wires.draw3d = !sh.noWires; // poles / wires would cut across the monument from these vantages
     N.debug.setTime(hh, mm);
+    // festival overlays: the finale drives Sankranti / Ramzan itself (per frame); every other shot follows the calendar
+    if (seg.shot === 'finale') { const c0 = sh.clock[0]; N.debug.setTime(Math.floor(c0 / 60), c0 % 60); FIN.kites = null; FIN.ramzan = null; finaleClock(0, sh); }
+    else if (FIN.used) { N.seasons.set('sankranti', null); N.seasons.set('ramzan', null); FIN.used = false; }
     if (seg.shot === 'rain') { N.weather.force({ rain: 0.95, storm: 0.55 }); N.weather.wet = 1; }
     else { N.weather.force({ rain: 0, storm: 0, mist: 0 }); N.weather.wet = 0; }
     N.wind.force(seg.shot === 'rain' ? { strength: 0.85 } : { strength: 0.4 });
@@ -114,7 +128,16 @@
     const chest = 4.5 * hs;
     let lx = hero.x, ly = hero.y;
     if (lookLm) { lx += (lookLm.x - hero.x) * (CUR_LOW ? 0.35 : 0.12); ly += (lookLm.y - hero.y) * (CUR_LOW ? 0.35 : 0.12); }
-    if (seg.shot === 'reveal') {
+    if (seg.shot === 'finale') {
+      // time-lapse orbit: near-constant angular speed (a soft ease at both ends), slow push-in + descent
+      finaleClock(u, sh);
+      const e = 0.8 * u + 0.2 * ease.io(u), lm = CUR.lm;
+      const a = sh.a[0] + (sh.a[1] - sh.a[0]) * e;
+      const r = sh.r[0] + (sh.r[1] - sh.r[0]) * e, h = sh.h[0] + (sh.h[1] - sh.h[0]) * e;
+      const t = f / FPS, jx = Math.sin(t * 1.1 + 1) * 0.3, jy = Math.cos(t * 0.9) * 0.3;
+      STAGE.cam({ x: lm.x + Math.cos(a) * r + jx, y: lm.y + Math.sin(a) * r + jy, h, tx: lm.x, ty: lm.y, th: hy - 12, fov: sh.fov[0] + (sh.fov[1] - sh.fov[0]) * e });
+      STAGE.camSpec.rollAbs = -0.012 * Math.sin(u * Math.PI);
+    } else if (seg.shot === 'reveal') {
       // from the plaza, low and looking up at the minarets, crane up to Chinnu on the roof
       const e = ease.ioq(u), a = 0.59 + 0.35 * e;
       const r = 125 - (125 - 33 * cs) * e, h = 3 + (hy + 7 * cs - 3) * e, th = 55 + (hy + chest - 55) * e;

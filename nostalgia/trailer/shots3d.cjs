@@ -26,6 +26,12 @@ const SHOTS = {
   lm_mecca: { lm: 'mecca_masjid', hero: 'roof', noWires: true, ring: [80, 220], clip: 'idle_look', r: [14, 26], h: [6, 12], arc: 1.2, fov: [40, 48] },
   lm_tankbund: { lm: 'tank_bund', hero: 'bund', clip: 'kite_fly', r: [18, 34], h: [12, 26], arc: 1.3, fov: [46, 54] },
   rain: { lm: 'charminar', hero: 'top', scale: 0.45, edge: 26, clip: 'idle', face: Math.PI / 2 },
+  // finale: one continuous time-lapse drone orbit over Charminar + the Old City, 16:30 -> 20:30
+  // (Sankranti kites in the golden afternoon, Ramzan lights after dark). Camera centred on the monument;
+  // Chinnu is a speck on the parapet at monument scale. a0 -> a1: from the sun's side (golden front light)
+  // round the south to the east side, looking west into the afterglow as night falls.
+  finale: { lm: 'charminar', hero: 'top', scale: 0.45, edge: 26, clip: 'idle_look', face: Math.PI, base: 2.75,
+    a: [2.75, 0.35], r: [215, 170], h: [150, 112], fov: [50, 46], clock: [16 * 60 + 30, 20 * 60 + 30], kitesOff: 18 * 60 + 45, ramzanOn: 19 * 60 },
 };
 
 (async () => {
