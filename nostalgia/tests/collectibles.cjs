@@ -472,6 +472,9 @@ async function testRewards(browser) {
   await newGame(page);
   const r = await page.evaluate(() => {
     const C = N.collectibles, P = N.player, out = {};
+    // away from home first: the family lines play within 46 u of it, and with dialogue auto-skipped they'd be gone
+    // before the walk-in check at the end of this section
+    N.debug.teleport(N.places.home.x + 200, N.places.home.y);
     for (const s of ['kites', 'golis', 'cassettes', 'tickets', 'frames']) C.unlockSeries(s, { silent: true });
     const money0 = P.money;
     // the ladder: 5 finds -> double-gong bell
@@ -526,9 +529,10 @@ async function testRewards(browser) {
   // the family lines wait at home: walk in
   await page.evaluate(() => { N.debug.skipDialogue(false); const p = N.places.home; N.debug.teleport(p.x + 70, p.y); });
   await sleep(200);
-  await walkTo(page, (await page.evaluate(() => N.places.home.x)), (await page.evaluate(() => N.places.home.y)), { until: "N.state.mode === 'dialogue'", ms: 5000 });
-  await sleep(400);
-  const dl = await page.evaluate(() => ({ mode: N.state.mode, text: (document.querySelector('.dlg-text, .dialogue-text, #overlay .dlg') || document.body).textContent.slice(0, 400) }));
+  await walkTo(page, (await page.evaluate(() => N.places.home.x)), (await page.evaluate(() => N.places.home.y)), { until: "N.state.mode === 'dialogue'", ms: 15000 });
+  // wait for the family line itself (typed text, not just the box), up to 10 s
+  await page.waitForFunction(() => N.state.mode === 'dialogue' && /softly|doctor|Physics|colony|booth|Helmet|prettier/.test((document.querySelector('.dlg-text, .dialogue-text, #overlay .dlg') || document.body).textContent), null, { timeout: 10000 }).catch(() => {});
+  const dl = await page.evaluate(() => ({ mode: N.state.mode, text: (document.querySelector('.dlg-text, .dialogue-text, #overlay .dlg') || document.body).textContent.slice(0, 400), dHome: Math.round(Math.hypot(N.player.x - N.places.home.x, N.player.y - N.places.home.y)), mission: N.missions.active && N.missions.active.id, veh: !!N.player.vehicle, locked: !!N.player.controlsLocked, homeQ: N.collectibles.serialize().homeQ, homeline: window.__ev.filter((e) => e[0] === 'collectible:homeline').length }));
   await page.screenshot({ path: path.join(OUT, 'ladder_home_line.png') });
   check(dl.mode === 'dialogue' && /softly|doctor|Physics|colony|booth|Helmet|prettier/.test(dl.text), 'ladder lines play at home', dl);
   await page.evaluate(() => { N.debug.skipDialogue(true); if (N.dialogue && N.dialogue.cancel) N.dialogue.cancel(); });
