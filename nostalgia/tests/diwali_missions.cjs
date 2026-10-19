@@ -361,7 +361,9 @@ async function pDeepon() {
   const st = await ev(() => N.dwMissions.debug.state().stats);
   check(st.gusts >= 1 && st.saved >= 1, 'gust fronts came (' + st.gusts + '): ' + st.saved + ' flames kept alive by standing guard, ' + st.blown + ' blown out and re-lit', st);
   // the terrace view
+  vlog('modes before the view: ' + (await ev(() => window.__modes.slice(-8).join(' '))));
   await playUntil(() => N.state.mode === 'cutscene', 20000, 'the terrace fireworks view');
+  vlog('modes: ' + (await ev(() => window.__modes.slice(-12).join(' '))));
   await page.waitForFunction(() => document.querySelector('#overlay .cs-text'), null, { timeout: 15000, polling: 100 }).catch(() => {});
   await shot('terrace_fireworks');
   if (!(await passed('deepon_ki_raat', 60000))) return;
@@ -548,7 +550,8 @@ const PHASES = [['bazaar', pBazaar], ['mithai', pMithai], ['deepon', pDeepon], [
     await ev(() => { N.debug.newGame({ skipIntro: true }); });
     await page.waitForFunction(() => N.state.mode === 'play', null, { timeout: 30000 });
     await ev(() => {
-      window.__saves = []; window.__refused = 0;
+      window.__saves = []; window.__refused = 0; window.__modes = [];
+      N.on('state', (d) => { window.__modes.push(d.mode); if (window.__modes.length > 60) window.__modes.shift(); });
       N.on('save', (d) => window.__saves.push({ reason: d && d.reason, ok: d && d.ok, mission: N.missions.active ? N.missions.active.id : null }));
       N.on('save:refused', () => { window.__refused++; });
       // the player tries the pause-menu save every time a Diwali activity starts: refused while it runs
