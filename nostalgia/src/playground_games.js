@@ -2571,9 +2571,10 @@
   // game is on there, that zone's centre is moved to the sideline, so they stand and watch instead of
   // running through the game; it is put back when the game ends.
   function sideline(F) {
-    const c = [[F.cx, F.y1 + 9], [F.cx, F.y0 - 9], [F.x0 - 9, F.cy], [F.x1 + 9, F.cy], [F.cx, F.y1 - 4], [F.x0 + 4, F.cy]];
-    for (const [x, y] of c) if (clearAt(x, y, 5)) return { x, y };
-    return { x: F.x0 + 4, y: F.y0 + 4 };
+    // (tx, ty: along that side, so several crowds stand in a row instead of one blob)
+    const c = [[F.cx, F.y1 + 9, 1, 0], [F.cx, F.y0 - 9, 1, 0], [F.x0 - 9, F.cy, 0, 1], [F.x1 + 9, F.cy, 0, 1], [F.cx, F.y1 - 4, 1, 0], [F.x0 + 4, F.cy, 0, 1]];
+    for (const [x, y, tx, ty] of c) if (clearAt(x, y, 5)) return { x, y, tx, ty };
+    return { x: F.x0 + 4, y: F.y0 + 4, tx: 1, ty: 0 };
   }
   function spectators(S, on) {
     if (!S.zones) S.zones = new Map();
@@ -2586,7 +2587,10 @@
       if (z.__pgMoved) continue;
       S.zones.set(z, { x: z.x, y: z.y, r: z.r });
       const q = S.F.side || (S.F.side = sideline(S.F));
-      z.x = q.x; z.y = q.y; z.r = 9; z.__pgMoved = true;
+      // crowds side by side along the line (0, +16, -16, +32 ...), each a loose group
+      const k = S.zones.size - 1, half = Math.max(8, Math.min(S.F.w, S.F.h) / 2 - 6), off = clamp((k % 2 ? -1 : 1) * Math.ceil(k / 2) * 16, -half, half);
+      const sx = q.x + q.tx * off, sy = q.y + q.ty * off, okSpot = walk(sx, sy);
+      z.x = okSpot ? sx : q.x; z.y = okSpot ? sy : q.y; z.r = 12; z.__pgMoved = true;
     }
     for (const z of S.zones.keys()) z.__pgMoved = true;
   }

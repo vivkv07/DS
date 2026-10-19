@@ -224,7 +224,9 @@ async function run3d(browser) {
       P.set({ dist: 0, steer: 0 });
       const w0 = P.wheels.map((w) => w.node.quaternion.clone()), s0 = P.steers.map((s) => s.node.quaternion.clone());
       P.set({ dist: 6.0, steer: 0.4 });
-      const spins = P.wheels.map((w, i) => Math.abs(ang(w0[i], w.node.quaternion) - (6.0 / w.R) % (2 * Math.PI)));
+      // the measured angle folds into [0, pi]: fold the expected one the same way
+      const fold = (t) => { t = t % (2 * Math.PI); return t > Math.PI ? 2 * Math.PI - t : t; };
+      const spins = P.wheels.map((w, i) => Math.abs(ang(w0[i], w.node.quaternion) - fold(6.0 / w.R)));
       // a right turn: the front wheels / fork point to the right (world: vehicle faces +z, its right is -x)
       let right = null;
       const fw = P.steers.find((s) => s.name !== 'steer_wheel');

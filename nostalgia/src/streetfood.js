@@ -460,8 +460,8 @@
       if (!best || score > best.score) best = { x, y, side, score };
     }
     if (!best) return null;
-    // the customers stand on the walk between the cart and the road
-    return addSpot({ id, kind, x: best.x, y: best.y, angle: q.a + (best.side > 0 ? PI : 0), lm: null, hl: 6.5, hw: 3.4, extra: true });
+    // the customers gather on the promenade side, away from the traffic (frame n = away from the road)
+    return addSpot({ id, kind, x: best.x, y: best.y, angle: q.a + (best.side > 0 ? 0 : PI), lm: null, hl: 6.5, hw: 3.4, extra: true });
   }
   function marketSpot(pl, kind, id, rng) {
     for (let k = 0; k < 60; k++) {
@@ -472,9 +472,9 @@
       const lms = (N.WORLD_DATA.landmarks || []);
       if (lms.some((l) => x > l.x - l.w / 2 - 14 && x < l.x + l.w / 2 + 14 && y > l.y - l.d / 2 - 14 && y < l.y + l.d / 2 + 14)) continue;
       if (SPOTS.some((s) => Math.hypot(s.x - x, s.y - y) < 45)) continue;
-      // face the nearest road (the customers stand between the cart and it)
+      // the cart's back to the nearest road: its customers stand on the footpath / ground side
       let ang = rng.next() * TAU;
-      try { const q = N.world.nearestRoadPoint(x, y); if (q && q.dist < 90) ang = Math.atan2(q.y - y, q.x - x) - PI / 2; } catch (e) { /* ignore */ }
+      try { const q = N.world.nearestRoadPoint(x, y); if (q && q.dist < 90) ang = Math.atan2(q.y - y, q.x - x) + PI / 2; } catch (e) { /* ignore */ }
       return addSpot({ id, kind, x, y, angle: ang, lm: null, hl: 6.5, hw: 3.4, extra: true, near: pl.id });
     }
     return null;
@@ -699,6 +699,14 @@
       out.entry.push({ x, y });
     }
     if (!out.entry.length) out.entry.push({ x: ox + Math.cos(base) * 60, y: oy + Math.sin(base) * 60 });
+    // an extra cart with no room on its customer side turns round once
+    if (sp.extra && !sp._flipped && out.ring.length < Math.min(6, K.max)) {
+      sp._flipped = true;
+      const F2 = sp.frame;
+      F2.ax = -F2.ax; F2.ay = -F2.ay; F2.nx = -F2.nx; F2.ny = -F2.ny;
+      if (sp.cartE) sp.cartE.angle = Math.atan2(F2.ay, F2.ax);
+      return slotsFor(sp);
+    }
     sp.slots = out;
     return out;
   }
@@ -1721,7 +1729,7 @@
     sp.present = false;
     if (N.interact && N.interact.add && sp.K.buy) {
       N.interact.add('sf:' + sp.id, {
-        x: fx(sp.frame, 0, sp.frame.hw + 4), y: fy(sp.frame, 0, sp.frame.hw + 4), r: 16, priority: 2,
+        entity: sp.cartE, r: 18, priority: 2,
         label: () => sp.K.buy.label,
         enabled: () => !!(sp.present && sp.cartE && sp.cartE.alive && !(N.player && N.player.vehicle)),
         use: () => buyAt(sp),
