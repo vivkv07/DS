@@ -14,7 +14,8 @@
  *   bonalu     neem-and-marigold festoons and paper buntings across the procession roads, the decorated gate
  *              arch and the row of offered bonam pots at the temple, the thottelu tower carried along, the
  *              little lamps on the women's pots glowing.
- *   ramzan     lit crescent-and-star cut-outs on the bazaar strings (chand_raat too).
+ *   ramzan     lit crescent-and-star cut-outs on poles along Pathergatti and round the Charminar circle, the
+ *              green-and-white bulb strings across Pathergatti and the Laad Bazaar lane (chand_raat too).
  * Kid-friendly and respectful: nothing here is destructible, the people are N.seasons crowds (drawn by
  * view3d_actors.js from N.seasons.scene()).
  *
@@ -24,7 +25,7 @@
  * then only a few transforms move per frame (train, carousel, beams, thottelu). Disposed when out of range.
  * Decor pieces that could hide the player (crib, tree, stall rows) hide while they stand between the camera
  * and the player. Loads after view3d_landmarks.js; registers the 'festivals3d' layer.
- * Debug / tests: N.festivals3d = {sites(), stats(), rebuild()}.
+ * Debug / tests: N.festivals3d = {sites(), stats(), rebuild(), settle(ms) (build the wanted sites now: captures)}.
  */
 (() => {
   'use strict';
@@ -207,7 +208,7 @@
   function signUV(name) {
     let i = SIGN_LIST.findIndex((s) => s[0] === name); if (i < 0) i = 0;
     const u0 = (i % 4) / 4, u1 = u0 + 0.25, v1 = 1 - Math.floor(i / 4) / 16, v0 = v1 - 1 / 16;
-    return [[u0, v1], [u1, v1], [u1, v0], [u0, v0]]; // (checked on screen: text upright, reading left to right)
+    return [[u1, v0], [u0, v0], [u0, v1], [u1, v1]]; // corners a, b, c, d of sign(): a is on the viewer's right
   }
   // a signboard quad facing (fx, fz) centred at (x, y, z) in world coordinates
   function sign(sb, name, x, y, z, w, h, fx, fz) {

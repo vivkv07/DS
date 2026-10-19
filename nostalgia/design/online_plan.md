@@ -449,6 +449,8 @@ Mid-range Android at 4x CPU, Slow 4G unless stated. CI enforces bytes; `tools/pe
 
 ## 8. Appendix: shared world later
 
+> **Update 2026-10-19:** the owner asked for shared rooms now. Built on Supabase (player codes, cloud saves, 10-player Realtime rooms with ghosts, meet pins, quick-chat): see ARCHITECTURE.md §23 and design/online_setup.md. The notes below remain the background for a fuller shared world.
+
 **Keep these decisions now**, so multiplayer needs no rewrite:
 1. **Keep the simulation local and deterministic.** It has a fixed 1/60 s step and `core.js` has a seeded mulberry32 RNG, but 132 `Math.random` calls remain (grep today: minigames 29, vehicles 26, sidejobs 15, seasons 15, npcs 11, shops 6, core 5, others ≤ 3). Move gameplay randomness to seeded streams only when a file is being touched for launch work anyway. This is not scheduled work (§9, row D).
 2. **Isolate shared state in `N.player` and `N.vehicles`.** Change them only through methods (`teleport`, `vehicles.enter`, `serialize`) so a future `src/net.js` has one seam. Story, missions and saves stay local.

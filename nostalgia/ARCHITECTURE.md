@@ -28,6 +28,10 @@ no server, no build step required to play, no external assets except Google Font
   shows of the era may be *mentioned* in text as cultural references. Avoid naming real
   private individuals; public landmarks are fine. Kid-friendly tone (no guns, no gore,
   no killing): "violence" is limited to bumping, slipping and getting scolded.
+- Deviation, owner request (§23): **Online** is opt-in network play. Only when the player opens
+  Online (or used it before on this device) does the page fetch supabase-js (jsDelivr, then
+  vendor/) and talk to the Supabase project. The guest / offline game never touches the network,
+  and from file:// (dist/nostalgia.html) online stays off.
 
 ## 3. Files and load order
 
@@ -88,6 +92,10 @@ nostalgia/
   src/atmosphere.js + wind.js, weather.js, weather3d.js, wires.js, birds.js, atmosphere_audio.js (after the
                     models3d_* files) the atmosphere layer (§22): N.wind, N.weather, N.windfx, N.wires, N.birds, N.atmosAudio
   src/save.js       save/load -> N.save
+  src/online_config.js  N.ONLINE_CONFIG: the pluggable online backend (Supabase URL + public key; null = "coming soon")
+  src/online.js     online play (§23): player code, cloud saves + journey, 10-player rooms, ghosts -> N.online
+  vendor/supabase/  supabase-js 2.45.4 UMD (MIT), the fallback when jsDelivr is unreachable (loaded lazily)
+  supabase/migrations/*_online.sql  the database side of §23 (tables, SECURITY DEFINER functions, grants)
   src/debug.js      test hooks + #debug overlay -> N.debug
   src/main.js       boot + main loop
   tools/build.mjs   inlines everything -> dist/nostalgia.html (full page) + dist/artifact.html (fragment)
@@ -766,6 +774,9 @@ the mission, cancels dialogue, clears flags, calls `N.systems.reset()` and deser
 section on its own (errors are reported, never thrown); emits `save:loaded`. `info()` -> meta
 for a Continue button. Built-in sections: `player` (incl. the vehicle being ridden), `clock`,
 `flags`; missions registers `missions`. Modules register more in their `init()`.
+Slots for the online mirror (§23): `SLOTS = ['main', 'manual']`, `slotRaw(slot)`, `slotBlob(slot)`,
+`canReplace(slot, blob)` -> `{ok, why: 'bad' | 'newer_build' | 'local_newer_build' | 'local_newer' | 'same'}`,
+`importBlob(slot, blob)` (the same newer-save guard; emits `save:imported`).
 
 ## 13. Debug/test hooks — `N.debug` (always present; overlay only with `#debug`)
 
@@ -1765,3 +1776,87 @@ Files (index.html, after the models3d_* modules): `src/atmosphere.js` (core), `s
   seasons.js weatherTick (asks N.weather), draw (skips old 2D rain), `S._weatherTick`; world.js `W._fx`.
 - **Tests**: `node tests/atmosphere.cjs` (both views, day / dusk / night x dry / rain / storm + mist,
   checks, perf), `tests/atmos_{weather2d,weather3d,wind,wires,birds,audio}.cjs`.
+
+## 23. Online — player code, cloud saves, shared rooms (`N.online`)
+
+Owner request: cloud-saved journeys and up to ~10 friends in one shared city room so they can meet
+at one place. Setup and the owner's (zero) steps: `design/online_setup.md`. Files: `src/online_config.js`
+(`N.ONLINE_CONFIG`), `src/online.js` (loaded after save.js; menus.js is earlier), `vendor/supabase/`,
+`supabase/migrations/20261019000000_online.sql`, CSS section `=== online ===`, tests `tests/online.cjs`
+(+ `tests/online_mock.cjs`).
+
+- **Config** (`online_config.js`): `N.ONLINE_CONFIG = {provider: 'supabase', url, key (the public
+  publishable key), sdk: [urls], maxPlayers: 10, stateHz: 8, realtimeKey?, privateRooms?}` or `null`.
+  `null` -> the title track / pause key / panel / Journey page say "Online play is coming soon" and nothing
+  loads. A `file:` page says "needs the web version". `window.NOSTALGIA_ONLINE_CONFIG` (set before load)
+  overrides it (tests). `N.online.available` = `'ok' | 'soon' | 'web'`.
+- **Lazy SDK**: `@supabase/supabase-js@2.45.4` UMD from jsDelivr, then `vendor/supabase/supabase.js`
+  (`../vendor/...` for dist/). Created with auth persistence off (no Supabase Auth yet).
+- **Identity = player code** `WORD-WORD-WORD-NNNN-XXXXX` (256 words, 4 digits, 5 Crockford base-32
+  characters: ~62 bits) made with `crypto.getRandomValues` on the first "Go online", kept in
+  localStorage `nostalgia.online.v1` with the nickname. "Use my code" moves the journey to another phone
+  (typed codes are tidied: case, spaces, O/I/L). The code is the only secret; the database stores
+  sha256(code). `ID` in online.js is the seam for a later email / Google sign-in.
+- **Nickname**: 3-12 letters / digits / inner spaces, kid-friendly blocklist (leet-normalised) on the
+  client; the server re-checks charset + a blocklist (`profile_set`).
+- **Database** (Supabase Postgres, schema `nostalgia` not exposed by the Data API, RLS on with no
+  policies): `saves(key, slot 0|1, data jsonb, version, saved_at)`, `journeys(key, data)`,
+  `profiles(key, nick)`, `rate(key, win, n)`. The anon key can only EXECUTE
+  `save_put(code, slot, data, version)`, `save_get(code)`, `journey_put(code, data)`, `journey_get(code)`,
+  `profile_set(code, nick)`, `profile_get(code)` (SECURITY DEFINER, `search_path = ''`). They return
+  `{ok, reason?}`: `bad_code | rate (40 calls / minute / code) | bad_slot | bad_data | too_big (save > 512 KB,
+  journey > 32 KB) | newer_build | newer_save | bad_nick`.
+- **Cloud saves** mirror `N.save` slots `main` (slot 0, what CONTINUE plays) and `manual` (slot 1) a
+  moment after every successful `'save'`. The **newer-save guard** holds both ways: up — the client skips
+  a push when it knows the cloud is newer, the server refuses `newer_save` / `newer_build`; down — a pull
+  goes through `N.save.canReplace(slot, blob)` / `importBlob(slot, blob)` (save.js), which refuse a blob
+  from a newer build, a local save from a newer build, and a local save that is newer. A newer cloud
+  `main` is **offered** (card over the title / in play, or in the panel: "Use cloud save" / "Keep this
+  one"); never applied silently. A newer-build cloud save is never offered and never overwritten.
+- **Journey** (`N.online.journey()`): `{v, nick, date, day, missions[], tracks[{id, label}], tin[],
+  places[]}` pushed (`journey_put`) a few seconds after saves, mission passes, places visited, REC.
+  Journal page **Journey** (`addJournalTab`, order 60) shows it, online or not.
+- **Rooms** (Supabase Realtime, no tables): channel `room:<CODE>` (`CHAI-42`: word + 2 digits),
+  `{broadcast: {self: false}, presence: {key: <random id per page load>}}`. Create = a random code
+  nobody is in; join = someone must be there (an empty room is closed) and fewer than `maxPlayers`.
+  The client checks the count after the first presence sync and only then tracks; if a race overfills
+  the room, the latest joiners (presence meta `j`, then key) leave with "Room is full". Presence meta
+  `{n: nick, l: look, j: joined ms, pin, pc: pin-clear ms}`; broadcast `st` `{k, x, y, a, m: 'f'|'v',
+  vt, vc, sp, an: 'i'|'w'|'r', n?, l?}` on change (+ 2 s keepalive, nick / look every 3 s) at
+  `stateHz` (8; `3*stateHz/(players-1)` in rooms of 5+, min 3) and `em` `{k, id}` (a preset phrase id).
+  Everything received is validated (numbers clamped to the map, vehicle types must exist, looks
+  whitelisted to colours / kinds, nick re-filtered, phrases by id only, 0.9 s per-sender chat limit).
+  A page closing drops its presence (socket close) and its ghost goes away. Story, missions, the Chappal
+  Meter, traffic and saves stay single-player.
+- **Ghosts**: one entity per remote player, `kind 'ghost'`, `solid false, noCollide, selfUpdate,
+  noWorld` (traffic `sense`, vehicle pushes, wanted and missions ignore it), re-added after
+  `N.systems.reset()`. Smoothing: 120 ms interpolation delay, ≤ 250 ms extrapolation while moving, snap
+  on teleports (> 320 u) and mode changes. 2D: `N.traffic.blitPerson` on foot, the vehicle type's own
+  `draw(ctx, v)` with a rider look when riding; 3D: `e.view3d = 'ped' | 'vehicle'` (view3d_actors.js
+  person / vehicle renderers). DOM nameplates (`#ol-tags`; `N.view3d.project` in 3D), minimap dots
+  (`N.hud.blip('ol:<key>')`), quick-chat bubbles via `N.dialogue.bark` ("Ravi: Chai?", the nameplate
+  steps aside).
+- **Meet pin**: the newest pin in any member's presence meta (newer than every member's `pc`) is the
+  room's pin: `N.menus.waypoint(x, y)` (pink route) + `N.hud.blip('ol:pin', {icon: 'star', route})` +
+  toast "Meet at Irani café, Abids!". Any member drops (here or one of `MEET_PLACES`) or clears it;
+  late joiners get it from presence.
+- **Quick-chat**: `PHRASES` only (Aaja! · Chai? · Race to Tank Bund! · Ruko, coming! · I am here! · Bye,
+  see you! · 👋 · 👍). No free text anywhere.
+- **UI**: title track **ONLINE**, pause key **Online** (menus.js shows them while `N.online` exists, with
+  `titleLine()` / `pauseLine()`), the panel `online` (via `N.menus.definePanel/openPanel`; status, nickname,
+  player code, Use my code, cloud save, room create / join / leave, player list, meet pin, quick-chat),
+  and in a room a HUD badge (`ROOM CHAI-42 · 3/10`, opens the panel over the pause deck) + a 💬 strip of
+  phrase buttons (touch). Events `online:status | room | players | pin | chat | cloud`.
+- **API**: `N.online = {available, ready, status, code, nick, room, open(), close(), goOnline(),
+  setNick(), useCode(), cloud: {pull, push, take, keep, state}, journey(), pushJourney(), createRoom(),
+  joinRoom(code), leaveRoom(), dropPin(placeId | null), clearPin(), say(id), PHRASES, MEET_PLACES,
+  titleLine(), pauseLine(), _debug}`.
+- **Limits / notes**: Supabase Realtime counts every delivered message; 10 players moving at once is a
+  few hundred messages/s, above the Free plan's quota — the per-player rate drops in big rooms, and
+  standing players send only a keepalive. Rooms are public channels: the code is the invite (3,600
+  codes; anyone who guesses one sees nicknames and positions, never codes or saves).
+- **Tests**: `node tests/online.cjs` (`ONLY=basic|room|dist|cloud`). The test machine cannot reach
+  supabase.co, so the game talks to `tests/online_mock.cjs`, a local server speaking the same PostgREST
+  RPC + Realtime (Phoenix websocket) protocols with the SQL functions' rules; the real supabase-js runs
+  unchanged. The SQL itself was exercised on the live project (design/online_setup.md "Verified").
+

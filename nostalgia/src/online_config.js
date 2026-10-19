@@ -23,6 +23,8 @@
       'vendor/supabase/supabase.js',
       '../vendor/supabase/supabase.js',
     ],
+    // public legacy anon key, used only for Realtime rooms (safest choice until rooms are confirmed on the publishable key)
+    realtimeKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyYWx1bmFqdGZhcHFrcHd1bHlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0Mjc5MTksImV4cCI6MjEwODAwMzkxOX0.TyTS2Ip0_YmCzSeU4dcXrqvm19x3PP_91Jy367HpHvU',
     maxPlayers: 10,
     stateHz: 8,
   };

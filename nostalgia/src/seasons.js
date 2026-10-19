@@ -1484,6 +1484,14 @@
       ram.strings.push({ x0: x - nx, y0: y - ny, h0: 16, x1: x + nx, y1: y + ny, h1: 16, own: true });
       if (i % 2 === 0) for (const sd of [-1, 1]) ram.crescents.push({ x: x + sd * nx * 1.12, y: y + sd * ny * 1.12, a });
     });
+    // and a ring of them round the Charminar circle, between the road arms, facing out
+    for (let i = 0; i < 8; i++) {
+      const a = (i + 0.5) * Math.PI / 4;
+      for (const r of [108, 116, 100]) {
+        const x = ch.x + Math.cos(a) * r, y = ch.y + Math.sin(a) * r;
+        if (N.world.isWalkable(x, y) && N.world.surfaceAt(x, y) !== N.SURF.ROAD && !(N.respect.at(x, y) && N.respect.at(x, y).part === 'compound')) { ram.crescents.push({ x, y, a, ring: true }); break; }
+      }
+    }
     roadSteps(['laad_bazaar'], 30, 260, 28, (x, y, a, w) => {
       const nx = -Math.sin(a) * (w / 2 + 1), ny = Math.cos(a) * (w / 2 + 1);
       ram.strings.push({ x0: x - nx, y0: y - ny, h0: 14, x1: x + nx, y1: y + ny, h1: 14, own: true });

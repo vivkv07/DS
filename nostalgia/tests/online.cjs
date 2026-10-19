@@ -105,6 +105,7 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       await Z.ev(() => N.game.pause());
       await sleep(300);
       check(await Z.ev(() => !document.querySelector('.k-online').hidden && /coming soon/.test(document.querySelector('.k-online .why').textContent)), 'pause deck Online key says "coming soon"');
+      await Z.shot('null_pause');
       await Z.ev(() => N.game.resume());
       const net = Z.requests.filter((u) => /supabase|jsdelivr|127\.0\.0\.1:\d+\/(rest|realtime)/.test(u) || u.startsWith(M.url));
       check(!net.length, 'config null: nothing online loaded (' + net.length + ' requests)');
@@ -209,8 +210,7 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       await A.ev(() => N.input.setMove(0, 0));
       const onCycle = await until(B, () => { const g = N.online._debug.ghosts().find((q) => q.nick === 'Ravi'); return g && g.mode === 'vehicle' && g.type === 'cycle'; }, null, 4000);
       check(onCycle, 'B sees A riding a cycle');
-      await sleep(600);
-      await B.page.waitForTimeout(300);
+      await sleep(900);
       // 2D screenshot from B (nameplates + minimap dots)
       await B.ev(() => { N.render.camOverride = null; });
       const tags = await B.ev(() => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).filter((t) => t.style.visibility !== 'hidden').map((t) => t.textContent));
@@ -272,7 +272,7 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
           setTimeout(() => res({ rec: N.view3dActors.debug.rec, type: e && e.type }), 1500);
         }));
         check(g4.rec && g4.rec.kind === 'vehicle', '3D: Ravi on a ' + g4.type + ' is drawn as a vehicle (' + (g4.rec && g4.rec.model) + ')');
-        await B.ev(() => { N.view3dActors.debug.track(null); N.view.setCamera ? 0 : 0; });
+        await B.ev(() => N.view3dActors.debug.track(null));
         // look at the ghosts (between Imran and Ravi)
         await B.ev(() => { const gs = N.online._debug.ghosts(); const p = N.player; const g = gs.find((q) => q.nick === 'Imran') || gs[0]; try { N.view3d.setCamera({ yaw: Math.atan2(g.y - p.y, g.x - p.x), pitch: 0.25, snap: true }); } catch (e) { /* ignore */ } });
         await until(B, () => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).some((t) => t.textContent === 'Imran' && t.style.visibility !== 'hidden'), null, 6000);
@@ -283,6 +283,16 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
         await B.ev(() => N.view.set('top'));
       }
 
+      // the panel on the phone (touch): pause -> Online, quick-chat from the panel
+      await C.ev(() => N.game.pause());
+      await sleep(300);
+      await C.page.tap('.k-online');
+      await until(C, () => N.menus.topPanelId() === 'online');
+      await C.page.tap('.mn-online [data-act=say][data-say=aaja]');
+      check(await until(A, () => Array.from(document.querySelectorAll('#barks .bark')).some((b) => /Imran: Aaja!/.test(b.textContent)), null, 4000), 'C (phone) taps "Aaja!" in the panel: A sees "Imran: Aaja!"');
+      await C.shot('panel_room_C_phone');
+      await C.page.evaluate(() => { const b = document.querySelector('.mn-online .ol-body'); b.scrollTop = b.scrollHeight; });
+      await C.shot('panel_room_C_phone_bottom');
       // disconnect: C closes the page -> gone for A
       await C.context.close();
       const gone = await until(A, () => N.online.room && N.online.room.n === 3 && !N.online._debug.ghosts().some((g) => g.nick === 'Imran') && !Array.from(N.hud.blips.keys()).some((k) => /^ol:p/.test(k) && !N.online._debug.ghosts().some((g) => 'ol:' + g.key === k)), null, 8000);
@@ -422,8 +432,6 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       await A.ev(() => N.online.cloud.keep());
       check(await A.ev(() => !N.online.cloud.state.offer && N.save.info().money === 4242), '"Keep this one" keeps A\'s local save');
       // a cloud save from a newer build is never pulled, never overwritten
-      const k1 = key.replace(/:0$/, ':1');
-      void k1;
       M.db.saves.set(key, Object.assign({}, M.db.saves.get(key), { version: 2, t: bT + 5000, data: Object.assign({}, M.db.saves.get(key).data, { v: 2, t: bT + 5000 }) }));
       await B.ev(() => { N.player.money = 1234; N.save.save({ reason: 'test2' }); });
       await sleep(2500);

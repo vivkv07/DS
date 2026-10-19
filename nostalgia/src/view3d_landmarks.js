@@ -2786,8 +2786,8 @@
     for (let i = 0; i <= 24; i++) { const u = -hl + 2 + (i / 24) * (D.L - 4); ki.c(i % 2 ? '#ff9a1a' : '#f2c230').fx(1, 80, 40).sphere(u, 3.6, hv - 4.8, 0.7, 0.7, 0.7, 6, 4); }
     for (let i = 0; i <= 20; i++) { const a = PI * (0.12 + 0.76 * (i / 20)); ki.c(i % 3 ? '#ff9a1a' : '#f4f0e0').fx(1, 70, 60).sphere(Math.cos(a) * 9.5, 33 - Math.sin(a) * 9, 6.6, 0.9, 0.9, 0.9, 6, 4); }
     ki.fx(0, 0, 0);
-    for (const u of [-hl + 1, hl - 1]) for (const v of [-hv + 1, hv - 1]) for (let y = 4; y <= 62; y += 4) md.glow(u, y, v, (y / 4) % 2 ? '#ffe070' : '#ff70c0');
-    for (const y of [30, 64]) for (let i = 0; i <= 14; i++) { const u = -hl + 1 + (i / 14) * (D.L - 2); md.glow(u, y - 0.6, hv - 0.4, ['#ffe070', '#ff5050', '#60ff90', '#60b0ff'][i % 4]); }
+    for (const u of [-hl + 1, hl - 1]) for (const v of [-hv + 1, hv - 1]) for (let y = 4; y <= 62; y += 4) md.glow(u, y, v, (y / 4) % 2 ? '#ffe070' : '#ff70c0', 'gM');
+    for (const y of [30, 64]) for (let i = 0; i <= 14; i++) { const u = -hl + 1 + (i / 14) * (D.L - 2); md.glow(u, y - 0.6, hv - 0.4, ['#ffe070', '#ff5050', '#60ff90', '#60b0ff'][i % 4], 'gM'); }
     for (let i = 0; i <= 24; i++) { const t = i / 24, u = -hl + 2 + t * (D.L - 4); md.glow(u, 30 + Math.sin(t * PI) * 26, hv - 0.6, i % 2 ? '#ffe070' : '#ff8040', 'gM'); }
     md.light(0, 14, hv + 12, '#ffe0b0', 1.3, 110);
     md.sub = null;
