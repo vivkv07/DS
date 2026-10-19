@@ -16,19 +16,20 @@ create table if not exists public.saves (
 -- The newer-save guard on the server (mirrors src/save.js): an update never replaces a save that was
 -- written later, nor one written by a newer build of the game. The client checks first; this makes it stick.
 create or replace function public.saves_newer_guard() returns trigger
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = '' as $fn$
 begin
   if new.user_id <> old.user_id or new.slot <> old.slot then
     raise exception 'save key is immutable' using errcode = '42501';
   end if;
   if old.version > new.version then
-    raise exception 'newer_build: the cloud save was made by a newer version of the game' using errcode = 'P0001';
+    raise exception 'newer_build: the cloud save was made by a newer version of the game';
   end if;
   if old.saved_at > new.saved_at then
-    raise exception 'newer_save: the cloud save is newer than this one' using errcode = 'P0001';
+    raise exception 'newer_save: the cloud save is newer than this one';
   end if;
   return new;
-end $$;
+end
+$fn$;
 drop trigger if exists saves_newer_guard on public.saves;
 create trigger saves_newer_guard before update on public.saves for each row execute function public.saves_newer_guard();
 
