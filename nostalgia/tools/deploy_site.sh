@@ -60,7 +60,7 @@ touch "$SITE/.nojekyll"
 printf '{"build":"%s","source":"%s"}\n' "$STAMP" "$SRC_REV" > "$SITE/build.json"
 
 cat > "$SITE/README.md" <<EOF
-# NOSTALGIA
+# Nostalgia · Side A — Hyderabad 2003
 
 **Play:** ${SITE_URL}
 
