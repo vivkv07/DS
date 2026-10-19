@@ -1,0 +1,52 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 25044,
+ "clips": {},
+ "family": "landmark",
+ "file": "sanjeevaiah_park_gate.glb",
+ "front": "-Y",
+ "id": "sanjeevaiah_park_gate",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 24.5,
+ "kit": 1,
+ "materials": [
+  "M_sanjeevaiah_park_gate",
+  "M_sanjeevaiah_park_gate_sheet@night"
+ ],
+ "max": [
+  18.0,
+  6.0,
+  15.6
+ ],
+ "meta": {
+  "face": "e",
+  "fit": "footprint",
+  "footprint": [
+   36,
+   12
+  ],
+  "height": 16.0,
+  "landmark": "sanjeevaiah_park_gate"
+ },
+ "min": [
+  -18.0,
+  -6.0,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_city",
+ "size": [
+  36.0,
+  12.0,
+  15.6
+ ],
+ "tint": null,
+ "tris": 148,
+ "units": "u",
+ "up": "Z"
+}
