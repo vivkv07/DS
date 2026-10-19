@@ -598,50 +598,143 @@ def _tusk(name, base, top, height, r0, r1, mat, n=7, seg=8, bow=0.0):
     return ellipse_loft(name, rings, mat, seg=seg)
 
 
+def _tusk_rings(base, top, height, r0, r1, n, k=1.0, pad=0.0):
+    """the centre line + radii of _tusk (k / pad: a fatter copy for the low shell)"""
+    bx, by, bz = base
+    tx, ty = top
+    out = []
+    for i in range(n):
+        t = i / (n - 1)
+        h = 1 - t ** 1.7
+        out.append((tx + (bx - tx) * h, ty + (by - ty) * h, bz + height * math.sin(t * PI / 2) ** 0.85,
+                    (r0 + (r1 - r0) * t) * k + pad, (r0 + (r1 - r0) * t) * k + pad))
+    return out
+
+
+def _ground_beds_lo(name, X, Y, z, beds, zb, run=0.7):
+    """the garden terrace shell (open-bottom slab X x Y, top at z) with each raised flower bed as a
+    sloped mound in the SAME top surface (one UV island: no extra atlas area for the beds).
+    beds: [(cx, cy, w, d)] top rectangles at zb; their bases are `run` wider all round.
+    The top is split at x = 0 into two halves; each half holds one bed."""
+    bm = bmesh.new()
+    V = lambda x, y, zz: bm.verts.new((x, y, zz))
+    o = {k: V(x, y, z) for k, (x, y) in {'bl': (-X / 2, -Y / 2), 'bm': (0, -Y / 2), 'br': (X / 2, -Y / 2), 'tr': (X / 2, Y / 2), 'tm': (0, Y / 2), 'tl': (-X / 2, Y / 2)}.items()}
+    for (cx, cy, w, d) in beds:
+        b = [V(cx + sx * (w / 2 + run), cy + sy * (d / 2 + run), z) for (sx, sy) in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+        t = [V(cx + sx * w / 2, cy + sy * d / 2, zb) for (sx, sy) in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+        bm.faces.new(t)
+        for i in range(4):
+            j = (i + 1) % 4
+            bm.faces.new((b[i], b[j], t[j], t[i]))
+        ring = [o['bl'], o['bm'], o['tm'], o['tl']] if cx < 0 else [o['bm'], o['br'], o['tr'], o['tm']]
+        for i in range(4):
+            j = (i + 1) % 4
+            bm.faces.new((ring[i], ring[j], b[j], b[i]))
+    # the slab's sides
+    outer = [o['bl'], o['bm'], o['br'], o['tr'], o['tm'], o['tl']]
+    low = [V(v.co.x, v.co.y, 0.0) for v in outer]
+    for i in range(6):
+        j = (i + 1) % 6
+        bm.faces.new((low[i], low[j], outer[j], outer[i]))
+    return _obj(bm, name, None)
+
+
 def build_ntr_memorial(A):
+    """NTR Ghat, NTR Gardens (opened 2000-01 by the lake, facing the Secretariat): the memorial of
+    N. T. Rama Rao (1923-1996) in its formal garden. A paved terrace with a central walk between
+    lawns, clipped hedges and marigold / rose beds, a long reflecting pool, then the two-tier
+    octagonal platform (pale stone and polished black granite) with the low plain samadhi slab under
+    a bed of marigolds; over it the four great ivory-white tusks rising from gilded sockets at the
+    platform's corners and curving in to meet under a gilded finial. Two slim pale lamp posts at the head
+    of the walk (white globes glow at night), two shade trees at the back. Plain, calm and respectful."""
+    import _lm_civic as C
     M = _nometal(L.mats())
-    PAVE = kit.material('granite_grey', 'ntr_paving', base='#cfc7b8', specks=0.3, grime=0.4, scale=0.9)
+    PAVE = kit.material('granite_grey', 'ntr_paving', base='#d2cabb', specks=0.3, grime=0.35, scale=0.9)
+    STONE = kit.material('granite_grey', 'ntr_stone', base='#e2dccf', specks=0.2, grime=0.25, scale=0.8)
     BLACK = kit.material('granite_grey', 'ntr_black_granite', base='#2a2826', specks=0.25, rough=0.3, grime=0.2, scale=1.0)
-    IVORY = kit.material('whitewash', 'ntr_ivory', base='#f2ebdc', var=0.04, grain=0.03, grime=0.3, streaks=0.1, scale=0.4)
+    IVORY = kit.material('whitewash', 'ntr_ivory', base='#f3ecdc', var=0.04, grain=0.03, grime=0.25, streaks=0.1, scale=0.4)
+    GOLD = L.paint('#c9a23a', 'ntr_gilt', rough=0.4)
     LAWN = kit.material('wood_green', 'ntr_lawn', base='#4f8f3a', chips=0.0, grain=0.15, var=0.15, rough=0.9, grime=0.2, scale=0.6)
     HEDGE = L.paint('#2f6a2c', 'ntr_hedge')
-    FLOW = [L.paint(c, 'ntr_flower_' + c.strip('#')) for c in ('#e8402a', '#f2b030', '#e85aa0')]
-    parts = []
-    parts.append(box('terrace', (40.0, 28.0, 0.6), (0, 0, 0), PAVE, base=True))
-    # lawns either side of the central walk, hedges and flower beds
+    POOL = L.paint('#3d7f92', 'ntr_pool', rough=0.2)
+    FLOW = [L.paint(c, 'ntr_flower_' + c.strip('#')) for c in ('#e8402a', '#f2a020', '#e85aa0')]
+    P, lo = [], []
+
+    def S(name, x0, x1, y0, y1, z0, z1):
+        return C.blk(name, (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0, z0, z1, None)
+    # ---- the garden terrace
+    P.append(box('terrace', (40.0, 28.0, 0.6), (0, 0, 0), PAVE, base=True))
+    P.append(box('walk', (5.0, 28.0, 0.05), (0, 0, 0.6), STONE, base=True))
     for s in (-1, 1):
-        parts.append(box('lawn', (12.0, 24.0, 0.3), (s * 13.0, 0, 0.6), LAWN, base=True))
-        parts.append(box('hedge', (12.0, 0.9, 1.0), (s * 13.0, -12.4, 0.6), HEDGE, base=True))
-        parts.append(box('hedge', (12.0, 0.9, 1.0), (s * 13.0, 12.4, 0.6), HEDGE, base=True))
-        parts.append(box('hedge', (0.9, 24.0, 1.0), (s * 19.4, 0, 0.6), HEDGE, base=True))
-        for k, y in enumerate((-7.0, 0.0, 7.0)):
-            parts.append(box('bed', (6.0, 2.4, 0.6), (s * 13.0, y, 0.9), FLOW[(k + (s > 0)) % 3], base=True))
+        P.append(box('lawn', (12.0, 24.0, 0.3), (s * 13.0, 0, 0.6), LAWN, base=True))
+        P.append(box('lawn_f', (4.6, 10.0, 0.3), (s * 4.9, -8.0, 0.6), LAWN, base=True))
+        P.append(box('hedge', (12.0, 0.9, 1.0), (s * 13.0, -12.4, 0.6), HEDGE, base=True))
+        P.append(box('hedge', (12.0, 0.9, 1.0), (s * 13.0, 12.4, 0.6), HEDGE, base=True))
+        P.append(box('hedge', (0.9, 24.0, 1.0), (s * 19.4, 0, 0.6), HEDGE, base=True))
+        # one long raised parterre bed per lawn: a clipped hedge edge round three blocks of flowers
+        # (marigold / rose / canna), standing ~0.9 u proud (flat beds read as rugs)
+        P.append(box('bed_edge', (2.4, 14.6, 0.75), (s * 13.0, 0, 0.9), HEDGE, base=True))
+        for k, y in enumerate((-4.8, 0.0, 4.8)):
+            P.append(box('bed', (1.8, 4.4, 0.9), (s * 13.0, y, 0.9), FLOW[(k + (s > 0)) % 3], base=True))
+    lo.append(_ground_beds_lo('s_ground', 40.0, 28.0, 0.95, [(s * 13.0, 0.0, 2.4, 14.6) for s in (-1, 1)], 1.85, run=0.5))
     # reflecting pool along the front walk
-    parts.append(box('pool_rim', (7.0, 11.0, 0.9), (0, -7.6, 0.6), BLACK, base=True))
-    parts.append(box('pool', (6.0, 10.0, 0.1), (0, -7.6, 1.42), M['water'], base=True))
-    # the samadhi: stepped octagonal platform, black granite tomb slab with a bed of flowers
-    parts.append(cylinder('plat1', 7.2, 1.4, (0, 4.0, 0.6), seg=8, mat=PAVE))
-    parts.append(cylinder('plat2', 5.8, 1.2, (0, 4.0, 2.0), seg=8, mat=BLACK))
-    parts.append(L.steps('plat_steps', 4.0, 0.7, 0.45, 3, (0, -2.6, 0.6), PAVE))
-    parts.append(box('samadhi', (3.4, 5.0, 1.4), (0, 4.0, 3.2), BLACK, base=True))
-    parts.append(box('flowers', (2.8, 4.2, 0.35), (0, 4.0, 4.6), FLOW[1], base=True))
-    # four great ivory tusks rising from the platform corners and meeting over the samadhi
+    P.append(box('pool_rim', (4.4, 6.6, 0.5), (0, -9.6, 0.6), BLACK, base=True))
+    P.append(box('pool', (3.6, 5.8, 0.06), (0, -9.6, 1.08), POOL, base=True))
+    # ---- the samadhi platform: two octagonal tiers, steps, the black slab and its marigolds
+    PY = 4.0
+    P.append(cylinder('plat1', 7.2, 1.4, (0, PY, 0.6), seg=16, mat=STONE))
+    P.append(cylinder('plat1_lip', 7.45, 0.3, (0, PY, 1.7), seg=16, mat=STONE))
+    P.append(cylinder('plat2', 5.8, 1.2, (0, PY, 2.0), seg=16, mat=BLACK))
+    P.append(L.steps('plat_steps', 4.0, 0.7, 0.47, 3, (0, PY - 7.15 - 1.05, 0.6), STONE))
+    lo.append(lathe('s_plat', [(7.65, 0.9), (7.65, 2.05), (6.05, 2.05), (6.05, 3.25), (0.0, 3.25)], seg=8, close_bottom=False, loc=(0, PY, 0)))
+    lo.append(S('s_steps', -2.2, 2.2, PY - 7.15 - 2.2, PY - 7.0, 0.9, 2.05))
+    # the samadhi: a low plain pale-stone slab (~1.2 u) under a bed of marigolds
+    P.append(box('samadhi', (3.6, 5.2, 0.9), (0, PY, 3.2), IVORY, base=True))
+    P.append(box('flowers', (3.2, 4.8, 0.3), (0, PY, 4.1), FLOW[1], base=True))
+    for k in range(6):
+        P.append(cylinder('garland', 0.28, 0.12, (-1.25 + (k % 2) * 2.5, PY - 2.0 + (k // 2) * 2.0, 4.4), seg=6, mat=FLOW[0]))
+    lo.append(S('s_samadhi', -1.95, 1.95, PY - 2.75, PY + 2.75, 3.2, 4.6))
+    # ---- the four great tusks and the finial
     for sx in (-1, 1):
         for sy in (-1, 1):
-            parts.append(_tusk('tusk', (sx * 5.4, 4.0 + sy * 4.6, 2.0), (sx * 0.6, 4.0 + sy * 0.5), 22.0, 1.15, 0.3, IVORY, n=8, seg=8))
-            parts.append(cylinder('tusk_sock', 1.5, 1.4, (sx * 5.4, 4.0 + sy * 4.6, 2.0), seg=8, mat=M['gold'], r2=1.25))
-    parts.append(lathe('finial', [(0.9, 23.2), (1.3, 23.9), (0.6, 24.8), (0.9, 25.6), (0.3, 26.6), (0.0, 27.2)], seg=8, mat=M['gold'], loc=(0, 4.0, 0)))
-    # garden lamp posts at the front corners of the walk
+            b = (sx * 5.4, PY + sy * 4.6, 2.0)
+            t = (sx * 0.6, PY + sy * 0.5)
+            P.append(ellipse_loft('tusk', _tusk_rings(b, t, 22.0, 1.15, 0.3, 10), IVORY, seg=10))
+            P.append(cylinder('tusk_sock', 1.5, 1.4, b, seg=10, mat=GOLD, r2=1.25))
+            P.append(cylinder('tusk_band', 1.3, 0.35, (b[0], b[1], b[2] + 3.0), seg=10, mat=GOLD))
+            lo.append(ellipse_loft('s_tusk', _tusk_rings(b, t, 22.0, 1.15, 0.3, 4, k=1.45, pad=0.25), None, seg=4, cap_start=False))
+            lo.append(cylinder('s_sock', 1.75, 1.5, (b[0], b[1], b[2] - 0.05), seg=4, cap=False))
+    P.append(lathe('finial', [(0.9, 23.0), (1.3, 23.8), (0.6, 24.8), (0.9, 25.6), (0.3, 26.6), (0.0, 27.2)], seg=8, mat=GOLD, loc=(0, PY, 0)))
+    lo.append(lathe('s_finial', [(1.6, 22.6), (1.5, 24.4), (0.9, 26.0), (0.0, 27.4)], seg=4, close_bottom=True, loc=(0, PY, 0)))
+    # ---- two slim pale garden lamp posts at the head of the walk (white globe heads glow: a keep object)
+    heads = []
+    LPOST = L.paint('#e6e2d8', 'ntr_lamp_post')
     for s in (-1, 1):
-        post, heads = L.lamp_post('ntr_lamp', 8.0, M, loc=(s * 5.2, -12.0, 0.6), arms=1)
-        parts += [post, heads]
-    # two trees at the back corners
+        lx, ly = s * 3.4, -12.6
+        P.append(lathe('ntr_lamp', [(0.22, 0.6), (0.22, 1.1), (0.15, 1.3), (0.12, 6.0), (0.2, 6.15)], seg=8, mat=LPOST, loc=(lx, ly, 0)))
+        heads.append(lathe('ntr_lamp_glass', [(0.14, 6.15), (0.34, 6.55), (0.0, 7.0)], seg=5, mat=L.lamp('#fff7ea'), loc=(lx, ly, 0)))
+        lo.append(tri_col_h('s_lamp', lx, ly, 0.42, 0.6, 6.2))
+    # ---- two shade trees at the back corners
     for s in (-1, 1):
-        parts.append(cylinder('trunk', 0.6, 6.0, (s * 16.5, 10.0, 0.6), seg=5, mat=M['wood']))
-        parts.append(boulder('crown', 4.2, (s * 16.5, 10.0, 8.4), L.paint('#3f7f34', 'ntr_leaves'), seed=11 + s, sq=0.8, sub=1))
-    report(parts)
-    L.finish(A, parts, size=512)
-    L.shots(A, az=-30, el=18)
+        P.append(cylinder('trunk', 0.6, 6.0, (s * 16.5, 10.0, 0.6), seg=6, mat=M['wood']))
+        P.append(boulder('crown', 4.2, (s * 16.5, 10.0, 8.4), L.paint('#3f7f34', 'ntr_leaves'), seed=11 + s, sq=0.8, sub=1))
+        lo.append(tri_col_h('s_trunk', s * 16.5, 10.0, 1.4, 0.9, 5.2))
+        lo.append(lathe('s_crown', [(0.0, 4.6), (4.9, 6.4), (4.6, 10.6), (0.0, 12.4)], seg=5, loc=(s * 16.5, 10.0, 0)))
+    report(P)
+    keep = [kit.join(heads, 'ntr_lamps')]
+    for o in L.finish_proxy(A, P, lo=lo, keep=keep, size=int(os.environ.get('NTR_SIZE', '320')), ao_dist=4.0, ao_samples=48, ao_strength=0.7):
+        kit.smooth(o, 80)
+    L.shots(A, az=-30, el=18, extra=[{'name': 'front', 'view': {'az': 0, 'el': 8, 'fov': 30, 'pad': 1.05}}])
+
+
+def tri_col_h(name, x, y, r, z0, z1):
+    """an open-ended triangular column shell round a thin round post"""
+    bm = bmesh.new()
+    pts = [(x + r * math.cos(a), y + r * math.sin(a)) for a in (PI / 2, PI / 2 + 2 * PI / 3, PI / 2 + 4 * PI / 3)]
+    for i in range(3):
+        (xa, ya), (xb, yb) = pts[i], pts[(i + 1) % 3]
+        bm.faces.new((bm.verts.new((xa, ya, z0)), bm.verts.new((xb, yb, z0)), bm.verts.new((xb, yb, z1)), bm.verts.new((xa, ya, z1))))
+    return _obj(bm, name, None)
 
 
 # parked (owner must-have, returns with lazy per-GLB loading): buildable only with NOSTALGIA_PARKED=1, never packed

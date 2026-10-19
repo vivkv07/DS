@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 58660,
+ "bytes": 59724,
  "clips": {},
  "family": "landmark",
  "file": "kit_temple.glb",
@@ -11,7 +11,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 57.3,
+ "kb": 58.3,
  "kit": 1,
  "materials": [
   "M_kit_temple"
@@ -19,7 +19,7 @@
  "max": [
   15.1,
   14.1,
-  22.635
+  24.5
  ],
  "meta": {
   "draw": "temple",
@@ -51,7 +51,7 @@
  "size": [
   29.2,
   29.0,
-  22.635
+  24.5
  ],
  "tint": null,
  "tris": 580,

@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 31916,
+ "bytes": 29008,
  "clips": {},
  "family": "landmark",
  "file": "wesley_church.glb",
@@ -11,7 +11,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 31.2,
+ "kb": 28.3,
  "kit": 1,
  "materials": [
   "M_wesley_church_lamp_lens@night",

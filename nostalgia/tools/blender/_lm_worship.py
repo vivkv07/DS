@@ -202,6 +202,12 @@ def onion_prof(r, h, z, pad=0.2, top=None):
     return [(r * 0.85 + pad, z), (r * 1.12 + pad, z + 0.3 * h), (r * 0.9 + pad, z + 0.6 * h), (r * 0.32 + pad, z + 0.92 * h), (0.0, top or z + 1.35 * h)]
 
 
+def onion_prof_round(r, h, z, top, pad=0.2):
+    """rounder shell profile for a squat Deccani onion (no waist ring: the drum top leads straight to
+    the bulge), easing in over the shoulder to a THIN finial needle instead of a broad cone"""
+    return [(r * 1.12 + pad, z + 0.3 * h), (r * 0.8 + pad, z + 0.62 * h), (r * 0.34 + pad * 0.5, z + 0.88 * h), (0.3, z + 1.06 * h), (0.0, top)]
+
+
 def hemi(name, r, h, z, mat, seg=16, loc=(0, 0), n=6, point=0.0):
     prof = [(r * math.cos(a), z + h * math.sin(a)) for a in [PI / 2 * i / n for i in range(n)]] + [(0.0, z + h + point)]
     return lathe(name, prof, seg=seg, mat=mat, loc=(loc[0], loc[1], 0), close_bottom=False)
@@ -541,9 +547,9 @@ def build_wesley(A):
     tower on the front left rises to an octagonal spire with a cross; lancets between buttresses
     down the sides, a pitched slate roof and a small gabled transept on the right."""
     C._ASSET[0] = A.id
-    WALL, TRIM, WIN, DARK, DOOR = '#c3b9a8', '#e6dccb', '#39404a', '#26272b', '#5b3b26'
+    WALL, TRIM, WIN, DARK, DOOR = '#9a9790', '#c2beb4', '#39404a', '#26272b', '#5b3b26'   # grey granite (St Mary's is cream)
     wall, trim = pp(WALL, 'we_wall'), pp(TRIM, 'we_trim')
-    roof, spire = pp('#5f5d5c', 'we_slate'), pp('#9c968c', 'we_spire')
+    roof, spire = pp('#5f5d5c', 'we_slate'), pp('#8a8781', 'we_spire')
     P, lo, keep = [], [], []
     NXC, NW, NY0, NY1, EAVE, RISE = 4.0, 22.0, -16.0, 20.0, 17.0, 12.0
     ny, nd = (NY0 + NY1) / 2, NY1 - NY0
@@ -941,6 +947,7 @@ def build_lal_darwaza(A):
     C._ASSET[0] = A.id
     RED, RED2, WH, YEL = '#b3262a', '#8e1d21', '#f3ecdc', '#f2c64a'
     red, wh, yel = pp(RED, 'ld_red'), pp(WH, 'ld_wh'), pp(YEL, 'ld_yel')
+    red2 = pp(RED2, 'ld_red2')   # red-oxide kiosk domes
     P, lo, keep = [], [], []
     # ---- the red gateway (a real opening through it)
     GW, GD, GH, OW, SP, RS = 18.0, 4.0, 15.0, 8.0, 7.2, 3.6
@@ -976,14 +983,16 @@ def build_lal_darwaza(A):
         for (dx, dy) in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
             P.append(box('ld_kp', (0.35, 0.35, 2.0), (x + dx * 0.8, GY + dy * 0.8, GH), wh, base=True))
         P.append(box('ld_ks', (2.2, 2.2, 0.35), (x, GY, GH + 2.0), wh, base=True))
-        P.append(onion('ld_kd', 1.0, 1.8, GH + 2.35, yel if abs(x) < 3 else red, seg=8, loc=(x, GY), n=5))
+        P.append(onion('ld_kd', 0.7, 1.3, GH + 2.35, red2, seg=8, loc=(x, GY), n=5))
     # gate shells: arch-holed slab + kiosk lumps
     lo_ol = [(-GW / 2 - 0.4, 0)] + [(x * 0.97, z - 0.1) for (x, z) in arch_outline(OW, SP, RS, 'pointed', n=4)] + [(GW / 2 + 0.4, 0), (GW / 2 + 0.4, GH + 0.1), (-GW / 2 - 0.4, GH + 0.1)]
     lo.append(prism_from_outline('ld_gate_lo', lo_ol, GD + 1.0, center=(0, GY, 0)))
     for x in (-7.2, -2.4, 2.4, 7.2):
-        lo.append(lathe('ld_k_lo', [(1.5, GH), (1.5, GH + 2.5), (1.25, GH + 3.6), (0.0, GH + 4.6)], seg=4, loc=(x, GY, 0), close_bottom=False))
-    keep.append(sign_keep(A.id, 'ld_board', 'SRI MAHANKALI TEMPLE', 10.0, 1.5, (0, GY - GD / 2 - 0.62, 12.1), fg='#ffffff', bg='#7a1216', pw=320, ph=48))
-    keep.append(lamp_box('ld_lamp', (OW - 1.0, 0.2, 0.3), (0, GY - GD / 2 - 0.62, SP + RS + 1.3), col='#ffcf7a'))
+        # square open-kiosk shell (turned 45 deg so its sides follow the posts): posts, slab, small dome
+        lo.append(L.place(lathe('ld_k_lo', [(1.45, GH), (1.55, GH + 2.35), (1.05, GH + 2.85), (0.5, GH + 3.5), (0.0, GH + 4.1)],
+                                seg=4, loc=(0, 0, 0), close_bottom=False), (x, GY, 0), PI / 4))
+    keep.append(sign_keep(A.id, 'ld_board', 'SRI MAHANKALI TEMPLE', 12.0, 2.0, (0, GY - GD / 2 - 0.62, 12.3), fg='#ffffff', bg='#7a1216', pw=320, ph=48))
+    keep.append(lamp_box('ld_lamp', (OW - 1.0, 0.2, 0.3), (0, GY - GD / 2 - 0.62, SP + RS + 0.15), col='#ffcf7a'))   # under the board
     # ---- the decorated compound wall (white, red dado, yellow coping)
     WX, WY0, WY1 = 19.2, GY, 19.2
     for s in (-1, 1):
@@ -1133,7 +1142,7 @@ def build_kit_temple(A):
     sh_.append(box('kts_cor', (7.2, 7.2, 0.5), (-5.0, 1.0, 6.0), pp('#f4f1ea', 'kt_ww'), base=True))
     sl_.append(blk('kts_lo', -5.0, 1.0, 6.7, 6.7, 0, 6.6, None))
     sh_.append(L.steps('kts_step', 3.0, 0.6, 0.25, 2, (-5.0, -2.2 - 0.6, 0.1), pp('#f4f1ea', 'kt_ww')))
-    top = shikhara(sh_, sl_, 'kts_shik', -5.0, 1.0, 6.5, 2.6, 6.0, pp('#f4f1ea', 'kt_ww'), gold, courses=8)
+    top = shikhara(sh_, sl_, 'kts_shik', -5.0, 1.0, 6.5, 2.6, 10.0, pp('#f4f1ea', 'kt_ww'), gold, courses=8)
     sh_.append(flag('kts_flag', -4.4, 1.0, top - 2.0, 5.0, SAFFRON, size=1.9))
     sl_.append(flag_lo('kts_flag_lo', -4.4, 1.0, top - 2.0, 5.0, size=1.9))
     kt = Fw(2 * PI * 4.2, 1.1, '#f4f1ea', seed=9)
@@ -1186,10 +1195,11 @@ def build_kit_mosque(A):
     ml.append(blk('mqm_hall_lo', 0, (HY0 + HY1) / 2, HW + 0.3, HY1 - HY0 + 0.3, 0, HH + 0.1, None))
     leaf_parapet(mh, ml, 'mqm_crest', 0, (HY0 + HY1) / 2, HW, HY1 - HY0, HH, 1.8, wh, pitch=2.2, lo_sides='f')
     mh.append(cylinder('mqm_drum', 4.0, 1.6, (0, 6.0, HH), seg=16, mat=wh))
-    mh.append(onion('mqm_dome', 4.1, 6.0, HH + 1.6, gr, seg=16, loc=(0, 6.0), n=8))
-    mh.append(cylinder('mqm_fin', 0.15, 2.4, (0, 6.0, HH + 1.6 + 6.0 * 1.25), seg=4, mat=gold))
-    ml.append(lathe('mqm_d_lo', [(4.25, HH), (4.25, HH + 1.7)] + onion_prof(4.1, 6.0, HH + 1.6, top=HH + 1.6 + 6.0 * 1.25 + 2.4),
-                    seg=8, loc=(0, 6.0, 0), close_bottom=False))
+    MDH = 4.6   # Deccani onion: broad bulge over a short height (a taller one read as a cone)
+    mh.append(onion('mqm_dome', 4.1, MDH, HH + 1.6, gr, seg=16, loc=(0, 6.0), n=8))
+    mh.append(cylinder('mqm_fin', 0.15, 2.4, (0, 6.0, HH + 1.6 + MDH * 1.25), seg=4, mat=gold))
+    ml.append(lathe('mqm_d_lo', [(4.25, HH), (4.25, HH + 1.7)] + onion_prof_round(4.1, MDH, HH + 1.6, HH + 1.6 + MDH * 1.25 + 2.4),
+                    seg=12, loc=(0, 6.0, 0), close_bottom=False))
     for s in (-1, 1):
         minaret(mh, ml, 'mqm_min', s * (HW / 2 - 0.6), HY0 - 0.6, 34.0, 1.1, wh, gr, gold, base_h=HH + 0.2)
         wall_run(mh, ml, 'mqm_wf%d' % (s + 1), s * 3.6, -17.0, s * 17.0, -17.0, 2.4, 0.6, (WH, GR, 2, None, WH, 5.0))
@@ -1209,10 +1219,11 @@ def build_kit_mosque(A):
     leaf_parapet(dh, dl, 'mqd_crest', 0, CY, CW, CW, CH, 1.6, wh, pitch=2.2, lo_sides='f')
     dh.append(cylinder('mqd_drum', 7.0, 2.4, (0, CY, CH), seg=20, mat=wh))
     dh.append(cylinder('mqd_drum_g', 7.1, 0.4, (0, CY, CH + 2.0), seg=20, mat=gr))
-    dh.append(onion('mqd_dome', 7.2, 10.0, CH + 2.4, gr, seg=20, loc=(0, CY), n=9, neck=0.92, bulge=1.08))
-    dh.append(cylinder('mqd_fin', 0.2, 3.0, (0, CY, CH + 2.4 + 10.0 * 1.2), seg=4, mat=gold))
-    dl.append(lathe('mqd_d_lo', [(7.3, CH), (7.3, CH + 2.5)] + onion_prof(7.2, 10.0, CH + 2.4, pad=0.3, top=CH + 2.4 + 10.0 * 1.2 + 3.0),
-                    seg=8, loc=(0, CY, 0), close_bottom=False))
+    DDH = 7.6
+    dh.append(onion('mqd_dome', 7.2, DDH, CH + 2.4, gr, seg=20, loc=(0, CY), n=9, neck=0.92, bulge=1.08))
+    dh.append(cylinder('mqd_fin', 0.2, 3.0, (0, CY, CH + 2.4 + DDH * 1.2), seg=4, mat=gold))
+    dl.append(lathe('mqd_d_lo', [(7.3, CH), (7.3, CH + 2.5)] + onion_prof_round(7.2, DDH, CH + 2.4, CH + 2.4 + DDH * 1.2 + 3.0, pad=0.3),
+                    seg=12, loc=(0, CY, 0), close_bottom=False))
     for sx in (-1, 1):
         for sy in (-1, 1):
             tx, ty = sx * (CW / 2), CY + sy * (CW / 2)
