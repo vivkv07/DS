@@ -1432,8 +1432,9 @@ the conventions below; anything else needs a change here first.
   `src/assets3d_pack.js`. Build logs: `assets3d/logs/` (ignored by tests).
 - **Commands:** `/home/user/.venvs/blender/bin/python tools/blender/build_all.py [ids] [--no-preview]
   [--pack] [-j 2]` (one fresh Blender process per asset; `--list` lists the registry), then
-  `node tools/pack_assets3d.cjs` (size report; fails over 8 MB or over a triangle budget;
-  `--check` = is the pack up to date), `node tools/build.mjs`, `node tests/models3d.cjs`.
+  `node tools/pack_assets3d.cjs` (ship mode, see "Shipping" below: size report, budgets;
+  `--check` = are the index and the pack's id list up to date), `node tools/build.mjs`,
+  `node tests/models3d.cjs`, `node tests/lazy3d.cjs`.
   Cycles CPU only (no GPU): bakes and previews use low samples and small sizes.
 - **Registering an asset:** `@kit.asset('<id>', '<family>', **meta)` on `def build(A)`. Families:
   `character`, `vehicle`, `landmark`, `hero_landmark`, `prop`. Ids are snake_case and unique; the
@@ -1515,7 +1516,48 @@ the conventions below; anything else needs a change here first.
   ushort, colours → normalized ubyte, `_REGION` → ubyte, animation rotations → normalized short,
   normals → normalized byte under `KHR_mesh_quantization` (three r149 reads it); positions stay
   float. ~25-35 % smaller; `--no-quantize` skips it.
-- **Budgets:** whole pack ≤ 8 MB (packer fails above), triangles: hero landmark ≤ 60k, other
+- **Shipping: core pack + lazy models (website).** `assets3d/ship.json` is the allowlist of what ships:
+  `core` ids go into the base64 pack `src/assets3d_pack.js` (loaded once, the first time 3D starts; ≤
+  `budgets.coreKB` = 8192 KB), `lazy` ids ship one quantised GLB each as `dist/lazy3d/<id>.glb`
+  (same quantisation as the pack; budgets `lazyKB[family]` per model, e.g. 120 KB per landmark, and
+  `lazyTotalKB` = 40 MB together). A GLB in assets3d/ that is in neither list does not ship. The packer
+  also writes `src/assets3d_index.js` (~18 KB, an ordinary index.html script before models3d.js, so
+  always loaded): `N.ASSETS3D_INDEX = {version, digest, lazyDir: 'lazy3d/', from (the script URL when
+  it ran from a file), manifest: {id: {family, pack: true, bytes} | {...lean manifest, lazy: true,
+  bytes, h (content hash, sent as ?v=h)}}}`. Layout:
+  ```
+  assets3d/ship.json            allowlist {core: [...57], lazy: [...30], budgets}
+  assets3d/<id>.glb|.json       Blender output (unchanged by packing)
+  src/assets3d_pack.js          core pack (N.ASSETS3D), frozen: kept as it is unless --repack-core
+  src/assets3d_index.js         N.ASSETS3D_INDEX (every shipped id), generated
+  dist/lazy3d/<id>.glb          lazy GLBs (written by the packer and by tools/build.mjs --lazy-only)
+  dist/site/index.html          = dist/web.html (deploy_site.sh); dist/site/lazy3d/ next to it,
+  dist/site/src/assets3d_pack.js  the core pack, vendor/three/ the loader + three.js fallback
+  ```
+  The core pack is **frozen** in ship mode: its ids must equal `ship.core` and it is not rebuilt (the
+  integration pack holds vehicles / kid_chinnu builds older than assets3d/ and `adult_man`, whose
+  source was removed; the packer notes the drift); `--repack-core` rebuilds it from assets3d/.
+  `PACK_ONLY=... node tools/pack_assets3d.cjs` (test packs) and `--no-ship` keep the legacy pack-only
+  mode. **Runtime:** when 3D starts and the pack is ready, models3d.js registers the landmark key of
+  every lazy landmark model from the index manifest straight away (so view3d_landmarks unbatches the
+  `#<id>` ones and the variants / `fitHeight` / `fit` meta work); the builder returns view3d_landmarks'
+  procedural model (`N.view3dLandmarks.procedural.build`, unbatched) and asks for the GLB when the core
+  first builds that landmark (its landmark range); the fetch (2 at a time) tries the folder that
+  worked last, then `../dist/lazy3d/` next to the index script when it ran from `src/` (dev page),
+  then `lazy3d/`, `dist/lazy3d/`, `../dist/lazy3d/` (pages under /dist/ try `../` first, like the
+  pack); a folder that answers 404 is not tried again. When it is parsed the key is re-registered, so
+  the core disposes the procedural stand-in and builds the model. A failed fetch, a `file://` page
+  (dist/nostalgia.html: lazy keys are not even registered) or an offline browser stay procedural
+  silently. Parsed lazy landmark models with no live instance are kept in an LRU of 12 and freed
+  beyond it (re-fetched from the HTTP cache when needed again). `N.models3d.parse(id)` fetches lazy
+  ids too (props / people / vehicles on-demand parsing works unchanged); a lazy vehicle type is
+  requested when such a vehicle comes within actor range and registered when parsed (event
+  `models3d:lazy` {id, family}). API: `N.models3d.isLazy(id)`, `want(id)`, `lazyBase` (folder to try
+  first), `stats().lazy` = {index, keys, base, fetched, kb, active, queued, parsed, refs, evicted,
+  swaps, possible}. Builds: dist/web.html and dist/artifact.html carry the index inline and fetch
+  `lazy3d/<id>.glb` (artifact: published as supporting files, listed in dist/artifact.files.json);
+  dist/nostalgia.html inlines only the core pack (+ the index). Test: `node tests/lazy3d.cjs`.
+- **Budgets:** core pack ≤ 8 MB (packer fails above; lazy models above), triangles: hero landmark ≤ 60k, other
   landmarks ≤ 20k, vehicles ≤ 6k, characters ≤ 4k, props ≤ 1.5k (packer fails above unless
   `--allow-over`); textures ≤ 1024² (hero landmark), 512² otherwise.
 - **Runtime (`src/models3d.js`, after view3d_actors.js in index.html):** nothing loads in
@@ -1549,8 +1591,10 @@ the conventions below; anything else needs a change here first.
 - **Build / publish:** index.html never loads the pack. `tools/build.mjs` inlines it (and the
   GLTFLoader) into dist/nostalgia.html as non-executing `<script type="text/plain">` blocks run on
   demand; dist/artifact.html stays lazy and `dist/artifact.files.json` lists its supporting files
-  (`src/assets3d_pack.js`, `vendor/three/GLTFLoader.classic.js`, `vendor/three/three.min.js`) to
-  publish next to the page.
+  (`src/assets3d_pack.js`, `vendor/three/GLTFLoader.classic.js`, `vendor/three/three.min.js`, and
+  `lazy3d/<id>.glb` from dist/lazy3d/) to publish next to the page. index.html does load the small
+  `src/assets3d_index.js` (every page inlines it). build.mjs rewrites dist/lazy3d/ from assets3d/
+  (`pack_assets3d.cjs --lazy-only`); `tools/deploy_site.sh` copies it to dist/site/lazy3d/.
 - **Tests:** `node tests/models3d.cjs` (lazy loading, routes, clip selection by speed, planted
   feet on 0.1 s frame strips + dense slow-motion sole sampling while walking / running, vehicle
   parts, the proto flag, tinting, pack-missing and corrupt-model fallbacks, the dist build, zero
