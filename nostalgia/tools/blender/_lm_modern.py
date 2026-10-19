@@ -654,7 +654,7 @@ def build_spanish_mosque(A):
     T = mp(TRIM, 'sm_trim', grime=0.25)
     SP = mp(SPC, 'sm_spire', grime=0.2)
     AC = mp(ACC, 'sm_acc', grime=0.2)
-    DK = mp('#3a3330', 'sm_recess', grime=0.0)
+    DK = mp('#6a5e55', 'sm_recess', grime=0.0)      # light enough that the striped voussoirs read
     ST = kit.material('granite_grey', 'sm_plinth', base='#b0a898', rough=0.8)
     P, lo = [], []
     Z0, HZ, PZ = 1.2, 21.0, 27.0           # plinth top, hall parapet base, porch parapet base
@@ -705,7 +705,7 @@ def build_spanish_mosque(A):
         lo.append(oct_spire_lo(name + '_lo', r * 0.85, z_top + 0.7, sp_h, loc=(x, y), seg=6,
                                foot=[(r + 0.12, Z0), (r + 0.12, z_top - 0.1), (r * 1.3 + 0.1, z_top + 0.35)]))
     for (x, y) in ((-hw, y0), (hw, y0), (-hw, y1), (hw, y1)):
-        turret('ct', x, y, 1.8, 30.0, 17.0)
+        turret('ct', x, y, 1.26, 30.0, 17.0)      # needle-slender (was 1.8)
     for x in (-pw, pw):
         turret('pt', x, py0, 1.5, PZ + 3.0, 12.0)
     # the central drum (octagonal, horseshoe windows, merlon ring) and the great spire
@@ -795,7 +795,7 @@ def build_atc_tower(A):
     for i in range(8):
         cv.rect(i / 8.0, 0, i / 8.0 + 0.012, 1, '#b8bcbc')
         cv.rect(i / 8.0 + 0.0625, 0, i / 8.0 + 0.0665, 1, '#9aa0a2')
-        cv.rect(i / 8.0 + 0.02, 0.05, i / 8.0 + 0.11, 0.42, '#e9d7a8', 0.3)
+        cv.rect(i / 8.0 + 0.016, 0.06, i / 8.0 + 0.118, 0.5, '#ffe2a8', 0.55)
     cv.rect(0, 0.0, 1, 0.06, '#b8bcbc').rect(0, 0.94, 1, 1, '#b8bcbc')
     uv_cab = sh.put(cv)
     uv_red = sh.put(CT.Canvas(16, 16, '#ff2a1a'))
@@ -807,126 +807,162 @@ def build_atc_tower(A):
     L.shots(A, az=-30, el=8, extra=[{'name': 'cab', 'view': {'az': -20, 'el': 4, 'fov': 26, 'target': (0, 0, 66), 'dist': 60}}])
 
 
-# =========================================================================== parked turboprop (Begumpet apron)
+# =========================================================================== parked light trainer (Begumpet apron)
+def loft_se(name, rings, seg, mat=None, p=5.0, phase=0.0):
+    """loft_y with superelliptic sections (|x/rx|^p + |z/rz|^p = 1): boxy light-aircraft cabins"""
+    out = []
+    e = 2.0 / p
+    bm = bmesh.new()
+    R = []
+    for (y, rx, rz, zc) in rings:
+        if rx < 1e-3:
+            R.append([bm.verts.new((0.0, y, zc))])
+            continue
+        ring = []
+        for k in range(seg):
+            t = phase + 2 * PI * k / seg
+            c, s = math.cos(t), math.sin(t)
+            ring.append(bm.verts.new((rx * math.copysign(abs(c) ** e, c), y, zc + rz * math.copysign(abs(s) ** e, s))))
+        R.append(ring)
+    for i in range(len(R) - 1):
+        a, b = R[i], R[i + 1]
+        for k in range(seg):
+            if len(a) == 1:
+                bm.faces.new((a[0], b[(k + 1) % seg], b[k]))
+            elif len(b) == 1:
+                bm.faces.new((a[k], a[(k + 1) % seg], b[0]))
+            else:
+                bm.faces.new((a[k], a[(k + 1) % seg], b[(k + 1) % seg], b[k]))
+    if len(R[-1]) > 1:
+        bm.faces.new(list(reversed(R[-1])))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return kit.obj_from_bm(bm, name, mat)
+
+
 def build_parked_plane(A):
-    """A generic twin-turboprop airliner (ATR / HS-748-like) parked on the Begumpet apron: high
-    wing, two four-blade propellers, T-tail, plain white livery with a navy cheatline and grey
-    belly (no airline names or logos), boarding stairs at the front door, yellow wheel chocks.
+    """A Cessna-172-type high-wing light trainer parked on the Begumpet apron (the flying club's
+    planes were the common sight there): four-seat cabin with side windows and a door about a
+    grown-up's height, one two-blade propeller and spinner, a strut-braced high wing, swept fin,
+    fixed tricycle gear with a small boarding step, yellow chocks. Plain white with a red stripe
+    (no names, registrations or logos). Scale ~5 u per metre (the kid is 7 u): 42 u long, 50 u
+    span (wider than the 40-wide footprint; checked clear of the terminal and the ATC tower).
     Built nose towards -Y (face e: it points east in the world)."""
     CT = _city()
-    WHT = '#f1f1ee'
+    WHT, RED = '#f2f2ee', '#c0262b'
+    GLS, GLS2, SEAM = '#2c3a46', '#3a4c5a', '#8a8e92'
     body = mp(WHT, 'pl_body', rough=0.5, grime=0.15)
-    add_band(body, -1, 3.0, '#b9bec4')                                  # grey belly
-    add_band(body, 4.7, 5.15, '#1f3a78', y0=-22.0, y1=17.0)             # cheatline
-    add_band(body, 5.15, 5.35, '#5f8fd0', y0=-21.0, y1=17.0)
-    add_band(body, 6.1, 6.9, '#2a3440', y0=-14.6, y1=12.6, rows=(1.35, 0.62), hoff=-14.6)   # cabin windows
-    add_band(body, 6.7, 7.5, '#1f2830', y0=-21.4, y1=-19.6)            # cockpit windscreen
-    wing = mp('#dfe1e3', 'pl_wing', rough=0.5, grime=0.2)
+    add_band(body, -1, 4.0, '#e2e2dc')                                   # belly a shade darker
+    add_band(body, 5.6, 6.3, RED, y0=-18.6, y1=21.0)                     # the plain red stripe
+    add_band(body, 6.3, 6.5, '#7d1a1e', y0=-18.6, y1=21.0)
+    add_band(body, 9.7, 11.5, GLS, y0=-15.2, y1=-11.9)                   # windshield
+    for (z0, z1, y0, y1) in ((3.4, 11.5, -11.3, -11.1), (3.4, 11.5, -5.5, -5.3), (3.4, 3.6, -11.3, -5.3)):
+        add_band(body, z0, z1, SEAM, y0=y0, y1=y1)                       # door outline (both sides)
+    add_band(body, 7.9, 11.1, GLS2, y0=-10.8, y1=-5.8)                   # door window
+    add_band(body, 8.2, 10.9, GLS2, y0=-4.6, y1=-0.6)                    # rear side window
+    wing = mp('#ecece8', 'pl_wing', rough=0.5, grime=0.15)
     fin = mp(WHT, 'pl_fin', rough=0.5, grime=0.1)
-    add_band(fin, 11.0, 12.4, '#1f3a78')
-    add_band(fin, 12.4, 12.8, '#5f8fd0')
-    nac = mp('#e4e5e6', 'pl_nac', rough=0.5, grime=0.25)
-    add_band(nac, -1, 6.9, '#9aa0a6', y0=-1.0, y1=2.0)
-    DK = mp('#26292c', 'pl_dark', rough=0.6)
+    add_band(fin, 11.6, 12.4, RED)
+    TIP = mp(RED, 'pl_tip', rough=0.5)
+    DK = mp('#2a2d30', 'pl_dark', rough=0.6)
     TYRE = mp('#1e1e1e', 'pl_tyre', rough=0.9)
-    STL = mp('#8d9195', 'pl_steel', rough=0.6)
+    STL = mp('#b8bcc0', 'pl_steel', rough=0.5)
     YEL = mp('#e8b51c', 'pl_chock', rough=0.8)
     PROP = mp('#2a2a2c', 'pl_prop', rough=0.6)
-    STAIR = mp('#e6e6e2', 'pl_stairs', rough=0.7, grime=0.4)
     P, lo = [], []
-    ZC, RF = 5.6, 3.0                                                     # fuselage axis height, radius
-    rings = [(-23.0, 0.25, 0.25, 4.9), (-22.3, 1.3, 1.25, 5.0), (-21.0, 2.3, 2.3, 5.3), (-19.0, 2.9, 2.95, 5.55), (-16.5, RF, RF, ZC),
-             (10.0, RF, RF, ZC), (13.5, 2.6, 2.55, 6.1), (17.0, 1.75, 1.6, 6.9), (20.0, 0.9, 0.8, 7.6), (21.8, 0.25, 0.25, 8.0)]
-    P.append(loft_y('fus', rings, 16, body))
-    lo.append(loft_y('s_fus', [(y, rx + 0.08, rz + 0.08, zc) for (y, rx, rz, zc) in rings[:5] + rings[6:]], 8, phase=PI / 8))
-    # passenger door (left = +X side) and a service door
-    P.append(BX('door', RF - 0.2, RF + 0.08, -13.6, -11.6, 3.7, 7.9, mp('#d6d8da', 'pl_door', rough=0.5)))
-    P.append(BX('door_l', RF - 0.2, RF + 0.1, -13.7, -11.5, 3.6, 3.75, DK))
-    # high wing with the root fairing
-    WZ = ZC + RF - 0.2
-    wpl = [(-20.0, -1.6), (-20.0, 0.4), (-3.0, 1.0), (3.0, 1.0), (20.0, 0.4), (20.0, -1.6), (3.0, -2.6), (-3.0, -2.6)]
-    P.append(plan_prism('wing', wpl, WZ, WZ + 0.6, wing))
-    P.append(loft_y('fairing', [(-5.0, 0.4, 0.2, WZ + 0.2), (-3.5, 1.8, 0.8, WZ + 0.3), (2.0, 1.8, 0.8, WZ + 0.3), (4.0, 0.4, 0.2, WZ + 0.2)], 10, wing))
-    lo.append(plan_prism('s_wing', [(x * 1.004, y + (0.1 if y > 0 else -0.1)) for (x, y) in wpl], WZ - 0.1, WZ + 0.75))
-    lo.append(loft_y('s_fairing', [(-5.1, 0.4, 0.3, WZ + 0.3), (-3.5, 1.9, 0.9, WZ + 0.4), (2.0, 1.9, 0.9, WZ + 0.4), (4.1, 0.4, 0.3, WZ + 0.3)], 6))
-    # engine nacelles under the wing, four-blade propellers, spinners
+    # fuselage: cowling, boxy cabin under the wing, tail cone rising to the fin
+    rings = [(-21.0, 0.0, 0.0, 6.2), (-20.4, 1.0, 1.0, 6.2), (-19.8, 1.9, 1.8, 6.3), (-18.6, 2.6, 2.4, 6.4), (-15.6, 2.9, 3.0, 6.7),
+             (-11.6, 3.0, 4.3, 7.4), (-4.0, 3.0, 4.3, 7.4), (0.0, 2.6, 3.7, 7.8), (8.0, 1.6, 2.1, 8.4), (16.0, 0.9, 1.25, 8.8), (21.0, 0.35, 0.55, 9.0)]
+    P.append(loft_se('fus', rings, 16, body, p=5.0))
+    lo.append(loft_se('s_fus', [(y, rx + 0.12 if rx else 0.0, rz + 0.12 if rz else 0.0, zc) for (y, rx, rz, zc) in rings[:1] + rings[2:]], 8, p=5.0, phase=PI / 8))
     for sx in (-1, 1):
-        x = sx * 6.6
-        nr = [(-7.4, 0.3, 0.3, WZ - 1.1), (-6.8, 0.9, 1.0, WZ - 1.1), (-5.8, 1.15, 1.35, WZ - 1.0), (-1.0, 1.1, 1.4, WZ - 0.8), (3.0, 0.7, 0.8, WZ - 0.4), (4.4, 0.3, 0.3, WZ - 0.2)]
-        n_ = loft_y('nac', nr, 12, nac)
-        L.place(n_, (x, 0, 0))
-        P.append(n_)
-        s_ = loft_y('s_nac', [(y, rx + 0.08, rz + 0.08, zc) for (y, rx, rz, zc) in nr], 6)
-        lo.append(L.place(s_, (x, 0, 0)))
-        cz = WZ - 1.1
-        for k in range(4):
-            a = PI / 4 + k * PI / 2
-            bl = box('blade', (0.42, 0.1, 3.1), (0, 0, 1.55), PROP, base=False)
-            bl.rotation_euler = (0, a, 0)
-            bl.location = (x, -7.25, cz)
-            kit.apply_transform(bl)
-            P.append(bl)
-        for a in (PI / 4, -PI / 4):
-            sb = box('s_blade', (0.6, 0.24, 6.3), (0, 0, 0), None)
-            sb.rotation_euler = (0, a, 0)
-            sb.location = (x, -7.25, cz)
-            kit.apply_transform(sb)
-            lo.append(sb)
-    # T-tail: swept fin, tailplane on top
-    fol = [(13.0, WZ - 0.4), (21.6, 8.2), (22.4, 17.6), (19.6, 17.6)]
-    P.append(side_prism('fin', fol, -0.22, 0.22, fin))
-    lo.append(side_prism('s_fin', [(13.0 - 0.1, WZ - 0.5), (21.7, 8.1), (22.5, 17.7), (19.5, 17.7)], -0.32, 0.32))
-    tp = [(-6.4, 21.4), (-6.4, 20.2), (-1.0, 18.8), (1.0, 18.8), (6.4, 20.2), (6.4, 21.4)]
-    P.append(plan_prism('tailplane', tp, 17.5, 17.85, wing))
-    lo.append(plan_prism('s_tailplane', [(x * 1.01, y + (0.08 if y > 20.5 else -0.08)) for (x, y) in tp], 17.4, 17.95))
-    # landing gear: sponsons + twin main wheels, nose wheel, chocks
+        P.append(BX('door_h', sx * 2.95 - 0.15, sx * 2.95 + 0.15, -6.6, -5.9, 6.6, 6.9, STL))
+    # the high wing (rectangular inboard, tapered outboard) on the cabin roof
+    WZ = 11.6
+    wpl = [(-25.0, -10.6), (-12.0, -11.6), (12.0, -11.6), (25.0, -10.6), (25.0, -5.6), (12.0, -4.0), (-12.0, -4.0), (-25.0, -5.6)]
+    P.append(plan_prism('wing', wpl, WZ, WZ + 0.75, wing))
+    P.append(BX('wing_le', -12.0, 12.0, -11.75, -11.5, WZ + 0.1, WZ + 0.65, wing))
     for sx in (-1, 1):
-        P.append(BX('sponson', sx * 2.0 if sx > 0 else -3.9, 3.9 if sx > 0 else -2.0, -1.5, 4.0, 2.0, 4.2, body))
-        for y in (0.4, 2.2):
-            wl = cylinder('wheel', 0.8, 0.55, (0, 0, 0), seg=10, mat=TYRE, axis='X', base=False)
-            wl.location = (sx * 3.1, y, 0.8)
-            kit.apply_transform(wl)
-            P.append(wl)
-        P.append(BX('strut', sx * 3.0 - 0.15, sx * 3.0 + 0.15, 1.2, 1.5, 0.8, 2.2, STL))
-        for y in (-0.6, 3.2):
-            P.append(side_prism('chock', [(y - 0.35, 0.0), (y + 0.35, 0.0), (y, 0.55)], sx * 3.1 - 0.5, sx * 3.1 + 0.5, YEL))
-        lo.append(SH('s_gear', sx * 3.1 - 0.6 if sx > 0 else -4.0, 4.0 if sx > 0 else -2.5, -1.1, 3.7, 0.0, 4.3))
-    nw = cylinder('nwheel', 0.6, 0.5, (0, 0, 0), seg=10, mat=TYRE, axis='X', base=False)
-    nw.location = (0, -17.0, 0.6)
+        xa, xb = sorted((sx * 2.8, sx * 12.0))
+        P.append(BX('flap_seam', xa, xb, -5.6, -5.4, WZ + 0.74, WZ + 0.8, DK))
+        xa, xb = sorted((sx * 13.0, sx * 23.5))
+        P.append(BX('ail_seam', xa, xb, -7.0, -6.8, WZ + 0.74, WZ + 0.8, DK))
+        P.append(BX('tip', sx * 24.9 - 0.25, sx * 24.9 + 0.25, -10.6, -5.6, WZ - 0.05, WZ + 0.8, TIP))
+    lo.append(plan_prism('s_wing', [(x * 1.004, y + (0.12 if y > -8 else -0.12)) for (x, y) in wpl], WZ - 0.12, WZ + 0.9))
+    # wing struts (fuselage bottom to the wing underside), one each side
+    for sx in (-1, 1):
+        a, b = (sx * 2.8, -7.4, 4.2), (sx * 14.0, -7.8, WZ - 0.05)
+        P.append(kit.tube('strut', [a, b], 0.28, seg=8, mat=STL))
+        lo.append(kit.tube('s_strut', [a, b], 0.45, seg=3, cap=False))
+    # propeller (two blades) and hub
+    for k in (0, 1):
+        bl = box('blade', (0.55, 0.14, 4.6), (0, 0, 2.5), PROP, base=False)
+        bl.rotation_euler = (0, 0.3 + k * PI, 0)
+        bl.location = (0, -20.6, 6.2)
+        kit.apply_transform(bl)
+        P.append(bl)
+    P.append(BX('hub', -0.4, 0.4, -20.8, -20.4, 5.8, 6.6, PROP))
+    sb = box('s_blade', (0.8, 0.3, 10.0), (0, 0, 0), None)
+    sb.rotation_euler = (0, 0.3, 0)
+    sb.location = (0, -20.6, 6.2)
+    kit.apply_transform(sb)
+    lo.append(sb)
+    P.append(BX('exhaust', 0.8, 1.4, -17.0, -16.2, 3.6, 4.0, DK))
+    P.append(BX('intake', -1.4, 1.4, -20.0, -19.7, 4.9, 5.5, DK))
+    # tail: swept fin + rudder, horizontal stabiliser
+    fol = [(10.0, 10.0), (19.2, 10.0), (20.2, 9.5), (21.6, 15.0), (19.2, 15.0)]
+    P.append(side_prism('fin', fol, -0.25, 0.25, fin))
+    P.append(BX('rudder_seam', -0.28, 0.28, 19.0, 19.2, 10.0, 15.0, DK))
+    lo.append(side_prism('s_fin', [(9.8, 9.8), (20.4, 9.3), (21.8, 15.1), (19.0, 15.1)], -0.38, 0.38))
+    tp = [(-8.4, 21.0), (-8.4, 18.0), (-2.0, 16.0), (2.0, 16.0), (8.4, 18.0), (8.4, 21.0)]
+    P.append(plan_prism('tailplane', tp, 8.7, 9.1, wing))
+    P.append(BX('elev_seam', -8.3, 8.3, 19.6, 19.8, 9.08, 9.14, DK))
+    lo.append(plan_prism('s_tailplane', [(x * 1.01, y + (0.1 if y > 19 else -0.1)) for (x, y) in tp], 8.6, 9.2))
+    # fixed tricycle gear: spring-steel main legs, wheels, nose leg, the boarding step; chocks
+    WR, NR = 1.15, 0.95
+    for sx in (-1, 1):
+        wx = sx * 6.6
+        P.append(kit.tube('mleg', [(sx * 2.4, -4.4, 3.8), (wx, -4.4, WR)], 0.25, seg=6, mat=STL))
+        wl = cylinder('wheel', WR, 0.8, (0, 0, 0), seg=12, mat=TYRE, axis='X', base=False)
+        wl.location = (wx + sx * 0.3, -4.4, WR)
+        kit.apply_transform(wl)
+        P.append(wl)
+        P.append(cylinder('hubcap', 0.45, 0.12, (wx + sx * 0.72, -4.4, WR), seg=8, mat=STL, axis='X', base=False))
+        xa, xb = sorted((sx * 3.3, sx * 4.3))
+        P.append(BX('step', xa, xb, -4.85, -4.0, 2.75, 2.95, STL))
+        for y in (-6.0, -2.8):
+            P.append(side_prism('chock', [(y - 0.4, 0.0), (y + 0.4, 0.0), (y, 0.6)], wx + sx * 0.3 - 0.55, wx + sx * 0.3 + 0.55, YEL))
+            lo.append(side_prism('s_chock', [(y - 0.5, 0.0), (y + 0.5, 0.0), (y, 0.72)], wx + sx * 0.3 - 0.62, wx + sx * 0.3 + 0.62))
+        lo.append(kit.tube('s_mleg', [(sx * 2.4, -4.4, 3.9), (wx, -4.4, WR)], 0.42, seg=3, cap=False))
+        sw = cylinder('s_wheel', WR + 0.12, 1.0, (0, 0, 0), seg=6, axis='X', base=False)
+        sw.location = (wx + sx * 0.38, -4.4, WR)
+        kit.apply_transform(sw)
+        lo.append(sw)
+    nw = cylinder('nwheel', NR, 0.6, (0, 0, 0), seg=12, mat=TYRE, axis='X', base=False)
+    nw.location = (0, -17.6, NR)
     kit.apply_transform(nw)
-    P += [nw, BX('nstrut', -0.12, 0.12, -17.1, -16.9, 0.6, 3.0, STL)]
-    P.append(side_prism('nchock', [(-18.0, 0.0), (-17.4, 0.0), (-17.7, 0.45)], -0.45, 0.45, YEL))
-    lo.append(SH('s_nose_gear', -0.55, 0.55, -18.1, -16.3, 0.0, 2.9))
-    # mobile boarding stairs at the front door (left = +X side)
-    sx0, sx1, sz = 3.3, 11.5, 3.6
-    for i in range(7):
-        x = sx1 - (i + 1) * (sx1 - sx0 - 1.6) / 7
-        P.append(BX('stair_t', x, sx1 if i == 0 else x + (sx1 - sx0 - 1.6) / 7 + 0.1, -13.3, -11.9, 0.0, sz * (i + 1) / 7.0, STAIR))
-    P.append(BX('stair_pf', sx0, sx0 + 1.7, -13.4, -11.8, sz - 0.3, sz, STAIR))
-    for y in (-13.45, -11.75):
-        P.append(kit.tube('stair_rail', [(sx1, y, 2.0), (sx0 + 1.6, y, sz + 2.2), (sx0 + 0.1, y, sz + 2.2)], 0.09, seg=5, mat=STL))
-    lo.append(side_prism('s_stair', [(-13.5, 0.0), (-11.7, 0.0), (-11.7, sz + 2.3), (-13.5, sz + 2.3)], sx0, sx0 + 1.8))
-    ramp = prism_from_outline('s_stair_r', [(sx1 + 0.15, 0.0), (sx0 + 1.7, sz + 2.35), (sx0 + 1.7, 0.0)], 1.8, center=(0, -12.6, 0))
-    lo.append(ramp)
-    # picture sheet: navigation lights (port red at +X, starboard green at -X, white tail) and lit
-    # cabin windows at night
-    sh = sheet(A.id, 128, 32)
+    P += [nw, kit.tube('nleg', [(0, -17.2, 3.8), (0, -17.6, NR)], 0.22, seg=6, mat=STL),
+          BX('nfork', -0.5, 0.5, -17.9, -17.3, NR, NR + 1.2, STL)]
+    for y in (-19.0, -16.2):
+        P.append(side_prism('nchock', [(y - 0.35, 0.0), (y + 0.35, 0.0), (y, 0.5)], -0.45, 0.45, YEL))
+        lo.append(side_prism('s_nchock', [(y - 0.45, 0.0), (y + 0.45, 0.0), (y, 0.62)], -0.55, 0.55))
+    snw = cylinder('s_nwheel', NR + 0.12, 0.8, (0, 0, 0), seg=6, axis='X', base=False)
+    snw.location = (0, -17.6, NR)
+    kit.apply_transform(snw)
+    lo.append(snw)
+    lo.append(SH('s_nfork', -0.6, 0.6, -18.0, -17.2, NR + 0.9, NR + 1.3))
+    lo.append(kit.tube('s_nleg', [(0, -17.2, 4.0), (0, -17.6, NR + 1.2)], 0.38, seg=3, cap=False))
+    # picture sheet: navigation lights (port red at +X, starboard green at -X, white tail)
+    sh = sheet(A.id, 32, 8)
     uv_r = sh.put(CT.Canvas(8, 8, '#ff2a1a'))
     uv_g = sh.put(CT.Canvas(8, 8, '#2aff5a'))
     uv_w = sh.put(CT.Canvas(8, 8, '#ffffff'))
-    cw = CT.Canvas(96, 8, '#202a34')
-    for i in range(20):
-        cw.rect(i / 20 + 0.01, 0.15, i / 20 + 0.035, 0.85, '#f2dca0')
-    uv_c = sh.put(cw)
-    sheet_tet(sh, uv_r, (20.15, -0.5, WZ + 0.3), 0.45)
-    sheet_tet(sh, uv_g, (-20.15, -0.5, WZ + 0.3), 0.45)
-    sheet_tet(sh, uv_w, (0.0, 22.6, 17.3), 0.4)
-    for sx in (-1, 1):
-        q = sh.quad(uv_c, 27.2, 0.75, (0, 0, 0))
-        L.place(q, (sx * (RF + 0.1), -1.0, 6.5), rz=PI / 2 if sx > 0 else -PI / 2)
+    sheet_tet(sh, uv_r, (25.3, -10.2, WZ + 0.35), 0.35)
+    sheet_tet(sh, uv_g, (-25.3, -10.2, WZ + 0.35), 0.35)
+    sheet_tet(sh, uv_w, (0.0, 21.9, 15.0), 0.3)
     tally(A.id + ' lo', lo)
-    finish_m(A, P, lo, keep=[sh.obj()], size=224, ao=5.0)
-    L.shots(A, az=-125, el=14, extra=[{'name': 'side', 'view': {'az': 90, 'el': 8, 'fov': 32, 'pad': 1.05}}])
+    finish_m(A, P, lo, keep=[sh.obj()], size=208, ao=4.0)
+    L.shots(A, az=-125, el=14, extra=[{'name': 'side', 'view': {'az': 90, 'el': 8, 'fov': 32, 'pad': 1.05}},
+                                      {'name': 'cabin', 'size': 320, 'view': {'az': 55, 'el': 6, 'fov': 30, 'target': (0, -8, 6), 'dist': 60}}])
 
 
 
@@ -1319,9 +1355,6 @@ def build_hitec_office(A):
     # roof plant: water tanks + lift room
     P.append(BX('liftroom', -30.0, -22.0, 6.0, 14.0, ZT, ZT + 6.0, CLAD))
     lo.append(SH('s_lift', -30.1, -21.9, 5.9, 14.1, ZT, ZT + 6.1))
-    for x in (-8.0, -4.0):
-        P.append(cylinder('tank', 1.4, 2.6, (x, 12.0, ZT + 2.8), seg=10, mat=mp('#1e1e1e', 'hx_tank', rough=0.7)))
-        lo.append(lathe('s_tank', [(1.5, ZT + 2.8), (1.5, ZT + 5.5), (0.0, ZT + 5.6)], seg=5, loc=(x, 12.0, 0), close_bottom=False))
     # ---- the construction site next door
     CON = kit.material('whitewash', 'hx_concrete', base='#b4afa5', rough=0.9, var=0.12, grain=0.1, grime=0.6, streaks=0.5, dirt='#5f594f')
     BRK = kit.material('red_oxide', 'hx_brick', base='#a0523a', rough=0.85, var=0.14, grain=0.14, scale=1.2)
@@ -1343,8 +1376,6 @@ def build_hitec_office(A):
     P.append(BX('brick_w2', SX0, SX0 + 0.6, SY0, SY1, 0.0, 6.0, BRK))
     lo.append(SH('s_brick', SX0 - 0.1, 20.1, SY1 - 0.7, SY1 + 0.1, 0, FL - 0.75))
     lo.append(SH('s_brick2', SX0 - 0.1, SX0 + 0.7, SY0, SY1, 0, 6.1))
-    P.append(cylinder('sand', 4.0, 2.4, (26.0, -20.5, 0), seg=10, mat=kit.material('sandstone', 'hx_sand', base='#c8a878', rough=0.9), r2=0.6))
-    lo.append(lathe('s_sand', [(4.1, 0), (0.6, 2.5), (0.0, 2.5)], seg=6, loc=(26.0, -20.5, 0), close_bottom=False))
     for k in range(6):                 # the blue tin hoarding along the front
         x = 6.0 + k * 4.6
         P.append(BX('tin', x, x + 4.5, -24.6, -24.4, 0, 4.2, TIN))
@@ -1353,10 +1384,9 @@ def build_hitec_office(A):
     YEL = mp('#e8b81c', 'hx_crane', rough=0.6, grime=0.3)
     CWT = mp('#9c968c', 'hx_cweight', grime=0.5)
     MX, MY, MZ = 27.0, 21.5, 72.0
-    P.append(BX('crane_base', MX - 2.4, MX + 2.4, MY - 2.4, MY + 2.4, 0, 1.2, CON))
+    P.append(BX('crane_base', MX - 1.4, MX + 1.4, MY - 1.4, MY + 1.4, 0, 1.2, CON))
     P.append(_lattice('mast', MX - 1.2, MX + 1.2, MY - 1.2, MY + 1.2, 1.2, MZ, YEL))
-    lo.append(SH('s_mast', MX - 2.5, MX + 2.5, MY - 2.5, MY + 2.5, 0, 1.3))
-    lo.append(SH('s_mast2', MX - 1.45, MX + 1.45, MY - 1.45, MY + 1.45, 1.2, MZ))
+    lo.append(SH('s_mast2', MX - 1.45, MX + 1.45, MY - 1.45, MY + 1.45, 0.0, MZ))
     P.append(BX('slew', MX - 1.8, MX + 1.8, MY - 1.8, MY + 1.8, MZ, MZ + 1.6, YEL))
     P.append(BX('cab', MX - 1.6, MX + 0.6, MY - 3.8, MY - 1.8, MZ - 0.6, MZ + 2.2, mp('#e9e9e4', 'hx_cab')))
     P.append(BX('cab_win', MX - 1.65, MX + 0.65, MY - 3.85, MY - 3.0, MZ + 0.4, MZ + 2.0, mp('#2f4656', 'hx_cabwin')))
@@ -1384,11 +1414,11 @@ def build_hitec_office(A):
     sh = sheet(A.id, 512, 128)
     uv_n = sh.put(CT.text_cv('DECCAN INFOTECH', 448, 40, '#1d3f8a', '#eef2f4', size=0.8))
     lw = CT.Canvas(256, 16, GLS)
-    lw.grad(0.0, 1.0, '#2a5a8c', '#5a88b8')
+    lw.grad(0.0, 1.0, '#2c5f93', '#4f80b4')
     for k in range(12):
         lw.rect(k / 12 + 0.006, 0, k / 12 + 0.012, 1, MUL)
     for k in range(5):
-        lw.rect(0.05 + k * 0.19, 0.15, 0.13 + k * 0.19, 0.85, '#e9f0f6', 0.35)
+        lw.rect(0.05 + k * 0.19, 0.15, 0.13 + k * 0.19, 0.85, '#e9f0f6', 0.2)
     uv_w = sh.put(lw)
     uv_r = sh.put(CT.Canvas(8, 8, '#ff2a1a'))
     sh.quad(uv_n, 24.0, 2.6, (-22.0, Y0 - 0.45, ZT + 1.7))
@@ -1397,7 +1427,7 @@ def build_hitec_office(A):
     sheet_box(sh, uv_r, -22.6, -21.8, MY - 0.4, MY + 0.4, JZ + 2.0, JZ + 2.7)
     sheet_box(sh, uv_r, MX - 0.4, MX + 0.4, MY - 0.4, MY + 0.4, JZ + 7.0, JZ + 7.7)
     tally(A.id + ' lo', lo)
-    finish_m(A, P, lo, keep=[sh.obj()], size=320, ao=6.0)
+    finish_m(A, P, lo, keep=[sh.obj()], size=288, ao=6.0)
     L.shots(A, az=-35, el=12, extra=[{'name': 'front', 'view': {'az': 0, 'el': 5, 'fov': 32, 'pad': 1.05}}])
 
 
@@ -1410,7 +1440,7 @@ def STL_():
 # NOSTALGIA_PARKED=1, never packed into the real pack. cyber_towers (above) is shipped.
 if os.environ.get('NOSTALGIA_PARKED') == '1':
     kit.asset('spanish_mosque', 'landmark', draw='spanish_mosque', face='s', footprint=[40, 40], height=66.0, fit='footprint', floodlit=True)(build_spanish_mosque)
-    kit.asset('atc_tower', 'landmark', draw='control_tower', footprint=[18, 18], height=78.0, fit='footprint', floodlit=True)(build_atc_tower)
+    kit.asset('atc_tower', 'landmark', draw='control_tower', footprint=[18, 18], height=78.0, fit='footprint')(build_atc_tower)
     kit.asset('parked_plane', 'landmark', draw='aeroplane', face='e', footprint=[40, 46], height=21.0, fit='footprint')(build_parked_plane)
     kit.asset('begumpet_airport', 'landmark', draw='airport_terminal', face='s', footprint=[120, 36], height=33.0, fit='footprint')(build_begumpet_airport)
     kit.asset('osmania_arts_college', 'landmark', draw='ou_arts_college', face='s', footprint=[200, 70], height=66.0, fit='footprint', floodlit=True)(build_ou_arts_college)

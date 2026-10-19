@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 47188,
+ "bytes": 48964,
  "clips": {},
  "family": "landmark",
  "file": "lal_darwaza_temple.glb",
@@ -12,7 +12,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 46.1,
+ "kb": 47.8,
  "kit": 1,
  "materials": [
   "M_lal_darwaza_temple",
@@ -50,7 +50,7 @@
   25.042
  ],
  "tint": null,
- "tris": 328,
+ "tris": 360,
  "units": "u",
  "up": "Z"
 }

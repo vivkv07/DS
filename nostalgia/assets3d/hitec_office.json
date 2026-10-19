@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 53672,
+ "bytes": 47208,
  "clips": {},
  "family": "landmark",
  "file": "hitec_office.glb",
@@ -12,7 +12,7 @@
   "image/webp",
   "image/webp"
  ],
- "kb": 52.4,
+ "kb": 46.1,
  "kit": 1,
  "materials": [
   "M_hitec_office",
@@ -20,7 +20,7 @@
  ],
  "max": [
   36.6,
-  24.0,
+  23.4,
   81.3
  ],
  "meta": {
@@ -42,11 +42,11 @@
  "script": "_lm_modern",
  "size": [
   72.0,
-  50.1,
+  49.5,
   81.3
  ],
  "tint": null,
- "tris": 378,
+ "tris": 320,
  "units": "u",
  "up": "Z"
 }

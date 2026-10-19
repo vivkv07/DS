@@ -1,0 +1,53 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 35748,
+ "clips": {},
+ "family": "landmark",
+ "file": "ravindra_bharathi.glb",
+ "front": "-Y",
+ "id": "ravindra_bharathi",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 34.9,
+ "kit": 1,
+ "materials": [
+  "M_ravindra_bharathi",
+  "M_ravindra_bharathi_sheet@night"
+ ],
+ "max": [
+  40.1,
+  26.1,
+  43.1
+ ],
+ "meta": {
+  "face": "n",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   80,
+   52
+  ],
+  "height": 43.0,
+  "landmark": "ravindra_bharathi"
+ },
+ "min": [
+  -40.1,
+  -27.2,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_city",
+ "size": [
+  80.2,
+  53.3,
+  43.1
+ ],
+ "tint": null,
+ "tris": 172,
+ "units": "u",
+ "up": "Z"
+}

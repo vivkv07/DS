@@ -1,0 +1,52 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 27276,
+ "clips": {},
+ "family": "landmark",
+ "file": "indira_park_gate.glb",
+ "front": "-Y",
+ "id": "indira_park_gate",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 26.6,
+ "kit": 1,
+ "materials": [
+  "M_indira_park_gate",
+  "M_indira_park_gate_sheet@night"
+ ],
+ "max": [
+  20.0,
+  7.0,
+  20.2
+ ],
+ "meta": {
+  "face": "s",
+  "fit": "footprint",
+  "footprint": [
+   40,
+   14
+  ],
+  "height": 20.0,
+  "landmark": "indira_park_gate"
+ },
+ "min": [
+  -20.0,
+  -7.0,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_city",
+ "size": [
+  40.0,
+  14.0,
+  20.2
+ ],
+ "tint": null,
+ "tris": 202,
+ "units": "u",
+ "up": "Z"
+}

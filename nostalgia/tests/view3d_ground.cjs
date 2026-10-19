@@ -2,7 +2,11 @@
  * Headless Chromium with SwiftShader WebGL (software GL: judge perf by JS ms and draw calls, not fps).
  * three.js is served from the vendored copy by routing the jsDelivr URL (hermetic, no network).
  *
- *   checks: the provider owns every chunk's ground (no painter textures), the road network analysis
+ *   checks: the road analysis + soil map are precomputed in top-down idle slices (no 3D needed),
+ *     the focus chunk has ground (full or provisional) on the first 3D frame and right after a
+ *     rebuild, job slices end near their deadline, kerbed junction corners have no overlapping kerb /
+ *     paver tops, lanes stay darker than the soil at 11:00 / 16:40 / 18:15 (screen luma ratio < 0.8),
+ *     the provider owns every chunk's ground (no painter textures), the road network analysis
  *     (pieces, junction polygons, zebras), N.view3d.groundHeightAt (raised footpath, flat road, pothole
  *     dip) and the elevation(e) hook, rain wetness, before/after toggles without leaks, perf numbers
  *     (draw calls, triangles, JS ms, chunk build ms) before vs after in dense Abids, zero errors.
@@ -108,6 +112,29 @@ async function shoot(page, file) {
   await page.evaluate(() => N.view3d.settle(5000));
   await page.screenshot({ path: file, timeout: 300000 });
 }
+/** mean sRGB luma (5x5 patches) of 'road' vs 'ground' screen points of a screenshot */
+async function lumaOf(browser, file, pts) {
+  const page = await browser.newPage();
+  await page.setContent('<html><body></body></html>');
+  const r = await page.evaluate(async (a) => {
+    const i = await new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.src = a.src; });
+    const c = document.createElement('canvas'); c.width = i.width; c.height = i.height; const g = c.getContext('2d'); g.drawImage(i, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height).data, out = { road: [], ground: [] };
+    for (const p of a.pts) {
+      let s = 0, n = 0;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const X = Math.round(p.sx) + dx, Y = Math.round(p.sy) + dy;
+        if (X < 0 || Y < 0 || X >= c.width || Y >= c.height) continue;
+        const o = (Y * c.width + X) * 4; s += 0.2126 * d[o] + 0.7152 * d[o + 1] + 0.0722 * d[o + 2]; n++;
+      }
+      if (n) out[p.k].push(s / n);
+    }
+    return out;
+  }, { src: 'data:image/png;base64,' + fs.readFileSync(file).toString('base64'), pts });
+  await page.close();
+  const m = (l) => (l.length ? l.reduce((x, y) => x + y, 0) / l.length : NaN);
+  return { road: +m(r.road).toFixed(1), ground: +m(r.ground).toFixed(1), nRoad: r.road.length, nGround: r.ground.length, ratio: +(m(r.road) / m(r.ground)).toFixed(3) };
+}
 /** BEFORE | AFTER side by side with labels, drawn in a blank page */
 async function compose(browser, before, after, out, title) {
   const page = await browser.newPage();
@@ -132,9 +159,22 @@ async function compose(browser, before, after, out, title) {
 async function main() {
   const browser = await chromium.launch({ args: ARGS });
   const { page, errors } = await openPage(browser);
+  // ---- D1: the global road analysis + soil colours run in small slices while still top-down (the
+  // headless page only runs its rAF loop while frames are requested: pump it like a browser would)
+  console.log('\n== top-down precompute (before any 3D)');
+  const pre = await page.evaluate(async () => {
+    const t0 = performance.now(), f0 = N.perf.frames;
+    while (!N.view3d.ground.stats().precomputed && performance.now() - t0 < 150000) await new Promise((r) => requestAnimationFrame(r));
+    const s = N.view3d.ground.stats();
+    return { done: s.precomputed, wallMs: Math.round(performance.now() - t0), frames: N.perf.frames - f0, analyzeMs: s.analyzeMs, soilMs: s.soilMs, engine: !!(N.view3d.engine && N.view3d.engine.ready) };
+  });
+  check(pre.done && !pre.engine, 'road network analysis + soil map precomputed in top-down idle slices before the first 3D switch (' + pre.analyzeMs + ' ms work over ' + pre.frames + ' frames)', JSON.stringify(pre));
+
   console.log('\n== 3D ground: switch to third person');
   await page.evaluate(() => { N.view3d.setQuality({ adaptive: false }); N.debug.teleport('abids'); N.view.set('tps'); });
   check(await page.waitForFunction(() => N.view.mode === 'tps', null, { timeout: 240000 }).then(() => true, () => false), '3D third person ready');
+  const first = await page.evaluate(() => N.view3d.ground.stats());
+  check(first.focusCovered, 'the chunk under the player has ground (full or provisional) on the first 3D frame', JSON.stringify({ ready: first.focusReady, prov: first.provChunks }));
   const api = await page.evaluate(() => ({ ground: !!N.view3d.ground, gh: typeof N.view3d.groundHeightAt, enabled: N.view3d.ground && N.view3d.ground.enabled }));
   check(api.ground && api.gh === 'function' && api.enabled, 'N.view3d.ground + N.view3d.groundHeightAt present, enabled', JSON.stringify(api));
   await page.evaluate(() => N.view3d.settle(40000));
@@ -143,6 +183,36 @@ async function main() {
   check(st0.g.analyzed && st0.g.pieces > 50 && st0.g.junctions > 20, 'road network analysed (' + st0.g.pieces + ' pieces, ' + st0.g.junctions + ' junction polygons, ' + st0.g.zebras + ' zebras, ' + st0.g.bays + ' bus bays, ' + st0.g.analyzeMs + ' ms)');
   check(st0.g.zebras > 0, 'zebra crossings on junction approaches');
   check(st0.g.chunks >= 4 && st0.v.groundTextures === 0, 'every chunk ground built by the provider (' + st0.g.chunks + ' chunks), no painter textures (' + st0.v.groundTextures + ')');
+
+  // ---- D1: provisional ground (flat ribbons from N.world.data.roads + a soil-tinted terrain plane)
+  // covers a chunk within a frame while its full job runs, so the bare 'outer' plane never shows
+  const prov = await page.evaluate(async () => {
+    N.view3d.ground.rebuild();
+    for (let i = 0; i < 2; i++) await new Promise((r) => requestAnimationFrame(r));
+    const s = N.view3d.ground.stats();
+    N.view3d.settle(60000);
+    const s2 = N.view3d.ground.stats();
+    return { covered: s.focusCovered, ready: s.focusReady, provChunks: s.provChunks, provAvgMs: s.provAvgMs, after: s2.provChunks, chunks: s2.chunks };
+  });
+  check(prov.covered, 'after a rebuild the focus chunk is covered within 2 frames (provisional ' + prov.provChunks + ' chunks, ' + prov.provAvgMs + ' ms each)', JSON.stringify(prov));
+  check(prov.provAvgMs < 25, 'provisional chunk build is cheap (' + prov.provAvgMs + ' ms avg; target < 5 ms on an idle desktop)');
+  check(prov.after <= 2 && prov.chunks >= 4, 'full chunks replace the provisional layer (' + prov.after + ' provisional left of ' + prov.chunks + ')');
+
+  // ---- D6: job slices stay near their deadline (no long hitches); SwiftShader on a loaded box is noisy
+  const ov = await page.evaluate(() => N.view3d.ground.stats().overMs);
+  console.log('  slice overrun past deadline ' + JSON.stringify(ov));
+  check(ov.p95 < 40, 'ground job slices end near their deadline (overrun p50 ' + ov.p50 + ' ms, p95 ' + ov.p95 + ' ms, max ' + ov.max + ' ms)');
+
+  // ---- D5: kerbed junction corners: one footpath polygon per corner, no overlapping kerb / paver tops
+  const ko = await page.evaluate(() => {
+    const G = N.view3d.ground, x = N.player.x, y = N.player.y;
+    return { all: G.kerbOverlaps(x, y, 2500, 80), corners: G.kerbOverlaps(x, y, 2500, 80, 'junction'), strips: G.kerbOverlaps(x, y, 2500, 80, 'pieces') };
+  });
+  // corner-caused overlaps = all - strips-only (strips of curved / kinked pieces overlap among themselves;
+  // that is the road data, not the corners). Before this round: ~4.7 per kerbed corner here (old fans).
+  const cornerPairs = ko.all.pairs - ko.strips.pairs, perCorner = +(cornerPairs / Math.max(1, ko.all.corners)).toFixed(2);
+  console.log('  kerb overlaps ' + JSON.stringify({ junctions: ko.all.junctions, corners: ko.all.corners, all: ko.all.pairs, cornersOnly: ko.corners.pairs, stripsOnly: ko.strips.pairs, worst: ko.all.worst.slice(0, 3) }));
+  check(ko.all.junctions > 5 && perCorner <= 2, 'kerbed junction corners: one footpath polygon per corner, few overlapping kerb / paver tops (' + cornerPairs + ' corner-caused pairs over ' + ko.all.corners + ' corners = ' + perCorner + ' per corner, <= 2)');
 
   // ---- heights: raised footpath, flat road, pothole dip, elevation hook
   const hs = await page.evaluate(() => {
@@ -216,6 +286,35 @@ async function main() {
   });
   await page.evaluate(() => N.view3d.setQuality({ pixelRatio: 1 }));
   check(rain.wet > 0.05, 'rain wets the roads (uWet ' + rain.wet + ', raining ' + rain.raining + ', pothole version ' + rain.v0 + ' -> ' + rain.v1 + ')');
+
+  // ---- D4: lanes must stay readable against the soil at noon, afternoon and dusk: sample screen
+  // pixels of road vs bare ground (classified by the 2D surface grid, unoccluded ground hits only)
+  console.log('\n== lane / terrain contrast (Himayatnagar colony lanes, third person)');
+  for (const [h, m] of [[11, 0], [16, 40], [18, 15]]) {
+    const S = { name: 'contrast', at: 'giver_himayatnagar', h, m, mode: 'tps', look: 'road', kind: ['lane'], snap: true, pitch: 0.34 };
+    await setView(page, S);
+    const file = path.join(OUT, 'contrast_himayat_lanes_' + String(h).padStart(2, '0') + String(m).padStart(2, '0') + '.png');
+    await shoot(page, file);
+    const pts = await page.evaluate(() => {
+      const T = N.view3d.THREE || window.THREE, E = N.view3d.engine, cam = E.camera, Sf = N.SURF, W = N.world;
+      const rc = new T.Raycaster(), out = [], w = innerWidth, hh = innerHeight;
+      const cls = (x, y) => { const s = W.surfaceAt(x, y); return s === Sf.ROAD ? 'road' : s === Sf.GROUND ? 'ground' : null; };
+      for (let sy = hh * 0.45; sy < hh * 0.95; sy += 10) for (let sx = w * 0.06; sx < w * 0.94; sx += 10) {
+        rc.setFromCamera(new T.Vector2(sx / w * 2 - 1, -(sy / hh * 2 - 1)), cam);
+        const hit = rc.intersectObjects(E.scene.children, true)[0];
+        if (!hit || !/^ground/.test(hit.object.name || '')) continue;
+        const x = hit.point.x, y = hit.point.z, d = Math.hypot(x - cam.position.x, y - cam.position.z);
+        if (d < 6 || d > 70) continue;
+        const k = cls(x, y);
+        if (!k || [[3, 0], [-3, 0], [0, 3], [0, -3]].some(([dx, dy]) => cls(x + dx, y + dy) !== k)) continue;
+        if (k === 'road') { const q = W.nearestRoadPoint(x, y); if (!q || q.road.kind !== 'lane') continue; }
+        out.push({ k, sx, sy });
+      }
+      return out;
+    });
+    const lm = await lumaOf(browser, file, pts);
+    check(lm.nRoad >= 4 && lm.nGround >= 4 && lm.ratio < 0.8, 'lane / bare-ground luminance at ' + h + ':' + String(m).padStart(2, '0') + ' = ' + lm.road + ' / ' + lm.ground + ' = ' + lm.ratio + ' (< 0.8; ' + lm.nRoad + ' + ' + lm.nGround + ' samples)');
+  }
 
   // ---- screenshots: AFTER, then BEFORE (old painted ground) for every view
   if (SHOTS) {

@@ -117,7 +117,7 @@ async function stage(page, name, o) {
     const td = S.mode === '3d';
     const at = (P, d, off) => { const C = P.cum, Q = P.pts, n = C.length; d = Math.max(0, Math.min(P.len, d)); let i = 1; while (i < n - 1 && C[i] < d) i++; const s0 = C[i - 1], L = (C[i] - s0) || 1, t = (d - s0) / L; const x0 = Q[i * 2 - 2], y0 = Q[i * 2 - 1], x1 = Q[i * 2], y1 = Q[i * 2 + 1]; const ux = (x1 - x0) / L, uy = (y1 - y0) / L; return { x: x0 + (x1 - x0) * t + uy * (off || 0), y: y0 + (y1 - y0) * t - ux * (off || 0) }; };
     let x = s.x, y = s.y, fx = s.x, fy = s.y;
-    if (s.kind === 'junction') { const A = s.arms.slice().sort((a, b) => b.len - a.len)[0]; const fw = (N.world.FOOT && N.world.FOOT[A.kind]) || 4; const q = at(A, (td ? 95 : 40) + A.w / 2, A.w / 2 + fw * 0.5); x = q.x; y = q.y; }
+    if (s.kind === 'junction') { const A = s.arms.slice().sort((a, b) => b.len - a.len)[0]; const fw = (N.world.FOOT && N.world.FOOT[A.kind]) || 4; const q = at(A, (td ? 62 : 40) + A.w / 2, A.w / 2 + fw * 0.5); x = q.x; y = q.y; }
     else if (s.kind === 'colony_am' || s.kind === 'colony_pm') { const g = s.geo; const q = at(g.path, g.path.mid + (td ? -48 : -12), td ? 2 : 0); x = q.x; y = q.y; fx = g.x; fy = g.y; }
     else if (s.kind === 'cinema') { const back = td ? s.roadW + 14 : 26; x = s.x - s.nx * back; y = s.y - s.ny * back; fx = s.x; fy = s.y; }
     else if (s.kind === 'oldcity') { const q = at(s.path, s.path.mid + (td ? -42 : -8), 0); x = q.x; y = q.y; }
@@ -234,6 +234,7 @@ async function partTop(browser) {
       await simWait(page, 4);
       await look3d(page, st.id);
       await page.evaluate(() => { try { N.view3d.settle(3000); } catch (e) { /* ok */ } });
+      await page.waitForFunction(() => { try { const s = N.view3d.stats(); return (s.visChunks || s.chunks || 0) > 2 && (s.calls || 0) > 20; } catch (e) { return true; } }, null, { timeout: 120000 }).catch(() => null);
       await simWait(page, 1.5);
       const s3 = await page.evaluate(() => N.citylifeEvents.stats());
       check(s3.layer3d, name + ': 3D layer up', JSON.stringify(s3.im3d) + ' ms3d ' + s3.ms3d);
@@ -283,20 +284,21 @@ async function partRules(browser) {
     N.vehicles.enter(p, v);
     return { cop: !!cop, copXY: cop ? [Math.round(cop.x), Math.round(cop.y)] : null, x: Math.round(s.x), y: Math.round(s.y) };
   }, st.id);
-  // ride in towards the havaldar (real input)
+  // ride in towards the havaldar and on across the junction (real input)
   let whistled = false, moved = 0;
   const p0 = await page.evaluate(() => ({ x: N.player.x, y: N.player.y }));
-  for (let i = 0; i < 14 && !whistled; i++) {
-    await page.evaluate((c) => { const p = N.player, v = p.vehicle; if (!v) return; const tx = c.copXY ? c.copXY[0] : c.x, ty = c.copXY ? c.copXY[1] : c.y; v.angle = Math.atan2(ty - p.y, tx - p.x); }, cyc);
-    await page.keyboard.down('ArrowUp'); await sleep(500); await page.keyboard.up('ArrowUp');
-    await simWait(page, 0.5, 15000);
-    whistled = await page.evaluate(() => window.__cle.beats.includes('junction:whistle_kid'));
+  const far = { x: cyc.x + (cyc.x - p0.x) * 1.2, y: cyc.y + (cyc.y - p0.y) * 1.2 };
+  for (let i = 0; i < 12; i++) {
+    await page.evaluate((c) => { const p = N.player, v = p.vehicle; if (!v) return; const near = Math.hypot(c.x - p.x, c.y - p.y) > 20 && !c.passed; const tx = near ? c.x : c.fx, ty = near ? c.y : c.fy; if (!near) c.passed = true; v.angle = Math.atan2(ty - p.y, tx - p.x); }, Object.assign({ fx: far.x, fy: far.y }, cyc));
+    await page.keyboard.down('ArrowUp'); await simWait(page, 0.6, 15000); await page.keyboard.up('ArrowUp');
+    if (i === 0) console.log('    cyc', JSON.stringify(await page.evaluate(() => ({ veh: N.player.vehicle && N.player.vehicle.type, sp: N.player.vehicle && +N.player.vehicle.speed.toFixed(1), mode: N.state.mode, lock: N.player.controlsLocked }))));
+    whistled = whistled || await page.evaluate(() => window.__cle.beats.includes('junction:whistle_kid'));
   }
   const p1 = await page.evaluate(() => ({ x: N.player.x, y: N.player.y }));
   moved = Math.hypot(p1.x - p0.x, p1.y - p0.y);
   check(cyc.cop, 'junction: a havaldar on duty', JSON.stringify(cyc));
   check(whistled, 'junction: the havaldar whistles at Chinnu on his cycle');
-  check(moved > 15, 'Chinnu on a cycle can move through the jam', 'moved ' + moved.toFixed(0) + ' u');
+  check(moved > 40, 'Chinnu on a cycle can ride through the jam', 'moved ' + moved.toFixed(0) + ' u');
   await page.evaluate(() => { const p = N.player; if (p.vehicle) N.vehicles.exit(p, true); });
   // on foot: push straight through the queue for a few seconds: never stuck for long
   const trap = await page.evaluate(async (id) => {
@@ -311,7 +313,10 @@ async function partRules(browser) {
     const q0 = await page.evaluate(() => ({ x: N.player.x, y: N.player.y }));
     const k = await page.evaluate((t) => { const p = N.player, dx = t.vx - p.x, dy = t.vy - p.y; return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'ArrowRight' : 'ArrowLeft') : (dy > 0 ? 'ArrowDown' : 'ArrowUp'); }, trap);
     await page.keyboard.down(k);
-    await simWait(page, 5, 60000);
+    for (let i = 0; i < 5; i++) {
+      await simWait(page, 1, 20000);
+      console.log('    trap', k, JSON.stringify(await page.evaluate((id) => { const sc = N.citylifeEvents.scene(id); return { mode: N.state.mode, lock: N.player.controlsLocked, pm: N.player.mode, veh: !!N.player.vehicle, mv: N.input.move, x: Math.round(N.player.x), y: Math.round(N.player.y), v: +Math.hypot(N.player.vx, N.player.vy).toFixed(1), trap: sc && sc.st.J ? +sc.st.J.trapT.toFixed(2) : null, un: N.citylifeEvents.stats().unstuck }; }, st.id)));
+    }
     await page.keyboard.up(k);
     const q1 = await page.evaluate(() => ({ x: N.player.x, y: N.player.y, un: N.citylifeEvents.stats().unstuck }));
     const d = Math.hypot(q1.x - q0.x, q1.y - q0.y);

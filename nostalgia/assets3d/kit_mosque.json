@@ -2,7 +2,7 @@
  "anchors": {},
  "blender": "5.2.2 LTS",
  "budget": 20000,
- "bytes": 54196,
+ "bytes": 54440,
  "clips": {},
  "family": "landmark",
  "file": "kit_mosque.glb",
@@ -11,7 +11,7 @@
  "images": [
   "image/webp"
  ],
- "kb": 52.9,
+ "kb": 53.2,
  "kit": 1,
  "materials": [
   "M_kit_mosque"
@@ -53,7 +53,7 @@
   35.66
  ],
  "tint": null,
- "tris": 650,
+ "tris": 738,
  "units": "u",
  "up": "Z"
 }
