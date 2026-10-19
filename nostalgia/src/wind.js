@@ -31,6 +31,10 @@
  *   stats()               counters (2D trees drawn / live palms / clothes / flags; 3D clothes, tails...)
  *   amp2d                 2D amplitude multiplier (1); enabled (true: off = everything still)
  *   sample2d(t)           tests: the 2D canopy offset {x, y} (u) a tree structure gets this frame
+ *   opts                  {livePalms, leaves, breathe, clothes} 2D detail switches (all true)
+ *   show3d                false hides this layer's 3D meshes (perf A/B); bypass2d(on) restores world.js's own
+ *                         tree / building drawing; bench2d(reps) -> per-frame ms of the trees / buildings in
+ *                         view drawn both ways (tests)
  *
  * What sways:
  *   3D  core procedural trees: the shared canopy material (blobs + palm crowns: height weight + leaf / frond
@@ -40,7 +44,7 @@
  *       session (src/models3d_props.js) owns registerStructure('tree') with LOD / impostors and reads
  *       N.wind.uniforms directly; patchMaterial(m, {weight: 'color'}) matches its baked R/G/B wind data
  *       if it wants the shared shader. Temple (saffron) and dargah (green) flags: 1 instanced call for the poles + 1
- *       for the cloth. Clothes on rooftop clotheslines near the camera: 1 instanced call (+ the wire).
+ *       for the cloth. Clothes (and their wires) on rooftop lines near the camera share the flags' cloth call.
  *       Sankranti kites' tails: 1 dynamic ribbon mesh while the festival is on.
  *   2D  tree canopies offset by N.wind.sway (amplitude by tree height), trunks bend, leafy canopies breathe
  *       and flash pale leaf undersides; palm fronds near the camera are re-stroked one by one (bending,
@@ -639,7 +643,7 @@
     poles.count = fl.length;
     const m = new THREE.Matrix4(), c = new THREE.Color();
     fl.forEach((f, i) => { m.makeScale(1, f.h * VS + 1.5, 1); m.setPosition(f.x, 0, f.y); poles.setMatrixAt(i, m); });
-    poles.instanceMatrix.needsUpdate = true; poles.frustumCulled = false; poles.castShadow = !!H.quality.shadows; poles.name = 'windfx-flagpoles';
+    poles.instanceMatrix.needsUpdate = true; poles.frustumCulled = false; poles.castShadow = false; // thin poles: no shadow pass (keeps the layer at <= 3 draw calls) poles.name = 'windfx-flagpoles';
     H.layer.add(poles); L3.flagPoles = poles;
     // one cloth mesh for every flag (the taper of the temple pennants rides in the instance scale z) and, after
     // them, the clothes on rooftop lines near the camera (scale z 0.5: hanging cloth, see the shader)
@@ -655,8 +659,7 @@
       cloth.setMatrixAt(i, m); c.set(f.color); cloth.setColorAt(i, c);
     });
     cloth.instanceMatrix.needsUpdate = true; if (cloth.instanceColor) cloth.instanceColor.needsUpdate = true;
-    cloth.frustumCulled = false; cloth.castShadow = !!H.quality.shadows; cloth.name = 'windfx-flags';
-    if (H.quality.shadows) cloth.customDepthMaterial = depthMaterial(mat);
+    cloth.frustumCulled = false; cloth.castShadow = false; cloth.name = 'windfx-flags'; // no shadow pass (draw-call budget)
     H.layer.add(cloth); L3.flagCloth = cloth; L3.clothes = cloth; L3.clothBase = fl.length; L3.clothKey = '';
     ST.flags3d = fl.length;
   }

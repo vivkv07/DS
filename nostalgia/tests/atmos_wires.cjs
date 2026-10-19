@@ -144,9 +144,24 @@ async function checks(page) {
         if (inner && h < 26 - 1e-6) { lowCarriage++; if (lowList.length < 6) lowList.push([sp.kind, sp.id, +t.toFixed(2), +h.toFixed(2), Math.round(x), Math.round(y), +sp.ah.toFixed(1), +sp.bh.toFixed(1), +sp.sag.toFixed(2)]); }
       }
     }
-    out.bld = { bad, badList }; out.clear = { worst, bus: BUS, samples, lowCarriage, lowList };
+    out.bld = { bad, badList };
+    // pole spacing (>= 20 u between any two poles) and no pole on a plaza / in the open carriageway
+    const allP = []; for (const c of G.cells.values()) for (const q of c.poles) allP.push(q);
+    let close = 0, onPlaza = 0, minGap = 1e9;
+    const grid = new Map();
+    for (const q of allP) { const k = Math.floor(q.y / 32) * 4096 + Math.floor(q.x / 32); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(q); }
+    for (const q of allP) {
+      const i0 = Math.floor(q.x / 32), j0 = Math.floor(q.y / 32);
+      for (let j = j0 - 1; j <= j0 + 1; j++) for (let i = i0 - 1; i <= i0 + 1; i++) for (const o of grid.get(j * 4096 + i) || []) {
+        if (o.id <= q.id) continue; const d = Math.hypot(o.x - q.x, o.y - q.y); minGap = Math.min(minGap, d); if (d < 20) close++;
+      }
+      const sf = N.world.surfaceAt(q.x, q.y);
+      if (sf === S.PLAZA) onPlaza++;
+      if (sf === S.ROAD) { let open = true; for (let a = 0; a < 8 && open; a++) { const s2 = N.world.surfaceAt(q.x + Math.cos(a * 0.785) * 5, q.y + Math.sin(a * 0.785) * 5); if (s2 !== S.ROAD) open = false; } if (open) onPlaza++; }
+    }
+    out.poleGap = { n: allP.length, close, onPlaza, minGap }; out.clear = { worst, bus: BUS, samples, lowCarriage, lowList };
     // API
-    const p = N.places.charminar, per = W.perches(p.x, p.y, 150);
+    const p = { x: 8700, y: 7950 }, per = W.perches(p.x, p.y, 150); // Old City lanes
     let qn = 0; W.query(p.x - 100, p.y - 100, p.x + 100, p.y + 100, () => qn++);
     let pn = 0; W.poles(p.x - 100, p.y - 100, p.x + 100, p.y + 100, () => pn++);
     out.api = { perches: per.length, perchMinH: per.reduce((a, q) => Math.min(a, q.h), 99), spacing: per.length > 1 ? Math.hypot(per[1].x - per[0].x, per[1].y - per[0].y) : 0, query: qn, poles: pn, sample: per[0] ? Object.keys(per[0]) : [] };
@@ -164,10 +179,11 @@ async function checks(page) {
   info('per km of road (world u): ' + r.perKm.polesPerKmU.toFixed(1) + ' poles, ' + r.perKm.spansPerKmU.toFixed(0) + ' spans; median power span ' + r.perKm.medianPowerSpan.toFixed(1) + ' u');
   info('rejected ' + JSON.stringify(r.stats.rejected));
   check(r.fp[0] === r.fp[1], 'deterministic: regenerated (other order) = identical', r.fp.join(' vs '));
+  check(r.poleGap.close === 0 && r.poleGap.onPlaza === 0, 'poles >= 20 u apart, none on a plaza or in the open carriageway', JSON.stringify(r.poleGap));
   check(r.bld.bad === 0, 'no span passes through a building / landmark footprint', r.bld.bad + ' ' + JSON.stringify(r.bld.badList));
   check(r.clear.worst >= r.clear.bus, 'clearance over drivable cells >= bus height ' + r.clear.bus.toFixed(1) + ' u', 'min ' + r.clear.worst.toFixed(2) + ' u over ' + r.clear.samples + ' samples');
   check(r.clear.lowCarriage === 0, 'wires >= 26 u over the carriageway proper', r.clear.lowCarriage + ' low samples ' + JSON.stringify(r.clear.lowList));
-  check(r.api.perches > 20 && r.api.perchMinH > 15 && r.api.spacing > 2 && r.api.spacing < 5, 'perches near Charminar', JSON.stringify(r.api));
+  check(r.api.perches > 20 && r.api.perchMinH > 15 && r.api.spacing > 2 && r.api.spacing < 5, 'perches in the Old City lanes', JSON.stringify(r.api));
   check(r.api.query > 0 && r.api.poles > 0, 'query / poles API');
   check(r.kites[0] === 1 && r.kites[1] > 0 && r.kites[1] < 1 && r.kites[2] === 0, 'Sankranti kites by date (20 Jan full, 20 Feb thinning, June none)', r.kites.join(', '));
   check(r.errs === 0, 'no N.err reports from wires');
@@ -208,6 +224,7 @@ async function run3d(page) {
   let first = true;
   for (const [name, mode, pitch] of V3) {
     if (ONLY && ONLY !== '3d' && ONLY !== name) continue;
+    if (process.env.V3 && process.env.V3.split(',').indexOf(name) < 0) continue;
     const S = SPOTS[name];
     const r = await place(page, S);
     await page.evaluate(([mode, yaw, pitch]) => { N.view.set(mode); N.view3d.setCamera({ yaw, pitch, snap: true }); }, [mode, r.yaw, pitch]);

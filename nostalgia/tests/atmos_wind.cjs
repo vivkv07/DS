@@ -353,7 +353,7 @@ async function run3D(browser, page) {
       if (SHOTS && w === 'storm') await compose(browser, files, path.join(OUT, 'wind_3d_' + S.name + '_strip.png'), ['t', '+0.25 s', '+0.5 s', '+0.75 s'], '3D storm wind (no rain) ' + S.name);
       for (const f of files) fs.unlinkSync(f);
     }
-    check(motion.storm > motion.calm * 1.5 && motion.storm > 0.003, '3D ' + S.name + ': visible motion grows calm -> storm (changed px ' + (motion.calm * 100).toFixed(2) + '% -> ' + (motion.storm * 100).toFixed(2) + '% per 0.25 s)');
+    check(motion.storm > motion.calm * 1.25 && motion.storm > 0.003, '3D ' + S.name + ': visible motion grows calm -> storm (changed px ' + (motion.calm * 100).toFixed(2) + '% -> ' + (motion.storm * 100).toFixed(2) + '% per 0.25 s; Sankranti kites and rooftop kids move in both)');
   }
   // perf: draw calls + JS ms with the wind layer's objects shown vs hidden
   const perf = await page.evaluate(async () => {

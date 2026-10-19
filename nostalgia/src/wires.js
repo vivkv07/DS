@@ -83,6 +83,7 @@
   const POLE_COL3 = { psc: '#b8b2a5', rail: '#5d4a3e', tube: '#808a85' };
   const POLE_W = { psc: 1.6, rail: 1.05, tube: 1.2 };
   const WIRE_COL = { power: '#2f2c29', cable: '#141210', service: '#3b3530' };
+  const WIRE_COL2 = { power: '#2a2826', cable: '#1e1c1a', service: '#3a3632' };
   const WIRE_COL3 = { power: '#3a3836', cable: '#121110', service: '#2b2724' };
 
   // catenary shape: 0 at the ends, 1 mid-span
@@ -278,16 +279,51 @@
     });
     return hit;
   }
-  const SLIDE = [0, 5, -5, 10, -10];
+  // poles only slide forward along their road, so two neighbours never close up below sp - 10 (>= 24 u)
+  const SLIDE = [0, 5, 10];
+  const MIN_GAP = 20;
+  const RANK = { arterial: 3, street: 2, lane: 1 };
+  const outranks = (a, b) => (RANK[a.r.kind] - RANK[b.r.kind]) || (b.ri - a.ri); // > 0: a wins
+  const BP = {};
+  // keep MIN_GAP from this road's neighbours (hairpin bends: by straight distance) and from the poles of
+  // every road that outranks this one (higher kind, then lower index): no clusters where lanes meet
+  function spacingOK(m, i, x, y) {
+    for (const di of [-3, -2, -1, 1, 2, 3]) {
+      const sn = m.start + (i + di) * m.sp;
+      if (sn < 0 || sn > m.L) continue;
+      for (const o of di < 0 ? [0, 10] : [0]) {
+        polePos(m, Math.min(m.L, sn + o), BP);
+        if ((BP.x - x) * (BP.x - x) + (BP.y - y) * (BP.y - y) < MIN_GAP * MIN_GAP) return false;
+      }
+    }
+    const list = G.segIdx.get(ckey(Math.floor(x / CELL), Math.floor(y / CELL))) || [];
+    for (const ri of list) {
+      if (ri === m.ri) continue;
+      const o = memo(ri);
+      if (!o || outranks(o, m) <= 0) continue;
+      const bb = o.r._bb;
+      if (x < bb[0] - 30 || x > bb[2] + 30 || y < bb[1] - 30 || y > bb[3] + 30) continue;
+      const pr = project(o, x, y);
+      if (pr.d2 > (o.off + MIN_GAP + 4) * (o.off + MIN_GAP + 4)) continue;
+      const i0 = Math.floor((pr.s - o.start) / o.sp);
+      for (let k = i0 - 1; k <= i0 + 2; k++) {
+        const q = poleAt(o, k);
+        if (q && (q.x - x) * (q.x - x) + (q.y - y) * (q.y - y) < MIN_GAP * MIN_GAP) return false;
+      }
+    }
+    return true;
+  }
   function poleAt(m, i) {
     if (m.poles.has(i)) return m.poles.get(i);
     let p = null;
+    m.poles.set(i, null); // guards re-entry while the spacing check looks at other roads
     const s0 = m.start + i * m.sp;
     if (i >= 0 && s0 > 8 && s0 < m.L - 8) {
       for (const o of SLIDE) {
         const s = s0 + o;
         if (s < 6 || s > m.L - 6) continue;
-        const why = poleCheck(m, s);
+        let why = poleCheck(m, s);
+        if (typeof why !== 'string' && !spacingOK(m, i, why.x, why.y)) why = 'spacing';
         if (typeof why === 'string') { rej(why); continue; }
         p = makePole(m, i, s, why);
         break;
@@ -320,7 +356,24 @@
       if (sf !== S.ROAD) return 'surface';
       const so = W.surfaceAt(x + q.onx * 3, y + q.ony * 3);
       if (so === S.ROAD || so === S.BRIDGE || so === S.WATER) return 'notEdge';
-    } else if (sf !== S.FOOTPATH) return 'surface';
+      // a lane pole stands against a wall: a building / compound wall within 24 u outwards (a house set
+      // back behind its stoop); never out on open ground or in another road's carriageway
+      let wall = false;
+      for (const o of [2, 4, 6, 8, 10, 12, 14, 16, 19, 22, 24]) {
+        const px = x + q.onx * o, py = y + q.ony * o, s2 = W.surfaceAt(px, py);
+        if (s2 === S.SOLID || bldgAt(px, py)) { wall = true; break; }
+        if (s2 === S.ROAD || s2 === S.BRIDGE || s2 === S.PLAZA || s2 === S.WATER) break;
+      }
+      if (!wall) return 'noWall';
+      const nr = W.nearestRoadPoint(x, y, (r) => r !== m.r && r.kind !== 'path');
+      if (nr && nr.dist < nr.road.w / 2 + 1.5) return 'inRoad';
+    } else {
+      if (sf !== S.FOOTPATH) return 'surface';
+      // a real kerb: the carriageway right inside, the footpath outside
+      const si = W.surfaceAt(x - q.onx * 3, y - q.ony * 3), so = W.surfaceAt(x + q.onx * 3, y + q.ony * 3);
+      if (si !== S.ROAD || so === S.ROAD || so === S.PLAZA) return 'notKerb';
+    }
+    for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; if (W.surfaceAt(x + Math.cos(a) * 6, y + Math.sin(a) * 6) === S.PLAZA) return 'plaza'; }
     for (let k = 0; k < 4; k++) {
       const a = k * Math.PI / 2, sx = W.surfaceAt(x + Math.cos(a) * 7, y + Math.sin(a) * 7);
       if (sx === S.BRIDGE || sx === S.WATER) return 'bridge';
@@ -448,7 +501,7 @@
   // wire-end tags for the Blender pole models' binding empties: [pole, anchor name, offset across the road]
   const LSLOT = ['wire_L1', 'wire_L2', 'wire_L3'];
   const ltSlot = (p, j) => (p.hHT ? ['wire_N', (j - 1) * 2.4] : [LSLOT[j], 0]);
-  const tag = (sp, pa, sa, da, pb, sb, db) => { if (sp) { sp.ea = pa ? [pa, sa, da || 0] : null; sp.eb = pb ? [pb, sb, db || 0] : null; } return sp; };
+  const tag = (sp, pa, sa, da, pb, sb, db, j) => { if (sp) { sp.ea = pa ? [pa, sa, da || 0] : null; sp.eb = pb ? [pb, sb, db || 0] : null; sp.j = j || 0; } return sp; };
   const insX = (p, k) => p.x + p.onx * (INS[k] + p.shift), insY = (p, k) => p.y + p.ony * (INS[k] + p.shift);
   const roadOf = (p) => { const m = G.memo[p.ri]; return { cx: p.x - p.onx * m.off, cy: p.y - p.ony * m.off, ux: p.ux, uy: p.uy, hw: m.hw }; };
 
@@ -463,15 +516,15 @@
       if (d > 8 && d <= MAX_SPAN) {
         const base = 0.4 + 0.0011 * d * d;
         let k = 0;
-        if (p.hHT && q.hHT) HT_IDX.forEach((c, j) => tag(addSpan(cell, 'power', insX(p, c), insY(p, c), p.hHT + 0.7, insX(q, c), insY(q, c), q.hHT + 0.7, base * (0.92 + rr.next() * 0.16), o, p.id * 32 + k++), p, LSLOT[j], 0, q, LSLOT[j], 0));
-        if (p.hLT && q.hLT) LT_IDX.forEach((c, j) => { const sa = ltSlot(p, j), sb = ltSlot(q, j); tag(addSpan(cell, 'power', insX(p, c), insY(p, c), p.hLT + 0.7, insX(q, c), insY(q, c), q.hLT + 0.7, base * (1.05 + rr.next() * 0.2), o, p.id * 32 + 8 + k++), p, sa[0], sa[1], q, sb[0], sb[1]); });
+        if (p.hHT && q.hHT) HT_IDX.forEach((c, j) => tag(addSpan(cell, 'power', insX(p, c), insY(p, c), p.hHT + 0.7, insX(q, c), insY(q, c), q.hHT + 0.7, base * (0.92 + rr.next() * 0.16), o, p.id * 32 + k++), p, LSLOT[j], 0, q, LSLOT[j], 0, j));
+        if (p.hLT && q.hLT) LT_IDX.forEach((c, j) => { const sa = ltSlot(p, j), sb = ltSlot(q, j); tag(addSpan(cell, 'power', insX(p, c), insY(p, c), p.hLT + 0.7, insX(q, c), insY(q, c), q.hLT + 0.7, base * (1.05 + rr.next() * 0.2), o, p.id * 32 + 8 + k++), p, sa[0], sa[1], q, sb[0], sb[1], j); });
         // cable TV / phone cables strapped to the poles
         const P = p.P;
         const nC = Math.round(P.cables[0] + (P.cables[1] - P.cables[0]) * rr.next() * P.tangle + (rr.next() < P.tangle * 0.3 ? 1 : 0));
         for (let c = 0; c < nC; c++) {
           const sd = (c & 1 ? 1 : -1) * (0.7 + rr.next() * 0.3) + (m.lane ? -0.6 : 0);
           const h1 = 27.2 + rr.next() * 1.6, h2 = 27.2 + rr.next() * 1.6;
-          tag(addSpan(cell, 'cable', p.x + p.onx * sd, p.y + p.ony * sd, h1, q.x + q.onx * sd, q.y + q.ony * sd, h2, 1.2 + rr.next() * 3.4 + d * 0.025, o, p.id * 32 + 16 + c), p, 'wire_cable', sd, q, 'wire_cable', sd);
+          tag(addSpan(cell, 'cable', p.x + p.onx * sd, p.y + p.ony * sd, h1, q.x + q.onx * sd, q.y + q.ony * sd, h2, 1.2 + rr.next() * 3.4 + d * 0.025, o, p.id * 32 + 16 + c), p, 'wire_cable', sd, q, 'wire_cable', sd, c);
         }
       }
     }
@@ -568,9 +621,9 @@
       if (d < 14 || d > 100) continue;
       const base = 0.4 + 0.0011 * d * d;
       const ha = a.hLT || a.hHT, hb = b.hLT || b.hHT;
-      [1, 2].forEach((c, j) => { const sa = ltSlot(a, j + 1), sb = ltSlot(b, j + 1); tag(addSpan(cell, 'power', insX(a, c), insY(a, c), ha + 0.7, insX(b, c), insY(b, c), hb + 0.7, base * 1.1, null, 1e9 + nid * 64 + k++), a, sa[0], sa[1], b, sb[0], sb[1]); });
+      [1, 2].forEach((c, j) => { const sa = ltSlot(a, j + 1), sb = ltSlot(b, j + 1); tag(addSpan(cell, 'power', insX(a, c), insY(a, c), ha + 0.7, insX(b, c), insY(b, c), hb + 0.7, base * 1.1, null, 1e9 + nid * 64 + k++), a, sa[0], sa[1], b, sb[0], sb[1], j + 1); });
       const nc = Math.round(P.tangle * 2.2 * rr.next());
-      for (let c = 0; c < nc; c++) tag(addSpan(cell, 'cable', a.x, a.y, 27.4 + rr.next() * 1.4, b.x, b.y, 27.4 + rr.next() * 1.4, 1.5 + rr.next() * 3 + d * 0.02, null, 1e9 + nid * 64 + 16 + k++), a, 'wire_cable', 0, b, 'wire_cable', 0);
+      for (let c = 0; c < nc; c++) tag(addSpan(cell, 'cable', a.x, a.y, 27.4 + rr.next() * 1.4, b.x, b.y, 27.4 + rr.next() * 1.4, 1.5 + rr.next() * 3 + d * 0.02, null, 1e9 + nid * 64 + 16 + k++), a, 'wire_cable', 0, b, 'wire_cable', 0, c);
     }
     // a pole-mounted transformer (H-frame: a second pole 5.2 u along the road)
     if (rr.next() < P.tx) {
@@ -854,19 +907,20 @@
         ctx.moveTo(R.sx(t.x2, k0), R.sy(t.y2, k0)); ctx.lineTo(R.sx(t.x2, k1), R.sy(t.y2, k1));
       }
       if (!any) continue;
+      // slim: the city reads first, the poles are a light overlay
       ctx.strokeStyle = night > 0.5 ? U.shade(POLE_COL[kind], 0.55) : POLE_COL[kind];
-      ctx.lineWidth = Math.max(1, POLE_W[kind] * Z);
+      ctx.globalAlpha = 0.8;
+      ctx.lineWidth = Math.max(0.8, POLE_W[kind] * 0.6 * Z);
       ctx.stroke();
-      // sunlit edge on the concrete poles
-      if (kind === 'psc' && night < 0.4) { ctx.strokeStyle = 'rgba(255,250,235,0.35)'; ctx.lineWidth = Math.max(0.6, 0.5 * Z); ctx.stroke(); }
+      ctx.globalAlpha = 1;
     }
     // transformers: platform + tank (extruded, sun-shaded)
     for (const t of B.tx) drawTx(ctx, t, R);
     // crossarms + lamp arms + cable coils
     ctx.beginPath();
     for (const p of B.poles) {
-      for (const h of [p.hHT, p.hLT]) {
-        if (!h) continue;
+      {
+        const h = p.hHT || p.hLT; // top crossarm only in 2D
         const k = R.k(h);
         const a0 = INS[0] - 0.6 + p.shift, a1 = INS[3] + 0.6 + p.shift;
         ctx.moveTo(R.sx(p.x + p.onx * a0, k), R.sy(p.y + p.ony * a0, k));
@@ -878,8 +932,10 @@
       }
     }
     ctx.strokeStyle = night > 0.5 ? '#2a2622' : '#4a443c';
-    ctx.lineWidth = Math.max(1, 0.8 * Z);
+    ctx.globalAlpha = 0.6;
+    ctx.lineWidth = Math.max(0.7, 0.6 * Z);
     ctx.stroke();
+    ctx.globalAlpha = 1;
     let coils = false;
     ctx.beginPath();
     for (const p of B.poles) {
@@ -888,26 +944,34 @@
       const k = R.k(24.5), X = R.sx(p.x + p.onx * 0.9, k), Y = R.sy(p.y + p.ony * 0.9, k);
       ctx.moveTo(X + 1.5 * k, Y); ctx.ellipse(X, Y, 1.5 * k, 1.1 * k, p.ang, 0, TAU);
     }
-    if (coils) { ctx.strokeStyle = '#121010'; ctx.lineWidth = Math.max(0.8, 0.6 * Z); ctx.stroke(); }
+    if (coils) { ctx.strokeStyle = '#121010'; ctx.globalAlpha = 0.45; ctx.lineWidth = Math.max(0.6, 0.5 * Z); ctx.stroke(); ctx.globalAlpha = 1; }
     // wires: one path per colour
     ctx.lineJoin = 'round';
+    // a delicate overlay: dark grey at 25-45 % alpha; a conductor bundle reads as its middle wire (all three
+    // when zoomed in), at most one cable strand per span zoomed out (two zoomed in)
+    const zin = Z >= 1.15;
     for (const kind of ['service', 'cable', 'power']) {
       let any = false;
       ctx.beginPath();
-      for (const sp of B.spans) { if (sp.kind !== kind) continue; any = true; pathSpan(ctx, sp, R); }
+      for (const sp of B.spans) {
+        if (sp.kind !== kind) continue;
+        if (kind === 'power' && !zin && sp.j !== 1) continue;
+        if (kind === 'cable' && sp.j > (zin ? 1 : 0)) continue;
+        any = true; pathSpan(ctx, sp, R);
+      }
       if (!any) continue;
-      ctx.strokeStyle = WIRE_COL[kind];
-      ctx.globalAlpha = (night > 0.5 ? 0.8 : 1) * (kind === 'service' ? 0.6 : kind === 'cable' ? 0.85 : 0.75);
-      ctx.lineWidth = (kind === 'cable' ? 0.8 : kind === 'power' ? 0.7 : 0.6) * clamp(Z, 0.8, 1.3);
+      ctx.strokeStyle = WIRE_COL2[kind];
+      ctx.globalAlpha = (night > 0.5 ? 0.75 : 1) * (kind === 'service' ? 0.32 : kind === 'cable' ? 0.4 : 0.58);
+      ctx.lineWidth = (kind === 'power' ? 0.8 : 0.6) * clamp(Z, 0.8, 1.3);
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
     // insulators (white porcelain catching the light)
     ctx.fillStyle = night > 0.5 ? '#9c9a94' : '#f6f4ec';
-    const isz = Math.max(1, 0.9 * Z);
-    for (const p of B.poles) {
-      for (const h of [p.hHT, p.hLT]) {
-        if (!h) continue;
+    const isz = Math.max(1, 0.8 * Z);
+    if (zin) for (const p of B.poles) {
+      {
+        const h = p.hHT || p.hLT;
         const k = R.k(h + 0.6);
         for (let c = 0; c < 4; c++) {
           if (h === p.hHT && c === 1) continue;
@@ -1010,14 +1074,14 @@
     if (!sun) return;
     ctx.beginPath();
     for (const sp of shadowSpans) {
-      if (sp.kind === 'service') continue;
+      if (sp.kind !== 'power' || sp.j !== 1) continue;
       const P = sp.pts, n = P.length / 3 - 1;
       for (let k = 0; k <= n; k++) {
         const h = P[k * 3 + 2], X = R.sx(P[k * 3] + sun.sx * h, Z), Y = R.sy(P[k * 3 + 1] + sun.sy * h, Z);
         if (k) ctx.lineTo(X, Y); else ctx.moveTo(X, Y);
       }
     }
-    ctx.strokeStyle = '#20142a'; ctx.globalAlpha = 0.04 + 0.05 * frameSun; ctx.lineWidth = 0.8 * clamp(Z, 0.8, 1.3);
+    ctx.strokeStyle = '#20142a'; ctx.globalAlpha = 0.02 + 0.03 * frameSun; ctx.lineWidth = 0.7 * clamp(Z, 0.8, 1.3);
     ctx.stroke();
     ctx.globalAlpha = 1;
   }

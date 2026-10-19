@@ -503,7 +503,7 @@
       for (const s of f.day) if (s.k !== 'G') f.roost.push(s);
       for (const t of treesNear(site.x, site.y, 140, null, 2, rng)) f.roost.push(treeSpot(t));
     } else if (sp === 'parakeet') {
-      const trees = treesNear(site.x, site.y, site.treeR || 360, ['neem', 'banyan', 'mango', 'tamarind', 'peepal', 'gulmohar', 'ashoka'], 6, rng);
+      const trees = treesNear(site.x, site.y, site.treeR || 360, ['neem', 'banyan', 'mango', 'tamarind', 'peepal', 'gulmohar', 'ashoka'], 10, rng);
       for (const t of trees) { const s = treeSpot(t); f.day.push(s); f.roost.push(s); }
       if (f.day.length < 2) return null;
     } else if (sp === 'egret' || sp === 'cormorant') {
@@ -759,7 +759,8 @@
     // never through buildings: hold above what lies ahead (not on the final approach)
     const near = b.st === TOSPOT && b.tgt && Math.hypot(b.rx - b.x, b.ry - b.y) < 26;
     if (!near) {
-      const fl = Math.max(floorAt(b, b.x, b.y, 4), floorAt(b, b.x + b.vx * 0.6, b.y + b.vy * 0.6, 4));
+      // look ~2 s ahead: a climb of 80 u (Charminar) takes that long
+      const fl = Math.max(floorAt(b, b.x, b.y, 4), floorAt(b, b.x + b.vx * 0.6, b.y + b.vy * 0.6, 4), floorAt(b, b.x + b.vx * 1.3, b.y + b.vy * 1.3, 4), floorAt(b, b.x + b.vx * 2, b.y + b.vy * 2, 2));
       if (gh < fl) gh = fl;
     }
     steer(b, dvx, dvy, dt, S.agi);
@@ -771,7 +772,7 @@
     integrate(b, dt, gh, b.st === TOSPOT ? 1.6 : 1.1);
     if (b.h < (b.tgt ? b.tgt.h : 0)) b.h = b.tgt ? b.tgt.h : 0;
     // hard floor: a bird that still ended up below a roof / minaret here pops up over it (rare)
-    if (!near) { const ob = floorAt(b, b.x, b.y, 1.5); if (b.h < ob) { b.h += (ob - b.h) * Math.min(1, dt * 10); if (b.vh < 0) b.vh = 0; } }
+    if (!near) { const ob = floorAt(b, b.x, b.y, 1.5); if (b.h < ob) { b.h = Math.max(b.h + (ob - b.h) * Math.min(1, dt * 10), ob - 3); if (b.vh < 0) b.vh = 0; } }
   }
   function soarBird(b, f, dt) {
     const S = b.S;
@@ -948,7 +949,7 @@
         const ox = cur ? cur.x : f.cx, oy = cur ? cur.y : f.cy;
         for (let k = 0; k < 8; k++) {
           const c = f.day[(rnd() * f.day.length) | 0], d = Math.hypot(c.x - ox, c.y - oy);
-          if (c !== cur && d > 120) { ns = c; break; }
+          if (c !== cur && d > 150) { ns = c; break; }
           if (c !== cur && d > fd) { fd = d; far = c; }
         }
         if (!ns) ns = far;
@@ -1257,7 +1258,9 @@
   }
   function drawSky() {
     const R = N.render, ctx = R.ctx;
+    const v = R.view;
     for (const f of active) {
+      if (f.birds.length === f.ground || f.bx1 < v.x0 - 260 || f.bx0 > v.x1 + 260 || f.by1 < v.y0 - 260 || f.by0 > v.y1 + 260) continue;
       for (const b of f.birds) {
         if (b.st === REST && b.spot && (b.spot.k === 'G' || b.spot.k === 'S')) continue;
         const k = R.k(b.h), X = R.sx(b.x, k), Y = R.sy(b.y, k);
@@ -1267,28 +1270,26 @@
     }
   }
   function drawShadows() {
-    const R = N.render, ctx = R.ctx, sun = R.sun, Z = R.Z || 1;
+    const R = N.render, ctx = R.ctx, sun = R.sun, Z = R.Z || 1, v = R.view;
     if (!sun || sun.strength < 0.15) return;
     const sxk = sun.sx, syk = sun.sy;
-    for (let pass = 0; pass < 3; pass++) {
-      const hA = pass === 0 ? 0 : pass === 1 ? 45 : 130, hB = pass === 0 ? 45 : pass === 1 ? 130 : 1e9;
-      let any = false;
-      ctx.beginPath();
-      for (const f of active) {
-        for (const b of f.birds) {
-          if (b.st === REST || b.h < 1.5 || b.h < hA || b.h >= hB) continue;
-          const X = R.sx(b.x + sxk * b.h, Z), Y = R.sy(b.y + syk * b.h, Z);
-          if (X < -20 || Y < -20 || X > R.W + 20 || Y > R.H + 20) continue;
-          const sf = Math.abs(Math.cos(b.flap * 1.2));
-          const rx = Math.max(0.8, b.S.len * 0.32 * Z), ry = Math.max(0.8, b.S.span * 0.42 * sf * Z) * (pass === 2 ? 1.3 : 1);
-          const ca = Math.cos(b.a), sa = Math.sin(b.a);
-          ctx.moveTo(X + ca * rx, Y + sa * rx);
-          ctx.ellipse(X, Y, rx, ry, b.a, 0, TAU);
-          any = true;
-        }
+    const P = [new Path2D(), new Path2D(), new Path2D()], any = [false, false, false];
+    for (const f of active) {
+      if (f.flying === 0 || f.bx1 < v.x0 - 400 || f.bx0 > v.x1 + 400 || f.by1 < v.y0 - 400 || f.by0 > v.y1 + 400) continue;
+      for (const b of f.birds) {
+        if (b.st === REST || b.h < 1.5) continue;
+        const X = R.sx(b.x + sxk * b.h, Z), Y = R.sy(b.y + syk * b.h, Z);
+        if (X < -20 || Y < -20 || X > R.W + 20 || Y > R.H + 20) continue;
+        const pass = b.h < 45 ? 0 : b.h < 130 ? 1 : 2;
+        const sf = Math.abs(Math.cos(b.flap * 1.2));
+        const rx = Math.max(0.8, b.S.len * 0.32 * Z), ry = Math.max(0.8, b.S.span * 0.42 * sf * Z) * (pass === 2 ? 1.3 : 1);
+        const p = P[pass];
+        p.moveTo(X + Math.cos(b.a) * rx, Y + Math.sin(b.a) * rx);
+        p.ellipse(X, Y, rx, ry, b.a, 0, TAU);
+        any[pass] = true;
       }
-      if (any) { ctx.fillStyle = 'rgba(22,18,30,' + ((pass === 0 ? 0.24 : pass === 1 ? 0.15 : 0.08) * sun.strength).toFixed(3) + ')'; ctx.fill(); }
     }
+    for (let k = 0; k < 3; k++) if (any[k]) { ctx.fillStyle = 'rgba(22,18,30,' + ((k === 0 ? 0.24 : k === 1 ? 0.15 : 0.08) * sun.strength).toFixed(3) + ')'; ctx.fill(P[k]); }
   }
   let skyFn = null, shFn = null;
   function draw() {
