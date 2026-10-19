@@ -4,7 +4,8 @@
  *
  *   checks: the road analysis + soil map are precomputed in top-down idle slices (no 3D needed),
  *     clustered junctions merge into one polygon and no footpath / kerb top lies on another road's
- *     carriageway (Abids, Tank Bund), the street stays readable at night vs the old painted ground,
+ *     carriageway (Abids, Tank Bund, and CITY-WIDE: every other junction + every merged cluster, no
+ *     junction over 50 u^2; the round-2 review sites by name), the street stays readable at night vs the old painted ground,
  *     the focus chunk has ground (full or provisional) on the first 3D frame and right after a
  *     rebuild, job slices end near their deadline, kerbed junction corners have no overlapping kerb /
  *     paver tops, lanes stay darker than the soil at 11:00 / 16:40 / 18:15 (screen luma ratio < 0.8),
@@ -242,6 +243,35 @@ async function main() {
   check(jx.ltDir !== null && Math.abs(jx.ltDir - 1.6) < 0.45, 'lower_tank_bund approaches Tank Bund from the south, no hook at its end (arm direction ' + jx.ltDir + ' rad; round 1: 0.76)');
   check(jx.bund.tris > 50 && jx.bund.area < 40, 'Tank Bund / lower_tank_bund junction: no footpath slab across the bund carriageway (' + jx.bund.area + ' u^2 over ' + jx.bund.hits + ' raised tops; round 1: ~1780 u^2)', JSON.stringify(jx.bund.worst));
   check(jx.ko && jx.ko.junctions > 5, 'kerbOverlaps() with no arguments measures around the player (' + (jx.ko && jx.ko.junctions) + ' junctions, ' + (jx.ko && jx.ko.corners) + ' corners, ' + (jx.ko && jx.ko.pairs) + ' pairs)');
+
+  // ---- r2-1 / r2-2 (round 3): CITY-WIDE, not just the two measured sites. footOnRoad around every
+  // other plain junction (R = 60) and around every merged cluster (R = 90): no junction may have more
+  // than 50 u^2 of footpath / kerb tops on another carriageway (round 2: 65 junctions over 20 u^2 on
+  // every 5th one, worst 2286 u^2). Named review sites: Afzalgunj J1374-J1378 (r2-1 regression: a paver
+  // island over the zebra), Masab Tank mehdipatnam_rd / asif_nagar_rd (duplicate alignment), Kachiguda,
+  // Tolichowki 3720,5261, 10655,4996, the J451 / J5764 cluster.
+  const cw = await page.evaluate(() => {
+    const G = N.view3d.ground, NET = G.net(), t0 = performance.now();
+    const res = { plain: 0, merged: 0, total: 0, over20: 0, worst: [] };
+    const one = (x, y, R) => {
+      const o = G.footOnRoad(x, y, R);
+      res.total += o.area; if (o.area > 20) res.over20++;
+      if (o.area > 0) res.worst.push({ x: Math.round(x), y: Math.round(y), area: o.area, w: o.worst.slice(0, 2).map((w) => w.src + '>' + w.on + ' ' + w.area) });
+    };
+    const plain = NET.juncs.filter((J) => J.poly && !J.members);
+    for (let i = 0; i < plain.length; i += 2) { one(plain[i].x, plain[i].y, 60); res.plain++; }
+    for (const J of NET.juncs) if (J.members && J.poly) { one(J.x, J.y, 90); res.merged++; }
+    res.worst.sort((a, b) => b.area - a.area); res.worst = res.worst.slice(0, 5);
+    res.total = Math.round(res.total); res.ms = Math.round(performance.now() - t0);
+    const sites = [[9439, 7042], [9460, 7028], [9482, 7016], [9523, 6965], [9536, 6948], [6816, 4965], [10325, 5634], [10312, 5686], [3720, 5261], [10655, 4996], [9408, 7061], [9502, 6339], [10348, 5283]];
+    res.sites = sites.map((p) => G.footOnRoad(p[0], p[1], 70).area);
+    res.clear = G.stats().clear;
+    return res;
+  });
+  console.log('  city-wide footOnRoad ' + JSON.stringify(cw));
+  check(cw.plain > 1000 && cw.merged > 100 && cw.worst.every((w) => w.area <= 50), 'city-wide: no junction has a footpath / kerb slab on another carriageway (' + cw.plain + ' junctions at R 60 + ' + cw.merged + ' merged clusters at R 90: ' + cw.total + ' u^2 in total, ' + cw.over20 + ' over 20 u^2, worst ' + (cw.worst[0] ? cw.worst[0].area : 0) + ' u^2 <= 50; round 2: 65 of 915 over 20 u^2, worst 2286)', JSON.stringify(cw.worst));
+  check(cw.sites.every((a) => a <= 20), 'review sites (Afzalgunj zebra J1376, Masab Tank, Kachiguda, Tolichowki, J451 / J5764 ...) clear: ' + JSON.stringify(cw.sites) + ' u^2 (each <= 20)');
+  check(cw.clear && cw.clear.dups > 0 && cw.clear.corners < 200, 'clearance pass ran: ' + JSON.stringify(cw.clear) + ' (duplicate alignments dropped, kerbed corners on another carriageway left as plain asphalt edges)');
 
   // ---- heights: raised footpath, flat road, pothole dip, elevation hook
   const hs = await page.evaluate(() => {
