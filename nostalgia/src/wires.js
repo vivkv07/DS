@@ -648,7 +648,7 @@
       const dens = 0.025 + 0.11 * p.tangle;
       if (kh < dens) {
         const r = rngN(sp.id, SALT.k);
-        const k = { sp, t: 0.15 + 0.7 * r.next(), kh: kh / dens, c1: KITE_COLS[(r.next() * KITE_COLS.length) | 0], c2: KITE_COLS[(r.next() * KITE_COLS.length) | 0], size: 3.6 + r.next() * 2.4, torn: r.next(), tilt: (r.next() - 0.5) * 1.2, flip: r.next() < 0.5 ? -1 : 1, tail: r.next() < 0.7 };
+        const k = { sp, t: 0.15 + 0.7 * r.next(), kh: kh / dens, c1: KITE_COLS[(r.next() * KITE_COLS.length) | 0], c2: KITE_COLS[(r.next() * KITE_COLS.length) | 0], size: 5.5 + r.next() * 3, torn: r.next(), tilt: (r.next() - 0.5) * 1.2, flip: r.next() < 0.5 ? -1 : 1, tail: r.next() < 0.7 };
         cell.kites.push(k);
         if (r.next() < 0.75) { // its manja: a loop to a point further along the wire, or a strand hanging down
           const t2 = clamp(k.t + (r.next() < 0.5 ? -1 : 1) * (0.12 + r.next() * 0.25), 0.03, 0.97);
@@ -666,7 +666,7 @@
     }
     for (const p of cell.poles) {
       const kh = hn(p.id, SALT.pkite), dens = 0.03 + 0.07 * p.P.tangle;
-      if (kh < dens) { const r = rngN(p.id, SALT.pk); p.kite = { kh: kh / dens, c1: KITE_COLS[(r.next() * KITE_COLS.length) | 0], c2: KITE_COLS[(r.next() * KITE_COLS.length) | 0], size: 3.4 + r.next() * 2, off: INS[(r.next() * 4) | 0] + p.shift, torn: r.next() }; }
+      if (kh < dens) { const r = rngN(p.id, SALT.pk); p.kite = { kh: kh / dens, c1: KITE_COLS[(r.next() * KITE_COLS.length) | 0], c2: KITE_COLS[(r.next() * KITE_COLS.length) | 0], size: 5 + r.next() * 2.5, off: INS[(r.next() * 4) | 0] + p.shift, torn: r.next() }; }
     }
   }
   function styleAt(x, y) { const d = N.world.districtAt(x, y); return d && PROF[d.style] ? d.style : 'colony'; }
@@ -1039,7 +1039,7 @@
   }
   function dispose3d(H) {
     if (!V.inited) return;
-    for (const k of ['poleIM', 'headIM', 'lampIM', 'txIM', 'wire', 'extras', 'glows', 'pm_pole_psc', 'pm_pole_rail', 'pm_pole_streetlight']) {
+    for (const k of ['poleIM', 'headIM', 'lampIM', 'txIM', 'wire', 'extras', 'glows', 'pm_pole_psc', 'pm_pole_rail', 'pm_pole_streetlight', 'pm_pole_transformer']) {
       const o = V[k];
       if (!o) continue;
       if (o.parent) o.parent.remove(o);
@@ -1114,13 +1114,20 @@
     const M = N.models3d;
     if (!M || !M.ready || !M.has || !M.has(id)) return null;
     if (V.models[id] !== undefined) return V.models[id];
-    if (!M.loaded(id)) {
-      if (!V.models['_p' + id] && M.parse) { V.models['_p' + id] = 1; try { Promise.resolve(M.parse(id)).then(() => { V.modelVer++; V.sig = ''; }, () => {}); } catch (e) { /* optional */ } }
+    if (!V.models['_ok' + id] && !M.loaded(id)) {
+      if (!V.models['_p' + id] && (M.parse || M.props)) {
+        V.models['_p' + id] = 1;
+        try { Promise.resolve(M.props && M.props.ensure ? M.props.ensure([id]) : M.parse(id)).then(() => { V.models['_ok' + id] = 1; V.modelVer++; V.sig = ''; }, () => {}); } catch (e) { /* optional */ }
+      }
       return null;
     }
     let res = null;
     try {
-      const o = M.instance(id), T = V.T, meshes = [], anchors = {};
+      const o = (M.props && M.props.instance && M.props.instance(id)) || M.instance(id), T = V.T, meshes = [], anchors = {};
+      if (!o) return null;
+      // binding empties from the manifest (Blender Z-up -> GLB Y-up: (x, z, -y)), else from the nodes
+      const man = M.manifest ? M.manifest(id) : null;
+      if (man && man.anchors) for (const [k, v] of Object.entries(man.anchors)) if (k.indexOf('wire_') === 0) anchors[k] = [v[0], v[2], -v[1]];
       o.updateMatrixWorld(true);
       o.traverse((m) => {
         const nm = (m.name || '').replace(/^anchor_/, '');
@@ -1141,19 +1148,36 @@
     V.models[id] = res;
     return res;
   }
-  const poleModelId = (pl) => (pl.lamp && modelGeo('pole_streetlight') ? 'pole_streetlight' : pl.kind === 'rail' ? 'pole_rail' : 'pole_psc');
+  const poleModelId = (pl) => (pl.tx && modelGeo('pole_transformer') ? 'pole_transformer' : pl.lamp && modelGeo('pole_streetlight') ? 'pole_streetlight' : pl.kind === 'rail' ? 'pole_rail' : 'pole_psc');
+  // a Blender pole's frame: origin, yaw (three rotation.y = -ang) and height scale. Models face their +Z
+  // (GLB) towards the road (the streetlight's arm reaches over it); the transformer's H-frame model is set
+  // with its left pole (x = -4.72) on the hub pole and its length along the road.
+  const PF = { md: null, id: '', x: 0, y: 0, ang: 0, sy: 1 };
+  function poleFrame(pl, vs) {
+    const id = poleModelId(pl), md = modelGeo(id);
+    if (!md) return null;
+    PF.md = md; PF.id = id;
+    PF.sy = (pl.h * vs) / md.h;
+    if (id === 'pole_transformer') {
+      const t = pl.tx, ang = Math.atan2(t.y2 - t.y, t.x2 - t.x);
+      PF.x = pl.x + Math.cos(ang) * 4.72; PF.y = pl.y + Math.sin(ang) * 4.72; PF.ang = ang + (md.yaw ? 0 : Math.PI / 2);
+    } else {
+      // local +Z maps to the road normal (-uy, ux); flip when that points away from the road
+      PF.x = pl.x; PF.y = pl.y; PF.ang = pl.ang + md.yaw + ((pl.onx * -pl.uy + pl.ony * pl.ux) > 0 ? Math.PI : 0);
+    }
+    return PF;
+  }
   // the 3D position of a tagged wire end on a pole model (null = use the procedural point)
   function anchorPos(end, vs, out) {
     if (!end) return null;
-    const pl = end[0], md = modelGeo(poleModelId(pl));
-    const A = md && md.anchors[end[1]];
+    const pl = end[0], F = poleFrame(pl, vs);
+    const A = F && F.md.anchors[end[1]];
     if (!A) return null;
-    const sy = (pl.h * vs) / md.h, a = pl.ang + md.yaw;
-    // model local (x, z) -> world: rotation.y = -a
-    const c = Math.cos(a), s = Math.sin(a);
-    out[0] = pl.x + A[0] * c - A[2] * s + pl.onx * end[2];
-    out[1] = A[1] * sy;
-    out[2] = pl.y + A[0] * s + A[2] * c + pl.ony * end[2];
+    const c = Math.cos(F.ang), s = Math.sin(F.ang);
+    // model local (x, z) -> world: rotation.y = -ang
+    out[0] = F.x + A[0] * c - A[2] * s + pl.onx * end[2];
+    out[1] = A[1] * F.sy;
+    out[2] = F.y + A[0] * s + A[2] * c + pl.ony * end[2];
     return out;
   }
   function wireMaterial(THREE) {
@@ -1256,10 +1280,9 @@
     let extrasN = 0;
     for (const cell of cells) {
       for (const pl of cell.poles) {
-        const mid = poleModelId(pl), md = modelGeo(mid);
-        if (md) { // a Blender pole: its own crossarms / fittings (and lamp, for pole_streetlight)
-          const arr = out.pm[mid] || (out.pm[mid] = []);
-          pushM(arr, pl.x, 0, pl.y, pl.ang + md.yaw, 1, (pl.h * vs) / md.h, 1);
+        const F = poleFrame(pl, vs), mid = F ? F.id : '', md = F ? F.md : null;
+        if (F) { // a Blender pole: its own crossarms / fittings (lamp for pole_streetlight, H-frame for the transformer)
+          if (mid !== 'pole_transformer') { const arr = out.pm[mid] || (out.pm[mid] = []); pushM(arr, F.x, 0, F.y, F.ang, 1, F.sy, 1); }
         } else {
           const sc = pl.kind === 'rail' ? [0.45, 0.55] : pl.kind === 'tube' ? [0.6, 0.6] : [0.78, 0.52];
           pushM(out.pole, pl.x, 0, pl.y, pl.ang, sc[0], pl.h * vs + 0.6, sc[1]);
@@ -1283,14 +1306,21 @@
       }
       for (const t of cell.tx) {
         // instance at the hub pole, local +x along the road towards the second pole
-        const ang = Math.atan2(t.y2 - t.y, t.x2 - t.x), tm = modelGeo('pole_transformer');
-        pushM(out.tx, t.x, 0, t.y, ang + (tm && !tm.yaw ? Math.PI / 2 : 0), 1, 1, 1);
+        if (modelGeo('pole_transformer')) { // the H-frame model replaces the hub pole + the procedural tank
+          const F = poleFrame(t.pole, vs);
+          if (F && F.id === 'pole_transformer') { const arr = out.pm[F.id] || (out.pm[F.id] = []); pushM(arr, F.x, 0, F.y, F.ang, 1, F.sy, 1); continue; }
+        }
+        pushM(out.tx, t.x, 0, t.y, Math.atan2(t.y2 - t.y, t.x2 - t.x), 1, 1, 1);
       }
       for (const sp of cell.spans) {
         const w = sp.kind === 'cable' ? 0.2 : sp.kind === 'power' ? 0.15 : 0.12;
         col.set(WIRE_COL3[sp.kind]);
         const A = anchorPos(sp.ea, vs, EA), B = anchorPos(sp.eb, vs, EB);
-        out.wire.push(A ? A[0] : sp.ax, A ? A[1] : sp.ah * vs, A ? A[2] : sp.ay, w, B ? B[0] : sp.bx, B ? B[1] : sp.bh * vs, B ? B[2] : sp.by, sp.sag * vs, col.r, col.g, col.b, sp.ph);
+        // a model's binding empty may sit lower than the 2D attachment: take the difference off the sag so
+        // the low point (the clearance the generator checked) does not drop
+        const dA = A ? sp.ah * vs - A[1] : 0, dB = B ? sp.bh * vs - B[1] : 0;
+        const sag3 = Math.max(0.05, sp.sag * vs - Math.max(0, dA, dB));
+        out.wire.push(A ? A[0] : sp.ax, A ? A[1] : sp.ah * vs, A ? A[2] : sp.ay, w, B ? B[0] : sp.bx, B ? B[1] : sp.bh * vs, B ? B[2] : sp.by, sag3, col.r, col.g, col.b, sp.ph);
       }
       if (V.kiteShare > 0) {
         for (const th of cell.threads) {
@@ -1382,6 +1412,7 @@
       im.instanceColor.needsUpdate = true;
     }
     im.count = n;
+    im.visible = n > 0;
     im.instanceMatrix.needsUpdate = true;
   }
   function rebuild3(list) {
@@ -1393,10 +1424,10 @@
     if (!V.matPole) { V.matPole = new THREE.MeshLambertMaterial({ vertexColors: true }); }
     const poleM = cat('pole'), poleC = cat('poleC');
     fillIM(ensureIM('poleIM', g.pole, V.matPole, poleM.length / 16, true), poleM, poleC);
-    for (const mid of ['pole_psc', 'pole_rail', 'pole_streetlight']) {
+    for (const mid of ['pole_psc', 'pole_rail', 'pole_streetlight', 'pole_transformer']) {
       let n = 0; for (const c of list) n += (c.pm[mid] || []).length;
       const name = 'pm_' + mid;
-      if (!n) { if (V[name]) V[name].count = 0; continue; }
+      if (!n) { if (V[name]) { V[name].count = 0; V[name].visible = false; } continue; }
       const a = new Float32Array(n); let o = 0;
       for (const c of list) if (c.pm[mid]) { a.set(c.pm[mid], o); o += c.pm[mid].length; }
       const md = modelGeo(mid);
@@ -1478,6 +1509,9 @@
     if (!on) return;
     const f = N.view3d.focus ? N.view3d.focus() : N.atmos.focus();
     const R3 = radius3();
+    // the Blender pack becomes ready after the first chunks: rebuild them with the pole models then
+    const M3 = N.models3d, mReady = !!(M3 && M3.ready && (!M3.props || M3.props.state !== 'loading'));
+    if (mReady !== V.mReady) { V.mReady = mReady; V.modelVer++; V.sig = ''; }
     const share = kiteShare();
     if (Math.abs(share - V.kiteShare) > 0.02) { V.kiteShare = share; V.sig = ''; }
     // wanted 512 u chunks around the focus (and their cells, nearest first)

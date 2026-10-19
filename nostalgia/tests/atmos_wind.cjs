@@ -289,8 +289,14 @@ async function run3D(browser, page) {
   const mats = await page.evaluate(() => {
     const H = N.view3d.H, M = H.materials, E = N.view3d.engine;
     const progs = (E.renderer.info.programs || []).map((p) => p.cacheKey || p.name || '');
+    // run the patched canopy compile on the stock Lambert shader (the canopy program itself only exists while
+    // procedural trees are drawn: with models3d_props' Blender trees only kinds without a model use it)
     let src = '';
-    try { const gl = E.renderer.getContext(); for (const p of E.renderer.info.programs) { const vs = gl.getShaderSource(p.vertexShader); if (vs && vs.indexOf('windfx') >= 0 || (vs && vs.indexOf('WFX_MODE') >= 0 && vs.indexOf('WFX_TIPATTR') >= 0)) { src = vs; break; } } } catch (e) { src = 'err ' + e.message; }
+    try {
+      const L = window.THREE.ShaderLib.lambert, sh = { uniforms: {}, vertexShader: L.vertexShader, fragmentShader: L.fragmentShader };
+      M.canopy.onBeforeCompile.call(M.canopy, sh, E.renderer);
+      src = sh.vertexShader.indexOf('WFX_MODE') >= 0 && sh.vertexShader.indexOf('windOffset') >= 0 && sh.fragmentShader.indexOf('uNearFade') >= 0 ? sh.vertexShader : '';
+    } catch (e) { src = ''; }
     return {
       canopy: !!(M.canopy.userData.windfx), trunk: !!(M.trunkI && M.trunkI.userData.windfx), key: M.canopy.customProgramCacheKey(),
       blobW: !!H.geo.blob.getAttribute('windW'), crownW: !!H.geo.crown.getAttribute('windW'),
@@ -300,7 +306,7 @@ async function run3D(browser, page) {
   });
   check(mats.canopy && mats.trunk && /windfx-canopy/.test(mats.key), 'core canopy (blobs + crowns) and instanced trunk materials carry the wind sway (' + mats.key.slice(0, 30) + '…)');
   check(mats.blobW && mats.crownW, 'H.geo.blob / H.geo.crown have the windW flutter weights');
-  check(mats.oldSway === false, 'the core canopy\'s old constant sway is stripped from the compiled program', 'src ' + mats.srcLen);
+  check(mats.oldSway === false, 'the core canopy shader: old constant sway stripped, wind sway + near-camera dithering in', 'src ' + mats.srcLen);
   check(mats.stats.flags3d > 10, '3D flags built (' + mats.stats.flags3d + ')');
   for (const S of SCENES_3D) {
     if (ONLY && ONLY !== '3d' && ONLY.indexOf(S.name) < 0) continue;

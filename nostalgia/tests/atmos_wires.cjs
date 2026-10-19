@@ -202,8 +202,8 @@ async function run2d(page) {
 async function run3d(page) {
   console.log('3D');
   const V3 = [
-    ['oldcity', 'fps', -0.28], ['oldcity', 'tps', 0.12], ['charminar', 'tps', 0.1], ['abids', 'fps', -0.22], ['colony', 'tps', 0.08],
-    ['hitec', 'tps', 0.1], ['sankranti', 'fps', -0.3], ['night', 'tps', 0.05],
+    ['oldcity', 'fps', -0.28], ['abids', 'fps', -0.22], ['colony', 'tps', 0.08],
+    ['hitec', 'tps', 0.1], ['sankranti', 'tps', 0.02], ['night', 'tps', 0.05],
   ];
   let first = true;
   for (const [name, mode, pitch] of V3) {
@@ -211,7 +211,13 @@ async function run3d(page) {
     const S = SPOTS[name];
     const r = await place(page, S);
     await page.evaluate(([mode, yaw, pitch]) => { N.view.set(mode); N.view3d.setCamera({ yaw, pitch, snap: true }); }, [mode, r.yaw, pitch]);
-    if (first) { await page.waitForFunction(() => N.view3d.active, null, { timeout: 180000 }); first = false; }
+    if (first) {
+      await page.waitForFunction(() => N.view3d.active, null, { timeout: 180000 });
+      // the Blender pole models (pole_psc / pole_rail / pole_streetlight / pole_transformer) when the pack has them
+      const m = await page.waitForFunction(() => !(N.models3d && N.models3d.has && N.models3d.has('pole_psc')) || N.wires._V.models.pole_psc !== undefined, null, { timeout: 300000 }).then(() => page.evaluate(() => !!N.wires._V.models.pole_psc), () => false);
+      info('Blender pole models in use: ' + m);
+      first = false;
+    }
     await page.evaluate(() => N.view3d.settle(40000));
     await frames(page, 4);
     await page.evaluate(() => N.view3d.settle(10000));

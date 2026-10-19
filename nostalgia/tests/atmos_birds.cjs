@@ -296,10 +296,10 @@ async function run2D(browser) {
       let n = 0; for (const f of fl) for (const b of f.birds) if (b.st === 0) { n += N.birds.scare(b.x, b.y, 30); break; }
       const t0 = N.time.now;
       await new Promise((r) => { const g = () => (N.time.now - t0 > 1.5 ? r() : requestAnimationFrame(g)); requestAnimationFrame(g); });
-      let maxH = 0, fly = 0; for (const f of fl) for (const b of f.birds) if (b.st !== 0) { fly++; maxH = Math.max(maxH, b.h); }
-      return { n, fly, maxH: Math.round(maxH) };
+      let maxH = 0, fly = 0, over = 0; for (const f of fl) for (const b of f.birds) if (b.st !== 0) { fly++; if (N.world.isWater(b.x, b.y)) { over++; maxH = Math.max(maxH, b.h); } }
+      return { n, fly, overWater: over, maxH: Math.round(maxH) };
     });
-    check(skim.n > 0 && skim.maxH < 30, 'water birds skim low over the water', JSON.stringify(skim));
+    check(skim.n > 0 && skim.maxH < 24, 'water birds skim low over the water', JSON.stringify(skim));
     await shot(page, 'egrets_skimming', 2.2);
 
     // ---------------- mynas on a lawn
@@ -307,14 +307,16 @@ async function run2D(browser) {
       const s = N.birds.sites().filter((q) => q.sp === 'myna');
       const p = N.player;
       s.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
-      if (!s.length) return null;
-      N.debug.teleport(s[0].x + 25, s[0].y + 15); N.birds.clear(); N.birds.refresh();
-      const t0 = N.time.now;
-      await new Promise((r) => { const g = () => (N.time.now - t0 > 2 ? r() : requestAnimationFrame(g)); requestAnimationFrame(g); });
-      const f = N.birds.flocks.find((q) => q.id === s[0].id);
-      return f ? { id: f.id, n: f.birds.length, ground: f.birds.filter((b) => b.st === 0 && b.spot.k === 'G').length, pairs: f.birds.filter((b) => b.mate).length, sites: s.length } : null;
+      for (const site of s.slice(0, 4)) {
+        N.debug.teleport(site.x + 25, site.y + 15); N.birds.clear(); N.birds.refresh();
+        const t0 = N.time.now;
+        await new Promise((r) => { const g = () => (N.time.now - t0 > 2 ? r() : requestAnimationFrame(g)); requestAnimationFrame(g); });
+        const f = N.birds.flocks.find((q) => q.id === site.id);
+        if (f) return { id: f.id, n: f.birds.length, ground: f.birds.filter((b) => b.st === 0 && b.spot.k === 'G').length, pairs: f.birds.filter((b) => b.mate).length, sites: s.length };
+      }
+      return { none: true, sites: s.length };
     });
-    if (!my) fail('no myna site');
+    if (!my || my.none) fail('no myna flock near a myna site ' + JSON.stringify(my));
     else check(my.n >= 2 && my.ground === my.n && my.pairs >= 2, 'mynas walking a lawn in pairs', JSON.stringify(my));
     await shot(page, 'mynas_lawn', 3);
 
@@ -372,7 +374,7 @@ async function run2D(browser) {
     const commute = await page.evaluate(async () => {
       N.debug.setTime(21, 0);
       const t0 = N.time.now;
-      await new Promise((r) => { const g = () => (N.time.now - t0 > 30 ? r() : requestAnimationFrame(g)); requestAnimationFrame(g); });
+      await new Promise((r) => { const g = () => (N.time.now - t0 > 17 ? r() : requestAnimationFrame(g)); requestAnimationFrame(g); }); // (later at night the story may send the kid home)
       let fly = 0, g = 0, up = 0;
       for (const f of N.birds.flocks) { if (f.sp !== 'pigeon') continue; for (const b of f.birds) { if (b.st !== 0) fly++; else if (b.spot.k === 'G') g++; else up++; } }
       return { fly, g, up };
@@ -473,10 +475,20 @@ async function run3D(browser) {
       return { flying: f.birds.filter((q) => q.st !== 0).length, n: f.birds.length };
     });
     check(run.flying > 5, '3D: the run-through bursts the pigeons up', JSON.stringify(run));
-    await sim(page, 0.4);
+    const aimFlock = () => page.evaluate(() => {
+      const f = N.birds.flocks.find((q) => q.id === 'pigeon:charminar'); const p = N.player;
+      let x = 0, y = 0, h = 0, n = 0; for (const b of f.birds) if (b.st !== 0) { x += b.x; y += b.y; h += b.h; n++; }
+      if (!n) return 0;
+      x /= n; y /= n; h /= n;
+      const d = Math.max(20, Math.hypot(x - p.x, y - p.y));
+      N.view3d.setCamera({ yaw: Math.atan2(y - p.y, x - p.x), pitch: -Math.min(0.7, Math.atan2(h * 1.5 - 12, d + 30) * 0.8), snap: true });
+      return n;
+    });
+    await sim(page, 0.3);
+    await aimFlock();
     await shot(page, '3d_charminar_burst');
-    await sim(page, 1.5);
-    await page.evaluate(() => N.view3d.setCamera({ yaw: N.view.yaw, pitch: -0.05, snap: true }));
+    await sim(page, 2);
+    await aimFlock();
     await shot(page, '3d_charminar_circling');
 
     // perf: birds layer JS ms + draw calls with vs without birds
@@ -508,7 +520,7 @@ async function run3D(browser) {
         let w = null;
         for (const f of N.birds.flocks) if (f.sp === 'crow') for (const b of f.birds) if (b.st === 0 && (b.spot.k === 'W' || b.spot.k === 'R') && (!w || b.spot.k === 'W')) w = b;
         if (w) {
-          N.player.teleport(w.x + 28, w.y + 28);
+          N.player.teleport(w.x + 12, w.y + 14);
           const P = N.player; const ok2 = Math.hypot(P.x - w.x - 28, P.y - w.y - 28) < 30;
           return { at, k: w.spot.k, x: w.x, y: w.y, h3: w.spot.h3, ok2 };
         }
@@ -517,7 +529,7 @@ async function run3D(browser) {
     });
     if (crow) {
       await page.evaluate(() => N.view3d.settle(20000));
-      await aim(crow.x, crow.y, -0.12);
+      await aim(crow.x, crow.y, -0.42);
       await sim(page, 0.4);
       await shot(page, '3d_crows_' + (crow.k === 'W' ? 'wires' : 'roof'));
     } else note('3D: no crow perch found for a picture');

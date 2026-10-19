@@ -69,7 +69,7 @@
     enabled: true,
     amp2d: 1,
     show3d: true,
-    opts: { livePalms: true, leaves: true, breathe: true },
+    opts: { livePalms: true, leaves: true, breathe: true, clothes: true },
     flags: [],
     patchMaterial, depthMaterial, windWeights,
     stats() { return Object.assign({}, ST); },
@@ -485,7 +485,7 @@
     if (!orig || orig._wfx) return;
     const f = function (ctx, b) {
       orig(ctx, b);
-      if (b.roofType !== 'flat' || !WX.DETAIL.roofs) return;
+      if (b.roofType !== 'flat' || !WX.DETAIL.roofs || !FX.opts.clothes) return;
       const L = bldgLine(b);
       if (L) drawClothes2D(ctx, L, L._cl, b.h + 0.6, 1.2);
     };

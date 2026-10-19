@@ -491,8 +491,10 @@
       if (!f.roost.length) for (const t of treesNear(site.x, site.y, 160, null, 3, rng)) f.roost.push(treeSpot(t));
       f.or = 50 + rng.next() * 40; f.ow = rng.next() < 0.5 ? -1 : 1;
       // circle above whatever stands on the orbit (Charminar's minarets, the station roofs)
-      let top = 0;
-      for (let k = 0; k < 48; k++) { const a = k * TAU / 48; for (const rf of [0.6, 1, 1.35]) top = Math.max(top, obstH(site.x + Math.cos(a) * f.or * rf, site.y + Math.sin(a) * f.or * rf)); }
+      // prefer a radius whose ring clears the tall stuff (circle round the minarets, not over them)
+      const ringTop = (R) => { let top = 0; for (let k = 0; k < 40; k++) { const a = k * TAU / 40; for (const rf of [0.7, 1, 1.3]) top = Math.max(top, obstH(site.x + Math.cos(a) * R * rf, site.y + Math.sin(a) * R * rf)); } return top; };
+      let top = ringTop(f.or);
+      for (let R = f.or + 15; top > 45 && R <= 170; R += 15) { const t2 = ringTop(R); if (t2 < top) { top = t2; f.or = R; } }
       f.orbMin = top + 8;
     } else if (sp === 'crow') {
       wireSpots(site.x, site.y, 140, 6, f.day);
@@ -529,6 +531,7 @@
       let vi = 0;
       if (sp === 'pigeon') { const r = rng.next(); vi = r < 0.62 ? 0 : r < 0.76 ? 3 : r < 0.9 ? 2 : 1; }
       const b = allocBird(f, sp, vi);
+      b.idx = i; b.bfx = b.bfy = 0;
       f.birds.push(b);
       placeInitial(f, b, i, rng);
     }
@@ -594,7 +597,7 @@
     const ja = (rnd() - 0.5) * 1.1, c = Math.cos(ja), s = Math.sin(ja);
     const dx = ax * c - ay * s, dy = ax * s + ay * c;
     const sp = S.speed * (burst ? rr(0.8, 1.15) : rr(0.55, 0.8));
-    b.vx = dx * sp; b.vy = dy * sp; b.vh = burst ? rr(38, 62) : rr(16, 30);
+    b.vx = dx * sp; b.vy = dy * sp; b.vh = burst ? rr(24, 38) : rr(12, 22);
     b.a = Math.atan2(dy, dx); b.fa = 1; b.flapBoost = burst ? 1.5 : 1.1; b.glideT = rr(1.2, 2.5);
     const prev = b.spot;
     if (b.sp === 'pigeon' && mode === 'day') {
@@ -678,13 +681,17 @@
     let da = b.a - pa; da = Math.atan2(Math.sin(da), Math.cos(da));
     const turn = dt > 0 ? da / dt : 0;
     b.roll += (clamp(turn * (b.sp === 'kite' ? 0.9 : 0.35), -0.9, 0.9) - b.roll) * Math.min(1, dt * 4);
-    const dh = clamp((gh - b.h) * climb, -40, 70);
+    const dh = clamp((gh - b.h) * climb, -35, 42);
     b.vh += (dh - b.vh) * Math.min(1, dt * 3);
     const h0 = b.h;
     b.h = Math.max(0, b.h + b.vh * dt);
     b.pitch += (clamp((b.h - h0) / Math.max(1e-3, dt) / Math.max(20, Math.sqrt(sp2)), -0.5, 0.6) - b.pitch) * Math.min(1, dt * 4);
   }
-  function floorAt(b, x, y, margin) { return obstH(x, y) + margin; }
+  function floorAt(b, x, y, margin) {
+    // egrets / cormorants skim the water: only what stands on land lifts them
+    if ((b.sp === 'egret' || b.sp === 'cormorant') && N.world.isWater(x, y)) return 0;
+    return obstH(x, y) + margin;
+  }
   function wingbeat(b, dt, wantFlap) {
     const S = b.S;
     b.fa += ((wantFlap ? 1 : 0) - b.fa) * Math.min(1, dt * 5);
@@ -725,13 +732,14 @@
       } else gh = b.alt;
       if (f.mode === 'shelter' && b.ft > 0) { b.ft -= dt; }
     }
-    if (arrive) { settle(b, b.tgt, f.mode !== 'day'); b.tgt = null; return; }
+    if (b.st === TOSPOT) { b.tt = (b.tt || 0) + dt; if (b.tt > 22 && Math.hypot(b.rx - b.x, b.ry - b.y) < 40) arrive = true; } else b.tt = 0;
+    if (arrive) { b.tt = 0; settle(b, b.tgt, f.mode !== 'day'); b.tgt = null; return; }
     // seek
     let dx = gx - b.x, dy = gy - b.y;
     const dl = Math.hypot(dx, dy) || 1;
     let dvx = dx / dl * spd, dvy = dy / dl * spd;
     // boids within the flock
-    if ((b.st === ORBIT || b.st === FLOCKFLY) && f.near < 2) {
+    if ((b.st === ORBIT || b.st === FLOCKFLY) && f.near < 2 && ((frameNo + (b.idx | 0)) & 1) === 0) {
       let sx = 0, sy = 0, ax = 0, ay = 0, cx = 0, cy = 0, nn = 0;
       const sepR = b.sp === 'parakeet' ? 4 : 6, cohR = b.sp === 'parakeet' ? 26 : 34;
       for (const o of f.birds) {
@@ -743,10 +751,11 @@
       }
       if (nn) {
         const wa = b.sp === 'parakeet' ? 0.5 : 0.3, wc = b.sp === 'parakeet' ? 1.2 : 0.6;
-        dvx += (ax / nn - b.vx) * wa + (cx / nn) * wc + sx * spd * 0.5;
-        dvy += (ay / nn - b.vy) * wa + (cy / nn) * wc + sy * spd * 0.5;
-      }
+        b.bfx = (ax / nn - b.vx) * wa + (cx / nn) * wc + sx * spd * 0.5;
+        b.bfy = (ay / nn - b.vy) * wa + (cy / nn) * wc + sy * spd * 0.5;
+      } else b.bfx = b.bfy = 0;
     }
+    if (b.st === ORBIT || b.st === FLOCKFLY) { dvx += b.bfx || 0; dvy += b.bfy || 0; } // boids: neighbours every other frame
     // never through buildings: hold above what lies ahead (not on the final approach)
     const near = b.st === TOSPOT && b.tgt && Math.hypot(b.rx - b.x, b.ry - b.y) < 26;
     if (!near) {
@@ -762,7 +771,7 @@
     integrate(b, dt, gh, b.st === TOSPOT ? 1.6 : 1.1);
     if (b.h < (b.tgt ? b.tgt.h : 0)) b.h = b.tgt ? b.tgt.h : 0;
     // hard floor: a bird that still ended up below a roof / minaret here pops up over it (rare)
-    if (!near) { const ob = obstH(b.x, b.y) + 1.5; if (b.h < ob) { b.h += (ob - b.h) * Math.min(1, dt * 10); if (b.vh < 0) b.vh = 0; } }
+    if (!near) { const ob = floorAt(b, b.x, b.y, 1.5); if (b.h < ob) { b.h += (ob - b.h) * Math.min(1, dt * 10); if (b.vh < 0) b.vh = 0; } }
   }
   function soarBird(b, f, dt) {
     const S = b.S;
@@ -881,6 +890,7 @@
     if (!p || !isFinite(p.x) || (N.state && N.state.mode === 'title')) return out;
     const v = p.vehicle;
     const sp = v ? Math.abs(v.speed || 0) : Math.hypot(p.vx || 0, p.vy || 0);
+    if (graceT > 0) return out; // just teleported: its velocity is not a run-through
     out.x = v ? v.x : p.x; out.y = v ? v.y : p.y; out.ok = true; out.v = sp;
     if (v) out.r = sp > 25 ? 26 + sp * 0.22 : 9;
     else out.r = sp > 62 ? 36 : sp > 30 ? 14 : 8;
@@ -890,6 +900,7 @@
     return out;
   }
   const THREAT = { ok: false, x: 0, y: 0, r: 0, h: 0, v: 0 };
+  let graceT = 0;
   let vehScanT = 0;
   function updateFlock(f, dt) {
     f.cool -= dt;
@@ -932,15 +943,22 @@
       if (f.nextT < 0 && f.day.length > 1) {
         f.nextT = rr(18, 45);
         const cur = f.birds[0] && f.birds[0].spot;
-        let ns = null;
-        for (let k = 0; k < 6; k++) { ns = f.day[(rnd() * f.day.length) | 0]; if (ns !== cur) break; }
+        // a tree well away (a proper streak across the colony), else the farthest one
+        let ns = null, far = null, fd = -1;
+        const ox = cur ? cur.x : f.cx, oy = cur ? cur.y : f.cy;
+        for (let k = 0; k < 8; k++) {
+          const c = f.day[(rnd() * f.day.length) | 0], d = Math.hypot(c.x - ox, c.y - oy);
+          if (c !== cur && d > 120) { ns = c; break; }
+          if (c !== cur && d > fd) { fd = d; far = c; }
+        }
+        if (!ns) ns = far;
         if (ns && ns !== cur) {
           f.gx = ns.x; f.gy = ns.y;
           let n = 0;
           for (const b of f.birds) {
             if (b.st !== REST) continue;
             b.st = FLOCKFLY; b.tgt = ns; spotPos(b, ns, false); b.alt = Math.max(ns.h, b.h) + rr(10, 22); b.vh = 30; b.fa = 1; b.flapBoost = 1.2; b.spot = null; n++;
-            b.vx = (ns.x - b.x) * 0.1; b.vy = (ns.y - b.y) * 0.1;
+            { const dx = ns.x - b.x, dy = ns.y - b.y, dl = Math.hypot(dx, dy) || 1; b.vx = dx / dl * b.S.speed * 0.7; b.vy = dy / dl * b.S.speed * 0.7; b.a = Math.atan2(dy, dx); }
           }
           if (n) { sfx('parakeet', f.cx, f.cy, 0.8); N.emit('birds:takeoff', { species: 'parakeet', x: f.cx, y: f.cy, n }); }
         }
@@ -1081,6 +1099,7 @@
     if (tickT <= 0) { tickT = 0.35; try { tickSites(); } catch (e) { N.err('birds.sites', e); } }
     if (dt <= 0) { ST.upd = nowMs() - t0; return; }
     for (let i = pending.length - 1; i >= 0; i--) { const p = pending[i]; p.t -= dt; if (p.t <= 0) { pending.splice(i, 1); scare(p.x, p.y, p.r, 0); } }
+    graceT -= dt;
     playerThreat(THREAT);
     vehScanT -= dt;
     let count = 0, flying = 0;
@@ -1219,7 +1238,8 @@
 
   /* ================================================================ 2D draw */
   function blit(ctx, b, k, X, Y) {
-    const scb = clamp(Math.round(k * 4 * b.sz), 2, 23);
+    // scale buckets of 0.5 (sprites are tiny; finer steps only multiply the cache)
+    const scb = clamp(Math.round(k * 2 * b.sz) * 2, 2, 22);
     const c = sprite(b.S, b.vi, poseOf(b), dirOf(b.a), scb);
     ctx.drawImage(c, Math.round(X - c.width / 2), Math.round(Y - c.height / 2));
   }
@@ -1648,6 +1668,7 @@
     const r = t === 'foot' ? 60 : t === 'cycle' || t === 'ladiescycle' ? 55 : t === 'bus' || t === 'lorry' ? 120 : 90;
     scare(e.x, e.y, r, 0);
   });
+  N.on('player:teleport', () => { graceT = 0.6; });
   N.on('traffic:honk', (e) => { if (enabled && e && e.vehicle && isFinite(e.vehicle.x)) scare(e.vehicle.x, e.vehicle.y, 45, 0); });
   N.on('weather:lightning', (e) => {
     if (!enabled || !e || !(e.dist < 900)) return;
@@ -1690,7 +1711,7 @@
       addSite(site); site.flock = f; active.push(f);
       return f;
     },
-    clear() { for (let i = active.length - 1; i >= 0; i--) releaseFlock(active[i]); for (const s of staticSites || []) s.coolUntil = simT + 2; },
+    clear() { for (let i = active.length - 1; i >= 0; i--) releaseFlock(active[i]); tickT = 0; },
     refresh() { tickT = 0; },
     sites() { return (staticSites || []).map((s) => ({ id: s.id, sp: s.sp, x: Math.round(s.x), y: Math.round(s.y), n: s.n, active: !!s.flock })); },
     stats() {
