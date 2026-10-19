@@ -1,0 +1,52 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 26388,
+ "clips": {},
+ "family": "landmark",
+ "file": "atc_tower.glb",
+ "front": "-Y",
+ "id": "atc_tower",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 25.8,
+ "kit": 1,
+ "materials": [
+  "M_atc_tower",
+  "M_atc_tower_sheet@night"
+ ],
+ "max": [
+  10.4,
+  10.3,
+  83.3
+ ],
+ "meta": {
+  "draw": "control_tower",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   18,
+   18
+  ],
+  "height": 78.0
+ },
+ "min": [
+  -10.3,
+  -10.3,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_modern",
+ "size": [
+  20.7,
+  20.6,
+  83.3
+ ],
+ "tint": null,
+ "tris": 282,
+ "units": "u",
+ "up": "Z"
+}

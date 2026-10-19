@@ -1,0 +1,51 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 49628,
+ "clips": {},
+ "family": "landmark",
+ "file": "spanish_mosque.glb",
+ "front": "-Y",
+ "id": "spanish_mosque",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 48.5,
+ "kit": 1,
+ "materials": [
+  "M_spanish_mosque"
+ ],
+ "max": [
+  19.1,
+  15.113,
+  65.5
+ ],
+ "meta": {
+  "draw": "spanish_mosque",
+  "face": "s",
+  "fit": "footprint",
+  "floodlit": true,
+  "footprint": [
+   40,
+   40
+  ],
+  "height": 66.0
+ },
+ "min": [
+  -19.1,
+  -21.175,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_modern",
+ "size": [
+  38.2,
+  36.288,
+  65.5
+ ],
+ "tint": null,
+ "tris": 514,
+ "units": "u",
+ "up": "Z"
+}
