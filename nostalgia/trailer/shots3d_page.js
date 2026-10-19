@@ -65,7 +65,7 @@
     STAGE.hero({ x: hero.x, y: hero.y, h: hero.h, angle: face, clip: sh.clip || 'idle' });
     pose(0, seg.n * B * FPS);
     settle();
-    for (let k = 0; k < 45; k++) { pose(0, seg.n * B * FPS); window.__step(1 / FPS); }
+    for (let k = 0; k < (window.WARM || 45); k++) { pose(0, seg.n * B * FPS); window.__step(1 / FPS); }
     settle();
     return { lm: lm.id, hero: { x: Math.round(hero.x), y: Math.round(hero.y), h: +hero.h.toFixed(1) }, base: +base.toFixed(2) };
   };

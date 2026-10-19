@@ -33,10 +33,10 @@ const SHOTS = {
   const { browser, page, errors } = await openGame({ width: W, height: H });
   await page.addScriptTag({ path: path.join(__dirname, 'stage.js') });
   await page.addScriptTag({ path: path.join(__dirname, 'shots3d_page.js') });
-  await page.evaluate((aa) => {
-    N.view3d.setQuality({ adaptive: false, pixelRatio: 1, antialias: aa, drawDist: 2200 });
+  await page.evaluate((o) => {
+    N.view3d.setQuality({ adaptive: false, pixelRatio: 1, antialias: o.aa, drawDist: o.draw }); window.WARM = o.warm;
     N.view.set('tps');
-  }, process.env.AA === '1');
+  }, { aa: process.env.AA === '1', draw: +(process.env.DRAW || 1500), warm: +(process.env.WARM || 0) || undefined });
   await page.waitForFunction(() => N.view3d && N.view3d.active && N.models3d && N.models3d.ready, null, { timeout: 300000 });
   await takeOver(page);
   await page.evaluate(() => { STAGE.setup(); if (N.birds) N.birds.enabled = true; });

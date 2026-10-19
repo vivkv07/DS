@@ -130,7 +130,7 @@
     if (o.wanted) N.wanted.set(o.wanted);
     // warm-up: drive the route for 2 s (camera settles, traffic + birds populate, chunks stream)
     for (let k = 0; k < 3; k++) N.view3d && N.view3d.active && N.view3d.settle(30000);
-    for (let k = 0; k < 60; k++) advance(true);
+    for (let k = 0; k < (window.WARM || 60); k++) advance(true);
     if (N.view3d && N.view3d.active) N.view3d.settle(30000);
     C.f = 0;
     return { at: [Math.round(start.x), Math.round(start.y)], len: path ? Math.round(path.len) : 0, veh: v ? v.type : null, view: N.view.mode };
