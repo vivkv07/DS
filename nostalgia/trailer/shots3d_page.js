@@ -79,7 +79,7 @@
     // the hidden player stands below, so birds / traffic / rain live around the shot
     N.debug.teleport(hero.x + 30, hero.y + 30);
     // no parked / passing vehicles blocking the drone (traffic further away stays)
-    const clearV = () => N.entities.clear((e) => e.kind === 'vehicle' && Math.hypot(e.x - hero.x, e.y - hero.y) < 90);
+    const clearV = () => N.entities.clear((e) => (e.kind === 'vehicle' && Math.hypot(e.x - hero.x, e.y - hero.y) < 90) || ((e.kind === 'ped' || e.kind === 'npc') && e !== N.player && Math.hypot(e.x - hero.x, e.y - hero.y) < 22));
     clearV(); CUR_CLEAR = clearV;
     streamAt(hero.x, hero.y);
     const face = sh.face != null ? sh.face : base + 0.55;
