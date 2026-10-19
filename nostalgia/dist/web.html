@@ -60773,6 +60773,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
 
   /* ================================================================ tuning */
   const TUNE = {
+    keep3dSecs: 120, keep3dMax: 8, // released scenes keep their built 3D group this long / this many
     maxScenes: { desk: 6, low: 4 }, maxPeople: { desk: 64, low: 40 }, maxParticles: { desk: 220, low: 140 },
     actScreens: 1.2, actMin: 230, actMax: 640, act3D: 460, offPad: 1.25,
     walk: [30, 42], barkGap: 2.4, barkR: 230, sfxGap: 0.22, sfxR: 320, glanceR: 18, aside: 9,
@@ -62253,7 +62254,8 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       out.digger = ok(-5, -zw * 0.55); out.digger.a = aang(F) + PI / 2;
       out.shovel = ok(17, -3.6); out.shovel.a = Math.atan2(out.mixer.y - out.shovel.y, out.mixer.x - out.shovel.x);
       out.loopA = ok(22, 0.2); out.loopB = ok(7.5, -2.6);
-      out.hav = ok(-31, -zw - 2.5); out.hav.a = aang(F) + PI;
+      // the havaldar stands at the head of the strip on the work side of the barricade line, never in the live lane
+      out.hav = ok(-31, -zw + 1.5); out.hav.a = aang(F) + PI;
       out.watch = ok(-24, 2.6); out.watch.a = fang(F) + PI;
       out.shelter = slotsGrid(F, 16, 26, 2, 5, 3.4, fang(F) + PI, true);
       return out;
@@ -62274,6 +62276,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
     tick(sc, dt) {
       const Lo = sc.L, st = sc.st, F = sc.F;
       havaldarTick(sc, dt);
+      narrowLane(sc, dt);
       // the tar drum smokes over its fire all day (and the embers fly)
       if (TUNE.particles) {
         st.smk = (st.smk || 0) + dt * (sc.level > 0.1 ? 3.2 : 1.2);
@@ -62333,6 +62336,62 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       }
     },
   };
+
+  /* Lane narrowing for the roadwork strip. traffic.js drives its two-wheelers and the kerb lane right where the
+   * crew works, and its vehicles stop for solid people on asphalt. Until traffic.js offers a narrowing hint
+   * (api request), ambient vehicles approaching the site on its side of the road are eased out of the strip
+   * through tr.pull, the lateral offset traffic.js already honours for pull-overs (positive = towards the left
+   * kerb). Feature-detected: without v.tr / tr.pull semantics nothing is touched. Pulls are tracked and cleared
+   * when the vehicle leaves the zone or the scene goes away. */
+  const NQ = [], PULLED = [];
+  const NARROW = { ahead: 70, behind: 46, margin: 3, every: 0.1, maxPull: 22 };
+  function narrowLane(sc, dt) {
+    const st = sc.st;
+    st.nT = (st.nT || 0) - dt;
+    if (st.nT > 0) return;
+    st.nT = NARROW.every;
+    const E = N.entities, F = sc.F, L = sc.L;
+    if (!E || !E.query) return;
+    const zw = L.zw, cx = F.cx, cy = F.cy, ax = F.ax, ay = F.ay, nx = F.nx, ny = F.ny;
+    const road = sc.spot.roadW || 52;
+    NQ.length = 0;
+    E.query(cx, cy, NARROW.ahead + 10, null, NQ);
+    for (let i = 0; i < NQ.length; i++) {
+      const v = NQ[i];
+      if (v.kind !== 'vehicle' || !v.alive || !v.tr || v === N.player.vehicle || v.driver === N.player) continue;
+      const tr = v.tr;
+      const dx = v.x - cx, dy = v.y - cy;
+      const u = dx * ax + dy * ay, vv = dx * nx + dy * ny;
+      // only vehicles on this carriageway (the half of the road whose kerb is the strip's kerb)
+      if (vv > 4 || vv < -road / 2 - 2) { unpull(v); continue; }
+      // which way +lat moves this vehicle relative to the strip normal (traffic.js: lat moves along (uy, -ux))
+      const s = Math.sin(v.angle) * nx - Math.cos(v.angle) * ny;
+      if (Math.abs(s) < 0.6) { unpull(v); continue; }
+      const along = Math.cos(v.angle) * ax + Math.sin(v.angle) * ay; // + means travelling towards +u
+      const rel = along >= 0 ? -u : u; // distance still to go before the strip's centre
+      if (rel < -NARROW.behind || rel > NARROW.ahead) { unpull(v); continue; }
+      if (tr.pullT != null || tr.stopT != null || (tr.pull && v._clPull == null)) continue; // a real pull-over / bus stop
+      const half = (v.T && v.T.d ? v.T.d : 4) / 2;
+      const cur = v._clPull || 0;
+      const base = vv - s * (tr.lat || 0); // where the vehicle would ride with no lateral shift
+      const lim = -zw - NARROW.margin - half;       // its outer edge must stay this far out from the strip
+      let need = Math.min(0, lim - base);           // in strip-normal units (negative = towards the road centre)
+      need = Math.max(need, -road / 2 + 1 + half * 0.5 - base); // never further than just over the centre line
+      const pull = clamp(need / s, -NARROW.maxPull, NARROW.maxPull);
+      if (Math.abs(pull) < 0.3) { unpull(v); continue; }
+      tr.pull = pull; v._clPull = pull;
+      if (cur === 0 && PULLED.indexOf(v) < 0) PULLED.push(v);
+    }
+    // vehicles that left the query radius
+    for (let i = PULLED.length - 1; i >= 0; i--) { const v = PULLED[i]; if (!v.alive || Math.hypot(v.x - cx, v.y - cy) > NARROW.ahead + 10) unpull(v); }
+  }
+  function unpull(v) {
+    if (v._clPull == null) return;
+    if (v.tr && v.tr.pull === v._clPull) v.tr.pull = 0;
+    v._clPull = null;
+    const i = PULLED.indexOf(v); if (i >= 0) PULLED.splice(i, 1);
+  }
+  function unpullAll() { for (let i = PULLED.length - 1; i >= 0; i--) unpull(PULLED[i]); }
 
   const KINDS = { irani: KIND_IRANI, chai: KIND_CHAI, saloon: KIND_SALOON, busstop: KIND_BUS, trade: KIND_TRADE, roadwork: KIND_ROAD };
 
@@ -62446,7 +62505,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
         if (!ok || inLandmark(cxp, cyp, 30)) continue;
         rw++; rwTaken.push([q.x, q.y]);
         // frame: c at the kerb line, a along the road, n outwards (to the footpath); the work strip is v in [-zw, 0]
-        addSpot({ id: 'roadwork:' + road.id + ':' + rw, kind: 'roadwork', F: ptFrame(cxp, cyp, tx, ty, px, py, 30), x: cxp, y: cyp, zw, road: road.id });
+        addSpot({ id: 'roadwork:' + road.id + ':' + rw, kind: 'roadwork', F: ptFrame(cxp, cyp, tx, ty, px, py, 30), x: cxp, y: cyp, zw, road: road.id, roadW: road.w });
       }
     }
     ST.spots = SPOTS.length;
@@ -62479,6 +62538,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
   function releaseScene(sc, quick) {
     if (!sc || !sc.on) return;
     sc.on = false;
+    if (sc.spot.kind === 'roadwork') unpullAll();
     const i = ACTIVE.indexOf(sc); if (i >= 0) ACTIVE.splice(i, 1);
     if (sc.spot.scene === sc) sc.spot.scene = null;
     for (const p of sc.people.slice()) {
@@ -62893,7 +62953,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
   }
 
   /* ================================================================ 3D layer (view3d.js loads after this file) */
-  const G3 = { THREE: null, H: null, ready: false, grp: null, pts: null, spk: null, scenes: new Map(), ms: 0, pools: null };
+  const G3 = { THREE: null, H: null, ready: false, grp: null, pts: null, spk: null, scenes: new Map(), list: [], built: 0, ms: 0, pools: null };
   const PT_VS = [
     'attribute vec2 aSA; attribute vec3 aCol; varying vec4 vCol; uniform float uScale;',
     'void main() { vCol = vec4(aCol, aSA.y); vec4 mv = modelViewMatrix * vec4(position, 1.0);',
@@ -62948,14 +63008,34 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
   function cyl3(b, x, y, y0, r0, r1, h, seg) { b.cyl(x, y0, y, r0, r1, h, seg || 8); }
   function texPlane(H, key, w, h, paint, F, u, v, y, wu, hv, face) {
     const THREE = H.THREE;
-    const tex = H.tex(key, w, h, paint);
-    const mat = H.mat('#ffffff', { map: tex, double: true });
+    const mat = texMat(H, key, w, h, paint);
     const m = new THREE.Mesh(G3.plane || (G3.plane = sharedPlane(THREE)), mat);
     const c = W3(F, u, v);
     m.position.set(c[0], y, c[1]);
     m.scale.set(wu, hv, 1);
     m.rotation.y = -(face != null ? face : fang(F)) + PI / 2;
     m.userData.noShadow = true;
+    return m;
+  }
+  // Textured materials are cached here per texture key. Never hand a texture to H.mat: view3d keys its cache on
+  // JSON.stringify(options), and a Texture serialises through toJSON -> canvas.toDataURL (a PNG encode per call).
+  const TEXMAT = new Map();
+  function texMat(H, key, w, h, paint) {
+    let m = TEXMAT.get(key);
+    if (m) return m;
+    const THREE = H.THREE, tex = H.tex(key, w, h, paint);
+    m = new THREE.MeshLambertMaterial({ color: 0xffffff, map: tex, side: THREE.DoubleSide });
+    m.userData.shared = true;
+    TEXMAT.set(key, m);
+    return m;
+  }
+  // per-tool held-item materials (plain colours, looked up once instead of H.mat's string key every frame)
+  const TOOLMAT = new Map();
+  function toolMat(H, tool) {
+    let m = TOOLMAT.get(tool);
+    if (m) return m;
+    m = H.mat(tool === 'comb' || tool === 'iron' || tool === 'clipper' ? '#1e1e22' : tool === 'hammer' || tool === 'shovel' || tool === 'pick' ? '#6a4a2a' : tool === 'garland' ? '#f08a1a' : tool === 'mirror' ? '#cfe2ee' : '#c8ccd2');
+    TOOLMAT.set(tool, m);
     return m;
   }
   function sharedPlane(THREE) { const g = new THREE.PlaneGeometry(1, 1); g.userData = { shared: true }; return g; }
@@ -63206,7 +63286,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       else if ((p.hold === 'pan' || p.hold === 'bricks') && p.look.prop !== 'pot') { const m = take3('pan'); if (m) m.position.set(p.x, el + 10.4, p.y); }
       if (p.cape) { const m = take3('cape'); if (m) { m.position.set(p.x + c * 0.3, el + 7.6, p.y + s * 0.3); m.rotation.set(0, 0, 0); } }
       if (p.foam > 0.05) for (const sd of [-1, 1]) { const m = take3('foam'); if (m) { m.position.set(p.x + c * 0.9 - s * 0.7 * sd, el + 8.1, p.y + s * 0.9 + c * 0.7 * sd); m.scale.setScalar(p.foam); } }
-      if (p.tool) { const m = take3('tool'); if (m) { m.position.set(p.hx, p.hh * VS, p.hy); m.rotation.set(0, -a + (p.tool === 'scissors' ? Math.sin(simT() * 22) * 0.4 : 0), 0); m.material = H.mat(p.tool === 'comb' || p.tool === 'iron' || p.tool === 'clipper' ? '#1e1e22' : p.tool === 'hammer' || p.tool === 'shovel' || p.tool === 'pick' ? '#6a4a2a' : p.tool === 'garland' ? '#f08a1a' : p.tool === 'mirror' ? '#cfe2ee' : '#c8ccd2'); m.scale.set(p.tool === 'shovel' || p.tool === 'pick' ? 2.2 : p.tool === 'iron' ? 1.2 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1); } }
+      if (p.tool) { const m = take3('tool'); if (m) { m.position.set(p.hx, p.hh * VS, p.hy); m.rotation.set(0, -a + (p.tool === 'scissors' ? Math.sin(simT() * 22) * 0.4 : 0), 0); m.material = toolMat(H, p.tool); m.scale.set(p.tool === 'shovel' || p.tool === 'pick' ? 2.2 : p.tool === 'iron' ? 1.2 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1); } }
     }
     for (const k in PL) { const arr = PL[k]; for (let i = PI3[k]; i < arr.length; i++) arr[i].visible = false; }
   }
@@ -63224,10 +63304,27 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
   function layerUpdate(dt, H) {
     const t0 = now();
     if (!G3.ready || !is3D()) return;
-    for (const [sc, o] of G3.scenes) if (!sc.on) disposeScene3d(sc, o);
+    // built scene groups are cached per spot: a released scene is hidden and kept for a while, so walking back
+    // across the activation radius re-shows it instead of rebuilding it
+    const L3 = G3.list;
+    let idle = 0;
+    for (let i = L3.length - 1; i >= 0; i--) {
+      const o = L3[i];
+      if (o.sc && o.sc.on && o.sc.spot.scene === o.sc) continue;
+      o.sc = null;
+      if (o.grp.visible) o.grp.visible = false;
+      o.idle += dt;
+      if (o.idle > TUNE.keep3dSecs) disposeScene3d(o); else idle++;
+    }
+    while (idle > TUNE.keep3dMax) { let w = null; for (const o of L3) if (!o.sc && (!w || o.idle > w.idle)) w = o; if (!w) break; disposeScene3d(w); idle--; }
     for (const sc of ACTIVE) {
-      let o = G3.scenes.get(sc);
-      if (!o) { try { o = scene3d(sc, H); } catch (e) { N.err('citylife.scene3d', e); o = { grp: new H.THREE.Group(), own: [], dyn: {} }; } G3.grp.add(o.grp); G3.scenes.set(sc, o); }
+      let o = G3.scenes.get(sc.spot);
+      if (!o) {
+        try { o = scene3d(sc, H); } catch (e) { N.err('citylife.scene3d', e); o = { grp: new H.THREE.Group(), own: [], dyn: {} }; }
+        o.spot = sc.spot; o.idle = 0; o.sc = null;
+        G3.grp.add(o.grp); G3.scenes.set(sc.spot, o); L3.push(o); G3.built++;
+      }
+      if (o.sc !== sc) { o.sc = sc; o.idle = 0; o.grp.visible = true; }
       try { update3dScene(sc, o, H, dt); } catch (e) { N.err('citylife.update3d', e); }
     }
     try { heldItems3d(H); } catch (e) { N.err('citylife.held3d', e); }
@@ -63235,11 +63332,12 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
     lights3d(H);
     G3.ms = now() - t0;
   }
-  function disposeScene3d(sc, o) {
+  function disposeScene3d(o) {
     G3.grp.remove(o.grp);
     for (const m of o.own) { try { m.dispose(); } catch (e) { /* ignore */ } }
     o.grp.traverse((m) => { if (m.geometry && !(m.geometry.userData && m.geometry.userData.shared) && o.own.indexOf(m.geometry) < 0 && m !== o.dyn.model && m !== o.dyn.treeModel && !(o.dyn.model && isChild(m, o.dyn.model)) && !(o.dyn.treeModel && isChild(m, o.dyn.treeModel))) { try { m.geometry.dispose(); } catch (e) { /* ignore */ } } });
-    G3.scenes.delete(sc);
+    G3.scenes.delete(o.spot);
+    const i = G3.list.indexOf(o); if (i >= 0) G3.list.splice(i, 1);
   }
   function isChild(m, root) { let p = m; while (p) { if (p === root) return true; p = p.parent; } return false; }
   let reg3d = false;
@@ -63259,7 +63357,8 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       },
       update(dt, H) { try { layerUpdate(dt, H); } catch (e) { N.err('citylife.layer', e); } },
       dispose(H) {
-        for (const [sc, o] of G3.scenes) disposeScene3d(sc, o);
+        for (const o of G3.list.slice()) disposeScene3d(o);
+        for (const m of TEXMAT.values()) m.dispose(); TEXMAT.clear(); TOOLMAT.clear();
         if (G3.grp && H && H.layer) H.layer.remove(G3.grp);
         for (const p of [G3.pts, G3.spk]) if (p) { p.geometry.dispose(); p.material.dispose(); }
         if (G3.geos) for (const g of G3.geos) g.dispose();
@@ -63436,7 +63535,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
         spots: SPOTS.length, active: ACTIVE.length, people: PEOPLE.length, pool: POOL.length, particles: P.n,
         ms: +ST.ms.toFixed(3), msAvg: +ST.msAvg.toFixed(3), ms2d: +ST.ms2d.toFixed(3), ms3d: +ST.ms3d.toFixed(3), r: Math.round(actRadius()),
         activations: ST.activations, handedBack: ST.handedBack, haircuts: ST.haircuts, buses: ST.buses, ownBuses: ST.ownBuses, boarded: ST.boarded, whistles: ST.whistles, sfSpots: ST.sfSpots,
-        s3d: G3.scenes.size, layer3d: G3.ready, sfx: sfxReg,
+        s3d: G3.scenes.size, s3dBuilt: G3.built, layer3d: G3.ready, sfx: sfxReg,
         kinds: SPOTS.reduce((o, s) => { const k = s.kind === 'trade' ? 'trade:' + s.sub : s.kind; o[k] = (o[k] || 0) + 1; return o; }, {}),
       };
     },
@@ -63704,6 +63803,8 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
     ticket: ['Dorikindi! Ticket dorikindi!', 'Ticket mila!'],
     housefull: ['House full!', 'Aiyyo, house full!', 'Next show ki raa!'],
     baraat: ['Aao beta, naacho!', 'Dulha aa raha hai!', 'Band baaja baarat!', 'Side lo, baraat vastundi!'],
+    baraatHushPrayer: ['Band roko, namaaz ka waqt hai.', 'Aahista, azaan ho rahi hai.', 'Band aapandi, namaaz time.'],
+    baraatHush: ['Band roko, thodi der.', 'Band aapandi, konchem.', 'Bas, chup chaap chalo thodi der.'],
     baraatTraffic: ['Shaadi hai bhai, thoda ruko!', 'Kitni der lagegi?', 'Baraat ra, emi cheyyagalam.'],
     step: ['Side, chinna!', 'Arre, dekh ke!', 'Jagratha!', 'Aaram se, beta.'],
   };
@@ -63764,6 +63865,59 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
   function styleAt(x, y) { try { const d = N.world.districtAt(x, y); if (!d) return 'colony'; if (d.id === 'osmania') return 'osmania'; return d.style || 'colony'; } catch (e) { return 'colony'; } }
   function districtOf(x, y) { try { const d = N.world.districtAt(x, y); return d ? (d.id || String(d)) : ''; } catch (e) { return ''; } }
   function footW(kind) { const F = N.world && N.world.FOOT; return (F && F[kind]) || 0; }
+  /* ---- siting rules shared by the colony lanes and the baraat routes (build time only).
+     Places of worship stay calm: no gully cricket, band or dancing beside a mosque, temple, church,
+     dargah or gurudwara (N.respect, minus the dynamic 'procession' zones). A colony lane is also kept
+     off station forecourts, bus termini and markets: those are commercial, not residential. */
+  let WZ = null, BUSY = null;
+  function worshipZones() {
+    if (WZ) return WZ;
+    WZ = [];
+    try { const all = N.respect && N.respect.zones; if (all) for (const z of all) if (z && z.kind !== 'procession') WZ.push(z); } catch (e) { WZ = []; }
+    return WZ;
+  }
+  /** the distance from (x, y) to the nearest place of worship (capped at lim) */
+  function worshipDist(x, y, lim) {
+    const Z = worshipZones(), Rs = N.respect;
+    let best = lim;
+    for (const z of Z) {
+      const b = z.bb;
+      if (b && (x < b[0] - best || y < b[1] - best || x > b[2] + best || y > b[3] + best)) continue;
+      let d = best;
+      try { d = Rs.distance(x, y, z); } catch (e) { d = best; }
+      if (d < best) best = d;
+    }
+    return best;
+  }
+  const BUSY_DRAW = { railway_station: 120, halt_station: 120, bus_terminus: 120, mgbs: 120, cbs_hangar: 120, market_hall: 120, mozamjahi_market: 120, rythu_bazaar: 120, numaish_gate: 120, airport_terminal: 120, bus_stop: 45 };
+  const BUSY_PLACE = { market: 120, transport: 120 };
+  function busyList() {
+    if (BUSY) return BUSY;
+    BUSY = [];
+    const D = N.WORLD_DATA || {};
+    for (const l of D.landmarks || []) { const r = BUSY_DRAW[l.draw]; if (r && isFinite(l.x)) BUSY.push({ x: l.x, y: l.y, hw: (l.w || 0) / 2, hd: (l.d || 0) / 2, r, id: l.id }); }
+    for (const p of D.places || []) { const r = BUSY_PLACE[p.kind]; if (r && isFinite(p.x)) BUSY.push({ x: p.x, y: p.y, hw: p.r || 0, hd: p.r || 0, r, id: p.id }); }
+    return BUSY;
+  }
+  /** the busy (commercial / transport) spot within its exclusion radius of (x, y), or null */
+  function busyAt(x, y) {
+    for (const b of busyList()) {
+      const dx = Math.max(Math.abs(x - b.x) - b.hw, 0), dy = Math.max(Math.abs(y - b.y) - b.hd, 0);
+      if (dx < b.r && dy < b.r && dx * dx + dy * dy < b.r * b.r) return b;
+    }
+    return null;
+  }
+  /** does a whole path (and optional extra points) keep clear: worship farther than wR, busy spots outside their radius */
+  function pathClear(path, wR, busy, extra) {
+    const step = 12;
+    for (let d = 0; d <= path.len; d += step) {
+      const q = at(path, d, 0, PT2);
+      if (worshipDist(q.x, q.y, wR) < wR) return false;
+      if (busy && busyAt(q.x, q.y)) return false;
+    }
+    if (extra) for (const e of extra) { if (worshipDist(e.x, e.y, wR) < wR) return false; if (busy && busyAt(e.x, e.y)) return false; }
+    return true;
+  }
   /** a polyline [x0, y0, x1, y1, ...] with cumulative lengths */
   function mkPath(pts, o) {
     const n = pts.length / 2, cum = new Float32Array(n);
@@ -64800,16 +64954,21 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
   /* ================================================================ 5 + 6. COLONY LANES */
   const COLONY_EXTRA = [{ id: 'home', place: 'home' }, { id: 'friend_home', place: 'friend_home' }];
   const GEOS = [];
+  /** why candidate lanes / routes were turned down (build-time diagnostics, E._debug.REJ) */
+  const REJ = {};
+  const rej = (k) => { REJ[k] = (REJ[k] || 0) + 1; return null; };
   function colonyGeo(id, x, y) {
     const R = RD();
     const n = nearNode(x, y, 240, (q) => {
       if (q.deg < 2 || q.deg > 3) return false;
-      for (const eid of q.inc) { const e = R.edges[eid]; if (e && (e.kind === 'lane' || e.kind === 'street')) return true; }
-      return false;
+      let ok = false;
+      for (const eid of q.inc) { const e = R.edges[eid]; if (e && (e.kind === 'lane' || e.kind === 'street')) { ok = true; break; } }
+      return ok && worshipDist(q.x, q.y, COLONY_CLEAR) >= COLONY_CLEAR && !busyAt(q.x, q.y);
     });
-    if (!n) return null;
+    if (!n) return rej('node');
+    if (GEOS.some((g) => g.n === n)) return rej('dup');
     const path = throughPath(n, 105);
-    if (!path || path.len < 150) return null;
+    if (!path || path.len < 150) return rej('path');
     const hw = path.w / 2, foot = footW(path.kind);
     const doors = [];
     const S = [-66, -40, -14, 12, 38, 64];
@@ -64823,34 +64982,68 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       const nx = q.uy * side, ny = -q.ux * side; // towards the house
       doors.push({ x: f.x, y: f.y, s, side, nx, ny, a: Math.atan2(-ny, -nx), ix: f.x + nx * 3, iy: f.y + ny * 3 });
     }
-    if (doors.length < 3) return null;
+    if (doors.length < 3) return rej('doors');
+    // the whole lane (where the cricket, the milkman and the chairs go) keeps off worship places and busy spots
+    if (!pathClear(path, COLONY_CLEAR, true, doors)) return rej('clear');
     const g = { id, path, hw, foot, doors, n, x: n.x, y: n.y, day: -1, mugg: [], papers: [], style: styleAt(n.x, n.y), near: false };
     GEOS.push(g);
     return g;
   }
+  const COLONY_CLEAR = 120;
+  /** where to look first in a district: Secunderabad's centroid is the station / Rathifile bus station
+     (commercial), so its colony lane is looked for on the Bowenpally / Sikh Village side instead;
+     Marredpally's is looked for in West Marredpally's residential streets */
+  const COLONY_HINT = { secunderabad: [9900, 900], marredpally: [10950, 900] };
+  const polyPts = (d) => { const P = d.poly || d.pts || d.polygon; return Array.isArray(P) && P.length > 2 ? P.map((p) => (Array.isArray(p) ? p : [p.x, p.y])) : null; };
+  /** candidate lane points around a hint: the hint, then vertices of lanes / streets nearby, nearest first */
+  function colonyCands(hx, hy, R, did) {
+    const out = [[hx, hy, 0]];
+    const roads = (N.WORLD_DATA && N.WORLD_DATA.roads) || [];
+    const seen = new Set();
+    for (const r of roads) {
+      if (r.kind !== 'lane' && r.kind !== 'street') continue;
+      for (const p of r.pts || []) {
+        const d = Math.hypot(p[0] - hx, p[1] - hy);
+        if (d > R || d < 60) continue;
+        if (did && districtOf(p[0], p[1]) !== did) continue;
+        const key = ((p[0] / 90) | 0) + ':' + ((p[1] / 90) | 0);
+        if (seen.has(key)) continue; seen.add(key);
+        out.push([p[0], p[1], d + (r.kind === 'lane' ? 0 : 60)]);
+      }
+    }
+    out.sort((a, b) => a[2] - b[2]);
+    return out.slice(0, 28);
+  }
   function buildColonies() {
     const D = (N.world.data && N.world.data.districts) || (N.WORLD_DATA && N.WORLD_DATA.districts) || [];
     const used = [];
-    const mk = (id, x, y) => {
-      if (used.some((u) => Math.hypot(u[0] - x, u[1] - y) < 260)) return;
-      const g = colonyGeo(id, x, y);
-      if (!g) return;
-      used.push([g.x, g.y]);
-      addSite({ id: 'colony_am:' + id, kind: 'colony_am', x: g.x, y: g.y, geo: g, style: g.style });
-      addSite({ id: 'colony_pm:' + id, kind: 'colony_pm', x: g.x, y: g.y, geo: g, style: g.style });
+    const mk = (id, hx, hy, R, did) => {
+      for (const c of colonyCands(hx, hy, R, did)) {
+        const x = c[0], y = c[1];
+        if (used.some((u) => Math.hypot(u[0] - x, u[1] - y) < 260)) continue;
+        const g = colonyGeo(id, x, y);
+        if (!g) continue;
+        if (used.some((u) => Math.hypot(u[0] - g.x, u[1] - g.y) < 260)) { GEOS.pop(); continue; }
+        used.push([g.x, g.y]);
+        addSite({ id: 'colony_am:' + id, kind: 'colony_am', x: g.x, y: g.y, geo: g, style: g.style });
+        addSite({ id: 'colony_pm:' + id, kind: 'colony_pm', x: g.x, y: g.y, geo: g, style: g.style });
+        return;
+      }
     };
-    for (const e of COLONY_EXTRA) { const p = N.places[e.place]; if (p) mk(e.id, p.x + 20, p.y + 10); }
+    for (const e of COLONY_EXTRA) { const p = N.places[e.place]; if (p) mk(e.id, p.x + 20, p.y + 10, 420, null); }
     for (const d of D) {
       if (d.style !== 'colony' && d.style !== 'cantonment') continue;
-      const pts = d.poly || d.pts || d.polygon;
+      const pts = polyPts(d);
       let cx = d.x, cy = d.y;
-      if ((!isFinite(cx) || !isFinite(cy)) && Array.isArray(pts) && pts.length) {
+      if ((!isFinite(cx) || !isFinite(cy)) && pts) {
         cx = 0; cy = 0; let n = 0;
-        for (const p of pts) { const px = Array.isArray(p) ? p[0] : p.x, py = Array.isArray(p) ? p[1] : p.y; if (isFinite(px)) { cx += px; cy += py; n++; } }
+        for (const p of pts) { if (isFinite(p[0])) { cx += p[0]; cy += p[1]; n++; } }
         if (!n) continue; cx /= n; cy /= n;
       }
+      const h = COLONY_HINT[d.id];
+      if (h) { cx = h[0]; cy = h[1]; }
       if (!isFinite(cx) || !isFinite(cy)) continue;
-      mk(d.id, cx, cy);
+      mk(d.id, cx, cy, 900, d.id);
     }
   }
   /** the day's muggulu (and the papers at the doors) for a lane: they stay on the ground all day */
@@ -65603,8 +65796,23 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
     const p = mkPath(pts, { w: road.w || 24, kind: road.kind });
     return p.len > L * 0.6 ? p : null;
   }
+  const BARAAT_CLEAR = 150, BARAAT_QUIET = 240;
+  /** stretches [s0, s1, ...] of a route that pass within BARAAT_QUIET of a place of worship: the band stops there */
+  function quietSpans(route) {
+    const out = [];
+    let on = -1;
+    for (let d = 0; d <= route.len + 10; d += 10) {
+      const q = at(route, Math.min(d, route.len), 0, PT2);
+      const near = d <= route.len && worshipDist(q.x, q.y, BARAAT_QUIET) < BARAAT_QUIET;
+      if (near && on < 0) on = Math.max(0, d - 20);
+      else if (!near && on >= 0) { out.push(on, Math.min(route.len, d + 20)); on = -1; }
+    }
+    return out;
+  }
+  function inSpans(sp, d) { for (let i = 0; i < sp.length; i += 2) if (d >= sp[i] && d <= sp[i + 1]) return true; return false; }
   function buildBaraats() {
     const D = (N.world.data && N.world.data.districts) || (N.WORLD_DATA && N.WORLD_DATA.districts) || [];
+    const roads = (N.WORLD_DATA && N.WORLD_DATA.roads) || [];
     for (const id of BARAAT_AREAS) {
       const d = D.find((q) => q.id === id);
       if (!d) continue;
@@ -65612,15 +65820,40 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       const pts = d.poly || d.pts || d.polygon;
       if ((!isFinite(cx) || !isFinite(cy)) && Array.isArray(pts) && pts.length) { cx = 0; cy = 0; let n = 0; for (const p of pts) { const px = Array.isArray(p) ? p[0] : p.x, py = Array.isArray(p) ? p[1] : p.y; if (isFinite(px)) { cx += px; cy += py; n++; } } if (!n) continue; cx /= n; cy /= n; }
       if (id === 'himayatnagar' && N.places.home) { cx = N.places.home.x + 140; cy = N.places.home.y + 60; }
-      let q = null;
-      try { q = N.world.nearestRoadPoint(cx, cy, (r) => r.kind === 'street' || r.kind === 'arterial'); } catch (e) { q = null; }
-      if (!q || !q.road) continue;
-      const route = roadSub(q.road, q.seg, q.t, 520);
-      if (!route) continue;
-      const hw = route.w / 2, fw = Math.max(3, footW(route.kind));
-      const e = at(route, route.len - 6, -(hw + fw + 6));
-      const style = styleAt(e.x, e.y);
-      addSite({ id: 'baraat:' + id, kind: 'baraat', name: id, x: route.pts[0], y: route.pts[1], route, gate: { x: e.x, y: e.y, a: Math.atan2(e.uy, e.ux), nx: -e.uy, ny: e.ux }, style, sign: style === 'oldcity' ? 'SHAADI MUBARAK' : 'SUBHA VIVAHAM' });
+      // candidates: the nearest street point first, then every street / arterial segment within reach, nearest first;
+      // a route is kept only if no point of it (nor the function-hall gate) comes within BARAAT_CLEAR of a place of worship
+      const cands = [];
+      try { const q = N.world.nearestRoadPoint(cx, cy, (r) => r.kind === 'street' || r.kind === 'arterial'); if (q && q.road) cands.push({ road: q.road, seg: q.seg, t: q.t, d: 0 }); } catch (e) { /* fall through */ }
+      for (const r of roads) {
+        if ((r.kind !== 'street' && r.kind !== 'arterial') || !r.pts || r.pts.length < 2) continue;
+        for (let i = 0; i < r.pts.length - 1; i++) {
+          const a = r.pts[i], b = r.pts[i + 1];
+          for (const t of [0.25, 0.75]) {
+            const x = lerp(a[0], b[0], t), y = lerp(a[1], b[1], t), dd = Math.hypot(x - cx, y - cy);
+            if (dd < 1400) cands.push({ road: r, seg: i, t, d: dd + 1 });
+          }
+        }
+      }
+      cands.sort((a, b) => a.d - b.d);
+      let route = null, gate = null, tries = 0;
+      // a full 520-unit walk if one fits; in the dense Old City (a mosque, temple or ashurkhana every few lanes)
+      // a shorter walk between them is taken instead
+      for (const L of [520, 400, 320]) {
+        tries = 0;
+        for (const c of cands) {
+          if (++tries > 160) break;
+          const R0 = roadSub(c.road, c.seg, c.t, L);
+          if (!R0) continue;
+          const hw = R0.w / 2, fw = Math.max(3, footW(R0.kind));
+          const e = cp(at(R0, R0.len - 6, -(hw + fw + 6)));
+          if (!pathClear(R0, BARAAT_CLEAR, false, [e])) { rej('baraat_clear'); continue; }
+          route = R0; gate = e; break;
+        }
+        if (route) break;
+      }
+      if (!route) { rej('baraat_none:' + id); continue; }
+      const style = styleAt(gate.x, gate.y);
+      addSite({ id: 'baraat:' + id, kind: 'baraat', name: id, x: route.pts[0], y: route.pts[1], route, quiet: quietSpans(route), gate: { x: gate.x, y: gate.y, a: Math.atan2(gate.uy, gate.ux), nx: -gate.uy, ny: gate.ux }, style, sign: style === 'oldcity' ? 'SHAADI MUBARAK' : 'SUBHA VIVAHAM' });
     }
   }
   const KBAR = {
@@ -65634,7 +65867,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       const s = sc.site, st = sc.st, R0 = s.route, hw = R0.w / 2, low = lowTier();
       const pdist = along(R0, N.player.x, N.player.y);
       const s0 = forced(sc) ? clamp(pdist + 45, 90, R0.len - 150) : warm ? clamp(pdist - 120, 90, R0.len * 0.5) : 90;
-      Object.assign(st, { s: s0, ph: 'walk', phT: rr(9, 13), members: [], horse: null, cars: [], bandT: 0, done: false, honkT: 3, lightsN: 0, gen: null });
+      Object.assign(st, { s: s0, ph: 'walk', phT: rr(9, 13), members: [], horse: null, cars: [], bandT: 0, done: false, honkT: 3, lightsN: 0, gen: null, calm: false });
       const F = [];
       const nb = low ? 6 : 8;
       for (let i = 0; i < nb; i++) F.push({ role: pick(['man', 'lungi', 'youth', 'kid']), a: -2 - Math.floor(i / 2) * 15, l: (i % 2 ? 1 : -1) * hw * 0.78, tag: 'tube', item: 'tube' });
@@ -65669,7 +65902,18 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
       const s = sc.site, st = sc.st, R0 = s.route;
       if (st.done) { sc.phase = 'done'; return; }
       st.phT -= dt;
-      if (st.ph === 'walk' && st.phT <= 0) { st.ph = 'dance'; st.phT = rr(6, 9); beat(sc, 'dance'); const d = st.members.find((p) => p.alive && p.slot && p.slot.dance); if (d) bark(d, line('baraat')); }
+      // a real baraat falls silent during namaaz and while it passes a mosque, temple, church or dargah:
+      // no band, no dappu, no dancing, no horns, no sparklers (it just walks on quietly)
+      const quiet = s.quiet || [];
+      const calm = CX.prayer || inSpans(quiet, st.s + 6) || inSpans(quiet, st.s - 40) || inSpans(quiet, st.s - 80);
+      if (calm !== st.calm) {
+        st.calm = calm;
+        if (calm) { if (st.ph === 'dance') { st.ph = 'walk'; st.phT = rr(9, 13); } beat(sc, 'hush'); const r = st.members.find((p) => p.alive && p.slot && p.slot.tag === 'rel'); if (r) bark(r, line(CX.prayer ? 'baraatHushPrayer' : 'baraatHush')); }
+        else beat(sc, 'band_resumes');
+      }
+      if (st.ph === 'dance' && calm) { st.ph = 'walk'; st.phT = rr(9, 13); }
+      if (st.ph === 'walk' && st.phT <= 0 && calm) st.phT = 2;
+      else if (st.ph === 'walk' && st.phT <= 0) { st.ph = 'dance'; st.phT = rr(6, 9); beat(sc, 'dance'); const d = st.members.find((p) => p.alive && p.slot && p.slot.dance); if (d) bark(d, line('baraat')); }
       else if (st.ph === 'dance' && st.phT <= 0) { st.ph = 'walk'; st.phT = rr(9, 13); }
       if (st.ph === 'walk' || st.ph === 'arrive') st.s += 4.6 * dt;
       const end = R0.len - 10;
@@ -65680,6 +65924,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
         if (!p.alive || p.sc !== sc) continue;
         if (st.ph === 'arrive' && p.beh !== 'in') { p.beh = 'follow'; }
         const f = p.slot; if (!f) continue;
+        if (f.dance && st.ph !== 'arrive' && p.beh !== 'in') p.beh = calm ? 'follow' : 'dance';
         const q = at(R0, Math.min(st.s, end) + f.a, f.l);
         p.tx = q.x; p.ty = q.y;
         if (!f.dance) p.face = Math.atan2(q.uy, q.ux) + (f.band ? Math.sin(sc.t * 2 + p.seed) * 0.15 : 0);
@@ -65709,16 +65954,18 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
         v.cle.tx = q.x; v.cle.ty = q.y; v.cle.ta = Math.atan2(q.uy, q.ux); v.cle.vmax = 9;
       }
       st.honkT -= dt;
-      if (st.honkT <= 0) { st.honkT = rr(3, 7); const v = pick(st.cars); if (v && v.alive) { honk(v); if (rnd() < 0.4) bark(v, line('baraatTraffic')); } }
+      if (st.honkT <= 0 && calm) st.honkT = 2;
+      else if (st.honkT <= 0) { st.honkT = rr(3, 7); const v = pick(st.cars); if (v && v.alive) { honk(v); if (rnd() < 0.4) bark(v, line('baraatTraffic')); } }
       const hd = at(R0, st.s + 6, 0); closeRoad(sc, 'head', hd.x, hd.y, 60);
       const tl = at(R0, st.s - 80, 0); closeRoad(sc, 'tail', tl.x, tl.y, 60);
       // the band
       st.bandT -= dt;
-      if (st.bandT <= 0) { st.bandT = st.ph === 'dance' ? 2.2 : 2.6; if (dPl(s.x, s.y) < 330) { sfx('cle_band', s.x, s.y, { vol: 0.6, gap: 1.8 }); if (st.ph === 'dance') sfx('dappu', s.x, s.y, { vol: 0.45, gap: 1 }); } }
+      if (st.bandT <= 0 && calm) st.bandT = 1;
+      else if (st.bandT <= 0) { st.bandT = st.ph === 'dance' ? 2.2 : 2.6; if (dPl(s.x, s.y) < 330) { sfx('cle_band', s.x, s.y, { vol: 0.6, gap: 1.8 }); if (st.ph === 'dance') sfx('dappu', s.x, s.y, { vol: 0.45, gap: 1 }); } }
       // petals over the groom, sparkler sparks
       if (rnd() < dt * (st.ph === 'dance' ? 2.5 : 0.8) && st.horse && st.horse.alive) for (let i = 0; i < 5; i++) emit(PK.PETAL, st.horse.x + rr(-3, 3), st.horse.y + rr(-3, 3), 16, rr(-5, 5), rr(-5, 5), rr(4, 9), rr(2, 3.2), 0.7, rnd() < 0.5 ? 2 : 4);
-      for (const p of st.members) if (p.alive && p.item === 'sparkler' && rnd() < dt * 20) emit(PK.SPARK, p.x + Math.cos(p.angle) * 2.5, p.y + Math.sin(p.angle) * 2.5, 6.5, rr(-14, 14), rr(-14, 14), rr(4, 14), rr(0.3, 0.6), 0.5, 8);
-      sc.phase = st.ph;
+      if (!calm) for (const p of st.members) if (p.alive && p.item === 'sparkler' && rnd() < dt * 20) emit(PK.SPARK, p.x + Math.cos(p.angle) * 2.5, p.y + Math.sin(p.angle) * 2.5, 6.5, rr(-14, 14), rr(-14, 14), rr(4, 14), rr(0.3, 0.6), 0.5, 8);
+      sc.phase = calm && st.ph !== 'arrive' ? 'hush' : st.ph;
     },
     stop(sc) { closeRoad(sc, 'head', null); closeRoad(sc, 'tail', null); },
   };
@@ -65825,7 +66072,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
         break;
       }
       case 'trumpet': { const q = handPt(p, 0.6, 2.2, 7.2), e = handPt(p, 0.6, 5.2, 7.4, HP2); seg(q.x, q.y, q.h, e.x, e.y, e.h, 0.5, '#e8c040'); dot(e.x, e.y, e.h, 0.9, '#f2d050'); break; }
-      case 'drum': case 'dappu': { const q = handPt(p, -0.8, 2.0, 6.2); dot(q.x, q.y, q.h, p.item === 'drum' ? 2.1 : 1.8, p.item === 'drum' ? '#c8302a' : '#6a4a2a'); dot(q.x, q.y, q.h + 0.1, p.item === 'drum' ? 1.6 : 1.45, '#ece0c0'); const s = Math.sin(t * 13 + p.seed); const st = handPt(p, 1.8, 2.4 + s, 7 + s, HP2); seg(st.x, st.y, st.h, q.x, q.y, q.h + 0.3, 0.3, '#5a3a1a'); break; }
+      case 'drum': case 'dappu': { const q = handPt(p, -0.8, 2.0, 6.2); dot(q.x, q.y, q.h, p.item === 'drum' ? 2.1 : 1.8, p.item === 'drum' ? '#c8302a' : '#6a4a2a'); dot(q.x, q.y, q.h + 0.1, p.item === 'drum' ? 1.6 : 1.45, '#ece0c0'); const s = p.sc && p.sc.st && p.sc.st.calm ? -0.6 : Math.sin(t * 13 + p.seed); const st = handPt(p, 1.8, 2.4 + s, 7 + s, HP2); seg(st.x, st.y, st.h, q.x, q.y, q.h + 0.3, 0.3, '#5a3a1a'); break; }
       case 'sparkler': { const q = handPt(p, 1.6, 2.5, 6.5); seg(p.x, p.y, 6, q.x, q.y, q.h, 0.25, '#9a9a9a'); dot(q.x, q.y, q.h, 0.7, '#fff2b0'); break; }
       default: break;
     }
@@ -66620,7 +66867,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
   const KINDS = { junction: KJ, colony_am: KAM, colony_pm: KPM, oldcity: KOLD, cinema: KCIN, baraat: KBAR };
   let ready = false, dirT = 0;
   function buildSites() {
-    SITES.length = 0; BYID.clear(); GEOS.length = 0;
+    SITES.length = 0; BYID.clear(); GEOS.length = 0; WZ = null; BUSY = null;
     if (!N.world || !N.world.built || !RD()) return false;
     const steps = [buildJunctions, buildColonies, buildOld, buildCinemas, buildBaraats];
     for (const f of steps) { try { f(); } catch (e) { N.err('citylife.build.' + f.name, e); } }
@@ -66856,7 +67103,7 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
     setOptions(o) { for (const k of ['sounds', 'barks', 'particles']) if (o && o[k] != null) TUNE[k] = !!o[k]; return { sounds: TUNE.sounds, barks: TUNE.barks, particles: TUNE.particles }; },
     reset: resetAll,
     rebuild() { resetAll(); ready = false; return buildSites(); },
-    _debug: { ACTIVE, SITES, PERSONS, VEHS, BEASTS, P, G3, CX, GEOS },
+    _debug: { ACTIVE, SITES, PERSONS, VEHS, BEASTS, P, G3, CX, GEOS, REJ, colonyGeo: (id, x, y) => { const g = colonyGeo(id, x, y); if (g) GEOS.pop(); return g; } },
   });
   if (N.citylife && typeof N.citylife === 'object' && !N.citylife.events) { try { N.citylife.events = API; } catch (e) { /* frozen */ } }
   N.on('boot', () => { if (N.citylife && typeof N.citylife === 'object' && !N.citylife.events) { try { N.citylife.events = API; } catch (e) { /* frozen */ } } });
@@ -88725,6 +88972,12 @@ if (ngShine > 0.01) {
       }
       return res;
     },
+    /** debug (D6): the slowest junction polygons to rebuild (ms, outline points) */
+    slowJunctions(k) {
+      const out = [];
+      for (const J of NET.juncs) { if (!J.poly) continue; const t = now(); junctionPoly(J); out.push({ id: J.id, ms: +(now() - t).toFixed(2), n: J.poly.length, arms: J.arms.length }); }
+      return out.sort((a, b) => b.ms - a.ms).slice(0, k || 6);
+    },
     /** debug: the analysed network (pieces, junctions) */
     net() { return NET; },
   };
@@ -96612,7 +96865,7 @@ if (ngShine > 0.01) {
         g.userData.m3d = id;
         if (lazy) { g.userData.m3dRef = id; ref(id, 1); }
         return g;
-      } catch (e) { N.err('models3d.landmark:' + id, e); return fallbackLandmark(md, lm); }
+      } catch (e) { N.err('models3d.landmark:' + id, e); return lazy ? proceduralLandmark(T, lm, H) : fallbackLandmark(md, lm); }
     };
   }
   /* landmark variants (meta.variants = {rule, names}): top-level GLB nodes named var_<name>, one of
