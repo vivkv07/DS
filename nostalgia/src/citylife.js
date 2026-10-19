@@ -1300,7 +1300,7 @@
       if (sp < 0 || sp > total) continue;
       const c = at(sp), ux = c.ux * dir, uy = c.uy * dir;
       if (Math.abs(d) < 7) stopI = path.length;
-      path.push({ x: c.x + uy * off, y: c.y - ux * off });
+      path.push({ x: c.x + uy * off, y: c.y - ux * off, nx: -uy, ny: ux }); // n: towards the road's centre (the overtaking side)
     }
     if (path.length < 6 || stopI < 3) return;
     const start = path[0], pl = N.player;
@@ -1321,29 +1321,80 @@
     if (!q || q.dist > 70) { try { q = N.world.nearestRoadPoint(x, y); } catch (e) { q = null; } }
     return q;
   }
+  /** Is something in the scene bus's way? Chinnu (always: the bus must never shove him), then whatever
+   *  traffic.js's corridor sense finds (peds, cows, vehicles), feature-detected. Sampled ~10x/s. */
+  function busBlocked(v, sp, ca, sa) {
+    const T = v.T || {}, half = (T.w || 34) / 2, hw = (T.d || 11) / 2, range = 8 + Math.max(0, sp) * 0.3, pl = N.player;
+    if (ca == null) { ca = Math.cos(v.angle); sa = Math.sin(v.angle); }
+    if (pl && !pl.hidden && pl.alive !== false) {
+      const pv = pl.vehicle, r = pv ? ((pv.T && pv.T.d) || 8) / 2 : (pl.r || 3.4);
+      const dx = (pv ? pv.x : pl.x) - v.x, dy = (pv ? pv.y : pl.y) - v.y;
+      const lx = dx * ca + dy * sa, ly = -dx * sa + dy * ca;
+      if (lx > half * 0.2 && lx - half - r < range && Math.abs(ly) < hw + r + 1.5) return pl;
+    }
+    const TR = N.traffic;
+    if (TR && typeof TR.sense === 'function') {
+      let ob = null;
+      try { ob = TR.sense(v, ca, sa); } catch (e) { ob = null; }
+      if (ob && ob.e && ob.e.alive && ob.gap < range && !(ob.e.cl && ob.e.ghost)) return ob.e;
+    }
+    return null;
+  }
+  function busGone(v) {
+    try { N.vehicles.remove(v); } catch (er) { v.alive = false; }
+    const sc = v.clBus && v.clBus.sc;
+    if (sc && sc.st && sc.st.own === v) sc.st.own = null;
+  }
+  /** a blocker the bus may go round: anything standing still (Chinnu, a stalled scooter, a parked auto); people
+   *  walking across and cows are waited for */
+  const busPassable = (e) => !!e && (e === N.player ? Math.hypot(e.vx || 0, e.vy || 0) < 6 : e.kind === 'vehicle' && Math.abs(e.speed || 0) < 4);
   function busCtl(v, dt) {
-    const B = v.clBus, P2 = B.path, ctl = v.ctl;
+    const B = v.clBus, ctl = v.ctl;
     if (!B || !ctl) return;
-    B.t += dt;
+    const P2 = B.path, T = v.T || {};
+    B.t += dt; B.life = (B.life || 0) + dt;
     while (B.i < P2.length - 1 && Math.hypot(P2[B.i].x - v.x, P2[B.i].y - v.y) < 12) B.i++;
-    const tg = P2[Math.min(P2.length - 1, B.i + 1)];
-    ctl.steer = clamp(angDiff(v.angle, Math.atan2(tg.y - v.y, tg.x - v.x)) * 2.2, -1, 1);
-    let want = 40;
+    // overtaking: ease out towards the road's centre while B.swEnd is ahead, then back to the kerb lane
+    const swMax = B.swMax || (B.swMax = (T.d || 11) + 4);
+    const swWant = B.i < (B.swEnd || 0) ? swMax : 0;
+    B.sw = (B.sw || 0) + clamp(swWant - (B.sw || 0), -dt * 10, dt * 10);
+    const tg = P2[Math.min(P2.length - 1, B.i + 1)], tx = tg.x + (tg.nx || 0) * B.sw, ty = tg.y + (tg.ny || 0) * B.sw;
+    ctl.steer = clamp(angDiff(v.angle, Math.atan2(ty - v.y, tx - v.x)) * 2.2, -1, 1);
+    let want = B.sw > 1 ? 22 : 40, dStop = 1e9;
     if (B.ph === 'in') {
-      const S = P2[B.stopI], d = Math.hypot(S.x - v.x, S.y - v.y);
-      want = Math.min(40, d * 0.7 + 2);
-      if (d < 4 || (B.i > B.stopI)) { B.ph = 'stop'; B.t = 0; B.dwell = 9; v._clStop = true; }
+      const S = P2[B.stopI]; dStop = Math.hypot(S.x - v.x, S.y - v.y);
+      want = Math.min(want, dStop * 0.7 + 2);
+      if (dStop < 4 || (B.i > B.stopI)) { B.ph = 'stop'; B.t = 0; B.dwell = 9; v._clStop = true; }
     } else if (B.ph === 'stop') {
       want = 0;
       if (B.t > B.dwell) { B.ph = 'out'; v._clStop = false; }
     }
-    const sp = v.speed || 0, e = want - sp;
+    const sp = v.speed || 0;
+    // look ahead before moving: brake for Chinnu / people / animals / vehicles in the lane (never shove anyone)
+    if (want > 0) {
+      B.senseT = (B.senseT || 0) - dt;
+      if (B.senseT <= 0) { B.senseT = 0.1; B.by = busBlocked(v, sp); B.blocked = !!B.by; }
+      if (B.blocked) {
+        want = 0; B.blockT = (B.blockT || 0) + dt;
+        if (B.blockT > 1.5 && !B.honked) { B.honked = true; sound('bus_horn', v.x, v.y, { vol: 0.5, force: true }); }
+        if (B.ph === 'in' && dStop < 45 && sp < 3) {
+          // something parked in the bay: the bus stops right here, as they do
+          B.ph = 'stop'; B.t = 0; B.dwell = 9; v._clStop = true; B.blockT = 0;
+        } else if (B.blockT > 2 && !(B.i < (B.swEnd || 0)) && busPassable(B.by) && (B.ph !== 'in' || B.stopI - B.i > 4)) {
+          // go round it if the overtaking lane is clear
+          const q = P2[Math.min(P2.length - 1, B.i + 2)], ox = q.x + (q.nx || 0) * swMax - v.x, oy = q.y + (q.ny || 0) * swMax - v.y, ol = Math.hypot(ox, oy) || 1;
+          if (!busBlocked(v, 10, ox / ol, oy / ol)) { B.swEnd = B.i + 5; B.blockT = 0; B.blocked = false; B.by = null; }
+        }
+      } else { B.blockT = Math.max(0, (B.blockT || 0) - dt * 0.5); if (B.blockT < 0.5) B.honked = false; }
+    } else { B.blocked = false; B.by = null; }
+    const e = want - sp;
     ctl.throttle = want > 0 ? clamp(e * 0.12, 0, 1) : 0;
     ctl.brake = e < -2 || want === 0 ? 1 : 0;
-    if (B.ph === 'out' && B.i >= P2.length - 2) {
-      const pl = N.player, hidden = is3D() ? Math.hypot(v.x - pl.x, v.y - pl.y) > 260 : !N.render.inView(v.x, v.y, 40);
-      if (hidden || B.t > 40) { try { N.vehicles.remove(v); } catch (er) { v.alive = false; } }
-    }
+    const pl = N.player, hidden = is3D() ? Math.hypot(v.x - pl.x, v.y - pl.y) > 260 : !N.render.inView(v.x, v.y, 40);
+    // give up: blocked for long (gone at once out of sight, else after a real wait), or a run that never ends
+    // (e.g. stuck in 'in' for ever after the scene dropped st.own at 60 s)
+    if ((B.blockT || 0) > (hidden ? 6 : 20) || B.life > (hidden ? 70 : 110)) { ST.busGaveUp++; ST.busGaveUpBy = B.by ? (B.by === N.player ? 'player' : B.by.kind + ':' + (B.by.type || B.by.role || '')) : 'timeout'; busGone(v); return; }
+    if (B.ph === 'out' && B.i >= P2.length - 2 && (hidden || B.t > 40)) busGone(v);
   }
   const busStopped = (b) => !!(b && b.alive && ((b.tr && b.tr.stopT != null) || b._clStop));
   function busAct(p, dt, sc) {
@@ -1854,7 +1905,7 @@
   }
 
   /* ================================================================ director */
-  const ST = { spots: 0, ms: 0, msAvg: 0, ms2d: 0, ms3d: 0, draw2dAcc: 0, activations: 0, handedBack: 0, haircuts: 0, buses: 0, ownBuses: 0, boarded: 0, whistles: 0, sfSpots: 0 };
+  const ST = { spots: 0, ms: 0, msAvg: 0, ms2d: 0, ms3d: 0, draw2dAcc: 0, activations: 0, handedBack: 0, haircuts: 0, buses: 0, ownBuses: 0, boarded: 0, whistles: 0, sfSpots: 0, busGaveUp: 0, busGaveUpBy: '' };
   let dirT = 0, ready = false;
   function actRadius() {
     if (is3D()) { const q = N.view3d.quality || {}; return Math.min(TUNE.act3D, (q.actorDist || 620) * 0.8); }
@@ -2876,7 +2927,7 @@
       return {
         spots: SPOTS.length, active: ACTIVE.length, people: PEOPLE.length, pool: POOL.length, particles: P.n,
         ms: +ST.ms.toFixed(3), msAvg: +ST.msAvg.toFixed(3), ms2d: +ST.ms2d.toFixed(3), ms3d: +ST.ms3d.toFixed(3), r: Math.round(actRadius()),
-        activations: ST.activations, handedBack: ST.handedBack, haircuts: ST.haircuts, buses: ST.buses, ownBuses: ST.ownBuses, boarded: ST.boarded, whistles: ST.whistles, sfSpots: ST.sfSpots,
+        activations: ST.activations, handedBack: ST.handedBack, haircuts: ST.haircuts, buses: ST.buses, ownBuses: ST.ownBuses, boarded: ST.boarded, whistles: ST.whistles, sfSpots: ST.sfSpots, busGaveUp: ST.busGaveUp, busGaveUpBy: ST.busGaveUpBy,
         s3d: G3.scenes.size, s3dBuilt: G3.built, layer3d: G3.ready, sfx: sfxReg,
         kinds: SPOTS.reduce((o, s) => { const k = s.kind === 'trade' ? 'trade:' + s.sub : s.kind; o[k] = (o[k] || 0) + 1; return o; }, {}),
       };

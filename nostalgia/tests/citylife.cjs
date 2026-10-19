@@ -247,7 +247,7 @@ async function partTop(browser) {
           if ((await page.evaluate(() => N.time.now)) - tBus > 70) break;
         }
         report.push(['bus', JSON.stringify(got)]);
-        check(got && got.bus, 'busstop: a bus stops (traffic.js bus or the scene-owned one)', JSON.stringify(got));
+        check(got && got.bus, 'busstop: a bus stops (traffic.js bus or the scene-owned one)', JSON.stringify(got) + ' gaveUp ' + JSON.stringify(await page.evaluate(() => { const s = N.citylife.stats(); return [s.ownBuses, s.busGaveUp, s.busGaveUpBy]; })));
         check(got && (got.rush > 0 || got.hang > 0), 'busstop: the crowd rushes the door, men on the footboard', got && ('rush ' + got.rush + ' hang ' + got.hang + ' sell ' + got.sell));
         if (got && got.bus) {
           await page.evaluate(() => { const f = window.__focus; });
@@ -334,6 +334,50 @@ async function partTop(browser) {
   const umb = await page.evaluate((id) => { const sc = N.citylife.scene(id); return sc && sc.st.worker ? sc.st.worker.umb : null; }, rs && rs.id);
   check(!!umb, 'rain: the cobbler works under his umbrella', String(umb));
   await page.evaluate(() => { delete N.flags.rain; N.citylife.force(null); });
+  // ---- the scene-owned bus brakes for Chinnu standing in its kerb lane (never shoves him along)
+  if (!FILTER || FILTER.indexOf('busstop') >= 0) {
+    console.log(' -- own bus vs Chinnu');
+    const ob = await page.evaluate(() => {
+      N.debug.setTime(9, 0);
+      if (N.traffic) { N.traffic.enabled = false; if (N.traffic.clear) N.traffic.clear(); }
+      const sps = N.citylife.spots.filter((q) => q.kind === 'busstop'), sp = sps[5] || sps[0];
+      N.debug.teleport(sp.x + 200, sp.y + 200);
+      return { id: sp.id, x: sp.x, y: sp.y };
+    });
+    await simWait(page, 1);
+    await page.evaluate((s) => N.citylife.force(s.id, { level: 1, bus: true }), ob);
+    let info = null;
+    for (let i = 0; i < 40 && !info; i++) {
+      await simWait(page, 1);
+      info = await page.evaluate(() => {
+        const v = N.entities.all.find((e) => e.kind === 'vehicle' && e.clBus && e.alive);
+        if (!v) return null;
+        const P = v.clBus.path, k = Math.min(v.clBus.stopI - 1, v.clBus.i + 5), q = P[k];
+        N.player.teleport(q.x, q.y); window.__ob = { v, p0: { x: q.x, y: q.y }, minD: 1e9, maxMove: 0 };
+        return { k, stopI: v.clBus.stopI };
+      });
+      if (!info) await page.evaluate((s) => N.debug.teleport(s.x + 30, s.y + 30), ob);
+    }
+    check(!!info, 'own bus: the stop sends its own bus when traffic.js has none', JSON.stringify(info));
+    if (info) {
+      const t0 = await page.evaluate(() => N.time.now), capB = Date.now() + 200000;
+      let shotDone = false;
+      while (Date.now() < capB && (await page.evaluate(() => N.time.now)) - t0 < 8) {
+        await page.evaluate(() => { const o = window.__ob, v = o.v, pl = N.player; o.minD = Math.min(o.minD, Math.hypot(v.x - pl.x, v.y - pl.y)); o.maxMove = Math.max(o.maxMove, Math.hypot(pl.x - o.p0.x, pl.y - o.p0.y)); o.sp = v.speed; o.blocked = o.blocked || !!(v.clBus && v.clBus.blocked); o.sw = Math.max(o.sw || 0, (v.clBus && v.clBus.sw) || 0); o.bumps = (window.__clBumps || 0); });
+        if (!shotDone && (await page.evaluate(() => N.time.now)) - t0 > 3) { shotDone = true; await page.evaluate(() => { const p = N.player; window.__focus = Object.assign({}, window.__focus, { x: p.x, y: p.y }); }); await shot2d(page, 'ownbus_brakes_top', 2.4); }
+        await sleep(200);
+      }
+      const r = await page.evaluate(() => { const o = window.__ob; return { minD: Math.round(o.minD), moved: +o.maxMove.toFixed(1), sp: Math.round(o.sp || 0), braked: !!o.blocked, overtook: +(o.sw || 0).toFixed(1), alive: o.v.alive, ph: o.v.clBus && o.v.clBus.ph }; });
+      report.push(['own bus vs Chinnu', JSON.stringify(r)]);
+      check(r.moved < 4 && r.minD > 14, 'own bus: brakes for Chinnu in its lane, waits or goes round (he is never pushed)', JSON.stringify(r));
+      // he steps away: the bus carries on (or, blocked long, gave up and left)
+      await page.evaluate((s) => N.debug.teleport(s.x + 60, s.y + 60), ob);
+      await simWait(page, 4);
+      const r2 = await page.evaluate(() => { const o = window.__ob; return { alive: o.v.alive, ph: o.v.clBus && o.v.clBus.ph, sp: Math.round(o.v.speed || 0) }; });
+      check(!r2.alive || r2.ph !== 'in' || r2.sp > 3, 'own bus: moves on once the lane is clear', JSON.stringify(r2));
+    }
+    await page.evaluate(() => { if (N.traffic) N.traffic.enabled = true; N.citylife.force(null); });
+  }
   // pooling: walk away -> scenes release, people recycled
   await page.evaluate(() => N.debug.teleport(2000, 9500));
   await simWait(page, 4);

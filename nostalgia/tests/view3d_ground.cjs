@@ -3,6 +3,8 @@
  * three.js is served from the vendored copy by routing the jsDelivr URL (hermetic, no network).
  *
  *   checks: the road analysis + soil map are precomputed in top-down idle slices (no 3D needed),
+ *     clustered junctions merge into one polygon and no footpath / kerb top lies on another road's
+ *     carriageway (Abids, Tank Bund), the street stays readable at night vs the old painted ground,
  *     the focus chunk has ground (full or provisional) on the first 3D frame and right after a
  *     rebuild, job slices end near their deadline, kerbed junction corners have no overlapping kerb /
  *     paver tops, lanes stay darker than the soil at 11:00 / 16:40 / 18:15 (screen luma ratio < 0.8),
@@ -87,7 +89,7 @@ async function setView(page, S) {
     if (N.player.vehicle && N.vehicles.alight) { try { N.vehicles.alight(N.player, true); } catch (e) { /* ignore */ } }
     N.flags.rain = S.rain ? true : undefined;
     if (!S.rain) delete N.flags.rain;
-    N.debug.teleport(S.at);
+    if (S.at) N.debug.teleport(S.at); else if (S.x != null) N.debug.teleport(S.x, S.y);
     if (S.h != null) N.debug.setTime(S.h, S.m || 0);
     const p = N.player;
     let yaw = N.view.yaw;
@@ -219,6 +221,28 @@ async function main() {
   console.log('  kerb overlaps ' + JSON.stringify({ junctions: ko.all.junctions, corners: ko.all.corners, all: ko.all.pairs, cornersOnly: ko.corners.pairs, stripsOnly: ko.strips.pairs, worst: ko.all.worst.slice(0, 3) }));
   check(ko.all.junctions > 5 && perCorner <= 2, 'kerbed junction corners: one footpath polygon per corner, few overlapping kerb / paver tops (' + cornerPairs + ' corner-caused pairs over ' + ko.all.corners + ' corners = ' + perCorner + ' per corner, <= 2)');
 
+  // ---- r1-2 / r1-5: clustered junctions (Abids: abids_rd / gunfoundry_rd / bank_st meet at three nodes
+  // ~50 u apart) are merged into ONE junction polygon; r1-3: a road that ends inside the crossing road
+  // (lower_tank_bund at Tank Bund) must not hook back, so its footpaths never cross the bund carriageway.
+  // footOnRoad counts raised footpath / kerb tops lying on ANOTHER road's carriageway or junction box.
+  const jx = await page.evaluate(() => {
+    const G = N.view3d.ground, NET = G.net();
+    const near = (x, y, r) => NET.juncs.filter((J) => Math.hypot(J.x - x, J.y - y) < r);
+    const ab = near(8995, 5792, 3)[0];
+    const lt = NET.pieces.find((P) => P.r.id === 'lower_tank_bund' && P.ends[1].j && Math.hypot(P.ends[1].j.x - 9543, P.ends[1].j.y - 3389) < 3);
+    let ltDir = null;
+    if (lt) { const n = lt.pts.length, a = lt.pts[n - 1], b = lt.pts[Math.max(0, n - 4)]; ltDir = +Math.atan2(b[1] - a[1], b[0] - a[0]).toFixed(2); }
+    const fo = (x, y, r) => { const o = G.footOnRoad(x, y, r); return { tris: o.tris, hits: o.hits, area: o.area, worst: o.worst.slice(0, 3) }; };
+    return { merged: NET.merged, abMerged: !!(ab && ab.merged && ab.merged.poly), abMembers: ab && ab.merged ? ab.merged.members.length : 0, ltDir,
+      abids: fo(9010, 5790, 120), bund: fo(9520, 3410, 90), ko: G.kerbOverlaps() };
+  });
+  console.log('  clusters ' + JSON.stringify({ merged: jx.merged, abids: jx.abids, bund: jx.bund, ltDir: jx.ltDir }));
+  check(jx.merged > 0 && jx.abMerged && jx.abMembers >= 3, 'clustered junctions merged into one polygon (' + jx.merged + ' clusters; Abids abids_rd / gunfoundry_rd / bank_st: ' + jx.abMembers + ' nodes in one junction)');
+  check(jx.abids.tris > 100 && jx.abids.area < 5, 'Abids junction: no footpath / kerb tops on another carriageway (' + jx.abids.area + ' u^2 over ' + jx.abids.hits + ' of ' + jx.abids.tris + ' raised tops; round 1: 225 u^2)', JSON.stringify(jx.abids.worst));
+  check(jx.ltDir !== null && Math.abs(jx.ltDir - 1.6) < 0.45, 'lower_tank_bund approaches Tank Bund from the south, no hook at its end (arm direction ' + jx.ltDir + ' rad; round 1: 0.76)');
+  check(jx.bund.tris > 50 && jx.bund.area < 40, 'Tank Bund / lower_tank_bund junction: no footpath slab across the bund carriageway (' + jx.bund.area + ' u^2 over ' + jx.bund.hits + ' raised tops; round 1: ~1780 u^2)', JSON.stringify(jx.bund.worst));
+  check(jx.ko && jx.ko.junctions > 5, 'kerbOverlaps() with no arguments measures around the player (' + (jx.ko && jx.ko.junctions) + ' junctions, ' + (jx.ko && jx.ko.corners) + ' corners, ' + (jx.ko && jx.ko.pairs) + ' pairs)');
+
   // ---- heights: raised footpath, flat road, pothole dip, elevation hook
   const hs = await page.evaluate(() => {
     const NET = N.view3d.ground.net(), p = N.player;
@@ -319,6 +343,30 @@ async function main() {
     });
     const lm = await lumaOf(browser, file, pts);
     check(lm.nRoad >= 4 && lm.nGround >= 4 && lm.ratio < 0.8, 'lane / bare-ground luminance at ' + h + ':' + String(m).padStart(2, '0') + ' = ' + lm.road + ' / ' + lm.ground + ' = ' + lm.ratio + ' (< 0.8; ' + lm.nRoad + ' + ' + lm.nGround + ' samples)');
+  }
+
+  // ---- r1-6: night readability. Away from the lamp pools the dark asphalt went pure black (kerbs, edges
+  // and rail-crossing paint vanished): the ground now keeps a skyglow floor and paint catches it. Mean
+  // luma of the lower half of the screen, fps at the Secretariat road rail crossing (19:30) and the Tank
+  // Bund edge (22:00), vs the old painted ground at the same camera (round 1: 0.18x and 0.8x)
+  console.log('\n== night readability (lower-half screen luma, new ground vs old painted ground)');
+  for (const S of [
+    { name: 'night_railx', x: 7698.6 - Math.cos(-1.3416 + Math.PI / 2) * 7, y: 3648.4 - Math.sin(-1.3416 + Math.PI / 2) * 7, tx: 7698.6, ty: 3648.4, h: 19, m: 30, mode: 'fps', pitch: 0.35 },
+    { name: 'night_bund', at: 'giver_hussain_sagar', h: 22, mode: 'tps', look: 'road', kind: ['bund'], turn: -1.57, pitch: 0.3 },
+  ]) {
+    const lum = {};
+    for (const on of [true, false]) {
+      await page.evaluate((on) => N.view3d.ground.setEnabled(on), on);
+      await setView(page, S);
+      if (S.tx != null) await page.evaluate((S) => { N.view3d.setCamera({ yaw: Math.atan2(S.ty - N.player.y, S.tx - N.player.x), pitch: S.pitch, snap: true }); N.view3d.settle(20000); }, S);
+      const file = path.join(OUT, S.name + (on ? '_after' : '_before') + '.png');
+      await shoot(page, file);
+      const pts = [];
+      for (let sy = VH * 0.5 + 4; sy < VH - 4; sy += 12) for (let sx = 6; sx < VW - 6; sx += 12) pts.push({ k: 'road', sx, sy });
+      lum[on ? 'after' : 'before'] = (await lumaOf(browser, file, pts)).road;
+    }
+    await page.evaluate(() => N.view3d.ground.setEnabled(true));
+    check(lum.after >= lum.before * 0.45 && lum.after >= 6, S.name + ': the street stays readable at night (lower-half luma ' + lum.after + ' vs ' + lum.before + ' with the old painted ground)');
   }
 
   // ---- screenshots: AFTER, then BEFORE (old painted ground) for every view
