@@ -7,7 +7,7 @@
   const N = window.N, U = N.util;
   const FPS = 30, B = 0.4;
   const ease = { lin: (t) => t, io: (t) => t * t * (3 - 2 * t), out: (t) => 1 - Math.pow(1 - t, 3), in: (t) => t * t * t, ioq: (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2) };
-  let CUR = null;
+  let CUR = null, CUR_CLEAR = null;
 
   function lmById(id) { return N.world.data.landmarks.find((l) => l.id === id) || null; }
   function settle() { for (let k = 0; k < 3; k++) { N.view3d.settle(30000); window.__step(1 / FPS); } }
@@ -51,7 +51,9 @@
       const nx = -Math.sin(q.angle), ny = Math.cos(q.angle);
       let side = 1; if (!N.world.isWater(q.x + nx * 40, q.y + ny * 40)) side = -1;
       const hw = ((q.road && q.road.w) || 40) / 2;
-      const hx = q.x + nx * side * (hw + 3), hy = q.y + ny * side * (hw + 3);
+      // slide along the bund so no lamp post lines up between the camera and the statue
+      const ux = Math.cos(q.angle), uy = Math.sin(q.angle), slide = sh.slide || 0;
+      const hx = q.x + nx * side * (hw + 3) + ux * slide, hy = q.y + ny * side * (hw + 3) + uy * slide;
       streamAt(hx, hy); settle();
       hero = { x: hx, y: hy, h: Math.max(0, STAGE.summit(hx, hy, 0)) };
       if (sh.hero === 'shore') { base = Math.atan2(hy - lm.y, hx - lm.x); lookLm = lm; }
@@ -59,6 +61,9 @@
     }
     // the hidden player stands below, so birds / traffic / rain live around the shot
     N.debug.teleport(hero.x + 30, hero.y + 30);
+    // no parked / passing vehicles blocking the drone (traffic further away stays)
+    const clearV = () => N.entities.clear((e) => e.kind === 'vehicle' && Math.hypot(e.x - hero.x, e.y - hero.y) < 90);
+    clearV(); CUR_CLEAR = clearV;
     streamAt(hero.x, hero.y);
     const face = sh.face != null ? sh.face : base + 0.55;
     CUR = { seg, sh, lm, hero, base, lookLm, face, strikes: (seg.lightning || []).map((b) => Math.round((b - seg.b) * B * FPS)) };
@@ -98,6 +103,7 @@
 
   window.STAGE_FRAME = function (f, nf, capture) {
     pose(f, nf);
+    if (CUR_CLEAR && f % 15 === 0) CUR_CLEAR();
     if (CUR.strikes.includes(f)) { const h = CUR.hero; N.weather.strike(h.x + 260, h.y - 380, 1); }
     window.__step(1 / FPS);
     if (!capture) return null;
