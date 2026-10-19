@@ -1,0 +1,52 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 47752,
+ "clips": {},
+ "family": "landmark",
+ "file": "sandhya_theatre.glb",
+ "front": "-Y",
+ "id": "sandhya_theatre",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 46.6,
+ "kit": 1,
+ "materials": [
+  "M_sandhya_theatre",
+  "M_sandhya_theatre_sheet@night"
+ ],
+ "max": [
+  34.1,
+  47.1,
+  56.6
+ ],
+ "meta": {
+  "face": "w",
+  "fit": "footprint",
+  "footprint": [
+   68,
+   96
+  ],
+  "height": 51.0,
+  "landmark": "sandhya_theatre"
+ },
+ "min": [
+  -34.1,
+  -48.2,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_city",
+ "size": [
+  68.2,
+  95.3,
+  56.6
+ ],
+ "tint": null,
+ "tris": 143,
+ "units": "u",
+ "up": "Z"
+}

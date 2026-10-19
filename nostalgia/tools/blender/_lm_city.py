@@ -1,12 +1,17 @@
 """part of the landmark family scripts (see landmarks_centre.py / landmarks_west.py)
 
-CITY group: Koti bus stand, Imlibun MGBS, the old Secretariat, Ravindra Bharathi, the Secunderabad
-Clock Tower, Paradise, Gokul Chat, the four RTC X Roads cinemas (Sandhya, Odeon, Sudarshan, Devi)
-and the Indira Park / Sanjeevaiah Park gates.
+CITY group (PARKED: owner must-haves that ship once models load lazily per GLB; every builder is
+registered only under NOSTALGIA_PARKED=1, see the end of this file, and never goes in the real pack):
+the four RTC X Roads cinemas (Sandhya 70MM, Odeon, Sudarshan 35MM, Devi 70MM), Gokul Chat (Koti),
+Paradise (Secunderabad), the Secunderabad Clock Tower, Koti bus stand and Imlibun MGBS.
 
-Budget strategy (bytes, not triangles): low box silhouettes, and the detail (window grids, film
-panels, route boards, bus liveries, shop fronts) painted into small numpy canvases that are mapped
-on 2-triangle decals and baked into the one 512 atlas. Hidden ground faces are dropped.
+Budget path: L.finish_proxy. The detail (painted facades, fins, frames, steps, canopies, columns,
+buses, jars...) is modelled freely as `hi` and baked into one atlas on a hand-built low shell
+(`lo`, boxes / extruded plans / thin vault strips: a few hundred triangles). Everything that must be
+legible (name signs, the fictional film panels, route boards, clock dials) and everything that
+glows at night (marquee bulbs, tube lights, lit signs) lives on ONE extra unbaked picture sheet per
+asset (`Sheet`): its own small image, one draw call, an '@night' material whose emission is the
+sheet itself (dark by day, lit after dusk).
 """
 import math
 import os
@@ -16,77 +21,155 @@ import bmesh
 from mathutils import Matrix, Vector
 import kit
 import _lmkit as L
-from kit import box, cylinder, lathe, prism_from_outline, arch_outline
+from kit import box, cylinder, lathe, prism_from_outline, extrude_polygon
+import _lm_civic as C
+from _lm_civic import Fac, fbox, blk
 
 PI = math.pi
 
 
 # =========================================================================== small helpers
-def B(name, sx, sy, sz, x, y, z, mat):
-    """box with its base at (x, y, z)"""
-    return box(name, (sx, sy, sz), (x, y, z), mat, base=True)
-
-
-SKIP = {'X': (1, 0, 0), 'x': (-1, 0, 0), 'Y': (0, 1, 0), 'y': (0, -1, 0), 'Z': (0, 0, 1), 'z': (0, 0, -1)}
-
-
-def BX(name, x0, x1, y0, y1, z0, z1, mat, skip=''):
-    """box from extents; `skip` drops hidden faces by their outward normal: X x Y y Z z
-    (+X, -X, +Y, -Y = front, top, bottom)"""
-    ob = box(name, (x1 - x0, y1 - y0, z1 - z0), ((x0 + x1) / 2, (y0 + y1) / 2, z0), mat, base=True)
-    if skip:
-        drop_faces(ob, skip)
-    return ob
-
-
-def drop_faces(ob, skip):
-    bm = bmesh.new()
-    bm.from_mesh(ob.data)
-    dirs = [Vector(SKIP[c]) for c in skip]
-    kill = [f for f in bm.faces if any(f.normal.dot(d) > 0.98 for d in dirs)]
-    bmesh.ops.delete(bm, geom=kill, context='FACES')
-    bm.to_mesh(ob.data)
-    bm.free()
-    return ob
-
-
-def COL(name, x, y, z0, z1, s, mat):
-    """square column, open top and bottom (8 tris)"""
-    return BX(name, x - s / 2, x + s / 2, y - s / 2, y + s / 2, z0, z1, mat, 'Zz')
-
-
-def flatmat(key, name, base, rough=0.85):
-    """unbaked constant material (no atlas space; one draw call): big plain surfaces"""
-    return kit.material(key, name, base=base, rough=rough, bake=False, alpha=1.0)
-
-
-def drop_bottoms(ob, z=0.08):
-    """remove downward faces lying on the ground (never seen): fewer tris, more atlas texels"""
-    bm = bmesh.new()
-    bm.from_mesh(ob.data)
-    kill = [f for f in bm.faces if f.normal.z < -0.98 and f.calc_center_median().z < z]
-    if kill:
-        bmesh.ops.delete(bm, geom=kill, context='FACES')
-    bm.to_mesh(ob.data)
-    bm.free()
-    return ob
-
-
-def fin(A, parts, size=512, ao_dist=None):
-    parts = [p for p in parts if p is not None]
-    for p in parts:
-        kit.apply_modifiers(p)
-        kit.apply_transform(p)
-    body = kit.join(parts, A.id + '_body')
-    drop_bottoms(body)
-    return L.finish(A, [body], size=size, ao_dist=ao_dist)
-
-
 def rgb(h):
     h = h.lstrip('#')
     return np.array([int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4)], np.float32)
 
 
+def B(name, x0, x1, y0, y1, z0, z1, mat):
+    """box from extents (hi detail)"""
+    return box(name, (x1 - x0, y1 - y0, z1 - z0), ((x0 + x1) / 2, (y0 + y1) / 2, z0), mat, base=True)
+
+
+def S(name, x0, x1, y0, y1, z0, z1):
+    """open-bottom shell box from extents (lo)"""
+    return blk(name, (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0, z0, z1, None)
+
+
+def quad(name, pts, mat=None):
+    bm = bmesh.new()
+    bm.faces.new([bm.verts.new(p) for p in pts])
+    return kit.obj_from_bm(bm, name, mat)
+
+
+def side_prism(name, outline, x0, x1, mat=None, bottom=False):
+    """prism of a (y, z) section extruded along X from x0 to x1 (bottom=False: no face on the
+    closing edge last -> first, i.e. the ground)"""
+    bm = bmesh.new()
+    a = [bm.verts.new((x0, y, z)) for (y, z) in outline]
+    b = [bm.verts.new((x1, y, z)) for (y, z) in outline]
+    n = len(outline)
+    bm.faces.new(a)
+    bm.faces.new(list(reversed(b)))
+    for i in range(n if bottom else n - 1):
+        j = (i + 1) % n
+        bm.faces.new((a[i], a[j], b[j], b[i]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return kit.obj_from_bm(bm, name, mat)
+
+
+def plan_shell(name, poly, z0, z1, mat=None, bottom=False):
+    """vertical prism from a plan polygon (x, y) CCW seen from above; no ground face by default"""
+    ob = extrude_polygon(name, poly, z0, z1, mat)
+    if not bottom:
+        bm = bmesh.new()
+        bm.from_mesh(ob.data)
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.normal.z < -0.9], context='FACES')
+        bm.to_mesh(ob.data)
+        bm.free()
+    return ob
+
+
+def vault_lo(name, outer, inner, y0, y1):
+    """open-ended thin vault shell (outer + inner surfaces, no end caps) along Y"""
+    bm = bmesh.new()
+    for pts, up in ((outer, True), (inner, False)):
+        a = [bm.verts.new((x, y0, z)) for (x, z) in pts]
+        b = [bm.verts.new((x, y1, z)) for (x, z) in pts]
+        for i in range(len(pts) - 1):
+            f = (a[i], a[i + 1], b[i + 1], b[i]) if up else (a[i], b[i], b[i + 1], a[i + 1])
+            bm.faces.new(f)
+    ob = kit.obj_from_bm(bm, name)
+    return ob
+
+
+def tri_col(name, x, y, r, z0, z1):
+    """a triangular open-ended column shell (6 tris) round a square column"""
+    pts = [(x + r * math.cos(a), y + r * math.sin(a)) for a in (PI / 2, PI / 2 + 2 * PI / 3, PI / 2 + 4 * PI / 3)]
+    bm = bmesh.new()
+    for i in range(3):
+        (xa, ya), (xb, yb) = pts[i], pts[(i + 1) % 3]
+        bm.faces.new((bm.verts.new((xa, ya, z0)), bm.verts.new((xb, yb, z0)), bm.verts.new((xb, yb, z1)), bm.verts.new((xa, ya, z1))))
+    ob = kit.obj_from_bm(bm, name)
+    me = ob.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(me)
+    bm.free()
+    return ob
+
+
+def ramp_lo(name, x0, x1, yf, yb, h):
+    """shell over a flight of steps: one sloping face + the two side triangles"""
+    return side_prism(name, [(yf - 0.2, 0.0), (yf - 0.2, 0.25), (yb, h + 0.15), (yb, 0.0)], x0 - 0.15, x1 + 0.15)
+
+
+def arc_pts(x0, x1, y_end, sag, n):
+    """plan points of a facade bowed towards -Y: ends at y_end, the middle at y_end - sag"""
+    c = (x1 - x0) / 2
+    R = (c * c + sag * sag) / (2 * sag)
+    yc = y_end - sag + R
+    a = math.asin(c / R)
+    out = []
+    for i in range(n + 1):
+        t = -a + 2 * a * i / n
+        out.append(((x0 + x1) / 2 + R * math.sin(t), yc - R * math.cos(t)))
+    return out
+
+
+def arc_y(x, x0, x1, y_end, sag):
+    c = (x1 - x0) / 2
+    R = (c * c + sag * sag) / (2 * sag)
+    yc = y_end - sag + R
+    return yc - math.sqrt(max(0.0, R * R - (x - (x0 + x1) / 2) ** 2))
+
+
+def strip_face(name, pts, z0, z1, img, grime=0.12, flip=False):
+    """painted strip along a plan polyline (left -> right seen from the front): one quad per span,
+    SignUV u = arc length (the image `img` spans the whole strip)"""
+    sm = kit.sign_material(img, grime=grime)
+    bm = bmesh.new()
+    suv = bm.loops.layers.uv.new('SignUV')
+    bm.loops.layers.uv.new('UVMap')
+    lens = [0.0]
+    for i in range(1, len(pts)):
+        lens.append(lens[-1] + math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]))
+    T = lens[-1]
+    for i in range(len(pts) - 1):
+        (xa, ya), (xb, yb) = pts[i], pts[i + 1]
+        vs = [bm.verts.new((xa, ya, z0)), bm.verts.new((xb, yb, z0)), bm.verts.new((xb, yb, z1)), bm.verts.new((xa, ya, z1))]
+        f = bm.faces.new(vs)
+        for lp, (u, v) in zip(f.loops, ((lens[i] / T, 0), (lens[i + 1] / T, 0), (lens[i + 1] / T, 1), (lens[i] / T, 1))):
+            lp[suv].uv = (u, v)
+    return kit.obj_from_bm(bm, name, sm)
+
+
+def offset_pts(pts, d):
+    """move a plan polyline by d along its outward (-Y side) normal"""
+    out = []
+    for i, (x, y) in enumerate(pts):
+        a = pts[max(i - 1, 0)]
+        b = pts[min(i + 1, len(pts) - 1)]
+        tx, ty = b[0] - a[0], b[1] - a[1]
+        ln = math.hypot(tx, ty) or 1.0
+        out.append((x + ty / ln * d, y - tx / ln * d))
+    return out
+
+
+def lin_mat(name, col, rough=0.8):
+    return L.paint(col, name, rough=rough)
+
+
+# =========================================================================== numpy painting
 class Canvas:
     """numpy sRGB painting surface (origin bottom-left, coordinates as fractions 0..1)"""
 
@@ -106,6 +189,10 @@ class Canvas:
             self.a[b:d, a:c, :3] = self.a[b:d, a:c, :3] * (1 - alpha) + rgb(col) * alpha
         return self
 
+    def frame(self, x0, y0, x1, y1, t, col):
+        tx, ty = t, t * self.w / self.h
+        return self.rect(x0, y0, x1, y0 + ty, col).rect(x0, y1 - ty, x1, y1, col).rect(x0, y0, x0 + tx, y1, col).rect(x1 - tx, y0, x1, y1, col)
+
     def grad(self, y0, y1, c0, c1, x0=0.0, x1=1.0):
         a, b, c, d = self._px(x0, y0, x1, y1)
         n = max(1, d - b)
@@ -113,17 +200,25 @@ class Canvas:
         self.a[b:d, a:c, :3] = rgb(c0) * (1 - t) + rgb(c1) * t
         return self
 
-    def ellipse(self, cx, cy, rx, ry, col, alpha=1.0):
+    def _grid(self):
         yy, xx = np.mgrid[0:self.h, 0:self.w]
-        m = ((xx + 0.5) / self.w - cx) ** 2 / (rx * rx) + ((yy + 0.5) / self.h - cy) ** 2 / (ry * ry) <= 1.0
+        return (xx + 0.5) / self.w, (yy + 0.5) / self.h
+
+    def ellipse(self, cx, cy, rx, ry, col, alpha=1.0):
+        X, Y = self._grid()
+        m = (X - cx) ** 2 / (rx * rx) + (Y - cy) ** 2 / (ry * ry) <= 1.0
         self.a[m, :3] = self.a[m, :3] * (1 - alpha) + rgb(col) * alpha
         return self
 
-    def poly(self, pts, col):
-        """filled polygon (fractions), even-odd rule"""
-        yy, xx = np.mgrid[0:self.h, 0:self.w]
-        X = (xx + 0.5) / self.w
-        Y = (yy + 0.5) / self.h
+    def glow(self, cx, cy, rx, ry, col, alpha=0.8):
+        X, Y = self._grid()
+        d = np.sqrt((X - cx) ** 2 / (rx * rx) + (Y - cy) ** 2 / (ry * ry))
+        f = np.clip(1 - d, 0, 1)[..., None] * alpha
+        self.a[..., :3] = self.a[..., :3] * (1 - f) + rgb(col) * f
+        return self
+
+    def poly(self, pts, col, alpha=1.0):
+        X, Y = self._grid()
         inside = np.zeros(X.shape, bool)
         n = len(pts)
         for i in range(n):
@@ -132,8 +227,14 @@ class Canvas:
                 continue
             c = ((y1 > Y) != (y2 > Y)) & (X < (x2 - x1) * (Y - y1) / (y2 - y1) + x1)
             inside ^= c
-        self.a[inside, :3] = rgb(col)
+        self.a[inside, :3] = self.a[inside, :3] * (1 - alpha) + rgb(col) * alpha
         return self
+
+    def line(self, x0, y0, x1, y1, w, col):
+        dx, dy = x1 - x0, y1 - y0
+        ln = math.hypot(dx * self.w, dy * self.h) or 1.0
+        nx, ny = -dy * self.h / ln * w, dx * self.w / ln * w * self.w / self.h
+        return self.poly([(x0 + nx, y0 + ny), (x1 + nx, y1 + ny), (x1 - nx, y1 - ny), (x0 - nx, y0 - ny)], col)
 
     def text(self, txt, x0, y0, x1, y1, col, outline=None, ow=2, size=0.8):
         a, b, c, d = self._px(x0, y0, x1, y1)
@@ -155,14 +256,16 @@ class Canvas:
         reg[:] = reg * (1 - m[..., None]) + rgb(col) * m[..., None]
         return self
 
-    def grid(self, x0, y0, x1, y1, cols, rows, col, fx=0.6, fy=0.6, lit=None, alpha=1.0):
-        """cols x rows window panes inside the box; each pane a fraction fx, fy of its cell"""
-        cw, ch = (x1 - x0) / cols, (y1 - y0) / rows
-        for r in range(rows):
-            for c in range(cols):
-                cx, cy = x0 + cw * (c + 0.5), y0 + ch * (r + 0.5)
-                cc = lit if (lit and (r * 7 + c * 3) % 5 == 0) else col
-                self.rect(cx - cw * fx / 2, cy - ch * fy / 2, cx + cw * fx / 2, cy + ch * fy / 2, cc, alpha)
+    def bulbs(self, y, n, col='#ffd76a', r=0.32, x0=0.0, x1=1.0, halo='#ff9a3a'):
+        """a row of n round bulbs centred on row y (fraction); r = radius as a fraction of the pitch"""
+        step = (x1 - x0) / n
+        for i in range(n):
+            cx = x0 + step * (i + 0.5)
+            rx = step * r
+            ry = rx * self.w / self.h
+            self.ellipse(cx, y, rx * 1.5, ry * 1.5, halo, 0.5)
+            self.ellipse(cx, y, rx, ry, col)
+            self.ellipse(cx - rx * 0.3, y + ry * 0.3, rx * 0.35, ry * 0.35, '#fffbe8')
         return self
 
     def noise(self, amt=0.05, seed=1):
@@ -170,7 +273,8 @@ class Canvas:
         self.a[..., :3] = np.clip(self.a[..., :3] * (1 + (rng.random((self.h, self.w, 1)) - 0.5) * amt), 0, 1)
         return self
 
-    def mat(self, name):
+    def mat(self, name, grime=0.15):
+        """a baking picture material (through 'SignUV'): painted detail for the hi model"""
         img = bpy.data.images.new(name, self.w, self.h, alpha=False)
         img.pixels.foreach_set(self.a.astype(np.float32).ravel())
         kit.ensure_dirs()
@@ -178,11 +282,11 @@ class Canvas:
         img.filepath_raw = p
         img.file_format = 'PNG'
         img.save()
-        return kit.sign_material(img, 'pic_' + name, grime=0.15)
+        return kit.sign_material(img, 'pic_' + name, grime=grime)
 
 
 def decal(name, mat, w, h, loc, rz=0.0, tilt=0.0):
-    """a 2-triangle picture quad facing -Y (turned by rz about Z, tilted by `tilt` about X)"""
+    """a 2-triangle picture quad facing -Y (turned by rz about Z, tilted about X) for the hi model"""
     bm = bmesh.new()
     suv = bm.loops.layers.uv.new('SignUV')
     bm.loops.layers.uv.new('UVMap')
@@ -196,246 +300,1127 @@ def decal(name, mat, w, h, loc, rz=0.0, tilt=0.0):
     return kit.obj_from_bm(bm, name, mat)
 
 
-def text_mat(name, text, fg, bg, px=256, py=64, size=0.72, outline=None):
-    c = Canvas(px, py, bg)
-    c.text(text, 0.04, 0.08, 0.96, 0.92, fg, outline=outline, size=size)
-    return c.mat(name)
+# =========================================================================== the picture sheet
+class Sheet:
+    """One unbaked picture sheet per asset: signs, film panels, bulb strips, dials are painted into
+    sub-rectangles of one small image and mapped on 2-triangle quads (legible whatever the atlas
+    size). Its material is '<id>_sheet@night' with the sheet as emission: unlit by day (the runtime
+    sets emissiveIntensity 0), glowing after dusk. One draw call."""
+
+    def __init__(self, aid, w=512, h=256, bg='#141414', night=True):
+        self.aid, self.night = aid, night
+        self.cv = Canvas(w, h, bg)
+        self.shelves = []
+        self.objs = []
+
+    def put(self, cv):
+        """shelf-pack a Canvas into the sheet; returns its uv rect (half-texel inset)"""
+        W, H = self.cv.w, self.cv.h
+        spot = None
+        for shf in self.shelves:          # [y, h, x]
+            if cv.h <= shf[1] and shf[2] + cv.w <= W:
+                spot = shf
+                break
+        if spot is None:
+            y = self.shelves[-1][0] + self.shelves[-1][1] + 2 if self.shelves else 0
+            if y + cv.h > H or cv.w > W:
+                raise RuntimeError('%s: sheet full (%dx%d at y %d)' % (self.aid, cv.w, cv.h, y))
+            spot = [y, cv.h, 0]
+            self.shelves.append(spot)
+        x0, y0 = spot[2], spot[0]
+        self.cv.a[y0:y0 + cv.h, x0:x0 + cv.w] = cv.a
+        spot[2] += cv.w + 2
+        return ((x0 + 0.5) / W, (y0 + 0.5) / H, (x0 + cv.w - 0.5) / W, (y0 + cv.h - 0.5) / H)
+
+    def quad(self, uv, w, h, loc, rz=0.0, tilt=0.0, uvq=None):
+        """a w x h quad facing -Y at loc (turned rz about Z, tilted about X) showing `uv`"""
+        u0, v0, u1, v1 = uv
+        bm = bmesh.new()
+        lay = bm.loops.layers.uv.new('UVMap')
+        vs = [bm.verts.new(p) for p in ((-w / 2, 0, -h / 2), (w / 2, 0, -h / 2), (w / 2, 0, h / 2), (-w / 2, 0, h / 2))]
+        f = bm.faces.new(vs)
+        for lp, (u, v) in zip(f.loops, uvq or ((u0, v0), (u1, v0), (u1, v1), (u0, v1))):
+            lp[lay].uv = (u, v)
+        M = Matrix.Translation(Vector(loc)) @ Matrix.Rotation(rz, 4, 'Z') @ Matrix.Rotation(tilt, 4, 'X')
+        bmesh.ops.transform(bm, matrix=M, verts=bm.verts)
+        ob = kit.obj_from_bm(bm, 'sheetq')
+        self.objs.append(ob)
+        return ob
+
+    def strip(self, uv, pts, z0, z1):
+        """the sub-image stretched along a plan polyline (curved marquee bands)"""
+        u0, v0, u1, v1 = uv
+        lens = [0.0]
+        for i in range(1, len(pts)):
+            lens.append(lens[-1] + math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]))
+        T = lens[-1]
+        bm = bmesh.new()
+        lay = bm.loops.layers.uv.new('UVMap')
+        for i in range(len(pts) - 1):
+            (xa, ya), (xb, yb) = pts[i], pts[i + 1]
+            f = bm.faces.new([bm.verts.new((xa, ya, z0)), bm.verts.new((xb, yb, z0)), bm.verts.new((xb, yb, z1)), bm.verts.new((xa, ya, z1))])
+            ua, ub = u0 + (u1 - u0) * lens[i] / T, u0 + (u1 - u0) * lens[i + 1] / T
+            for lp, uv_ in zip(f.loops, ((ua, v0), (ub, v0), (ub, v1), (ua, v1))):
+                lp[lay].uv = uv_
+        ob = kit.obj_from_bm(bm, 'sheets')
+        self.objs.append(ob)
+        return ob
+
+    def obj(self):
+        ob = kit.join(self.objs, self.aid + '_sheet')
+        kit.ensure_dirs()
+        name = self.aid + '_sheet'
+        img = bpy.data.images.new(name, self.cv.w, self.cv.h, alpha=False)
+        img.pixels.foreach_set(self.cv.a.astype(np.float32).ravel())
+        p = os.path.join(kit.TMP_DIR, name + '.png')
+        img.filepath_raw = p
+        img.file_format = 'PNG'
+        img.save()
+        m = kit.baked_material('M_%s_sheet%s' % (self.aid, '@night' if self.night else ''), p, rough=0.65)
+        if self.night:
+            nt = m.node_tree
+            bs = nt.nodes.get('Principled BSDF')
+            tx = [n for n in nt.nodes if n.type == 'TEX_IMAGE'][0]
+            nt.links.new(tx.outputs['Color'], bs.inputs['Emission Color'])
+            bs.inputs['Emission Strength'].default_value = 1.0
+        ob.data.materials.clear()
+        ob.data.materials.append(m)
+        return ob
 
 
-def tdecal(name, text, w, h, loc, fg='#1a1a1a', bg='#ffffff', rz=0.0, px=None, size=0.72, outline=None):
-    px = px or 256
-    py = max(24, int(px * h / w))
-    return decal(name, text_mat(name, text, fg, bg, px, py, size, outline), w, h, loc, rz)
+def text_cv(text, pw, ph, fg, bg, size=0.8, border=None, bw=0.04, outline=None):
+    c = Canvas(pw, ph, bg)
+    if border:
+        c.frame(0, 0, 1, 1, bw * ph / pw, border)
+    c.text(text, 0.04, 0.1, 0.96, 0.9, fg, outline=outline, size=size)
+    return c
 
 
-def lamp_bar(name, x0, x1, y0, y1, z0, z1, col='#fff1c8', skip='Z'):
-    """glowing strip (tube light / bulb band); by default no top face"""
-    return BX(name, x0, x1, y0, y1, z0, z1, L.lamp(col), skip)
+def marquee_cv(n, text=None, pw=512, ph=24, bg='#2a1a12', col='#ffd76a', fg='#ffe9b0', rows=2, col2='#ff8a3a'):
+    """the canopy fascia: rows of bulbs (alternate colours) + optional short text between"""
+    c = Canvas(pw, ph, bg)
+    ys = (0.25, 0.75) if rows == 2 else (0.5,)
+    for y in ys:
+        c.bulbs(y, n, col)
+        c.bulbs(y, n // 2, col2, r=0.16)
+    if text:
+        c.rect(0.25, 0.32, 0.75, 0.68, bg).text(text, 0.26, 0.3, 0.74, 0.7, fg, size=0.9)
+    return c
 
 
-def dashes(name, x0, x1, y, z, n, col='#ffe27a', s=0.7, axis='X'):
-    """a row of n small glowing bulbs (marquee) along X (or Y)"""
-    out = []
-    for i in range(n):
-        t = x0 + (x1 - x0) * (i + 0.5) / n
-        if axis == 'X':
-            out.append(B(name, s, s, s, t, y, z, L.lamp(col)))
-        else:
-            out.append(B(name, s, s, s, y, t, z, L.lamp(col)))
-    return kit.join(out, name)
+# =========================================================================== fictional film panels
+def _face_portrait(c, cx, cy, s, skin, hair, female=False, shirt=None):
+    """a big hand-painted portrait in the hoarding manner (generic, no likeness)"""
+    asp = c.w / c.h
+    k = s * asp
+    if shirt:
+        c.poly([(cx - s * 1.15, 0.0), (cx + s * 1.15, 0.0), (cx + s * 0.75, cy - k * 0.95), (cx - s * 0.75, cy - k * 0.95)], shirt)
+        c.poly([(cx - s * 0.25, cy - k * 0.95), (cx + s * 0.25, cy - k * 0.95), (cx, cy - k * 1.35)], skin)
+    c.rect(cx - s * 0.24, cy - k * 1.0, cx + s * 0.24, cy - k * 0.6, skin)
+    if female:
+        c.ellipse(cx, cy + k * 0.05, s * 0.92, k * 1.12, hair)
+    c.ellipse(cx, cy, s * 0.68, k * 0.9, skin)
+    c.ellipse(cx + s * 0.32, cy - k * 0.05, s * 0.36, k * 0.8, '#000000', 0.18)      # painted shadow side
+    c.ellipse(cx, cy + k * 0.6, s * 0.72, k * 0.42, hair)
+    if not female:
+        c.rect(cx - s * 0.7, cy + k * 0.36, cx + s * 0.7, cy + k * 0.62, hair)
+        c.ellipse(cx - s * 0.66, cy + k * 0.15, s * 0.1, k * 0.3, hair)
+        c.ellipse(cx + s * 0.66, cy + k * 0.15, s * 0.1, k * 0.3, hair)
+    for sx in (-1, 1):
+        ex = cx + sx * s * 0.27
+        c.ellipse(ex, cy + k * 0.12, s * 0.1, k * 0.045, '#efe6da')
+        c.ellipse(ex, cy + k * 0.12, s * 0.05, k * 0.045, '#22140c')
+        c.poly([(ex - s * 0.15, cy + k * 0.22), (ex + s * 0.15, cy + k * 0.22), (ex + s * 0.13, cy + k * 0.27), (ex - s * 0.13, cy + k * 0.26)], '#24160e')
+    c.poly([(cx - s * 0.04, cy + k * 0.05), (cx + s * 0.06, cy - k * 0.2), (cx - s * 0.06, cy - k * 0.2)], '#000000', 0.15)
+    c.ellipse(cx, cy - k * 0.42, s * 0.2, k * 0.06, '#b0443a' if female else '#8a4a3a')
+    if female:
+        c.ellipse(cx, cy + k * 0.3, s * 0.045, k * 0.045, '#c0101a')
+        for sx in (-1, 1):
+            c.ellipse(cx + sx * s * 0.7, cy - k * 0.15, s * 0.06, k * 0.08, '#f2c230')
+        c.poly([(cx - s * 0.5, cy - k * 0.98), (cx + s * 0.5, cy - k * 0.98), (cx, cy - k * 1.18)], '#f2c230', 0.8)
+    else:
+        c.poly([(cx - s * 0.3, cy - k * 0.3), (cx + s * 0.3, cy - k * 0.3), (cx + s * 0.22, cy - k * 0.22), (cx - s * 0.22, cy - k * 0.22)], '#1d120c')
 
 
-# =========================================================================== painted pictures
-def poster(name, title, c0, c1, shirt, saree, px=384, py=208, title_col='#ffe23a', title_out='#a0101a', tag='DAILY 4 SHOWS'):
-    """a hand-painted Telugu film panel (fictional title): sky gradient, sun rays, the hero and
-    heroine as big painted portraits, the title in yellow block letters with a red outline"""
-    c = Canvas(px, py)
-    c.grad(0.0, 1.0, c1, c0)
-    for i in range(7):
-        a0 = -0.2 + i * 0.22
-        c.poly([(0.5, 0.5), (0.5 + math.cos(a0) * 0.9, 0.5 + math.sin(a0) * 1.4), (0.5 + math.cos(a0 + 0.1) * 0.9, 0.5 + math.sin(a0 + 0.1) * 1.4)], c0)
-    # hero (left, big) and heroine (right)
-    c.poly([(0.04, 0.0), (0.42, 0.0), (0.38, 0.40), (0.08, 0.40)], shirt)
-    c.ellipse(0.23, 0.58, 0.10, 0.20, '#c08458')
-    c.ellipse(0.23, 0.72, 0.11, 0.09, '#1d1410')
-    c.rect(0.17, 0.52, 0.29, 0.535, '#3a2016')
-    c.poly([(0.62, 0.0), (0.96, 0.0), (0.92, 0.34), (0.66, 0.34)], saree)
-    c.ellipse(0.79, 0.50, 0.085, 0.17, '#d39a6e')
-    c.ellipse(0.79, 0.62, 0.10, 0.10, '#140c08')
-    c.ellipse(0.79, 0.53, 0.012, 0.02, '#b0101a')
-    c.rect(0.0, 0.0, 1.0, 0.36, '#000000', alpha=0.35)
-    c.text(title, 0.02, 0.02, 0.98, 0.34, title_col, outline=title_out, ow=3, size=0.8)
+def film_panel(title, theme, pw=320, ph=176, tag=None):
+    """a painted Telugu-film-style hoarding with a FICTIONAL, family-friendly title"""
+    c = Canvas(pw, ph)
+    if theme == 'kites':        # RANGULA PATANG: kite festival over the old city
+        c.grad(0.0, 1.0, '#ffd27a', '#3e8fd8')
+        c.glow(0.75, 0.75, 0.3, 0.4, '#fff6c8', 0.7)
+        for i, (x, y, col) in enumerate(((0.55, 0.78, '#e8202a'), (0.7, 0.62, '#2ab04a'), (0.86, 0.8, '#f2c230'), (0.63, 0.9, '#8a2ad8'), (0.92, 0.55, '#ff6a1a'))):
+            s = 0.05
+            c.poly([(x, y + s * 1.6), (x + s, y), (x, y - s * 1.4), (x - s, y)], col)
+            c.line(x, y - s * 1.4, 0.45 + i * 0.02, 0.3, 0.004, '#f8f8f0')
+        c.poly([(0.5, 0.36), (0.56, 0.5), (0.6, 0.36)], '#e9e0c8')     # a minaret silhouette
+        c.rect(0.45, 0.30, 1.0, 0.38, '#c9a874')
+        _face_portrait(c, 0.22, 0.6, 0.15, '#c98a5a', '#1d1410', shirt='#e8402a')
+        _face_portrait(c, 0.42, 0.62, 0.09, '#d8a070', '#140c08', female=True, shirt='#2a9a5a')
+        tc, to = '#ffe23a', '#b0101a'
+    elif theme == 'festival':   # PREMA PANDAGA: a family festival picture, lamps and flowers
+        c.grad(0.0, 1.0, '#5a1a6a', '#e86a9a')
+        for k in range(9):
+            x = 0.06 + k * 0.11
+            c.glow(x, 0.42, 0.04, 0.08, '#ffd27a', 0.9)
+            c.ellipse(x, 0.40, 0.022, 0.03, '#ffe9a0').ellipse(x, 0.37, 0.03, 0.02, '#b0602a')
+        for k in range(14):
+            c.ellipse(0.04 + k * 0.07, 0.96, 0.03, 0.05, '#ff9a1a' if k % 2 else '#ffe23a')
+        _face_portrait(c, 0.3, 0.66, 0.13, '#c98a5a', '#1d1410', shirt='#f2f2ea')
+        _face_portrait(c, 0.68, 0.66, 0.12, '#d8a070', '#140c08', female=True, shirt='#e8202a')
+        tc, to = '#fff27a', '#7a0a4a'
+    elif theme == 'lion':       # GULLY SIMHAM: the gully cricket hero
+        c.grad(0.0, 1.0, '#f28a1a', '#ffe08a')
+        c.glow(0.72, 0.68, 0.3, 0.5, '#ffd03a', 0.8)
+        c.ellipse(0.74, 0.66, 0.16, 0.30, '#b8601a').ellipse(0.74, 0.62, 0.10, 0.19, '#e0a040')
+        c.ellipse(0.70, 0.66, 0.015, 0.025, '#2a1a10').ellipse(0.78, 0.66, 0.015, 0.025, '#2a1a10')
+        c.ellipse(0.74, 0.56, 0.03, 0.03, '#3a2010')
+        c.line(0.5, 0.36, 0.6, 0.9, 0.012, '#d8b878')      # cricket bat
+        c.rect(0.585, 0.86, 0.615, 0.98, '#3a2a20')
+        _face_portrait(c, 0.27, 0.62, 0.16, '#b97a4a', '#1d1410', shirt='#1d5ac8')
+        tc, to = '#ffffff', '#c0101a'
+    else:                       # 'train': TOOFAN EXPRESS, a railway adventure
+        c.grad(0.0, 1.0, '#7a2a10', '#ffb04a')
+        c.ellipse(0.72, 0.72, 0.12, 0.2, '#fff0b0')
+        c.poly([(0.42, 0.34), (0.98, 0.34), (0.98, 0.62), (0.62, 0.62), (0.56, 0.52), (0.42, 0.52)], '#2a3a6a')
+        c.rect(0.6, 0.62, 0.66, 0.74, '#2a3a6a').ellipse(0.47, 0.46, 0.03, 0.05, '#fff6c8')
+        for k in range(5):
+            c.rect(0.05, 0.42 + k * 0.035, 0.38, 0.43 + k * 0.035, '#ffe0a0', 0.5)
+        _face_portrait(c, 0.22, 0.64, 0.14, '#c98a5a', '#1d1410', shirt='#7a1a1a')
+        tc, to = '#ffe23a', '#1a2a8a'
+    c.rect(0.0, 0.0, 1.0, 0.3, '#000000', alpha=0.45)
+    c.text(title, 0.02, 0.02, 0.98, 0.30, tc, outline=to, ow=3, size=0.82)
     if tag:
-        c.text(tag, 0.30, 0.86, 0.70, 0.98, '#ffffff', outline='#202020', ow=1, size=0.8)
-    return c.mat(name)
+        c.rect(0.68, 0.86, 0.99, 0.99, '#c0101a').text(tag, 0.69, 0.865, 0.98, 0.985, '#ffffff', size=0.8)
+    c.frame(0, 0, 1, 1, 0.012, '#f2f2ea')
+    return c
 
 
-def facade(name, wall, win, cols, rows, px=512, py=256, frame=None, lit=None, band=None, fx=0.55, fy=0.55, y0=0.0, y1=1.0, noise=0.05):
-    c = Canvas(px, py, wall)
+# =========================================================================== cinema building blocks
+def hall_fac(w, h, wall, seed, vents=True, doors=1, band=None):
+    """a cinema hall's long blank side: louvres high up, exit doors, rain streaks"""
+    f = Fac(w, h, wall, seed=seed, noise=0.0)
+    f.dirt(3.0, alpha=0.3)
     if band:
-        for r in range(rows + 1):
-            yy = y0 + (y1 - y0) * r / rows
-            c.rect(0, yy - 0.012, 1, yy + 0.012, band)
-    if frame:
-        c.grid(0, y0, 1, y1, cols, rows, frame, fx + 0.08, fy + 0.08)
-    c.grid(0, y0, 1, y1, cols, rows, win, fx, fy, lit=lit)
-    c.noise(noise)
-    return c.mat(name)
+        f.band(h - 1.6, h, band)
+    if vents:
+        n = max(2, int(w / 9))
+        for i in range(n):
+            x = (i + 0.5) * w / n
+            f.rect(x - 1.4, h * 0.62, x + 1.4, h * 0.62 + 3.0, '#6a6862')
+            for k in range(4):
+                f.rect(x - 1.4, h * 0.62 + 0.3 + k * 0.7, x + 1.4, h * 0.62 + 0.55 + k * 0.7, '#9a968e')
+    for i in range(doors):
+        x = (i + 0.5) * w / doors
+        f.rect(x - 2.6, 0, x + 2.6, 7.5, '#4a5a4a').rect(x - 2.8, 7.5, x + 2.8, 8.0, '#7a766e')
+        f.rect(x - 0.1, 0, x + 0.1, 7.5, '#2a2a2a')
+    # rain streaks under the roof
+    rng = np.random.default_rng(seed)
+    for _ in range(int(w / 3)):
+        x = rng.random() * w
+        f.rect(x, h * (0.3 + rng.random() * 0.4), x + 0.5, h - 1.6, '#000000', 0.06)
+    return f
 
 
-def bus_mats(tag, livery=('#b22b2b', '#e4dccb'), route='8A KOTI'):
+def roof_bits(P, lo, M, x, y, z):
+    """projection room / water tank box on a flat roof"""
+    P.append(B('projroom', x - 7, x + 7, y - 4, y + 4, z, z + 6, M))
+    P.append(B('projroom_cap', x - 7.5, x + 7.5, y - 4.5, y + 4.5, z + 6, z + 6.6, M))
+    lo.append(S('s_proj', x - 7.6, x + 7.6, y - 4.6, y + 4.6, z, z + 6.7))
+
+
+def finish(A, P, lo, sheet, size, ao=6.0, extra_keep=()):
+    keep = [sheet.obj()] if sheet else []
+    keep += [k for k in extra_keep if k is not None]
+    for o in L.finish_proxy(A, P, lo=lo, keep=keep, size=size, ao_dist=ao, ao_samples=48, ao_strength=0.7):
+        kit.smooth(o, 80)
+
+
+# =========================================================================== 1. Sandhya 70MM
+def build_sandhya(A):
+    """Sandhya 70MM, RTC X Roads: the big one. A wide cream facade bowed towards the road with
+    red vertical fins either side, the huge painted film hoarding in a steel frame in the middle,
+    SANDHYA 70MM in big letters on top, the deep canopy with the bulb marquee, ticket windows
+    and wide entrance steps; the long blank hall with louvres behind."""
+    C._ASSET[0] = A.id
+    WALL, RED, GREY = '#e0d2ae', '#a82a26', '#6c6e72'
+    wall = lin_mat('sn_wall', WALL)
+    red = lin_mat('sn_red', RED)
+    steel = lin_mat('sn_steel', GREY, 0.6)
+    stone = lin_mat('sn_stone', '#b9b2a4', 0.9)
+    P, lo = [], []
+    sh = Sheet(A.id, 512, 288)
+    uv_film = sh.put(film_panel('RANGULA PATANG', 'kites', 352, 200, tag='70MM'))
+    uv_tix = sh.put(text_cv('TICKETS', 128, 24, '#1a1a1a', '#f2c230', size=0.8))
+    W2, HH, HF = 33.0, 40.0, 50.0
+    # hall
+    P.append(fbox('hall', 0, 5.5, 66, 83, 0, HH, wall, faces={'l': hall_fac(83, HH, WALL, 3), 'r': hall_fac(83, HH, WALL, 4), 'b': hall_fac(66, HH, WALL, 5, doors=2)}))
+    lo.append(S('s_hall', -33.1, 33.1, -36, 47.1, 0, HH + 0.1))
+    roof_bits(P, lo, wall, 0, -26, HH)
+    P.append(B('tank', 18, 24, 30, 36, HH, HH + 4, lin_mat('sn_tank', '#2a2a2a')))
+    lo.append(S('s_tank', 17.9, 24.1, 29.9, 36.1, HH, HH + 4.1))
+    # the bowed front block
+    arc = arc_pts(-34, 34, -37.0, 5.0, 12)
+    poly = [(34, -30.0), (-34, -30.0)]
+    ff = Fac(sum(math.hypot(arc[i][0] - arc[i - 1][0], arc[i][1] - arc[i - 1][1]) for i in range(1, len(arc))), HF, WALL, seed=7, noise=0.0)
+    fw = ff.w
+    ff.dirt(2.5, alpha=0.3)
+    ff.band(HF - 2.2, HF, RED).band(12.0, 14.2, RED)
+    # ground floor: glazed doors in the middle, ticket windows either side
+    ff.rect(fw / 2 - 13, 0, fw / 2 + 13, 10.5, '#3a3226')
+    for i in range(6):
+        x = fw / 2 - 12 + i * 4.8
+        ff.rect(x, 0.4, x + 4.0, 9.8, '#55606a').rect(x + 1.9, 0.4, x + 2.1, 9.8, '#2a2a2a')
+    for s in (-1, 1):
+        for k in range(3):
+            x = fw / 2 + s * (18 + k * 4.2)
+            ff.rect(x - 1.3, 3.6, x + 1.3, 7.0, '#1e1a16').rect(x - 1.6, 3.2, x + 1.6, 3.6, '#8a8478')
+            for g in range(5):
+                ff.rect(x - 1.3 + g * 0.6, 3.6, x - 1.2 + g * 0.6, 7.0, '#9a9a9a')
+    # first floor: row of small windows over the canopy
+    for i in range(14):
+        x = 3 + i * (fw - 6) / 13
+        ff.rect(x - 1.2, 15.6, x + 1.2, 19.0, '#3e4a52')
+    P.append(plan_shell('front', arc + poly, 0, HF, wall))
+    P.append(strip_face('front_face', offset_pts(arc, 0.05), 0, HF, ff.image(A.id + '_front')))
+    lo.append(plan_shell('s_front', arc_pts(-34.1, 34.1, -37.05, 5.05, 8) + poly, 0, HF + 0.6))
+    # red fins either side of the hoarding (radial to the bow)
+    for t in list(range(1, 5)) + list(range(8, 12)):
+        (xa, ya), (xb, yb) = arc[t], arc[t + 1]
+        x, y = (xa + xb) / 2, (ya + yb) / 2
+        ang = math.atan2(yb - ya, xb - xa)
+        fin = B('fin', -0.35, 0.35, -1.1, 0.0, 14.2, HF - 2.2, red)
+        P.append(L.place(fin, (x, y, 0), ang))
+    # the parapet with SANDHYA 70MM
+    P.append(B('sign_bd', -24, 24, -41.6, -36.5, HF - 0.5, HF + 6.5, red))
+    lo.append(S('s_sign', -24.1, 24.1, -41.7, -36.4, HF - 0.5, HF + 6.6))
+    uv = sh.put(text_cv('SANDHYA 70MM', 400, 56, '#ffffff', RED, size=0.84, border='#ffd76a'))
+    sh.quad(uv, 46.0, 6.4, (0, -41.75, HF + 3.0))
+    # the hoarding frame and the film panel
+    HX, HZ0, HZ1 = 22.0, 17.0, 45.0
+    yfr = -42.6
+    P.append(B('hoard_back', -HX, HX, yfr, yfr + 3.5, HZ0, HZ1, steel))
+    for x0, x1, z0, z1 in ((-HX - 0.8, HX + 0.8, HZ0 - 0.8, HZ0), (-HX - 0.8, HX + 0.8, HZ1, HZ1 + 0.8), (-HX - 0.8, -HX, HZ0, HZ1), (HX, HX + 0.8, HZ0, HZ1)):
+        P.append(B('hoard_fr', x0, x1, yfr - 0.6, yfr + 0.6, z0, z1, steel))
+    for k in range(5):     # light brackets on the top edge
+        x = -HX + 4 + k * (2 * HX - 8) / 4
+        P.append(B('hl', x - 0.3, x + 0.3, yfr - 2.2, yfr, HZ1 + 0.8, HZ1 + 1.2, steel))
+        P.append(B('hlh', x - 0.8, x + 0.8, yfr - 2.8, yfr - 1.8, HZ1 + 0.2, HZ1 + 0.9, steel))
+    lo.append(S('s_hoard', -HX - 0.9, HX + 0.9, yfr - 0.7, yfr + 3.5, HZ0 - 0.9, HZ1 + 0.9))
+    sh.quad(uv_film, 2 * HX, HZ1 - HZ0, (0, yfr - 0.75, (HZ0 + HZ1) / 2))
+    # the canopy with its bulb marquee (follows the bow)
+    can = arc_pts(-29, 29, -40.5, 4.0, 8)
+    cpoly = can + [(29, -34.0), (-29, -34.0)]
+    P.append(plan_shell('canopy', cpoly, 11.6, 13.4, wall, bottom=True))
+    lo.append(plan_shell('s_canopy', arc_pts(-29.1, 29.1, -40.6, 4.05, 6) + [(29.1, -34.0), (-29.1, -34.0)], 11.5, 13.5, bottom=True))
+    uv = sh.put(marquee_cv(48))
+    sh.strip(uv, offset_pts(arc_pts(-29, 29, -40.5, 4.0, 6), 0.15), 11.6, 13.4)
+    # TICKETS boards over the booking windows
+    uv = uv_tix
+    for s in (-1, 1):
+        x = s * 22.2
+        a = math.atan2(arc_y(x + 0.5, -34, 34, -37.0, 5.0) - arc_y(x - 0.5, -34, 34, -37.0, 5.0), 1.0)
+        sh.quad(uv, 9.0, 1.6, (x, arc_y(x, -34, 34, -37.0, 5.0) - 0.25, 8.4), rz=a)
+    # entrance steps + a low forecourt kerb
+    P.append(L.steps('steps', 40, 1.2, 0.45, 4, (0, -45.6, 0), stone))
+    lo.append(ramp_lo('s_steps', -20, 20, -48.0, -41.0, 1.8))
+    P.append(B('kerb_l', -34, -21, -48, -41, 0, 0.4, stone))
+    P.append(B('kerb_r', 21, 34, -48, -41, 0, 0.4, stone))
+    finish(A, P, lo, sh, 448)
+    L.shots(A, az=-30, el=10, extra=[{'name': 'front', 'view': {'az': 0, 'el': 6, 'fov': 32, 'pad': 1.05}}])
+
+
+def round_front(x0, x1, yf, yb, r, n=4):
+    """plan polyline of a block front with rounded front corners (left -> right seen from the
+    front: starts at the back-left, ends at the back-right)"""
+    pts = [(x0, yb)]
+    for i in range(n + 1):
+        a = PI - (PI / 2) * i / n
+        pts.append((x0 + r + r * math.cos(a), yf + r - r * math.sin(a)))
+    for i in range(n + 1):
+        a = PI / 2 - (PI / 2) * i / n
+        pts.append((x1 - r + r * math.cos(a), yf + r - r * math.sin(a)))
+    pts.append((x1, yb))
+    return pts
+
+
+def frame_hi(P, name, x0, x1, z0, z1, y, mat, t=0.8, depth=1.2, back=3.0, lights=4):
+    """steel hoarding frame (front plane y) + backing + the light brackets on top"""
+    P.append(B(name + '_back', x0, x1, y + depth / 2 - 0.2, y + back, z0, z1, mat))
+    for a0, a1, b0, b1 in ((x0 - t, x1 + t, z0 - t, z0), (x0 - t, x1 + t, z1, z1 + t), (x0 - t, x0, z0, z1), (x1, x1 + t, z0, z1)):
+        P.append(B(name + '_fr', a0, a1, y - depth / 2, y + depth / 2, b0, b1, mat))
+    for k in range(lights):
+        x = x0 + (k + 0.5) * (x1 - x0) / lights
+        P.append(B(name + '_hl', x - 0.25, x + 0.25, y - 2.0, y, z1 + t, z1 + t + 0.4, mat))
+        P.append(B(name + '_hlh', x - 0.7, x + 0.7, y - 2.6, y - 1.6, z1 + 0.1, z1 + t + 0.6, mat))
+
+
+# =========================================================================== 2. Odeon (art deco)
+def build_odeon(A):
+    """Odeon, RTC X Roads: art deco. An ivory front with jade-green speed-line bands and rounded
+    corners, the stepped central tower with three fins and the vertical ODEON blade sign, the
+    hoarding on the left wing, the rounded deco canopy with bulbs, ticket windows and steps."""
+    C._ASSET[0] = A.id
+    WALL, JADE, DK = '#e4dcc0', '#2f8a72', '#1f5a4a'
+    wall = lin_mat('od_wall', WALL)
+    jade = lin_mat('od_jade', JADE)
+    steel = lin_mat('od_steel', '#5e6266', 0.6)
+    stone = lin_mat('od_stone', '#b4ada0', 0.9)
+    P, lo = [], []
+    sh = Sheet(A.id, 512, 256)
+    uv_film = sh.put(film_panel('PREMA PANDAGA', 'festival', 304, 176))
+    uv_blade = sh.put(text_cv('O\nD\nE\nO\nN', 48, 176, '#ffffff', DK, size=0.95, border='#ffd76a', bw=0.02))
+    uv_tix = sh.put(text_cv('TICKETS', 128, 24, '#1a1a1a', '#f2c230', size=0.8))
+    HH, HW = 34.0, 30.0
+    # hall
+    P.append(fbox('hall', 0, 8.5, 70, 46.9, 0, HH, wall, faces={'l': hall_fac(46.9, HH, WALL, 3, band=JADE), 'r': hall_fac(46.9, HH, WALL, 4, band=JADE), 'b': hall_fac(70, HH, WALL, 5, doors=2, band=JADE)}))
+    lo.append(S('s_hall', -35.1, 35.1, -15, 32.0, 0, HH + 0.1))
+    roof_bits(P, lo, wall, 0, -6, HH)
+    # wings with rounded corners
+    yf, yb = -26.0, -14.0
+    pts = round_front(-44, 44, yf, yb, 7.0, 4)
+    front = pts[1:-1]
+    flen = sum(math.hypot(front[i][0] - front[i - 1][0], front[i][1] - front[i - 1][1]) for i in range(1, len(front)))
+    f = Fac(flen, HW, WALL, seed=9, noise=0.0)
+    f.dirt(2.5, alpha=0.3)
+    for z in (HW - 2.6, HW - 4.2, HW - 5.8):
+        f.band(z, z + 0.8, JADE)
+    f.band(0, 1.2, DK)
+    m = flen / 2
+    for sx in (-1, 1):       # porthole windows and ticket windows on the right wing
+        for k in range(3):
+            x = m + sx * (22 + k * 6)
+            if sx > 0:
+                f.rect(x - 1.8, 15, x + 1.8, 19, '#3e4a52').rect(x - 2.0, 14.6, x + 2.0, 15, JADE)
+        for k in range(3):
+            x = m + sx * (20 + k * 4.2)
+            f.rect(x - 1.3, 3.6, x + 1.3, 7.0, '#1e1a16').rect(x - 1.6, 3.2, x + 1.6, 3.6, '#8a8478')
+            for g in range(5):
+                f.rect(x - 1.3 + g * 0.6, 3.6, x - 1.2 + g * 0.6, 7.0, '#9a9a9a')
+    P.append(plan_shell('wings', pts, 0, HW, wall))
+    P.append(strip_face('wings_face', offset_pts(front, 0.05), 0, HW, f.image(A.id + '_wings')))
+    lo.append(plan_shell('s_wings', round_front(-44.1, 44.1, yf - 0.1, yb, 7.0, 2), 0, HW + 0.1))
+    P.append(plan_shell('wing_cap', offset_pts(front, 0.4) + [(44.4, yb), (-44.4, yb)], HW, HW + 0.8, jade, bottom=True))
+    # the stepped central tower with fins
+    for (hw, z0, z1, d) in ((10.0, 0, 38.0, 0.0), (7.0, 38.0, 43.0, 1.0), (4.0, 43.0, 47.0, 2.0)):
+        P.append(B('tower', -hw, hw, -28.0 + d, -12.0, z0, z1, wall))
+        P.append(B('tower_cap', -hw - 0.4, hw + 0.4, -28.4 + d, -11.6, z1 - 0.6, z1, jade))
+    lo.append(S('s_tower1', -10.5, 10.5, -28.5, -12, 0, 38.1))
+    lo.append(S('s_tower2', -7.5, 7.5, -27.5, -12, 38.0, 43.1))
+    lo.append(S('s_tower3', -4.5, 4.5, -26.5, -12, 43.0, 47.1))
+    for x in (-7.0, 7.0):
+        P.append(B('fin', x - 0.5, x + 0.5, -29.0, -28.0, 12.0, 40.0, jade))
+    tf = Fac(20, 38, WALL, seed=11, noise=0.0)
+    tf.rect(4.5, 12.5, 15.5, 36, '#3e4a52')
+    for z in range(14, 36, 3):
+        tf.rect(4.5, z, 15.5, z + 0.35, '#c8c0a8')
+    tf.rect(0, 0, 20, 10.5, '#3a3226')
+    for i in range(4):
+        tf.rect(1.4 + i * 4.4, 0.4, 5.0 + i * 4.4, 9.8, '#55606a')
+    P.append(C.img_quad('tower_face', tf.image(A.id + '_tower'), 20, 38, (0, -28.06, 19.0)))
+    # vertical blade sign on the tower
+    P.append(B('blade_bd', -2.6, 2.6, -31.0, -28.0, 13.0, 36.0, lin_mat('od_dark', DK)))
+    lo.append(S('s_blade', -2.7, 2.7, -31.1, -28.4, 12.9, 36.1))
+    sh.quad(uv_blade, 4.6, 22.4, (0, -31.15, 24.5))
+    # hoarding on the left wing
+    HX0, HX1, HZ0, HZ1 = -42.0, -13.0, 11.5, 28.5
+    frame_hi(P, 'hoard', HX0, HX1, HZ0, HZ1, yf - 1.0, steel, back=1.2)
+    lo.append(S('s_hoard', HX0 - 0.9, HX1 + 0.9, yf - 1.7, yf + 0.2, HZ0 - 0.9, HZ1 + 0.9))
+    sh.quad(uv_film, HX1 - HX0, HZ1 - HZ0, ((HX0 + HX1) / 2, yf - 1.8, (HZ0 + HZ1) / 2))
+    # ODEON on the right wing
+    uv_name = sh.put(text_cv('ODEON', 256, 56, '#ffffff', JADE, size=0.86, border='#ffd76a'))
+    P.append(B('name_bd', 14.0, 42.0, yf - 0.8, yf + 0.5, 20.0, 26.0, jade))
+    lo.append(S('s_name', 13.9, 42.1, yf - 0.9, yf + 0.5, 19.9, 26.1))
+    sh.quad(uv_name, 27.0, 5.4, (28.0, yf - 0.95, 23.0))
+    # the rounded deco canopy (bulbs on its fascia), ticket boards
+    cpts = round_front(-17, 17, -31.0, -26.0, 4.0, 4)
+    P.append(plan_shell('canopy', cpts, 9.6, 11.4, wall, bottom=True))
+    P.append(plan_shell('canopy_band', offset_pts(cpts[1:-1], 0.1) + [(17.1, -26.0), (-17.1, -26.0)], 11.4, 12.0, jade, bottom=True))
+    lo.append(plan_shell('s_canopy', round_front(-17.1, 17.1, -31.1, -26.0, 4.0, 2), 9.5, 12.1, bottom=True))
+    uv_mq = sh.put(marquee_cv(40, pw=384, ph=16, rows=1))
+    sh.strip(uv_mq, offset_pts(cpts[1:-1], 0.2), 9.7, 11.3)
+    for x in (24.0, -36.0):
+        pass
+    sh.quad(uv_tix, 9.0, 1.6, (26.2, yf - 0.1, 8.4))
+    # steps
+    P.append(L.steps('steps', 30, 1.2, 0.45, 4, (0, -29.6, 0), stone))
+    lo.append(ramp_lo('s_steps', -15, 15, -32.0, -26.0, 1.8))
+    finish(A, P, lo, sh, 384)
+    L.shots(A, az=-30, el=10, extra=[{'name': 'front', 'view': {'az': 0, 'el': 6, 'fov': 32, 'pad': 1.05}}])
+
+
+# =========================================================================== 3. Sudarshan 35MM
+def build_sudarshan(A):
+    """Sudarshan 35MM, RTC X Roads: the older, lower house. A salmon-pink front block with
+    brown trims and a raised stepped centre, the long gabled tin-roofed hall behind, and the big
+    film hoarding standing on a steel trestle above the roof line (its legs show against the sky),
+    SUDARSHAN 35MM on the band, a flat canopy with bulbs, ticket windows, steps."""
+    C._ASSET[0] = A.id
+    WALL, TRIM, CREAM = '#eaa98c', '#6a3a2a', '#f2e6cc'
+    wall = lin_mat('sd_wall', WALL)
+    trim = lin_mat('sd_trim', TRIM)
+    cream = lin_mat('sd_cream', CREAM)
+    tin = lin_mat('sd_tin', '#8e8a84', 0.7)
+    steel = lin_mat('sd_steel', '#4a4c50', 0.6)
+    stone = lin_mat('sd_stone', '#b4ada0', 0.9)
+    P, lo = [], []
+    sh = Sheet(A.id, 512, 256)
+    uv_film = sh.put(film_panel('GULLY SIMHAM', 'lion', 352, 176, tag='35MM'))
+    uv_tix = sh.put(text_cv('TICKETS', 128, 24, '#1a1a1a', '#f2c230', size=0.8))
+    HH = 26.0
+    # gabled hall
+    P.append(fbox('hall', 0, 6.0, 62, 71.9, 0, HH, wall, faces={'l': hall_fac(71.9, HH, WALL, 3, band=TRIM), 'r': hall_fac(71.9, HH, WALL, 4, band=TRIM), 'b': hall_fac(62, HH, WALL, 5, doors=2, band=TRIM)}, top=False))
+    roof = prism_from_outline('roof', [(-32.5, HH - 0.4), (32.5, HH - 0.4), (0.0, HH + 12.0)], 73.0, center=(0, 6.0, 0), mat=tin)
+    P.append(roof)
+    for y in range(-28, 42, 4):
+        P.append(prism_from_outline('rib', [(-32.6, HH - 0.3), (32.6, HH - 0.3), (0.0, HH + 12.15)], 0.3, center=(0, y, 0), mat=lin_mat('sd_tin2', '#77736d', 0.7)))
+    for sx in (-1, 1):
+        P.append(prism_from_outline('gable_end', [(-31, HH), (31, HH), (0.0, HH + 11.5)], 0.6, center=(0, 41.6, 0), mat=wall))
+    lo.append(S('s_hall', -31.1, 31.1, -30, 42.0, 0, HH))
+    lo.append(prism_from_outline('s_roof', [(-32.7, HH - 0.45), (32.7, HH - 0.45), (0.0, HH + 12.3)], 73.4, center=(0, 6.0, 0)))
+    # front block: stepped parapet
+    yf, yb = -36.0, -29.0
+    FH = 24.0
+    f = Fac(66, FH + 6.0, WALL, seed=9, noise=0.0)
+    f.dirt(2.5, alpha=0.3)
+    f.band(0, 1.0, TRIM).band(FH - 1.2, FH, TRIM)
+    f.band(11.4, 12.4, CREAM)
+    f.rect(0, 0, 2.0, FH, CREAM).rect(64, 0, 66, FH, CREAM)
+    f.rect(21, 0, 45, 9.6, '#3a3226')
+    for i in range(5):
+        f.rect(22 + i * 4.6, 0.4, 25.8 + i * 4.6, 9.2, '#5a6066')
+    for sx in (-1, 1):
+        for k in range(3):
+            x = 33 + sx * (17 + k * 4.2)
+            f.rect(x - 1.3, 3.6, x + 1.3, 7.0, '#1e1a16').rect(x - 1.6, 3.2, x + 1.6, 3.6, '#8a8478')
+            for g in range(5):
+                f.rect(x - 1.3 + g * 0.6, 3.6, x - 1.2 + g * 0.6, 7.0, '#9a9a9a')
+    for i in range(8):
+        x = 4.5 + i * 8.1
+        f.rect(x - 1.4, 13.6, x + 1.4, 17.6, '#3e4a52').rect(x - 1.8, 13.2, x + 1.8, 13.6, CREAM)
+    P.append(fbox('front', 0, (yf + yb) / 2, 66, yb - yf, 0, FH, wall, faces={'f': f}))
+    P.append(B('front_c', -14, 14, yf, yb, FH, FH + 4.6, wall))
+    P.append(B('cap1', -33.4, 33.4, yf - 0.4, yb, FH - 0.6, FH, trim))
+    P.append(B('cap2', -14.4, 14.4, yf - 0.4, yb, FH + 4.0, FH + 4.6, trim))
+    lo.append(S('s_front', -33.1, 33.1, yf - 0.5, yb, 0, FH + 0.1))
+    lo.append(S('s_front_c', -14.5, 14.5, yf - 0.5, yb, FH, FH + 4.7))
+    # the name band (on the raised centre)
+    uv_name = sh.put(text_cv('SUDARSHAN 35MM', 384, 48, '#fff2c8', TRIM, size=0.84, border='#ffd76a'))
+    sh.quad(uv_name, 27.0, 3.4, (0, yf - 0.55, FH + 2.0))
+    # the hoarding on its trestle above the roof
+    HX, HZ0, HZ1, hy = 25.0, 35.0, 53.0, -27.0
+    frame_hi(P, 'hoard', -HX, HX, HZ0, HZ1, hy, steel, back=1.0, lights=5)
+    for x in (-20.0, -7.0, 7.0, 20.0):
+        P.append(B('leg', x - 0.4, x + 0.4, hy - 0.3, hy + 0.5, FH, HZ0, steel))
+        P.append(B('leg_b', x - 0.4, x + 0.4, hy + 5.6, hy + 6.4, HH + 2.0, HZ0 + 6.0, steel))
+        P.append(kit.tube('brace', [(x, hy + 0.1, FH + 1.0), (x, hy + 6.0, HZ0 + 2.0)], 0.25, seg=4, mat=steel))
+    P.append(B('catwalk', -HX, HX, hy - 2.2, hy - 0.5, HZ0 - 1.4, HZ0 - 1.0, steel))
+    lo.append(S('s_hoard', -HX - 0.9, HX + 0.9, hy - 0.8, hy + 1.0, HZ0 - 0.9, HZ1 + 0.9))
+    for x in (-20.0, -7.0, 7.0, 20.0):
+        lo.append(S('s_leg', x - 0.5, x + 0.5, hy - 0.4, hy + 0.6, FH + 4.6 if abs(x) < 14 else FH, HZ0 - 0.8))
+    lo.append(S('s_walk', -HX, HX, hy - 2.3, hy - 0.4, HZ0 - 1.5, HZ0 - 0.9))
+    sh.quad(uv_film, 2 * HX, HZ1 - HZ0, (0, hy - 0.95, (HZ0 + HZ1) / 2))
+    # flat canopy with bulbs
+    P.append(B('canopy', -24, 24, -40.6, yf, 9.6, 11.0, cream))
+    P.append(B('canopy_fascia', -24.2, 24.2, -40.9, -40.4, 9.4, 11.4, trim))
+    lo.append(S('s_canopy', -24.3, 24.3, -41.0, yf, 9.3, 11.5))
+    uv_mq = sh.put(marquee_cv(44, pw=384, ph=16, rows=1))
+    sh.quad(uv_mq, 48.4, 1.8, (0, -41.05, 10.4))
+    for sx in (-1, 1):
+        sh.quad(uv_tix, 9.0, 1.6, (sx * 21.4, yf - 0.1, 8.2))
+    P.append(L.steps('steps', 30, 1.2, 0.45, 4, (0, -39.6, 0), stone))
+    lo.append(ramp_lo('s_steps', -15, 15, -42.0, yf, 1.8))
+    finish(A, P, lo, sh, 416)
+    L.shots(A, az=-30, el=10, extra=[{'name': 'front', 'view': {'az': 0, 'el': 6, 'fov': 32, 'pad': 1.05}}])
+
+
+# =========================================================================== 4. Devi 70MM
+def build_devi(A):
+    """Devi 70MM, RTC X Roads: the tall modern facade. White cladding with a blue band, a full
+    height blue glass bay, the tall DEVI pylon at the corner, the huge film hoarding filling the
+    left of the facade, DEVI 70MM over the canopy, bulbs, ticket windows and wide steps."""
+    C._ASSET[0] = A.id
+    WALL, BLUE, GL = '#ccd0d4', '#2a5cb8', '#3f6f8a'
+    wall = lin_mat('dv_wall', WALL)
+    blue = lin_mat('dv_blue', BLUE)
+    steel = lin_mat('dv_steel', '#5a5e64', 0.6)
+    stone = lin_mat('dv_stone', '#b4ada0', 0.9)
+    P, lo = [], []
+    sh = Sheet(A.id, 512, 256)
+    uv_film = sh.put(film_panel('TOOFAN EXPRESS', 'train', 352, 176, tag='70MM'))
+    uv_pyl = sh.put(text_cv('D\nE\nV\nI', 48, 176, '#ffffff', BLUE, size=0.95, border='#ffd76a', bw=0.02))
+    uv_tix = sh.put(text_cv('TICKETS', 96, 24, '#1a1a1a', '#f2c230', size=0.8))
+    HH, FH = 40.0, 47.0
+    yf, yb = -28.0, -17.0
+    P.append(fbox('hall', 0, 8.0, 84, 49.9, 0, HH, wall, faces={'l': hall_fac(49.9, HH, WALL, 3, band=BLUE), 'r': hall_fac(49.9, HH, WALL, 4, band=BLUE), 'b': hall_fac(84, HH, WALL, 5, doors=2, band=BLUE)}))
+    lo.append(S('s_hall', -42.1, 42.1, -17, 33.0, 0, HH + 0.1))
+    roof_bits(P, lo, wall, -10, -10, HH)
+    f = Fac(100, FH, WALL, seed=9, noise=0.0)
+    f.dirt(2.5, alpha=0.25)
+    f.band(FH - 3.0, FH - 1.6, BLUE).band(0, 1.0, '#8a8e94')
+    # the glass bay (x 62..92 from the left edge)
+    f.rect(60.5, 13.5, 93.5, FH - 4.0, '#e8eaec')
+    f.rect(62, 14.5, 92, FH - 5.0, GL)
+    for x in np.arange(62, 92.1, 3.75):
+        f.rect(x - 0.18, 14.5, x + 0.18, FH - 5.0, '#c8ccd0')
+    for z in np.arange(14.5, FH - 4.9, 4.0):
+        f.rect(62, z - 0.18, 92, z + 0.18, '#c8ccd0')
+        f.rect(62, z + 0.3, 92, z + 1.0, '#8ab8d0', 0.35)
+    f.rect(40, 0, 92, 8.6, '#3a3226')
+    for i in range(9):
+        f.rect(41 + i * 5.7, 0.4, 45.6 + i * 5.7, 8.2, '#5a6870')
+    for k in range(4):
+        x = 8 + k * 4.4
+        f.rect(x - 1.3, 3.6, x + 1.3, 7.0, '#1e1a16').rect(x - 1.6, 3.2, x + 1.6, 3.6, '#8a8478')
+        for g in range(5):
+            f.rect(x - 1.3 + g * 0.6, 3.6, x - 1.2 + g * 0.6, 7.0, '#9a9a9a')
+    P.append(fbox('front', 0, (yf + yb) / 2, 100, yb - yf, 0, FH, wall, faces={'f': f, 'l': hall_fac(11, FH, WALL, 6, vents=False, doors=0, band=BLUE), 'r': hall_fac(11, FH, WALL, 7, vents=False, doors=0, band=BLUE)}))
+    P.append(B('cap', -50.4, 50.4, yf - 0.4, yb, FH, FH + 1.0, blue))
+    for x in (-50 + 60.5, -50 + 93.5):   # the glass bay's cladding fins
+        P.append(B('gfin', x - 0.6, x + 0.6, yf - 1.0, yf, 13.0, FH, wall))
+    lo.append(S('s_front', -50.1, 50.1, yf - 0.5, yb, 0, FH + 1.1))
+    # the tall corner pylon with DEVI
+    P.append(B('pylon', 44.0, 50.0, yf - 3.5, yf + 1.0, 0, FH + 12.0, blue))
+    P.append(B('pylon_cap', 43.6, 50.4, yf - 3.9, yf + 1.4, FH + 12.0, FH + 12.8, wall))
+    lo.append(S('s_pylon', 43.5, 50.5, yf - 4.0, yf + 1.5, 0, FH + 12.9))
+    sh.quad(uv_pyl, 5.4, 30.0, (47.0, yf - 4.05, FH - 4.0))
+    # the hoarding (fills the left of the facade)
+    HX0, HX1, HZ0, HZ1 = -47.0, 8.0, 15.0, 43.0
+    frame_hi(P, 'hoard', HX0, HX1, HZ0, HZ1, yf - 1.0, steel, back=1.2, lights=6)
+    lo.append(S('s_hoard', HX0 - 0.9, HX1 + 0.9, yf - 1.7, yf + 0.2, HZ0 - 0.9, HZ1 + 0.9))
+    sh.quad(uv_film, HX1 - HX0, HZ1 - HZ0, ((HX0 + HX1) / 2, yf - 1.8, (HZ0 + HZ1) / 2))
+    # canopy over the entrance with DEVI 70MM above it
+    P.append(B('canopy', -12, 43.5, -32.0, yf, 9.0, 10.4, wall))
+    P.append(B('canopy_f', -12.2, 43.7, -32.3, -31.8, 8.8, 10.8, blue))
+    lo.append(S('s_canopy', -12.3, 43.8, -32.4, yf, 8.7, 10.9))
+    uv_mq = sh.put(marquee_cv(56, pw=448, ph=16, rows=1))
+    sh.quad(uv_mq, 55.9, 1.9, (15.75, -32.45, 9.8))
+    uv_name = sh.put(text_cv('DEVI 70MM', 320, 48, '#ffffff', BLUE, size=0.84, border='#ffd76a'))
+    P.append(B('name_bd', 15.0, 40.0, yf - 0.9, yf, 10.6, 13.6, blue))
+    lo.append(S('s_name', 14.9, 40.1, yf - 1.0, yf, 10.5, 13.7))
+    sh.quad(uv_name, 24.6, 2.9, (27.5, yf - 1.05, 12.1))
+    sh.quad(uv_tix, 7.0, 1.4, (-33.4, yf - 0.1, 8.2))
+    P.append(L.steps('steps', 50, 1.2, 0.4, 4, (15.0, -30.6, 0), stone))
+    lo.append(ramp_lo('s_steps', -10, 40, -33.0, yf, 1.6))
+    finish(A, P, lo, sh, 448)
+    L.shots(A, az=-30, el=10, extra=[{'name': 'front', 'view': {'az': 0, 'el': 6, 'fov': 32, 'pad': 1.05}}])
+
+
+# =========================================================================== 5. Gokul Chat (Koti)
+def build_gokul_chat(A):
+    """Gokul Chat, Koti: a narrow, weathered three-storey building; the open ground-floor snack
+    counter (stainless steel counters, rows of glass jars of namkeen and sweets, shelves behind),
+    a sloping green awning, the plain GOKUL CHAT board, tube lights that glow at night, sunshade
+    chajjas over the upper windows and the black water tank on the roof."""
+    C._ASSET[0] = A.id
+    WALL, GREEN = '#e3d39c', '#2f7a4a'
+    wall = lin_mat('gk_wall', WALL)
+    green = lin_mat('gk_green', GREEN)
+    steel = kit.material('steel', 'gk_steel', base='#c9ccd0', rough=0.35, metal=0.0)
+    dark = lin_mat('gk_dark', '#2e2822')
+    conc = lin_mat('gk_conc', '#b3ad9f', 0.9)
+    P, lo = [], []
+    sh = Sheet(A.id, 256, 96)
+    yf = -8.0
+    H = 36.0
+    # upper floors (the ground floor is the open shop)
+    G = 13.2
+    f = Fac(32, H - G, WALL, seed=5, noise=0.0)
+    for z in (21.5, 31.0):
+        f.band(z - G - 3.2, z - G - 2.6, '#cfc08a')
+    rng = np.random.default_rng(4)
+    for _ in range(40):         # monsoon stains
+        x = rng.random() * 32
+        f.rect(x, rng.random() * 18, x + 0.4 + rng.random(), H - G - 0.5, '#5a5040', 0.08)
+    for fl, z in enumerate((21.5, 31.0)):
+        for i in range(3):
+            x = 5 + i * 11
+            f.rect(x - 3.0, z - G - 2.0, x + 3.0, z - G + 2.4, '#30383c')
+            for g in range(4):
+                f.rect(x - 3.0 + g * 1.9, z - G - 2.0, x - 2.85 + g * 1.9, z - G + 2.4, '#7a8a6a')
+    P.append(fbox('bldg', 0, (yf + 12) / 2, 32, 12 - yf, G, H, wall, faces={'f': f, 'l': Fac(20, H - G, WALL, seed=6, noise=0.0).dirt(2.0, alpha=0.1), 'r': Fac(20, H - G, WALL, seed=7, noise=0.0).dirt(2.0, alpha=0.1)}))
+    side = Fac(20, G, WALL, seed=8, noise=0.0).dirt(2.0, alpha=0.3)
+    P.append(fbox('gbody', 0, (yf + 4.4 + 12) / 2, 32, 12 - yf - 4.4, 0, G, wall, faces={'l': side, 'r': side}, top=False))
+    for sx in (-1, 1):
+        P.append(B('pier', 15.0 * sx - 0.5 + 0.5 * sx, 15.0 * sx + 0.5 + 0.5 * sx, yf, yf + 4.4, 0, G, wall))
+    P.append(B('ceiling', -16, 16, yf, yf + 4.4, G - 0.6, G, dark))
+    P.append(B('beam', -16, 16, yf - 0.3, yf + 0.3, G - 1.6, G, wall))
+    P.append(B('parapet', -16.2, 16.2, yf - 0.2, 12, H, H + 1.4, wall))
+    lo.append(S('s_bldg', -16.1, 16.1, yf - 0.1, 12, 0, H + 1.5))
+    for z in (24.4, 33.9):     # chajjas
+        P.append(B('chajja', -15.5, 15.5, yf - 1.6, yf, z - 0.5, z, conc))
+    for z in (24.4, 33.9):
+        lo.append(S('s_chajja', -15.6, 15.6, yf - 1.7, yf, z - 0.6, z + 0.1))
+    P.append(cylinder('tank', 2.4, 4.0, (9, 6, H), seg=10, mat=lin_mat('gk_tank', '#1e1e1e', 0.5)))
+    lo.append(cylinder('s_tank', 2.5, 4.1, (9, 6, H), seg=6, cap=True))
+    # the open shop: tiled back wall, steel shelves of jars, the steel counter with glass jars, the awning
+    tile = Fac(30, G, '#e6e4d8', seed=3, noise=0.0)
+    for x in np.arange(0, 30, 1.2):
+        tile.rect(x, 0, x + 0.06, G, '#b8b6a8')
+    for z in np.arange(0, G, 1.2):
+        tile.rect(0, z, 30, z + 0.06, '#b8b6a8')
+    tile.rect(0, 0, 30, 2.0, '#6a5a48')
+    P.append(C.img_quad('shop_back', tile.image(A.id + '_tile'), 30, G, (0, yf + 4.38, G / 2)))
+    jar_cols = ['#e8b84a', '#e86a2a', '#c8402a', '#f2e0a0', '#8ab84a', '#d89a5a']
+    jars = [lin_mat('gk_jar%d' % k, c, 0.3) for k, c in enumerate(jar_cols)]
+    for r, z in enumerate((5.0, 7.6, 10.2)):
+        P.append(B('shelf', -14, 14, yf + 3.3, yf + 4.3, z - 0.3, z, steel))
+        for i in range(14):
+            P.append(cylinder('sjar', 0.45, 1.6, (-13 + i * 2.0, yf + 3.8, z), seg=6, mat=jars[(i + r) % 6]))
+    P.append(B('counter', -14.6, 14.6, yf - 3.2, yf - 0.6, 0, 3.6, steel))
+    P.append(B('counter_top', -14.8, 14.8, yf - 3.4, yf - 0.4, 3.6, 3.9, steel))
+    P.append(B('counter_kick', -14.6, 14.6, yf - 3.3, yf - 3.1, 0, 0.6, dark))
+    for i in range(12):
+        x = -13.2 + i * 2.4
+        P.append(cylinder('jar', 0.62, 1.7, (x, yf - 1.9, 3.9), seg=8, mat=jars[i % 6]))
+        P.append(cylinder('lid', 0.5, 0.3, (x, yf - 1.9, 5.6), seg=8, mat=lin_mat('gk_lid', '#c03a2a')))
+    lo.append(S('s_counter', -14.9, 14.9, yf - 3.5, yf - 0.1, 0, 5.9))
+    aw = prism_from_outline('awning', [(yf + 0.2, 13.0), (yf - 4.0, 11.2), (yf - 4.0, 10.4), (yf - 3.8, 10.4), (yf + 0.2, 12.4)], 32.4, axis='X', mat=green)
+    P.append(aw)
+    for x in np.arange(-15.5, 16, 2.0):
+        P.append(prism_from_outline('aw_stripe', [(yf + 0.15, 13.05), (yf - 4.05, 11.25), (yf - 4.05, 10.7), (yf + 0.15, 12.5)], 0.9, axis='X', center=(x, 0, 0), mat=lin_mat('gk_white', '#f0eee4')))
+    lo.append(side_prism('s_awning', [(yf + 0.1, 13.2), (yf - 4.2, 11.35), (yf - 4.2, 10.3), (yf + 0.1, 12.2)], -16.3, 16.3, bottom=True))
+    # the board and the tube lights
+    uv_sign = sh.put(text_cv('GOKUL CHAT', 224, 40, '#c8201a', '#fff8e0', size=0.86, border='#2f7a4a', bw=0.08))
+    P.append(B('sign_bd', -14.0, 14.0, yf - 0.8, yf, 13.5, 17.7, green))
+    lo.append(S('s_sign', -14.1, 14.1, yf - 0.9, yf, 13.4, 17.8))
+    sh.quad(uv_sign, 27.4, 3.9, (0, yf - 0.95, 15.6))
+    tube = Canvas(32, 8, '#f4fbff')
+    tube.rect(0, 0, 1, 0.15, '#a8b8c0').rect(0, 0.85, 1, 1, '#a8b8c0')
+    uv_t = sh.put(tube)
+    for x in (-9.0, 0.0, 9.0):
+        sh.quad(uv_t, 4.0, 0.35, (x, yf - 3.9, 10.2), tilt=-PI / 2 + 0.4)
+        sh.quad(uv_t, 4.0, 0.3, (x, yf + 2.0, 12.3), tilt=-PI / 2)
+    for x in (-10.0, 10.0):
+        sh.quad(uv_t, 4.4, 0.4, (x, yf - 1.0, 18.3))
+    for x in (-10.0, 0.0, 10.0):       # tubes on the shop's front beam, under the awning
+        sh.quad(uv_t, 4.6, 0.5, (x, yf - 0.25, 9.9))
+    P.append(B('step', -16, 16, -12.0, yf - 3.4, 0, 0.35, conc))
+    finish(A, P, lo, sh, 288, ao=4.0)
+    L.shots(A, az=-25, el=10, extra=[{'name': 'front', 'view': {'az': 0, 'el': 4, 'fov': 32, 'pad': 1.05}}])
+
+
+# =========================================================================== 6. Paradise
+def build_paradise(A):
+    """Paradise restaurant, Paradise Circle (2003): a modest white three-storey corner building
+    with green bands; the glazed ground floor (warm lit inside at night) under a green awning,
+    the PARADISE fascia, the BIRYANI board and the big PARADISE name on the steel rooftop frame."""
+    C._ASSET[0] = A.id
+    WALL, GREEN, RED = '#f1ede2', '#1f7a3a', '#c0201a'
+    wall = lin_mat('pd_wall', WALL)
+    green = lin_mat('pd_green', GREEN)
+    steel = lin_mat('pd_steel', '#55595e', 0.6)
+    conc = lin_mat('pd_conc', '#b3ad9f', 0.9)
+    P, lo = [], []
+    sh = Sheet(A.id, 512, 192)
+    yf, H = -17.0, 33.0
+    def upper(w, seed):
+        f = Fac(w, H, WALL, seed=seed, noise=0.0)
+        f.dirt(2.0, alpha=0.2)
+        f.band(H - 1.5, H, GREEN).band(12.2, 13.4, GREEN)
+        n = max(2, int(w / 7))
+        for z in (17.5, 26.5):
+            for i in range(n):
+                x = (i + 0.5) * w / n
+                f.rect(x - 2.0, z - 2.2, x + 2.0, z + 2.6, '#33424a').rect(x - 2.3, z - 2.6, x + 2.3, z - 2.2, GREEN)
+                f.rect(x - 0.08, z - 2.2, x + 0.08, z + 2.6, '#d8d8d0')
+        f.rect(0, 0, w, 12.2, '#2c3438')
+        return f
+    P.append(fbox('bldg', 0, (yf + 20) / 2, 60, 20 - yf, 0, H, wall, faces={'f': upper(60, 3), 'l': upper(37, 4), 'r': upper(37, 5), 'b': upper(60, 6)}))
+    P.append(B('parapet', -30.2, 30.2, yf - 0.2, 20, H, H + 1.6, wall))
+    P.append(B('par_band', -30.4, 30.4, yf - 0.4, yf + 0.4, H + 1.0, H + 1.6, green))
+    lo.append(S('s_bldg', -30.1, 30.1, yf - 0.1, 20.1, 0, H + 1.7))
+    for z in (21.0, 30.0):
+        P.append(B('chajja', -29.5, 29.5, yf - 1.2, yf, z - 0.4, z, wall))
+    # ground floor: lit glazing (sheet), mullions, the awning, the fascia
+    gl = Canvas(256, 48, '#2a3438')
+    gl.rect(0, 0, 1, 1, '#c8a46a', 0.55)
+    for i in range(14):
+        x = (i + 0.5) / 14
+        gl.rect(x - 0.022, 0.06, x + 0.022, 0.62, '#8a5a3a', 0.55).ellipse(x, 0.8, 0.02, 0.07, '#fff0c0', 0.9)
+    for i in range(9):
+        gl.rect(i / 8 - 0.004, 0, i / 8 + 0.004, 1, '#9aa0a4')
+    gl.rect(0, 0.0, 1, 0.04, '#9aa0a4').rect(0, 0.96, 1, 1, '#9aa0a4')
+    uv_gl = sh.put(gl)
+    sh.quad(uv_gl, 56.0, 10.4, (0, yf - 0.16, 5.6))
+    for x in np.arange(-28, 28.1, 7.0):
+        P.append(B('mull', x - 0.3, x + 0.3, yf - 0.5, yf, 0.4, 11.0, wall))
+    aw = prism_from_outline('awning', [(yf + 0.1, 12.6), (yf - 3.0, 11.0), (yf - 3.0, 10.4), (yf + 0.1, 12.0)], 58.0, axis='X', mat=green)
+    P.append(aw)
+    lo.append(side_prism('s_awning', [(yf + 0.1, 12.8), (yf - 3.2, 11.1), (yf - 3.2, 10.3), (yf + 0.1, 11.8)], -29.2, 29.2, bottom=True))
+    uv_fas = sh.put(text_cv('PARADISE', 288, 48, '#ffffff', GREEN, size=0.86, border='#f2c230'))
+    P.append(B('fascia', -15.0, 15.0, yf - 0.8, yf, 13.4, 18.4, green))
+    lo.append(S('s_fascia', -15.1, 15.1, yf - 0.9, yf, 13.3, 18.5))
+    sh.quad(uv_fas, 29.4, 4.6, (0, yf - 0.95, 15.9))
+    uv_bir = sh.put(text_cv('BIRYANI', 192, 48, RED, '#fff8e0', size=0.84, border=GREEN, bw=0.07))
+    for sx in (-1, 1):
+        P.append(B('bir_bd', sx * 22.5 - 6.6, sx * 22.5 + 6.6, yf - 0.8, yf, 13.6, 17.8, green))
+        lo.append(S('s_bir', sx * 22.5 - 6.7, sx * 22.5 + 6.7, yf - 0.9, yf, 13.5, 17.9))
+        sh.quad(uv_bir, 12.6, 3.6, (sx * 22.5, yf - 0.95, 15.7))
+    # rooftop frame with PARADISE
+    RZ0, RZ1, ry = H + 3.0, H + 11.0, -10.0
+    frame_hi(P, 'roofsign', -22, 22, RZ0, RZ1, ry, steel, back=0.8, lights=4)
+    for x in (-18, -6, 6, 18):
+        P.append(B('rleg', x - 0.35, x + 0.35, ry - 0.3, ry + 0.4, H, RZ0, steel))
+        P.append(kit.tube('rbrace', [(x, ry + 0.1, RZ0 - 0.4), (x, ry + 5.0, H + 0.2)], 0.2, seg=4, mat=steel))
+    lo.append(S('s_roofsign', -22.9, 22.9, ry - 0.7, ry + 0.9, RZ0 - 0.9, RZ1 + 0.9))
+    for x in (-18, -6, 6, 18):
+        lo.append(S('s_rleg', x - 0.45, x + 0.45, ry - 0.4, ry + 0.5, H + 1.6, RZ0 - 0.8))
+    uv_roof = sh.put(text_cv('PARADISE', 384, 72, '#ffffff', RED, size=0.88, border='#ffffff', bw=0.05))
+    sh.quad(uv_roof, 44.0, 8.0, (0, ry - 0.85, (RZ0 + RZ1) / 2))
+    P.append(B('step', -29, 29, -20.0, yf - 3.2, 0, 0.35, conc))
+    P.append(B('kerb', -30, 30, -20.0, -19.4, 0, 0.5, conc))
+    finish(A, P, lo, sh, 320, ao=5.0)
+    L.shots(A, az=-30, el=10, extra=[{'name': 'front', 'view': {'az': 0, 'el': 6, 'fov': 32, 'pad': 1.05}}])
+
+
+# =========================================================================== 7. Secunderabad Clock Tower
+def build_clock_tower(A):
+    """Secunderabad Clock Tower (1897): the tall square stone tower on a stepped base in its
+    small garden; cream shaft with reddish-brown corner pilasters, string courses and slit
+    windows, the clock stage with four dials (glow at night) under a heavy cornice, and the
+    small cupola with its finial."""
+    C._ASSET[0] = A.id
+    CR, RB, TR = '#e6d5ae', '#8e4630', '#f2e6c8'
+    cream = lin_mat('ct_cream', CR)
+    rb = lin_mat('ct_rb', RB)
+    trim = lin_mat('ct_trim', TR)
+    grass = kit.material('wood_green', 'ct_lawn', base='#4f8a3a', chips=0.0, grain=0.15, var=0.15, rough=0.9, grime=0.2, scale=0.6)
+    stone = lin_mat('ct_stone', '#b8ad98', 0.9)
+    hedge = lin_mat('ct_hedge', '#2f6a2c')
+    P, lo = [], []
+    sh = Sheet(A.id, 128, 128)
+    # garden: lawn, hedge border, paths
+    P.append(B('lawn', -9, 9, -9, 9, 0, 0.3, grass))
+    for (x0, x1, y0, y1) in ((-9, 9, -9, -8.2), (-9, 9, 8.2, 9), (-9, -8.2, -8.2, 8.2), (8.2, 9, -8.2, 8.2)):
+        P.append(B('hedge', x0, x1, y0, y1, 0.3, 1.3, hedge))
+    P.append(B('path', -1.4, 1.4, -9.1, -5, 0, 0.36, stone))
+    lo.append(S('s_lawn', -9.1, 9.1, -9.1, 9.1, 0, 1.4))
+    # stepped base
+    for k, (hw, z0, z1) in enumerate(((7.6, 0.3, 1.3), (6.9, 1.3, 2.3), (6.3, 2.3, 6.0))):
+        P.append(B('base%d' % k, -hw, hw, -hw, hw, z0, z1, stone if k < 2 else rb))
+    lo.append(S('s_base1', -7.7, 7.7, -7.7, 7.7, 1.3, 2.3))
+    lo.append(S('s_base2', -6.4, 6.4, -6.4, 6.4, 2.3, 6.1))
+    # the shaft
+    Z0, Z1 = 6.0, 80.0
+    hw = 5.0
+
+    def shaft_face(seed):
+        f = Fac(2 * hw, Z1 - Z0, CR, seed=seed, noise=0.0)
+        f.dirt(3.0, alpha=0.25)
+        f.rect(0, 0, 0.9, f.h, RB).rect(2 * hw - 0.9, 0, 2 * hw, f.h, RB)
+        for z in (14.0, 34.0, 54.0):
+            f.band(z, z + 0.8, RB)
+        f.arch(hw, 0.0, 3.4, 7.5, '#3a2a22', 'round', frame=TR, fw=0.5)
+        for z in (19.0, 39.0, 59.0):
+            f.arch(hw, z, 1.4, 6.0, '#2a221c', 'round', frame=TR, fw=0.4)
+        for z in (4.0, 24.0, 44.0, 64.0):
+            f.rect(0.9, z, 2 * hw - 0.9, z + 0.25, '#d4c296')
+        f.band(f.h - 1.2, f.h, TR)
+        return f
+    P.append(fbox('shaft', 0, 0, 2 * hw, 2 * hw, Z0, Z1, cream, faces={k: shaft_face(i + 2) for i, k in enumerate('fblr')}))
+    for z in (Z0 + 14.0, Z0 + 34.0, Z0 + 54.0):
+        P.append(B('course', -hw - 0.35, hw + 0.35, -hw - 0.35, hw + 0.35, z, z + 0.8, rb))
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            P.append(B('pil', sx * hw - 0.7, sx * hw + 0.7, sy * hw - 0.7, sy * hw + 0.7, Z0, Z1, rb))
+    lo.append(S('s_shaft', -hw - 0.5, hw + 0.5, -hw - 0.5, hw + 0.5, Z0, Z1))
+    # clock stage (a little wider), dials, cornice
+    cw = 5.8
+    C0, C1 = 80.0, 93.0
+    P.append(B('stage_band', -cw - 0.3, cw + 0.3, -cw - 0.3, cw + 0.3, C0 - 0.8, C0, rb))
+    P.append(fbox('stage', 0, 0, 2 * cw, 2 * cw, C0, C1, cream))
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            P.append(B('cpil', sx * cw - 0.7, sx * cw + 0.7, sy * cw - 0.7, sy * cw + 0.7, C0, C1, rb))
+    P.append(B('cornice1', -cw - 0.9, cw + 0.9, -cw - 0.9, cw + 0.9, C1, C1 + 0.8, trim))
+    P.append(B('cornice2', -cw - 1.4, cw + 1.4, -cw - 1.4, cw + 1.4, C1 + 0.8, C1 + 1.6, rb))
+    lo.append(S('s_band', -cw - 0.4, cw + 0.4, -cw - 0.4, cw + 0.4, C0 - 0.9, C0))
+    lo.append(S('s_stage', -cw - 0.75, cw + 0.75, -cw - 0.75, cw + 0.75, C0, C1))
+    lo.append(S('s_cornice', -cw - 1.5, cw + 1.5, -cw - 1.5, cw + 1.5, C1, C1 + 1.7))
+    dial = Canvas(128, 128, '#5a3020')
+    dial.ellipse(0.5, 0.5, 0.48, 0.48, '#2a2018').ellipse(0.5, 0.5, 0.44, 0.44, '#fbf6e6')
+    for h in range(12):
+        a = 2 * PI * h / 12
+        x, y = 0.5 + 0.37 * math.sin(a), 0.5 + 0.37 * math.cos(a)
+        dial.line(0.5 + 0.31 * math.sin(a), 0.5 + 0.31 * math.cos(a), x, y, 0.022 if h % 3 else 0.035, '#1a1410')
+    dial.line(0.5, 0.5, 0.5 + 0.2 * math.sin(2 * PI * 10 / 12), 0.5 + 0.2 * math.cos(2 * PI * 10 / 12), 0.03, '#1a1410')
+    dial.line(0.5, 0.5, 0.5 + 0.32 * math.sin(2 * PI * 2 / 12), 0.5 + 0.32 * math.cos(2 * PI * 2 / 12), 0.02, '#1a1410')
+    dial.ellipse(0.5, 0.5, 0.03, 0.03, '#1a1410')
+    uv_d = sh.put(dial)
+    for k in range(4):
+        rz = k * PI / 2
+        d = cw + 0.8
+        sh.quad(uv_d, 8.4, 8.4, (d * math.sin(rz), -d * math.cos(rz), (C0 + C1) / 2), rz=rz)
+    # cupola: square drum with arches, the dome, the finial
+    D0, D1 = C1 + 1.6, C1 + 6.6
+    dw = 3.6
+    df = Fac(2 * dw, D1 - D0, CR, seed=9, noise=0.0)
+    df.arch(dw, 0.6, 2.2, 3.6, '#2a221c', 'round', frame=TR, fw=0.3)
+    P.append(fbox('drum', 0, 0, 2 * dw, 2 * dw, D0, D1, cream, faces={k: df for k in 'fblr'}))
+    P.append(B('drum_cap', -dw - 0.4, dw + 0.4, -dw - 0.4, dw + 0.4, D1, D1 + 0.6, rb))
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            P.append(lathe('urn', [(0.4, C1 + 1.6), (0.55, C1 + 2.4), (0.3, C1 + 3.2), (0.0, C1 + 3.8)], seg=6, mat=trim, loc=(sx * (cw + 0.6), sy * (cw + 0.6), 0)))
+            lo.append(lathe('s_urn', [(0.6, C1 + 1.6), (0.6, C1 + 2.6), (0.0, C1 + 3.9)], seg=4, loc=(sx * (cw + 0.6), sy * (cw + 0.6), 0), close_bottom=False))
+    prof = [(dw * 1.05 * math.cos(a), D1 + 0.6 + 4.2 * math.sin(a)) for a in [PI / 2 * i / 6 for i in range(6)]] + [(0.0, D1 + 4.8)]
+    P.append(lathe('dome', prof, seg=16, mat=rb, close_bottom=False))
+    P.append(lathe('finial', [(0.5, D1 + 4.6), (0.6, D1 + 5.4), (0.25, D1 + 6.4), (0.4, D1 + 7.0), (0.12, D1 + 8.0), (0.0, D1 + 9.6)], seg=6, mat=lin_mat('ct_gold', '#b8902a', 0.5)))
+    lo.append(S('s_drum', -dw - 0.5, dw + 0.5, -dw - 0.5, dw + 0.5, D0, D1 + 0.7))
+    lo.append(lathe('s_dome', [(dw * 1.12, D1 + 0.6), (dw * 1.0, D1 + 2.4), (dw * 0.6, D1 + 4.2), (0.0, D1 + 4.95)], seg=8, close_bottom=False))
+    lo.append(lathe('s_finial', [(0.65, D1 + 4.6), (0.45, D1 + 6.6), (0.0, D1 + 9.7)], seg=4, close_bottom=False))
+    finish(A, P, lo, sh, 256, ao=3.0)
+    L.shots(A, az=-35, el=12, extra=[{'name': 'top', 'view': {'az': -20, 'el': 6, 'fov': 18, 'target': (0, 0, 92), 'dist': 70}}])
+
+
+# =========================================================================== buses (Koti, MGBS)
+def bus_mats(tag, livery=('#b22b2b', '#e4dccb')):
     s = Canvas(256, 64, livery[0])
     s.rect(0, 0.0, 1, 0.12, '#2a2a2a')
     s.rect(0, 0.46, 1, 0.56, livery[1])
     s.rect(0, 0.92, 1, 1.0, livery[1])
-    s.grid(0.02, 0.56, 0.98, 0.92, 10, 1, '#26323a', 0.82, 0.8)
-    s.rect(0.06, 0.12, 0.14, 0.86, '#3a2a22')     # door
-    s.ellipse(0.2, 0.08, 0.05, 0.16, '#1a1a1a')
-    s.ellipse(0.8, 0.08, 0.05, 0.16, '#1a1a1a')
+    s.grid = None
+    for i in range(10):
+        x = 0.02 + (i + 0.5) * 0.096
+        s.rect(x - 0.04, 0.58, x + 0.04, 0.9, '#26323a')
+    s.rect(0.06, 0.12, 0.14, 0.86, '#3a2a22')
+    s.ellipse(0.2, 0.08, 0.05, 0.16, '#1a1a1a').ellipse(0.8, 0.08, 0.05, 0.16, '#1a1a1a')
     s.noise(0.06)
-    f = Canvas(96, 96, livery[0])
-    f.rect(0.05, 0.42, 0.95, 0.80, '#2c3a44')
-    f.rect(0.10, 0.82, 0.90, 0.97, '#ffd23a')
-    f.text(route, 0.12, 0.83, 0.88, 0.96, '#1a1a1a', size=0.8)
+    f = Canvas(64, 64, livery[0])
+    f.rect(0.05, 0.42, 0.95, 0.80, '#2c3a44').rect(0.10, 0.82, 0.90, 0.97, '#ffd23a')
     f.rect(0.0, 0.32, 1.0, 0.38, livery[1])
-    f.ellipse(0.15, 0.2, 0.07, 0.06, '#fff4c0')
-    f.ellipse(0.85, 0.2, 0.07, 0.06, '#fff4c0')
+    f.ellipse(0.15, 0.2, 0.07, 0.06, '#fff4c0').ellipse(0.85, 0.2, 0.07, 0.06, '#fff4c0')
     f.rect(0.0, 0.0, 1.0, 0.08, '#2a2a2a')
     return s.mat('bus_side_' + tag), f.mat('bus_front_' + tag)
 
 
-def bus(name, x, y, rz, side, front, body):
-    """an APSRTC city bus: one body box + painted sides / front (front of the bus at -Y)"""
+def bus(P, lo, name, x, y, rz, side, front, body):
+    """an APSRTC bus (front of the bus at -Y before turning): hi box + painted sides; lo box"""
     L_, W_, H_ = 60.0, 16.6, 17.0
-    parts = [BX(name, -W_ / 2, W_ / 2, -L_ / 2, L_ / 2, 1.6, 1.6 + H_, body, 'Xxyz')]
+    parts = [box(name, (W_, L_, H_), (0, 0, 1.6), body, base=True)]
     parts.append(decal(name + '_l', side, L_, H_, (-W_ / 2 - 0.05, 0, 1.6 + H_ / 2), rz=-PI / 2))
     parts.append(decal(name + '_r', side, L_, H_, (W_ / 2 + 0.05, 0, 1.6 + H_ / 2), rz=PI / 2))
     parts.append(decal(name + '_f', front, W_, H_, (0, -L_ / 2 - 0.05, 1.6 + H_ / 2)))
-    o = kit.join(parts, name)
-    return L.place(o, (x, y, 0), rz)
+    parts.append(decal(name + '_b', front, W_, H_, (0, L_ / 2 + 0.05, 1.6 + H_ / 2), rz=PI))
+    P.append(L.place(kit.join(parts, name), (x, y, 0), rz))
+    lo.append(L.place(blk('s_' + name, 0, 0, W_ + 0.2, L_ + 0.2, 0.4, 1.7 + H_, None), (x, y, 0), rz))
 
 
-# =========================================================================== 1. Koti bus stand
-@kit.asset('koti_bus_stand', 'landmark', landmark='koti_bus_stand', face='w', footprint=[62, 92], height=27.0, fit='footprint')
+# =========================================================================== 8. Koti bus stand
 def build_koti_bus_stand(A):
-    """Koti city bus terminus: the long back-walled bay shelter on its raised kerbed platform
-    (sloping asbestos roof, cream columns, red fascia with route boards), an island shelter, two
-    red APSRTC city buses in the bays, the enquiry kiosk and the KOTI pylon board at the gate."""
-    M = L.mats()
-    cream = L.paint('#e6dcc0', 'koti_cream', var=0.03, grain=0.02)
-    asb = L.paint('#a3a7a8', 'koti_asb', rough=0.9, var=0.03, grain=0.03)
-    red = L.paint('#b22b2b', 'koti_red', var=0.03, grain=0.02)
-    kerb = L.paint('#d8d2c2', 'koti_kerb', var=0.03, grain=0.02)
-    conc = L.paint('#b7b2a8', 'koti_conc', var=0.04, grain=0.03)
-    P = []
-    RZ = 20.0       # roof eaves height (a bus is 18.6 tall)
-    # main shelter along -X: kerbed platform, back wall with timetable boards, columns, sloping roof
-    P.append(BX('plat', -31, -15, -42, 44, 0, 1.3, conc, 'xYy'))
-    P.append(BX('kerb', -15.4, -14.6, -42, 44, 0, 1.5, kerb, 'Yy'))
+    """Koti city bus terminus: the long bay shelter on its raised kerbed platform (back wall with
+    timetable boards, cream columns, the sloping asbestos roof, red fascia with the route
+    boards), an island shelter, two red APSRTC city buses in the bays, the enquiry kiosk and the
+    KOTI board on its posts at the gate. Route boards / KOTI / tube lights on the sheet."""
+    C._ASSET[0] = A.id
+    cream = lin_mat('koti_cream', '#e6dcc0')
+    asb = lin_mat('koti_asb', '#a3a7a8', 0.9)
+    red = lin_mat('koti_red', '#b22b2b')
+    kerb = lin_mat('koti_kerb', '#d8d2c2', 0.9)
+    conc = lin_mat('koti_conc', '#b7b2a8', 0.9)
+    P, lo = [], []
+    sh = Sheet(A.id, 512, 192)
+    RZ = 20.0
+    # main shelter along -X
+    P.append(B('plat', -31, -15, -42, 44, 0, 1.3, conc))
+    P.append(B('kerb', -15.4, -14.6, -42, 44, 0, 1.5, kerb))
+    lo.append(S('s_plat', -31.0, -14.5, -42.1, 44.1, 0, 1.55))
     bw = Canvas(512, 64, '#e6dcc0')
     for i in range(8):
         x = (i + 0.5) / 8
         bw.rect(x - 0.035, 0.42, x + 0.035, 0.82, '#1d3f8a').rect(x - 0.03, 0.46, x + 0.03, 0.78, '#f4f2ea')
         bw.rect(x - 0.025, 0.66, x + 0.025, 0.72, '#1d3f8a').rect(x - 0.025, 0.54, x + 0.02, 0.58, '#555555')
-    bw.rect(0, 0, 1, 0.12, '#8a8478')
-    P.append(BX('backwall', -31, -29.8, -42, 44, 1.3, RZ + 2.2, cream, 'XZz'))
+    bw.rect(0, 0, 1, 0.12, '#8a8478').noise(0.05)
+    P.append(B('backwall', -31, -29.8, -42, 44, 1.3, RZ + 2.2, cream))
     P.append(decal('backwall_pic', bw.mat('koti_backwall'), 86, RZ + 0.9, (-29.75, 1, 1.3 + (RZ + 0.9) / 2), rz=PI / 2))
+    lo.append(S('s_backwall', -31.1, -29.7, -42.1, 44.1, 1.3, RZ + 2.0))
     for i in range(7):
         y = -38 + i * 13.5
-        P.append(COL('col', -16.6, y, 1.3, RZ, 1.2, cream))
-    P.append(prism_from_outline('roof', [(-32.5, RZ + 2.6), (-13.5, RZ + 0.4), (-13.5, RZ - 0.2), (-32.5, RZ + 2.0)], 88, center=(0, 1, 0), mat=asb))
-    rb = Canvas(512, 40, '#b22b2b')
+        P.append(B('col', -17.2, -16.0, y - 0.6, y + 0.6, 1.3, RZ, cream))
+        lo.append(tri_col('s_col', -16.6, y, 1.0, 1.4, RZ - 0.2))
+    rf = [(-32.5, RZ + 2.6), (-13.5, RZ + 0.4), (-13.5, RZ - 0.2), (-32.5, RZ + 2.0)]
+    P.append(prism_from_outline('roof', rf, 88, center=(0, 1, 0), mat=asb))
+    for y in np.arange(-42, 45, 3.0):
+        P.append(prism_from_outline('corr', [(-32.6, RZ + 2.62), (-13.4, RZ + 0.42), (-13.4, RZ + 0.3), (-32.6, RZ + 2.5)], 0.6, center=(0, y, 0), mat=lin_mat('koti_asb2', '#8e9294', 0.9)))
+    lo.append(prism_from_outline('s_roof', [(-32.6, RZ + 2.75), (-13.4, RZ + 0.55), (-13.4, RZ - 0.3), (-32.6, RZ + 1.9)], 88.2, center=(0, 1, 0)))
+    P.append(B('fascia', -14.2, -13.4, -43, 45, RZ - 1.6, RZ + 0.4, red))
+    lo.append(S('s_fascia', -14.3, -13.3, -43.1, 45.1, RZ - 1.7, RZ + 0.5))
+    rb = Canvas(512, 24, '#b22b2b')
     for i, t in enumerate(('SECUNDERABAD', 'CHARMINAR', 'MEHDIPATNAM', 'DILSUKHNAGAR')):
-        x0 = 0.02 + i * 0.25
-        rb.rect(x0, 0.1, x0 + 0.21, 0.9, '#ffffff').text(t, x0 + 0.005, 0.15, x0 + 0.205, 0.85, '#1a3a8a', size=0.75)
-    rbm = rb.mat('koti_routes')
-    P.append(BX('fascia', -14.2, -13.4, -43, 45, RZ - 1.6, RZ + 0.4, red, 'X'))
-    P.append(decal('route_boards', rbm, 88, 2.0, (-13.35, 1, RZ - 0.6), rz=PI / 2))
-    P.append(BX('bench', -28.6, -26.4, -36, 38, 1.3, 3.4, conc, 'z'))
-    P.append(lamp_bar('tubes', -24, -23.4, -36, 38, RZ, RZ + 0.5, '#e8f4ff'))
+        x0 = 0.015 + i * 0.25
+        rb.rect(x0, 0.08, x0 + 0.22, 0.92, '#ffffff').text(t, x0 + 0.005, 0.1, x0 + 0.215, 0.9, '#1a3a8a', size=0.8)
+    uv_rb = sh.put(rb)
+    sh.quad(uv_rb, 88, 1.8, (-13.25, 1, RZ - 0.6), rz=PI / 2)
+    P.append(B('bench', -28.6, -26.4, -36, 38, 1.3, 3.4, conc))
+    lo.append(S('s_bench', -28.7, -26.3, -36.1, 38.1, 1.3, 3.5))
+    tube = Canvas(32, 8, '#f4fbff')
+    tube.rect(0, 0, 1, 0.15, '#a8b8c0').rect(0, 0.85, 1, 1, '#a8b8c0')
+    uv_t = sh.put(tube)
+    for y in np.arange(-34, 40, 13.5):
+        sh.quad(uv_t, 0.5, 4.0, (-23.7, y + 6.7, RZ + 0.95), tilt=PI / 2, uvq=((uv_t[0], uv_t[1]), (uv_t[0], uv_t[3]), (uv_t[2], uv_t[3]), (uv_t[2], uv_t[1])))
     # island shelter
-    P.append(BX('isl', 2.6, 11.4, -30, 40, 0, 1.3, kerb, 'z'))
+    P.append(B('isl', 2.6, 11.4, -30, 40, 0, 1.3, kerb))
+    lo.append(S('s_isl', 2.5, 11.5, -30.1, 40.1, 0, 1.4))
     for i in range(4):
         y = -24 + i * 19
-        P.append(COL('icol', 7, y, 1.3, RZ - 0.4, 1.2, cream))
-    P.append(prism_from_outline('iroof', [(0.0, RZ + 1.6), (14.0, RZ - 0.2), (14.0, RZ - 0.7), (0.0, RZ + 1.1)], 72, center=(0, 5, 0), mat=asb))
-    P.append(BX('ifascia', 13.4, 14.2, -31, 41, RZ - 2.0, RZ - 0.2, red, 'X'))
-    P.append(decal('iroute', rbm, 72, 1.8, (14.25, 5, RZ - 1.1), rz=PI / 2))
-    P.append(lamp_bar('itubes', 6.7, 7.3, -26, 36, RZ - 0.4, RZ, '#e8f4ff'))
+        P.append(B('icol', 6.4, 7.6, y - 0.6, y + 0.6, 1.3, RZ - 0.4, cream))
+        lo.append(tri_col('s_icol', 7.0, y, 1.0, 1.4, RZ - 0.6))
+    irf = [(0.0, RZ + 1.6), (14.0, RZ - 0.2), (14.0, RZ - 0.7), (0.0, RZ + 1.1)]
+    P.append(prism_from_outline('iroof', irf, 72, center=(0, 5, 0), mat=asb))
+    lo.append(prism_from_outline('s_iroof', [(-0.1, RZ + 1.75), (14.1, RZ - 0.05), (14.1, RZ - 0.8), (-0.1, RZ + 1.0)], 72.2, center=(0, 5, 0)))
+    P.append(B('ifascia', 13.4, 14.2, -31, 41, RZ - 2.0, RZ - 0.2, red))
+    lo.append(S('s_ifascia', 13.3, 14.3, -31.1, 41.1, RZ - 2.1, RZ - 0.1))
+    sh.quad(uv_rb, 72, 1.6, (14.35, 5, RZ - 1.1), rz=PI / 2)
     # buses
-    side, front = bus_mats('koti', route='8A SECBAD')
-    side2, front2 = bus_mats('koti2', route='127K')
-    P.append(bus('bus1', -5.6, -10, 0, side, front, red))
-    P.append(bus('bus2', 21.8, 8, PI, side2, front2, red))
+    side, front = bus_mats('koti')
+    bus(P, lo, 'bus1', -5.6, -10, 0, side, front, red)
+    bus(P, lo, 'bus2', 21.8, 8, PI, side, front, red)
     # enquiry kiosk near the gate (front -Y)
-    P.append(BX('kiosk', -11, -3, -45, -38, 0, 10, cream, 'y'))
-    P.append(BX('kiosk_roof', -12, -2, -46.2, -37, 10, 11, red))
-    kk = Canvas(128, 64, '#e6dcc0')
-    kk.rect(0.1, 0.1, 0.9, 0.6, '#2a3640').rect(0.08, 0.68, 0.92, 0.95, '#1d3f8a').text('ENQUIRY', 0.1, 0.7, 0.9, 0.93, '#ffffff', size=0.8)
-    P.append(decal('kiosk_f', kk.mat('koti_kiosk'), 8, 10, (-7, -45.0, 5)))
-    P.append(lamp_bar('kiosk_tube', -10, -4, -45.6, -45.2, 9.2, 9.6, '#e8f4ff'))
-    # KOTI pylon board on two posts at the gate
+    P.append(B('kiosk', -11, -3, -45, -38, 0, 10, cream))
+    P.append(B('kiosk_roof', -12, -2, -46.2, -37, 10, 11, red))
+    kk = Canvas(64, 64, '#e6dcc0')
+    kk.rect(0.1, 0.1, 0.9, 0.62, '#2a3640').rect(0.15, 0.15, 0.85, 0.3, '#5a6a72').noise(0.05)
+    P.append(decal('kiosk_f', kk.mat('koti_kiosk'), 8, 10, (-7, -45.05, 5)))
+    lo.append(S('s_kiosk', -11.1, -2.9, -45.1, -37.9, 0, 10.0))
+    lo.append(S('s_kroof', -12.1, -1.9, -46.3, -36.9, 10, 11.1))
+    uv_enq = sh.put(text_cv('ENQUIRY', 128, 24, '#ffffff', '#1d3f8a', size=0.84))
+    sh.quad(uv_enq, 7.0, 1.4, (-7, -45.2, 8.6))
+    # the KOTI board on two posts at the gate
     for x in (12, 28):
-        P.append(COL('post', x, -44, 0, 17, 1.2, red))
-    ks = Canvas(256, 112, '#ffffff')
+        P.append(B('post', x - 0.6, x + 0.6, -44.6, -43.4, 0, 17, red))
+        lo.append(tri_col('s_post', x, -44.0, 1.0, 0, 16.6))
+    P.append(B('pylon', 10.5, 29.5, -44.8, -43.2, 16.5, 26, cream))
+    lo.append(S('s_pylon', 10.4, 29.6, -44.9, -43.1, 16.4, 26.1))
+    ks = Canvas(256, 120, '#ffffff')
     ks.rect(0, 0, 1, 0.06, '#b22b2b').rect(0, 0.94, 1, 1, '#b22b2b')
     ks.text('KOTI', 0.05, 0.36, 0.95, 0.92, '#b22b2b', size=0.9).text('BUS STAND', 0.15, 0.08, 0.85, 0.34, '#1a3a8a', size=0.8)
-    P.append(BX('pylon', 10.5, 29.5, -44.8, -43.2, 16.5, 26, cream, 'y'))
-    P.append(decal('pylon_f', ks.mat('koti_sign'), 19, 9.5, (20, -44.85, 21.25)))
-    fin(A, P, size=512)
+    uv_k = sh.put(ks)
+    sh.quad(uv_k, 19, 9.5, (20, -44.95, 21.25))
+    finish(A, P, lo, sh, 352, ao=6.0)
     L.col_box('koti_wall', (2, 86, RZ), (-30.4, 1, 0))
     L.shots(A, az=-40, el=24, extra=[{'name': 'front', 'view': {'az': -10, 'el': 12, 'fov': 32, 'pad': 1.05}}])
 
 
-# =========================================================================== 2. MGBS (Imlibun)
-@kit.asset('imlibun_mgbs', 'landmark', draw='mgbs', face='n', footprint=[204, 120], height=36.0, fit='footprint')
+# =========================================================================== 9. MGBS (Imlibun)
 def build_mgbs(A):
     """Mahatma Gandhi Bus Station (1994): the long two-storey entrance block on the road (north)
-    with its raised centre and the plain red-on-white name board over the pillared porch, and
+    with its raised centre, the red-pillared porch and the MAHATMA GANDHI BUS STATION board, and
     behind it the platform halls under the row of repeated concrete vault shells on columns,
-    platforms with kerbs and long-distance buses in the bays."""
-    M = L.mats()
-    cream = L.paint('#e8e0d0', 'mgbs_cream', var=0.03, grain=0.02)
-    red = L.paint('#b22b2b', 'mgbs_red', var=0.03, grain=0.02)
-    conc = L.paint('#b7b2a8', 'mgbs_conc', var=0.04, grain=0.03)
-    shell = flatmat('lime_plaster', 'mgbs_shell', '#c9c5bb')
-    P = []
+    whose arched ends rise over the block; platforms with kerbs and long-distance buses."""
+    C._ASSET[0] = A.id
+    CREAM = '#e8e0d0'
+    cream = lin_mat('mgbs_cream', CREAM)
+    red = lin_mat('mgbs_red', '#b22b2b')
+    conc = lin_mat('mgbs_conc', '#b7b2a8', 0.9)
+    shell = lin_mat('mgbs_shell', '#cdc8bd', 0.9)
+    under = lin_mat('mgbs_under', '#a9a49a', 0.9)
+    P, lo = [], []
+    sh = Sheet(A.id, 512, 96)
     FY = -54.0
     # entrance block
-    P.append(BX('block', -100, 100, FY, -28, 0, 22, cream, 'yZ'))
-    P.append(BX('roof', -100, 100, FY + 1, -28, 22, 22.6, shell, 'z'))
-    P.append(BX('parapet', -101, 101, FY - 0.6, FY + 1.0, 21.6, 24.4, red, 'z'))
-    P.append(BX('centre', -24, 24, FY - 2, -30, 0, 32, cream, 'yZ'))
-    P.append(BX('centre_cap', -25, 25, FY - 2.6, -29.4, 32, 33.6, red))
-    fac = Canvas(1024, 112, '#e8e0d0')
+    P.append(B('block', -100, 100, FY, -28, 0, 22, cream))
+    P.append(B('roof', -100, 100, FY + 1, -28, 22, 22.6, shell))
+    P.append(B('parapet', -101, 101, FY - 0.6, FY + 1.0, 21.6, 24.4, red))
+    lo.append(S('s_block', -100.1, 100.1, FY - 0.7, -28, 0, 24.5))
+    P.append(B('centre', -24, 24, FY - 2, -30, 0, 32, cream))
+    P.append(B('centre_cap', -25, 25, FY - 2.6, -29.4, 32, 33.6, red))
+    lo.append(S('s_centre', -25.1, 25.1, FY - 2.7, -29.3, 0, 33.7))
+    fac = Canvas(1024, 112, CREAM)
     fac.rect(0, 0.47, 1, 0.53, '#b22b2b')
     for i in range(24):
         x = (i + 0.5) / 24
         fac.rect(x - 0.014, 0.0, x + 0.014, 0.40, '#3a3f44').ellipse(x, 0.40, 0.014, 0.06, '#3a3f44')
         fac.rect(x - 0.016, 0.60, x + 0.016, 0.86, '#56666e')
     fac.noise(0.05)
-    P.append(decal('fac_l', fac.mat('mgbs_fac'), 76, 22, (-62, FY - 0.05, 11)))
-    P.append(decal('fac_r', fac.mat('mgbs_fac'), 76, 22, (62, FY - 0.05, 11)))
-    cf = Canvas(256, 160, '#e8e0d0')
-    cf.grid(0.05, 0.05, 0.95, 0.45, 5, 1, '#3a3f44', 0.7, 0.9).grid(0.05, 0.75, 0.95, 0.98, 6, 1, '#56666e', 0.6, 0.6).noise(0.05)
+    fm = fac.mat('mgbs_fac')
+    P.append(decal('fac_l', fm, 76, 22, (-62, FY - 0.05, 11)))
+    P.append(decal('fac_r', fm, 76, 22, (62, FY - 0.05, 11)))
+    cf = Canvas(256, 160, CREAM)
+    for i in range(5):
+        x = 0.05 + (i + 0.5) * 0.18
+        cf.rect(x - 0.06, 0.05, x + 0.06, 0.45, '#3a3f44')
+    for i in range(6):
+        x = 0.05 + (i + 0.5) * 0.15
+        cf.rect(x - 0.045, 0.75, x + 0.045, 0.95, '#56666e')
+    cf.noise(0.05)
     P.append(decal('centre_f', cf.mat('mgbs_cf'), 48, 32, (0, FY - 2.05, 16)))
-    sg = Canvas(1024, 96, '#ffffff')
-    sg.rect(0, 0, 1, 0.08, '#b22b2b').rect(0, 0.92, 1, 1, '#b22b2b')
-    sg.text('MAHATMA GANDHI BUS STATION', 0.02, 0.12, 0.98, 0.88, '#b22b2b', size=0.85)
-    P.append(BX('sign_bd', -23, 23, FY - 2.8, FY - 2.0, 21, 26, red))
-    P.append(decal('sign', sg.mat('mgbs_sign'), 45.6, 4.4, (0, FY - 2.85, 23.5)))
-    # porch: canopy on four red pillars (ends at the footprint edge)
-    P.append(BX('porch', -26, 26, -60, FY - 2, 11, 12.6, cream))
-    P.append(BX('porch_band', -26.4, 26.4, -60.4, -59.4, 12.6, 13.8, red))
+    # the name board (sheet) on a red board over the porch
+    P.append(B('sign_bd', -23, 23, FY - 2.8, FY - 2.0, 21, 26, red))
+    uv_n = sh.put(text_cv('MAHATMA GANDHI BUS STATION', 512, 48, '#b22b2b', '#ffffff', size=0.86, border='#b22b2b', bw=0.08))
+    sh.quad(uv_n, 45.6, 4.4, (0, FY - 2.95, 23.5))
+    # porch: canopy on four red pillars
+    P.append(B('porch', -26, 26, -60, FY - 2, 11, 12.6, cream))
+    P.append(B('porch_band', -26.4, 26.4, -60.4, -59.4, 12.6, 13.8, red))
+    lo.append(S('s_porch', -26.5, 26.5, -60.5, FY - 2, 10.9, 13.9))
     for x in (-24, -8, 8, 24):
-        P.append(BX('pillar', x - 0.9, x + 0.9, -59.6, -57.8, 0, 11, red))
-    P.append(lamp_bar('porch_tube', -20, 20, -57, -56.4, 10.4, 10.9, '#e8f4ff'))
+        P.append(B('pillar', x - 0.9, x + 0.9, -59.6, -57.8, 0, 11, red))
+        lo.append(tri_col('s_pillar', x, -58.7, 1.4, 0, 11))
+    tube = Canvas(32, 8, '#f4fbff')
+    tube.rect(0, 0, 1, 0.15, '#a8b8c0').rect(0, 0.85, 1, 1, '#a8b8c0')
+    uv_t = sh.put(tube)
+    for x in (-16, -5, 5, 16):
+        sh.quad(uv_t, 5.0, 0.6, (x, -57.0, 10.85), tilt=-PI / 2)
     # platform halls: repeated concrete vault shells (along Y) on valley beams and columns
-    NV, X0, X1, Y0, Y1 = 9, -99.0, 99.0, -28.0, 58.0
+    NV, X0, X1, Y0, Y1 = 9, -99.0, 99.0, -29.0, 58.0
     vw = (X1 - X0) / NV
-    spring, rise, t = 15.5, 6.5, 0.7
+    spring, rise, t = 16.0, 9.0, 0.8
     for i in range(NV):
         cx = X0 + vw * (i + 0.5)
         outer, inner = [], []
-        n = 5
+        n = 6
         for k in range(n + 1):
             a = PI - PI * k / n
             outer.append((cx + vw / 2 * math.cos(a), spring + t + rise * math.sin(a)))
-            inner.append((cx + (vw / 2) * math.cos(a), spring + rise * math.sin(a)))
-        P.append(prism_from_outline('vault', outer + list(reversed(inner)), Y1 - Y0, center=(0, (Y0 + Y1) / 2, 0), mat=shell))
+            inner.append((cx + (vw / 2 - 0.0) * math.cos(a), spring + rise * math.sin(a)))
+        ol = outer + list(reversed(inner))
+        P.append(prism_from_outline('vault', ol, Y1 - Y0, center=(0, (Y0 + Y1) / 2, 0), mat=shell))
+        # the underside reads darker (soffit) and has ribs
+        innr = [(x, z - 0.05) for (x, z) in inner]
+        P.append(prism_from_outline('soffit', innr + [(x, z - 0.3) for (x, z) in reversed(innr)], Y1 - Y0 - 0.2, center=(0, (Y0 + Y1) / 2, 0), mat=under))
+        for y in np.arange(Y0 + 6, Y1, 12.0):
+            P.append(prism_from_outline('rib', [(x, z - 0.3) for (x, z) in inner] + [(x, z - 1.2) for (x, z) in reversed(inner)], 0.8, center=(0, y, 0), mat=conc))
+        lo.append(vault_lo('s_vault', [(x, z + 0.1) for (x, z) in outer[::2]], [(x, z - 0.35) for (x, z) in inner[::2]], Y0 - 0.1, Y1 + 0.1))
     for i in range(NV + 1):
         x = X0 + vw * i
-        P.append(BX('beam', x - 1.0, x + 1.0, Y0, Y1, 14.0, spring + 0.2, conc, 'Z'))
-        for y in (-6.0, 44.0):
-            P.append(COL('col', x, y, 0, 14.0, 1.6, conc))
+        P.append(B('beam', x - 1.0, x + 1.0, Y0, Y1, 14.0, spring + 0.2, conc))
+        lo.append(vault_lo('s_beam', [], [(x - 1.15, spring + 0.3), (x - 1.15, 13.9), (x + 1.15, 13.9), (x + 1.15, spring + 0.3)], Y0 - 0.1, Y1 + 0.1))
+        for y in (-6.0, 40.0):
+            P.append(B('col', x - 0.8, x + 0.8, y - 0.8, y + 0.8, 0, 14.0, conc))
+            lo.append(tri_col('s_col', x, y, 1.25, 0.0, 14.0))
     # platforms between the bays + strip lights
     for x in (-66, 0, 66):
-        P.append(BX('plat', x - 7, x + 7, -26, 56, 0, 1.3, conc))
-        P.append(lamp_bar('tl', x - 0.4, x + 0.4, -20, 50, 13.2, 13.7, '#e8f4ff'))
-    side, front = bus_mats('mgbs1', ('#b22b2b', '#e8d070'), 'KURNOOL')
-    side2, front2 = bus_mats('mgbs2', ('#e8ecf0', '#2a5cb8'), 'TIRUPATI')
-    P.append(bus('bus1', -33, 22, 0, side, front, red))
-    P.append(bus('bus2', 33, 26, 0, side2, front2, L.paint('#e8ecf0', 'mgbs_lux')))
-    fin(A, P, size=512)
+        P.append(B('plat', x - 7, x + 7, -26, 56, 0, 1.3, conc))
+        P.append(B('plat_k', x - 7.2, x + 7.2, -26.2, 56.2, 0, 0.5, lin_mat('mgbs_kerb', '#d8d2c2')))
+        lo.append(S('s_plat', x - 7.3, x + 7.3, -26.3, 56.3, 0, 1.4))
+        for y in np.arange(-20, 52, 14.0):
+            sh.quad(uv_t, 0.6, 5.0, (x, y, 13.9), tilt=-PI / 2, uvq=((uv_t[0], uv_t[1]), (uv_t[0], uv_t[3]), (uv_t[2], uv_t[3]), (uv_t[2], uv_t[1])))
+    # route boards on the platforms' first column row
+    rb = Canvas(256, 24, '#1d3f8a')
+    for i, t_ in enumerate(('KURNOOL', 'WARANGAL', 'TIRUPATI', 'VIJAYAWADA')):
+        x0 = 0.01 + i * 0.25
+        rb.rect(x0, 0.1, x0 + 0.23, 0.9, '#ffffff').text(t_, x0 + 0.005, 0.12, x0 + 0.225, 0.88, '#1d3f8a', size=0.8)
+    uv_rb = sh.put(rb)
+    for x in (-66, 0, 66):
+        sh.quad(uv_rb, 13.0, 1.3, (x, -26.4, 11.4))
+        P.append(B('rb_post', x - 0.2, x + 0.2, -26.0, -25.6, 1.3, 11.0, conc))
+    side, front = bus_mats('mgbs1', ('#b22b2b', '#e8d070'))
+    side2, front2 = bus_mats('mgbs2', ('#e8ecf0', '#2a5cb8'))
+    bus(P, lo, 'bus1', -33, 22, 0, side, front, red)
+    bus(P, lo, 'bus2', 33, 26, 0, side2, front2, lin_mat('mgbs_lux', '#e8ecf0'))
+    finish(A, P, lo, sh, 384, ao=8.0)
     L.col_box('mgbs_block', (200, 26, 22), (0, -41, 0))
     L.shots(A, az=-30, el=22, extra=[{'name': 'halls', 'view': {'az': 150, 'el': 18, 'fov': 32, 'pad': 1.05}}])
+
+
+# =========================================================================== registration (parked)
+# Parked owner must-haves (they return with lazy per-GLB loading): buildable only with
+# NOSTALGIA_PARKED=1, never packed into the real pack.
+if os.environ.get('NOSTALGIA_PARKED') == '1':
+    kit.asset('sandhya_theatre', 'landmark', landmark='sandhya_theatre', face='w', footprint=[68, 96], height=51.0, fit='footprint')(build_sandhya)
+    kit.asset('odeon_theatre', 'landmark', landmark='odeon_theatre', face='e', footprint=[88, 64], height=48.0, fit='footprint')(build_odeon)
+    kit.asset('sudarshan_theatre', 'landmark', landmark='sudarshan_theatre', face='e', footprint=[66, 84], height=45.0, fit='footprint')(build_sudarshan)
+    kit.asset('devi_theatre', 'landmark', landmark='devi_theatre', face='w', footprint=[100, 66], height=51.0, fit='footprint')(build_devi)
+    kit.asset('gokul_chat', 'landmark', landmark='gokul_chat', face='s', footprint=[34, 24], height=39.0, fit='footprint')(build_gokul_chat)
+    kit.asset('paradise', 'landmark', landmark='paradise', face='n', footprint=[60, 40], height=39.0, fit='footprint')(build_paradise)
+    kit.asset('secunderabad_clock_tower', 'landmark', landmark='secunderabad_clock_tower', footprint=[18, 18], height=108.0, fit='footprint', floodlit=True)(build_clock_tower)
+    kit.asset('koti_bus_stand', 'landmark', landmark='koti_bus_stand', face='w', footprint=[62, 92], height=27.0, fit='footprint')(build_koti_bus_stand)
+    kit.asset('imlibun_mgbs', 'landmark', draw='mgbs', face='n', footprint=[204, 120], height=33.0, fit='footprint')(build_mgbs)

@@ -1,0 +1,60 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 58660,
+ "clips": {},
+ "family": "landmark",
+ "file": "kit_temple.glb",
+ "front": "-Y",
+ "id": "kit_temple",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 57.3,
+ "kit": 1,
+ "materials": [
+  "M_kit_temple"
+ ],
+ "max": [
+  15.1,
+  14.1,
+  22.635
+ ],
+ "meta": {
+  "draw": "temple",
+  "face": "s",
+  "fit": "footprint",
+  "footprint": [
+   30,
+   30
+  ],
+  "height": 42.0,
+  "variants": {
+   "names": [
+    "vimana",
+    "gopuram",
+    "shrine"
+   ],
+   "rule": "hash"
+  }
+ },
+ "min": [
+  -14.1,
+  -14.9,
+  0.0
+ ],
+ "notes": [
+  "variants vimana / gopuram / shrine by lm.id hash"
+ ],
+ "script": "_lm_worship",
+ "size": [
+  29.2,
+  29.0,
+  22.635
+ ],
+ "tint": null,
+ "tris": 580,
+ "units": "u",
+ "up": "Z"
+}

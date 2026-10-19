@@ -1,0 +1,52 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 43860,
+ "clips": {},
+ "family": "landmark",
+ "file": "odeon_theatre.glb",
+ "front": "-Y",
+ "id": "odeon_theatre",
+ "images": [
+  "image/webp",
+  "image/webp"
+ ],
+ "kb": 42.8,
+ "kit": 1,
+ "materials": [
+  "M_odeon_theatre",
+  "M_odeon_theatre_sheet@night"
+ ],
+ "max": [
+  44.1,
+  32.0,
+  47.1
+ ],
+ "meta": {
+  "face": "e",
+  "fit": "footprint",
+  "footprint": [
+   88,
+   64
+  ],
+  "height": 48.0,
+  "landmark": "odeon_theatre"
+ },
+ "min": [
+  -44.1,
+  -32.2,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_city",
+ "size": [
+  88.2,
+  64.2,
+  47.1
+ ],
+ "tint": null,
+ "tris": 166,
+ "units": "u",
+ "up": "Z"
+}

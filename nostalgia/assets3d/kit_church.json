@@ -1,0 +1,50 @@
+{
+ "anchors": {},
+ "blender": "5.2.2 LTS",
+ "budget": 20000,
+ "bytes": 23928,
+ "clips": {},
+ "family": "landmark",
+ "file": "kit_church.glb",
+ "front": "-Y",
+ "id": "kit_church",
+ "images": [
+  "image/webp"
+ ],
+ "kb": 23.4,
+ "kit": 1,
+ "materials": [
+  "M_kit_church"
+ ],
+ "max": [
+  19.45,
+  18.0,
+  31.72
+ ],
+ "meta": {
+  "draw": "church",
+  "face": "s",
+  "fit": "footprint",
+  "footprint": [
+   40,
+   50
+  ],
+  "height": 60.0
+ },
+ "min": [
+  -19.45,
+  -24.65,
+  0.0
+ ],
+ "notes": [],
+ "script": "_lm_worship",
+ "size": [
+  38.9,
+  42.65,
+  31.72
+ ],
+ "tint": null,
+ "tris": 162,
+ "units": "u",
+ "up": "Z"
+}
