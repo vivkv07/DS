@@ -296,6 +296,7 @@
   }
 
   /* ================================================================ stats */
+  const ACC = { ent: 0, drw: 0, veh: 0 }; // per-frame cost of our entities' update / 2D draw / vehicle controllers
   const ST = { ms: 0, msAvg: 0, ms2d: 0, ms3d: 0, msUpd: 0, frames: 0, activations: 0, barks: 0, honks: 0, spawnedP: 0, spawnedV: 0, beats: 0, unstuck: 0, lights: 0, sfxLoops: 0 };
 
   /* ================================================================ geometry: road arms and paths */
@@ -357,7 +358,7 @@
         len += Math.hypot(best.x - cur.x, best.y - cur.y);
         h = Math.atan2(best.y - cur.y, best.x - cur.x); prev = cur; cur = best; pts.push(cur.x, cur.y);
       }
-      if (len < 45) continue;
+      if (len < 30) continue;
       out.push(mkPath(pts, { w: e.w || 20, kind: e.kind, ang: a0 }));
     }
     out.sort((a, b) => b.w - a.w || b.len - a.len);
@@ -435,9 +436,9 @@
       super({ kind: 'ped', r: 3.2, mass: 1, solid: true });
       this.cle = true; this.amb = true;
       this.anim = { phase: 0, speed: 0, run: false };
-      this._fn = (ctx) => drawPerson(ctx, this);
+      this._fn = (ctx) => { const t0 = now(); drawPerson(ctx, this); ACC.drw += now() - t0; };
     }
-    update(dt) { try { personUpdate(this, dt); } catch (e) { N.err('citylife.person', e); freePerson(this); } }
+    update(dt) { const t0 = now(); try { personUpdate(this, dt); } catch (e) { N.err('citylife.person', e); freePerson(this); } ACC.ent += now() - t0; }
     draw() { if (!is3D() && !this.hidden) N.render.queue('actors', this.y, this._fn); }
     onBump(other, info) {
       if (other !== N.player || !info || this.bumpT > 0) return;
@@ -650,9 +651,9 @@
     constructor() {
       super({ kind: 'animal', r: 6, mass: 400, solid: true });
       this.cle = true; this.species = 'cow'; this.col = ['#ece8e0', '#c8c0b4']; this.state = 'stand'; this.moving = false;
-      this._fn = (ctx) => drawBeast(ctx, this);
+      this._fn = (ctx) => { const t0 = now(); drawBeast(ctx, this); ACC.drw += now() - t0; };
     }
-    update(dt) { try { beastUpdate(this, dt); } catch (e) { N.err('citylife.beast', e); freeBeast(this); } }
+    update(dt) { const t0 = now(); try { beastUpdate(this, dt); } catch (e) { N.err('citylife.beast', e); freeBeast(this); } ACC.ent += now() - t0; }
     draw() { if (!is3D() && !this.hidden) N.render.queue('actors', this.y, this._fn); }
   }
   function newBeast(sc, species, x, y, a, o) {
@@ -762,7 +763,8 @@
     }
     return false;
   }
-  function vehCtl(v, dt) {
+  function vehCtl(v, dt) { const t0 = now(); vehCtl0(v, dt); ACC.veh += now() - t0; }
+  function vehCtl0(v, dt) {
     const c = v.cle, ctl = v.ctl;
     if (!c) { ctl.throttle = 0; ctl.brake = true; return; }
     c.t += dt;
@@ -842,7 +844,7 @@
   const KERB_OK = { chetak: 1, rx100: 1, luna: 1, cycle: 1, scooty: 1, auto: 1, rickshaw: 1 };
   function jamMake(sc, node, arms, o) {
     o = o || {};
-    const J = { node, arms, jr: o.jr || Math.max(10, (node.w || 20) / 2 + 4), lanes: [], green: 0, greenT: rr(3, 6), flowT: 2, spawnT: 0, honkT: rr(2, 4), cap: o.cap || 10, gap: 3.2, mix: o.mix || 'market', clearing: false, maxDepth: o.depth || 170, lr: o.laneOnly || false, trapT: 0, chkT: 0 };
+    const J = { node, arms, jr: o.jr || Math.max(10, (node.w || 20) / 2 + 4), lanes: [], green: 0, greenT: rr(3, 6), flowT: 2, spawnT: 0, honkT: rr(2, 4), cap: o.cap || 10, gap: 3.2, mix: o.mix || 'market', clearing: false, maxDepth: o.depth || 170, lr: o.laneOnly || false, trapT: 0, chkT: 0, box: [], boxCap: o.boxCap || 0, avoid: [] };
     for (let ai = 0; ai < arms.length; ai++) {
       const A = arms[ai], hw = A.w / 2;
       const offs = hw >= 13 ? [hw * 0.46, hw * 0.86] : [hw * 0.5];
@@ -920,6 +922,40 @@
     for (let d = J.jr + 30; d < ex.len; d += 40) { q = at(ex, d, eoff); pts.push(q.x, q.y); }
     q = at(ex, ex.len, eoff); pts.push(q.x, q.y);
     c.path = pts; c.pi = 0; c.mode = 'leave'; c.then = 'gone'; c.vmax = v.T.cls === 'heavy' ? 26 : rr(28, 38); c.stall = false;
+    if (J.boxCap && !J.clearing && J.box.length < J.boxCap && v.T.cls !== 'heavy' && rnd() < 0.45) {
+      const bp = boxSpot(J);
+      if (bp) { c.path = [v.x, v.y, bp.x, bp.y]; c.vmax = 16; c.then = 'hold'; c.onEnd = (veh) => boxStick(J, veh); }
+    }
+  }
+  /** a free spot inside the junction box (not on the podium, the cow or another stuck vehicle) */
+  function boxSpot(J) {
+    const n = J.node;
+    for (let g = 0; g < 12; g++) {
+      const a = rnd() * TAU, r = J.jr * rr(0.35, 0.78), x = n.x + Math.cos(a) * r, y = n.y + Math.sin(a) * r;
+      let ok = true;
+      for (const q of J.avoid) if (Math.hypot(q.x - x, q.y - y) < 13) { ok = false; break; }
+      if (ok) for (const v of J.box) if (Math.hypot(v.x - x, v.y - y) < 13) { ok = false; break; }
+      if (ok) return { x, y };
+    }
+    return null;
+  }
+  function boxStick(J, v) {
+    const c = v.cle; if (!c) return;
+    c.mode = 'hold'; c.tx = v.x; c.ty = v.y; c.ta = v.angle; c.boxT = rr(4, 10); c.box = true;
+    if (J.box.indexOf(v) < 0) J.box.push(v);
+    c.hd = 0.2;
+  }
+  function boxRelease(sc, J, v) {
+    const c = v.cle; if (!c) return;
+    const i = J.box.indexOf(v); if (i >= 0) J.box.splice(i, 1);
+    c.box = false;
+    let ex = null, bd = 9;
+    for (const B of J.arms) { const d = Math.abs(angDiff(v.angle, B.ang)); if (d < bd) { bd = d; ex = B; } }
+    ex = ex || pick(J.arms);
+    const eoff = ex.w / 4, pts = [v.x, v.y];
+    let q = at(ex, J.jr * 0.8, eoff); pts.push(q.x, q.y);
+    for (let d = J.jr + 30; d < ex.len; d += 40) { q = at(ex, d, eoff); pts.push(q.x, q.y); }
+    c.path = pts; c.pi = 0; c.mode = 'leave'; c.then = 'gone'; c.vmax = 26; c.onEnd = null;
   }
   function jamUpdate(sc, J, dt, level, opts) {
     opts = opts || {};
@@ -957,6 +993,13 @@
       }
     }
     jamTargets(J);
+    for (let i = J.box.length - 1; i >= 0; i--) {
+      const v = J.box[i];
+      if (!v.alive || !v.cle) { J.box.splice(i, 1); continue; }
+      v.cle.boxT -= dt;
+      if (v.cle.boxT <= 0 && (J.clearing || !blockedAhead(v, v.cle, 8))) boxRelease(sc, J, v);
+      else if (v.cle.boxT <= 0) v.cle.boxT = rr(1, 2.5);
+    }
     // honk storms behind a red light
     J.honkT -= dt;
     if (J.honkT <= 0 && !opts.calm) {
@@ -1058,7 +1101,7 @@
     },
     start(sc, warm) {
       const s = sc.site, low = lowTier();
-      const J = jamMake(sc, s.node, s.arms, { cap: low ? 9 : 14, mix: s.old ? 'oldcity' : TYPEMIX[s.style] ? s.style : 'market', depth: 200 });
+      const J = jamMake(sc, s.node, s.arms, { cap: low ? 9 : 14, mix: s.old ? 'oldcity' : TYPEMIX[s.style] ? s.style : 'market', depth: 200, boxCap: low ? 2 : 3 });
       clearAmbient(sc, s.x, s.y, J.jr + 190);
       sc.st.J = J; sc.st.kidCD = 0; sc.st.whT = rr(3, 7); sc.st.weaveT = rr(1, 4); sc.st.fpT = rr(6, 14); sc.st.sqT = rr(8, 16); sc.st.mooT = rr(10, 20); sc.st.dustT = 0;
       closeRoad(sc, 'box', s.x, s.y, J.jr + 26);
@@ -1100,6 +1143,16 @@
             const h = newPerson(sc, 'lungi', hq.x, hq.y, { beh: 'wave', face: Math.atan2(q.y - hq.y, q.x - hq.x) });
             sc.st.lorry = { v: lor, helper: h, t: rr(20, 30), A, off, barkT: 1, beepT: 0 };
           }
+        }
+      }
+      J.avoid.push({ x: s.x, y: s.y });
+      if (sc.st.cow) J.avoid.push(sc.st.cow);
+      if (warm && sc.level > 0.55) {
+        for (let i = 0; i < J.boxCap; i++) {
+          const bp = boxSpot(J); if (!bp) break;
+          const A = pick(s.arms), t = pick(['auto', 'chetak', 'rx100', 'auto', 'luna', 'maruti800']);
+          const v = spawnVeh(sc, t, bp.x, bp.y, A.ang + PI + rr(-0.7, 0.7), { vmax: 10 });
+          if (v) boxStick(J, v);
         }
       }
       if (warm) {
@@ -2236,6 +2289,18 @@
     CTX.drawImage(img, 0, 0);
     CTX.restore();
   }
+  /** a picture on a slope: bottom edge (x0, y0)-(x1, y1) at h0, top edge shifted by (dx, dy) at h1 (boards leaning
+   *  back read from above; a truly vertical board is edge-on in the top-down view) */
+  function imgSlope(img, x0, y0, x1, y1, h0, dx, dy, h1) {
+    const k0 = kk(h0), k1 = kk(h1);
+    const ax = SX(x0 + dx, k1), ay = SY(y0 + dy, k1), bx = SX(x1 + dx, k1), by = SY(y1 + dy, k1), cx = SX(x0, k0), cy = SY(y0, k0);
+    const w = img.width, h = img.height;
+    CTX.save();
+    CTX.setTransform((bx - ax) / w, (by - ay) / w, (cx - ax) / h, (cy - ay) / h, ax, ay);
+    CTX.imageSmoothingEnabled = true;
+    CTX.drawImage(img, 0, 0);
+    CTX.restore();
+  }
   function blit(ctx, look, x, y, a, anim, h) {
     const T = N.traffic;
     if (T && T.blitPerson) { T.blitPerson(ctx, look, x, y, a, anim, h); return; }
@@ -2502,10 +2567,12 @@
       case 'cinema': {
         const C = st.cut, img = paintCutout(s.film);
         const ux = s.ux, uy = s.uy;
-        // scaffold poles behind the board
-        for (const u of [-9, 9]) seg(C.x + ux * u + s.nx * 1.5, C.y + uy * u + s.ny * 1.5, 0, C.x + ux * u + s.nx * 1.5, C.y + uy * u + s.ny * 1.5, 34, 0.5, '#7a6a4a');
+        // the bamboo scaffold it leans on, then the board itself (leaning back towards the hall)
+        const lx = s.nx * 22, ly = s.ny * 22;
+        for (const u of [-9, 9]) { seg(C.x + ux * u + s.nx * 3, C.y + uy * u + s.ny * 3, 0, C.x + ux * u + lx + s.nx * 3, C.y + uy * u + ly + s.ny * 3, 32, 0.6, '#8a7a52'); seg(C.x + ux * u + lx + s.nx * 3, C.y + uy * u + ly + s.ny * 3, 0, C.x + ux * u + lx + s.nx * 3, C.y + uy * u + ly + s.ny * 3, 32, 0.6, '#8a7a52'); }
         obox(C.x, C.y, Math.atan2(uy, ux), 10, 2.4, 0, 2.2, '#8a7a5a', '#a89a78');
-        imgQuad(img, C.x - ux * 10, C.y - uy * 10, C.x + ux * 10, C.y + uy * 10, 2, 38);
+        imgSlope(img, C.x - ux * 10, C.y - uy * 10, C.x + ux * 10, C.y + uy * 10, 2, lx, ly, 30);
+        for (let i = 0; i < 12; i++) { const f = i / 11; dot(C.x - ux * 10 + ux * 20 * f + lx * 0.05, C.y - uy * 10 + uy * 20 * f + ly * 0.05, 3 + Math.sin(f * PI) * 0.5, 0.9, i % 2 ? '#f08a1a' : '#f2c230'); }
         // the counter: a wall with a grille window and the board above
         const W = st.counter, a = Math.atan2(uy, ux);
         obox(W.x + s.nx * 2, W.y + s.ny * 2, a, 7, 1.6, 0, 11, '#c8b898', '#a89878');
@@ -2535,7 +2602,7 @@
         const G = s.gate, ca = Math.cos(G.a), sa = Math.sin(G.a), hw = 9;
         const lx = G.x - ca * hw, ly = G.y - sa * hw, rx = G.x + ca * hw, ry = G.y + sa * hw;
         cylD(lx, ly, 1.1, 0, 22, '#e8c8a0', '#f4f2ea'); cylD(rx, ry, 1.1, 0, 22, '#e8c8a0', '#f4f2ea');
-        imgQuad(paintSign(s.sign, '#8a1a2a', '#fff2c0'), lx, ly, rx, ry, 18, 23.5);
+        imgSlope(paintSign(s.sign, '#8a1a2a', '#fff2c0'), lx, ly, rx, ry, 17, G.nx * 5, G.ny * 5, 23);
         const night = CX.night, tt = simT();
         for (let i = 0; i <= 14; i++) { const f = i / 14, x = lerp(lx, rx, f), y = lerp(ly, ry, f); dot(x, y, 24 + Math.sin(f * PI) * 2, 0.5, night && ((i + (tt * 4 | 0)) % 3) ? '#fff2a0' : '#d8b040'); }
         for (let i = 0; i < 8; i++) { const f = i / 7; dot(lerp(lx, rx, f), lerp(ly, ry, f), 17 - Math.sin(f * PI) * 3, 0.7, i % 2 ? '#f08a1a' : '#f2c230'); }
@@ -3106,20 +3173,29 @@
     N.emit('citylife:scene', { id: s.id, kind: s.kind, on: true });
     return sc;
   }
-  function release(sc) {
+  function release(sc, hard) {
     if (!sc.on) return;
     sc.on = false;
     try { if (sc.K.stop) sc.K.stop(sc); } catch (e) { N.err('citylife.stop.' + sc.kind, e); }
     for (const id of sc.closures.slice()) { try { N.traffic.closeRoads(id, null); } catch (e) { /* optional */ } }
     sc.closures.length = 0;
-    for (const v of sc.vehs.slice()) { if (!v.alive || !seen(v.x, v.y, 30)) freeVeh(v); else { if (v.cle) { if (v.cle.lane) { const q = v.cle.lane.q, i = q.indexOf(v); if (i >= 0) q.splice(i, 1); v.cle.lane = null; } if (v.cle.mode === 'hold' || v.cle.mode === 'rev') v.cle.mode = 'gone'; v.cle.sc = null; } ORPH.push(v); } }
+    const J = sc.st && sc.st.J;
+    for (const v of sc.vehs.slice()) {
+      if (hard || !v.alive || !seen(v.x, v.y, 30)) { freeVeh(v); continue; }
+      if (v.cle) {
+        if (v.cle.lane && J) jamDepart(sc, J, v);
+        else if (v.cle.lane) { const q = v.cle.lane.q, i = q.indexOf(v); if (i >= 0) q.splice(i, 1); v.cle.lane = null; }
+        if (v.cle.mode === 'hold' || v.cle.mode === 'rev' || v.cle.mode === 'park') v.cle.mode = 'gone';
+      }
+      ORPH.push(v);
+    }
     sc.vehs.length = 0;
-    for (const b of sc.beasts.slice()) { if (!seen(b.x, b.y, 20)) freeBeast(b); else { b.sc = null; ORPH.push(b); } }
+    for (const b of sc.beasts.slice()) { if (hard || !seen(b.x, b.y, 20)) freeBeast(b); else { b.sc = null; ORPH.push(b); } }
     sc.beasts.length = 0;
     for (const b of sc.blocks) N.entities.remove(b);
     sc.blocks.length = 0;
     // people out of sight vanish now; the rest walk off on their own (personUpdate sees sc.on === false)
-    for (const p of sc.persons.slice()) if (!seen(p.x, p.y, 16)) freePerson(p);
+    for (const p of sc.persons.slice()) if (hard || !seen(p.x, p.y, 16)) freePerson(p);
     const i = ACTIVE.indexOf(sc); if (i >= 0) ACTIVE.splice(i, 1);
     sc.site.sc = null;
     N.emit('citylife:scene', { id: sc.id, kind: sc.kind, on: false });
@@ -3181,7 +3257,6 @@
       try { sc.K.update(sc, dt); } catch (e) { N.err('citylife.update.' + sc.kind, e); }
     }
     updateParticles(dt);
-    ST.msUpd = now() - t0;
   }
   function draw() {
     if (!ready || !API.enabled) return;
@@ -3202,6 +3277,8 @@
     } catch (e) { N.err('citylife.draw', e); }
     ST.ms2d = now() - t0;
   }
+  const FR = { frame: -1, upd: 0 };
+  function ensure() { if (!ready && N.world && N.world.built) buildSites(); }
   const FXFN = (ctx) => { try { drawFx(ctx); } catch (e) { N.err('citylife.fx', e); } };
   function resetAll() {
     for (const sc of ACTIVE.slice()) release(sc);
@@ -3227,9 +3304,14 @@
     update(dt) {
       const t0 = now();
       update(dt);
-      const ms = now() - t0 + ST.ms2d + (G3.ms || 0);
-      ST.ms = ms; ST.ms3d = G3.ms || 0; ST.frames++;
-      ST.msAvg = ST.msAvg ? ST.msAvg * 0.95 + ms * 0.05 : ms;
+      const f = (N.time && N.time.frame) || 0;
+      FR.upd += now() - t0;
+      if (f !== FR.frame) { // a new frame: book the last one (sub-steps add up), then start over
+        const ms = FR.upd + ACC.ent + ACC.veh + ACC.drw + ST.ms2d + (G3.ms || 0);
+        ST.ms = ms; ST.ms3d = G3.ms || 0; ST.msEnt = ACC.ent + ACC.veh; ST.msDrawP = ACC.drw; ST.msUpd = FR.upd; ST.frames++;
+        ST.msAvg = ST.msAvg ? ST.msAvg * 0.95 + ms * 0.05 : ms;
+        ACC.ent = 0; ACC.veh = 0; ACC.drw = 0; FR.upd = 0; FR.frame = f;
+      }
     },
     draw() { draw(); },
     reset() { resetAll(); },
@@ -3239,9 +3321,10 @@
   const API = (N.citylifeEvents = {
     version: 1, enabled: true, TUNE, KINDS, LINES,
     get sites() { if (!ready && N.world && N.world.built) buildSites(); return SITES; },
-    site: (id) => BYID.get(id) || null,
+    site: (id) => { ensure(); return BYID.get(id) || null; },
     scene: (id) => { const s = BYID.get(id); return s ? s.sc : null; },
     nearest(kind, x, y) {
+      ensure();
       const p = N.player; x = x == null ? p.x : x; y = y == null ? p.y : y;
       let best = null, bd = 1e18;
       for (const s of SITES) { if (kind && s.kind !== kind) continue; const sx = s.kind === 'baraat' ? s.route.pts[0] : s.x, sy = s.kind === 'baraat' ? s.route.pts[1] : s.y; const d = (sx - x) * (sx - x) + (sy - y) * (sy - y); if (d < bd) { bd = d; best = s; } }
@@ -3264,8 +3347,9 @@
       if (o === null) { s.force = null; dirT = 0; return true; }
       s.force = Object.assign({ level: 1, keep: true }, o || {});
       s.cool = 0;
-      if (s.sc && o && o.restart) release(s.sc);
-      if (o && o.solo) for (const sc of ACTIVE.slice()) if (sc.site !== s && !sc.site.force) release(sc);
+      if (s.sc && o && o.restart) release(s.sc, true);
+      if (o && o.solo) for (const sc of ACTIVE.slice()) if (sc.site !== s && !sc.site.force) release(sc, true);
+      if (o && (o.restart || o.solo)) { for (const e of ORPH.slice()) { if (e.kind === 'vehicle') { const j = VEHS.indexOf(e); if (j >= 0) VEHS.splice(j, 1); e.cle = null; if (e.controller === vehCtl) e.controller = null; if (N.player.vehicle !== e) { try { N.vehicles.remove(e); } catch (x) { N.entities.remove(e); } } } else freeBeast(e); } ORPH.length = 0; for (const p of PERSONS.slice()) if (!p.sc || !p.sc.on) freePerson(p); }
       dirT = 0;
       return s.id;
     },
@@ -3275,7 +3359,7 @@
         sites: SITES.length, kinds: SITES.reduce((o, s) => { o[s.kind] = (o[s.kind] || 0) + 1; return o; }, {}), active: ACTIVE.length,
         persons: PERSONS.length, vehicles: VEHS.length, animals: BEASTS.length, particles: P.n, orphans: ORPH.length,
         pool: { persons: PPOOL.length, beasts: BPOOL.length },
-        ms: +ST.ms.toFixed(3), msAvg: +ST.msAvg.toFixed(3), ms2d: +ST.ms2d.toFixed(3), ms3d: +(G3.ms || 0).toFixed(3), msUpd: +ST.msUpd.toFixed(3),
+        ms: +ST.ms.toFixed(3), msAvg: +ST.msAvg.toFixed(3), ms2d: +(ST.ms2d + (ST.msDrawP || 0)).toFixed(3), ms3d: +(G3.ms || 0).toFixed(3), msUpd: +ST.msUpd.toFixed(3), msEnt: +(ST.msEnt || 0).toFixed(3),
         activations: ST.activations, barks: ST.barks, honks: ST.honks, beats: ST.beats, unstuck: ST.unstuck, spawnedP: ST.spawnedP, spawnedV: ST.spawnedV,
         layer3d: G3.ready, im3d: G3.ready ? Object.keys(G3.im).reduce((o, k) => { o[k] = G3.im[k].n; return o; }, {}) : null, r: Math.round(actR()), audio: audioReg,
       };

@@ -109,17 +109,19 @@ async function stage(page, name, o) {
     N.debug.setTime(S.h, S.m);
     if (N.seasons && N.seasons.set) N.seasons.set('summer', S.summer ? true : null);
     delete N.flags.rain; delete N.flags.power_cut;
-    N.view.set('top');
+    if (S.mode !== '3d') N.view.set('top');
     E.force(null);
     const id = E.force(S.site, { level: 1, phase: S.phase || null, power: !!S.power, restart: true, solo: true });
     if (!id) return { err: 'no site ' + S.site };
     const s = E.site(id);
+    const td = S.mode === '3d';
+    const at = (P, d, off) => { const C = P.cum, Q = P.pts, n = C.length; d = Math.max(0, Math.min(P.len, d)); let i = 1; while (i < n - 1 && C[i] < d) i++; const s0 = C[i - 1], L = (C[i] - s0) || 1, t = (d - s0) / L; const x0 = Q[i * 2 - 2], y0 = Q[i * 2 - 1], x1 = Q[i * 2], y1 = Q[i * 2 + 1]; const ux = (x1 - x0) / L, uy = (y1 - y0) / L; return { x: x0 + (x1 - x0) * t + uy * (off || 0), y: y0 + (y1 - y0) * t - ux * (off || 0) }; };
     let x = s.x, y = s.y, fx = s.x, fy = s.y;
-    if (s.kind === 'junction') { const A = s.arms[0]; const a = A.ang + 0.6; x = s.x + Math.cos(a) * 46; y = s.y + Math.sin(a) * 46; }
-    else if (s.kind === 'colony_am' || s.kind === 'colony_pm') { const g = s.geo; const d = g.doors[1]; x = d.x + d.nx * 1; y = d.y + d.ny * 1; fx = g.x; fy = g.y; }
-    else if (s.kind === 'cinema') { x = s.x - s.nx * 40 - s.ux * 6; y = s.y - s.ny * 40 - s.uy * 6; fx = s.x; fy = s.y; }
-    else if (s.kind === 'oldcity') { const P = s.path; const a = Math.atan2(P.pts[3] - P.pts[1], P.pts[2] - P.pts[0]); x = s.x - Math.sin(a) * 14; y = s.y + Math.cos(a) * 14; }
-    else if (s.kind === 'baraat') { const R = s.route; const d = Math.min(R.len * 0.45, 200); let i = 0; while (i < R.cum.length - 1 && R.cum[i] < d) i++; x = R.pts[i * 2] + 16; y = R.pts[i * 2 + 1] + 16; fx = x; fy = y; }
+    if (s.kind === 'junction') { const A = s.arms.slice().sort((a, b) => b.len - a.len)[0]; const fw = (N.world.FOOT && N.world.FOOT[A.kind]) || 4; const q = at(A, (td ? 95 : 40) + A.w / 2, A.w / 2 + fw * 0.5); x = q.x; y = q.y; }
+    else if (s.kind === 'colony_am' || s.kind === 'colony_pm') { const g = s.geo; const q = at(g.path, g.path.mid + (td ? -48 : -12), td ? 2 : 0); x = q.x; y = q.y; fx = g.x; fy = g.y; }
+    else if (s.kind === 'cinema') { const back = td ? s.roadW + 14 : 26; x = s.x - s.nx * back; y = s.y - s.ny * back; fx = s.x; fy = s.y; }
+    else if (s.kind === 'oldcity') { const q = at(s.path, s.path.mid + (td ? -42 : -8), 0); x = q.x; y = q.y; }
+    else if (s.kind === 'baraat') { const R = s.route; const d = Math.min(R.len * 0.45, 200); const q = at(R, d, td ? R.w / 2 + 3 : 6); x = q.x; y = q.y; fx = x; fy = y; }
     const f = N.world.findFree(x, y, 'walk', 8); if (f) { x = f.x; y = f.y; }
     N.debug.teleport(x, y);
     N.render.baseZoom = 1;
@@ -131,10 +133,12 @@ async function look3d(page, id) { // aim the 3D camera from Chinnu at the scene'
   await page.evaluate((id) => {
     const E = N.citylifeEvents, sc = E.scene(id), s = E.site(id);
     let tx = s.x, ty = s.y;
-    if (sc && sc.kind === 'baraat') { tx = s.x; ty = s.y; }
     if (s.geo) { tx = s.geo.x; ty = s.geo.y; }
+    if (sc && sc.kind === 'baraat' && sc.st.horse) { tx = sc.st.horse.x; ty = sc.st.horse.y; }
+    if (sc && sc.kind === 'oldcity' && sc.st.herd && sc.st.herd.beasts[0]) { tx = sc.st.herd.beasts[0].x; ty = sc.st.herd.beasts[0].y; }
     const p = N.player, yaw = Math.atan2(ty - p.y, tx - p.x);
-    try { N.view3d.setCamera({ yaw: Math.abs(tx - p.x) + Math.abs(ty - p.y) < 4 ? 0.8 : yaw, pitch: 0.32, snap: true }); } catch (e) { /* optional */ }
+    p.angle = yaw; p.facing = yaw;
+    try { N.view3d.setCamera({ yaw, pitch: 0.3, snap: true }); } catch (e) { /* optional */ }
   }, id);
 }
 async function to3d(page) {
@@ -223,7 +227,7 @@ async function partTop(browser) {
     console.log('== tps 3D ==');
     await to3d(page);
     for (const name of names) {
-      const st = await stage(page, name);
+      const st = await stage(page, name, { mode: '3d' });
       if (!st || st.err) { fail(name + ' 3d stage'); continue; }
       await page.evaluate(() => N.view.set('tps'));
       await page.waitForFunction(() => N.view3d && N.view3d.active, null, { timeout: 240000 });
@@ -269,7 +273,8 @@ async function partRules(browser) {
   check(r.barSat > 0.9 && r.barWed === 0 && r.barRain === 0 && r.barOff === 0, 'baraat: weekend nights in the wedding season, no rain');
   check(r.oldDay > 0.5 && r.oldLate === 0, 'old city: day and evening');
   // live: Chinnu rides a cycle through the jam: the havaldar whistles, and he is never trapped
-  const st = await stage(page, 'junction', { site: 'junction:charminar_approach' });
+  let st = await stage(page, 'junction', { site: 'junction:charminar_approach' });
+  if (!st || st.err) { fail('no junction:charminar_approach site: ' + JSON.stringify(st)); st = await stage(page, 'junction', { site: 'junction:chaderghat' }); }
   await simWait(page, 4);
   const cyc = await page.evaluate((id) => {
     const s = N.citylifeEvents.site(id), sc = s.sc, p = N.player;
@@ -365,16 +370,18 @@ async function perf(page, label) {
     const E = N.citylifeEvents;
     N.calendar.set(2003, 1, 17, 9, 40); N.debug.setTime(9, 40);
     E.force(null);
-    E.force('junction:rtc_x_roads', { level: 1, restart: true });
+    E.force('junction:rtc_x_roads', { level: 1, restart: true, solo: true });
     E.force('cinema:sandhya_theatre', { level: 1, restart: true });
     E.force('cinema:odeon_theatre', { level: 1, restart: true });
-    const a = E.site('junction:rtc_x_roads'), b = E.site('cinema:sandhya_theatre');
-    N.debug.teleport((a.x + b.x) / 2, (a.y + b.y) / 2 + 10);
+    const b = E.site('cinema:sandhya_theatre');
+    const x = b.x - b.nx * (b.roadW * 0.5 + 6), y = b.y - b.ny * (b.roadW * 0.5 + 6);
+    const f = N.world.findFree(x, y, 'walk', 8);
+    N.debug.teleport(f ? f.x : x, f ? f.y : y);
   });
   await simWait(page, 6);
   await page.evaluate(() => { window.__perf = { n: 0, sum: 0, max: 0, upd: 0, d2: 0, d3: 0, frame: 0 }; const tick = () => { const s = N.citylifeEvents.stats(); const P = window.__perf; P.n++; P.sum += s.ms; P.max = Math.max(P.max, s.ms); P.upd += s.msUpd; P.d2 += s.ms2d; P.d3 += s.ms3d; P.frame += (N.perf && N.perf.frameMs) || 0; if (P.n < 400) requestAnimationFrame(tick); }; requestAnimationFrame(tick); });
   await simWait(page, 8, 160000);
-  const r = await page.evaluate(() => { const P = window.__perf, s = N.citylifeEvents.stats(); return { frames: P.n, avg: +(P.sum / Math.max(1, P.n)).toFixed(3), max: +P.max.toFixed(2), upd: +(P.upd / Math.max(1, P.n)).toFixed(3), d2: +(P.d2 / Math.max(1, P.n)).toFixed(3), d3: +(P.d3 / Math.max(1, P.n)).toFixed(3), frameMs: +(P.frame / Math.max(1, P.n)).toFixed(1), active: s.active, persons: s.persons, vehicles: s.vehicles, particles: s.particles, act: N.citylifeEvents.active().map((a) => a.id + ':' + a.persons + 'p/' + a.vehicles + 'v') }; });
+  const r = await page.evaluate(() => { const P = window.__perf, s = N.citylifeEvents.stats(); return { ent: s.msEnt, frames: P.n, avg: +(P.sum / Math.max(1, P.n)).toFixed(3), max: +P.max.toFixed(2), upd: +(P.upd / Math.max(1, P.n)).toFixed(3), d2: +(P.d2 / Math.max(1, P.n)).toFixed(3), d3: +(P.d3 / Math.max(1, P.n)).toFixed(3), frameMs: +(P.frame / Math.max(1, P.n)).toFixed(1), active: s.active, persons: s.persons, vehicles: s.vehicles, particles: s.particles, act: N.citylifeEvents.active().map((a) => a.id + ':' + a.persons + 'p/' + a.vehicles + 'v') }; });
   console.log('    perf ' + label + ' ' + JSON.stringify(r));
   check(r.active >= 3, label + ': three busy scenes active', r.act.join(' '));
   check(r.avg < 1.5, label + ': all city-life work < 1.5 ms/frame (avg)', r.avg + ' ms (update ' + r.upd + ', 2D ' + r.d2 + ', 3D ' + r.d3 + '), max ' + r.max);
@@ -386,12 +393,12 @@ async function partPhone(browser) {
   console.log('== phone 390x844 ==');
   const { context, page, errors } = await open(browser, { viewport: { width: 390, height: 844 }, touch: true, dpr: 1 });
   const r2 = await perf(page, 'phone 2D');
-  await shot(page, 'phone_busy_top');
+  await shot(page, 'phone_busy_top', 1.8);
   await page.evaluate(() => N.view.set('tps'));
   await page.waitForFunction(() => N.view3d && N.view3d.active, null, { timeout: 240000 });
   await page.evaluate(() => { try { N.view3d.settle(4000); } catch (e) { /* ok */ } });
   const r3 = await perf(page, 'phone 3D');
-  await page.evaluate(() => { const s = N.citylifeEvents.site('cinema:sandhya_theatre'), p = N.player; try { N.view3d.setCamera({ yaw: Math.atan2(s.y - p.y, s.x - p.x), pitch: 0.3, snap: true }); } catch (e) { /* ok */ } });
+  await page.evaluate(() => { const s = N.citylifeEvents.site('cinema:sandhya_theatre'), p = N.player; const x = s.x - s.nx * (s.roadW + 16), y = s.y - s.ny * (s.roadW + 16); const f = N.world.findFree(x, y, 'walk', 8); N.debug.teleport(f ? f.x : x, f ? f.y : y); const yaw = Math.atan2(s.y - N.player.y, s.x - N.player.x); N.player.angle = yaw; try { N.view3d.setCamera({ yaw, pitch: 0.25, snap: true }); } catch (e) { /* ok */ } });
   await simWait(page, 1.5);
   await shot(page, 'phone_busy_tps');
   const errs = await N_ERRS(page);

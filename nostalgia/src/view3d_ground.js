@@ -2346,7 +2346,7 @@ if (ngShine > 0.01) {
   }
   // the global analysis + soil colours run in idle slices while the game is still top-down, so the
   // first switch to 3D starts with them done (they never need THREE)
-  let idleH = 0;
+  let idleH = 0, lastSlice = 0;
   const precomputed = () => NET.built && !AN && SOIL.done;
   function idleKick() {
     if (idleH || precomputed()) return;
@@ -2354,17 +2354,22 @@ if (ngShine > 0.01) {
     idleH = ric ? ric(idleRun, { timeout: 300 }) : setTimeout(() => idleRun(null), 30);
     if (!ric) idleH = idleH || 1;
   }
-  function idleRun(dl) {
-    idleH = 0;
+  function precomputeSlice(ms) {
     const W = N.world;
-    if (!W || !W.built || !W.roads) { setTimeout(idleKick, 400); return; }
-    if (ACTIVE && ACTIVE.step === 0) { idleKick(); return; } // a chunk job is driving the analysis
-    const slice = dl && !dl.didTimeout ? clamp(dl.timeRemaining() - 1, 1, 10) : 4;
-    const dead = now() + slice;
+    if (!W || !W.built || !W.roads || precomputed()) return false;
+    if (ACTIVE && ACTIVE.step === 0) return false; // a chunk job is driving the analysis
+    const dead = now() + ms;
     try {
       if (!NET.built) analyzeStep(dead);
       if (NET.built && !SOIL.done && now() < dead) soilStep(dead);
     } catch (e) { N.err('view3d.ground.idle', e); }
+    return true;
+  }
+  function idleRun(dl) {
+    idleH = 0;
+    const W = N.world;
+    if (!W || !W.built || !W.roads) { setTimeout(idleKick, 400); return; }
+    if (dl && !dl.didTimeout) precomputeSlice(clamp(dl.timeRemaining() - 1, 1, 10));
     if (!precomputed()) idleKick();
   }
 
@@ -2479,7 +2484,17 @@ if (ngShine > 0.01) {
   // while the 3D view warms up (still drawn top-down) the focus chunk gets the whole warm slice too
   if (N.addSystem) N.addSystem({
     id: 'view3d_ground', order: 62, runIn: ['*'],
-    update() { if (I && I.E && I.E.warming) prioritize(16); else if (!precomputed()) idleKick(); },
+    update() {
+      if (I && I.E && I.E.warming) { prioritize(16); return; }
+      // top-down: a small slice of every frame (idle callbacks alone are too rare while the 2D game
+      // renders), so the analysis is done a few seconds after the world is built
+      if (!precomputed() && now() - lastSlice > 12) { // once per frame (sub-steps)
+        const m = N.state && N.state.mode, loading = !!(N.view && N.view.loading);
+        // title screen / 3D library loading: nothing else to do, bigger slices; playing top-down: small
+        precomputeSlice(loading ? 14 : m === 'title' || m === 'boot' ? 10 : 5);
+        lastSlice = now();
+      }
+    },
   });
   idleKick();
   // a new world (map rebuild): analyse again and rebuild every chunk's ground from scratch

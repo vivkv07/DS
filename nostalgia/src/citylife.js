@@ -159,7 +159,7 @@
   function shopFrame(lm) {
     const x = lm.x - lm.w / 2, y = lm.y - lm.d / 2, w = lm.w, d = lm.d;
     const f = String(lm.face || (w >= d ? 's' : 'e')).toUpperCase();
-    const F = { cx: 0, cy: 0, ax: 0, ay: 0, nx: 0, ny: 0, L: 0, D: 0, hl: 0 };
+    const F = { cx: 0, cy: 0, ax: 0, ay: 0, nx: 0, ny: 0, L: 0, D: 0, hl: 0, s: 1 };
     if (f === 'N') { F.ny = -1; F.ax = 1; F.cx = lm.x; F.cy = y; F.L = w; F.D = d; }
     else if (f === 'S') { F.ny = 1; F.ax = -1; F.cx = lm.x; F.cy = y + d; F.L = w; F.D = d; }
     else if (f === 'W') { F.nx = -1; F.ay = -1; F.cx = x; F.cy = lm.y; F.L = d; F.D = w; }
@@ -167,9 +167,9 @@
     F.hl = F.L / 2;
     return F;
   }
-  function ptFrame(x, y, ax, ay, nx, ny, hl) { return { cx: x, cy: y, ax, ay, nx, ny, hl: hl || 8, L: (hl || 8) * 2, D: 6 }; }
-  const fx = (F, u, v) => F.cx + F.ax * u + F.nx * v;
-  const fy = (F, u, v) => F.cy + F.ay * u + F.ny * v;
+  function ptFrame(x, y, ax, ay, nx, ny, hl, s) { return { cx: x, cy: y, ax, ay, nx, ny, hl: hl || 8, L: (hl || 8) * 2, D: 6, s: s || 1 }; }
+  const fx = (F, u, v) => F.cx + (F.ax * u + F.nx * v) * F.s;
+  const fy = (F, u, v) => F.cy + (F.ay * u + F.ny * v) * F.s;
   const fang = (F) => Math.atan2(F.ny, F.nx);  // facing outward
   const aang = (F) => Math.atan2(F.ay, F.ax);  // along the front
 
@@ -221,6 +221,13 @@
       for (const u of [-need.hl, -need.hl * 0.5, need.hl * 0.5, need.hl]) if (ok && !walkOk(x + tx * u, y + ty * u, 2.4)) ok = false;
       if (!ok) continue;
       if (need.wall) { const c = N.world.collide(x + px * (need.back + 7), y + py * (need.back + 7), 5, 'walk'); if (!c.hit) continue; }
+      // clear of every carriageway (junction mouths, a parallel road) over the whole stall
+      let clear = true;
+      for (const [u, b] of [[0, 0], [-need.hl, 0], [need.hl, 0], [0, need.back], [-need.hl, need.back * 0.6], [need.hl, need.back * 0.6]]) {
+        const xx = x + tx * u + px * b, yy = y + ty * u + py * b;
+        try { const r2 = N.world.nearestRoadPoint(xx, yy); if (r2 && r2.road && r2.dist < (r2.road.w || 20) / 2 + 2.5) { clear = false; break; } } catch (e) { /* ignore */ }
+      }
+      if (!clear) continue;
       if (inLandmark(x, y, 12)) continue;
       return { x, y, ax: tx, ay: ty, nx: -px, ny: -py, road };
     }
@@ -1727,7 +1734,7 @@
             // which kind: a few of each, round-robin by need
             const kind = want.trade > 0 && (n % 3 !== 2 || (want.saloon <= 0 && want.chai <= 0)) ? 'trade' : want.saloon >= want.chai && want.saloon > 0 ? 'saloon' : want.chai > 0 ? 'chai' : want.trade > 0 ? 'trade' : null;
             if (!kind) continue;
-            const need = kind === 'saloon' ? { back: 8, hl: 8, wall: true } : kind === 'chai' ? { back: 9, hl: 10, wall: false } : { back: 5, hl: 6, wall: false };
+            const need = kind === 'saloon' ? { back: 9, hl: 10, wall: true } : kind === 'chai' ? { back: 9, hl: 10, wall: false } : { back: 6, hl: 9, wall: false };
             const fr = frontage(road, f, side, need);
             if (!fr || !farFromAll(fr.x, fr.y, kind === 'trade' ? 110 : 160)) continue;
             n++;
@@ -1737,10 +1744,10 @@
               let sub = pref[0], best = 1e9;
               for (const k of pref) { const c = tradeN[k] * 10 + R0.next() * 4; if (c < best) { best = c; sub = k; } }
               tradeN[sub]++; want.trade--;
-              addSpot({ id: 'trade:' + sub + ':' + tradeN[sub], kind: 'trade', sub, F: ptFrame(fr.x, fr.y, fr.ax, fr.ay, fr.nx, fr.ny, 6), x: fr.x, y: fr.y });
+              addSpot({ id: 'trade:' + sub + ':' + tradeN[sub], kind: 'trade', sub, F: ptFrame(fr.x, fr.y, fr.ax, fr.ay, fr.nx, fr.ny, 6, 1.5), x: fr.x, y: fr.y });
             } else if (kind === 'saloon') {
               want.saloon--;
-              addSpot({ id: 'saloon:cabin_' + (COUNTS.saloon - want.saloon), kind: 'saloon', F: ptFrame(fr.x, fr.y, fr.ax, fr.ay, fr.nx, fr.ny, 7.5), x: fr.x, y: fr.y, cabin: true });
+              addSpot({ id: 'saloon:cabin_' + (COUNTS.saloon - want.saloon), kind: 'saloon', F: ptFrame(fr.x, fr.y, fr.ax, fr.ay, fr.nx, fr.ny, 7.5, 1.25), x: fr.x, y: fr.y, cabin: true });
             } else {
               want.chai--;
               const id = 'chai:stall_' + (COUNTS.chai - want.chai);
@@ -1922,8 +1929,8 @@
           if (L.seats && L.seats.length && !sc.spot.lm) { const s0 = L.seats[0], s1 = L.seats[L.seats.length - 1], dx = s1.x - s0.x, dy = s1.y - s0.y, d = Math.hypot(dx, dy) || 1; benchLine(s0.x - (dx / d) * 1.8, s0.y - (dy / d) * 1.8, s1.x + (dx / d) * 1.8, s1.y + (dy / d) * 1.8, s0.a, 2.2, WOOD); }
           break;
         }
-        case 'trade': tradeLo(sc); break;
-        case 'roadwork': roadLo(sc); break;
+        case 'trade': tradeLo(sc, false); break;
+        case 'roadwork': roadLo(sc, false); break;
         default: break;
       }
     } catch (e) { N.err('citylife.drawLo', e); }
@@ -1940,8 +1947,8 @@
       switch (sc.spot.kind) {
         case 'saloon': saloonHi(sc); break;
         case 'chai': chaiStallHi(sc); break;
-        case 'trade': tradeHi(sc); break;
-        case 'roadwork': roadHi(sc); break;
+        case 'trade': tradeLo(sc, true); tradeHi(sc); break;
+        case 'roadwork': roadLo(sc, true); roadHi(sc); break;
         default: break;
       }
       drawParticles(sc);
@@ -2033,13 +2040,22 @@
     dot(x, y, 13, r, '#3f6a2a'); dot(x - r * 0.3, y - r * 0.25, 13.6, r * 0.7, '#4f7f32'); dot(x + r * 0.35, y + r * 0.2, 13.3, r * 0.55, '#5a8a3a');
     dot(x + Math.sin(t * 0.7) * 0.4 - r * 0.2, y - r * 0.45, 13.8, r * 0.35, '#6a9a42');
   }
-  function tradeLo(sc) {
+  /** street trades: flat things on the ground under the people (lo pass), the stall / tools over them (hi pass) */
+  function tradeLo(sc, hi) {
     const F = sc.F, L = sc.L, sub = sc.sub, t = simT();
+    if (!hi) {
+      if (sub === 'cobbler') {
+        fquad(F, -3.2, -3.2, 2.6, 0.4, 0.04, '#6a5a3a'); // gunny cloth
+        for (let i = 0; i < 4; i++) { const x = fx(F, -2.4 + i * 1.3, -2.4), y = fy(F, -2.4 + i * 1.3, -2.4); ell(x, y, 0.3, 1.4, 0.6, aang(F), ['#5a3a22', '#2a2a2a', '#8a4a2a', '#3a2a1a'][i]); }
+      } else if (sub === 'flowers') {
+        fquad(F, -3, -3, 3, 0.6, 0.04, '#7a6a4a');
+        for (let i = 0; i < 3; i++) seg(fx(F, -2.6 + i * 1.6, -1.8), fy(F, -2.6 + i * 1.6, -1.8), 0.2, fx(F, -1.6 + i * 1.6, -2.8), fy(F, -1.6 + i * 1.6, -2.8), 0.2, 0.8, i % 2 ? '#f08a1a' : '#f8f6ee');
+      }
+      return;
+    }
     switch (sub) {
       case 'cobbler': {
-        fquad(F, -3.2, -3.2, 2.6, 0.4, 0.04, '#6a5a3a'); // gunny cloth
         fbox(F, 1.2, 2.6, -1.6, -0.4, 0, 1.6, WOOD); // the last / box
-        for (let i = 0; i < 4; i++) { const x = fx(F, -2.4 + i * 1.3, -2.4), y = fy(F, -2.4 + i * 1.3, -2.4); ell(x, y, 0.3, 1.0, 0.45, aang(F), ['#5a3a22', '#2a2a2a', '#8a4a2a', '#3a2a1a'][i]); }
         dot(fx(F, 2, 1.4), fy(F, 2, 1.4), 0.4, 0.7, '#2a2a2a');
         break;
       }
@@ -2103,13 +2119,10 @@
         break;
       }
       case 'flowers': {
-        fquad(F, -3, -3, 3, 0.6, 0.04, '#7a6a4a'); // the gunny cloth
         const bx = fx(F, 1.8, 0.6), by = fy(F, 1.8, 0.6);
         dot(bx, by, 1.4, 1.8, '#8a6a3a'); for (let i = 0; i < 9; i++) dot(bx + Math.cos(i * 0.7) * 1.1, by + Math.sin(i * 0.7) * 1.1, 1.6, 0.4, i % 2 ? '#f8f6ee' : '#f2f0e0');
         const ox = fx(F, -1.8, 0.4), oy = fy(F, -1.8, 0.4);
         dot(ox, oy, 1.4, 1.6, '#8a6a3a'); for (let i = 0; i < 7; i++) dot(ox + Math.cos(i * 0.9) * 0.9, oy + Math.sin(i * 0.9) * 0.9, 1.6, 0.45, i % 2 ? '#f08a1a' : '#e8a020');
-        // finished garlands laid out
-        for (let i = 0; i < 3; i++) seg(fx(F, -2.6 + i * 1.6, -1.8), fy(F, -2.6 + i * 1.6, -1.8), 0.2, fx(F, -1.6 + i * 1.6, -2.8), fy(F, -1.6 + i * 1.6, -2.8), 0.2, 0.55, i % 2 ? '#f08a1a' : '#f8f6ee');
         break;
       }
       case 'cyclerepair': {
@@ -2145,8 +2158,9 @@
     }
   }
   // ---- roadwork
-  function roadLo(sc) {
+  function roadLo(sc, hi) {
     const F = sc.F, L = sc.L, zw = L.zw, pit = L.pit, t = simT();
+    if (hi) { roadRaised(sc, F, L, zw, t); return; }
     // the dug strip: dark earth, rubble, the soil heaped beside it
     fquad(F, pit.u0 - 0.8, pit.v0 - 0.6, pit.u1 + 0.8, pit.v1 + 0.6, 0.04, '#a87a4a');
     fquad(F, pit.u0, pit.v0, pit.u1, pit.v1, 0.05, '#7a5432');
@@ -2156,6 +2170,9 @@
     // sand heap + bricks
     dot(L.sand.x, L.sand.y, 0.8, 5.4, '#d8c08a'); dot(L.sand.x - 0.8, L.sand.y - 0.8, 2.2, 3.8, '#e2cc98'); dot(L.sand.x - 1.4, L.sand.y - 1.2, 3.2, 2.0, '#eed8a6');
     for (let r = 0; r < 3; r++) fbox(F, -22 + r * 0.3, -18 + r * 0.3, 2.2 + r * 0.2, 4.2 - r * 0.2, r * 0.9, r * 0.9 + 0.9, '#a8442a');
+    void zw;
+  }
+  function roadRaised(sc, F, L, zw, t) {
     // the tar drum on bricks over its fire
     const d = L.drum;
     dot(d.x, d.y, 0.3, 3.0, '#6a3a2a');
@@ -2172,7 +2189,6 @@
     ell(m.x, m.y, 6.0, 4.0, 3.2, a + 0.4, '#e8a020'); ell(m.x + Math.cos(ma) * 0.9, m.y + Math.sin(ma) * 0.9, 7.2, 2.4, 1.7, a + ma, '#c88010'); dot(m.x + ca * 2.6, m.y + sa * 2.6, 7.8, 1.4, '#3a3a3e'); dot(m.x + ca * 2.6, m.y + sa * 2.6, 7.9, 0.9, '#9a9a96');
     // barricades along the lane side
     for (let u = -24; u <= 24.01; u += 6) { const x = fx(F, u, -zw), y = fy(F, u, -zw); pole(x, y, 0, 5, 1.0, (u / 6) % 2 ? '#f4f2ee' : '#d8302a'); dot(x, y, 0.2, 1.1, '#2a2a2a'); }
-    void zw;
   }
   function roadHi(sc) {
     const F = sc.F, L = sc.L, zw = L.zw;
@@ -2270,7 +2286,7 @@
   }
   // world <-> builder helpers (three x = world x, three z = world y, heights in 3D units)
   function W3(F, u, v) { return [fx(F, u, v), fy(F, u, v)]; }
-  function obox3(b, F, u0, u1, v0, v1, y0, y1) { const c = W3(F, (u0 + u1) / 2, (v0 + v1) / 2); b.obox(c[0], c[1], Math.abs(u1 - u0), Math.abs(v1 - v0), y0, y1, aang(F)); }
+  function obox3(b, F, u0, u1, v0, v1, y0, y1) { const c = W3(F, (u0 + u1) / 2, (v0 + v1) / 2); b.obox(c[0], c[1], Math.abs(u1 - u0) * F.s, Math.abs(v1 - v0) * F.s, y0, y1, aang(F)); }
   function cyl3(b, x, y, y0, r0, r1, h, seg) { b.cyl(x, y0, y, r0, r1, h, seg || 8); }
   function texPlane(H, key, w, h, paint, F, u, v, y, wu, hv, face) {
     const THREE = H.THREE;
