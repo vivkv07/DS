@@ -850,7 +850,7 @@
   function inPolyM(pl, x, y, m) {
     let c = false;
     for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) { const a = pl[i], b = pl[j]; if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) c = !c; }
-    if (!c) return false;
+    if (!c || !(m > 0)) return c;
     for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) {
       const a = pl[j], b = pl[i], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1;
       const u = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / L2, 0, 1);
@@ -873,12 +873,11 @@
         const ax = B.P[ia * 3] + B.x0, az = B.P[ia * 3 + 2] + B.z0, bx = B.P[ib * 3] + B.x0, bz = B.P[ib * 3 + 2] + B.z0, cx = B.P[ic * 3] + B.x0, cz = B.P[ic * 3 + 2] + B.z0;
         const ar = Math.abs((bx - ax) * (cz - az) - (bz - az) * (cx - ax)) / 2;
         if (ar < 0.01) continue;
-        // a barycentric grid of interior points about every 1.3 u (a big paver fill triangle that
+        // a barycentric grid of interior points, one per ~1.2 u^2 (a big paver fill triangle that
         // reaches over an arm's ribbon start was missed by a few samples): each point stands for an equal
         // share of the area. Hits: another carriageway, or this junction's OWN asphalt (a corner the
         // outline does not follow: the hull stand-in, a curve folded into the junction)
-        const e = Math.max(Math.hypot(bx - ax, bz - az), Math.hypot(cx - bx, cz - bz), Math.hypot(ax - cx, az - cz));
-        const g = Math.min(9, Math.max(1, Math.ceil(e / 1.3))), np = (g * (g + 1)) / 2;
+        const g = Math.min(9, Math.max(1, Math.ceil(Math.sqrt(ar * 1.6)))), np = (g * (g + 1)) / 2; // ~1.2 u^2 a point
         for (let u = 0; u < g; u++) for (let v = 0; v < g - u; v++) {
           const wu = (u + 1 / 3) / g, wv = (v + 1 / 3) / g, ww = 1 - wu - wv;
           const px = ax * ww + bx * wu + cx * wv, pz = az * ww + bz * wu + cz * wv;
@@ -948,11 +947,12 @@
         const k = S.i++, t = now();
         try { if (k < nj) clearJunction(S, NET.juncs[k]); else clearPiece(S, NET.pieces[k - nj]); } catch (e) { N.err('ground.clear', e); }
         const dt = now() - t; if (dt > S.maxMs) { S.maxMs = dt; S.maxK = k < nj ? 'J' + k : 'P' + (k - nj); }
+        if (k < nj) S.msJ = (S.msJ || 0) + dt; else S.msP = (S.msP || 0) + dt;
         if (over()) break;
       }
     } finally { EMIT_LOD = lod; }
     if (S.i < nt) return false;
-    NET.clear = { corners: S.drops, gaps: S.gaps, gapLen: Math.round(S.gapLen), dups: NET.dups || 0, itemMaxMs: +S.maxMs.toFixed(1), itemMax: S.maxK };
+    NET.clear = { corners: S.drops, gaps: S.gaps, gapLen: Math.round(S.gapLen), dups: NET.dups || 0, itemMaxMs: +S.maxMs.toFixed(1), itemMax: S.maxK, msJ: Math.round(S.msJ || 0), msP: Math.round(S.msP || 0) };
     return true;
   }
   /** clear runs of piece P's footpath strip on side si ([[s0, s1], ...] along the piece) */
@@ -1062,27 +1062,25 @@
    *  paints a zebra across its road's width from the node's direction to the next node, which on a
    *  curved arm or in a merged cluster can run out over the kerbed corners and footpaths; paint never
    *  goes under a raised slab (or onto bare ground), so such stripes are left out */
+  const ZS = [[-3.6, -0.8], [3.6, 0.8], [-3.6, 0.8], [3.6, -0.8], [0, 0]]; // stripe corners (inset) + centre
   function zebraStripes(C, d) {
     const nx = -d.uy, ny = d.ux, out = [];
     for (let t = -d.w / 2 + 3; t <= d.w / 2 - 4; t += 4.5) {
       const m = t + 1.2, cx = d.x + nx * m, cy = d.y + ny * m;
       let ok = true;
-      for (const su of [-3.6, 0, 3.6]) {
-        for (const sv of [-0.8, 0, 0.8]) if (!onCarriage(C, cx + d.ux * su + nx * sv, cy + d.uy * su + ny * sv)) { ok = false; break; }
-        if (!ok) break;
-      }
+      for (const [su, sv] of ZS) if (!onCarriage(C, cx + d.ux * su + nx * sv, cy + d.uy * su + ny * sv)) { ok = false; break; }
       if (ok) out.push(m);
     }
     return out;
   }
   /** a stop line shortened to its longest run on the carriageway (w = 0: none) */
   function fitStop(C, d) {
-    const nx = -d.uy, ny = d.ux, st = 0.5, k = Math.max(1, Math.round(d.w / st));
+    const nx = -d.uy, ny = d.ux, st = 1, k = Math.max(1, Math.round(d.w / st));
     let best = [0, -1], run = -1;
     for (let i = 0; i <= k + 1; i++) {
       const u = -d.w / 2 + (d.w * i) / k;
       let ok = i <= k;
-      if (ok) for (const sv of [-0.35, 0.35]) if (!onCarriage(C, d.x + nx * u + d.ux * sv, d.y + ny * u + d.uy * sv)) { ok = false; break; }
+      if (ok && !onCarriage(C, d.x + nx * u, d.y + ny * u)) ok = false;
       if (ok && run < 0) run = i;
       else if (!ok && run >= 0) { if (i - 1 - run > best[1] - best[0]) best = [run, i - 1]; run = -1; }
     }

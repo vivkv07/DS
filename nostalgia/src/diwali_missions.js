@@ -73,8 +73,8 @@
     budget: 10000,               // Amma's ₹100 (paise)
     haggleOff: 1000, haggleMin: 6000,
     box: { bump: 20, bumpHard: 34, fall: 40, nearMiss: 7, nearD: 6, nearSpeed: 55, nearCool: 1.4, run: 14, ride: 18, bumpCool: 0.5 },
-    diyas: 21, breezeSecs: 150, gustFirst: 9, gustEvery: [11, 15], gustWarn: 2.6, gustHit: 1.2, guardR: 10.5, gustDot: 0.5,
-    gustWobble: 0.45, lightR: 8.5, ammammaEvery: 9, ammammaR: 8,
+    diyas: 21, breezeSecs: 150, gustFirst: 6, gustEvery: [8, 11], gustWarn: 2.6, gustHit: 1.2, guardR: 10.5, gustDot: 0.5,
+    gustWobble: 0.45, lightR: 7, diyaHold: 0.45, ammammaEvery: 10, ammammaR: 8,
     mithaiSecs: 120,
     bucketDrain: 34, bucketMin: 55,
     rocketGust: [3.4, 4.4], rocketCalm: [6, 8.5], lightHold: 0.8, aimSafe: 56,
@@ -1043,7 +1043,7 @@
   function lightDiya(d, who) {
     if (!d || d.lit) return;
     d.lit = true; d.t = 0; d.out = 0;
-    sfxOr(['dw_match', 'paper'], { ui: true, vol: 0.5 });
+    sfxOr(['dw_crackle', 'paper'], { ui: true, vol: 0.25 });
     if (who !== 'ammamma') N.emit('dwm:diya', { i: d.i, lit: true });
   }
   function gustTick(dt) {
@@ -1114,6 +1114,10 @@
           ctx.fillStyle = '#ff9a2a'; ctx.fillRect(Math.round(X - 0.8 * s), Math.round(Y - (3 + fl) * s), Math.ceil(1.6 * s), Math.ceil((2 + fl) * s));
           ctx.fillStyle = '#ffd24a'; ctx.fillRect(Math.round(X - 0.5 * s), Math.round(Y - (2.7 + fl * 0.8) * s), Math.ceil(1 * s), Math.ceil((1.5 + fl) * s));
           ctx.fillStyle = '#fff4c0'; ctx.fillRect(Math.round(X - 0.25 * s), Math.round(Y - 2.1 * s), Math.ceil(0.5 * s), Math.ceil(0.9 * s));
+        } else if (T.holdD === d && T.holdT > 0) {
+          const k2 = Math.min(1, T.holdT / TUNE.diyaHold);
+          ctx.fillStyle = 'rgba(255,220,120,' + (0.4 + 0.5 * k2).toFixed(2) + ')';
+          ctx.fillRect(Math.round(X + (1.2 - k2) * 2 * s), Math.round(Y - (2.4 + (1 - k2)) * s), Math.ceil(0.9 * s), Math.ceil(1.2 * s));
         } else if (d.out > 0) {
           ctx.fillStyle = 'rgba(200,200,210,' + (d.out * 0.5).toFixed(2) + ')';
           ctx.fillRect(Math.round(X - 0.5 * s + (1.2 - d.out) * 3 * s), Math.round(Y - (2 + (1.2 - d.out) * 4) * s), Math.ceil(1 * s), Math.ceil(1 * s));
@@ -1186,11 +1190,23 @@
     m.objective('Light all ' + T.list.length + ' diyas on the parapet before the breeze (E by a diya). When a gust comes, stand guard on its side.');
     ST.gust = { phase: 'calm', t: TUNE.gustFirst, dir: windDir(), n: 0 };
     everyTick(gustTick);
+    // strike the match and hold it to the wick (hold E); held while walking along the parapet, one after another
+    T.holdT = 0;
     offer({
       priority: 8,
       when: () => onTerrace() && !!nearestDiya(false),
-      label: () => 'Light the diya (' + litCount() + '/' + T.list.length + ')',
-      use: () => { const d = nearestDiya(false); if (d) lightDiya(d, 'you'); },
+      label: () => 'Light the diya, hold E (' + litCount() + '/' + T.list.length + ')',
+      use: () => {},
+    });
+    everyTick((dt) => {
+      if (mode() !== 'play' || !ST.terrace) return;
+      const d = onTerrace() ? nearestDiya(false) : null;
+      const I = N.input;
+      if (d && I && I.down('action')) {
+        if (T.holdT <= 0) sfxOr(['dw_match', 'paper'], { ui: true, vol: 0.35 });
+        T.holdT += dt; T.holdD = d;
+        if (T.holdT >= TUNE.diyaHold) { lightDiya(d, 'you'); T.holdT = 0; }
+      } else T.holdT = 0;
     });
     ST.step = { kind: 'diyas', use: () => { for (const d of T.list) d.lit = true; } };
     m.timer(TUNE.breezeSecs, 'BREEZE', { failMsg: 'The evening breeze came first. Ammamma strikes another match: phir se.' });

@@ -246,7 +246,7 @@ async function useWhen(re, ms) {
 async function holdE(done, ms) {
   const t0 = Date.now();
   await page.keyboard.down('KeyE');
-  await page.waitForFunction(done, null, { timeout: ms || 6000, polling: 50 }).catch(() => {});
+  await (typeof done === 'string' ? page.waitForFunction('(' + done + ')()', null, { timeout: ms || 6000, polling: 50 }) : page.waitForFunction(done, null, { timeout: ms || 6000, polling: 50 })).catch(() => {});
   await page.keyboard.up('KeyE');
   tally('held E');
   return Date.now() - t0;
@@ -306,10 +306,10 @@ async function deeponBot(ms) {
   while (Date.now() - t0 < ms) {
     const s = await ev(() => ({ act: N.missions.active && N.missions.active.id, dlg: !!(N.dialogue.isOpen && N.dialogue.isOpen()), d: N.dwMissions.debug.state(), label: N.input.actionLabel, mode: N.state.mode }));
     if (s.act !== 'deepon_ki_raat' || !s.d.terrace) return s;
-    if (s.dlg) { await talkThrough(); continue; }
-    if (s.mode !== 'play') { await tick(); continue; }
     const T = s.d.terrace, G = s.d.gust, p = s.d.player;
     if (T.lit >= T.n) return s;
+    if (s.dlg) { await talkThrough(); continue; }
+    if (s.mode !== 'play') { await tick(); continue; }
     if (G && (G.phase === 'warn' || G.phase === 'hit')) {
       // guard: stand by the lit diyas on the windward edge (the most of them within reach)
       const ux = -Math.cos(G.dir), uy = -Math.sin(G.dir);
@@ -324,15 +324,24 @@ async function deeponBot(ms) {
       await page.waitForFunction(() => { const g = N.dwMissions.debug.state().gust; return !g || g.phase === 'calm'; }, null, { timeout: 5000, polling: 80 }).catch(() => {});
       continue;
     }
-    // light the nearest unlit diya
-    let tgt = null, bd = 1e9;
-    for (const d of T.diyas) { if (d.lit) continue; const dd = Math.hypot(d.x - p.x, d.y - p.y); if (dd < bd) { bd = dd; tgt = d; } }
+    // light the next one: the windward edge first (the hard way round: the gusts find them lit), nearest first
+    const wd = G ? G.dir : 0, ux = -Math.cos(wd), uy = -Math.sin(wd);
+    let tgt = null, bs = -1e9, bd = 1e9;
+    for (const d of T.diyas) {
+      if (d.lit) continue;
+      const dd = Math.hypot(d.x - p.x, d.y - p.y), sc = (d.nx * ux + d.ny * uy >= 0.5 ? 100 : 0) - dd;
+      if (sc > bs) { bs = sc; bd = dd; tgt = d; }
+    }
     if (!tgt) { await tick(); continue; }
     if (!/Light the diya/.test(s.label || '') || bd > 6) {
       await walkTo(tgt.x - tgt.nx * 3, tgt.y - tgt.ny * 3, 2.5, { direct: true, ms: 4000, stop: () => { const g = N.dwMissions.debug.state().gust; return !!g && g.phase !== 'calm'; } });
     }
     const lab = await ev(() => N.input.actionLabel);
-    if (/Light the diya/.test(lab || '')) { await press('KeyE'); tally('E light diya'); if (!lightShot && T.lit >= 8) { lightShot = true; await shot('diyas_lighting'); } }
+    if (/Light the diya/.test(lab || '')) {
+      if (!lightShot && T.lit >= 8) { lightShot = true; await page.keyboard.down('KeyE'); await page.waitForTimeout(250); await shot('diyas_lighting'); await page.keyboard.up('KeyE'); }
+      const n0 = T.lit;
+      await holdE(`() => { const d = N.dwMissions.debug.state(); return !d.terrace || d.terrace.lit > ${n0} || (d.gust && d.gust.phase !== 'calm'); }`, 2500);
+    }
   }
   return null;
 }
@@ -351,7 +360,8 @@ async function pDeepon() {
     const s = await ev(() => N.dwMissions.debug.state());
     const d = s.terrace.diyas.find((q) => !q.lit);
     await walkTo(d.x - d.nx * 3, d.y - d.ny * 3, 2.5, { direct: true, ms: 4000 });
-    await useWhen(/Light the diya/, 3000);
+    const n0 = (await ev(() => N.dwMissions.debug.state().terrace.lit));
+    await holdE(`() => N.dwMissions.debug.state().terrace.lit > ${n0}`, 3000);
   }
   if (!(await failAndRetry('deepon_ki_raat', /breeze came first/i, () => ev(() => { N.dwMissions.TUNE.breezeSecs = 150; })))) return;
   const r = await ev(() => ({ level: N.player.level, lit: N.dwMissions.debug.state().terrace.lit }));
@@ -359,7 +369,7 @@ async function pDeepon() {
   await deeponBot(150000);
   await shot('diyas_all_lit');
   const st = await ev(() => N.dwMissions.debug.state().stats);
-  check(st.gusts >= 1 && st.saved >= 1, 'gust fronts came (' + st.gusts + '): ' + st.saved + ' flames kept alive by standing guard, ' + st.blown + ' blown out and re-lit', st);
+  check(st.gusts >= 2 && st.saved >= 1 && st.blown >= 1, 'gust fronts came (' + st.gusts + '): ' + st.saved + ' flames kept alive by standing guard, ' + st.blown + ' blown out and re-lit', st);
   // the terrace view
   vlog('modes before the view: ' + (await ev(() => window.__modes.slice(-8).join(' '))));
   await playUntil(() => N.state.mode === 'cutscene', 20000, 'the terrace fireworks view');

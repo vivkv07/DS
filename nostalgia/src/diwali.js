@@ -242,9 +242,11 @@
   /** May a cracker go off at (x, y)? Away from respect zones, other faiths' places and hospitals. */
   function fireOK(x, y) {
     if (!isFinite(x) || !isFinite(y)) return false;
-    const key = ((x / 32) | 0) * 100003 + ((y / 32) | 0);
+    // cached per 8 u cell, decided at the cell's centre (so every point of a cell gets the same, fair answer)
+    const ci = Math.floor(x / 8), cj = Math.floor(y / 8), key = ci * 100003 + cj;
     const c = okCache.get(key);
     if (c != null) return c;
+    x = ci * 8 + 4; y = cj * 8 + 4;
     let ok = true;
     const RS = N.respect;
     if (RS) {
@@ -262,7 +264,7 @@
       } catch (e) { /* respect optional */ }
     }
     if (ok) for (const h of hospitals()) if (Math.hypot(h.x - x, h.y - y) < TUNE.hospitalR) { ok = false; break; }
-    if (okCache.size > 8000) okCache.clear();
+    if (okCache.size > 40000) okCache.clear();
     okCache.set(key, ok);
     return ok;
   }
@@ -1168,35 +1170,38 @@
       const ca = Math.cos(ang), sa = Math.sin(ang);
       for (const [u, v] of [[-6.5, -3.6], [6.5, -3.6], [6.5, 3.6], [-6.5, 3.6], [0, 0]]) { const px = x + (ca * u - sa * v) * SS, py = y + (sa * u + ca * v) * SS; if (!okGround(px, py) || !W.isWalkable(px, py)) return false; }
       if (out.some((q) => Math.hypot(q.x - x, q.y - y) < 15 * SS)) return false;
-      if (kind !== 'kirana' && markets.some((m) => Math.hypot(m.x - x, m.y - y) < 46)) return false;
+      if (kind !== 'kirana' && markets.some((m) => Math.hypot(m.x - x, m.y - y) < 44)) return false;
       if (N.respect && N.respect.near && N.respect.near(x, y, 50)) return false;
       if (nearJunction(x, y)) return false;
       const i = out.length, hv = hsh(x * 0.31, y * 0.17);
       out.push({ id: 'stall_' + anchor + '_' + i, anchor, kind, x, y, a: ang, label: STALL_LABELS[(hv * STALL_LABELS.length) | 0], stripes: STRIPES[(hsh(y, x) * STRIPES.length) | 0], seed: (hv * 1e5) | 0 });
       return true;
     };
+    // candidate spots every 18 u along every road near the anchor, on both sides, nearest first
     const along = (pl, n, d0, d1, kind) => {
-      const rp = W.nearestRoadPoint(pl.x, pl.y, (r) => r.kind !== 'path' && r.kind !== 'bridge' && r.kind !== 'bund');
-      if (!rp || !rp.road || rp.dist > 90) return;
-      const road = rp.road, pts = road.pts, foot = (W.FOOT && W.FOOT[road.kind]) || 0;
-      // arc length of the projection on the polyline
-      const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-      const s0 = cum[rp.seg] + rp.t * (cum[rp.seg + 1] - cum[rp.seg] || 0), len = cum[cum.length - 1];
-      const at = (s) => { s = clamp(s, 0, len); let i = 1; while (i < pts.length - 1 && cum[i] < s) i++; const a = pts[i - 1], b = pts[i], L0 = cum[i] - cum[i - 1] || 1, t = (s - cum[i - 1]) / L0; return { x: a[0] + (b[0] - a[0]) * t, y: a[1] + (b[1] - a[1]) * t, ang: Math.atan2(b[1] - a[1], b[0] - a[0]) }; };
-      let got = 0;
-      for (let k = 0; got < n && k < 40; k++) {
-        const dist = d0 + Math.floor(k / 2) * 18, dir = k % 2 ? -1 : 1;
-        if (dist > d1) break;
-        const q = at(s0 + dir * dist);
-        for (const side of (k % 4 < 2 ? [1, -1] : [-1, 1])) {
-          const nx = -Math.sin(q.ang) * side, ny = Math.cos(q.ang) * side, off = road.w / 2 + foot * 0.55 + 4.6 * SS;
-          const x = q.x + nx * off, y = q.y + ny * off;
-          // the stall faces the road: its local +v points away from the road (vendor side)
-          if (tryAt(x, y, q.ang + (side > 0 ? 0 : PI), pl.id, kind)) { const st = out[out.length - 1]; st.fx = -nx; st.fy = -ny; got++; break; }
+      const roads = (D.roads || []).filter((r) => r.kind !== 'path' && r.kind !== 'bridge' && r.kind !== 'bund' && r.pts.some((q) => Math.abs(q[0] - pl.x) < d1 + 60 && Math.abs(q[1] - pl.y) < d1 + 60));
+      const cand = [];
+      for (const road of roads) {
+        const pts = road.pts, foot = (W.FOOT && W.FOOT[road.kind]) || 0, off = road.w / 2 + foot * 0.55 + 4.6 * SS;
+        for (let i = 1; i < pts.length; i++) {
+          const ax = pts[i - 1][0], ay = pts[i - 1][1], bx = pts[i][0], by = pts[i][1], L = Math.hypot(bx - ax, by - ay); if (L < 1) continue;
+          const ang = Math.atan2(by - ay, bx - ax);
+          for (let t = 9; t < L - 9; t += 18) {
+            const qx = ax + (bx - ax) * (t / L), qy = ay + (by - ay) * (t / L), d = Math.hypot(qx - pl.x, qy - pl.y);
+            if (d > d1 || d < d0 - 20) continue;
+            for (const side of [1, -1]) { const nx = -Math.sin(ang) * side, ny = Math.cos(ang) * side; cand.push({ x: qx + nx * off, y: qy + ny * off, a: ang + (side > 0 ? 0 : PI), fx: -nx, fy: -ny, d }); }
+          }
         }
       }
+      cand.sort((p0, p1) => p0.d - p1.d);
+      let got = 0;
+      for (const q of cand) {
+        if (got >= n) break;
+        if (Math.hypot(q.x - pl.x, q.y - pl.y) < d0) continue;
+        if (tryAt(q.x, q.y, q.a, pl.id, kind)) { const st = out[out.length - 1]; st.fx = q.fx; st.fy = q.fy; got++; }
+      }
     };
-    if (P.sultan_bazaar) along(P.sultan_bazaar, 10, 50, 190, 'bazaar');
+    if (P.sultan_bazaar) along(P.sultan_bazaar, 10, 44, 210, 'bazaar');
     if (P.koti_book_bazaar) along(P.koti_book_bazaar, 3, 50, 120, 'bazaar');
     for (const m of markets) if (m.id !== 'sultan_bazaar' && m.id !== 'koti_book_bazaar') along(m, 2, 50, 110, 'market');
     for (const id in P) { const p = P[id]; if (p.kind === 'kirana') along(p, 1, 8, 40, 'kirana'); }
@@ -1505,7 +1510,9 @@
         x = p.x + Math.cos(a) * d; y = p.y + Math.sin(a) * d;
       } else {
         const v = N.render.view;
-        if (rnd() < 0.7) { x = rr(v.x0 + 20, v.x1 - 20); y = rr(v.y0 + 10, v.y1 - 10); }
+        // the perspective throws high bursts outwards from the screen centre: launch them well inside the view
+        const cx = (v.x0 + v.x1) / 2, cy = (v.y0 + v.y1) / 2, hw = (v.x1 - v.x0) / 2 / 1.6, hh = (v.y1 - v.y0) / 2 / 1.6;
+        if (rnd() < 0.75) { x = rr(cx - hw, cx + hw); y = rr(cy - hh, cy + hh); }
         else { const a = rnd() * TAU, d = rr(150, TUNE.range); x = p.x + Math.cos(a) * d; y = p.y + Math.sin(a) * d; }
       }
       if (Math.hypot(x - p.x, y - p.y) < 40) continue;
@@ -2194,7 +2201,7 @@
     dec.customProgramCacheKey = () => 'diwali3d-decal';
     M.dec = dec;
     const rang = H.tex('dw:rangoli', 1024, 512, (g) => { for (let v = 0; v < 8; v++) paintRangoli(g, (v % 4) * 256 + 128, Math.floor(v / 4) * 256 + 128, 122, v); }, { linear: true });
-    M.rangoli = new T.MeshLambertMaterial({ map: rang, transparent: true, alphaTest: 0.1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 });
+    M.rangoli = new T.MeshLambertMaterial({ map: rang, emissiveMap: rang, emissive: new T.Color(0, 0, 0), transparent: true, alphaTest: 0.1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 });
     const labels = H.tex('dw:labels', 1024, 1024, (g) => {
       const rows = STALL_LABELS.concat(['BIJLI  ROCKET  ANAAR', 'CHAKRI  PHULJHADI']);
       rows.forEach((t, i) => {
@@ -2407,6 +2414,8 @@
     G3.uni.uI.value = night < 0.1 ? 0 : Math.min(1, night * 1.25);
     G3.uni.uLamp.value = lampTime() ? clamp(0.5 + night, 0, 1.2) : 0;
     G3.uni.uDwN.value = 0.08 + night * 1.1;
+    if (G3.M.rangoli) G3.M.rangoli.emissive.setScalar(lampTime() ? 0.08 + night * 0.3 : 0);
+    if (G3.M.labels) G3.M.labels.emissive.setScalar(stallsOpen() ? night * 0.55 : 0);
     G3.uni.uFogK.value = hz * 0.0006; G3.uni.uFogK2.value = hz * 0.0018;
     if (H.renderer && H.camera) G3.uni.uScale.value = (H.renderer.domElement.height || 720) / (2 * Math.tan((H.camera.fov * PI) / 360));
     if (G3.urgent > 0) G3.urgent -= dt;
@@ -2663,6 +2672,18 @@
           while (now() - t0 < (ms || 4000)) { layerUpdate3D(0, G3.H); if (!(G3.decorNext && G3.decorNext.gen) && !(G3.stallsNext && G3.stallsNext.gen)) { layerUpdate3D(0, G3.H); break; } }
         }
         return true;
+      },
+      /** test aid: n resting loose bits in the circle (x, y, r) on walkable ground (live bits) */
+      sprinkle(x, y, r, n) {
+        let k = 0;
+        for (let t = 0; t < n * 4 && k < n; t++) {
+          const a = rnd() * TAU, d = Math.sqrt(rnd()) * r, px = x + Math.cos(a) * d, py = y + Math.sin(a) * d;
+          if (!S_OK(N.world.surfaceAt(px, py))) continue;
+          if (LB.n >= Math.min(LB.cap, BUD().litter)) { let far = -1, fd = -1; for (let j = 0; j < LB.n; j++) { if (LB.cell[j] < 0) continue; const dd = Math.abs(LB.x[j] - x) + Math.abs(LB.y[j] - y); if (dd > fd) { fd = dd; far = j; } } if (far < 0) break; const c = CELLS.get(LB.cell[far]); if (c) c.have--; bitFree(far); }
+          const i = bitAlloc(px, py, pickCol(rnd()), rr(0.7, 1.5), -1, 0, rr(5, 12)); if (i < 0) break;
+          LIT.live++; k++;
+        }
+        return k;
       },
       groups: () => GROUPS.map((g) => ({ key: g.key, home: g.home, x: Math.round(g.site.x), y: Math.round(g.site.y), members: g.members.length, act: g.act ? g.act.kind : null })),
       spawnGroupNear(x, y, r) { const s = groupSites(x, y, r || 200).sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0]; return s && !GROUPS.some((g) => g.key === s.key) ? !!spawnGroup(s) : false; },
