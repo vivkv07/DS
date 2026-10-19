@@ -28,6 +28,7 @@
         cam.up.set(0, 1, 0);
         cam.lookAt(c.tx, c.th, c.ty);
         if (c.roll) cam.rotateZ(c.roll);
+        if (c.rollAbs) cam.rotateZ(c.rollAbs);
         if (c.fov && Math.abs(cam.fov - c.fov) > 1e-3) { cam.fov = c.fov; cam.updateProjectionMatrix(); }
         cam.updateMatrixWorld(true);
         H.sky && 0;

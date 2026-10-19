@@ -106,15 +106,19 @@
       const e = ease.in(u), a = 0.94 + e * 5.2;
       STAGE.cam({ x: hero.x + Math.cos(a) * 24, y: hero.y + Math.sin(a) * 24, h: hy + 8, tx: hero.x, ty: hero.y, th: hy + 4, fov: 50 + 10 * e });
     } else if (seg.shot === 'rain') {
-      const e = ease.io(u), a = 1.0 + 0.5 * e;
+      const e = ease.io(u), a = 0.7 + 1.1 * e;
       const r = 70 - 54 * e, h = hy + 28 - 21 * e;
       STAGE.cam({ x: hero.x + Math.cos(a) * r, y: hero.y + Math.sin(a) * r, h, tx: hero.x, ty: hero.y, th: hy + 4, fov: 46 });
     } else {
-      const dir = seg.dir || 1, e = ease.io(u);
-      const a = base + dir * (e - 0.5) * (sh.arc || 1.4);
+      // drone orbit: launches fast off the cut and settles (ease-out), a wide arc with a crane-up pull-out,
+      // plus a little handheld drift + roll so it never feels locked off
+      const dir = seg.dir || 1, e = ease.out(u), arc = (sh.arc || 1.4) * 1.55;
+      const a = base + dir * (e - 0.45) * arc;
       const r = sh.r[0] + (sh.r[1] - sh.r[0]) * e, h = hy + sh.h[0] + (sh.h[1] - sh.h[0]) * e;
       const fov = sh.fov[0] + (sh.fov[1] - sh.fov[0]) * e;
-      STAGE.cam({ x: hero.x + Math.cos(a) * r, y: hero.y + Math.sin(a) * r, h, tx: lx, ty: ly, th: hy + 4.5, fov });
+      const t = f / FPS, jx = Math.sin(t * 2.3 + 1) * 0.25 + Math.sin(t * 5.1) * 0.08, jy = Math.cos(t * 1.9) * 0.2, jh = Math.sin(t * 2.7 + 2) * 0.18;
+      STAGE.cam({ x: hero.x + Math.cos(a) * r + jx, y: hero.y + Math.sin(a) * r + jy, h: h + jh, tx: lx, ty: ly, th: hy + 4.5, fov, roll: 0 });
+      STAGE.camSpec.rollAbs = dir * (0.05 * (1 - e) + 0.012 * Math.sin(t * 1.3));
     }
   }
 
