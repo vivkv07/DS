@@ -560,10 +560,22 @@
     window.__step(1 / FPS);
   }
 
+  // a frame that came out black (a skipped draw under heavy load) is drawn again with no time step (nothing moves)
+  function blackFrame(r) {
+    try {
+      const gl = r.getContext(), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, px = new Uint8Array(4);
+      for (let k = 1; k < 8; k++) { gl.readPixels(Math.floor(w * k / 8), Math.floor(h * (k % 3 + 1) / 4), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); if (px[0] || px[1] || px[2]) return false; }
+      return true;
+    } catch (e) { return false; }
+  }
   window.CLIP_FRAME = function (capture) {
     advance(false);
     if (!capture) return null;
-    if (N.view3d && N.view3d.active) return N.view3d.H.renderer.domElement.toDataURL('image/jpeg', 0.93);
+    if (N.view3d && N.view3d.active) {
+      const r = N.view3d.H.renderer;
+      for (let k = 0; k < 3 && blackFrame(r); k++) { console.log('[clip] black frame ' + C.f + ', redraw'); window.__step(0); }
+      return r.domElement.toDataURL('image/jpeg', 0.93);
+    }
     return document.getElementById('game').toDataURL('image/png');
   };
   window.CLIPS = CLIPS;

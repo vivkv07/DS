@@ -29,7 +29,7 @@ const { execFileSync } = require('child_process');
 // QA: node trailer/hud_shots.cjs qa -> out/qa_hud_landscape.jpg + out/qa_hud_portrait.jpg (8 labelled frames per
 // clip from frames2 / frames2_v: the meter states, Mummy, the chappal, the hit, the banner; 3D, the switch, top-down)
 if (process.argv[2] === 'qa') {
-  const QAF = { g_top_chase: [0, 5, 10, 24, 36, 42, 56, 68], g_top_charminar: [0, 12, 24, 35, 36, 48, 60, 71] };
+  const QAF = { g_top_chase: [0, 5, 10, 24, 34, 39, 53, 66], g_top_charminar: [0, 12, 24, 35, 36, 48, 60, 71] };
   for (const [od, name, tw] of [['frames2', 'qa_hud_landscape.jpg', 640], ['frames2_v', 'qa_hud_portrait.jpg', 300]]) {
     const args = [];
     for (const id of Object.keys(QAF)) for (const f of QAF[id]) {

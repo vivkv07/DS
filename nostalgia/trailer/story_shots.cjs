@@ -310,7 +310,7 @@ async function renderSegment(seg) {
     if (cut.setup) console.log(' ', seg.id, cut.name, 'setup', JSON.stringify(await page.evaluate(cut.setup, arg)));
     // fast-forward to the moment with nothing painted (the page is still laid out and every animation keeps its
     // virtual time): an unchanged screen is not re-rasterised at every frame step
-    await page.evaluate(() => document.documentElement.classList.add('sp-ff'));
+    await page.evaluate(() => { document.documentElement.classList.add('sp-ff'); SP.noDraw(false); });
     const k = await page.evaluate(({ spec, dt }) => SP.until(spec, dt), { spec: cut.anchor || {}, dt: DT });
     if (k < 0) {
       console.log('    status', JSON.stringify(await page.evaluate(() => [SP.status(), SP.log.slice(-8), document.querySelectorAll('.dlg.show .dlg-text .c.on').length, document.querySelector('.dlg') && document.querySelector('.dlg').className])));
@@ -332,9 +332,11 @@ async function renderSegment(seg) {
       else if (f % EVERY === 0) {
         await shot(file);
         if (hold && i === hold[0]) held = file;
-        if (hold && i === hold[1] && held && !fs.readFileSync(held).equals(fs.readFileSync(file))) console.log('    WARNING', cut.name, 'hold', hold, 'frame', i, 'differs from the held frame (kept the real one; the copies may be off)');
+        if (hold && i === hold[1] && held && !fs.readFileSync(held).equals(fs.readFileSync(file))) console.log('    note:', cut.name, 'hold', hold, 'frame', i, 'is not byte-identical to the held frame (kept the real one; check the copies if the picture changed)');
       }
       f++;
+      // previews (EVERY > 1): the 3D view only draws the frames that are captured (the world still simulates)
+      if (EVERY > 1) await page.evaluate((d) => SP.noDraw(d), f % EVERY !== 0);
       await page.evaluate((dt) => SP.step(1, dt), DT);
     }
     if (cut.after) await page.evaluate(cut.after, arg);
