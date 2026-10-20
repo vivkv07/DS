@@ -44,13 +44,20 @@ if (PIECES) { PIECES[PIECES.length - 1].b1 += EDL.tailBeats || 0; let r = 0; for
 const ff = (args) => execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], { stdio: 'inherit' });
 
 // frames for a segment: <FR>/<id>/%05d.(jpg|png); portrait-native <FRV>/<id> wins in the vertical cut
+const nImg = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /\.(jpg|png)$/.test(f)).length : 0);
 function seq(seg, id) {
   id = id || seg.id;
   let dir = path.join(FR, id);
-  if (VERT && fs.existsSync(path.join(FRV, id)) && fs.readdirSync(path.join(FRV, id)).length) dir = path.join(FRV, id);
+  const need = seg.n * BF;
+  if (VERT && nImg(path.join(FRV, id))) {
+    if (nImg(path.join(FRV, id)) >= need) dir = path.join(FRV, id);
+    else console.log(`  !! ${id}: portrait frames incomplete (${nImg(path.join(FRV, id))}/${need}), using the landscape crop`);
+  }
   if (!fs.existsSync(dir)) return null;
   const files = fs.readdirSync(dir).filter((f) => /\.(jpg|png)$/.test(f)).sort();
   if (!files.length) return null;
+  const st = files.length > 1 ? (parseInt(files[1], 10) - parseInt(files[0], 10)) : 1;
+  if (files.length * st < need) console.log(`  !! ${id}: PARTIAL ${files.length * st}/${need} frames (the rest holds the last frame)`);
   const ext = path.extname(files[0]);
   const step = files.length > 1 ? (parseInt(files[1], 10) - parseInt(files[0], 10)) : 1;
   const dim = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', path.join(dir, files[0])], { encoding: 'utf8' }).trim().split(',').map(Number);
@@ -67,7 +74,7 @@ function dirFp(dir) { // fingerprint for clip reuse: file count + newest mtime
  * keyframes (segment frames, linear between, held outside). Only for segments without portrait frames. */
 const VX = {
   g_auto_tankbund: [[0, 0], [48, 0], [71, 0.25]], // the auto drifts right of centre at the end
-  a_maram: -0.55,                                  // Chinnu plays the left ring (the centre crop loses him)
+  a_maram: [[0, -0.2], [20, -0.2], [30, -0.55]],   // Chinnu + the thrower, then follow Chinnu's dodge to the left ring
 };
 
 function vxExpr(v, nf) { // VX value -> crop centre expression of the frame number n

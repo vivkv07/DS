@@ -62,7 +62,8 @@ if (as) {
   qa.segments = segs.map((s) => {
     const v = ys.filter(([t]) => t >= s.t0 && t < s.t1).map(([, y]) => y);
     const mean = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
-    return { id: s.id, b: s.b, n: s.n, t0: +s.t0.toFixed(2), lumaMean: mean == null ? null : +mean.toFixed(1), lumaMin: v.length ? +Math.min(...v).toFixed(1) : null, placeholder: mean != null && mean < 18.5 };
+    const black = v.length ? v.filter((y) => y < 18.5).length / v.length : 0; // black placeholder frames (limited-range black = 16)
+    return { id: s.id, b: s.b, n: s.n, t0: +s.t0.toFixed(2), lumaMean: mean == null ? null : +mean.toFixed(1), lumaMin: v.length ? +Math.min(...v).toFixed(1) : null, black: +black.toFixed(2), placeholder: black >= 0.6 };
   });
   qa.placeholders = qa.segments.filter((s) => s.placeholder).map((s) => s.id);
 }

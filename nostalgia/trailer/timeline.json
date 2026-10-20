@@ -77,7 +77,8 @@
    "kind": "mg",
    "game": "kite",
    "act": "PLAY",
-   "cap": "PATANG PECH"
+   "cap": "PATANG PECH",
+   "sfxF": 10
   },
   {
    "id": "a_lingocha",

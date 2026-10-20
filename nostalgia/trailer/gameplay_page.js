@@ -29,7 +29,7 @@
     top_pothole: { view: 'top', at: 'giver_himayatnagar', time: [16, 0], veh: 'cycle', spd: 100, dir: 1.5, rain: 0.7 },
     ambassador_hitec: { view: 'tps', at: 'cyber_towers', time: [12, 0], veh: 'ambassador', spd: 150, dir: 1.5 },
     market_walk: { view: 'tps', at: 'laad_bazaar', time: [18, 35], veh: null, spd: 45, dir: 3.1 },
-    lightning: { view: 'tps', at: 'abids', time: [21, 40], veh: null, spd: 40, dir: 0, rain: 1, storm: 1, pitch: 0.03, strikes: [[14, 430, -70, 1], [47, 520, 120, 0.9]] },
+    lightning: { view: 'tps', at: 'abids', time: [21, 40], veh: null, spd: 40, dir: 0, rain: 1, storm: 1, clear: 3, chase: { back: 15, h: 6.5, lead: 30, th: 9, fov: 62, lag: 0.2 }, strikes: [[14, 430, -70, 1], [47, 520, 120, 0.9]] },
     top_traffic: { view: 'top', at: 'abids', time: [18, 10], veh: null, spd: 40, dir: 0.8 },
     kites_sky: { view: 'cam', at: 'giver_himayatnagar', time: [16, 20], veh: null, spd: 0 },
     // festivals (N.seasons overlays; the 3D renderer draws their props from N.seasons.scene)
