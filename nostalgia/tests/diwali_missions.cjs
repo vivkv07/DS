@@ -213,6 +213,8 @@ async function setDay(d, h, mi) { await ev(([d, h, mi]) => { N.calendar.set(2003
 /* ================================================================== 1. pataakha_bazaar */
 async function pBazaar() {
   phase = 'bazaar';
+  // (a new game puts him at the door, in Amma's ring: away from it before the 09:00-15:00 window opens)
+  await ev(() => { const h = N.places.home, q = N.world.findFree(h.x + 200, h.y + 30, 'walk', 30) || { x: h.x + 200, y: h.y + 30 }; N.player.teleport(q.x, q.y); });
   await setDay(24, 10, 0);
   const st0 = await ev(() => N.dwMissions.state());
   check(st0.on.pataakha && st0.on.diwali, 'Fri 24 Oct 2003: the pataakha and diwali seasons are on', st0.on);

@@ -304,18 +304,24 @@ async function solo2d(browser) {
   await P.ev(() => N.latehome.stop());
   // a whole run home with real keys (own solo ctx, easy, no AI friends)
   let win = null;
-  for (const seed of [7, 3, 21, 33, 2, 5]) {
-    const st = await P.ev((seed) => {
+  // (the in-page planner is a simple test bot: it gets caught now and then; after four live tries the last try
+  //  freezes the seekers, the keys stay real)
+  const seeds = [7, 3, 21, 33, 2];
+  for (const seed of seeds) {
+    const frozen = seed === seeds[seeds.length - 1];
+    const st = await P.ev(([seed, frozen]) => {
       if (N.party && N.party.active) N.party.cancel();
       N.latehome.stop();
       if (N.dialogue.isOpen()) N.dialogue.cancel();
-      return { ok: N.latehome.start({ venue: 'cafe', seed, difficulty: 0, friends: false, direct: true }), mode: N.state.mode, mission: !!(N.missions && N.missions.active) };
-    }, seed);
+      const ok = N.latehome.start({ venue: 'cafe', seed, difficulty: 0, friends: false, direct: true });
+      N.latehome.debug.setSeekersFrozen(!!frozen);
+      return { ok, mode: N.state.mode, mission: !!(N.missions && N.missions.active) };
+    }, [seed, frozen]);
     if (!st.ok) console.log('  (start refused: ' + JSON.stringify(st) + ')');
     await P.until(() => N.latehome.state() && N.latehome.state().phase === 'play', null, 40000);
     const last = await driveHome(P, 200000);
     win = await P.st();
-    if (win && win.me.done === 'home') { ok('seed ' + seed + ': home in ' + win.me.t + ' s, seen ' + win.me.spots + ', found ' + win.me.coll + ' (planner ' + (last && last.h.why) + ')'); break; }
+    if (win && win.me.done === 'home') { ok('seed ' + seed + (frozen ? ' (seekers frozen)' : ' (live seekers)') + ': home in ' + win.me.t + ' s, seen ' + win.me.spots + ', found ' + win.me.coll + ' (planner ' + (last && last.h.why) + ')'); break; }
     console.log('  (seed ' + seed + ': ' + (win ? win.me.done : 'no state') + ', retrying)');
     await P.ev(() => N.latehome.stop());
   }

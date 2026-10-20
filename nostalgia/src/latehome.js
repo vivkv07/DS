@@ -562,12 +562,14 @@
     }
     // the colony dog (two at higher difficulty)
     const nDog = S.variant === 'daddy' ? 1 : d > 0.55 ? 2 : 1;
-    for (const f of shuffle([0.42, 0.58, 0.74], R)) {
-      if (C.dogs.length >= nDog) break;
-      const s = propAt(f, 7, 14, paths[C.dogs.length % paths.length]);
+    const dogF = shuffle([0.42, 0.58, 0.74], R).concat([0.36, 0.5, 0.64, 0.8, 0.86]);
+    for (let i = 0; i < dogF.length * paths.length && C.dogs.length < nDog; i++) {
+      const P = paths[(C.dogs.length + Math.floor(i / dogF.length)) % paths.length];
+      const s = propAt(dogF[i % dogF.length], 6, 20, P);
       if (!s || C.dogs.some((g) => hyp(g.x - s.x, g.y - s.y) < 80) || hyp(s.x - start.x, s.y - start.y) < 110) continue;
       C.dogs.push({ x: s.x, y: s.y, a: R.range(0, TAU) });
     }
+    if (!C.dogs.length) { const q = polyAt(main, polyLen(main) * 0.6); const f = free(q.x + 8, q.y, 10); if (f) C.dogs.push({ x: f.x, y: f.y, a: 0 }); } // a dog always naps somewhere on the way
     // collectibles: a lost marble (goli) or two, a kite-string reel (manja)
     const kinds = d > 0.5 ? ['goli', 'manja', 'goli'] : ['goli', 'manja'];
     kinds.forEach((kind, i) => {
@@ -1664,6 +1666,7 @@
     try { if (N.input && N.input.setLabel) N.input.setLabel('horn', null); } catch (e) { /* ignore */ }
     try { if (N.audio && N.audio.music && N.audio.music.mood) N.audio.music.mood(null); } catch (e) { /* ignore */ }
     hudOff();
+    G.frozenSeekers = false; G.unseen = false; // test switches never outlive a run
     S = null;
   }
   /* mission givers: "not now" while a run is on (a J-card would otherwise start a mission mid-sneak) */
