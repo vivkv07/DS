@@ -2983,6 +2983,7 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
       resolveAI() { if (S) resolveAI(); },
       threatAt: (x, y, m) => { const t = threatAt(x, y, m || 0); return t ? t.idx : -1; },
       paths: () => (S ? S.C.paths : null),
+      _v3: V3,
       v3: () => ({ ok: V3.ok, built: V3.sess === S && !!S, cones: V3.cones.length, coneVis: V3.cones.filter((c) => c.m.visible).length, rootVis: !!(V3.root && V3.root.visible), lamps: V3.lamps.length, doors: V3.doors.length, heads: V3.heads.filter((h) => h.head.visible).length }),
     },
   });

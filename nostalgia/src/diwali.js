@@ -716,7 +716,10 @@
     for (const d of DOGS) if (d.alive !== false && d.dwHide > 0 && out.indexOf(d) < 0) out.push(d);
     return out;
   }
+  const HEARTS = [];
   function updateDogs(dt) {
+    HEARTS.length = 0;
+    for (const a of hidingDogs()) if (a.dwHeartT > 0) { a.dwHeartT -= dt; HEARTS.push(a); }
     for (let i = DOGS.length - 1; i >= 0; i--) {
       const d = DOGS[i];
       if (d.alive === false) { DOGS.splice(i, 1); continue; }
@@ -1166,9 +1169,7 @@
     if (!W || !W.built || !D) return out;
     const markets = Object.values(P).filter((p) => p.kind === 'market');
     const okGround = (x, y) => { const s = W.surfaceAt(x, y); return s === S.GROUND || s === S.FOOTPATH || s === S.PLAZA || s === S.SAND; };
-    const nodes = W.roads && W.roads.nodes || [];
     const nearJunction = (x, y) => { const n = W.roads && W.roads.nearestNode ? W.roads.nearestNode(x, y) : null; return n && n.deg >= 3 && Math.hypot(n.x - x, n.y - y) < (n.w || 30) / 2 + 12; };
-    void nodes;
     const tryAt = (x, y, ang, anchor, kind) => {
       const ca = Math.cos(ang), sa = Math.sin(ang);
       for (const [u, v] of [[-6.5, -3.6], [6.5, -3.6], [6.5, 3.6], [-6.5, 3.6], [0, 0]]) { const px = x + (ca * u - sa * v) * SS, py = y + (sa * u + ca * v) * SS; if (!okGround(px, py) || !W.isWalkable(px, py)) return false; }
@@ -1361,8 +1362,7 @@
   }
   function freeGroup(g) {
     for (const e of EMIT) if (e.grp === g) { if (e.kind === 'sparkler') e.t = e.dur; e.grp = null; }
-    if (!g.home || !g.npc) for (const m of g.members) freePerson(m);
-    else for (const m of g.members) freePerson(m);
+    for (const m of g.members) freePerson(m);
     const i = GROUPS.indexOf(g); if (i >= 0) GROUPS.splice(i, 1);
     if (g.home) homeTalk(false);
   }
@@ -1407,7 +1407,7 @@
           const a = Math.atan2(s.uy, s.ux) + (rnd() < 0.5 ? 0 : PI);
           g.act = { kind, x, y, a, state: 'walk', tt: 0 };
           const back = kind === 'ladi' ? -1.5 : -2.2;
-          goTo(g.adult, x - s.nx * -back * 0 + s.nx * back, y + s.ny * back, 34);
+          goTo(g.adult, x + s.nx * back, y + s.ny * back, 34); // he crouches on the family's side of it
         }
       }
     }
@@ -2066,6 +2066,13 @@
         for (let i = 0, j = 0; i < P.length; i += 10, j += 5) if (fairyOn(j, Fy.pat, Fy.ph)) glowAt(P[i], P[i + 1], Fy.h, Fy.cols[j % nc], 2.6, 0.45 * NIGHT);
       }
     }
+    // a heart over a comforted dog
+    for (const a of HEARTS) {
+      const k = kk(6 + (2.2 - a.dwHeartT) * 1.2), X = SX(a.x, k), Y = SY(a.y, k), r = 1.1 * k;
+      ctx.globalAlpha = Math.min(1, a.dwHeartT); ctx.fillStyle = '#ff6a9a';
+      ctx.beginPath(); ctx.arc(X - r * 0.5, Y, r * 0.55, 0, TAU); ctx.arc(X + r * 0.5, Y, r * 0.55, 0, TAU); ctx.moveTo(X - r, Y + r * 0.15); ctx.lineTo(X, Y + r * 1.2); ctx.lineTo(X + r, Y + r * 0.15); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
     // the stalls' bulbs
     if (lit && stallsOpen()) for (const st of VIS.stalls) { const q = [st.x + st.fx * 0.5 * SS, st.y + st.fy * 0.5 * SS]; dot(q[0], q[1], 7.6, 1.3, '#fff6d0'); glowAt(q[0], q[1], 7.6, '#ffd890', 13, 0.9 * NIGHT); glowAt(st.x + st.fx * 3 * SS, st.y + st.fy * 3 * SS, 3.5, '#ffb050', 9, 0.5 * NIGHT); }
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.imageSmoothingEnabled = false;
@@ -2494,6 +2501,7 @@
     arr[o] = c; arr[o + 1] = 0; arr[o + 2] = -sn; arr[o + 3] = 0; arr[o + 4] = 0; arr[o + 5] = sy || 1; arr[o + 6] = 0; arr[o + 7] = 0;
     arr[o + 8] = sn; arr[o + 9] = 0; arr[o + 10] = c; arr[o + 11] = 0; arr[o + 12] = x; arr[o + 13] = h; arr[o + 14] = y; arr[o + 15] = 1;
   }
+  const PINK = hexRGB('#ff6a9a');
   const RGB = COLS_RGB, SMOKE_D = hexRGB('#bdb4ae'), SMOKE_N = hexRGB('#4a4248'), WHITE = [1, 0.97, 0.88], ORANGE = [1, 0.66, 0.3];
   const _rgb = [0, 0, 0];
   function layerUpdate3D(dt, H) {
@@ -2537,6 +2545,7 @@
     }
     if (best && H.light) H.light({ x: best.x, y: best.y, h: best.h * VS, color: best.col, intensity: 2.2 * bk, r: 420 });
     for (const r of ROCKETS) ptAdd(G, r.x, r.h * VS, r.y, 5, 0.55, ORANGE);
+    for (const a of HEARTS) ptAdd(G, a.x, (6 + (2.2 - a.dwHeartT) * 1.2) * VS, a.y, 3.5, Math.min(1, a.dwHeartT), PINK);
     for (const e of EMIT) {
       if (p && Math.hypot(e.x - p.x, e.y - p.y) > 500) continue;
       if (e.kind === 'anaar' && e.t > 0.3) { ptAdd(G, e.x, 3 * VS, e.y, 14, 0.5, ORANGE); if (H.light && p && Math.hypot(e.x - p.x, e.y - p.y) < 220) H.light({ x: e.x, y: e.y, h: 4, color: '#ffc070', intensity: 1.4, r: 60 }); }

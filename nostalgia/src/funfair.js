@@ -132,6 +132,14 @@
     SP.wheel = W ? { lm: W, x: W.x, y: W.y, ix: W.x + 25, iy: W.y + 14 } : null;
     SP.maut = M ? { lm: M, x: M.x, y: M.y, r: Math.min(M.w, M.d) * 0.45, H: M.h || 22, ix: M.x, iy: M.y - M.d / 2 - 6 } : null;
     let L = null; try { L = N.seasons && N.seasons.layout && N.seasons.layout.numaish(); } catch (e) { L = null; }
+    // [funfair hook] the fair's painted crowd (seasons.js crowdDraw avoid list) keeps off our stalls, carts and rides
+    if (L && Array.isArray(L.avoid) && !L.avoid.ffAdded) {
+      L.avoid.ffAdded = true;
+      for (const st of SP.stalls) L.avoid.push([st.x - 1, st.y - 2, st.w + 2, st.d + 3]);
+      for (const c of SP.carts) L.avoid.push([c.x - 6, c.y - 4, 12, 8]);
+      const C = SP.columbus, B = SP.bumper, Cu = SP.cups;
+      L.avoid.push([C.x - 16, C.y - 9, 32, 20], [B.x - 2, B.y - 2, B.w + 4, B.d + 4], [Cu.x - Cu.r - 2, Cu.y - Cu.r - 2, Cu.r * 2 + 4, Cu.r * 2 + 4]);
+    }
     SP.carousel = L && L.carousel ? { x: L.carousel.x, y: L.carousel.y, r: L.carousel.r, ix: L.carousel.x, iy: L.carousel.y - L.carousel.r - 5 } : null;
     SP.train = L && L.train ? Object.assign({ ix: L.train.cx + L.train.rx + 5, iy: L.train.cy - 14 }, L.train) : null;
     return SP;
@@ -2086,8 +2094,8 @@
         for (let i = 0; i < 12; i++) { const bx = x + 2.6 + (i % 6) * (w - 5.2) / 5, by = y + d - 2.3; const kk = R.k(4 + Math.floor(i / 6) * 3); ctx.fillStyle = ['#e83a5a', '#2a8cd8', '#3ac06a', '#f2c230', '#9a5ae0', '#e8641a'][i % 6]; ctx.beginPath(); ctx.ellipse(R.sx(bx, kk), R.sy(by, kk) - 0.3 * kk, 0.8 * kk, 0.95 * kk, 0, 0, TAU); ctx.fill(); }
         void k;
       }
-      // a striped canopy and the signboard
-      D.box(x - 0.6, y - 1.4, w + 1.2, d + 1.4, 10, 11.2, { wall: U.shade(st.col, 0.75), roof: st.col, roofFn: (c, k2, rx, ry, rw, rd) => { c.fillStyle = 'rgba(255,250,235,0.85)'; for (let i = 0; i < 8; i += 2) c.fillRect(rx + (i / 8) * rw, ry, rw / 8, rd); } });
+      // a striped awning over the counter (the booth is open on top, so its goods show from the kite's view) + the signboard
+      D.box(x - 0.6, y - 1.6, w + 1.2, 3.2, 10, 11.2, { wall: U.shade(st.col, 0.75), roof: st.col, roofFn: (c, k2, rx, ry, rw, rd) => { c.fillStyle = 'rgba(255,250,235,0.85)'; for (let i = 0; i < 8; i += 2) c.fillRect(rx + (i / 8) * rw, ry, rw / 8, rd); } });
       D.pixelText(x + w / 2, y - 1.2, 12.4, st.name, open ? '#ffe070' : '#c8c0b0', { scale: 1 });
     });
     if (night > 0.2 && open) R.lights.push({ x: st.x + st.w / 2, y: st.y - 3, r: 26, color: '#ffe0a0', intensity: 0.75, h: 9 });
@@ -2105,7 +2113,7 @@
         D.box(c.x - 0.3, c.y - 0.3, 0.6, 0.6, 4.5, 16, { wall: '#8a6a3a', roof: '#8a6a3a' });
         const k = R.k(17), ctx = R.ctx, t = AMB.t;
         const cols = ['#e83a5a', '#2a8cd8', '#f2c230', '#3ac06a', '#9a5ae0', '#ff8a2a'];
-        for (let i = 0; i < 7; i++) { const a = i * 0.9 + Math.sin(t * 1.3 + i) * 0.1, r = 2.2 + (i % 2); ctx.fillStyle = cols[i % 6]; ctx.beginPath(); ctx.ellipse(R.sx(c.x + Math.cos(a) * r, k), R.sy(c.y + Math.sin(a) * r, k), 1.2 * k, 1.4 * k, 0, 0, TAU); ctx.fill(); }
+        for (let i = 0; i < 9; i++) { const a = i * 0.72 + Math.sin(t * 1.3 + i) * 0.1, r = 2.4 + (i % 3) * 0.9; ctx.fillStyle = cols[i % 6]; ctx.beginPath(); ctx.ellipse(R.sx(c.x + Math.cos(a) * r, k), R.sy(c.y + Math.sin(a) * r, k), 1.7 * k, 2 * k, 0, 0, TAU); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.arc(R.sx(c.x + Math.cos(a) * r - 0.5, k), R.sy(c.y + Math.sin(a) * r - 0.7, k), 0.45 * k, 0, TAU); ctx.fill(); }
         const k2 = R.k(10);
         for (let i = 0; i < 3; i++) { ctx.save(); ctx.translate(R.sx(c.x + (i - 1) * 1.6, k2), R.sy(c.y - 1.5, k2)); ctx.rotate(t * 4 + i); for (let j = 0; j < 4; j++) { ctx.fillStyle = cols[(i + j) % 6]; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(1.4 * k2, -0.3 * k2); ctx.lineTo(1.1 * k2, 0.9 * k2); ctx.fill(); ctx.rotate(PI / 2); } ctx.restore(); }
       }

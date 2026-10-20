@@ -915,6 +915,7 @@
         b.col('#4a4a52', 0).cyl(p.x, 0, p.y, 0.32, 0.24, 20.5, 5).col('#c8a040', 0.3).cyl(p.x, 20.5, p.y, 0.4, 0.1, 0.8, 5);
         if (i % 4 === 1) crescent(b, fx, p.x, p.y, a + PI / 2, 24.5, 2.8);
       }
+      const inner = [];
       for (let i = 0; i < 24; i++) {
         const p = poles[i], q = poles[(i + 1) % 24];
         if (p && q) fx.string(bulbs, p.x, 19.6, p.y, q.x, 19.6, q.y, Math.max(6, Math.round(Math.hypot(q.x - p.x, q.y - p.y) / 2.4)), 2.0, RAM_COLS, 2, 3);
@@ -922,11 +923,19 @@
         let ip = null;
         for (const r of RI) { const x = ch.x + Math.cos(p.a) * r, y = ch.y + Math.sin(p.a) * r; if (free(x, y)) { ip = { x, y }; break; } }
         if (!ip) continue;
+        inner[i / 2] = ip;
         b.col('#4a4a52', 0).cyl(ip.x, 0, ip.y, 0.3, 0.22, 19.5, 5);
         b.col('#fff4d8', 2.2).bead(ip.x, 19.9, ip.y, 0.5); fx.glow(ip.x, 19.9, ip.y, '#fff0c8', 6, 0.8);
         fx.string(bulbs, p.x, 19.6, p.y, ip.x, 19.2, ip.y, Math.max(8, Math.round(Math.hypot(ip.x - p.x, ip.y - p.y) / 2.2)), 2.8, ['#ffffff', '#60ff90', '#ffe080'], 2, 3);
         const mx = (p.x + ip.x) / 2, my = (p.y + ip.y) / 2;
         fanoos(b, fx, mx, 19.4 - 2.8, my, RAM_LANT[(i / 2) % 3]);
+      }
+      // festoons along the plaza edge too, lamp pole to lamp pole (the inner side of the circle road)
+      for (let i = 0; i < 12; i++) {
+        const p = inner[i], q = inner[(i + 1) % 12];
+        if (!p || !q) continue;
+        fx.string(bulbs, p.x, 19.2, p.y, q.x, 19.2, q.y, Math.max(8, Math.round(Math.hypot(q.x - p.x, q.y - p.y) / 2.4)), 2.6, ['#ffe080', '#60ff90', '#ffffff'], 2, 3);
+        if (i % 2 === 0) fanoos(b, fx, (p.x + q.x) / 2, 19.2 - 2.6, (p.y + q.y) / 2, RAM_LANT[(i / 2) % 3]);
       }
       fx.pool(ch.x, ch.y, 120, '#d8ffe0', 0.18);
     }
@@ -958,7 +967,7 @@
       const g = P(3.6, 0); fx.glow(g[0], 8.6, g[1], '#e8f4ff', 7, 0.6);
       for (let i = 0; i <= 6; i++) { const q = P(4.05, -3.0 + i), c = ['#ffe070', '#60ff90', '#ffffff', '#ff7050'][i % 4]; dress.col(c, 2.4).bead(q[0], 9.0, q[1], 0.26); if (i % 2 === 0) fx.glow(q[0], 9.0, q[1], c, 2.6); }
       const l = P(4.2, -3.2); fanoos(dress, fx, l[0], 9.2, l[1], st.lit ? '#ffd27a' : '#9affc0');
-      const pl = P(7, 0); fx.pool(pl[0], pl[1], 11, '#ffd890', 0.75);
+      const pl = P(6, 0); fx.pool(pl[0], pl[1], 13, '#ffd890', 1.0); fx.pool(st.x, st.y, 7, '#fff0d0', 0.6);
       site.lights.push([g[0], g[1]]);
     }
     for (const q of (ram && ram.bhattis) || []) { fx.pool(q[0], q[1], 9, '#ff9040', 0.7); site.lights.push([q[0], q[1], 1]); }

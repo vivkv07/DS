@@ -95,8 +95,6 @@ async function stage(page, o) {
     if (N.missions && N.missions.active) N.missions.abort();
     N.calendar.set(2003, 10, o.d, o.h, o.m); N.debug.setTime(o.h, o.m);
     if (N.view.mode !== 'top' && !o.keep3d) N.view.set('top');
-    const S = { home: () => { const h = N.diwali.spots.home; return { x: h.x - 22, y: h.y - 15 }; }, koti: null, tankbund: null };
-    void S;
     const sp = o.at;
     N.debug.teleport(sp.x, sp.y);
     if (N.player.vehicle) N.debug.teleport(sp.x, sp.y);
@@ -355,6 +353,18 @@ async function wakeTests(browser) {
     check(later.flying <= 3, view + ': a few seconds later the paper has come down', JSON.stringify(later));
     await page.evaluate(() => { if (N.traffic) N.traffic.enabled = true; N.view.set('top'); });
   }
+  // a gusty day: the paper drifts and lifts with N.wind (no vehicles needed)
+  const H = await where(page, 'home');
+  await stage(page, { d: 26, h: 9, m: 0, at: H, zoom: 1.6 });
+  const calm = await page.evaluate(() => { if (N.traffic) { N.traffic.enabled = false; N.traffic.clear(); } N.wind.force({ strength: 0.05, gustiness: 0 }); N.diwali.litter.settle(); return N.diwali.litter.count; });
+  await simWait(page, 2);
+  const still = await page.evaluate(() => N.diwali.litter.awake);
+  await page.evaluate(() => N.wind.force({ strength: 0.75, gustiness: 1, dir: 0.4 }));
+  await simWait(page, 4);
+  const windy = await page.evaluate(() => ({ awake: N.diwali.litter.awake, flying: N.diwali.litter.flying }));
+  check(still <= 2 && windy.awake >= 30, 'N.wind: calm air leaves the paper be, a gusty wind drifts and lifts it', JSON.stringify({ bits: calm, calmAwake: still, windy }));
+  await shot(page, 'wind_gusts_2d');
+  await page.evaluate(() => { N.wind.force(null); if (N.traffic) N.traffic.enabled = true; });
   await endCtx(C);
 }
 
