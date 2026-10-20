@@ -92,6 +92,27 @@
     return { x: Math.round(p.x), y: Math.round(p.y), level: p.level || null, mode: N.state.mode, view: N.view.mode, date: N.calendar.date.label, time: N.clock.label() };
   };
 
+  /** a fresh game (no prologue) in the 3D third-person view at full device resolution */
+  SP.start3D = async function (scale) {
+    if (!SP.started3D) {
+      SP.started3D = true;
+      SP.setup({ hud: true });
+      N.menus.quickStart = true;
+      N.debug.newGame({ skipIntro: true });
+      SP.setup({ hud: true, money: 1850 }); // after newGame: no god mode, a believable ₹18.50 in the pocket
+      N.view3d.setQuality({ adaptive: false, pixelRatio: scale || 1, maxPixelRatio: scale || 1, drawDist: 1500 });
+      N.view.set('tps', { noSave: true });
+      for (let k = 0; k < 3000 && !(N.view3d.active && N.models3d && N.models3d.ready); k++) await SP.step(1, 1 / 30);
+    }
+    return { active: N.view3d.active, models: !!(N.models3d && N.models3d.ready) };
+  };
+  /** stream the chunks / landmarks around the player, then let traffic, people and the camera settle */
+  SP.settle3D = async function (frames) {
+    for (let k = 0; k < 3; k++) N.view3d.settle(30000);
+    await SP.step(frames || 45, 1 / 30);
+    N.view3d.settle(30000);
+  };
+
   // the world canvases (2D #game and the 3D canvas): hidden while the prologue art covers them anyway — a visible
   // canvas is re-composited at every yield, which makes stepping ~30x slower
   SP.world = function (on) {
@@ -136,6 +157,20 @@
   SP.step = async function (n, dt) {
     for (let i = 0; i < n; i++) await one(dt);
     return SP.status();
+  };
+  /** step until a story moment begins: {cs: i} (cutscene step i starts), {line: 'text'} (a dialogue line containing
+   *  text is on screen), {typed: 'text'} (that line has finished typing), {fn: 'js expr'}; -> frames stepped | -1 */
+  SP.until = async function (spec, dt, max) {
+    const hit = () => {
+      if (spec.cs != null) return !!(SP.csStep && SP.csStep.i >= spec.cs);
+      const d = N.dialogue && N.dialogue.current;
+      if (spec.line != null) return !!(d && String(d.text || '').indexOf(spec.line) >= 0);
+      if (spec.typed != null) return !!(d && !d.typing && String(d.text || '').indexOf(spec.typed) >= 0);
+      if (spec.fn) return !!(0, eval)(spec.fn);
+      return true;
+    };
+    for (let k = 0; k < (max || 4000); k++) { if (hit()) return k; await one(dt); }
+    return -1;
   };
   // step n frames, returning every status change as [frame, status] (frames counted by SP.frame)
   let lastKey = '';

@@ -33,8 +33,9 @@
       barks: [[2, 'pochaiah', '*Ruko!*'], [22, 'mummy', '{FULL}!']], // (their own lines from wanted.js)
       barkSecs: { pochaiah: 0.9 }, // his "called off" line clears before Mummy's wind-up line (the game: ~3 s)
       // Mummy's first homing chappal: the game waits 3 s after she arrives, then checks the range (150 u) every
-      // 0.5 s; here she winds up ("One more step and this chappal flies!") the moment she is in range
-      chappalEager: true,
+      // 0.5 s; here she winds up ("One more step and this chappal flies!") on the beat (f36, or the first frame
+      // after it that she is in range), so the throw (~f48) cannot reach him before the cut
+      chappalFrom: 36,
       // called off at level 5, Pochaiah would U-turn his Luna into Mummy's path and she would brake behind him:
       // instead he pulls over to the kerb ("Luna, you have betrayed me.") and her auto goes past
       pullOver: { role: 'pochaiah', ahead: 30, kerb: 6 },
@@ -295,7 +296,7 @@
         if (W.level === 5 && o.chappalT != null) W._W.chappalT = o.chappalT;
       }
     }
-    if (o.chappalEager && W.level === 5 && !W._W.chappal && W._W.chappalT > 0) W._W.chappalT = 0;
+    if (o.chappalFrom != null && W.level === 5 && !W._W.chappal) W._W.chappalT = C.f < o.chappalFrom ? 99 : 0;
     if (o.pullOver) pullOver(o.pullOver);
     if (o.quiet) for (const a of W.pursuers) a.barkT = 99;
     if (o.barks && C.f >= 0) for (const b of o.barks) {

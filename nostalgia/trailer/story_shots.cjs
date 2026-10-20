@@ -5,6 +5,8 @@
  *          OUTD=dir                (default out/frames2 for landscape, out/frames2_v for portrait)
  *          SCALE=2                 deviceScaleFactor (1920x1080 x2 -> 3840x2160; 1080x1920 x2 -> 2160x3840)
  *          SURVEY=prologue|title   run that sequence with a status log + a low-res still every SURVEY_EVERY frames
+ *          CUTS=name,..            re-render only these cuts (PLANS below) into the segment's existing frames
+ *          EVERY=n                 preview: capture every n-th frame only (the files keep their frame index)
  *          Q=92                    JPEG quality
  *   -> OUTD/<segment id>/%05d.jpg  exactly n*beatFrames frames per segment
  */
@@ -57,12 +59,82 @@ const W = +(process.argv[2] || 1920), H = +(process.argv[3] || 1080);
 const SCALE = +(process.env.SCALE || 2);
 const PORTRAIT = H > W;
 const ONLY = (process.env.ONLY || '').split(',').filter(Boolean);
+const CUTS = (process.env.CUTS || '').split(',').filter(Boolean); // re-render only these cuts (by name) into the existing frames
 const OUTD = process.env.OUTD || path.join(__dirname, 'out', PORTRAIT ? 'frames2_v' : 'frames2');
 const Q = +(process.env.Q || 92);
 const SURVEY = process.env.SURVEY || '';
+const EVERY = +(process.env.EVERY || 1); // preview: capture every n-th frame only (files keep their frame index)
 const SURVEY_EVERY = +(process.env.SURVEY_EVERY || 6);
 const TL = JSON.parse(fs.readFileSync(path.join(__dirname, 'timeline.json'), 'utf8'));
 const FPS = TL.fps || 30, DT = 1 / FPS, BF = TL.beatFrames;
+
+/* ---- what each segment shows: cuts = consecutive moments joined with hard cuts (n frames each, multiples of 18).
+ * A cut waits for its anchor (SP.until: {cs: cutscene step}, {line: dialogue text on screen}, {typed: line finished}),
+ * steps `off` frames more, then captures n frames. setup / before / each run in the page. */
+const PLANS = {
+  // The cold open: the game's real prologue "Side B, 2026" (story bible §4.1, src/story.js prologue()), played from
+  // New Game and cut down to four moments. ~60 s in-game -> 7.2 s.
+  prologue: {
+    sequential: true, // one continuous run of the cutscene: every cut waits for the previous one
+    cuts: [
+      // b0-2: ▶ PLAY  WED 14 JAN 2026  18:05 — the VHS OSD card fading in over the office at dusk (a last kite)
+      { name: 'play_2026', n: 54, anchor: null, off: 3, setup: startPrologue },
+      // b3-5: Amma: "Srikanth! A courier came. From America." (typed in by +37; held until the advance at +37+66)
+      { name: 'amma_courier', n: 54, anchor: { line: 'A courier came' }, off: 30 },
+      // b6-7: K. Srikanth: "...Immu." (typed in by +22)
+      { name: 'immu', n: 36, anchor: { line: '...Immu' }, off: 9 },
+      // b8-11: ◀◀ REWIND on the old 2-in-1 (SIDE A · HYD 2003 in the window), the OSD year spinning 2026 -> 2003;
+      // the tween lasts 78 frames: start 6 in, end on its last frame (2003, the VHS wobble settling)
+      { name: 'rewind', n: 72, anchor: { cs: 24 }, off: 6 },
+    ],
+  },
+};
+// s_story: the story in gameplay (3D third-person view, the HUD and the dialogue box as the player sees them)
+PLANS.s_story = {
+  cuts: [
+    // b40-43: M3 "First Day, First Show" (Sat 8 Feb 2003, dawn): Chinnu at Sandhya 70mm plays the cassette Immu hid in
+    // the hero's boot — the spy-tape box (cassette-label skin, VHS type): "Agent Immu to Agent Chinnu. ..."
+    { name: 'spy_tape', n: 72, setup: storySandhya, anchor: { line: 'Agent Immu' }, off: 6 },
+    // b44-47: M1 "Bo Kaata!" ends (Tue 14 Jan 2003, 17:55, Sankranti dusk on the home terrace, kites everywhere, Immu on
+    // his terrace across the ground): ● REC — the first sound goes on Side A, the counter rolls 000 -> 083 and the
+    // kite corner goes into the tin. ACTION is pressed 10 frames in.
+    { name: 'rec', n: 72, setup: storyTerrace, anchor: { fn: '!!(N.tape.recState)' }, off: 2, each: recPress },
+  ],
+};
+async function storySandhya(o) {
+  await SP.start3D(o.SCALE);
+  const T = N.places.sandhya_theatre;
+  // the facade faces east: Chinnu stands in the forecourt looking west at the hoardings
+  const r = SP.scene({ date: [2003, 2, 8, 5, 55], at: [T.x + 62, T.y + 6], angle: Math.PI, yaw: Math.PI + 0.12, pitch: 0.16, view: 'tps',
+    npcs: [['painter', [T.x + 50, T.y - 14], { idle: 'work' }]] });
+  N.hud.objective("Get the tape from the hero's boot.");
+  await SP.settle3D(60);
+  N.dialogue.say('immu_tape', "Agent Immu to Agent Chinnu. If you found this, you're at Sandhya and it's six o'clock.");
+  return r;
+}
+async function storyTerrace(o) {
+  await SP.start3D(o.SCALE);
+  try { N.dialogue.cancel(); } catch (e) { /* ignore */ }
+  const r = SP.scene({ date: [2003, 1, 14, 17, 55], at: [10112, 4986], roof: 'home_terrace', angle: 0.05, yaw: 0.0, pitch: 0.2, view: 'tps',
+    npcs: [['immu', 'friend_terrace'], ['nanna', [10098, 4978], { roof: 'home_terrace' }], ['chitti', [10100, 4996], { roof: 'home_terrace' }]] });
+  N.hud.objective('● REC: the first sound for Side A.');
+  await SP.settle3D(60);
+  window.__rec = N.tape.rec('bo_kaata');
+  return r;
+}
+function recPress(o) { if (o.i === 10) N.input.press('action'); }
+function startPrologue(o) {
+  SP.setup({ hud: true, css: o.css });
+  SP.pace = { line: 2.2, prompt: 1.6 };
+  N.menus.quickStart = true; // no name card (default names Chinnu / Srikanth); the prologue is then started the way game:new does
+  N.debug.newGame({ skipIntro: true });
+  N.player.money = 1000;
+  SP.world(false); // the prologue art covers the world
+  window.__pro = N.story.prologue();
+  return SP.status();
+}
+// portrait (phone) viewport: the prologue's 320x180 art canvas would be stretched to 9:16 by the game's CSS
+const PORTRAIT_CSS = '';
 
 async function boot() {
   const browser = await chromium.launch({ args: ARGS });
@@ -80,66 +152,36 @@ async function boot() {
   await page.evaluate(() => { try { N.testing.unlimitedMoney = false; } catch (e) { /* ignore */ } N.view.noPointerLock = true; });
   await page.addScriptTag({ path: path.join(__dirname, 'story_page.js') });
   const cdp = await context.newCDPSession(page);
-  return { browser, context, page, errors, cdp };
-}
-async function takeOver(page) { await page.evaluate(() => { window.__auto = false; }); await page.waitForTimeout(400); }
-
-(async () => {
-  const t0 = Date.now();
-  const { browser, page, errors, cdp } = await boot();
-  console.log('booted in', ((Date.now() - t0) / 1000).toFixed(0), 's');
+  // full-page capture with CDP (page.screenshot waits for real animation frames, which never come on the virtual
+  // clock); clip.scale = DSF gives device pixels (DOM text rasterised at that scale, crisp)
   const shot = async (file, scale) => {
     const r = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: Q, clip: { x: 0, y: 0, width: W, height: H, scale: scale || SCALE } });
     fs.writeFileSync(file, Buffer.from(r.data, 'base64'));
   };
-  if (SURVEY) {
-    const dir = path.join(__dirname, 'out', 'story_survey', SURVEY + '_' + W + 'x' + H);
-    fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
-    await takeOver(page);
-    await page.evaluate(() => SP.setup({ hud: true }));
-    if (SURVEY === 'prologue') {
-      await page.evaluate(() => { N.menus.quickStart = true; N.debug.newGame({ skipIntro: true }); N.player.money = 1000; SP.world(false); window.__pro = N.story.prologue(); });
+  return { browser, context, page, errors, cdp, shot };
+}
+async function takeOver(page) { await page.evaluate(() => { window.__auto = false; }); await page.waitForTimeout(400); }
+
+async function survey() {
+  const { browser, page, errors, shot } = await boot();
+  const dir = path.join(__dirname, 'out', 'story_survey', SURVEY + '_' + W + 'x' + H);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
+  await takeOver(page);
+  await page.evaluate(() => SP.setup({ hud: true }));
+  if (SURVEY === 'prologue') await page.evaluate(startPrologue, { W, H, SCALE, PORTRAIT, css: PORTRAIT ? PORTRAIT_CSS : '' });
+  const log = [];
+  const tS = Date.now();
+  if (process.env.STILLS) { // STILLS=f1,f2,...: full-res stills at these survey frames only
+    const fr = process.env.STILLS.split(',').map(Number).sort((a, b) => a - b);
+    let at = 0;
+    for (const f of fr) {
+      const ch = await page.evaluate(({ n, dt }) => SP.run(n, dt), { n: f - at, dt: DT });
+      at = f;
+      for (const [k, st] of ch) log.push(k + ' ' + JSON.stringify(st));
+      await shot(path.join(dir, 'f' + String(f).padStart(5, '0') + '.jpg'));
+      console.log('still', f, ((Date.now() - tS) / 1000).toFixed(0) + 's');
     }
-    const log = [];
-    const tS = Date.now();
-    if (process.env.PROFILE) {
-      for (let k = 0; k < 3; k++) {
-        const r = await page.evaluate(async (dt) => {
-          const t0 = performance.now(); let a = 0, b = 0, c = 0;
-          for (let i = 0; i < 30; i++) {
-            const t1 = performance.now(); window.__step(dt); const t2 = performance.now(); await SP.tick(); const t3 = performance.now(); SP.status(); c += performance.now() - t3; a += t2 - t1; b += t3 - t2;
-          }
-          return { total: (performance.now() - t0) / 30, step: a / 30, yield: b / 30, status: c / 30, anims: document.getAnimations().length, running: document.getAnimations().filter((x) => x.playState === 'running').length };
-        }, DT);
-        console.log('profile', JSON.stringify(r));
-      }
-      const r2 = await page.evaluate(() => { const m = {}; for (const a of document.getAnimations()) { const el = a.effect && a.effect.target; const k = (el ? (el.id || el.className || el.tagName) : '?') + ' ' + (a.animationName || a.transitionProperty || ''); m[k] = (m[k] || 0) + 1; } return m; });
-      console.log(JSON.stringify(r2).slice(0, 2000));
-      const t1 = Date.now(); await shot(path.join(dir, 'p.jpg')); console.log('shot', Date.now() - t1, 'ms');
-      const t2 = Date.now(); await shot(path.join(dir, 'p2.jpg')); console.log('shot2', Date.now() - t2, 'ms');
-      for (const [lab, fn] of [['30f', null], ['30f', null], ['30f no #game', () => { document.getElementById('game').style.visibility = 'hidden'; }], ['30f no #game', null], ['1f', null], ['30f nodraw', () => { window.__wd = N.world.draw; N.world.draw = () => {}; N.entities.draw = () => {}; }], ['30f nodraw', null]]) {
-        if (fn) await page.evaluate(fn);
-        const n = lab.startsWith('1f') ? 1 : 30;
-        const ts = Date.now(); await page.evaluate(({ n, dt }) => SP.step(n, dt), { n, dt: DT }); const te = Date.now();
-        await shot(path.join(dir, 'p3.jpg')); console.log(lab, 'step', te - ts, 'ms, shot', Date.now() - te, 'ms', JSON.stringify(await page.evaluate(() => [N.state.mode, SP.status().cs, N.render.stats && N.render.stats.ms])));
-      }
-      await browser.close();
-      return;
-    }
-    if (process.env.STILLS) { // STILLS=f1,f2,...: full-res stills at these survey frames only
-      const fr = process.env.STILLS.split(',').map(Number).sort((a, b) => a - b);
-      let at = 0;
-      for (const f of fr) {
-        const ch = await page.evaluate(({ n, dt }) => SP.run(n, dt), { n: f - at, dt: DT });
-        at = f;
-        for (const [k, st] of ch) log.push(k + ' ' + JSON.stringify(st));
-        await shot(path.join(dir, 'f' + String(f).padStart(5, '0') + '.jpg'));
-        console.log('still', f, ((Date.now() - tS) / 1000).toFixed(0) + 's');
-      }
-      fs.writeFileSync(path.join(dir, 'log.txt'), log.join('\n') + '\n');
-      await browser.close();
-      return;
-    }
+  } else {
     for (let f = 0; f < +(process.env.SURVEY_N || 2400); f += SURVEY_EVERY) {
       const ch = await page.evaluate(({ n, dt }) => SP.run(n, dt), { n: SURVEY_EVERY, dt: DT });
       for (const [fr, st] of ch) { log.push(fr + ' ' + JSON.stringify(st)); console.log(fr, JSON.stringify(st).slice(0, 260)); }
@@ -148,10 +190,53 @@ async function takeOver(page) { await page.evaluate(() => { window.__auto = fals
       if (SURVEY === 'prologue' && st && st.mode === 'play' && f > 100) break;
       if (f % 300 < SURVEY_EVERY) console.log('  frame', f, ((Date.now() - tS) / 1000).toFixed(0) + 's');
     }
-    fs.writeFileSync(path.join(dir, 'log.txt'), log.join('\n') + '\n');
-    console.log('survey done', errors.length, 'errors');
-    await browser.close();
-    return;
   }
+  fs.writeFileSync(path.join(dir, 'log.txt'), log.join('\n') + '\n');
+  console.log('survey done', errors.length, 'errors');
   await browser.close();
+}
+
+// Each segment runs in a fresh browser: the prologue starts from New Game, s_story from a clean game state.
+async function renderSegment(seg) {
+  const plan = PLANS[seg.id];
+  if (!plan) { console.log('no plan for', seg.id); return 0; }
+  const nf = seg.n * BF, total = plan.cuts.reduce((a, c) => a + c.n, 0);
+  if (total !== nf) throw new Error(seg.id + ': cuts give ' + total + ' frames, the segment needs ' + nf);
+  const tS = Date.now();
+  const { browser, page, errors, shot } = await boot();
+  console.log(seg.id, 'booted in', ((Date.now() - tS) / 1000).toFixed(0), 's');
+  await takeOver(page);
+  const dir = path.join(OUTD, seg.id);
+  if (!CUTS.length) fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  const arg = { W, H, SCALE, PORTRAIT, css: PORTRAIT ? PORTRAIT_CSS : '' };
+  let f = 0;
+  for (const cut of plan.cuts) {
+    const want = !CUTS.length || CUTS.includes(cut.name);
+    if (!want && !plan.sequential) { f += cut.n; continue; } // an independent moment: skip it entirely
+    if (cut.setup) console.log(' ', seg.id, cut.name, 'setup', JSON.stringify(await page.evaluate(cut.setup, arg)));
+    const k = await page.evaluate(({ spec, dt }) => SP.until(spec, dt), { spec: cut.anchor || {}, dt: DT });
+    if (k < 0) throw new Error(seg.id + ' ' + cut.name + ': anchor never came ' + JSON.stringify(cut.anchor));
+    if (cut.off) await page.evaluate(({ n, dt }) => SP.step(n, dt), { n: cut.off, dt: DT });
+    const first = await page.evaluate(() => SP.status());
+    if (!want) { await page.evaluate(({ n, dt }) => SP.step(n, dt), { n: cut.n, dt: DT }); f += cut.n; continue; }
+    for (let i = 0; i < cut.n; i++) {
+      if (cut.each) await page.evaluate(cut.each, Object.assign({ i, n: cut.n }, arg));
+      if (f % EVERY === 0) await shot(path.join(dir, String(f).padStart(5, '0') + '.jpg'));
+      f++;
+      await page.evaluate((dt) => SP.step(1, dt), DT);
+    }
+    const last = await page.evaluate(() => SP.status());
+    console.log(' ', seg.id, cut.name, 'frames', f - cut.n, '-', f - 1, '| anchor +' + k, '\n    first', JSON.stringify(first).slice(0, 300), '\n    last ', JSON.stringify(last).slice(0, 300), ((Date.now() - tS) / 1000).toFixed(0) + 's');
+  }
+  console.log(seg.id, 'done:', f, 'frames in', ((Date.now() - tS) / 1000).toFixed(0), 's; page errors', errors.length, errors.slice(0, 3));
+  await browser.close();
+  return errors.length;
+}
+
+(async () => {
+  if (SURVEY) return survey();
+  let nerr = 0;
+  for (const seg of TL.segments.filter((x) => x.kind === 'ui' && (!ONLY.length || ONLY.includes(x.id)))) nerr += await renderSegment(seg);
+  console.log('all done; page errors', nerr);
 })();
