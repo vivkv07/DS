@@ -42,8 +42,9 @@ const GAMES = {
   kite: { params: { difficulty: 0.4, seed: 11 }, pre: 400, preV: 108, fast: false },
   // ball bowled ~f70, PERFECT hit ~f90, "SIX! Main road tak!" at f127
   cricket: { params: { difficulty: 0.4, seed: 5 }, pre: 66 },
-  // the striker clacks into the cross (~f50), a goli flies out, "PHIR SE MAARO!", aim + flick again at f102
-  marbles: { params: { difficulty: 0.4, seed: 3 }, pre: 36 },
+  // the break: aim line, flick at f21, the striker clacks into the cross (~f35-45), the orange goli rolls out of
+  // the ring and counts (TUM 1/6 at f92); the shooter walks round to where the striker stopped
+  marbles: { params: { difficulty: 0.4, seed: 3 }, pre: 18 },
   // puris 13-14 eaten at f511 / f546 while TEEKHA climbs 32% -> 86%: red sweating face, steam
   panipuri: { params: { difficulty: 0.4, seed: 4 }, pre: 500 },
   // pick a line (f113), the BOLO! confidence needle, "₹25 -> ₹22" at f131 + the driver's reply

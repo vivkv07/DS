@@ -14,9 +14,9 @@
   // view: 'tps' | 'fps' | 'top'.  at: place id | [x, y].  veh: vehicle type | null (foot).  spd: u/s.  dir: preferred heading
   const CLIPS = {
     cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', spd: 105, dir: 0, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.2 } },
-    top_charminar: { view: 'top', at: 'charminar_plaza', time: [11, 0], veh: 'cycle', spd: 115, dir: -1.6, zoom: 1.3 },
+    top_charminar: { view: 'top', at: 'charminar_plaza', time: [11, 0], veh: 'cycle', spd: 115, dir: -1.6 },
     auto_tankbund: { view: 'tps', at: 'tank_bund', time: [17, 25], veh: 'auto', spd: 130, dir: -1.2, prefer: 'bund' },
-    top_chase: { view: 'top', at: 'abids', time: [12, 30], veh: null, spd: 82, dir: 0, run: true, wanted: 3, zoom: 1.3 },
+    top_chase: { view: 'top', at: 'abids', time: [12, 30], veh: null, spd: 82, dir: 0, run: true, wanted: 3 },
     scooty_rain: { view: 'fps', at: 'abids', time: [21, 15], veh: 'scooty', spd: 120, dir: 1.5, rain: 0.9 },
     top_rain: { view: 'top', at: 'koti', time: [20, 30], veh: 'cycle', spd: 100, dir: -1.5, rain: 0.9 },
     pigeons: { view: 'tps', at: 'charminar_plaza', time: [8, 10], veh: null, spd: 80, dir: 2.6, run: true, scare: 8 },
@@ -43,7 +43,7 @@
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
     // in-world playground games (N.playgroundGames): a real match with Chinnu and the AI kids, scripted inside the window
     lingocha: { view: 'tps', at: 'playground_home', time: [12, 40], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: -28, h1: 14, crane: 45, f0: 21, s0: 8, h0: 10.5, lk0: 0.75 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
-    marampitti: { view: 'tps', at: 'playground_2', time: [16, 50], veh: null, spd: 0, pg: { game: 'marampitti', place: 'playground_2', seed: 2, winds: [[0, 0.9, 0]], dodges: [21], victim: { back: 6.5, lat: 0 }, camLag: 0.2, fixCam: true, cam: { back: 12, side: -5.5, h: 9, fov: 54, look: 0.45 }, params: { kids: 8, difficulty: 0.5 } } },
+    marampitti: { view: 'tps', at: 'playground_2', time: [16, 50], veh: null, spd: 0, pg: { game: 'marampitti', place: 'playground_2', seed: 2, winds: [[0, 0.9, 0]], dodges: [21], victim: { back: 6.5, lat: 0 }, camLag: 0.2, fixCam: 0.6, cam: { back: 13, side: 7, h: 9.5, fov: 54, look: 0.4 }, params: { kids: 8, difficulty: 0.5 } } },
     charminar_night_fps: { view: 'fps', at: 'pathergatti', time: [21, 0], veh: 'cycle', spd: 105, toward: 'charminar' },
   };
 
@@ -335,7 +335,10 @@
       want = { x: p.x - Math.cos(a) * (cg.back || 11) + sx * (cg.side || 3), y: p.y - Math.sin(a) * (cg.back || 11) + sy * (cg.side || 3), h: cg.h || 7.5, tx, ty, th: 2.2, fov: cg.fov || 55 };
     }
     // fixCam: the camera stays where the shot started (only the look follows Chinnu's hop)
-    if (P.G.fixCam && P.cam && !warm) { want.x = P.cam.x; want.y = P.cam.y; want.h = P.cam.h; }
+    if (P.G.fixCam != null && !warm) {
+      if (!P.cam0) P.cam0 = { x: P.cam.x, y: P.cam.y, h: P.cam.h };
+      const k = P.G.fixCam; want.x = lerp(want.x, P.cam0.x, k); want.y = lerp(want.y, P.cam0.y, k); want.h = lerp(want.h, P.cam0.h, k);
+    }
     if (!P.cam || warm) P.cam = Object.assign({}, want);
     else { const c = P.cam, r = P.G.camLag || 0.12; for (const key of ['x', 'y', 'h', 'tx', 'ty', 'th', 'fov']) c[key] += (want[key] - c[key]) * r; }
     STAGE.cam(P.cam);

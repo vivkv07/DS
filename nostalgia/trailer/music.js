@@ -3,10 +3,13 @@
  *   window.renderTrailerAudio(timeline, opts) -> Promise<{wav: base64, stats}>
  *   opts.raw: no master processing (fixed gain, for stem measurement); opts.solo: 'drums'|'bass'|'synth'|'fx'|'sfx';
  *   opts.statsOnly: skip the WAV.
- * Sections (bars of 4 beats = 2.4 s, bar n starts at beat 4(n-1)), following timeline.json v2:
- *   1 cards (hits b0, b2) | 2-3 drone reveal | 4-8 EXPLORE (groove enters, hook) | 9-20 PLAY (full beat, an
- *   activity SFX on every cut) | 21-25 CELEBRATE (euphoric, toms) | 26-28 SURVIVE (half-time, rain, siren, thunder)
- *   | 29-31 finale (half-time, hook in full) | 32-34 title (pops b124-131, SLAM b132) | 35-36 end + 3-beat tail.
+ * Sections (bars of 4 beats = 2.4 s, bar n starts at beat 4(n-1)), following timeline.json v2.1 (160 + 3 beats = 97.8 s):
+ *   1-3 cold open on the prologue (tape world: deck clunk, warped hook, REWIND 2026->2003) | 4-5 drone reveal (b12)
+ *   | 6-10 EXPLORE (b20, groove enters, hook) | 11-12 STORY (b40: filtered lo-fi walkman hook, REC at b44, build)
+ *   | 13-24 PLAY (b48, full beat, an activity SFX on every cut) | 25-29 CELEBRATE (b96, euphoric, toms)
+ *   | 30-32 SURVIVE (b116, half-time, rain, siren, thunder b124) | 33-35 finale (b128, half-time, hook in full)
+ *   | 36-38 title (pops b140-147, SLAM b148) | 39-40 end card (b152) + 3-beat tail.
+ * The v2 arrangement blocks are reused through a bar offset (BOFF) so each block lands on its v2.1 bars.
  * Harmony: explore/play loop Fm Db Bbm C; celebrate Db Ab Eb Fm; finale/title Db Eb -> Fm.
  * Hook: a 3-3-2 (tresillo) bell-pluck motif, the same rhythm in every phrase.
  * Master: gentle glue comp in the graph, then (in JS) a look-ahead peak limiter + BS.1770 loudness match to
@@ -16,8 +19,10 @@
   'use strict';
   const SR = 48000;
   const BPM = 100, B = 60 / BPM, BAR = 4 * B, S16 = B / 4;
-  const bar = (n) => (n - 1) * BAR;          // start time of bar n (1-based)
-  const tb = (b) => b * B;                     // time of beat b (0-based)
+  let BOFF = 0;                                // bar offset while arranging a block (v2 blocks re-placed for v2.1)
+  const bar = (n) => (n - 1 + BOFF) * BAR;     // start time of bar n (1-based)
+  const tb = (b) => (b + 4 * BOFF) * B;        // time of beat b (0-based)
+  const tbA = (b) => b * B;                    // absolute beat time (timeline cues), ignores BOFF
   const st = (n, s) => bar(n) + s * S16;       // bar n, 16th step s
   const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
   let ac, rnd;
@@ -49,7 +54,7 @@
   function panner(v, dest) { const p = ac.createStereoPanner(); p.pan.value = v || 0; if (dest) p.connect(dest); return p; }
   function filt(type, f, q, dest) { const b = ac.createBiquadFilter(); b.type = type; b.frequency.value = f; if (q != null) b.Q.value = q; if (dest) b.connect(dest); return b; }
 
-  const MIX = { master: 0.55, drums: 0.26, bass: 0.125, synth: 1.12, fx: 0.34, sfx: 0.5, verb: 0.5, big: 0.42, delay: 0.42 };
+  const MIX = { master: 0.55, drums: 0.26, bass: 0.125, synth: 1.12, fx: 0.34, sfx: 0.5, lofi: 0.35, verb: 0.5, big: 0.42, delay: 0.42 };
   function makeBuses(raw) {
     const master = gain(raw ? 1 : MIX.master);
     // gentle glue only (the peak limiter runs in JS after the render)
@@ -69,7 +74,11 @@
     const fb = gain(0.36); const dlF = filt('bandpass', 2000, 0.5);
     BUS.delay = gain(1); BUS.delay.connect(dl); dl.connect(dlF); dlF.connect(fb); fb.connect(dl); dlF.connect(gain(MIX.delay, master));
     // groups
-    BUS.drums = gain(MIX.drums); const dsat = shaper(1.6); BUS.drums.connect(dsat); dsat.connect(master);
+    BUS.drums = gain(MIX.drums); const dsat = shaper(1.6); BUS.drums.connect(dsat);
+    BUS.drumLP = filt('lowpass', 20000, 0.7); dsat.connect(BUS.drumLP); BUS.drumLP.connect(master); // closes for the story beat
+    // tape / walkman voice: band-limited, a little saturated
+    BUS.lofi = gain(MIX.lofi); const lhp = filt('highpass', 260, 0.7), llp = filt('lowpass', 3400, 0.7), lsat = shaper(1.8);
+    BUS.lofi.connect(lhp); lhp.connect(llp); llp.connect(lsat); lsat.connect(master);
     BUS.bassDuck = gain(1, master); BUS.bass = gain(MIX.bass, BUS.bassDuck); // 808 tucks under each kick
     BUS.duck = gain(1, master);            // sidechained synths
     BUS.synthLP = filt('lowpass', 20000, 0.8); BUS.synthLP.connect(BUS.duck);
@@ -449,6 +458,81 @@
     g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
   }
 
+  // ---- tape world (prologue + story): wow/flutter LFO shared by all tape notes, so the whole 'tape' drifts together
+  let WOW = null;
+  function makeWow(t0, t1) {
+    const w = gain(1);
+    for (const [f, cents] of [[0.55, 22], [6.8, 5]]) { const o = ac.createOscillator(); o.frequency.value = f; o.connect(gain(cents, w)); o.start(t0); o.stop(t1); }
+    return w;
+  }
+  function tapeNote(t, m, v, o) { // a warm electric-piano tine on a worn cassette -> lofi bus
+    o = o || {}; v = v == null ? 1 : v;
+    const f = mtof(m), dec = o.dec || 1.8;
+    const out = gain(0); const p = panner(o.pan || 0); out.connect(p); p.connect(BUS.lofi); p.connect(gain(0.22, BUS.verb)); p.connect(gain(o.delay == null ? 0.18 : o.delay, BUS.delay));
+    const c = osc('sine', f, t, t + dec + 0.2, out);
+    const mg = gain(0); const mod = osc('sine', f, t, t + dec + 0.2, mg); mg.connect(c.frequency);
+    mg.gain.setValueAtTime(f * 1.3, t); mg.gain.exponentialRampToValueAtTime(f * 0.06, t + 0.45);
+    const c2 = osc('triangle', f * 2, t, t + dec + 0.2, gain(0.1, out));
+    if (WOW) for (const x of [c, mod, c2]) WOW.connect(x.detune);
+    out.gain.setValueAtTime(0, t); out.gain.linearRampToValueAtTime(0.2 * v, t + 0.005); out.gain.exponentialRampToValueAtTime(0.001, t + dec);
+  }
+  function deckClunk(t, v) { // cassette deck key: click, transport thunk, latch, a little motor spin-up
+    v = v || 1;
+    const cg = gain(0, BUS.sfx); const cb = filt('bandpass', 3400, 1, cg); noise(t, 0.015, cb); cg.gain.setValueAtTime(0.45 * v, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.012);
+    const tg = gain(0, BUS.sfx); const o = osc('sine', 120, t + 0.012, t + 0.2, tg); o.frequency.exponentialRampToValueAtTime(55, t + 0.08);
+    tg.gain.setValueAtTime(0.7 * v, t + 0.012); tg.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    const ng = gain(0, BUS.sfx); const nb = filt('bandpass', 700, 1.5, ng); noise(t + 0.012, 0.07, nb); ng.gain.setValueAtTime(0.6 * v, t + 0.012); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+    const lg = gain(0, BUS.sfx); const lb = filt('bandpass', 2300, 3, lg); noise(t + 0.075, 0.03, lb); lg.gain.setValueAtTime(0.35 * v, t + 0.075); lg.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    const mg = gain(0, BUS.sfx); const mb = filt('bandpass', 380, 4, mg); noise(t + 0.08, 0.4, mb);
+    mg.gain.setValueAtTime(0.0001, t + 0.08); mg.gain.exponentialRampToValueAtTime(0.09 * v, t + 0.25); mg.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+  }
+  function tapeHiss(t0, t1, v) {
+    const hp = filt('highpass', 2400, 0.5), lp = filt('lowpass', 9000, 0.5, null); hp.connect(lp);
+    const g = gain(0); lp.connect(g); g.connect(BUS.fx);
+    noise(t0, t1 - t0 + 0.1, hp, 0.95);
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.11 * (v || 1), t0 + 0.12); g.gain.setValueAtTime(0.11 * (v || 1), t1 - 0.5); g.gain.linearRampToValueAtTime(0, t1);
+  }
+  function rewind(t0, t1, v) { // REWIND: tape whir sweeping up, a fluttering squeal, garbled backwards hook blips
+    v = v || 1;
+    const bp = filt('bandpass', 500, 2); const g = gain(0); bp.connect(g); g.connect(BUS.sfx); g.connect(gain(0.2, BUS.verb));
+    noise(t0, t1 - t0 + 0.05, bp, 1.6);
+    bp.frequency.setValueAtTime(500, t0); bp.frequency.exponentialRampToValueAtTime(3800, t1);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.12 * v, t0 + 0.25); g.gain.exponentialRampToValueAtTime(0.3 * v, t1 - 0.05); g.gain.linearRampToValueAtTime(0, t1);
+    const sb = filt('bandpass', 800, 5); const sg = gain(0); sb.connect(sg); sg.connect(BUS.sfx);
+    const so = osc('sawtooth', 220, t0, t1 + 0.05, sb); so.frequency.exponentialRampToValueAtTime(1760, t1);
+    sb.frequency.setValueAtTime(440, t0); sb.frequency.exponentialRampToValueAtTime(3520, t1);
+    const fl = ac.createOscillator(); fl.frequency.value = 11; const fg = gain(45); fl.connect(fg); fg.connect(so.detune); fl.start(t0); fl.stop(t1 + 0.05);
+    sg.gain.setValueAtTime(0.0001, t0); sg.gain.exponentialRampToValueAtTime(0.05 * v, t1 - 0.05); sg.gain.linearRampToValueAtTime(0, t1);
+    const rev = HK.A2.concat(HK.A1).map((x) => x[1]).reverse();
+    let tt = t0 + 0.15, k = 0;
+    while (tt < t1 - 0.1) {
+      const u = (tt - t0) / (t1 - t0), m = rev[k % rev.length] + 12 + Math.round(u * 12);
+      const bg = gain(0); const p = panner(k % 2 ? 0.3 : -0.3, BUS.sfx); bg.connect(p);
+      osc('square', mtof(m), tt, tt + 0.05, filt('lowpass', 3000, null, bg));
+      bg.gain.setValueAtTime(0.022 * v * (0.5 + u), tt); bg.gain.exponentialRampToValueAtTime(0.0005, tt + 0.045);
+      tt += 0.13 - 0.085 * u; k++;
+    }
+  }
+  function yearTicks(t0, t1, n) { // the year counter spinning 2026 -> 2003: n clicks, fast then settling
+    for (let k = 0; k < n; k++) {
+      const u = k / (n - 1), t = t0 + (t1 - t0) * (1 - (1 - u) * (1 - u)), last = k === n - 1;
+      const g = gain(0); const p = panner(k % 2 ? 0.25 : -0.25, BUS.sfx); g.connect(p);
+      const b = filt('bandpass', last ? 3200 : 4600, 5, g); noise(t, 0.012, b); osc('sine', last ? 2093 : 2637, t, t + 0.03, gain(0.15, g));
+      g.gain.setValueAtTime((last ? 0.5 : 0.28), t); g.gain.exponentialRampToValueAtTime(0.001, t + (last ? 0.05 : 0.02));
+    }
+  }
+  function recBlip(t) { // REC: a two-tone beep (C6 -> F6) + tape-counter ticks on 16ths
+    for (const [d, m, len] of [[0, 84, 0.07], [0.09, 89, 0.13]]) {
+      const g = gain(0); g.connect(BUS.sfx); g.connect(gain(0.3, BUS.delay));
+      osc('sine', mtof(m), t + d, t + d + len + 0.02, g); osc('square', mtof(m), t + d, t + d + len + 0.02, gain(0.08, g));
+      g.gain.setValueAtTime(0, t + d); g.gain.linearRampToValueAtTime(0.1, t + d + 0.004); g.gain.setValueAtTime(0.1, t + d + len - 0.01); g.gain.linearRampToValueAtTime(0, t + d + len);
+    }
+    for (let k = 0; k < 8; k++) {
+      const tt = t + B + k * S16, g = gain(0); const p = panner(k % 2 ? 0.35 : -0.35, BUS.sfx); g.connect(p);
+      const b = filt('bandpass', 3000, 5, g); noise(tt, 0.008, b); g.gain.setValueAtTime(0.2, tt); g.gain.exponentialRampToValueAtTime(0.001, tt + 0.012);
+    }
+  }
+
   /* ------------------------------------------------------------ just-in-time scheduling
    * Every voice's nodes are created shortly before it plays (OfflineAudioContext.suspend), so the render graph only
    * holds what is sounding: ~10x faster than building all ~20k nodes up front. Ducking stays eager. */
@@ -466,6 +550,7 @@
     bass808 = defer(bass808); drone = defer(drone); supersaw = defer(supersaw); pad = defer(pad); pluck = defer(pluck);
     hookNote = defer(hookNote); leadSaw = defer(leadSaw); bell = defer(bell); braam = defer(braam); riser = defer(riser);
     revCymbal = defer(revCymbal, (te, d) => te - d); whoosh = defer(whoosh, (tm, d) => tm - d * 0.6);
+    tapeNote = defer(tapeNote); deckClunk = defer(deckClunk); tapeHiss = defer(tapeHiss); rewind = defer(rewind); yearTicks = defer(yearTicks); recBlip = defer(recBlip);
     downlifter = defer(downlifter); air = defer(air); rain = defer(rain); siren = defer(siren); crowd = defer(crowd); pop = defer(pop);
     // per-cue trims (measured against the mix in each cue's window: aim ~6-10 dB under it, transient-led)
     const TRIM = { kite: 3.2, lingocha: 0.7, cricket: 1.6, marbles: 2.2, marampitti: 1.8, panipuri: 1, bargain: 1, brickgame: 2.2, antenna: 1, clap: 2.6 };
@@ -538,25 +623,49 @@
   /* ------------------------------------------------------------ the arrangement */
   function arrange(TL) {
     const seg = (id) => TL.segments.find((s) => s.id === id) || {};
-    const LP = BUS.synthLP.frequency;
-    // synth-group filter automation, strictly chronological
-    LP.setValueAtTime(450, 0);
-    LP.setValueAtTime(450, tb(4)); LP.exponentialRampToValueAtTime(4500, tb(11.75)); LP.linearRampToValueAtTime(20000, tb(12));
-    LP.setValueAtTime(20000, tb(98)); LP.exponentialRampToValueAtTime(800, tb(100));
-    LP.setValueAtTime(800, tb(104)); LP.exponentialRampToValueAtTime(1500, tb(108));
-    LP.setValueAtTime(1500, tb(109)); LP.exponentialRampToValueAtTime(7000, tb(111.9)); LP.linearRampToValueAtTime(20000, tb(112));
-    LP.setValueAtTime(20000, tb(123.9)); LP.linearRampToValueAtTime(2200, tb(124)); LP.exponentialRampToValueAtTime(12000, tb(131.9)); LP.linearRampToValueAtTime(20000, tb(132));
-    LP.setValueAtTime(20000, tb(136)); LP.exponentialRampToValueAtTime(2200, tb(146));
+    const LP = BUS.synthLP.frequency, DLP = BUS.drumLP.frequency;
+    BOFF = 0;
+    // synth-group filter automation (absolute v2.1 beats), strictly chronological
+    LP.setValueAtTime(2400, 0);
+    LP.setValueAtTime(2400, tb(11.9)); LP.linearRampToValueAtTime(450, tb(12)); LP.exponentialRampToValueAtTime(4500, tb(19.75)); LP.linearRampToValueAtTime(20000, tb(20));
+    LP.setValueAtTime(20000, tb(38)); LP.exponentialRampToValueAtTime(1500, tb(40));
+    LP.setValueAtTime(1500, tb(44)); LP.exponentialRampToValueAtTime(9000, tb(47.9)); LP.linearRampToValueAtTime(20000, tb(48));
+    LP.setValueAtTime(20000, tb(114)); LP.exponentialRampToValueAtTime(800, tb(116));
+    LP.setValueAtTime(800, tb(120)); LP.exponentialRampToValueAtTime(1500, tb(124));
+    LP.setValueAtTime(1500, tb(125)); LP.exponentialRampToValueAtTime(7000, tb(127.9)); LP.linearRampToValueAtTime(20000, tb(128));
+    LP.setValueAtTime(20000, tb(139.9)); LP.linearRampToValueAtTime(2200, tb(140)); LP.exponentialRampToValueAtTime(12000, tb(147.9)); LP.linearRampToValueAtTime(20000, tb(148));
+    LP.setValueAtTime(20000, tb(152)); LP.exponentialRampToValueAtTime(2200, tb(162));
+    // drum-bus low-pass: the story beat's drums are muffled, opening into the PLAY drop
+    DLP.setValueAtTime(20000, 0); DLP.setValueAtTime(20000, tb(38.5)); DLP.exponentialRampToValueAtTime(1300, tb(40));
+    DLP.setValueAtTime(1300, tb(45)); DLP.exponentialRampToValueAtTime(16000, tb(47.9)); DLP.linearRampToValueAtTime(20000, tb(48));
+    WOW = makeWow(0, tb(48));
 
-    /* ---- bar 1 (b0-3): cards. Dark air, sub drone, a hit on each card */
-    drone(0, tb(12), 29, 0.8);
-    air(0, tb(12), 1);
-    pad(0, [41, 48, 53, 56], tb(4) - 0.1, 0.07, 700, 0.8);
-    hitText(tb(0), 1); hitText(tb(2), 1.1);
-    revCymbal(tb(2), 0.6, 0.45);
-    /* ---- bars 2-3 (b4-11): drone reveal over Charminar at dawn: pad + hook tease, filter opening, riser */
+    /* ---- bars 1-3 (b0-11): cold open on the game's prologue (VHS PLAY 2026, the cassette from Immu, "Gurthunda?",
+     * REWIND 2026 -> 2003). Intimate tape world: hiss, a deck PLAY clunk, the hook on a warped cassette, then the
+     * REWIND whir + year counter rising into a riser that resolves on the sunrise reveal at b12 */
+    deckClunk(tb(0), 1);
+    tapeHiss(tb(0) + 0.05, tb(12) + 0.3, 1);
+    pad(tb(0.5), [53, 56, 60], tb(4) - tb(0.5), 0.04, 1000, 1.4);
+    pad(tb(4), [49, 53, 56, 60], tb(3.5), 0.042, 1000, 0.8);
+    drone(tb(4), tb(4), 29, 0.35);
+    for (const [s, m] of HK.A1) tapeNote(tb(1) + s * S16, m, 0.9, { pan: (s % 6 - 2.5) * 0.06 });
+    tapeNote(tb(1), 60, 0.45, { dec: 2.4 }); tapeNote(tb(1), 53, 0.4, { dec: 2.4 });
+    // "Gurthunda?" (remember?): the answer phrase, left hanging
+    for (const [s, m] of HK.A2.slice(0, 4)) tapeNote(tb(5) + s * S16, m, 0.85, { pan: (s % 6 - 2.5) * 0.06 });
+    tapeNote(tb(5), 61, 0.4, { dec: 2.6 }); tapeNote(tb(5), 49, 0.4, { dec: 2.6 });
+    tapeNote(tb(7) + 0.02, 72, 0.5, { dec: 2.4, delay: 0.35 });
+    // REWIND (b8-11)
+    deckClunk(tb(8), 0.85);
+    rewind(tb(8) + 0.1, tb(12) - 0.03, 2.4);
+    yearTicks(tb(8.4), tb(11.5), 24);
+    riser(tb(9), tb(12) - 0.02, 1.0);
+    revCymbal(tb(12), 1.0, 0.7);
+
+    /* ---- bars 4-5 (b12-19): drone reveal over Charminar at sunrise: pad + hook tease, filter opening, riser
+     * (the v2 bars 2-3 block, offset by 2 bars) */
+    BOFF = 2;
     whoosh(tb(4) + 0.15, 1.3, 0.75, 1);
-    impact(tb(4), 0.35);
+    impact(tb(4), 0.5); crash(tb(4), 0.35);
     pad(bar(2), CH.Fm.v.concat([72]), BAR, 0.08, 1600, 0.4); pad(bar(3), CH.Db.v.concat([72]), BAR - 0.1, 0.08, 2200, 0.3);
     for (const [s, m] of [[0, 72], [3, 72], [6, 75], [8, 77]]) hookNote(st(2, s), m, 0.6, 0, { dec: 1.6, verb: 0.4 });
     for (const [s, m] of [[0, 77], [3, 75], [6, 73], [8, 72]]) hookNote(st(3, s), m, 0.75, 0, { dec: 1.6, verb: 0.4 });
@@ -567,7 +676,7 @@
     riser(tb(7), tb(12) - 0.02, 0.8);
     revCymbal(tb(12), 1.0, 0.7);
 
-    /* ---- bars 4-8 (b12-31): EXPLORE. The groove enters laid-back; the hook is introduced */
+    /* ---- bars 6-10 (b20-39): EXPLORE. The groove enters laid-back; the hook is introduced (v2 bars 4-7, +2 bars) */
     impact(tb(12), 0.55); crash(tb(12), 0.6);
     for (let n = 4; n <= 7; n++) {
       const [chord, ph] = LOOP_A[(n - 4) % 4];
@@ -576,17 +685,42 @@
       pad(bar(n), CH[chord].v, BAR - 0.05, 0.055, 1500, 0.15);
       hookBar(n, ph, { hook: 0.85 });
     }
-    // bar 8 (b28-31): Db | C, build into PLAY
-    grooveBar(8, { v: 0.85, hv: 0.75, kicks: [0, 7], swing: true, lazy: true, hats: 16, open: [], duck: 0.4 });
-    bassLine(8, 'Db', [0, 7], { endStep: 8 }); bassLine(8, 'C', [8], { v: 0.9 });
-    pad(bar(8), CH.Db.v, BAR / 2, 0.065, 1500, 0.1); pad(st(8, 8), CH.C.v, BAR / 2 - 0.05, 0.07, 2200, 0.1);
-    arpBar(8, 'Db', 0.45, 3000, 1, 0, 8); arpBar(8, 'C', 0.6, 4500, 1, 8, 16);
-    for (let k = 0; k < 8; k++) snare(st(8, 8) + k * S16, 0.18 + k * 0.05, 0.15, k < 4);
-    for (let k = 0; k < 6; k++) snare(st(8, 14) + k * S16 / 3, 0.4 + k * 0.05, 0.15, true);
-    riser(tb(24), tb(32) - 0.02, 0.75);
-    revCymbal(tb(32), 0.9, 0.7);
+    BOFF = 0;
+    // bar 10 (b36-39): Fm, the groove thins out and the filters close into the story beat
+    grooveBar(10, { v: 0.8, hv: 0.75, kicks: [0, 7], snares: [4], swing: true, lazy: true, hatExtra: [0, 2, 4, 6, 7], duck: 0.4 });
+    bassLine(10, 'Fm', [0, 7], { endStep: 11, v: 0.75 });
+    pad(bar(10), CH.Fm.v, BAR - 0.05, 0.055, 1500, 0.15);
+    hookBar(10, 'A1', { hook: 0.8 });
+    downlifter(tb(38), B * 2, 0.55);
 
-    /* ---- bars 9-20 (b32-79): PLAY. Full beat, three 4-bar loops building */
+    /* ---- bars 11-12 (b40-47): STORY. Immu's spy-tape clue on the walkman, the REC moment at b44, then a build */
+    deckClunk(tb(40), 0.6);
+    tapeHiss(tb(40) + 0.05, tb(47.5), 0.75);
+    pad(bar(11), CH.Db.v, BAR - 0.05, 0.05, 1300, 0.3);
+    bass808(tb(40), 37, BAR * 0.92, 29, 0.25, 0.6);
+    for (const [s, v] of [[0, 0.6], [7, 0.4], [10, 0.5]]) kick(st(11, s), v, false, 0.3);
+    for (const s of [4, 12]) rim(st(11, s) + 0.01, 0.9, 0.2);
+    for (const s of [2, 6, 10, 14]) shaker(st(11, s), 0.6, -0.3);
+    for (const [s, m] of HK.B1) tapeNote(st(11, s), m, 0.85, { pan: (s % 6 - 2.5) * 0.06, delay: 0.3 });
+    // b44: REC (two-tone beep, a heavier deck clunk, the tape counter ticking)
+    deckClunk(tb(44) - 0.05, 0.7);
+    recBlip(tb(44));
+    for (const [s, m] of HK.A3.slice(0, 4)) tapeNote(st(12, s), m, 0.7, { delay: 0.3 });
+    // build into the PLAY drop at b48: Bbm | C
+    pad(bar(12), CH.Bbm.v, BAR / 2, 0.055, 1500, 0.1); pad(st(12, 8), CH.C.v, BAR / 2 - 0.05, 0.065, 2400, 0.1);
+    bass808(tb(44), 34, B * 1.9, 37, 0.25, 0.7); bass808(tb(46), 36, B * 1.8, 34, 0.2, 0.85);
+    kick(tb(44), 0.6, false, 0.35); kick(st(12, 7), 0.5, false, 0.35);
+    for (let s = 0; s < 8; s += 2) hat(st(12, s), 0.35, false, 0.2);
+    for (let s = 8; s < 16; s++) hat(st(12, s), 0.3 + (s - 8) * 0.05, false, 0.2);
+    arpBar(12, 'Bbm', 0.35, 2600, 1, 0, 8); arpBar(12, 'C', 0.55, 4500, 1, 8, 16);
+    for (let k = 0; k < 8; k++) snare(st(12, 8) + k * S16, 0.18 + k * 0.05, 0.15, k < 4);
+    for (let k = 0; k < 6; k++) snare(st(12, 14) + k * S16 / 3, 0.4 + k * 0.05, 0.15, true);
+    riser(tb(44), tb(48) - 0.02, 0.75);
+    revCymbal(tb(48), 0.9, 0.7);
+
+    /* ---- everything from PLAY on is the v2 arrangement shifted by +4 bars (+16 beats) */
+    BOFF = 4;
+    /* ---- v2.1 bars 13-24 (b48-95): PLAY. Full beat, three 4-bar loops building */
     impact(tb(32), 0.75); crash(tb(32), 0.8);
     for (let n = 9; n <= 20; n++) {
       const loop = Math.floor((n - 9) / 4), [chord, ph] = LOOP_A[(n - 9) % 4];
@@ -603,7 +737,7 @@
       if (loop === 1) { hookBar(n, ph, { hook: 0.9, lead: 0.55 }); arpBar(n, chord, 0.32, 3000, 1); }
       if (loop === 2) { hookBar(n, ph, { hook: 0.9, lead: 0.7, bell: 0.2 }); arpBar(n, chord, 0.4, 4200, 1); supersaw(bar(n), CH[chord].v, BAR - 0.03, { v: 0.05, cut0: 1200, cut1: 3500, cutS: 2000 }); }
     }
-    // bar 20 (b76-79): the beat drops away for the Golconda clap echo, then a festive tom fill into CELEBRATE
+    // bar 24 (b92-95): the beat drops away for the Golconda clap echo, then a festive tom fill into CELEBRATE
     kick(tb(76), 1, true, 0.5); bass808(tb(76), 36, B * 1.9, null, null, 0.9);
     pad(bar(20), CH.C.v.concat([67]), BAR - 0.05, 0.07, 2600, 0.1);
     hookNote(tb(76), 79, 0.6, 0, { dec: 1.6 }); hookNote(tb(77) + S16 * 2, 76, 0.5, 0, { dec: 1.4 });
@@ -614,7 +748,7 @@
     riser(tb(76.5), tb(80) - 0.02, 0.6);
     revCymbal(tb(80), 0.8, 0.8);
 
-    /* ---- bars 21-25 (b80-99): CELEBRATE. Euphoric: Db Ab Eb Fm, stacked claps, toms in the Ganesh bars */
+    /* ---- v2.1 bars 25-29 (b96-115): CELEBRATE. Euphoric: Db Ab Eb Fm, stacked claps, toms in the Ganesh bars */
     impact(tb(80), 0.85); crash(tb(80), 1); crash(tb(88), 0.6); crash(tb(92), 0.55); crash(tb(96), 0.6);
     for (let n = 21; n <= 24; n++) {
       const [chord, ph] = LOOP_B[(n - 21) % 4];
@@ -632,7 +766,7 @@
         if (n === 22) for (let s = 12; s < 16; s++) tom(st(n, s), 53 - (s - 12) * 2, 0.6 + (s - 12) * 0.08, 0.2);
       }
     }
-    // bar 25 (b96-99, Numaish): Db | C, then the floor drops into SURVIVE
+    // bar 29 (b112-115, Numaish): Db | C, then the floor drops into SURVIVE
     grooveBar(25, { kicks: [0, 3], hats: 16, ghosts: [7], open: [2, 6], duck: 0.55 });
     for (const s of [4]) { clap(st(25, s) + 0.012, 0.6, -0.5, 0.4, 1100); clap(st(25, s) + 0.02, 0.6, 0.5, 0.4, 1500); }
     bassLine(25, 'Db', [0, 3], { endStep: 8 });
@@ -643,7 +777,7 @@
     bass808(st(25, 8), 36, B * 2 - 0.05, 37, 0.5, 0.8);
     downlifter(tb(98), B * 2, 0.8);
 
-    /* ---- bars 26-28 (b100-111): SURVIVE. Half-time, filtered, rain; siren on the chase; thunder at b108 */
+    /* ---- v2.1 bars 30-32 (b116-127): SURVIVE. Half-time, filtered, rain; siren on the chase; thunder at b124 */
     impact(tb(100), 0.8); crash(tb(100), 0.5);
     siren(tb(100), tb(104), 1);
     rain(tb(100), tb(112) + 0.5, 0.55, 1.1, tb(104));
@@ -654,7 +788,7 @@
       for (let s = 0; s < 16; s += 2) pluck(st(n, s), (s % 6 === 0 ? 72 : 67), 0.5 + (s % 4 === 0 ? 0.2 : 0), s % 4 ? 0.3 : -0.3, 2500); // ticking ostinato
     }
     whoosh(tb(104), 0.5, 0.35, -1);
-    // bar 28 (b108-111): the lightning strike; drums out; C pedal; build into the finale
+    // bar 32 (b124-127): the lightning strike; drums out; C pedal; build into the finale
     thunder(tb(108) + 0.1, 1.4);
     bass808(tb(108) + 0.1, 36, BAR * 0.55, null, null, 0.9);
     pad(bar(28), CH.C.v.concat([67, 72]), BAR - 0.1, 0.085, 2400, 0.4);
@@ -664,7 +798,7 @@
     riser(tb(108.5), tb(112) - 0.02, 0.85);
     revCymbal(tb(112), 1.1, 0.85);
 
-    /* ---- bars 29-31 (b112-123): finale. Half-time, wide pads, the hook in full glory, building */
+    /* ---- v2.1 bars 33-35 (b128-139): finale. Half-time, wide pads, the hook in full glory, building */
     impact(tb(112), 0.9); crash(tb(112), 1); crash(tb(116), 0.6); crash(tb(120), 0.7);
     pad(tb(112), [41, 53, 56, 60, 65], BAR * 3 - 0.2, 0.06, 2600, 0.6);
     for (const [n, chord, ph] of [[29, 'Db', 'B1'], [30, 'Eb', 'B3'], [31, 'Fm', 'B4']]) {
@@ -681,10 +815,10 @@
     riser(tb(118), tb(124) - 0.02, 0.6);
     revCymbal(tb(124), 0.6, 0.5);
 
-    /* ---- bars 32-34 (b124-135): title. A rising pop on every beat b124..b131, then the SLAM */
-    const title = TL.segments.find((s) => s.kind === 'title') || { pops: [124, 125, 126, 127, 128, 129, 130, 131], slam: 132 };
+    /* ---- v2.1 bars 36-38 (b140-151): title. A rising pop on every beat b140..b147, then the SLAM at b148 */
+    const title = TL.segments.find((s) => s.kind === 'title') || { pops: [140, 141, 142, 143, 144, 145, 146, 147], slam: 148 };
     const POPN = [65, 68, 72, 73, 75, 77, 80, 84];
-    title.pops.forEach((b, i) => { pop(tb(b), POPN[i % POPN.length], i); kick(tb(b), 0.42 + i * 0.08, false, 0.45); if (i % 2 === 1) clap(tb(b), 0.25 + i * 0.07, 0, 0.3); });
+    title.pops.forEach((b, i) => { pop(tbA(b), POPN[i % POPN.length], i); kick(tbA(b), 0.42 + i * 0.08, false, 0.45); if (i % 2 === 1) clap(tbA(b), 0.25 + i * 0.07, 0, 0.3); });
     crash(tb(124), 0.5);
     pad(bar(32), CH.Db.v, BAR - 0.05, 0.07, 2500, 0.2); pad(bar(33), CH.Eb.v, BAR - 0.3, 0.075, 3500, 0.1);
     bass808(bar(32), 37, BAR * 0.95, 29, 0.2, 0.8); bass808(bar(33), 39, BAR * 0.85, 37, 0.2, 0.85);
@@ -693,16 +827,16 @@
     for (let k = 0; k < 8; k++) snare(tb(128) + k * S16, 0.12 + k * 0.03, 0.15, true);
     for (let k = 0; k < 12; k++) snare(tb(130) + k * (B * 1.25) / 12, 0.4 + k * 0.055, 0.15, true);
     supersaw(bar(33), CH.Eb.v.concat([70, 75]), BAR - 0.35, { v: 0.06, a: 2.0, cut0: 700, cut1: 6000, open: 2.1, cutS: 6000, sus: 1, rel: 0.05 });
-    const slam = tb(title.slam);
+    const slam = tbA(title.slam);
     riser(tb(124), slam - 0.02, 1.25);
     revCymbal(slam, B * 1.2, 1);
-    // THE SLAM (b132 = 79.2 s): impact + braam + drop-out, ring out
+    // THE SLAM (v2.1: b148 = 88.8 s): impact + braam + drop-out, ring out
     impact(slam, 1.35, 0.95); braam(slam, [41, 48], BAR * 1.1, 1.1); kick(slam, 1.2, true, 0.95); snare(slam, 1, 0.8); crash(slam, 1.1);
     supersaw(slam, [53, 56, 60, 65, 68, 72], BAR * 1.15, { v: 0.11, cut0: 4000, cut1: 8000, cutS: 2600, verb: 0.6, sus: 0.45, rel: 0.6 });
     bass808(slam, 29, B * 3.4, null, null, 1);
     hitText(slam + 0.005, 0.5);
 
-    /* ---- bars 35-36 (b136-143) + tail: end card. The hook outro, decaying; a clean ending by 88.2 s */
+    /* ---- v2.1 bars 39-40 (b152-159) + tail: end card. The hook outro, decaying; a clean ending by 97.8 s */
     impact(tb(136), 0.22);
     pad(bar(35), CH.Db.v.concat([72]), BAR, 0.05, 2200, 0.6); pad(bar(36), CH.Fm.v.concat([72]), BAR + B * 2, 0.045, 1800, 0.3);
     bass808(bar(35), 37, BAR * 0.9, null, null, 0.45); bass808(bar(36), 29, BAR * 1.2, 37, 0.3, 0.4);
@@ -710,17 +844,19 @@
     for (const [s, m, l] of HK.B4.slice(0, 3)) hookNote(st(36, s), m, 0.6, 0, { dec: 1.6, delay: 0.4, verb: 0.35 });
     hookNote(st(36, 8), 72, 0.55, 0, { dec: 2.4, delay: 0.45, verb: 0.4 }); bell(st(36, 8), 77, 0.35); bell(st(36, 8), 65, 0.25);
 
-    /* ---- per-cut accents + activity SFX (from the timeline) */
+    /* ---- per-cut accents + activity SFX (absolute times from the timeline) */
+    BOFF = 0;
     let prevKind = null;
+    const playStart = (TL.segments.find((s) => s.act === 'PLAY') || { b: -1 }).b;
     for (const sg of TL.segments) {
-      const t = tb(sg.b), key = sg.game || sg.clip;
-      if (sg.act === 'PLAY' && t !== tb(32)) cutAccent(t, 1);
+      const t = tbA(sg.b), key = sg.game || sg.clip;
+      if (sg.act === 'PLAY' && sg.b !== playStart) cutAccent(t, 1);
       if (sg.act === 'PLAY' && SFX[key]) SFX[key](t);
-      if (sg.kind === 'game' && prevKind === 'game' && sg.act !== 'PLAY' && sg.act !== 'CELEBRATE' && !(sg.b === 100 || sg.b === 104 || sg.b === 108)) whoosh(t, 0.4, 0.35, 1);
+      if (sg.kind === 'game' && prevKind === 'game' && sg.act === 'EXPLORE') whoosh(t, 0.4, 0.35, 1);
       prevKind = sg.kind;
     }
     for (const e of TL.sfx || []) { // optional extra cues from timeline.json
-      const t = tb(e.b);
+      const t = tbA(e.b);
       if (e.name === 'hit') hitText(t); else if (e.name === 'thunder') thunder(t, e.v || 1); else if (e.name === 'whoosh') whoosh(t, 0.5, e.v || 0.6, 1);
       else if (e.name === 'crash') crash(t, e.v || 0.6); else if (SFX[e.name]) SFX[e.name](t);
     }
@@ -743,10 +879,10 @@
     return lk(zz.reduce((p, c) => p + c, 0) / Math.max(1, zz.length));
   }
   function truePeakEnv(L, R) { // per-sample peak of the 4x-oversampled signal (windowed-sinc interpolation, BS.1770-style)
-    const n = L.length, K = 6, C = [];
+    const n = L.length, K = 16, C = [];
     for (let ph = 1; ph < 4; ph++) {
       const c = []; let sum = 0;
-      for (let k = -K + 1; k <= K; k++) { const d = ph / 4 - k, w = 0.5 * (1 + Math.cos(Math.PI * d / (K + 0.5))), v = (Math.sin(Math.PI * d) / (Math.PI * d)) * w; c.push(v); sum += v; }
+      for (let k = -K + 1; k <= K; k++) { const d = ph / 4 - k, w = Math.pow(0.5 * (1 + Math.cos(Math.PI * d / (K + 0.5))), 1.5), v = (Math.sin(Math.PI * d) / (Math.PI * d)) * w; c.push(v); sum += v; }
       C.push(c.map((v) => v / sum));
     }
     const env = new Float32Array(n);
@@ -804,9 +940,9 @@
     ac = new OfflineAudioContext(2, Math.round(SR * dur), SR);
     rnd = mulberry(20032);
     NOISE = noiseBuf(10);
-    BUS = {}; DUCKS = []; BDUCKS = [];
+    BUS = {}; DUCKS = []; BDUCKS = []; BOFF = 0; WOW = null;
     makeBuses(!!opts.raw);
-    if (opts.solo) { for (const k of ['drums', 'bass', 'synth', 'fx', 'sfx']) if (k !== opts.solo) BUS[k].gain.value = 0; BUS.verb.gain.value = 0; BUS.big.gain.value = 0; BUS.delay.gain.value = 0; }
+    if (opts.solo) { for (const k of ['drums', 'bass', 'synth', 'fx', 'sfx', 'lofi']) if (k !== opts.solo) BUS[k].gain.value = 0; BUS.verb.gain.value = 0; BUS.big.gain.value = 0; BUS.delay.gain.value = 0; }
     QUEUE = []; DEFER = true;
     arrange(TL);
     DEFER = false;
@@ -844,7 +980,7 @@
     stats.LUFS = +loudness(L, R).toFixed(2);
     let pk = 0; for (let i = 0; i < n; i++) pk = Math.max(pk, Math.abs(L[i]), Math.abs(R[i])); stats.peakDb = +(20 * Math.log10(pk)).toFixed(2);
     { const e = truePeakEnv(L, R); let tp = 0; for (let i = 0; i < n; i++) if (e[i] > tp) tp = e[i]; stats.truePeakDb = +(20 * Math.log10(tp)).toFixed(2); }
-    const secs = { cards: [0, 4], reveal: [4, 12], explore: [12, 32], play: [32, 80], celebrate: [80, 100], survive: [100, 112], finale: [112, 124], title: [124, 132], slam: [132, 136], end: [136, 147] };
+    const secs = { prologue: [0, 12], reveal: [12, 20], explore: [20, 40], story: [40, 48], play: [48, 96], celebrate: [96, 116], survive: [116, 128], finale: [128, 140], title: [140, 148], slam: [148, 152], end: [152, 163] };
     stats.sections = {};
     for (const k in secs) {
       const [a, b] = secs[k], i0 = Math.floor(tb(a) * SR), i1 = Math.min(n, Math.floor(tb(b) * SR));
