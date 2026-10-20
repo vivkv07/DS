@@ -408,6 +408,16 @@
         const lg = gain(0, BUS.sfx); const lp = filt('lowpass', 500, null, lg); noise(tt, 0.08, lp); lg.gain.setValueAtTime(0.5 * v, tt); lg.gain.exponentialRampToValueAtTime(0.001, tt + 0.07);
       }
     },
+    chase(t) { // Mummy's chappal (t = the throw): a whoosh into the slap on the hit (+0.3 s), then a smaller comic "thup" (+1.07 s)
+      whoosh(t + 0.3, 0.3, 0.75, 1, BUS.sfx);
+      for (const [d, v] of [[0.3, 1], [1.07, 0.6]]) {
+        const tt = t + d;
+        const ng = gain(0, BUS.sfx); const bp = filt('bandpass', 1700, 0.9, ng); noise(tt, 0.09, bp);
+        ng.gain.setValueAtTime(1.1 * v, tt); ng.gain.exponentialRampToValueAtTime(0.001, tt + 0.08);
+        const tg = gain(0, BUS.sfx); const o = osc('sine', 150, tt, tt + 0.16, tg); o.frequency.exponentialRampToValueAtTime(55, tt + 0.14);
+        tg.gain.setValueAtTime(0.8 * v, tt); tg.gain.exponentialRampToValueAtTime(0.001, tt + 0.15);
+      }
+    },
     bargain(t) { // auto-rickshaw horn, tuned to Ab4/C5, beep-beep on 16ths
       for (const d of [0, S16 * 1.5]) {
         const tt = t + d, g = gain(0); const lp = filt('lowpass', 2400, null, g); g.connect(BUS.sfx); g.connect(gain(0.2, BUS.verb));
@@ -853,6 +863,7 @@
       if (sg.act === 'PLAY' && sg.b !== playStart) cutAccent(t, 1);
       // the SFX lands on the clip's key moment: optional per-segment offset sfxF (frames) or sfxB (beats)
       if (sg.act === 'PLAY' && SFX[key]) SFX[key](t + (sg.sfxF != null ? sg.sfxF / TL.fps : (sg.sfxB || 0) * B), tbA(sg.b + sg.n));
+      else if (sg.sfx && SFX[sg.sfx]) SFX[sg.sfx](t + (sg.sfxF || 0) / TL.fps, tbA(sg.b + sg.n)); // a named SFX on any segment (the chase)
       if (sg.kind === 'game' && prevKind === 'game' && sg.act === 'EXPLORE') whoosh(t, 0.4, 0.35, 1);
       prevKind = sg.kind;
     }

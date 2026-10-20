@@ -215,7 +215,9 @@
    "clip": "top_chase",
    "act": "SURVIVE",
    "cap": "MIND THE CHAPPAL METER",
-   "hud": true
+   "hud": true,
+   "sfx": "chase",
+   "sfxF": 30
   },
   {
    "id": "g_scooty_rain",
