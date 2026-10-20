@@ -1271,6 +1271,9 @@
       else { tx = k.spot.x; ty = k.spot.y; speed = TUNE.kidRun * 0.8; k.hide = 0; }
     } else if (k.mode === 'wait') {
       k.hide = 1; e.anim.speed = 0; e.vx = e.vy = 0;
+    } else if (k.mode === 'detour' && k.det) {
+      tx = k.det.x; ty = k.det.y; speed = TUNE.kidWalk; k.hide = 0;
+      if (hyp(tx - e.x, ty - e.y) < 3) { k.path = walkPath(e.x, e.y, S.C.doors[k.uid].x, S.C.doors[k.uid].y); k.mode = 'go'; k.det = null; }
     } else if (k.mode === 'creep') {
       // crouched and slow past a gaze that never quite leaves the way
       const n = polyNearest(P, e.x, e.y);
@@ -1303,6 +1306,23 @@
     k.x = e.x; k.y = e.y; k.a = e.angle;
     const d = S.C.doors[k.uid];
     if (hyp(d.x - e.x, d.y - e.y) < TUNE.doorR) finishKid(k, 'home');
+  }
+  /** a way round: a clear, unwatched point 40-80 u away that brings (x, y) closer to the door */
+  function detour(x, y, door, margin) {
+    const base = Math.atan2(door.y - y, door.x - x), d0 = hyp(door.x - x, door.y - y);
+    let best = null, bs = Infinity;
+    for (let i = 0; i < 14; i++) {
+      const a = base + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 0.28;
+      for (const r of [44, 62, 80]) {
+        const L = rayLen(x, y, Math.cos(a), Math.sin(a), r);
+        if (L < r - 6) continue;
+        const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+        if (!walkable(px, py) || threatAt(px, py, margin || 10)) continue;
+        const sc = hyp(door.x - px, door.y - py) - d0 * 0.15 + Math.abs(adiff(base, a)) * 12;
+        if (sc < bs) { bs = sc; best = { x: px, y: py }; }
+      }
+    }
+    return best;
   }
   /** a point out of seeker sk's cone, sideways from where (x, y) is in it */
   function fleeFrom(sk, x, y) {
@@ -1341,12 +1361,16 @@
     const dd = S.C.doors[k.uid];
     if (hyp(dd.x - e.x, dd.y - e.y) < 34 && !here) { k.mode = 'go'; k.dash = true; return; }
     if (k.mode === 'creep' && k.creepT > 0 && !here) return;
+    if (k.mode === 'detour' && k.det && !here && !threatAt(k.det.x, k.det.y, 6)) return;
     if (thr) {
       const spot = hideNear(e.x, e.y, here ? 30 : 42);
       if (spotOk(spot)) { k.mode = 'hide'; k.spot = spot; k.hideT = 0; k.safeT = 0; return; }
       if (here) { k.mode = 'flee'; k.flee = fleeFrom(here, e.x, e.y); k.waitT = 0; return; }
       k.mode = 'wait'; k.waitT = (k.waitT || 0) + 0.2;
-      if (k.waitT > 5) { k.mode = 'creep'; k.creepT = 4; k.waitT = 0; }
+      if (k.waitT > 3) {
+        const dt2 = detour(e.x, e.y, S.C.doors[k.uid], 12);
+        if (dt2) { k.mode = 'detour'; k.det = dt2; k.waitT = 0; } else if (k.waitT > 5) { k.mode = 'creep'; k.creepT = 4; k.waitT = 0; }
+      }
       return;
     }
     if (k.mode !== 'go') { k.mode = 'go'; k.waitT = 0; }
@@ -2649,11 +2673,19 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
     geo.setIndex(idx);
     const light = role === 'watchman' || role === 'daddy' || role === 'hunter';
     const col = CONE_COL[role] || CONE_COL.walker;
-    const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(col[0] / 255, col[1] / 255, col[2] / 255), transparent: true, opacity: light ? 0.26 : 0.22, depthWrite: false, side: THREE.DoubleSide, blending: light ? THREE.AdditiveBlending : THREE.NormalBlending });
+    const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(col[0] / 255, col[1] / 255, col[2] / 255), transparent: true, opacity: light ? 0.34 : 0.3, depthWrite: false, side: THREE.DoubleSide, blending: light ? THREE.AdditiveBlending : THREE.NormalBlending });
     const m = new THREE.Mesh(geo, mat);
     m.userData.noShadow = true; m.userData.ownGeo = true; m.renderOrder = 3; m.frustumCulled = false;
     V3.root.add(m);
-    return { m, pos, n, col, light };
+    // the rim (outer arc and the two sides) so the fan reads at a glance
+    const lgeo = new THREE.BufferGeometry();
+    const lpos = new Float32Array((n + 3) * 3);
+    lgeo.setAttribute('position', new THREE.BufferAttribute(lpos, 3));
+    const lmat = new THREE.LineBasicMaterial({ color: new THREE.Color(col[0] / 255, col[1] / 255, col[2] / 255), transparent: true, opacity: 0.75, depthWrite: false });
+    const line = new THREE.Line(lgeo, lmat);
+    line.userData.ownGeo = true; line.renderOrder = 4; line.frustumCulled = false;
+    V3.root.add(line);
+    return { m, pos, n, col, light, line, lpos };
   }
   function v3Build() {
     const THREE = V3.T, M = V3.mats, G3 = V3.geo, VS = V3.H.VS || 1.5;
@@ -2741,6 +2773,7 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
     const fill = (c, C, alert) => {
       const P = C.poly;
       c.m.visible = !!(C.on && P);
+      if (c.line) c.line.visible = c.m.visible;
       if (!c.m.visible) return;
       const n = Math.min(c.n + 1, (P.length - 2) / 2);
       const pos = c.pos, y = 0.9;
@@ -2748,9 +2781,16 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
       for (let i = 0; i < c.n + 1; i++) { const j = Math.min(i, n - 1); pos[3 + i * 3] = P[2 + j * 2]; pos[4 + i * 3] = y; pos[5 + i * 3] = P[3 + j * 2]; }
       c.m.geometry.attributes.position.needsUpdate = true;
       c.m.geometry.computeBoundingSphere();
+      const L = c.lpos, y2 = y + 0.15;
+      L[0] = P[0]; L[1] = y2; L[2] = P[1];
+      for (let i = 0; i <= c.n; i++) { const j = Math.min(i, n - 1); L[3 + i * 3] = P[2 + j * 2]; L[4 + i * 3] = y2; L[5 + i * 3] = P[3 + j * 2]; }
+      const e = (c.n + 2) * 3; L[e] = P[0]; L[e + 1] = y2; L[e + 2] = P[1];
+      c.line.geometry.attributes.position.needsUpdate = true;
+      c.line.visible = true;
       const col = alert ? [255, 90, 70] : c.col;
       c.m.material.color.setRGB(col[0] / 255, col[1] / 255, col[2] / 255);
-      c.m.material.opacity = (c.light ? 0.26 : 0.22) * (alert ? 1.4 : 1);
+      c.line.material.color.setRGB(col[0] / 255, col[1] / 255, col[2] / 255);
+      c.m.material.opacity = (c.light ? 0.34 : 0.3) * (alert ? 1.4 : 1);
     };
     for (const c of V3.cones) fill(c, c.sk.cone, !!(c.sk.track && c.sk.trackT > 0));
     while (V3.vcone.length < S.virtualSeekers.length) V3.vcone.push(coneMesh('hunter'));
@@ -2922,34 +2962,50 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
       peek: S.me ? peekLevel(S.me) : 0,
     };
   }
-  /** the sneak planner (tests drive REAL keys from it): where to go next, and whether to hide / crouch */
+  /** the sneak planner (tests drive REAL keys from it): where to go next, and whether to hide / crouch. It keeps a
+   *  little memory (how long it has waited, a detour it is walking, a fresh path from there) */
   function hint() {
     if (!S || !S.me) return null;
     const k = S.me, p = N.player;
-    const P = S.C.paths[k.uid], L = polyLen(P);
-    const n = polyNearest(P, p.x, p.y);
+    const H = S.hintSt || (S.hintSt = { waitT: 0, last: performance.now(), det: null, path: null, creepT: 0 });
+    const tNow = performance.now(), dtH = Math.min(0.5, (tNow - H.last) / 1000); H.last = tNow;
     const door = S.C.doors[k.uid];
-    let target = polyAt(P, Math.min(L, n.s + 22)), why = 'path', hide = false, wait = false;
-    if (hyp(door.x - p.x, door.y - p.y) < 40) { target = { x: door.x, y: door.y }; why = 'door'; }
-    const thrHere = threatAt(p.x, p.y, 10), thrAhead = threatAt(target.x, target.y, 22);
-    if (thrHere || thrAhead) {
-      const spot = hideNear(p.x, p.y, 48);
-      if (spot && !threatAt(spot.x, spot.y, 0)) {
-        const d = hyp(spot.x - p.x, spot.y - p.y);
-        if (d < spot.r * 0.6) { hide = true; why = 'hide'; target = { x: p.x, y: p.y }; }
-        else { target = { x: spot.x, y: spot.y }; why = 'to-spot'; }
-      } else if (thrHere) { const b = polyAt(P, Math.max(0, n.s - 30)); target = { x: b.x, y: b.y }; why = 'back'; }
-      else { wait = true; why = 'wait'; target = { x: p.x, y: p.y }; }
+    const P = H.path || S.C.paths[k.uid], L = polyLen(P);
+    const n = polyNearest(P, p.x, p.y);
+    let target = polyAt(P, Math.min(L, n.s + 22)), why = 'path', hide = false, wait = false, crouch = false;
+    const near = hyp(door.x - p.x, door.y - p.y) < 40;
+    if (near) { target = { x: door.x, y: door.y }; why = 'door'; }
+    const thrHere = threatAt(p.x, p.y, 6), thrAhead = near ? null : threatAt(target.x, target.y, 10);
+    if (H.det) {
+      if (hyp(H.det.x - p.x, H.det.y - p.y) < 4 || threatAt(H.det.x, H.det.y, 4)) { if (hyp(H.det.x - p.x, H.det.y - p.y) < 4) H.path = walkPath(p.x, p.y, door.x, door.y); H.det = null; }
+      else if (!thrHere) { target = H.det; why = 'detour'; }
     }
+    if (H.creepT > 0 && !thrHere && why !== 'detour') { H.creepT -= dtH; crouch = true; why = 'creep'; }
+    else if ((thrHere || thrAhead) && why !== 'detour') {
+      const spot = hideNear(p.x, p.y, 40);
+      const seen = !!k.seenBy;
+      if (spot && S.seekers.every((sk) => hyp(sk.x - spot.x, sk.y - spot.y) > 18)) {
+        const d = hyp(spot.x - p.x, spot.y - p.y);
+        if (d < spot.r * 0.6) { hide = true; why = 'hide'; target = { x: p.x, y: p.y }; H.waitT += dtH; }
+        else { target = { x: spot.x, y: spot.y }; why = 'to-spot'; }
+      } else if (seen || thrHere) {
+        const f = fleeFrom(thrHere || k.seenBy, p.x, p.y); target = f; why = 'flee';
+      } else { wait = true; why = 'wait'; target = { x: p.x, y: p.y }; H.waitT += dtH; }
+      if (H.waitT > 2.5 && !seen) {
+        const dt2 = detour(p.x, p.y, door, 12);
+        if (dt2) { H.det = dt2; target = dt2; why = 'detour'; hide = false; wait = false; H.waitT = 0; }
+        else if (H.waitT > 5) { H.creepT = 3; H.waitT = 0; }
+      }
+    } else H.waitT = Math.max(0, H.waitT - dtH);
     let dx = target.x - p.x, dy = target.y - p.y;
     const d = hyp(dx, dy);
     if (d > 0.01) { dx /= d; dy /= d; } else { dx = dy = 0; }
     // world direction -> input keys (camera-relative in 3D)
     let ix = dx, iy = dy;
-    if (is3D() && isFinite(N.view.yaw)) { const c = Math.cos(N.view.yaw), s = Math.sin(N.view.yaw), f = dx * c + dy * s, r = -dx * s + dy * c; ix = r; iy = -f; }
+    if (is3D() && isFinite(N.view.yaw)) { const c = Math.cos(N.view.yaw), sn = Math.sin(N.view.yaw), f = dx * c + dy * sn, r = -dx * sn + dy * c; ix = r; iy = -f; }
     const keys = [];
     if (!hide && !wait && d > 1.5) { if (ix > 0.38) keys.push('KeyD'); if (ix < -0.38) keys.push('KeyA'); if (iy > 0.38) keys.push('KeyS'); if (iy < -0.38) keys.push('KeyW'); }
-    return { x: target.x, y: target.y, dx, dy, d, keys, hide, wait, why, run: false, home: !!k.done };
+    return { x: target.x, y: target.y, dx, dy, d, keys, hide, wait, crouch, run: why === 'flee', why, home: !!k.done };
   }
   function coneSpot(role, frac) {
     if (!S) return null;

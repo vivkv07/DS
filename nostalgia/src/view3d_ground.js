@@ -883,6 +883,14 @@
         // reaches over an arm's ribbon start was missed by a few samples): each point stands for an equal
         // share of the area. Hits: another carriageway, or this junction's OWN asphalt (a corner the
         // outline does not follow: the hull stand-in, a curve folded into the junction)
+        // (cheap screen first: the centroid and the three corners pulled a quarter of the way in; only a
+        // triangle with a hit there is sampled densely)
+        const gx = (ax + bx + cx) / 3, gz = (az + bz + cz) / 3;
+        let any = false;
+        for (const [px, pz] of [[gx, gz], [ax + (gx - ax) * 0.25, az + (gz - az) * 0.25], [bx + (gx - bx) * 0.25, bz + (gz - bz) * 0.25], [cx + (gx - cx) * 0.25, cz + (gz - cz) * 0.25]]) {
+          if (clHit(S.C, px, pz, null, J, 0.3) || onOwnJ(J, px, pz, 0.3)) { any = true; break; }
+        }
+        if (!any) continue;
         const g = Math.min(9, Math.max(1, Math.ceil(Math.sqrt(ar * 1.6)))), np = (g * (g + 1)) / 2; // ~1.2 u^2 a point
         for (let u = 0; u < g; u++) for (let v = 0; v < g - u; v++) {
           const wu = (u + 1 / 3) / g, wv = (v + 1 / 3) / g, ww = 1 - wu - wv;
