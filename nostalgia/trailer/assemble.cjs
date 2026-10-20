@@ -5,7 +5,8 @@
  *        CRF=16       final encode           PRESET=x264 preset for clips + final (default: medium clips, slow final at 4K)
  *        CLIPCRF=12   intermediate clips     ASM_TMP=dir  per-segment clips (reused while their inputs and filters are unchanged)
  *        FROM=b TO=b  render only the segments inside beats [FROM, TO), with their audio (a quick look at one stretch)
- *        NOFX=1       no transitions         EVERY=n  (v1) frames rendered every n-th
+ *        NOFX=1       no transitions         MAXRATE=32M  VBV ceiling (default 32M at 4K: < 400 MiB; 0 = off)
+ *        REMUX=1      reuse <ASM_TMP>/video.mp4 (redo transitions + audio only)   ADOPT=1  adopt pre-signature clips
  * Per segment: frame sequence -> exact-length clip (n beats x 18 frames @30 fps). 3D/gameplay footage gets the grade
  * and a slow 1.03 -> 1 pull-back (3D drone shots a slow push-in); minigame and UI captures are the game's own screens:
  * no grade, no zoom. 9:16: portrait-native frames from FRAMES_V win; landscape footage is cropped to 9:16 around the
@@ -54,10 +55,23 @@ function dirFp(dir) { // fingerprint for clip reuse: file count + newest mtime
 }
 
 /* 9:16 framing of landscape footage: the crop window's centre as a fraction of the free travel (-1 = left edge,
- * 0 = centre, +1 = right edge); [a, b] pans linearly across the segment. Only for segments without portrait frames. */
+ * 0 = centre, +1 = right edge). A number holds; [a, b] pans linearly across the segment; [[f, x], [f, x], ...] are
+ * keyframes (segment frames, linear between, held outside). Only for segments without portrait frames. */
 const VX = {
-  // filled in from the vertical review (Chinnu / the action must stay in frame)
+  g_auto_tankbund: [[0, 0], [48, 0], [71, 0.25]], // the auto drifts right of centre at the end
+  a_maram: -0.55,                                  // Chinnu plays the left ring (the centre crop loses him)
 };
+
+function vxExpr(v, nf) { // VX value -> crop centre expression of the frame number n
+  if (!Array.isArray(v)) return `${v || 0}`;
+  const k = Array.isArray(v[0]) ? v : [[0, v[0]], [nf - 1, v[1]]];
+  let e = `${k[k.length - 1][1]}`;
+  for (let i = k.length - 2; i >= 0; i--) {
+    const [f0, x0] = k[i], [f1, x1] = k[i + 1];
+    e = `if(lt(n,${f1}),${x0}+(${+(x1 - x0).toFixed(4)})*max(0,n-${f0})/${Math.max(1, f1 - f0)},${e})`;
+  }
+  return `(${e})`;
+}
 
 const GRADE = 'eq=contrast=1.07:saturation=1.14:gamma=0.98,vignette=angle=PI/5:mode=forward';
 const segs = TL.segments.filter((s) => s.b >= FROM && s.b < TO);
@@ -77,9 +91,7 @@ for (const seg of REMUX ? [] : segs) {
   }
   const pixel = s && s.ext === '.png' && seg.kind === 'game'; // top-down internal canvas -> crisp nearest-neighbour
   if (VERT && s && s.w > s.h) { // landscape master -> 9:16 window, centred or placed by VX
-    const v = VX[seg.id], [a, b] = Array.isArray(v) ? v : [v || 0, v || 0];
-    const fx = a === b ? `${a}` : `(${a}+(${b - a})*min(1,n/${nf - 1}))`;
-    filters.push(`crop=w=ih*9/16:h=ih:x='(iw-ow)/2*(1+${fx})':y=0`);
+    filters.push(`crop=w=ih*9/16:h=ih:x='(iw-ow)/2*(1+${vxExpr(VX[seg.id], nf)})':y=0`);
   }
   filters.push(`scale=${W}:${H}:flags=${pixel ? 'neighbor' : 'lanczos'}:force_original_aspect_ratio=increase,crop=${W}:${H}`);
   // minigame captures (kind 'mg') and UI captures ('ui') are the game's own full-screen UI: no grade, no zoom, no sharpening
@@ -137,13 +149,13 @@ if (!REMUX) {
  * Each sits on a cue of the score (music.js): at = beat of the cut, pre/post = frames before/after it. */
 const TRANS = V2 ? [
   { at: 0, post: 4, s: 0.9, snow: 0.9 },              // the deck's PLAY clunk: the tape starts
-  { at: 12, pre: 5, post: 8, s: 1, roll: 0.32, flash: 0.17 }, // REWIND locks into 2003 (whoosh + impact on the reveal)
+  { at: 12, pre: 5, post: 8, s: 1, roll: 0.32, flash: 0.1 }, // REWIND locks into 2003 (whoosh + impact on the reveal)
   { at: 20, post: 3, s: 0.35, flash: 0.2 },           // EXPLORE: the groove drops (impact + crash)
   { at: 40, pre: 3, post: 6, s: 0.75 },               // STORY: deck clunk, the walkman, filters close
   { at: 48, post: 3, s: 0.35, flash: 0.2 },           // PLAY: the full beat drops (impact + crash)
   { at: 96, post: 3, s: 0.3, flash: 0.2 },            // CELEBRATE (impact + big crash)
   { at: 116, pre: 3, post: 7, s: 1, snow: 0.5, roll: 0.18 }, // SURVIVE: downlifter -> impact + siren, the tape chews
-  { at: 128, pre: 3, post: 6, s: 0.6, flash: 0.27 },  // finale: impact + crash, the time-lapse
+  { at: 128, pre: 3, post: 6, s: 0.6, flash: 0.12 },  // finale: impact + crash, the time-lapse
   { at: 152, pre: 2, post: 5, s: 0.45 },              // end card
 ] : [];
 const f6 = (x) => (+x).toFixed(4);
@@ -188,7 +200,11 @@ const last = segs[segs.length - 1], isEnd = last === TL.segments[TL.segments.len
 const tail = isEnd ? (TL.tailBeats || 0) * B : 0; // hold the end card over the audio tail
 const dur = isEnd ? full - t0 : (last.b + last.n) * B - t0;
 const vchain = [`tpad=stop_mode=clone:stop_duration=${tail}`, ...fxChain, 'format=yuv420p'].join(',');
+// 4K: CRF-driven with a VBV ceiling, so the 97.8 s file is guaranteed to stay under 400 MiB (32 Mb/s x 97.8 s + audio
+// = 395 MB = 377 MiB at most); MAXRATE=0 lifts it
+const MAXRATE = process.env.MAXRATE != null ? process.env.MAXRATE : (W * H >= 3840 * 2160 * 0.9 ? '32M' : '0');
+const vbv = MAXRATE && MAXRATE !== '0' ? ['-maxrate', MAXRATE, '-bufsize', (parseFloat(MAXRATE) * 2) + 'M'] : [];
 ff(['-i', video, '-ss', String(t0), '-i', wav, '-filter_complex', `[0:v]${vchain}[v];[1:a]${ln},aresample=48000[a]`, '-map', '[v]', '-map', '[a]',
-  '-t', String(dur), '-c:v', 'libx264', '-preset', FPRESET, '-crf', CRF, '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+  '-t', String(dur), '-c:v', 'libx264', '-preset', FPRESET, '-crf', CRF, ...vbv, '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
   '-c:a', 'aac', '-b:a', '320k', OUT]);
-console.log('->', OUT, (fs.statSync(OUT).size / 1e6).toFixed(1), 'MB', fxChain.length ? `(${fxChain.length} transition filters)` : '');
+console.log('->', OUT, (fs.statSync(OUT).size / 1048576).toFixed(1), 'MiB', fxChain.length ? `(${fxChain.length} transition filters)` : '', vbv.length ? `(VBV ${MAXRATE})` : '');

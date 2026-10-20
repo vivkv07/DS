@@ -13,15 +13,15 @@
 
   // view: 'tps' | 'fps' | 'top'.  at: place id | [x, y].  veh: vehicle type | null (foot).  spd: u/s.  dir: preferred heading
   const CLIPS = {
-    cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', spd: 105, dir: 0, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.2 } },
+    cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', spd: 105, dir: 0, clear: 3, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.2 } },
     top_charminar: { view: 'top', at: 'charminar_plaza', time: [11, 0], veh: 'cycle', spd: 115, dir: -1.6 },
-    auto_tankbund: { view: 'tps', at: 'tank_bund', time: [17, 25], veh: 'auto', spd: 130, dir: -1.2, prefer: 'bund' },
+    auto_tankbund: { view: 'tps', at: 'tank_bund', time: [17, 25], veh: 'auto', spd: 130, dir: -1.2, prefer: 'bund', chase: { back: 30, h: 12, lead: 12, th: 3.5, fov: 56, lag: 0.3 } },
     top_chase: { view: 'top', at: 'abids', time: [12, 30], veh: null, spd: 82, dir: 0, run: true, wanted: 3 },
     scooty_rain: { view: 'fps', at: 'abids', time: [21, 15], veh: 'scooty', spd: 120, dir: 1.5, rain: 0.9 },
     top_rain: { view: 'top', at: 'koti', time: [20, 30], veh: 'cycle', spd: 100, dir: -1.5, rain: 0.9 },
     pigeons: { view: 'tps', at: 'charminar_plaza', time: [8, 10], veh: null, spd: 80, dir: 2.6, run: true, scare: 8 },
     top_kites: { view: 'top', at: 'giver_himayatnagar', time: [15, 30], veh: null, spd: 45, dir: 0.5 },
-    boat: { view: 'tps', at: 'buddha_statue', time: [9, 40], veh: 'boat', spd: 55, line: { a: 0.3, r0: 330, r1: 70 } },
+    boat: { view: 'tps', at: 'buddha_statue', time: [9, 40], veh: 'boat', spd: 45, warm: 30, line: { a: 0.15, r0: 260, r1: 40 }, boatcam: { top: 92, a0: 0.6, a1: 1.05, d0: 26, d1: 20, h0: 7, h1: 5, side: 1, fov: 60 } },
     bus: { view: 'tps', at: 'koti', time: [9, 30], veh: 'bus', spd: 110, dir: 1.5 },
     cycle_fps: { view: 'fps', at: 'mozamjahi_market', time: [11, 30], veh: 'cycle', spd: 100, dir: 0 },
     top_night: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 30], veh: 'chetak', spd: 140, dir: 1.5 },
@@ -39,7 +39,7 @@
     ramzan_s: { view: 'tps', at: 'charminar', off: [0, 230], time: [21, 30], veh: null, spd: 32, toward: 'charminar', chase: { back: 18, h: 6.5, lead: 40, th: 16, fov: 60, lag: 0.2 }, seasons: { ramzan: true } },
     ramzan_w: { view: 'tps', at: 'charminar', off: [-230, 0], time: [21, 30], veh: null, spd: 32, toward: 'charminar', chase: { back: 18, h: 6.5, lead: 40, th: 16, fov: 60, lag: 0.2 }, seasons: { ramzan: true } },
     fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 0, seasons: { bonalu: true }, bonalu: { temple: 'lal_darwaza_temple', ahead: 17, side: 13, h: 5, lat: 4.5, look: -1.5 } },
-    fest_numaish: { view: 'tps', at: [8312, 5860], time: [20, 30], veh: null, spd: 34, line: { a: 0, r0: 60, r1: -200 }, chase: { back: 14, h: 6, lead: 30, th: 10, fov: 60, lag: 0.2 }, seasons: { numaish: true } },
+    fest_numaish: { view: 'tps', at: [8312, 5860], time: [20, 30], veh: null, spd: 34, line: { a: 0, r0: 60, r1: -200 }, clear: 3.5, chase: { back: 12, h: 6.5, lead: 30, th: 7, fov: 60, lag: 0.2 }, seasons: { numaish: true } },
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
     // in-world playground games (N.playgroundGames): a real match with Chinnu and the AI kids, scripted inside the window
     lingocha: { view: 'tps', at: 'playground_home', time: [12, 40], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: 26, h1: 15, crane: 45, f0: 21, s0: 8, h0: 10.5, lk0: 0.75 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
@@ -99,10 +99,25 @@
 
   let C = null;
   const tmp = { x: 0, y: 0 }, tmp2 = { x: 0, y: 0 };
+  // o.clear: passers-by standing / walking in the line of sight between the lens and the subject are hidden (and
+  // stay hidden for the rest of the shot, so nobody pops back in)
+  const CLEARED = new Set();
+  function unclear() { for (const e of CLEARED) e.hidden = false; CLEARED.clear(); }
+  function clearLine(cam, sx, sy, r) {
+    const ax = cam.x, ay = cam.y, dx = sx - ax, dy = sy - ay, L2 = dx * dx + dy * dy || 1;
+    for (const e of N.entities.all) {
+      if (e.kind !== 'ped' || e === N.player || e.hidden || e.pgKid) continue;
+      const t = ((e.x - ax) * dx + (e.y - ay) * dy) / L2;
+      if (t < 0 || t > 1) continue;
+      const qx = ax + dx * t - e.x, qy = ay + dy * t - e.y;
+      if (qx * qx + qy * qy < r * r && Math.hypot(sx - e.x, sy - e.y) > 3.5) { e.hidden = true; CLEARED.add(e); }
+    }
+  }
   window.CLIP_PREP = async function (id, nf) {
     const o = CLIPS[id]; if (!o) throw new Error('no clip ' + id);
     // reset previous clip state
     pgReset();
+    unclear();
     if (N.player.vehicle && N.vehicles.exit) { try { N.vehicles.exit(N.player, true); } catch (e) { /* ok */ } }
     if (N.wanted && N.wanted.set) N.wanted.set(0);
     // seasons: festival clips switch their festival on (and the default Sankranti kites off); others clear overrides
@@ -470,6 +485,29 @@
       const hx = tmp2.x, hy = tmp2.y;
       const want = { x: tmp.x, y: tmp.y, h: c.h, tx: hx, ty: hy, th: c.th, fov: c.fov || 58 };
       if (!C.cc || warm) C.cc = want; else for (const k of ['x', 'y', 'h', 'tx', 'ty', 'th']) C.cc[k] += (want[k] - C.cc[k]) * (c.lag || 0.25);
+      C.cc.fov = want.fov;
+      STAGE.cam(C.cc);
+      if (o.clear) clearLine(C.cc, N.player.x, N.player.y, o.clear);
+    }
+    // boat: an arcing camera low over the water off the boat's quarter; the boat and the statue (C.x, C.y, top at
+    // bc.top) are both kept in frame (yaw / pitch midway between them), the arc swinging from behind to the side
+    if (o.boatcam && path) {
+      const bc = o.boatcam;
+      at(path, C.d, tmp);
+      const bx = tmp.x, by = tmp.y, sx = C.x, sy = C.y;
+      const u = Math.min(1, Math.max(0, (C.f + (warm ? -1e9 : 0)) / (bc.dur || 72)));
+      const k = warm ? 0 : u * u * (3 - 2 * u);
+      const back = Math.atan2(by - sy, bx - sx); // from the statue through the boat, i.e. behind the boat
+      const th = back + (bc.side || 1) * (bc.a0 + (bc.a1 - bc.a0) * k), dist = bc.d0 + (bc.d1 - bc.d0) * k, h = bc.h0 + (bc.h1 - bc.h0) * k;
+      const cx = bx + Math.cos(th) * dist, cy = by + Math.sin(th) * dist;
+      const aB = Math.atan2(by - cy, bx - cx), aS = Math.atan2(sy - cy, sx - cx);
+      let da = aS - aB; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+      const yaw = aB + da * (bc.mix == null ? 0.5 : bc.mix);
+      const dB = Math.hypot(bx - cx, by - cy), dS = Math.hypot(sx - cx, sy - cy);
+      const eB = Math.atan2((bc.boatH || 2) - h, dB), eS = Math.atan2(bc.top - h, dS);
+      const pitch = eB + (eS - eB) * (bc.pmix == null ? 0.5 : bc.pmix);
+      const want = { x: cx, y: cy, h, tx: cx + Math.cos(yaw) * 100, ty: cy + Math.sin(yaw) * 100, th: h + Math.tan(pitch) * 100, fov: bc.fov || 60 };
+      if (!C.cc || warm) C.cc = want; else for (const kk of ['x', 'y', 'h', 'tx', 'ty', 'th']) C.cc[kk] += (want[kk] - C.cc[kk]) * 0.35;
       C.cc.fov = want.fov;
       STAGE.cam(C.cc);
     }
