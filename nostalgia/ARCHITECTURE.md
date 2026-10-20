@@ -1962,7 +1962,8 @@ Kid-friendly: no betting, no free text, friendly banter only (the friends' lines
   roadster for grown-ups; the friends ride Immu's red 'cycle', Ayesha's ladies cycle, Pappu's kid cycle, Bunty-anna's
   old roadster). Traffic stays on; potholes and bumps throw you off (vehicles.js / entities.js), you walk back to the
   cycle or a kind uncle lends one after 9 s. AI riders: pure pursuit on their own line (`lane`), corner braking, a
-  look-ahead that eases off and swerves round traffic / people, wobbles, stuck recovery (reverse; hop when off-screen),
+  look-ahead that eases off and swerves round traffic / people, wobbles, stuck recovery (reverse; a short hop along
+  the path to a spot clear of vehicles when stuck ~2.5 s off-screen or ~5 s in view: "walks the cycle round the jam"),
   roll through the finish and pull over; skill per friend (Ayesha .84, Bunty .76, Immu .72, Pappu .56, ±.06, ± the
   difficulty setting) and a gentle rubber band (×0.88 … ×1.07 by the gap to the player). Window: after the winner the
   others get max(30 s, 60% of the winning time), then DNF (in solo the AI times are estimated from their pace instead).

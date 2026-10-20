@@ -862,10 +862,22 @@
         const moved = Math.hypot(veh.x - R.x0, veh.y - R.y0);
         R.x0 = veh.x; R.y0 = veh.y;
         if (moved < 4 && want > 10) { R.stuck++; R.rev = 0.6; } else R.stuck = 0;
-        if (R.stuck >= 3 && !N.render.inView(veh.x, veh.y, 40)) {
-          const q = pointAt(R.s + 24);
-          const f = N.world.findFree(q.x, q.y, 'drive', 10);
-          if (f && !N.render.inView(f.x, f.y, 20)) { veh.x = f.x; veh.y = f.y; veh.vx = veh.vy = 0; veh.speed = 0; const q2 = pointAt(R.s + 40); veh.angle = Math.atan2(q2.y - f.y, q2.x - f.x); R.stuck = 0; R.hops++; }
+        // stuck: off-screen after ~2.5 s, or in view after ~5 s (wedged in a jam: the rider walks the cycle round it),
+        // hop a little further along the path to a free spot clear of other vehicles
+        const seen = N.render.inView(veh.x, veh.y, 40);
+        if ((R.stuck >= 3 && !seen) || R.stuck >= 6) {
+          for (const ahead of [26, 40, 56]) {
+            const q = pointAt(R.s + ahead);
+            const f = N.world.findFree(q.x, q.y, 'drive', 10);
+            if (!f || (!seen && N.render.inView(f.x, f.y, 20))) continue;
+            let clear = true;
+            try { N.entities.query(f.x, f.y, 9, (e) => { if (e !== veh && e.kind === 'vehicle' && e.alive !== false) clear = false; return false; }); } catch (e) { /* ignore */ }
+            if (!clear) continue;
+            veh.x = f.x; veh.y = f.y; veh.vx = veh.vy = 0; veh.speed = 0;
+            const q2 = pointAt(R.s + ahead + 16); veh.angle = Math.atan2(q2.y - f.y, q2.x - f.x);
+            R.stuck = 0; R.hops++;
+            break;
+          }
         }
       }
     }

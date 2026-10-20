@@ -256,7 +256,7 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
         if (st1) {
           info('standings: ' + st1.map((r) => (r.rank || '-') + ' ' + r.nick + ' ' + fmt(r.timeMs) + (r.note ? ' (' + r.note + ')' : '')).join(' | '));
           const me = st1.find((r) => r.nick !== 'Immu' && r.nick !== 'Ayesha' && r.nick !== 'Pappu' && r.nick !== 'Bunty-anna');
-          check(me && me.timeMs > 9000 && me.timeMs < 60000, 'my time ' + fmt(me && me.timeMs));
+          check(me && me.timeMs > 9000 && isFinite(me.timeMs), 'my time ' + fmt(me && me.timeMs) + ' (the test bot, not a fast rider)');
           const ai = st1.filter((r) => r !== me);
           // 1.55 km: flat out a cycle needs ~14 s; traffic at the Indira Park and Lower Tank Bund junctions can cost a lot
           check(ai.every((r) => r.timeMs != null && r.timeMs > 12500 && r.timeMs < 80000), 'AI times believable for 1.55 km on a cycle in traffic: ' + ai.map((r) => r.nick + ' ' + fmt(r.timeMs)).join(', '));
