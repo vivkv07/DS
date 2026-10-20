@@ -47,28 +47,28 @@ const GAMES = {
   // ball 2 (the bot plays a CUT): end of the bowler's run-up, delivery ~f224, the ball bounces in, PERFECT cut
   // ~f250 (bat flash + sparks), the ball streaks right over the low wall: "SIX! Plot mein!" + confetti and
   // RUNS 6 -> 12 at f258, the ball still flying into the plot
-  cricket: { params: { difficulty: 0.4, seed: 5 }, pre: 213 },
+  cricket: { params: { difficulty: 0.4, seed: 5 }, pre: 213, ev: 'RUNS \\d+' },
   // a scripted break shot (through the game's own drag input; the bot plays on afterwards): from the bottom-right
   // of the ring, full power, Chinnu pulls back (f12-17) and flicks (f18); the striker smashes into the cross,
   // the big JACKPOT goli flies out of the ring, then "JACKPOT! +3", the won goli fly to his pile, TUM 3/6 and
   // "PHIR SE MAARO!" (~f65). Found with ACT.mbSearch; robust to +-0.004 rad aim / -1% power. timeScale 1.35 so
   // that the shot, the roll and the payoff all fit in 2.4 s (a real flick takes ~2.4 s to settle).
-  marbles: { params: { difficulty: 0.4, seed: 3, timeScale: 1.35, touch: true }, pre: 12,
+  marbles: { params: { difficulty: 0.4, seed: 3, timeScale: 1.35, touch: true }, pre: 12, ev: 'TUM \\d+|SHOTS \\d+',
     script: [{ at: 4, kind: 'mbPos', pos: Math.PI / 3 }].concat([0.3, 0.55, 0.75, 0.9, 1, 1].map((pw, i) => ({ at: 12 + i, kind: 'mbDrag', aimOff: 0.0375, power: pw })), [{ at: 18, kind: 'mbRelease' }]) },
   // puris 13-14 eaten at f511 / f546 while TEEKHA climbs 32% -> 86%: red sweating face, steam
-  panipuri: { params: { difficulty: 0.4, seed: 4 }, pre: 500 },
+  panipuri: { params: { difficulty: 0.4, seed: 4 }, pre: 500, ev: 'PURI \\d+' },
   // the deal: "Apne log ho. Chalo, ₹22.", new line cards (~f176), the bot picks one, the BOLO! needle,
   // "JAMKE BOLA!" and the price board ticks ₹22 -> ₹20 at f194: "Chalo, baitho! ₹20, meter nakko."
-  bargain: { params: { difficulty: 0.4, seed: 2, who: 'auto' }, pre: 154 },
+  bargain: { params: { difficulty: 0.4, seed: 2, who: 'auto' }, pre: 154, ev: 'BHAAV ₹\\d+' },
   // lines 5 and 6 cleared at f490 / f521 (SPEED 3)
-  brickgame: { params: { difficulty: 0.4, seed: 6, mode: 'blocks' }, pre: 468 },
+  brickgame: { params: { difficulty: 0.4, seed: 6, mode: 'blocks' }, pre: 468, ev: 'LINES \\d+|SCORE \\d+' },
   // colour bars in, Amma "BAS! BAS! Wahi rakho!", LOCK fills, TOOFAN KID comes on at ~f192
-  antenna: { params: { difficulty: 0.4, seed: 8 }, pre: 136 },
+  antenna: { params: { difficulty: 0.4, seed: 8 }, pre: 136, ev: '' }, // align on the lock (over) only: SIGNAL % wobbles by 1 between runs
   // round 3: Chinnu's claps at f916-951 echo up the fort (lanterns lit), "ZABARDAST!" at f964
-  clap: { params: { difficulty: 0.4, seed: 9, skin: 'golconda' }, pre: 905 },
+  clap: { params: { difficulty: 0.4, seed: 9, skin: 'golconda' }, pre: 905, ev: 'TAAL \\d+|SCORE \\d+' },
 };
 const LOGD = path.join(__dirname, 'out', 'mg_logs');
-// a capture log -> {pre, at(frame) = 'hud|over' at that frame}
+// a capture log -> {pre, at(frame) = the logged status ({phase, t, over, hud}) at that frame}
 function readLog(file) {
   const fr = [], val = [];
   let pre = 0;
@@ -77,10 +77,12 @@ function readLog(file) {
     const i = line.indexOf(' ');
     if (i < 0) continue;
     const j = JSON.parse(line.slice(i + 1));
-    fr.push(+line.slice(0, i)); val.push(j.hud + '|' + j.over);
+    fr.push(+line.slice(0, i)); val.push(j);
   }
-  return { pre, at(f) { let k = -1; for (let n = 0; n < fr.length && fr[n] <= f; n++) k = n; return k < 0 ? '' : val[k]; } };
+  return { pre, at(f) { let k = -1; for (let n = 0; n < fr.length && fr[n] <= f; n++) k = n; return k < 0 ? null : val[k]; } };
 }
+// the key event signature of a HUD state for alignment: the fields matching ev (e.g. 'RUNS \\d+') + the won flag
+function evKey(st, ev) { return st ? (ev ? (String(st.hud).match(new RegExp(ev, 'g')) || []).join(',') : '') + '|' + st.over : ''; }
 
 // Each segment runs in a fresh browser (boot ~6 s): a minigame then always starts from the same game state, so
 // the bot plays out exactly as in the SURVEY run that picked its pre-roll (state left by an earlier minigame —
@@ -130,7 +132,7 @@ function readLog(file) {
     for (let fr = 1; fr <= total; fr++) {
       if (FAST && fr === first - 1) await page.evaluate(() => ACT.fast(false)); // the frame before the first capture draws for real
       st = await page.evaluate((dt) => ACT.step(1, dt), DT);
-      hudAt[fr] = st.hud + '|' + st.over;
+      hudAt[fr] = evKey(st, cfg.ev);
       const key = st.phase + '|' + st.over + '|' + st.hud;
       if (key !== last) { log.push(fr + ' ' + JSON.stringify(st)); last = key; }
       if (SURVEY) {
@@ -149,13 +151,13 @@ function readLog(file) {
       let bm = Infinity;
       for (let s = -M; s <= M; s++) {
         let mm = 0;
-        for (let i = 0; i < nf; i++) if ((hudAt[pre + 1 + i + s] || '') !== ref.at(ref.pre + 1 + i)) mm++;
+        for (let i = 0; i < nf; i++) if ((hudAt[pre + 1 + i + s] || '') !== evKey(ref.at(ref.pre + 1 + i), cfg.ev)) mm++;
         if (mm < bm || (mm === bm && Math.abs(s) < Math.abs(shift))) { bm = mm; shift = s; }
       }
       for (let i = 0; i < nf; i++) fs.copyFileSync(path.join(mdir, String(pre + 1 + i + shift).padStart(5, '0') + '.jpg'), path.join(dir, String(i).padStart(5, '0') + '.jpg'));
       fs.rmSync(mdir, { recursive: true, force: true });
       ncap = nf;
-      console.log('  aligned with', path.basename(refLog), '(pre ' + ref.pre + '): shift', shift, '-> window', pre + 1 + shift, '..', pre + nf + shift, '; frames whose HUD differs:', bm, '/', nf);
+      console.log('  aligned with', path.basename(refLog), '(pre ' + ref.pre + '): shift', shift, '-> window', pre + 1 + shift, '..', pre + nf + shift, '; frames whose key HUD fields differ:', bm, '/', nf);
     }
     const alog = await page.evaluate(() => ACT.log || []);
     if (alog.length) { log.push('# script ' + JSON.stringify(alog)); console.log('  script', JSON.stringify(alog)); }

@@ -52,7 +52,9 @@
     },
     // "PLAY IN 3D OR TOP-DOWN": 3D third person on the cycle down Pathergatti towards Charminar, then the game's
     // real view switch (N.view.set('top'), instant: the game has no transition) on the beat, same moment, same place
-    charminar: { view: 'tps', at: 'pathergatti', off: [0, -170], toward: 'charminar', time: [11, 0], veh: 'cycle', spd: 92, zoom: 1.3, warm: 60, switchAt: 36 },
+    // (the road in from the east, straight at Charminar, then the roundabout round it clockwise: road nodes 150 ...
+    // 146 -> roundabout 4, 5, 6 ...; f72 lands just past the roundabout's east point, the switch ~150 u out)
+    charminar: { view: 'tps', at: [9398, 8332], nodes: [150, 149, 148, 147, 146, 4, 5, 6, 7, 8], lead: 220, endAt: 330, time: [11, 0], veh: 'cycle', spd: 92, zoom: 1.6, warm: 60, switchAt: 36, pitch: 0.1 },
   };
   const OVR = window.HUD_SHOTS_OVERRIDE || {};
   for (const k in OVR) SHOTS[k] = Object.assign({}, SHOTS[k], OVR[k]);
@@ -98,6 +100,31 @@
   /* ------------------------------------------------------------ routes (as gameplay_page.js) */
   function buildPath(x, y, o, len) {
     const R = N.world.roads;
+    if (o.nodes) { // an explicit node route (+ o.lead u of road before its first node, walked backwards)
+      const ns = o.nodes.map((id) => R.nodes[id]);
+      const pre = [];
+      if (o.lead) {
+        let cur = ns[0], prev = ns[1], head = Math.atan2(ns[0].y - ns[1].y, ns[0].x - ns[1].x), dist = 0, g = 0;
+        while (dist < o.lead && g++ < 100) {
+          let best = null, bs = 1e9;
+          for (const l of cur.links) {
+            const nb = R.nodes[l.to], e = R.edges[l.edge];
+            if (nb === prev || (o.veh && e.kind === 'path')) continue;
+            const sc = Math.abs(U.angleDiff(Math.atan2(nb.y - cur.y, nb.x - cur.x), head));
+            if (sc < bs) { bs = sc; best = nb; }
+          }
+          if (!best || bs > 1.2) break;
+          dist += Math.hypot(best.x - cur.x, best.y - cur.y); head = Math.atan2(best.y - cur.y, best.x - cur.x);
+          prev = cur; cur = best; pre.unshift(best);
+        }
+      }
+      const path = polyFromNodes(pre.concat(ns));
+      // (route distance of the first listed node: the lead-in's length along the smoothed path)
+      let best = 0, bd = 1e18;
+      for (let i = 0; i < path.pts.length; i++) { const q = path.pts[i], dd = (q[0] - ns[0].x) ** 2 + (q[1] - ns[0].y) ** 2; if (dd < bd) { bd = dd; best = path.cum[i]; } }
+      path.mark = best;
+      return path;
+    }
     const n = R.nearestNode(x, y);
     if (o.toward) {
       const L = LM(o.toward) || P(o.toward);
@@ -176,7 +203,9 @@
     const path = buildPath(x, y, o, (nf + warm + 90) / FPS * o.spd);
     // toward a landmark: start far enough up the route that the shot ends near it
     const need = (nf + warm) / FPS * o.spd;
-    const d0 = o.toward ? Math.max(0, path.len - need - (o.endGap || 20)) : 0;
+    // where the shot starts on the route: o.endAt = where frame nf lands (u past the first listed node), or toward a
+    // landmark: ending near it
+    const d0 = o.endAt != null ? Math.max(0, (path.mark || 0) + o.endAt - need) : o.toward ? Math.max(0, path.len - need - (o.endGap || 20)) : 0;
     const start = at(path, d0, { x: 0, y: 0 });
     N.debug.teleport(start.x, start.y);
     let v = null;
@@ -361,6 +390,9 @@
       p.x = tmp.x - vx / FPS; p.y = tmp.y - vy / FPS; p.vx = vx; p.vy = vy; p.angle = ang; p.facing = ang; p.running = !!o.run;
     }
     if (o.view === 'tps' && C.f === -(o.warm || 75) && N.view3d.snapCamera) N.view3d.snapCamera();
+    // (a lower look than the default 0.3: the player's own mouse-look pitch; set directly, so the chase camera keeps
+    // swinging behind the heading as it does without look input)
+    if (o.pitch != null && N.view.mode === 'tps') N.view.pitch = o.pitch;
     window.__step(1 / FPS);
     stageNew();
     C.f++;

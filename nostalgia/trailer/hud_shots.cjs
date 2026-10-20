@@ -11,12 +11,30 @@
  *          Q=92                           JPEG quality
  *          SHOT_<id>='{json}'             override a shot's options (HUD_SHOTS_OVERRIDE in hud_page.js) for try-outs
  *   -> OUTD/<segment id>/%05d.jpg, exactly n*beatFrames frames (the dir is emptied first)
+ *   node trailer/hud_shots.cjs qa          contact sheets out/qa_hud_landscape.jpg, out/qa_hud_portrait.jpg
  * Full-page frames via CDP Page.captureScreenshot (page.screenshot waits for rAF, which the virtual clock owns).
  * One browser per segment (fresh game state: the chase leaves pursuers, traffic and wanted heat behind).
  */
 'use strict';
 const path = require('path');
 const fs = require('fs');
+const { execFileSync } = require('child_process');
+// QA: node trailer/hud_shots.cjs qa -> out/qa_hud_landscape.jpg + out/qa_hud_portrait.jpg (8 labelled frames per
+// clip from frames2 / frames2_v: the meter states, Mummy, the chappal, the hit, the banner; 3D, the switch, top-down)
+if (process.argv[2] === 'qa') {
+  const QAF = { g_top_chase: [0, 5, 10, 24, 36, 42, 56, 68], g_top_charminar: [0, 12, 24, 35, 36, 48, 60, 71] };
+  for (const [od, name, tw] of [['frames2', 'qa_hud_landscape.jpg', 640], ['frames2_v', 'qa_hud_portrait.jpg', 300]]) {
+    const args = [];
+    for (const id of Object.keys(QAF)) for (const f of QAF[id]) {
+      const file = path.join(__dirname, 'out', od, id, String(f).padStart(5, '0') + '.jpg');
+      if (fs.existsSync(file)) args.push('-label', id + ' f' + f, file);
+    }
+    const out = path.join(__dirname, 'out', name);
+    execFileSync('montage', [...args, '-resize', tw + 'x', '-tile', '8x', '-geometry', '+3+3', '-background', '#111', '-fill', '#ddd', '-font', 'DejaVu-Sans-Mono', '-pointsize', '12', '-quality', '88', out]);
+    console.log('->', out);
+  }
+  process.exit(0);
+}
 const { openGame, takeOver } = require('./lib.cjs');
 const W = +(process.argv[2] || 1920), H = +(process.argv[3] || 1080);
 const SCALE = +(process.env.SCALE || 2);
@@ -38,11 +56,11 @@ const SEGS = [{ id: 'g_top_chase', shot: 'chase' }, { id: 'g_top_charminar', sho
     const { browser, context, page, errors } = await openGame({ width: W, height: H, scale: SCALE });
     const over = {};
     for (const k of Object.keys(process.env)) if (k.startsWith('SHOT_')) over[k.slice(5)] = JSON.parse(process.env[k]);
-    // portrait: the same run across the frame at about the same world scale (the portrait canvas is 434 internal
-    // px wide vs 768: zoom 1.3 shows ~330 u across, the landscape shot ~360 u at 2.2); the action stays on the
-    // middle band, clear of the HUD at the top and the lower-third caption (58-73% of the height)
+    // portrait: the same run across the frame (the portrait canvas is 434 internal px wide vs 768: zoom 1.6 shows
+    // ~280 u across, the landscape shot ~360 u at 2.2); the action stays on the middle band, clear of the HUD at the
+    // top and of the lower-third caption (58-73% of the height)
     if (PORTRAIT) {
-      over.chase = Object.assign({ zoom: 1.3 }, over.chase || {});
+      over.chase = Object.assign({ zoom: 1.6 }, over.chase || {});
     }
     await page.evaluate((o) => { window.HUD_SHOTS_OVERRIDE = o; window.HUDDBG = o.__dbg; }, Object.assign({ __dbg: !!process.env.HUDDBG }, over));
     await page.addScriptTag({ path: path.join(__dirname, 'hud_page.js') });
