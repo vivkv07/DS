@@ -3,9 +3,9 @@
  * Calendar (seasons.js "[diwali hook]"): `pataakha` 20-26 Oct 2003 (the cracker stalls go up) and `diwali`
  * 22-26 Oct 2003 (Naraka Chaturdashi Fri 24, Deepavali Sat 25 Oct). Both are N.seasons EXTRA names, mirrored
  * into N.flags, overridable with N.seasons.set(). They never overlap Ramzan (27 Oct ->), the interlude (1 Nov)
- * or any main mission date. In the main story the interlude's ▶▶ (10 Sep -> 1 Nov) passes over the week; the
- * week is played in the post-game ◀◀ REWIND free roam (the "Diwali Week" J-card at home ▶▶s there from any
- * day 10 Sep - 19 Oct) or whenever the calendar is set into it (debug / tests).
+ * or any main mission date. In the main story the week is played between Track 10 and the interlude
+ * (N.dwMissions.story in diwali_missions.js); it is also reachable from ◀◀ REWIND "October", the post-game
+ * "Diwali Week" J-card at home, or whenever the calendar is set into it (debug / tests).
  *
  * WORLD (only near the player; pooled; capped per device — TUNE.budget desk / phone)
  *   colonies   every residential house (by district style share x the week's day factor): a rangoli / muggulu at
