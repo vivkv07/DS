@@ -903,23 +903,30 @@
       const a = P.ends[0].fs[si], b = P.L - P.ends[1].fs[si];
       if (b - a < 0.05) continue;
       const n = Math.max(1, Math.ceil((b - a) / CL_STEP)), d = (b - a) / n;
-      let gaps = null, k0 = -1;
-      for (let k = 0; k <= n + 1; k++) {
-        let hit = false;
-        if (k <= n) {
-          const f = frameAt(P, a + d * k);
-          for (const w of ws) {
-            const x = f.x + f.nx * w * side, y = f.y + f.ny * w * side;
-            if (clHit(S.C, x, y, P, null, 0.4)) { hit = true; break; }
-            // its OWN carriageway: on the inside of a bend tighter than the footpath the slab folds back
-            // over the road it lines (the nearest centre-line point is elsewhere, well within hw)
-            const sk = a + d * k, wn = (P.hw + P.fp) * 4;
-            const q = P.pts.length > 2 ? projectOn(P.pts, P.cum, x, y, Math.max(s0, sk - wn), Math.min(s1, sk + wn)) : null;
-            if (q && Math.abs(q.v) < P.hw - 0.4 && q.d2 - q.v * q.v < 0.01) { hit = true; break; }
+      const hits = new Uint8Array(n + 2), bx = new Float64Array(n + 1), by = new Float64Array(n + 1), cx = new Float64Array(n + 1), cy = new Float64Array(n + 1);
+      const wb = P.hw + P.fp;
+      for (let k = 0; k <= n; k++) {
+        const f = frameAt(P, a + d * k), sk = a + d * k;
+        cx[k] = f.x; cy[k] = f.y; bx[k] = f.x + f.nx * wb * side; by[k] = f.y + f.ny * wb * side;
+        for (const w of ws) {
+          const x = f.x + f.nx * w * side, y = f.y + f.ny * w * side;
+          if (clHit(S.C, x, y, P, null, 0.4)) { hits[k] = 1; break; }
+          // its OWN carriageway: a hook / U-bend brings the slab over the road it lines (the nearest
+          // centre-line point is elsewhere, well within hw: a perpendicular foot, or inside a ribbon quad)
+          if (P.pts.length > 2 && turnIn(P, sk - wb * 4, sk + wb * 4) > 0.9) { // (a straight-ish stretch cannot come back)
+            const wn = wb * 4, q = projectOn(P.pts, P.cum, x, y, Math.max(s0, sk - wn), Math.min(s1, sk + wn));
+            if (q && q.d2 < (P.hw - 0.4) * (P.hw - 0.4) && (q.d2 - q.v * q.v < 0.01 || Math.abs(q.s - sk) > w * 0.5 || onOwnRibbon(P, q.s, x, y, s0, s1, 0.4))) { hits[k] = 1; break; }
           }
         }
+      }
+      // on the inside of a bend tighter than the footpath (radius < hw + fp) the back edge runs backwards
+      // against the centre line: the slab folds over itself and the road (gap there)
+      for (let k = 0; k < n; k++) if ((bx[k + 1] - bx[k]) * (cx[k + 1] - cx[k]) + (by[k + 1] - by[k]) * (cy[k + 1] - cy[k]) < 0) { hits[k] = 1; hits[k + 1] = 1; }
+      let gaps = null, k0 = -1;
+      for (let k = 0; k <= n + 1; k++) {
+        const hit = k <= n && hits[k] === 1;
         if (hit && k0 < 0) k0 = k;
-        else if (!hit && k0 >= 0) { (gaps || (gaps = [])).push([Math.max(a, a + d * (k0 - 1)), Math.min(b, a + d * k)]); k0 = -1; }
+        else if (!hit && k0 >= 0) { (gaps || (gaps = [])).push([Math.max(a, a + d * (k0 - 1)), Math.min(b, a + d * (k + 1))]); k0 = -1; } // (a sample of margin each side)
       }
       if (!gaps) continue;
       // no slivers: clear runs shorter than CL_MIN (between gaps or at the strip ends) go too
@@ -934,6 +941,43 @@
       P.gaps[si] = out;
       S.gaps += out.length; for (const g of out) S.gapLen += g[1] - g[0];
     }
+  }
+  /** total absolute turning (radians) of piece P's centre line between arc lengths sa and sb */
+  function turnIn(P, sa, sb) {
+    if (!P.turn) { // prefix sums of the turning at each vertex
+      const t = new Float64Array(P.pts.length), p = P.pts;
+      for (let k = 1; k < p.length - 1; k++) {
+        const ax = p[k][0] - p[k - 1][0], ay = p[k][1] - p[k - 1][1], bx = p[k + 1][0] - p[k][0], by = p[k + 1][1] - p[k][1];
+        t[k] = t[k - 1] + Math.abs(Math.atan2(ax * by - ay * bx, ax * bx + ay * by));
+      }
+      if (p.length > 1) t[p.length - 1] = t[Math.max(0, p.length - 2)];
+      P.turn = t;
+    }
+    const ka = segAt(P.cum, Math.max(0, sa)), kb = Math.min(P.pts.length - 1, segAt(P.cum, Math.min(P.L, sb)) + 1);
+    return P.turn[kb] - P.turn[ka];
+  }
+  /** is (x, y) inside the drawn ribbon quads of piece P next to arc length s (the segment there and its
+   *  two neighbours, vertex frames with the averaged normals the ribbon uses), at least m inside its
+   *  long edges? A strip sample nearer than hw to the centre line of its own road: on the inside of a
+   *  hook / tight bend (a fold over its own carriageway) it is in a quad; by the outer corner of a bend
+   *  vertex it is not (the strip shares the quad's edge there) */
+  function onOwnRibbon(P, s, x, y, s0, s1, m) {
+    const k0 = segAt(P.cum, s), hw = P.hw, pts = P.pts, nr = P.nrm;
+    const side = (ax, ay, bx, by) => (bx - ax) * (y - ay) - (by - ay) * (x - ax);
+    for (let k = Math.max(0, k0 - 1); k <= Math.min(pts.length - 2, k0 + 1); k++) {
+      if (P.cum[k + 1] < s0 || P.cum[k] > s1) continue;
+      const a = pts[k], b = pts[k + 1], na = nr[k], nb = nr[k + 1];
+      const L = [a[0] + na[0] * hw, a[1] + na[1] * hw, b[0] + nb[0] * hw, b[1] + nb[1] * hw];
+      const R = [a[0] - na[0] * hw, a[1] - na[1] * hw, b[0] - nb[0] * hw, b[1] - nb[1] * hw];
+      // between the two long edges and between the end frames
+      const sl = side(L[0], L[1], L[2], L[3]), sr = side(R[0], R[1], R[2], R[3]);
+      if (sl * sr > 0) continue; // outside both edges on one side
+      const e0 = side(L[0], L[1], R[0], R[1]), e1 = side(L[2], L[3], R[2], R[3]);
+      if (e0 * e1 > 0) continue; // before the start frame or past the end frame
+      const dl = Math.abs(sl) / (Math.hypot(L[2] - L[0], L[3] - L[1]) || 1), dr = Math.abs(sr) / (Math.hypot(R[2] - R[0], R[3] - R[1]) || 1);
+      if (dl > m && dr > m) return true;
+    }
+    return false;
   }
   /** clearance phase step (resumable): index, then junction corners (they set end faces), then strips */
   function clearStep(A, over) {

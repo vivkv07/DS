@@ -3404,3 +3404,70 @@ body.touch-on .ol-hud { top: 30%; }
 .jy h4 { margin: 10px 0 2px; font-family: var(--font-display); font-weight: 400; font-size: 19px; color: var(--irani-teal); }
 .jy-list { margin: 0; padding-left: 20px; columns: 2 200px; font-size: 15px; }
 /* === end online === */
+
+/* === party === (owned by party.js, ARCHITECTURE §24: invite / lobby / start cards, the 3-2-1 countdown, the live
+   standings strip and the results card; tin-sign look like the HUD) */
+.pt-card, .pt-invite, .pt-lobby, .pt-results {
+  position: absolute; left: 50%; top: calc(17% + var(--safe-t)); transform: translateX(-50%); z-index: 6;
+  width: min(440px, calc(100% - 24px)); padding: 12px 16px 14px; color: var(--auto-black);
+  background: var(--whitewash); border: 3px solid var(--auto-black); border-radius: 5px; box-shadow: 6px 6px 0 var(--apsrtc-red);
+  pointer-events: auto; font-family: var(--font-body);
+}
+.pt-invite { top: calc(12% + var(--safe-t)); background: #fff3c4; box-shadow: 6px 6px 0 var(--irani-teal); animation: pt-pop 0.28s ease-out; }
+.pt-lobby { top: calc(12% + var(--safe-t)); width: min(380px, calc(100% - 24px)); }
+.pt-results { top: calc(14% + var(--safe-t)); width: min(520px, calc(100% - 20px)); max-height: calc(80% - var(--safe-t)); overflow-y: auto; }
+@keyframes pt-pop { from { transform: translateX(-50%) scale(0.9); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+.pt-card-t { font-family: var(--font-display); font-size: 24px; line-height: 1.15; color: var(--apsrtc-red); }
+.pt-card-l, .pt-inv-l { margin: 4px 0 8px; font-size: 15px; line-height: 1.3; color: #3a2e28; }
+.pt-inv-t { font-size: 18px; line-height: 1.25; }
+.pt-inv-t b { font-family: var(--font-display); font-weight: 400; color: var(--apsrtc-red); }
+.pt-inv-i { font-size: 26px; margin-right: 6px; vertical-align: -3px; }
+.pt-card-b { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.pt-card-b .sign-btn { min-width: 0; padding: 6px 14px 4px; font-size: 19px; }
+.pt-card-b .sign-btn[disabled] { opacity: 0.45; cursor: default; }
+.pt-card kbd, .pt-invite kbd, .pt-lobby kbd, .pt-results kbd, .pt-pick kbd { font-family: var(--font-osd); font-size: 15px; padding: 0 4px; border: 1px solid currentColor; border-radius: 3px; }
+.pt-bar { height: 5px; margin-top: 10px; background: rgba(26, 18, 20, 0.15); border-radius: 3px; overflow: hidden; }
+.pt-bar b { display: block; height: 100%; width: 100%; background: var(--irani-teal); transition: width 0.25s linear; }
+.pt-who { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; padding: 0; }
+.pt-who li { padding: 1px 10px; font-weight: 600; background: #fffaf0; border: 2px solid var(--auto-black); border-radius: 14px; }
+.pt-who li.ok { background: #dff2d6; }
+.pt-who li.no { opacity: 0.55; text-decoration: line-through; }
+.pt-list { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow-y: auto; margin: 4px 0 8px; }
+.pt-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 0; padding: 6px 10px; text-align: left; color: var(--auto-black); background: #fffaf0; border: 2px solid var(--auto-black); border-radius: 4px; cursor: pointer; touch-action: manipulation; }
+.pt-pick b { font-family: var(--font-display); font-weight: 400; font-size: 18px; }
+.pt-pick small { font-size: 13px; color: #4a3a30; }
+.pt-pick:hover, .pt-pick:focus-visible { background: #fff3c4; outline: none; }
+/* 3-2-1-GO */
+.pt-count { position: absolute; left: 0; right: 0; top: 34%; z-index: 7; text-align: center; pointer-events: none; display: none;
+  font-family: var(--font-display); font-size: 96px; line-height: 1; color: var(--auto-yellow); text-shadow: 4px 4px 0 var(--auto-black), -2px -2px 0 var(--auto-black), 0 0 24px rgba(255, 160, 40, 0.6); }
+.pt-count.show { display: block; }
+.pt-count.ready { font-size: 40px; color: var(--whitewash); }
+.pt-count.num { animation: pt-beat 1s ease-out infinite; }
+.pt-count.go { color: #6fff6a; font-size: 110px; }
+@keyframes pt-beat { 0% { transform: scale(1.35); opacity: 0.4; } 25% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.92); opacity: 0.9; } }
+/* live standings */
+.pt-strip { position: absolute; left: calc(8px + var(--safe-l)); top: calc(118px + var(--safe-t)); z-index: 3; width: 196px; padding: 6px 8px 7px; pointer-events: none;
+  color: var(--osd); background: rgba(18, 13, 22, 0.78); border: 2px solid var(--panel-edge); border-radius: 6px; font-family: var(--font-osd); }
+.pt-strip-t { font-size: 19px; letter-spacing: 1px; color: var(--auto-yellow); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pt-strip-s { font-size: 18px; line-height: 1.1; }
+.pt-board { list-style: none; counter-reset: pt; margin: 4px 0 0; padding: 0; }
+.pt-board li { counter-increment: pt; display: flex; align-items: center; gap: 5px; font-size: 18px; line-height: 1.15; white-space: nowrap; }
+.pt-board li::before { content: counter(pt); width: 14px; color: var(--ink-dim); }
+.pt-board li i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.pt-board li b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
+.pt-board li em { margin-left: auto; font-style: normal; color: var(--ink-dim); }
+.pt-board li.me b { color: #6fff6a; }
+.pt-board li.out { opacity: 0.5; }
+body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: calc(8px + var(--safe-l)); width: 168px; }
+/* results */
+.pt-table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 16px; }
+.pt-table td { padding: 3px 6px; border-bottom: 1px dashed rgba(26, 18, 20, 0.25); }
+.pt-table td.pl { width: 40px; font-size: 20px; text-align: center; }
+.pt-table td.nm { font-weight: 700; }
+.pt-table td.tm, .pt-table td.sc { font-family: var(--font-osd); font-size: 20px; text-align: right; white-space: nowrap; }
+.pt-table td.nt { font-size: 13px; color: #6a5646; }
+.pt-table tr.me td { background: #dff2d6; }
+.pt-cheer { font-style: italic; }
+.ol-chat .ol-party { background: var(--whitewash); }
+@media (max-width: 480px) { .pt-card-t { font-size: 21px; } .pt-count { font-size: 76px; } .pt-count.go { font-size: 86px; } .pt-card-b .sign-btn { font-size: 17px; } }
+/* === end party === */

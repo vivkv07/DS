@@ -10,7 +10,7 @@
  *                     no bombs, more phuljhadis; haggle once) -> carry the box home on foot through the traffic
  *                     (BOX meter: bumps, near misses, running, riding). Fails: bombs ("He knows. (He doesn't.)"),
  *                     the box falls. Checkpoints 'stall', 'carry'. Reward: the box fills N.diwali.box.
- *   mithai_run        Amma at `home`, 15:00-18:30, `diwali`. Five sweet boxes before Amma's puja (timer): Immu's
+ *   mithai_run        Amma at `home`, 15:00-17:45, `diwali` (diwali.js's home family takes the gate from 17:45). Five sweet boxes before Amma's puja (timer): Immu's
  *                     family at friend_home (Ammi: "Eid pe sevaiyan pakki!" -> N.flags.diwali_sevai_promise, which
  *                     story2.js's Eid morning card reads, "[diwali hook]"), Agarwal-ji (kirana_1), Ramulu-uncle
  *                     (pindi_girni_1), Lakshmamma (flower_cart_1), the gate aunties (the bench at playground_1),
@@ -18,7 +18,9 @@
  *   deepon_ki_raat    Ammamma (her verandah swing at `home`), 18:30-21:30, `diwali`. 21 diyas on the home_terrace
  *                     parapet before the evening breeze (timer). Gust fronts follow N.wind's direction (+ a scripted
  *                     wobble), are announced 2.6 s ahead and blow out the lit flames on the windward edge unless
- *                     Chinnu stands guard beside them; re-light them (E). Ammamma re-lights the two by the stairs.
+ *                     Chinnu stands guard beside them; re-light them (hold E: strike the match; held while walking along
+ *                     the parapet it lights one after another). Ammamma re-lights the ones by the stairs. The camera
+ *                     closes in on the terrace (N.render.baseZoom) while the diyas are lit; they burn on all night.
  *                     Checkpoint 'terrace'. Reward: the terrace view of the city's fireworks (N.diwali.show) and a
  *                     clay diya for the tin.
  *   rocket_bunty      Bunty-anna at playground_1, 19:00-23:00, `diwali`. Bucket of water from the home tap first
@@ -40,7 +42,8 @@
  * Save section 'diwali_missions' {v, prog {per mission}, box (the fallback stash), tiger}. Flags written:
  *   diwali_sevai_promise, dw_bazaar_items, tiger_safe (day), dw_photo, dw_terrace, no_curfew ('diwali' grace).
  * Items given: amma_list, cracker_box, mithai_boxes, jasmine, bucket. Tin tokens: clay_diya, diwali_photo.
- * Private fallbacks (used only while N.diwali lacks them): fireworks (burst / rocket / show), the cracker stash,
+ * Private fallbacks (used only while N.diwali lacks them): fireworks (burst / rocket / bottle / show), the cracker stash
+ *   (Chitti's snake tablets always: N.diwali.box keeps only phuljhadi chakri anaar rocket),
  *   the pataakha stall at Sultan Bazaar, the season test (pataakha 20-26 Oct, diwali 22-26 Oct 2003 when seasons.js
  *   has no such names), the whimper sound (a caption).
  * Hooks in files this module does not own (each marked "[diwali hook]"): index.html (script tag), story2.js (the
@@ -50,7 +53,6 @@
   'use strict';
   const N = window.N;
   if (!N || !N.addSystem) return;
-  const U = N.util;
   const TAU = Math.PI * 2;
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const rr = (a, b) => a + Math.random() * (b - a);
@@ -64,7 +66,6 @@
   const IDS = ['pataakha_bazaar', 'mithai_run', 'deepon_ki_raat', 'rocket_bunty', 'tiger_ko_bachao', 'diwali_week'];
   const mineId = (id) => IDS.indexOf(id) >= 0;
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const emph = (s) => esc(subst(s)).replace(/\*([^*]+)\*/g, '<i>$1</i>');
   const rs = (p) => '₹' + (Math.round(p) % 100 ? (p / 100).toFixed(2) : String(Math.round(p) / 100));
   let seq = 0;
 
@@ -103,7 +104,7 @@
     givers: new Map(), giverT: 0, widget: null, panel: null, eatAction: false, step: null,
     stall: null, terrace: null, gust: null, rocket: null, tiger: null, tigerKeep: null, carry: null,
     stats: { blown: 0, saved: 0, gusts: 0, nearMiss: 0, bumps: 0, runHits: 0, gustLights: 0 },
-    weekShown: false, weekT: 0, weekBusy: false, grace: null,
+    grace: null,
   };
   function onEnd(fn) { ST.cleanups.push(fn); }
   function everyTick(fn) { ST.ticks.add(fn); return () => ST.ticks.delete(fn); }
@@ -264,7 +265,6 @@
     burst(x, y, h, type, big) { const f = dwFn('burst'); if (f) { try { f(x, y, h, type, undefined, big); return; } catch (e) { N.err('dwm.burst', e); } } ownBurst(x, y, h, type, big); },
     rocket(x, y, o) { const f = dwFn('rocket'); if (f) { try { const r = f(x, y, Object.assign({ force: true }, o || {})); if (r) return r; } catch (e) { N.err('dwm.rocket', e); } } return ownRocket(x, y, o); },
     show(x, y, secs, o) { const f = dwFn('show'); if (f) { try { f(x, y, secs, o); return 'diwali'; } catch (e) { N.err('dwm.show', e); } } FX.shows.push({ x, y, left: secs || 10, next: 0 }); return 'own'; },
-    anaar(x, y) { const f = dwFn('anaar'); if (f) { try { return f(x, y); } catch (e) { N.err('dwm.anaar', e); } } return null; },
     scatter(x, y, n) { const f = dwFn('scatter'); if (f) { try { return f(x, y, n); } catch (e) { N.err('dwm.scatter', e); } } return null; },
     fireOK(x, y) { const f = dwFn('fireOK'); if (f) { try { return !!f(x, y); } catch (e) { N.err('dwm.fireOK', e); } } try { return !(N.respect && N.respect.at && N.respect.at(x, y)); } catch (e) { return true; } },
   };
@@ -1103,21 +1103,21 @@
     R.queue('sky', 0.5, (ctx) => {
       for (const d of T.list) {
         const k = R.k(d.h + 0.4), X = R.sx(d.x, k), Y = R.sy(d.y, k), s = Math.max(1, k);
-        ctx.fillStyle = '#3a1a0c'; ctx.fillRect(Math.round(X - 2 * s), Math.round(Y - 0.7 * s), Math.ceil(4 * s), Math.ceil(1.9 * s));
-        ctx.fillStyle = '#b4582c'; ctx.fillRect(Math.round(X - 1.6 * s), Math.round(Y - 1.1 * s), Math.ceil(3.2 * s), Math.ceil(1.2 * s));
-        ctx.fillStyle = '#d8823e'; ctx.fillRect(Math.round(X - 1.2 * s), Math.round(Y - 1.1 * s), Math.ceil(1.2 * s), Math.ceil(0.5 * s));
+        // a clay diya: a little shadowed bowl with a lighter rim (exaggerated to read at the game's scale)
+        ctx.fillStyle = '#2a1208'; ctx.fillRect(Math.round(X - 1.1 * s), Math.round(Y - 0.3 * s), Math.ceil(2.2 * s), Math.ceil(0.9 * s));
+        ctx.fillStyle = '#a8502a'; ctx.fillRect(Math.round(X - 0.9 * s), Math.round(Y - 0.6 * s), Math.ceil(1.8 * s), Math.ceil(0.8 * s));
+        ctx.fillStyle = '#e09050'; ctx.fillRect(Math.round(X - 0.9 * s), Math.round(Y - 0.6 * s), Math.ceil(0.7 * s), Math.ceil(0.3 * s));
         if (d.lit) {
           const fl = 0.75 + 0.25 * Math.sin(t * 13 + d.ph) + (d.saved ? 0.2 * Math.sin(t * 40) : 0);
-          const g = ctx.createRadialGradient(X, Y - 1.8 * s, 0, X, Y - 1.8 * s, 6.5 * s);
-          g.addColorStop(0, 'rgba(255,200,90,' + (0.6 * fl).toFixed(2) + ')'); g.addColorStop(1, 'rgba(255,150,40,0)');
-          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X, Y - 1.8 * s, 6.5 * s, 0, TAU); ctx.fill();
-          ctx.fillStyle = '#ff9a2a'; ctx.fillRect(Math.round(X - 0.8 * s), Math.round(Y - (3 + fl) * s), Math.ceil(1.6 * s), Math.ceil((2 + fl) * s));
-          ctx.fillStyle = '#ffd24a'; ctx.fillRect(Math.round(X - 0.5 * s), Math.round(Y - (2.7 + fl * 0.8) * s), Math.ceil(1 * s), Math.ceil((1.5 + fl) * s));
-          ctx.fillStyle = '#fff4c0'; ctx.fillRect(Math.round(X - 0.25 * s), Math.round(Y - 2.1 * s), Math.ceil(0.5 * s), Math.ceil(0.9 * s));
+          const g = ctx.createRadialGradient(X, Y - 1.2 * s, 0, X, Y - 1.2 * s, 4.2 * s);
+          g.addColorStop(0, 'rgba(255,200,90,' + (0.55 * fl).toFixed(2) + ')'); g.addColorStop(1, 'rgba(255,150,40,0)');
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X, Y - 1.2 * s, 4.2 * s, 0, TAU); ctx.fill();
+          ctx.fillStyle = '#ff8a20'; ctx.fillRect(Math.round(X - 0.45 * s), Math.round(Y - (1.6 + fl) * s), Math.ceil(0.9 * s), Math.ceil((1.1 + fl) * s));
+          ctx.fillStyle = '#ffe070'; ctx.fillRect(Math.round(X - 0.25 * s), Math.round(Y - (1.3 + fl * 0.8) * s), Math.ceil(0.5 * s), Math.ceil((0.8 + fl * 0.7) * s));
         } else if (T.holdD === d && T.holdT > 0) {
           const k2 = Math.min(1, T.holdT / TUNE.diyaHold);
           ctx.fillStyle = 'rgba(255,220,120,' + (0.4 + 0.5 * k2).toFixed(2) + ')';
-          ctx.fillRect(Math.round(X + (1.2 - k2) * 2 * s), Math.round(Y - (2.4 + (1 - k2)) * s), Math.ceil(0.9 * s), Math.ceil(1.2 * s));
+          ctx.fillRect(Math.round(X + (1.2 - k2) * 1.5 * s), Math.round(Y - (1.6 + (1 - k2)) * s), Math.ceil(0.6 * s), Math.ceil(0.9 * s));
         } else if (d.out > 0) {
           ctx.fillStyle = 'rgba(200,200,210,' + (d.out * 0.5).toFixed(2) + ')';
           ctx.fillRect(Math.round(X - 0.5 * s + (1.2 - d.out) * 3 * s), Math.round(Y - (2 + (1.2 - d.out) * 4) * s), Math.ceil(1 * s), Math.ceil(1 * s));
@@ -1397,6 +1397,7 @@
     RK.bucket = true; RK.bottle = true; RK.launched = false;
     npc(m, 'bunty', walkable(L.x + 8, L.y + 2, 12), { idle: 'stand' });
     if (Math.hypot(N.player.x - L.x, N.player.y - L.y) > 20) await m.goto(walkable(L.x, L.y + 8, 10), { label: 'Back to the bottle.', r: 14 });
+    camZoom(1.7);
     await m.say('bunty', 'Bottle on the ground. Now aim it away from the houses. Open sky, open ground.');
     const aim = await aimCard(m, L);
     if (!aim) m.fail('Not now? Bunty-anna waits. Phir se.');
@@ -1429,22 +1430,27 @@
       await m.say('bunty', 'Not in the wind! (He pinches the fuse out.) Rule three, *mamu*. The wind decides where a rocket goes.', { mood: 'angry' });
       m.fail('Bunty-anna pinched the fuse: never light it in a gust. Phir se.');
     }
-    RK.launched = true; RK.bottle = false;
+    RK.launched = true;
+    camZoom(0.9);
     sfxOr(['dw_match', 'paper'], { ui: true, vol: 0.6 });
     const dx = Math.cos(aim.a), dy = Math.sin(aim.a);
     let burst = null;
     const ropt = { h: 3, type: 'multi', big: 2.2, vx: dx * 16, vy: dy * 16, vh: 140, fuse: 1.5, col: 0, force: true, onBurst: (r) => { burst = { x: r.x, y: r.y, h: r.h }; } };
     const bottle = dwFn('bottle');
     let viaBottle = false;
-    if (bottle) { try { viaBottle = !!bottle(L.x, L.y, { fuse: 0.5, rocket: ropt }); } catch (e) { N.err('dwm.bottle', e); } }
-    if (!viaBottle) fx.rocket(L.x + dx * 3, L.y + dy * 3, ropt);
+    if (bottle) { try { viaBottle = !!bottle(L.x, L.y, { fuse: 0.5, rocket: ropt, onLaunch: () => { RK.bottle = false; } }); } catch (e) { N.err('dwm.bottle', e); } }
+    if (!viaBottle) { RK.bottle = false; fx.rocket(L.x + dx * 3, L.y + dy * 3, ropt); }
     m.objective(null);
-    await m.wait(viaBottle ? 2.3 : 1.7);
+    await m.until(() => !!burst, { timeout: viaBottle ? 3.2 : 2.4 });
+    RK.bottle = false;
     const B = burst || { x: L.x + dx * 26, y: L.y + dy * 26, h: 150 };
+    if (!burst) fx.burst(B.x, B.y, B.h, 'multi', 2.2);
+    RK.burst = { x: B.x, y: B.y, h: B.h };
     fx.burst(B.x, B.y, B.h + 6, 'ring', 1.6);
     await m.wait(0.35); fx.burst(B.x + 18, B.y - 10, B.h + 14, 'willow', 1.4);
     await m.wait(0.35); fx.burst(B.x - 16, B.y + 8, B.h - 4, 'crackle', 1.3);
     sfxOr(['crowd_cheer', 'kids'], { ui: true, vol: 0.7 });
+    await m.wait(2.4); // let it rain down over the colony before anybody speaks
     ST.prog.rocket_bunty = { day: dayKey(), aim: aim.name, gusts: W.n };
     // the group photo
     const row = [['immu', -18], ['ayesha', -10], ['chitti', -3], ['bunty', 4], ['amma', 11], ['ammamma', 18]];
@@ -1477,7 +1483,15 @@
       this._fn = (ctx) => drawTiger(ctx, this);
     }
     update(dt) { try { tigerUpdate(this, dt); } catch (e) { N.err('dwm.tiger', e); } }
-    draw() { if (N.render.inView(this.x, this.y, 24)) N.render.queue('actors', this.y, this._fn); }
+    draw() {
+      if (!N.render.inView(this.x, this.y, 24)) return;
+      N.render.queue('actors', this.y, this._fn);
+      // his name over him once he is found (a dark lane at night), never while he hides unseen
+      const p = N.player, a = this;
+      if (a.found && a.mode !== 'sleep' && p && Math.hypot(p.x - a.x, p.y - a.y) < 90) {
+        N.render.queue('sky', 2, () => { try { N.draw.pixelText(a.x, a.y - 7, 8, a.flinch > 0 ? 'TIGER !' : 'TIGER', a.flinch > 0 ? '#ff9a6a' : '#f2c230', { scale: 1, shadow: '#1a1214' }); } catch (e) { /* ignore */ } });
+      }
+    }
   }
   /** src/diwali.js scares / steps registered dogs: Tiger is stepped here (dwOwnStep) and reacts to real bangs too */
   function dogsRegister(t) {
@@ -1605,6 +1619,7 @@
     m.unblip(bl);
     try { if (N.hud && N.hud.searchCircle) N.hud.searchCircle('dwm:tiger', null); } catch (e) { /* ignore */ }
     tg.found = true;
+    camZoom(1.6);
     await m.say('chinnu', 'Tiger... it\'s me. It\'s only noise. It\'s only Diwali.');
     m.objective('Comfort Tiger (hold E beside him).');
     await holdAt(m, { label: 'Comfort Tiger (hold E)', meter: 'SHH... SHH...', secs: TUNE.comfortHold, near: () => Math.hypot(p.x - tg.x, p.y - tg.y) < TUNE.tigerFind });
@@ -1615,6 +1630,7 @@
     m.checkpoint('found');
     // (a retry resumes here: Tiger back at his spot, calm)
     tg.found = true; tg.mode = 'follow'; tg.flinch = 0; tg.trail = [];
+    camZoom(1.4);
     if (Math.hypot(tg.x - p.x, tg.y - p.y) > 30) { const f = walkable(p.x + 6, p.y + 4, 10); tg.x = f.x; tg.y = f.y; }
     const G = ST.garage = garageSpot();
     ST.garageLabel = true;
@@ -1700,7 +1716,9 @@
     await m.jumpTo([2003, 10, 20, 9, 30], { fx: 'ff' });
     toast('Mon 20 Oct 2003. Diwali week: the pataakha stalls are up on Sultan Bazaar.', 3600);
     ST.prog.diwali_week = { n: ((ST.prog.diwali_week && ST.prog.diwali_week.n) | 0) + 1 };
-    // a calendar card, not a mission: it ends without a MISSION PASSED banner and comes back after the next rewind
+    // a calendar card, not a mission: it ends without a MISSION PASSED banner and comes back after the next rewind.
+    // He is still at the door where Amma's Pataakha Bazaar card waits: it waits until he has stepped out once.
+    const p0 = N.player; if (p0) ST.stepOut = { x: p0.x, y: p0.y };
     const r = run();
     if (r && r.id === 'diwali_week') { setTimeout(() => { const q = run(); if (q && q.id === 'diwali_week' && !q.ended) N.missions.abort(); }, 0); await m.until(() => false); }
   }
@@ -1733,10 +1751,95 @@
     if (!so) return true;
     const p = N.player;
     if (!p || Math.hypot(p.x - so.x, p.y - so.y) > 70) { ST.stepOut = null; return true; }
-    try { const d = N.missions.defs[id]; const g = d && N.missions.giverPos(d); if (g && Math.hypot(p.x - g.x, p.y - g.y) > ((d.giver && d.giver.r) || 14) + 36) return true; } catch (e) { return true; }
+    try {
+      const d = N.missions.defs[id], g = d && N.missions.giverPos(d), r = (d && d.giver && d.giver.r) || 14;
+      if (!g || Math.hypot(so.x - g.x, so.y - g.y) > r + 24) return true; // he did not end up in this giver's ring
+      if (Math.hypot(p.x - g.x, p.y - g.y) > r + 36) return true;
+    } catch (e) { return true; }
     return false;
   }
   function inYearOct() { const d = dateNow(); return !!d && d.y === 2003 && inDates('09-10', '10-19'); }
+
+  /* ================================================================ 3D (N.view3d.registerLayer('dwm3d')): the same props in the 3D views */
+  // The 2D drawings above are top-down only. In 3D: the 21 clay diyas (one instanced draw) and their flames (one
+  // additive points cloud), the bucket and the bottle on the colony ground, the cracker box / the sweet boxes over
+  // Chinnu's head, Tiger's gunny sack. Tiger himself is an 'animal' entity (view3d_actors draws him as a dog).
+  const L3 = {};
+  function init3D(THREE, H) {
+    const g = L3.g = new THREE.Group(); g.name = 'dwm3d'; H.layer.add(g);
+    L3.geos = [];
+    const geo = (x) => { L3.geos.push(x); return x; };
+    L3.bowls = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.75, 0.5, 0.55, 8)), H.mat('#a8502a'), 24);
+    L3.bowls.count = 0; L3.bowls.frustumCulled = false; g.add(L3.bowls);
+    const fg = geo(new THREE.BufferGeometry());
+    L3.fpos = new Float32Array(24 * 3);
+    fg.setAttribute('position', new THREE.BufferAttribute(L3.fpos, 3)); fg.setDrawRange(0, 0);
+    const tex = H.tex('dwm_flame', 32, 32, (c, w, h) => {
+      const gr = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+      gr.addColorStop(0, 'rgba(255,244,190,1)'); gr.addColorStop(0.3, 'rgba(255,176,70,0.9)'); gr.addColorStop(1, 'rgba(255,120,20,0)');
+      c.fillStyle = gr; c.fillRect(0, 0, w, h);
+    });
+    L3.fmat = new THREE.PointsMaterial({ map: tex, size: 2.4, sizeAttenuation: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    L3.flames = new THREE.Points(fg, L3.fmat); L3.flames.frustumCulled = false; g.add(L3.flames);
+    const mk = (k, gg, hex) => { const o = new THREE.Mesh(geo(gg), H.mat(hex)); o.visible = false; g.add(o); L3[k] = o; };
+    mk('bucket', new THREE.CylinderGeometry(2.1, 1.6, 3.4, 10), '#2a4a8a');
+    mk('water', new THREE.CylinderGeometry(1.9, 1.9, 0.2, 10), '#6aa8e8');
+    mk('bottle', new THREE.CylinderGeometry(0.8, 1.1, 4, 8), '#2a6a3a');
+    mk('stick', new THREE.CylinderGeometry(0.25, 0.25, 7, 4), '#e8dcc0');
+    mk('box', new THREE.BoxGeometry(5, 3.2, 4), '#d24d57');
+    mk('sweets', new THREE.BoxGeometry(4.2, 1.2, 3.2), '#f2c230');
+    mk('sack', new THREE.BoxGeometry(9, 0.6, 6), '#8a6a3a');
+  }
+  function update3D(dt, H) {
+    if (!L3.g) return;
+    const THREE = H.THREE, T = ST.terrace || ST.terraceKeep, t = H.time || 0;
+    let nb = 0, nf = 0;
+    if (T && T.list && T.list.length) {
+      const m = L3.m4 || (L3.m4 = new THREE.Matrix4());
+      for (const d of T.list) {
+        const y = H.elev({ x: d.x, y: d.y, level: T.roof ? 'home_terrace' : null });
+        if (nb < 24) { m.makeTranslation(d.x, y + 0.3, d.y); L3.bowls.setMatrixAt(nb++, m); }
+        if (d.lit && nf < 24) { L3.fpos[nf * 3] = d.x; L3.fpos[nf * 3 + 1] = y + 1.3 + 0.12 * Math.sin(t * 13 + d.ph); L3.fpos[nf * 3 + 2] = d.y; nf++; }
+      }
+    }
+    L3.bowls.count = nb; L3.bowls.instanceMatrix.needsUpdate = true;
+    L3.flames.geometry.setDrawRange(0, nf); L3.flames.geometry.attributes.position.needsUpdate = true;
+    L3.fmat.size = 2.2 + 0.4 * (H.night || 0);
+    const p = N.player, RK = ST.rocket, C = ST.carried;
+    const put = (o, on, x, y, h, ang) => { o.visible = !!on; if (on) { o.position.set(x, h, y); o.rotation.y = -(ang || 0); } };
+    const pe = p ? H.elev(p) : 0;
+    const bucketAt = RK && RK.carrying && p ? { x: p.x + Math.cos(p.facing || 0) * 3, y: p.y + Math.sin(p.facing || 0) * 3, h: pe + 1.7 } : RK && RK.bucket ? { x: RK.L.x - 7, y: RK.L.y + 3, h: H.elev(RK.L) + 1.7 } : null;
+    put(L3.bucket, bucketAt, bucketAt && bucketAt.x, bucketAt && bucketAt.y, bucketAt && bucketAt.h);
+    put(L3.water, bucketAt && (RK.water > 30 || RK.bucket), bucketAt && bucketAt.x, bucketAt && bucketAt.y, bucketAt && bucketAt.h + 1.5);
+    const bot = RK && RK.bottle && !RK.launched ? RK.L : null;
+    put(L3.bottle, bot, bot && bot.x, bot && bot.y, bot && H.elev(bot) + 2);
+    if (bot) {
+      const a = RK.aim ? RK.aim.a : 0, tilt = RK.aim ? 0.35 : 0, fl = RK.gust ? Math.sin(t * 30) * 0.12 : 0;
+      put(L3.stick, true, bot.x + Math.cos(a) * 1.2, bot.y + Math.sin(a) * 1.2, H.elev(bot) + 6.5);
+      L3.stick.rotation.set(0, 0, 0); L3.stick.rotateOnWorldAxis(new THREE.Vector3(-Math.sin(a), 0, Math.cos(a)), -(tilt + fl));
+    } else L3.stick.visible = false;
+    put(L3.box, C && C.kind === 'box' && p && !p.vehicle, p && p.x, p && p.y, pe + 14.5, p && p.facing);
+    const n = C && C.kind === 'mithai' && C.n ? C.n() : 0;
+    put(L3.sweets, n > 0 && p, p && p.x, p && p.y, pe + 13.5 + n * 0.6, p && p.facing);
+    if (n > 0) L3.sweets.scale.set(1, n, 1);
+    const G = ST.garage;
+    put(L3.sack, G, G && G.x, G && G.y, G && H.elev(G) + 0.3);
+  }
+  function dispose3D() {
+    if (!L3.g) return;
+    if (L3.g.parent) L3.g.parent.remove(L3.g);
+    for (const x of L3.geos || []) { try { x.dispose(); } catch (e) { /* ignore */ } }
+    try { if (L3.fmat) L3.fmat.dispose(); } catch (e) { /* ignore */ }
+    for (const k in L3) delete L3[k];
+  }
+  if (N.view3d && typeof N.view3d.registerLayer === 'function') {
+    N.view3d.registerLayer('dwm3d', {
+      order: 47,
+      init(THREE, H) { try { init3D(THREE, H); } catch (e) { N.err('dwm3d.init', e); } },
+      update(dt, H) { try { update3D(dt, H); } catch (e) { N.err('dwm3d.update', e); } },
+      dispose(H) { try { dispose3D(H); } catch (e) { N.err('dwm3d.dispose', e); } },
+    });
+  }
 
   /* ================================================================ save (progress, the fallback stash, Tiger's night) */
   function serialize() { return { v: 1, prog: JSON.parse(JSON.stringify(ST.prog)), box: Object.assign({}, ST.box), tiger: ST.tigerKeep ? { day: ST.keepDay } : null }; }
@@ -1810,7 +1913,7 @@
           stall: ST.stall ? { x: ST.stall.x, y: ST.stall.y, own: ST.stall.own } : null,
           terrace: T ? { lit: litCount(), n: T.list.length, h: T.h, bb: T.bb, diyas: T.list.map((d) => ({ x: +d.x.toFixed(1), y: +d.y.toFixed(1), nx: d.nx, ny: d.ny, lit: d.lit })) } : null,
           gust: G ? { phase: G.phase, t: +G.t.toFixed(2), dir: G.dir, n: G.n, last: G.last || null } : null,
-          rocket: RK ? { L: RK.L, bucket: RK.bucket, water: Math.round(RK.water), carrying: RK.carrying, gust: RK.gust, launched: RK.launched, aim: RK.aim ? RK.aim.name : null, wind: RK.wind ? { phase: RK.wind.phase, t: +RK.wind.t.toFixed(2) } : null } : null,
+          rocket: RK ? { L: RK.L, bucket: RK.bucket, water: Math.round(RK.water), carrying: RK.carrying, gust: RK.gust, launched: RK.launched, burst: RK.burst || null, aim: RK.aim ? RK.aim.name : null, wind: RK.wind ? { phase: RK.wind.phase, t: +RK.wind.t.toFixed(2) } : null } : null,
           tiger: tg ? { x: tg.x, y: tg.y, mode: tg.mode, flinch: tg.flinch > 0, found: !!tg.found, home: tg.home || null } : null,
           garage: ST.garage ? { x: ST.garage.x, y: ST.garage.y } : null,
           mithai: ST.mithai ? { done: ST.mithai.done.slice(), stops: ST.mithai.stops.map((s) => { const q = pos(s.target); return { key: s.key, x: q && q.x, y: q && q.y }; }) } : null,

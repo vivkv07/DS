@@ -117,7 +117,7 @@
     otherFaithR: 150, respectR: 60, hospitalR: 230,
     litterCell: 24,        // road cells for the night's paper
     litterPerCell: 11,     // seeded bits per cell at full weight and litterLevel 1
-    litterR3d: 300,        // 3D: the paper lives this far round the player
+    litterR3d: 230,        // 3D: the paper lives this far round the player
     wake: { k: 1, lift: 1, len: 1.25, spread: 0.42 }, // vehicle wake strength / lift / length (x body) / widening
     windAir: 30,           // u/s of air per unit of N.wind strength
     heat: 45,              // Chappal Meter heat for lighting near elders / animals / a hospital
@@ -344,7 +344,7 @@
   // flashes: a burst / bang lighting up the sky and the ground (2D glow + light pool; 3D glow + point light)
   const FLASH = [];
   function flash(x, y, h, col, r, life, inten) {
-    if (FLASH.length > 24) FLASH.shift();
+    if (FLASH.length > 40) FLASH.shift();
     FLASH.push({ x, y, h, col, r, t: 0, life, inten: inten == null ? 1 : inten });
   }
   function updateFlashes(dt) { for (let i = FLASH.length - 1; i >= 0; i--) { const f = FLASH[i]; f.t += dt; if (f.t >= f.life) FLASH.splice(i, 1); } }
@@ -485,7 +485,9 @@
       else spark(x, y, h, vx, vy, vh, rr(1.2, 1.9), type === 'multi' && i % 2 ? col2 : col, 1.25, 0);
     }
     if (type === 'peony' && rnd() < 0.4) for (let i = 0; i < n * 0.25; i++) { sphere(_u); spark(x, y, h, _u.x * sp * 0.4, _u.y * sp * 0.4, _u.z * sp * 0.4, rr(0.9, 1.3), 5, 1, 1); } // a white pistil
-    flash(x, y, h, COLS[type === 'willow' || type === 'palm' ? 0 : col], 230 * Math.sqrt(big), 0.55, 1);
+    const fc = COLS[type === 'willow' || type === 'palm' ? 0 : col];
+    flash(x, y, h, fc, 230 * Math.sqrt(big), 0.55, 1);
+    flash(x, y, h, fc, sp * 2.6, 1.7, 0.32); // the glow of the burst's cloud, fading
     for (let i = 0; i < 2; i++) smoke(x + rr(-8, 8), y + rr(-8, 8), h + rr(-6, 6), 9 * big, rr(5, 8), 0.16, rr(-1, 1));
     STATS.bursts++;
     const p = N.player;
@@ -1938,7 +1940,7 @@
     ctx.globalCompositeOperation = 'lighter';
     ctx.imageSmoothingEnabled = true;
     // flashes: the sky lights up round a burst
-    for (const f of FLASH) { if (f.x < v.x0 - 200 || f.x > v.x1 + 200 || f.y < v.y0 - 200 || f.y > v.y1 + 200) continue; const a = flashK(f); if (a <= 0.01) continue; glowAt(f.x, f.y, f.h, f.col, f.r * (f.h > 20 ? 0.28 : 0.4), Math.min(1, a * 0.75)); }
+    for (const f of FLASH) { if (f.x < v.x0 - 200 || f.x > v.x1 + 200 || f.y < v.y0 - 200 || f.y > v.y1 + 200) continue; const a = flashK(f); if (a <= 0.01) continue; if (f.life > 1) glowAt(f.x, f.y, f.h, f.col, f.r * 0.22, Math.min(0.5, a * 0.55)); else glowAt(f.x, f.y, f.h, f.col, f.r * (f.h > 20 ? 0.26 : 0.4), Math.min(1, a * 0.8)); }
     ctx.globalAlpha = 1;
     // sparks as short streaks (their motion over ~1/30 s), one stroke per colour and brightness
     const pass = (bright) => {
@@ -2000,7 +2002,9 @@
     const hz = haze(), night = R.night || 0;
     if (hz > 0.01) { ctx.globalAlpha = Math.min(0.32, hz * (0.12 + 0.16 * night)); ctx.fillStyle = '#8a7a74'; ctx.fillRect(0, 0, R.W, R.H); ctx.globalAlpha = 1; }
     let fr = 0, fg = 0, fb = 0;
-    for (const f of FLASH) { if (f.h < 20) continue; const a = flashK(f) * 0.06 * night; if (a <= 0) continue; const c = hexRGB(f.col); fr += c[0] * a; fg += c[1] * a; fb += c[2] * a; }
+    let ba = 0, bf = null;
+    for (const f of FLASH) { if (f.h < 20 || f.life > 1) continue; const a = flashK(f); if (a > ba) { ba = a; bf = f; } }
+    if (bf) { const c = hexRGB(bf.col), a = ba * 0.035 * night; fr = c[0] * a; fg = c[1] * a; fb = c[2] * a; }
     if (fr + fg + fb > 0.004) { ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgb(' + Math.min(255, fr * 255 | 0) + ',' + Math.min(255, fg * 255 | 0) + ',' + Math.min(255, fb * 255 | 0) + ')'; ctx.fillRect(0, 0, R.W, R.H); ctx.globalCompositeOperation = 'source-over'; }
   }
   const _vh = [];
@@ -2053,7 +2057,8 @@
     const night = N.render.night || 0;
     if (night < 0.05 || !p) return;
     let n = 0; const cap = BUD().lights;
-    for (const f of FLASH) { if (n >= cap) break; const a = flashK(f); if (a < 0.05) continue; if (Math.abs(f.x - p.x) > 700 || Math.abs(f.y - p.y) > 700) continue; lp(f.x, f.y, f.h > 20 ? Math.min(150, f.r * 0.6) : f.r * 0.6, f.col, Math.min(1, a) * (f.h > 20 ? 0.45 : 0.85), 0); n++; }
+    let hi = 0;
+    for (let i = FLASH.length - 1; i >= 0; i--) { const f = FLASH[i]; if (n >= cap) break; if (f.life > 1) continue; const a = flashK(f); if (a < 0.08) continue; if (Math.abs(f.x - p.x) > 600 || Math.abs(f.y - p.y) > 600) continue; if (f.h > 20) { if (hi >= 3) continue; hi++; lp(f.x, f.y, 110, f.col, Math.min(1, a) * 0.3, 0); } else lp(f.x, f.y, Math.min(90, f.r * 0.6), f.col, Math.min(1, a) * 0.85, 0); n++; }
     for (const e of EMIT) { if (n >= cap + 4) break; if (Math.abs(e.x - p.x) > 400 || Math.abs(e.y - p.y) > 400) continue; if (e.kind === 'anaar' && e.t > 0.3) { lp(e.x, e.y, 46, '#ffc070', 0.95, 3); n++; } else if (e.kind === 'sparkler') { lp(e.x, e.y, 20, '#ffe8b0', 0.8, e.h); n++; } else if (e.kind === 'chakri') { lp(e.x, e.y, 24, '#ffe070', 0.85, 0.5); n++; } }
     if (lampTime()) { let m = 0; for (const d of VIS.houses) { if (m >= Math.max(3, cap >> 1)) break; if (!d._fv && !is3D()) continue; lp(d.door.x + d.nx * 2, d.door.y + d.ny * 2, 22, '#ffb050', 0.6, 0.5); m++; } }
     for (const st of VIS.stalls) { if (n >= cap + 8) break; if (!stallsOpen()) break; lp(st.x + st.fx * 2, st.y + st.fy * 2, 38, '#ffe0a0', 0.85, 7); n++; }
@@ -2199,12 +2204,12 @@
     paper.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n\tif (!gl_FrontFacing) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.72, 0.56), 0.45);'); };
     paper.customProgramCacheKey = () => 'diwali3d-paper';
     M.paper = paper;
-    const atlas = H.tex('dw:litter', 1024, 512, (g) => { for (let v = 0; v < 5; v++) paintLitter(g, (v % 4) * 256, Math.floor(v / 4) * 256, 256, v, v * 7 + 1); }, { linear: true });
+    const atlas = H.tex('dw:litter', 1024, 512, (g) => { for (let v = 0; v < 5; v++) paintLitter(g, (v % 4) * 256, Math.floor(v / 4) * 256, 256, v, v * 7 + 1); });
     const dec = new T.MeshLambertMaterial({ map: atlas, transparent: true, alphaTest: 0.06, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 });
     dec.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 aUvOff;').replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_UV\n\tvUv = vUv * vec2(0.25, 0.5) + aUvOff;\n#endif'); };
     dec.customProgramCacheKey = () => 'diwali3d-decal';
     M.dec = dec;
-    const rang = H.tex('dw:rangoli', 1024, 512, (g) => { for (let v = 0; v < 8; v++) paintRangoli(g, (v % 4) * 256 + 128, Math.floor(v / 4) * 256 + 128, 122, v); }, { linear: true });
+    const rang = H.tex('dw:rangoli', 1024, 512, (g) => { for (let v = 0; v < 8; v++) paintRangoli(g, (v % 4) * 256 + 128, Math.floor(v / 4) * 256 + 128, 122, v); });
     M.rangoli = new T.MeshLambertMaterial({ map: rang, emissiveMap: rang, emissive: new T.Color(0, 0, 0), transparent: true, alphaTest: 0.1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 });
     const labels = H.tex('dw:labels', 1024, 1024, (g) => {
       const rows = STALL_LABELS.concat(['BIJLI  ROCKET  ANAAR', 'CHAKRI  PHULJHADI']);
@@ -2233,7 +2238,7 @@
     initMaterials3D();
     const T = THREE;
     G3.grp = new T.Group(); G3.grp.name = 'diwali3d';
-    G3.spk = makePoints(TUNE.budget.desk.sparks * 2 + 200, true, 0, 0.6, 2.6);
+    G3.spk = makePoints(TUNE.budget.desk.sparks * 3 + 200, true, 0, 0.6, 2.6);
     G3.glo = makePoints(220, true, 0, 0.35);
     G3.smk = makePoints(TUNE.budget.desk.smoke + 40, false, 0, 0);
     const pg = new T.PlaneGeometry(1, 1); pg.rotateX(-PI / 2);
@@ -2433,9 +2438,9 @@
     for (let i = 0; i < SP.n; i++) {
       const u = SP.t[i] / SP.life[i], kd = SP.kind[i]; let a = 1 - u * u;
       if (kd === 1 && rnd() < 0.35) a *= 0.15;
-      const sz = (kd === 4 ? 0.42 : kd === 2 ? 1.6 : 3.2) * SP.size[i], c = RGB[SP.col[i]], x = SP.x[i], y = SP.y[i], h = SP.h[i] * VS;
+      const sz = (kd === 4 ? 0.42 : kd === 2 ? 1.8 : 4.4) * SP.size[i], c = RGB[SP.col[i]], x = SP.x[i], y = SP.y[i], h = SP.h[i] * VS;
       ptAdd(S, x, h, y, sz, a, c);
-      if (kd !== 4 && kd !== 2) ptAdd(S, x - SP.vx[i] * 0.05, h - SP.vh[i] * 0.05 * VS, y - SP.vy[i] * 0.05, sz * 0.8, a * 0.4, c);
+      if (kd !== 4 && kd !== 2) { ptAdd(S, x - SP.vx[i] * 0.045, h - SP.vh[i] * 0.045 * VS, y - SP.vy[i] * 0.045, sz * 0.8, a * 0.5, c); ptAdd(S, x - SP.vx[i] * 0.09, h - SP.vh[i] * 0.09 * VS, y - SP.vy[i] * 0.09, sz * 0.6, a * 0.25, c); }
     }
     for (const r of ROCKETS) { ptAdd(S, r.x, r.h * VS, r.y, 2.4, 1, WHITE); }
     ptCommit(S);
@@ -2444,7 +2449,7 @@
     for (const f of FLASH) {
       const a = flashK(f); if (a <= 0.01) continue;
       const c = hexRGB(f.col);
-      ptAdd(G, f.x, f.h * VS, f.y, f.r * (f.h > 20 ? 0.5 : 0.35), Math.min(1, a * 0.5), c);
+      ptAdd(G, f.x, f.h * VS, f.y, f.life > 1 ? f.r : f.r * (f.h > 20 ? 0.5 : 0.35), Math.min(1, a * (f.life > 1 ? 0.6 : 0.5)), c);
       if (f.h > 20) { const d = p ? Math.hypot(f.x - p.x, f.y - p.y) : 500, w = a * Math.max(0, 1 - d / 1400); fr += c[0] * w; fg += c[1] * w; fb += c[2] * w; if (w > bk) { bk = w; best = f; } }
       else if (p && Math.hypot(f.x - p.x, f.y - p.y) < 160 && H.light) H.light({ x: f.x, y: f.y, h: 3, color: f.col, intensity: 1.6 * a, r: f.r * 0.8 });
     }

@@ -37,6 +37,9 @@
  *   createRoom() / joinRoom(code) / leaveRoom() -> Promise<{ok, why, code?}>   room -> {code, players[], n} | null
  *   dropPin(placeId | null (here)) / clearPin()   say(id)   PHRASES   MEET_PLACES   MAX
  *   titleLine() / pauseLine()   _debug {...} (tests)
+ *   [party hook] channelSend(type, data) -> bool · onMessage(fn) -> off() · players() · partyRpc(fn, args) · myKey
+ *     (src/party.js, ARCHITECTURE §24: the 'pt' broadcast on the room channel; the Online panel's "Challenge friends"
+ *     section via N.party.panelHtml / panelAct; a 🏁 button in the quick-chat strip -> N.party.openPicker)
  * }
  * Events: 'online:status' {status}, 'online:room' {code | null}, 'online:players' {n}, 'online:pin' {pin},
  *   'online:chat' {from, id, text}, 'online:cloud' {what, slot?, why?}.
@@ -453,6 +456,7 @@
     ch.on('presence', { event: 'sync' }, () => { if (synced) { synced(); synced = null; } if (R.ch === ch) onPresence(); });
     ch.on('broadcast', { event: 'st' }, (m) => { if (R.ch === ch) onState(m && m.payload); });
     ch.on('broadcast', { event: 'em' }, (m) => { if (R.ch === ch) onEmote(m && m.payload); });
+    ch.on('broadcast', { event: 'pt' }, (m) => { if (R.ch === ch) onPartyMsg(m && m.payload); }); // [party hook]
     const subscribed = new Promise((res, rej) => {
       let done = false;
       ch.subscribe((status, err) => {
@@ -850,6 +854,45 @@
     return true;
   }
 
+  /* ================================================================ [party hook] (src/party.js, ARCHITECTURE §24) */
+  // A small message bus on the room channel for party activities. channelSend(type, data) broadcasts 'pt'
+  // {k, t, d} to the room; onMessage(fn) -> off() gets ({from, nick, type, data}) for every valid message from a
+  // player present in the room; players() -> the presence list (+ the ghost's last position). Payloads are
+  // capped (type /^[a-z][a-z0-9_]{0,15}$/, data <= 2 KB of JSON) and so is the rate (25 / s out, 40 / s per sender in).
+  const PT = { subs: new Set(), out: [], rx: new Map(), sent: 0, recv: 0, dropped: 0 };
+  const PT_TYPE = /^[a-z][a-z0-9_]{0,15}$/;
+  function ptSize(d) { try { return d === undefined ? 0 : JSON.stringify(d).length; } catch (e) { return Infinity; } }
+  function channelSend(type, data) {
+    if (!R.ch || !PT_TYPE.test(String(type || '')) || ptSize(data) > 2048) return false;
+    const t = nowMs();
+    while (PT.out.length && t - PT.out[0] > 1000) PT.out.shift();
+    if (PT.out.length >= 25) { PT.dropped++; return false; }
+    PT.out.push(t); PT.sent++;
+    try { R.ch.send({ type: 'broadcast', event: 'pt', payload: { k: myKey, t: type, d: data === undefined ? null : data } }); } catch (e) { N.err('online.channelSend', e); return false; }
+    return true;
+  }
+  function onPartyMsg(raw) {
+    if (!raw || typeof raw !== 'object' || typeof raw.k !== 'string' || raw.k === myKey || !PT_TYPE.test(String(raw.t || ''))) return;
+    const p = R.players.find((q) => q.key === raw.k);
+    if (!p || ptSize(raw.d) > 2048) return;
+    const t = nowMs();
+    let w = PT.rx.get(raw.k);
+    if (!w || t - w.t > 1000) { w = { t, n: 0 }; PT.rx.set(raw.k, w); }
+    if (++w.n > 40) { PT.dropped++; return; }
+    PT.recv++;
+    const msg = { from: raw.k, nick: p.nick, type: raw.t, data: raw.d };
+    for (const fn of Array.from(PT.subs)) { try { fn(msg); } catch (e) { N.err('online.onMessage', e); } }
+  }
+  function onMessage(fn) { if (typeof fn !== 'function') return () => {}; PT.subs.add(fn); return () => PT.subs.delete(fn); }
+  function partyPlayers() {
+    return R.ch ? R.players.map((p) => { const g = GH.get(p.key); const o = { key: p.key, nick: p.me ? (P.nick || p.nick) : p.nick, look: p.look, me: p.me, j: p.j }; if (g && !g.ent.hidden) { o.x = g.ent.x; o.y = g.ent.y; } return o; }) : [];
+  }
+  /** party leaderboards: the race_* database functions (supabase/migrations/*_party.sql), keyed by the player code */
+  async function partyRpc(fn, args) {
+    if (!/^race_[a-z]+$/.test(String(fn || '')) || !P.code || availability() !== 'ok') return { ok: false, reason: 'off' };
+    try { return await rpc(fn, args); } catch (e) { return { ok: false, reason: 'net' }; }
+  }
+
   /* ================================================================ HUD: room badge + quick-chat strip */
   let hudEl = null;
   function buildHud() {
@@ -859,12 +902,14 @@
     hudEl.hidden = true;
     hudEl.innerHTML = '<button type="button" class="ol-badge" data-ol="panel" aria-label="Online room"><b class="ol-badge-code"></b><span class="ol-badge-n"></span></button>' +
       '<button type="button" class="ol-chat-tg" data-ol="chat" aria-label="Quick chat" aria-expanded="false">💬</button>' +
-      '<div class="ol-chat" hidden>' + PHRASES.map((p) => '<button type="button" class="ol-say" data-say="' + p.id + '">' + esc(p.text) + '</button>').join('') + '</div>';
+      '<div class="ol-chat" hidden>' + PHRASES.map((p) => '<button type="button" class="ol-say" data-say="' + p.id + '">' + esc(p.text) + '</button>').join('') +
+      '<button type="button" class="ol-say ol-party" data-ol="party" aria-label="Challenge friends">🏁</button>' + '</div>'; // [party hook]
     hudEl.addEventListener('click', (ev) => {
       const b = ev.target.closest('button');
       if (!b) return;
       ev.stopPropagation();
       if (b.dataset.say) { say(b.dataset.say); return; }
+      if (b.dataset.ol === 'party') { try { if (N.party && N.party.openPicker) N.party.openPicker({ from: 'chat' }); } catch (e) { N.err('online.party', e); } return; } // [party hook]
       if (b.dataset.ol === 'chat') { const c = hudEl.querySelector('.ol-chat'); c.hidden = !c.hidden; b.setAttribute('aria-expanded', c.hidden ? 'false' : 'true'); return; }
       if (b.dataset.ol === 'panel') { try { if (N.state.mode === 'play' && N.game && N.game.pause) N.game.pause(); open({ from: 'pause' }); } catch (e) { N.err('online.badge', e); } }
     });
@@ -986,6 +1031,7 @@
         const pin = R.pin;
         h += '<h4>Meet pin</h4><p class="ol-note">' + (pin ? 'Pinned: ' + esc(pin.label ? 'Meet at ' + pin.label : 'a spot on the map') + (pin.by ? ' (by ' + esc(pin.by) + ')' : '') : 'Drop a pin and everyone gets a waypoint to it.') + '</p>';
         h += '<div class="ol-row ol-wrap">' + btn('pinhere', '📍 Meet here', { dis: N.state.mode === 'title' }) + meetPlaces().map((m) => '<button type="button" class="mn-btn small alt ol-place" data-nav data-act="pin" data-place="' + esc(m.id) + '">' + esc(m.label) + '</button>').join('') + (pin ? btn('unpin', 'Clear pin', { alt: true }) : '') + '</div>';
+        try { if (N.party && N.party.panelHtml) h += N.party.panelHtml(); } catch (e) { N.err('online.partyPanel', e); } // [party hook] "Challenge friends"
         h += '<h4>Quick chat</h4><div class="ol-row ol-wrap">' + PHRASES.map((p) => '<button type="button" class="mn-btn small alt ol-say" data-nav data-act="say" data-say="' + p.id + '">' + esc(p.text) + '</button>').join('') + '</div>';
         h += '<div class="ol-row">' + btn('leave', '⏏ Leave room', { alt: true }) + '</div>';
       }
@@ -1035,6 +1081,7 @@
       else if (a === 'pin') { await dropPin(b && b.dataset.place); }
       else if (a === 'unpin') { await clearPin(); }
       else if (a === 'say') { say(b && b.dataset.say); }
+      else if (a === 'party') { if (N.party && N.party.panelAct) N.party.panelAct(b && b.dataset.party, b); } // [party hook]
     } catch (e) { N.err('online.act:' + a, e); ui.busy = false; say2('Something went wrong. Try again.', 'bad'); }
   }
   function open(o) {
@@ -1109,6 +1156,9 @@
     cloud: { pull: cloudPull, push: cloudPush, take: takeOffer, keep: keepLocal, get state() { return { busy: CL.busy, offer: CL.offer ? { slot: CL.offer.slot, t: CL.offer.t, line: CL.offer.line } : null, note: CL.note, cloud: JSON.parse(JSON.stringify(P.cloud)), lastPush: CL.lastPush }; } },
     journey, pushJourney,
     createRoom, joinRoom, leaveRoom, dropPin, clearPin, say,
+    // [party hook] (src/party.js): the room message bus, the player list and the race_* leaderboard calls
+    channelSend, onMessage, players: partyPlayers, partyRpc, get myKey() { return myKey; },
+    renderPanel: () => renderPanel(),
     titleLine() {
       const av = availability();
       if (av === 'soon') return 'coming soon';

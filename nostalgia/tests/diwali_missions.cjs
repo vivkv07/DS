@@ -139,8 +139,24 @@ async function startAt(id, o) {
   o = o || {};
   const g = await ev((id) => { const d = N.missions.defs[id]; const p = d && N.missions.giverPos(d); return p ? { x: p.x, y: p.y, r: (d.giver && d.giver.r) || 14 } : null; }, id);
   if (!check(!!g, id + ': the giver is on the map', g)) return false;
-  // from 90 u away (after a pass at the same door the next giver waits until he has stepped out once)
-  if (!o.noTeleport) await teleport(g.x + 90, g.y + 6);
+  // from 90 u away (after a pass at the same door the next giver waits until he has stepped out once), on the side
+  // away from the other givers' rings (walking in through another J-card would start that one)
+  if (!o.noTeleport) {
+    const at = await ev(([id, gx, gy]) => {
+      const others = N.missions.markers().filter((m) => m.kind === 'giver' && m.id !== id);
+      let best = null, bs = -1;
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2, x = gx + Math.cos(a) * 90, y = gy + Math.sin(a) * 90;
+        if (!N.world.isWalkable(x, y)) continue;
+        let md = 1e9; for (const m of others) { const dd = Math.hypot(m.x - x, m.y - y); const seg = Math.min(md, dd); md = seg; }
+        // and away from the straight line in
+        for (const m of others) for (let t = 0.2; t < 1; t += 0.2) md = Math.min(md, Math.hypot(m.x - (x + (gx - x) * t), m.y - (y + (gy - y) * t)) + 10);
+        if (md > bs) { bs = md; best = { x, y }; }
+      }
+      return best || { x: gx + 90, y: gy + 6 };
+    }, [id, g.x, g.y]);
+    await teleport(at.x, at.y);
+  }
   await waitFor((id) => N.missions.markers().some((m) => m.kind === 'giver' && m.id === id), id, 8000, id + ' giver marker');
   if (o.shot) await shot(o.shot);
   await walkTo(g.x, g.y, g.r - 4, { stop: () => !!N.missions.prompt || !!N.missions.active, ms: 15000 });
@@ -310,7 +326,9 @@ async function deeponBot(ms) {
     if (T.lit >= T.n) return s;
     if (s.dlg) { await talkThrough(); continue; }
     if (s.mode !== 'play') { await tick(); continue; }
-    if (G && (G.phase === 'warn' || G.phase === 'hit')) {
+    if (G && (G.phase === 'warn' || G.phase === 'hit') && G.n <= 1 && s.d.stats.gusts <= 2) {
+      // the first gust of this try: he keeps lighting (the gust blows the windward flames out)
+    } else if (G && (G.phase === 'warn' || G.phase === 'hit')) {
       // guard: stand by the lit diyas on the windward edge (the most of them within reach)
       const ux = -Math.cos(G.dir), uy = -Math.sin(G.dir);
       const wind = T.diyas.filter((d) => d.lit && d.nx * ux + d.ny * uy >= 0.5);
@@ -379,6 +397,23 @@ async function pDeepon() {
   if (!(await passed('deepon_ki_raat', 60000))) return;
   const t = await ev(() => ({ tin: N.tape.tin.has('clay_diya'), tok: N.tape.tokens.clay_diya, prog: N.dwMissions.state().prog.deepon_ki_raat }));
   check(t.tin && t.tok && /diya/i.test(t.tok.name), 'the clay diya is in the tin', t);
+  // the twenty-one burn on tonight; the same in the 3D view (V)
+  await waitFor(() => N.state.mode === 'play' && !N.dialogue.isOpen(), null, 10000, 'free roam on the terrace');
+  if (await ev(() => !!(N.view && N.view3d))) {
+    await press('KeyV');
+    const ok3 = await waitFor(() => !!(N.view3d && N.view3d.active), null, 60000, 'the 3D view');
+    if (ok3) {
+      await ev(() => { try { N.view3d.settle && N.view3d.settle(3000); } catch (e) { /* ignore */ } });
+      await page.waitForFunction(() => { const s = N.view3d.stats && N.view3d.stats(); return !s || !s.pending || s.pending < 4; }, null, { timeout: 30000, polling: 250 }).catch(() => {});
+      await page.waitForTimeout(800);
+      await shot('terrace_3d');
+      const e3 = await ev(() => N.debug.state().errors);
+      check(!e3.length, 'the 3D view draws the lit terrace (layer dwm3d) without errors', e3);
+      // V cycles 3D -> first person -> top-down
+      for (let i = 0; i < 3 && (await ev(() => N.view3d.active)); i++) { await press('KeyV'); await page.waitForFunction(() => true, null, { timeout: 2000 }).catch(() => {}); await page.waitForTimeout(400); }
+      await waitFor(() => !N.view3d.active, null, 10000, 'back to the top-down view');
+    }
+  }
 }
 
 /* ================================================================== 4. rocket_bunty */
@@ -435,8 +470,8 @@ async function pRocket() {
   await walkTo(L.x, L.y + 6, 5, { direct: true, ms: 3000, stop: () => { const r = N.dwMissions.debug.state().rocket; return !r || r.wind.phase !== 'calm'; } });
   await holdE(() => !N.missions.active || N.dwMissions.debug.state().holds === 0, 4000);
   await waitFor(() => { const r = N.dwMissions.debug.state().rocket; return !r || r.launched; }, null, 5000, 'the rocket goes up');
-  await page.waitForFunction(() => (N.diwali && N.diwali.stats ? N.diwali.stats().bursts : 0) + N.dwMissions.debug.state().fallbackFx.sparks > 0, null, { timeout: 6000, polling: 60 }).catch(() => {});
-  await page.waitForTimeout(500);
+  await waitFor(() => { const r = N.dwMissions.debug.state().rocket; return !r || !!r.burst; }, null, 8000, 'the burst over the colony');
+  await page.waitForTimeout(350);
   await shot('rocket_burst');
   await playUntil(() => N.state.mode === 'cutscene' && !!document.querySelector('#overlay .cs-text'), 30000, 'the group photo');
   await shot('group_photo');
@@ -515,8 +550,29 @@ async function pWeek() {
   const s = await ev(() => ({ date: N.calendar.date.label, pataakha: N.dwMissions.season('pataakha'), mc: window.__mc.slice(), done: N.missions.isDone('diwali_week'), avail: N.missions.available().map((d) => d.id) }));
   check(/MON 20 OCT 2003/.test(s.date) && s.pataakha, '▶▶ ' + s.date + ': the pataakha stalls are up', s);
   check(!s.mc.includes('diwali_week') && !s.done, 'a calendar card, not a mission: no MISSION PASSED', s);
+  await page.waitForTimeout(1600); // (the J-card dwell is 1 s: nothing may start under him)
+  const st2 = await ev(() => ({ active: N.missions.active && N.missions.active.id, prompt: N.missions.prompt }));
+  check(!st2.active && !st2.prompt, 'standing at the door after the ▶▶: Amma\'s Pataakha Bazaar card waits until he steps out', st2);
   await shot('week');
   await ev(() => { N.flags.postgame = false; });
+}
+
+/* ================================================================== the Eid morning hook (story2.js "[diwali hook]") */
+async function pEid() {
+  phase = 'eid';
+  const f = await ev(() => N.flags.diwali_sevai_promise);
+  if (!f) await ev(() => { N.flags.diwali_sevai_promise = true; }); // (ONLY=eid without mithai)
+  await ev(() => { window.__lines = []; N.on('dialogue:line', (d) => window.__lines.push({ s: d.speaker, t: d.text })); N.story2.ending(); });
+  // the ending's first card is Eid morning at Immu's house: Ammi's Eidi, then the sevaiyan promised at Diwali
+  const ok = await playUntil(() => window.__lines.some((l) => /sevaiyan/i.test(l.t)), 40000, 'Ammi\'s Eid morning sevaiyan line');
+  const L = await ev(() => window.__lines.map((l) => l.s + ': ' + l.t));
+  const i = L.findIndex((l) => /Eid Mubarak/.test(l)), j = L.findIndex((l) => /sevaiyan/i.test(l));
+  check(ok && i >= 0 && j === i + 1 && /^ammi/.test(L[j]), 'Eid morning (Wed 26 Nov) acknowledges the Diwali promise: "' + (L[j] || '').slice(0, 90) + '"', L.slice(0, 6));
+  await page.waitForFunction(() => N.dialogue.current && /sevaiyan/i.test(N.dialogue.current.text) && !N.dialogue.current.typing, null, { timeout: 5000, polling: 60 }).catch(() => {});
+  await shot('eid_sevaiyan');
+  await ev(() => { N.story2.abortScene(); });
+  await waitFor(() => !N.story2.state().scene && N.state.mode === 'play', null, 10000, 'the ending scene stops');
+  await ev(() => { if (N.dialogue.isOpen()) N.dialogue.cancel(); if (N.menus.abortCutscene) N.menus.abortCutscene(); N.flags.ending_done = false; });
 }
 
 /* ================================================================== save + CONTINUE */
@@ -544,7 +600,7 @@ async function pSave() {
 }
 
 /* ================================================================== main */
-const PHASES = [['bazaar', pBazaar], ['mithai', pMithai], ['deepon', pDeepon], ['rocket', pRocket], ['tiger', pTiger], ['week', pWeek], ['save', pSave]];
+const PHASES = [['bazaar', pBazaar], ['mithai', pMithai], ['deepon', pDeepon], ['rocket', pRocket], ['tiger', pTiger], ['week', pWeek], ['save', pSave], ['eid', pEid]];
 (async () => {
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
@@ -552,6 +608,22 @@ const PHASES = [['bazaar', pBazaar], ['mithai', pMithai], ['deepon', pDeepon], [
   page.on('console', (m) => { if (m.type() === 'error') errors.push('[' + phase + '] console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('[' + phase + '] pageerror: ' + (e.stack || e.message)));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '/* stubbed */' }));
+  // three.js for the 3D view from the vendored copy (hermetic, as tests/view3d.cjs does)
+  const THREE_JS = fs.readFileSync(path.join(ROOT, 'vendor/three/three.min.js'), 'utf8');
+  await page.route('https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_JS }));
+  page.on('requestfailed', (q) => { if (!/fonts\.g/.test(q.url())) errors.push('[' + phase + '] request failed: ' + q.url().slice(-120) + ' ' + ((q.failure() && q.failure().errorText) || '')); });
+  // STABLE=1 (default on): a src file that does not parse right now (another agent mid-edit) is served from git HEAD,
+  // as tests/story_full.cjs does; STABLE=0 serves the working tree as it is
+  if (process.env.STABLE !== '0') {
+    await page.route(/\/src\/[\w.]+\.js$/, (r) => {
+      const rel = 'src/' + r.request().url().split('/src/').pop();
+      let body = null;
+      try { body = fs.readFileSync(path.join(ROOT, rel), 'utf8'); new (require('vm').Script)(body); } catch (e) {
+        try { body = require('child_process').execSync('git show HEAD:nostalgia/' + rel, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 }); new (require('vm').Script)(body); console.log('  (STABLE: ' + rel + ' does not parse; using HEAD)'); } catch (e2) { body = '/* ' + rel + ': no parsable version (another agent mid-edit) */'; console.log('  (STABLE: ' + rel + ' does not parse anywhere; stubbed)'); }
+      }
+      return r.fulfill({ status: 200, contentType: 'text/javascript', body });
+    });
+  }
   try {
     await page.goto(URL);
     await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 90000 });

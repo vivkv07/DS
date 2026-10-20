@@ -2569,6 +2569,7 @@
       camSteps('friend_home', 1, 800),
       { type: 'text', lines: ['Eid morning. Sheer khurma in a steel bowl, still too hot.'], ms: 3000 },
       { type: 'say', s: 'ammi', t: '*Eid Mubarak*, {nick}. *Eidi*. Fifty-one rupees. Don\'t spend it on maps.' },
+      ...(F().diwali_sevai_promise ? [{ type: 'say', s: 'ammi', t: 'And the *sevaiyan*, like I promised at Diwali. *Pakki*, na? The big bowl is yours.' }] : []), // [diwali hook] mithai_run's promise (src/diwali_missions.js)
       { type: 'say', s: 'chinnu', t: '*Eid Mubarak*, aunty.' },
       { type: 'text', lines: ['Chinnu gives Immu a shoebox: every cassette he found this year. "A city\'s radio. For the cold."'], ms: 3800 },
       { type: 'text', lines: ['Immu gives Chinnu his CID notebook. The last page says: "Agent Chinnu. Promoted. Over."'], ms: 3800 },
