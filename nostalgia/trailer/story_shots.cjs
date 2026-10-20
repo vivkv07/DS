@@ -1,11 +1,19 @@
-/* NOSTALGIA trailer v2.1 — the story UI shots (timeline segments of kind 'ui'): the game's real 2026 prologue
- * (cold open) and the story in gameplay (Immu's spy tape + the ● REC moment).
- *   node trailer/story_shots.cjs [W H]      viewport in CSS px (default 1920 1080), rendered at SCALE (default 2)
+/* NOSTALGIA trailer v2.1 — the story UI shots (timeline segments of kind 'ui'), captured from the real game:
+ *   prologue  the cold open: the 2026 prologue cutscene (▶ PLAY 2026, Amma "A courier came. From America.", the cassette
+ *             with Immu's note "Gurthunda? — I.", ◀◀ REWIND 2026 -> 2003 on the score's year ticks)
+ *   s_story   M1 on the colony ground: Immu tells Chinnu he is leaving (three real lines), then the first ● REC
+ * Page side: story_page.js (window.SP). Notes on what is trailer-side are next to PLANS below.
+ *   node trailer/story_shots.cjs [W H]      viewport in CSS px (default 960 540; portrait 540 960), rendered at SCALE
+ *                                           (default 3840 / the long side: 4 -> 3840x2160 / 2160x3840)
  *     env: ONLY=prologue,s_story   segment ids
  *          OUTD=dir                (default out/frames2 for landscape, out/frames2_v for portrait)
- *          SCALE=2                 deviceScaleFactor (1920x1080 x2 -> 3840x2160; 1080x1920 x2 -> 2160x3840)
- *          SURVEY=prologue|title   run that sequence with a status log + a low-res still every SURVEY_EVERY frames
+ *          SCALE=4                 deviceScaleFactor (960x540 x4 -> 3840x2160; 540x960 x4 -> 2160x3840)
+ *          SURVEY=prologue         run the prologue with a status log + a low-res still every SURVEY_EVERY frames
+ *                                  (STILLS=f1,f2,.. instead: full-res stills at those frames)
  *          CUTS=name,..            re-render only these cuts (PLANS below) into the segment's existing frames
+ *          PR3D=n                  s_story: pixel ratio of the 3D view (default SCALE = native resolution)
+ *          YAW=a YAW_V=a PITCH=p   s_story: third-person camera yaw (landscape / portrait) and pitch (radians)
+ *          REC_FIRE=18             s_story: frames after the ● REC prompt (b44, frame 72) when the recording fires
  *          EVERY=n                 preview: capture every n-th frame only (the files keep their frame index)
  *          QA=1                    only build the contact sheet out/qa_story_landscape.jpg | qa_story_portrait.jpg
  *          Q=92                    JPEG quality
@@ -59,8 +67,10 @@ async function fontRoute(route) {
 const FONT_SAMPLES = [['22px VT323', '▶ PLAY 2026 ◀◀ REWIND ● REC SIDE A 083'], ['400 20px "Baloo 2"', 'Hyderabad 2026 ₹'], ['600 20px "Baloo 2"', 'Amma'], ['800 20px "Baloo 2"', 'A'],
   ['20px "Yatra One"', 'Immu Amma'], ['400 20px Kalam', 'Gurthunda'], ['700 20px Kalam', 'NOSTALGIA'], ['700 20px "Noto Sans Telugu"', 'పతంగ్']];
 
-const W = +(process.argv[2] || 1920), H = +(process.argv[3] || 1080);
-const SCALE = +(process.env.SCALE || 2);
+// The UI is captured at a 960x540 (portrait 540x960) CSS viewport x4 = 3840x2160 (2160x3840): the game's own layout for a
+// smaller screen, so its text reads on a phone (editor's notes), plus the trailer CSS below (~1.4x on the boxes and cards)
+const W = +(process.argv[2] || 960), H = +(process.argv[3] || 540);
+const SCALE = +(process.env.SCALE || Math.round(3840 / Math.max(W, H)));
 const PORTRAIT = H > W;
 const ONLY = (process.env.ONLY || '').split(',').filter(Boolean);
 const CUTS = (process.env.CUTS || '').split(',').filter(Boolean); // re-render only these cuts (by name) into the existing frames
@@ -110,7 +120,7 @@ const FRAME = {
   wide: null,
   parcel: { s: 1.5, o: '32.5% 109%' },   // the parcel (and its pencil label) above the dialogue box, the lamp, the window's foot
   cassette: { s: 1.55, o: '50% 37.6%' }, // art y 24..140: the cassette (label 45% of the width) low, room above for the note
-  rewind: null,                          // the whole 2-in-1, the year above it
+  rewind: { s: 1.12, o: '50% 0%' },     // the whole 2-in-1, a little lower: room above it for the big year
 };
 const FRAME_V = { wide: null, parcel: { s: 1.18, o: '30% 64%' }, cassette: null, rewind: null }; // portrait: object-fit cover does the zoom
 
@@ -122,10 +132,10 @@ const UI_CSS = [
   '.dlg { zoom: 1.4; }',
   '.sp-hide { visibility: hidden !important; }',
   "body[data-spcut='cassette'] #overlay .cs-stage { align-items: flex-start; padding-top: calc(9vh + 12px); }",
-  "body[data-spcut='cassette'] #overlay .cs-text { width: 440px; }",
+  "body[data-spcut='cassette'] #overlay .cs-text { width: 420px; }",
   "body[data-spcut='rewind'] #overlay .cs-osd { left: 0; right: 0; top: calc(9vh + 2px); align-items: center; letter-spacing: 4px; }",
-  "body[data-spcut='rewind'] #overlay .cs-osd b { font-size: 40px; }",
-  "body[data-spcut='rewind'] #overlay .cs-osd span { font-size: 104px; line-height: 0.92; }",
+  "body[data-spcut='rewind'] #overlay .cs-osd b { font-size: 42px; }",
+  "body[data-spcut='rewind'] #overlay .cs-osd span { font-size: 124px; line-height: 0.92; }",
 ].join('\n');
 const UI_CSS_V = [
   // the 320x180 art would be stretched to 9:16 by the game's CSS (width/height 100%): cover the phone screen instead
@@ -159,11 +169,12 @@ PLANS.s_story = {
   ],
 };
 async function storyGround(o) {
-  await SP.start3D(o.SCALE, o.css);
+  await SP.start3D(o.PR3D, o.css);
   N.settings.set('textSpeed', 'fast');
   const G = N.places.playground_1;
   const near = (x, y) => { const f = N.world.findFree(x, y, 'walk', 40); return f ? [f.x, f.y] : [x, y]; };
-  const me = near(G.x - 7, G.y + 4), im = near(me[0] + 14, me[1]); // Immu runs up to 14 u east of Chinnu (m1)
+  // Immu runs up to Chinnu and stops 14 u away (m1: 14 u east of him; here west, so the morning sun is on his face)
+  const me = near(G.x + 7, G.y + 4), im = near(me[0] + 14 * o.SIDE, me[1]);
   const yaw = o.PORTRAIT ? o.YAW_V : o.YAW;
   const r = SP.scene({ date: [2003, 1, 14, 8, 25], at: me, angle: Math.atan2(im[1] - me[1], im[0] - me[0]), yaw, pitch: o.PITCH, view: 'tps', money: 1200,
     npcs: [['immu', im, { idle: 'stand' }], ['ayesha', near(G.x - 70, G.y + 28), { idle: 'stand' }]] });
@@ -184,6 +195,11 @@ function storyRec(o) {
   window.__rec = N.tape.rec('bo_kaata', { window: (o.REC_FIRE + 0.5) / 30 });
   return { rec: N.tape.recState };
 }
+PLANS.prologue.css = UI_CSS; PLANS.prologue.cssV = UI_CSS_V;
+// s_story: the same legibility treatment for the dialogue box and the HUD (OSD strip with the tape counter, objective;
+// the minimap and stats scale with it)
+PLANS.s_story.css = ['.dlg { zoom: 1.4; }', '#hud { zoom: 1.35; }'].join('\n');
+PLANS.s_story.cssV = ['.dlg { zoom: 1.45; }', '#hud { zoom: 1.3; }'].join('\n');
 function startPrologue(o) {
   SP.setup({ hud: true, css: o.css });
   SP.fixLabel();
@@ -275,7 +291,8 @@ async function renderSegment(seg) {
   if (!CUTS.length) fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
   const arg = { W, H, SCALE, PORTRAIT, css: (PORTRAIT ? plan.cssV : plan.css) || '', FR: PORTRAIT ? FRAME_V : FRAME, TICKS: YEAR_TICKS,
-    YAW: +(process.env.YAW || 0.42), YAW_V: +(process.env.YAW_V || 0.3), PITCH: +(process.env.PITCH || 0.2), REC_FIRE: +(process.env.REC_FIRE || 18) };
+    PR3D: +(process.env.PR3D || SCALE), // the 3D view's pixel ratio (default: native, the DOM's device scale)
+    SIDE: +(process.env.SIDE || -1), YAW: +(process.env.YAW || Math.PI + 0.42), YAW_V: +(process.env.YAW_V || Math.PI + 0.3), PITCH: +(process.env.PITCH || 0.2), REC_FIRE: +(process.env.REC_FIRE || 18) };
   let f = 0;
   for (const cut of plan.cuts) {
     const want = !CUTS.length || CUTS.includes(cut.name);

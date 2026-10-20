@@ -13,7 +13,7 @@
 
   // view: 'tps' | 'fps' | 'top'.  at: place id | [x, y].  veh: vehicle type | null (foot).  spd: u/s.  dir: preferred heading
   const CLIPS = {
-    cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', spd: 105, dir: 0, clear: 3, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.2 } },
+    cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', spd: 105, dir: 0, clear: 3, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.35 } },
     top_charminar: { view: 'top', at: 'charminar_plaza', time: [11, 0], veh: 'cycle', spd: 115, dir: -1.6 },
     auto_tankbund: { view: 'tps', at: [9295, 3648], time: [17, 25], veh: 'auto', spd: 130, warm: 30, dir: 2.22, prefer: 'bund', chase: { back: 24, h: 11, lead: 14, th: 3.5, fov: 56, lag: 0.3, side: 2 } },
     top_chase: { view: 'top', at: 'abids', time: [12, 30], veh: null, spd: 82, dir: 0, run: true, wanted: 3 },
@@ -172,7 +172,8 @@
       const d0 = Math.max(0, C.d - ((o.chase && o.chase.back) || 20) - 4), d1 = Math.min(path.len, C.d + o.spd * nf / FPS + 20);
       for (let d = d0; d <= d1; d += 3) {
         at(path, d, tmp);
-        for (const e of N.entities.all) {
+        for (const e of N.entities.all.slice()) {
+          if (e.kind === 'vehicle' && e !== N.player.vehicle && e.trafficOwned && !e.parked && Math.hypot(e.x - tmp.x, e.y - tmp.y) < o.clear + 3) { try { N.vehicles.remove(e); } catch (er) { /* ignore */ } continue; }
           if (!onFoot(e)) continue;
           if (Math.hypot(e.x - tmp.x, e.y - tmp.y) < o.clear + 1) { e.hidden = true; CLEARED.add(e); }
         }
@@ -497,7 +498,8 @@
       let ox = 0, oy = 0;
       if (c.side) { at(path, Math.max(0, C.d - c.back) + 2, tmp3); const ddx = tmp3.x - tmp.x, ddy = tmp3.y - tmp.y, l = Math.hypot(ddx, ddy) || 1; ox = ddy / l * c.side; oy = -ddx / l * c.side; }
       const want = { x: tmp.x + ox, y: tmp.y + oy, h: c.h, tx: hx, ty: hy, th: c.th, fov: c.fov || 58 };
-      if (!C.cc || warm) C.cc = want; else for (const k of ['x', 'y', 'h', 'tx', 'ty', 'th']) C.cc[k] += (want[k] - C.cc[k]) * (c.lag || 0.25);
+      // (the smoothing runs through the warm-up too, so the camera has settled into its trailing distance at frame 0)
+      if (!C.cc) C.cc = want; else for (const k of ['x', 'y', 'h', 'tx', 'ty', 'th']) C.cc[k] += (want[k] - C.cc[k]) * (c.lag || 0.25);
       C.cc.fov = want.fov;
       STAGE.cam(C.cc);
       if (o.clear) clearLine(C.cc, N.player.x, N.player.y, o.clear);
@@ -520,7 +522,7 @@
       const eB = Math.atan2((bc.boatH || 2) - h, dB), eS = Math.atan2(bc.top - h, dS);
       const pitch = eB + (eS - eB) * (bc.pmix == null ? 0.5 : bc.pmix);
       const want = { x: cx, y: cy, h, tx: cx + Math.cos(yaw) * 100, ty: cy + Math.sin(yaw) * 100, th: h + Math.tan(pitch) * 100, fov: bc.fov || 60 };
-      if (!C.cc || warm) C.cc = want; else for (const kk of ['x', 'y', 'h', 'tx', 'ty', 'th']) C.cc[kk] += (want[kk] - C.cc[kk]) * 0.35;
+      if (!C.cc) C.cc = want; else for (const kk of ['x', 'y', 'h', 'tx', 'ty', 'th']) C.cc[kk] += (want[kk] - C.cc[kk]) * 0.35;
       C.cc.fov = want.fov;
       STAGE.cam(C.cc);
     }

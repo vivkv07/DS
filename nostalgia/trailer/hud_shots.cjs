@@ -1,12 +1,19 @@
 /* NOSTALGIA trailer — the two shots that show the real game HUD (clock, money, energy, Chappal Meter, minimap):
- *   g_top_chase      "MIND THE CHAPPAL METER"   top-down, the meter climbing while the wanted system's pursuers close in
- *   g_top_charminar  "PLAY IN 3D OR TOP-DOWN"   3D third person on the cycle by Charminar, then N.view.set('top') on the beat
+ *   g_top_chase      "MIND THE CHAPPAL METER"   top-down: Chinnu runs from Pochaiah's Luna, the meter ratchets 3 -> 5, Mummy's
+ *                                               auto cuts him off, her homing chappal hits: THUP! + PAKDA GAYA! (the game's own)
+ *   g_top_charminar  "PLAY IN 3D OR TOP-DOWN"   3D third person on the cycle riding at Charminar, then N.view.set('top') on
+ *                                               the beat (f36; the game's switch is instant, it has no transition)
+ *   (the shot scripts and every staging liberty are in hud_page.js, SHOTS)
  *
  *   node trailer/hud_shots.cjs [W H]      viewport in CSS px (default 1920 1080), captured at SCALE device px per CSS px
  *     env: ONLY=g_top_chase,chase         segment ids or shot ids
- *          SCALE=2                        deviceScaleFactor (1920x1080 x2 -> 3840x2160; portrait 540x960 x4 -> 2160x3840)
+ *          SCALE=n                        deviceScaleFactor (default: 3840 / W landscape, 2160 / W portrait, i.e. 1920x1080
+ *                                         x2 -> 3840x2160). Portrait: node trailer/hud_shots.cjs 540 960 (x4 -> 2160x3840):
+ *                                         a 540-px-wide viewport is the game's own upright-phone HUD layout (its max-width
+ *                                         600 px media query: minimap under the OSD, big stats)
  *          OUTD=dir                       default trailer/out/frames2 (landscape) / trailer/out/frames2_v (portrait)
- *          PR3D=1.3333                    3D renderer pixel ratio (CSS px -> GL px; the HUD is DOM, always at SCALE)
+ *          PR3D=n                         3D renderer pixel ratio (default 2560 / W landscape, 1440 / W portrait: the 3D at
+ *                                         ~1440p, the HUD is DOM and always rasterised at SCALE)
  *          EVERY=n                        capture every n-th frame only (quick look; files keep their frame index)
  *          Q=92                           JPEG quality
  *          SHOT_<id>='{json}'             override a shot's options (HUD_SHOTS_OVERRIDE in hud_page.js) for try-outs
@@ -37,8 +44,9 @@ if (process.argv[2] === 'qa') {
 }
 const { openGame, takeOver } = require('./lib.cjs');
 const W = +(process.argv[2] || 1920), H = +(process.argv[3] || 1080);
-const SCALE = +(process.env.SCALE || 2);
 const PORTRAIT = H > W;
+// default: 3840x2160 / 2160x3840 frames whatever the CSS viewport
+const SCALE = +(process.env.SCALE || (PORTRAIT ? 2160 : 3840) / W);
 const ONLY = (process.env.ONLY || '').split(',').filter(Boolean), EVERY = +(process.env.EVERY || 1);
 const OUTD = process.env.OUTD || path.join(__dirname, 'out', PORTRAIT ? 'frames2_v' : 'frames2');
 const Q = +(process.env.Q || 92);
@@ -61,10 +69,13 @@ const SEGS = [{ id: 'g_top_chase', shot: 'chase' }, { id: 'g_top_charminar', sho
     // top and of the lower-third caption (58-73% of the height)
     if (PORTRAIT) {
       over.chase = Object.assign({ zoom: 1.6 }, over.chase || {});
+      // (and the top-down half of the Charminar shot a step wider: the roundabout and Charminar stay in the narrow frame)
+      over.charminar = Object.assign({ zoom: 1.3 }, over.charminar || {});
     }
-    await page.evaluate((o) => { window.HUD_SHOTS_OVERRIDE = o; window.HUDDBG = o.__dbg; }, Object.assign({ __dbg: !!process.env.HUDDBG }, over));
+    // (HUDDBG=1: the chaser's vehicle controls + obstacle in the per-frame log)
+    await page.evaluate(({ o, dbg }) => { window.HUD_SHOTS_OVERRIDE = o; window.HUDDBG = dbg; }, { o: over, dbg: !!process.env.HUDDBG });
     await page.addScriptTag({ path: path.join(__dirname, 'hud_page.js') });
-    const pr = +(process.env.PR3D || (PORTRAIT ? 2.6667 : 1.3333));
+    const pr = +(process.env.PR3D || (PORTRAIT ? 1440 : 2560) / W); // 3D at ~1440p internally (software GL is slow)
     await page.evaluate((pr) => { N.view3d.setQuality({ adaptive: false, pixelRatio: pr, antialias: true, drawDist: 1500 }); }, pr);
     const shotView = await page.evaluate((id) => HUDSHOT.SHOTS[id].view, S.shot);
     if (shotView !== 'top') {

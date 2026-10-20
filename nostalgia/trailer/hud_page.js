@@ -50,10 +50,11 @@
       // processions): an auto weaving into his lane there would be run through
       calm: { f: 44, r: 95 },
     },
-    // "PLAY IN 3D OR TOP-DOWN": 3D third person on the cycle down Pathergatti towards Charminar, then the game's
-    // real view switch (N.view.set('top'), instant: the game has no transition) on the beat, same moment, same place
-    // (the road in from the east, straight at Charminar, then the roundabout round it clockwise: road nodes 150 ...
-    // 146 -> roundabout 4, 5, 6 ...; f72 lands just past the roundabout's east point, the switch ~150 u out)
+    // "PLAY IN 3D OR TOP-DOWN": 3D third person (the game's own chase camera, a level look: pitch 0.1) on the cycle
+    // riding in from the east straight at Charminar, then the game's real view switch (N.view.set('top'), instant:
+    // the game has no transition) on the beat (f36): same moment, same place, top-down over the Charminar roundabout.
+    // Route: road nodes 150 ... 146 -> the roundabout round Charminar (4, 5, 6 ... clockwise); f72 lands just past
+    // its east point, the switch ~150 u out. density: the game's traffic density multiplier (a livelier street).
     charminar: { view: 'tps', at: [9398, 8332], nodes: [150, 149, 148, 147, 146, 4, 5, 6, 7, 8], lead: 220, endAt: 330, time: [11, 0], veh: 'cycle', spd: 92, zoom: 1.6, warm: 60, switchAt: 36, pitch: 0.1, density: 1.7 },
   };
   const OVR = window.HUD_SHOTS_OVERRIDE || {};

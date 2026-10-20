@@ -1,14 +1,15 @@
 /* NOSTALGIA trailer — page-side helper for the full-screen minigame clips (activities.cjs).
- * Injected into the running game; uses N.minigames as-is (no game source changes).
- *   ACT.setup()            show #overlay (openGame hides it) but keep HUD / touch / debug / toasts hidden,
- *                          and hide the minigame key-hint strip + pause pill
- *   ACT.start(id, params)  open a minigame with the test bot (autoplay 'win'), no how-to
- *   ACT.step(n, dt)        advance the virtual clock n frames; returns a short status line
- *   ACT.status()           {phase, t, hud}
+ * Injected into the running game; drives N.minigames as-is (no game source changes).
+ *   ACT.setup()            show #overlay (openGame hides it) but keep HUD / touch / debug / toasts hidden; hide the
+ *                          minigame key-hint strip, pause pill and countdown pops
+ *   ACT.start(id, params, tune, script)  open a minigame with the test bot (autoplay 'win'), no how-to. tune: TUNE
+ *                          overrides for this run; script: [{at: frame, kind, ...}] actions run just before frame
+ *                          `at` is stepped (frames counted from start), e.g. a scripted goli shot (mbPos / mbDrag /
+ *                          mbRelease / mbShoot, through the game's own pointer input)
+ *   ACT.step(n, dt)        advance the virtual clock n frames; returns ACT.status() = {phase, t, over, hud}
+ *   ACT.fast(on)           draw into a 1x1 canvas (fast pre-roll) / back to the real canvas
  *   ACT.end()              close the open minigame immediately
- *   ACT.start(id, params, tune, script)  script: [{at: frame, kind, ...}] actions run just before frame `at`
- *                          is stepped (frames counted from start), e.g. a scripted goli shot (see mbShot)
- *   ACT.mbSearch(params, cands)  try scripted marbles shots on fresh games (simulation only) -> outcomes
+ *   ACT.mbSearch(params, cands, {h})  try scripted marbles shots on fresh games (simulation only) -> outcomes
  */
 (() => {
   'use strict';

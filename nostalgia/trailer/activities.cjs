@@ -1,24 +1,28 @@
 /* NOSTALGIA trailer v2 — capture the full-screen minigame clips (timeline segments of kind 'mg').
- *   node trailer/activities.cjs [W H]     viewport in CSS px (default 1920 1080), rendered at SCALE (default 2)
+ *   node trailer/activities.cjs 1920 1080     landscape -> trailer/out/frames2/<segment id>/%05d.jpg   (3840x2160)
+ *   node trailer/activities.cjs 1080 1920     portrait  -> trailer/out/frames2_v/<segment id>/%05d.jpg (2160x3840)
+ *   (run landscape first: each portrait clip is lined up with the landscape clip's log, see ALIGN)
+ *   W H = viewport in CSS px, rendered at deviceScaleFactor SCALE (default 2); exactly n*beatFrames frames per clip.
  *     env: ONLY=a_kite,cricket   segment ids or game ids
- *          OUTD=dir              (default trailer/out/frames2 for landscape, trailer/out/frames2_v for portrait)
- *          SCALE=2               deviceScaleFactor (1920x1080 x2 -> 3840x2160; 1080x1920 x2 -> 2160x3840)
+ *          OUTD=dir              output root (default trailer/out/frames2 | frames2_v by orientation)
+ *          SCALE=2               deviceScaleFactor
+ *          Q=92                  JPEG quality
  *          EVERY=n               capture every n-th frame only (quick look; frame files keep their index)
  *          PRE_<game>=frames     override a game's pre-roll (frames at 30 fps stepped before the first capture)
- *          SURVEY=k,len[,from]   instead of the clip: capture every k-th frame of the first len frames (from frame `from`)
- *                                (to OUTD/<id>/sNNNNN.jpg) with a status log, to pick a pre-roll
- *   logs: trailer/out/mg_logs/<W>x<H>_<id>.txt  (frame-numbered HUD changes: compare with the survey log)
- *          Q=92                  JPEG quality
- *          FAST=0|1              draw the pre-roll at full res too / not (default: per game; pre-roll frames draw into a
- *                                1x1 canvas, except kite)
  *          P_<game>='{json}'     extra N.minigames.play params, T_<game>='{json}' TUNE overrides (try-outs)
- *          ALIGN=0               portrait: don't line the clip up with the landscape log (default: capture MARGIN=2 extra
- *                                frames each side, keep the window whose HUD changes match out/mg_logs/1920x1080_<id>.txt)
- *          TOUCH=0|1             force the touch-button layout off / on (default: on in portrait = real phone UI, off in landscape)
- *   -> OUTD/<segment id>/%05d.jpg  exactly n*beatFrames frames per segment
- * The game runs on the virtual rAF clock (lib.cjs); each frame steps 1/30 s and is grabbed with CDP
- * Page.captureScreenshot (the whole page: minigame canvas + its DOM top bar). The minigames are played by
- * their built-in test bot (autoplay 'win') at real speed (timeScale 1), how-to skipped.
+ *          FAST=0|1              pre-roll frames draw into a 1x1 canvas (fast, default) or for real (default for kite)
+ *          TOUCH=0|1             touch-button layout off / on (default: on in portrait = real phone UI, off in landscape)
+ *          ALIGN=0               portrait: don't line up with the landscape log (default: capture MARGIN=2 spare frames
+ *                                each side and keep the window whose key HUD changes land on the same clip frames as
+ *                                trailer/out/mg_logs/1920x1080_<id>.txt — one score for both cuts)
+ *          SURVEY=k,len[,from]   instead of the clip: step len frames, capture every k-th (from frame `from`) to
+ *                                OUTD/<id>/sNNNNN.jpg, log every HUD change — to pick a pre-roll
+ *   logs: trailer/out/mg_logs/<W>x<H>_<id>.txt — frame-numbered HUD changes of the run (header: the pre-roll used)
+ * The game runs on the virtual rAF clock (lib.cjs); each frame steps 1/30 s in its own evaluate and is grabbed with
+ * CDP Page.captureScreenshot (clip scale = DSF: the minigame canvas at 2x + its DOM top bar). Every clip runs in a
+ * fresh browser. The minigames are played by their built-in test bot (autoplay 'win'), how-to and countdown skipped,
+ * at real speed — except marbles (timeScale 1.35, and a scripted break shot, see GAMES.marbles).
+ * Page side: trailer/activities_page.js (CSS: overlay shown, HUD / touch / debug / toasts / key hints hidden).
  */
 'use strict';
 const path = require('path');
