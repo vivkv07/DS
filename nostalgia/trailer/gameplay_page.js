@@ -38,6 +38,9 @@
     fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 30, pitch: 0.02, dir: 0.5, seasons: { bonalu: true } },
     fest_numaish: { view: 'tps', at: 'nampally_exhibition', time: [20, 30], veh: null, spd: 34, pitch: -0.04, dir: 0.3, seasons: { numaish: true } },
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
+    // in-world playground games (N.playgroundGames): a real match with Chinnu and the AI kids, scripted inside the window
+    lingocha: { view: 'tps', at: 'playground_home', time: [16, 40], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
+    marampitti: { view: 'tps', at: 'playground_2', time: [16, 50], veh: null, spd: 0, pg: { game: 'marampitti', place: 'playground_2', seed: 2, params: { kids: 8, difficulty: 0.5 } } },
     charminar_night_fps: { view: 'fps', at: 'pathergatti', time: [21, 0], veh: 'cycle', spd: 105, toward: 'charminar' },
   };
 
@@ -96,6 +99,7 @@
   window.CLIP_PREP = async function (id, nf) {
     const o = CLIPS[id]; if (!o) throw new Error('no clip ' + id);
     // reset previous clip state
+    pgReset();
     if (N.player.vehicle && N.vehicles.exit) { try { N.vehicles.exit(N.player, true); } catch (e) { /* ok */ } }
     if (N.wanted && N.wanted.set) N.wanted.set(0);
     // seasons: festival clips switch their festival on (and the default Sankranti kites off); others clear overrides
@@ -110,6 +114,7 @@
     N.weather.wet = o.rain ? 1 : 0;
     N.wind.force({ strength: o.rain ? 0.8 : 0.4 });
     let x, y;
+    if (o.pg) { C = { id, o, path: null, v: null, d: 0, f: 0, x: 0, y: 0 }; return pgPrep(o, nf); }
     const pl = o.at instanceof RegExp ? placeLike(o.at) : (P(o.at) || LM(o.at));
     if (Array.isArray(o.at)) { x = o.at[0]; y = o.at[1]; } else { x = pl.x; y = pl.y; }
     const total = (nf + 60) / FPS * Math.max(1, o.spd);
@@ -133,11 +138,135 @@
     if (o.wanted) N.wanted.set(o.wanted);
     // warm-up: drive the route for 2 s (camera settles, traffic + birds populate, chunks stream)
     for (let k = 0; k < 3; k++) N.view3d && N.view3d.active && N.view3d.settle(30000);
-    for (let k = 0; k < (window.WARM || 60); k++) advance(true);
+    // (the warm-up's frames are not looked at: skip their GL draws, render only the last few)
+    const nw = window.WARM || 60;
+    noDraw(true); try { for (let k = 0; k < nw - 8; k++) advance(true); } finally { noDraw(false); }
+    for (let k = 0; k < 8; k++) advance(true);
     if (N.view3d && N.view3d.active) N.view3d.settle(30000);
     C.f = 0;
     return { loaded: C.loaded, at: [Math.round(start.x), Math.round(start.y)], len: path ? Math.round(path.len) : 0, veh: v ? v.type : null, view: N.view.mode };
   };
+
+
+  /* ------------------------------------------------------------ in-world playground games (lingocha / maram pitti) */
+  // GL draws off (simulation-only steps: pre-rolls and warm-ups nobody sees)
+  let drawFn = null;
+  function noDraw(on) {
+    const r = N.view3d && N.view3d.H && N.view3d.H.renderer;
+    if (!r) return;
+    if (on && !drawFn) { drawFn = r.render; r.render = function () {}; }
+    else if (!on && drawFn) { r.render = drawFn; drawFn = null; }
+  }
+  function fast(n, until) {
+    noDraw(true);
+    try { for (let k = 0; k < n; k++) { window.__step(1 / FPS); if (until && until()) return k + 1; } } finally { noDraw(false); }
+    return n;
+  }
+  function pgReset() {
+    const PG = N.playgroundGames;
+    if (!PG) return;
+    if (PG.isOpen()) PG.abort('trailer');
+    const A = PG.debug.assist; A.aim = false; A.power = null; A.weakAI = false; A.noTimer = false; A.noDodge = false; A.freezeAI = false;
+    if (N.input.setMove) N.input.setMove(null);
+  }
+  const hyp = Math.hypot, lerp = (a, b, t) => a + (b - a) * t, sm = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+  async function pgPrep(o, nf) {
+    const G = o.pg, PG = N.playgroundGames, D = PG.debug;
+    PG.ambient.off = true;
+    const F = PG.fieldFor(G.place);
+    const ux = F.line.dx, uy = F.line.dy;
+    if (G.game === 'lingocha') N.debug.teleport(F.line.x - ux * 6, F.line.y - uy * 6);
+    else N.debug.teleport(F.centre.x + 6, F.centre.y + 18);
+    N.view.set('tps');
+    for (let k = 0; k < 3; k++) N.view3d.settle(30000);
+    fast(20);
+    PG.play(G.game, Object.assign({ place: G.place, seed: G.seed, noQuit: true }, G.params));
+    const S = D.session();
+    C.pg = { G, F, S, D, ux, uy, vx: -uy, vy: ux, cam: null, tap: -99, ev: [] };
+    let pre = 0;
+    if (G.game === 'lingocha') {
+      pre += fast(400, () => S.phase === 'aim');
+      pre += fast(G.settle || 14);
+    } else {
+      pre += fast(400, () => S.phase === 'play');
+      pre += fast(G.settle || 20);
+      maramSetup();
+    }
+    N.view3d.settle(30000);
+    for (let k = 0; k < 6; k++) advance(true);
+    C.f = 0;
+    return { pg: G.game, place: G.place, phase: S.phase, pre, at: [Math.round(N.player.x), Math.round(N.player.y)] };
+  }
+  const press = (a, sec) => { if (C.f - C.pg.tap < 5) return; C.pg.tap = C.f; N.input.press(a, sec); };
+  // Chinnu as a seeker: run to the nearest loose stone, pick it up, carry it to the base, stack it
+  function seekerBot() {
+    const { S } = C.pg, L = S.L, me = S.me, p = N.player;
+    if (me.out || me.act || S.auto) return;
+    if (me.carry) {
+      const d = hyp(L.base.x - p.x, L.base.y - p.y);
+      if (d < 7) press('action');
+      else S.auto = { x: L.base.x + (p.x - L.base.x) / d * 4, y: L.base.y + (p.y - L.base.y) / d * 4, t: 0 };
+      return;
+    }
+    let st = null, sd = 1e9;
+    for (const s of L.stones) { if (s.state === 'stack' || s.state === 'carried' || (s.claim && s.claim !== me)) continue; const d = hyp(s.x - p.x, s.y - p.y) + (s.state === 'fly' ? 6 : 0); if (d < sd) { sd = d; st = s; } }
+    if (!st) return;
+    if (st.state === 'loose' && sd < 5.5) press('action');
+    else S.auto = { x: st.x, y: st.y, t: 0 };
+  }
+  function maramSetup() {
+    const { S, D } = C.pg, me = S.me, p = N.player, c = C.pg.F.centre;
+    const kids = S.parts.filter((q) => !q.isPlayer && !q.out);
+    // the thrower: the kid nearest the spot 26 u across the ground from Chinnu (towards the centre)
+    let a = Math.atan2(c.y - p.y, c.x - p.x);
+    const kx = p.x + Math.cos(a) * 26, ky = p.y + Math.sin(a) * 26;
+    kids.sort((A, B) => hyp(A.e.x - kx, A.e.y - ky) - hyp(B.e.x - kx, B.e.y - ky));
+    const K = kids[0];
+    K.e.x = kx; K.e.y = ky; K.e.vx = K.e.vy = 0;
+    D.give(K.name);
+    C.pg.K = K;
+  }
+  function maramFrame() {
+    const P = C.pg, { S, G } = P, me = S.me, K = P.K, f = C.f;
+    if (f === (G.wind || 0) && K && K.hold && !K.out) {
+      K.windT = K.windT0 = G.windT || 0.9; K.tgt = me; K.aimLock = null; S.tele = { from: K, to: me };
+    }
+    if (G.dodge != null && f === G.dodge) press('run', 0.1);
+  }
+  function lingoFrame() {
+    const P = C.pg, { S, G } = P, L = S.L, f = C.f;
+    if (f === (G.press == null ? 4 : G.press)) { P.D.assist.aim = true; P.D.assist.power = G.power || 0.78; N.input.press('action', G.hold || 0.42); }
+    if (L.knocked && P.knockF == null) P.knockF = f;
+    if (L.knocked && (S.phase === 'scatter' || S.phase === 'live')) seekerBot();
+  }
+  function pgFrame(warm) {
+    const P = C.pg; if (!P || !P.S) return;
+    const { S } = P, p = N.player, f = C.f;
+    if (!warm) { if (P.G.game === 'lingocha') lingoFrame(); else maramFrame(); }
+    // camera: low, behind Chinnu's shoulder, the action ahead of him centred
+    let want;
+    if (P.G.game === 'lingocha') {
+      // reverse angle: low beside the stack, Chinnu at the chalk line beyond it; the ball comes at us, the stack
+      // bursts in the foreground, then the camera cranes up and back over the ground as the kids pile in
+      const L = S.L, B = L.base, ux = P.ux, uy = P.uy, vx = P.vx, vy = P.vy, cg = P.G.cam || {};
+      const k = P.knockF == null ? 0 : sm((f - P.knockF - (cg.wait || 10)) / (cg.crane || 70));
+      const lx = L.line.x, ly = L.line.y;
+      const a0 = cg.a || { f: 9, s: 5, h: 5.2, look: 0.7, th: 2.8 }, a1 = cg.b || { f: 24, s: 12, h: 12, look: 0.15, th: 1 };
+      const pre = P.knockF == null ? Math.min(1, (warm ? 0 : f) / 40) : 1;
+      const fwd = lerp(a0.f + 1.5 * (1 - pre), a1.f, k), side = lerp(a0.s, a1.s, k), lk = lerp(a0.look, a1.look, k);
+      // after the knock the look point drifts towards Chinnu (he runs in for the stones)
+      const cx = lerp(B.x, p.x, 0.25 * k), cy = lerp(B.y, p.y, 0.25 * k);
+      want = { x: cx + ux * fwd + vx * side, y: cy + uy * fwd + vy * side, h: lerp(a0.h, a1.h, k), tx: lerp(cx, lx, lk), ty: lerp(cy, ly, lk), th: lerp(a0.th, a1.th, k), fov: cg.fov || 54 };
+    } else {
+      const K = P.K, ax = K ? K.e.x : P.F.centre.x, ay = K ? K.e.y : P.F.centre.y;
+      const a = Math.atan2(ay - p.y, ax - p.x), sx = -Math.sin(a), sy = Math.cos(a);
+      const tx = lerp(p.x, ax, 0.5), ty = lerp(p.y, ay, 0.5);
+      want = { x: p.x - Math.cos(a) * 13 + sx * 6, y: p.y - Math.sin(a) * 13 + sy * 6, h: 6, tx, ty, th: 2.4, fov: 55 };
+    }
+    if (!P.cam || warm) P.cam = Object.assign({}, want);
+    else { const c = P.cam, r = P.G.camLag || 0.12; for (const key of ['x', 'y', 'h', 'tx', 'ty', 'th', 'fov']) c[key] += (want[key] - c[key]) * r; }
+    STAGE.cam(P.cam);
+  }
 
   /* ------------------------------------------------------------ the immersion procession (teenmaar + gulal) */
   const LOOKS = [
@@ -192,7 +321,8 @@
 
   function advance(warm) {
     const { o, path, v } = C;
-    if (o.procession) procFrame();
+    if (o.pg) pgFrame(warm);
+    else if (o.procession) procFrame();
     else if (o.view === 'cam') {
       const t = C.f / FPS, a = 0.6 + t * 0.25;
       STAGE.cam({ x: C.x, y: C.y, h: 8, tx: C.x + Math.cos(a) * 60, ty: C.y + Math.sin(a) * 60, th: 70 + t * 6, fov: 60 });
@@ -227,4 +357,6 @@
     return document.getElementById('game').toDataURL('image/png');
   };
   window.CLIPS = CLIPS;
+  // (debug: the playground game's state at this frame)
+  window.CLIP_DBG = () => { if (!C || !C.pg) return null; const s = C.pg.D.state(); return s && { f: C.f, ph: s.phase, ball: s.ball.state + (s.ball.holder ? ':' + s.ball.holder : ''), tele: s.tele, me: [Math.round(N.player.x), Math.round(N.player.y)], stack: s.lingocha ? s.lingocha.stack : null, log: s.log.slice(-3).map((e) => e.type + (e.name ? ':' + e.name : '')).join(' ') }; };
 })();
