@@ -113,7 +113,8 @@
    "kind": "game",
    "clip": "marampitti",
    "act": "PLAY",
-   "cap": "MARAM PITTI"
+   "cap": "MARAM PITTI",
+   "sfxF": 25
   },
   {
    "id": "a_panipuri",
@@ -122,7 +123,8 @@
    "kind": "mg",
    "game": "panipuri",
    "act": "PLAY",
-   "cap": "PANI PURI CHALLENGE"
+   "cap": "PANI PURI CHALLENGE",
+   "sfxF": 10
   },
   {
    "id": "a_bargain",
@@ -140,7 +142,8 @@
    "kind": "mg",
    "game": "brickgame",
    "act": "PLAY",
-   "cap": "BRICK GAME FOR ONE RUPEE"
+   "cap": "BRICK GAME FOR ONE RUPEE",
+   "sfxF": 2
   },
   {
    "id": "a_antenna",
@@ -149,7 +152,8 @@
    "kind": "mg",
    "game": "antenna",
    "act": "PLAY",
-   "cap": "FIX THE TV ANTENNA"
+   "cap": "FIX THE TV ANTENNA",
+   "sfxF": 41
   },
   {
    "id": "a_clap",
@@ -158,7 +162,8 @@
    "kind": "mg",
    "game": "clap",
    "act": "PLAY",
-   "cap": "CLAP UNDER THE GOLCONDA DOME"
+   "cap": "CLAP UNDER THE GOLCONDA DOME",
+   "sfxF": 10
   },
   {
    "id": "f_ganesh",
