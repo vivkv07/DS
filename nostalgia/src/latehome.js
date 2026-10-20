@@ -26,7 +26,7 @@
  * Hiding spots: neem / mango trees, the colony water tank, parked autos, a pan-shop counter, the cycle stand,
  * compound walls (crouch behind them), and the terraces of the existing roof routes (no ground seeker sees a
  * kid on a roof; Chinnu's own terrace counts as home). Hold ACTION away from a spot = crouch (creep slowly,
- * silently, harder to see). HORN (Space / the WHISTLE button) = whistle: every seeker in earshot turns to it
+ * silently, harder to see). HORN (Space / the touch button, relabelled SEETI) = whistle: every seeker in earshot turns to it
  * (pulls a cone off a friend). A colony dog naps on the way: run (or walk) past it and it barks, and the
  * seekers come to see what the dog saw.
  * SCORE: time home + times spotted + collectibles (a lost marble / goli, a kite-string reel / manja):
@@ -1629,7 +1629,7 @@
     } catch (e) { N.err('latehome.npcs', e); }
     holdGivers(true);
     sv.zoom = N.render.baseZoom;
-    try { if (N.input && N.input.setLabel) { N.input.setLabel('horn', 'WHISTLE'); } } catch (e) { /* ignore */ }
+    try { if (N.input && N.input.setLabel) { N.input.setLabel('horn', 'SEETI'); } } catch (e) { /* ignore */ }
   }
   function teardown() {
     const s = S;
@@ -1860,8 +1860,8 @@
       if (k.ghost && left) {
         if (S.mode === 'solo' && S.isHost) {
           N.interact.offer({ label: 'Skip to results', priority: 90, dist: 0, use: () => { resolveAI(); } });
-          setUI('Skip to results', 'Ghost: WHISTLE to pull the uncles away from ' + S.kids.filter((q) => !q.done && q.role !== 'daddy').map((q) => q.nick).join(' & ') + '.');
-        } else setUI('', 'Ghost: WHISTLE (horn) to help your friends home!');
+          setUI('Skip to results', 'Ghost: whistle (Space / SEETI) to pull the uncles away from ' + S.kids.filter((q) => !q.done && q.role !== 'daddy').map((q) => q.nick).join(' & ') + '.');
+        } else setUI('', 'Ghost: whistle (Space / SEETI) to help your friends home!');
       } else setUI('', k.done === 'home' ? 'Home!' : 'Caught...');
       return;
     }
@@ -1936,7 +1936,7 @@
       me.run = (!!p.running && hyp(p.vx || 0, p.vy || 0) > 30 && me.hide === 0) || (!!p.vehicle && Math.abs(p.vehicle.speed || 0) > 20 && me.role !== 'daddy');
       // a kid on a cycle rattles: every uncle in earshot hears it (the dog too)
       if (p.vehicle && me.run && !me.done && S.phase === 'play') { S.rideNz = (S.rideNz || 0) - dt; if (S.rideNz <= 0) { S.rideNz = 0.45; noise(p.x, p.y, TUNE.noise.run, 'step', p); } }
-      if (me.done && !me.ghost) { me.ghostIn -= dt; if (me.ghostIn <= 0 && S.phase === 'play') { me.ghost = true; p.hidden = true; netState(me); if (S.kids.some((q) => !q.done && q.role !== 'daddy')) toast(S.mode === 'solo' ? 'You can still help: WHISTLE to pull the uncles away. (E skips)' : 'Ghost mode: WHISTLE to pull the uncles off your friends!', 3200); } }
+      if (me.done && !me.ghost) { me.ghostIn -= dt; if (me.ghostIn <= 0 && S.phase === 'play') { me.ghost = true; p.hidden = true; netState(me); if (S.kids.some((q) => !q.done && q.role !== 'daddy')) toast(S.mode === 'solo' ? 'You can still help: whistle (Space / SEETI) to pull the uncles away. (E skips)' : 'Ghost mode: whistle (Space / SEETI) to pull the uncles off your friends!', 3200); } }
       if (me.ghost) p.hidden = true;
       else if (!me.seq && !me.done) p.hidden = me.hide === 2;
     }

@@ -8,7 +8,7 @@
  *           line), ghost mode "Skip to results" -> the results card; then a full run home driven by real keys from the
  *           in-page sneak planner (N.latehome.debug.hint) -> NOBODY SAW! / GHAR PAHUNCH GAYA! and the results card.
  *   solo3d  the same in the 3D view (V key; three.js from vendor/, swiftshader): cones, hide + peek head, caught, win.
- *   phone   390x844 touch: the prompt by the touch ACTION button, joystick, hold HIDE, WHISTLE, HUD fits, no scroll.
+ *   phone   390x844 touch: the prompt by the touch ACTION button, joystick, hold HIDE, SEETI (whistle), HUD fits, no scroll.
  *   daddy   'latehome_daddy' solo: round 1 AI Nanna catches you (proximity + facing), round 2 you are Daddy and catch
  *           an AI friend with real keys, roles swap, points on the results card.
  *   party   (when N.party exists) two pages in an online room through tests/online_mock.cjs (as tests/online.cjs):
@@ -432,7 +432,7 @@ async function phone(browser) {
   check(lay.sw <= lay.iw && lay.sh <= lay.ih, 'no page scroll');
   const over = (a, b) => a && b && a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
   check(!over(lay.hud, lay.act) && !over(lay.hud, lay.run) && !over(lay.hud, lay.horn), 'HUD panel clear of the touch buttons');
-  check(lay.horn_t === 'WHISTLE', 'HORN reads WHISTLE during the run (' + lay.horn_t + ')');
+  check(lay.horn_t === 'SEETI', 'HORN reads SEETI (whistle) during the run (' + lay.horn_t + ')');
   await P.shot('phone_start');
   // joystick
   const p0 = await P.ev(() => ({ x: N.player.x, y: N.player.y }));
@@ -459,7 +459,7 @@ async function phone(browser) {
   // whistle
   await P.ev(() => { window.__wh = 0; N.on('latehome:whistle', () => { window.__wh++; }); });
   await tap('.t-horn');
-  check(await P.until(() => window.__wh > 0, null, 3000), 'the WHISTLE button whistles');
+  check(await P.until(() => window.__wh > 0, null, 3000), 'the SEETI (whistle) button whistles');
   await P.ev(() => { if (N.party && N.party.active) N.party.cancel(); else N.latehome.stop(); });
   check(await P.until(() => !N.latehome.active(), null, 4000), 'stopped');
   await noErrors(P, 'phone');
