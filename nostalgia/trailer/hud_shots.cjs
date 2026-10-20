@@ -64,11 +64,11 @@ const SEGS = [{ id: 'g_top_chase', shot: 'chase' }, { id: 'g_top_charminar', sho
     const { browser, context, page, errors } = await openGame({ width: W, height: H, scale: SCALE });
     const over = {};
     for (const k of Object.keys(process.env)) if (k.startsWith('SHOT_')) over[k.slice(5)] = JSON.parse(process.env[k]);
-    // portrait: the same run across the frame (the portrait canvas is 434 internal px wide vs 768: zoom 1.6 shows
-    // ~280 u across, the landscape shot ~360 u at 2.2); the action stays on the middle band, clear of the HUD at the
-    // top and of the lower-third caption (58-73% of the height)
+    // portrait: the same run across the frame (the portrait canvas is 434 internal px wide vs 768: zoom 3 shows ~150 u
+    // across, the landscape shot ~200 u at 4); the action stays on the middle band, clear of the HUD at the top and of
+    // the lower-third caption (58-73% of the height). The phone layout's bubbles are already big: 1.3x
     if (PORTRAIT) {
-      over.chase = Object.assign({ zoom: 1.6 }, over.chase || {});
+      over.chase = Object.assign({ zoom: 3, barkScale: 1.3 }, over.chase || {});
       // (and the top-down half of the Charminar shot a step wider: the roundabout and Charminar stay in the narrow frame)
       over.charminar = Object.assign({ zoom: 1.3 }, over.charminar || {});
     }

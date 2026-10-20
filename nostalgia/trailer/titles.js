@@ -370,19 +370,43 @@
   const CAP = { // timings (s)
     delay: 0.15, kick: 0.28, line: 0.3, stagger: 0.06, firstKick: 0.1, firstCap: 0.34, out: 0.25, hold: 0.85,
   };
+  // per-segment overrides for the lower-third placement, fractions of the frame: x = left edge, w = max width,
+  // top / bottom = block edge (else the defaults below), size / min / maxLines; seg.capPos.{land,port} also applies
+  const LOWPOS = {
+    land: {
+      g_top_chase: { bottom: 0.79 }, // the HUD minimap sits bottom-left (x 0.8-9.2 %, y 84-98.5 %): stack above it
+      // the bike's front wheel swings to x 41.8 % in the turn (f35): a narrower block (text edge ~37.7 %) and a
+      // tighter shadow pool keep Chinnu's bike untouched
+      g_top_charminar: { bottom: 0.79, w: 0.315, pool: { padX: 120 } },
+    },
+    port: {
+      // 3D half: Charminar fills the top, the bike + Chinnu the centre (x 45-55 %, swinging to x 30.4 % by f35);
+      // top-down half: Charminar's roundabout sits left-centre (down to y ~62 %). The left column below the
+      // roundabout and left of the bike's turn is clear in every frame (and above the Reels caption zone)
+      // (the wheel reaches x 30.7 % at f35): PLAY IN / 3D OR / TOP- / DOWN, text edge ~27 %, tight shadow pool
+      g_top_charminar: { x: 0.06, top: 0.6, w: 0.215, maxLines: 4, hyphenBreak: true, min: 40, pool: { padX: 90, padY: 110, cx: 0.42 } },
+    },
+  };
   function capLayout(ctx, seg, W, H, opt) {
     const port = H > W;
     const k = port ? W / 1080 : Math.min(W / 1920, H / 1080), VW = W / k, VH = H / k;
     const P = port
       ? { x0: 84, maxW: 840, base: 96, min: 60, maxLines: 3, lh: 1.04 }
       : { x0: 118, maxW: 1180, base: 92, min: 60, maxLines: 2, lh: 1.04 };
-    const words = String(seg.cap).split(/\s+/);
+    const o = port ? 'port' : 'land', O = Object.assign({}, LOWPOS[o][seg.id] || {}, (seg.capPos && seg.capPos[o]) || {});
+    if (O.x != null) P.x0 = O.x * VW;
+    if (O.w != null) P.maxW = O.w * VW;
+    if (O.size) P.base = O.size;
+    if (O.min) P.min = O.min;
+    if (O.maxLines) P.maxLines = O.maxLines;
+    const words = O.hyphenBreak ? String(seg.cap).split(/\s+/).flatMap((w) => w.split(/(?<=-)/)) : String(seg.cap).split(/\s+/);
+    const join = (ws) => ws.reduce((a, w) => (a && !a.endsWith('-') ? a + ' ' : a) + w, '');
     const meas = (str, size) => { ctx.font = '900 ' + size + 'px ' + FONT; if ('letterSpacing' in ctx) ctx.letterSpacing = (size * 0.02) + 'px'; const w = ctx.measureText(str).width; if ('letterSpacing' in ctx) ctx.letterSpacing = '0px'; return w; };
     function split(n, size) { // best (min max-width) split of the words into n lines
       let best = null;
       const rec = (i, left, acc) => {
-        if (left === 1) { const ls = [...acc, words.slice(i).join(' ')]; const mw = Math.max(...ls.map((l) => meas(l, size))); if (!best || mw < best.w) best = { lines: ls, w: mw }; return; }
-        for (let j = i + 1; j <= words.length - left + 1; j++) rec(j, left - 1, [...acc, words.slice(i, j).join(' ')]);
+        if (left === 1) { const ls = [...acc, join(words.slice(i))]; const mw = Math.max(...ls.map((l) => meas(l, size))); if (!best || mw < best.w) best = { lines: ls, w: mw }; return; }
+        for (let j = i + 1; j <= words.length - left + 1; j++) rec(j, left - 1, [...acc, join(words.slice(i, j))]);
       };
       if (n <= words.length) rec(0, n, []);
       return best;
@@ -394,9 +418,11 @@
     const kh = opt.first ? (port ? 64 : 56) : (port ? 46 : 40), kgap = port ? 26 : 22;
     const blockH = kh + kgap + capH;
     let top;
-    if (port) { top = VH * 0.665 - blockH / 2; top = Math.min(top, VH * 0.735 - blockH); top = Math.max(top, VH * 0.55); }
+    if (O.top != null) top = O.top * VH;
+    else if (O.bottom != null) top = O.bottom * VH - blockH;
+    else if (port) { top = VH * 0.665 - blockH / 2; top = Math.min(top, VH * 0.735 - blockH); top = Math.max(top, VH * 0.55); }
     else top = 948 - blockH; // bottom edge at 87.8 % (above the bottom 6 % HUD band)
-    return { port, k, VW, VH, P, lines: lay.lines, size, lh, capW: lay.w, kh, kgap, top, capTop: top + kh + kgap, bottom: top + blockH };
+    return { port, k, VW, VH, P, O, lines: lay.lines, size, lh, capW: lay.w, kh, kgap, top, capTop: top + kh + kgap, bottom: top + blockH };
   }
   function capPhase(seg, t, B, opt) { // 'blank' | 'hold' | 'anim' (lets the renderer reuse identical frames)
     const dur = seg.n * B, outStart = dur - CAP.out - 0.03;
@@ -524,7 +550,9 @@
     const cu = ease.out(clamp((t - cStart) / CAP.line, 0, 1));
     const plateA = 0.5 * Math.max(ku * 0.5, cu) * (1 - o);
     if (plateA > 0.001) {
-      const cx = x0 + blockW * 0.4, cy = (L.top + L.bottom) / 2, rx = blockW * 0.72 + (L.port ? 170 : 240), ry = (L.bottom - L.top) * 0.7 + (L.port ? 120 : 130);
+      const pp = L.O.pool || {}; // per-segment pool size (LOWPOS): keeps the soft shadow off nearby action
+      const cx = x0 + blockW * (pp.cx != null ? pp.cx : 0.4), cy = (L.top + L.bottom) / 2;
+      const rx = blockW * 0.72 + (pp.padX != null ? pp.padX : (L.port ? 170 : 240)), ry = (L.bottom - L.top) * 0.7 + (pp.padY != null ? pp.padY : (L.port ? 120 : 130));
       ctx.save(); ctx.translate(cx, cy); ctx.scale(rx / ry, 1);
       const g = ctx.createRadialGradient(0, 0, 0, 0, 0, ry);
       g.addColorStop(0, 'rgba(0,0,0,' + plateA + ')'); g.addColorStop(0.5, 'rgba(0,0,0,' + plateA * 0.62 + ')'); g.addColorStop(1, 'rgba(0,0,0,0)');
@@ -575,6 +603,10 @@
     overlay,
     caption,
     capPhase,
+    capInfo(seg, W, H, opt) { // lower-third layout (lines, size, block edges as fractions), for QA
+      const c = document.createElement('canvas').getContext('2d'), L = capLayout(c, seg, W, H, opt || {});
+      return { lines: L.lines, size: L.size, x: L.P.x0 / L.VW, top: L.top / L.VH, bottom: L.bottom / L.VH, right: (L.P.x0 + L.capW) / L.VW };
+    },
     capBox(seg, W, H, opt) { // geometry of a boxed (top) caption block in pixels, for QA
       const c = document.createElement('canvas').getContext('2d'), L = boxLayout(c, seg, W, H, opt || {});
       return { x: L.x0 * L.k, y: L.top * L.k, w: Math.max(L.capW) * L.k, h: (L.bottom - L.top) * L.k, lines: L.lines, size: L.size };

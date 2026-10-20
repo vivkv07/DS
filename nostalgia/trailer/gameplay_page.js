@@ -13,7 +13,7 @@
 
   // view: 'tps' | 'fps' | 'top'.  at: place id | [x, y].  veh: vehicle type | null (foot).  spd: u/s.  dir: preferred heading
   const CLIPS = {
-    cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', spd: 105, dir: 0, clear: 1.5, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.35 } },
+    cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', crowd: { ped: 80, dens: 1.5 }, spd: 105, dir: 0, clear: 1.5, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.35 } },
     top_charminar: { view: 'top', at: 'charminar_plaza', time: [11, 0], veh: 'cycle', spd: 115, dir: -1.6 },
     auto_tankbund: { view: 'tps', at: [9295, 3648], time: [17, 25], veh: 'auto', spd: 130, warm: 30, dir: 2.22, prefer: 'bund', chase: { back: 24, h: 11, lead: 14, th: 3.5, fov: 56, lag: 0.3, side: 2 } },
     top_chase: { view: 'top', at: 'abids', time: [12, 30], veh: null, spd: 82, dir: 0, run: true, wanted: 3 },
@@ -34,9 +34,9 @@
     kites_sky: { view: 'cam', at: 'giver_himayatnagar', time: [16, 20], veh: null, spd: 0 },
     // festivals (N.seasons overlays; the 3D renderer draws their props from N.seasons.scene)
     fest_ganesh: { view: 'cam', at: 'tank_bund', time: [15, 30], veh: null, spd: 0, procession: true, rows: 4, swRate: 0.2, seasons: { ganesh_immersion: true, ganesh: true } },
-    fest_ramzan: { view: 'tps', at: 'charminar', off: [-215, 45], time: [21, 30], veh: null, spd: 22, warm: 45, toward: 'charminar', clear: 2, chase: { back: 11, h: 6, lead: 12, th: 9, fov: 66, lag: 0.2 }, seasons: { ramzan: true } },
+    fest_ramzan: { view: 'tps', at: 'charminar', off: [-215, 45], time: [21, 30], veh: null, crowd: { ped: 100, dens: 2 }, spd: 22, warm: 45, toward: 'charminar', clear: 2, chase: { back: 11, h: 6, lead: 12, th: 9, fov: 66, lag: 0.2 }, seasons: { ramzan: true } },
     fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 0, seasons: { bonalu: true }, bonalu: { temple: 'lal_darwaza_temple', ahead: 17, side: 13, h: 5, lat: 4.5, look: -1.5 } },
-    fest_numaish: { view: 'tps', at: [8312, 5860], time: [20, 30], veh: null, spd: 34, line: { a: 0, r0: 60, r1: -200 }, clear: 2, chase: { back: 12, h: 6.5, lead: 30, th: 7, fov: 60, lag: 0.2 }, seasons: { numaish: true } },
+    fest_numaish: { view: 'tps', at: [8312, 5860], time: [20, 30], veh: null, crowd: { ped: 100, dens: 2 }, spd: 34, line: { a: 0, r0: 60, r1: -200 }, clear: 2, chase: { back: 12, h: 6.5, lead: 30, th: 7, fov: 60, lag: 0.2 }, seasons: { numaish: true } },
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
     // in-world playground games (N.playgroundGames): a real match with Chinnu and the AI kids, scripted inside the window
     lingocha: { view: 'tps', at: 'playground_home', time: [12, 40], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: 26, h1: 15, crane: 45, f0: 21, s0: 8, h0: 10.5, lk0: 0.75 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
@@ -127,6 +127,14 @@
     N.player.hidden = false;
     STAGE.crowd(null); STAGE.gulal(null);
     N.debug.setTime(o.time[0], o.time[1]);
+    // o.crowd {ped, veh, dens}: a fuller street (the traffic system's caps / density, restored for other clips)
+    const TR = N.traffic, TT = TR && TR.TUNE;
+    if (TT && TT.caps) {
+      if (!TT.__capsBase) TT.__capsBase = JSON.parse(JSON.stringify(TT.caps));
+      const cw = o.crowd || {};
+      for (const k of ['desk', 'mobile']) TT.caps[k] = Object.assign({}, TT.__capsBase[k], cw.ped ? { ped: cw.ped } : {}, cw.veh ? { veh: cw.veh } : {});
+      if (TR.setDensity) TR.setDensity(cw.dens || 1);
+    }
     N.weather.force(o.rain ? { rain: o.rain, storm: o.storm || 0.3 } : { rain: 0, storm: 0, mist: 0 });
     N.weather.wet = o.rain ? 1 : 0;
     N.wind.force({ strength: o.rain ? 0.8 : 0.4 });

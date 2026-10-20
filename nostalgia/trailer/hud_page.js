@@ -25,13 +25,18 @@
     // from ahead, winds up ("One more step and this chappal flies!", the red target ring under him) and her homing
     // chappal hits: THUP! and the PAKDA GAYA! banner (the game's own busted sequence) on the last beat.
     chase: {
-      view: 'top', at: 'koti', time: [12, 30], veh: null, run: true, spd: 80, dir: Math.PI, zoom: 2.2, warm: 90,
+      // zoom: the top-down camera's own zoom multiplier (N.render.baseZoom; the game plays at 1): ~4x so Chinnu, the
+      // target ring, the auto and the flying chappal read at phone / 1080p size (the HUD keeps its normal size)
+      view: 'top', at: 'koti', time: [12, 30], veh: null, run: true, spd: 80, dir: Math.PI, zoom: 4, warm: 90,
+      barkScale: 1.8, // the speech bubbles drawn 1.8x (font, padding, tail) so Amma's line reads at 1080p
+      kites: false, // the Sankranti kites off for this shot: at this zoom they are big blobs over the action
       // heat keyframes [frame, heat] (level = floor(heat / 100))
       heat: [[-90, 340], [0, 345], [5, 400], [10, 500], [71, 520]],
       // new pursuers are put on his route: back = u behind him; ahead: 'edge' = just outside the frame ahead of him,
       // facing him, lat u to his right (her own lane); brakeAt: her driver pulls up once that close (she throws
       // from the stopped auto instead of running him over)
-      stage: { roles: { pochaiah: { back: 60 }, mummy: { ahead: 'edge', lat: 12, brakeAt: 160 } }, side: 5, at: -40 },
+      // (Mummy 195 u ahead, outside the zoomed frame: she pulls up 160 u out, winds up ~f18, throws ~f30, hits ~f40)
+      stage: { roles: { pochaiah: { back: 60 }, mummy: { ahead: 195, lat: 12, brakeAt: 160 } }, side: 5, at: -40 },
       quiet: true, // pursuers' random shouts off: the lines below + the game's own (dismissal, chappal wind-up)
       barks: [[2, 'pochaiah', '*Ruko!*']], // (his own line from wanted.js)
       barkSecs: { pochaiah: 0.9 }, // his "called off" line clears before Mummy's wind-up line (the game: ~3 s)
@@ -45,7 +50,7 @@
       // slows below 40 u/s, e.g. at a bend)
       tune: { lunaDismount: 0 },
       difficulty: 'hard', // the game's "Full Meter" difficulty: Mummy is faster (pursuerSpeed 1.1) and sees further
-      clear: 9, // traffic parked / stopped on his line is cleared before the shot (he is driven, not physical)
+      clear: 9, // traffic, people and animals on his line are cleared before the shot (he is driven, not physical)
       // no through traffic where Mummy pulls up and the chappal lands (the game's own road closure, as for
       // processions): an auto weaving into his lane there would be run through
       calm: { f: 44, r: 95 },
@@ -79,6 +84,20 @@
     if (N.hud && N.hud.objective) N.hud.objective(null);
     return { money: N.player.money };
   };
+
+  // speech bubbles drawn F times their size (dialogue.js places them by their measured size, so they stay anchored)
+  function barkScale(F) {
+    let st = document.getElementById('hudshot-bark');
+    if (!st) { st = document.createElement('style'); st.id = 'hudshot-bark'; document.head.appendChild(st); }
+    if (F === 1) { st.textContent = ''; return; }
+    const ph = window.innerWidth <= 600; // (style.css's phone sizes below 600 px)
+    const px = (v) => (v * F).toFixed(1) + 'px';
+    st.textContent =
+      '.bark{max-width:' + px(ph ? 168 : 210) + ';padding:' + (ph ? [3, 7, 4, 6] : [4, 9, 5, 8]).map(px).join(' ') + ';font-size:' + px(ph ? 13 : 14) +
+      ';border-width:' + px(2) + ';border-left-width:' + px(5) + ';border-radius:' + px(7) + ';box-shadow:' + px(3) + ' ' + px(3) + ' 0 rgba(0,0,0,.35)}' +
+      '.bark::before{bottom:' + px(-10) + ';border-width:' + px(9) + ' ' + px(6) + ' 0}.bark::after{bottom:' + px(-6) + ';border-width:' + px(6) + ' ' + px(4) + ' 0}' +
+      '.bark-name{font-size:' + px(ph ? 14 : 15) + ';margin-bottom:' + px(1) + '}.bark-name::before{width:' + px(7) + ';height:' + px(7) + ';margin-right:' + px(4) + '}';
+  }
 
   /* ------------------------------------------------------------ CSS animations on the virtual clock */
   const animT0 = new WeakMap();
@@ -191,6 +210,8 @@
     if (o.tune) Object.assign(N.wanted.TUNE, o.tune);
     // a livelier street (the game's own traffic density multiplier, 0..2; 1 = normal)
     if (N.traffic && N.traffic.setDensity) N.traffic.setDensity(o.density || 1);
+    if (o.kites === false && N.seasons && N.seasons.set) N.seasons.set('sankranti', false);
+    barkScale(o.barkScale || 1);
     if (N.player.vehicle && N.vehicles.exit) { try { N.vehicles.exit(N.player, true); } catch (e) { /* ok */ } }
     if (N.wanted) { N.wanted.lock(null); N.wanted.set(0, 'clear'); }
     N.render.camOverride = null;
@@ -285,16 +306,20 @@
     };
   }
 
-  // vehicles on his line (a kid running down the road: anything parked or crawling there would be run through)
+  // vehicles, people and animals on his line (a kid running down the road: anything there would be run through);
+  // traffic ones through the game's own N.traffic.clear(pred), other (parked) vehicles removed directly
   function clearLine(r, len, back) {
     const pts = [];
     for (let d = C.d - (back || 20); d < C.d + len; d += 4) pts.push(at(C.path, d, { x: 0, y: 0 }));
+    const p = N.player;
+    const near = (e) => {
+      if (!e || e === p || e === p.vehicle || e.npcOwned || e.pursuitVehicle || e.roadblock || e.pursuer) return false;
+      const rr = r + (e.kind === 'vehicle' ? ((e.T && e.T.d) || 6) / 2 : (e.r || 4)); // (T.d: a vehicle's width)
+      return pts.some((q) => Math.abs(q.x - e.x) < rr && Math.abs(q.y - e.y) < rr && Math.hypot(q.x - e.x, q.y - e.y) < rr);
+    };
     let n = 0;
-    for (const e of N.entities.all.slice()) {
-      if (e.kind !== 'vehicle' || e === N.player.vehicle || e.npcOwned || e.pursuitVehicle || e.roadblock) continue;
-      const rr = r + ((e.T && e.T.d) || 6) / 2; // (T.d: the vehicle's width)
-      if (pts.some((q) => Math.abs(q.x - e.x) < rr && Math.abs(q.y - e.y) < rr && Math.hypot(q.x - e.x, q.y - e.y) < rr)) { try { N.vehicles.remove(e); n++; } catch (er) { /* ignore */ } }
-    }
+    if (N.traffic && N.traffic.clear) N.traffic.clear((e) => { const k = near(e); if (k) n++; return k; });
+    for (const e of N.entities.all.slice()) if (e.kind === 'vehicle' && near(e)) { try { N.vehicles.remove(e); n++; } catch (er) { /* ignore */ } }
     return n;
   }
 
@@ -340,7 +365,7 @@
 
   function script() {
     const o = C.o, W = N.wanted;
-    if (o.clear && (C.f === -(o.warm || 75) || C.f === -12)) C.log.push(C.f + ' cleared ' + clearLine(o.clear, (C.nf + 10 - C.f) / FPS * o.spd, C.f === -12 ? 240 : 20) + ' vehicles off his line');
+    if (o.clear && (C.f === -(o.warm || 75) || C.f === -12)) C.log.push(C.f + ' cleared ' + clearLine(o.clear, (C.nf + 10 - C.f) / FPS * o.spd, C.f === -12 ? 240 : 20) + ' vehicles / people / animals off his line');
     if (o.calm && C.f === -(o.warm || 75) && N.traffic && N.traffic.closeRoads) {
       at(C.path, C.d + (o.calm.f - C.f) * o.spd / FPS, tmp);
       C.calm = { x: tmp.x, y: tmp.y, r: o.calm.r };
@@ -408,12 +433,14 @@
     const W = N.wanted, p = N.player, ch = W._W.chappal;
     let dbg;
     if (window.HUDDBG) {
-      const m = W.chaser && W.chaser.mount;
+      const p = N.player, m = W.chaser && W.chaser.mount;
       if (m) {
         let ob = null; try { ob = N.traffic.sense(m, Math.cos(m.angle), Math.sin(m.angle)); } catch (e) { ob = String(e); }
         const pu = m.pu;
         dbg = { ctl: m.ctl && [m.ctl.throttle, m.ctl.brake, +m.ctl.steer.toFixed(2)], ob: ob && ob.e ? [ob.e.kind + ':' + (ob.e.type || ob.e.role || ''), Math.round(ob.gap), Math.round(ob.sp)] : ob, pi: pu && pu.path ? pu.pi + '/' + pu.path.length : null, ang: +m.angle.toFixed(2), max: m.T && (m.T.max || m.T.top || m.T.speed) };
       }
+      dbg = dbg || {};
+      dbg.near = N.entities.all.filter((e) => e !== p && e.alive && Math.hypot(e.x - p.x, e.y - p.y) < 16).map((e) => e.kind + ':' + (e.role || e.type || e.npcId || '') + (e.spotter ? '!spot' : '') + (e.pursuer ? '!pursuer' : '') + ' ' + Math.round(Math.hypot(e.x - p.x, e.y - p.y)) + 'u v' + Math.round(Math.hypot(e.vx || 0, e.vy || 0)));
     }
     return { dbg, f, level: W.level, heat: Math.round(W.heat), view: N.view.mode, money: p.money, mode: N.state.mode, pos: [Math.round(p.x), Math.round(p.y)], pursuers: pursuerInfo(), chappal: ch ? ch.ph + ' ' + Math.round(Math.hypot(ch.x - p.x, ch.y - p.y)) + 'u' : null, busy: W.busy, log: C.log.splice(0) };
   };
