@@ -180,6 +180,46 @@
     return best;
   };
 
+  // occlusion test for camera paths: the first solid surface on the segment A -> B (world x, y, 3D height h),
+  // skipping `skip` units at A (e.g. the hero standing there) -> distance from A, or -1 when the line is clear.
+  // S.solids(true) refreshes the cached mesh list (call once per staged shot, then test many lines).
+  let SOLIDS = null;
+  S.solids = function (refresh) {
+    if (SOLIDS && !refresh) return SOLIDS;
+    const H = N.view3d.H;
+    SOLIDS = [];
+    H.scene.traverse((m) => {
+      if (!m.isMesh || m.isSprite) return;
+      let p = m; while (p) { if (p === H.layer || p === S.heroObj) return; p = p.parent; }
+      if (m.name === 'sky' || m.name === 'outer') return;
+      if (m.material && m.material.transparent && !/^COL_/.test(m.name || '')) return;
+      if (!m.isInstancedMesh && !m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+      SOLIDS.push(m);
+    });
+    return SOLIDS;
+  };
+  S.blocked = function (ax, ay, ah, bx, by, bh, skip) {
+    const H = N.view3d.H, T = H.THREE || window.THREE;
+    const o = new T.Vector3(ax, ah, ay), d = new T.Vector3(bx - ax, bh - ah, by - ay), len = d.length();
+    if (len < 1e-3) return -1;
+    d.divideScalar(len);
+    const rc = new T.Raycaster(o, d, skip || 0, len); rc.camera = H.camera;
+    const sph = new T.Sphere(), oc = new T.Vector3(), hits = [];
+    let best = -1;
+    for (const m of S.solids()) {
+      if (!m.isInstancedMesh) { // cheap reject: the segment misses the mesh's bounding sphere
+        sph.copy(m.geometry.boundingSphere).applyMatrix4(m.matrixWorld);
+        oc.copy(sph.center).sub(o);
+        const t = Math.max(0, Math.min(len, oc.dot(d)));
+        if (oc.lengthSq() - 2 * t * oc.dot(d) + t * t > sph.radius * sph.radius) continue;
+      }
+      hits.length = 0;
+      try { Object.getPrototypeOf(m).raycast.call(m, rc, hits); } catch (e) { continue; }
+      for (const h of hits) if (h.distance >= (skip || 0) && h.distance <= len && (best < 0 || h.distance < best)) best = h.distance;
+    }
+    return best;
+  };
+
   const ease = { lin: (t) => t, io: (t) => t * t * (3 - 2 * t), out: (t) => 1 - Math.pow(1 - t, 3), in: (t) => t * t * t };
   S.orbit = function (o, t) {
     const u = Math.max(0, Math.min(1, t / o.dur)), e = (ease[o.ease || 'lin'])(u);

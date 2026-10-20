@@ -111,16 +111,56 @@
     const clearV = () => N.entities.clear((e) => (e.kind === 'vehicle' && Math.hypot(e.x - hero.x, e.y - hero.y) < 90) || ((e.kind === 'ped' || e.kind === 'npc') && e !== N.player && Math.hypot(e.x - hero.x, e.y - hero.y) < 22));
     clearV(); CUR_CLEAR = clearV;
     streamAt(hero.x, hero.y);
-    const face = sh.faceLm ? base + Math.PI + 0.45 : sh.face != null ? sh.face : base + 0.55; // faceLm: looking out at the landmark, 3/4 from behind
-    CUR = { hs: sh.scale || 1, seg, sh, lm, hero, base, lookLm, face, strikes: (seg.lightning || []).map((b) => Math.round((b - seg.b) * B * FPS)) };
+    let face = sh.faceLm ? base + Math.PI + 0.45 : sh.face != null ? sh.face : base + 0.55; // faceLm: looking out at the landmark, 3/4 from behind
     const hs = sh.scale || 1;
+    // reveal: pick the crane's bearing so nothing (minarets, parapets, poles) comes between the lens and Chinnu
+    let rev = null;
+    if (seg.shot === 'reveal') { rev = revealSearch(hero, hs); face = rev.a1 + 0.63; }
+    CUR = { hs, seg, sh, lm, hero, base, lookLm, face, rev, strikes: (seg.lightning || []).map((b) => Math.round((b - seg.b) * B * FPS)) };
     STAGE.hero({ x: hero.x, y: hero.y, h: hero.h, angle: face, clip: sh.clip || 'idle', scale: hs });
     pose(0, seg.n * B * FPS);
     settle();
     for (let k = 0; k < (window.WARM || 45); k++) { pose(0, seg.n * B * FPS); window.__step(1 / FPS); }
     settle();
-    return { lm: lm.id, hero: { x: Math.round(hero.x), y: Math.round(hero.y), h: +hero.h.toFixed(1) }, base: +base.toFixed(2) };
+    return { lm: lm.id, hero: { x: Math.round(hero.x), y: Math.round(hero.y), h: +hero.h.toFixed(1) }, base: +base.toFixed(2), rev };
   };
+
+  // the reveal crane (from the plaza, low and looking up at the minarets, up to Chinnu on the roof). Height and
+  // distance ease separately: the camera clears the roof line (by ~62% of the shot) while still ~90 u out, and only
+  // then pushes in. rev = {a0, a1}: bearing from the hero at the start / end of the shot.
+  function revealCam(u, hero, rev, hs) {
+    const hy = hero.h, cs = (hs < 1 ? hs * 1.6 : 1) * 1.25, chest = 4.5 * hs;
+    const eh = ease.io(Math.min(1, u / 0.62));
+    const er = u < 0.55 ? 0.35 * ease.io(u / 0.55) : 0.35 + 0.65 * ease.io((u - 0.55) / 0.45);
+    const a = rev.a0 + (rev.a1 - rev.a0) * er;
+    const r = 125 - (125 - 33 * cs) * er, h = 3 + (hy + 7 * cs - 3) * eh, th = 55 + (hy + chest - 55) * eh;
+    return { x: hero.x + Math.cos(a) * r, y: hero.y + Math.sin(a) * r, h, th, fov: 50 - 8 * er, r, chest };
+  }
+  function revealSearch(hero, hs) {
+    STAGE.solids(true);
+    const chest = 4.5 * hs, A1 = 0.94, SWEEP = 0.35;
+    let best = null;
+    const tested = [];
+    for (let a1 = -Math.PI; a1 < Math.PI; a1 += 0.08) for (const dir of [1, -1]) {
+      const rev = { a0: a1 - dir * SWEEP, a1 };
+      let score = Math.abs(U.angleDiff(a1, A1)) * 1.5, late = 0, early = 0;
+      // above the roof line (u >= 0.56): the whole line camera -> Chinnu must be clear
+      for (let k = 0; k <= 11 && (!best || score < best.score); k++) {
+        const u = 0.56 + (0.44 * k) / 11, c = revealCam(u, hero, rev, hs);
+        if (STAGE.blocked(hero.x, hero.y, hero.h + chest, c.x, c.y, c.h, 1.5) >= 0) { score += 10; late++; }
+      }
+      // on the way up: nothing in front of the lens short of the monument itself (stop 40 u before the hero)
+      for (let k = 0; k <= 5 && (!best || score < best.score); k++) {
+        const u = (0.5 * k) / 5, c = revealCam(u, hero, rev, hs);
+        const dx = hero.x - c.x, dy = hero.y - c.y, dh = c.th - c.h, L = Math.hypot(dx, dy, dh), f = Math.max(0, (L - 40) / L);
+        if (STAGE.blocked(c.x, c.y, c.h, c.x + dx * f, c.y + dy * f, c.h + dh * f, 0.5) >= 0) { score += 3; early++; }
+      }
+      tested.push([+a1.toFixed(2), dir, late, early]);
+      if (!best || score < best.score) best = { a0: +rev.a0.toFixed(3), a1: +rev.a1.toFixed(3), score: +score.toFixed(2), late, early };
+    }
+    best.clearCount = tested.filter((t) => !t[2] && !t[3]).length;
+    return best;
+  }
 
   function pose(f, nf) {
     const { seg, sh, hero, base, lookLm, hs } = CUR;
@@ -139,14 +179,8 @@
       STAGE.cam({ x: lm.x + Math.cos(a) * r + jx, y: lm.y + Math.sin(a) * r + jy, h, tx: lm.x, ty: lm.y, th: hy - 12, fov: sh.fov[0] + (sh.fov[1] - sh.fov[0]) * e });
       STAGE.camSpec.rollAbs = -0.012 * Math.sin(u * Math.PI);
     } else if (seg.shot === 'reveal') {
-      // from the plaza, low and looking up at the minarets, crane up to Chinnu on the roof. Height and distance
-      // ease separately: the camera clears the roof line (by ~62% of the shot) while it is still ~90 u out, and
-      // only then pushes in, so it never flies through the minarets / parapet
-      const eh = ease.io(Math.min(1, u / 0.62));
-      const er = u < 0.55 ? 0.35 * ease.io(u / 0.55) : 0.35 + 0.65 * ease.io((u - 0.55) / 0.45);
-      const a = 0.59 + 0.35 * er;
-      const r = 125 - (125 - 33 * cs) * er, h = 3 + (hy + 7 * cs - 3) * eh, th = 55 + (hy + chest - 55) * eh;
-      STAGE.cam({ x: hero.x + Math.cos(a) * r, y: hero.y + Math.sin(a) * r, h, tx: hero.x, ty: hero.y, th, fov: 50 - 8 * er });
+      const c = revealCam(u, hero, CUR.rev || { a0: 0.59, a1: 0.94 }, hs);
+      STAGE.cam({ x: c.x, y: c.y, h: c.h, tx: hero.x, ty: hero.y, th: c.th, fov: c.fov });
     } else if (seg.shot === 'whip') {
       const e = ease.in(u), a = 0.94 + e * 5.2;
       STAGE.cam({ x: hero.x + Math.cos(a) * 24 * cs, y: hero.y + Math.sin(a) * 24 * cs, h: hy + 8 * cs, tx: hero.x, ty: hero.y, th: hy + chest, fov: 50 + 10 * e });
