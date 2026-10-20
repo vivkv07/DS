@@ -40,7 +40,7 @@ const SEGS = [{ id: 'g_top_chase', shot: 'chase' }, { id: 'g_top_charminar', sho
     for (const k of Object.keys(process.env)) if (k.startsWith('SHOT_')) over[k.slice(5)] = JSON.parse(process.env[k]);
     // portrait: the same shots, the chase runs north-south (the frame is tall)
     if (PORTRAIT) {
-      over.chase = Object.assign({ dir: -Math.PI / 2 }, over.chase || {});
+      over.chase = Object.assign({ at: 'abids', dir: -Math.PI / 2 }, over.chase || {});
     }
     await page.evaluate((o) => { window.HUD_SHOTS_OVERRIDE = o; }, over);
     await page.addScriptTag({ path: path.join(__dirname, 'hud_page.js') });

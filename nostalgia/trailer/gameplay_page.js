@@ -43,7 +43,7 @@
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
     // in-world playground games (N.playgroundGames): a real match with Chinnu and the AI kids, scripted inside the window
     lingocha: { view: 'tps', at: 'playground_home', time: [12, 40], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: -28, h1: 14, crane: 45, f0: 21, s0: 8, h0: 10.5, lk0: 0.75 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
-    marampitti: { view: 'tps', at: 'playground_2', time: [16, 50], veh: null, spd: 0, pg: { game: 'marampitti', place: 'playground_2', seed: 2, winds: [[0, 0.9, 0]], dodges: [21], victim: { back: 6.5, lat: 0 }, camLag: 0.2, fixCam: 0.6, cam: { back: 13, side: 7, h: 9.5, fov: 54, look: 0.4 }, params: { kids: 8, difficulty: 0.5 } } },
+    marampitti: { view: 'tps', at: 'playground_2', time: [16, 50], veh: null, spd: 0, pg: { game: 'marampitti', place: 'playground_2', seed: 2, winds: [[0, 0.9, 0]], dodges: [21], victim: { back: 6.5, lat: 0 }, camLag: 0.2, me: [14, -8], kAng: 3.14, fixCam: 0.5, cam: { back: 13, side: 6, h: 9, fov: 54, look: 0.4 }, params: { kids: 8, difficulty: 0.5 } } },
     charminar_night_fps: { view: 'fps', at: 'pathergatti', time: [21, 0], veh: 'cycle', spd: 105, toward: 'charminar' },
   };
 
@@ -233,8 +233,11 @@
   function maramSetup() {
     const { S, D } = C.pg, me = S.me, p = N.player, c = C.pg.F.centre;
     const kids = S.parts.filter((q) => !q.isPlayer && !q.out);
+    // (G.me: Chinnu's spot relative to the centre, G.kAng: bearing to the thrower; keeps the hop clear of the
+    // ground's benches / swings)
+    if (C.pg.G.me) { p.x = c.x + C.pg.G.me[0]; p.y = c.y + C.pg.G.me[1]; p.vx = p.vy = 0; }
     // the thrower: the kid nearest the spot 26 u across the ground from Chinnu (towards the centre)
-    let a = Math.atan2(c.y - p.y, c.x - p.x);
+    let a = C.pg.G.kAng != null ? C.pg.G.kAng : Math.atan2(c.y - p.y, c.x - p.x);
     const kx = p.x + Math.cos(a) * 26, ky = p.y + Math.sin(a) * 26;
     kids.sort((A, B) => hyp(A.e.x - kx, A.e.y - ky) - hyp(B.e.x - kx, B.e.y - ky));
     const K = kids[0];

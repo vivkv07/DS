@@ -19,14 +19,19 @@
     // the Chappal Meter climbs on the beat while Chinnu legs it through Abids; the pursuers are the wanted system's own
     // (staged: each new one is moved to just outside the frame behind him so he/she rides into shot)
     chase: {
-      view: 'top', at: 'abids', time: [12, 30], veh: 'cycle', spd: 112, dir: 0, zoom: 1.3,
-      // heat keyframes [frame, heat] (level = heat / 100): the next slipper fills from the sole up, lights on the beat
-      heat: [[0, 350], [18, 400], [44, 500], [71, 560]], stage: { back: 150, side: 10 },
+      view: 'top', at: 'koti', time: [12, 30], veh: 'cycle', spd: 105, dir: Math.PI, zoom: 1.6,
+      // heat keyframes [frame, heat] (level = heat / 100): the next slipper fills from the sole up and lights on the
+      // beat (f18: 3 -> 4, f36: 4 -> 5)
+      heat: [[0, 340], [18, 400], [36, 500], [71, 560]],
+      // where each new pursuer is put (u behind Chinnu on his route, u to the side)
+      stage: { back: { pochaiah: 105, havaldar: 70, mummy: 120 }, side: 9 },
+      chappalT: 0.15, // Mummy's first homing chappal: wind-up soon after she arrives (the game waits 3 s)
     },
     // 3D third person on the cycle by Charminar, then the real view switch (N.view.set('top')) on the beat
     charminar: { view: 'tps', at: 'charminar_plaza', time: [11, 0], veh: 'cycle', spd: 100, dir: -1.6, zoom: 1.3, switchAt: 36 },
   };
-  Object.assign(SHOTS, window.HUD_SHOTS_OVERRIDE || {});
+  const OVR = window.HUD_SHOTS_OVERRIDE || {};
+  for (const k in OVR) SHOTS[k] = Object.assign({}, SHOTS[k], OVR[k]);
 
   /* ------------------------------------------------------------ HUD on, debug off */
   const H = (window.HUDSHOT = { SHOTS });
@@ -36,7 +41,7 @@
     for (const st of Array.from(document.querySelectorAll('style'))) if (/#ui,#touch,#debug,#overlay,\.toast,\.bark/.test(st.textContent)) st.remove();
     const st = document.createElement('style');
     st.id = 'hudshot-style';
-    st.textContent = '#debug,#touch,#overlay,#prompt,.hud-toasts,.hud-toast,.toast{display:none!important}' + (o.css || '');
+    st.textContent = '#debug,#touch,#overlay,#prompt,.hud-toasts,.hud-toast,.toast,.hud-district{display:none!important}' + (o.css || '');
     document.head.appendChild(st);
     document.body.classList.remove('touch-on');
     // testing build: the unlimited-money refill off (directly: the setter toasts + writes localStorage), real pocket money
@@ -147,11 +152,16 @@
     if (o.heat) N.wanted.set(Math.floor(o.heat[0][1] / 100), 'set');
     for (let k = 0; k < 3; k++) if (N.view3d && N.view3d.active) N.view3d.settle(30000);
     noDraw(true);
-    try { for (let k = 0; k < warm - 6; k++) advance(); } finally { noDraw(false); }
+    try {
+      for (let k = 0; k < warm - 6; k++) {
+        // (the shot's opening: the pursuers already in pursuit just behind him, a second to settle)
+        if (o.heat && k === warm - 36) stageNew(true);
+        advance();
+      }
+    } finally { noDraw(false); }
     for (let k = 0; k < 6; k++) advance();
     if (N.view3d && N.view3d.active) N.view3d.settle(30000);
-    // (the shot's opening position: pursuers already in pursuit just behind him)
-    if (o.heat) { heatTo(o.heat[0][1]); stageNew(true); }
+    if (o.heat) heatTo(o.heat[0][1]);
     C.f = 0; C.warm = false;
     syncAnims();
     return { at: [Math.round(start.x), Math.round(start.y)], len: Math.round(path.len), veh: v ? v.type : null, view: N.view.mode, level: N.wanted.level, money: N.player.money, pursuers: pursuerInfo() };
@@ -181,8 +191,9 @@
       if (staged.has(a) || a.state === 'leave' || a.guard) continue;
       staged.add(a);
       const d = Math.hypot(a.x - p.x, a.y - p.y);
-      if (!all && d < S.back * 0.9) continue;
-      const back = S.back + k * 34, lat = (k % 2 ? -1 : 1) * (S.side || 0);
+      const b0 = typeof S.back === 'number' ? S.back : (S.back[a.role] || 110);
+      if (!all && d < b0 * 0.9) continue;
+      const back = b0 + k * 6, lat = (k % 2 ? -1 : 1) * (S.side || 0);
       at(C.path, C.d - back, tmp); at(C.path, C.d - back + 6, tmp2);
       const ang = Math.atan2(tmp2.y - tmp.y, tmp2.x - tmp.x);
       const nx = tmp.x - Math.sin(ang) * lat, ny = tmp.y + Math.cos(ang) * lat;
@@ -205,7 +216,10 @@
       if (o.heat) {
         const L0 = N.wanted.level;
         heatTo(heatAt(o.heat, C.f));
-        if (N.wanted.level !== L0) C.log.push(C.f + ' level ' + L0 + '->' + N.wanted.level + ' heat ' + Math.round(N.wanted.heat));
+        if (N.wanted.level !== L0) {
+          C.log.push(C.f + ' level ' + L0 + '->' + N.wanted.level + ' heat ' + Math.round(N.wanted.heat));
+          if (N.wanted.level === 5 && o.chappalT != null) N.wanted._W.chappalT = o.chappalT;
+        }
       }
       if (o.switchAt === C.f) { N.view.set('top'); C.log.push(C.f + ' view ' + N.view.mode); }
     }
