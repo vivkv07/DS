@@ -1566,7 +1566,7 @@
       if (variant === 'daddy') S.rounds = S.mode === 'solo' ? TUNE.daddy.rounds : Math.max(1, Math.min(3, S.kids.filter((k) => !k.isAI).length));
       setupWorld();
       spawnCast();
-      if (variant === 'daddy') setupRound(0, null, null);
+      if (variant === 'daddy') setupRound(0, null, S.t0); // round 1 keeps the party's GO (ctx.startAt)
       else placeKidsAtStart();
       hudOn();
       netOn();
@@ -2388,8 +2388,9 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
   /** the party's 3-2-1 / GO or a results card own the centre: wait */
   function banBusy() {
     if (RES.el) return true;
+    // (only around our own start: a countdown card never holds a banner back for long)
     const cd = document.querySelector('.pt-count.show');
-    return !!(cd && cd.textContent);
+    return !!(cd && cd.textContent && S && S.now() < S.t0 + 1500);
   }
   function banStep() {
     if (typeof document === 'undefined') return;

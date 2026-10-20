@@ -670,7 +670,11 @@ async function party(browser) {
       await D.page.keyboard.down('KeyD'); await sleep(250); await D.page.keyboard.up('KeyD');
       return K.until(() => !!N.latehome.state().me.seq || N.latehome.state().me.done === 'caught', null, 10000);
     };
+    // round 1 starts on the party's GO (not before it: the 3-2-1 and the round agree)
+    const sync = await D1.ev(() => { const S = N.latehome.debug.session(); return { t0: S.t0, startAt: S.ctx && S.ctx.startAt }; });
+    check(sync.startAt && sync.t0 >= sync.startAt, 'Daddy round 1 begins on the party GO, not during the 3-2-1', sync);
     check(await catchOn(D1, K1), 'the Daddy page catches the other kid (proximity + facing, lhcatch)');
+    await sleep(900); // the GO! card goes
     await D1.shot('party_daddy');
     check(await A.until(() => N.latehome.state() && N.latehome.state().round === 1, null, 30000) && await B.until(() => N.latehome.state() && N.latehome.state().round === 1, null, 30000), 'round 2 on both pages');
     const r2 = await roles();
