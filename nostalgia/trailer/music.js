@@ -502,7 +502,7 @@
     const so = osc('sawtooth', 220, t0, t1 + 0.05, sb); so.frequency.exponentialRampToValueAtTime(1760, t1);
     sb.frequency.setValueAtTime(440, t0); sb.frequency.exponentialRampToValueAtTime(3520, t1);
     const fl = ac.createOscillator(); fl.frequency.value = 11; const fg = gain(45); fl.connect(fg); fg.connect(so.detune); fl.start(t0); fl.stop(t1 + 0.05);
-    sg.gain.setValueAtTime(0.0001, t0); sg.gain.exponentialRampToValueAtTime(0.05 * v, t1 - 0.05); sg.gain.linearRampToValueAtTime(0, t1);
+    sg.gain.setValueAtTime(0.0001, t0); sg.gain.exponentialRampToValueAtTime(0.08 * v, t1 - 0.05); sg.gain.linearRampToValueAtTime(0, t1);
     const rev = HK.A2.concat(HK.A1).map((x) => x[1]).reverse();
     let tt = t0 + 0.15, k = 0;
     while (tt < t1 - 0.1) {
@@ -656,7 +656,7 @@
     tapeNote(tb(7) + 0.02, 72, 0.5, { dec: 2.4, delay: 0.35 });
     // REWIND (b8-11)
     deckClunk(tb(8), 0.85);
-    rewind(tb(8) + 0.1, tb(12) - 0.03, 2.4);
+    rewind(tb(8) + 0.1, tb(12) - 0.03, 3.2);
     yearTicks(tb(8.4), tb(11.5), 24);
     riser(tb(9), tb(12) - 0.02, 1.0);
     revCymbal(tb(12), 1.0, 0.7);
