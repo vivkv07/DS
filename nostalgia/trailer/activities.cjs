@@ -47,7 +47,7 @@ const GAMES = {
   // kite's draw feeds its simulation, so its pre-roll must really draw (fast: false), else the bot plays out differently
   // portrait: the editor's window 135..278 puts the first cut on the same clip frame as landscape (f16); the second
   // lands on f90 (landscape f102), the third (the win) on f124; the result card only comes at f312
-  kite: { params: { difficulty: 0.4, seed: 11 }, pre: 400, preV: 134, fast: false, align: false },
+  kite: { params: { difficulty: 0.4, seed: 11 }, pre: 400, preV: 134, fast: false, anchorV: { ev: 'CUT \\d+', clip: 16 } },
   // ball 2 (the bot plays a CUT): end of the bowler's run-up, delivery ~f224, the ball bounces in, PERFECT cut
   // ~f250 (bat flash + sparks), the ball streaks right over the low wall: "SIX! Plot mein!" + confetti and
   // RUNS 6 -> 12 at f258, the ball still flying into the plot
@@ -124,7 +124,10 @@ function evKey(st, ev) { return st ? (ev ? (String(st.hud).match(new RegExp(ev, 
     // the virtual clock's float rounding can move an event by a frame between runs, so capture MARGIN (2) extra
     // frames each side and keep the nf frames whose HUD changes line up best with the landscape clip's log.
     const refLog = path.join(LOGD, (process.env.ALIGN_REF || '1920x1080') + '_' + seg.id + '.txt');
-    const M = !SURVEY && PORTRAIT && process.env.ALIGN !== '0' && cfg.align !== false && fs.existsSync(refLog) ? +(process.env.MARGIN || 2) : 0;
+    // anchorV (kite): the two layouts play out differently, so instead pin the first change of the ev field
+    // (the first cut) to clip frame `clip`, as in the landscape clip
+    const anchor = PORTRAIT ? cfg.anchorV : null;
+    const M = !SURVEY && PORTRAIT && process.env.ALIGN !== '0' && cfg.align !== false && (anchor || fs.existsSync(refLog)) ? +(process.env.MARGIN || 2) : 0;
     const first = pre + 1 - M; // first captured frame
     const total = SURVEY ? SURVEY[1] : pre + nf + M;
     const FAST = !SURVEY && (process.env.FAST != null ? process.env.FAST !== '0' : cfg.fast !== false) && first > 1;
@@ -136,7 +139,7 @@ function evKey(st, ev) { return st ? (ev ? (String(st.hud).match(new RegExp(ev, 
     for (let fr = 1; fr <= total; fr++) {
       if (FAST && fr === first - 1) await page.evaluate(() => ACT.fast(false)); // the frame before the first capture draws for real
       st = await page.evaluate((dt) => ACT.step(1, dt), DT);
-      hudAt[fr] = evKey(st, cfg.ev);
+      hudAt[fr] = evKey(st, anchor ? anchor.ev : cfg.ev);
       const key = st.phase + '|' + st.over + '|' + st.hud;
       if (key !== last) { log.push(fr + ' ' + JSON.stringify(st)); last = key; }
       if (SURVEY) {
@@ -150,7 +153,13 @@ function evKey(st, ev) { return st ? (ev ? (String(st.hud).match(new RegExp(ev, 
         if (f % 36 === 35) console.log(' ', seg.id, f + 1, '/', nf, ((Date.now() - t0) / 1000).toFixed(0) + 's', st.hud);
       }
     }
-    if (M) {
+    if (M && anchor) {
+      let fe = 0;
+      for (let fr = first + 1; fr <= total && !fe; fr++) if (hudAt[fr] !== hudAt[fr - 1]) fe = fr;
+      const want = fe ? fe - pre - 1 - anchor.clip : 0;
+      shift = Math.max(-M, Math.min(M, want));
+      console.log('  anchored: first', anchor.ev, 'change at frame', fe, '-> clip', fe - pre - 1 - shift, '(wanted ' + anchor.clip + '), shift', shift);
+    } else if (M) {
       const ref = readLog(refLog);
       let bm = Infinity;
       for (let s = -M; s <= M; s++) {
@@ -158,10 +167,12 @@ function evKey(st, ev) { return st ? (ev ? (String(st.hud).match(new RegExp(ev, 
         for (let i = 0; i < nf; i++) if ((hudAt[pre + 1 + i + s] || '') !== evKey(ref.at(ref.pre + 1 + i), cfg.ev)) mm++;
         if (mm < bm || (mm === bm && Math.abs(s) < Math.abs(shift))) { bm = mm; shift = s; }
       }
+      console.log('  aligned with', path.basename(refLog), '(pre ' + ref.pre + '): shift', shift, '-> window', pre + 1 + shift, '..', pre + nf + shift, '; frames whose key HUD fields differ:', bm, '/', nf);
+    }
+    if (M) {
       for (let i = 0; i < nf; i++) fs.copyFileSync(path.join(mdir, String(pre + 1 + i + shift).padStart(5, '0') + '.jpg'), path.join(dir, String(i).padStart(5, '0') + '.jpg'));
       fs.rmSync(mdir, { recursive: true, force: true });
       ncap = nf;
-      console.log('  aligned with', path.basename(refLog), '(pre ' + ref.pre + '): shift', shift, '-> window', pre + 1 + shift, '..', pre + nf + shift, '; frames whose key HUD fields differ:', bm, '/', nf);
     }
     const alog = await page.evaluate(() => ACT.log || []);
     if (alog.length) { log.push('# script ' + JSON.stringify(alog)); console.log('  script', JSON.stringify(alog)); }

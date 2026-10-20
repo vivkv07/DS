@@ -93,6 +93,14 @@
     return { x: Math.round(p.x), y: Math.round(p.y), level: p.level || null, mode: N.state.mode, view: N.view.mode, date: N.calendar.date.label, time: N.clock.label() };
   };
 
+  /** GL draws off / on (frames nobody looks at: the 3D world still simulates, streams and settles) */
+  SP.noDraw = function (on) {
+    const r = N.view3d && N.view3d.H && N.view3d.H.renderer;
+    if (!r) return false;
+    if (on && !SP._rd) { SP._rd = r.render; r.render = function () {}; }
+    else if (!on && SP._rd) { r.render = SP._rd; SP._rd = null; }
+    return true;
+  };
   /** a fresh game (no prologue) in the 3D third-person view at full device resolution */
   SP.start3D = async function (scale, css) {
     if (!SP.started3D) {
@@ -103,15 +111,28 @@
       SP.setup({ hud: true, money: 1850, css }); // after newGame: no god mode, a believable ₹18.50 in the pocket
       N.view3d.setQuality({ adaptive: false, pixelRatio: scale || 1, maxPixelRatio: scale || 1, drawDist: 1500 });
       N.view.set('tps', { noSave: true });
-      for (let k = 0; k < 3000 && !(N.view3d.active && N.models3d && N.models3d.ready); k++) await SP.step(1, 1 / 30);
+      const t0 = performance.now();
+      for (let k = 0; k < 3000 && !(N.view3d.active && N.models3d && N.models3d.ready); k++) {
+        SP.noDraw(true);
+        await SP.step(1, 1 / 30);
+        if (k % 60 === 59) console.log('[SP] 3D start: frame', k + 1, 'active', N.view3d.active, 'models', N.models3d && N.models3d.state, Math.round((performance.now() - t0) / 1000) + 's');
+      }
+      SP.noDraw(false);
+      console.log('[SP] 3D ready: active', N.view3d.active, 'models', N.models3d && N.models3d.state, Math.round((performance.now() - t0) / 1000) + 's');
     }
     return { active: N.view3d.active, models: !!(N.models3d && N.models3d.ready) };
   };
   /** stream the chunks / landmarks around the player, then let traffic, people and the camera settle */
   SP.settle3D = async function (frames) {
+    const t0 = performance.now();
     for (let k = 0; k < 3; k++) N.view3d.settle(30000);
-    await SP.step(frames || 45, 1 / 30);
+    console.log('[SP] settle', Math.round((performance.now() - t0) / 1000) + 's');
+    const n = frames || 45;
+    SP.noDraw(true);
+    try { await SP.step(Math.max(0, n - 4), 1 / 30); } finally { SP.noDraw(false); }
     N.view3d.settle(30000);
+    await SP.step(Math.min(4, n), 1 / 30);
+    console.log('[SP] settled', Math.round((performance.now() - t0) / 1000) + 's');
   };
 
   /* ---- the cold open's framing (trailer camera on the game's own cutscene) */

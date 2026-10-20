@@ -198,8 +198,10 @@ function storyRec(o) {
 PLANS.prologue.css = UI_CSS; PLANS.prologue.cssV = UI_CSS_V;
 // s_story: the same legibility treatment for the dialogue box and the HUD (OSD strip with the tape counter, objective;
 // the minimap and stats scale with it)
-PLANS.s_story.css = ['.dlg { zoom: 1.4; }', '#hud { zoom: 1.35; }'].join('\n');
-PLANS.s_story.cssV = ['.dlg { zoom: 1.45; }', '#hud { zoom: 1.3; }'].join('\n');
+// The third-person camera centres Chinnu's head, which the (scaled-up) dialogue box would cover: the 3D canvas is
+// cropped from the top (a tilt down: the kids sit at ~38% of the frame, above the box); the render keeps its resolution
+PLANS.s_story.css = ['.dlg { zoom: 1.4; }', '#hud { zoom: 1.35; }', '#game3d { transform-origin: 50% 0; transform: translateY(-24%) scale(1.24); }'].join('\n');
+PLANS.s_story.cssV = ['.dlg { zoom: 1.45; }', '#hud { zoom: 1.3; }', '#game3d { transform-origin: 50% 0; transform: translateY(-12%) scale(1.12); }'].join('\n');
 function startPrologue(o) {
   SP.setup({ hud: true, css: o.css });
   SP.fixLabel();
@@ -217,7 +219,10 @@ async function boot() {
   const context = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: SCALE });
   const page = await context.newPage();
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error') { errors.push(m.text()); console.log('  [console.error]', m.text().slice(0, 300)); } });
+  page.on('console', (m) => {
+    if (m.type() === 'error') { errors.push(m.text()); console.log('  [console.error]', m.text().slice(0, 300)); }
+    else if (/^\[SP\]/.test(m.text())) console.log('  ' + m.text().slice(0, 300));
+  });
   page.on('pageerror', (e) => { errors.push(e.message); console.log('  [pageerror]', (e.stack || e.message).slice(0, 400)); });
   page.on('requestfailed', (r) => console.log('  [requestfailed]', r.url().slice(0, 200), r.failure() && r.failure().errorText));
   await page.addInitScript(CLOCK);

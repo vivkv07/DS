@@ -13,7 +13,7 @@
 
   // view: 'tps' | 'fps' | 'top'.  at: place id | [x, y].  veh: vehicle type | null (foot).  spd: u/s.  dir: preferred heading
   const CLIPS = {
-    cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', spd: 105, dir: 0, clear: 3, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.35 } },
+    cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', spd: 105, dir: 0, clear: 1.5, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.35 } },
     top_charminar: { view: 'top', at: 'charminar_plaza', time: [11, 0], veh: 'cycle', spd: 115, dir: -1.6 },
     auto_tankbund: { view: 'tps', at: [9295, 3648], time: [17, 25], veh: 'auto', spd: 130, warm: 30, dir: 2.22, prefer: 'bund', chase: { back: 24, h: 11, lead: 14, th: 3.5, fov: 56, lag: 0.3, side: 2 } },
     top_chase: { view: 'top', at: 'abids', time: [12, 30], veh: null, spd: 82, dir: 0, run: true, wanted: 3 },
@@ -29,12 +29,12 @@
     top_pothole: { view: 'top', at: 'giver_himayatnagar', time: [16, 0], veh: 'cycle', spd: 100, dir: 1.5, rain: 0.7 },
     ambassador_hitec: { view: 'tps', at: 'cyber_towers', time: [12, 0], veh: 'ambassador', spd: 150, dir: 1.5 },
     market_walk: { view: 'tps', at: 'laad_bazaar', time: [18, 35], veh: null, spd: 45, dir: 3.1 },
-    lightning: { view: 'tps', at: 'abids', time: [21, 40], veh: null, spd: 40, dir: 0, rain: 1, storm: 1, clear: 3, chase: { back: 15, h: 6.5, lead: 30, th: 9, fov: 62, lag: 0.2 }, strikes: [[14, 430, -70, 1], [47, 520, 120, 0.9]] },
+    lightning: { view: 'tps', at: 'abids', time: [21, 40], veh: null, spd: 40, dir: 0, rain: 1, storm: 1, clear: 2, chase: { back: 15, h: 6.5, lead: 30, th: 9, fov: 62, lag: 0.2 }, strikes: [[14, 430, -70, 1], [47, 520, 120, 0.9]] },
     top_traffic: { view: 'top', at: 'abids', time: [18, 10], veh: null, spd: 40, dir: 0.8 },
     kites_sky: { view: 'cam', at: 'giver_himayatnagar', time: [16, 20], veh: null, spd: 0 },
     // festivals (N.seasons overlays; the 3D renderer draws their props from N.seasons.scene)
     fest_ganesh: { view: 'cam', at: 'tank_bund', time: [15, 30], veh: null, spd: 0, procession: true, rows: 4, swRate: 0.2, seasons: { ganesh_immersion: true, ganesh: true } },
-    fest_ramzan: { view: 'tps', at: 'charminar', off: [-215, 45], time: [21, 30], veh: null, spd: 22, warm: 45, toward: 'charminar', clear: 3, chase: { back: 11, h: 6, lead: 12, th: 9, fov: 66, lag: 0.2 }, seasons: { ramzan: true } },
+    fest_ramzan: { view: 'tps', at: 'charminar', off: [-215, 45], time: [21, 30], veh: null, spd: 22, warm: 45, toward: 'charminar', clear: 2, chase: { back: 11, h: 6, lead: 12, th: 9, fov: 66, lag: 0.2 }, seasons: { ramzan: true } },
     fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 0, seasons: { bonalu: true }, bonalu: { temple: 'lal_darwaza_temple', ahead: 17, side: 13, h: 5, lat: 4.5, look: -1.5 } },
     fest_numaish: { view: 'tps', at: [8312, 5860], time: [20, 30], veh: null, spd: 34, line: { a: 0, r0: 60, r1: -200 }, clear: 2, chase: { back: 12, h: 6.5, lead: 30, th: 7, fov: 60, lag: 0.2 }, seasons: { numaish: true } },
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
@@ -173,7 +173,7 @@
       for (let d = d0; d <= d1; d += 3) {
         at(path, d, tmp);
         for (const e of N.entities.all.slice()) {
-          if (e.kind === 'vehicle' && e !== N.player.vehicle && e.trafficOwned && !e.parked && Math.hypot(e.x - tmp.x, e.y - tmp.y) < o.clear + 3) { try { N.vehicles.remove(e); } catch (er) { /* ignore */ } continue; }
+          if (e.kind === 'vehicle' && e !== N.player.vehicle && e.trafficOwned && !e.parked && Math.hypot(e.x - tmp.x, e.y - tmp.y) < o.clear + 1.5) { try { N.vehicles.remove(e); } catch (er) { /* ignore */ } continue; }
           if (!onFoot(e)) continue;
           if (Math.hypot(e.x - tmp.x, e.y - tmp.y) < o.clear + 1) { e.hidden = true; CLEARED.add(e); }
         }
