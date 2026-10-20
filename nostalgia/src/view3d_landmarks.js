@@ -45,7 +45,9 @@
  *    (N.flags.lb_match: crowds on the stands, floodlight banks, the U-12 FINAL banner), Prasads
  *    fence / open (N.placesArt.variant('prasads_imax') or N.flags.prasads_open), NTR Gardens
  *    (construction hides the Machan tree + train; the mini train runs round its loop), Khairatabad
- *    Ganesh idol (ganesh season), the Numaish giant wheel turning.
+ *    Ganesh idol (ganesh season: a sculpted seated four-armed Ganesha built from lathes, ellipsoids and swept
+ *    tubes, ganeshIdol(); the striped backdrop and halo discs stay behind him, the side cloths are short
+ *    valances so the idol reads from the street), the Numaish giant wheel turning.
  *  - Decor layer: street-market stalls (Laad Bazaar bangles, Patang Bazaar kites, Sultan Bazaar
  *    cloth, Abids books...) and colony playgrounds that places_art draws from places in 2D are
  *    replayed with the same seeded placement and built within ~650 u of the focus.
@@ -2755,6 +2757,175 @@
       for (let i = 0; i < 6; i++) md.glow(u + 1 + i * 1.6, 9, hv + 1, ['#ffe070', '#ff7050', '#80ff90', '#80c0ff'][i % 4]);
     }
   }, { anim: true });
+  /* ---------------------------------------------------------------- the Khairatabad Ganesha (sculpted) */
+  // a rotated ellipsoid (local u, y, v; rotation Euler YXZ in radians) from one cached unit sphere
+  function ell(k, u, y, v, rx, ry, rz, ax, ay, az, seg) {
+    const g = cached('sph:' + (seg || 14), () => new THREE.SphereGeometry(1, seg || 14, Math.max(6, Math.round((seg || 14) * 0.65))));
+    const e = TMP.eul || (TMP.eul = new THREE.Euler(0, 0, 0, 'YXZ'));
+    e.set(ax || 0, ay || 0, az || 0, 'YXZ');
+    TMP.m2.compose(TMP.p.set(u, y, v), TMP.q.setFromEuler(e), TMP.sc.set(rx, ry, rz));
+    return k.geo(g, TMP.m2);
+  }
+  // a smooth tapered tube through local points [[u, y, v, r], ...] (parallel-transport frames), capped
+  function tube(k, pts, seg) {
+    seg = seg || 10;
+    const n = pts.length, pos = new Float32Array(n * seg * 3), idx = [];
+    let N0 = null;
+    for (let j = 0; j < n; j++) {
+      const a = pts[Math.max(0, j - 1)], b = pts[Math.min(n - 1, j + 1)];
+      let tx = b[0] - a[0], ty = b[1] - a[1], tz = b[2] - a[2]; const tl = Math.hypot(tx, ty, tz) || 1; tx /= tl; ty /= tl; tz /= tl;
+      if (!N0) { N0 = Math.abs(ty) < 0.9 ? [0, 1, 0] : [1, 0, 0]; }
+      // N = (N0 - (N0.T) T) normalised, B = T x N
+      const d = N0[0] * tx + N0[1] * ty + N0[2] * tz;
+      let nx = N0[0] - d * tx, ny = N0[1] - d * ty, nz = N0[2] - d * tz; const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+      N0 = [nx, ny, nz];
+      const bx = ty * nz - tz * ny, by = tz * nx - tx * nz, bz = tx * ny - ty * nx;
+      const p = pts[j], r = p[3];
+      for (let i = 0; i < seg; i++) {
+        const an = (i / seg) * TAU, c = Math.cos(an), sn = Math.sin(an), o = (j * seg + i) * 3;
+        // ring point = P + (B cos + N sin) r: with T = B x N... chosen so the triangles below face outward
+        pos[o] = p[0] + (bx * c + nx * sn) * r; pos[o + 1] = p[1] + (by * c + ny * sn) * r; pos[o + 2] = p[2] + (bz * c + nz * sn) * r;
+      }
+    }
+    for (let j = 0; j < n - 1; j++) for (let i = 0; i < seg; i++) {
+      const a = j * seg + i, b = j * seg + ((i + 1) % seg), c = (j + 1) * seg + i, d = (j + 1) * seg + ((i + 1) % seg);
+      idx.push(a, c, b, b, c, d);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+    k.geo(g, TMP.id); g.dispose();
+    const e0 = pts[0], e1 = pts[n - 1];
+    ell(k, e0[0], e0[1], e0[2], e0[3], e0[3], e0[3], 0, 0, 0, 10); ell(k, e1[0], e1[1], e1[2], e1[3], e1[3], e1[3], 0, 0, 0, 10);
+    return k;
+  }
+  /** the idol in the pandal's local frame (u right as seen from the front, v towards the street) */
+  function ganeshIdol(ki, kd, hv) {
+    const SK = '#eaa274', SK2 = '#e39466', DH = '#b8142a', GD = '#e8b830', GD2 = '#f6d258', WH = '#f8f2e4', PK = '#f0a0b8', V0 = -3;
+    const F = FL_MON;
+    ki.fx(0, 0, F);
+    // ---- the pedestal: a two-tier lotus and a cushioned seat
+    ki.c(PK).lathe(0, 3.4, V0, [[13.4, 0], [13.9, 1.2], [13.2, 2.6], [11.2, 3.8], [9.8, 4.6]], 32, (a, j) => (j >= 1 && j <= 3 ? 1 + 0.09 * Math.abs(Math.cos(a * 8)) : 1), 'ganesh:lotus1');
+    ki.c('#e87898').lathe(0, 7.6, V0, [[9.8, 0], [11.2, 1.0], [10.9, 2.0], [9.0, 2.6]], 32, (a, j) => (j >= 1 ? 1 + 0.08 * Math.abs(Math.cos(a * 8 + 0.4)) : 1), 'ganesh:lotus2');
+    ki.c(DH).cyl(0, 10.0, V0, 9.4, 9.0, 1.4, 24);
+    ki.c(GD).cyl(0, 9.8, V0, 9.6, 9.6, 0.4, 24);
+    // ---- legs in the dhoti: his left leg folded across the seat, his right leg hanging to a lotus footrest
+    ki.c(DH);
+    ell(ki, 2.6, 12.8, V0 + 3.6, 8.4, 2.9, 4.4, -0.12, 0, 0.04);
+    ell(ki, -4.6, 12.9, V0 + 4.6, 3.9, 3.2, 6.0, 0.08, 0, 0);
+    tube(ki, [[-4.9, 12.2, V0 + 9.4, 2.5], [-5.2, 9.6, V0 + 10.0, 2.25], [-5.4, 7.0, V0 + 10.4, 2.0]], 12);
+    ki.c(GD); for (const [u, y, v, r] of [[-5.4, 7.0, V0 + 10.4, 2.15], [7.6, 12.6, V0 + 5.4, 2.9]]) ell(ki, u, y, v, r, 0.5, r, 0, 0, 0, 12); // dhoti hems
+    ki.c(SK); tube(ki, [[-5.4, 6.8, V0 + 10.4, 1.75], [-5.5, 5.0, V0 + 10.6, 1.55]], 10);
+    ell(ki, -5.5, 4.5, V0 + 12.0, 1.9, 1.0, 2.9, 0, 0, 0);                 // right foot
+    ell(ki, -1.0, 11.8, V0 + 7.8, 2.6, 1.1, 1.8, 0.3, 0, 0);               // the sole of the folded foot
+    ki.c(GD); ell(ki, -5.5, 5.4, V0 + 10.6, 1.9, 0.45, 1.9, 0, 0, 0, 12);   // anklet
+    ki.c(PK).cyl(-5.5, 3.4, V0 + 12.0, 3.0, 3.4, 0.8, 14);
+    // ---- belly, waist band, chest, shoulders, neck
+    ki.c(SK); ell(ki, 0, 20.2, V0 + 0.6, 9.4, 8.8, 8.4);
+    ki.c(GD); ell(ki, 0, 14.8, V0 + 0.4, 9.0, 1.3, 8.0, 0, 0, 0, 20);      // jewelled waist band
+    ki.c('#d0203a'); for (let i = -2; i <= 2; i++) ell(ki, i * 2.4, 14.9, V0 + 8.0 - Math.abs(i) * 0.55, 0.55, 0.65, 0.4, 0, 0, 0, 8);
+    ki.c(SK2); ell(ki, 0, 19.0, V0 + 8.85, 0.7, 0.7, 0.3, 0, 0, 0, 8);    // navel
+    ki.c(SK); ell(ki, 0, 28.4, V0 - 0.2, 8.2, 6.2, 6.2);
+    for (const sd of [-1, 1]) ell(ki, sd * 7.4, 31.0, V0 - 0.2, 3.5, 3.3, 3.4);
+    ki.cyl(0, 31.2, V0 + 0.2, 4.4, 4.2, 3.2, 16);
+    // ---- the sacred thread over his left shoulder, down across the belly
+    const surf = (u, y) => { // front of the belly / chest surface at (u, y)
+      let v = -99;
+      for (const [cu, cy, cv, rx, ry, rz] of [[0, 20.2, V0 + 0.6, 9.4, 8.8, 8.4], [0, 28.4, V0 - 0.2, 8.2, 6.2, 6.2]]) { const q = 1 - ((u - cu) / rx) ** 2 - ((y - cy) / ry) ** 2; if (q > 0) v = Math.max(v, cv + rz * Math.sqrt(q)); }
+      return v;
+    };
+    const along = (f, n, off, r) => { const out = []; for (let i = 0; i <= n; i++) { const p = f(i / n); out.push([p[0], p[1], Math.max(surf(p[0], p[1]), V0 + 1) + off, r]); } return out; };
+    ki.c(WH); tube(ki, along((t) => [6.0 - 13.6 * t, 32.0 - 17.5 * t], 10, 0.35, 0.32), 6);
+    // ---- the garland: marigolds (orange / yellow) and an inner string of jasmine, over the shoulders to the lap
+    const gar = (t) => [7.8 * Math.cos(PI * t), 30.6 - 15.4 * Math.sin(PI * t)];
+    for (let i = 0; i <= 26; i++) { const [u, y] = gar(i / 26); ki.c(i % 2 ? '#ff8a14' : '#f6c21a'); ell(ki, u, y, Math.max(surf(u, y), V0 + 2) + 1.0, 1.05, 1.05, 1.05, 0, 0, 0, 8); }
+    for (let i = 0; i <= 18; i++) { const t = i / 18, u = 5.6 * Math.cos(PI * t), y = 30.2 - 9.6 * Math.sin(PI * t); ki.c(WH); ell(ki, u, y, Math.max(surf(u, y), V0 + 2) + 0.6, 0.55, 0.55, 0.55, 0, 0, 0, 6); }
+    // necklace with a pendant
+    ki.c(GD); tube(ki, along((t) => [4.6 * Math.cos(PI * t), 31.6 - 3.6 * Math.sin(PI * t)], 12, 0.45, 0.35), 6);
+    ki.c('#d0203a'); ell(ki, 0, 27.3, surf(0, 27.3) + 0.7, 0.9, 1.2, 0.5, 0, 0, 0, 10);
+    // ---- four arms: front right in abhaya (blessing), front left holding the modak bowl, rear right the axe,
+    // rear left a lotus; gold armlets and bangles
+    ki.c(SK);
+    tube(ki, [[-7.6, 30.6, V0 + 0.6, 2.3], [-10.0, 26.4, V0 + 2.0, 2.15], [-10.8, 23.2, V0 + 3.4, 2.0]], 10);
+    tube(ki, [[-10.8, 23.2, V0 + 3.4, 1.95], [-10.8, 25.4, V0 + 6.6, 1.75], [-10.6, 27.4, V0 + 8.6, 1.55]], 10);
+    ell(ki, -10.6, 29.8, V0 + 9.2, 1.8, 2.5, 0.85, 0, -0.15, 0);            // the raised palm, facing the devotees
+    for (const du of [-1.1, -0.37, 0.37, 1.1]) ell(ki, -10.6 + du, 32.0 - Math.abs(du) * 0.35, V0 + 9.25, 0.36, 0.95, 0.42, 0, -0.15, 0, 8);
+    ki.c('#e05a6a'); ell(ki, -10.6, 29.7, V0 + 9.95, 0.7, 0.7, 0.15, 0, -0.15, 0, 10); // the kumkum mark on the palm
+    ki.c(SK);
+    tube(ki, [[7.6, 30.6, V0 + 0.6, 2.3], [10.0, 26.4, V0 + 2.0, 2.15], [10.9, 23.0, V0 + 3.6, 2.0]], 10);
+    tube(ki, [[10.9, 23.0, V0 + 3.6, 1.95], [10.2, 22.4, V0 + 7.0, 1.75], [9.2, 22.4, V0 + 9.2, 1.6]], 10);
+    ell(ki, 8.6, 21.6, V0 + 10.4, 2.0, 0.9, 2.0, 0, 0, 0);                    // the hand under the bowl
+    ki.c(GD).lathe(8.6, 21.9, V0 + 10.4, [[0.6, 0], [2.0, 0.4], [2.7, 1.3], [2.8, 1.7]], 16, null, 'ganesh:bowl');
+    ki.c('#f6eedc'); for (const [du, dv, dy] of [[-0.9, -0.6, 0], [0.9, -0.5, 0], [0, 0.9, 0], [0, -0.1, 1.1]]) { ell(ki, 8.6 + du, 23.9 + dy, V0 + 10.4 + dv, 0.95, 1.05, 0.95, 0, 0, 0, 10); }
+    ki.c(SK);
+    tube(ki, [[-6.6, 32.6, V0 - 2.4, 2.0], [-10.6, 34.2, V0 - 3.0, 1.9], [-12.6, 36.6, V0 - 3.0, 1.75], [-13.0, 40.0, V0 - 2.4, 1.55]], 10);
+    tube(ki, [[6.6, 32.6, V0 - 2.4, 2.0], [10.6, 34.2, V0 - 3.0, 1.9], [12.6, 36.6, V0 - 3.0, 1.75], [13.0, 40.0, V0 - 2.4, 1.55]], 10);
+    ell(ki, -13.0, 41.0, V0 - 2.3, 1.7, 1.9, 1.5); ell(ki, 13.0, 41.0, V0 - 2.3, 1.7, 1.9, 1.5);
+    ki.c('#7a4a22'); tube(ki, [[-13.0, 37.0, V0 - 1.8, 0.45], [-13.0, 48.6, V0 - 2.6, 0.45]], 6);       // the axe
+    ki.c('#c8ccd2'); ell(ki, -14.9, 47.4, V0 - 2.6, 2.4, 1.7, 0.35, 0, 0, 0.1);
+    ki.c(GD); ell(ki, -13.0, 48.8, V0 - 2.6, 0.7, 0.7, 0.7, 0, 0, 0, 8);
+    ki.c('#3f8a2a'); tube(ki, [[13.0, 41.6, V0 - 2.0, 0.3], [13.4, 44.6, V0 - 1.8, 0.3]], 6);       // the lotus
+    ki.c(PK); for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; ell(ki, 13.4 + Math.cos(a) * 1.0, 45.6, V0 - 1.8 + Math.sin(a) * 1.0, 0.9, 1.5, 0.6, 0.35, PI / 2 - a, 0, 8); }
+    ki.c('#f8d0dc'); ell(ki, 13.4, 46.0, V0 - 1.8, 0.8, 1.3, 0.8, 0, 0, 0, 8);
+    ki.c(GD);
+    for (const sd of [-1, 1]) {
+      ell(ki, sd * 9.4, 27.6, V0 + 1.5, 2.45, 0.6, 2.45, 0, 0, sd * 0.5, 12);   // armlets
+      ell(ki, sd * 11.0, 34.6, V0 - 3.0, 2.1, 0.55, 2.1, 0, 0, sd * 1.35, 12);
+    }
+    ell(ki, -10.7, 27.0, V0 + 8.2, 1.85, 1.85, 0.6, -0.68, 0, 0, 12); ell(ki, 9.7, 22.4, V0 + 8.4, 1.8, 1.8, 0.6, 0, -0.3, 0, 12); // bangles
+    ell(ki, -13.0, 39.0, V0 - 2.5, 1.75, 0.5, 1.75, 0, 0, 0, 12); ell(ki, 13.0, 39.0, V0 - 2.5, 1.75, 0.5, 1.75, 0, 0, 0, 12);
+    // ---- the head: cheeks, forehead, crown domes, fan ears with their inner pink, gentle eyes, tilak
+    ki.c(SK);
+    ell(ki, 0, 38.6, V0 + 0.6, 6.7, 6.9, 6.5);
+    ell(ki, 0, 41.6, V0 + 2.6, 5.3, 3.7, 4.3);
+    for (const sd of [-1, 1]) {
+      ki.c(SK); ell(ki, sd * 3.4, 36.0, V0 + 4.2, 2.7, 2.6, 2.4, 0, 0, 0, 12);           // cheeks
+      ki.c(SK); ell(ki, sd * 8.9, 38.2, V0 - 0.6, 5.3, 6.8, 1.7, 0, sd * 0.25, sd * 0.08);   // the fan ears
+      ki.c('#e8907e'); ell(ki, sd * 8.7, 38.0, V0 + 0.35, 4.3, 5.6, 1.05, 0, sd * 0.25, sd * 0.08);
+      ki.c(GD); ell(ki, sd * 9.6, 43.4, V0 + 0.4, 1.4, 1.4, 0.6, 0, sd * 0.25, 0, 10);  // ear ornaments
+      ki.c(WH); ell(ki, sd * 2.6, 39.7, V0 + 6.45, 1.4, 0.78, 0.55, 0, sd * 0.3, sd * 0.06, 12); // gentle almond eyes
+      ki.c('#1c1410'); ell(ki, sd * 2.5, 39.5, V0 + 6.88, 0.58, 0.58, 0.28, 0, sd * 0.3, 0, 10);     // (looking a little down, at the devotees)
+      ki.c('#4a2c1c'); ell(ki, sd * 2.6, 40.2, V0 + 6.62, 1.45, 0.17, 0.32, 0, sd * 0.3, sd * 0.06, 8); // upper lid line
+      ki.c('#3a2418'); ell(ki, sd * 2.7, 41.35, V0 + 6.35, 1.55, 0.2, 0.3, 0, sd * 0.3, sd * 0.14, 8); // softly arched brows
+    }
+    ki.c('#d0102a'); ell(ki, 0, 42.6, V0 + 6.85, 0.36, 1.35, 0.3, 0, 0, 0, 8);          // tilak
+    ki.c('#f6efe0'); ell(ki, 0, 41.1, V0 + 6.95, 0.9, 0.3, 0.25, 0, 0, 0, 8);           // the sandal line under it
+    // the trunk, from between the eyes down past the chest and curling to his left, its tip towards the modaks
+    ki.c(SK);
+    tube(ki, [[0, 38.4, V0 + 5.6, 2.7], [0.1, 35.6, V0 + 7.6, 2.45], [0.3, 32.4, V0 + 8.9, 2.2], [0.5, 29.4, V0 + 9.6, 2.0], [1.1, 26.6, V0 + 10.3, 1.8],
+      [2.4, 24.6, V0 + 11.0, 1.6], [4.2, 23.9, V0 + 11.4, 1.4], [5.9, 24.6, V0 + 11.3, 1.2], [6.9, 26.2, V0 + 11.0, 1.0], [7.0, 27.6, V0 + 10.8, 0.85]], 12);
+    ki.c(SK2); for (const [y, v] of [[34.4, 8.3], [31.2, 9.3], [28.2, 10.0]]) ell(ki, 0.3, y, V0 + v + 0.1, 2.25, 0.28, 2.05, 0, 0, 0, 12); // trunk folds
+    ki.c('#f6f0e0');
+    tube(ki, [[-2.7, 33.4, V0 + 7.4, 0.8], [-3.5, 31.6, V0 + 9.2, 0.55], [-3.8, 31.2, V0 + 10.5, 0.2]], 8);   // his right tusk (whole)
+    tube(ki, [[2.7, 33.4, V0 + 7.4, 0.8], [3.1, 32.6, V0 + 8.4, 0.65]], 8);                                  // the broken left tusk
+    // the crown: tiered gold with jewelled bands and a finial
+    ki.c(GD).lathe(0, 44.0, V0 + 0.6, [[6.8, 0], [7.1, 1.2], [6.4, 2.0], [5.5, 2.4], [5.9, 3.7], [5.2, 4.7], [4.3, 5.3], [4.7, 6.8], [3.9, 8.0], [2.9, 9.6], [3.3, 10.6], [2.2, 12.0], [1.1, 13.8], [0.4, 15.4], [0, 16.4]], 24,
+      (a, j) => (j === 1 || j === 4 || j === 7 || j === 10 ? 1 + 0.07 * Math.cos(a * 12) : 1), 'ganesh:crown2');
+    for (const [y, r, n, c] of [[45.2, 7.0, 14, '#d0203a'], [48.8, 5.9, 12, '#2a9a5a'], [51.9, 4.6, 10, '#d0203a'], [54.8, 3.2, 8, '#2a9a5a']]) {
+      ki.c(c); for (let i = 0; i < n; i++) { const a = (i / n) * TAU; if (Math.sin(a) < -0.35) continue; ell(ki, Math.cos(a) * r, y, V0 + 0.6 + Math.sin(a) * r, 0.55, 0.65, 0.55, 0, 0, 0, 8); }
+    }
+    ki.c(GD2); ell(ki, 0, 60.8, V0 + 0.6, 0.9, 1.2, 0.9, 0, 0, 0, 10); ki.c(GD).cyl(0, 61.6, V0 + 0.6, 0.6, 0.05, 2.0, 8);
+    // ---- the prabhavali: a golden arch with flame points round him (facing the devotees)
+    ki.c(GD).fx(1, 70, F);
+    const PC = [0, 33, V0 - 7.5], PR = 15.5;
+    for (let i = 0; i < 28; i++) {
+      const a0 = -0.15 + (i / 28) * (PI + 0.3), a1 = -0.15 + ((i + 1) / 28) * (PI + 0.3), am = (a0 + a1) / 2;
+      const P = (a, r) => [PC[0] + Math.cos(a) * r, PC[1] + Math.sin(a) * r];
+      const p0 = P(a0, PR), p1 = P(a1, PR), q0 = P(a0, PR + 1.6), q1 = P(a1, PR + 1.6), t0 = P(am - 0.012, PR + 3.6), t1 = P(am + 0.012, PR + 3.6);
+      ki.q(p0[0], p0[1], PC[2], q0[0], q0[1], PC[2], q1[0], q1[1], PC[2], p1[0], p1[1], PC[2]);
+      ki.c(i % 2 ? GD : '#f08a1a').q(q0[0], q0[1], PC[2], t0[0], t0[1], PC[2], t1[0], t1[1], PC[2], q1[0], q1[1], PC[2]).c(GD); // a flame point
+    }
+    for (const sd of [-1, 1]) { const a = sd < 0 ? -PR - 1.6 : PR, b = sd < 0 ? -PR : PR + 1.6; ki.q(a, 10, PC[2], b, 10, PC[2], b, 33, PC[2], a, 33, PC[2]); }
+    // ---- his mouse at the foot of the pedestal, with a modak
+    ki.fx(0, 0, F).c('#8f857c');
+    ell(ki, 9.2, 4.9, V0 + 13.6, 1.7, 1.4, 2.3, 0.35, 0, 0);
+    ell(ki, 8.6, 5.7, V0 + 15.6, 1.0, 0.95, 1.2, 0.35, 0.15, 0, 10);
+    ki.c('#c8a8a0'); for (const sd of [-1, 1]) ell(ki, 8.6 + sd * 0.75, 6.6, V0 + 15.3, 0.5, 0.55, 0.15, 0.35, 0, 0, 8);
+    ki.c('#1c1410'); for (const sd of [-1, 1]) ell(ki, 8.6 + sd * 0.42, 5.95, V0 + 16.55, 0.16, 0.16, 0.12, 0, 0, 0, 6);
+    ki.c('#8f857c'); tube(ki, [[9.8, 4.3, V0 + 11.6, 0.35], [10.8, 3.8, V0 + 10.4, 0.25], [11.8, 3.7, V0 + 10.2, 0.15]], 6);
+    ki.c('#f6eedc'); ell(ki, 8.0, 4.2, V0 + 17.2, 0.85, 0.95, 0.85, 0, 0, 0, 10);
+    ki.fx(0, 0, 0);
+    void hv; void kd;
+  }
   def('khairatabad_ganesh', (md, lm, D) => {
     const k = md.k, hl = D.L / 2, hv = D.D / 2;
     // the pandal frame (bamboo + cloth)
@@ -2762,29 +2933,39 @@
     for (const u of [-hl + 1, hl - 1]) for (const v of [-hv + 1, hv - 1]) k.bar(u, 0, v, u, 64, v, 0.8);
     for (const y of [30, 64]) { k.bar(-hl + 1, y, hv - 1, hl - 1, y, hv - 1, 0.6).bar(-hl + 1, y, -hv + 1, hl - 1, y, -hv + 1, 0.6); }
     md.part('kit2').c('#e8402a').q(-hl, 66, hv, hl, 66, hv, hl, 66, -hv, -hl, 66, -hv);
-    // the giant idol (only in the Ganesh season)
+    // the giant idol (only in the Ganesh season): a seated four-armed Ganesha in lalitasana, sculpted in
+    // layers from simple solids (no flat cut-out): lotus pedestal, folded left leg and pendant right leg in a
+    // red-and-gold dhoti, the round belly with the waist band and sacred thread, chest and shoulders, four
+    // arms (abhaya, the modak bowl, the axe and the lotus), the head with fan ears, gentle almond eyes and a
+    // tilak, the trunk curling to his left towards the modaks, one whole and one broken tusk, the tall
+    // jewelled crown, the marigold garland, a golden prabhavali behind, and his mouse at his feet.
     md.sub = 'idol';
-    const ki = md.part('kit'), S = '#e8a070', G2 = '#f2c230', R = '#c81a2a';
-    ki.c('#f4b0c8').fx(0, 0, FL_MON).cyl(0, 0, -2, 14, 12, 6, 16);
-    ki.c(R).sphere(0, 12, -2, 11, 7, 9, 12, 8);
-    ki.c(S).sphere(0, 24, -2, 10, 12, 9, 14, 10);
-    ki.c(G2).cyl(0, 31, -2, 9.5, 9, 3, 16);
-    ki.c(S).sphere(0, 42, -2, 7, 8, 7, 12, 10);
-    for (const s of [-1, 1]) { ki.c(S).sphere(s * 7.6, 43, -2.4, 4.6, 6, 1.2, 10, 8); ki.bar(s * 9, 34, -2, s * 14, 26, 3, 3).bar(s * 9, 33, -2, s * 15, 40, 1, 2.6); }
-    ki.bar(0, 40, 4.8, 1.2, 33, 6.6, 2.4).bar(1.2, 33, 6.6, 3.6, 28, 5.2, 2.0);
-    ki.c(G2).lathe(0, 49, -2, [[6.4, 0], [5.6, 4], [3.6, 9], [0.6, 14], [0, 16]], 14, null, 'ganesh:crown');
-    ki.c('#2a2a2a').sphere(-2.6, 44.6, 4.6, 0.8, 0.8, 0.6, 6, 4).sphere(2.6, 44.6, 4.6, 0.8, 0.8, 0.6, 6, 4);
-    ki.fx(0, 0, 0);
-    // the festival dressing (shown with the idol): a striped saffron-and-red backdrop with a golden halo, side
-    // cloths, a stage edged with marigolds, a garland on the idol, and bulb outlines on every post and beam
-    const kd = md.part('kit2');
+    ganeshIdol(md.part('kit'), md.part('kit2'), hv);
+    // the festival dressing (shown with the idol): the painted striped saffron-and-red backdrop with the
+    // golden halo discs behind him, short valances (not full side panels that hid the idol from the street),
+    // tied-back drapes at the front posts, a stage edged with marigolds, bulb outlines on every post and beam
+    const ki = md.part('kit'), kd = md.part('kit2');
     const nb = 12;
     for (let i = 0; i < nb; i++) { const u0 = -hl + 1 + (i / nb) * (D.L - 2), u1 = -hl + 1 + ((i + 1) / nb) * (D.L - 2); kd.c(i % 2 ? '#f2a020' : '#d8302a').fx(1, 40, 70).q(u0, 0, -hv + 1.3, u1, 0, -hv + 1.3, u1, 63, -hv + 1.3, u0, 63, -hv + 1.3); }
-    for (const s of [-1, 1]) for (let i = 0; i < 6; i++) { const v0 = -hv + 1 + (i / 6) * (D.D - 8), v1 = -hv + 1 + ((i + 1) / 6) * (D.D - 8); kd.c(i % 2 ? '#f2c230' : '#2a8a4a').fx(1, 40, 60).q(s * (hl - 1.2), 30, v0, s * (hl - 1.2), 30, v1, s * (hl - 1.2), 63, v1, s * (hl - 1.2), 63, v0); }
+    for (const s of [-1, 1]) for (let i = 0; i < 6; i++) { // side valances with a scalloped hem
+      const v0 = -hv + 1 + (i / 6) * (D.D - 2), v1 = -hv + 1 + ((i + 1) / 6) * (D.D - 2), u = s * (hl - 1.2);
+      kd.c(i % 2 ? '#f2c230' : '#2a8a4a').fx(1, 40, 60).q(u, 56, v0, u, 56, v1, u, 63, v1, u, 63, v0);
+      kd.c(i % 2 ? '#2a8a4a' : '#f2c230').q(u, 56, v0, u, 53.6, (v0 + v1) / 2, u, 56, v1, u, 56, (v0 + v1) / 2);
+    }
+    for (let i = 0; i < 8; i++) { // front valance
+      const u0 = -hl + 1 + (i / 8) * (D.L - 2), u1 = -hl + 1 + ((i + 1) / 8) * (D.L - 2);
+      kd.c(i % 2 ? '#d8302a' : '#f2c230').fx(1, 40, 60).q(u0, 57, hv - 1.2, u1, 57, hv - 1.2, u1, 63, hv - 1.2, u0, 63, hv - 1.2);
+      kd.c(i % 2 ? '#f2c230' : '#d8302a').q(u0, 57, hv - 1.2, (u0 + u1) / 2, 54.6, hv - 1.2, u1, 57, hv - 1.2, (u0 + u1) / 2, 57, hv - 1.2);
+    }
+    for (const s of [-1, 1]) { // drapes gathered and tied back at the front posts
+      const u = s * (hl - 1.6);
+      kd.c('#c81a2a').fx(1, 30, 60).q(u, 57, hv - 1.4, u - s * 3.2, 57, hv - 1.4, u - s * 0.6, 30, hv - 1.4, u, 30, hv - 1.4);
+      kd.c('#a8142a').q(u, 30, hv - 1.4, u - s * 0.6, 30, hv - 1.4, u - s * 1.4, 4, hv - 1.4, u, 4, hv - 1.4);
+      ki.c('#f2c230').fx(1, 60, 60).sphere(u - s * 0.4, 30, hv - 1.2, 1.0, 0.8, 0.8, 8, 5);
+    }
     ki.c('#f2c230').fx(1, 120, 90).vdisc(0, 40, -hv + 1.6, 17, 0.4, 28).c('#e86a1a').fx(1, 90, 60).vdisc(0, 40, -hv + 1.9, 13, 0.3, 24);
     ki.c('#c81a2a').fx(0, 0, 60).box(-hl + 2, 0, -hv + 2, hl - 2, 3, hv - 5).c('#f2c230').box(-hl + 1.6, 3, -hv + 1.6, hl - 1.6, 3.4, hv - 4.6);
     for (let i = 0; i <= 24; i++) { const u = -hl + 2 + (i / 24) * (D.L - 4); ki.c(i % 2 ? '#ff9a1a' : '#f2c230').fx(1, 80, 40).sphere(u, 3.6, hv - 4.8, 0.7, 0.7, 0.7, 6, 4); }
-    for (let i = 0; i <= 20; i++) { const a = PI * (0.12 + 0.76 * (i / 20)); ki.c(i % 3 ? '#ff9a1a' : '#f4f0e0').fx(1, 70, 60).sphere(Math.cos(a) * 9.5, 33 - Math.sin(a) * 9, 6.6, 0.9, 0.9, 0.9, 6, 4); }
     ki.fx(0, 0, 0);
     for (const u of [-hl + 1, hl - 1]) for (const v of [-hv + 1, hv - 1]) for (let y = 4; y <= 62; y += 4) md.glow(u, y, v, (y / 4) % 2 ? '#ffe070' : '#ff70c0', 'gM');
     for (const y of [30, 64]) for (let i = 0; i <= 14; i++) { const u = -hl + 1 + (i / 14) * (D.L - 2); md.glow(u, y - 0.6, hv - 0.4, ['#ffe070', '#ff5050', '#60ff90', '#60b0ff'][i % 4], 'gM'); }

@@ -15,7 +15,17 @@
  *              arch and the row of offered bonam pots at the temple, the thottelu tower carried along, the
  *              little lamps on the women's pots glowing.
  *   ramzan     lit crescent-and-star cut-outs on poles along Pathergatti and round the Charminar circle, the
- *              green-and-white bulb strings across Pathergatti and the Laad Bazaar lane (chand_raat too).
+ *              green-and-white bulb strings across Pathergatti and the Laad Bazaar lane (chand_raat too); round
+ *              the circle itself (what the normal third-person camera sees from the plaza, whichever way it
+ *              looks): festoons pole to pole on the outer footpath, strings across the circle road to lamp poles
+ *              at the plaza edge with a fanoos lantern hanging in each, crescents on every fourth pole; strings
+ *              (and lanterns) across every approach road (Pathergatti, Laad Bazaar, Sardar Mahal, Shah Ali
+ *              Banda) at ~18.6 u so they sit in frame; the night-bazaar stalls lit (tube light, bulb row,
+ *              lantern, warm ground spill, a point light at the nearest two).
+ *   numaish stalls are SOLID while the fair is on (both views): the stall, food-counter and enquiry-booth
+ *              footprints are stamped into N.world's surface grid (restored after the season), so collide /
+ *              isWalkable / raycast stop the player and everyone else; the crowds already avoid them.
+ * Glow points fade out and shrink toward the bulb close to the camera (no soft coloured discs over the lens).
  * Kid-friendly and respectful: nothing here is destructible, the people are N.seasons crowds (drawn by
  * view3d_actors.js from N.seasons.scene()).
  *
@@ -25,7 +35,8 @@
  * then only a few transforms move per frame (train, carousel, beams, thottelu). Disposed when out of range.
  * Decor pieces that could hide the player (crib, tree, stall rows) hide while they stand between the camera
  * and the player. Loads after view3d_landmarks.js; registers the 'festivals3d' layer.
- * Debug / tests: N.festivals3d = {sites(), stats(), rebuild(), settle(ms) (build the wanted sites now: captures)}.
+ * Debug / tests: N.festivals3d = {sites(), stats(), rebuild(), settle(ms) (build the wanted sites now: captures),
+ * numaishSolids() -> {on, cells, rects}}.
  */
 (() => {
   'use strict';
@@ -163,7 +174,9 @@
     M.wire = new THREE.LineBasicMaterial({ color: new THREE.Color(0.05, 0.05, 0.05), transparent: true, opacity: 0.7 });
     M.glow = new THREE.ShaderMaterial({
       uniforms: { map: { value: H.materials.glow.map }, uI: UNI.uGlowI, uScale: UNI.uScale },
-      vertexShader: 'attribute vec3 gCol; attribute float gSize; uniform float uScale; uniform float uI; varying vec3 vC; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv; float d = max(1.0, -mv.z); gl_PointSize = clamp(gSize * uScale / d, 0.0, 34.0); vC = gCol * uI * smoothstep(5.0, 22.0, d) * (1.0 - smoothstep(500.0, 1200.0, d)); }',
+      // glow sprites keep a bloom-like screen size: they shrink toward the bulb itself and fade out close to the
+      // camera (a big soft coloured disc right in front of the lens read as a smudge, not a bulb)
+      vertexShader: 'attribute vec3 gCol; attribute float gSize; uniform float uScale; uniform float uI; varying vec3 vC; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv; float d = max(1.0, -mv.z); float near = smoothstep(14.0, 60.0, d); gl_PointSize = clamp(gSize * uScale / d, 0.0, mix(6.0, 26.0, near)); vC = gCol * uI * near * near * (1.0 - smoothstep(500.0, 1200.0, d)); }',
       fragmentShader: 'uniform sampler2D map; varying vec3 vC; void main(){ float a = texture2D(map, gl_PointCoord).r; gl_FragColor = vec4(vC * a, 1.0); }',
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     });
@@ -832,33 +845,186 @@
   }
 
   /* ================================================================ RAMZAN (crescent cut-outs) */
-  function* buildRamzan(site, list) {
-    const b = new GB(), fx = new FX();
-    for (const c of list) {
-      // a pole on the kerb with a lit crescent-and-star cut-out, seen by people walking along Pathergatti
-      const h = 26, R0 = 2.6, tx = -Math.sin(c.a || 0), tz = Math.cos(c.a || 0); // the cut-out faces along the road
-      b.col('#5a5a62', 0).cyl(c.x, 0, c.y, 0.3, 0.24, h - 1.5, 5);
-      for (let k = 0; k < 16; k++) { // the crescent (a ring band thinning at the horns), facing north and south
-        const a0 = -PI * 0.78 + (k / 16) * PI * 1.56, a1 = -PI * 0.78 + ((k + 1) / 16) * PI * 1.56;
-        const o = (a, r, cx) => [c.x + tx * (Math.cos(a + PI) * r + cx), h + Math.sin(a + PI) * r, c.y + tz * (Math.cos(a + PI) * r + cx)];
-        const w0 = 0.45 + 0.55 * Math.sin((k / 16) * PI), w1 = 0.45 + 0.55 * Math.sin(((k + 1) / 16) * PI);
-        b.col('#9affb8', 2.2).quad(o(a0, R0, 0), o(a1, R0, 0), o(a1, R0 - w1, 0.25), o(a0, R0 - w0, 0.25));
-      }
-      b.col('#ffffff', 2.4).star(c.x + tx * 1.2, h + 0.2, c.y + tz * 1.2, 0.75, 0.25, c.a || 0);
-      b.col('#5a5a62', 0).rod(c.x, h - 1.6, c.y, c.x, h - R0 - 0.2, c.y, 0.08);
-      fx.glow(c.x, h, c.y, '#80ffa0', 10, 0.8).glow(c.x + tx * 1.2, h + 0.2, c.y + tz * 1.2, '#ffffff', 4, 0.8);
+  // a pole with a lit crescent-and-star cut-out (faces along tx, tz)
+  function crescent(b, fx, x, z, a, h, R0) {
+    const tx = -Math.sin(a || 0), tz = Math.cos(a || 0);
+    b.col('#5a5a62', 0).cyl(x, 0, z, 0.3, 0.24, h - 1.5, 5);
+    for (let k = 0; k < 16; k++) { // the crescent (a ring band thinning at the horns), facing both ways along (tx, tz)
+      const a0 = -PI * 0.78 + (k / 16) * PI * 1.56, a1 = -PI * 0.78 + ((k + 1) / 16) * PI * 1.56;
+      const o = (an, r, cx) => [x + tx * (Math.cos(an + PI) * r + cx), h + Math.sin(an + PI) * r, z + tz * (Math.cos(an + PI) * r + cx)];
+      const w0 = 0.45 + 0.55 * Math.sin((k / 16) * PI), w1 = 0.45 + 0.55 * Math.sin(((k + 1) / 16) * PI);
+      b.col('#9affb8', 2.2).quad(o(a0, R0, 0), o(a1, R0, 0), o(a1, R0 - w1, 0.25), o(a0, R0 - w0, 0.25));
     }
+    b.col('#ffffff', 2.4).star(x + tx * R0 * 0.46, h + 0.2, z + tz * R0 * 0.46, R0 * 0.29, 0.25, a || 0);
+    b.col('#5a5a62', 0).rod(x, h - 1.6, z, x, h - R0 - 0.2, z, 0.08);
+    fx.glow(x, h, z, '#80ffa0', 10, 0.8).glow(x + tx * R0 * 0.46, h + 0.2, z + tz * R0 * 0.46, '#ffffff', 4, 0.8);
+  }
+  // a hanging fanoos (a six-sided paper / glass lantern) under a string at (x, h, z)
+  function fanoos(b, fx, x, h, z, col) {
+    b.col('#3a3a3a', 0).rod(x, h, z, x, h - 1.2, z, 0.05);
+    b.col('#c8a040', 0.4).cyl(x, h - 1.5, z, 0.35, 0.75, 0.3, 6, true);
+    b.col(col, 2.0).cyl(x, h - 3.3, z, 0.65, 0.75, 1.8, 6, true);
+    b.col('#c8a040', 0.4).cyl(x, h - 3.7, z, 0.25, 0.65, 0.4, 6, true);
+    b.col(col, 1.6).bead(x, h - 4.1, z, 0.22);
+    fx.glow(x, h - 2.4, z, col, 5, 0.85);
+  }
+  /** a road polyline from the world data (and its length) */
+  function roadLine(id) {
+    const r = (N.WORLD_DATA.roads || []).find((q) => q.id === id);
+    if (!r || !r.pts || r.pts.length < 2) return null;
+    let L = 0; const cum = [0];
+    for (let i = 1; i < r.pts.length; i++) { L += Math.hypot(r.pts[i][0] - r.pts[i - 1][0], r.pts[i][1] - r.pts[i - 1][1]); cum.push(L); }
+    return { pts: r.pts, cum, L, w: r.w || 24 };
+  }
+  function roadAt(R, d, o) {
+    let k = 0; while (k < R.pts.length - 2 && R.cum[k + 1] < d) k++;
+    const a = R.pts[k], b = R.pts[k + 1], l = R.cum[k + 1] - R.cum[k] || 1, t = Math.max(0, Math.min(1, (d - R.cum[k]) / l));
+    o.x = a[0] + (b[0] - a[0]) * t; o.y = a[1] + (b[1] - a[1]) * t; o.a = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    return o;
+  }
+  const RAM_COLS = ['#60ff90', '#ffffff', '#60ff90', '#ffe080'], RAM_LANT = ['#ffd27a', '#9affc0', '#fff2c8'];
+  function* buildRamzan(site, list) {
+    const b = new GB(), fx = new FX(), bulbs = new GB(), dress = new GB();
+    // the Pathergatti / Charminar-circle crescents (seasons.js layout), a little lower and larger so they sit in
+    // the third-person frame rather than above it
+    for (const c of list) crescent(b, fx, c.x, c.y, c.a, c.ring ? 22 : 24, 3.0);
     // the bulb strings across Pathergatti and the Laad Bazaar lane (the street strings: green and white)
-    const ram = S()._debug.ram, bulbs = new GB();
+    const ram = S()._debug.ram;
     for (const st of (ram && ram.strings) || []) {
       if (!st.own) continue;
       const n = Math.max(4, Math.round(Math.hypot(st.x1 - st.x0, st.y1 - st.y0) / 2.6));
-      fx.string(bulbs, st.x0, st.h0 * 1.5, st.y0, st.x1, st.h1 * 1.5, st.y1, n, 2.2, ['#60ff90', '#ffffff', '#60ff90', '#ffe080'], 2, 3);
+      fx.string(bulbs, st.x0, st.h0 * 1.5, st.y0, st.x1, st.h1 * 1.5, st.y1, n, 2.2, RAM_COLS, 2, 3);
     }
-    finishSite(site, [b, bulbs], fx, 0, 0);
-    site.update = null;
+    yield;
+    // ---- round the Charminar circle (what the camera sees from the plaza and the circle road, whichever way
+    // it looks): poles on the outer footpath every 15 degrees with festoons between them, strings across the
+    // circle road from every other pole to a lamp pole at the plaza edge with a fanoos hanging in the middle,
+    // and a crescent on every fourth pole
+    const ch = (N.WORLD_DATA.landmarks || []).find((l) => l.id === 'charminar');
+    const W = N.world, SF = N.SURF;
+    const free = (x, y) => W.isWalkable(x, y) && W.surfaceAt(x, y) !== SF.ROAD && W.surfaceAt(x, y) !== SF.BRIDGE && !(N.respect && N.respect.at && N.respect.at(x, y) && N.respect.at(x, y).part === 'compound');
+    site.lights = [];
+    if (ch) {
+      const RO = [104, 108, 100], RI = [65, 62, 68], poles = [];
+      for (let i = 0; i < 24; i++) {
+        const a = (i / 24) * TAU + 0.13;
+        let p = null;
+        for (const r of RO) { const x = ch.x + Math.cos(a) * r, y = ch.y + Math.sin(a) * r; if (free(x, y)) { p = { x, y, a, i }; break; } }
+        poles.push(p);
+        if (!p) continue;
+        b.col('#4a4a52', 0).cyl(p.x, 0, p.y, 0.32, 0.24, 20.5, 5).col('#c8a040', 0.3).cyl(p.x, 20.5, p.y, 0.4, 0.1, 0.8, 5);
+        if (i % 4 === 1) crescent(b, fx, p.x, p.y, a + PI / 2, 24.5, 2.8);
+      }
+      for (let i = 0; i < 24; i++) {
+        const p = poles[i], q = poles[(i + 1) % 24];
+        if (p && q) fx.string(bulbs, p.x, 19.6, p.y, q.x, 19.6, q.y, Math.max(6, Math.round(Math.hypot(q.x - p.x, q.y - p.y) / 2.4)), 2.0, RAM_COLS, 2, 3);
+        if (!p || i % 2) continue;
+        let ip = null;
+        for (const r of RI) { const x = ch.x + Math.cos(p.a) * r, y = ch.y + Math.sin(p.a) * r; if (free(x, y)) { ip = { x, y }; break; } }
+        if (!ip) continue;
+        b.col('#4a4a52', 0).cyl(ip.x, 0, ip.y, 0.3, 0.22, 19.5, 5);
+        b.col('#fff4d8', 2.2).bead(ip.x, 19.9, ip.y, 0.5); fx.glow(ip.x, 19.9, ip.y, '#fff0c8', 6, 0.8);
+        fx.string(bulbs, p.x, 19.6, p.y, ip.x, 19.2, ip.y, Math.max(8, Math.round(Math.hypot(ip.x - p.x, ip.y - p.y) / 2.2)), 2.8, ['#ffffff', '#60ff90', '#ffe080'], 2, 3);
+        const mx = (p.x + ip.x) / 2, my = (p.y + ip.y) / 2;
+        fanoos(b, fx, mx, 19.4 - 2.8, my, RAM_LANT[(i / 2) % 3]);
+      }
+      fx.pool(ch.x, ch.y, 120, '#d8ffe0', 0.18);
+    }
+    yield;
+    // ---- the approach roads into the circle: strings across Pathergatti, the Laad Bazaar lane, Sardar Mahal
+    // road and Shah Ali Banda road every ~18 u for the first stretch (lower than the old Pathergatti strings, so
+    // the arms read as a lit canopy from the plaza), a fanoos on every other one
+    const tmp = { x: 0, y: 0, a: 0 };
+    for (const [id, d0] of [['pathergatti_rd', 14], ['pathergatti_n', 4], ['laad_bazaar', 16], ['sardar_mahal_rd', 14], ['shah_ali_banda_rd', 14]]) {
+      const R = roadLine(id); if (!R) continue;
+      const dmax = Math.min(R.L - 4, id === 'pathergatti_n' ? 70 : 140);
+      let k = 0;
+      for (let d = d0; d <= dmax; d += 18, k++) {
+        roadAt(R, d, tmp);
+        const nx = -Math.sin(tmp.a) * (R.w / 2 + 1.5), ny = Math.cos(tmp.a) * (R.w / 2 + 1.5);
+        const n = Math.max(6, Math.round(Math.hypot(nx, ny) * 2 / 2.4));
+        fx.string(bulbs, tmp.x - nx, 18.6, tmp.y - ny, tmp.x + nx, 18.6, tmp.y + ny, n, 2.4, k % 2 ? RAM_COLS : ['#ffe080', '#ff8a60', '#ffffff', '#60ff90'], 2, 3);
+        if (k % 2 === 0) fanoos(b, fx, tmp.x, 18.6 - 2.4, tmp.y, RAM_LANT[k % 3]);
+      }
+    }
+    yield;
+    // ---- the night bazaar stalls (view3d_actors draws them from N.seasons.scene()): lit like real Ramzan stalls,
+    // a tube light under the canopy front, a bulb row along its edge, a lantern, the warm spill on the ground
+    for (const st of (ram && ram.stalls) || []) {
+      const ca = Math.cos(st.a), sa = Math.sin(st.a);
+      const P = (lx, lz) => [st.x + lx * ca - lz * sa, st.y + lx * sa + lz * ca]; // the stall's local x = its front
+      const t0 = P(3.4, -2.6), t1 = P(3.4, 2.6);
+      dress.col('#f4fbff', 2.6).rod(t0[0], 8.7, t0[1], t1[0], 8.7, t1[1], 0.18);
+      const g = P(3.6, 0); fx.glow(g[0], 8.6, g[1], '#e8f4ff', 7, 0.6);
+      for (let i = 0; i <= 6; i++) { const q = P(4.05, -3.0 + i), c = ['#ffe070', '#60ff90', '#ffffff', '#ff7050'][i % 4]; dress.col(c, 2.4).bead(q[0], 9.0, q[1], 0.26); if (i % 2 === 0) fx.glow(q[0], 9.0, q[1], c, 2.6); }
+      const l = P(4.2, -3.2); fanoos(dress, fx, l[0], 9.2, l[1], st.lit ? '#ffd27a' : '#9affc0');
+      const pl = P(7, 0); fx.pool(pl[0], pl[1], 11, '#ffd890', 0.75);
+      site.lights.push([g[0], g[1]]);
+    }
+    for (const q of (ram && ram.bhattis) || []) { fx.pool(q[0], q[1], 9, '#ff9040', 0.7); site.lights.push([q[0], q[1], 1]); }
+    finishSite(site, [b, bulbs, dress], fx, 0, 0);
+    site.update = updateRamzan;
     return true;
   }
+  function updateRamzan(site, dt, night) {
+    if (site.pools) site.pools.visible = night > 0.12;
+    if (night < 0.2 || !site.lights.length) return;
+    // the two stalls / bhattis nearest the player get a real point light (the core keeps the best 4)
+    const p = N.player; if (!p) return;
+    const near = site.lights.map((q) => [Math.hypot(q[0] - p.x, q[1] - p.y), q]).filter((q) => q[0] < 180).sort((a, b) => a[0] - b[0]).slice(0, 2);
+    for (const [, q] of near) H.light({ x: q[0], y: q[1], h: 9, color: q[2] ? '#ff9a50' : '#ffe2b0', intensity: 1.1 * night, r: 42 });
+  }
+
+  /* ================================================================ NUMAISH stalls are solid (both views) */
+  // The fair's stalls, food counters and the enquiry booth (N.seasons.layout.numaish(): the crowds already
+  // steer round them with its avoid rects) become SOLID cells of the world's surface grid while Numaish is on,
+  // so N.world.collide / isWalkable / raycast / findFree (the player, NPCs, vehicles, spawns) all treat them as
+  // walls, in the top-down view and in 3D alike (the same pattern as places_art's parked buses and
+  // world_extras' rail bridges). Only open ground is stamped (never a road, water or an existing wall), cells
+  // near a place point stay free (interactables, the hidden collectible), and the original surfaces come back
+  // when the season ends. 'world:built' refills the grid: stamped again then.
+  const SOL = { cells: null, old: null, n: 0 };
+  function numaishSolidRects(L) {
+    const out = [];
+    for (const st of L.stalls.concat(L.counters)) out.push([st.x, st.y, st.w, st.d]);
+    if (L.booth) out.push([L.booth.x, L.booth.y, L.booth.w, L.booth.d]);
+    return out;
+  }
+  function stampNumaish() {
+    const W = N.world, SF = N.SURF, grid = W && W.grid, s = S();
+    if (!grid || !W.built || !s || !s.layout || SOL.cells) return;
+    const L = s.layout.numaish(); if (!L) return;
+    const C = N.CELL || 4, GW = W.GW, GH = W.GH;
+    const ok = new Uint8Array(16); ok[SF.GROUND] = 1; ok[SF.GRASS] = 1; ok[SF.PLAZA] = 1; ok[SF.FOOTPATH] = 1; ok[SF.SAND] = 1;
+    const g = L.g, places = (N.WORLD_DATA.places || []).filter((q) => q.x > g[0] - 20 && q.x < g[2] + 20 && q.y > g[1] - 20 && q.y < g[3] + 20);
+    const cells = [], old = [];
+    for (const [x, y, w, d] of numaishSolidRects(L)) {
+      // cells whose centre lies inside the footprint (shrunk 0.5 u: the aisles stay as wide as they look)
+      for (let j = Math.ceil((y + 0.5) / C - 0.5); (j + 0.5) * C < y + d - 0.5; j++) for (let i = Math.ceil((x + 0.5) / C - 0.5); (i + 0.5) * C < x + w - 0.5; i++) {
+        if (i < 0 || j < 0 || i >= GW || j >= GH) continue;
+        const cx = (i + 0.5) * C, cy = (j + 0.5) * C;
+        if (places.some((q) => Math.hypot(q.x - cx, q.y - cy) < 7)) continue;
+        const k = j * GW + i, v = grid[k];
+        if (!ok[v]) continue;
+        cells.push(k); old.push(v); grid[k] = SF.SOLID;
+      }
+    }
+    SOL.cells = Int32Array.from(cells); SOL.old = Uint8Array.from(old); SOL.n = cells.length;
+    // anyone standing in a stall now is pushed out by the next collide (W.collide's escape search)
+  }
+  function clearNumaish(restore) {
+    const W = N.world, grid = W && W.grid;
+    if (SOL.cells && restore && grid) for (let i = 0; i < SOL.cells.length; i++) if (grid[SOL.cells[i]] === N.SURF.SOLID) grid[SOL.cells[i]] = SOL.old[i];
+    SOL.cells = null; SOL.old = null; SOL.n = 0;
+  }
+  function syncNumaishSolids() {
+    try {
+      const want = on('numaish') && N.world && N.world.built;
+      if (want && !SOL.cells) stampNumaish(); else if (!want && SOL.cells) clearNumaish(true);
+    } catch (e) { N.err('festivals3d.numaishSolids', e); }
+  }
+  N.on('season:change', (e) => { if (e && e.name === 'numaish') syncNumaishSolids(); });
+  N.on('world:built', () => { clearNumaish(false); syncNumaishSolids(); }); // (a fresh grid: nothing to restore)
 
   /* ================================================================ the layer */
   function want(dt) {
@@ -944,7 +1110,9 @@
     sites: () => Array.from(SITES.keys()),
     /** tests / captures: decide the sites now and finish building them (ms cap) */
     settle(ms) { if (!ROOT) return false; checkT = 0; LAYER.update(0, H); const t0 = now(); while (now() - t0 < (ms || 3000)) { let busy = false; for (const s of SITES.values()) if (s.gen) busy = true; if (!busy) return true; stepBuilds(50); } return false; },
-    stats: () => Object.assign({}, ST, { sites: SITES.size }),
+    stats: () => Object.assign({}, ST, { sites: SITES.size, numaishSolidCells: SOL.n }),
+    /** tests: the Numaish stall footprints made solid ({x, y, w, d} rects) and the stamped cell count */
+    numaishSolids() { syncNumaishSolids(); const s = S(), L = s && s.layout && s.layout.numaish(); return { on: !!SOL.cells, cells: SOL.n, rects: L ? numaishSolidRects(L) : [] }; },
     rebuild() { for (const k of Array.from(SITES.keys())) { const s = SITES.get(k); if (s && s.dispose) s.dispose(); disposeSite(k); } XS.site = null; checkT = 0; },
   };
 })();

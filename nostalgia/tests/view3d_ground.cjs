@@ -5,7 +5,9 @@
  *   checks: the road analysis + soil map are precomputed in top-down idle slices (no 3D needed),
  *     clustered junctions merge into one polygon and no footpath / kerb top lies on another road's
  *     carriageway (Abids, Tank Bund, and CITY-WIDE: every other junction + every merged cluster, no
- *     junction over 50 u^2; the round-2 review sites by name), the street stays readable at night vs the old painted ground,
+ *     junction over 50 u^2; the round-2 review sites by name), and - graded from the raw emitted triangles, not the
+ *     module's own predicates - no raised top on its OWN junction's zebras / carriageway (every junction swept),
+ *     the street stays readable at night vs the old painted ground,
  *     the focus chunk has ground (full or provisional) on the first 3D frame and right after a
  *     rebuild, job slices end near their deadline, kerbed junction corners have no overlapping kerb /
  *     paver tops, lanes stay darker than the soil at 11:00 / 16:40 / 18:15 (screen luma ratio < 0.8),
@@ -272,6 +274,85 @@ async function main() {
   check(cw.plain > 1000 && cw.merged > 100 && cw.worst.every((w) => w.area <= 50), 'city-wide: no junction has a footpath / kerb slab on another carriageway (' + cw.plain + ' junctions at R 60 + ' + cw.merged + ' merged clusters at R 90: ' + cw.total + ' u^2 in total, ' + cw.over20 + ' over 20 u^2, worst ' + (cw.worst[0] ? cw.worst[0].area : 0) + ' u^2 <= 50; round 2: 65 of 915 over 20 u^2, worst 2286)', JSON.stringify(cw.worst));
   check(cw.sites.every((a) => a <= 20), 'review sites (Afzalgunj zebra J1376, Masab Tank, Kachiguda, Tolichowki, J451 / J5764 ...) clear: ' + JSON.stringify(cw.sites) + ' u^2 (each <= 20)');
   check(cw.clear && cw.clear.dups > 0 && cw.clear.corners < 200, 'clearance pass ran: ' + JSON.stringify(cw.clear) + ' (duplicate alignments dropped, kerbed corners on another carriageway left as plain asphalt edges)');
+
+  // ---- r3: SELF overlaps, graded independently of the module's own predicates (clHit / footOnRoad test
+  // sampled points against outlines and skipped a junction's own polygon, so a corner slab on its own
+  // junction's asphalt or zebra was never seen). Here: for EVERY junction, the raw emitted triangles
+  // (topTris) of its kerbed corners and its arms' footpath strips (raised, up-facing FOOT / KERB tops;
+  // median kerbs excluded, they stand on the road by design) are clipped exactly against its own zebra /
+  // stop-line PAINT triangles (its member nodes' too, for a merged cluster) and its own carriageway
+  // triangles (its JUNC polygon tris + its arms' ROAD ribbons). Round 3 before the fix: 195 junctions over
+  // 0.5 u^2, 25 571 u^2 of corner slabs on their own junction (worst 1323), 600 u^2 over zebras.
+  const so = await page.evaluate(() => {
+    const G = N.view3d.ground, NET = G.net(), t0 = performance.now();
+    const LYF = 2, LYK = 3, LYR = 0, LYJ = 1, LYP = 5;
+    const area2 = (t) => (t[1][0] - t[0][0]) * (t[2][1] - t[0][1]) - (t[1][1] - t[0][1]) * (t[2][0] - t[0][0]);
+    const ccw = (t) => (area2(t) < 0 ? [t[0], t[2], t[1]] : t);
+    const clip = (subj, cl) => { // convex polygon clipping (Sutherland-Hodgman) -> overlap area
+      let o = subj;
+      for (let i = 0; i < cl.length && o.length; i++) {
+        const a = cl[i], b = cl[(i + 1) % cl.length], inp = o; o = [];
+        const side = (p) => (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+        for (let k = 0; k < inp.length; k++) {
+          const p = inp[k], q = inp[(k + 1) % inp.length], sp = side(p), sq = side(q);
+          if (sp >= 0) o.push(p);
+          if ((sp >= 0) !== (sq >= 0)) { const t = sp / (sp - sq); o.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); }
+        }
+      }
+      let A = 0; for (let i = 0; i < o.length; i++) { const p = o[i], q = o[(i + 1) % o.length]; A += p[0] * q[1] - q[0] * p[1]; }
+      return Math.abs(A) / 2;
+    };
+    const bbOf = (t) => [Math.min(t[0][0], t[1][0], t[2][0]), Math.min(t[0][1], t[1][1], t[2][1]), Math.max(t[0][0], t[1][0], t[2][0]), Math.max(t[0][1], t[1][1], t[2][1])];
+    const pieceOf = new Map(NET.pieces.map((P) => ['P' + P.id, P]));
+    const vOf = (P, x, y) => { // signed offset from the piece centre line (median classification only)
+      let best = null;
+      for (let k = 0; k < P.pts.length - 1; k++) {
+        const a = P.pts[k], b = P.pts[k + 1], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy; if (L2 < 1e-12) continue;
+        const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L2)), qx = a[0] + dx * t, qy = a[1] + dy * t, d2 = (x - qx) ** 2 + (y - qy) ** 2;
+        if (!best || d2 < best.d2) best = { d2, v: ((x - qx) * -dy + (y - qy) * dx) / Math.sqrt(L2) };
+      }
+      return best ? best.v : Infinity;
+    };
+    const out = { n: 0, zebra: 0, carr: 0, over: [], worst: [], named: {} };
+    const named = { panjagutta: [7613, 3804], rtc_x_roads: [11012, 5844], n10172_797: [10172, 797], abids_s_9015_5661: [9015, 5661], khairatabad_7665_4013: [7665, 4013], n11630_7606: [11630, 7606] };
+    for (const J of NET.juncs) {
+      if (!J.poly || J.merged) continue;
+      const own = 'J' + J.id, arms = new Set(J.arms.map((a) => 'P' + a.piece.id)), mem = new Set((J.members || []).map((m) => 'J' + m.id));
+      const tops = [], paint = [], carr = [];
+      for (const t of G.topTris(J.x, J.y, 60 + (J.span || 0))) {
+        const isOwn = t.s === own, isArm = arms.has(t.s), isMem = mem.has(t.s);
+        if (!isOwn && !isArm && !isMem) continue;
+        const tri = t.t.map((p) => [p[0], p[1]]);
+        if (Math.abs(area2(tri)) < 2e-3) continue;
+        const o = { t: ccw(tri), bb: bbOf(tri), s: t.s };
+        if ((t.L === LYF || t.L === LYK) && t.up && t.t.every((p) => p[2] > 0.3)) {
+          if (t.L === LYK && isArm) { const P = pieceOf.get(t.s); if (P && P.medHW > 0 && Math.abs(vOf(P, (tri[0][0] + tri[1][0] + tri[2][0]) / 3, (tri[0][1] + tri[1][1] + tri[2][1]) / 3)) < P.medHW + 1.2) continue; }
+          tops.push(o);
+        } else if ((isOwn || isMem) && t.L === LYP) paint.push(o);
+        else if ((isOwn && t.L === LYJ) || (isArm && t.L === LYR)) carr.push(o);
+      }
+      let z = 0, c = 0;
+      for (const a of tops) for (const [list, k] of [[paint, 0], [carr, 1]]) for (const b of list) {
+        if (a.bb[2] < b.bb[0] || b.bb[2] < a.bb[0] || a.bb[3] < b.bb[1] || b.bb[3] < a.bb[1]) continue;
+        const ov = clip(a.t, b.t);
+        if (k) c += ov; else z += ov;
+      }
+      out.n++; out.zebra += z; out.carr += c;
+      if (z + c > 0.5) out.over.push(J.id);
+      if (z > 0.05 || c > 0.05) out.worst.push({ id: J.id, x: Math.round(J.x), y: Math.round(J.y), zebra: +z.toFixed(2), carr: +c.toFixed(2) });
+      for (const k in named) if (Math.hypot(J.x - named[k][0], J.y - named[k][1]) < 30) out.named[k] = Math.max(out.named[k] || 0, +(z + c).toFixed(2));
+    }
+    out.worstZ = out.worst.reduce((m, w) => Math.max(m, w.zebra), 0); out.worstC = out.worst.reduce((m, w) => Math.max(m, w.carr), 0);
+    out.worst.sort((a, b) => b.zebra + b.carr - a.zebra - a.carr); out.worst = out.worst.slice(0, 6);
+    out.zebra = +out.zebra.toFixed(1); out.carr = +out.carr.toFixed(1); out.over = out.over.length; out.ms = Math.round(performance.now() - t0);
+    out.hull = NET.juncs.filter((J) => J.hullFb).length;
+    return out;
+  });
+  console.log('  self overlaps (independent: emitted triangles clipped) ' + JSON.stringify(so));
+  check(so.n > 4000, 'swept every junction polygon with the independent triangle check (' + so.n + ' junctions, ' + so.ms + ' ms; ' + so.hull + ' still need the hull stand-in)');
+  check(so.worstZ <= 1 && so.zebra <= 10, 'no raised slab / kerb covers its own junction\'s zebra or stop-line paint (' + so.zebra + ' u^2 city-wide, worst junction ' + so.worstZ + ' u^2; round 3 before: ~600 u^2)', JSON.stringify(so.worst));
+  check(so.worstC <= 10 && so.carr <= 300, 'no raised slab / kerb on its own junction\'s carriageway or its arms\' ribbons (' + so.carr + ' u^2 city-wide over ' + so.n + ' junctions, ' + so.over + ' over 0.5 u^2, worst ' + so.worstC + ' u^2; round 3 before: 26 300 u^2, worst 1323)', JSON.stringify(so.worst));
+  check(Object.keys(so.named).length >= 5 && Object.values(so.named).every((a) => a <= 2), 'review junctions (Panjagutta, RTC X Roads, 10172,797, south of Abids 9015,5661, 7665,4013, 11630,7606) clear of self overlaps: ' + JSON.stringify(so.named) + ' u^2 (each <= 2)');
 
   // ---- heights: raised footpath, flat road, pothole dip, elevation hook
   const hs = await page.evaluate(() => {

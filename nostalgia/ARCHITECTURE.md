@@ -78,6 +78,11 @@ nostalgia/
                     footpaths, medians, shader markings + zebras), terrain shaders, potholes
                     -> N.view3d.ground, N.view3d.groundHeightAt
   src/view3d_landmarks.js / src/view3d_actors.js  3D landmark models / people, vehicles, animals (§20)
+  src/diwali.js     (after festivals3d.js) Deepavali week 2003 in both views: seasons `pataakha` 20-26 Oct /
+                    `diwali` 22-26 Oct, decorated colonies, pataakha stalls, fireworks + families, red cracker
+                    paper blown by vehicle wakes and N.wind, haze, scared animals, the cracker box + lighting
+                    rule; system 'diwali' (order 44), 3D layer 'diwali3d' -> N.diwali (API in its header;
+                    the side missions are src/diwali_missions.js)
   src/assets3d_index.js GENERATED (tools/pack_assets3d.cjs, from assets3d/ship.json): N.ASSETS3D_INDEX =
                     every shipped model (core pack ids + lazy per-GLB ids, ~18 KB); loaded at boot (§21)
   src/models3d.js   Blender model runtime (§21): lazily loads GLTFLoader + the pack when 3D starts,
@@ -1304,7 +1309,13 @@ ground no longer reuses the 2D pixel-art painter. A ground provider (installed w
   for each arm, zebra crossings on approaches by the 2D map's rules and at its exact spots
   (`world.js paintGround`: not on lanes / bridges, arm length ≥ R + 24, one per direction, centred
   widest/2 + 6 from the node, 8 u stripes 2.4 wide every 4.5) + a stop line behind each on the
-  inbound half, bus-bay outlines at `bus_stop` landmarks. Bucketed per 512 u chunk.
+  inbound half, bus-bay outlines at `bus_stop` landmarks; stripes / stop lines are kept only where
+  they lie on a drawn carriageway (never under a kerbed corner or footpath). A clearance pass tests
+  every raised top (kerbed corners, footpath strips) against every carriageway, the corner's own
+  junction included, and drops / gaps what lies on one; outlines that do not triangulate are rebuilt
+  (plain fillets straight, then crossing kerbed corners dropped) before the hull fallback.
+  `tests/view3d_ground.cjs` grades it independently: every junction's raw emitted raised tops are
+  clipped against its own zebra paint and carriageway triangles. Bucketed per 512 u chunk.
 - **Roads as geometry** (one merged mesh + one material per chunk, clipped exactly to the chunk):
   asphalt ribbons with camber normals, junction polygons, dead-end caps; real kerbs (0.8 u on
   arterials / the bund, 0.6 u on streets, chamfered) with the black-and-yellow paint where the 2D

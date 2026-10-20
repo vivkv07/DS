@@ -453,6 +453,9 @@ async function pRocket() {
   await talkThrough();
   // fail: light it in the gust
   await waitFor(() => { const r = N.dwMissions.debug.state().rocket; return r && r.wind && r.wind.phase === 'gust' && N.state.mode === 'play'; }, null, 15000, 'a gust');
+  const L0 = await ev(() => N.dwMissions.debug.state().rocket.L);
+  await walkTo(L0.x, L0.y + 6, 5, { direct: true, ms: 3000, stop: `() => /Light it/.test(N.input.actionLabel || '')` });
+  await waitFor(() => { const r = N.dwMissions.debug.state().rocket; return r && r.wind && r.wind.phase === 'gust' && /Light it/.test(N.input.actionLabel || ''); }, null, 15000, 'by the bottle in a gust');
   await shot('rocket_gust');
   await holdE(() => !N.missions.active || N.dwMissions.debug.state().holds === 0 || (N.dialogue.isOpen && N.dialogue.isOpen()), 5000);
   await talkThrough();
@@ -611,6 +614,9 @@ const PHASES = [['bazaar', pBazaar], ['mithai', pMithai], ['deepon', pDeepon], [
   // three.js for the 3D view from the vendored copy (hermetic, as tests/view3d.cjs does)
   const THREE_JS = fs.readFileSync(path.join(ROOT, 'vendor/three/three.min.js'), 'utf8');
   await page.route('https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_JS }));
+  // the GLTFLoader for the 3D view's Blender models: from the vendored file whichever path models3d.js tries
+  const GLTF_JS = fs.readFileSync(path.join(ROOT, 'vendor/three/GLTFLoader.classic.js'), 'utf8');
+  await page.route(/\/vendor\/three\/GLTFLoader\.classic\.js$/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: GLTF_JS }));
   page.on('requestfailed', (q) => { if (!/fonts\.g/.test(q.url())) errors.push('[' + phase + '] request failed: ' + q.url().slice(-120) + ' ' + ((q.failure() && q.failure().errorText) || '')); });
   // STABLE=1 (default on): a src file that does not parse right now (another agent mid-edit) is served from git HEAD,
   // as tests/story_full.cjs does; STABLE=0 serves the working tree as it is
@@ -644,6 +650,8 @@ const PHASES = [['bazaar', pBazaar], ['mithai', pMithai], ['deepon', pDeepon], [
       phase = name; log('== ' + name);
       try { await fn(); } catch (e) { check(false, 'exception: ' + (e.stack || e.message)); await shot('exception_' + name); }
       await releaseKeys();
+      // a phase that broke off must not leave its mission running into the next one
+      await ev(() => { if (N.missions.active && N.dwMissions.IDS.includes(N.missions.active.id)) N.missions.abort(); if (N.dialogue.isOpen && N.dialogue.isOpen()) N.dialogue.cancel(); }).catch(() => {});
       const errs = await ev(() => N.debug.state().errors).catch(() => []);
       if (errs.length) { check(false, name + ': N.err ' + errs.slice(0, 5).join(' | ')); await ev(() => { N.errors.length = 0; }).catch(() => {}); }
     }

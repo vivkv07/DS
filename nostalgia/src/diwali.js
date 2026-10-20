@@ -1490,6 +1490,7 @@
       const seen = !is3D() && N.render.inView(g.site.x, g.site.y, 20);
       if ((d > R0 + 140 || !on) && !seen && !g.act) freeGroup(g);
     }
+    try { stallPeople(); } catch (e) { N.err('diwali.stallPeople', e); }
     if (!on) return;
     const want = Math.round(BUD().groups * Math.min(1, 0.35 + intensity() * 1.3));
     let n = GROUPS.filter((g) => !g.home).length;
@@ -1501,6 +1502,35 @@
       if (GROUPS.some((g) => g.key === s.key || Math.hypot(g.site.x - s.x, g.site.y - s.y) < 40)) continue;
       if (Math.hypot(s.x - p.x, s.y - p.y) < 10) continue;
       if (spawnGroup(s)) { n++; break; } // one family per tick (no hitch)
+    }
+  }
+  // the stalls' people: a vendor behind each open stall near the player, customers at the counter by the hour
+  const STALLP = new Map();
+  function freeStallPeople(id) { const o = STALLP.get(id); if (!o) return; freePerson(o.vendor); for (const c of o.cust) freePerson(c); STALLP.delete(id); }
+  function stallPeople() {
+    const p = N.player, open = stallsOpen(), R0 = is3D() ? 220 : groupRange();
+    for (const [id, o] of STALLP) {
+      const d = Math.hypot(o.st.x - p.x, o.st.y - p.y), seen = !is3D() && N.render.inView(o.st.x, o.st.y, 20);
+      if ((!open && !seen) || (d > R0 + 140 && !seen) || (o.vendor && !o.vendor.alive)) freeStallPeople(id);
+    }
+    if (!open) return;
+    const m = mins(), peak = m > 17 * 60 && m < 22 * 60 + 30 ? 3 : m > 10 * 60 ? 2 : 1;
+    let n = 0;
+    for (const st of stallList()) {
+      if (n >= 2 || PERSONS.length >= BUD().persons - 2) break;
+      if (STALLP.has(st.id) || Math.abs(st.x - p.x) > R0 || Math.abs(st.y - p.y) > R0) continue;
+      const ca = Math.cos(st.a), sa = Math.sin(st.a), P = (u, w) => ({ x: st.x + (ca * u + st.fx * w) * SS, y: st.y + (sa * u + st.fy * w) * SS });
+      const fx = st.x + st.fx * 30, fy = st.y + st.fy * 30, v = P(rr(-2, 2), -1.9);
+      const vendor = newPerson(pick(['uncle', 'man', 'lungi', 'youth']), v.x, v.y, { faceX: fx, faceY: fy, face: Math.atan2(st.fy, st.fx) });
+      if (!vendor) break;
+      const o = { st, vendor, cust: [] };
+      for (let k = 0; k < peak; k++) {
+        if (rnd() > 0.75) continue;
+        const q = P(rr(-4.5, 4.5), rr(5.2, 6.6)), c = newPerson(pick(['aunty', 'man', 'kid', 'uncle', 'youth', 'kid']), q.x, q.y, { faceX: st.x, faceY: st.y, face: Math.atan2(-st.fy, -st.fx) });
+        if (c) o.cust.push(c);
+      }
+      STALLP.set(st.id, o);
+      n++;
     }
   }
   function cityRocket() {
@@ -1733,6 +1763,7 @@
   let R = null, ctx = null, TT = 0, NIGHT = 0;
   const kk = (h) => R.k(h), SX = (x, k) => R.sx(x, k), SY = (y, k) => R.sy(y, k);
   const VIS = { houses: [], stalls: [] };
+  const PROF = { g: 0, h: 0, k: 0, s: 0, l: 0, e: 0, st: 0, n: 0 };
   function frontVisible(d) {
     const s = d.s, lm = d.lm;
     const x = s ? s.x : lm.x - lm.w / 2, y = s ? s.y : lm.y - lm.d / 2, w = s ? s.w : lm.w, dd = s ? s.d : lm.d;
@@ -1828,7 +1859,7 @@
     // the families' buckets of water
     for (const g of GROUPS) { const b = g.bucket; if (!b || b.x < v.x0 - 6 || b.x > v.x1 + 6 || b.y < v.y0 - 6 || b.y > v.y1 + 6) continue; N.draw.cyl(b.x, b.y, 1.2, 0, 2.2, { wall: '#6a8aa8', top: '#3a7ab8', grad: false }); }
     ctx.globalAlpha = 1; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false;
-    STATS._d2 += now() - t0;
+    STATS._d2 += now() - t0; PROF.g += now() - t0;
   }
   // a house's decor on the structures layer (right after the house: same sort key + a hair)
   function drawHouse2D(d) {
@@ -1848,11 +1879,19 @@
       const x = K.x + d.ux * sw, y = K.y + d.uy * sw;
       ctx.strokeStyle = 'rgba(40,30,30,0.6)'; ctx.lineWidth = 0.4; ctx.beginPath(); seg3(K.x, K.y, K.hTop, x, y, K.h + 1.4); ctx.stroke();
       const lit = NIGHT > 0.2;
-      N.draw.cyl(x, y, K.style === 'ball' ? 1.3 : 1.2, K.h - 1.3, K.h + 1.3, { wall: lit ? U.mix(K.col[0], '#fff0c0', 0.35) : K.col[0], top: K.col[1], grad: false });
+      // the lantern: a paper body between its bottom and top rings (seen from above it leans out like the walls), a band, a cap
+      const r = K.style === 'ball' ? 1.3 : 1.2, k0 = kk(K.h - 1.3), k1 = kk(K.h + 1.3), X0 = SX(x, k0), Y0 = SY(y, k0), X1 = SX(x, k1), Y1 = SY(y, k1);
+      const dx = X1 - X0, dy = Y1 - Y0, L = Math.hypot(dx, dy) || 1, px = -dy / L, py = dx / L, r0 = r * k0, r1 = r * k1;
+      ctx.fillStyle = lit ? (K._lit || (K._lit = U.mix(K.col[0], '#fff0c0', 0.35))) : K.col[0];
+      ctx.beginPath(); ctx.moveTo(X0 + px * r0, Y0 + py * r0); ctx.lineTo(X1 + px * r1, Y1 + py * r1); ctx.lineTo(X1 - px * r1, Y1 - py * r1); ctx.lineTo(X0 - px * r0, Y0 - py * r0); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(X0, Y0, r0, 0, TAU); ctx.fill();
+      ctx.fillStyle = K.col[1]; ctx.beginPath(); ctx.arc(X1, Y1, r1, 0, TAU); ctx.fill();
+      const km = kk(K.h), Xm = SX(x, km), Ym = SY(y, km); ctx.fillRect(Xm - r * km, Ym - 0.35 * km, r * 2 * km, 0.7 * km);
       ctx.strokeStyle = K.col[1]; ctx.lineWidth = Math.max(0.5, 0.35 * kk(K.h)); ctx.beginPath();
       for (let j = -1; j <= 1; j++) seg3(x + d.ux * j * 0.6, y + d.uy * j * 0.6, K.h - 1.3, x + d.ux * j * 0.7 + sw * 0.4, y + d.uy * j * 0.7, K.h - 4.2);
       ctx.stroke();
     }
+    PROF.k += now() - t0;
     if (fv) { ctx.fillStyle = '#9a4a24'; for (const q of d.gateDiyas) { const k = kk(d.gateH), s = 1 * k; ctx.fillRect(SX(q[0], k) - s / 2, SY(q[1], k) - s * 0.35, s, s * 0.7); } }
     if (d.parapet && (!d.home || homeParapetLit())) { ctx.fillStyle = '#9a4a24'; const P = d.parapet.pts, k = kk(d.parapet.h), s = 0.85 * k; ctx.beginPath(); for (let i = 0; i < P.length; i += 2) ctx.rect(SX(P[i], k) - s / 2, SY(P[i + 1], k) - s * 0.35, s, s * 0.7); ctx.fill(); }
     if (d.fairy) { // the wire and the bulbs (dull by day; the lit ones glow on the light layer)
@@ -1862,7 +1901,7 @@
       ctx.stroke();
       if (NIGHT < 0.35) { ctx.fillStyle = d.fairy.cols.length > 1 ? '#c8a050' : U.shade(d.fairy.cols[0], 0.75); ctx.beginPath(); const s = Math.max(0.6, 0.5 * k); for (let i = 0; i < P.length; i += 2) ctx.rect(SX(P[i], k) - s / 2, SY(P[i + 1], k) - s / 2, s, s); ctx.fill(); }
     }
-    STATS._d2 += now() - t0;
+    STATS._d2 += now() - t0; PROF.h += now() - t0;
   }
   // a pataakha stall: trestle table with packs, tins at the back, bamboo poles, a striped awning, the board
   function drawStall2D(st) {
@@ -1892,6 +1931,13 @@
       const u0 = -6.8 + (13.6 * i) / ns, u1 = u0 + 13.6 / ns, a = P(u0, -4.2), b = P(u1, -4.2), c = P(u1, 1.4), d = P(u0, 1.4);
       quad3(a[0], a[1], 9.4, b[0], b[1], 9.4, c[0], c[1], 8.2, d[0], d[1], 8.2, st.stripes[i % 2]);
     }
+    // ladis (cracker garlands) and rocket bundles hanging from the awning's front edge
+    for (let i = 0; i < 7; i++) {
+      const u = -5.6 + i * 1.85, q = P(u, 1.5), hang = i % 3 === 1;
+      ctx.strokeStyle = hang ? '#e8c060' : '#c8141e'; ctx.lineWidth = Math.max(0.8, (hang ? 0.35 : 0.55) * kk(7)); ctx.beginPath(); seg3(q[0], q[1], 8.2, q[0], q[1], hang ? 6.2 : 5.2); ctx.stroke();
+      if (!hang) { ctx.fillStyle = '#ffd040'; const k = kk(5.2), sz = Math.max(0.8, 0.5 * k); ctx.fillRect(SX(q[0], k) - sz / 2, SY(q[1], k) - sz / 2, sz, sz); }
+      else { ctx.fillStyle = '#2a5cd8'; const k = kk(6.2), sz = Math.max(0.8, 0.6 * k); ctx.fillRect(SX(q[0], k) - sz / 2, SY(q[1], k) - sz / 2, sz, sz * 1.4); }
+    }
     // the board on top at the back, with its (fictional, brand-free) name
     const b0 = P(-6.6, -4.3), b1 = P(6.6, -4.3);
     quad3(b0[0], b0[1], 9.4, b1[0], b1[1], 9.4, b1[0], b1[1], 12.6, b0[0], b0[1], 12.6, '#f4ecd8');
@@ -1903,7 +1949,7 @@
         if (N.draw.pixelTextWidth(t) <= bw) N.draw.pixelText(tc[0], tc[1], 11, t, '#b0201a', { scale: 1 });
       }
     } catch (e) { /* text optional */ }
-    STATS._d2 += now() - t0;
+    STATS._d2 += now() - t0; PROF.st += now() - t0;
   }
   const pick2 = (rng, a) => a[(rng.next() * a.length) | 0];
   // flying paper + smoke (before the night wash, so the night darkens them)
@@ -1921,7 +1967,7 @@
       ctx.drawImage(img, SX(x, k) - s, SY(y, k) - s, s * 2, s * 2);
     }
     ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = false;
-    STATS._d2 += now() - t0;
+    STATS._d2 += now() - t0; PROF.s += now() - t0;
   }
   function fairyOn(i, pat, ph) {
     switch (pat) {
@@ -1932,7 +1978,8 @@
       default: return true;
     }
   }
-  const SPK = { cnt: new Int32Array(COLS.length * 2) };
+  const SPK = { cnt: new Int32Array(COLS.length * 2), off: new Int32Array(COLS.length * 2), ord: new Int32Array(2600), bk: new Uint8Array(2600), out: new Int32Array(2600) };
+  const FAIRY_COLS = Array.from(new Set([].concat(...FAIRY_SETS)));
   // everything that glows, after the night wash: sparks, rocket heads, flashes, flames, lanterns, bulbs
   function drawLight2D() {
     R = N.render; ctx = R.ctx; NIGHT = R.night || 0;
@@ -1942,27 +1989,36 @@
     // flashes: the sky lights up round a burst
     for (const f of FLASH) { if (f.x < v.x0 - 200 || f.x > v.x1 + 200 || f.y < v.y0 - 200 || f.y > v.y1 + 200) continue; const a = flashK(f); if (a <= 0.01) continue; if (f.life > 1) glowAt(f.x, f.y, f.h, f.col, f.r * 0.22, Math.min(0.5, a * 0.55)); else glowAt(f.x, f.y, f.h, f.col, f.r * (f.h > 20 ? 0.26 : 0.4), Math.min(1, a * 0.8)); }
     ctx.globalAlpha = 1;
-    // sparks as short streaks (their motion over ~1/30 s), one stroke per colour and brightness
-    const pass = (bright) => {
-      for (let c = 0; c < COLS.length; c++) {
-        ctx.strokeStyle = COLS[c]; ctx.globalAlpha = bright ? 1 : 0.45; ctx.beginPath();
-        let any = false;
-        for (let i = 0; i < SP.n; i++) {
-          if (SP.col[i] !== c) continue;
-          const x = SP.x[i], y = SP.y[i];
-          if (x < v.x0 - 30 || x > v.x1 + 30 || y < v.y0 - 30 || y > v.y1 + 30) continue;
-          const u = SP.t[i] / SP.life[i], kd = SP.kind[i];
-          let a = 1 - u * u; if (kd === 1 && rnd() < 0.35) a *= 0.2;
-          if ((a > 0.5) !== bright) continue;
-          const h = SP.h[i], k1 = kk(h), sl = kd === 2 ? 0.02 : kd === 4 ? 0.03 : 0.045;
-          const k0 = kk(h - SP.vh[i] * sl);
-          ctx.moveTo(SX(x - SP.vx[i] * sl, k0), SY(y - SP.vy[i] * sl, k0)); ctx.lineTo(SX(x, k1) + 0.01, SY(y, k1));
-          any = true;
+    // sparks as short streaks (their motion over ~1/30 s): one pass sorts them into colour x brightness buckets,
+    // then one stroke per bucket
+    const NB = COLS.length * 2;
+    SPK.cnt.fill(0);
+    let m = 0;
+    for (let i = 0; i < SP.n; i++) {
+      const x = SP.x[i], y = SP.y[i];
+      if (x < v.x0 - 30 || x > v.x1 + 30 || y < v.y0 - 30 || y > v.y1 + 30) continue;
+      const u = SP.t[i] / SP.life[i];
+      let a = 1 - u * u; if (SP.kind[i] === 1 && rnd() < 0.35) a *= 0.2;
+      const b = SP.col[i] * 2 + (a > 0.5 ? 0 : 1);
+      SPK.cnt[b]++; SPK.ord[m] = i; SPK.bk[m] = b; m++;
+    }
+    if (m) {
+      let o = 0; for (let b = 0; b < NB; b++) { SPK.off[b] = o; o += SPK.cnt[b]; }
+      for (let j = 0; j < m; j++) SPK.out[SPK.off[SPK.bk[j]]++] = SPK.ord[j];
+      o = 0;
+      for (let b = 0; b < NB; b++) {
+        const c = SPK.cnt[b]; if (!c) continue;
+        const bright = (b & 1) === 0;
+        ctx.strokeStyle = COLS[b >> 1]; ctx.globalAlpha = bright ? 1 : 0.45; ctx.lineWidth = bright ? 1.7 : 1.2;
+        ctx.beginPath();
+        for (let j = o; j < o + c; j++) {
+          const i = SPK.out[j], kd = SP.kind[i], h = SP.h[i], k1 = kk(h), sl = kd === 2 ? 0.02 : kd === 4 ? 0.03 : 0.045, k0 = kk(h - SP.vh[i] * sl);
+          ctx.moveTo(SX(SP.x[i] - SP.vx[i] * sl, k0), SY(SP.y[i] - SP.vy[i] * sl, k0)); ctx.lineTo(SX(SP.x[i], k1) + 0.01, SY(SP.y[i], k1));
         }
-        if (any) { ctx.lineWidth = bright ? 1.7 : 1.2; ctx.stroke(); }
+        ctx.stroke();
+        o += c;
       }
-    };
-    pass(true); pass(false);
+    }
     ctx.globalAlpha = 1;
     for (const r of ROCKETS) { if (r.x < v.x0 - 30 || r.x > v.x1 + 30 || r.y < v.y0 - 30 || r.y > v.y1 + 30) continue; dot(r.x, r.y, r.h, 1.3, '#fff4d0'); glowAt(r.x, r.y, r.h, '#ffb050', 3, 0.7); }
     for (const e of EMIT) {
@@ -1971,30 +2027,49 @@
       else if (e.kind === 'sparkler') glowAt(e.x, e.y, e.h, '#fff0c0', 4.5, 0.85);
       else if (e.kind === 'chakri') glowAt(e.x, e.y, 0.5, '#ffe060', 5, 0.8);
     }
-    // diya flames, lanterns and fairy lights on the visible houses
+    // diya flames, lanterns and fairy lights on the visible houses: batched across houses (one fill per colour);
+    // soft glow sprites only on the nearest houses
     const lamps = lampTime(), lit = NIGHT > 0.12, fl = clamp(0.35 + NIGHT, 0, 1);
-    if (lamps || lit) for (const d of VIS.houses) {
-      const fv = d._fv;
-      if (lamps) {
-        const flame = (x, y, h, big) => { const f = 0.85 + 0.3 * Math.sin(TT * 17 + x * 3.1 + y); ctx.globalAlpha = fl; dot(x, y, h + 0.6, 0.9 * f, '#ff9a2a'); dot(x, y, h + 0.7, 0.5 * f, '#fff0a0'); if (big) glowAt(x, y, h + 0.6, '#ffa040', 4 * f, 0.6 * fl); };
-        if (fv) { for (const q of d.diyas) flame(q[0], q[1], 0.2, true); for (const q of d.gateDiyas) flame(q[0], q[1], d.gateH, true); }
-        if (d.parapet && (!d.home || homeParapetLit())) { const P = d.parapet.pts; for (let i = 0; i < P.length; i += 2) flame(P[i], P[i + 1], d.parapet.h, (i & 2) === 0); }
-      }
-      if (lit && fv && d.kandil) { const K = d.kandil, sw = Math.sin(TT * 1.6 + K.ph) * 0.35; glowAt(K.x + d.ux * sw, K.y + d.uy * sw, K.h, K.col[0], 5.5, 0.85 * NIGHT); }
-      if (lit && d.fairy) {
-        const Fy = d.fairy, P = Fy.pts, k = kk(Fy.h), s = Math.max(0.9, 0.7 * k), nc = Fy.cols.length;
-        for (let c = 0; c < nc; c++) {
-          ctx.fillStyle = Fy.cols[c]; ctx.globalAlpha = Math.min(1, NIGHT * 1.3); ctx.beginPath();
-          for (let i = c * 2, j = c; i < P.length; i += nc * 2, j += nc) if (fairyOn(j, Fy.pat, Fy.ph)) ctx.rect(SX(P[i], k) - s / 2, SY(P[i + 1], k) - s / 2, s, s);
-          ctx.fill();
+    if (lamps) {
+      const parOK = homeParapetLit();
+      for (let pass = 0; pass < 2; pass++) {
+        ctx.fillStyle = pass ? '#fff0a0' : '#ff9a2a'; ctx.globalAlpha = fl; ctx.beginPath();
+        const rad = pass ? 0.5 : 0.9, hh = pass ? 0.7 : 0.6;
+        const fr = (x, y, h) => { const f = 0.85 + 0.3 * Math.sin(TT * 17 + x * 3.1 + y), k = kk(h + hh), sz = Math.max(0.8, rad * f * k); ctx.rect(SX(x, k) - sz / 2, SY(y, k) - sz / 2, sz, sz); };
+        for (const d of VIS.houses) {
+          if (d._fv) { for (const q of d.diyas) fr(q[0], q[1], 0.2); for (const q of d.gateDiyas) fr(q[0], q[1], d.gateH); }
+          if (d.parapet && (!d.home || parOK)) { const P = d.parapet.pts; for (let i = 0; i < P.length; i += 2) fr(P[i], P[i + 1], d.parapet.h); }
         }
-        for (let i = 0, j = 0; i < P.length; i += 6, j += 3) if (fairyOn(j, Fy.pat, Fy.ph)) glowAt(P[i], P[i + 1], Fy.h, Fy.cols[j % nc], 2.6, 0.45 * NIGHT);
+        ctx.fill();
+      }
+      let g = 0;
+      for (const d of VIS.houses) { if (g++ > 14) break; if (!d._fv) continue; for (const q of d.diyas) glowAt(q[0], q[1], 0.8, '#ffa040', 4, 0.55 * fl); for (const q of d.gateDiyas) glowAt(q[0], q[1], d.gateH + 0.6, '#ffa040', 4, 0.55 * fl); }
+    }
+    if (lit) {
+      for (const d of VIS.houses) if (d._fv && d.kandil) { const K = d.kandil, sw = Math.sin(TT * 1.6 + K.ph) * 0.35; glowAt(K.x + d.ux * sw, K.y + d.uy * sw, K.h, K.col[0], 5.5, 0.85 * NIGHT); }
+      ctx.globalAlpha = Math.min(1, NIGHT * 1.3);
+      for (let ci = 0; ci < FAIRY_COLS.length; ci++) {
+        const col = FAIRY_COLS[ci]; let any = false;
+        ctx.fillStyle = col; ctx.beginPath();
+        for (const d of VIS.houses) {
+          const Fy = d.fairy; if (!Fy || Fy.cols.indexOf(col) < 0) continue;
+          const P = Fy.pts, k = kk(Fy.h), sz = Math.max(0.9, 0.7 * k), nc = Fy.cols.length, c = Fy.cols.indexOf(col);
+          for (let i = c * 2, j = c; i < P.length; i += nc * 2, j += nc) if (fairyOn(j, Fy.pat, Fy.ph)) { ctx.rect(SX(P[i], k) - sz / 2, SY(P[i + 1], k) - sz / 2, sz, sz); any = true; }
+        }
+        if (any) ctx.fill();
+      }
+      let g = 0;
+      for (const d of VIS.houses) {
+        if (g++ > 24) break;
+        const Fy = d.fairy; if (!Fy) continue;
+        const P = Fy.pts, nc = Fy.cols.length;
+        for (let i = 0, j = 0; i < P.length; i += 10, j += 5) if (fairyOn(j, Fy.pat, Fy.ph)) glowAt(P[i], P[i + 1], Fy.h, Fy.cols[j % nc], 2.6, 0.45 * NIGHT);
       }
     }
     // the stalls' bulbs
-    if (lit) for (const st of VIS.stalls) { const q = [st.x + st.fx * 0.4, st.y + st.fy * 0.4]; dot(q[0], q[1], 7.6, 1, '#fff6d0'); glowAt(q[0], q[1], 7.6, '#ffd890', 8, 0.8 * NIGHT); }
+    if (lit && stallsOpen()) for (const st of VIS.stalls) { const q = [st.x + st.fx * 0.5 * SS, st.y + st.fy * 0.5 * SS]; dot(q[0], q[1], 7.6, 1.3, '#fff6d0'); glowAt(q[0], q[1], 7.6, '#ffd890', 13, 0.9 * NIGHT); glowAt(st.x + st.fx * 3 * SS, st.y + st.fy * 3 * SS, 3.5, '#ffb050', 9, 0.5 * NIGHT); }
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.imageSmoothingEnabled = false;
-    STATS._d2 += now() - t0;
+    STATS._d2 += now() - t0; PROF.l += now() - t0;
   }
   // the smoke haze over the city at night, and the city lit by the big bursts
   function drawFx2D() {
@@ -2008,6 +2083,7 @@
     if (fr + fg + fb > 0.004) { ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgb(' + Math.min(255, fr * 255 | 0) + ',' + Math.min(255, fg * 255 | 0) + ',' + Math.min(255, fb * 255 | 0) + ')'; ctx.fillRect(0, 0, R.W, R.H); ctx.globalCompositeOperation = 'source-over'; }
   }
   const _vh = [];
+  const VQ = { x: 1e9, y: 1e9, r: 0, t: -1, day: -1 };
   /** the system's draw(): what is in view this frame, the light pools, and the queue items */
   const GROUND_FN = () => { try { drawGround2D(); } catch (e) { N.err('diwali.draw.ground', e); } };
   const SKY_FN = () => { try { drawSky2D(); } catch (e) { N.err('diwali.draw.sky', e); } };
@@ -2018,13 +2094,13 @@
     TT = (N.time && (N.time.real || N.time.now)) || 0;
     NIGHT = R.night || 0;
     const v = R.view, p = N.player;
-    STATS._d2 = 0;
+    STATS._d2 = 0; PROF.n++;
     const t0 = now();
     // houses in view (nearest the camera first, capped)
     VIS.houses.length = 0;
     if (decorDay() > 0) {
       const cx = (v.x0 + v.x1) / 2, cy = (v.y0 + v.y1) / 2, r = Math.hypot(v.x1 - v.x0, v.y1 - v.y0) / 2 + 20;
-      housesNear(cx, cy, r, BUD().houses, _vh);
+      if (Math.abs(cx - VQ.x) > 10 || Math.abs(cy - VQ.y) > 10 || Math.abs(r - VQ.r) > 8 || TT - VQ.t > 0.3 || TT < VQ.t || VQ.day !== decorDay()) { housesNear(cx, cy, r, BUD().houses, _vh); VQ.x = cx; VQ.y = cy; VQ.r = r; VQ.t = TT; VQ.day = decorDay(); }
       for (const d of _vh) {
         if (d.cx < v.x0 - 40 || d.cx > v.x1 + 40 || d.cy < v.y0 - 40 || d.cy > v.y1 + 40) continue;
         d._fv = frontVisible(d);
@@ -2046,7 +2122,7 @@
     R.queue('light', 8, LIGHT_FN);
     R.queue('fx', 3, FX_FN);
     pushLights(p);
-    STATS._d2 += now() - t0;
+    STATS._d2 += now() - t0; PROF.e += now() - t0;
   }
   // light pools in the night wash (the 3D view turns the same list into point-light candidates)
   const LP = [];
@@ -2363,6 +2439,12 @@
       const ns = 8;
       for (let i = 0; i < ns; i++) { const u0 = -6.8 + (13.6 * i) / ns, u1 = u0 + 13.6 / ns; b.col(st.stripes[i % 2], 0.08).quad(P(u0, -4.2, 9.4 * VS), P(u1, -4.2, 9.4 * VS), P(u1, 1.4, 8.2 * VS), P(u0, 1.4, 8.2 * VS)); }
       b.col('#3a3a30', 0); box(-6.6, -4.4, 6.6, -4.2, 9.4 * VS, 12.8 * VS);
+      // ladis (cracker garlands) and rocket bundles hanging from the awning's front edge
+      for (let i = 0; i < 7; i++) {
+        const u = -5.6 + i * 1.85, hang = i % 3 === 1, top = 8.15 * VS, bot = (hang ? 6.4 : 5.4) * VS;
+        if (hang) { b.col('#2a5cd8', 0.15); box(u - 0.35, 1.25, u + 0.35, 1.6, bot, bot + 1.8); b.col('#e8c060', 0.1); box(u - 0.06, 1.38, u + 0.06, 1.48, bot + 1.8, top); }
+        else { b.col('#c8141e', 0.25); for (let y = bot; y < top; y += 0.55) box(u - 0.22, 1.3, u + 0.22, 1.55, y, y + 0.4); b.col('#ffd040', 0.3); box(u - 0.1, 1.36, u + 0.1, 1.5, bot - 0.5, bot); }
+      }
       // the boards: the stall's name on the back, the products on a strip under the awning's front edge
       const li = STALL_LABELS.indexOf(st.label), uvA = labelUV(li < 0 ? 0 : li), uvB = labelUV(STALL_LABELS.length + (st.seed & 1));
       const quadL = (a, bq, c, d, uv) => { const U2 = [[uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]]], Q = [a, bq, c, d]; for (const k of [0, 1, 2, 0, 2, 3]) { lq.p.push(Q[k][0], Q[k][1], Q[k][2]); lq.uv.push(U2[k][0], U2[k][1]); } };
@@ -2540,6 +2622,7 @@
   function anyAlive() { return SP.n || SM.n || ROCKETS.length || EMIT.length || FLASH.length || GROUPS.length || LB.n || SHOWS.length || DEC.length; }
   function resetAll() {
     for (const g of GROUPS.slice()) freeGroup(g);
+    STALLP.clear();
     for (const p of PERSONS.slice()) freePerson(p);
     SP.n = 0; SM.n = 0; ROCKETS.length = 0; EMIT.length = 0; FLASH.length = 0; SHOWS.length = 0;
     litterClear();
@@ -2666,6 +2749,19 @@
         stallsTotal: (STALLS || []).length, decor3d: G3.decor ? G3.decor.n : 0, stalls3d: G3.stalls ? G3.stalls.n : 0, phone: PHONE(), budget: Object.assign({}, BUD()), shows: SHOWS.length });
     },
     _dogHide: (a, dt, step) => dogHide(a, dt, step),
+    /** 2D draw ms per frame since the last call, per pass: ground, houses (kandil part k), stalls, sky, light, enqueue */
+    /** micro-benchmark of the 2D passes (n calls each, ms per call; draws over the current frame: tests only) */
+    bench2d(n) {
+      n = n || 20; const out = {};
+      const t = (k, fn) => { const t0 = now(); for (let i = 0; i < n; i++) fn(); out[k] = +((now() - t0) / n).toFixed(3); };
+      t('enqueue', () => { VQ.t = -1; draw2D(); });
+      t('ground', drawGround2D); t('houses', () => { for (const d of VIS.houses) drawHouse2D(d); }); t('stalls', () => { for (const st of VIS.stalls) drawStall2D(st); });
+      t('sky', drawSky2D); t('light', drawLight2D); t('fx', drawFx2D);
+      out.houses_n = VIS.houses.length; out.bits = LB.n; out.decals = DEC.length; out.sparks = SP.n;
+      N.render.ctx.setTransform(1, 0, 0, 1, 0, 0); N.render.ctx.globalAlpha = 1; N.render.ctx.globalCompositeOperation = 'source-over';
+      return out;
+    },
+    prof2d() { const n = Math.max(1, PROF.n); const o = { frames: PROF.n }; let t = 0; for (const k of ['g', 'h', 'k', 'st', 's', 'l', 'e']) { o[k] = +(PROF[k] / n).toFixed(3); if (k !== 'k') t += PROF[k] / n; PROF[k] = 0; } o.total = +t.toFixed(3); PROF.n = 0; return o; },
     debug: {
       /** pin the cracker intensity (0..1, null = the calendar) / the litter level / the haze */
       force(v) { if (v == null) delete F().dw_force; else F().dw_force = v; dirT = 0; busy = true; },

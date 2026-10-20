@@ -93,15 +93,17 @@
       daddy: { range: 140, half: 0.27, speed: 50, corner: 22 },
       hunter: { range: 122, half: 0.42, walk: 34, run: 62, catchR: 13, catchHalf: 0.9 },
     },
+    // how fast heads turn (rad/s): uncles are not quick
+    turn: { walker: 1.3, watchman: 1.6, hunter: 2.6, chair: 1.1, window: 0.9, escort: 6 },
     seeClose: 11,                         // closer than this: seen in any direction (bumped into)
     hiddenFoundR: 8,                      // a seeker this close finds even a hidden kid
-    meter: { far: 0.42, near: 1.25, lamp: 1.4, crouch: 0.5, crouchRange: 0.62, decay: 0.24, hold: 0.7, newSpotGap: 2.2 },
+    meter: { far: 0.26, near: 0.75, lamp: 1.35, crouch: 0.5, crouchRange: 0.62, decay: 0.3, hold: 0.5, newSpotGap: 2.2 },
     noise: { run: 82, walk: 17, whistle: 175, bark: 175, react: 6 },
     dog: { wakeRun: 62, wakeWalk: 24, barkSecs: 3, rest: 9 },
     lampEvery: 88, lampR: 38, hideR: 11, collectR: 8, doorR: 13,
     catch: { approach: 3.2, escort: 3.4, fade: 0.55 },
     whistleCD: 5,
-    net: { hz: 6, interp: 0.18 },
+    net: { hz: 6, posHz: 5, interp: 0.18 },
     daddy: { rounds: 2, time: 85, catchR: 14, catchHalf: 0.95, hiddenR: 6 },
     score: { base: 1000, perSec: 6, perSpot: 120, perItem: 150 },
   };
@@ -474,7 +476,7 @@
         const pp = pps[i];
         if (nearStartOrDoor(pp.x, pp.y, role === 'daddy' ? 30 : 58) || !farFromUsed(pp.x, pp.y, role === 'daddy' ? 40 : 70)) continue;
         made = placeRole(role, pp, R, C, daddyN);
-        if (made && !clearOfStart(made, start)) made = null;
+        if (made && (!clearOfStart(made, start) || !clearOfDoors(made, kids.map((k) => C.doors[k.uid])))) made = null;
       }
       if (made) { if (role === 'daddy') daddyN++; made.id = C.seekers.length; C.seekers.push(made); used.push({ x: made.x, y: made.y }); }
     }
@@ -618,6 +620,14 @@
     }
     return hyp(m.x - st.x, m.y - st.y) >= m.range * 0.9;
   }
+  /** and nobody stands right on a kid's doorstep */
+  function clearOfDoors(m, doors) {
+    for (const d of doors) {
+      if (m.pts) { let P = m.pts; if (m.loop) P = P.concat([P[0]]); if (polyNearest(P, d.x, d.y).d < (m.role === 'daddy' ? 30 : 42)) return false; }
+      else if (hyp(m.x - d.x, m.y - d.y) < 52) return false;
+    }
+    return true;
+  }
   function nearestPathPt(paths, x, y) {
     let best = null, bd = Infinity;
     for (const P of paths) { const n = polyNearest(P, x, y); if (n.d < bd) { bd = n.d; const q = polyAt(P, n.s); best = { x: q.x, y: q.y, a: q.a, d: n.d }; } }
@@ -741,20 +751,22 @@
   }
 
   /* ================================================================ vision */
-  function coneUpdate(sk, t) {
+  function coneUpdate(sk, t, dt) {
     const C = sk.cone, sp = sk.spec, R = TUNE.role;
     let x = sk.x, y = sk.y, a = sk.angle, on = true;
-    if (sk.role === 'chair') {
-      const base = sk.track ? Math.atan2(sk.track.y - y, sk.track.x - x) : sk.inv ? Math.atan2(sk.inv.y - y, sk.inv.x - x) : sp.face;
-      a = base + ((sk.track || sk.inv) ? 0 : Math.sin((t + sk.t) * TAU / R.chair.period) * R.chair.sweep);
-      on = sk.dozeT <= 0;
-      sk.angle = a;
-    } else if (sk.role === 'window') {
-      x = sp.x; y = sp.y;
-      const base = sk.track ? Math.atan2(sk.track.y - y, sk.track.x - x) : sk.inv ? Math.atan2(sk.inv.y - y, sk.inv.x - x) : sp.face;
-      const lim = Math.PI / 2 - 0.2;
-      a = sp.face + clamp(adiff(sp.face, base), -lim, lim) + ((sk.track || sk.inv) ? 0 : Math.sin((t + sk.t) * 1.1) * R.window.sweep);
-      on = sk.open;
+    const host = !S || S.isHost;
+    if (sk.role === 'chair' || sk.role === 'window') {
+      const ox = sk.role === 'window' ? sp.x : x, oy = sk.role === 'window' ? sp.y : y;
+      if (host) {
+        // a head turns slowly: a kid who darts across can get out of the gaze
+        const goal = sk.track || sk.inv;
+        let want = goal ? Math.atan2(goal.y - oy, goal.x - ox) : sp.face + (sk.role === 'chair' ? Math.sin((t + sk.t) * TAU / R.chair.period) * R.chair.sweep : Math.sin((t + sk.t) * 1.1) * R.window.sweep);
+        if (sk.role === 'window') { const lim = Math.PI / 2 - 0.2; want = sp.face + clamp(adiff(sp.face, want), -lim, lim); }
+        const rate = (TUNE.turn[sk.role] || 1.5) * (dt || 0.016);
+        sk.angle += clamp(adiff(sk.angle, want), -rate, rate);
+      }
+      a = sk.angle;
+      if (sk.role === 'window') { x = sp.x; y = sp.y; on = sk.open; } else on = sk.dozeT <= 0;
     } else if (sk.role === 'daddy') {
       const v = sk.vehicle;
       if (v) { x = v.x + Math.cos(v.angle) * 8; y = v.y + Math.sin(v.angle) * 8; a = v.angle; }
@@ -817,7 +829,7 @@
       const dx = x - C.x, dy = y - C.y, d = hyp(dx, dy);
       const range = C.range + margin;
       if (d > range) continue;
-      const half = sk.role === 'window' || sk.role === 'chair' ? C.half + 0.55 : C.half + margin / 60;
+      const half = sk.role === 'window' || sk.role === 'chair' ? C.half + 0.15 : C.half + margin / 80;
       if (d > 14 && Math.abs(adiff(C.a, Math.atan2(dy, dx))) > half) continue;
       if (!clear(C.x, C.y, x, y)) continue;
       if (d < wd) { wd = d; worst = sk; }
@@ -828,7 +840,7 @@
   /* ================================================================ noise */
   function noise(x, y, r, kind, from) {
     if (!S) return;
-    if (!S.isHost) { netSend('nz', { x: Math.round(x), y: Math.round(y), r: Math.round(r), k: kind }); return; }
+    if (!S.isHost) return; // a guest's running rides on its 'lhpos' (r flag); whistles go as 'lhwh'
     applyNoise(x, y, r, kind, from);
   }
   function applyNoise(x, y, r, kind, from) {
@@ -866,11 +878,15 @@
     try { const c = N.world.collide(nx, ny, 3.2, 'walk'); if (!c.bad) { nx = c.x; ny = c.y; } } catch (e) { /* ignore */ }
     sk.vx = (nx - sk.x) / Math.max(1e-4, dt); sk.vy = (ny - sk.y) / Math.max(1e-4, dt);
     sk.x = nx; sk.y = ny;
-    sk.angle += adiff(sk.angle, Math.atan2(dy, dx)) * Math.min(1, dt * 7);
+    turn(sk, Math.atan2(dy, dx), dt, 7);
     sk.anim.speed = Math.min(1, speed / 45); sk.anim.run = speed > 55; sk.anim.phase += st * 0.26;
     return d;
   }
-  function faceTo(sk, x, y, dt, rate) { sk.angle += adiff(sk.angle, Math.atan2(y - sk.y, x - sk.x)) * Math.min(1, dt * (rate || 5)); }
+  function turn(sk, want, dt, k) {
+    const mx = (TUNE.turn[sk.role] || 3) * dt;
+    sk.angle += clamp(adiff(sk.angle, want) * Math.min(1, dt * k), -mx, mx);
+  }
+  function faceTo(sk, x, y, dt, rate) { turn(sk, Math.atan2(y - sk.y, x - sk.x), dt, rate || 5); }
   function routeStep(sk, dt, speed) {
     // ping-pong along spec.pts with a pause (and a look around) at each end
     const P = sk.spec.pts, L = sk.L || (sk.L = polyLen(P));
@@ -904,7 +920,7 @@
     if (sk.emoteT > 0) sk.emoteT -= dt;
     if (sk.trackT > 0) { sk.trackT -= dt; if (sk.trackT <= 0) sk.track = null; }
     if (sk.inv) { sk.inv.t -= dt; if (sk.inv.t <= 0) { sk.inv = null; if (sk.state === 'inv') sk.state = 'return'; } }
-    if (sk.escort) { escortStep(sk, dt); return; }
+    if (sk.escort) return; // catchStep walks him (and the kid by the ear)
     const role = sk.role;
     if (role === 'walker' || role === 'watchman') {
       const W = R[role];
@@ -915,7 +931,7 @@
       const goal = sk.track || sk.inv;
       if (goal) {
         const d = hyp(goal.x - sk.x, goal.y - sk.y);
-        if (d > 16) stepOnFoot(sk, goal.x, goal.y, (sk.track ? 0.8 : 1.1) * W.walk, dt);
+        if (d > 16) stepOnFoot(sk, goal.x, goal.y, (sk.track ? 0.6 : 1.1) * W.walk, dt);
         else { sk.anim.speed = 0; sk.vx = sk.vy = 0; faceTo(sk, goal.x, goal.y, dt); }
         sk.lookOff = sk.track ? 0 : Math.sin(t * 2.6) * 0.5;
         return;
@@ -1084,6 +1100,7 @@
         const a = esc.angle, tx = esc.x - Math.cos(a) * 4 + Math.cos(a + Math.PI / 2) * 3, ty = esc.y - Math.sin(a) * 4 + Math.sin(a + Math.PI / 2) * 3;
         moveEnt(e, tx, ty, 40, dt);
         e.angle = a; if (e.facing != null || e === N.player) e.facing = a;
+        k.x = e.x; k.y = e.y;
       }
       if (q.t > TUNE.catch.escort || !esc) { q.phase = 'fade'; q.t = 0; }
       return;
@@ -1143,7 +1160,7 @@
   }
   function finishKid(k, how, tOver) {
     if (!S || k.done) return;
-    k.done = how; k.t = tOver != null ? tOver : +elapsed().toFixed(1); k.hide = 0;
+    k.done = how; k.t = tOver != null ? tOver : +elapsed().toFixed(1); k.hide = 0; k.seenBy = null;
     if (S.variant === 'daddy') {
       const ri = S.round || 0;
       if (how === 'home') k.pts = (k.pts || 0) + 100 + Math.max(0, Math.round(TUNE.daddy.time - k.t));
@@ -1165,12 +1182,39 @@
         }
       }
       netState(k);
-      try { if (S.ctx && S.ctx.report && S.mode === 'party') S.ctx.report(resultOf(k)); } catch (er) { N.err('latehome.report', er); }
+      if (S.partyCtx && S.variant === 'sneak') k.reportIn = 1.6;
     } else if (k.ent && how === 'home') {
       k.ent.hidden = true;
       toast(k.nick + ' slipped in' + (k.spots ? '' : ' — nobody saw!'), 2000);
     }
+    if (S.partyCtx && S.isHost && k.isAI && S.variant === 'sneak' && !k.reported) { k.reported = true; S.repQ.push([k.uid, partyResult(k), false]); }
     if (S.isHost) checkAllDone();
+  }
+  /** a kid's result in party.js's shape ({score, timeMs, caught, note} + extras) */
+  function partyResult(k) {
+    if (S.variant === 'daddy') return { score: k.pts | 0, caught: false, catches: k.catches | 0, note: (k.catches | 0) + (k.catches === 1 ? ' catch' : ' catches') + ' as Daddy' };
+    const home = k.done === 'home';
+    const r = { score: scoreOf(k), caught: !home, spots: k.spots | 0, coll: k.coll | 0, stars: starsOf(k),
+      note: home ? (k.spots === 0 ? 'nobody saw!' : 'seen ' + k.spots + (k.spots === 1 ? ' time' : ' times')) + (k.coll ? ' · found ' + k.coll : '') : 'walked home by the ear' };
+    if (home) r.timeMs = Math.round(k.t * 1000);
+    return r;
+  }
+  function reportMine() {
+    const k = S && S.me;
+    if (!k || S.reported || !S.partyCtx) return;
+    if (S.variant === 'daddy' && S.phase !== 'done') return; // the totals go in after the last round
+    S.reported = true; k.reportIn = 0;
+    S.repQ.push([k.uid, partyResult(k), true]);
+  }
+  /* party.js may finish the session (and call handle.end) from inside report(): send reports only at the very end
+   * of a sim step, and stop touching the session as soon as it is gone */
+  function flushReports() {
+    if (!S || !S.repQ.length) return;
+    const ctx = S.ctx, q = S.repQ.splice(0);
+    for (const [uid, res, mine] of q) {
+      try { if (mine) { if (ctx.report) ctx.report(res); } else if (ctx.ai && typeof ctx.ai.report === 'function') ctx.ai.report(uid, res); } catch (e) { N.err('latehome.report', e); }
+      if (!S) return;
+    }
   }
   function resultOf(k) {
     return { uid: k.uid, nick: k.nick, home: k.done === 'home', how: k.done || 'out', time: k.t, spots: k.spots, coll: k.coll, score: k.score != null ? k.score : scoreOf(k), stars: k.stars || 0, catches: k.catches || 0, pts: k.pts || 0, ai: !!k.isAI };
@@ -1227,9 +1271,17 @@
       else { tx = k.spot.x; ty = k.spot.y; speed = TUNE.kidRun * 0.8; k.hide = 0; }
     } else if (k.mode === 'wait') {
       k.hide = 1; e.anim.speed = 0; e.vx = e.vy = 0;
-    } else if (k.mode === 'back') {
-      const q = polyAt(P, Math.max(0, k.ps - 26));
-      tx = q.x; ty = q.y; speed = TUNE.kidWalk; k.hide = 0;
+    } else if (k.mode === 'creep') {
+      // crouched and slow past a gaze that never quite leaves the way
+      const n = polyNearest(P, e.x, e.y);
+      k.ps = n.s;
+      const q = polyAt(P, Math.min(polyLen(P), n.s + 12));
+      tx = q.x; ty = q.y; speed = TUNE.kidWalk * TUNE.creepMul; k.hide = 1;
+      k.creepT = (k.creepT || 0) - dt; if (k.creepT <= 0) k.mode = 'go';
+    } else if (k.mode === 'flee' && k.flee) {
+      // out of the cone sideways (the quickest way out of a fan), running
+      tx = k.flee.x; ty = k.flee.y; speed = TUNE.kidRun * 0.9; k.hide = 0;
+      if (hyp(tx - e.x, ty - e.y) < 3) { k.mode = 'wait'; k.flee = null; }
     } else {
       k.hide = 0;
       // the next waypoint along the path (a little ahead of the nearest point)
@@ -1252,6 +1304,18 @@
     const d = S.C.doors[k.uid];
     if (hyp(d.x - e.x, d.y - e.y) < TUNE.doorR) finishKid(k, 'home');
   }
+  /** a point out of seeker sk's cone, sideways from where (x, y) is in it */
+  function fleeFrom(sk, x, y) {
+    // away from him and out to the side his head turns slowest to (a diagonal), and far enough to matter
+    const C = sk.cone, a = Math.atan2(y - C.y, x - C.x);
+    const side = adiff(C.a, a) >= 0 ? 1 : -1;
+    for (const off of [side * 0.9, -side * 0.9, side * 1.5, 0]) {
+      const fa = a + off, d = rayLen(x, y, Math.cos(fa), Math.sin(fa), 60);
+      if (d > 22) return { x: x + Math.cos(fa) * d, y: y + Math.sin(fa) * d };
+    }
+    const d = rayLen(x, y, Math.cos(a), Math.sin(a), 40);
+    return { x: x + Math.cos(a) * d, y: y + Math.sin(a) * d };
+  }
   function aiThink(k, t) {
     const e = k.ent, P = k.path;
     const L = polyLen(P);
@@ -1260,18 +1324,29 @@
     const here = threatAt(e.x, e.y, 8);
     const ahead = polyAt(P, Math.min(L, n.s + 30));
     const thr = threatAt(ahead.x, ahead.y, 20) || threatAt(e.x, e.y, 18);
+    if (k.mode === 'flee' && k.flee && hyp(k.flee.x - e.x, k.flee.y - e.y) > 3 && !(k.seenBy && k.meter > 0.5)) return;
+    const spotOk = (h) => h && S.seekers.every((sk) => hyp(sk.x - h.x, sk.y - h.y) > 18);
+    // seen right now: get out of sight (a spot close by, else sideways out of the cone)
+    if (k.seenBy && k.mode !== 'hide') {
+      const spot = hideNear(e.x, e.y, 24);
+      if (spot && spotOk(spot)) { k.mode = 'hide'; k.spot = spot; k.hideT = 0; k.safeT = 0; return; }
+      k.mode = 'flee'; k.flee = fleeFrom(k.seenBy, e.x, e.y); k.waitT = 0; return;
+    }
     if (k.mode === 'hide' && k.hide === 2) {
       k.safeT = thr ? 0 : (k.safeT || 0) + 0.2;
       k.hideT = (k.hideT || 0) + 0.2;
-      if (k.safeT >= 1.2 || k.hideT > 14) { k.mode = 'go'; k.spot = null; k.hideT = 0; k.safeT = 0; }
+      if (k.safeT >= 1.0 || k.hideT > 7) { k.mode = k.safeT >= 1.0 ? 'go' : 'creep'; k.creepT = 4; k.spot = null; k.hideT = 0; k.safeT = 0; }
       return;
     }
+    const dd = S.C.doors[k.uid];
+    if (hyp(dd.x - e.x, dd.y - e.y) < 34 && !here) { k.mode = 'go'; k.dash = true; return; }
+    if (k.mode === 'creep' && k.creepT > 0 && !here) return;
     if (thr) {
       const spot = hideNear(e.x, e.y, here ? 30 : 42);
-      if (spot && !threatAt(spot.x, spot.y, 0, null)) { k.mode = 'hide'; k.spot = spot; k.hideT = 0; k.safeT = 0; return; }
-      if (here) { k.mode = 'back'; k.waitT = 0; return; }
+      if (spotOk(spot)) { k.mode = 'hide'; k.spot = spot; k.hideT = 0; k.safeT = 0; return; }
+      if (here) { k.mode = 'flee'; k.flee = fleeFrom(here, e.x, e.y); k.waitT = 0; return; }
       k.mode = 'wait'; k.waitT = (k.waitT || 0) + 0.2;
-      if (k.waitT > 7) { k.mode = 'go'; k.waitT = -3; k.dash = true; }
+      if (k.waitT > 5) { k.mode = 'creep'; k.creepT = 4; k.waitT = 0; }
       return;
     }
     if (k.mode !== 'go') { k.mode = 'go'; k.waitT = 0; }
@@ -1305,11 +1380,12 @@
         if (k.isMe) { sfx('wanted_up', { ui: true, vol: 0.5 }); netState(k); }
       } else if (S.isHost) { by.track = { x: k.x, y: k.y }; by.trackT = 1.4; }
       k.lastSeen = t; k.seenBy = by;
-      k.meter = Math.min(1, k.meter + best * dt);
+      k.seenT = (k.seenT || 0) + dt;
+      k.meter = Math.min(1, k.meter + best * dt * lerp(0.3, 1, clamp(k.seenT / 1.1, 0, 1)));
       if (k.meter >= 1) startCatch(k, by, 'seen');
     } else {
       k.seenBy = null;
-      if (t - (k.lastSeen != null ? k.lastSeen : -99) > TUNE.meter.hold) k.meter = Math.max(0, k.meter - TUNE.meter.decay * dt);
+      if (t - (k.lastSeen != null ? k.lastSeen : -99) > TUNE.meter.hold) { k.seenT = 0; k.meter = Math.max(0, k.meter - TUNE.meter.decay * dt); }
     }
   }
   function notice(sk, k) {
@@ -1333,7 +1409,7 @@
     const ctx = {
       mode: 'solo', id: opts.variant === 'daddy' ? 'latehome_daddy' : 'latehome', seed: opts.seed != null ? opts.seed : ((Math.random() * 1e9) | 0), opts,
       players, me, isHost: true,
-      now: () => performance.now(), send() {}, on() { return () => {}; },
+      now: () => (N.time.now || 0) * 1000, send() {}, on() { return () => {}; },
       report(r) { reports.push(r); }, results: () => reports.slice(), end() {}, ai: null,
     };
     return ctx;
@@ -1377,7 +1453,10 @@
       phase: 'intro', t0: nowFn() + TUNE.intro * 1000, kids: [], seekers: [], dogs: [], extraEnts: [], vehicles: [], subs: [], items: [],
       virtualSeekers: [], round: 0, rounds: 1, meterMul: 1, saved: {}, snapT: 0, posT: 0, whistleCD: 0, ownBodies: true, results: null,
       hud: null, ui: { label: '', prompt: '' }, lastFrame: 0, nets: { sk: null, skT: 0 }, flash: [],
+      evq: [], owed: new Map(), owedOut: new Map(), repQ: [], reported: false,
+      partyCtx: !!(ctx.sid || ctx.spec), // started by party.js: it shows the results card
     };
+    if (typeof ctx.startAt === 'number' && isFinite(ctx.startAt)) sess.t0 = Math.max(ctx.startAt, nowFn() + 1500);
     S = sess;
     try {
       S.kids = makeKids(ctx);
@@ -1395,7 +1474,6 @@
       else placeKidsAtStart();
       hudOn();
       netOn();
-      if (S.mode === 'party' && S.isHost) netSend('go', { t0: S.t0 });
       const v = VENUES[venue];
       banner(variant === 'daddy' ? 'DADDY AA GAYE!' : 'GHAR PAHUNCHNA HAI!', variant === 'daddy' ? roundLine() : v.line, 3000, { kind: 'chapter' });
       N.emit('latehome:start', { variant, venue, mode: S.mode, seed });
@@ -1440,7 +1518,7 @@
       sk.idx = i;
       if (spec.pts) { sk.L = null; const L = polyLen(spec.pts); sk.s = R.range(0, L); const q = polyAt(spec.pts, sk.s); sk.x = q.x; sk.y = q.y; sk.angle = q.a; sk.dir = R.next() < 0.5 ? 1 : -1; }
       if (spec.role === 'chair') { sk.dozeIn = R.range(3, 9); sk.angle = spec.face; }
-      if (spec.role === 'window') { sk.open = R.next() < 0.5; sk.openT = R.range(1, 4); }
+      if (spec.role === 'window') { sk.open = R.next() < 0.5; sk.openT = R.range(1, 4); sk.angle = spec.face; }
       if (spec.role === 'watchman') sk.whistleT = R.range(3, 8);
       N.entities.add(sk);
       if (spec.role === 'daddy') {
@@ -1474,7 +1552,7 @@
   function setupWorld() {
     const sv = S.saved, F = N.flags || (N.flags = {});
     const m = N.clock.minutes;
-    if (!(m >= 19 * 60 + 30 && m < TUNE.window[1])) { try { N.clock.set(Math.floor(TUNE.clockStart / 60), TUNE.clockStart % 60); } catch (e) { N.clock.minutes = TUNE.clockStart; } }
+    if (!(m >= TUNE.clockStart && m < TUNE.window[1])) { try { N.clock.set(Math.floor(TUNE.clockStart / 60), TUNE.clockStart % 60); } catch (e) { N.clock.minutes = TUNE.clockStart; } }
     try { N.clock.hold('latehome', true); } catch (e) { /* ignore */ }
     sv.noCurfew = Object.prototype.hasOwnProperty.call(F, 'no_curfew'); sv.noCurfewV = F.no_curfew;
     if (!F.no_curfew) F.no_curfew = 'latehome';
@@ -1608,7 +1686,6 @@
     }
     if (r > 0) banner('ROUND ' + (r + 1), roundLine(), 3000, { kind: 'chapter' });
     N.emit('latehome:round', { round: r, daddy: dk ? dk.uid : 'ai' });
-    if (S.mode === 'party' && S.isHost && r > 0) netSend('round', { r, d: dk ? dk.uid : null, t0: S.t0 });
   }
   function daddyHint(x, y, text) {
     if (!S || S.variant !== 'daddy') return;
@@ -1651,7 +1728,7 @@
     } else if (why === 'time') {
       for (const k of S.kids) if (!k.done && !k.seq) {
         if (k.isMe || (k.isAI && S.isHost)) startCatch(k, null, 'time');
-        else netSend('catch', { k: k.uid, why: 'time' });
+        else { S.owed.set(k.uid, 'time'); k.seq = { phase: 'remote' }; }
       }
       S.phase = 'closing'; S.closeT = 4.8;
       return;
@@ -1661,13 +1738,17 @@
   function finishSession() {
     if (!S || S.phase === 'done') return;
     S.phase = 'done';
+    for (const k of S.kids) { k.score = scoreOf(k); k.stars = starsOf(k); }
     S.results = S.kids.map((k) => resultOf(k));
-    if (S.mode === 'party' && S.isHost) {
-      netSend('fin', { res: S.results });
-      try { if (S.ctx.end) S.ctx.end({ id: S.ctx.id, variant: S.variant, results: S.results, ranking: ranked(S.results).map((r) => r.uid) }); } catch (e) { N.err('latehome.end', e); }
-    }
     G.lastResults = S.results;
     N.emit('latehome:end', { results: S.results });
+    if (S.partyCtx) {
+      // party.js shows the results card on every phone: report mine (and, on the host, the AI friends')
+      reportMine();
+      if (S.isHost) for (const k of S.kids) if (k.isAI && !k.reported) { k.reported = true; S.repQ.push([k.uid, partyResult(k), false]); }
+      if (S.me && S.me.isMe) N.player.controlsLocked = false;
+      return;
+    }
     showResults();
   }
   function ranked(res) {
@@ -1778,6 +1859,11 @@
   /* ================================================================ the sim (after vehicles) */
   function simStep(dt) {
     if (!S) return;
+    if (S.mode === 'party' && S.ctx) S.isHost = S.ctx.isHost !== false; // party.js hands the host role on if the host leaves
+    stepInner(dt);
+    flushReports();
+  }
+  function stepInner(dt) {
     const t = elapsed();
     const p = N.player;
     if (S.phase === 'intro' && S.now() >= S.t0) {
@@ -1805,13 +1891,15 @@
       if (S.phase === 'play') {
         // AI Nanna's catches (Daddy round)
         for (const sk of S.seekers) if (sk.role === 'hunter') for (const k of S.kids) if (canCatch(sk.x, sk.y, sk.angle, k)) {
-          if (k.isMe || k.isAI) daddyCatch(sk, k); else { netSend('catch', { k: k.uid, why: 'daddy' }); k.seq = { phase: 'remote' }; }
+          if (k.isMe || k.isAI) daddyCatch(sk, k); else if (!k.seq) { S.owed.set(k.uid, 'daddy'); k.seq = { phase: 'remote' }; }
         }
         const limit = S.variant === 'daddy' ? TUNE.daddy.time : TUNE.timeLimit;
         if (S.variant === 'sneak' && t > TUNE.warnAt && !S.warned) { S.warned = true; toast('Amma is at the gate with the big torch...', 3000); netEvent({ k: 'warn' }); }
         if (t > limit) endRound('time');
       }
       if (S.mode === 'party') { S.snapT -= dt; if (S.snapT <= 0) { S.snapT = 1 / TUNE.net.hz; sendSnap(); } }
+    } else if (S.mode === 'party' && S.phase === 'done') {
+      /* the guest keeps the last picture */
     } else applySnaps(dt);
     // the human Daddy's torch (virtual seeker) and his catches
     const dk = S.kids.find((k) => k.role === 'daddy');
@@ -1824,11 +1912,11 @@
       if (dk.isMe && S.phase === 'play') {
         for (const k of S.kids) if (canCatch(dk.x, dk.y, dk.a, k)) {
           if (k.isAI && S.isHost) daddyCatch(null, k);
-          else { netSend('catch', { k: k.uid, why: 'daddy' }); k.seq = { phase: 'remote' }; dk.catches++; dk.pts += 100; bark(p, pick(LINES.daddyCatch), 'nanna', 2); netState(dk); }
+          else if (!k.seq) { if (S.isHost) S.owed.set(k.uid, 'daddy'); else S.owedOut.set(k.uid, 0); k.seq = { phase: 'remote' }; dk.catches++; dk.pts += 100; bark(p, pick(LINES.daddyCatch), 'nanna', 2); netState(dk); }
         }
       }
     }
-    for (const sk of S.seekers) coneUpdate(sk, t);
+    for (const sk of S.seekers) coneUpdate(sk, t, dt);
     for (const vs of S.virtualSeekers) { vs.cone.on = S.phase === 'play'; vsCone(vs, t); }
     if (me && S.phase === 'play') {
       if (me.seq) catchStep(me, dt);
@@ -1844,7 +1932,17 @@
     if (S.isHost && S.phase === 'play') for (const k of S.kids) if (k.isAI) sightStep(k, dt);
     // remote kids (their phones send positions)
     for (const k of S.kids) if (!k.isMe && !k.isAI && k.net) remoteKidStep(k, dt);
-    if (S.mode === 'party') { S.posT -= dt; if (S.posT <= 0 && me) { S.posT = 1 / TUNE.net.hz; sendPos(me); } }
+    if (S.mode === 'party') {
+      S.posT -= dt;
+      if (S.posT <= 0 && me) { S.posT = 1 / TUNE.net.posHz; if (!S.isHost) sendPos(me); }
+      for (const [uid, t0] of S.owedOut) {
+        const k = S.kids.find((q) => q.uid === uid);
+        if (!k || k.done) { S.owedOut.delete(uid); continue; }
+        if (t0 <= 0) { netSend('catch', { k: uid, why: 'daddy' }); S.owedOut.set(uid, 0.6); } else S.owedOut.set(uid, t0 - dt);
+      }
+    }
+    // my result goes to party.js a moment after I finish (after Amma has had her say)
+    if (me && me.reportIn > 0) { me.reportIn -= dt; if (me.reportIn <= 0) reportMine(); }
     hudUpdate();
   }
   function vsCone(vs, t) {
@@ -1883,87 +1981,109 @@
     }
   }
 
-  /* ================================================================ network (party) */
+  /* ================================================================ network (party)
+   * Inside party.js's budget (12 messages / s / phone, types [a-z0-9_]): the host sends ONE snapshot 'lhsk' 6 times a
+   * second (seekers, AI kids, dogs, its own kid, queued flavour events, the round, catches it owes the guests); a guest
+   * sends 'lhpos' 5 times a second (its kid: position + state). Rare one-offs: 'lhwh' (whistle), 'lhseen' (a guest was
+   * spotted: the seeker reacts on the host), 'lhcatch' (a human Daddy's catch, repeated until the kid shows caught),
+   * 'lhit' (an item taken). A dropped message is healed by the next one. */
   function netSend(type, data) {
-    if (!S || S.mode !== 'party' || !S.ctx || typeof S.ctx.send !== 'function') return;
-    try { S.ctx.send('lh:' + type, Object.assign({ u: S.me ? S.me.uid : null }, data || {})); } catch (e) { N.err('latehome.send', e); }
+    if (!S || S.mode !== 'party' || !S.ctx || typeof S.ctx.send !== 'function') return false;
+    try { return S.ctx.send('lh' + type, Object.assign({ u: S.me ? S.me.uid : null }, data || {})) !== false; } catch (e) { N.err('latehome.send', e); return false; }
   }
-  function netEvent(ev) { if (S && S.mode === 'party' && S.isHost) netSend('ev', ev); }
-  function netState(k) { if (k) netSend('st', { k: k.uid, d: k.done || 0, s: k.spots, c: k.coll, m: +(+k.meter).toFixed(2), t: k.t || 0, g: k.ghost ? 1 : 0, ca: k.catches || 0, p: k.pts || 0, sc: k.score || 0, st: k.stars || 0 }); }
-  function sendPos(k) {
+  function netEvent(ev) { if (S && S.mode === 'party' && S.isHost) { S.evq.push(ev); if (S.evq.length > 12) S.evq.shift(); } }
+  function netState() { if (S) S.posT = Math.min(S.posT, 0.05); }
+  const f1 = (v) => Math.round((+v || 0) * 10) / 10, f2 = (v) => Math.round((+v || 0) * 100) / 100;
+  function kidRow(k) {
     const p = N.player;
-    netSend('pos', { x: +k.x.toFixed(1), y: +k.y.toFixed(1), a: +(+k.a || 0).toFixed(2), h: k.hide | 0, r: k.run ? 1 : 0, l: k.level || 0, g: k.ghost ? 1 : 0, b: p.vehicle ? 1 : 0, d: k.done || 0 });
+    return { x: f1(k.x), y: f1(k.y), a: f2(k.a), h: k.hide | 0, r: k.run ? 1 : 0, l: k.level || 0, g: k.ghost ? 1 : 0, b: k.isMe && p.vehicle ? 1 : 0,
+      d: k.done || 0, s: k.spots | 0, c: k.coll | 0, m: f2(k.meter), t: f1(k.t), ca: k.catches | 0, p: k.pts | 0, sc: k.score | 0, st: k.stars | 0,
+      ti: S.items.filter((it) => it.taken === k.uid).map((it) => it.id) };
   }
+  function sendPos(k) { netSend('pos', kidRow(k)); }
   function sendSnap() {
-    const f1 = (v) => Math.round(v * 10) / 10, f2 = (v) => Math.round(v * 100) / 100;
-    const sk = S.seekers.map((s) => [s.idx, f1(s.x), f1(s.y), f2(s.angle), f2(s.lookOff || 0), (s.open ? 1 : 0) | (s.dozeT > 0 ? 2 : 0) | (s.escort ? 4 : 0), s.role === 'daddy' && s.vehicle ? f1(s.spd || 0) : 0]);
-    const ks = S.kids.filter((k) => k.isAI).map((k) => [k.uid, f1(k.x), f1(k.y), f2(k.a || 0), k.hide | 0, k.done || 0, k.spots, +(+k.meter).toFixed(2)]);
+    const sk = S.seekers.map((q) => [q.idx, f1(q.x), f1(q.y), f2(q.angle), f2(q.lookOff || 0), (q.open ? 1 : 0) | (q.dozeT > 0 ? 2 : 0) | (q.escort ? 4 : 0) | (q.track ? 8 : 0), q.role === 'daddy' && q.vehicle ? f1(q.spd || 0) : 0]);
+    const ks = S.kids.filter((k) => k.isAI).map((k) => [k.uid, f1(k.x), f1(k.y), f2(k.a || 0), k.hide | 0, k.done || 0, k.spots, f2(k.meter)]);
     const dg = S.dogs.map((g) => [g.state === 'bark' ? 1 : 0, f2(g.angle)]);
-    netSend('sk', { s: sk, k: ks, g: dg, hu: S.seekers.some((s) => s.role === 'hunter') ? 1 : 0 });
+    const dk = S.kids.find((k) => k.role === 'daddy');
+    const ct = [];
+    for (const [uid, why] of S.owed) { const k = S.kids.find((q) => q.uid === uid); if (k && !k.done) ct.push([uid, why]); else S.owed.delete(uid); }
+    netSend('sk', { s: sk, k: ks, g: dg, me: kidRow(S.me), ev: S.evq.splice(0, 8), rd: [S.round, dk ? dk.uid : null, Math.round(S.t0), S.phase === 'between' ? 1 : 0], ct, fin: S.phase === 'done' ? 1 : 0 });
   }
   function applySnaps(dt) {
     const sn = S.nets.sk;
     if (!sn) return;
     const a = Math.min(1, dt / TUNE.net.interp);
-    for (const row of sn.s || []) {
+    for (const row of Array.isArray(sn.s) ? sn.s : []) {
+      if (!Array.isArray(row)) continue;
       const sk = S.seekers.find((q) => q.idx === row[0]);
       if (!sk) continue;
       const px = sk.x, py = sk.y;
       if (hyp(row[1] - sk.x, row[2] - sk.y) > 120) { sk.x = row[1]; sk.y = row[2]; } else { sk.x = lerp(sk.x, row[1], a); sk.y = lerp(sk.y, row[2], a); }
-      sk.angle += adiff(sk.angle, row[3]) * a; sk.lookOff = row[4];
+      sk.angle += adiff(sk.angle, +row[3] || 0) * a; sk.lookOff = +row[4] || 0;
       sk.open = !!(row[5] & 1); sk.dozeT = row[5] & 2 ? 1 : 0; sk.escort = row[5] & 4 ? {} : null;
+      if (row[5] & 8) { sk.track = sk.track || { x: sk.x, y: sk.y }; sk.trackT = 0.4; }
       const sp = hyp(sk.x - px, sk.y - py) / Math.max(1e-4, dt);
       sk.anim.speed = Math.min(1, sp / 45); sk.anim.phase += sp * dt * 0.26;
-      if (sk.role === 'daddy' && sk.vehicle) { const v = sk.vehicle; v.x = sk.x; v.y = sk.y; v.angle = sk.angle; v.vx = v.vy = 0; v.speed = row[6] || 0; sk.spd = v.speed; }
+      if (sk.role === 'daddy' && sk.vehicle) { const v = sk.vehicle; v.x = sk.x; v.y = sk.y; v.angle = sk.angle; v.vx = v.vy = 0; v.speed = +row[6] || 0; sk.spd = v.speed; }
       if (sk.role === 'chair') sk.idle = sk.escort ? undefined : 'sit';
+      if (sk.emoteT > 0) sk.emoteT -= dt;
     }
-    for (const row of sn.k || []) {
-      const k = S.kids.find((q) => q.uid === row[0]);
-      if (!k || !k.ent) continue;
+    for (const row of Array.isArray(sn.k) ? sn.k : []) {
+      if (!Array.isArray(row)) continue;
+      const k = S.kids.find((q) => q.uid === String(row[0]));
+      if (!k || !k.ent || k.isMe) continue;
       const e = k.ent, px = e.x, py = e.y;
-      e.x = lerp(e.x, row[1], a); e.y = lerp(e.y, row[2], a); e.angle += adiff(e.angle, row[3]) * a;
-      k.x = e.x; k.y = e.y; k.a = e.angle; k.hide = row[4]; k.spots = row[6]; k.meter = row[7];
-      if (row[5] && !k.done) { k.done = row[5]; k.t = elapsed(); }
+      e.x = lerp(e.x, +row[1] || e.x, a); e.y = lerp(e.y, +row[2] || e.y, a); e.angle += adiff(e.angle, +row[3] || 0) * a;
+      k.x = e.x; k.y = e.y; k.a = e.angle; k.hide = row[4] | 0; k.spots = row[6] | 0; k.meter = +row[7] || 0;
+      if (row[5] && !k.done) { k.done = String(row[5]); k.t = elapsed(); }
       e.hidden = k.done === 'home' || (k.hide === 2 && S.me && S.me.role === 'daddy');
       const sp = hyp(e.x - px, e.y - py) / Math.max(1e-4, dt);
       e.anim.speed = Math.min(1, sp / 45); e.anim.phase += sp * dt * 0.26; e.anim.run = sp > 60;
     }
-    (sn.g || []).forEach((row, i) => { const g = S.dogs[i]; if (!g) return; g.state = row[0] ? 'bark' : 'nap'; g.angle = row[1]; });
-    // the Daddy round's AI Nanna exists on the host only until the first snapshot tells us
-    if (sn.hu && !S.seekers.some((q) => q.role === 'hunter') && S.variant === 'daddy') { /* created by setupRound on every phone */ }
+    (Array.isArray(sn.g) ? sn.g : []).forEach((row, i) => { const g = S.dogs[i]; if (!g || !Array.isArray(row)) return; g.state = row[0] ? 'bark' : 'nap'; g.angle = +row[1] || 0; });
   }
   function netOn() {
     if (S.mode !== 'party' || !S.ctx || typeof S.ctx.on !== 'function') return;
-    const types = ['pos', 'st', 'wh', 'nz', 'sk', 'ev', 'seen', 'catch', 'it', 'round', 'go', 'fin'];
-    for (const ty of types) {
+    for (const ty of ['pos', 'sk', 'wh', 'seen', 'catch', 'it']) {
       try {
-        const off = S.ctx.on('lh:' + ty, (msg, from) => { try { onNet(ty, msg, from); } catch (e) { N.err('latehome.net:' + ty, e); } });
+        const off = S.ctx.on('lh' + ty, (msg, from) => { try { onNet(ty, msg, from); } catch (e) { N.err('latehome.net:' + ty, e); } });
         if (typeof off === 'function') S.subs.push(off);
       } catch (e) { N.err('latehome.on', e); }
     }
+  }
+  function applyKidRow(kid, m) {
+    const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+    kid.net = { x: clamp(num(m.x, kid.x), 0, N.WORLD_W), y: clamp(num(m.y, kid.y), 0, N.WORLD_H), a: num(m.a, 0), h: clamp(m.h | 0, 0, 2), r: m.r ? 1 : 0, l: typeof m.l === 'string' ? m.l.slice(0, 40) : null, g: m.g ? 1 : 0, b: m.b ? 1 : 0 };
+    if (!kid.netSeen) { kid.netSeen = true; kid.x = kid.net.x; kid.y = kid.net.y; }
+    kid.spots = m.s | 0; kid.coll = m.c | 0; kid.meter = clamp(num(m.m, 0), 0, 1); kid.ghost = !!m.g; kid.catches = m.ca | 0; kid.pts = m.p | 0;
+    if (m.d && !kid.done && typeof m.d === 'string') { kid.done = m.d === 'home' ? 'home' : m.d === 'caught' ? 'caught' : 'out'; kid.t = num(m.t, elapsed()); kid.score = m.sc | 0; kid.stars = m.st | 0; kid.seq = null; if (kid.ent && kid.done === 'home') kid.ent.hidden = true; if (S.isHost) checkAllDone(); }
+    if (Array.isArray(m.ti)) for (const id of m.ti) { const it = S.items.find((q) => q.id === id); if (it && !it.taken) it.taken = kid.uid; }
+    if (S.isHost && kid.net.r && !kid.done && !kid.ghost) { kid.nzT = (kid.nzT || 0) - 1 / TUNE.net.hz; if (kid.nzT <= 0) { kid.nzT = 0.45; applyNoise(kid.net.x, kid.net.y, TUNE.noise.run, 'step', null); } }
   }
   function onNet(ty, msg, from) {
     if (!S) return;
     // tolerate {type, data, from} envelopes as well as bare payloads
     if (msg && msg.data && typeof msg.data === 'object' && (msg.type || msg.from)) { from = from || msg.from; msg = msg.data; }
     if (!msg || typeof msg !== 'object') return;
-    const u = msg.u != null ? String(msg.u) : from != null ? String(from && from.uid != null ? from.uid : from) : null;
+    const fu = from && typeof from === 'object' && from.uid != null ? String(from.uid) : from != null && typeof from !== 'object' ? String(from) : null;
+    const u = fu != null ? fu : msg.u != null ? String(msg.u) : null;
     if (u != null && S.me && u === S.me.uid) return; // my own echo
     const kid = u != null ? S.kids.find((k) => k.uid === u) : null;
     const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
-    if (ty === 'pos') {
-      if (!kid || kid.isAI) return;
-      kid.net = { x: clamp(num(msg.x, kid.x), 0, N.WORLD_W), y: clamp(num(msg.y, kid.y), 0, N.WORLD_H), a: num(msg.a, 0), h: clamp(msg.h | 0, 0, 2), r: msg.r ? 1 : 0, l: typeof msg.l === 'string' ? msg.l : null, g: msg.g ? 1 : 0, b: msg.b ? 1 : 0 };
-      if (!kid.netSeen) { kid.netSeen = true; kid.x = kid.net.x; kid.y = kid.net.y; }
-      if (S.isHost && kid.net.r && !kid.done && !kid.ghost) { kid.nzT = (kid.nzT || 0) - 1 / TUNE.net.hz; if (kid.nzT <= 0) { kid.nzT = 0.45; applyNoise(kid.net.x, kid.net.y, TUNE.noise.run, 'step', null); } }
-      return;
-    }
-    if (ty === 'st') {
-      const k = S.kids.find((q) => q.uid === String(msg.k));
-      if (!k || k.isMe) return;
-      if (k.isAI && !S.isHost && u !== k.uid) { /* AI kid states come from the host: accept */ }
-      k.spots = msg.s | 0; k.coll = msg.c | 0; k.meter = clamp(num(msg.m, 0), 0, 1); k.ghost = !!msg.g; k.catches = msg.ca | 0; k.pts = msg.p | 0;
-      if (msg.d && !k.done) { k.done = String(msg.d); k.t = num(msg.t, elapsed()); k.score = msg.sc | 0; k.stars = msg.st | 0; if (k.ent && k.done === 'home') k.ent.hidden = true; if (S.isHost) checkAllDone(); }
+    if (ty === 'pos') { if (kid && !kid.isAI) applyKidRow(kid, msg); return; }
+    if (ty === 'sk') {
+      if (S.isHost) return;
+      S.nets.sk = msg;
+      if (kid && msg.me && typeof msg.me === 'object') applyKidRow(kid, msg.me);
+      for (const ev of Array.isArray(msg.ev) ? msg.ev : []) onHostEvent(ev);
+      const rd = Array.isArray(msg.rd) ? msg.rd : null;
+      if (rd && S.variant === 'daddy') {
+        if ((rd[0] | 0) !== S.round && (rd[0] | 0) > S.round) setupRound(rd[0] | 0, rd[1] != null ? String(rd[1]) : null, num(rd[2], null));
+        else if (rd[3] && S.phase === 'play') { S.phase = 'between'; S.betweenT = 99; banner('ROUND ' + (S.round + 1) + ' OVER', S.kids.map((k) => k.nick + ' ' + (k.pts || 0)).join(' · '), 3200, { kind: 'info' }); }
+      } else if (rd && S.phase === 'intro' && isFinite(rd[2])) S.t0 = rd[2];
+      for (const c of Array.isArray(msg.ct) ? msg.ct : []) if (Array.isArray(c) && S.me && String(c[0]) === S.me.uid) catchMeRemote(c[1]);
+      if (msg.fin && S.phase !== 'done') finishSession();
       return;
     }
     if (ty === 'wh') {
@@ -1973,33 +2093,29 @@
       if (S.isHost) applyNoise(x, y, TUNE.noise.whistle, 'whistle', null);
       return;
     }
-    if (ty === 'nz') { if (S.isHost) applyNoise(num(msg.x, 0), num(msg.y, 0), clamp(num(msg.r, 0), 0, TUNE.noise.whistle), msg.k === 'whistle' ? 'whistle' : 'step', null); return; }
-    if (ty === 'sk') { if (!S.isHost) S.nets.sk = msg; return; }
     if (ty === 'seen') { if (S.isHost) { const sk = S.seekers.find((q) => q.idx === (msg.i | 0)); if (sk) notice(sk, { x: num(msg.x, sk.x), y: num(msg.y, sk.y) }); } return; }
-    if (ty === 'ev') {
-      if (S.isHost) return;
-      const sk = msg.i != null ? S.seekers.find((q) => q.idx === (msg.i | 0)) : null;
-      if (msg.k === 'em' && sk) { sk.emote = String(msg.e || '!').slice(0, 2); sk.emoteT = clamp(num(msg.s, 1.4), 0, 4); }
-      else if (msg.k === 'say' && sk) bark(sk.role === 'window' ? { x: sk.spec.x, y: sk.spec.y } : sk.role === 'daddy' && sk.vehicle ? sk.vehicle : sk, String(msg.t || '').slice(0, 120), msg.sp === 'bahadur' ? 'bahadur' : null, 2.6);
-      else if (msg.k === 'dog') { const g = S.dogs[msg.i | 0]; if (g) { sfx('dog_bark', { x: g.x, y: g.y }); bark(g, pick(LINES.dog), null, 1.8); } }
-      else if (msg.k === 'warn') toast('Amma is at the gate with the big torch...', 3000);
-      return;
-    }
     if (ty === 'catch') {
       const k = S.kids.find((q) => q.uid === String(msg.k));
-      if (!k || k.done || (k.seq && k.seq.phase !== 'remote')) return;
-      if (k.isMe) { k.seq = null; if (msg.why === 'time') startCatch(k, null, 'time'); else daddyCatch(null, k); }
-      else if (k.isAI && S.isHost) { k.seq = null; daddyCatch(null, k); }
+      if (!k || k.done) return;
+      if (k.isMe) catchMeRemote(msg.why);
+      else if (k.isAI && S.isHost && !k.seq) daddyCatch(null, k);
       return;
     }
-    if (ty === 'it') { const it = S.items.find((q) => q.id === msg.id); if (it && !it.taken) { it.taken = u || 'x'; if (kid) kid.coll++; } return; }
-    if (ty === 'round') { if (!S.isHost) setupRound(msg.r | 0, msg.d != null ? String(msg.d) : null, num(msg.t0, null)); return; }
-    if (ty === 'go') { if (!S.isHost && S.phase === 'intro') S.t0 = num(msg.t0, S.t0); return; }
-    if (ty === 'fin') {
-      if (S.isHost || S.phase === 'done') return;
-      if (Array.isArray(msg.res)) for (const r of msg.res) { const k = S.kids.find((q) => q.uid === String(r.uid)); if (k && !k.isMe) { k.done = k.done || (r.home ? 'home' : r.how || 'out'); k.t = num(r.time, k.t); k.spots = r.spots | 0; k.coll = r.coll | 0; k.score = r.score | 0; k.stars = r.stars | 0; k.pts = r.pts | 0; k.catches = r.catches | 0; } }
-      finishSession();
-    }
+    if (ty === 'it') { const it = S.items.find((q) => q.id === msg.id); if (it && !it.taken) { it.taken = u || 'x'; if (kid) kid.coll++; } }
+  }
+  function catchMeRemote(why) {
+    const k = S.me;
+    if (!k || k.done || (k.seq && k.seq.phase !== 'remote')) return;
+    k.seq = null;
+    if (why === 'time') startCatch(k, null, 'time'); else daddyCatch(null, k);
+  }
+  function onHostEvent(ev) {
+    if (!ev || typeof ev !== 'object') return;
+    const sk = ev.i != null ? S.seekers.find((q) => q.idx === (ev.i | 0)) : null;
+    if (ev.k === 'em' && sk) { sk.emote = String(ev.e || '!').slice(0, 2); sk.emoteT = clamp(+ev.s || 1.4, 0, 4); }
+    else if (ev.k === 'say' && sk) bark(sk.role === 'window' ? { x: sk.spec.x, y: sk.spec.y } : sk.role === 'daddy' && sk.vehicle ? sk.vehicle : sk, String(ev.t || '').slice(0, 120), ev.sp === 'bahadur' ? 'bahadur' : null, 2.6);
+    else if (ev.k === 'dog') { const g = S.dogs[ev.i | 0]; if (g) { sfx('dog_bark', { x: g.x, y: g.y }); bark(g, pick(LINES.dog), null, 1.8); } }
+    else if (ev.k === 'warn') toast('Amma is at the gate with the big torch...', 3000);
   }
 
   /* ================================================================ HUD panel + results card (own CSS) */
@@ -2607,8 +2723,8 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
     }
     for (let i = 0; i < 6; i++) { const r = mk(G3.ring, M.hide, 0, 0.8, 0, 1, 1, 1); r.rotation.x = -Math.PI / 2; r.visible = false; V3.rings.push(r); }
     for (let i = 0; i < 4; i++) {
-      const head = mk(G3.sphere, M.skin, 0, 0, 0, 2.2, 2.2, 2.2); head.visible = false;
-      const hair = mk(G3.sphere, M.hair, 0, 0, 0, 2.3, 1.3, 2.3); hair.visible = false;
+      const head = mk(G3.sphere, M.skin, 0, 0, 0, 1.25, 1.3, 1.25); head.visible = false;
+      const hair = mk(G3.sphere, M.hair, 0, 0, 0, 1.32, 0.75, 1.32); hair.visible = false;
       const eye = new THREE.Sprite(V3.eyeMat[0]); eye.scale.set(6, 3.75, 1); eye.visible = false; V3.root.add(eye);
       V3.heads.push({ head, hair, eye });
     }
@@ -2671,10 +2787,10 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
       const x = kid.isMe ? p.x : kid.x, y = kid.isMe ? p.y : kid.y;
       const H3 = V3.heads[hi++];
       H3.head.visible = true; H3.hair.visible = true;
-      H3.head.position.set(x, 3.4 * VS, y); H3.hair.position.set(x, 3.4 * VS + 1.2, y);
+      H3.head.position.set(x, 3.0 * VS, y); H3.hair.position.set(x, 3.0 * VS + 0.7, y);
       H3.head.material = V3.H.mat((kid.look && kid.look.skin) || '#b97a4f'); H3.hair.material = V3.H.mat((kid.look && kid.look.hair) || '#1a1412');
       H3.eye.visible = kid.isMe;
-      if (kid.isMe) { H3.eye.material = V3.eyeMat[peekLevel(kid)]; H3.eye.position.set(x, 9 * VS, y); }
+      if (kid.isMe) { H3.eye.material = V3.eyeMat[peekLevel(kid)]; H3.eye.position.set(x, 6.4 * VS, y); }
     }
     for (; hi < V3.heads.length; hi++) { const H3 = V3.heads[hi]; H3.head.visible = H3.hair.visible = H3.eye.visible = false; }
     // the ghost: a pale wisp where I am
@@ -2739,6 +2855,12 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
     o = o || {};
     if (S) return false;
     if (!N.world || !N.world.built) return false;
+    const id = o.variant === 'daddy' ? 'latehome_daddy' : 'latehome';
+    // with party.js: the same run as its solo mode (countdown, results card, tin token, "Again!")
+    if (!o.direct && N.party && typeof N.party.solo === 'function' && N.party.get && N.party.get(id)) {
+      const r = N.party.solo(id, { venue: o.venue || 'cafe', difficulty: o.difficulty != null ? o.difficulty : 0.5 });
+      return !!(r && r.ok && S);
+    }
     const ctx = soloCtx(o);
     return startWith(ctx, o);
   }
@@ -2765,13 +2887,16 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
     if (G.partyDone || !P || typeof P.register !== 'function') return false;
     G.partyDone = true;
     try {
+      const venueNear = (x, y) => { const g = placePos('playground_14'); return { venue: g && isFinite(x) && hyp(g.x - x, g.y - y) < 260 ? 'ground' : 'cafe' }; };
       P.register('latehome', {
         name: 'Ghar Pahunchna Hai!', icon: '🏠', where: null, kind: 'hide', players: { min: 1, max: 8 }, solo: true,
+        ai: ['immu', 'ayesha'], timeLimit: TUNE.timeLimit + 40, options: venueNear, label: 'Late! Ghar chalo',
         describe: (o) => 'The street lights are ON. Sneak home from ' + venueName(o) + ' past the uncles, the daddies on their Chetaks, the aunty at the window and Bahadur\'s torch. Least seen and fastest home wins; once home, whistle to pull the cones off your friends.',
         start: (ctx) => partyStart(ctx, { variant: 'sneak' }),
       });
       P.register('latehome_daddy', {
         name: 'Daddy Aa Gaye!', icon: '🔦', where: null, kind: 'hide', players: { min: 1, max: 8 }, solo: true,
+        ai: ['immu', 'ayesha'], timeLimit: 3 * (TUNE.daddy.time + 12) + 30, options: venueNear, label: 'Daddy Aa Gaye!',
         describe: (o) => 'One of you is Daddy with the big torch (or Nanna\'s Chetak) at ' + venueName(o) + '; the rest sneak home. Daddy catches by walking right up to you, facing you. Roles swap every round.',
         start: (ctx) => partyStart(ctx, { variant: 'daddy' }),
       });
@@ -2783,7 +2908,7 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
   /* ================================================================ public API + test hooks */
   function snapshot() {
     if (!S) return null;
-    const k2 = (k) => ({ uid: k.uid, nick: k.nick, me: k.isMe, ai: k.isAI, npc: k.npc, x: +k.x.toFixed(1), y: +k.y.toFixed(1), meter: +(+k.meter).toFixed(3), spots: k.spots, coll: k.coll, hide: k.hide, done: k.done, ghost: k.ghost, seq: k.seq ? k.seq.phase : null, t: k.t, role: k.role, pts: k.pts, catches: k.catches, score: k.score, door: S.C.doors[k.uid], mode: k.mode || null, level: k.level });
+    const k2 = (k) => ({ uid: k.uid, nick: k.nick, me: k.isMe, ai: k.isAI, npc: k.npc, x: +k.x.toFixed(1), y: +k.y.toFixed(1), meter: +(+k.meter).toFixed(3), spots: k.spots, coll: k.coll, hide: k.hide, done: k.done, ghost: k.ghost, seq: k.seq ? k.seq.phase : null, t: k.t, role: k.role, pts: k.pts, catches: k.catches, score: k.score, door: S.C.doors[k.uid], mode: k.mode || null, level: k.level, seenBy: k.seenBy ? k.seenBy.role + k.seenBy.idx : null, seenD: k.seenBy ? +hyp(k.seenBy.cone.x - k.x, k.seenBy.cone.y - k.y).toFixed(1) : null });
     return {
       phase: S.phase, mode: S.mode, variant: S.variant, venue: S.venue, seed: S.seed, isHost: S.isHost, t: +elapsed().toFixed(2), round: S.round, rounds: S.rounds,
       par: S.C.par, start: S.C.start, me: S.me ? k2(S.me) : null, kids: S.kids.map(k2),
@@ -2858,6 +2983,7 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
       resolveAI() { if (S) resolveAI(); },
       threatAt: (x, y, m) => { const t = threatAt(x, y, m || 0); return t ? t.idx : -1; },
       paths: () => (S ? S.C.paths : null),
+      v3: () => ({ ok: V3.ok, built: V3.sess === S && !!S, cones: V3.cones.length, coneVis: V3.cones.filter((c) => c.m.visible).length, rootVis: !!(V3.root && V3.root.visible), lamps: V3.lamps.length, doors: V3.doors.length, heads: V3.heads.filter((h) => h.head.visible).length }),
     },
   });
 

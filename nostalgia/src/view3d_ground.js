@@ -10,9 +10,15 @@
  *    every kerbed corner is one curve tangent to both footpath strips (a rounded nose where they
  *    diverge), or plain strip end faces when no curve fits (never a kerb arc standing in the asphalt).
  *    Duplicate alignments (two roads drawn along one line) draw only the wider carriageway, and a global
- *    CLEARANCE pass tests every raised top against every drawn carriageway: a kerbed corner that would
- *    lie on another road is left as a plain asphalt edge, a footpath strip gets a gap with end faces
- *    there (no paver slab on a carriageway or zebra anywhere in the city, tests sweep every junction). One shared road
+ *    CLEARANCE pass tests every raised top against every drawn carriageway, its OWN junction's asphalt
+ *    included (a dense sample grid per paver triangle): a kerbed corner that would lie on a carriageway is
+ *    left as a plain asphalt edge, a footpath strip gets a gap with end faces there (also where it folds
+ *    over its own road on a hook or a bend tighter than the footpath); the outer side of a bend gets a
+ *    paver band (never a slab filling the bend); a junction outline that will not triangulate is rebuilt
+ *    with plain fillets cut straight, then without the kerbed corners whose curves cross it, before the
+ *    hull stands in; zebra stripes and stop lines are painted only where they lie on a carriageway (the
+ *    2D spot and direction, clipped to the asphalt). No paver slab on a carriageway or zebra anywhere in
+ *    the city: tests sweep every junction, graded from the emitted triangles. One shared road
  *    shader with WORLD-SPACE procedural detail, so there are never visible texels: multi-octave value
  *    noise grain + aggregate specks (band-limited by the pixel footprint), darker tyre-worn tracks along
  *    each lane, oil drips, hairline cracks on old roads, dusty crumbling edges on old lanes, a wet sheen

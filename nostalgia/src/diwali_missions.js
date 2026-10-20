@@ -1187,7 +1187,7 @@
     m.checkpoint('terrace');
     for (const d of T.list) d.lit = false;
     camZoom(1.8);
-    m.objective('Light all ' + T.list.length + ' diyas on the parapet before the breeze (E by a diya). When a gust comes, stand guard on its side.');
+    m.objective('Light all ' + T.list.length + ' diyas on the parapet before the breeze (hold E by a diya). When a gust comes, stand guard on its side.');
     ST.gust = { phase: 'calm', t: TUNE.gustFirst, dir: windDir(), n: 0 };
     everyTick(gustTick);
     // strike the match and hold it to the wick (hold E); held while walking along the parapet, one after another
@@ -1424,7 +1424,7 @@
       else widget({ label: 'WIND', value: RK.gust ? 100 : 15, text: RK.gust ? 'GUST, wait!' : 'calm: light it', low: RK.gust, warn: RK.gust });
     });
     m.objective('Wait out the gust, then light it with Bunty-anna (hold E by the bottle).');
-    await holdAt(m, { label: 'Light it, with Bunty-anna (hold E)', meter: 'AGARBATTI', secs: TUNE.lightHold, widget: false, near: () => Math.hypot(N.player.x - L.x, N.player.y - L.y) < 16 });
+    await holdAt(m, { label: 'Light it, with Bunty-anna (hold E)', meter: 'AGARBATTI', secs: TUNE.lightHold, widget: false, near: () => Math.hypot(N.player.x - L.x, N.player.y - L.y) < 22 });
     if (RK.gust && !ff()) {
       ST.stats.gustLights++;
       await m.say('bunty', 'Not in the wind! (He pinches the fuse out.) Rule three, *mamu*. The wind decides where a rocket goes.', { mood: 'angry' });
@@ -1718,7 +1718,7 @@
     ST.prog.diwali_week = { n: ((ST.prog.diwali_week && ST.prog.diwali_week.n) | 0) + 1 };
     // a calendar card, not a mission: it ends without a MISSION PASSED banner and comes back after the next rewind.
     // He is still at the door where Amma's Pataakha Bazaar card waits: it waits until he has stepped out once.
-    const p0 = N.player; if (p0) ST.stepOut = { x: p0.x, y: p0.y };
+    const p0 = N.player; if (p0) ST.stepOut = { x: p0.x, y: p0.y, t: absMin() };
     const r = run();
     if (r && r.id === 'diwali_week') { setTimeout(() => { const q = run(); if (q && q.id === 'diwali_week' && !q.ended) N.missions.abort(); }, 0); await m.until(() => false); }
   }
@@ -1750,7 +1750,8 @@
     const so = ST.stepOut;
     if (!so) return true;
     const p = N.player;
-    if (!p || Math.hypot(p.x - so.x, p.y - so.y) > 70) { ST.stepOut = null; return true; }
+    // he has walked away once, or the day has moved on (a ▶▶, an afternoon at home): the gate lapses
+    if (!p || Math.hypot(p.x - so.x, p.y - so.y) > 70 || Math.abs(absMin() - (so.t || 0)) > 15) { ST.stepOut = null; return true; }
     try {
       const d = N.missions.defs[id], g = d && N.missions.giverPos(d), r = (d && d.giver && d.giver.r) || 14;
       if (!g || Math.hypot(so.x - g.x, so.y - g.y) > r + 24) return true; // he did not end up in this giver's ring
@@ -1758,6 +1759,7 @@
     } catch (e) { return true; }
     return false;
   }
+  const absMin = () => (N.clock ? N.clock.day * 1440 + N.clock.minutes : 0);
   function inYearOct() { const d = dateNow(); return !!d && d.y === 2003 && inDates('09-10', '10-19'); }
 
   /* ================================================================ 3D (N.view3d.registerLayer('dwm3d')): the same props in the 3D views */
@@ -1942,8 +1944,8 @@
   });
   N.on('game:new', () => { cleanupAll(); clearGivers(); if (ST.tigerKeep) removeTiger(ST.tigerKeep); ST.prog = {}; ST.box = {}; ST.lastBuy = ST.lastAim = null; ST.garage = null; ST.terraceKeep = null; });
   N.on('game:quit', () => { cleanupAll(); clearGivers(); });
-  N.on('save:loaded', () => { cleanupAll(); clearGivers(); const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y }; });
-  N.on('mission:complete', () => { const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y }; });
+  N.on('save:loaded', () => { cleanupAll(); clearGivers(); const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y, t: absMin() }; });
+  N.on('mission:complete', () => { const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y, t: absMin() }; });
 
   N.addSystem({
     id: 'diwaliMissions', order: 12, runIn: ['play', 'dialogue', 'cutscene', 'minigame'],

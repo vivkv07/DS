@@ -86,7 +86,7 @@ const N_ERRS = (page) => page.evaluate(() => (N.errors || []).map((e) => (e.wher
 // where things are (resolved in the page): the home lane, Sultan Bazaar's stalls, Tank Bund
 const SPOTS = {
   home: () => { const h = N.diwali.spots.home; return { x: h.x - 22, y: h.y - 15, fx: h.x + 30, fy: h.y + 10 }; },
-  koti: () => { const L = N.diwali.layout.stalls().filter((s) => s.anchor === 'sultan_bazaar'); let x = 0, y = 0; for (const s of L) { x += s.x; y += s.y; } x /= L.length; y /= L.length; const s0 = L.slice().sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0]; return { x: s0.x + s0.fx * 22 * 1.25, y: s0.y + s0.fy * 22 * 1.25, fx: s0.x, fy: s0.y, n: L.length }; },
+  koti: () => { const L = N.diwali.layout.stalls().filter((s) => s.anchor === 'sultan_bazaar'); let x = 0, y = 0; for (const s of L) { x += s.x; y += s.y; } x /= L.length; y /= L.length; const s0 = L.slice().sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0]; return { x: s0.x + s0.fx * 16 * 1.25, y: s0.y + s0.fy * 16 * 1.25, fx: s0.x, fy: s0.y, n: L.length }; },
   tankbund: () => { const p = N.places.tank_bund; return { x: p.x, y: p.y, fx: p.x + 300, fy: p.y + 220 }; },
 };
 /** set the date / time, put Chinnu somewhere, settle the Diwali world round him */
@@ -116,6 +116,8 @@ async function to3D(page, look) {
 async function aim(page, look) {
   await page.evaluate((L) => {
     const p = N.player, yaw = L.yaw != null ? L.yaw : Math.atan2(L.fy - p.y, L.fx - p.x);
+    // a clean camera: no parked bus / lorry right behind Chinnu
+    if (N.traffic && N.traffic.clear) N.traffic.clear((v) => Math.hypot(v.x - p.x, v.y - p.y) < 80);
     p.angle = p.facing = yaw;
     N.view3d.setCamera({ yaw, pitch: L.pitch == null ? 0.05 : L.pitch, snap: true });
   }, look);
