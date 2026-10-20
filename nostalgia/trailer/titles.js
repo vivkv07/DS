@@ -371,7 +371,8 @@
     delay: 0.15, kick: 0.28, line: 0.3, stagger: 0.06, firstKick: 0.1, firstCap: 0.34, out: 0.25, hold: 0.85,
   };
   // per-segment overrides for the lower-third placement, fractions of the frame: x = left edge, w = max width,
-  // top / bottom = block edge (else the defaults below), size / min / maxLines; seg.capPos.{land,port} also applies
+  // top / bottom = block edge (else the defaults below), size / min / maxLines, pool = {padX, padY, cx} for the
+  // soft shadow; seg.capPos.{land,port} also applies
   const LOWPOS = {
     land: {
       g_top_chase: { bottom: 0.79 }, // the HUD minimap sits bottom-left (x 0.8-9.2 %, y 84-98.5 %): stack above it
@@ -380,11 +381,12 @@
       g_top_charminar: { bottom: 0.79, w: 0.315, pool: { padX: 120 } },
     },
     port: {
-      // 3D half: Charminar fills the top, the bike + Chinnu the centre (x 45-55 %, swinging to x 30.4 % by f35);
-      // top-down half: Charminar's roundabout sits left-centre (down to y ~62 %). The left column below the
-      // roundabout and left of the bike's turn is clear in every frame (and above the Reels caption zone)
-      // (the wheel reaches x 30.7 % at f35): PLAY IN / 3D OR / TOP- / DOWN, text edge ~27 %, tight shadow pool
-      g_top_charminar: { x: 0.06, top: 0.6, w: 0.215, maxLines: 4, hyphenBreak: true, min: 40, pool: { padX: 90, padY: 110, cx: 0.42 } },
+      // 3D half: Charminar fills the top, the bike + Chinnu the centre (x 40-53 %, y 44-76.5 %); in the turn
+      // (f33-35) only the front wheel swings LEFT (to x 30.7 %), so the bike's right side stays free; the auto
+      // passes above (y <= 58 %, f6-18). Top-down half: the roundabout is left-centre, Chinnu + the auto stay
+      // above y ~57 %. "3D OR / TOP-DOWN" right of the bike (x 56-86 %, clear of the Reels rail), shadow pool
+      // shifted right so it doesn't darken the bike
+      g_top_charminar: { x: 0.56, top: 0.62, w: 0.305, maxLines: 2, min: 40, pool: { padX: -20, padY: 60, cx: 0.5 } },
     },
   };
   function capLayout(ctx, seg, W, H, opt) {
@@ -399,8 +401,7 @@
     if (O.size) P.base = O.size;
     if (O.min) P.min = O.min;
     if (O.maxLines) P.maxLines = O.maxLines;
-    const words = O.hyphenBreak ? String(seg.cap).split(/\s+/).flatMap((w) => w.split(/(?<=-)/)) : String(seg.cap).split(/\s+/);
-    const join = (ws) => ws.reduce((a, w) => (a && !a.endsWith('-') ? a + ' ' : a) + w, '');
+    const words = String(seg.cap).split(/\s+/), join = (ws) => ws.join(' ');
     const meas = (str, size) => { ctx.font = '900 ' + size + 'px ' + FONT; if ('letterSpacing' in ctx) ctx.letterSpacing = (size * 0.02) + 'px'; const w = ctx.measureText(str).width; if ('letterSpacing' in ctx) ctx.letterSpacing = '0px'; return w; };
     function split(n, size) { // best (min max-width) split of the words into n lines
       let best = null;

@@ -60,7 +60,7 @@
    "kind": "game",
    "clip": "top_charminar",
    "act": "EXPLORE",
-   "cap": "PLAY IN 3D OR TOP-DOWN",
+   "cap": "3D OR TOP-DOWN",
    "hud": true
   },
   {
