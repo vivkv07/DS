@@ -13,10 +13,10 @@
 
   // view: 'tps' | 'fps' | 'top'.  at: place id | [x, y].  veh: vehicle type | null (foot).  spd: u/s.  dir: preferred heading
   const CLIPS = {
-    cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', spd: 105, dir: 0, chase: { back: 26, h: 8, lead: 6, th: 4.5, fov: 56, lag: 0.2 } },
-    top_charminar: { view: 'top', at: 'charminar_plaza', time: [11, 0], veh: 'cycle', spd: 115, dir: -1.6 },
+    cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', spd: 105, dir: 0, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.2 } },
+    top_charminar: { view: 'top', at: 'charminar_plaza', time: [11, 0], veh: 'cycle', spd: 115, dir: -1.6, zoom: 1.3 },
     auto_tankbund: { view: 'tps', at: 'tank_bund', time: [17, 25], veh: 'auto', spd: 130, dir: -1.2, prefer: 'bund' },
-    top_chase: { view: 'top', at: 'abids', time: [12, 30], veh: null, spd: 82, dir: 0, run: true, wanted: 3 },
+    top_chase: { view: 'top', at: 'abids', time: [12, 30], veh: null, spd: 82, dir: 0, run: true, wanted: 3, zoom: 1.3 },
     scooty_rain: { view: 'fps', at: 'abids', time: [21, 15], veh: 'scooty', spd: 120, dir: 1.5, rain: 0.9 },
     top_rain: { view: 'top', at: 'koti', time: [20, 30], veh: 'cycle', spd: 100, dir: -1.5, rain: 0.9 },
     pigeons: { view: 'tps', at: 'charminar_plaza', time: [8, 10], veh: null, spd: 80, dir: 2.6, run: true, scare: 8 },
@@ -33,10 +33,13 @@
     top_traffic: { view: 'top', at: 'abids', time: [18, 10], veh: null, spd: 40, dir: 0.8 },
     kites_sky: { view: 'cam', at: 'giver_himayatnagar', time: [16, 20], veh: null, spd: 0 },
     // festivals (N.seasons overlays; the 3D renderer draws their props from N.seasons.scene)
-    fest_ganesh: { view: 'cam', at: 'tank_bund', time: [16, 40], veh: null, spd: 0, procession: true, front: true, sw0: -0.4, swRate: 0.17, seasons: { ganesh_immersion: true, ganesh: true } },
-    fest_ramzan: { view: 'tps', at: 'pathergatti', time: [21, 30], veh: null, spd: 32, pitch: -0.03, toward: 'charminar', seasons: { ramzan: true } },
-    fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 0, seasons: { bonalu: true }, bonalu: { temple: 'lal_darwaza_temple', ahead: 16, side: 10, h: 5, lat: 4.5 } },
-    fest_numaish: { view: 'tps', at: 'nampally_exhibition', time: [20, 30], veh: null, spd: 34, pitch: -0.04, dir: 0.3, seasons: { numaish: true } },
+    fest_ganesh: { view: 'cam', at: 'tank_bund', time: [16, 40], veh: null, spd: 0, procession: true, front: true, gap: 20, lookAt: 8, camH: 4.2, thAdd: 3, sw0: -0.4, swRate: 0.17, seasons: { ganesh_immersion: true, ganesh: true } },
+    fest_ramzan: { view: 'tps', at: 'charminar', off: [0, -240], time: [21, 30], veh: null, spd: 32, toward: 'charminar', chase: { back: 18, h: 6.5, lead: 40, th: 16, fov: 60, lag: 0.2 }, seasons: { ramzan: true } },
+    ramzan_e: { view: 'tps', at: 'charminar', off: [230, 0], time: [21, 30], veh: null, spd: 32, toward: 'charminar', chase: { back: 18, h: 6.5, lead: 40, th: 16, fov: 60, lag: 0.2 }, seasons: { ramzan: true } },
+    ramzan_s: { view: 'tps', at: 'charminar', off: [0, 230], time: [21, 30], veh: null, spd: 32, toward: 'charminar', chase: { back: 18, h: 6.5, lead: 40, th: 16, fov: 60, lag: 0.2 }, seasons: { ramzan: true } },
+    ramzan_w: { view: 'tps', at: 'charminar', off: [-230, 0], time: [21, 30], veh: null, spd: 32, toward: 'charminar', chase: { back: 18, h: 6.5, lead: 40, th: 16, fov: 60, lag: 0.2 }, seasons: { ramzan: true } },
+    fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 0, seasons: { bonalu: true }, bonalu: { temple: 'lal_darwaza_temple', ahead: 17, side: 13, h: 5, lat: 4.5, look: -1.5 } },
+    fest_numaish: { view: 'tps', at: [8312, 5864], time: [20, 30], veh: null, spd: 48, run: true, line: { a: 0, r0: 210, r1: -120 }, chase: { back: 16, h: 6.5, lead: 30, th: 12, fov: 60, lag: 0.2 }, seasons: { numaish: true } },
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
     // in-world playground games (N.playgroundGames): a real match with Chinnu and the AI kids, scripted inside the window
     lingocha: { view: 'tps', at: 'playground_home', time: [14, 45], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: -28, h1: 14, crane: 45, f0: 13, s0: 4, h0: 8.5 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
@@ -118,6 +121,7 @@
     if (o.bonalu) { C = { id, o, path: null, v: null, d: 0, f: 0, x: 0, y: 0 }; return bonPrep(o, nf); }
     const pl = o.at instanceof RegExp ? placeLike(o.at) : (P(o.at) || LM(o.at));
     if (Array.isArray(o.at)) { x = o.at[0]; y = o.at[1]; } else { x = pl.x; y = pl.y; }
+    if (o.off) { x += o.off[0]; y += o.off[1]; }
     const total = (nf + 60) / FPS * Math.max(1, o.spd);
     let path;
     if (o.line) { // a straight row in from the open water towards a landmark (boats)
@@ -396,7 +400,7 @@
     if (!rig) { C.proc = null; return; }
     // front: the dancers lead the lorry and the camera faces the idol (else they follow it, seen from behind)
     const a = (rig.a || 0) + (C.o.front ? Math.PI : 0), dx = Math.cos(a), dy = Math.sin(a), sx = -dy, sy = dx;
-    const cx = rig.x - dx * 34, cy = rig.y - dy * 34;
+    const gap = C.o.gap || 34, cx = rig.x - dx * gap, cy = rig.y - dy * gap;
     const list = [];
     let k = 0;
     for (let row = 0; row < 3; row++) for (let col = -3; col <= 3; col++) {
@@ -417,14 +421,15 @@
     const rig = findRig(P.rig.x, P.rig.y) || P.rig; // track the same rig (nearest to where it was)
     P.rig = rig;
     const a = P.a, dx = Math.cos(a), dy = Math.sin(a);
-    const cx = rig.x - dx * 34, cy = rig.y - dy * 34;
+    const gap = C.o.gap || 34, cx = rig.x - dx * gap, cy = rig.y - dy * gap;
     for (const c of P.list) { c.x = cx + c.ox; c.y = cy + c.oy; }
     STAGE.gulal({ x: cx - dx * 4, y: cy - dy * 4, h: 0, r: 13 });
     // low dolly behind the dancers (they face us), the idol on its rig rising behind them
     const t = C.f / FPS, sw = (C.o.sw0 == null ? -0.45 : C.o.sw0) + t * (C.o.swRate == null ? 0.3 : C.o.swRate);
     const ca = a + Math.PI + sw, r = 26;
     const big = rig.kind === 'giant';
-    STAGE.cam({ x: cx + Math.cos(ca) * r, y: cy + Math.sin(ca) * r, h: 3.6, tx: rig.x - dx * 14, ty: rig.y - dy * 14, th: big ? 15 : 9, fov: big ? 64 : 56 });
+    const tl = C.o.lookAt == null ? 14 : C.o.lookAt;
+    STAGE.cam({ x: cx + Math.cos(ca) * r, y: cy + Math.sin(ca) * r, h: C.o.camH || 3.6, tx: rig.x - dx * tl, ty: rig.y - dy * tl, th: (big ? 15 : 9) + (C.o.thAdd || 0), fov: big ? 64 : 56 });
   }
 
   function advance(warm) {

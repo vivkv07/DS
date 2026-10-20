@@ -9,7 +9,8 @@
  *                                (to OUTD/<id>/sNNNNN.jpg) with a status log, to pick a pre-roll
  *   logs: trailer/out/mg_logs/<W>x<H>_<id>.txt  (frame-numbered HUD changes: compare with the survey log)
  *          Q=92                  JPEG quality
- *          FAST=0                draw the pre-roll at full res too (default: pre-roll frames draw into a 1x1 canvas)
+ *          FAST=0|1              draw the pre-roll at full res too / not (default: per game; pre-roll frames draw into a
+ *                                1x1 canvas, except kite)
  *          P_<game>='{json}'     extra N.minigames.play params, T_<game>='{json}' TUNE overrides (try-outs)
  *          TOUCH=0|1             force the touch-button layout off / on (default: on in portrait = real phone UI, off in landscape)
  *   -> OUTD/<segment id>/%05d.jpg  exactly n*beatFrames frames per segment
@@ -37,7 +38,8 @@ const FPS = TL.fps || 30, DT = 1 / FPS;
 const GAMES = {
   // landscape cuts at f417 / f503 (game won at f570): window 400-544 = two "BO KAATA!" cuts with the pech gauge;
   // portrait cuts at f151 / f225 (won f259): window 108-252
-  kite: { params: { difficulty: 0.4, seed: 11 }, pre: 400, preV: 108 },
+  // kite's draw feeds its simulation, so its pre-roll must really draw (fast: false), else the bot plays out differently
+  kite: { params: { difficulty: 0.4, seed: 11 }, pre: 400, preV: 108, fast: false },
   // ball bowled ~f70, PERFECT hit ~f90, "SIX! Main road tak!" at f127
   cricket: { params: { difficulty: 0.4, seed: 5 }, pre: 66 },
   // the striker clacks into the cross (~f50), a goli flies out, "PHIR SE MAARO!", aim + flick again at f102
@@ -72,7 +74,9 @@ const LOGD = path.join(__dirname, 'out', 'mg_logs');
     await page.evaluate(() => ACT.setup());
     const cdp = await context.newCDPSession(page);
     const shot = async (file) => {
-      const r = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: Q });
+      // without a clip CDP returns CSS-px images (1920x1080); clip.scale = DSF gives device px (3840x2160), and the
+      // DOM text is rasterised at that scale (crisp), the minigame canvas is already 2x (dpr 2)
+      const r = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: Q, clip: { x: 0, y: 0, width: W, height: H, scale: SCALE } });
       fs.writeFileSync(file, Buffer.from(r.data, 'base64'));
     };
     const nf = seg.n * TL.beatFrames, dir = path.join(OUTD, seg.id);
@@ -85,7 +89,7 @@ const LOGD = path.join(__dirname, 'out', 'mg_logs');
     console.log(seg.id, 'booted + started in', ((Date.now() - t0) / 1000).toFixed(0), 's', JSON.stringify(info), SURVEY ? 'SURVEY ' + SURVEY : 'pre-roll ' + pre);
     // one frame per evaluate; log every HUD change (to find the exact frame of a hit / cut / line clear)
     const total = SURVEY ? SURVEY[1] : pre + nf;
-    const FAST = !SURVEY && process.env.FAST !== '0';
+    const FAST = !SURVEY && (process.env.FAST != null ? process.env.FAST !== '0' : cfg.fast !== false);
     if (FAST && pre > 0) await page.evaluate(() => ACT.fast(true));
     const log = [];
     let last = '', st, ncap = 0;
