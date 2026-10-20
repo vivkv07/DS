@@ -96,7 +96,8 @@
    "kind": "mg",
    "game": "cricket",
    "act": "PLAY",
-   "cap": "GULLY CRICKET"
+   "cap": "GULLY CRICKET",
+   "sfxF": 35
   },
   {
    "id": "a_marbles",
