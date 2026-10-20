@@ -1,11 +1,13 @@
 /* NOSTALGIA trailer v2 — capture the full-screen minigame clips (timeline segments of kind 'mg').
  *   node trailer/activities.cjs 1920 1080     landscape -> trailer/out/frames2/<segment id>/%05d.jpg   (3840x2160)
- *   node trailer/activities.cjs 1080 1920     portrait  -> trailer/out/frames2_v/<segment id>/%05d.jpg (2160x3840)
+ *   SCALE=4 node trailer/activities.cjs 540 960   portrait at real phone scale -> trailer/out/frames2_v/<id>/%05d.jpg
+ *                                             (2160x3840; 1080 1920 at SCALE 2 = the same pixels at tablet scale)
  *   (run landscape first: each portrait clip is lined up with the landscape clip's log, see ALIGN)
  *   W H = viewport in CSS px, rendered at deviceScaleFactor SCALE (default 2); exactly n*beatFrames frames per clip.
  *     env: ONLY=a_kite,cricket   segment ids or game ids
  *          OUTD=dir              output root (default trailer/out/frames2 | frames2_v by orientation)
- *          SCALE=2               deviceScaleFactor
+ *          SCALE=2               deviceScaleFactor (phone-scale portrait: 540 960 with SCALE=4 -> 2160x3840)
+ *          CANVAS_DPR=n          minigame canvas resolution (default: SCALE when SCALE > 2, the game's own cap is 2)
  *          Q=92                  JPEG quality
  *          EVERY=n               capture every n-th frame only (quick look; frame files keep their index)
  *          PRE_<game>=frames     override a game's pre-roll (frames at 30 fps stepped before the first capture)
@@ -16,7 +18,8 @@
  *                                each side and keep the window whose key HUD changes land on the same clip frames as
  *                                trailer/out/mg_logs/1920x1080_<id>.txt — one score for both cuts)
  *          SURVEY=k,len[,from]   instead of the clip: step len frames, capture every k-th (from frame `from`) to
- *                                OUTD/<id>/sNNNNN.jpg, log every HUD change — to pick a pre-roll
+ *                                OUTD/<id>/sNNNNN.jpg, log every HUD change — to pick a pre-roll (SURVEY_FAST=1:
+ *                                fast-forward to `from`, for a quick layout look)
  *   logs: trailer/out/mg_logs/<W>x<H>_<id>.txt — frame-numbered HUD changes of the run (header: the pre-roll used)
  * The game runs on the virtual rAF clock (lib.cjs); each frame steps 1/30 s in its own evaluate and is grabbed with
  * CDP Page.captureScreenshot (clip scale = DSF: the minigame canvas at 2x + its DOM top bar). Every clip runs in a
@@ -103,6 +106,9 @@ function evKey(st, ev) { return st ? (ev ? (String(st.hud).match(new RegExp(ev, 
     await page.addScriptTag({ path: path.join(__dirname, 'activities_page.js') });
     await takeOver(page);
     await page.evaluate(() => ACT.setup());
+    // the game caps its canvas at dpr 2: at SCALE 4 (phone-sized CSS viewport) render the canvas at 4x too
+    const CDPR = +(process.env.CANVAS_DPR != null ? process.env.CANVAS_DPR : SCALE > 2 ? SCALE : 0);
+    if (CDPR) await page.evaluate((d) => { ACT.canvasDpr = d; }, CDPR);
     const cdp = await context.newCDPSession(page);
     const shot = async (file) => {
       // without a clip CDP returns CSS-px images (1920x1080); clip.scale = DSF gives device px (3840x2160), and the
@@ -128,9 +134,10 @@ function evKey(st, ev) { return st ? (ev ? (String(st.hud).match(new RegExp(ev, 
     // (the first cut) to clip frame `clip`, as in the landscape clip
     const anchor = PORTRAIT ? cfg.anchorV : null;
     const M = !SURVEY && PORTRAIT && process.env.ALIGN !== '0' && cfg.align !== false && (anchor || fs.existsSync(refLog)) ? +(process.env.MARGIN || 2) : 0;
-    const first = pre + 1 - M; // first captured frame
+    const first = SURVEY ? (SURVEY[2] || 1) : pre + 1 - M; // first captured frame
     const total = SURVEY ? SURVEY[1] : pre + nf + M;
-    const FAST = !SURVEY && (process.env.FAST != null ? process.env.FAST !== '0' : cfg.fast !== false) && first > 1;
+    // (SURVEY_FAST=1: a quick look — fast-forward a survey up to its `from` frame too)
+    const FAST = (!SURVEY || process.env.SURVEY_FAST === '1') && (process.env.FAST != null ? process.env.FAST !== '0' : cfg.fast !== false) && first > 1;
     if (FAST) await page.evaluate(() => ACT.fast(true));
     const mdir = dir + '.margin';
     if (M) { fs.rmSync(mdir, { recursive: true, force: true }); fs.mkdirSync(mdir, { recursive: true }); }

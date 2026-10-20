@@ -8,6 +8,7 @@
  *                          mbRelease / mbShoot, through the game's own pointer input)
  *   ACT.step(n, dt)        advance the virtual clock n frames; returns ACT.status() = {phase, t, over, hud}
  *   ACT.fast(on)           draw into a 1x1 canvas (fast pre-roll) / back to the real canvas
+ *   ACT.canvasDpr = n      render the minigame canvas at n x CSS px (above the game's cap of 2; set before start)
  *   ACT.end()              close the open minigame immediately
  *   ACT.mbSearch(params, cands, {h})  try scripted marbles shots on fresh games (simulation only) -> outcomes
  */
@@ -51,6 +52,23 @@
     const f = function (now) { const mr = Math.random; Math.random = prng; try { return orig.call(this, now); } finally { Math.random = mr; } };
     f.__act = true;
     G.prototype.frame = f;
+  }
+  // Canvas resolution above the game's own cap (Game.resize uses min(2, devicePixelRatio)): for a phone-sized CSS
+  // viewport captured at deviceScaleFactor 4, ACT.canvasDpr = 4 keeps the minigame canvas at the output resolution
+  // (the DOM top bar / touch buttons are rasterised at the device scale anyway). 0 = the game's own dpr.
+  ACT.canvasDpr = 0;
+  if (G && !G.prototype.resize.__act) {
+    const origResize = G.prototype.resize;
+    const rz = function () {
+      origResize.call(this);
+      const d = ACT.canvasDpr;
+      if (d && !this.dead && this.dpr !== d) {
+        this.dpr = d; this.canvas.width = Math.round(this.W * d); this.canvas.height = Math.round(this.H * d);
+        if (this.S && this.def.layout) { try { this.def.layout(this); } catch (e) { /* ignore */ } }
+      }
+    };
+    rz.__act = true;
+    G.prototype.resize = rz;
   }
   // tune: optional per-game overrides of N.minigames.TUNE[id] for this run (restored by ACT.end)
   ACT.start = function (id, params, tune, script) {
