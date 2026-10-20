@@ -87,7 +87,8 @@
    "kind": "game",
    "clip": "lingocha",
    "act": "PLAY",
-   "cap": "LINGOCHA"
+   "cap": "LINGOCHA",
+   "sfxF": 20
   },
   {
    "id": "a_cricket",

@@ -378,12 +378,12 @@
         sg.gain.setValueAtTime(1.6 * (1 - k / 9), tt); sg.gain.exponentialRampToValueAtTime(0.001, tt + 0.05);
       }
     },
-    cricket(t) { // bat "tock" + crowd cheer swell
+    cricket(t, tEnd) { // bat "tock" + crowd cheer swell (it starts to fade at the clip's cut, tEnd, not in the next shot)
       const g = gain(0, BUS.sfx); g.connect(gain(0.4, BUS.verb));
       osc('sine', 1040, t, t + 0.12, g); osc('triangle', 640, t, t + 0.15, gain(0.7, g));
       g.gain.setValueAtTime(0.38, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
       const cg = gain(0, BUS.sfx); const bp = filt('bandpass', 3000, 2, cg); noise(t, 0.02, bp); cg.gain.setValueAtTime(0.7, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.015);
-      crowd(t + 0.1, B * 3.2, 1);
+      crowd(t + 0.1, tEnd ? Math.min(B * 3.2, Math.max(0.8, (tEnd - t - 0.15) / 0.7)) : B * 3.2, 1);
     },
     marbles(t) { // glass marbles clacking (on 16ths), a little roll at the end
       const hits = [[0, 1], [S16, 0.6], [S16 * 3, 0.8], [S16 * 3.5, 0.4], [S16 * 4, 0.25]];
@@ -556,7 +556,7 @@
     const TRIM = { kite: 3.2, lingocha: 0.7, cricket: 1.6, marbles: 2.2, marampitti: 1.8, panipuri: 1, bargain: 1, brickgame: 2.2, antenna: 1, clap: 2.6 };
     for (const k in SFX) {
       const f = SFX[k];
-      SFX[k] = defer((t) => { const bus = BUS.sfx; BUS.sfx = gain(TRIM[k] || 1, bus); try { f(t); } finally { BUS.sfx = bus; } }, (t) => t - 0.2);
+      SFX[k] = defer((t, tEnd) => { const bus = BUS.sfx; BUS.sfx = gain(TRIM[k] || 1, bus); try { f(t, tEnd); } finally { BUS.sfx = bus; } }, (t) => t - 0.2);
     }
   }
 
@@ -852,7 +852,7 @@
       const t = tbA(sg.b), key = sg.game || sg.clip;
       if (sg.act === 'PLAY' && sg.b !== playStart) cutAccent(t, 1);
       // the SFX lands on the clip's key moment: optional per-segment offset sfxF (frames) or sfxB (beats)
-      if (sg.act === 'PLAY' && SFX[key]) SFX[key](t + (sg.sfxF != null ? sg.sfxF / TL.fps : (sg.sfxB || 0) * B));
+      if (sg.act === 'PLAY' && SFX[key]) SFX[key](t + (sg.sfxF != null ? sg.sfxF / TL.fps : (sg.sfxB || 0) * B), tbA(sg.b + sg.n));
       if (sg.kind === 'game' && prevKind === 'game' && sg.act === 'EXPLORE') whoosh(t, 0.4, 0.35, 1);
       prevKind = sg.kind;
     }
