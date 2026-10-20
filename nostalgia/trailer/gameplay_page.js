@@ -151,7 +151,7 @@
     // warm-up: drive the route for 2 s (camera settles, traffic + birds populate, chunks stream)
     for (let k = 0; k < 3; k++) N.view3d && N.view3d.active && N.view3d.settle(30000);
     // (the warm-up's frames are not looked at: skip their GL draws, render only the last few)
-    const nw = window.WARM || 60;
+    const nw = o.warm || window.WARM || 60;
     noDraw(true); try { for (let k = 0; k < nw - 8; k++) advance(true); } finally { noDraw(false); }
     for (let k = 0; k < 8; k++) advance(true);
     if (N.view3d && N.view3d.active) N.view3d.settle(30000);

@@ -7,6 +7,7 @@
  *          SURVEY=prologue|title   run that sequence with a status log + a low-res still every SURVEY_EVERY frames
  *          CUTS=name,..            re-render only these cuts (PLANS below) into the segment's existing frames
  *          EVERY=n                 preview: capture every n-th frame only (the files keep their frame index)
+ *          QA=1                    only build the contact sheet out/qa_story_landscape.jpg | qa_story_portrait.jpg
  *          Q=92                    JPEG quality
  *   -> OUTD/<segment id>/%05d.jpg  exactly n*beatFrames frames per segment
  */
@@ -234,7 +235,35 @@ async function renderSegment(seg) {
   return errors.length;
 }
 
+// QA=1: contact sheet out/qa_story_<landscape|portrait>.jpg — 8 frames per segment (one row each), frame numbers burnt in
+function qaSheet() {
+  const segs = TL.segments.filter((x) => x.kind === 'ui');
+  const rows = [], tmp = path.join(__dirname, 'out', 'qa_story_tmp');
+  fs.mkdirSync(tmp, { recursive: true });
+  const FONT = '/usr/share/fonts/opentype/inter/Inter-Bold.otf';
+  const th = PORTRAIT ? 480 : 270;
+  for (const seg of segs) {
+    const dir = path.join(OUTD, seg.id), nf = seg.n * BF;
+    if (!fs.existsSync(dir)) { console.log('qa: no frames for', seg.id); continue; }
+    const picks = [];
+    for (let k = 0; k < 8; k++) picks.push(Math.min(nf - 1, Math.round(k * (nf - 1) / 7)));
+    const ins = [], fl = [];
+    picks.forEach((f, k) => {
+      ins.push('-i', path.join(dir, String(f).padStart(5, '0') + '.jpg'));
+      fl.push(`[${k}:v]scale=-2:${th},drawtext=fontfile=${FONT}:text='${seg.id} ${f}':x=8:y=8:fontsize=${PORTRAIT ? 22 : 16}:fontcolor=white:box=1:boxcolor=black@0.6[v${k}]`);
+    });
+    const row = path.join(tmp, seg.id + '.jpg');
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error'].concat(ins, ['-filter_complex', fl.join(';') + ';' + picks.map((_, k) => `[v${k}]`).join('') + `hstack=inputs=${picks.length}`, '-q:v', '3', row]));
+    rows.push(row);
+  }
+  const out = path.join(__dirname, 'out', 'qa_story_' + (PORTRAIT ? 'portrait' : 'landscape') + '.jpg');
+  if (rows.length === 1) fs.copyFileSync(rows[0], out);
+  else execFileSync('ffmpeg', ['-y', '-loglevel', 'error'].concat(...rows.map((r) => ['-i', r]), ['-filter_complex', rows.map((_, k) => `[${k}:v]`).join('') + `vstack=inputs=${rows.length}`, '-q:v', '3', out]));
+  console.log('qa sheet', out);
+}
+
 (async () => {
+  if (process.env.QA) return qaSheet();
   if (SURVEY) return survey();
   let nerr = 0;
   for (const seg of TL.segments.filter((x) => x.kind === 'ui' && (!ONLY.length || ONLY.includes(x.id)))) nerr += await renderSegment(seg);

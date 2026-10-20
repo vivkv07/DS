@@ -237,13 +237,13 @@
   }
 
   // vehicles on his line (a kid running down the road: anything parked or crawling there would be run through)
-  function clearLine(r, len) {
+  function clearLine(r, len, back) {
     const pts = [];
-    for (let d = C.d - 20; d < C.d + len; d += 4) pts.push(at(C.path, d, { x: 0, y: 0 }));
+    for (let d = C.d - (back || 20); d < C.d + len; d += 4) pts.push(at(C.path, d, { x: 0, y: 0 }));
     let n = 0;
     for (const e of N.entities.all.slice()) {
       if (e.kind !== 'vehicle' || e === N.player.vehicle || e.npcOwned || e.pursuitVehicle || e.roadblock) continue;
-      const rr = r + ((e.T && e.T.w) || 6) / 2;
+      const rr = r + ((e.T && e.T.d) || 6) / 2; // (T.d: the vehicle's width)
       if (pts.some((q) => Math.abs(q.x - e.x) < rr && Math.abs(q.y - e.y) < rr && Math.hypot(q.x - e.x, q.y - e.y) < rr)) { try { N.vehicles.remove(e); n++; } catch (er) { /* ignore */ } }
     }
     return n;
@@ -280,14 +280,18 @@
   // shorter bubbles for some speakers (by the pursuer's role; wraps the game's bark for this page only)
   const bark0 = N.dialogue.bark;
   N.dialogue.bark = function (target, text, opts) {
-    const bs = C && C.o.barkSecs, role = target && target.pursuer ? target.role : null;
-    if (bs && role && bs[role] != null) opts = Object.assign({}, opts, { secs: bs[role] });
+    const bs = C && C.o.barkSecs;
+    const role = !target ? null : target.pursuer ? target.role : target.pu && target.pu.actor ? target.pu.actor.role : null;
+    if (bs && role && bs[role] != null) {
+      if (!bs[role]) return { closed: true, close() {}, done: Promise.resolve() }; // (no bubble)
+      opts = Object.assign({}, opts, { secs: bs[role] });
+    }
     return bark0.call(this, target, text, opts);
   };
 
   function script() {
     const o = C.o, W = N.wanted;
-    if (o.clear && (C.f === -(o.warm || 75) || C.f === -12)) C.log.push(C.f + ' cleared ' + clearLine(o.clear, (C.nf + 10 - C.f) / FPS * o.spd) + ' vehicles off his line');
+    if (o.clear && (C.f === -(o.warm || 75) || C.f === -12)) C.log.push(C.f + ' cleared ' + clearLine(o.clear, (C.nf + 10 - C.f) / FPS * o.spd, C.f === -12 ? 240 : 20) + ' vehicles off his line');
     if (o.heat) {
       const L0 = W.level;
       heatTo(heatAt(o.heat, C.f));
