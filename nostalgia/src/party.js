@@ -19,9 +19,13 @@
  *     challenge(id, opts) -> {ok, why?, mode: 'party'|'solo', sid}   invite the room (the challenger is the host); the
  *       others see an invite card "Ravi challenges you to <name> — Accept / Skip". Alone or offline: plays solo.
  *     solo(id, opts) -> {ok, why?, sid}   play against the AI friends
- *     available(x, y) -> [{id, name, icon, kind, where, here, d, label, line}]   offered at (x, y): `here` ones are shown as
- *       the prompt "E Start <name>" at their place; all of them in the "Challenge friends" list (Online panel, 🏁 in the
- *       quick-chat strip, N.party.openPicker()).
+ *     available(x, y) -> [{id, name, icon, kind, where, here, d, label, line, x, y, r, atName, anywhere}]   offered at (x, y):
+ *       `here` ones are shown as the prompt "E Start <name>" at their place; all of them in the "Challenge friends" list
+ *       (Online panel, 🏁 in the quick-chat strip, N.party.openPicker()); the placed ones (not `anywhere`) in the room HUD's
+ *       "Nearby" card and the arrival toast (online.js), whose one tap is quick(id) (setup, then challenge; no start card).
+ *     quick(id, {from}) -> Promise<challenge() result>   uiBusy (a session / invite / card is up)
+ *     A room holds N.online.MAX players (3): players.max may say more (solo with the gang), a party session has at most
+ *       the room; players.min is capped at the room size, so every activity runs with 1-3 friends.
  *     active -> the session in lobby / countdown / running (null when idle): {id, sid, name, mode, phase, isHost, players, ctx}
  *     defs (Map), get(id), cancel(why), leave(), openPicker(), closeCards(), stats, FRIENDS, _debug
  *   }
@@ -153,7 +157,7 @@
       let here = false, d = Infinity, at = null;
       for (const sp of spots) { const dd = Math.hypot(sp.x - x, sp.y - y); if (dd < d) { d = dd; at = sp; } if (dd <= sp.r) here = true; }
       if ((s.where || s.spots) && !spots.length) continue; // its place is not on this map
-      out.push({ id: s.id, name: s.name, icon: s.icon, kind: s.kind, where: s.where, here: here || !s.where, anywhere: !s.where, d: s.where ? d : 0, at: at ? at.id : null, x: at ? at.x : null, y: at ? at.y : null, atName: at ? at.name : null, label: s.label || ('Start ' + s.name), line: describe(s), solo: !!s.solo, players: Object.assign({}, s.players) });
+      out.push({ id: s.id, name: s.name, icon: s.icon, kind: s.kind, where: s.where, here: here || !s.where, anywhere: !s.where, d: s.where ? d : 0, at: at ? at.id : null, x: at ? at.x : null, y: at ? at.y : null, atName: at ? at.name : null, label: s.label || ('Start ' + s.name), line: describe(s), solo: !!s.solo, players: Object.assign({}, s.players), r: at ? at.r : null });
     }
     out.sort((a, b) => (b.here - a.here) || (a.d - b.d) || (a.name < b.name ? -1 : 1));
     return out;
@@ -162,6 +166,9 @@
   /* ================================================================ transport + shared clock */
   const NET = { off: null, ok: false };
   const myUid = () => (N.online && N.online.myKey) || 'me';
+  // a room holds N.online.MAX players (3): an activity's own players.min / max are capped at that in a room
+  const roomMax = () => clamp((N.online && N.online.MAX) | 0 || 3, 2, 10);
+  const minIn = (s) => clamp(s.players.min, 1, roomMax());
   function inRoom() { return !!(N.online && N.online.room && typeof N.online.channelSend === 'function'); }
   function roomPlayers() { try { return inRoom() && N.online.players ? N.online.players() : []; } catch (e) { return []; } }
   function others() { return roomPlayers().filter((p) => !p.me); }
@@ -301,7 +308,7 @@
     const n = S.acc.size;
     if (Date.now() - S.lastInv > TUNE.invEvery) sendInvite(S);
     if ((answered && here.length) || sharedNow() >= S.exp) {
-      if (n >= Math.max(2, S.spec.players.min)) goHost(S);
+      if (n >= Math.max(2, minIn(S.spec))) goHost(S);
       else cancelSession(S, here.length && answered ? 'Nobody could play right now.' : 'Nobody accepted in time.', true);
     }
   }
@@ -1117,8 +1124,8 @@
     if (s.solo) buttons.push({ label: friends ? 'Play with AI friends' : 'Play with Immu & gang', key: friends ? '2' : '1', fn: () => go('solo') });
     if (!buttons.length) { toast('Needs friends in an online room. (Pause → Online)'); return; }
     buttons.push({ label: 'Not now', key: 'N', alt: true, fn: () => {} });
-    const pl = s.players;
-    showCard({ title: s.icon + ' ' + s.name, line: describe(s, defaultOpts(s, N.player.x, N.player.y)) + (pl.max > 1 ? ' · ' + (pl.min === pl.max ? pl.min : pl.min + '-' + pl.max) + ' players' : ''), buttons });
+    const pl = s.players, lo = friends ? minIn(s) : pl.min, hi = friends ? Math.min(pl.max, roomMax()) : pl.max;
+    showCard({ title: s.icon + ' ' + s.name, line: describe(s, defaultOpts(s, N.player.x, N.player.y)) + (hi > 1 ? ' · ' + (lo >= hi ? hi : lo + '-' + hi) + ' players' : ''), buttons });
     void from;
   }
   /** the "Challenge friends" picker (🏁 in the quick-chat strip, or N.party.openPicker()) */
@@ -1132,6 +1139,27 @@
     showCard({ title: friends ? '🏁 Challenge friends' : '🏁 Play with the gang', line: friends ? 'Pick a game. Everybody in the room gets an invite.' : 'No friends in a room: Immu, Ayesha, Pappu and Bunty-anna will play.', html: '<div class="pt-list scroll">' + rows + '</div>', buttons: [{ label: 'Close', key: 'N', alt: true, fn: () => {} }],
       onPick: (id) => { const s = REG.get(id); if (!s) return; const a = list.find((q) => q.id === id); if (a && !a.here && s.where) { travelHint(s); return; } openStart(id, 'picker'); } });
     return true;
+  }
+  /** quick(id, {from}): one tap from the room HUD (src/online.js: the "Nearby" card, the arrival toast, the panel's
+   *  Nearby list) -> the activity's setup() if it has one, then challenge() (alone in the room / offline: solo). No start
+   *  card: the tap was the choice. Resolves to challenge()'s {ok, why?, mode, sid}. */
+  async function quick(id, o) {
+    const s = REG.get(id);
+    if (!s) return { ok: false, why: 'unknown' };
+    if (ST.sess) { toast('Already playing ' + ST.sess.spec.name + '.'); return { ok: false, why: 'busy' }; }
+    if (N.state.mode === 'paused') { try { if (N.online && N.online.close) N.online.close(); if (N.menus && N.menus.resume) N.menus.resume(); else N.game.resume(); } catch (e) { /* ignore */ } }
+    const why = busyWhy(); if (why) { toast(why); return { ok: false, why }; }
+    if (!whenOk(s)) { toast(s.name + ': not now.'); return { ok: false, why: 'Not now.' }; }
+    closeCard();
+    const e = N.player && (N.player.vehicle || N.player);
+    let opts = defaultOpts(s, e && e.x, e && e.y);
+    if (typeof s.setup === 'function') {
+      try { opts = await s.setup(opts, { mode: inRoom() && others().length ? 'party' : 'solo' }); } catch (er) { N.err('party.setup:' + id, er); opts = null; }
+      if (!opts) return { ok: false, why: 'cancelled' };
+    }
+    const r = challenge(id, opts);
+    N.emit('party:quick', { id, from: (o && o.from) || null, ok: !!r.ok, mode: r.mode || null });
+    return r;
   }
   function travelHint(s) {
     const sp = spotsOf(s)[0];
@@ -1325,7 +1353,9 @@
     get invite() { const i = ST.invite; return i ? { sid: i.sid, id: i.id, from: i.nick, opts: i.opts } : null; },
     get last() { return ST.lastFin; },
     defs: REG, get: (id) => REG.get(id) || null,
-    accept: acceptInvite, skip: declineInvite, cancel, leave, start: (id) => openStart(id, 'api'),
+    accept: acceptInvite, skip: declineInvite, cancel, leave, start: (id) => openStart(id, 'api'), quick,
+    /** a session, an invite or one of the cards is up (the room HUD's nearby card / arrival toast step aside) */
+    get uiBusy() { return !!(ST.sess || ST.invite || D.card || D.inv || D.lob || D.res); },
     openPicker, closeCards() { closeCard(); closeResults(); }, panelHtml, panelAct,
     stats: ST.stats, FRIENDS, TUNE, fmtMs, cycleFor,
     _debug: {

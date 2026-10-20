@@ -1,7 +1,22 @@
 /* NOSTALGIA — online.js
  * Online play (ARCHITECTURE §23, design/online_setup.md): a PLAYER CODE identity, cloud saves and the
- * journey, and shared city rooms of up to 10 friends who see each other as ghosts and meet at one place.
- * Story, missions, the Chappal Meter and traffic stay single-player: remote players are drawn, nothing else.
+ * journey, and shared city rooms of up to 3 friends (N.ONLINE_CONFIG.maxPlayers) who see each other as ghosts and
+ * meet at one place. Story, missions, the Chappal Meter and traffic stay single-player: remote players are drawn.
+ *
+ * THE ROOM FLOW (owner: "you go into online game and it should automatically take you into the game"):
+ *   Title / pause -> ONLINE -> "Create a room" or a code + "Join" -> the panel shows the room code for a moment
+ *   (TUNE.flowMs) -> straight into the world: from the title the saved game continues (N.game.continueGame, the latest
+ *   slot), or with no save a new game starts with the intro skipped (N.game.newGame({skipIntro}) + the flags the
+ *   2026 prologue would leave, so the story can still begin at M1's giver); from the pause deck the game resumes.
+ *   A joiner is placed a few metres from the earliest player in the room (walkable ground, off the road when
+ *   there is a footpath, no wall in between) once that friend's position arrives; during a mission, a party
+ *   game or a chase they are never moved: a pink route + the 👫 "Go to friends" button instead (HUD + panel).
+ *   One create / join at a time (a double tap gets the same answer), one game start.
+ * NEARBY FOR THE GROUP (in a room, play mode, no mission / party game / chase): a HUD card (a chip on phones)
+ *   with the 3-4 placed activities nearest the group's centre (N.party.available: whatever is registered,
+ *   seasonal ones only in season) + one open snack stop (N.shops), each with its distance from me and a one-tap
+ *   "Challenge" (N.party.quick); when everybody in the room is within ~60 m of one: "You're all at Gokul Chat —
+ *   Pani puri contest? [🏁 Start]" (once per arrival, rate-limited).
  *
  * Backend: Supabase (N.ONLINE_CONFIG in src/online_config.js). Nothing loads until the player opens Online
  * (or has used it before on this device: then the SDK loads quietly after boot to mirror the saves).
@@ -17,10 +32,11 @@
  *     thing first through N.save.canReplace / importBlob (save.js).
  *   - Rooms: public Realtime channels 'room:<CODE>' (e.g. room:CHAI-42), config {broadcast: {self: false},
  *     presence: {key: <random id per page load>}}. Presence meta {n: nick, l: look, j: joined ms, pin, pc}
- *     gives the player list, the 10-player cap (checked before tracking; the latest joiners leave if a race
+ *     gives the player list, the 3-player cap (checked before tracking; the latest joiners leave if a race
  *     overfills it) and the meet pin (it lives in the dropper's meta, so late joiners see it). Broadcast 'st'
  *     carries {x, y, a, m: 'f'|'v', vt, vc, sp, an: 'i'|'w'|'r', n?, l?} at up to stateHz (8; fewer per player
- *     in a big room), only on change plus a 2 s keepalive; 'em' carries a quick-chat id. A room ends when its
+ *     in a big room), only on change plus a 2 s keepalive (and at once, full, when someone joins, so a joiner
+ *     finds their friends quickly); 'em' carries a quick-chat id. A room ends when its
  *     last player leaves (no tables). Every incoming field is validated and clamped here (channels are public).
  *   - Ghosts: one entity per remote player, kind 'ghost' (solid false, noCollide, selfUpdate), so traffic,
  *     vehicles, wanted, missions and saves ignore it. 2D: traffic.js blitPerson / the vehicle type's own
@@ -35,14 +51,17 @@
  *   cleanNick(s), nickOk(s) -> {ok, why}, normCode(s), codeOk(s)
  *   cloud: {pull(), push(slot?), state}   journey() -> the local journey summary   pushJourney()
  *   createRoom() / joinRoom(code) / leaveRoom() -> Promise<{ok, why, code?}>   room -> {code, players[], n} | null
- *   dropPin(placeId | null (here)) / clearPin()   say(id)   PHRASES   MEET_PLACES   MAX
+ *   goToFriends() -> {ok, why, waypoint?}   startGame() (into the city from the title, while in a room)
+ *   nearby(max) -> [{id, name, icon, kind: 'party' | 'shop', at, x, y, dMe, dAll}]   flow (state for tests)
+ *   dropPin(placeId | null (here)) / clearPin()   say(id)   PHRASES   MEET_PLACES   MAX (3)
  *   titleLine() / pauseLine()   _debug {...} (tests)
  *   [party hook] channelSend(type, data) -> bool · onMessage(fn) -> off() · players() · partyRpc(fn, args) · myKey
  *     (src/party.js, ARCHITECTURE §24: the 'pt' broadcast on the room channel; the Online panel's "Challenge friends"
  *     section via N.party.panelHtml / panelAct; a 🏁 button in the quick-chat strip -> N.party.openPicker)
  * }
  * Events: 'online:status' {status}, 'online:room' {code | null}, 'online:players' {n}, 'online:pin' {pin},
- *   'online:chat' {from, id, text}, 'online:cloud' {what, slot?, why?}.
+ *   'online:chat' {from, id, text}, 'online:cloud' {what, slot?, why?}, 'online:start' {how: 'continue' | 'new'},
+ *   'online:gather' {ok, why?, auto, x?, y?}, 'online:arrive' {id, at}.
  * Deviation (ARCHITECTURE §2): online play fetches the SDK from jsDelivr and talks to Supabase; it is opt-in,
  * lazy, and the guest / offline game never touches the network.
  */
@@ -70,7 +89,9 @@
     if (!/^https?:$/.test(location.protocol)) return 'web';
     return 'ok';
   }
-  const MAX = () => clamp(((cfg() && cfg().maxPlayers) | 0) || 10, 2, 10);
+  const MAX = () => clamp(((cfg() && cfg().maxPlayers) | 0) || 3, 2, 10);
+  const M_PER_U = 1.6; // metres per world unit (ARCHITECTURE §4)
+  function fmtDist(u) { const m = Math.max(0, u) * M_PER_U; return m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.max(10, Math.round(m / 10) * 10) + ' m'; }
   const SITE = 'https://vivkv07.github.io/DS/';
 
   /* ================================================================ local profile */
@@ -497,34 +518,51 @@
     return { ok: true, why: null, code };
   }
   function busyRoom() { return R.ch ? { ok: false, why: 'You are already in room ' + R.code + '.' } : null; }
-  async function createRoom() {
-    const b = busyRoom(); if (b) return b;
-    if (!P.nick) P.nick = defaultNick();
-    try { await ensureClient(); } catch (e) { return { ok: false, why: S.lastError || 'Could not reach the online server.' }; }
-    for (let i = 0; i < 6; i++) {
-      const r = await enter(newRoomCode(), 'create');
-      if (r.ok) { toast('Room ' + r.code + ' is open. Tell your friends the code!', 3600); return r; }
-      if (r.why !== 'taken') return { ok: false, why: 'Could not open a room. Check the internet.' };
-    }
-    return { ok: false, why: 'All the room names are busy. Try again.' };
+  // one create / join at a time: a second tap (or call) while one is on its way gets the same answer
+  function once(fn) {
+    if (R.entering) return R.entering;
+    R.entering = fn().finally(() => { R.entering = null; });
+    return R.entering;
   }
-  async function joinRoom(s) {
-    const b = busyRoom(); if (b) return b;
-    const code = normRoom(s);
-    if (!ROOM_RE.test(code)) return { ok: false, why: 'Room codes look like CHAI-42.' };
-    if (!P.nick) P.nick = defaultNick();
-    try { await ensureClient(); } catch (e) { return { ok: false, why: S.lastError || 'Could not reach the online server.' }; }
-    const r = await enter(code, 'join');
-    if (r.ok) { toast(R.players.some((p) => !p.me) ? 'Joined room ' + code + '.' : 'You are in room ' + code + '. Waiting for friends to join…', 3000); return r; }
-    if (r.why === 'full') return { ok: false, why: 'Room ' + code + ' is full (' + MAX() + '/' + MAX() + ').' };
-    if (r.why === 'empty') return { ok: false, why: 'No one is in room ' + code + '. Rooms close when everyone leaves.' };
-    return { ok: false, why: 'Could not join. Check the internet.' };
+  function createRoom() {
+    return once(async () => {
+      const b = busyRoom(); if (b) return b;
+      if (!P.nick) P.nick = defaultNick();
+      try { await ensureClient(); } catch (e) { return { ok: false, why: S.lastError || 'Could not reach the online server.' }; }
+      for (let i = 0; i < 6; i++) {
+        const r = await enter(newRoomCode(), 'create');
+        if (r.ok) { afterEnter('create'); if (gameStarted()) toast('Room ' + r.code + ' is open. Tell your friends the code!', 3600); return r; }
+        if (r.why !== 'taken') return { ok: false, why: 'Could not open a room. Check the internet.' };
+      }
+      return { ok: false, why: 'All the room names are busy. Try again.' };
+    });
+  }
+  function joinRoom(s) {
+    return once(async () => {
+      const b = busyRoom(); if (b) return b;
+      const code = normRoom(s);
+      if (!ROOM_RE.test(code)) return { ok: false, why: 'Room codes look like CHAI-42.' };
+      if (!P.nick) P.nick = defaultNick();
+      try { await ensureClient(); } catch (e) { return { ok: false, why: S.lastError || 'Could not reach the online server.' }; }
+      const r = await enter(code, 'join');
+      if (r.ok) {
+        const friends = R.players.some((p) => !p.me);
+        afterEnter(friends ? 'join' : 'wait');
+        if (gameStarted()) toast(friends ? 'Joined room ' + code + '.' : 'You are in room ' + code + '. Waiting for friends to join…', 3000);
+        return r;
+      }
+      if (r.why === 'full') return { ok: false, why: 'Room ' + code + ' is full (' + MAX() + '/' + MAX() + '). Ask a friend to start a new room.' };
+      if (r.why === 'empty') return { ok: false, why: 'No one is in room ' + code + '. Rooms close when everyone leaves.' };
+      return { ok: false, why: 'Could not join. Check the internet.' };
+    });
   }
   async function leaveRoom(why) {
     const ch = R.ch;
     if (!ch) return { ok: true };
     R.leaving = true;
     R.ch = null; R.code = null; R.players = []; R.pin = null; R.myPin = null;
+    FLOW.place = null; FLOW.offer = null; FLOW.auto = null; HS.inside = new Set(); HS.nearHtml = '';
+    hideArrive();
     clearGhosts();
     clearPinMarks();
     await closeChannel(ch);
@@ -550,7 +588,11 @@
       const g = ghostFor(p.key);
       g.nick = p.nick; g.look = p.look; g.ent.look = p.look;
       setTagName(g.tag, p.nick);
-      if (!prevKeys.has(p.key) && prevKeys.size) toast(p.nick + ' joined the room.', 2200);
+      if (!prevKeys.has(p.key)) {
+        // someone new: send my full state at once (not at the next 2 s keepalive) so they can find me straight away
+        R.keepT = 0; R.fullT = 0; R.lastSent = null;
+        if (prevKeys.size) toast(p.nick + ' joined the room!', 2400);
+      }
     }
     for (const [k, g] of GH) if (!keys.has(k)) { const n = g.nick; removeGhost(k); toast(n + ' left the room.', 2000); }
     // the meet pin: the newest pin in the room that no "clear" has overtaken
@@ -938,6 +980,206 @@
     return true;
   }
 
+  /* ================================================================ room flow: straight into the world, next to friends */
+  const TUNE = { flowMs: 1400 }; // the panel shows the room code this long before the game takes over
+  const GO_MIN_U = 100;          // the 👫 button shows when the friend it goes to is farther than this (~160 m)
+  const FLOW = { auto: null, place: null, offer: null, starting: false, started: 0, how: null };
+  const gameStarted = () => { const m = N.state.mode; return m !== 'title' && m !== 'boot'; };
+  /** after a successful create / join: into the world (title), back to it (pause over the panel), then next to friends */
+  function afterEnter(kind) {
+    FLOW.place = kind === 'join' ? { code: R.code, t0: 0 } : null;
+    FLOW.offer = null;
+    const m = N.state.mode;
+    if (m === 'title') FLOW.auto = { kind: 'start', at: nowMs() + TUNE.flowMs };
+    else if (m === 'paused' && panelShown()) FLOW.auto = { kind: 'resume', at: nowMs() + TUNE.flowMs };
+    else FLOW.auto = null;
+  }
+  function runAuto(A) {
+    if (!A || !R.ch) return;
+    const m = N.state.mode;
+    if (A.kind === 'start') { if (m === 'title') startGame(); return; }
+    if (A.kind === 'resume' && m === 'paused' && panelShown()) {
+      try { N.menus.closePanel('online'); if (N.menus.resume) N.menus.resume(); else N.game.resume(); } catch (e) { N.err('online.resume', e); }
+    }
+  }
+  /** Into the city from the title: the latest save (what CONTINUE plays; every save writes it, so it is the most
+   *  recent one), or with none a new game with the intro skipped, straight into free roam. Once. */
+  function startGame() {
+    if (FLOW.starting || gameStarted()) return false;
+    FLOW.starting = true; FLOW.auto = null;
+    let ok = false, how = null;
+    try {
+      const SV = N.save;
+      if (SV && SV.has && SV.has() && !SV.tooNew) {
+        ok = N.game.continueGame(); how = 'continue';
+        if (ok && N.menus && N.menus.osdCard) N.menus.osdCard('▶ PLAY', { sub: N.clock.dateLabel() + '  ' + N.clock.label(), ms: 1500 });
+      } else {
+        ok = N.game.newGame({ skipIntro: true, online: true }); how = 'new';
+        // [story hook] the online quick start skips the 2026 prologue: leave what the prologue leaves (story.js
+        // prologue(): year 2003, prologue_seen) so M1's giver waits on the home terrace and the story can begin later
+        if (ok && N.flags) { N.flags.prologue_seen = true; N.flags.year = 2003; }
+      }
+    } catch (e) { N.err('online.startGame', e); }
+    FLOW.starting = false;
+    if (ok) {
+      FLOW.started = nowMs(); FLOW.how = how;
+      const alone = !R.players.some((p) => !p.me);
+      toast(alone ? 'Room ' + R.code + ': tell your friends the code! They will appear next to you.' : 'Room ' + R.code + ': finding your friends…', 4200);
+      N.emit('online:start', { how });
+    }
+    return ok;
+  }
+  /** the earliest player in the room (presence order: join time) whose position has arrived, not me */
+  function friendTarget() {
+    for (const p of R.players) {
+      if (p.me) continue;
+      const g = GH.get(p.key);
+      if (!g || !g.buf.length || g.ent.hidden || !(g.ent.x > -9000)) continue;
+      return { key: p.key, nick: p.nick, x: g.ent.x, y: g.ent.y };
+    }
+    return null;
+  }
+  /** how far the friend 👫 would take me to is (Infinity: nobody to go to yet) */
+  function friendDistU() {
+    const me = N.player && (N.player.vehicle || N.player), tg = friendTarget();
+    return me && tg ? Math.hypot(tg.x - me.x, tg.y - me.y) : Infinity;
+  }
+  /** why I may not be moved right now (never out of a mission, a party game or a chase) */
+  function gatherBlock() {
+    if (N.missions && N.missions.active) return 'You are on a mission!';
+    if (N.party && N.party.active) return 'Finish the game first!';
+    if (N.wanted && (N.wanted.level | 0) >= 3) return 'Shake off the chase first!';
+    if (N.minigames && N.minigames.isOpen && N.minigames.isOpen()) return 'Finish the game first!';
+    return null;
+  }
+  /** a walkable spot a few metres from (x, y): off the road when there is a footpath, no wall in between */
+  function spotNear(x, y, key) {
+    const W = N.world;
+    if (!W || !W.built || !W.isWalkable) return { x, y, a: 0 };
+    const SF = N.SURF || {};
+    const a0 = (((U.strHash ? U.strHash(myKey + key) : 7) >>> 0) % 628) / 100;
+    for (const pass of [0, 1]) {
+      for (const dist of [16, 22, 11, 30]) {
+        for (let k = 0; k < 8; k++) {
+          const a = a0 + (k * TAU) / 8, px = x + Math.cos(a) * dist, py = y + Math.sin(a) * dist;
+          if (!W.isWalkable(px, py)) continue;
+          const sf = W.surfaceAt ? W.surfaceAt(px, py) : -1;
+          if (pass === 0 && (sf === SF.ROAD || sf === SF.BRIDGE)) continue;
+          try { if (W.raycast && W.raycast(x, y, px, py, 'walk').hit) continue; } catch (e) { /* ignore */ }
+          return { x: px, y: py, a: Math.atan2(y - py, x - px) };
+        }
+      }
+    }
+    const f = W.findFree ? W.findFree(x, y, 'walk', 24) : null;
+    return f ? { x: f.x, y: f.y, a: Math.atan2(y - f.y, x - f.x) } : null;
+  }
+  /** 👫 Go to friends: next to the earliest friend in the room; during a mission / party game / chase: a pink route */
+  function goToFriends(o) {
+    o = o || {};
+    if (!R.ch) return { ok: false, why: 'Join a room first.' };
+    if (!gameStarted()) return { ok: false, why: 'Start the game first.' };
+    const tg = friendTarget();
+    if (!tg) {
+      const why = R.players.some((p) => !p.me) ? 'Your friends are not in the city yet.' : 'Nobody else is in the room yet. Share the code!';
+      if (!o.quiet) toast(why, 3000);
+      return { ok: false, why };
+    }
+    const block = gatherBlock();
+    if (block) {
+      try { if (N.menus && N.menus.waypoint) { N.menus.waypoint(tg.x, tg.y); FLOW.wp = { x: tg.x, y: tg.y }; } } catch (e) { N.err('online.goWp', e); }
+      FLOW.offer = { key: tg.key, t: nowMs() };
+      toast(block + ' The pink route goes to ' + tg.nick + '. Afterwards tap 👫 Go to friends.', 4600);
+      N.emit('online:gather', { ok: false, why: block, auto: !!o.auto });
+      hudTick(true);
+      return { ok: false, why: block, waypoint: true };
+    }
+    const sp = spotNear(tg.x, tg.y, tg.key);
+    const p = N.player;
+    if (!sp || !p) return { ok: false, why: 'No room to stand there.' };
+    try { if (p.level && N.world.roofs && N.world.roofs.descend) N.world.roofs.descend(p, { x: sp.x, y: sp.y, instant: true }); } catch (e) { /* ignore */ }
+    p.teleport(sp.x, sp.y);
+    p.angle = p.facing = sp.a;
+    try { if (N.view3d && N.view3d.active && N.view3d.snapCamera) N.view3d.snapCamera(); } catch (e) { /* ignore */ }
+    try { const w = N.menus && N.menus.waypointPos; if (w && FLOW.wp && Math.abs(w.x - FLOW.wp.x) < 1 && Math.abs(w.y - FLOW.wp.y) < 1) N.menus.waypoint(null); } catch (e) { /* ignore */ }
+    FLOW.offer = null; FLOW.wp = null;
+    toast(o.auto ? 'You joined ' + R.code + ': ' + tg.nick + ' is right here!' : 'Whoosh! You are with ' + tg.nick + '.', 3000);
+    sfx('ui_select');
+    N.emit('online:gather', { ok: true, auto: !!o.auto, x: sp.x, y: sp.y, to: tg.nick });
+    hudTick(true);
+    return { ok: true, why: null, to: tg.nick, x: sp.x, y: sp.y };
+  }
+  /** a joiner: wait for play and the friend's first position, then stand next to them (or offer 👫) */
+  function placeTick() {
+    const F = FLOW.place;
+    if (!F) return;
+    if (!R.ch || R.code !== F.code) { FLOW.place = null; return; }
+    if (N.state.mode !== 'play') return; // the game is still starting / a scene / the pause menu: later
+    const t = nowMs();
+    if (!F.t0) F.t0 = t;
+    if (!friendTarget()) {
+      if (t - F.t0 > 15000) { FLOW.place = null; toast('Your friends are not in the city yet. When they are, tap 👫 Go to friends.', 4200); }
+      return;
+    }
+    if (N.player && N.player.controlsLocked && !gatherBlock() && t - F.t0 < 20000) return; // a J-card / a ride is up: a moment
+    FLOW.place = null;
+    goToFriends({ auto: true });
+  }
+  N.on('mission:complete', () => { if (FLOW.offer && R.ch) setTimeout(() => { if (FLOW.offer && R.ch) toast('Mission done! Tap 👫 Go to friends to join them.', 3600); }, 4000); });
+
+  /* ---------------------------------------------------------------- nearby for the group */
+  const ARRIVE_U = 60 / M_PER_U; // "you're all at ...": everybody within ~60 m of the activity's spot
+  const FOOD = ['irani_cafe', 'bakery', 'iyengar_bakery', 'chai_bandi', 'samosa_bandi', 'dosa_bandi', 'coconut_cart', 'banana_cart'];
+  const FOOD_ICON = { irani_cafe: '☕', bakery: '🥐', iyengar_bakery: '🥐', chai_bandi: '☕', samosa_bandi: '🥟', dosa_bandi: '🫓', coconut_cart: '🥥', banana_cart: '🍌' };
+  function groupPoints() {
+    const pts = [];
+    const me = N.player && (N.player.vehicle || N.player);
+    if (me && isFinite(me.x) && isFinite(me.y)) pts.push({ key: myKey, me: true, x: me.x, y: me.y });
+    for (const p of R.players) {
+      if (p.me) continue;
+      const g = GH.get(p.key);
+      if (g && g.buf.length && !g.ent.hidden && g.ent.x > -9000) pts.push({ key: p.key, me: false, x: g.ent.x, y: g.ent.y });
+    }
+    return pts;
+  }
+  /** what the group can do close by: placed party activities (any registered: N.party.available), nearest to the
+   *  group's centre first, + the nearest open snack stop (N.shops) when there is one within ~800 m */
+  function nearby(max, pts) {
+    pts = pts || groupPoints();
+    const PA = N.party;
+    if (!pts.length || !PA || typeof PA.available !== 'function') return [];
+    let cx = 0, cy = 0;
+    for (const q of pts) { cx += q.x; cy += q.y; }
+    cx /= pts.length; cy /= pts.length;
+    const me = pts.find((q) => q.me) || pts[0];
+    const far = (x, y) => Math.max(...pts.map((q) => Math.hypot(x - q.x, y - q.y)));
+    let list = [];
+    try { list = PA.available(cx, cy) || []; } catch (e) { N.err('online.nearby', e); return []; }
+    const out = [];
+    for (const a of list) {
+      if (a.anywhere || typeof a.x !== 'number' || typeof a.y !== 'number' || !isFinite(a.x) || !isFinite(a.y)) continue; // anywhere ones: the 🏁 picker
+      out.push({ id: a.id, kind: 'party', name: a.name, icon: a.icon || '🏁', at: a.atName || null, line: a.line || '', x: a.x, y: a.y, r: a.r || 0, d: Math.hypot(a.x - cx, a.y - cy), dMe: Math.hypot(a.x - me.x, a.y - me.y), dAll: far(a.x, a.y) });
+    }
+    out.sort((p, q) => p.d - q.d);
+    const n = Math.max(1, max || 4);
+    const res = out.slice(0, n);
+    try {
+      const SH = N.shops;
+      if (SH && SH.list && SH.isOpenNow) {
+        let best = null;
+        for (const kind of FOOD) {
+          for (const id of SH.list(kind) || []) {
+            const pl = N.places && N.places[id];
+            if (!pl) continue;
+            const d = Math.hypot(pl.x - cx, pl.y - cy);
+            if (d < 500 && (!best || d < best.d) && SH.isOpenNow(id)) best = { id, kind: 'shop', name: pl.name || placeName(id), icon: FOOD_ICON[kind] || '☕', at: 'open now', line: '', x: pl.x, y: pl.y, d, dMe: Math.hypot(pl.x - me.x, pl.y - me.y), dAll: far(pl.x, pl.y) };
+          }
+        }
+        if (best) { if (res.length >= n) res[n - 1] = best; else res.push(best); }
+      }
+    } catch (e) { N.err('online.nearbyShop', e); }
+    return res;
+  }
+
   /* ================================================================ [party hook] (src/party.js, ARCHITECTURE §24) */
   // A small message bus on the room channel for party activities. channelSend(type, data) broadcasts 'pt'
   // {k, t, d} to the room; onMessage(fn) -> off() gets ({from, nick, type, data}) for every valid message from a
@@ -977,14 +1219,28 @@
     try { return await rpc(fn, args); } catch (e) { return { ok: false, reason: 'net' }; }
   }
 
-  /* ================================================================ HUD: room badge + quick-chat strip */
-  let hudEl = null;
+  /* ================================================================ HUD: room badge, 👫, nearby card, quick-chat strip */
+  // Right edge, mid-height (clear of the touch buttons and the centre prompts): the room badge (opens the panel; "tell
+  // friends this code" while alone), 👫 Go to friends (when they are far), the arrival card ("You're all at ..."; the
+  // Nearby card steps aside while it shows), the "Nearby" card (a chip on phones that opens a short list), 💬 quick chat.
+  let hudEl = null, arriveEl = null;
+  const HS = { t: 0, nearT: 0, nearHtml: '', nearOpen: null, snooze: new Map(), lastArrive: -Infinity, inside: new Set(), arrive: null };
+  const UI_KEY = 'nostalgia.online.ui.v1';
+  const narrow = () => (window.innerWidth || 800) <= 560 || document.body.classList.contains('touch-on');
+  function nearOpen() {
+    if (HS.nearOpen == null) { let v = null; try { v = JSON.parse(lsGet(UI_KEY) || 'null'); } catch (e) { v = null; } HS.nearOpen = v && typeof v.near === 'boolean' ? v.near : !narrow(); }
+    return HS.nearOpen;
+  }
+  function setNearOpen(on) { HS.nearOpen = !!on; lsSet(UI_KEY, JSON.stringify({ near: HS.nearOpen })); HS.nearHtml = ''; hudTick(true); }
   function buildHud() {
     if (hudEl) return;
     hudEl = document.createElement('div');
     hudEl.className = 'ol-hud interactive';
     hudEl.hidden = true;
-    hudEl.innerHTML = '<button type="button" class="ol-badge" data-ol="panel" aria-label="Online room"><b class="ol-badge-code"></b><span class="ol-badge-n"></span></button>' +
+    hudEl.innerHTML = '<button type="button" class="ol-badge" data-ol="panel" aria-label="Online room"><span class="ol-badge-top"><b class="ol-badge-code"></b><span class="ol-badge-n"></span></span><small class="ol-badge-hint">tell friends this code</small></button>' +
+      '<button type="button" class="ol-go" data-ol="go" hidden aria-label="Go to friends"><span class="ol-go-t">👫 Go to friends</span><small class="ol-go-d"></small></button>' +
+      '<div class="ol-arrive" role="status"></div>' +
+      '<div class="ol-near" hidden><button type="button" class="ol-near-tg" data-ol="near" aria-expanded="false"><span>🏁 Nearby</span><i class="ol-near-n"></i></button><div class="ol-near-list"></div></div>' +
       '<button type="button" class="ol-chat-tg" data-ol="chat" aria-label="Quick chat" aria-expanded="false">💬</button>' +
       '<div class="ol-chat" hidden>' + PHRASES.map((p) => '<button type="button" class="ol-say" data-say="' + p.id + '">' + esc(p.text) + '</button>').join('') +
       '<button type="button" class="ol-say ol-party" data-ol="party" aria-label="Challenge friends">🏁</button>' + '</div>'; // [party hook]
@@ -993,29 +1249,128 @@
       if (!b) return;
       ev.stopPropagation();
       if (b.dataset.say) { say(b.dataset.say); return; }
-      if (b.dataset.ol === 'party') { try { if (N.party && N.party.openPicker) N.party.openPicker({ from: 'chat' }); } catch (e) { N.err('online.party', e); } return; } // [party hook]
-      if (b.dataset.ol === 'chat') { const c = hudEl.querySelector('.ol-chat'); c.hidden = !c.hidden; b.setAttribute('aria-expanded', c.hidden ? 'false' : 'true'); return; }
-      if (b.dataset.ol === 'panel') { try { if (N.state.mode === 'play' && N.game && N.game.pause) N.game.pause(); open({ from: 'pause' }); } catch (e) { N.err('online.badge', e); } }
+      if (b.dataset.near) { sfx('ui_select'); quickParty(b.dataset.near, 'nearby'); return; }
+      if (b.dataset.arr) {
+        const id = HS.arrive && HS.arrive.id;
+        if (!id) return;
+        if (b.dataset.arr === 'go') { sfx('ui_select'); quickParty(id, 'arrive'); } else { sfx('ui_back'); HS.snooze.set(id, nowMs() + 10 * 60000); hideArrive(); hudTick(true); }
+        return;
+      }
+      if (b.dataset.meet) { sfx('ui_select'); dropPin(b.dataset.meet); return; }
+      const a = b.dataset.ol;
+      if (a === 'party') { try { if (N.party && N.party.openPicker) N.party.openPicker({ from: 'chat' }); } catch (e) { N.err('online.party', e); } return; } // [party hook]
+      if (a === 'chat') { const c = hudEl.querySelector('.ol-chat'); c.hidden = !c.hidden; b.setAttribute('aria-expanded', c.hidden ? 'false' : 'true'); if (!c.hidden && narrow() && nearOpen()) setNearOpen(false); return; }
+      if (a === 'near') { sfx('ui_click'); const on = !nearOpen(); setNearOpen(on); if (on && narrow()) { const c = hudEl.querySelector('.ol-chat'); c.hidden = true; hudEl.querySelector('.ol-chat-tg').setAttribute('aria-expanded', 'false'); } return; }
+      if (a === 'go') { goToFriends(); return; }
+      if (a === 'panel') { try { if (N.state.mode === 'play' && N.game && N.game.pause) N.game.pause(); open({ from: 'pause' }); } catch (e) { N.err('online.badge', e); } }
     });
     // taps on the HUD must not reach the touch controls / canvas under it
     for (const ev of ['pointerdown', 'touchstart']) hudEl.addEventListener(ev, (e) => e.stopPropagation(), { passive: true });
     (document.getElementById('ui') || document.body).appendChild(hudEl);
+    arriveEl = hudEl.querySelector('.ol-arrive');
   }
   function renderHud() {
-    if (!R.ch) { if (hudEl) hudEl.hidden = true; return; }
+    if (!R.ch) { if (hudEl) hudEl.hidden = true; hideArrive(); return; }
     buildHud();
+    const alone = !R.players.some((p) => !p.me);
     hudEl.querySelector('.ol-badge-code').textContent = R.code || '';
     hudEl.querySelector('.ol-badge-n').textContent = ' · ' + R.players.length + '/' + MAX();
+    hudEl.querySelector('.ol-badge').classList.toggle('alone', alone);
+    hudTick(true);
   }
   function hudVisibility() {
     if (!hudEl) return;
     const m = N.state.mode;
     hudEl.hidden = !R.ch || !(m === 'play' || m === 'dialogue');
   }
+  /** nothing else owns the moment: free roam, no mission, no party game / invite / card, no chase */
+  function hudCalm() {
+    if (N.state.mode !== 'play') return false;
+    if (N.missions && N.missions.active) return false;
+    const PA = N.party;
+    if (PA && (PA.active || PA.invite || PA.uiBusy)) return false;
+    if (N.minigames && N.minigames.isOpen && N.minigames.isOpen()) return false;
+    if (N.wanted && (N.wanted.level | 0) >= 3) return false;
+    return true;
+  }
+  function quickParty(id, from) {
+    hideArrive();
+    try { if (N.party && N.party.quick) return N.party.quick(id, { from }); } catch (e) { N.err('online.quick', e); }
+    return null;
+  }
+  /** the 👫 button, the nearby card and the arrival toast (every 0.5 s; the list every 2 s) */
+  function hudTick(force) {
+    if (!hudEl || !R.ch) return;
+    const t = nowMs();
+    if (!force && t - HS.t < 500) return;
+    HS.t = t;
+    const play = gameStarted();
+    // 👫: the friend it takes me to (the earliest in the room) is far away, or an offer is pending (a mission-time join)
+    const go = hudEl.querySelector('.ol-go');
+    const dF = play ? friendDistU() : Infinity;
+    const showGo = play && isFinite(dF) && (dF > GO_MIN_U || !!FLOW.offer);
+    go.hidden = !showGo;
+    if (showGo) { const tx = fmtDist(dF); const d = go.querySelector('.ol-go-d'); if (d.textContent !== tx) d.textContent = tx; go.classList.toggle('pulse', !!FLOW.offer); }
+    // the nearby card
+    const box = hudEl.querySelector('.ol-near');
+    const calm = hudCalm();
+    if (HS.arrive && (!calm || t > HS.arrive.until)) hideArrive();
+    if (!calm) { box.hidden = true; }
+    else if (force || t - HS.nearT > 2000) {
+      HS.nearT = t;
+      const list = nearby(4);
+      box.hidden = !list.length || !!HS.arrive;
+      if (list.length) {
+        const open = nearOpen();
+        box.classList.toggle('open', open);
+        const tg = box.querySelector('.ol-near-tg');
+        tg.setAttribute('aria-expanded', open ? 'true' : 'false');
+        const n = box.querySelector('.ol-near-n'); const nt = String(list.length); if (n.textContent !== nt) n.textContent = nt;
+        const friends = R.players.some((p) => !p.me);
+        const html = '<p class="ol-near-h">' + (friends ? 'Nearby for the group' : 'Nearby') + '<button type="button" class="ol-near-x" data-ol="near" aria-label="Hide">▾</button></p>' +
+          list.map((a) => '<div class="ol-near-row" data-id="' + esc(a.id) + '"><span class="ol-near-i">' + esc(a.icon) + '</span><span class="ol-near-t"><b>' + esc(a.name) + '</b><small>' + esc(fmtDist(a.dMe) + (a.at ? ' · ' + a.at : '')) + '</small></span>' +
+            (a.kind === 'shop' ? '<button type="button" class="ol-near-b alt" data-meet="' + esc(a.id) + '">📍 Meet</button>' : '<button type="button" class="ol-near-b" data-near="' + esc(a.id) + '">🏁 Challenge</button>') + '</div>').join('');
+        if (html !== HS.nearHtml) { box.querySelector('.ol-near-list').innerHTML = html; HS.nearHtml = html; }
+      }
+      arriveTick(t);
+      if (HS.arrive) box.hidden = true;
+    }
+  }
+  // "You're all at Gokul Chat — Pani puri contest? [🏁 Start]": once per arrival (everybody in the room inside ~60 m
+  // of an activity's spot, after not all being there), at most one a minute and the same place not for 5 minutes
+  function arriveTick(t) {
+    const pts = groupPoints();
+    const all = pts.length >= 2 && pts.length === R.players.length;
+    const list = all ? nearby(6, pts).filter((a) => a.kind === 'party') : [];
+    const now = new Set(list.filter((a) => a.dAll <= Math.max(ARRIVE_U, a.r || 0)).map((a) => a.id));
+    let pick = null;
+    for (const a of list) if (now.has(a.id) && !HS.inside.has(a.id) && !(HS.snooze.get(a.id) > t)) { pick = a; break; }
+    HS.inside = now;
+    if (!pick || HS.arrive || t - HS.lastArrive < 60000) return;
+    HS.lastArrive = t;
+    HS.snooze.set(pick.id, t + 5 * 60000);
+    showArrive(pick, t);
+  }
+  function showArrive(a, t) {
+    if (!arriveEl) return;
+    const at = a.at || 'the same spot';
+    arriveEl.innerHTML = '<span class="ol-arr-i" aria-hidden="true">' + esc(a.icon) + '</span><p class="ol-arr-t"><b>You\'re all at ' + esc(at) + '</b> — ' + esc(a.name) + '?</p>' +
+      '<div class="ol-arr-b"><button type="button" class="ol-arr-x" data-arr="x">Not now</button><button type="button" class="ol-arr-go" data-arr="go">🏁 Start</button></div>';
+    arriveEl.classList.add('show');
+    HS.arrive = { id: a.id, until: t + 14000 };
+    sfx('bell');
+    N.emit('online:arrive', { id: a.id, at });
+  }
+  function hideArrive() { if (arriveEl) arriveEl.classList.remove('show'); HS.arrive = null; }
 
   /* ================================================================ the Online panel */
+  // Not in a room: the four steps (create -> share -> friends join -> together), the name, two big choices (Create a
+  // room / a code + Join). In a room: the code (big, Copy), who is here (marker colours, distance), ▶ Into the city
+  // (on the title) or 👫 Go to friends, Nearby for the group, the meet pin, Challenge friends, quick chat, Leave.
+  // The player code and the cloud save fold away under "My player code & cloud save" (a newer cloud save is always
+  // shown at the top). Keyboard / pad: arrows move between the buttons, Enter in a field submits it.
   let panel = null;
-  const ui = { msg: '', msgKind: '', restoreOpen: false, busy: false, from: null };
+  const ui = { msg: '', msgKind: '', restoreOpen: false, busy: false, busyAct: null, from: null, more: false };
   function say2(msg, kind) { ui.msg = msg || ''; ui.msgKind = kind || ''; renderPanel(); }
   function definePanel() {
     if (panel || !N.menus || !N.menus.definePanel) return panel;
@@ -1037,7 +1392,15 @@
         e.addEventListener('submit', (ev) => ev.preventDefault());
       },
       onOpen(o) { ui.from = (o && o.from) || null; ui.msg = ''; if (offerEl) offerEl.hidden = true; renderPanel(); },
-      onClose() { blur(); if (offerEl && CL.offer) offerEl.hidden = false; try { N.menus.refreshTitle(); N.menus.refreshPause(); } catch (e) { /* ignore */ } },
+      onClose() {
+        blur();
+        if (offerEl && CL.offer) offerEl.hidden = false;
+        // closed while the room's code was on show: from the title the game still starts (no extra PLAY step);
+        // over the pause deck they wanted the deck, so it stays
+        const A = FLOW.auto;
+        if (A) { FLOW.auto = null; if (A.kind === 'start') setTimeout(() => runAuto(A), 0); }
+        try { N.menus.refreshTitle(); N.menus.refreshPause(); } catch (e) { /* ignore */ }
+      },
       back() { blur(); N.menus.closePanel('online'); },
       onKey(k, e, typing) {
         if (k === 'ok' && typing && e && e.target) {
@@ -1052,7 +1415,9 @@
   function blur() { const a = document.activeElement; if (a && a.blur && a !== document.body) a.blur(); }
   function btn(act, label, o) {
     o = o || {};
-    return '<button type="button" class="mn-btn small' + (o.alt ? ' alt' : '') + (o.cls ? ' ' + o.cls : '') + '" data-nav data-act="' + act + '"' + (o.dis ? ' disabled' : '') + (o.def ? ' data-def' : '') + (o.extra || '') + '>' + label + '</button>';
+    let data = '';
+    if (o.data) for (const k of Object.keys(o.data)) data += ' data-' + k + '="' + esc(o.data[k]) + '"';
+    return '<button type="button" class="mn-btn small' + (o.alt ? ' alt' : '') + (o.cls ? ' ' + o.cls : '') + '" data-nav data-act="' + act + '"' + data + (o.dis ? ' disabled' : '') + (o.def ? ' data-def' : '') + (o.extra || '') + '>' + label + '</button>';
   }
   function agoText(t) {
     if (!t) return 'never';
@@ -1062,68 +1427,105 @@
     const h = Math.round(m / 60);
     return h < 48 ? h + ' h ago' : Math.round(h / 24) + ' days ago';
   }
+  const canCopy = () => !!(navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext);
+  // a button's identity across re-renders (so keyboard focus survives a presence update)
+  const sigOf = (el) => (el && el.dataset && el.dataset.act ? [el.dataset.act, el.dataset.place || '', el.dataset.say || '', el.dataset.party || ''].join('|') : null);
+  function nameRow(keep) {
+    return '<div class="ol-row ol-name"><label class="ol-field"><span>Your name in the room</span><input type="text" data-k="nick" data-nav data-enter="nick" maxlength="12" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done" placeholder="' + esc(P.nick || defaultNick()) + '" value="' + esc(keep.nick != null ? keep.nick : (P.nick || '')) + '"></label>' + btn('nick', 'Save name', { alt: true }) + '</div>';
+  }
+  function lobbyHtml(keep) {
+    const b = ui.busy;
+    let h = '<section class="ol-hero">';
+    h += '<p class="ol-lead">Play together in the city!</p>';
+    h += '<ol class="ol-steps" aria-label="How it works"><li><b>1</b><span>Create a room</span></li><li><b>2</b><span>Share the code</span></li><li><b>3</b><span>Friends join</span></li><li><b>4</b><span>You all appear together</span></li></ol>';
+    h += nameRow(keep);
+    h += '<div class="ol-two">';
+    h += '<div class="ol-box"><h3>Start a room</h3>' + btn('create', b && ui.busyAct === 'create' ? 'Opening…' : '＋ Create a room', { dis: b, def: !b, cls: 'big' }) + '<small>You get a code like CHAI-42 to tell your friends.</small></div>';
+    h += '<div class="ol-box"><h3>Got a code?</h3><label class="ol-field"><span>Room code from a friend</span><input type="text" data-k="room" data-nav data-enter="join" maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" placeholder="CHAI-42" value="' + esc(keep.room || '') + '"></label>' + btn('join', b && ui.busyAct === 'join' ? 'Joining…' : 'Join ▶', { dis: b, cls: 'big' }) + '</div>';
+    h += '</div>';
+    h += '<p class="ol-note">Up to ' + MAX() + ' friends in one room. ' + (gameStarted() ? 'Joining takes you right next to your friends.' : 'The game starts by itself: your saved game, or a new one.') + ' Story missions stay your own.</p>';
+    return h + '</section>';
+  }
+  function roomHtml() {
+    const alone = !R.players.some((p) => !p.me);
+    const me = N.player && (N.player.vehicle || N.player);
+    let h = '<section class="ol-hero ol-inroom">';
+    h += '<div class="ol-roomline"><div class="ol-roomcode"><span>ROOM</span><b data-room>' + esc(R.code) + '</b><em>' + R.players.length + '/' + MAX() + '</em></div>' + (canCopy() ? btn('copy', '📋 Copy', { alt: true }) : '') + '</div>';
+    h += '<p class="ol-note ol-share">' + (alone ? '<b>Tell your friends this code.</b> They open ONLINE, type it under "Got a code?" and appear right next to you.' : 'Friends join with this code (up to ' + MAX() + ').') + '</p>';
+    h += '<ul class="ol-players">' + R.players.map((p) => {
+      const g = p.me ? null : GH.get(p.key);
+      const d = g && me && g.buf.length && !g.ent.hidden ? ' <small>' + fmtDist(Math.hypot(g.ent.x - me.x, g.ent.y - me.y)) + '</small>' : '';
+      return '<li' + (p.me ? ' class="me"' : '') + '><i style="background:' + colorOf(p.key) + '"></i>' + esc(p.me ? (P.nick || p.nick) + ' (you)' : p.nick) + d + '</li>';
+    }).join('') + '</ul>';
+    const row = [];
+    if (!gameStarted()) row.push(btn('play', '▶ Into the city', { def: true, cls: 'big' }));
+    else if (friendDistU() > GO_MIN_U) row.push(btn('gofriends', '👫 Go to friends <small>' + fmtDist(friendDistU()) + '</small>', { cls: 'big', def: true }));
+    if (row.length) h += '<div class="ol-row">' + row.join('') + '</div>';
+    h += '</section>';
+    if (!gameStarted()) return h + '<div class="ol-row">' + btn('leave', '⏏ Leave room', { alt: true }) + '</div>';
+    // nearby for the group
+    const list = gameStarted() ? nearby(4) : [];
+    if (list.length) {
+      h += '<section class="ol-sec"><h3>Nearby for the group</h3><div class="ol-nearby">' + list.map((a) => '<div class="ol-nb-row"><span class="ol-near-i">' + esc(a.icon) + '</span><span class="ol-near-t"><b>' + esc(a.name) + '</b><small>' + esc(fmtDist(a.dMe) + ' from you' + (a.at ? ' · ' + a.at : '')) + '</small></span>' +
+        (a.kind === 'shop' ? btn('pin', '📍 Meet', { alt: true, data: { place: a.id } }) : btn('near', '🏁 Challenge', { data: { party: a.id } })) + '</div>').join('') + '</div></section>';
+    }
+    // meet pin
+    const pin = R.pin;
+    h += '<section class="ol-sec"><h3>Meet pin</h3><p class="ol-note">' + (pin ? 'Pinned: ' + esc(pin.label ? 'Meet at ' + pin.label : 'a spot on the map') + (pin.by ? ' (by ' + esc(pin.by) + ')' : '') : 'Drop a pin and everyone gets a pink route to it.') + '</p>';
+    h += '<div class="ol-row ol-wrap">' + btn('pinhere', '📍 Meet here', { dis: !gameStarted() }) + meetPlaces().map((m) => '<button type="button" class="mn-btn small alt ol-place" data-nav data-act="pin" data-place="' + esc(m.id) + '">' + esc(m.label) + '</button>').join('') + (pin ? btn('unpin', 'Clear pin', { alt: true }) : '') + '</div></section>';
+    try { if (N.party && N.party.panelHtml) { const ph = N.party.panelHtml(); if (ph) h += '<section class="ol-sec">' + ph + '</section>'; } } catch (e) { N.err('online.partyPanel', e); } // [party hook] "Challenge friends"
+    h += '<section class="ol-sec"><h3>Quick chat</h3><div class="ol-row ol-wrap">' + PHRASES.map((p) => '<button type="button" class="mn-btn small alt ol-say" data-nav data-act="say" data-say="' + p.id + '">' + esc(p.text) + '</button>').join('') + '</div>';
+    h += '<div class="ol-row">' + btn('leave', '⏏ Leave room', { alt: true }) + '</div></section>';
+    return h;
+  }
+  function moreHtml(keep) {
+    const open = ui.more || ui.restoreOpen;
+    let h = '<section class="ol-sec ol-more"><button type="button" class="ol-more-tg" data-nav data-act="more" aria-expanded="' + (open ? 'true' : 'false') + '"><i>' + (open ? '▾' : '▸') + '</i> My player code &amp; cloud save</button>';
+    if (!open) return h + '</section>';
+    if (R.ch) h += nameRow(keep);
+    if (P.code) h += '<div class="ol-code"><span>Your player code</span><b class="ol-code-v" data-code>' + esc(P.code) + '</b><small>Write it down! Enter it on another phone to continue your journey there.</small></div>';
+    else h += '<p class="ol-note">You get a player code the first time you go online. It is your key: no email, no password.</p>';
+    h += '<div class="ol-row">' + (P.code ? '' : btn('start', '▶ Go online')) + btn('restore', ui.restoreOpen ? 'Hide' : 'Use my code', { alt: true }) + '</div>';
+    if (ui.restoreOpen) {
+      h += '<div class="ol-row"><label class="ol-field wide"><span>Player code from your other phone</span><input type="text" data-k="code" data-nav data-enter="usecode" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CHAI-PATANG-GULLY-4821-K7QXM" value="' + esc(keep.code || '') + '"></label>' + btn('usecode', 'Use it') + '</div>';
+      if (P.code) h += '<p class="ol-note">This phone\'s code will be replaced. Keep ' + esc(P.code) + ' if you want to come back to it.</p>';
+    }
+    if (P.code) {
+      const c0 = P.cloud.main;
+      h += '<h4>Cloud save</h4><p class="ol-note">' + (CL.busy ? 'Checking the cloud…' : c0 ? 'Latest save in the cloud: ' + agoText(c0.t) + '.' : 'Nothing in the cloud yet. Save the game and it goes up by itself.') + '</p>';
+      if (CL.note) h += '<p class="ol-note warn">' + esc(CL.note) + '</p>';
+      if (!CL.offer) h += '<div class="ol-row">' + btn('pull', '☁ Check cloud', { alt: true, dis: CL.busy }) + btn('push', '● Save to cloud', { alt: true, dis: CL.busy || !(N.save && N.save.has && N.save.has()) }) + '</div>';
+    }
+    return h + '</section>';
+  }
   function renderPanel() {
     if (!panel || !panel.el || !panel.el.classList.contains('show')) return;
     const B = panel.dom.body;
-    // keep what is being typed across re-renders
+    // keep what is being typed (and the focused button) across re-renders
     const keep = {};
     B.querySelectorAll('input[data-k]').forEach((i) => { keep[i.dataset.k] = i.value; });
-    const focusK = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.k : null;
+    const ae = document.activeElement;
+    const focusK = ae && B.contains(ae) && ae.dataset ? ae.dataset.k : null;
+    const focusSig = ae && B.contains(ae) && !focusK ? sigOf(ae) : null;
     const av = availability();
     let h = '';
     if (av === 'soon') {
-      h = '<div class="ol-soon"><p class="ol-big">Online play is coming soon</p><p>Soon you can meet your friends in the city: up to 10 of you in one room. The game on this phone works the same as always.</p></div>';
+      h = '<div class="ol-soon"><p class="ol-big">Online play is coming soon</p><p>Soon you can meet your friends in the city: up to ' + MAX() + ' of you in one room. The game on this phone works the same as always.</p></div>';
     } else if (av === 'web') {
       h = '<div class="ol-soon"><p class="ol-big">Online play needs the web version</p><p>Open <b>' + esc(SITE) + '</b> in the browser to play with friends. This copy plays offline.</p></div>';
     } else {
       const st = S.status;
-      const stLine = { idle: 'Not connected', loading: 'Connecting…', ready: 'Connected', room: 'In a room', reconnecting: 'Reconnecting…', offline: 'Offline' }[st] || st;
-      h += '<p class="ol-status ol-st-' + esc(st) + '"><i></i>' + esc(stLine) + (S.lastError && st === 'offline' ? ' · ' + esc(S.lastError) : '') + '</p>';
+      const stLine = { loading: 'Connecting…', ready: 'Connected', room: 'In a room', reconnecting: 'Reconnecting…', offline: 'Offline' }[st] || '';
+      if (stLine) h += '<p class="ol-status ol-st-' + esc(st) + '"><i></i>' + esc(stLine) + (S.lastError && st === 'offline' ? ' · ' + esc(S.lastError) : '') + '</p>';
       if (ui.msg) h += '<p class="ol-msg ' + esc(ui.msgKind) + '" role="status">' + esc(ui.msg) + '</p>';
-      // --- you
-      h += '<section class="ol-sec"><h3>You</h3>';
-      h += '<div class="ol-row"><label class="ol-field"><span>Nickname</span><input type="text" data-k="nick" data-nav data-enter="nick" maxlength="12" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done" placeholder="3-12 letters" value="' + esc(keep.nick != null ? keep.nick : (P.nick || '')) + '"></label>' + btn('nick', 'Save name') + '</div>';
-      if (P.code) {
-        h += '<div class="ol-code"><span>Your player code</span><b class="ol-code-v" data-code>' + esc(P.code) + '</b><small>Write it down! Enter it on another phone to continue your journey there.</small></div>';
-      } else {
-        h += '<p class="ol-note">You get a player code the first time you go online. It is your key: no email, no password.</p>';
-      }
-      h += '<div class="ol-row">' + (P.code ? '' : btn('start', '▶ Go online', { def: true })) + btn('restore', ui.restoreOpen ? 'Hide' : 'Use my code', { alt: true }) + '</div>';
-      if (ui.restoreOpen) {
-        h += '<div class="ol-row"><label class="ol-field wide"><span>Player code from your other phone</span><input type="text" data-k="code" data-nav data-enter="usecode" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CHAI-PATANG-GULLY-4821-K7QXM" value="' + esc(keep.code || '') + '"></label>' + btn('usecode', 'Use it') + '</div>';
-        if (P.code) h += '<p class="ol-note">This phone\'s code will be replaced. Keep ' + esc(P.code) + ' if you want to come back to it.</p>';
-      }
-      h += '</section>';
-      // --- cloud
-      if (P.code) {
-        const c0 = P.cloud.main;
-        h += '<section class="ol-sec"><h3>Cloud save</h3><p class="ol-note">' + (CL.busy ? 'Checking the cloud…' : c0 ? 'Latest save in the cloud: ' + agoText(c0.t) + '.' : 'Nothing in the cloud yet. Save the game and it goes up by itself.') + '</p>';
-        if (CL.note) h += '<p class="ol-note warn">' + esc(CL.note) + '</p>';
-        if (CL.offer) h += '<div class="ol-row"><b class="ol-offer-l">Newer in the cloud: ' + esc(CL.offer.line) + '</b>' + btn('take', '☁ Use cloud save') + btn('keep', 'Keep this one', { alt: true }) + '</div>';
-        else h += '<div class="ol-row">' + btn('pull', '☁ Check cloud', { alt: true, dis: CL.busy }) + btn('push', '● Save to cloud', { alt: true, dis: CL.busy || !(N.save && N.save.has && N.save.has()) }) + '</div>';
-        h += '</section>';
-      }
-      // --- room
-      h += '<section class="ol-sec"><h3>Room</h3>';
-      if (!R.ch) {
-        h += '<p class="ol-note">Up to ' + MAX() + ' friends in one city. Rooms are invite-only: share the code. Story missions stay your own.</p>';
-        h += '<div class="ol-row">' + btn('create', '＋ Create room', { dis: ui.busy }) + '</div>';
-        h += '<div class="ol-row"><label class="ol-field"><span>Room code</span><input type="text" data-k="room" data-nav data-enter="join" maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CHAI-42" value="' + esc(keep.room || '') + '"></label>' + btn('join', 'Join', { dis: ui.busy }) + '</div>';
-      } else {
-        h += '<div class="ol-roomcode"><span>ROOM</span><b data-room>' + esc(R.code) + '</b><em>' + R.players.length + '/' + MAX() + '</em></div>';
-        h += '<ul class="ol-players">' + R.players.map((p) => '<li' + (p.me ? ' class="me"' : '') + '><i style="background:' + esc(p.look.shirt || '#5fd0ff') + '"></i>' + esc(p.me ? (P.nick || p.nick) + ' (you)' : p.nick) + '</li>').join('') + '</ul>';
-        const pin = R.pin;
-        h += '<h4>Meet pin</h4><p class="ol-note">' + (pin ? 'Pinned: ' + esc(pin.label ? 'Meet at ' + pin.label : 'a spot on the map') + (pin.by ? ' (by ' + esc(pin.by) + ')' : '') : 'Drop a pin and everyone gets a waypoint to it.') + '</p>';
-        h += '<div class="ol-row ol-wrap">' + btn('pinhere', '📍 Meet here', { dis: N.state.mode === 'title' }) + meetPlaces().map((m) => '<button type="button" class="mn-btn small alt ol-place" data-nav data-act="pin" data-place="' + esc(m.id) + '">' + esc(m.label) + '</button>').join('') + (pin ? btn('unpin', 'Clear pin', { alt: true }) : '') + '</div>';
-        try { if (N.party && N.party.panelHtml) h += N.party.panelHtml(); } catch (e) { N.err('online.partyPanel', e); } // [party hook] "Challenge friends"
-        h += '<h4>Quick chat</h4><div class="ol-row ol-wrap">' + PHRASES.map((p) => '<button type="button" class="mn-btn small alt ol-say" data-nav data-act="say" data-say="' + p.id + '">' + esc(p.text) + '</button>').join('') + '</div>';
-        h += '<div class="ol-row">' + btn('leave', '⏏ Leave room', { alt: true }) + '</div>';
-      }
-      h += '</section>';
-      h += '<p class="ol-fine">Online keeps only your player code (scrambled), your nickname and your saves. No chat typing: just the buttons above.</p>';
+      if (CL.offer) h += '<div class="ol-offer-row"><b class="ol-offer-l">A newer save is in the cloud: ' + esc(CL.offer.line) + '</b><div class="ol-row">' + btn('take', '☁ Use cloud save') + btn('keep', 'Keep this one', { alt: true }) + '</div></div>';
+      h += R.ch ? roomHtml() : lobbyHtml(keep);
+      h += moreHtml(keep);
+      h += '<p class="ol-fine">Online keeps only your player code (scrambled), your nickname and your saves. No chat typing: just the buttons.</p>';
     }
     B.innerHTML = h;
     if (focusK) { const i = B.querySelector('input[data-k="' + focusK + '"]'); if (i) { try { i.focus({ preventScroll: true }); const L = i.value.length; i.setSelectionRange(L, L); } catch (e) { /* ignore */ } } }
+    else if (focusSig) { const b = Array.from(B.querySelectorAll('button[data-act]')).find((x) => sigOf(x) === focusSig && !x.disabled); if (b) { try { b.focus({ preventScroll: true }); } catch (e) { /* ignore */ } } }
     const ni = B.querySelector('input[data-k="nick"]');
     if (ni) ni.addEventListener('input', () => { const c = cleanNick(ni.value); if (c !== ni.value) ni.value = c; });
   }
@@ -1139,28 +1541,49 @@
       return true;
     } catch (e) { return false; }
   }
+  /** close the panel (and the pause deck under it) and get back into the world */
+  function backToPlay() {
+    try { if (panel) N.menus.closePanel('online'); if (N.state.mode === 'paused') { if (N.menus.resume) N.menus.resume(); else N.game.resume(); } } catch (e) { N.err('online.backToPlay', e); }
+  }
+  function enterMsg(a, r) {
+    const m = N.state.mode;
+    const code = r.code || R.code;
+    if (a === 'create') return 'Room ' + code + ' is open! Tell your friends the code.' + (m === 'title' ? ' Taking you into the city…' : m === 'paused' ? ' Back to the city…' : '');
+    const friends = R.players.some((p) => !p.me);
+    return 'You joined room ' + code + '!' + (friends ? (m === 'title' ? ' Taking you to your friends…' : m === 'paused' ? ' Off to your friends…' : '') : ' Waiting for friends…');
+  }
   async function act(a, b) {
     try {
       if (a === 'back') { sfx('ui_back'); panel.back(); return; }
+      if ((a === 'create' || a === 'join') && ui.busy) return; // a double tap: the first one is on its way
       sfx('ui_select');
       if (a === 'start') { say2('Getting your player code…'); const ok = await goOnline(); say2(ok ? 'You are online! Write down your player code.' : (S.lastError || 'Could not connect.'), ok ? 'ok' : 'bad'); }
       else if (a === 'nick') {
         const r = await setNick(inputVal('nick'));
         if (r.ok && P.code && !S.client) goOnline();
         say2(r.ok ? (r.why || 'Name saved: ' + P.nick) : r.why, r.ok ? 'ok' : 'bad');
-      } else if (a === 'restore') { ui.restoreOpen = !ui.restoreOpen; renderPanel(); }
+      } else if (a === 'more') { ui.more = !(ui.more || ui.restoreOpen); if (!ui.more) ui.restoreOpen = false; renderPanel(); }
+      else if (a === 'restore') { ui.restoreOpen = !ui.restoreOpen; ui.more = true; renderPanel(); }
       else if (a === 'usecode') { say2('Checking the code…'); const r = await useCode(inputVal('code')); if (r.ok) ui.restoreOpen = false; say2(r.ok ? 'Welcome back' + (P.nick ? ', ' + P.nick : '') + '!' : r.why, r.ok ? 'ok' : 'bad'); }
       else if (a === 'pull') { const r = await cloudPull(); say2(r.ok ? (r.offer ? 'There is a newer save in the cloud.' : 'Cloud and phone match.') : 'Could not reach the cloud.', r.ok ? 'ok' : 'bad'); }
       else if (a === 'push') { const r = await cloudPush(null, false); say2(r.ok ? 'Saved to the cloud.' : r.why === 'newer_save' || r.why === 'newer_build' ? 'The cloud has a newer save. It was kept.' : 'Could not save to the cloud.', r.ok ? 'ok' : 'bad'); }
       else if (a === 'take') takeOffer();
       else if (a === 'keep') keepLocal();
       else if (a === 'create' || a === 'join') {
-        if (!P.code) await goOnline();
-        ui.busy = true; say2(a === 'create' ? 'Opening a room…' : 'Joining…');
-        const r = a === 'create' ? await createRoom() : await joinRoom(inputVal('room'));
-        ui.busy = false;
-        say2(r.ok ? (a === 'create' ? 'Room ' + r.code + ' is open. Tell your friends the code!' : 'You joined room ' + r.code + '.') : r.why, r.ok ? 'ok' : 'bad');
-      } else if (a === 'leave') { await leaveRoom(); say2('You left the room.'); }
+        const code = a === 'join' ? inputVal('room') : null;
+        ui.busy = true; ui.busyAct = a;
+        say2(a === 'create' ? 'Opening a room…' : 'Joining…');
+        let r;
+        try {
+          if (!P.code) await goOnline();
+          r = a === 'create' ? await createRoom() : await joinRoom(code);
+        } finally { ui.busy = false; ui.busyAct = null; }
+        say2(r.ok ? enterMsg(a, r) : r.why, r.ok ? 'ok' : 'bad');
+      } else if (a === 'play') { startGame(); }
+      else if (a === 'gofriends') { backToPlay(); goToFriends(); }
+      else if (a === 'near') { const id = b && b.dataset.party; backToPlay(); if (id) quickParty(id, 'panel'); }
+      else if (a === 'copy') { try { await navigator.clipboard.writeText(R.code || ''); say2('Copied ' + R.code + '. Paste it to your friends!', 'ok'); } catch (e) { say2('Could not copy. The code is ' + R.code + '.', 'bad'); } }
+      else if (a === 'leave') { await leaveRoom(); say2('You left the room.'); }
       else if (a === 'pinhere') { await dropPin(null); }
       else if (a === 'pin') { await dropPin(b && b.dataset.place); }
       else if (a === 'unpin') { await clearPin(); }
@@ -1217,6 +1640,8 @@
       if (R.ch) sendState();
       updateGhosts(dt);
       hudVisibility();
+      if (FLOW.auto && nowMs() >= FLOW.auto.at) { const A = FLOW.auto; FLOW.auto = null; runAuto(A); }
+      if (R.ch) { placeTick(); hudTick(false); }
       if (R.pin && R.pinWp && N.state.mode === 'play') {
         const p = N.player, e = (p && p.vehicle) || p;
         if (e && Math.hypot(e.x - R.pin.x, e.y - R.pin.y) < 48) { try { N.hud.unblip('ol:pin'); } catch (er) { /* ignore */ } R.pinWp = null; }
@@ -1233,13 +1658,15 @@
     get code() { return P.code; },
     get nick() { return P.nick; },
     get room() { return R.ch ? { code: R.code, n: R.players.length, players: R.players.map((p) => ({ nick: p.nick, me: p.me })), pin: R.pin } : null; },
-    MAX: MAX(), PHRASES, CODE_BITS, WORDS_N: WORDS.length,
+    MAX: MAX(), PHRASES, CODE_BITS, WORDS_N: WORDS.length, TUNE,
     get MEET_PLACES() { return meetPlaces(); },
     open, close, setNick, useCode, newCode, cleanNick, nickOk, normCode, codeOk, normRoom,
     goOnline,
     cloud: { pull: cloudPull, push: cloudPush, take: takeOffer, keep: keepLocal, get state() { return { busy: CL.busy, offer: CL.offer ? { slot: CL.offer.slot, t: CL.offer.t, line: CL.offer.line } : null, note: CL.note, cloud: JSON.parse(JSON.stringify(P.cloud)), lastPush: CL.lastPush }; } },
     journey, pushJourney,
     createRoom, joinRoom, leaveRoom, dropPin, clearPin, say,
+    goToFriends, startGame, nearby: (max) => (R.ch ? nearby(max || 4) : []),
+    get flow() { return { auto: FLOW.auto ? FLOW.auto.kind : null, place: !!FLOW.place, offer: !!FLOW.offer, how: FLOW.how, entering: !!R.entering, arrive: HS.arrive ? HS.arrive.id : null }; },
     // [party hook] (src/party.js): the room message bus, the player list and the race_* leaderboard calls
     channelSend, onMessage, players: partyPlayers, partyRpc, get myKey() { return myKey; },
     titleLine() {
@@ -1247,7 +1674,7 @@
       if (av === 'soon') return 'coming soon';
       if (av === 'web') return 'web version only';
       if (R.ch) return 'ROOM ' + R.code + ' · ' + R.players.length + '/' + MAX();
-      return P.nick ? P.nick + ' · play with friends' : 'play with friends';
+      return P.nick ? P.nick + ' · play with friends' : 'play with up to ' + MAX() + ' friends';
     },
     pauseLine() {
       const av = availability();

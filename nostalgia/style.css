@@ -3324,7 +3324,8 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
 /* === end streetfood === */
 
 /* === online === (owned by online.js, ARCHITECTURE §23: the Online panel (a tin card over the title / pause
-   deck), the cloud-save offer card, the room badge + quick-chat strip in the HUD, ghost nameplates) */
+   deck), the cloud-save offer card, the room HUD (badge, 👫 Go to friends, the Nearby card, quick-chat strip), the
+   arrival toast, ghost nameplates) */
 #overlay .mn-online { z-index: 8; align-items: center; justify-content: center; padding: calc(10px + var(--safe-t)) calc(10px + var(--safe-r)) calc(10px + var(--safe-b)) calc(10px + var(--safe-l)); background: radial-gradient(ellipse at 50% 45%, rgba(10, 8, 20, 0.5), rgba(10, 8, 20, 0.82)); }
 .ol-card { width: min(620px, calc(100% - 8px)); }
 .ol-card .mn-card-head h2 { font-size: 28px; }
@@ -3387,11 +3388,59 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
   background: rgba(18, 13, 22, 0.82); border: 2px solid var(--panel-edge); border-radius: 6px; text-shadow: 0 0 6px var(--osd-glow); touch-action: manipulation;
 }
 .ol-badge b { font-weight: 400; color: var(--auto-yellow); }
+.ol-badge { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.05; }
+.ol-badge-hint { display: none; font-size: 15px; color: var(--auto-yellow); letter-spacing: 0; }
+.ol-badge.alone .ol-badge-hint { display: block; animation: ol-glow 1.6s ease-in-out infinite; }
+@keyframes ol-glow { 50% { opacity: 0.55; } }
 .ol-chat-tg { min-width: 44px; font-size: 20px; }
 .ol-chat { display: flex; flex-direction: column; align-items: stretch; gap: 4px; max-height: 52vh; overflow-y: auto; }
 .ol-chat[hidden] { display: none; }
 .ol-chat .ol-say { min-height: 38px; padding: 3px 10px 1px; font-family: var(--font-display); font-size: 16px !important; color: var(--auto-black); background: var(--auto-yellow); border: 2px solid var(--auto-black); border-radius: 4px; box-shadow: 2px 2px 0 var(--apsrtc-red); touch-action: manipulation; }
 body.touch-on .ol-hud { top: 30%; }
+/* 👫 Go to friends */
+.ol-go[hidden] { display: none; }
+.ol-go { display: flex; flex-direction: column; align-items: flex-end; min-height: 40px; padding: 3px 10px 2px; font-family: var(--font-display); font-size: 16px; line-height: 1.1;
+  color: var(--auto-black); background: var(--auto-yellow); border: 2px solid var(--auto-black); border-radius: 6px; box-shadow: 2px 2px 0 var(--apsrtc-red); touch-action: manipulation; }
+.ol-go small { font-family: var(--font-osd); font-size: 15px; color: #4a3a30; }
+.ol-go.pulse { animation: ol-pulse 1.2s ease-in-out infinite; }
+@keyframes ol-pulse { 50% { box-shadow: 2px 2px 0 var(--apsrtc-red), 0 0 0 5px rgba(242, 194, 48, 0.45); } }
+/* Nearby for the group: a card on wide screens, a chip that opens a short list on phones */
+.ol-near[hidden] { display: none; }
+.ol-near { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: min(300px, calc(100vw - 24px)); }
+.ol-near-tg { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 3px 10px 1px; font-family: var(--font-osd); font-size: 19px; letter-spacing: 1px; color: var(--osd);
+  background: rgba(18, 13, 22, 0.82); border: 2px solid var(--panel-edge); border-radius: 6px; touch-action: manipulation; }
+.ol-near-tg i { font-style: normal; min-width: 20px; padding: 0 5px; font-size: 16px; color: var(--auto-black); background: var(--auto-yellow); border-radius: 9px; }
+.ol-near.open .ol-near-tg { display: none; }
+.ol-near-list { display: none; width: min(286px, calc(100vw - 24px)); padding: 4px 8px 6px; color: var(--osd); background: rgba(18, 13, 22, 0.86); border: 2px solid var(--panel-edge); border-radius: 6px; }
+.ol-near.open .ol-near-list { display: block; }
+.ol-near-h { display: flex; align-items: center; justify-content: space-between; margin: 0 0 2px; font-family: var(--font-osd); font-size: 17px; letter-spacing: 1px; color: var(--auto-yellow); }
+.ol-near-x { min-width: 32px; min-height: 28px; padding: 0 6px; font-size: 16px; color: var(--osd); background: transparent; border: 1px solid rgba(242, 194, 48, 0.4); border-radius: 4px; touch-action: manipulation; }
+.ol-near-row, .ol-nb-row { display: flex; align-items: center; gap: 7px; padding: 3px 0; border-top: 1px solid rgba(242, 194, 48, 0.18); }
+.ol-near-i { flex: none; width: 24px; font-size: 19px; text-align: center; }
+.ol-near-t { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: 1.12; }
+.ol-near-t b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-body); font-weight: 700; font-size: 14px; }
+.ol-near-t small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-osd); font-size: 15px; color: var(--ink-dim); }
+.ol-near-b { flex: none; min-height: 34px; padding: 2px 8px 1px; font-family: var(--font-display); font-size: 14px; color: var(--auto-black); background: var(--auto-yellow);
+  border: 2px solid var(--auto-black); border-radius: 4px; box-shadow: 2px 2px 0 var(--apsrtc-red); touch-action: manipulation; white-space: nowrap; }
+.ol-near-b.alt { background: var(--whitewash); box-shadow: 2px 2px 0 var(--irani-teal); }
+body:not(.touch-on) .ol-near-b { min-height: 28px; font-size: 13px; padding: 1px 7px 0; }
+body:not(.touch-on) .ol-near-row { padding: 2px 0; }
+body:not(.touch-on) .ol-near-list { width: min(262px, calc(100vw - 24px)); }
+.mn-btn.big small { font-family: var(--font-osd); font-size: 18px; opacity: 0.75; }
+.ol-near-b:active, .ol-go:active { transform: translate(1px, 1px); }
+@media (max-height: 520px) { .ol-hud { top: 16%; } body.touch-on .ol-hud { top: 14%; } .ol-near-list { max-height: 52vh; overflow-y: auto; } }
+/* the arrival card in the HUD column: "You're all at Gokul Chat — Pani puri contest?  [Not now] [🏁 Start]" */
+.ol-arrive { display: none; width: min(286px, calc(100vw - 24px)); padding: 6px 8px 7px; color: var(--auto-black);
+  background: #fff3c4; border: 3px solid var(--auto-black); border-radius: 6px; box-shadow: 4px 4px 0 var(--irani-teal), 0 8px 22px rgba(0, 0, 0, 0.4); }
+.ol-arrive.show { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; animation: ol-in 0.28s ease-out; }
+@keyframes ol-in { from { transform: translateX(14px); opacity: 0; } }
+.ol-arr-i { font-size: 26px; line-height: 1; }
+.ol-arr-t { margin: 0; font-size: 14px; line-height: 1.2; }
+.ol-arr-t b { display: block; font-family: var(--font-display); font-weight: 400; font-size: 17px; color: var(--apsrtc-red); }
+.ol-arr-b { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+.ol-arr-go, .ol-arr-x { min-height: 38px; padding: 3px 12px 1px; font-family: var(--font-display); font-size: 16px; color: var(--auto-black); border: 2px solid var(--auto-black); border-radius: 4px; touch-action: manipulation; }
+.ol-arr-go { background: var(--auto-yellow); box-shadow: 3px 3px 0 var(--apsrtc-red); }
+.ol-arr-x { background: var(--whitewash); box-shadow: 3px 3px 0 var(--irani-teal); font-size: 14px; }
 /* nameplates over remote players */
 #ol-tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 #ol-tags.hide { display: none; }
@@ -3410,6 +3459,42 @@ body.touch-on .ol-hud { top: 30%; }
 .ol-tag.ol-edge .ol-tri { order: -1; animation: none; border-left: 0; border-right: 0; border-top: 0; width: 0; height: 0; border-top: 9px solid transparent; border-bottom: 9px solid transparent; border-left: 14px solid var(--pc); margin-bottom: 1px; }
 @media (max-width: 480px) { .ol-tag .ol-nm { font-size: 15px; } .ol-tag.ol-edge .ol-nm { font-size: 13px; } }
 @media (max-width: 480px) { .ol-code b { font-size: 21px; } .ol-roomcode b { font-size: 26px; } .ol-body { padding: 0 12px 12px; } }
+/* the panel: the first-timer's view (steps, name, two big choices) and the room view */
+.ol-hero { padding: 2px 0 10px; }
+.ol-lead { margin: 0 0 6px; font-family: var(--font-display); font-size: 25px; line-height: 1.15; color: var(--apsrtc-red); }
+.ol-steps { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 0 0 8px; padding: 0; counter-reset: none; }
+.ol-steps li { display: flex; align-items: center; gap: 6px; padding: 5px 7px; font-weight: 700; font-size: 14px; line-height: 1.12; background: #fffaf0; border: 2px solid var(--auto-black); border-radius: 4px; }
+.ol-steps li b { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; font-family: var(--font-display); font-weight: 400; font-size: 16px; color: var(--auto-black); background: var(--auto-yellow); border: 2px solid var(--auto-black); border-radius: 50%; }
+.ol-steps li:last-child { background: #dff2d6; }
+.ol-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 8px 0 4px; }
+.ol-box { display: flex; flex-direction: column; gap: 8px; padding: 8px 12px 12px; background: rgba(255, 250, 240, 0.7); border: 2px dashed rgba(26, 18, 20, 0.35); border-radius: 6px; }
+.ol-box h3 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 20px; color: var(--irani-teal); }
+.ol-box small { font-size: 13px; color: #4a3a30; }
+.ol-box .ol-field { flex: none; }
+.mn-btn.big { min-height: 54px; font-size: 22px; padding: 6px 16px 4px; width: 100%; }
+.ol-name { align-items: flex-end; }
+.ol-name .ol-field input { min-height: 40px; font-size: 20px; }
+.ol-roomline { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.ol-share b { color: var(--apsrtc-red); }
+.ol-players small { font-family: var(--font-osd); font-size: 16px; font-weight: 400; color: #6a5646; }
+.ol-players i { width: 14px; height: 14px; border: 2px solid var(--auto-black); }
+.ol-inroom .ol-row .mn-btn.big { width: auto; flex: 1 1 220px; }
+.ol-nearby { display: flex; flex-direction: column; }
+.ol-nb-row { border-top: 1px dashed rgba(26, 18, 20, 0.25); padding: 5px 0; }
+.ol-nb-row .ol-near-t b { font-size: 16px; }
+.ol-nb-row .ol-near-t small { color: #6a5646; font-size: 16px; }
+.ol-nb-row .mn-btn { flex: none; }
+.ol-more { padding-top: 6px; }
+.ol-more-tg { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 4px 6px; text-align: left; font-family: var(--font-display); font-size: 18px; color: var(--irani-teal); background: transparent; border: 0; border-radius: 4px; }
+.ol-more-tg i { font-style: normal; width: 16px; }
+.ol-more-tg:focus-visible, .ol-more-tg:hover { background: rgba(42, 140, 130, 0.12); outline: none; }
+.ol-offer-row { margin: 0 0 8px; padding: 6px 10px; background: #e2f1ee; border-left: 5px solid var(--irani-teal); }
+.ol-offer-row .ol-offer-l { font-family: var(--font-osd); font-weight: 400; font-size: 19px; }
+@media (max-width: 560px) {
+  .ol-steps { grid-template-columns: 1fr 1fr; }
+  .ol-two { grid-template-columns: 1fr; gap: 10px; }
+  .ol-lead { font-size: 22px; }
+}
 /* Journal: Journey page */
 .jy { padding: 4px 6px; }
 .jy-stats { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 6px 0 4px; font-family: var(--font-osd); font-size: 20px; }

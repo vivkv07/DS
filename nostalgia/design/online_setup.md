@@ -20,17 +20,30 @@ make accounts.
 
 ## How players use it
 
-1. **Title → ONLINE** (or **Pause → Online**). The first time, **▶ Go online** gives the player a
-   *player code* such as `CHAI-PATANG-GULLY-4821-K7QXM` and the panel says: "Write it down! Enter it on
-   another phone to continue your journey there."
-2. **Nickname**: 3-12 letters or numbers. Rude names are refused, kindly.
+**Playing together (2026-10-20, after the owner's first real game):** Title → **ONLINE** (or Pause → Online)
+shows four steps — *Create a room → Share the code → Friends join → You all appear together* — a name field and
+two big buttons. **＋ Create a room** shows the code (`CHAI-42`, with a Copy button) for a moment and then drops the
+player straight into the city: their saved game continues, or (no save yet) a new game starts without the intro.
+A friend types the code under **Got a code?** → **Join ▶** and appears a few steps from the first player. From
+the pause menu it is the same: the game simply resumes. Nobody is ever pulled out of a mission or a race: they get
+a pink route and a **👫 Go to friends** button for later. Rooms hold **3 players**; the 4th is told the room is
+full. In a room the HUD shows what the group can do nearby (races, the pani puri contest, funfair games in
+season, the nearest open chai stall …) with a one-tap **Challenge**, and when everybody is at the same spot: "You're
+all at Gokul Chat — Pani puri contest? [🏁 Start]".
+
+1. **My player code & cloud save** (folded away in the Online panel): the first time the game goes online it gives
+   the player a *player code* such as `CHAI-PATANG-GULLY-4821-K7QXM`: "Write it down! Enter it on another phone to
+   continue your journey there."
+2. **Nickname** ("Your name in the room"): 3-12 letters or numbers. Rude names are refused, kindly.
 3. **Cloud save**: from then on every save (STD booth, MISSION PASSED, pause-menu Save) also goes to the
-   cloud. On another phone, **Use my code** brings the nickname and offers the cloud save ("A newer save
+   cloud. On another phone, **Use my code** (under "My player code & cloud save") brings the nickname and offers
+   the cloud save ("A newer save
    is in the cloud: TRACK 03 · ..." → **Use cloud save** / **Keep this one**). A newer save is never
    overwritten, in either direction, and a save from a newer version of the game is never touched by an
    older one.
-4. **Rooms**: **＋ Create room** gives a short code like `CHAI-42`; friends type it under **Join**. Up to
-   10 players; the 11th is told the room is full. A room ends when the last player leaves.
+4. **Rooms**: **＋ Create a room** gives a short code like `CHAI-42`; friends type it under **Got a code?**. Up to
+   3 players (`maxPlayers` in `src/online_config.js`); the 4th is told the room is full. A room ends when the last
+   player leaves.
 5. In a room everyone sees everyone (top-down and 3D) with name tags and minimap dots. **Meet pin**:
    "Meet here" or a place ("Irani café, Abids", Charminar, Tank Bund ...) gives everyone a pink route.
    **Quick chat**: preset phrases only (Aaja! · Chai? · Race to Tank Bund! · Ruko, coming! · I am here! ·
@@ -74,10 +87,10 @@ Without online (or before Go online) times are kept on the phone and sent later.
 
 ## Limits to know
 
-- **Realtime quota**: Supabase counts every message delivered. A full room of 10 kids all moving is a
-  few hundred messages a second, above the Free plan's limit (Supabase may slow or drop messages
-  then). The game sends at most 8 position updates a second, fewer in big rooms, and nothing while a
-  player stands still. If rooms of 10 get popular, move to the Pro plan.
+- **Realtime quota**: Supabase counts every message delivered. A full room of 3 kids all moving is about
+  50 messages a second (8 position updates a second each, nothing while a player stands still), well inside
+  the Free plan. Raising `maxPlayers` again (the code supports up to 10) multiplies that; past ~5 players the
+  game sends fewer updates per player.
 - **Database**: a save is a few KB (2 KB at the start of the game), two per player. The Free plan's 500 MB holds many thousands of players.
 - The single-file offline copy (`dist/nostalgia.html`, opened from disk) has online off and says
   "Online play needs the web version".

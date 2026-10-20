@@ -173,6 +173,10 @@
 
   /* ================================================================ small helpers */
   const now = () => (N.time && N.time.now) || 0;
+  /** a person in the game (not an AI kid): Chinnu on this page, or a friend from the online room (party mode) */
+  const human = (P) => !!(P && (P.isPlayer || P.remote));
+  /** a kid's name as everybody in the room knows it (a friend's online nickname) */
+  const nameOf = (P) => (P && (P.nick || P.name)) || 'Somebody';
   const sfx = (name, o) => { try { if (N.audio && N.audio.sfx) N.audio.sfx(name, o || { ui: true }); } catch (e) { /* audio is optional */ } };
   const toast = (t, ms) => { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2400); } catch (e) { /* ignore */ } };
   const banner = (t, s, ms, kind) => { try { if (N.hud && N.hud.banner) N.hud.banner(t, s || '', ms || 2200, { kind: kind || 'info' }); } catch (e) { /* ignore */ } };
@@ -657,6 +661,8 @@
   function moveKid(S, P, dt) {
     const e = P.e;
     if (!e || e.alive === false || P.isPlayer) return;
+    // a friend from the online room: his own page moves him (we follow his ghost); a mirrored kid: the host's snapshots
+    if (P.remote || P.net) { NET.follow(S, P, dt); return; }
     if (P.downT > 0) {
       P.downT -= dt; e.vx *= Math.exp(-dt * 6); e.vy *= Math.exp(-dt * 6);
       if (P.downT <= 0) { e.down = false; e.getupT = 0.45; }
@@ -704,16 +710,17 @@
     }
     for (let i = 0; i < L.length; i++) {
       const a = L[i];
-      if (!a.e || a.e.alive === false || (a.out && !a.isPlayer)) continue;
+      if (!a.e || a.e.alive === false || (a.out && !human(a)) || a.net) continue;
       for (let j = i + 1; j < L.length; j++) {
         const b = L[j];
-        if (!b.e || b.e.alive === false || (b.out && !b.isPlayer)) continue;
+        if (!b.e || b.e.alive === false || (b.out && !human(b)) || b.net) continue;
+        if (human(a) && human(b)) continue;
         const dx = b.e.x - a.e.x, dy = b.e.y - a.e.y, d = hyp(dx, dy), m = a.e.r + b.e.r - 0.6;
         if (d >= m || d < 1e-4) continue;
         const push = (m - d) * 0.5, nx = dx / d, ny = dy / d;
-        // the player is never shoved by the kids (they make way)
-        if (a.isPlayer) moveBy(b, nx * push * 2, ny * push * 2);
-        else if (b.isPlayer) moveBy(a, -nx * push * 2, -ny * push * 2);
+        // the player (and a friend from the room) is never shoved by the kids (they make way)
+        if (human(a)) moveBy(b, nx * push * 2, ny * push * 2);
+        else if (human(b)) moveBy(a, -nx * push * 2, -ny * push * 2);
         else { moveBy(a, -nx * push, -ny * push); moveBy(b, nx * push, ny * push); }
       }
     }
@@ -785,12 +792,12 @@
     b.rx = b.x; b.ry = b.y; b.liveDist = b.target && b.target.e ? hyp(b.target.e.x - e.x, b.target.e.y - e.y) + TUNE.overshoot : 70;
     const noDodge = S.real && PG.debug.assist.noDodge;
     for (const Q of S.parts) {
-      if (Q.isPlayer || Q === P) continue;
+      if (Q.isPlayer || Q.remote || Q === P) continue;
       const qd = kd(S, Q);
       Q.react = S.t + lerp(0.34, 0.12, qd) * (0.8 + S.rng.next() * 0.5);
       Q.dodgeRoll = noDodge ? 0 : S.rng.next() < lerp(TUNE.lingocha.dodge[0], TUNE.lingocha.dodge[1], qd) ? 1 : 0;
-      // Chinnu's mark saw him take aim (the reticle): he may juke as the ball leaves Chinnu's hand
-      if (P.isPlayer && Q === b.target && b.live && !noDodge) Q.dodgeRoll = S.rng.next() < lerp(TUNE.alert[0], TUNE.alert[1], qd) * (speed > TUNE.throwSpeed + 20 ? TUNE.alertHard : 1) ? 1 : 0;
+      // Chinnu's mark saw him take aim (the reticle): he may juke as the ball leaves Chinnu's hand (a friend's too)
+      if (human(P) && Q === b.target && b.live && !noDodge) Q.dodgeRoll = S.rng.next() < lerp(TUNE.alert[0], TUNE.alert[1], qd) * (speed > TUNE.throwSpeed + 20 ? TUNE.alertHard : 1) ? 1 : 0;
       // a point-blank throw is hard to catch; a long one gives time to get the hands up
       const flight = hyp(Q.e.x - e.x, Q.e.y - e.y) / Math.max(40, speed);
       Q.catchRoll = S.id === 'marampitti' && !(S.real && PG.debug.assist.noDodge) && S.rng.next() < (0.08 + 0.1 * S.d) * clamp((flight - 0.09) / 0.16, 0, 1.2);
@@ -877,7 +884,7 @@
     const b = S.ball;
     if (b.state === 'held') {
       const h = b.holder;
-      if (!h || (h.out && !h.isPlayer) || !h.e || h.e.alive === false) { b.state = 'rest'; b.holder = null; if (h) h.hold = false; return; }
+      if (!h || (h.out && !human(h)) || !h.e || h.e.alive === false) { b.state = 'rest'; b.holder = null; if (h) h.hold = false; return; }
       const q = holdPos(h); b.x = q.x; b.y = q.y; b.z = q.z; b.vx = b.vy = b.vz = 0;
       return;
     }
@@ -951,7 +958,8 @@
     if (b.live && b.liveDist && hyp(b.x - b.rx, b.y - b.ry) > b.liveDist) b.live = false;
     if (b.live) {
       for (const P of S.parts) {
-        if (P === b.thrower || P.out || !P.e || P.e.alive === false || b.hitSet.has(P)) continue;
+        // (a friend from the room is hit on his own page: it reports the hit, so a last-moment dodge there counts)
+        if (P === b.thrower || P.out || P.remote || !P.e || P.e.alive === false || b.hitSet.has(P)) continue;
         const dx = P.e.x - b.x, dy = P.e.y - b.y;
         if (dx * dx + dy * dy > TUNE.hitR * TUNE.hitR) continue;
         if (b.z < 0.15 || b.z - TUNE.ballR > TUNE.bodyTop) continue;
@@ -998,7 +1006,7 @@
     if (mine) { try { if (N.wanted && N.wanted.addHeat) N.wanted.addHeat(TUNE.heat.window, 'window'); } catch (e) { N.err('pg.heat', e); } }
     confiscated[S.F.key] = (N.clock && N.clock.day) || 0;
     // everybody scatters; the aunty keeps the ball; the game is over
-    for (const Q of S.parts) if (!Q.isPlayer && Q.e) { Q.out = true; Q.scatter = true; }
+    for (const Q of S.parts) if (!human(Q) && Q.e) { Q.out = true; Q.scatter = true; }
     if (S.real) {
       banner('KHANNN!', 'Window broken. The aunty kept the ball. Game over!', 3000, 'fail');
       S.endAt = S.t + 1.6; S.endWin = false; S.endExtra = { reason: 'window', window: true };
@@ -1008,7 +1016,8 @@
     const e = P.e;
     sfx('chappal', { x: e.x, y: e.y, vol: 0.9, pitch: 1.1 });
     pop(S, e.x, e.y, 10, 'THWACK!', '#ffd84a');
-    if (!P.isPlayer) { e.down = true; P.downT = 0.7; const s = hyp(b.vx, b.vy) || 1; e.vx = (b.vx / s) * 30; e.vy = (b.vy / s) * 30; }
+    if (P.remote) { if (S.net && S.net.host) NET.ev(S, ['k', P.uid, Math.round(b.vx), Math.round(b.vy)]); }
+    else if (!P.isPlayer) { e.down = true; P.downT = 0.7; const s = hyp(b.vx, b.vy) || 1; e.vx = (b.vx / s) * 30; e.vy = (b.vy / s) * 30; }
     else {
       try { if (N.render && N.render.shake && !document.body.classList.contains('reduced-motion')) N.render.shake(0.18, 0.15); } catch (e2) { /* ignore */ }
       const p = N.player, s = hyp(b.vx, b.vy) || 1; p.vx += (b.vx / s) * 40; p.vy += (b.vy / s) * 40;
@@ -1034,13 +1043,16 @@
     if (P.hold) { drop(S, P); }
     if (P.carry) { const st = P.carry; P.carry = null; st.state = 'loose'; st.by = null; st.claim = null; st.x = P.e.x; st.y = P.e.y; st.z = 0; }
     S.stats.outs += P.isPlayer ? 1 : 0;
-    // Chinnu out in lingocha: he walks to the side and watches (the round goes on)
-    if (P.isPlayer && S.real && S.id === 'lingocha' && N.player) { const q = sitSpot(S, P); S.auto = { x: q.x, y: q.y, t: 0, face: Math.atan2(S.F.cy - q.y, S.F.cx - q.x), out: true }; }
+    P.outs = (P.outs || 0) + 1;
+    // the order kids go out in (maram pitti places: the last one standing is 1st)
+    P.outRank = S.parts.filter((q) => !q.out).length + 1;
+    // Chinnu out in lingocha: he walks to the side and watches (the round goes on); a friend from the room too
+    if (human(P) && S.real && S.id === 'lingocha' && (N.player || P.remote)) { const q = sitSpot(S, P); NET.autoFor(S, P, q, Math.atan2(S.F.cy - q.y, S.F.cx - q.x), true); }
     if (by && by.isPlayer && S.real) S.stats.hits++;
     if (by) by.hits++;
     pop(S, P.e.x, P.e.y, 13, 'OUT!', '#ff7a6a', true);
     sfx('howzat', { x: P.e.x, y: P.e.y, vol: 0.6 });
-    const shouter = by && !by.isPlayer ? by : S.parts.find((q) => !q.isPlayer && !q.out && q !== P && q.team === (by ? by.team : -1)) || by;
+    const shouter = by && !human(by) ? by : S.parts.find((q) => !human(q) && !q.out && q !== P && q.team === (by ? by.team : -1)) || (by && !by.remote ? by : null);
     if (shouter) bark(S, shouter, pick(S, BARK.out));
     log(S, 'out', { name: P.name, me: !!P.isPlayer, by: by ? by.name : null, why: why || 'hit' });
   }
@@ -1091,10 +1103,12 @@
       const seek = LING.seekers(S), hit = LING.hitters(S);
       for (const P of S.parts) {
         P.out = false; P.safeT = 0; P.safeCD = 0; P.carry = null; P.hold = false; P.act = null; P.windT = 0; P.sit = null; P.stone = null; P.role = null; P.face = null;
-        if (P.e && !P.isPlayer) { P.e.idle = null; P.e.down = false; P.downT = 0; }
+        if (P.e && !human(P)) { P.e.idle = null; P.e.down = false; P.downT = 0; }
       }
-      // throwers: Chinnu when his team seeks (a real game), else the seekers in turn
-      L.throwers = S.me && S.me.team === L.seek ? [S.me] : seek.filter((P) => !P.dood);
+      // throwers: Chinnu when his team seeks (a real game), else the seekers in turn; with friends from the online
+      // room: the friends of the seeking side take the tries in turn
+      const humSeek = seek.filter((P) => human(P));
+      L.throwers = S.party && humSeek.length ? humSeek : S.me && S.me.team === L.seek ? [S.me] : seek.filter((P) => !P.dood);
       // the thrower toes the line; the rest of his team wait beside it (not right behind him, where they would
       // fill the 3D camera's view of the stack)
       const thrower = L.throwers[0] || seek[0];
@@ -1120,10 +1134,14 @@
       if (S.me) {
         const sp = S.me.spot;
         S.auto = sp && hyp(sp.x - N.player.x, sp.y - N.player.y) > 4 ? { x: sp.x, y: sp.y, t: 0, face: Math.atan2(L.base.y - sp.y, L.base.x - sp.x) } : null;
-        const mine = S.me.team === L.seek;
-        banner('Round ' + L.round + ' of ' + L.rounds, (mine ? S.teamName[0] + ' SEEK — knock it down, then restack!' : S.teamName[0] + ' HIT — stop them restacking!'), 2200, 'info');
-        sfx('whistle', { ui: true, vol: 0.7 });
       }
+      // friends from the online room walk to their spots on their own pages
+      for (const P of S.parts) if (P.remote && P.spot) NET.autoFor(S, P, P.spot, Math.atan2(L.base.y - P.spot.y, L.base.x - P.spot.x));
+      NET.tell(S, (P, O) => {
+        const mine = P.team === L.seek, tn = S.teamName[P.team] || S.teamName[0];
+        O.banner('Round ' + L.round + ' of ' + L.rounds, (mine ? tn + ' SEEK — knock it down, then restack!' : tn + ' HIT — stop them restacking!'), 2200, 'info');
+        O.sfx('whistle', { ui: true, vol: 0.7 });
+      });
       log(S, 'round', { round: L.round, seek: L.seek === 0 ? 'home' : 'away', thrower: thrower ? thrower.name : null });
     },
     update(S, dt) {
@@ -1132,7 +1150,7 @@
       for (const P of S.parts) { if (P.safeT > 0) P.safeT -= dt; if (P.safeCD > 0) P.safeCD -= dt; }
       switch (S.phase) {
         case 'setup': {
-          const ready = S.parts.every((P) => P.isPlayer || !P.spot || hyp(P.e.x - P.spot.x, P.e.y - P.spot.y) < 4);
+          const ready = S.parts.every((P) => human(P) || !P.spot || hyp(P.e.x - P.spot.x, P.e.y - P.spot.y) < 4);
           const late = S.phaseT > 4.5;
           if ((ready && !S.auto && S.phaseT > 1.2) || late) {
             if (late && S.auto) S.auto = null;
@@ -1145,7 +1163,10 @@
           const T = L.thrower;
           if (!T) { LING.endRound(S, 1 - L.seek, 'tries'); break; }
           if (b.holder !== T) give(S, T);
-          if (!T.isPlayer) {
+          if (T.remote) {
+            // a friend from the room throws on his own page (his 'lt' command); far too slow: the team throws for him
+            if (S.phaseT > TUNE.party.lineWait) { NET.tellOne(S, T, (O) => O.toast('*Jaldi*, ra! The team threw for you.', 2000)); LING.aiStackThrow(S, T); }
+          } else if (!T.isPlayer) {
             T.face = Math.atan2(L.base.y - T.e.y, L.base.x - T.e.x);
             // (he waits for a passer-by to get out of the way: up to 3 s more)
             if (S.phaseT > 1.3 + (S.seed % 7) * 0.08 && (S.phaseT > 4.3 || !LING.lineBlocked(S, T))) LING.aiStackThrow(S, T);
@@ -1162,7 +1183,7 @@
               log(S, 'try_blocked', { tries: L.tries });
               const k = LING.hitters(S)[0];
               if (k) bark(S, k, pick(S, BARK.blocked));
-              if (S.real && L.thrower && L.thrower.isPlayer) toast('Somebody walked into it — throw again (still try ' + (L.tries + 1) + '/' + TUNE.lingocha.tries + ')', 2200);
+              if (S.real && L.thrower && human(L.thrower)) NET.tellOne(S, L.thrower, (O) => O.toast('Somebody walked into it — throw again (still try ' + (L.tries + 1) + '/' + TUNE.lingocha.tries + ')', 2200));
               if (L.thrower) lob(S, b.x, b.y, L.thrower);
               S.phase = 'return'; S.phaseT = 0;
               break;
@@ -1176,10 +1197,12 @@
             // the keeper lobs it back to the next thrower
             const prev = L.thrower;
             L.thrower = L.throwers[L.tries % Math.max(1, L.throwers.length)] || prev;
-            if (L.thrower && !L.thrower.isPlayer) {
-              if (prev && prev !== L.thrower && !prev.isPlayer) prev.spot = spotNear(L.line.x - L.line.dx * 6 + (S.rng.next() - 0.5) * 10, L.line.y - L.line.dy * 6, 3, 12, S.F);
+            if (L.thrower && !human(L.thrower)) {
+              if (prev && prev !== L.thrower && !human(prev)) prev.spot = spotNear(L.line.x - L.line.dx * 6 + (S.rng.next() - 0.5) * 10, L.line.y - L.line.dy * 6, 3, 12, S.F);
               L.thrower.spot = { x: L.line.x, y: L.line.y };
             }
+            // two friends take turns at the line: the one who just threw steps aside
+            if (prev && prev !== L.thrower && human(prev) && human(L.thrower)) { const q = spotNear(L.line.x - L.line.dx * 6 + (prev.isPlayer ? -8 : 8) * L.line.dy, L.line.y - L.line.dy * 6 + (prev.isPlayer ? 8 : -8) * L.line.dx, 3, 12, S.F); NET.autoFor(S, prev, q, Math.atan2(L.base.y - q.y, L.base.x - q.x)); }
             if (L.thrower) lob(S, b.x, b.y, L.thrower);
             S.phase = 'return'; S.phaseT = 0;
           }
@@ -1191,8 +1214,8 @@
           if (b.holder === T || S.phaseT > 1.8) {
             if (b.holder !== T) give(S, T);
             S.aim.charging = false; S.aim.p = 0;
-            const far = hyp(T.e.x - L.line.x, T.e.y - L.line.y) > 4;
-            if (far && T.isPlayer) S.auto = { x: L.line.x, y: L.line.y, t: 0, face: Math.atan2(L.base.y - L.line.y, L.base.x - L.line.x) };
+            const far = hyp(T.e.x - L.line.x, T.e.y - L.line.y) > (T.remote ? 7 : 4);
+            if (far && human(T)) NET.autoFor(S, T, { x: L.line.x, y: L.line.y }, Math.atan2(L.base.y - L.line.y, L.base.x - L.line.x));
             S.phase = far ? 'setup' : 'aim'; S.phaseT = 0;
             if (!far) LING.aimStart(S);
           }
@@ -1220,8 +1243,9 @@
         case 'roundEnd': {
           if (S.phaseT > 2.8) {
             if (S.real && (L.wins[0] >= L.need || L.wins[1] >= L.need || L.round >= L.rounds)) {
-              const win = L.wins[0] > L.wins[1];
-              endSession(S, win, { reason: win ? 'won' : 'lost' });
+              const my = S.me ? S.me.team : 0, win = L.wins[my] > L.wins[1 - my];
+              if (S.net && S.net.host) NET.finish(S, { reason: win ? 'won' : 'lost' });
+              else endSession(S, win, { reason: win ? 'won' : 'lost' });
             } else {
               if (S.ambient && (L.wins[0] >= L.need || L.wins[1] >= L.need)) { L.wins = [0, 0]; L.round = 0; }
               L.seek = 1 - L.seek;
@@ -1233,7 +1257,7 @@
         default: break;
       }
       for (const st of L.stones) LING.stoneStep(S, st, dt);
-      for (const P of S.parts) if (!P.isPlayer) LING.ai(S, P, dt);
+      for (const P of S.parts) if (!human(P)) LING.ai(S, P, dt);
     },
     /** somebody who is not in the game stands between the thrower and the stack */
     lineBlocked(S, T) {
@@ -1290,13 +1314,11 @@
       const T = b.thrower;
       log(S, 'knock', { by: T ? T.name : null, me: !!(T && T.isPlayer), try: L.tries + 1 });
       if (T) bark(S, T, pick(S, BARK.knock));
-      if (S.real) {
-        const mine = S.me && S.me.team === L.seek;
-        toast(mine ? 'Knocked down! Grab the stones and restack — dodge the ball!' : 'Down it goes! Get the ball and hit them before they restack!', 2600);
-      }
+      if (S.real) NET.tell(S, (P, O) => O.toast(P.team === L.seek ? 'Knocked down! Grab the stones and restack — dodge the ball!' : 'Down it goes! Get the ball and hit them before they restack!', 2600));
       S.phase = 'scatter'; S.phaseT = 0;
       // the stack is down: Chinnu's own legs again (no walk back to the line still running)
       if (S.auto && !(S.me && S.me.out)) S.auto = null;
+      for (const P of S.parts) if (P.remote && !P.out) NET.autoFor(S, P, null);
       for (const P of LING.hitters(S)) if (!P.isPlayer) P.think = 0;
     },
     stoneStep(S, st, dt) {
@@ -1327,7 +1349,7 @@
     touches(S) {
       const seek = LING.seekers(S), hit = LING.hitters(S);
       for (const A of seek) {
-        if (A.out || A.safeCD > 0 || !A.e || (!A.isPlayer && !(A.touchUntil > S.t))) continue;
+        if (A.out || A.safeCD > 0 || !A.e || (!human(A) && !(A.touchUntil > S.t))) continue;
         for (const B of hit) {
           if (B.out || !B.e) continue;
           if (pdist(A, B) < A.e.r + B.e.r + 1.2) {
@@ -1366,9 +1388,11 @@
       if (who) bark(S, who, pick(S, BARK.lingocha), { secs: 2.2, force: true });
       sfx('crowd_cheer', { x: L.base.x, y: L.base.y, vol: S.real ? 1 : 0.5 }); sfx('kids', { x: L.base.x, y: L.base.y, vol: 0.8 });
       if (S.real) {
-        sfx('applause', { ui: true, vol: 0.7, delay: 0.3 });
-        const mine = S.me && S.me.team === L.seek;
-        banner('LINGOCHA!', (mine ? S.teamName[0] : S.teamName[1]) + ' rebuilt all seven' + (who && who.isPlayer ? ' — Chinnu placed the last stone!' : ''), 2600, mine ? 'pass' : 'fail');
+        NET.tell(S, (P, O) => {
+          O.sfx('applause', { ui: true, vol: 0.7, delay: 0.3 });
+          const mine = P.team === L.seek;
+          O.banner('LINGOCHA!', (S.teamName[L.seek] || '') + ' rebuilt all seven' + (who && who === P ? (S.party ? ' — you placed the last stone!' : ' — Chinnu placed the last stone!') : who && human(who) ? ' — ' + who.name + ' placed the last stone!' : ''), 2600, mine ? 'pass' : 'fail');
+        });
       }
       log(S, 'lingocha', { by: who ? who.name : null, me: !!(who && who.isPlayer) });
       LING.endRound(S, L.seek, 'restack', true);
@@ -1385,10 +1409,12 @@
       S.tele = null;
       log(S, 'round_end', rec);
       if (S.real && !quiet) {
-        const mine = winner === (S.me ? S.me.team : 0);
         const why = reason === 'tries' ? 'Three tries, stack still standing!' : reason === 'allout' ? 'All the seekers are out!' : reason === 'time' ? 'Time up — the stack is not rebuilt!' : '';
-        banner(mine ? 'Round to ' + S.teamName[0] + '!' : 'Round to ' + S.teamName[1], why, 2400, mine ? 'pass' : 'fail');
-        sfx(mine ? 'crowd_cheer' : 'kids', { ui: true, vol: 0.6 });
+        NET.tell(S, (P, O) => {
+          const mine = winner === P.team;
+          O.banner(mine ? 'Round to ' + S.teamName[winner] + '!' : 'Round to ' + S.teamName[winner], why, 2400, mine ? 'pass' : 'fail');
+          O.sfx(mine ? 'crowd_cheer' : 'kids', { ui: true, vol: 0.6 });
+        });
       }
     },
     nextStone(S, P) {
@@ -1528,7 +1554,7 @@
         // (mid wind-up he keeps his mark unless that kid is out / SAFE; then the fuse starts again on a new one)
         if (!P.tgt || P.tgt.out || P.tgt.safeT > 0 || (S.t > P.tgtT && !(P.windT > 0))) {
           let best = null, bs = Infinity;
-          for (const Q of targets) { const s = pdist(P, Q) * (Q.carry ? 0.7 : 1) * (Q.isPlayer ? TUNE.lingocha.meW : 1) * (0.85 + 0.3 * S.rng.next()); if (s < bs) { bs = s; best = Q; } }
+          for (const Q of targets) { const s = pdist(P, Q) * (Q.carry ? 0.7 : 1) * (human(Q) ? TUNE.lingocha.meW : 1) * (0.85 + 0.3 * S.rng.next()); if (s < bs) { bs = s; best = Q; } }
           if (P.windT > 0 && best !== P.tgt) windUp(S, P, best);
           P.tgt = best; P.tgtT = S.t + 1.2;
         }
@@ -1542,10 +1568,11 @@
         // pass to a teammate who is much closer to the target (Chinnu too, some of the time: "Chinnu, catch!")
         if (d > 50 && P.holdT > 0.4) {
           let mate = null, md = d - 18;
-          for (const Q of LING.hitters(S)) { if (Q === P || Q.out || (Q.isPlayer && !(P.passRoll < TUNE.lingocha.passMe))) continue; const dq = pdist(Q, T); if (dq < md) { md = dq; mate = Q; } }
+          for (const Q of LING.hitters(S)) { if (Q === P || Q.out || (human(Q) && !(P.passRoll < TUNE.lingocha.passMe))) continue; const dq = pdist(Q, T); if (dq < md) { md = dq; mate = Q; } }
           if (mate && S.rng.next() < 0.7) {
             launchAt(S, P, mate.e.x, mate.e.y, 4, TUNE.passSpeed, 0.03, { pass: true, passTo: mate });
-            if (mate.isPlayer) bark(S, P, pick(S, ['Chinnu, catch!', 'Le, Chinnu! *Maar*!', 'Pass, ra, catch!']), { force: true });
+            if (mate.isPlayer && !S.party) bark(S, P, pick(S, ['Chinnu, catch!', 'Le, Chinnu! *Maar*!', 'Pass, ra, catch!']), { force: true });
+            else if (human(mate)) { const nm = mate.nick || mate.name; bark(S, P, pick(S, [nm + ', catch!', 'Le, ' + nm + '! *Maar*!', 'Pass, ra, catch!']), { force: true }); }
             return;
           }
         }
@@ -1613,8 +1640,8 @@
       };
     },
     result(S) {
-      const L = S.L;
-      return { roundsWon: L.wins[0], roundsLost: L.wins[1], rounds: L.hist.slice(), stacked: S.stats.stacked, hits: S.stats.hits, outs: S.stats.outs, tries: S.stats.tries, opponent: S.teamName[1] };
+      const L = S.L, my = S.me ? S.me.team : 0;
+      return { roundsWon: L.wins[my], roundsLost: L.wins[1 - my], rounds: L.hist.slice(), stacked: S.stats.stacked, hits: S.stats.hits, outs: S.stats.outs, tries: S.stats.tries, opponent: S.teamName[1 - my] };
     },
     stars(S, r) { if (!r.win) return 0; return r.roundsLost === 0 ? 3 : 2; },
     score(S, r) { return r.roundsWon * 100 + r.stacked * 10 + r.hits * 15; },
@@ -1638,7 +1665,9 @@
           I.consume('action');
           me.actT -= dt;
           if (me.actT <= 0) {
-            if (me.act === 'pick') LING.pickStone(S, me, me.actStone);
+            // (a guest's page asks the host's game to do it, and shows it at once)
+            if (NET.guest(S)) NET.cmd(S, me.act === 'pick' ? { k: 'pk', i: me.actStone ? me.actStone.i : -1 } : { k: 'sk' });
+            else if (me.act === 'pick') LING.pickStone(S, me, me.actStone);
             else if (L.stack.length < 7) LING.stackStone(S, me);
             me.act = null; me.actStone = null;
           }
@@ -1666,8 +1695,8 @@
           }
         } else offer(S, '');
         I.consume('action');
-        // running into the loose ball kicks it away
-        if ((b.state === 'rest' || b.state === 'roll') && hyp(b.x - p.x, b.y - p.y) < p.r + TUNE.ballR + 0.6 && hyp(p.vx, p.vy) > 35) kick(S, me);
+        // running into the loose ball kicks it away (a guest: the host's game sees his run into it)
+        if (!NET.guest(S) && (b.state === 'rest' || b.state === 'roll') && hyp(b.x - p.x, b.y - p.y) < p.r + TUNE.ballR + 0.6 && hyp(p.vx, p.vy) > 35) kick(S, me);
         return;
       }
       // hitter (the aim assist passes over a SAFE seeker while somebody else is fair game)
@@ -1718,21 +1747,24 @@
       const r = clamp(Math.min(F.w, F.h) * 0.32, 16, 34);
       const n = S.parts.length;
       S.parts.forEach((P, i) => {
-        P.out = false; P.hold = false; P.windT = 0; P.sit = null; P.fouls = 0; P.face = null; P.scatter = false;
-        if (P.e && !P.isPlayer) { P.e.idle = null; P.e.down = false; P.downT = 0; }
+        P.out = false; P.hold = false; P.windT = 0; P.sit = null; P.fouls = 0; P.face = null; P.scatter = false; P.outRank = null; P.boundT = 0;
+        if (P.e && !human(P)) { P.e.idle = null; P.e.down = false; P.downT = 0; }
         const a = (i / n) * TAU + 0.4, q = clampIn(F, c.x + Math.cos(a) * r, c.y + Math.sin(a) * r, 4);
         P.spot = spotNear(q.x, q.y, 3, 10, F);
       });
-      M.tosser = S.parts.find((P) => !P.isPlayer) || S.parts[0];
+      M.tosser = S.parts.find((P) => !human(P)) || S.parts[0];
       if (M.tosser) M.tosser.spot = { x: c.x, y: c.y };
       give(S, M.tosser);
       S.phase = 'setup'; S.phaseT = 0;
       if (S.me) {
         const sp = S.me.spot;
         S.auto = sp && hyp(sp.x - N.player.x, sp.y - N.player.y) > 4 ? { x: sp.x, y: sp.y, t: 0, face: Math.atan2(c.y - sp.y, c.x - sp.x) } : null;
-        banner('MARAM PITTI', 'Wait for the bounce · hit them below the head · last one standing wins', 2400, 'info');
-        sfx('whistle', { ui: true, vol: 0.7 });
       }
+      for (const P of S.parts) if (P.remote && P.spot) NET.autoFor(S, P, P.spot, Math.atan2(c.y - P.spot.y, c.x - P.spot.x));
+      NET.tell(S, (P, O) => {
+        O.banner('MARAM PITTI', 'Wait for the bounce · hit them below the head · last one standing wins', 2400, 'info');
+        O.sfx('whistle', { ui: true, vol: 0.7 });
+      });
       log(S, 'ring', { n });
     },
     toss(S) {
@@ -1768,7 +1800,7 @@
       const M = S.M, b = S.ball;
       S.phaseT += dt;
       if (S.phase === 'setup') {
-        const ready = S.parts.every((P) => P.isPlayer || !P.spot || hyp(P.e.x - P.spot.x, P.e.y - P.spot.y) < 4);
+        const ready = S.parts.every((P) => human(P) || !P.spot || hyp(P.e.x - P.spot.x, P.e.y - P.spot.y) < 4);
         if ((ready && !S.auto && S.phaseT > 1) || S.phaseT > 4.5) { if (S.auto) S.auto = null; MARAM.toss(S); }
       } else if (S.phase === 'toss') {
         if (b.bounced > 0 || b.state !== 'air') { S.phase = 'play'; S.phaseT = 0; log(S, 'play'); }
@@ -1786,7 +1818,33 @@
             if (S.boundT > TUNE.maram.boundT) setOut(S, S.me, null, 'boundary');
           } else { S.boundT = 0; S.boundWarn = false; }
         }
-        if (S.real) {
+        // friends from the online room: the host's game calls them back inside the boundary too
+        if (S.net && S.net.host && S.endAt == null) {
+          for (const P of S.parts) {
+            if (!P.remote || P.out) continue;
+            const off = rectDist(S.F, P.e.x, P.e.y), fetching = !b.holder && rectDist(S.F, b.x, b.y) > 2 && hyp(b.x - P.e.x, b.y - P.e.y) < 30;
+            if (off > TUNE.maram.bound + 2 && !fetching && !P.hold) {
+              P.boundT = (P.boundT || 0) + dt;
+              if (P.boundT > TUNE.maram.boundT + 0.5) setOut(S, P, null, 'boundary');
+            } else P.boundT = 0;
+          }
+        }
+        if (S.real && S.party) {
+          // with friends: an out kid sits at the side and watches; the game goes on till one is left standing, every
+          // friend is out, or the time is up
+          const humIn = al.filter((P) => human(P));
+          if (S.endAt == null && (al.length <= 1 || !humIn.length || M.timeLeft <= 0)) {
+            const reason = al.length <= 1 ? 'last' : M.timeLeft <= 0 ? 'time' : 'allout';
+            S.endAt = S.t + (reason === 'last' ? 1.4 : 1.6); S.endWin = !!(S.me && !S.me.out); S.endExtra = { reason };
+            for (const P of al) P.outRank = 1;
+            NET.tell(S, (P, O) => {
+              if (reason === 'last' && !P.out) { O.banner('LAST ONE STANDING!', 'You win the maram pitti!', 2400, 'pass'); O.sfx('crowd_cheer', { ui: true }); O.sfx('applause', { ui: true, delay: 0.3 }); }
+              else if (reason === 'last') O.banner('GAME OVER', (al[0] ? nameOf(al[0]) : 'Nobody') + ' is the last one standing', 2400, 'info');
+              else if (reason === 'time') O.banner('TIME UP!', P.out ? al.length + ' still standing' : 'Still standing — ' + al.length + ' of you share the glory', 2200, P.out ? 'info' : 'pass');
+              else O.banner('ALL OUT!', 'The colony kids win this one — ' + al.length + ' left standing', 2200, 'info');
+            });
+          }
+        } else if (S.real) {
           if (S.me.out && S.endAt == null) { S.endAt = S.t + 2.2; S.endWin = false; S.endExtra = { reason: 'out', rank: al.length + 1 }; }
           else if (!S.me.out && al.length <= 1 && S.endAt == null) {
             S.endAt = S.t + 1.4; S.endWin = true; S.endExtra = { reason: 'last', rank: 1 };
@@ -1798,7 +1856,7 @@
         } else if ((al.length <= 1 || M.timeLeft <= 0) && !S.restartAt) { S.restartAt = S.t + TUNE.ambient.rest; M.timeLeft = TUNE.maram.time; if (al[0]) { bark(S, al[0], '*Jeet gaya*! Again!'); pop(S, al[0].e.x, al[0].e.y, 12, 'WINNER!', '#f2c230'); } }
       }
       if (S.restartAt && S.t > S.restartAt) { S.restartAt = 0; MARAM.ring(S); }
-      for (const P of S.parts) if (!P.isPlayer) MARAM.ai(S, P, dt);
+      for (const P of S.parts) if (!human(P)) MARAM.ai(S, P, dt);
     },
     onBounce(S, b, wasLive) {
       if (wasLive && b.thrower && S.phase === 'play' && b.hitSet && b.hitSet.size === 0) {
@@ -1810,7 +1868,8 @@
       const T = b.thrower;
       if (S.phase !== 'play' || !T) return false;
       // a catch on the full: the thrower is out
-      const caught = MARAM.catching(S, P) || (!P.isPlayer && P.catchRoll && hyp(b.vx, b.vy) < 190 && P.downT <= 0);
+      // (a friend from the room catches on his own page: his hit report says so)
+      const caught = P.remote ? !!P.netCatch : MARAM.catching(S, P) || (!P.isPlayer && P.catchRoll && hyp(b.vx, b.vy) < 190 && P.downT <= 0);
       if (caught) {
         give(S, P); P.catches++; if (P.isPlayer) S.stats.catches++;
         pop(S, P.e.x, P.e.y, 11, 'CAUGHT!', '#7fe0ff', true);
@@ -1827,8 +1886,8 @@
         bark(S, P, pick(S, BARK.close));
         log(S, 'close_foul', { name: P.name, by: T.name, fouls: T.fouls });
         b.vx *= -0.25; b.vy *= -0.25; b.vz = 14; b.live = false;
-        if (T.fouls >= TUNE.maram.fouls) { if (T.isPlayer) toast('Three fouls — out, ra! (throw from a distance)', 2600); setOut(S, T, null, 'fouls'); }
-        else if (T.isPlayer) toast('*Itna paas se nakko!* Too close — foul ' + T.fouls + '/' + TUNE.maram.fouls + '. Step back first', 2400);
+        if (T.fouls >= TUNE.maram.fouls) { if (human(T)) NET.tellOne(S, T, (O) => O.toast('Three fouls — out, ra! (throw from a distance)', 2600)); setOut(S, T, null, 'fouls'); }
+        else if (human(T)) NET.tellOne(S, T, (O) => O.toast('*Itna paas se nakko!* Too close — foul ' + T.fouls + '/' + TUNE.maram.fouls + '. Step back first', 2400));
         return true;
       }
       if (b.z - TUNE.ballR * 0.5 > TUNE.headZ) {
@@ -1837,8 +1896,8 @@
         bark(S, P, pick(S, BARK.head));
         log(S, 'head_foul', { name: P.name, by: T.name, fouls: T.fouls });
         knockDown(S, P, b);
-        if (T.fouls >= TUNE.maram.fouls) { if (T.isPlayer) toast('Three head shots — out, ra! (no heads in maram pitti)', 2600); setOut(S, T, null, 'fouls'); }
-        else if (T.isPlayer) toast('*Nakko!* No head shots — foul ' + T.fouls + '/' + TUNE.maram.fouls, 2200);
+        if (T.fouls >= TUNE.maram.fouls) { if (human(T)) NET.tellOne(S, T, (O) => O.toast('Three head shots — out, ra! (no heads in maram pitti)', 2600)); setOut(S, T, null, 'fouls'); }
+        else if (human(T)) NET.tellOne(S, T, (O) => O.toast('*Nakko!* No head shots — foul ' + T.fouls + '/' + TUNE.maram.fouls, 2200));
         return true;
       }
       knockDown(S, P, b);
@@ -1874,7 +1933,7 @@
           let best = null, bs = Infinity;
           for (const Q of al) {
             const dq = pdist(P, Q), eff = dq >= minD ? dq : minD + (minD - dq) * 1.4;
-            const s = eff * (0.75 + 0.5 * S.rng.next()) * (1 + Math.min(1, hyp(Q.svx || 0, Q.svy || 0) / 90) * 0.35) * (Q.isPlayer ? TUNE.maram.meW : 1);
+            const s = eff * (0.75 + 0.5 * S.rng.next()) * (1 + Math.min(1, hyp(Q.svx || 0, Q.svy || 0) / 90) * 0.35) * (human(Q) ? TUNE.maram.meW : 1);
             if (s < bs) { bs = s; best = Q; }
           }
           if (P.windT > 0 && best !== P.tgt) windUp(S, P, best);
@@ -1996,7 +2055,7 @@
       if (MARAM.threatened(S)) {
         const ready = S.t - me.catchT > TUNE.catchCD;
         offer(S, ready ? 'CATCH!' : '');
-        if (I.pressed('action') && ready) { me.catchT = S.t; log(S, 'catch_try', { tele: !!(S.tele && S.tele.to === me) }); sfx('pickup', { ui: true, vol: 0.25, pitch: 1.5 }); }
+        if (I.pressed('action') && ready) { me.catchT = S.t; if (NET.guest(S)) NET.cmd(S, { k: 'ct' }); log(S, 'catch_try', { tele: !!(S.tele && S.tele.to === me) }); sfx('pickup', { ui: true, vol: 0.25, pitch: 1.5 }); }
         I.consume('action');
         return;
       }
@@ -2005,7 +2064,7 @@
       if (!b.holder && d < TUNE.myReach) {
         offer(S, 'Grab ball');
         if (I.pressed('action')) {
-          if (canGrab(S, b)) { give(S, me); log(S, 'grab', { name: me.name, me: true, bounced: b.bounced }); sfx('pickup', { ui: true, vol: 0.5 }); }
+          if (canGrab(S, b)) { if (NET.guest(S)) NET.cmd(S, { k: 'gb' }); else give(S, me); log(S, 'grab', { name: me.name, me: true, bounced: b.bounced }); sfx('pickup', { ui: true, vol: 0.5 }); }
           else {
             log(S, 'grab_refused', { reason: 'no_bounce' });
             pop(S, p.x, p.y, 10, 'BOUNCE FIRST!', '#ffb0a0');
@@ -2081,7 +2140,7 @@
       if (!b.holder && d < TUNE.myReach && canGrab(S, b) && lockedOut(S, me)) offer(S, '');
       else if (!b.holder && d < TUNE.myReach && canGrab(S, b)) {
         offer(S, 'Pick up ball');
-        if (I.pressed('action')) { give(S, me); sfx('pickup', { ui: true, vol: 0.5 }); log(S, 'grab', { name: me.name, me: true, bounced: b.bounced }); }
+        if (I.pressed('action')) { if (NET.guest(S)) NET.cmd(S, { k: 'gb' }); else give(S, me); sfx('pickup', { ui: true, vol: 0.5 }); log(S, 'grab', { name: me.name, me: true, bounced: b.bounced }); }
       } else offer(S, '');
       I.consume('action');
       S.aimTarget = null;
@@ -2118,10 +2177,15 @@
       const tx = T.e.x + (T.e.vx || 0) * t * 0.6, ty = T.e.y + (T.e.vy || 0) * t * 0.6;
       const errA = PG.debug.assist.aim ? 0 : (power ? 0.07 : 0.035) * (asst ? 0.5 : 1);
       const tz = PG.debug.assist.aim ? 2.6 : clamp(2.6 + gauss(S.rng) * (power ? 1.7 : 0.6), 0.8, 8);
-      launchAt(S, me, tx, ty, tz, sp, errA, { target: T });
+      if (NET.guest(S)) {
+        // a guest: the same throw, worked out here and thrown by the host's game (shown here at once)
+        const d2 = Math.max(4, hyp(tx - p.x, ty - p.y)), ang = Math.atan2(ty - p.y, tx - p.x) + gauss(S.rng) * errA, tf = Math.max(0.08, d2 / sp);
+        NET.cmd(S, { k: 'th', a: +ang.toFixed(4), s: Math.round(sp), z: +clamp((tz - TUNE.hand) / tf + 0.5 * TUNE.g * tf, -30, 140).toFixed(2), t: S.parts.indexOf(T) });
+      } else launchAt(S, me, tx, ty, tz, sp, errA, { target: T });
     } else {
       const a = p.facing != null ? p.facing : p.angle;
-      release(S, me, a, sp, power ? 22 : 12);
+      if (NET.guest(S)) NET.cmd(S, { k: 'th', a: +a.toFixed(4), s: sp, z: power ? 22 : 12, t: -1 });
+      else release(S, me, a, sp, power ? 22 : 12);
     }
     me.hold = false;
   }
@@ -2208,7 +2272,8 @@
     else ang += gauss(S.rng) * (TUNE.aim.err + TUNE.aim.errPow * p * p) * (S.assist || isTouch() ? 0.7 : 1);
     if (PG.debug.assist.power != null) p = PG.debug.assist.power;
     log(S, 'player_throw', { ang: +ang.toFixed(3), p: +p.toFixed(2) });
-    LING.stackThrow(S, me, ang, p);
+    if (NET.guest(S)) NET.cmd(S, { k: 'lt', a: +ang.toFixed(4), p: +p.toFixed(3) });
+    else LING.stackThrow(S, me, ang, p);
   }
 
   /* ================================================================ pointer input (mouse aim, touch slingshot) */
@@ -2593,7 +2658,7 @@
       }
     } else { S.awayT = 0; S.awayWarned = false; }
     if (S.barkT > 0) S.barkT -= dt;
-    else { S.barkT = 4 + S.rng.next() * 5; const k = S.parts.find((Q) => !Q.isPlayer && !Q.out && S.rng.next() < 0.3); if (k) bark(S, k, pick(S, BARK.chatter)); }
+    else { S.barkT = 4 + S.rng.next() * 5; const k = S.parts.find((Q) => !human(Q) && !Q.out && S.rng.next() < 0.3); if (k) bark(S, k, pick(S, BARK.chatter)); }
     hudUpdate(S);
   }
   /** a ball lost in a drain / the lake / behind a house comes back: "Ball la, ra!" */
@@ -2613,7 +2678,7 @@
         const q = spotNear(c.x, c.y, 3, 14, S.F);
         Object.assign(b, { x: q.x, y: q.y, z: 0, vx: 0, vy: 0, vz: 0, state: 'rest', lost: false, live: false, bounced: 1, lockP: null, lockT: 0 });
         S.ballOutT = 0; S.freeT = 0;
-        const k = S.parts.find((Q) => !Q.isPlayer && !Q.out);
+        const k = S.parts.find((Q) => !human(Q) && !Q.out);
         if (k) bark(S, k, 'Ball *la*, ra!');
         log(S, 'ball_back', { stuck: !!stuck });
       }
@@ -2751,14 +2816,14 @@
       if (S.real && !done) {
         R.queue('ground', 5, () => D.flat((ctx) => {
           for (const P of S.parts) {
-            if (!P.e || (P.out && !P.isPlayer)) continue;
+            if (!P.e || (P.out && !human(P))) continue;
             // a dark under-stroke so the ring reads on red dust and pale sand alike; Chinnu's ring is the
-            // boldest on the ground (find yourself at a glance)
-            const w = P.isPlayer ? 1.2 : 0.7;
+            // boldest on the ground (find yourself at a glance); a friend from the room: a bold ring in his colour
+            const w = P.isPlayer ? 1.2 : P.remote ? 1 : 0.7;
             ctx.globalAlpha = P.out ? 0.2 : 0.45; ctx.strokeStyle = '#1a1214'; ctx.lineWidth = w + 0.7;
             ctx.beginPath(); ctx.ellipse(P.e.x, P.e.y + 0.6, 4.6, 3.6, 0, 0, TAU); ctx.stroke();
-            ctx.globalAlpha = P.out ? 0.3 : P.isPlayer ? 1 : 0.85;
-            ctx.strokeStyle = S.id === 'marampitti' ? (P.isPlayer ? '#f2c230' : '#f4ead8') : (TEAM_COL[P.team] || '#fff');
+            ctx.globalAlpha = P.out ? 0.3 : human(P) ? 1 : 0.85;
+            ctx.strokeStyle = S.id === 'marampitti' ? (P.isPlayer ? '#f2c230' : P.remote ? (P.col || '#5fd0ff') : '#f4ead8') : (TEAM_COL[P.team] || '#fff');
             ctx.lineWidth = w;
             ctx.beginPath(); ctx.ellipse(P.e.x, P.e.y + 0.6, 4.6, 3.6, 0, 0, TAU); ctx.stroke();
             if (P.safeT > 0) { ctx.globalAlpha = 0.6 + 0.3 * Math.sin(S.t * 14); ctx.strokeStyle = '#7fe0ff'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.arc(P.e.x, P.e.y, 6.2, 0, TAU); ctx.stroke(); }
@@ -3106,11 +3171,11 @@
     let ri = 0;
     if (S.real && !S.ended) {
       for (const P of S.parts) {
-        if (ri >= V3L.rings.length || !P.e || (P.out && !P.isPlayer)) continue;
+        if (ri >= V3L.rings.length || !P.e || (P.out && !human(P))) continue;
         const m = V3L.rings[ri++];
         m.visible = true;
         const hands = S.id === 'marampitti' && MARAM.catching(S, P);
-        m.material = P.safeT > 0 || hands ? V3L.smat : S.id === 'marampitti' ? (P.isPlayer ? V3L.rmat[0] : V3L.wmat) : V3L.rmat[P.team] || V3L.wmat;
+        m.material = P.safeT > 0 || hands ? V3L.smat : S.id === 'marampitti' ? (P.isPlayer ? V3L.rmat[0] : P.remote ? V3L.rmat[1] : V3L.wmat) : V3L.rmat[P.team] || V3L.wmat;
         m.position.set(P.e.x, hAt(P.e.x, P.e.y) + 0.06, P.e.y);
         const sc = P.safeT > 0 || hands ? 1.4 : P.isPlayer && P.act ? 1.15 + 0.25 * Math.sin(S.t * 16) : 1; m.scale.set(sc, sc, sc);
       }

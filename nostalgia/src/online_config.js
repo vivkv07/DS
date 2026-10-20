@@ -6,7 +6,8 @@
  * Fields: url (project URL), key (the PUBLIC publishable key: safe to ship; the database only lets it call the
  *   save_* / journey_* / profile_* functions), sdk (script URLs tried in order; the vendored copy is the fallback),
  *   realtimeKey (optional: a legacy anon JWT for Realtime if the project's Realtime ever rejects the
- *   publishable key), maxPlayers (room cap, 10), stateHz (position updates per second, 8).
+ *   publishable key), maxPlayers (room cap: 3, the owner's choice: a small group of friends), stateHz (position
+ *   updates per second, 8).
  * Tests (tests/online.cjs) set window.NOSTALGIA_ONLINE_CONFIG before the page loads to point the game at a
  * local stand-in server, or to null for the "coming soon" path.
  */
@@ -25,7 +26,7 @@
     ],
     // public legacy anon key, used only for Realtime rooms (safest choice until rooms are confirmed on the publishable key)
     realtimeKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyYWx1bmFqdGZhcHFrcHd1bHlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0Mjc5MTksImV4cCI6MjEwODAwMzkxOX0.TyTS2Ip0_YmCzSeU4dcXrqvm19x3PP_91Jy367HpHvU',
-    maxPlayers: 10,
+    maxPlayers: 3,
     stateHz: 8,
   };
 })();

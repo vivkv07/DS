@@ -8,12 +8,17 @@
  * the Supabase MCP tools (see design/online_setup.md "Verified").
  *
  * Covers: config = null ("coming soon", nothing loaded, zero errors); file:// ("needs the web version");
- * player code + nickname (+ kid filter); three pages (separate phones) in one room seeing each other move in
- * 2D and 3D (swiftshader, three.js from vendor/); meet pin -> waypoint + toast for everyone; quick-chat
- * bubbles; a closed page disappearing for the others; the 11th player refused; cloud save round trip with
- * "Use my code" on a new phone and the newer-save guard both ways; the journey + Journal page.
+ * player code + nickname (+ kid filter); THE ROOM FLOW (flow): Create from the title -> in the city with no extra
+ * click (no save: a new game, intro skipped; a double press opens one room and starts once); Join from the title on a
+ * phone with a save -> the save continues and the joiner stands a few metres from the friend; Join from the pause
+ * deck mid-mission -> not moved, a pink route + 👫 Go to friends (works after the mission); the 4th player refused
+ * (rooms of 3); the "Nearby" card (desktop card, phone chip) and its one-tap Challenge -> party invites; the arrival
+ * toast "You're all at Gokul Chat — Pani puri contest? [🏁 Start]"; three pages (separate phones) in one room seeing
+ * each other move in 2D and 3D (swiftshader, three.js from vendor/); meet pin -> waypoint + toast for everyone;
+ * quick-chat bubbles; a closed page disappearing for the others; cloud save round trip with "Use my code" on a new
+ * phone and the newer-save guard both ways; the journey + Journal page.
  *
- *   node nostalgia/tests/online.cjs            ONLY=basic|room|cloud   SHOTS=0 (skip screenshots)
+ *   node nostalgia/tests/online.cjs            ONLY=basic|flow|room|dist|cloud   SHOTS=0 (skip screenshots)
  */
 'use strict';
 const path = require('path');
@@ -80,11 +85,13 @@ async function play(P, place, dx, dy) {
   await P.ev(([pl, x, y]) => { N.debug.setTime(11, 0); N.debug.freezeClock && N.debug.freezeClock(true); const q = N.debug.teleport(pl); if (q) N.player.teleport(q.x + x, q.y + y); }, [place, dx || 0, dy || 0]);
 }
 const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeout: ms || 8000, polling: 100 }).then(() => true, () => false);
+// game-time wait: n rendered frames on that page (not a fixed sleep: this machine is shared and frames can be slow)
+const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); return until(P, ([a, k]) => N.time.frame >= a + k, [f0, n], 60000); };
 
 (async () => {
   const S = await staticServer();
   const M = await mock.start({ key: 'test-publishable-key' });
-  const CONF = { provider: 'supabase', url: M.url, key: M.key, sdk: [SDK_CDN, 'vendor/supabase/supabase.js'], maxPlayers: 10, stateHz: 8 };
+  const CONF = { provider: 'supabase', url: M.url, key: M.key, sdk: [SDK_CDN, 'vendor/supabase/supabase.js'], maxPlayers: 3, stateHz: 8 };
   const browser = await chromium.launch({ args: ARGS });
   const phones = [];
   try {
@@ -135,6 +142,7 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       check(JSON.stringify(nk.map((x) => x[1])) === JSON.stringify([true, true, false, false, false, false, true, false, true]), 'nickname filter: ' + nk.map((x) => x[0] + '=' + x[1]).join(', '));
       check(await A.ev(() => N.online.normCode(' chai patang gully 4821 k7qxo ') === 'CHAI-PATANG-GULLY-4821-K7QX0'), 'typed codes are tidied (case, spaces, O->0)');
       await A.ev(() => N.online.open({ from: 'title' }));
+      await A.page.click('.mn-online [data-act=more]');
       await A.page.click('.mn-online [data-act=start]');
       const online = await until(A, () => !!N.online.code && N.online.ready, null, 15000);
       check(online, 'Go online: SDK loaded (CDN url, vendored file) and a code made: ' + await A.ev(() => N.online.code));
@@ -152,6 +160,173 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       const ae = await A.errs();
       check(!ae.length, 'code/nick: zero errors' + (ae.length ? ': ' + ae.slice(0, 3).join(' | ') : ''));
       await A.context.close();
+    }
+
+    /* ============================================================ flow: title -> room -> straight into the city, next to friends */
+    if (only('flow')) {
+      console.log('\n== flow: Create on the title -> in the city with no extra click; Join -> next to the friend');
+      const gameStarts = (P) => P.ev(() => { window.__starts = 0; N.on('game:new', () => { window.__starts++; }); N.on('game:continue', () => { window.__starts++; }); });
+      const where = (P) => P.ev(() => ({ x: N.player.x, y: N.player.y }));
+      const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+      // A: a first-timer (no save) on a laptop
+      const A = await newPhone(browser, 'flowA', CONF, { url: S.url });
+      phones.push(A);
+      await gameStarts(A);
+      await A.ev(() => { N.online.TUNE.flowMs = 3000; }); // time for the screenshot of the code (default 1.4 s)
+      await A.page.click('.trk-online button');
+      await until(A, () => N.menus.topPanelId() === 'online');
+      const lobby = await A.ev(() => ({ steps: Array.from(document.querySelectorAll('.mn-online .ol-steps li')).map((l) => l.textContent), create: !!document.querySelector('.mn-online [data-act=create]'), join: !!document.querySelector('.mn-online [data-act=join]'), code: !!document.querySelector('.mn-online [data-code]'), focus: document.activeElement && document.activeElement.dataset.act }));
+      check(lobby.steps.length === 4 && /Create/.test(lobby.steps[0]) && /Share/.test(lobby.steps[1]) && /together/.test(lobby.steps[3]) && lobby.create && lobby.join && !lobby.code, 'first-timer panel: ' + lobby.steps.join(' → ') + '; big Create / Join; the player code folded away');
+      check(lobby.focus === 'create', 'keyboard: "Create a room" has the focus');
+      await A.shot('flow_panel_title');
+      await A.page.fill('.mn-online input[data-k=nick]', 'Ravi');
+      await A.page.press('.mn-online input[data-k=nick]', 'Enter');
+      await until(A, () => N.online.nick === 'Ravi');
+      // Enter on "Create a room", twice (a double press): one room, one game start, no PLAY step
+      await A.ev(() => document.querySelector('.mn-online [data-act=create]').focus());
+      await A.page.keyboard.press('Enter');
+      await A.page.keyboard.press('Enter');
+      check(await until(A, () => !!document.querySelector('.mn-online [data-room]'), null, 15000), 'the panel shows the room code to share: ' + await A.ev(() => (document.querySelector('.mn-online [data-room]') || {}).textContent));
+      await A.shot('flow_panel_room_code');
+      const aIn = await until(A, () => N.state.mode === 'play' && !!N.online.room && !N.menus.isPanelShown('online') && !N.menus.isPanelShown('title'), null, 20000);
+      const code = await A.ev(() => N.online.room && N.online.room.code);
+      await until(A, () => window.__starts >= 1, null, 2000);
+      const a0 = await A.ev(() => ({ how: N.online.flow.how, starts: window.__starts, cut: N.state.has('cutscene'), mission: !!N.missions.active, prologue: !!N.flags.prologue_seen, badge: document.querySelector('.ol-badge').textContent, hint: getComputedStyle(document.querySelector('.ol-badge-hint')).display !== 'none' }));
+      check(aIn && a0.how === 'new' && !a0.cut && !a0.mission, 'Create on the title -> in the city with no extra click: no save, so a new game with the intro skipped, free roam ' + JSON.stringify({ how: a0.how, cutscene: a0.cut, mission: a0.mission }));
+      check(a0.starts === 1 && M.rooms.size === 1, 'the double press opened one room and started the game once (' + a0.starts + ' start, ' + M.rooms.size + ' room)');
+      check(a0.prologue, 'the story can still begin later (prologue_seen: M1 waits on the home terrace)');
+      check(new RegExp(code + '.*1/3').test(a0.badge) && a0.hint, 'HUD badge "' + a0.badge + '" (the code + "tell friends this code")');
+      await frames(A, 30);
+      await A.shot('flow_A_in_city');
+
+      // B: a phone with a save at Abids joins from the title -> the save continues, next to Ravi
+      const B = await newPhone(browser, 'flowB', CONF, { url: S.url, viewport: { width: 390, height: 844 }, touch: true });
+      phones.push(B);
+      await B.ev(() => N.debug.newGame({ skipIntro: true }));
+      await until(B, () => N.state.mode === 'play');
+      await B.ev(() => { N.debug.teleport('abids'); N.flags.__flow_save = 'pooja'; N.save.save({ reason: 'test' }); window.__saveT = N.save.info().t; N.game.quitToTitle(); });
+      await until(B, () => N.state.mode === 'title');
+      await gameStarts(B);
+      await B.page.tap('.trk-online button');
+      await until(B, () => N.menus.topPanelId() === 'online');
+      await B.shot('flow_panel_title_phone');
+      await B.page.fill('.mn-online input[data-k=nick]', 'Pooja');
+      await B.page.tap('.mn-online [data-act=nick]');
+      await until(B, () => N.online.nick === 'Pooja');
+      await B.page.fill('.mn-online input[data-k=room]', code.toLowerCase().replace('-', ' '));
+      await B.page.tap('.mn-online [data-act=join]');
+      const bIn = await until(B, () => N.state.mode === 'play' && !N.menus.isPanelShown('online') && !!N.online.room && !N.online.flow.place, null, 30000);
+      const aPos = await where(A);
+      const b1 = await B.ev(() => ({ how: N.online.flow.how, flag: N.flags.__flow_save, starts: window.__starts, x: N.player.x, y: N.player.y, walk: N.world.isWalkable(N.player.x, N.player.y), surface: N.debug.state().surface }));
+      check(bIn && b1.how === 'continue' && b1.flag === 'pooja' && b1.starts === 1, 'B (a save) joined on the title: the saved game continues by itself (' + b1.how + ', ' + b1.starts + ' start)');
+      const dAB = dist(b1, aPos);
+      check(dAB > 6 && dAB < 40 && b1.walk, 'B appears next to Ravi: ' + dAB.toFixed(0) + ' u (~' + Math.round(dAB * 1.6) + ' m) away, on ' + b1.surface);
+      check(await until(A, () => { const g = N.online._debug.ghosts().find((q) => q.nick === 'Pooja'); return g && !g.hidden && Math.hypot(g.x - N.player.x, g.y - N.player.y) < 40; }, null, 8000), 'Ravi sees Pooja right beside him');
+      await frames(B, 30);
+      await B.shot('flow_B_next_to_A_phone');
+
+      // C: mid-mission, joins from the pause deck -> the game resumes, C is NOT moved: a pink route + 👫 instead
+      const C = await newPhone(browser, 'flowC', CONF, { url: S.url });
+      phones.push(C);
+      await C.ev(() => N.debug.newGame({ skipIntro: true }));
+      await until(C, () => N.state.mode === 'play');
+      await C.ev(() => { N.debug.teleport('charminar_plaza'); N.missions.register({ id: '__ol_errand', kind: 'job', title: 'Test errand', script: async (m) => { await m.wait(900); } }); N.missions.start('__ol_errand'); });
+      await until(C, () => !!N.missions.active && N.state.mode === 'play');
+      const c0 = await where(C);
+      await C.ev(() => N.game.pause());
+      await until(C, () => N.state.mode === 'paused');
+      await C.page.click('.k-online');
+      await until(C, () => N.menus.topPanelId() === 'online');
+      await C.page.fill('.mn-online input[data-k=nick]', 'Imran');
+      await C.page.click('.mn-online [data-act=nick]');
+      await until(C, () => N.online.nick === 'Imran');
+      await C.page.fill('.mn-online input[data-k=room]', code);
+      await C.page.press('.mn-online input[data-k=room]', 'Enter');
+      check(await until(C, () => N.state.mode === 'play' && !!N.online.room && !N.menus.isPanelShown('online') && !N.menus.isPanelShown('pause'), null, 20000), 'C joined from the pause deck (Enter in the code field): the panel closed and the game resumed by itself');
+      const cOffer = await until(C, () => N.online.flow.offer && !document.querySelector('.ol-go').hidden && !!N.menus.waypointPos, null, 20000);
+      const c1 = await C.ev(() => ({ x: N.player.x, y: N.player.y, mission: !!N.missions.active, near: document.querySelector('.ol-near').hidden, pulse: document.querySelector('.ol-go').classList.contains('pulse'), go: document.querySelector('.ol-go').textContent }));
+      check(cOffer && dist(c0, c1) < 4 && c1.mission && c1.pulse, 'C is on a mission: not moved (' + dist(c0, c1).toFixed(1) + ' u), a pink route + the 👫 button "' + c1.go + '" instead');
+      check(c1.near, 'the Nearby card stays out of the way during a mission');
+      await C.shot('flow_C_mission_offer');
+      await C.ev(() => N.missions.abort());
+      await until(C, () => !N.missions.active);
+      await C.page.click('.ol-go');
+      const c2 = await where(C);
+      const aNow = await where(A);
+      check(dist(c2, aNow) < 40 && await C.ev(() => N.world.isWalkable(N.player.x, N.player.y) && !N.online.flow.offer), 'after the mission 👫 Go to friends takes C next to Ravi (' + dist(c2, aNow).toFixed(0) + ' u)');
+
+      // D: the 4th player is refused (rooms of 3) and stays on the title
+      const D = await newPhone(browser, 'flowD', CONF, { url: S.url });
+      phones.push(D);
+      await D.page.click('.trk-online button');
+      await until(D, () => N.menus.topPanelId() === 'online');
+      await D.page.fill('.mn-online input[data-k=room]', code);
+      await D.page.click('.mn-online [data-act=join]');
+      const full = await until(D, () => /full \(3\/3\)/.test((document.querySelector('.mn-online .ol-msg') || {}).textContent || ''), null, 15000);
+      check(full && await D.ev(() => !N.online.room && N.state.mode === 'title') && await A.ev(() => N.online.room.n === 3), '4th player refused: "' + await D.ev(() => (document.querySelector('.mn-online .ol-msg') || {}).textContent) + '" (stays on the title)');
+      await D.shot('flow_room_full_D');
+      await D.context.close();
+
+      // Nearby + the arrival toast: everybody at Gokul Chat
+      console.log('  -- nearby for the group + the arrival toast');
+      const nearA = await A.ev(() => ({ list: N.online.nearby(4).map((a) => a.id + ':' + a.kind), card: !document.querySelector('.ol-near').hidden && document.querySelector('.ol-near').classList.contains('open') }));
+      check(nearA.list.length >= 3 && nearA.list.length <= 4 && nearA.card, 'desktop: the Nearby card is open with ' + nearA.list.join(', '));
+      await A.ev(() => N.debug.teleport('gokul_chat'));
+      // C: the panel's 👫 Go to friends (from the pause deck); B: the HUD's 👫 button (a tap)
+      await until(C, () => N.online.nearby(1).length && Math.hypot(N.online._debug.ghosts().find((g) => g.nick === 'Ravi').x - N.player.x, N.online._debug.ghosts().find((g) => g.nick === 'Ravi').y - N.player.y) > 200, null, 8000);
+      await C.ev(() => N.game.pause());
+      await C.page.click('.k-online');
+      await until(C, () => !!document.querySelector('.mn-online [data-act=gofriends]'));
+      await C.page.click('.mn-online [data-act=gofriends]');
+      check(await until(C, () => N.state.mode === 'play' && Math.hypot(N.online._debug.ghosts().find((g) => g.nick === 'Ravi').x - N.player.x, N.online._debug.ghosts().find((g) => g.nick === 'Ravi').y - N.player.y) < 40, null, 8000), 'panel "👫 Go to friends": C is back in the city next to Ravi');
+      check(await until(B, () => !document.querySelector('.ol-go').hidden, null, 8000), 'B: the 👫 button shows (Ravi is ' + await B.ev(() => document.querySelector('.ol-go-d').textContent) + ' away)');
+      await B.page.tap('.ol-go');
+      const arrived = await Promise.all([A, B, C].map((P) => until(P, () => { const e = document.querySelector('.ol-arrive.show'); return !!e && /Gokul Chat/.test(e.textContent) && /Pani puri/i.test(e.textContent); }, null, 12000)));
+      const arrTxt = await A.ev(() => (document.querySelector('.ol-arrive') || {}).textContent);
+      check(arrived.every(Boolean), 'all three at Gokul Chat: the toast on every phone: "' + arrTxt + '"');
+      await A.shot('flow_A_arrive_nearby');
+      await B.shot('flow_B_arrive_phone');
+      // phone: the Nearby card is a chip that opens
+      const chip = await B.ev(() => { const n = document.querySelector('.ol-near'); return { hidden: n.hidden, open: n.classList.contains('open'), chip: getComputedStyle(n.querySelector('.ol-near-tg')).display !== 'none' }; });
+      check(!chip.hidden && !chip.open && chip.chip, 'phone: Nearby is a small chip ' + JSON.stringify(chip));
+      // [🏁 Start] on B's toast -> the party flow (B hosts, A and C get the invite)
+      await B.page.tap('.ol-arrive [data-arr=go]');
+      const inv = await Promise.all([A, C].map((P) => until(P, () => N.party._debug.cards().invite && /Pooja challenges you to Pani puri contest/.test(document.querySelector('.pt-invite').textContent), null, 8000)));
+      check(inv.every(Boolean) && await B.ev(() => N.party.active && N.party.active.id === 'panipuri_contest' && N.party.active.phase === 'lobby'), 'toast [🏁 Start] on B: Ravi and Imran get "Pooja challenges you to Pani puri contest"');
+      check(await A.ev(() => !document.querySelector('.ol-arrive.show') && document.querySelector('.ol-near').hidden), 'the toast and the Nearby card step aside for the invite');
+      await A.shot('flow_A_invite');
+      await B.ev(() => N.party.cancel());
+      await Promise.all([A, C].map((P) => until(P, () => !N.party._debug.cards().invite, null, 8000)));
+      await until(B, () => !N.party.uiBusy, null, 4000);
+      // phone chip -> list -> Challenge
+      await until(B, () => !document.querySelector('.ol-near').hidden, null, 6000);
+      await B.page.tap('.ol-near-tg');
+      check(await until(B, () => document.querySelector('.ol-near').classList.contains('open') && document.querySelectorAll('.ol-near [data-near]').length >= 2, null, 4000), 'phone: the chip opens the list');
+      await B.shot('flow_B_nearby_open_phone');
+      const pick = await B.ev(() => { const b = document.querySelector('.ol-near [data-near]'); return b ? b.dataset.near : null; });
+      await B.page.tap('.ol-near [data-near="' + pick + '"]');
+      const inv2 = await Promise.all([A, C].map((P) => until(P, (id) => N.party._debug.cards().invite && N.party.invite && N.party.invite.id === id, pick, 8000)));
+      check(pick && inv2.every(Boolean), 'Nearby "🏁 Challenge" (' + pick + ') opens the party flow: invites on the other two phones');
+      await B.ev(() => N.party.cancel());
+      await Promise.all([A, C].map((P) => until(P, () => !N.party._debug.cards().invite, null, 8000)));
+      await B.page.tap('.ol-near-x').catch(() => {});
+      // the panel in a room (desktop): code, players, Nearby, Go to friends
+      await A.ev(() => N.game.pause());
+      await A.page.click('.k-online');
+      await until(A, () => N.menus.topPanelId() === 'online');
+      const pr = await A.ev(() => ({ code: document.querySelector('.mn-online [data-room]').textContent, players: document.querySelectorAll('.mn-online .ol-players li').length, near: document.querySelectorAll('.mn-online [data-act=near]').length, h: Array.from(document.querySelectorAll('.mn-online h3')).map((h) => h.textContent) }));
+      check(pr.code === code && pr.players === 3 && pr.near >= 2 && pr.h.includes('Nearby for the group'), 'panel in the room: ' + JSON.stringify(pr));
+      await A.shot('flow_panel_in_room');
+      await A.page.click('.mn-online [data-act=near]');
+      check(await until(B, () => N.party._debug.cards().invite, null, 8000) && await A.ev(() => N.state.mode === 'play' && !N.menus.isPanelShown('online')), 'panel "🏁 Challenge": back to the city and the invite goes out');
+      await A.ev(() => N.party.cancel());
+      await B.ev(() => N.game.pause());
+      await B.page.tap('.k-online');
+      await until(B, () => N.menus.topPanelId() === 'online');
+      await B.shot('flow_panel_in_room_phone');
+      await B.ev(() => { N.online.close(); N.menus.resume(); });
+      for (const P of [A, B, C]) { const er = await P.errs(); check(!er.length, P.name + ': zero errors' + (er.length ? ': ' + er.slice(0, 4).join(' | ') : '')); }
+      for (const P of [A, B, C]) { await P.ev(() => N.online.leaveRoom()).catch(() => {}); await P.context.close(); }
     }
 
     /* ============================================================ room: 3 phones, 2D + 3D, pin, chat, drop, cap */
@@ -176,6 +351,22 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       check(all3, 'A sees 3 players and 2 ghosts');
       const second = await B.ev(() => N.online.joinRoom('ZZZZ-99'));
       check(!second.ok && await B.ev(() => N.online.room && N.online.room.code) === code, 'joining a second room is refused while in one ("' + second.why + '")');
+      const near = await Promise.all([B, C].map((P) => P.ev(() => N.online._debug.ghosts().filter((g) => g.nick === 'Ravi').map((g) => Math.round(Math.hypot(g.x - N.player.x, g.y - N.player.y)))[0])));
+      check(near.every((d) => d > 5 && d < 40), 'B and C (joined in play) stand next to Ravi: ' + near.join(' / ') + ' u');
+      // the cap: rooms of 3 (the owner's choice): the 4th phone is refused, in the API and in the panel
+      const E = await newPhone(browser, 'E', CONF, { url: S.url });
+      phones.push(E);
+      await play(E, 'charminar_plaza', 40, 40);
+      await E.ev(() => N.online.goOnline());
+      const je = await E.ev((c) => N.online.joinRoom(c), code);
+      check(!je.ok && /full \(3\/3\)/.test(je.why), '4th player refused: "' + je.why + '"');
+      check(await E.ev(() => !N.online.room), '4th player is not in the room');
+      await E.ev(() => N.online.open({ from: 'title' }));
+      await E.page.fill('.mn-online input[data-k=room]', code);
+      await E.page.click('.mn-online [data-act=join]');
+      await until(E, () => /full/.test((document.querySelector('.mn-online .ol-msg') || {}).textContent || ''), null, 8000);
+      await E.shot('room_full_E');
+      await E.ev(() => N.online.close());
 
       // moving: A walks east for 1.5 s; B sees the ghost follow
       await sleep(800);
@@ -252,15 +443,7 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       const pinned = await until(B, () => N.online.room && N.online.room.pin && N.online.room.pin.place === 'irani_cafe_2' && N.menus.waypointPos && Math.abs(N.menus.waypointPos.x - N.places.irani_cafe_2.x) < 2 && N.hud.blips.has('ol:pin'), null, 5000);
       check(pinned, 'meet pin "Irani café, Abids": B gets a waypoint + star blip');
       check(await until(C, () => /Meet at Irani café, Abids/.test(document.body.textContent), null, 3000), 'C sees the toast "Meet at Irani café, Abids"');
-      const lateD = await newPhone(browser, 'D', CONF, { url: S.url });
-      phones.push(lateD);
-      await play(lateD, 'abids', 0, 0);
-      await lateD.ev(() => N.online.goOnline().then(() => N.online.setNick('Deepu')));
-      await lateD.ev((c) => N.online.joinRoom(c), code);
-      check(await until(lateD, () => N.online.room && N.online.room.pin && N.online.room.pin.place === 'irani_cafe_2', null, 4000), 'a late joiner gets the current pin too');
       await B.shot('room_pin_B');
-      await B.ev(() => N.online.clearPin());
-      check(await until(A, () => N.online.room && !N.online.room.pin && !N.hud.blips.has('ol:pin'), null, 4000), 'any member can clear the pin');
 
       // 3D on B: ghosts are drawn by the 3D actor renderers
       console.log('  -- 3D');
@@ -310,46 +493,43 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       await C.shot('panel_room_C_phone_bottom');
       // disconnect: C closes the page -> gone for A
       await C.context.close();
-      const gone = await until(A, () => N.online.room && N.online.room.n === 3 && !N.online._debug.ghosts().some((g) => g.nick === 'Imran') && !Array.from(N.hud.blips.keys()).some((k) => /^ol:p/.test(k) && !N.online._debug.ghosts().some((g) => 'ol:' + g.key === k)), null, 8000);
+      const gone = await until(A, () => N.online.room && N.online.room.n === 2 && !N.online._debug.ghosts().some((g) => g.nick === 'Imran') && !Array.from(N.hud.blips.keys()).some((k) => /^ol:p/.test(k) && !N.online._debug.ghosts().some((g) => 'ol:' + g.key === k)), null, 8000);
       check(gone, 'C closed the page: A no longer has Imran (ghost, entity, dot)');
       check(!(await A.ev(() => N.entities.all.some((e) => e.kind === 'ghost' && e.alive && !N.online._debug.ghosts().some((g) => g.key === e.online)))), 'no leftover ghost entities');
 
-      // the cap: fill the room to 10 with stand-ins, the 11th phone is refused
+      // a place is free again: a late joiner (at Abids) gets the current pin and appears next to Ravi
+      const lateD = await newPhone(browser, 'D', CONF, { url: S.url });
+      phones.push(lateD);
+      await play(lateD, 'abids', 0, 0);
+      await lateD.ev(() => N.online.goOnline().then(() => N.online.setNick('Deepu')));
+      const jd = await lateD.ev((c) => N.online.joinRoom(c), code);
+      check(jd.ok && await until(lateD, () => N.online.room && N.online.room.pin && N.online.room.pin.place === 'irani_cafe_2', null, 4000), 'a late joiner gets the current pin too');
+      check(await until(lateD, () => { const g = N.online._debug.ghosts().find((q) => q.nick === 'Ravi'); return g && !N.online.flow.place && Math.hypot(g.x - N.player.x, g.y - N.player.y) < 40; }, null, 15000), 'and appears next to Ravi');
+      await B.ev(() => N.online.clearPin());
+      check(await until(A, () => N.online.room && !N.online.room.pin && !N.hud.blips.has('ol:pin'), null, 4000), 'any member can clear the pin');
+
+      // a race overfills the room (a stand-in that joined earlier): the latest joiner steps out
       const topic = 'realtime:room:' + code;
-      const n0 = await A.ev(() => N.online.room.n);
-      const release = M.addFakes(topic, 10 - n0);
-      await until(A, () => N.online.room && N.online.room.n === 10, null, 4000);
-      check(await A.ev(() => N.online.room.n) === 10, 'room is at 10/10');
-      const E = await newPhone(browser, 'E', CONF, { url: S.url });
-      phones.push(E);
-      await play(E, 'charminar_plaza', 40, 40);
-      await E.ev(() => N.online.goOnline());
-      const je = await E.ev((c) => N.online.joinRoom(c), code);
-      check(!je.ok && /full \(10\/10\)/.test(je.why), '11th player refused: "' + je.why + '"');
-      check(await E.ev(() => !N.online.room), '11th player is not in the room');
-      await E.ev(() => N.online.open({ from: 'title' }));
-      await E.page.fill('.mn-online input[data-k=room]', code);
-      await E.page.click('.mn-online [data-act=join]');
-      await until(E, () => /full/.test((document.querySelector('.mn-online .ol-msg') || {}).textContent || ''), null, 8000);
-      await E.shot('room_full_E');
+      const release = M.addFakes(topic, 1);
+      check(await until(lateD, () => !N.online.room, null, 6000) && await until(A, () => N.online.room && N.online.room.n === 3, null, 4000), 'overfilled by a race: the latest joiner (Deepu) leaves, the room stays at 3/3');
       release();
       // empty room = closed: everyone leaves, a join finds nobody
-      await A.ev(() => N.online.leaveRoom()); await B.ev(() => N.online.leaveRoom()); await lateD.ev(() => N.online.leaveRoom());
-      await sleep(500);
+      await A.ev(() => N.online.leaveRoom()); await B.ev(() => N.online.leaveRoom());
+      await until(A, () => !N.online.room, null, 2000);
       const late = await E.ev((c) => N.online.joinRoom(c), code);
       // joining a room nobody is in yet is allowed (a friend may still be connecting): E waits there alone
       check(late.ok && (await E.ev(() => N.online.room && N.online.room.n)) === 1, 'joining an empty room opens it and waits for friends: ' + JSON.stringify(late));
       await E.ev(() => N.online.leaveRoom());
-      await sleep(600);
-      check(!M.rooms.has(topic), 'server holds nothing for the room once everyone left');
-      // the panel UI on A (create from the panel)
-      await A.ev(() => { N.game.pause(); });
-      await sleep(300);
+      const empty = await (async () => { for (let i = 0; i < 40; i++) { if (!M.rooms.has(topic)) return true; await E.ev(() => new Promise((r) => requestAnimationFrame(() => r()))); } return !M.rooms.has(topic); })();
+      check(empty, 'server holds nothing for the room once everyone left');
+      // the panel UI on A (create from the pause deck): the code shows, then the panel closes and play resumes by itself
+      await A.ev(() => { N.online.TUNE.flowMs = 4000; N.game.pause(); });
+      await until(A, () => N.state.mode === 'paused');
       await A.page.click('.k-online');
       await A.page.click('.mn-online [data-act=create]');
-      await until(A, () => !!N.online.room, null, 8000);
-      await sleep(300);
+      await until(A, () => !!N.online.room && !!document.querySelector('.mn-online [data-room]'), null, 8000);
       await A.shot('panel_room_A');
+      check(await until(A, () => N.state.mode === 'play' && !N.menus.isPanelShown('online') && !N.menus.isPanelShown('pause'), null, 15000), 'create from the pause deck: the panel shows the code, then the game resumes by itself');
       await A.ev(() => N.online.leaveRoom());
       for (const P of [A, B, lateD, E]) { const er = await P.errs(); check(!er.length, P.name + ': zero errors' + (er.length ? ': ' + er.slice(0, 4).join(' | ') : '')); }
       for (const P of [A, B, lateD, E]) await P.context.close();
@@ -405,6 +585,7 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       const B = await newPhone(browser, 'cloudB', CONF, { url: S.url });
       phones.push(B);
       await B.ev(() => N.online.open({ from: 'title' }));
+      await B.page.click('.mn-online [data-act=more]');
       await B.page.click('.mn-online [data-act=restore]');
       await B.page.fill('.mn-online input[data-k=code]', aCode.toLowerCase().replace(/-/g, ' '));
       await B.page.click('.mn-online [data-act=usecode]');

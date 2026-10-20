@@ -1800,14 +1800,16 @@ Files (index.html, after the models3d_* modules): `src/atmosphere.js` (core), `s
 
 ## 23. Online — player code, cloud saves, shared rooms (`N.online`)
 
-Owner request: cloud-saved journeys and up to ~10 friends in one shared city room so they can meet
-at one place. Setup and the owner's (zero) steps: `design/online_setup.md`. Files: `src/online_config.js`
+Owner request: cloud-saved journeys and friends in one shared city room so they can meet at one place; after
+playing it for real (2026-10-20): "you go into online game and it should automatically take you into the game",
+"let the group know what they can do nearby", "limit the group to 3". Setup and the owner's (zero) steps:
+`design/online_setup.md`. Files: `src/online_config.js`
 (`N.ONLINE_CONFIG`), `src/online.js` (loaded after save.js; menus.js is earlier), `vendor/supabase/`,
 `supabase/migrations/20261019000000_online.sql`, CSS section `=== online ===`, tests `tests/online.cjs`
 (+ `tests/online_mock.cjs`).
 
 - **Config** (`online_config.js`): `N.ONLINE_CONFIG = {provider: 'supabase', url, key (the public
-  publishable key), sdk: [urls], maxPlayers: 10, stateHz: 8, realtimeKey?, privateRooms?}` or `null`.
+  publishable key), sdk: [urls], maxPlayers: 3, stateHz: 8, realtimeKey?, privateRooms?}` or `null`.
   `null` -> the title track / pause key / panel / Journey page say "Online play is coming soon" and nothing
   loads. A `file:` page says "needs the web version". `window.NOSTALGIA_ONLINE_CONFIG` (set before load)
   overrides it (tests). `N.online.available` = `'ok' | 'soon' | 'web'`.
@@ -1841,9 +1843,11 @@ at one place. Setup and the owner's (zero) steps: `design/online_setup.md`. File
   `{broadcast: {self: false}, presence: {key: <random id per page load>}}`. Create = a random code
   nobody is in; join = someone must be there (an empty room is closed) and fewer than `maxPlayers`.
   The client checks the count after the first presence sync and only then tracks; if a race overfills
-  the room, the latest joiners (presence meta `j`, then key) leave with "Room is full". Presence meta
+  the room, the latest joiners (presence meta `j`, then key) leave with "Room is full". One create / join
+  runs at a time (a second tap or call gets the same promise). Presence meta
   `{n: nick, l: look, j: joined ms, pin, pc: pin-clear ms}`; broadcast `st` `{k, x, y, a, m: 'f'|'v',
-  vt, vc, sp, an: 'i'|'w'|'r', n?, l?}` on change (+ 2 s keepalive, nick / look every 3 s) at
+  vt, vc, sp, an: 'i'|'w'|'r', n?, l?}` on change (+ 2 s keepalive, nick / look every 3 s; a full one at once
+  when somebody joins, so the joiner finds everyone straight away) at
   `stateHz` (8; `3*stateHz/(players-1)` in rooms of 5+, min 3) and `em` `{k, id}` (a preset phrase id).
   Everything received is validated (numbers clamped to the map, vehicle types must exist, looks
   whitelisted to colours / kinds, nick re-filtered, phrases by id only, 0.9 s per-sender chat limit).
@@ -1863,20 +1867,50 @@ at one place. Setup and the owner's (zero) steps: `design/online_setup.md`. File
   late joiners get it from presence.
 - **Quick-chat**: `PHRASES` only (Aaja! · Chai? · Race to Tank Bund! · Ruko, coming! · I am here! · Bye,
   see you! · 👋 · 👍). No free text anywhere.
+- **Room flow** (no PLAY step): Title / pause → ONLINE → "＋ Create a room" or a code + "Join ▶" → the panel shows
+  the room code (`TUNE.flowMs`, 1.4 s; closing the panel early on the title starts at once) → from the **title** the
+  game starts by itself: the latest save (`N.game.continueGame()`; every save writes that slot, so it is the most
+  recent) or, with no save (or one from a newer build), `N.game.newGame({skipIntro: true, online: true})` straight
+  into free roam, plus the flags the 2026 prologue leaves (`prologue_seen`, `year` 2003: `[story hook]`, M1's
+  giver then waits on the home terrace); from the **pause deck** the panel closes and play resumes; in play the API
+  calls just join. Exactly one start (`startGame()` guards; the busy Create / Join buttons are disabled). A **joiner**
+  is placed next to the earliest player in the room once that friend's first state arrives (`spotNear`: 11-30 u
+  away, walkable, off the road when there is a footpath, no wall in between; roofs descended; 3D camera snapped);
+  never during a mission, a party game, a minigame or a chase (≥ 3 chappals): a pink route to the friend + a
+  pulsing **👫 Go to friends** HUD button instead ("Mission done! Tap 👫 …" after MISSION PASSED). 👫 (HUD, shown while
+  that friend is > 100 u ≈ 160 m away; and in the panel) = `goToFriends()`. Nobody in the city 15 s after play
+  starts: a toast says so.
+- **Nearby for the group** (in a room, play mode, no mission / party session / invite / card / minigame / chase):
+  the HUD card (right column; on phones and touch a "🏁 Nearby n" chip that opens it; the choice is kept per viewer
+  in localStorage `nostalgia.online.ui.v1`) and the panel section list the 3-4 placed party activities nearest the
+  group's centre (`N.party.available(cx, cy)`: whatever is registered and offered now, seasonal ones in season;
+  `anywhere` ones stay in the 🏁 picker) + the nearest open snack stop (`N.shops.list(kind)` / `isOpenNow`, food
+  kinds, < 500 u), each with its distance from me; "🏁 Challenge" = `N.party.quick(id)` (setup, then the usual
+  challenge → invites; alone: solo with the gang), "📍 Meet" drops the meet pin there. Refreshed every 2 s (DOM
+  only on change). **Arrival**: when every player in the room is within ~60 m (37.5 u, or the spot's radius) of an
+  activity's spot, after not all being there: "You're all at Gokul Chat — Pani puri contest? [Not now] [🏁 Start]"
+  in the HUD column (the Nearby card steps aside); at most one a minute, the same activity not again for 5 min
+  (10 after Not now), gone after 14 s or when anything else takes the moment.
 - **UI**: title track **ONLINE**, pause key **Online** (menus.js shows them while `N.online` exists, with
-  `titleLine()` / `pauseLine()`), the panel `online` (via `N.menus.definePanel/openPanel`; status, nickname,
-  player code, Use my code, cloud save, room create / join / leave, player list, meet pin, quick-chat),
-  and in a room a HUD badge (`ROOM CHAI-42 · 3/10`, opens the panel over the pause deck) + a 💬 strip of
-  phrase buttons (touch). Events `online:status | room | players | pin | chat | cloud`.
+  `titleLine()` / `pauseLine()`), the panel `online` (via `N.menus.definePanel/openPanel`). Not in a room: "Play
+  together in the city!", the four steps (Create a room → Share the code → Friends join → You all appear together),
+  "Your name in the room", two big boxes (＋ Create a room · Got a code? + Join ▶; Create has the focus, Enter in
+  the code field joins). In a room: the code (big, 📋 Copy), the players in their marker colours with distances,
+  ▶ Into the city (title) / 👫 Go to friends (far), Nearby for the group, Meet pin, Challenge friends (§24), Quick
+  chat, Leave. The player code, Use my code and the cloud save fold under "My player code & cloud save" (a newer
+  cloud save is always offered at the top). HUD (right edge): badge `CHAI-42 · 2/3` (+ "tell friends this code"
+  while alone; opens the panel over the pause deck), 👫, the arrival card, the Nearby card / chip, 💬 strip.
+  Events `online:status | room | players | pin | chat | cloud | start {how} | gather {ok, auto} | arrive {id, at}`.
 - **API**: `N.online = {available, ready, status, code, nick, room, open(), close(), goOnline(),
   setNick(), useCode(), cloud: {pull, push, take, keep, state}, journey(), pushJourney(), createRoom(),
-  joinRoom(code), leaveRoom(), dropPin(placeId | null), clearPin(), say(id), PHRASES, MEET_PLACES,
-  titleLine(), pauseLine(), _debug}`; `[party hook]` (§24): `channelSend, onMessage, players(), partyRpc, myKey`.
-- **Limits / notes**: Supabase Realtime counts every delivered message; 10 players moving at once is a
-  few hundred messages/s, above the Free plan's quota — the per-player rate drops in big rooms, and
-  standing players send only a keepalive. Rooms are public channels: the code is the invite (3,600
+  joinRoom(code), leaveRoom(), goToFriends(), startGame(), nearby(max), flow, dropPin(placeId | null), clearPin(),
+  say(id), PHRASES, MEET_PLACES, MAX (3), TUNE {flowMs}, titleLine(), pauseLine(), _debug}`; `[party hook]` (§24):
+  `channelSend, onMessage, players(), partyRpc, myKey`.
+- **Limits / notes**: Supabase Realtime counts every delivered message; 3 players moving at once is ~50
+  messages/s, well inside the Free plan (the per-player rate would drop in rooms of 5+ if `maxPlayers` were raised;
+  standing players send only a keepalive). Rooms are public channels: the code is the invite (3,600
   codes; anyone who guesses one sees nicknames and positions, never codes or saves).
-- **Tests**: `node tests/online.cjs` (`ONLY=basic|room|dist|cloud`). The test machine cannot reach
+- **Tests**: `node tests/online.cjs` (`ONLY=basic|flow|room|dist|cloud`). The test machine cannot reach
   supabase.co, so the game talks to `tests/online_mock.cjs`, a local server speaking the same PostgREST
   RPC + Realtime (Phoenix websocket) protocols with the SQL functions' rules; the real supabase-js runs
   unchanged. The SQL itself was exercised on the live project (design/online_setup.md "Verified").
@@ -1895,7 +1929,9 @@ tests `tests/party.cjs` (+ the race RPCs in `tests/online_mock.cjs`).
 ```
 N.party.register(id, spec)   id /^[a-z][a-z0-9_]{1,31}$/
   spec = {name, icon, where: placeId | null (null = anywhere), kind: 'race'|'score'|'hide'|'custom',
-          players: {min, max} (≤ 10), seasons?: [flag names] (offered only while one is on: N.flags / N.seasons.is),
+          players: {min, max} (≤ 10; a room holds N.online.MAX = 3, so a party session has ≤ 3 players and min is
+            capped at the room size: every activity runs with 1-3 friends), seasons?: [flag names] (offered only while
+            one is on: N.flags / N.seasons.is),
           solo: bool, describe(opts) -> string, start(ctx) -> handle {update?(dt), end?(reason)}}
   optional: spots [{x, y, r, name}] (exact prompt points, e.g. a start line), also [placeIds], r (prompt radius,
     default place.r + 24), label ("Start …"), when() -> true | false | reason, options(x, y) -> default opts,
@@ -1905,7 +1941,9 @@ N.party.register(id, spec)   id /^[a-z][a-z0-9_]{1,31}$/
     token: {id, name, desc} (tin token for the first win; default one per kind: 'party_race' …)
 N.party.challenge(id, opts) -> {ok, why?, mode: 'party'|'solo', sid}   (alone / offline: solo)
 N.party.solo(id, opts) -> {ok, why?, sid}       N.party.available(x, y) -> [{id, name, icon, kind, where, here, d,
-  label, line, x, y, atName}]   N.party.active -> {id, sid, name, mode, phase, isHost, players, ctx} | null
+  label, line, x, y, r, atName, anywhere}]   N.party.active -> {id, sid, name, mode, phase, isHost, players, ctx} | null
+N.party.quick(id, {from}) -> Promise<challenge result> (one tap from the room HUD: setup, then challenge; no start card)
+N.party.uiBusy (a session, an invite or a card is up: the room HUD's Nearby card and arrival card step aside)
 N.party.start(id) (the start card) · openPicker() · accept() / skip() (the invite) · cancel(why) · leave() ·
   get(id), defs, last (the last standings), stats {plays, wins, firsts, best}, FRIENDS, TUNE, fmtMs(ms), cycleFor(look),
   panelHtml() / panelAct(id) (the Online panel's "Challenge friends"), _debug {session, clock, marks, cards, v3, ...}
@@ -1947,7 +1985,8 @@ skip go cancel ping pong res fin bye a (activity messages: {sid, t, d}); every f
 **UI.** "E Start <name>" at an activity's spot (per-step offer, priority −1; 1 on the inner 24 u of a start spot, so a
 passing bus does not steal it), a start card (Challenge the room (n) / Play with AI friends / Not now: keys 1 2 N),
 the Online panel's "Challenge friends" section and a 🏁 button in the quick-chat strip (the picker; far activities
-set a waypoint + meet pin to their start), the live standings strip, rings: 2D on the ground layer (next = pink, pulsing,
+set a waypoint + meet pin to their start), the room HUD's "Nearby for the group" card + arrival card (§23; one tap =
+`quick(id)`, so new activities appear there by registering), the live standings strip, rings: 2D on the ground layer (next = pink, pulsing,
 numbered; finish chequered; chits as paper) with an edge arrow, 3D layer `party` (flat rings, a light band, a tall
 beacon on the next one, finish posts + chequered banner), minimap blips with the pink route to the next one. Mission
 givers are held while a session runs; a session cannot start during a mission, a minigame or a chase (≥ 3 chappals).
