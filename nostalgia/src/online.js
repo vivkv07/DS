@@ -1158,7 +1158,6 @@
     createRoom, joinRoom, leaveRoom, dropPin, clearPin, say,
     // [party hook] (src/party.js): the room message bus, the player list and the race_* leaderboard calls
     channelSend, onMessage, players: partyPlayers, partyRpc, get myKey() { return myKey; },
-    renderPanel: () => renderPanel(),
     titleLine() {
       const av = availability();
       if (av === 'soon') return 'coming soon';

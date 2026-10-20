@@ -125,7 +125,9 @@ function installAutopilot() {
         const diff = U.angleDiff(v.angle, Math.atan2(tgt.y - v.y, tgt.x - v.x));
         const db = window.__apCap ? 0.1 : 0.05; // a wider deadband when the phone runs at a few frames a second
         out.right = diff > db; out.left = diff < -db;
-        out.up = Math.abs(diff) < 1.25 ? (v.speed || 0) < (A.want || 999) : (v.speed || 0) < 22;
+        // misaligned: let it slow down (steering is far more precise slow, and the keys only change once a frame)
+        const lim = Math.abs(diff) > 0.35 ? 30 : (A.want || 999);
+        out.up = Math.abs(diff) < 1.25 ? (v.speed || 0) < lim : (v.speed || 0) < 22;
         out.down = (v.speed || 0) > (A.want || 999) + 22;
         if (Math.abs(v.speed || 0) < 4 && (out.up || A.revT > 0)) A.stuckT += dt; else A.stuckT = 0;
         if (A.stuckT > 1.0) { A.revT = 0.8; A.stuckT = 0; }
@@ -245,8 +247,8 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
         await sleep(1500);
         await Z.shot('solo_countdown');
         check(await until(Z, () => N.party.active && N.party.active.phase === 'running' && !N.player.controlsLocked, null, 8000), 'GO: controls released');
-        const r1 = await drive(Z, { ms: 90000 });
-        const fin1 = await until(Z, () => !!window.__res, null, 45000);
+        const r1 = await drive(Z, { ms: 200000 });
+        const fin1 = await until(Z, () => !!window.__res, null, 90000);
         check(fin1, 'Tank Bund sprint finished (' + r1.steps + ' key steps, ' + (r1.ms / 1000).toFixed(0) + ' s)');
         const st1 = await standings(Z);
         if (st1) {
@@ -257,6 +259,7 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
           // 1.55 km: flat out a cycle needs ~14 s; traffic at the Indira Park and Lower Tank Bund junctions can cost a lot
           check(ai.every((r) => r.timeMs != null && r.timeMs > 12500 && r.timeMs < 80000), 'AI times believable for 1.55 km on a cycle in traffic: ' + ai.map((r) => r.nick + ' ' + fmt(r.timeMs)).join(', '));
           check(st1.every((r, i) => i === 0 || st1[i - 1].timeMs <= r.timeMs), 'ranked by finish time');
+          await until(Z, () => !!document.querySelector('.pt-results'), null, 6000);
           const res = await Z.ev(() => ({ card: !!document.querySelector('.pt-results'), rows: document.querySelectorAll('.pt-results tr').length, pb: N.partyRaces.best('tank_bund'), tin: N.tape && N.tape.tin ? N.tape.tin.has('party_cycle_race') : null, won: (N.party.stats.wins.race_tank_bund | 0) }));
           check(res.card && res.rows === 4, 'results card with 4 rows');
           check(res.pb === Math.round(me.timeMs), 'personal best stored locally (offline): ' + fmt(res.pb));
@@ -274,7 +277,7 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
         const onFoot = await Z.ev(() => !N.player.vehicle);
         check(onFoot, 'everyone on foot');
         let sawSteps = false, ranOnSteps = false;
-        const r2 = await drive(Z, { ms: 60000, until: () => { const S = N.party._debug.session(); const z = N.respect && N.respect.at(N.player.x, N.player.y); if (z) { window.__steps = (window.__steps || 0) + 1; if (N.player.running) window.__ranSteps = true; } return !S || S.phase === 'done' || (S.handle.st && S.handle.st.done); } });
+        const r2 = await drive(Z, { ms: 150000, until: () => { const S = N.party._debug.session(); const z = N.respect && N.respect.at(N.player.x, N.player.y); if (z) { window.__steps = (window.__steps || 0) + 1; if (N.player.running) window.__ranSteps = true; } return !S || S.phase === 'done' || (S.handle.st && S.handle.st.done); } });
         sawSteps = await Z.ev(() => (window.__steps || 0) > 0); ranOnSteps = await Z.ev(() => !!window.__ranSteps);
         check(sawSteps && !ranOnSteps, 'on the temple steps the player walks (Mandir rules): samples ' + (await Z.ev(() => window.__steps || 0)));
         await Z.shot('solo_birla_steps');
@@ -288,7 +291,7 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
         console.log('  -- foot race: the chai run');
         await Z.ev(() => N.party.solo('chai_run'));
         await until(Z, () => N.party.active && N.party.active.phase === 'running', null, 8000);
-        const r3 = await drive(Z, { ms: 70000, until: () => { const S = N.party._debug.session(); if (S && S.handle && S.handle.st && S.handle.st.phase === 'carry' && !window.__chaiShot) { window.__chaiShot = 1; } return !S || S.phase === 'done' || (S.handle.st && S.handle.st.done); } });
+        const r3 = await drive(Z, { ms: 180000, until: () => { const S = N.party._debug.session(); if (S && S.handle && S.handle.st && S.handle.st.phase === 'carry' && !window.__chaiShot) { window.__chaiShot = 1; } return !S || S.phase === 'done' || (S.handle.st && S.handle.st.done); } });
         await Z.shot('solo_chai_run');
         check(await until(Z, () => window.__res && window.__res.id === 'chai_run', null, 60000), 'chai run finished (' + (r3.ms / 1000).toFixed(0) + ' s)');
         const st3 = await standings(Z);
@@ -337,15 +340,15 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
           await Z.page.mouse.click(q.x, q.y, { button: 'right' });
         };
         await clickAt(9000, 5815);
-        check(await until(Z, () => /FINISH pin/.test(N.hud.toastQueue().join(' ')), null, 3000), 'START pin dropped (right-click); asks for the FINISH pin');
+        check(await until(Z, () => /FINISH pin/.test((document.querySelector('.pt-pinbar') || {}).textContent || ''), null, 3000), 'START pin dropped (right-click); asks for the FINISH pin');
         await Z.shot('solo_pin_map');
         await clickAt(9820, 6140);
         check(await until(Z, () => N.party.active && N.party.active.id === 'race_custom', null, 6000), 'FINISH pin dropped: the pin race starts');
         const cust = await Z.ev(() => { const S = N.party._debug.session(); const d = N.partyRaces.custom(S.opts); return { opts: S.opts, len: Math.round(d.total), cps: d.cps.length }; });
         check(cust.len > 700 && cust.cps >= 2, 'route by A* between the pins: ' + cust.opts.from + ' → ' + cust.opts.to + ', ' + cust.len + ' u, ' + cust.cps + ' checkpoints');
         await until(Z, () => N.party.active && N.party.active.phase === 'running', null, 8000);
-        const r5 = await drive(Z, { ms: 80000 });
-        check(await until(Z, () => window.__res && window.__res.id === 'race_custom', null, 45000), 'pin race finished (' + (r5.ms / 1000).toFixed(0) + ' s)');
+        const r5 = await drive(Z, { ms: 200000 });
+        check(await until(Z, () => window.__res && window.__res.id === 'race_custom', null, 90000), 'pin race finished (' + (r5.ms / 1000).toFixed(0) + ' s)');
         const st5 = await standings(Z);
         if (st5) info('standings: ' + st5.map((r) => (r.rank || '-') + ' ' + r.nick + ' ' + fmt(r.timeMs) + ' ' + (r.note || '')).join(' | '));
         check(st5 && st5.filter((r) => r.timeMs != null).length >= 3, 'riders finished the pin race');
@@ -363,10 +366,11 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
         check(in3d, '3D view on');
         if (in3d) {
           await Z.ev(() => { try { N.view3d.settle(5000); } catch (e) { /* ignore */ } });
-          await until(Z, () => N.party.active && N.party.active.phase === 'running', null, 10000);
-          await sleep(2500);
-          await Z.ev(() => { const cp = N.party._debug.marks().find((m) => m.state === 'next') || N.party._debug.marks()[0]; const p = N.player; try { N.view3d.setCamera({ yaw: Math.atan2(cp.y - p.y, cp.x - p.x), pitch: 0.32, snap: true }); } catch (e) { /* ignore */ } });
-          await sleep(600);
+          await until(Z, () => N.party.active && N.party.active.phase === 'running', null, 60000);
+          // ride (real keys, in 3D) until the first checkpoint ring is close ahead
+          await drive(Z, { ms: 40000, until: () => { const cp = N.party._debug.marks().find((m) => m.state === 'next'); const e = N.player.vehicle || N.player; return !cp || Math.hypot(cp.x - e.x, cp.y - e.y) < 110; } });
+          await Z.ev(() => { const cp = N.party._debug.marks().find((m) => m.state === 'next') || N.party._debug.marks()[0]; const p = N.player; try { N.view3d.setCamera({ yaw: Math.atan2(cp.y - p.y, cp.x - p.x), pitch: 0.22, snap: true }); } catch (e) { /* ignore */ } });
+          await sleep(800);
           const v3 = await Z.ev(() => N.party._debug.v3());
           check(v3.ok && v3.visible >= 2, '3D layer "party" draws the rings (' + v3.visible + ' visible)');
           await Z.shot('3d_rings');
@@ -384,9 +388,9 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
     if (only('party') || only('chitti') || only('custom')) {
       console.log('\n== party: three phones in one room');
       // three phones share this machine's CPU: a slightly smaller window keeps them at a usable frame rate
-      A = await newPhone(browser, 'A', CONF, { url: S.url, viewport: { width: 860, height: 540 } });
-      B = await newPhone(browser, 'B', CONF, { url: S.url, viewport: { width: 860, height: 540 } });
-      C = await newPhone(browser, 'C', CONF, { url: S.url, viewport: { width: 420, height: 760 } });
+      A = await newPhone(browser, 'A', CONF, { url: S.url, viewport: { width: 760, height: 480 } });
+      B = await newPhone(browser, 'B', CONF, { url: S.url, viewport: { width: 760, height: 480 } });
+      C = await newPhone(browser, 'C', CONF, { url: S.url, viewport: { width: 400, height: 720 } });
       phones.push(A, B, C);
       for (const [P, nick, dx] of [[A, 'Ravi', 0], [B, 'Pooja', 30], [C, 'Imran', -30]]) {
         await play(P, 8919 + dx, 4128);
@@ -398,6 +402,7 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
       check(await until(A, () => N.online.room && N.online.room.n === 3, null, 10000), 'room ' + made.code + ' with Ravi, Pooja, Imran');
       check(await A.ev(() => typeof N.online.channelSend === 'function' && N.online.players().length === 3), '[party hook] N.online.channelSend / onMessage / players()');
     }
+    const tidy = async () => { for (const P of [A, B]) if (P) await P.ev(() => { if (N.party.active) N.party.cancel(); N.party.closeCards(); if (N.shops && N.shops.isOpen && N.shops.isOpen()) N.shops.close(); window.__res = null; }).catch(() => {}); await sleep(600); };
     if (only('party') && A) {
       console.log('  -- challenge -> invite -> accept -> countdown sync');
       check(await A.ev(() => N.party.TUNE.lobbyMs) === 20000, 'lobby timeout is 20 s');
@@ -413,10 +418,10 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
       check(await until(B, () => N.party._debug.cards().invite, null, 6000) && await until(C, () => N.party._debug.cards().invite, null, 6000), 'B and C see the invite card');
       const invTxt = await B.ev(() => document.querySelector('.pt-invite').textContent);
       check(/Ravi challenges you to Tank Bund sprint/.test(invTxt) && /Accept/.test(invTxt) && /Skip/.test(invTxt), 'invite: "' + invTxt.slice(0, 60) + '…"');
-      await B.shot('party_invite_B');
+      await B.shot('invite_B');
       await B.page.keyboard.press('y');
       check(await until(A, () => document.querySelector('.pt-lobby') && /✓ Pooja/.test(document.querySelector('.pt-lobby').textContent), null, 5000), 'A\'s lobby: Pooja ✓ (accepted with the Y key)');
-      await A.shot('party_lobby_A');
+      await A.shot('lobby_A');
       await C.page.click('.pt-invite [data-a=acc]');
       const started = await until(A, () => N.party.active && N.party.active.phase !== 'lobby', null, 8000);
       check(started, 'everyone answered: the host starts');
@@ -425,7 +430,7 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
       check(sync.every((s) => JSON.stringify(s.players) === JSON.stringify(sync[0].players)), 'same player order: ' + sync[0].players.join(', '));
       info('clock offsets (ms): ' + sync.map((s) => s.clk.offset + ' rtt ' + (isFinite(s.clk.rtt) ? s.clk.rtt : '-')).join(' | '));
       await sleep(1700);
-      await A.shot('party_countdown_A');
+      await A.shot('countdown_A');
       await Promise.all([A, B, C].map((P) => until(P, () => window.__goAt > 0, null, 10000)));
       // each phone's GO instant on its own clock = startAt (host clock) - its measured offset; the GO frame comes at most a
       // frame or two later (these headless phones share a loaded CPU and run at a few frames a second)
@@ -434,32 +439,38 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
       const localSpread = Math.max(...go.map((g) => g.local)) - Math.min(...go.map((g) => g.local));
       const late = go.map((g) => g.at - g.local);
       info('GO frames: ' + go.map((g, i) => '+' + late[i] + ' ms at ' + g.fps + ' fps').join(' | '));
-      check(localSpread < 120, '3-2-1-GO synced on the shared clock: the GO instant agrees within ' + localSpread + ' ms on the three phones');
+      const rtts = (await Promise.all([B, C].map((P) => P.ev(() => N.party._debug.clock().rtt)))).filter(isFinite);
+      const bound = 120 + Math.max(0, ...rtts) / 2; // a ping / pong offset is good to half the round trip
+      check(localSpread <= bound, '3-2-1-GO synced on the shared clock: the GO instant agrees within ' + localSpread + ' ms on the three phones (bound ' + Math.round(bound) + ' ms: 120 + rtt/2)');
       check(late.every((l) => l >= 0 && l < 2500), 'each phone showed GO on its next frame after that instant (frames are slow on this loaded machine: ' + late.join(' / ') + ' ms)');
       check(go.every((g) => isFinite(g.local)) && (await Promise.all([B, C].map((P) => P.ev(() => isFinite(N.party._debug.clock().rtt))))).every(Boolean), 'both guests measured their clock offset (ping / pong)');
       console.log('  -- the race (real keys on A and B; C leaves mid-race)');
-      for (const P of [A, B, C]) await P.ev(() => { window.__apCap = 72; });
-      const dA = drive(A, { ms: 170000 });
-      const dB = drive(B, { ms: 170000 });
+      for (const P of [A, B, C]) await P.ev(() => { window.__apCap = 60; });
+      const dA = drive(A, { ms: 320000 });
+      const dB = drive(B, { ms: 320000 });
       const dC = drive(C, { ms: 6000 });
       await dC;
       await sleep(500);
-      await C.shot('party_race_C');
+      await C.shot('race_C');
+      const ce = await C.errs();
+      check(!ce.length, 'C: zero errors before leaving' + (ce.length ? ': ' + ce.slice(0, 4).join(' | ') : ''));
       await C.context.close();
       check(await until(A, () => { const S = N.party._debug.session(); return S && S.left.size === 1; }, null, 8000), 'Imran left mid-race: marked "left" on A');
       await sleep(3000);
-      await B.shot('party_race_B');
+      await B.shot('race_B');
       const [ra, rb] = await Promise.all([dA, dB]);
       info('A drove ' + (ra.ms / 1000).toFixed(0) + ' s, B ' + (rb.ms / 1000).toFixed(0) + ' s');
-      const done = await until(A, () => !!window.__res, null, 60000) && await until(B, () => !!window.__res, null, 20000);
+      // the slower rider has max(30 s, 60% of the winning time) after the winner, then DNF: wait that out
+      const done = await until(A, () => !!window.__res, null, 240000) && await until(B, () => !!window.__res, null, 30000);
       check(done, 'results on A and B');
       const sa = await standings(A), sb = await standings(B);
       if (sa) info('A: ' + sa.map((r) => (r.rank || '-') + ' ' + r.nick + ' ' + fmt(r.timeMs) + (r.left ? ' (left)' : '')).join(' | '));
       if (sb) info('B: ' + sb.map((r) => (r.rank || '-') + ' ' + r.nick + ' ' + fmt(r.timeMs) + (r.left ? ' (left)' : '')).join(' | '));
       check(sa && sb && JSON.stringify(sa) === JSON.stringify(sb), 'results agree on both phones');
       check(sa && sa.filter((r) => r.timeMs != null).length === 2 && sa.find((r) => r.nick === 'Imran' && r.left && r.rank == null), 'Ravi and Pooja finished; Imran left (no place)');
-      await A.shot('party_results_A');
-      await B.shot('party_results_B');
+      await until(A, () => !!document.querySelector('.pt-results'), null, 6000); await until(B, () => !!document.querySelector('.pt-results'), null, 6000);
+      await A.shot('results_A');
+      await B.shot('results_B');
       // leaderboard (stand-in database: same rules as race_put / race_top)
       await sleep(1500);
       const rows = [...M.db.races.entries()].filter(([k]) => k.endsWith(':tank_bund'));
@@ -468,7 +479,7 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
       check(top && top.top && top.top.length === 2 && top.top.some((q) => q.nick === 'Ravi') && top.top.some((q) => q.nick === 'Pooja'), 'race_top: ' + (top && top.top ? top.top.map((q) => q.nick + ' ' + fmt(q.ms)).join(', ') : '?'));
       const calls = M.calls.filter((c) => c.kind === 'rpc' && /^race_/.test(c.fn));
       check(calls.length >= 2 && !calls.some((c) => c.reason === 'rate'), 'race_* calls: ' + calls.length + ', none rate-limited');
-      for (const P of [A, B]) await P.ev(() => { N.party.closeCards(); if (N.shops && N.shops.isOpen && N.shops.isOpen()) N.shops.close(); });
+      await tidy();
       // the Online panel's "Challenge friends" list + the 🏁 quick-chat button
       await A.ev(() => { N.game.pause(); });
       await sleep(300);
@@ -477,22 +488,29 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
       const panel = await A.ev(() => Array.from(document.querySelectorAll('.mn-online [data-act=party]')).map((b) => b.textContent));
       check(panel.length >= 5, 'Online panel lists "Challenge friends": ' + panel.slice(0, 6).join(' · '));
       await A.page.evaluate(() => { const b = document.querySelector('.mn-online .ol-body'); const h = Array.from(b.querySelectorAll('h4')).find((x) => /Challenge/.test(x.textContent)); if (h) h.scrollIntoView(); });
-      await A.shot('party_panel_A');
+      await A.shot('panel_A');
       await A.ev(() => { N.online.close(); N.game.resume(); });
       await sleep(300);
       await A.page.click('.ol-chat-tg');
       await A.page.click('.ol-chat [data-ol=party]');
       check(await until(A, () => document.querySelectorAll('.pt-card .pt-pick').length >= 5, null, 3000), '🏁 in the quick-chat strip opens the challenge picker');
-      await A.shot('party_picker_A');
+      await A.shot('picker_A');
       await A.ev(() => N.party.closeCards());
     }
+    const cAlive = async () => { try { return !!(C && !C.page.isClosed() && await C.ev(() => !!N.online.room)); } catch (e) { return false; } };
+    const cSkips = async (label) => {
+      if (!(await cAlive())) return;
+      if (await until(C, () => N.party._debug.cards().invite, null, 8000)) { await C.page.keyboard.press('n'); check(await until(A, () => { const S = N.party._debug.session(); return !S || S.phase !== 'lobby' || S.skip.size > 0; }, null, 6000), 'C skips the ' + label + ' invite (N key): the host sees it'); }
+    };
     if (only('chitti') && A) {
+      await tidy();
       console.log('  -- party Chitti Chase (A + B)');
       await A.ev(() => N.player.teleport(9110, 8332)); await B.ev(() => N.player.teleport(9130, 8332));
       const stops = await A.ev(() => N.partyRaces.pickStops(9110, 8332, 4, 5));
       await A.ev((st) => N.party.challenge('chitti_chase', { n: 4, start: { x: 9110, y: 8332 }, stops: st }), stops);
       check(await until(B, () => N.party._debug.cards().invite, null, 6000), 'B: invite to the Chitti Chase');
       await B.page.keyboard.press('y');
+      await cSkips('Chitti Chase');
       check(await until(B, () => N.party.active && N.party.active.phase !== 'lobby', null, 8000), 'started on B');
       const same = await Promise.all([A, B].map((P) => P.ev(() => JSON.stringify(N.party.active.ctx.opts.stops))));
       check(same[0] === same[1], 'same stops (riddles) on both: ' + JSON.parse(same[0]).join(', '));
@@ -508,7 +526,7 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
       };
       await Promise.all([pickAll(B, 4, 500), pickAll(A, 3, 1200)]);
       await sleep(800);
-      await A.shot('party_chitti_A');
+      await A.shot('chitti_A');
       const boardA = await A.ev(() => document.querySelector('.pt-strip') && document.querySelector('.pt-strip').textContent);
       info('A board: ' + boardA);
       await pickAll(A, 0, 0);
@@ -522,10 +540,11 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
       if (ca) info('A: ' + ca.map((r) => (r.rank || '-') + ' ' + r.nick + ' ' + fmt(r.timeMs)).join(' | '));
       check(ca && cb && JSON.stringify(ca) === JSON.stringify(cb), 'Chitti Chase results agree');
       check(ca && ca[0].nick === 'Pooja' && ca[0].rank === 1, 'Pooja found all four first');
-      await B.shot('party_chitti_results_B');
+      await B.shot('chitti_results_B');
       await A.ev(() => N.party.closeCards()); await B.ev(() => N.party.closeCards());
     }
     if (only('custom') && A) {
+      await tidy();
       console.log('  -- party pin race (A drops the pins on the map; A + B race with real keys)');
       await A.ev(() => N.player.teleport(10860, 4450)); await B.ev(() => N.player.teleport(10880, 4450));
       await A.ev(() => N.party.start('race_custom'));
@@ -537,23 +556,24 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
         await A.page.mouse.click(q.x, q.y, { button: 'right' });
       };
       await clickAt(10860, 4445);
-      await until(A, () => /FINISH pin/.test(N.hud.toastQueue().join(' ')), null, 3000);
-      await clickAt(10400, 5360);
+      await until(A, () => /FINISH pin/.test((document.querySelector('.pt-pinbar') || {}).textContent || ''), null, 3000);
+      await clickAt(10500, 4700);
       check(await until(B, () => N.party._debug.cards().invite, null, 8000), 'B: invite to the pin race');
       const invC = await B.ev(() => document.querySelector('.pt-invite').textContent);
       info('invite: ' + invC);
       await B.page.keyboard.press('y');
+      await cSkips('pin race');
       await Promise.all([A, B].map((P) => until(P, () => N.party.active && N.party.active.phase === 'countdown', null, 8000)));
       const cpsAB = await Promise.all([A, B].map((P) => P.ev(() => JSON.stringify(N.party._debug.marks().map((m) => [Math.round(m.x), Math.round(m.y), m.r])))));
       check(cpsAB[0] === cpsAB[1] && JSON.parse(cpsAB[0]).length >= 2, 'the same checkpoints on both phones (' + JSON.parse(cpsAB[0]).length + ')');
       await Promise.all([A, B].map((P) => until(P, () => N.party.active && N.party.active.phase === 'running', null, 10000)));
-      for (const P of [A, B]) await P.ev(() => { window.__apCap = 72; });
-      await Promise.all([drive(A, { ms: 150000 }), drive(B, { ms: 150000 })]);
-      check(await until(A, () => !!window.__res && window.__res.id === 'race_custom', null, 60000) && await until(B, () => !!window.__res && window.__res.id === 'race_custom', null, 15000), 'pin race results on both');
+      for (const P of [A, B]) await P.ev(() => { window.__apCap = 60; });
+      await Promise.all([drive(A, { ms: 320000 }), drive(B, { ms: 320000 })]);
+      check(await until(A, () => !!window.__res && window.__res.id === 'race_custom', null, 240000) && await until(B, () => !!window.__res && window.__res.id === 'race_custom', null, 30000), 'pin race results on both');
       const pa = await standings(A), pb = await standings(B);
       if (pa) info('A: ' + pa.map((r) => (r.rank || '-') + ' ' + r.nick + ' ' + fmt(r.timeMs) + (r.dnf ? ' DNF' : '')).join(' | '));
       check(pa && pb && JSON.stringify(pa) === JSON.stringify(pb), 'pin race results agree');
-      await A.shot('party_pin_results_A');
+      await A.shot('pin_results_A');
     }
     for (const P of [A, B]) if (P) { const er = await P.errs(); check(!er.length, P.name + ': zero errors' + (er.length ? ': ' + er.slice(0, 4).join(' | ') : '')); }
   } catch (e) {

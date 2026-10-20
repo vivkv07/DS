@@ -1186,7 +1186,7 @@ async function pDiwali() {
     if (await toSwing(/Wait till 18:30/, 'Sat 25 Oct, afternoon')) { await pressKey('KeyE'); tally('E Wait ▶▶'); }
     await waitFor(() => N.clock.minutes >= 18 * 60 + 30 && !N.calendar.jumping, null, 12000, 'the ▶▶ to 18:30');
     // still at the swing, in Ammamma's ring: her J-card comes up under him (E, or its 1 s dwell)
-    if (await waitFor(() => N.missions.prompt === 'deepon_ki_raat' || (N.missions.active && N.missions.active.id === 'deepon_ki_raat'), null, 6000, 'Ammamma\'s J-card right after the ▶▶')) {
+    if (await waitFor(() => N.missions.prompt === 'deepon_ki_raat' || (N.missions.active && N.missions.active.id === 'deepon_ki_raat') || /DEEPON KI RAAT/.test((document.querySelector('.hud-jcard.show') || {}).innerText || ''), null, 8000, 'Ammamma\'s J-card right after the ▶▶')) {
       if (await ev(() => !N.missions.active)) { await pressKey('KeyE'); tally('E on the J-card'); }
       dStarted = check(await waitFor(() => N.missions.active && N.missions.active.id === 'deepon_ki_raat', null, 8000), 'Deepon ki Raat starts from Ammamma\'s J-card');
     }
@@ -1299,13 +1299,18 @@ async function pEnding() {
         if (d && /promised at Diwali/.test(d.t) && !d.typing) {
           end.eid = d.t;
           await sleep(400); await shot('ending_eid_sevaiyan');
-          await ev(() => N.debug.skipDialogue(true));
           await page.keyboard.press('KeyE'); tally('E dialogue');
           return 'skip';
         }
-        if (/27 NOV 2003/.test(s.date || '')) { end.eid = false; await ev(() => N.debug.skipDialogue(true)); return null; }
+        if (/27 NOV 2003/.test(s.date || '')) { end.eid = false; end.skipOn = true; await ev(() => N.debug.skipDialogue(true)); return null; }
         if (s.dialog && d && !d.typing) { await page.keyboard.press('KeyE'); tally('E dialogue'); await sleep(200); }
         return 'skip'; // (the Eid card is watched, not skipped)
+      }
+      if (!end.skipOn) {
+        // the rest of the Eid card is read too (E), not skipped: a cutscene puts back the dialogue-skip setting it began
+        // with when it ends, so the test's skip goes back on only once the card is over (in the ▶▶ to the next card)
+        if (s.cut) { if (s.dialog && !(await ev(() => !!(N.dialogue.current && N.dialogue.current.typing)))) { await page.keyboard.press('KeyE'); tally('E dialogue'); await sleep(200); } return 'skip'; }
+        await ev(() => N.debug.skipDialogue(true)); end.skipOn = true;
       }
       const ph = await ev(() => window.__s2ev.slice());
       if (ph.indexOf('alaap') >= 0 && end.kites == null) { end.kites = await ev(() => N.story2.state().props.indexOf('s2:kites') >= 0); await sleep(1200); await shot('ending_kites'); }
@@ -1315,6 +1320,7 @@ async function pEnding() {
       return null;
     },
   });
+  await ev(() => N.debug.skipDialogue(true));
   const eidL = await ev(() => window.__lines.filter((l) => /Eid Mubarak|sevaiyan/.test(l[1])).map((l) => l.join(': ')));
   check(!!end.eid && eidL.some((l) => /^ammi: .*sevaiyan.*promised at Diwali/.test(l)), 'Eid morning (WED 26 NOV 2003): Ammi\'s sevaiyan, "like I promised at Diwali" (Mithai Run in Diwali week)', { eid: end.eid, lines: eidL });
   check(!end.maxWanted, 'the ending is calm: no Chappal Meter, no curfew uncles on the plaza at 23:40', end.maxWanted);

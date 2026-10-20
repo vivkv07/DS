@@ -280,11 +280,12 @@
       st.done = true;
       const res = ctx.results().filter((r) => r.timeMs != null && !r.dnf);
       const place = res.filter((r) => r.timeMs < ms).length + 1;
-      ctx.report({ timeMs: ms, progress: 1 });
-      ctx.send('cp', { i: n, t: ms });
+      // the feedback first: when I am the last one in, report() ends the session at once (and clears the HUD)
       sfx('crowd_cheer');
       try { N.hud.banner('FINISHED!', ord(place) + ' · ' + fmt(ms), 2600, { kind: 'pass' }); } catch (e) { /* ignore */ }
       ctx.objective('Finished ' + ord(place) + '! Waiting for the others…');
+      ctx.send('cp', { i: n, t: ms });
+      ctx.report({ timeMs: ms, progress: 1 });
       if (C.lb) submit(C.lb, ms, st.vtype).then((r) => { if (r && r.pb) ctx.toast('New personal best: ' + fmt(r.best) + (r.rank ? ' · city rank #' + r.rank : '') + '!', 3200); }).catch(() => {});
     }
     const h = {
@@ -331,7 +332,7 @@
           const left = st.finWin - t;
           if (!st.done && left < 15000 && left > 0) ctx.status('Hurry! ' + Math.ceil(left / 1000) + ' s left');
           if (t > st.finWin) {
-            if (!st.done && ctx.mode === 'party') { st.done = true; st.dnf = true; ctx.report({ dnf: true, progress: st.myS / P.total, note: 'CP ' + st.next + '/' + (n - 1) }); ctx.objective(null); }
+            if (!st.done && ctx.mode === 'party') { st.done = true; st.dnf = true; ctx.objective(null); ctx.report({ dnf: true, progress: st.myS / P.total, note: 'CP ' + st.next + '/' + (n - 1) }); }
             // AI still riding: estimate their time from their pace
             if (ctx.mode === 'solo' && st.done) for (const pl of ctx.players) {
               if (!pl.isAI || res.some((r) => r.uid === pl.uid)) continue;
@@ -368,10 +369,20 @@
   for (const R of ROUTES) N.party.register('race_' + R.id.replace(/_loop$/, ''), cycleRace(R));
 
   /* ---------------------------------------------------------------- pin race (custom route) */
+  // a pin's name: the nearest notable place (junction, landmark, market, park, cinema, café...) within 320 u, else the
+  // nearest place at all within 400 u
+  const NOTABLE = /^(junction|landmark|market|park|plaza|cinema|irani_cafe|temple|mosque|church|playground|transport|museum|bridge|food|district)$/;
   function placeName(x, y) {
-    let best = null, bd = Infinity;
-    for (const id in N.places) { const p = N.places[id]; if (!p || p.virtual || /^(hide_|giver_|bus_stop_|std_|kirana_|stationery_|medical_)/.test(id) || p.level) continue; const d = hyp(p.x - x, p.y - y); if (d < bd) { bd = d; best = p; } }
-    return best && bd < 400 ? String(best.name).replace(/\s*\(.*\)$/, '') : 'a spot on the map';
+    let best = null, bd = Infinity, nb = null, nd = Infinity;
+    for (const id in N.places) {
+      const p = N.places[id];
+      if (!p || p.virtual || /^(hide_|giver_|bus_stop_|std_|kirana_|stationery_|medical_)/.test(id) || p.level) continue;
+      const d = hyp(p.x - x, p.y - y);
+      if (d < bd) { bd = d; best = p; }
+      if (NOTABLE.test(p.kind || '') && d < nd) { nd = d; nb = p; }
+    }
+    const pick = nb && nd < 320 ? nb : best && bd < 400 ? best : null;
+    return pick ? String(pick.name).replace(/\s*\(.*\)$/, '') : 'a spot on the map';
   }
   function customData(o) {
     if (!o || !o.a || !o.b || !isFinite(o.a.x) || !isFinite(o.b.x)) return null;
@@ -396,13 +407,23 @@
       const pins = {};
       let which = o.startHere ? 'b' : 'a', timer = null, prevWp = null, opened = false;
       if (o.startHere && N.player) { const e = N.player.vehicle || N.player; pins.a = { x: Math.round(e.x), y: Math.round(e.y) }; }
-      const done = (v) => { clearInterval(timer); timer = null; try { if (M.removeMapLayer) M.removeMapLayer('pinrace'); } catch (e) { /* ignore */ } resolve(v); };
+      // the instruction bar sits on the map overlay itself (HUD toasts are under the full-screen map)
+      let bar = null;
+      const say = (t) => {
+        try {
+          if (!bar) { bar = document.createElement('div'); bar.className = 'pt-pinbar'; bar.setAttribute('role', 'status'); (document.getElementById('overlay') || document.body).appendChild(bar); }
+          bar.textContent = t;
+        } catch (e) { /* ignore */ }
+      };
+      const touch = N.input && N.input.device === 'touch';
+      const how = touch ? 'long-press' : 'right-click';
+      const done = (v) => { clearInterval(timer); timer = null; if (bar) { bar.remove(); bar = null; } try { if (M.removeMapLayer) M.removeMapLayer('pinrace'); } catch (e) { /* ignore */ } resolve(v); };
       try {
         if (M.addMapLayer) M.addMapLayer({ id: 'pinrace', title: 'Pin race', order: 5, color: '#ff5fb0', draw: (g, view) => { PIN.view = view; }, points: () => ['a', 'b'].filter((k) => pins[k]).map((k) => ({ x: pins[k].x, y: pins[k].y, icon: k === 'a' ? 'ring' : 'star', color: k === 'a' ? '#6fff6a' : '#f2c230', label: k === 'a' ? 'START' : 'FINISH', id: 'pin_' + k })) });
       } catch (e) { /* ignore */ }
       const e0 = N.player.vehicle || N.player;
       try { prevWp = M.waypointPos; M.openMap({ x: e0.x, y: e0.y, zoom: 0.4 }); opened = true; } catch (e) { done(null); return; }
-      N.hud.toast(which === 'a' ? 'Pin race: right-click (long-press) the map for the START pin.' : 'Pin race: right-click (long-press) the map for the FINISH pin.', 4200);
+      say('📍 Pin race: ' + how + ' the map to drop the ' + (which === 'a' ? 'START' : 'FINISH') + ' pin');
       let wasMap = false;
       timer = setInterval(() => {
         const wp = M.waypointPos;
@@ -413,7 +434,7 @@
           prevWp = null;
           try { M.waypoint(null); } catch (e) { /* ignore */ }
           sfx('ui_select');
-          if (which === 'a') { which = 'b'; N.hud.toast('Now the FINISH pin.', 3000); }
+          if (which === 'a') { which = 'b'; say('📍 START pin dropped. Now ' + how + ' for the FINISH pin'); }
           else {
             try { M.closeMap(); } catch (e) { /* ignore */ }
             const d = customData({ a: pins.a, b: pins.b });
@@ -595,11 +616,11 @@
             if (st.chai >= CHAI_MIN) {
               st.phase = 'done'; st.done = true; mark();
               const score = Math.round(st.chai);
-              ctx.report({ timeMs: t, score, note: score + '% chai' + (score < 100 ? ' (+' + ((100 - score) * CHAI_PENALTY / 1000).toFixed(1) + ' s)' : '') + (st.glasses > 1 ? ' · ' + st.glasses + ' glasses' : '') });
-              ctx.send('cp', { ph: 'done' });
               sfx('crowd_cheer');
               try { N.hud.banner('CHAI DELIVERED!', fmt(t) + ' · ' + score + '% left', 2600, { kind: 'pass' }); } catch (er) { /* ignore */ }
               ctx.objective('Delivered! Waiting for the others…');
+              ctx.send('cp', { ph: 'done' });
+              ctx.report({ timeMs: t, score, note: score + '% chai' + (score < 100 ? ' (+' + ((100 - score) * CHAI_PENALTY / 1000).toFixed(1) + ' s)' : '') + (st.glasses > 1 ? ' · ' + st.glasses + ' glasses' : '') });
               if (score >= 50) submit('chai_run', t, null).then((r) => { if (r && r.pb) ctx.toast('New personal best: ' + fmt(r.best) + '!', 3000); }).catch(() => {});
             } else if ((st.warnT -= dt) <= 0) { st.warnT = 3; ctx.toast('Less than ' + CHAI_MIN + '% left! Back to the café for another.', 2400); }
           }
@@ -609,8 +630,8 @@
         if (isFinite(first) && !st.done && ctx.mode === 'party' && t > first + Math.max(30000, first * 0.6)) {
           st.done = true;
           if (st.phase === 'pour' && N.player) N.player.controlsLocked = false;
-          ctx.report({ dnf: true, score: Math.round(st.chai), note: st.phase === 'carry' ? 'still carrying' : 'no chai yet' });
           ctx.objective(null);
+          ctx.report({ dnf: true, score: Math.round(st.chai), note: st.phase === 'carry' ? 'still carrying' : 'no chai yet' });
         }
       },
       end() {
@@ -767,10 +788,10 @@
       if (st.k >= n) {
         st.done = true;
         const t = ctx.elapsed();
-        ctx.report({ timeMs: t, score: n });
         try { N.hud.banner('ALL CHITS FOUND!', fmt(t), 2600, { kind: 'pass' }); } catch (e) { /* ignore */ }
         ctx.objective('All chits! Waiting for the others…');
         paint();
+        ctx.report({ timeMs: t, score: n });
         return;
       }
       ctx.toast('Chit ' + st.k + ' at ' + s.name + '! Next: ' + riddle(st.k), 5200);
@@ -786,14 +807,14 @@
       update(dt) {
         const t = ctx.elapsed(), p = N.player, e = p && (p.vehicle || p);
         if ((st.boardT -= dt) <= 0) { st.boardT = 0.35; board(); }
-        if (t < 0) { ctx.status('Chit 1: ' + riddle(0)); return; }
+        if (t < 0) { ctx.status('Read the riddle!'); ctx.objective('Chit 1/' + n + ': ' + riddle(0)); return; }
         for (const [uid, A] of ai) aiStep(uid, A, dt);
         if (!st.done && e) {
           ctx.timer(t);
           st.kT += dt;
           if (st.hintLvl < 1 && st.kT > 45) { st.hintLvl = 1; ctx.toast('Psst… it is somewhere in the yellow circle.', 2600); }
           if (st.hintLvl < 2 && st.kT > 90) { st.hintLvl = 2; ctx.toast('Bunty-anna points the way: follow the pink line!', 2600); }
-          if ((st.objT -= dt) <= 0) { st.objT = 0.4; paint(); ctx.objective('Chit ' + (st.k + 1) + '/' + n + ': ' + riddle(st.k)); ctx.status('📜 ' + st.k + '/' + n + ' · ' + riddle(st.k)); }
+          if ((st.objT -= dt) <= 0) { st.objT = 0.4; paint(); ctx.objective('Chit ' + (st.k + 1) + '/' + n + ': ' + riddle(st.k)); ctx.status('📜 ' + st.k + '/' + n + ' chits' + (st.hintLvl ? ' · hint on the map' : '')); }
           const s = stops[st.k];
           if (hyp(e.x - s.x, e.y - s.y) < s.r + 6) {
             if (p.vehicle) N.interact.offer({ label: 'Grab the chit 📜', priority: 9, dist: 0, use: pick });
@@ -802,7 +823,7 @@
         }
         const res = ctx.results(), first = res.filter((r) => r.timeMs != null && !r.dnf).reduce((m, r) => Math.min(m, r.timeMs), Infinity);
         if (isFinite(first) && t > first + Math.max(45000, first * 0.4)) {
-          if (!st.done && ctx.mode === 'party') { st.done = true; ctx.report({ dnf: true, score: st.k, note: st.k + '/' + n + ' chits' }); ctx.objective(null); paint(); }
+          if (!st.done && ctx.mode === 'party') { st.done = true; ctx.objective(null); paint(); ctx.report({ dnf: true, score: st.k, note: st.k + '/' + n + ' chits' }); }
           if (ctx.mode === 'solo' && st.done) for (const pl of ctx.players) if (pl.isAI && !res.some((r) => r.uid === pl.uid)) { const A = ai.get(pl.uid); ctx.ai.report(pl.uid, { dnf: true, score: A ? A.k : 0, note: (A ? A.k : 0) + '/' + n + ' chits' }); }
         }
       },

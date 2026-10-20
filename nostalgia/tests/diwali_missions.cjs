@@ -178,7 +178,12 @@ async function startAt(id, o) {
   }
   await waitFor((id) => N.missions.markers().some((m) => m.kind === 'giver' && m.id === id), id, 8000, id + ' giver marker');
   if (o.shot) await shot(o.shot);
-  await walkTo(g.x, g.y, g.r - 4, { stop: () => !!N.missions.prompt || !!N.missions.active, ms: 15000 });
+  // (the step-out gates have lapsed out there): the last 40 u on foot, along the same clear line
+  if (!o.noTeleport) {
+    const near = await ev(([gx, gy]) => { const p = N.player, d = Math.hypot(p.x - gx, p.y - gy) || 1, x = gx + (p.x - gx) / d * 40, y = gy + (p.y - gy) / d * 40; const rc = N.world.raycast ? N.world.raycast(x, y, gx, gy, 'walk') : null; return d > 50 && N.world.isWalkable(x, y) && !(rc && rc.hit) ? { x, y } : null; }, [g.x, g.y]);
+    if (near) await teleport(near.x, near.y);
+  }
+  await walkTo(g.x, g.y, g.r - 4, { stop: () => !!N.missions.prompt || !!N.missions.active, ms: 30000 });
   // (an NPC giver may have moved, or the walk stopped short): the last steps to where the giver is now
   const g2 = await ev((id) => { const d = N.missions.defs[id]; const p = d && N.missions.giverPos(d); return p ? { x: p.x, y: p.y, prompt: N.missions.prompt } : null; }, id);
   if (g2 && g2.prompt !== id && !(await ev(() => N.missions.active))) { vlog('startAt ' + id + ': again to ' + JSON.stringify(g2)); await walkTo(g2.x, g2.y, g.r - 6, { direct: true, stop: `() => N.missions.prompt === '${id}' || !!N.missions.active`, ms: 8000 }); }
@@ -743,7 +748,7 @@ async function pStoryDeepon() {
     if (await swingCard(/Wait till 18:30/, null)) await press('KeyE');
     await waitFor(() => N.clock.minutes >= 18 * 60 + 30 && !N.calendar.jumping, null, 12000, '▶▶ 18:30');
     // he is still at the swing, in Ammamma's ring: her own J-card comes up under him (as after a "Wait till ▶▶")
-    if (await waitFor(() => N.missions.prompt === 'deepon_ki_raat' || (N.missions.active && N.missions.active.id === 'deepon_ki_raat'), null, 6000, 'Ammamma\'s Deepon ki Raat J-card right after the ▶▶')) {
+    if (await waitFor(() => N.missions.prompt === 'deepon_ki_raat' || (N.missions.active && N.missions.active.id === 'deepon_ki_raat') || /DEEPON KI RAAT/.test((document.querySelector('.hud-jcard.show') || {}).innerText || ''), null, 8000, 'Ammamma\'s Deepon ki Raat J-card right after the ▶▶')) {
       const txt = await ev(() => (document.querySelector('.hud-jcard.show') || {}).innerText || '');
       check(N_ok(txt), 'after "Wait till 18:30 ▶▶": "' + txt.replace(/\s+/g, ' ').trim().slice(0, 80) + '"');
       await shot('story_deepon_card');
@@ -827,7 +832,9 @@ async function pRewind() {
   await shot('rewind_october');
   await press('KeyE');
   await waitFor(() => window.__pick === 'october' && N.state.mode === 'play', null, 10000, 'October picked');
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(2500);
+  const auto = await ev(() => N.missions.active && N.missions.active.id);
+  check(!auto, 'standing at the door after the ◀◀: nothing starts under him (Amma\'s card waits until he steps out)', auto);
   const r = await ev(() => ({ date: N.calendar.label() + ' ' + N.clock.label(), post: N.flags.postgame, pick: N.flags.season_pick, stalls: N.dwMissions.season('pataakha'), pending: N.dwMissions.story.state().pending, bazaar: !N.missions.isDone('pataakha_bazaar') && N.missions.inWindow('pataakha_bazaar') && N.missions.defs.pataakha_bazaar._dwWhen() }));
   check(/MON 20 OCT 2003 10:0/.test(r.date) && r.post && r.pick === 'october' && r.stalls && !r.pending && r.bazaar, '◀◀ October 2003: Mon 20 Oct, Diwali week, post-game free roam (Amma\'s cracker list is open)', r);
   await shot('october_week');

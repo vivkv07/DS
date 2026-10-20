@@ -99,10 +99,15 @@ nostalgia/
   src/save.js       save/load -> N.save
   src/online_config.js  N.ONLINE_CONFIG: the pluggable online backend (Supabase URL + public key; null = "coming soon")
   src/online.js     online play (§23): player code, cloud saves + journey, 10-player rooms, ghosts -> N.online
+  src/party.js      party activities (§24): the N.party contract (register / challenge / solo / available), invite ->
+                    lobby -> shared-clock 3-2-1 -> results, AI friends (ctx.ai), rings 2D + 3D -> N.party
+  src/party_races.js (§24) cycle races (5 preset routes + pin races), the Birla Mandir steps race, the chai run,
+                    Chitti Chase; race leaderboards -> N.partyRaces
   src/latehome.js   "Ghar Pahunchna Hai!": sneak home after the street lights past uncles / daddies / Bahadur's torch
                     (vision cones 2D + 3D, hiding, Pakda meter); solo + N.party ids 'latehome' / 'latehome_daddy' -> N.latehome
   vendor/supabase/  supabase-js 2.45.4 UMD (MIT), the fallback when jsDelivr is unreachable (loaded lazily)
   supabase/migrations/*_online.sql  the database side of §23 (tables, SECURITY DEFINER functions, grants)
+  supabase/migrations/*_party.sql   §24 race leaderboards (race_routes, race_times, race_put / race_top)
   src/debug.js      test hooks + #debug overlay -> N.debug
   src/main.js       boot + main loop
   tools/build.mjs   inlines everything -> dist/nostalgia.html (full page) + dist/artifact.html (fragment)
@@ -1866,7 +1871,7 @@ at one place. Setup and the owner's (zero) steps: `design/online_setup.md`. File
 - **API**: `N.online = {available, ready, status, code, nick, room, open(), close(), goOnline(),
   setNick(), useCode(), cloud: {pull, push, take, keep, state}, journey(), pushJourney(), createRoom(),
   joinRoom(code), leaveRoom(), dropPin(placeId | null), clearPin(), say(id), PHRASES, MEET_PLACES,
-  titleLine(), pauseLine(), _debug}`.
+  titleLine(), pauseLine(), _debug}`; `[party hook]` (§24): `channelSend, onMessage, players(), partyRpc, myKey`.
 - **Limits / notes**: Supabase Realtime counts every delivered message; 10 players moving at once is a
   few hundred messages/s, above the Free plan's quota — the per-player rate drops in big rooms, and
   standing players send only a keepalive. Rooms are public channels: the code is the invite (3,600
@@ -1876,3 +1881,111 @@ at one place. Setup and the owner's (zero) steps: `design/online_setup.md`. File
   RPC + Realtime (Phoenix websocket) protocols with the SQL functions' rules; the real supabase-js runs
   unchanged. The SQL itself was exercised on the live project (design/online_setup.md "Verified").
 
+
+## 24. Party activities — friends together, or solo with the gang (`N.party`, `N.partyRaces`)
+
+Owner request: friends in an online room (§23) "roam around and do fun activities, challenge each other, play games
+that are relevant, cycle races, point A to point B…". Every activity also works **solo** against the AI friends
+(Immu, Ayesha, Pappu, Bunty-anna) when offline or alone. Files: `src/party.js` (the framework; loaded right after
+online.js), `src/party_races.js` (races + Chitti Chase), activity modules `src/funfair.js`, `src/panipuri.js`,
+`src/latehome.js`, the `[party hook]` in online.js, CSS `=== party ===`, `supabase/migrations/20261020000000_party.sql`,
+tests `tests/party.cjs` (+ the race RPCs in `tests/online_mock.cjs`).
+
+**Contract (binding; activity modules code against it):**
+```
+N.party.register(id, spec)   id /^[a-z][a-z0-9_]{1,31}$/
+  spec = {name, icon, where: placeId | null (null = anywhere), kind: 'race'|'score'|'hide'|'custom',
+          players: {min, max} (≤ 10), seasons?: [flag names] (offered only while one is on: N.flags / N.seasons.is),
+          solo: bool, describe(opts) -> string, start(ctx) -> handle {update?(dt), end?(reason)}}
+  optional: spots [{x, y, r, name}] (exact prompt points, e.g. a start line), also [placeIds], r (prompt radius,
+    default place.r + 24), label ("Start …"), when() -> true | false | reason, options(x, y) -> default opts,
+    setup(opts, {mode}) -> Promise<opts | null> (asked before a challenge from the UI: pick a route, drop pins),
+    rank(rows, summary) -> rows in order, timeLimit (s after GO, default 900; the host ends it then),
+    ai: n | [friend ids] (solo: who joins; default min(3, max - 1)), lock: false (no frozen start),
+    token: {id, name, desc} (tin token for the first win; default one per kind: 'party_race' …)
+N.party.challenge(id, opts) -> {ok, why?, mode: 'party'|'solo', sid}   (alone / offline: solo)
+N.party.solo(id, opts) -> {ok, why?, sid}       N.party.available(x, y) -> [{id, name, icon, kind, where, here, d,
+  label, line, x, y, atName}]   N.party.active -> {id, sid, name, mode, phase, isHost, players, ctx} | null
+N.party.start(id) (the start card) · openPicker() · accept() / skip() (the invite) · cancel(why) · leave() ·
+  get(id), defs, last (the last standings), stats {plays, wins, firsts, best}, FRIENDS, TUNE, fmtMs(ms), cycleFor(look),
+  panelHtml() / panelAct(id) (the Online panel's "Challenge friends"), _debug {session, clock, marks, cards, v3, ...}
+ctx = {mode, id, sid, spec, seed (int, same everywhere), opts, players [{uid, nick, isMe, isAI, look, npc?}] (the same
+  order on every page: host first, then in accept order; AI uids 'ai:<friend>', my solo uid 'me'), me, slot (my index),
+  isHost (live; moves on if the host leaves), startAt (GO on the shared clock), now() (shared clock in ms: the host's
+  Date.now() via ping / pong in a room; game time in solo, so the pause menu pauses it), elapsed() = now() - startAt,
+  rng, send(type, data) -> bool (≤ 12 / s; solo: no-op), on(type, fn(data, fromPlayer)) -> off,
+  report(result) (mine: {score?, timeMs?, place?, caught?, dnf?, progress?, note?}), results() (the reported ones),
+  end(summary) (host / solo: final now; summary.standings = [uid…] sets the order, summary.line a results-card line;
+  a guest: report + wait), left(uid), onLeave(fn),
+  ai {list, friend(uid), skill(uid), spawn(uid, x, y, {angle, vehicle: type | true}), actor, vehicle,
+      ride(uid, path, {speed, mul(R), r, onDone, lookahead, lane, coast}) -> runner {s, total, progress, done, stop()},
+      walk(uid, waypoints [{x, y, speed?, r?, wait?, onArrive?}], {speed, run, onDone}) -> runner, stop, bark,
+      report(uid, result), despawn, clear, cycleFor, rng},
+  place(x, y, angle, {vehicle, color}) -> vehicle, grid(x, y, angle, i), cycleFor(look), marker(id, {x, y, r, color,
+  kind: 'ring'|'finish'|'chit'|'goal', label, num, state: 'next'|'later'|'done', route, blip, angle}) / unmarker(id),
+  status(text), board(rows [{name, sub, me, color, out}]), objective(text), timer(ms | null), toast, bark, fmt}
+handle.update(dt): every frame in play / dialogue / minigame / cutscene; handle.end(reason) once: 'done' | 'cancel' |
+  'left' (I left the room) | 'quit' (new game / load / title) | 'error'.
+```
+**Flow.** In a room: the challenger is the host. `challenge` -> broadcast `inv` (repeated every 2 s with who accepted)
+-> invite card on every other phone ("Ravi challenges you to <name> — Accept / Skip": Y / N, a click, or ACTION
+"Accept challenge") -> lobby card (✓ / … / ✕ per player; host: G start now, X call off) -> the host starts when
+everyone has answered, or after `TUNE.lobbyMs` (20 s) with ≥ 2 accepted (else "Nobody accepted" + "Play with AI
+friends instead?") -> `go` {seed, startAt = host clock + 4.5 s, players} -> `start(ctx)` everywhere (set up the start;
+controls frozen) -> big 3-2-1-GO on `now()` -> everyone plays locally with the same seed -> `report` -> `res` to all ->
+the host ranks when every present player has reported (or `end()`, or `timeLimit`) -> `fin` {standings} -> results card
+on every phone (medals / places, times, scores, notes, "Again!" (G) / Close (X)), a bragging toast ("🏆 Pooja won …"),
+and for my first win of each kind a tin token (`N.tape.addToken`). Default ranking per kind: race = time (then
+progress), score = score, hide = not caught, then score / time held; DNF / left get no place. A player whose presence
+drops (or who quits: `bye`) is marked left; if the host leaves, the next player in the list becomes the host. A guest
+who leaves the room stops locally. Shared clock: guests ping the host from the invite on (6+ round trips, until one
+returns within 250 ms) and keep the minimum-RTT offset (good to RTT/2). Solo: the same with the AI friends, no network.
+**Transport** (`[party hook]` in online.js): broadcast `pt` {k, t, d} on the room channel; `N.online.channelSend(type,
+data)` (≤ 25 / s, data ≤ 2 KB), `onMessage(fn)` -> off (only players present in the room; ≤ 40 / s per sender),
+`players()` (presence + the ghost's position), `partyRpc(fn, args)` (`race_*` only), `myKey`. Party types: inv acc
+skip go cancel ping pong res fin bye a (activity messages: {sid, t, d}); every field is re-validated in party.js.
+**UI.** "E Start <name>" at an activity's spot (per-step offer, priority −1; 1 on the inner 24 u of a start spot, so a
+passing bus does not steal it), a start card (Challenge the room (n) / Play with AI friends / Not now: keys 1 2 N),
+the Online panel's "Challenge friends" section and a 🏁 button in the quick-chat strip (the picker; far activities
+set a waypoint + meet pin to their start), the live standings strip, rings: 2D on the ground layer (next = pink, pulsing,
+numbered; finish chequered; chits as paper) with an edge arrow, 3D layer `party` (flat rings, a light band, a tall
+beacon on the next one, finish posts + chequered banner), minimap blips with the pink route to the next one. Mission
+givers are held while a session runs; a session cannot start during a mission, a minigame or a chase (≥ 3 chappals).
+Kid-friendly: no betting, no free text, friendly banter only (the friends' lines in `FRIENDS`).
+
+**Activities in party_races.js** (all solo-capable; AI friends drive real NPC actors on real vehicles):
+- Cycle races `race_tank_bund` (Ambedkar statue → Sailing Club, 1.6 k u), `race_koti_charminar` (3.5 k),
+  `race_necklace` (Necklace Road + back along Tank Bund, 6.0 k), `race_rtc_narayanguda` (1.3 k), `race_golconda_tombs`
+  (5.3 k): paths by `N.world.roads.route` A*, checkpoints every ~400-520 u (r 40, finish r 46) that must be passed in
+  order (shortcuts between them are fine), a two-abreast grid behind the start line, everyone on an age-appropriate
+  cycle (`cycleFor`: ladies cycle for girls / women, kid cycle for small kids, BSA SLR or Hercules for boys, Hero
+  roadster for grown-ups; the friends ride Immu's red 'cycle', Ayesha's ladies cycle, Pappu's kid cycle, Bunty-anna's
+  old roadster). Traffic stays on; potholes and bumps throw you off (vehicles.js / entities.js), you walk back to the
+  cycle or a kind uncle lends one after 9 s. AI riders: pure pursuit on their own line (`lane`), corner braking, a
+  look-ahead that eases off and swerves round traffic / people, wobbles, stuck recovery (reverse; hop when off-screen),
+  roll through the finish and pull over; skill per friend (Ayesha .84, Bunty .76, Immu .72, Pappu .56, ±.06, ± the
+  difficulty setting) and a gentle rubber band (×0.88 … ×1.07 by the gap to the player). Window: after the winner the
+  others get max(30 s, 60% of the winning time), then DNF (in solo the AI times are estimated from their pace instead).
+- `race_custom` (Pin race): the challenger drops START / FINISH pins on the full map (right-click / long-press = the
+  map's waypoint; an instruction bar on the map) -> opts {a, b, from, to} -> a road route (300-9000 u).
+- `race_birla_steps`: on foot from the Hill Fort Road corner up the temple steps to the Birla Mandir gate (round the
+  temple's east corner); on the steps `N.respect` makes everyone walk (Mandir rules; AI walkers too).
+- `chai_run`: colony gate → Café Gulistan → ACTION "Ek cutting chai!" (1.2 s pour) → back to the gate on foot with the
+  chai-carry meter (running −15%/s, jogging −3%/s, bumps −10, pothole stumbles −16, a fall or a vehicle spills it
+  all; < 30% = go back for another). Ranked by time + 0.08 s per 1% spilled.
+- `chitti_chase`: the host's game picks 4-6 riddle landmarks near the start (`pickStops`, `RIDDLES`: 44 Hyderabad
+  riddles such as "Where the four minarets watch the bangles." → Charminar); everyone starts on a cycle; the chit
+  shows within 170 u (a yellow search circle after 45 s, the exact spot + route after 90 s); ACTION picks it up; first
+  to all of them wins. AI friends "think" (3-17 s by skill) and ride the road route to each.
+**Leaderboards** (`race_put(code, route, ms, vehicle)` / `race_top(code, route)`, SECURITY DEFINER, `search_path ''`,
+keyed by sha256(player code), routes and their `min_ms` in `nostalgia.race_routes` (too_fast below it), 1-3600 s,
+vehicle /^[a-z][a-z0-9_]{1,23}$/, the shared 40 calls / minute / code limit; nicknames from `nostalgia.profiles`;
+top 10 + my best + rank). Preset routes + birla_steps + chai_run are on the server; pin races keep a local best only.
+Offline (or before Online was ever used) bests live in localStorage `nostalgia.races.v1` and pending ones are sent
+when online again. Journal page **Races** lists bests and the top 5. `N.partyRaces = {ROUTES, RIDDLES, route(id),
+custom(opts), birla(), chai(), pickStops, chitSpot, pathFor, pinRace, best, top, fetchTop, submit, flushPending}`.
+**Tests**: `node tests/party.cjs` (`ONLY=solo,party,chitti,custom,3d`): solo runs of every activity with real keys (a
+small in-page autopilot only chooses keys), the start prompt / card, map pins with real right-clicks, 3D rings; three
+phones: challenge -> invite (Y key / click) -> lobby -> GO agreement on the shared clock -> race with real keys on two
+phones while the third leaves -> identical results, leaderboard rows, the Online panel list and the 🏁 picker; party
+Chitti Chase and pin race (a third phone skips with N). Screenshots `tests/out/party_*.png`.

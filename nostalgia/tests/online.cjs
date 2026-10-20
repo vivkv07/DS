@@ -380,7 +380,7 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       const aT = await A.ev(() => N.save.slotBlob('main').t);
       const key = [...M.db.saves.keys()].find((k) => k.endsWith(':0'));
       check(up && key && M.db.saves.get(key).t === aT, 'a save mirrors to the cloud (slot 0, t ' + aT + ')');
-      const jUp = await until(A, () => true, null, 100) && await (async () => { for (let i = 0; i < 60; i++) { if ([...M.db.journeys.values()].some((j) => j.data && j.data.places && j.data.places.includes('abids'))) return true; await sleep(100); } return false; })();
+      const jUp = await until(A, () => true, null, 5000) && await (async () => { for (let i = 0; i < 60; i++) { if ([...M.db.journeys.values()].some((j) => j.data && j.data.places && j.data.places.includes('abids'))) return true; await sleep(100); } return false; })();
       check(jUp, 'journey mirrored (places include abids)');
       const aCode = await A.ev(() => N.online.code);
 

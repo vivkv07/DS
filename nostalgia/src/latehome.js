@@ -104,7 +104,7 @@
     turn: { walker: 1.3, watchman: 1.6, hunter: 2.6, chair: 1.1, window: 0.9, escort: 6 },
     seeClose: 11,                         // closer than this: seen in any direction (bumped into)
     hiddenFoundR: 8,                      // a seeker this close finds even a hidden kid
-    meter: { far: 0.26, near: 0.75, lamp: 1.35, crouch: 0.5, crouchRange: 0.62, decay: 0.3, hold: 0.5, newSpotGap: 2.2 },
+    meter: { far: 0.22, near: 0.7, lamp: 1.35, crouch: 0.5, crouchRange: 0.62, decay: 0.34, hold: 0.5, newSpotGap: 2.2 },
     noise: { run: 82, walk: 17, whistle: 175, bark: 175, react: 6 },
     dog: { wakeRun: 62, wakeWalk: 24, barkSecs: 3, rest: 9 },
     lampEvery: 88, lampR: 38, hideR: 11, collectR: 8, doorR: 13,
@@ -456,9 +456,9 @@
     const pps = [];
     for (const P of paths) {
       const L = polyLen(P);
-      for (const f of [0.24, 0.4, 0.55, 0.7, 0.84]) {
+      for (const f of [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.88]) {
         const q = polyAt(P, L * f);
-        if (pps.some((o) => hyp(o.x - q.x, o.y - q.y) < 62)) continue;
+        if (pps.some((o) => hyp(o.x - q.x, o.y - q.y) < 45)) continue;
         pps.push({ x: q.x, y: q.y, a: q.a, P, s: L * f, f });
       }
     }
@@ -472,7 +472,7 @@
     if (S.variant === 'daddy') roles = ['window'];
     else {
       roles = ['watchman', 'walker', 'chair', 'daddy', 'window', 'walker', 'chair', 'daddy'];
-      roles = roles.slice(0, Math.round(lerp(4, 8, d)));
+      roles = roles.slice(0, Math.round(lerp(3, 8, d)));
     }
     let daddyN = 0;
     for (const role of roles) {
@@ -1261,6 +1261,18 @@
     for (const h of S.C.hides) { const d = hyp(h.x - x, h.y - y); if (d < bd) { bd = d; best = h; } }
     return best;
   }
+  /** the nearest hiding spot that does not lead towards the uncle who is the trouble (and is not under anyone's nose) */
+  function safeSpot(x, y, r, threat) {
+    let best = null, bd = r;
+    for (const h of S.C.hides) {
+      const d = hyp(h.x - x, h.y - y);
+      if (d >= bd) continue;
+      if (!S.seekers.every((sk) => hyp(sk.x - h.x, sk.y - h.y) > 24)) continue;
+      if (threat) { const tx = threat.cone ? threat.cone.x : threat.x, ty = threat.cone ? threat.cone.y : threat.y; if (hyp(h.x - tx, h.y - ty) < hyp(x - tx, y - ty) - 4) continue; }
+      bd = d; best = h;
+    }
+    return best;
+  }
   function aiKidStep(k, dt, t) {
     const e = k.ent;
     if (!e || k.done) return;
@@ -1352,11 +1364,10 @@
     const ahead = polyAt(P, Math.min(L, n.s + 30));
     const thr = threatAt(ahead.x, ahead.y, 20) || threatAt(e.x, e.y, 18);
     if (k.mode === 'flee' && k.flee && hyp(k.flee.x - e.x, k.flee.y - e.y) > 3 && !(k.seenBy && k.meter > 0.5)) return;
-    const spotOk = (h) => h && S.seekers.every((sk) => hyp(sk.x - h.x, sk.y - h.y) > 18);
     // seen right now: get out of sight (a spot close by, else sideways out of the cone)
     if (k.seenBy && k.mode !== 'hide') {
-      const spot = hideNear(e.x, e.y, 24);
-      if (spot && spotOk(spot)) { k.mode = 'hide'; k.spot = spot; k.hideT = 0; k.safeT = 0; return; }
+      const spot = safeSpot(e.x, e.y, 26, k.seenBy);
+      if (spot) { k.mode = 'hide'; k.spot = spot; k.hideT = 0; k.safeT = 0; return; }
       k.mode = 'flee'; k.flee = fleeFrom(k.seenBy, e.x, e.y); k.waitT = 0; return;
     }
     if (k.mode === 'hide' && k.hide === 2) {
@@ -1370,8 +1381,8 @@
     if (k.mode === 'creep' && k.creepT > 0 && !here) return;
     if (k.mode === 'detour' && k.det && !here && !threatAt(k.det.x, k.det.y, 6)) return;
     if (thr) {
-      const spot = hideNear(e.x, e.y, here ? 30 : 42);
-      if (spotOk(spot)) { k.mode = 'hide'; k.spot = spot; k.hideT = 0; k.safeT = 0; return; }
+      const spot = safeSpot(e.x, e.y, here ? 30 : 42, here || thr);
+      if (spot) { k.mode = 'hide'; k.spot = spot; k.hideT = 0; k.safeT = 0; return; }
       if (here) { k.mode = 'flee'; k.flee = fleeFrom(here, e.x, e.y); k.waitT = 0; return; }
       k.mode = 'wait'; k.waitT = (k.waitT || 0) + 0.2;
       if (k.waitT > 3) {
@@ -1403,6 +1414,17 @@
     }
     if (k.foundCD > 0) k.foundCD -= dt;
     const t = elapsed();
+    if (S.variant === 'daddy') {
+      // Daddy rounds have no meter: a sighting sends Nanna's torch that way (the aunty shouts it out); only Daddy's
+      // hand on your shoulder (proximity + facing) catches you
+      k.meter = 0;
+      if (best > 0 && by) {
+        if (t - (k.lastSeen != null ? k.lastSeen : -99) > TUNE.meter.newSpotGap) { k.spots++; if (S.isHost) notice(by, k); else netSend('seen', { u: k.uid, i: by.idx, x: Math.round(k.x), y: Math.round(k.y) }); }
+        else if (S.isHost && by.role === 'hunter') { by.track = { x: k.x, y: k.y }; by.trackT = 1.4; }
+        k.lastSeen = t; k.seenBy = by;
+      } else k.seenBy = null;
+      return;
+    }
     if (best > 0 && by) {
       if (t - (k.lastSeen != null ? k.lastSeen : -99) > TUNE.meter.newSpotGap) {
         k.spots++;
@@ -1417,7 +1439,7 @@
       if (k.meter >= 1) startCatch(k, by, 'seen');
     } else {
       k.seenBy = null;
-      if (t - (k.lastSeen != null ? k.lastSeen : -99) > TUNE.meter.hold) { k.seenT = 0; k.meter = Math.max(0, k.meter - TUNE.meter.decay * dt); }
+      if (t - (k.lastSeen != null ? k.lastSeen : -99) > TUNE.meter.hold) { k.seenT = 0; k.meter = Math.max(0, k.meter - TUNE.meter.decay * (k.hide === 2 ? 2 : 1) * dt); } // out of sight, out of mind (faster when hidden)
     }
   }
   function notice(sk, k) {
@@ -1911,7 +1933,9 @@
     if (me) {
       me.level = p.level || null;
       if (!me.seq) { me.x = p.x; me.y = p.y; me.a = isFinite(p.facing) ? p.facing : p.angle; }
-      me.run = !!p.running && hyp(p.vx || 0, p.vy || 0) > 30 && me.hide === 0;
+      me.run = (!!p.running && hyp(p.vx || 0, p.vy || 0) > 30 && me.hide === 0) || (!!p.vehicle && Math.abs(p.vehicle.speed || 0) > 20 && me.role !== 'daddy');
+      // a kid on a cycle rattles: every uncle in earshot hears it (the dog too)
+      if (p.vehicle && me.run && !me.done && S.phase === 'play') { S.rideNz = (S.rideNz || 0) - dt; if (S.rideNz <= 0) { S.rideNz = 0.45; noise(p.x, p.y, TUNE.noise.run, 'step', p); } }
       if (me.done && !me.ghost) { me.ghostIn -= dt; if (me.ghostIn <= 0 && S.phase === 'play') { me.ghost = true; p.hidden = true; netState(me); if (S.kids.some((q) => !q.done && q.role !== 'daddy')) toast(S.mode === 'solo' ? 'You can still help: WHISTLE to pull the uncles away. (E skips)' : 'Ghost mode: WHISTLE to pull the uncles off your friends!', 3200); } }
       if (me.ghost) p.hidden = true;
       else if (!me.seq && !me.done) p.hidden = me.hide === 2;
@@ -2989,11 +3013,17 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
       if (hyp(H.det.x - p.x, H.det.y - p.y) < 4 || threatAt(H.det.x, H.det.y, 4)) { if (hyp(H.det.x - p.x, H.det.y - p.y) < 4) H.path = walkPath(p.x, p.y, door.x, door.y); H.det = null; }
       else if (!thrHere) { target = H.det; why = 'detour'; }
     }
-    if (H.creepT > 0 && !thrHere && why !== 'detour') { H.creepT -= dtH; crouch = true; why = 'creep'; }
+    let nearSk = Infinity;
+    for (const sk of S.seekers) nearSk = Math.min(nearSk, hyp(sk.x - p.x, sk.y - p.y));
+    if (k.hide === 2 && why !== 'detour' && nearSk > 9 && (thrHere || thrAhead || k.seenBy || nearSk < 50)) {
+      // already hidden and somebody is about: stay put until he has gone
+      hide = true; why = 'stay'; target = { x: p.x, y: p.y }; H.waitT += dtH;
+      if (H.waitT > 7 && nearSk > 60) { const dt2 = detour(p.x, p.y, door, 12); if (dt2) { H.det = dt2; target = dt2; why = 'detour'; hide = false; H.waitT = 0; } }
+    } else if (H.creepT > 0 && !thrHere && why !== 'detour') { H.creepT -= dtH; crouch = true; why = 'creep'; }
     else if ((thrHere || thrAhead) && why !== 'detour') {
-      const spot = hideNear(p.x, p.y, 40);
       const seen = !!k.seenBy;
-      if (spot && S.seekers.every((sk) => hyp(sk.x - spot.x, sk.y - spot.y) > 18)) {
+      const spot = safeSpot(p.x, p.y, 40, k.seenBy || thrHere || thrAhead);
+      if (spot) {
         const d = hyp(spot.x - p.x, spot.y - p.y);
         if (d < spot.r * 0.6) { hide = true; why = 'hide'; target = { x: p.x, y: p.y }; H.waitT += dtH; }
         else { target = { x: spot.x, y: spot.y }; why = 'to-spot'; }

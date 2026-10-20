@@ -1387,6 +1387,7 @@
       } else if (A0.state === 'back') { if (ad.beh !== 'goto') { g.act = null; g.t = rr(TUNE.groupEvery[0], TUNE.groupEvery[1]) / (0.45 + I); } }
     } else {
       g.t -= dt;
+      if (g.t <= 0 && !(crackerTime() && intensity() > 0.02)) g.t = 5; // the night is over: no new ones
       if (g.t <= 0) {
         let tot = 0; const w = [];
         for (const [k, wt] of ACTS) {
@@ -1760,6 +1761,8 @@
   const smokeSprite = () => sprite('smoke', 32, 32, (g) => { const gr = g.createRadialGradient(16, 16, 0, 16, 16, 16); gr.addColorStop(0, 'rgba(200,190,184,0.55)'); gr.addColorStop(0.6, 'rgba(180,170,165,0.22)'); gr.addColorStop(1, 'rgba(180,170,165,0)'); g.fillStyle = gr; g.fillRect(0, 0, 32, 32); });
   const rangoliSprite = (v) => sprite('rangoli:' + v, 72, 72, (g) => paintRangoli(g, 36, 36, 34, v));
   const litterSprite = (v) => sprite('litter:' + v, 64, 64, (g) => paintLitter(g, 0, 0, 64, v, v * 7 + 1));
+  const litterTurn = (v, a) => { const q = ((Math.round(((a % TAU) + TAU) / (TAU / 4)) % 4) + 4) % 4; return sprite('litter:' + v + ':' + q, 64, 64, (g) => { g.translate(32, 32); g.rotate(q * PI / 2 + (v === 2 ? 0 : 0.4)); g.translate(-32, -32); g.drawImage(litterSprite(v), 0, 0); }); };
+  function imgFlat(img, x, y, h, size, alpha) { const k = kk(h), s2 = size * k; ctx.globalAlpha = alpha == null ? 1 : alpha; ctx.drawImage(img, SX(x, k) - s2 / 2, SY(y, k) - s2 / 2, s2, s2); }
 
   /* ================================================================ 2D drawing */
   let R = null, ctx = null, TT = 0, NIGHT = 0;
@@ -1779,13 +1782,6 @@
   }
   function dot(x, y, h, r, col) { const k = kk(h), s = Math.max(0.8, r * k); ctx.fillStyle = col; ctx.fillRect(SX(x, k) - s / 2, SY(y, k) - s / 2, s, s); }
   function glowAt(x, y, h, col, r, a) { const k = kk(h), s = r * k; ctx.globalAlpha = a; ctx.drawImage(glowSprite(col), SX(x, k) - s, SY(y, k) - s, s * 2, s * 2); }
-  function imgAt(img, x, y, h, a, size, alpha) {
-    const k = kk(h), sc = (size * k) / img.width, c = Math.cos(a) * sc, s = Math.sin(a) * sc;
-    ctx.globalAlpha = alpha == null ? 1 : alpha;
-    ctx.setTransform(c, s, -s, c, SX(x, k), SY(y, k));
-    ctx.drawImage(img, -img.width / 2, -img.height / 2);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-  }
   // litter bits: one pass sorts them into colour groups (front / back side), then one fill per group
   const ORD = new Int32Array(1800), GCNT = new Int32Array(LNC * 2 + 1), GOFF = new Int32Array(LNC * 2 + 1);
   const LSCALE = 1.55;
@@ -1839,10 +1835,11 @@
     const v = R.view;
     ctx.imageSmoothingEnabled = true;
     // trodden paper patches, swept heaps, soot
-    for (const d of DEC) { if (d.x < v.x0 - 12 || d.x > v.x1 + 12 || d.y < v.y0 - 12 || d.y > v.y1 + 12) continue; imgAt(litterSprite(d.v), d.x, d.y, 0, d.a, (d.v === 3 ? 9 : d.v === 2 ? 15 : 13) * d.s, d.k == null ? 1 : d.k); }
-    for (const d of HEAPS) { if (d.x < v.x0 - 8 || d.x > v.x1 + 8 || d.y < v.y0 - 8 || d.y > v.y1 + 8) continue; imgAt(litterSprite(4), d.x, d.y, 0.2, d.a, 8 * d.s, d.k); }
+    let nd = 0; const dmax = PHONE() ? 70 : 160;
+    for (const d of DEC) { if (d.x < v.x0 - 12 || d.x > v.x1 + 12 || d.y < v.y0 - 12 || d.y > v.y1 + 12) continue; if (nd++ > dmax) break; imgFlat(litterTurn(d.v, d.a), d.x, d.y, 0, (d.v === 3 ? 9 : d.v === 2 ? 15 : 13) * d.s, d.k == null ? 1 : d.k); }
+    for (const d of HEAPS) { if (d.x < v.x0 - 8 || d.x > v.x1 + 8 || d.y < v.y0 - 8 || d.y > v.y1 + 8) continue; imgFlat(litterTurn(4, d.a), d.x, d.y, 0.2, 8 * d.s, d.k); }
     // rangolis + the clay diyas on the steps
-    for (const d of VIS.houses) if (d.rangoli) { const r = d.rangoli; imgAt(rangoliSprite(r.v), r.x, r.y, 0, r.a, r.r * 2.1, 0.95); }
+    for (const d of VIS.houses) if (d.rangoli) { const r = d.rangoli; imgFlat(rangoliSprite(r.v), r.x, r.y, 0, r.r * 2.1, 0.95); }
     ctx.globalAlpha = 1;
     ctx.fillStyle = '#9a4a24';
     for (const d of VIS.houses) for (const q of d.diyas) { const k = kk(0.2), s = 1.1 * k; ctx.fillRect(SX(q[0], k) - s / 2, SY(q[1], k) - s * 0.35, s, s * 0.7); }
@@ -2045,7 +2042,7 @@
         ctx.fill();
       }
       let g = 0;
-      for (const d of VIS.houses) { if (g++ > 14) break; if (!d._fv) continue; for (const q of d.diyas) glowAt(q[0], q[1], 0.8, '#ffa040', 4, 0.55 * fl); for (const q of d.gateDiyas) glowAt(q[0], q[1], d.gateH + 0.6, '#ffa040', 4, 0.55 * fl); }
+      for (const d of VIS.houses) { if (g++ > 10) break; if (!d._fv) continue; for (const q of d.diyas) glowAt(q[0], q[1], 0.8, '#ffa040', 4, 0.55 * fl); for (const q of d.gateDiyas) glowAt(q[0], q[1], d.gateH + 0.6, '#ffa040', 4, 0.55 * fl); }
     }
     if (lit) {
       for (const d of VIS.houses) if (d._fv && d.kandil) { const K = d.kandil, sw = Math.sin(TT * 1.6 + K.ph) * 0.35; glowAt(K.x + d.ux * sw, K.y + d.uy * sw, K.h, K.col[0], 5.5, 0.85 * NIGHT); }
@@ -2062,7 +2059,7 @@
       }
       let g = 0;
       for (const d of VIS.houses) {
-        if (g++ > 24) break;
+        if (g++ > 10) break;
         const Fy = d.fairy; if (!Fy) continue;
         const P = Fy.pts, nc = Fy.cols.length;
         for (let i = 0, j = 0; i < P.length; i += 10, j += 5) if (fairyOn(j, Fy.pat, Fy.ph)) glowAt(P[i], P[i + 1], Fy.h, Fy.cols[j % nc], 2.6, 0.45 * NIGHT);
@@ -2656,6 +2653,7 @@
     const week = stallsOn() || active() || litterLevel() > 0 || SHOWS.length > 0;
     if (!week && !busy) { if (anyAlive()) { resetAll(); } return; }
     busy = week || !!anyAlive();
+    timeJump();
     updateRockets(dt); updateSparks(dt); updateSmoke(dt); updateFlashes(dt); updateEmitters(dt);
     updateDogs(dt);
     updateCity(dt);
@@ -2691,7 +2689,19 @@
   });
   N.on('world:built', () => { okCache.clear(); HOSP = null; HOME = null; STALLS = null; litterClear(); });
   N.on('game:new', () => { box.clear(); });
-  N.on('calendar:change', () => { LIT.regT = 0; dirT = 0; });
+  // a jump in time (a ▶▶, the debug calendar, a load): the families and stall people of the old hour go home at once
+  let absMin = null;
+  const nowAbs = () => ((N.clock && N.clock.day) || 0) * 1440 + mins();
+  function timeJump() {
+    const a = nowAbs();
+    if (absMin != null && Math.abs(a - absMin) > 30) {
+      for (const g of GROUPS.slice()) freeGroup(g);
+      for (const id of Array.from(STALLP.keys())) freeStallPeople(id);
+      for (const e of EMIT) if (e.kind === 'sparkler') e.t = e.dur;
+    }
+    absMin = a;
+  }
+  N.on('calendar:change', () => { LIT.regT = 0; dirT = 0; timeJump(); });
   N.on('season:change', (e) => { if (e && (e.name === 'diwali' || e.name === 'pataakha')) { LIT.regT = 0; dirT = 0; busy = true; } });
 
   /* ================================================================ API */

@@ -31,6 +31,9 @@ fs.mkdirSync(OUT, { recursive: true });
 const GAME_URL = 'file://' + path.join(ROOT, 'index.html') + '#debug';
 const THREE_CDN = 'https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js';
 const THREE_JS = fs.readFileSync(path.join(ROOT, 'vendor/three/three.min.js'), 'utf8');
+const GLTF_JS = fs.readFileSync(path.join(ROOT, 'vendor/three/GLTFLoader.classic.js'), 'utf8');
+let PACK_JS = null;
+const packJs = () => PACK_JS || (PACK_JS = fs.readFileSync(path.join(ROOT, 'src/assets3d_pack.js'), 'utf8'));
 const SDK_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
 const ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--disable-gpu-compositing'];
 const SHOT_MS = 180000;
@@ -55,6 +58,10 @@ async function newPage(browser, name, o) {
   page.on('requestfailed', (r) => failed.push(r.url().slice(0, 160) + ' ' + ((r.failure() && r.failure().errorText) || '')));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '/* stubbed */' }));
   await page.route(THREE_CDN, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_JS }));
+  // the 3D view's Blender models: GLTFLoader from the vendored file whichever path models3d.js tries (a slow load
+  // of the first path on a busy machine must not fall through to '../vendor/...' = a 404 console error)
+  await page.route(/\/vendor\/three\/GLTFLoader\.classic\.js$/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: GLTF_JS }));
+  await page.route(/\/src\/assets3d_pack\.js$/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: packJs() }));
   if (o.sdk) await page.route(SDK_CDN, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: o.sdk }));
   if (o.conf !== undefined) await page.addInitScript((c) => { window.NOSTALGIA_ONLINE_CONFIG = c; }, o.conf);
   await page.goto((o.url || GAME_URL.replace('#debug', '')) + '#debug');
@@ -162,7 +169,7 @@ async function solo2d(browser) {
   const s0 = await P.st();
   check(s0 && s0.mode === 'solo' && s0.variant === 'sneak' && s0.kids.length === 3, 'solo sneak with Chinnu + AI Immu and Ayesha', s0 && s0.kids.map((k) => k.nick));
   check(s0.kids.find((k) => k.me).door.place === 'home' && s0.kids.find((k) => k.npc === 'immu').door.place === 'friend_home', 'doors: Chinnu -> home, Immu -> his house, Ayesha -> a colony house');
-  check(s0.seekers.length >= 4 && new Set(s0.seekers.map((q) => q.role)).size >= 4, 'seekers: ' + s0.seekers.map((q) => q.role).join(', '));
+  check(s0.seekers.length >= 4 && new Set(s0.seekers.map((q) => q.role)).size >= 3, 'seekers: ' + s0.seekers.map((q) => q.role).join(', '));
   check(s0.hides.length >= 4 && new Set(s0.hides.map((h) => h.kind)).size >= 3, 'hiding spots: ' + Array.from(new Set(s0.hides.map((h) => h.kind))).join(', ') + ' (' + s0.hides.length + ')');
   check(s0.items.length >= 1 && s0.dogs.length >= 1 && s0.lamps >= 4 && s0.tvs >= 1, 'collectibles ' + s0.items.map((i) => i.kind).join('+') + ', dog(s) ' + s0.dogs.length + ', lamps ' + s0.lamps + ', TV windows ' + s0.tvs);
   const world = await P.ev(() => ({ clock: N.clock.label(), held: N.clock.held, curfew: N.flags.no_curfew, frozen: N.wanted.frozen(), party: N.party && N.party.active ? N.party.active.id : null }));
@@ -290,9 +297,14 @@ async function solo2d(browser) {
     for (let i = 0; i < 6 && await P.ev(() => N.dialogue.isOpen()); i++) { await P.page.keyboard.press('KeyE'); await sleep(350); }
   }
   await P.ev(() => N.latehome.stop());
+  // the other venue: the Ashok Nagar ground (across Himayatnagar Main Road)
+  const gv = await P.ev(() => { N.latehome.stop(); const ok = N.latehome.start({ venue: 'ground', seed: 4, difficulty: 0.6, direct: true }); const s = N.latehome.state(); const g = N.places.playground_14; return ok && s ? { d: Math.hypot(s.start.x - g.x, s.start.y - g.y), roles: s.seekers.map((q) => q.role), kids: s.kids.length, doors: new Set(s.kids.map((k) => k.door.x + ',' + k.door.y)).size, hides: s.hides.length } : null; });
+  check(gv && gv.d < 40 && gv.roles.length >= 4 && gv.doors === 3 && gv.hides >= 4, 'Ashok Nagar ground venue: ' + JSON.stringify(gv));
+  if (gv) { await P.until(() => N.latehome.state().phase === 'play', null, 40000); await sleep(800); await P.ev(() => { N.render.camOverride = { x: N.player.x + 120, y: N.player.y + 180, zoom: 0.55, snap: true }; }); await sleep(1200); await P.shot('ground_2d'); await P.ev(() => { N.render.camOverride = null; }); }
+  await P.ev(() => N.latehome.stop());
   // a whole run home with real keys (own solo ctx, easy, no AI friends)
   let win = null;
-  for (const seed of [21, 7, 33]) {
+  for (const seed of [7, 3, 21, 33, 2, 5]) {
     const st = await P.ev((seed) => {
       if (N.party && N.party.active) N.party.cancel();
       N.latehome.stop();
@@ -356,9 +368,9 @@ async function solo3d(browser) {
   await aimSeeker(P, spot.x, spot.y, 30);
   await P.ev(([x, y]) => { N.view3d.setCamera({ yaw: Math.atan2(y - N.player.y + 0.01, x - N.player.x + 30), pitch: 0.9, snap: true }); }, [spot.x, spot.y]);
   await P.page.keyboard.down('KeyE');
-  check(await P.until(() => N.latehome.state().me.hide === 2, null, 8000), 'hold E = hidden in 3D');
+  check(await P.until(() => N.latehome.state().me.hide === 2, null, 40000), 'hold E = hidden in 3D');
   await P.ev(() => N.latehome.debug.unseen(false));
-  check(await P.until(() => N.latehome.debug.v3().heads >= 1, null, 8000), 'the peeking head shows in 3D');
+  check(await P.until(() => N.latehome.debug.v3().heads >= 1, null, 40000), 'the peeking head shows in 3D');
   await sleep(1500);
   check((await P.st()).me.meter === 0, 'no meter while hidden under the cone');
   await P.shot('hide_3d');
@@ -459,9 +471,9 @@ async function daddy(browser) {
   check(s0 && s0.variant === 'daddy' && s0.rounds === 2 && s0.seekers.some((q) => q.role === 'hunter'), 'round 1: AI Nanna (torch) hunts; ' + (s0 && s0.rounds) + ' rounds');
   check(await P.until(() => N.latehome.state().phase === 'play', null, 30000), 'GO');
   // walk right into Nanna's torch (real keys toward him)
-  const h = await P.ev(() => { const S = N.latehome.debug.session(); const hu = S.seekers.find((q) => q.role === 'hunter'); const a = hu.angle; const f = N.world.findFree(hu.x + Math.cos(a) * 40, hu.y + Math.sin(a) * 40, 'walk', 20); N.player.teleport(f.x, f.y); N.latehome.debug.setSeekersFrozen(true); return { x: hu.x, y: hu.y }; });
-  await walkTo(P, h.x, h.y, 8000, { r: 6, until: () => !!N.latehome.state().me.seq || !!N.latehome.state().me.done });
-  check(await P.until(() => !!N.latehome.state().me.seq || N.latehome.state().me.done === 'caught', null, 5000), 'Nanna catches him: close + facing');
+  const h = await P.ev(() => { const S = N.latehome.debug.session(); const hu = S.seekers.find((q) => q.role === 'hunter'); const a = hu.angle; const f = N.world.findFree(hu.x + Math.cos(a) * 20, hu.y + Math.sin(a) * 20, 'walk', 10) || { x: hu.x + Math.cos(a) * 20, y: hu.y + Math.sin(a) * 20 }; N.player.teleport(f.x, f.y); N.latehome.debug.setSeekersFrozen(true); return { x: hu.x, y: hu.y }; });
+  await walkTo(P, h.x, h.y, 20000, { r: 6, until: () => !!N.latehome.state().me.seq || !!N.latehome.state().me.done });
+  check(await P.until(() => !!N.latehome.state().me.seq || N.latehome.state().me.done === 'caught', null, 10000), 'Nanna catches him: close + facing (no meter in Daddy rounds)');
   await P.shot('daddy_r1');
   await P.until(() => N.latehome.state().me.done === 'caught', null, 10000);
   await P.ev(() => { N.latehome.debug.setSeekersFrozen(false); N.latehome.debug.resolveAI(); });

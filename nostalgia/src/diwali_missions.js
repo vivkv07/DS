@@ -1839,11 +1839,9 @@
     const id = ids[0], d = N.missions.defs[id], a = hmOf(d && d.window && d.window.from) || 15 * 60;
     return { id, key: Infinity, ymd: [2003, 10, WEEK.deepavali], d: WEEK.deepavali, a, label: 'SAT 25 OCT 2003', today: false, loop: true };
   }
-  function swingSpot() {
-    const am = N.npcs && N.npcs.get ? N.npcs.get('ammamma') : null, h = pos('home');
-    if (am && h && !am.level && Math.hypot(am.x - (h.x + WEEK.swing[0]), am.y - (h.y + WEEK.swing[1])) < 30) return { x: am.x, y: am.y };
-    return SS.swing || (SS.swing = spot('home', WEEK.swing[0], WEEK.swing[1], 20));
-  }
+  /** Ammamma's swing (the bench on the verandah): a fixed spot, not her live position (walked into, she gets nudged
+   *  off it, and a card that followed her would slide out from under the player) */
+  function swingSpot() { return SS.swing || (SS.swing = spot('home', WEEK.swing[0], WEEK.swing[1], 20)); }
   function clueText() {
     const left = reqLeft();
     if (!left.length) return 'Diwali\'s done. Ammamma\'s swing at home when you are ready to sleep. (Out tonight, if you want: Bunty-anna\'s rocket at the colony ground, Tiger at Immu\'s.)';
@@ -2016,6 +2014,30 @@
         if (!cur || cur === SS.obj) SS.obj = t;
       }
     }
+    // a required activity open right here whose giver still waits for him to step out (the runner's cooldown after a
+    // pass close by, e.g. Mithai Run ends at the door 30 u from Ammamma; or the step-out gate after a load): its own
+    // J-card, E only (never by itself), so "Wait till 18:30 ▶▶" at the swing goes straight on to the diyas
+    let RQ = null;
+    if (!busy && p && !p.level && !p.vehicle && !p.controlsLocked && !M.prompt) {
+      for (const id of REQ) {
+        if (!openNow(id)) continue;
+        const g = M.giverPos(M.defs[id]), r = (M.defs[id].giver && M.defs[id].giver.r) || 14, k = SS.jc === 'dwstory:play:' + id ? 6 : 0;
+        // (Ammamma's ring follows her: walked into, she gets nudged off the swing; the swing itself counts too)
+        const sw = M.defs[id].giver && M.defs[id].giver.npc === 'ammamma' ? (SS.swing || (SS.swing = spot('home', WEEK.swing[0], WEEK.swing[1], 20))) : null;
+        if ((g && Math.hypot(p.x - g.x, p.y - g.y) <= r + k) || (sw && Math.hypot(p.x - sw.x, p.y - sw.y) <= WEEK.r + 4 + k)) { RQ = { id, r }; break; }
+      }
+    }
+    SS.rqT = RQ ? (SS.rqT || 0) + dt : 0;
+    if (RQ && SS.rqT > 0.6) {
+      const d = M.defs[RQ.id];
+      const play = () => { if (run() || !openNow(RQ.id)) return; SS.jc = null; try { N.hud.jcard(null); } catch (e) { /* ignore */ } try { M.start(RQ.id, { fromGiver: true }); } catch (e) { N.err('dwm.story.start', e); } };
+      const spec = { key: 'dwstory:play:' + RQ.id, kind: 'side', head: 'SIDE ACTIVITY', title: String(d.title || RQ.id).toUpperCase(), sub: (dateNow() ? dateNow().label : '') + ' · ' + fmtHM(Math.floor(N.clock.minutes)), line: d.jcardLine || '', playLabel: '▶ PLAY', progress: 0, onPlay: play };
+      SS.jc = spec.key;
+      try { N.hud.jcard(spec); } catch (e) { N.err('dwm.story.jcard', e); }
+      N.interact.offer({ label: '▶ PLAY', priority: 6, dist: 0, use: play });
+      return;
+    }
+    if (SS.jc && /^dwstory:play:/.test(SS.jc) && !RQ) { SS.jc = null; try { N.hud.jcard(null); } catch (e) { /* ignore */ } }
     // the J-card (missions.js style: E or the button; "Not now — step out")
     const C = SS.card;
     const near = C && !busy && p && !p.controlsLocked && Math.hypot(p.x - C.x, p.y - C.y) <= C.r + (SS.jc ? 6 : 0) && !p.level && !(p.vehicle);
@@ -2276,6 +2298,8 @@
   N.on('game:quit', () => { cleanupAll(); clearGivers(); storyClear(); SS.busy = SS.ending = false; });
   N.on('save:loaded', () => { cleanupAll(); clearGivers(); storyClear(); SS.busy = SS.ending = false; SS.swing = null; const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y, t: absMin() }; });
   N.on('mission:complete', (d) => { const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y, t: absMin() }; if (d && d.id) onStoryPass(d.id); });
+  // ◀◀ REWIND (story2.playSeason) puts him at the door: Amma's card waits until he has stepped out (October = Diwali week)
+  N.on('story2:season', () => { const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y, t: absMin() }; });
 
   N.addSystem({
     id: 'diwaliMissions', order: 12, runIn: ['play', 'dialogue', 'cutscene', 'minigame'],

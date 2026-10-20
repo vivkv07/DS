@@ -32,7 +32,7 @@
  *       Date.now() measured through ping / pong in party mode; game time in solo, so the pause menu pauses it),
  *     elapsed() = now() - startAt (negative during the countdown), rng (N.util.rng(seed)),
  *     send(type, data) -> bool (broadcast to the session, rate-limited; solo: no-op), on(type, fn(data, from)) -> off(),
- *     report(result) (my result: {score?, timeMs?, place?, caught?, dnf?, note?, ...}), results() -> [{uid, nick, ...result}],
+ *     report(result) (my result: {score?, timeMs?, place?, caught?, dnf?, note?, ...}), results() -> the reported ones [{uid, nick, isMe, isAI, ...result}],
  *     end(summary) (host / solo: finish now, summary.standings = [uid...] may set the order; guest: report + wait),
  *     left(uid) -> bool, onLeave(fn(uid)),
  *     ai: {list, friend(uid), skill(uid) 0..1, spawn(uid, x, y, {angle, vehicle}), actor(uid), vehicle(uid),
@@ -74,7 +74,7 @@
   function sfx(name, o) { try { if (N.audio && N.audio.sfx) N.audio.sfx(name, Object.assign({ ui: true }, o || {})); } catch (e) { /* audio never breaks the party */ } }
   function toast(t, ms) { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2600, { key: 'party' }); } catch (e) { /* ignore */ } }
   function toastQ(t, ms) { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2600); } catch (e) { /* ignore */ } }
-  const TUNE = { lobbyMs: 20000, invEvery: 2000, goLead: 4500, countMs: 3000, goShow: 900, resultsMs: 24000, timeLimit: 900, pingN: 6, pingMax: 24, pingGood: 250, pingGap: 260, sendPerSec: 12, promptPriority: -1, innerPriority: 1, innerR: 24 };
+  const TUNE = { lobbyMs: 20000, invEvery: 2000, goLead: 4500, countMs: 3000, goShow: 900, resultsMs: 24000, resultsDelay: 1200, timeLimit: 900, pingN: 6, pingMax: 24, pingGood: 250, pingGap: 260, sendPerSec: 12, promptPriority: -1, innerPriority: 1, innerR: 24 };
 
   /* ================================================================ AI friends */
   const FRIENDS = [
@@ -430,7 +430,8 @@
     const mine = standings.find((r) => r.uid === meU);
     const winner = standings.find((r) => r.rank === 1);
     teardown(S, 'done');
-    showResults(S, standings, summary);
+    // a moment for the "FINISHED!" banner before the card
+    setTimeout(() => { if (!ST.sess || ST.sess.phase === 'done') showResults(S, standings, summary); }, TUNE.resultsDelay);
     if (winner) {
       if (winner.uid === meU) {
         ST.stats.wins[S.id] = (ST.stats.wins[S.id] | 0) + 1;
@@ -1009,7 +1010,7 @@
     const pmat = new THREE.MeshBasicMaterial({ color: '#f4ead8', toneMapped: false });
     const fmat = new THREE.MeshBasicMaterial({ map: V3.check, side: THREE.DoubleSide, toneMapped: false });
     const cmat = new THREE.MeshBasicMaterial({ color: '#fff8e6', side: THREE.DoubleSide, toneMapped: false });
-    it = { grp, ring: mk(V3.geo.ring, rmat), ring2: mk(V3.geo.ring, rmat.clone()), band: mk(V3.geo.band, bmat), p1: mk(V3.geo.post, pmat), p2: mk(V3.geo.post, pmat), flag: mk(V3.geo.flag, fmat), chit: mk(V3.geo.chit, cmat) };
+    it = { grp, ring: mk(V3.geo.ring, rmat), ring2: mk(V3.geo.ring, rmat.clone()), band: mk(V3.geo.band, bmat), beacon: mk(V3.geo.band, bmat.clone()), p1: mk(V3.geo.post, pmat), p2: mk(V3.geo.post, pmat), flag: mk(V3.geo.flag, fmat), chit: mk(V3.geo.chit, cmat) };
     V3.grp.add(grp);
     V3.pool[i] = it;
     return it;
@@ -1031,6 +1032,8 @@
       it.ring.scale.set(r, 1, r); it.ring.position.y = 0.35; it.ring.material.opacity = next ? 0.95 : 0.4;
       it.ring2.visible = next; it.ring2.scale.set(r * (0.55 + 0.4 * ((t * 0.8) % 1)), 1, r * (0.55 + 0.4 * ((t * 0.8) % 1))); it.ring2.position.y = 0.3; it.ring2.material.opacity = 0.5 * (1 - ((t * 0.8) % 1));
       it.band.visible = next || m.kind === 'finish'; it.band.scale.set(r * 0.98, (next ? 9 : 5) * VS, r * 0.98); it.band.material.opacity = next ? 0.5 + 0.12 * Math.sin(t * 4) : 0.22;
+      // the next one also gets a tall thin beacon, readable from far down the road
+      it.beacon.visible = next; it.beacon.material.color.set(m.color); it.beacon.scale.set(1.6, 90 * VS, 1.6); it.beacon.material.opacity = 0.55;
       const fin2 = m.kind === 'finish';
       it.p1.visible = it.p2.visible = it.flag.visible = fin2;
       if (fin2) {
@@ -1122,7 +1125,8 @@
     const sp = spotsOf(s)[0];
     if (!sp) return;
     try { if (N.menus && N.menus.waypoint) N.menus.waypoint(sp.x, sp.y); } catch (e) { /* ignore */ }
-    if (inRoom() && N.online.dropPin && s.where && Math.hypot(N.places[s.where].x - sp.x, N.places[s.where].y - sp.y) < 200) { try { N.online.dropPin(s.where); } catch (e) { /* ignore */ } }
+    const wp = s.where && N.places && N.places[s.where];
+    if (inRoom() && N.online.dropPin && wp && Math.hypot(wp.x - sp.x, wp.y - sp.y) < 200) { try { N.online.dropPin(s.where); } catch (e) { /* ignore */ } }
     toast(s.name + ' starts at ' + sp.name + '. Waypoint set: meet there!', 3600);
   }
   // the Online panel's "Challenge friends" section ([party hook] in online.js renderPanel)

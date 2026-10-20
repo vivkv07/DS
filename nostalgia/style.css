@@ -3459,6 +3459,14 @@ body.touch-on .ol-hud { top: 30%; }
 .pt-board li.me b { color: #6fff6a; }
 .pt-board li.out { opacity: 0.5; }
 body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: calc(8px + var(--safe-l)); width: 168px; }
+/* narrow (portrait) screens: the minimap sits under the OSD there, so the strip moves to the right edge, compact */
+@media (max-width: 520px) {
+  .pt-strip, body.touch-on .pt-strip { top: 50%; bottom: auto; left: auto; right: calc(6px + var(--safe-r)); width: 148px; padding: 4px 6px 5px; }
+  .pt-strip-t { font-size: 16px; }
+  .pt-strip-s { display: none; }
+  .pt-board li { font-size: 16px; }
+  .pt-board li:nth-child(n + 5):not(.me) { display: none; }
+}
 /* results */
 .pt-table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 16px; }
 .pt-table td { padding: 3px 6px; border-bottom: 1px dashed rgba(26, 18, 20, 0.25); }
@@ -3469,5 +3477,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
 .pt-table tr.me td { background: #dff2d6; }
 .pt-cheer { font-style: italic; }
 .ol-chat .ol-party { background: var(--whitewash); }
+/* the pin-race instruction bar over the full-screen map */
+.pt-pinbar { position: absolute; left: 50%; bottom: calc(14px + var(--safe-b)); transform: translateX(-50%); z-index: 60; max-width: calc(100% - 24px); padding: 6px 14px;
+  font-family: var(--font-display); font-size: 18px; color: var(--auto-black); background: var(--auto-yellow); border: 3px solid var(--auto-black); border-radius: 4px; box-shadow: 4px 4px 0 var(--apsrtc-red); pointer-events: none; }
 @media (max-width: 480px) { .pt-card-t { font-size: 21px; } .pt-count { font-size: 76px; } .pt-count.go { font-size: 86px; } .pt-card-b .sign-btn { font-size: 17px; } }
 /* === end party === */

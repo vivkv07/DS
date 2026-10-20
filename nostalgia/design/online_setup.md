@@ -48,8 +48,8 @@ pins and chat are never stored: they pass through Supabase Realtime and are gone
 ## How it is protected
 
 - The page ships only the *publishable* key (`sb_publishable_...`). With it, a browser can **only**
-  call six database functions: `save_put`, `save_get`, `journey_put`, `journey_get`, `profile_set`,
-  `profile_get`. The tables live in a private schema (`nostalgia`), have row-level security on with no
+  call eight database functions: `save_put`, `save_get`, `journey_put`, `journey_get`, `profile_set`,
+  `profile_get`, and the race leaderboards `race_put`, `race_top` (party races, see below). The tables live in a private schema (`nostalgia`), have row-level security on with no
   policies, and are not visible through the API at all.
 - Each function checks the code's shape, sizes (save ≤ 512 KB, journey ≤ 32 KB), the nickname
   (3-12 characters, letters / digits / inner spaces, plus a rude-word list), and allows 40 calls per
@@ -59,6 +59,18 @@ pins and chat are never stored: they pass through Supabase Realtime and are gone
   players to keep it to themselves (like a locker number). Guessing one is hopeless (~62 bits).
 - Rooms are public Realtime channels: the room code is the invite. The game validates everything it
   receives from other players (positions clamped to the map, preset phrases only, kind nicknames).
+
+## Party races: leaderboards (2026-10-20)
+
+Friends in a room (or a player alone, with the AI friends Immu, Ayesha, Pappu and Bunty-anna) can race: five cycle
+routes, pin races, the Birla Mandir steps race and the chai run (ARCHITECTURE §24). Personal bests and a top-10
+per route are kept by `supabase/migrations/20261020000000_party.sql`, **already applied** to gralunajtfapqkpwulyg
+(migration `nostalgia_party_races`): tables `nostalgia.race_routes` (the 7 routes and the fastest believable time
+for each) and `nostalgia.race_times` (best time per player code and route; RLS on, no policies, not in the API),
+functions `race_put(code, route, ms, vehicle)` and `race_top(code, route)`. They check the code, the route, the time
+(1 s - 1 h, refused as `too_fast` below the route's minimum) and the cycle type, share the 40 calls / minute limit,
+and show nicknames from the profiles table (never anything typed by the caller). Nothing to do for the owner.
+Without online (or before Go online) times are kept on the phone and sent later.
 
 ## Limits to know
 
@@ -94,6 +106,12 @@ pins and chat are never stored: they pass through Supabase Realtime and are gone
   `nostalgia` schema. Security advisor: the only findings are the intended ones ("anon can execute
   SECURITY DEFINER function" for the six functions, "RLS enabled, no policy" for the private tables)
   and "leaked password protection" (no passwords are used).
+- 2026-10-20, party races, on the live project as `anon` (inside a rolled-back transaction, so no rows stayed): a first
+  time is stored (rank 1), a slower one keeps the best (runs 2, improved false), a faster one improves it, a second
+  player ranks 2nd and sees both in the top 10; refused: 3 s on Tank Bund (`too_fast`), an unknown route
+  (`bad_route`), a bad code, a bad vehicle string, 27 hours (`bad_time`); `race_top` returns the board + best + rank.
+  anon cannot read the race tables or call the helper `nostalgia.race_board`; `authenticated` cannot call them. Security
+  advisor: only the intended findings (as above), now also listing `race_put` / `race_top`.
 - In the browser (`tests/online.cjs`), against a local stand-in server that speaks the same protocols,
   because this build machine cannot reach supabase.co: see the test file header.
 
