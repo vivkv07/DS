@@ -106,7 +106,8 @@
    "kind": "mg",
    "game": "marbles",
    "act": "PLAY",
-   "cap": "GOLI"
+   "cap": "GOLI",
+   "sfxF": 14
   },
   {
    "id": "a_maram",
@@ -135,7 +136,8 @@
    "kind": "mg",
    "game": "bargain",
    "act": "PLAY",
-   "cap": "HAGGLE WITH THE AUTO-WALA"
+   "cap": "HAGGLE WITH THE AUTO-WALA",
+   "sfxF": 39
   },
   {
    "id": "a_brickgame",
