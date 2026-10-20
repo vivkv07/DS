@@ -21,7 +21,7 @@
     top_rain: { view: 'top', at: 'koti', time: [20, 30], veh: 'cycle', spd: 100, dir: -1.5, rain: 0.9 },
     pigeons: { view: 'tps', at: 'charminar_plaza', time: [8, 10], veh: null, spd: 80, dir: 2.6, run: true, scare: 8 },
     top_kites: { view: 'top', at: 'giver_himayatnagar', time: [15, 30], veh: null, spd: 45, dir: 0.5 },
-    boat: { view: 'tps', at: 'buddha_statue', time: [9, 40], veh: 'boat', spd: 45, warm: 30, line: { a: 0.15, r0: 260, r1: 40 }, boatcam: { top: 92, a0: 0.6, a1: 1.05, d0: 26, d1: 20, h0: 7, h1: 5, side: 1, fov: 60 } },
+    boat: { view: 'tps', at: 'buddha_statue', time: [9, 40], veh: 'boat', spd: 45, warm: 30, line: { a: 0.15, r0: 260, r1: 40 }, boatcam: { top: 92, a0: 0.55, a1: 1.0, d0: 36, d1: 27, h0: 8, h1: 6, side: -1, fov: 56 } },
     bus: { view: 'tps', at: 'koti', time: [9, 30], veh: 'bus', spd: 110, dir: 1.5 },
     cycle_fps: { view: 'fps', at: 'mozamjahi_market', time: [11, 30], veh: 'cycle', spd: 100, dir: 0 },
     top_night: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 30], veh: 'chetak', spd: 140, dir: 1.5 },
@@ -533,6 +533,37 @@
     return document.getElementById('game').toDataURL('image/png');
   };
   window.CLIPS = CLIPS;
+  // QA: what solid lies between the lens and the subject (Chinnu / his vehicle) this frame -> null | {d, name, of}
+  window.CLIP_OCC = function (subH, endGap) {
+    const H = N.view3d.H, T = H.THREE || window.THREE, cam = H.camera.position, p = N.player, v = p.vehicle;
+    const sx = v ? v.x : p.x, sy = v ? v.y : p.y, sh = subH || 3.5;
+    const o = new T.Vector3(cam.x, cam.y, cam.z), d = new T.Vector3(sx - cam.x, sh - cam.y, sy - cam.z);
+    const len = d.length() - (endGap || 6); if (len <= 1) return null;
+    d.normalize();
+    const rc = new T.Raycaster(o, d, 0.5, len); rc.camera = H.camera;
+    const hits = []; let best = null;
+    const sph = new T.Sphere(), oc = new T.Vector3();
+    H.scene.traverse((m) => {
+      if (!m.isMesh || m.isSprite || !m.visible) return;
+      if (m.name === 'sky' || m.name === 'outer') return;
+      if (m.material && m.material.transparent) return;
+      let q = m; while (q) { if (!q.visible) return; q = q.parent; }
+      if (!m.isInstancedMesh) {
+        if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+        sph.copy(m.geometry.boundingSphere).applyMatrix4(m.matrixWorld);
+        oc.copy(sph.center).sub(o);
+        const t = Math.max(0, Math.min(len, oc.dot(d)));
+        if (oc.lengthSq() - 2 * t * oc.dot(d) + t * t > sph.radius * sph.radius) return;
+      }
+      hits.length = 0;
+      try { Object.getPrototypeOf(m).raycast.call(m, rc, hits); } catch (e) { return; }
+      for (const h of hits) if (h.distance <= len && (!best || h.distance < best.d)) {
+        let nm = m.name || '', q = m.parent; while (!nm && q) { nm = q.name || ''; q = q.parent; }
+        best = { d: +h.distance.toFixed(1), name: nm || m.type, of: +len.toFixed(1) };
+      }
+    });
+    return best;
+  };
   // (debug: the playground game's state at this frame)
   window.CLIP_DBG = () => { if (!C || !C.pg) return null; const s = C.pg.D.state(); return s && { f: C.f, ph: s.phase, ball: s.ball.state + (s.ball.holder ? ':' + s.ball.holder : ''), tele: s.tele, me: [Math.round(N.player.x), Math.round(N.player.y)], stack: s.lingocha ? s.lingocha.stack : null, log: s.log.slice(-3).map((e) => e.type + (e.name ? ':' + e.name : '')).join(' '), K: C.pg.K && C.pg.K.name, J: C.pg.vic && C.pg.vic.name, pos: s.parts.map((q) => q.name.slice(0, 3) + ' ' + Math.round(q.x) + ',' + Math.round(q.y)).join(' | '), bxy: [Math.round(s.ball.x), Math.round(s.ball.y), s.ball.z], cam: C.pg.cam && [Math.round(C.pg.cam.x), Math.round(C.pg.cam.y)] }; };
 })();

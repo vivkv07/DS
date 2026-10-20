@@ -7,6 +7,8 @@
  *        FROM=b TO=b  render only the segments inside beats [FROM, TO), with their audio (a quick look at one stretch)
  *        NOFX=1       no transitions         MAXRATE=32M  VBV ceiling (default 32M at 4K: < 400 MiB; 0 = off)
  *        REMUX=1      reuse <ASM_TMP>/video.mp4 (redo transitions + audio only)   ADOPT=1  adopt pre-signature clips
+ *        EDL=reels_short.json   the short Reels cut: a bar-aligned edit of the master (picture, captions, score) ->
+ *                     out/nostalgia_reels_v2_short_<W>x<H>.mp4 (share ASM_TMP with the 9:16 master: its clips are reused)
  * Per segment: frame sequence -> exact-length clip (n beats x 18 frames @30 fps). 3D/gameplay footage gets the grade
  * and a slow 1.03 -> 1 pull-back (3D drone shots a slow push-in); minigame and UI captures are the game's own screens:
  * no grade, no zoom. 9:16: portrait-native frames from FRAMES_V win; landscape footage is cropped to 9:16 around the
@@ -27,12 +29,17 @@ const VERT = H > W;
 const FRV = process.env.FRAMES_V || path.join(OUTDIR, V2 ? 'frames2_v' : 'frames_v');
 const CRF = process.env.CRF || '16';
 const TAG = V2 ? '_v2' : '';
-const OUT = process.env.OUT ? path.resolve(process.env.OUT) : path.join(OUTDIR, VERT ? `nostalgia_reels${TAG}_${W}x${H}.mp4` : `nostalgia_trailer${TAG}_${H}p.mp4`);
+// EDL=<json>: a bar-aligned edit of the master (reels_short.json): picture, captions and score cut from the master
+const EDL = process.env.EDL ? JSON.parse(fs.readFileSync(path.resolve(__dirname, process.env.EDL), 'utf8')) : null;
+const OUT = process.env.OUT ? path.resolve(process.env.OUT) : path.join(OUTDIR, VERT ? `nostalgia_reels${TAG}${EDL ? '_short' : ''}_${W}x${H}.mp4` : `nostalgia_trailer${TAG}${EDL ? '_short' : ''}_${H}p.mp4`);
 const FPS = TL.fps, BF = TL.beatFrames, B = 60 / TL.bpm;
 const TMP = process.env.ASM_TMP ? path.resolve(process.env.ASM_TMP) : path.join(OUTDIR, 'tmp' + TAG + '_' + W + 'x' + H); fs.mkdirSync(TMP, { recursive: true });
 const PRESET = process.env.PRESET || 'medium', CLIPCRF = process.env.CLIPCRF || '12';
 const FPRESET = process.env.PRESET || (H >= 2000 || W >= 2000 ? 'slow' : 'medium');
 const FROM = +(process.env.FROM || 0), TO = +(process.env.TO || 1e9);
+// EDL pieces in master beats [b0, b1) and their start in the edit (r0, beats); the last one holds tailBeats more
+const PIECES = EDL ? EDL.pieces.map((p) => ({ ...p, b0: 4 * (p.bars[0] - 1), b1: 4 * p.bars[1] })) : null;
+if (PIECES) { PIECES[PIECES.length - 1].b1 += EDL.tailBeats || 0; let r = 0; for (const p of PIECES) { p.r0 = r; r += p.b1 - p.b0; } }
 const ff = (args) => execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], { stdio: 'inherit' });
 
 // frames for a segment: <FR>/<id>/%05d.(jpg|png); portrait-native <FRV>/<id> wins in the vertical cut
@@ -74,7 +81,7 @@ function vxExpr(v, nf) { // VX value -> crop centre expression of the frame numb
 }
 
 const GRADE = 'eq=contrast=1.07:saturation=1.14:gamma=0.98,vignette=angle=PI/5:mode=forward';
-const segs = TL.segments.filter((s) => s.b >= FROM && s.b < TO);
+const segs = PIECES ? TL.segments.filter((s) => PIECES.some((p) => s.b < p.b1 && s.b + s.n > p.b0)) : TL.segments.filter((s) => s.b >= FROM && s.b < TO);
 const clips = [];
 const REMUX = !!process.env.REMUX; // reuse <TMP>/video.mp4: redo only the transitions + the audio
 for (const seg of REMUX ? [] : segs) {
@@ -134,9 +141,26 @@ for (const seg of REMUX ? [] : segs) {
   }
   clips.push(out);
 }
+// EDL: cut each piece's frames out of the master's segment clips (reused while unchanged)
+if (PIECES && !REMUX) {
+  const parts = [];
+  for (const p of PIECES) {
+    for (const sg of TL.segments) {
+      const a = Math.max(p.b0, sg.b), b = Math.min(p.b1, sg.b + sg.n);
+      if (a >= b) continue;
+      const src = path.join(TMP, sg.id + '.mp4'), part = path.join(TMP, `edl_${sg.id}_${a}-${b}.mp4`);
+      const args = ['-i', src, '-vf', `trim=start_frame=${(a - sg.b) * BF}:end_frame=${(b - sg.b) * BF},setpts=PTS-STARTPTS,format=yuv420p`, '-frames:v', String((b - a) * BF), '-r', String(FPS), '-c:v', 'libx264', '-preset', PRESET, '-crf', CLIPCRF, '-pix_fmt', 'yuv420p', part];
+      const sig = crypto.createHash('md5').update(JSON.stringify([args, fs.readFileSync(src + '.sig', 'utf8')])).digest('hex');
+      if (!(fs.existsSync(part) && fs.existsSync(part + '.sig') && fs.readFileSync(part + '.sig', 'utf8') === sig)) { ff(args); fs.writeFileSync(part + '.sig', sig); }
+      parts.push(part);
+    }
+  }
+  clips.length = 0; clips.push(...parts);
+  console.log(`  EDL: ${PIECES.length} pieces, ${parts.length} parts, ${PIECES.reduce((t, p) => t + p.b1 - p.b0, 0) * B} s`);
+}
 // concat (all clips share codec params)
-const list = path.join(TMP, 'list.txt');
-const video = path.join(TMP, 'video.mp4');
+const list = path.join(TMP, PIECES ? 'list_edl.txt' : 'list.txt');
+const video = path.join(TMP, PIECES ? 'video_edl.mp4' : 'video.mp4');
 if (!REMUX) {
   fs.writeFileSync(list, clips.map((c) => `file '${c}'`).join('\n'));
   ff(['-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', video]);
@@ -184,27 +208,44 @@ function vhsFilters(tr, t0) { // t0: time offset of this render (FROM)
   if (tr.flash) out.push(`fade=t=in:st=${f6(Math.max(0, tc))}:d=${f6(tr.flash)}:color=white:enable='between(t,${f6(Math.max(0, tc - 1e-3))},${f6(tc + tr.flash)})'`);
   return out;
 }
-const t0 = FROM * B;
-const fxChain = process.env.NOFX ? [] : TRANS.filter((tr) => tr.at >= FROM && tr.at < TO).flatMap((tr) => vhsFilters(tr, t0));
+const t0 = PIECES ? 0 : FROM * B;
+// EDL: master transitions play where they fall inside a piece; a piece's fx (a master transition's beat) plays on its join
+const TR = !PIECES ? TRANS.filter((tr) => tr.at >= FROM && tr.at < TO) : PIECES.flatMap((p) => {
+  const own = TRANS.filter((tr) => tr.at >= p.b0 && tr.at < p.b1).map((tr) => ({ ...tr, at: p.r0 + tr.at - p.b0 }));
+  const fx = p.fx != null && !own.some((tr) => tr.at === p.r0) ? TRANS.filter((tr) => tr.at === p.fx).map((tr) => ({ ...tr, at: p.r0 })) : [];
+  return [...fx, ...own];
+});
+const fxChain = process.env.NOFX ? [] : TR.flatMap((tr) => vhsFilters(tr, t0));
 
 // score: two-pass loudness normalisation to -14 LUFS / -1 dBTP, linear (a clean gain: the score is already mastered).
 // The AAC encode adds ~0.6 dB of inter-sample overshoot, so the gain also keeps the PCM true peak <= -1.75 dBTP
 // (the delivered file then measures <= -1 dBTP); with the v2.1 score that is -14.36 LUFS, i.e. about -14.
-const wav = path.join(OUTDIR, 'score.wav');
+let wav = path.join(OUTDIR, 'score.wav');
+if (PIECES) { // the score cut on the same bar lines: contiguous pieces stay one run; 6 ms de-click fades on the real joins
+  const total = PIECES.reduce((t, p) => t + p.b1 - p.b0, 0) * B, fo = EDL.fadeOut || 0;
+  const runs = [];
+  for (const p of PIECES) { const r = runs[runs.length - 1]; if (r && r.b1 === p.b0) r.b1 = p.b1; else runs.push({ b0: p.b0, b1: p.b1 }); }
+  const fc = runs.map((r, i) => `[0:a]atrim=start=${f6(r.b0 * B)}:end=${f6(r.b1 * B)},asetpts=PTS-STARTPTS,afade=t=in:d=0.006,afade=t=out:st=${f6((r.b1 - r.b0) * B - 0.006)}:d=0.006[a${i}]`).join(';') +
+    `;${runs.map((r, i) => `[a${i}]`).join('')}concat=n=${runs.length}:v=0:a=1${fo ? `,afade=t=out:st=${f6(total - fo)}:d=${fo}` : ''}[a]`;
+  console.log(`  EDL audio: ${runs.length} runs (${runs.map((r) => `b${r.b0}-${r.b1}`).join(' ')})`);
+  const ew = path.join(TMP, 'score_edl.wav');
+  ff(['-i', wav, '-filter_complex', fc, '-map', '[a]', '-c:a', 'pcm_s24le', ew]);
+  wav = ew;
+}
 let m = {};
 try { m = JSON.parse(execFileSync('bash', ['-c', `ffmpeg -hide_banner -i '${wav}' -af loudnorm=I=-14:TP=-1:LRA=9:print_format=json -f null - 2>&1 | sed -n '/^{/,/^}/p'`], { encoding: 'utf8' })); } catch (e) { m = {}; }
 const LI = m.input_i ? Math.min(-14, +m.input_i + (-1.75 - +m.input_tp)).toFixed(2) : '-14';
 const ln = m.input_i ? `loudnorm=I=${LI}:TP=-1:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true` : 'loudnorm=I=-14:TP=-1:LRA=11';
 const full = (TL.totalBeats + (TL.tailBeats || 0)) * B;
-const last = segs[segs.length - 1], isEnd = last === TL.segments[TL.segments.length - 1];
+const last = segs[segs.length - 1], isEnd = !PIECES && last === TL.segments[TL.segments.length - 1];
 const tail = isEnd ? (TL.tailBeats || 0) * B : 0; // hold the end card over the audio tail
-const dur = isEnd ? full - t0 : (last.b + last.n) * B - t0;
+const dur = PIECES ? PIECES.reduce((t, p) => t + p.b1 - p.b0, 0) * B : isEnd ? full - t0 : (last.b + last.n) * B - t0;
 const vchain = [`tpad=stop_mode=clone:stop_duration=${tail}`, ...fxChain, 'format=yuv420p'].join(',');
 // 4K: CRF-driven with a VBV ceiling, so the 97.8 s file is guaranteed to stay under 400 MiB (32 Mb/s x 97.8 s + audio
 // = 395 MB = 377 MiB at most); MAXRATE=0 lifts it
 const MAXRATE = process.env.MAXRATE != null ? process.env.MAXRATE : (W * H >= 3840 * 2160 * 0.9 ? '32M' : '0');
 const vbv = MAXRATE && MAXRATE !== '0' ? ['-maxrate', MAXRATE, '-bufsize', (parseFloat(MAXRATE) * 2) + 'M'] : [];
-ff(['-i', video, '-ss', String(t0), '-i', wav, '-filter_complex', `[0:v]${vchain}[v];[1:a]${ln},aresample=48000[a]`, '-map', '[v]', '-map', '[a]',
+ff(['-i', video, '-ss', String(PIECES ? 0 : t0), '-i', wav, '-filter_complex', `[0:v]${vchain}[v];[1:a]${ln},aresample=48000[a]`, '-map', '[v]', '-map', '[a]',
   '-t', String(dur), '-c:v', 'libx264', '-preset', FPRESET, '-crf', CRF, ...vbv, '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
   '-c:a', 'aac', '-b:a', '320k', OUT]);
 console.log('->', OUT, (fs.statSync(OUT).size / 1048576).toFixed(1), 'MiB', fxChain.length ? `(${fxChain.length} transition filters)` : '', vbv.length ? `(VBV ${MAXRATE})` : '');
