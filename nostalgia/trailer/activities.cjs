@@ -50,8 +50,9 @@ const GAMES = {
   // kite's draw feeds its simulation, so its pre-roll must really draw (fast: false), else the bot plays out differently
   // portrait: the editor's window 135..278 puts the first cut on the same clip frame as landscape (f16); the second
   // lands on f90 (landscape f102), the third (the win) on f124; the result card only comes at f312
-  // phone scale (540x960): cuts at f165 / f272 (no third cut before f330): window 149..292 = cuts at clip f16 / f123
-  kite: { params: { difficulty: 0.4, seed: 11 }, pre: 400, preV: { '1080x1920': 134, '540x960': 148 }, fast: false, anchor: { ev: 'CUT \\d+', clip: 16 } },
+  // phone scale (540x960, real fonts): seed 16 cuts at f124 / f227 (no third cut before f360): window 108..251 =
+  // cuts at clip f16 / f119. (paramsAt: per-viewport params; the kite fight depends on the layout and the fonts)
+  kite: { params: { difficulty: 0.4, seed: 11 }, paramsAt: { '540x960': { seed: 16 } }, pre: 400, preV: { '1080x1920': 134, '540x960': 107 }, fast: false, anchor: { ev: 'CUT \\d+', clip: 16 } },
   // ball 2 (the bot plays a CUT): end of the bowler's run-up, delivery ~f224, the ball bounces in, PERFECT cut
   // ~f250 (bat flash + sparks), the ball streaks right over the low wall: "SIX! Plot mein!" + confetti and
   // RUNS 6 -> 12 at f258, the ball still flying into the plot
@@ -121,7 +122,7 @@ function evKey(st, ev) { return st ? (ev ? (String(st.hud).match(new RegExp(ev, 
     fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
     const pv = cfg.preV; // a number, or {'<W>x<H>': n} per portrait viewport
     const pre = +(process.env['PRE_' + seg.game] || (PORTRAIT && pv && (typeof pv === 'object' ? pv[W + 'x' + H] : pv)) || cfg.pre);
-    const params = Object.assign({}, cfg.params, JSON.parse(process.env['P_' + seg.game] || '{}'));
+    const params = Object.assign({}, cfg.params, (cfg.paramsAt && cfg.paramsAt[W + 'x' + H]) || {}, JSON.parse(process.env['P_' + seg.game] || '{}'));
     const tune = Object.assign({}, cfg.tune || {}, JSON.parse(process.env['T_' + seg.game] || '{}'));
     if (process.env.TOUCH != null) params.touch = process.env.TOUCH === '1'; else if (PORTRAIT) params.touch = cfg.touchV != null ? cfg.touchV : true; // phone UI: the touch buttons
     const info = await page.evaluate(({ id, p, tune, script }) => ACT.start(id, p, tune, script), { id: seg.game, p: params, tune: Object.keys(tune).length ? tune : null, script: cfg.script || null });
