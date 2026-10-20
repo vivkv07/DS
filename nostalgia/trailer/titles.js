@@ -45,16 +45,20 @@
     const k = Math.min(W / 1920, H / 1080) * (H > W ? 1.3 : 1);
     ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(k, k);
     if (seg.style === 'intro') {
-      if (H > W) ctx.scale(0.62, 0.62); // portrait: the wide-tracked word must fit the width
-      // slow tracking-in, letters breathing apart, warm glow
+      if (H > W) ctx.scale(0.78, 0.78); // portrait: the wide-tracked word must fit the width
+      // v2 (100 BPM, 2 beats each): HYDERABAD breathes in (soft fade, slow tracking-out); 2003 lands on the
+      // next downbeat with a gentle punch-in and a warm glow, then dissolves into the reveal shot
       const dur = seg.n * B, u = clamp(t / dur, 0, 1);
-      const a = clamp(t / 0.35, 0, 1) * (1 - clamp((t - (dur - 0.3)) / 0.3, 0, 1));
-      ctx.globalAlpha = a;
       const big = seg.text === '2003';
+      const fin = big ? 0.3 : 0.42, fout = big ? 0.3 : 0.16;
+      const a = ease.out(clamp(t / fin, 0, 1)) * (1 - ease.io(clamp((t - (dur - fout)) / fout, 0, 1)));
+      ctx.globalAlpha = a;
+      const sc = big ? 1.1 - 0.1 * ease.out(clamp(t / 0.45, 0, 1)) + 0.02 * u : 1.0 + 0.025 * u;
+      ctx.scale(sc, sc);
       ctx.shadowColor = big ? 'rgba(255,170,60,0.55)' : 'rgba(255,255,255,0.35)'; ctx.shadowBlur = 40;
-      text(ctx, seg.text, 0, 0, big ? 210 : 132, { weight: big ? 900 : 300, track: (big ? 18 : 40) + 50 * u, color: big ? '#ffb347' : '#f4efe6' });
+      text(ctx, seg.text, 0, 0, big ? 210 : 132, { weight: big ? 900 : 300, track: (big ? 18 : 40) + 26 * ease.io(u), color: big ? '#ffb347' : '#f4efe6' });
       ctx.shadowBlur = 0;
-      if (!big) text(ctx, 'HYDERABAD · TELANGANA · INDIA'.replace('HYDERABAD · ', ''), 0, 120, 26, { weight: 500, track: 14, color: 'rgba(244,239,230,0.55)' });
+      if (!big) { ctx.globalAlpha = a * ease.out(clamp((t - 0.2) / 0.5, 0, 1)); text(ctx, 'TELANGANA · INDIA', 0, 120, 26, { weight: 500, track: 14, color: 'rgba(244,239,230,0.55)' }); }
     } else {
       // trailer hit: punch in from 1.12x, hard white, chromatic split on the first frames
       const u = clamp(t / 0.4, 0, 1), sc = 1.12 - 0.12 * ease.out(u);
@@ -73,12 +77,17 @@
     cream: '#f3e3bd', creamS: '#d9c299', sand: '#d6a865', sandS: '#b98848', white: '#fbf8f0', whiteS: '#dcd6c8',
     glass: '#5fb6d8', glassS: '#3a8fb4', green: '#5aa55a', red: '#d8402a', yellow: '#f2c230', ink: '#2a2a33',
   };
-  // world: 4200 design units wide; the camera pans 0 -> 2280 (shows 1920)
+  // world: 4200 design units wide; the camera pans 0 -> 2230 (shows 1920)
+  // v2: 8 pop beats, one hero landmark each (in pan order, so each pops on screen); the small accents
+  // (kites, the auto, pigeons, the bus) ride along on their neighbour's beat a moment later.
+  // Vehicles are listed last so they drive in front of the buildings.
   const ITEMS = [
-    // [x, kind, popBeatIndex]
-    [260, 'clock', 0], [620, 'mecca', 1], [980, 'birla', 2], [1330, 'buddha', 3], [1650, 'kites', 4], [1820, 'cyber', 5],
-    [2180, 'golconda', 6], [2520, 'auto', 7], [2700, 'tankbund', 8], [3000, 'pigeons', 9], [3350, 'bus', 10], [3150, 'charminar', 11],
+    // [x, kind, popBeatIndex, delay (s)]
+    [260, 'clock', 0, 0], [620, 'mecca', 1, 0], [980, 'birla', 2, 0], [1330, 'buddha', 3, 0], [1650, 'kites', 4, 0.12], [1820, 'cyber', 4, 0],
+    [2180, 'golconda', 5, 0], [2700, 'tankbund', 6, 0], [3000, 'pigeons', 7, 0.14], [3150, 'charminar', 7, 0],
+    [2520, 'auto', 6, 0.1], [3750, 'bus', 7, 0.1],
   ];
+  const POP = 0.42; // seconds for a landmark to spring up (ease.back overshoot)
   function rect(ctx, x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
   function poly(ctx, pts, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.closePath(); ctx.fill(); }
   function circ(ctx, x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); }
@@ -206,14 +215,14 @@
     ctx.fillStyle = '#f5f0e0'; for (let x = -((cx) % 120); x < VW; x += 120) ctx.fillRect(x, GY + 72, 60, 6);
     // the landmarks pop up on their beats (scale from 0 with an overshoot, from the ground)
     ctx.translate(-cx, 0);
-    for (const [x, kind, pi] of ITEMS) {
-      const pb = (seg.pops && seg.pops[pi] != null ? seg.pops[pi] : b0 + pi) - b0;
-      const u = clamp((beats - pb) / 0.9, 0, 1);
+    for (const [x, kind, pi, dl] of ITEMS) {
+      const pt = ((seg.pops && seg.pops[pi] != null ? seg.pops[pi] : b0 + pi) - b0) * B + dl; // pop time (s)
+      const u = clamp((t - pt) / POP, 0, 1);
       if (u <= 0) continue;
       const sc = ease.back(u);
       let px = x, dy = 0;
-      if (kind === 'auto') px = x + Math.max(0, beats - pb) * 120;
-      if (kind === 'bus') px = x - Math.max(0, beats - pb) * 90;
+      if (kind === 'auto') px = x + Math.max(0, t - pt) * 90;
+      if (kind === 'bus') px = x - Math.max(0, t - pt) * 70;
       ctx.save(); ctx.translate(px, GY + (kind === 'auto' || kind === 'bus' ? 100 : 0) + dy);
       const sy = kind === 'kites' || kind === 'pigeons' ? 1 : sc;
       ctx.scale(kind === 'kites' || kind === 'pigeons' ? sc : 1 / Math.max(0.3, sc) * sc * (0.9 + 0.1 * sc), sy);
@@ -224,17 +233,17 @@
     ctx.restore();
     // the title slam
     if (t >= slamT) {
-      const u = clamp((t - slamT) / 0.45, 0, 1), sc = 1.6 - 0.6 * ease.out(u);
+      const u = clamp((t - slamT) / 0.5, 0, 1), sc = 1.42 - 0.42 * ease.out(u);
       const tk = port ? (W / 1920) * 1.05 : k;
       ctx.save(); ctx.translate(W / 2, port ? H * 0.3 : H * 0.24); ctx.scale(tk * sc, tk * sc);
       ctx.shadowColor = 'rgba(30,40,60,0.35)'; ctx.shadowOffsetY = 8; ctx.shadowBlur = 0;
       text(ctx, 'NOSTALGIA', 0, 0, 190, { color: '#ffffff', track: 26 });
       ctx.shadowColor = 'transparent';
-      const u2 = clamp((t - slamT - 0.5) / 0.5, 0, 1);
+      const u2 = ease.out(clamp((t - slamT - 0.55) / 0.7, 0, 1));
       ctx.globalAlpha = u2;
-      text(ctx, 'HYDERABAD  ·  2003', 0, 128, 40, { weight: 600, color: '#2a3a4a', track: 16 });
+      text(ctx, 'HYDERABAD  ·  2003', 0, 128 + 14 * (1 - u2), 40, { weight: 600, color: '#2a3a4a', track: 16 + 10 * (1 - u2) });
       ctx.restore();
-      if (t - slamT < 0.12) { ctx.fillStyle = 'rgba(255,255,255,' + (0.8 * (1 - (t - slamT) / 0.12)) + ')'; ctx.fillRect(0, 0, W, H); }
+      if (t - slamT < 0.16) { ctx.fillStyle = 'rgba(255,255,255,' + (0.7 * (1 - (t - slamT) / 0.16)) + ')'; ctx.fillRect(0, 0, W, H); }
     }
   }
 
@@ -247,19 +256,131 @@
     ctx.restore();
   }
 
-  function endcard(ctx, seg, t, W, H) {
-    const k = Math.min(W / 1920, H / 1080) * (H > W ? 1.15 : 1);
+  function endcard(ctx, seg, t, W, H) { // v2: 8 beats (4.8 s); settles by ~2.2 s, the assembly holds the last frame
+    const k = Math.min(W / 1920, H / 1080) * (H > W ? 1.6 : 1); // portrait: sized for phones
     ctx.fillStyle = '#07080c'; ctx.fillRect(0, 0, W, H);
-    const a = clamp(t / 0.5, 0, 1);
-    ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(k, k); ctx.globalAlpha = a;
+    const a = ease.out(clamp(t / 0.9, 0, 1));
+    ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(k, k);
+    ctx.save(); ctx.globalAlpha = a; const s0 = 1.05 - 0.05 * a; ctx.scale(s0, s0);
     ctx.shadowColor = 'rgba(255,170,60,0.5)'; ctx.shadowBlur = 50;
-    text(ctx, 'NOSTALGIA', 0, -60, 150, { color: '#ffffff', track: 22 });
-    ctx.shadowBlur = 0;
-    text(ctx, 'AN OPEN-WORLD HYDERABAD STORY', 0, 50, 34, { weight: 500, color: '#ffb347', track: 12 });
-    ctx.globalAlpha = clamp((t - 0.8) / 0.5, 0, 1);
-    text(ctx, 'PLAY FREE IN YOUR BROWSER', 0, 170, 40, { weight: 800, color: '#ffffff', track: 8 });
+    text(ctx, 'NOSTALGIA', 0, -60, 150, { color: '#ffffff', track: 22 + 14 * (1 - a) });
+    ctx.restore();
+    const a2 = ease.out(clamp((t - 0.6) / 0.7, 0, 1));
+    ctx.globalAlpha = a2;
+    text(ctx, 'AN OPEN-WORLD HYDERABAD STORY', 0, 50 + 10 * (1 - a2), 34, { weight: 500, color: '#ffb347', track: 12 });
+    const a3 = ease.out(clamp((t - 1.3) / 0.7, 0, 1));
+    ctx.globalAlpha = a3;
+    const rw = 300 * a3; ctx.fillStyle = 'rgba(255,179,71,0.85)'; ctx.fillRect(-rw / 2, 112, rw, 3);
+    text(ctx, 'PLAY FREE IN YOUR BROWSER', 0, 172 + 12 * (1 - a3), 40, { weight: 800, color: '#ffffff', track: 8 });
     ctx.restore();
     addGrain(ctx, W, H, t);
+  }
+
+  /* ------------------------------------------------------------ v2 caption lower-thirds (transparent) */
+  // Kicker (act name) + big caption. Landscape: lower-left third, clear of the top 12 % (minigame bars) and
+  // the bottom 6 % (HUD). Portrait: left-aligned around 62-70 % height, clear of the Reels/Shorts right rail.
+  // opt: { first: first segment of its act (kicker wipes in first on an amber plate), fps }
+  const AMBER = '#ffb347', INK = '#16130f';
+  const CAP = { // timings (s)
+    delay: 0.15, kick: 0.28, line: 0.3, stagger: 0.06, firstKick: 0.1, firstCap: 0.34, out: 0.25, hold: 0.85,
+  };
+  function capLayout(ctx, seg, W, H, opt) {
+    const port = H > W;
+    const k = port ? W / 1080 : Math.min(W / 1920, H / 1080), VW = W / k, VH = H / k;
+    const P = port
+      ? { x0: 84, maxW: 840, base: 96, min: 60, maxLines: 3, lh: 1.04 }
+      : { x0: 118, maxW: 1180, base: 92, min: 60, maxLines: 2, lh: 1.04 };
+    const words = String(seg.cap).split(/\s+/);
+    const meas = (str, size) => { ctx.font = '900 ' + size + 'px ' + FONT; if ('letterSpacing' in ctx) ctx.letterSpacing = (size * 0.02) + 'px'; const w = ctx.measureText(str).width; if ('letterSpacing' in ctx) ctx.letterSpacing = '0px'; return w; };
+    function split(n, size) { // best (min max-width) split of the words into n lines
+      let best = null;
+      const rec = (i, left, acc) => {
+        if (left === 1) { const ls = [...acc, words.slice(i).join(' ')]; const mw = Math.max(...ls.map((l) => meas(l, size))); if (!best || mw < best.w) best = { lines: ls, w: mw }; return; }
+        for (let j = i + 1; j <= words.length - left + 1; j++) rec(j, left - 1, [...acc, words.slice(i, j).join(' ')]);
+      };
+      if (n <= words.length) rec(0, n, []);
+      return best;
+    }
+    let lay = null;
+    for (let n = 1; n <= P.maxLines && !lay; n++) { const b = split(n, P.base); if (b && b.w <= P.maxW) lay = { ...b, size: P.base }; }
+    if (!lay) { const n = Math.min(P.maxLines, words.length); for (let sz = P.base; sz >= P.min; sz -= 2) { const b = split(n, sz); if (b && (b.w <= P.maxW || sz === P.min)) { lay = { ...b, size: sz }; break; } } }
+    const size = lay.size, lh = size * P.lh, capH = lay.lines.length * lh;
+    const kh = opt.first ? (port ? 64 : 56) : (port ? 46 : 40), kgap = port ? 26 : 22;
+    const blockH = kh + kgap + capH;
+    let top;
+    if (port) { top = VH * 0.665 - blockH / 2; top = Math.min(top, VH * 0.735 - blockH); top = Math.max(top, VH * 0.55); }
+    else top = 948 - blockH; // bottom edge at 87.8 % (above the bottom 6 % HUD band)
+    return { port, k, VW, VH, P, lines: lay.lines, size, lh, capW: lay.w, kh, kgap, top, capTop: top + kh + kgap, bottom: top + blockH };
+  }
+  function capPhase(seg, t, B, opt) { // 'blank' | 'hold' | 'anim' (lets the renderer reuse identical frames)
+    const dur = seg.n * B, outStart = dur - CAP.out - 0.03;
+    if (t < (opt.first ? CAP.firstKick : CAP.delay)) return 'blank';
+    if (t >= outStart + CAP.out) return 'blank';
+    if (t >= CAP.hold && t < outStart) return 'hold';
+    return 'anim';
+  }
+  function caption(ctx, seg, t, W, H, B, opt) {
+    opt = opt || {};
+    if (!seg.cap) return;
+    const L = capLayout(ctx, seg, W, H, opt), dur = seg.n * B;
+    const outStart = dur - CAP.out - 0.03, o = ease.io(clamp((t - outStart) / CAP.out, 0, 1));
+    if (o >= 1) return;
+    const kStart = opt.first ? CAP.firstKick : CAP.delay, cStart = opt.first ? CAP.firstCap : CAP.delay + 0.03;
+    const kd = opt.first ? 0.3 : CAP.kick;
+    const ku = ease.out(clamp((t - kStart) / kd, 0, 1));
+    if (ku <= 0) return;
+    const x0 = L.P.x0;
+    ctx.save(); ctx.scale(L.k, L.k);
+    // kicker geometry
+    const kSize = opt.first ? (L.port ? 38 : 32) : (L.port ? 32 : 28), kTrack = opt.first ? 11 : 9;
+    ctx.font = (opt.first ? 800 : 700) + ' ' + kSize + 'px ' + FONT; if ('letterSpacing' in ctx) ctx.letterSpacing = kTrack + 'px';
+    const kTextW = ctx.measureText(seg.act || '').width; if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+    const kPad = opt.first ? 22 : 0, kW = opt.first ? kTextW + kPad * 2 - kTrack : 6 + 18 + kTextW;
+    const blockW = Math.max(L.capW, kW);
+    // soft plate: an elliptical shadow pool behind the block (fades with the caption)
+    const cu = ease.out(clamp((t - cStart) / CAP.line, 0, 1));
+    const plateA = 0.5 * Math.max(ku * 0.5, cu) * (1 - o);
+    if (plateA > 0.001) {
+      const cx = x0 + blockW * 0.4, cy = (L.top + L.bottom) / 2, rx = blockW * 0.72 + (L.port ? 170 : 240), ry = (L.bottom - L.top) * 0.7 + (L.port ? 120 : 130);
+      ctx.save(); ctx.translate(cx, cy); ctx.scale(rx / ry, 1);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, ry);
+      g.addColorStop(0, 'rgba(0,0,0,' + plateA + ')'); g.addColorStop(0.5, 'rgba(0,0,0,' + plateA * 0.62 + ')'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, ry, 0, TAU); ctx.fill(); ctx.restore();
+    }
+    // out: a left-to-right wipe + fade
+    ctx.globalAlpha = 1 - o * 0.6;
+    if (o > 0) { const wx = x0 - 40 + ease.io(o) * (blockW + 120); ctx.beginPath(); ctx.rect(wx, 0, L.VW, L.VH); ctx.clip(); }
+    // kicker
+    const ky = L.top + L.kh / 2;
+    if (opt.first) { // amber plate wipes in, then the act name is revealed inside it
+      const pw = kW * ku;
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 3;
+      ctx.fillStyle = AMBER; ctx.fillRect(x0, L.top, pw, L.kh); ctx.restore();
+      ctx.save(); ctx.beginPath(); ctx.rect(x0, L.top, pw, L.kh); ctx.clip();
+      const tu = ease.out(clamp((t - kStart - 0.1) / 0.25, 0, 1));
+      ctx.globalAlpha *= tu;
+      text(ctx, seg.act, x0 + kPad - 12 * (1 - tu), ky + 1, kSize, { weight: 800, align: 'left', track: kTrack, color: INK });
+      ctx.restore();
+    } else { // amber tick grows, the act name slides out from behind it
+      const bh = L.kh * ku;
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 10;
+      ctx.fillStyle = AMBER; ctx.fillRect(x0, ky - bh / 2, 6, bh);
+      ctx.beginPath(); ctx.rect(x0 + 8, L.top - 10, kTextW + 60, L.kh + 20); ctx.clip();
+      ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 2;
+      text(ctx, seg.act, x0 + 24 - 40 * (1 - ku), ky + 1, kSize, { weight: 700, align: 'left', track: kTrack, color: AMBER });
+      ctx.restore();
+    }
+    // caption lines rise out of a mask, staggered
+    L.lines.forEach((ln, i) => {
+      const lu = ease.out(clamp((t - cStart - i * CAP.stagger) / CAP.line, 0, 1));
+      if (lu <= 0) return;
+      const ly = L.capTop + i * L.lh;
+      ctx.save(); ctx.beginPath(); ctx.rect(x0 - 40, ly - 6, L.capW + 120, L.lh + 26); ctx.clip();
+      ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 4;
+      text(ctx, ln, x0 - 3, ly + L.lh * 0.52 + (1 - lu) * L.lh * 0.95, L.size, { weight: 900, align: 'left', track: L.size * 0.02, color: '#ffffff' });
+      ctx.restore();
+    });
+    ctx.restore();
   }
 
   window.TITLES = {
@@ -269,5 +390,7 @@
       else if (seg.kind === 'end') endcard(ctx, seg, t, W, H, B);
     },
     overlay,
+    caption,
+    capPhase,
   };
 })();
