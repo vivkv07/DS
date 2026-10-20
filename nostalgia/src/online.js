@@ -549,7 +549,7 @@
       keys.add(p.key);
       const g = ghostFor(p.key);
       g.nick = p.nick; g.look = p.look; g.ent.look = p.look;
-      if (g.tag) g.tag.textContent = p.nick;
+      setTagName(g.tag, p.nick);
       if (!prevKeys.has(p.key) && prevKeys.size) toast(p.nick + ' joined the room.', 2200);
     }
     for (const [k, g] of GH) if (!keys.has(k)) { const n = g.nick; removeGhost(k); toast(n + ' left the room.', 2000); }
@@ -614,7 +614,7 @@
     };
     g = { key, nick: 'Player', look: ent.look, ent, buf: [], lastRx: 0, tag: null, blip: 'ol:' + key, mode: 'f', chatT: 0 };
     if (!tagHost) { tagHost = document.createElement('div'); tagHost.id = 'ol-tags'; (document.getElementById('ui') || document.body).appendChild(tagHost); }
-    g.tag = document.createElement('div'); g.tag.className = 'ol-tag'; g.tag.textContent = g.nick; g.tag.style.visibility = 'hidden';
+    g.tag = makeTag(g.nick);
     tagHost.appendChild(g.tag);
     GH.set(key, g);
     return g;
@@ -634,7 +634,7 @@
     if (!R.players.some((p) => p.key === s.k)) return; // only players present in the room
     R.recv++;
     const g = ghostFor(s.k);
-    if (s.n) { g.nick = s.n; if (g.tag) g.tag.textContent = s.n; }
+    if (s.n) { g.nick = s.n; setTagName(g.tag, s.n); }
     if (s.l) { g.look = s.l; g.ent.look = s.l; }
     const t = nowMs();
     const last = g.buf[g.buf.length - 1];
@@ -722,7 +722,13 @@
       if (TRACE.on && TRACE.out.length < 2000) TRACE.out.push({ k: g.key, t, x: e.x, y: e.y });
       // keep it registered across N.systems.reset() / new games / loads
       if (N.entities && N.entities.all.indexOf(e) < 0) { e.alive = true; N.entities.add(e); }
-      try { if (N.hud && N.hud.blip && N.hud.blips && !N.hud.blips.has(g.blip)) N.hud.blip(g.blip, e, { color: '#5fd0ff', icon: 'dot', label: g.nick, size: 4 }); } catch (er) { N.err('online.blip', er); }
+      try {
+        const col = colorOf(g.key);
+        if (N.hud && N.hud.blip && N.hud.blips && (!N.hud.blips.has(g.blip) || g.blipCol !== col)) {
+          if (g.blipCol && N.hud.unblip) N.hud.unblip(g.blip);
+          N.hud.blip(g.blip, e, { color: col, icon: 'dot', label: g.nick, size: 5 }); g.blipCol = col;
+        }
+      } catch (er) { N.err('online.blip', er); }
     }
   }
   function drawGhost(e) {
@@ -740,35 +746,100 @@
       else D.sprite(e.x, e.y, e.angle, 8, (g) => N.people.draw(g, e.look, e.anim));
     });
   }
-  // nameplates over every ghost, both views (R.proj follows the 3D camera while 3D renders)
+  // FIFA-style player markers, both views (R.proj follows the 3D camera while 3D renders).
+  // Every player in the room has a colour by join order (the presence list is sorted the same way on every
+  // screen, so Ravi is blue for everyone): a coloured triangle over the head with the name above it, my own
+  // triangle too, and an arrow at the screen edge (name + distance) for friends who are off screen or behind.
+  const PCOL = ['#ffd23f', '#3fa9ff', '#ff5a5f', '#5ce05a', '#c46bff', '#ff9f1c', '#2ee6d6', '#ff6fc8', '#f2f2f2', '#b6f03c'];
+  function slotOf(key) { const i = R.players.findIndex((p) => p.key === key); return i < 0 ? 0 : i % PCOL.length; }
+  function colorOf(key) { return PCOL[slotOf(key)]; }
+  function makeTag(nick) {
+    const el = document.createElement('div');
+    el.className = 'ol-tag'; el.style.visibility = 'hidden';
+    el.innerHTML = '<span class="ol-nm"></span><span class="ol-dist"></span><i class="ol-tri"></i>';
+    setTagName(el, nick);
+    return el;
+  }
+  function setTagName(el, nick) { if (el) { const n = el.querySelector('.ol-nm'); if (n && n.textContent !== nick) n.textContent = nick; } }
+  let selfTag = null;
+  function hideTag(el) { if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden'; }
+  // screen position (page px) of a point above entity e, plus whether it is in front of the camera
+  function screenOf(e, rect, Rn, V3, me) {
+    const veh = me ? !!N.player.vehicle : (e.view3d === 'vehicle' && e.T);
+    if (V3 && V3.active && V3.project) {
+      const cls = veh ? (me ? (N.player.vehicle.T && N.player.vehicle.T.cls) : e.T.cls) : null;
+      const h3 = (V3.elevation ? V3.elevation(e) || 0 : 0) + (!veh ? 10.5 : cls === 'heavy' ? 21 : cls === 'car' || cls === 'auto' ? 14 : 11.5);
+      const q = V3.project(e.x, e.y, h3);
+      return { x: q.x, y: q.y, behind: !!q.behind };
+    }
+    const hh = veh ? ((me ? N.player.vehicle.T && N.player.vehicle.T.h : e.T.h) || 10) + 12 : 20;
+    const q = Rn.proj(e.x, e.y, hh);
+    return { x: rect.left + (q.x / Rn.W) * rect.width, y: rect.top + (q.y / Rn.H) * rect.height, behind: false };
+  }
   function placeTags() {
-    if (!GH.size || !tagHost) return;
+    if (!tagHost) { if (!R.ch) return; tagHost = document.createElement('div'); tagHost.id = 'ol-tags'; (document.getElementById('ui') || document.body).appendChild(tagHost); }
     const Rn = N.render, mode = N.state.mode;
-    const live = mode === 'play' || mode === 'dialogue' || mode === 'minigame' || mode === 'cutscene';
+    const live = !!R.ch && (mode === 'play' || mode === 'dialogue' || mode === 'minigame' || mode === 'cutscene');
     tagHost.classList.toggle('hide', !live);
     if (!live || !Rn || !Rn.canvas || !Rn.W) return;
     const rect = Rn.canvas.getBoundingClientRect();
     const V3 = N.view3d;
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    const P0 = N.player;
+    // my own marker (only once someone else is in the room, so a solo room stays clean)
+    if (!selfTag) { selfTag = makeTag('You'); selfTag.classList.add('ol-me'); tagHost.appendChild(selfTag); }
+    const pm = P0 && P0.vehicle ? P0.vehicle : P0;
+    if (pm && GH.size && !(P0.hidden)) {
+      const q = screenOf(pm, rect, Rn, V3, true);
+      if (!q.behind && isFinite(q.x) && isFinite(q.y)) {
+        selfTag.style.setProperty('--pc', colorOf(myKey));
+        selfTag.style.visibility = '';
+        selfTag.style.transform = 'translate(' + Math.round(q.x) + 'px,' + Math.round(q.y) + 'px) translate(-50%, -100%)';
+      } else hideTag(selfTag);
+    } else hideTag(selfTag);
+    const M = 30; // edge-arrow inset from the screen edge
     for (const g of GH.values()) {
       const e = g.ent, el = g.tag;
       if (!el) continue;
-      if (e.hidden || !Rn.inView(e.x, e.y, 30) || (g.bubbleT && nowMs() < g.bubbleT)) { el.style.visibility = 'hidden'; continue; }
-      const veh = e.view3d === 'vehicle' && e.T;
-      let X, Y;
-      if (V3 && V3.active && V3.project) {
-        // 3D: project above the head through the 3D camera (heights in 3D units, VS = 1.5)
-        const cls = veh ? e.T.cls : null;
-        const h3 = (V3.elevation ? V3.elevation(e) || 0 : 0) + (!veh ? 9.5 : cls === 'heavy' ? 20 : cls === 'car' || cls === 'auto' ? 13 : 10.5);
-        const q = V3.project(e.x, e.y, h3);
-        if (!q.visible || q.behind || Math.hypot(e.x - N.player.x, e.y - N.player.y) > 320) { el.style.visibility = 'hidden'; continue; }
-        X = q.x; Y = q.y;
-      } else {
-        const q = Rn.proj(e.x, e.y, veh ? (e.T.h || 10) + 10 : 18);
-        X = rect.left + (q.x / Rn.W) * rect.width; Y = rect.top + (q.y / Rn.H) * rect.height;
+      el.style.setProperty('--pc', colorOf(g.key));
+      if (e.hidden || e.x < -9000) { hideTag(el); continue; }
+      const q = screenOf(e, rect, Rn, V3, false);
+      const far = V3 && V3.active && Math.hypot(e.x - P0.x, e.y - P0.y) > 320;
+      const onScreen = !q.behind && !far && isFinite(q.x) && isFinite(q.y) && q.x > rect.left + 8 && q.x < rect.right - 8 && q.y > rect.top + 24 && q.y < rect.bottom - 8;
+      if (onScreen) {
+        if (g.bubbleT && nowMs() < g.bubbleT) { hideTag(el); continue; } // the chat bubble names them meanwhile
+        if (el.classList.contains('ol-edge')) { el.classList.remove('ol-edge'); const tri = el.querySelector('.ol-tri'); if (tri) tri.style.transform = ''; }
+        el.style.visibility = '';
+        el.style.transform = 'translate(' + Math.round(q.x) + 'px,' + Math.round(q.y) + 'px) translate(-50%, -100%)';
+        continue;
       }
-      if (!isFinite(X) || !isFinite(Y) || X < -50 || Y < -50 || X > window.innerWidth + 50 || Y > window.innerHeight + 50) { el.style.visibility = 'hidden'; continue; }
+      // off screen: an arrow on the screen edge pointing at them, with the distance
+      let dx, dy;
+      if (V3 && V3.active && (q.behind || far || !isFinite(q.x))) {
+        // behind the camera or out of range: use the world bearing relative to the camera's forward (N.view.yaw)
+        const yaw = N.view && isFinite(N.view.yaw) ? N.view.yaw : null;
+        const wx = e.x - P0.x, wy = e.y - P0.y;
+        if (yaw != null) { const a = Math.atan2(wy, wx) - yaw; dx = Math.sin(a); dy = -Math.cos(a); } else { dx = q.behind ? -(q.x - cx) : q.x - cx; dy = q.behind ? Math.abs(q.y - cy) + 1 : q.y - cy; }
+      } else { dx = q.x - cx; dy = q.y - cy; }
+      if (!isFinite(dx) || !isFinite(dy) || (dx === 0 && dy === 0)) { hideTag(el); continue; }
+      // keep the whole arrow + name + distance box on screen, and clear of the clock / money strip at the top
+      el.classList.add('ol-edge');
+      const bw = (el.offsetWidth || 80) / 2 + 6, bh = (el.offsetHeight || 56) / 2 + 6, topBand = 64;
+      const x0 = rect.left + Math.max(M, bw), x1 = rect.right - Math.max(M, bw);
+      const y0 = rect.top + Math.max(M, bh) + topBand, y1 = rect.bottom - Math.max(M, bh);
+      const ecx = (x0 + x1) / 2, ecy = (y0 + y1) / 2;
+      const t = Math.min((x1 - x0) / 2 / Math.max(1e-6, Math.abs(dx)), (y1 - y0) / 2 / Math.max(1e-6, Math.abs(dy)));
+      const X = ecx + dx * t, Y = ecy + dy * t;
+      const meters = Math.hypot(e.x - P0.x, e.y - P0.y) * 1.6;
+      const dEl = el.querySelector('.ol-dist');
+      const dTxt = meters >= 1000 ? (meters / 1000).toFixed(1) + ' km' : Math.round(meters / 10) * 10 + ' m';
+      if (dEl && dEl.textContent !== dTxt) dEl.textContent = dTxt;
+      el.classList.add('ol-edge');
+      const ang = Math.round(Math.atan2(dy, dx) * 180 / Math.PI) + 'deg';
+      el.style.setProperty('--ang', ang);
+      const tri = el.querySelector('.ol-tri'); if (tri && tri.style.transform !== 'rotate(' + ang + ')') tri.style.transform = 'rotate(' + ang + ')';
       el.style.visibility = '';
-      el.style.transform = 'translate(' + Math.round(X) + 'px,' + Math.round(Y) + 'px) translate(-50%, -100%)';
+      el.style.transform = 'translate(' + Math.round(X) + 'px,' + Math.round(Y) + 'px) translate(-50%, -50%)';
     }
   }
 

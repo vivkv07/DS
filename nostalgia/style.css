@@ -3395,7 +3395,20 @@ body.touch-on .ol-hud { top: 30%; }
 /* nameplates over remote players */
 #ol-tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 #ol-tags.hide { display: none; }
-.ol-tag { position: absolute; left: 0; top: 0; padding: 0 6px; font-family: var(--font-osd); font-size: 17px; line-height: 1.1; color: #eaf8ff; background: rgba(18, 40, 60, 0.72); border: 1px solid #5fd0ff; border-radius: 3px; white-space: nowrap; text-shadow: 0 1px 0 #000; will-change: transform; }
+/* FIFA-style player markers: name over a coloured triangle, one colour per player (--pc, set by online.js) */
+.ol-tag { --pc: #5fd0ff; position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; white-space: nowrap; will-change: transform; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.85)); }
+.ol-tag .ol-nm { padding: 0 6px; font-family: var(--font-osd); font-size: 17px; line-height: 1.15; color: #10131a; background: var(--pc); border-radius: 3px; font-weight: 700; }
+.ol-tag .ol-dist { display: none; }
+.ol-tag .ol-tri { display: block; width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; border-top: 12px solid var(--pc); animation: ol-bob 1.1s ease-in-out infinite; }
+@keyframes ol-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+.ol-tag.ol-me .ol-nm { display: none; }
+.ol-tag.ol-me .ol-tri { border-left-width: 7px; border-right-width: 7px; border-top-width: 10px; outline: none; }
+/* off screen: an arrow on the screen edge pointing at the friend (--ang), with name and distance */
+.ol-tag.ol-edge { flex-direction: column; gap: 2px; }
+.ol-tag.ol-edge .ol-nm { font-size: 15px; }
+.ol-tag.ol-edge .ol-dist { display: block; font-family: var(--font-osd); font-size: 13px; line-height: 1; color: #fff; background: rgba(10, 14, 22, 0.75); padding: 1px 4px; border-radius: 2px; order: 3; }
+.ol-tag.ol-edge .ol-tri { order: -1; animation: none; border-left: 0; border-right: 0; border-top: 0; width: 0; height: 0; border-top: 9px solid transparent; border-bottom: 9px solid transparent; border-left: 14px solid var(--pc); margin-bottom: 1px; }
+@media (max-width: 480px) { .ol-tag .ol-nm { font-size: 15px; } .ol-tag.ol-edge .ol-nm { font-size: 13px; } }
 @media (max-width: 480px) { .ol-code b { font-size: 21px; } .ol-roomcode b { font-size: 26px; } .ol-body { padding: 0 12px 12px; } }
 /* Journal: Journey page */
 .jy { padding: 4px 6px; }

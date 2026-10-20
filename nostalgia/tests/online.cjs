@@ -213,9 +213,24 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       await sleep(900);
       // 2D screenshot from B (nameplates + minimap dots)
       await B.ev(() => { N.render.camOverride = null; });
-      const tags = await B.ev(() => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).filter((t) => t.style.visibility !== 'hidden').map((t) => t.textContent));
+      const tags = await B.ev(() => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).filter((t) => t.style.visibility !== 'hidden' && !t.classList.contains('ol-me')).map((t) => t.querySelector('.ol-nm').textContent));
       check(tags.includes('Ravi') && tags.includes('Imran'), 'B shows nameplates: ' + tags.join(', '));
       await B.shot('room_2d_B');
+      // FIFA-style markers: one colour per player, the same on every screen, and my own triangle in my colour
+      const colsOn = (P) => P.ev(() => { const o = {}; document.querySelectorAll('#ol-tags .ol-tag').forEach((t) => { o[t.classList.contains('ol-me') ? '@me' : t.querySelector('.ol-nm').textContent] = t.style.getPropertyValue('--pc'); }); return o; });
+      const colB = await colsOn(B), colC = await colsOn(C), colA = await colsOn(A);
+      check(colB.Ravi && colB.Imran && colB.Ravi !== colB.Imran && colB['@me'] && colB['@me'] !== colB.Ravi && colB['@me'] !== colB.Imran, 'each player has their own marker colour on B: ' + JSON.stringify(colB));
+      check(colB.Ravi === colC.Ravi && colA['@me'] === colB.Ravi && colC['@me'] === colB.Imran, 'a player has the same colour on every screen: ' + JSON.stringify({ colA, colC }));
+      const meVis = await B.ev(() => { const t = document.querySelector('#ol-tags .ol-me'); return !!t && t.style.visibility !== 'hidden'; });
+      check(meVis, 'B sees its own triangle over its head');
+      // a friend far away: an arrow on the screen edge, pointing at them, with the distance
+      await A.ev(() => N.debug.teleport('charminar'));
+      const edge = await until(B, () => { const t = Array.from(document.querySelectorAll('#ol-tags .ol-tag')).find((q) => q.querySelector('.ol-nm').textContent === 'Ravi'); return !!t && t.classList.contains('ol-edge') && t.style.visibility !== 'hidden' && /\d.*(m|km)$/.test(t.querySelector('.ol-dist').textContent); }, null, 6000);
+      const edgeInfo = await B.ev(() => { const t = Array.from(document.querySelectorAll('#ol-tags .ol-tag')).find((q) => q.querySelector('.ol-nm').textContent === 'Ravi'); const r = t.getBoundingClientRect(); return { d: t.querySelector('.ol-dist').textContent, ang: t.style.getPropertyValue('--ang'), x: Math.round(r.left), y: Math.round(r.top), W: innerWidth, H: innerHeight }; });
+      check(edge && edgeInfo.x >= 0 && edgeInfo.y >= 0 && edgeInfo.x < edgeInfo.W && edgeInfo.y < edgeInfo.H, 'far-away Ravi shows as an edge arrow on B: ' + JSON.stringify(edgeInfo));
+      await B.shot('room_edge_arrow_B');
+      await A.ev((p) => N.debug.teleport(p.x, p.y), await B.ev(() => ({ x: N.player.x + 30, y: N.player.y })));
+      await until(B, () => { const t = Array.from(document.querySelectorAll('#ol-tags .ol-tag')).find((q) => q.querySelector('.ol-nm').textContent === 'Ravi'); return !!t && !t.classList.contains('ol-edge') && t.style.visibility !== 'hidden'; }, null, 6000);
       const cg = await C.ev(() => N.online._debug.ghosts().map((g) => g.nick + (g.hidden ? '(hidden)' : '') + '@' + Math.round(g.x) + ',' + Math.round(g.y)));
       check(cg.length === 2 && cg.every((g) => !/hidden/.test(g)), 'C (phone) sees both others: ' + cg.join(' '));
       await C.shot('room_2d_C_phone');
@@ -275,9 +290,9 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
         await B.ev(() => N.view3dActors.debug.track(null));
         // look at the ghosts (between Imran and Ravi)
         await B.ev(() => { const gs = N.online._debug.ghosts(); const p = N.player; const g = gs.find((q) => q.nick === 'Imran') || gs[0]; try { N.view3d.setCamera({ yaw: Math.atan2(g.y - p.y, g.x - p.x), pitch: 0.25, snap: true }); } catch (e) { /* ignore */ } });
-        await until(B, () => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).some((t) => t.textContent === 'Imran' && t.style.visibility !== 'hidden'), null, 6000);
+        await until(B, () => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).some((t) => t.querySelector('.ol-nm').textContent === 'Imran' && t.style.visibility !== 'hidden'), null, 6000);
         await sleep(300);
-        const tags3 = await B.ev(() => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).filter((t) => t.style.visibility !== 'hidden').map((t) => t.textContent));
+        const tags3 = await B.ev(() => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).filter((t) => t.style.visibility !== 'hidden' && !t.classList.contains('ol-me')).map((t) => t.querySelector('.ol-nm').textContent));
         check(tags3.includes('Imran'), '3D nameplates visible: ' + tags3.join(', '));
         await B.shot('room_3d_B');
         await B.ev(() => N.view.set('top'));
