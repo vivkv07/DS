@@ -314,7 +314,7 @@
             st.footT += dt;
             const bike = st.bike && st.bike.alive && !st.bike.driver ? st.bike : null;
             const dB = bike ? hyp(bike.x - p.x, bike.y - p.y) : Infinity;
-            if (st.footT > 1.5 && (st.warnT -= dt) <= 0) { st.warnT = 4; if (dB < 140) ctx.toast('Your cycle is right there: ride it (E)!', 1800); }
+            if (st.footT > 1.5 && (st.warnT -= dt) <= 0) { st.warnT = 4; if (dB < 140) ctx.toast(bike.fallen ? 'Pick up your cycle (E) and go!' : 'Your cycle is right there: ride it (E)!', 1800); }
             if (st.footT > 9 && dB > 140 && st.vtype) {
               const f = N.world.findFree(p.x + 10, p.y, 'drive', 10);
               const v = f && N.vehicles.spawn(st.vtype, f.x, f.y, p.angle || 0, {});

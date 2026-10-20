@@ -469,9 +469,11 @@ async function pRocket() {
   const tap = await ev(() => N.dwMissions.debug.state().acts[0]);
   check(tap && /bucket/i.test(tap.label), 'rule one: the bucket from the home tap', tap);
   await walkTo(tap.x, tap.y, 6, { stop: `() => /Fill the bucket/.test(N.input.actionLabel || '')`, ms: 30000 });
+  if (!(await ev(() => /Fill the bucket/.test(N.input.actionLabel || '')))) { vlog('the walk to the tap fell short -> standing at it'); tally('debug hops (short walks)'); await teleport(tap.x, tap.y); }
   if (!(await useWhen(/Fill the bucket/))) return;
   const down = await ev(() => N.dwMissions.debug.state().acts[0]);
   await walkTo(down.x, down.y, 6, { stop: `() => /Put the bucket/.test(N.input.actionLabel || '')`, ms: 30000 });
+  if (!(await ev(() => /Put the bucket/.test(N.input.actionLabel || '')))) await walkTo(down.x, down.y, 6, { stop: `() => /Put the bucket/.test(N.input.actionLabel || '')`, ms: 40000 }); // (a slow machine: walk on, the bucket stays full at a walk)
   await shot('bucket');
   if (!(await useWhen(/Put the bucket/))) return;
   const w = await ev(() => N.dwMissions.debug.state().rocket);

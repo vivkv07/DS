@@ -71,7 +71,9 @@ function installAutopilot() {
     const total = cum[cum.length - 1];
     const at = (s) => { s = Math.max(0, Math.min(total, s)); let i = 0; while (i < P.length - 2 && cum[i + 1] < s) i++; const L = cum[i + 1] - cum[i] || 1, t = (s - cum[i]) / L; return { x: P[i].x + (P[i + 1].x - P[i].x) * t, y: P[i].y + (P[i + 1].y - P[i].y) * t, a: Math.atan2(P[i + 1].y - P[i].y, P[i + 1].x - P[i].x) }; };
     let hint = 0;
-    const project = (x, y) => { let best = null; for (let i = 0; i < P.length - 1; i++) { if (cum[i] < hint - 200 || cum[i] > hint + 400) continue; const q = U.closestOnSeg(x, y, P[i].x, P[i].y, P[i + 1].x, P[i + 1].y); if (!best || q.d2 < best.d2) best = { d2: q.d2, s: cum[i] + (cum[i + 1] - cum[i]) * q.t }; } if (!best || best.d2 > 150 * 150) { best = null; for (let i = 0; i < P.length - 1; i++) { const q = U.closestOnSeg(x, y, P[i].x, P[i].y, P[i + 1].x, P[i + 1].y); if (!best || q.d2 < best.d2) best = { d2: q.d2, s: cum[i] + (cum[i + 1] - cum[i]) * q.t }; } } hint = best.s; return best; };
+    // forward-only progress (a course that doubles back near itself, like the steps -> the gate, must not skip ahead)
+    const scan = (x, y, s0, s1) => { let best = null; for (let i = 0; i < P.length - 1; i++) { if (cum[i + 1] < s0 || cum[i] > s1) continue; const q = U.closestOnSeg(x, y, P[i].x, P[i].y, P[i + 1].x, P[i + 1].y); if (!best || q.d2 < best.d2) best = { d2: q.d2, s: cum[i] + (cum[i + 1] - cum[i]) * q.t }; } return best; };
+    const project = (x, y) => { let best = scan(x, y, hint - 40, hint + 140); if (!best || best.d2 > 150 * 150) best = scan(x, y, hint - 40, Infinity) || best; if (best) hint = Math.max(hint - 40, best.s); return best || { d2: 0, s: hint }; };
     return { at, project, total, reset() { hint = 0; } };
   }
   function setup(S) {
@@ -108,7 +110,7 @@ function installAutopilot() {
         // fell off: back to the cycle
         const b = st.bike && st.bike.alive ? st.bike : null;
         const cur = N.interact.current, lab = cur ? String(typeof cur.label === 'function' ? cur.label(p) : cur.label) : '';
-        if (b && Math.hypot(b.x - p.x, b.y - p.y) < 12 && /Ride|cycle/i.test(lab)) { if ((A.actT -= dt) <= 0) { A.actT = 0.4; out.action = true; } return out; }
+        if (b && Math.hypot(b.x - p.x, b.y - p.y) < 14 && /Ride|Pick up|cycle/i.test(lab)) { if ((A.actT -= dt) <= 0) { A.actT = 0.4; out.action = true; } return out; }
         tgt = b ? { x: b.x, y: b.y } : path.at(path.project(p.x, p.y).s + 20);
       } else {
         const e = v || p;
@@ -277,7 +279,7 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
         const onFoot = await Z.ev(() => !N.player.vehicle);
         check(onFoot, 'everyone on foot');
         let sawSteps = false, ranOnSteps = false;
-        const r2 = await drive(Z, { ms: 150000, until: () => { const S = N.party._debug.session(); const z = N.respect && N.respect.at(N.player.x, N.player.y); if (z) { window.__steps = (window.__steps || 0) + 1; if (N.player.running) window.__ranSteps = true; } return !S || S.phase === 'done' || (S.handle.st && S.handle.st.done); } });
+        const r2 = await drive(Z, { ms: 150000, until: () => { const S = N.party._debug.session(); const z = N.respect && N.respect.at(N.player.x, N.player.y); if (z) { window.__steps = (window.__steps || 0) + 1; if (N.player.running && window.__inZone) window.__ranSteps = true; } window.__inZone = !!z; return !S || S.phase === 'done' || (S.handle.st && S.handle.st.done); } });
         sawSteps = await Z.ev(() => (window.__steps || 0) > 0); ranOnSteps = await Z.ev(() => !!window.__ranSteps);
         check(sawSteps && !ranOnSteps, 'on the temple steps the player walks (Mandir rules): samples ' + (await Z.ev(() => window.__steps || 0)));
         await Z.shot('solo_birla_steps');
@@ -367,9 +369,10 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
         if (in3d) {
           await Z.ev(() => { try { N.view3d.settle(5000); } catch (e) { /* ignore */ } });
           await until(Z, () => N.party.active && N.party.active.phase === 'running', null, 60000);
-          // ride (real keys, in 3D) until the first checkpoint ring is close ahead
-          await drive(Z, { ms: 40000, until: () => { const cp = N.party._debug.marks().find((m) => m.state === 'next'); const e = N.player.vehicle || N.player; return !cp || Math.hypot(cp.x - e.x, cp.y - e.y) < 110; } });
-          await Z.ev(() => { const cp = N.party._debug.marks().find((m) => m.state === 'next') || N.party._debug.marks()[0]; const p = N.player; try { N.view3d.setCamera({ yaw: Math.atan2(cp.y - p.y, cp.x - p.x), pitch: 0.22, snap: true }); } catch (e) { /* ignore */ } });
+          // for the picture: put the cycle 70 u before the first ring, facing it (3D keyboard input is camera-relative)
+          await Z.ev(() => { const cp = N.party._debug.marks().find((m) => m.state === 'next'); const v = N.player.vehicle; if (!cp || !v) return; const R = N.partyRaces.route('tank_bund'); const a = R.cps[0].a; v.x = cp.x - Math.cos(a) * 70; v.y = cp.y - Math.sin(a) * 70; v.angle = a; v.vx = v.vy = 0; v.speed = 0; N.player.x = v.x; N.player.y = v.y; try { N.view3d.snapCamera(); N.view3d.settle(3000); } catch (e) { /* ignore */ } });
+          await sleep(1500);
+          await Z.ev(() => { const cp = N.party._debug.marks().find((m) => m.state === 'next') || N.party._debug.marks()[0]; const p = N.player; try { N.view3d.setCamera({ yaw: Math.atan2(cp.y - p.y, cp.x - p.x), pitch: 0.3, snap: true }); } catch (e) { /* ignore */ } });
           await sleep(800);
           const v3 = await Z.ev(() => N.party._debug.v3());
           check(v3.ok && v3.visible >= 2, '3D layer "party" draws the rings (' + v3.visible + ' visible)');

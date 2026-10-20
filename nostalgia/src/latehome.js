@@ -3000,7 +3000,7 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
   function hint() {
     if (!S || !S.me) return null;
     const k = S.me, p = N.player;
-    const H = S.hintSt || (S.hintSt = { waitT: 0, last: performance.now(), det: null, path: null, creepT: 0 });
+    const H = S.hintSt || (S.hintSt = { waitT: 0, last: performance.now(), det: null, path: null, creepT: 0, stayT: 0 });
     const tNow = performance.now(), dtH = Math.min(0.5, (tNow - H.last) / 1000); H.last = tNow;
     const door = S.C.doors[k.uid];
     const P = H.path || S.C.paths[k.uid], L = polyLen(P);
@@ -3013,12 +3013,13 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
       if (hyp(H.det.x - p.x, H.det.y - p.y) < 4 || threatAt(H.det.x, H.det.y, 4)) { if (hyp(H.det.x - p.x, H.det.y - p.y) < 4) H.path = walkPath(p.x, p.y, door.x, door.y); H.det = null; }
       else if (!thrHere) { target = H.det; why = 'detour'; }
     }
-    let nearSk = Infinity;
-    for (const sk of S.seekers) nearSk = Math.min(nearSk, hyp(sk.x - p.x, sk.y - p.y));
-    if (k.hide === 2 && why !== 'detour' && nearSk > 9 && (thrHere || thrAhead || k.seenBy || nearSk < 50)) {
-      // already hidden and somebody is about: stay put until he has gone
-      hide = true; why = 'stay'; target = { x: p.x, y: p.y }; H.waitT += dtH;
-      if (H.waitT > 7 && nearSk > 60) { const dt2 = detour(p.x, p.y, door, 12); if (dt2) { H.det = dt2; target = dt2; why = 'detour'; hide = false; H.waitT = 0; } }
+    let nearSk = Infinity, nearMover = Infinity;
+    for (const sk of S.seekers) { const d = hyp(sk.x - p.x, sk.y - p.y); nearSk = Math.min(nearSk, d); if (sk.role === 'walker' || sk.role === 'watchman' || sk.role === 'hunter') nearMover = Math.min(nearMover, d); }
+    if (k.hide === 2 && why !== 'detour' && nearSk > 9 && H.stayT < 8 && (thrHere || thrAhead || k.seenBy || nearMover < 50)) {
+      // already hidden and somebody is about: stay put until he has gone (a while at most)
+      hide = true; why = 'stay'; target = { x: p.x, y: p.y }; H.stayT += dtH;
+    } else if (k.hide === 2 && H.stayT >= 8) {
+      H.stayT = 0; H.creepT = 3; crouch = true; why = 'creep';
     } else if (H.creepT > 0 && !thrHere && why !== 'detour') { H.creepT -= dtH; crouch = true; why = 'creep'; }
     else if ((thrHere || thrAhead) && why !== 'detour') {
       const seen = !!k.seenBy;
@@ -3036,6 +3037,7 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
         else if (H.waitT > 5) { H.creepT = 3; H.waitT = 0; }
       }
     } else H.waitT = Math.max(0, H.waitT - dtH);
+    if (k.hide !== 2 && why !== 'stay') H.stayT = Math.max(0, H.stayT - dtH * 0.5);
     let dx = target.x - p.x, dy = target.y - p.y;
     const d = hyp(dx, dy);
     if (d > 0.01) { dx /= d; dy /= d; } else { dx = dy = 0; }
