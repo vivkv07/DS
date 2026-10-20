@@ -109,16 +109,18 @@ for (const seg of REMUX ? [] : segs) {
     filters.push(`crop=w=ih*9/16:h=ih:x='(iw-ow)/2*(1+${vxExpr(VX[seg.id], nf)})':y=0`);
   }
   filters.push(`scale=${W}:${H}:flags=${pixel ? 'neighbor' : 'lanczos'}:force_original_aspect_ratio=increase,crop=${W}:${H}`);
-  // minigame captures (kind 'mg') and UI captures ('ui') are the game's own full-screen UI: no grade, no zoom, no sharpening
-  if (seg.kind === '3d' || seg.kind === 'game') filters.push(GRADE);
+  // minigame captures (kind 'mg') and UI captures ('ui') are the game's own full-screen UI: no grade, no zoom, no sharpening;
+  // gameplay captured with the real HUD on screen (seg.hud) is treated the same, so the zoom never crops the HUD edges
+  const hud = !!seg.hud;
+  if ((seg.kind === '3d' || seg.kind === 'game') && !hud) filters.push(GRADE);
   // motion: a slow push-in across the drone shots; v2 gameplay: longer shots with a slow pull-back
   // (zoompan: crop w/h are evaluated once, zoompan per frame; on = output frame number)
   if (seg.kind === '3d') filters.push(`zoompan=z='1+0.025*on/${nf}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${FPS}`);
-  if (seg.kind === 'game' && V2 && !pixel) filters.push(`zoompan=z='1.03-0.03*on/${nf}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${FPS}`);
+  if (seg.kind === 'game' && V2 && !pixel && !hud) filters.push(`zoompan=z='1.03-0.03*on/${nf}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${FPS}`);
   else if (seg.kind === 'game' && !V2) filters.push(`zoompan=z='1+0.06*max(0,1-on/8)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${FPS}`);
   if (seg.shot === 'whip') filters.push('tmix=frames=5:weights=1 1 1 1 1');
   if (!V2 && ['lm_charminar', 'g_cycle_oldcity'].includes(seg.id)) filters.push('fade=t=in:st=0:d=0.2:color=white'); // v1 drop flashes (v2: TRANS)
-  if (seg.kind === 'game') filters.push('unsharp=5:5:0.4');
+  if (seg.kind === 'game' && !hud) filters.push('unsharp=5:5:0.4');
   filters.push(`trim=end_frame=${nf}`, 'setpts=PTS-STARTPTS', `tpad=stop_mode=clone:stop=${nf}`, `trim=end_frame=${nf}`, 'format=yuv420p');
   let fc = `[0:v]${filters.join(',')}[v]`;
   const extra = [];

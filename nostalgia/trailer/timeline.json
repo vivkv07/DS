@@ -60,7 +60,8 @@
    "kind": "game",
    "clip": "top_charminar",
    "act": "EXPLORE",
-   "cap": "PLAY IN 3D OR TOP-DOWN"
+   "cap": "PLAY IN 3D OR TOP-DOWN",
+   "hud": true
   },
   {
    "id": "s_story",
@@ -213,7 +214,8 @@
    "kind": "game",
    "clip": "top_chase",
    "act": "SURVIVE",
-   "cap": "MIND THE CHAPPAL METER"
+   "cap": "MIND THE CHAPPAL METER",
+   "hud": true
   },
   {
    "id": "g_scooty_rain",
