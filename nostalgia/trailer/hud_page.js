@@ -39,7 +39,9 @@
       stage: { roles: { pochaiah: { back: 60 }, mummy: { ahead: 195, lat: 12, brakeAt: 160 } }, side: 5, at: -40 },
       quiet: true, // pursuers' random shouts off: the lines below + the game's own (dismissal, chappal wind-up)
       barks: [[2, 'pochaiah', '*Ruko!*']], // (his own line from wanted.js)
-      barkSecs: { pochaiah: 0.9 }, // his "called off" line clears before Mummy's wind-up line (the game: ~3 s)
+      // bubble lives: his "called off" line clears before Mummy's wind-up line (the game: ~3 s), and hers (the game:
+      // 1.2 s) before the PAKDA GAYA! banner comes up where it would sit
+      barkSecs: { pochaiah: 0.9, mummy: 0.95 },
       // Mummy's first homing chappal: the game waits 3 s after she arrives, then checks the range (150 u) every
       // 0.5 s; here she winds up the moment she is in range (from this frame on)
       chappalFrom: 10,

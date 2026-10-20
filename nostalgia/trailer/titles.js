@@ -387,6 +387,8 @@
       // above y ~57 %. "3D OR / TOP-DOWN" right of the bike (x 56-86 %, clear of the Reels rail), shadow pool
       // shifted right so it doesn't darken the bike
       g_top_charminar: { x: 0.56, top: 0.62, w: 0.305, maxLines: 2, min: 40, pool: { padX: -20, padY: 60, cx: 0.5 } },
+      // closer-zoom chase: Chinnu + the chasers run at y 48-56 %, just above the block: keep the shadow off them
+      g_top_chase: { pool: { padY: 40 } },
     },
   };
   function capLayout(ctx, seg, W, H, opt) {
