@@ -39,7 +39,7 @@
     fest_numaish: { view: 'tps', at: 'nampally_exhibition', time: [20, 30], veh: null, spd: 34, pitch: -0.04, dir: 0.3, seasons: { numaish: true } },
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
     // in-world playground games (N.playgroundGames): a real match with Chinnu and the AI kids, scripted inside the window
-    lingocha: { view: 'tps', at: 'playground_home', time: [16, 40], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
+    lingocha: { view: 'tps', at: 'playground_home', time: [14, 45], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: -28, h1: 14, crane: 45 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
     marampitti: { view: 'tps', at: 'playground_2', time: [16, 50], veh: null, spd: 0, pg: { game: 'marampitti', place: 'playground_2', seed: 2, params: { kids: 8, difficulty: 0.5 } } },
     charminar_night_fps: { view: 'fps', at: 'pathergatti', time: [21, 0], veh: 'cycle', spd: 105, toward: 'charminar' },
   };
@@ -185,6 +185,9 @@
     C.pg = { G, F, S, D, ux, uy, vx: -uy, vy: ux, cam: null, tap: -99, ev: [] };
     let pre = 0;
     if (G.game === 'lingocha') {
+      // the keeper waits off to the side (his spot behind the stack is where the camera stands)
+      const kp = S.parts.find((q) => q.role === 'keeper');
+      if (kp) kp.spot = { x: S.L.base.x + ux * 7 - uy * -11, y: S.L.base.y + uy * 7 + ux * -11 };
       pre += fast(400, () => S.phase === 'aim');
       pre += fast(G.settle || 14);
     } else {
@@ -249,14 +252,18 @@
       // reverse angle: low beside the stack, Chinnu at the chalk line beyond it; the ball comes at us, the stack
       // bursts in the foreground, then the camera cranes up and back over the ground as the kids pile in
       const L = S.L, B = L.base, ux = P.ux, uy = P.uy, vx = P.vx, vy = P.vy, cg = P.G.cam || {};
-      const k = P.knockF == null ? 0 : sm((f - P.knockF - (cg.wait || 10)) / (cg.crane || 70));
+      const k = P.knockF == null ? 0 : sm((f - P.knockF - (cg.wait || 5)) / (cg.crane || 60));
       const lx = L.line.x, ly = L.line.y;
-      const a0 = cg.a || { f: 9, s: 5, h: 5.2, look: 0.7, th: 2.8 }, a1 = cg.b || { f: 24, s: 12, h: 12, look: 0.15, th: 1 };
+      // before: low behind the stack looking back at Chinnu on the line (the ball comes at us)
       const pre = P.knockF == null ? Math.min(1, (warm ? 0 : f) / 40) : 1;
-      const fwd = lerp(a0.f + 1.5 * (1 - pre), a1.f, k), side = lerp(a0.s, a1.s, k), lk = lerp(a0.look, a1.look, k);
-      // after the knock the look point drifts towards Chinnu (he runs in for the stones)
-      const cx = lerp(B.x, p.x, 0.25 * k), cy = lerp(B.y, p.y, 0.25 * k);
-      want = { x: cx + ux * fwd + vx * side, y: cy + uy * fwd + vy * side, h: lerp(a0.h, a1.h, k), tx: lerp(cx, lx, lk), ty: lerp(cy, ly, lk), th: lerp(a0.th, a1.th, k), fov: cg.fov || 54 };
+      const A0 = { x: B.x + ux * (13.5 - 1.5 * pre) + vx * 2.5, y: B.y + uy * (13.5 - 1.5 * pre) + vy * 2.5, h: 8, tx: lerp(B.x, lx, 0.85), ty: lerp(B.y, ly, 0.85), th: 2 };
+      // after: the stones fly our way, so swing round to the side of the ground: the base, the scattered stones,
+      // Chinnu and the hitters all across the frame (tracking the middle of the action)
+      const mx = lerp(B.x + ux * 8, p.x, 0.4), my = lerp(B.y + uy * 8, p.y, 0.4);
+      P.mx = P.mx == null ? mx : P.mx + (mx - P.mx) * 0.06; P.my = P.my == null ? my : P.my + (my - P.my) * 0.06;
+      const sd = cg.side || 30;
+      const A1 = { x: P.mx + vx * sd - ux * 4, y: P.my + vy * sd - uy * 4, h: cg.h1 || 10, tx: P.mx, ty: P.my, th: 1.5 };
+      want = { x: lerp(A0.x, A1.x, k), y: lerp(A0.y, A1.y, k), h: lerp(A0.h, A1.h, k), tx: lerp(A0.tx, A1.tx, k), ty: lerp(A0.ty, A1.ty, k), th: lerp(A0.th, A1.th, k), fov: cg.fov || 54 };
     } else {
       const K = P.K, ax = K ? K.e.x : P.F.centre.x, ay = K ? K.e.y : P.F.centre.y;
       const a = Math.atan2(ay - p.y, ax - p.x), sx = -Math.sin(a), sy = Math.cos(a);

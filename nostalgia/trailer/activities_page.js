@@ -20,6 +20,10 @@
     st.textContent = [
       '#ui,#touch,#debug,.toast,.bark{display:none!important}',
       '#overlay>*:not(.mg-screen){display:none!important}',
+      // the world canvas is oversized for camera shake, so <body> can scroll by a few px and let the world
+      // peek under the overlay's bottom edge: pin the overlay to the viewport and hide the world canvas
+      '#overlay{position:fixed!important;inset:0!important}',
+      '#game{visibility:hidden!important}',
       '.mg-hint,.mg-pausebtn{display:none!important}',
       // the opacity fade-in runs on real time: snap it
       '#overlay .mg-screen{transition:none!important;opacity:1!important}',
@@ -42,7 +46,14 @@
     f.__act = true;
     G.prototype.frame = f;
   }
-  ACT.start = function (id, params) {
+  // tune: optional per-game overrides of N.minigames.TUNE[id] for this run (restored by ACT.end)
+  ACT.start = function (id, params, tune) {
+    ACT.untune = null;
+    if (tune && N.minigames.TUNE[id]) {
+      const T = N.minigames.TUNE[id], old = {};
+      for (const k in tune) { old[k] = T[k]; T[k] = tune[k]; }
+      ACT.untune = () => Object.assign(T, old);
+    }
     const p = Object.assign({ autoplay: 'win', skipHowto: true, noQuit: true, noRetry: true, difficulty: 0.4, timeScale: 1, seed: 7, autoClose: false }, params || {});
     rs = (p.seed | 0) * 7919 + 13;
     ACT.result = null;
@@ -65,5 +76,6 @@
   ACT.end = function () {
     const g = N.minigames.game;
     if (g) { g.params.instantClose = true; N.minigames.abort('trailer'); }
+    if (ACT.untune) { ACT.untune(); ACT.untune = null; }
   };
 })();

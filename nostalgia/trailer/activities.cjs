@@ -8,6 +8,7 @@
  *          SURVEY=k,len          instead of the clip: capture every k-th frame of the first len frames
  *                                (to OUTD/<id>/sNNNNN.jpg) with a status log, to pick a pre-roll
  *          Q=92                  JPEG quality
+ *          P_<game>='{json}'     extra N.minigames.play params, T_<game>='{json}' TUNE overrides (try-outs)
  *          TOUCH=0|1             force the touch-button layout off / on (default: per game, portrait only)
  *   -> OUTD/<segment id>/%05d.jpg  exactly n*beatFrames frames per segment
  * The game runs on the virtual rAF clock (lib.cjs); each frame steps 1/30 s and is grabbed with CDP
@@ -61,9 +62,10 @@ const GAMES = {
     fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
     const pre = +(process.env['PRE_' + seg.game] || (PORTRAIT && cfg.preV) || cfg.pre);
     const t0 = Date.now();
-    const params = Object.assign({}, cfg.params);
+    const params = Object.assign({}, cfg.params, JSON.parse(process.env['P_' + seg.game] || '{}'));
+    const tune = Object.assign({}, cfg.tune || {}, JSON.parse(process.env['T_' + seg.game] || '{}'));
     if (process.env.TOUCH != null) params.touch = process.env.TOUCH === '1'; else if (PORTRAIT && cfg.touchV != null) params.touch = cfg.touchV;
-    const info = await page.evaluate(({ id, p }) => ACT.start(id, p), { id: seg.game, p: params });
+    const info = await page.evaluate(({ id, p, tune }) => ACT.start(id, p, tune), { id: seg.game, p: params, tune: Object.keys(tune).length ? tune : null });
     console.log(seg.id, 'start', JSON.stringify(info));
     if (SURVEY) {
       // step one frame at a time, log every HUD change (to find the exact frame of a hit / cut / line clear)
