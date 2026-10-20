@@ -166,7 +166,11 @@
   /* ================================================================ small helpers */
   function sfx(name, o) { try { if (N.audio && N.audio.sfx) N.audio.sfx(name, o || {}); } catch (e) { /* audio optional */ } }
   function toast(t, ms, o) { try { if (N.hud && N.hud.toast) N.hud.toast(subst(t), ms || 2400, o); } catch (e) { /* hud optional */ } }
-  function banner(t, sub, ms, o) { try { if (N.hud && N.hud.banner) N.hud.banner(t, subst(sub || ''), ms || 2600, o); } catch (e) { /* hud optional */ } }
+  // during a run the banners are the mode's own (banPush: placed clear of the HUD panel, the kid and his bubbles)
+  function banner(t, sub, ms, o) {
+    if (S && typeof document !== 'undefined') { try { banPush(t, subst(sub || ''), ms || 2600, o || {}); return; } catch (e) { N.err('latehome.banner', e); } }
+    try { if (N.hud && N.hud.banner) N.hud.banner(t, subst(sub || ''), ms || 2600, o); } catch (e) { /* hud optional */ }
+  }
   function subst(t) {
     t = String(t == null ? '' : t);
     try { if (N.menus && N.menus.subst) return N.menus.subst(t); } catch (e) { /* stub */ }
@@ -873,8 +877,16 @@
   }
   function emote(sk, e, secs) { sk.emote = e; sk.emoteT = secs || 1.4; if (S && S.isHost) netEvent({ k: 'em', i: sk.idx, e, s: secs || 1.4 }); }
   function sayAt(sk, text, speaker) {
-    bark(sk.role === 'window' ? { x: sk.spec.x, y: sk.spec.y } : (sk.role === 'daddy' && sk.vehicle ? sk.vehicle : sk), text, speaker, 2.6);
-    if (S && S.isHost && S.mode === 'party') netEvent({ k: 'say', i: sk.idx, t: text, sp: speaker || null });
+    barkSafe(sk.role === 'window' ? { x: sk.spec.x, y: sk.spec.y } : (sk.role === 'daddy' && sk.vehicle ? sk.vehicle : sk), text, speaker, 2.6);
+    sayNet(sk, text, speaker);
+  }
+  /** the other phones in the room see the seeker's line too */
+  function sayNet(sk, text, speaker) { if (S && S.isHost && S.mode === 'party') netEvent({ k: 'say', i: sk.idx, t: text, sp: speaker || null }); }
+  /** a bubble near the kid waits while the centre banner is up (it would sit right on top of it) */
+  function barkSafe(tgt, text, speaker, secs) {
+    const p = N.player;
+    if (BAN.cur && tgt && p && hyp((tgt.x || 0) - p.x, (tgt.y || 0) - p.y) < 110) { BAN.after.push([tgt, text, speaker, secs]); if (BAN.after.length > 3) BAN.after.shift(); return null; }
+    return bark(tgt, text, speaker, secs);
   }
 
   /* ================================================================ seeker brains (host) */
@@ -1052,7 +1064,7 @@
     S.extraEnts.push(e);
     return e;
   }
-  function startCatch(k, by, why) {
+  function startCatch(k, by, why, quote) {
     if (!S || k.done || k.seq) return;
     k.meter = 1;
     k.hide = 0;
@@ -1068,19 +1080,33 @@
       const p = N.player;
       p.hidden = false; p.controlsLocked = true; p.vx = p.vy = 0;
       sfx('busted', { ui: true });
-      banner(LINES.pakda, why === 'time' ? LINES.timeUp : k.caughtBy + ' saw you!', 2400, { kind: 'busted' });
-      if (by && esc === by) sayAt(by, k.seq.line, by.role === 'watchman' ? 'bahadur' : null);
-      else if (esc) bark(esc, k.seq.line, esc.speaker || null, 2.6);
+      // the catch line goes into the banner (a bubble over him would sit right on it); the ear / escort
+      // bubbles come after it, one at a time (catchSay)
+      const who = by && esc === by ? by.name : esc ? (esc.name || 'Amma') : null;
+      if (!quote && who) quote = { who, text: k.seq.line };
+      banner(LINES.pakda, why === 'time' ? LINES.timeUp : k.caughtBy + ' saw you!', 2400, { kind: 'busted', quote });
+      k.seq.banT = 2.55;
+      if (by && esc === by) sayNet(by, k.seq.line, by.role === 'watchman' ? 'bahadur' : null);
       netState(k);
     } else if (k.ent) {
       toast(k.nick + ' got caught' + (by ? ' by ' + by.name : '') + '!', 2200);
       if (by && esc === by) sayAt(by, k.seq.line, by.role === 'watchman' ? 'bahadur' : null);
     }
   }
+  /** catch bubbles one at a time (the kid's "ow" and the escort's line would sit on each other), mine after the banner */
+  function catchSay(k, tgt, text, speaker, secs) {
+    const q = k.seq;
+    if (!q || !tgt) return;
+    const at = Math.max(q.T || 0, q.sayAt || 0, q.banT || 0);
+    (q.says || (q.says = [])).push({ at, tgt, text, speaker, secs });
+    q.sayAt = at + secs + 0.15;
+  }
   function catchStep(k, dt) {
     const q = k.seq, e = k.isMe ? N.player : k.ent;
     if (!q) return;
     q.t += dt;
+    q.T = (q.T || 0) + dt;
+    if (q.says && q.says.length && q.says[0].at <= q.T) { const s = q.says.shift(); bark(s.tgt, s.text, s.speaker, s.secs); }
     const esc = q.esc;
     const R = N.render;
     if (q.phase === 'approach') {
@@ -1090,14 +1116,14 @@
       if (d < 6 || q.t > TUNE.catch.approach) {
         if (d >= 6) { const a = Math.atan2(esc.y - e.y, esc.x - e.x); esc.x = e.x + Math.cos(a) * 5; esc.y = e.y + Math.sin(a) * 5; }
         q.phase = 'ear'; q.t = 0;
-        bark(e, pick(LINES.ear), k.isMe ? 'you' : (k.npc || null), 2.2);
+        catchSay(k, e, pick(LINES.ear), k.isMe ? 'you' : (k.npc || null), 1.8);
         sfx('bump', { x: e.x, y: e.y, vol: 0.4 });
       }
       return;
     }
     if (q.phase === 'ear') {
       if (esc) faceTo(esc, e.x, e.y, dt, 8);
-      if (q.t > 0.9) { q.phase = 'walk'; q.t = 0; if (esc) bark(esc, pick(LINES.escort), esc.speaker || (esc.role === 'watchman' ? 'bahadur' : null), 2.4); }
+      if (q.t > 0.9) { q.phase = 'walk'; q.t = 0; if (esc) catchSay(k, esc, pick(LINES.escort), esc.speaker || (esc.role === 'watchman' ? 'bahadur' : null), 2.2); }
       return;
     }
     if (q.phase === 'walk') {
@@ -1110,7 +1136,8 @@
         e.angle = a; if (e.facing != null || e === N.player) e.facing = a;
         k.x = e.x; k.y = e.y;
       }
-      if (q.t > TUNE.catch.escort || !esc) { q.phase = 'fade'; q.t = 0; }
+      // walk on until his line has been said (it may wait for the banner)
+      if ((q.t > TUNE.catch.escort && !(q.says && q.says.length) && q.T >= (q.sayAt || 0) - 0.5) || !esc || q.t > TUNE.catch.escort + 5) { q.phase = 'fade'; q.t = 0; }
       return;
     }
     if (q.phase === 'fade') {
@@ -1764,10 +1791,19 @@
   function daddyCatch(by, k) {
     if (S.variant !== 'daddy') return;
     const dk = S.kids.find((q) => q.role === 'daddy');
-    if (dk) { dk.catches = (dk.catches || 0) + 1; dk.pts = (dk.pts || 0) + 100; if (dk.isMe) { netState(dk); bark(N.player, pick(LINES.daddyCatch), 'nanna', 2); } }
-    else { const h = S.seekers.find((sk) => sk.role === 'hunter'); if (h) { sayAt(h, pick(LINES.daddyCatch), 'nanna'); h.track = null; h.inv = null; } }
+    const line = pick(LINES.daddyCatch);
+    let quote = null;
+    if (dk) { dk.catches = (dk.catches || 0) + 1; dk.pts = (dk.pts || 0) + 100; if (dk.isMe) { netState(dk); bark(N.player, line, 'nanna', 2); } }
+    else {
+      const h = S.seekers.find((sk) => sk.role === 'hunter');
+      if (h) {
+        // caught myself: his line goes into my PAKDA! banner, not a bubble on top of it
+        if (k.isMe) { quote = { who: h.name || 'Nanna', text: line }; sayNet(h, line, 'nanna'); } else sayAt(h, line, 'nanna');
+        h.track = null; h.inv = null;
+      }
+    }
     sfx('whistle', { x: k.x, y: k.y });
-    startCatch(k, by, 'daddy');
+    startCatch(k, by, 'daddy', quote);
   }
   function endRound(why) {
     if (!S || S.phase !== 'play') return;
@@ -2169,7 +2205,7 @@
     if (!ev || typeof ev !== 'object') return;
     const sk = ev.i != null ? S.seekers.find((q) => q.idx === (ev.i | 0)) : null;
     if (ev.k === 'em' && sk) { sk.emote = String(ev.e || '!').slice(0, 2); sk.emoteT = clamp(+ev.s || 1.4, 0, 4); }
-    else if (ev.k === 'say' && sk) bark(sk.role === 'window' ? { x: sk.spec.x, y: sk.spec.y } : sk.role === 'daddy' && sk.vehicle ? sk.vehicle : sk, String(ev.t || '').slice(0, 120), ev.sp === 'bahadur' ? 'bahadur' : null, 2.6);
+    else if (ev.k === 'say' && sk) barkSafe(sk.role === 'window' ? { x: sk.spec.x, y: sk.spec.y } : sk.role === 'daddy' && sk.vehicle ? sk.vehicle : sk, String(ev.t || '').slice(0, 120), ev.sp === 'bahadur' ? 'bahadur' : null, 2.6);
     else if (ev.k === 'dog') { const g = S.dogs[ev.i | 0]; if (g) { sfx('dog_bark', { x: g.x, y: g.y }); bark(g, pick(LINES.dog), null, 1.8); } }
     else if (ev.k === 'warn') toast('Amma is at the gate with the big torch...', 3000);
   }
@@ -2224,6 +2260,25 @@
 }
 @media (max-height: 440px) { .lh-hud { padding: 3px 9px 4px; } .lh-l2 { display: none; } .lh-res { max-height: calc(100% - 12px); } }
 body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-meter.hot { animation: none; }
+/* during a run the HUD stack (toasts + the panel) sits above the speech-bubble layer (#barks, z 3), below cards (z 4+) */
+body.lh-live #hud .hud-top { z-index: 4; }
+/* the run's own centre banner: a band placed clear of the HUD panel and of the kid (see banPlace), on a dark plate */
+.lh-ban { position: absolute; z-index: 4; left: 0; right: 0; top: 30%; margin: 0 auto; width: fit-content; max-width: min(620px, calc(100% - 20px));
+  padding: 6px 22px 9px; text-align: center; pointer-events: none; visibility: hidden; opacity: 0; border-radius: 16px;
+  background: radial-gradient(ellipse closest-side at 50% 50%, rgba(10, 8, 26, 0.72), rgba(10, 8, 26, 0.5) 70%, rgba(10, 8, 26, 0)); }
+.lh-ban.show { visibility: visible; animation: lh-ban-in 0.45s cubic-bezier(0.2, 1.5, 0.4, 1) forwards; }
+.lh-ban.out { visibility: visible; opacity: 0; transition: opacity 0.25s; }
+@keyframes lh-ban-in { 0% { opacity: 0; transform: scale(1.3); } 100% { opacity: 1; transform: scale(1); } }
+.lh-bt { font-family: var(--font-display, serif); font-size: clamp(30px, min(6.2vw, 10vh), 60px); line-height: 1.05; color: var(--auto-yellow, #f2c230);
+  text-shadow: -2px -2px 0 #1a1214, 2px -2px 0 #1a1214, -2px 2px 0 #1a1214, 2px 2px 0 #1a1214, 4px 4px 0 var(--apsrtc-red, #c8302a); transform: rotate(-2deg); }
+.lh-ban.k-busted .lh-bt { color: #ff6a55; text-shadow: -2px -2px 0 #fff3e0, 2px -2px 0 #fff3e0, -2px 2px 0 #fff3e0, 2px 2px 0 #fff3e0, 4px 4px 0 #3a0a10; }
+.lh-ban.k-chapter .lh-bt { color: var(--whitewash, #f6efe0); text-shadow: -2px -2px 0 #1a1214, 2px -2px 0 #1a1214, -2px 2px 0 #1a1214, 2px 2px 0 #1a1214, 4px 4px 0 var(--irani-teal, #1f8a8a); }
+.lh-ban.k-info .lh-bt { font-family: var(--font-osd, monospace); letter-spacing: 3px; color: var(--osd, #eaf2ff); text-shadow: 3px 3px 0 var(--osd-shadow, #1b2a78), 0 0 10px var(--osd-glow, rgba(120,160,255,.55)); transform: none; }
+.lh-bs { margin-top: 5px; font-family: var(--font-body, system-ui, sans-serif); font-weight: 800; font-size: clamp(15px, min(3vw, 4.6vh), 21px); line-height: 1.2; color: var(--whitewash, #f6efe0); text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.8); }
+.lh-bq { margin-top: 4px; font-family: var(--font-body, system-ui, sans-serif); font-weight: 700; font-size: clamp(14px, min(2.6vw, 4vh), 18px); line-height: 1.2; color: #ffe08a; text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85); }
+.lh-bq b { color: #fff8e6; font-weight: 800; }
+.lh-bs:empty, .lh-bq:empty { display: none; }
+body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
 `;
   function ensureCss() {
     if (G.css || typeof document === 'undefined') return;
