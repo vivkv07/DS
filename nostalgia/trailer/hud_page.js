@@ -46,6 +46,9 @@
       tune: { lunaDismount: 0 },
       difficulty: 'hard', // the game's "Full Meter" difficulty: Mummy is faster (pursuerSpeed 1.1) and sees further
       clear: 9, // traffic parked / stopped on his line is cleared before the shot (he is driven, not physical)
+      // no through traffic where Mummy pulls up and the chappal lands (the game's own road closure, as for
+      // processions): an auto weaving into his lane there would be run through
+      calm: { f: 44, r: 95 },
     },
     // "PLAY IN 3D OR TOP-DOWN": 3D third person on the cycle down Pathergatti towards Charminar, then the game's
     // real view switch (N.view.set('top'), instant: the game has no transition) on the beat, same moment, same place
@@ -306,6 +309,19 @@
   function script() {
     const o = C.o, W = N.wanted;
     if (o.clear && (C.f === -(o.warm || 75) || C.f === -12)) C.log.push(C.f + ' cleared ' + clearLine(o.clear, (C.nf + 10 - C.f) / FPS * o.spd, C.f === -12 ? 240 : 20) + ' vehicles off his line');
+    if (o.calm && C.f === -(o.warm || 75) && N.traffic && N.traffic.closeRoads) {
+      at(C.path, C.d + (o.calm.f - C.f) * o.spd / FPS, tmp);
+      C.calm = { x: tmp.x, y: tmp.y, r: o.calm.r };
+      N.traffic.closeRoads('hudshot', C.calm);
+    }
+    if (C.calm && C.f === -12) { // (and nothing left inside it)
+      let n = 0;
+      for (const e of N.entities.all.slice()) {
+        if (e.kind !== 'vehicle' || e === N.player.vehicle || e.npcOwned || e.pursuitVehicle || e.roadblock) continue;
+        if (Math.hypot(e.x - C.calm.x, e.y - C.calm.y) < C.calm.r + 20) { try { N.vehicles.remove(e); n++; } catch (er) { /* ignore */ } }
+      }
+      C.log.push(C.f + ' closed the road round ' + Math.round(C.calm.x) + ',' + Math.round(C.calm.y) + ' r' + C.calm.r + ' to traffic (' + n + ' removed)');
+    }
     if (o.heat) {
       const L0 = W.level;
       heatTo(heatAt(o.heat, C.f));

@@ -1,5 +1,5 @@
 {
- "note": "Reels/Shorts short cut (9:16, ~59 s): a bar-aligned edit of the master timeline + score.wav, so every kept bar keeps its own picture, caption and beat-synced SFX. bars [first, last] are master score bars (bar n = master beats 4n-4..4n-1). Master transitions (assemble.cjs TRANS) inside a piece play where they fall; fx = the master transition (by its beat) to play at this piece's join when it does not start on one. tailBeats: master beats held after the last piece, under an audio fade of fadeOut s.",
+ "note": "Reels/Shorts short cut (9:16, 58.8 s): a bar-aligned edit of the master timeline + score.wav, so every kept bar keeps its own picture, caption and beat-synced SFX. bars [first, last] are master score bars (bar n = master beats 4n-4..4n-1). Master transitions (assemble.cjs TRANS) inside a piece play where they fall; fx = the master transition (by its beat) to play at this piece's join when it does not start on one. tailBeats: master beats held after the last piece, under an audio fade of fadeOut s.",
  "pieces": [
   {"bars": [2, 3], "fx": 0, "what": "prologue hook: the cassette label + 'Gurthunda?' -> REWIND 2026->2003"},
   {"bars": [4, 5], "what": "reveal: Charminar at sunrise, Chinnu on the roof"},
@@ -12,7 +12,7 @@
   {"bars": [25, 27], "what": "f_ganesh + f_ramzan"},
   {"bars": [29, 30], "what": "f_numaish + the downlifter -> g_top_chase (Chappal Meter)"},
   {"bars": [32, 35], "what": "g_lightning + riser -> finale: TEN MONTHS LEFT / ONE TAPE / THE WHOLE CITY"},
-  {"bars": [37, 39], "what": "title pops 5-8 + SLAM -> end card"}
+  {"bars": [37, 39], "fx": 140, "what": "title pops 5-8 + SLAM -> end card"}
  ],
  "tailBeats": 2,
  "fadeOut": 1.2

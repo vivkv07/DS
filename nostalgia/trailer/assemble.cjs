@@ -188,6 +188,7 @@ const TRANS = V2 ? [
   { at: 96, post: 3, s: 0.3, flash: 0.2 },            // CELEBRATE (impact + big crash)
   { at: 116, pre: 3, post: 7, s: 1, snow: 0.5, roll: 0.18 }, // SURVIVE: downlifter -> impact + siren, the tape chews
   { at: 128, pre: 3, post: 6, s: 0.6, flash: 0.12 },  // finale: impact + crash, the time-lapse
+  { at: 140, pre: 2, post: 5, s: 0.5 },               // title: night finale -> the daylight J-card (the synth filter dips)
   { at: 152, pre: 2, post: 5, s: 0.45 },              // end card
 ] : [];
 const f6 = (x) => (+x).toFixed(4);

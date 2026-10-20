@@ -168,6 +168,17 @@
     // (the warm-up's frames are not looked at: skip their GL draws, render only the last few)
     const nw = o.warm || window.WARM || 60;
     noDraw(true); try { for (let k = 0; k < nw - 8; k++) advance(true); } finally { noDraw(false); }
+    // o.clear: nobody standing or walking on the route ahead (or between the camera and the hero) when the shot starts
+    if (o.clear && path) {
+      const d0 = Math.max(0, C.d - ((o.chase && o.chase.back) || 20) - 4), d1 = Math.min(path.len, C.d + o.spd * nf / FPS + 20);
+      for (let d = d0; d <= d1; d += 3) {
+        at(path, d, tmp);
+        for (const e of N.entities.all) {
+          if (e.kind !== 'ped' || e === N.player || e.hidden || e.pgKid) continue;
+          if (Math.hypot(e.x - tmp.x, e.y - tmp.y) < o.clear + 1) { e.hidden = true; CLEARED.add(e); }
+        }
+      }
+    }
     for (let k = 0; k < 8; k++) advance(true);
     if (N.view3d && N.view3d.active) N.view3d.settle(30000);
     C.f = 0;
