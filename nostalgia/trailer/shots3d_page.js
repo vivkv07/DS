@@ -133,8 +133,9 @@
     const eh = ease.io(Math.min(1, u / 0.62));
     const er = u < 0.55 ? 0.35 * ease.io(u / 0.55) : 0.35 + 0.65 * ease.io((u - 0.55) / 0.45);
     const a = rev.a0 + (rev.a1 - rev.a0) * er;
-    const r = 125 - (125 - 33 * cs) * er, h = 3 + (hy + 7 * cs - 3) * eh, th = 55 + (hy + chest - 55) * eh;
-    return { x: hero.x + Math.cos(a) * r, y: hero.y + Math.sin(a) * r, h, th, fov: 50 - 8 * er, r, chest };
+    // ends a medium-wide shot on Chinnu (r 20*cs ~ 18 u; it used to stop at 33*cs, where he read as a speck)
+    const r = 125 - (125 - 20 * cs) * er, h = 3 + (hy + 6 * cs - 3) * eh, th = 55 + (hy + chest - 55) * eh;
+    return { x: hero.x + Math.cos(a) * r, y: hero.y + Math.sin(a) * r, h, th, fov: 50 - 8 * er, r, a, chest };
   }
   function revealSearch(hero, hs) {
     STAGE.solids(true);
@@ -144,10 +145,13 @@
     for (let a1 = -Math.PI; a1 < Math.PI; a1 += 0.08) for (const dir of [1, -1]) {
       const rev = { a0: a1 - dir * SWEEP, a1 };
       let score = Math.abs(U.angleDiff(a1, A1)) * 1.5, late = 0, early = 0;
-      // above the roof line (u >= 0.56): the whole line camera -> Chinnu must be clear
-      for (let k = 0; k <= 11 && (!best || score < best.score); k++) {
-        const u = 0.56 + (0.44 * k) / 11, c = revealCam(u, hero, rev, hs);
-        if (STAGE.blocked(hero.x, hero.y, hero.h + chest, c.x, c.y, c.h, 1.5) >= 0) { score += 10; late++; }
+      // above the roof line (u >= 0.5): a "fat" line camera -> Chinnu must be clear (the centre line plus four
+      // lines fanned 3 u sideways / 2 u up-down at the lens), densely sampled so a thin minaret shaft can't slip by
+      for (let k = 0; k <= 23 && (!best || score < best.score); k++) {
+        const u = 0.5 + (0.5 * k) / 23, c = revealCam(u, hero, rev, hs), px = -Math.sin(c.a) * 3, py = Math.cos(c.a) * 3;
+        for (const [ox, oy, oh] of [[0, 0, 0], [px, py, 0], [-px, -py, 0], [0, 0, 2], [0, 0, -2]]) {
+          if (STAGE.blocked(hero.x, hero.y, hero.h + chest, c.x + ox, c.y + oy, c.h + oh, 1.5) >= 0) { score += 10; late++; break; }
+        }
       }
       // on the way up: nothing in front of the lens short of the monument itself (stop 40 u before the hero)
       for (let k = 0; k <= 5 && (!best || score < best.score); k++) {
