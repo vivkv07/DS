@@ -42,8 +42,8 @@
     fest_numaish: { view: 'tps', at: [8312, 5864], time: [20, 30], veh: null, spd: 48, run: true, line: { a: 0, r0: 210, r1: -120 }, chase: { back: 16, h: 6.5, lead: 30, th: 12, fov: 60, lag: 0.2 }, seasons: { numaish: true } },
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
     // in-world playground games (N.playgroundGames): a real match with Chinnu and the AI kids, scripted inside the window
-    lingocha: { view: 'tps', at: 'playground_home', time: [14, 45], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: -28, h1: 14, crane: 45, f0: 13, s0: 4, h0: 8.5 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
-    marampitti: { view: 'tps', at: 'playground_2', time: [16, 50], veh: null, spd: 0, pg: { game: 'marampitti', place: 'playground_2', seed: 2, winds: [[0, 0.9, 0]], dodges: [21], victim: { back: 6.5, lat: 0 }, camLag: 0.2, cam: { back: 16, side: -9, h: 6.5, fov: 52, look: 0.45 }, params: { kids: 8, difficulty: 0.5 } } },
+    lingocha: { view: 'tps', at: 'playground_home', time: [12, 40], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: -28, h1: 14, crane: 45, f0: 21, s0: 8, h0: 10.5, lk0: 0.75 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
+    marampitti: { view: 'tps', at: 'playground_2', time: [16, 50], veh: null, spd: 0, pg: { game: 'marampitti', place: 'playground_2', seed: 2, winds: [[0, 0.9, 0]], dodges: [21], victim: { back: 6.5, lat: 0 }, camLag: 0.2, fixCam: true, cam: { back: 12, side: -5.5, h: 9, fov: 54, look: 0.45 }, params: { kids: 8, difficulty: 0.5 } } },
     charminar_night_fps: { view: 'fps', at: 'pathergatti', time: [21, 0], veh: 'cycle', spd: 105, toward: 'charminar' },
   };
 
@@ -334,6 +334,8 @@
       const cg = P.G.cam || {};
       want = { x: p.x - Math.cos(a) * (cg.back || 11) + sx * (cg.side || 3), y: p.y - Math.sin(a) * (cg.back || 11) + sy * (cg.side || 3), h: cg.h || 7.5, tx, ty, th: 2.2, fov: cg.fov || 55 };
     }
+    // fixCam: the camera stays where the shot started (only the look follows Chinnu's hop)
+    if (P.G.fixCam && P.cam && !warm) { want.x = P.cam.x; want.y = P.cam.y; want.h = P.cam.h; }
     if (!P.cam || warm) P.cam = Object.assign({}, want);
     else { const c = P.cam, r = P.G.camLag || 0.12; for (const key of ['x', 'y', 'h', 'tx', 'ty', 'th', 'fov']) c[key] += (want[key] - c[key]) * r; }
     STAGE.cam(P.cam);
