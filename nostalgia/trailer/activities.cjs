@@ -186,7 +186,7 @@ function evKey(st, ev) { return st ? (ev ? (String(st.hud).match(new RegExp(ev, 
     }
     const alog = await page.evaluate(() => ACT.log || []);
     if (alog.length) { log.push('# script ' + JSON.stringify(alog)); console.log('  script', JSON.stringify(alog)); }
-    const lf = path.join(LOGD, W + 'x' + H + '_' + seg.id + (SURVEY ? '_survey' : '') + '.txt');
+    const lf = path.join(LOGD, W + 'x' + H + '_' + seg.id + (SURVEY ? '_survey' : '') + (process.env.LOGTAG ? '_' + process.env.LOGTAG : '') + '.txt');
     const P0 = pre + shift;
     fs.writeFileSync(lf, '# ' + seg.id + ' ' + W + 'x' + H + ' pre ' + P0 + ' (captured frames ' + (P0 + 1) + '..' + (P0 + nf) + ')' + (M ? ' aligned shift ' + shift : '') + '\n' + log.join('\n') + '\n');
     if (SURVEY) console.log(log.join('\n'));
