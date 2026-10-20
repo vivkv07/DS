@@ -13,7 +13,7 @@
 
   // view: 'tps' | 'fps' | 'top'.  at: place id | [x, y].  veh: vehicle type | null (foot).  spd: u/s.  dir: preferred heading
   const CLIPS = {
-    cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', crowd: { ped: 80, dens: 1.5 }, spd: 105, dir: 0, clear: 1.5, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.35 } },
+    cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', crowd: { ped: 80, dens: 1.5 }, extras: 40, spd: 105, dir: 0, clear: 1.5, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.35 } },
     top_charminar: { view: 'top', at: 'charminar_plaza', time: [11, 0], veh: 'cycle', spd: 115, dir: -1.6 },
     auto_tankbund: { view: 'tps', at: [9295, 3648], time: [17, 25], veh: 'auto', spd: 130, warm: 30, dir: 2.22, prefer: 'bund', chase: { back: 24, h: 11, lead: 14, th: 3.5, fov: 56, lag: 0.3, side: 2 } },
     top_chase: { view: 'top', at: 'abids', time: [12, 30], veh: null, spd: 82, dir: 0, run: true, wanted: 3 },
@@ -34,9 +34,9 @@
     kites_sky: { view: 'cam', at: 'giver_himayatnagar', time: [16, 20], veh: null, spd: 0 },
     // festivals (N.seasons overlays; the 3D renderer draws their props from N.seasons.scene)
     fest_ganesh: { view: 'cam', at: 'tank_bund', time: [15, 30], veh: null, spd: 0, procession: true, rows: 4, swRate: 0.2, seasons: { ganesh_immersion: true, ganesh: true } },
-    fest_ramzan: { view: 'tps', at: 'charminar', off: [-215, 45], time: [21, 30], veh: null, crowd: { ped: 100, dens: 2 }, spd: 22, warm: 45, toward: 'charminar', clear: 2, chase: { back: 11, h: 6, lead: 12, th: 9, fov: 66, lag: 0.2 }, seasons: { ramzan: true } },
+    fest_ramzan: { view: 'tps', at: 'charminar', off: [-215, 45], time: [21, 30], veh: null, crowd: { ped: 100, dens: 2 }, extras: 26, spd: 22, warm: 45, toward: 'charminar', clear: 2, chase: { back: 11, h: 6, lead: 12, th: 9, fov: 66, lag: 0.2 }, seasons: { ramzan: true } },
     fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 0, seasons: { bonalu: true }, bonalu: { temple: 'lal_darwaza_temple', ahead: 17, side: 13, h: 5, lat: 4.5, look: -1.5 } },
-    fest_numaish: { view: 'tps', at: [8312, 5860], time: [20, 30], veh: null, crowd: { ped: 100, dens: 2 }, spd: 34, line: { a: 0, r0: 60, r1: -200 }, clear: 2, chase: { back: 12, h: 6.5, lead: 30, th: 7, fov: 60, lag: 0.2 }, seasons: { numaish: true } },
+    fest_numaish: { view: 'tps', at: [8312, 5860], time: [20, 30], veh: null, crowd: { ped: 100, dens: 2 }, extras: 30, spd: 34, line: { a: 0, r0: 60, r1: -200 }, clear: 2, chase: { back: 12, h: 6.5, lead: 30, th: 7, fov: 60, lag: 0.2 }, seasons: { numaish: true } },
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
     // in-world playground games (N.playgroundGames): a real match with Chinnu and the AI kids, scripted inside the window
     lingocha: { view: 'tps', at: 'playground_home', time: [12, 40], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: 26, h1: 15, crane: 45, f0: 21, s0: 8, h0: 10.5, lk0: 0.75 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
@@ -164,6 +164,17 @@
       if (v) N.vehicles.enter(N.player, v);
     }
     N.view.set(o.view === 'cam' ? 'tps' : o.view);
+    // o.extras: passers-by spawned on the footpaths along the route the shot will see (the traffic system spreads its
+    // walkers over the whole view, so the street right round Chinnu is otherwise thin)
+    if (o.extras && path && N.traffic && N.traffic.spawnPed) {
+      const d1 = Math.min(path.len, (nf + (o.warm || window.WARM || 60)) / FPS * o.spd + 40);
+      for (let k = 0; k < o.extras; k++) {
+        const d = (k + 0.5) / o.extras * d1, side = k % 2 ? 1 : -1;
+        at(path, d, tmp); at(path, Math.min(path.len, d + 2), tmp2);
+        const a = Math.atan2(tmp2.y - tmp.y, tmp2.x - tmp.x), off = 7 + (k * 5.3) % 7;
+        try { N.traffic.spawnPed(null, { x: tmp.x - Math.sin(a) * off * side, y: tmp.y + Math.cos(a) * off * side }); } catch (e) { /* ignore */ }
+      }
+    }
     // top-down: a closer follow zoom (the game's own baseZoom multiplier) so Chinnu reads at trailer size
     N.render.baseZoom = o.view === 'top' ? (window.TOPZOOM || o.zoom || 1) : 1;
     C = { id, o, path, v, d: 0, f: 0, x, y };

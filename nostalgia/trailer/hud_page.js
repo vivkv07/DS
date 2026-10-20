@@ -427,9 +427,24 @@
     syncAnims();
   }
 
+  // key beats as they happen (for the report / the editor): chappal phases, the hit, the banner, the THUP!
+  const beat = { ph: null, busy: false, banner: false, thup: false };
+  function beats(f) {
+    const W = N.wanted, ch = W._W.chappal, ph = ch ? ch.ph : null, out = [];
+    if (ph !== beat.ph) { if (ph) out.push(f + ' chappal ' + ph); beat.ph = ph; }
+    if (W.busy && !beat.busy) { beat.busy = true; out.push(f + ' HIT: busted (PAKDA GAYA sequence starts)'); }
+    const bn = document.querySelector('.hud-banner');
+    const on = !!(bn && getComputedStyle(bn).opacity > 0.5 && /PAKDA/.test(bn.textContent));
+    if (on && !beat.banner) { beat.banner = true; out.push(f + ' banner PAKDA GAYA! on screen'); }
+    const sf = W._W.slipFx;
+    if (sf && sf.t / sf.dur >= 0.75 && !beat.thup) { beat.thup = true; out.push(f + ' THUP! star'); }
+    return out;
+  }
+
   H.frame = function () {
     const f = C.f;
     advance();
+    for (const l of beats(f)) C.log.push(l);
     const W = N.wanted, p = N.player, ch = W._W.chappal;
     let dbg;
     if (window.HUDDBG) {

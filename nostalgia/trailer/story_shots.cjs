@@ -122,7 +122,8 @@ const FRAME = {
   cassette: { s: 1.55, o: '50% 37.6%' }, // art y 24..140: the cassette (label 45% of the width) low, room above for the note
   rewind: { s: 1.12, o: '50% 0%' },     // the whole 2-in-1, a little lower: room above it for the big year
 };
-const FRAME_V = { wide: null, parcel: { s: 1.18, o: '30% 64%' }, cassette: null, rewind: null }; // portrait: object-fit cover does the zoom
+// portrait: object-fit cover already fills the phone screen (5.3 screen px per art px); the parcel cut is a closer shot
+const FRAME_V = { wide: null, parcel: { s: 1.4, o: '42.9% 64.4%' }, cassette: null, rewind: null };
 
 // ---- the trailer CSS: the editor's legibility notes (UI ~1.4x on top of the 960x540 / 540x960 layouts = ~1.9x the
 // 1280x720 stills), the cassette note above the cassette, the REWIND year big and centred. Same elements, fonts, colours.
@@ -140,16 +141,17 @@ const UI_CSS = [
 const UI_CSS_V = [
   // the 320x180 art would be stretched to 9:16 by the game's CSS (width/height 100%): cover the phone screen instead
   '#overlay canvas.st-art { object-fit: cover; object-position: 50% 50%; }',
-  "body[data-spcut='wide'] #overlay canvas.st-art, body[data-spcut='parcel'] #overlay canvas.st-art { object-position: 44% 50%; }",
-  '#overlay .cs-card { zoom: 1.25; }',
-  '#overlay .cs-text { zoom: 1.35; }',
-  '.dlg { zoom: 1.45; }',
+  "body[data-spcut='wide'] #overlay canvas.st-art { object-position: 44% 50%; }",
+  "body[data-spcut='parcel'] #overlay canvas.st-art { object-position: 35% 50%; }",
+  '#overlay .cs-card { zoom: 1.12; }',
+  '#overlay .cs-text { zoom: 1.7; }',
+  '.dlg { zoom: 1.6; }',
   '.sp-hide { visibility: hidden !important; }',
   "body[data-spcut='cassette'] #overlay .cs-stage { align-items: flex-start; padding-top: calc(7vh + 18px); }",
-  "body[data-spcut='cassette'] #overlay .cs-text { width: 360px; }",
+  "body[data-spcut='cassette'] #overlay .cs-text { width: 300px; }",
   "body[data-spcut='rewind'] #overlay .cs-osd { left: 0; right: 0; top: calc(7vh + 30px); align-items: center; letter-spacing: 4px; }",
   "body[data-spcut='rewind'] #overlay .cs-osd b { font-size: 46px; }",
-  "body[data-spcut='rewind'] #overlay .cs-osd span { font-size: 132px; line-height: 0.92; }",
+  "body[data-spcut='rewind'] #overlay .cs-osd span { font-size: 156px; line-height: 0.92; }",
 ].join('\n');
 // s_story: the story in gameplay — M1 "Bo Kaata!" (Tue 14 Jan 2003, Sankranti morning, kites over the colony): on the
 // colony ground (playground_1) Immu, glasses taped, tells Chinnu (story.js m1, bible §4 M1 step 3). The game's real
@@ -157,9 +159,9 @@ const UI_CSS_V = [
 PLANS.s_story = {
   sequential: true, // one scene: the lines are queued once and advanced at the cuts
   cuts: [
-    // b40-41: Immu (sad): "Abba's visa came. Yesterday. After Eid, we fly. New Jersey." — joined at "Abba's visa came. "
-    // (Text speed: Fast, a player setting), fully typed by ~frame 16
-    { name: 'visa', n: 36, setup: storyGround, anchor: { line: "Abba's visa", chars: 18 }, off: 0 },
+    // b40-41: Immu (sad): "Abba's visa came. Yesterday. After Eid, we fly. New Jersey." — joined at "...Yesterday. ", so
+    // "After Eid, we fly. New Jersey." types in (Text speed: Fast, a player setting) and is complete by ~frame 18
+    { name: 'visa', n: 36, setup: storyGround, anchor: { line: "Abba's visa", chars: 29 }, off: 0 },
     // b42-43: Immu: "Ten months and eleven days. I counted." (typed by ~frame 13 of the cut)
     { name: 'ten_months', n: 36, before: () => { N.dialogue.advance(); }, anchor: null, off: 1 },
     // b44-47: Immu: "We take the city with us. One tape. One tin." and the tape: ● REC on frame 72 (the score's REC blip,
@@ -196,12 +198,14 @@ function storyRec(o) {
   return { rec: N.tape.recState };
 }
 PLANS.prologue.css = UI_CSS; PLANS.prologue.cssV = UI_CSS_V;
+PLANS.prologue.qa = [0, 35, 44, 71, 80, 110, 160, 215]; // contact sheet frames: two per cut
+PLANS.s_story.qa = [0, 20, 40, 60, 72, 90, 110, 143];
 // s_story: the same legibility treatment for the dialogue box and the HUD (OSD strip with the tape counter, objective;
 // the minimap and stats scale with it)
 // The third-person camera centres Chinnu's head, which the (scaled-up) dialogue box would cover: the 3D canvas is
 // cropped from the top (a tilt down: the kids sit at ~38% of the frame, above the box); the render keeps its resolution
 PLANS.s_story.css = ['.dlg { zoom: 1.4; }', '#hud { zoom: 1.35; }', '#game3d { transform-origin: 50% 0; transform: translateY(-24%) scale(1.24); }'].join('\n');
-PLANS.s_story.cssV = ['.dlg { zoom: 1.45; }', '#hud { zoom: 1.3; }', '#game3d { transform-origin: 50% 0; transform: translateY(-12%) scale(1.12); }'].join('\n');
+PLANS.s_story.cssV = ['.dlg { zoom: 1.6; }', '#hud { zoom: 1.3; }', '#game3d { transform-origin: 50% 0; transform: translateY(-12%) scale(1.12); }'].join('\n');
 function startPrologue(o) {
   SP.setup({ hud: true, css: o.css });
   SP.fixLabel();
@@ -348,12 +352,13 @@ function qaSheet() {
   const rows = [], tmp = path.join(__dirname, 'out', 'qa_story_tmp');
   fs.mkdirSync(tmp, { recursive: true });
   const FONT = '/usr/share/fonts/opentype/inter/Inter-Bold.otf';
-  const th = PORTRAIT ? 480 : 270;
+  const th = PORTRAIT ? 480 : 300;
   for (const seg of segs) {
     const dir = path.join(OUTD, seg.id), nf = seg.n * BF;
     if (!fs.existsSync(dir)) { console.log('qa: no frames for', seg.id); continue; }
-    const picks = [];
-    for (let k = 0; k < 8; k++) picks.push(Math.min(nf - 1, Math.round(k * (nf - 1) / 7)));
+    const plan = PLANS[seg.id] || {};
+    const picks = plan.qa ? plan.qa.slice() : [];
+    if (!picks.length) for (let k = 0; k < 8; k++) picks.push(Math.min(nf - 1, Math.round(k * (nf - 1) / 7)));
     const ins = [], fl = [];
     picks.forEach((f, k) => {
       ins.push('-i', path.join(dir, String(f).padStart(5, '0') + '.jpg'));
