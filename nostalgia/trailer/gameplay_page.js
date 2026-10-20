@@ -36,7 +36,7 @@
     fest_ganesh: { view: 'cam', at: 'tank_bund', time: [15, 30], veh: null, spd: 0, procession: true, rows: 4, swRate: 0.2, seasons: { ganesh_immersion: true, ganesh: true } },
     fest_ramzan: { view: 'tps', at: 'charminar', off: [-215, 45], time: [21, 30], veh: null, crowd: { ped: 100, dens: 2 }, extras: 26, spd: 22, warm: 45, toward: 'charminar', clear: 2, chase: { back: 11, h: 6, lead: 12, th: 9, fov: 66, lag: 0.2 }, seasons: { ramzan: true } },
     fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 0, seasons: { bonalu: true }, bonalu: { temple: 'lal_darwaza_temple', ahead: 17, side: 13, h: 5, lat: 4.5, look: -1.5 } },
-    fest_numaish: { view: 'tps', at: [8312, 5860], time: [20, 30], veh: null, crowd: { ped: 100, dens: 2 }, extras: 30, spd: 34, line: { a: 0, r0: 60, r1: -200 }, clear: 2, chase: { back: 12, h: 6.5, lead: 30, th: 7, fov: 60, lag: 0.2 }, seasons: { numaish: true } },
+    fest_numaish: { view: 'tps', at: [8200, 5864], time: [20, 15], veh: null, crowd: { ped: 100, dens: 2 }, spd: 26, warm: 20, line: { a: 0, r0: 82, r1: -100 }, clear: 2, mill: { x0: 8272, x1: 8140, step: -12, ys: [5855, 5873], r: 3.5, ahead: [[8132, 5866, 7], [8118, 5860, 7], [8150, 5864, 4]] }, chase: { back: 11, h: 9, lead: 25, th: 7, fov: 62, lag: 0.2, side: 2.5, lookSide: -9 }, seasons: { numaish: true } },
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
     // in-world playground games (N.playgroundGames): a real match with Chinnu and the AI kids, scripted inside the window
     lingocha: { view: 'tps', at: 'playground_home', time: [12, 40], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: 26, h1: 15, crane: 45, f0: 21, s0: 8, h0: 10.5, lk0: 0.75 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
@@ -164,6 +164,17 @@
       if (v) N.vehicles.enter(N.player, v);
     }
     N.view.set(o.view === 'cam' ? 'tps' : o.view);
+    // o.mill: groups (families, couples, a vendor) milling round little spots along both sides of a lane and ahead
+    if (o.mill && N.traffic && N.traffic.spawnPed) {
+      const M = o.mill, GROUPS = [['uncle', 'aunty', 'kid'], ['youth', 'woman'], ['aunty', 'kid', 'kid'], ['man', 'vendor'], ['old', 'uncle'], ['woman', 'kid', 'aunty'], ['youth', 'youth'], ['uncle', 'kid']];
+      const spots = [];
+      for (let x = M.x0; M.step > 0 ? x <= M.x1 : x >= M.x1; x += M.step) for (const yy of M.ys) spots.push([x + ((spots.length * 3.7) % 5) - 2.5, yy, M.r]);
+      for (const a of M.ahead || []) spots.push(a);
+      spots.forEach((sp, i) => {
+        const g = GROUPS[i % GROUPS.length], zone = { x: sp[0], y: sp[1], r: sp[2] };
+        g.forEach((role, j) => { try { N.traffic.spawnPed(role, { x: sp[0] + Math.cos(j * 2.1 + i) * 2.2, y: sp[1] + Math.sin(j * 2.1 + i) * 2.2, zone }); } catch (e) { /* ignore */ } });
+      });
+    }
     // o.extras: passers-by spawned on the footpaths along the route the shot will see (the traffic system spreads its
     // walkers over the whole view, so the street right round Chinnu is otherwise thin)
     if (o.extras && path && N.traffic && N.traffic.spawnPed) {
@@ -516,7 +527,9 @@
       // side: the camera shifted off the route to the left of travel (negative: right)
       let ox = 0, oy = 0;
       if (c.side) { at(path, Math.max(0, C.d - c.back) + 2, tmp3); const ddx = tmp3.x - tmp.x, ddy = tmp3.y - tmp.y, l = Math.hypot(ddx, ddy) || 1; ox = ddy / l * c.side; oy = -ddx / l * c.side; }
-      const want = { x: tmp.x + ox, y: tmp.y + oy, h: c.h, tx: hx, ty: hy, th: c.th, fov: c.fov || 58 };
+      let lx = 0, ly = 0;
+      if (c.lookSide) { at(path, C.d + (c.lead || 0) + 2, tmp3); const ddx = tmp3.x - hx, ddy = tmp3.y - hy, l = Math.hypot(ddx, ddy) || 1; lx = ddy / l * c.lookSide; ly = -ddx / l * c.lookSide; }
+      const want = { x: tmp.x + ox, y: tmp.y + oy, h: c.h, tx: hx + lx, ty: hy + ly, th: c.th, fov: c.fov || 58 };
       // (the smoothing runs through the warm-up too, so the camera has settled into its trailing distance at frame 0)
       if (!C.cc) C.cc = want; else for (const k of ['x', 'y', 'h', 'tx', 'ty', 'th']) C.cc[k] += (want[k] - C.cc[k]) * (c.lag || 0.25);
       C.cc.fov = want.fov;
