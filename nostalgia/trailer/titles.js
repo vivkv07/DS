@@ -405,9 +405,106 @@
     if (t >= CAP.hold && t < outStart) return 'hold';
     return 'anim';
   }
+  /* ------------------------------------------------------------ v2.1 PLAY-act captions: top-left, boxed */
+  // The minigames fill the frame with their own UI (and the player sits low in it), so PLAY captions sit just
+  // under the minigame top bar: top edge ~12 %, left ~6 %. Each line gets its own dark box and the kicker a
+  // plate (amber for the act opener, dark with an amber tick after), so they read on a yellow console, an
+  // orange sky or a white cloud alike. Per-segment placement keeps them off the player, the key gameplay
+  // object and the HUD (checked against the captured frames; seg.capPos = {land:{..}, port:{..}} overrides).
+  const TOP_ACTS = { PLAY: true };
+  const BOXFILL = 'rgba(12,14,20,0.8)';
+  const CAPPOS = { // fractions of the frame: x = left edge, y = top edge, w = max block width (+ size, maxLines)
+    land: {
+      _: { x: 0.06, y: 0.12, w: 0.42 },
+      a_cricket: { w: 0.31 }, // left of the IRANI CAFE sign and the "SIX!" banner
+      a_panipuri: { w: 0.245 }, // left of the vendor's arm, above the counter
+      a_brickgame: { y: 0.1, w: 0.265 }, // in the console margin (it starts at 7 %): left of the LCD, above the D-pad
+      a_antenna: { x: 0.685, y: 0.1, w: 0.28 }, // the right panel's bare wall (the dial and antenna head are top-left)
+    },
+    port: {
+      _: { x: 0.06, y: 0.12, w: 0.8 },
+      a_panipuri: { y: 0.565, w: 0.36 }, // the vendor fills the top: the counter's lower-left, left of the puri's path
+      a_cricket: { y: 0.235, w: 0.42 }, // under the IRANI CAFE sign and the "SIX!" banner (x 29-71 %, y 16-21 % from f44)
+      a_marbles: { y: 0.09 }, // above the "PHIR SE MAARO!" banner (x 20-81 %, y 17.9-21 % from f54); left of Pappu's striker
+      a_lingocha: { y: 0.09 }, // 3D, centre-cropped: no minigame bar, kids' heads start ~17 %
+      a_maram: { y: 0.09 },
+    },
+  };
+  function capPos(seg, port) {
+    const o = port ? 'port' : 'land', T = CAPPOS[o];
+    return Object.assign({}, T._, T[seg.id] || {}, (seg.capPos && seg.capPos[o]) || {});
+  }
+  function boxLayout(ctx, seg, W, H, opt) {
+    const port = H > W;
+    const k = port ? W / 1080 : Math.min(W / 1920, H / 1080), VW = W / k, VH = H / k;
+    const P = capPos(seg, port);
+    const base = P.size || (port ? 76 : 72), min = P.min || 44, maxLines = P.maxLines || (port ? 3 : 2), maxW = P.w * VW;
+    const words = String(seg.cap).split(/\s+/);
+    const meas = (str, size) => { ctx.font = '900 ' + size + 'px ' + FONT; if ('letterSpacing' in ctx) ctx.letterSpacing = (size * 0.02) + 'px'; const w = ctx.measureText(str).width; if ('letterSpacing' in ctx) ctx.letterSpacing = '0px'; return w; };
+    function split(n, size) {
+      let best = null;
+      const rec = (i, left, acc) => {
+        if (left === 1) { const ls = [...acc, words.slice(i).join(' ')]; const mw = Math.max(...ls.map((l) => meas(l, size))); if (!best || mw < best.w) best = { lines: ls, w: mw }; return; }
+        for (let j = i + 1; j <= words.length - left + 1; j++) rec(j, left - 1, [...acc, words.slice(i, j).join(' ')]);
+      };
+      if (n <= words.length) rec(0, n, []);
+      return best;
+    }
+    const fits = (b, size) => b && b.w + 0.6 * size <= maxW;
+    let lay = null; // the largest size that fits (<= base); on a tie, the fewest lines
+    for (let n = 1; n <= Math.min(maxLines, words.length); n++) {
+      for (let sz = base; sz >= min; sz -= 1) { const b = split(n, sz); if (fits(b, sz)) { if (!lay || sz > lay.size) lay = { ...b, size: sz }; break; } }
+    }
+    if (!lay) { const b = split(Math.min(maxLines, words.length), min); lay = { ...b, size: min }; }
+    const size = lay.size, padX = size * 0.3, bh = size * 1.2, gap = Math.round(size * 0.08);
+    const kh = opt.first ? (port ? 58 : 52) : (port ? 48 : 42), kgap = port ? 12 : 10;
+    const x0 = P.x * VW, top = P.y * VH, capTop = top + kh + kgap;
+    return { port, k, VW, VH, x0, top, kh, capTop, lines: lay.lines, widths: lay.lines.map((l) => meas(l, size)), size, padX, bh, gap,
+      capW: lay.w + 2 * padX, bottom: capTop + lay.lines.length * (bh + gap) - gap };
+  }
+  function capBoxed(ctx, seg, t, W, H, B, opt) {
+    const L = boxLayout(ctx, seg, W, H, opt), dur = seg.n * B;
+    const outStart = dur - CAP.out - 0.03, o = ease.io(clamp((t - outStart) / CAP.out, 0, 1));
+    if (o >= 1) return;
+    const kStart = opt.first ? CAP.firstKick : CAP.delay, cStart = opt.first ? CAP.firstCap : CAP.delay + 0.05;
+    const ku = ease.out(clamp((t - kStart) / (opt.first ? 0.3 : 0.26), 0, 1));
+    if (ku <= 0) return;
+    const x0 = L.x0;
+    ctx.save(); ctx.scale(L.k, L.k);
+    const kSize = opt.first ? (L.port ? 34 : 30) : (L.port ? 28 : 25), kTrack = opt.first ? 10 : 8;
+    ctx.font = '800 ' + kSize + 'px ' + FONT; if ('letterSpacing' in ctx) ctx.letterSpacing = kTrack + 'px';
+    const kTextW = ctx.measureText(seg.act || '').width - kTrack; if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+    const kBar = opt.first ? 0 : 6, kPad = opt.first ? 20 : 15, kW = kBar + kPad * 2 + kTextW;
+    const blockW = Math.max(L.capW, kW);
+    // out: a left-to-right wipe + fade
+    ctx.globalAlpha = 1 - o * 0.6;
+    if (o > 0) { const wx = x0 - 30 + ease.io(o) * (blockW + 90); ctx.beginPath(); ctx.rect(wx, 0, L.VW, L.VH); ctx.clip(); }
+    // kicker plate wipes in; the act name follows inside it
+    const pw = kW * ku, ky = L.top + L.kh / 2;
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 3;
+    ctx.fillStyle = opt.first ? AMBER : BOXFILL; ctx.fillRect(x0, L.top, pw, L.kh); ctx.restore();
+    if (kBar) { ctx.fillStyle = AMBER; ctx.fillRect(x0, L.top, Math.min(kBar, pw), L.kh); }
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, L.top, pw, L.kh); ctx.clip();
+    const tu = ease.out(clamp((t - kStart - 0.08) / 0.25, 0, 1)); ctx.globalAlpha *= tu;
+    text(ctx, seg.act, x0 + kBar + kPad - 10 * (1 - tu), ky + 1, kSize, { weight: 800, align: 'left', track: kTrack, color: opt.first ? INK : AMBER });
+    ctx.restore();
+    // caption lines: each box wipes in from the left with its text sliding in inside it, staggered
+    L.lines.forEach((ln, i) => {
+      const lu = ease.out(clamp((t - cStart - i * CAP.stagger) / 0.32, 0, 1));
+      if (lu <= 0) return;
+      const ly = L.capTop + i * (L.bh + L.gap), bw = (L.widths[i] + 2 * L.padX) * lu;
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 4;
+      ctx.fillStyle = BOXFILL; ctx.fillRect(x0, ly, bw, L.bh); ctx.restore();
+      ctx.save(); ctx.beginPath(); ctx.rect(x0, ly, bw, L.bh); ctx.clip();
+      text(ctx, ln, x0 + L.padX - 24 * (1 - lu), ly + L.bh * 0.5 + L.size * 0.01, L.size, { weight: 900, align: 'left', track: L.size * 0.02, color: '#ffffff' });
+      ctx.restore();
+    });
+    ctx.restore();
+  }
   function caption(ctx, seg, t, W, H, B, opt) {
     opt = opt || {};
     if (!seg.cap) return;
+    if (TOP_ACTS[seg.act] || seg.capStyle === 'top') return capBoxed(ctx, seg, t, W, H, B, opt);
     const L = capLayout(ctx, seg, W, H, opt), dur = seg.n * B;
     const outStart = dur - CAP.out - 0.03, o = ease.io(clamp((t - outStart) / CAP.out, 0, 1));
     if (o >= 1) return;
@@ -478,6 +575,10 @@
     overlay,
     caption,
     capPhase,
+    capBox(seg, W, H, opt) { // geometry of a boxed (top) caption block in pixels, for QA
+      const c = document.createElement('canvas').getContext('2d'), L = boxLayout(c, seg, W, H, opt || {});
+      return { x: L.x0 * L.k, y: L.top * L.k, w: Math.max(L.capW) * L.k, h: (L.bottom - L.top) * L.k, lines: L.lines, size: L.size };
+    },
     story,
     storyPhase,
     storyLines,
