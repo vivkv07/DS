@@ -88,6 +88,35 @@
     [2520, 'auto', 6, 0.1], [3750, 'bus', 7, 0.1],
   ];
   const POP = 0.42; // seconds for a landmark to spring up (ease.back overshoot)
+  const CHS = 1.05; // Charminar scale (v1 1.15): its minaret tips stay below the title block
+  const NAVY = '#1b2a3a';
+  // the title wordmark: white, a navy keyline and a hard navy extrusion (+ a soft lift) so it reads on any sky
+  function wordmark(ctx, str, x, y, size, track) {
+    ctx.font = '900 ' + size + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if ('letterSpacing' in ctx) ctx.letterSpacing = track + 'px';
+    x += track / 2; // centre without the trailing tracking
+    const kl = size * 0.075, dy = size * 0.065;
+    ctx.lineJoin = 'round';
+    ctx.save(); ctx.shadowColor = 'rgba(8,18,30,0.32)'; ctx.shadowBlur = size * 0.2; ctx.shadowOffsetY = size * 0.08;
+    ctx.fillStyle = NAVY; ctx.strokeStyle = NAVY; ctx.lineWidth = kl;
+    ctx.strokeText(str, x, y + dy); ctx.fillText(str, x, y + dy);
+    ctx.restore();
+    ctx.strokeStyle = NAVY; ctx.lineWidth = kl; ctx.strokeText(str, x, y);
+    ctx.fillStyle = '#ffffff'; ctx.fillText(str, x, y);
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  }
+  // the tagline on a cream cassette-label plate (navy ink, keyline and hard shadow to match the wordmark)
+  function tapeLabel(ctx, str, x, y, size) {
+    const track = size * 0.02;
+    ctx.font = '600 ' + size + 'px ' + FONT; if ('letterSpacing' in ctx) ctx.letterSpacing = track + 'px';
+    const w = ctx.measureText(str).width - track; if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+    const padX = size * 0.62, h = size * 1.45, r = size * 0.2, bx = x - w / 2 - padX, by = y - h / 2, bw = w + 2 * padX;
+    const rr = (yy) => { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(bx, yy, bw, h, r); else ctx.rect(bx, yy, bw, h); };
+    ctx.fillStyle = NAVY; rr(by + size * 0.14); ctx.fill();
+    ctx.fillStyle = '#fbf3e0'; rr(by); ctx.fill();
+    ctx.strokeStyle = NAVY; ctx.lineWidth = size * 0.08; ctx.stroke();
+    text(ctx, str, x + track / 2, y + size * 0.02, size, { weight: 600, color: NAVY, track });
+  }
   function rect(ctx, x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
   function poly(ctx, pts, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.closePath(); ctx.fill(); }
   function circ(ctx, x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); }
@@ -179,7 +208,7 @@
     pigeons(ctx, t) {
       ctx.fillStyle = '#4a4a58';
       for (let i = 0; i < 9; i++) {
-        const x = -160 + i * 40 + Math.sin(i * 7) * 30, y = -560 - (i % 3) * 40 + Math.sin(t * 3 + i) * 6, f = Math.sin(t * 14 + i * 2);
+        const x = -160 + i * 40 + Math.sin(i * 7) * 30, y = -400 - (i % 3) * 34 + Math.sin(t * 3 + i) * 6, f = Math.sin(t * 14 + i * 2);
         ctx.beginPath(); ctx.moveTo(x - 18, y - 8 * f); ctx.quadraticCurveTo(x, y + 4, x + 18, y - 8 * f); ctx.quadraticCurveTo(x, y + 9, x - 18, y - 8 * f); ctx.fill();
       }
     },
@@ -189,22 +218,26 @@
     const port = H > W, k = port ? W / 1180 : H / 1080, dur = seg.n * B;
     const beats = t / B, b0 = seg.b;
     const slamT = (seg.slam - b0) * B;
-    const VH = H / k, oy = port ? VH - 1080 - 260 : 0;
+    const VH = H / k, oy = port ? VH - 1080 - 260 : 40; // landscape: the scene sits a little lower, under the title block
     ctx.save(); ctx.scale(k, k);
     const VW = W / k;
     // sky (portrait: extends above the 1080-unit scene)
-    const sg = ctx.createLinearGradient(0, 0, 0, GY + oy); sg.addColorStop(0, port ? '#5ec4d0' : PAL.sky0); sg.addColorStop(1, PAL.sky1);
+    // sky: deeper teal at the zenith (behind the wordmark) down to the warm cream horizon
+    const sg = ctx.createLinearGradient(0, 0, 0, GY + oy); sg.addColorStop(0, port ? '#2f8fab' : '#3a9cb6'); sg.addColorStop(0.5, port ? '#7ccbd4' : '#86d1d7'); sg.addColorStop(1, PAL.sky1);
     ctx.fillStyle = sg; ctx.fillRect(0, 0, VW, VH);
     ctx.fillStyle = PAL.ground; ctx.fillRect(0, GY + oy, VW, VH);
     ctx.translate(0, oy);
     // camera pan: eased from 0 to the Charminar framing at the slam, then a slow push
     const panT = clamp(t / slamT, 0, 1), cx = ease.io(panT) * (port ? 2560 : 2230) + Math.max(0, t - slamT) * 30;
-    const zoom = 1 + Math.max(0, t - slamT) * 0.03;
+    const zoom = 1 + Math.max(0, t - slamT) * 0.022;
     // sun + clouds (parallax)
     circ(ctx, 1560 - cx * 0.45, 430, 90, PAL.sun);
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    for (let i = 0; i < 9; i++) { const x = ((i * 640 - cx * 0.25 + t * 12) % 4800 + 4800) % 4800 - 400, y = 130 + (i % 3) * 70; ctx.beginPath(); ctx.ellipse(x, y, 110, 30, 0, 0, TAU); ctx.ellipse(x + 60, y - 18, 70, 32, 0, 0, TAU); ctx.ellipse(x - 60, y - 6, 60, 24, 0, 0, TAU); ctx.fill(); }
-    ctx.translate(VW / 2, GY); ctx.scale(zoom, zoom); ctx.translate(-VW / 2, -GY);
+    // cloud rows kept out of the title block (landscape: under it, behind the skyline; portrait: above and below it)
+    const rows = port ? [-430, 100, 190] : [355, 430, 490];
+    for (let i = 0; i < 9; i++) { const x = ((i * 640 - cx * 0.25 + t * 12) % 4800 + 4800) % 4800 - 400, y = rows[i % 3]; ctx.beginPath(); ctx.ellipse(x, y, 110, 30, 0, 0, TAU); ctx.ellipse(x + 60, y - 18, 70, 32, 0, 0, TAU); ctx.ellipse(x - 60, y - 6, 60, 24, 0, 0, TAU); ctx.fill(); }
+    const ay = GY - 520 * CHS; // the push is anchored at the minaret tips, so nothing grows up into the title
+    ctx.translate(VW / 2, ay); ctx.scale(zoom, zoom); ctx.translate(-VW / 2, -ay);
     // far city (parallax 0.5)
     ctx.fillStyle = PAL.far;
     for (let i = 0; i < 60; i++) { const x = i * 90 - cx * 0.5, h = 80 + ((i * 37) % 7) * 22; ctx.fillRect(x, GY - h - 30, 70, h + 30); }
@@ -226,7 +259,7 @@
       ctx.save(); ctx.translate(px, GY + (kind === 'auto' || kind === 'bus' ? 100 : 0) + dy);
       const sy = kind === 'kites' || kind === 'pigeons' ? 1 : sc;
       ctx.scale(kind === 'kites' || kind === 'pigeons' ? sc : 1 / Math.max(0.3, sc) * sc * (0.9 + 0.1 * sc), sy);
-      if (kind === 'charminar') ctx.scale(1.15, 1.15);
+      if (kind === 'charminar') ctx.scale(CHS, CHS);
       DRAW[kind](ctx, t);
       ctx.restore();
     }
@@ -234,15 +267,17 @@
     // the title slam
     if (t >= slamT) {
       const u = clamp((t - slamT) / 0.5, 0, 1), sc = 1.42 - 0.42 * ease.out(u);
-      const tk = port ? (W / 1920) * 1.05 : k;
-      ctx.save(); ctx.translate(W / 2, port ? H * 0.3 : H * 0.24); ctx.scale(tk * sc, tk * sc);
-      ctx.shadowColor = 'rgba(30,40,60,0.35)'; ctx.shadowOffsetY = 8; ctx.shadowBlur = 0;
-      text(ctx, 'NOSTALGIA', 0, 0, 190, { color: '#ffffff', track: 26 });
-      ctx.shadowColor = 'transparent';
-      const u2 = ease.out(clamp((t - slamT - 0.55) / 0.7, 0, 1));
-      ctx.globalAlpha = u2;
-      text(ctx, 'a Hyderabad story on one cassette', 0, (port ? 140 : 132) + 14 * (1 - u2), port ? 62 : 48, { weight: 500, color: '#2a3a4a', track: 3 + 6 * (1 - u2) });
+      const tk = port ? (W / 1920) * 1.15 : k, ty = port ? H * 0.3 : 150 * k;
+      ctx.save(); ctx.translate(W / 2, ty); ctx.scale(tk * sc, tk * sc);
+      wordmark(ctx, 'NOSTALGIA', 0, 0, 170, 26);
       ctx.restore();
+      const u2 = ease.out(clamp((t - slamT - 0.55) / 0.6, 0, 1));
+      if (u2 > 0) {
+        const ls = port ? 56 : 44; // label sits a clear gap below the wordmark's extrusion
+        ctx.save(); ctx.translate(W / 2, ty + (98 + ls * 0.725) * tk + 10 * tk * (1 - u2)); ctx.scale(tk * (0.94 + 0.06 * u2), tk * (0.94 + 0.06 * u2)); ctx.globalAlpha = u2;
+        tapeLabel(ctx, 'a Hyderabad story on one cassette', 0, 0, ls);
+        ctx.restore();
+      }
       if (t - slamT < 0.16) { ctx.fillStyle = 'rgba(255,255,255,' + (0.7 * (1 - (t - slamT) / 0.16)) + ')'; ctx.fillRect(0, 0, W, H); }
     }
   }
