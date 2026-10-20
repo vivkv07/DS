@@ -39,10 +39,15 @@
  *                     others in a time limit; catches are by proximity + facing; roles swap every round. Solo:
  *                     round 1 AI Nanna hunts you, round 2 you are Daddy and hunt AI Immu and Ayesha.
  *   The course (start, doors, seekers, spots, dog, lamps) comes from ctx.seed, so every phone builds the same one;
- *   the host simulates the seekers / AI kids / dog and broadcasts them (lh:sk, 6 Hz); each phone owns its kid
- *   (lh:pos 6 Hz, lh:st on changes, lh:wh whistles); the Daddy's phone owns his catches (lh:catch).
- * SOLO without N.party: the "Late! Ghar chalo" prompt at Café Gulistan and the Ashok Nagar ground at dusk
- *   (18:40-21:30, no mission, Chappal Meter 0), or N.latehome.start({venue, variant}).
+ *   the host simulates the seekers / AI kids / dog and sends one snapshot 'lhsk' 6 times a second (with its own kid,
+ *   flavour events, the round and the catches it owes); each guest sends 'lhpos' 5 times a second (its kid + state);
+ *   rare: 'lhwh' (whistle), 'lhseen', 'lhcatch' (a human Daddy's catch, repeated until it shows), 'lhit'. All inside
+ *   party.js's 12 messages / s budget. Results go to party.js (ctx.report / ctx.ai.report), which ranks them
+ *   ('hide': not caught first, then score) and shows its results card; reports are sent at the end of a sim step.
+ * SOLO: the "Late! Ghar chalo" prompt at Café Gulistan and the Ashok Nagar ground at dusk (18:40-21:30, no mission,
+ *   Chappal Meter 0) or N.latehome.start({venue, variant}) run through N.party.solo when party.js is there (its
+ *   countdown, results card, "Again!"); without it (or with {direct: true}) on a solo ctx of our own, with our own
+ *   results card (R = Phir se, E = Aage chalo).
  * CHAPPAL METER / CURFEW (light touch, no lasting penalty): while a run is on, N.flags.no_curfew = 'latehome' and
  *   N.wanted is frozen; a win says "NOBODY SAW!", a loss gets a scolding line from Amma; nothing is fined.
  *
@@ -51,14 +56,16 @@
  *   startWith(ctx, opts) (run with a party-contract ctx: tests / other hosts), stop(reason), active(),
  *   state() -> plain snapshot (phase, me, kids, seekers, spots, doors, collectibles, dogs ...), TUNE, VENUES,
  *   eligible(venueId) -> why-not string | '', offerAt(x, y) -> venue id | null, registered (party ids),
- *   debug {hint() (the sneak planner's next move for the local kid), session(), meter(v), catchMe(), win(),
- *          setSeekersFrozen(on), seeAll(on), nearestHide(), place(kind) (a spot by kind) } }
+ *   debug {hint() (the sneak planner: next move + REAL keys for the local kid), session(), meter(v), catchMe(), win(),
+ *          setSeekersFrozen(on), unseen(on) (set a scene up unspotted), nearestHide(), place(kind), coneSpot(role),
+ *          resolveAI(), endRound(), v3() (3D layer counts) } }
  * Events: 'latehome:start' {variant, venue, mode}, 'latehome:spotted' {uid, by}, 'latehome:caught' {uid, by},
  *   'latehome:home' {uid, time, spots}, 'latehome:end' {results}, 'latehome:round' {round, daddy}.
  * HOOKS (from this file only; marked "[latehome hook]" where they touch another module's state):
- *   - systems 'lh.pre' (19, store the player's position), 'lh.ctl' (15, hide / whistle / creep input, owns ACTION
- *     with a priority-90 offer while playing), 'lh.sim' (31, after vehicles: seekers, kids, network, draw),
- *     'lh.label' (59, the touch ACTION label while hidden);
+ *   - systems 'lh.ui' (14, every mode: the results card keys), 'lh.ctl' (15, hide / whistle / creep input, owns ACTION
+ *     with a priority-90 offer while sneaking; the roof stairs keep theirs), 'lh.pre' / 'lh.post' (19.5 / 21, around
+ *     the player: crouching creeps at TUNE.creepMul, hiding holds still), 'lh.sim' (31, after vehicles: seekers,
+ *     kids, dogs, network, HUD; draw: 2D cones / props / lights);
  *   - N.view3d.registerLayer('latehome'): cones, props, door markers, lamps, TV glow, the peeking head;
  *   - N.clock.hold('latehome'), N.flags.no_curfew / no_save, N.wanted.freeze(true, 'latehome'),
  *     N.traffic.closeRoads('latehome', ...), N.npcs.schedule('colony_aunties' | 'bahadur_night', off) during a
@@ -153,7 +160,6 @@
       line: 'The match at Ashok Nagar ground ran late. The street lights are ON.' },
   };
   // the friends' homes (bible §2.3: Immu across the colony ground); other kids get colony doors
-  const HOMES = { chinnu: 'home', immu: 'friend_home' };
   const HOME_ROOF = { home: 'home_terrace', friend_home: 'friend_terrace' };
 
   /* ================================================================ small helpers */
@@ -189,7 +195,6 @@
   function walkable(x, y) { try { return !!N.world.isWalkable(x, y); } catch (e) { return false; } }
   function free(x, y, r) { try { return N.world.findFree(x, y, 'walk', r || 8); } catch (e) { return null; } }
   function clear(ax, ay, bx, by) { try { return !N.world.raycast(ax, ay, bx, by, 'walk').hit; } catch (e) { return false; } }
-  function nightNow() { try { return N.render && N.render.night != null ? N.render.night : (N.clock.isNight() ? 1 : 0); } catch (e) { return 1; } }
   function is3D() { try { return !!(N.view && N.view.is3D && N.view.is3D()); } catch (e) { return false; } }
   function placePos(id) { const q = N.places && N.places[id]; return q ? { x: q.x, y: q.y } : null; }
   function fmtT(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
@@ -2425,7 +2430,7 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
     ctx.closePath();
     const ox = R.sx(C.x, k), oy = R.sy(C.y, k);
     const g = ctx.createRadialGradient(ox, oy, 2, ox, oy, Math.max(4, C.range * k));
-    const a0 = light ? 0.34 : 0.24, a1 = light ? 0.06 : 0.05;
+    const a0 = light ? 0.42 : 0.26, a1 = light ? 0.08 : 0.05;
     g.addColorStop(0, 'rgba(' + col.join(',') + ',' + a0 + ')');
     g.addColorStop(1, 'rgba(' + col.join(',') + ',' + a1 + ')');
     ctx.globalCompositeOperation = light ? 'lighter' : 'source-over';
@@ -2626,18 +2631,18 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
     };
     V3.mats = {
       pole: H.mat('#4a4a52'), head: H.mat('#ffe2a0', { emissive: '#ffcf70', emissiveIntensity: 1.6 }),
-      pool: new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending }),
+      pool: new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }),
       wall: H.mat('#c8b89a'), wallTop: H.mat('#ded2b8'), pan: H.mat('#7a4a2a'), panTop: H.mat('#2f7a42'), chair: H.mat('#c0282a'),
       win: own('#ffd27a', { emissive: '#ffc060', emissiveIntensity: 1.2 }), winOff: H.mat('#3a4a7a', { emissive: '#22305a', emissiveIntensity: 0.6 }),
-      tv: new THREE.MeshBasicMaterial({ color: 0x7aa8ff, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
-      doorMine: new THREE.MeshBasicMaterial({ color: 0xff5fb0, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }),
-      doorOther: new THREE.MeshBasicMaterial({ color: 0xb4c8ff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }),
+      tv: new THREE.MeshBasicMaterial({ color: 0x7aa8ff, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false }),
+      doorMine: new THREE.MeshBasicMaterial({ color: 0xff5fb0, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }),
+      doorOther: new THREE.MeshBasicMaterial({ color: 0xb4c8ff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }),
       house: H.mat('#ff5fb0', { emissive: '#ff5fb0', emissiveIntensity: 0.8 }), houseOther: H.mat('#b4c8ff', { emissive: '#8aa0e0', emissiveIntensity: 0.6 }),
       goli: H.mat('#2f9a8a', { emissive: '#2a8a7a', emissiveIntensity: 0.5 }), manja: H.mat('#ff5fb0', { emissive: '#c03080', emissiveIntensity: 0.4 }),
-      hide: new THREE.MeshBasicMaterial({ color: 0xdceaff, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide }),
-      hideOn: new THREE.MeshBasicMaterial({ color: 0xa0ffbe, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }),
+      hide: new THREE.MeshBasicMaterial({ color: 0xdceaff, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }),
+      hideOn: new THREE.MeshBasicMaterial({ color: 0xa0ffbe, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }),
       skin: H.mat('#b97a4f'), hair: H.mat('#1a1412'),
-      ghost: new THREE.MeshBasicMaterial({ color: 0xbfe0ff, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }),
+      ghost: new THREE.MeshBasicMaterial({ color: 0xbfe0ff, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }),
     };
     V3.eyeMat = [0, 1, 2].map((i) => new THREE.SpriteMaterial({ map: eyeTex(THREE, i), transparent: true, depthWrite: false, depthTest: false }));
     V3.ok = true;
@@ -2666,6 +2671,7 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
     V3.root.add(m);
     return m;
   }
+  const CONE_COL3D = { walker: [255, 150, 40], chair: [255, 150, 40], window: [255, 90, 170], watchman: [255, 226, 140], daddy: [255, 240, 200], hunter: [255, 226, 140] };
   function coneMesh(role) {
     const THREE = V3.T, n = 30;
     const geo = new THREE.BufferGeometry();
@@ -2675,8 +2681,8 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
     for (let i = 1; i <= n; i++) idx.push(0, i, i + 1);
     geo.setIndex(idx);
     const light = role === 'watchman' || role === 'daddy' || role === 'hunter';
-    const col = CONE_COL[role] || CONE_COL.walker;
-    const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(col[0] / 255, col[1] / 255, col[2] / 255), transparent: true, opacity: light ? 0.34 : 0.3, depthWrite: false, side: THREE.DoubleSide, blending: light ? THREE.AdditiveBlending : THREE.NormalBlending });
+    const col = (CONE_COL3D[role] || CONE_COL3D.walker);
+    const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(col[0] / 255, col[1] / 255, col[2] / 255), transparent: true, opacity: light ? 0.34 : 0.3, depthWrite: false, side: THREE.DoubleSide, blending: light ? THREE.AdditiveBlending : THREE.NormalBlending, toneMapped: false });
     const m = new THREE.Mesh(geo, mat);
     m.userData.noShadow = true; m.userData.ownGeo = true; m.renderOrder = 3; m.frustumCulled = false;
     V3.root.add(m);
@@ -2684,7 +2690,7 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
     const lgeo = new THREE.BufferGeometry();
     const lpos = new Float32Array((n + 3) * 3);
     lgeo.setAttribute('position', new THREE.BufferAttribute(lpos, 3));
-    const lmat = new THREE.LineBasicMaterial({ color: new THREE.Color(col[0] / 255, col[1] / 255, col[2] / 255), transparent: true, opacity: 0.75, depthWrite: false });
+    const lmat = new THREE.LineBasicMaterial({ color: new THREE.Color(col[0] / 255, col[1] / 255, col[2] / 255), transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false });
     const line = new THREE.Line(lgeo, lmat);
     line.userData.ownGeo = true; line.renderOrder = 4; line.frustumCulled = false;
     V3.root.add(line);
@@ -2793,7 +2799,7 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
       const col = alert ? [255, 90, 70] : c.col;
       c.m.material.color.setRGB(col[0] / 255, col[1] / 255, col[2] / 255);
       c.line.material.color.setRGB(col[0] / 255, col[1] / 255, col[2] / 255);
-      c.m.material.opacity = (c.light ? 0.34 : 0.3) * (alert ? 1.4 : 1);
+      c.m.material.opacity = (c.light ? 0.3 : 0.36) * (alert ? 1.3 : 1);
     };
     for (const c of V3.cones) fill(c, c.sk.cone, !!(c.sk.track && c.sk.trackT > 0));
     while (V3.vcone.length < S.virtualSeekers.length) V3.vcone.push(coneMesh('hunter'));
@@ -3041,6 +3047,7 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
       place(kind) { if (!S) return null; const h = S.C.hides.find((q) => q.kind === kind); return h ? { kind: h.kind, x: h.x, y: h.y, r: h.r } : null; },
       coneSpot,
       resolveAI() { if (S) resolveAI(); },
+      endRound() { if (S) endRound('debug'); return S ? S.phase : null; },
       threatAt: (x, y, m) => { const t = threatAt(x, y, m || 0); return t ? t.idx : -1; },
       paths: () => (S ? S.C.paths : null),
       _v3: V3,

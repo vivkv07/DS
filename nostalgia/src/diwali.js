@@ -121,7 +121,7 @@
     litterPerCell: 11,     // seeded bits per cell at full weight and litterLevel 1
     litterR3d: 230,        // 3D: the paper lives this far round the player
     wake: { k: 1, lift: 1, len: 1.25, spread: 0.42 }, // vehicle wake strength / lift / length (x body) / widening
-    windAir: 30,           // u/s of air per unit of N.wind strength
+    windAir: 26,           // u/s of air per unit of N.wind strength (a breeze stirs the lightest paper, a gusty day all of it)
     heat: 45,              // Chappal Meter heat for lighting near elders / animals / a hospital
     lightR: 24,            // within this of Amma / Nanna or a family's bucket the player may light one
     elderR: 30, animalR: 40,

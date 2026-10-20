@@ -34,20 +34,31 @@
  *                     Chetak's corner). Checkpoint 'found'. Tiger then sleeps on the gunny sack for the night.
  *   diwali_week       post-game only (N.flags.postgame, 10 Sep - 19 Oct 2003): Amma's "Diwali is next week" card at
  *                     `home` ▶▶s the calendar to Mon 20 Oct. It is a J-card, not a mission: it ends without a
- *                     MISSION PASSED banner and comes back after the next ◀◀ REWIND.
+ *                     MISSION PASSED banner and comes back after the next ◀◀ REWIND. (Played in the story already:
+ *                     the same card with Amma's "Diwali again?" line; what was done stays done, nothing doubles.)
+ * IN THE STORY (the chapter between Track 10 "Agle Baras" and the Sat 1 Nov interlude -> Track 11; not a numbered
+ *   track): after Agle Baras the story goes to Mon 20 Oct 2003 (Amma and Ammamma's card), the calendar loops the
+ *   week (Mon 20 - Sun 26) until Mithai Run and Deepon ki Raat are done (the other three stay optional and offered),
+ *   Ammamma's swing at home holds the chapter's J-card ("Wait till Sat 25 Oct · 15:00 ▶▶" / "Wait till 18:30 ▶▶" /
+ *   "Diwali's done: Sleep ▶▶"), the Clues page and the free-roam objective line carry the plan, then the outro and
+ *   story2's interlude. See "Diwali week in the story" below (N.dwMissions.story).
  * Kid-safe (bible §1.5): an adult is always there, nothing is ever aimed at a person or an animal, the bangs that
  * scare Tiger are far away, nobody is hurt; a bomb in the basket is a funny fail, never a bang.
  *
- * API  N.dwMissions = {TUNE, IDS, ITEMS, season(name), state(), box() -> {id: n}, debug: {state(), skip(), ...}}
+ * API  N.dwMissions = {TUNE, IDS, ITEMS, season(name), state(), box() -> {id: n}, debug: {state(), skip(), ...},
+ *        story: {blocks(), resume(), begin(), sleep(), state(), REQ, WEEK}}
  * Save section 'diwali_missions' {v, prog {per mission}, box (the fallback stash), tiger}. Flags written:
- *   diwali_sevai_promise, dw_bazaar_items, tiger_safe (day), dw_photo, dw_terrace, no_curfew ('diwali' grace).
+ *   diwali_sevai_promise, dw_bazaar_items, tiger_safe (day), dw_photo, dw_terrace, no_curfew ('diwali' grace),
+ *   dw_story ('week' | 'done'), dw_back (the date to go back to, for a save made after the interlude).
  * Items given: amma_list, cracker_box, mithai_boxes, jasmine, bucket. Tin tokens: clay_diya, diwali_photo.
  * Private fallbacks (used only while N.diwali lacks them): fireworks (burst / rocket / bottle / show), the cracker stash
  *   (Chitti's snake tablets always: N.diwali.box keeps only phuljhadi chakri anaar rocket),
  *   the pataakha stall at Sultan Bazaar, the season test (pataakha 20-26 Oct, diwali 22-26 Oct 2003 when seasons.js
  *   has no such names), the whimper sound (a caption).
  * Hooks in files this module does not own (each marked "[diwali hook]"): index.html (script tag), story2.js (the
- *   Eid morning sevaiyan line, read from N.flags.diwali_sevai_promise).
+ *   Eid morning sevaiyan line, read from N.flags.diwali_sevai_promise). Marked "[diwali story]": story2.js (after
+ *   Track 10 / on load: N.dwMissions.story.blocks() -> resume(); Last Bell's `when`; SEASONS.october in ◀◀ REWIND),
+ *   storycore.js (DATES.diwali_week, DATES.deepavali).
  */
 (() => {
   'use strict';
@@ -1740,11 +1751,14 @@
       jcardLine: 'Bucket first. Aim it at the sky. Never in the wind.', when: () => diwaliOn(), script: rocket });
     mk({ id: 'tiger_ko_bachao', title: 'Tiger ko Bachao', chapter: 'Side activity · Diwali (optional)', giver: { place: 'friend_home', r: 16 }, window: { from: '19:00', to: '23:30' },
       jcardLine: 'Tiger is hiding from the crackers. (Optional)', when: () => diwaliOn(), help: false, script: tiger });
-    mk({ id: 'diwali_week', title: 'Diwali Week', chapter: 'Post-game', giver: { place: 'home', r: 16 }, window: { from: '07:00', to: '21:00' },
+    const wk = mk({ id: 'diwali_week', title: 'Diwali Week', chapter: 'Post-game', giver: { place: 'home', r: 16 }, window: { from: '07:00', to: '21:00' },
       jcardLine: 'Amma: “Diwali is next week.” ▶▶ Mon 20 Oct 2003', help: false,
       when: () => postgame() && inYearOct() && !stallsOn(), script: diwaliWeek });
+    // (played in the story already: the same card, a line that knows it; what was done stays done)
+    const wd = wk || M.defs.diwali_week;
+    if (wd) Object.defineProperty(wd, 'jcardLine', { configurable: true, enumerable: true, get: () => (F().dw_story === 'done' ? 'Amma: “Diwali again? Your Nanna is already counting phuljhadis.” ▶▶ Mon 20 Oct 2003' : 'Amma: “Diwali is next week.” ▶▶ Mon 20 Oct 2003') });
     // after CONTINUE / a pass the player often stands in a giver's ring: it waits until he has stepped out once
-    for (const id of IDS) { const d = M.defs[id]; if (!d || d._dwGate) continue; const w0 = d.when; d.when = () => stepOutOK(id) && (!w0 || w0()); d._dwGate = true; }
+    for (const id of IDS) { const d = M.defs[id]; if (!d || d._dwGate) continue; const w0 = d.when; d._dwWhen = w0 || null; d.when = () => stepOutOK(id) && (!w0 || w0()); d._dwGate = true; }
   }
   function stepOutOK(id) {
     const so = ST.stepOut;
@@ -1761,6 +1775,320 @@
   }
   const absMin = () => (N.clock ? N.clock.day * 1440 + N.clock.minutes : 0);
   function inYearOct() { const d = dateNow(); return !!d && d.y === 2003 && inDates('09-10', '10-19'); }
+
+  /* ================================================================ Diwali week in the story (after Track 10, before the interlude) */
+  // A chapter interlude, not a numbered track (the tape stays at twelve tracks). After Agle Baras (Track 10, 10 Sep) the
+  // story goes to Mon 20 Oct 2003 (not straight to the Sat 1 Nov interlude): Amma and Ammamma's card, then the week.
+  // Story-required: mithai_run (Immu's Ammi: "Eid pe sevaiyan pakki!", paid off on Eid morning in story2.js) and
+  // deepon_ki_raat. Optional, offered as always (givers, blips, the Clues page): pataakha_bazaar, rocket_bunty (Bunty-anna
+  // brings his own rocket: no bazaar box needed), tiger_ko_bachao. The calendar loops Mon 20 - Sun 26 Oct
+  // (N.calendar.setHorizon) until the chapter is over, so a missed window comes round again. Ammamma's swing at home
+  // holds the chapter's J-card: "Wait till Sat 25 Oct · 15:00 ▶▶" (Deepavali) / "Wait till 18:30 ▶▶" while no required
+  // activity is open, then "Diwali's done: Sleep ▶▶" (the player chooses when) -> the outro -> story2's interlude
+  // (Sat 1 Nov) -> Track 11, exactly as before. story2.js asks N.dwMissions.story.blocks() before its interlude and in
+  // Last Bell's `when` (marked "[diwali story]"). Saves: one from after Track 10 and before Track 11 plays the week on
+  // load (one made after the interlude, by an older build: ◀◀ back to Mon 20 Oct, then ▶▶ back to its own date); one at
+  // or after Last Bell, or in the post-game, never. Flags: dw_story ('week' | 'done'), dw_back (that date).
+  const REQ = ['mithai_run', 'deepon_ki_raat'];
+  const WEEK = { start: [2003, 10, 20, 9, 30], horizon: [2003, 10, 27], first: 22, deepavali: 25, last: 26, hint: 'diwali_story', swing: [-30, -2], r: 12 };
+  const SS = { busy: false, ending: false, card: null, jc: null, blips: new Set(), obj: null, t: 0, npc: null };
+  const pad2 = (n) => (n < 10 ? '0' : '') + n;
+  const hmOf = (v) => { const r = /^(\d{1,2}):(\d{2})$/.exec(String(v || '')); return r ? +r[1] * 60 + +r[2] : null; };
+  const fmtHM = (m) => pad2(Math.floor(m / 60) % 24) + ':' + pad2(m % 60);
+  const weekStart = () => (N.calendar && N.calendar.DATES && N.calendar.DATES.diwali_week) || WEEK.start; // storycore DATES ([diwali story])
+  function nowSpec() { const d = dateNow(); const m = N.clock ? N.clock.minutes : 0; return d ? [d.y, d.m, d.d, Math.floor(m / 60), Math.floor(m % 60)] : null; }
+  /** the chapter is still to be played (or is being played) in this story */
+  function storyPending() {
+    const f = F(), M = N.missions;
+    if (!M || !M.defs || !REQ.every((id) => M.defs[id])) return false;
+    if (f.postgame || isDone('chand_raat') || isDone('last_bell')) return false;
+    return isDone('agle_baras') && f.dw_story !== 'done';
+  }
+  const storyOK = () => !!(N.story2 && typeof N.story2.runScene === 'function');
+  const storyWeek = () => storyPending() && F().dw_story === 'week';
+  const reqLeft = () => REQ.filter((id) => !isDone(id));
+  /** open right now (its own `when` + window), ignoring the step-out gate of the J-card */
+  function openNow(id) {
+    const M = N.missions, d = M && M.defs[id];
+    if (!d || isDone(id) || (run() && run().id === id)) return false;
+    try { if (d._dwWhen && !d._dwWhen()) return false; } catch (e) { return false; }
+    return M.inWindow ? !!M.inWindow(id) : true;
+  }
+  function inWeek() { const d = dateNow(); return !!d && d.y === 2003 && d.m === 10 && d.d >= 20 && d.d <= WEEK.last; }
+  /** the next window of a required activity: Mon / Tue -> Deepavali (Sat 25); Wed - Sun -> today's or tomorrow's; after
+   *  Sunday's the week comes round again (the loop) -> Sat 25. */
+  function nextWindow(ids) {
+    const C = N.calendar, today = dateNow();
+    if (!C || !today) return null;
+    let best = null;
+    for (const id of ids) {
+      const d = N.missions.defs[id], a = hmOf(d && d.window && d.window.from);
+      if (a == null) continue;
+      const minD = today.m === 10 && today.d < WEEK.first ? WEEK.deepavali : WEEK.first;
+      for (let k = 0; k < 8; k++) {
+        const t = C.dateOf(N.clock.day + k);
+        if (t.y !== 2003 || t.m !== 10 || t.d < minD || t.d > WEEK.last) continue;
+        if (k === 0 && N.clock.minutes >= a) continue;
+        const key = (N.clock.day + k) * 1440 + a;
+        if (!best || key < best.key) best = { id, key, ymd: [t.y, t.m, t.d], d: t.d, a, label: t.label, today: k === 0 };
+        break;
+      }
+    }
+    if (best) return best;
+    // Sunday's windows are gone: the week loops, Deepavali comes round again
+    const id = ids[0], d = N.missions.defs[id], a = hmOf(d && d.window && d.window.from) || 15 * 60;
+    return { id, key: Infinity, ymd: [2003, 10, WEEK.deepavali], d: WEEK.deepavali, a, label: 'SAT 25 OCT 2003', today: false, loop: true };
+  }
+  function swingSpot() {
+    const am = N.npcs && N.npcs.get ? N.npcs.get('ammamma') : null, h = pos('home');
+    if (am && h && !am.level && Math.hypot(am.x - (h.x + WEEK.swing[0]), am.y - (h.y + WEEK.swing[1])) < 30) return { x: am.x, y: am.y };
+    return SS.swing || (SS.swing = spot('home', WEEK.swing[0], WEEK.swing[1], 20));
+  }
+  function clueText() {
+    const left = reqLeft();
+    if (!left.length) return 'Diwali\'s done. Ammamma\'s swing at home when you are ready to sleep. (Out tonight, if you want: Bunty-anna\'s rocket at the colony ground, Tiger at Immu\'s.)';
+    if (left.length === 1 && left[0] === 'deepon_ki_raat') return 'Deepavali: the five boxes of sweets are given (Eid pe sevaiyan pakki!). Now twenty-one diyas on the terrace with Ammamma, from 18:30.';
+    if (left.length === 1) return 'Deepavali: the diyas are lit. Still Amma\'s five boxes of sweets for the neighbours, from 15:00.';
+    return 'Diwali week. Deepavali is Saturday: the sweets for the neighbours with Amma (from 15:00), then twenty-one diyas on the terrace with Ammamma (from 18:30). At Ammamma\'s swing you can ▶▶ to Saturday. If you want: Amma\'s cracker list for Sultan Bazaar (mornings), Bunty-anna\'s rocket and Tiger (nights, from Wednesday).';
+  }
+  function objText() {
+    const left = reqLeft();
+    if (!left.length) return 'Diwali\'s done. Home to sleep (Ammamma\'s swing).';
+    if (left.length === 1 && left[0] === 'deepon_ki_raat') return 'Deepavali: twenty-one diyas with Ammamma (from 18:30).';
+    if (left.length === 1) return 'Deepavali: Amma\'s five boxes of sweets (from 15:00).';
+    return 'Diwali week: Deepavali is Saturday (Ammamma, at home).';
+  }
+  function hintSync() {
+    const H = N.hints;
+    if (!H || !H.start) return;
+    const clue = clueText(), A = H.active;
+    if (A && A.id === WEEK.hint && A.clue === clue) return;
+    try { H.start(WEEK.hint, { clue, answer: 'home', name: 'home' }); } catch (e) { N.err('dwm.story.hint', e); }
+  }
+  function registerStoryHint() {
+    if (!N.hints || !N.hints.register) return;
+    N.hints.register(WEEK.hint, {
+      clue: clueText(), answer: 'home', name: 'home', auto: 'home', aunty: 'home',
+      ammamma: 'Saturday is Deepavali, *kanna*. Sweets for the neighbours at three, diyas with me after dark. Sit with me on the swing and Saturday comes quicker.',
+      city: ['Diwali? Ask at any house with a rangoli, *beta*. That\'s all of them.', 'Sweets, crackers, diyas. Go home, your Ammamma is waiting.', 'Your Ammamma\'s swing, *beta*. Where else does Diwali start?'],
+    });
+  }
+  function storySave(why) {
+    try { if (N.save && N.save.save && N.save.save({ reason: 'mission', toast: false })) toast('SIDE A saved ●', 2000, 'save'); } catch (e) { N.err('dwm.story.save:' + (why || ''), e); }
+  }
+
+  /** The way in: Mon 20 Oct 2003, a card in the story's own voice (story2's scene runner: no save half-way). */
+  async function sceneIn(sc, back) {
+    const p = N.player;
+    await sc.wait(0.2);
+    await sc.jumpTo(weekStart(), { fx: back ? 'rewind' : 'ff' });
+    const h = spot('home', 6, 16, 24);
+    if (h && p) { if (p.vehicle && N.vehicles && N.vehicles.exit) { try { N.vehicles.exit(p, true); } catch (e) { /* ignore */ } } p.teleport(h.x, h.y); try { if (N.render.snapCamera) N.render.snapCamera(); } catch (e) { /* ignore */ } }
+    npc(sc, 'amma', spot('home', 16, 4), { idle: 'stand' });
+    face('amma', 'player');
+    await sc.cutscene([{ type: 'card', title: 'MON 20 OCT 2003', sub: back ? '◀◀ The week Side A forgot to record: Diwali.' : 'Diwali week. The pataakha stalls are up on Sultan Bazaar.', ms: 3400 }]);
+    await sc.talk([
+      { s: 'amma', t: '{nick}! Deepavali is on Saturday. Your Nanna has already started counting phuljhadis.' },
+      { s: 'ammamma', t: 'Sweets for the neighbours on Saturday afternoon, *kanna*, and twenty-one diyas on the terrace after dark. You are my helper this year.' },
+      { s: 'chinnu', t: 'Immu also? He can carry the matchbox.' },
+      { s: 'amma', t: 'Immu won\'t be here for the next one, {nick}. So this one, we do properly.', mood: 'sad' },
+      { s: 'chinnu', t: '...', mood: 'sad' },
+      { s: 'ammamma', t: 'Then we light so many, he can see them from the aeroplane.' },
+    ]);
+    F().dw_story = 'week';
+  }
+  /** The way out (after "Sleep ▶▶" at Ammamma's swing): then the interlude, as before. */
+  async function sceneOut(sc) {
+    const am = N.npcs && N.npcs.get ? N.npcs.get('ammamma') : null;
+    if (!am || am.level) npc(sc, 'ammamma', spot('home', WEEK.swing[0], WEEK.swing[1], 20), { idle: 'sit' });
+    face('ammamma', 'player');
+    await sc.cutscene([{ type: 'text', lines: ['Deepavali night. The colony smells of gunpowder and ghee; somewhere, one last rocket goes up.'], ms: 3200 }]);
+    await sc.talk([
+      { s: 'ammamma', t: 'Sweets given, diyas lit. Lakshmi has our address now, *kanna*. Go and sleep.' },
+      { s: 'chinnu', t: 'Ammamma... next Diwali, who do I take the first box to?', mood: 'sad' },
+      { s: 'ammamma', t: 'Next Diwali, you light one diya extra. For him. Lakshmi knows the way to America also.' },
+      { s: 'chinnu', t: 'Twenty-two is showing off.' },
+      { s: 'ammamma', t: 'For him, we show off.' },
+    ]);
+    await sc.cutscene([{ type: 'text', lines: ['The diyas burn down one by one. On the shelf, the 2-in-1 still says 812.'], ms: 3400 }]);
+  }
+  function storyBegin() {
+    if (SS.busy || !storyPending() || !storyOK() || N.story2.scene || run()) return Promise.resolve(false);
+    const f = F();
+    if (f.dw_story === 'week') { weekOn(true); return Promise.resolve(true); }
+    SS.busy = true;
+    // a save from after the interlude (an older build skipped the week): back to its own date afterwards
+    const back = f.interlude_done ? nowSpec() : null;
+    return N.story2.runScene('diwali_in', (sc) => sceneIn(sc, back)).then((ok) => {
+      SS.busy = false;
+      if (!ok) return false;
+      const g = F();
+      g.dw_story = 'week';
+      if (back) g.dw_back = back; else delete g.dw_back;
+      weekOn(false);
+      const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y, t: absMin() };
+      storySave('diwali week');
+      toast('Diwali week. The plan is on the Clues page of the Journal (J).', 3400);
+      N.emit('dwstory', { phase: 'week' });
+      return true;
+    }, (e) => { SS.busy = false; N.err('dwm.story.in', e); return false; });
+  }
+  /** the week is on (after the card, or after a load inside it) */
+  function weekOn(loaded) {
+    try { if (N.calendar && N.calendar.setHorizon) N.calendar.setHorizon(WEEK.horizon); } catch (e) { N.err('dwm.story.loop', e); }
+    if (!inWeek() && N.calendar && N.calendar.jumpTo) { try { N.calendar.jumpTo(weekStart(), { fx: 'ff' }); } catch (e) { N.err('dwm.story.date', e); } }
+    hintSync();
+    SS.t = 0;
+    if (loaded) toast(objText(), 3200);
+  }
+  function storySleep() {
+    if (SS.ending || !storyWeek() || reqLeft().length || run() || !storyOK() || N.story2.scene) return false;
+    SS.ending = true;
+    storyClear();
+    N.story2.runScene('diwali_out', sceneOut).then((ok) => {
+      SS.ending = false;
+      if (!ok) return;
+      const f = F();
+      f.dw_story = 'done';
+      const back = f.dw_back; delete f.dw_back;
+      try { if (N.calendar && N.calendar.setHorizon) N.calendar.setHorizon(null); } catch (e) { N.err('dwm.story.loop', e); }
+      try { const A = N.hints && N.hints.active; if (A && A.id === WEEK.hint) N.hints.stop(); } catch (e) { /* ignore */ }
+      N.emit('dwstory', { phase: 'done' });
+      if (f.interlude_done) {
+        // (a save from after the interlude) ▶▶ back to the date it was made on
+        const to = back || (N.calendar && N.calendar.DATES && N.calendar.DATES.interlude) || [2003, 11, 1, 19, 40];
+        Promise.resolve(N.calendar.jumpTo(to, { fx: 'ff' })).then(() => storySave('diwali done'), (e) => N.err('dwm.story.back', e));
+        return;
+      }
+      storySave('diwali done');
+      try { if (N.story2.interlude) N.story2.interlude(); } catch (e) { N.err('dwm.story.interlude', e); }
+    }, (e) => { SS.ending = false; N.err('dwm.story.out', e); });
+    return true;
+  }
+  function storyClear() {
+    if (SS.jc) { SS.jc = null; try { N.hud.jcard(null); } catch (e) { /* ignore */ } }
+    for (const id of SS.blips) { try { N.hud.unblip(id); } catch (e) { /* ignore */ } }
+    SS.blips.clear();
+    if (SS.obj != null) { try { if (N.hud.objectiveText === SS.obj) N.hud.objective(null); } catch (e) { /* ignore */ } SS.obj = null; }
+    SS.card = null;
+    if (SS.npc) { despawn(SS.npc); SS.npc = null; }
+  }
+  function storyBlip(id, at, o) {
+    try { if (!SS.blips.has(id) || o.force) N.hud.blip(id, at, Object.assign({ color: '#f2c230', icon: 'giver', pulse: true, edge: false, size: 1.1 }, o)); } catch (e) { return; }
+    SS.blips.add(id);
+  }
+  function storyUnblip(id) { if (SS.blips.has(id)) { try { N.hud.unblip(id); } catch (e) { /* ignore */ } SS.blips.delete(id); } }
+  /** per step in free roam: the chapter's J-card at Ammamma's swing, the blips, the objective line, the clue */
+  function storyTick(dt) {
+    if (!storyWeek() || SS.ending) { if (SS.card || SS.blips.size || SS.obj != null || SS.jc) storyClear(); return; }
+    const M = N.missions, p = N.player;
+    const busy = !!(run() || (N.story2 && N.story2.scene) || (N.calendar && N.calendar.jumping) || mode() !== 'play');
+    SS.t -= dt;
+    if (SS.t <= 0) {
+      SS.t = 0.5;
+      hintSync();
+      const left = reqLeft();
+      let card = null;
+      if (!busy) {
+        if (!left.length) card = { kind: 'sleep' };
+        else if (!left.some(openNow)) { const w = nextWindow(left); if (w) card = Object.assign({ kind: 'wait' }, w); }
+      }
+      if (card) { const s = swingSpot(); card.x = s.x; card.y = s.y; card.r = WEEK.r; }
+      SS.card = card;
+      if (card) storyBlip('dwstory:card', { x: card.x, y: card.y }, { label: card.kind === 'sleep' ? 'Ammamma: sleep' : 'Ammamma: Deepavali ▶▶', force: !SS.lastCard || SS.lastCard.x !== card.x || SS.lastCard.y !== card.y });
+      else storyUnblip('dwstory:card');
+      SS.lastCard = card;
+      // a required giver that is open but not on the minimap (the runner shows the nearest three side givers)
+      for (const id of REQ) {
+        const show = !busy && openNow(id) && !(N.hud.blips && N.hud.blips.has('giver:' + id));
+        if (show) { const g = M.giverPos(M.defs[id]); if (g) storyBlip('dwstory:' + id, { x: g.x, y: g.y }, { label: M.defs[id].title }); }
+        else storyUnblip('dwstory:' + id);
+      }
+      // Ammamma at the swing for the card after her swing hours (21:00)
+      const am = N.npcs && N.npcs.get ? N.npcs.get('ammamma') : null;
+      if (card && (!am || am.level) && !SS.npc && N.npcs && N.npcs.spawn && p && Math.hypot(card.x - p.x, card.y - p.y) < 500) {
+        try { const a = N.npcs.spawn('ammamma', { x: card.x, y: card.y }, { key: 'dwstory:ammamma', idle: 'sit', talk: false, owner: 'diwali-story' }); if (a) SS.npc = 'dwstory:ammamma'; } catch (e) { N.err('dwm.story.npc', e); }
+      } else if ((!card || (am && !am.level && am.key !== 'dwstory:ammamma')) && SS.npc) { despawn(SS.npc); SS.npc = null; }
+      // the objective line in free roam (missions and scenes write their own)
+      if (!busy) {
+        const t = objText(), cur = N.hud.objectiveText || '';
+        if ((!cur || cur === SS.obj) && cur !== t) { try { N.hud.objective(t); } catch (e) { /* ignore */ } }
+        if (!cur || cur === SS.obj) SS.obj = t;
+      }
+    }
+    // the J-card (missions.js style: E or the button; "Not now — step out")
+    const C = SS.card;
+    const near = C && !busy && p && !p.controlsLocked && Math.hypot(p.x - C.x, p.y - C.y) <= C.r + (SS.jc ? 6 : 0) && !p.level && !(p.vehicle);
+    if (!near) { if (SS.jc) { SS.jc = null; try { N.hud.jcard(null); } catch (e) { /* ignore */ } } return; }
+    if (M.prompt) { SS.jc = null; return; } // a mission's own J-card is up here
+    const go = () => {
+      const c = SS.card;
+      if (!c || run()) return;
+      if (c.kind === 'sleep') { storySleep(); return; }
+      SS.jc = null; try { N.hud.jcard(null); } catch (e) { /* ignore */ }
+      try { N.calendar.jumpTo([c.ymd[0], c.ymd[1], c.ymd[2], Math.floor(c.a / 60), c.a % 60], { fx: 'ff' }); } catch (e) { N.err('dwm.story.wait', e); }
+      SS.t = 0;
+    };
+    const d = M.defs[C.id] || {};
+    const spec = C.kind === 'sleep' ? {
+      key: 'dwstory:sleep', kind: 'side', head: 'DIWALI WEEK', title: 'DIWALI\'S DONE', sub: (dateNow() ? dateNow().label : '') + ' · ' + fmtHM(Math.floor(N.clock.minutes)),
+      line: 'Ammamma: “Lakshmi has our address now. Sleep, kanna.”' + (openNow('rocket_bunty') || openNow('tiger_ko_bachao') ? ' (Bunty-anna\'s rocket and Tiger are out tonight, if you want.)' : ''),
+      playLabel: 'Sleep ▶▶', progress: 0, onPlay: go,
+    } : {
+      key: 'dwstory:wait:' + C.id + ':' + C.d + ':' + C.a, kind: 'side', head: 'DIWALI WEEK', title: String(d.title || C.id).toUpperCase(), sub: C.label + ' · ' + fmtHM(C.a),
+      line: (d.jcardLine || '') + (openNow('pataakha_bazaar') ? ' (Amma\'s cracker list is open till 15:00, if you want.)' : ''),
+      playLabel: 'Wait till ' + (C.today ? '' : C.label.charAt(0) + C.label.slice(1, 3).toLowerCase() + ' ' + C.d + ' Oct · ') + fmtHM(C.a) + ' ▶▶', progress: 0, onPlay: go,
+    };
+    SS.jc = spec.key;
+    try { N.hud.jcard(spec); } catch (e) { N.err('dwm.story.jcard', e); }
+    N.interact.offer({ label: C.kind === 'sleep' ? 'Sleep ▶▶' : 'Wait ▶▶', priority: 6, dist: 0, use: go });
+  }
+  /** the chapter's marker at the swing (2D; the minimap blip shows it in every view) */
+  function drawStoryMarker() {
+    const C = SS.card, R = N.render;
+    if (!C || run() || !R || !R.inView || !R.inView(C.x, C.y, 60) || (N.view3d && N.view3d.active)) return;
+    const t = (N.time && N.time.real) || 0;
+    R.queue('ground', 3, (ctx) => {
+      const k0 = R.k(0), Z = R.Z, X = R.sx(C.x, k0), Y = R.sy(C.y, k0), r = Math.max(14, C.r) * Z, pu = 0.5 + 0.5 * Math.sin(t * 3.2);
+      const g = ctx.createRadialGradient(X, Y, 0, X, Y, r * 1.3);
+      g.addColorStop(0, 'rgba(242,194,48,0.45)'); g.addColorStop(1, 'rgba(242,194,48,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X, Y, r * 1.3, 0, TAU); ctx.fill();
+      ctx.lineWidth = Math.max(2, 3 * Z); ctx.strokeStyle = 'rgba(18,13,22,0.45)'; ctx.beginPath(); ctx.arc(X, Y, r * (0.9 + 0.06 * pu), 0, TAU); ctx.stroke();
+      ctx.lineWidth = Math.max(1.5, 2 * Z); ctx.strokeStyle = '#f2c230'; ctx.beginPath(); ctx.arc(X, Y, r * (0.9 + 0.06 * pu), 0, TAU); ctx.stroke();
+      const top = Y - (34 * Z + Math.sin(t * 2.6) * 3 * Z), s = Math.max(4, 5.6 * Z);
+      ctx.fillStyle = '#120d16'; ctx.beginPath(); ctx.moveTo(X, top - s * 1.55); ctx.lineTo(X + s * 1.1, top); ctx.lineTo(X, top + s * 1.55); ctx.lineTo(X - s * 1.1, top); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.moveTo(X, top - s); ctx.lineTo(X + s * 0.68, top); ctx.lineTo(X, top + s); ctx.lineTo(X - s * 0.68, top); ctx.closePath(); ctx.fill();
+    });
+    if ((R.night || 0) > 0.05 && R.lights) R.lights.push({ x: C.x, y: C.y, r: C.r * 2.4, color: '#f2c230', intensity: 0.85 });
+  }
+  function onStoryPass(id) {
+    if (REQ.indexOf(id) < 0) return;
+    setTimeout(() => {
+      if (!storyWeek() || run() || (N.story2 && N.story2.scene)) return;
+      hintSync();
+      storySave('diwali ' + id);
+      if (!reqLeft().length) toast('Diwali\'s done. Ammamma\'s swing at home when you are ready to sleep.', 3800);
+      N.emit('dwstory', { phase: 'pass', id });
+    }, 1500);
+  }
+  const STORY = {
+    REQ, WEEK,
+    /** story2.js: the chapter is still to be played (it holds the interlude and Last Bell back) */
+    blocks: () => storyPending() && storyOK(),
+    /** story2.js, after Agle Baras or a load: the way in (or back into the week) */
+    resume: () => storyBegin(),
+    begin: () => storyBegin(),
+    /** debug / tests: "Sleep ▶▶" without walking to the swing */
+    sleep: () => storySleep(),
+    state() {
+      const C = SS.card;
+      return {
+        pending: storyPending(), week: F().dw_story || null, back: F().dw_back || null, left: reqLeft(), busy: SS.busy, ending: SS.ending,
+        card: C ? { kind: C.kind, x: Math.round(C.x), y: Math.round(C.y), r: C.r, id: C.id || null, d: C.d || null, a: C.a != null ? fmtHM(C.a) : null, today: !!C.today } : null,
+        jcard: SS.jc, objective: SS.obj, clue: clueText(), blips: Array.from(SS.blips),
+      };
+    },
+  };
 
   /* ================================================================ 3D (N.view3d.registerLayer('dwm3d')): the same props in the 3D views */
   // The 2D drawings above are top-down only. In 3D: the 21 clay diyas (one instanced draw) and their flames (one
@@ -1886,16 +2214,18 @@
     for (const fn of Array.from(ST.ticks)) { try { fn(dt); } catch (e) { N.err('dwm.tick', e); } }
     fxTick(dt);
     if (mode() === 'play') { giversTick(dt); graceTick(); tigerKeepTick(); restoreTigerTick(); terraceKeepTick(); }
+    try { storyTick(dt); } catch (e) { N.err('dwm.story', e); }
   }
   function draw() {
     if (mode() === 'title' || mode() === 'boot' || !N.render) return;
     for (const fn of ST.draws) { try { fn(); } catch (e) { N.err('dwm.draw', e); } }
+    try { drawStoryMarker(); } catch (e) { N.err('dwm.story.draw', e); }
     if (!(N.view3d && N.view3d.active)) fxDraw();
   }
 
   /* ================================================================ N.dwMissions */
   const API = (N.dwMissions = {
-    TUNE, IDS, ITEMS, season, box: boxAll,
+    TUNE, IDS, ITEMS, season, box: boxAll, story: STORY,
     state() {
       const r = run();
       return {
@@ -1942,10 +2272,10 @@
     // a Diwali night activity ends after the curfew: the colony is out with its families tonight
     if (!f.no_curfew && (m0 >= 21 * 60 || m0 < 5 * 60)) { f.no_curfew = 'diwali'; ST.grace = dayKey(); }
   });
-  N.on('game:new', () => { cleanupAll(); clearGivers(); if (ST.tigerKeep) removeTiger(ST.tigerKeep); ST.prog = {}; ST.box = {}; ST.lastBuy = ST.lastAim = null; ST.garage = null; ST.terraceKeep = null; });
-  N.on('game:quit', () => { cleanupAll(); clearGivers(); });
-  N.on('save:loaded', () => { cleanupAll(); clearGivers(); const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y, t: absMin() }; });
-  N.on('mission:complete', () => { const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y, t: absMin() }; });
+  N.on('game:new', () => { cleanupAll(); clearGivers(); storyClear(); SS.busy = SS.ending = false; if (ST.tigerKeep) removeTiger(ST.tigerKeep); ST.prog = {}; ST.box = {}; ST.lastBuy = ST.lastAim = null; ST.garage = null; ST.terraceKeep = null; });
+  N.on('game:quit', () => { cleanupAll(); clearGivers(); storyClear(); SS.busy = SS.ending = false; });
+  N.on('save:loaded', () => { cleanupAll(); clearGivers(); storyClear(); SS.busy = SS.ending = false; SS.swing = null; const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y, t: absMin() }; });
+  N.on('mission:complete', (d) => { const p = N.player; if (p) ST.stepOut = { x: p.x, y: p.y, t: absMin() }; if (d && d.id) onStoryPass(d.id); });
 
   N.addSystem({
     id: 'diwaliMissions', order: 12, runIn: ['play', 'dialogue', 'cutscene', 'minigame'],
@@ -1954,6 +2284,7 @@
       defineCast();
       addGlossary();
       register();
+      registerStoryHint();
       if (N.save && N.save.register) N.save.register('diwali_missions', { serialize, deserialize });
     },
     update: tick,

@@ -155,7 +155,9 @@
   const DATES = {
     prologue: [2026, 1, 14, 18, 5], bhogi: [2003, 1, 13, 6, 0], sankranti: [2003, 1, 14, 7, 10],
     world_cup_final: [2003, 3, 23, 13, 30], ugadi: [2003, 4, 2, 7, 0], schools_reopen: [2003, 6, 12, 8, 0],
-    ganesh_chaturthi: [2003, 8, 31, 8, 0], boat_coda: [2003, 9, 10, 17, 30], interlude: [2003, 11, 1, 19, 40],
+    ganesh_chaturthi: [2003, 8, 31, 8, 0], boat_coda: [2003, 9, 10, 17, 30],
+    diwali_week: [2003, 10, 20, 9, 30], deepavali: [2003, 10, 25, 15, 0], // [diwali story] the chapter between Track 10 and the interlude (src/diwali_missions.js)
+    interlude: [2003, 11, 1, 19, 40],
     eid: [2003, 11, 26, 8, 0], ending: [2003, 11, 27, 23, 20], flight: [2003, 11, 27, 23, 40], epilogue: [2026, 1, 17, 16, 0],
   };
 

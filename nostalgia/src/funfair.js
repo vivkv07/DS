@@ -47,7 +47,12 @@
  * HOOKS (files this module does not own; public APIs only, nothing edited):
  *   - shops.js: N.shops.addRow('nampally_exhibition', {id: 'ff_*', hidden, price, act}) — every go, ride, snack and toy is a
  *     (hidden) row of the Numaish card, bought with N.shops.buy (money, hours, 'shop:buy' stay in shops.js).
- *   - seasons.js: reads N.seasons.layout.numaish() (carousel, train) and numaishState() (their live angles).
+ *   - seasons.js: reads N.seasons.layout.numaish() (carousel, train) and numaishState() (their live angles). Two marked
+ *     [funfair hook]s on that layout object (seasons.js itself is not edited): our footprints (rides with their swing room
+ *     and entrances, the strip in front of the stall counters, the carts) are pushed onto its crowd `avoid` list, and in
+ *     the 2D view only, `strings` reads a thinned copy (fewer bulbs, so fewer soft glow sprites, over our rides, the food
+ *     court and the lane canopy) so each ride reads as a shape at night; the 3D view still gets seasons.js's own list.
+ *     2D signboards are drawn on the 'fx' layer (above the crowd and the light) on a dark plate.
  *   - places_art.js / view3d_landmarks.js: the giant wheel. Its 2D angle is followed (the same 0.12 rad/s, only while
  *     N.placesArt.variant('giant_wheel') is 'open'); the 3D wheel sub-group ('wheel' in the landmark's userData.lm3d.subs)
  *     is set to the same angle every frame, so the gondolas match in both views.
@@ -133,19 +138,53 @@
     SP.wheel = W ? { lm: W, x: W.x, y: W.y, ix: W.x + 25, iy: W.y + 14 } : null;
     SP.maut = M ? { lm: M, x: M.x, y: M.y, r: Math.min(M.w, M.d) * 0.45, H: M.h || 22, ix: M.x, iy: M.y - M.d / 2 - 6 } : null;
     let L = null; try { L = N.seasons && N.seasons.layout && N.seasons.layout.numaish(); } catch (e) { L = null; }
+    // our footprints: the stalls with the strip in front of their counters, the carts and their fronts, the rides with
+    // their swing / spin room and their entrances (the crowd keeps off them; the 2D bulb strings over them are thinned)
+    const C = SP.columbus, B = SP.bumper, Cu = SP.cups, st0 = SP.stalls[0], st2 = SP.stalls[SP.stalls.length - 1];
+    SP.keepOff = [
+      [st0.x - 2, st0.y - 12, st2.x + st2.w - st0.x + 4, st0.d + 15],
+      [C.x - 25, C.y - 9, 50, 18], [C.x - 5, C.y + 8, 10, 10],
+      [B.x - 3, B.y - 3, B.w + 12, B.d + 6],
+      [Cu.x - Cu.r - 4, Cu.y - Cu.r - 4, Cu.r * 2 + 8, Cu.r * 2 + 8], [Cu.ix - 4, Cu.iy - 4, 8, 8],
+    ];
+    for (const c of SP.carts) SP.keepOff.push([c.x - 8, c.y - 7, 16, 14]);
     // [funfair hook] the fair's painted crowd (seasons.js crowdDraw avoid list) keeps off our stalls, carts and rides
     if (L && Array.isArray(L.avoid) && !L.avoid.ffAdded) {
       L.avoid.ffAdded = true;
-      for (const st of SP.stalls) L.avoid.push([st.x - 1, st.y - 2, st.w + 2, st.d + 3]);
-      for (const c of SP.carts) L.avoid.push([c.x - 6, c.y - 4, 12, 8]);
-      const C = SP.columbus, B = SP.bumper, Cu = SP.cups;
-      L.avoid.push([C.x - 16, C.y - 9, 32, 20], [B.x - 2, B.y - 2, B.w + 4, B.d + 4], [Cu.x - Cu.r - 2, Cu.y - Cu.r - 2, Cu.r * 2 + 4, Cu.r * 2 + 4]);
+      for (const r of SP.keepOff) L.avoid.push(r.slice());
     }
+    // [funfair hook] 2D only: the bulb strings over our rides, the food court and the lane canopy get fewer bulbs (and so
+    // fewer of seasons.js's soft glow sprites), so at night each ride reads as a shape and not one bright blob. A getter
+    // on the layout object: the 3D view (festivals3d.js builds from the same list) always sees seasons.js's own strings.
+    if (L && Array.isArray(L.strings) && !L.ffStrings) thinStrings(L, SP.keepOff);
     SP.carousel = L && L.carousel ? { x: L.carousel.x, y: L.carousel.y, r: L.carousel.r, ix: L.carousel.x, iy: L.carousel.y - L.carousel.r - 5 } : null;
     SP.train = L && L.train ? Object.assign({ ix: L.train.cx + L.train.rx + 5, iy: L.train.cy - 14 }, L.train) : null;
     return SP;
   }
   const spots = () => (SP.built ? SP : buildSpots());
+  function segCrosses(x0, y0, x1, y1, r) {
+    for (let i = 0; i <= 24; i++) { const t = i / 24, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t; if (x > r[0] && y > r[1] && x < r[0] + r[2] && y < r[1] + r[3]) return true; }
+    return false;
+  }
+  function thinStrings(L, rects) {
+    const orig = L.strings, fc = L.food, thin = [];
+    const inFood = (x, y) => fc && x >= fc.x - 1 && y >= fc.y - 1 && x <= fc.x + fc.w + 1 && y <= fc.y + fc.d + 1;
+    const fcR = fc ? [fc.x, fc.y, fc.w, fc.d] : null;
+    for (const st of orig) {
+      const food = !st.radial && !st.lane && inFood(st.x0, st.y0) && inFood(st.x1, st.y1);
+      if (food && st.x0 !== st.x1 && st.y0 !== st.y1) continue; // the cross over the food court
+      let f = 1;
+      if (food) f = 0.5;
+      else if (st.lane) f = 0.6;
+      else if (rects.some((r) => segCrosses(st.x0, st.y0, st.x1, st.y1, r)) || (st.radial && fcR && segCrosses(st.x0, st.y0, st.x1, st.y1, fcR))) f = 0.5;
+      thin.push(f < 1 ? Object.assign({}, st, { n: Math.max(3, Math.round(st.n * f)) }) : st);
+    }
+    let base = orig;
+    L.ffStrings = { orig, thin };
+    try {
+      Object.defineProperty(L, 'strings', { configurable: true, enumerable: true, get: () => (is3D() ? base : thin), set: (v) => { base = v; L.ffStrings.orig = v; } });
+    } catch (e) { /* a frozen layout: leave it */ }
+  }
 
   /* ================================================================ season / hours */
   function fairOn() {
@@ -318,7 +357,7 @@
   function aiShot(game, r) {
     const s = r.skill, q = r.rng.next();
     if (game === 'ff_rings') { if (q < 0.06 * s) return 30 + Math.floor(r.rng.next() * 3) * 10; return q < 0.2 + s * 0.38 ? 10 + (r.rng.next() < 0.4 ? 5 : 0) : 0; }
-    if (game === 'ff_cans') { const left = 10 - (r.cans || 0); const k = Math.min(left, Math.round(q * (2 + s * 6) + (r.rng.next() < s * 0.3 ? 2 : 0))); r.cans = (r.cans || 0) + k; return k * 10 + (r.cans >= 10 && k > 0 ? 50 : 0); }
+    if (game === 'ff_cans') { const left = 10 - (r.cans || 0); const k = Math.min(left, Math.round(q * (1 + s * 4)) + (r.rng.next() < s * 0.25 ? 1 : 0)); r.cans = (r.cans || 0) + k; return k * 10 + (r.cans >= 10 && k > 0 ? 50 : 0); }
     if (game === 'ff_darts') return q < 0.3 + s * 0.45 ? (r.rng.next() < 0.15 ? 30 : 10) : 0;
     return 0;
   }
@@ -546,7 +585,8 @@
       if (steer) S.aim = clamp(S.aim + steer * dt * 0.75, -0.55, 0.55);
       if (S.ptrAim != null && isFinite(S.ptrAim)) S.aim += (S.ptrAim - S.aim) * Math.min(1, dt * 14);
       if (!S.fly && S.left > 0 && !S.end) {
-        if (g.pressed('throw')) { S.charging = true; S.chargeT = 0; }
+        // a press made while the last ring was still in the air (or rattling) starts the swing as soon as it is down
+        if (!S.charging && (g.pressed('throw') || g.down('throw'))) { S.charging = true; S.chargeT = 0; }
         if (S.charging) { S.chargeT += dt; S.power = 0.5 - 0.5 * Math.cos(S.chargeT * PI / 0.75); }
         if (S.charging && (g.released('throw') || !g.down('throw'))) { S.charging = false; throwRing(g, S); }
       }
@@ -735,7 +775,7 @@
   }
   function stallResult(g, r, name) {
     const ch = g.params.challenge;
-    const rows = (r.table || []).slice(0, 5).map((x, i) => [(i + 1) + '. ' + x.nick + (x.me ? ' (you)' : ''), x.n + ' pts']);
+    const rows = (r.table || []).slice(0, 5).map((x, i) => [(i + 1) + '. ' + x.nick, x.n + ' pts']);
     if (r.prizes && r.prizes.length) rows.push(['Prize', r.prizes.map((p) => PRIZES[p].name.replace(/ \(.*\)/, '')).join(', ')]);
     if (ch) rows.push(['Challenge total', ((ch.mine | 0) + r.score) + ' pts']);
     return {
@@ -788,7 +828,7 @@
       S.rx = S.ax + Math.sin(S.t * 3.1) * wob + Math.sin(S.t * 5.3 + 2) * wob * 0.4; S.ry = S.ay + Math.sin(S.t * 2.3 + 1) * wob * 0.8;
       const settled = !S.cans.some((c) => c.st === 'fly');
       if (!S.ball && S.left > 0 && !S.end && settled) {
-        if (g.pressed('throw')) { S.charging = true; S.charge = 0; }
+        if (!S.charging && (g.pressed('throw') || g.down('throw'))) { S.charging = true; S.charge = 0; } // a press held through the last throw counts
         if (S.charging) S.charge = Math.min(1, S.charge + dt / 1.1);
         if (S.charging && (g.released('throw') || !g.down('throw'))) { S.charging = false; S.left--; S.ball = { t: 0, x: S.rx, y: S.ry, p: 0.35 + S.charge * 0.65 }; S.charge = 0; g.sfx('ff_toss'); }
       }
@@ -947,7 +987,9 @@
       if (S.ptr && isFinite(S.ptr.x) && isFinite(S.ptr.y)) { S.ax += (S.ptr.x - S.ax) * Math.min(1, dt * 18); S.ay += (S.ptr.y - S.ay) * Math.min(1, dt * 18); }
       S.sx = clamp(S.ax + Math.sin(S.t * 1.7) * 0.05 + Math.sin(S.t * 3.1 + 1) * 0.025, 0, 1);
       S.sy = clamp(S.ay + Math.sin(S.t * 2.2 + 2) * 0.045, 0, 1);
-      if (!S.fly && S.left > 0 && !S.end && g.pressed('throw')) { S.left--; S.fly = { t: 0, x: S.sx, y: S.sy }; g.sfx('ff_toss'); }
+      // a tap while the last dart is still in the air is kept for a moment and thrown as soon as the hand is free
+      if (g.pressed('throw')) S.wantT = 0.5; else if (S.wantT > 0) S.wantT -= dt;
+      if (!S.fly && S.left > 0 && !S.end && S.wantT > 0) { S.wantT = 0; S.left--; S.fly = { t: 0, x: S.sx, y: S.sy }; g.sfx('ff_toss'); }
       if (S.fly) {
         S.fly.t += dt / 0.3;
         if (S.fly.t >= 1) {
@@ -1936,14 +1978,17 @@
     pillEl.setAttribute('aria-label', TOY.held ? 'Holding ' + nm + ': tap to switch' : 'Take out a toy');
     const c = pillEl.querySelector('canvas'), g = c.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 56, 56);
-    if (kind) {
+    // the held toy (or, with nothing in hand, the first one in the pocket, faded: tap to take it out)
+    const icon = kind || ownedList().find((id) => TOYS[id]) || null;
+    if (icon) {
       // reuse the 2D painter: a fake projection centred in the little canvas
       const R = N.render, sk = R.k, ssx = R.sx, ssy = R.sy;
       try {
         R.k = () => 4.2; R.sx = (x) => 28 + x * 4.2; R.sy = (y) => 40 + y * 4.2;
-        drawHeld2D(g, kind, -Math.cos(1.1) * 3.2, -Math.sin(1.1) * 3.2 + (kind === 'balloon' ? 1.5 : 0), 0, 0, kind === 'balloon' ? 0.9 : 1.25, { color: TOY.color, spin: 0.4 });
-      } finally { R.k = sk; R.sx = ssx; R.sy = ssy; }
-    } else { g.fillStyle = '#f2c230'; g.font = 'bold 26px sans-serif'; g.textAlign = 'center'; g.fillText('?', 28, 37); }
+        g.globalAlpha = kind ? 1 : 0.5;
+        drawHeld2D(g, icon, -Math.cos(1.1) * 3.2, -Math.sin(1.1) * 3.2 + (icon === 'balloon' ? 1.5 : 0), 0, 0, icon === 'balloon' ? 0.9 : 1.25, { color: TOY.color, spin: 0.4 });
+      } finally { R.k = sk; R.sx = ssx; R.sy = ssy; g.globalAlpha = 1; }
+    }
   }
 
   /* ================================================================ the stall card (snacks, toys, games, rides with friends) */
@@ -2072,8 +2117,62 @@
   /* ================================================================ 2D drawing */
   const D2 = () => N.draw;
   function inGroundsView() { const S = spots(); if (!S.ok) return false; const g = S.g; return N.render.rectInView(g[0] - 20, g[1] - 60, g[2] - g[0] + 40, g[3] - g[1] + 80, 80); }
+  // Signboards: drawn last ('fx', above the crowd, the night grade and the bulb glow), pixel text on a dark plate with a
+  // coloured edge, so a ride or stall name is never lost under people or light. Twice the size when the camera is close.
+  const LBL = [];
+  function label(x, y, h, text, open, edge, room) { LBL.push({ x, y, h, text, col: open ? '#ffe070' : '#c8c0b0', edge: edge || '#c8302a', room: room || 0 }); }
+  function flushLabels() {
+    if (!LBL.length) return;
+    const list = LBL.splice(0, LBL.length);
+    N.render.queue('fx', 0, (ctx) => {
+      const R = N.render, D = N.draw, placed = [];
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+      list.sort((a, b) => a.y - b.y);
+      for (const q of list) {
+        const c = D.pixelTextCanvas(q.text, q.col, '#140c10');
+        const k = R.k(q.h);
+        // twice the size when the camera is close, unless that is wider than the thing it names (the stall row)
+        const s = R.Z >= 2.2 && (!q.room || c.width * 2 + 8 <= q.room * k) ? 2 : 1;
+        const w = c.width * s, h = c.height * s, p = 2 * s;
+        let x0 = Math.round(R.sx(q.x, k)) - Math.round(w / 2), y0 = Math.round(R.sy(q.y, k)) - Math.round(h / 2);
+        // never on top of another signboard: step up until clear
+        for (let tries = 0; tries < 4; tries++) {
+          const hit = placed.find((r) => x0 - p < r[0] + r[2] && x0 + w + p > r[0] && y0 - p < r[1] + r[3] && y0 + h + p > r[1]);
+          if (!hit) break;
+          y0 = hit[1] - h - p - 1;
+        }
+        placed.push([x0 - p, y0 - p, w + p * 2, h + p * 2]);
+        ctx.fillStyle = 'rgba(20,12,24,0.84)'; ctx.fillRect(x0 - p, y0 - p, w + p * 2, h + p * 2);
+        ctx.fillStyle = q.edge; ctx.fillRect(x0 - p, y0 + h + p - s, w + p * 2, s);
+        ctx.drawImage(c, x0, y0, w, h);
+      }
+    });
+  }
+  // Rim bulbs: crisp points (no soft glow) on the light layer at night that trace each ride's outline.
+  const RIM = []; let RIMn = 0;
+  function rim(x, y, h, col) { let b = RIM[RIMn]; if (!b) b = RIM[RIMn] = { x: 0, y: 0, h: 0, col: '' }; b.x = x; b.y = y; b.h = h; b.col = col; RIMn++; }
+  function flushRim(night) {
+    if (!RIMn || night <= 0.2) { RIMn = 0; return; }
+    const n = RIMn, list = RIM; RIMn = 0;
+    const blink = Math.floor(AMB.t * 4);
+    N.render.queue('light', 0, (ctx) => {
+      const R = N.render;
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = Math.min(0.95, 0.4 + night * 0.6);
+      for (let i = 0; i < n; i++) {
+        if ((i + blink) % 6 === 0) continue; // chase
+        const b = list[i], k = R.k(b.h), r = Math.max(0.7, 0.42 * k);
+        ctx.fillStyle = b.col; ctx.fillRect(R.sx(b.x, k) - r, R.sy(b.y, k) - r, r * 2, r * 2);
+      }
+      ctx.globalAlpha = 1;
+    });
+  }
   function drawStall2D(st, open, night) {
     const D = D2(), R = N.render;
+    // the strip in front of the counter: a dhurrie and a chalk line (where you stand to play; the crowd keeps off it)
+    R.queue('ground', 3, () => D.flat((g) => {
+      g.fillStyle = open ? 'rgba(120,40,34,0.55)' : 'rgba(90,70,60,0.35)'; g.fillRect(st.x + 1.5, st.y - 6.5, st.w - 3, 5.5);
+      g.strokeStyle = 'rgba(250,244,230,0.7)'; g.lineWidth = 0.35; g.beginPath(); g.moveTo(st.x + 1, st.y - 7.2); g.lineTo(st.x + st.w - 1, st.y - 7.2); g.stroke();
+    }));
     R.queue('structures', R.distKey(st.cx, st.cy), () => {
       const x = st.x, y = st.y, w = st.w, d = st.d;
       // back wall + side walls (cloth), the counter at the front (north side)
@@ -2098,9 +2197,11 @@
       }
       // a striped awning over the counter (the booth is open on top, so its goods show from the kite's view) + the signboard
       D.box(x - 0.6, y - 1.6, w + 1.2, 3.2, 10, 11.2, { wall: U.shade(st.col, 0.75), roof: st.col, roofFn: (c, k2, rx, ry, rw, rd) => { c.fillStyle = 'rgba(255,250,235,0.85)'; for (let i = 0; i < 8; i += 2) c.fillRect(rx + (i / 8) * rw, ry, rw / 8, rd); } });
-      D.pixelText(x + w / 2, y - 1.2, 12.4, st.name, open ? '#ffe070' : '#c8c0b0', { scale: 1 });
     });
-    if (night > 0.2 && open) R.lights.push({ x: st.x + st.w / 2, y: st.y - 3, r: 26, color: '#ffe0a0', intensity: 0.75, h: 9 });
+    if (night > 0.2 && open) {
+      R.lights.push({ x: st.cx, y: st.y - 3, r: 13, color: '#ffe0a0', intensity: 0.4, h: 9 });
+      for (let i = 0; i <= 6; i++) rim(st.x + (i / 6) * st.w, st.y - 1.6, 11.2, i % 2 ? '#fff0b0' : st.col2);
+    }
   }
   function drawCart2D(c, open, night) {
     const D = D2(), R = N.render, ca = Math.cos(c.a), sa = Math.sin(c.a);
@@ -2119,10 +2220,10 @@
         const k2 = R.k(10);
         for (let i = 0; i < 3; i++) { ctx.save(); ctx.translate(R.sx(c.x + (i - 1) * 1.6, k2), R.sy(c.y - 1.5, k2)); ctx.rotate(t * 4 + i); for (let j = 0; j < 4; j++) { ctx.fillStyle = cols[(i + j) % 6]; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(1.4 * k2, -0.3 * k2); ctx.lineTo(1.1 * k2, 0.9 * k2); ctx.fill(); ctx.rotate(PI / 2); } ctx.restore(); }
       }
-      D.pixelText(c.x, c.y - 3, 8, c.id === 'snacks' ? 'MOONGPHALI' : 'KHILONE', '#fff4c0', { scale: 1 });
       void ca; void sa;
     });
-    if (night > 0.2 && open) R.lights.push({ x: c.x, y: c.y, r: 20, color: c.id === 'snacks' ? '#fff0c0' : '#ffd0e0', intensity: 0.7, h: 10 });
+    label(c.x, c.y - 5.5, 8, c.id === 'snacks' ? 'MOONGPHALI' : 'KHILONE', open, c.id === 'snacks' ? '#e8641a' : '#4a8ce8');
+    if (night > 0.2 && open) R.lights.push({ x: c.x, y: c.y, r: 12, color: c.id === 'snacks' ? '#fff0c0' : '#ffd0e0', intensity: 0.4, h: 10 });
   }
   function drawColumbus2D(night, open) {
     const S = spots(), C = S.columbus, R = N.render, D = D2();
@@ -2157,7 +2258,14 @@
         }
       }
     });
-    if (night > 0.2 && open) R.lights.push({ x: C.x, y: C.y, r: 36, color: '#ffd890', intensity: 0.7, h: 14 });
+    label(C.x, C.y - 11, C.hp + 2, 'COLUMBUS', open, '#c8302a');
+    if (night > 0.2 && open) {
+      R.lights.push({ x: C.x, y: C.y, r: 20, color: '#ffd890', intensity: 0.35, h: 14 });
+      // bulbs along both gunwales of the boat (they swing with it) and up the A-frames
+      const cx = C.x + C.rs * Math.sin(ang), ch = C.hp - C.rs * Math.cos(ang), L = C.len / 2 - 3, ca = Math.cos(ang);
+      for (let i = 0; i <= 8; i++) { const x = cx + (i / 8 * 2 - 1) * L * ca; rim(x, C.y - C.wid / 2 + 0.6, ch, i % 2 ? '#ffe070' : '#ff7040'); rim(x, C.y + C.wid / 2 - 0.6, ch, i % 2 ? '#ff7040' : '#ffe070'); }
+      for (const sd of [-1, 1]) for (let i = 1; i <= 4; i++) { const t = i / 5; rim(C.x + sd * 9 * (1 - t), C.y - 6.5 + 1.5 * t, C.hp * t, '#fff0b0'); rim(C.x + sd * 9 * (1 - t), C.y + 6.5 - 1.5 * t, C.hp * t, '#fff0b0'); }
+    }
   }
   const AMBL = [];
   function AMBLOOK(i) { if (!AMBL[i]) AMBL[i] = STRANGER(5000 + i * 37, i % 3 ? 'kid' : null); return AMBL[i]; }
@@ -2176,8 +2284,9 @@
       const k = R.k(13);
       ctx.strokeStyle = 'rgba(200,48,42,0.9)'; ctx.lineWidth = Math.max(1, 0.7 * R.Z); ctx.strokeRect(R.sx(B.x, k), R.sy(B.y, k), B.w * k, B.d * k);
       ctx.strokeStyle = 'rgba(160,170,180,0.35)'; ctx.lineWidth = 0.6; ctx.beginPath(); for (let x = B.x + 4; x < B.x + B.w; x += 4) { ctx.moveTo(R.sx(x, k), R.sy(B.y, k)); ctx.lineTo(R.sx(x, k), R.sy(B.y + B.d, k)); } ctx.stroke();
-      D.pixelText(B.x + B.w / 2, B.y - 1, 15, 'DASHING CARS', open ? '#ffe070' : '#c8c0b0', { scale: 1 });
     });
+    // signboards sit on the south side of a ride: a rider's speech bubble rises above them, so it never covers the name
+    label(B.x + B.w / 2, B.y + B.d + 2.5, 3, 'DASHING CARS', open, '#c8302a');
     const cars = bumperCars();
     for (const car of cars) {
       R.queue('structures', R.distKey(B.x + B.w / 2, B.y + B.d / 2) + 0.4, (ctx) => {
@@ -2192,23 +2301,34 @@
         if (!car.rider && N.traffic && N.traffic.blitPerson) N.traffic.blitPerson(ctx, car.look || AMBLOOK(car.i), car.x - Math.cos(car.a) * 0.6, car.y - Math.sin(car.a) * 0.6, car.a, null, 2.2);
       });
     }
-    if (night > 0.2 && open) R.lights.push({ x: B.x + B.w / 2, y: B.y + B.d / 2, r: 40, color: '#e0f0ff', intensity: 0.7, h: 13 });
+    if (night > 0.2 && open) {
+      R.lights.push({ x: B.x + B.w / 2, y: B.y + B.d / 2, r: 22, color: '#e0f0ff', intensity: 0.35, h: 13 });
+      // a frame of bulbs round the roof: the arena reads as a lit rectangle
+      for (let x = 0; x <= B.w; x += 4) { rim(B.x + x, B.y, 13, (x / 4) % 2 ? '#fff4d0' : '#ffd040'); rim(B.x + x, B.y + B.d, 13, (x / 4) % 2 ? '#ffd040' : '#fff4d0'); }
+      for (let y = 4; y < B.d; y += 4) { rim(B.x, B.y + y, 13, '#fff4d0'); rim(B.x + B.w, B.y + y, 13, '#fff4d0'); }
+    }
   }
   function drawCups2D(night, open) {
     const S = spots(), C = S.cups, R = N.render, D = D2();
     R.queue('structures', R.distKey(C.x, C.y), (ctx) => {
-      D.cyl(C.x, C.y, C.r, 0, 0.8, { wall: '#7a5a8a', top: '#c8a0d8', grad: false });
+      const k0 = R.k(0.8);
+      ctx.fillStyle = 'rgba(30,18,36,0.9)'; ctx.beginPath(); ctx.arc(R.sx(C.x, R.k(0)), R.sy(C.y, R.k(0)), (C.r + 0.9) * R.k(0), 0, TAU); ctx.fill();
+      D.cyl(C.x, C.y, C.r, 0, 0.8, { wall: '#5a3a6a', top: '#9a78b0', grad: false });
+      ctx.strokeStyle = '#f2c230'; ctx.lineWidth = Math.max(1, 0.45 * k0); ctx.beginPath(); ctx.arc(R.sx(C.x, k0), R.sy(C.y, k0), (C.r - 0.3) * k0, 0, TAU); ctx.stroke();
       D.cyl(C.x, C.y, 1.6, 0.8, 4, { wall: '#f2c230', top: '#e8402a', grad: false });
       for (let j = 0; j < 6; j++) {
         const o = cupCenter(j, { x: 0, y: 0 }), col = ['#e83a5a', '#2a8cd8', '#3ac06a', '#f2c230', '#ff8a2a', '#9a5ae0'][j];
-        D.cyl(o.x, o.y, 1.9, 0.8, 1.8, { wall: '#f4f0e0', top: '#d8d0c0', grad: false });
-        D.cyl(o.x, o.y, 1.7, 1.8, 3.2, { wall: col, top: U.shade(col, 0.6), grad: false });
-        const k = R.k(3.25); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(0.6, 0.3 * k); ctx.beginPath(); ctx.arc(R.sx(o.x, k), R.sy(o.y, k), 1.5 * k, AMB.cupsS[j], AMB.cupsS[j] + 1.2); ctx.stroke();
-        if (open && j >= 2 && N.traffic && N.traffic.blitPerson) { const a = AMB.cupsS[j]; N.traffic.blitPerson(ctx, AMBLOOK(10 + j), o.x + Math.cos(a) * CUP_SEAT, o.y + Math.sin(a) * CUP_SEAT, a + PI, null, 3); }
+        D.cyl(o.x, o.y, 2.6, 0.8, 1.6, { wall: '#f4f0e0', top: '#e8e0d0', grad: false });
+        D.cyl(o.x, o.y, 2.2, 1.6, 3.2, { wall: col, top: U.shade(col, 0.55), grad: false });
+        const k = R.k(3.25); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(0.8, 0.35 * k); ctx.beginPath(); ctx.arc(R.sx(o.x, k), R.sy(o.y, k), 2.0 * k, AMB.cupsS[j], AMB.cupsS[j] + 1.2); ctx.stroke();
+        if (open && (j === 2 || j === 4) && N.traffic && N.traffic.blitPerson) { const a = AMB.cupsS[j]; N.traffic.blitPerson(ctx, AMBLOOK(10 + j), o.x + Math.cos(a) * CUP_SEAT, o.y + Math.sin(a) * CUP_SEAT, a + PI, null, 3); }
       }
-      D.pixelText(C.x, C.y - C.r - 1, 7, 'CUP & SAUCER', open ? '#ffe070' : '#c8c0b0', { scale: 1 });
     });
-    if (night > 0.2 && open) R.lights.push({ x: C.x, y: C.y, r: 30, color: '#ffc0f0', intensity: 0.7, h: 8 });
+    label(C.x, C.y + C.r + 3.5, 1, 'CUP & SAUCER', open, '#c8307a');
+    if (night > 0.2 && open) {
+      R.lights.push({ x: C.x, y: C.y, r: 15, color: '#ffc0f0', intensity: 0.35, h: 8 });
+      for (let i = 0; i < 20; i++) { const a = AMB.cupsP * 0.5 + i * TAU / 20; rim(C.x + Math.cos(a) * C.r, C.y + Math.sin(a) * C.r, 0.9, i % 2 ? '#ff8ad0' : '#ffe070'); }
+    }
   }
   function drawMaut2D(open) {
     const S = spots(), M = S.maut, R = N.render, p = N.player;
@@ -2247,11 +2367,23 @@
     if (fairOn() && inGroundsView()) {
       const S = spots(), open = fairOpen(), night = (N.render && N.render.night) || 0;
       for (const st of S.stalls) if (N.render.inView(st.cx, st.cy, 40)) drawStall2D(st, open, night);
+      // the stall signboards: one each when the camera is close enough for them to fit over their own booth, else one
+      // board for the alley (stacked boards would climb up over the giant wheel)
+      const s0 = S.stalls[0], s2 = S.stalls[S.stalls.length - 1];
+      if (N.render.inView(s0.cx, s0.cy, 60) || N.render.inView(s2.cx, s2.cy, 60)) {
+        const kk = N.render.k(12.4), fit = S.stalls.every((st) => N.draw.pixelTextWidth(st.name) + 6 <= (st.w + 1) * kk);
+        if (fit) for (const st of S.stalls) label(st.cx, st.y - 1.4, 12.4, st.name, open, st.col2, st.w + 1);
+        else label((s0.x + s2.x + s2.w) / 2, s0.y - 1.4, 12.4, 'RING TOSS / CANS / BALLOONS', open, '#f2c230');
+      }
       for (const c of S.carts) if (N.render.inView(c.x, c.y, 40)) drawCart2D(c, open, night);
       if (N.render.inView(S.columbus.x, S.columbus.y, 60)) drawColumbus2D(night, open);
       if (N.render.inView(S.bumper.x + S.bumper.w / 2, S.bumper.y + S.bumper.d / 2, 60)) drawBumper2D(night, open);
       if (N.render.inView(S.cups.x, S.cups.y, 40)) drawCups2D(night, open);
       drawMaut2D(open);
+      if (S.carousel && N.render.inView(S.carousel.x, S.carousel.y, 40)) label(S.carousel.x, S.carousel.y - S.carousel.r - 3, 13, 'MERRY-GO-ROUND', open, '#e8303a'); // north: the cups are just south of it
+      if (S.train && N.render.inView(S.train.cx, S.train.cy, 60)) label(S.train.cx, S.train.cy, 4, 'TOY TRAIN', open, '#2a5cd8');
+      flushRim(night);
+      flushLabels();
     }
     drawBubbles2D();
     drawHeldAll2D();
@@ -2588,6 +2720,17 @@
     order: 7,
     init(T, h) { THREE = T; H3 = h; ROOT = new THREE.Group(); ROOT.name = 'funfair'; H3.layer.add(ROOT); },
     update(dt, h) {
+      const t0 = performance.now(), b0 = ST3.builds, m0 = !!M3.solid;
+      try { update3(dt, h); } finally {
+        // the running cost per frame (the one-off site build and material set-up are counted in buildMs, not here)
+        const ms = performance.now() - t0;
+        if (ST3.builds === b0 && (m0 || !M3.solid)) { ST3.layerMs = ST3.layerN ? ST3.layerMs * 0.9 + ms * 0.1 : ms; ST3.layerN = (ST3.layerN | 0) + 1; ST3.layerMax = Math.max(ST3.layerMax || 0, ms); }
+      }
+    },
+    dispose() { disposeSite3(); for (const h of HELD3.values()) { try { ROOT.remove(h.obj); } catch (e) { /* ignore */ } } HELD3.clear(); if (BUB3.pts && ROOT) ROOT.remove(BUB3.pts); BUB3.pts = null; if (ROOT && ROOT.parent) ROOT.parent.remove(ROOT); ROOT = null; for (const k in M3) delete M3[k]; },
+  };
+  // the layer's work per frame (its cost is kept in ST3.layerMs: the fair's share of the 3D frame)
+  function update3(dt, h) {
       H3 = h || H3;
       if (!ROOT) return;
       const night = H3.night || 0;
@@ -2634,9 +2777,7 @@
         for (const q of [[S.bumper.x + S.bumper.w / 2, S.bumper.y + S.bumper.d / 2, 18, '#e0f0ff'], [S.columbus.x, S.columbus.y + 7, 12, '#ffd890'], [S.stalls[1].cx, S.stalls[1].y - 4, 12, '#ffe0a0']]) if (Math.hypot(q[0] - p.x, q[1] - p.y) < 220) H3.light({ x: q[0], y: q[1], h: q[2], color: q[3], intensity: 1.1 * night, r: 60 });
       }
       if (SITE3.glow) SITE3.glow.visible = night > 0.12;
-    },
-    dispose() { disposeSite3(); for (const h of HELD3.values()) { try { ROOT.remove(h.obj); } catch (e) { /* ignore */ } } HELD3.clear(); if (BUB3.pts && ROOT) ROOT.remove(BUB3.pts); BUB3.pts = null; if (ROOT && ROOT.parent) ROOT.parent.remove(ROOT); ROOT = null; for (const k in M3) delete M3[k]; },
-  };
+  }
   function register3D() {
     const V3 = N.view3d;
     if (!V3 || !V3.registerLayer || register3D.done) return;

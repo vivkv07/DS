@@ -22,8 +22,9 @@
  *       race_birla_steps   up Naubat Pahad to the Birla Mandir gate: run the lanes, but on the temple steps everybody
  *                          walks (N.respect: Mandir rules), on foot only.
  *       chai_run           from the Lakshmi Nagar colony gate to Café Gulistan, "Ek cutting!", and back to the gate
- *                          without spilling: the chai-carry meter (running spills, bumps / stumbles / falls spill more,
- *                          a vehicle spills it all); arrive with at least 25% or go back for another.
+ *                          without spilling: the chai-carry meter (running spills 15%/s, jogging 3%/s, bumps / pothole
+ *                          stumbles / falls spill more, a vehicle spills it all); arrive with at least 30% or go back for
+ *                          another; ranked by time + 0.08 s for every 1% spilled.
  *   CHITTI CHASE (chitti_chase): the host's game picks 4-6 landmarks near the start (opts.stops); a clue chit with a
  *     riddle waits at each ("Where the four minarets watch the bangles" -> Charminar). Visit them in order; the chit
  *     shows up when you are close (a search circle after 45 s, the exact spot after 90 s). First to all of them wins.
@@ -60,9 +61,11 @@
   ];
   const ROUTE = new Map(ROUTES.map((r) => [r.id, r]));
   // the foot races' fixed spots (map v2 coordinates; checked by tests/party.cjs)
-  const BIRLA = { start: [8700, 4262], foot: [8522, 4384], steps: [[8522, 4383], [8423, 4376], [8376, 4367], [8330, 4356]], gate: [8290, 4394] };
+  // the gate is reached round the temple's east corner (the straight line from the top step cuts its footprint)
+  const BIRLA = { start: [8700, 4262], foot: [8522, 4384], steps: [[8522, 4383], [8423, 4376], [8376, 4367], [8330, 4356], [8334, 4388]], gate: [8290, 4396] };
   const COLONY_GATE = { x: 9978, y: 4949, name: 'Lakshmi Nagar colony gate' };
   const CHAI_CAFE = 'irani_cafe_7';
+  const CHAI_MIN = 30, CHAI_PENALTY = 80; // arrive with at least 30%; each 1% spilled costs 80 ms in the ranking
 
   /* ================================================================ paths */
   function mkPath(list) {
@@ -233,7 +236,7 @@
         ctx.ai.walk(p.uid, wps, { run: true, speed: C.aiSpeed(p.uid), onDone });
       } else {
         const path = [{ x: q.x, y: q.y }].concat(P.from(C.s0 + 4));
-        ctx.ai.ride(p.uid, path, { r: cps[n - 1].r * 0.6, onDone, mul: () => rubber(p.uid) });
+        ctx.ai.ride(p.uid, path, { r: cps[n - 1].r * 0.6, onDone, mul: () => rubber(p.uid), lane: (i % 2 ? 1 : -1) * (4 + 2.5 * ((i - 1) >> 1)) });
       }
     }
     function rubber(uid) {
@@ -398,7 +401,7 @@
         if (M.addMapLayer) M.addMapLayer({ id: 'pinrace', title: 'Pin race', order: 5, color: '#ff5fb0', draw: (g, view) => { PIN.view = view; }, points: () => ['a', 'b'].filter((k) => pins[k]).map((k) => ({ x: pins[k].x, y: pins[k].y, icon: k === 'a' ? 'ring' : 'star', color: k === 'a' ? '#6fff6a' : '#f2c230', label: k === 'a' ? 'START' : 'FINISH', id: 'pin_' + k })) });
       } catch (e) { /* ignore */ }
       const e0 = N.player.vehicle || N.player;
-      try { prevWp = M.waypointPos; M.openMap({ x: e0.x, y: e0.y, zoom: 1 }); opened = true; } catch (e) { done(null); return; }
+      try { prevWp = M.waypointPos; M.openMap({ x: e0.x, y: e0.y, zoom: 0.4 }); opened = true; } catch (e) { done(null); return; }
       N.hud.toast(which === 'a' ? 'Pin race: right-click (long-press) the map for the START pin.' : 'Pin race: right-click (long-press) the map for the FINISH pin.', 4200);
       let wasMap = false;
       timer = setInterval(() => {
@@ -488,7 +491,12 @@
   N.party.register('chai_run', {
     name: 'The chai run', icon: '☕', where: CHAI_CAFE, spots: [{ x: COLONY_GATE.x, y: COLONY_GATE.y, r: 40, name: COLONY_GATE.name }], kind: 'race', players: { min: 2, max: 6 }, solo: true, ai: 3, timeLimit: 300,
     token: { id: 'party_chai_run', name: 'Cutting chai glass', desc: 'First chai run won, not a drop spilled' },
-    describe() { return 'Colony gate → Café Gulistan: "Ek cutting!" → back to the gate without spilling. Running spills! · ' + bestLine('chai_run'); },
+    describe() { return 'Colony gate → Café Gulistan: "Ek cutting!" → back to the gate without spilling. Running spills, and every 10% spilled costs 0.8 s. · ' + bestLine('chai_run'); },
+    // the fastest wins, but spilled chai costs time: +0.08 s for every 1% spilled
+    rank(rows) {
+      const adj = (r) => (r.dnf || r.left || !r.reported || r.timeMs == null ? Infinity : r.timeMs + (100 - (r.score == null ? 100 : r.score)) * CHAI_PENALTY);
+      return rows.slice().sort((a, b) => adj(a) - adj(b) || (b.score || 0) - (a.score || 0));
+    },
     start(ctx) { return chaiRun(ctx); },
   });
   function chaiRun(ctx) {
@@ -512,7 +520,9 @@
       if (!a) { ctx.ai.report(p.uid, { dnf: true }); continue; }
       try { N.hud.blip('pt:ai:' + p.uid, a, { color: color(i), icon: 'dot', label: p.nick, size: 3 }); st.aiBlips.push('pt:ai:' + p.uid); } catch (e) { /* ignore */ }
       const sk = ctx.ai.skill(p.uid), rng = ctx.ai.rng, f = ctx.ai.friend(p.uid);
-      const runV = 62 + 16 * sk, carryV = 44 + 20 * sk * (0.8 + 0.4 * rng.next());
+      // careful ones walk it back (no spill), a hurried one jogs (the same 3% a second the player loses jogging)
+      const hurry = rng.next() < 0.35 + 0.2 * (1 - sk);
+      const runV = 62 + 16 * sk, carryV = hurry ? 49 + 2 * rng.next() : 43 + 2 * sk;
       const there = [], back = [];
       for (let s = 40; s < P.total - 10; s += 45) { const r = P.at(s); there.push({ x: r.x, y: r.y, speed: runV, r: 6 }); }
       const pour = 1200 + rng.next() * 1300;
@@ -523,10 +533,10 @@
       ctx.ai.walk(p.uid, there.concat(back), { run: true, onDone: () => {
         const pr = st.prog.get(p.uid) || {};
         const tc = (ctx.elapsed() - (pr.t || 0)) / 1000;
-        let chai = 100 - (carryV > 55 ? (carryV - 55) * 1.6 * tc : 0) - (rng.next() < 0.22 ? 18 : 0);
-        chai = Math.round(clamp(chai, 30, 100));
+        let chai = 100 - (carryV > 47 ? 3 * tc : 0) - (rng.next() < 0.2 ? 16 : 0);
+        chai = Math.round(clamp(chai, CHAI_MIN + 10, 100));
         st.prog.set(p.uid, { phase: 'done' });
-        ctx.ai.report(p.uid, { timeMs: ctx.elapsed(), score: chai, note: chai + '% chai' });
+        ctx.ai.report(p.uid, { timeMs: ctx.elapsed(), score: chai, note: chai + '% chai' + (chai < 100 ? ' (+' + ((100 - chai) * CHAI_PENALTY / 1000).toFixed(1) + ' s)' : '') });
         if (f) ctx.ai.bark(p.uid, chai > 90 ? 'Not one drop!' : 'Arre, some spilled. Still chai!', 2.4);
       } });
     }
@@ -582,21 +592,21 @@
           ctx.status(meter());
           ctx.objective('Chai run: carry it to the colony gate (' + Math.round(st.chai) + '% left)');
           if (st.phase === 'carry' && hyp(e.x - D.gate.x, e.y - D.gate.y) < 24) {
-            if (st.chai >= 25) {
+            if (st.chai >= CHAI_MIN) {
               st.phase = 'done'; st.done = true; mark();
               const score = Math.round(st.chai);
-              ctx.report({ timeMs: t, score, note: score + '% chai' + (st.glasses > 1 ? ' (' + st.glasses + ' glasses)' : '') });
+              ctx.report({ timeMs: t, score, note: score + '% chai' + (score < 100 ? ' (+' + ((100 - score) * CHAI_PENALTY / 1000).toFixed(1) + ' s)' : '') + (st.glasses > 1 ? ' · ' + st.glasses + ' glasses' : '') });
               ctx.send('cp', { ph: 'done' });
               sfx('crowd_cheer');
               try { N.hud.banner('CHAI DELIVERED!', fmt(t) + ' · ' + score + '% left', 2600, { kind: 'pass' }); } catch (er) { /* ignore */ }
               ctx.objective('Delivered! Waiting for the others…');
               if (score >= 50) submit('chai_run', t, null).then((r) => { if (r && r.pb) ctx.toast('New personal best: ' + fmt(r.best) + '!', 3000); }).catch(() => {});
-            } else if ((st.warnT -= dt) <= 0) { st.warnT = 3; ctx.toast('Hardly any chai left! Back to the café for another.', 2400); }
+            } else if ((st.warnT -= dt) <= 0) { st.warnT = 3; ctx.toast('Less than ' + CHAI_MIN + '% left! Back to the café for another.', 2400); }
           }
         }
         // the window after the winner
         const res = ctx.results(), first = res.filter((r) => r.timeMs != null).reduce((m, r) => Math.min(m, r.timeMs), Infinity);
-        if (isFinite(first) && !st.done && t > first + Math.max(30000, first * 0.6)) {
+        if (isFinite(first) && !st.done && ctx.mode === 'party' && t > first + Math.max(30000, first * 0.6)) {
           st.done = true;
           if (st.phase === 'pour' && N.player) N.player.controlsLocked = false;
           ctx.report({ dnf: true, score: Math.round(st.chai), note: st.phase === 'carry' ? 'still carrying' : 'no chai yet' });
@@ -724,7 +734,7 @@
       if (!a) { ctx.ai.report(p.uid, { dnf: true }); continue; }
       try { N.hud.blip('pt:ai:' + p.uid, a, { color: color(i), icon: 'dot', label: p.nick, size: 3 }); st.aiBlips.push('pt:ai:' + p.uid); } catch (e) { /* ignore */ }
       const sk = ctx.ai.skill(p.uid), rng = ctx.ai.rng;
-      ai.set(p.uid, { k: 0, think: (ctx.startAt - ctx.now()) / 1000 + 5 + (1 - sk) * 14 + rng.next() * 6, riding: false, sk, rng, f: ctx.ai.friend(p.uid) });
+      ai.set(p.uid, { k: 0, think: (ctx.startAt - ctx.now()) / 1000 + 3 + (1 - sk) * 10 + rng.next() * 4, riding: false, sk, rng, f: ctx.ai.friend(p.uid) });
     }
     function aiStep(uid, A, dt) {
       if (A.k >= n || A.riding) return;
@@ -743,7 +753,7 @@
         st.prog.set(uid, A.k);
         sfx('paper', { x: tgt.x, y: tgt.y, vol: 0.5 });
         if (A.k >= n) { ctx.ai.report(uid, { timeMs: ctx.elapsed(), score: n }); if (A.f) ctx.ai.bark(uid, 'Last chit! Done!', 2.4); }
-        else A.think = 4 + (1 - A.sk) * 16 + A.rng.next() * 7;
+        else A.think = 3 + (1 - A.sk) * 11 + A.rng.next() * 5;
       } });
       if (!R) { A.riding = false; A.think = 3; }
     }

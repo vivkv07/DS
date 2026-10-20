@@ -7,6 +7,8 @@
  *             where the step wants the player, N.story2.tp() moves him), with REAL key input for at
  *             least one beat each (walking into the giver with the arrows, E on ● REC, choices with
  *             ↑/↓ + E, the Charminar gallery pan with the arrows, the self-timer, the claps, ...).
+ *   Diwali    the chapter between M10 and the interlude (src/diwali_missions.js): the way in, the two story-required
+ *             activities debug-passed (played in full by story_full.cjs / diwali_missions.cjs), Sleep -> the interlude.
  *   interlude ■ PAUSED 812;  M11 resumes Side A (905);  M12 fills it (999).
  *   SA5-SA8   the twelve o'clock gong, Bunty-anna's races R1-R4, new class / old books, Christmas stars.
  *   ending    at Charminar (Thu 27 Nov 2003): kites found rise, the plane light, the claps, Side A plays.
@@ -241,7 +243,8 @@ async function reloadContinue(page) {
       N.missions.deserialize({ done: M16.concat(LATER) });
       for (const id of M16) N.tape.rec(id, { silent: true });
       for (const id of LATER) N.tape.rec(id, { silent: true });
-      if (LATER.indexOf('agle_baras') >= 0) Object.assign(N.flags, { interlude_done: true, ayesha_moving: true, lock_4: 1, riddle_4: true, clue_tunnel: true });
+      // (Diwali week, the chapter between M10 and the interlude, played already: src/diwali_missions.js)
+      if (LATER.indexOf('agle_baras') >= 0) Object.assign(N.flags, { interlude_done: true, ayesha_moving: true, lock_4: 1, riddle_4: true, clue_tunnel: true, dw_story: 'done' });
       if (LATER.indexOf('last_bell') >= 0) Object.assign(N.flags, { lock_3: 0, riddle_3: true });
       if (LATER.indexOf('chand_raat') >= 0) Object.assign(N.flags, { tin_locked: true, frame_24: true });
       const f = N.flags;
@@ -404,7 +407,26 @@ async function reloadContinue(page) {
     check(a10.done && a10.counter === 812, 'M10 passed: Side A 812 (crowd_cheer)', a10);
     check(a10.lock4 === 1 && a10.riddle4 && a10.boats && a10.gulal, 'M10: lock digit 4 = 1 (the man in the lake), Lumbini boats open, gulal in the tin', a10);
     check(walked, 'M10: the 7th statue reached on foot with the arrow keys');
-    log('interlude (reload right after MISSION PASSED: the autosave resumes into it)');
+    // Diwali week (src/diwali_missions.js) comes between M10 and the interlude: tests/story_full.cjs and
+    // tests/diwali_missions.cjs play it in full; here the way in, the two story-required activities debug-passed,
+    // "Sleep ▶▶" -> the interlude
+    log('Diwali week (reload right after MISSION PASSED: the autosave resumes into it)');
+    await reloadContinue(page);
+    await drive(page, (s) => s.scene === 'diwali_in', { timeout: 20000 });
+    check(true, 'after a reload, CONTINUE plays the way into Diwali week');
+    await drive(page, (s) => s.scene == null && !s.cut, { timeout: 60000 });
+    const dw = await page.evaluate(() => ({ date: N.calendar.label(), st: N.dwMissions.story.state(), m11: N.missions.available().some((d) => d.id === 'last_bell') }));
+    check(/MON 20 OCT 2003/.test(dw.date) && dw.st.week === 'week' && !dw.m11, 'Diwali week: MON 20 OCT 2003; Last Bell waits until it is over', dw);
+    for (const id of ['mithai_run', 'deepon_ki_raat']) {
+      await page.evaluate((id) => N.debug.startMission(id), id);
+      await waitMission(page, id, 6000);
+      await page.evaluate(() => N.debug.completeMission());
+      await page.waitForFunction(() => !N.missions.active && N.state.mode === 'play', null, { timeout: 20000 }).catch(() => {});
+    }
+    await sleep(2500);
+    check(await page.evaluate(() => N.dwMissions.story.sleep()), 'Diwali\'s done: "Sleep ▶▶" (Ammamma\'s swing)');
+    await drive(page, (s) => s.scene === 'interlude', { timeout: 60000 });
+    log('interlude (reload: the autosave after Diwali week resumes into it)');
     await reloadContinue(page);
     await drive(page, (s) => s.scene === 'interlude', { timeout: 20000 });
     check(true, 'after a reload, CONTINUE resumes into the interlude (no save inside it)');
@@ -608,7 +630,9 @@ async function reloadContinue(page) {
       panel: async (s) => {
         if (/s2-rewind/.test(s.panel || '')) {
           if (!rewindShot) { rewindShot = true; await sleep(400); await shot(page, 'rewind_menu'); }
-          for (let i = 0; i < 3; i++) { await page.keyboard.press('ArrowDown'); await sleep(120); }
+          // December by its place in the menu ([diwali story]: October sits between September and December)
+          const di = await page.evaluate(() => N.story2.seasons.indexOf('december'));
+          for (let i = 0; i < di; i++) { await page.keyboard.press('ArrowDown'); await sleep(120); }
           await page.keyboard.press('KeyE');
           return true;
         }

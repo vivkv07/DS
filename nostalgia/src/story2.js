@@ -41,7 +41,7 @@
  *   interlude() / ending() / epilogue() / rewind()   start those sequences (debug / replay)
  *   lockDial({tries}) -> Promise<{code, tries, auto}>   the brass 1-4-0-1 dial (systems §8.20)
  *   cassettesFound() -> {dedications: [ids], agent: [ids]}   sideBTail() -> [{s, t}] (bible §9.2 tail)
- *   kitesForEnding() -> n    seasons ['january', 'may', 'september', 'december'] / playSeason(name)
+ *   kitesForEnding() -> n    seasons ['january', 'may', 'september', 'october', 'december'] / playSeason(name)  ([diwali story] october)
  *   replay(id)               N.story.replay fallback (Side A track list) when story.js has none
  *   state()                  debug snapshot }
  * Events: 'story2:scene' {id, on}, 'story2:ending' {phase}, 'story2:epilogue' {phase}, 'story2:lock' {code, ok},
@@ -1816,7 +1816,7 @@
   /* ================================================================== M11 last_bell — Last Bell */
   const M11 = {
     id: 'last_bell', kind: 'main', requires: ['agle_baras'],
-    when: () => !!F().interlude_done,
+    when: () => !!F().interlude_done && !(N.dwMissions && N.dwMissions.story && N.dwMissions.story.blocks()), // [diwali story] not before Diwali week
     giver: { place: 'school_1', r: 18 },
     reward: { money: 1000 },
     async script(m) {
@@ -2843,6 +2843,7 @@
     january: { title: 'January', sub: 'Sankranti, Numaish. Immu hangs out at the colony ground; kites in the sky.', date: [2003, 1, 14, 10, 0], immu: true },
     may: { title: 'May', sub: 'Summer: ice golas, mangoes, the LB summer camp.', date: [2003, 5, 10, 9, 0], immu: true },
     september: { title: 'September', sub: 'Ganesh: pandals; Immu at the pandal.', date: [2003, 9, 3, 18, 30], immu: true },
+    october: { title: 'October', sub: 'Diwali week: pataakha stalls on Sultan Bazaar, sweets for the neighbours, diyas on the terrace, Bunty-anna\'s rocket.', date: [2003, 10, 20, 10, 0], immu: true }, // [diwali story] (src/diwali_missions.js)
     december: { title: 'December', sub: 'Immu has gone. Christmas stars in Secunderabad; his first email waits at Cyber Zone. Ayesha\'s lorry leaves for Tolichowki on 13 Dec.', date: [2003, 12, 13, 8, 0], immu: false },
   };
   const IMMU_HANG = [
@@ -3289,9 +3290,19 @@
   function resumeStory() {
     if (SC.cur || S2.finaleRunning || (N.missions && N.missions.active)) return;
     const f = F();
+    // [diwali story] Diwali week (src/diwali_missions.js) is played between Track 10 and the interlude; a save from
+    // after Track 10 and before Track 11 goes there first (never one at / after Last Bell, never the post-game)
+    const DWS = N.dwMissions && N.dwMissions.story;
+    if (DWS && DWS.blocks()) { later(0.8, () => DWS.resume()); return; }
     if (isDone('agle_baras') && !f.interlude_done) { later(0.8, () => startInterlude()); return; }
     if (isDone('chand_raat') && (!f.ending_done || !f.epilogue_done || !f.credits_seen) && !f.postgame) { later(0.8, () => startFinale()); return; }
     if (f.year === 2026 && f.epilogue_done) playSeason(f.season_pick || 'january');
+  }
+  // [diwali story] after Track 10: Diwali week first (src/diwali_missions.js calls interlude() when it is over)
+  function afterTrack10() {
+    const DWS = N.dwMissions && N.dwMissions.story;
+    if (DWS && DWS.blocks()) return DWS.resume();
+    return startInterlude();
   }
   function startInterlude() {
     if (SC.cur || F().interlude_done) return Promise.resolve(false);
@@ -3299,7 +3310,7 @@
   }
   N.on('mission:complete', (d) => {
     runCleanups(missionCleanups);
-    if (d && d.id === 'agle_baras' && !F().interlude_done) later(4.6, () => startInterlude());
+    if (d && d.id === 'agle_baras' && !F().interlude_done) later(4.6, () => afterTrack10()); // [diwali story] was startInterlude()
     endReplay({ id: d && d.id, type: 'pass' });
   });
   N.on('mission:fail', (d) => { runCleanups(missionCleanups); endReplay({ id: d && d.id, type: 'fail' }); });

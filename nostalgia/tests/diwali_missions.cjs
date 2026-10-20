@@ -16,10 +16,17 @@
  *   tiger_ko_bachao  search circle + whimpers, comfort (hold E), fail: running (Tiger bolts), retry at 'found':
  *                    walk him past the two far bangs to Nanna's garage.
  *   diwali_week      post-game J-card at home (10 Sep - 19 Oct): ▶▶ to Mon 20 Oct, no MISSION PASSED.
+ * Diwali week IN THE STORY (phase 'story', real keys): a save right after Track 10 -> CONTINUE -> the card MON 20 OCT
+ *   2003 (not the 1 Nov interlude), Amma's "Immu won't be here for the next one", the week loop, the clue on the
+ *   Journal's Clues page (J + a click), Ammamma's swing "Wait till Sat 25 Oct · 15:00 ▶▶", Mithai Run and Deepon ki
+ *   Raat from their givers, "Diwali's done" (the optional ones still out), "Sleep ▶▶" -> the outro -> the interlude as
+ *   before -> Track 11 offered. Saves: an older build's save from after the interlude goes ◀◀ to the week and ▶▶
+ *   back to its own date; a save past Last Bell stays put; the post-game card still works ("Diwali again?") and what
+ *   was played in the story stays done. Phase 'rewind': ◀◀ REWIND lists October between September and December.
  * Then: no save is written while a mission runs (player saves are refused), a manual save after the missions, a page
  * reload + CONTINUE restores every mission's progress (done set, our save section, the cracker box, the tin), zero
  * console errors / page errors / N.err. Screenshots: tests/out/diwali_m_*.png.
- *   node tests/diwali_missions.cjs            ONLY=bazaar,mithai,deepon,rocket,tiger,week,save   VERBOSE=1
+ *   node tests/diwali_missions.cjs            ONLY=bazaar,mithai,deepon,rocket,tiger,week,save,eid,story,rewind   VERBOSE=1
  */
 'use strict';
 const path = require('path');
@@ -47,7 +54,7 @@ const ev = (fn, arg) => page.evaluate(fn, arg);
 const tick = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 async function waitFor(fn, arg, ms, what) {
   const ok = await page.waitForFunction(fn, arg, { timeout: ms || 15000, polling: 100 }).then(() => true, () => false);
-  if (!ok && what) check(false, 'timed out waiting for ' + what, await ev(() => ({ mode: N.state.mode, obj: N.hud.objectiveText, dw: N.dwMissions.debug.state(), dlg: N.dialogue.current && N.dialogue.current.text })).catch(() => null));
+  if (!ok && what) check(false, 'timed out waiting for ' + what, await ev(() => ({ mode: N.state.mode, obj: N.hud.objectiveText, prompt: N.missions.prompt, active: N.missions.active && N.missions.active.id, givers: N.missions.markers().filter((m) => m.kind === 'giver').map((m) => m.id + '@' + Math.round(m.x) + ',' + Math.round(m.y)), dw: N.dwMissions.debug.state(), dlg: N.dialogue.current && N.dialogue.current.text })).catch(() => null));
   return ok;
 }
 const shots = [];
@@ -145,9 +152,21 @@ async function startAt(id, o) {
     const at = await ev(([id, gx, gy]) => {
       const others = N.missions.markers().filter((m) => m.kind === 'giver' && m.id !== id);
       let best = null, bs = -1;
-      for (let i = 0; i < 16; i++) {
-        const a = (i / 16) * Math.PI * 2, x = gx + Math.cos(a) * 90, y = gy + Math.sin(a) * 90;
+      // a straight walk in (not through the house) when there is one: 90 u out, else nearer; else any side
+      for (const [R, clear] of [[90, true], [70, true], [50, true], [90, false]]) for (let i = 0; i < 16 && !best; i++) {
+        const a = (i / 16) * Math.PI * 2, x = gx + Math.cos(a) * R, y = gy + Math.sin(a) * R;
         if (!N.world.isWalkable(x, y)) continue;
+        const rc = clear && N.world.raycast ? N.world.raycast(x, y, gx, gy, 'walk') : null;
+        if (rc && rc.hit) continue;
+        best = 'r' + R + (clear ? 'c' : ''); // (marks the radius found; the loop below picks the side)
+      }
+      const pick = best; best = null;
+      const R0 = pick ? +pick.replace(/\D+/g, '') : 90, clear0 = !!pick && /c$/.test(pick);
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2, x = gx + Math.cos(a) * R0, y = gy + Math.sin(a) * R0;
+        if (!N.world.isWalkable(x, y)) continue;
+        const rc = clear0 && N.world.raycast ? N.world.raycast(x, y, gx, gy, 'walk') : null;
+        if (rc && rc.hit) continue;
         let md = 1e9; for (const m of others) { const dd = Math.hypot(m.x - x, m.y - y); const seg = Math.min(md, dd); md = seg; }
         // and away from the straight line in
         for (const m of others) for (let t = 0.2; t < 1; t += 0.2) md = Math.min(md, Math.hypot(m.x - (x + (gx - x) * t), m.y - (y + (gy - y) * t)) + 10);
@@ -160,6 +179,9 @@ async function startAt(id, o) {
   await waitFor((id) => N.missions.markers().some((m) => m.kind === 'giver' && m.id === id), id, 8000, id + ' giver marker');
   if (o.shot) await shot(o.shot);
   await walkTo(g.x, g.y, g.r - 4, { stop: () => !!N.missions.prompt || !!N.missions.active, ms: 15000 });
+  // (an NPC giver may have moved, or the walk stopped short): the last steps to where the giver is now
+  const g2 = await ev((id) => { const d = N.missions.defs[id]; const p = d && N.missions.giverPos(d); return p ? { x: p.x, y: p.y, prompt: N.missions.prompt } : null; }, id);
+  if (g2 && g2.prompt !== id && !(await ev(() => N.missions.active))) { vlog('startAt ' + id + ': again to ' + JSON.stringify(g2)); await walkTo(g2.x, g2.y, g.r - 6, { direct: true, stop: `() => N.missions.prompt === '${id}' || !!N.missions.active`, ms: 8000 }); }
   const ok = await waitFor((id) => N.missions.prompt === id || (N.missions.active && N.missions.active.id === id), id, 6000, id + ' J-card');
   if (ok && (await ev(() => !N.missions.active))) { if (o.jshot) await shot(o.jshot); await press('KeyE'); tally('E J-card'); }
   return waitFor((id) => N.missions.active && N.missions.active.id === id, id, 8000, id + ' starts');
@@ -313,6 +335,7 @@ async function pMithai() {
 async function climbTerrace() {
   const st = await ev(() => ({ x: N.places.home_stairs.x, y: N.places.home_stairs.y }));
   await walkTo(st.x, st.y, 5, { stop: `() => /terrace/i.test(N.input.actionLabel || '') && Math.hypot(N.player.x - ${st.x}, N.player.y - ${st.y}) < 9`, ms: 30000 });
+  if (!(await ev(() => /terrace/i.test(N.input.actionLabel || '')))) { vlog('the walk to the stairs fell short -> standing at them'); tally('debug hops (short walks)'); await teleport(st.x, st.y); }
   if (!(await useWhen(/terrace/i))) return false;
   return waitFor(() => N.player.level === 'home_terrace', null, 8000, 'on the home terrace');
 }
@@ -370,7 +393,7 @@ async function pDeepon() {
   if (!(await startAt('deepon_ki_raat', { jshot: 'jcard_deepon' }))) return;
   await talkThrough();
   if (!(await climbTerrace())) return;
-  await waitFor(() => !!N.dwMissions.debug.state().terrace, null, 8000, 'the 21 diyas on the parapet');
+  await waitFor(() => !!N.dwMissions.debug.state().terrace, null, 30000, 'the 21 diyas on the parapet');
   const T0 = await ev(() => N.dwMissions.debug.state().terrace);
   check(T0 && T0.n === 21 && T0.diyas.every((d) => isFinite(d.x)), '21 diya spots on the home terrace parapet', T0 && { n: T0.n, bb: T0.bb });
   // fail: the breeze comes before 21 (two lit for real, then he stands about)
@@ -602,8 +625,216 @@ async function pSave() {
   check(after.sevai === before.sevai, 'CONTINUE: N.flags.diwali_sevai_promise is back (' + after.sevai + ')');
 }
 
+/* ================================================================== Diwali week IN THE STORY (after Track 10, before the interlude) */
+const D10 = ['bo_kaata', 'lost_and_found', 'first_day_first_show', 'last_man_batting', 'right_right', 'ammammas_thursday', 'the_clap', 'drums_for_amma', 'opening_day', 'agle_baras'];
+/** A save state written with N.save (missions done, flags, date), then a page reload and a real click on ▶▶ CONTINUE. */
+async function saveState(o) {
+  const ok = await ev((o) => {
+    N.debug.newGame({ skipIntro: true }); N.save.clear();
+    N.missions.deserialize({ done: o.done });
+    for (const id of o.done) if (!N.dwMissions.IDS.includes(id)) N.tape.rec(id, { silent: true });
+    Object.assign(N.flags, { prologue_seen: true, lock_4: 1, riddle_4: true, boats_open: true }, o.flags || {});
+    N.calendar.set.apply(N.calendar, o.date);
+    if (o.paused) N.tape.pause(true);
+    const h = N.places.home; N.player.teleport(h.x + 200, h.y + 30);
+    return N.save.save({ reason: 'mission', toast: false });
+  }, o);
+  check(ok, 'save state written: ' + o.what);
+  await page.reload();
+  await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 90000 });
+  await ev(() => { if (N.testing && N.testing.unlimitedMoney) N.testing.setUnlimitedMoney(false); const d = document.getElementById('debug'); if (d) d.classList.add('hide'); });
+  await page.mouse.click(2, 2);
+  await page.click('[data-act=continue]', { noWaitAfter: true, timeout: 60000 }); tally('click CONTINUE');
+  await page.waitForFunction(() => N.state.mode !== 'title', null, { timeout: 30000 });
+  await ev(() => { window.__lines = []; N.on('dialogue:line', (d) => window.__lines.push({ s: d.speaker, t: d.text })); });
+}
+/** The cutscene card whose text matches `re` (polled), screenshot. */
+async function catchCard(re, name, ms) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < (ms || 30000)) {
+    const cs = await ev(() => { const e = document.querySelector('.mn-cs'); return e && e.offsetParent !== null ? e.innerText : ''; });
+    if (re.test(cs)) { if (name) await shot(name); return cs; }
+    await page.waitForTimeout(80);
+  }
+  return null;
+}
+/** Into Ammamma's swing (the chapter's J-card) with the arrow keys, from the side away from the house. */
+async function swingCard(re, name) {
+  const c = await ev(() => N.dwMissions.story.state().card);
+  if (!check(!!c, 'Ammamma\'s card is up at her swing', await ev(() => N.dwMissions.story.state()))) return false;
+  await ev((c) => { const h = N.places.home, dx = c.x - h.x, dy = c.y - h.y, L = Math.hypot(dx, dy) || 1; const q = N.world.findFree(c.x + dx / L * 46, c.y + dy / L * 46, 'walk', 20) || { x: c.x + 46, y: c.y }; N.player.teleport(q.x, q.y); if (N.render.snapCamera) N.render.snapCamera(); }, c);
+  await tick();
+  await walkTo(c.x, c.y, 6, { stop: `() => /${re.source.replace(/\//g, '\\/')}/.test((document.querySelector('.hud-jcard.show') || {}).innerText || '')`, ms: 15000 });
+  const ok = await waitFor((src) => new RegExp(src).test((document.querySelector('.hud-jcard.show') || {}).innerText || ''), re.source, 5000, 'the swing J-card ' + re);
+  const txt = await ev(() => (document.querySelector('.hud-jcard.show') || {}).innerText || '');
+  check(ok, 'Ammamma\'s swing: "' + txt.replace(/\s+/g, ' ').trim().slice(0, 130) + '"');
+  if (ok && name) await shot(name);
+  return ok;
+}
+async function pStory() {
+  phase = 'story';
+  // STORY_FROM=deepon: start at step 5 from a save in the week (Sat 25 Oct 17:00, Mithai Run done)
+  if (process.env.STORY_FROM === 'deepon') {
+    await saveState({ what: 'in Diwali week, Sat 25 Oct 17:00, Mithai Run done', done: D10.concat(['mithai_run']), flags: { dw_story: 'week', diwali_sevai_promise: true }, date: [2003, 10, 25, 17, 0] });
+    await page.waitForTimeout(2500);
+    return pStoryDeepon();
+  }
+  // 1. a save right after Track 10 (Agle Baras): CONTINUE plays the way into Diwali week
+  await saveState({ what: 'M1-M10 done, Wed 10 Sep 2003 18:10 (right after Agle Baras)', done: D10, date: [2003, 9, 10, 18, 10] });
+  const card = await catchCard(/20 OCT 2003/, 'story_card');
+  check(card && /Diwali week/.test(card), 'CONTINUE after Track 10: the card "' + String(card).replace(/\s+/g, ' ').slice(0, 80) + '" (▶▶, not the 1 Nov interlude)', card);
+  await playUntil(() => !N.story2.scene && N.state.mode === 'play', 40000, 'the way in');
+  await page.waitForTimeout(1200);
+  const w = await ev(() => ({ date: N.calendar.label(), st: N.dwMissions.story.state(), loop: N.calendar.loop ? [N.calendar.dateOf(N.calendar.loop.from).label, N.calendar.dateOf(N.calendar.loop.to).label] : null,
+    hint: N.hints.active && N.hints.active.id, obj: N.hud.objectiveText, m11: N.missions.available().some((d) => d.id === 'last_bell'), inter: !!N.flags.interlude_done,
+    lines: window.__lines.filter((l) => /next one|aeroplane|Saturday/.test(l.t)).map((l) => l.s + ': ' + l.t), save: JSON.parse(localStorage.getItem('nostalgia.save.v1')).data.flags.dw_story }));
+  check(/MON 20 OCT 2003/.test(w.date) && w.st.week === 'week' && !w.inter, 'Diwali week: ' + w.date + ', the interlude not yet', w);
+  check(w.lines.some((l) => /^amma: .*next one/.test(l)) && w.lines.some((l) => /^ammamma: .*aeroplane/.test(l)), 'Amma: "Immu won\'t be here for the next one"; Ammamma: "...see them from the aeroplane"', w.lines);
+  check(w.loop && /20 OCT/.test(w.loop[0]) && /26 OCT/.test(w.loop[1]), 'the calendar loops the week (Mon 20 - Sun 26 Oct)', w.loop);
+  check(w.hint === 'diwali_story' && /Deepavali is Saturday/.test(w.obj || '') && !w.m11 && w.save === 'week', 'the clue + the objective line; Last Bell waits; autosaved in the week', w);
+  // 2. the Journal: the Clues page (J, a click on the tab)
+  await press('KeyJ');
+  if (await waitFor(() => N.state.mode === 'journal', null, 6000, 'the Journal')) {
+    await page.click('.jr-tab[data-tab=clues]').catch(() => ev(() => N.menus.openJournal('clues'))); tally('click Clues');
+    await page.waitForTimeout(500);
+    const txt = await ev(() => (document.querySelector('.jr-page') || {}).innerText || '');
+    await shot('story_journal');
+    check(/Deepavali is Saturday/.test(txt), 'Journal, Clues: "' + txt.replace(/\s+/g, ' ').slice(0, 110) + '..."');
+    await press('Escape');
+    await waitFor(() => N.state.mode === 'play', null, 4000);
+  }
+  // 3. Ammamma's swing on Monday: ▶▶ to Deepavali (the bazaar stays optional: open till 15:00)
+  if (await swingCard(/Wait till Sat 25 Oct · 15:00/, 'story_wait')) await press('KeyE');
+  await waitFor(() => /SAT 25 OCT 2003/.test(N.calendar.label()) && N.clock.minutes >= 900 && N.clock.minutes < 905 && !N.calendar.jumping, null, 12000, '▶▶ SAT 25 OCT 2003 15:00');
+  // 4. Mithai Run (story-required)
+  if (await startAt('mithai_run')) {
+    await talkThrough();
+    const order = await ev(() => {
+      const st = N.dwMissions.debug.state().mithai.stops, out = [];
+      let cur = { x: N.player.x, y: N.player.y };
+      const left = st.slice();
+      while (left.length) { left.sort((a, b) => Math.hypot(a.x - cur.x, a.y - cur.y) - Math.hypot(b.x - cur.x, b.y - cur.y)); const n = left.shift(); out.push(n); cur = n; }
+      return out;
+    });
+    for (const st of order) {
+      // a hop across the colony to a clear spot 40 u from the door, the last stretch on foot
+      const at = await ev(([x, y]) => { for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2, px = x + Math.cos(a) * 40, py = y + Math.sin(a) * 40; const rc = N.world.raycast ? N.world.raycast(px, py, x, y, 'walk') : null; if (N.world.isWalkable(px, py) && !(rc && rc.hit)) return { x: px, y: py }; } return null; }, [st.x, st.y]);
+      if (at) await teleport(at.x, at.y);
+      await walkTo(st.x, st.y, 9, { stop: `() => /Give the sweets/.test(N.input.actionLabel || '')`, ms: 20000 });
+      if (!(await ev(() => /Give the sweets/.test(N.input.actionLabel || '')))) { vlog('mithai: the walk to ' + st.key + ' fell short -> standing at the door'); tally('debug hops (short walks)'); await teleport(st.x, st.y); }
+      if (!(await useWhen(/Give the sweets/))) break;
+      await talkThrough();
+    }
+    const home = await ev(() => ({ x: N.places.home.x, y: N.places.home.y }));
+    await walkTo(home.x, home.y, 18, { stop: () => !N.missions.active || !!(N.dialogue.isOpen && N.dialogue.isOpen()), ms: 60000 });
+    await passed('mithai_run');
+    check(await ev(() => N.flags.diwali_sevai_promise === true), 'Immu\'s Ammi: "Eid pe sevaiyan pakki!" (the promise Eid morning keeps)');
+  }
+  await page.waitForTimeout(2600);
+  const m1 = await ev(() => ({ st: N.dwMissions.story.state(), saved: JSON.parse(localStorage.getItem('nostalgia.save.v1')).data.missions.done.includes('mithai_run') }));
+  check(m1.saved && m1.st.left.join() === 'deepon_ki_raat' && /diyas/.test(m1.st.objective || ''), 'after Mithai Run: autosaved (a story beat); next: the diyas', m1);
+  return pStoryDeepon();
+}
+const N_ok = (t) => !t || /DEEPON KI RAAT/.test(t); // (the card may already have started the activity: its dwell is 1 s)
+async function pStoryDeepon() {
+  // 5. Deepon ki Raat (story-required): ▶▶ to 18:30 at the swing if it is early, then Ammamma
+  let started = false;
+  if (await ev(() => N.clock.minutes < 18 * 60 + 30)) {
+    if (await swingCard(/Wait till 18:30/, null)) await press('KeyE');
+    await waitFor(() => N.clock.minutes >= 18 * 60 + 30 && !N.calendar.jumping, null, 12000, '▶▶ 18:30');
+    // he is still at the swing, in Ammamma's ring: her own J-card comes up under him (as after a "Wait till ▶▶")
+    if (await waitFor(() => N.missions.prompt === 'deepon_ki_raat' || (N.missions.active && N.missions.active.id === 'deepon_ki_raat'), null, 6000, 'Ammamma\'s Deepon ki Raat J-card right after the ▶▶')) {
+      const txt = await ev(() => (document.querySelector('.hud-jcard.show') || {}).innerText || '');
+      check(N_ok(txt), 'after "Wait till 18:30 ▶▶": "' + txt.replace(/\s+/g, ' ').trim().slice(0, 80) + '"');
+      await shot('story_deepon_card');
+      if (await ev(() => !N.missions.active)) await press('KeyE');
+      started = await waitFor(() => N.missions.active && N.missions.active.id === 'deepon_ki_raat', null, 8000, 'deepon_ki_raat starts');
+    }
+  }
+  if (started || await startAt('deepon_ki_raat')) {
+    await talkThrough();
+    if (await climbTerrace()) {
+      await waitFor(() => !!N.dwMissions.debug.state().terrace, null, 30000, 'the 21 diyas');
+      await deeponBot(150000);
+      await playUntil(() => N.state.mode === 'cutscene' || !N.missions.active, 20000, 'the terrace fireworks view');
+      await passed('deepon_ki_raat', 60000);
+    }
+  }
+  await page.waitForTimeout(2600);
+  // 6. Diwali's done: the player chooses when to sleep
+  const dn = await ev(() => ({ st: N.dwMissions.story.state(), obj: N.hud.objectiveText, avail: N.missions.available().map((d) => d.id), date: N.calendar.label() + ' ' + N.clock.label(), scene: N.story2.scene, inter: !!N.flags.interlude_done }));
+  check(!dn.st.left.length && dn.st.card && dn.st.card.kind === 'sleep' && !dn.scene && !dn.inter, 'Diwali\'s done (' + dn.date + '): nothing moves on by itself; "Sleep ▶▶" waits at Ammamma\'s swing', dn);
+  check(['rocket_bunty', 'tiger_ko_bachao'].every((id) => dn.avail.includes(id)) && /Diwali's done/.test(dn.obj || ''), 'the optional ones are still out tonight; the objective: home to sleep', dn);
+  await shot('story_done');
+  if (await swingCard(/Sleep ▶▶/, 'story_sleep')) await press('KeyE');
+  // 7. the outro, then the interlude exactly as before (Sat 1 Nov, ■ PAUSED 812, Ayesha)
+  await playUntil(() => N.story2.scene === 'interlude', 60000, 'the interlude after the outro');
+  const o = await ev(() => ({ f: N.flags.dw_story, l: window.__lines.filter((l) => /one diya extra|we show off/.test(l.t)).length, save: (() => { const d = JSON.parse(localStorage.getItem('nostalgia.save.v1')).data; return { dw: d.flags.dw_story, inter: !!d.flags.interlude_done }; })() }));
+  check(o.f === 'done' && o.l === 2 && o.save.dw === 'done' && !o.save.inter, 'Sleep ▶▶: the outro (Ammamma: "one diya extra. For him."), autosaved, the interlude begins', o);
+  await catchCard(/1 NOV 2003/, 'story_interlude', 20000);
+  for (let i = 0; i < 80 && !(await ev(() => !!N.flags.interlude_done)); i++) {
+    const s = await ev(() => ({ dlg: !!(N.dialogue.isOpen && N.dialogue.isOpen()), pr: N.story2.probe() }));
+    if (s.dlg) { await talkThrough(() => !!N.flags.interlude_done, 10); continue; }
+    if (s.pr.mode === 'play' && s.pr.target && s.pr.dist > 26) { await teleport(s.pr.target.x + 40, s.pr.target.y); await walkTo(s.pr.target.x, s.pr.target.y, 22, { ms: 10000, stop: () => !!(N.dialogue.isOpen && N.dialogue.isOpen()) }); continue; }
+    await page.waitForTimeout(250);
+  }
+  await waitFor(() => !N.story2.scene && N.state.mode === 'play', null, 20000, 'the interlude ends');
+  const af = await ev(() => ({ inter: !!N.flags.interlude_done, date: N.calendar.label(), paused: N.tape.paused, counter: N.tape.counter, m11: N.missions.available().some((d) => d.id === 'last_bell'), loop: N.calendar.loop ? N.calendar.dateOf(N.calendar.loop.to).label : null, hint: N.hints.active && N.hints.active.id }));
+  check(af.inter && /01 NOV 2003/.test(af.date) && af.paused && af.counter === 812 && af.m11 && af.hint !== 'diwali_story', 'then the interlude as before (SAT 01 NOV 2003, ■ PAUSED 812) and Track 11 is offered', af);
+  // 8. saves: one made after the interlude by an older build (no Diwali week) -> ◀◀ into the week, ▶▶ back afterwards
+  await saveState({ what: 'M1-M10 done + the interlude, Fri 14 Nov 2003 (an older build skipped Diwali week)', done: D10, flags: { interlude_done: true, ayesha_moving: true }, date: [2003, 11, 14, 10, 0], paused: true });
+  const back = await catchCard(/20 OCT 2003/, 'story_back_card');
+  check(back && /Side A forgot/.test(back), 'that save goes to Diwali week on load (◀◀ "the week Side A forgot to record")', back);
+  await playUntil(() => !N.story2.scene && N.state.mode === 'play' && N.flags.dw_story === 'week', 40000, 'the way in (◀◀)');
+  const b1 = await ev(() => ({ st: N.dwMissions.story.state(), m11: N.missions.available().some((d) => d.id === 'last_bell') }));
+  check(b1.st.back && b1.st.back[1] === 11 && b1.st.back[2] === 14 && !b1.m11, 'it remembers Fri 14 Nov; Last Bell waits', b1);
+  await ev(() => { N.missions.deserialize({ done: N.missions.serialize().done.concat(['mithai_run', 'deepon_ki_raat']) }); }); // (both played above: here only the way back is checked)
+  await page.waitForTimeout(1200);
+  check(await ev(() => N.dwMissions.story.sleep()), 'Sleep ▶▶ (debug call)');
+  await playUntil(() => !N.story2.scene && N.flags.dw_story === 'done' && !N.calendar.jumping && N.calendar.date.m === 11, 40000, 'the ▶▶ back to November');
+  await page.waitForTimeout(800);
+  const b2 = await ev(() => ({ date: N.calendar.label(), scene: N.story2.scene, m11: N.missions.available().some((d) => d.id === 'last_bell'), paused: N.tape.paused, back: N.flags.dw_back || null }));
+  check(/FRI 14 NOV 2003/.test(b2.date) && !b2.scene && b2.m11 && b2.paused && !b2.back, 'after the week: ▶▶ back to FRI 14 NOV 2003 (no second interlude), Track 11 offered', b2);
+  // a save at / after Last Bell is never pulled back
+  await saveState({ what: 'M1-M11 done (Last Bell), Sat 22 Nov 2003', done: D10.concat(['last_bell']), flags: { interlude_done: true, lock_3: 0 }, date: [2003, 11, 22, 10, 0] });
+  await page.waitForTimeout(4000);
+  const c1 = await ev(() => ({ date: N.calendar.label(), scene: N.story2.scene, pending: N.dwMissions.story.state().pending }));
+  check(/22 NOV 2003/.test(c1.date) && !c1.scene && !c1.pending, 'a save past Last Bell stays where it is (no Diwali week)', c1);
+  // the post-game card still works; a player who played the week in the story gets Amma's "Diwali again?" and nothing doubles
+  await saveState({ what: 'post-game, Sat 20 Sep 2003, Diwali week played in the story', done: D10.concat(['last_bell', 'chand_raat', 'mithai_run', 'deepon_ki_raat']), flags: { interlude_done: true, postgame: true, ending_done: true, epilogue_done: true, credits_seen: true, dw_story: 'done', diwali_sevai_promise: true }, date: [2003, 9, 20, 10, 0] });
+  await page.waitForTimeout(3000);
+  const d1 = await ev(() => ({ date: N.calendar.label(), scene: N.story2.scene, pending: N.dwMissions.story.state().pending, card: N.missions.available().some((d) => d.id === 'diwali_week'), line: N.missions.defs.diwali_week.jcardLine }));
+  check(!d1.scene && !d1.pending && d1.card && /Diwali again/.test(d1.line), 'post-game: the "Diwali Week" card is up at home ("' + d1.line + '"); no story chapter again', d1);
+  if (await startAt('diwali_week', { jshot: 'story_postgame_card' })) {
+    await talkThrough();
+    await waitFor(() => !N.missions.active && /MON 20 OCT 2003/.test(N.calendar.label()) && !N.calendar.jumping, null, 20000, '▶▶ Mon 20 Oct (post-game)');
+    await ev(() => N.calendar.set(2003, 10, 25, 16, 0));
+    await page.waitForTimeout(1000);
+    const d2 = await ev(() => ({ av: N.missions.available().map((d) => d.id), st: N.dwMissions.story.state() }));
+    check(!d2.av.includes('mithai_run') && !d2.av.includes('deepon_ki_raat') && d2.av.includes('rocket_bunty') && !d2.st.card, 'post-game Diwali week: what was played in the story stays done (no second Mithai Run / Deepon), the optional ones are there; no story card', d2);
+  }
+}
+/** ◀◀ REWIND (post-game): "October" sits between September and December and starts in Diwali week. */
+async function pRewind() {
+  phase = 'rewind';
+  await ev(() => { window.__pick = null; N.story2.rewind().then((k) => { window.__pick = k; if (k) N.story2.playSeason(k); }); });
+  await waitFor(() => !!document.querySelector('.s2-rewind'), null, 6000, 'the REWIND menu');
+  const items = await ev(() => Array.from(document.querySelectorAll('.s2-rewind .s2-jmenu button')).map((b) => b.innerText.replace(/\s+/g, ' ').trim()));
+  const oi = items.findIndex((t) => /October/.test(t));
+  check(oi > 0 && /September/.test(items[oi - 1]) && /December/.test(items[oi + 1] || '') && /Diwali/.test(items[oi]), '◀◀ REWIND: "' + (items[oi] || '').slice(0, 90) + '" between September and December', items);
+  await page.mouse.move(4, 700); // (the pointer from the CONTINUE click would hover a row)
+  await press('ArrowDown', oi);
+  await shot('rewind_october');
+  await press('KeyE');
+  await waitFor(() => window.__pick === 'october' && N.state.mode === 'play', null, 10000, 'October picked');
+  await page.waitForTimeout(1200);
+  const r = await ev(() => ({ date: N.calendar.label() + ' ' + N.clock.label(), post: N.flags.postgame, pick: N.flags.season_pick, stalls: N.dwMissions.season('pataakha'), pending: N.dwMissions.story.state().pending, bazaar: !N.missions.isDone('pataakha_bazaar') && N.missions.inWindow('pataakha_bazaar') && N.missions.defs.pataakha_bazaar._dwWhen() }));
+  check(/MON 20 OCT 2003 10:0/.test(r.date) && r.post && r.pick === 'october' && r.stalls && !r.pending && r.bazaar, '◀◀ October 2003: Mon 20 Oct, Diwali week, post-game free roam (Amma\'s cracker list is open)', r);
+  await shot('october_week');
+}
+
 /* ================================================================== main */
-const PHASES = [['bazaar', pBazaar], ['mithai', pMithai], ['deepon', pDeepon], ['rocket', pRocket], ['tiger', pTiger], ['week', pWeek], ['save', pSave], ['eid', pEid]];
+const PHASES = [['bazaar', pBazaar], ['mithai', pMithai], ['deepon', pDeepon], ['rocket', pRocket], ['tiger', pTiger], ['week', pWeek], ['save', pSave], ['eid', pEid], ['story', pStory], ['rewind', pRewind]];
 (async () => {
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });

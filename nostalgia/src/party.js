@@ -36,7 +36,7 @@
  *     end(summary) (host / solo: finish now, summary.standings = [uid...] may set the order; guest: report + wait),
  *     left(uid) -> bool, onLeave(fn(uid)),
  *     ai: {list, friend(uid), skill(uid) 0..1, spawn(uid, x, y, {angle, vehicle}), actor(uid), vehicle(uid),
- *          ride(uid, path [{x, y}], {speed, mul(), r, onDone, lookahead}) -> runner {i, s, done, progress, stop()},
+ *          ride(uid, path [{x, y}], {speed, mul(), r, onDone, lookahead, lane}) -> runner {i, s, done, progress, stop()},
  *          walk(uid, path, {speed, run, onDone}) -> runner, stop(uid), bark(uid, text, secs), report(uid, result),
  *          despawn(uid), clear(), cycleFor(uid), rng}     (drives the AI friends in solo; cleaned up at the end)
  *     helpers: place(x, y, angle, {vehicle: type | null, color}) -> vehicle (teleport me there, on a fresh vehicle),
@@ -74,7 +74,7 @@
   function sfx(name, o) { try { if (N.audio && N.audio.sfx) N.audio.sfx(name, Object.assign({ ui: true }, o || {})); } catch (e) { /* audio never breaks the party */ } }
   function toast(t, ms) { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2600, { key: 'party' }); } catch (e) { /* ignore */ } }
   function toastQ(t, ms) { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2600); } catch (e) { /* ignore */ } }
-  const TUNE = { lobbyMs: 20000, invEvery: 2000, goLead: 4500, countMs: 3000, goShow: 900, resultsMs: 24000, timeLimit: 900, pingN: 6, pingGap: 260, sendPerSec: 12, promptPriority: -1 };
+  const TUNE = { lobbyMs: 20000, invEvery: 2000, goLead: 4500, countMs: 3000, goShow: 900, resultsMs: 24000, timeLimit: 900, pingN: 6, pingMax: 24, pingGood: 250, pingGap: 260, sendPerSec: 12, promptPriority: -1, innerPriority: 1, innerR: 24 };
 
   /* ================================================================ AI friends */
   const FRIENDS = [
@@ -174,16 +174,6 @@
   // the shared clock: the host's Date.now(); a guest measures its offset with a few ping / pong round trips
   const CLK = { offset: 0, rtt: Infinity, host: null, sid: null, n: 0, timer: null };
   const sharedNow = () => Date.now() + CLK.offset;
-  function syncClock(S) {
-    if (CLK.sid === S.sid && CLK.n >= TUNE.pingN) return;
-    CLK.sid = S.sid; CLK.host = S.host; CLK.rtt = Infinity; CLK.n = 0;
-    clearInterval(CLK.timer);
-    CLK.timer = setInterval(() => {
-      if (!ST.sess || ST.sess.sid !== S.sid || CLK.n >= TUNE.pingN) { clearInterval(CLK.timer); CLK.timer = null; return; }
-      CLK.n++;
-      rawSend('ping', { sid: S.sid, c: Date.now(), to: S.host });
-    }, TUNE.pingGap);
-  }
   function onPong(d) {
     if (!d || d.to !== myUid() || !isFinite(d.c) || !isFinite(d.h)) return;
     const t = Date.now(), rtt = t - d.c;
@@ -479,7 +469,7 @@
       case 'acc': if (S && S.sid === d.sid && isHost(S) && S.phase === 'lobby' && !S.acc.has(from)) { S.acc.set(from, { nick: cleanNick(d.nick || m.nick), look: lookOf(d.look), t: Date.now() }); S.skip.delete(from); sendInvite(S); renderLobby(); toastQ(cleanNick(m.nick) + ' accepted!', 1600); } return;
       case 'skip': if (S && S.sid === d.sid && isHost(S) && S.phase === 'lobby') { S.skip.add(from); S.acc.delete(from); renderLobby(); } return;
       case 'ping': if (S && S.sid === d.sid && S.mode === 'party' && S.host === myUid() && d.to === myUid() && isFinite(d.c)) rawSend('pong', { sid: S.sid, to: from, c: +d.c, h: Date.now() }); return;
-      case 'pong': if (S && S.sid === d.sid) onPong(d); return;
+      case 'pong': if ((S && S.sid === d.sid) || (ST.invite && ST.invite.sid === d.sid)) onPong(d); return;
       case 'go': return onGo(from, d);
       case 'cancel':
         if (ST.invite && ST.invite.sid === d.sid && from === ST.invite.host) { ST.invite = null; closeInvite(); toastQ('The challenge was called off.', 2000); }
@@ -522,7 +512,8 @@
     // start measuring the clock against this host straight away (the countdown needs it)
     CLK.host = from; CLK.sid = d.sid; CLK.n = 0; CLK.rtt = Infinity;
     clearInterval(CLK.timer);
-    CLK.timer = setInterval(() => { if (!ST.invite && !(ST.sess && ST.sess.sid === d.sid)) { clearInterval(CLK.timer); CLK.timer = null; return; } if (CLK.n >= TUNE.pingN) { clearInterval(CLK.timer); CLK.timer = null; return; } CLK.n++; rawSend('ping', { sid: d.sid, c: Date.now(), to: from }); }, TUNE.pingGap);
+    // at least pingN round trips; keep going (up to pingMax) until one comes back quickly (a busy page answers late)
+    CLK.timer = setInterval(() => { if (!ST.invite && !(ST.sess && ST.sess.sid === d.sid)) { clearInterval(CLK.timer); CLK.timer = null; return; } if (CLK.n >= TUNE.pingMax || (CLK.n >= TUNE.pingN && CLK.rtt <= TUNE.pingGood)) { clearInterval(CLK.timer); CLK.timer = null; return; } CLK.n++; rawSend('ping', { sid: d.sid, c: Date.now(), to: from }); }, TUNE.pingGap);
     renderInvite();
     sfx('bell');
     N.emit('party:invite', { id: d.id, sid: d.sid, from: inv.nick });
@@ -626,7 +617,7 @@
         return () => set.delete(fn);
       },
       report(result) { const ok = report(S, me.uid, result); if (ok) { renderStrip(S); checkDone(S); } return ok; },
-      results: () => resultsOf(S),
+      results: () => resultsOf(S).filter((r) => S.results.has(r.uid)),
       end(summary) {
         if (S.phase === 'done') return;
         if (S.mode === 'solo' || currentHost(S) === me.uid) { finalize(S, summary); return; }
@@ -783,6 +774,16 @@
     }
     function ctl(veh, dt) {
       const c = veh.ctl;
+      if (R.coast) {
+        // past the finish: roll on and pull over to the side of the road, out of the way of the others
+        const q = R.coast, d = Math.hypot(q.x - veh.x, q.y - veh.y);
+        if (d < 8 || R.coastT > 6) { brakeCtl(veh); return; }
+        R.coastT += dt;
+        c.steer = clamp(U.angleDiff(veh.angle, Math.atan2(q.y - veh.y, q.x - veh.x)) * 2.4, -1, 1); c.handbrake = false;
+        const want = Math.min(55, d * 1.2);
+        c.throttle = veh.speed < want ? 0.4 : 0; c.brake = veh.speed > want + 8;
+        return;
+      }
       if (R.stopped || R.done || S.phase === 'done') { brakeCtl(veh); return; }
       const now = S.ctx ? S.ctx.now() : 0;
       if (now < S.startAt) { brakeCtl(veh); return; }
@@ -803,9 +804,17 @@
       const sp = Math.abs(veh.speed || 0);
       const look = (o.lookahead || 16) + sp * 0.3;
       const tg = pointAt(R.s + look);
+      // each rider keeps to its own line on the road (o.lane u to the right of the centre line), merging in at the end
+      if (o.lane) { const tg2 = pointAt(R.s + look + 6), ang = Math.atan2(tg2.y - tg.y, tg2.x - tg.x), k = clamp((total - R.s - look) / 60, 0, 1); tg.x -= Math.sin(ang) * o.lane * k; tg.y += Math.cos(ang) * o.lane * k; }
       const dEnd = total - R.s;
       if (dEnd < (o.r || 14) && Math.hypot(pts[pts.length - 1].x - veh.x, pts[pts.length - 1].y - veh.y) < (o.r || 14) + 10) {
         R.done = true; brakeCtl(veh);
+        if (o.coast !== false) {
+          const e = pts[pts.length - 1], f = pts[Math.max(0, pts.length - 3)], a = Math.atan2(e.y - f.y, e.x - f.x), side = o.lane < 0 ? -1 : 1;
+          let x = e.x + Math.cos(a) * 55 - Math.sin(a) * 16 * side, y = e.y + Math.sin(a) * 55 + Math.cos(a) * 16 * side;
+          try { const fr = N.world.findFree(x, y, 'drive', 8); if (fr) { x = fr.x; y = fr.y; } } catch (er) { /* ignore */ }
+          R.coast = { x, y }; R.coastT = 0;
+        }
         try { if (o.onDone) o.onDone(R); } catch (e) { N.err('party.aiDone', e); }
         return;
       }
@@ -822,7 +831,25 @@
       const diffA = U.angleDiff(veh.angle, Math.atan2(tg.y - veh.y, tg.x - veh.x));
       if (R.rev > 0) { R.rev -= dt; c.brake = false; c.handbrake = false; c.throttle = -0.7; c.steer = clamp(-diffA * 2, -1, 1); return; }
       if (Math.abs(diffA) > 1.2) want = Math.min(want, 30); else if (Math.abs(diffA) > 0.55) want = Math.min(want, 62);
-      c.steer = clamp(diffA * 2.6, -1, 1);
+      // something in the way (traffic, a cow, a pedestrian, another rider): ease off and swerve to the freer side
+      R.scanT = (R.scanT || 0) - dt;
+      if (R.scanT <= 0) {
+        R.scanT = 0.12; R.block = null;
+        const ca = Math.cos(veh.angle), sa = Math.sin(veh.angle), reach = 12 + sp * 0.32;
+        try {
+          N.entities.query(veh.x + ca * reach * 0.6, veh.y + sa * reach * 0.6, reach * 0.75, (e) => {
+            if (e === veh || e === veh.driver || e.kind === 'ghost' || e.alive === false || (e.kind !== 'vehicle' && e.kind !== 'ped' && e.kind !== 'animal' && e.kind !== 'npc')) return false;
+            if (e.vehicle) return false;
+            const dx = e.x - veh.x, dy = e.y - veh.y, fwd = dx * ca + dy * sa, lat = -dx * sa + dy * ca;
+            const w = (e.T ? e.T.d / 2 : e.r || 4) + 4;
+            if (fwd > 2 && fwd < reach && Math.abs(lat) < w) { if (!R.block || fwd < R.block.fwd) R.block = { fwd, lat, sp: e.T ? Math.max(0, (e.vx || 0) * ca + (e.vy || 0) * sa) : 0 }; }
+            return false;
+          });
+        } catch (e) { R.block = null; }
+      }
+      let steerAdd = 0;
+      if (R.block) { want = Math.min(want, Math.max(R.block.sp, 18 + R.block.fwd * 1.2)); steerAdd = (R.block.lat >= 0 ? -1 : 1) * 0.45; }
+      c.steer = clamp(diffA * 2.6 + steerAdd, -1, 1);
       c.handbrake = false;
       if (veh.speed < want - 4) { c.throttle = clamp((want - veh.speed) / 26, 0.3, 1); c.brake = false; }
       else if (veh.speed > want + 10) { c.throttle = 0; c.brake = true; }
@@ -1260,12 +1287,14 @@
       // the "E Start ..." prompt at an activity's place (per-step offer: works on a cycle too)
       if (!ST.sess && mode === 'play' && !(N.missions && N.missions.active) && N.player && !D.card) {
         const e = N.player.vehicle || N.player;
-        let best = null, bd = Infinity;
+        let best = null, bd = Infinity, inner = false;
         for (const s of REG.values()) {
           if (!s.where && !(s.also && s.also.length) && !(s.spots && s.spots.length)) continue;
-          for (const sp of spotsOf(s)) { const d = Math.hypot(sp.x - e.x, sp.y - e.y); if (d <= sp.r && d < bd && whenOk(s)) { bd = d; best = s; } }
+          for (const sp of spotsOf(s)) { const d = Math.hypot(sp.x - e.x, sp.y - e.y); if (d <= sp.r && d < bd && whenOk(s)) { bd = d; best = s; inner = d <= Math.min(TUNE.innerR, sp.r * 0.5); } }
         }
-        if (best && (best.solo || (inRoom() && others().length))) N.interact.offer({ label: best.label || ('Start ' + best.name), priority: TUNE.promptPriority, dist: bd, use: () => openStart(best.id, 'prompt') });
+        // standing right on the start spot beats passing traffic ("Borrow cycle", "Board bus"); elsewhere in the spot the
+        // side-activity band (-1) lets story and vehicles win
+        if (best && (best.solo || (inRoom() && others().length))) N.interact.offer({ label: best.label || ('Start ' + best.name), priority: inner ? TUNE.innerPriority : TUNE.promptPriority, dist: bd, use: () => openStart(best.id, 'prompt') });
       }
       if (ST.invite && mode === 'play') N.interact.offer({ label: 'Accept challenge', priority: 8, dist: 0, use: () => acceptInvite() });
     },

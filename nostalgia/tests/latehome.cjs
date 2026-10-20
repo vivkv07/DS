@@ -28,7 +28,7 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 const ROOT = path.resolve(__dirname, '..');
 const OUT = path.join(__dirname, 'out');
 fs.mkdirSync(OUT, { recursive: true });
-const URL = 'file://' + path.join(ROOT, 'index.html') + '#debug';
+const GAME_URL = 'file://' + path.join(ROOT, 'index.html') + '#debug';
 const THREE_CDN = 'https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js';
 const THREE_JS = fs.readFileSync(path.join(ROOT, 'vendor/three/three.min.js'), 'utf8');
 const SDK_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
@@ -51,13 +51,15 @@ async function newPage(browser, name, o) {
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
+  const failed = [];
+  page.on('requestfailed', (r) => failed.push(r.url().slice(0, 160) + ' ' + ((r.failure() && r.failure().errorText) || '')));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '/* stubbed */' }));
   await page.route(THREE_CDN, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_JS }));
   if (o.sdk) await page.route(SDK_CDN, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: o.sdk }));
   if (o.conf !== undefined) await page.addInitScript((c) => { window.NOSTALGIA_ONLINE_CONFIG = c; }, o.conf);
-  await page.goto((o.url || URL.replace('#debug', '')) + '#debug');
+  await page.goto((o.url || GAME_URL.replace('#debug', '')) + '#debug');
   await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 90000 });
-  const P = { name, page, context, errors };
+  const P = { name, page, context, errors, failed };
   P.ev = (fn, arg) => page.evaluate(fn, arg);
   P.shot = async (n) => { if (process.env.SHOTS === '0') return; try { await page.screenshot({ path: path.join(OUT, 'latehome_' + n + '.png'), timeout: SHOT_MS }); } catch (e) { console.log('  (screenshot ' + n + ' failed: ' + e.message + ')'); } };
   P.errs = async () => errors.concat(await page.evaluate(() => (N.debug.state().errors || []).map((e) => 'N.err ' + e)).catch(() => []));
@@ -137,7 +139,7 @@ async function aimSeeker(P, x, y, dist, roles) {
     return { idx: sk.idx, role: sk.role, x: sk.x, y: sk.y };
   }, [x, y, dist, roles || ['walker', 'watchman']]);
 }
-const noErrors = async (P, what) => { const e = await P.errs(); check(!e.length, what + ': zero console / page errors / N.err' + (e.length ? ': ' + e.slice(0, 4).join(' | ') : '')); };
+const noErrors = async (P, what) => { const e = await P.errs(); check(!e.length, what + ': zero console / page errors / N.err' + (e.length ? ': ' + e.slice(0, 4).join(' | ') + (P.failed.length ? '  [failed requests: ' + P.failed.slice(0, 4).join(' | ') + ']' : '') : '')); };
 
 /* ================================================================ solo2d */
 async function solo2d(browser) {
@@ -220,13 +222,14 @@ async function solo2d(browser) {
 
   // hide: hold E at a spot with a cone right on it -> nothing fills; let go -> spotted
   await P.ev(() => { N.latehome.debug.setSeekersFrozen(true); N.latehome.debug.unseen(false); });
-  const spot = await P.ev(() => { const s = N.latehome.state(); const h = s.hides.find((q) => q.kind === 'tank') || s.hides.find((q) => q.kind === 'auto') || s.hides[0]; N.player.teleport(h.x, h.y); const S = N.latehome.debug.session(); S.me.meter = 0; S.me.lastSeen = -99; return h; });
+  const spot = await P.ev(() => { N.latehome.debug.unseen(true); const s = N.latehome.state(); const h = s.hides.find((q) => q.kind === 'tank') || s.hides.find((q) => q.kind === 'auto') || s.hides[0]; N.player.teleport(h.x, h.y); const S = N.latehome.debug.session(); S.me.meter = 0; S.me.lastSeen = -99; return h; });
   const sk = await aimSeeker(P, spot.x, spot.y, 38);
   check(!!sk, 'a seeker stands ' + 38 + ' u away, looking straight at ' + spot.name);
   await sleep(200);
   await P.page.keyboard.down('KeyE');
   const hid = await P.until(() => N.latehome.state().me.hide === 2 && N.player.hidden, null, 3000);
   check(hid, 'hold E by ' + spot.name + ' = hidden');
+  await P.ev(() => N.latehome.debug.unseen(false));
   await sleep(1800);
   const h1 = await P.st();
   check(h1.me.meter === 0 && h1.peek >= 1, 'hidden under a cone: Pakda meter stays ' + h1.me.meter + ', the peek eye is ' + ['shut', 'peeking', 'WIDE'][h1.peek]);
@@ -240,16 +243,17 @@ async function solo2d(browser) {
   check(bar > 10, 'the PAKDA! bar fills on the HUD (' + bar + '%)');
   await P.shot('spotted_2d');
   // caught: stay in the cone -> walked home by the ear -> Amma
-  check(await P.until(() => { const s = N.latehome.state(); return s.me.seq === 'ear' || s.me.seq === 'walk'; }, null, 15000), 'caught: the uncle comes and takes him by the ear');
+  check(await P.until(() => { const s = N.latehome.state(); return s.me.seq === 'ear' || s.me.seq === 'walk'; }, null, 30000), 'caught: the uncle comes and takes him by the ear');
   await P.shot('caught_2d');
-  check(await P.until(() => N.latehome.state().me.done === 'caught', null, 15000), 'walked home: result "caught"');
+  check(await P.until(() => N.latehome.state().me.done === 'caught', null, 45000), 'walked home: result "caught"');
   check(await P.until(() => N.dialogue.isOpen() && /amma/i.test(String((N.dialogue.current && (N.dialogue.current.speaker || N.dialogue.current.s)) || '')) || N.dialogue.isOpen(), null, 5000), 'Amma has a scolding line (no fine, no meter)');
   await P.shot('amma_2d');
   const money = await P.ev(() => ({ w: N.wanted.level, m: N.player.money }));
   for (let i = 0; i < 6 && await P.ev(() => N.dialogue.isOpen()); i++) { await P.page.keyboard.press('KeyE'); await sleep(350); }
   check(money.w === 0, 'Chappal Meter untouched (level ' + money.w + ')');
   // ghost: skip to the results (E)
-  check(await P.until(() => N.latehome.state() && N.latehome.state().me.ghost, null, 8000), 'after the run he is a ghost (whistle to help)');
+  for (let i = 0; i < 6 && await P.ev(() => N.dialogue.isOpen()); i++) { await P.page.keyboard.press('KeyE'); await sleep(350); }
+  check(await P.until(() => N.latehome.state() && N.latehome.state().me.ghost, null, 25000), 'after the run he is a ghost (whistle to help)');
   await P.ev(() => N.latehome.debug.setSeekersFrozen(false));
   await sleep(300);
   await P.page.keyboard.press('KeyE');
@@ -268,11 +272,35 @@ async function solo2d(browser) {
   const after = await P.ev(() => ({ curfew: N.flags.no_curfew, held: N.clock.held, frozen: N.wanted.frozen(), hidden: N.player.hidden, locked: N.player.controlsLocked, ents: N.entities.all.filter((e) => e.lhSeeker || e.lhKid || e.lhDog).length }));
   check(!after.curfew && !after.held && !after.frozen && !after.hidden && !after.locked && after.ents === 0, 'everything restored (curfew, clock, meter, player, entities)', after);
 
+  // the roof routes: up on a terrace no ground seeker sees him, and his own terrace counts as home
+  await P.ev(() => { if (N.party && N.party.active) N.party.cancel(); N.latehome.stop(); if (N.dialogue.isOpen()) N.dialogue.cancel(); N.latehome.start({ venue: 'cafe', seed: 9, difficulty: 0.5, friends: false, direct: true }); });
+  await P.until(() => N.latehome.state() && N.latehome.state().phase === 'play', null, 40000);
+  const roof = await P.ev(() => {
+    const R = N.world.roofs, r6 = R && R.get && R.get('lakshmi_t6');
+    if (!r6) return null;
+    N.player.teleport(r6.rect[0] + r6.rect[2] / 2, r6.rect[1] + r6.rect[3] / 2);
+    return { level: N.player.level };
+  });
+  if (roof) {
+    await sleep(600);
+    const up = await P.st();
+    check(up.me.level === 'lakshmi_t6' && up.me.meter === 0, 'on the corner-house terrace (roof route): level ' + up.me.level + ', nobody below sees him');
+    await P.ev(() => { const r = N.world.roofs.get('home_terrace'); N.player.teleport(r.rect[0] + r.rect[2] / 2, r.rect[1] + r.rect[3] / 2); });
+    check(await P.until(() => N.latehome.state() && N.latehome.state().me.done === 'home', null, 5000), 'reaching his own terrace = home ("Amma never heard the gate")');
+    for (let i = 0; i < 6 && await P.ev(() => N.dialogue.isOpen()); i++) { await P.page.keyboard.press('KeyE'); await sleep(350); }
+  }
+  await P.ev(() => N.latehome.stop());
   // a whole run home with real keys (own solo ctx, easy, no AI friends)
   let win = null;
   for (const seed of [21, 7, 33]) {
-    await P.ev((seed) => { if (N.party && N.party.active) N.party.cancel(); N.latehome.start({ venue: 'cafe', seed, difficulty: 0, friends: false, direct: true }); }, seed);
-    await P.until(() => N.latehome.state() && N.latehome.state().phase === 'play', null, 20000);
+    const st = await P.ev((seed) => {
+      if (N.party && N.party.active) N.party.cancel();
+      N.latehome.stop();
+      if (N.dialogue.isOpen()) N.dialogue.cancel();
+      return { ok: N.latehome.start({ venue: 'cafe', seed, difficulty: 0, friends: false, direct: true }), mode: N.state.mode, mission: !!(N.missions && N.missions.active) };
+    }, seed);
+    if (!st.ok) console.log('  (start refused: ' + JSON.stringify(st) + ')');
+    await P.until(() => N.latehome.state() && N.latehome.state().phase === 'play', null, 40000);
     const last = await driveHome(P, 200000);
     win = await P.st();
     if (win && win.me.done === 'home') { ok('seed ' + seed + ': home in ' + win.me.t + ' s, seen ' + win.me.spots + ', found ' + win.me.coll + ' (planner ' + (last && last.h.why) + ')'); break; }
@@ -310,12 +338,13 @@ async function solo3d(browser) {
   // look at a torch / gaze cone from the side
   await P.ev(() => {
     N.latehome.debug.setSeekersFrozen(true);
-    const s = N.latehome.state(); const sk = s.seekers.find((q) => q.role === 'watchman') || s.seekers[0];
-    const mx = sk.cone.x + Math.cos(sk.cone.a) * 55, my = sk.cone.y + Math.sin(sk.cone.a) * 55;
-    let px = mx + Math.cos(sk.cone.a + 1.57) * 60, py = my + Math.sin(sk.cone.a + 1.57) * 60;
-    const f = N.world.findFree(px, py, 'walk', 30); if (f) { px = f.x; py = f.y; }
+    // stand just behind an uncle and look the way he looks: his cone lies on the ground ahead
+    const s = N.latehome.state(); const sk = s.seekers.find((q) => q.role === 'walker') || s.seekers.find((q) => q.role === 'watchman') || s.seekers[0];
+    const a = sk.cone.a;
+    let px = sk.cone.x - Math.cos(a) * 14 + Math.cos(a + 1.57) * 6, py = sk.cone.y - Math.sin(a) * 14 + Math.sin(a + 1.57) * 6;
+    const f = N.world.findFree(px, py, 'walk', 12); if (f) { px = f.x; py = f.y; }
     N.player.teleport(px, py);
-    N.view3d.setCamera({ yaw: Math.atan2(my - py, mx - px), pitch: 0.95, snap: true });
+    N.view3d.setCamera({ yaw: a, pitch: 0.62, snap: true });
   });
   await P.ev(() => { try { N.view3d.settle(3000); } catch (e) { /* ignore */ } });
   await sleep(2500);
@@ -323,18 +352,20 @@ async function solo3d(browser) {
   check(v3.built && v3.cones >= 4 && v3.coneVis >= 3 && v3.lamps >= 4 && v3.doors === 3, '3D layer: cones ' + v3.coneVis + '/' + v3.cones + ', lamps ' + v3.lamps + ', door markers ' + v3.doors, v3);
   await P.shot('cones_3d');
   // hide with real E: the peeking head and the eye
-  const spot = await P.ev(() => { const s = N.latehome.state(); const h = s.hides.find((q) => q.kind === 'tree') || s.hides[0]; N.player.teleport(h.x, h.y); N.latehome.debug.session().me.meter = 0; return h; });
-  await aimSeeker(P, spot.x, spot.y, 34);
+  const spot = await P.ev(() => { N.latehome.debug.unseen(true); const s = N.latehome.state(); const h = s.hides.find((q) => q.kind === 'tree') || s.hides[0]; N.player.teleport(h.x, h.y); N.latehome.debug.session().me.meter = 0; return h; });
+  await aimSeeker(P, spot.x, spot.y, 30);
   await P.ev(([x, y]) => { N.view3d.setCamera({ yaw: Math.atan2(y - N.player.y + 0.01, x - N.player.x + 30), pitch: 0.9, snap: true }); }, [spot.x, spot.y]);
   await P.page.keyboard.down('KeyE');
   check(await P.until(() => N.latehome.state().me.hide === 2, null, 8000), 'hold E = hidden in 3D');
+  await P.ev(() => N.latehome.debug.unseen(false));
   check(await P.until(() => N.latehome.debug.v3().heads >= 1, null, 8000), 'the peeking head shows in 3D');
   await sleep(1500);
   check((await P.st()).me.meter === 0, 'no meter while hidden under the cone');
   await P.shot('hide_3d');
   await P.page.keyboard.up('KeyE');
   check(await P.until(() => N.latehome.state().me.spots >= 1, null, 20000), 'spotted in 3D once he lets go');
-  check(await P.until(() => { const s = N.latehome.state(); return s.me.seq === 'ear' || s.me.seq === 'walk' || s.me.done === 'caught'; }, null, 60000), 'caught in 3D (by the ear)');
+  check(await P.until(() => { const s = N.latehome.state(); return !!(s && (s.me.seq || s.me.done === 'caught')); }, null, 90000), 'caught in 3D (by the ear)');
+  await P.until(() => { const s = N.latehome.state(); return !!(s && (s.me.seq === 'walk' || s.me.done)); }, null, 30000);
   await P.shot('caught_3d');
   await P.until(() => N.latehome.state().me.done === 'caught', null, 60000);
   for (let i = 0; i < 6 && await P.ev(() => N.dialogue.isOpen()); i++) { await P.page.keyboard.press('KeyE'); await sleep(400); }

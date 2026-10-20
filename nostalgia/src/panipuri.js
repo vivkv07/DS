@@ -289,7 +289,7 @@
         title: champ ? 'Pani Puri Champion!' : rank === 2 ? 'So close, yaar!' : 'Bas, bhaiya, bas!',
         line: champ ? 'Bhaiya bangs the steel spoon on the matka. "Champion! Ek extra, phokat!" The whole queue claps.'
           : 'Your eyes are watering and ' + (tb[0] ? tb[0].nick : 'somebody') + ' is grinning with a full mouth. Paani, then phir se?',
-        rows: tb.slice(0, 6).map((x, i) => [(i + 1) + '. ' + x.nick + (x.me ? ' (you)' : ''), x.n + ' puris']).concat([['Coughs', S.coughs], ['Dropped', S.misses]]),
+        rows: tb.slice(0, 6).map((x, i) => [(i + 1) + '. ' + x.nick, x.n + ' puris']).concat([['Coughs', S.coughs], ['Dropped', S.misses]]),
       };
     },
     stars(g, r) { const S = g.S; return r.win ? 1 + (S.coughs === 0 ? 1 : 0) + (S.misses <= 2 ? 1 : 0) : S.eaten >= 30 ? 1 : 0; },
@@ -609,7 +609,8 @@
       puri(ctx, px, py, r, TYPES[p.type].fill);
       const sog = Math.max(0, (k - 0.55) / 0.45);
       if (sog > 0) { ctx.fillStyle = 'rgba(90,60,30,' + (sog * 0.45).toFixed(3) + ')'; ctx.beginPath(); ctx.arc(px, py, r, 0, TAU); ctx.fill(); }
-      if (TYPES[p.type].label) H.text(ctx, TYPES[p.type].label, px, py - r * 2, { font: 'osd', size: Math.max(13, r * 0.55), color: p.type === 'teekha' ? '#ff6a4a' : '#e8b48a', outline: 4 });
+      // one tag per run of the same kind (side by side they would overlap)
+      if (TYPES[p.type].label && !(i > 0 && S.dona[i - 1].type === p.type)) H.text(ctx, TYPES[p.type].label, px, py - r * 2, { font: 'osd', size: Math.max(13, r * 0.55), color: p.type === 'teekha' ? '#ff6a4a' : '#e8b48a', outline: 4 });
     });
     for (const f of S.fly) {
       const t = H.ease.inOut(Math.min(1, f.t));

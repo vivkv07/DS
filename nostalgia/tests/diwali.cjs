@@ -78,7 +78,10 @@ async function simWait(page, secs, capMs) {
 async function shot(page, name) {
   if (!SHOTS) return;
   const f = path.join(OUT, 'diwali_' + name + '.png');
-  await page.screenshot({ path: f, timeout: 180000 });
+  // 180 s per attempt; a software-GL sandbox under heavy load can need more than one
+  for (let i = 0; ; i++) {
+    try { await page.screenshot({ path: f, timeout: 180000 }); break; } catch (e) { if (i >= 2) throw e; console.log('  (screenshot slow, retrying)'); }
+  }
   shots.push(f);
   console.log('  shot ' + path.relative(ROOT, f));
 }

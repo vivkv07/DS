@@ -116,6 +116,7 @@ async function desktop(browser) {
   check(await P.until(() => !!document.querySelector('.mg-card-result'), null, 60000), 'the contest ends on the clock with a result card');
   const res = await P.ev(() => document.querySelector('.mg-card-result').textContent);
   check(/Immu|Ayesha|Pappu/.test(res) && /puris/.test(res), 'the result card ranks you against the friends');
+  await P.gw(0.8);
   await P.shot('desktop_result');
   await P.gw(0.4);
   await P.page.click('.mg-card-result [data-do="done"]');
@@ -181,6 +182,7 @@ async function phone(browser) {
   await P.shot('phone_play');
   await P.ev(() => { N.minigames.game.timeScale = 6; });
   check(await P.until(() => !!document.querySelector('.mg-card-result'), null, 60000), 'result card');
+  await P.gw(0.8);
   await P.shot('phone_result');
   await P.gw(0.4);
   const done = await center('.mg-card-result [data-do="done"]');

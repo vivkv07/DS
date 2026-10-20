@@ -99,6 +99,8 @@ nostalgia/
   src/save.js       save/load -> N.save
   src/online_config.js  N.ONLINE_CONFIG: the pluggable online backend (Supabase URL + public key; null = "coming soon")
   src/online.js     online play (§23): player code, cloud saves + journey, 10-player rooms, ghosts -> N.online
+  src/latehome.js   "Ghar Pahunchna Hai!": sneak home after the street lights past uncles / daddies / Bahadur's torch
+                    (vision cones 2D + 3D, hiding, Pakda meter); solo + N.party ids 'latehome' / 'latehome_daddy' -> N.latehome
   vendor/supabase/  supabase-js 2.45.4 UMD (MIT), the fallback when jsDelivr is unreachable (loaded lazily)
   supabase/migrations/*_online.sql  the database side of §23 (tables, SECURITY DEFINER functions, grants)
   src/debug.js      test hooks + #debug overlay -> N.debug
