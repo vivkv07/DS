@@ -111,7 +111,7 @@
     const clearV = () => N.entities.clear((e) => (e.kind === 'vehicle' && Math.hypot(e.x - hero.x, e.y - hero.y) < 90) || ((e.kind === 'ped' || e.kind === 'npc') && e !== N.player && Math.hypot(e.x - hero.x, e.y - hero.y) < 22));
     clearV(); CUR_CLEAR = clearV;
     streamAt(hero.x, hero.y);
-    const face = sh.face != null ? sh.face : base + 0.55;
+    const face = sh.faceLm ? base + Math.PI + 0.45 : sh.face != null ? sh.face : base + 0.55; // faceLm: looking out at the landmark, 3/4 from behind
     CUR = { hs: sh.scale || 1, seg, sh, lm, hero, base, lookLm, face, strikes: (seg.lightning || []).map((b) => Math.round((b - seg.b) * B * FPS)) };
     const hs = sh.scale || 1;
     STAGE.hero({ x: hero.x, y: hero.y, h: hero.h, angle: face, clip: sh.clip || 'idle', scale: hs });
@@ -127,7 +127,8 @@
     const u = f / Math.max(1, nf - 1), hy = hero.h, cs = (hs < 1 ? hs * 1.6 : 1) * 1.25; // camera distance scale: wide shots that show the city (user: less zoom)
     const chest = 4.5 * hs;
     let lx = hero.x, ly = hero.y;
-    if (lookLm) { lx += (lookLm.x - hero.x) * (CUR_LOW ? 0.35 : 0.12); ly += (lookLm.y - hero.y) * (CUR_LOW ? 0.35 : 0.12); }
+    const lk = sh.lookK != null ? sh.lookK : (CUR_LOW ? 0.35 : 0.12);
+    if (lookLm) { lx += (lookLm.x - hero.x) * lk; ly += (lookLm.y - hero.y) * lk; }
     if (seg.shot === 'finale') {
       // time-lapse orbit: near-constant angular speed (a soft ease at both ends), slow push-in + descent
       finaleClock(u, sh);

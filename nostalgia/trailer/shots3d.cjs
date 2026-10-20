@@ -19,7 +19,7 @@ const SHOTS = {
   whip: { lm: 'charminar', hero: 'top', scale: 0.45, clip: 'idle', face: Math.PI / 2 },
   lm_charminar: { lm: 'charminar', hero: 'top', scale: 0.45, edge: 26, clip: 'idle_look', face: Math.PI / 2, r: [15, 34], h: [13, 22], arc: 1.9, base: 1.2, fov: [42, 52] },
   lm_golconda: { lm: 'golconda_bala_hissar', hero: 'top', scale: 0.5, edge: 14, summitR: 30, clip: 'wave', face: 0.4, r: [16, 40], h: [11, 24], arc: 1.6, base: 1.9, fov: [44, 54] },
-  lm_buddha: { lm: 'buddha_statue', hero: 'shore', slide: 14, noWires: true, clip: 'idle_look', r: [14, 26], h: [5, 10], arc: 1.1, fov: [38, 46] },
+  lm_buddha: { lm: 'buddha_statue', hero: 'shore', slide: 14, noWires: true, clip: 'idle_look', faceLm: true, lookK: 0.5, r: [9, 13], h: [4, 6], arc: 0.45, fov: [44, 48] }, // a gentle push past Chinnu towards the statue (small arc: the bund's statues and plinths stay out of frame)
   lm_birla: { lm: 'birla_mandir', hero: 'roof', noWires: true, ring: [70, 260], clip: 'idle', r: [14, 26], h: [6, 12], arc: 1.2, fov: [40, 48] },
   lm_clock: { lm: 'secunderabad_clock_tower', hero: 'roof', street: true, noWires: true, clip: 'idle', r: [9, 15], h: [2, 3], arc: 0.9, fov: [50, 56] }, // street-level hero angle up at the tower (no flat roofs around; its top is a pyramid)
   lm_cyber: { lm: 'cyber_towers', hero: 'top', scale: 0.55, edge: 14, clip: 'idle_look', face: Math.PI, r: [20, 40], h: [-14, 6], arc: 1.5, base: Math.PI, fov: [48, 58] },
