@@ -219,6 +219,7 @@ async function boot() {
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') { errors.push(m.text()); console.log('  [console.error]', m.text().slice(0, 300)); } });
   page.on('pageerror', (e) => { errors.push(e.message); console.log('  [pageerror]', (e.stack || e.message).slice(0, 400)); });
+  page.on('requestfailed', (r) => console.log('  [requestfailed]', r.url().slice(0, 200), r.failure() && r.failure().errorText));
   await page.addInitScript(CLOCK);
   await page.route(/fonts\.(googleapis|gstatic)\.com/, fontRoute);
   await page.route(CDN, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_JS }));
