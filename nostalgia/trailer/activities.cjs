@@ -5,7 +5,7 @@
  *          SCALE=2               deviceScaleFactor (1920x1080 x2 -> 3840x2160; 1080x1920 x2 -> 2160x3840)
  *          EVERY=n               capture every n-th frame only (quick look; frame files keep their index)
  *          PRE_<game>=frames     override a game's pre-roll (frames at 30 fps stepped before the first capture)
- *          SURVEY=k,len          instead of the clip: capture every k-th frame of the first len frames
+ *          SURVEY=k,len[,from]   instead of the clip: capture every k-th frame of the first len frames (from frame `from`)
  *                                (to OUTD/<id>/sNNNNN.jpg) with a status log, to pick a pre-roll
  *   logs: trailer/out/mg_logs/<W>x<H>_<id>.txt  (frame-numbered HUD changes: compare with the survey log)
  *          Q=92                  JPEG quality
@@ -40,15 +40,22 @@ const GAMES = {
   // portrait cuts at f151 / f225 (won f259): window 108-252
   // kite's draw feeds its simulation, so its pre-roll must really draw (fast: false), else the bot plays out differently
   kite: { params: { difficulty: 0.4, seed: 11 }, pre: 400, preV: 108, fast: false },
-  // ball bowled ~f70, PERFECT hit ~f90, "SIX! Main road tak!" at f127
-  cricket: { params: { difficulty: 0.4, seed: 5 }, pre: 66 },
-  // the break: aim line, flick at f21, the striker clacks into the cross (~f35-45), the orange goli rolls out of
-  // the ring and counts (TUM 1/6 at f92); the shooter walks round to where the striker stopped
-  marbles: { params: { difficulty: 0.4, seed: 3 }, pre: 18 },
+  // ball 2 (the bot plays a CUT): end of the bowler's run-up, delivery ~f224, the ball bounces in, PERFECT cut
+  // ~f250 (bat flash + sparks), the ball streaks right over the low wall: "SIX! Plot mein!" + confetti and
+  // RUNS 6 -> 12 at f258, the ball still flying into the plot
+  cricket: { params: { difficulty: 0.4, seed: 5 }, pre: 213 },
+  // a scripted break shot (through the game's own drag input; the bot plays on afterwards): from the bottom-right
+  // of the ring, full power, Chinnu pulls back (f12-17) and flicks (f18); the striker smashes into the cross,
+  // the big JACKPOT goli flies out of the ring, then "JACKPOT! +3", the won goli fly to his pile, TUM 3/6 and
+  // "PHIR SE MAARO!" (~f65). Found with ACT.mbSearch; robust to +-0.004 rad aim / -1% power. timeScale 1.35 so
+  // that the shot, the roll and the payoff all fit in 2.4 s (a real flick takes ~2.4 s to settle).
+  marbles: { params: { difficulty: 0.4, seed: 3, timeScale: 1.35, touch: true }, pre: 12,
+    script: [{ at: 4, kind: 'mbPos', pos: Math.PI / 3 }].concat([0.3, 0.55, 0.75, 0.9, 1, 1].map((pw, i) => ({ at: 12 + i, kind: 'mbDrag', aimOff: 0.0375, power: pw })), [{ at: 18, kind: 'mbRelease' }]) },
   // puris 13-14 eaten at f511 / f546 while TEEKHA climbs 32% -> 86%: red sweating face, steam
   panipuri: { params: { difficulty: 0.4, seed: 4 }, pre: 500 },
-  // pick a line (f113), the BOLO! confidence needle, "₹25 -> ₹22" at f131 + the driver's reply
-  bargain: { params: { difficulty: 0.4, seed: 2, who: 'auto' }, pre: 108 },
+  // the deal: "Apne log ho. Chalo, ₹22.", new line cards (~f176), the bot picks one, the BOLO! needle,
+  // "JAMKE BOLA!" and the price board ticks ₹22 -> ₹20 at f194: "Chalo, baitho! ₹20, meter nakko."
+  bargain: { params: { difficulty: 0.4, seed: 2, who: 'auto' }, pre: 154 },
   // lines 5 and 6 cleared at f490 / f521 (SPEED 3)
   brickgame: { params: { difficulty: 0.4, seed: 6, mode: 'blocks' }, pre: 468 },
   // colour bars in, Amma "BAS! BAS! Wahi rakho!", LOCK fills, TOOFAN KID comes on at ~f192
@@ -86,7 +93,7 @@ const LOGD = path.join(__dirname, 'out', 'mg_logs');
     const params = Object.assign({}, cfg.params, JSON.parse(process.env['P_' + seg.game] || '{}'));
     const tune = Object.assign({}, cfg.tune || {}, JSON.parse(process.env['T_' + seg.game] || '{}'));
     if (process.env.TOUCH != null) params.touch = process.env.TOUCH === '1'; else if (PORTRAIT) params.touch = cfg.touchV != null ? cfg.touchV : true; // phone UI: the touch buttons
-    const info = await page.evaluate(({ id, p, tune }) => ACT.start(id, p, tune), { id: seg.game, p: params, tune: Object.keys(tune).length ? tune : null });
+    const info = await page.evaluate(({ id, p, tune, script }) => ACT.start(id, p, tune, script), { id: seg.game, p: params, tune: Object.keys(tune).length ? tune : null, script: cfg.script || null });
     console.log(seg.id, 'booted + started in', ((Date.now() - t0) / 1000).toFixed(0), 's', JSON.stringify(info), SURVEY ? 'SURVEY ' + SURVEY : 'pre-roll ' + pre);
     // one frame per evaluate; log every HUD change (to find the exact frame of a hit / cut / line clear)
     const total = SURVEY ? SURVEY[1] : pre + nf;
@@ -100,7 +107,7 @@ const LOGD = path.join(__dirname, 'out', 'mg_logs');
       const key = st.phase + '|' + st.over + '|' + st.hud;
       if (key !== last) { log.push(fr + ' ' + JSON.stringify(st)); last = key; }
       if (SURVEY) {
-        if (fr % SURVEY[0] === 0) await shot(path.join(dir, 's' + String(fr).padStart(5, '0') + '.jpg'));
+        if (fr % SURVEY[0] === 0 && fr >= (SURVEY[2] || 0)) await shot(path.join(dir, 's' + String(fr).padStart(5, '0') + '.jpg'));
         if (st.phase === 'none' || st.phase === 'result') break;
       } else if (fr > pre) {
         const f = fr - pre - 1;
@@ -109,6 +116,8 @@ const LOGD = path.join(__dirname, 'out', 'mg_logs');
         if (f % 36 === 35) console.log(' ', seg.id, f + 1, '/', nf, ((Date.now() - t0) / 1000).toFixed(0) + 's', st.hud);
       }
     }
+    const alog = await page.evaluate(() => ACT.log || []);
+    if (alog.length) { log.push('# script ' + JSON.stringify(alog)); console.log('  script', JSON.stringify(alog)); }
     const lf = path.join(LOGD, W + 'x' + H + '_' + seg.id + (SURVEY ? '_survey' : '') + '.txt');
     fs.writeFileSync(lf, '# ' + seg.id + ' ' + W + 'x' + H + ' pre ' + pre + ' (captured frames ' + (pre + 1) + '..' + (pre + nf) + ')\n' + log.join('\n') + '\n');
     if (SURVEY) console.log(log.join('\n'));

@@ -851,7 +851,8 @@
     for (const sg of TL.segments) {
       const t = tbA(sg.b), key = sg.game || sg.clip;
       if (sg.act === 'PLAY' && sg.b !== playStart) cutAccent(t, 1);
-      if (sg.act === 'PLAY' && SFX[key]) SFX[key](t);
+      // the SFX lands on the clip's key moment: optional per-segment offset sfxF (frames) or sfxB (beats)
+      if (sg.act === 'PLAY' && SFX[key]) SFX[key](t + (sg.sfxF != null ? sg.sfxF / TL.fps : (sg.sfxB || 0) * B));
       if (sg.kind === 'game' && prevKind === 'game' && sg.act === 'EXPLORE') whoosh(t, 0.4, 0.35, 1);
       prevKind = sg.kind;
     }

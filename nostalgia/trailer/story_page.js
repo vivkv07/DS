@@ -65,6 +65,39 @@
     return SP.status();
   };
 
+  /* ---- the story in gameplay: put Chinnu where (and when) a story beat happens, with the people who are there
+   * o = {date: [y, m, d, h, mi], at: placeId | [x, y], roof: roof id, angle, npcs: [[id, target, opts]], view,
+   *      yaw, pitch, seasons: {name: on}, money (paise)} */
+  SP.scene = function (o) {
+    const p = N.player;
+    try { if (N.dialogue.isOpen()) N.dialogue.cancel(); } catch (e) { /* ignore */ }
+    if (o.date) N.calendar.set(o.date[0], o.date[1], o.date[2], o.date[3], o.date[4]);
+    N.debug.freezeClock(true);
+    if (o.seasons) for (const k in o.seasons) N.seasons.set(k, o.seasons[k]);
+    const P = Array.isArray(o.at) ? { x: o.at[0], y: o.at[1] } : N.places[o.at];
+    if (o.roof) {
+      const RF = N.world.roofs, r = RF.get(o.roof);
+      const tx = P ? P.x : r.rect[0] + r.rect[2] / 2, ty = P ? P.y : r.rect[1] + r.rect[3] / 2;
+      p.teleport(tx, ty);
+      if (p.level !== o.roof) RF.climb(o.roof, 0, p, { instant: true });
+      if (P && (Math.abs(p.x - P.x) > 1 || Math.abs(p.y - P.y) > 1)) { p.x = P.x; p.y = P.y; }
+    } else if (P) p.teleport(P.x, P.y);
+    if (o.angle != null) { p.angle = o.angle; p.facing = o.angle; }
+    p.vx = p.vy = 0;
+    for (const n of o.npcs || []) { try { N.npcs.spawn(n[0], n[1], Object.assign({ idle: 'stand', talk: false }, n[2] || {})); } catch (e) { console.error('npc', n[0], e); } }
+    if (o.money != null) p.money = o.money;
+    if (o.view) N.view.set(o.view, { noSave: true });
+    if (N.view3d && N.view3d.setCamera) N.view3d.setCamera({ yaw: o.yaw != null ? o.yaw : o.angle, pitch: o.pitch != null ? o.pitch : 0.3, snap: true });
+    if (N.render.snapCamera) N.render.snapCamera();
+    return { x: Math.round(p.x), y: Math.round(p.y), level: p.level || null, mode: N.state.mode, view: N.view.mode, date: N.calendar.date.label, time: N.clock.label() };
+  };
+
+  // the world canvases (2D #game and the 3D canvas): hidden while the prologue art covers them anyway — a visible
+  // canvas is re-composited at every yield, which makes stepping ~30x slower
+  SP.world = function (on) {
+    for (const c of document.querySelectorAll('canvas#game, canvas#game3d, #game3d canvas')) c.style.visibility = on ? '' : 'hidden';
+    return Array.from(document.querySelectorAll('canvas')).map((c) => (c.id || c.className) + ':' + c.width + 'x' + c.height + ':' + getComputedStyle(c).visibility);
+  };
   SP.status = function () {
     const d = N.dialogue && N.dialogue.current;
     const osd = document.querySelector('.cs-osd.show');
@@ -83,6 +116,7 @@
   // pacing (the player's ACTION presses): a finished dialogue line is advanced after `line` s, the ▶ PLAY prompt is
   // pressed after `prompt` s; set SP.pace = null to drive it by hand
   SP.pace = { line: 1.6, prompt: 1.6 };
+  SP.frame = 0;
   let doneT = 0, promptT = 0;
   function pace(dt) {
     const P = SP.pace;
@@ -92,17 +126,23 @@
     const pr = document.querySelector('.cs-card.k-prompt');
     if (pr) { promptT += dt; if (promptT >= P.prompt) { promptT = -1e9; N.input.press('action'); } } else promptT = 0;
   }
-  SP.step = function (n, dt) {
-    for (let i = 0; i < n; i++) { window.__step(dt); pace(dt); }
+  // Every frame is its own task in the real game, so promise chains (cutscene steps, dialogue lines, missions)
+  // advance between frames. A synchronous loop of __step calls would starve them: yield a macrotask per frame.
+  const mc = new MessageChannel(); let mres = null;
+  mc.port1.onmessage = () => { const r = mres; mres = null; if (r) r(); };
+  const tick = () => new Promise((r) => { mres = r; mc.port2.postMessage(0); });
+  SP.tick = tick;
+  async function one(dt) { window.__step(dt); pace(dt); SP.frame++; await tick(); }
+  SP.step = async function (n, dt) {
+    for (let i = 0; i < n; i++) await one(dt);
     return SP.status();
   };
   // step n frames, returning every status change as [frame, status] (frames counted by SP.frame)
-  SP.frame = 0;
   let lastKey = '';
-  SP.run = function (n, dt) {
+  SP.run = async function (n, dt) {
     const out = [];
     for (let i = 0; i < n; i++) {
-      window.__step(dt); pace(dt); SP.frame++;
+      await one(dt);
       const st = SP.status();
       const key = JSON.stringify([st.mode, st.cs, st.dlg && st.dlg.text, st.dlg && st.dlg.typing, st.osd, st.rec, st.stage.slice(0, 40), st.toast]);
       if (key !== lastKey) { lastKey = key; out.push([SP.frame, st]); }

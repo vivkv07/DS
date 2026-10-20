@@ -98,10 +98,34 @@ async function takeOver(page) { await page.evaluate(() => { window.__auto = fals
     await takeOver(page);
     await page.evaluate(() => SP.setup({ hud: true }));
     if (SURVEY === 'prologue') {
-      await page.evaluate(() => { N.menus.quickStart = true; N.debug.newGame({ skipIntro: true }); N.player.money = 1000; window.__pro = N.story.prologue(); });
+      await page.evaluate(() => { N.menus.quickStart = true; N.debug.newGame({ skipIntro: true }); N.player.money = 1000; SP.world(false); window.__pro = N.story.prologue(); });
     }
     const log = [];
     const tS = Date.now();
+    if (process.env.PROFILE) {
+      for (let k = 0; k < 3; k++) {
+        const r = await page.evaluate(async (dt) => {
+          const t0 = performance.now(); let a = 0, b = 0, c = 0;
+          for (let i = 0; i < 30; i++) {
+            const t1 = performance.now(); window.__step(dt); const t2 = performance.now(); await SP.tick(); const t3 = performance.now(); SP.status(); c += performance.now() - t3; a += t2 - t1; b += t3 - t2;
+          }
+          return { total: (performance.now() - t0) / 30, step: a / 30, yield: b / 30, status: c / 30, anims: document.getAnimations().length, running: document.getAnimations().filter((x) => x.playState === 'running').length };
+        }, DT);
+        console.log('profile', JSON.stringify(r));
+      }
+      const r2 = await page.evaluate(() => { const m = {}; for (const a of document.getAnimations()) { const el = a.effect && a.effect.target; const k = (el ? (el.id || el.className || el.tagName) : '?') + ' ' + (a.animationName || a.transitionProperty || ''); m[k] = (m[k] || 0) + 1; } return m; });
+      console.log(JSON.stringify(r2).slice(0, 2000));
+      const t1 = Date.now(); await shot(path.join(dir, 'p.jpg')); console.log('shot', Date.now() - t1, 'ms');
+      const t2 = Date.now(); await shot(path.join(dir, 'p2.jpg')); console.log('shot2', Date.now() - t2, 'ms');
+      for (const [lab, fn] of [['30f', null], ['30f', null], ['30f no #game', () => { document.getElementById('game').style.visibility = 'hidden'; }], ['30f no #game', null], ['1f', null], ['30f nodraw', () => { window.__wd = N.world.draw; N.world.draw = () => {}; N.entities.draw = () => {}; }], ['30f nodraw', null]]) {
+        if (fn) await page.evaluate(fn);
+        const n = lab.startsWith('1f') ? 1 : 30;
+        const ts = Date.now(); await page.evaluate(({ n, dt }) => SP.step(n, dt), { n, dt: DT }); const te = Date.now();
+        await shot(path.join(dir, 'p3.jpg')); console.log(lab, 'step', te - ts, 'ms, shot', Date.now() - te, 'ms', JSON.stringify(await page.evaluate(() => [N.state.mode, SP.status().cs, N.render.stats && N.render.stats.ms])));
+      }
+      await browser.close();
+      return;
+    }
     if (process.env.STILLS) { // STILLS=f1,f2,...: full-res stills at these survey frames only
       const fr = process.env.STILLS.split(',').map(Number).sort((a, b) => a - b);
       let at = 0;

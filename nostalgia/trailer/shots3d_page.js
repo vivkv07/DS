@@ -139,10 +139,14 @@
       STAGE.cam({ x: lm.x + Math.cos(a) * r + jx, y: lm.y + Math.sin(a) * r + jy, h, tx: lm.x, ty: lm.y, th: hy - 12, fov: sh.fov[0] + (sh.fov[1] - sh.fov[0]) * e });
       STAGE.camSpec.rollAbs = -0.012 * Math.sin(u * Math.PI);
     } else if (seg.shot === 'reveal') {
-      // from the plaza, low and looking up at the minarets, crane up to Chinnu on the roof
-      const e = ease.ioq(u), a = 0.59 + 0.35 * e;
-      const r = 125 - (125 - 33 * cs) * e, h = 3 + (hy + 7 * cs - 3) * e, th = 55 + (hy + chest - 55) * e;
-      STAGE.cam({ x: hero.x + Math.cos(a) * r, y: hero.y + Math.sin(a) * r, h, tx: hero.x, ty: hero.y, th, fov: 50 - 8 * e });
+      // from the plaza, low and looking up at the minarets, crane up to Chinnu on the roof. Height and distance
+      // ease separately: the camera clears the roof line (by ~62% of the shot) while it is still ~90 u out, and
+      // only then pushes in, so it never flies through the minarets / parapet
+      const eh = ease.io(Math.min(1, u / 0.62));
+      const er = u < 0.55 ? 0.35 * ease.io(u / 0.55) : 0.35 + 0.65 * ease.io((u - 0.55) / 0.45);
+      const a = 0.59 + 0.35 * er;
+      const r = 125 - (125 - 33 * cs) * er, h = 3 + (hy + 7 * cs - 3) * eh, th = 55 + (hy + chest - 55) * eh;
+      STAGE.cam({ x: hero.x + Math.cos(a) * r, y: hero.y + Math.sin(a) * r, h, tx: hero.x, ty: hero.y, th, fov: 50 - 8 * er });
     } else if (seg.shot === 'whip') {
       const e = ease.in(u), a = 0.94 + e * 5.2;
       STAGE.cam({ x: hero.x + Math.cos(a) * 24 * cs, y: hero.y + Math.sin(a) * 24 * cs, h: hy + 8 * cs, tx: hero.x, ty: hero.y, th: hy + chest, fov: 50 + 10 * e });

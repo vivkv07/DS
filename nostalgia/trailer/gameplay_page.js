@@ -29,20 +29,20 @@
     top_pothole: { view: 'top', at: 'giver_himayatnagar', time: [16, 0], veh: 'cycle', spd: 100, dir: 1.5, rain: 0.7 },
     ambassador_hitec: { view: 'tps', at: 'cyber_towers', time: [12, 0], veh: 'ambassador', spd: 150, dir: 1.5 },
     market_walk: { view: 'tps', at: 'laad_bazaar', time: [18, 35], veh: null, spd: 45, dir: 3.1 },
-    lightning: { view: 'tps', at: 'abids', time: [21, 40], veh: null, spd: 40, dir: 0, rain: 1, storm: 1, strike: 3 },
+    lightning: { view: 'tps', at: 'abids', time: [21, 40], veh: null, spd: 40, dir: 0, rain: 1, storm: 1, pitch: 0.03, strikes: [[14, 430, -70, 1], [47, 520, 120, 0.9]] },
     top_traffic: { view: 'top', at: 'abids', time: [18, 10], veh: null, spd: 40, dir: 0.8 },
     kites_sky: { view: 'cam', at: 'giver_himayatnagar', time: [16, 20], veh: null, spd: 0 },
     // festivals (N.seasons overlays; the 3D renderer draws their props from N.seasons.scene)
-    fest_ganesh: { view: 'cam', at: 'tank_bund', time: [16, 40], veh: null, spd: 0, procession: true, front: true, gap: 20, lookAt: 8, camH: 4.2, thAdd: 3, sw0: -0.4, swRate: 0.17, seasons: { ganesh_immersion: true, ganesh: true } },
+    fest_ganesh: { view: 'cam', at: 'tank_bund', time: [15, 30], veh: null, spd: 0, procession: true, rows: 4, swRate: 0.2, seasons: { ganesh_immersion: true, ganesh: true } },
     fest_ramzan: { view: 'tps', at: 'charminar', off: [0, -240], time: [21, 30], veh: null, spd: 32, toward: 'charminar', chase: { back: 18, h: 6.5, lead: 40, th: 16, fov: 60, lag: 0.2 }, seasons: { ramzan: true } },
     ramzan_e: { view: 'tps', at: 'charminar', off: [230, 0], time: [21, 30], veh: null, spd: 32, toward: 'charminar', chase: { back: 18, h: 6.5, lead: 40, th: 16, fov: 60, lag: 0.2 }, seasons: { ramzan: true } },
     ramzan_s: { view: 'tps', at: 'charminar', off: [0, 230], time: [21, 30], veh: null, spd: 32, toward: 'charminar', chase: { back: 18, h: 6.5, lead: 40, th: 16, fov: 60, lag: 0.2 }, seasons: { ramzan: true } },
     ramzan_w: { view: 'tps', at: 'charminar', off: [-230, 0], time: [21, 30], veh: null, spd: 32, toward: 'charminar', chase: { back: 18, h: 6.5, lead: 40, th: 16, fov: 60, lag: 0.2 }, seasons: { ramzan: true } },
     fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 0, seasons: { bonalu: true }, bonalu: { temple: 'lal_darwaza_temple', ahead: 17, side: 13, h: 5, lat: 4.5, look: -1.5 } },
-    fest_numaish: { view: 'tps', at: [8312, 5864], time: [20, 30], veh: null, spd: 48, run: true, line: { a: 0, r0: 210, r1: -120 }, chase: { back: 16, h: 6.5, lead: 30, th: 12, fov: 60, lag: 0.2 }, seasons: { numaish: true } },
+    fest_numaish: { view: 'tps', at: [8312, 5860], time: [20, 30], veh: null, spd: 34, line: { a: 0, r0: 60, r1: -200 }, chase: { back: 14, h: 6, lead: 30, th: 10, fov: 60, lag: 0.2 }, seasons: { numaish: true } },
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
     // in-world playground games (N.playgroundGames): a real match with Chinnu and the AI kids, scripted inside the window
-    lingocha: { view: 'tps', at: 'playground_home', time: [12, 40], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: -28, h1: 14, crane: 45, f0: 21, s0: 8, h0: 10.5, lk0: 0.75 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
+    lingocha: { view: 'tps', at: 'playground_home', time: [12, 40], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: 26, h1: 15, crane: 45, f0: 21, s0: 8, h0: 10.5, lk0: 0.75 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
     marampitti: { view: 'tps', at: 'playground_2', time: [16, 50], veh: null, spd: 0, pg: { game: 'marampitti', place: 'playground_2', seed: 2, winds: [[0, 0.9, 0]], dodges: [21], victim: { back: 6.5, lat: 1.2 }, camLag: 0.2, me: [14, -8], kAng: 3.14, fixCam: 0.5, cam: { back: 14, side: 5, h: 15, fov: 52, look: 0.35 }, params: { kids: 8, difficulty: 0.5 } } },
     charminar_night_fps: { view: 'fps', at: 'pathergatti', time: [21, 0], veh: 'cycle', spd: 105, toward: 'charminar' },
   };
@@ -411,7 +411,7 @@
     const gap = C.o.gap || 34, cx = rig.x - dx * gap, cy = rig.y - dy * gap;
     const list = [];
     let k = 0;
-    for (let row = 0; row < 3; row++) for (let col = -3; col <= 3; col++) {
+    for (let row = 0; row < (C.o.rows || 3); row++) for (let col = -3; col <= 3; col++) {
       if (row === 0 && col === 0) continue;
       const jx = Math.sin(k * 12.9) * 1.6, jy = Math.cos(k * 7.3) * 1.6;
       list.push({ ox: -dx * (row * 4.5) + sx * col * 3.6 + jx, oy: -dy * (row * 4.5) + sy * col * 3.6 + jy, a: a + Math.PI, model: MODELS[k % MODELS.length], look: LOOKS[k % LOOKS.length], clip: k % 3 === 0 ? 'walk' : 'run', ph: k * 1.37, dance: 0.8 + (k % 3) * 0.15 });
@@ -475,6 +475,13 @@
     }
     if (!warm && o.scare && C.f === o.scare && N.birds) N.birds.scare(N.player.x, N.player.y, 120);
     if (!warm && o.strike && C.f === o.strike) N.weather.strike(N.player.x + 180, N.player.y - 260, 1);
+    // strikes ahead of the camera (along the heading): [frame, ahead, side, power]
+    if (!warm && o.strikes && path) for (const sk of o.strikes) {
+      if (C.f !== sk[0]) continue;
+      at(path, C.d, tmp); at(path, C.d + 10, tmp2);
+      const ha = Math.atan2(tmp2.y - tmp.y, tmp2.x - tmp.x);
+      N.weather.strike(tmp.x + Math.cos(ha) * sk[1] - Math.sin(ha) * sk[2], tmp.y + Math.sin(ha) * sk[1] + Math.cos(ha) * sk[2], sk[3] || 1);
+    }
     if (o.pitch != null && N.view3d.setCamera) N.view3d.setCamera({ pitch: o.pitch });
     if (o.view === 'tps' && C.f === 0 && N.view3d.snapCamera) N.view3d.snapCamera();
     C.f++;

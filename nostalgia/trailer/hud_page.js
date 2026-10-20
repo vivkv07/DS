@@ -23,15 +23,26 @@
     // fifth slipper fills and lights on the beat (f18: level 4 -> 5), the game swaps the police for MUMMY in
     // Yadagiri's auto, who winds up the homing chappal
     chase: {
-      view: 'top', at: 'koti', time: [12, 30], veh: null, run: true, spd: 80, dir: Math.PI, zoom: 1.75, warm: 90,
+      view: 'top', at: 'koti', time: [12, 30], veh: null, run: true, spd: 80, dir: Math.PI, zoom: 2.2, warm: 90,
       // heat keyframes [frame, heat] (level = floor(heat / 100)); level 4 only just before the shot (its roadblock
       // goes ~300 u ahead and is called off again at level 5 before he reaches it)
       heat: [[-90, 350], [-8, 400], [0, 420], [18, 500], [71, 540]],
       // new pursuers are put on his route behind him: u behind, or 'edge' = just outside the frame (drives in)
-      stage: { roles: { pochaiah: 60, mummy: 'edge' }, side: 7, at: -40 },
+      stage: { roles: { pochaiah: 60, mummy: 'edge' }, side: 5, at: -40 },
       quiet: true, // pursuers' random shouts off: the lines below + the game's own (dismissal, chappal wind-up)
-      barks: [[2, 'pochaiah', '*Ruko!*'], [24, 'mummy', '{FULL}!']], // (their own lines from wanted.js)
-      chappalT: 0.15, // Mummy's first homing chappal: wind-up as soon as she is in range (the game waits 3 s)
+      barks: [[2, 'pochaiah', '*Ruko!*'], [22, 'mummy', '{FULL}!']], // (their own lines from wanted.js)
+      barkSecs: { pochaiah: 0.9 }, // his "called off" line clears before Mummy's wind-up line (the game: ~3 s)
+      // Mummy's first homing chappal: the game waits 3 s after she arrives, then checks the range (150 u) every
+      // 0.5 s; here she winds up ("One more step and this chappal flies!") the moment she is in range
+      chappalEager: true,
+      // called off at level 5, Pochaiah would U-turn his Luna into Mummy's path and she would brake behind him:
+      // instead he pulls over to the kerb ("Luna, you have betrayed me.") and her auto goes past
+      pullOver: { role: 'pochaiah', ahead: 30, kerb: 6 },
+      // (and he stays on the Luna: the game has him hop off to run when Chinnu is within 70 u on foot and the Luna
+      // slows below 40 u/s, e.g. at a bend; a parked Luna in the lane would stop Mummy's auto too)
+      tune: { lunaDismount: 0 },
+      difficulty: 'hard', // the game's "Full Meter" difficulty: Mummy is faster (pursuerSpeed 1.1) and sees further
+      clear: 9, // traffic parked / stopped on his line is cleared before the shot (he is driven, not physical)
     },
     // "PLAY IN 3D OR TOP-DOWN": 3D third person on the cycle down Pathergatti towards Charminar, then the game's
     // real view switch (N.view.set('top'), instant: the game has no transition) on the beat, same moment, same place
@@ -142,6 +153,8 @@
     const o = Object.assign({}, SHOTS[id], opt || {});
     if (!o.view) throw new Error('no shot ' + id);
     seed(o.seed || 20031);
+    if (N.settings && N.settings.set) N.settings.set('difficulty', o.difficulty || 'normal');
+    if (o.tune) Object.assign(N.wanted.TUNE, o.tune);
     if (N.player.vehicle && N.vehicles.exit) { try { N.vehicles.exit(N.player, true); } catch (e) { /* ok */ } }
     if (N.wanted) { N.wanted.lock(null); N.wanted.set(0, 'clear'); }
     N.render.camOverride = null;
@@ -164,7 +177,7 @@
     if (o.veh) { v = N.vehicles.spawn(o.veh, start.x, start.y, 0, {}); if (v) N.vehicles.enter(N.player, v); }
     N.view.set(o.view);
     N.render.baseZoom = o.zoom || 1;
-    C = { id, o, path, v, d: d0, f: -warm, log: [] };
+    C = { id, o, path, v, d: d0, f: -warm, nf, log: [] };
     // the view switch: the top-down ground around the switch point is painted now (3D is drawing meanwhile)
     if (o.switchAt != null && N.render.warmChunks) { at(path, d0 + (warm + o.switchAt) * o.spd / FPS, tmp); N.render.warmChunks(tmp.x, tmp.y, 520); }
     if (o.heat) N.wanted.set(Math.floor(heatAt(o.heat, -warm) / 100), 'set');
@@ -189,7 +202,7 @@
   }
   function pursuerInfo() {
     const p = N.player;
-    return N.wanted.pursuers.map((a) => a.role + (a.mount ? '@' + a.mount.type : '') + ' ' + Math.round(Math.hypot(a.x - p.x, a.y - p.y)) + 'u ' + a.state + (a.seeing ? ' sees' : ''));
+    return N.wanted.pursuers.map((a) => a.role + (a.mount ? '@' + a.mount.type + ' v' + Math.round(a.mount.speed || 0) : '') + ' ' + Math.round(Math.hypot(a.x - p.x, a.y - p.y)) + 'u ' + a.state + (a.seeing ? ' sees' : ''));
   }
   const subst = (t) => { try { if (N.menus && N.menus.subst) return N.menus.subst(t); } catch (e) { /* stub */ } return String(t).replace(/\{FULL\}/g, 'K. SRIKANTH'); };
   const mountedOn = (a) => !!(a.mount && (a.vehicle === a.mount || a.passengerOf === a.mount));
@@ -207,9 +220,10 @@
       let back = typeof want === 'number' ? want : 120;
       if (want === 'edge') { back = 40; for (; back < 400; back += 4) { at(C.path, C.d - back, tmp); if (!N.render.inView(tmp.x, tmp.y, 14)) break; } back += 6; }
       at(C.path, C.d - back, tmp); at(C.path, C.d - back + 6, tmp2);
-      const ang = Math.atan2(tmp2.y - tmp.y, tmp2.x - tmp.x), lat = S.side || 0;
-      const nx = tmp.x - Math.sin(ang) * lat, ny = tmp.y + Math.cos(ang) * lat;
       const m = a.mount;
+      // (riders in his lane, the route's own lane line; people on foot a step to the side)
+      const ang = Math.atan2(tmp2.y - tmp.y, tmp2.x - tmp.x), lat = m && mountedOn(a) ? 0 : (S.side || 0);
+      const nx = tmp.x - Math.sin(ang) * lat, ny = tmp.y + Math.cos(ang) * lat;
       if (m && mountedOn(a)) {
         const sp = (m.pu && m.pu.speed) || C.o.spd;
         m.x = nx; m.y = ny; m.angle = ang; m.vx = Math.cos(ang) * sp; m.vy = Math.sin(ang) * sp; m.speed = sp; m.okX = null;
@@ -221,8 +235,58 @@
     }
   }
 
+  // vehicles on his line (a kid running down the road: anything parked or crawling there would be run through)
+  function clearLine(r, len) {
+    const pts = [];
+    for (let d = C.d - 20; d < C.d + len; d += 4) pts.push(at(C.path, d, { x: 0, y: 0 }));
+    let n = 0;
+    for (const e of N.entities.all.slice()) {
+      if (e.kind !== 'vehicle' || e === N.player.vehicle || e.npcOwned || e.pursuitVehicle || e.roadblock) continue;
+      const rr = r + ((e.T && e.T.w) || 6) / 2;
+      if (pts.some((q) => Math.abs(q.x - e.x) < rr && Math.abs(q.y - e.y) < rr && Math.hypot(q.x - e.x, q.y - e.y) < rr)) { try { N.vehicles.remove(e); n++; } catch (er) { /* ignore */ } }
+    }
+    return n;
+  }
+
+  // a called-off rider pulls over to the left kerb and stops (his own vehicle controller, replaced)
+  const pulled = new WeakSet();
+  function pullOver(spec) {
+    for (const a of (N.wanted._W.leaving || [])) {
+      if (a.role !== spec.role || pulled.has(a)) continue;
+      pulled.add(a);
+      if (!a.mount || !mountedOn(a)) { // on foot: steps off the road to the left instead of walking back down it
+        const g = Math.atan2(N.player.y - a.y, N.player.x - a.x);
+        a.leaveTo = { x: a.x + Math.cos(g) * 10 + Math.sin(g) * 45, y: a.y + Math.sin(g) * 10 - Math.cos(g) * 45 };
+        C.log.push(C.f + ' ' + a.role + ' steps aside');
+        continue;
+      }
+      // onto the footpath on the left (off the road: the game's traffic sense ignores vehicles parked there)
+      const v = a.mount, ang = v.angle, q = N.world.nearestRoadPoint(v.x, v.y);
+      const hw = q && q.road && q.road.w ? q.road.w / 2 : 10, bx = q ? q.x : v.x, by = q ? q.y : v.y;
+      const tx = bx + Math.cos(ang) * spec.ahead + Math.sin(ang) * (hw + spec.kerb), ty = by + Math.sin(ang) * spec.ahead - Math.cos(ang) * (hw + spec.kerb);
+      v.controller = function (v) {
+        const c = v.ctl, d = Math.hypot(tx - v.x, ty - v.y), sp = v.speed || 0;
+        c.handbrake = false;
+        if (d < 5 || (d < 14 && sp < 8)) { c.throttle = 0; c.brake = true; c.steer = 0; return; }
+        c.steer = Math.max(-1, Math.min(1, U.angleDiff(v.angle, Math.atan2(ty - v.y, tx - v.x)) * 2.5));
+        const want = Math.min(70, d * 2.2);
+        if (sp > want + 4) { c.brake = true; c.throttle = 0; } else { c.brake = false; c.throttle = sp < want - 4 ? 0.5 : 0.05; }
+      };
+      C.log.push(C.f + ' ' + a.role + ' pulls over to ' + Math.round(tx) + ',' + Math.round(ty) + ' (road half-width ' + Math.round(hw) + ')');
+    }
+  }
+
+  // shorter bubbles for some speakers (by the pursuer's role; wraps the game's bark for this page only)
+  const bark0 = N.dialogue.bark;
+  N.dialogue.bark = function (target, text, opts) {
+    const bs = C && C.o.barkSecs, role = target && target.pursuer ? target.role : null;
+    if (bs && role && bs[role] != null) opts = Object.assign({}, opts, { secs: bs[role] });
+    return bark0.call(this, target, text, opts);
+  };
+
   function script() {
     const o = C.o, W = N.wanted;
+    if (o.clear && (C.f === -(o.warm || 75) || C.f === -12)) C.log.push(C.f + ' cleared ' + clearLine(o.clear, (C.nf + 10 - C.f) / FPS * o.spd) + ' vehicles off his line');
     if (o.heat) {
       const L0 = W.level;
       heatTo(heatAt(o.heat, C.f));
@@ -231,12 +295,15 @@
         if (W.level === 5 && o.chappalT != null) W._W.chappalT = o.chappalT;
       }
     }
+    if (o.chappalEager && W.level === 5 && !W._W.chappal && W._W.chappalT > 0) W._W.chappalT = 0;
+    if (o.pullOver) pullOver(o.pullOver);
     if (o.quiet) for (const a of W.pursuers) a.barkT = 99;
     if (o.barks && C.f >= 0) for (const b of o.barks) {
       if (b[0] !== C.f) continue;
       const a = W.pursuers.find((q) => q.role === b[1] && q.state !== 'leave');
       if (!a) { C.log.push(C.f + ' no ' + b[1] + ' to bark'); continue; }
-      N.dialogue.bark(mountedOn(a) ? a.mount : a, subst(b[2]), { speaker: a.speaker || undefined });
+      // (a rider's bubble on himself, as the game's own lines for him; a passenger's on the vehicle she rides in)
+      N.dialogue.bark(a.passengerOf ? a.passengerOf : a, subst(b[2]), { speaker: a.speaker || undefined, secs: b[3] });
       C.log.push(C.f + ' bark ' + b[1] + ' ' + b[2]);
     }
     if (o.switchAt === C.f) { N.view.set('top'); C.log.push(C.f + ' view ' + N.view.mode); }
@@ -268,6 +335,15 @@
     const f = C.f;
     advance();
     const W = N.wanted, p = N.player, ch = W._W.chappal;
-    return { f, level: W.level, heat: Math.round(W.heat), view: N.view.mode, money: p.money, mode: N.state.mode, pos: [Math.round(p.x), Math.round(p.y)], pursuers: pursuerInfo(), chappal: ch ? ch.ph + ' ' + Math.round(Math.hypot(ch.x - p.x, ch.y - p.y)) + 'u' : null, busy: W.busy, log: C.log.splice(0) };
+    let dbg;
+    if (window.HUDDBG) {
+      const m = W.chaser && W.chaser.mount;
+      if (m) {
+        let ob = null; try { ob = N.traffic.sense(m, Math.cos(m.angle), Math.sin(m.angle)); } catch (e) { ob = String(e); }
+        const pu = m.pu;
+        dbg = { ctl: m.ctl && [m.ctl.throttle, m.ctl.brake, +m.ctl.steer.toFixed(2)], ob: ob && ob.e ? [ob.e.kind + ':' + (ob.e.type || ob.e.role || ''), Math.round(ob.gap), Math.round(ob.sp)] : ob, pi: pu && pu.path ? pu.pi + '/' + pu.path.length : null, ang: +m.angle.toFixed(2), max: m.T && (m.T.max || m.T.top || m.T.speed) };
+      }
+    }
+    return { dbg, f, level: W.level, heat: Math.round(W.heat), view: N.view.mode, money: p.money, mode: N.state.mode, pos: [Math.round(p.x), Math.round(p.y)], pursuers: pursuerInfo(), chappal: ch ? ch.ph + ' ' + Math.round(Math.hypot(ch.x - p.x, ch.y - p.y)) + 'u' : null, busy: W.busy, log: C.log.splice(0) };
   };
 })();
