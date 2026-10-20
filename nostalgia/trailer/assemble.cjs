@@ -10,17 +10,19 @@ const fs = require('fs');
 const { execFileSync } = require('child_process');
 const W = +(process.argv[2] || 3840), H = +(process.argv[3] || 2160);
 const OUTDIR = path.join(__dirname, 'out');
-const FR = process.env.FRAMES || path.join(OUTDIR, 'frames');
+const TL = JSON.parse(fs.readFileSync(path.join(__dirname, 'timeline.json'), 'utf8'));
+const V2 = TL.version === 2; // v2 (gameplay-led) renders into frames2 / frames2_v
+const FR = process.env.FRAMES || path.join(OUTDIR, V2 ? 'frames2' : 'frames');
 // vertical (Reels / Shorts): portrait-native frames from FRAMES_V win (titles, cards, top-down clips, overlays);
 // landscape 3D frames are centre-cropped (the hero is always centred)
 const VERT = H > W;
-const FRV = process.env.FRAMES_V || path.join(OUTDIR, 'frames_v');
+const FRV = process.env.FRAMES_V || path.join(OUTDIR, V2 ? 'frames2_v' : 'frames_v');
 const EVERY = +(process.env.EVERY || 1);
 const CRF = process.env.CRF || '16';
-const OUT = process.env.OUT || path.join(OUTDIR, H > W ? `nostalgia_reels_${W}x${H}.mp4` : `nostalgia_trailer_${H}p.mp4`);
-const TL = JSON.parse(fs.readFileSync(path.join(__dirname, 'timeline.json'), 'utf8'));
+const TAG = V2 ? '_v2' : '';
+const OUT = process.env.OUT || path.join(OUTDIR, H > W ? `nostalgia_reels${TAG}_${W}x${H}.mp4` : `nostalgia_trailer${TAG}_${H}p.mp4`);
 const FPS = TL.fps, BF = TL.beatFrames;
-const TMP = path.join(OUTDIR, 'tmp_' + W + 'x' + H); fs.mkdirSync(TMP, { recursive: true });
+const TMP = path.join(OUTDIR, 'tmp' + TAG + '_' + W + 'x' + H); fs.mkdirSync(TMP, { recursive: true });
 const ff = (args) => execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], { stdio: 'inherit' });
 
 // frames for a segment: <FR>/<id>/%05d.(jpg|png); 2D segments (cards/titles) are always full-rate
@@ -54,22 +56,27 @@ for (const seg of TL.segments) {
   const pixel = s && s.ext === '.png' && seg.kind === 'game'; // top-down internal canvas -> crisp nearest-neighbour
   if (VERT && s && s.w > s.h) filters.push('crop=ih*9/16:ih'); // landscape master -> centre 9:16
   filters.push(`scale=${W}:${H}:flags=${pixel ? 'neighbor' : 'lanczos'}:force_original_aspect_ratio=increase,crop=${W}:${H}`);
+  // minigame captures (kind 'mg') are the game's own full-screen UI: no grade, no zoom, no sharpening
   if (seg.kind === '3d' || seg.kind === 'game') filters.push(GRADE);
   // motion in the edit: a slow push-in across every drone shot; a zoom punch (1.12 -> 1) on each gameplay cut
   // (zoompan: crop w/h are evaluated once, zoompan per frame; on = output frame number)
   if (seg.kind === '3d') filters.push(`zoompan=z='1+0.025*on/${nf}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${FPS}`);
-  if (seg.kind === 'game') filters.push(`zoompan=z='1+0.06*max(0,1-on/8)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${FPS}`);
+  if (seg.kind === 'game' && V2 && !pixel) filters.push(`zoompan=z='1.03-0.03*on/${nf}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${FPS}`); // v2: longer shots, a slow pull-back
+  else if (seg.kind === 'game' && !V2) filters.push(`zoompan=z='1+0.06*max(0,1-on/8)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${FPS}`);
   if (seg.shot === 'whip') filters.push('tmix=frames=5:weights=1 1 1 1 1');
   // drop flashes: the first frames of the first shot after each drop
-  if (seg.id === 'lm_charminar' || seg.id === 'g_cycle_oldcity') filters.push(`fade=t=in:st=0:d=0.2:color=white`);
+  const flash = V2 ? ['g_cycle_oldcity', 'a_kite', 'f_ganesh'] : ['lm_charminar', 'g_cycle_oldcity'];
+  if (flash.includes(seg.id)) filters.push(`fade=t=in:st=0:d=0.2:color=white`);
   if (seg.kind === 'game') filters.push('unsharp=5:5:0.4');
   filters.push(`trim=end_frame=${nf}`, 'setpts=PTS-STARTPTS', `tpad=stop_mode=clone:stop=${nf}`, `trim=end_frame=${nf}`, 'format=yuv420p');
   let fc = `[0:v]${filters.join(',')}[v]`;
   const extra = [];
-  if (seg.overlay) { // rain lower-third (transparent PNG frames rendered by render_titles.cjs as <id>_overlay)
-    const od = VERT && fs.existsSync(path.join(FRV, seg.id + '_overlay')) ? path.join(FRV, seg.id + '_overlay') : path.join(FR, seg.id + '_overlay');
+  // lower-thirds (transparent PNG frames rendered by render_titles.cjs): v1 rain '<id>_overlay', v2 captions '<id>_cap'
+  const ov = seg.overlay ? { suf: '_overlay', b: seg.overlay.b } : seg.cap ? { suf: '_cap', b: seg.b } : null;
+  if (ov) {
+    const od = VERT && fs.existsSync(path.join(FRV, seg.id + ov.suf)) ? path.join(FRV, seg.id + ov.suf) : path.join(FR, seg.id + ov.suf);
     if (fs.existsSync(od)) {
-      const t0 = (seg.overlay.b - seg.b) * BF / FPS;
+      const t0 = (ov.b - seg.b) * BF / FPS;
       extra.push('-framerate', String(FPS), '-start_number', '0', '-i', path.join(od, '%05d.png'));
       fc = `[0:v]${filters.join(',')}[b];[1:v]scale=${W}:${H},setpts=PTS-STARTPTS+${t0}/TB[o];[b][o]overlay=eof_action=pass:format=auto,format=yuv420p[v]`;
     }
