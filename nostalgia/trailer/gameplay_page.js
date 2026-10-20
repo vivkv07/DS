@@ -224,14 +224,17 @@
     const from = [t.from.map((c) => c / 255), t.from.map(lin)], to = [t.to.map((c) => c / 255), t.to.map(lin)];
     let n = 0;
     H.scene.traverse((o) => {
-      if (!o.name || o.name.indexOf('lm:' + t.lm) !== 0) return;
+      if (!o.name || !/^lm/.test(o.name) || o.name.indexOf(t.lm) < 0) return;
       o.traverse((m) => {
         const g = m.isMesh && m.geometry, ca = g && g.attributes && g.attributes.color;
         if (!ca || g.userData.__tinted) return;
-        const a = ca.array, st = ca.itemSize;
-        for (let i = 0; i < a.length; i += st) for (let sp = 0; sp < 2; sp++) {
-          const f = from[sp];
-          if (Math.abs(a[i] - f[0]) < 0.02 && Math.abs(a[i + 1] - f[1]) < 0.02 && Math.abs(a[i + 2] - f[2]) < 0.02) { a[i] = to[sp][0]; a[i + 1] = to[sp][1]; a[i + 2] = to[sp][2]; n++; break; }
+        // (getX / setXYZ: the kit meshes keep their colours as normalised bytes)
+        for (let i = 0; i < ca.count; i++) {
+          const r = ca.getX(i), gg = ca.getY(i), bb = ca.getZ(i);
+          for (let sp = 0; sp < 2; sp++) {
+            const f = from[sp];
+            if (Math.abs(r - f[0]) < 0.025 && Math.abs(gg - f[1]) < 0.025 && Math.abs(bb - f[2]) < 0.025) { ca.setXYZ(i, to[sp][0], to[sp][1], to[sp][2]); n++; break; }
+          }
         }
         ca.needsUpdate = true; g.userData.__tinted = true;
       });

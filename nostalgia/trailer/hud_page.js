@@ -43,8 +43,9 @@
       // 1.2 s) before the PAKDA GAYA! banner comes up where it would sit
       barkSecs: { pochaiah: 0.9, mummy: 0.95 },
       // Mummy's first homing chappal: the game waits 3 s after she arrives, then checks the range (150 u) every
-      // 0.5 s; here she winds up the moment she is in range (from this frame on)
-      chappalFrom: 10,
+      // 0.5 s; here she winds up on the beat, f18 (she is in range from ~f16), so the throw leaves her hand at f30,
+      // hits at f39 (PAKDA GAYA! f53, THUP! f62). (Left to the range check alone the wind-up drifted f17 / f18.)
+      chappalFrom: 18,
       // called off at level 5, Pochaiah would U-turn his Luna into the road: he pulls over to the kerb instead
       // ("Luna, you have betrayed me.")
       pullOver: { role: 'pochaiah', ahead: 30, kerb: 6 },

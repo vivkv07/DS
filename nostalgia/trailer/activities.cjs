@@ -14,9 +14,9 @@
  *          P_<game>='{json}'     extra N.minigames.play params, T_<game>='{json}' TUNE overrides (try-outs)
  *          FAST=0|1              pre-roll frames draw into a 1x1 canvas (fast, default) or for real (default for kite)
  *          TOUCH=0|1             touch-button layout off / on (default: on in portrait = real phone UI, off in landscape)
- *          ALIGN=0               portrait: don't line up with the landscape log (default: capture MARGIN=2 spare frames
- *                                each side and keep the window whose key HUD changes land on the same clip frames as
- *                                trailer/out/mg_logs/1920x1080_<id>.txt — one score for both cuts)
+ *          ALIGN=0               don't line up with the reference log (default: capture MARGIN=2 spare frames each side
+ *                                and keep the window whose key HUD changes land on the same clip frames as
+ *                                $ALIGN_REF_DIR/1920x1080_<id>.txt, default trailer/out/mg_logs — one score for both cuts)
  *          SURVEY=k,len[,from]   instead of the clip: step len frames, capture every k-th (from frame `from`) to
  *                                OUTD/<id>/sNNNNN.jpg, log every HUD change — to pick a pre-roll (SURVEY_FAST=1:
  *                                fast-forward to `from`, for a quick layout look)
@@ -51,7 +51,7 @@ const GAMES = {
   // portrait: the editor's window 135..278 puts the first cut on the same clip frame as landscape (f16); the second
   // lands on f90 (landscape f102), the third (the win) on f124; the result card only comes at f312
   // phone scale (540x960): cuts at f165 / f272 (no third cut before f330): window 149..292 = cuts at clip f16 / f123
-  kite: { params: { difficulty: 0.4, seed: 11 }, pre: 400, preV: { '1080x1920': 134, '540x960': 148 }, fast: false, anchorV: { ev: 'CUT \\d+', clip: 16 } },
+  kite: { params: { difficulty: 0.4, seed: 11 }, pre: 400, preV: { '1080x1920': 134, '540x960': 148 }, fast: false, anchor: { ev: 'CUT \\d+', clip: 16 } },
   // ball 2 (the bot plays a CUT): end of the bowler's run-up, delivery ~f224, the ball bounces in, PERFECT cut
   // ~f250 (bat flash + sparks), the ball streaks right over the low wall: "SIX! Plot mein!" + confetti and
   // RUNS 6 -> 12 at f258, the ball still flying into the plot
@@ -127,15 +127,16 @@ function evKey(st, ev) { return st ? (ev ? (String(st.hud).match(new RegExp(ev, 
     const info = await page.evaluate(({ id, p, tune, script }) => ACT.start(id, p, tune, script), { id: seg.game, p: params, tune: Object.keys(tune).length ? tune : null, script: cfg.script || null });
     console.log(seg.id, 'booted + started in', ((Date.now() - t0) / 1000).toFixed(0), 's', JSON.stringify(info), SURVEY ? 'SURVEY ' + SURVEY : 'pre-roll ' + pre);
     // one frame per evaluate; log every HUD change (to find the exact frame of a hit / cut / line clear).
-    // ALIGN (portrait, on by default when the landscape log exists): landscape and portrait share one score, so a
-    // key event must land on the same clip frame in both. The bot plays out identically in both orientations, but
-    // the virtual clock's float rounding can move an event by a frame between runs, so capture MARGIN (2) extra
-    // frames each side and keep the nf frames whose HUD changes line up best with the landscape clip's log.
-    const refLog = path.join(LOGD, (process.env.ALIGN_REF || '1920x1080') + '_' + seg.id + '.txt');
-    // anchorV (kite): the two layouts play out differently, so instead pin the first change of the ev field
-    // (the first cut) to clip frame `clip`, as in the landscape clip
-    const anchor = PORTRAIT ? cfg.anchorV : null;
-    const M = !SURVEY && PORTRAIT && process.env.ALIGN !== '0' && cfg.align !== false && (anchor || fs.existsSync(refLog)) ? +(process.env.MARGIN || 2) : 0;
+    // ALIGN (on by default when the reference log exists): landscape and portrait share one score, so a key event
+    // must land on the same clip frame in both, and on the same frame as in earlier cuts of the edit. The bot plays
+    // out identically, but the virtual clock's float rounding can move an event by a frame between runs, so capture
+    // MARGIN (2) spare frames each side and keep the nf frames whose key HUD changes line up best with the reference:
+    // ALIGN_REF_DIR (default out/mg_logs) / ALIGN_REF (default 1920x1080) _<id>.txt = the landscape clip's log.
+    const refLog = path.join(process.env.ALIGN_REF_DIR || LOGD, (process.env.ALIGN_REF || '1920x1080') + '_' + seg.id + '.txt');
+    // anchor (kite): the layouts play out differently, so instead pin the first change of the ev field (the first
+    // cut) to clip frame `clip` (anchorV: portrait only)
+    const anchor = cfg.anchor || (PORTRAIT ? cfg.anchorV : null);
+    const M = !SURVEY && process.env.ALIGN !== '0' && cfg.align !== false && (anchor || fs.existsSync(refLog)) ? +(process.env.MARGIN || 2) : 0;
     const first = SURVEY ? (SURVEY[2] || 1) : pre + 1 - M; // first captured frame
     const total = SURVEY ? SURVEY[1] : pre + nf + M;
     // (SURVEY_FAST=1: a quick look — fast-forward a survey up to its `from` frame too)
