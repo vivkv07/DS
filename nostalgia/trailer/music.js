@@ -21,12 +21,12 @@
   const st = (n, s) => bar(n) + s * S16;       // bar n, 16th step s
   const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
   let ac, rnd;
-  const LUFS_TARGET = -14, CEIL_DB = -1.5;
+  const LUFS_TARGET = -14, CEIL_DB = -1.5; // dBTP (4x-oversampled detector)
 
   function mulberry(a) { return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
   /* ------------------------------------------------------------ shared buffers + buses */
-  let NOISE, BUS = {}, DUCKS = [];
+  let NOISE, BUS = {}, DUCKS = [], BDUCKS = [];
   function noiseBuf(sec) {
     const b = ac.createBuffer(2, Math.floor(SR * sec), SR);
     for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] = rnd() * 2 - 1; }
@@ -49,7 +49,7 @@
   function panner(v, dest) { const p = ac.createStereoPanner(); p.pan.value = v || 0; if (dest) p.connect(dest); return p; }
   function filt(type, f, q, dest) { const b = ac.createBiquadFilter(); b.type = type; b.frequency.value = f; if (q != null) b.Q.value = q; if (dest) b.connect(dest); return b; }
 
-  const MIX = { master: 0.55, drums: 0.26, bass: 0.15, synth: 1.0, fx: 0.34, sfx: 0.42, verb: 0.5, big: 0.42, delay: 0.42 };
+  const MIX = { master: 0.55, drums: 0.26, bass: 0.125, synth: 1.12, fx: 0.34, sfx: 0.5, verb: 0.5, big: 0.42, delay: 0.42 };
   function makeBuses(raw) {
     const master = gain(raw ? 1 : MIX.master);
     // gentle glue only (the peak limiter runs in JS after the render)
@@ -70,7 +70,7 @@
     BUS.delay = gain(1); BUS.delay.connect(dl); dl.connect(dlF); dlF.connect(fb); fb.connect(dl); dlF.connect(gain(MIX.delay, master));
     // groups
     BUS.drums = gain(MIX.drums); const dsat = shaper(1.6); BUS.drums.connect(dsat); dsat.connect(master);
-    BUS.bass = gain(MIX.bass, master);
+    BUS.bassDuck = gain(1, master); BUS.bass = gain(MIX.bass, BUS.bassDuck); // 808 tucks under each kick
     BUS.duck = gain(1, master);            // sidechained synths
     BUS.synthLP = filt('lowpass', 20000, 0.8); BUS.synthLP.connect(BUS.duck);
     BUS.synth = gain(MIX.synth, BUS.synthLP);
@@ -80,14 +80,15 @@
   // sidechain pump: collected, merged and scheduled in time order at the end
   function duck(t, depth) { DUCKS.push([t, depth]); }
   function flushDucks() {
-    DUCKS.sort((a, b) => a[0] - b[0]);
-    const merged = [];
-    for (const d of DUCKS) { const l = merged[merged.length - 1]; if (l && d[0] - l[0] < 0.03) l[1] = Math.max(l[1], d[1]); else merged.push([d[0], d[1]]); }
-    const g = BUS.duck.gain;
-    for (const [t, depth] of merged) {
-      g.setValueAtTime(1, Math.max(0, t - 0.004));
-      g.linearRampToValueAtTime(1 - depth, t + 0.008);
-      g.setTargetAtTime(1, t + 0.03, depth > 0.8 ? 0.12 : 0.07);
+    for (const [list, param, hold, relFast, relSlow] of [[DUCKS, BUS.duck.gain, 0.03, 0.07, 0.12], [BDUCKS, BUS.bassDuck.gain, 0.025, 0.035, 0.035]]) {
+      list.sort((a, b) => a[0] - b[0]);
+      const merged = [];
+      for (const d of list) { const l = merged[merged.length - 1]; if (l && d[0] - l[0] < 0.03) l[1] = Math.max(l[1], d[1]); else merged.push([d[0], d[1]]); }
+      for (const [t, depth] of merged) {
+        param.setValueAtTime(1, Math.max(0, t - 0.004));
+        param.linearRampToValueAtTime(1 - depth, t + 0.006);
+        param.setTargetAtTime(1, t + hold, depth > 0.8 ? relSlow : relFast);
+      }
     }
   }
 
@@ -118,7 +119,6 @@
     g.gain.setTargetAtTime(0.75 * v, t + 0.01, 0.08); g.gain.exponentialRampToValueAtTime(0.001, t + (long ? 0.6 : 0.38));
     const cg = gain(0, BUS.drums); const hp = filt('highpass', 2800, null, cg);
     noise(t, 0.02, hp); cg.gain.setValueAtTime(0.45 * v, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.018);
-    duck(t, duckDepth == null ? 0.5 : duckDepth);
   }
   function clap(t, v, pan, verbAmt, tone) {
     v = v == null ? 1 : v;
@@ -166,7 +166,7 @@
     const g = gain(0); const p = panner(pan || 0, BUS.drums); g.connect(p); g.connect(gain(0.3, BUS.verb));
     const f = mtof(m), o = osc('sine', f * 1.7, t, t + 0.6, g); o.frequency.exponentialRampToValueAtTime(f, t + 0.045);
     osc('triangle', f * 2.02, t, t + 0.2, gain(0.25, g));
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.95 * (v || 1), t + 0.002); g.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.6 * (v || 1), t + 0.002); g.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
     const ng = gain(0); const bp = filt('bandpass', 1400, 1.5, ng); ng.connect(p); noise(t, 0.05, bp); ng.gain.setValueAtTime(0.4 * (v || 1), t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
   }
 
@@ -178,8 +178,8 @@
     const o = osc('sine', glideFrom ? mtof(glideFrom) : f, t, end + 0.3, g);
     const o2 = osc('triangle', (glideFrom ? mtof(glideFrom) : f) * 2, t, end + 0.3, gain(0.1, g));
     if (glideFrom) { o.frequency.setValueAtTime(mtof(glideFrom), t + 0.02); o.frequency.exponentialRampToValueAtTime(f, t + gt); o2.frequency.setValueAtTime(mtof(glideFrom) * 2, t + 0.02); o2.frequency.exponentialRampToValueAtTime(f * 2, t + gt); }
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.85 * v, t + 0.006); g.gain.setTargetAtTime(0.6 * v, t + 0.05, 0.5);
-    g.gain.setValueAtTime(0.6 * v, end); g.gain.setTargetAtTime(0, end, 0.04);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.9 * v, t + 0.006); g.gain.setTargetAtTime(0.34 * v, t + 0.06, 0.75);
+    g.gain.setTargetAtTime(0, end, 0.04);
   }
   function drone(t, dur, m, v) { // dark sub drone (intro)
     const g = gain(0); g.connect(BUS.bass);
@@ -279,16 +279,14 @@
     v = v || 1;
     const g = gain(0); g.connect(BUS.fx); g.connect(gain(0.6, BUS.big));
     const o = osc('sine', 72, t, t + 3, g); o.frequency.exponentialRampToValueAtTime(27, t + 1.6);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.95 * v, t + 0.006); g.gain.exponentialRampToValueAtTime(0.001, t + 2.6);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.8 * v, t + 0.006); g.gain.exponentialRampToValueAtTime(0.001, t + 2.6);
     const lp = filt('lowpass', 6000); lp.frequency.setValueAtTime(6000, t); lp.frequency.exponentialRampToValueAtTime(300, t + 0.8);
     const ng = gain(0); lp.connect(ng); ng.connect(BUS.fx); ng.connect(gain(0.7, BUS.big));
     noise(t, 1.2, lp); ng.gain.setValueAtTime(0.6 * v, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
     const tg = gain(0, BUS.fx); const to = osc('sine', 125, t, t + 0.6, tg); to.frequency.exponentialRampToValueAtTime(46, t + 0.4);
     tg.gain.setValueAtTime(0.75 * v, t); tg.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
-    duck(t, dk == null ? 0.9 : dk);
   }
-  function hitText(t, v) { // title-card hit: thud + metallic shing
-    impact(t, 0.6 * (v || 1));
+  function hitText(t, v) { // title-card hit: thud (impact, added by the wrapper) + metallic shing
     const bp = filt('bandpass', 5200, 6); const g = gain(0); bp.connect(g); g.connect(BUS.fx); g.connect(gain(0.6, BUS.verb));
     noise(t, 0.9, bp); g.gain.setValueAtTime(0.45, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
     for (const f of [1397, 2093, 3136, 4186]) { const bg = gain(0); bg.connect(BUS.fx); bg.connect(gain(0.45, BUS.big)); osc('sine', f * (1 + (rnd() - 0.5) * 0.004), t, t + 2.2, bg); bg.gain.setValueAtTime(0.04, t); bg.gain.exponentialRampToValueAtTime(0.0005, t + 2.0); }
@@ -321,7 +319,6 @@
     g.gain.setValueAtTime(0, t + 0.04); g.gain.linearRampToValueAtTime(1.0 * (v || 1), t + 0.28);
     for (let k = 0; k < 5; k++) { const tt = t + 0.6 + k * (0.45 + rnd() * 0.4); g.gain.setTargetAtTime((0.45 + rnd() * 0.45) * (v || 1), tt, 0.15); }
     g.gain.setTargetAtTime(0, t + 3.0, 0.7);
-    impact(t, 0.45);
   }
   function rain(t0, t1, v, v2, tSwell) { // rain texture (bright hiss + roof rumble), swelling to v2 at tSwell
     const bp = filt('bandpass', 3800, 0.35); const g = gain(0); bp.connect(g); g.connect(BUS.sfx);
@@ -385,7 +382,7 @@
         const tt = t + d, g = gain(0); const p = panner(rnd() * 1.2 - 0.6, BUS.sfx); g.connect(p); p.connect(gain(0.25, BUS.verb));
         for (const [f, a] of [[3150, 1], [4630, 0.6], [6870, 0.35]]) osc('sine', f * (1 + (rnd() - 0.5) * 0.03), tt, tt + 0.12, gain(a, g));
         g.gain.setValueAtTime(0.13 * v, tt); g.gain.exponentialRampToValueAtTime(0.0005, tt + 0.07);
-        const cg = gain(0, p); const hp = filt('highpass', 5000, null, cg); noise(tt, 0.01, hp); cg.gain.setValueAtTime(0.5 * v, tt); cg.gain.exponentialRampToValueAtTime(0.001, tt + 0.008);
+        const cg = gain(0, p); const hp = filt('highpass', 5000, null, cg); noise(tt, 0.01, hp); cg.gain.setValueAtTime(0.18 * v, tt); cg.gain.exponentialRampToValueAtTime(0.001, tt + 0.008);
       }
     },
     marampitti(t) { // a fast dodge whoosh + low vwoom
@@ -438,8 +435,8 @@
   function crowd(t, dur, v) {
     const out = gain(0); out.connect(BUS.sfx); out.connect(gain(0.35, BUS.verb));
     for (const [f, q, a] of [[520, 1.6, 1], [1100, 1.8, 0.8], [2500, 2.2, 0.4]]) { const bp = filt('bandpass', f, q); noise(t, dur + 0.3, bp, 1); bp.connect(gain(a, out)); }
-    out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(0.22 * v, t + dur * 0.35);
-    for (let x = t + dur * 0.35; x < t + dur * 0.7; x += 0.06 + rnd() * 0.06) out.gain.setTargetAtTime((0.17 + rnd() * 0.08) * v, x, 0.03);
+    out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(0.45 * v, t + dur * 0.35);
+    for (let x = t + dur * 0.35; x < t + dur * 0.7; x += 0.06 + rnd() * 0.06) out.gain.setTargetAtTime((0.34 + rnd() * 0.16) * v, x, 0.03);
     out.gain.setTargetAtTime(0, t + dur * 0.7, dur * 0.12);
   }
   function cutAccent(t, v) { // subtle: a short reverse swell into the cut + a soft crash on it
@@ -450,6 +447,32 @@
     const cg = gain(0, BUS.fx); const hp = filt('highpass', 4000, null, cg); noise(t, 0.02, hp); cg.gain.setValueAtTime(0.25, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
     const g = gain(0, BUS.fx); const o = osc('sine', mtof(m - 24), t, t + 0.3, g); o.frequency.exponentialRampToValueAtTime(mtof(m - 36), t + 0.2);
     g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  }
+
+  /* ------------------------------------------------------------ just-in-time scheduling
+   * Every voice's nodes are created shortly before it plays (OfflineAudioContext.suspend), so the render graph only
+   * holds what is sounding: ~10x faster than building all ~20k nodes up front. Ducking stays eager. */
+  let QUEUE = [], DEFER = false;
+  function later(t0, fn) { if (DEFER) QUEUE.push([t0, QUEUE.length, fn]); else fn(); }
+  function defer(fn, startOf) { return function () { const a = arguments; later(startOf ? startOf.apply(null, a) : a[0], () => fn.apply(null, a)); }; }
+  {
+    const kickD = defer(kick), impactD = defer(impact), hitD = defer(hitText), thunderD = defer(thunder);
+    kick = (t, v, long, dk) => { duck(t, dk == null ? 0.5 : dk); BDUCKS.push([t, 0.55 * Math.min(1, v == null ? 1 : v)]); kickD(t, v, long); };
+    impact = (t, v, dk) => { duck(t, dk == null ? 0.9 : dk); impactD(t, v); };
+    hitText = (t, v) => { impact(t, 0.6 * (v || 1)); hitD(t, v); };
+    thunder = (t, v) => { impact(t, 0.45); thunderD(t, v); };
+    clap = defer(clap, (t) => t - 0.014); snare = defer(snare, (t) => t - 0.014);
+    rim = defer(rim); hat = defer(hat); shaker = defer(shaker); crash = defer(crash); tom = defer(tom);
+    bass808 = defer(bass808); drone = defer(drone); supersaw = defer(supersaw); pad = defer(pad); pluck = defer(pluck);
+    hookNote = defer(hookNote); leadSaw = defer(leadSaw); bell = defer(bell); braam = defer(braam); riser = defer(riser);
+    revCymbal = defer(revCymbal, (te, d) => te - d); whoosh = defer(whoosh, (tm, d) => tm - d * 0.6);
+    downlifter = defer(downlifter); air = defer(air); rain = defer(rain); siren = defer(siren); crowd = defer(crowd); pop = defer(pop);
+    // per-cue trims (measured against the mix in each cue's window: aim ~6-10 dB under it, transient-led)
+    const TRIM = { kite: 3.2, lingocha: 0.7, cricket: 1.6, marbles: 2.2, marampitti: 1.8, panipuri: 1, bargain: 1, brickgame: 2.2, antenna: 1, clap: 2.6 };
+    for (const k in SFX) {
+      const f = SFX[k];
+      SFX[k] = defer((t) => { const bus = BUS.sfx; BUS.sfx = gain(TRIM[k] || 1, bus); try { f(t); } finally { BUS.sfx = bus; } }, (t) => t - 0.2);
+    }
   }
 
   /* ------------------------------------------------------------ harmony + patterns */
@@ -497,19 +520,19 @@
   function grooveBar(n, o) {
     o = o || {};
     const sw = (s) => (o.swing && s % 2 === 1 ? SW : 0);
-    const T = (s) => st(n, s) + sw(s);
-    for (const s of o.kicks || [0, 7, 10]) kick(T(s), s === 0 ? 1 : 0.92, false, o.duck);
-    for (const s of o.snares || [4, 12]) snare(T(s) + (o.lazy ? 0.008 : 0), 1, o.snVerb);
-    for (const s of o.ghosts || []) snare(T(s), 0.22, 0.05, true);
-    if (o.hats === 8) { for (let s = 0; s < 16; s += 2) hat(T(s), s % 4 === 0 ? 0.85 : 0.6, false, 0.2); }
-    else if (o.hats === 16) { for (let s = 0; s < 16; s++) hat(T(s), s % 4 === 0 ? 0.85 : s % 2 === 0 ? 0.6 : 0.38, false, 0.2); }
-    for (const s of o.hatExtra || []) hat(T(s), 0.45, false, 0.25);
-    for (const s of o.open || []) hat(T(s), 0.5, true, -0.25);
-    for (const s of o.rims || []) rim(T(s), 0.8, 0.35);
-    for (const s of o.shakers || []) shaker(T(s), 0.8, -0.35);
-    if (o.roll === 'trip') roll(st(n, 12), B, 6, 0.4, 0.8);
-    else if (o.roll === '32') roll(st(n, 14), B / 2, 4, 0.4, 0.85);
-    else if (o.roll === 'long') { roll(st(n, 8), B, 4, 0.5, 0.6); roll(st(n, 12), B, 8, 0.4, 0.9); }
+    const T = (s) => st(n, s) + sw(s), V = o.v || 1, H = o.hv || V;
+    for (const s of o.kicks || [0, 7, 10]) kick(T(s), (s === 0 ? 1 : 0.92) * V, false, o.duck);
+    for (const s of o.snares || [4, 12]) snare(T(s) + (o.lazy ? 0.008 : 0), V, o.snVerb);
+    for (const s of o.ghosts || []) snare(T(s), 0.22 * V, 0.05, true);
+    if (o.hats === 8) { for (let s = 0; s < 16; s += 2) hat(T(s), (s % 4 === 0 ? 0.85 : 0.6) * H, false, 0.2); }
+    else if (o.hats === 16) { for (let s = 0; s < 16; s++) hat(T(s), (s % 4 === 0 ? 0.85 : s % 2 === 0 ? 0.6 : 0.38) * H, false, 0.2); }
+    for (const s of o.hatExtra || []) hat(T(s), 0.45 * H, false, 0.25);
+    for (const s of o.open || []) hat(T(s), 0.5 * H, true, -0.25);
+    for (const s of o.rims || []) rim(T(s), 0.8 * V, 0.35);
+    for (const s of o.shakers || []) shaker(T(s), 0.8 * H, -0.35);
+    if (o.roll === 'trip') roll(st(n, 12), B, 6, 0.4 * H, 0.8 * H);
+    else if (o.roll === '32') roll(st(n, 14), B / 2, 4, 0.4 * H, 0.85 * H);
+    else if (o.roll === 'long') { roll(st(n, 8), B, 4, 0.5 * H, 0.6 * H); roll(st(n, 12), B, 8, 0.4 * H, 0.9 * H); }
   }
 
   /* ------------------------------------------------------------ the arrangement */
@@ -548,13 +571,13 @@
     impact(tb(12), 0.55); crash(tb(12), 0.6);
     for (let n = 4; n <= 7; n++) {
       const [chord, ph] = LOOP_A[(n - 4) % 4];
-      grooveBar(n, { kicks: n % 2 ? [0, 7, 10] : [0, 10, 11], swing: true, lazy: true, hats: 8, hatExtra: [7, 15], open: n === 7 ? [14] : [], rims: [], ghosts: [15], roll: n % 2 ? '32' : null, duck: 0.4 });
-      bassLine(n, chord, n % 2 ? [0, 7, 10] : [0, 10, 11], { up: [11], glideFrom: n > 4 ? null : null });
-      pad(bar(n), CH[chord].v, BAR - 0.05, 0.065, 1500, 0.15);
-      hookBar(n, ph, { hook: 0.95 });
+      grooveBar(n, { v: 0.8, hv: 0.75, kicks: n % 2 ? [0, 7, 10] : [0, 10, 11], swing: true, lazy: true, hats: 8, hatExtra: [7, 15], open: n === 7 ? [14] : [], rims: [], ghosts: [15], roll: n % 2 ? '32' : null, duck: 0.4 });
+      bassLine(n, chord, n % 2 ? [0, 7, 10] : [0, 10, 11], { up: [11], v: 0.78 });
+      pad(bar(n), CH[chord].v, BAR - 0.05, 0.055, 1500, 0.15);
+      hookBar(n, ph, { hook: 0.85 });
     }
     // bar 8 (b28-31): Db | C, build into PLAY
-    grooveBar(8, { kicks: [0, 7], swing: true, lazy: true, hats: 16, open: [], duck: 0.4 });
+    grooveBar(8, { v: 0.85, hv: 0.75, kicks: [0, 7], swing: true, lazy: true, hats: 16, open: [], duck: 0.4 });
     bassLine(8, 'Db', [0, 7], { endStep: 8 }); bassLine(8, 'C', [8], { v: 0.9 });
     pad(bar(8), CH.Db.v, BAR / 2, 0.065, 1500, 0.1); pad(st(8, 8), CH.C.v, BAR / 2 - 0.05, 0.07, 2200, 0.1);
     arpBar(8, 'Db', 0.45, 3000, 1, 0, 8); arpBar(8, 'C', 0.6, 4500, 1, 8, 16);
@@ -572,10 +595,10 @@
       const kicks = odd ? [0, 3, 8, 10] : [0, 6, 9, 14];
       grooveBar(n, {
         kicks, hats: 16, ghosts: odd ? [7] : [15], open: [odd ? 6 : 10], rims: loop >= 1 ? [11] : [],
-        shakers: loop === 2 ? [2, 6, 10, 14] : [], roll: odd ? (loop === 2 ? 'trip' : null) : (n % 4 === 0 ? 'long' : 'trip'), duck: 0.5,
+        shakers: loop === 2 ? [2, 6, 10, 14] : [], roll: odd ? (loop === 2 ? 'trip' : null) : (n % 4 === 0 ? 'long' : 'trip'), duck: 0.5, v: loop === 0 ? 0.86 : 0.9, hv: 0.8,
       });
       bassLine(n, chord, kicks, { up: odd ? [10] : [14] });
-      pad(bar(n), CH[chord].v, BAR - 0.05, 0.06, loop === 0 ? 1500 : 2200, 0.1);
+      pad(bar(n), CH[chord].v, BAR - 0.05, 0.05, loop === 0 ? 1500 : 2200, 0.1);
       if (loop === 0) hookBar(n, ph, { hook: 1 });
       if (loop === 1) { hookBar(n, ph, { hook: 0.9, lead: 0.55 }); arpBar(n, chord, 0.32, 3000, 1); }
       if (loop === 2) { hookBar(n, ph, { hook: 0.9, lead: 0.7, bell: 0.2 }); arpBar(n, chord, 0.4, 4200, 1); supersaw(bar(n), CH[chord].v, BAR - 0.03, { v: 0.05, cut0: 1200, cut1: 3500, cutS: 2000 }); }
@@ -592,7 +615,7 @@
     revCymbal(tb(80), 0.8, 0.8);
 
     /* ---- bars 21-25 (b80-99): CELEBRATE. Euphoric: Db Ab Eb Fm, stacked claps, toms in the Ganesh bars */
-    impact(tb(80), 1.0); crash(tb(80), 1); crash(tb(88), 0.6); crash(tb(92), 0.55); crash(tb(96), 0.6);
+    impact(tb(80), 0.85); crash(tb(80), 1); crash(tb(88), 0.6); crash(tb(92), 0.55); crash(tb(96), 0.6);
     for (let n = 21; n <= 24; n++) {
       const [chord, ph] = LOOP_B[(n - 21) % 4];
       const kicks = n % 2 ? [0, 3, 8, 10] : [0, 6, 8, 11, 14];
@@ -601,8 +624,8 @@
       if (n % 2 === 0) clap(st(n, 15), 0.45, 0.3, 0.3);
       bassLine(n, chord, kicks, { up: n % 2 ? [10] : [14] });
       pad(bar(n), CH[chord].v.concat([CH[chord].v[1] + 12]), BAR - 0.05, 0.07, 3200, 0.08);
-      supersaw(bar(n), CH[chord].v, BAR - 0.03, { v: 0.075, cut0: 1500, cut1: 6000, cutS: 3200 });
-      hookBar(n, ph, { hook: 0.9, lead: 0.8, bell: 0.22 });
+      supersaw(bar(n), CH[chord].v.concat([CH[chord].v[2] + 12]), BAR - 0.03, { v: 0.085, cut0: 1500, cut1: 6500, cutS: 3600, verb: 0.15 });
+      hookBar(n, ph, { hook: 0.95, lead: 0.9, bell: 0.25 });
       arpBar(n, chord, 0.38, 4800, 1);
       if (n <= 22) { // Ganesh: modern tasha-ish toms in 3-3-2, a 16th flourish at the end of the phrase
         for (const [s, m, v, pan] of [[0, 45, 0.9, -0.3], [3, 50, 0.6, 0.3], [6, 45, 0.75, -0.3], [8, 50, 0.7, 0.3], [11, 45, 0.6, -0.3], [14, 53, 0.55, 0.4]]) tom(st(n, s), m, v * 0.85, pan);
@@ -632,7 +655,7 @@
     }
     whoosh(tb(104), 0.5, 0.35, -1);
     // bar 28 (b108-111): the lightning strike; drums out; C pedal; build into the finale
-    thunder(tb(108) + 0.1, 1);
+    thunder(tb(108) + 0.1, 1.4);
     bass808(tb(108) + 0.1, 36, BAR * 0.55, null, null, 0.9);
     pad(bar(28), CH.C.v.concat([67, 72]), BAR - 0.1, 0.085, 2400, 0.4);
     for (let s = 8; s < 16; s += 2) pluck(st(28, s), (s % 4 === 0 ? 72 : 67), 0.4 + s * 0.03, s % 4 ? 0.3 : -0.3, 3000);
@@ -642,14 +665,14 @@
     revCymbal(tb(112), 1.1, 0.85);
 
     /* ---- bars 29-31 (b112-123): finale. Half-time, wide pads, the hook in full glory, building */
-    impact(tb(112), 1.05); crash(tb(112), 1); crash(tb(116), 0.6); crash(tb(120), 0.7);
+    impact(tb(112), 0.9); crash(tb(112), 1); crash(tb(116), 0.6); crash(tb(120), 0.7);
     pad(tb(112), [41, 53, 56, 60, 65], BAR * 3 - 0.2, 0.06, 2600, 0.6);
     for (const [n, chord, ph] of [[29, 'Db', 'B1'], [30, 'Eb', 'B3'], [31, 'Fm', 'B4']]) {
       const c = CH[chord].v, k = n - 29;
       grooveBar(n, { kicks: n === 31 ? [0, 7, 10] : [0, 10], snares: [8], snVerb: 0.7, hats: k === 2 ? 16 : 8, open: [6, 14], roll: k === 0 ? null : k === 1 ? 'trip' : 'long', duck: 0.6 });
       for (const s of [8]) { clap(st(n, s) + 0.012, 0.55, -0.5, 0.6, 1100); clap(st(n, s) + 0.02, 0.55, 0.5, 0.6, 1500); }
       bass808(bar(n), CH[chord].r, B * 2.4, n > 29 ? CH[['Db', 'Eb', 'Fm'][k - 1] || 'Db'].r : null, 0.2); bass808(st(n, 10), CH[chord].r, B * 1.4, null, null, 0.9);
-      supersaw(bar(n), c.concat([c[1] + 12, c[2] + 12]), BAR - 0.03, { v: 0.07, a: 0.05, cut0: 1500, cut1: 6500, open: 0.3, cutS: 4200, sus: 0.9, verb: 0.3, rel: 0.25 });
+      supersaw(bar(n), c.concat([c[1] + 12, c[2] + 12]), BAR - 0.03, { v: 0.085, a: 0.05, cut0: 1500, cut1: 6500, open: 0.3, cutS: 4200, sus: 0.9, verb: 0.3, rel: 0.25 });
       supersaw(bar(n), [c[0] - 12], BAR - 0.03, { v: 0.045, cut0: 600, cut1: 1600, cutS: 900, sus: 0.9 });
       hookBar(n, ph, { hook: 0.95, lead: 0.9 + k * 0.1, bell: 0.28 });
       arpBar(n, chord, 0.25 + k * 0.08, 3500 + k * 900, 1);
@@ -661,28 +684,29 @@
     /* ---- bars 32-34 (b124-135): title. A rising pop on every beat b124..b131, then the SLAM */
     const title = TL.segments.find((s) => s.kind === 'title') || { pops: [124, 125, 126, 127, 128, 129, 130, 131], slam: 132 };
     const POPN = [65, 68, 72, 73, 75, 77, 80, 84];
-    title.pops.forEach((b, i) => { pop(tb(b), POPN[i % POPN.length], i); kick(tb(b), 0.55 + i * 0.05, false, 0.45); if (i % 2 === 1) clap(tb(b), 0.25 + i * 0.05, 0, 0.3); });
+    title.pops.forEach((b, i) => { pop(tb(b), POPN[i % POPN.length], i); kick(tb(b), 0.42 + i * 0.08, false, 0.45); if (i % 2 === 1) clap(tb(b), 0.25 + i * 0.07, 0, 0.3); });
     crash(tb(124), 0.5);
     pad(bar(32), CH.Db.v, BAR - 0.05, 0.07, 2500, 0.2); pad(bar(33), CH.Eb.v, BAR - 0.3, 0.075, 3500, 0.1);
     bass808(bar(32), 37, BAR * 0.95, 29, 0.2, 0.8); bass808(bar(33), 39, BAR * 0.85, 37, 0.2, 0.85);
     for (let s = 0; s < 16; s += 2) hat(st(32, s), 0.35 + s * 0.015, false, 0.2);
-    for (let s = 0; s < 12; s++) hat(st(33, s), 0.4 + s * 0.03, false, 0.2);
+    for (let s = 0; s < 12; s++) hat(st(33, s), 0.45 + s * 0.04, false, 0.2);
     for (let k = 0; k < 8; k++) snare(tb(128) + k * S16, 0.12 + k * 0.03, 0.15, true);
-    for (let k = 0; k < 12; k++) snare(tb(130) + k * (B * 1.25) / 12, 0.36 + k * 0.04, 0.15, true);
+    for (let k = 0; k < 12; k++) snare(tb(130) + k * (B * 1.25) / 12, 0.4 + k * 0.055, 0.15, true);
+    supersaw(bar(33), CH.Eb.v.concat([70, 75]), BAR - 0.35, { v: 0.06, a: 2.0, cut0: 700, cut1: 6000, open: 2.1, cutS: 6000, sus: 1, rel: 0.05 });
     const slam = tb(title.slam);
-    riser(tb(124), slam - 0.02, 1);
+    riser(tb(124), slam - 0.02, 1.25);
     revCymbal(slam, B * 1.2, 1);
     // THE SLAM (b132 = 79.2 s): impact + braam + drop-out, ring out
-    impact(slam, 1.35, 0.95); braam(slam, [41, 48], BAR * 1.6, 1.1); kick(slam, 1.2, true, 0.95); snare(slam, 1, 0.8); crash(slam, 1.1);
-    supersaw(slam, [53, 56, 60, 65, 68, 72], BAR * 1.5, { v: 0.11, cut0: 4000, cut1: 8000, cutS: 2600, verb: 0.6, sus: 0.6, rel: 0.9 });
-    bass808(slam, 29, BAR * 1.8, null, null, 1);
+    impact(slam, 1.35, 0.95); braam(slam, [41, 48], BAR * 1.1, 1.1); kick(slam, 1.2, true, 0.95); snare(slam, 1, 0.8); crash(slam, 1.1);
+    supersaw(slam, [53, 56, 60, 65, 68, 72], BAR * 1.15, { v: 0.11, cut0: 4000, cut1: 8000, cutS: 2600, verb: 0.6, sus: 0.45, rel: 0.6 });
+    bass808(slam, 29, B * 3.4, null, null, 1);
     hitText(slam + 0.005, 0.5);
 
     /* ---- bars 35-36 (b136-143) + tail: end card. The hook outro, decaying; a clean ending by 88.2 s */
-    impact(tb(136), 0.3);
-    pad(bar(35), CH.Db.v.concat([72]), BAR, 0.065, 2400, 0.6); pad(bar(36), CH.Fm.v.concat([72]), BAR + B * 2, 0.065, 2000, 0.3);
-    bass808(bar(35), 37, BAR * 0.9, null, null, 0.55); bass808(bar(36), 29, BAR * 1.2, 37, 0.3, 0.5);
-    for (const [s, m, l] of HK.B1) hookNote(st(35, s), m, 0.75, (s % 6 - 2.5) * 0.08, { dec: 1.6, delay: 0.4, verb: 0.35 });
+    impact(tb(136), 0.22);
+    pad(bar(35), CH.Db.v.concat([72]), BAR, 0.05, 2200, 0.6); pad(bar(36), CH.Fm.v.concat([72]), BAR + B * 2, 0.045, 1800, 0.3);
+    bass808(bar(35), 37, BAR * 0.9, null, null, 0.45); bass808(bar(36), 29, BAR * 1.2, 37, 0.3, 0.4);
+    for (const [s, m, l] of HK.B1) hookNote(st(35, s), m, 0.62, (s % 6 - 2.5) * 0.08, { dec: 1.6, delay: 0.4, verb: 0.35 });
     for (const [s, m, l] of HK.B4.slice(0, 3)) hookNote(st(36, s), m, 0.6, 0, { dec: 1.6, delay: 0.4, verb: 0.35 });
     hookNote(st(36, 8), 72, 0.55, 0, { dec: 2.4, delay: 0.45, verb: 0.4 }); bell(st(36, 8), 77, 0.35); bell(st(36, 8), 65, 0.25);
 
@@ -718,10 +742,25 @@
     if (gated !== false) { const rel = lk(zz.reduce((p, c) => p + c, 0) / Math.max(1, zz.length)) - 10; zz = zz.filter((m) => lk(m) > rel); }
     return lk(zz.reduce((p, c) => p + c, 0) / Math.max(1, zz.length));
   }
-  function limit(L, R, g, ceil) { // look-ahead peak limiter (sample peak), returns new arrays + stats
+  function truePeakEnv(L, R) { // per-sample peak of the 4x-oversampled signal (windowed-sinc interpolation, BS.1770-style)
+    const n = L.length, K = 6, C = [];
+    for (let ph = 1; ph < 4; ph++) {
+      const c = []; let sum = 0;
+      for (let k = -K + 1; k <= K; k++) { const d = ph / 4 - k, w = 0.5 * (1 + Math.cos(Math.PI * d / (K + 0.5))), v = (Math.sin(Math.PI * d) / (Math.PI * d)) * w; c.push(v); sum += v; }
+      C.push(c.map((v) => v / sum));
+    }
+    const env = new Float32Array(n);
+    for (const x of [L, R]) for (let i = 0; i < n; i++) {
+      let p = Math.abs(x[i]);
+      if (i >= K && i < n - K) for (let ph = 0; ph < 3; ph++) { const c = C[ph]; let a = 0; for (let k = 0; k < 2 * K; k++) a += x[i - K + 1 + k] * c[k]; a = Math.abs(a); if (a > p) p = a; }
+      if (p > env[i]) env[i] = p;
+    }
+    return env;
+  }
+  function limit(L, R, g, ceil, tpe) { // look-ahead true-peak limiter, returns new arrays + stats
     const n = L.length, LA = Math.floor(0.004 * SR), rel = 1 - Math.exp(-1 / (0.09 * SR));
     const req = new Float32Array(n);
-    for (let i = 0; i < n; i++) { const p = Math.max(Math.abs(L[i]), Math.abs(R[i])) * g; req[i] = p > ceil ? ceil / p : 1; }
+    for (let i = 0; i < n; i++) { const p = tpe[i] * g; req[i] = p > ceil ? ceil / p : 1; }
     // forward-looking min over [i, i+LA] (monotonic deque)
     const m = new Float32Array(n), dq = new Int32Array(n); let h = 0, tl = 0, j = 0;
     for (let i = 0; i < n; i++) {
@@ -733,13 +772,15 @@
     const s = new Float32Array(n); let acc = 0;
     for (let i = 0; i < n; i++) { acc += m[i]; if (i > LA) acc -= m[i - LA - 1]; s[i] = acc / Math.min(i + 1, LA + 1); }
     const oL = new Float32Array(n), oR = new Float32Array(n);
-    let r = 1, maxGR = 0, over1 = 0;
+    let r = 1, maxGR = 0, over1 = 0; const beatGR = [];
     for (let i = 0; i < n; i++) {
       r = s[i] < r ? s[i] : r + (s[i] - r) * rel;
       oL[i] = L[i] * g * r; oR[i] = R[i] * g * r;
       const gr = -20 * Math.log10(r); if (gr > maxGR) maxGR = gr; if (gr > 1) over1++;
+      const bi = Math.floor(i / (B * SR)); if (!(beatGR[bi] >= gr)) beatGR[bi] = gr;
     }
-    return { L: oL, R: oR, maxGR, pctOver1dB: (100 * over1) / n };
+    const worst = beatGR.map((v, b) => [b, v]).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([b, v]) => 'b' + b + ':' + v.toFixed(1));
+    return { L: oL, R: oR, maxGR, pctOver1dB: (100 * over1) / n, worst };
   }
 
   /* ------------------------------------------------------------ render + WAV */
@@ -758,39 +799,51 @@
   }
   window.renderTrailerAudio = async function (TL, opts) {
     opts = opts || {};
+    const stats0 = {};
     const dur = (TL.totalBeats + (TL.tailBeats == null ? 3 : TL.tailBeats)) * B;
     ac = new OfflineAudioContext(2, Math.round(SR * dur), SR);
     rnd = mulberry(20032);
     NOISE = noiseBuf(10);
-    BUS = {}; DUCKS = [];
+    BUS = {}; DUCKS = []; BDUCKS = [];
     makeBuses(!!opts.raw);
     if (opts.solo) { for (const k of ['drums', 'bass', 'synth', 'fx', 'sfx']) if (k !== opts.solo) BUS[k].gain.value = 0; BUS.verb.gain.value = 0; BUS.big.gain.value = 0; BUS.delay.gain.value = 0; }
+    QUEUE = []; DEFER = true;
     arrange(TL);
+    DEFER = false;
+    QUEUE.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    let qi = 0;
+    const run = (until) => { while (qi < QUEUE.length && QUEUE[qi][0] < until) QUEUE[qi++][2](); };
+    const WIN = (128 * 300) / SR, MARGIN = 0.5; // 0.8 s windows (whole render quanta)
+    run(WIN + MARGIN);
+    for (let k = 1; k * WIN < dur - 0.01; k++) { const ts = k * WIN; ac.suspend(ts).then(() => { run(ts + WIN + MARGIN); ac.resume(); }); }
     const buf = await ac.startRendering();
+    stats0.voices = QUEUE.length;
     let L = buf.getChannelData(0), R = buf.getChannelData(1);
     const n = L.length;
     // edge fades: 3 ms in; the last 1.6 s eased to silence (reverb tails end cleanly at the frame)
     const fin = Math.floor(0.003 * SR), fo0 = Math.floor((dur - 1.6) * SR);
     for (let i = 0; i < fin; i++) { L[i] *= i / fin; R[i] *= i / fin; }
     for (let i = fo0; i < n; i++) { const x = (i - fo0) / (n - 1 - fo0), w = 0.5 + 0.5 * Math.cos(Math.PI * Math.min(1, x)); L[i] *= w; R[i] *= w; }
-    const stats = { dur: +dur.toFixed(3) };
+    const stats = Object.assign({ dur: +dur.toFixed(3) }, stats0);
     const ceil = Math.pow(10, CEIL_DB / 20);
     let samplePeak = 0; for (let i = 0; i < n; i++) samplePeak = Math.max(samplePeak, Math.abs(L[i]), Math.abs(R[i]));
     stats.prePeakDb = +(20 * Math.log10(samplePeak)).toFixed(2);
     stats.preLUFS = +loudness(L, R).toFixed(2);
     if (!opts.raw) { // gain to target loudness, look-ahead limit to the ceiling; iterate (limiting costs a little loudness)
       let g = Math.pow(10, (LUFS_TARGET - stats.preLUFS) / 20), res;
+      const tpe = truePeakEnv(L, R);
       for (let it = 0; it < 4; it++) {
-        res = limit(L, R, g, ceil);
+        res = limit(L, R, g, ceil, tpe);
         const l = loudness(res.L, res.R);
         if (Math.abs(l - LUFS_TARGET) < 0.05) break;
         g *= Math.pow(10, (LUFS_TARGET - l) / 20);
       }
       L = res.L; R = res.R;
-      stats.gainDb = +(20 * Math.log10(g)).toFixed(2); stats.limiterMaxGRdB = +res.maxGR.toFixed(2); stats.limiterPctOver1dB = +res.pctOver1dB.toFixed(2);
+      stats.gainDb = +(20 * Math.log10(g)).toFixed(2); stats.limiterMaxGRdB = +res.maxGR.toFixed(2); stats.limiterPctOver1dB = +res.pctOver1dB.toFixed(2); stats.limiterWorstBeats = res.worst.join(' ');
     }
     stats.LUFS = +loudness(L, R).toFixed(2);
     let pk = 0; for (let i = 0; i < n; i++) pk = Math.max(pk, Math.abs(L[i]), Math.abs(R[i])); stats.peakDb = +(20 * Math.log10(pk)).toFixed(2);
+    { const e = truePeakEnv(L, R); let tp = 0; for (let i = 0; i < n; i++) if (e[i] > tp) tp = e[i]; stats.truePeakDb = +(20 * Math.log10(tp)).toFixed(2); }
     const secs = { cards: [0, 4], reveal: [4, 12], explore: [12, 32], play: [32, 80], celebrate: [80, 100], survive: [100, 112], finale: [112, 124], title: [124, 132], slam: [132, 136], end: [136, 147] };
     stats.sections = {};
     for (const k in secs) {
