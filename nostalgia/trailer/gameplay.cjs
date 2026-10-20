@@ -20,6 +20,9 @@ const TL = JSON.parse(fs.readFileSync(path.join(__dirname, 'timeline.json'), 'ut
   await page.evaluate((o) => { N.view3d.setQuality({ adaptive: false, pixelRatio: 1, antialias: o.aa, drawDist: o.draw }); window.WARM = o.warm; N.view.set('tps'); }, { aa: process.env.AA === '1', draw: +(process.env.DRAW || 1500), warm: +(process.env.WARM || 0) || undefined });
   await page.waitForFunction(() => N.view3d && N.view3d.active && N.models3d && N.models3d.ready, null, { timeout: 300000 });
   await takeOver(page);
+  // the game's frame loop must be on the virtual clock before anything is staged: under heavy load the last native
+  // rAF can still be pending after takeOver, and a clip prepared then would run with the world frozen (black frames)
+  await page.waitForFunction(() => { const f0 = N.time.frame; window.__step(1 / 30); return N.time.frame > f0; }, null, { polling: 250, timeout: 120000 });
   await page.evaluate(() => { STAGE.setup(); N.player.hidden = false; });
   for (const seg of segs) {
     if (TOPONLY && !(await page.evaluate((c) => CLIPS[c] && CLIPS[c].view === 'top', seg.clip))) continue;

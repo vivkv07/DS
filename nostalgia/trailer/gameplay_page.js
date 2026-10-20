@@ -36,7 +36,7 @@
     fest_ganesh: { view: 'cam', at: 'tank_bund', time: [15, 30], veh: null, spd: 0, procession: true, rows: 4, swRate: 0.2, seasons: { ganesh_immersion: true, ganesh: true } },
     fest_ramzan: { view: 'tps', at: 'charminar', off: [-215, 45], time: [21, 30], veh: null, crowd: { ped: 100, dens: 2 }, extras: 26, spd: 22, warm: 45, toward: 'charminar', clear: 2, chase: { back: 11, h: 6, lead: 12, th: 9, fov: 66, lag: 0.2 }, seasons: { ramzan: true } },
     fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 0, seasons: { bonalu: true }, bonalu: { temple: 'lal_darwaza_temple', ahead: 17, side: 13, h: 5, lat: 4.5, look: -1.5 } },
-    fest_numaish: { view: 'tps', at: [8200, 5864], time: [20, 15], veh: null, crowd: { ped: 100, dens: 2 }, spd: 26, warm: 20, line: { a: 0, r0: 82, r1: -100 }, clear: 2, mill: { x0: 8272, x1: 8140, step: -12, ys: [5855, 5873], r: 3.5, ahead: [[8132, 5866, 7], [8118, 5860, 7], [8150, 5864, 4]] }, chase: { back: 11, h: 9, lead: 25, th: 7, fov: 62, lag: 0.2, side: 2.5, lookSide: -9 }, seasons: { numaish: true } },
+    fest_numaish: { view: 'tps', at: [8200, 5864], time: [20, 15], veh: null, crowd: { ped: 100, dens: 2 }, tint: { lm: 'numaish_stalls', from: [232, 224, 208], to: [150, 116, 78] }, spd: 26, warm: 20, line: { a: 0, r0: 82, r1: -100 }, clear: 2, mill: { x0: 8272, x1: 8140, step: -12, ys: [5855, 5873], r: 3.5, ahead: [[8132, 5866, 7], [8118, 5860, 7], [8150, 5864, 4]] }, chase: { back: 12, h: 11, lead: 22, th: 7.5, fov: 64, lag: 0.2, side: 1.5, lookSide: -7 }, seasons: { numaish: true } },
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
     // in-world playground games (N.playgroundGames): a real match with Chinnu and the AI kids, scripted inside the window
     lingocha: { view: 'tps', at: 'playground_home', time: [12, 40], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: 26, h1: 15, crane: 45, f0: 21, s0: 8, h0: 10.5, lk0: 0.75 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
@@ -215,6 +215,29 @@
     return { loaded: C.loaded, at: [Math.round(start.x), Math.round(start.y)], len: path ? Math.round(path.len) : 0, veh: v ? v.type : null, view: N.view.mode };
   };
 
+
+  /* ------------------------------------------------------------ o.tint: recolour one flat colour of a landmark model */
+  // (the Numaish stalls' cream cloth boxes read as glowing white panels under the night lights: a warm canvas tone)
+  function tintLandmarks(t) {
+    const H = N.view3d && N.view3d.H; if (!H) return 0;
+    const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    const from = [t.from.map((c) => c / 255), t.from.map(lin)], to = [t.to.map((c) => c / 255), t.to.map(lin)];
+    let n = 0;
+    H.scene.traverse((o) => {
+      if (!o.name || o.name.indexOf('lm:' + t.lm) !== 0) return;
+      o.traverse((m) => {
+        const g = m.isMesh && m.geometry, ca = g && g.attributes && g.attributes.color;
+        if (!ca || g.userData.__tinted) return;
+        const a = ca.array, st = ca.itemSize;
+        for (let i = 0; i < a.length; i += st) for (let sp = 0; sp < 2; sp++) {
+          const f = from[sp];
+          if (Math.abs(a[i] - f[0]) < 0.02 && Math.abs(a[i + 1] - f[1]) < 0.02 && Math.abs(a[i + 2] - f[2]) < 0.02) { a[i] = to[sp][0]; a[i + 1] = to[sp][1]; a[i + 2] = to[sp][2]; n++; break; }
+        }
+        ca.needsUpdate = true; g.userData.__tinted = true;
+      });
+    });
+    return n;
+  }
 
   /* ------------------------------------------------------------ in-world playground games (lingocha / maram pitti) */
   // GL draws off (simulation-only steps: pre-rolls and warm-ups nobody sees)
@@ -498,6 +521,7 @@
 
   function advance(warm) {
     const { o, path, v } = C;
+    if (o.tint && C.f % 10 === 0) tintLandmarks(o.tint);
     if (o.pg) pgFrame(warm);
     else if (o.bonalu) bonFrame(warm);
     else if (o.procession) procFrame();
