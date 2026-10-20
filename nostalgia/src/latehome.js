@@ -30,7 +30,8 @@
  * (pulls a cone off a friend). A colony dog naps on the way: run (or walk) past it and it barks, and the
  * seekers come to see what the dog saw.
  * SCORE: time home + times spotted + collectibles (a lost marble / goli, a kite-string reel / manja):
- *   score = 1000 - 6 x seconds - 120 x spotted + 150 x collectibles; stars: home, spotted <= 1, unseen + par.
+ *   score = 1000 - 6 x seconds - 120 x spotted + 150 x collectibles (home is never below 100 + items);
+ *   stars: home, spotted <= 1, unseen + par.
  * PARTY (N.party.register, the binding contract in party.js):
  *   'latehome'        everyone sneaks home at once (race to the least-seen and fastest arrival); a kid who is
  *                     home (or caught) becomes a "ghost": the seekers ignore him and his WHISTLE pulls cones off
@@ -112,7 +113,7 @@
     whistleCD: 5,
     net: { hz: 6, posHz: 5, interp: 0.18 },
     daddy: { rounds: 2, time: 85, catchR: 14, catchHalf: 0.95, hiddenR: 6 },
-    score: { base: 1000, perSec: 6, perSpot: 120, perItem: 150 },
+    score: { base: 1000, perSec: 6, perSpot: 120, perItem: 150, floor: 100 },
   };
 
   /* ================================================================ lines (bible tone: comic, kind) */
@@ -1157,7 +1158,8 @@
     const T = TUNE.score;
     if (S.variant === 'daddy') return Math.round((k.pts || 0));
     if (k.done !== 'home') return Math.round(k.coll * 40);
-    return Math.max(0, Math.round(T.base - T.perSec * k.t - T.perSpot * k.spots + T.perItem * k.coll));
+    // getting home always beats getting caught (a caught kid keeps only coll·40)
+    return Math.max(T.floor + T.perItem * k.coll, Math.round(T.base - T.perSec * k.t - T.perSpot * k.spots + T.perItem * k.coll));
   }
   function starsOf(k) {
     if (k.done !== 'home') return 0;
@@ -1258,11 +1260,6 @@
   }
 
   /* ================================================================ AI kids (host): sneak home, hide from cones */
-  function hideNear(x, y, r) {
-    let best = null, bd = r;
-    for (const h of S.C.hides) { const d = hyp(h.x - x, h.y - y); if (d < bd) { bd = d; best = h; } }
-    return best;
-  }
   /** the nearest hiding spot that does not lead towards the uncle who is the trouble (and is not under anyone's nose) */
   function safeSpot(x, y, r, threat) {
     let best = null, bd = r;
