@@ -1055,7 +1055,6 @@
   function cardKey(k) {
     if (!D.card) return false;
     const o = D.card.o;
-    if (k === 'Escape') { closeCard(); return true; }
     const B = (o.buttons || []).find((b) => b.key && b.key.toUpperCase() === k.toUpperCase() && !b.dis);
     if (B) { closeCard(); try { B.fn && B.fn(); } catch (er) { N.err('party.card', er); } return true; }
     if (o.onPick && /^[1-9]$/.test(k)) { const row = D.card.el.querySelectorAll('[data-pick]')[+k - 1]; if (row) { closeCard(); o.onPick(row.dataset.pick); return true; } }
@@ -1197,7 +1196,7 @@
     const again = S.mode === 'solo' || (inRoom() && others().length);
     e.innerHTML = '<div class="pt-card-t">🏁 ' + esc(S.spec.name) + ' — results</div>' + extra + '<table class="pt-table">' + rows + '</table>' +
       '<p class="pt-card-l pt-cheer">' + esc(cheer(S, standings, meU)) + '</p>' +
-      '<div class="pt-card-b">' + (again ? '<button type="button" class="sign-btn small" data-a="again"><kbd>R</kbd> Again!</button>' : '') + '<button type="button" class="sign-btn small alt" data-a="close"><kbd>X</kbd> Close</button></div>';
+      '<div class="pt-card-b">' + (again ? '<button type="button" class="sign-btn small" data-a="again"><kbd>G</kbd> Again!</button>' : '') + '<button type="button" class="sign-btn small alt" data-a="close"><kbd>X</kbd> Close</button></div>';
     e.addEventListener('click', (ev) => { const b = ev.target.closest('button[data-a]'); if (!b) return; if (b.dataset.a === 'again') rematch(); closeResults(); });
     D.res = { el: e, id: S.id, opts: S.opts, mode: S.mode, t: Date.now(), timer: setTimeout(() => closeResults(), TUNE.resultsMs) };
   }
@@ -1214,7 +1213,7 @@
     if (!r) return;
     if (r.mode === 'solo') solo(r.id, r.opts); else challenge(r.id, r.opts);
   }
-  // keys for the cards (the game's own keys keep working: these are letters the game does not use)
+  // keys for the cards: letters / digits the game does not use (Y N G X 1-9), so its own keys keep working
   window.addEventListener('keydown', (ev) => {
     if (ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const tg = ev.target; if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA')) return;
@@ -1225,7 +1224,7 @@
     if (D.card) used = cardKey(k);
     else if (D.inv && ST.invite) { if (k === 'Y') used = acceptInvite(); else if (k === 'N') used = declineInvite(); }
     else if (D.lob && ST.sess) { const S = ST.sess; if (k === 'G' && isHost(S) && S.acc.size >= 2) { goHost(S); used = true; } else if (k === 'X') { cancel(isHost(S) ? 'Called off.' : 'You stepped out.'); used = true; } }
-    else if (D.res) { if (k === 'R') { rematch(); closeResults(); used = true; } else if (k === 'X' || k === 'Escape') { closeResults(); used = true; } }
+    else if (D.res) { if (k === 'G') { rematch(); closeResults(); used = true; } else if (k === 'X') { closeResults(); used = true; } }
     if (used) { ev.preventDefault(); ev.stopPropagation(); }
   }, true);
 
@@ -1291,6 +1290,7 @@
       marks: () => marksList().map((m) => ({ id: m.id, x: m.x, y: m.y, r: m.r, kind: m.kind, state: m.state })),
       cards: () => ({ card: !!D.card, invite: !!D.inv, lobby: !!D.lob, results: !!D.res, countdown: !!(D.cd && D.cd.classList.contains('show')), strip: !!D.strip, count: D.cd ? D.cd.textContent : '' }),
       finalize: () => { const S = ST.sess; if (S) finalize(S, null); },
+      v3: () => ({ ok: V3.ok, visible: V3.pool.filter((it) => it.grp.visible).length, pool: V3.pool.length }),
       resetStats() { ST.stats.plays = {}; ST.stats.wins = {}; ST.stats.firsts = {}; ST.stats.best = {}; saveStats(); },
     },
   };

@@ -355,6 +355,7 @@
     if (S.banner) S.banner.t += dt;
     // heat
     S.heat = Math.max(0, S.heat - dt * (rk.kind === 'meetha' ? TUNE.decayMeetha : TUNE.decay));
+    S.heatMax = Math.max(S.heatMax || 0, S.heat);
     S.face.red += (S.heat / 100 - S.face.red) * Math.min(1, dt * 4);
     if (S.water > 0) { S.water -= dt; if (S.water <= 0) { S.water = 0; say(S, 'Bas? Chalo, khaao!'); } }
     // serving: puris fly from Bhaiya's hand into the dona
@@ -801,6 +802,7 @@
       // everyone plays the same seeded contest; the minigame reports (and the host reports the AI friends)
       const params = { place: o.place || 'gokul_chat', seed: ctx && ctx.seed != null ? ctx.seed : undefined, variant: o.variant, party: ctx, noRetry: true, skipHowto: true, difficulty: 0.4 };
       if (o.autoplay) params.autoplay = o.autoplay;
+      if (o.secs > 0) params.secs = Math.max(10, Math.min(90, +o.secs));
       setTimeout(() => {
         if (!open) return;
         play(params).then((r) => {

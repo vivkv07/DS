@@ -67,7 +67,7 @@ async function open(browser, V) {
 /** wait for `secs` of SIMULATION time (the machine may be very busy), capped in real time */
 async function simWait(page, secs, capMs) {
   const t0 = await page.evaluate(() => N.time.now);
-  const cap = Date.now() + (capMs || secs * 15000 + 30000);
+  const cap = Date.now() + (capMs || secs * 60000 + 60000);
   while (Date.now() < cap) {
     await sleep(300);
     const t = await page.evaluate(() => N.time.now);
@@ -86,7 +86,7 @@ const N_ERRS = (page) => page.evaluate(() => (N.errors || []).map((e) => (e.wher
 // where things are (resolved in the page): the home lane, Sultan Bazaar's stalls, Tank Bund
 const SPOTS = {
   home: () => { const h = N.diwali.spots.home; return { x: h.x - 22, y: h.y - 15, fx: h.x + 30, fy: h.y + 10 }; },
-  koti: () => { const L = N.diwali.layout.stalls().filter((s) => s.anchor === 'sultan_bazaar'); let x = 0, y = 0; for (const s of L) { x += s.x; y += s.y; } x /= L.length; y /= L.length; const s0 = L.slice().sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0]; return { x: s0.x + s0.fx * 16 * 1.25, y: s0.y + s0.fy * 16 * 1.25, fx: s0.x, fy: s0.y, n: L.length }; },
+  koti: () => { const L = N.diwali.layout.stalls().filter((s) => s.anchor === 'sultan_bazaar'); let x = 0, y = 0; for (const s of L) { x += s.x; y += s.y; } x /= L.length; y /= L.length; const s0 = L.slice().sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0]; const s1 = L.filter((q) => q !== s0).sort((a, b) => Math.hypot(a.x - s0.x, a.y - s0.y) - Math.hypot(b.x - s0.x, b.y - s0.y))[0] || s0; return { x: s0.x + s0.fx * 12 * 1.25, y: s0.y + s0.fy * 12 * 1.25, fx: s1.x + s1.fx * 4, fy: s1.y + s1.fy * 4, n: L.length }; },
   tankbund: () => { const p = N.places.tank_bund; return { x: p.x, y: p.y, fx: p.x + 300, fy: p.y + 220 }; },
 };
 /** set the date / time, put Chinnu somewhere, settle the Diwali world round him */
@@ -315,7 +315,9 @@ async function wakeTests(browser) {
       const side = 1;
       N.debug.teleport(px + ux * 18 + nx * (rp.road.w / 2 + 6) * side, py + uy * 18 + ny * (rp.road.w / 2 + 6) * side);
       N.player.angle = N.player.facing = Math.atan2(-ny * side, -nx * side);
-      const v = N.vehicles.spawn('ambassador', px - ux * 150 - nx * 3, py - uy * 150 - ny * 3, ang, { driver: true, color: '#efe9dc' });
+      // the car comes from 95 u back already at speed (a busy software-GL sandbox gives only a few frames a second)
+      const v = N.vehicles.spawn('ambassador', px - ux * 95 - nx * 3, py - uy * 95 - ny * 3, ang, { driver: true, color: '#efe9dc' });
+      v.speed = 95; v.vx = ux * 95; v.vy = uy * 95;
       v.noEnter = true;
       N.time.scale = 0; // hold everything until the camera is ready
       v.controller = (vv) => { vv.ctl.throttle = Math.abs(vv.speed) < 105 ? 1 : 0.2; vv.ctl.steer = 0; };
@@ -335,11 +337,11 @@ async function wakeTests(browser) {
     if (view === '3d') { await settle3d(page); await aim(page, { fx: setup.px - Math.cos(setup.ang) * 30, fy: setup.py - Math.sin(setup.ang) * 30, pitch: 0.34 }); await sleep(1500); }
     await page.evaluate(() => { N.time.scale = 1; });
     check(setup.near.resting > 100, view + ': a patch of paper on the lane', JSON.stringify(setup.near));
-    await page.waitForFunction(() => window.__wk && window.__wk.stage === 1, null, { timeout: 120000 });
+    await page.waitForFunction(() => window.__wk && window.__wk.stage === 1, null, { timeout: 600000, polling: 250 });
     const before = await page.evaluate(() => { const W2 = window.__wk; return { near: N.diwali.litter.near(W2.px, W2.py, 10), sp: Math.round(Math.abs(W2.v.speed)) }; });
     await shot(page, 'wake_' + view + '_before');
     await page.evaluate(() => { window.__wk.stage = 2; N.time.scale = 1; });
-    await page.waitForFunction(() => window.__wk && window.__wk.stage === 3, null, { timeout: 120000 });
+    await page.waitForFunction(() => window.__wk && window.__wk.stage === 3, null, { timeout: 600000, polling: 250 });
     const after = await page.evaluate(() => { const W2 = window.__wk; return { near: N.diwali.litter.near(W2.px, W2.py, 10), wide: N.diwali.litter.near(W2.px, W2.py, 60), sp: Math.round(Math.abs(W2.v.speed)), kicked: N.diwali.stats().flyingBits }; });
     await shot(page, 'wake_' + view + '_after');
     const moved = before.near.n - after.near.n, up = after.wide.flying + after.wide.sliding;

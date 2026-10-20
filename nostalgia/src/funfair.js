@@ -28,7 +28,8 @@
  * WHERE: placed in free spots of the fair (never on festivals3d.js / seasons.js stall rows: their layout data
  *   N.seasons.layout.numaish() is read, not edited): the games alley between the giant wheel and the first stall row, the
  *   Columbus north of the wheel, the dashing cars north of the food court, the cups east of it, the two carts in the main
- *   lane; the giant wheel, carousel, toy train and well are the existing ones. E prompts (N.interact, priority 1).
+ *   lane; the giant wheel, carousel, toy train and well are the existing ones. E prompts (N.interact, priority 4, r 9;
+ *   rides and games are held while a mission runs).
  *
  * API  N.funfair = {
  *   play(game, params) -> Promise<result>     'rings' | 'cans' | 'darts' (minigame ids ff_rings / ff_cans / ff_darts)
@@ -521,7 +522,7 @@
     setup(g) {
       const S = g.S;
       setupRivals(g, S, 'ff_rings');
-      S.t = 0; S.score = 0; S.left = 5; S.aim = 0; S.power = 0; S.charging = false; S.chargeT = 0; S.fly = null; S.done = []; S.flat = [];
+      S.t = 0; S.score = 0; S.left = 5; S.aim = 0; S.wob = 0; S.power = 0; S.charging = false; S.chargeT = 0; S.fly = null; S.done = []; S.flat = [];
       S.won = []; S.end = false; S.endT = 0;
       // targets: 4 rows x 5 columns of bottles; four prize blocks in seeded spots (whistle near, pencil box at the back)
       S.targets = [];
@@ -543,7 +544,7 @@
       rivalsStep(g, S, dt);
       const steer = (g.down('right') ? 1 : 0) - (g.down('left') ? 1 : 0);
       if (steer) S.aim = clamp(S.aim + steer * dt * 0.75, -0.55, 0.55);
-      if (S.ptrAim != null) S.aim += (S.ptrAim - S.aim) * Math.min(1, dt * 14);
+      if (S.ptrAim != null && isFinite(S.ptrAim)) S.aim += (S.ptrAim - S.aim) * Math.min(1, dt * 14);
       if (!S.fly && S.left > 0 && !S.end) {
         if (g.pressed('throw')) { S.charging = true; S.chargeT = 0; }
         if (S.charging) { S.chargeT += dt; S.power = 0.5 - 0.5 * Math.cos(S.chargeT * PI / 0.75); }
@@ -766,7 +767,7 @@
     setup(g) {
       const S = g.S;
       setupRivals(g, S, 'ff_cans');
-      S.t = 0; S.score = 0; S.left = 3; S.ax = 0; S.ay = 1.6; S.charge = 0; S.charging = false; S.ball = null; S.settleT = 0; S.end = false; S.endT = 0;
+      S.t = 0; S.score = 0; S.left = 3; S.ax = 0; S.ay = 1.6; S.rx = 0; S.ry = 1.6; S.charge = 0; S.charging = false; S.ball = null; S.settleT = 0; S.end = false; S.endT = 0;
       S.cans = [];
       const rows = [4, 3, 2, 1];
       let idx = 0;
@@ -782,7 +783,7 @@
       rivalsStep(g, S, dt);
       const mx = (g.down('right') ? 1 : 0) - (g.down('left') ? 1 : 0), my = (g.down('up') ? 1 : 0) - (g.down('down') ? 1 : 0);
       S.ax = clamp(S.ax + mx * dt * 3.2, -3.4, 3.4); S.ay = clamp(S.ay + my * dt * 3.2, -0.5, 6);
-      if (S.ptr) { S.ax += (S.ptr.x - S.ax) * Math.min(1, dt * 16); S.ay += (S.ptr.y - S.ay) * Math.min(1, dt * 16); }
+      if (S.ptr && isFinite(S.ptr.x) && isFinite(S.ptr.y)) { S.ax += (S.ptr.x - S.ax) * Math.min(1, dt * 16); S.ay += (S.ptr.y - S.ay) * Math.min(1, dt * 16); }
       const wob = 0.1 + S.charge * 0.5;
       S.rx = S.ax + Math.sin(S.t * 3.1) * wob + Math.sin(S.t * 5.3 + 2) * wob * 0.4; S.ry = S.ay + Math.sin(S.t * 2.3 + 1) * wob * 0.8;
       const settled = !S.cans.some((c) => c.st === 'fly');
@@ -926,7 +927,7 @@
     setup(g) {
       const S = g.S;
       setupRivals(g, S, 'ff_darts');
-      S.t = 0; S.score = 0; S.left = 5; S.ax = 0.5; S.ay = 0.5; S.darts = []; S.fly = null; S.pops = 0; S.end = false; S.endT = 0;
+      S.t = 0; S.score = 0; S.left = 5; S.ax = 0.5; S.ay = 0.5; S.sx = 0.5; S.sy = 0.5; S.darts = []; S.fly = null; S.pops = 0; S.end = false; S.endT = 0;
       S.balloons = [];
       const cols = 6, rows = 4, pal = ['#e83a5a', '#2a8cd8', '#3ac06a', '#e8641a', '#9a5ae0', '#f4f0e8'];
       const golds = [Math.floor(g.rng.next() * 6) + 6, Math.floor(g.rng.next() * 6) + 12];
@@ -943,7 +944,7 @@
       rivalsStep(g, S, dt);
       const mx = (g.down('right') ? 1 : 0) - (g.down('left') ? 1 : 0), my = (g.down('down') ? 1 : 0) - (g.down('up') ? 1 : 0);
       S.ax = clamp(S.ax + mx * dt * 0.6, 0, 1); S.ay = clamp(S.ay + my * dt * 0.6, 0, 1);
-      if (S.ptr) { S.ax += (S.ptr.x - S.ax) * Math.min(1, dt * 18); S.ay += (S.ptr.y - S.ay) * Math.min(1, dt * 18); }
+      if (S.ptr && isFinite(S.ptr.x) && isFinite(S.ptr.y)) { S.ax += (S.ptr.x - S.ax) * Math.min(1, dt * 18); S.ay += (S.ptr.y - S.ay) * Math.min(1, dt * 18); }
       S.sx = clamp(S.ax + Math.sin(S.t * 1.7) * 0.05 + Math.sin(S.t * 3.1 + 1) * 0.025, 0, 1);
       S.sy = clamp(S.ay + Math.sin(S.t * 2.2 + 2) * 0.045, 0, 1);
       if (!S.fly && S.left > 0 && !S.end && g.pressed('throw')) { S.left--; S.fly = { t: 0, x: S.sx, y: S.sy }; g.sfx('ff_toss'); }
@@ -1378,7 +1379,7 @@
       if (Math.floor(run / 6) !== Math.floor((run - dt) / 6) && run > 1) sfxAt('ff_bike', M.x, M.y);
       if (run >= TUNE.rides.maut) R.over = true;
     }
-    for (const e of all) { if (!D3) { e.x = e.x2; e.y = e.y2; } e.facing = e.angle; }
+    for (const e of all) { if (!D3) { e.x = e.x2; e.y = e.y2; } e.facing = e.angle; e.barkH = (D3 ? 0 : e.h2) + 11; }
     // fps: hide my own rider (the eye sits in its head)
     if (R.me) R.me.hidden = D3 && N.view && N.view.mode === 'fps';
     // the player follows the seat (for distance checks, audio, online); controls stay locked
@@ -2051,9 +2052,10 @@
     const add = (key, x, y, label, use, extra) => {
       IA.push(key);
       I.add(key, Object.assign({
-        x, y, r: 9, priority: 1,
+        // priority 4 within 9 u: beats the Numaish card (shops, 3) right at a stall; story prompts (7) still win
+        x, y, r: 9, priority: 4,
         label: () => (fairOpen() ? label() : label().replace(/ ₹.*$/, '') + ' · ' + closedWhy()),
-        enabled: (pl) => fairOn() && !RD && !gameBusy && !card && !(pl && pl.vehicle) && !(N.party && N.party.active),
+        enabled: (pl) => fairOn() && !RD && !gameBusy && !card && !(pl && pl.vehicle) && !(N.party && N.party.active) && (!/^ff:(ride|stall)/.test(key) || !(N.missions && N.missions.active)),
         use: () => { if (!fairOpen()) { toast(closedWhy(), 2200); return; } use(); },
       }, extra || {}));
     };
@@ -2855,7 +2857,7 @@
     stopRide: (reason) => { if (RD) { endRide(reason || 'stop'); return true; } return false; },
     rideState() {
       const R = RD; if (!R) return null;
-      return { id: R.id, phase: R.phase, t: R.runT || 0, secs: R.secs, riders: R.riders.map((e) => ({ uid: e.uid, nick: e.nick, me: !!e.isMe, x: e.x, y: e.y, z: e.z, x2: e.x2, y2: e.y2, h2: e.h2 })), strangers: R.strangers.length, bumps: R.bumps | 0, photo: !!R.photo, gondola: R.k, cars: R.cars ? R.cars.length : 0 };
+      return { id: R.id, phase: R.phase, t: R.runT || 0, secs: R.secs, riders: R.riders.map((e) => ({ uid: e.uid, nick: e.nick, me: !!e.isMe, x: e.x, y: e.y, z: e.z, x2: e.x2, y2: e.y2, h2: e.h2, a: e.angle })), strangers: R.strangers.length, bumps: R.bumps | 0, photo: !!R.photo, gondola: R.k, cars: R.cars ? R.cars.length : 0 };
     },
     buy: (row, fn) => buy(row, fn),
     toys: { get held() { return TOY.held; }, owned: ownedList, hold: holdToy, use: useToy, cycle: cycleToy, give: giveToy },

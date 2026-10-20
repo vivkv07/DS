@@ -262,8 +262,8 @@
       const res = ctx.results();
       const rows = ctx.players.map((p, i) => { const r = res.find((q) => q.uid === p.uid) || {}; return { p, i, s: progressOf(p), t: r.timeMs, dnf: !!r.dnf, left: ctx.left(p.uid) }; });
       rows.sort((a, b) => ((a.left || a.dnf) - (b.left || b.dnf)) || ((a.t == null) - (b.t == null)) || (a.t != null && b.t != null ? a.t - b.t : b.s - a.s));
-      const cpOf = (s) => cps.filter((c) => c.s <= s + 1).length;
-      ctx.board(rows.map((r) => ({ name: r.p.isMe ? 'You' : r.p.nick, me: r.p.isMe, color: color(r.i), out: r.left || r.dnf, sub: r.left ? 'left' : r.dnf ? 'DNF' : r.t != null ? fmt(r.t) : cpOf(r.s) + '/' + n })));
+      const cpOf = (s) => Math.min(n - 1, cps.filter((c) => c.s <= s + 1).length);
+      ctx.board(rows.map((r) => ({ name: r.p.isMe ? 'You' : r.p.nick, me: r.p.isMe, color: color(r.i), out: r.left || r.dnf, sub: r.left ? 'left' : r.dnf ? 'DNF' : r.t != null ? fmt(r.t) : (n > 1 ? 'CP ' + cpOf(r.s) + '/' + (n - 1) : '…') })));
       const myRow = rows.findIndex((r) => r.p.isMe);
       // AI banter when they overtake me (now and then)
       if (ctx.mode === 'solo' && st.lastPlace != null && myRow > st.lastPlace) {
@@ -290,6 +290,7 @@
         const p = N.player, e = (p && (p.vehicle || p)) || null;
         if (t < 0) { ctx.status('Get ready…'); if ((st.boardT -= dt) <= 0) { st.boardT = 0.5; board(); } return; }
         if (!st.done) ctx.timer(t);
+        if (!st.goSeen) { st.goSeen = true; ctx.status(''); }
         // my checkpoints
         if (!st.done && e) {
           const onWrong = C.foot && p.vehicle;
@@ -383,6 +384,7 @@
     return d;
   }
   /** drop a START and a FINISH pin on the map (right-click / long-press = the map's waypoint) -> {a, b, from, to} | null */
+  const PIN = { view: null };
   function pinRace(o) {
     o = o || {};
     return new Promise((resolve) => {
@@ -393,7 +395,7 @@
       if (o.startHere && N.player) { const e = N.player.vehicle || N.player; pins.a = { x: Math.round(e.x), y: Math.round(e.y) }; }
       const done = (v) => { clearInterval(timer); timer = null; try { if (M.removeMapLayer) M.removeMapLayer('pinrace'); } catch (e) { /* ignore */ } resolve(v); };
       try {
-        if (M.addMapLayer) M.addMapLayer({ id: 'pinrace', title: 'Pin race', order: 5, color: '#ff5fb0', points: () => ['a', 'b'].filter((k) => pins[k]).map((k) => ({ x: pins[k].x, y: pins[k].y, icon: k === 'a' ? 'ring' : 'star', color: k === 'a' ? '#6fff6a' : '#f2c230', label: k === 'a' ? 'START' : 'FINISH', id: 'pin_' + k })) });
+        if (M.addMapLayer) M.addMapLayer({ id: 'pinrace', title: 'Pin race', order: 5, color: '#ff5fb0', draw: (g, view) => { PIN.view = view; }, points: () => ['a', 'b'].filter((k) => pins[k]).map((k) => ({ x: pins[k].x, y: pins[k].y, icon: k === 'a' ? 'ring' : 'star', color: k === 'a' ? '#6fff6a' : '#f2c230', label: k === 'a' ? 'START' : 'FINISH', id: 'pin_' + k })) });
       } catch (e) { /* ignore */ }
       const e0 = N.player.vehicle || N.player;
       try { prevWp = M.waypointPos; M.openMap({ x: e0.x, y: e0.y, zoom: 1 }); opened = true; } catch (e) { done(null); return; }
@@ -700,10 +702,8 @@
     const s0 = { x: o.start.x, y: o.start.y };
     try { const f = N.world.findFree(s0.x, s0.y, 'drive', 20); if (f) { s0.x = f.x; s0.y = f.y; } } catch (e) { /* ignore */ }
     const a0 = Math.atan2(stops[0].y - s0.y, stops[0].x - s0.x);
-    const slotOf = (i) => N.party._grid ? N.party._grid(s0.x, s0.y, a0, i) : ctx.grid(s0.x, s0.y, a0, i);
     const my = ctx.grid(s0.x, s0.y, a0, ctx.slot);
     st.bike = ctx.place(my.x, my.y, a0, { vehicle: N.party.cycleFor(me.look, ctx.seed + ctx.slot) });
-    void slotOf;
     const riddle = (k) => '"' + (RIDDLES[stops[k].id] || 'Find ' + stops[k].name) + '"';
     ctx.toast('Chit 1: ' + riddle(0), 5200);
     function paint() {
@@ -851,13 +851,13 @@
     ROUTES, RIDDLES, BIRLA, COLONY_GATE,
     route(id) { const d = routeData(id); return d ? { pts: d.P.pts.map((p) => ({ x: p.x, y: p.y })), total: d.P.total, s0: d.s0, cps: d.cps.map((c) => Object.assign({}, c)) } : null; },
     custom(o) { const d = customData(o); return d ? { pts: d.P.pts.map((p) => ({ x: p.x, y: p.y })), total: d.P.total, s0: d.s0, cps: d.cps.map((c) => Object.assign({}, c)) } : null; },
-    birla() { const d = birlaData(); return d ? { total: d.P.total, cps: d.cps.map((c) => Object.assign({}, c)) } : null; },
-    chai() { const d = chaiData(); return d ? { total: d.P.total, cafe: d.cafe, gate: d.gate } : null; },
+    birla() { const d = birlaData(); return d ? { pts: d.P.pts.map((p) => ({ x: p.x, y: p.y })), total: d.P.total, cps: d.cps.map((c) => Object.assign({}, c)) } : null; },
+    chai() { const d = chaiData(); return d ? { pts: d.P.pts.map((p) => ({ x: p.x, y: p.y })), total: d.P.total, cafe: d.cafe, gate: d.gate } : null; },
     pickStops, chitSpot, pathFor, pinRace,
     best: (route) => (LB.best[route] ? LB.best[route].ms : null),
     top: (route) => LB.top[route] || null,
     fetchTop, submit, flushPending,
     get pending() { return LB.pending.slice(); },
-    _debug: { LB, routeCache: RC },
+    _debug: { LB, routeCache: RC, mapView: () => PIN.view, clearCache() { RC.clear(); birlaCache = null; } },
   };
 })();

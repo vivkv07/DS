@@ -3,7 +3,7 @@
  * cannot reach *.supabase.co (egress policy). It speaks the same wire protocols the real supabase-js
  * client uses, so the game's real SDK code path runs unchanged:
  *   - PostgREST RPC:  POST /rest/v1/rpc/<fn>  (save_put, save_get, journey_put, journey_get, profile_set,
- *     profile_get) with the SAME rules as supabase/migrations/*_online.sql: code format, sha256(code) keys,
+ *     profile_get, and the party leaderboards race_put / race_top of *_party.sql) with the SAME rules as the SQL: code format, sha256(code) keys,
  *     sizes, the per-code rate limit (40 / minute), the nickname charset + blocklist and the newer-save guard.
  *   - Realtime (Phoenix channels, vsn 1.0.0 JSON) over a hand-written WebSocket server (RFC 6455, no deps):
  *     phx_join / phx_leave / heartbeat, presence track / untrack with presence_state + presence_diff,
@@ -21,7 +21,12 @@ const BAD_RE = /(fuck|shit|bitch|sex|porn|nazi|dick|cunt|chutiya|madarc|behenc|b
 function start(opts) {
   opts = opts || {};
   const KEY = opts.key || 'test-publishable-key';
-  const db = { saves: new Map(), journeys: new Map(), profiles: new Map(), rate: new Map() };
+  const db = { saves: new Map(), journeys: new Map(), profiles: new Map(), rate: new Map(), races: new Map() };
+  // party races (supabase/migrations/20261020000000_party.sql): the routes and their min_ms
+  const RACE_ROUTES = { tank_bund: 8000, koti_charminar: 16000, necklace_loop: 30000, rtc_narayanguda: 7000, golconda_tombs: 9000, birla_steps: 5000, chai_run: 8000 };
+  const raceBoard = (route, k) => [...db.races.entries()].filter(([id]) => id.endsWith(':' + route)).map(([id, r]) => ({ key: id.slice(0, id.length - route.length - 1), ms: r.best, t: r.t }))
+    .sort((a, b) => a.ms - b.ms || a.t - b.t).slice(0, 10).map((r) => ({ nick: (db.profiles.get(r.key) || {}).nick || 'Player', ms: r.ms, me: r.key === k }));
+  const raceRank = (route, ms) => 1 + [...db.races.entries()].filter(([id, r]) => id.endsWith(':' + route) && r.best < ms).length;
   const calls = [];
   const keyOf = (code) => {
     if (typeof code !== 'string') return null;
@@ -76,6 +81,24 @@ function start(opts) {
       if (BAD_RE.test(n.replace(/[^A-Za-z]/g, '').toLowerCase())) return no('bad_nick');
       db.profiles.set(k, { nick: n });
       return { ok: true, nick: n };
+    },
+    race_put({ code, route, ms, vehicle }) {
+      const k = keyOf(code); if (!k) return no('bad_code'); if (!allow(k)) return no('rate');
+      if (typeof route !== 'string' || route.length > 32 || !RACE_ROUTES[route]) return no('bad_route');
+      if (!Number.isInteger(ms) || ms < 1000 || ms > 3600000) return no('bad_time');
+      if (ms < RACE_ROUTES[route]) return no('too_fast');
+      if (vehicle != null && (typeof vehicle !== 'string' || !/^[a-z][a-z0-9_]{1,23}$/.test(vehicle))) return no('bad_vehicle');
+      const id = k + ':' + route, prev = db.races.get(id);
+      const better = !prev || ms < prev.best;
+      const rec = prev ? { best: Math.min(prev.best, ms), runs: prev.runs + 1, t: better ? Date.now() : prev.t, vehicle: better ? vehicle : prev.vehicle } : { best: ms, runs: 1, t: Date.now(), vehicle: vehicle || null };
+      db.races.set(id, rec);
+      return { ok: true, best: rec.best, improved: better, runs: rec.runs, rank: raceRank(route, rec.best), top: raceBoard(route, k) };
+    },
+    race_top({ code, route }) {
+      const k = keyOf(code); if (!k) return no('bad_code'); if (!allow(k)) return no('rate');
+      if (typeof route !== 'string' || !RACE_ROUTES[route]) return no('bad_route');
+      const mine = db.races.get(k + ':' + route);
+      return { ok: true, best: mine ? mine.best : null, rank: mine ? raceRank(route, mine.best) : null, top: raceBoard(route, k) };
     },
     profile_get({ code }) {
       const k = keyOf(code); if (!k) return no('bad_code'); if (!allow(k)) return no('rate');

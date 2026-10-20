@@ -18,8 +18,9 @@
  *   stalls     pataakha stalls on Sultan Bazaar (Koti), the Koti book bazaar, every market and beside every
  *              kirana: trestle table with a red skirt, colourful packs, stacked tins, bamboo poles, a striped
  *              awning, a board with a fictional, brand-free name (PATAAKHA BAZAAR, ROSHNI FIREWORKS, ...) and a
- *              product strip (BIJLI ROCKET ANAAR CHAKRI PHULJHADI), a bulb at night. 20-26 Oct, 09:00-23:00. Away
- *              from respect zones, junction mouths and the places_art market stalls.
+ *              product strip (BIJLI ROCKET ANAAR CHAKRI PHULJHADI), ladis and rocket bundles hanging from the awning,
+ *              a bulb at night, a vendor behind the table and customers at the counter (busiest 17:00-22:30).
+ *              20-26 Oct, 09:00-23:00. Away from respect zones, junction mouths and the places_art market stalls.
  *   fireworks  rockets streak up and burst (peony / ring / willow / crackle / multi / palm) all round the city, peak
  *              on Diwali night 19:00-23:00 (NIGHTS x hour curve; the 24th has its dawn crackers); families out on
  *              the colony lanes and grounds: an adult with a bucket of water, kids with phuljhadis (sparklers,
@@ -40,7 +41,8 @@
  *   haze       smoke haze over the city at night, thicker after 21:00 (2D wash; 3D fog colour + distance, sparks
  *              fade into it); big bursts tint the sky / the city.
  *   animals    traffic dogs run off and hide (napping by a wall, whimpering) after nearby bangs, cows get up and
- *              amble away, pigeons and birds scatter; a hiding dog offers "Comfort the dog" (a gentle moment).
+ *              amble away, pigeons and birds scatter; a hiding dog offers "Comfort the dog" (a gentle moment:
+ *              Chinnu's "Shh, shh...", a little heart, the dog settles and gets up calm a few seconds later).
  *   sounds     N.audio.ext.registerSfx: dw_crackle dw_sparkler dw_anaar dw_rocket dw_burst dw_far dw_bomb dw_ladi
  *              dw_match dw_fizzle dw_whimper (distance delay on bursts; the far city pops without a position).
  * Free roam: phuljhadis / chakris / anaars / rockets from the cracker box (N.diwali.box: the missions' Pataakha Bazaar
@@ -2270,9 +2272,16 @@
   }
   function initMaterials3D() {
     const T = G3.THREE, H = G3.H, M = G3.M;
-    G3.uni = { uScale: { value: 600 }, uFogK: { value: 0 }, uFogK2: { value: 0 }, uT: { value: 0 }, uI: { value: 0 }, uLamp: { value: 0 }, uDwN: { value: 0 } };
+    G3.uni = { uScale: { value: 600 }, uFogK: { value: 0 }, uFogK2: { value: 0 }, uT: { value: 0 }, uI: { value: 0 }, uLamp: { value: 0 }, uDwN: { value: 0 }, uDwCam: { value: new T.Vector3() }, uDwFade: { value: 10 } };
+    // stalls / lanterns right in front of the camera dither out (they are not in the camera's collision grid);
+    // Lambert gets no cameraPosition in r149, so the eye comes in our own uniform
+    const FADE_V = ['#include <common>', 'varying vec3 vDwW;'], FADE_F = 'uniform vec3 uDwCam; uniform float uDwFade; varying vec3 vDwW;';
+    const FADE_DISCARD = '\tif (uDwFade > 0.0) { float dwd = distance(vDwW, uDwCam); vec2 dwq = floor(mod(gl_FragCoord.xy, 4.0)); float dwb = (dwq.x * 4.0 + dwq.y) / 16.0; if (dwd < uDwFade * (0.55 + 0.45 * dwb)) discard; }';
+    const fadeVS = (vs) => vs.replace(FADE_V[0], FADE_V[0] + '\n' + FADE_V[1]).replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n\tvDwW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    G3.fade = (sh) => { sh.uniforms.uDwCam = G3.uni.uDwCam; sh.uniforms.uDwFade = G3.uni.uDwFade; sh.vertexShader = fadeVS(sh.vertexShader); sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + FADE_F).replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' + FADE_DISCARD); };
     const solid = new T.MeshLambertMaterial({ vertexColors: true, side: T.DoubleSide });
     solid.onBeforeCompile = (sh) => {
+      G3.fade(sh);
       sh.uniforms.uDwN = G3.uni.uDwN; sh.uniforms.uDwT = G3.uni.uT;
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aGlow;\nattribute vec2 aSway;\nuniform float uDwT;\nvarying float vDwG;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvDwG = aGlow;\n\ttransformed.x += aSway.x * sin(uDwT * 1.6 + aSway.y);\n\ttransformed.z += aSway.x * 0.7 * cos(uDwT * 1.3 + aSway.y * 1.7);');
@@ -2307,6 +2316,7 @@
       });
     }, { linear: true });
     M.labels = new T.MeshLambertMaterial({ map: labels, side: T.DoubleSide, emissive: new T.Color(0, 0, 0), emissiveMap: labels });
+    M.labels.onBeforeCompile = (sh) => G3.fade(sh); M.labels.customProgramCacheKey = () => 'diwali3d-labels';
   }
   function labelUV(i) { const u0 = (i % 2) * 0.5, u1 = u0 + 0.5, v1 = 1 - Math.floor(i / 2) / 8, v0 = v1 - 1 / 8; return [u0, v0, u1, v1]; }
   function imesh(geo, mat, n, color) {
@@ -2516,6 +2526,7 @@
     if (G3.M.rangoli) G3.M.rangoli.emissive.setScalar(lampTime() ? 0.08 + night * 0.3 : 0);
     if (G3.M.labels) G3.M.labels.emissive.setScalar(stallsOpen() ? night * 0.55 : 0);
     G3.uni.uFogK.value = hz * 0.0006; G3.uni.uFogK2.value = hz * 0.0018;
+    if (H.camera) { G3.uni.uDwCam.value.copy(H.camera.position); G3.uni.uDwFade.value = H.mode === 'fps' ? 3 : 10; }
     if (H.renderer && H.camera) G3.uni.uScale.value = (H.renderer.domElement.height || 720) / (2 * Math.tan((H.camera.fov * PI) / 360));
     if (G3.urgent > 0) G3.urgent -= dt;
     // sites: decorated houses + stalls round the player

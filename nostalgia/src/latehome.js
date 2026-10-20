@@ -147,7 +147,7 @@
   /* ================================================================ venues */
   // start: a place id (+ offset); prompt: where the solo "Late! Ghar chalo" offer sits
   const VENUES = {
-    cafe: { id: 'cafe', name: 'Café Gulistan', place: 'irani_cafe_7', at: [9822, 5146], prompt: [9822, 5146],
+    cafe: { id: 'cafe', name: 'Café Gulistan', place: 'irani_cafe_7', at: [9798, 5128], prompt: [9798, 5128],
       line: 'Chai and Osmania at Café Gulistan ran late. The street lights are ON.' },
     ground: { id: 'ground', name: 'Ashok Nagar ground', place: 'playground_14', at: null, prompt: null,
       line: 'The match at Ashok Nagar ground ran late. The street lights are ON.' },
@@ -616,15 +616,15 @@
     if (m.pts) {
       let P = m.pts;
       if (m.loop) P = P.concat([P[0]]);
-      return polyNearest(P, st.x, st.y).d >= (m.role === 'daddy' ? 95 : 75);
+      return polyNearest(P, st.x, st.y).d >= (m.role === 'daddy' ? 110 : Math.max(95, m.range + 5));
     }
-    return hyp(m.x - st.x, m.y - st.y) >= m.range * 0.9;
+    return hyp(m.x - st.x, m.y - st.y) >= m.range + 20;
   }
   /** and nobody stands right on a kid's doorstep */
   function clearOfDoors(m, doors) {
     for (const d of doors) {
       if (m.pts) { let P = m.pts; if (m.loop) P = P.concat([P[0]]); if (polyNearest(P, d.x, d.y).d < (m.role === 'daddy' ? 30 : 42)) return false; }
-      else if (hyp(m.x - d.x, m.y - d.y) < 52) return false;
+      else if (hyp(m.x - d.x, m.y - d.y) < (m.range || 90) + 12) return false; // a chair / window can't stare at a door
     }
     return true;
   }
@@ -1326,6 +1326,8 @@
   }
   /** a point out of seeker sk's cone, sideways from where (x, y) is in it */
   function fleeFrom(sk, x, y) {
+    // close to the venue: straight back to it (nobody can see you there)
+    if (S && S.variant === 'sneak') { const st = S.C.start, ds = hyp(st.x - x, st.y - y); if (ds < 80 && ds > 6 && clear(x, y, st.x, st.y)) return { x: st.x, y: st.y }; }
     // away from him and out to the side his head turns slowest to (a diagonal), and far enough to matter
     const C = sk.cone, a = Math.atan2(y - C.y, x - C.x);
     const side = adiff(C.a, a) >= 0 ? 1 : -1;
@@ -1384,6 +1386,7 @@
   /* ================================================================ sightings (local kid on every phone, AI kids on the host) */
   function sightStep(k, dt) {
     if (k.done || k.seq || k.ghost || k.role === 'daddy') return;
+    if (k.isMe && G.unseen) { k.seenBy = null; return; } // tests: set up a scene without being spotted
     let best = 0, by = null;
     for (const sk of S.seekers) {
       const r = sightRate(sk, k);
@@ -2269,7 +2272,7 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
   }
   /* ---------------------------------------------------------------- results */
   const RES = { el: null, openT: 0, keyFn: null };
-  function showResults() { if (S) S.resPending = true; }
+  function showResults() { if (S) { S.resPending = true; S.resAt = performance.now() + 2600; } } // after the big banner
   function buildResults() {
     if (!S || !S.results) return;
     S.resPending = false;
@@ -2329,9 +2332,9 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
   }
   function uiStep() {
     if (!S) return;
-    if (S.resPending && !(N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen()) && N.state.mode === 'play') buildResults();
+    if (S.resPending && performance.now() >= (S.resAt || 0) && !(N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen()) && N.state.mode === 'play') buildResults();
     if (RES.el && N.state.mode === 'play' && performance.now() - RES.openT > 700 && N.input.pressed('action')) { N.input.consume('action'); closeCard('done'); }
-    if (RES.el && N.state.mode === 'play') N.input.consume('action');
+    if (RES.el && N.state.mode === 'play') { N.input.consume('action'); N.interact.offer({ label: 'Aage chalo', priority: 99, dist: 0, use() { /* the card's own key */ } }); }
   }
 
   /* ================================================================ 2D drawing */
@@ -3033,6 +3036,7 @@ body.reduced-motion .lh-hud.show { animation: none; } body.reduced-motion .lh-me
       catchMe() { if (!S || !S.me) return false; const by = S.seekers.find((q) => q.role === 'walker' || q.role === 'watchman') || S.seekers[0]; startCatch(S.me, by, 'seen'); return true; },
       win() { if (!S || !S.me) return false; const d = S.C.doors[S.me.uid]; N.player.teleport(d.x, d.y, { ground: true }); return true; },
       setSeekersFrozen(on) { G.frozenSeekers = !!on; return G.frozenSeekers; },
+      unseen(on) { G.unseen = !!on; return G.unseen; },
       nearestHide() { if (!S) return null; const p = N.player; let b = null; for (const h of S.C.hides) { const d = hyp(h.x - p.x, h.y - p.y); if (!b || d < b.d) b = { kind: h.kind, name: h.name, x: h.x, y: h.y, r: h.r, d }; } return b; },
       place(kind) { if (!S) return null; const h = S.C.hides.find((q) => q.kind === kind); return h ? { kind: h.kind, x: h.x, y: h.y, r: h.r } : null; },
       coneSpot,
