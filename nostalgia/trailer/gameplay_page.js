@@ -15,7 +15,7 @@
   const CLIPS = {
     cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', spd: 105, dir: 0, clear: 3, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.2 } },
     top_charminar: { view: 'top', at: 'charminar_plaza', time: [11, 0], veh: 'cycle', spd: 115, dir: -1.6 },
-    auto_tankbund: { view: 'tps', at: 'tank_bund', time: [17, 25], veh: 'auto', spd: 130, dir: 1.94, prefer: 'bund', chase: { back: 26, h: 11, lead: 14, th: 3.5, fov: 56, lag: 0.3, side: 2 } },
+    auto_tankbund: { view: 'tps', at: [9295, 3648], time: [17, 25], veh: 'auto', spd: 130, warm: 30, dir: 2.22, prefer: 'bund', chase: { back: 24, h: 11, lead: 14, th: 3.5, fov: 56, lag: 0.3, side: 2 } },
     top_chase: { view: 'top', at: 'abids', time: [12, 30], veh: null, spd: 82, dir: 0, run: true, wanted: 3 },
     scooty_rain: { view: 'fps', at: 'abids', time: [21, 15], veh: 'scooty', spd: 120, dir: 1.5, rain: 0.9 },
     top_rain: { view: 'top', at: 'koti', time: [20, 30], veh: 'cycle', spd: 100, dir: -1.5, rain: 0.9 },
@@ -99,11 +99,13 @@
   // o.clear: passers-by standing / walking in the line of sight between the lens and the subject are hidden (and
   // stay hidden for the rest of the shot, so nobody pops back in)
   const CLEARED = new Set();
+  // anyone on foot (passers-by, story NPCs, police, stray animals) but Chinnu and the playground kids
+  const onFoot = (e) => e !== N.player && e.kind !== 'vehicle' && !e.pgKid && !e.hidden && e.alive !== false && (!!e.look || /ped|npc|police|animal/.test(e.kind || ''));
   function unclear() { for (const e of CLEARED) e.hidden = false; CLEARED.clear(); }
   function clearLine(cam, sx, sy, r) {
     const ax = cam.x, ay = cam.y, dx = sx - ax, dy = sy - ay, L2 = dx * dx + dy * dy || 1;
     for (const e of N.entities.all) {
-      if (e.kind !== 'ped' || e === N.player || e.hidden || e.pgKid) continue;
+      if (!onFoot(e)) continue;
       const t = ((e.x - ax) * dx + (e.y - ay) * dy) / L2;
       if (t < 0 || t > 1) continue;
       const qx = ax + dx * t - e.x, qy = ay + dy * t - e.y;
@@ -171,7 +173,7 @@
       for (let d = d0; d <= d1; d += 3) {
         at(path, d, tmp);
         for (const e of N.entities.all) {
-          if (e.kind !== 'ped' || e === N.player || e.hidden || e.pgKid) continue;
+          if (!onFoot(e)) continue;
           if (Math.hypot(e.x - tmp.x, e.y - tmp.y) < o.clear + 1) { e.hidden = true; CLEARED.add(e); }
         }
       }

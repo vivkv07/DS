@@ -54,7 +54,7 @@
     // real view switch (N.view.set('top'), instant: the game has no transition) on the beat, same moment, same place
     // (the road in from the east, straight at Charminar, then the roundabout round it clockwise: road nodes 150 ...
     // 146 -> roundabout 4, 5, 6 ...; f72 lands just past the roundabout's east point, the switch ~150 u out)
-    charminar: { view: 'tps', at: [9398, 8332], nodes: [150, 149, 148, 147, 146, 4, 5, 6, 7, 8], lead: 220, endAt: 330, time: [11, 0], veh: 'cycle', spd: 92, zoom: 1.6, warm: 60, switchAt: 36, pitch: 0.1 },
+    charminar: { view: 'tps', at: [9398, 8332], nodes: [150, 149, 148, 147, 146, 4, 5, 6, 7, 8], lead: 220, endAt: 330, time: [11, 0], veh: 'cycle', spd: 92, zoom: 1.6, warm: 60, switchAt: 36, pitch: 0.1, density: 1.7 },
   };
   const OVR = window.HUD_SHOTS_OVERRIDE || {};
   for (const k in OVR) SHOTS[k] = Object.assign({}, SHOTS[k], OVR[k]);
@@ -188,6 +188,8 @@
     seed(o.seed || 20031);
     if (N.settings && N.settings.set) N.settings.set('difficulty', o.difficulty || 'normal');
     if (o.tune) Object.assign(N.wanted.TUNE, o.tune);
+    // a livelier street (the game's own traffic density multiplier, 0..2; 1 = normal)
+    if (N.traffic && N.traffic.setDensity) N.traffic.setDensity(o.density || 1);
     if (N.player.vehicle && N.vehicles.exit) { try { N.vehicles.exit(N.player, true); } catch (e) { /* ok */ } }
     if (N.wanted) { N.wanted.lock(null); N.wanted.set(0, 'clear'); }
     N.render.camOverride = null;

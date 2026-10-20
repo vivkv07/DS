@@ -50,6 +50,7 @@
     if (!st) { st = document.createElement('style'); st.id = 'sp-style'; document.head.appendChild(st); }
     st.textContent = [
       '#debug,#touch,.bark{display:none!important}',
+      'html.sp-ff body{visibility:hidden!important}',
       o.hud === false ? '#ui{display:none!important}' : '',
       // the cutscene SKIP pill is a hover/hold affordance: not part of the picture
       '.cs-skip{display:none!important}',
@@ -184,6 +185,9 @@
   // canvas is re-composited at every yield, which makes stepping ~30x slower
   SP.world = function (on) {
     for (const c of document.querySelectorAll('canvas#game, canvas#game3d, #game3d canvas')) c.style.visibility = on ? '' : 'hidden';
+    // ... and not drawn at all (the 2D city draw is most of a frame's cost; the game itself keeps running)
+    if (!on && !SP.draws) { SP.draws = [N.world.draw, N.entities.draw]; N.world.draw = () => {}; N.entities.draw = () => {}; }
+    else if (on && SP.draws) { N.world.draw = SP.draws[0]; N.entities.draw = SP.draws[1]; SP.draws = null; }
     return Array.from(document.querySelectorAll('canvas')).map((c) => (c.id || c.className) + ':' + c.width + 'x' + c.height + ':' + getComputedStyle(c).visibility);
   };
   SP.status = function () {

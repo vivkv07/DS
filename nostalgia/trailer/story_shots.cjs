@@ -23,14 +23,17 @@ const URL = 'file://' + path.join(ROOT, 'index.html') + '#debug';
 const CDN = 'https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js';
 const THREE_JS = fs.readFileSync(path.join(ROOT, 'vendor/three/three.min.js'), 'utf8');
 const ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
-// the virtual rAF clock of lib.cjs (auto-pumped until __step takes over)
+// the virtual rAF clock of lib.cjs (auto-pumped until __step takes over), plus two probes for a clean hand-over:
+// __pend() = native frame requests still in flight, __cbs() = callbacks waiting for the next __step
 const CLOCK = `(() => {
   const nraf = window.requestAnimationFrame.bind(window);
-  let cbs = [], vt = 0, lastT = null;
+  let cbs = [], vt = 0, lastT = null, pend = 0;
   window.__vt = () => vt;
+  window.__pend = () => pend;
+  window.__cbs = () => cbs.length;
   window.__auto = true;
   window.requestAnimationFrame = (cb) => {
-    if (window.__auto) return nraf((t) => { if (t !== lastT) { if (lastT != null) vt += Math.min(100, t - lastT); lastT = t; } cb(vt); });
+    if (window.__auto) { pend++; return nraf((t) => { pend--; if (t !== lastT) { if (lastT != null) vt += Math.min(100, t - lastT); lastT = t; } cb(vt); }); }
     cbs.push(cb); return 0;
   };
   window.__step = (dt) => { window.__auto = false; vt += dt * 1000; const l = cbs; cbs = []; for (const cb of l) { try { cb(vt); } catch (e) { console.error(e && e.stack || e); } } };
@@ -83,9 +86,9 @@ const PLANS = {
       // b0-1: ▶ PLAY  WED 14 JAN 2026  18:05 over the office at dusk: lamp, the parcel, a last kite in the window.
       // +22: the art (0.7 s) and the card (0.45 s) have faded in, so the first frame is clean; the card holds to +78
       { name: 'play_2026', n: 36, setup: startPrologue, anchor: null, before: (o) => SP.frameArt('wide', o.FR.wide), off: 22, hold: [0, 35] },
-      // b2-3: Amma: "Srikanth! A courier came. From America." — the capture joins the line at "Srikanth! A courier "
-      // so "came. From America." types in over the first ~15 frames and is read for the rest; cut in on the parcel
-      { name: 'amma_courier', n: 36, anchor: { line: 'A courier came', chars: 20 }, before: (o) => SP.frameArt('parcel', o.FR.parcel), off: 0 },
+      // b2-3: Amma: "Srikanth! A courier came. From America." — the capture joins the line at "Srikanth! A courier came. "
+      // so "From America." types in over the first ~9 frames and is read for the rest; cut in on the parcel
+      { name: 'amma_courier', n: 36, anchor: { line: 'A courier came', chars: 26 }, before: (o) => SP.frameArt('parcel', o.FR.parcel), off: 0 },
       // b4-7: close-up of the cassette (SIDE A - HYDERABAD 2003 / SIDE B - 2026). The game's long description card
       // (step 9) is cut out: hidden, and tapped through like a player would; the note card (step 10) then fades in at
       // ~+4 and is fully in on b5, set above the cassette so it never covers the label
@@ -217,7 +220,12 @@ async function boot() {
   };
   return { browser, context, page, errors, cdp, shot };
 }
-async function takeOver(page) { await page.evaluate(() => { window.__auto = false; }); await page.waitForTimeout(400); }
+// leave real time: every native frame request still in flight must have fired (it then queues its next frame on the
+// virtual clock), else the game loop is either missing from the first __step calls or runs twice per step later
+async function takeOver(page) {
+  await page.evaluate(() => { window.__auto = false; });
+  await page.waitForFunction(() => window.__pend() === 0 && window.__cbs() > 0, null, { polling: 100, timeout: 120000 });
+}
 
 async function survey() {
   const { browser, page, errors, shot } = await boot();
@@ -273,10 +281,17 @@ async function renderSegment(seg) {
     const want = !CUTS.length || CUTS.includes(cut.name);
     if (!want && !plan.sequential) { f += cut.n; continue; } // an independent moment: skip it entirely
     if (cut.setup) console.log(' ', seg.id, cut.name, 'setup', JSON.stringify(await page.evaluate(cut.setup, arg)));
+    // fast-forward to the moment with nothing painted (the page is still laid out and every animation keeps its
+    // virtual time): an unchanged screen is not re-rasterised at every frame step
+    await page.evaluate(() => document.documentElement.classList.add('sp-ff'));
     const k = await page.evaluate(({ spec, dt }) => SP.until(spec, dt), { spec: cut.anchor || {}, dt: DT });
-    if (k < 0) throw new Error(seg.id + ' ' + cut.name + ': anchor never came ' + JSON.stringify(cut.anchor));
+    if (k < 0) {
+      console.log('    status', JSON.stringify(await page.evaluate(() => [SP.status(), SP.log.slice(-8), document.querySelectorAll('.dlg.show .dlg-text .c.on').length, document.querySelector('.dlg') && document.querySelector('.dlg').className])));
+      throw new Error(seg.id + ' ' + cut.name + ': anchor never came ' + JSON.stringify(cut.anchor));
+    }
     if (cut.before) { const r = await page.evaluate(cut.before, arg); if (r != null) console.log('   ', cut.name, 'before', JSON.stringify(r).slice(0, 400)); }
     if (cut.off) await page.evaluate(({ n, dt }) => SP.step(n, dt), { n: cut.off, dt: DT });
+    await page.evaluate(() => document.documentElement.classList.remove('sp-ff'));
     const first = await page.evaluate(() => SP.status());
     if (!want) { await page.evaluate(({ n, dt }) => SP.step(n, dt), { n: cut.n, dt: DT }); f += cut.n; continue; }
     // hold: [a, b] = frames a..b of the cut show a still (nothing on screen animates there): frame a is captured and
