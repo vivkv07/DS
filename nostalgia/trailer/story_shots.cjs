@@ -82,13 +82,14 @@ const PLANS = {
     cuts: [
       // b0-1: ▶ PLAY  WED 14 JAN 2026  18:05 over the office at dusk: lamp, the parcel, a last kite in the window.
       // +22: the art (0.7 s) and the card (0.45 s) have faded in, so the first frame is clean; the card holds to +78
-      { name: 'play_2026', n: 36, setup: startPrologue, anchor: null, before: (o) => SP.frameArt('wide', o.FR.wide), off: 22 },
-      // b2-3: Amma: "Srikanth! A courier came. From America." (typed by +26; held 2.2 s), cut in on the parcel
-      { name: 'amma_courier', n: 36, anchor: { line: 'A courier came' }, before: (o) => SP.frameArt('parcel', o.FR.parcel), off: 14 },
+      { name: 'play_2026', n: 36, setup: startPrologue, anchor: null, before: (o) => SP.frameArt('wide', o.FR.wide), off: 22, hold: [0, 35] },
+      // b2-3: Amma: "Srikanth! A courier came. From America." — the capture joins the line at "Srikanth! A courier "
+      // so "came. From America." types in over the first ~15 frames and is read for the rest; cut in on the parcel
+      { name: 'amma_courier', n: 36, anchor: { line: 'A courier came', chars: 20 }, before: (o) => SP.frameArt('parcel', o.FR.parcel), off: 0 },
       // b4-7: close-up of the cassette (SIDE A - HYDERABAD 2003 / SIDE B - 2026). The game's long description card
       // (step 9) is cut out: hidden, and tapped through like a player would; the note card (step 10) then fades in at
       // ~+4 and is fully in on b5, set above the cassette so it never covers the label
-      { name: 'gurthunda', n: 72, anchor: { cs: 9 }, off: 4,
+      { name: 'gurthunda', n: 72, anchor: { cs: 9 }, off: 4, hold: [26, 71],
         before: async (o) => { SP.frameArt('cassette', o.FR.cassette); SP.hideCard(); SP.csTap(); await SP.tick(); SP.csTap(); } },
       // b8-11: ◀◀ REWIND on the old 2-in-1, the year big; it changes on the score's ticks (music.js yearTicks(tb(8.4),
       // tb(11.5), 24): 2026 at the first tick, 2003 on the last, b11.5) — the cutscene clock is warped per frame so the
@@ -137,45 +138,49 @@ const UI_CSS_V = [
   "body[data-spcut='rewind'] #overlay .cs-osd b { font-size: 46px; }",
   "body[data-spcut='rewind'] #overlay .cs-osd span { font-size: 132px; line-height: 0.92; }",
 ].join('\n');
-// s_story: the story in gameplay (3D third-person view, the HUD and the dialogue box as the player sees them)
+// s_story: the story in gameplay — M1 "Bo Kaata!" (Tue 14 Jan 2003, Sankranti morning, kites over the colony): on the
+// colony ground (playground_1) Immu, glasses taped, tells Chinnu (story.js m1, bible §4 M1 step 3). The game's real
+// lines in its dialogue box (3D third-person view, the HUD), the replies cut out; then the pact's first ● REC.
 PLANS.s_story = {
+  sequential: true, // one scene: the lines are queued once and advanced at the cuts
   cuts: [
-    // b40-43: M3 "First Day, First Show" (Sat 8 Feb 2003, dawn): Chinnu at Sandhya 70mm plays the cassette Immu hid in
-    // the hero's boot — the spy-tape box (cassette-label skin, VHS type): "Agent Immu to Agent Chinnu. ..."
-    { name: 'spy_tape', n: 72, setup: storySandhya, anchor: { line: 'Agent Immu' }, off: 6 },
-    // b44-47: M1 "Bo Kaata!" ends (Tue 14 Jan 2003, 17:55, Sankranti dusk on the home terrace, kites everywhere, Immu on
-    // his terrace across the ground): ● REC — the first sound goes on Side A, the counter rolls 000 -> 083 and the
-    // kite corner goes into the tin. ACTION is pressed 10 frames in.
-    { name: 'rec', n: 72, setup: storyTerrace, anchor: { fn: '!!(N.tape.recState)' }, off: 2, each: recPress },
+    // b40-41: Immu (sad): "Abba's visa came. Yesterday. After Eid, we fly. New Jersey." — joined at "Abba's visa came. "
+    // (Text speed: Fast, a player setting), fully typed by ~frame 16
+    { name: 'visa', n: 36, setup: storyGround, anchor: { line: "Abba's visa", chars: 18 }, off: 0 },
+    // b42-43: Immu: "Ten months and eleven days. I counted." (typed by ~frame 13 of the cut)
+    { name: 'ten_months', n: 36, before: () => { N.dialogue.advance(); }, anchor: null, off: 1 },
+    // b44-47: Immu: "We take the city with us. One tape. One tin." and the tape: ● REC on frame 72 (the score's REC blip,
+    // b44) — the game's REC prompt (OSD ● REC, objective) — then the recording fires on frame 90 (b45, where the
+    // score's counter ticks start): the counter rolls SIDE A 000 -> 083 over 1.6 s (frames 90-138)
+    { name: 'one_tape', n: 72, before: storyRec, anchor: null, off: 1 },
   ],
 };
-async function storySandhya(o) {
+async function storyGround(o) {
   await SP.start3D(o.SCALE, o.css);
-  const T = N.places.sandhya_theatre;
-  // the facade faces east: Chinnu stands in the forecourt looking west at the hoardings
-  const r = SP.scene({ date: [2003, 2, 8, 5, 55], at: [T.x + 62, T.y + 6], angle: Math.PI, yaw: Math.PI + 0.12, pitch: 0.16, view: 'tps',
-    npcs: [['painter', [T.x + 50, T.y - 14], { idle: 'work' }]] });
-  N.hud.objective("Get the tape from the hero's boot.");
+  N.settings.set('textSpeed', 'fast');
+  const G = N.places.playground_1;
+  const near = (x, y) => { const f = N.world.findFree(x, y, 'walk', 40); return f ? [f.x, f.y] : [x, y]; };
+  const me = near(G.x - 7, G.y + 4), im = near(me[0] + 14, me[1]); // Immu runs up to 14 u east of Chinnu (m1)
+  const yaw = o.PORTRAIT ? o.YAW_V : o.YAW;
+  const r = SP.scene({ date: [2003, 1, 14, 8, 25], at: me, angle: Math.atan2(im[1] - me[1], im[0] - me[0]), yaw, pitch: o.PITCH, view: 'tps', money: 1200,
+    npcs: [['immu', im, { idle: 'stand' }], ['ayesha', near(G.x - 70, G.y + 28), { idle: 'stand' }]] });
+  try { N.npcs.face('immu', 'player'); N.npcs.walkTo('ayesha', near(G.x - 130, G.y + 44), { timeout: 20 }).catch(() => {}); } catch (e) { /* ignore */ }
+  N.hud.objective(null);
   await SP.settle3D(60);
-  N.dialogue.say('immu_tape', "Agent Immu to Agent Chinnu. If you found this, you're at Sandhya and it's six o'clock.");
-  return r;
+  SP.pace = null; // the lines are advanced at the cuts
+  N.dialogue.say('immu', "Abba's visa came. Yesterday. After Eid, we fly. New Jersey.", { mood: 'sad' });
+  N.dialogue.say('immu', 'Ten months and eleven days. I counted.');
+  N.dialogue.say('immu', 'We take the city with us. One tape. One tin.');
+  return Object.assign(r, { immu: im.map(Math.round), yaw });
 }
-async function storyTerrace(o) {
-  await SP.start3D(o.SCALE, o.css);
-  try { N.dialogue.cancel(); } catch (e) { /* ignore */ }
-  const r = SP.scene({ date: [2003, 1, 14, 17, 55], at: [10112, 4986], roof: 'home_terrace', angle: 0.05, yaw: 0.0, pitch: 0.2, view: 'tps',
-    npcs: [['immu', 'friend_terrace'], ['nanna', [10098, 4978], { roof: 'home_terrace' }], ['chitti', [10100, 4996], { roof: 'home_terrace' }]] });
+function storyRec(o) {
+  N.dialogue.advance();
   N.hud.objective('● REC: the first sound for Side A.');
-  await SP.settle3D(60);
-  window.__rec = N.tape.rec('bo_kaata');
-  return r;
+  // the game's REC prompt; its window runs out (auto-record, as when the player does not press it) REC_FIRE frames into
+  // the cut (the cut's first frame comes after one step: the HUD shows the prompt from frame 0)
+  window.__rec = N.tape.rec('bo_kaata', { window: (o.REC_FIRE + 0.5) / 30 });
+  return { rec: N.tape.recState };
 }
-PLANS.prologue.css = UI_CSS; PLANS.prologue.cssV = UI_CSS_V;
-// s_story: the same legibility treatment for the HUD (OSD strip with the tape counter, objective, toasts) and the
-// dialogue box; the minimap and stats scale with it
-PLANS.s_story.css = ['.dlg { zoom: 1.4; }', '#hud { zoom: 1.35; }'].join('\n');
-PLANS.s_story.cssV = ['.dlg { zoom: 1.45; }', '#hud { zoom: 1.3; }'].join('\n');
-function recPress(o) { if (o.i === 10) N.input.press('action'); }
 function startPrologue(o) {
   SP.setup({ hud: true, css: o.css });
   SP.fixLabel();
@@ -261,7 +266,8 @@ async function renderSegment(seg) {
   const dir = path.join(OUTD, seg.id);
   if (!CUTS.length) fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
-  const arg = { W, H, SCALE, PORTRAIT, css: (PORTRAIT ? plan.cssV : plan.css) || '', FR: PORTRAIT ? FRAME_V : FRAME, TICKS: YEAR_TICKS };
+  const arg = { W, H, SCALE, PORTRAIT, css: (PORTRAIT ? plan.cssV : plan.css) || '', FR: PORTRAIT ? FRAME_V : FRAME, TICKS: YEAR_TICKS,
+    YAW: +(process.env.YAW || 0.42), YAW_V: +(process.env.YAW_V || 0.3), PITCH: +(process.env.PITCH || 0.2), REC_FIRE: +(process.env.REC_FIRE || 18) };
   let f = 0;
   for (const cut of plan.cuts) {
     const want = !CUTS.length || CUTS.includes(cut.name);
@@ -273,9 +279,19 @@ async function renderSegment(seg) {
     if (cut.off) await page.evaluate(({ n, dt }) => SP.step(n, dt), { n: cut.off, dt: DT });
     const first = await page.evaluate(() => SP.status());
     if (!want) { await page.evaluate(({ n, dt }) => SP.step(n, dt), { n: cut.n, dt: DT }); f += cut.n; continue; }
+    // hold: [a, b] = frames a..b of the cut show a still (nothing on screen animates there): frame a is captured and
+    // copied to a+1..b-1 while the game keeps stepping; frame b is captured for real and compared with frame a
+    const hold = cut.hold && EVERY === 1 ? cut.hold : null;
+    let held = null;
     for (let i = 0; i < cut.n; i++) {
       if (cut.each) await page.evaluate(cut.each, Object.assign({ i, n: cut.n }, arg));
-      if (f % EVERY === 0) await shot(path.join(dir, String(f).padStart(5, '0') + '.jpg'));
+      const file = path.join(dir, String(f).padStart(5, '0') + '.jpg');
+      if (hold && i > hold[0] && i < hold[1] && held) fs.copyFileSync(held, file);
+      else if (f % EVERY === 0) {
+        await shot(file);
+        if (hold && i === hold[0]) held = file;
+        if (hold && i === hold[1] && held && !fs.readFileSync(held).equals(fs.readFileSync(file))) console.log('    WARNING', cut.name, 'hold', hold, 'frame', i, 'differs from the held frame (kept the real one; the copies may be off)');
+      }
       f++;
       await page.evaluate((dt) => SP.step(1, dt), DT);
     }

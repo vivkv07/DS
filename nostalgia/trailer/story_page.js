@@ -118,6 +118,9 @@
   SP.csTap = function () {
     const r = document.querySelector('#overlay .mn-cs');
     if (!r) return false;
+    // a tap goes to the dialogue box while it is open: the box of a finished say step closes 30 ms (real time) later,
+    // which fast virtual frames can outrun — close the idle box first
+    try { if (N.dialogue.isOpen() && !N.dialogue.current) N.dialogue.cancel(); } catch (e) { /* ignore */ }
     r.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 77, bubbles: true }));
     r.dispatchEvent(new PointerEvent('pointerup', { pointerId: 77, bubbles: true }));
     return true;
@@ -223,14 +226,16 @@
     return SP.status();
   };
   /** step until a story moment begins: {cs: i} (cutscene step i starts), {line: 'text'} (a dialogue line containing
-   *  text is on screen), {typed: 'text'} (that line has finished typing), {fn: 'js expr'}; -> frames stepped | -1 */
+   *  text is on screen), {typed: 'text'} (that line has finished typing), {chars: n} (the line on screen has typed n
+   *  characters), {fn: 'js expr'}; -> frames stepped | -1 */
   SP.until = async function (spec, dt, max) {
-    const hit = () => {
-      if (spec.cs != null) return !!(SP.csStep && SP.csStep.i >= spec.cs);
+    const hit = () => { // every condition given must hold
       const d = N.dialogue && N.dialogue.current;
-      if (spec.line != null) return !!(d && String(d.text || '').indexOf(spec.line) >= 0);
-      if (spec.typed != null) return !!(d && !d.typing && String(d.text || '').indexOf(spec.typed) >= 0);
-      if (spec.fn) return !!(0, eval)(spec.fn);
+      if (spec.cs != null && !(SP.csStep && SP.csStep.i >= spec.cs)) return false;
+      if (spec.line != null && !(d && String(d.text || '').indexOf(spec.line) >= 0)) return false;
+      if (spec.typed != null && !(d && !d.typing && String(d.text || '').indexOf(spec.typed) >= 0)) return false;
+      if (spec.chars != null && !(d && (!d.typing || document.querySelectorAll('.dlg.show .dlg-text .c.on').length >= spec.chars))) return false;
+      if (spec.fn && !(0, eval)(spec.fn)) return false;
       return true;
     };
     for (let k = 0; k < (max || 4000); k++) { if (hit()) return k; await one(dt); }
