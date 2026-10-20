@@ -38,7 +38,9 @@
  *                     his friends (the quick-chat action)
  *   'latehome_daddy'  one friend is Daddy with the big torch (on foot, or on the parked Chetak) and seeks the
  *                     others in a time limit; catches are by proximity + facing; roles swap every round. Solo:
- *                     round 1 AI Nanna hunts you, round 2 you are Daddy and hunt AI Immu and Ayesha.
+ *                     round 1 AI Nanna hunts you, round 2 you are Daddy and hunt AI Immu and Ayesha. It is
+ *                     played just after the lights come on (19:10) with a soft lift of the 2D night mask, and
+ *                     the torch beam drawn stronger, so kids and lanes stay readable on a phone.
  *   The course (start, doors, seekers, spots, dog, lamps) comes from ctx.seed, so every phone builds the same one;
  *   the host simulates the seekers / AI kids / dog and sends one snapshot 'lhsk' 6 times a second (with its own kid,
  *   flavour events, the round and the catches it owes); each guest sends 'lhpos' 5 times a second (its kid + state);
@@ -72,7 +74,11 @@
  *     N.traffic.closeRoads('latehome', ...), N.npcs.schedule('colony_aunties' | 'bahadur_night', off) during a
  *     run (restored after), mission givers' when() wrapped once ("not now" while a run is on);
  *   - N.interact.add('lh:<venue>') the solo prompts; N.party.register('latehome' | 'latehome_daddy');
- *   - its own CSS (<style id="lh-css">), the HUD panel inside #hud .hud-top and the results card in #ui.
+ *   - its own CSS (<style id="lh-css">), the HUD panel inside #hud .hud-top and the results card in #ui;
+ *     during a run body.lh-live lifts .hud-top above the speech bubbles (#barks), and the run's banners are its
+ *     own (.lh-ban in #hud, not N.hud.banner): placed each frame clear of the HUD panel and of the kid, above the
+ *     bubbles (any bubble under it fades out); the catch line is folded into it, the ear / escort bubbles follow
+ *     one at a time after it.
  * TEST: node tests/latehome.cjs
  */
 (() => {
@@ -112,7 +118,10 @@
     catch: { approach: 3.2, escort: 3.4, fade: 0.55 },
     whistleCD: 5,
     net: { hz: 6, posHz: 5, interp: 0.18 },
-    daddy: { rounds: 2, time: 85, catchR: 14, catchHalf: 0.95, hiddenR: 6 },
+    // Daddy rounds are played just after the lights come on (clock held at 19:10 unless already 19:00-21:30)
+    // with a soft lift of the 2D night mask around the screen centre: kids and lanes stay readable, lamps,
+    // windows and the torch still read as light
+    daddy: { rounds: 2, time: 85, catchR: 14, catchHalf: 0.95, hiddenR: 6, clock: 19 * 60 + 10, lift: 0.24 },
     score: { base: 1000, perSec: 6, perSpot: 120, perItem: 150, floor: 100 },
   };
 
@@ -1085,7 +1094,7 @@
       const who = by && esc === by ? by.name : esc ? (esc.name || 'Amma') : null;
       if (!quote && who) quote = { who, text: k.seq.line };
       banner(LINES.pakda, why === 'time' ? LINES.timeUp : k.caughtBy + ' saw you!', 2400, { kind: 'busted', quote });
-      k.seq.banT = 2.55;
+      k.seq.nextSay = 0.4; // and the banner holds them (catchSaysStep)
       if (by && esc === by) sayNet(by, k.seq.line, by.role === 'watchman' ? 'bahadur' : null);
       netState(k);
     } else if (k.ent) {
@@ -1097,16 +1106,23 @@
   function catchSay(k, tgt, text, speaker, secs) {
     const q = k.seq;
     if (!q || !tgt) return;
-    const at = Math.max(q.T || 0, q.sayAt || 0, q.banT || 0);
-    (q.says || (q.says = [])).push({ at, tgt, text, speaker, secs });
-    q.sayAt = at + secs + 0.15;
+    (q.says || (q.says = [])).push({ tgt, text, speaker, secs });
+  }
+  /** the next catch bubble: when the last one is over and no banner sits over him */
+  function catchSaysStep(k, q) {
+    if (!q.says || !q.says.length || (q.T || 0) < (q.nextSay || 0)) return;
+    const s = q.says[0], p = N.player;
+    if (BAN.cur && p && hyp((s.tgt.x || 0) - p.x, (s.tgt.y || 0) - p.y) < 110) return;
+    q.says.shift();
+    bark(s.tgt, s.text, s.speaker, s.secs);
+    q.nextSay = q.T + s.secs + 0.15;
   }
   function catchStep(k, dt) {
     const q = k.seq, e = k.isMe ? N.player : k.ent;
     if (!q) return;
     q.t += dt;
     q.T = (q.T || 0) + dt;
-    if (q.says && q.says.length && q.says[0].at <= q.T) { const s = q.says.shift(); bark(s.tgt, s.text, s.speaker, s.secs); }
+    catchSaysStep(k, q);
     const esc = q.esc;
     const R = N.render;
     if (q.phase === 'approach') {
@@ -1137,7 +1153,7 @@
         k.x = e.x; k.y = e.y;
       }
       // walk on until his line has been said (it may wait for the banner)
-      if ((q.t > TUNE.catch.escort && !(q.says && q.says.length) && q.T >= (q.sayAt || 0) - 0.5) || !esc || q.t > TUNE.catch.escort + 5) { q.phase = 'fade'; q.t = 0; }
+      if ((q.t > TUNE.catch.escort && !(q.says && q.says.length) && q.T >= (q.nextSay || 0) - 0.5) || !esc || q.t > TUNE.catch.escort + 6) { q.phase = 'fade'; q.t = 0; }
       return;
     }
     if (q.phase === 'fade') {
@@ -1632,7 +1648,8 @@
   function setupWorld() {
     const sv = S.saved, F = N.flags || (N.flags = {});
     const m = N.clock.minutes;
-    if (!(m >= TUNE.clockStart && m < TUNE.window[1])) { try { N.clock.set(Math.floor(TUNE.clockStart / 60), TUNE.clockStart % 60); } catch (e) { N.clock.minutes = TUNE.clockStart; } }
+    const dad = S.variant === 'daddy', want = dad ? TUNE.daddy.clock : TUNE.clockStart;
+    if (!(m >= (dad ? 19 * 60 : TUNE.clockStart) && m < TUNE.window[1])) { try { N.clock.set(Math.floor(want / 60), want % 60); } catch (e) { N.clock.minutes = want; } }
     try { N.clock.hold('latehome', true); } catch (e) { /* ignore */ }
     sv.noCurfew = Object.prototype.hasOwnProperty.call(F, 'no_curfew'); sv.noCurfewV = F.no_curfew;
     if (!F.no_curfew) F.no_curfew = 'latehome';
@@ -1897,8 +1914,8 @@
         if (S.mode === 'solo' && S.isHost) {
           N.interact.offer({ label: 'Skip to results', priority: 90, dist: 0, use: () => { resolveAI(); } });
           setUI('Skip to results', 'Ghost: whistle (Space / SEETI) to pull the uncles away from ' + S.kids.filter((q) => !q.done && q.role !== 'daddy').map((q) => q.nick).join(' & ') + '.');
-        } else setUI('', 'Ghost: whistle (Space / SEETI) to help your friends home!');
-      } else setUI('', k.done === 'home' ? 'Home!' : 'Caught...');
+        } else { setUI('', 'Ghost: whistle (Space / SEETI) to help your friends home!'); quietAction(); }
+      } else { setUI('', k.done === 'home' ? 'Home!' : 'Caught...'); quietAction(); }
       return;
     }
     if (k.role === 'daddy') {
@@ -1932,6 +1949,8 @@
   }
   function actKey() { return N.input && N.input.touchUI ? 'HIDE' : 'E'; }
   function setUI(label, prompt) { if (S) { S.ui.label = label; S.ui.prompt = prompt; } }
+  /** home / caught / a ghost: no shop or side-job prompt pops up on ACTION while the run goes on */
+  function quietAction() { N.interact.offer({ label: '', priority: 90, dist: 0, use() { /* nothing */ } }); }
   let preX = 0, preY = 0, preOk = false;
   function preStep() { const p = N.player; preOk = !!(S && S.me && !S.me.done && !S.me.seq && S.phase === 'play' && !p.vehicle); if (preOk) { preX = p.x; preY = p.y; } }
   function postStep() {
@@ -2279,6 +2298,8 @@ body.lh-live #hud .hud-top { z-index: 4; }
 .lh-bq b { color: #fff8e6; font-weight: 800; }
 .lh-bs:empty, .lh-bq:empty { display: none; }
 body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
+/* a speech bubble that the banner lands on fades out while it shows (it comes back after) */
+#barks .bark.lh-under { opacity: 0 !important; }
 `;
   function ensureCss() {
     if (G.css || typeof document === 'undefined') return;
@@ -2304,10 +2325,133 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
     if (HD.root.parentNode !== top) top.appendChild(HD.root);
     HD.root.classList.add('show');
     HD.sig = '';
+    document.body.classList.add('lh-live');
   }
   function hudOff() {
     if (HD.root) HD.root.classList.remove('show');
+    document.body.classList.remove('lh-live');
+    BAN.q.length = 0; BAN.after.length = 0; // the banner up now may finish (a party results card covers it)
     closeResults(true);
+  }
+
+  /* ---------------------------------------------------------------- the run's own centre banner
+   * N.hud.banner sits at a fixed 32% of the screen: right where the kid stands and where the bubbles over
+   * him and his escort go. This one is placed every frame in a band clear of the HUD panel and of the
+   * kid: between the panel and his head when there is room, else under his feet (above the touch buttons
+   * and the action prompt). It sits above the bubble layer on a dark plate, waits for the party's 3-2-1,
+   * and bubbles near the kid wait until it is gone (barkSafe; the catch line is folded into it). */
+  const BAN = { el: null, q: [], cur: null, t: 0, y: null, last: 0, gap: 0, after: [] };
+  function banPush(title, sub, ms, o) {
+    const kind = o.kind || 'info';
+    if (kind === 'busted' || kind === 'pass') {
+      // results cut in front of title cards and info banners
+      BAN.q = BAN.q.filter((b) => b.kind !== 'chapter' && b.kind !== 'info');
+      if (BAN.cur && (BAN.cur.kind === 'chapter' || BAN.cur.kind === 'info')) banHide(true);
+    }
+    BAN.q.push({ title: String(title || ''), sub: String(sub || ''), quote: o.quote || null, ms, kind });
+    if (BAN.q.length > 3) BAN.q.shift();
+    banStep();
+  }
+  function banEl() {
+    if (BAN.el && BAN.el.isConnected) return BAN.el;
+    ensureCss();
+    const host = document.getElementById('hud') || document.getElementById('ui');
+    if (!host) return null;
+    const el = document.createElement('div');
+    el.className = 'lh-ban';
+    el.setAttribute('aria-live', 'polite');
+    el.innerHTML = '<div class="lh-bt"></div><div class="lh-bs"></div><div class="lh-bq"></div>';
+    host.appendChild(el);
+    BAN.el = el; BAN.bt = el.querySelector('.lh-bt'); BAN.bs = el.querySelector('.lh-bs'); BAN.bq = el.querySelector('.lh-bq');
+    return el;
+  }
+  function banShow(b) {
+    const el = banEl();
+    if (!el) return;
+    BAN.cur = b; BAN.t = b.ms / 1000; BAN.y = null;
+    BAN.bt.textContent = b.title;
+    BAN.bs.textContent = b.sub;
+    BAN.bq.innerHTML = b.quote ? '<b>' + esc(b.quote.who) + ':</b> “' + esc(subst(b.quote.text).replace(/\*([^*]+)\*/g, '$1')) + '”' : '';
+    el.className = 'lh-ban k-' + b.kind;
+    void el.offsetWidth; // restart the animation
+    banPlace(0);
+    el.classList.add('show');
+  }
+  function banHide(now) {
+    BAN.cur = null; BAN.t = 0; BAN.gap = now ? 0 : 0.35;
+    if (BAN.el) BAN.el.className = now ? 'lh-ban' : 'lh-ban out';
+    banUnder(false);
+    // the bubbles that waited for it
+    const later = BAN.after.splice(0);
+    for (const a of later) bark(a[0], a[1], a[2], a[3]);
+  }
+  /** the party's 3-2-1 / GO or a results card own the centre: wait */
+  function banBusy() {
+    if (RES.el) return true;
+    const cd = document.querySelector('.pt-count.show');
+    return !!(cd && cd.textContent);
+  }
+  function banStep() {
+    if (typeof document === 'undefined') return;
+    const nowMs = performance.now(), dt = Math.min(0.1, Math.max(0, (nowMs - (BAN.last || nowMs)) / 1000));
+    BAN.last = nowMs;
+    if (!BAN.cur && !BAN.q.length && !BAN.after.length) return;
+    const mode = N.state && N.state.mode, live = mode === 'play' || mode === 'dialogue';
+    if (!S && !live) { BAN.q.length = 0; BAN.after.length = 0; if (BAN.cur) banHide(true); return; }
+    if (BAN.cur) {
+      if (live) BAN.t -= dt;
+      if (BAN.t <= 0 || RES.el) banHide(!!RES.el);
+      else banPlace(dt);
+      return;
+    }
+    if (BAN.gap > 0) { BAN.gap -= dt; return; }
+    if (BAN.q.length && live && !banBusy()) banShow(BAN.q.shift());
+  }
+  /** where the kid is on screen (CSS px): his head and his feet */
+  function kidOnScreen() {
+    const Rn = N.render, p = N.player;
+    if (!Rn || !Rn.proj || !Rn.canvas || !Rn.H || !p) return null;
+    const rect = Rn.canvas.getBoundingClientRect();
+    const f = Rn.proj(p.x, p.y, 0), h = Rn.proj(p.x, p.y, 15);
+    if (!f || !h || !isFinite(f.y) || !isFinite(h.y)) return null;
+    const a = rect.top + (f.y / Rn.H) * rect.height, b = rect.top + (h.y / Rn.H) * rect.height;
+    if (Math.max(a, b) < rect.top || Math.min(a, b) > rect.bottom) return null;
+    return { head: Math.min(a, b), feet: Math.max(a, b) };
+  }
+  function banPlace(dt) {
+    const el = BAN.el;
+    if (!el || !el.parentNode) return;
+    const vh = window.innerHeight || 720, h = el.offsetHeight || 110;
+    // the band starts under the HUD stack (my panel is its last card)
+    let top0 = 12;
+    const hr = HD.root && HD.root.classList.contains('show') && HD.root.isConnected ? HD.root.getBoundingClientRect() : null;
+    if (hr && hr.height) top0 = hr.bottom + 8;
+    else { const ht = document.querySelector('#hud .hud-top'); const r = ht && ht.getBoundingClientRect(); if (r && r.height) top0 = r.bottom + 8; }
+    // ...and ends above the touch buttons / the desktop action prompt
+    let bottom = vh - 8;
+    const lows = [...document.querySelectorAll(document.body.classList.contains('touch-on') ? '#touch .t-btn' : '#prompt.show'), ...document.querySelectorAll('.dlg')];
+    for (const b of lows) { const r = b.getBoundingClientRect(); if (r.height && r.top > vh * 0.4 && r.top - 8 < bottom) bottom = r.top - 8; }
+    let y = top0;
+    const kid = kidOnScreen();
+    if (kid && kid.head - 12 - top0 < h) {
+      const under = kid.feet + 14;
+      y = bottom - under >= h ? under : Math.max(top0, Math.min(bottom - h, under));
+    }
+    if (BAN.y == null || !dt) BAN.y = y; else BAN.y += (y - BAN.y) * Math.min(1, dt * 8);
+    const pr = el.parentNode.getBoundingClientRect();
+    el.style.top = Math.round(BAN.y - pr.top) + 'px';
+    banUnder(true);
+  }
+  /** fade the bubbles (ambient chatter too) that lie under the banner; on = false brings them all back */
+  function banUnder(on) {
+    const host = document.getElementById('barks');
+    if (!host) return;
+    const T = on && BAN.el ? BAN.el.getBoundingClientRect() : null;
+    for (const e of host.children) {
+      let hit = false;
+      if (T && e.style.visibility !== 'hidden') { const r = e.getBoundingClientRect(); hit = r.left < T.right + 4 && T.left - 4 < r.right && r.top < T.bottom + 4 && T.top - 4 < r.bottom; }
+      if (hit !== e.classList.contains('lh-under')) e.classList.toggle('lh-under', hit);
+    }
   }
   function peekLevel(k) {
     if (!S || !k || k.done || k.role === 'daddy') return 0;
@@ -2415,6 +2559,7 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
     if (again) setTimeout(() => start(opts), 50);
   }
   function uiStep() {
+    banStep();
     if (!S) return;
     if (S.resPending && performance.now() >= (S.resAt || 0) && !(N.dialogue && N.dialogue.isOpen && N.dialogue.isOpen()) && N.state.mode === 'play') buildResults();
     if (RES.el && N.state.mode === 'play' && performance.now() - RES.openT > 700 && N.input.pressed('action')) { N.input.consume('action'); closeCard('done'); }
@@ -2509,14 +2654,16 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
     ctx.closePath();
     const ox = R.sx(C.x, k), oy = R.sy(C.y, k);
     const g = ctx.createRadialGradient(ox, oy, 2, ox, oy, Math.max(4, C.range * k));
-    const a0 = light ? 0.42 : 0.26, a1 = light ? 0.08 : 0.05;
+    // Daddy rounds are played under a lighter sky: the torch beam is drawn stronger so it still reads
+    const dad = light && S && S.variant === 'daddy';
+    const a0 = dad ? 0.62 : light ? 0.42 : 0.26, a1 = dad ? 0.16 : light ? 0.08 : 0.05;
     g.addColorStop(0, 'rgba(' + col.join(',') + ',' + a0 + ')');
     g.addColorStop(1, 'rgba(' + col.join(',') + ',' + a1 + ')');
     ctx.globalCompositeOperation = light ? 'lighter' : 'source-over';
     ctx.fillStyle = g; ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
-    ctx.strokeStyle = 'rgba(' + col.join(',') + ',' + (alert ? 0.75 : 0.42) + ')';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(' + col.join(',') + ',' + (alert ? 0.75 : dad ? 0.8 : 0.42) + ')';
+    ctx.lineWidth = dad ? 1.6 : 1;
     if (!light) ctx.setLineDash([3, 3]);
     ctx.stroke();
     ctx.setLineDash([]);
@@ -2657,6 +2804,11 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
     const R = N.render;
     if (!R.lights) return;
     const T = N.time.real || 0, p = N.player;
+    if (S.variant === 'daddy' && !is3D() && isFinite(R.camX) && R.Z > 0) {
+      // Daddy rounds: lift the night mask (no glow) over the whole screen, most in the middle
+      const half = Math.hypot(R.W || 1280, R.H || 720) / 2 / R.Z;
+      R.lights.push({ x: R.camX, y: R.camY, r: half * 1.5, intensity: TUNE.daddy.lift, glow: false });
+    }
     for (const l of S.C.lamps) if (hyp(l.x - p.x, l.y - p.y) < 520) R.lights.push({ x: l.x, y: l.y, r: TUNE.lampR, color: '#ffb35a', intensity: 0.85, h: 17 });
     for (const tv of S.C.tvs) {
       if (hyp(tv.x - p.x, tv.y - p.y) > 420) continue;
@@ -3137,6 +3289,10 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
       endRound() { if (S) endRound('debug'); return S ? S.phase : null; },
       threatAt: (x, y, m) => { const t = threatAt(x, y, m || 0); return t ? t.idx : -1; },
       paths: () => (S ? S.C.paths : null),
+      kidOnScreen,
+      banner: () => (BAN.cur ? { title: BAN.cur.title, sub: BAN.cur.sub, kind: BAN.cur.kind, quote: BAN.cur.quote, left: BAN.t, waiting: BAN.after.length } : null),
+      /** every catch line (as shown, *slang* marks off) — the test checks none sits in a bubble on the banner */
+      catchLines: () => [].concat(...Object.values(LINES.caught), LINES.ear, LINES.escort, LINES.daddyCatch).map((t) => subst(t).replace(/\*/g, '')),
       _v3: V3,
       v3: () => ({ ok: V3.ok, built: V3.sess === S && !!S, cones: V3.cones.length, coneVis: V3.cones.filter((c) => c.m.visible).length, rootVis: !!(V3.root && V3.root.visible), lamps: V3.lamps.length, doors: V3.doors.length, heads: V3.heads.filter((h) => h.head.visible).length }),
     },

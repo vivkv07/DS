@@ -146,6 +146,41 @@ async function aimSeeker(P, x, y, dist, roles) {
     return { idx: sk.idx, role: sk.role, x: sk.x, y: sk.y };
   }, [x, y, dist, roles || ['walker', 'watchman']]);
 }
+/**
+ * The PAKDA! banner layout: wait for it, then check its text box is clear of the HUD panel and of the kid
+ * on screen, sits above the speech-bubble layer, and no catch-line bubble lies on it (ambient NPC chatter is
+ * only reported: it is drawn under the banner).
+ */
+async function banCheck(P, where, ms) {
+  const up = await P.until(() => !!document.querySelector('.lh-ban.show') && !!N.latehome.debug.banner(), null, ms || 6000);
+  if (!check(up, where + ': the PAKDA! banner shows')) return null;
+  await sleep(550); // the pop-in animation
+  const L = await P.ev(() => {
+    const b = document.querySelector('.lh-ban.show');
+    if (!b) return null;
+    const box = (e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; };
+    const parts = ['.lh-bt', '.lh-bs', '.lh-bq'].map((s) => b.querySelector(s)).filter((e) => e && e.offsetHeight).map(box);
+    const T = { l: Math.min(...parts.map((q) => q.l)), r: Math.max(...parts.map((q) => q.r)), t: Math.min(...parts.map((q) => q.t)), b: Math.max(...parts.map((q) => q.b)) };
+    const hit = (a, c) => !!(a && c && a.l < c.r && c.l < a.r && a.t < c.b && c.t < a.b);
+    const hud = document.querySelector('.lh-hud.show');
+    const kid = N.latehome.debug.kidOnScreen();
+    const lines = N.latehome.debug.catchLines().map((t) => t.slice(0, 14));
+    const bubbles = [...document.querySelectorAll('#barks .bark')].filter((e) => e.style.visibility !== 'hidden' && !e.classList.contains('out') && e.offsetHeight)
+      .map((e) => ({ t: e.textContent, on: hit(box(e), T), faded: e.classList.contains('lh-under'), mine: lines.some((l) => e.textContent.includes(l)) }));
+    const zb = +getComputedStyle(b).zIndex || 0, zbk = +getComputedStyle(document.getElementById('barks') || b).zIndex || 0;
+    const vw = innerWidth, vh = innerHeight;
+    return {
+      text: b.textContent.slice(0, 90), box: T, hud: hud ? box(hud) : null, kid,
+      hudHit: hit(T, hud ? box(hud) : null), kidHit: !!(kid && T.t < kid.feet && T.b > kid.head), inView: T.l >= 0 && T.r <= vw && T.t >= 0 && T.b <= vh,
+      above: zb > zbk, mineOn: bubbles.filter((q) => q.on && q.mine).map((q) => q.t), shownOn: bubbles.filter((q) => q.on && !q.faded).map((q) => q.t), fadedOn: bubbles.filter((q) => q.on && q.faded).length,
+    };
+  });
+  if (!L) return null;
+  check(!L.hudHit && L.inView, where + ': banner clear of the HUD panel, on screen', L);
+  check(!L.kidHit, where + ': banner clear of the kid', L);
+  check(L.above && !L.mineOn.length && !L.shownOn.length, where + ': above the bubble layer, no bubble on it' + (L.fadedOn ? ' (' + L.fadedOn + ' ambient bubble(s) under it faded out)' : ''), L);
+  return L;
+}
 const noErrors = async (P, what) => { const e = await P.errs(); check(!e.length, what + ': zero console / page errors / N.err' + (e.length ? ': ' + e.slice(0, 4).join(' | ') + (P.failed.length ? '  [failed requests: ' + P.failed.slice(0, 4).join(' | ') + ']' : '') : '')); };
 
 /* ================================================================ solo2d */
@@ -222,7 +257,7 @@ async function solo2d(browser) {
   // a collectible
   const it = await P.ev(() => { const i = N.latehome.state().items.find((q) => !q.taken); if (!i) return null; const f = N.world.findFree(i.x - 20, i.y, 'walk', 20) || N.world.findFree(i.x + 20, i.y, 'walk', 20); N.player.teleport(f.x, f.y); return i; });
   if (it) {
-    await P.ev(() => N.latehome.debug.setSeekersFrozen(true));
+    await P.ev(() => { N.latehome.debug.setSeekersFrozen(true); N.latehome.debug.unseen(true); N.latehome.debug.meter(0); });
     await walkTo(P, it.x, it.y, 4000, { r: 2, until: () => N.latehome.state().me.coll > 0 });
     check(await P.until(() => N.latehome.state().me.coll === 1, null, 2000), 'picked up ' + it.kind + ' by walking onto it');
   }
@@ -250,8 +285,23 @@ async function solo2d(browser) {
   check(bar > 10, 'the PAKDA! bar fills on the HUD (' + bar + '%)');
   await P.shot('spotted_2d');
   // caught: stay in the cone -> walked home by the ear -> Amma
-  check(await P.until(() => { const s = N.latehome.state(); return s.me.seq === 'ear' || s.me.seq === 'walk'; }, null, 30000), 'caught: the uncle comes and takes him by the ear');
+  check(await P.until(() => !!N.latehome.state().me.seq, null, 30000), 'caught: PAKDA!');
+  await banCheck(P, 'caught 2D');
   await P.shot('caught_2d');
+  check(await P.until(() => { const s = N.latehome.state(); return s.me.seq === 'ear' || s.me.seq === 'walk' || s.me.done === 'caught'; }, null, 30000), 'caught: the uncle comes and takes him by the ear');
+  // after the banner, the catch bubbles come one at a time (his "ow", then the escort's line)
+  const bub = await P.ev(async () => {
+    const lines = N.latehome.debug.catchLines().map((t) => t.slice(0, 14));
+    let most = 0, seen = 0, withBan = 0;
+    for (let i = 0; i < 60; i++) {
+      const vis = [...document.querySelectorAll('#barks .bark')].filter((e) => e.style.visibility !== 'hidden' && !e.classList.contains('out') && e.offsetHeight && lines.some((l) => e.textContent.includes(l)));
+      most = Math.max(most, vis.length); seen += vis.length ? 1 : 0;
+      if (vis.length && document.querySelector('.lh-ban.show')) withBan++;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    return { most, seen, withBan };
+  });
+  check(bub.seen > 0 && bub.most <= 1 && bub.withBan === 0, 'catch bubbles after the banner, one at a time', bub);
   check(await P.until(() => N.latehome.state().me.done === 'caught', null, 45000), 'walked home: result "caught"');
   check(await P.until(() => N.dialogue.isOpen() && /amma/i.test(String((N.dialogue.current && (N.dialogue.current.speaker || N.dialogue.current.s)) || '')) || N.dialogue.isOpen(), null, 5000), 'Amma has a scolding line (no fine, no meter)');
   await P.shot('amma_2d');
@@ -326,7 +376,8 @@ async function solo2d(browser) {
     await P.ev(() => N.latehome.stop());
   }
   check(win && win.me.done === 'home', 'got home with real keys');
-  const banner = await P.ev(() => { const b = document.querySelector('.hud-banner'); return b ? b.textContent : ''; });
+  await P.until(() => { const b = document.querySelector('.lh-ban.show'); return !!b && /NOBODY SAW|GHAR PAHUNCH GAYA/.test(b.textContent); }, null, 3000);
+  const banner = await P.ev(() => { const b = document.querySelector('.lh-ban'); return b ? b.textContent : ''; });
   check(/NOBODY SAW|GHAR PAHUNCH GAYA/.test(banner), 'banner: ' + banner.slice(0, 80));
   await sleep(600);
   await P.shot('home_2d');
@@ -383,6 +434,7 @@ async function solo3d(browser) {
   await P.page.keyboard.up('KeyE');
   check(await P.until(() => N.latehome.state().me.spots >= 1, null, 20000), 'spotted in 3D once he lets go');
   check(await P.until(() => { const s = N.latehome.state(); return !!(s && (s.me.seq || s.me.done === 'caught')); }, null, 90000), 'caught in 3D (by the ear)');
+  await banCheck(P, 'caught 3D', 4000);
   await P.until(() => { const s = N.latehome.state(); return !!(s && (s.me.seq === 'walk' || s.me.done)); }, null, 30000);
   await P.shot('caught_3d');
   await P.until(() => N.latehome.state().me.done === 'caught', null, 60000);
@@ -460,6 +512,13 @@ async function phone(browser) {
   await P.ev(() => { window.__wh = 0; N.on('latehome:whistle', () => { window.__wh++; }); });
   await tap('.t-horn');
   check(await P.until(() => window.__wh > 0, null, 3000), 'the SEETI (whistle) button whistles');
+  // caught on the phone: the PAKDA! banner keeps clear of the HUD panel, the kid and his bubbles
+  await P.ev(() => { N.latehome.debug.catchMe(); });
+  await banCheck(P, 'phone caught');
+  await P.shot('phone_caught');
+  await P.until(() => { const s = N.latehome.state(); return !s || s.me.seq === 'walk' || s.me.done; }, null, 15000);
+  await sleep(2500);
+  await P.shot('phone_caught_walk');
   await P.ev(() => { if (N.party && N.party.active) N.party.cancel(); else N.latehome.stop(); });
   check(await P.until(() => !N.latehome.active(), null, 4000), 'stopped');
   await noErrors(P, 'phone');
@@ -480,6 +539,10 @@ async function daddy(browser) {
   const h = await P.ev(() => { const S = N.latehome.debug.session(); const hu = S.seekers.find((q) => q.role === 'hunter'); const a = hu.angle; const f = N.world.findFree(hu.x + Math.cos(a) * 20, hu.y + Math.sin(a) * 20, 'walk', 10) || { x: hu.x + Math.cos(a) * 20, y: hu.y + Math.sin(a) * 20 }; N.player.teleport(f.x, f.y); N.latehome.debug.setSeekersFrozen(true); return { x: hu.x, y: hu.y }; });
   await walkTo(P, h.x, h.y, 20000, { r: 6, until: () => !!N.latehome.state().me.seq || !!N.latehome.state().me.done });
   check(await P.until(() => !!N.latehome.state().me.seq || N.latehome.state().me.done === 'caught', null, 10000), 'Nanna catches him: close + facing (no meter in Daddy rounds)');
+  const dl = await banCheck(P, 'daddy');
+  check(dl && /Nanna/.test(dl.text), 'Nanna\'s line is in the banner, not a bubble over it', dl && dl.text);
+  const night = await P.ev(() => ({ clock: N.clock.label(), night: +N.render.night.toFixed(2) }));
+  check(night.night > 0.5 && night.night < 0.95, 'Daddy rounds: a lighter night (' + night.clock + ', night ' + night.night + '; plus a soft lift of the mask)', night);
   await P.shot('daddy_r1');
   await P.until(() => N.latehome.state().me.done === 'caught', null, 10000);
   await P.ev(() => { N.latehome.debug.setSeekersFrozen(false); N.latehome.debug.resolveAI(); });
@@ -487,6 +550,10 @@ async function daddy(browser) {
   const s1 = await P.st();
   check(s1.me.role === 'daddy' && !s1.seekers.some((q) => q.role === 'hunter') && s1.virtual.length === 1, 'round 2: YOU are Daddy (your torch is the cone)');
   check(await P.until(() => N.latehome.state().phase === 'play', null, 20000), 'GO (round 2)');
+  await sleep(1200);
+  const torch = await P.ev(() => { const S = N.latehome.debug.session(); const v = S.virtualSeekers[0]; return v ? { on: v.cone.on, poly: !!v.cone.poly } : null; });
+  check(torch && torch.on && torch.poly, 'your torch beam is on (a lighter night, the beam drawn stronger)', torch);
+  await P.shot('daddy_torch');
   // catch an AI friend: get close behind him, then walk at him with real keys
   let caught = false;
   for (let tries = 0; tries < 6 && !caught; tries++) {
