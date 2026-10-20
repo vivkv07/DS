@@ -1,10 +1,11 @@
 /* NOSTALGIA trailer — in-page helper for the two HUD shots (used by hud_shots.cjs; self-contained, no stage.js).
  * The real game with its real HUD (#ui): clock, money, energy, the Chappal Meter, minimap, barks. Chinnu follows a
- * smoothed route along the road graph, driven kinematically (repeatable); the wanted system, pursuers, traffic and
- * cameras are the game's own. CSS animations / transitions (the meter's shake, slipper tilt, money tin) are slaved
- * to the virtual clock, so they play frame by frame instead of finishing between two (slow) captures.
+ * smoothed route along the road graph, driven kinematically (repeatable); the wanted system (heat, levels, pursuers
+ * and their AI, the homing chappal), traffic, the cameras and the view switch are the game's own. CSS animations /
+ * transitions (the meter's shake, the OSD blink) are slaved to the virtual clock, so they play frame by frame
+ * instead of finishing between two (slow) captures.
  *   HUDSHOT.setup({money})             show the HUD (debug / touch / toasts / testing stay hidden), believable money
- *   HUDSHOT.prep(id, nf) -> info       place the scene, warm up
+ *   HUDSHOT.prep(id, nf) -> info       place the scene, warm up (frames < 0)
  *   HUDSHOT.frame() -> status          one 1/30 s step (+ the shot's per-frame script)
  */
 (() => {
@@ -14,21 +15,27 @@
   const P = (id) => N.places[id] || null;
   const LM = (id) => N.world.data.landmarks.find((l) => l.id === id) || null;
 
-  // view: 'top' | 'tps'.  at: place / landmark id | [x, y].  veh: vehicle type | null (on foot).  spd: u/s.  dir: heading
+  // view: 'top' | 'tps'.  at: place / landmark id | [x, y].  veh: vehicle type | null (on foot, run: true = running).
+  // spd: u/s (Chinnu runs at 80, the player's own run speed).  dir: preferred heading | toward: landmark id.
+  // Frame numbers are shot frames (0 = first captured frame); the warm-up runs frames -warm..-1.
   const SHOTS = {
-    // the Chappal Meter climbs on the beat while Chinnu legs it through Abids; the pursuers are the wanted system's own
-    // (staged: each new one is moved to just outside the frame behind him so he/she rides into shot)
+    // "MIND THE CHAPPAL METER": Chinnu legs it from Koti towards Abids with Havaldar Pochaiah's Luna on his tail; the
+    // fifth slipper fills and lights on the beat (f18: level 4 -> 5), the game swaps the police for MUMMY in
+    // Yadagiri's auto, who winds up the homing chappal
     chase: {
-      view: 'top', at: 'koti', time: [12, 30], veh: 'cycle', spd: 105, dir: Math.PI, zoom: 1.6,
-      // heat keyframes [frame, heat] (level = heat / 100): the next slipper fills from the sole up and lights on the
-      // beat (f18: 3 -> 4, f36: 4 -> 5)
-      heat: [[0, 340], [18, 400], [36, 500], [71, 560]],
-      // where each new pursuer is put (u behind Chinnu on his route, u to the side)
-      stage: { back: { pochaiah: 105, havaldar: 70, mummy: 120 }, side: 9 },
-      chappalT: 0.15, // Mummy's first homing chappal: wind-up soon after she arrives (the game waits 3 s)
+      view: 'top', at: 'koti', time: [12, 30], veh: null, run: true, spd: 80, dir: Math.PI, zoom: 1.75, warm: 90,
+      // heat keyframes [frame, heat] (level = floor(heat / 100)); level 4 only just before the shot (its roadblock
+      // goes ~300 u ahead and is called off again at level 5 before he reaches it)
+      heat: [[-90, 350], [-8, 400], [0, 420], [18, 500], [71, 540]],
+      // new pursuers are put on his route behind him: u behind, or 'edge' = just outside the frame (drives in)
+      stage: { roles: { pochaiah: 60, mummy: 'edge' }, side: 7, at: -40 },
+      quiet: true, // pursuers' random shouts off: the lines below + the game's own (dismissal, chappal wind-up)
+      barks: [[2, 'pochaiah', '*Ruko!*'], [24, 'mummy', '{FULL}!']], // (their own lines from wanted.js)
+      chappalT: 0.15, // Mummy's first homing chappal: wind-up as soon as she is in range (the game waits 3 s)
     },
-    // 3D third person on the cycle by Charminar, then the real view switch (N.view.set('top')) on the beat
-    charminar: { view: 'tps', at: 'charminar_plaza', time: [11, 0], veh: 'cycle', spd: 100, dir: -1.6, zoom: 1.3, switchAt: 36 },
+    // "PLAY IN 3D OR TOP-DOWN": 3D third person on the cycle down Pathergatti towards Charminar, then the game's
+    // real view switch (N.view.set('top'), instant: the game has no transition) on the beat, same moment, same place
+    charminar: { view: 'tps', at: 'pathergatti', off: [0, -170], toward: 'charminar', time: [11, 0], veh: 'cycle', spd: 92, zoom: 1.3, warm: 60, switchAt: 36 },
   };
   const OVR = window.HUD_SHOTS_OVERRIDE || {};
   for (const k in OVR) SHOTS[k] = Object.assign({}, SHOTS[k], OVR[k]);
@@ -37,14 +44,16 @@
   const H = (window.HUDSHOT = { SHOTS });
   H.setup = function (o) {
     o = o || {};
-    // openGame hides '#ui,#touch,#debug,#overlay,.toast,.bark': drop that, re-hide only the non-HUD bits
+    // openGame hides '#ui,#touch,#debug,#overlay,.toast,.bark': drop that, re-hide only what is not the HUD:
+    // debug overlay, touch controls, menus/dialogue layer, key prompt, toasts (incl. "Testing build: unlimited
+    // pocket money"), the district card (a real-time setTimeout: it would flicker in/out between slow captures)
     for (const st of Array.from(document.querySelectorAll('style'))) if (/#ui,#touch,#debug,#overlay,\.toast,\.bark/.test(st.textContent)) st.remove();
     const st = document.createElement('style');
     st.id = 'hudshot-style';
     st.textContent = '#debug,#touch,#overlay,#prompt,.hud-toasts,.hud-toast,.toast,.hud-district{display:none!important}' + (o.css || '');
     document.head.appendChild(st);
     document.body.classList.remove('touch-on');
-    // testing build: the unlimited-money refill off (directly: the setter toasts + writes localStorage), real pocket money
+    // testing build: the unlimited-money refill off (directly: its setter toasts + writes localStorage), real pocket money
     if (N.testing) N.testing.unlimitedMoney = false;
     N.player.money = o.money == null ? 1250 : o.money;
     if (N.hud && N.hud.objective) N.hud.objective(null);
@@ -63,14 +72,20 @@
   }
   H.syncAnims = syncAnims;
 
+  // repeatable shots: a seeded Math.random from prep on (pursuer barks / spawn spots, traffic)
+  function seed(s) {
+    let a = s >>> 0;
+    Math.random = function () { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+
   /* ------------------------------------------------------------ routes (as gameplay_page.js) */
   function buildPath(x, y, o, len) {
     const R = N.world.roads;
     const n = R.nearestNode(x, y);
     if (o.toward) {
       const L = LM(o.toward) || P(o.toward);
-      const r = R.route(n, R.nearestNode(L.x, L.y), { walk: true });
-      if (r && r.length > 1) return polyFromNodes(r, len);
+      const r = R.route(n, R.nearestNode(L.x, L.y), { walk: !o.veh });
+      if (r && r.length > 1) return polyFromNodes(r);
     }
     const nodes = [n];
     let head = o.dir || 0, prev = -1, dist = 0, guard = 0;
@@ -91,10 +106,9 @@
       head = Math.atan2(best.y - cur.y, best.x - cur.x);
       prev = cur.id; nodes.push(best);
     }
-    return polyFromNodes(nodes, len);
+    return polyFromNodes(nodes);
   }
-  function polyFromNodes(nodes, len) {
-    void len;
+  function polyFromNodes(nodes) {
     const pts = [];
     for (let i = 0; i < nodes.length - 1; i++) {
       const A = nodes[i], Bn = nodes[i + 1], L = Math.hypot(Bn.x - A.x, Bn.y - A.y), steps = Math.max(1, Math.ceil(L / 4));
@@ -112,7 +126,6 @@
     out.x = A[0] + (B[0] - A[0]) * t; out.y = A[1] + (B[1] - A[1]) * t;
     return out;
   }
-  H.at = at;
 
   /* ------------------------------------------------------------ GL draws off (warm-up frames nobody sees) */
   let drawFn = null;
@@ -128,6 +141,7 @@
   H.prep = function (id, nf, opt) {
     const o = Object.assign({}, SHOTS[id], opt || {});
     if (!o.view) throw new Error('no shot ' + id);
+    seed(o.seed || 20031);
     if (N.player.vehicle && N.vehicles.exit) { try { N.vehicles.exit(N.player, true); } catch (e) { /* ok */ } }
     if (N.wanted) { N.wanted.lock(null); N.wanted.set(0, 'clear'); }
     N.render.camOverride = null;
@@ -140,31 +154,27 @@
     let x = pl ? pl.x : o.at[0], y = pl ? pl.y : o.at[1];
     if (o.off) { x += o.off[0]; y += o.off[1]; }
     const warm = o.warm || 75;
-    const total = (nf + warm + 90) / FPS * o.spd;
-    const path = buildPath(x, y, o, total);
-    const start = at(path, 0, { x: 0, y: 0 });
+    const path = buildPath(x, y, o, (nf + warm + 90) / FPS * o.spd);
+    // toward a landmark: start far enough up the route that the shot ends near it
+    const need = (nf + warm) / FPS * o.spd;
+    const d0 = o.toward ? Math.max(0, path.len - need - (o.endGap || 20)) : 0;
+    const start = at(path, d0, { x: 0, y: 0 });
     N.debug.teleport(start.x, start.y);
     let v = null;
     if (o.veh) { v = N.vehicles.spawn(o.veh, start.x, start.y, 0, {}); if (v) N.vehicles.enter(N.player, v); }
     N.view.set(o.view);
     N.render.baseZoom = o.zoom || 1;
-    C = { id, o, path, v, d: 0, f: 0, warm: true, log: [] };
-    if (o.heat) N.wanted.set(Math.floor(o.heat[0][1] / 100), 'set');
+    C = { id, o, path, v, d: d0, f: -warm, log: [] };
+    // the view switch: the top-down ground around the switch point is painted now (3D is drawing meanwhile)
+    if (o.switchAt != null && N.render.warmChunks) { at(path, d0 + (warm + o.switchAt) * o.spd / FPS, tmp); N.render.warmChunks(tmp.x, tmp.y, 520); }
+    if (o.heat) N.wanted.set(Math.floor(heatAt(o.heat, -warm) / 100), 'set');
     for (let k = 0; k < 3; k++) if (N.view3d && N.view3d.active) N.view3d.settle(30000);
     noDraw(true);
-    try {
-      for (let k = 0; k < warm - 6; k++) {
-        // (the shot's opening: the pursuers already in pursuit just behind him, a second to settle)
-        if (o.heat && k === warm - 36) stageNew(true);
-        advance();
-      }
-    } finally { noDraw(false); }
-    for (let k = 0; k < 6; k++) advance();
+    try { while (C.f < -6) advance(); } finally { noDraw(false); }
+    while (C.f < 0) advance();
     if (N.view3d && N.view3d.active) N.view3d.settle(30000);
-    if (o.heat) heatTo(o.heat[0][1]);
-    C.f = 0; C.warm = false;
     syncAnims();
-    return { at: [Math.round(start.x), Math.round(start.y)], len: Math.round(path.len), veh: v ? v.type : null, view: N.view.mode, level: N.wanted.level, money: N.player.money, pursuers: pursuerInfo() };
+    return { at: [Math.round(start.x), Math.round(start.y)], len: Math.round(path.len), d0: Math.round(d0), veh: v ? v.type : null, view: N.view.mode, level: N.wanted.level, heat: Math.round(N.wanted.heat), money: N.player.money, pursuers: pursuerInfo(), log: C.log.splice(0) };
   };
 
   function heatAt(K, f) {
@@ -179,71 +189,85 @@
   }
   function pursuerInfo() {
     const p = N.player;
-    return N.wanted.pursuers.map((a) => a.role + (a.mount ? '@' + a.mount.type : '') + ' ' + Math.round(Math.hypot(a.x - p.x, a.y - p.y)) + 'u ' + a.state);
+    return N.wanted.pursuers.map((a) => a.role + (a.mount ? '@' + a.mount.type : '') + ' ' + Math.round(Math.hypot(a.x - p.x, a.y - p.y)) + 'u ' + a.state + (a.seeing ? ' sees' : ''));
   }
-  // move pursuers that are far off (fresh spawns) to just outside the frame, behind Chinnu on his own route
+  const subst = (t) => { try { if (N.menus && N.menus.subst) return N.menus.subst(t); } catch (e) { /* stub */ } return String(t).replace(/\{FULL\}/g, 'K. SRIKANTH'); };
+  const mountedOn = (a) => !!(a.mount && (a.vehicle === a.mount || a.passengerOf === a.mount));
+
+  // pursuers the wanted system spawns off-screen (300-450 u away) are moved onto Chinnu's route behind him
   const staged = new WeakSet();
-  function stageNew(all) {
+  function stageNew() {
     const S = C.o.stage; if (!S) return;
     const p = N.player;
-    let k = 0;
     for (const a of N.wanted.pursuers) {
-      if (staged.has(a) || a.state === 'leave' || a.guard) continue;
+      if (staged.has(a) || a.state === 'leave' || a.guard || !(a.role in S.roles)) continue;
+      if (C.f < (S.at == null ? -40 : S.at)) continue;
       staged.add(a);
-      const d = Math.hypot(a.x - p.x, a.y - p.y);
-      const b0 = typeof S.back === 'number' ? S.back : (S.back[a.role] || 110);
-      if (!all && d < b0 * 0.9) continue;
-      const back = b0 + k * 6, lat = (k % 2 ? -1 : 1) * (S.side || 0);
+      const d = Math.hypot(a.x - p.x, a.y - p.y), want = S.roles[a.role];
+      let back = typeof want === 'number' ? want : 120;
+      if (want === 'edge') { back = 40; for (; back < 400; back += 4) { at(C.path, C.d - back, tmp); if (!N.render.inView(tmp.x, tmp.y, 14)) break; } back += 6; }
       at(C.path, C.d - back, tmp); at(C.path, C.d - back + 6, tmp2);
-      const ang = Math.atan2(tmp2.y - tmp.y, tmp2.x - tmp.x);
+      const ang = Math.atan2(tmp2.y - tmp.y, tmp2.x - tmp.x), lat = S.side || 0;
       const nx = tmp.x - Math.sin(ang) * lat, ny = tmp.y + Math.cos(ang) * lat;
       const m = a.mount;
-      if (m && (a.vehicle === m || a.passengerOf === m)) {
-        m.x = nx; m.y = ny; m.angle = ang; m.vx = Math.cos(ang) * C.o.spd; m.vy = Math.sin(ang) * C.o.spd; m.speed = C.o.spd;
-        if (m.pu) { m.pu.path = null; m.pu.planT = 0; m.pu.cx = nx; m.pu.cy = ny; m.pu.stuck = 0; }
+      if (m && mountedOn(a)) {
+        const sp = (m.pu && m.pu.speed) || C.o.spd;
+        m.x = nx; m.y = ny; m.angle = ang; m.vx = Math.cos(ang) * sp; m.vy = Math.sin(ang) * sp; m.speed = sp; m.okX = null;
+        if (m.pu) { m.pu.path = null; m.pu.planT = 0; m.pu.minT = 0; m.pu.cx = nx; m.pu.cy = ny; m.pu.stuck = 0; }
         a.x = nx; a.y = ny; a.angle = ang;
-      } else { a.x = nx; a.y = ny; a.angle = ang; a.vx = Math.cos(ang) * 60; a.vy = Math.sin(ang) * 60; }
+      } else { a.x = nx; a.y = ny; a.angle = ang; a.vx = Math.cos(ang) * a.runSpd; a.vy = Math.sin(ang) * a.runSpd; a.path = null; }
       a.target = { x: p.x, y: p.y };
-      C.log.push((C.warm ? 'w' : C.f) + ' staged ' + a.role + ' from ' + Math.round(d));
-      k++;
+      C.log.push(C.f + ' staged ' + a.role + ' ' + Math.round(back) + 'u behind (spawned ' + Math.round(d) + 'u away)');
     }
+  }
+
+  function script() {
+    const o = C.o, W = N.wanted;
+    if (o.heat) {
+      const L0 = W.level;
+      heatTo(heatAt(o.heat, C.f));
+      if (W.level !== L0) {
+        C.log.push(C.f + ' level ' + L0 + '->' + W.level + ' heat ' + Math.round(W.heat));
+        if (W.level === 5 && o.chappalT != null) W._W.chappalT = o.chappalT;
+      }
+    }
+    if (o.quiet) for (const a of W.pursuers) a.barkT = 99;
+    if (o.barks && C.f >= 0) for (const b of o.barks) {
+      if (b[0] !== C.f) continue;
+      const a = W.pursuers.find((q) => q.role === b[1] && q.state !== 'leave');
+      if (!a) { C.log.push(C.f + ' no ' + b[1] + ' to bark'); continue; }
+      N.dialogue.bark(mountedOn(a) ? a.mount : a, subst(b[2]), { speaker: a.speaker || undefined });
+      C.log.push(C.f + ' bark ' + b[1] + ' ' + b[2]);
+    }
+    if (o.switchAt === C.f) { N.view.set('top'); C.log.push(C.f + ' view ' + N.view.mode); }
   }
 
   function advance() {
     const { o, path, v } = C;
-    // per-frame script (only in the shot itself)
-    if (!C.warm) {
-      if (o.heat) {
-        const L0 = N.wanted.level;
-        heatTo(heatAt(o.heat, C.f));
-        if (N.wanted.level !== L0) {
-          C.log.push(C.f + ' level ' + L0 + '->' + N.wanted.level + ' heat ' + Math.round(N.wanted.heat));
-          if (N.wanted.level === 5 && o.chappalT != null) N.wanted._W.chappalT = o.chappalT;
-        }
-      }
-      if (o.switchAt === C.f) { N.view.set('top'); C.log.push(C.f + ' view ' + N.view.mode); }
-    }
+    script();
     C.d += o.spd / FPS;
     at(path, C.d, tmp); at(path, C.d + 10, tmp2);
     const ang = Math.atan2(tmp2.y - tmp.y, tmp2.x - tmp.x);
     const vx = Math.cos(ang) * o.spd, vy = Math.sin(ang) * o.spd;
     if (v) {
+      // pose the vehicle a step behind: the physics step moves it forward this frame
       v.x = tmp.x - vx / FPS; v.y = tmp.y - vy / FPS; v.angle = ang; v.speed = o.spd; v.vx = vx; v.vy = vy;
       if (v.ctl) { v.ctl.throttle = 1; v.ctl.steer = 0; v.ctl.brake = 0; }
     } else {
       const p = N.player;
       p.x = tmp.x - vx / FPS; p.y = tmp.y - vy / FPS; p.vx = vx; p.vy = vy; p.angle = ang; p.facing = ang; p.running = !!o.run;
     }
-    if (o.view === 'tps' && C.f === 0 && C.warm && N.view3d.snapCamera) N.view3d.snapCamera();
+    if (o.view === 'tps' && C.f === -(o.warm || 75) && N.view3d.snapCamera) N.view3d.snapCamera();
     window.__step(1 / FPS);
-    if (!C.warm && o.stage) stageNew(false);
+    stageNew();
     C.f++;
     syncAnims();
   }
 
   H.frame = function () {
+    const f = C.f;
     advance();
-    const W = N.wanted, p = N.player;
-    return { f: C.f, level: W.level, view: N.view.mode, money: p.money, pos: [Math.round(p.x), Math.round(p.y)], pursuers: pursuerInfo(), chappal: W._W.chappal ? W._W.chappal.ph : null, log: C.log.splice(0) };
+    const W = N.wanted, p = N.player, ch = W._W.chappal;
+    return { f, level: W.level, heat: Math.round(W.heat), view: N.view.mode, money: p.money, mode: N.state.mode, pos: [Math.round(p.x), Math.round(p.y)], pursuers: pursuerInfo(), chappal: ch ? ch.ph + ' ' + Math.round(Math.hypot(ch.x - p.x, ch.y - p.y)) + 'u' : null, busy: W.busy, log: C.log.splice(0) };
   };
 })();

@@ -63,12 +63,9 @@ const SEGS = [{ id: 'g_top_chase', shot: 'chase' }, { id: 'g_top_charminar', sho
     const cdp = await context.newCDPSession(page);
     const dir = path.join(OUTD, S.id);
     fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
-    let last = '';
     for (let f = 0; f < nf; f++) {
       const st = await page.evaluate(() => HUDSHOT.frame());
-      const key = st.level + '|' + st.view + '|' + st.pursuers.join(',') + '|' + st.chappal;
-      if (st.log.length || key !== last || f % 18 === 0) console.log('  f' + f, JSON.stringify(st));
-      last = key;
+      if (st.log.length || f % 6 === 0) console.log('  f' + f, JSON.stringify(st));
       if (f % EVERY === 0) {
         const r = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: Q, clip: { x: 0, y: 0, width: W, height: H, scale: SCALE } });
         fs.writeFileSync(path.join(dir, String(f).padStart(5, '0') + '.jpg'), Buffer.from(r.data, 'base64'));

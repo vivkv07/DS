@@ -102,6 +102,20 @@ async function takeOver(page) { await page.evaluate(() => { window.__auto = fals
     }
     const log = [];
     const tS = Date.now();
+    if (process.env.STILLS) { // STILLS=f1,f2,...: full-res stills at these survey frames only
+      const fr = process.env.STILLS.split(',').map(Number).sort((a, b) => a - b);
+      let at = 0;
+      for (const f of fr) {
+        const ch = await page.evaluate(({ n, dt }) => SP.run(n, dt), { n: f - at, dt: DT });
+        at = f;
+        for (const [k, st] of ch) log.push(k + ' ' + JSON.stringify(st));
+        await shot(path.join(dir, 'f' + String(f).padStart(5, '0') + '.jpg'));
+        console.log('still', f, ((Date.now() - tS) / 1000).toFixed(0) + 's');
+      }
+      fs.writeFileSync(path.join(dir, 'log.txt'), log.join('\n') + '\n');
+      await browser.close();
+      return;
+    }
     for (let f = 0; f < +(process.env.SURVEY_N || 2400); f += SURVEY_EVERY) {
       const ch = await page.evaluate(({ n, dt }) => SP.run(n, dt), { n: SURVEY_EVERY, dt: DT });
       for (const [fr, st] of ch) { log.push(fr + ' ' + JSON.stringify(st)); console.log(fr, JSON.stringify(st).slice(0, 260)); }
