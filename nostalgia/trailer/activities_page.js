@@ -62,6 +62,18 @@
     const g = N.minigames.game;
     return { id: g && g.id, touch: g && g.touch, W: g && g.W, H: g && g.H, dpr: g && g.dpr, portrait: g && g.portrait };
   };
+  // Fast pre-roll: point the minigame's 2D context at a 1x1 canvas, so every draw call still runs (same order,
+  // same Math.random draws: the game plays out identically) but nothing is rasterised at 4K. off -> real canvas.
+  let tiny = null;
+  ACT.fast = function (on) {
+    const g = N.minigames.game;
+    if (!g) return false;
+    if (on) {
+      if (!tiny) { const c = document.createElement('canvas'); c.width = 1; c.height = 1; tiny = c.getContext('2d'); }
+      if (g.ctx !== tiny) { g.realCtx = g.ctx; g.ctx = tiny; }
+    } else if (g.realCtx) { g.ctx = g.realCtx; g.realCtx = null; }
+    return true;
+  };
   ACT.status = function () {
     const g = N.minigames.game;
     if (!g) return { phase: 'none', result: ACT.result };
