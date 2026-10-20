@@ -241,7 +241,7 @@
       ctx.shadowColor = 'transparent';
       const u2 = ease.out(clamp((t - slamT - 0.55) / 0.7, 0, 1));
       ctx.globalAlpha = u2;
-      text(ctx, 'HYDERABAD  ·  2003', 0, 128 + 14 * (1 - u2), 40, { weight: 600, color: '#2a3a4a', track: 16 + 10 * (1 - u2) });
+      text(ctx, 'a Hyderabad story on one cassette', 0, (port ? 140 : 132) + 14 * (1 - u2), port ? 62 : 48, { weight: 500, color: '#2a3a4a', track: 3 + 6 * (1 - u2) });
       ctx.restore();
       if (t - slamT < 0.16) { ctx.fillStyle = 'rgba(255,255,255,' + (0.7 * (1 - (t - slamT) / 0.16)) + ')'; ctx.fillRect(0, 0, W, H); }
     }
@@ -256,24 +256,75 @@
     ctx.restore();
   }
 
-  function endcard(ctx, seg, t, W, H) { // v2: 8 beats (4.8 s); settles by ~2.2 s, the assembly holds the last frame
+  function endcard(ctx, seg, t, W, H) { // v2: 8 beats (4.8 s); settles by ~2.4 s, the assembly holds the last frame
+    // "Gurthunda?" (the game's catchphrase, Telugu for "Do you remember?") opens it alone, then the logo,
+    // the tagline and the call to action follow
     const k = Math.min(W / 1920, H / 1080) * (H > W ? 1.6 : 1); // portrait: sized for phones
     ctx.fillStyle = '#07080c'; ctx.fillRect(0, 0, W, H);
-    const a = ease.out(clamp(t / 0.9, 0, 1));
-    ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(k, k);
+    ctx.save(); ctx.translate(W / 2, H / 2 + 14 * k); ctx.scale(k, k);
+    const g = ease.out(clamp((t - 0.1) / 0.8, 0, 1));
+    ctx.save(); ctx.globalAlpha = g;
+    if ('filter' in ctx && g < 1) ctx.filter = 'blur(' + (8 * (1 - g)).toFixed(2) + 'px)';
+    ctx.shadowColor = 'rgba(255,170,60,0.35)'; ctx.shadowBlur = 30;
+    text(ctx, 'Gurthunda?', 0, -208 + 10 * (1 - g), 64, { weight: '500 italic', color: '#f4e6cc', track: 2 });
+    ctx.restore();
+    const a = ease.out(clamp((t - 0.55) / 0.9, 0, 1));
     ctx.save(); ctx.globalAlpha = a; const s0 = 1.05 - 0.05 * a; ctx.scale(s0, s0);
     ctx.shadowColor = 'rgba(255,170,60,0.5)'; ctx.shadowBlur = 50;
     text(ctx, 'NOSTALGIA', 0, -60, 150, { color: '#ffffff', track: 22 + 14 * (1 - a) });
     ctx.restore();
-    const a2 = ease.out(clamp((t - 0.6) / 0.7, 0, 1));
+    const a2 = ease.out(clamp((t - 1.15) / 0.7, 0, 1));
     ctx.globalAlpha = a2;
     text(ctx, 'AN OPEN-WORLD HYDERABAD STORY', 0, 50 + 10 * (1 - a2), 34, { weight: 500, color: '#ffb347', track: 12 });
-    const a3 = ease.out(clamp((t - 1.3) / 0.7, 0, 1));
+    const a3 = ease.out(clamp((t - 1.75) / 0.7, 0, 1));
     ctx.globalAlpha = a3;
     const rw = 300 * a3; ctx.fillStyle = 'rgba(255,179,71,0.85)'; ctx.fillRect(-rw / 2, 112, rw, 3);
     text(ctx, 'PLAY FREE IN YOUR BROWSER', 0, 172 + 12 * (1 - a3), 40, { weight: 800, color: '#ffffff', track: 8 });
     ctx.restore();
     addGrain(ctx, W, H, t);
+  }
+
+  /* ------------------------------------------------------------ v2.1 story lines (finale overlay, transparent) */
+  // Short centred lines in sequence, one per equal slice of the segment (12 beats / 3 lines = one bar each):
+  // each focuses in from a soft blur with its tracking settling, holds, and dissolves before the next.
+  const STORY = { finale: ['TEN MONTHS LEFT.', 'ONE TAPE.', 'THE WHOLE CITY.'] };
+  const storyLines = (seg) => seg.story || STORY[seg.id] || null;
+  const ST = { in: 0.6, out: 0.45, lead: 0.22, tail: 0.1 };
+  function storyPhase(seg, t, B) {
+    const L = storyLines(seg); if (!L) return 'blank';
+    const slot = seg.n * B / L.length, i = Math.min(L.length - 1, Math.floor(t / slot)), lt = t - i * slot;
+    if (lt < ST.lead || lt >= slot - ST.tail) return 'blank';
+    if (lt >= ST.lead + ST.in && lt < slot - ST.tail - ST.out) return 'hold' + i;
+    return 'anim';
+  }
+  function story(ctx, seg, t, W, H, B) {
+    const L = storyLines(seg); if (!L) return;
+    const port = H > W, k = port ? W / 1080 : Math.min(W / 1920, H / 1080), VW = W / k, VH = H / k;
+    const slot = seg.n * B / L.length, i = Math.min(L.length - 1, Math.floor(t / slot)), lt = t - i * slot;
+    const u = ease.out(clamp((lt - ST.lead) / ST.in, 0, 1)), o = ease.io(clamp((lt - (slot - ST.tail - ST.out)) / ST.out, 0, 1));
+    const a = u * (1 - o);
+    if (a <= 0.001) return;
+    const size = port ? 92 : 96, cy = VH * (port ? 0.655 : 0.79), cx = VW / 2;
+    ctx.save(); ctx.scale(k, k);
+    // soft shadow pool behind the line (the city under it is busy)
+    ctx.save(); ctx.translate(cx, cy); ctx.scale(port ? 2.3 : 4.0, 1);
+    const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, 185);
+    gr.addColorStop(0, 'rgba(0,0,0,' + 0.58 * a + ')'); gr.addColorStop(0.55, 'rgba(0,0,0,' + 0.34 * a + ')'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, 170, 0, TAU); ctx.fill(); ctx.restore();
+    // amber hairline grows from the centre above the line
+    const hw = 90 * u * (1 - o); ctx.globalAlpha = a; ctx.fillStyle = AMBER; ctx.fillRect(cx - hw / 2, cy - size * 0.95, hw, 4);
+    // the line: focus-pull in / out, tracking settles
+    ctx.globalAlpha = a;
+    const blur = 10 * (1 - u) + 8 * o;
+    if ('filter' in ctx && blur > 0.05) ctx.filter = 'blur(' + blur.toFixed(2) + 'px)';
+    ctx.shadowColor = 'rgba(0,0,0,0.65)'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 3;
+    const track = size * (0.12 + 0.1 * (1 - u) + 0.05 * o);
+    let sz = size; // fit inside the safe width
+    ctx.font = '800 ' + sz + 'px ' + FONT; if ('letterSpacing' in ctx) ctx.letterSpacing = track + 'px';
+    const maxW = VW * (port ? 0.7 : 0.8), w = ctx.measureText(L[i]).width; if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+    if (w > maxW) sz = size * maxW / w;
+    text(ctx, L[i], cx + track / 2, cy + 6, sz, { weight: 800, color: '#ffffff', track: track * sz / size });
+    ctx.restore();
   }
 
   /* ------------------------------------------------------------ v2 caption lower-thirds (transparent) */
@@ -392,5 +443,8 @@
     overlay,
     caption,
     capPhase,
+    story,
+    storyPhase,
+    storyLines,
   };
 })();

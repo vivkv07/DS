@@ -1,6 +1,7 @@
 /* NOSTALGIA trailer — render the 2D graphics from timeline.json:
  *   - cards / skyline title / end card            -> <OUTD>/<seg>/%05d.jpg (opaque)
  *   - v2 caption lower-thirds (segments with cap)  -> <OUTD>/<seg>_cap/%05d.png (transparent, whole segment: n*beatFrames)
+ *   - v2.1 story lines (finale, or a seg.story list) -> <OUTD>/<seg>_cap/%05d.png (transparent, whole segment)
  *   - v1 rain lower-third (segments with overlay)  -> <OUTD>/<seg>_overlay/%05d.png
  *   node trailer/render_titles.cjs [W H]
  *   env: OUTD=dir (default out/frames2 for landscape, out/frames2_v for portrait; out/frames for a v1 timeline)
@@ -25,7 +26,22 @@ const fname = (f, ext) => String(f).padStart(5, '0') + ext;
   p.on('pageerror', (e) => console.log('pageerror', e.message));
   await p.setContent(`<canvas id=c width=${W} height=${H}></canvas>`);
   await p.addScriptTag({ path: path.join(__dirname, 'titles.js') });
-  await p.evaluate(() => Promise.all([300, 500, 600, 700, 800, 900].map((w) => document.fonts.load(w + ' 100px "Inter Display"'))));
+  await p.evaluate(() => Promise.all([300, 500, 600, 700, 800, 900].map((w) => document.fonts.load(w + ' 100px "Inter Display"')).concat([document.fonts.load('italic 500 100px "Inter Display"')])));
+  // transparent overlay sequence; frames whose phase is not 'anim' are identical within a phase -> copy them
+  async function overlaySeq(seg, dir, phaseFn, drawFn, opt) {
+    freshDir(dir);
+    const nf = seg.n * TL.beatFrames, cache = {};
+    let drawn = 0;
+    for (let f = 0; f < nf; f++) {
+      const t = f / FPS, out = path.join(dir, fname(f, '.png'));
+      const ph = await p.evaluate(({ fn, seg, t, B, opt }) => TITLES[fn](seg, t, B, opt), { fn: phaseFn, seg, t, B, opt });
+      if (ph !== 'anim' && cache[ph]) { fs.copyFileSync(cache[ph], out); continue; }
+      const url = await p.evaluate(({ fn, seg, t, B, opt }) => { const c = document.getElementById('c'), x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.filter = 'none'; x.clearRect(0, 0, c.width, c.height); TITLES[fn](x, seg, t, c.width, c.height, B, opt); return c.toDataURL('image/png'); }, { fn: drawFn, seg, t, B, opt });
+      fs.writeFileSync(out, Buffer.from(url.split(',')[1], 'base64')); drawn++;
+      if (ph !== 'anim') cache[ph] = out;
+    }
+    return { nf, drawn };
+  }
   console.log('->', OUTD, W + 'x' + H);
   let prevAct = null;
   for (const seg of TL.segments) {
@@ -33,19 +49,11 @@ const fname = (f, ext) => String(f).padStart(5, '0') + ext;
     const first = !!seg.act && seg.act !== prevAct;
     if (seg.act) prevAct = seg.act;
     if (seg.cap && want(seg.id + '_cap', 'caps')) {
-      const dir = path.join(OUTD, seg.id + '_cap'); freshDir(dir);
-      const nf = seg.n * TL.beatFrames, opt = { first, fps: FPS }, t0 = Date.now();
-      let blank = null, hold = null, drawn = 0;
-      for (let f = 0; f < nf; f++) {
-        const t = f / FPS, out = path.join(dir, fname(f, '.png'));
-        const ph = await p.evaluate(({ seg, t, B, opt }) => TITLES.capPhase(seg, t, B, opt), { seg, t, B, opt });
-        if (ph === 'blank' && blank) { fs.copyFileSync(blank, out); continue; }
-        if (ph === 'hold' && hold) { fs.copyFileSync(hold, out); continue; }
-        const url = await p.evaluate(({ seg, t, B, opt }) => { const c = document.getElementById('c'), x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.clearRect(0, 0, c.width, c.height); TITLES.caption(x, seg, t, c.width, c.height, B, opt); return c.toDataURL('image/png'); }, { seg, t, B, opt });
-        fs.writeFileSync(out, Buffer.from(url.split(',')[1], 'base64')); drawn++;
-        if (ph === 'blank') blank = out; else if (ph === 'hold') hold = out;
-      }
-      console.log(seg.id + '_cap', nf, 'frames', first ? '(act opener)' : '', drawn, 'drawn', Date.now() - t0, 'ms');
+      const t0 = Date.now(), r = await overlaySeq(seg, path.join(OUTD, seg.id + '_cap'), 'capPhase', 'caption', { first, fps: FPS });
+      console.log(seg.id + '_cap', r.nf, 'frames', first ? '(act opener)' : '', r.drawn, 'drawn', Date.now() - t0, 'ms');
+    } else if (!seg.cap && want(seg.id + '_cap', 'caps') && await p.evaluate((seg) => !!TITLES.storyLines(seg), seg)) {
+      const t0 = Date.now(), r = await overlaySeq(seg, path.join(OUTD, seg.id + '_cap'), 'storyPhase', 'story', {});
+      console.log(seg.id + '_cap (story lines)', r.nf, 'frames', r.drawn, 'drawn', Date.now() - t0, 'ms');
     }
     if (seg.overlay && want(seg.id + '_overlay', 'overlays')) { // v1: transparent lower-third frames for a 3D segment
       const dir = path.join(OUTD, seg.id + '_overlay'); freshDir(dir);
@@ -62,7 +70,7 @@ const fname = (f, ext) => String(f).padStart(5, '0') + ext;
     const nf = seg.n * TL.beatFrames;
     const t0 = Date.now();
     for (let f = 0; f < nf; f += EVERY) {
-      const url = await p.evaluate(({ seg, t, B }) => { const c = document.getElementById('c'), x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; TITLES.draw(x, seg, t, c.width, c.height, B); return c.toDataURL('image/jpeg', 0.95); }, { seg, t: f / FPS, B });
+      const url = await p.evaluate(({ seg, t, B }) => { const c = document.getElementById('c'), x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.filter = 'none'; TITLES.draw(x, seg, t, c.width, c.height, B); return c.toDataURL('image/jpeg', 0.95); }, { seg, t: f / FPS, B });
       fs.writeFileSync(path.join(dir, fname(f, '.jpg')), Buffer.from(url.split(',')[1], 'base64'));
     }
     console.log(seg.id, nf, 'frames', Date.now() - t0, 'ms');

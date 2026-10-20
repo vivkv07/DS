@@ -72,7 +72,7 @@ for (const seg of TL.segments) {
   let fc = `[0:v]${filters.join(',')}[v]`;
   const extra = [];
   // lower-thirds (transparent PNG frames rendered by render_titles.cjs): v1 rain '<id>_overlay', v2 captions '<id>_cap'
-  const ov = seg.overlay ? { suf: '_overlay', b: seg.overlay.b } : seg.cap ? { suf: '_cap', b: seg.b } : null;
+  const ov = seg.overlay ? { suf: '_overlay', b: seg.overlay.b } : (seg.cap || fs.existsSync(path.join(FR, seg.id + '_cap'))) ? { suf: '_cap', b: seg.b } : null; // finale_cap: story lines
   if (ov) {
     const od = VERT && fs.existsSync(path.join(FRV, seg.id + ov.suf)) ? path.join(FRV, seg.id + ov.suf) : path.join(FR, seg.id + ov.suf);
     if (fs.existsSync(od)) {
