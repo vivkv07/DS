@@ -15,7 +15,7 @@
   const CLIPS = {
     cycle_oldcity: { view: 'tps', at: 'laad_bazaar', time: [10, 30], veh: 'cycle', spd: 105, dir: 0, clear: 3, chase: { back: 17, h: 11.5, lead: 6, th: 3, fov: 56, lag: 0.2 } },
     top_charminar: { view: 'top', at: 'charminar_plaza', time: [11, 0], veh: 'cycle', spd: 115, dir: -1.6 },
-    auto_tankbund: { view: 'tps', at: 'tank_bund', time: [17, 25], veh: 'auto', spd: 130, dir: -1.2, prefer: 'bund', chase: { back: 30, h: 12, lead: 12, th: 3.5, fov: 56, lag: 0.3 } },
+    auto_tankbund: { view: 'tps', at: 'tank_bund', time: [17, 25], veh: 'auto', spd: 130, dir: 1.94, prefer: 'bund', chase: { back: 26, h: 11, lead: 14, th: 3.5, fov: 56, lag: 0.3, side: 2 } },
     top_chase: { view: 'top', at: 'abids', time: [12, 30], veh: null, spd: 82, dir: 0, run: true, wanted: 3 },
     scooty_rain: { view: 'fps', at: 'abids', time: [21, 15], veh: 'scooty', spd: 120, dir: 1.5, rain: 0.9 },
     top_rain: { view: 'top', at: 'koti', time: [20, 30], veh: 'cycle', spd: 100, dir: -1.5, rain: 0.9 },
@@ -98,7 +98,7 @@
   }
 
   let C = null;
-  const tmp = { x: 0, y: 0 }, tmp2 = { x: 0, y: 0 };
+  const tmp = { x: 0, y: 0 }, tmp2 = { x: 0, y: 0 }, tmp3 = { x: 0, y: 0 };
   // o.clear: passers-by standing / walking in the line of sight between the lens and the subject are hidden (and
   // stay hidden for the rest of the shot, so nobody pops back in)
   const CLEARED = new Set();
@@ -483,7 +483,10 @@
       const c = o.chase;
       at(path, Math.max(0, C.d - c.back), tmp); at(path, C.d + (c.lead || 0), tmp2);
       const hx = tmp2.x, hy = tmp2.y;
-      const want = { x: tmp.x, y: tmp.y, h: c.h, tx: hx, ty: hy, th: c.th, fov: c.fov || 58 };
+      // side: the camera shifted off the route to the left of travel (negative: right)
+      let ox = 0, oy = 0;
+      if (c.side) { at(path, Math.max(0, C.d - c.back) + 2, tmp3); const ddx = tmp3.x - tmp.x, ddy = tmp3.y - tmp.y, l = Math.hypot(ddx, ddy) || 1; ox = ddy / l * c.side; oy = -ddx / l * c.side; }
+      const want = { x: tmp.x + ox, y: tmp.y + oy, h: c.h, tx: hx, ty: hy, th: c.th, fov: c.fov || 58 };
       if (!C.cc || warm) C.cc = want; else for (const k of ['x', 'y', 'h', 'tx', 'ty', 'th']) C.cc[k] += (want[k] - C.cc[k]) * (c.lag || 0.25);
       C.cc.fov = want.fov;
       STAGE.cam(C.cc);

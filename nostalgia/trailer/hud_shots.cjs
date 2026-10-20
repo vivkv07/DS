@@ -38,11 +38,11 @@ const SEGS = [{ id: 'g_top_chase', shot: 'chase' }, { id: 'g_top_charminar', sho
     const { browser, context, page, errors } = await openGame({ width: W, height: H, scale: SCALE });
     const over = {};
     for (const k of Object.keys(process.env)) if (k.startsWith('SHOT_')) over[k.slice(5)] = JSON.parse(process.env[k]);
-    // portrait: the chase runs down the frame (south from Abids, zoom as landscape): Chinnu at ~42% of the height,
-    // clear of the lower-third caption (58-73%), the pursuers come in from the top. Mummy's speech bubbles are
-    // off here: at the top edge they would sit on the HUD (OSD / money tin); the chappal and its target ring say it
+    // portrait: the same run across the frame at about the same world scale (the portrait canvas is 434 internal
+    // px wide vs 768: zoom 1.3 shows ~330 u across, the landscape shot ~360 u at 2.2); the action stays on the
+    // middle band, clear of the HUD at the top and the lower-third caption (58-73% of the height)
     if (PORTRAIT) {
-      over.chase = Object.assign({ at: 'abids', dir: Math.PI / 2, barkSecs: { pochaiah: 0.9, mummy: 0 } }, over.chase || {});
+      over.chase = Object.assign({ zoom: 1.3 }, over.chase || {});
     }
     await page.evaluate((o) => { window.HUD_SHOTS_OVERRIDE = o; window.HUDDBG = o.__dbg; }, Object.assign({ __dbg: !!process.env.HUDDBG }, over));
     await page.addScriptTag({ path: path.join(__dirname, 'hud_page.js') });

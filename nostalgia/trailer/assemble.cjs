@@ -7,13 +7,14 @@
  *        FROM=b TO=b  render only the segments inside beats [FROM, TO), with their audio (a quick look at one stretch)
  *        NOFX=1       no transitions         MAXRATE=32M  VBV ceiling (default 32M at 4K: < 400 MiB; 0 = off)
  *        REMUX=1      reuse <ASM_TMP>/video.mp4 (redo transitions + audio only)   ADOPT=1  adopt pre-signature clips
+ *        AUDIO_ONLY=1 reuse this output's encoded picture (<ASM_TMP>/final_<name>.video.mp4): re-mux a new score only
  *        EDL=reels_short.json   the short Reels cut: a bar-aligned edit of the master (picture, captions, score) ->
  *                     out/nostalgia_reels_v2_short_<W>x<H>.mp4 (share ASM_TMP with the 9:16 master: its clips are reused)
  * Per segment: frame sequence -> exact-length clip (n beats x 18 frames @30 fps). 3D/gameplay footage gets the grade
  * and a slow 1.03 -> 1 pull-back (3D drone shots a slow push-in); minigame and UI captures are the game's own screens:
  * no grade, no zoom. 9:16: portrait-native frames from FRAMES_V win; landscape footage is cropped to 9:16 around the
  * action (VX); captions from FRAMES_V. Concat, then the VHS act transitions + drop flashes (TRANS, synced to the score's
- * cues in music.js), then mux the score with a two-pass loudnorm to -14 LUFS / -1 dBTP.
+ * cues in music.js), then mux the score: two-pass loudnorm to -14 LUFS + an oversampled limiter so the AAC is <= -1 dBTP.
  */
 'use strict';
 const path = require('path');
@@ -217,9 +218,10 @@ const TR = !PIECES ? TRANS.filter((tr) => tr.at >= FROM && tr.at < TO) : PIECES.
 });
 const fxChain = process.env.NOFX ? [] : TR.flatMap((tr) => vhsFilters(tr, t0));
 
-// score: two-pass loudness normalisation to -14 LUFS / -1 dBTP, linear (a clean gain: the score is already mastered).
-// The AAC encode adds ~0.6 dB of inter-sample overshoot, so the gain also keeps the PCM true peak <= -1.75 dBTP
-// (the delivered file then measures <= -1 dBTP); with the v2.1 score that is -14.36 LUFS, i.e. about -14.
+// score: two-pass loudness normalisation to -14 LUFS, linear (a clean gain: the score is already mastered), then a
+// 4x-oversampled peak limiter at -3 dBFS: ffmpeg's AAC encoder overshoots transients by up to +1.6 dB depending on
+// where they fall in its frames (the thunder measured -0.1 dBTP in one alignment, -1.5 in another), so the PCM peaks
+// sit low enough that the delivered AAC measures <= -1 dBTP; the encode is measured and trimmed if it ever does not.
 let wav = path.join(OUTDIR, 'score.wav');
 if (PIECES) { // the score cut on the same bar lines: contiguous pieces stay one run; 6 ms de-click fades on the real joins
   const total = PIECES.reduce((t, p) => t + p.b1 - p.b0, 0) * B, fo = EDL.fadeOut || 0;
@@ -234,8 +236,8 @@ if (PIECES) { // the score cut on the same bar lines: contiguous pieces stay one
 }
 let m = {};
 try { m = JSON.parse(execFileSync('bash', ['-c', `ffmpeg -hide_banner -i '${wav}' -af loudnorm=I=-14:TP=-1:LRA=9:print_format=json -f null - 2>&1 | sed -n '/^{/,/^}/p'`], { encoding: 'utf8' })); } catch (e) { m = {}; }
-const LI = m.input_i ? Math.min(-14, +m.input_i + (-1.75 - +m.input_tp)).toFixed(2) : '-14';
-const ln = m.input_i ? `loudnorm=I=${LI}:TP=-1:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true` : 'loudnorm=I=-14:TP=-1:LRA=11';
+const ln = m.input_i ? `loudnorm=I=-14:TP=-1:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true` : 'loudnorm=I=-14:TP=-1:LRA=11';
+const LIMIT = 'aresample=192000:resampler=soxr,alimiter=limit=0.708:attack=0.5:release=40:level=false,aresample=48000:resampler=soxr';
 const full = (TL.totalBeats + (TL.tailBeats || 0)) * B;
 const last = segs[segs.length - 1], isEnd = !PIECES && last === TL.segments[TL.segments.length - 1];
 const tail = isEnd ? (TL.tailBeats || 0) * B : 0; // hold the end card over the audio tail
@@ -245,7 +247,21 @@ const vchain = [`tpad=stop_mode=clone:stop_duration=${tail}`, ...fxChain, 'forma
 // = 395 MB = 377 MiB at most); MAXRATE=0 lifts it
 const MAXRATE = process.env.MAXRATE != null ? process.env.MAXRATE : (W * H >= 3840 * 2160 * 0.9 ? '32M' : '0');
 const vbv = MAXRATE && MAXRATE !== '0' ? ['-maxrate', MAXRATE, '-bufsize', (parseFloat(MAXRATE) * 2) + 'M'] : [];
-ff(['-i', video, '-ss', String(PIECES ? 0 : t0), '-i', wav, '-filter_complex', `[0:v]${vchain}[v];[1:a]${ln},aresample=48000[a]`, '-map', '[v]', '-map', '[a]',
-  '-t', String(dur), '-c:v', 'libx264', '-preset', FPRESET, '-crf', CRF, ...vbv, '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
-  '-c:a', 'aac', '-b:a', '320k', OUT]);
-console.log('->', OUT, (fs.statSync(OUT).size / 1048576).toFixed(1), 'MiB', fxChain.length ? `(${fxChain.length} transition filters)` : '', vbv.length ? `(VBV ${MAXRATE})` : '');
+// 1. picture (the expensive part; AUDIO_ONLY=1 reuses it to re-mux a new score), 2. audio, 3. mux (stream copy)
+const vOut = path.join(TMP, 'final_' + path.basename(OUT, '.mp4') + '.video.mp4');
+if (!(process.env.AUDIO_ONLY && fs.existsSync(vOut))) {
+  ff(['-i', video, '-filter_complex', `[0:v]${vchain}[v]`, '-map', '[v]', '-t', String(dur), '-c:v', 'libx264', '-preset', FPRESET, '-crf', CRF, ...vbv,
+    '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-an', vOut]);
+}
+const aOut = path.join(TMP, 'final_' + path.basename(OUT, '.mp4') + '.audio.m4a');
+const truePeak = (f) => { const o = execFileSync('bash', ['-c', `ffmpeg -hide_banner -nostats -i '${f}' -map 0:a -af ebur128=peak=true -f null - 2>&1 | tail -n 14`], { encoding: 'utf8' }); const g = (re) => +((o.match(re) || [])[1]); return { I: g(/I:\s+(-?[\d.]+) LUFS/), TP: g(/Peak:\s+(-?[\d.]+) dBFS/) }; };
+let trim = 0, meas;
+for (let k = 0; k < 4; k++) {
+  ff(['-ss', String(PIECES ? 0 : t0), '-i', wav, '-af', `${ln},${LIMIT}${trim ? `,volume=${trim.toFixed(2)}dB` : ''}`, '-t', String(dur), '-c:a', 'aac', '-b:a', '320k', aOut]);
+  meas = truePeak(aOut);
+  if (!(meas.TP > -1.0)) break;
+  trim -= meas.TP + 1.1; // rare: shave the overshoot off and encode again
+}
+ff(['-i', vOut, '-i', aOut, '-map', '0:v', '-map', '1:a', '-c', 'copy', '-t', String(dur), '-movflags', '+faststart', OUT]);
+console.log('->', OUT, (fs.statSync(OUT).size / 1048576).toFixed(1), 'MiB', fxChain.length ? `(${fxChain.length} transition filters)` : '', vbv.length ? `(VBV ${MAXRATE})` : '',
+  `audio ${meas.I} LUFS, ${meas.TP} dBTP${trim ? ` (trim ${trim.toFixed(2)} dB)` : ''}`);

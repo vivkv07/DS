@@ -74,22 +74,69 @@ const FPS = TL.fps || 30, DT = 1 / FPS, BF = TL.beatFrames;
  * steps `off` frames more, then captures n frames. setup / before / each run in the page. */
 const PLANS = {
   // The cold open: the game's real prologue "Side B, 2026" (story bible §4.1, src/story.js prologue()), played from
-  // New Game and cut down to four moments. ~60 s in-game -> 7.2 s.
+  // New Game, cut down to four moments on the score (editor's beats): b0-2 the ▶ PLAY 2026 OSD over the office (the
+  // parcel on the desk), b2-4 Amma "A courier came. From America.", b4-8 the cassette close-up with Immu's note landing
+  // on b5, b8-12 ◀◀ REWIND with the OSD year spinning 2026 -> 2003 on the score's 24 year-ticks.
   prologue: {
     sequential: true, // one continuous run of the cutscene: every cut waits for the previous one
     cuts: [
-      // b0-2: ▶ PLAY  WED 14 JAN 2026  18:05 — the VHS OSD card fading in over the office at dusk (a last kite)
-      { name: 'play_2026', n: 54, anchor: null, off: 3, setup: startPrologue },
-      // b3-5: Amma: "Srikanth! A courier came. From America." (typed in by +37; held until the advance at +37+66)
-      { name: 'amma_courier', n: 54, anchor: { line: 'A courier came' }, off: 30 },
-      // b6-7: K. Srikanth: "...Immu." (typed in by +22)
-      { name: 'immu', n: 36, anchor: { line: '...Immu' }, off: 9 },
-      // b8-11: ◀◀ REWIND on the old 2-in-1 (SIDE A · HYD 2003 in the window), the OSD year spinning 2026 -> 2003;
-      // the tween lasts 78 frames: start 6 in, end on its last frame (2003, the VHS wobble settling)
-      { name: 'rewind', n: 72, anchor: { cs: 24 }, off: 6 },
+      // b0-1: ▶ PLAY  WED 14 JAN 2026  18:05 over the office at dusk: lamp, the parcel, a last kite in the window.
+      // +22: the art (0.7 s) and the card (0.45 s) have faded in, so the first frame is clean; the card holds to +78
+      { name: 'play_2026', n: 36, setup: startPrologue, anchor: null, before: (o) => SP.frameArt('wide', o.FR.wide), off: 22 },
+      // b2-3: Amma: "Srikanth! A courier came. From America." (typed by +26; held 2.2 s), cut in on the parcel
+      { name: 'amma_courier', n: 36, anchor: { line: 'A courier came' }, before: (o) => SP.frameArt('parcel', o.FR.parcel), off: 14 },
+      // b4-7: close-up of the cassette (SIDE A - HYDERABAD 2003 / SIDE B - 2026). The game's long description card
+      // (step 9) is cut out: hidden, and tapped through like a player would; the note card (step 10) then fades in at
+      // ~+4 and is fully in on b5, set above the cassette so it never covers the label
+      { name: 'gurthunda', n: 72, anchor: { cs: 9 }, off: 4,
+        before: async (o) => { SP.frameArt('cassette', o.FR.cassette); SP.hideCard(); SP.csTap(); await SP.tick(); SP.csTap(); } },
+      // b8-11: ◀◀ REWIND on the old 2-in-1, the year big; it changes on the score's ticks (music.js yearTicks(tb(8.4),
+      // tb(11.5), 24): 2026 at the first tick, 2003 on the last, b11.5) — the cutscene clock is warped per frame so the
+      // game's own tween shows each year on its tick
+      { name: 'rewind', n: 72, anchor: { cs: 24 }, off: 0,
+        before: (o) => { SP.frameArt('rewind', o.FR.rewind); return SP.rewindPlan(o.TICKS, 72, 0.985); },
+        each: (o) => SP.rewindStep(o.i), after: () => SP.rewindEnd() },
     ],
   },
 };
+// the year ticks as cut-relative frames: t_k = tb(8.4) + (tb(11.5) - tb(8.4)) * (1 - (1 - k/23)^2), k = 0..23 (music.js)
+const YEAR_TICKS = Array.from({ length: 24 }, (_, k) => { const u = k / 23; return Math.round((8.4 - 8) * BF + (11.5 - 8.4) * BF * (1 - (1 - u) * (1 - u))); });
+// framing of the prologue art, {s: scale, o: transform-origin} (null = as the game shows it)
+const FRAME = {
+  wide: null,
+  parcel: { s: 1.5, o: '32.5% 109%' },   // the parcel (and its pencil label) above the dialogue box, the lamp, the window's foot
+  cassette: { s: 1.55, o: '50% 37.6%' }, // art y 24..140: the cassette (label 45% of the width) low, room above for the note
+  rewind: null,                          // the whole 2-in-1, the year above it
+};
+const FRAME_V = { wide: null, parcel: { s: 1.18, o: '30% 64%' }, cassette: null, rewind: null }; // portrait: object-fit cover does the zoom
+
+// ---- the trailer CSS: the editor's legibility notes (UI ~1.4x on top of the 960x540 / 540x960 layouts = ~1.9x the
+// 1280x720 stills), the cassette note above the cassette, the REWIND year big and centred. Same elements, fonts, colours.
+const UI_CSS = [
+  '#overlay .cs-card { zoom: 1.3; }',
+  '#overlay .cs-text { zoom: 1.4; }',
+  '.dlg { zoom: 1.4; }',
+  '.sp-hide { visibility: hidden !important; }',
+  "body[data-spcut='cassette'] #overlay .cs-stage { align-items: flex-start; padding-top: calc(9vh + 12px); }",
+  "body[data-spcut='cassette'] #overlay .cs-text { width: 440px; }",
+  "body[data-spcut='rewind'] #overlay .cs-osd { left: 0; right: 0; top: calc(9vh + 2px); align-items: center; letter-spacing: 4px; }",
+  "body[data-spcut='rewind'] #overlay .cs-osd b { font-size: 40px; }",
+  "body[data-spcut='rewind'] #overlay .cs-osd span { font-size: 104px; line-height: 0.92; }",
+].join('\n');
+const UI_CSS_V = [
+  // the 320x180 art would be stretched to 9:16 by the game's CSS (width/height 100%): cover the phone screen instead
+  '#overlay canvas.st-art { object-fit: cover; object-position: 50% 50%; }',
+  "body[data-spcut='wide'] #overlay canvas.st-art, body[data-spcut='parcel'] #overlay canvas.st-art { object-position: 44% 50%; }",
+  '#overlay .cs-card { zoom: 1.25; }',
+  '#overlay .cs-text { zoom: 1.35; }',
+  '.dlg { zoom: 1.45; }',
+  '.sp-hide { visibility: hidden !important; }',
+  "body[data-spcut='cassette'] #overlay .cs-stage { align-items: flex-start; padding-top: calc(7vh + 18px); }",
+  "body[data-spcut='cassette'] #overlay .cs-text { width: 360px; }",
+  "body[data-spcut='rewind'] #overlay .cs-osd { left: 0; right: 0; top: calc(7vh + 30px); align-items: center; letter-spacing: 4px; }",
+  "body[data-spcut='rewind'] #overlay .cs-osd b { font-size: 46px; }",
+  "body[data-spcut='rewind'] #overlay .cs-osd span { font-size: 132px; line-height: 0.92; }",
+].join('\n');
 // s_story: the story in gameplay (3D third-person view, the HUD and the dialogue box as the player sees them)
 PLANS.s_story = {
   cuts: [
@@ -103,7 +150,7 @@ PLANS.s_story = {
   ],
 };
 async function storySandhya(o) {
-  await SP.start3D(o.SCALE);
+  await SP.start3D(o.SCALE, o.css);
   const T = N.places.sandhya_theatre;
   // the facade faces east: Chinnu stands in the forecourt looking west at the hoardings
   const r = SP.scene({ date: [2003, 2, 8, 5, 55], at: [T.x + 62, T.y + 6], angle: Math.PI, yaw: Math.PI + 0.12, pitch: 0.16, view: 'tps',
@@ -114,7 +161,7 @@ async function storySandhya(o) {
   return r;
 }
 async function storyTerrace(o) {
-  await SP.start3D(o.SCALE);
+  await SP.start3D(o.SCALE, o.css);
   try { N.dialogue.cancel(); } catch (e) { /* ignore */ }
   const r = SP.scene({ date: [2003, 1, 14, 17, 55], at: [10112, 4986], roof: 'home_terrace', angle: 0.05, yaw: 0.0, pitch: 0.2, view: 'tps',
     npcs: [['immu', 'friend_terrace'], ['nanna', [10098, 4978], { roof: 'home_terrace' }], ['chitti', [10100, 4996], { roof: 'home_terrace' }]] });
@@ -123,9 +170,15 @@ async function storyTerrace(o) {
   window.__rec = N.tape.rec('bo_kaata');
   return r;
 }
+PLANS.prologue.css = UI_CSS; PLANS.prologue.cssV = UI_CSS_V;
+// s_story: the same legibility treatment for the HUD (OSD strip with the tape counter, objective, toasts) and the
+// dialogue box; the minimap and stats scale with it
+PLANS.s_story.css = ['.dlg { zoom: 1.4; }', '#hud { zoom: 1.35; }'].join('\n');
+PLANS.s_story.cssV = ['.dlg { zoom: 1.45; }', '#hud { zoom: 1.3; }'].join('\n');
 function recPress(o) { if (o.i === 10) N.input.press('action'); }
 function startPrologue(o) {
   SP.setup({ hud: true, css: o.css });
+  SP.fixLabel();
   SP.pace = { line: 2.2, prompt: 1.6 };
   N.menus.quickStart = true; // no name card (default names Chinnu / Srikanth); the prologue is then started the way game:new does
   N.debug.newGame({ skipIntro: true });
@@ -134,8 +187,6 @@ function startPrologue(o) {
   window.__pro = N.story.prologue();
   return SP.status();
 }
-// portrait (phone) viewport: the prologue's 320x180 art canvas would be stretched to 9:16 by the game's CSS
-const PORTRAIT_CSS = '';
 
 async function boot() {
   const browser = await chromium.launch({ args: ARGS });
@@ -169,7 +220,7 @@ async function survey() {
   fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
   await takeOver(page);
   await page.evaluate(() => SP.setup({ hud: true }));
-  if (SURVEY === 'prologue') await page.evaluate(startPrologue, { W, H, SCALE, PORTRAIT, css: PORTRAIT ? PORTRAIT_CSS : '' });
+  if (SURVEY === 'prologue') await page.evaluate(startPrologue, { W, H, SCALE, PORTRAIT, css: PORTRAIT ? UI_CSS_V : UI_CSS });
   const log = [];
   const tS = Date.now();
   if (process.env.STILLS) { // STILLS=f1,f2,...: full-res stills at these survey frames only
@@ -210,7 +261,7 @@ async function renderSegment(seg) {
   const dir = path.join(OUTD, seg.id);
   if (!CUTS.length) fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
-  const arg = { W, H, SCALE, PORTRAIT, css: PORTRAIT ? PORTRAIT_CSS : '' };
+  const arg = { W, H, SCALE, PORTRAIT, css: (PORTRAIT ? plan.cssV : plan.css) || '', FR: PORTRAIT ? FRAME_V : FRAME, TICKS: YEAR_TICKS };
   let f = 0;
   for (const cut of plan.cuts) {
     const want = !CUTS.length || CUTS.includes(cut.name);
@@ -218,6 +269,7 @@ async function renderSegment(seg) {
     if (cut.setup) console.log(' ', seg.id, cut.name, 'setup', JSON.stringify(await page.evaluate(cut.setup, arg)));
     const k = await page.evaluate(({ spec, dt }) => SP.until(spec, dt), { spec: cut.anchor || {}, dt: DT });
     if (k < 0) throw new Error(seg.id + ' ' + cut.name + ': anchor never came ' + JSON.stringify(cut.anchor));
+    if (cut.before) { const r = await page.evaluate(cut.before, arg); if (r != null) console.log('   ', cut.name, 'before', JSON.stringify(r).slice(0, 400)); }
     if (cut.off) await page.evaluate(({ n, dt }) => SP.step(n, dt), { n: cut.off, dt: DT });
     const first = await page.evaluate(() => SP.status());
     if (!want) { await page.evaluate(({ n, dt }) => SP.step(n, dt), { n: cut.n, dt: DT }); f += cut.n; continue; }
@@ -227,6 +279,7 @@ async function renderSegment(seg) {
       f++;
       await page.evaluate((dt) => SP.step(1, dt), DT);
     }
+    if (cut.after) await page.evaluate(cut.after, arg);
     const last = await page.evaluate(() => SP.status());
     console.log(' ', seg.id, cut.name, 'frames', f - cut.n, '-', f - 1, '| anchor +' + k, '\n    first', JSON.stringify(first).slice(0, 300), '\n    last ', JSON.stringify(last).slice(0, 300), ((Date.now() - tS) / 1000).toFixed(0) + 's');
   }

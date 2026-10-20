@@ -19,28 +19,30 @@
   // spd: u/s (Chinnu runs at 80, the player's own run speed).  dir: preferred heading | toward: landmark id.
   // Frame numbers are shot frames (0 = first captured frame); the warm-up runs frames -warm..-1.
   const SHOTS = {
-    // "MIND THE CHAPPAL METER": Chinnu legs it from Koti towards Abids with Havaldar Pochaiah's Luna on his tail; the
-    // fifth slipper fills and lights on the beat (f18: level 4 -> 5), the game swaps the police for MUMMY in
-    // Yadagiri's auto, who winds up the homing chappal
+    // "MIND THE CHAPPAL METER": Chinnu legs it from Koti towards Abids with Havaldar Pochaiah's red Luna on his tail.
+    // The Chappal Meter ratchets 3 -> 4 -> 5 in the first beat (the next slipper fills from the sole up, then lights
+    // and the meter shakes); at 5 the game calls the police off and sends MUMMY in Yadagiri's auto. She cuts him off
+    // from ahead, winds up ("One more step and this chappal flies!", the red target ring under him) and her homing
+    // chappal hits: THUP! and the PAKDA GAYA! banner (the game's own busted sequence) on the last beat.
     chase: {
       view: 'top', at: 'koti', time: [12, 30], veh: null, run: true, spd: 80, dir: Math.PI, zoom: 2.2, warm: 90,
-      // heat keyframes [frame, heat] (level = floor(heat / 100)); level 4 only just before the shot (its roadblock
-      // goes ~300 u ahead and is called off again at level 5 before he reaches it)
-      heat: [[-90, 350], [-8, 400], [0, 420], [18, 500], [71, 540]],
-      // new pursuers are put on his route behind him: u behind, or 'edge' = just outside the frame (drives in)
-      stage: { roles: { pochaiah: 60, mummy: 'edge' }, side: 5, at: -40 },
+      // heat keyframes [frame, heat] (level = floor(heat / 100))
+      heat: [[-90, 340], [0, 345], [5, 400], [10, 500], [71, 520]],
+      // new pursuers are put on his route: back = u behind him; ahead: 'edge' = just outside the frame ahead of him,
+      // facing him, lat u to his right (her own lane); brakeAt: her driver pulls up once that close (she throws
+      // from the stopped auto instead of running him over)
+      stage: { roles: { pochaiah: { back: 60 }, mummy: { ahead: 'edge', lat: 12, brakeAt: 160 } }, side: 5, at: -40 },
       quiet: true, // pursuers' random shouts off: the lines below + the game's own (dismissal, chappal wind-up)
-      barks: [[2, 'pochaiah', '*Ruko!*'], [22, 'mummy', '{FULL}!']], // (their own lines from wanted.js)
+      barks: [[2, 'pochaiah', '*Ruko!*']], // (his own line from wanted.js)
       barkSecs: { pochaiah: 0.9 }, // his "called off" line clears before Mummy's wind-up line (the game: ~3 s)
       // Mummy's first homing chappal: the game waits 3 s after she arrives, then checks the range (150 u) every
-      // 0.5 s; here she winds up ("One more step and this chappal flies!") on the beat (f36, or the first frame
-      // after it that she is in range), so the throw (~f48) cannot reach him before the cut
-      chappalFrom: 36,
-      // called off at level 5, Pochaiah would U-turn his Luna into Mummy's path and she would brake behind him:
-      // instead he pulls over to the kerb ("Luna, you have betrayed me.") and her auto goes past
+      // 0.5 s; here she winds up the moment she is in range (from this frame on)
+      chappalFrom: 10,
+      // called off at level 5, Pochaiah would U-turn his Luna into the road: he pulls over to the kerb instead
+      // ("Luna, you have betrayed me.")
       pullOver: { role: 'pochaiah', ahead: 30, kerb: 6 },
       // (and he stays on the Luna: the game has him hop off to run when Chinnu is within 70 u on foot and the Luna
-      // slows below 40 u/s, e.g. at a bend; a parked Luna in the lane would stop Mummy's auto too)
+      // slows below 40 u/s, e.g. at a bend)
       tune: { lunaDismount: 0 },
       difficulty: 'hard', // the game's "Full Meter" difficulty: Mummy is faster (pursuerSpeed 1.1) and sees further
       clear: 9, // traffic parked / stopped on his line is cleared before the shot (he is driven, not physical)
@@ -208,7 +210,8 @@
   const subst = (t) => { try { if (N.menus && N.menus.subst) return N.menus.subst(t); } catch (e) { /* stub */ } return String(t).replace(/\{FULL\}/g, 'K. SRIKANTH'); };
   const mountedOn = (a) => !!(a.mount && (a.vehicle === a.mount || a.passengerOf === a.mount));
 
-  // pursuers the wanted system spawns off-screen (300-450 u away) are moved onto Chinnu's route behind him
+  // pursuers the wanted system spawns off-screen (300-450 u away) are moved onto Chinnu's route: behind him, or
+  // ahead of him just outside the frame, facing him
   const staged = new WeakSet();
   function stageNew() {
     const S = C.o.stage; if (!S) return;
@@ -217,23 +220,34 @@
       if (staged.has(a) || a.state === 'leave' || a.guard || !(a.role in S.roles)) continue;
       if (C.f < (S.at == null ? -40 : S.at)) continue;
       staged.add(a);
-      const d = Math.hypot(a.x - p.x, a.y - p.y), want = S.roles[a.role];
-      let back = typeof want === 'number' ? want : 120;
-      if (want === 'edge') { back = 40; for (; back < 400; back += 4) { at(C.path, C.d - back, tmp); if (!N.render.inView(tmp.x, tmp.y, 14)) break; } back += 6; }
-      at(C.path, C.d - back, tmp); at(C.path, C.d - back + 6, tmp2);
-      const m = a.mount;
-      // (riders in his lane, the route's own lane line; people on foot a step to the side)
-      const ang = Math.atan2(tmp2.y - tmp.y, tmp2.x - tmp.x), lat = m && mountedOn(a) ? 0 : (S.side || 0);
-      const nx = tmp.x - Math.sin(ang) * lat, ny = tmp.y + Math.cos(ang) * lat;
-      if (m && mountedOn(a)) {
+      const R = S.roles[a.role], d = Math.hypot(a.x - p.x, a.y - p.y), m = a.mount, rides = !!(m && mountedOn(a));
+      let off = R.ahead != null ? R.ahead : -(R.back || 120); // signed route distance from Chinnu
+      if (R.ahead === 'edge') { off = 40; for (; off < 420; off += 4) { at(C.path, C.d + off, tmp); if (!N.render.inView(tmp.x, tmp.y, 14)) break; } off += 6; }
+      at(C.path, C.d + off, tmp); at(C.path, C.d + off + 6, tmp2);
+      const fwd = Math.atan2(tmp2.y - tmp.y, tmp2.x - tmp.x), ang = off > 0 ? fwd + Math.PI : fwd;
+      // lateral: + = to Chinnu's right (riders: R.lat, else 0; people on foot: S.side)
+      const lat = R.lat != null ? R.lat : rides ? 0 : (S.side || 0);
+      const nx = tmp.x - Math.sin(fwd) * lat, ny = tmp.y + Math.cos(fwd) * lat;
+      if (rides) {
         const sp = (m.pu && m.pu.speed) || C.o.spd;
         m.x = nx; m.y = ny; m.angle = ang; m.vx = Math.cos(ang) * sp; m.vy = Math.sin(ang) * sp; m.speed = sp; m.okX = null;
         if (m.pu) { m.pu.path = null; m.pu.planT = 0; m.pu.minT = 0; m.pu.cx = nx; m.pu.cy = ny; m.pu.stuck = 0; }
         a.x = nx; a.y = ny; a.angle = ang;
+        if (R.brakeAt) brakeNear(a, m, R.brakeAt);
       } else { a.x = nx; a.y = ny; a.angle = ang; a.vx = Math.cos(ang) * a.runSpd; a.vy = Math.sin(ang) * a.runSpd; a.path = null; }
       a.target = { x: p.x, y: p.y };
-      C.log.push(C.f + ' staged ' + a.role + ' ' + Math.round(back) + 'u behind (spawned ' + Math.round(d) + 'u away)');
+      C.log.push(C.f + ' staged ' + a.role + ' ' + Math.round(Math.abs(off)) + 'u ' + (off > 0 ? 'ahead' : 'behind') + ' (spawned ' + Math.round(d) + 'u away)');
     }
+  }
+  // the driver pulls up once within r u of Chinnu (the game's pursuit controller until then)
+  function brakeNear(a, v, r) {
+    const ctl0 = v.controller;
+    v.controller = function (v, dt) {
+      const p = N.player;
+      if (!v.pulledUp && Math.hypot(p.x - v.x, p.y - v.y) < r) { v.pulledUp = true; C.log.push(C.f + ' ' + a.role + "'s driver pulls up"); }
+      if (!v.pulledUp) return ctl0.call(this, v, dt);
+      const c = v.ctl; c.throttle = 0; c.brake = true; c.steer = 0; c.handbrake = false;
+    };
   }
 
   // vehicles on his line (a kid running down the road: anything parked or crawling there would be run through)
@@ -317,6 +331,7 @@
   function advance() {
     const { o, path, v } = C;
     script();
+    if (N.wanted.busy) { window.__step(1 / FPS); C.f++; syncAnims(); return; } // PAKDA GAYA!: the game holds everything (mode 'gameover'), so does the route
     C.d += o.spd / FPS;
     at(path, C.d, tmp); at(path, C.d + 10, tmp2);
     const ang = Math.atan2(tmp2.y - tmp.y, tmp2.x - tmp.x);

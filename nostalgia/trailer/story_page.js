@@ -93,13 +93,13 @@
   };
 
   /** a fresh game (no prologue) in the 3D third-person view at full device resolution */
-  SP.start3D = async function (scale) {
+  SP.start3D = async function (scale, css) {
     if (!SP.started3D) {
       SP.started3D = true;
-      SP.setup({ hud: true });
+      SP.setup({ hud: true, css });
       N.menus.quickStart = true;
       N.debug.newGame({ skipIntro: true });
-      SP.setup({ hud: true, money: 1850 }); // after newGame: no god mode, a believable ₹18.50 in the pocket
+      SP.setup({ hud: true, money: 1850, css }); // after newGame: no god mode, a believable ₹18.50 in the pocket
       N.view3d.setQuality({ adaptive: false, pixelRatio: scale || 1, maxPixelRatio: scale || 1, drawDist: 1500 });
       N.view.set('tps', { noSave: true });
       for (let k = 0; k < 3000 && !(N.view3d.active && N.models3d && N.models3d.ready); k++) await SP.step(1, 1 / 30);
@@ -113,6 +113,70 @@
     N.view3d.settle(30000);
   };
 
+  /* ---- the cold open's framing (trailer camera on the game's own cutscene) */
+  /** a short tap on the cutscene layer: exactly what a player's tap does (menus.js: < 320 ms -> next card / line) */
+  SP.csTap = function () {
+    const r = document.querySelector('#overlay .mn-cs');
+    if (!r) return false;
+    r.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 77, bubbles: true }));
+    r.dispatchEvent(new PointerEvent('pointerup', { pointerId: 77, bubbles: true }));
+    return true;
+  };
+  /** The prologue's cassette art writes 'SIDE A - HYDERABAD 2003' in a 7px monospace font that is ~8 art px wider
+   *  than the label it sits on (story.js prologueArt 'cassette'), so '03' is drawn off the label, dark on dark. For a
+   *  close-up the line is fitted to the label (canvas fillText maxWidth); same font, same place. */
+  SP.fixLabel = function () {
+    const P = CanvasRenderingContext2D.prototype;
+    if (P.fillText.__sp) return;
+    const ft = P.fillText;
+    const f = function (t, x, y, mw) {
+      if (mw == null && t === 'SIDE A - HYDERABAD 2003' && this.canvas && this.canvas.classList && this.canvas.classList.contains('st-art')) return ft.call(this, t, x, y, 205 - x);
+      return mw == null ? ft.call(this, t, x, y) : ft.call(this, t, x, y, mw);
+    };
+    f.__sp = true;
+    P.fillText = f;
+  };
+  /** framing of the prologue art (320x180 pixel art, scaled to the screen): {s, o: 'x% y%'} | null (as the game shows it).
+   *  Also sets body[data-spcut] so the trailer CSS can scope rules to one cut. */
+  SP.frameArt = function (cut, F) {
+    document.body.dataset.spcut = cut || '';
+    const c = document.querySelector('#overlay canvas.st-art');
+    if (!c) return false;
+    c.style.transformOrigin = F ? F.o : '';
+    c.style.transform = F && F.s !== 1 ? 'scale(' + F.s + ')' : '';
+    return true;
+  };
+  /** hide the cutscene's current text card (a card the trailer cuts out) */
+  SP.hideCard = function () { const b = document.querySelector('#overlay .cs-stage > .cs-text:last-child'); if (b) b.classList.add('sp-hide'); return !!b; };
+  /** ◀◀ REWIND on the score's year ticks. The game's vhs step shows round(2026 - 23 * ease(p)) with p = its tween
+   *  time / 2.6 s (menus.js STEPS.vhs, cubic in-out). Given the frames F[j] (cut-relative) where the year should become
+   *  2026 - j, plan p for every frame of the cut, then each frame set N.time.scale so the cutscene clock lands on it:
+   *  the year shown is still computed and drawn by the game. */
+  const easeInv = (e) => (e < 0.5 ? Math.cbrt(e / 4) : 1 - Math.cbrt(2 * (1 - e)) / 2);
+  SP.rewindPlan = function (F, n, pEnd) {
+    const P = [];
+    const last = F.length - 1; // F[0] = the first tick (still 2026), F[last] = the landing (2026 - last)
+    for (let c = 0; c <= n; c++) {
+      let q;
+      if (c >= F[last]) q = null;
+      else {
+        let j = 0; while (j + 1 <= last && F[j + 1] <= c) j++;
+        // year 2026 - j is on screen: 23 * ease(p) in [j - 0.5, j + 0.5)
+        const a = j === 0 ? 0 : F[j], b = F[j + 1];
+        const u = (c - a) / Math.max(1, b - a);
+        q = j === 0 ? 0.45 * u : j - 0.45 + 0.9 * u; // (clear of the .5 rounding edges)
+      }
+      P.push(q == null ? null : easeInv(Math.min(0.9999, q / 23)));
+    }
+    // after the landing: from the landing value on to pEnd (2003 stays, the VHS envelope runs out)
+    const c0 = F[last], p0 = easeInv((23 - 0.45) / 23);
+    for (let c = c0; c <= n; c++) P[c] = p0 + (pEnd - p0) * Math.min(1, (c - c0) / Math.max(1, n - c0));
+    SP.rw = { P, i: 0 };
+    return P.map((x) => +x.toFixed(4));
+  };
+  SP.rewindStep = function (i) { const R = SP.rw; if (!R) return; N.time.scale = Math.max(0, (R.P[i + 1] - R.P[i]) * 2.6 * 30); };
+  SP.rewindEnd = function () { N.time.scale = 1; SP.rw = null; };
+
   // the world canvases (2D #game and the 3D canvas): hidden while the prologue art covers them anyway — a visible
   // canvas is re-composited at every yield, which makes stepping ~30x slower
   SP.world = function (on) {
@@ -122,7 +186,7 @@
   SP.status = function () {
     const d = N.dialogue && N.dialogue.current;
     const osd = document.querySelector('.cs-osd.show');
-    const toast = Array.from(document.querySelectorAll('.toast')).map((e) => e.textContent).join(' | ');
+    const toast = Array.from(document.querySelectorAll('.hud-toast')).map((e) => e.textContent).join(' | ');
     let rec = null;
     try { rec = N.tape && N.tape.recState; } catch (e) { /* ignore */ }
     return {
