@@ -413,13 +413,12 @@ async function threeD(browser) {
   check(await P.until(() => N.view3d && N.view3d.active, null, 180000), '3D view active');
   await P.ev(() => { N.view3d.settle && N.view3d.settle(4000); if (N.festivals3d) N.festivals3d.settle(4000); });
   check(await G(() => N.funfair.stats().site, null, 30), 'the fair\'s 3D props are built (' + JSON.stringify(await P.ev(() => N.funfair.stats())) + ')');
-  const wheelG = () => { const E = N.view3d.engine; const g = E && E.lmGroup && E.lmGroup.children.find((o) => o.name === 'lm:giant_wheel'); return !!(g && g.userData.lm3d && g.userData.lm3d.subs && g.userData.lm3d.subs.wheel); };
-  await G(wheelG, null, 40);
+  await G(() => !!N.funfair.wheel3D(), null, 20);
   await P.ev(() => N.view3d.setCamera({ yaw: -Math.PI / 2 - 0.4, pitch: 0.35, snap: true }));
   await P.gw(1.0);
   await P.shot('3d_alley');
   // the giant wheel in step: the 3D wheel's angle = the 2D one
-  const wa = await P.ev(() => { const g = N.view3d.engine.lmGroup.children.find((o) => o.name === 'lm:giant_wheel'); const w = g && g.userData.lm3d && g.userData.lm3d.subs.wheel; return w ? { r: w.rotation.z, a: N.funfair.wheelAngle() } : null; });
+  const wa = await P.ev(() => { const w = N.funfair.wheel3D(); return w ? { r: w.rotation.z, a: N.funfair.wheelAngle() } : null; });
   check(wa && Math.abs(wa.r - wa.a) < 1e-6, 'the 3D giant wheel turns in step with the 2D one (' + (wa ? wa.r.toFixed(3) + ' = ' + wa.a.toFixed(3) : 'wheel not streamed in') + ')');
   // rides in 3D
   for (const id of ['wheel', 'columbus', 'bumper']) {

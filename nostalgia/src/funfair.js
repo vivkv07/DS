@@ -1184,9 +1184,13 @@
     WH.findT = t;
     const E = N.view3d && N.view3d.engine, G = E && E.lmGroup;
     if (!G) return null;
+    // the landmark's root is named 'lm3d:giant_wheel' by view3d_landmarks.js ('lm:giant_wheel' when view3d.js names it);
+    // failing both, the landmark object standing on the wheel's spot
+    const W = spots().wheel;
     for (const o of G.children) {
       const u = o.userData && o.userData.lm3d;
-      if (o.name === 'lm:giant_wheel' && u && u.subs && u.subs.wheel) { WH.grp = u.subs.wheel; break; }
+      if (!u || !u.subs || !u.subs.wheel) continue;
+      if (o.name === 'lm3d:giant_wheel' || o.name === 'lm:giant_wheel' || (W && Math.abs(o.position.x - W.x) < 1 && Math.abs(o.position.z - W.y) < 1)) { WH.grp = u.subs.wheel; break; }
     }
     return WH.grp;
   }
@@ -1239,7 +1243,7 @@
     columbus: { name: 'Columbus', row: 'ff_columbus', icon: '⛵', max: 10, act: 'Scream!', cam: { zoom: 1.35 }, view: { yaw: -PI / 2, pitch: 0.22 } },
     carousel: { name: 'Merry-go-round', row: 'ff_carousel', icon: '🎠', max: 8, act: 'Wave!', cam: { zoom: 2.2 }, view: { yaw: 0, pitch: 0.3 } },
     cups: { name: 'Cup and saucer', row: 'ff_cups', icon: '☕', max: 6, act: 'Spin faster!', cam: { zoom: 2.0 }, view: { yaw: PI / 2, pitch: 0.55 } },
-    bumper: { name: 'Dashing cars', row: 'ff_bumper', icon: '🚗', max: 8, act: 'Honk!', cam: { zoom: 2.0 }, view: { yaw: 0, pitch: 0.5 } },
+    bumper: { name: 'Dashing cars', row: 'ff_bumper', icon: '🚗', max: 8, act: 'Honk!', cam: { zoom: 2.0 }, view: { yaw: PI / 2, pitch: 0.5 } }, // from the north: west of the arena the Columbus swings through
     train: { name: 'Toy train', row: 'ff_train', icon: '🚂', max: 6, act: 'Whistle!', cam: { zoom: 1.7 }, view: { yaw: 0, pitch: 0.3 } },
     maut: { name: 'Maut ka kuan', row: 'ff_maut', icon: '🏍️', max: 10, act: 'Clap!', cam: { zoom: 2.3 }, view: { yaw: PI / 2, pitch: 0.75 } },
   };
@@ -3016,6 +3020,7 @@
     closeCard,
     snackCard, toyCard, stallCard: (id) => { const st = spots().stalls.find((q) => q.id === id || q.game === id); if (st) stallCard(st); },
     wheelAngle: () => WH.a,
+    wheel3D: () => wheel3DGroup(),   // the 3D landmark's turning wheel group (null until it streams in)
     stats: () => Object.assign({}, ST3, { bubbles: BUB.length, held3: HELD3.size, ambientCars: AMB.bumper ? AMB.bumper.cars.length : 0 }),
     _debug: { AMB, WH, BUB, TOY, NET, columbusAngle, blowBubbles, wheel2D, wheel3D },
   };
