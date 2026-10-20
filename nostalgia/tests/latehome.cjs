@@ -34,7 +34,7 @@ const THREE_JS = fs.readFileSync(path.join(ROOT, 'vendor/three/three.min.js'), '
 const GLTF_JS = fs.readFileSync(path.join(ROOT, 'vendor/three/GLTFLoader.classic.js'), 'utf8');
 let PACK_JS = null;
 const packJs = () => PACK_JS || (PACK_JS = fs.readFileSync(path.join(ROOT, 'src/assets3d_pack.js'), 'utf8'));
-const SDK_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
+const SDK_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';
 const ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--disable-gpu-compositing'];
 const SHOT_MS = 180000;
 

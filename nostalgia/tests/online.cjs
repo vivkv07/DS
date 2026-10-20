@@ -3,7 +3,7 @@
  * IMPORTANT: this machine cannot reach *.supabase.co or the CDNs (egress policy), so the game talks to
  * tests/online_mock.cjs: a local stand-in that speaks the real Supabase wire protocols (PostgREST RPC +
  * Realtime Phoenix websockets) with the same rules as supabase/migrations/*_online.sql. The game runs its
- * REAL code path: the vendored @supabase/supabase-js 2.45.4 (served for the jsDelivr URL), createClient,
+ * REAL code path: the vendored @supabase/supabase-js 2.118.0 (served for the jsDelivr URL), createClient,
  * rpc(), channel presence + broadcast. The SQL functions themselves were checked on the live project with
  * the Supabase MCP tools (see design/online_setup.md "Verified").
  *
@@ -25,7 +25,7 @@ const mock = require('./online_mock.cjs');
 const ROOT = path.resolve(__dirname, '..');
 const OUT = path.join(__dirname, 'out');
 fs.mkdirSync(OUT, { recursive: true });
-const SDK_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
+const SDK_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';
 const SDK_JS = fs.readFileSync(path.join(ROOT, 'vendor/supabase/supabase.js'), 'utf8');
 const THREE_CDN = 'https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js';
 const THREE_JS = fs.readFileSync(path.join(ROOT, 'vendor/three/three.min.js'), 'utf8');
@@ -322,9 +322,11 @@ const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeou
       await A.ev(() => N.online.leaveRoom()); await B.ev(() => N.online.leaveRoom()); await lateD.ev(() => N.online.leaveRoom());
       await sleep(500);
       const late = await E.ev((c) => N.online.joinRoom(c), code);
-      check(!late.ok && /No one is in room/.test(late.why), 'empty room is closed: "' + late.why + '"');
+      // joining a room nobody is in yet is allowed (a friend may still be connecting): E waits there alone
+      check(late.ok && (await E.ev(() => N.online.room && N.online.room.n)) === 1, 'joining an empty room opens it and waits for friends: ' + JSON.stringify(late));
+      await E.ev(() => N.online.leaveRoom());
       await sleep(600);
-      check(!M.rooms.has(topic), 'server holds nothing for the empty room');
+      check(!M.rooms.has(topic), 'server holds nothing for the room once everyone left');
       // the panel UI on A (create from the panel)
       await A.ev(() => { N.game.pause(); });
       await sleep(300);

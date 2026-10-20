@@ -82,7 +82,7 @@ This is a play-testing build: pocket money is unlimited for now.
 - Map geography: GHMC ward boundaries from DataMeet (CC BY 4.0), derived from OpenStreetMap
   (© OpenStreetMap contributors, ODbL); Hyderabad open GIS layers.
 - 3D engine: three.js r149 (MIT, see vendor/three/LICENSE).
-- Online play: supabase-js 2.45.4 (MIT, see vendor/supabase/LICENSE).
+- Online play: supabase-js 2.118.0 (MIT, see vendor/supabase/LICENSE).
 - 3D models made in Blender for this game.
 - Fonts from Google Fonts (SIL Open Font License).
 

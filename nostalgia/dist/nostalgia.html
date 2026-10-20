@@ -115097,7 +115097,7 @@ void main() {
     url: 'https://gralunajtfapqkpwulyg.supabase.co',
     key: 'sb_publishable_VyeXDrbTZtdEpZ3ZGnZvEQ_bKuUUTSM',
     sdk: [
-      'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js',
+      'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js',
       'vendor/supabase/supabase.js',
       '../vendor/supabase/supabase.js',
     ],
@@ -115117,7 +115117,7 @@ void main() {
  *
  * Backend: Supabase (N.ONLINE_CONFIG in src/online_config.js). Nothing loads until the player opens Online
  * (or has used it before on this device: then the SDK loads quietly after boot to mirror the saves).
- *   - SDK: @supabase/supabase-js 2.45.4 UMD from jsDelivr, then vendor/supabase/supabase.js (../ for dist/).
+ *   - SDK: @supabase/supabase-js 2.118.0 UMD from jsDelivr, then vendor/supabase/supabase.js (../ for dist/).
  *   - Identity: a random player code WORD-WORD-WORD-NNNN-XXXXX (256 words, 4 digits, 5 Crockford base-32
  *     chars: ~62 bits) kept in localStorage 'nostalgia.online.v1'. "Use my code" moves it to another phone.
  *     No accounts, no email, nothing personal: the database keys rows by sha256(code). The code is shaped so
@@ -115318,9 +115318,10 @@ void main() {
         const c = cfg();
         S.client = sb.createClient(c.url, c.key, {
           auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-          realtime: { params: { eventsPerSecond: 20 } },
+          // vsn 1.0.0: the JSON protocol (the hosted server speaks both; the test stand-in speaks this one)
+          realtime: { params: { eventsPerSecond: 20 }, vsn: '1.0.0' },
         });
-        if (c.realtimeKey) { try { S.client.realtime.setAuth(c.realtimeKey); } catch (e) { N.err('online.realtimeKey', e); } }
+        if (c.realtimeKey) { try { Promise.resolve(S.client.realtime.setAuth(c.realtimeKey)).catch((e) => N.err('online.realtimeKey', e)); } catch (e) { N.err('online.realtimeKey', e); } }
         setStatus('ready', null);
         return S.client;
       }).catch((e) => { S.loading = null; setStatus('offline', 'Could not reach the online server. Check the internet and try again.'); throw e; });
@@ -115560,7 +115561,8 @@ void main() {
   }
   function openChannel(code) {
     const c = S.client;
-    const conf = { config: { broadcast: { self: false }, presence: { key: myKey } } };
+    // presence must be switched on explicitly: without enabled:true the server drops track() and nobody sees anybody
+    const conf = { config: { broadcast: { self: false }, presence: { key: myKey, enabled: true } } };
     if (cfg() && cfg().privateRooms) conf.config.private = true;
     const ch = c.channel('room:' + code, conf);
     let synced = null;
@@ -115572,7 +115574,11 @@ void main() {
     const subscribed = new Promise((res, rej) => {
       let done = false;
       ch.subscribe((status, err) => {
-        if (status === 'SUBSCRIBED') { if (!done) { done = true; res(); } if (R.ch === ch && S.status !== 'room') setStatus('room'); }
+        if (status === 'SUBSCRIBED') {
+          if (!done) { done = true; res(); }
+          // a rejoin after a dropped socket (phone asleep, tab in the background) starts with no presence: announce again
+          if (R.ch === ch) { if (S.status !== 'room') setStatus('room'); trackMe().catch(() => {}); }
+        }
         else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') { if (!done) { done = true; rej(err || new Error(status)); } else if (R.ch === ch) setStatus('reconnecting'); }
         else if (status === 'CLOSED' && R.ch === ch && !R.leaving) setStatus('reconnecting');
       });
@@ -115593,7 +115599,7 @@ void main() {
     await wait(150);
     const others = presenceList(ch).filter((p) => !p.me);
     if (mode === 'create' && others.length) { await closeChannel(ch); return { ok: false, why: 'taken' }; }
-    if (mode === 'join' && !others.length) { await closeChannel(ch); return { ok: false, why: 'empty' }; }
+    // joining an empty room is allowed: the friend may still be connecting, and presence can arrive late
     if (others.length >= MAX()) { await closeChannel(ch); return { ok: false, why: 'full', n: others.length }; }
     R.ch = ch; R.code = code; R.joined = Date.now(); R.myPin = null; R.pinClear = 0; R.pin = null; R.lastSent = null; R.sendT = 0; R.keepT = 0; R.leaving = false;
     await trackMe();
@@ -115621,7 +115627,7 @@ void main() {
     if (!P.nick) P.nick = defaultNick();
     try { await ensureClient(); } catch (e) { return { ok: false, why: S.lastError || 'Could not reach the online server.' }; }
     const r = await enter(code, 'join');
-    if (r.ok) { toast('Joined room ' + code + '.', 2400); return r; }
+    if (r.ok) { toast(R.players.some((p) => !p.me) ? 'Joined room ' + code + '.' : 'You are in room ' + code + '. Waiting for friends to join…', 3000); return r; }
     if (r.why === 'full') return { ok: false, why: 'Room ' + code + ' is full (' + MAX() + '/' + MAX() + ').' };
     if (r.why === 'empty') return { ok: false, why: 'No one is in room ' + code + '. Rooms close when everyone leaves.' };
     return { ok: false, why: 'Could not join. Check the internet.' };
@@ -115906,6 +115912,13 @@ void main() {
     const mode = N.state.mode;
     if (mode === 'title' || mode === 'boot' || !N.world || !N.world.built) return;
     const t = nowMs();
+    // self-heal: every 10 s make sure the server still lists us (a silent reconnect can drop our presence)
+    if (t - (R.selfT || 0) > 10000) {
+      R.selfT = t;
+      let here = false;
+      try { const st = ch.presenceState ? ch.presenceState() : {}; here = !!(st[myKey] && st[myKey].length); } catch (e) { /* ignore */ }
+      if (!here) trackMe().catch(() => {});
+    }
     if (t - R.sendT < 1000 / stateHz()) return;
     const s = localState();
     if (!s) return;

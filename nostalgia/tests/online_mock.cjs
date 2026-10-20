@@ -139,10 +139,12 @@ function start(opts) {
     if (event === 'phx_join') {
       const conf = (payload && payload.config) || {};
       const key = (conf.presence && conf.presence.key) || ('anon' + sock.id);
-      members(topic).set(id, { sock, key, meta: null, pref: null, self: !!(conf.broadcast && conf.broadcast.self) });
+      // presence only on channels joined with presence.enabled === true (what current supabase-js sends)
+      const pres = !!(conf.presence && conf.presence.enabled === true);
+      members(topic).set(id, { sock, key, meta: null, pref: null, pres, self: !!(conf.broadcast && conf.broadcast.self) });
       sock.topics.add(topic);
       reply('ok', { postgres_changes: [] });
-      sendTo(sock, { topic, event: 'presence_state', payload: stateOf(topic), ref: null });
+      if (pres) sendTo(sock, { topic, event: 'presence_state', payload: stateOf(topic), ref: null });
       return;
     }
     const m = members(topic).get(id);
@@ -150,6 +152,7 @@ function start(opts) {
     if (event === 'access_token') return;
     if (!m) return reply('error', { reason: 'unmatched topic' });
     if (event === 'presence' && payload) {
+      if (!m.pres) return reply('ok'); // silently ignored
       if (payload.event === 'track') {
         const old = m.meta ? { [m.key]: { metas: [Object.assign({ phx_ref: m.pref }, m.meta)] } } : {};
         m.meta = payload.payload || {}; m.pref = ref();

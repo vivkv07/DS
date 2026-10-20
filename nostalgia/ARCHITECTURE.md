@@ -105,7 +105,7 @@ nostalgia/
                     Chitti Chase; race leaderboards -> N.partyRaces
   src/latehome.js   "Ghar Pahunchna Hai!": sneak home after the street lights past uncles / daddies / Bahadur's torch
                     (vision cones 2D + 3D, hiding, Pakda meter); solo + N.party ids 'latehome' / 'latehome_daddy' -> N.latehome
-  vendor/supabase/  supabase-js 2.45.4 UMD (MIT), the fallback when jsDelivr is unreachable (loaded lazily)
+  vendor/supabase/  supabase-js 2.118.0 UMD (MIT), the fallback when jsDelivr is unreachable (loaded lazily)
   supabase/migrations/*_online.sql  the database side of §23 (tables, SECURITY DEFINER functions, grants)
   supabase/migrations/*_party.sql   §24 race leaderboards (race_routes, race_times, race_put / race_top)
   src/debug.js      test hooks + #debug overlay -> N.debug

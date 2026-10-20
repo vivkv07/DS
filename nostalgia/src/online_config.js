@@ -19,7 +19,7 @@
     url: 'https://gralunajtfapqkpwulyg.supabase.co',
     key: 'sb_publishable_VyeXDrbTZtdEpZ3ZGnZvEQ_bKuUUTSM',
     sdk: [
-      'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js',
+      'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js',
       'vendor/supabase/supabase.js',
       '../vendor/supabase/supabase.js',
     ],

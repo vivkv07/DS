@@ -22,7 +22,7 @@ const OUT = path.join(__dirname, 'out');
 fs.mkdirSync(OUT, { recursive: true });
 const FILE_URL = 'file://' + path.join(ROOT, 'index.html') + '#debug';
 const SHOT_MS = 180000;
-const SDK_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
+const SDK_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';
 const failures = [];
 const fail = (m) => { failures.push(m); console.log('  FAIL ' + m); };
 const ok = (m) => console.log('  ok   ' + m);
