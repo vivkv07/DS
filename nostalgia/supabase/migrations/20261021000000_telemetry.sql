@@ -240,9 +240,9 @@ begin
    where st.step is not null
   on conflict (install, step) do update set first_day = least(s.first_day, excluded.first_day);
 
-  -- the day's metrics (retention rows of older cohorts are upserted below, not deleted here)
-  delete from nostalgia.daily_stats s where s.day = d and s.metric not in ('ret_d1', 'ret_d7', 'ret_d30');
-  insert into nostalgia.daily_stats (day, metric, dimension, value)
+  -- the day's metrics, upserted (re-running a day only ever raises its counts; the session-length buckets are all
+  -- written every time, so a session moving up a bucket leaves no stale count behind)
+  insert into nostalgia.daily_stats as s (day, metric, dimension, value)
   select d, m.metric, coalesce(m.dimension, ''), m.value from (
     select 'events' as metric, '' as dimension, nev::numeric as value
     union all select 'dau', '', ndau
@@ -263,11 +263,13 @@ begin
                where t.name = 'heartbeat' group by h.metric
     union all select 'fps', t.props->>'fps', count(*) from pg_temp.tm_day t
                where t.name = 'heartbeat' and jsonb_typeof(t.props->'fps') = 'string' group by t.props->>'fps'
-    union all select 'session_len', b.bucket, count(*) from (
-                select case when a < 60 then '0-1m' when a < 300 then '1-5m' when a < 900 then '5-15m'
-                            when a < 1800 then '15-30m' when a < 3600 then '30-60m' else '60m+' end as bucket
-                  from (select t.session, coalesce(sum(nostalgia.num(t.props->'act')) filter (where t.name = 'heartbeat'), 0) as a
-                          from pg_temp.tm_day t group by t.session) q) b group by b.bucket
+    union all select 'session_len', bk.bucket, coalesce(c.n, 0)
+                from (values ('0-1m'), ('1-5m'), ('5-15m'), ('15-30m'), ('30-60m'), ('60m+')) bk(bucket)
+                left join (select b.bucket, count(*) as n from (
+                  select case when a < 60 then '0-1m' when a < 300 then '1-5m' when a < 900 then '5-15m'
+                              when a < 1800 then '15-30m' when a < 3600 then '30-60m' else '60m+' end as bucket
+                    from (select t.session, coalesce(sum(nostalgia.num(t.props->'act')) filter (where t.name = 'heartbeat'), 0) as a
+                            from pg_temp.tm_day t group by t.session) q) b group by b.bucket) c on c.bucket = bk.bucket
     union all select 'funnel', t.name, count(distinct t.install) from pg_temp.tm_day t
                where t.name in ('title_shown', 'new_game', 'continue', 'intro_skipped', 'first_control') group by t.name
     union all select 'funnel', 'ending', count(distinct t.install) from pg_temp.tm_day t where t.name = 'ending' and t.props->>'phase' = 'start'
@@ -329,7 +331,8 @@ begin
                where t.name = 'session_start' and kv.key in ('touch', 'scr', 'dpr', 'lang', 'tz', 'ref', 'conn', 'pwa', 'view', 'online')
                  and jsonb_typeof(kv.value) in ('string', 'number', 'boolean') group by 2
     union all select 'build', coalesce(t.build, '?'), count(distinct t.install) from pg_temp.tm_day t group by 2
-  ) m where m.value is not null;
+  ) m where m.value is not null
+  on conflict (day, metric, dimension) do update set value = excluded.value;
 
   -- retention: of the installs first seen k days before d, how many came back on d
   foreach k in array array[1, 7, 30] loop
@@ -343,59 +346,21 @@ begin
 end
 $fn$;
 
--- prune(keep_days, max_rows): delete raw events older than keep_days (90), and more when the table would hold over
--- max_rows (~1.5 M rows ≈ 450 MB with indexes would crowd the Free plan's 500 MB; the default 1,000,000 rows keeps
--- it near 300 MB), always keeping the last 7 days. Rollups are untouched, so nothing is lost from the views.
--- Also clears stale rate-limit windows and old pg_cron run logs.
-create or replace function nostalgia.prune(keep_days int default 90, max_rows bigint default 1000000) returns jsonb
-language plpgsql set search_path = '' as $fn$
-declare
-  today date := (now() at time zone 'Asia/Kolkata')::date;
-  cut date := today - greatest(keep_days, 7); budget date; nd int; n bigint; nr bigint; dd date; rolled int := 0;
-begin
-  -- the row budget, from the rolled-up daily counts (newest days first)
-  select count(*) into nd from nostalgia.daily_stats s where s.metric = 'events' and s.dimension = '';
-  if nd > 0 then
-    select min(q.day) into budget from (
-      select s.day, sum(s.value) over (order by s.day desc) as cum
-        from nostalgia.daily_stats s where s.metric = 'events' and s.dimension = '') q
-     where q.cum <= max_rows;
-    budget := coalesce(budget, today - 7);
-    if budget > cut then cut := least(budget, today - 7); end if;
-  end if;
-  -- never drop a day that was not rolled up yet (cron started late, or it is run by hand): roll it up first
-  for dd in select distinct (e.ts at time zone 'Asia/Kolkata')::date from nostalgia.events e
-             where e.ts < (cut::timestamp at time zone 'Asia/Kolkata') loop
-    if not exists (select 1 from nostalgia.daily_stats s where s.day = dd and s.metric = 'events' and s.dimension = '') then
-      perform nostalgia.rollup_day(dd); rolled := rolled + 1;
-    end if;
-  end loop;
-  delete from nostalgia.events e where e.ts < (cut::timestamp at time zone 'Asia/Kolkata');
-  get diagnostics n = row_count;
-  delete from nostalgia.rate r where r.win < now() - interval '1 day';
-  get diagnostics nr = row_count;
-  begin
-    execute 'delete from cron.job_run_details where end_time < now() - interval ''14 days'''
-         || ' and jobid in (select jobid from cron.job where jobname like ''nostalgia_%'')';
-  exception when others then null; -- no pg_cron here
-  end;
-  return jsonb_build_object('kept_from', cut, 'deleted', n, 'rolled_up_first', rolled, 'rate_rows', nr);
-end
-$fn$;
-
 -- nightly(): finish yesterday (India time), then prune. pg_cron runs it at 00:23 IST; the hourly job keeps today fresh.
 create or replace function nostalgia.nightly() returns jsonb
 language plpgsql set search_path = '' as $fn$
 declare y date := (now() at time zone 'Asia/Kolkata')::date - 1; a jsonb; b jsonb;
 begin
   a := nostalgia.rollup_day(y);
-  b := nostalgia.prune();
+  -- prune is the one part that deletes (old raw events): installed separately, see the end of this file
+  if to_regprocedure('nostalgia.prune(integer,bigint)') is not null then execute 'select nostalgia.prune()' into b;
+  else b := jsonb_build_object('skipped', 'nostalgia.prune is not installed yet'); end if;
   return jsonb_build_object('rollup', a, 'prune', b);
 end
 $fn$;
 
 revoke all on function nostalgia.allow_n(bytea, int), nostalgia.num(jsonb), nostalgia.tm_props_ok(jsonb),
-  nostalgia.rollup_day(date), nostalgia.prune(int, bigint), nostalgia.nightly() from public, anon, authenticated;
+  nostalgia.rollup_day(date), nostalgia.nightly() from public, anon, authenticated;
 revoke all on function public.track_events(jsonb) from public;
 grant execute on function public.track_events(jsonb) to anon;
 -- as with save_put: no Supabase Auth yet, so "authenticated" gets nothing; grant it when Google sign-in lands
@@ -586,3 +551,48 @@ select e.ts, e.name, e.device, e.build, left(e.install::text, 8) as install, e.p
  limit 300;
 
 revoke all on all tables in schema nostalgia_admin from public, anon, authenticated;
+
+-- ---------------------------------------------------------------- retention: prune (the only part that deletes rows)
+-- Kept as its own block because it deletes data: the Supabase tools ask the owner to confirm destructive statements,
+-- so on gralunajtfapqkpwulyg this block is applied by the owner (SQL editor, or approving the prompt). Until it is,
+-- nightly() skips the prune and raw events simply stay (a few MB a month at beta scale).
+-- prune(keep_days, max_rows): delete raw events older than keep_days (90), and more when the table would hold over
+-- max_rows (~1.5 M rows ≈ 450 MB with indexes would crowd the Free plan's 500 MB; the default 1,000,000 rows keeps
+-- it near 300 MB), always keeping the last 7 days. Rollups are untouched, so nothing is lost from the views.
+-- Also clears stale rate-limit windows and old pg_cron run logs.
+create or replace function nostalgia.prune(keep_days int default 90, max_rows bigint default 1000000) returns jsonb
+language plpgsql set search_path = '' as $fn$
+declare
+  today date := (now() at time zone 'Asia/Kolkata')::date;
+  cut date := today - greatest(keep_days, 7); budget date; nd int; n bigint; nr bigint; dd date; rolled int := 0;
+begin
+  -- the row budget, from the rolled-up daily counts (newest days first)
+  select count(*) into nd from nostalgia.daily_stats s where s.metric = 'events' and s.dimension = '';
+  if nd > 0 then
+    select min(q.day) into budget from (
+      select s.day, sum(s.value) over (order by s.day desc) as cum
+        from nostalgia.daily_stats s where s.metric = 'events' and s.dimension = '') q
+     where q.cum <= max_rows;
+    budget := coalesce(budget, today - 7);
+    if budget > cut then cut := least(budget, today - 7); end if;
+  end if;
+  -- never drop a day that was not rolled up yet (cron started late, or it is run by hand): roll it up first
+  for dd in select distinct (e.ts at time zone 'Asia/Kolkata')::date from nostalgia.events e
+             where e.ts < (cut::timestamp at time zone 'Asia/Kolkata') loop
+    if not exists (select 1 from nostalgia.daily_stats s where s.day = dd and s.metric = 'events' and s.dimension = '') then
+      perform nostalgia.rollup_day(dd); rolled := rolled + 1;
+    end if;
+  end loop;
+  delete from nostalgia.events e where e.ts < (cut::timestamp at time zone 'Asia/Kolkata');
+  get diagnostics n = row_count;
+  delete from nostalgia.rate r where r.win < now() - interval '1 day';
+  get diagnostics nr = row_count;
+  begin
+    execute 'delete from cron.job_run_details where end_time < now() - interval ''14 days'''
+         || ' and jobid in (select jobid from cron.job where jobname like ''nostalgia_%'')';
+  exception when others then null; -- no pg_cron here
+  end;
+  return jsonb_build_object('kept_from', cut, 'deleted', n, 'rolled_up_first', rolled, 'rate_rows', nr);
+end
+$fn$;
+revoke all on function nostalgia.prune(int, bigint) from public, anon, authenticated;

@@ -24,7 +24,7 @@
  *
  * EVENTS (names are stable: the owner's SQL views read them; design/analytics.md has the full table)
  *   session_start {touch, scr, dpr, lang, tz, ref, ret, days, n, save, online, view, conn, pwa, resume}
- *   settings {view, mute, vol, music, diff, text, motion, captions, assist, hc, cb, handed, btn}   (snapshot)
+ *   settings {view, mute, vol, music, diff, text_speed, motion, captions, assist, hc, cb, handed, btn}   (snapshot)
  *   setting {key, value}            a change (debounced)          heartbeat {sec, act, play, idle, menu, v2d, v3d, fps, room, mode}
  *   perf_boot {b, world_b}          perf_3d {b, ok}               error {src, n, msg}
  *   funnel: title_shown · new_game {skip_intro, online} · continue · intro_skipped · first_control {after, how}
@@ -123,7 +123,8 @@
 
   /* ================================================================ state */
   const Q = [];                 // [{s: session, name, props, t}]
-  const ST = { inflight: null, lastFlush: 0, nextTry: 0, bad4xx: 0, broken: false, sent: [], stats: { req: 0, ok: 0, fail: 0, dropped: 0, events: 0 } };
+  // lastFlush starts at load: the first regular flush comes one window after the page opened
+  const ST = { inflight: null, lastFlush: pnow(), nextTry: 0, bad4xx: 0, broken: false, sent: [], stats: { req: 0, ok: 0, fail: 0, dropped: 0, events: 0 } };
   let session = uuid4(), sessionT0 = pnow(), sessionStarted = false, hiddenAt = 0, resumed = false;
   let live = false;             // tracking right now (available + setting on)
   function refreshLive() {
@@ -357,7 +358,7 @@
       if (A && A.settings && typeof A.settings === 'object') lastAudio = audioSig(A.settings);
       const g = (k) => { try { return S && S.get ? S.get(k) : null; } catch (e) { return null; } };
       const vol = (b) => { try { const v = A && A.getVolume ? A.getVolume(b) : null; return isFinite(v) ? Math.round(v * 10) : null; } catch (e) { return null; } };
-      track('settings', { view: viewMode(), mute: !!(A && A.muted), vol: vol('master'), music: vol('music'), diff: g('difficulty'), text: g('textSpeed'),
+      track('settings', { view: viewMode(), mute: !!(A && A.muted), vol: vol('master'), music: vol('music'), diff: g('difficulty'), text_speed: g('textSpeed'),
         motion: g('reducedMotion'), captions: !!g('captions'), assist: !!g('assist'), hc: !!g('highContrast'), cb: g('colorBlind'), handed: g('handed'), btn: g('btnSize') });
     } catch (e) { /* ignore */ }
   }
@@ -505,9 +506,9 @@
   // rooms: online.js emits 'online:room' {code} from inside enter(); the caller's own bookkeeping (and the first
   // presence sync) lands right after, so look a tick later. A create always starts alone; a join finds friends
   // (or, rarely, an empty room a friend is still connecting to: counted as a join when the Join button was used).
-  let joinIntent = 0;
+  let joinIntent = -1e9;
   document.addEventListener('click', (ev) => {
-    try { const b = ev.target && ev.target.closest && ev.target.closest('.mn-online [data-act]'); if (b && (b.dataset.act === 'join' || b.dataset.act === 'create')) joinIntent = b.dataset.act === 'join' ? pnow() : 0; } catch (e) { /* ignore */ }
+    try { const b = ev.target && ev.target.closest && ev.target.closest('.mn-online [data-act]'); if (b && (b.dataset.act === 'join' || b.dataset.act === 'create')) joinIntent = b.dataset.act === 'join' ? pnow() : -1e9; } catch (e) { /* ignore */ }
   }, true);
   on('online:room', (d) => {
     if (d.code) {
@@ -517,7 +518,7 @@
           const n = roomSize() || 1;
           ROOM = { t: pnow(), peak: n };
           if (n > 1 || pnow() - joinIntent < 30000) track('room_join', { size: n }); else track('room_create', {});
-          joinIntent = 0;
+          joinIntent = -1e9;
         } catch (e) { /* ignore */ }
       }, 0);
     } else if (ROOM) {
