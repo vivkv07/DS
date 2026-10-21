@@ -1,7 +1,7 @@
 /* NOSTALGIA — tests/view3d.cjs (3D view mode, ARCHITECTURE §20)
  * Headless Chromium with SwiftShader WebGL (software GL: frames take ~0.5-5 s at full size, so
  * input-driven parts run at a tiny pixel ratio and perf is judged by JS ms + draw calls).
- * three.js is served from the vendored copy by routing the jsDelivr URL (hermetic, no network).
+ * three.js loads from the vendored copy first (the jsDelivr URL, the last resort, is routed to it: hermetic).
  *
  *   desktop 1280x720 (keyboard + mouse):
  *     V cycles top -> tps -> fps -> top -> tps (real key presses; the second 3D switch is instant)
@@ -132,7 +132,7 @@ async function desktop(browser) {
   check(await waitMode(page, 'tps', 90000), 'V -> 3D third person (' + (Date.now() - t0) + ' ms incl. loading three.js + near city)');
   const dom = await page.evaluate(() => ({ body: document.body.classList.contains('view-3d'), c3: getComputedStyle(document.getElementById('game3d')).display, c2: getComputedStyle(document.getElementById('game')).visibility, rev: THREE.REVISION, src: [...document.scripts].map((s) => s.src).filter((s) => /three/.test(s)) }));
   check(dom.body && dom.c3 === 'block' && dom.c2 === 'hidden', '3D canvas shown, 2D canvas hidden', JSON.stringify(dom));
-  check(dom.rev === '149' && /jsdelivr/.test(dom.src[0] || ''), 'three.js r' + dom.rev + ' loaded from the CDN URL first');
+  check(dom.rev === '149' && /vendor\/three\/three\.min\.js/.test(dom.src[0] || '') && !dom.src.some((u) => /jsdelivr/.test(u)), 'three.js r' + dom.rev + ' loaded from the vendored copy first (same origin; jsDelivr only as the last resort)', JSON.stringify(dom.src));
   await setLowRes(page, true);
   await page.keyboard.press('KeyV'); check(await waitMode(page, 'fps', 60000), 'V -> first person', JSON.stringify(await st(page)));
   await page.keyboard.press('KeyV'); check(await waitMode(page, 'top', 60000), 'V -> top-down');

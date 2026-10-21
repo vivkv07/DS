@@ -1251,15 +1251,16 @@ landmarks and places), `src/view3d_actors.js` (people, vehicles, animals, marker
 glints, season overlays). Loaded in index.html after menus.js. Tests: `node tests/view3d.cjs`,
 `node tests/view3d_ground.cjs`.
 
-- **Library:** three.js **0.149.0** UMD, loaded lazily the first time 3D is chosen: first
-  `https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js`, then the local fallback
-  `vendor/three/three.min.js` (then `../vendor/...` for dist/). If both fail or WebGL is missing,
+- **Library:** three.js **0.149.0** UMD, loaded lazily the first time 3D is chosen: first the vendored
+  `vendor/three/three.min.js` (pages under dist/ try `../vendor/...` first; same origin, no console error when
+  offline or the CDN is blocked), then `https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js` as the last
+  resort. If all fail or WebGL is missing,
   the game stays top-down and toasts why (`N.view.available = false`, `N.view.error`). The
   single-file build does not inline three.js. Tests serve the CDN URL from the vendored file
   (`page.route`) and launch Chromium with `--use-angle=swiftshader --enable-unsafe-swiftshader
   --ignore-gpu-blocklist` (software GL: judge perf by JS ms and draw calls, not fps).
 - **`N.view`** (exists at load time, before three.js):
-  `mode` ('top' | 'tps' | 'fps', the *effective* view), `want` (requested; differs while loading),
+  `mode` ('top' | 'tps' | 'fps', the *effective* view; the touch pill says 2D / 3D / 1st), `want` (requested; differs while loading),
   `set(mode)`, `cycle()` (key **V**, gamepad R3, the touch VIEW pill above HORN), `is3D()`,
   `available` (null untried / true / false), `loading`, `error`, `yaw` (camera forward as a world
   angle), `pitch` (positive = looking down), `label(mode)`, `noPointerLock`. Persisted in

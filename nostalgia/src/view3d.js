@@ -47,10 +47,13 @@
   const RCH = 256;             // render.js chunk size
   const AUX = 128;             // aux texture size per chunk (4u per texel = N.CELL)
   const LS_KEY = 'nostalgia.view.v1';
-  const LIB = ['https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js', 'vendor/three/three.min.js', '../vendor/three/three.min.js'];
+  // the vendored copy first (same origin: no extra DNS / TLS, works offline and where jsDelivr is blocked without a
+  // console error; pages under /dist/ try ../ first), the CDN only as the last resort (gameplay audit X5)
+  const LIB = ['vendor/three/three.min.js', '../vendor/three/three.min.js', 'https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js'];
+  const libOrder = (urls) => { let d = false; try { d = /\/dist\//.test(location.pathname); } catch (e) { /* ignore */ } return d ? urls.slice().sort((a, b) => (b.indexOf('../') === 0) - (a.indexOf('../') === 0)) : urls; };
   const MODES = ['top', 'tps', 'fps'];
   const LABEL = { top: 'Top-down', tps: '3D (third person)', fps: 'First person' };
-  const SHORT = { top: '2D', tps: '3D', fps: 'FPS' };
+  const SHORT = { top: '2D', tps: '3D', fps: '1st' }; // (pill: not "FPS", which reads as frames per second)
 
   const lsGet = (k) => { try { return window.localStorage.getItem(k); } catch (e) { return null; } };
   const lsSet = (k, v) => { try { window.localStorage.setItem(k, v); } catch (e) { /* storage off: fine */ } };
@@ -118,7 +121,7 @@
     shadows: true, shadowSize: 2048, shadowRange: 190,
     drawDist: 1500, nearDist: 600, actorDist: 620, lmDist: 1650,
     groundHi: 2, groundLo: 0.5, pointLights: 4, budgetMs: 3.5, antialias: true,
-    adaptive: true, baked: false, aniso: 8, keepArrays: false,
+    adaptive: true, baked: false, aniso: 8, keepArrays: false, seeThrough: true,
   };
   function detectTier() {
     let coarse = false;
@@ -168,7 +171,7 @@
     if (window.THREE && window.THREE.WebGLRenderer) return Promise.resolve(window.THREE);
     if (loadPromise) return loadPromise;
     loadPromise = (async () => {
-      for (const u of view.urls) {
+      for (const u of libOrder(view.urls)) {
         // the vendored fallback carries its content hash on the website (N.BUILD, tools/build.mjs): cache-busting
         const B = N.BUILD, url = B && B.three && !/^https?:/.test(u) && /^https?:$/.test(location.protocol) ? u + '?v=' + B.three : u;
         // (CDN: move on to the local copy after 9 s; the local copy may take a while on a slow link: 60 s, not 6)
@@ -658,16 +661,32 @@
   const GLSL_HASH = 'float h12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }\n';
 
   // dithered fade of things right in front of the camera (trunks, poles, walls the camera hugs)
+  // + see-through for foliage between the third-person camera and the player (gameplay audit X5: canopies hid
+  // Chinnu): fragments inside a cone round the camera -> head segment are screen-door dithered down to 25 %
+  // (uOccR = radius at the player end, 0 = off: first person, cutscenes). H.occFade shares the GLSL with
+  // models3d_props' Blender trees.
+  const OCC_GLSL = {
+    decl: 'uniform vec3 uOccA;\nuniform vec3 uOccB;\nuniform float uOccR;\nvarying vec3 vOccWP;',
+    vdecl: 'varying vec3 vOccWP;',
+    vert: '\tvec4 owp = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\n\towp = instanceMatrix * owp;\n#endif\n\tvOccWP = (modelMatrix * owp).xyz;',
+    frag: '\tif (uOccR > 0.0) { vec3 oab = uOccB - uOccA; float ot = dot(vOccWP - uOccA, oab) / max(dot(oab, oab), 1e-4);' +
+      ' if (ot > 0.0 && ot < 0.97) { float orr = uOccR * (0.4 + 0.6 * ot), od = length(vOccWP - (uOccA + oab * ot));' +
+      ' if (od < orr) { vec2 oc = mod(floor(gl_FragCoord.xy * 0.5), 4.0), ol = mod(oc, 2.0), oh = floor(oc * 0.5);' +
+      ' float ob = (4.0 * (2.0 * abs(ol.x - ol.y) + ol.y) + 2.0 * abs(oh.x - oh.y) + oh.y + 0.5) / 16.0;' +
+      ' if (ob > 0.25 + 0.75 * smoothstep(0.55, 1.0, od / orr)) discard; } } }',
+    uniforms: (sh) => { sh.uniforms.uOccA = UNI.uOccA; sh.uniforms.uOccB = UNI.uOccB; sh.uniforms.uOccR = UNI.uOccR; },
+  };
   function nearFade(shader, uni) {
     // fades the whole object by its origin's (trunk base's) horizontal distance to the camera, not per pixel,
     // so a tall trunk beside the chase camera disappears cleanly instead of leaving a dotted strip
     shader.uniforms.uNearFade = uni;
+    OCC_GLSL.uniforms(shader);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying float vNearObj;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\n#ifdef USE_INSTANCING\n\tvec4 nfo = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);\n#else\n\tvec4 nfo = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);\n#endif\n\tvNearObj = length(nfo.xz - cameraPosition.xz);');
+      .replace('#include <common>', '#include <common>\nvarying float vNearObj;\n' + OCC_GLSL.vdecl)
+      .replace('#include <project_vertex>', '#include <project_vertex>\n#ifdef USE_INSTANCING\n\tvec4 nfo = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);\n#else\n\tvec4 nfo = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);\n#endif\n\tvNearObj = length(nfo.xz - cameraPosition.xz);\n' + OCC_GLSL.vert);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uNearFade;\nvarying float vNearObj;\nfloat nfHash(vec2 p){ vec2 c = mod(floor(p * 0.5), 4.0), l = mod(c, 2.0), h = floor(c * 0.5); float b = 4.0 * (2.0 * abs(l.x - l.y) + l.y) + 2.0 * abs(h.x - h.y) + h.y; return (b + 0.5) / 16.0; }')
-      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n\tif (uNearFade > 0.0) { float nfd = vNearObj / uNearFade; if (nfd < 1.0 && nfHash(gl_FragCoord.xy) > smoothstep(0.55, 1.0, nfd)) discard; }');
+      .replace('#include <common>', '#include <common>\nuniform float uNearFade;\nvarying float vNearObj;\n' + OCC_GLSL.decl + '\nfloat nfHash(vec2 p){ vec2 c = mod(floor(p * 0.5), 4.0), l = mod(c, 2.0), h = floor(c * 0.5); float b = 4.0 * (2.0 * abs(l.x - l.y) + l.y) + 2.0 * abs(h.x - h.y) + h.y; return (b + 0.5) / 16.0; }')
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n\tif (uNearFade > 0.0) { float nfd = vNearObj / uNearFade; if (nfd < 1.0 && nfHash(gl_FragCoord.xy) > smoothstep(0.55, 1.0, nfd)) discard; }\n' + OCC_GLSL.frag);
   }
 
   function facadeCompile(shader) {
@@ -766,6 +785,7 @@
 
   function initMaterials() {
     UNI.uTime = { value: 0 }; UNI.uNight = { value: 0 }; UNI.uNearFade = { value: 8 };
+    UNI.uOccA = { value: new THREE.Vector3() }; UNI.uOccB = { value: new THREE.Vector3() }; UNI.uOccR = { value: 0 };
     UNI.uSunDir = { value: new THREE.Vector3(0.3, 0.8, 0.4).normalize() };
     UNI.uSunCol = { value: new THREE.Color(1, 1, 1) };
     UNI.uZen = { value: new THREE.Color('#3a74c4') }; UNI.uHor = { value: new THREE.Color('#d2dfe8') };
@@ -2524,6 +2544,10 @@
     const f = focus();
     const fe = focusEntity();
     const fz = elevation(fe === (N.player && N.player.vehicle) ? N.player : fe);
+    // foliage see-through cone: camera -> the player's head (third person, not in cutscene / title orbits)
+    const occ = Q.seeThrough !== false && view.mode === 'tps' && !R.camOverride && N.state.mode !== 'title' && N.player;
+    UNI.uOccR.value = occ ? (N.player.vehicle ? 8 : 5.5) : 0;
+    if (occ) { UNI.uOccA.value.copy(E.camera.position); UNI.uOccB.value.set(f.x, fz + (N.player.vehicle ? 7 : 6), f.y); }
     updateSkyLights(f.x, f.y, fz);
     updateSunBake();
     updatePointLights(f.x, f.y);
@@ -2758,6 +2782,7 @@
       // engine-creation options (only before the first 3D switch)
       if (!E.ready) for (const k of ['antialias', 'shadows', 'shadowSize', 'pointLights', 'groundHi', 'groundLo', 'baked', 'aniso']) if (o[k] != null) Q[k] = o[k];
       if (o.keepArrays != null) Q.keepArrays = !!o.keepArrays; // (applies to geometry built from now on)
+      if (o.seeThrough != null) Q.seeThrough = !!o.seeThrough;   // foliage see-through round the player (tps)
       if (E.ready) { E.camera.far = Q.drawDist * 1.5; E.camera.updateProjectionMatrix(); resize(); lastPlan.t = 0; }
       return Q;
     },
@@ -2848,6 +2873,9 @@
     mat, color: (hex) => col(hex), tex, signSlot,
     /** release sign-atlas cells taken with signSlot(.., own) (their boards are no longer shown anywhere) */
     releaseSigns,
+    /** foliage see-through (third person): GLSL {decl (fragment), vdecl, vert (after project_vertex), frag (after
+     *  clipping_planes_fragment)} + uniforms(shader) to add to a custom tree material's onBeforeCompile */
+    get occFade() { return UNI.uOccA ? OCC_GLSL : null; },
     facadeMaterial: () => MAT.facade, vcMaterial: () => MAT.vc,
     /** soft round contact shadow (use when H.quality.shadows is false) */
     blobShadow(w, d) { const m = new THREE.Mesh(H.geo.plane, MAT.blob); m.scale.set(w || 8, 1, d || w || 8); m.position.y = 0.08; m.renderOrder = 1; m.userData.noShadow = true; m.castShadow = false; return m; },

@@ -89,9 +89,9 @@ Results on the final code (machine load 15-46 on 4 cores, other agents' browsers
 | `story_part1.cjs` | 182 passed, 0 failed (before the J13 fix: 7 SA1 failures, load-dependent) |
 | `story_part2.cjs` | 64 passed, 0 failed |
 | `diwali_missions.cjs` | 108 passed, 0 failed |
-| `storycore.cjs` | the load-sensitive checks fixed one by one (see above); final run in the report |
+| `storycore.cjs` | 99 passed, 0 failed (after the game-time waits; HEAD's own copy failed 6 under the same load) |
 | `collectibles.cjs` | all checks passed after the wait fixes (5 failed under load before, the same with HEAD's waits) |
 | `save.cjs` | passed |
 | `smoke.cjs` | portrait + landscape passed; desktop's fixed-time walk failed once at load 40 (56 u < 60), re-run passed |
-| `npcs.cjs` | 2 failing (pre-existing at HEAD: "follow ride"; a load-dependent NPC hop on the Old City walk) |
+| `npcs.cjs` | 39 passed, 1 failed: "follow ride" (fails at HEAD too: the test's straight-line rider does not reach Koti in 45 game s; Immu keeps up); HEAD had 4 failing |
 

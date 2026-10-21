@@ -182,11 +182,14 @@
       let v = sh.vertexShader.replace('#include <common>', '#include <common>\n' + WIND_VERT_COMMON);
       if (o.impostor) v = v.replace('#include <beginnormal_vertex>', IMP_NORMAL).replace('#include <begin_vertex>', IMP_VERT + '\n' + WIND_VERT.replace('#include <begin_vertex>', ''));
       else v = v.replace('#include <begin_vertex>', WIND_VERT);
-      v = v.replace('#include <common>', '#include <common>\nvarying float vNearObj;').replace('#include <project_vertex>', NEAR_VERT);
+      // the core's foliage see-through cone round the third-person camera -> player line (view3d.js H.occFade)
+      const OF = !o.impostor && N.view3d && N.view3d.H && N.view3d.H.occFade;
+      if (OF) OF.uniforms(sh);
+      v = v.replace('#include <common>', '#include <common>\nvarying float vNearObj;' + (OF ? '\n' + OF.vdecl : '')).replace('#include <project_vertex>', NEAR_VERT + (OF ? '\n' + OF.vert : ''));
       sh.vertexShader = v;
       sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying float vWindFl;\nvarying float vNearObj;')
-        .replace('#include <clipping_planes_fragment>', NEAR_FRAG);
+        .replace('#include <common>', '#include <common>\nvarying float vWindFl;\nvarying float vNearObj;' + (OF ? '\n' + OF.decl : ''))
+        .replace('#include <clipping_planes_fragment>', NEAR_FRAG + (OF ? '\n' + OF.frag : ''));
     };
     m.customProgramCacheKey = () => (o.impostor ? 'm3dp-wind-imp' : 'm3dp-wind');
     m.needsUpdate = true;
