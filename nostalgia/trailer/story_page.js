@@ -245,7 +245,14 @@
   mc.port1.onmessage = () => { const r = mres; mres = null; if (r) r(); };
   const tick = () => new Promise((r) => { mres = r; mc.port2.postMessage(0); });
   SP.tick = tick;
-  async function one(dt) { window.__step(dt); pace(dt); SP.frame++; await tick(); }
+  // animations created by the frame's promise continuations (a card or line that a step's await just reached) only
+  // exist after the yield: pause them at 0 right away, else they would run on real time until the next frame
+  function adoptNew() {
+    let list;
+    try { list = document.getAnimations(); } catch (e) { return; }
+    for (const a of list) if (a[VT] == null) { try { a[VT] = 0; a.pause(); a.currentTime = 0; } catch (e) { /* ignore */ } }
+  }
+  async function one(dt) { window.__step(dt); pace(dt); SP.frame++; await tick(); adoptNew(); }
   SP.step = async function (n, dt) {
     for (let i = 0; i < n; i++) await one(dt);
     return SP.status();

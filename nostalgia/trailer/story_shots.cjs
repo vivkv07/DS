@@ -304,7 +304,8 @@ async function renderSegment(seg) {
     PR3D: +(process.env.PR3D || SCALE), // the 3D view's pixel ratio (default: native, the DOM's device scale)
     SIDE: +(process.env.SIDE || -1), YAW: +(process.env.YAW || Math.PI + 0.42), YAW_V: +(process.env.YAW_V || Math.PI + 0.3), PITCH: +(process.env.PITCH || 0.2), REC_FIRE: +(process.env.REC_FIRE || 18) };
   let f = 0;
-  for (const cut of plan.cuts) {
+  for (const [ci, cut] of plan.cuts.entries()) {
+    if (CUTS.length && !plan.cuts.slice(ci).some((c) => CUTS.includes(c.name))) break; // nothing wanted after this
     const want = !CUTS.length || CUTS.includes(cut.name);
     if (!want && !plan.sequential) { f += cut.n; continue; } // an independent moment: skip it entirely
     if (cut.setup) console.log(' ', seg.id, cut.name, 'setup', JSON.stringify(await page.evaluate(cut.setup, arg)));
@@ -343,7 +344,7 @@ async function renderSegment(seg) {
     const last = await page.evaluate(() => SP.status());
     console.log(' ', seg.id, cut.name, 'frames', f - cut.n, '-', f - 1, '| anchor +' + k, '\n    first', JSON.stringify(first).slice(0, 300), '\n    last ', JSON.stringify(last).slice(0, 300), ((Date.now() - tS) / 1000).toFixed(0) + 's');
   }
-  console.log(seg.id, 'done:', f, 'frames in', ((Date.now() - tS) / 1000).toFixed(0), 's; page errors', errors.length, errors.slice(0, 3));
+  console.log(seg.id, 'done:', f, 'frames' + (CUTS.length ? ' (cuts ' + CUTS.join(',') + ')' : ''), 'in', ((Date.now() - tS) / 1000).toFixed(0), 's; page errors', errors.length, errors.slice(0, 3));
   await browser.close();
   return errors.length;
 }
