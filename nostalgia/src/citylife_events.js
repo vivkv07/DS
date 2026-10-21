@@ -240,7 +240,7 @@
     lost: ['Ball intlo padindi!', 'Aunty, ball ivvandi please!', 'Evadu kottadu ra?!'],
     back: ['Inkosari intloki kotte, ball ivvanu!', 'Jagratha ga aadandi!'],
     invite: ['Chinnu! Aaja, ek over!', 'Rara, nuvvu batting!'],
-    uncles: ['Ee saari India World Cup kodutundi.', 'Petrol rate chusava?', 'Maa rojullo...', 'Sachin century kodatadu chudu.', 'Ivala chaala ukkapotha.'],
+    uncles: ['Ee saari India World Cup kodutundi.', 'Petrol rate chusava?', 'Maa rojullo...', 'Raghav century kodatadu chudu.', 'Ivala chaala ukkapotha.'],
     power: ['Current poyindi!', 'Inverter on cheyyi!', 'Kovvotthi ekkada?', 'Abba, ukkapotha!', 'Mallee current poyindi!'],
     powerBack: ['Current vachindi!', 'Hammayya!'],
     bangles: ['Choodiyan! Choodiyan le lo!', 'Laad Bazaar ki asli choodiyan!', 'Aao behen, dekh lo!', 'Shaadi ke liye seedha yahan!'],

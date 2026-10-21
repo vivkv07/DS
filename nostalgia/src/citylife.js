@@ -125,9 +125,9 @@
 
   /* ================================================================ bark lines (Hyderabadi, kid-friendly) */
   const LINES = {
-    cricket: [['Sachin hai toh match hai, miyan!', 'Arre, ek akela kya karega?'], ['Kal ki bowling dekhi? Ekdum bekaar!', 'Pitch hi aisa tha, yaar.'],
-      ['World Cup hamara hai, likh ke le lo!', 'Pehle semi-final toh jeeto!'], ['Kumble ki googly, waah!', 'Arre, catch chhod diya na!'],
-      ['Dravid ne bachaya, warna...', 'Haan, wall hai woh, wall!'], ['Last over mein six! Kya baat!', 'Radio pe sunte hi kood gaya main!']],
+    cricket: [['Raghav hai toh match hai, miyan!', 'Arre, ek akela kya karega?'], ['Kal ki bowling dekhi? Ekdum bekaar!', 'Pitch hi aisa tha, yaar.'],
+      ['World Cup hamara hai, likh ke le lo!', 'Pehle semi-final toh jeeto!'], ['Gopi ki googly, waah!', 'Arre, catch chhod diya na!'],
+      ['Vinod ne bachaya, warna...', 'Haan, deewar hai woh, deewar!'], ['Last over mein six! Kya baat!', 'Radio pe sunte hi kood gaya main!']],
     paper: ['Aaj ka paper aaya?', 'Bhav phir badh gaye.', 'Is baar baarish late hai, likha hai.', 'Exhibition kab shuru hai?', 'Naya flyover ban raha, dekho.'],
     readerChai: ['Ek chai aur, anna!', 'Chai khadak banao!', 'Osmania do, plate bhar ke.'],
     cyclist: ['Anna, do chai! Jaldi!', 'Ek cutting, anna!', 'Chai, aur ek Osmania.', 'Do chai, ek bun!'],

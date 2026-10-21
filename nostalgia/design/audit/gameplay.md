@@ -109,6 +109,48 @@ touch and a pad.
     shop footers (the callers pass `key: 'E'` / `<kbd>E</kbd>`; the J-card and the prompt now use
     `N.input.glyph('action')`).
 
+## Follow-up pass — journey audit items handed to this lane
+
+Items from [`journey.md`](journey.md) that sit in gameplay-lane files (plus `src/npcs.js` for the brand
+renames, now that the journey lane has finished).
+
+| # | Was | Fix | Check |
+|---|-----|-----|-------|
+| J03 (P1) | Chinnu already home when the curfew starts (on the home terrace, ~36 u from the door, so outside `homeR`; or standing at the door) — the Chappal Meter climbed: "Mummy is waiting at the gate". `homeRule` only cleared it on *entering* the home radius. `14_curfew_home_terrace_before.png` | `wanted.js` `curfewRule`: when a floor is due and Chinnu is `W.atHome`, within `TUNE.homeR` of `homePos()`, or on `home_terrace`, that night counts as already home (`W.curfewHomeDay = nightDay`, floor 0). New helper `atHomeNow()`. Leaving later the same night doesn't bring the floor back (same rule as coming home). | `traffic.cjs` "already home when the curfew starts": door at 21:40 → floor 0 / level 0; terrace at 23:10 → floor 0 / level 0; next night at Abids → floor ≥ 1 (the curfew still works). |
+| J10 (P2) | The family Chetak (−58, +2) and Akka's Scooty (+26, +4) stood on the footpath line through the home gate; walkers jammed on them. Hercules gears (unlock) was seeded in the road. | `vehicles.js` `seedHome`: each vehicle tries a short list of spots and takes the first one that is drivable, clear of walls (every collision circle) and of other parked vehicles. Chetak → (−58, +17) and Scooty → (−84, +16), both nose-in in the gaps between the houses west of the gate; the cycles and the Hercules in the gaps behind them. The east lane to the terrace stairs (+20..+28) and the footpath strip (−4..+10) stay clear. `15_home_parking_after.png` | Placement probe (all on drivable ground, 0 wall hits). Diwali "Nanna's garage" reads the Chetak's position, so it moved with it (now at its nose, −58, +8): `ONLY=tiger diwali_missions.cjs` passes ("Tiger sleeps on the gunny sack in Nanna's garage"). The `npcs.cjs` walk home → Café Gulistan went from 903 u / 10 unsticks to 606 u / 6 unsticks; the ones left are all in the crowd at Café Gulistan (−264, +149 from home), not at the gate (journey lane, see below). |
+| J08 | Real brands in shop rows and barks. | Fictional lookalikes, matching the names the journey lane picked for the story: Mango Bite → **Mango Masti** (`entities.js`, `shops.js` kirana, `wanted.js` chitti / amma lines, `npcs.js` chitti and Agarwal); Hajmola → **churan goli** (`shops.js` medical shop line and digestive-candy row); Tinkle → **Twinkle Tales**, Chandamama → **Chanda Kathalu** (railway book stall rows + trivia titles); Horlicks → **haldi milk** (Amma's home lines); Rasna → Bunty-anna's broken-window line. Item / row ids (`mango_bite`, `tinkle`, `chandamama`) stay as they are, so saves still load. Vehicle names and "walkman" unchanged. `story_bible.md` / `systems_design.md` rows updated to match. | `shops.cjs`, `journey.cjs` static brand scan. |
+| J21 | Ambient cricket barks named real players. | `citylife.js` / `citylife_events.js` bark text only: Sachin → Raghav, Kumble → Gopi, Dravid → Vinod ("deewar hai woh, deewar!"). No real public figures left in npcs / traffic / citylife barks (grep for the era's cricketers, actors and politicians). | grep |
+| J19 | Phones: the cutscene SKIP pill sat under the dialogue box (a faint "SKIP ▶▶" behind Amma's lines). `12_cutscene_skip_390x844_before.png` | `style.css`: while a dialogue box is open (`body:has(.dlg.show)`), the pill sits above it, scaled with `--txtz` (text size) and the safe area. Phones in landscape get their own height. | Probe: 390x844 box 733–838 / pill 636–676; 360x740 625–730 / 532–572; 844x390 301–400 / 232–272 — no overlap. `12_cutscene_skip_*_after.png` |
+| J20 | Phone title: "SP COUNTER" read "SP 000" (the VCR clock hidden, the counter squeezed); "NORMAL POSI…" ran under the cassette. `13_title_390x844_before.png` | `style.css` portrait title block: smaller VCR fonts with `nowrap` instead of hiding parts of it; the J-card print line wraps onto two lines instead of running under the cassette; an extra step for ≤ 340 px. | 390x844 and 320x640: "■ STOP --:-- SP COUNTER 000" on one line, every print span ends left of the cassette. `13_title_*_after.png` |
+
+Still open (other lanes, not edited here):
+
+- **X6 — glossary** (`src/dialogue.js` L550, journey lane): the word list still says
+  `churan goli / mango bite / tinkle`; suggest `churan goli / Mango Masti / Twinkle Tales` to match the
+  shop and story text.
+- **X7 — Café Gulistan crowd** (`tests/npcs.cjs` "walkTo home → Café Gulistan", journey lane): with the
+  vehicles off the footpath the short walk still uses 606 u for 329 u with 6 unsticks, all in the café
+  crowd (the walk test's 1.6× budget fails). Suggest letting `npcs.planPath` treat seated or standing crowd
+  actors as soft obstacles, or keeping the cafe crowd's spawn ring clear of the door approach.
+- **X8 — story_full SA1 grace check** (`tests/story_full.cjs` `pSA1` ~L998–1001, journey lane): the "Tag!" hook
+  teleports Chinnu to the nearest raider, so a night can end with him 17 u from the home door; `story.js`
+  `pandalGraceTick` then ends the pandal grace "at home" (< 45 u), as designed, and the check reads
+  `{"grace":null,"lvl":0}` as a failure (seen on night 2 at 08:14 before this pass and on night 4 in this
+  pass). Suggest accepting `grace === null` when he is within 45 u of home, or reading the flag right after
+  MISSION PASSED.
+- **Note — pigeons**: `birds.js` (atmosphere lane) takes over the pigeon flocks, so `traffic.cjs`'s horn-scatter
+  check now prints "no pigeon flock place found" and skips; the horn → pigeons path is birds.js's to test.
+
+Follow-up test status (one suite at a time, machine load 15–20):
+`traffic` 44/44 (new "curfew at home" check; the cow-horn check was flaky under load — 2 failures in 6
+runs, code unchanged — and now stands within horn reach before honking and reports distances if it fails
+again); `ux_audit` 64/64; `shops` 49/49 (the Nanna pillion check timed out once under load, passes on
+rerun); `menus` 216/216 (two load flakes fixed in the test: the 7-track J-card is measured after its 0.7 s
+entry animation, and the reload check waits up to 60 s for the boot instead of reading a half-booted page);
+`smoke` 45/45; `vehicles_v2` 131/131; `core_systems` 89/89; `ONLY=tiger diwali_missions` passes
+(Nanna's garage by the moved Chetak); `START=explore2 STOP=sa1 story_full` 26/26 (one earlier run 25/26 on X8
+above; the curfew itself stayed off, level 0).
+
 ## Notes for the next pass
 
 - `N.interact.runnerUp`, `N.hud.keepOutRects()`, `N.hud.blipColor()`, `N.input.glyph()` and the key

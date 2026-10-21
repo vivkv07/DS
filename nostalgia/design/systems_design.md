@@ -127,7 +127,7 @@ ties go to the nearest (entities.js). The labels below are the ACTION button tex
 | 8 | ● REC | end of a mission, 8 s window (then auto) | "● REC" | missions.js |
 | 7 | Mission-critical step | a step that needs ACTION (take the tape from the boot, click frame 24, drag Nanna) | step label | story.js |
 | 7 | Job action while doing a job | paper throw, deliver dabba | "Throw paper" | jobs (§9) |
-| 6 | Give a Mango Bite to Chitti | Chitti chasing within 20 u and the player holds a `mango_bite` | "Mango Bite?" | wanted.js |
+| 6 | Give a Mango Masti to Chitti | Chitti chasing within 20 u and the player holds a `mango_bite` | "Mango Masti?" | wanted.js |
 | 6 | Give jasmine to Mummy | level 5, Mummy within 24 u, player holds `jasmine` | "Jasmine for Mummy" | wanted.js |
 | 6 | Talk to a mission giver | at a giver marker (r 14 u) | "Talk" | missions.js |
 | 5 | Retry mission | at the failed mission's marker | "Retry mission" | missions.js (already 5) |
@@ -271,7 +271,7 @@ purchases.
   khaata is unpaid, his greeting is "*Khaate mein likh diya.* Tell your Nanna."
 - **The toffee-for-change gag.** When a kirana payment would leave 50 p of change, there is a 30%
   chance the shopkeeper gives a toffee (+2 energy) instead. Kirana prices are whole rupees, so this
-  only happens after buying a 50 p Mango Bite.
+  only happens after buying a 50 p Mango Masti.
 
 ### 2.5 Water
 
@@ -566,7 +566,7 @@ distance along the road graph. They despawn once out of view and more than 500 u
 
 | Level | Who (bible) | When / where | Spawn | Move | Sight | Catch | Behaviour |
 |---|---|---|---|---|---|---|---|
-| **1** | **Chitti** (6) | colony districts (`himayatnagar`, `rtc_x`), 07:00–19:30, not during school hours on school days (08:30–15:30: she is in class) | 260 u, from the direction of `home` | walk 40, run 62, never tires | 160 | **cannot catch.** **Tattle:** within 60 u for 8 s in total → +100 (she runs home) | follows the last-seen point; shouts every 6 s; a Mango Bite bribes her off (§4.6) |
+| **1** | **Chitti** (6) | colony districts (`himayatnagar`, `rtc_x`), 07:00–19:30, not during school hours on school days (08:30–15:30: she is in class) | 260 u, from the direction of `home` | walk 40, run 62, never tires | 160 | **cannot catch.** **Tattle:** within 60 u for 8 s in total → +100 (she runs home) | follows the last-seen point; shouts every 6 s; a Mango Masti bribes her off (§4.6) |
 | **1** | **colony uncle on a cycle** | anywhere else, or at night | 300 u by road | cycle 95 | 180 | cannot catch; tattles after 10 s in total within 80 u | "I'm going that way anyway. Towards your house." |
 | **2** | **aunties' phone tree** (spotters) | day; ambient `aunty`, `saree`, `woman` peds within 400 u get flagged (at most 4, with a "!" pip) plus the colony-gate aunties | existing peds | stand still or stroll 20 | 130 | none; **report** = seen 1.5 s in total → +40, then a 10 s cooldown for that spotter | gate gossip lines (bible §8.2) |
 | **2** | **Bahadur** the Gurkha | night, colony districts | the colony gate | walk 40, patrols toward the last-seen point | torch cone 60° x 200 u, otherwise 150 | none; reports +40; whistle `gurkha` | taps his stick; "*Kaun hai?*" |
@@ -592,7 +592,7 @@ All pursuer AI keeps a **40 u buffer around respect zones** and never paths thro
 | Method | Where | Cost | Effect | Limits |
 |---|---|---|---|---|
 | Break line of sight | anywhere | — | −1 level per 12 s unseen | — |
-| **Mango Bite for Chitti** | give one to her (ACTION) | 50 p (kirana) | level 1 → 0; Chitti: "...I saw nothing. Mango Bite is very good." | level 1 with Chitti only |
+| **Mango Masti for Chitti** | give one to her (ACTION) | 50 p (kirana) | level 1 → 0; Chitti: "...I saw nothing. Mango Masti is very good." | level 1 with Chitti only |
 | **Irani café family room** | any `irani_cafe_*`: order something (≥ ₹4), then ACTION "Sit in family room" and stay 10 s | the order | **−2** (bible) | levels 1–4 (at 5: −1, "Mummy checks family rooms"); once per café per game-day; not while a chaser is within 40 u with sight |
 | **Barber haircut** | any `barber_*` | ₹10 | **clears everything** (bible); the hairstyle changes | 8 s cutscene; not while a chaser is within 40 u with sight; barbers close on Tuesdays [~] |
 | **Home before the street lights** | reach `home` (r 20) before 18:30 | — | levels 1–3 → 0 ("Good boy, home on time.") | after 18:30, any level ≥ 1, or level 4–5 at any time → caught at the door (PAKDA GAYA, no respawn needed) |
@@ -760,7 +760,7 @@ Every Irani café serves **Irani chai and Osmania biscuits** (registry round 5).
 
 | Item | Price | Effect / use |
 |---|---|---|
-| ★ Mango Bite (toffee) | 50 p | +2, or an item for bribing Chitti (max 9) |
+| ★ Mango Masti (toffee) | 50 p | +2, or an item for bribing Chitti (max 9) |
 | Poppins-style fruit sweets, roll | ₹1 | +4 |
 | Glucose biscuits, small pack (carry) | ₹2 | +12; dogs love it (§11.3) |
 | Cool drink, glass bottle | ₹7 + ₹1 deposit | +15 |
@@ -921,7 +921,7 @@ Services: the aunties' shopping-list job (§9); `bargain who:'farmer'`; M7 and M
 | | xerox | ₹1 a page | flavour |
 | | ★ **"Guide Map of Twin Cities"** | ₹10 | item `city_map`: every shop and service icon on the full map, with hours |
 | **Medical shop** (`medical_shop_1`..`8`, 08:00–22:30) | ★ plaster | ₹1 | cures `knee` |
-| | Hajmola-style digestive candy (5) | ₹1 | +2 |
+| | Churan goli digestive candy (5) | ₹1 | +2 |
 | | glucose powder (carry, 3 uses) | ₹10 | +25 energy, +10 tummy each |
 | | balm (SA3), Ammamma's tablets (M6) | ₹5 / scripted | errands |
 | **Photo studio** (`photo_studio_1`..`6`, 09:30–20:30) | ★ develop frames | ₹2 a frame (bible) | prints ready after 2 game-days or after the next mission |
@@ -971,7 +971,7 @@ Services: the aunties' shopping-list job (§9); `bargain who:'farmer'`; M7 and M
 | **`koti_bus_stand`** | ★ Bus routes (§3.6). Ticket Thatha's bench: show him found tickets to unlock their stops (automatic) and hear the stop's trivia. Auto stand. `chai_bandi` nearby |
 | **`imlibun_bus_station`** | ★ Bus routes. Long-distance enquiry window (flavour: "Kurnool? Bay 12."). Ramoji trip (post-game). Platform chai ₹2 |
 | `rathifile_bus_station`, `mehdipatnam_bus_terminus`, `gowliguda_hangar` | ★ Bus routes |
-| **`nampally_station`**, **`kachiguda_station`**, `secunderabad_station` | ★ **Platform ticket ₹3** (bible): the platform is a walk-only shortcut, and the gate checker blocks it without a ticket ("Platform ticket, *beta*. Three rupees."). One ticket lasts the game-day at that station. **Weighing machine ₹1**: a printed card with Chinnu's weight and a "fortune" that is really a hint ("Your lucky direction: north-east. Lucky colour: green."): the compass direction and series colour of the nearest unfound collectible. **Railway book stall**: Tinkle ₹8, Chandamama ₹6 (opens a comic-page trivia card). Railway tea ₹2 (+12) |
+| **`nampally_station`**, **`kachiguda_station`**, `secunderabad_station` | ★ **Platform ticket ₹3** (bible): the platform is a walk-only shortcut, and the gate checker blocks it without a ticket ("Platform ticket, *beta*. Three rupees."). One ticket lasts the game-day at that station. **Weighing machine ₹1**: a printed card with Chinnu's weight and a "fortune" that is really a hint ("Your lucky direction: north-east. Lucky colour: green."): the compass direction and series colour of the nearest unfound collectible. **Railway book stall**: Twinkle Tales ₹8, Chanda Kathalu ₹6 (opens a comic-page trivia card). Railway tea ₹2 (+12) |
 | `electronics_shop_1` and kirana windows | A TV in the window with a crowd on the footpath: a crowd zone (§11.5) |
 
 ### 5.17 Places of worship (respect zones, §4.8)
@@ -1930,7 +1930,7 @@ This complements the bible's story matrix (§3.3). Every row is used by at least
 | Dilsukhnagar Sai Baba temple | `dilsukhnagar_sai_temple`, `flower_cart_5`..`8`, `banana_cart_8` | respect zone; Thursday crowd ×1.8 and prasadam +15 (§2.2, §11.2); flower and banana carts (§5.9) |
 | RTC X Roads and cinemas | `rtc_x_roads`, `sandhya_theatre`, `sudarshan_theatre`, `odeon_theatre`, `devi_theatre`, `bawarchi` | cinemas: tickets, time skip, meter −2 (§5.15); Pochaiah's home podium (§4.4); queue cages (§8.12); cut-out helper job (§9); Bawarchi biryani (§5.11); T08 |
 | Schools | `school_1`..`school_13` (+ `_ground`) | gate carts (gola, pani puri; §5.9); bell schedule (§12.3); school-hours spotter rule (§10.5); grounds for gully cricket; C15 |
-| Kirana stores | `kirana_1`..`kirana_20` | shop (§5.3); Mango Bite bribe (§4.6); hide behind the sacks (§4.7); khaata; bottle deposits; errands job (§9) |
+| Kirana stores | `kirana_1`..`kirana_20` | shop (§5.3); Mango Masti bribe (§4.6); hide behind the sacks (§4.7); khaata; bottle deposits; errands job (§9) |
 | Banana and flower vendors | `banana_cart_1`..`10`, `flower_cart_1`..`12` | snacks and the peel gag (§4.7, §5.9); jasmine for Mummy (§4.6); garlands; `bargain` |
 | Stationery shops | `stationery_1`..`8` | school kit, slam book, brown cover (SA7), the **city map** unlock (§5.14); cut-out job supplies (§9) |
 | Flour mills | `pindi_girni_1`..`7` | girni dabbas job (§9); grinding and atta (§5.14); power-cut silence; chilli-day sneeze |

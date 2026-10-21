@@ -782,7 +782,6 @@ body.txt-xl { --txtz: 1.3; }
   .hud-caps .hud-cap { font-size: calc(16px * var(--txtz)); }
   .hud-caps .hud-cap.kind-tape { font-size: calc(17px * var(--txtz)); }
 }
-}
 
 /* ---- narrower desktops: the top column drops below the OSD row */
 @media (max-width: 980px) {
@@ -2068,9 +2067,18 @@ body.touch-on .mn-keys { display: none; }
   .jc-sides { font-size: 15px; }
   .jc-trk { font-size: 22px; min-height: 48px; }
   .jc-trk em { font-size: 14px; }
-  .vcr-l { font-size: 28px; }
-  .vcr-r b { font-size: 28px; }
-  .vcr-cl { display: none; }
+  .vcr-l { font-size: 24px; gap: 10px; white-space: nowrap; }
+  .vcr-r { gap: 6px; font-size: 14px; white-space: nowrap; }
+  .vcr-r b { font-size: 24px; }
+  /* (journey audit J20) the counter keeps its label: "SP COUNTER 000", not "SP 000"; the print line wraps to two
+     short lines beside the cassette instead of "NORMAL POSI…" running under it */
+  .jc-print { flex-wrap: wrap; row-gap: 1px; overflow: visible; }
+  .jc-print span { white-space: nowrap; }
+}
+@media (max-aspect-ratio: 9/10) and (max-width: 340px) {
+  .mn-vcr { letter-spacing: 1px; }
+  .vcr-l, .vcr-r b { font-size: 20px; }
+  .vcr-r { font-size: 12px; }
 }
 /* short landscape phones: compact card */
 @media (max-height: 470px) and (min-aspect-ratio: 9/10) {
@@ -2590,6 +2598,12 @@ body.touch-on .jr-foot { display: none; }
 .cs-skip-f { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: rgba(255, 95, 176, 0.55); transform-origin: left; transform: scaleX(0); }
 .mn-cs.noskip .cs-skip { display: none; }
 @media (max-aspect-ratio: 9/10) { .cs-skip { bottom: calc(7vh + 12px); } .cs-osd { top: calc(7vh + 10px); } .cs-osd b { font-size: 34px; } .cs-stage { padding-top: calc(7vh + 10px); padding-bottom: calc(7vh + 60px); } }
+/* phones: in a cutscene the dialogue box covers the bottom of the screen, so the SKIP pill sits above the box
+   whenever one is open (journey audit J19: on 390x844 it was a faint "SKIP" under Amma's lines) */
+@media (max-width: 760px), (max-height: 500px) {
+  body:has(.dlg.show) .mn-cs .cs-skip { bottom: calc(150px * var(--txtz, 1) + 18px + var(--safe-b)); }
+}
+@media (max-height: 500px) and (orientation: landscape) { body:has(.dlg.show) .mn-cs .cs-skip { bottom: calc(118px * var(--txtz, 1) + var(--safe-b)); } }
 
 /* ---- J-card line strip (MISSION PASSED) and the OSD card */
 .mn-jstrip { position: absolute; left: 0; right: 0; top: 20%; z-index: 6; display: flex; justify-content: center; padding: 0 16px; pointer-events: none; animation: cs-in 0.4s ease-out; transition: opacity 0.3s; }
@@ -30506,7 +30520,7 @@ runDrain: 8.5, restDelay: 0.6, recoverWalk: 7, recoverStand: 14, recoverSit: 25,
 pedalDrain: 2.0, pedalRecover: 5, legsGoneMul: 0.65,
 tummyDrain: { idle: 0.10, run: 0.25, pedal: 0.15, ride: 0.05, sit: 0.06 },
 summerMul: 1.25, hungry: 25, veryHungry: 10, growlEvery: 20,
-fallSpeedCycle: 75, fallSpeedMotor: 90, fallEnergy: 15, fallThrow: 14, fallDown: 1.0, kneeGm: 120,
+fallSpeedCycle: 75, fallSpeedMotor: 90, fallEnergy: 15, fallThrow: 14, fallDown: 1.0, kneeGm: 120, fallRelaxedMul: 1.35,
 difficulty: { relaxed: 0.7, normal: 1, hard: 1.2 },
 starveFallbackS: 4,
 };
@@ -30519,7 +30533,7 @@ osmania_packet: { name: 'Osmania biscuits', short: 'Osmania', feed: 15, icon: 'b
 samosa_dozen: { name: 'Onion samosas', short: 'Samosa', feed: 14, icon: 'samosa' },
 biscuits: { name: 'Glucose biscuits', short: 'Biscuits', feed: 12, icon: 'biscuit' },
 glucose: { name: 'Glucose powder', short: 'Glucose', energy: 25, tummy: 10, icon: 'glucose' },
-mango_bite: { name: 'Mango Bite', short: 'Mango Bite', feed: 2, icon: 'toffee' },
+mango_bite: { name: 'Mango Masti toffee', short: 'Mango Masti', feed: 2, icon: 'toffee' },
 };
 const pref = (k, d) => { const st = N.settings || (N.menus && N.menus.settings) || null; return st && st[k] != null ? st[k] : d; };
 const gmNow = () => N.clock.day * 1440 + N.clock.minutes;
@@ -30650,7 +30664,9 @@ if (!T || T.cls !== 'bike') return;
 const other = d.a === v ? d.b : d.a;
 const hard = d.wall || (other && other.kind === 'vehicle') || (other && other.kind === 'animal' && /cow|buffalo/.test(String(other.type || other.species || other.sub || '')));
 if (!hard) return;
-const lim = T.pedal ? TUNE.fallSpeedCycle : TUNE.fallSpeedMotor;
+const relaxed = pref('difficulty', 'normal') === 'relaxed';
+if (relaxed && !d.wall) return;
+const lim = (T.pedal ? TUNE.fallSpeedCycle : TUNE.fallSpeedMotor) * (relaxed ? TUNE.fallRelaxedMul : 1);
 if ((+d.speed || 0) >= lim) p.fall(v, { speed: d.speed });
 });
 function starveFallback(p) {
@@ -30783,6 +30799,8 @@ N.emit('footstep', { x: this.x, y: this.y, surf: N.world.surfaceAt(this.x, this.
 }
 if (sp < 4) this.anim.phase *= 0.8;
 this.idleT = sp < 3 && canControl ? (this.idleT || 0) + dt : 0;
+this.crowdT = (this.crowdT || 0) - dt;
+if (this.crowdT <= 0) { this.crowdT = 0.5; let c = false; try { c = !!(N.traffic && N.traffic.inCrowd && N.traffic.inCrowd(this.x, this.y)); } catch (e) { c = false; } this.inCrowd = c; }
 };
 player.draw = function () {
 if (this.vehicle || this.hidden) return;
@@ -30800,10 +30818,11 @@ R.queue('actors', this.y, () => D.sprite(self.x, self.y, self.fallA + (k < 0.6 ?
 return;
 }
 R.queue('actors', this.y, () => D.sprite(self.x, self.y, self.angle, 8, (ctx) => drawPerson(ctx, self.look, self.anim)));
-const a = Math.min(1, Math.max(0, ((this.idleT || 0) - 2.5) / 0.6));
+const a = Math.max(Math.min(1, Math.max(0, ((this.idleT || 0) - 2.5) / 0.6)), this.inCrowd ? 0.75 : 0);
 if (a > 0 && N.state.mode === 'play') {
+const still = document.body && document.body.classList.contains('reduced-motion');
 R.queue('sky', 0, (ctx) => {
-const k = R.k(14), bob = Math.sin(N.time.real * 5) * 1.5;
+const k = R.k(14), bob = still ? 0 : Math.sin(N.time.real * 5) * 1.5;
 const X = R.sx(self.x, k), Y = R.sy(self.y, k) - 9 - bob;
 ctx.globalAlpha = a * 0.95;
 ctx.fillStyle = '#1a1214';
@@ -31032,7 +31051,7 @@ define('old_cycle', { base: 'hero_cycle', name: "Nanna's roadster", short: 'road
 define('kid_cycle', { base: 'cycle', name: "Kid's hire cycle", short: 'cycle', maxSpeed: 110, turn: 3.6, w: 13.5, bikeLook: 'kid', colors: ['#9a2424', '#2f6a3a', '#24479a'] });
 define('bunty_rx100', {
 base: 'rx100', name: "Bunty-anna's RX100", short: 'RX100', colors: ['#1c1c22'], seats: 2, rideOk: true,
-refuse: ["Bunty-anna's RX100? Only pillion, only with a helmet, only behind Bunty-anna.", 'Bunty-anna: "Touch it and I tell Mummy about the Rasna."'],
+refuse: ["Bunty-anna's RX100? Only pillion, only with a helmet, only behind Bunty-anna.", 'Bunty-anna: "Touch it and I tell Mummy about the broken window."'],
 });
 define('akka_scooty', {
 base: 'scooty', name: "Akka's Scooty", short: 'Scooty', colors: ['#e2486c'], colors2: ['#f4f0e8'], spawn: null,
@@ -33300,12 +33319,31 @@ function seedHome() {
 const home = (N.WORLD_DATA && N.WORLD_DATA.spawns && N.WORLD_DATA.spawns.home) || null;
 if (!home || V.autoSeed === false || !N.world.built) return;
 const have = (type) => list.some((v) => v.alive && v.type === type && v.seeded);
-const put = (type, dx, dy, opts) => { if (!have(type)) seedPut(type, home[0] + dx, home[1] + dy, Math.PI / 2, opts); };
-put('family_chetak', -58, 2, { seed: 1999, color: '#7d9ab0', special: 'family' });
-put('akka_scooty', 26, 4, { seed: 1717, owned: true, special: 'akka' });
-if (unlocked('own_cycle', 12)) put('chinnu_cycle', 44, 4, { seed: 2003, owned: true, label: 'my cycle' });
-if (N.flags.old_cycle || (N.missions && N.missions.isDone && N.missions.isDone('ammammas_thursday'))) put('old_cycle', -76, 2, { seed: 1983, owned: true });
-if (unlocked('rx100', 60) || unlocked('hercules_gears', 60)) put('hercules_gears', 62, 4, { seed: 1960, owned: true, label: "Bunty-anna's Hercules" });
+const fits = (T, x, y, a) => {
+const W = N.world, c = Math.cos(a), si = Math.sin(a);
+if (!W.isDrivable(x, y)) return false;
+for (const off of T.co) if (W.collide(x + c * off, y + si * off, T.cr + 0.5, 'drive').hit) return false;
+return true;
+};
+const put = (type, spots, opts) => {
+if (have(type) || !TYPES[type]) return null;
+const T = TYPES[type];
+for (const [dx, dy, a] of spots) {
+const x = home[0] + dx, y = home[1] + dy;
+if (!fits(T, x, y, a)) continue;
+const c = Math.cos(a), si = Math.sin(a);
+if (N.entities.query(x, y, T.w / 2 + 40, isVehicle).some((o) => o.alive && T.co.some((off) => distTo(o, x + c * off, y + si * off) < T.cr + 1))) continue;
+return spawn(type, x, y, a, Object.assign({ seeded: true }, opts || {}));
+}
+const last = spots[spots.length - 1];
+return seedPut(type, home[0] + last[0], home[1] + last[1], last[2], opts);
+};
+const S_ = Math.PI / 2, NO = -Math.PI / 2;
+put('family_chetak', [[-58, 17, S_], [-58, 2, S_]], { seed: 1999, color: '#7d9ab0', special: 'family' });
+put('akka_scooty', [[-84, 16, NO], [-84, 30, NO], [26, 4, S_]], { seed: 1717, owned: true, special: 'akka' });
+if (unlocked('own_cycle', 12)) put('chinnu_cycle', [[-56, 36, NO], [-72, 26, 0], [44, 4, S_]], { seed: 2003, owned: true, label: 'my cycle' });
+if (N.flags.old_cycle || (N.missions && N.missions.isDone && N.missions.isDone('ammammas_thursday'))) put('old_cycle', [[-84, 34, NO], [-72, 26, 0], [-76, 2, S_]], { seed: 1983, owned: true });
+if (unlocked('rx100', 60) || unlocked('hercules_gears', 60)) put('hercules_gears', [[-72, 26, 0], [-110, 22, NO], [62, 4, S_]], { seed: 1960, owned: true, label: "Bunty-anna's Hercules" });
 }
 const STANDS = {
 school: { n: 2, p: 1, mix: ['hero_cycle', 'hercules_cycle', 'ladiescycle', 'hero_cycle'] },
@@ -36179,7 +36217,7 @@ C('chitti', {
 name: 'Chitti', full: 'Chitti (K. Lalitha), 6', color: '#e88aa8', voice: 1.62, speed: 40,
 look: { kind: 'kid', girl: true, skin: '#b97a4f', hair: '#1a1412', shirt: '#e88aa8', pants: '#e88aa8', ponytails: '#d8202a', size: 0.84, dots: '#f4f0e8', prop: 'wrapper' },
 portrait: { age: 'kid', hairStyle: 'ponytails', ribbon: '#d8202a', skin: '#b97a4f', shirt: '#e88aa8', floral: '#f4f0e8', earrings: '#d4a640', clips: '#58b8e8', collar: false },
-lines: ['*Mummy ki cheppesta!*', 'Annayya is outside AGAIN!', 'Give me a Mango Bite or I’m telling.', 'I saw. I SAW!'],
+lines: ['*Mummy ki cheppesta!*', 'Annayya is outside AGAIN!', 'Give me a Mango Masti or I’m telling.', 'I saw. I SAW!'],
 });
 C('bunty', {
 name: 'Bunty-anna', full: 'Bunty-anna (B. Vamsi), 19', color: '#4a6fa5', voice: 1.0, speed: 48, vehicle: 'bunty_rx100', vehicleBase: 'rx100', vehicleColor: '#1c1c22',
@@ -36272,7 +36310,7 @@ C('agarwal', {
 name: 'Agarwal-ji', full: 'Agarwal-ji (Gopal), 48 (Sri Lakshmi Kirana)', color: '#d89a3a', voice: 0.95, speed: 42,
 look: { kind: 'man', skin: '#c68b5e', hair: '#7a7570', shirt: '#efe6d0', pants: '#efe6d0', hat: 'gandhi', specs: true, prop: 'radio', belly: true },
 portrait: { kind: 'uncle', skin: '#c68b5e', cap: 'gandhi', specs: 'thick', shirt: '#efe6d0', collar: 'band', moustache: false },
-lines: ['*Aaj nakad, kal udhaar.*', 'No change. Take two toffees.', '*Khaate mein likh doon?* Tell your Nanna.', 'Mango Bite, fifty paise. For Chitti? Then two.'],
+lines: ['*Aaj nakad, kal udhaar.*', 'No change. Take two toffees.', '*Khaate mein likh doon?* Tell your Nanna.', 'Mango Masti, fifty paise. For Chitti? Then two.'],
 });
 C('bahadur', {
 name: 'Bahadur', talkName: 'Bahadur', full: 'Bahadur, the Gurkha, 55 (night watchman)', color: '#7a8a4a', voice: 0.86, speed: 40,
@@ -37962,8 +38000,8 @@ setHeat(clamp(num(o.heat, 0), 0, 599), 'load');
 _W: W,
 });
 const LINES = {
-chitti: ['*Mummy ki cheppesta!*', 'Annayya is outside AGAIN!', 'Give me a Mango Bite or I\'m telling.', 'I saw. I SAW!'],
-chittiBribed: '...I saw nothing. Mango Bite is very good.',
+chitti: ['*Mummy ki cheppesta!*', 'Annayya is outside AGAIN!', 'Give me a Mango Masti or I\'m telling.', 'I saw. I SAW!'],
+chittiBribed: '...I saw nothing. Mango Masti is very good.',
 uncle: ['*Arre*, Sreenivas\'s boy! Does your Amma know?', 'I\'m going that way anyway. Towards your house.', '*Oye!* *Ruko!* Stop there!', 'Running in this heat? Wait till I tell Padma!', '*Abbabba!* Children these days!'],
 aunty: ['Kamala-garu\'s grandson! At this hour!', 'I\'ll just phone Padma. Just to say hello.', '*Ayyo*, look at his knees.', 'The whole colony knows in ten minutes, *beta*.'],
 bahadur: ['*Kaun hai?*', 'Chinnu baba! *Ghar jao!*', 'I am only a whistle. But I am a LOUD whistle.'],
@@ -37989,7 +38027,7 @@ const WASTED_LINES = {
 self: ['*Thak gaya...* Legs have gone on strike.', 'Water... chai... Osmania... in that order.', 'Even the cow is walking faster than me.', 'Note to self: running is for the movies.', 'My chappal is tired. I am more tired.'],
 salim: ['*Arre*, sit, sit. Glucose water, one rupee. Then chai.'],
 waiter: ['Two hours you\'ll sit for one chai? ...Okay, for you, one hour.', '*Arre*, sit, sit. Glucose water, one rupee. Then chai.'],
-amma: ['Come, eat. ...First this glass of Horlicks. All of it.', '*Intiki vachava?* Horlicks first, questions later.'],
+amma: ['Come, eat. ...First this glass of haldi milk. All of it.', '*Intiki vachava?* Haldi milk first, questions later.'],
 };
 function npcLook(id, fallback) {
 let L = null;
@@ -39049,6 +39087,7 @@ let floor = 0;
 const mm = m < TUNE.curfewMorning ? m + 1440 : m;
 for (const [t, f] of TUNE.curfew) if (mm >= t) floor = f;
 const nightDay = m < TUNE.curfewMorning ? d - 1 : d;
+if (floor > 0 && !off && W.curfewHomeDay !== nightDay && atHomeNow()) W.curfewHomeDay = nightDay;
 if (off || W.curfewHomeDay === nightDay) floor = 0;
 if (floor !== W.curfewFloor) {
 const up = floor > W.curfewFloor;
@@ -39060,6 +39099,13 @@ else toast('Pochaiah is on his night round...', 2600);
 if (W.heat < floor * 100) setHeat(floor * 100 + 30, 'curfew');
 }
 }
+}
+function atHomeNow() {
+const p = N.player;
+if (!p) return false;
+if (W.atHome || p.level === 'home_terrace') return true;
+const h = homePos();
+return Math.hypot(p.x - h.x, p.y - h.y) <= TUNE.homeR;
 }
 function homeRule() {
 const p = N.player, h = homePos();
@@ -39107,7 +39153,7 @@ toast('Come back calm. Not in the middle of a chase.', 2000);
 }
 }
 const offers = {
-mango: { label: 'Mango Bite?', priority: 6, dist: 0, use: () => {
+mango: { label: 'Mango Masti?', priority: 6, dist: 0, use: () => {
 const ch = W.chaser;
 if (!ch || ch.role !== 'chitti' || !useItem('mango_bite')) return;
 bark(ch, LINES.chittiBribed, 'chitti', 2.6);
@@ -39842,7 +39888,7 @@ pumpToasts(dt);
 pumpBanner(dt);
 if (state.distPending && !state.bannerCur && !state.jc && !(dom.ask && dom.ask.classList.contains('show'))) {
 const dp = state.distPending; state.distPending = null;
-if (performance.now() - dp.t < 6000) showDistrict(dp.name, dp.sub);
+if ((N.time.real || 0) - dp.t < 6) showDistrict(dp.name, dp.sub);
 }
 pumpCaptions(dt);
 updateRoute(dt);
@@ -39882,6 +39928,7 @@ function pumpCaptions(dt) {
 for (const c of state.caps) c.left -= dt * 1000;
 while (state.caps.length && state.caps[0].left <= 0) { const c = state.caps.shift(); c.el.classList.remove('show'); setTimeout(() => c.el.remove(), 250); }
 }
+function actGlyph() { try { return (N.input && N.input.glyph && N.input.glyph('action')) || 'E'; } catch (e) { return 'E'; } }
 const KEEP_SEL = '.hud-osd .osd-row1, .hud-osd .osd-row2, .hud-osd .osd-dist, .hud-money, .hud-energy, .hud-chappal, .hud-minimap, ' +
 '.hud-obj.show, .hud-timer.show, .hud-toast.show, .hud-qitem.show, .hud-jcard.show, .hud-banner.show .b-title, .hud-banner.show .b-sub, ' +
 '.hud-district.show .d-name, .hud-ask.show, body.touch-on #touch .t-top';
@@ -39983,7 +40030,7 @@ if (!same) {
 dom.jcard.innerHTML =
 '<div class="jc-tape"><span class="jc-head"></span><span class="jc-reels"><i></i><i></i></span></div>' +
 '<div class="jc-title"></div><div class="jc-sub"></div><div class="jc-line"></div>' +
-'<div class="jc-row"><button type="button" class="sign-btn small jc-play"><kbd>E</kbd> &#9654; PLAY</button><span class="jc-not"></span></div>' +
+'<div class="jc-row"><button type="button" class="sign-btn small jc-play"><kbd>' + esc(actGlyph()) + '</kbd> &#9654; PLAY</button><span class="jc-not"></span></div>' +
 '<div class="jc-bar"><b></b></div>';
 dom.jcard.querySelector('.jc-play').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); const j = state.jc; if (j && j.onPlay) { try { j.onPlay(); } catch (er) { N.err('hud.jcard', er); } } });
 }
@@ -40035,7 +40082,7 @@ blipPos,
 route: () => route.pts,
 districtBanner(name, sub) {
 if (!dom.district || !name) return;
-if (state.bannerCur || state.jc || (dom.ask && dom.ask.classList.contains('show'))) { state.distPending = { name, sub, t: performance.now() }; return; }
+if (state.bannerCur || state.jc || (dom.ask && dom.ask.classList.contains('show'))) { state.distPending = { name, sub, t: N.time.real || 0 }; return; }
 showDistrict(name, sub);
 },
 timer(label, seconds, opts) {
@@ -40987,6 +41034,14 @@ const Rn = N.render;
 if (!Rn || !Rn.canvas || !Rn.W) return;
 const rect = Rn.canvas.getBoundingClientRect();
 const vw = window.innerWidth, vh = window.innerHeight;
+const now = performance.now();
+if (!placeBarks.rects || now - placeBarks.t > 350) {
+placeBarks.t = now;
+try { placeBarks.rects = N.hud && typeof N.hud.keepOutRects === 'function' ? N.hud.keepOutRects() : []; } catch (e) { placeBarks.rects = []; }
+}
+const hudR = placeBarks.rects || [];
+const placed = [];
+const hits = (x0, y0, x1, y1, r) => x0 < r[2] && r[0] < x1 && y0 < r[3] && r[1] < y1;
 for (const b of barks) {
 const t = b.target;
 if (!t || !b.el) continue;
@@ -40999,7 +41054,19 @@ let X = rect.left + (q.x / Rn.W) * rect.width;
 let Y = rect.top + (q.y / Rn.H) * rect.height - 8;
 const w = b.el.offsetWidth || 120, h = b.el.offsetHeight || 30;
 const left = U.clamp(X - w / 2, 6, Math.max(6, vw - w - 6));
-const topY = U.clamp(Y - h, 6, Math.max(6, vh - h - 6));
+let topY = U.clamp(Y - h, 6, Math.max(6, vh - h - 6));
+for (let pass = 0; pass < 2; pass++) {
+for (const r of hudR) {
+if (!hits(left, topY, left + w, topY + h, r)) continue;
+topY = r[1] < vh * 0.34 ? r[3] + 4 : r[1] - h - 4;
+}
+for (const o of placed) {
+if (!hits(left, topY, left + w, topY + h, [o.l - 2, o.t - 2, o.r + 2, o.b + 2])) continue;
+topY = o.t - h - 4 >= 6 ? o.t - h - 4 : o.b + 4;
+}
+}
+topY = U.clamp(topY, 6, Math.max(6, vh - h - 6));
+placed.push({ l: left, t: topY, r: left + w, b: topY + h });
 b.el.style.visibility = '';
 b.el.style.transform = 'translate(' + Math.round(left) + 'px,' + Math.round(topY) + 'px)';
 b.el.style.setProperty('--tail', Math.round(U.clamp(X - left, 10, w - 10)) + 'px');
@@ -42651,7 +42718,7 @@ if (avail) {
 const s = STORY_BY_ID[id], where = giverWhere(def);
 return 'Next on Side A: ' + (s ? s.title : id) + (where ? ' (the yellow marker at ' + where + ')' : '');
 }
-if (A && A.id === id && A.clue) return subst(shortOf(A)) + (A.note || (A.nudge >= 1 && !A.off ? NUDGE_TEXT : ''));
+if (riddleGiver) return subst(shortOf(A)) + (A.note || (A.nudge >= 1 && !A.off ? NUDGE_TEXT : ''));
 return null;
 }
 const MEALS = [{ id: 'breakfast', from: 7 * 60, to: 9 * 60 + 30 }, { id: 'lunch', from: 12 * 60 + 30, to: 14 * 60 + 30 }, { id: 'dinner', from: 19 * 60 + 30, to: 21 * 60 + 30 }];
@@ -42676,6 +42743,15 @@ toast(meal.id === 'breakfast' ? 'Amma: "Idli, chutney, and milk. Finish it!"' : 
 } };
 }
 if (m >= SLEEP_FROM || m < SLEEP_TO) return { label: 'Sleep till 07:00 ▶▶', use: () => homeSleep() };
+const S2 = N.story2;
+if (f.postgame && S2 && typeof S2.rewind === 'function' && typeof S2.playSeason === 'function') {
+return { label: '◀◀ REWIND: another season', use: () => {
+Promise.resolve(S2.rewind({ stay: true })).then((k) => {
+if (!k || (N.missions && N.missions.active) || S2.scene) return;
+try { S2.playSeason(k); } catch (e) { N.err('home.rewind', e); }
+}, (e) => N.err('home.rewind', e));
+} };
+}
 return null;
 }
 function homeSleep() {
@@ -42876,9 +42952,9 @@ enabled: () => wk.found.length > 0 || wk.extraSongs.length > 0 || tape.tracks.le
 use: () => deckOpen(),
 });
 N.interact.add('home_door', {
-get x() { const h = N.places && N.places.home; return h ? h.x - 12 : null; },
-get y() { const h = N.places && N.places.home; return h ? h.y + 2 : null; },
-r: 12, priority: 3,
+get x() { const h = N.places && N.places.home; return h ? h.x - 8 : null; },
+get y() { const h = N.places && N.places.home; return h ? h.y - 6 : null; },
+r: 8, priority: 3,
 label: () => (homeAct() || {}).label || null,
 enabled: () => !!homeAct(),
 use: () => { const a = homeAct(); if (a) a.use(); },
@@ -43954,6 +44030,7 @@ await m.talk([
 { s: 'chinnu', t: 'Copy, Agent Immu. *Saddi* ready. *Dheel*... *dheel*... *khench!*', mood: 'happy' },
 ]);
 const kite = await game(m, 'kite', { target: 1, difficulty: 0.25, intro: 'Cotton saddi only. Cut one kite.', place: 'home_terrace' });
+if (kite && kite.quit) m.fail('Not now? The whole colony is on the terraces. The kite waits for you. *Phir se!*');
 if (!kite || kite.win === false) m.fail("The Ashok Nagar kite cut yours first. *Phir se!*");
 sfx('crowd_cheer', { ui: true, vol: 0.7 });
 m.toast('The whole colony yells: "BO KAATA!"', 2400);
@@ -44937,8 +45014,12 @@ if (near) N.interact.offer({ label: 'Tag!', priority: 9, dist: 0, use: () => { n
 widget({ label: 'NIGHT WATCH', value: null, text: 'TAGGED ' + W.tagged + ' · RAIDERS ' + live.length });
 };
 S.step = { kind: 'watch', skip: () => { W.t = W.secs; T.left = 0.01; } };
+const rr = run();
+if (rr && !rr.lockShops) rr.lockShops = 'story:watch';
+const unlock = () => { if (rr && rr.lockShops === 'story:watch') rr.lockShops = false; };
 return m.until(() => W.lost || (T.expired || !T.on) || W.t >= W.secs).then(() => {
 const won = !W.lost;
+unlock();
 T.stop(); darkness(false); widget(null);
 for (const e of W.raiders) { e.alive = false; S.extras.delete(e); }
 S.tag = null;
@@ -47993,11 +48074,15 @@ const IMMU_HANG = [
 'Ten months and eleven days, I said. Now it\'s less. Don\'t count.',
 'Chai? Your treat. You have Eidi money. ...Oh. Not Eid yet. Your treat anyway.',
 ];
-function rewindMenu(api) {
-const keys = Object.keys(SEASONS);
+function rewindMenu(api, o) {
+o = o || {};
+const keys = Object.keys(SEASONS).concat(o.stay ? ['stay'] : []);
 let sel = 0;
+const row = (k, i) => k === 'stay'
+? '<li><button type="button" data-k="stay"><b>■</b><span>Not now<br><em>Stay in ' + esc(N.calendar ? N.calendar.label() : 'this day') + '.</em></span></button></li>'
+: '<li><button type="button" data-k="' + k + '"' + (i === 0 ? ' class="sel"' : '') + '><b>A' + (i + 1) + '</b><span>' + esc(SEASONS[k].title) + '<br><em>' + esc(SEASONS[k].sub) + '</em></span></button></li>';
 const html = '<h2>◀◀ REWIND</h2><p class="s2-sub">Play any season of 2003.</p><ul class="s2-jmenu">' +
-keys.map((k, i) => '<li><button type="button" data-k="' + k + '"' + (i === 0 ? ' class="sel"' : '') + '><b>A' + (i + 1) + '</b><span>' + esc(SEASONS[k].title) + '<br><em>' + esc(SEASONS[k].sub) + '</em></span></button></li>').join('') +
+keys.map(row).join('') +
 '</ul><p class="s2-hint">↑ ↓ choose · E play</p>';
 const P = panel(html, {
 label: 'Play any season of 2003', cls: 's2-rewind',
@@ -48012,7 +48097,7 @@ sfx('ui_select');
 P.el.querySelectorAll('.s2-jmenu button').forEach((b) => b.addEventListener('click', () => P.close(b.dataset.k)));
 if (api) onEnd(api, () => P.close(null));
 S2.rewindPanel = P;
-return P.done;
+return P.done.then((k) => (k === 'stay' ? null : k));
 }
 function playSeason(name) {
 const S = SEASONS[name] || SEASONS.january;
@@ -48513,7 +48598,7 @@ interlude: () => startInterlude(),
 ending: () => runScene('ending', endingScene),
 epilogue: () => runScene('epilogue', epilogueScene),
 finale: () => startFinale(),
-rewind: () => rewindMenu(null),
+rewind: (o) => rewindMenu(null, o),
 playSeason, seasons: Object.keys(SEASONS),
 lockDial: (o) => lockDial(SC.cur ? SC.cur.api : { scene: true, wait: () => Promise.resolve(), _sc: { cleanups: [] } }, o),
 cassettesFound, sideBTail, kitesForEnding, smallActivities, patchCredits, replay,
@@ -50384,9 +50469,9 @@ act: (c, q) => { feed(20, { status: 'warm' }); closeShop(); ffwd(60 * q, { label
 },
 kirana: {
 title: 'Kirana store', verb: 'Kirana', keeper: 'kirana', icon: 'jar', hours: [['07:00', '22:00']], quick: 'mango_bite', toffee: true,
-lines: ['No change. Take two toffees.', "Don't put your hand in the jar! Say how many.", 'Bottle back, or no deposit.', 'Mango Bite, fifty paise. For Chitti? Then two.'],
+lines: ['No change. Take two toffees.', "Don't put your hand in the jar! Say how many.", 'Bottle back, or no deposit.', 'Mango Masti, fifty paise. For Chitti? Then two.'],
 rows: [
-{ id: 'mango_bite', name: 'Mango Bite (toffee)', sub: 'eat it, or bribe Chitti', price: 50, give: { mango_bite: 1 }, cap: { mango_bite: 9 }, max: 9, house: true, line: 'Mango Bite, fifty paise. For Chitti? Then two.' },
+{ id: 'mango_bite', name: 'Mango Masti (toffee)', sub: 'eat it, or bribe Chitti', price: 50, give: { mango_bite: 1 }, cap: { mango_bite: 9 }, max: 9, house: true, line: 'Mango Masti, fifty paise. For Chitti? Then two.' },
 { id: 'fruit_sweets', name: 'Fruit sweets, a roll', price: 100, feed: 4 },
 { id: 'biscuits', name: 'Glucose biscuits, small pack', sub: 'carry · dogs love them', price: 200, give: { biscuits: 1 }, max: 3 },
 { id: 'cool_drink', name: 'Cool drink + bottle deposit', sub: '₹7 + ₹1, the ₹1 comes back', price: 800, feed: 15, give: { cool_drink_bottle: 1 } },
@@ -50635,10 +50720,10 @@ rows: [
 },
 medical_shop: {
 title: 'Medical shop', verb: 'Medical', keeper: 'chemist', icon: 'cross', hours: [['08:00', '22:30']], quick: 'plaster',
-lines: ["Doctor's *chitti* first.", 'Hajmola, one rupee. Not the whole packet!', 'Take a plaster. Cricket knee?'],
+lines: ["Doctor's *chitti* first.", 'Churan goli, one rupee. Not the whole packet!', 'Take a plaster. Cricket knee?'],
 rows: [
 { id: 'plaster', name: 'Plaster', sub: 'cures a scraped knee', price: 100, house: true, line: 'Take a plaster. Cricket knee?', act: () => (clearStatus('knee') ? 'Knee fixed. Run free.' : 'One plaster, for later.') },
-{ id: 'digestive', name: 'Digestive candy (5)', price: 100, feed: 2, line: 'Hajmola, one rupee. Not the whole packet!' },
+{ id: 'digestive', name: 'Digestive candy (5)', price: 100, feed: 2, line: 'Churan goli, one rupee. Not the whole packet!' },
 { id: 'glucose', name: 'Glucose powder', sub: 'carry · 3 spoons', price: 1000, give: { glucose: 3 } },
 { id: 'balm', name: 'Balm', sub: 'for Ammamma\'s knees', price: 500, give: { balm: 1 } },
 ],
@@ -50861,8 +50946,8 @@ rows: [
 { id: 'platform', name: 'Platform ticket', sub: () => 'the platform shortcut, all day', price: 300, house: true, hidden: (c) => platformTicket(c.id), act: (c) => { S.platform[c.id] = day(); return 'Punched. The platform is yours till midnight.'; } },
 { id: 'platform_ok', name: 'Platform ticket ✓', sub: 'good for today', price: 0, hidden: (c) => !platformTicket(c.id), when: () => 'Already bought today' },
 { id: 'weigh', name: 'Weighing machine', sub: 'weight + a printed fortune', price: 100, act: (c) => weigh(c) },
-{ id: 'tinkle', name: 'Book stall: Tinkle', sub: 'a comic page of trivia', price: 800, act: (c) => trivia(c, 'tinkle') },
-{ id: 'chandamama', name: 'Book stall: Chandamama', sub: 'a story page of trivia', price: 600, act: (c) => trivia(c, 'chandamama') },
+{ id: 'tinkle', name: 'Book stall: Twinkle Tales', sub: 'a comic page of trivia', price: 800, act: (c) => trivia(c, 'tinkle') },
+{ id: 'chandamama', name: 'Book stall: Chanda Kathalu', sub: 'a story page of trivia', price: 600, act: (c) => trivia(c, 'chandamama') },
 { id: 'tea', name: 'Railway tea', price: 200, feed: 12 },
 { id: 'auto', name: 'Auto stand', sub: '"Kidhar jaana?"', price: 0, act: () => autoStand() },
 ],
@@ -51582,7 +51667,7 @@ function trivia(c, kind) {
 const f = triviaFact((day() * 7 + (S.stats.buys | 0)) | 0);
 const head = kind === 'tinkle' ? 'A comic page: "Did you know?"' : kind === 'chandamama' ? 'A story page ends with a fact box:' : 'An old comic, page torn:';
 N.emit('trivia', { place: f.place, text: f.text, source: kind });
-setView({ type: 'info', title: kind === 'tinkle' ? 'Tinkle' : kind === 'chandamama' ? 'Chandamama' : 'Old comic', html: '<p class="shop-note">' + esc(head) + '</p><blockquote class="shop-fact">' + esc(f.text) + '</blockquote>' });
+setView({ type: 'info', title: kind === 'tinkle' ? 'Twinkle Tales' : kind === 'chandamama' ? 'Chanda Kathalu' : 'Old comic', html: '<p class="shop-note">' + esc(head) + '</p><blockquote class="shop-fact">' + esc(f.text) + '</blockquote>' });
 return { keep: true };
 }
 function tvLine() {
@@ -56182,9 +56267,9 @@ handBack: true, whistleR: 55, whistleSpd: 34,
 particles: true, barks: true, sounds: true,
 };
 const LINES = {
-cricket: [['Sachin hai toh match hai, miyan!', 'Arre, ek akela kya karega?'], ['Kal ki bowling dekhi? Ekdum bekaar!', 'Pitch hi aisa tha, yaar.'],
-['World Cup hamara hai, likh ke le lo!', 'Pehle semi-final toh jeeto!'], ['Kumble ki googly, waah!', 'Arre, catch chhod diya na!'],
-['Dravid ne bachaya, warna...', 'Haan, wall hai woh, wall!'], ['Last over mein six! Kya baat!', 'Radio pe sunte hi kood gaya main!']],
+cricket: [['Raghav hai toh match hai, miyan!', 'Arre, ek akela kya karega?'], ['Kal ki bowling dekhi? Ekdum bekaar!', 'Pitch hi aisa tha, yaar.'],
+['World Cup hamara hai, likh ke le lo!', 'Pehle semi-final toh jeeto!'], ['Gopi ki googly, waah!', 'Arre, catch chhod diya na!'],
+['Vinod ne bachaya, warna...', 'Haan, deewar hai woh, deewar!'], ['Last over mein six! Kya baat!', 'Radio pe sunte hi kood gaya main!']],
 paper: ['Aaj ka paper aaya?', 'Bhav phir badh gaye.', 'Is baar baarish late hai, likha hai.', 'Exhibition kab shuru hai?', 'Naya flyover ban raha, dekho.'],
 readerChai: ['Ek chai aur, anna!', 'Chai khadak banao!', 'Osmania do, plate bhar ke.'],
 cyclist: ['Anna, do chai! Jaldi!', 'Ek cutting, anna!', 'Chai, aur ek Osmania.', 'Do chai, ek bun!'],
@@ -58964,7 +59049,7 @@ out: ['OUT! OUT!', 'Clean bowled!', 'Howzat!', 'Out ra, vellu!'],
 lost: ['Ball intlo padindi!', 'Aunty, ball ivvandi please!', 'Evadu kottadu ra?!'],
 back: ['Inkosari intloki kotte, ball ivvanu!', 'Jagratha ga aadandi!'],
 invite: ['Chinnu! Aaja, ek over!', 'Rara, nuvvu batting!'],
-uncles: ['Ee saari India World Cup kodutundi.', 'Petrol rate chusava?', 'Maa rojullo...', 'Sachin century kodatadu chudu.', 'Ivala chaala ukkapotha.'],
+uncles: ['Ee saari India World Cup kodutundi.', 'Petrol rate chusava?', 'Maa rojullo...', 'Raghav century kodatadu chudu.', 'Ivala chaala ukkapotha.'],
 power: ['Current poyindi!', 'Inverter on cheyyi!', 'Kovvotthi ekkada?', 'Abba, ukkapotha!', 'Mallee current poyindi!'],
 powerBack: ['Current vachindi!', 'Hammayya!'],
 bangles: ['Choodiyan! Choodiyan le lo!', 'Laad Bazaar ki asli choodiyan!', 'Aao behen, dekh lo!', 'Shaadi ke liye seedha yahan!'],
@@ -61878,13 +61963,31 @@ G3.ready = false;
 N.on('boot', register3d);
 const KINDS = { junction: KJ, colony_am: KAM, colony_pm: KPM, oldcity: KOLD, cinema: KCIN, baraat: KBAR };
 let ready = false, dirT = 0;
-function buildSites() {
+let buildStep = 0;
+const BUILD_STEPS = [buildJunctions, buildColonies, buildOld, buildCinemas, buildBaraats];
+function buildSites(oneStep) {
+if (buildStep === 0) {
 SITES.length = 0; BYID.clear(); GEOS.length = 0; WZ = null; BUSY = null;
 if (!N.world || !N.world.built || !RD()) return false;
-const steps = [buildJunctions, buildColonies, buildOld, buildCinemas, buildBaraats];
-for (const f of steps) { try { f(); } catch (e) { N.err('citylife.build.' + f.name, e); } }
+}
+while (buildStep < BUILD_STEPS.length) {
+const f = BUILD_STEPS[buildStep++];
+try { f(); } catch (e) { N.err('citylife.build.' + f.name, e); }
+if (oneStep && buildStep < BUILD_STEPS.length) return false;
+}
+buildStep = 0;
 ready = true;
 return true;
+}
+function idleBuild() {
+const ric = window.requestIdleCallback;
+if (!ric) return;
+const tick = (dl) => {
+if (ready || !N.world || !N.world.built) return;
+if (dl.didTimeout || dl.timeRemaining() > 6) { try { buildSites(true); } catch (e) { N.err('citylife.idleBuild', e); return; } }
+if (!ready) ric(tick, { timeout: 1500 });
+};
+ric(tick, { timeout: 1500 });
 }
 function actR() {
 if (is3D()) { const q = N.view3d.quality || {}; return Math.min(TUNE.act3D, (q.actorDist || 620) * 0.9); }
@@ -61990,7 +62093,8 @@ for (const g of GEOS) { g.near = Math.abs(g.x - p.x) < rr2 && Math.abs(g.y - p.y
 function update(dt) {
 const t0 = now();
 if (!API.enabled) { if (ACTIVE.length) for (const sc of ACTIVE.slice()) release(sc); return; }
-if (!ready) { if (N.world && N.world.built) buildSites(); if (!ready) return; registerAudio(); }
+if (!ready) { if (N.world && N.world.built) buildSites(); if (!ready) return; }
+if (!audioReg) registerAudio();
 dirT -= dt;
 if (dirT <= 0) { dirT = TUNE.dirEvery; try { direct(); } catch (e) { N.err('citylife.direct', e); } sweepOrphans(); }
 for (let i = 0; i < ACTIVE.length; i++) {
@@ -62034,7 +62138,8 @@ ORPH.length = 0; P.n = 0;
 for (const s of SITES) { s.force = null; s.cool = 0; }
 dirT = 0;
 }
-N.on('world:built', () => { resetAll(); ready = false; });
+N.on('world:built', () => { resetAll(); ready = false; buildStep = 0; });
+N.on('boot', idleBuild);
 N.on('game:new', () => { resetAll(); dirT = 0; });
 N.on('player:teleport', () => {
 dirT = 0;
@@ -62107,7 +62212,7 @@ layer3d: G3.ready, im3d: G3.ready ? Object.keys(G3.im).reduce((o, k) => { o[k] =
 },
 setOptions(o) { for (const k of ['sounds', 'barks', 'particles']) if (o && o[k] != null) TUNE[k] = !!o[k]; return { sounds: TUNE.sounds, barks: TUNE.barks, particles: TUNE.particles }; },
 reset: resetAll,
-rebuild() { resetAll(); ready = false; return buildSites(); },
+rebuild() { resetAll(); ready = false; buildStep = 0; return buildSites(); },
 _debug: { ACTIVE, SITES, PERSONS, VEHS, BEASTS, P, G3, CX, GEOS, REJ, colonyGeo: (id, x, y) => { const g = colonyGeo(id, x, y); if (g) GEOS.pop(); return g; } },
 });
 if (N.citylife && typeof N.citylife === 'object' && !N.citylife.events) { try { N.citylife.events = API; } catch (e) { } }
@@ -77307,7 +77412,7 @@ colorBlind: ['off', 'deutan', 'protan', 'tritan'],
 };
 const TEXT_CPS = { slow: 25, normal: 45, fast: 90, instant: 0 };
 const DIFFICULTY = {
-relaxed: { label: 'Aaram Se', blurb: 'Relaxed: slower chases, more time, softer fines.', pursuerSpeed: 0.85, sight: 0.8, unseenDrop: 9, chappalInterval: 8, homingTurn: 0.7, tummyDrain: 0.7, missionTimers: 1.25, cargoDamage: 0.75, minigameOffset: -0.15, caughtFine: 100, hintNudge: 0.6 },
+relaxed: { label: 'Aaram Se', blurb: 'Relaxed: slower chases, more time, softer fines, fewer falls off the cycle.', pursuerSpeed: 0.85, sight: 0.8, unseenDrop: 9, chappalInterval: 8, homingTurn: 0.7, tummyDrain: 0.7, missionTimers: 1.25, cargoDamage: 0.75, minigameOffset: -0.15, caughtFine: 100, hintNudge: 0.6 },
 normal: { label: 'Normal', blurb: 'The year as it was.', pursuerSpeed: 1, sight: 1, unseenDrop: 12, chappalInterval: 6, homingTurn: 1, tummyDrain: 1, missionTimers: 1, cargoDamage: 1, minigameOffset: 0, caughtFine: 200, hintNudge: 1 },
 hard: { label: 'Full Meter', blurb: 'Hard: Mummy runs faster and sees further.', pursuerSpeed: 1.1, sight: 1.15, unseenDrop: 15, chappalInterval: 5, homingTurn: 1.2, tummyDrain: 1.2, missionTimers: 0.9, cargoDamage: 1.2, minigameOffset: 0.15, caughtFine: 300, hintNudge: 1.5 },
 };
@@ -78133,10 +78238,14 @@ sfx('ui_click');
 }
 function controlsHelpHTML() {
 const I = N.input, k = (a) => esc(I && I.keyName && I.keyFor ? I.keyName(I.keyFor(a)) : '?');
-return '<b>Keyboard</b> ' + k('up') + k('left') + k('down') + k('right') + ' or arrows move · ' + k('action') + ' / Enter ACTION · ' + k('run') + ' run (handbrake on wheels) · ' +
-k('horn') + ' horn · ' + k('map') + ' map · ' + k('journal') + ' journal · ' + k('radio') + ' radio · ' + k('view') + ' view · Esc pause · 1–4 pick an answer<br>' +
-'<b>Touch</b> drag the left side to move · yellow ACTION · red RUN / BRAKE · teal HORN (on foot near a road: calls an AUTO!) · the cassette = radio · MAP and ‖ at the top<br>' +
-'<b>Gamepad</b> left stick move · A action · B horn (back in menus) · X / RB / RT run · Y radio · LB journal · Back map · Start pause · R3 view · right stick looks around in 3D';
+const L = {
+keyboard: '<b>Keyboard</b> ' + k('up') + k('left') + k('down') + k('right') + ' or arrows move · ' + k('action') + ' / Enter ACTION · ' + k('run') + ' run (handbrake on wheels) · ' +
+k('horn') + ' horn · ' + k('map') + ' map · ' + k('journal') + ' journal · ' + k('radio') + ' radio · ' + k('view') + ' view · Esc pause · 1–4 pick an answer',
+touch: '<b>Touch</b> drag the left side to move · yellow ACTION · red RUN / BRAKE · teal HORN (on foot near a road: calls an AUTO!) · the cassette = radio · MAP and ‖ at the top',
+gamepad: '<b>Gamepad</b> left stick move · A action · B horn (back in menus) · X / RB / RT run · Y radio · LB journal · Back map · Start pause · R3 view · right stick looks around in 3D',
+};
+const first = I && L[I.device] ? I.device : 'keyboard';
+return [first].concat(Object.keys(L).filter((x) => x !== first)).map((x) => L[x]).join('<br>');
 }
 const settings = definePanel('settings', {
 build() {
@@ -78210,7 +78319,7 @@ hh.textContent = cap ? 'Esc cancels' : (row._msg || (others.length ? 'also ' + o
 return;
 }
 if (r.type === 'reset') { const n = N.input && N.input.bindings ? Object.keys(N.input.bindings()).length : 0; row.querySelector('.st-h').textContent = n ? n + ' key' + (n > 1 ? 's' : '') + ' changed' : 'All keys are the defaults.'; return; }
-if (r.type === 'help') return;
+if (r.type === 'help') { const hp = row.querySelector('.st-help'); if (hp) hp.innerHTML = controlsHelpHTML(); return; }
 const v = r.type === 'info' || r.type === 'danger' ? null : settingGet(id);
 const h = row.querySelector('.st-h');
 if (h) h.textContent = subst(typeof r.help === 'function' ? r.help() : r.help || '');
@@ -80073,10 +80182,11 @@ const CH = 512;
 const RCH = 256;
 const AUX = 128;
 const LS_KEY = 'nostalgia.view.v1';
-const LIB = ['https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js', 'vendor/three/three.min.js', '../vendor/three/three.min.js'];
+const LIB = ['vendor/three/three.min.js', '../vendor/three/three.min.js', 'https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js'];
+const libOrder = (urls) => { let d = false; try { d = /\/dist\//.test(location.pathname); } catch (e) { } return d ? urls.slice().sort((a, b) => (b.indexOf('../') === 0) - (a.indexOf('../') === 0)) : urls; };
 const MODES = ['top', 'tps', 'fps'];
 const LABEL = { top: 'Top-down', tps: '3D (third person)', fps: 'First person' };
-const SHORT = { top: '2D', tps: '3D', fps: 'FPS' };
+const SHORT = { top: '2D', tps: '3D', fps: '1st' };
 const lsGet = (k) => { try { return window.localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { window.localStorage.setItem(k, v); } catch (e) { } };
 const toast = (t, ms) => { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2600, { key: 'view3d' }); } catch (e) { } };
@@ -80134,7 +80244,7 @@ tier: 'high', pixelRatio: 1, maxPixelRatio: 1.5, minPixelRatio: 0.75,
 shadows: true, shadowSize: 2048, shadowRange: 190,
 drawDist: 1500, nearDist: 600, actorDist: 620, lmDist: 1650,
 groundHi: 2, groundLo: 0.5, pointLights: 4, budgetMs: 3.5, antialias: true,
-adaptive: true, baked: false, aniso: 8, keepArrays: false,
+adaptive: true, baked: false, aniso: 8, keepArrays: false, seeThrough: true,
 };
 function detectTier() {
 let coarse = false;
@@ -80182,9 +80292,9 @@ function loadThree() {
 if (window.THREE && window.THREE.WebGLRenderer) return Promise.resolve(window.THREE);
 if (loadPromise) return loadPromise;
 loadPromise = (async () => {
-for (const u of view.urls) {
+for (const u of libOrder(view.urls)) {
 const B = N.BUILD, url = B && B.three && !/^https?:/.test(u) && /^https?:$/.test(location.protocol) ? u + '?v=' + B.three : u;
-if (await loadScript(url, /^https?:/.test(u) ? 9000 : 6000)) return window.THREE;
+if (await loadScript(url, /^https?:/.test(u) ? 9000 : 60000)) return window.THREE;
 }
 return null;
 })();
@@ -80253,7 +80363,7 @@ if (m === 'tps' && prev === 'fps') { view.pitch = U.clamp(view.pitch + 0.25, 0.0
 if (m === 'top') {
 try { if (N.input && N.input.exitPointerLock) N.input.exitPointerLock(); } catch (e) { }
 try { const R = N.render; R.snapCamera(); R.warmChunks(N.player.x, N.player.y, 420); } catch (e) { N.err('view3d.toTop', e); }
-if (E.fxEl) E.fxEl.style.opacity = '0';
+if (E.fxEl) { E.fxEl.style.opacity = '0'; FXS.on = '0'; }
 }
 N.emit('view:change', { mode: m, prev });
 }
@@ -80616,14 +80726,26 @@ cell(15, (gg) => { gg.fillStyle = '#fff8e8'; gg.fillRect(0, 0, S, S); }, (gg) =>
 const UNI = {};
 const MAT = {};
 const GLSL_HASH = 'float h12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }\n';
+const OCC_GLSL = {
+decl: 'uniform vec3 uOccA;\nuniform vec3 uOccB;\nuniform float uOccR;\nvarying vec3 vOccWP;',
+vdecl: 'varying vec3 vOccWP;',
+vert: '\tvec4 owp = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\n\towp = instanceMatrix * owp;\n#endif\n\tvOccWP = (modelMatrix * owp).xyz;',
+frag: '\tif (uOccR > 0.0) { vec3 oab = uOccB - uOccA; float ot = dot(vOccWP - uOccA, oab) / max(dot(oab, oab), 1e-4);' +
+' if (ot > 0.0 && ot < 0.97) { float orr = uOccR * (0.4 + 0.6 * ot), od = length(vOccWP - (uOccA + oab * ot));' +
+' if (od < orr) { vec2 oc = mod(floor(gl_FragCoord.xy * 0.5), 4.0), ol = mod(oc, 2.0), oh = floor(oc * 0.5);' +
+' float ob = (4.0 * (2.0 * abs(ol.x - ol.y) + ol.y) + 2.0 * abs(oh.x - oh.y) + oh.y + 0.5) / 16.0;' +
+' if (ob > 0.25 + 0.75 * smoothstep(0.55, 1.0, od / orr)) discard; } } }',
+uniforms: (sh) => { sh.uniforms.uOccA = UNI.uOccA; sh.uniforms.uOccB = UNI.uOccB; sh.uniforms.uOccR = UNI.uOccR; },
+};
 function nearFade(shader, uni) {
 shader.uniforms.uNearFade = uni;
+OCC_GLSL.uniforms(shader);
 shader.vertexShader = shader.vertexShader
-.replace('#include <common>', '#include <common>\nvarying float vNearObj;')
-.replace('#include <project_vertex>', '#include <project_vertex>\n#ifdef USE_INSTANCING\n\tvec4 nfo = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);\n#else\n\tvec4 nfo = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);\n#endif\n\tvNearObj = length(nfo.xz - cameraPosition.xz);');
+.replace('#include <common>', '#include <common>\nvarying float vNearObj;\n' + OCC_GLSL.vdecl)
+.replace('#include <project_vertex>', '#include <project_vertex>\n#ifdef USE_INSTANCING\n\tvec4 nfo = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);\n#else\n\tvec4 nfo = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);\n#endif\n\tvNearObj = length(nfo.xz - cameraPosition.xz);\n' + OCC_GLSL.vert);
 shader.fragmentShader = shader.fragmentShader
-.replace('#include <common>', '#include <common>\nuniform float uNearFade;\nvarying float vNearObj;\nfloat nfHash(vec2 p){ vec2 c = mod(floor(p * 0.5), 4.0), l = mod(c, 2.0), h = floor(c * 0.5); float b = 4.0 * (2.0 * abs(l.x - l.y) + l.y) + 2.0 * abs(h.x - h.y) + h.y; return (b + 0.5) / 16.0; }')
-.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n\tif (uNearFade > 0.0) { float nfd = vNearObj / uNearFade; if (nfd < 1.0 && nfHash(gl_FragCoord.xy) > smoothstep(0.55, 1.0, nfd)) discard; }');
+.replace('#include <common>', '#include <common>\nuniform float uNearFade;\nvarying float vNearObj;\n' + OCC_GLSL.decl + '\nfloat nfHash(vec2 p){ vec2 c = mod(floor(p * 0.5), 4.0), l = mod(c, 2.0), h = floor(c * 0.5); float b = 4.0 * (2.0 * abs(l.x - l.y) + l.y) + 2.0 * abs(h.x - h.y) + h.y; return (b + 0.5) / 16.0; }')
+.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n\tif (uNearFade > 0.0) { float nfd = vNearObj / uNearFade; if (nfd < 1.0 && nfHash(gl_FragCoord.xy) > smoothstep(0.55, 1.0, nfd)) discard; }\n' + OCC_GLSL.frag);
 }
 function facadeCompile(shader) {
 shader.uniforms.uNight = UNI.uNight; shader.uniforms.uSkyTint = UNI.uHor;
@@ -80720,6 +80842,7 @@ shader.vertexShader = shader.vertexShader
 }
 function initMaterials() {
 UNI.uTime = { value: 0 }; UNI.uNight = { value: 0 }; UNI.uNearFade = { value: 8 };
+UNI.uOccA = { value: new THREE.Vector3() }; UNI.uOccB = { value: new THREE.Vector3() }; UNI.uOccR = { value: 0 };
 UNI.uSunDir = { value: new THREE.Vector3(0.3, 0.8, 0.4).normalize() };
 UNI.uSunCol = { value: new THREE.Color(1, 1, 1) };
 UNI.uZen = { value: new THREE.Color('#3a74c4') }; UNI.uHor = { value: new THREE.Color('#d2dfe8') };
@@ -80811,18 +80934,34 @@ m.userData.shared = true;
 matCache.set(key, m);
 return m;
 }
-const SIGN = { pages: [], map: new Map(), CW: 512, CHt: 64, cols: 4, rows: 16, max: 6, scan: 0, recycled: 0, dropped: 0 };
+const SIGN = { pages: [], map: new Map(), CW: 512, CHt: 64, cols: 4, rows: 16, max: 6, recycled: 0, dropped: 0 };
+const SIGN_YATRA = "'Yatra One', 'Baloo 2', sans-serif";
+let signFontV = null, signFontT = -1e9;
 function signFont() {
-try { if (document.fonts && document.fonts.check && document.fonts.check("40px 'Yatra One'")) return "'Yatra One', 'Baloo 2', sans-serif"; } catch (e) { }
-return "'Baloo 2', system-ui, sans-serif";
+if (signFontV === SIGN_YATRA) return signFontV;
+const t = now();
+if (signFontV && t - signFontT < 1000) return signFontV;
+signFontT = t;
+signFontV = "'Baloo 2', system-ui, sans-serif";
+try { if (document.fonts && document.fonts.check && document.fonts.check("40px 'Yatra One'")) signFontV = SIGN_YATRA; } catch (e) { }
+return signFontV;
 }
-function freeSignCell() {
-const per = SIGN.cols * SIGN.rows, total = SIGN.pages.length * per;
-for (let k = 0; k < total; k++) {
-const q = (SIGN.scan + k) % total, page = SIGN.pages[Math.floor(q / per)], sl = page.slots[q % per];
-if (sl && sl.refs <= 0) { SIGN.scan = (q + 1) % total; return sl; }
+function freeSignCell(own) {
+const per = SIGN.cols * SIGN.rows;
+if (own && own.length) {
+const seen = new Set();
+for (const s of own) {
+const p = s.page; if (seen.has(p)) continue; seen.add(p);
+for (let c = 0; c < per; c++) { const sl = p.slots[c]; if (sl && sl.refs <= 0) return sl; }
 }
-return null;
+}
+let best = null, bestN = 0;
+for (const p of SIGN.pages) {
+let n = 0, first = null;
+for (let c = 0; c < per; c++) { const sl = p.slots[c]; if (sl && sl.refs <= 0) { n++; if (!first) first = sl; } }
+if (n > bestN) { bestN = n; best = first; }
+}
+return best;
 }
 function signSlot(text, bg, fg, asp, own) {
 const cls = asp < 3.8 ? 3 : asp < 6.2 ? 5 : 8;
@@ -80832,7 +80971,8 @@ if (s) { if (own) { s.refs++; own.push(s); } else s.refs = Infinity; return s; }
 let page = SIGN.pages[SIGN.pages.length - 1], i = -1;
 if (!page || page.n >= SIGN.cols * SIGN.rows) {
 if (SIGN.pages.length >= SIGN.max) {
-const old = freeSignCell();
+let old = freeSignCell(own);
+for (let k = 0; !old && k < 64 && signReclaim.some((fn) => fn()); k++) old = freeSignCell(own);
 if (!old) { SIGN.dropped++; return null; }
 SIGN.map.delete(old.key); SIGN.recycled++;
 page = old.page; i = old.cell;
@@ -80870,6 +81010,7 @@ SIGN.map.set(key, s);
 return s;
 }
 function releaseSigns(list) { if (list) for (const s of list) s.refs--; }
+const signReclaim = [];
 function flushSignPages() { for (const p of SIGN.pages) if (p.dirty) { p.dirty = false; p.tex.needsUpdate = true; } }
 let HG = null;
 let HGW = 0, HGH = 0;
@@ -82045,7 +82186,8 @@ if (ch.dist > 300) continue;
 for (const l of ch.lights) { const d = Math.hypot(l[0] - fx, l[2] - fy); if (d < 260) lightCands.push([d, l[0], l[1], l[2], l[3], 1, 75]); }
 }
 const RL = N.render.lights;
-for (const L of RL) { if (!isFinite(L.x)) continue; const d = Math.hypot(L.x - fx, L.y - fy); if (d < 260) lightCands.push([d * 0.8, L.x, (L.h || 8), L.y, L.color || '#ffb050', L.intensity == null ? 1 : L.intensity, (L.r || 40) * 1.4]); }
+const RFh = N.world && N.world.roofs && N.world.roofs.heightAt;
+for (const L of RL) { if (!isFinite(L.x)) continue; const d = Math.hypot(L.x - fx, L.y - fy); if (d < 260) lightCands.push([d * 0.8, L.x, L.h != null ? L.h : ((RFh ? (N.world.roofs.heightAt(L.x, L.y) || 0) * VS : 0) + 8), L.y, L.color || '#ffb050', L.intensity == null ? 1 : L.intensity, (L.r || 40) * 1.4]); }
 for (const L of actorLights) { const d = Math.hypot(L.x - fx, L.y - fy); if (d < 300) lightCands.push([d * 0.7, L.x, L.h || 6, L.y, L.color || '#fff2d0', L.intensity == null ? 1 : L.intensity, L.r || 60]); }
 lightCands.sort((a, b) => a[0] - b[0]);
 }
@@ -82338,6 +82480,9 @@ if (P) pm('camera');
 const f = focus();
 const fe = focusEntity();
 const fz = elevation(fe === (N.player && N.player.vehicle) ? N.player : fe);
+const occ = Q.seeThrough !== false && view.mode === 'tps' && !R.camOverride && N.state.mode !== 'title' && N.player;
+UNI.uOccR.value = occ ? (N.player.vehicle ? 8 : 5.5) : 0;
+if (occ) { UNI.uOccA.value.copy(E.camera.position); UNI.uOccB.value.set(f.x, fz + (N.player.vehicle ? 7 : 6), f.y); }
 updateSkyLights(f.x, f.y, fz);
 updateSunBake();
 updatePointLights(f.x, f.y);
@@ -82403,14 +82548,17 @@ E.failCount++;
 N.err('view3d.render', e);
 if (E.failCount > 3) { toast('3D view hit a problem; back to top-down.', 3000); applyMode('top'); view.want = 'top'; }
 }
+const FXS = { fade: null, bg: null, flash: null, vhs: null, on: null };
 function updateFx() {
 const el = E.fxEl; if (!el) return;
 const fx = N.render.fx;
 const fade = U.clamp(fx.fade || 0, 0, 1), flash = U.clamp(fx.flash || 0, 0, 1), vhs = U.clamp(fx.vhs || 0, 0, 1);
-E.fxFade.style.opacity = fade.toFixed(3); E.fxFade.style.background = fx.fadeColor || '#000';
-E.fxFlash.style.opacity = flash.toFixed(3);
-E.fxVhs.style.opacity = (vhs * 0.9).toFixed(3);
-el.style.opacity = fade + flash + vhs > 0.004 ? '1' : '0';
+const sFade = fade.toFixed(3), sBg = fx.fadeColor || '#000', sFlash = flash.toFixed(3), sVhs = (vhs * 0.9).toFixed(3), sOn = fade + flash + vhs > 0.004 ? '1' : '0';
+if (FXS.fade !== sFade) { FXS.fade = sFade; E.fxFade.style.opacity = sFade; }
+if (FXS.bg !== sBg) { FXS.bg = sBg; E.fxFade.style.background = sBg; }
+if (FXS.flash !== sFlash) { FXS.flash = sFlash; E.fxFlash.style.opacity = sFlash; }
+if (FXS.vhs !== sVhs) { FXS.vhs = sVhs; E.fxVhs.style.opacity = sVhs; }
+if (FXS.on !== sOn) { FXS.on = sOn; el.style.opacity = sOn; }
 const filt = vhs > 0.02 ? 'saturate(' + (1 - vhs * 0.35).toFixed(2) + ') contrast(' + (1 + vhs * 0.12).toFixed(2) + ')' : '';
 if (E.canvas.style.filter !== filt) E.canvas.style.filter = filt;
 }
@@ -82426,7 +82574,7 @@ rectFrame = -1;
 }
 function initEngine(T) {
 THREE = T; api.THREE = T;
-if (Q.tier === 'low') { SIGN.CW = 256; SIGN.CHt = 32; SIGN.max = 3; }
+if (Q.tier === 'low') { SIGN.CW = 256; SIGN.CHt = 32; SIGN.max = 4; }
 if (THREE.ColorManagement) THREE.ColorManagement.legacyMode = false;
 TV3 = new THREE.Vector3(); TV3b = new THREE.Vector3(); TM3 = new THREE.Matrix3();
 SUN.dir = new THREE.Vector3(); SUN.lightDir = new THREE.Vector3();
@@ -82482,6 +82630,7 @@ for (const ch of Array.from(chunks.values())) disposeChunk(ch);
 for (const id of Array.from(lmRecs.keys())) disposeLandmark(id);
 clearActors();
 if (view.want !== 'top') { E.warming = true; E.warmT = now(); view.loading = true; }
+N.emit('view3d:contextrestored', {});
 }, false);
 E.ready = true;
 api.ready = true;
@@ -82539,6 +82688,7 @@ if (o.tier && o.tier !== Q.tier && !E.ready) applyTier(o.tier);
 for (const k of ['pixelRatio', 'drawDist', 'nearDist', 'actorDist', 'adaptive', 'budgetMs', 'maxPixelRatio', 'minPixelRatio']) if (o[k] != null) Q[k] = o[k];
 if (!E.ready) for (const k of ['antialias', 'shadows', 'shadowSize', 'pointLights', 'groundHi', 'groundLo', 'baked', 'aniso']) if (o[k] != null) Q[k] = o[k];
 if (o.keepArrays != null) Q.keepArrays = !!o.keepArrays;
+if (o.seeThrough != null) Q.seeThrough = !!o.seeThrough;
 if (E.ready) { E.camera.far = Q.drawDist * 1.5; E.camera.updateProjectionMatrix(); resize(); lastPlan.t = 0; }
 return Q;
 },
@@ -82616,6 +82766,8 @@ builder(opts) { return new GB(opts); },
 merge: mergeGeometries,
 mat, color: (hex) => col(hex), tex, signSlot,
 releaseSigns,
+onSignsFull(fn) { if (typeof fn === 'function' && signReclaim.indexOf(fn) < 0) signReclaim.push(fn); },
+get occFade() { return UNI.uOccA ? OCC_GLSL : null; },
 facadeMaterial: () => MAT.facade, vcMaterial: () => MAT.vc,
 blobShadow(w, d) { const m = new THREE.Mesh(H.geo.plane, MAT.blob); m.scale.set(w || 8, 1, d || w || 8); m.position.y = 0.08; m.renderOrder = 1; m.userData.noShadow = true; m.castShadow = false; return m; },
 glow(color, size) { const m = new THREE.SpriteMaterial({ map: TEX.glow, color: color || '#ffb050', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }); const s = new THREE.Sprite(m); s.scale.setScalar(size || 10); return s; },
@@ -85489,6 +85641,7 @@ setEnabled,
 heightAt: groundHeightAt,
 potholeDip,
 setWet(v) { wetForce = v == null ? null : clamp(+v || 0, 0, 1); if (wetForce != null) { wetT = wetForce; if (GU.uWet) GU.uWet.value = wetT; } return wetT; },
+precompute(ms) { precomputeSlice(Math.max(1, +ms || 10)); return precomputed(); },
 rebuild() { NET.built = false; AN = null; POTS.clear(); POTVIS.clear(); if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } },
 stats() {
 let chunks = 0, tris = 0, tex = 0;
@@ -85695,6 +85848,7 @@ shader.fragmentShader = shader.fragmentShader
 function init(T, h) {
 if (M.kit) return;
 THREE = T; H = h || V3.H;
+if (H && H.onSignsFull) H.onSignsFull(reclaimSigns);
 TMP.m = new THREE.Matrix4(); TMP.m2 = new THREE.Matrix4(); TMP.m3 = new THREE.Matrix4(); TMP.id = new THREE.Matrix4();
 TMP.d = new THREE.Vector3(); TMP.up = new THREE.Vector3(0, 1, 0); TMP.q = new THREE.Quaternion(); TMP.p = new THREE.Vector3(); TMP.sc = new THREE.Vector3(); TMP.sv = new THREE.Vector3();
 const kit = (side, key, flood) => {
@@ -86113,6 +86267,16 @@ OBJ_CACHE.delete(k0);
 o.traverse((m) => { if (m.geometry) { m.geometry.userData.shared = false; if (!o.parent) m.geometry.dispose(); } });
 if (!o.parent) releaseSigns(o);
 }
+}
+function reclaimSigns() {
+for (const [k, o] of OBJ_CACHE) {
+if (o.parent || !(o.userData.signSlots && o.userData.signSlots.length)) continue;
+OBJ_CACHE.delete(k);
+o.traverse((m) => { if (m.geometry) { m.geometry.userData.shared = false; m.geometry.dispose(); } });
+releaseSigns(o);
+return true;
+}
+return false;
 }
 const inObjCache = (obj) => !!(obj && obj.userData.cacheKey && OBJ_CACHE.get(obj.userData.cacheKey) === obj);
 function releaseSigns(obj) { const l = obj && obj.userData.signSlots; if (l && H && H.releaseSigns) { H.releaseSigns(l); obj.userData.signSlots = null; } }
@@ -91434,14 +91598,35 @@ const M = N.missions, p = N.player, out = [];
 if (!M || !p) return out;
 try {
 const act = M.active;
-if (act && act.markers && !act.ended) { for (const mk of act.markers.values()) { const q = M.posOf ? M.posOf(mk.target) : null; if (q && isFinite(q.x)) out.push({ x: q.x, y: q.y, r: mk.r || 18, color: mk.color || '#ff5fb0', kind: 'goal' }); } }
-else if (M.markers) for (const q of M.markers()) if (q && isFinite(q.x)) out.push({ x: q.x, y: q.y, r: 14, color: q.color || '#f2c230', kind: q.kind || 'giver' });
+if (act && act.markers && !act.ended) { for (const mk of act.markers.values()) { const q = M.posOf ? M.posOf(mk.target) : null; if (q && isFinite(q.x)) out.push({ x: q.x, y: q.y, r: mk.r || 18, color: mk.color || '#ff5fb0', kind: 'goal', base: markerBase(mk, q) }); } }
+else if (M.markers) for (const q of M.markers()) if (q && isFinite(q.x)) out.push({ x: q.x, y: q.y, r: 14, color: q.color || '#f2c230', kind: q.kind || 'giver', base: markerBase(q, q) });
 } catch (e) { return out; }
 for (const o of out) o.d = Math.hypot(o.x - p.x, o.y - p.y);
 out.sort((a, b) => a.d - b.d);
 return out.filter((o) => o.d < 1700).slice(0, 8);
 }
 function roofH(x, y) { try { const RF = N.world && N.world.roofs; const h = RF && RF.heightAt ? RF.heightAt(x, y) : 0; return h ? h * VS : 0; } catch (e) { return 0; } }
+let rawPlaces = null;
+N.on('world:built', () => { rawPlaces = null; });
+function markerBase(mk, q) {
+try {
+const RF = N.world && N.world.roofs, get = (id) => (RF && RF.get && typeof id === 'string' ? RF.get(id) : null);
+if (mk && isFinite(mk.h) && mk.h > 0) return mk.h * VS;
+let t = mk && mk.target !== undefined ? mk.target : q;
+if (typeof t === 'function') t = q;
+if (typeof t === 'string') {
+if (!rawPlaces) { rawPlaces = new Map(); for (const pl of (N.WORLD_DATA && N.WORLD_DATA.places) || []) rawPlaces.set(pl.id, pl); }
+t = rawPlaces.get(t) || q;
+}
+for (const p of [t, q]) {
+if (!p) continue;
+if (p.h > 0 && p.roof) return p.h * VS;
+if (p.level && get(p.level)) return (get(p.level).h || 0) * VS;
+if (p.roof && get(p.roof) && p.kind === 'terrace') return (get(p.roof).h || 0) * VS;
+}
+} catch (e) { }
+return roofH(q.x, q.y);
+}
 function updateMarkers() {
 const mode = N.state && N.state.mode;
 const list = mode === 'title' || mode === 'boot' ? [] : markerList();
@@ -91451,7 +91636,7 @@ let g = MK.groups[i];
 const m = list[i];
 if (!m) { if (g) g.visible = false; continue; }
 if (!g) g = MK.groups[i] = markerGroup();
-const base = roofH(m.x, m.y);
+const base = m.base != null ? m.base : roofH(m.x, m.y);
 const r = clamp(m.r * 0.62, 6, 16);
 g.visible = true; g.position.set(m.x, base, m.y);
 const UD = g.userData;
@@ -91586,9 +91771,11 @@ D._bark3d = true;
 }
 wrapBarks();
 N.on('boot', wrapBarks);
+const BARKQ = [];
 function updateBarks() {
 if (!BARKS.size) return;
 const p = N.player, vw = window.innerWidth, vh = window.innerHeight;
+BARKQ.length = 0;
 for (const [el, rec] of BARKS) {
 if (!el.isConnected) { BARKS.delete(el); continue; }
 const t = rec.target;
@@ -91601,14 +91788,20 @@ else h = roofH(t.x, t.y) + 11;
 if (rec.h != null && !t.look) h = rec.h * VS;
 const d = p ? Math.hypot(v.x - p.x, v.y - p.y) : 0;
 const q = V3.project(v.x, v.y, h);
-if (q.behind || !q.visible || d > 320) { el.style.visibility = 'hidden'; continue; }
-const w = el.offsetWidth || 120, hh = el.offsetHeight || 30;
-const left = clamp(q.x - w / 2, 6, Math.max(6, vw - w - 6)), top = clamp(q.y - 6 - hh, 6, Math.max(6, vh - hh - 6));
+const hide = q.behind || !q.visible || d > 320;
+BARKQ.push(el, hide, q.x, q.y, d, hide ? 0 : el.offsetWidth || 120, hide ? 0 : el.offsetHeight || 30);
+}
+for (let i = 0; i < BARKQ.length; i += 7) {
+const el = BARKQ[i];
+if (BARKQ[i + 1]) { el.style.visibility = 'hidden'; continue; }
+const qx = BARKQ[i + 2], qy = BARKQ[i + 3], d = BARKQ[i + 4], w = BARKQ[i + 5], hh = BARKQ[i + 6];
+const left = clamp(qx - w / 2, 6, Math.max(6, vw - w - 6)), top = clamp(qy - 6 - hh, 6, Math.max(6, vh - hh - 6));
 el.style.visibility = '';
 el.style.opacity = d > 250 ? String(clamp(1 - (d - 250) / 70, 0, 1)) : '';
 el.style.transform = 'translate(' + Math.round(left) + 'px,' + Math.round(top) + 'px)';
-el.style.setProperty('--tail', Math.round(clamp(q.x - left, 10, w - 10)) + 'px');
+el.style.setProperty('--tail', Math.round(clamp(qx - left, 10, w - 10)) + 'px');
 }
+BARKQ.length = 0;
 }
 const SEA = { t: 0, sc: null, strings: null, carry: new WeakMap(), lastQ: 0 };
 function initStrings() {
@@ -97836,7 +98029,7 @@ if (hasLoader()) { S.loaderFrom = S.loaderFrom || 'present'; return true; }
 if (runInline('gltfloader-src', hasLoader)) { S.loaderFrom = 'inline'; return true; }
 for (const u of order(LOADER_URLS)) {
 if (/^https?:/.test(u) && location.protocol === 'file:' && N.models3d.noCdn) continue;
-if (await loadScript(ver(u, 'loader'), hasLoader, /^https?:/.test(u) ? 12000 : 8000)) { S.loaderFrom = u; return true; }
+if (await loadScript(ver(u, 'loader'), hasLoader, /^https?:/.test(u) ? 12000 : 60000)) { S.loaderFrom = u; return true; }
 }
 return false;
 }
@@ -97844,7 +98037,7 @@ async function loadPack() {
 if (hasPack()) { S.packFrom = S.packFrom || 'present'; return true; }
 if (runInline('assets3d-pack', hasPack)) { S.packFrom = 'inline'; return true; }
 for (const u of order(N.models3d.packUrls || PACK_URLS)) {
-if (await loadScript(ver(u, 'pack'), hasPack, 20000)) { S.packFrom = u; return true; }
+if (await loadScript(ver(u, 'pack'), hasPack, 180000)) { S.packFrom = u; return true; }
 }
 return false;
 }
@@ -98098,6 +98291,7 @@ if (S.env) return S.env;
 const H = N.view3d && N.view3d.H;
 const r = H && H.renderer;
 if (!r) return null;
+try { if (r.getContext().isContextLost()) return null; } catch (e) { return null; }
 const c = document.createElement('canvas'); c.width = 128; c.height = 64;
 const g = c.getContext('2d');
 const gr = g.createLinearGradient(0, 0, 0, 64);
@@ -98112,6 +98306,13 @@ S.env.userData.shared = true;
 pm.dispose(); t.dispose();
 return S.env;
 }
+N.on('view3d:contextrestored', () => {
+try {
+if (S.env) { S.env.dispose(); S.env = null; }
+if (!OPT.env) return;
+for (const md of S.models.values()) if (md && md.metal) for (const m of md.metal) { m.envMap = envMap(); m.needsUpdate = true; }
+} catch (e) { N.err('models3d.envRestore', e); }
+});
 function parallel(a, b, cb) { cb(a, b); for (let i = 0; i < a.children.length; i++) parallel(a.children[i], b.children[i], cb); }
 function cloneScene(src) {
 const clone = src.clone(true);
@@ -98857,11 +99058,13 @@ sh.uniforms.uWind = WU.uWind; sh.uniforms.uWindWave = WU.uWindWave; sh.uniforms.
 let v = sh.vertexShader.replace('#include <common>', '#include <common>\n' + WIND_VERT_COMMON);
 if (o.impostor) v = v.replace('#include <beginnormal_vertex>', IMP_NORMAL).replace('#include <begin_vertex>', IMP_VERT + '\n' + WIND_VERT.replace('#include <begin_vertex>', ''));
 else v = v.replace('#include <begin_vertex>', WIND_VERT);
-v = v.replace('#include <common>', '#include <common>\nvarying float vNearObj;').replace('#include <project_vertex>', NEAR_VERT);
+const OF = !o.impostor && N.view3d && N.view3d.H && N.view3d.H.occFade;
+if (OF) OF.uniforms(sh);
+v = v.replace('#include <common>', '#include <common>\nvarying float vNearObj;' + (OF ? '\n' + OF.vdecl : '')).replace('#include <project_vertex>', NEAR_VERT + (OF ? '\n' + OF.vert : ''));
 sh.vertexShader = v;
 sh.fragmentShader = sh.fragmentShader
-.replace('#include <common>', '#include <common>\nvarying float vWindFl;\nvarying float vNearObj;')
-.replace('#include <clipping_planes_fragment>', NEAR_FRAG);
+.replace('#include <common>', '#include <common>\nvarying float vWindFl;\nvarying float vNearObj;' + (OF ? '\n' + OF.decl : ''))
+.replace('#include <clipping_planes_fragment>', NEAR_FRAG + (OF ? '\n' + OF.frag : ''));
 };
 m.customProgramCacheKey = () => (o.impostor ? 'm3dp-wind-imp' : 'm3dp-wind');
 m.needsUpdate = true;

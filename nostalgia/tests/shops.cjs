@@ -543,7 +543,7 @@ async function main() {
     await gwait(page, 0.3);
     await shot('kirana_desktop');
     const m0 = await page.evaluate(() => N.player.money);
-    await page.keyboard.press('ArrowRight'); // two Mango Bites
+    await page.keyboard.press('ArrowRight'); // two Mango Mastis
     await gwait(page, 0.12);
     await page.keyboard.press('e');
     await gwait(page, 0.3);
@@ -555,7 +555,7 @@ async function main() {
     await gwait(page, 0.3);
     const closed = await page.evaluate(() => ({ open: N.shops.isOpen(), mode: N.state.mode, paused: N.state.has('paused'), held: N.clock.held }));
     if (opened && /Kirana/.test(label || '')) ok('ACTION "' + label + '" opens the kirana card (the clock holds: ' + after.clockHeld + ')'); else fail('kirana open ' + label + ' ' + opened);
-    if (m0 - after.money >= 100 && after.mb === 2) ok('→ 2 Mango Bites with E (' + after.msg.trim() + ')'); else fail('buy with keys ' + JSON.stringify(after));
+    if (m0 - after.money >= 100 && after.mb === 2) ok('→ 2 Mango Mastis with E (' + after.msg.trim() + ')'); else fail('buy with keys ' + JSON.stringify(after));
     if (!closed.open && closed.mode === 'play' && !closed.paused && !closed.held) ok('Esc closes the card back to play (no pause menu)'); else fail('esc ' + JSON.stringify(closed));
     // the BAND card
     await page.evaluate(() => { N.clock.set(23, 30); N.shops.open('stationery_1'); });

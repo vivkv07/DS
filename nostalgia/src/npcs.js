@@ -149,7 +149,7 @@
     name: 'Chitti', full: 'Chitti (K. Lalitha), 6', color: '#e88aa8', voice: 1.62, speed: 40,
     look: { kind: 'kid', girl: true, skin: '#b97a4f', hair: '#1a1412', shirt: '#e88aa8', pants: '#e88aa8', ponytails: '#d8202a', size: 0.84, dots: '#f4f0e8', prop: 'wrapper' },
     portrait: { age: 'kid', hairStyle: 'ponytails', ribbon: '#d8202a', skin: '#b97a4f', shirt: '#e88aa8', floral: '#f4f0e8', earrings: '#d4a640', clips: '#58b8e8', collar: false },
-    lines: ['*Mummy ki cheppesta!*', 'Annayya is outside AGAIN!', 'Give me a Mango Bite or I’m telling.', 'I saw. I SAW!'],
+    lines: ['*Mummy ki cheppesta!*', 'Annayya is outside AGAIN!', 'Give me a Mango Masti or I’m telling.', 'I saw. I SAW!'],
   });
   C('bunty', {
     name: 'Bunty-anna', full: 'Bunty-anna (B. Vamsi), 19', color: '#4a6fa5', voice: 1.0, speed: 48, vehicle: 'bunty_rx100', vehicleBase: 'rx100', vehicleColor: '#1c1c22',
@@ -245,7 +245,7 @@
     name: 'Agarwal-ji', full: 'Agarwal-ji (Gopal), 48 (Sri Lakshmi Kirana)', color: '#d89a3a', voice: 0.95, speed: 42,
     look: { kind: 'man', skin: '#c68b5e', hair: '#7a7570', shirt: '#efe6d0', pants: '#efe6d0', hat: 'gandhi', specs: true, prop: 'radio', belly: true },
     portrait: { kind: 'uncle', skin: '#c68b5e', cap: 'gandhi', specs: 'thick', shirt: '#efe6d0', collar: 'band', moustache: false },
-    lines: ['*Aaj nakad, kal udhaar.*', 'No change. Take two toffees.', '*Khaate mein likh doon?* Tell your Nanna.', 'Mango Bite, fifty paise. For Chitti? Then two.'],
+    lines: ['*Aaj nakad, kal udhaar.*', 'No change. Take two toffees.', '*Khaate mein likh doon?* Tell your Nanna.', 'Mango Masti, fifty paise. For Chitti? Then two.'],
   });
   C('bahadur', {
     name: 'Bahadur', talkName: 'Bahadur', full: 'Bahadur, the Gurkha, 55 (night watchman)', color: '#7a8a4a', voice: 0.86, speed: 40,

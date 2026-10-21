@@ -172,7 +172,7 @@ comment. Both texts are given at the end of each mission.
 
 | Level | Who comes | Lines (section 8.2) | How they move |
 |---|---|---|---|
-| 1 | **Chitti** the tattler (day) / a colony uncle on a cycle (outside the colony) | "*Mummy ki cheppesta!*" | walks, follows; a 50 p Mango Bite from any `kirana_*` buys her off (−1) |
+| 1 | **Chitti** the tattler (day) / a colony uncle on a cycle (outside the colony) | "*Mummy ki cheppesta!*" | walks, follows; a 50 p Mango Masti from any `kirana_*` buys her off (−1) |
 | 2 | The **aunties' phone tree** (day) / **Bahadur the Gurkha's whistle** (night) | gate gossip | static spotters who raise the level if they see you |
 | 3 | **Havaldar Pochaiah** on foot | "*Ruko!*" + whistle | runs (walk speed 70) |
 | 4 | Pochaiah on his **Luna** | "Licence?" | Luna, 120 u/s |
@@ -301,7 +301,7 @@ used when `N.flags.year === 2026`. Name-plate colours are for `N.dialogue.define
 - **Role:** little sister; Chappal Meter level 1; the *doodh-bhaat* fielder whose one-tip
   one-hand catch wins M4.
 - **Sprite:** small girl; skin `#b97a4f`; two high "antenna" ponytails with red rubber bands; pink
-  frock `#e88aa8` with white dots; plastic clips; a Mango Bite wrapper in hand.
+  frock `#e88aa8` with white dots; plastic clips; a Mango Masti wrapper in hand.
 - **Portrait:** `age:'kid', hairStyle:'puff', shirt:'#e88aa8', earrings:'#d4a640'`.
 - **Voice:** shrill Telugu-Dakhni. "*Mummy ki cheppesta!*" (I'm telling Mummy!)
 - **Arc:** wants to stop being *doodh-bhaat*; after the catch, "She counts."
@@ -476,7 +476,7 @@ walls only), `respect` (walk-only zone, meter frozen), `off` (off-map exit, cuts
 | `internet_cafe_1` | Cyber Zone Browsing Centre | himayatnagar | Plywood cubicles, beige CRTs, timer | M11, SA8, shop |
 | `photo_studio_1` | Raj Colour Lab & Studio | himayatnagar | Backdrops, darkroom red bulb; develops Frames | M11, M12, Frames |
 | `irani_cafe_7` | Café Gulistan (renamed sign) | himayatnagar | Base café: Salim-bhai, family room, STD booth | save, shop, cool-down, C14 |
-| `medical_shop_1` | Life Line Medicals | himayatnagar | Green cross, Hajmola jar | M6, shop |
+| `medical_shop_1` | Life Line Medicals | himayatnagar | Green cross, churan goli jar | M6, shop |
 | `medical_shop_8` | Sai Medical & General Stores | rtc_x | Colony chemist | SA3, shop |
 | `barber_1`, `barber_7` | Lucky Hair Cutting Saloon; New Style Hair Dressers | himayatnagar, rtc_x | Barber chairs | cool-down |
 | `cycle_rent_1`, `cycle_rent_5` | Lakshmi Cycle Stores; Chinna Cycle Taxi | himayatnagar | Cycles on hire, ₹3 an hour | shop |
@@ -520,7 +520,7 @@ walls only), `respect` (walk-only zone, meter frozen), `off` (off-map exit, cuts
 | `shanti_theatre` | Shanti Theatre | koti | Single screen | amb |
 | `king_kothi` | King Kothi Palace | abids | Walled; treasure (legend) | gated, Pasha TV gag |
 | `abids` | Abids Circle, GPO | abids | Commercial heart; Sunday book market | T02, amb |
-| `abids_book_market` | Abids Sunday book market | abids | Tinkle and Chandamama on the pavement | C10 (Sundays), amb |
+| `abids_book_market` | Abids Sunday book market | abids | Twinkle Tales and Chanda Kathalu on the pavement | C10 (Sundays), amb |
 | `grand_hotel_abids` (= `irani_cafe_2`) | Grand Hotel | abids | Oldest surviving Irani café (1935) | shop, amb |
 | `taj_mahal_hotel_abids` | Taj Mahal Hotel | abids | Veg tiffin, coffee | shop |
 | `chermas_abids` | Cherma's | abids | Festival clothes | amb |
@@ -813,7 +813,7 @@ walls only), `respect` (walk-only zone, meter frozen), `off` (off-map exit, cuts
 | Dilsukhnagar Sai Baba temple | `dilsukhnagar_sai_temple` | M6: Thursday darshan, riddle solved in the queue | respect zone | — |
 | RTC X Roads and cinemas | `rtc_x_roads`, `sandhya_theatre`, `sudarshan_theatre`, `odeon_theatre`, `devi_theatre`, `bawarchi` | M3: four forecourts, queue cage, first show, Bawarchi parcel | Bawarchi refill | T08 |
 | Schools | `school_1`..`school_13` | M11: last day, the diary | gate vendors refill | C15 |
-| Kirana stores | `kirana_1`..`kirana_20` | M1 kites on khaata; M6/M8 Agarwal-ji; M11 torch | toffees, cricket balls, Mango Bite bribe | — |
+| Kirana stores | `kirana_1`..`kirana_20` | M1 kites on khaata; M6/M8 Agarwal-ji; M11 torch | toffees, cricket balls, Mango Masti bribe | — |
 | Banana and flower vendors | `banana_cart_*`, `flower_cart_*` | M6 bananas and garland; M8 neem and marigold; M10 puja bananas | jasmine cool-down | — |
 | Stationery shops | `stationery_*` | M11 slam book | SA7 brown cover paper | — |
 | Flour mills | `pindi_girni_*` | M6 girni and flour run; M8 Ramulu the Pothuraju; M9 Abba's line | — | — |
@@ -2444,7 +2444,7 @@ same line twice in a row). Tag = where or when it may play.
 
 | Level | Speaker | Lines |
 |---|---|---|
-| 1 | `chitti` | "*Mummy ki cheppesta!*" · "Annayya is outside AGAIN!" · "Give me a Mango Bite or I'm telling." · "I saw. I SAW!" · (bribed) "...I saw nothing. Mango Bite is very good." |
+| 1 | `chitti` | "*Mummy ki cheppesta!*" · "Annayya is outside AGAIN!" · "Give me a Mango Masti or I'm telling." · "I saw. I SAW!" · (bribed) "...I saw nothing. Mango Masti is very good." |
 | 1 | colony uncle (cycle) | "*Arre*, Sreenivas's boy! Does your Amma know?" · "I'm going that way anyway. Towards your house." |
 | 2 | `aunty` (phone tree) | "Kamala-garu's grandson! At this hour!" · "I'll just phone Padma. Just to say hello." · "*Ayyo*, look at his knees." · "The whole colony knows in ten minutes, *beta*." |
 | 2 | `bahadur` (night) | (whistle) "*Kaun hai?*" · "Chinnu baba! *Ghar jao!*" · "I am only a whistle. But I am a LOUD whistle." |
@@ -2488,12 +2488,12 @@ same line twice in a row). Tag = where or when it may play.
 | Irani café waiter (`irani_cafe_*`, Salim at `irani_cafe_7`) | "*Do pauna, ek plate Osmania*, table *teen*!" · "*Paani-kam*? Piping hot, coming." · "Bun-maska finished, samosa is there." · "Family room is upstairs, aunties please." · "Dunk the biscuit, don't drown it. Osmania is delicate." |
 | Irani café cashier | "Pay at the *galla*. The bill is in my head." · "Score? Ask the radio. I'm counting." |
 | Faramarz (`irani_cafe_19`) | "*Do chai, ek plate Osmania!*" · "One chai, one hour? No. One chai, twenty minutes." · "My father came from Yazd with one tin and one recipe." |
-| Kirana (`kirana_*`, Agarwal-ji) | "No change. Take two toffees." · "*Khaate mein likh doon?* Tell your Nanna." · "Don't put your hand in the jar! Say how many." · "Bottle back, or no deposit." · "Mango Bite, fifty paise. For Chitti? Then two." |
+| Kirana (`kirana_*`, Agarwal-ji) | "No change. Take two toffees." · "*Khaate mein likh doon?* Tell your Nanna." · "Don't put your hand in the jar! Say how many." · "Bottle back, or no deposit." · "Mango Masti, fifty paise. For Chitti? Then two." |
 | Pindi girni (`pindi_girni_*`, Ramulu) | "*Dabba* in the line, number coming." · "Chilli day today. Stand back, you'll sneeze." · "Keep away from the belt, *baba*. The machine is hungry." · "My hair isn't white. It's *atta*." |
 | Flower cart (`flower_cart_*`) | "*Mallepoolu!* Two rupees a *moora*!" · "For your Amma's braid? Jasmine. Always jasmine." · "I sprinkle water; fresh till evening." |
 | Banana cart (`banana_cart_*`) | "*Arati pandlu! Chakkarakeli!*" · "One *kosaru* for the little one." · "Peel in the bin, not on the road. Somebody will slip." |
 | Stationery (`stationery_*`) | "Long notebook or short? Ruled or plain?" · "Brown cover, how many sheets?" · "Compass broken? Sold separately." · "Xerox one rupee a page. Current gone? Come tomorrow." |
-| Medical shop (`medical_shop_*`) | "Doctor's *chitti* first." · "Hajmola, one rupee. Not the whole packet!" · "Take a plaster. Cricket knee?" |
+| Medical shop (`medical_shop_*`) | "Doctor's *chitti* first." · "Churan goli, one rupee. Not the whole packet!" · "Take a plaster. Cricket knee?" |
 | Iyengar bakery (`iyengar_bakery_*`) | "Honey cake just out!" · "Egg puff or veg puff? Straight from the oven." · "Cream roll in your pocket? It will melt!" |
 | Samosa bandi (`samosa_bandi_*`, 16:00 to 20:00) | "*Garam samose!* Small onion ones, five rupees a dozen!" · "Don't come near the *kadai*, oil jumps." |
 | Dosa bandi (`dosa_bandi_*`, 06:30 to 10:00) | "Idli, vada, dosa: *tondaraga cheppandi!*" · "*Karam podi* with ghee? A bit spicy." · "After ten, only idli. Dosa batter is finished." |
@@ -3028,7 +3028,7 @@ Hyderabadi Urdu · **(Hi)** Hindi-Urdu shared · **(Pa)** Punjabi · **(IE)** In
 | Eid (ul-Fitr) / Ramzan | Dk | The festival that ends the fasting month / the fasting month (Ramadan) |
 | garam samose | Hi | Hot samosas |
 | hallu chalao | Dk | Drive slowly |
-| Churan goli / Mango Bite / Tinkle | IE | A tangy digestive candy / a 50-paise mango toffee / the children's comic (era brands, mentioned only) |
+| Churan goli / Mango Masti / Twinkle Tales | IE | A tangy digestive candy / a 50-paise mango toffee / the children's comic (fictional lookalikes of the era's sweets and comics) |
 | imli-bun | Dk | Tamarind grove (Imlibun) |
 | jeeta kya? | Hi | Did (India) win? |
 | Luna / Chetak / RX100 / Ambassador | IE | A pedal-start moped / the family scooter / the cool cousin's motorbike / the classic car |

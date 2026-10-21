@@ -382,7 +382,7 @@
     samosa_dozen: { name: 'Onion samosas', short: 'Samosa', feed: 14, icon: 'samosa' },
     biscuits: { name: 'Glucose biscuits', short: 'Biscuits', feed: 12, icon: 'biscuit' },
     glucose: { name: 'Glucose powder', short: 'Glucose', energy: 25, tummy: 10, icon: 'glucose' },
-    mango_bite: { name: 'Mango Bite', short: 'Mango Bite', feed: 2, icon: 'toffee' },
+    mango_bite: { name: 'Mango Masti toffee', short: 'Mango Masti', feed: 2, icon: 'toffee' },
   };
   const pref = (k, d) => { const st = N.settings || (N.menus && N.menus.settings) || null; return st && st[k] != null ? st[k] : d; };
   const gmNow = () => N.clock.day * 1440 + N.clock.minutes;

@@ -3220,14 +3220,39 @@
     if (!M || !p) return out;
     try {
       const act = M.active;
-      if (act && act.markers && !act.ended) { for (const mk of act.markers.values()) { const q = M.posOf ? M.posOf(mk.target) : null; if (q && isFinite(q.x)) out.push({ x: q.x, y: q.y, r: mk.r || 18, color: mk.color || '#ff5fb0', kind: 'goal' }); } }
-      else if (M.markers) for (const q of M.markers()) if (q && isFinite(q.x)) out.push({ x: q.x, y: q.y, r: 14, color: q.color || '#f2c230', kind: q.kind || 'giver' });
+      if (act && act.markers && !act.ended) { for (const mk of act.markers.values()) { const q = M.posOf ? M.posOf(mk.target) : null; if (q && isFinite(q.x)) out.push({ x: q.x, y: q.y, r: mk.r || 18, color: mk.color || '#ff5fb0', kind: 'goal', base: markerBase(mk, q) }); } }
+      else if (M.markers) for (const q of M.markers()) if (q && isFinite(q.x)) out.push({ x: q.x, y: q.y, r: 14, color: q.color || '#f2c230', kind: q.kind || 'giver', base: markerBase(q, q) });
     } catch (e) { return out; }
     for (const o of out) o.d = Math.hypot(o.x - p.x, o.y - p.y);
     out.sort((a, b) => a.d - b.d);
     return out.filter((o) => o.d < 1700).slice(0, 8);
   }
   function roofH(x, y) { try { const RF = N.world && N.world.roofs; const h = RF && RF.heightAt ? RF.heightAt(x, y) : 0; return h ? h * VS : 0; } catch (e) { return 0; } }
+  /** a marker's floor in 3D: the roof its target names (an explicit h, the target's level, a terrace place's roof:
+   *  the story's own rule, story.js roofH), else the roof under its spot, else the street. (Journey audit J16: the
+   *  M1 kite spot on the home terrace glowed at street level: N.places entries carry no roof, and the spot is not
+   *  inside a roof cell.) */
+  let rawPlaces = null;
+  N.on('world:built', () => { rawPlaces = null; });
+  function markerBase(mk, q) {
+    try {
+      const RF = N.world && N.world.roofs, get = (id) => (RF && RF.get && typeof id === 'string' ? RF.get(id) : null);
+      if (mk && isFinite(mk.h) && mk.h > 0) return mk.h * VS;
+      let t = mk && mk.target !== undefined ? mk.target : q;
+      if (typeof t === 'function') t = q;
+      if (typeof t === 'string') {
+        if (!rawPlaces) { rawPlaces = new Map(); for (const pl of (N.WORLD_DATA && N.WORLD_DATA.places) || []) rawPlaces.set(pl.id, pl); }
+        t = rawPlaces.get(t) || q;
+      }
+      for (const p of [t, q]) {
+        if (!p) continue;
+        if (p.h > 0 && p.roof) return p.h * VS;
+        if (p.level && get(p.level)) return (get(p.level).h || 0) * VS;
+        if (p.roof && get(p.roof) && p.kind === 'terrace') return (get(p.roof).h || 0) * VS;
+      }
+    } catch (e) { /* fall through */ }
+    return roofH(q.x, q.y);
+  }
   function updateMarkers() {
     const mode = N.state && N.state.mode;
     const list = mode === 'title' || mode === 'boot' ? [] : markerList();
@@ -3237,7 +3262,7 @@
       const m = list[i];
       if (!m) { if (g) g.visible = false; continue; }
       if (!g) g = MK.groups[i] = markerGroup();
-      const base = roofH(m.x, m.y);
+      const base = m.base != null ? m.base : roofH(m.x, m.y);
       const r = clamp(m.r * 0.62, 6, 16);
       g.visible = true; g.position.set(m.x, base, m.y);
       const UD = g.userData;

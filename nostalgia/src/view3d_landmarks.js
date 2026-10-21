@@ -107,6 +107,7 @@
   function init(T, h) {
     if (M.kit) return;
     THREE = T; H = h || V3.H;
+    if (H && H.onSignsFull) H.onSignsFull(reclaimSigns);
     TMP.m = new THREE.Matrix4(); TMP.m2 = new THREE.Matrix4(); TMP.m3 = new THREE.Matrix4(); TMP.id = new THREE.Matrix4();
     TMP.d = new THREE.Vector3(); TMP.up = new THREE.Vector3(0, 1, 0); TMP.q = new THREE.Quaternion(); TMP.p = new THREE.Vector3(); TMP.sc = new THREE.Vector3(); TMP.sv = new THREE.Vector3();
     const kit = (side, key, flood) => {
@@ -566,6 +567,17 @@
       o.traverse((m) => { if (m.geometry) { m.geometry.userData.shared = false; if (!o.parent) m.geometry.dispose(); } });
       if (!o.parent) releaseSigns(o);
     }
+  }
+  /** the sign atlas is full: drop the oldest cached, off-scene model that holds board cells (-> true if one went) */
+  function reclaimSigns() {
+    for (const [k, o] of OBJ_CACHE) {
+      if (o.parent || !(o.userData.signSlots && o.userData.signSlots.length)) continue;
+      OBJ_CACHE.delete(k);
+      o.traverse((m) => { if (m.geometry) { m.geometry.userData.shared = false; m.geometry.dispose(); } });
+      releaseSigns(o);
+      return true;
+    }
+    return false;
   }
   const inObjCache = (obj) => !!(obj && obj.userData.cacheKey && OBJ_CACHE.get(obj.userData.cacheKey) === obj);
   /** give a model's sign-atlas cells back (when it is gone for good: not in the scene, not in the cache) */

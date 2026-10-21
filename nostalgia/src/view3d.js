@@ -892,7 +892,7 @@
   // out on a long trip (before: after ~5 market areas every new board was dropped for the rest of the session).
   // Boards are ref-counted: chunks hold theirs from addSigns to clearChunkGeom, view3d_landmarks while a model exists
   // (scene or its LRU) via H.signSlot(.., own) / H.releaseSigns; a caller that passes no list pins its board.
-  const SIGN = { pages: [], map: new Map(), CW: 512, CHt: 64, cols: 4, rows: 16, max: 6, recycled: 0, dropped: 0 }; // phones: halved (initEngine)
+  const SIGN = { pages: [], map: new Map(), CW: 512, CHt: 64, cols: 4, rows: 16, max: 6, recycled: 0, dropped: 0 }; // phones: half-size cells, 4 pages (initEngine)
   // (document.fonts.check costs ~1 ms a call: it ran for every board, ~90 ms of a chunk-heavy 3D switch; the answer
   // is kept once Yatra One is in, and asked again at most once a second until then)
   const SIGN_YATRA = "'Yatra One', 'Baloo 2', sans-serif";
@@ -936,7 +936,9 @@
     let page = SIGN.pages[SIGN.pages.length - 1], i = -1;
     if (!page || page.n >= SIGN.cols * SIGN.rows) {
       if (SIGN.pages.length >= SIGN.max) {
-        const old = freeSignCell(own);
+        let old = freeSignCell(own);
+        // full: let the modules that keep built models off-scene (view3d_landmarks' LRU) give theirs back, oldest first
+        for (let k = 0; !old && k < 64 && signReclaim.some((fn) => fn()); k++) old = freeSignCell(own);
         if (!old) { SIGN.dropped++; return null; }
         SIGN.map.delete(old.key); SIGN.recycled++;
         page = old.page; i = old.cell;
@@ -974,6 +976,8 @@
     return s;
   }
   function releaseSigns(list) { if (list) for (const s of list) s.refs--; }
+  /** fn() -> true when it released some cells (H.onSignsFull): asked when every page is full and no cell is free */
+  const signReclaim = [];
   function flushSignPages() { for (const p of SIGN.pages) if (p.dirty) { p.dirty = false; p.tex.needsUpdate = true; } }
 
   /* ================================================================ height grid (camera collision) */
@@ -2224,7 +2228,10 @@
         for (const l of ch.lights) { const d = Math.hypot(l[0] - fx, l[2] - fy); if (d < 260) lightCands.push([d, l[0], l[1], l[2], l[3], 1, 75]); }
       }
       const RL = N.render.lights;
-      for (const L of RL) { if (!isFinite(L.x)) continue; const d = Math.hypot(L.x - fx, L.y - fy); if (d < 260) lightCands.push([d * 0.8, L.x, (L.h || 8), L.y, L.color || '#ffb050', L.intensity == null ? 1 : L.intensity, (L.r || 40) * 1.4]); }
+      // (2D lights carry no height: one standing on a roof / terrace — a mission marker's night glow on the home
+      // terrace, journey audit J16 — is lifted to the roof instead of lighting the street under it)
+      const RFh = N.world && N.world.roofs && N.world.roofs.heightAt;
+      for (const L of RL) { if (!isFinite(L.x)) continue; const d = Math.hypot(L.x - fx, L.y - fy); if (d < 260) lightCands.push([d * 0.8, L.x, L.h != null ? L.h : ((RFh ? (N.world.roofs.heightAt(L.x, L.y) || 0) * VS : 0) + 8), L.y, L.color || '#ffb050', L.intensity == null ? 1 : L.intensity, (L.r || 40) * 1.4]); }
       for (const L of actorLights) { const d = Math.hypot(L.x - fx, L.y - fy); if (d < 300) lightCands.push([d * 0.7, L.x, L.h || 6, L.y, L.color || '#fff2d0', L.intensity == null ? 1 : L.intensity, L.r || 60]); }
       lightCands.sort((a, b) => a[0] - b[0]);
     }
@@ -2651,7 +2658,7 @@
   }
   function initEngine(T) {
     THREE = T; api.THREE = T;
-    if (Q.tier === 'low') { SIGN.CW = 256; SIGN.CHt = 32; SIGN.max = 3; }
+    if (Q.tier === 'low') { SIGN.CW = 256; SIGN.CHt = 32; SIGN.max = 4; } // 4 x 1024x512 (~2.7 MB each with mips): 3 dropped boards at busy markets
     if (THREE.ColorManagement) THREE.ColorManagement.legacyMode = false;
     TV3 = new THREE.Vector3(); TV3b = new THREE.Vector3(); TM3 = new THREE.Matrix3();
     SUN.dir = new THREE.Vector3(); SUN.lightDir = new THREE.Vector3();
@@ -2873,6 +2880,8 @@
     mat, color: (hex) => col(hex), tex, signSlot,
     /** release sign-atlas cells taken with signSlot(.., own) (their boards are no longer shown anywhere) */
     releaseSigns,
+    /** fn() -> true if it released atlas cells: called when the sign atlas is full (evict cached, off-scene models) */
+    onSignsFull(fn) { if (typeof fn === 'function' && signReclaim.indexOf(fn) < 0) signReclaim.push(fn); },
     /** foliage see-through (third person): GLSL {decl (fragment), vdecl, vert (after project_vertex), frag (after
      *  clipping_planes_fragment)} + uniforms(shader) to add to a custom tree material's onBeforeCompile */
     get occFade() { return UNI.uOccA ? OCC_GLSL : null; },

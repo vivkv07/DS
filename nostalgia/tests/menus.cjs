@@ -65,9 +65,9 @@ async function run(browser, V) {
     if (holdMs) await sleep(holdMs);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
-  const boot = async () => {
+  const boot = async (t) => {
     await page.goto(URL);
-    return waitFor(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title' && N.menus && N.menus.debugState().top === 'title', null, 20000);
+    return waitFor(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title' && N.menus && N.menus.debugState().top === 'title', null, t || 20000);
   };
 
   /* ------------------------------------------------------------ title */
@@ -329,6 +329,9 @@ async function run(browser, V) {
   const tc = await page.evaluate(() => ({ cont: !document.querySelector('.trk-cont').hidden, sub: document.querySelector('.cont-sub').textContent }));
   check(tc.cont && /TRACK \d\d · .*2003/.test(tc.sub), '▶▶ CONTINUE shows the save line', tc.sub);
   await sleep(300);
+  // measure the card at rest: on a loaded machine its 0.7 s entry animation (rotate -6deg, translate -30/+18) could
+  // still be running, which reads as l -41 / b +7 on a card that fits
+  await page.evaluate(() => Promise.race([Promise.all(document.querySelector('.mn-title .jc').getAnimations().map((a) => a.finished.catch(() => 0))), new Promise((r) => setTimeout(r, 3000))]));
   const jc2 = await page.evaluate(() => { const b = document.querySelector('.mn-title .jc').getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, tracks: Array.from(document.querySelectorAll('.jc-tracks > li')).filter((li) => !li.hidden).length }; });
   check(jc2.t >= 0 && jc2.b <= V.viewport.height && jc2.r <= V.viewport.width + 12, 'J-card with ' + jc2.tracks + ' tracks still fits the screen', jc2);
   await shot('13_title_continue');
@@ -457,9 +460,10 @@ async function run(browser, V) {
 
   /* ------------------------------------------------------------ settings + names survive a reload */
   await page.reload();
-  await boot();
-  const rl = await page.evaluate(() => ({ speed: N.settings.get('textSpeed'), left: document.body.classList.contains('touch-left'), names: N.menus.names(), cont: !document.querySelector('.trk-cont').hidden }));
-  check(rl.speed === 'fast' && rl.left && rl.cont, 'after a reload: settings kept, CONTINUE offered', rl);
+  // (a shared machine at load 20 can take > 20 s to boot: reading a half-booted page looked like lost settings)
+  const rebooted = await boot(60000);
+  const rl = await page.evaluate((rebooted) => ({ rebooted, speed: N.settings.get('textSpeed'), left: document.body.classList.contains('touch-left'), names: N.menus.names(), cont: !document.querySelector('.trk-cont').hidden }), rebooted);
+  check(rl.rebooted && rl.speed === 'fast' && rl.left && rl.cont, 'after a reload: settings kept, CONTINUE offered', rl);
   await page.evaluate(() => N.settings.reset());
 
   // errors

@@ -34,6 +34,7 @@ const fs = require('fs');
 const os = require('os');
 const zlib = require('zlib');
 const crypto = require('crypto');
+const vm = require('vm');
 const { execFileSync } = require('child_process');
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 
@@ -577,8 +578,11 @@ function build() {
   const SITE = path.join(ROOT, 'dist', 'site');
   const web = fs.readFileSync(path.join(SITE, 'index.html'), 'utf8');
   const need = ['src/assets3d_pack.js', 'vendor/three/three.min.js', 'vendor/three/GLTFLoader.classic.js', 'vendor/supabase/supabase.js'];
-  const idx = fs.readFileSync(path.join(ROOT, 'src', 'assets3d_index.js'), 'utf8');
-  const lazyIds = Array.from(idx.matchAll(/'([a-z0-9_]+)': \{[^}]*"lazy":true/g)).map((m) => m[1]);
+  // (the generated index is evaluated: its manifest entries carry nested objects)
+  const win = {}; vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'src', 'assets3d_index.js'), 'utf8'), { window: win, document: {} });
+  const man = (win.N && win.N.ASSETS3D_INDEX && win.N.ASSETS3D_INDEX.manifest) || {};
+  const lazyIds = Object.keys(man).filter((id) => man[id] && man[id].lazy);
+  check(lazyIds.length > 0, 'the generated 3D index lists lazy models (' + lazyIds.length + ')');
   for (const id of lazyIds) need.push('lazy3d/' + id + '.glb');
   const missing = need.filter((f) => !fs.existsSync(path.join(SITE, f)));
   check(missing.length === 0, 'dist/site has every lazily loaded file (' + need.length + ': pack, three.js + GLTFLoader fallback, supabase-js fallback, ' + lazyIds.length + ' lazy GLBs)', missing.join(', '));

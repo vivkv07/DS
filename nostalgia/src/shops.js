@@ -319,9 +319,9 @@
     /* ---------------------------------------------------------- kirana (§5.3) */
     kirana: {
       title: 'Kirana store', verb: 'Kirana', keeper: 'kirana', icon: 'jar', hours: [['07:00', '22:00']], quick: 'mango_bite', toffee: true,
-      lines: ['No change. Take two toffees.', "Don't put your hand in the jar! Say how many.", 'Bottle back, or no deposit.', 'Mango Bite, fifty paise. For Chitti? Then two.'],
+      lines: ['No change. Take two toffees.', "Don't put your hand in the jar! Say how many.", 'Bottle back, or no deposit.', 'Mango Masti, fifty paise. For Chitti? Then two.'],
       rows: [
-        { id: 'mango_bite', name: 'Mango Bite (toffee)', sub: 'eat it, or bribe Chitti', price: 50, give: { mango_bite: 1 }, cap: { mango_bite: 9 }, max: 9, house: true, line: 'Mango Bite, fifty paise. For Chitti? Then two.' },
+        { id: 'mango_bite', name: 'Mango Masti (toffee)', sub: 'eat it, or bribe Chitti', price: 50, give: { mango_bite: 1 }, cap: { mango_bite: 9 }, max: 9, house: true, line: 'Mango Masti, fifty paise. For Chitti? Then two.' },
         { id: 'fruit_sweets', name: 'Fruit sweets, a roll', price: 100, feed: 4 },
         { id: 'biscuits', name: 'Glucose biscuits, small pack', sub: 'carry · dogs love them', price: 200, give: { biscuits: 1 }, max: 3 },
         { id: 'cool_drink', name: 'Cool drink + bottle deposit', sub: '₹7 + ₹1, the ₹1 comes back', price: 800, feed: 15, give: { cool_drink_bottle: 1 } },
@@ -579,10 +579,10 @@
     },
     medical_shop: {
       title: 'Medical shop', verb: 'Medical', keeper: 'chemist', icon: 'cross', hours: [['08:00', '22:30']], quick: 'plaster',
-      lines: ["Doctor's *chitti* first.", 'Hajmola, one rupee. Not the whole packet!', 'Take a plaster. Cricket knee?'],
+      lines: ["Doctor's *chitti* first.", 'Churan goli, one rupee. Not the whole packet!', 'Take a plaster. Cricket knee?'],
       rows: [
         { id: 'plaster', name: 'Plaster', sub: 'cures a scraped knee', price: 100, house: true, line: 'Take a plaster. Cricket knee?', act: () => (clearStatus('knee') ? 'Knee fixed. Run free.' : 'One plaster, for later.') },
-        { id: 'digestive', name: 'Digestive candy (5)', price: 100, feed: 2, line: 'Hajmola, one rupee. Not the whole packet!' },
+        { id: 'digestive', name: 'Digestive candy (5)', price: 100, feed: 2, line: 'Churan goli, one rupee. Not the whole packet!' },
         { id: 'glucose', name: 'Glucose powder', sub: 'carry · 3 spoons', price: 1000, give: { glucose: 3 } },
         { id: 'balm', name: 'Balm', sub: 'for Ammamma\'s knees', price: 500, give: { balm: 1 } },
       ],
@@ -808,8 +808,8 @@
         { id: 'platform', name: 'Platform ticket', sub: () => 'the platform shortcut, all day', price: 300, house: true, hidden: (c) => platformTicket(c.id), act: (c) => { S.platform[c.id] = day(); return 'Punched. The platform is yours till midnight.'; } },
         { id: 'platform_ok', name: 'Platform ticket ✓', sub: 'good for today', price: 0, hidden: (c) => !platformTicket(c.id), when: () => 'Already bought today' },
         { id: 'weigh', name: 'Weighing machine', sub: 'weight + a printed fortune', price: 100, act: (c) => weigh(c) },
-        { id: 'tinkle', name: 'Book stall: Tinkle', sub: 'a comic page of trivia', price: 800, act: (c) => trivia(c, 'tinkle') },
-        { id: 'chandamama', name: 'Book stall: Chandamama', sub: 'a story page of trivia', price: 600, act: (c) => trivia(c, 'chandamama') },
+        { id: 'tinkle', name: 'Book stall: Twinkle Tales', sub: 'a comic page of trivia', price: 800, act: (c) => trivia(c, 'tinkle') },
+        { id: 'chandamama', name: 'Book stall: Chanda Kathalu', sub: 'a story page of trivia', price: 600, act: (c) => trivia(c, 'chandamama') },
         { id: 'tea', name: 'Railway tea', price: 200, feed: 12 },
         { id: 'auto', name: 'Auto stand', sub: '"Kidhar jaana?"', price: 0, act: () => autoStand() },
       ],
@@ -1560,7 +1560,7 @@
     const f = triviaFact((day() * 7 + (S.stats.buys | 0)) | 0);
     const head = kind === 'tinkle' ? 'A comic page: "Did you know?"' : kind === 'chandamama' ? 'A story page ends with a fact box:' : 'An old comic, page torn:';
     N.emit('trivia', { place: f.place, text: f.text, source: kind });
-    setView({ type: 'info', title: kind === 'tinkle' ? 'Tinkle' : kind === 'chandamama' ? 'Chandamama' : 'Old comic', html: '<p class="shop-note">' + esc(head) + '</p><blockquote class="shop-fact">' + esc(f.text) + '</blockquote>' });
+    setView({ type: 'info', title: kind === 'tinkle' ? 'Twinkle Tales' : kind === 'chandamama' ? 'Chanda Kathalu' : 'Old comic', html: '<p class="shop-note">' + esc(head) + '</p><blockquote class="shop-fact">' + esc(f.text) + '</blockquote>' });
     return { keep: true };
   }
   function tvLine() {

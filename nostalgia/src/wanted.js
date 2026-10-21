@@ -21,7 +21,7 @@
  *
  * Pursuers (one chaser + spotters, kid-sized: nobody hits, a "catch" is a hand on the shoulder):
  *   1  Chitti (colony, daytime, not in school hours; can't catch, tattles after 8 s within 60 u;
- *      a Mango Bite bribes her) or a colony uncle running and shouting (on a cycle if you ride)
+ *      a Mango Masti bribes her) or a colony uncle running and shouting (on a cycle if you ride)
  *   2  + a second uncle, the aunties' phone tree (ambient aunties become spotters with a "!" pip, one
  *      waves her stick and walks after you), Bahadur the Gurkha with his torch at night, podium
  *      constables report
@@ -34,8 +34,8 @@
  *   +30 game minutes, tummy +10, respawn at the home gate (or the mission checkpoint / the mission's
  *   onBusted / failOnBusted), meter 0, then the scolding line. THAK GAYA! (tummy 0, 'player:starving'):
  *   sit and pant, banner, fade, wake at the nearest open Irani cafe with glucose water (−₹1) or at home
- *   between 23:30 and 05:00 with Amma's glass of Horlicks; tummy/energy 40, +45 gm, meter −2.
- * Cool-downs here: Mango Bite for Chitti, jasmine / new chappals for Mummy, home before the street
+ *   between 23:30 and 05:00 with Amma's glass of haldi milk; tummy/energy 40, +45 gm, meter −2.
+ * Cool-downs here: Mango Masti for Chitti, jasmine / new chappals for Mummy, home before the street
  *   lights, unseen decay, banana peels (pursuers slip), fed dogs (traffic.js) bark pursuers to a halt.
  *   Barbers, cafe family rooms, cinemas, the kirana hide and the parlour back door are shops.js rows
  *   that call clear / set / hide below; a fallback "Haircut ₹10" is offered at barber_* places only
@@ -313,8 +313,8 @@
 
   /* ================================================================ pursuers */
   const LINES = {
-    chitti: ['*Mummy ki cheppesta!*', 'Annayya is outside AGAIN!', 'Give me a Mango Bite or I\'m telling.', 'I saw. I SAW!'],
-    chittiBribed: '...I saw nothing. Mango Bite is very good.',
+    chitti: ['*Mummy ki cheppesta!*', 'Annayya is outside AGAIN!', 'Give me a Mango Masti or I\'m telling.', 'I saw. I SAW!'],
+    chittiBribed: '...I saw nothing. Mango Masti is very good.',
     uncle: ['*Arre*, Sreenivas\'s boy! Does your Amma know?', 'I\'m going that way anyway. Towards your house.', '*Oye!* *Ruko!* Stop there!', 'Running in this heat? Wait till I tell Padma!', '*Abbabba!* Children these days!'],
     aunty: ['Kamala-garu\'s grandson! At this hour!', 'I\'ll just phone Padma. Just to say hello.', '*Ayyo*, look at his knees.', 'The whole colony knows in ten minutes, *beta*.'],
     bahadur: ['*Kaun hai?*', 'Chinnu baba! *Ghar jao!*', 'I am only a whistle. But I am a LOUD whistle.'],
@@ -340,7 +340,7 @@
     self: ['*Thak gaya...* Legs have gone on strike.', 'Water... chai... Osmania... in that order.', 'Even the cow is walking faster than me.', 'Note to self: running is for the movies.', 'My chappal is tired. I am more tired.'],
     salim: ['*Arre*, sit, sit. Glucose water, one rupee. Then chai.'],
     waiter: ['Two hours you\'ll sit for one chai? ...Okay, for you, one hour.', '*Arre*, sit, sit. Glucose water, one rupee. Then chai.'],
-    amma: ['Come, eat. ...First this glass of Horlicks. All of it.', '*Intiki vachava?* Horlicks first, questions later.'],
+    amma: ['Come, eat. ...First this glass of haldi milk. All of it.', '*Intiki vachava?* Haldi milk first, questions later.'],
   };
   function npcLook(id, fallback) {
     let L = null;
@@ -1482,6 +1482,9 @@
     for (const [t, f] of TUNE.curfew) if (mm >= t) floor = f;
     // the curfew night belongs to the day it started (00:30 is still "last night")
     const nightDay = m < TUNE.curfewMorning ? d - 1 : d;
+    // already home when the street lights come on (at the door, or up on his own terrace) is being home: the
+    // curfew is over for tonight before it starts (journey audit J03: the meter used to climb on the terrace)
+    if (floor > 0 && !off && W.curfewHomeDay !== nightDay && atHomeNow()) W.curfewHomeDay = nightDay;
     if (off || W.curfewHomeDay === nightDay) floor = 0;
     if (floor !== W.curfewFloor) {
       const up = floor > W.curfewFloor;
@@ -1493,6 +1496,13 @@
         if (W.heat < floor * 100) setHeat(floor * 100 + 30, 'curfew');
       }
     }
+  }
+  function atHomeNow() {
+    const p = N.player;
+    if (!p) return false;
+    if (W.atHome || p.level === 'home_terrace') return true;
+    const h = homePos();
+    return Math.hypot(p.x - h.x, p.y - h.y) <= TUNE.homeR;
   }
   function homeRule() {
     const p = N.player, h = homePos();
@@ -1545,7 +1555,7 @@
 
   /* ================================================================ offers (ACTION) */
   const offers = {
-    mango: { label: 'Mango Bite?', priority: 6, dist: 0, use: () => {
+    mango: { label: 'Mango Masti?', priority: 6, dist: 0, use: () => {
       const ch = W.chaser;
       if (!ch || ch.role !== 'chitti' || !useItem('mango_bite')) return;
       bark(ch, LINES.chittiBribed, 'chitti', 2.6);

@@ -1343,7 +1343,9 @@ glints, season overlays). Loaded in index.html after menus.js. Tests: `node test
   The ground's road analysis runs in frame-time slices only on a device that has used 3D (localStorage
   `nostalgia.view3d.used`, set when the engine starts) or while 3D loads; otherwise in idle callbacks only.
   Shop-sign atlas cells are ref-counted and recycled (`H.signSlot(text, bg, fg, aspect, ownList)` holds a cell in
-  `ownList` until `H.releaseSigns(ownList)`; without a list the board is pinned). Event `view3d:contextrestored`.
+  `ownList` until `H.releaseSigns(ownList)`; without a list the board is pinned); when every page is full and no cell is
+  free, `H.onSignsFull(fn)` reclaimers run (view3d_landmarks drops its oldest cached off-scene model's boards).
+  Pages: 6 × (4 × 16 cells of 512×64) on high / mid, 4 × (256×32 cells) on low. Event `view3d:contextrestored`.
 
 ### 3D ground (`src/view3d_ground.js`) — `N.view3d.ground`, `N.view3d.groundHeightAt`
 

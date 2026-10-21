@@ -547,7 +547,7 @@
     'pehli baar sach|Hi|“The truth, for the first time” (Ma’am’s last red ink)', 'qawwali|Dk|Sufi devotional singing at a dargah', 'sach likho|Hi|Write the truth',
     'sitaphal|Hi|Custard apple (an ice-cream flavour)', '2-in-1 / j-card|IE|A radio-cassette player / the paper insert in a cassette case',
     'eid / eid ul-fitr / ramzan|Dk|The festival that ends the fasting month / the fasting month (Ramadan)', 'garam samose|Hi|Hot samosas',
-    'hallu chalao|Dk|Drive slowly', 'churan goli / mango bite / tinkle|IE|A tangy digestive candy / a 50-paise mango toffee / the children’s comic',
+    'hallu chalao|Dk|Drive slowly', 'churan goli / mango masti / twinkle tales|IE|A tangy digestive candy / a 50-paise mango toffee / the children’s comic',
     'imli-bun|Dk|Tamarind grove (Imlibun)', 'jeeta kya|Hi|Did (India) win?', 'luna / chetak / rx100 / ambassador|IE|A pedal-start moped / the family scooter / the cool cousin’s motorbike / the classic car',
     'std booth / std / isd / pco|IE|A public telephone cabin with a metered call counter', 'x roads|IE|Crossroads',
     // §10.2 names that mean something

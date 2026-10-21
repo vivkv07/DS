@@ -9,7 +9,7 @@
  *   busted     stand still at level 3 until Pochaiah catches you: PAKDA GAYA!, fine, respawn at home
  *   chappal    level 5: Mummy throws the homing chappal
  *   barber     a haircut clears the meter (shops.js row if present, else wanted.js's fallback)
- *   wasted     tummy 0: THAK GAYA!, wake at an Irani cafe (or home at night with Horlicks)
+ *   wasted     tummy 0: THAK GAYA!, wake at an Irani cafe (or home at night with a glass of haldi milk)
  *   misc       hide behind the rice sacks, respect-zone freeze, horn scatters pigeons, cows block traffic
  *   rules      home before the street lights, curfew floors, save/load, mission policies, Chitti, claimAuto, bus stops
  *   mobile     phone portrait: caps and frame time
@@ -554,12 +554,19 @@ async function run() {
       for (let k = 0; k < 6; k++) {
         const c = T.animals.find((a) => a.species === 'cow');
         if (c) {
-          N.player.teleport(c.x + 40, c.y + 30);
+          // stand within horn reach (TUNE.cowHornR 60): a blocked spot makes teleport pop him out further away
+          let d = 1e9;
+          for (const [ox, oy] of [[40, 30], [-40, 30], [30, -40], [-30, -40], [45, 0], [-45, 0]]) {
+            N.player.teleport(c.x + ox, c.y + oy);
+            d = Math.hypot(N.player.x - c.x, N.player.y - c.y);
+            if (d < 52) break;
+          }
           await __gw(0.6);
-          const st0 = c.state;
+          const st0 = c.state, d0 = Math.round(Math.hypot(N.player.x - c.x, N.player.y - c.y));
           N.emit('horn', { x: N.player.x, y: N.player.y, type: 'foot', vehicle: null, who: N.player });
+          const woke = c.getUpT != null || c.state === 'amble';
           await __gw(4.2);
-          return { st0, st1: c.state, moved: Math.round(Math.hypot(c.x - c.home.x, c.y - c.home.y)) };
+          return { st0, st1: c.state, moved: Math.round(Math.hypot(c.x - c.home.x, c.y - c.home.y)), d0, woke, mode: N.state.mode, listed: T.animals.indexOf(c) >= 0 };
         }
         N.player.teleport(N.places.charminar_plaza.x + 300 * k, N.places.charminar_plaza.y);
         await __gw(1.5);
@@ -602,6 +609,30 @@ async function run() {
       return { numaish, l1, f1, l2, after: N.wanted.level, floor: N.wanted.curfewFloor };
     });
     if (cur.numaish !== 0 || cur.l1 < 1 || cur.l2 < 2 || cur.after !== 0) fail('rules', 'curfew: ' + JSON.stringify(cur)); else ok('curfew: Numaish night 21:40 floor 0; March 21:40 floor ' + cur.f1 + ' (level ' + cur.l1 + '), 23:10 level ' + cur.l2 + ', home clears it');
+    await settle(page);
+    // already home when the street lights come on: no curfew (journey audit J03), at the door and up on his
+    // own terrace (the terrace is > homeR from the door: it used to climb to 1 / 2 there)
+    const homeNight = await page.evaluate(async () => {
+      N.debug.setWanted(0);
+      const h = N.places.home;
+      N.calendar.set(2003, 3, 6, 20, 30); N.player.teleport(h.x, h.y); await __gw(0.5);
+      N.debug.setTime(21, 40); await __gw(0.7);
+      const door = { floor: N.wanted.curfewFloor, level: N.wanted.level };
+      N.calendar.set(2003, 3, 7, 20, 30); N.player.teleport(h.x + 160, h.y + 120); await __gw(0.4);
+      N.world.roofs.climb('home_terrace', 0, N.player, { instant: true }); await __gw(0.5);
+      const onRoof = N.player.level, d = Math.round(Math.hypot(N.player.x - h.x, N.player.y - h.y));
+      N.debug.setTime(23, 10); await __gw(0.7);
+      const terrace = { onRoof, d, floor: N.wanted.curfewFloor, level: N.wanted.level };
+      // walking out later that night is still "home tonight" (as after reaching the gate), the next night counts again
+      N.world.roofs.descend(N.player, { instant: true }); N.player.teleport(N.places.abids.x, N.places.abids.y);
+      N.calendar.set(2003, 3, 8, 21, 40); await __gw(0.7);
+      const nextNight = { floor: N.wanted.curfewFloor, level: N.wanted.level };
+      N.debug.setWanted(0); N.debug.setTime(12, 0); await __gw(0.3);
+      return { door, terrace, nextNight };
+    });
+    const hn = homeNight;
+    if (hn.door.floor !== 0 || hn.door.level !== 0 || hn.terrace.onRoof !== 'home_terrace' || hn.terrace.floor !== 0 || hn.terrace.level !== 0 || hn.nextNight.floor < 1) fail('rules', 'curfew at home: ' + JSON.stringify(hn));
+    else ok('curfew at home: at the door 21:40 and on the home terrace 23:10 (' + hn.terrace.d + ' u from the door) the meter stays 0; out on the next night it rises to ' + hn.nextNight.floor);
     await settle(page);
     // save / load keeps the meter
     const sv = await page.evaluate(async () => {

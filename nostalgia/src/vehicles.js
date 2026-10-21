@@ -252,7 +252,7 @@
   define('kid_cycle', { base: 'cycle', name: "Kid's hire cycle", short: 'cycle', maxSpeed: 110, turn: 3.6, w: 13.5, bikeLook: 'kid', colors: ['#9a2424', '#2f6a3a', '#24479a'] });
   define('bunty_rx100', {
     base: 'rx100', name: "Bunty-anna's RX100", short: 'RX100', colors: ['#1c1c22'], seats: 2, rideOk: true,
-    refuse: ["Bunty-anna's RX100? Only pillion, only with a helmet, only behind Bunty-anna.", 'Bunty-anna: "Touch it and I tell Mummy about the Rasna."'],
+    refuse: ["Bunty-anna's RX100? Only pillion, only with a helmet, only behind Bunty-anna.", 'Bunty-anna: "Touch it and I tell Mummy about the broken window."'],
   });
   // A3 + the ladder (30 finds): Akka next door lends her Scooty (backward-compatible with unlock_chetak)
   define('akka_scooty', {
@@ -2844,16 +2844,40 @@
     const home = (N.WORLD_DATA && N.WORLD_DATA.spawns && N.WORLD_DATA.spawns.home) || null;
     if (!home || V.autoSeed === false || !N.world.built) return;
     const have = (type) => list.some((v) => v.alive && v.type === type && v.seeded);
-    const put = (type, dx, dy, opts) => { if (!have(type)) seedPut(type, home[0] + dx, home[1] + dy, Math.PI / 2, opts); };
-    // the family Chetak, parked on the footpath a few doors down (clear of the front door)
-    put('family_chetak', -58, 2, { seed: 1999, color: '#7d9ab0', special: 'family' });
-    // A3: Akka's Scooty next door (rideable from 30 finds; before that it says "when you're older")
-    put('akka_scooty', 26, 4, { seed: 1717, owned: true, special: 'akka' });
+    // Parking (journey audit J10): the strip between the road and the house fronts (home y -4 .. +10) is the
+    // footpath line through the gate, so nothing parks across it any more: the family vehicles stand nose-in
+    // in the gaps between the houses (the east gap is the lane to the home stairs: kept clear) and the
+    // late unlocks fill the back of those gaps. Each spot is [dx, dy, angle]; the first whose whole body is
+    // clear wins, the old strip spot is the last resort.
+    const fits = (T, x, y, a) => {
+      const W = N.world, c = Math.cos(a), si = Math.sin(a);
+      if (!W.isDrivable(x, y)) return false;
+      for (const off of T.co) if (W.collide(x + c * off, y + si * off, T.cr + 0.5, 'drive').hit) return false;
+      return true;
+    };
+    const put = (type, spots, opts) => {
+      if (have(type) || !TYPES[type]) return null;
+      const T = TYPES[type];
+      for (const [dx, dy, a] of spots) {
+        const x = home[0] + dx, y = home[1] + dy;
+        if (!fits(T, x, y, a)) continue;
+        const c = Math.cos(a), si = Math.sin(a);
+        if (N.entities.query(x, y, T.w / 2 + 40, isVehicle).some((o) => o.alive && T.co.some((off) => distTo(o, x + c * off, y + si * off) < T.cr + 1))) continue;
+        return spawn(type, x, y, a, Object.assign({ seeded: true }, opts || {}));
+      }
+      const last = spots[spots.length - 1];
+      return seedPut(type, home[0] + last[0], home[1] + last[1], last[2], opts);
+    };
+    const S_ = Math.PI / 2, NO = -Math.PI / 2;
+    // the family Chetak, nose-in in the gap two doors down (Nanna backs it out; Diwali's "garage" is beside it)
+    put('family_chetak', [[-58, 17, S_], [-58, 2, S_]], { seed: 1999, color: '#7d9ab0', special: 'family' });
+    // A3: Akka's Scooty in the narrow gap beyond, facing the street so he can ride straight out (30 finds)
+    put('akka_scooty', [[-84, 16, NO], [-84, 30, NO], [26, 4, S_]], { seed: 1717, owned: true, special: 'akka' });
     // Chinnu's own cycle (12 finds) and Nanna's roadster (after M6) wait at home each morning
-    if (unlocked('own_cycle', 12)) put('chinnu_cycle', 44, 4, { seed: 2003, owned: true, label: 'my cycle' });
-    if (N.flags.old_cycle || (N.missions && N.missions.isDone && N.missions.isDone('ammammas_thursday'))) put('old_cycle', -76, 2, { seed: 1983, owned: true });
-    // 60 finds: Bunty-anna lends his old Hercules with gears (and pillion rides on the RX100)
-    if (unlocked('rx100', 60) || unlocked('hercules_gears', 60)) put('hercules_gears', 62, 4, { seed: 1960, owned: true, label: "Bunty-anna's Hercules" });
+    if (unlocked('own_cycle', 12)) put('chinnu_cycle', [[-56, 36, NO], [-72, 26, 0], [44, 4, S_]], { seed: 2003, owned: true, label: 'my cycle' });
+    if (N.flags.old_cycle || (N.missions && N.missions.isDone && N.missions.isDone('ammammas_thursday'))) put('old_cycle', [[-84, 34, NO], [-72, 26, 0], [-76, 2, S_]], { seed: 1983, owned: true });
+    // 60 finds: Bunty-anna lends his old Hercules with gears (and pillion rides on the RX100); it used to stand in the road
+    if (unlocked('rx100', 60) || unlocked('hercules_gears', 60)) put('hercules_gears', [[-72, 26, 0], [-110, 22, NO], [62, 4, S_]], { seed: 1960, owned: true, label: "Bunty-anna's Hercules" });
   }
   /**
    * Cycle stands (A3: the city rides Heroes, Hercules and Scooties): a few parked at schools,
