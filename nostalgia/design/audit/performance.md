@@ -62,7 +62,7 @@ Severity: **P0** broken for many players · **P1** serious cost or visible degra
 | PERF-07 | P1 | `src/main.js` fixed step (cross-lane: engine / gameplay) | dt clamp 0.1 s split into ≤1/60 s sub-steps: on the 4x phone 2D runs **5.4–5.9 sub-steps per frame**, desktop-under-load 3.4–4.3 — the classic spiral (slow frame → more simulation → slower frame). | cross-lane: cap sub-steps (2–3 on the low tier; let game time slow down instead). |
 | PERF-08 | P1 | `world.build` at boot (cross-lane: world lane) | 3.0 s (desktop, loaded host) / 3.7 s (phone 4x) of the 5.1 / 7.0 s to the title; the 10-17 study measured 2.3–2.5 s at 4x on a quiet host. | cross-lane: cache / precompute the grids (deterministic from worlddata) or build progressively behind the title. |
 | PERF-09 | P2 | `src/diwali.js` `ptCommit` + cracker instances | Sparks / glows / smoke `Points` uploaded their **whole** Float32Arrays (22 200 + 22 200 + 14 800 floats ≈ 230 KB) every 3D frame, every day of the year (layer runs when Diwali is off); cones / cylinders re-sent with count 0; a `updateRange.count` of 0 would upload the whole array in WebGL2. | **fixed**: used range only, nothing (and hidden) when empty. |
-| PERF-10 | P2 | `src/view3d.js` / `view3d_ground.js` chunk geometry | three keeps every attribute array in JS memory after upload: 3D desktop at Abids = 114 MB JS heap + **118 MB ArrayBuffers** (roads 16 MB, buildings 6 MB, landmarks 8 MB of the scene's 35 MB; the rest: models3d buffers, 256² ground maps per chunk ≈ 11 MB, the 10.5 MB camera height grid, analysis). | **fixed (partly)**: core-built `buildings` / `signs` / `glows` and the ground's road meshes drop their arrays after the first upload (`freeOnUpload`; bounds computed first; chunks are rebuilt on LOD change / context restore anyway): 118 → 98 MB right after settling, more as unseen chunks get drawn. `Q.keepArrays` for A/B. |
+| PERF-10 | P2 | `src/view3d.js` / `view3d_ground.js` chunk geometry | three keeps every attribute array in JS memory after upload: 3D desktop at Abids = 114 MB JS heap + **118 MB ArrayBuffers** (roads 16 MB, buildings 6 MB, landmarks 8 MB of the scene's 35 MB; the rest: models3d buffers, 256² ground maps per chunk ≈ 11 MB, the 10.5 MB camera height grid, analysis). | **fixed (partly)**: core-built `buildings` / `signs` / `glows` and the ground's road meshes drop their arrays after the first upload (`freeOnUpload`; bounds computed first; chunks are rebuilt on LOD change / context restore anyway): 118 → 98 MB right after settling, more as unseen chunks get drawn. `Q.keepArrays` for A/B. Those objects are ray-transparent (`raycast` no-op): three's raycast would read the dropped arrays — a scene-wide ray cast in `tests/view3d_ground.cjs` (lane contrast) threw a `TypeError` on the first cut; the game itself ray-casts landmarks only. `qa_perf frames3d` now ray-casts the whole scene at every spot. |
 | PERF-11 | P2 | `src/view3d.js` `render` | The `webglcontextlost` event comes a task after the loss; a frame in between compiled programs on a lost context → three read a `null` info log → `TypeError` (`qa_perf ctxloss`, second loss). `onRenderError` turns 3D off after 3 errors. | **fixed**: `gl.isContextLost()` guard. Restore at Diwali night redraws fully (245 calls / 535k tris vs 254 / 555k before; screenshot). |
 | PERF-12 | P2 | lazy files on the site | The pack / GLTFLoader / three fallback were fetched by fixed URL; GitHub Pages sends `max-age=600`, so for 10 minutes after a deploy a returning player could get the new page with an old pack (the index lists ids the pack may not have after a repack). | **fixed**: build writes `N.BUILD = {pack, loader, three, supabase}` (content hashes) into web.html; models3d.js / view3d.js append `?v=` over http(s). Deterministic (two builds byte-identical). supabase-js fallback → cross-lane (online.js). |
 | PERF-27 | P1 | `src/models3d.js` `loadPack` / `src/view3d.js` `loadThree` | The core pack (7.5 MB, ~3 MB gzip: 17+ s on Slow 4G, ~60 s on 3G) loaded with a 20 s script timeout: on timeout the loop tried the next URL (`../src/…`, a 404 on the site), `loadPack` failed and models3d stayed `missing` for the session (the script then arrived for nothing). Reproduced under load on file://: the 7.5 MB script outlived 20 s → `file:///home/user/DS/src/assets3d_pack.js` 404 + console error (the one error of the 30-min soak). The local three.js fallback had 6 s (149 KB gzip on 3G ≈ 5 s + latency). | **fixed**: pack 180 s, local GLTFLoader / three.js 60 s; missing files still fail immediately (onerror). |
@@ -108,11 +108,12 @@ first game frame 0.4–0.9 s, SKIP → free roam 0.3–0.8 s (4x).
 
 Bytes on the site (raw / gzip -9): `index.html` 7.18 MB / 2.16 MB (was 8.37 / 2.52); `src/assets3d_pack.js` 7.5 MB /
 3.0 MB (loaded on the first 3D switch); three.min.js 594 KB / 149 KB (same-origin copy first since PERF-32; was
-jsDelivr first); 30 lazy GLBs 1.05 MB (fetched per landmark in range). Boot (file://, `qa_perf boot`): on a quieter
-host (final run) desktop title at 1.65 s (DCL 0.56 s), main-thread CPU 1.29 s, `world.build` 0.88 s, heap after GC
-87.4 MB, longest task 1.09 s, title → first controllable move 0.67 s; phone 4x 3.5 s / 4.27 s CPU / `world.build`
-2.0 s / 88.0 MB / longest task 2.76 s / first move 0.84 s. Earlier runs at load ~30: desktop 5.05 s / 1.66 s CPU /
-`world.build` 3.0 s, phone 7.0 s / 4.0 s CPU / 3.7 s (the CPU numbers are the stable ones).
+jsDelivr first); 30 lazy GLBs 1.05 MB (fetched per landmark in range). Boot (file://, `qa_perf boot`), two final
+runs on a quieter host: desktop title at 1.02–1.65 s (DCL 0.25–0.56 s), main-thread CPU 1.29–1.33 s, `world.build`
+0.54–0.88 s, heap after GC 87.2–87.4 MB, longest task 0.77–1.09 s, title → first controllable move 0.65–0.67 s;
+phone 4x 3.5–3.6 s / 4.3–5.3 s CPU / `world.build` 2.0–2.1 s / 87–88 MB / longest task 2.8–3.0 s / first move
+0.84–1.05 s. Earlier runs at load ~30: desktop 5.05 s / 1.66 s CPU / `world.build` 3.0 s, phone 7.0 s / 4.0 s CPU /
+3.7 s (the CPU numbers are the stable ones).
 
 ### 2.2 2D frames (`frames2d`, per-system profiler; frame JS includes software raster)
 
@@ -212,20 +213,42 @@ Screenshot `tests/out/qa_perf_ctx_restored.png` (the Diwali lane, rangoli, diyas
 | file | change |
 |---|---|
 | `src/view3d.js` | `N.view3d.profile()` (per-phase JS: camera / sky / work / actors (+ per kind) / lmUpdate / layer:<id> / cull / render); ref-counted, recyclable sign-atlas cells (a chunk's boards kept on few pages; `H.onSignsFull` reclaimers; 4 pages on the low tier, was 3) + `releaseSigns` / `signCheck()` / `signsRecycled`, `signsDropped`, `signsPinned` in `stats()`; `freeOnUpload` for core chunk geometry (`Q.keepArrays`); `isContextLost()` guard in `render` + `view3d:contextrestored` event; `nostalgia.view3d.used` flag; cached `signFont`; fx overlay styles written only on change; three.js vendored-first (`?v=` content hash, 60 s local timeout, CDN last); foliage see-through cone (`quality.seeThrough`, `H.occFade`); height-less 2D lights lifted to roof level; pill label "1st". |
-| `src/view3d_ground.js` | frame-time precompute only when 3D is likely; resumable dedupe / cluster (path compression) / trims / footpath clearance (`clearPieceStep`); per-item maxima `stats().itemMax`; `precompute(ms)`; road meshes free their arrays after upload. |
+| `src/view3d_ground.js` | frame-time precompute only when 3D is likely; resumable dedupe / cluster (path compression) / trims / footpath clearance (`clearPieceStep`); per-item maxima `stats().itemMax`; `precompute(ms)`; road meshes free their arrays after upload (and are skipped by ray casts). |
 | `src/view3d_landmarks.js` | landmark signboards hold their atlas cells (`signSlots`) while the model exists (scene or LRU), release on dispose / eviction / decor clear / `measure`; a full atlas evicts the oldest cached off-scene model with boards (`reclaimSigns` via `H.onSignsFull`). |
 | `src/diwali.js` | particle `Points` and cracker instances upload only the used range; nothing while empty. |
 | `src/citylife_events.js` | sites built in title idle time a step at a time; `registerAudio` decoupled from the ready transition. |
 | `src/models3d.js` | `?v=` content hash on the pack / GLTFLoader URLs (website build); pack timeout 20 → 180 s, local loader 8 → 60 s; no PMREM pass on a lost context, env map re-rendered after a restore. |
 | `src/view3d_actors.js` | bark sizes read in one pass before any style write; mission markers at the roof their target names (`markerBase`). |
 | `src/models3d_props.js` | Blender tree materials get the foliage see-through cone (`H.occFade`). |
-| `tests/view3d.cjs` | expects three.js from the vendored copy first (was: CDN first). |
+| `tests/view3d.cjs` | expects three.js from the vendored copy first (was: CDN first); the missing-three.js fallback holds the key up to 45 s (the GPU-rastered 2D canvas draws a frame every few seconds under SwiftShader + load: it failed on the HEAD sources too, 0 u moved in 6 s with no frame drawn); the long-trip texture budget counts the new ground's per-chunk surface maps separately (≤ 1 per chunk) from the rest (< 160, the old total budget predates them). |
+| `tests/view3d_landmarks.cjs` | the city-walk check no longer expects view3d_landmarks.js to build landmarks that models3d draws with Blender models (`#<id>` overrides / `m3d-lm:` objects, collected along the walk). |
+| `tests/view3d_actors.cjs` | "pigeons at Charminar" counts src/birds.js' 3D pigeons (it took the flocks over from traffic / landmarks on 10-19, so the legacy actor pass draws none). |
 | `src/core.js` | `N.systems.profile()`; window error log capped at 50. |
 | `tools/build.mjs` | `stripJs` for `dist/web.html` (+ `--no-strip`), `N.BUILD` content hashes, deterministic. |
-| `tests/qa_perf.cjs` | new audit / regression harness with budgets (draw calls, triangles, programs, heap, soak growth, streaming slice, background slice, bytes, reproducible build, deploy completeness, stripped-script AST equivalence, context loss, full quota). |
+| `tests/qa_perf.cjs` | new audit / regression harness with budgets (draw calls, triangles, programs, heap, sign atlas integrity, scene-wide ray casts, soak growth, streaming slice, background slice, bytes, reproducible build, deploy completeness, stripped-script AST equivalence, context loss, full quota). |
 | `tests/view3d_ground.cjs` | the precompute check runs as a returning-3D device and finishes with explicit top-down slices (the headless page draws ~1 frame/s, so it failed before this pass too: verified on a copy with the HEAD sources); the provisional-build timing is load-gated like its neighbours. |
 
-TEST RESULTS: filled in below.
+**Test results** (final tree; most suites at host load 12–25; "pre-existing" = also fails on a same-time copy of the tree
+with the HEAD versions of my files, run side by side):
+
+| suite | result | notes |
+|---|---|---|
+| `tests/qa_perf.cjs` (default: `boot idle2d switch3d frames3d ctxloss storage build`), final tree, quiet host | **50 ok / 0** | desktop title 1.02 s / boot CPU 1.33 s / heap 87.2 MB; phone 3.6 s / 5.3 s CPU; 3D ready 10.7 s (2.7 s CPU) desktop, 52 / 35 programs; Charminar night 230 calls, Koti 249 (phone 104 / 123); scene-wide ray casts ok; sign atlas 0 dropped / 0 stale |
+| `tests/qa_perf.cjs` (`ONLY=boot,idle2d,switch3d,frames3d,ctxloss,storage`, all four spots, loaded host) | 47 ok / 1 fail → fixed | the fail: phone sign atlas dropped 20 boards after the four spots → LRU reclaim + 4 low-tier pages; `ONLY=frames3d` both profiles, four spots: **22 ok / 0** (0 dropped) |
+| `tests/qa_perf.cjs` (`ONLY=build`) | **11 ok / 0** | reproducible build, deploy dry run (34 lazy files incl. 30 GLBs), byte budgets, 66 stripped scripts AST-identical, `N.BUILD` |
+| `tests/qa_perf.cjs` soak (30 min) / walk3d / ctxloss | ok (§3) | soak ran before the last sign-atlas / ray-cast changes; ctxloss also passes in the final default run |
+| `tests/smoke.cjs` | **45 ok / 0** | |
+| `tests/lazy3d.cjs` | **22 ok / 0** | the stripped site page + `?v=` URLs load the lazy GLBs |
+| `tests/citylife_events.cjs` | **76 ok / 0** | |
+| `tests/core_systems.cjs` | 87 ok / 2 → rerun **89 ok / 0** | the two (dialogue ACTION → choice line) were timing under load |
+| `tests/citylife.cjs` | 124 ok / 2 → rerun of the two scenes **32 ok / 0** | saloon sitter / roadwork flow: timing under load |
+| `tests/view3d.cjs` | 51 ok / 3 → after the test fixes 41 ok / 2 (+ landscape rerun **11 ok / 0**) | 3 failed on the HEAD sources too: dense Old City 376–380 calls > 300 (**still failing**: PERF-30, real), long-trip textures 196 > 160 (budget predated the new ground's per-chunk surface maps: now judged apart, passes: ground 48 ≤ 1 per chunk + 150 others < 160), "top-down play continues" (test window too short for the GPU-rastered 2D canvas here: passes with a longer hold). The second full run's landscape section hit a 30 s `page.tap` timeout while three suites shared the host (3D frames of 2–13 s); alone it passes |
+| `tests/view3d_landmarks.cjs` | 9 ok / 1 → city walk after the test fix **4 ok / 0** | the walk check expected view3d_landmarks.js to build landmarks models3d draws (51 such); failed on the HEAD sources too |
+| `tests/view3d_ground.cjs` | **55 ok / 0** | first run after `freeOnUpload` reached the roads: the lane-contrast probe's scene-wide ray cast threw (fixed: PERF-10) |
+| `tests/view3d_actors.cjs` | 111 ok / 2 → desktop part after the test fix **51 ok / 0** | "pigeons at Charminar" (0 → 111 birds counted: birds.js draws them since 10-19); still failing, pre-existing (same on the HEAD copy): "getting on: the hips bend … seated" (Chinnu's cycle: hips end at 0.43–0.66 rad, test wants > 0.9) |
+| `tests/models3d.cjs` | 48 ok / 4 | **pre-existing** (same on the HEAD copy): the four `riders` checks (NPC / Chinnu on Blender cycles: `key null`) |
+| `tests/diwali.cjs` | 88 ok / 11 | **all 11 pre-existing** (elder heat; colony houses / families / paper / 3D houses; Koti stalls lit / paper / 3D stalls; stall phuljhadi box / 3D stalls; Tank Bund paper) |
+| `tests/engine_qa.cjs` | 61 ok / 2 | 2D night-drive JS budgets 8.5 / 12.5 ms vs 54 / 36 ms here; the HEAD-version copy measured 139 / 104 ms at the same time (host-bound) |
 
 ---
 
@@ -277,3 +300,16 @@ Cross-lane items (owner, file:line, suggestion):
 - shared `index.html` — Google Fonts css2 is render-blocking; self-host subset fonts (the 10-17 study:
   ~45 KB, splash 1.6 s sooner on 3G) (PERF-18).
 - world (potholes) — progressive pothole generation runs 277 ms slices on the title screen.
+- journey (story) — `src/story.js` ~2645 `rings3d`: pass `h: rg.h` so roof goals need no inference (PERF-34).
+
+Failing tests that also fail on the HEAD sources (not caused by this pass; for their owners):
+
+- Diwali (festival lane, functional) — `tests/diwali.cjs` 11: home-colony decorated houses / families / paper / 3D
+  houses, Koti stalls lit / paper / 3D stalls, the ₹5 phuljhadi box, Tank Bund paper, elder + Chappal Meter heat:
+  houses, stalls and families never appear at the test spots (0 in view), so the paper / purchase checks fail after them.
+- Blender riders (models / vehicles lanes) — `tests/models3d.cjs` `riders` (4: NPC man and Chinnu on Blender cycles
+  route as `null`) and `tests/view3d_actors.cjs` "getting on … seated" (Chinnu's own cycle: hips end at 0.43–0.66 rad,
+  > 0.9 expected): `src/models3d.js` `riderModel` / `route` (~742-990) vs the `chinnu_cycle` / `hero_cycle` set-up.
+- 3D draw calls (this lane, PERF-30) — `tests/view3d.cjs` dense Old City 376–380 > 300.
+- engine QA budgets — `tests/engine_qa.cjs` 2D night drive 8.5 / 12.5 ms JS per frame cannot be judged on a
+  SwiftShader host under load (it measured 54–139 ms with or without this pass); gate it on load like view3d.cjs.

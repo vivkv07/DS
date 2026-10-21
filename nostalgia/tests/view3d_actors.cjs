@@ -738,7 +738,11 @@ async function desktop(browser) {
     const out = {};
     N.debug.teleport('charminar_plaza'); N.debug.setTime(10, 0); N.view3d.settle(10000);
     for (let i = 0; i < 4; i++) await fr();
-    out.birds = N.view3dActors.stats().birds;
+    // (src/birds.js took the pigeon flocks over from traffic.js / landmarks.js and draws them in its own 3D layer:
+    // view3d_actors' legacy pigeon pass then has none; count both)
+    const BS = N.birds && N.birds.enabled !== false && N.birds.stats ? N.birds.stats() : null;
+    out.birds = N.view3dActors.stats().birds + (BS ? (BS.instances3d || 0) + (BS.points3d || 0) : 0);
+    out.pigeons = BS && BS.bySpecies && BS.bySpecies.pigeon ? BS.bySpecies.pigeon.n : null;
     // a bark over a pedestrian's head: re-anchored to the 3D head
     const p = N.player;
     const e = new N.Actor({ kind: 'ped', x: p.x + 12, y: p.y - 30, r: 3.4 }); e.look = N.people.randomLook(N.util.rng(9), 'man'); e.anim = { phase: 0, speed: 0 }; e.update = function () {}; N.entities.add(e);
@@ -767,7 +771,7 @@ async function desktop(browser) {
     if (it) { N.debug.teleport(it.x + 20, it.y); N.view3d.settle(8000); await fr(); await fr(); await fr(); out.glints = N.view3dActors.debug.glints(); out.item = it.id; }
     return out;
   });
-  check(misc.birds > 0, 'pigeons at Charminar drawn (' + misc.birds + ' birds)');
+  check(misc.birds > 0 && misc.pigeons !== 0, 'pigeons at Charminar drawn (' + misc.birds + ' birds in 3D' + (misc.pigeons != null ? ', ' + misc.pigeons + ' pigeons near by' : '') + ')');
   check(misc.bark && misc.bark.vis !== 'hidden' && Math.abs(misc.bark.cx - misc.bark.head[0]) < 60 && misc.bark.bottom < misc.bark.head[1] + 12 && misc.bark.bottom > misc.bark.head[1] - 90, 'dialogue bark anchored over the 3D head', JSON.stringify(misc.bark));
   check(!!misc.item && misc.glints > 0, 'collectible glint drawn near ' + (misc.item || '(no live collectible found)') + ' (' + misc.glints + ')');
 

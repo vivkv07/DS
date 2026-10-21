@@ -372,6 +372,16 @@ async function frames3d(browser) {
       check(o.tris <= B.tris, prof + ' ' + spot + ': triangles ' + Math.round(o.tris / 1000) + 'k <= ' + B.tris / 1000 + 'k');
     }
     const sc = await page.evaluate(() => N.view3d.signCheck ? N.view3d.signCheck() : null);
+    // chunk geometry drops its CPU arrays after upload (PERF-10): those objects must stay safe for scene-wide ray casts
+    const rc = await page.evaluate(() => {
+      try {
+        const T = N.view3d.THREE, E = N.view3d.engine, r = new T.Raycaster();
+        let hits = 0;
+        for (const [x, y] of [[0, -0.3], [-0.5, 0], [0.5, 0.2], [0, 0.5]]) { r.setFromCamera(new T.Vector2(x, y), E.camera); hits += r.intersectObjects(E.scene.children, true).length; }
+        return { ok: true, hits };
+      } catch (e) { return { ok: false, err: String(e && e.stack || e).slice(0, 300) }; }
+    });
+    check(rc.ok, prof + ': scene-wide ray casts work with the freed chunk arrays (' + rc.hits + ' hits)', rc.err);
     if (sc) check(sc.stale === 0 && sc.negative === 0 && sc.dropped === 0, prof + ': sign atlas intact after the spots (' + sc.held + ' boards held, ' + sc.recycled + ' cells recycled, ' + sc.dropped + ' dropped, ' + sc.stale + ' stale)', JSON.stringify(sc));
     await checkErrors(errors, page);
     await context.close();

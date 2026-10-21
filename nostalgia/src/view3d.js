@@ -1137,13 +1137,18 @@
   // culling needs them; a chunk never drawn keeps its arrays until it is); the camera never ray-casts
   // chunk meshes (landmarks only). Q.keepArrays = true keeps them (debugging / A-B measurements).
   function dropArray() { this.array = null; }
-  function freeOnUpload(g) {
-    if (!g || Q.keepArrays || (g.userData && g.userData.shared)) return g;
+  function noRaycast() { /* its arrays are gone after upload: rays pass through (camera rays use the height grid) */ }
+  /** a geometry, or an object (Mesh / Points) holding one: the object is then also made ray-transparent (three's
+   *  raycast would read the dropped arrays) */
+  function freeOnUpload(o) {
+    const obj = o && o.isObject3D ? o : null, g = obj ? obj.geometry : o;
+    if (!g || !g.isBufferGeometry || Q.keepArrays || (g.userData && g.userData.shared)) return o;
+    if (obj) obj.raycast = noRaycast;
     if (!g.boundingSphere) g.computeBoundingSphere();
     if (!g.boundingBox) g.computeBoundingBox();
     for (const k in g.attributes) { const a = g.attributes[k]; if (a && a.isBufferAttribute && a.usage === THREE.StaticDrawUsage) a.onUpload(dropArray); }
     if (g.index && g.index.usage === THREE.StaticDrawUsage) g.index.onUpload(dropArray);
-    return g;
+    return o;
   }
   function disposeObj(o) {
     o.traverse((m) => {
@@ -1732,7 +1737,7 @@
     ch.signSlots = J.slots || null; // (held since addSigns; released when this geometry goes)
     for (const o of out) {
       o.matrixAutoUpdate = false; o.updateMatrix(); ch.group.add(o); ch.objs.push(o);
-      if (o.name === 'buildings' || o.name === 'signs' || o.name === 'glows') freeOnUpload(o.geometry); // (core-built only: other modules' structure objects keep theirs)
+      if (o.name === 'buildings' || o.name === 'signs' || o.name === 'glows') freeOnUpload(o); // (core-built only: other modules' structure objects keep theirs)
     }
     ch.lights = J.lamps;
     let top = 40;

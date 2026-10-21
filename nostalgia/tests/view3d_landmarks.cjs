@@ -189,33 +189,41 @@ async function main() {
       // walk the city in a coarse grid of stops so every landmark comes into range once
       const stops = [];
       for (let y = 300; y < 6000; y += 900) for (let x = 300; x < 8000; x += 900) stops.push([x, y]);
-      const builtIds = new Set(), fb = new Set();
+      const builtIds = new Set(), fb = new Set(), m3dIds = new Set();
+      // landmarks src/models3d.js draws with a Blender model ('#<id>' override renderers, objects 'm3d-lm:<model>:<id>';
+      // view3d_landmarks.js skips them on purpose: overrides()) are not view3d_landmarks' to build. Lazy models come and
+      // go (LRU), so they are collected along the walk
+      const byModels = () => { if (N.models3d && N.models3d.ready && N.models3d.stats) for (const k of N.models3d.stats().registered) if (k[0] === '#') m3dIds.add(k.slice(1)); return m3dIds; };
+      const m3dSeen = (o) => { if (/^m3d-lm:/.test(o.name || '')) m3dIds.add(o.name.split(':').pop()); };
       const dd = N.view3d.quality.drawDist;
       N.view3d.setQuality({ drawDist: 320 });
       for (const [x, y] of stops) {
         N.player.teleport(x, y); await pause(400); N.view3d.settle(6000);
+        byModels();
         for (const o of E.lmGroup.children) {
+          m3dSeen(o);
           if (o.userData.fallback) fb.add(o.name);
           if (/^lm3d:/.test(o.name)) builtIds.add(o.name.slice(5));
           if (o.userData.cell) { out.cells++; for (const m of o.userData.cell.members) builtIds.add(m.id); }
         }
       }
       // targeted retry for anything a time-capped settle missed on a loaded machine
-      const seen = () => { for (const o of E.lmGroup.children) { if (o.userData.fallback) fb.add(o.name); if (/^lm3d:/.test(o.name)) builtIds.add(o.name.slice(5)); if (o.userData.cell) for (const m of o.userData.cell.members) builtIds.add(m.id); } };
+      const seen = () => { byModels(); for (const o of E.lmGroup.children) { m3dSeen(o); if (o.userData.fallback) fb.add(o.name); if (/^lm3d:/.test(o.name)) builtIds.add(o.name.slice(5)); if (o.userData.cell) for (const m of o.userData.cell.members) builtIds.add(m.id); } };
       for (const lm of L) {
-        if (builtIds.has(lm.id) || !(DEFS.get('#' + lm.id) || DEFS.get(lm.draw))) continue;
+        if (builtIds.has(lm.id) || byModels().has(lm.id) || !(DEFS.get('#' + lm.id) || DEFS.get(lm.draw))) continue;
         N.player.teleport(lm.x, lm.y + lm.d / 2 + 30);
         for (let k = 0; k < 4 && !builtIds.has(lm.id); k++) { await pause(400); N.view3d.settle(15000); seen(); }
         out.retried = (out.retried || 0) + 1;
       }
       N.view3d.setQuality({ drawDist: dd });
-      for (const lm of L) if (builtIds.has(lm.id)) out.ok++; else if (DEFS.get('#' + lm.id) || DEFS.get(lm.draw)) out.fallback.push(lm.id);
+      const M3 = byModels(); out.models3d = 0;
+      for (const lm of L) if (builtIds.has(lm.id)) out.ok++; else if (M3.has(lm.id)) out.models3d++; else if (DEFS.get('#' + lm.id) || DEFS.get(lm.draw)) out.fallback.push(lm.id);
       out.fb = Array.from(fb).slice(0, 20);
       out.total = L.length;
       return out;
     });
     check(res.missing.length === 0, 'every draw id has a 3D model (' + (res.total - res.missing.length) + '/' + res.total + ')', res.missing.slice(0, 20).join(', '));
-    check(res.fallback.length === 0 && res.fb.length === 0, 'every landmark was built by view3d_landmarks.js on the city walk (' + res.ok + ' built, ' + res.cells + ' batch cells, ' + (res.retried || 0) + ' targeted retries)', res.fallback.slice(0, 20).join(', ') + ' ' + res.fb.join(', '));
+    check(res.fallback.length === 0 && res.fb.length === 0, 'every landmark was built by view3d_landmarks.js on the city walk (' + res.ok + ' built, ' + (res.models3d || 0) + ' drawn by models3d instead, ' + res.cells + ' batch cells, ' + (res.retried || 0) + ' targeted retries)', res.fallback.slice(0, 20).join(', ') + ' ' + res.fb.join(', '));
   }
 
   // ---------------------------------------------------------------- 1b. build cost + triangles of every model (built off-scene)

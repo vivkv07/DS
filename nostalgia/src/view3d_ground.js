@@ -2801,8 +2801,8 @@ if (ngShine > 0.01) {
         const geo = job.geo; job.geo = null;
         if (G.road) { ch.group.remove(G.road); G.road.geometry.dispose(); G.road.material.dispose(); G.road = null; }
         if (geo) {
-          if (I.freeOnUpload) I.freeOnUpload(geo); // (static; rebuilt when it changes: no CPU copy kept after upload)
           const rm = new THREE.Mesh(geo, newRoadMat(ch, G));
+          if (I.freeOnUpload) I.freeOnUpload(rm); // (static; rebuilt when it changes: no CPU copy kept after upload, not ray-tested)
           rm.name = 'ground-roads'; rm.receiveShadow = true; rm.castShadow = false; rm.matrixAutoUpdate = false; rm.updateMatrix(); rm.renderOrder = 1;
           G.road = rm; ch.group.add(rm);
           G.tris = geo.index.count / 3;
@@ -2977,8 +2977,8 @@ if (ngShine > 0.01) {
     ch.group.add(tm);
     let rm = null;
     if (geo) {
-      if (I.freeOnUpload) I.freeOnUpload(geo);
       rm = new THREE.Mesh(geo, newRoadMat(ch, T));
+      if (I.freeOnUpload) I.freeOnUpload(rm);
       rm.name = 'ground-prov-roads'; rm.receiveShadow = true; rm.matrixAutoUpdate = false; rm.updateMatrix(); rm.renderOrder = 1;
       ch.group.add(rm);
     }

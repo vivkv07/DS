@@ -1339,7 +1339,8 @@ glints, season overlays). Loaded in index.html after menus.js. Tests: `node test
   `N.view3d.profile(true | undefined | false)` -> per-phase JS of each 3D frame {frames, ms, max, frameMax, over16}
   (camera, sky, work, actors + actor:<kind>, lmUpdate, layer:<id>, cull, render). Measured budgets and the audit:
   `design/audit/performance.md`, `node tests/qa_perf.cjs`. Memory: core chunk geometry (buildings / signs / glows)
-  and the ground's road meshes drop their CPU arrays after the first upload (`quality.keepArrays` keeps them).
+  and the ground's road meshes drop their CPU arrays after the first upload (`quality.keepArrays` keeps them); those
+  objects are skipped by ray casts (`raycast` no-op: three would read the dropped arrays).
   The ground's road analysis runs in frame-time slices only on a device that has used 3D (localStorage
   `nostalgia.view3d.used`, set when the engine starts) or while 3D loads; otherwise in idle callbacks only.
   Shop-sign atlas cells are ref-counted and recycled (`H.signSlot(text, bg, fg, aspect, ownList)` holds a cell in

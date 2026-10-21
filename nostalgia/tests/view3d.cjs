@@ -226,13 +226,17 @@ async function desktop(browser) {
     const out = [];
     for (const [x, y] of [[430, 600], [1100, 3300], [3900, 4500], [5200, 1000], [7400, 3600], [4473, 2671]]) {
       N.debug.teleport(x, y); N.view3d.settle(15000);
-      const s = N.view3d.stats(); out.push([s.chunks, s.groundTextures, s.textures, s.geometries]);
+      const s = N.view3d.stats(), g = N.view3d.ground && N.view3d.ground.stats ? N.view3d.ground.stats() : null;
+      out.push([s.chunks, s.groundTextures + (g ? g.textures || 0 : 0), s.textures, s.geometries]);
     }
     N.view3d.setQuality({ drawDist: 450 }); N.view3d.settle(10000);
     return out;
   });
+  // ground surface maps (one 256² texture per ready chunk, view3d_ground) scale with the chunks in range: judged per
+  // chunk; everything else (models, atlases, layers) has the fixed budget
   const maxTex = Math.max(...trip.map((r) => r[2])), maxGeo = Math.max(...trip.map((r) => r[3]));
-  check(maxTex < 160 && maxGeo < 700, 'long trip (6 far teleports): GPU memory bounded (max ' + maxTex + ' textures, ' + maxGeo + ' geometries; chunks ' + trip.map((r) => r[0]).join('/') + ')');
+  const maxOther = Math.max(...trip.map((r) => r[2] - r[1])), groundOk = trip.every((r) => r[1] <= r[0]);
+  check(maxOther < 160 && groundOk && maxGeo < 700, 'long trip (6 far teleports): GPU memory bounded (max ' + maxTex + ' textures = ground maps ' + trip.map((r) => r[1]).join('/') + ' (<= 1 per chunk) + at most ' + maxOther + ' others (< 160), ' + maxGeo + ' geometries; chunks ' + trip.map((r) => r[0]).join('/') + ')');
   report.push('long trip textures per stop: ' + trip.map((r) => r[2]).join(', ') + '; geometries: ' + trip.map((r) => r[3]).join(', '));
 
   // ---- repeated toggles do not leak (baseline after one full cycle, then 12 more toggles)
@@ -347,9 +351,11 @@ async function fallback(browser) {
   check(toastOk, 'toast says why');
   // the game keeps running in 2D
   const a = await st(page);
-  await holdUntil(page, ['KeyD'], (x) => Math.hypot(x.x - a.x, x.y - a.y) > 20, 6000);
+  // (the 2D canvas is GPU-rastered here: with SwiftShader on a loaded host the first top-down frames after the failed
+  // load can take seconds each, so allow a long hold; it ends as soon as Chinnu has moved)
+  await holdUntil(page, ['KeyD'], (x) => Math.hypot(x.x - a.x, x.y - a.y) > 20, 45000);
   const b = await st(page);
-  check(Math.hypot(b.x - a.x, b.y - a.y) > 10, 'top-down play continues');
+  check(Math.hypot(b.x - a.x, b.y - a.y) > 10, 'top-down play continues (' + Math.round(Math.hypot(b.x - a.x, b.y - a.y)) + ' u in ' + b.stack + ', fps ' + b.fps + ')', JSON.stringify({ a, b }));
   await checkErrors(errors, page, /Failed to load resource/);
   await context.close();
 }

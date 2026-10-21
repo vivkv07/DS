@@ -44641,7 +44641,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     'pehli baar sach|Hi|“The truth, for the first time” (Ma’am’s last red ink)', 'qawwali|Dk|Sufi devotional singing at a dargah', 'sach likho|Hi|Write the truth',
     'sitaphal|Hi|Custard apple (an ice-cream flavour)', '2-in-1 / j-card|IE|A radio-cassette player / the paper insert in a cassette case',
     'eid / eid ul-fitr / ramzan|Dk|The festival that ends the fasting month / the fasting month (Ramadan)', 'garam samose|Hi|Hot samosas',
-    'hallu chalao|Dk|Drive slowly', 'churan goli / mango bite / tinkle|IE|A tangy digestive candy / a 50-paise mango toffee / the children’s comic',
+    'hallu chalao|Dk|Drive slowly', 'churan goli / mango masti / twinkle tales|IE|A tangy digestive candy / a 50-paise mango toffee / the children’s comic',
     'imli-bun|Dk|Tamarind grove (Imlibun)', 'jeeta kya|Hi|Did (India) win?', 'luna / chetak / rx100 / ambassador|IE|A pedal-start moped / the family scooter / the cool cousin’s motorbike / the classic car',
     'std booth / std / isd / pco|IE|A public telephone cabin with a metered call counter', 'x roads|IE|Crossroads',
     // §10.2 names that mean something
@@ -89298,13 +89298,18 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   // culling needs them; a chunk never drawn keeps its arrays until it is); the camera never ray-casts
   // chunk meshes (landmarks only). Q.keepArrays = true keeps them (debugging / A-B measurements).
   function dropArray() { this.array = null; }
-  function freeOnUpload(g) {
-    if (!g || Q.keepArrays || (g.userData && g.userData.shared)) return g;
+  function noRaycast() { /* its arrays are gone after upload: rays pass through (camera rays use the height grid) */ }
+  /** a geometry, or an object (Mesh / Points) holding one: the object is then also made ray-transparent (three's
+   *  raycast would read the dropped arrays) */
+  function freeOnUpload(o) {
+    const obj = o && o.isObject3D ? o : null, g = obj ? obj.geometry : o;
+    if (!g || !g.isBufferGeometry || Q.keepArrays || (g.userData && g.userData.shared)) return o;
+    if (obj) obj.raycast = noRaycast;
     if (!g.boundingSphere) g.computeBoundingSphere();
     if (!g.boundingBox) g.computeBoundingBox();
     for (const k in g.attributes) { const a = g.attributes[k]; if (a && a.isBufferAttribute && a.usage === THREE.StaticDrawUsage) a.onUpload(dropArray); }
     if (g.index && g.index.usage === THREE.StaticDrawUsage) g.index.onUpload(dropArray);
-    return g;
+    return o;
   }
   function disposeObj(o) {
     o.traverse((m) => {
@@ -89893,7 +89898,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     ch.signSlots = J.slots || null; // (held since addSigns; released when this geometry goes)
     for (const o of out) {
       o.matrixAutoUpdate = false; o.updateMatrix(); ch.group.add(o); ch.objs.push(o);
-      if (o.name === 'buildings' || o.name === 'signs' || o.name === 'glows') freeOnUpload(o.geometry); // (core-built only: other modules' structure objects keep theirs)
+      if (o.name === 'buildings' || o.name === 'signs' || o.name === 'glows') freeOnUpload(o); // (core-built only: other modules' structure objects keep theirs)
     }
     ch.lights = J.lamps;
     let top = 40;
@@ -93882,8 +93887,8 @@ if (ngShine > 0.01) {
         const geo = job.geo; job.geo = null;
         if (G.road) { ch.group.remove(G.road); G.road.geometry.dispose(); G.road.material.dispose(); G.road = null; }
         if (geo) {
-          if (I.freeOnUpload) I.freeOnUpload(geo); // (static; rebuilt when it changes: no CPU copy kept after upload)
           const rm = new THREE.Mesh(geo, newRoadMat(ch, G));
+          if (I.freeOnUpload) I.freeOnUpload(rm); // (static; rebuilt when it changes: no CPU copy kept after upload, not ray-tested)
           rm.name = 'ground-roads'; rm.receiveShadow = true; rm.castShadow = false; rm.matrixAutoUpdate = false; rm.updateMatrix(); rm.renderOrder = 1;
           G.road = rm; ch.group.add(rm);
           G.tris = geo.index.count / 3;
@@ -94058,8 +94063,8 @@ if (ngShine > 0.01) {
     ch.group.add(tm);
     let rm = null;
     if (geo) {
-      if (I.freeOnUpload) I.freeOnUpload(geo);
       rm = new THREE.Mesh(geo, newRoadMat(ch, T));
+      if (I.freeOnUpload) I.freeOnUpload(rm);
       rm.name = 'ground-prov-roads'; rm.receiveShadow = true; rm.matrixAutoUpdate = false; rm.updateMatrix(); rm.renderOrder = 1;
       ch.group.add(rm);
     }
