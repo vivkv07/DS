@@ -212,7 +212,7 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
 (async () => {
   const S = await staticServer();
   const M = await mock.start({ key: 'test-publishable-key' });
-  const CONF = { provider: 'supabase', url: M.url, key: M.key, sdk: [SDK_CDN, 'vendor/supabase/supabase.js'], maxPlayers: 10, stateHz: 8 };
+  const CONF = { provider: 'supabase', url: M.url, key: M.key, sdk: [SDK_CDN, 'vendor/supabase/supabase.js'], maxPlayers: 3, stateHz: 8 };
   const browser = await chromium.launch({ args: ARGS });
   const phones = [];
   try {
@@ -404,6 +404,7 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
       await C.ev((c) => N.online.joinRoom(c), made.code);
       check(await until(A, () => N.online.room && N.online.room.n === 3, null, 10000), 'room ' + made.code + ' with Ravi, Pooja, Imran');
       check(await A.ev(() => typeof N.online.channelSend === 'function' && N.online.players().length === 3), '[party hook] N.online.channelSend / onMessage / players()');
+      check(await A.ev(() => N.online.MAX === 3 && N.online.room.n === N.online.MAX), 'a full room of 3 (the owner\'s group size)');
     }
     const tidy = async () => { for (const P of [A, B]) if (P) await P.ev(() => { if (N.party.active) N.party.cancel(); N.party.closeCards(); if (N.shops && N.shops.isOpen && N.shops.isOpen()) N.shops.close(); window.__res = null; }).catch(() => {}); await sleep(600); };
     if (only('party') && A) {
@@ -478,7 +479,8 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
       await sleep(1500);
       const rows = [...M.db.races.entries()].filter(([k]) => k.endsWith(':tank_bund'));
       check(rows.length === 2, 'leaderboard: both finishers in race_times (' + rows.map(([, r]) => r.best).join(', ') + ' ms)');
-      const top = await A.ev(() => N.partyRaces.fetchTop('tank_bund').then(() => N.partyRaces.top('tank_bund')));
+      // straight from the server (N.partyRaces.fetchTop keeps a 45 s cache, which can predate the second finisher)
+      const top = await A.ev(() => N.online.partyRpc('race_top', { route: 'tank_bund' }));
       check(top && top.top && top.top.length === 2 && top.top.some((q) => q.nick === 'Ravi') && top.top.some((q) => q.nick === 'Pooja'), 'race_top: ' + (top && top.top ? top.top.map((q) => q.nick + ' ' + fmt(q.ms)).join(', ') : '?'));
       const calls = M.calls.filter((c) => c.kind === 'rpc' && /^race_/.test(c.fn));
       check(calls.length >= 2 && !calls.some((c) => c.reason === 'rate'), 'race_* calls: ' + calls.length + ', none rate-limited');
@@ -490,7 +492,7 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
       await sleep(400);
       const panel = await A.ev(() => Array.from(document.querySelectorAll('.mn-online [data-act=party]')).map((b) => b.textContent));
       check(panel.length >= 5, 'Online panel lists "Challenge friends": ' + panel.slice(0, 6).join(' · '));
-      await A.page.evaluate(() => { const b = document.querySelector('.mn-online .ol-body'); const h = Array.from(b.querySelectorAll('h4')).find((x) => /Challenge/.test(x.textContent)); if (h) h.scrollIntoView(); });
+      await A.page.evaluate(() => { const b = document.querySelector('.mn-online .ol-body'); const h = Array.from(b.querySelectorAll('h3, h4')).find((x) => /Challenge/.test(x.textContent)); if (h) h.scrollIntoView(); });
       await A.shot('panel_A');
       await A.ev(() => { N.online.close(); N.game.resume(); });
       await sleep(300);

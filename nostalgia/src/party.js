@@ -61,7 +61,8 @@
  * Messages: 'pt' broadcasts through N.online.channelSend / onMessage ([party hook] in online.js) with
  *   type inv | acc | skip | go | cancel | ping | pong | res | fin | bye | a (activity: {sid, t, d}); every field is
  *   validated here (the channel is public). Kid-friendly: no betting, no free text, friendly banter only.
- * UI: DOM cards in #ui (.pt-*; style.css "=== party ==="), checkpoint rings on the 2D ground layer and the 3D layer
+ * UI: DOM cards (.pt-*; style.css "=== party ==="; the tappable ones on #ui-top, over the touch controls' joystick / look
+ *   zones, the countdown and standings strip in #ui), checkpoint rings on the 2D ground layer and the 3D layer
  *   'party' (N.view3d.registerLayer), minimap blips via N.hud. Mission givers are held while a session runs.
  * Test: node tests/party.cjs
  */
@@ -1080,12 +1081,18 @@
   /* ================================================================ UI (DOM in #ui; style.css "=== party ===") */
   const D = {};
   function uiRoot() { return document.getElementById('ui') || document.body; }
+  // the cards take taps: they live on #ui-top, over the touch controls' joystick / look zones (see online.js topLayer)
+  function topRoot() {
+    let e = document.getElementById('ui-top');
+    if (!e) { e = document.createElement('div'); e.id = 'ui-top'; document.body.appendChild(e); }
+    return e;
+  }
   function el(tag, cls, parent, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; if (parent) parent.appendChild(e); return e; }
   function stopper(e) { for (const ev of ['pointerdown', 'touchstart', 'mousedown']) e.addEventListener(ev, (x) => x.stopPropagation(), { passive: true }); }
   // one generic card at a time (the start card, the picker, "play solo instead?")
   function showCard(o) {
     closeCard();
-    const e = el('div', 'pt-card interactive', uiRoot());
+    const e = el('div', 'pt-card interactive', topRoot());
     e.setAttribute('role', 'dialog');
     e.innerHTML = '<div class="pt-card-t">' + esc(o.title || '') + '</div>' + (o.line ? '<p class="pt-card-l">' + esc(o.line) + '</p>' : '') + (o.html || '') +
       '<div class="pt-card-b">' + (o.buttons || []).map((b, i) => '<button type="button" class="sign-btn small' + (b.alt ? ' alt' : '') + '" data-i="' + i + '"' + (b.dis ? ' disabled' : '') + '>' + (b.key ? '<kbd>' + esc(b.key) + '</kbd> ' : '') + esc(b.label) + '</button>').join('') + '</div>';
@@ -1173,8 +1180,9 @@
   function panelHtml() {
     if (!inRoom()) return '';
     const list = available();
-    let h = '<h4>Challenge friends</h4>';
+    let h = '<h3>Challenge friends</h3>';
     if (ST.sess) return h + '<p class="ol-note">Playing ' + esc(ST.sess.spec.name) + ' now.</p>';
+    h += '<p class="ol-note">Everybody in the room gets an invite. ↗ = far away: a pink route to meet at the start first.</p>';
     h += '<div class="ol-row ol-wrap">' + list.slice(0, 12).map((a) => '<button type="button" class="mn-btn small alt ol-place" data-nav data-act="party" data-party="' + esc(a.id) + '" title="' + esc(a.line) + '">' + esc(a.icon + ' ' + a.name) + (a.here ? '' : ' ↗') + '</button>').join('') + '</div>';
     return h;
   }
@@ -1191,7 +1199,7 @@
     const inv = ST.invite;
     if (!inv) { closeInvite(); return; }
     if (!D.inv) {
-      D.inv = el('div', 'pt-invite interactive', uiRoot());
+      D.inv = el('div', 'pt-invite interactive', topRoot());
       D.inv.setAttribute('role', 'dialog');
       stopper(D.inv);
       D.inv.addEventListener('click', (ev) => { const b = ev.target.closest('button[data-a]'); if (!b) return; if (b.dataset.a === 'acc') acceptInvite(); else declineInvite(); });
@@ -1208,7 +1216,7 @@
     const S = ST.sess;
     if (!S || S.mode !== 'party' || S.phase !== 'lobby') { closeLobby(); return; }
     if (!D.lob) {
-      D.lob = el('div', 'pt-lobby interactive', uiRoot());
+      D.lob = el('div', 'pt-lobby interactive', topRoot());
       stopper(D.lob);
       D.lob.addEventListener('click', (ev) => { const b = ev.target.closest('button[data-a]'); if (!b || b.disabled) return; const S2 = ST.sess; if (!S2) return; if (b.dataset.a === 'go' && isHost(S2) && S2.acc.size >= 2) goHost(S2); else if (b.dataset.a === 'x') cancel(isHost(S2) ? 'Called off.' : 'You stepped out.'); });
     }
@@ -1257,7 +1265,7 @@
   // results card
   function showResults(S, standings, summary) {
     closeResults();
-    const e = el('div', 'pt-results interactive', uiRoot());
+    const e = el('div', 'pt-results interactive', topRoot());
     e.setAttribute('role', 'dialog');
     stopper(e);
     const medal = (r) => (r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : r.rank ? ordinal(r.rank) : '—');

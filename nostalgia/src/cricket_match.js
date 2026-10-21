@@ -1178,7 +1178,10 @@
   }
   function newBallObj() { return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, st: 'held', bounces: 0, vis: false, trail: [], holder: null, hit: false }; }
   function newStumps(z) { return { z, broken: 0, t: 0, parts: null }; }
-  function playerBats(S) { return S.inn && S.inn.bat === S.home; }
+  // party games (S.pm): a friend controls the striker / bowler (on any page); meBats / meBowls: on THIS page
+  function playerBats(S) { return S.pm ? !!(S.inn && S.pm.L.human(S.pm.batCtl)) : !!(S.inn && S.inn.bat === S.home); }
+  function meBats(S) { return S.pm ? playerBats(S) && S.pm.batCtl === S.pm.L.me : playerBats(S); }
+  function meBowls(S) { return S.pm ? playerBowlsNow(S) && S.pm.bowlCtl === S.pm.L.me : playerBowlsNow(S); }
   function batTeam(S) { return S.inn ? S.inn.bat : S.home; }
   function bowlTeam(S) { return S.inn ? S.inn.bowl : S.away; }
 
@@ -1325,6 +1328,7 @@
     else { const f = S.innings[0]; bat = f.bowl; bowl = f.bat; target = f.runs + 1; }
     const inn = rules.newInnings(bat, bowl, { overs: S.overs, wickets: S.wickets, target });
     S.innings[S.innIdx] = inn; S.inn = inn;
+    if (S.pm) { S.overNo = 0; pmArrange(S); }
     buildActors(S);
     S.overNo = 0; S.lastBowler = null; S.bowlerA = null;
     S.fieldPreset = bowl === S.home ? (S.userField || 'balanced') : aiField(S);
@@ -1349,6 +1353,7 @@
     return inn.balls < 6 ? 'attack' : 'balanced';
   }
   function nextOverBowler(S) {
+    if (S.pm && pmBowler(S)) return;
     const bowl = bowlTeam(S), inn = S.inn;
     const list = bowl.bowlers.map((i) => bowl.players[i]).filter(Boolean);
     let p = list[S.overNo % list.length];
@@ -1360,6 +1365,7 @@
   }
   function startBall(S) {
     const inn = S.inn, V = S.V;
+    if (S.pm) pmBall(S);
     S.phase = 'ball'; S.bp = playerBowlsNow(S) ? 'aim' : 'setup'; S.bt = 0;
     S.del = null; S.swung = false; S.pendHit = null; S.aiPlan = null; S.icept = null; S.hit = null;
     S.run = { done: 0, p: 0, active: false, T: RUN_T[0], queued: false, startDelay: 0, auto: false };
@@ -1396,7 +1402,7 @@
     S.ump1.x = 0.95; S.ump1.z = PITCH + 1.9; S.ump1.pose = 'stand'; S.ump1.tx = null; facing(S.ump1, 0, 0);
     S.ump2.x = V.gully ? 14 : 22; S.ump2.z = 1.2; S.ump2.pose = 'stand'; S.ump2.tx = null; facing(S.ump2, 0, 1.2);
   }
-  function playerBowlsNow(S) { return S.inn && S.inn.bowl === S.home; }
+  function playerBowlsNow(S) { return S.pm ? !!(S.inn && S.pm.L.human(S.pm.bowlCtl)) : !!(S.inn && S.inn.bowl === S.home); }
 
   /* ================================================================ deliveries */
   function lengthClass(del) {
@@ -1560,13 +1566,13 @@
     return { p: (0.042 + (1 - d) * 0.024) * m, g: (0.088 + (1 - d) * 0.032) * m, e: (0.14 + (1 - d) * 0.035) * m };
   }
   // dir: 'off' | 'straight' | 'leg' | 'block' (world terms), from the player's input or the AI plan
-  function attemptShot(S, dir, loft, who) {
+  function attemptShot(S, dir, loft, who, eOv) {
     const del = S.del;
     if (!del || S.swung || (S.bp !== 'flight' && S.bp !== 'past')) return;
     if (S.bp === 'past' && S.ball.z < -1.4) return;
     S.swung = true;
     startSwing(S, dir);
-    const e = S.clock - (del.tRel + del.tA);
+    const e = eOv != null && isFinite(eOv) ? clamp(+eOv, -2, 2) : S.clock - (del.tRel + del.tA);
     const W = windows(S, dir === 'block');
     // late counts double: ~0.05 s after the hitting point the ball is already at the stumps
     const ae = e < 0 ? -e : e * 2;
@@ -1783,7 +1789,7 @@
       f.tx = best.x - Math.sin(Math.atan2(S.ball.vx, S.ball.vz)) * 0.3; f.tz = best.z - Math.cos(Math.atan2(S.ball.vx, S.ball.vz)) * 0.3;
       if (best.kind === 'catch' || best.kind === 'tip') {
         S.catchChance = true;
-        if (playerBowlsNow(S) && best.t > 0.45) S.catchPrompt = { at: S.liveT + best.t, pressed: null };
+        if (playerBowlsNow(S) && best.t > 0.45 && (!S.pm || !playerBats(S))) S.catchPrompt = { at: S.liveT + best.t, pressed: null };
       }
       // a backup fielder
       const second = cands.find((c) => c.f !== f && c.f.role === 'field');
@@ -2027,6 +2033,8 @@
         break;
       case 'aim':
         aimUpdate(S, dt);
+        // party: a friend who never bowls (stepped away) gets a ball bowled for them
+        if (S.pm && S.bt > 20) { const ty = S.bowler.type === 'spin' ? 'spin' : 'pace'; aimLock(S, { x: -0.12, z: TYPE_INFO[ty].z, ty }); }
         break;
       case 'runup': {
         const bw = S.bowlerA, T = S.runT;
@@ -2097,7 +2105,7 @@
       case 'dead':
         if (b.st === 'free' || b.st === 'past') { stepBall(V, b, dt, 4); if (!inside(V, b.x, b.z, 30)) b.vis = false; }
         if (S.bt >= S.deadT) {
-          if (S.replayWanted && S.replays && !S.g.auto && S.rec.length > 8) startReplay(S);
+          if (S.replayWanted && S.replays && (S.pm || !S.g.auto) && S.rec.length > 8) startReplay(S);
           else finishBall(S);
         }
         break;
@@ -2208,16 +2216,17 @@
       if (E === 0) { end0 = outIdx; end1 = surv; } else { end1 = outIdx; end0 = surv; }
     }
     const ev = { runs: out.runs, wide: out.wide, nb: !!(S.del && S.del.nb), boundary: out.boundary, bowler: S.bowler.name, wicket: out.wicket, strikerAfter: end0, nonAfter: end1, shot: out.shot };
-    const res = rules.applyBall(inn, ev);
+    const res = S.pm ? pmCommit(S, ev) : rules.applyBall(inn, ev);
     S.lastKind = S.del ? S.del.kind : null;
     S.ballLog = S.ballLog || [];
-    S.ballLog.push({ inn: S.innIdx, team: inn.bat.short, sym: res.sym, runs: out.runs, wide: !!out.wide, nb: ev.nb, boundary: out.boundary, wicket: out.wicket && out.wicket.kind,
+    S.ballLog.push({ inn: S.innIdx, team: inn.bat.short, sym: res ? res.sym : '?', runs: out.runs, wide: !!out.wide, nb: ev.nb, boundary: out.boundary, wicket: out.wicket && out.wicket.kind,
       del: S.del && { kind: S.del.kind, len: S.del.len, line: S.del.line, v: +S.del.v.toFixed(1) }, hit: S.hit && { q: S.hit.q, dir: S.hit.dir, kind: S.hit.kind, v: +S.hit.v.toFixed(1), th: +S.hit.th.toFixed(2), name: S.hit.name },
       field: S.fieldPreset, icept: S.lastIcept || null, forced: S.forceNow || null });
     if (S.ballLog.length > 200) S.ballLog.shift();
     if (ev.nb) { say(S, S.del.nbHigh ? 'noballHigh' : 'noball'); }
     S.score = scoreOf(S);
     S.res = res;
+    return res;
   }
   // after the dead-ball pause (and any replay): next ball, end of the over or of the innings
   function finishBall(S) {
@@ -2261,7 +2270,7 @@
     const win = winner === S.home;
     S.result = { winner, tie, margin, win };
     S.phase = 'end'; S.pt = 0;
-    S.banner = { title: tie ? 'MATCH TIED!' : winner.short + ' WIN!', sub: tie ? margin : winner.name + ' won ' + margin, t: 0, win };
+    S.banner = { title: tie ? 'MATCH TIED!' : winner.short + ' WIN!', sub: tie ? margin : winner.name + ' won ' + margin, t: 0, win: S.pm && S.pm.myTeam ? (tie ? undefined : winner === S.pm.myTeam) : win };
     say(S, tie ? 'tie' : win ? 'win' : 'lose', { team: winner ? winner.name : '', pteam: S.home.name }, true);
     if (win || tie) { g.sfx('crowd_cheer', { vol: 1 }); S.celebrate = 6; S.waveOn = true; S.waveT = 8; }
     else g.sfx('applause', { vol: 0.6 });
@@ -2291,7 +2300,7 @@
     // move the target
     let mx = 0, mz = 0;
     // both bowling cameras look from the bowler's end towards the batter: screen-up = fuller (smaller z)
-    if (g.down('left')) mx -= 1; if (g.down('right')) mx += 1; if (g.down('up')) mz -= 1; if (g.down('down')) mz += 1;
+    if (meBowls(S)) { if (g.down('left')) mx -= 1; if (g.down('right')) mx += 1; if (g.down('up')) mz -= 1; if (g.down('down')) mz += 1; }
     A.x = clamp(A.x + mx * dt * 1.2, -1.5, 1.5);
     A.z = clamp(A.z + mz * dt * 3.2, ti.zone[0] - 0.9, ti.zone[1] + 0.9);
     // wobble (Lissajous), bigger for weaker bowlers / higher difficulty
@@ -2302,9 +2311,10 @@
   }
   // debug.force(kind) applies to the next delivery that is planned (AI) or locked (player)
   function takeForce(S) { if (S.force) { S.forceNow = S.force; S.force = null; } }
-  function aimLock(S) {
+  function aimLock(S, lock) {
     takeForce(S);
     const A = S.aim;
+    if (lock) { if (TYPE_INFO[lock.ty]) A.type = lock.ty; A.wx = clamp(+lock.x || 0, -1.6, 1.6); A.wz = clamp(+lock.z || 6, 0.8, 12); }
     A.lx = A.wx; A.lz = A.wz;
     S.bp = 'runup'; S.bt = 0; S.runT = S.bowler.type === 'spin' || A.type === 'spin' ? 1.0 : S.V.gully ? 1.15 : 1.45;
     S.meter = 0; S.rel = null; S.del = null;
@@ -2365,7 +2375,7 @@
   function replayUpdate(S, dt) {
     const rp = S.rp;
     rp.t += dt * rp.speed;
-    if (rp.t >= rp.t1 + 0.3 || S.g.pressed('go') || S.skipReplay) { S.skipReplay = false; S.rp = null; finishBall(S); }
+    if (rp.t >= rp.t1 + 0.3 || (!S.pm && S.g.pressed('go')) || S.skipReplay) { S.skipReplay = false; S.rp = null; finishBall(S); }
   }
   function replayFrame(S) {
     const rp = S.rp, rec = S.rec;
@@ -2394,7 +2404,7 @@
     const live = S.phase === 'ball' && (S.bp === 'live' || S.bp === 'dead') && S.hit && S.hit.kind !== 'block' && (S.liveT > 0.18 || S.bp === 'dead');
     if (live) return fieldCam(S, out);
     if (S.camMode === 'fpv' && S.phase === 'ball') {
-      if (playerBowlsNow(S)) {
+      if (meBowls(S)) {
         const bw = S.bowlerA; const bob = bw.spd > 0.5 || S.bp === 'runup' ? Math.sin(bw.ph * 2) * 0.05 : 0;
         const z = Math.max(bw.z + 0.35, PITCH - 0.6);
         return camLook(out, bw.x - 0.2, (S.bowler.look && S.bowler.look.small ? 1.35 : 1.68) + bob, z, 0.1, 0.5, 2.5, fr.h * 1.45);
@@ -2448,7 +2458,7 @@
     const ph = S.phase;
     if (ph === 'intro' || ph === 'end') return false;
     if (S.bp === 'replay') return S.rp && S.rp.cam === 'stump';
-    if (S.camMode === 'fpv' && playerBowlsNow(S) && ph === 'ball') return false;
+    if (S.camMode === 'fpv' && meBowls(S) && ph === 'ball') return false;
     if (ph === 'ball' && (S.bp === 'live' || S.bp === 'dead') && S.hit && S.hit.kind !== 'block') return false;
     return true;
   }
@@ -2577,15 +2587,15 @@
       else drawStumps(ctx, c, S, s.st);
     }
     // FPV: the batter's own bat at the bottom of the frame
-    if (S.camMode === 'fpv' && S.phase === 'ball' && playerBats(S) && !replay && !(S.bp === 'live' && S.hit && S.liveT > 0.18) && S.bp !== 'dead') drawFpvBat(ctx, S);
+    if (S.camMode === 'fpv' && S.phase === 'ball' && (S.pm ? meBats(S) || !meBowls(S) : playerBats(S)) && !replay && !(S.bp === 'live' && S.hit && S.liveT > 0.18) && S.bp !== 'dead') drawFpvBat(ctx, S);
     void fr; void g;
   }
   function hiddenActor(S, a) {
     if (S.camMode !== 'fpv' || S.phase !== 'ball' || S.bp === 'replay') return false;
     if (S.bp === 'live' && S.hit && S.liveT > 0.18) return false;
     if (S.bp === 'dead' && S.hit) return false;
-    if (playerBats(S)) return a === S.batA || a.isBatA;
-    if (playerBowlsNow(S)) return a === S.bowlerA;
+    if (meBowls(S)) return a === S.bowlerA;
+    if (S.pm || playerBats(S)) return a === S.batA || a.isBatA;
     return false;
   }
   const AP = { x: 0, y: 0, k: 0 }, AH = { x: 0, y: 0, k: 0 };
@@ -2693,7 +2703,7 @@
     if (S.phase !== 'ball') return;
     const del = S.del, g = S.g;
     // the player's aim
-    if (playerBowlsNow(S) && (S.bp === 'aim' || S.bp === 'runup')) {
+    if (meBowls(S) && (S.bp === 'aim' || S.bp === 'runup')) {
       const A = S.aim, ti = TYPE_INFO[A.type];
       const zc = A.type === 'bouncer' ? '255,90,74' : A.type === 'yorker' ? '255,216,74' : A.type === 'spin' ? '197,139,255' : '127,216,255';
       ctx.fillStyle = 'rgba(' + zc + ',0.22)';
@@ -2720,7 +2730,7 @@
       }
     }
     // the timing ring at the batter (assist / easier settings)
-    if (del && S.bp === 'flight' && playerBats(S) && (g.diff < 0.7 || g.assist)) {
+    if (del && S.bp === 'flight' && meBats(S) && (g.diff < 0.7 || g.assist)) {
       const left = del.tRel + del.tA - S.clock;
       if (left < 0.55 && left > -0.05) {
         const r = 0.22 + Math.max(0, left) * 1.5;
@@ -2794,6 +2804,7 @@
       txt(ctx, (S.camMode === 'fpv' ? '◉ FPV' : '▣ TV') + ' CAM', x + w / 2, y + h / 2 + 1, { font: 'osd', size: u * 0.9, color: '#eaf2ff' });
       S.hits.push({ x, y, w, h, a: 'cam' });
     }
+    if (S.pm) pmOverlay(ctx, g, S, u);
   }
   function drawChannel(ctx, S, u) {
     const fr = S.fr, x = fr.x + fr.w - u * 0.7, y = fr.y + u * 0.7;
@@ -2985,7 +2996,8 @@
       txt(ctx, 'NEED ' + need + ' OFF ' + left, fr.x + fr.w / 2, fr.y + u * 5.0, { font: 'osd', size: u * 1.1, color: '#eaf2ff', outline: 3 });
     }
     // bowling: type chips, release meter, prompts
-    if (playerBowlsNow(S)) {
+    if (S.pm && !meBowls(S) && !meBats(S)) pmWatchUi(ctx, g, S, u);
+    else if (meBowls(S)) {
       if (S.bp === 'aim') {
         const ty = g.touch ? [] : ['pace', 'spin', 'yorker', 'bouncer'];
         const cw = Math.min(u * 5.4, (fr.w - u * 2) / 4.3), ch = g.touch ? 0 : u * 1.7, y = fr.y + fr.h - ch - u * (S.tickerIn ? 2.8 : 0.8);
@@ -3169,14 +3181,15 @@
   function toggleCam(S) {
     S.camMode = S.camMode === 'fpv' ? 'tv' : 'fpv';
     S.bgKey = null;
-    say(S, S.camMode === 'fpv' ? (playerBowlsNow(S) ? 'FPV camera: you are the bowler. Run in!' : 'FPV camera: the batter\'s helmet cam. Watch the ball!') : 'Back to the TV camera.', null, true);
+    say(S, S.camMode === 'fpv' ? (meBowls(S) ? 'FPV camera: you are the bowler. Run in!' : 'FPV camera: the batter\'s helmet cam. Watch the ball!') : 'Back to the TV camera.', null, true);
     S.g.sfx('ui_click');
   }
-  function playerShot(S, screenDir, loft) {
+  function playerShot(S, screenDir, loft, dts) {
     (S.inputLog || (S.inputLog = [])).push({ dir: screenDir, bp: S.bp, t: +(S.del ? S.clock - S.del.tRel - S.del.tA : 0).toFixed(3), swung: !!S.swung });
     if (S.inputLog.length > 30) S.inputLog.shift();
     const fpv = S.camMode === 'fpv';
     let dir = screenDir === 'up' ? 'straight' : screenDir === 'down' ? 'block' : screenDir === 'left' ? (fpv ? 'leg' : 'off') : fpv ? 'off' : 'leg';
+    if (S.pm) { const del = S.del; if (del && !S.swung) S.pm.L.input({ t: 'shot', d: dir, l: loft && dir !== 'block' ? 1 : 0, e: +((S.clock + (dts || 0)) - (del.tRel + del.tA)).toFixed(4) }); S.loftLatch = false; return; }
     attemptShot(S, dir, loft && dir !== 'block', 'player');
     S.loftLatch = false;
   }
@@ -3233,7 +3246,7 @@
         if (S.pt > 2.4) { S.banner = null; if (bowlTeam(S) !== S.home) S.fieldPreset = aiField(S); nextOverBowler(S); startBall(S); }
         break;
       case 'inn_break': S.banner && (S.banner.t += dt); if (S.pt > 4.2) { S.banner = null; S.innIdx = 1; startInnings(S); } break;
-      case 'end': S.banner && (S.banner.t += dt); if (S.pt > 3.8 && !g.over) finishMatch(S); break;
+      case 'end': S.banner && (S.banner.t += dt); if (S.pt > 3.8 && !g.over) { if (S.pm) pmFinish(S); else finishMatch(S); } break;
     }
   }
   function actorsUpdate(S, dt) {
@@ -3312,6 +3325,7 @@
   }
   function uiFor(S) {
     const ph = S.phase;
+    if (S.pm) return ph === 'ball' ? (meBowls(S) ? 'bowl' : meBats(S) ? 'bat' : 'watch') : 'watch';
     if (ph === 'intro') return S.skipToss ? ((S.battedFirst || S.home) === S.home ? 'bat' : 'bowl') : 'toss';
     if (ph === 'toss' || ph === 'toss_flip') return 'toss';
     if (ph === 'toss_choose') return 'choose';
@@ -3377,11 +3391,12 @@
         }
       }
       if (S.phase !== 'ball') return;
-      if (playerBowlsNow(S)) {
+      if (meBowls(S)) {
         if (S.bp === 'aim') { S.drag = id; const p = unproject(S.cam, x, y); if (p) { S.aim.x = clamp(p.x, -1.5, 1.5); S.aim.z = clamp(p.z, 0.8, 12); } }
-        else if (S.bp === 'runup') aimRelease(S);
+        else if (S.bp === 'runup') { if (S.pm) { if (!S.del) S.pm.L.input({ t: 'rel', m: +Math.min(1.12, S.meter || 0).toFixed(4) }); } else aimRelease(S); }
         return;
       }
+      if (S.pm && !meBats(S)) return;
       if (S.bp === 'flight' || S.bp === 'past' || S.bp === 'runup' || S.bp === 'setup') S.swipe = { id, x0: x, y0: y, t0: S.clock, done: false };
     } else if (type === 'move') {
       if (S.drag === id && S.bp === 'aim') { const p = unproject(S.cam, x, y); if (p) { S.aim.x = clamp(p.x, -1.5, 1.5); S.aim.z = clamp(p.z, 0.8, 12); } return; }
@@ -3559,6 +3574,7 @@
       const S = g.S, ui = S ? S.ui || uiFor(S) : 'toss', fpv = S && S.camMode === 'fpv';
       if (ui === 'toss') return [{ a: 'left', label: 'HEADS', cls: 'cm-big cm-tl' }, { a: 'right', label: 'TAILS', cls: 'cm-big cm-tr' }];
       if (ui === 'choose') return [{ a: 'left', label: 'BAT', sub: 'FIRST', cls: 'cm-big cm-tl' }, { a: 'right', label: 'BOWL', sub: 'FIRST', cls: 'cm-big cm-tr teal' }];
+      if (ui === 'watch') return []; // a party game: a friend is batting / bowling (the CAM pill stays on the picture)
       if (ui === 'bowl') return [
         { a: 't1', label: 'PACE', cls: 'cm-chip cm-c1' }, { a: 't2', label: 'SPIN', cls: 'cm-chip cm-c2' }, { a: 't3', label: 'YORKER', cls: 'cm-chip cm-c3' }, { a: 't4', label: 'BOUNCER', cls: 'cm-chip cm-c4' },
         { a: 'field', label: 'FIELD', sub: 'CHANGE', cls: 'cm-r2 cm-fd' }, { a: 'go', label: 'BOWL', sub: 'RELEASE · CATCH', cls: 'big cm-r2 cm-go' },
@@ -3572,6 +3588,7 @@
       const S = g.S, ui = S ? S.ui || uiFor(S) : 'toss';
       if (ui === 'toss') return '<kbd>←</kbd> heads · <kbd>→</kbd> tails';
       if (ui === 'choose') return '<kbd>←</kbd> bat first · <kbd>→</kbd> bowl first';
+      if (ui === 'watch') return S && S.pm ? esc(pmWatchLine(S)) + ' · <kbd>V</kbd> cam' : '<kbd>V</kbd> cam';
       if (ui === 'bowl') return '<kbd>←→↑↓</kbd> aim · <kbd>1-4</kbd> type · <kbd>Space</kbd> bowl / release / catch · <kbd>F</kbd> field · <kbd>V</kbd> cam';
       return '<kbd>←↑→</kbd> shot · <kbd>↓</kbd> block · <kbd>Shift</kbd> loft · <kbd>R</kbd> run · <kbd>V</kbd> cam';
     },
@@ -3614,10 +3631,12 @@
       S.uiKey = null;
       say(S, S.V.gully ? 'welcomeGully' : 'welcome', null, true);
       CUR.g = g;
+      if (g.params.party && g.params.party.players) { try { pmSetup(g); } catch (e) { N.err('cricket.party.setup', e); S.pm = null; } }
     },
     layout,
     update(g, dt) {
       const S = g.S;
+      if (S.pm) { pmUpdate(g, dt); return; }
       S.clock += dt; S.pt += dt;
       handleInput(S, g);
       phaseUpdate(S, dt);
@@ -3629,13 +3648,15 @@
     idle(g, dt) {
       const S = g.S;
       if (!S) return;
+      if (S.pm) { S.pm.vis += dt; uiSync(g); return; } // a party game: the shared simulation starts on GO
       if (g.phase === 'howto' || g.phase === 'countdown') { S.intro.t = (S.intro.t + dt) % 3.6; S.clock += dt; commUpdate(S, dt); if (S.phase !== 'intro') S.phase = 'intro'; uiSync(g); }
       if (g.phase === 'result') { S.clock += dt; S.pt += dt; injectResult(g); }
     },
-    bot,
+    bot(g, dt, want) { if (g.S && g.S.pm) return; bot(g, dt, want); }, // party: pmBot plays inside the shared steps
     pointer,
     hud(g) {
       const S = g.S;
+      if (S && S.pm) return pmHud(g, S);
       if (!S || g.W < 600) return [];
       const inn = S.inn || S.innings[S.innings.length - 1];
       if (!inn) return [{ k: '', v: S.home.short + ' v ' + S.away.short }];
@@ -3683,7 +3704,7 @@
       if (!r.win) return 0;
       return 1 + (r.reason === 'chased' ? (r.wickets <= Math.floor(S.wickets / 2) ? 1 : 0) : ((r.oppRuns || 0) <= ((S.innings[0] && S.innings[0].runs) || 0) - 8 ? 1 : 0)) + (r.motm && r.motm.team === S.home.name ? 1 : 0);
     },
-    cleanup(g) { if (CUR.g === g) CUR.g = null; },
+    cleanup(g) { if (g.S && g.S.pm) pmCleanup(g, g.S); if (CUR.g === g) CUR.g = null; },
   };
   const CUR = { g: null };
 
@@ -3717,6 +3738,8 @@
           del: S.del ? { tRel: S.del.tRel, tA: S.del.tA, len: S.del.len, line: S.del.line, wide: S.del.wide, nb: S.del.nb, kind: S.del.kind, v: S.del.v } : null, clock: S.clock, evt: S.evt, perf: S.perf ? { draw: +S.perf.draw.toFixed(2), max: +S.perf.max.toFixed(2) } : null, msg: S.msg && S.msg.text, comm: S.comm.text, ui: S.ui, frame: S.fr, bgPaints: S.bgPaints || 0, result: S.result ? { win: S.result.win, tie: S.result.tie, margin: S.result.margin } : null };
       },
       toggleCam() { const g = CUR.g; if (g && g.S) toggleCam(g.S); },
+      /** a party game: the shared book and the lockstep (who runs which step, who we wait for) */
+      party() { const g = CUR.g; return g && g.S && g.S.pm ? pmDebug(g.S) : null; },
     },
     dressing: null,
   });
@@ -3736,6 +3759,1256 @@
     if (!e || e.id !== 'match' || !r || r.quit || r.aborted || r.error || !N.flags) return;
     N.flags.lb_match_played = true;
     N.flags.lb_match_won = !!(N.flags.lb_match_won || r.win);
+  });
+
+  /* ================================================================ party play: the shared lockstep */
+  // Friends in an online room (src/party.js ctx) play ONE game together: every page runs the same deterministic
+  // simulation in fixed steps of 1/60 s. Each step has an owner, the friend whose input matters there (the batter the
+  // ball is bowled at, the bowler while aiming, the friend fielding a catch); the host owns the gaps between balls and
+  // every AI role. The owner's page runs at real time and records its inputs (a shot with its timing, RUN, the ball it
+  // bowled...) as items tagged with the step; the other pages follow a few steps behind and apply them at exactly the
+  // same steps (ctx.send / ctx.on, about 8 small messages a second). Every ball is its own episode (its own rng seed,
+  // everybody back on their spots) and its result is decided on its owner's page (an 'ev' item): a page whose
+  // simulation came out different (float drift between browsers) takes the owner's result, so the scores never drift
+  // apart. A friend who leaves or quits is played by the AI from the step the host names. Solo (the AI friends): one
+  // page owns everything and nothing is sent.
+  const LS_H = 1 / 60;
+  function mixSeed(a, b) { let h = ((a >>> 0) ^ 0x9e3779b9) >>> 0; h = Math.imul(h ^ (b >>> 0), 0x85ebca6b) >>> 0; h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35) >>> 0; h ^= h >>> 16; return h >>> 0; }
+  function gauss(r) { const a = Math.max(1e-6, r.next()), b = r.next(); return Math.sqrt(-2 * Math.log(a)) * Math.cos(TAU * b); }
+  function lockstep(o) {
+    const ctx = o.ctx, solo = !ctx || ctx.mode !== 'party';
+    const me = (ctx && ctx.me && ctx.me.uid) || 'me';
+    const order = ((ctx && ctx.players) || []).map((p) => p.uid);
+    const cmp = (e1, k1, e2, k2) => (e1 !== e2 ? e1 - e2 : k1 - k2);
+    const L = {
+      solo, me, ep: 0, k: 0, nextEp: null, acc: 0, seq: 0, out: [], rx: new Map(), gone: new Map(), takes: [], evs: new Map(),
+      cur: me, blockedOn: null, waitFor: null, waitT: 0, txT: 0, dirty: false, lastReal: performance.now(), stopped: false, quitting: false, over: false,
+      buf: 9, sent: 0, steps: 0, rxN: 0, speed: clamp(+((ctx && ctx.opts && ctx.opts.speed) || 1) || 1, 0.25, 4),
+    };
+    L.isGone = (uid) => { const p = L.gone.get(uid); return !!p && cmp(L.ep, L.k, p[0], p[1]) >= 0; };
+    L.human = (uid) => !!uid && !/^ai:/.test(uid) && order.indexOf(uid) >= 0 && !L.isGone(uid);
+    L.host = () => { for (const u of order) if (L.human(u)) return u; return me; };
+    L.ctl = (uid) => (L.human(uid) ? uid : L.host());
+    /** inside a step: a new episode (a new ball) starts with the next step */
+    L.begin = (ep) => { L.nextEp = ep; };
+    function push(p) {
+      L.out.push([++L.seq, L.ep, L.k, p]);
+      if (L.out.length > 16) L.out.shift();
+      L.dirty = true;
+      if (p.t === 'ev' && isFinite(p.ep) && !L.evs.has(p.ep)) L.evs.set(p.ep, p);
+    }
+    // The owner of a step is decided BEFORE that step's inputs apply (an input can hand the next step to someone else:
+    // BOWL starts the batter's run-up), so the page that records one keeps the step it was recorded at.
+    L.ownerNow = () => (L.pin && L.pin[0] === L.ep && L.pin[1] === L.k ? L.pin[2] : o.owner());
+    /** a local input for the next step: only the owner of that step records one (it applies here at once) */
+    L.input = (p) => {
+      if (L.stopped || !p || L.ownerNow() !== me) return false;
+      L.pin = [L.ep, L.k, me];
+      push(p);
+      try { o.apply(p, me); } catch (e) { N.err('cricket.ls.apply', e); }
+      return true;
+    };
+    /** inside a step: the step's owner records what was decided (a ball's result) */
+    L.emit = (p) => { if (p && (L.cur === me || solo)) push(p); };
+    function rec(uid) { let r = L.rx.get(uid); if (!r) { r = { u: [-1, -1], own: false, t: 0, items: new Map(), done: 0 }; L.rx.set(uid, r); } return r; }
+    function canFollow(uid) {
+      const r = L.rx.get(uid);
+      if (!r) return false;
+      if (r.u[0] !== L.ep) return r.u[0] > L.ep;
+      return r.u[1] >= L.k + (r.own ? L.buf : 0); // a few steps behind a running owner: smooth, whatever the message timing
+    }
+    function lag(uid) { const r = L.rx.get(uid); return !r ? 0 : r.u[0] > L.ep ? 999 : r.u[1] - L.k; }
+    function applyFrom(uid) {
+      const r = L.rx.get(uid);
+      if (!r || !r.items.size) return;
+      const due = [];
+      for (const [s, it] of r.items) {
+        if (it.ep === L.ep && it.k === L.k) due.push(s);
+        else if (cmp(it.ep, it.k, L.ep, L.k) < 0) r.items.delete(s); // a step this page went past (only after a take-over)
+      }
+      due.sort((a, b) => a - b);
+      for (const s of due) {
+        const it = r.items.get(s);
+        r.items.delete(s); r.done = Math.max(r.done, s);
+        if (it.p.t !== 'ev') { try { o.apply(it.p, uid); } catch (e) { N.err('cricket.ls.apply', e); } }
+      }
+    }
+    function gotTake(t) {
+      if (!Array.isArray(t) || typeof t[0] !== 'string' || L.gone.has(t[0]) || !isFinite(t[1]) || !isFinite(t[2])) return;
+      let p = [t[1] | 0, t[2] | 0];
+      // already past that step, or stuck waiting for them: the AI takes over from here
+      if (cmp(p[0], p[1], L.ep, L.k) < 0 || L.blockedOn === t[0]) p = [L.ep, L.k];
+      L.gone.set(t[0], p);
+      if (o.onGone) { try { o.onGone(t[0]); } catch (e) { /* ignore */ } }
+    }
+    /** party.js onLeave / a quit message: the host names the step from which the AI plays for them */
+    L.leave = (uid) => {
+      if (!uid || L.gone.has(uid) || !ctx || !ctx.isHost || uid === me) return;
+      let p = [L.ep, L.k];
+      const r = L.rx.get(uid);
+      if (r && cmp(r.u[0], r.u[1] + 1, p[0], p[1]) > 0) p = [r.u[0], r.u[1] + 1];
+      L.gone.set(uid, p); L.takes.push([uid, p[0], p[1]]); L.dirty = true;
+      if (o.onGone) { try { o.onGone(uid); } catch (e) { /* ignore */ } }
+    };
+    if (!solo && ctx && typeof ctx.on === 'function') {
+      L.off = ctx.on(o.tag, (d, from) => {
+        if (!d || typeof d !== 'object' || !from || typeof from.uid !== 'string' || from.uid === me || order.indexOf(from.uid) < 0) return;
+        L.rxN++;
+        const r = rec(from.uid);
+        r.t = performance.now();
+        if (Array.isArray(d.u) && isFinite(d.u[0]) && isFinite(d.u[1]) && cmp(+d.u[0], +d.u[1], r.u[0], r.u[1]) > 0) r.u = [Math.min(2e9, d.u[0]) | 0, d.u[1] | 0];
+        r.own = !!d.o;
+        if (Array.isArray(d.it)) for (const it of d.it.slice(-24)) {
+          if (!Array.isArray(it) || it.length !== 4 || !isFinite(it[0]) || it[0] <= r.done || r.items.has(+it[0])) continue;
+          const p = it[3];
+          if (!p || typeof p !== 'object' || typeof p.t !== 'string' || p.t.length > 8) continue;
+          r.items.set(+it[0], { ep: it[1] | 0, k: it[2] | 0, p });
+          if (p.t === 'ev' && isFinite(p.ep) && !L.evs.has(p.ep | 0)) L.evs.set(p.ep | 0, p);
+        }
+        if (Array.isArray(d.tk)) for (const t of d.tk.slice(0, 8)) gotTake(t);
+        if (d.q) L.leave(from.uid);
+      });
+    }
+    function flush(force) {
+      if (solo || !ctx || typeof ctx.send !== 'function') return;
+      const t = performance.now();
+      if (!force && t - L.txT < (L.dirty ? 40 : 125)) return;
+      const msg = { u: L.over ? [2e9, 0] : [L.ep, L.k - 1], o: !L.over && L.ownerNow() === me ? 1 : 0, it: L.out.slice(-12) };
+      if (L.takes.length) msg.tk = L.takes.slice(-6);
+      if (L.quitting) msg.q = 1;
+      while (msg.it.length > 1 && JSON.stringify(msg).length > 1500) msg.it = msg.it.slice(1);
+      let ok = false;
+      try { ok = !!ctx.send(o.tag, msg); } catch (e) { ok = false; }
+      if (ok) { L.txT = t; L.dirty = false; L.sent++; }
+    }
+    /** one frame: as many fixed steps as real time (or the owner we follow) allows */
+    L.tick = (realDt) => {
+      if (L.stopped) return;
+      const dt = Math.max(0, realDt) * (solo ? 1 : L.speed);
+      L.acc = Math.min(L.acc + dt, 1.5);
+      const cap = Math.min(120, Math.max(4, Math.ceil(dt / LS_H) * 2 + 2));
+      let n = 0, blocked = null;
+      while (n < cap) {
+        const own = L.ownerNow();
+        L.cur = own;
+        if (own !== me) {
+          if (!canFollow(own)) {
+            // a friend who is waiting on us too (their own step is not theirs): after 5 s, step on rather than both wait
+            const r = L.rx.get(own);
+            if (!(L.waitT > 5 && r && !r.own && performance.now() - r.t < 2500)) { blocked = own; break; }
+          }
+          if (L.acc < LS_H && lag(own) <= L.buf * 2) break; // real-time pace; catch up (2x) when far behind
+          applyFrom(own);
+        } else {
+          if (L.acc < LS_H) break;
+          if (o.bot) { try { o.bot(); } catch (e) { N.err('cricket.ls.bot', e); } }
+        }
+        if (o.ready && !o.ready(L.waitT > 6)) { blocked = 'ev'; break; }
+        try { o.step(); } catch (e) { N.err('cricket.ls.step', e); }
+        L.acc = Math.max(0, L.acc - LS_H);
+        if (L.nextEp != null) { L.ep = L.nextEp; L.k = 0; L.nextEp = null; } else L.k++;
+        n++; L.steps++;
+      }
+      L.blockedOn = blocked;
+      // no banking time while waiting: a page that becomes the owner next carries on at real time, it does not fast-forward
+      if (blocked) { L.acc = Math.min(L.acc, LS_H); L.waitT += Math.max(0, realDt); L.waitFor = L.waitT > 0.7 ? blocked : null; } else { L.waitT = 0; L.waitFor = null; }
+      L.lastReal = performance.now();
+      flush(false);
+    };
+    /** the game is over here: the others may run to the end without waiting for this page */
+    L.finish = () => { if (L.over) return; L.over = true; flush(true); };
+    L.stop = (quit) => {
+      if (L.stopped) return;
+      if (quit) L.quitting = true; else L.over = true;
+      flush(true);
+      L.stopped = true;
+      if (L.off) { try { L.off(); } catch (e) { /* ignore */ } }
+    };
+    L.info = () => ({ ep: L.ep, k: L.k, cur: L.cur, me, host: L.host(), waitFor: L.waitFor, blockedOn: L.blockedOn, steps: L.steps, sent: L.sent, rxN: L.rxN, solo,
+      peers: Array.from(L.rx.entries()).map(([u, r]) => ({ uid: u, u: r.u.slice(), own: r.own, items: r.items.size })), gone: Array.from(L.gone.entries()).map(([u, p]) => [u, p[0], p[1]]) });
+    return L;
+  }
+  const nickOf = (S, uid) => { const P = S.pm, q = P && (P.members || P.players || []).find((m) => m.uid === uid); return q ? q.nick : 'a friend'; };
+  const meOf = (P) => (P.ctx && P.ctx.me && P.ctx.me.uid) || 'me';
+
+  /* ================================================================ party: the LB Stadium match with friends */
+  // params.party = the party ctx (src/party.js), params.pmode 'coop' (default: the friends together as Colony XI
+  // against an AI XI) | 'vs' (friends on rival XIs, 2 overs a side). Each friend has a cricketer of their own: they bat
+  // their own overs (until they are out; then the next friend still in takes the turn) and bowl their own overs, and
+  // AI teammates make up the XI. Scores come from N.cricketMatch.rules like every other match.
+  const PM_RIVALS = ['ashok_nagar', 'nallakunta', 'saidabad', 'barkas', 'vidyanagar'];
+  const SHOT_DIRS = ['off', 'straight', 'leg', 'block'];
+  const hexOk = (c) => typeof c === 'string' && /^#[0-9a-f]{3,8}$/i.test(c);
+  function pmLook(q) {
+    const l = (q && q.look) || {};
+    return { skin: hexOk(l.skin) ? l.skin : '#a0683f', hair: hexOk(l.hair) ? l.hair : '#1a1412', girl: !!l.girl, plaits: !!l.girl };
+  }
+  function pmTeam(base, name, short, kit, members, fill) {
+    const used = new Set();
+    const uniq = (nm) => { let s = String(nm || 'Player').slice(0, 12), i = 2; while (used.has(s.toLowerCase())) s = String(nm).slice(0, 9) + ' ' + i++; used.add(s.toLowerCase()); return s; };
+    const players = [];
+    for (const m of members) {
+      // an AI friend (solo) plays as their colony cricketer; a friend in the room as a new all-rounder with their look
+      const kid = m.npc ? TEAMS.chinnu_xi.players.find((p) => p.name.toLowerCase() === String(m.npc).toLowerCase()) : null;
+      const src = kid || P(m.nick, 0.62, 0.58, 'pace', pmLook(m), { field: 0.66 });
+      players.push(Object.assign({}, src, { name: uniq(kid ? kid.name : m.nick), look: Object.assign({}, kid ? kid.look : pmLook(m)), hero: false, keeper: false, partyUid: m.uid }));
+    }
+    for (const p of fill) {
+      if (players.length >= 11) break;
+      if (p.hero || used.has(p.name.toLowerCase())) continue;
+      players.push(Object.assign({}, p, { name: uniq(p.name), look: Object.assign({}, p.look), partyUid: null }));
+    }
+    if (!players.some((p) => p.keeper && !p.partyUid)) { const k = players.slice().reverse().find((p) => !p.partyUid); if (k) k.keeper = true; }
+    const ai = players.map((p, i) => i).filter((i) => !players[i].partyUid);
+    return clone({ id: base.id, name, short, city: base.city, kit: Object.assign({}, kit), players, bowlers: ai.slice(0, 5).concat(players.map((p, i) => i).filter((i) => players[i].partyUid)).slice(0, 5) });
+  }
+  function pmSetup(g) {
+    const S = g.S, p = g.params, ctx = p.party, o = ctx.opts || {};
+    const vs = p.pmode === 'vs' || o.mode === 'vs';
+    // the same numbers on every page: a page's own difficulty / assist settings would change the shared simulation
+    g.diff = clamp(o.difficulty != null ? +o.difficulty : 0.4, 0.05, 0.95);
+    g.assist = !!o.assist; g.winMul = g.assist ? 1.5 : 1;
+    const seed = (ctx.seed >>> 0) || 1;
+    const members = ctx.players.map((q, i) => ({ uid: q.uid, nick: q.nick || 'Player', npc: q.npc || null, look: q.look, isAI: !!q.isAI, slot: i }));
+    const CH = TEAMS.chinnu_xi;
+    let home, away;
+    if (vs) {
+      const A = members.filter((m, i) => i % 2 === 0), B = members.filter((m, i) => i % 2 === 1);
+      let sa = shortOf(A[0].nick), sb = shortOf(B[0] ? B[0].nick : 'Visitors');
+      if (sa === sb) sb = sb.replace(' XI', '2 XI');
+      home = pmTeam(CH, A[0].nick + ' XI', sa, CH.kit, A, CH.players);
+      away = pmTeam(TEAMS.ashok_nagar, (B[0] ? B[0].nick : 'Visitors') + ' XI', sb, TEAMS.ashok_nagar.kit, B, TEAMS.ashok_nagar.players);
+    } else {
+      home = pmTeam(CH, 'Colony XI', 'CLNY XI', CH.kit, members, CH.players);
+      away = clone(TEAMS[PM_RIVALS[seed % PM_RIVALS.length]]);
+    }
+    S.home = home; S.away = away; S.home.side = 'home'; S.away.side = 'away';
+    const slots = members.map((m) => { const team = home.players.some((q) => q.partyUid === m.uid) ? home : away; return { uid: m.uid, nick: m.nick, team, idx: team.players.findIndex((q) => q.partyUid === m.uid), slot: m.slot }; });
+    S.overs = clamp((o.overs | 0) || (vs ? 2 : Math.max(3, members.length)), 1, 6);
+    S.wickets = 10; // a friends' XI is all out when every friend is out (pmBook); the AI XI after aiW wickets
+    S.mode = 'full'; S.skipToss = true; S.innings = []; S.innIdx = 0;
+    S.battedFirst = U.rng(mixSeed(seed, 77)).next() < 0.5 ? S.home : S.away;
+    S.replays = o.replays !== false;
+    S.intro = { t: 0 };
+    tossActors(S);
+    const me = meOf({ ctx });
+    const L = lockstep({ ctx, tag: vs ? 'cmv' : 'cmc', owner: () => pmOwner(S), step: () => pmStep(S), apply: (q) => pmApply(S, q), ready: () => pmReady(S), bot: () => pmBot(S) });
+    const mine = slots.find((s) => s.uid === me);
+    S.pm = { ctx, L, vs, members, slots, aiW: Math.max(2, members.length), myTeam: mine ? mine.team : null, batCtl: null, bowlCtl: null, epBall: 0, deliv: 0, pressT: {}, vis: 0, started: false,
+      frame: -1, frameDt: 0, lastNow: 0, pending: false, evApplied: false, committed: false, finished: false, closeAt: 0, seed, wait: 0, final: null };
+    try { ctx.onLeave((uid) => L.leave(uid)); } catch (e) { /* ignore */ }
+    // the exact moment of a key press / tap: a shot's timing is measured there, not at the next frame
+    const op = g.press;
+    g.press = function (a, src) { if (S.pm) S.pm.pressT[a] = performance.now(); return op.call(this, a, src); };
+    S.comm.text = ''; S.comm.queue.length = 0;
+    say(S, vs ? home.name + ' against ' + away.name + ' at LB Stadium. Friends, rivals, one floodlit field.' : 'Colony XI take on ' + away.name + ' under the LB Stadium floodlights. Friends, take your turns!', null, true);
+  }
+  // who runs the next step: the friend facing the ball (or aiming it), else the friend bowling, else the host
+  function pmOwner(S) {
+    const P = S.pm, L = P.L;
+    if (S.phase !== 'ball' || !S.inn) return L.host();
+    const bh = L.human(P.batCtl) ? P.batCtl : null, wh = L.human(P.bowlCtl) ? P.bowlCtl : null;
+    if (S.bp === 'setup' || S.bp === 'aim' || S.bp === 'runup') return wh || bh || L.host();
+    return bh || wh || L.host();
+  }
+  function pmStep(S) {
+    S.clock += LS_H; S.pt += LS_H;
+    phaseUpdate(S, LS_H);
+    actorsUpdate(S, LS_H);
+    commUpdate(S, LS_H);
+    timersUpdate(S, LS_H);
+  }
+  // each friend bats their own over: over j belongs to the j-th friend of the batting XI (out or gone friends pass it on)
+  function pmArrange(S) {
+    const P = S.pm, inn = S.inn;
+    if (!inn) return;
+    const mine = P.slots.filter((s) => s.team === inn.bat && s.idx >= 0);
+    if (!mine.length) { P.batCtl = null; return; }
+    const m = mine.length, j = S.overNo | 0;
+    let own = null;
+    for (let t = 0; t < m && !own; t++) { const c = mine[(j + t) % m]; if (!inn.cards[c.idx].out && !P.L.isGone(c.uid)) own = c; }
+    for (let t = 0; t < m && !own; t++) { const c = mine[(j + t) % m]; if (!inn.cards[c.idx].out) own = c; } // only gone friends left: the AI bats for them
+    if (!own) { P.batCtl = null; return; }
+    let part = null;
+    for (const i of [inn.striker, inn.non]) if (part == null && i !== own.idx && !inn.cards[i].out) part = i;
+    if (part == null) { const f = mine.find((c) => c !== own && !inn.cards[c.idx].out); if (f) part = f.idx; }
+    if (part == null) for (let i = 0; i < inn.cards.length && part == null; i++) if (i !== own.idx && !inn.cards[i].out && !mine.some((c) => c.idx === i)) part = i;
+    if (part == null) part = own.idx === 0 ? 1 : 0;
+    inn.striker = own.idx; inn.non = part;
+    inn.cards[own.idx].inAt = true; inn.cards[part].inAt = true;
+    P.batCtl = own.uid;
+  }
+  // a friends' XI bowls its friends' overs in turn; the AI XI keeps its usual rotation
+  function pmBowler(S) {
+    const P = S.pm, bowl = bowlTeam(S);
+    const mine = P.slots.filter((s) => s.team === bowl && s.idx >= 0);
+    if (!mine.length) { P.bowlCtl = null; return false; }
+    const c = mine[(S.overNo | 0) % mine.length];
+    const pl = bowl.players[c.idx];
+    S.lastBowler = pl;
+    setBowler(S, pl);
+    S.aim.type = pl.type === 'spin' ? 'spin' : 'pace';
+    P.bowlCtl = c.uid;
+    return true;
+  }
+  function pmBall(S) {
+    const P = S.pm, g = S.g;
+    P.deliv++;
+    P.epBall = S.innIdx * 500 + P.deliv;
+    P.L.begin(P.epBall);
+    g.rng = U.rng(mixSeed(P.seed, P.epBall));
+    S.crng = U.rng(mixSeed(P.seed ^ 0x2545f491, P.epBall));
+    P.pending = false; P.evApplied = false; P.committed = false; P.myEv = null;
+    pmArrange(S);
+    // everybody back on their spots: nothing from the last ball carries over (each ball is its own episode)
+    for (const a of S.actors) if (a.role === 'field' && a.spot) { a.x = a.spot.x; a.z = a.spot.z; a.tx = null; a.chase = false; a.spd = 0; }
+  }
+  function pmApply(S, q) {
+    if (!q || S.phase !== 'ball') return;
+    switch (q.t) {
+      case 'shot': if ((S.bp === 'flight' || S.bp === 'past') && playerBats(S) && !S.swung && SHOT_DIRS.indexOf(q.d) >= 0) attemptShot(S, q.d, !!q.l, 'player', +q.e); break;
+      case 'run': if (S.bp === 'live' && playerBats(S)) { if (!S.run.active) startRun(S); else S.run.queued = true; } break;
+      case 'lock': if (S.bp === 'aim' && playerBowlsNow(S)) aimLock(S, q); break;
+      case 'rel': if (S.bp === 'runup' && playerBowlsNow(S) && !S.del) { S.meter = clamp(+q.m || 0, 0, 1.12); aimRelease(S); } break;
+      case 'field': if (S.bp === 'aim' && playerBowlsNow(S) && FIELDS[q.p] && q.p !== S.fieldPreset) { S.fieldPreset = q.p; S.userField = q.p; assignField(S); for (const a of S.actors) if (a.role === 'field' && a.spot) { a.tx = a.spot.x; a.tz = a.spot.z; } say(S, 'Field change: ' + FIELDS[q.p].name + '.', null, true); } break;
+      case 'catch': if (S.bp === 'live' && S.catchPrompt && !S.catchPrompt.pressed) S.catchPrompt.pressed = q.q === 'good' ? 'good' : 'early'; break;
+      case 'skip': if (S.bp === 'dead' && S.bt > 0.45) S.bt = S.deadT; else if (S.bp === 'replay') S.skipReplay = true; break;
+      default:
+    }
+  }
+  const WK_KINDS = ['bowled', 'caught', 'onetip', 'house', 'runout'];
+  function pmEvOut(ev) {
+    const w = ev.wicket;
+    return { r: ev.runs | 0, w: ev.wide ? 1 : 0, n: ev.nb ? 1 : 0, b: ev.boundary | 0, bw: String(ev.bowler || ''), sa: ev.strikerAfter, na: ev.nonAfter,
+      k: w ? { k: w.kind, h: String(w.how || '').slice(0, 60), f: w.fielder ? String(w.fielder).slice(0, 14) : null, i: w.idx } : null,
+      s: ev.shot ? { a: +(+ev.shot.ang || 0).toFixed(3), d: +(+ev.shot.dist || 0).toFixed(3), r: ev.shot.runs | 0 } : null };
+  }
+  function pmEvIn(S, o) {
+    const inn = S.inn, n = inn.cards.length;
+    const ix = (v, d) => (Number.isInteger(v) && v >= 0 && v < n ? v : d);
+    const bw = typeof o.bw === 'string' && inn.bowl.players.some((p) => p.name === o.bw) ? o.bw : (S.bowler ? S.bowler.name : '?');
+    const w = o.k && WK_KINDS.indexOf(o.k.k) >= 0 ? { kind: o.k.k, how: String(o.k.h || o.k.k).slice(0, 60), fielder: typeof o.k.f === 'string' ? o.k.f.slice(0, 14) : null, idx: ix(o.k.i, inn.striker) } : null;
+    const sa = ix(o.sa, inn.striker), na = ix(o.na, inn.non);
+    return { runs: clamp(o.r | 0, 0, 7), wide: !!o.w, nb: !!o.n, boundary: o.b === 4 || o.b === 6 ? o.b : 0, bowler: bw, wicket: w, strikerAfter: sa, nonAfter: na === sa ? inn.non : na,
+      shot: o.s && isFinite(o.s.a) ? { ang: +o.s.a, dist: clamp(+o.s.d || 0, 0, 1), runs: o.s.r | 0 } : null };
+  }
+  // the scorebook (rules.applyBall) plus the party's all-out rule
+  function pmBook(S, ev) {
+    const P = S.pm, inn = S.inn;
+    const res = rules.applyBall(inn, ev);
+    if (!res.inningsEnd) {
+      const mine = P.slots.filter((s) => s.team === inn.bat && s.idx >= 0);
+      if (mine.length ? mine.every((s) => inn.cards[s.idx].out) : inn.wkts >= P.aiW) { res.inningsEnd = true; inn.done = true; inn.endReason = 'allout'; }
+    }
+    return res;
+  }
+  // commitBall in a party game: the ball's owner writes the book and tells everybody; the others take that result
+  function pmCommit(S, ev) {
+    const P = S.pm, L = P.L;
+    P.committed = true;
+    if (L.solo || L.cur === L.me) {
+      const res = pmBook(S, ev);
+      P.evApplied = true;
+      L.emit({ t: 'ev', ep: P.epBall, k: L.k, ev: pmEvOut(ev) });
+      return res;
+    }
+    const a = L.evs.get(P.epBall);
+    if (a && a.ev) { P.evApplied = true; const e2 = pmEvIn(S, a.ev); pmFixMsg(S, e2, ev); return pmBook(S, e2); }
+    P.pending = true; P.myEv = ev;
+    return null;
+  }
+  // a page whose own picture came out different shows the decided result
+  function pmFixMsg(S, ev, mine) {
+    const same = mine && !!mine.wicket === !!ev.wicket && (mine.boundary | 0) === (ev.boundary | 0) && (mine.runs | 0) === (ev.runs | 0) && !!mine.wide === !!ev.wide;
+    if (same) return;
+    const t = ev.wicket ? (ev.wicket.kind === 'runout' ? 'RUN OUT!' : ev.wicket.kind === 'bowled' ? 'BOWLED!' : ev.wicket.kind === 'house' ? 'HOUSE = OUT!' : 'CAUGHT!') : ev.boundary === 6 ? 'SIX!' : ev.boundary === 4 ? 'FOUR!' : ev.wide ? 'WIDE' : ev.runs ? ev.runs + (ev.runs === 1 ? ' RUN' : ' RUNS') : 'DOT BALL';
+    message(S, t, '', ev.wicket ? '#ff6a5a' : ev.boundary ? '#ffd84a' : '#ffffff', !!(ev.wicket || ev.boundary));
+  }
+  function pmReady(S, force) {
+    const P = S.pm, L = P.L;
+    if (L.solo || P.evApplied) return true;
+    const a = L.evs.get(P.epBall);
+    if ((!a || !a.ev) && P.pending && force && P.myEv) { P.pending = false; P.evApplied = true; S.res = pmBook(S, P.myEv); return true; } // nobody decided it: ours stands
+    if (!a || !a.ev) return !P.pending;
+    if (P.pending) { P.pending = false; P.evApplied = true; const e2 = pmEvIn(S, a.ev); S.res = pmBook(S, e2); pmFixMsg(S, e2, null); return true; }
+    // my simulation has not ended this ball by the step where its owner's did: end it now with the owner's result
+    if (S.phase === 'ball' && !P.committed && L.cur !== L.me && L.k >= (a.k | 0) && (S.bp === 'flight' || S.bp === 'past' || S.bp === 'live')) {
+      const e2 = pmEvIn(S, a.ev);
+      S.out.runs = e2.runs; S.out.wide = e2.wide; S.out.boundary = e2.boundary; S.out.wicket = e2.wicket; S.out.shot = e2.shot;
+      if (S.run) { S.run.active = false; S.run.done = e2.boundary ? 0 : e2.runs; }
+      if (S.ball) S.ball.st = 'dead';
+      endBall(S, 1.2);
+    }
+    return true;
+  }
+  function pmStats(S, s) {
+    const P = S.pm, team = s.team;
+    const bi = S.innings.find((i) => i && i.bat === team), wi = S.innings.find((i) => i && i.bowl === team);
+    const pl = team.players[s.idx] || { name: '?' };
+    const c = bi && bi.cards[s.idx], f = wi && wi.figs[pl.name], ct = (wi && wi.catches[pl.name]) || 0;
+    const runs = c ? c.runs : 0, balls = c ? c.balls : 0, wk = f ? f.wkts : 0;
+    const R = S.result || {};
+    const won = !R.tie && R.winner === team;
+    const note = (c && c.inAt ? runs + (c.out ? '' : '*') + ' (' + balls + ')' : 'did not bat') + (f && f.balls ? ' · ' + wk + '/' + f.runs : '') + (ct ? ' · ' + ct + ' ct' : '') + (P.vs ? (R.tie ? ' · tied' : won ? ' · won' : ' · lost') : '');
+    return { uid: s.uid, nick: s.nick, name: pl.name, team: team.short, runs, balls, wk, ct, won, res: { score: runs + wk * 10 + ct * 5, runs, balls, wk, ct, win: won ? 1 : 0, team: team.short, note } };
+  }
+  function pmFinish(S) {
+    const P = S.pm, ctx = P.ctx;
+    if (P.finished) return;
+    P.finished = true;
+    const rows = P.slots.map((s) => pmStats(S, s));
+    P.final = rows;
+    const mine = rows.find((r) => r.uid === P.L.me);
+    try { if (mine && !P.L.isGone(P.L.me)) ctx.report(mine.res); } catch (e) { N.err('cricket.party.report', e); }
+    try { if (ctx.ai && ctx.ai.report && (ctx.mode !== 'party' || ctx.isHost)) for (const r of rows) if (/^ai:/.test(r.uid)) ctx.ai.report(r.uid, r.res); } catch (e) { N.err('cricket.party.aiReport', e); }
+    P.closeAt = S.clock + 4.2;
+  }
+  function pmClose(g, S) {
+    const P = S.pm;
+    if (g.closed || P.closed) return;
+    P.closed = true;
+    P.L.stop(false);
+    const mine = (P.final || []).find((r) => r.uid === P.L.me);
+    try { g.close(Object.assign(g.baseResult(), { win: !!(mine && mine.won), party: true, runs: mine ? mine.runs : 0, score: mine ? mine.res.score : 0 })); } catch (e) { N.err('cricket.party.close', e); }
+  }
+  // one lockstep tick per frame (the framework calls update() several times a frame)
+  function pmUpdate(g, dt) {
+    const S = g.S, P = S.pm;
+    P.frameDt += dt;
+    if (P.frame === g.rt) return;
+    P.frame = g.rt;
+    const fdt = P.frameDt; P.frameDt = 0;
+    const L = P.L;
+    if (!P.started) {
+      let el = 0;
+      try { el = P.ctx.elapsed(); } catch (e) { el = 0; }
+      if (isFinite(el) && el < 0) { P.wait = -el / 1000; P.vis += fdt; uiSync(g); return; }
+      P.started = true; P.wait = 0; L.lastReal = performance.now(); L.acc = 0; P.lastNow = performance.now();
+    }
+    const now = performance.now();
+    const real = L.solo ? fdt : Math.min(0.5, (now - (P.lastNow || now)) / 1000);
+    P.lastNow = now;
+    try { pmInput(S, g); } catch (e) { N.err('cricket.party.input', e); }
+    L.tick(real);
+    P.vis += fdt;
+    uiSync(g);
+    if (P.finished && !L.over) L.finish();
+    if (P.finished && S.clock >= P.closeAt) pmClose(g, S);
+  }
+  // this page's keys and taps -> inputs for the shared simulation (only on the page that owns the step)
+  function pmInput(S, g) {
+    const P = S.pm, L = P.L;
+    if (g.pressed('cam')) toggleCam(S);
+    if (S.phase !== 'ball' || L.ownerNow() !== L.me) return;
+    const since = (a) => { const t = P.pressT[a]; return t ? clamp(((t - L.lastReal) / 1000) * (L.solo ? 1 : L.speed), 0, 0.25) : 0; };
+    if (meBowls(S)) {
+      if (S.bp === 'aim') {
+        for (let i = 1; i <= 4; i++) if (g.pressed('t' + i)) setType(S, TYPES[i - 1]);
+        if (g.pressed('type') || g.pressed('run')) setType(S, TYPES[(TYPES.indexOf(S.aim.type) + 1) % 4]);
+        if (g.pressed('field') || g.pressed('loft')) L.input({ t: 'field', p: FIELD_ORDER[(FIELD_ORDER.indexOf(S.fieldPreset) + 1) % FIELD_ORDER.length] });
+        if (g.pressed('go') && S.bt > 0.25) L.input({ t: 'lock', x: +S.aim.wx.toFixed(4), z: +S.aim.wz.toFixed(4), ty: S.aim.type });
+      } else if (S.bp === 'runup') {
+        if (g.pressed('go') && S.bt > 0.08 && !S.del) L.input({ t: 'rel', m: +Math.min(1.12, (S.bt + since('go')) / (S.runT || 1)).toFixed(4) });
+      } else if (S.bp === 'live') {
+        if (g.pressed('go') && S.catchPrompt && !S.catchPrompt.pressed) L.input({ t: 'catch', q: S.catchPrompt.at - S.liveT - since('go') <= 0.45 ? 'good' : 'early' });
+      }
+    } else if (meBats(S)) {
+      if (g.touch && g.pressed('loft')) S.loftLatch = !S.loftLatch;
+      if (S.bp === 'flight' || S.bp === 'past') {
+        const loft = S.loftLatch || (!g.touch && g.down('loft'));
+        if (g.pressed('left')) playerShot(S, 'left', loft, since('left'));
+        else if (g.pressed('right')) playerShot(S, 'right', loft, since('right'));
+        else if (g.pressed('up') || g.pressed('go')) playerShot(S, 'up', loft, since(g.pressed('up') ? 'up' : 'go'));
+        else if (g.pressed('down')) playerShot(S, 'down', false, since('down'));
+      }
+      if (S.bp === 'live' && g.pressed('run')) L.input({ t: 'run' });
+    }
+    if (g.pressed('go') && ((S.bp === 'dead' && S.bt > 0.45 && !(S.out.boundary || S.out.wicket)) || S.bp === 'replay')) L.input({ t: 'skip' });
+  }
+  // the test autopilot (params.autoplay): plays THIS page's role inside the shared steps, exactly on time
+  function pmBot(S) {
+    const g = S.g, P = S.pm, L = P.L;
+    if (!g.auto || S.phase !== 'ball' || !S.brng) return;
+    const lose = g.auto === 'lose';
+    if ((S.bp === 'dead' && S.bt > 0.6) || (S.bp === 'replay' && S.bt > 0.6)) { const key = P.epBall + S.bp; if (P.botSkip !== key) { P.botSkip = key; L.input({ t: 'skip' }); } return; }
+    if (meBowls(S)) {
+      if (S.bp === 'aim' && S.bt > 0.4) {
+        const ty = lose ? 'pace' : S.brng.next() < 0.3 ? 'yorker' : S.bowler.type === 'spin' ? 'spin' : 'pace';
+        L.input({ t: 'lock', x: lose ? 1.35 : +(-0.1 + (S.brng.next() - 0.5) * 0.1).toFixed(3), z: lose ? 3.2 : TYPE_INFO[ty].z, ty });
+      } else if (S.bp === 'runup' && !S.del) {
+        const G0 = S.green || meterGreen(S);
+        if (S.meter >= (lose ? 0.3 : G0.c - 0.008)) L.input({ t: 'rel', m: +Math.min(1.12, S.meter + LS_H / (S.runT || 1)).toFixed(4) });
+      } else if (S.bp === 'live' && S.catchPrompt && !S.catchPrompt.pressed && !lose && S.catchPrompt.at - S.liveT < 0.3) L.input({ t: 'catch', q: 'good' });
+      return;
+    }
+    if (!meBats(S)) return;
+    if (S.bp === 'flight' && !S.swung && S.del) {
+      const del = S.del, tA = del.tRel + del.tA, t = S.clock + LS_H;
+      if (lose) { if (t - del.tRel > del.tA * 0.4) L.input({ t: 'shot', d: 'straight', l: 0, e: +(t - tA).toFixed(4) }); return; }
+      if (del.wide) return;
+      if (t >= tA - 0.006) {
+        const len = del.len, line = del.line;
+        let d = 'straight';
+        if (len === 'short' || len === 'bouncer') d = line === 'leg' || S.brng.next() < 0.5 ? 'leg' : 'off';
+        else if (line === 'off') d = 'off'; else if (line === 'leg') d = 'leg';
+        const loft = (len === 'short' || len === 'bouncer') && d === 'leg' && S.brng.next() < 0.6;
+        L.input({ t: 'shot', d, l: loft ? 1 : 0, e: +(t - tA + (S.brng.next() - 0.5) * 0.02).toFixed(4) });
+      }
+    } else if (S.bp === 'live' && !lose && S.calls && S.calls.col === '#b9ffb0' && !S.run.active && S.run.done < 3) L.input({ t: 'run' });
+  }
+  function pmRole(S) { return S.phase === 'ball' ? (meBowls(S) ? 'bowl' : meBats(S) ? 'bat' : 'watch') : 'watch'; }
+  function pmWatchLine(S) {
+    const P = S.pm;
+    if (!S.inn || S.phase !== 'ball') return 'Watching the match';
+    const b = P.batCtl && P.L.human(P.batCtl) ? nickOf(S, P.batCtl) + ' is batting' : S.inn.bat.players[S.inn.striker].name + ' (AI) is batting';
+    const w = P.bowlCtl && P.L.human(P.bowlCtl) ? nickOf(S, P.bowlCtl) + ' is bowling' : (S.bowler ? S.bowler.name : 'AI') + ' bowls';
+    return b + ' · ' + w;
+  }
+  function pmHud(g, S) {
+    if (g.W < 600) return [];
+    const r = pmRole(S), inn = S.inn || S.innings[S.innings.length - 1];
+    const it = [{ k: 'YOU', v: r === 'bat' ? 'BAT' : r === 'bowl' ? 'BOWL' : 'WATCH', good: r !== 'watch' }];
+    if (inn) { it.push({ k: inn.bat.short, v: rules.score(inn) }, { k: 'OV', v: oversText(inn.balls) + '/' + S.overs }); if (inn.target) it.push({ k: 'NEED', v: rules.need(inn) + '/' + rules.ballsLeft(inn) }); }
+    return it;
+  }
+  // the batting picture's feedback for friends who are watching (timing call, the partner's call)
+  function pmWatchUi(ctx, g, S, u) {
+    const fr = S.fr;
+    if (S.timing && S.timing.t < 1.0) txt(ctx, S.timing.label, fr.x + fr.w / 2, fr.y + fr.h * 0.5 - S.timing.t * u * 1.5, { font: 'display', size: u * 1.3, color: S.timing.label === 'PERFECT' ? '#ffd84a' : S.timing.ok ? '#b9ffb0' : '#ffb4a6', outline: 4 });
+    if (S.calls && S.bp === 'live' && S.calls.t < 2.4) txt(ctx, S.inn.bat.players[S.inn.non].name + ': ' + S.calls.text, fr.x + fr.w / 2, fr.y + fr.h * 0.64, { font: 'osd', size: u * 1.05, color: '#fff', outline: 3, maxW: fr.w - u });
+  }
+  // party tags on the broadcast: this page's role, who we are waiting for, the wait before GO
+  function pmOverlay(ctx, g, S, u) {
+    const P = S.pm, fr = S.fr, L = P.L;
+    if (!P.started) {
+      const n = Math.ceil(P.wait || 0);
+      const w = Math.min(fr.w * 0.8, u * 22), h = u * 4.2, x = fr.x + (fr.w - w) / 2, y = fr.y + fr.h * 0.36;
+      ctx.fillStyle = 'rgba(20,36,106,0.9)'; ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = '#f2c230'; ctx.fillRect(x, y, w, u * 0.25);
+      txt(ctx, P.vs ? 'FRIENDS vs FRIENDS' : 'MATCH WITH FRIENDS', x + w / 2, y + h * 0.33, { font: 'osd', size: u * 1.2, color: '#ffd84a', maxW: w - u });
+      txt(ctx, n > 0 ? 'Starting in ' + n + '…' : 'GO!', x + w / 2, y + h * 0.7, { font: 'display', size: u * 1.6, color: '#fff', maxW: w - u });
+      return;
+    }
+    // the role pill (bottom left, beside the camera pill)
+    if (S.phase === 'ball' || S.phase === 'over_break' || S.phase === 'inn_intro') {
+      const r = pmRole(S);
+      const s = r === 'bat' ? 'YOU BAT' : r === 'bowl' ? 'YOU BOWL' : S.phase === 'ball' ? 'WATCHING · ' + pmWatchLine(S).split(' · ')[0].toUpperCase() : 'NEXT OVER…';
+      ctx.font = font('osd', u * 0.9);
+      const w = Math.min(fr.w * 0.6, ctx.measureText(s).width + u * 1.6), h = u * 1.6, x = fr.x + u * 0.5, y = fr.y + fr.h - h - u * (S.tickerIn ? 2.6 : 0.5);
+      ctx.fillStyle = r === 'bat' ? 'rgba(242,194,48,0.92)' : r === 'bowl' ? 'rgba(127,216,255,0.92)' : 'rgba(10,12,30,0.65)'; rr(ctx, x, y, w, h, h / 2); ctx.fill();
+      txt(ctx, s, x + w / 2, y + h / 2 + 1, { font: 'osd', size: u * 0.9, color: r === 'watch' ? '#eaf2ff' : '#14246a', maxW: w - u * 0.6 });
+    }
+    // over / innings breaks: who bats and bowls next
+    if (S.banner && (S.phase === 'over_break' || S.phase === 'inn_intro') && S.inn) {
+      const nx = pmNextLine(S);
+      if (nx) txt(ctx, nx, fr.x + fr.w / 2, fr.y + fr.h * 0.6 + u * 4.6, { font: 'osd', size: u * 1.05, color: '#b9ffb0', outline: 3, maxW: fr.w - u });
+    }
+    if (L.waitFor) {
+      const s = L.waitFor === 'ev' ? 'Waiting for the result…' : 'Waiting for ' + nickOf(S, L.waitFor) + '…';
+      ctx.font = font('osd', u * 1.1);
+      const w = ctx.measureText(s).width + u * 2, h = u * 2;
+      ctx.fillStyle = 'rgba(10,12,30,0.82)'; rr(ctx, fr.x + (fr.w - w) / 2, fr.y + fr.h * 0.2, w, h, h / 2); ctx.fill();
+      txt(ctx, s, fr.x + fr.w / 2, fr.y + fr.h * 0.2 + h / 2 + 1, { font: 'osd', size: u * 1.1, color: '#ffd84a' });
+    }
+  }
+  function pmNextLine(S) {
+    const P = S.pm, inn = S.inn;
+    const bat = P.slots.filter((s) => s.team === inn.bat && s.idx >= 0);
+    const j = S.phase === 'over_break' ? S.overNo : 0;
+    let b = null;
+    for (let t = 0; t < bat.length && !b; t++) { const c = bat[(j + t) % bat.length]; if (!inn.cards[c.idx].out) b = c; }
+    const bowl = P.slots.filter((s) => s.team === inn.bowl && s.idx >= 0);
+    const w = bowl.length ? bowl[j % bowl.length] : null;
+    const parts = [];
+    if (b) parts.push((b.uid === P.L.me ? 'YOU' : b.nick) + ' bat' + (b.uid === P.L.me ? '' : 's'));
+    if (w) parts.push((w.uid === P.L.me ? 'YOU' : w.nick) + ' bowl' + (w.uid === P.L.me ? '' : 's'));
+    return parts.length ? 'Next: ' + parts.join(' · ') : '';
+  }
+  function pmCleanup(g, S) {
+    const P = S.pm;
+    if (!P) return;
+    if (!P.finished) {
+      P.L.stop(true);
+      try { if (P.ctx && P.ctx.report && P.ctx.phase !== 'done') P.ctx.report({ dnf: true, note: 'left the match' }); } catch (e) { /* ignore */ }
+    } else P.L.stop(false);
+  }
+  function pmDebug(S) {
+    const P = S.pm;
+    return { mode: P.vs ? 'vs' : 'coop', lock: P.L.info(), owner: pmOwner(S), role: pmRole(S), batCtl: P.batCtl, bowlCtl: P.bowlCtl, epBall: P.epBall, deliv: P.deliv, started: P.started, finished: P.finished,
+      home: S.home.name, away: S.away.name, overs: S.overs, slots: P.slots.map((s) => ({ uid: s.uid, nick: s.nick, team: s.team.short, idx: s.idx, name: s.team.players[s.idx] && s.team.players[s.idx].name })),
+      innings: S.innings.map((i) => i && { team: i.bat.short, runs: i.runs, wkts: i.wkts, balls: i.balls, done: i.done, target: i.target, over: i.over.slice() }), final: P.final, result: S.result ? { winner: S.result.winner ? S.result.winner.short : null, tie: S.result.tie, margin: S.result.margin } : null };
+  }
+
+  /* ================================================================ party: gully cricket with friends */
+  // The colony-lane game (src/minigames.js 'cricket', its engine in def.eng) with friends: every friend bats an innings
+  // (6 balls, 2 wickets), bowls one and fields one, in turn; the AI friends fill the roles when playing solo. The bowler
+  // picks the line (◀ ▶), the length (▲ ▼) and the pace (Q / PACE) and lets go when the swinging needle is in the green;
+  // the batter plays it like the normal game; the third friend fields: CATCH! when the ring closes on the fielder the
+  // ball flies to. Gully rules stay: a catch and one-tip-one-hand are OUT, Aunty's compound is OUT. Most runs wins.
+  const GP = {};
+  const GP_LINES = [-0.36, -0.15, 0.04, 0.2, 0.4];
+  const GP_LENS = [{ k: 'yorker', name: 'YORKER', zb: 1.1, win: 0.74 }, { k: 'full', name: 'FULL', zb: 2.7, win: 1.1 }, { k: 'good', name: 'GOOD', zb: 4.6, win: 1 }, { k: 'short', name: 'SHORT', zb: 6.9, win: 1 }];
+  const GP_PACE = [{ name: 'SLOW', T: 1.24, win: 1.12, kph: 54 }, { name: 'MEDIUM', T: 0.98, win: 1, kph: 70 }, { name: 'FAST', T: 0.8, win: 0.86, kph: 86 }];
+  const GP_COL = ['#f2c230', '#7fd8ff', '#ff9ab0'];
+  const GP_SHIRT = ['#d8402a', '#2a5cb8', '#2a8c82'];
+  function gpMeter(t, pace) { const per = pace === 2 ? 1.15 : 1.45; const u = (t / per) % 2; return 1 - Math.abs(u - 1); }
+  function gpKid(look, i) {
+    const l = look || {};
+    return { shirt: hexOk(l.shirt) ? l.shirt : GP_SHIRT[i % 3], pants: hexOk(l.pants) ? l.pants : '#2b3a5a', skin: hexOk(l.skin) ? l.skin : '#a8703f', hair: hexOk(l.hair) ? l.hair : '#1a1412', stripes: hexOk(l.stripes) ? l.stripes : undefined, girl: !!l.girl };
+  }
+  GP.setup = function (g) {
+    const S = g.S, ctx = g.params.party, o = ctx.opts || {}, E = N.minigames.defs.cricket.eng;
+    S.g = g;
+    g.diff = clamp(o.difficulty != null ? +o.difficulty : 0.4, 0.05, 0.95);
+    g.assist = !!o.assist; g.winMul = g.assist ? 1.5 : 1;
+    const T = E.T, d = g.diff;
+    S.winP = (T.perfect[0] + (1 - d) * T.perfect[1]) * g.winMul; S.winG = (T.good[0] + (1 - d) * T.good[1]) * g.winMul; S.winE = (T.edge[0] + (1 - d) * T.edge[1]) * g.winMul;
+    S.trial = false; S.mali = null; S.target = 999; S.bowlerName = null;
+    const players = ctx.players.map((q, i) => {
+      let sk = 0.62;
+      if (q.isAI) { try { sk = ctx.ai && ctx.ai.skill ? ctx.ai.skill(q.uid) : 0.7; } catch (e) { sk = 0.7; } }
+      return { uid: q.uid, nick: q.nick || 'Player', isAI: !!q.isAI, npc: q.npc || null, col: GP_COL[i % 3], kid: gpKid(q.look, i), skill: clamp(+sk || 0.62, 0.2, 0.97) };
+    });
+    const n = players.length;
+    const inns = players.map((p, i) => ({ bat: i, bowl: n > 1 ? (i + 1) % n : -1, field: n > 2 ? (i + 2) % n : -1, runs: 0, balls: 0, wk: 0, fours: 0, sixes: 0, log: [], done: false, skipped: false }));
+    const L = lockstep({ ctx, tag: 'gcx', owner: () => gpOwner(S), step: () => gpStep(S), apply: (q) => gpApply(S, q), ready: () => gpReady(S), bot: () => gpBot(S) });
+    S.pm = { gully: true, ctx, E, L, players, members: players, n, inns, ii: 0, B: clamp((o.balls | 0) || 6, 2, 12), W: clamp((o.wickets | 0) || 2, 1, 5), stage: 'intro', st: 0, ep: 0, ball: 0,
+      plan: null, aim: { l: 2, n: 2, p: 1 }, pressT: {}, vis: 0, started: false, frame: -1, frameDt: 0, lastNow: 0, booked: -1, pending: false, catchAt: null, catchF: -1, catchPress: null,
+      aiSwing: null, think: 1, banner: null, reported: false, closed: false, closeAt: 0, seed: (ctx.seed >>> 0) || 1, padKey: null, wait: 0, final: null, speed: null, brng: U.rng(((ctx.seed >>> 0) ^ 0x51ed) >>> 0) };
+    S.pmRoll = (f, b) => gpRoll(S, f, b);
+    try { ctx.onLeave((uid) => L.leave(uid)); } catch (e) { /* ignore */ }
+    const op = g.press;
+    g.press = function (a, src) { if (S.pm) S.pm.pressT[a] = performance.now(); return op.call(this, a, src); };
+    try { if (g.root) g.root.classList.add('cg-party'); } catch (e) { /* ignore */ }
+    gpCss();
+    S.stage = 'wait'; S.bowler.z = 21;
+  };
+  function gpInn(S) { return S.pm.inns[S.pm.ii]; }
+  function gpOwner(S) {
+    const P = S.pm, L = P.L, inn = gpInn(S);
+    const st = P.stage;
+    if (!inn || st === 'intro' || st === 'break' || st === 'final' || st === 'result') return L.host();
+    const bat = P.players[inn.bat].uid, bowl = inn.bowl >= 0 ? P.players[inn.bowl].uid : null, fld = inn.field >= 0 ? P.players[inn.field].uid : null;
+    const hb = L.human(bat) ? bat : null, hw = bowl && L.human(bowl) ? bowl : null, hf = fld && L.human(fld) ? fld : null;
+    if (st === 'aim') return hw || hb || L.host();
+    if (st === 'hit') return hf || hb || hw || L.host();
+    return hb || hw || L.host();
+  }
+  // this page's part in the current ball: 'bat' | 'bowl' | 'field' | 'watch'
+  function gpRole(S) {
+    const P = S.pm, inn = gpInn(S), me = P.L.me;
+    if (!inn || P.stage === 'intro' || P.stage === 'break' || P.stage === 'final' || P.L.isGone(me)) return 'watch';
+    if (P.players[inn.bat].uid === me) return 'bat';
+    if (inn.bowl >= 0 && P.players[inn.bowl].uid === me) return 'bowl';
+    if (inn.field >= 0 && P.players[inn.field].uid === me) return 'field';
+    return 'watch';
+  }
+  function gpStep(S) {
+    const P = S.pm, g = S.g, E = P.E, h = LS_H, bw = S.bowler;
+    S.clock += h; S.st += h; P.st += h;
+    if (S.msg) S.msg.t += h;
+    if (S.swing) { S.swing.t += h; if (S.swing.t > 0.55 && S.stage !== 'flight') S.swing = null; }
+    if (S.aunty > 0) S.aunty -= h;
+    if (S.bricks) S.bricks.t += h;
+    if (P.banner) P.banner.t += h;
+    if (P.speed) P.speed.t += h;
+    const logN = S.log.length;
+    switch (P.stage) {
+      case 'intro': if (P.st > 3.4) gpInnings(S, gpNextInnings(S, 0)); break;
+      case 'aim': gpAim(S); break;
+      case 'runup': { const k = Math.min(1, P.st / 1.15); bw.z = lerp(20.5, 14.2, k); bw.ph += h * 11; bw.arm = 0; if (k >= 1) gpRelease(S); break; }
+      case 'flight': gpFlight(S); break;
+      case 'hit': E.flyBall(g, S, h); E.moveFielders(S, h); break;
+      case 'result': if (S.ball && !S.ball.done) E.flyBall(g, S, h); E.moveFielders(S, h); if (P.st > P.nextAt) gpNext(S); break;
+      case 'break': if (P.st > 3.4) gpAfterBreak(S); break;
+      case 'final': if (!P.reported && P.st > 1.2) gpFinish(S); break;
+      default:
+    }
+    if (S.log.length > logN && (P.stage === 'flight' || P.stage === 'hit')) gpOutcome(S);
+  }
+  function gpNextInnings(S, from) { const P = S.pm; for (let i = Math.max(0, from); i < P.n; i++) { if (!P.L.isGone(P.players[P.inns[i].bat].uid)) return i; P.inns[i].skipped = true; P.inns[i].done = true; } return -1; }
+  function gpInnings(S, i) {
+    const P = S.pm;
+    if (i < 0) { P.stage = 'final'; P.st = 0; return; }
+    const inn = P.inns[i];
+    P.ii = i;
+    const bat = P.players[inn.bat], bowl = inn.bowl >= 0 ? P.players[inn.bowl] : null;
+    S.batLook = bat.kid;
+    S.bowlLook = bowl ? { shirt: bowl.kid.shirt, pants: bowl.kid.pants, skin: bowl.kid.skin, girl: bowl.kid.girl } : null;
+    S.log = [];
+    P.banner = { title: bat.nick.toUpperCase() + ' BATS', sub: (bowl ? bowl.nick : 'Bunty-anna') + ' bowls' + (inn.field >= 0 ? ' · ' + P.players[inn.field].nick + ' fields' : ''), t: 0, intro: true };
+    gpNewBall(S);
+  }
+  function gpNewBall(S) {
+    const P = S.pm, g = S.g, E = P.E;
+    P.ball++;
+    P.ep = P.ii * 100 + P.ball;
+    P.L.begin(P.ep);
+    g.rng = U.rng(mixSeed(P.seed, P.ep));
+    P.stage = 'aim'; P.st = 0; S.stage = 'wait'; S.st = 0;
+    P.plan = null; P.aiSwing = null; P.catchAt = null; P.catchF = -1; P.catchPress = null; P.pending = false; P.booked = -1; P.myEv = null;
+    P.think = 0.7 + g.rng.next() * 0.9;
+    S.ball = null; S.swing = null; S.bricks = null; S.trail.length = 0;
+    E.resetFielders(S);
+    S.bowler.z = 21; S.bowler.x = 0.3; S.bowler.arm = 0;
+  }
+  function gpBowlerOf(S) { const P = S.pm, inn = gpInn(S); return inn && inn.bowl >= 0 ? P.players[inn.bowl] : null; }
+  function gpAim(S) {
+    const P = S.pm, bp = gpBowlerOf(S);
+    if (!bp || !P.L.human(bp.uid)) { if (P.st > P.think) gpBowl(S, gpAiPlan(S, bp)); return; }
+    if (P.st > 15) gpBowl(S, { l: 2, n: 2, p: 1, q: 0.3 }); // the friend stepped away: the ball goes down by itself
+  }
+  function gpAiPlan(S, pl) {
+    const r = S.g.rng, sk = pl ? pl.skill : 0.6;
+    const w = (tbl) => { let s = 0; for (const v of tbl) s += v; let x = r.next() * s; for (let i = 0; i < tbl.length; i++) { x -= tbl[i]; if (x <= 0) return i; } return tbl.length - 1; };
+    const l = w([1, 3, 3.4, 3, 1]), n = w([1, 2.6, 4.4, 2.2]);
+    const p = pl && pl.npc === 'ayesha' ? w([0.5, 2, 3.5]) : w([1.4, 3, 1.6]);
+    return { l, n, p, q: Math.min(0.5, Math.abs(gauss(r)) * (0.04 + (1 - sk) * 0.16)) };
+  }
+  function gpBowl(S, pl) {
+    const P = S.pm;
+    P.plan = { l: clamp(pl.l | 0, 0, 4), n: clamp(pl.n | 0, 0, 3), p: clamp(pl.p | 0, 0, 2), q: clamp(+pl.q || 0, 0, 0.5) };
+    P.stage = 'runup'; P.st = 0; S.stage = 'runup'; S.st = 0; S.swing = null; S.bricks = null;
+    P.E.resetFielders(S);
+    S.bowler.z = 20.5;
+  }
+  // the delivery from the bowler's plan: the release quality scatters the line and length (a bad one can go wide)
+  function gpRelease(S) {
+    const P = S.pm, g = S.g, r = g.rng, pl = P.plan;
+    const q = pl.q, s = q <= 0.07 ? 0 : q <= 0.18 ? 0.35 : 1;
+    let xc = GP_LINES[pl.l] + (r.next() * 2 - 1) * (0.03 + 0.3 * s);
+    let zb = GP_LENS[pl.n].zb + (r.next() * 2 - 1) * (0.25 + 1.5 * s);
+    let wide = false;
+    if (s === 1 && r.next() < 0.3) { wide = true; xc = (xc < 0.02 ? -1 : 1) * (1.3 + r.next() * 0.2); }
+    zb = clamp(zb, 0.32, 7.8);
+    const li = zb < 1.8 ? 0 : zb < 3.6 ? 1 : zb < 5.8 ? 2 : 3;
+    const fullToss = zb < 0.6;
+    const pc = GP_PACE[pl.p];
+    const T = pc.T * (1 + (r.next() - 0.5) * 0.06);
+    const xr = 0.35 + (r.next() - 0.5) * 0.3;
+    const lw = (fullToss ? 1.25 : GP_LENS[li].win) * pc.win;
+    S.ball = { x: xr, y: 2.05, z: 13.6, rel: { x: xr, z: 13.6 }, xc, zb, T, tRel: S.clock, tArrive: S.clock + T, wide, slow: pl.p === 0, hit: false, bounces: 0, vx: 0, vy: 0, vz: 0, done: false,
+      len: fullToss ? 'fulltoss' : GP_LENS[li].k, pace: pl.p, winP: S.winP * lw, winG: S.winG * lw, winE: S.winE * lw };
+    S.stage = 'flight'; P.stage = 'flight'; P.st = 0;
+    S.bowler.arm = 1;
+    g.tone(520, 0.03, { type: 'triangle', vol: 0.03 });
+    P.speed = { text: pc.name + ' · ' + Math.round(pc.kph * (T > 0 ? pc.T / T : 1)) + ' km/h', t: 0 };
+    const batter = P.players[gpInn(S).bat];
+    P.aiSwing = P.L.human(batter.uid) ? null : gpAiSwing(S, S.ball, batter);
+  }
+  function gpAiSwing(S, b, pl) {
+    const r = S.g.rng, sk = pl ? pl.skill : 0.6;
+    if (b.wide && r.next() < 0.85) return null; // leaves it
+    let d = b.len === 'short' ? 'pull' : b.len === 'yorker' ? 'drive' : b.xc < -0.15 ? 'pull' : b.xc > 0.22 ? 'cut' : 'drive';
+    if (r.next() < 0.24) d = ['pull', 'drive', 'cut'][(r.next() * 3) | 0];
+    let e = gauss(r) * (0.055 + (1 - sk) * 0.1) - 0.01;
+    if (S.pm.force === 'edge') { S.pm.force = null; e = (b.winG + b.winE) / 2; d = 'drive'; } // test hook: a skier for the fielder
+    return { at: b.tArrive + e, d, done: false };
+  }
+  function gpFlight(S) {
+    const P = S.pm, g = S.g, E = P.E, b = S.ball, bw = S.bowler;
+    bw.arm = Math.max(0, bw.arm - LS_H * 2);
+    const p = E.deliveryPos(b, S.clock);
+    if (p.bounced && !b.bounced) { b.bounced = true; g.tone(180, 0.04, { type: 'sine', vol: 0.05 }); }
+    b.x = p.x; b.y = p.y; b.z = p.z;
+    E.trail(S, b);
+    const A = P.aiSwing;
+    if (A && !A.done && S.clock >= A.at) {
+      A.done = true;
+      gpSwing(S, A.d, S.clock - b.tArrive);
+      if (S.stage === 'hit') { P.stage = 'hit'; P.st = 0; gpPredict(S); return; }
+    }
+    if (S.clock > b.tArrive + b.winE + 0.02) {
+      if (b.wide && !S.swing) { E.outcome(g, S, 'wide', 1, 'WIDE! +1'); return; }
+      if (Math.abs(b.xc) < 0.3) { S.bricks = { t: 0 }; g.sfx('chop', { vol: 0.8 }); E.outcome(g, S, 'out', 0, 'BOWLED!'); }
+      else E.outcome(g, S, 'dot', 0, S.swing ? (b.missed === 'early' ? 'Too early!' : 'Too late!') : 'Dot ball', '#eaf2ff');
+    }
+  }
+  // the shot (the gully engine's launch); the line, length and pace of the ball decide which shots are safe
+  function gpSwing(S, d, e) {
+    const b = S.ball;
+    if (S.swing) return;
+    S.swing = { t: 0, dir: d }; S.swings = (S.swings || 0) + 1;
+    if (!b || b.hit || S.stage !== 'flight') return;
+    const ae = Math.abs(e);
+    if (ae > b.winE) { b.missed = e < 0 ? 'early' : 'late'; S.pm.lastSw = { d, e: +e.toFixed(3), q: b.missed }; return; }
+    let q = ae <= b.winP ? 'perfect' : ae <= b.winG ? 'good' : 'edge';
+    S.pm.lastSw = { d, e: +e.toFixed(3), q };
+    const mis = (d === 'cut' && b.xc < -0.15) || (d === 'pull' && b.xc > 0.22) || (b.len === 'short' && d === 'drive') || (b.len === 'yorker' && d !== 'drive');
+    if (mis) q = q === 'perfect' ? 'good' : 'edge';
+    S.pm.E.launch(S.g, S, b, d, q, e);
+  }
+  // where (and when) the first catch chance comes: the same engine run ahead on a copy (no rng drawn before it)
+  function gpPredict(S) {
+    const P = S.pm, inn = gpInn(S), E = P.E, g = S.g;
+    P.catchAt = null; P.catchF = -1; P.catchPress = null;
+    if (!(inn.field >= 0)) return;
+    const sim = { ball: Object.assign({}, S.ball), fielders: S.fielders.map((f) => Object.assign({}, f)), stage: 'hit', log: [], msg: null, trail: [], runs: 0, wktsLeft: 9, ballsLeft: 9, bowled: 0, fours: 0, sixes: 0, cam: S.cam, aunty: 0, trial: false, bowlerName: null, nextAt: 0, st: 0, score: 0, bricks: null };
+    let hit = null, t = 0;
+    sim.pmRoll = (f, bb) => { if ((bb.bounces === 0 && bb.t > 0.12) || (bb.bounces === 1 && bb.y > 0.15)) { if (!hit) hit = { f: sim.fielders.indexOf(f), t }; return 0; } return 0.5; };
+    const nop = () => {};
+    const G0 = { rng: { next: () => 0.5 }, diff: g.diff, W: g.W, H: g.H, area: g.area, sfx: nop, tone: nop, shake: nop, burst: nop, pop: nop, flash: nop };
+    for (let i = 0; i < 360 && !hit && sim.stage === 'hit'; i++) { t += LS_H; E.flyBall(G0, sim, LS_H); E.moveFielders(sim, LS_H); }
+    if (hit && hit.f >= 0) { P.catchAt = S.clock + hit.t; P.catchF = hit.f; }
+  }
+  // the engine's catch roll: with a friend fielding, their CATCH! press decides (in the last 0.55 s = safe hands)
+  function gpRoll(S, f, b) {
+    const P = S.pm, g = S.g, inn = gpInn(S);
+    const r = g.rng.next();
+    if (!P || !inn || !(inn.field >= 0) || !((b.bounces === 0 && b.t > 0.12) || (b.bounces === 1 && b.y > 0.15))) return r;
+    if (!P.L.human(P.players[inn.field].uid)) return r;
+    const dt = P.catchPress == null ? null : S.clock - P.catchPress;
+    const p = dt == null ? 0.18 : dt <= 0.55 ? 0.94 : 0.45;
+    P.catchRes = r < p ? 'caught' : 'dropped';
+    return r < p ? 0 : 0.999;
+  }
+  function gpOutcome(S) {
+    const P = S.pm, L = P.L;
+    P.stage = 'result'; P.st = 0; P.nextAt = S.nextAt || 1.5;
+    const ev = { t: 'ev', ep: P.ep, k: L.k, sym: String(S.log[S.log.length - 1]), text: S.msg ? String(S.msg.text).slice(0, 40) : '', sub: S.msg ? String(S.msg.sub || '').slice(0, 60) : '' };
+    if (L.solo || L.cur === L.me) { L.emit(ev); gpBook(S, ev); return; }
+    const a = L.evs.get(P.ep);
+    if (a) gpBook(S, a); else { P.pending = true; P.myEv = ev; }
+  }
+  // the scorebook of the innings (the ball's owner decided it)
+  function gpBook(S, a) {
+    const P = S.pm, inn = gpInn(S);
+    if (P.booked === P.ep) return;
+    P.booked = P.ep;
+    const sym = String(a.sym || '0');
+    if (sym === 'wd') inn.runs += 1;
+    else if (sym === 'W') { inn.wk++; inn.balls++; }
+    else { const r = clamp(parseInt(sym, 10) || 0, 0, 6); inn.runs += r; inn.balls++; if (r === 4) inn.fours++; if (r === 6) inn.sixes++; }
+    inn.log.push(sym === 'W' || sym === 'wd' ? sym : String(clamp(parseInt(sym, 10) || 0, 0, 6)));
+    if (a.text && (!S.msg || S.msg.text !== a.text)) {
+      const big = sym === 'W' || sym === '4' || sym === '6';
+      S.msg = { text: String(a.text).slice(0, 40), sub: String(a.sub || '').slice(0, 60), col: sym === 'W' ? '#ff6a5a' : big ? '#ffd84a' : '#fff', t: 0, big };
+    }
+  }
+  function gpReady(S, force) {
+    const P = S.pm, L = P.L;
+    if (L.solo || P.booked === P.ep) return true;
+    const a = L.evs.get(P.ep);
+    if (!a && P.pending && force && P.myEv) { P.pending = false; gpBook(S, P.myEv); return true; } // nobody decided it: ours stands
+    if (!a) return !P.pending;
+    if (P.pending) { P.pending = false; gpBook(S, a); return true; }
+    if ((P.stage === 'flight' || P.stage === 'hit') && L.cur !== L.me && L.k >= (a.k | 0)) {
+      // my picture has not got there by the owner's step: end the ball with the owner's result
+      const sym = String(a.sym);
+      if (S.ball) S.ball.done = true;
+      P.E.outcome(S.g, S, sym === 'W' ? 'out' : sym === 'wd' ? 'wide' : 'runs', sym === 'wd' ? 1 : parseInt(sym, 10) || 0, String(a.text || ''));
+      P.stage = 'result'; P.st = 0; P.nextAt = S.nextAt || 1.5;
+      gpBook(S, a);
+    }
+    return true;
+  }
+  function gpNext(S) {
+    const P = S.pm, g = S.g, inn = gpInn(S);
+    S.ball = null; S.trail.length = 0;
+    if (inn.balls >= P.B || inn.wk >= P.W || P.L.isGone(P.players[inn.bat].uid)) {
+      inn.done = true;
+      P.stage = 'break'; P.st = 0; S.stage = 'wait';
+      const nx = gpPeekNext(S, P.ii + 1);
+      const who = P.players[inn.bat].nick;
+      P.banner = { title: who.toUpperCase() + ': ' + inn.runs + (inn.wk >= P.W ? '' : '*') + ' (' + inn.balls + ')', sub: nx >= 0 ? 'Next: ' + P.players[P.inns[nx].bat].nick + ' bats' + (P.inns[nx].bowl >= 0 ? ', ' + P.players[P.inns[nx].bowl].nick + ' bowls' : '') : 'That was the last innings!', t: 0 };
+      g.sfx(inn.runs >= 12 ? 'crowd_cheer' : 'kids', { vol: 0.6 });
+      return;
+    }
+    gpNewBall(S);
+  }
+  function gpPeekNext(S, from) { const P = S.pm; for (let i = from; i < P.n; i++) if (!P.L.isGone(P.players[P.inns[i].bat].uid)) return i; return -1; }
+  function gpAfterBreak(S) {
+    const P = S.pm;
+    P.banner = null;
+    const nx = gpNextInnings(S, P.ii + 1);
+    if (nx >= 0) gpInnings(S, nx);
+    else { P.stage = 'final'; P.st = 0; S.stage = 'wait'; S.g.sfx('crowd_cheer', { vol: 0.8 }); }
+  }
+  function gpStandings(S) {
+    const P = S.pm;
+    const rows = P.players.map((p, i) => {
+      const inn = P.inns.find((x) => x.bat === i);
+      const played = inn && !inn.skipped && inn.balls + inn.log.length > 0;
+      const out = inn && inn.wk >= P.W;
+      const note = played ? (out ? 'out' : 'not out') + ', ' + inn.balls + ' ball' + (inn.balls === 1 ? '' : 's') + (inn.sixes ? ' · ' + inn.sixes + '×6' : '') + (inn.fours ? ' · ' + inn.fours + '×4' : '') : 'did not bat';
+      return { uid: p.uid, nick: p.nick, col: p.col, runs: inn ? inn.runs : 0, balls: inn ? inn.balls : 0, wk: inn ? inn.wk : 0, played, res: { score: inn ? inn.runs : 0, runs: inn ? inn.runs : 0, balls: inn ? inn.balls : 0, wk: inn ? inn.wk : 0, note, dnf: !played } };
+    });
+    rows.sort((a, b) => (b.played - a.played) || (b.runs - a.runs) || (a.wk - b.wk) || (a.balls - b.balls));
+    return rows;
+  }
+  function gpFinish(S) {
+    const P = S.pm, ctx = P.ctx;
+    P.reported = true;
+    const rows = gpStandings(S);
+    P.final = rows;
+    const mine = rows.find((r) => r.uid === P.L.me);
+    try { if (mine && !P.L.isGone(P.L.me)) ctx.report(mine.res); } catch (e) { N.err('cricket.gully.report', e); }
+    try { if (ctx.ai && ctx.ai.report && (ctx.mode !== 'party' || ctx.isHost)) for (const r of rows) if (/^ai:/.test(r.uid)) ctx.ai.report(r.uid, r.res); } catch (e) { N.err('cricket.gully.aiReport', e); }
+    P.closeAt = S.clock + 4.5;
+  }
+  GP.update = function (g, dt) {
+    const S = g.S, P = S.pm;
+    P.frameDt += dt;
+    if (P.frame === g.rt) return;
+    P.frame = g.rt;
+    const fdt = P.frameDt; P.frameDt = 0;
+    const L = P.L;
+    if (!P.started) {
+      let el = 0;
+      try { el = P.ctx.elapsed(); } catch (e) { el = 0; }
+      if (isFinite(el) && el < 0) { P.wait = -el / 1000; P.vis += fdt; gpPad(g, S); return; }
+      P.started = true; P.wait = 0; L.lastReal = performance.now(); L.acc = 0; P.lastNow = performance.now();
+    }
+    const now = performance.now();
+    const real = L.solo ? fdt : Math.min(0.5, (now - (P.lastNow || now)) / 1000);
+    P.lastNow = now;
+    try { gpInput(S, g); } catch (e) { N.err('cricket.gully.input', e); }
+    L.tick(real);
+    P.vis += fdt;
+    gpPad(g, S);
+    if (P.reported && !L.over) L.finish();
+    if (P.reported && S.clock >= P.closeAt && !P.closed && !g.closed) {
+      P.closed = true;
+      L.stop(false);
+      const top = P.final && P.final[0];
+      const mine = (P.final || []).find((r) => r.uid === L.me);
+      try { g.close(Object.assign(g.baseResult(), { win: !!(top && top.uid === L.me), party: true, runs: mine ? mine.runs : 0, score: mine ? mine.runs * 10 : 0 })); } catch (e) { N.err('cricket.gully.close', e); }
+    }
+  };
+  GP.idle = function (g, dt) { const S = g.S; if (S && S.pm) S.pm.vis += dt; };
+  function gpPad(g, S) {
+    const r = gpRole(S), key = r + (r === 'bowl' ? ':' + S.pm.aim.p : '');
+    if (key === S.pm.padKey) return;
+    S.pm.padKey = key;
+    try { g.buildPad(); if (g.touch) { g.releaseAll(); g.resize(); } } catch (e) { N.err('cricket.gully.pad', e); }
+  }
+  function gpInput(S, g) {
+    const P = S.pm, L = P.L, role = gpRole(S);
+    if (L.ownerNow() !== L.me) return;
+    const since = (a) => { const t = P.pressT[a]; return t ? clamp(((t - L.lastReal) / 1000) * (L.solo ? 1 : L.speed), 0, 0.25) : 0; };
+    if (role === 'bowl' && P.stage === 'aim') {
+      const A = P.aim;
+      if (g.pressed('pull')) A.l = Math.max(0, A.l - 1);
+      if (g.pressed('cut')) A.l = Math.min(4, A.l + 1);
+      if (g.pressed('drive')) A.n = Math.min(3, A.n + 1);
+      if (g.pressed('back')) A.n = Math.max(0, A.n - 1);
+      if (g.pressed('pace')) { A.p = (A.p + 1) % 3; g.sfx('ui_click'); }
+      if (g.pressed('go') && P.st > 0.3) { const m = gpMeter(S.clock + since('go'), A.p); L.input({ t: 'bowl', l: A.l, n: A.n, p: A.p, q: +Math.abs(m - 0.5).toFixed(4) }); }
+    } else if (role === 'bat' && (P.stage === 'runup' || P.stage === 'flight')) {
+      for (const a of ['pull', 'drive', 'cut', 'go']) if (g.pressed(a)) { const b = S.ball; L.input({ t: 'sw', d: a === 'go' ? 'drive' : a, e: b && P.stage === 'flight' ? +((S.clock + since(a)) - b.tArrive).toFixed(4) : -1 }); break; }
+    } else if (role === 'field' && P.stage === 'hit') {
+      if (g.pressed('go') && P.catchAt != null && P.catchPress == null) L.input({ t: 'ct', at: +(S.clock + since('go')).toFixed(4) });
+    }
+  }
+  function gpApply(S, q) {
+    const P = S.pm, inn = gpInn(S);
+    if (!q || !inn) return;
+    if (q.t === 'bowl') { const bp = gpBowlerOf(S); if (P.stage === 'aim' && bp && P.L.human(bp.uid)) gpBowl(S, q); return; }
+    if (q.t === 'sw') {
+      if (!P.L.human(P.players[inn.bat].uid) || ['pull', 'drive', 'cut'].indexOf(q.d) < 0) return;
+      if (P.stage === 'runup') { if (!S.swing) S.swing = { t: 0, dir: q.d }; return; }
+      if (P.stage !== 'flight') return;
+      gpSwing(S, q.d, clamp(+q.e || 0, -2, 2));
+      if (S.stage === 'hit') { P.stage = 'hit'; P.st = 0; gpPredict(S); }
+      return;
+    }
+    if (q.t === 'ct') { if (P.stage === 'hit' && P.catchPress == null && inn.field >= 0 && P.L.human(P.players[inn.field].uid)) P.catchPress = isFinite(+q.at) ? +q.at : S.clock; }
+  }
+  // the test autopilot (params.autoplay): plays THIS page's part inside the shared steps
+  function gpBot(S) {
+    const P = S.pm, g = S.g, L = P.L;
+    if (!g.auto) return;
+    const lose = g.auto === 'lose', role = gpRole(S), r = P.brng;
+    if (role === 'bowl' && P.stage === 'aim' && P.st > 0.8) {
+      const m = gpMeter(S.clock + LS_H, P.aim.p);
+      if (lose || Math.abs(m - 0.5) < 0.05) L.input({ t: 'bowl', l: (r.next() * 5) | 0, n: (r.next() * 4) | 0, p: (r.next() * 3) | 0, q: lose ? 0.45 : +Math.abs(m - 0.5).toFixed(4) });
+    } else if (role === 'bat' && P.stage === 'flight' && S.ball && !S.swing) {
+      const b = S.ball, t = S.clock + LS_H;
+      if (lose) { if (t - b.tRel > b.T * 0.4) L.input({ t: 'sw', d: 'drive', e: +(t - b.tArrive).toFixed(4) }); return; }
+      if (b.wide) return;
+      if (t >= b.tArrive - 0.004) {
+        const d = b.len === 'short' ? 'pull' : b.len === 'yorker' ? 'drive' : b.xc < -0.15 ? 'pull' : b.xc > 0.22 ? 'cut' : (P.ball % 2 ? 'cut' : 'drive');
+        L.input({ t: 'sw', d, e: +(t - b.tArrive).toFixed(4) });
+      }
+    } else if (role === 'field' && P.stage === 'hit' && P.catchAt != null && P.catchPress == null && !lose && P.catchAt - S.clock < 0.3) L.input({ t: 'ct', at: +(S.clock + LS_H).toFixed(4) });
+  }
+  GP.buttons = function (g) {
+    const S = g.S, r = gpRole(S), P = S.pm;
+    if (r === 'bat') return [{ a: 'pull', label: '◀ PULL', sub: 'LEFT' }, { a: 'drive', label: '▲ DRIVE', sub: 'STRAIGHT', cls: 'big' }, { a: 'cut', label: 'CUT ▶', sub: 'RIGHT' }];
+    if (r === 'bowl') return [
+      { a: 'pull', label: '◀', sub: 'LINE', cls: 'cg-chip' }, { a: 'cut', label: '▶', sub: 'LINE', cls: 'cg-chip' },
+      { a: 'back', label: '▼', sub: 'FULLER', cls: 'cg-chip' }, { a: 'drive', label: '▲', sub: 'SHORTER', cls: 'cg-chip' },
+      { a: 'pace', label: 'PACE', sub: GP_PACE[P.aim.p].name, cls: 'cg-chip teal' }, { a: 'go', label: 'BOWL', sub: 'IN THE GREEN', cls: 'big cg-wide' },
+    ];
+    if (r === 'field') return [{ a: 'go', label: 'CATCH!', sub: 'AS THE RING CLOSES', cls: 'big cg-wide' }];
+    return [];
+  };
+  GP.keyHint = function (g) {
+    const S = g.S, r = gpRole(S);
+    if (r === 'bat') return 'swing as the ball reaches you: <kbd>←</kbd> pull · <kbd>↑</kbd>/<kbd>Space</kbd> drive · <kbd>→</kbd> cut';
+    if (r === 'bowl') return '<kbd>←</kbd><kbd>→</kbd> line · <kbd>↑</kbd><kbd>↓</kbd> length · <kbd>Q</kbd> pace · <kbd>Space</kbd> bowl when the needle is in the green';
+    if (r === 'field') return '<kbd>Space</kbd> CATCH! as the ring closes on the fielder';
+    return esc(gpWatchLine(S));
+  };
+  function gpWatchLine(S) {
+    const P = S.pm, inn = gpInn(S);
+    if (!inn || P.stage === 'intro') return 'Gully cricket with friends: get ready';
+    if (P.stage === 'final') return 'Final scores';
+    const b = P.players[inn.bat], w = inn.bowl >= 0 ? P.players[inn.bowl] : null;
+    return 'Watching: ' + b.nick + ' bats' + (w ? ' · ' + w.nick + ' bowls' : '') + ' · you bat in your own innings';
+  }
+  GP.hud = function (g) {
+    const S = g.S, P = S.pm, inn = gpInn(S), r = gpRole(S);
+    const it = [{ k: 'YOU', v: r === 'watch' ? 'WATCH' : r.toUpperCase(), good: r !== 'watch' }];
+    if (inn && P.stage !== 'intro' && P.stage !== 'final') it.push({ k: P.players[inn.bat].nick.slice(0, 8).toUpperCase(), v: inn.runs + '(' + inn.balls + ')' }, { k: 'BALLS', v: String(Math.max(0, P.B - inn.balls)), warn: P.B - inn.balls <= 2 });
+    return it;
+  };
+  GP.cleanup = function (g) {
+    const S = g.S, P = S && S.pm;
+    if (!P) return;
+    if (!P.reported) {
+      P.L.stop(true);
+      try { if (P.ctx && P.ctx.report && P.ctx.phase !== 'done') P.ctx.report({ dnf: true, score: (gpInn(S) && P.players[gpInn(S).bat].uid === P.L.me ? gpInn(S).runs : 0), note: 'left the lane' }); } catch (e) { /* ignore */ }
+    } else P.L.stop(false);
+  };
+  // drawn over the gully picture: the chalk scoreboard, this page's role, the bowler's aim + needle, the catch ring
+  GP.draw = function (g, ctx) {
+    const S = g.S, P = S.pm, H = N.minigames.helpers, A = g.area, W = g.W, E = P.E, L = P.L;
+    const inn = gpInn(S), role = gpRole(S);
+    const k = clamp(Math.min(W, A.h) / 560, 0.66, 1.2);
+    const T = (s, x, y, o) => H.text(ctx, s, x, y, o);
+    // the scoreboard (chalk on a green board), top left
+    {
+      const bw = Math.min(W * 0.56, 236 * k), lh = 21 * k, bh = 26 * k + P.n * lh, bx = 8, by = A.y + 30 * k;
+      ctx.fillStyle = 'rgba(28,58,40,0.9)'; H.rr(ctx, bx, by, bw, bh, 8); ctx.fill();
+      ctx.strokeStyle = 'rgba(214,190,150,0.85)'; ctx.lineWidth = 3; H.rr(ctx, bx, by, bw, bh, 8); ctx.stroke();
+      T('SCORES · ' + P.B + ' BALLS · ' + P.W + ' OUT', bx + bw / 2, by + 12 * k, { font: 'osd', size: 12.5 * k, color: '#e8f0d8', maxW: bw - 10 });
+      P.players.forEach((p, i) => {
+        const x = P.inns.find((q) => q.bat === i), y = by + 26 * k + i * lh + lh / 2, now = inn && inn.bat === i && P.stage !== 'final' && P.stage !== 'intro' && !(P.stage === 'break' && inn.done);
+        ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(bx + 12 * k, y, 5 * k, 0, TAU); ctx.fill();
+        T((now ? '▶ ' : '') + p.nick + (p.uid === L.me ? ' (you)' : ''), bx + 22 * k, y, { font: 'body', weight: 700, size: 14 * k, color: now ? '#fff6c8' : '#e8f0d8', align: 'left', maxW: bw * 0.6 });
+        const v = !x || x.skipped ? (x && x.skipped ? 'left' : '—') : x.balls || x.log.length || x.done || now ? x.runs + (x.wk >= P.W ? '' : '*') + ' (' + x.balls + ')' : '—';
+        T(v, bx + bw - 8, y, { font: 'osd', size: 15 * k, color: now ? '#ffd84a' : '#e8f0d8', align: 'right' });
+      });
+    }
+    // what is going on (top centre, under the HUD): innings, ball, who bowls
+    if (inn && P.started && P.stage !== 'final' && P.stage !== 'intro') {
+      const bwl = gpBowlerOf(S);
+      const s = 'BALL ' + Math.min(P.B, inn.balls + 1) + '/' + P.B + ' · OUT ' + inn.wk + '/' + P.W + (bwl ? ' · ' + bwl.nick.toUpperCase() + ' BOWLS' : '');
+      T(s, W - 10, A.y + 16 * k, { font: 'osd', size: 15 * k, color: '#eaf2ff', outline: 3, stroke: '#1b2a78', align: 'right', maxW: W * 0.44 });
+      if (inn.log.length) inn.log.slice(-6).forEach((t, i, arr) => T(t, W - 12 - (arr.length - 1 - i) * 24 * k, A.y + 38 * k, { font: 'osd', size: 17 * k, color: t === 'W' ? '#ff8a7a' : t === '4' || t === '6' ? '#ffd84a' : '#fff', outline: 3, align: 'right' }));
+    }
+    // this page's role (bottom left)
+    if (P.started && P.stage !== 'final') {
+      const s = role === 'bat' ? 'YOU BAT' : role === 'bowl' ? 'YOU BOWL' : role === 'field' ? 'YOU FIELD' : 'WATCHING';
+      const col = role === 'bat' ? '#f2c230' : role === 'bowl' ? '#7fd8ff' : role === 'field' ? '#b9ffb0' : 'rgba(20,20,30,0.7)';
+      ctx.font = H.font('osd', 16 * k);
+      const w = ctx.measureText(s).width + 22 * k, h = 26 * k, x = 8, y = A.y + A.h - h - 8;
+      ctx.fillStyle = col; H.rr(ctx, x, y, w, h, h / 2); ctx.fill();
+      T(s, x + w / 2, y + h / 2 + 1, { font: 'osd', size: 16 * k, color: role === 'watch' ? '#eaf2ff' : '#14246a' });
+    }
+    // the bowler's aim: the chalk mark where it will pitch, the line / length / pace, the swinging needle
+    if (P.stage === 'aim' && role === 'bowl') {
+      const a = P.aim, zb = GP_LENS[a.n].zb, kb = (13.6 - zb) / (13.6 - 0.25), x = lerp(0.35, GP_LINES[a.l], kb);
+      const p = E.proj(S, x, 0, zb), q = E.proj(S, GP_LINES[a.l], 0, 0.25);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(2, p.k * 0.05); ctx.setLineDash([6, 5]);
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.beginPath(); ctx.ellipse(p.x, p.y, p.k * 0.42, p.k * 0.12, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 3; ctx.stroke();
+      { const hb = Math.max(18, p.k * 0.9), bob = Math.sin(P.vis * 6) * 3; ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y - hb); ctx.stroke(); ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.moveTo(p.x, p.y - hb + 2 + bob); ctx.lineTo(p.x - 8, p.y - hb - 10 + bob); ctx.lineTo(p.x + 8, p.y - hb - 10 + bob); ctx.closePath(); ctx.fill(); }
+      const mw = Math.min(W - 40, 380 * k), mh = 18 * k, mx = (W - mw) / 2, my = A.y + Math.max(A.h * 0.2, 96 * k);
+      T(GP_LENS[a.n].name + ' · ' + ['WIDE LEFT', 'LEFT', 'STUMPS', 'RIGHT', 'WIDE RIGHT'][a.l] + ' · ' + GP_PACE[a.p].name, W / 2, my - 30 * k, { font: 'display', size: 22 * k, color: '#ffd84a', outline: 5, maxW: W - 20 });
+      ctx.fillStyle = 'rgba(10,12,30,0.78)'; H.rr(ctx, mx - 6, my - 6, mw + 12, mh + 12, 8); ctx.fill();
+      ctx.fillStyle = '#7a2a2a'; ctx.fillRect(mx, my, mw, mh);
+      ctx.fillStyle = '#c8a030'; ctx.fillRect(mx + mw * (0.5 - 0.18), my, mw * 0.36, mh);
+      ctx.fillStyle = '#2a9a4a'; ctx.fillRect(mx + mw * (0.5 - 0.07), my, mw * 0.14, mh);
+      const m = gpMeter(S.clock, a.p);
+      ctx.fillStyle = '#fff'; ctx.fillRect(mx + m * mw - 2, my - 6, 4, mh + 12);
+      T(g.touch ? 'BOWL when the needle is in the green' : 'SPACE when the needle is in the green', W / 2, my + mh + 18 * k, { font: 'osd', size: 15 * k, color: '#eaf2ff', outline: 3, maxW: W - 20 });
+    } else if (P.stage === 'aim' && inn && P.started) {
+      const bwl = gpBowlerOf(S);
+      if (bwl && L.human(bwl.uid)) T(bwl.nick + ' is picking a ball…', W / 2, A.y + A.h * 0.62, { font: 'osd', size: 18 * k, color: '#eaf2ff', outline: 4, maxW: W - 20 });
+    }
+    // the catch ring on the fielder the ball is flying to
+    if (P.stage === 'hit' && P.catchAt != null && S.fielders[P.catchF]) {
+      const f = S.fielders[P.catchF], left = P.catchAt - S.clock, p = E.proj(S, f.x, 0.9, f.z);
+      if (left > -0.1) {
+        const good = left <= 0.55 && left >= 0, rr0 = p.k * (0.32 + Math.max(0, left) * 0.9);
+        ctx.strokeStyle = P.catchPress != null ? '#ffffff' : good ? '#b9ffb0' : '#ffd84a'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(p.x, p.y, rr0, 0, TAU); ctx.stroke();
+        const who = P.players[inn.field];
+        T(role === 'field' ? (P.catchPress != null ? 'Got it?' : (g.touch ? 'CATCH!' : 'SPACE — CATCH!')) : who.nick + ' to catch!', p.x, p.y - rr0 - 14 * k, { font: 'display', size: (role === 'field' ? 26 : 18) * k, color: good ? '#b9ffb0' : '#ffd84a', outline: 5 });
+      }
+    }
+    if (P.speed && P.speed.t < 1.6 && (P.stage === 'flight' || P.stage === 'hit')) T(P.speed.text, W / 2, A.y + 64 * k, { font: 'osd', size: 16 * k, color: '#fff', outline: 3 });
+    if (role === 'field' && (P.stage === 'aim' || P.stage === 'runup' || P.stage === 'flight')) T('You field: CATCH! when the ring closes', W / 2, A.y + A.h - 40 * k, { font: 'osd', size: 16 * k, color: '#b9ffb0', outline: 3, maxW: W - 20 });
+    // banners: get ready / who bats / innings over / the final table
+    const banner = (title, sub, col) => {
+      const w = Math.min(W - 24, 460 * k), h = (sub ? 78 : 54) * k, x = (W - w) / 2, y = A.y + A.h * 0.34;
+      H.sign(ctx, x, y, w, h, { fill: col || '#2a8c82', bolts: true });
+      T(title, W / 2, y + 26 * k, { font: 'display', size: 28 * k, color: '#fff6c8', outline: 4, maxW: w - 20 });
+      if (sub) T(sub, W / 2, y + 58 * k, { font: 'body', weight: 700, size: 16 * k, color: '#ffffff', outline: 3, maxW: w - 20 });
+    };
+    if (!P.started) banner('GULLY CRICKET · WITH FRIENDS', P.wait > 0 ? 'Starting in ' + Math.ceil(P.wait) + '…' : 'GO!');
+    else if (P.stage === 'intro') banner('GULLY CRICKET · WITH FRIENDS', P.B + ' balls each · ' + P.W + ' outs · one-tip-one-hand · Aunty\'s house = OUT');
+    else if (P.banner && (P.stage === 'break' || (P.banner.intro && P.banner.t < 2.6))) banner(P.banner.title, P.banner.sub, P.stage === 'break' ? '#7a3db8' : '#2a8c82');
+    if (P.stage === 'final' && P.final) {
+      const rows = P.final, w = Math.min(W - 24, 420 * k), lh = 30 * k, h = 70 * k + rows.length * lh, x = (W - w) / 2, y = A.y + Math.max(10, (A.h - h) * 0.4);
+      H.sign(ctx, x, y, w, h, { fill: '#1d4f91', bolts: true });
+      const top = rows[0];
+      T(top && top.played ? (top.uid === L.me ? 'YOU WIN!' : top.nick.toUpperCase() + ' WINS!') : 'FINAL SCORES', W / 2, y + 30 * k, { font: 'display', size: 30 * k, color: '#ffd84a', outline: 4, maxW: w - 20 });
+      rows.forEach((r0, i) => {
+        const yy = y + 66 * k + i * lh;
+        ctx.fillStyle = r0.col; ctx.beginPath(); ctx.arc(x + 22 * k, yy, 6 * k, 0, TAU); ctx.fill();
+        T((i + 1) + '. ' + r0.nick + (r0.uid === L.me ? ' (you)' : ''), x + 36 * k, yy, { font: 'body', weight: 700, size: 18 * k, color: '#fff', align: 'left', maxW: w * 0.55 });
+        T(r0.played ? r0.runs + (r0.wk >= P.W ? '' : '*') + ' (' + r0.balls + ')' : 'did not bat', x + w - 16 * k, yy, { font: 'osd', size: 19 * k, color: '#fff6c8', align: 'right', maxW: w * 0.42 });
+      });
+    }
+    if (L.waitFor && P.started) {
+      const s = L.waitFor === 'ev' ? 'Waiting for the result…' : 'Waiting for ' + nickOf(S, L.waitFor) + '…';
+      ctx.font = H.font('osd', 17 * k);
+      const w = ctx.measureText(s).width + 26, h = 30 * k, x = (W - w) / 2, y = A.y + A.h * 0.25;
+      ctx.fillStyle = 'rgba(10,12,30,0.85)'; H.rr(ctx, x, y, w, h, h / 2); ctx.fill();
+      T(s, W / 2, y + h / 2 + 1, { font: 'osd', size: 17 * k, color: '#ffd84a' });
+    }
+  };
+  function gpCss() {
+    if (document.getElementById('cg-party-css')) return;
+    const s = document.createElement('style');
+    s.id = 'cg-party-css';
+    s.textContent = [
+      '.mg-screen[data-mg="cricket"].cg-party .mg-pad { flex-wrap: wrap; row-gap: 8px; column-gap: 8px; }',
+      '.mg-screen[data-mg="cricket"].cg-party .mg-btn.cg-chip { flex: 1 1 15%; max-width: none; height: 54px; font-size: 24px; }',
+      '.mg-screen[data-mg="cricket"].cg-party .mg-btn.cg-chip small { font-size: 12px; }',
+      '.mg-screen[data-mg="cricket"].cg-party .mg-btn.cg-wide { flex: 1 1 100%; max-width: none; height: 62px; }',
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+  function gpInstall() {
+    const MG = N.minigames, D = MG && MG.defs && MG.defs.cricket;
+    if (!D || !D.eng) return false;
+    if (D.__party) return true;
+    D.__party = true;
+    const B = { setup: D.setup, update: D.update, idle: D.idle, draw: D.draw, buttons: D.buttons, keyHint: D.keyHint, hud: D.hud, bot: D.bot, cleanup: D.cleanup };
+    const on = (g) => !!(g && g.S && g.S.pm);
+    D.setup = function (g) { B.setup.call(this, g); if (g.params && g.params.party && g.params.party.players) { try { GP.setup(g); } catch (e) { N.err('cricket.gully.party', e); g.S.pm = null; } } };
+    D.update = function (g, dt) { return on(g) ? GP.update(g, dt) : B.update.call(this, g, dt); };
+    D.idle = function (g, dt) { return on(g) ? GP.idle(g, dt) : B.idle && B.idle.call(this, g, dt); };
+    D.draw = function (g, ctx) { B.draw.call(this, g, ctx); if (on(g)) { try { GP.draw(g, ctx); } catch (e) { N.err('cricket.gully.draw', e); } } };
+    D.buttons = function (g) { return on(g) ? GP.buttons(g) : B.buttons.call(this, g); };
+    D.keyHint = function (g) { return on(g) ? GP.keyHint(g) : B.keyHint.call(this, g); };
+    D.hud = function (g) { return on(g) ? GP.hud(g) : B.hud.call(this, g); };
+    D.bot = function (g, dt, want) { return on(g) ? undefined : B.bot.call(this, g, dt, want); };
+    D.cleanup = function (g) { if (on(g)) GP.cleanup(g); if (B.cleanup) B.cleanup.call(this, g); };
+    return true;
+  }
+  CM.gully = { install: gpInstall,
+    /** test hook (this page only): 'edge' = the next AI swing is an edge (a skier: a catch chance for the fielder) */
+    force(kind) { const g = N.minigames && N.minigames.game; const S = g && g.id === 'cricket' && g.S; if (!S || !S.pm) return false; S.pm.force = kind; return true; },
+    debug() { const g = N.minigames && N.minigames.game; const S = g && g.id === 'cricket' && g.S; if (!S || !S.pm) return null; const P = S.pm; return { clock: S.clock, tArrive: S.ball ? S.ball.tArrive : null, ballHit: !!(S.ball && S.ball.hit), meter: gpMeter(S.clock, P.aim.p), swings: S.swings || 0, lastSw: P.lastSw || null, msg: S.msg ? S.msg.text : null, wait: P.L.waitFor, stage: P.stage, ii: P.ii, ep: P.ep, ball: P.ball, role: gpRole(S), owner: gpOwner(S), lock: P.L.info(), inns: P.inns.map((x) => ({ bat: P.players[x.bat].nick, bowl: x.bowl >= 0 ? P.players[x.bowl].nick : null, field: x.field >= 0 ? P.players[x.field].nick : null, runs: x.runs, balls: x.balls, wk: x.wk, log: x.log.slice(), done: x.done, skipped: x.skipped })), plan: P.plan, aim: Object.assign({}, P.aim), catchAt: P.catchAt, catchPress: P.catchPress, final: P.final, reported: P.reported, started: P.started }; } };
+  CM.lockstep = lockstep;
+  gpInstall();
+  N.on('boot', gpInstall);
+
+  /* ================================================================ party: registrations (src/party.js) */
+  // gully cricket at every colony ground / playground (a spot beside the centre, so the ground's own "Join gully
+  // cricket" stays where it is), the LB Stadium match at the west gate (beside the exhibition match's spot).
+  function gullySpots() {
+    const out = [], seen = new Set(), PL = N.places || {};
+    const ids = Object.keys(PL).filter((id) => /^playground_(?!kit)|^victory_playground$/.test(id));
+    ids.sort((a, b) => (a === 'playground_home' ? -1 : b === 'playground_home' ? 1 : a < b ? -1 : 1));
+    for (const id of ids) {
+      const p = PL[id];
+      if (!p || !isFinite(p.x) || !isFinite(p.y)) continue;
+      const key = Math.round(p.x) + ',' + Math.round(p.y);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ x: p.x, y: p.y + Math.max(20, (p.r || 30) * 0.8), r: 20, name: p.name || 'the ground' });
+    }
+    return out;
+  }
+  function openParty(id, params, ctx) {
+    let open = true;
+    setTimeout(() => {
+      if (!open || !N.minigames || !N.minigames.play) return;
+      N.minigames.play(id, params).then(() => { open = false; });
+    }, 0);
+    return {
+      update() {},
+      end(reason) {
+        if (open && reason !== 'done' && N.minigames && N.minigames.active === id) N.minigames.abort('party:' + (reason || 'end'));
+        open = false;
+        void ctx;
+      },
+    };
+  }
+  const rankBy = (vs) => (rows) => rows.slice().sort((a, b) => {
+    const out = (r) => (r.dnf || r.left || !r.reported ? 1 : 0);
+    if (out(a) !== out(b)) return out(a) - out(b);
+    if (vs && (b.win | 0) !== (a.win | 0)) return (b.win | 0) - (a.win | 0);
+    if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+    if ((a.wk || 0) !== (b.wk || 0)) return vs ? (b.wk || 0) - (a.wk || 0) : (a.wk || 0) - (b.wk || 0);
+    return (a.balls || 0) - (b.balls || 0);
+  });
+  const GULLY_SPEC = {
+    name: 'Gully cricket', icon: '🏏', where: 'playground_home', r: 1, kind: 'score', players: { min: 1, max: 3 }, solo: true,
+    ai: ['ayesha', 'immu'], label: 'Start gully cricket with friends', timeLimit: 900,
+    token: { id: 'party_gully_cricket', name: 'Taped tennis ball', desc: 'Top scorer at gully cricket with friends' },
+    describe() { return 'Bat, bowl and field in turns: 6 balls and 2 outs each. One-tip-one-hand and Aunty\'s house are OUT. Most runs wins.'; },
+    rank: rankBy(false),
+    start(ctx) {
+      const o = (ctx && ctx.opts) || {};
+      return openParty('cricket', { party: ctx, seed: ctx.seed, skipHowto: true, noRetry: true, difficulty: o.difficulty != null ? o.difficulty : 0.4, title: 'Gully Cricket · with friends', autoplay: o.autoplay, place: 'playground_home' }, ctx);
+    },
+  };
+  const MATCH_SPEC = {
+    name: 'LB Stadium match', icon: '🏟️', where: 'lb_stadium', r: 1, kind: 'score', players: { min: 1, max: 3 }, solo: true,
+    ai: ['ayesha'], label: 'Start an LB Stadium match with friends', timeLimit: 1800,
+    token: { id: 'party_lb_match', name: 'LB Stadium ticket stub', desc: 'Star of an LB Stadium match with friends' },
+    describe() { return 'Your gang as Colony XI against an AI XI under the floodlights. Each friend bats their own over (till out) and bowls theirs. TV broadcast, replays and all.'; },
+    rank: rankBy(false),
+    start(ctx) {
+      const o = (ctx && ctx.opts) || {};
+      return openParty('match', { party: ctx, pmode: 'coop', seed: ctx.seed, skipHowto: true, noRetry: true, difficulty: o.difficulty != null ? o.difficulty : 0.4, title: 'LB Stadium · with friends', autoplay: o.autoplay }, ctx);
+    },
+  };
+  const VS_SPEC = {
+    name: 'LB Stadium: friends vs friends', icon: '🏏', where: 'lb_stadium', r: 1, kind: 'score', players: { min: 2, max: 3 }, solo: false,
+    label: 'Start friends vs friends at LB Stadium', timeLimit: 1500,
+    token: { id: 'party_lb_vs', name: 'Floodlight match scorecard', desc: 'Won a friends-vs-friends match at LB Stadium' },
+    describe() { return 'A quick 2-over match: you and your friends on rival XIs. Bat your own overs, bowl at each other.'; },
+    rank: rankBy(true),
+    start(ctx) {
+      const o = (ctx && ctx.opts) || {};
+      return openParty('match', { party: ctx, pmode: 'vs', seed: ctx.seed, skipHowto: true, noRetry: true, difficulty: o.difficulty != null ? o.difficulty : 0.4, title: 'LB Stadium · friends vs friends', autoplay: o.autoplay }, ctx);
+    },
+  };
+  let partyRef = null, partyN = 0, partyT = 0;
+  function registerParty(force) {
+    const P0 = N.party;
+    if (!P0 || typeof P0.register !== 'function') return false;
+    if (partyRef === P0 && !force && P0.get && P0.get('gully_cricket')) return true;
+    if (!N.places || !N.places.lb_stadium) return false; // the map is not built yet
+    try {
+      const gs = gullySpots();
+      const lb = N.places.lb_stadium;
+      P0.register('gully_cricket', Object.assign({}, GULLY_SPEC, { spots: gs }));
+      P0.register('lb_match', Object.assign({}, MATCH_SPEC, { spots: [{ x: lb.x, y: lb.y - 36, r: 22, name: 'LB Stadium (west gate)' }] }));
+      P0.register('lb_match_vs', Object.assign({}, VS_SPEC, { spots: [{ x: lb.x, y: lb.y + 36, r: 22, name: 'LB Stadium (west gate)' }] }));
+      partyRef = P0;
+      return true;
+    } catch (e) { N.err('cricket.party.register', e); return false; }
+  }
+  CM.registerParty = registerParty;
+  N.on('boot', () => { registerParty(true); });
+  N.on('world:built', () => { registerParty(true); });
+  N.addSystem({
+    id: 'cricketParty', order: 89, runIn: ['*'],
+    update(dt) {
+      // party.js may load after this file (or be replaced): keep checking for a while, then now and then
+      partyT -= dt;
+      if (partyT <= 0) { partyT = partyN++ < 60 ? 1 : 10; registerParty(false); gpInstall(); }
+    },
   });
 
   /* ================================================================ match-day dressing of the 2D world */

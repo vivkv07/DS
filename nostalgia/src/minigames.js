@@ -1112,6 +1112,7 @@
       k.anchor = anchor;
       k.aggr = 0.35 + g.diff * 0.45 + g.rng.next() * 0.15;
       k.st = -g.rng.next() * 0.6;
+      if (S.kp) kpSoloSpawn(S, k); // (solo through N.party: an AI friend flies it)
       S.rivals.push(k);
       return k;
     }
@@ -1204,9 +1205,12 @@
         for (let i = 0; i < 3; i++) S.birds.push({ cx: 0.2 + g.rng.next() * 0.6, cy: 0.12 + g.rng.next() * 0.2, r: 0.06 + g.rng.next() * 0.06, ph: g.rng.next() * TAU, sp: 0.4 + g.rng.next() * 0.3 });
         S.cityKey = null;
         S.rasp = g.loop({ ft: 'bandpass', f: 2600, q: 1.4 });
+        // with friends (N.party): one shared sky (or, solo, the AI friends' named kites)
+        if (g.params.party && typeof g.params.party === 'object') kpSetup(g, S);
       },
       layout(g) {
         const S = g.S, A = g.area;
+        if (S.kp && S.kp.multi) { kpLayout(g, S); return; }
         setBand(g);
         const U0 = Math.sqrt(A.w * A.h) / 100;
         S.U = U0; S.ox = A.x; S.oy = A.y; S.Wu = A.w / U0; S.Hu = A.h / U0;
@@ -1250,6 +1254,9 @@
       },
       update(g, dt) {
         const S = g.S, me = S.me;
+        if (S.kp && S.kp.multi) { kpUpdate(g, S, dt); return; }
+        // solo through N.party: the kites go up on the party's GO
+        if (S.kp && S.kp.waitGo) { let e = 0; try { e = S.kp.ctx.elapsed(); } catch (er) { e = 0; } if (isFinite(e) && e < 0) { S.time += dt; return; } S.kp.waitGo = false; }
         S.time += dt;
         if (!g.over) {
           S.left -= dt;
@@ -1378,7 +1385,8 @@
             }
           } else if (P.P <= -1) {
             S.lives--; S.lost++; cutKite(g, S, me, 'cut'); endPech(S, k);
-            g.pop('KAT GAYI!', pp.x, pp.y - 24, { color: '#ff8a7a', size: 32 });
+            if (k.friend) k.friend.cuts++;
+            g.pop(k.friend ? k.friend.nick + ': BO KAATA!' : 'KAT GAYI!', pp.x, pp.y - 24, { color: '#ff8a7a', size: 32 });
             g.sfx('kite_cut'); g.shake(6);
           } else if (!live && P.t > 0.6) {
             endPech(S, k); g.pop('chhoot gaya', pp.x, pp.y - 16, { size: 20, color: '#eaf2ff', font: 'body' });
@@ -1398,6 +1406,7 @@
         const flying = S.rivals.filter((r) => r.state !== 'fall').length;
         if (flying < S.maxRivals && !g.over) { S.respawn -= dt; if (S.respawn <= 0) { const k = spawnRival(g, S); k.st = -0.2; S.respawn = 2.5 + g.rng.next() * 2; } }
         if (S.lowWarnT > 0) S.lowWarnT -= dt;
+        if (S.kp && g.over && !S.kp.reported) kpReport(g, S, false);
       },
       idle(g, dt) { const S = g.S; if (S) S.time = (S.time || 0) + dt; },
       bot(g, dt, want) {
@@ -1410,7 +1419,7 @@
           return;
         }
         let best = null, bd = 1e9;
-        for (const k of S.rivals) { if (k.state !== 'fly') continue; const d = Math.hypot(k.x - me.x, k.y - me.y); if (d < bd) { bd = d; best = k; } }
+        for (const k of (S.kp && S.kp.multi ? S.kp.peers : S.rivals)) { if (k.state !== 'fly' || k.left) continue; const d = Math.hypot(k.x - me.x, k.y - me.y); if (d < bd) { bd = d; best = k; } }
         let tx = S.Wu / 2, ty = S.roofY * 0.4;
         if (best) {
           const t = 0.6, px = best.ax + (best.x - best.ax) * t, py = best.ay + (best.y - best.ay) * t;
@@ -1426,6 +1435,7 @@
       },
       hud(g) {
         const S = g.S;
+        if (S.kp && S.kp.multi) return kpHud(g, S);
         return [
           { k: 'CUT', v: S.cuts + '/' + S.target, good: S.cuts > 0 },
           { k: 'PATANG', v: String(S.lives), warn: S.lives === 1 },
@@ -1434,6 +1444,7 @@
       },
       draw(g, ctx) {
         const S = g.S, W = g.W, Hh = g.H;
+        if (S.kp && S.kp.multi) { kpDraw(g, ctx); return; }
         if (S.cityKey !== W + 'x' + Hh + ':' + g.dpr) paintCity(g, S);
         const u = S.U;
         // sky
@@ -1473,6 +1484,7 @@
           const p = toPx(S, k.x, k.y);
           const sh = k.shake ? Math.sin(S.time * 60) * u * 0.25 : 0;
           drawKite(ctx, p.x + sh, p.y, S.ks * u, k.a, k.skin, { glow: k.me && k.state !== 'fall' ? 0.25 + 0.15 * Math.sin(S.time * 5) : 0 });
+          if (k.friend && k.state !== 'fall') H.text(ctx, k.friend.nick, p.x, p.y - S.ks * u * 1.6, { font: 'body', weight: 700, size: Math.max(12, u * 1.9), color: '#fff', outline: 3, stroke: '#1b2a78' });
         }
         // the crossing point
         if (S.pech) {
@@ -1499,6 +1511,7 @@
       },
       result(g, r) {
         const S = g.S;
+        if (S.kp && S.kp.multi) return kpCard(g, r);
         return {
           title: r.win ? 'Bo kaata!' : r.reason === 'time' ? 'Andhera ho gaya!' : 'Saari patang kat gayi!',
           line: r.win ? 'The whole colony heard you. Immu is already running to lootna the cut kites.' : r.reason === 'time' ? 'Amma is calling everyone down from the terrace.' : 'Ammamma says: pull too hard and it snaps. Let it go a little.',
@@ -1506,7 +1519,7 @@
         };
       },
       stars(g, r) { return r.win ? 1 + (g.S.lost === 0 ? 1 : 0) + (g.S.left > timeLimit(g) * 0.35 ? 1 : 0) : 0; },
-      cleanup(g) { if (g.S && g.S.rasp) g.S.rasp.stop(); },
+      cleanup(g) { if (g.S && g.S.rasp) g.S.rasp.stop(); if (g.S && g.S.kp) kpCleanup(g, g.S); },
     };
     function targetCuts(g) { return g.params.target || Math.round(T.target0 + g.diff * T.target1); }
     function timeLimit(g) { return g.params.time || Math.round(T.time0 - g.diff * T.time1); }
@@ -1644,7 +1657,9 @@
 
     function paintCity(g, S) {
       const W = g.W, Hh = g.H, d = g.dpr, u = S.U;
-      S.cityKey = W + 'x' + Hh + ':' + d;
+      // (with friends the city is as wide as the shared sky, drawn under the moving camera: CW px wide, roofs at +X0)
+      const multi = !!(S.kp && S.kp.multi), CW = multi ? S.cityW : W, X0 = multi ? S.cityX0 : 0;
+      S.cityKey = W + 'x' + Hh + ':' + d + (multi ? ':' + S.cityW : '');
       // sky
       const sky = (S.skyC = S.skyC || H.canvas(1, 1)); sky.width = Math.round(W * d); sky.height = Math.round(Hh * d);
       let c = sky.getContext('2d'); c.setTransform(d, 0, 0, d, 0, 0);
@@ -1657,33 +1672,33 @@
       gr.addColorStop(0, 'rgba(255,250,220,0.95)'); gr.addColorStop(0.08, 'rgba(255,240,190,0.75)'); gr.addColorStop(0.3, 'rgba(255,230,170,0.15)'); gr.addColorStop(1, 'rgba(255,230,170,0)');
       c.fillStyle = gr; c.fillRect(0, 0, W, Hh);
       // city
-      const city = (S.cityC = S.cityC || H.canvas(1, 1)); city.width = Math.round(W * d); city.height = Math.round(Hh * d);
-      c = city.getContext('2d'); c.setTransform(d, 0, 0, d, 0, 0); c.clearRect(0, 0, W, Hh);
+      const city = (S.cityC = S.cityC || H.canvas(1, 1)); city.width = Math.round(CW * d); city.height = Math.round(Hh * d);
+      c = city.getContext('2d'); c.setTransform(d, 0, 0, d, 0, 0); c.clearRect(0, 0, CW, Hh);
       const rng = U.rng(g.baseSeed ^ 0xc17e);
       // far skyline (hazy): domes, minarets, water tanks
       const far = roofPx - u * 5;
       c.fillStyle = '#b9a9c9';
       c.beginPath(); c.moveTo(0, Hh);
       let x = 0;
-      while (x < W) {
+      while (x < CW) {
         const w = u * (3 + rng.next() * 7), h = u * (2 + rng.next() * 6);
         c.lineTo(x, far - h); c.lineTo(x + w, far - h); x += w;
       }
-      c.lineTo(W, Hh); c.closePath(); c.fill();
-      for (let i = 0; i < 4; i++) {
-        const mx = W * (0.1 + rng.next() * 0.8), mh = u * (9 + rng.next() * 7);
+      c.lineTo(CW, Hh); c.closePath(); c.fill();
+      for (let i = 0; i < (multi ? 8 : 4); i++) {
+        const mx = CW * (0.1 + rng.next() * 0.8), mh = u * (9 + rng.next() * 7);
         c.beginPath(); c.moveTo(mx - u * 0.75, far); c.lineTo(mx - u * 0.55, far - mh); c.lineTo(mx + u * 0.55, far - mh); c.lineTo(mx + u * 0.75, far); c.fill();
         c.fillRect(mx - u * 1, far - mh * 0.62, u * 2, u * 0.45); c.fillRect(mx - u * 0.9, far - mh, u * 1.8, u * 0.4);
         c.beginPath(); c.moveTo(mx - u * 0.75, far - mh); c.quadraticCurveTo(mx - u * 0.8, far - mh - u * 1.6, mx, far - mh - u * 2.4); c.quadraticCurveTo(mx + u * 0.8, far - mh - u * 1.6, mx + u * 0.75, far - mh); c.fill();
         c.fillRect(mx - u * 0.08, far - mh - u * 3.2, u * 0.16, u * 0.9);
       }
-      for (let i = 0; i < 2; i++) {
-        const dx = W * (0.15 + rng.next() * 0.7), dr = u * (3 + rng.next() * 2);
+      for (let i = 0; i < (multi ? 4 : 2); i++) {
+        const dx = CW * (0.15 + rng.next() * 0.7), dr = u * (3 + rng.next() * 2);
         c.beginPath(); c.arc(dx, far - u * 4, dr, Math.PI, TAU); c.fill(); c.fillRect(dx - dr, far - u * 4, dr * 2, u * 4);
       }
       // rooftops: flat terraces with parapets, Sintex tanks, antennas, clotheslines
       for (const R of S.roofs) {
-        const x = R.x * u, w = R.w * u, top = S.oy + R.top * u;
+        const x = R.x * u + X0, w = R.w * u, top = S.oy + R.top * u;
         const col = R.near ? (R.r1 < 0.5 ? '#e2c7a2' : '#c9a27a') : (R.r1 < 0.5 ? '#c79a7a' : '#a87a62');
         const tint = ['#e8d9b5', '#d9c3a0', '#c7b9d6', '#bcd3c4', '#e9c6b6', col][(R.r2 * 6) | 0];
         c.fillStyle = H.mix(col, tint, 0.35); c.fillRect(x, top, w, Hh - top);
@@ -1721,15 +1736,514 @@
       const py = S.oy + (S.meFeet - 9 * S.kidS * 4) * u;
       gr = c.createLinearGradient(0, py, 0, Hh);
       gr.addColorStop(0, '#efe9dc'); gr.addColorStop(0.2, '#ddd2bd'); gr.addColorStop(1, '#a89880');
-      c.fillStyle = gr; c.fillRect(0, py, W, Hh - py);
-      c.fillStyle = '#c9bca4'; c.fillRect(0, py, W, u * 0.9);
+      c.fillStyle = gr; c.fillRect(0, py, CW, Hh - py);
+      c.fillStyle = '#c9bca4'; c.fillRect(0, py, CW, u * 0.9);
       c.fillStyle = 'rgba(80,60,40,0.18)';
-      for (let i = 0; i < 40; i++) c.fillRect(rng.next() * W, py + u + rng.next() * (Hh - py), u * (0.5 + rng.next() * 2), u * 0.3);
+      for (let i = 0; i < (multi ? 80 : 40); i++) c.fillRect(rng.next() * CW, py + u + rng.next() * (Hh - py), u * (0.5 + rng.next() * 2), u * 0.3);
       // a potted plant + a red-oxide water pipe on the parapet
       const pot = py;
       c.fillStyle = '#b5694a'; c.fillRect(W * 0.86, pot - u * 2.4, u * 3, u * 2.4);
       c.fillStyle = '#4f7a3a'; for (let i = 0; i < 6; i++) { c.beginPath(); c.ellipse(W * 0.86 + u * 1.5 + (i - 2.5) * u * 0.5, pot - u * 3.4 - (i % 2) * u, u * 0.5, u * 1.6, (i - 2.5) * 0.3, 0, TAU); c.fill(); }
     }
+
+
+    /* ---------------------------------------------------- with friends (N.party: src/party.js, ARCHITECTURE §24) */
+    // PARTY (2-3 friends in a room): one shared sky. Every page flies its own kid's kite from his own terrace (the
+    // terraces stand side by side in a 150 u wide sky, the same rooftops everywhere from the shared seed) and sends it
+    // ~8 times a second ('ks': where it is, the nose, the tension, pulling, the state, its pull quality in a pech, patangs
+    // left, cuts); the friends' kites follow those. The HOST's page referees: it sees two lines cross and starts the
+    // pech ('kp' s), tugs it with both sides' quality (each side's own tension in the green; the higher kite x1.3; the
+    // tug goes out with the host's 'ks'), and calls it ('kp' e: BO KAATA! / chhoot gaya / BARABAR). A manja that snaps
+    // in the red is its owner's ('kx'). Free for all; patangs = 3 each; the most cuts in 90 s wins (the host ends it early
+    // when only one of you has a patang left: 'ke'). The wind and the gusts come from the shared clock, the same for all.
+    // SOLO through N.party: the normal fight, two of the rival kites are the AI friends' (named; they come back when cut);
+    // a friend who cuts you scores. Every page reports its own cuts (solo: the friends' too).
+    const KP = { W: 150, H: 100, roofF: 0.76, sendEvery: 0.125, secs: 90, Lmax: 112 };
+    const KP_SKIN = [0, 3, 5]; // by slot: yellow/red, blue/white, pink/green
+    const KP_ST = ['launch', 'fly', 'pech', 'fall', 'gone'];
+    function kpSlotX(i, n) { return n <= 1 ? KP.W / 2 : n === 2 ? (i ? 100 : 50) : [32, 75, 118][i] || 75; }
+    function kpSetup(g, S) {
+      const ctx = g.params.party;
+      const players = (Array.isArray(ctx.players) ? ctx.players : []).slice(0, 3);
+      const multi = ctx.mode === 'party' && players.filter((q) => !q.isAI).length > 1;
+      S.kp = { ctx, multi, reported: false, offs: [], peers: [], pechs: new Map(), hp: new Map(), pid: 0, sendT: 0, waitGo: typeof ctx.elapsed === 'function', ended: false, endMsg: null, cutsBy: {} };
+      if (!multi) {
+        // solo: the AI friends fly two of the rival kites (named, they come back after a cut)
+        S.kp.friends = players.filter((q) => q.isAI).map((q, i) => ({ uid: q.uid, nick: String(q.nick || 'Friend').slice(0, 12), cuts: 0, kite: null, skin: KITE_SKINS[2 + i * 2] || KITE_SKINS[3] }));
+        S.lives = T.lives; S.livesMax = S.lives; // (a fair fight: no spare-kite bonus)
+        return;
+      }
+      // the shared sky: my slot, my friends' kites
+      S.lives = T.lives; S.livesMax = T.lives;
+      S.maxRivals = 0; S.rivals = [];
+      S.kp.n = players.length;
+      S.kp.slot = Math.max(0, players.findIndex((q) => q.isMe));
+      S.kp.me = players[S.kp.slot];
+      S.left = +g.params.secs > 0 ? +g.params.secs : KP.secs;
+      S.target = 99;
+      S.kp.secs = S.left;
+      S.kp.gusts = []; S.kp.winds = [];
+      const wr = U.rng((g.baseSeed ^ 0x77d1) >>> 0);
+      for (let t = 0, i = 0; t < 400 && i < 80; i++) { t += T.gustMin + wr.next() * (T.gustMax - T.gustMin); S.kp.gusts.push({ t0: t, dir: wr.next() < 0.5 ? -1 : 1 }); t += 1.7; }
+      for (let i = 0; i < 60; i++) S.kp.winds.push((wr.next() < 0.5 ? -1 : 1) * (2 + wr.next() * 4));
+      players.forEach((q, i) => {
+        if (q.isMe) return;
+        S.kp.peers.push({ uid: q.uid, nick: String(q.nick || 'Friend').slice(0, 12), slot: i, skin: KITE_SKINS[KP_SKIN[i] || 1], look: q.look || {}, x: kpSlotX(i, players.length), y: 60, ax: kpSlotX(i, players.length), ay: 80, a: -Math.PI / 2, T: 0.3, pull: false, state: 'launch', st: 0, me: false, remote: true, wob: Math.random() * TAU, lives: T.lives, cuts: 0, lost: 0, q: 0, tx: null, ty: null, ta: -Math.PI / 2, vx: 0, vy: 0, rxT: 0, left: false, fall: null, shake: 0 });
+      });
+      if (typeof ctx.on === 'function') {
+        const on = (t, f) => { try { S.kp.offs.push(ctx.on(t, (d, from) => { if (g.S !== S || !d || typeof d !== 'object') return; try { f(d, from); } catch (e) { N.err('kite.party.' + t, e); } })); } catch (e) { N.err('kite.party.on', e); } };
+        on('ks', (d, from) => kpState(g, S, d, from));
+        on('kp', (d, from) => { if (from && from.uid === kpHostUid(S)) kpPechMsg(g, S, d); });
+        on('kx', (d, from) => { const k = kpPeer(S, from && from.uid); if (k && ctx.isHost) kpHostSnap(g, S, k); });
+        on('ke', (d, from) => { if (from && from.uid === kpHostUid(S)) S.kp.endMsg = d; });
+      }
+      try { if (typeof ctx.onLeave === 'function') ctx.onLeave((uid) => { const k = kpPeer(S, uid); if (k && g.S === S) { k.left = true; k.state = 'gone'; } }); } catch (e) { /* ignore */ }
+    }
+    const kpPeer = (S, uid) => (uid ? S.kp.peers.find((k) => k.uid === uid) || null : null);
+    const kpUid = (S, k) => (k === S.me ? S.kp.me && S.kp.me.uid : k && k.uid);
+    function kpHostUid(S) { const ps = S.kp.ctx.players || []; for (const q of ps) { if (q.isAI) continue; if (q.isMe) return q.uid; const k = kpPeer(S, q.uid); if (k && !k.left) return q.uid; } return null; }
+    function kpKite(S, uid) { return uid && S.kp.me && uid === S.kp.me.uid ? S.me : kpPeer(S, uid); }
+    /** the shared wind: from the party clock, the same on every page */
+    function kpWind(S, t) {
+      const K = S.kp, i = clamp(Math.floor(t / 9), 0, K.winds.length - 1);
+      S.windBase = K.winds[i];
+      S.gust = 0; S.gustWarn = 0;
+      for (const G of K.gusts) {
+        if (t < G.t0 - 1.1) break;
+        if (t < G.t0) { S.gustWarn = G.t0 - t; S.gustDir = G.dir; break; }
+        if (t < G.t0 + 1.7) { S.gust = G.t0 + 1.7 - t; S.gustDir = G.dir; break; }
+      }
+      if (S.gust > 0 && !S.kp.gustOn) { S.kp.gustOn = true; S.kp.gustSfx = true; } else if (S.gust <= 0) S.kp.gustOn = false;
+      S.wind = S.windBase + (S.gust > 0 ? S.gustDir * 15 * Math.sin(Math.min(1, (1.7 - S.gust) / 0.4) * Math.PI * 0.5) : 0);
+    }
+    function kpLayout(g, S) {
+      const A = g.area;
+      setBand(g);
+      S.Hu = KP.H; S.Wu = KP.W;
+      S.U = A.h / S.Hu; S.oy = A.y;
+      S.roofY = S.Hu * KP.roofF;
+      S.ks = g.portrait ? 3.4 : 3.2;
+      S.kidS = Math.min(0.24, S.Hu * 0.0042);
+      S.tinyS = Math.min(0.32, S.Hu * 0.0056);
+      S.meFeet = S.Hu - 1.2;
+      S.Lmax = KP.Lmax;
+      const rng = U.rng(g.baseSeed ^ 0x51ed);
+      S.roofs = [];
+      const layers = [{ y: S.roofY, hmin: 3, hmax: 8, near: false }, { y: S.roofY + 4, hmin: 2, hmax: 6, near: true }];
+      for (const L of layers) { let x = -62; while (x < S.Wu + 62) { const w = 6 + rng.next() * 12, h = L.hmin + rng.next() * (L.hmax - L.hmin); S.roofs.push({ x, w, top: L.y - h, near: L.near, r1: rng.next(), r2: rng.next(), r3: rng.next(), r4: rng.next(), r5: rng.next(), seed: (rng.next() * 1e9) | 0 }); x += w + rng.next() * 1.5; } }
+      S.anchors = [];
+      S.cityX0 = Math.round(62 * S.U); S.cityW = Math.round((S.Wu + 124) * S.U);
+      const ay = S.meFeet - 66 * S.kidS, n = S.kp.n;
+      const mine = { x: kpSlotX(S.kp.slot, n), y: ay };
+      if (!S.me) { S.me = newKite(S, mine, KITE_SKINS[KP_SKIN[S.kp.slot] || 0], true); S.me.state = 'launch'; }
+      S.me.ax = mine.x; S.me.ay = mine.y;
+      for (const k of S.kp.peers) { k.ax = kpSlotX(k.slot, n); k.ay = ay; if (k.tx == null) { k.x = k.ax; k.y = ay - 4; } }
+      S.viewW = A.w / S.U;
+      if (S.camX == null) S.camX = mine.x;
+      kpCamera(g, S, 1);
+      S.cityKey = null;
+    }
+    function kpCamera(g, S, k) {
+      const A = g.area, vw = S.viewW || A.w / S.U;
+      let want = KP.W / 2;
+      if (vw < KP.W + 10) { const me = S.me; want = me && me.state !== 'gone' && me.state !== 'fall' ? me.ax * 0.35 + me.x * 0.65 : me ? me.ax : KP.W / 2; want = clamp(want, vw / 2 - 12, KP.W - vw / 2 + 12); }
+      S.camX = S.camX == null ? want : S.camX + (want - S.camX) * clamp(k, 0, 1);
+      S.ox = A.x + A.w / 2 - S.camX * S.U;
+    }
+    function kpState(g, S, d, from) {
+      const k = kpPeer(S, from && from.uid);
+      if (!k || k.left) return;
+      const st = KP_ST[d.s | 0] || 'fly';
+      const x = clamp(+d.x / 10, -10, KP.W + 10), y = clamp(+d.y / 10, -10, KP.H + 10);
+      if (!isFinite(x) || !isFinite(y)) return;
+      const t = performance.now();
+      if (k.tx != null && t - k.rxT > 20 && t - k.rxT < 500 && st !== 'launch') { const dt = (t - k.rxT) / 1000; k.vx = clamp((x - k.tx) / dt, -60, 60); k.vy = clamp((y - k.ty) / dt, -60, 60); } else { k.vx = 0; k.vy = 0; }
+      k.tx = x; k.ty = y; k.ta = +d.a / 100 || -Math.PI / 2; k.T = clamp(+d.T / 100 || 0, 0, 1.2); k.pull = !!d.p; k.q = clamp(+d.q / 100 || 0, 0, 2);
+      k.lives = clamp(d.l | 0, 0, 9); k.cuts = clamp(d.c | 0, 0, 99); k.lost = clamp(d.n | 0, 0, 99); k.rxT = t;
+      if (st === 'launch' && (k.state === 'gone' || k.state === 'fall')) { k.x = x; k.y = y; k.fall = null; }
+      if (st === 'fall' && k.state !== 'fall') { k.state = 'fall'; k.st = 0; k.fall = { vr: (Math.random() < 0.5 ? -1 : 1) * (3 + Math.random() * 3) }; k.vy = -4; k.vx = (S.wind || 0) * 0.6; }
+      else if (st !== 'fall' && !(k.state === 'pech' && st === 'fly' && S.kp.pechs.size)) k.state = st;
+      // the host's tug of every pech on
+      if (from.uid === kpHostUid(S) && Array.isArray(d.pe)) for (const q of d.pe) { const P = S.kp.pechs.get(q[0] | 0); if (P) P.P = clamp(+q[1] / 100 || 0, -1, 1); }
+    }
+    /** the host's referee call (start / end of a pech), as every page sees it */
+    function kpPechMsg(g, S, d) {
+      const K = S.kp, myUid = K.me && K.me.uid;
+      (K.log || (K.log = [])).push({ k: d.k, id: d.id | 0, how: d.how || null, w: d.w || null, a: d.a || null, b: d.b || null });
+      if (K.log.length > 40) K.log.shift();
+      if (d.k === 's') {
+        const id = d.id | 0, a = kpKite(S, d.a), b = kpKite(S, d.b);
+        if (!a || !b || a === b || K.pechs.has(id)) return;
+        const pt = { x: +d.x / 10 || 0, y: +d.y / 10 || 0 };
+        const P = { id, a, b, ua: d.a, ub: d.b, P: 0, t: 0, pt, above: d.ab };
+        K.pechs.set(id, P);
+        a.state = 'pech'; b.state = 'pech'; a.spin = 0; b.spin = 0;
+        const mine = d.a === myUid || d.b === myUid;
+        const p = toPx(S, pt.x, pt.y);
+        if (mine) {
+          const other = d.a === myUid ? b : a;
+          S.pech = { k: other, P: 0, t: 0, above: d.ab === myUid, pt, burst: 0, burstIn: 99, warn: 0, ph: 0, id, sign: d.a === myUid ? 1 : -1, net: true, you: 0, rival: 0 };
+          g.pop(S.pech.above ? 'UPAR SE PECH!' : 'PECH!', p.x, p.y - 20, { size: 30, color: S.pech.above ? '#ffd84a' : '#fff' });
+          g.sfx('kite_wind', { vol: 0.9 }); g.tone(330, 0.12, { type: 'sawtooth', vol: 0.05, f2: 520 }); g.shake(3);
+        } else g.pop('PECH! ' + kpName(S, a) + ' – ' + kpName(S, b), p.x, p.y - 20, { size: 20, color: '#fff', font: 'body' });
+      } else if (d.k === 'e') {
+        const P = K.pechs.get(d.id | 0);
+        if (!P) return;
+        K.pechs.delete(P.id);
+        const pp = toPx(S, P.pt.x, P.pt.y), how = String(d.how || 'free');
+        const mine = S.pech && S.pech.id === P.id;
+        for (const k of [P.a, P.b]) { if (k.state === 'pech') k.state = 'fly'; k.cd = S.time + 1; }
+        if (mine) S.pech = null;
+        if (how === 'cut') {
+          const w = kpKite(S, d.w), l = kpKite(S, d.l);
+          K.cutsBy[d.w] = (K.cutsBy[d.w] | 0) + 1;
+          if (l === S.me) {
+            S.lives--; S.lost++; cutKite(g, S, S.me, 'cut');
+            g.pop('KAT GAYI!', pp.x, pp.y - 24, { color: '#ff8a7a', size: 32 }); g.sfx('kite_cut'); g.shake(6);
+          } else if (w === S.me) {
+            S.cuts++;
+            S.score += 100 + (d.ab === (K.me && K.me.uid) ? 50 : 0) + Math.max(0, Math.round(60 - (+d.t || 0) * 12));
+            g.pop('BO KAATA!', pp.x, pp.y - 24, { size: 40, color: '#ffd84a', life: 1.5 });
+            g.burst(pp.x, pp.y, 26, { colors: ['#ffd84a', '#fff6c8', '#ff7a4a', l ? l.skin.a : '#fff'], kind: 'paper', speed: 200, grav: 160, life: 1.4, size: 3 });
+            g.sfx('kite_cut'); g.sfx('bo_kaata', { delay: 0.2 }); g.shake(5); g.flash('#fff6c8', 0.3);
+            N.emit('minigame:event', { id: 'kite', type: 'cut', cuts: S.cuts, party: true });
+          } else {
+            g.pop('BO KAATA! ' + kpName(S, w), pp.x, pp.y - 24, { size: 26, color: '#ffd84a' });
+            g.sfx('bo_kaata', { vol: 0.6 });
+          }
+          if (l && l !== S.me && l.state !== 'fall') { l.state = 'fall'; l.st = 0; l.fall = { vr: 4 }; l.vy = -4; l.vx = (S.wind || 0) * 0.6; }
+        } else if (how === 'draw') {
+          g.pop('BARABAR!', pp.x, pp.y - 16, { size: 24, color: '#eaf2ff' });
+          if (P.a === S.me || P.b === S.me) S.me.vy = 10;
+        } else if (how === 'free') g.pop('chhoot gaya', pp.x, pp.y - 16, { size: 20, color: '#eaf2ff', font: 'body' });
+        else if (how === 'snap' && !mine) g.pop('manja toot gaya!', pp.x, pp.y - 16, { size: 20, color: '#ffb4a6', font: 'body' });
+      }
+    }
+    const kpName = (S, k) => (k === S.me ? 'You' : k ? k.nick : '?');
+    /* the host's referee: lines crossing, the tug, the call */
+    function kpQuality(S, k) { return k === S.me ? (S.pech ? quality(S.me.T) * (S.pech.above ? T.highBonus : 1) : 0) : k.q || 0; }
+    function kpHost(g, S, dt) {
+      const K = S.kp, ctx = K.ctx, myUid = K.me && K.me.uid;
+      const kites = [S.me].concat(K.peers.filter((k) => !k.left));
+      // new crossings
+      for (let i = 0; i < kites.length; i++) for (let j = i + 1; j < kites.length; j++) {
+        const a = kites[i], b = kites[j];
+        if (a.state !== 'fly' || b.state !== 'fly' || kpBusy(S, a) || kpBusy(S, b) || (a.cd || 0) > S.time || (b.cd || 0) > S.time) continue;
+        const pt = segX(a.ax, a.ay, a.x, a.y, b.ax, b.ay, b.x, b.y);
+        if (!pt) continue;
+        const id = ++K.pid, ua = kpUid(S, a), ub = kpUid(S, b), ab = a.y < b.y - 1.5 ? ua : b.y < a.y - 1.5 ? ub : '';
+        const msg = { k: 's', id, a: ua, b: ub, x: Math.round(pt.x * 10), y: Math.round(pt.y * 10), ab };
+        K.hp.set(id, { id, a, b, ua, ub, P: 0, t: 0, freeT: 0, ab });
+        try { ctx.send('kp', msg); } catch (e) { /* ignore */ }
+        kpPechMsg(g, S, msg);
+      }
+      // the tug
+      for (const H2 of Array.from(K.hp.values())) {
+        H2.t += dt;
+        const a = H2.a, b = H2.b;
+        let how = null, w = null, l = null;
+        if (H2.snap) how = 'snap';
+        else if (a.left || b.left || a.state === 'fall' || b.state === 'fall' || a.state === 'gone' || b.state === 'gone') how = 'free';
+        else {
+          const live = segX(a.ax, a.ay, a.x, a.y, b.ax, b.ay, b.x, b.y);
+          H2.freeT = live ? 0 : H2.freeT + dt;
+          H2.P += (kpQuality(S, a) - kpQuality(S, b)) * T.pechRate * dt;
+          if (H2.P >= 1) { how = 'cut'; w = H2.ua; l = H2.ub; }
+          else if (H2.P <= -1) { how = 'cut'; w = H2.ub; l = H2.ua; }
+          else if (H2.freeT > 0.6 && H2.t > 0.6) how = 'free';
+          else if (H2.t > 9) how = 'draw';
+        }
+        const P = K.pechs.get(H2.id); if (P) P.P = H2.P;
+        if (how) {
+          K.hp.delete(H2.id);
+          const msg = { k: 'e', id: H2.id, how, w, l, ab: H2.ab, t: +H2.t.toFixed(2) };
+          try { ctx.send('kp', msg); setTimeout(() => { try { ctx.send('kp', msg); } catch (e) { /* ignore */ } }, 300); } catch (e) { /* ignore */ }
+          kpPechMsg(g, S, msg);
+        }
+      }
+      // over early: only one of you still has a patang
+      if (!K.ended && K.peers.length) {
+        const flying = kites.filter((k) => (k === S.me ? S.lives > 0 || S.me.state === 'fly' || S.me.state === 'pech' : !k.left && (k.lives > 0 || k.state === 'fly' || k.state === 'pech')));
+        if (flying.length <= 1 && S.time > 3) kpHostEnd(g, S, 'kites');
+      }
+      void myUid;
+    }
+    function kpBusy(S, k) { for (const P of S.kp.pechs.values()) if (P.a === k || P.b === k) return true; return false; }
+    function kpHostSnap(g, S, k) { for (const H2 of S.kp.hp.values()) if (H2.a === k || H2.b === k) H2.snap = true; }
+    function kpHostEnd(g, S, why) {
+      const K = S.kp;
+      if (K.ended) return;
+      const msg = { why };
+      try { K.ctx.send('ke', msg); setTimeout(() => { try { K.ctx.send('ke', msg); } catch (e) { /* ignore */ } }, 400); } catch (e) { /* ignore */ }
+      K.endMsg = msg;
+    }
+    function kpSend(g, S, dt) {
+      const K = S.kp;
+      K.sendT -= dt;
+      if (K.sendT > 0) return;
+      K.sendT = KP.sendEvery;
+      const me = S.me, d = { x: Math.round(me.x * 10), y: Math.round(me.y * 10), a: Math.round(me.a * 100), T: Math.round(me.T * 100), p: me.pull ? 1 : 0, s: Math.max(0, KP_ST.indexOf(me.state)), q: Math.round(kpQuality(S, me) * 100), l: S.lives, c: S.cuts, n: S.lost };
+      if (K.ctx.isHost && K.hp.size) d.pe = Array.from(K.hp.values()).map((H2) => [H2.id, Math.round(H2.P * 100)]);
+      try { if (!K.ctx.send('ks', d)) K.sendT = 0.03; } catch (e) { /* ignore */ }
+    }
+    function kpUpdate(g, S, dt) {
+      const K = S.kp, me = S.me;
+      S.time += dt;
+      let el = 0;
+      try { el = K.ctx.elapsed() / 1000; } catch (e) { el = 0; }
+      if (K.waitGo) { if (isFinite(el) && el < 0) { K.waitLeft = -el; kpPeersStep(g, S, dt); kpCamera(g, S, 1 - Math.exp(-dt * 3)); return; } K.waitGo = false; }
+      if (!isFinite(el)) el = S.time;
+      kpWind(S, el);
+      if (K.gustSfx) { K.gustSfx = false; g.sfx('kite_wind', { vol: 1 }); }
+      if (!g.over) {
+        const raw = K.secs - el;
+        S.left = Math.max(0, raw);
+        if (K.ctx.isHost && raw <= 0) kpHostEnd(g, S, 'time');
+        // (the host's word, or a little after the time if it never comes)
+        if (K.endMsg || raw <= -2.5) kpFinish(g, S);
+      }
+      if (S.gust > 0 && g.rng.next() < 0.5) {
+        const y = S.oy + g.rng.next() * S.roofY * S.U;
+        g.fx.push({ x: S.gustDir > 0 ? -10 : g.W + 10, y, vx: S.gustDir * (500 + g.rng.next() * 300), vy: 0, t: 0, life: 1.2, size: 2, color: 'rgba(255,255,255,0.7)', grav: 0, drag: 0, kind: 'spark', rot: 0, vr: 0 });
+      }
+      // my kite (my own controls)
+      if (me.state === 'fly' || me.state === 'pech') {
+        if (g.assist) { if (g.pressed('pull')) S.pullT = 0; if (g.down('pull')) S.pullT = (S.pullT || 0) + dt; if (g.released('pull') && S.pullT < 0.22) S.latch = !S.latch; }
+        me.pull = !g.over && (g.down('pull') || (g.assist && S.latch));
+        me.steer = g.over || me.state === 'pech' ? 0 : (g.down('right') ? 1 : 0) - (g.down('left') ? 1 : 0);
+      } else { me.pull = false; me.steer = 0; }
+      me.st += dt;
+      if (me.state === 'launch') { me.vy = Math.min(me.vy, -20); me.pull = false; me.steer = 0; kiteStep(S, me, dt); if (me.y < me.ay - 16 || me.st > 2) { me.state = 'fly'; me.st = 0; } }
+      else if (me.state === 'fly') {
+        kiteStep(S, me, dt); tensionStep(S, me, dt, false);
+        S.redT = me.T > 1 ? S.redT + dt : 0;
+        if (S.redT > T.snapGrace) kpSnap(g, S, toPx(S, me.x, me.y));
+      } else if (me.state === 'pech') {
+        const P = S.pech;
+        const jit = Math.sin(S.time * 31 + me.wob) * 0.12;
+        me.vx *= Math.exp(-5 * dt); me.vy *= Math.exp(-5 * dt);
+        me.x += me.vx * dt + jit * dt * 6; me.y += me.vy * dt + Math.sin(S.time * 7 + me.wob) * dt * 1.5;
+        me.a += U.angleDiff(me.a, Math.atan2(me.y - me.ay, me.x - me.ax)) * 1.5 * dt;
+        tensionStep(S, me, dt, true);
+        if (P) {
+          P.t += dt;
+          const net = K.pechs.get(P.id);
+          P.P = net ? net.P * P.sign : P.P;
+          P.you = kpQuality(S, me); P.rival = P.k ? P.k.q || 0 : 0;
+          S.redT = me.T > 1 ? S.redT + dt : 0;
+          if (S.rasp) S.rasp.set(0.02 + 0.05 * Math.min(1, P.you + P.rival) * (me.pull ? 1 : 0.5), 1800 + me.T * 2000);
+          S.creakT = (S.creakT || 0) - dt;
+          if (me.T > 0.92 && S.creakT <= 0) { S.creakT = 0.16; g.tone(1400 + me.T * 900, 0.05, { type: 'sawtooth', vol: 0.035 }); }
+          const pp = toPx(S, P.pt.x, P.pt.y);
+          if (g.rng.next() < 0.6) g.burst(pp.x, pp.y, 1, { colors: ['#fff6c8', '#ffd84a', '#ff9a4a'], kind: 'spark', speed: 140, grav: 200, life: 0.35, size: 2.2 });
+          if (S.redT > T.snapGrace) kpSnap(g, S, pp);
+        } else if (me.st > 1.5) me.state = 'fly';
+      } else if (me.state === 'fall') {
+        me.vy = Math.min(me.vy + 9 * dt, 16); me.vx += (S.wind * 0.8 - me.vx) * 0.6 * dt;
+        me.x += me.vx * dt + Math.sin(me.st * 3) * 4 * dt; me.y += me.vy * dt; me.a += me.fall.vr * dt;
+        if (me.y > S.Hu + 10 || me.st > 7) { me.state = 'gone'; me.st = 0; }
+      }
+      if (!S.pech && S.rasp) S.rasp.set(0);
+      // a new patang (if there is one left)
+      if ((me.state === 'gone' || (me.state === 'fall' && me.st > 1.4)) && S.lives > 0 && !g.over) {
+        const nk = newKite(S, { x: me.ax, y: me.ay }, me.skin, true); S.me = nk;
+        const q = toPx(S, nk.ax, nk.ay); g.pop('nayi patang!', q.x, q.y - 30, { size: 20, color: '#fff', font: 'body' });
+      }
+      kpPeersStep(g, S, dt);
+      // kites don't overlap (mine makes way)
+      for (const k of K.peers) {
+        if (k.left || (k.state !== 'fly' && k.state !== 'launch') || (S.me.state !== 'fly' && S.me.state !== 'launch')) continue;
+        const dx = S.me.x - k.x, dy = S.me.y - k.y, d = Math.hypot(dx, dy), m = S.ks * 2.2;
+        if (d < m && d > 0.01) { S.me.x += (dx / d) * (m - d) * 0.5; S.me.y += (dy / d) * (m - d) * 0.5; }
+      }
+      if (K.ctx.isHost && !g.over) kpHost(g, S, dt);
+      kpSend(g, S, dt);
+      for (const P of K.pechs.values()) P.t += dt;
+      kpCamera(g, S, 1 - Math.exp(-dt * 2.5));
+      if (S.lowWarnT > 0) S.lowWarnT -= dt;
+    }
+    function kpSnap(g, S, pp) {
+      const K = S.kp, me = S.me;
+      S.redT = 0; S.latch = false;
+      S.lives--; S.lost++; cutKite(g, S, me, 'snap');
+      if (S.pech) S.pech = null;
+      g.pop('MANJA TOOT GAYA!', pp.x, pp.y - 24, { color: '#ff8a7a', size: 28 });
+      g.sfx('kite_cut'); g.shake(7); g.flash('#ff5a3a', 0.25);
+      try { K.ctx.send('kx', { s: 1 }); } catch (e) { /* ignore */ }
+      if (K.ctx.isHost) kpHostSnap(g, S, me);
+    }
+    function kpPeersStep(g, S, dt) {
+      const t = performance.now();
+      for (const k of S.kp.peers) {
+        k.st += dt;
+        if (k.left) continue;
+        if (k.state === 'fall') {
+          k.vy = Math.min(k.vy + 9 * dt, 16); k.vx += ((S.wind || 0) * 0.8 - k.vx) * 0.6 * dt;
+          k.x += k.vx * dt + Math.sin(k.st * 3) * 4 * dt; k.y += k.vy * dt; k.a += ((k.fall && k.fall.vr) || 4) * dt;
+          continue;
+        }
+        if (k.tx == null) continue;
+        const age = Math.min(0.25, (t - k.rxT) / 1000);
+        const px = k.tx + k.vx * age, py = k.ty + k.vy * age, f = 1 - Math.exp(-dt * 12);
+        k.x += (px - k.x) * f; k.y += (py - k.y) * f;
+        k.a += U.angleDiff(k.a, k.ta) * f;
+        if (k.state === 'pech') { k.x += Math.sin(S.time * 31 + k.wob) * 0.12 * dt * 6; }
+      }
+    }
+    function kpFinish(g, S) {
+      const K = S.kp;
+      if (K.ended || g.over) return;
+      K.ended = true;
+      endPech(S, null); S.pech = null;
+      const all = [{ me: true, cuts: S.cuts, lost: S.lost }].concat(K.peers.filter((k) => !k.left).map((k) => ({ me: false, cuts: k.cuts, lost: k.lost, nick: k.nick })));
+      const best = Math.max(...all.map((x) => x.cuts));
+      const top = all.filter((x) => x.cuts === best);
+      const win = best > 0 && top.length === 1 && top[0].me;
+      S.score += S.lives * 50;
+      kpReport(g, S, false);
+      g.finish(win, { cuts: S.cuts, lost: S.lost, livesLeft: S.lives, reason: K.endMsg && K.endMsg.why === 'kites' ? 'kites' : 'time', party: true, draw: top.length > 1 && top.some((x) => x.me), delay: 1.6 });
+    }
+    function kpReport(g, S, early) {
+      const K = S.kp;
+      if (!K || K.reported) return;
+      K.reported = true;
+      const ctx = K.ctx;
+      if (!ctx || typeof ctx.report !== 'function') return;
+      try { ctx.report(early ? { score: S.cuts | 0, dnf: true, note: 'came down from the terrace' } : { score: S.cuts | 0, cuts: S.cuts | 0, lost: S.lost | 0, note: (S.cuts | 0) + ' cut' + (S.cuts === 1 ? '' : 's') + ' · ' + (S.lost | 0) + ' lost' }); } catch (e) { N.err('kite.party.report', e); }
+      // solo: the AI friends' kites were flown here
+      try { if (!K.multi && ctx.ai && typeof ctx.ai.report === 'function') for (const f of K.friends || []) ctx.ai.report(f.uid, { score: f.cuts, cuts: f.cuts, note: f.cuts + ' cut' + (f.cuts === 1 ? '' : 's') }); } catch (e) { N.err('kite.party.aiReport', e); }
+    }
+    function kpCleanup(g, S) {
+      const K = S.kp;
+      if (!K) return;
+      if (!K.reported) kpReport(g, S, true);
+      for (const f of K.offs) { try { if (typeof f === 'function') f(); } catch (e) { /* ignore */ } }
+      K.offs.length = 0;
+    }
+    function kpDraw(g, ctx) {
+      const S = g.S, W = g.W, Hh = g.H, K = S.kp, u = S.U;
+      if (S.cityKey !== W + 'x' + Hh + ':' + g.dpr + ':' + S.cityW) paintCity(g, S);
+      ctx.drawImage(S.skyC, 0, 0, W, Hh);
+      for (const c of S.clouds) { const cx = (((c.x + S.time * c.sp) % 1.3) - 0.15) * W, cy = S.oy + c.y * S.roofY * u; cloud(ctx, cx, cy, c.s * u * 9); }
+      for (const d of S.decor) { const x = (((d.x + S.time * d.sp) % 1.2) - 0.1) * W, y = S.oy + d.y * S.roofY * u + Math.sin(S.time * 0.9 + d.ph) * u; drawKite(ctx, x, y, d.s * u * 1.9, -Math.PI / 2 + Math.sin(S.time * 1.3 + d.ph) * 0.35, d.sk, { alpha: 0.45 }); }
+      ctx.drawImage(S.cityC, S.ox - S.cityX0, 0, S.cityW, Hh);
+      drawFlag(ctx, S, g);
+      // the friends on their terraces
+      for (const k of K.peers) drawPeer(ctx, S, g, k);
+      const all = K.peers.filter((k) => !k.left).concat([S.me]);
+      for (const k of all) drawLine(ctx, S, k);
+      for (const k of all) {
+        if (k.state === 'gone' || (k.state === 'launch' && k.st < 0)) continue;
+        const p = toPx(S, k.x, k.y);
+        drawKite(ctx, p.x + (k.state === 'pech' ? Math.sin(S.time * 60) * u * 0.2 : 0), p.y, S.ks * u, k.a, k.skin, { glow: k.me && k.state !== 'fall' ? 0.25 + 0.15 * Math.sin(S.time * 5) : 0 });
+        if (!k.me && k.state !== 'fall') H.text(ctx, k.nick, p.x, p.y - S.ks * u * 1.6, { font: 'body', weight: 700, size: Math.max(12, u * 1.9), color: '#fff', outline: 3, stroke: '#1b2a78' });
+      }
+      for (const P of K.pechs.values()) {
+        const pp = toPx(S, P.pt.x, P.pt.y);
+        const gr = ctx.createRadialGradient(pp.x, pp.y, 0, pp.x, pp.y, u * 3.2);
+        gr.addColorStop(0, 'rgba(255,246,200,0.95)'); gr.addColorStop(0.35, 'rgba(255,190,80,0.45)'); gr.addColorStop(1, 'rgba(255,160,60,0)');
+        ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(pp.x, pp.y, u * 3.2, 0, TAU); ctx.fill();
+      }
+      drawMe(ctx, S, g);
+      // friends' kites off the screen: an arrow at the edge with the name
+      for (const k of K.peers) {
+        if (k.left || k.state === 'gone') continue;
+        const p = toPx(S, k.x, k.y);
+        if (p.x >= 8 && p.x <= W - 8) continue;
+        const left = p.x < 8, ax = left ? 14 : W - 14, ay = clamp(p.y, S.oy + 30, S.oy + S.roofY * u);
+        ctx.fillStyle = k.skin.a; ctx.strokeStyle = '#1a1214'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(ax + (left ? -8 : 8), ay); ctx.lineTo(ax + (left ? 6 : -6), ay - 8); ctx.lineTo(ax + (left ? 6 : -6), ay + 8); ctx.closePath(); ctx.fill(); ctx.stroke();
+        H.text(ctx, k.nick, ax + (left ? 12 : -12), ay - 14, { font: 'body', weight: 700, size: 12, color: '#fff', outline: 3, align: left ? 'left' : 'right' });
+      }
+      drawGauges(ctx, S, g);
+      if (S.gustWarn > 0 || S.gust > 0) {
+        const a = S.gustWarn > 0 ? 0.6 + 0.4 * Math.sin(g.rt * 18) : 1;
+        H.text(ctx, S.gustDir > 0 ? 'HAWA ⟶' : '⟵ HAWA', W / 2, S.oy + u * 7, { font: 'display', size: Math.max(20, u * 3.6), color: '#eaf2ff', outline: 5, stroke: '#1b2a78', alpha: a });
+        if (S.me.T > 0.75 && S.me.pull) H.text(ctx, 'dheel do! (let go)', W / 2, S.oy + u * 7 + Math.max(22, u * 3.6), { font: 'body', size: Math.max(14, u * 2), weight: 700, color: '#ffd2c8', outline: 4, alpha: a });
+      }
+      if (S.lowWarnT > 0) H.text(ctx, 'Arre! antenna se bachao!', W / 2, S.oy + S.roofY * u - u * 9, { font: 'body', weight: 700, size: Math.max(14, u * 2.2), color: '#fff', outline: 4, alpha: Math.min(1, S.lowWarnT) });
+      if (K.waitGo && K.waitLeft > 0) H.text(ctx, 'Ready… ' + Math.ceil(K.waitLeft), W / 2, S.oy + S.roofY * u * 0.45, { font: 'display', size: 34, color: '#fff6c8', outline: 6 });
+      else if (S.lives <= 0 && (S.me.state === 'gone' || S.me.state === 'fall') && !g.over) H.text(ctx, 'No patangs left — cheer for your friends!', W / 2, S.oy + S.roofY * u * 0.45, { font: 'body', weight: 700, size: 18, color: '#fff', outline: 4 });
+    }
+    function drawPeer(ctx, S, g, k) {
+      const u = S.U, a = toPx(S, k.ax, k.ay), s = u * S.kidS, feetY = S.oy + S.meFeet * u;
+      if (a.x < -60 || a.x > g.W + 60) return;
+      const l = k.look || {};
+      ctx.save(); if (k.left) ctx.globalAlpha = 0.35;
+      const pull = k.pull && (k.state === 'fly' || k.state === 'pech'), yank = pull ? Math.sin(S.time * 18) * s * 1.2 : 0;
+      ctx.strokeStyle = l.skin || '#a8703f'; ctx.lineWidth = Math.max(2, s * 4.4); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(a.x - s * 6, feetY - s * 42); ctx.lineTo(a.x - s * 3, a.y + s * 3 + yank); ctx.moveTo(a.x + s * 10, feetY - s * 42); ctx.lineTo(a.x + s * 3, a.y + s * 5 + yank); ctx.stroke();
+      H.kidBack(ctx, a.x + s * 2, feetY, s, { shirt: l.shirt || k.skin.a, stripes: l.stripes || null, pants: l.pants || '#3b4a6b', skin: l.skin || '#a8703f' });
+      ctx.restore();
+      H.text(ctx, k.nick + (k.left ? ' (left)' : ''), a.x, feetY - s * 70, { font: 'body', weight: 700, size: Math.max(12, u * 1.8), color: '#fff6c8', outline: 3 });
+    }
+    function kpHud(g, S) {
+      const out = [{ k: 'CUT', v: String(S.cuts), good: S.cuts > 0 }, { k: 'PATANG', v: String(Math.max(0, S.lives)), warn: S.lives <= 1 }];
+      for (const k of S.kp.peers) if (!k.left) out.push({ k: k.nick.toUpperCase(), v: String(k.cuts) });
+      out.push({ k: '', v: fmtT(S.left), warn: S.left < 15 });
+      return out;
+    }
+    function kpCard(g, r) {
+      const S = g.S, K = S.kp;
+      const rows = [['Your cuts', S.cuts], ['Patangs lost', S.lost]];
+      for (const k of K.peers) rows.push([k.nick + "'s cuts" + (k.left ? ' (left)' : ''), k.cuts]);
+      return {
+        title: r.win ? 'Bo kaata! Sky is yours!' : r.draw ? 'Barabar!' : 'Kal phir udaayenge!',
+        line: r.win ? 'Your manja cut the most kites. The whole colony heard "Bo kaata!"' : 'The terraces are all talking about that last pech. Rematch?',
+        rows,
+      };
+    }
+    /* solo through N.party: the AI friends' named kites */
+    function kpSoloSpawn(S, k) {
+      const K = S.kp;
+      if (!K || K.multi || !K.friends) return;
+      const f = K.friends.find((x) => !x.kite || x.kite.state === 'gone');
+      if (!f) return;
+      f.kite = k; k.friend = f; k.skin = f.skin;
+    }
+
+    /* ---------------------------------------------------- the party activity ('patang_pech' in N.party) */
+    function kiteSpots() {
+      const out = [], p = N.player;
+      for (const id of ['home_terrace', 'gulzar_houz']) { const q = N.places && N.places[id]; if (q && isFinite(q.x)) out.push({ x: q.x, y: q.y, r: 14, name: 'Kite fight at ' + (q.name || id), id, d: p ? Math.hypot(q.x - p.x, q.y - p.y) : 0 }); }
+      out.sort((a, b) => a.d - b.d);
+      return out;
+    }
+    function kiteFriends() { try { return !!(N.party && N.online && N.online.room && (N.online.room.n | 0) > 1); } catch (e) { return false; } }
+    function kiteSpec() {
+      const spec = {
+        name: 'Kite fight (patang pech)', icon: '🪁', kind: 'score', players: { min: 1, max: 3 }, solo: true, ai: ['immu', 'ayesha'], lock: false, r: 0.5,
+        label: 'Kite fight with friends', timeLimit: 300,
+        token: { id: 'mg_kite_friends', name: 'Bo-kaata manja', desc: 'A spool of glass manja: the most kites cut in a kite fight with friends' },
+        describe: () => 'One sky over the terraces: fly your patang across a friend\'s manja, keep the tension in the green, "Bo kaata!" Most cuts in 90 seconds wins.',
+        rank: (rows) => rows.slice().sort((a, b) => { const oa = a.dnf || a.left || !a.reported ? 1 : 0, ob = b.dnf || b.left || !b.reported ? 1 : 0; return oa - ob || (b.score || 0) - (a.score || 0) || (a.lost || 0) - (b.lost || 0); }),
+        start(ctx) {
+          let open = true;
+          setTimeout(() => {
+            if (!open) return;
+            MG.play('kite', { party: ctx, seed: ctx.seed, skipHowto: true, noRetry: true, difficulty: 0.4, title: 'Patang pech with friends', autoplay: ctx.opts && ctx.opts.autoplay, secs: ctx.opts && ctx.opts.secs, lives: 3 }).then(() => { open = false; });
+          }, 0);
+          return { end(reason) { if (open && MG.active === 'kite' && reason !== 'done') MG.abort('party:' + reason); open = false; } };
+        },
+      };
+      if (kiteFriends()) { const sp = kiteSpots(); if (sp.length) { spec.where = sp[0].id; spec.spots = sp.map((q) => ({ x: q.x, y: q.y, r: q.r, name: q.name })); } }
+      return spec;
+    }
+    const KREG = { ref: null, key: '', t: 0 };
+    function kiteRegister() {
+      const P = N.party;
+      if (!P || typeof P.register !== 'function' || !N.places) return false;
+      const sp = kiteFriends() ? kiteSpots() : [];
+      const key = (kiteFriends() ? 'f' : 's') + ':' + (sp[0] ? sp[0].id : '');
+      if (KREG.ref === P && KREG.key === key) return true;
+      try { P.register('patang_pech', kiteSpec()); KREG.ref = P; KREG.key = key; return true; } catch (e) { N.err('kite.party.register', e); return false; }
+    }
+    MG.kiteParty = { register: kiteRegister, spec: kiteSpec };
+    N.on('boot', kiteRegister);
+    N.on('world:built', () => { KREG.key = ''; kiteRegister(); });
+    N.on('online:room', kiteRegister);
+    N.on('online:players', kiteRegister);
+    N.addSystem({ id: 'kite.party', order: 89, runIn: ['play'], update(dt) { KREG.t -= dt; if (KREG.t <= 0) { KREG.t = 2; try { kiteRegister(); } catch (e) { N.err('kite.party.register', e); } } } });
 
     MG.register(def);
   }
@@ -3216,7 +3730,9 @@
       place: 'playground_', places: ['playground_', 'playground_home', 'lb_stadium', 'victory_playground'],
       secs: 75,
       goLabel: 'PLAY!',
-      keys: { ArrowLeft: 'pull', KeyA: 'pull', KeyZ: 'pull', ArrowUp: 'drive', KeyW: 'drive', Space: 'drive', ArrowRight: 'cut', KeyD: 'cut', KeyX: 'cut' },
+      // Space / Enter = 'go' (a drive when batting; BOWL / CATCH in the party game, src/cricket_match.js); ↓ / S and Q / E are
+      // the party bowler's fuller length and pace
+      keys: { ArrowLeft: 'pull', KeyA: 'pull', KeyZ: 'pull', ArrowUp: 'drive', KeyW: 'drive', Space: 'go', Enter: 'go', NumpadEnter: 'go', ArrowRight: 'cut', KeyD: 'cut', KeyX: 'cut', ArrowDown: 'back', KeyS: 'back', KeyQ: 'pace', KeyE: 'pace' },
       buttons: () => [
         { a: 'pull', label: '◀ PULL', sub: 'LEFT' },
         { a: 'drive', label: '▲ DRIVE', sub: 'STRAIGHT', cls: 'big' },
@@ -3392,7 +3908,7 @@
       if (S.aunty > 0) S.aunty -= dt;
       if (S.bricks) S.bricks.t += dt;
       // input
-      if (!g.over) for (const a of ['pull', 'drive', 'cut']) if (g.pressed(a) && (S.stage === 'flight' || S.stage === 'runup')) { swing(g, S, a); break; }
+      if (!g.over) for (const a of ['pull', 'drive', 'cut', 'go']) if (g.pressed(a) && (S.stage === 'flight' || S.stage === 'runup')) { swing(g, S, a === 'go' ? 'drive' : a); break; }
       const bw = S.bowler;
       if (S.mali && S.mali.t >= 0) {
         S.mali.t += dt;
@@ -3498,7 +4014,8 @@
       for (const f of S.fielders) {
         const dxz = Math.hypot(b.x - f.x, b.z - f.z);
         if (dxz > 0.75 || b.y > 1.75) continue;
-        const r = g.rng.next();
+        // S.pmRoll: the party game's hook (a friend's CATCH! press decides, src/cricket_match.js)
+        const r = S.pmRoll ? S.pmRoll(f, b) : g.rng.next();
         if (b.bounces === 0 && b.t > 0.12) {
           if (r < T.catchFull[0] + g.diff * T.catchFull[1]) { catchBall(g, S, f, 'CAUGHT!'); return; }
           dropped(g, S, f); return;
@@ -3714,7 +4231,7 @@
         ctx.restore();
       };
       if (!lift) drawBat();
-      H.kidBack(ctx, p.x, p.y, s, { shirt: '#f4efe2', stripes: '#2a8c82', pants: '#2b3a5a', skin: '#a8703f' });
+      H.kidBack(ctx, p.x, p.y, s, S.batLook || { shirt: '#f4efe2', stripes: '#2a8c82', pants: '#2b3a5a', skin: '#a8703f' });
       // arms to the bat handle
       ctx.strokeStyle = '#a8703f'; ctx.lineWidth = Math.max(2, 4.2 * s); ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(p.x - 8 * s, p.y - 42 * s); ctx.lineTo(hx, hy); ctx.moveTo(p.x + 8 * s, p.y - 42 * s); ctx.lineTo(hx + 1, hy + 2); ctx.stroke();
@@ -3746,7 +4263,7 @@
       // sprites, far to near
       const spr = [];
       const bw = S.bowler;
-      spr.push({ z: bw.z, f: () => { const p = proj(S, bw.x, 0, bw.z); kid(ctx, p.x, p.y, 1.45 * p.k, { shirt: S.bowlerName ? '#d24d57' : '#d8402a', pants: S.bowlerName ? '#f4efe2' : '#2b2430', girl: !!S.bowlerName, run: S.stage === 'runup', ph: bw.ph, bowl: S.stage === 'flight' || S.stage === 'runup' ? bw.arm : null }); } });
+      spr.push({ z: bw.z, f: () => { const p = proj(S, bw.x, 0, bw.z); kid(ctx, p.x, p.y, 1.45 * p.k, Object.assign({ shirt: S.bowlerName ? '#d24d57' : '#d8402a', pants: S.bowlerName ? '#f4efe2' : '#2b2430', girl: !!S.bowlerName }, S.bowlLook || {}, { run: S.stage === 'runup', ph: bw.ph, bowl: S.stage === 'flight' || S.stage === 'runup' ? bw.arm : null })); } });
       S.fielders.forEach((f, i) => spr.push({ z: f.z, f: () => { const p = proj(S, f.x, 0, f.z); kid(ctx, p.x, p.y, 1.35 * p.k, { shirt: ['#2a8c82', '#f2c230', '#7a3db8', '#3b6fc4'][i % 4], pants: '#4a3f35', crouch: !f.run && !f.catch && S.stage !== 'result', run: f.run > 0.5, ph: f.ph, catch: f.catch }); } }));
       // bowler's-end bricks
       spr.push({ z: 13.4, f: () => drawBricks(ctx, S, 13.45, null) });
@@ -3780,7 +4297,7 @@
         ctx.restore();
       }
       // chasing: need X off Y
-      if (S.stage !== 'result' && !g.over) {
+      if (S.stage !== 'result' && !g.over && !S.pm) {
         const need = Math.max(0, S.target - S.runs);
         H.text(ctx, 'NEED ' + need + ' OFF ' + S.ballsLeft, W / 2, g.area.y + 18, { font: 'osd', size: 22, color: '#eaf2ff', outline: 4, stroke: '#1b2a78' });
         // this over's balls, like chalk marks
@@ -3816,6 +4333,9 @@
       }
     }
 
+    // the gully engine's pieces for the party game (src/cricket_match.js wraps this def when params.party is a
+    // party ctx: friends bat, bowl and field in turn; nothing changes for a normal game)
+    def.eng = { T, G, LW, RW, LWH, RWH, FAR, HIT_Z, deliveryPos, launch, outcome, flyBall, moveFielders, resetFielders, trail, proj };
     MG.register(def);
   }
 
@@ -5583,10 +6103,13 @@
         S.aim = -Math.PI / 2; S.power = 0; S.charging = false; S.chargeT = 0;
         S.striker = null; S.again = false; S.knocked = [];
         S.drag = null; S.msg = null; S.flying = []; S.time = 0;
+        S.balls.forEach((b, i) => { b.id = i; });
         placeStriker(S, 'me');
+        // with friends (N.party): turn by turn round the ring, the same board on every page (the same seed)
+        if (g.params.party && typeof g.params.party === 'object') mpSetup(g, S);
       },
       layout(g) { lay(g, g.S); g.S.bgKey = null; },
-      update(g, dt) { step(g, g.S, dt); },
+      update(g, dt) { if (g.S.pp) mpStep(g, g.S, dt); else step(g, g.S, dt); },
       idle(g, dt) { const S = g.S; if (S) { S.time += dt; if (S.msg) S.msg.t += dt; } },
       pointer(g, type, x, y, id) {
         const S = g.S, L = S.L;
@@ -5622,11 +6145,13 @@
       },
       hud(g) {
         const S = g.S;
+        if (S.pp) return mpHud(g, S);
         return [{ k: 'TUM', v: S.me + '/' + S.need, good: S.me > S.rival }, { k: S.rv.name.toUpperCase(), v: S.rival + '/' + S.need, warn: S.rival >= S.need - 1 }, { k: 'SHOTS', v: String(Math.max(0, T.shots - S.myTurns)), warn: S.myTurns >= T.shots - 2 }];
       },
       draw(g, ctx) { drawMarbles(g, ctx, g.S); },
       result(g, r) {
         const S = g.S, nm = S.rv.name;
+        if (S.pp) return mpCard(g, r);
         return {
           title: r.win ? (S.rv.tiger ? 'Tiger ko haraya!' : 'Saari goli meri!') : r.draw ? 'Barabar!' : nm + ' jeet gaya!',
           line: r.win ? (S.rv.tiger ? 'Tiger turns his cap round the right way, just for a second. "Not bad. Not bad at all."' : 'Your pocket clinks all the way home. ' + nm + ' wants a rematch tomorrow.')
@@ -5635,6 +6160,7 @@
         };
       },
       stars(g, r) { const S = g.S; return r.win ? 1 + (S.rival <= 2 ? 1 : 0) + (S.myTurns <= 6 ? 1 : 0) : 0; },
+      cleanup(g) { if (g.S && g.S.pp) mpCleanup(g, g.S); },
     };
     function rival(g) { const k = String(g.params.rival || 'pappu').toLowerCase(); const rv = Object.assign({}, RIVALS[k] || RIVALS.pappu); if (g.params.rivalName) rv.name = String(g.params.rivalName); return rv; }
     function hasRaja(g) { return g.params.rajaGoli != null ? !!g.params.rajaGoli : MG.hasItem('raja_goli'); }
@@ -5666,6 +6192,7 @@
       S.power = 0; S.charging = false;
       S.turns++; if (S.turn === 'me') S.myTurns++;
       g.sfx('marble', { vol: 0.5, pitch: 0.8 });
+      if (S.pp) mpShot(g, S, ang, power);
     }
 
     function physics(g, S, dt) {
@@ -5898,7 +6425,7 @@
       // Pappu crouching at the top of the ring, you at the bottom (top-down: head + shoulders + hands)
       const ra = S.rpos != null && S.turn === 'rival' ? S.rpos : g.portrait ? -Math.PI / 2 : 0;
       const rp = toS(S, Math.cos(ra) * (R + 6), Math.sin(ra) * (R + 6));
-      kidTop(ctx, rp.x, rp.y, s, S.rv.shirt, Math.atan2(L.cy - rp.y, L.cx - rp.x), S.turn === 'rival' && S.stage === 'roll' && S.st < 0.2, S.rv.cap);
+      if (!S.pp) kidTop(ctx, rp.x, rp.y, s, S.rv.shirt, Math.atan2(L.cy - rp.y, L.cx - rp.x), S.turn === 'rival' && S.stage === 'roll' && S.st < 0.2, S.rv.cap); // (with friends: mpDraw)
       if (S.turn === 'me' && S.striker && S.striker.striker === 'me') {
         const a = Math.atan2(S.striker.y, S.striker.x), mp = toS(S, Math.cos(a) * (R + 6.5), Math.sin(a) * (R + 6.5));
         if (!S.again) kidTop(ctx, mp.x, mp.y, s, '#d8402a', Math.atan2(L.cy - mp.y, L.cx - mp.x), S.stage === 'roll' && S.st < 0.2);
@@ -5928,11 +6455,11 @@
       if (S.striker) { const p = toS(S, S.striker.x, S.striker.y); marble(ctx, p.x, p.y, S.striker.r * s, S.striker); }
       // won marbles fly to the owner's pile
       for (const f of S.flying) {
-        const k = H.ease.inOut(Math.min(1, f.t / 0.9)), to = pileXY(g, S, f.who, f.who === 'me' ? S.me : S.rival);
+        const k = H.ease.inOut(Math.min(1, f.t / 0.9)), to = S.pp ? mpPileXY(g, S, f.who, S.pl[f.who] ? S.pl[f.who].score : 1) : pileXY(g, S, f.who, f.who === 'me' ? S.me : S.rival);
         marble(ctx, lerp(f.from.x, to.x, k), lerp(f.from.y, to.y, k) - Math.sin(k * Math.PI) * 40, f.b.r * s, f.b);
       }
       // piles (counted)
-      drawPile(ctx, g, S, 'me', S.me); drawPile(ctx, g, S, 'rival', S.rival);
+      if (S.pp) mpDraw(ctx, g, S); else { drawPile(ctx, g, S, 'me', S.me); drawPile(ctx, g, S, 'rival', S.rival); }
       // turn banner + message
       const ty = g.portrait ? L.cy + (R + 10) * s : g.area.y + g.area.h - 18;
       H.text(ctx, S.turn === 'me' ? (S.again ? 'PHIR SE! Wahi se maaro' : S.sudden ? 'SUDDEN DEATH: TUMHARI BAARI' : 'TUMHARI BAARI') : S.rv.name.toUpperCase() + ' KI BAARI...', W / 2, Math.min(ty, g.area.y + g.area.h - 16), { font: 'osd', size: 22, color: S.turn === 'me' ? '#ffd84a' : '#eaf2ff', outline: 4 });
@@ -5965,6 +6492,388 @@
       ctx.beginPath(); ctx.moveTo(2.8 * k, 1.5 * k); ctx.lineTo(2 * k, (flick ? 6.5 : 5) * k); ctx.moveTo(-2.8 * k, 1.5 * k); ctx.lineTo(-3.4 * k, 4.2 * k); ctx.stroke();
       ctx.restore();
     }
+
+
+    /* ---------------------------------------------------- with friends (N.party: src/party.js, ARCHITECTURE §24) */
+    // 2-3 players round one ring, turn by turn in the party's player order (the host first), every flick T.shots times.
+    // Every page builds the same board (the same seed) and shows every flick: the shooter's page sends it ('gf': where
+    // the striker is, the aim, the power, raja) and, when the goli stop, the result ('gr': where each goli lies, the
+    // scores, shoot again / whose turn / sudden death / over), which every page snaps to (the physics run on a fixed
+    // 1/120 s step, so they agree anyway). A friend who leaves loses his turns; the host skips a turn nobody takes ('gs').
+    // Solo through N.party: the AI friends (ctx.players isAI) take their turns here. First to clear the ring, or the
+    // most goli when the flicks run out (a tie: sudden death among the leaders), wins. Each page reports its own goli.
+    T.shotClock = T.shotClock || 25; T.skipAfter = T.skipAfter || 40;
+    const MP_AI = { pappu: '#2a8c82', immu: '#2f8a5a', ayesha: '#d24d57', bunty: '#1a1a2a', tiger: '#1a1a2a' };
+    function mpSetup(g, S) {
+      const ctx = g.params.party;
+      const list = (Array.isArray(ctx.players) ? ctx.players : []).slice(0, 3);
+      S.pl = list.map((q, i) => {
+        const look = q.look || {};
+        let skill = 0.6;
+        try { if (q.isAI && ctx.ai && ctx.ai.skill) skill = +ctx.ai.skill(q.uid) || 0.6; } catch (e) { /* ignore */ }
+        return { uid: q.uid, nick: String(q.nick || 'Friend').slice(0, 12), me: !!q.isMe, ai: !!q.isAI, npc: q.npc || null, score: 0, flicks: 0, left: false, slot: i, skill,
+          shirt: (q.isAI && MP_AI[q.npc]) || look.shirt || ['#d8402a', '#3b6fc4', '#7a3db8'][i % 3], cap: look.cap ? look.capColor || '#d8302a' : null };
+      });
+      if (!S.pl.some((q) => q.me)) S.pl.unshift({ uid: 'me', nick: 'You', me: true, ai: false, score: 0, flicks: 0, left: false, slot: 0, skill: 0.6, shirt: '#d8402a' });
+      S.pp = { ctx, n: 0, turnI: 0, shotT: 0, res: null, acc: 0, moving: false, sudden: null, done: false, reported: false, offs: [], waitGo: typeof ctx.elapsed === 'function', started: false };
+      S.mine = S.pl.find((q) => q.me);
+      // (the first shooter's name on the turn line while the 3-2-1 runs)
+      S.stage = 'start'; S.turn = S.pl[0].me ? 'me' : 'rival'; if (!S.pl[0].me) S.rv = mpRv(S.pl[0]);
+      if (ctx.mode === 'party' && typeof ctx.on === 'function') {
+        const on = (t, f) => { try { S.pp.offs.push(ctx.on(t, (d, from) => { if (g.S !== S || g.over || !d || typeof d !== 'object') return; try { f(d, from); } catch (e) { N.err('marbles.party.' + t, e); } })); } catch (e) { N.err('marbles.party.on', e); } };
+        on('gf', (d, from) => mpFlickIn(g, S, d, from));
+        on('gr', (d, from) => { if ((d.n | 0) === S.pp.n && from && from.uid === mpAuthority(S)) S.pp.res = d; });
+        on('gs', (d, from) => { if ((d.n | 0) === S.pp.n && from && from.uid === mpHostUid(S) && S.stage === 'remote') mpAfter(g, S, mpClean(d), true); });
+      }
+      try { if (typeof ctx.onLeave === 'function') ctx.onLeave((uid) => { const q = S.pl.find((x) => x.uid === uid); if (q && g.S === S) q.left = true; }); } catch (e) { /* ignore */ }
+    }
+    const mpCur = (S) => S.pl[S.pp.turnI] || null;
+    function mpHostUid(S) { const q = S.pl.find((x) => !x.ai && !x.left); return q ? q.uid : null; }
+    /** whose page decides this turn's result: the shooter's (a friend who left: the host's) */
+    function mpAuthority(S) { const c = mpCur(S); return c && !c.left ? (c.ai ? mpHostUid(S) : c.uid) : mpHostUid(S); }
+    function mpRv(q) { return { name: q.nick, shirt: q.shirt, cap: q.cap, tiger: false }; }
+    function mpBegin(g, S) {
+      const pp = S.pp, q = mpCur(S);
+      pp.shotT = 0; pp.res = null;
+      if (!q) return;
+      if (q.me) {
+        S.turn = 'me'; S.stage = 'aim'; S.st = 0;
+        if (!S.again) placeStriker(S, 'me'); else if (S.striker) { S.striker.striker = 'me'; S.striker.raja = !!S.raja; S.aim = Math.atan2(-S.striker.y, -S.striker.x); }
+      } else {
+        S.turn = 'rival'; S.rv = mpRv(q); S.st = 0;
+        S.stage = q.ai ? 'rival' : 'remote';
+        S.rplan = null;
+        if (!S.again) { S.rpos = mpSeat(S, S.pp.turnI); placeStriker(S, 'rival'); } else if (S.striker) S.striker.striker = 'rival';
+      }
+    }
+    /** where a player sits round the ring (on this screen: me at the bottom, the others across) */
+    function mpSeat(S, i) {
+      const q = S.pl[i];
+      if (!q || q.me) return Math.PI / 2;
+      const others = S.pl.filter((x) => !x.me), k = others.indexOf(q);
+      return others.length > 1 ? -Math.PI / 2 + (k ? 0.8 : -0.8) : -Math.PI / 2;
+    }
+    function mpShot(g, S, ang, power) {
+      const pp = S.pp, q = mpCur(S);
+      if (q) q.flicks++;
+      pp.acc = 0; pp.moving = true;
+      // the same start on every page: nothing left over from the last roll
+      for (const b of S.balls) b.bumped = null;
+      if (S.striker) S.striker.bumped = null;
+      if (q && q.me && pp.ctx.mode === 'party' && S.striker) {
+        try { pp.ctx.send('gf', { n: pp.n, x: Math.round(S.striker.x * 1000), y: Math.round(S.striker.y * 1000), a: +ang.toFixed(5), w: +power.toFixed(4), r: S.raja ? 1 : 0, ag: S.again ? 1 : 0 }); } catch (e) { N.err('marbles.party.send', e); }
+      }
+    }
+    function mpFlickIn(g, S, d, from) {
+      const pp = S.pp, q = mpCur(S);
+      if ((d.n | 0) !== pp.n || !q || q.me || q.ai || !from || from.uid !== q.uid || S.stage !== 'remote') return;
+      const x = clamp(+d.x / 1000, -R - 6, R + 6), y = clamp(+d.y / 1000, -R - 6, R + 6), a = +d.a, w = clamp(+d.w, 0, 1);
+      if (!isFinite(x) || !isFinite(y) || !isFinite(a) || !isFinite(w)) return;
+      S.striker = { x, y, vx: 0, vy: 0, r: SR, m: d.r ? SM * T.rajaMass : SM, col: '#2a2a3a', striker: 'rival', raja: !!d.r, rot: 0 };
+      S.rpos = Math.atan2(y, x);
+      S.stage = 'rival';
+      shoot(g, S, a, w);
+    }
+    /** the physics on a fixed step (every page rolls the same flick the same way) */
+    function mpPhysics(g, S, dt) {
+      const pp = S.pp, h = 1 / 120;
+      pp.acc = Math.min(pp.acc + dt, 0.25);
+      let k = 0, moving = false;
+      while (pp.acc >= h && k < 40) { pp.acc -= h; moving = physics(g, S, h) || moving; k++; }
+      if (k) pp.moving = moving;
+      return pp.moving;
+    }
+    function mpTop(S) {
+      const act = S.pl.map((q, i) => ({ q, i })).filter((x) => !x.q.left);
+      const best = Math.max(-1, ...act.map((x) => x.q.score));
+      return act.filter((x) => x.q.score === best).map((x) => x.i);
+    }
+    function mpOver(S) {
+      const act = S.pl.filter((q) => !q.left);
+      if (!S.balls.length) return true;
+      if (S.pl.length > 1 && act.length <= 1) return true;
+      if (act.length > 1) {
+        const sc = act.map((q) => q.score).sort((a, b) => b - a), rem = S.balls.reduce((a, b) => a + b.val, 0);
+        if (sc[0] - sc[1] > rem) return true; // nobody can catch the leader now
+      }
+      return false;
+    }
+    function mpNext(S, sudden) {
+      const n = S.pl.length, cur = S.pp.turnI;
+      for (let k = 1; k <= n; k++) { const i = (cur + k) % n, q = S.pl[i]; if (q.left) continue; if (sudden ? sudden.indexOf(i) >= 0 : q.flicks < T.shots) return i; }
+      return -1;
+    }
+    /** after a flick (or a skipped turn): again / next / sudden death / over */
+    function mpDecide(S, got, inside) {
+      if (mpOver(S)) return { e: 1 };
+      if (got > 0 && inside && !mpCur(S).left) return { ag: 1, nx: S.pp.turnI, sd: S.pp.sudden };
+      let sd = S.pp.sudden;
+      if (sd) { const lead = mpTop(S); if (lead.length === 1) return { e: 1 }; sd = lead; }
+      let nx = mpNext(S, sd);
+      if (nx < 0) {
+        const lead = mpTop(S);
+        if (lead.length <= 1) return { e: 1 };
+        sd = lead; nx = mpNext(S, sd);
+        if (nx < 0) return { e: 1 };
+      }
+      return { nx, sd };
+    }
+    function mpClean(d) { return { e: d.e ? 1 : 0, ag: d.ag ? 1 : 0, nx: d.nx | 0, sd: Array.isArray(d.sd) ? d.sd.filter((i) => (i | 0) >= 0 && (i | 0) < 3).map((i) => i | 0) : null }; }
+    /** this page decides the turn: what went out, then tell the friends */
+    function mpResolveLocal(g, S) {
+      const pp = S.pp, who = pp.turnI;
+      let got = 0;
+      for (let i = S.balls.length - 1; i >= 0; i--) {
+        const b = S.balls[i];
+        if (Math.hypot(b.x, b.y) > R + b.r * 0.2) { S.balls.splice(i, 1); got += b.val; S.pl[who].score += b.val; mpFly(g, S, b, who); }
+      }
+      const st = S.striker, inside = !!st && Math.hypot(st.x, st.y) < R - st.r * 0.5;
+      const D = mpDecide(S, got, inside);
+      if (pp.ctx.mode === 'party') {
+        const msg = Object.assign({ n: pp.n, b: S.balls.map((b) => [b.id, Math.round(b.x * 1000), Math.round(b.y * 1000)]), s: st ? [Math.round(st.x * 1000), Math.round(st.y * 1000)] : null, sc: S.pl.map((q) => q.score), g: got }, D);
+        try { pp.ctx.send('gr', msg); } catch (e) { N.err('marbles.party.send', e); }
+      }
+      mpAfter(g, S, Object.assign({ got }, D), false);
+    }
+    /** a friend's result: the goli where his page left them */
+    function mpApply(g, S, Rr) {
+      const pp = S.pp, who = pp.turnI;
+      const keep = new Map((Array.isArray(Rr.b) ? Rr.b : []).filter((q) => Array.isArray(q)).map((q) => [q[0] | 0, q]));
+      for (let i = S.balls.length - 1; i >= 0; i--) {
+        const b = S.balls[i], q = keep.get(b.id);
+        if (!q) { S.balls.splice(i, 1); mpFly(g, S, b, who); continue; }
+        b.x = clamp(+q[1] / 1000, -R - 8, R + 8) || 0; b.y = clamp(+q[2] / 1000, -R - 8, R + 8) || 0; b.vx = b.vy = 0;
+      }
+      if (S.striker && Array.isArray(Rr.s)) { S.striker.x = +Rr.s[0] / 1000 || 0; S.striker.y = +Rr.s[1] / 1000 || 0; S.striker.vx = S.striker.vy = 0; }
+      if (Array.isArray(Rr.sc)) Rr.sc.forEach((v, i) => { if (S.pl[i]) S.pl[i].score = Math.max(0, v | 0); });
+      mpAfter(g, S, Object.assign({ got: Rr.g | 0 }, mpClean(Rr)), false);
+    }
+    function mpFly(g, S, b, who) {
+      const p = toS(S, b.x, b.y), q = S.pl[who], me = q && q.me;
+      S.flying.push({ b, t: 0, who, from: p });
+      g.pop(b.jack ? 'JACKPOT! +3' : '+1', p.x, p.y - 16, { size: b.jack ? 28 : 22, color: me ? '#ffd84a' : '#ffb4a6' });
+      if (me) g.sfx('pickup', { vol: 0.6 });
+    }
+    function mpAfter(g, S, D, skipped) {
+      const pp = S.pp, q = mpCur(S);
+      if (skipped && q) q.flicks++;
+      pp.n++;
+      S.me = S.mine ? S.mine.score : 0;
+      S.rival = Math.max(0, ...S.pl.filter((x) => !x.me).map((x) => x.score));
+      S.score = S.me * 100;
+      if (D.e) { mpEnd(g, S); return; }
+      if (D.ag) {
+        S.again = true;
+        S.msg = { text: q && q.me ? 'PHIR SE MAARO!' : (q ? q.nick : '') + ' phir se!', t: 0 };
+      } else {
+        S.again = false;
+        if (skipped) S.msg = { text: (q ? q.nick : 'Somebody') + ' missed the turn', t: 0 };
+        else if (!D.got) S.msg = { text: q && q.me ? 'Khaali gaya!' : (q ? q.nick : '') + ' chuk gaya!', t: 0 };
+        if (D.sd && !pp.sudden) S.msg = { text: 'BARABAR! Agli goli jeetegi!', t: 0 };
+        pp.sudden = D.sd || null; S.sudden = !!pp.sudden;
+        pp.turnI = clamp(D.nx | 0, 0, S.pl.length - 1);
+      }
+      mpBegin(g, S);
+    }
+    function mpEnd(g, S) {
+      const pp = S.pp;
+      if (pp.done || g.over) return;
+      pp.done = true;
+      S.stage = 'done';
+      const top = mpTop(S), mine = S.mine;
+      const meI = S.pl.indexOf(mine), win = top.length === 1 && top[0] === meI;
+      S.me = mine ? mine.score : 0;
+      S.rival = Math.max(0, ...S.pl.filter((x) => !x.me).map((x) => x.score));
+      S.score = S.me * 100 + (win ? 300 : 0) + Math.max(0, T.shots - (mine ? mine.flicks : 0)) * 30;
+      mpReport(g, S, false);
+      g.finish(win, { mine: S.me, rival: S.rival, draw: top.length > 1 && top.indexOf(meI) >= 0, opponent: 'friends', party: true, delay: 1.6 });
+    }
+    function mpReport(g, S, early) {
+      const pp = S.pp, ctx = pp.ctx;
+      if (pp.reported || !ctx || typeof ctx.report !== 'function') return;
+      pp.reported = true;
+      const mine = S.mine;
+      try { ctx.report(early ? { score: mine ? mine.score : 0, dnf: true, note: 'left the ring' } : { score: mine ? mine.score : 0, note: (mine ? mine.score : 0) + ' goli' }); } catch (e) { N.err('marbles.party.report', e); }
+      // the AI friends (solo): played here, reported here
+      try { if (ctx.ai && typeof ctx.ai.report === 'function') for (const q of S.pl) if (q.ai) ctx.ai.report(q.uid, { score: q.score, note: q.score + ' goli' }); } catch (e) { N.err('marbles.party.aiReport', e); }
+    }
+    function mpCleanup(g, S) {
+      const pp = S.pp;
+      if (!pp) return;
+      if (!pp.reported) mpReport(g, S, true);
+      for (const f of pp.offs) { try { if (typeof f === 'function') f(); } catch (e) { /* ignore */ } }
+      pp.offs.length = 0;
+    }
+    function mpStep(g, S, dt) {
+      const pp = S.pp;
+      S.time += dt; S.st += dt;
+      if (S.msg) S.msg.t += dt;
+      for (let i = S.flying.length - 1; i >= 0; i--) { S.flying[i].t += dt; if (S.flying[i].t > 0.9) S.flying.splice(i, 1); }
+      // everybody starts on the shared GO (the party clock)
+      if (pp.waitGo) {
+        let e = 0; try { e = pp.ctx.elapsed(); } catch (er) { e = 0; }
+        if (isFinite(e) && e < 0) { pp.waitLeft = -e / 1000; return; }
+        pp.waitGo = false;
+      }
+      if (!pp.started) { pp.started = true; mpBegin(g, S); }
+      if (g.over) { if (S.stage === 'roll') mpPhysics(g, S, dt); return; }
+      const cur = mpCur(S);
+      if (S.stage === 'aim' && S.turn === 'me') {
+        if (!S.again) {
+          const mv = (g.down('mright') ? 1 : 0) - (g.down('mleft') ? 1 : 0);
+          if (mv) { S.pos += mv * 0.9 * dt; placeStriker(S, 'me'); }
+        }
+        const av = (g.down('aright') ? 1 : 0) - (g.down('aleft') ? 1 : 0);
+        if (av) S.aim += av * 1.2 * dt;
+        if (g.down('shoot')) { S.charging = true; S.chargeT += dt; S.power = 0.5 - 0.5 * Math.cos(S.chargeT * Math.PI / 0.75); }
+        else if (S.charging) { S.charging = false; S.chargeT = 0; shoot(g, S, S.aim, Math.max(0.1, S.power)); return; }
+        // a shot clock with friends waiting
+        if (pp.ctx.mode === 'party') {
+          pp.shotT += dt;
+          if (pp.shotT > T.shotClock && !S.charging && !S.drag) { S.msg = { text: 'Jaldi maar!', t: 0 }; shoot(g, S, S.aim, 0.4); }
+        }
+      } else if (S.stage === 'rival') {
+        // an AI friend (solo): plan, a moment, flick
+        if (!S.rplan) {
+          S.rplan = planShot(S, S.again ? null : 'rival');
+          if (S.rplan && !S.again) { S.rpos = S.rplan.pos; placeStriker(S, 'rival'); }
+          else if (!S.rplan) { S.rpos = -Math.PI / 2; placeStriker(S, 'rival'); S.rplan = { tx: 0, ty: 0, power: 0.6 }; }
+          const sk = cur ? cur.skill : 0.6;
+          const sd = T.rivalErr * clamp((1.3 - sk) / 0.74, 0.4, 1.5) * (1 - g.diff * T.rivalErrDiff) * (g.auto === 'win' ? 5 : 1);
+          S.rplan.aim = Math.atan2(S.rplan.ty - S.striker.y, S.rplan.tx - S.striker.x) + (g.rng.next() + g.rng.next() - 1) * sd;
+          S.rplan.power = U.clamp((S.rplan.power || 0.6) * (1 - T.powerJitter / 2 + g.rng.next() * T.powerJitter), 0.2, 1);
+        }
+        if (S.st > 1.2) shoot(g, S, S.rplan.aim, S.rplan.power);
+      } else if (S.stage === 'remote') {
+        // a friend is aiming on his own page; the host skips a turn nobody takes (left, or gone very quiet)
+        pp.shotT += dt;
+        if (pp.ctx.isHost && cur && (cur.left || pp.shotT > T.skipAfter)) {
+          const D = mpDecide(S, 0, false);
+          try { pp.ctx.send('gs', Object.assign({ n: pp.n }, D)); } catch (e) { /* ignore */ }
+          mpAfter(g, S, D, true);
+        }
+      } else if (S.stage === 'roll') {
+        const moving = mpPhysics(g, S, dt);
+        if ((!moving && S.st > 0.25) || S.st > 8) {
+          for (const b of S.balls) { b.vx = 0; b.vy = 0; }
+          if (S.striker) { S.striker.vx = 0; S.striker.vy = 0; }
+          const myCall = pp.ctx.mode !== 'party' || (cur && (cur.me || cur.ai)) || mpAuthority(S) === (S.mine && S.mine.uid);
+          if (myCall) mpResolveLocal(g, S);
+          else { S.stage = 'wait'; S.st = 0; }
+        }
+      }
+      if (S.stage === 'wait') {
+        if (pp.res && (pp.res.n | 0) === pp.n) { const r = pp.res; pp.res = null; mpApply(g, S, r); }
+        else if (S.st > 12 && pp.ctx.isHost) mpResolveLocal(g, S); // the shooter's word never came: the host's own roll
+      }
+    }
+    function mpHud(g, S) {
+      const top = mpTop(S), out = [];
+      S.pl.forEach((q, i) => out.push({ k: q.me ? 'TUM' : q.nick.toUpperCase(), v: String(q.score), good: q.me && top.length === 1 && top[0] === i }));
+      const m = S.mine;
+      out.push({ k: 'SHOTS', v: String(Math.max(0, T.shots - (m ? m.flicks : 0))), warn: m && m.flicks >= T.shots - 2 });
+      return out;
+    }
+    function mpPileXY(g, S, idx, i) {
+      const q = S.pl[idx];
+      if (!q || q.me) return pileXY(g, S, 'me', i);
+      const others = S.pl.filter((x) => !x.me), k = Math.max(0, others.indexOf(q));
+      const p = pileXY(g, S, 'rival', i);
+      return { x: p.x, y: p.y - k * (g.portrait ? 74 : 112) };
+    }
+    function mpDraw(ctx, g, S) {
+      const L = S.L, s = L.s, cur = mpCur(S);
+      // the friends waiting their turn sit round the ring
+      const shooting = cur && !cur.me && S.striker && /^(rival|remote|roll|wait)$/.test(S.stage);
+      S.pl.forEach((q, i) => {
+        if (q.me && S.turn === 'me') return; // (drawn crouching at my striker)
+        let a = mpSeat(S, i);
+        if (q === cur && shooting) a = Math.atan2(S.striker.y, S.striker.x); // the shooter crouches at his striker
+        const p = toS(S, Math.cos(a) * (R + 6.5), Math.sin(a) * (R + 6.5));
+        kidTopP(ctx, p.x, p.y, s, q.me ? '#d8402a' : q.shirt, Math.atan2(L.cy - p.y, L.cx - p.x), q.cap, q.left ? 0.35 : 1, q === cur && S.stage === 'roll' && S.st < 0.2);
+        if (!q.me && !(q === cur && shooting)) H.text(ctx, q.nick + (q.left ? ' (left)' : ''), p.x, p.y - s * 5.2, { font: 'body', weight: 700, size: 13, color: '#fff6c8', outline: 3, alpha: q.left ? 0.5 : 0.9 });
+      });
+      if (cur && !cur.me && S.striker && S.stage !== 'done') {
+        const a = Math.atan2(S.striker.y, S.striker.x), p = toS(S, Math.cos(a) * (R + 6.5), Math.sin(a) * (R + 6.5));
+        H.text(ctx, cur.nick, p.x, p.y - s * 5.2, { font: 'body', weight: 700, size: 14, color: '#ffd84a', outline: 3 });
+        if (S.stage === 'remote' && !cur.left) H.text(ctx, 'aiming…', p.x, p.y + s * 5.4, { font: 'body', weight: 700, size: 12, color: '#eaf2ff', outline: 3, alpha: 0.6 + 0.3 * Math.sin(S.time * 4) });
+      }
+      // piles: mine on the left, the friends' on the right
+      S.pl.forEach((q, idx) => {
+        const p0 = mpPileXY(g, S, idx, 1);
+        H.text(ctx, (q.me ? 'TUM' : q.nick.toUpperCase()) + ' ' + q.score, p0.x + (q.me ? 20 : -20), p0.y + (g.portrait ? -28 : -50), { font: 'display', size: 20, color: q.me ? '#ffd84a' : q === cur ? '#fff6c8' : '#eaf2ff', outline: 4, align: q.me ? 'left' : 'right' });
+        for (let i = 1; i <= q.score; i++) { const p = mpPileXY(g, S, idx, i); marble(ctx, p.x, p.y, 6, { col: GLASS[i % GLASS.length], rot: i }); }
+      });
+      if (S.pp.waitGo && S.pp.waitLeft > 0) H.text(ctx, 'Ready… ' + Math.ceil(S.pp.waitLeft), g.W / 2, L.cy, { font: 'display', size: 34, color: '#fff6c8', outline: 6 });
+      else if (S.stage === 'aim' && S.turn === 'me' && S.pp.ctx.mode === 'party' && S.pp.shotT > T.shotClock - 8) H.text(ctx, 'Jaldi! ' + Math.max(0, Math.ceil(T.shotClock - S.pp.shotT)), g.W / 2, L.cy - (R + 9) * s, { font: 'osd', size: 20, color: '#ffb4a6', outline: 4 });
+    }
+    function kidTopP(ctx, x, y, s, shirt, face, cap, alpha, flick) {
+      ctx.save(); ctx.globalAlpha = alpha == null ? 1 : alpha;
+      kidTop(ctx, x, y, s, shirt, face, !!flick, cap);
+      ctx.restore();
+    }
+    function mpCard(g, r) {
+      const S = g.S, top = mpTop(S), lead = top.length === 1 ? S.pl[top[0]] : null;
+      const rows = S.pl.map((q) => [(q.me ? 'Your' : q.nick + "'s") + ' goli' + (q.left ? ' (left)' : ''), q.score]);
+      rows.push(['Your flicks', S.mine ? S.mine.flicks : 0], ['Score', r.score]);
+      return {
+        title: r.win ? 'Saari goli meri!' : r.draw ? 'Barabar!' : (lead ? lead.nick + ' jeet gaya!' : 'Khel khatam!'),
+        line: r.win ? 'Your pocket clinks all the way home. Rematch tomorrow, same ring?' : r.draw ? 'Equal goli. Kal phir khelenge.' : (lead ? lead.nick + ' pockets the jackpot. ' : '') + 'Kal phir khelenge.',
+        rows,
+      };
+    }
+
+    /* ---------------------------------------------------- the party activity ('goli' in N.party) */
+    function golSpots() {
+      // where "Play goli" is offered (the side activity: the colony grounds), nearest first
+      const out = [], p = N.player;
+      try {
+        for (const id of Object.keys(N.places || {})) {
+          if (!(id.indexOf('playground_') === 0 || id === 'victory_playground')) continue;
+          const q = N.places[id];
+          if (!q || !isFinite(q.x)) continue;
+          out.push({ x: q.x + 22, y: q.y, r: 14, name: 'Goli at ' + (q.name || 'the ground'), id, d: p ? Math.hypot(q.x + 22 - p.x, q.y - p.y) : 0 });
+        }
+      } catch (e) { /* ignore */ }
+      out.sort((a, b) => a.d - b.d);
+      return out;
+    }
+    function golSpec() {
+      const spec = {
+        name: 'Goli (marbles)', icon: '🔵', kind: 'score', players: { min: 1, max: 3 }, solo: true, ai: ['pappu', 'ayesha'], lock: false, r: 0.5,
+        label: 'Goli with friends', timeLimit: 900,
+        token: { id: 'mg_goli_friends', name: 'Lucky kancha', desc: 'The striker that won the ring: first goli game won with friends' },
+        describe: () => 'Kanche round one ring, turn by turn: flick your striker, every goli knocked out is yours, the jackpot is worth 3. Most goli wins.',
+        start(ctx) {
+          let open = true;
+          setTimeout(() => {
+            if (!open) return;
+            MG.play('marbles', { party: ctx, seed: ctx.seed, skipHowto: true, noRetry: true, difficulty: 0.4, title: 'Goli with friends', autoplay: ctx.opts && ctx.opts.autoplay, count: ctx.opts && ctx.opts.count }).then(() => { open = false; });
+          }, 0);
+          return { end(reason) { if (open && MG.active === 'marbles' && reason !== 'done') MG.abort('party:' + reason); open = false; } };
+        },
+      };
+      // with friends in the room the "Goli with friends" prompt stands where "Play goli" is (nearest ground first)
+      if (golFriends()) { const sp = golSpots(); if (sp.length) { spec.where = sp[0].id; spec.spots = sp.map((q) => ({ x: q.x, y: q.y, r: q.r, name: q.name })); } }
+      return spec;
+    }
+    function golFriends() { try { return !!(N.party && N.online && N.online.room && (N.online.room.n | 0) > 1); } catch (e) { return false; } }
+    const GREG = { ref: null, key: '', t: 0 };
+    function golRegister() {
+      const P = N.party;
+      if (!P || typeof P.register !== 'function' || !N.places) return false;
+      const sp = golFriends() ? golSpots() : [];
+      const key = (golFriends() ? 'f' : 's') + ':' + (sp[0] ? sp[0].id : '');
+      if (GREG.ref === P && GREG.key === key) return true;
+      try { P.register('goli', golSpec()); GREG.ref = P; GREG.key = key; return true; } catch (e) { N.err('marbles.party.register', e); return false; }
+    }
+    MG.marblesParty = { register: golRegister, spec: golSpec };
+    N.on('boot', golRegister);
+    N.on('world:built', () => { GREG.key = ''; golRegister(); });
+    N.on('online:room', golRegister);
+    N.on('online:players', golRegister);
+    // party.js loads after this file: keep the registration fresh (cheap: only re-registers when the room / ground changes)
+    N.addSystem({ id: 'marbles.party', order: 89, runIn: ['play'], update(dt) { GREG.t -= dt; if (GREG.t <= 0) { GREG.t = 2; try { golRegister(); } catch (e) { N.err('marbles.party.register', e); } } } });
 
     MG.register(def);
   }

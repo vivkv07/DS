@@ -87,6 +87,8 @@ async function play(P, place, dx, dy) {
 const until = async (P, fn, arg, ms) => P.page.waitForFunction(fn, arg, { timeout: ms || 8000, polling: 100 }).then(() => true, () => false);
 // game-time wait: n rendered frames on that page (not a fixed sleep: this machine is shared and frames can be slow)
 const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); return until(P, ([a, k]) => N.time.frame >= a + k, [f0, n], 60000); };
+// game-time wait: `secs` of game time on that page (it only runs in play: a slow frame rate stretches it, never cuts it)
+const gw = async (P, secs) => { const t0 = await P.ev(() => N.time.now); return until(P, ([a, k]) => N.time.now >= a + k, [t0, secs], 180000); };
 
 (async () => {
   const S = await staticServer();
@@ -108,9 +110,10 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
       await Z.shot('null_coming_soon');
       await Z.page.keyboard.press('Escape');
       await Z.ev(() => N.debug.newGame({ skipIntro: true }));
-      await sleep(600);
+      await until(Z, () => N.state.mode === 'play');
+      await gw(Z, 0.5);
       await Z.ev(() => N.game.pause());
-      await sleep(300);
+      await until(Z, () => N.state.mode === 'paused' && !document.querySelector('.k-online').hidden);
       check(await Z.ev(() => !document.querySelector('.k-online').hidden && /coming soon/.test(document.querySelector('.k-online .why').textContent)), 'pause deck Online key says "coming soon"');
       await Z.shot('null_pause');
       await Z.ev(() => N.game.resume());
@@ -125,7 +128,7 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
       const F = await newPhone(browser, 'file', undefined, { url: 'file://' + path.join(ROOT, 'index.html') });
       phones.push(F);
       await F.ev(() => N.online.open({ from: 'title' }));
-      await sleep(200);
+      await until(F, () => N.menus.topPanelId() === 'online' && !!document.querySelector('.mn-online .ol-soon'));
       check(/needs the web version/.test(await F.ev(() => document.querySelector('.mn-online .ol-body').textContent)), 'file:// Online panel says it needs the web version');
       check(F.requests.every((u) => u.startsWith('file:') || /fonts/.test(u)), 'file://: no network requests');
       const fe = await F.errs();
@@ -154,7 +157,7 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
       check(prof.includes('Ravi'), 'nickname stored in the cloud (profile_set): ' + prof.join(','));
       await A.page.fill('.mn-online input[data-k=nick]', 'Kutta');
       await A.page.click('.mn-online [data-act=nick]');
-      await sleep(300);
+      await until(A, () => /kinder/.test((document.querySelector('.mn-online .ol-msg') || {}).textContent || ''), null, 4000);
       check(await A.ev(() => /kinder/.test(document.querySelector('.mn-online .ol-msg').textContent) && N.online.nick === 'Ravi'), 'unkind nickname refused in the panel');
       await A.shot('panel_code');
       const ae = await A.errs();
@@ -269,6 +272,9 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
 
       // Nearby + the arrival toast: everybody at Gokul Chat
       console.log('  -- nearby for the group + the arrival toast');
+      // other agents' activities may sit right at the spawn: if the arrival card is up there, "Not now" brings the card back
+      await A.ev(() => { const x = document.querySelector('.ol-arrive.show [data-arr=x]'); if (x) x.click(); });
+      await until(A, () => !document.querySelector('.ol-near').hidden && document.querySelector('.ol-near').classList.contains('open'), null, 6000);
       const nearA = await A.ev(() => ({ list: N.online.nearby(4).map((a) => a.id + ':' + a.kind), card: !document.querySelector('.ol-near').hidden && document.querySelector('.ol-near').classList.contains('open') }));
       check(nearA.list.length >= 3 && nearA.list.length <= 4 && nearA.card, 'desktop: the Nearby card is open with ' + nearA.list.join(', '));
       await A.ev(() => N.debug.teleport('gokul_chat'));
@@ -281,25 +287,27 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
       check(await until(C, () => N.state.mode === 'play' && Math.hypot(N.online._debug.ghosts().find((g) => g.nick === 'Ravi').x - N.player.x, N.online._debug.ghosts().find((g) => g.nick === 'Ravi').y - N.player.y) < 40, null, 8000), 'panel "👫 Go to friends": C is back in the city next to Ravi');
       check(await until(B, () => !document.querySelector('.ol-go').hidden, null, 8000), 'B: the 👫 button shows (Ravi is ' + await B.ev(() => document.querySelector('.ol-go-d').textContent) + ' away)');
       await B.page.tap('.ol-go');
-      const arrived = await Promise.all([A, B, C].map((P) => until(P, () => { const e = document.querySelector('.ol-arrive.show'); return !!e && /Gokul Chat/.test(e.textContent) && /Pani puri/i.test(e.textContent); }, null, 12000)));
-      const arrTxt = await A.ev(() => (document.querySelector('.ol-arrive') || {}).textContent);
-      check(arrived.every(Boolean), 'all three at Gokul Chat: the toast on every phone: "' + arrTxt + '"');
+      await Promise.all([A, B, C].map((P) => P.ev(() => N.online._debug.arriveReset()))); // the walk over may have passed other spots
+      const arrived = await Promise.all([A, B, C].map((P) => until(P, () => !!document.querySelector('.ol-arrive.show') && !!N.online.flow.arrive, null, 12000)));
+      const arr = await B.ev(() => ({ id: N.online.flow.arrive, txt: (document.querySelector('.ol-arrive') || {}).textContent, here: N.online.nearby(6).filter((a) => a.kind === 'party' && a.dAll <= 38).map((a) => a.id) }));
+      check(arrived.every(Boolean) && arr.here.includes(arr.id) && /You're all at/.test(arr.txt), 'all three at Gokul Chat: the arrival card on every phone: "' + arr.txt + '" (' + arr.id + ', everybody within 60 m)');
+      check(arr.id !== 'panipuri_contest' || /Gokul Chat/.test(arr.txt) && /Pani puri/i.test(arr.txt), 'it names the place and the game');
       await A.shot('flow_A_arrive_nearby');
       await B.shot('flow_B_arrive_phone');
-      // phone: the Nearby card is a chip that opens
-      const chip = await B.ev(() => { const n = document.querySelector('.ol-near'); return { hidden: n.hidden, open: n.classList.contains('open'), chip: getComputedStyle(n.querySelector('.ol-near-tg')).display !== 'none' }; });
-      check(!chip.hidden && !chip.open && chip.chip, 'phone: Nearby is a small chip ' + JSON.stringify(chip));
+      check(await A.ev(() => document.querySelector('.ol-near').hidden), 'the Nearby card steps aside while the arrival card shows');
       // [🏁 Start] on B's toast -> the party flow (B hosts, A and C get the invite)
       await B.page.tap('.ol-arrive [data-arr=go]');
-      const inv = await Promise.all([A, C].map((P) => until(P, () => N.party._debug.cards().invite && /Pooja challenges you to Pani puri contest/.test(document.querySelector('.pt-invite').textContent), null, 8000)));
-      check(inv.every(Boolean) && await B.ev(() => N.party.active && N.party.active.id === 'panipuri_contest' && N.party.active.phase === 'lobby'), 'toast [🏁 Start] on B: Ravi and Imran get "Pooja challenges you to Pani puri contest"');
-      check(await A.ev(() => !document.querySelector('.ol-arrive.show') && document.querySelector('.ol-near').hidden), 'the toast and the Nearby card step aside for the invite');
+      const inv = await Promise.all([A, C].map((P) => until(P, (id) => N.party._debug.cards().invite && N.party.invite && N.party.invite.id === id && /Pooja challenges you to/.test(document.querySelector('.pt-invite').textContent), arr.id, 8000)));
+      check(inv.every(Boolean) && await B.ev((id) => N.party.active && N.party.active.id === id && N.party.active.phase === 'lobby', arr.id), 'arrival [🏁 Start] on B: Ravi and Imran get "' + await A.ev(() => (document.querySelector('.pt-invite .pt-inv-t') || {}).textContent) + '"');
+      check(await until(A, () => !document.querySelector('.ol-arrive.show') && document.querySelector('.ol-near').hidden, null, 3000), 'the toast and the Nearby card step aside for the invite');
       await A.shot('flow_A_invite');
       await B.ev(() => N.party.cancel());
       await Promise.all([A, C].map((P) => until(P, () => !N.party._debug.cards().invite, null, 8000)));
       await until(B, () => !N.party.uiBusy, null, 4000);
-      // phone chip -> list -> Challenge
+      // phone: the Nearby card is a small chip that opens a list -> Challenge
       await until(B, () => !document.querySelector('.ol-near').hidden, null, 6000);
+      const chip = await B.ev(() => { const n = document.querySelector('.ol-near'); return { hidden: n.hidden, open: n.classList.contains('open'), chip: getComputedStyle(n.querySelector('.ol-near-tg')).display !== 'none', w: Math.round(n.querySelector('.ol-near-tg').getBoundingClientRect().width), W: innerWidth }; });
+      check(!chip.hidden && !chip.open && chip.chip && chip.w < chip.W * 0.45, 'phone: Nearby is a small chip ' + JSON.stringify(chip));
       await B.page.tap('.ol-near-tg');
       check(await until(B, () => document.querySelector('.ol-near').classList.contains('open') && document.querySelectorAll('.ol-near [data-near]').length >= 2, null, 4000), 'phone: the chip opens the list');
       await B.shot('flow_B_nearby_open_phone');
@@ -319,6 +327,10 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
       await A.shot('flow_panel_in_room');
       await A.page.click('.mn-online [data-act=near]');
       check(await until(B, () => N.party._debug.cards().invite, null, 8000) && await A.ev(() => N.state.mode === 'play' && !N.menus.isPanelShown('online')), 'panel "🏁 Challenge": back to the city and the invite goes out');
+      // a phone taps "Accept" on the invite card (the card sits over the touch joystick zone, so the tap must reach it)
+      const accBox = await B.ev(() => { const r = document.querySelector('.pt-invite [data-a=acc]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, W: innerWidth }; });
+      await B.page.tap('.pt-invite [data-a=acc]');
+      check(await until(A, () => document.querySelector('.pt-lobby') && /✓ Pooja/.test(document.querySelector('.pt-lobby').textContent), null, 8000), 'phone: a tap on "Accept" (left half of the screen, x ' + Math.round(accBox.x) + ' of ' + accBox.W + ') reaches the card: Pooja ✓ in the lobby');
       await A.ev(() => N.party.cancel());
       await B.ev(() => N.game.pause());
       await B.page.tap('.k-online');
@@ -368,15 +380,16 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
       await E.shot('room_full_E');
       await E.ev(() => N.online.close());
 
-      // moving: A walks east for 1.5 s; B sees the ghost follow
-      await sleep(800);
+      // moving: A walks east for 1.5 s (game time); B sees the ghost follow
+      await gw(A, 0.8);
       const a0 = await A.ev(() => ({ x: N.player.x, y: N.player.y }));
       await A.ev(() => N.input.setMove(1, 0));
-      await sleep(1500);
+      await gw(A, 1.5);
       await A.ev(() => N.input.setMove(0, 0));
-      await sleep(900);
+      await gw(A, 0.5);
       const a1 = await A.ev(() => ({ x: N.player.x, y: N.player.y, mode: N.state.mode, stack: (N.state.stack || []).join('>') }));
       if (a1.x - a0.x <= 30) console.log('  (A state: ' + JSON.stringify(a1) + ')');
+      await until(B, ([x, y]) => { const g = N.online._debug.ghosts().find((q) => q.nick === 'Ravi'); return g && Math.hypot(g.x - x, g.y - y) < 6; }, [a1.x, a1.y], 6000);
       const gA = await B.ev(() => N.online._debug.ghosts().find((g) => g.nick === 'Ravi'));
       check(a1.x - a0.x > 30, 'A walked ' + (a1.x - a0.x).toFixed(0) + ' u');
       check(gA && Math.hypot(gA.x - a1.x, gA.y - a1.y) < 6, 'B sees A where A is (ghost ' + (gA ? gA.x.toFixed(1) + ',' + gA.y.toFixed(1) : '?') + ' vs ' + a1.x.toFixed(1) + ',' + a1.y.toFixed(1) + ')');
@@ -384,7 +397,7 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
       // smooth: sample the ghost while A moves, every frame step must be small (interpolation, no teleport jumps)
       await A.ev(() => N.input.setMove(0, 1));
       await B.ev(() => N.online._debug.trace(true));
-      await sleep(1600);
+      await gw(B, 1.6);
       const tr = await B.ev(() => { const k = N.online._debug.ghosts().find((q) => q.nick === 'Ravi').key; return N.online._debug.trace(false).filter((r) => r.k === k); });
       const steps = [];
       for (let i = 1; i < tr.length; i++) steps.push({ d: Math.hypot(tr[i].x - tr[i - 1].x, tr[i].y - tr[i - 1].y), dt: (tr[i].t - tr[i - 1].t) / 1000 });
@@ -397,11 +410,11 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
       // A takes a cycle: B sees a ghost on a vehicle
       await A.ev(() => N.debug.enterVehicle('cycle'));
       await A.ev(() => N.input.setMove(1, 0));
-      await sleep(1200);
+      await gw(A, 1.2);
       await A.ev(() => N.input.setMove(0, 0));
       const onCycle = await until(B, () => { const g = N.online._debug.ghosts().find((q) => q.nick === 'Ravi'); return g && g.mode === 'vehicle' && g.type === 'cycle'; }, null, 4000);
       check(onCycle, 'B sees A riding a cycle');
-      await sleep(900);
+      await gw(B, 0.9);
       // 2D screenshot from B (nameplates + minimap dots)
       await B.ev(() => { N.render.camOverride = null; });
       const tags = await B.ev(() => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).filter((t) => t.style.visibility !== 'hidden' && !t.classList.contains('ol-me')).map((t) => t.querySelector('.ol-nm').textContent));
@@ -431,7 +444,6 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
       const heard = await until(B, () => Array.from(document.querySelectorAll('#barks .bark')).some((b) => /Chai\?/.test(b.textContent)), null, 4000);
       check(said && heard, 'quick-chat "Chai?" shows as a bubble on B');
       check(await A.ev(() => N.online.say('not-a-phrase')) === false, 'only preset phrases can be sent');
-      await sleep(1100);
       await C.page.tap('.ol-chat-tg');
       await C.page.tap('.ol-chat [data-say=wave]');
       const waved = await until(A, () => Array.from(document.querySelectorAll('#barks .bark')).some((b) => /👋/.test(b.textContent)), null, 4000);
@@ -453,7 +465,8 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
       if (in3d) {
         await B.ev(() => { try { N.view3d.settle(4000); } catch (e) { /* ignore */ } });
         await A.ev(() => { N.vehicles.exit && N.player.vehicle && N.vehicles.exit(N.player, true); });
-        await sleep(1500);
+        await until(B, () => N.online._debug.ghosts().some((g) => g.nick === 'Ravi' && g.mode === 'ped'), null, 8000);
+        await frames(B, 10);
         const g3 = await B.ev(() => new Promise((res) => {
           const e = N.entities.all.find((q) => q.kind === 'ghost' && q.online && N.online._debug.ghosts().find((g) => g.key === q.online && g.nick === 'Imran'));
           N.view3dActors.debug.track(e);
@@ -474,7 +487,7 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
         // look at the ghosts (between Imran and Ravi)
         await B.ev(() => { const gs = N.online._debug.ghosts(); const p = N.player; const g = gs.find((q) => q.nick === 'Imran') || gs[0]; try { N.view3d.setCamera({ yaw: Math.atan2(g.y - p.y, g.x - p.x), pitch: 0.25, snap: true }); } catch (e) { /* ignore */ } });
         await until(B, () => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).some((t) => t.querySelector('.ol-nm').textContent === 'Imran' && t.style.visibility !== 'hidden'), null, 6000);
-        await sleep(300);
+        await frames(B, 5);
         const tags3 = await B.ev(() => Array.from(document.querySelectorAll('#ol-tags .ol-tag')).filter((t) => t.style.visibility !== 'hidden' && !t.classList.contains('ol-me')).map((t) => t.querySelector('.ol-nm').textContent));
         check(tags3.includes('Imran'), '3D nameplates visible: ' + tags3.join(', '));
         await B.shot('room_3d_B');
@@ -483,7 +496,7 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
 
       // the panel on the phone (touch): pause -> Online, quick-chat from the panel
       await C.ev(() => N.game.pause());
-      await sleep(300);
+      await until(C, () => N.state.mode === 'paused');
       await C.page.tap('.k-online');
       await until(C, () => N.menus.topPanelId() === 'online');
       await C.page.tap('.mn-online [data-act=say][data-say=aaja]');
@@ -493,7 +506,7 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
       await C.shot('panel_room_C_phone_bottom');
       // disconnect: C closes the page -> gone for A
       await C.context.close();
-      const gone = await until(A, () => N.online.room && N.online.room.n === 2 && !N.online._debug.ghosts().some((g) => g.nick === 'Imran') && !Array.from(N.hud.blips.keys()).some((k) => /^ol:p/.test(k) && !N.online._debug.ghosts().some((g) => 'ol:' + g.key === k)), null, 8000);
+      const gone = await until(A, () => N.online.room && N.online.room.n === 2 && !N.online._debug.ghosts().some((g) => g.nick === 'Imran') && !Array.from(N.hud.blips.keys()).some((k) => /^ol:p[0-9a-f]{12}$/.test(k) && !N.online._debug.ghosts().some((g) => 'ol:' + g.key === k)), null, 8000);
       check(gone, 'C closed the page: A no longer has Imran (ghost, entity, dot)');
       check(!(await A.ev(() => N.entities.all.some((e) => e.kind === 'ghost' && e.alive && !N.online._debug.ghosts().some((g) => g.key === e.online)))), 'no leftover ghost entities');
 
@@ -543,7 +556,8 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
         const F = await newPhone(browser, 'dist-file', undefined, { url: 'file://' + single });
         phones.push(F);
         await F.ev(() => N.debug.newGame({ skipIntro: true }));
-        await sleep(800);
+        await until(F, () => N.state.mode === 'play');
+        await gw(F, 0.5);
         const st = await F.ev(() => ({ av: N.online.available, mode: N.state.mode }));
         check(st.av === 'web' && st.mode === 'play', 'dist/nostalgia.html (file://) plays with online off (' + st.av + ')');
         check(F.requests.every((u) => u.startsWith('file:') || u.startsWith('data:') || /fonts/.test(u)), 'dist/nostalgia.html: no network requests');
@@ -605,7 +619,6 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
       // B continues and saves later: newer in the cloud
       await B.ev(() => { N.online.close(); N.game.continueGame(); });
       await until(B, () => N.state.mode === 'play', null, 8000);
-      await sleep(50);
       await B.ev(() => { N.player.money = 9900; N.save.save({ reason: 'test' }); });
       const bT = await B.ev(() => N.save.slotBlob('main').t);
       await until(B, () => { const c = N.online.cloud.state.cloud.main; return c && c.t === N.save.slotBlob('main').t; }, null, 8000);
@@ -631,14 +644,14 @@ const frames = async (P, n) => { const f0 = await P.ev(() => N.time.frame); retu
       check(await A.ev(() => !N.online.cloud.state.offer && N.save.info().money === 4242), '"Keep this one" keeps A\'s local save');
       // a cloud save from a newer build is never pulled, never overwritten
       M.db.saves.set(key, Object.assign({}, M.db.saves.get(key), { version: 2, t: bT + 5000, data: Object.assign({}, M.db.saves.get(key).data, { v: 2, t: bT + 5000 }) }));
-      await B.ev(() => { N.player.money = 1234; N.save.save({ reason: 'test2' }); });
-      await sleep(2500);
+      await B.ev(() => { window.__refused = 0; N.on('online:cloud', (d) => { if (d && d.what === 'refused') window.__refused++; }); N.player.money = 1234; N.save.save({ reason: 'test2' }); });
+      await until(B, () => window.__refused > 0, null, 10000); // the push was tried and refused by the server
       check(M.db.saves.get(key).version === 2, 'a newer-build cloud save is not overwritten by an older build');
       const nbPull = await B.ev(() => N.online.cloud.pull().then(() => ({ offer: !!N.online.cloud.state.offer, note: N.online.cloud.state.note })));
       check(!nbPull.offer && /newer version/.test(nbPull.note), 'and it is not offered: "' + nbPull.note + '"');
       // journey page in the Journal
       await A.ev(() => N.menus.openJournal('journey'));
-      await sleep(400);
+      await until(A, () => /My Journey/.test((document.querySelector('.jr-page') || {}).textContent || ''), null, 4000);
       const jtxt = await A.ev(() => document.querySelector('.jr-page').textContent);
       check(/My Journey/.test(jtxt) && /Abids/.test(jtxt) && /player code/.test(jtxt), 'Journal "Journey" page lists the journey');
       await A.shot('journal_journey');

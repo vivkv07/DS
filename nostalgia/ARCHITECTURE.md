@@ -98,7 +98,7 @@ nostalgia/
                     models3d_* files) the atmosphere layer (§22): N.wind, N.weather, N.windfx, N.wires, N.birds, N.atmosAudio
   src/save.js       save/load -> N.save
   src/online_config.js  N.ONLINE_CONFIG: the pluggable online backend (Supabase URL + public key; null = "coming soon")
-  src/online.js     online play (§23): player code, cloud saves + journey, 10-player rooms, ghosts -> N.online
+  src/online.js     online play (§23): player code, cloud saves + journey, rooms of 3, ghosts, the room flow + Nearby -> N.online
   src/party.js      party activities (§24): the N.party contract (register / challenge / solo / available), invite ->
                     lobby -> shared-clock 3-2-1 -> results, AI friends (ctx.ai), rings 2D + 3D -> N.party
   src/party_races.js (§24) cycle races (5 preset routes + pin races), the Birla Mandir steps race, the chai run,
@@ -1874,7 +1874,8 @@ playing it for real (2026-10-20): "you go into online game and it should automat
   into free roam, plus the flags the 2026 prologue leaves (`prologue_seen`, `year` 2003: `[story hook]`, M1's
   giver then waits on the home terrace); from the **pause deck** the panel closes and play resumes; in play the API
   calls just join. Exactly one start (`startGame()` guards; the busy Create / Join buttons are disabled). A **joiner**
-  is placed next to the earliest player in the room once that friend's first state arrives (`spotNear`: 11-30 u
+  (unless already within 60 u ≈ 100 m of them) is placed next to the earliest player in the room once that friend's
+  first state arrives (`spotNear`: 11-30 u
   away, walkable, off the road when there is a footpath, no wall in between; roofs descended; 3D camera snapped);
   never during a mission, a party game, a minigame or a chase (≥ 3 chappals): a pink route to the friend + a
   pulsing **👫 Go to friends** HUD button instead ("Mission done! Tap 👫 …" after MISSION PASSED). 👫 (HUD, shown while
@@ -1899,7 +1900,11 @@ playing it for real (2026-10-20): "you go into online game and it should automat
   ▶ Into the city (title) / 👫 Go to friends (far), Nearby for the group, Meet pin, Challenge friends (§24), Quick
   chat, Leave. The player code, Use my code and the cloud save fold under "My player code & cloud save" (a newer
   cloud save is always offered at the top). HUD (right edge): badge `CHAI-42 · 2/3` (+ "tell friends this code"
-  while alone; opens the panel over the pause deck), 👫, the arrival card, the Nearby card / chip, 💬 strip.
+  while alone; opens the panel over the pause deck), 👫, the arrival card, the Nearby card / chip, 💬 strip (a
+  two-column grid on touch). On short touch screens (landscape phones) the column moves left of the right-hand touch
+  cluster, under the money, and its lists open to its left. The HUD and the party cards (§24) live on **`#ui-top`**
+  (z 25: over `#touch`, whose joystick zone covers the left half and 3D look zone the right half in play, under the
+  menus' `#overlay`), so they take taps on phones; nameplates stay in `#ui`.
   Events `online:status | room | players | pin | chat | cloud | start {how} | gather {ok, auto} | arrive {id, at}`.
 - **API**: `N.online = {available, ready, status, code, nick, room, open(), close(), goOnline(),
   setNick(), useCode(), cloud: {pull, push, take, keep, state}, journey(), pushJourney(), createRoom(),
@@ -1982,7 +1987,7 @@ returns within 250 ms) and keep the minimum-RTT offset (good to RTT/2). Solo: th
 data)` (≤ 25 / s, data ≤ 2 KB), `onMessage(fn)` -> off (only players present in the room; ≤ 40 / s per sender),
 `players()` (presence + the ghost's position), `partyRpc(fn, args)` (`race_*` only), `myKey`. Party types: inv acc
 skip go cancel ping pong res fin bye a (activity messages: {sid, t, d}); every field is re-validated in party.js.
-**UI.** "E Start <name>" at an activity's spot (per-step offer, priority −1; 1 on the inner 24 u of a start spot, so a
+**UI.** (The tappable cards are on `#ui-top`, §23, above the touch controls.) "E Start <name>" at an activity's spot (per-step offer, priority −1; 1 on the inner 24 u of a start spot, so a
 passing bus does not steal it), a start card (Challenge the room (n) / Play with AI friends / Not now: keys 1 2 N),
 the Online panel's "Challenge friends" section and a 🏁 button in the quick-chat strip (the picker; far activities
 set a waypoint + meet pin to their start), the room HUD's "Nearby for the group" card + arrival card (§23; one tap =

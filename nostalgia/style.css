@@ -3326,6 +3326,13 @@ body.high-contrast .jc-newer { background: rgba(255, 255, 255, 0.85); }
 /* === online === (owned by online.js, ARCHITECTURE §23: the Online panel (a tin card over the title / pause
    deck), the cloud-save offer card, the room HUD (badge, 👫 Go to friends, the Nearby card, quick-chat strip), the
    arrival toast, ghost nameplates) */
+/* #ui-top (online.js / party.js): over the touch controls (#touch, z 20), under the menus (#overlay, z 30): the room
+   HUD and the party cards take taps on phones (the joystick zone covers the left half, the 3D look zone the right) */
+#ui-top { position: absolute; inset: 0; z-index: 25; pointer-events: none; }
+#ui-top .interactive, #ui-top .interactive * { pointer-events: auto; }
+#ui-top .ol-hud { pointer-events: none; }
+#ui-top .ol-hud > *, #ui-top .ol-hud > * * { pointer-events: auto; }
+#ui-top .ol-hud .ol-near-list:empty { pointer-events: none; }
 #overlay .mn-online { z-index: 8; align-items: center; justify-content: center; padding: calc(10px + var(--safe-t)) calc(10px + var(--safe-r)) calc(10px + var(--safe-b)) calc(10px + var(--safe-l)); background: radial-gradient(ellipse at 50% 45%, rgba(10, 8, 20, 0.5), rgba(10, 8, 20, 0.82)); }
 .ol-card { width: min(620px, calc(100% - 8px)); }
 .ol-card .mn-card-head h2 { font-size: 28px; }
@@ -3411,6 +3418,7 @@ body.touch-on .ol-hud { top: 30%; }
   background: rgba(18, 13, 22, 0.82); border: 2px solid var(--panel-edge); border-radius: 6px; touch-action: manipulation; }
 .ol-near-tg i { font-style: normal; min-width: 20px; padding: 0 5px; font-size: 16px; color: var(--auto-black); background: var(--auto-yellow); border-radius: 9px; }
 .ol-near.open .ol-near-tg { display: none; }
+body.touch-on .ol-near-tg, body.touch-on .ol-badge { font-size: 17px; letter-spacing: 0; }
 .ol-near-list { display: none; width: min(286px, calc(100vw - 24px)); padding: 4px 8px 6px; color: var(--osd); background: rgba(18, 13, 22, 0.86); border: 2px solid var(--panel-edge); border-radius: 6px; }
 .ol-near.open .ol-near-list { display: block; }
 .ol-near-h { display: flex; align-items: center; justify-content: space-between; margin: 0 0 2px; font-family: var(--font-osd); font-size: 17px; letter-spacing: 1px; color: var(--auto-yellow); }
@@ -3428,7 +3436,19 @@ body:not(.touch-on) .ol-near-row { padding: 2px 0; }
 body:not(.touch-on) .ol-near-list { width: min(262px, calc(100vw - 24px)); }
 .mn-btn.big small { font-family: var(--font-osd); font-size: 18px; opacity: 0.75; }
 .ol-near-b:active, .ol-go:active { transform: translate(1px, 1px); }
-@media (max-height: 520px) { .ol-hud { top: 16%; } body.touch-on .ol-hud { top: 14%; } .ol-near-list { max-height: 52vh; overflow-y: auto; } }
+/* touch: the quick-chat phrases as a two-column grid (it fits above the right-hand touch buttons) */
+body.touch-on .ol-chat:not([hidden]) { display: grid; grid-template-columns: 1fr 1fr; width: min(250px, calc(100vw - 24px)); max-height: none; }
+body.touch-on .ol-chat .ol-say { min-height: 36px; padding: 2px 6px 0; font-size: 14px !important; }
+/* short screens (landscape phones): the column sits left of the right-hand touch cluster, under the money, and its
+   lists (Nearby, quick chat, the arrival card) open to its left over the street */
+@media (max-height: 520px) {
+  .ol-hud { top: 16%; }
+  .ol-near-list { max-height: 60vh; overflow-y: auto; }
+  body.touch-on .ol-hud { top: calc(146px + var(--safe-t)); right: calc(112px + var(--safe-r)); }
+  body.touch-left.touch-on .ol-hud { right: calc(8px + var(--safe-r)); }
+  body.touch-on .ol-near.open .ol-near-tg { display: inline-flex; }
+  body.touch-on .ol-near-list, body.touch-on .ol-chat:not([hidden]), body.touch-on .ol-arrive.show { position: absolute; top: 0; right: calc(100% + 8px); max-height: calc(100vh - 160px - var(--safe-t)); overflow-y: auto; }
+}
 /* the arrival card in the HUD column: "You're all at Gokul Chat — Pani puri contest?  [Not now] [🏁 Start]" */
 .ol-arrive { display: none; width: min(286px, calc(100vw - 24px)); padding: 6px 8px 7px; color: var(--auto-black);
   background: #fff3c4; border: 3px solid var(--auto-black); border-radius: 6px; box-shadow: 4px 4px 0 var(--irani-teal), 0 8px 22px rgba(0, 0, 0, 0.4); }

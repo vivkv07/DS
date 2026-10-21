@@ -150,6 +150,12 @@
     againT: 10,
     // how far Chinnu reaches for a loose ball (u); a kid reaches as far for a ball Chinnu stands on
     myReach: 7.5,
+    // with friends (N.party): snapshot every snapEvery s; the roster resent every initEvery s till each friend has it;
+    // a friend at the line has lineWait s to throw; what a guest does shows at once and the host's word wins after hold s;
+    // hitR: a guest's own hit radius (x TUNE.hitR, a little forgiving for the network); a guest waits guestWait s for
+    // the host's roster
+    // hitLate: how long after a ball went dead the host still takes a guest's report of it hitting him (network + frames)
+    party: { snapEvery: 0.11, initEvery: 0.6, lineWait: 15, hold: 0.7, hitR: 0.9, guestWait: 12, catchExtra: 0.15, hitLate: 1.2 },
   };
   const TEAM_COL = ['#f2c230', '#e2483a'];
   const BOYS = ['Venky', 'Sameer', 'Gopi', 'Raju', 'Sunny', 'Chintu', 'Munna', 'Lucky', 'Sattar', 'Pappu', 'Srinu', 'Kittu', 'Bunny', 'Arif', 'Naveen', 'Pandu', 'Jaffer', 'Ravi'];
@@ -177,7 +183,12 @@
   const human = (P) => !!(P && (P.isPlayer || P.remote));
   /** a kid's name as everybody in the room knows it (a friend's online nickname) */
   const nameOf = (P) => (P && (P.nick || P.name)) || 'Somebody';
-  const sfx = (name, o) => { try { if (N.audio && N.audio.sfx) N.audio.sfx(name, o || { ui: true }); } catch (e) { /* audio is optional */ } };
+  // (NETCAP.S: the party game this page hosts, while it steps: its sounds in the world go to the friends' pages too)
+  const NETCAP = { S: null };
+  const sfx = (name, o) => {
+    try { if (N.audio && N.audio.sfx) N.audio.sfx(name, o || { ui: true }); } catch (e) { /* audio is optional */ }
+    if (NETCAP.S && o && o.x != null && !o.ui) NET.ev(NETCAP.S, ['s', name, Math.round(o.x * 10), Math.round(o.y * 10), o.vol == null ? 1 : +(+o.vol).toFixed(2), o.pitch == null ? 1 : +(+o.pitch).toFixed(2), o.delay || 0]);
+  };
   const toast = (t, ms) => { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2400); } catch (e) { /* ignore */ } };
   const banner = (t, s, ms, kind) => { try { if (N.hud && N.hud.banner) N.hud.banner(t, s || '', ms || 2200, { kind: kind || 'info' }); } catch (e) { /* ignore */ } };
   /** ~N(0, 1) (sum of three uniforms, scaled to unit spread) */
@@ -534,6 +545,8 @@
       aim: { ang: 0, p: 0, dir: 1, charging: false, holdT: 0, drag: null, yaw: null },
       ui: { label: '', prompt: '' }, title: params.title || G.title,
       stats: { hits: 0, outs: 0, catches: 0, stacked: 0, fouls: 0, tries: 0 },
+      // N.party ctx when friends from the online room play (or the AI friends through the party framework)
+      party: !o.ambient && params.party && typeof params.party === 'object' ? params.party : null, net: null,
     };
     S.kids = [];
     const adopt = o.adopt || [];
@@ -615,6 +628,7 @@
   }
   function pop(S, x, y, h, text, col, big) {
     h = h || 9;
+    if (S.net && S.net.host) NET.ev(S, ['p', Math.round(x * 10), Math.round(y * 10), Math.round(h * 10), String(text), col || '', big ? 1 : 0]);
     // stack pops that land on the same spot at the same moment ("THWACK!" then "OUT!")
     for (const q of S.pops) if (q.t < 0.6 && Math.abs(q.x - x) < 8 && Math.abs(q.y - y) < 8 && Math.abs(q.h - h) < 4) h = q.h + 5;
     S.pops.push({ x, y, h, text, col: col || '#f4ead8', t: 0, life: big ? 1.6 : 1.1, big: !!big, el: null });
@@ -625,6 +639,7 @@
     // one voice at a time on the ground (the big moments always get through)
     if (!(o && o.force) && S.t - (S.barkAt || -9) < 0.9) return;
     S.barkAt = S.t;
+    if (S.net && S.net.host && !human(P)) NET.ev(S, ['b', S.parts.indexOf(P), String(text), (o && o.secs) || 1.6]);
     if (S.ambient) {
       const p = N.player;
       if (!p || hyp(p.x - P.e.x, p.y - P.e.y) > 220) return;
@@ -777,6 +792,7 @@
     const e = P.e;
     b.state = 'air'; b.holder = null; b.thrower = P; b.live = !o.pass && !o.dead; b.pass = !!o.pass; b.passTo = o.passTo || null;
     b.bounced = 0; b.releaseT = S.t; b.seq++; b.hitSet = new Set(); b.kind = o.kind || 'throw';
+    if (b.live) { b.liveSeq = b.seq; b.liveAt = S.t; }
     // somebody else's turn next: the thrower may not grab his own throw straight back
     if (!o.pass && (o.kind || 'throw') === 'throw') { b.lockP = P; b.lockT = S.t + TUNE.relock; } else { b.lockP = null; b.lockT = 0; }
     b.x = e.x + Math.cos(ang) * 2.4; b.y = e.y + Math.sin(ang) * 2.4; b.z = TUNE.hand;
@@ -956,6 +972,7 @@
     if (S.G.ballStack) S.G.ballStack(S, b);
     if (b.state !== 'air') return;
     if (b.live && b.liveDist && hyp(b.x - b.rx, b.y - b.ry) > b.liveDist) b.live = false;
+    if (b.live) b.liveAt = S.t;
     if (b.live) {
       for (const P of S.parts) {
         // (a friend from the room is hit on his own page: it reports the hit, so a last-moment dodge there counts)
@@ -1073,6 +1090,11 @@
         S.teamName = ['', ''];
         R.list.forEach((spec, i) => { const q = edgeSpot(F, F.cx + (S.rng.next() - 0.5) * F.w, F.cy + (S.rng.next() - 0.5) * F.h, -6); addPart(S, spec, i % 2, q.x, q.y); });
         L.seek = S.rng.next() < 0.5 ? 0 : 1;
+      } else if (S.party) {
+        // with friends (N.party): they take places in the two teams, the colony kids fill the rest
+        NET.setupParty(S, R);
+        L.seek = p.seekFirst === false ? 1 : 0;
+        if (S.net && S.net.guest) return; // a guest's page shows the host's game (no rounds of its own)
       } else {
         S.teamName = [R.homeName, R.awayName];
         addPlayer(S, 0);
@@ -1737,6 +1759,12 @@
       const F = S.F, p = S.params;
       const M = (S.M = { timeLeft: p.time > 0 ? +p.time : TUNE.maram.time, tosser: null, tosses: 0, n: 0 });
       const R = rosterFor('marampitti', F, S.rng, p, S.ambient);
+      if (S.party) {
+        NET.setupParty(S, R);
+        M.n = S.parts.length;
+        if (!(S.net && S.net.guest)) MARAM.ring(S);
+        return;
+      }
       if (!S.ambient) addPlayer(S, 0);
       R.list.forEach((spec, i) => { const q = edgeSpot(F, F.cx + (S.rng.next() - 0.5) * F.w, F.cy + (S.rng.next() - 0.5) * F.h, -5); addPart(S, spec, i + 1, q.x, q.y); });
       M.n = S.parts.length;
@@ -2346,7 +2374,8 @@
       try {
         // the kids already playing here join in
         let adopt = [];
-        if (AMB.S && AMB.S.F === F) { adopt = AMB.S.kids.filter((k) => k.alive !== false); endAmbient(true); }
+        // (with friends every page builds the same teams from the host's list: the kids there now wander off)
+        if (AMB.S && AMB.S.F === F) { if (params.party) endAmbient(false); else { adopt = AMB.S.kids.filter((k) => k.alive !== false); endAmbient(true); } }
         const p = N.player;
         if (p.vehicle && N.vehicles && N.vehicles.exit) { try { if (!N.vehicles.exit(p)) N.vehicles.exit(p, true); } catch (e) { N.err('pg.exit', e); } }
         if (rectDist(F, p.x, p.y) > 140) { const q = edgeSpot(F, F.line.x, F.line.y, -6); p.teleport(q.x, q.y); }
@@ -2463,6 +2492,8 @@
       banner(t, sub, 2600, r.win ? 'pass' : 'fail');
       if (r.win) sfx('finger_whistle', { ui: true, vol: 0.7 });
     }
+    // with friends / through N.party: the result goes to the party card (and the host tells the friends' pages it is over)
+    if (S.party) { try { NET.ended(S, r); } catch (e) { N.err('pg.party.report', e); } }
     cleanupReal(S);
     // a free-roam game that ended normally: "Play again" right where Chinnu stands for a few seconds (the kids
     // are still there; no walking back to find the Join spot after being knocked out in ten seconds)
@@ -2474,6 +2505,7 @@
   }
   function cleanupReal(S) {
     if (current === S) current = null;
+    NET.unwire(S);
     holdGivers(false);
     spectatorsOff(S);
     try { if (N.traffic && N.traffic.closeRoads) N.traffic.closeRoads('pg', null); } catch (e) { /* ignore */ }
@@ -2506,6 +2538,7 @@
   }
   function hardCleanup(S) {
     if (!S) return;
+    NET.unwire(S);
     holdGivers(false);
     spectatorsOff(S);
     try { if (N.traffic && N.traffic.closeRoads) N.traffic.closeRoads('pg', null); } catch (e) { /* ignore */ }
@@ -2588,6 +2621,9 @@
     try { S.G.control(S, dt, I); } catch (e) { N.err('pg.control:' + S.id, e); }
   }
   function simUpdate(dt) {
+    // N.party may arrive after this file (or the room / the nearest ground changed): keep the registration fresh
+    PREG.t -= dt;
+    if (PREG.t <= 0) { PREG.t = 2; try { registerParty(); } catch (e) { N.err('pg.party.register', e); } }
     if (current) stepSession(current, dt);
     try { ambientTick(dt); } catch (e) { N.err('pg.ambient', e); }
     if (AMB.S) stepSession(AMB.S, dt);
@@ -2611,6 +2647,9 @@
   function stepSession(S, dt) {
     if (S.ended) return;
     S.t += dt;
+    // a friend's page in a party game: it shows the host's game (src/playground_games.js NET)
+    if (S.net && S.net.guest) { try { NET.mirrorStep(S, dt); } catch (e) { N.err('pg.mirror:' + S.id, e); } return; }
+    if (S.net && S.net.host) NETCAP.S = S;
     try {
       S.G.update(S, dt);
       if (S.ended) return;
@@ -2625,7 +2664,9 @@
       if (S.specT <= 0) { S.specT = 1; spectators(S, true); }
       if (S.ambient) ambientChatter(S, dt);
       else realChecks(S, dt);
+      if (S.net && S.net.host && !S.ended) NET.hostStep(S, dt);
     } catch (e) { N.err('pg.step:' + S.id, e); }
+    NETCAP.S = null;
   }
   function realChecks(S, dt) {
     const p = N.player, F = S.F;
@@ -2636,14 +2677,14 @@
         while (N.clock.minutes >= 1440) { N.clock.minutes -= 1440; N.clock.nextDay(); }
       }
     } catch (e) { /* ignore */ }
-    if (S.endAt != null && S.t >= S.endAt) { endSession(S, S.endWin, S.endExtra); return; }
-    if (p.vehicle) { endSession(S, false, { quit: true, reason: 'vehicle' }); return; }
+    if (S.endAt != null && S.t >= S.endAt) { if (S.net && S.net.host) NET.finish(S, S.endExtra || {}); else endSession(S, S.endWin, S.endExtra); return; }
+    if (p.vehicle) { if (S.net && S.net.host) NET.finish(S, { quit: true, reason: 'host_left' }); else endSession(S, false, { quit: true, reason: 'vehicle' }); return; }
     // a playground game is all running: Chinnu's legs last longer on the ground (part of the run drain back)
     try { if (p.running && !p.god && p.TUNE && p.TUNE.runDrain) p.energy = Math.min(p.tummy != null ? p.tummy : 100, p.energy + dt * p.TUNE.runDrain * TUNE.runRefund); } catch (e) { /* ignore */ }
     ballRescue(S, dt);
     if (N.wanted && N.wanted.level >= 3 && S.endAt == null) {
       banner('BHAAGO!', 'The Chappal Meter is up — game over, run!', 2400, 'fail');
-      endSession(S, false, { reason: 'chappal' });
+      if (S.net && S.net.host) NET.finish(S, { reason: 'chappal' }); else endSession(S, false, { reason: 'chappal' });
       return;
     }
     // walked off the ground (fetching the ball that went off it does not count)
@@ -3225,10 +3266,13 @@
         if (!walk(q.x, q.y)) q = spotNear(q.x, q.y, 2, 16);
         const key = 'pg:' + gid + ':' + F.key;
         offerIds.push(key);
+        F.offerAt = F.offerAt || {};
+        F.offerAt[gid] = { x: q.x, y: q.y };
         I.add(key, {
           x: q.x, y: q.y, r: 18, priority: -1,
           label: () => (AMB.S && AMB.S.F === F && AMB.S.id === gid ? 'Join their ' : 'Join ') + (gid === 'lingocha' ? 'lingocha' : 'maram pitti'),
-          enabled: () => offerOpen(F),
+          // (with friends in the online room the party's "... with friends" prompt stands here instead: N.party start card)
+          enabled: () => offerOpen(F) && !NET.prompting(gid),
           use: () => { play(gid, { place: F.ids[0], side: true }); },
         });
       }
@@ -3242,6 +3286,752 @@
     if (isConfiscated(F)) return false;
     return kidsPresent() || !!(AMB.S && AMB.S.F === F);
   }
+
+  /* ================================================================ party: friends from the online room (N.party) */
+  // Lingocha and maram pitti with friends (src/party.js, ARCHITECTURE §24 "Party activities"). The challenger's page is
+  // the HOST: it runs the one real game (rules, the AI kids, ball, stones) with every friend as a participant (P.remote:
+  // his own page moves him, the host follows his online ghost). About nine times a second it sends a snapshot ('ps':
+  // kids, ball, stones, phase, score, the wind-up fuse) with the moments since the last one (pops, barks, sounds in the
+  // world, banners / toasts / walk-to-your-spot for one friend), and at the end everybody's result ('pe'). A friend's
+  // page is a GUEST: it shows that game (its kids follow the snapshots, the ball is carried forward to now) and plays
+  // its own Chinnu with his own controls; what he does goes to the host as a command ('pc': pick / stack a stone, grab /
+  // throw the ball, the line throw, a catch try) and shows at once (the host's next snapshot has the last word). A live
+  // ball reaching a guest is judged on the guest's page (his last-moment dodge counts there) and reported ('hm').
+  // Lingocha: friends captain opposite teams (slot 0 and 2 home, slot 1 away); maram pitti: everybody in one ring.
+  // A friend who leaves is replaced by a colony kid; if the host leaves, the game is over for everybody.
+  // Solo through N.party (no room): the plain game with the AI friends (Immu, Ayesha) in the team / ring, results to
+  // the party card. Every message is checked here (the room channel is public).
+  const PARTY_ID = { lingocha: 'lingocha', marampitti: 'maram_pitti' };
+  const PH = ['setup', 'aim', 'flight', 'return', 'scatter', 'live', 'roundEnd', 'toss', 'play'];
+  const BALL_ST = ['rest', 'air', 'roll', 'held'];
+  const STONE_ST = ['stack', 'fly', 'loose', 'carried'];
+  // online.js's player-marker colours, by the room's player order (the ring under a friend matches his marker)
+  const PCOL = ['#ffd23f', '#3fa9ff', '#ff5a5f', '#5ce05a', '#c46bff', '#ff9f1c', '#2ee6d6', '#ff6fc8', '#f2f2f2', '#b6f03c'];
+  const fin = (v) => typeof v === 'number' && isFinite(v);
+  const num = (v, d) => (fin(+v) ? +v : d);
+  const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+  const LOCAL_OUT = { banner, toast, sfx: (n, o) => sfx(n, o) };
+  function friendsHere() { try { return !!(N.party && N.party.challenge && N.online && N.online.room && (N.online.room.n | 0) > 1); } catch (e) { return false; } }
+
+  const NET = {
+    ghosts: new Map(),
+    guest: (S) => !!(S && S.net && S.net.guest),
+    /** the party's "<game> with friends" prompt stands on the Join offer (friends in the room) */
+    prompting(gid) { return friendsHere() && !!(N.party && N.party.get && N.party.get(PARTY_ID[gid])); },
+    colour(uid) { try { const L = N.online && N.online.players ? N.online.players() : []; const i = L.findIndex((p) => p.key === uid); return PCOL[(i < 0 ? 0 : i) % PCOL.length]; } catch (e) { return PCOL[1]; } },
+    ghostOf(uid) {
+      if (!uid) return null;
+      let g = NET.ghosts.get(uid);
+      if (!(g && g.alive !== false && g.online === uid)) {
+        g = null;
+        try { const list = N.entities.byKind ? N.entities.byKind('ghost') : N.entities.all; for (const e of list) if (e && e.kind === 'ghost' && e.online === uid) { g = e; break; } } catch (e) { g = null; }
+        if (g) NET.ghosts.set(uid, g); else NET.ghosts.delete(uid);
+      }
+      return g && !g.hidden && g.x > -9000 ? g : null;
+    },
+    /** the shared party clock (ms): the host's Date.now() */
+    now(S) { try { return S.party.now(); } catch (e) { return Date.now(); } },
+    /** a moment for the friends' pages (host): [id, kind, ...] */
+    ev(S, e) { const n = S && S.net; if (!n || !n.host) return; n.ev.push([++n.evId].concat(e)); if (n.ev.length > 160) n.ev.shift(); },
+    /** walk P to q (null: stop walking there) — Chinnu here, a friend on his own page */
+    autoFor(S, P, q, face, out) {
+      if (!P) return;
+      if (P.isPlayer) { S.auto = q ? { x: q.x, y: q.y, t: 0, face, out: !!out } : null; return; }
+      if (P.remote && S.net && S.net.host) NET.ev(S, ['a', P.uid, q ? Math.round(q.x * 10) : null, q ? Math.round(q.y * 10) : 0, Math.round((face || 0) * 100), out ? 1 : 0]);
+    },
+    outFor(S, P) {
+      return {
+        banner: (t, s, ms, k) => NET.ev(S, ['n', P.uid, String(t), String(s || ''), ms || 2200, k || 'info']),
+        toast: (t, ms) => NET.ev(S, ['t', P.uid, String(t), ms || 2400]),
+        sfx: (name, o) => NET.ev(S, ['u', P.uid, String(name), (o && o.vol) || 1, (o && o.delay) || 0]),
+      };
+    },
+    /** fn(P, out) for every person in the game: Chinnu here, and (host) each friend on his own page */
+    tell(S, fn) {
+      if (!S || !S.real) return;
+      if (S.me) { try { fn(S.me, LOCAL_OUT); } catch (e) { N.err('pg.tell', e); } }
+      if (S.net && S.net.host) for (const P of S.parts) if (P.remote) { try { fn(P, NET.outFor(S, P)); } catch (e) { N.err('pg.tell', e); } }
+    },
+    tellOne(S, P, fn) {
+      if (!P || !S || !S.real) return;
+      try { if (P.isPlayer) fn(LOCAL_OUT); else if (P.remote && S.net && S.net.host) fn(NET.outFor(S, P)); } catch (e) { N.err('pg.tell', e); }
+    },
+
+    /* ---------------------------------------------------------------- set-up */
+    wire(S) {
+      const ctx = S.party;
+      if (!ctx || ctx.mode !== 'party') { S.net = null; return; }
+      const host = !!ctx.isHost;
+      const n = (S.net = { host, guest: !host, hostUid: ctx.players[0] && ctx.players[0].uid, ev: [], evId: 0, evSent: 0, evSeen: 0, evQ: [], sendT: 0, initT: 0,
+        acks: new Set(), need: ctx.players.filter((q) => !q.isAI && !q.isMe).length, offs: [], cq: 0, snap: null, applied: null, pred: null, first: true, sent: 0, recv: 0, cmds: 0, hits: 0, initMsg: null });
+      const on = (t, f) => { try { n.offs.push(ctx.on(t, (d, from) => { if (current !== S || S.ended || !d || typeof d !== 'object') return; try { f(d, from); } catch (e) { N.err('pg.party.' + t, e); } })); } catch (e) { N.err('pg.party.on', e); } };
+      if (host) {
+        on('pa', (d, from) => { if (from && from.uid) n.acks.add(from.uid); });
+        on('pc', (d, from) => { n.cmds++; NET.hostCmd(S, d, from); });
+      } else {
+        on('ps', (d, from) => {
+          if (!from || from.uid !== n.hostUid) return;
+          n.snap = d; n.recv++;
+          if (Array.isArray(d.e)) for (const e of d.e) if (Array.isArray(e) && fin(e[0]) && e[0] > n.evSeen) { n.evQ.push(e); n.evSeen = e[0]; }
+          if (n.evQ.length > 200) n.evQ.splice(0, n.evQ.length - 200);
+        });
+        on('pe', (d, from) => { if (from && from.uid === n.hostUid) n.endMsg = d; });
+        on('pi', (d, from) => { if (from && from.uid === n.hostUid) ctx.send('pa', {}); });
+        ctx.send('pa', {});
+      }
+      try { ctx.onLeave((uid) => { if (current === S && !S.ended) NET.onLeave(S, uid); }); } catch (e) { N.err('pg.party.onLeave', e); }
+    },
+    unwire(S) {
+      const n = S && S.net;
+      if (n && n.offs) { for (const f of n.offs) { try { if (typeof f === 'function') f(); } catch (e) { /* ignore */ } } n.offs.length = 0; }
+      // the friends' stand-ins (hidden kids that followed their ghosts) go
+      if (S && S.parts) for (const P of S.parts) if (P.remote && P.e && P.e.pgKid) { try { N.entities.remove(P.e); } catch (e) { /* ignore */ } const i = S.kids.indexOf(P.e); if (i >= 0) S.kids.splice(i, 1); }
+    },
+    /** a friend from the room as a participant: a hidden stand-in that follows his online ghost */
+    addRemote(S, q, team) {
+      const F = S.F, g = NET.ghostOf(q.uid);
+      const k = new Kid({ x: g ? g.x : F.cx, y: g ? g.y : F.cy, look: q.look || N.people.randomLook(U.rng('pgr:' + q.uid), 'kid'), name: q.nick, speaker: null, npc: null, angle: 0 });
+      k.hidden = true;
+      N.entities.add(k);
+      const P = mkPart(S, { e: k, name: q.nick, nick: q.nick, uid: q.uid, remote: true, team, color: TEAM_COL[team] || '#ffffff', col: NET.colour(q.uid) });
+      k.P = P;
+      S.kids.push(k);
+      return P;
+    },
+    human(S, q, team) {
+      if (q.isMe) { const P = addPlayer(S, team); P.uid = q.uid; P.nick = q.nick; P.col = NET.colour(q.uid); return P; }
+      return NET.addRemote(S, q, team);
+    },
+    /** the teams / the ring with friends (host and solo), or the host's list (guest) */
+    setupParty(S, R) {
+      const ctx = S.party, F = S.F, p = S.params;
+      NET.wire(S);
+      if (S.net && S.net.guest) { NET.buildFromInit(S, p.partyInit); return; }
+      const humans = ctx.players.filter((q) => !q.isAI), ais = ctx.players.filter((q) => q.isAI && q.npc);
+      const names = new Set(['Chinnu'].concat(humans.map((q) => q.nick)));
+      const npcs = new Set();
+      const add = (list, x) => { list.push(x); if (x.spec) { names.add(x.spec.name); if (x.spec.npc) npcs.add(x.spec.npc); } };
+      const filler = (list, specs, n) => { for (const sp of specs) { if (list.length >= n) break; if ((sp.npc && npcs.has(sp.npc)) || names.has(sp.name)) continue; add(list, { spec: sp }); } while (list.length < n) add(list, { spec: genericSpec(S.rng, names, S.rng.next() < 0.3, F) }); };
+      const pl = N.player;
+      if (S.id === 'lingocha') {
+        const n = clamp((p.team | 0) || TUNE.lingocha.team, 3, 5);
+        const split = ctx.mode === 'party' && p.teams !== 'together' && humans.length > 1;
+        const side = [[], []];
+        humans.forEach((q, i) => side[split ? i % 2 : 0].push({ q }));
+        for (const a of ais) if (side[0].length < n) add(side[0], { spec: friendSpec(a.npc), ai: a });
+        filler(side[0], R.home, n);
+        filler(side[1], R.away, n);
+        const cap = (t) => { const h = side[t].find((x) => x.q); return h ? h.q.nick + ' XI' : null; };
+        S.teamName = ctx.mode === 'party' ? [cap(0) || R.homeName, cap(1) || R.awayName] : [R.homeName, R.awayName];
+        const hum = side.map((l) => l.filter((x) => x.q).length);
+        side.forEach((list, t) => list.forEach((x, i) => {
+          if (x.q) { NET.human(S, x.q, t); return; }
+          const q = t === 0 ? { x: pl.x + Math.cos(i * 2.1) * 14, y: pl.y + Math.sin(i * 2.1) * 14 } : edgeSpot(F, F.cx + (i - 1.5) * 14, F.cy, -6);
+          const P = addPart(S, x.spec, t, q.x, q.y);
+          if (x.ai) P.aiUid = x.ai.uid;
+          // the side with fewer friends on it plays a little above the game's difficulty (as the rival team does solo)
+          if (hum[t] < hum[1 - t]) P.dBonus = TUNE.lingocha.rival;
+        }));
+      } else {
+        const list = [];
+        humans.forEach((q) => list.push({ q }));
+        for (const a of ais) add(list, { spec: friendSpec(a.npc), ai: a });
+        filler(list, R.list, Math.max(R.list.length + 1, list.length + 3));
+        list.forEach((x, i) => {
+          if (x.q) { NET.human(S, x.q, i + 1); return; }
+          const q = edgeSpot(F, F.cx + (S.rng.next() - 0.5) * F.w, F.cy + (S.rng.next() - 0.5) * F.h, -5);
+          const P = addPart(S, x.spec, i + 1, q.x, q.y);
+          if (x.ai) P.aiUid = x.ai.uid;
+        });
+      }
+      if (S.net && S.net.host) {
+        S.net.initMsg = { g: S.id, f: S.F.key, tn: S.teamName || null, r: S.L ? S.L.rounds : 0,
+          k: S.parts.map((P) => [String(nameOf(P)).slice(0, 16), P.team | 0, P.npc || '', P.uid || '', (P.dood ? 1 : 0) | (P.e && P.e.look && P.e.look.girl ? 2 : 0), P.e && P.e.look && P.e.look.girl ? String(P.e.look.shirt || '') : ''] ) };
+        S.net.initT = 0;
+      }
+    },
+    /** a guest builds the same participants from the host's list */
+    buildFromInit(S, I) {
+      const ctx = S.party, F = S.F, me = ctx.me && ctx.me.uid;
+      const list = I && Array.isArray(I.k) ? I.k.slice(0, 12) : [];
+      if (S.L) { S.teamName = Array.isArray(I.tn) ? [String(I.tn[0] || 'Home').slice(0, 24), String(I.tn[1] || 'Away').slice(0, 24)] : ['Home', 'Away']; const r = clamp(I.r | 0, 1, 5); S.L.rounds = r % 2 ? r : r + 1; S.L.need = Math.floor(S.L.rounds / 2) + 1; }
+      for (const k of list) {
+        if (!Array.isArray(k)) continue;
+        const name = String(k[0] || 'Kid').slice(0, 16), team = clamp(k[1] | 0, 0, 20), npc = typeof k[2] === 'string' && /^[a-z][a-z0-9_]{0,23}$/.test(k[2]) ? k[2] : '', uid = typeof k[3] === 'string' ? k[3] : '', fl = k[4] | 0;
+        if (uid && uid === me) { NET.human(S, Object.assign({}, ctx.me, { isMe: true }), team); continue; }
+        if (uid) { const q = ctx.players.find((x) => x.uid === uid) || { uid, nick: name }; NET.addRemote(S, { uid, nick: q.nick || name, look: q.look }, team); continue; }
+        let spec;
+        if (npc) spec = friendSpec(npc, { dood: !!(fl & 1) });
+        else {
+          const look = N.people.randomLook(U.rng('pgk:' + name + ':' + F.key), 'kid');
+          if (fl & 2) { look.girl = true; look.plaits = true; if (/^#[0-9a-f]{6}$/i.test(k[5] || '')) look.shirt = k[5]; look.cap = null; }
+          spec = { npc: null, name, look, speaker: null, dood: !!(fl & 1) };
+        }
+        spec.name = name;
+        const P = addPart(S, spec, team, F.cx, F.cy);
+        P.net = true; P.e.hidden = true; // (shown once the first snapshot puts him where he is)
+      }
+      if (!S.me) { const P = NET.human(S, Object.assign({}, ctx.me || { uid: 'me', nick: 'You' }, { isMe: true }), 0); void P; }
+      S.phase = 'setup';
+    },
+
+    /* ---------------------------------------------------------------- the host */
+    hostStep(S, dt) {
+      const n = S.net, ctx = S.party;
+      if (!n || !ctx) return;
+      // the roster till every friend has it
+      if (n.initMsg && n.acks.size < n.need && S.t < 30) { n.initT -= dt; if (n.initT <= 0) { n.initT = TUNE.party.initEvery; ctx.send('pi', n.initMsg); } }
+      n.sendT -= dt;
+      if (n.sendT > 0) return;
+      n.sendT = TUNE.party.snapEvery;
+      const o = NET.snapOf(S);
+      let size = JSON.stringify(o).length;
+      const take = [];
+      for (const e of n.ev) { if (e[0] <= n.evSent) continue; const l = JSON.stringify(e).length + 1; if (size + l > 1700 && take.length) break; take.push(e); size += l; }
+      if (take.length) o.e = take;
+      if (ctx.send('ps', o)) { n.sent++; if (take.length) n.evSent = take[take.length - 1][0]; while (n.ev.length && n.ev[0][0] <= n.evSent) n.ev.shift(); }
+      else n.sendT = 0.03; // the bus was busy: very soon again
+    },
+    snapOf(S) {
+      const b = S.ball, ix = (P) => (P ? S.parts.indexOf(P) : -1), r1 = (v) => Math.round((v || 0) * 10);
+      const p = [];
+      for (const P of S.parts) {
+        const e = P.e;
+        const f = (P.out ? 1 : 0) | (P.safeT > 0 ? 2 : 0) | (P.hold ? 4 : 0) | (e.down ? 8 : 0) | (e.idle === 'sit' ? 16 : 0) | (P.scatter || P.leaving ? 32 : 0) |
+          (S.id === 'marampitti' && (P.isPlayer ? MARAM.catching(S, P) : S.t - (P.catchT == null ? -9 : P.catchT) < TUNE.catchWin) ? 64 : 0);
+        p.push(r1(e.x), r1(e.y), Math.round(wrapA(e.angle || 0) * 100), Math.round(e.vx || 0), Math.round(e.vy || 0), f, P.act === 'pick' ? 1 : P.act === 'stack' ? 2 : 0, P.carry ? P.carry.i : -1);
+      }
+      const o = { t: +S.t.toFixed(2), ts: Math.round(NET.now(S)), ph: PH.indexOf(S.phase), p,
+        b: [r1(b.x), r1(b.y), r1(b.z), Math.round(b.vx), Math.round(b.vy), Math.round(b.vz), Math.max(0, BALL_ST.indexOf(b.state)), ix(b.holder), b.seq | 0, b.live ? 1 : 0, b.bounced | 0, ix(b.thrower), ix(b.target), b.hiddenBall ? 1 : 0, b.kind === 'stack' ? 1 : 0, ix(b.lockP), Math.max(0, Math.round(((b.lockT || 0) - S.t) * 10)),
+          // a live throw: how old it is (ms), where it left the hand and how far it stays live (the guest sweeps its flight)
+          b.live && b.state === 'air' && !b.bounced ? Math.round((S.t - b.releaseT) * 1000) : -1, r1(b.rx), r1(b.ry), r1(b.liveDist || 0), +(+b.vx).toFixed(2), +(+b.vy).toFixed(2), +(+b.vz).toFixed(2)] };
+      if (S.L) {
+        const L = S.L;
+        o.L = [L.round, L.rounds, L.wins[0], L.wins[1], L.tries, L.seek, ix(L.thrower), Math.round(L.timer * 10), L.knocked ? 1 : 0, L.need];
+        o.st = [];
+        for (const st of L.stones) o.st.push(r1(st.x), r1(st.y), r1(st.z), Math.max(0, STONE_ST.indexOf(st.state)), ix(st.by));
+        o.sk = L.stack.map((st) => st.i).join('');
+      }
+      if (S.M) o.M = [Math.round(S.M.timeLeft * 10), S.M.tosses];
+      const tl = S.tele;
+      if (tl && tl.from && tl.to && tl.from.windT > 0) o.tl = [ix(tl.from), ix(tl.to), Math.round(tl.from.windT * 1000), Math.round((tl.from.windT0 || 1) * 1000), tl.from.aimLock ? 1 : 0];
+      return o;
+    },
+    /** what a friend did on his page (a command from his own controls) */
+    hostCmd(S, d, from) {
+      if (S.ended || typeof d.k !== 'string') return;
+      const P = S.parts.find((q) => q.remote && q.uid === (from && from.uid));
+      if (!P) return;
+      const b = S.ball, L = S.L;
+      switch (d.k) {
+        case 'pk': {
+          if (!L || S.phase !== 'live' || P.out || P.carry || P.team !== L.seek) return;
+          const st = L.stones[d.i | 0];
+          if (!st || st.state !== 'loose' || hyp(st.x - P.e.x, st.y - P.e.y) > 14) return;
+          if (st.claim && st.claim !== P) st.claim.stone = null;
+          LING.pickStone(S, P, st);
+          return;
+        }
+        case 'sk':
+          if (!L || S.phase !== 'live' || P.out || !P.carry || L.stack.length >= 7 || hyp(L.base.x - P.e.x, L.base.y - P.e.y) > 16) return;
+          LING.stackStone(S, P);
+          return;
+        case 'gb': {
+          const okPhase = S.id === 'marampitti' ? (S.phase === 'play' || S.phase === 'toss') : (L && S.phase === 'live' && P.team !== L.seek);
+          if (!okPhase || P.out || b.holder || !canGrabP(S, b, P) || hyp(b.x - P.e.x, b.y - P.e.y) > TUNE.myReach + 8) return;
+          give(S, P); log(S, 'grab', { name: P.name, remote: true, bounced: b.bounced });
+          return;
+        }
+        case 'th': {
+          if (b.holder !== P || P.out || !fin(+d.a) || !fin(+d.s) || !fin(+d.z)) return;
+          const T = (d.t | 0) >= 0 ? S.parts[d.t | 0] || null : null;
+          release(S, P, +d.a, clamp(+d.s, 40, 260), clamp(+d.z, -30, 140), { target: T && T !== P ? T : null });
+          return;
+        }
+        case 'lt':
+          if (!L || S.phase !== 'aim' || L.thrower !== P || !fin(+d.a) || !fin(+d.p)) return;
+          log(S, 'player_throw', { ang: +(+d.a).toFixed(3), p: +clamp(+d.p, 0, 1).toFixed(2), remote: P.name });
+          LING.stackThrow(S, P, +d.a, clamp(+d.p, 0, 1));
+          return;
+        case 'ct': P.catchT = S.t; return;
+        case 'hm': NET.remoteHit(S, P, d); return;
+        case 'lv': NET.replaceWithAI(S, P, 'left the game'); return;
+        default:
+      }
+    },
+    /** a guest says the live ball hit him on his page (a catch: c) */
+    remoteHit(S, P, d) {
+      const b = S.ball;
+      const why = P.out ? 'out' : (d.q | 0) !== b.liveSeq || b.seq !== b.liveSeq ? 'stale' : !b.thrower || b.thrower === P ? 'own' : b.state === 'held' ? 'held' : b.hitSet && b.hitSet.size ? 'hit_other' : !b.live && !(S.t - (b.liveAt || -9) < TUNE.party.hitLate) ? 'late' : null;
+      if (why) { log(S, 'remote_hit_rejected', { name: P.name, why }); return; }
+      S.net.hits++;
+      b.x = clamp(num(d.x, P.e.x * 10) / 10, P.e.x - 12, P.e.x + 12); b.y = clamp(num(d.y, P.e.y * 10) / 10, P.e.y - 12, P.e.y + 12); b.z = clamp(num(d.z, 2.5), 0.2, 9);
+      if (b.state !== 'air') b.state = 'air';
+      if (!b.hitSet) b.hitSet = new Set();
+      b.hitSet.add(P);
+      P.netCatch = !!d.c;
+      const was = b.live;
+      b.live = true;
+      let handled = false;
+      try { handled = S.G.onHit(S, P, b); } catch (e) { N.err('pg.party.hit', e); }
+      P.netCatch = false;
+      if (!handled) b.live = was;
+      log(S, 'remote_hit', { name: P.name, caught: !!d.c, handled: !!handled });
+    },
+    /** a friend left the room / the game: a colony kid takes his place */
+    replaceWithAI(S, P, why) {
+      if (!P || !P.remote) return;
+      const old = nameOf(P), names = new Set(S.parts.map((q) => q.name));
+      const sp = genericSpec(S.rng, names, false, S.F);
+      P.remote = false; P.gone = true; P.uid = null; P.nick = null; P.name = sp.name; P.speaker = null; P.col = null;
+      const e = P.e; e.look = sp.look; e.name = sp.name; e.hidden = false; e.down = false;
+      if (P.hold) drop(S, P);
+      const i = S.parts.indexOf(P);
+      NET.ev(S, ['r', i, sp.name]);
+      NET.ev(S, ['t', '*', old + ' ' + why + ' — ' + sp.name + ' plays instead', 2600]);
+      toast(old + ' ' + why + ' — ' + sp.name + ' plays instead', 2600);
+      log(S, 'replaced', { old, by: sp.name });
+    },
+    onLeave(S, uid) {
+      const n = S.net;
+      if (!n) return;
+      if (n.host) { const P = S.parts.find((q) => q.remote && q.uid === uid); if (P) NET.replaceWithAI(S, P, 'left'); }
+      else if (uid === n.hostUid) n.hostGone = true;
+    },
+    won(S, P) {
+      if (!P) return false;
+      if (S.L) return S.L.wins[P.team] > S.L.wins[1 - P.team];
+      const r = S.endExtra && S.endExtra.reason;
+      return !P.out && (r === 'last' || r === 'time');
+    },
+    rankOf(S, P) { if (!P) return 0; if (S.L) return NET.won(S, P) ? 1 : 2; return P.out ? P.outRank || S.parts.length : 1; },
+    /** the host ends the game for everybody: each friend's result goes with it */
+    finish(S, extra) {
+      const n = S.net;
+      if (!n || S.ended) return;
+      extra = extra || {};
+      const res = [];
+      for (const P of S.parts) if (human(P)) res.push([S.parts.indexOf(P), NET.won(S, P) ? 1 : 0, NET.rankOf(S, P), P.hits | 0, P.catches | 0, P.fouls | 0, P.stacked | 0, P.outs | 0]);
+      const msg = { x: String(extra.reason || 'done').slice(0, 16), w: S.L ? S.L.wins.slice() : null, r: res, k: S.parts.length };
+      n.finished = true;
+      const ctx = S.party, send = () => { try { ctx.send('pe', msg); } catch (e) { /* ignore */ } };
+      send(); setTimeout(send, 450); setTimeout(send, 1400);
+      const me = S.me, mine = me ? res.find((x) => x[0] === S.parts.indexOf(me)) : null;
+      endSession(S, !!(mine && mine[1]) && !extra.quit, Object.assign({}, extra, { rank: mine ? mine[2] : 0 }));
+    },
+    /** a guest: the host's game is over */
+    guestEnd(S, d) {
+      const me = S.me, i = S.parts.indexOf(me);
+      const mine = Array.isArray(d.r) ? d.r.find((x) => Array.isArray(x) && (x[0] | 0) === i) : null;
+      if (S.L && Array.isArray(d.w)) S.L.wins = [d.w[0] | 0, d.w[1] | 0];
+      const reason = typeof d.x === 'string' ? d.x.slice(0, 16) : 'done';
+      if (mine) {
+        me.hits = mine[3] | 0; me.catches = mine[4] | 0; me.fouls = mine[5] | 0; me.stacked = mine[6] | 0;
+        Object.assign(S.stats, { hits: mine[3] | 0, catches: mine[4] | 0, fouls: mine[5] | 0, stacked: mine[6] | 0, outs: mine[7] | 0 });
+      }
+      if (reason === 'host_left' || reason === 'aborted') { toast('The game is over — the host stopped playing.', 2600); endSession(S, false, { aborted: true, reason: 'host_left' }); return; }
+      endSession(S, !!(mine && mine[1]), { reason, rank: mine ? mine[2] | 0 : 0, kids: d.k | 0 || S.parts.length });
+    },
+    /** endSession with friends / through N.party: report to the party card (host: tell the friends' pages too) */
+    ended(S, r) {
+      const n = S.net, ctx = S.party;
+      if (n && n.host && !n.finished) {
+        // (stopped for another reason: a mission, a reset ... the friends' games are over too)
+        n.finished = true;
+        const m = { x: 'aborted', w: null, r: [] };
+        try { ctx.send('pe', m); setTimeout(() => { try { ctx.send('pe', m); } catch (e) { /* ignore */ } }, 450); } catch (e) { /* ignore */ }
+      }
+      if (n && n.guest && (r.quit || (r.aborted && r.reason !== 'host_left'))) { try { ctx.send('pc', { k: 'lv' }); } catch (e) { /* ignore */ } }
+      if (S.reported || !ctx || typeof ctx.report !== 'function') return;
+      S.reported = true;
+      const dnf = r.aborted || r.quit;
+      if (dnf) ctx.report({ dnf: true, note: r.reason === 'host_left' ? 'the host left' : 'left the game' });
+      else if (S.id === 'lingocha') ctx.report({ score: r.score, won: r.win ? 1 : 0, team: S.me ? S.me.team : 0, note: (r.win ? 'won ' : 'lost ') + r.roundsWon + '–' + r.roundsLost });
+      else ctx.report({ score: r.score, place: r.rank || 1, note: (r.rank || 1) === 1 ? (r.reason === 'last' ? 'last one standing' : r.reason === 'time' ? 'still standing' : 'top of the ring') : 'out ' + ordinal(r.rank) + ' of ' + (r.kids || S.parts.length) });
+      // the AI friends (solo): this page played them, this page reports them
+      if (ctx.mode === 'solo' && ctx.ai && typeof ctx.ai.report === 'function') {
+        for (const P of S.parts) {
+          if (!P.aiUid) continue;
+          try {
+            if (dnf) ctx.ai.report(P.aiUid, { dnf: true, note: 'game stopped' });
+            else if (S.L) { const w = S.L.wins[P.team] > S.L.wins[1 - P.team]; ctx.ai.report(P.aiUid, { score: S.L.wins[P.team] * 100 + (P.stacked | 0) * 10 + (P.hits | 0) * 15, won: w ? 1 : 0, team: P.team, note: (w ? 'won ' : 'lost ') + S.L.wins[P.team] + '–' + S.L.wins[1 - P.team] }); }
+            else { const pl = P.out ? P.outRank || S.parts.length : 1; ctx.ai.report(P.aiUid, { score: (pl === 1 ? 100 : 0) + (P.hits | 0) * 25 + (P.catches | 0) * 40, place: pl, note: pl === 1 ? 'still standing' : 'out ' + ordinal(pl) }); }
+          } catch (e) { N.err('pg.party.aiReport', e); }
+        }
+      }
+    },
+
+    /* ---------------------------------------------------------------- a guest */
+    cmd(S, c) {
+      const n = S.net, ctx = S.party, me = S.me, b = S.ball, L = S.L;
+      if (!n || !ctx || !me) return;
+      c.q = ++n.cq;
+      try { ctx.send('pc', c); } catch (e) { N.err('pg.party.cmd', e); }
+      const hold = TUNE.party.hold;
+      // ... and shown here at once
+      switch (c.k) {
+        case 'pk': { const st = L && L.stones[c.i]; if (st && st.state === 'loose') { st.state = 'carried'; st.by = me; st.claim = me; me.carry = st; me.stone = null; n.predCarry = S.t + hold; } break; }
+        case 'sk': { const st = me.carry; if (st && L && L.stack.length < 7) { me.carry = null; st.state = 'stack'; st.by = null; st.x = L.base.x; st.y = L.base.y; st.z = L.stack.length * TUNE.stoneH; L.stack.push(st); n.predCarry = S.t + hold; n.predStack = S.t + hold; sfx('marble', { ui: true, vol: 0.6, pitch: 0.9 + L.stack.length * 0.05 }); } break; }
+        case 'gb': give(S, me); me.holdT = 0; n.pred = { k: 'gb', until: S.t + hold, seq: b.seq }; break;
+        case 'th': NET.predictThrow(S, me, c.a, c.s, c.z, c.t >= 0 ? S.parts[c.t] : null, false); break;
+        case 'lt': { const sp = TUNE.aim.min + TUNE.aim.span * c.p, vz = sp * TUNE.aim.elev + (c.p > 0.86 ? (c.p - 0.86) * 80 : 0); NET.predictThrow(S, me, c.a, sp, vz, null, true); S.phase = 'flight'; break; }
+        default:
+      }
+    },
+    predictThrow(S, P, ang, sp, vz, T, stack) {
+      const b = S.ball, e = P.e;
+      for (const Q of S.parts) Q.hold = false;
+      Object.assign(b, { state: 'air', holder: null, thrower: P, live: !stack, pass: false, passTo: null, bounced: 0, target: T || null, kind: stack ? 'stack' : 'throw', z: TUNE.hand, vz });
+      b.x = e.x + Math.cos(ang) * 2.4; b.y = e.y + Math.sin(ang) * 2.4; b.vx = Math.cos(ang) * sp; b.vy = Math.sin(ang) * sp;
+      b.hitMe = b.seq + 1;
+      S.net.pred = { k: 'th', until: S.t + TUNE.party.hold, seq: b.seq };
+      e.angle = e.facing = ang; P.hold = false; P.holdT = 0;
+      sfx('chappal_whoosh', { x: e.x, y: e.y, vol: 0.7, pitch: 1.3 });
+    },
+    /** a guest's frame: show the host's game; Chinnu plays with his own controls (ctlUpdate) */
+    mirrorStep(S, dt) {
+      const n = S.net, ctx = S.party;
+      S.phaseT += dt;
+      if (n.snap && n.snap !== n.applied) { NET.applySnap(S, n.snap); n.applied = n.snap; }
+      if (n.evQ.length) { const q = n.evQ; n.evQ = []; for (const e of q) { try { NET.applyEv(S, e); } catch (er) { N.err('pg.party.ev', er); } } }
+      if (S.ended) return;
+      if (n.endMsg) { NET.guestEnd(S, n.endMsg); return; }
+      let hostHere = !n.hostGone;
+      try { if (ctx.isHost || (ctx.left && ctx.left(n.hostUid))) hostHere = false; } catch (e) { /* ignore */ }
+      if (!hostHere) { toast('The game is over — the host left.', 2600); endSession(S, false, { aborted: true, reason: 'host_left' }); return; }
+      for (const P of S.parts) if (!P.isPlayer) NET.follow(S, P, dt);
+      if (S.me && N.player) smoothVel(S.me, N.player.vx || 0, N.player.vy || 0, dt);
+      // where Chinnu was, on the party clock (a throw is judged against where he was when it got there)
+      if (N.player) { const h = n.hist || (n.hist = []), tn = NET.now(S); h.push({ ts: tn, x: N.player.x, y: N.player.y }); while (h.length > 2 && tn - h[0].ts > 1600) h.shift(); }
+      NET.mirrorBall(S, dt);
+      NET.sweep(S);
+      if (S.L) {
+        const k = 1 - Math.exp(-dt * 16);
+        for (const st of S.L.stones) {
+          if (st.state === 'carried' && st.by && st.by.e) { const q = holdPos(st.by); st.x = q.x; st.y = q.y; st.z = 3.2; continue; }
+          if (st.state === 'stack' || !st.nt) continue;
+          st.x += (st.nt.x - st.x) * k; st.y += (st.nt.y - st.y) * k; st.z += (st.nt.z - st.z) * k;
+          if (st.state === 'fly') st.rot += dt * 6;
+        }
+      }
+      const tl = S.tele;
+      if (tl && tl.from) { tl.from.windT -= dt; if (tl.from.windT <= 0) S.tele = null; }
+      for (const P of S.parts) if (P.safeT > 0) P.safeT -= dt;
+      for (const pp of S.pops) pp.t += dt;
+      for (let i = S.pops.length - 1; i >= 0; i--) if (S.pops[i].t > S.pops[i].life) { const o = S.pops.splice(i, 1)[0]; if (o.el) o.el.remove(); }
+      S.specT = (S.specT || 0) - dt;
+      if (S.specT <= 0) { S.specT = 1; spectators(S, true); }
+      NET.guestChecks(S, dt);
+      if (!S.ended) hudUpdate(S);
+    },
+    guestChecks(S, dt) {
+      const p = N.player, F = S.F;
+      try {
+        if (N.clock && N.clock.holds && N.clock.holds.has('playground-game') && !N.clock.frozen) {
+          N.clock.minutes += dt * TUNE.clockRate;
+          while (N.clock.minutes >= 1440) { N.clock.minutes -= 1440; N.clock.nextDay(); }
+        }
+      } catch (e) { /* ignore */ }
+      if (!p) return;
+      if (p.vehicle) { endSession(S, false, { quit: true, reason: 'vehicle' }); return; }
+      if (N.wanted && N.wanted.level >= 3) { banner('BHAAGO!', 'The Chappal Meter is up — out of the game, run!', 2400, 'fail'); endSession(S, false, { quit: true, reason: 'chappal' }); return; }
+      try { if (p.running && !p.god && p.TUNE && p.TUNE.runDrain) p.energy = Math.min(p.tummy != null ? p.tummy : 100, p.energy + dt * p.TUNE.runDrain * TUNE.runRefund); } catch (e) { /* ignore */ }
+      // walked off the ground: back you come (the game with friends is not over)
+      const bl = S.ball, d = rectDist(F, p.x, p.y);
+      const fetching = (S.me && S.me.hold) || (!bl.holder && hyp(bl.x - p.x, bl.y - p.y) < 30 && rectDist(F, bl.x, bl.y) > 2);
+      if (d > TUNE.leaveR && !fetching) {
+        S.awayT = (S.awayT || 0) + dt;
+        if (S.awayT > 0.2 && !S.awayWarned) { S.awayWarned = true; toast('*Arre*, where are you going? Your friends are playing!', 2400); }
+        if (S.awayT > TUNE.leaveT) { const q = edgeSpot(F, p.x, p.y, -6); p.x = q.x; p.y = q.y; p.vx = p.vy = 0; S.awayT = 0; S.awayWarned = false; toast('Game’s not over, ra!', 1800); }
+      } else { S.awayT = 0; S.awayWarned = false; }
+      // maram pitti: the boundary warning (the host's game calls it out)
+      if (S.id === 'marampitti' && S.me && !S.me.out && S.phase === 'play') {
+        const off = rectDist(F, p.x, p.y), fetch2 = !bl.holder && rectDist(F, bl.x, bl.y) > 2 && hyp(bl.x - p.x, bl.y - p.y) < 30;
+        if (off > TUNE.maram.bound && !fetch2 && !S.me.hold) { S.boundT = (S.boundT || 0) + dt; if (!S.boundWarn) { S.boundWarn = true; toast('*Andar aa!* Back inside the ground — or you are OUT', 2200); } }
+        else { S.boundT = 0; S.boundWarn = false; }
+      } else S.boundT = 0;
+    },
+    /** follow: a friend's ghost (his own page moves him), or a kid in the host's snapshots carried on to now */
+    follow(S, P, dt) {
+      const e = P.e;
+      let tx = null, ty = 0, ta = null, vx0 = 0, vy0 = 0, jump = false;
+      if (P.remote) { const g = NET.ghostOf(P.uid); if (g) { tx = g.x; ty = g.y; ta = g.angle; } }
+      if (tx == null && P.nt) {
+        const age = clamp((NET.now(S) - P.nt.ts) / 1000, 0, 0.35);
+        tx = P.nt.x + P.nt.vx * age; ty = P.nt.y + P.nt.vy * age; ta = P.nt.a; vx0 = P.nt.vx; vy0 = P.nt.vy; jump = !!P.nt.jump; P.nt.jump = false;
+      }
+      if (tx == null) { e.vx = e.vy = 0; e.anim.speed = 0; return; }
+      const ox = e.x, oy = e.y;
+      if (jump || P.remote || hyp(tx - e.x, ty - e.y) > 40) { e.x = tx; e.y = ty; }
+      else { const k = 1 - Math.exp(-dt * 14); e.x += (tx - e.x) * k; e.y += (ty - e.y) * k; }
+      if (P.remote) { e.vx = dt > 0 ? (e.x - ox) / dt : 0; e.vy = dt > 0 ? (e.y - oy) / dt : 0; if (hyp(e.vx, e.vy) > 200) e.vx = e.vy = 0; }
+      else { e.vx = vx0; e.vy = vy0; }
+      if (ta != null) { if (P.remote) e.angle = ta; else e.angle += adiff(e.angle, ta) * Math.min(1, dt * 12); e.facing = e.angle; }
+      smoothVel(P, e.vx, e.vy, dt);
+      const sp = hyp(e.vx, e.vy);
+      if (e.down) { e.anim.speed = 0; return; }
+      if (sp > 3) { e.anim.speed = Math.min(1, sp / 45); e.anim.run = sp > 58; e.anim.phase += sp * dt * (e.anim.run ? 0.2 : 0.26); }
+      else { e.anim.speed = 0; e.anim.run = false; e.anim.phase *= 0.85; }
+      if (e.emoteSt) { e.emoteSt.t += dt; if (e.emoteSt.t > e.emoteSt.secs) e.emoteSt = null; }
+    },
+    applySnap(S, d) {
+      const n = S.net, me = S.me, parts = S.parts, L = S.L;
+      const ts = num(d.ts, NET.now(S));
+      const ph = PH[d.ph | 0];
+      const was = S.phase;
+      if (ph && ph !== S.phase && !(S.phase === 'flight' && ph === 'aim' && n.pred && n.pred.k === 'th' && S.t < n.pred.until)) { S.phase = ph; S.phaseT = 0; }
+      const p = Array.isArray(d.p) ? d.p : [];
+      for (let i = 0; i < parts.length && i * 8 + 7 < p.length; i++) {
+        const P = parts[i], j = i * 8, f = p[j + 5] | 0;
+        const held = P.hold;
+        P.out = !!(f & 1);
+        P.safeT = f & 2 ? 0.3 : 0;
+        P.hold = !!(f & 4);
+        if (P === me && P.hold && !held) me.holdT = 0;
+        if (!P.isPlayer) {
+          P.e.down = !!(f & 8); P.e.idle = f & 16 ? 'sit' : null; P.scatter = !!(f & 32);
+          P.act = p[j + 6] === 1 ? 'pick' : p[j + 6] === 2 ? 'stack' : null;
+          P.catchT = f & 64 ? S.t : P.catchT;
+          const nt = { x: num(p[j], 0) / 10, y: num(p[j + 1], 0) / 10, a: num(p[j + 2], 0) / 100, vx: clamp(num(p[j + 3], 0), -200, 200), vy: clamp(num(p[j + 4], 0), -200, 200), ts, jump: !P.nt };
+          P.nt = nt;
+          if (P.net && P.e.hidden) { P.e.hidden = false; P.e.x = nt.x; P.e.y = nt.y; P.e.angle = nt.a; }
+        }
+        if (L && (P !== me || !(n.predCarry > S.t))) { const c = p[j + 7] | 0; P.carry = c >= 0 && c < 7 ? L.stones[c] : null; }
+        if (P === me && P.out) { me.act = null; }
+      }
+      // the ball (unless Chinnu has just thrown / grabbed it here and the host has not caught up yet)
+      const B = Array.isArray(d.b) ? d.b : null;
+      if (B && B.length >= 15) {
+        const b = S.ball, seq = B[8] | 0, hi = B[7] | 0, holder = hi >= 0 ? parts[hi] || null : null;
+        const pr = n.pred;
+        const pending = pr && S.t < pr.until && !(pr.k === 'gb' ? holder === me : seq > pr.seq);
+        if (pr && !pending) n.pred = null;
+        if (!pending) {
+          b.x = num(B[0], 0) / 10; b.y = num(B[1], 0) / 10; b.z = num(B[2], 0) / 10; b.vx = num(B[3], 0); b.vy = num(B[4], 0); b.vz = num(B[5], 0);
+          b.state = BALL_ST[B[6] | 0] || 'rest'; b.holder = holder; b.live = !!B[9]; b.bounced = B[10] | 0;
+          b.thrower = (B[11] | 0) >= 0 ? parts[B[11] | 0] || null : null; b.target = (B[12] | 0) >= 0 ? parts[B[12] | 0] || null : null;
+          b.hiddenBall = !!B[13]; b.kind = B[14] ? 'stack' : 'throw';
+          b.lockP = (B[15] | 0) >= 0 ? parts[B[15] | 0] || null : null; b.lockT = S.t + (B[16] | 0) / 10;
+          // a live throw in flight: its whole path since it left the hand (Chinnu's own page judges it against where he was)
+          if (B.length >= 24 && (B[17] | 0) >= 0 && b.live && b.state === 'air') {
+            const age = clamp(num(B[17], 0), 0, 3000), vx = num(B[21], b.vx), vy = num(B[22], b.vy), vz = num(B[23], b.vz);
+            if (!b.trk || b.trk.seq !== seq) b.trk = { seq, checked: 0 };
+            Object.assign(b.trk, { t0: ts - age, rx: num(B[18], 0) / 10, ry: num(B[19], 0) / 10, ld: num(B[20], 700) / 10, vx, vy, vz0: vz + TUNE.g * (age / 1000), z0: TUNE.hand, thrower: b.thrower });
+          }
+          if (b.state === 'held' && !holder) b.state = 'rest';
+          if (seq !== b.seq) { b.seq = seq; }
+          for (const Q of parts) if (Q !== holder && Q.hold && b.state === 'held') Q.hold = false;
+          if (holder) holder.hold = true;
+          // in flight a network trip ago: carry it on to now
+          if (b.state === 'air' || b.state === 'roll') NET.ballFwd(S, b, clamp((NET.now(S) - ts) / 1000, 0, 0.3), false);
+        }
+      }
+      if (L && Array.isArray(d.L) && d.L.length >= 10) {
+        const q = d.L;
+        L.round = q[0] | 0; L.rounds = clamp(q[1] | 0, 1, 5); L.wins = [q[2] | 0, q[3] | 0]; L.tries = q[4] | 0; L.seek = q[5] ? 1 : 0;
+        L.thrower = (q[6] | 0) >= 0 ? parts[q[6] | 0] || null : null; L.timer = num(q[7], 0) / 10; L.knocked = !!q[8]; L.need = q[9] | 0 || L.need;
+        if (Array.isArray(d.st)) {
+          for (let i = 0; i < L.stones.length && i * 5 + 4 < d.st.length; i++) {
+            const st = L.stones[i], j = i * 5;
+            if (n.predCarry > S.t && (st.by === me || me.carry === st)) continue;
+            st.state = STONE_ST[d.st[j + 3] | 0] || 'loose';
+            const bi = d.st[j + 4] | 0; st.by = bi >= 0 ? parts[bi] || null : null;
+            const nt = { x: num(d.st[j], 0) / 10, y: num(d.st[j + 1], 0) / 10, z: num(d.st[j + 2], 0) / 10 };
+            if (!st.nt || st.state === 'stack' || hyp(nt.x - st.x, nt.y - st.y) > 30) { st.x = nt.x; st.y = nt.y; st.z = nt.z; }
+            st.nt = nt;
+          }
+        }
+        if (typeof d.sk === 'string' && /^[0-6]{0,7}$/.test(d.sk) && !(n.predStack > S.t)) L.stack = d.sk.split('').map((c) => L.stones[+c]);
+        if (S.phase === 'aim' && was !== 'aim' && L.thrower === me) { LING.aimStart(S); S.aim.charging = false; S.aim.p = 0; S.aim.yaw = null; }
+      }
+      if (S.M && Array.isArray(d.M)) { S.M.timeLeft = num(d.M[0], 0) / 10; S.M.tosses = d.M[1] | 0; }
+      if (Array.isArray(d.tl) && d.tl.length >= 5) {
+        const a = parts[d.tl[0] | 0], t = parts[d.tl[1] | 0];
+        if (a && t) { a.windT = num(d.tl[2], 0) / 1000; a.windT0 = Math.max(0.05, num(d.tl[3], 1000) / 1000); a.aimLock = d.tl[4] ? {} : null; S.tele = { from: a, to: t }; }
+      } else if (S.tele) { if (S.tele.from) S.tele.from.windT = 0; S.tele = null; }
+      n.first = false;
+    },
+    applyEv(S, e) {
+      const me = S.me, mine = (u) => u === '*' || (me && u === me.uid), p = N.player;
+      switch (e[1]) {
+        case 'p': pop(S, num(e[2], 0) / 10, num(e[3], 0) / 10, num(e[4], 90) / 10, String(e[5] || '').slice(0, 24), /^#[0-9a-f]{3,8}$/i.test(e[6] || '') ? e[6] : null, !!e[7]); break;
+        case 'b': { const P = S.parts[e[2] | 0]; if (P && !P.isPlayer && !P.remote) bark(S, P, String(e[3] || '').slice(0, 80), { force: true, secs: clamp(num(e[4], 1.6), 0.5, 4) }); break; }
+        case 's': if (/^[a-z][a-z0-9_]{0,23}$/.test(e[2] || '')) sfx(e[2], { x: num(e[3], 0) / 10, y: num(e[4], 0) / 10, vol: clamp(num(e[5], 1), 0, 1.5), pitch: clamp(num(e[6], 1), 0.3, 3), delay: clamp(num(e[7], 0), 0, 1), echo: true }); break;
+        case 'n': if (mine(e[2])) banner(String(e[3] || '').slice(0, 40), String(e[4] || '').slice(0, 120), clamp(num(e[5], 2200), 500, 5000), /^[a-z]{2,8}$/.test(e[6] || '') ? e[6] : 'info'); break;
+        case 't': if (mine(e[2])) toast(String(e[3] || '').slice(0, 140), clamp(num(e[4], 2400), 500, 5000)); break;
+        case 'u': if (mine(e[2]) && /^[a-z][a-z0-9_]{0,23}$/.test(e[3] || '')) sfx(e[3], { ui: true, vol: clamp(num(e[4], 1), 0, 1.5), delay: clamp(num(e[5], 0), 0, 1) }); break;
+        case 'a':
+          if (mine(e[2]) && p) {
+            if (e[3] == null) { if (S.auto && !S.auto.out) S.auto = null; break; }
+            const q = { x: num(e[3], p.x * 10) / 10, y: num(e[4], p.y * 10) / 10 }, face = num(e[5], 0) / 100;
+            if (hyp(q.x - p.x, q.y - p.y) > 4 || e[6]) S.auto = { x: q.x, y: q.y, t: 0, face, out: !!e[6] }; else { p.angle = p.facing = face; S.auto = null; }
+          }
+          break;
+        case 'k': if (mine(e[2]) && p) { const vx = num(e[3], 0), vy = num(e[4], 0), s = hyp(vx, vy) || 1; p.vx += (vx / s) * 40; p.vy += (vy / s) * 40; try { if (N.render && N.render.shake && !document.body.classList.contains('reduced-motion')) N.render.shake(0.18, 0.15); } catch (er) { /* ignore */ } } break;
+        case 'r': {
+          const P = S.parts[e[2] | 0];
+          if (!P || P.isPlayer) break;
+          const name = String(e[3] || 'Kid').slice(0, 16);
+          P.remote = false; P.net = true; P.uid = null; P.nick = null; P.name = name; P.col = null;
+          P.e.look = N.people.randomLook(U.rng('pgk:' + name + ':' + S.F.key), 'kid'); P.e.name = name; P.e.hidden = false;
+          break;
+        }
+        default:
+      }
+    },
+    /** the ball between snapshots: carried on (gravity, bounce, roll); a live one reaching Chinnu is judged here */
+    mirrorBall(S, dt) {
+      const b = S.ball;
+      if (b.state === 'held') {
+        const h = b.holder;
+        if (h && h.e) { const q = holdPos(h); b.x = q.x; b.y = q.y; b.z = q.z; }
+        return;
+      }
+      if (b.state === 'air' || b.state === 'roll') NET.ballFwd(S, b, dt, true);
+    },
+    ballFwd(S, b, t, judge) {
+      const F = S.F;
+      let left = t;
+      while (left > 1e-4) {
+        const h = Math.min(left, 1 / 90); left -= h;
+        if (b.state === 'air') {
+          b.vz -= TUNE.g * h; b.x += b.vx * h; b.y += b.vy * h; b.z += b.vz * h;
+          if (b.z <= 0) {
+            b.z = 0; b.live = false;
+            if (b.vz < -18) { b.vz = -b.vz * TUNE.bounce; b.vx *= TUNE.bounceFric; b.vy *= TUNE.bounceFric; } else { b.vz = 0; b.state = 'roll'; }
+            b.bounced++;
+          }
+        } else if (b.state === 'roll') {
+          const s = hyp(b.vx, b.vy), rough = inRect(F, b.x, b.y, TUNE.outerM) ? 1 : TUNE.roughMul, dec = (TUNE.rollFric * rough + TUNE.rollDrag * s) * h;
+          if (s <= dec || s < 2.5) { b.vx = b.vy = 0; b.state = 'rest'; } else { const k = (s - dec) / s; b.vx *= k; b.vy *= k; b.x += b.vx * h; b.y += b.vy * h; }
+        } else break;
+      }
+      void judge;
+    },
+    /** a guest's own Chinnu and a live throw: its path since it left the hand against where he was at each moment
+     *  (lag-compensated: a late snapshot still finds the hit; a last-moment dodge on his page still beats it) */
+    sweep(S) {
+      const b = S.ball, me = S.me, n = S.net, k = b.trk;
+      if (!k || !me || me.out || k.seq !== b.seq || b.hitMe === b.seq || b.kind === 'stack' || !k.thrower || k.thrower === me || !n.hist || n.hist.length < 2) return;
+      if (S.id === 'lingocha' ? !(S.phase === 'live' && me.team === S.L.seek && k.thrower.team !== me.team) : S.phase !== 'play') return;
+      const tn = NET.now(S), R = TUNE.hitR * TUNE.party.hitR, sp = hyp(k.vx, k.vy);
+      let tc = Math.max(k.checked || k.t0, k.t0, tn - 1500);
+      for (; tc <= tn; tc += 8) {
+        const tau = (tc - k.t0) / 1000;
+        const bz = k.z0 + k.vz0 * tau - 0.5 * TUNE.g * tau * tau;
+        if (bz < 0 || sp * tau > k.ld + 1) { k.checked = tn + 1e6; return; } // landed / past its live range: a dead ball
+        const bx = k.rx + k.vx * tau, by = k.ry + k.vy * tau, q = NET.histAt(n.hist, tc);
+        const dx = q.x - bx, dy = q.y - by;
+        if (dx * dx + dy * dy > R * R || bz < 0.15 || bz - TUNE.ballR > TUNE.bodyTop) continue;
+        b.hitMe = b.seq; k.checked = tn + 1e6;
+        // hands up just in time (as of that moment; a little extra for the network)
+        const atT = S.t - (tn - tc) / 1000;
+        const caught = S.id === 'marampitti' && atT - me.catchT >= -0.05 && atT - me.catchT < TUNE.catchWin * (S.assist || isTouch() ? 1.4 : 1) + TUNE.party.catchExtra;
+        n.hits++;
+        NET.cmd(S, { k: 'hm', q: b.seq, x: Math.round(bx * 10), y: Math.round(by * 10), z: +bz.toFixed(2), c: caught ? 1 : 0 });
+        if (b.state === 'air') b.live = false;
+        log(S, 'hit_report', { caught, seq: b.seq, late: Math.round(tn - tc) });
+        return;
+      }
+      k.checked = tn;
+    },
+    histAt(h, t) {
+      if (t <= h[0].ts) return h[0];
+      for (let i = h.length - 1; i > 0; i--) { const a = h[i - 1], c = h[i]; if (t >= a.ts) { const f = c.ts > a.ts ? clamp((t - a.ts) / (c.ts - a.ts), 0, 1) : 1; return { x: a.x + (c.x - a.x) * f, y: a.y + (c.y - a.y) * f }; } }
+      return h[h.length - 1];
+    },
+  };
+
+  /* ---------------------------------------------------------------- the party activities (src/party.js contract) */
+  /** where everybody meets: by the chalk line (lingocha) / round the middle (maram pitti), one spot per player */
+  function meetSpot(F, gid, slot) {
+    if (gid === 'lingocha') { const ln = F.line, vx = -ln.dy, vy = ln.dx, off = (slot % 2 ? 1 : -1) * (8 + 8 * Math.floor(slot / 2)); const q = spotNear(ln.x - ln.dx * 6 + vx * off, ln.y - ln.dy * 6 + vy * off, 3, 14, F); return { x: q.x, y: q.y, a: Math.atan2(F.stack.y - q.y, F.stack.x - q.x) }; }
+    const c = F.centre, a = slot * 2.1 + 0.5, q = spotNear(c.x + Math.cos(a) * 20, c.y + Math.sin(a) * 20, 3, 14, F);
+    return { x: q.x, y: q.y, a: Math.atan2(c.y - q.y, c.x - q.x) };
+  }
+  function partyStart(gid, ctx) {
+    if (!fieldList.length) buildFields();
+    const o = (ctx && ctx.opts) || {};
+    const F = FIELDS.get(o.place) || pickField(null);
+    const H = { gid, ctx, F, S: null, init: null, done: false, offs: [], waitT: 0 };
+    if (!F) { setTimeout(() => { try { ctx.report({ dnf: true, note: 'no ground here' }); } catch (e) { /* ignore */ } }, 0); return { end() {} }; }
+    // everybody meets at the ground (a friend from across the city is brought there for the 3-2-1)
+    try { const p = N.player; if (p && (p.vehicle || rectDist(F, p.x, p.y) > 30)) { const q = meetSpot(F, gid, ctx.slot | 0); ctx.place(q.x, q.y, q.a); } } catch (e) { N.err('pg.party.place', e); }
+    try { if (AMB.S && AMB.S.F === F) endAmbient(false); } catch (e) { /* ignore */ }
+    if (ctx.mode === 'party' && !ctx.isHost) {
+      const hostUid = ctx.players[0] && ctx.players[0].uid;
+      H.offs.push(ctx.on('pi', (d, from) => { if (!H.init && from && from.uid === hostUid && d && d.g === gid && Array.isArray(d.k)) H.init = d; }));
+    }
+    return {
+      update(dt) {
+        if (H.done || H.S) { if (H.S && H.S.ended && !H.closed) H.closed = true; return; }
+        let el = 0;
+        try { el = ctx.elapsed(); } catch (e) { el = 0; }
+        if (el < 0) return;
+        const params = Object.assign({ difficulty: 0.4 }, o, { place: F.ids[0], seed: ctx.seed, party: ctx, noQuit: true, side: false, reward: 0 });
+        delete params.solo;
+        if (ctx.mode === 'party' && !ctx.isHost) {
+          if (!H.init) {
+            H.waitT += dt;
+            if (H.waitT > TUNE.party.guestWait) { H.done = true; toast('Could not reach the host\'s game.', 2400); try { ctx.report({ dnf: true, note: 'no connection' }); } catch (e) { /* ignore */ } }
+            return;
+          }
+          params.partyInit = H.init;
+        }
+        play(gid, params).then((r) => { void r; });
+        H.S = current && current.party === ctx ? current : null;
+        if (!H.S) { H.done = true; try { ctx.report({ dnf: true, note: 'could not start' }); } catch (e) { /* ignore */ } }
+      },
+      end(reason) {
+        H.done = true;
+        for (const f of H.offs) { try { if (typeof f === 'function') f(); } catch (e) { /* ignore */ } }
+        H.offs.length = 0;
+        if (H.S && current === H.S && !H.S.ended) abort('party:' + (reason || 'end'));
+      },
+    };
+  }
+  function partySpec(gid) {
+    const lin = gid === 'lingocha';
+    const spec = {
+      name: lin ? 'Lingocha' : 'Maram pitti', icon: lin ? '🪨' : '🎾', kind: 'score', players: { min: 1, max: 3 }, solo: true,
+      ai: ['immu', 'ayesha'], lock: true, timeLimit: lin ? 1500 : 600, r: 0.5,
+      label: (lin ? 'Lingocha' : 'Maram pitti') + ' with friends',
+      token: lin ? { id: 'pg_lingocha_friends', name: 'Lingocha stone', desc: 'A flat stone from the winning stack: a lingocha match won with friends' }
+        : { id: 'pg_maram_friends', name: 'Maram pitti tennis ball', desc: 'The old green ball: last one standing at maram pitti with friends' },
+      describe(opts) {
+        const F = opts && FIELDS.get(opts.place), at = F ? ' at ' + shortName(F) + ' ground' : ' at the colony ground';
+        return lin ? 'Seven stones' + at + ': knock the stack down, then rebuild it before the other team hits you with the ball. Friends captain the teams; colony kids fill them.'
+          : 'Dodgeball' + at + ': let the ball bounce before you grab it, hit below the head, last one standing wins. Colony kids join the ring.';
+      },
+      options(x, y) { if (!fieldList.length) buildFields(); const F = (fin(x) && fin(y) ? nearestField(x, y, 1e9) : null) || FIELDS.get('playground_1') || fieldList[0]; return { place: F ? F.ids[0] : 'playground_1' }; },
+      when() { return !(N.flags && N.flags.mg_side_off) || 'Not now.'; },
+      start(ctx) { return partyStart(gid, ctx); },
+    };
+    if (lin) {
+      // the winning team first (friends on it by their own score), then the others
+      spec.rank = (rows) => rows.slice().sort((a, b) => { const oa = a.dnf || a.left || !a.reported ? 1 : 0, ob = b.dnf || b.left || !b.reported ? 1 : 0; return oa - ob || (b.won | 0) - (a.won | 0) || (b.score || 0) - (a.score || 0); });
+    }
+    // where it is played: alone, "anywhere" (the start card brings you to the nearest ground); with friends in the room,
+    // the "... with friends" prompt stands on each ground's Join offer (nearest first), so the picker can send you there
+    if (friendsHere() && fieldList.length) {
+      const p = N.player, spots = [];
+      for (const F of fieldList) { const q = F.offerAt && F.offerAt[gid]; if (q) spots.push({ x: q.x, y: q.y, r: 16, name: (lin ? 'Lingocha' : 'Maram pitti') + ' at ' + F.name, d: p ? hyp(q.x - p.x, q.y - p.y) : 0, id: F.ids[0] }); }
+      spots.sort((a, b) => a.d - b.d);
+      if (spots.length) { spec.where = spots[0].id; spec.spots = spots.map((q) => ({ x: q.x, y: q.y, r: q.r, name: q.name })); }
+    }
+    return spec;
+  }
+  const PREG = { ref: null, key: '', t: 0 };
+  function registerParty(force) {
+    const P = N.party;
+    if (!P || typeof P.register !== 'function' || !fieldList.length) return false;
+    const p = N.player, near = p ? nearestField(p.x, p.y, 1e9) : null;
+    const key = (friendsHere() ? 'f' : 's') + ':' + (near ? near.key : '') + ':' + fieldList.length;
+    if (!force && PREG.ref === P && PREG.key === key) return true;
+    try { for (const gid of Object.keys(PARTY_ID)) P.register(PARTY_ID[gid], partySpec(gid)); PREG.ref = P; PREG.key = key; return true; } catch (e) { N.err('pg.party.register', e); return false; }
+  }
+  N.on('online:room', () => registerParty());
+  N.on('online:players', () => registerParty());
 
   /* ================================================================ N.minigames integration */
   const ALIASES = { seven_stones: 'lingocha', sevenstones: 'lingocha', lagori: 'lingocha', pittu: 'lingocha', pithu: 'lingocha', lingocha_game: 'lingocha', lingoch: 'lingocha', maram_pitti: 'marampitti', marampeety: 'marampitti', maram_peety: 'marampitti', picchi_banti: 'marampitti', dodgeball: 'marampitti', maram: 'marampitti' };
@@ -3290,6 +4080,7 @@
     try { buildFields(); } catch (e) { N.err('pg.fields', e); }
     try { installOffers(); } catch (e) { N.err('pg.offers', e); }
     installQueueFilter();
+    try { registerParty(true); } catch (e) { N.err('pg.party.register', e); }
   }
   function resetAll() {
     AGAIN.gid = null;
@@ -3367,7 +4158,8 @@
         const out = {
           id: S.id, phase: S.phase, t: +S.t.toFixed(2), place: S.F.key, ambient: S.ambient, d: S.d, ended: S.ended,
           ball: { x: +b.x.toFixed(1), y: +b.y.toFixed(1), z: +b.z.toFixed(2), state: b.state, holder: b.holder ? b.holder.name : null, holderIsMe: !!(b.holder && b.holder.isPlayer), bounced: b.bounced, live: b.live, thrower: b.thrower ? b.thrower.name : null },
-          parts: S.parts.map((P) => ({ name: P.name, me: !!P.isPlayer, team: P.team, out: P.out, safe: P.safeT > 0, hold: P.hold, carry: P.carry ? P.carry.i : null, x: +P.e.x.toFixed(1), y: +P.e.y.toFixed(1), npc: P.npc || null, dood: !!P.dood, hits: P.hits, fouls: P.fouls })),
+          parts: S.parts.map((P) => ({ name: P.name, me: !!P.isPlayer, team: P.team, out: P.out, safe: P.safeT > 0, hold: P.hold, carry: P.carry ? P.carry.i : null, x: +P.e.x.toFixed(1), y: +P.e.y.toFixed(1), npc: P.npc || null, dood: !!P.dood, hits: P.hits, fouls: P.fouls, remote: !!P.remote, uid: P.uid || null, nick: P.nick || null, ai: P.aiUid || null, mirror: !!P.net, hidden: !!P.e.hidden })),
+          net: S.net ? { host: S.net.host, guest: S.net.guest, sent: S.net.sent, recv: S.net.recv, cmds: S.net.cmds, hits: S.net.hits, acks: S.net.acks.size, need: S.net.need } : null, party: S.party ? S.party.mode : null,
           label: S.ui.label, prompt: S.ui.prompt, aim: { ang: +S.aim.ang.toFixed(3), p: +S.aim.p.toFixed(2), charging: S.aim.charging },
           log: S.log.slice(-60), stats: Object.assign({}, S.stats), auto: !!S.auto, target: S.aimTarget ? S.aimTarget.name : null,
           tele: S.tele && S.tele.from && S.tele.from.windT > 0 ? { from: S.tele.from.name, to: S.tele.to ? S.tele.to.name : null, atMe: S.tele.to === S.me, windT: +S.tele.from.windT.toFixed(3), fuse: +fuse(S.tele.from).toFixed(2), locked: !!S.tele.from.aimLock } : null,
@@ -3397,13 +4189,14 @@
         b.rx = p.x - Math.cos(ha) * 30; b.ry = p.y - Math.sin(ha) * 30; b.liveDist = 60;
         return true;
       },
-      /** make `who` (default: the player) throw a live ball at `name` */
-      throwAt(name, who) {
+      /** make `who` (default: the player) throw a live ball at `name` (exact: straight at him, chest high) */
+      throwAt(name, who, exact) {
         const S = current; if (!S) return false;
         const T = PG.debug.part(name), P = who ? PG.debug.part(who) : S.me;
         if (!T || !P) return false;
         if (!P.hold) give(S, P);
-        if (P.isPlayer) playerThrow(S, T, false); else LING.aiThrowAt(S, P, T);
+        if (exact) launchAt(S, P, T.e.x, T.e.y, 2.6, 150, 0, { target: T });
+        else if (P.isPlayer) playerThrow(S, T, false); else LING.aiThrowAt(S, P, T);
         return true;
       },
       /** stack n of the loose stones at once (as the first seeker who is in) */
@@ -3451,6 +4244,8 @@
         return out;
       },
       kidCount() { return N.entities.all.filter((e) => e.pgKid && e.alive !== false).length; },
+      /** party glue (tests): the registered specs, the Join offers' "with friends" state */
+      party: { registerParty, partySpec, NET, PARTY_ID, friendsHere },
       busy() { return Array.from(BUSY); },
       filtered: FILTERED,
       v3: V3L,

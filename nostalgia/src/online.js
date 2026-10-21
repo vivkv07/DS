@@ -8,7 +8,7 @@
  *   (TUNE.flowMs) -> straight into the world: from the title the saved game continues (N.game.continueGame, the latest
  *   slot), or with no save a new game starts with the intro skipped (N.game.newGame({skipIntro}) + the flags the
  *   2026 prologue would leave, so the story can still begin at M1's giver); from the pause deck the game resumes.
- *   A joiner is placed a few metres from the earliest player in the room (walkable ground, off the road when
+ *   A joiner (unless already within ~100 m) is placed a few metres from the earliest player in the room (walkable ground, off the road when
  *   there is a footpath, no wall in between) once that friend's position arrives; during a mission, a party
  *   game or a chase they are never moved: a pink route + the 👫 "Go to friends" button instead (HUD + panel).
  *   One create / join at a time (a double tap gets the same answer), one game start.
@@ -983,6 +983,7 @@
   /* ================================================================ room flow: straight into the world, next to friends */
   const TUNE = { flowMs: 1400 }; // the panel shows the room code this long before the game takes over
   const GO_MIN_U = 100;          // the 👫 button shows when the friend it goes to is farther than this (~160 m)
+  const HERE_U = 60;             // a joiner already this close to the friend (~100 m) stays where they are
   const FLOW = { auto: null, place: null, offer: null, starting: false, started: 0, how: null };
   const gameStarted = () => { const m = N.state.mode; return m !== 'title' && m !== 'boot'; };
   /** after a successful create / join: into the world (title), back to it (pause over the panel), then next to friends */
@@ -1122,6 +1123,8 @@
     }
     if (N.player && N.player.controlsLocked && !gatherBlock() && t - F.t0 < 20000) return; // a J-card / a ride is up: a moment
     FLOW.place = null;
+    const tg = friendTarget();
+    if (friendDistU() <= HERE_U) { toast('You joined ' + R.code + ': ' + tg.nick + ' is right here!', 3000); N.emit('online:gather', { ok: true, auto: true, stayed: true }); return; } // already together
     goToFriends({ auto: true });
   }
   N.on('mission:complete', () => { if (FLOW.offer && R.ch) setTimeout(() => { if (FLOW.offer && R.ch) toast('Mission done! Tap 👫 Go to friends to join them.', 3600); }, 4000); });
@@ -1157,7 +1160,10 @@
     const out = [];
     for (const a of list) {
       if (a.anywhere || typeof a.x !== 'number' || typeof a.y !== 'number' || !isFinite(a.x) || !isFinite(a.y)) continue; // anywhere ones: the 🏁 picker
-      out.push({ id: a.id, kind: 'party', name: a.name, icon: a.icon || '🏁', at: a.atName || null, line: a.line || '', x: a.x, y: a.y, r: a.r || 0, d: Math.hypot(a.x - cx, a.y - cy), dMe: Math.hypot(a.x - me.x, a.y - me.y), dAll: far(a.x, a.y) });
+      // where: the spot's own name, or its place's when that name is a long description ("Kite fight at Home terrace (…)")
+      const pl = a.where && N.places && N.places[a.where];
+      const at = a.atName && (a.atName.length <= 26 || !pl) ? a.atName : pl ? pl.name : null;
+      out.push({ id: a.id, kind: 'party', name: a.name, icon: a.icon || '🏁', at, line: a.line || '', x: a.x, y: a.y, r: a.r || 0, d: Math.hypot(a.x - cx, a.y - cy), dMe: Math.hypot(a.x - me.x, a.y - me.y), dAll: far(a.x, a.y) });
     }
     out.sort((p, q) => p.d - q.d);
     const n = Math.max(1, max || 4);
@@ -1226,6 +1232,14 @@
   let hudEl = null, arriveEl = null;
   const HS = { t: 0, nearT: 0, nearHtml: '', nearOpen: null, snooze: new Map(), lastArrive: -Infinity, inside: new Set(), arrive: null };
   const UI_KEY = 'nostalgia.online.ui.v1';
+  /** #ui-top: a layer over the touch controls (#touch, z 20: the joystick zone on the left, the 3D look zone on the
+   *  right) and under the menus (#overlay, z 30), so the room HUD and the party cards take taps on phones too
+   *  (party.js uses the same layer; style.css "=== online ===") */
+  function topLayer() {
+    let e = document.getElementById('ui-top');
+    if (!e) { e = document.createElement('div'); e.id = 'ui-top'; document.body.appendChild(e); }
+    return e;
+  }
   const narrow = () => (window.innerWidth || 800) <= 560 || document.body.classList.contains('touch-on');
   function nearOpen() {
     if (HS.nearOpen == null) { let v = null; try { v = JSON.parse(lsGet(UI_KEY) || 'null'); } catch (e) { v = null; } HS.nearOpen = v && typeof v.near === 'boolean' ? v.near : !narrow(); }
@@ -1266,7 +1280,7 @@
     });
     // taps on the HUD must not reach the touch controls / canvas under it
     for (const ev of ['pointerdown', 'touchstart']) hudEl.addEventListener(ev, (e) => e.stopPropagation(), { passive: true });
-    (document.getElementById('ui') || document.body).appendChild(hudEl);
+    topLayer().appendChild(hudEl);
     arriveEl = hudEl.querySelector('.ol-arrive');
   }
   function renderHud() {
@@ -1357,6 +1371,7 @@
     arriveEl.innerHTML = '<span class="ol-arr-i" aria-hidden="true">' + esc(a.icon) + '</span><p class="ol-arr-t"><b>You\'re all at ' + esc(at) + '</b> — ' + esc(a.name) + '?</p>' +
       '<div class="ol-arr-b"><button type="button" class="ol-arr-x" data-arr="x">Not now</button><button type="button" class="ol-arr-go" data-arr="go">🏁 Start</button></div>';
     arriveEl.classList.add('show');
+    if (narrow()) { const c = hudEl.querySelector('.ol-chat'); c.hidden = true; hudEl.querySelector('.ol-chat-tg').setAttribute('aria-expanded', 'false'); } // one popover at a time on a phone
     HS.arrive = { id: a.id, until: t + 14000 };
     sfx('bell');
     N.emit('online:arrive', { id: a.id, at });
@@ -1459,7 +1474,7 @@
     }).join('') + '</ul>';
     const row = [];
     if (!gameStarted()) row.push(btn('play', '▶ Into the city', { def: true, cls: 'big' }));
-    else if (friendDistU() > GO_MIN_U) row.push(btn('gofriends', '👫 Go to friends <small>' + fmtDist(friendDistU()) + '</small>', { cls: 'big', def: true }));
+    else { const fd = friendDistU(); if (isFinite(fd) && fd > GO_MIN_U) row.push(btn('gofriends', '👫 Go to friends <small>' + fmtDist(fd) + '</small>', { cls: 'big', def: true })); }
     if (row.length) h += '<div class="ol-row">' + row.join('') + '</div>';
     h += '</section>';
     if (!gameStarted()) return h + '<div class="ol-row">' + btn('leave', '⏏ Leave room', { alt: true }) + '</div>';
@@ -1688,6 +1703,8 @@
       sanitizeState, sanitizeLook, profile: () => JSON.parse(JSON.stringify(P)),
       /** tests: forget what this phone knows about the cloud (so only the server's guard is left) */
       forgetCloud() { P.cloud = {}; saveProfile(); },
+      /** tests: forget the arrival card's rate limits (one a minute, 5 min per activity) and hide it */
+      arriveReset() { HS.lastArrive = -Infinity; HS.snooze.clear(); HS.inside = new Set(); hideArrive(); HS.nearT = 0; },
       trace(on) { if (on) { TRACE.out = []; TRACE.on = true; return null; } TRACE.on = false; return TRACE.out; },
       reset() { P.code = null; P.nick = null; P.cloud = {}; P.journeyHash = null; P.dismissed = {}; saveProfile(); },
     },
