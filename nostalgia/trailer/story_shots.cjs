@@ -205,7 +205,7 @@ PLANS.s_story.qa = [0, 20, 40, 60, 72, 90, 110, 143];
 // The third-person camera centres Chinnu's head, which the (scaled-up) dialogue box would cover: the 3D canvas is
 // cropped from the top (a tilt down: the kids sit at ~38% of the frame, above the box); the render keeps its resolution
 PLANS.s_story.css = ['.dlg { zoom: 1.4; }', '#hud { zoom: 1.35; }', '#game3d { transform-origin: 50% 0; transform: translateY(-24%) scale(1.24); }'].join('\n');
-PLANS.s_story.cssV = ['.dlg { zoom: 1.6; }', '#hud { zoom: 1.3; }', '#game3d { transform-origin: 50% 0; transform: translateY(-12%) scale(1.12); }'].join('\n');
+PLANS.s_story.cssV = ['.dlg { zoom: 1.6; }', '#hud { zoom: 1.3; }', '#game3d { transform-origin: 50% 0; transform: translateY(-16.5%) scale(1.3); }'].join('\n');
 function startPrologue(o) {
   SP.setup({ hud: true, css: o.css });
   SP.fixLabel();
