@@ -13,6 +13,7 @@
  *          CUTS=name,..            re-render only these cuts (PLANS below) into the segment's existing frames
  *          PR3D=n                  s_story: pixel ratio of the 3D view (default SCALE = native resolution)
  *          YAW=a YAW_V=a PITCH=p   s_story: third-person camera yaw (landscape / portrait) and pitch (radians)
+ *          SIDE=-1|1               s_story: Immu stands west (-1, default: the morning sun on his face) / east of Chinnu
  *          REC_FIRE=18             s_story: frames after the ● REC prompt (b44, frame 72) when the recording fires
  *          EVERY=n                 preview: capture every n-th frame only (the files keep their frame index)
  *          QA=1                    only build the contact sheet out/qa_story_landscape.jpg | qa_story_portrait.jpg
@@ -162,7 +163,7 @@ PLANS.s_story = {
     // b40-41: Immu (sad): "Abba's visa came. Yesterday. After Eid, we fly. New Jersey." — joined at "...Yesterday. ", so
     // "After Eid, we fly. New Jersey." types in (Text speed: Fast, a player setting) and is complete by ~frame 18
     { name: 'visa', n: 36, setup: storyGround, anchor: { line: "Abba's visa", chars: 29 }, off: 0 },
-    // b42-43: Immu: "Ten months and eleven days. I counted." (typed by ~frame 13 of the cut)
+    // b42-43: Immu: "Ten months and eleven days. I counted." (typed from frame 36, complete by ~frame 54)
     { name: 'ten_months', n: 36, before: () => { N.dialogue.advance(); }, anchor: null, off: 1 },
     // b44-47: Immu: "We take the city with us. One tape. One tin." and the tape: ● REC on frame 72 (the score's REC blip,
     // b44) — the game's REC prompt (OSD ● REC, objective) — then the recording fires on frame 90 (b45, where the
