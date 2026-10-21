@@ -152,6 +152,8 @@ for (const seg of REMUX ? [] : segs) {
   }
   clips.push(out);
 }
+// CLIPS_ONLY=1: just (re)encode the per-segment clips into the cache (pre-encode finished segments while others render)
+if (process.env.CLIPS_ONLY) { console.log('clips only: done'); process.exit(0); }
 // EDL: cut each piece's frames out of the master's segment clips (reused while unchanged)
 if (PIECES && !REMUX) {
   const parts = [];
