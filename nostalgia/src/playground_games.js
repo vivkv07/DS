@@ -1076,7 +1076,8 @@
     // the order kids go out in (maram pitti places: the last one standing is 1st)
     P.outRank = S.parts.filter((q) => !q.out).length + 1;
     // Chinnu out in lingocha: he walks to the side and watches (the round goes on); a friend from the room too
-    if (human(P) && S.real && S.id === 'lingocha' && (N.player || P.remote)) { const q = sitSpot(S, P); NET.autoFor(S, P, q, Math.atan2(S.F.cy - q.y, S.F.cx - q.x), true); }
+    // (maram pitti with friends too: the game goes on without him, so he watches from the side)
+    if (human(P) && S.real && (S.id === 'lingocha' || S.party) && (N.player || P.remote)) { const q = sitSpot(S, P); NET.autoFor(S, P, q, Math.atan2(S.F.cy - q.y, S.F.cx - q.x), true); }
     if (by && by.isPlayer && S.real) S.stats.hits++;
     if (by) by.hits++;
     pop(S, P.e.x, P.e.y, 13, 'OUT!', '#ff7a6a', true);

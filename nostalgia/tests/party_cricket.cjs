@@ -70,7 +70,7 @@ async function openPage(browser, name, V, url, conf) {
 async function newGame(P, place) {
   await P.ev(() => {
     N.debug.newGame({ skipIntro: true });
-    N.calendar && N.calendar.set && N.calendar.set(2003, 1, 22, 16, 30); // a Saturday afternoon
+    N.debug.setTime(11, 0); // late morning: no story match / Gully League starts on its own at the colony ground
     N.debug.freezeClock(true);
     if (N.dialogue) N.dialogue.skip = true;
     const d = document.getElementById('debug'); if (d) d.style.display = 'none';
@@ -109,22 +109,31 @@ async function solo(browser) {
   const P = await openPage(browser, 'solo', { viewport: { width: 1280, height: 720 } });
   await newGame(P);
   const reg = await P.ev(() => ['gully_cricket', 'lb_match', 'lb_match_vs'].map((id) => { const s = N.party.get(id); return s && { id, name: s.name, icon: s.icon, where: s.where, kind: s.kind, min: s.players.min, max: s.players.max, solo: s.solo, spots: (s.spots || []).length }; }));
-  check(reg[0] && reg[0].name === 'Gully cricket' && reg[0].where === 'playground_home' && reg[0].min === 1 && reg[0].max === 3 && reg[0].solo && reg[0].spots >= 10, 'registered: ' + JSON.stringify(reg[0]));
+  check(reg[0] && reg[0].name === 'Gully cricket' && reg[0].icon === '🏏' && reg[0].where == null && reg[0].min === 1 && reg[0].max === 3 && reg[0].solo, 'registered (alone: anywhere; placed at the grounds once friends are in the room): ' + JSON.stringify(reg[0]));
   check(reg[1] && reg[1].name === 'LB Stadium match' && reg[1].where === 'lb_stadium' && reg[1].min === 1 && reg[1].max === 3 && reg[1].solo, 'registered: ' + JSON.stringify(reg[1]));
   check(reg[2] && reg[2].where === 'lb_stadium' && reg[2].min === 2 && reg[2].max === 3 && !reg[2].solo, 'registered (friends vs friends): ' + JSON.stringify(reg[2]));
-  const near = await P.ev(() => { const p = N.places.playground_home; return N.party.available(p.x, p.y + 27).filter((a) => /cricket|lb_/.test(a.id)).map((a) => ({ id: a.id, here: a.here, at: a.atName, d: Math.round(a.d) })); });
-  check(near.some((a) => a.id === 'gully_cricket' && a.here) && near.some((a) => a.id === 'lb_match' && !a.here), 'available() at the colony ground: gully cricket here, the LB match listed further away (' + JSON.stringify(near) + ')');
-  // the ground's own "Join gully cricket" stays at its centre; our prompt is on a spot beside it
-  const side = await P.ev(() => { const si = N.minigames.SIDE.findIndex((s) => s.id === 'cricket'); const it = N.interact.get('mg:cricket:' + si + ':playground_home'); const s = N.party.get('gully_cricket').spots[0]; return it && { label: it.label, d: Math.round(Math.hypot(it.x - s.x, it.y - s.y)) }; });
-  check(side && /Join gully cricket/.test(side.label) && side.d > 20, 'the ground\'s own solo "' + (side && side.label) + '" stays at its centre, ' + (side && side.d) + ' u from our spot');
-  const spot = await P.ev(() => { const s = N.party.get('gully_cricket').spots[0]; N.player.teleport(s.x, s.y); return s; });
+  const near = await P.ev(() => { const p = N.places.playground_home; return N.party.available(p.x, p.y).filter((a) => /cricket|lb_/.test(a.id)).map((a) => ({ id: a.id, here: a.here, anywhere: a.anywhere, at: a.atName, d: Math.round(a.d) })); });
+  check(near.some((a) => a.id === 'gully_cricket' && a.here && a.anywhere) && near.some((a) => a.id === 'lb_match' && !a.here), 'alone: gully cricket is "anywhere" (the picker), the LB match is placed at the stadium (' + JSON.stringify(near) + ')');
+  // alone, the ground keeps its own offers: no party prompt there (the solo "Join gully cricket" stays at the centre)
+  const side = await P.ev(() => { const si = N.minigames.SIDE.findIndex((s) => s.id === 'cricket'); const it = N.interact.get('mg:cricket:' + si + ':playground_2'); return it && it.label; });
+  check(/Join gully cricket/.test(side || ''), 'the ground\'s own solo game is still offered: "' + side + '"');
+  await P.ev(() => { const p = N.places.playground_2; N.player.teleport(p.x - 36, p.y); });
   await P.gw(0.5);
-  const lab = await P.ev(() => { const c = N.interact.current; return c ? (typeof c.label === 'function' ? c.label(N.player) : c.label) : null; });
-  check(/Start gully cricket with friends/.test(lab || ''), 'beside it: "E ' + lab + '" (' + spot.name + ')');
-  await P.page.keyboard.press('e');
-  check(await P.until(() => N.party._debug.cards().card, null, 5000), 'E opened the start card');
+  const lab0 = await P.ev(() => { const c = N.interact.current; return c ? (typeof c.label === 'function' ? c.label(N.player) : c.label) : null; });
+  check(!/gully cricket with friends/.test(lab0 || ''), 'alone at the ground: no "with friends" prompt (' + (lab0 || 'nothing') + ')');
+  // the 🏁 picker -> gully cricket -> the start card (from the road outside the ground)
+  await P.ev(() => { const p = N.places.playground_2; N.player.teleport(p.x, p.y - 90); });
+  await P.gw(0.3);
+  await P.ev(() => N.party.openPicker());
+  check(await P.until(() => N.party._debug.cards().card, null, 5000), 'the 🏁 picker');
+  const pick = await P.ev(() => Array.from(document.querySelectorAll('.pt-card .pt-pick')).map((b) => b.dataset.pick));
+  const gi = pick.indexOf('gully_cricket');
+  check(gi >= 0 && gi < 9, 'the picker lists gully cricket (' + (gi + 1) + ' of ' + pick.length + ': ' + pick.join(', ') + ')');
+  await P.shot('solo_picker');
+  await P.page.click('.pt-card .pt-pick[data-pick="gully_cricket"]');
+  check(await P.until(() => N.party._debug.cards().card && /Play with Immu & gang/.test(document.querySelector('.pt-card').textContent), null, 5000), 'clicked it: the start card');
   const card = await P.ev(() => document.querySelector('.pt-card').textContent);
-  check(/Gully cricket/.test(card) && /Play with Immu & gang/.test(card) && /1-3 players/.test(card), 'start card: "' + card.replace(/\s+/g, ' ').slice(0, 140) + '"');
+  check(/Gully cricket/.test(card) && /Play with Immu & gang/.test(card) && /1-3 players/.test(card), 'start card: "' + card.replace(/\s+/g, ' ').slice(0, 160) + '"');
   await P.shot('solo_start_card');
   await P.page.keyboard.press('1');
   check(await P.until(() => N.minigames.active === 'cricket' && !!N.cricketMatch.gully.debug(), null, 15000), '1 = play with the gang: the gully opens in party mode');
@@ -371,6 +380,31 @@ async function two(browser) {
   const [A, B] = R.pages;
   try {
     if (!check(R.ok, 'room ' + R.code + ' with Ravi and Pooja')) return;
+    // with friends in the room: a small prompt beside every ground, clear of the ground's own offers
+    await A.until(() => (N.party.get('gully_cricket').spots || []).length > 5, null, 15000);
+    check(await A.ev(() => N.party.get('gully_cricket').where) === 'playground_home', 'in a room gully cricket is placed: where playground_home (the colony ground), a prompt at every ground');
+    // every ground's Join offers (playground_games.js) and the minigames' side games: none within reach of our prompt
+    const sp = await A.ev(() => {
+      const s = N.party.get('gully_cricket').spots, p = N.places.playground_home;
+      const mine = s.find((q) => Math.hypot(q.x - p.x, q.y - p.y) < 40) || s[0];
+      const others = [];
+      const F = (N.playgroundGames && N.playgroundGames.fields) ? N.playgroundGames.fields() : [];
+      for (const f of F) for (const gid of ['lingocha', 'marampitti']) { const it = N.interact.get('pg:' + gid + ':' + f.key); if (it) others.push({ id: gid, x: it.x, y: it.y, r: it.r || 16 }); }
+      N.minigames.SIDE.forEach((sd, si) => { for (const id of Object.keys(N.places)) { const it = N.interact.get('mg:' + sd.id + ':' + si + ':' + id); if (it) others.push({ id: 'mg:' + sd.id, x: it.x, y: it.y, r: it.r || 16 }); } });
+      let worst = null;
+      for (const q of s) for (const o of others) { const d = Math.hypot(o.x - q.x, o.y - q.y) - o.r - q.r; if (!worst || d < worst.gap) worst = { gap: Math.round(d), id: o.id, at: q.name }; }
+      return { mine, n: s.length, offers: others.length, worst };
+    });
+    check(sp.n > 5 && sp.mine.r <= 8 && sp.offers >= 10 && sp.worst && sp.worst.gap > 6, 'in the room: ' + sp.n + ' ground prompts (r ' + sp.mine.r + '), each clear of the ' + sp.offers + ' Join / side offers (closest gap ' + (sp.worst && sp.worst.gap) + ' u: ' + (sp.worst && sp.worst.id + ' at ' + sp.worst.at) + ')');
+    await A.ev((m) => N.player.teleport(m.x, m.y), sp.mine);
+    await A.gw(0.5);
+    const labA = await A.ev(() => { const c = N.interact.current; return c ? (typeof c.label === 'function' ? c.label(N.player) : c.label) : null; });
+    check(/Start gully cricket with friends/.test(labA || ''), 'on the spot: "E ' + labA + '"');
+    await A.page.keyboard.press('e');
+    const cardA = (await A.until(() => N.party._debug.cards().card, null, 5000)) && await A.ev(() => document.querySelector('.pt-card').textContent);
+    check(/Challenge the room \(1\)/.test(cardA || ''), 'E: the start card offers "Challenge the room (1)"');
+    await A.shot('two_A_start_card');
+    await A.page.keyboard.press('n');
     // ---- gully: A bats innings 1 while B bowls it with real keys
     check(await startParty(R, 'gully_cricket', { autoplay: 'win' }), 'Ravi challenged the room to gully cricket; Pooja accepted with Y; the gully opened on both pages');
     await B.ev(() => { N.minigames.game.auto = null; }); // Pooja bowls the first ball herself

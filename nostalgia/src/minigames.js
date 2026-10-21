@@ -1794,11 +1794,13 @@
         const on = (t, f) => { try { S.kp.offs.push(ctx.on(t, (d, from) => { if (g.S !== S || !d || typeof d !== 'object') return; try { f(d, from); } catch (e) { N.err('kite.party.' + t, e); } })); } catch (e) { N.err('kite.party.on', e); } };
         on('ks', (d, from) => kpState(g, S, d, from));
         on('kp', (d, from) => { if (from && from.uid === kpHostUid(S)) kpPechMsg(g, S, d); });
-        on('kx', (d, from) => { const k = kpPeer(S, from && from.uid); if (!k) return; if (d.quit) { k.left = true; k.state = 'gone'; } if (ctx.isHost) kpHostSnap(g, S, k); });
+        on('kx', (d, from) => { const k = kpPeer(S, from && from.uid); if (!k) return; if (d.quit) { k.left = true; k.state = 'gone'; } if (kpIsRef(S)) kpHostSnap(g, S, k); });
         on('ke', (d, from) => { if (from && from.uid === kpHostUid(S)) S.kp.endMsg = d; });
       }
       try { if (typeof ctx.onLeave === 'function') ctx.onLeave((uid) => { const k = kpPeer(S, uid); if (k && g.S === S) { k.left = true; k.state = 'gone'; } }); } catch (e) { /* ignore */ }
     }
+    /** this page referees the pechs: the first friend in the list still flying here (the host, unless he left) */
+    const kpIsRef = (S) => !!(S.kp.me && kpHostUid(S) === S.kp.me.uid);
     const kpPeer = (S, uid) => (uid ? S.kp.peers.find((k) => k.uid === uid) || null : null);
     const kpUid = (S, k) => (k === S.me ? S.kp.me && S.kp.me.uid : k && k.uid);
     function kpHostUid(S) { const ps = S.kp.ctx.players || []; for (const q of ps) { if (q.isAI) continue; if (q.isMe) return q.uid; const k = kpPeer(S, q.uid); if (k && !k.left) return q.uid; } return null; }
@@ -1983,7 +1985,7 @@
       if (K.sendT > 0) return;
       K.sendT = KP.sendEvery;
       const me = S.me, d = { x: Math.round(me.x * 10), y: Math.round(me.y * 10), a: Math.round(me.a * 100), T: Math.round(me.T * 100), p: me.pull ? 1 : 0, s: Math.max(0, KP_ST.indexOf(me.state)), q: Math.round(kpQuality(S, me) * 100), l: S.lives, c: S.cuts, n: S.lost };
-      if (K.ctx.isHost && K.hp.size) d.pe = Array.from(K.hp.values()).map((H2) => [H2.id, Math.round(H2.P * 100)]);
+      if (kpIsRef(S) && K.hp.size) d.pe = Array.from(K.hp.values()).map((H2) => [H2.id, Math.round(H2.P * 100)]);
       try { if (!K.ctx.send('ks', d)) K.sendT = 0.03; } catch (e) { /* ignore */ }
     }
     function kpUpdate(g, S, dt) {
@@ -1998,7 +2000,7 @@
       if (!g.over) {
         const raw = K.secs - el;
         S.left = Math.max(0, raw);
-        if (K.ctx.isHost && raw <= 0) kpHostEnd(g, S, 'time');
+        if (kpIsRef(S) && raw <= 0) kpHostEnd(g, S, 'time');
         // (the host's word, or a little after the time if it never comes)
         if (K.endMsg || raw <= -2.5) kpFinish(g, S);
       }
@@ -2056,7 +2058,11 @@
         const dx = S.me.x - k.x, dy = S.me.y - k.y, d = Math.hypot(dx, dy), m = S.ks * 2.2;
         if (d < m && d > 0.01) { S.me.x += (dx / d) * (m - d) * 0.5; S.me.y += (dy / d) * (m - d) * 0.5; }
       }
-      if (K.ctx.isHost && !g.over) kpHost(g, S, dt);
+      // the referee left (the next friend in the list takes over): the pechs he was calling are let go
+      const hu = kpHostUid(S);
+      if (K.hostUid && hu !== K.hostUid) for (const P of Array.from(K.pechs.values())) kpPechMsg(g, S, { k: 'e', id: P.id, how: 'free' });
+      K.hostUid = hu;
+      if (kpIsRef(S) && !g.over) kpHost(g, S, dt);
       kpSend(g, S, dt);
       for (const P of K.pechs.values()) P.t += dt;
       kpCamera(g, S, 1 - Math.exp(-dt * 2.5));
@@ -2070,7 +2076,7 @@
       g.pop('MANJA TOOT GAYA!', pp.x, pp.y - 24, { color: '#ff8a7a', size: 28 });
       g.sfx('kite_cut'); g.shake(7); g.flash('#ff5a3a', 0.25);
       try { K.ctx.send('kx', { s: 1 }); } catch (e) { /* ignore */ }
-      if (K.ctx.isHost) kpHostSnap(g, S, me);
+      if (kpIsRef(S)) kpHostSnap(g, S, me);
     }
     function kpPeersStep(g, S, dt) {
       const t = performance.now();
@@ -6524,7 +6530,8 @@
       if (ctx.mode === 'party' && typeof ctx.on === 'function') {
         const on = (t, f) => { try { S.pp.offs.push(ctx.on(t, (d, from) => { if (g.S !== S || g.over || !d || typeof d !== 'object') return; try { f(d, from); } catch (e) { N.err('marbles.party.' + t, e); } })); } catch (e) { N.err('marbles.party.on', e); } };
         on('gf', (d, from) => mpFlickIn(g, S, d, from));
-        on('gr', (d, from) => { if ((d.n | 0) === S.pp.n && from && from.uid === mpAuthority(S)) S.pp.res = d; });
+        // (the shooter's word, or the host's when the shooter's page went very quiet: the first one for this turn counts)
+        on('gr', (d, from) => { if ((d.n | 0) === S.pp.n && from && (from.uid === mpAuthority(S) || from.uid === mpHostUid(S)) && !(S.pp.res && (S.pp.res.n | 0) === S.pp.n)) S.pp.res = d; });
         on('gs', (d, from) => { if ((d.n | 0) === S.pp.n && from && from.uid === mpHostUid(S) && S.stage === 'remote') mpAfter(g, S, mpClean(d), true); });
         on('gq', (d, from) => { const q = S.pl.find((x) => from && x.uid === from.uid); if (q) q.left = true; });
       }
@@ -6635,6 +6642,9 @@
       if (pp.ctx.mode === 'party') {
         const msg = Object.assign({ n: pp.n, b: S.balls.map((b) => [b.id, Math.round(b.x * 1000), Math.round(b.y * 1000)]), s: st ? [Math.round(st.x * 1000), Math.round(st.y * 1000)] : null, sc: S.pl.map((q) => q.score), g: got }, D);
         try { pp.ctx.send('gr', msg); } catch (e) { N.err('marbles.party.send', e); }
+        // (this page snaps to the same rounded spots its friends get, so the next flick starts from the same board everywhere)
+        for (const b of S.balls) { b.x = Math.round(b.x * 1000) / 1000; b.y = Math.round(b.y * 1000) / 1000; }
+        if (st) { st.x = Math.round(st.x * 1000) / 1000; st.y = Math.round(st.y * 1000) / 1000; }
       }
       mpAfter(g, S, Object.assign({ got }, D), false);
     }
@@ -6747,12 +6757,14 @@
           const sd = T.rivalErr * clamp((1.3 - sk) / 0.74, 0.4, 1.5) * (1 - g.diff * T.rivalErrDiff) * (g.auto === 'win' ? 5 : 1);
           S.rplan.aim = Math.atan2(S.rplan.ty - S.striker.y, S.rplan.tx - S.striker.x) + (g.rng.next() + g.rng.next() - 1) * sd;
           S.rplan.power = U.clamp((S.rplan.power || 0.6) * (1 - T.powerJitter / 2 + g.rng.next() * T.powerJitter), 0.2, 1);
+          // (autoplay "win", for the tests: with two AI friends a wild flick still clears goli now and then, so they miss)
+          if (g.auto === 'win') { S.rplan.aim += 0.7; S.rplan.power = 0.25; }
         }
         if (S.st > 1.2) shoot(g, S, S.rplan.aim, S.rplan.power);
       } else if (S.stage === 'remote') {
         // a friend is aiming on his own page; the host skips a turn nobody takes (left, or gone very quiet)
         pp.shotT += dt;
-        if (pp.ctx.isHost && cur && (cur.left || pp.shotT > T.skipAfter)) {
+        if (mpHostUid(S) === (S.mine && S.mine.uid) && cur && (cur.left || pp.shotT > T.skipAfter)) {
           const D = mpDecide(S, 0, false);
           try { pp.ctx.send('gs', Object.assign({ n: pp.n }, D)); } catch (e) { /* ignore */ }
           mpAfter(g, S, D, true);
@@ -6769,7 +6781,8 @@
       }
       if (S.stage === 'wait') {
         if (pp.res && (pp.res.n | 0) === pp.n) { const r = pp.res; pp.res = null; mpApply(g, S, r); }
-        else if (S.st > 12 && pp.ctx.isHost) mpResolveLocal(g, S); // the shooter's word never came: the host's own roll
+        // the shooter left mid-roll (or his page has said nothing for a long while): the host's own roll decides
+        else if (cur && mpHostUid(S) === (S.mine && S.mine.uid) && ((cur.left && S.st > 1.5) || S.st > 20)) mpResolveLocal(g, S);
       }
     }
     function mpHud(g, S) {

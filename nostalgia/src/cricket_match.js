@@ -4918,8 +4918,10 @@
   N.on('boot', gpInstall);
 
   /* ================================================================ party: registrations (src/party.js) */
-  // gully cricket at every colony ground / playground (a spot beside the centre, so the ground's own "Join gully
-  // cricket" stays where it is), the LB Stadium match at the west gate (beside the exhibition match's spot).
+  // Gully cricket: alone it is "anywhere" (the 🏁 picker's start card; the ground's own solo "Join gully cricket" stays at
+  // its centre); with friends in the room a small prompt (r 8) stands west of every colony ground / playground centre, clear
+  // of the ground's other offers (playground_games.js: lingocha 24 u south, maram pitti 24 u north; goli 22 u east).
+  // The LB Stadium match at the west gate (beside the exhibition match's spot).
   function gullySpots() {
     const out = [], seen = new Set(), PL = N.places || {};
     const ids = Object.keys(PL).filter((id) => /^playground_(?!kit)|^victory_playground$/.test(id));
@@ -4930,7 +4932,8 @@
       const key = Math.round(p.x) + ',' + Math.round(p.y);
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ x: p.x, y: p.y + Math.max(20, (p.r || 30) * 0.8), r: 20, name: p.name || 'the ground' });
+      const side = clamp((p.r || 20) * 0.6, 14, 26); // the minigames' side games' radius at the centre (minigames.js SIDE)
+      out.push({ x: p.x - side - 16, y: p.y, r: 8, name: p.name || 'the ground' });
     }
     return out;
   }
@@ -4990,16 +4993,18 @@
       return openParty('match', { party: ctx, pmode: 'vs', seed: ctx.seed, skipHowto: true, noRetry: true, difficulty: o.difficulty != null ? o.difficulty : 0.4, title: 'LB Stadium · friends vs friends', autoplay: o.autoplay }, ctx);
     },
   };
-  let partyRef = null, partyN = 0, partyT = 0;
+  let partyRef = null, partyN = 0, partyT = 0, partyKey = '';
+  function friendsHere() { try { return !!(N.online && N.online.room && (N.online.room.n | 0) > 1); } catch (e) { return false; } }
   function registerParty(force) {
     const P0 = N.party;
     if (!P0 || typeof P0.register !== 'function') return false;
-    if (partyRef === P0 && !force && P0.get && P0.get('gully_cricket')) return true;
+    const key = friendsHere() ? 'f' : 's';
+    if (partyRef === P0 && !force && key === partyKey && P0.get && P0.get('gully_cricket')) return true;
     if (!N.places || !N.places.lb_stadium) return false; // the map is not built yet
     try {
-      const gs = gullySpots();
       const lb = N.places.lb_stadium;
-      P0.register('gully_cricket', Object.assign({}, GULLY_SPEC, { spots: gs }));
+      P0.register('gully_cricket', key === 'f' ? Object.assign({}, GULLY_SPEC, { spots: gullySpots() }) : Object.assign({}, GULLY_SPEC, { where: null, r: undefined }));
+      partyKey = key;
       P0.register('lb_match', Object.assign({}, MATCH_SPEC, { spots: [{ x: lb.x, y: lb.y - 36, r: 22, name: 'LB Stadium (west gate)' }] }));
       P0.register('lb_match_vs', Object.assign({}, VS_SPEC, { spots: [{ x: lb.x, y: lb.y + 36, r: 22, name: 'LB Stadium (west gate)' }] }));
       partyRef = P0;
@@ -5009,6 +5014,8 @@
   CM.registerParty = registerParty;
   N.on('boot', () => { registerParty(true); });
   N.on('world:built', () => { registerParty(true); });
+  N.on('online:room', () => registerParty());
+  N.on('online:players', () => registerParty());
   N.addSystem({
     id: 'cricketParty', order: 89, runIn: ['*'],
     update(dt) {
