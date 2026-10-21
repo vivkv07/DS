@@ -2681,6 +2681,60 @@
     });
   }, { anim: true });
 
+  /* ---------------------------------------------------------------- Panjagutta: the mall + multiplex site (2003) */
+  // The east corner of the Panjagutta junction, where the mall and its multiplex (later a PVR) opened in Nov 2004:
+  // in 2003 a fenced site (the Prasads fence kit). The concrete frame rises with the calendar like the 2D art
+  // (places_art mall_site): levels 2 and 3 are sub groups. Hoardings face the junction (front, west) and the
+  // Begumpet road (north); the builder is fictional.
+  const mallLevel = () => { const c = N.calendar && N.calendar.date; const ymd = c && c.y ? c.y * 10000 + c.m * 100 + c.d : 20031201; return ymd < 20030601 ? 1 : ymd < 20030901 ? 2 : 3; };
+  def('mall_site', (md, lm, D) => {
+    const hl = D.L / 2, hv = D.D / 2; // front = west: u along the west fence, v outward (west)
+    for (const [ua, va, ub, vb] of [[-hl, hv, hl, hv], [hl, hv, hl, -hv], [hl, -hv, -hl, -hv], [-hl, -hv, -hl, hv]]) {
+      const len = Math.hypot(ub - ua, vb - va), n = Math.round(len / 4);
+      for (let i = 0; i < n; i++) { const a = i / n, b = (i + 1) / n; md.part('kit2').c(i % 2 ? '#2a6a8a' : '#2a7a5a').wall(ua + (ub - ua) * a, va + (vb - va) * a, ua + (ub - ua) * b, va + (vb - va) * b, 0, 9); }
+    }
+    const kf = md.part('kit');
+    // sand heaps, the site office and the cement godown
+    kf.c('#d8c08a').cyl(-hl + 12, 0, -hv + 12, 6, 0.6, 4.5, 8).cyl(hl - 12, 0, -hv + 14, 5, 0.6, 4, 8);
+    kf.c('#8a8a84').cyl(-hl + 22, 0, -hv + 9, 4.5, 0.5, 3.5, 8);
+    kf.c('#2a5cb8').box(hl - 16, 0, -hv + 4, hl - 4, 10, -hv + 16).c('#9a9a94').box(hl - 30, 0, -hv + 4, hl - 19, 7, -hv + 14);
+    // the frame: a 5 x 5 grid of columns per level, the slabs poured so far, rebar on the top one
+    const u0 = -hl + 12, u1 = hl - 12, v0 = -hv + 22, v1 = hv - 12;
+    const cols = (kb, y0, y1) => { for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) { const u = u0 + (u1 - u0) * i / 4, v = v0 + (v1 - v0) * j / 4; kb.box(u - 1, y0, v - 1, u + 1, y1, v + 1, { top: false }); } };
+    kf.c('#b8b4ac'); cols(kf, 0, 12); kf.box(u0 - 1, 11, v0 - 1, u1 + 1, 12, v1 + 1);
+    md.sub = 'l2'; const k2 = md.part('kit'); k2.c('#b8b4ac'); cols(k2, 12, 24); k2.box(u0 - 1, 23, v0 - 1, u1 + 1, 24, v1 + 1);
+    md.sub = 'l3'; const k3 = md.part('kit'); k3.c('#b8b4ac'); cols(k3, 24, 36); k3.box(u0 - 1, 35, v0 - 1, u1 + 1, 36, v0 + (v1 - v0) * 0.6);
+    k3.c('#7a4a3a'); for (let v = v0 + (v1 - v0) * 0.6 + 1; v < v1; v += 2) k3.bar(u0, 36, v, u1, 36, v, 0.15);
+    md.sub = null;
+    // the tower crane: a lattice mast near the back fence and its jib over the frame
+    const cu = 6, cv = -hv + 12;
+    kf.c('#e0a820'); for (let y = 0; y < 78; y += 6) { kf.bar(cu - 1.5, y, cv, cu - 1.5, y + 6, cv, 0.6).bar(cu + 1.5, y, cv, cu + 1.5, y + 6, cv, 0.6).bar(cu - 1.5, y, cv, cu + 1.5, y + 6, cv, 0.3); }
+    kf.box(cu - 1.5, 78, cv - 42, cu + 1.5, 80, cv + 14).c('#d8d4cc').box(cu - 2.5, 74, cv - 2.5, cu + 2.5, 78, cv + 2.5).c('#8a8a8a').box(cu - 2, 76, cv + 9, cu + 2, 80, cv + 13);
+    kf.c('#3a3a3a').bar(cu, 78, cv - 30, cu, 50, cv - 30, 0.15);
+    // hoarding 1 on the west fence, facing the junction, and the fence banners under it
+    kf.c('#4a4a50'); for (const u of [-18, 0, 18]) kf.box(u - 0.4, 0, hv - 1.4, u + 0.4, 23, hv - 0.6);
+    kf.c('#1a1a2a').box(-23, 12.2, hv - 1.4, 23, 22.4, hv - 0.7);
+    md.sign('MALL + MULTIPLEX', -22, 22, 17.6, 22, hv - 0.4, '#1a1a2a', '#f2c230');
+    md.sign('4 SCREENS - OPENING 2004', -22, 22, 12.6, 17.2, hv - 0.4, '#c81a1a', '#ffffff');
+    md.sign('SHOP SPACE - BOOK NOW', -hl + 3, -4, 2, 6.6, hv + 0.2, '#f4f4f0', '#1d4e8a');
+    md.sign('SAFETY FIRST', 4, 20, 2, 6.6, hv + 0.2, '#f2c230', '#1a1a1a');
+    md.glow(0, 23, hv - 0.2, '#fff0d0', 'gM');
+    // hoarding 2 on the north fence, facing the Begumpet road (the frame turned to face north)
+    md.at(md.F.ox, md.F.oz, PI);
+    const nk = md.part('kit'), nv = hl; // the north fence: v = half the north-south depth
+    nk.c('#4a4a50'); for (const u of [-20, 0, 20]) nk.box(u - 0.4, 0, nv - 1.4, u + 0.4, 23, nv - 0.6);
+    nk.c('#1a1a2a').box(-25, 12.2, nv - 1.4, 25, 22.4, nv - 0.7);
+    md.sign('COMING 2004', -24, 24, 17.6, 22, nv - 0.4, '#1a1a2a', '#f2c230');
+    md.sign('A DECCAN BUILDERS PROJECT', -24, 24, 12.6, 17.2, nv - 0.4, '#f4f4f0', '#c81a1a');
+    md.ticks.push((dt, h, obj, u) => {
+      const lv = mallLevel();
+      if (u.lv === lv) return;
+      u.lv = lv;
+      if (u.subs.l2) u.subs.l2.visible = lv >= 2;
+      if (u.subs.l3) u.subs.l3.visible = lv >= 3;
+    });
+  }, { anim: true });
+
   /* ---------------------------------------------------------------- towers, masts, tanks */
   def('tv_tower', (md, lm, D) => {
     const k = md.k, Ht = 120 * VS;

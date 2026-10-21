@@ -2959,8 +2959,59 @@
     },
   });
 
+  /* ================================================================ PANJAGUTTA: the mall + multiplex site (2003) */
+  // The east corner of the Panjagutta junction, where the city's big mall and its multiplex (later a PVR) opened
+  // in Nov 2004: all through 2003 it is a fenced building site. The frame rises with the year (the first slab
+  // till May, two floors through the monsoon, three from September); the hoardings face the junction and the
+  // Begumpet road (a fictional builder, no brand).
+  const mallLevels = () => (T.ymd && T.ymd < 20030601 ? 1 : T.ymd && T.ymd < 20030901 ? 2 : 3);
+  reg('mall_site', {
+    init(lm) { return { id: lm.id, F: frontOf(lm) }; },
+    draw(lm, A) {
+      const x = lm.x - lm.w / 2, y = lm.y - lm.d / 2, w = lm.w, d = lm.d, lv = mallLevels();
+      // sand and aggregate heaps, the site office and the cement godown by the gate on the lane (south)
+      for (const [hx, hy, r, c] of [[x + 12, y + d - 12, 6, '#d8c08a'], [x + 25, y + d - 9, 4.5, '#8a8a84'], [x + w - 12, y + 12, 5, '#d8c08a']]) N.draw.dome(hx, hy, r, 0, 3.5, { fill: c, steps: 4 });
+      abox(x + w - 18, y + d - 12, 14, 8, 0, 7, '#2a5cb8', '#3a6ac8');
+      abox(x + w - 34, y + d - 11, 12, 7, 0, 5, '#9a9a94', '#b8b8b0');
+      // the concrete frame: columns, the slabs poured so far, rebar on the top one
+      const fx0 = x + 14, fy0 = y + 12, fw = w - 28, fd = d - 32;
+      for (let lev = 0; lev < lv; lev++) {
+        const h = 11 + lev * 11, top = lev === lv - 1;
+        for (let i = 0; i <= 5; i++) for (let j = 0; j <= 3; j++) pole(fx0 + (fw * i) / 5, fy0 + (fd * j) / 3, h - 11, h, '#a8a49c', 0.9);
+        abox(fx0 - 1, fy0 - 1, fw + 2, fd + 2, h - 1, h, '#b8b4ac', top ? 'rgba(184,180,172,0.0)' : '#c4c0b6');
+        if (top) {
+          hrect(fx0, fy0, fw * 0.6, fd, h, '#c4c0b6');
+          const k = kh(h); ctx.strokeStyle = '#7a4a3a'; ctx.lineWidth = 0.4; ctx.beginPath();
+          for (let xx = fx0 + fw * 0.6; xx < fx0 + fw; xx += 2) { ctx.moveTo(sx(xx, k), sy(fy0, k)); ctx.lineTo(sx(xx, k), sy(fy0 + fd, k)); }
+          ctx.stroke();
+        }
+      }
+      for (let i = 0; i < 7; i++) pole(fx0 - 3 + i * (fw + 6) / 6, fy0 + fd + 3, 0, 11 * lv + 4, '#8a6a3a', 0.35); // bamboo scaffolding
+      towerCrane(x + w * 0.64, y + d * 0.32, 62, TIME * 0.045 + 2, 38);
+      tinFence(x, y, w, d, 8, true, 0.3);
+      // hoarding 1, on the north fence (the Begumpet road): read from above
+      const bw = 56, bd = 14, bx = lm.x - bw / 2, by = y + 2;
+      pole(bx + 4, by + bd / 2, 0, 18, '#4a4a50', 0.7); pole(bx + bw - 4, by + bd / 2, 0, 18, '#4a4a50', 0.7);
+      abox(bx, by, bw, bd, 17, 18.2, '#1a1a2a', '#1a1a2a');
+      const k = kh(18.2);
+      ptext(lm.x, by + bd * 0.34, 18.2, ['COMING 2004'], '#f2c230', null, 0);
+      ptext(lm.x, by + bd * 0.72, 18.2, pw('MALL + MULTIPLEX') < bw * k - 4 ? ['MALL + MULTIPLEX'] : ['MALL'], '#ffffff', null, 0);
+      // hoarding 2, on the west fence (the junction): the screens
+      const vw = 12, vd = 44, vx = x + 2, vy = lm.y - vd / 2;
+      pole(vx + vw / 2, vy + 4, 0, 18, '#4a4a50', 0.7); pole(vx + vw / 2, vy + vd - 4, 0, 18, '#4a4a50', 0.7);
+      abox(vx, vy, vw, vd, 17, 18.2, '#c81a1a', '#c81a1a');
+      ptext(vx + vw * 0.35, lm.y, 18.2, ['4 SCREENS'], '#ffffff', null, 1);
+      ptext(vx + vw * 0.72, lm.y, 18.2, pw('SHOP SPACE') < vd * k - 4 ? ['SHOP SPACE'] : [], '#f2c230', null, 1);
+    },
+    shadow(lm) {
+      const x = lm.x - lm.w / 2, y = lm.y - lm.d / 2;
+      N.draw.castBox(x + 14, y + 12, lm.w - 28, lm.d - 32, 11 * mallLevels());
+    },
+    lights(lm) { light(lm, 0, 1, lm.x - lm.w / 2 + 8, lm.y, 18, 30, '#fff0d0', 0.6, false); },
+  });
+
   /* ================================================================ NUMAISH (exhibition grounds) */
-  const STALL_NAMES = ['DELHI PAPAD', 'KASHMIR SHAWLS', 'AGRA PETHA', 'PEARLS', 'TOYS', 'BANGLES', 'CROCKERY', 'PICKLES', 'KHADI', 'CARPETS', 'BOOKS', 'DRY FRUITS'];
+  const STALL_NAMES =['DELHI PAPAD', 'KASHMIR SHAWLS', 'AGRA PETHA', 'PEARLS', 'TOYS', 'BANGLES', 'CROCKERY', 'PICKLES', 'KHADI', 'CARPETS', 'BOOKS', 'DRY FRUITS'];
   reg('numaish_stalls', {
     init(lm) {
       const rng = rngOf(lm, 'ns');

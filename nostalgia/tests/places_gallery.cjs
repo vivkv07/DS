@@ -36,7 +36,7 @@ const CATALOGUE = ['aeroplane', 'ashram', 'auditorium', 'bakery', 'bal_bhavan', 
   'club_house', 'coaching_centre', 'coconut_cart', 'college', 'cycle_rent', 'department_store', 'dhobi_ghat', 'dosa_bandi',
   'exhibition_hall', 'film_hoarding', 'film_studio', 'flower_cart', 'giant_wheel', 'gokul_chat', 'gpo', 'halt_station',
   'home_house', 'hospital', 'idol_workshop', 'internet_cafe', 'irani_cafe', 'iyengar_bakery', 'kirana', 'kite_stall', 'library',
-  'market_hall', 'maut_ka_kuan', 'meat_shop', 'medical_shop', 'mgbs', 'musical_fountain', 'numaish_gate', 'numaish_stalls',
+  'mall_site', 'market_hall', 'maut_ka_kuan', 'meat_shop', 'medical_shop', 'mgbs', 'musical_fountain', 'numaish_gate', 'numaish_stalls',
   'photo_studio', 'pindi_girni', 'playground_kit', 'prasads_imax', 'radio_station', 'restaurant', 'rythu_bazaar', 'samosa_bandi',
   'school', 'shilparamam_gate', 'stadium', 'stationery', 'std_booth', 'tv_tower', 'video_parlour', 'water_tank', 'zoo_gate'];
 // must-have showcase ids that get a shot even in one-per-draw mode

@@ -92,6 +92,14 @@ nostalgia/
                     paper blown by vehicle wakes and N.wind, haze, scared animals, the cracker box + lighting
                     rule; system 'diwali' (order 44), 3D layer 'diwali3d' -> N.diwali (API in its header;
                     the side missions are src/diwali_missions.js)
+  src/ameerpet.js   (after festivals3d.js) the Ameerpet computer-coaching belt, 2003: on 'world:built' the
+                    generic buildings round the coaching lane and the junction get flex banners on their
+                    street walls (institute / course list / tag line), rooftop hoardings and an institute
+                    signboard (`b.sign`) where they had none; one `t:'custom'` structure per dressed building
+                    (2D draw; 3D via N.view3d.registerStructure('custom'), which builds any custom structure
+                    that carries `build3d(THREE, s, H, gb, job)` and leaves the others alone). Boards use the
+                    core sign atlas, batched per chunk and page. Fictional institutes, 2003 courses only
+                    -> N.ameerpet (tests/ameerpet.cjs)
   src/assets3d_index.js GENERATED (tools/pack_assets3d.cjs, from assets3d/ship.json): N.ASSETS3D_INDEX =
                     every shipped model (core pack ids + lazy per-GLB ids, ~18 KB); loaded at boot (§21)
   src/models3d.js   Blender model runtime (§21): lazily loads GLTFLoader + the pack when 3D starts,
@@ -1483,6 +1491,11 @@ N.view3d.registerStructure(t, build(THREE, s, H, gb, job) -> Object3D | void)
     the chunk with gb (a facade GeoBuilder in chunk-local coordinates: s.x - job.ox, s.y - job.oz)
     or return an Object3D in chunk-local coordinates. Core types: bldg wall tree lamp rock rail
     roofzone crane podium (registering one of these replaces the core version).
+    (The core subtracts job.ox / job.oz from a returned object's position: geometry built in
+    chunk-local coordinates goes in an object placed at (job.ox, 0, job.oz).) 'custom' is
+    registered by src/ameerpet.js as a dispatcher: a custom structure that carries
+    `build3d(THREE, s, H, gb, job)` is built by it, every other one draws nothing in 3D (as
+    before). Give your custom structures a build3d rather than registering 'custom' again.
 N.view3d.registerLayer(id, {init(THREE, H), update(dt, H), dispose(H), order})
     Per-frame 3D overlays in world space (mission markers from N.missions.markers(), collectible
     glints, season overlays, kites, birds). Add objects to H.layer (a Group in the scene).
