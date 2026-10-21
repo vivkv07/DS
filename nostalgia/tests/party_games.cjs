@@ -428,6 +428,8 @@ async function lingocha(browser, S, CONF) {
       const D = N.playgroundGames.debug, S = D.session(), P = S.parts.find((q) => q.remote);
       const K = S.parts.find((q) => q.team !== S.L.seek && !q.isPlayer && !q.remote);
       K.e.x = P.e.x - 24; K.e.y = P.e.y; P.safeT = 0;
+      // (nobody else in the ball's way: a seeker standing in the line would be hit first, as the host's game rightly says)
+      for (const q of S.parts) if (q !== P && q !== K && !q.isPlayer && !q.out && q.e.x > P.e.x - 30 && q.e.x < P.e.x + 6 && Math.abs(q.e.y - P.e.y) < 8) q.e.y = P.e.y + (q.e.y >= P.e.y ? 10 : -10);
       D.throwAt(P.name, K.name, true);
       return K.name;
     });
@@ -504,10 +506,11 @@ async function maram(browser, S, CONF) {
     check(fuseSeen, 'B sees ' + K1 + '\'s red fuse aimed at her');
     await B.until(() => /CATCH/.test((document.querySelector('.t-btn.t-action .t-txt') || {}).textContent || ''), null, 8000);
     const lab = await B.ev(() => document.querySelector('.t-btn.t-action .t-txt').textContent);
+    // (the throw goes the moment the tap is in: the hands stay up ~0.7 s, and every test round trip eats into that)
     await B.page.tap('.t-btn.t-action');
+    await A.ev((k) => N.playgroundGames.debug.throwAt('Pooja', k, true), K1);
     const tried = await B.until(() => N.playgroundGames.debug.log().some((e) => e.type === 'catch_try'), null, 8000);
     check(tried, 'B tapped "' + lab + '": hands up');
-    await A.ev((k) => N.playgroundGames.debug.throwAt('Pooja', k, true), K1);
     await B.shot('maram_catch_B_phone');
     const caught = await A.until(() => N.playgroundGames.debug.log().some((e) => (e.type === 'catch' || e.type === 'out') && (e.name === 'Pooja' || e.thrower)), null, 15000);
     const how = await A.ev(() => N.playgroundGames.debug.log().filter((e) => /catch|out|remote_hit/.test(e.type)).slice(-4));

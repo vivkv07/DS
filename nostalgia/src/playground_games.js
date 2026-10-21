@@ -1902,7 +1902,8 @@
     onBounce(S, b, wasLive) {
       if (wasLive && b.thrower && S.phase === 'play' && b.hitSet && b.hitSet.size === 0) {
         const T = b.thrower;
-        if (T && !T.isPlayer && S.rng.next() < 0.35) bark(S, T, pick(S, BARK.miss));
+        // (not at a friend from the room: his own page judges the hit, and its word can come a moment after the bounce)
+        if (T && !T.isPlayer && !(b.target && b.target.remote) && S.rng.next() < 0.35) bark(S, T, pick(S, BARK.miss));
       }
     },
     onHit(S, P, b) {
@@ -3087,15 +3088,20 @@
   function hudAvoid() {
     const r = HUDS.root;
     if (!r) return;
+    // the room's column (online.js .ol-hud) sits on the right at the panel's height on phones: the panel then keeps to
+    // the left of it (pinned to the left edge, so it does not re-centre into it and flip back and forth)
     let mw = '';
     try {
-      const ol = document.querySelector('.ol-hud');
-      if (ol && !ol.hidden && ol.offsetParent !== null) {
-        const a = r.getBoundingClientRect(), b = ol.getBoundingClientRect();
-        if (b.width > 0 && b.height > 0 && b.top < a.bottom + 4 && b.bottom > a.top - 4 && b.left > a.left + 160) mw = Math.max(170, Math.floor(b.left - a.left - 8)) + 'px';
+      const ol = document.querySelector('.ol-hud'), par = r.parentElement;
+      if (ol && par && !ol.hidden && ol.offsetParent !== null) {
+        const a = r.getBoundingClientRect(), b = ol.getBoundingClientRect(), p = par.getBoundingClientRect();
+        const x0 = p.left + (parseFloat(getComputedStyle(par).paddingLeft) || 0);
+        if (!HUDS.last.mw || !HUDS.natW) HUDS.natW = a.width; // (its own width, centred, before any squeeze)
+        const right = p.left + p.width / 2 + HUDS.natW / 2;
+        if (b.width > 0 && b.height > 0 && b.top < a.bottom + 4 && b.bottom > a.top - 4 && b.left < right + 4 && b.left > x0 + 170) mw = Math.floor(b.left - x0 - 8) + 'px';
       }
     } catch (e) { mw = ''; }
-    if (HUDS.last.mw !== mw) { HUDS.last.mw = mw; r.style.maxWidth = mw; }
+    if (HUDS.last.mw !== mw) { HUDS.last.mw = mw; r.style.maxWidth = mw; r.style.alignSelf = mw ? 'flex-start' : ''; }
   }
   function popsDraw() {
     const list = shownSessions();
