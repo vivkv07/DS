@@ -1,6 +1,8 @@
 -- NOSTALGIA telemetry: anonymous play stats (design/analytics.md, ARCHITECTURE §25, src/telemetry.js).
--- Applied to project gralunajtfapqkpwulyg with the Supabase MCP tools (migration "nostalgia_telemetry"); safe to
--- re-run in the SQL editor ("if not exists" / "or replace"; the cron jobs are upserted by name).
+-- Applied to project gralunajtfapqkpwulyg with the Supabase MCP tools on 2026-10-21 in four parts (migrations
+-- nostalgia_telemetry_tables, _rollups, _cron, _views); the last block (prune, the only part that deletes rows) waits
+-- for the owner (see its comment and design/analytics.md). Safe to re-run whole in the SQL editor ("if not exists" /
+-- "or replace"; the cron jobs are upserted by name).
 --
 -- Model
 --   * The browser batches events and calls public.track_events(events jsonb) with the publishable key (the same way
@@ -557,10 +559,11 @@ revoke all on all tables in schema nostalgia_admin from public, anon, authentica
 -- so on gralunajtfapqkpwulyg this block is applied by the owner (SQL editor, or approving the prompt). Until it is,
 -- nightly() skips the prune and raw events simply stay (a few MB a month at beta scale).
 -- prune(keep_days, max_rows): delete raw events older than keep_days (90), and more when the table would hold over
--- max_rows (~1.5 M rows ≈ 450 MB with indexes would crowd the Free plan's 500 MB; the default 1,000,000 rows keeps
--- it near 300 MB), always keeping the last 7 days. Rollups are untouched, so nothing is lost from the views.
+-- max_rows: measured on the live project, a row costs ~420 bytes with its indexes, so the default 600,000 rows keeps
+-- the raw table near 250 MB, well inside the Free plan's 500 MB (100 players a day never reach it in 90 days; at
+-- ~1,000 a day it keeps about the last 2-3 weeks). Always keeps the last 7 days. Rollups are untouched.
 -- Also clears stale rate-limit windows and old pg_cron run logs.
-create or replace function nostalgia.prune(keep_days int default 90, max_rows bigint default 1000000) returns jsonb
+create or replace function nostalgia.prune(keep_days int default 90, max_rows bigint default 600000) returns jsonb
 language plpgsql set search_path = '' as $fn$
 declare
   today date := (now() at time zone 'Asia/Kolkata')::date;

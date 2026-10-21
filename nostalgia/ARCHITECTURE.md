@@ -32,6 +32,10 @@ no server, no build step required to play, no external assets except Google Font
   Online (or used it before on this device) does the page fetch supabase-js (jsDelivr, then
   vendor/) and talk to the Supabase project. The guest / offline game never touches the network,
   and from file:// (dist/nostalgia.html) online stays off.
+- Deviation, owner request (§25, 2026-10-21): **anonymous play stats**. The web page (http/https, top-level, not
+  automation, ONLINE_CONFIG set) POSTs small batched events to the same Supabase project about once a minute while
+  someone plays, with no SDK (`fetch`). The player can turn it off in Settings → Privacy (DNT / GPC: off by
+  default). file:// and framed copies never send anything.
 
 ## 3. Files and load order
 
@@ -98,6 +102,8 @@ nostalgia/
                     models3d_* files) the atmosphere layer (§22): N.wind, N.weather, N.windfx, N.wires, N.birds, N.atmosAudio
   src/save.js       save/load -> N.save
   src/online_config.js  N.ONLINE_CONFIG: the pluggable online backend (Supabase URL + public key; null = "coming soon")
+  src/telemetry.js  anonymous play stats (§25, design/analytics.md): batched events -> rpc track_events; Settings → Privacy
+                    toggle + one-time title notice -> N.telemetry (supabase/migrations/*_telemetry.sql: tables, rollups, views)
   src/online.js     online play (§23): player code, cloud saves + journey, rooms of 3, ghosts, the room flow + Nearby -> N.online
   src/party.js      party activities (§24): the N.party contract (register / challenge / solo / available), invite ->
                     lobby -> shared-clock 3-2-1 -> results, AI friends (ctx.ai), rings 2D + 3D -> N.party
@@ -2056,3 +2062,56 @@ goli", the terrace kite spot); alone they add no prompt (the plain offers stay t
   phone's camera follows its own kite, friends off screen get an edge arrow); each page flies its own kite and sends
   `ks` ~8/s; the host referees pechs (`kp` start / end with the tug in its own `ks`), a snap is the owner's (`kx`), the
   host ends it early when one patang-holder is left (`ke`). Wind and gusts come from the shared clock. Most cuts wins.
+
+
+## 25. Play stats — anonymous telemetry (`N.telemetry`)
+
+Owner request (2026-10-21): "get to know the information of users playing … adoption metrics … make sure we have all
+the metrics stored somewhere, and it should not be super expensive" (Google sign-in later). Files: `src/telemetry.js`
+(loaded right after online_config.js; `[telemetry hook]` in index.html), `supabase/migrations/20261021000000_telemetry.sql`,
+tests `tests/telemetry.cjs`; the owner's guide, event table, cost estimate and SQL to paste: `design/analytics.md`.
+
+- **Client**:
+  - Events `{name /^[a-z][a-z0-9_]{1,31}$/, t (s since the session started), props (flat scalars: ≤ 24 keys
+    /^[a-z][a-z0-9_]{0,23}$/, strings ≤ 120 chars with no URL / email, ≤ 2 KB)}` queue in memory.
+  - At most one POST per `TUNE.flushMs` (60 s) while active, the first one window after load. Plus one with
+    `fetch(keepalive)` on visibility hidden / pagehide (deduped: it only sends what is queued).
+  - Each POST goes to `${ONLINE_CONFIG.url}/rest/v1/rpc/track_events` with `apikey` + `Authorization: Bearer
+    <publishable key>`. Body `{events: {v: 1, install, session, player: sha256(code) | null, build, device, list}}`,
+    ≤ 50 events, < 32 KB.
+  - Heartbeat window `TUNE.beatS` (60 s), queued only when there was input in the last 30 s (`activeMs`). So an idle
+    tab sends nothing.
+  - Retries: 2 more tries after a failure (backoff ×2), then the batch is dropped. Offline: no try. Queue cap 200.
+  - Install id: uuid v4 in localStorage `nostalgia.telemetry.v1` (with the setting, the notice flag and the highest
+    chapter). Session id per page load, renewed after 30 min hidden.
+  - Off when: file://, `N.ONLINE_CONFIG` null, inside a frame, `navigator.webdriver` (all other test suites), the
+    setting off. In those cases no system is registered and no Settings row is shown.
+  - `window.NOSTALGIA_TELEMETRY` (before load): null / false = off; true / `{flushMs, beatS, activeMs, url, key, ...}`
+    = on even under automation (tests).
+- **Hooks** (listeners only; online.js / party.js / minigames.js are not edited):
+  - `boot`, `state` → session_start / perf_boot / title_shown;
+  - `game:new|continue`, `cutscene:skip` (id 'prologue');
+  - `mission:start|complete|fail|abort` → track_* (kind 'main', track / chapter from `N.calendar.storyEntry`) or
+    side_*;
+  - `story2:ending`, `minigame:start|end`, `party:start|results|end|challenge`;
+  - `online:room|players|cloud|start|status` (create vs join: room size a tick later + the Join button);
+  - `settings:change`, `view:change|ready|error`, `audio:settings`;
+  - a wrapper around `N.err` plus window error / unhandledrejection (counted per source, the message cleaned).
+- **UI**: the Settings row `telemetry` ("Share anonymous play stats", section Privacy, via `N.menus.addSettingsRow`).
+  The one-time title notice `.tm-note` (fixed bottom right, full width on phones, styles injected as `#tm-style`):
+  [Turn off] [OK].
+- **API**: `N.telemetry = {state ('on'|'off'|'file'|'noconfig'|'framed'|'automation'|'disabled'), active, on,
+  setOn(v), track(name, props) -> bool, flush({keepalive}) -> Promise, install, session, EVENTS, TUNE, BUILD,
+  DEVICE, _debug}`. Any module may `N.telemetry.track(...)` (guard with `N.telemetry &&`); the event names in
+  design/analytics.md are stable.
+- **Server**:
+  - `public.track_events(events jsonb)`: SECURITY DEFINER, `search_path ''`, the only new anon grant. It validates
+    the envelope, skips invalid items, sets `ts` server-side, and rate-limits 12 / min / install + 3000 / min in all
+    via `nostalgia.allow_n` on the shared `nostalgia.rate`.
+  - Private tables: `nostalgia.events` (raw, BRIN ts + btree install, ts), `daily_stats`, `installs`,
+    `install_days`, `install_steps`.
+  - `nostalgia.rollup_day(d)` (India days, upsert-only) runs hourly and `nostalgia.nightly()` at 00:23 IST, both
+    via pg_cron. `nostalgia.prune()` keeps 90 days / 600 k raw rows; it waits for the owner (design/analytics.md
+    "What you need to do").
+  - Owner views in `nostalgia_admin` (not exposed, security_invoker): daily, retention, funnel, tracks, activities,
+    online, devices, errors_top, session_lengths, today, recent.

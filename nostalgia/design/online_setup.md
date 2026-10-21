@@ -57,6 +57,8 @@ all at Gokul Chat — Pani puri contest? [🏁 Start]".
 Only: the player code **scrambled** (sha256; the code itself is never stored), the nickname, the save
 games and the journey summary. No email, no name, no IP address, no free text. Room positions,
 pins and chat are never stored: they pass through Supabase Realtime and are gone.
+Separately, every web player (online or not) sends anonymous play stats, which can be turned off in Settings → Privacy.
+These hold no codes or names, only sha256(code) as a link: see `design/analytics.md`.
 
 ## How it is protected
 
