@@ -65,8 +65,9 @@ async function walkTo(page, x, y, o) {
   o = o || {};
   return page.evaluate(async ({ x, y, o }) => {
     const p = N.player;
-    const t0 = performance.now();
-    while (performance.now() - t0 < (o.ms || 6000)) {
+    // the budget is game time (a loaded machine walks him less far per wall second); the wall cap only stops a hung page
+    const t0 = performance.now(), g0 = N.time.now, ms = o.ms || 6000;
+    while ((N.time.now - g0) * 1000 < ms && performance.now() - t0 < ms * 8) {
       if (o.until && new Function('return (' + o.until + ')')()) break;
       const dx = x - p.x, dy = y - p.y, d = Math.hypot(dx, dy);
       if (d < (o.r || 3)) break;
@@ -129,6 +130,13 @@ async function waitFree(page) {
   await free(); await sleep(700); await free();
 }
 const label = (page) => page.evaluate(() => { const c = N.interact.current; return c ? (typeof c.label === 'function' ? c.label(N.player) : c.label) : null; });
+/** the ACTION label once the interact system has run (polls frames; a loaded machine needs more than a fixed 200 ms) */
+async function labelIs(page, want, ms) {
+  await page.waitForFunction((w) => { const c = N.interact.current; const l = c ? (typeof c.label === 'function' ? c.label(N.player) : c.label) : null; return l === w; }, want, { timeout: ms || 8000, polling: 50 }).catch(() => null);
+  return label(page);
+}
+/** wait for `fn` (in the page) or `ms` real ms; resolves to its last value */
+const pageUntil = (page, fn, arg, ms) => page.waitForFunction(fn, arg, { timeout: ms || 10000, polling: 50 }).then(() => true, () => false);
 async function itemShot(page, id, file, o) {
   o = o || {};
   const r = await page.evaluate(({ id, o }) => {
@@ -391,13 +399,12 @@ async function testPlay(browser) {
   const labBack = await label(page);
   check(!/Click/.test(labBack || ''), 'no "Click" while facing away from the subject', labBack);
   await page.evaluate(() => { const it = N.collectibles.get('F01'); N.player.angle = N.player.facing = Math.atan2(it.sy - it.y, it.sx - it.x); });
-  await sleep(200);
-  const labF = await label(page);
+  const labF = await labelIs(page, 'Click (F01)');
   await page.keyboard.press('KeyE');
-  await sleep(250);
+  await pageUntil(page, () => document.querySelector('.cl-vf.show') !== null, null, 8000);
   const vf = await page.evaluate(() => ({ show: document.querySelector('.cl-vf.show') !== null, txt: (document.querySelector('.cl-vf .f') || {}).textContent }));
   await page.screenshot({ path: path.join(OUT, 'frame_viewfinder.png') });
-  await sleep(1000);
+  await pageUntil(page, () => N.collectibles.has('F01') && !N.render.camOverride && !N.player.controlsLocked && !document.querySelector('.cl-vf.show'), null, 12000);
   s = await page.evaluate(() => ({ has: N.collectibles.has('F01'), film: N.collectibles.film(), cam: N.render.camOverride, locked: N.player.controlsLocked, vf: !!document.querySelector('.cl-vf.show') }));
   check(labF === 'Click (F01)' && vf.show && /F01/.test(vf.txt) && s.has && s.film.used === 1 && !s.cam && !s.locked && !s.vf, 'F01 clicked: viewfinder overlay, flash, film 1/24, camera + controls restored', { labF, vf, s });
   // respect: inside a temple compound there is no Click
@@ -412,10 +419,9 @@ async function testPlay(browser) {
   // F07 from the Lumbini jetty, facing the Buddha
   await waitFree(page); // the Birla Mandir parapet is a viewpoint too
   await page.evaluate(() => { const it = N.collectibles.get('F07'); N.debug.teleport(it.x, it.y); N.player.angle = N.player.facing = Math.atan2(it.sy - it.y, it.sx - it.x); });
-  await sleep(250);
-  const lab7 = await label(page);
+  const lab7 = await labelIs(page, 'Click (F07)');
   await page.keyboard.press('KeyE');
-  await sleep(1300);
+  await pageUntil(page, () => N.collectibles.has('F07'), null, 12000);
   check(lab7 === 'Click (F07)' && (await page.evaluate(() => N.collectibles.has('F07'))), 'F07 "The man in the lake" clicked from the jetty', lab7);
 
   // developing: two frames on the roll -> Raj Colour Lab -> ready day after tomorrow
@@ -425,7 +431,7 @@ async function testPlay(browser) {
   await sleep(700);
   check((await page.evaluate(() => N.collectibles.prints().length)) === 0, 'not ready the next day');
   await page.evaluate(() => { N.clock.day += 1; });
-  await sleep(800);
+  await pageUntil(page, () => N.collectibles.prints().length === 2, null, 12000);
   s = await page.evaluate(() => ({ prints: N.collectibles.prints(), t1: N.collectibles.triviaUnlocked('trivia_F01'), t7: N.collectibles.triviaUnlocked('trivia_F07'), toasts: N.hud.toastQueue().join(' | ') }));
   check(s.prints.length === 2 && s.t1 && s.t7, 'prints ready day after tomorrow, with their trivia cards', s);
 
@@ -438,7 +444,9 @@ async function testPlay(browser) {
   await sleep(300);
   s = await page.evaluate(() => ({ cam: N.render.camOverride && N.render.camOverride.zoom, locked: N.player.controlsLocked, ev: window.__ev.filter((e) => e[0] === 'viewpoint').map((e) => e[1]) }));
   await page.screenshot({ path: path.join(OUT, 'viewpoint_bala_hissar.png') });
-  await sleep(3200);
+  // the 3 s pull-out runs on game time: wait for the camera to come back (a loaded machine needs longer than 3.2 s)
+  await pageUntil(page, () => !N.render.camOverride && !N.player.controlsLocked, null, 20000);
+  await sleep(300);
   const s2 = await page.evaluate(() => ({ cam: N.render.camOverride, locked: N.player.controlsLocked, known: ['K11', 'G23', 'G24'].map((id) => N.collectibles.isKnown(id)), g24d: Math.round(Math.hypot(N.collectibles.get('G24').x - N.places.golconda_bala_hissar.x, N.collectibles.get('G24').y - N.places.golconda_bala_hissar.y)), blips: Array.from(N.hud.blips.keys()).filter((k) => k.startsWith('coll:rv:')).length }));
   // systems §8.14: a viewpoint reveals unfound items within 900 u. On the real-geography (v2) map Taramati
   // Baradari (G24) is ~1.4 km from Bala Hissar, so it must stay hidden; K11 and G23 are inside the radius.
@@ -608,7 +616,7 @@ async function testVisual(browser) {
   await page.evaluate(() => { const it = N.collectibles.get('F05'); N.debug.setTime(16, 50); N.debug.teleport(it.x, it.y); N.player.angle = N.player.facing = Math.atan2(it.sy - it.y, it.sx - it.x); });
   await sleep(700);
   await page.evaluate(() => N.collectibles.click('F05'));
-  await sleep(1300);
+  await pageUntil(page, () => N.collectibles.has('F05') && !N.render.camOverride && !N.player.controlsLocked, null, 15000);
   await page.evaluate(() => {
     const C = N.collectibles;
     ['K1', 'K2', 'K3', 'G01', 'G05', 'G30', 'C01', 'C13', 'C14', 'T01', 'T09', 'F01', 'F14', 'F21'].forEach((id) => C.found(id, { silent: true }));
@@ -638,7 +646,7 @@ async function testVisual(browser) {
   await sleep(300);
   await P.page.screenshot({ path: path.join(OUT, 'phone_viewfinder.png') });
   await P.page.evaluate(() => { N.time.scale = 1; });
-  await sleep(1300);
+  await pageUntil(P.page, () => N.collectibles.has('F12') && !!document.querySelector('.cl-chip.show'), null, 15000);
   await P.page.screenshot({ path: path.join(OUT, 'phone_after_click.png') });
   const sc = await P.page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth, chip: !!document.querySelector('.cl-chip.show'), f12: N.collectibles.has('F12') }));
   check(sc.sw <= sc.iw && sc.chip && sc.f12, 'phone: frame clicked, counter tin shown, no page scroll', sc);

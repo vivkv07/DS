@@ -77,11 +77,11 @@
  *   §14.1: pursuerSpeed sight unseenDrop chappalInterval homingTurn tummyDrain missionTimers
  *   cargoDamage minigameOffset caughtFine hintNudge) · difficulty · textCps() (0 = instant) ·
  *   vhsScale() · emits 'settings:change' {key, value}.
- *   Keys: textSpeed (slow|normal|fast|instant), autoAdvance, captions, reducedMotion (auto|on|off),
+ *   Keys: textSpeed (slow|normal|fast|instant), autoAdvance, captions, textSize (m|l|xl), reducedMotion (auto|on|off),
  *   flashReduce (auto|on|off), vhs (0-100), handed (right|left), btnSize (s|m|l), difficulty
  *   (relaxed|normal|hard), hintNudges (off|normal|fast; alias .hints), assist, letImmu,
  *   colorBlind (off|deutan|protan|tritan), highContrast; every key is also a plain property. Volumes go straight to N.audio.setVolume (audio.js persists them).
- *   Body classes: reduced-motion, flash-reduce, touch-left, tbtn-s | tbtn-l, captions-on,
+ *   Body classes: reduced-motion, flash-reduce, touch-left, tbtn-s | tbtn-l, captions-on, txt-l | txt-xl,
  *   high-contrast, cb-<mode>. N.dialogue.textSpeed follows the text speed.
  *
  * Saving: one N.save slot ("latest", what CONTINUE loads; booths, MISSION PASSED and the pause
@@ -274,7 +274,7 @@
   /* ============================================================ N.settings */
   const SET_KEY = 'nostalgia.settings.v1';
   const DEFAULTS = {
-    textSpeed: 'normal', autoAdvance: false, captions: false,
+    textSpeed: 'normal', autoAdvance: false, captions: false, textSize: 'm',
     reducedMotion: 'auto', flashReduce: 'auto', vhs: 60,
     handed: 'right', btnSize: 'm',
     difficulty: 'normal', hintNudges: 'normal', assist: false, letImmu: true,
@@ -282,14 +282,14 @@
     mapLayers: null, mapKinds: null, mapLegend: null,
   };
   const CHOICES = {
-    textSpeed: ['slow', 'normal', 'fast', 'instant'], reducedMotion: ['auto', 'on', 'off'], flashReduce: ['auto', 'on', 'off'],
+    textSpeed: ['slow', 'normal', 'fast', 'instant'], textSize: ['m', 'l', 'xl'], reducedMotion: ['auto', 'on', 'off'], flashReduce: ['auto', 'on', 'off'],
     handed: ['right', 'left'], btnSize: ['s', 'm', 'l'], difficulty: ['relaxed', 'normal', 'hard'], hintNudges: ['off', 'normal', 'fast'],
     colorBlind: ['off', 'deutan', 'protan', 'tritan'],
   };
   const TEXT_CPS = { slow: 25, normal: 45, fast: 90, instant: 0 };
   // systems §14.1 (multipliers, seconds, paise)
   const DIFFICULTY = {
-    relaxed: { label: 'Aaram Se', blurb: 'Relaxed: slower chases, more time, softer fines.', pursuerSpeed: 0.85, sight: 0.8, unseenDrop: 9, chappalInterval: 8, homingTurn: 0.7, tummyDrain: 0.7, missionTimers: 1.25, cargoDamage: 0.75, minigameOffset: -0.15, caughtFine: 100, hintNudge: 0.6 },
+    relaxed: { label: 'Aaram Se', blurb: 'Relaxed: slower chases, more time, softer fines, fewer falls off the cycle.', pursuerSpeed: 0.85, sight: 0.8, unseenDrop: 9, chappalInterval: 8, homingTurn: 0.7, tummyDrain: 0.7, missionTimers: 1.25, cargoDamage: 0.75, minigameOffset: -0.15, caughtFine: 100, hintNudge: 0.6 },
     normal: { label: 'Normal', blurb: 'The year as it was.', pursuerSpeed: 1, sight: 1, unseenDrop: 12, chappalInterval: 6, homingTurn: 1, tummyDrain: 1, missionTimers: 1, cargoDamage: 1, minigameOffset: 0, caughtFine: 200, hintNudge: 1 },
     hard: { label: 'Full Meter', blurb: 'Hard: Mummy runs faster and sees further.', pursuerSpeed: 1.1, sight: 1.15, unseenDrop: 15, chappalInterval: 5, homingTurn: 1.2, tummyDrain: 1.2, missionTimers: 0.9, cargoDamage: 1.2, minigameOffset: 0.15, caughtFine: 300, hintNudge: 1.5 },
   };
@@ -355,6 +355,8 @@
     b.classList.toggle('tbtn-s', v.btnSize === 's');
     b.classList.toggle('tbtn-l', v.btnSize === 'l');
     b.classList.toggle('captions-on', !!v.captions);
+    b.classList.toggle('txt-l', v.textSize === 'l');
+    b.classList.toggle('txt-xl', v.textSize === 'xl');
     b.classList.toggle('high-contrast', !!v.highContrast);
     for (const m of CHOICES.colorBlind) b.classList.toggle('cb-' + m, v.colorBlind === m && m !== 'off');
     if (N.dialogue) {
@@ -535,7 +537,9 @@
     if (I.pressed('map')) { I.consume('map'); fire('map'); }
     if (I.pressed('journal')) { I.consume('journal'); fire('journal'); }
     if (I.pressed('run')) { I.consume('run'); fire('zin'); }
-    if (I.pressed('horn')) { I.consume('horn'); fire('zout'); }
+    // B (horn) = back / cancel, the console convention kids expect (shop cards already do it); Y zooms the map out
+    if (I.pressed('horn')) { I.consume('horn'); fire('back'); }
+    if (I.pressed('radio')) { I.consume('radio'); fire('zout'); }
   }
 
   /* ============================================================ shared art */
@@ -1054,12 +1058,28 @@
     { id: 'textSpeed', label: 'Text speed', type: 'seg', opts: SEG([['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast'], ['instant', 'Instant']]) },
     { id: 'autoAdvance', label: 'Auto-advance dialogue', type: 'toggle', help: 'Lines move on by themselves once read (2 s or more). Choices still wait for you.' },
     { id: 'captions', label: 'Sound captions', type: 'toggle', help: '[whistle ↗] and [bus horn] on screen, for playing without sound.' },
+    { id: 'textSize', label: 'Text size', type: 'seg', opts: SEG([['m', 'Normal'], ['l', 'Large'], ['xl', 'Larger']]), help: 'Objective, messages, captions, speech bubbles and conversations.' },
     { sec: 'Screen' },
     { id: 'reducedMotion', label: 'Reduced motion', type: 'seg', opts: SEG([['auto', 'Auto'], ['on', 'On'], ['off', 'Off']]), help: 'No shake, no VHS roll, gentler camera.' },
     { id: 'flashReduce', label: 'Flash reduction', type: 'seg', opts: SEG([['auto', 'Auto'], ['on', 'On'], ['off', 'Off']]) },
     { id: 'vhs', label: 'VHS effect', type: 'slider', help: 'Tape wobble in flashbacks and cutscenes.' },
     { id: 'highContrast', label: 'High-contrast HUD', type: 'toggle' },
     { id: 'colorBlind', label: 'Colour-blind blips', type: 'seg', opts: SEG([['off', 'Off'], ['deutan', 'Deutan'], ['protan', 'Protan'], ['tritan', 'Tritan']]), help: 'Blips always have their own shapes too.' },
+    { sec: 'Controls' },
+    { id: 'controls.help', type: 'help' },
+    { id: 'key.action', label: 'ACTION — talk, ride, buy, pick up', type: 'key', action: 'action' },
+    { id: 'key.run', label: 'Run · handbrake', type: 'key', action: 'run' },
+    { id: 'key.horn', label: 'Horn · whistle (calls AUTO! on foot)', type: 'key', action: 'horn' },
+    { id: 'key.map', label: 'Map', type: 'key', action: 'map' },
+    { id: 'key.journal', label: 'Journal', type: 'key', action: 'journal' },
+    { id: 'key.radio', label: 'Walkman / radio', type: 'key', action: 'radio' },
+    { id: 'key.view', label: 'Change view (top-down / 3D)', type: 'key', action: 'view' },
+    { id: 'key.pause', label: 'Pause (Esc always works)', type: 'key', action: 'pause' },
+    { id: 'key.up', label: 'Move up / forward', type: 'key', action: 'up' },
+    { id: 'key.down', label: 'Move down / brake', type: 'key', action: 'down' },
+    { id: 'key.left', label: 'Move left / steer left', type: 'key', action: 'left' },
+    { id: 'key.right', label: 'Move right / steer right', type: 'key', action: 'right' },
+    { id: 'keys.reset', label: 'Default keys', type: 'reset' },
     { sec: 'Touch controls' },
     { id: 'handed', label: 'Handed', type: 'seg', opts: SEG([['right', 'Right'], ['left', 'Left']]), help: 'Left puts ACTION, RUN and HORN on the left and the stick on the right.' },
     { id: 'btnSize', label: 'Button size', type: 'seg', opts: SEG([['s', 'S'], ['m', 'M'], ['l', 'L']]) },
@@ -1126,6 +1146,18 @@
     S.set(id, v);
     sfx('ui_click');
   }
+  // the controls card in Settings: what every button does on keyboard, touch and gamepad
+  function controlsHelpHTML() {
+    const I = N.input, k = (a) => esc(I && I.keyName && I.keyFor ? I.keyName(I.keyFor(a)) : '?');
+    const L = {
+      keyboard: '<b>Keyboard</b> ' + k('up') + k('left') + k('down') + k('right') + ' or arrows move · ' + k('action') + ' / Enter ACTION · ' + k('run') + ' run (handbrake on wheels) · ' +
+        k('horn') + ' horn · ' + k('map') + ' map · ' + k('journal') + ' journal · ' + k('radio') + ' radio · ' + k('view') + ' view · Esc pause · 1–4 pick an answer',
+      touch: '<b>Touch</b> drag the left side to move · yellow ACTION · red RUN / BRAKE · teal HORN (on foot near a road: calls an AUTO!) · the cassette = radio · MAP and ‖ at the top',
+      gamepad: '<b>Gamepad</b> left stick move · A action · B horn (back in menus) · X / RB / RT run · Y radio · LB journal · Back map · Start pause · R3 view · right stick looks around in 3D',
+    };
+    const first = I && L[I.device] ? I.device : 'keyboard'; // the device in hand comes first
+    return [first].concat(Object.keys(L).filter((x) => x !== first)).map((x) => L[x]).join('<br>');
+  }
   const settings = definePanel('settings', {
     build() {
       const e = (this.el = el('div', 'screen mn-screen mn-settings', overlayRoot()));
@@ -1150,6 +1182,8 @@
         focusEl(row);
         const r = rowById(row.dataset.id);
         if (!r) return;
+        if (r.type === 'key' && ev.target.closest('.st-key')) { this.startCapture(row); return; }
+        if (r.type === 'reset' && ev.target.closest('.st-reset')) { this.resetKeys(); return; }
         if (r.type === 'toggle' && ev.target.closest('.st-tog')) { settingSet(r.id, !settingGet(r.id)); this.sync(row); }
         else if (r.type === 'seg') { const b = ev.target.closest('button[data-v]'); if (b) { settingSet(r.id, b.dataset.v); this.syncAll(); } }
         else if (r.type === 'danger' && ev.target.closest('.st-erase')) this.erase(row);
@@ -1166,8 +1200,11 @@
         row.dataset.id = r.id;
         row.dataset.nav = '';
         row.tabIndex = 0;
-        if (r.type !== 'info') row.setAttribute('data-adjust', '');
+        if (r.type !== 'info' && r.type !== 'help') row.setAttribute('data-adjust', '');
         if (r.type === 'info') { row.innerHTML = '<span class="st-l"><span class="st-info"></span></span>'; continue; }
+        if (r.type === 'help') { row.innerHTML = '<span class="st-l"><span class="st-info st-help">' + controlsHelpHTML() + '</span></span>'; continue; }
+        if (r.type === 'key') { row.innerHTML = '<span class="st-l">' + esc(r.label) + '<small class="st-h"></small></span><span class="st-c"><button type="button" tabindex="-1" class="st-key" aria-label="Change the key for ' + esc(r.label) + '"><kbd></kbd></button></span>'; row.setAttribute('aria-label', r.label); continue; }
+        if (r.type === 'reset') { row.innerHTML = '<span class="st-l">' + esc(r.label) + '<small class="st-h"></small></span><span class="st-c"><button type="button" tabindex="-1" class="mn-btn small st-reset">Reset</button></span>'; continue; }
         if (r.type === 'danger') { row.innerHTML = '<span class="st-l">' + esc(r.label) + '<small class="st-h"></small></span><span class="st-c"><button type="button" tabindex="-1" class="mn-btn danger st-erase">Erase</button></span>'; continue; }
         let c = '';
         if (r.type === 'slider') c = '<input type="range" tabindex="-1" min="0" max="100" step="5" aria-label="' + esc(r.label) + '"><output class="st-val"></output>';
@@ -1183,6 +1220,17 @@
       const id = row.dataset.id;
       const r = rowById(id);
       if (!r) return;
+      if (r.type === 'key') {
+        const I = N.input, cap = this.capture === id;
+        row.classList.toggle('capturing', cap);
+        row.querySelector('kbd').textContent = cap ? 'press a key…' : (I && I.keyName ? I.keyName(I.keyFor(r.action)) : '?');
+        const others = I && I.keysFor ? I.keysFor(r.action).slice(1).map((c) => I.keyName(c)) : [];
+        const hh = row.querySelector('.st-h');
+        hh.textContent = cap ? 'Esc cancels' : (row._msg || (others.length ? 'also ' + others.filter((x, i, a) => a.indexOf(x) === i).join(' · ') : ''));
+        return;
+      }
+      if (r.type === 'reset') { const n = N.input && N.input.bindings ? Object.keys(N.input.bindings()).length : 0; row.querySelector('.st-h').textContent = n ? n + ' key' + (n > 1 ? 's' : '') + ' changed' : 'All keys are the defaults.'; return; }
+      if (r.type === 'help') { const hp = row.querySelector('.st-help'); if (hp) hp.innerHTML = controlsHelpHTML(); return; } // follows rebinding
       const v = r.type === 'info' || r.type === 'danger' ? null : settingGet(id);
       const h = row.querySelector('.st-h');
       if (h) h.textContent = subst(typeof r.help === 'function' ? r.help() : r.help || '');
@@ -1212,8 +1260,38 @@
         i = d < 0 ? Math.max(0, i - 1) : d > 0 ? Math.min(vals.length - 1, i + 1) : (i + 1) % vals.length;
         settingSet(r.id, vals[i]);
       } else if (r.type === 'danger') { if (!d) this.erase(row); return; }
+      else if (r.type === 'key') { if (!d) this.startCapture(row); return; }
+      else if (r.type === 'reset') { if (!d) this.resetKeys(); return; }
       this.syncAll();
     },
+    // ---- key remapping: ACTION / click on a key row, then the next key press is the new key (Esc cancels)
+    startCapture(row) {
+      if (!N.input || !N.input.bind) return;
+      this.capture = row.dataset.id; this.rawKeys = true; row._msg = '';
+      sfx('ui_select');
+      this.syncAll();
+    },
+    endCapture() { this.capture = null; this.rawKeys = false; this.syncAll(); },
+    onKey(k, e) {
+      if (!this.capture) return false;
+      const row = this.el.querySelector('.st-row[data-id="' + this.capture + '"]');
+      const r = rowById(this.capture);
+      if (!e) { if (k === 'back' || k === 'ok') { sfx('ui_back'); this.endCapture(); } return true; } // a pad can't press keys
+      if (e.repeat) return true;
+      if (e.code === 'Escape' || !r) { sfx('ui_back'); this.endCapture(); return true; }
+      const ok = N.input.bind(r.action, e.code);
+      if (row) row._msg = ok ? '' : N.input.keyName(e.code) + ' stays where it is: pick another key';
+      sfx(ok ? 'ui_click' : 'ui_back');
+      this.endCapture();
+      return true;
+    },
+    resetKeys() {
+      try { if (N.input && N.input.resetBindings) N.input.resetBindings(); } catch (e) { N.err('menus.resetKeys', e); }
+      sfx('ui_select');
+      this.el.querySelectorAll('.st-row').forEach((x) => { x._msg = ''; });
+      this.syncAll();
+    },
+    onClose() { if (this.capture) { this.capture = null; this.rawKeys = false; } },
     erase(row) {
       const b = row.querySelector('.st-erase'), h = row.querySelector('.st-h');
       if (b.disabled) return;
@@ -1738,6 +1816,19 @@
       g.lineWidth = 3; g.strokeStyle = 'rgba(239,228,198,0.95)'; g.strokeText(it.name, x, y);
       g.fillStyle = col; g.fillText(it.name, x, y);
     }
+    // the GPS route (the same road route the minimap draws to the routed blip / waypoint)
+    try {
+      const rp = N.hud && N.hud.route ? N.hud.route() : null;
+      if (rp && rp.length > 1) {
+        g.save();
+        g.lineJoin = 'round'; g.lineCap = 'round';
+        g.beginPath();
+        for (let i = 0; i < rp.length; i++) { const q = w2s(rp[i][0], rp[i][1]); if (i) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); }
+        g.strokeStyle = 'rgba(26,18,20,0.55)'; g.lineWidth = 7; g.stroke();
+        g.strokeStyle = cbCol('#ff5fb0'); g.lineWidth = 4; g.stroke();
+        g.restore();
+      }
+    } catch (e) { N.err('menus.mapRoute', e); }
     // story: mission markers, HUD blips, waypoint
     if (layerOn('story')) {
       try {
@@ -1745,8 +1836,9 @@
         for (const m of mk) {
           const p = w2s(m.x, m.y); if (!inV(p, 20)) continue;
           const goal = m.kind === 'goal';
-          pulse(g, p, goal ? '#ff5fb0' : '#f2c230', t, 9);
-          drawSprite(g, iconSprite(goal ? 'badge' : 'diamond', goal ? 'star' : null, goal ? '#ff5fb0' : '#f2c230', 7.5, dpr), p[0], p[1]);
+          const mc = cbCol(goal ? '#ff5fb0' : '#f2c230');
+          pulse(g, p, mc, t, 9);
+          drawSprite(g, iconSprite(goal ? 'badge' : 'diamond', goal ? 'star' : null, mc, 7.5, dpr), p[0], p[1]);
           hits.push({ x: p[0], y: p[1], r: 13, item: { id: m.id || 'goal', name: goal ? 'Mission goal' : (m.title || 'Mission'), kind: goal ? 'goal' : 'giver', x: m.x, y: m.y } });
         }
       } catch (e) { N.err('menus.mapMarkers', e); }
@@ -1757,20 +1849,22 @@
           const q = N.hud.blipPos ? N.hud.blipPos(b) : null;
           if (!q || !isFinite(q.x) || !isFinite(q.y)) continue;
           const p = w2s(q.x, q.y); if (!inV(p, 16)) continue;
-          if (b.pulse) pulse(g, p, b.color || '#ff5fb0', t, 7);
+          // colour-blind palette + the HUD's size clamp (hud.js), so the full map matches the minimap
+          const bc = cbCol(b.color || '#ff5fb0');
+          if (b.pulse) pulse(g, p, bc, t, 7);
           const shape = b.icon === 'square' || b.icon === 'shop' ? 'tile' : b.icon === 'giver' || b.icon === 'diamond' ? 'diamond' : b.icon === 'star' || b.icon === 'mission' ? 'star' : 'badge';
-          drawSprite(g, iconSprite(shape, null, b.color || '#ff5fb0', 6 * (b.size || 1), dpr), p[0], p[1]);
+          drawSprite(g, iconSprite(shape, null, bc, 6 * Math.min((N.hud && N.hud.BLIP_MAX) || 2.2, b.size || 1), dpr), p[0], p[1]);
           if (b.icon === 'ring') { g.beginPath(); g.arc(p[0], p[1], 3, 0, TAU); g.fillStyle = INK; g.fill(); }
           hits.push({ x: p[0], y: p[1], r: 11, item: { id, name: b.label || 'Marker', kind: 'blip', x: q.x, y: q.y } });
         }
       } catch (e) { N.err('menus.mapBlips', e); }
     }
     if (waypoint) {
-      const p = w2s(waypoint.x, waypoint.y);
-      pulse(g, p, '#ff5fb0', t, 8);
+      const p = w2s(waypoint.x, waypoint.y), wc = cbCol('#ff5fb0');
+      pulse(g, p, wc, t, 8);
       g.save(); g.translate(p[0], p[1]);
       g.beginPath(); g.moveTo(0, 0); g.bezierCurveTo(-9, -12, -8, -22, 0, -23); g.bezierCurveTo(8, -22, 9, -12, 0, 0); g.closePath();
-      g.fillStyle = '#ff5fb0'; g.fill(); g.lineWidth = 2; g.strokeStyle = INK; g.stroke();
+      g.fillStyle = wc; g.fill(); g.lineWidth = 2; g.strokeStyle = INK; g.stroke();
       g.beginPath(); g.arc(0, -15, 3.4, 0, TAU); g.fillStyle = '#fff4dc'; g.fill();
       g.restore();
       hits.push({ x: p[0], y: p[1] - 12, r: 12, item: { id: 'mn:waypoint', name: 'Your waypoint', kind: 'waypoint', x: waypoint.x, y: waypoint.y } });
@@ -1810,6 +1904,8 @@
       if (MV._scaleW !== w) { MV._scaleW = w; MV.scaleBar.style.width = w + 'px'; MV.scaleTxt.textContent = (km < 1 ? km * 1000 + ' m' : km + ' km'); }
     }
   }
+  // blip colours under the colour-blind setting (hud.js owns the palette)
+  function cbCol(c) { try { return N.hud && N.hud.blipColor ? N.hud.blipColor(c) : c; } catch (e) { return c; } }
   function crossHair(g, x, y) { g.beginPath(); g.arc(x, y, 9, 0, TAU); g.moveTo(x - 16, y); g.lineTo(x - 5, y); g.moveTo(x + 5, y); g.lineTo(x + 16, y); g.moveTo(x, y - 16); g.lineTo(x, y - 5); g.moveTo(x, y + 5); g.lineTo(x, y + 16); g.stroke(); }
   function pulse(g, p, col, t, r) {
     if (reduced()) return;
@@ -1826,6 +1922,7 @@
     if (it.kind === 'goal') return 'Where the mission wants you';
     if (it.kind === 'giver') return 'A mission starts here';
     if (it.kind === 'waypoint') return 'Pink line on the minimap';
+    if (it.kind === 'spot') return 'A spot on the map';
     const ki = KI[it.kind];
     return ki ? ki.label : it.kind === 'water' ? 'Lake' : 'Place';
   }
@@ -1859,6 +1956,15 @@
     focusEl(c.querySelector('[data-mc=route]'));
     sfx('page_flip');
   }
+  /** A bare map spot as a card item: named after the nearest place within ~300 u, else its district. */
+  function spotAt(px, py) {
+    const w = s2w(px, py);
+    let best = null, bd = 300;
+    for (const id in N.places) { const p = N.places[id]; const d = Math.hypot(p.x - w[0], p.y - w[1]); if (d < bd && p.name) { bd = d; best = p; } }
+    let dn = null;
+    try { const d = N.world.built ? N.world.districtAt(w[0], w[1]) : null; dn = d && d.name; } catch (e) { /* ignore */ }
+    return { id: 'mn:spot', kind: 'spot', name: best ? 'Near ' + best.name : (dn || 'This spot'), x: w[0], y: w[1] };
+  }
   function hideCard() { if (MV.card && !MV.card.hidden) { MV.card.hidden = true; MV.sel = null; focusEl(MV.frame); } }
   // the icon nearest to the finger wins (ties: the one drawn on top)
   function hitAt(px, py, extra) {
@@ -1883,7 +1989,7 @@
         const S = N.shops;
         const ok = S.hailAuto({}) || S.hailAuto({ stand: true });
         if (!ok && N.hud && N.hud.toast && N.wanted && (N.wanted.level || 0) < 3) N.hud.toast('No auto can reach you here. Walk to a bigger road and press HORN.', 3000);
-        else if (ok && N.hud && N.hud.toast) N.hud.toast('Auto is coming. Press ACTION at the auto and pick "Your map waypoint".', 3600);
+        else if (ok && N.hud && N.hud.toast) N.hud.toast('Auto is coming. When it stops, pick your waypoint on the card.', 3600);
       } catch (e) { N.err('menus.callAuto', e); }
     }, 150);
   }
@@ -1996,7 +2102,7 @@
       MV.legendOpen = !narrow;
       this.el.classList.toggle('leg-open', MV.legendOpen);
       renderLegend();
-      MV.hint.textContent = (N.input && N.input.device === 'touch') ? 'drag · pinch to zoom · tap a sign · long-press: waypoint' : 'drag or WASD · wheel or +/− zoom · click a sign · right-click: waypoint · Esc close';
+      MV.hint.textContent = (N.input && N.input.device === 'touch') ? 'drag · pinch to zoom · tap a sign or a spot · long-press: waypoint' : 'drag / WASD · wheel ± zoom · click a sign or a spot · right-click: waypoint · Esc';
       mapResize();
       MV.fit = Math.min(MV.W / N.WORLD_W, MV.H / N.WORLD_H) * 0.96;
       const z = o && o.zoom;
@@ -2100,7 +2206,9 @@
       this.cancelPress();
       if (q && MV.drag && MV.drag.moved < 8 && !(press && press.fired)) {
         const it = hitAt(q.x, q.y, ev.pointerType === 'touch' ? 8 : 2);
-        if (it) showCard(it); else hideCard();
+        // a tap on bare map (no sign there) offers that spot: "Route here" / "Auto here" (GTA-style waypoint),
+        // a second tap anywhere just closes the card
+        if (it) showCard(it); else if (MV.card && !MV.card.hidden) hideCard(); else showCard(spotAt(q.x, q.y));
       }
       MV.drag = null;
     },

@@ -18,6 +18,10 @@
  *    held while a banner / J-card / ask card / dialogue is up; the district card waits for banners.
  *  - jcard(spec | null): the mission J-card prompt card (missions.js drives it).
  *  - banner(title, sub, ms, {kind, note}): `note` is a handwritten third line (Immu's scribble).
+ *
+ * Gameplay / UX audit (design/audit/gameplay.md): blipColor(col) colour-blind palettes (Settings
+ * "Colour-blind blips" used to change nothing), BLIP_MAX size clamp, fmtMoney (₹ 9,99,999), speech
+ * bubbles under the HUD + dodgeBarks()/keepOutRects(), an aria label on the Chappal Meter.
  */
 (() => {
   'use strict';
@@ -43,6 +47,65 @@
     return e;
   }
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  // Money on the tin: paise matter below ₹1,000 (chai is ₹1.50); above that the paise are dropped and
+  // the rupees get Indian grouping (₹ 9,99,999), so a big purse (the testing build's unlimited money)
+  // stays narrow enough for the phone-portrait HUD next to the VHS OSD.
+  function fmtTin(paise) {
+    paise = Math.round(paise || 0);
+    if (Math.abs(paise) < 100000) return U.fmtMoney(paise);
+    const neg = paise < 0, r = String(Math.floor(Math.abs(paise) / 100));
+    const last3 = r.slice(-3), rest = r.slice(0, -3);
+    return (neg ? '-' : '') + '₹ ' + (rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' : '') + last3;
+  }
+
+  // Colour-blind blips (settings "Colour-blind blips": menus.js sets body.cb-deutan / cb-protan / cb-tritan
+  // and N.settings.colorBlind). Every blip colour is sorted into a hue family and drawn in a palette that
+  // stays apart for that kind of colour vision (Okabe-Ito based; danger stays the darkest, goals the
+  // brightest). Shapes already differ per kind (star / diamond / ring / dot / square).
+  const CB_PAL = {
+    // red-green (deutan, protan): red -> vermillion, orange -> amber, yellow -> lemon, green -> sky blue,
+    // teal -> blue, blue -> deep blue, pink / purple -> light reddish purple
+    deutan: { red: '#d55e00', orange: '#e69f00', yellow: '#f0e442', green: '#56b4e9', teal: '#0072b2', blue: '#0072b2', pink: '#f2a6d8', grey: null },
+    protan: { red: '#c85a00', orange: '#e69f00', yellow: '#f0e442', green: '#56b4e9', teal: '#0072b2', blue: '#0072b2', pink: '#f2a6d8', grey: null },
+    // blue-yellow (tritan): yellow -> warm white, orange -> red-orange, pink / purple -> red, blue / teal -> cyan
+    tritan: { red: '#e8202a', orange: '#ff6a3a', yellow: '#fff2e0', green: '#2fbf7f', teal: '#29d3e0', blue: '#29d3e0', pink: '#ff2a55', grey: null },
+  };
+  const cbCache = new Map();
+  function hueFamily(col) {
+    const m = /^#?([0-9a-f]{6}|[0-9a-f]{3})$/i.exec(String(col || '').trim());
+    if (!m) return null;
+    let h = m[1];
+    if (h.length === 3) h = h.replace(/./g, '$&$&');
+    const r = parseInt(h.slice(0, 2), 16) / 255, g = parseInt(h.slice(2, 4), 16) / 255, b = parseInt(h.slice(4, 6), 16) / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    if (d < 0.12) return 'grey';
+    let hue = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    hue = (hue * 60 + 360) % 360;
+    if (hue < 18 || hue >= 345) return 'red';
+    if (hue < 42) return 'orange';
+    if (hue < 70) return 'yellow';
+    if (hue < 160) return 'green';
+    if (hue < 200) return 'teal';
+    if (hue < 260) return 'blue';
+    return 'pink';
+  }
+  function cbMode() {
+    const S = N.settings;
+    const m = S && (typeof S.get === 'function' ? S.get('colorBlind') : S.colorBlind);
+    return m && CB_PAL[m] ? m : null;
+  }
+  /** The colour a blip (or the route line) is drawn in under the current colour-blind setting. */
+  function blipColor(col) {
+    const mode = cbMode();
+    if (!mode || !col) return col;
+    const key = mode + col;
+    let v = cbCache.get(key);
+    if (v === undefined) { const f = hueFamily(col); v = (f && CB_PAL[mode][f]) || col; cbCache.set(key, v); }
+    return v;
+  }
+  // Blip sizes are clamped: one module asking for size 4-5 used to cover a third of the minimap.
+  const BLIP_MAX = 2.2;
 
   // Hawai chappal seen from above: foot-shaped sole, V strap, toe post.
   const CHAPPAL_SVG =
@@ -252,7 +315,7 @@
       g.beginPath();
       route.pts.forEach((q, i) => { if (i) g.lineTo(toX(q[0]), toY(q[1])); else g.moveTo(toX(q[0]), toY(q[1])); });
       g.strokeStyle = 'rgba(20,10,30,0.55)'; g.lineWidth = Math.max(4, S * 0.032); g.stroke();
-      g.strokeStyle = '#ff5fb0'; g.lineWidth = Math.max(2, S * 0.018); g.stroke();
+      g.strokeStyle = blipColor('#ff5fb0'); g.lineWidth = Math.max(2, S * 0.018); g.stroke();
     }
     // blips
     const t = N.time.real;
@@ -264,11 +327,12 @@
       const dx = X - cx, dy = Y - cy, d = Math.max(Math.abs(dx), Math.abs(dy));
       const out = d > edge;
       if (out) { if (b.edge === false) continue; X = cx + (dx / d) * edge; Y = cy + (dy / d) * edge; }
-      const r = Math.max(3, S * 0.032) * (b.size || 1);
+      const r = Math.max(3, S * 0.032) * Math.min(BLIP_MAX, b.size || 1);
+      const col = blipColor(b.color);
       g.globalAlpha = 1;
       if (b.pulse) {
         const ph = (t * 1.4 + (b.phase || 0)) % 1;
-        g.strokeStyle = b.color; g.globalAlpha = 1 - ph; g.lineWidth = Math.max(1.5, S * 0.012);
+        g.strokeStyle = col; g.globalAlpha = 1 - ph; g.lineWidth = Math.max(1.5, S * 0.012);
         g.beginPath(); g.arc(X, Y, r + ph * r * 2.4, 0, TAU); g.stroke();
         g.globalAlpha = 1;
       }
@@ -276,11 +340,11 @@
         const a = Math.atan2(dy, dx);
         g.save(); g.translate(X, Y); g.rotate(a);
         g.fillStyle = '#120d16'; g.beginPath(); g.moveTo(r * 1.6, 0); g.lineTo(-r, -r * 1.2); g.lineTo(-r, r * 1.2); g.closePath(); g.fill();
-        g.fillStyle = b.color; g.beginPath(); g.moveTo(r * 1.15, 0); g.lineTo(-r * 0.6, -r * 0.8); g.lineTo(-r * 0.6, r * 0.8); g.closePath(); g.fill();
+        g.fillStyle = col; g.beginPath(); g.moveTo(r * 1.15, 0); g.lineTo(-r * 0.6, -r * 0.8); g.lineTo(-r * 0.6, r * 0.8); g.closePath(); g.fill();
         g.restore();
         continue;
       }
-      drawIcon(g, b.icon, X, Y, r, b.color);
+      drawIcon(g, b.icon, X, Y, r, col);
     }
     // player arrow (north-up map, arrow turns)
     g.save(); g.translate(cx, cy); g.rotate(fe.angle || 0);
@@ -408,12 +472,12 @@
     const wl = WK ? '♪ ' + String(WK.title || '').toUpperCase() : '';
     if (wl !== state.walk) { state.walk = wl; dom.mmWalkTxt.textContent = wl; dom.mmWalk.classList.toggle('show', !!wl); dom.cas.classList.toggle('playing', !!wl); }
     // money (counts up/down to the new value, shows the delta)
-    if (state.money === null) { state.money = p.money; state.moneyShown = p.money; dom.moneyVal.textContent = U.fmtMoney(p.money); }
+    if (state.money === null) { state.money = p.money; state.moneyShown = p.money; dom.moneyVal.textContent = fmtTin(p.money); }
     if (p.money !== state.money) {
       const d = p.money - state.money;
       state.moneyAnim = { from: state.moneyShown, to: p.money, t: 0 };
       state.money = p.money;
-      dom.moneyDelta.textContent = (d > 0 ? '+' : '−') + U.fmtMoney(Math.abs(d)).replace('₹ ', '₹');
+      dom.moneyDelta.textContent = (d > 0 ? '+' : '−') + fmtTin(Math.abs(d)).replace('₹ ', '₹');
       dom.money.classList.remove('gain', 'loss'); void dom.money.offsetWidth;
       dom.money.classList.add(d > 0 ? 'gain' : 'loss');
     }
@@ -421,7 +485,7 @@
       const a = state.moneyAnim;
       a.t = Math.min(1, a.t + dt / 0.6);
       state.moneyShown = Math.round(U.lerp(a.from, a.to, U.smooth(a.t)));
-      dom.moneyVal.textContent = U.fmtMoney(state.moneyShown);
+      dom.moneyVal.textContent = fmtTin(state.moneyShown);
       if (a.t >= 1) state.moneyAnim = null;
     }
     // energy + the tummy notch (energy can never go above tummy; systems §2.2)
@@ -466,6 +530,7 @@
       state.wanted = w;
       dom.slippers.forEach((s, i) => s.classList.toggle('on', i < w));
       dom.chappal.classList.toggle('active', w > 0);
+      dom.chappal.setAttribute('aria-label', 'Chappal Meter ' + w + ' of 5');
       if (up) { dom.chappal.classList.remove('shake'); void dom.chappal.offsetWidth; dom.chappal.classList.add('shake'); }
     }
     // district: banner when it changes (and stays changed for a moment)
@@ -498,7 +563,7 @@
     // the district card waits until no banner / J-card / ask card owns the centre
     if (state.distPending && !state.bannerCur && !state.jc && !(dom.ask && dom.ask.classList.contains('show'))) {
       const dp = state.distPending; state.distPending = null;
-      if (performance.now() - dp.t < 6000) showDistrict(dp.name, dp.sub);
+      if ((N.time.real || 0) - dp.t < 6) showDistrict(dp.name, dp.sub); // frame time: a slow device doesn't drop it
     }
     pumpCaptions(dt);
     updateRoute(dt);
@@ -542,6 +607,49 @@
   function pumpCaptions(dt) {
     for (const c of state.caps) c.left -= dt * 1000;
     while (state.caps.length && state.caps[0].left <= 0) { const c = state.caps.shift(); c.el.classList.remove('show'); setTimeout(() => c.el.remove(), 250); }
+  }
+
+  // the ACTION key cap on HUD cards (J-card): the player's key, "A" on a gamepad
+  function actGlyph() { try { return (N.input && N.input.glyph && N.input.glyph('action')) || 'E'; } catch (e) { return 'E'; } }
+
+  /* ------------------------------------------- speech bubbles vs the HUD */
+  // dialogue.js places the barks (its draw, system order 12) clamped to the screen edge, so a speaker
+  // above the view puts a cream bubble right over the OSD, the money tin or the objective. The HUD now
+  // stacks above #barks (style.css) and here (draw, order 80, after the barks moved) any bubble that
+  // overlaps a HUD read-out fades right down (.bark.under-hud) so both stay legible.
+  const KEEP_SEL = '.hud-osd .osd-row1, .hud-osd .osd-row2, .hud-osd .osd-dist, .hud-money, .hud-energy, .hud-chappal, .hud-minimap, ' +
+    '.hud-obj.show, .hud-timer.show, .hud-toast.show, .hud-qitem.show, .hud-jcard.show, .hud-banner.show .b-title, .hud-banner.show .b-sub, ' +
+    '.hud-district.show .d-name, .hud-ask.show, body.touch-on #touch .t-top';
+  const keepOut = { rects: [], t: -1e9 };
+  const TRANSLATE = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/;
+  function collectKeepOut() {
+    const out = [];
+    try {
+      document.querySelectorAll(KEEP_SEL).forEach((e) => {
+        if (!e.offsetParent && getComputedStyle(e).position !== 'fixed') return;
+        const cs = getComputedStyle(e);
+        if (cs.visibility === 'hidden' || +cs.opacity < 0.1 || e.closest('.held, .hud-hidden')) return;
+        const r = e.getBoundingClientRect();
+        if (r.width > 2 && r.height > 2) out.push([r.left - 2, r.top - 2, r.right + 2, r.bottom + 2]);
+      });
+    } catch (e) { N.err('hud.keepOut', e); }
+    keepOut.rects = out;
+  }
+  function dodgeBarks() {
+    const host = dom.barks || (dom.barks = document.getElementById('barks'));
+    if (!host || !host.firstElementChild) return;
+    const now = performance.now();
+    if (now - keepOut.t > 350) { keepOut.t = now; collectKeepOut(); }
+    const R = keepOut.rects;
+    for (let el = host.firstElementChild; el; el = el.nextElementSibling) {
+      const m = TRANSLATE.exec(el.style.transform || '');
+      let hit = false;
+      if (m && el.style.visibility !== 'hidden') {
+        const x0 = +m[1], y0 = +m[2], x1 = x0 + el.offsetWidth, y1 = y0 + el.offsetHeight;
+        for (let i = 0; i < R.length && !hit; i++) { const q = R[i]; hit = x0 < q[2] && q[0] < x1 && y0 < q[3] && q[1] < y1; }
+      }
+      if (el.classList.contains('under-hud') !== hit) el.classList.toggle('under-hud', hit);
+    }
   }
 
   function showDistrict(name, sub) {
@@ -624,7 +732,7 @@
         dom.jcard.innerHTML =
           '<div class="jc-tape"><span class="jc-head"></span><span class="jc-reels"><i></i><i></i></span></div>' +
           '<div class="jc-title"></div><div class="jc-sub"></div><div class="jc-line"></div>' +
-          '<div class="jc-row"><button type="button" class="sign-btn small jc-play"><kbd>E</kbd> &#9654; PLAY</button><span class="jc-not"></span></div>' +
+          '<div class="jc-row"><button type="button" class="sign-btn small jc-play"><kbd>' + esc(actGlyph()) + '</kbd> &#9654; PLAY</button><span class="jc-not"></span></div>' +
           '<div class="jc-bar"><b></b></div>';
         dom.jcard.querySelector('.jc-play').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); const j = state.jc; if (j && j.onPlay) { try { j.onPlay(); } catch (er) { N.err('hud.jcard', er); } } });
       }
@@ -686,7 +794,7 @@
     districtBanner(name, sub) {
       if (!dom.district || !name) return;
       // never on top of a banner / J-card / ask card: wait for the centre to clear
-      if (state.bannerCur || state.jc || (dom.ask && dom.ask.classList.contains('show'))) { state.distPending = { name, sub, t: performance.now() }; return; }
+      if (state.bannerCur || state.jc || (dom.ask && dom.ask.classList.contains('show'))) { state.distPending = { name, sub, t: N.time.real || 0 }; return; }
       showDistrict(name, sub);
     },
     /** Mission / minigame countdown: timer(label, seconds) shows it, timer(null) hides it. */
@@ -727,6 +835,14 @@
     layout() { if (dom.mmCanvas) sizeMinimap(); },
     /** Pre-rendered minimap base image (also handy for the full map). */
     mapImage,
+    /** A blip colour as drawn under the current colour-blind setting (the full map uses it too). */
+    blipColor,
+    /** Largest blip `size` the HUD draws (bigger requests are clamped). */
+    BLIP_MAX,
+    /** The money tin's format: ₹ 12.50 below ₹1,000, ₹ 9,99,999 above. */
+    fmtMoney: fmtTin,
+    /** Screen rects [x0, y0, x1, y1] of the HUD read-outs speech bubbles must not cover (refreshed ~3x a second). */
+    keepOutRects: () => { collectKeepOut(); keepOut.t = performance.now(); return keepOut.rects.slice(); },
   });
 
   N.on('render:resize', () => { if (dom.mmCanvas) requestAnimationFrame(sizeMinimap); });
@@ -750,6 +866,7 @@
       if (m === 'boot' || m === 'title' || state.hidden) return;
       if (!MM.size) sizeMinimap();
       drawMinimap();
+      try { dodgeBarks(); } catch (e) { N.err('hud.dodgeBarks', e); }
     },
     reset() {
       blips.clear(); route.pts = null; route.key = '';

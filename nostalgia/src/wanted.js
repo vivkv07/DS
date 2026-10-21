@@ -445,7 +445,7 @@
     a.angle = Math.atan2(N.player.y - spot.y, N.player.x - spot.x);
     N.entities.add(a);
     if (N.hud && N.hud.blip) {
-      try { N.hud.blip('wanted:' + a.id, a, { color: o && o.spotter ? '#ffb020' : '#ff4a3a', icon: o && o.spotter ? 'dot' : 'diamond', label: o && o.label || role, edge: !(o && o.spotter), size: 4 }); W.blips.add('wanted:' + a.id); } catch (e) { /* hud optional */ }
+      try { N.hud.blip('wanted:' + a.id, a, { color: o && o.spotter ? '#ffb020' : '#ff4a3a', icon: o && o.spotter ? 'dot' : 'diamond', label: o && o.label || role, edge: !(o && o.spotter), size: o && o.spotter ? 1.1 : 1.6 }); W.blips.add('wanted:' + a.id); } catch (e) { /* hud optional */ }
     }
     N.emit('wanted:pursuer', { role, actor: a });
     return a;

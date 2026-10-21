@@ -64,6 +64,9 @@
  *   Nudges (systems §6.5, real seconds in play): 180 s objective suffix, 360 s search circle r 600 on the
  *   minimap, 600 s r 300, 900 s Immu's PS on the Clues page. Setting `hintNudges` off|normal|fast.
  *   Events: 'hint:start' {id}, 'hint:taken' {id, source, tier}, 'hint:nudge' {id, level}, 'hint:solved' {id}
+ *   roamLine() -> the free-roam story line (null = none): the riddle that leads to the next giver (short form) or
+ *       "Next on Side A: <title> (the yellow marker at <where>)"; written to the HUD objective when nothing else is
+ *       there (journey audit). The home door (interact 'home_door'): Eat / Sleep till 07:00 ▶▶ / post-game ◀◀ REWIND.
  *
  * Journal: storycore adds the 'clues' page (active clue, hints taken, Immu's PS); menus.js draws Side A and
  * The Tin from N.tape.
@@ -526,7 +529,7 @@
     cassette_7: { n: 7, song: 'day', spot: 'recording_centre_1', hint: "On the counter: 'Free sample. Take one.'", text: "From Raju of the chai bandi, Himayatnagar, to everyone who drinks on credit: 'Please. Pay.'" },
     cassette_8: { n: 8, song: 'night', spot: 'blue_sea_cafe', hint: 'Left on a marble table by a man running for a train.', text: "From a soldier at Secunderabad station to his mother in Warangal: 'Train is late. Heart is on time.'" },
     cassette_9: { n: 9, song: 'oldcity', spot: 'pathergatti', hint: "In the stone arcade, at the tape stall's 'old stock' basket.", text: "From the bangle sellers of Laad Bazaar, to every *aapa* who bargained: 'You won. Come again.'" },
-    cassette_10: { n: 10, song: 'kites', spot: 'abids_book_market', hint: 'In a stack of old Tinkles. Sundays only.', text: "From the Abids Sunday book men, to the boy who reads Tinkle standing up: 'Buy one, at least!'" },
+    cassette_10: { n: 10, song: 'kites', spot: 'abids_book_market', hint: 'In a stack of old comics. Sundays only.', text: "From the Abids Sunday book men, to the boy who reads comics standing up: 'Buy one, at least!'" },
     cassette_11: { n: 11, song: 'numaish', spot: 'nampally_exhibition', hint: 'At the lost-and-found counter (after M2, all year).', text: "From the Numaish loudspeaker uncle: 'To all the lost children of 2003: you were never lost. You were near the papad.'" },
     cassette_12: { n: 12, song: 'title', spot: 'gymkhana_ground_secunderabad', hint: 'On the old pavilion step.', text: "From an old ground-man to the girls who bowl at dawn: 'Keep coming.'" },
     cassette_13: { n: 13, agent: 1, spot: 'home_terrace', hint: "Inside the water-tank lid. Immu's handwriting: AGENT.", text: "Agent Immu's Secret Fact No. 1: {nick} sleeps with his mouth open. Over." },
@@ -817,7 +820,146 @@
   }
   function hintObjective() {
     const A = hs.active; if (!A || !N.hud) return;
-    if (A.nudge >= 1 && A.clue && N.hud.objectiveText === A.clue) N.hud.objective(A.clue + ' (Stuck? Ammamma knows. Call home from any STD booth, ₹1.)');
+    if (A.nudge >= 1 && A.clue && N.hud.objectiveText === A.clue) N.hud.objective(A.clue + NUDGE_TEXT);
+    else if (A.nudge >= 1 && shortOf(A) !== A.clue && N.hud.objectiveText === subst(shortOf(A))) N.hud.objective(subst(shortOf(A)) + NUDGE_TEXT);
+  }
+  const NUDGE_TEXT = ' (Stuck? Ammamma knows. Call home from any STD booth, ₹1.)';
+
+  /* ---------------------------------------------------------------- the free-roam story line (journey audit)
+   * Between missions the HUD objective was empty: after MISSION PASSED a first-time player had no line telling him
+   * what comes next (systems §6.1 / §6.5: "the objective line shows the riddle until it is solved"). In free roam,
+   * with nothing else on the line, it now reads:
+   *   - the next main track's giver is on the map:  "Next on Side A: First Day, First Show (the yellow marker at home)"
+   *   - its giver is found by a riddle (M2):          the clue itself (short form), with the 180 s nudge or Ammamma's answer
+   * Never during a mission, a story2 scene, a cutscene, Diwali week (diwali_missions.js writes its own line) or the
+   * post-game; it only ever clears a line it wrote itself. N.hints.roamLine() -> the text (tests). */
+  const GIVER_WHERE = { home: 'home', home_terrace: 'home', friend_home: "Immu's house", playground_1: 'the colony ground', school_1: 'school' };
+  const roam = { set: null, t: 0 };
+  function giverWhere(def) {
+    const g = def && def.giver;
+    if (!g) return null;
+    const id = g.place || null;
+    if (id && GIVER_WHERE[id]) return GIVER_WHERE[id];
+    return id ? placeName(id) : null;
+  }
+  function nextMainId() {
+    const M = N.missions;
+    if (!M || !M.defs) return null;
+    for (const s of STORY) if (!isDone(s.id)) return M.defs[s.id] ? s.id : null;
+    return null;
+  }
+  /** The riddle's short form: the clue's own, or the registered one for the same clue (a save from before short
+   *  forms existed); else the whole clue. */
+  function shortOf(A) {
+    if (A.short) return A.short;
+    const sp = hintSpec(A.id);
+    return sp && sp.short && sp.clue === A.clue ? sp.short : A.clue;
+  }
+  function roamText() {
+    const M = N.missions;
+    if (!M || M.active || (N.flags && (N.flags.postgame || N.flags.dw_story === 'week'))) return null;
+    try { if (N.story2 && N.story2.scene) return null; } catch (e) { return null; }
+    const A = hs.active;
+    if (A && A.id === 'diwali_story') return null;
+    const id = nextMainId();
+    if (!id) return null;
+    const def = M.defs[id];
+    // a riddle that IS the way to the giver (M2: the clue's answer is where the giver stands): the riddle stays the
+    // line until the mission starts (its marker shows up close by); other clues point inside their mission, whose
+    // giver is on the map, so those get the "Next on Side A" line
+    const riddleGiver = !!(A && A.id === id && A.clue && def && def.giver && def.giver.place && A.answer === def.giver.place);
+    let avail = false;
+    try { avail = !riddleGiver && M.available().some((d) => d.id === id); } catch (e) { avail = false; }
+    if (avail) {
+      const s = STORY_BY_ID[id], where = giverWhere(def);
+      return 'Next on Side A: ' + (s ? s.title : id) + (where ? ' (the yellow marker at ' + where + ')' : '');
+    }
+    // the riddle (its short form when the clue has one: the whole chit is on the Journal's Clues page). A clue that
+    // points inside its mission (M4's "four tall uncles": the giver is at home) is never the line: right after a
+    // CONTINUE the giver waits for him to step out of its ring, and the clue would send him across the city for nothing
+    if (riddleGiver) return subst(shortOf(A)) + (A.note || (A.nudge >= 1 && !A.off ? NUDGE_TEXT : ''));
+    return null;
+  }
+  /* ---------------------------------------------------------------- home: meals and sleep (journey audit) */
+  const MEALS = [{ id: 'breakfast', from: 7 * 60, to: 9 * 60 + 30 }, { id: 'lunch', from: 12 * 60 + 30, to: 14 * 60 + 30 }, { id: 'dinner', from: 19 * 60 + 30, to: 21 * 60 + 30 }];
+  const SLEEP_FROM = 20 * 60, SLEEP_TO = 5 * 60, WAKE = 7 * 60;
+  let sleeping = false;
+  function homeFree() {
+    const p = N.player, f = N.flags || {};
+    if (mode() !== 'play' || !p || p.vehicle || p.level || p.controlsLocked || cal.jump || sleeping) return false;
+    if ((N.missions && N.missions.active) || f.no_save || f.dw_story === 'week' || f.year === 2026) return false;
+    try { if (N.story2 && N.story2.scene) return false; } catch (e) { return false; }
+    return true;
+  }
+  /** What the home door offers right now: {label, use} | null. */
+  function homeAct() {
+    if (!homeFree()) return null;
+    const m = N.clock.minutes, f = N.flags || (N.flags = {});
+    const meal = MEALS.find((w) => m >= w.from && m < w.to);
+    if (meal && f.home_meal !== N.clock.day + ':' + meal.id) {
+      return { label: "Eat (Amma's kitchen)", use: () => {
+        f.home_meal = N.clock.day + ':' + meal.id;
+        try { N.player.feed(60); } catch (e) { N.err('home.meal', e); }
+        toast(meal.id === 'breakfast' ? 'Amma: "Idli, chutney, and milk. Finish it!"' : meal.id === 'lunch' ? 'Amma: "Rice, pappu, and no cricket till you finish."' : 'Amma: "Dinner first, TV after."', 2800, 'home');
+      } };
+    }
+    if (m >= SLEEP_FROM || m < SLEEP_TO) return { label: 'Sleep till 07:00 ▶▶', use: () => homeSleep() };
+    // the post-game: the credits' ◀◀ REWIND menu was offered once; a season that is gone (SA8 is December only)
+    // could never be reached again from a January pick. At home it can.
+    const S2 = N.story2;
+    if (f.postgame && S2 && typeof S2.rewind === 'function' && typeof S2.playSeason === 'function') {
+      return { label: '◀◀ REWIND: another season', use: () => {
+        Promise.resolve(S2.rewind({ stay: true })).then((k) => {
+          if (!k || (N.missions && N.missions.active) || S2.scene) return;
+          try { S2.playSeason(k); } catch (e) { N.err('home.rewind', e); }
+        }, (e) => N.err('home.rewind', e));
+      } };
+    }
+    return null;
+  }
+  function homeSleep() {
+    if (sleeping) return false;
+    const m = N.clock.minutes, mins = m >= WAKE ? 1440 - m + WAKE : WAKE - m;
+    sleeping = true;
+    const morning = () => {
+      const p = N.player;
+      try { if (N.wanted && N.wanted.clear) N.wanted.clear('sleep'); } catch (e) { N.err('home.sleep', e); }
+      if (p) { p.tummy = Math.max(isFinite(p.tummy) ? p.tummy : 0, 70); p.energy = Math.max(p.energy || 0, p.tummy); p.exhausted = false; p.legsGone = false; }
+    };
+    const done = () => {
+      sleeping = false;
+      try { if (N.save && N.save.save) N.save.save({ reason: 'sleep', toast: false }); } catch (e) { N.err('home.save', e); }
+      toast('Good morning! ' + dateOf(N.clock.day).label + '. SIDE A saved ●', 3200, 'home');
+      N.emit('home:sleep', { day: N.clock.day });
+    };
+    const SH = N.shops;
+    if (SH && typeof SH.ffwd === 'function') {
+      try { SH.ffwd(mins, { label: 'SLEEP', ms: 2000, mid: morning }).then(done, done); return true; } catch (e) { N.err('home.sleep', e); }
+    }
+    // no shops module: pass the time directly (midnight rollover / the week loop through N.clock.nextDay)
+    let left = mins;
+    while (left > 0) { const step = Math.min(left, 1440 - N.clock.minutes); N.clock.minutes += step; left -= step; if (N.clock.minutes >= 1440) { N.clock.minutes -= 1440; N.clock.nextDay(); } }
+    morning(); done();
+    return true;
+  }
+  function roamUpdate(dt) {
+    if (!N.hud || typeof N.hud.objective !== 'function') return;
+    const cur = N.hud.objectiveText || null;
+    const mine = roam.set != null && cur === roam.set;
+    if (mode() !== 'play' || cal.jump) {
+      // a mission / scene / cutscene takes the line: let go of ours (theirs replaces it anyway)
+      if (mine && N.missions && N.missions.active) roam.set = null;
+      return;
+    }
+    roam.t -= dt;
+    if (roam.t > 0) return;
+    roam.t = 0.5;
+    const t = roamText();
+    if (t && t === cur) { roam.set = t; return; } // the same words (the 180 s nudge writes them too): ours
+    if (cur && !mine) { roam.set = null; return; } // somebody else's line
+    if (!t) { if (mine) N.hud.objective(null); roam.set = null; return; }
+    N.hud.objective(t);
+    roam.set = t;
   }
   function searchCircle(level) {
     const A = hs.active; if (!A) return;
@@ -862,7 +1004,7 @@
       const s = hintSpec(id) || {};
       if (hs.active && hs.active.id !== id) Hn.stop();
       hs.active = { id, clue: o.clue || s.clue || null, answer: o.answer || s.answer || (STORY_BY_ID[id] && STORY_BY_ID[id].place) || null, name: o.name || s.name || null,
-        elapsed: 0, nudge: 0, taken: [], cityAsked: 0, off: s.off || o.off || null, ps: null };
+        elapsed: 0, nudge: 0, taken: [], cityAsked: 0, off: s.off || o.off || null, ps: null, short: o.short || s.short || null };
       N.emit('hint:start', { id });
       return true;
     },
@@ -886,7 +1028,9 @@
       if (source === 'home' || source === 'std') {
         const text = s.ammamma || (s.proverb ? s.proverb + ' ' : '') + 'Go and look near ' + name + ', *kanna*.';
         r = { source, tier: 1, text: subst(text), cost: source === 'std' ? 100 : 0 };
-        if (A.clue && N.hud && (N.hud.objectiveText || '').indexOf(A.clue) === 0) N.hud.objective(A.clue + ' — Ammamma: ' + name + '.');
+        A.note = ' — Ammamma: ' + name + '.'; // kept on the free-roam line (roamText)
+        const base = [A.clue, shortOf(A)].map((c) => (c ? subst(c) : null)).find((c) => c && N.hud && (N.hud.objectiveText || '').indexOf(c) === 0);
+        if (base) N.hud.objective(base + A.note);
       } else if (source === 'auto') {
         const tgt = (s.auto && N.places && N.places[s.auto]) || (answer && N.places && N.places[answer]);
         if (!tgt) return null;
@@ -918,11 +1062,13 @@
       Hn.reset();
       if (!o || typeof o !== 'object') return;
       const A = o.active;
-      if (A && typeof A.id === 'string') hs.active = { id: A.id, clue: A.clue || null, answer: A.answer || null, name: A.name || null, elapsed: +A.elapsed || 0, nudge: U.clamp(A.nudge | 0, 0, 4), taken: Array.isArray(A.taken) ? A.taken.slice(0, 20) : [], cityAsked: A.cityAsked | 0, off: A.off || null, ps: A.ps || null };
+      if (A && typeof A.id === 'string') hs.active = { id: A.id, clue: A.clue || null, answer: A.answer || null, name: A.name || null, elapsed: +A.elapsed || 0, nudge: U.clamp(A.nudge | 0, 0, 4), taken: Array.isArray(A.taken) ? A.taken.slice(0, 20) : [], cityAsked: A.cityAsked | 0, off: A.off || null, ps: A.ps || null, note: typeof A.note === 'string' ? A.note : null, short: typeof A.short === 'string' ? A.short : null };
       if (Array.isArray(o.timers)) hs.timers = o.timers.filter((t) => t && isFinite(t.at)).slice(0, 8);
       if (hs.active && hs.active.nudge >= 2) searchCircle(hs.active.nudge);
     },
     reset() { hs.active = null; hs.timers = []; if (N.hud && N.hud.searchCircle) N.hud.searchCircle('hint', null); if (N.hud && N.hud.unblip) N.hud.unblip('hint:aunty'); },
+    /** The free-roam story line right now (null = none): the next track's giver, or the riddle (journey audit). */
+    roamLine: () => roamText(),
   });
 
   /* ================================================================ wiring */
@@ -980,6 +1126,21 @@
           enabled: () => wk.found.length > 0 || wk.extraSongs.length > 0 || tape.tracks.length > 0,
           use: () => deckOpen(),
         });
+        // Home is the safe house (systems §2.2 "Free food", §4.12 "Then 'Sleep?'"): Amma's kitchen in the meal
+        // windows, "Sleep till 07:00 ▶▶" at night (no curfew, energy and tummy refilled, the game saved), and in
+        // the post-game "◀◀ REWIND: another season" (bible §9.5) the rest of the day.
+        // (by the gate, mirroring the 2-in-1 (16 u apart): a short reach (r 8) keeps it off the 2-in-1, Ammamma's swing
+        // and the lootna terraces' stairs on either side of the house; priority 3 so somebody walking past (Ammamma
+        // going in at 21:00) does not take the press. Inside the `home` giver ring: when a track's giver waits at home
+        // its J-card wins, and starting the track moves the calendar to its date anyway)
+        N.interact.add('home_door', {
+          get x() { const h = N.places && N.places.home; return h ? h.x - 8 : null; },
+          get y() { const h = N.places && N.places.home; return h ? h.y - 6 : null; },
+          r: 8, priority: 3,
+          label: () => (homeAct() || {}).label || null,
+          enabled: () => !!homeAct(),
+          use: () => { const a = homeAct(); if (a) a.use(); },
+        });
       }
     },
     update(dt) {
@@ -987,10 +1148,12 @@
       tapeUpdate(dt);
       walkmanUpdate(dt);
       hintsUpdate(dt);
+      roamUpdate(dt);
     },
     reset() {
       if (cal.jump) finishJump(cal.jump);
       T.reset(); W.reset(); Hn.reset();
+      roam.set = null; roam.t = 0; sleeping = false;
       cal.lastStop = -1; cal.override = null; cal.lastDay = null;
       N.clock.setLoop(null);
     },

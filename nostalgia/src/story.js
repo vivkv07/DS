@@ -90,6 +90,19 @@
   let seq = 0;
   function toast(t, ms, key) { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2800, key ? { key } : undefined); } catch (e) { N.err('story.toast', e); } }
   function sfx(name, o) { try { if (N.audio && N.audio.sfx) N.audio.sfx(name, o || { ui: true }); } catch (e) { /* audio is optional */ } }
+  /** Device-aware control hints for the first mission (keyboard / touch / gamepad). */
+  function ctrlHint(what) {
+    const dev = (N.input && N.input.device) || 'keyboard';
+    if (what === 'move') {
+      if (dev === 'touch') return 'Drag the left thumb-pad to move. Hold RUN to run.';
+      if (dev === 'gamepad') return 'Left stick to move. Hold RB to run.';
+      return 'Move: arrow keys or WASD. Hold Shift to run.';
+    }
+    // the clue goes to the Journal
+    if (dev === 'touch') return "Immu's chit is in the Journal (❚❚ ▸ Journal ▸ Clues).";
+    if (dev === 'gamepad') return "Immu's chit is in the Journal (LB ▸ Clues).";
+    return "Immu's chit is in the Journal (J ▸ Clues). M opens the map.";
+  }
   function music(id) { const r = run(); if (r) r.music = id || null; }
   function landmark(id) { return ((N.WORLD_DATA && N.WORLD_DATA.landmarks) || []).find((l) => l.id === id) || null; }
   function roofs() { return (N.world && N.world.roofs && typeof N.world.roofs.get === 'function') ? N.world.roofs : null; }
@@ -1141,6 +1154,7 @@
   /* ================================================================ clues + hints (bible §4, §5) */
   const CLUES = {
     lost_and_found: { clue: 'Every capsule needs a box. Find the clock tower that talks with half its faces; buy a tin that smells of fruit. Saturday, 4 pm. Over.', answer: 'mozamjahi_market', name: 'Mozamjahi Market',
+      short: "Immu's clue: the clock tower that talks with half its faces. Saturday, 4 pm.",
       ammamma: 'A tower that talks? Clocks talk, *kanna*. Your Thatha bought my first mangoes under one. Mozamjahi.', auto: 'mozamjahi_market', aunty: 'mozamjahi_market' },
     first_day_first_show: { clue: 'The crossroads named after the red buses shows films, not buses. Saturday, before sunrise, the most-garlanded hero keeps our tape at his feet. Over.', answer: 'rtc_x_roads', name: 'RTC X Roads',
       ammamma: 'Red buses have a big office near the cinemas, *kanna*. Your Mavayya saw every film there. RTC X Roads.', auto: 'rtc_x_roads', aunty: 'rtc_x_roads' },
@@ -1203,6 +1217,8 @@
       { s: 'chinnu', t: 'Copy, Agent Immu. *Saddi* ready. *Dheel*... *dheel*... *khench!*', mood: 'happy' },
     ]);
     const kite = await game(m, 'kite', { target: 1, difficulty: 0.25, intro: 'Cotton saddi only. Cut one kite.', place: 'home_terrace' });
+    // "Not now" on the kite card is not a lost pech: say so (the retry card puts him back on the terrace)
+    if (kite && kite.quit) m.fail('Not now? The whole colony is on the terraces. The kite waits for you. *Phir se!*');
     if (!kite || kite.win === false) m.fail("The Ashok Nagar kite cut yours first. *Phir se!*");
     sfx('crowd_cheer', { ui: true, vol: 0.7 });
     m.toast('The whole colony yells: "BO KAATA!"', 2400);
@@ -1233,6 +1249,8 @@
       S.kite.h = Math.max(6, 46 - kt * 1.2);
     };
     S.kiteTick = kiteTick;
+    // the first time he has to move: how (journey audit: nothing in the first ten minutes said which keys move him)
+    m.toast(ctrlHint('move'), 5200);
     const onTime = await rings(m, pts, { secs: 25, label: 'Lootna! Chase your kite across the terraces.', timerLabel: 'LOOTNA', r: 20,
       onExpire: () => toast('Too slow... the kite floats down to the colony ground anyway.', 2600) });
     if (onTime && !ff()) { m.money(200); m.toast('Lootna bonus +₹2', 2200); F().m1_lootna_bonus = true; }
@@ -1393,6 +1411,7 @@
     await m.rec('bo_kaata');
     await m.say('chit', CLUES.lost_and_found.clue);
     startClue('lost_and_found');
+    m.toast(ctrlHint('journal'), 4600);
     await m.cutscene([{ type: 'text', lines: ['Dusk. A thousand kites come down like tired birds. On the next terrace, Immu holds up the walkman and gives a thumbs-up. Chitti is still telling Mummy.'] }]);
     at(18, 20);
   }
@@ -2057,7 +2076,7 @@
     npc(m, 'chemist', spot('medical_shop_1', 0, -6, 16), { idle: 'work' });
     await m.goto('medical_shop_1', { label: "Buy Ammamma's BP tablets at the medical shop.", r: 24 });
     await m.talk([
-      { s: 'chemist', t: "Doctor's *chitti*? ...Ammamma's tablets, one month's strip. Change two rupees. Or Hajmola?" },
+      { s: 'chemist', t: "Doctor's *chitti*? ...Ammamma's tablets, one month's strip. Change two rupees. Or a churan goli?" },
       { s: 'chinnu', t: 'Change, uncle. Ammamma counts.' },
     ]);
     give(m, 'bp_tablets', "Ammamma's tablets");
@@ -2246,8 +2265,14 @@
       widget({ label: 'NIGHT WATCH', value: null, text: 'TAGGED ' + W.tagged + ' · RAIDERS ' + live.length });
     };
     S.step = { kind: 'watch', skip: () => { W.t = W.secs; T.left = 0.01; } };
+    // E is "Tag!" all night: a raider stepping out of reach must not turn the press into the medical shop's card
+    // next to the pandal (journey audit: the card took the night watch's E and its 'dialogue' state held the watch)
+    const rr = run();
+    if (rr && !rr.lockShops) rr.lockShops = 'story:watch';
+    const unlock = () => { if (rr && rr.lockShops === 'story:watch') rr.lockShops = false; };
     return m.until(() => W.lost || (T.expired || !T.on) || W.t >= W.secs).then(() => {
       const won = !W.lost;
+      unlock();
       T.stop(); darkness(false); widget(null);
       for (const e of W.raiders) { e.alive = false; S.extras.delete(e); }
       S.tag = null;
@@ -2343,7 +2368,7 @@
     C.stop();
     npc(m, 'chemist', spot('medical_shop_8', 0, -6, 16), { idle: 'work' });
     await m.goto('medical_shop_8', { label: "Pick up Ammamma's balm at the chemist.", r: 24 });
-    await m.say('chemist', 'Vicks for Ammamma? And no, the Hajmola is not for Ammamma.', { mood: 'wink' });
+    await m.say('chemist', 'Balm for Ammamma? And no, the churan goli is not for Ammamma.', { mood: 'wink' });
     give(m, 'balm', "Ammamma's balm");
     npc(m, 'bakery_lady', spot('iyengar_bakery_1', 0, -6, 16), { idle: 'work' });
     await m.goto('iyengar_bakery_1', { label: 'Reward stop: the Iyengar bakery.', r: 24 });

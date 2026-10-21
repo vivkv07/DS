@@ -143,13 +143,23 @@
       }
       const p = N.player;
       const d = N.world.built ? N.world.districtAt(p.x, p.y) : null;
+      // meta.missions = the Side A tracks done (main story only): the title's CONTINUE line, the slot cards and the
+      // online mirror show "TRACK NN" = missions + 1. Counting side activities and odd jobs there showed "TRACK 12"
+      // after Track 09 (journey audit); missionsAll keeps the old total.
+      const done = N.missions && N.missions.done ? N.missions.done : null;
+      let tracks = 0;
+      try {
+        const story = (N.calendar && N.calendar.STORY) || null;
+        if (done && story) for (const s of story) { if (done.has(s.id)) tracks++; }
+        else if (done) for (const id of done) { const df = N.missions.defs && N.missions.defs[id]; if (df && (df.kind || 'main') === 'main') tracks++; }
+      } catch (e) { N.err('save.tracks', e); tracks = done ? done.size : 0; }
       const blob = {
         game: 'nostalgia', v: VERSION, t: Date.now(),
         meta: {
           reason: (meta && meta.reason) || 'manual',
           day: N.clock.day, clock: N.clock.label(), date: N.clock.dateLabel(),
           money: p.money, district: d ? d.name : null,
-          missions: N.missions && N.missions.done ? N.missions.done.size : 0,
+          missions: tracks, missionsAll: done ? done.size : 0,
         },
         data,
       };
@@ -185,7 +195,16 @@
     info() {
       const cur = current();
       if (!cur) return null;
-      return Object.assign({ t: cur.blob.t, from: cur.from }, cur.blob.meta || {});
+      const out = Object.assign({ t: cur.blob.t, from: cur.from }, cur.blob.meta || {});
+      // a save from an older build counted every mission in meta.missions: recount the Side A tracks from its data
+      try {
+        const md = cur.blob.data && cur.blob.data.missions, story = N.calendar && N.calendar.STORY;
+        if (out.missionsAll == null && md && Array.isArray(md.done) && story) {
+          out.missionsAll = md.done.length;
+          out.missions = story.filter((s) => md.done.indexOf(s.id) >= 0).length;
+        }
+      } catch (e) { N.err('save.info', e); }
+      return out;
     },
     clear() { remove(KEY); remove(BAK); N.emit('save:cleared', {}); },
     SLOTS: ['main', 'manual'],

@@ -2851,11 +2851,16 @@
     'Ten months and eleven days, I said. Now it\'s less. Don\'t count.',
     'Chai? Your treat. You have Eidi money. ...Oh. Not Eid yet. Your treat anyway.',
   ];
-  function rewindMenu(api) {
-    const keys = Object.keys(SEASONS);
+  /** The season menu. o.stay: a last row "Not now" that resolves null (the post-game menu at the home door). */
+  function rewindMenu(api, o) {
+    o = o || {};
+    const keys = Object.keys(SEASONS).concat(o.stay ? ['stay'] : []);
     let sel = 0;
+    const row = (k, i) => k === 'stay'
+      ? '<li><button type="button" data-k="stay"><b>■</b><span>Not now<br><em>Stay in ' + esc(N.calendar ? N.calendar.label() : 'this day') + '.</em></span></button></li>'
+      : '<li><button type="button" data-k="' + k + '"' + (i === 0 ? ' class="sel"' : '') + '><b>A' + (i + 1) + '</b><span>' + esc(SEASONS[k].title) + '<br><em>' + esc(SEASONS[k].sub) + '</em></span></button></li>';
     const html = '<h2>◀◀ REWIND</h2><p class="s2-sub">Play any season of 2003.</p><ul class="s2-jmenu">' +
-      keys.map((k, i) => '<li><button type="button" data-k="' + k + '"' + (i === 0 ? ' class="sel"' : '') + '><b>A' + (i + 1) + '</b><span>' + esc(SEASONS[k].title) + '<br><em>' + esc(SEASONS[k].sub) + '</em></span></button></li>').join('') +
+      keys.map(row).join('') +
       '</ul><p class="s2-hint">↑ ↓ choose · E play</p>';
     const P = panel(html, {
       label: 'Play any season of 2003', cls: 's2-rewind',
@@ -2870,7 +2875,7 @@
     P.el.querySelectorAll('.s2-jmenu button').forEach((b) => b.addEventListener('click', () => P.close(b.dataset.k)));
     if (api) onEnd(api, () => P.close(null));
     S2.rewindPanel = P;
-    return P.done;
+    return P.done.then((k) => (k === 'stay' ? null : k));
   }
   function playSeason(name) {
     const S = SEASONS[name] || SEASONS.january;
@@ -2929,7 +2934,7 @@
   }
   /** M12 passed: the ending, the epilogue, the definitions, the credits and the rewind, in one run. */
   async function startFinale() {
-    if (SC.cur || S2.finaleRunning) return false;
+    if (SC.cur || S2.finaleRunning || (N.missions && N.missions.active)) return false;
     S2.finaleRunning = true;
     try {
       if (!F().ending_done) { const ok = await runScene('ending', endingScene); if (!ok) return false; }
@@ -3096,7 +3101,7 @@
       npc(m, 'chitti', near('home', -10, 12), { idle: 'stand', talk: false });
       await go(m, 'home', 'Home: cover the books.', { r: 26 });
       await m.say('amma', 'Cover them properly, {nick}. Corners folded. Not like last year, like a samosa.');
-      await m.cutscene([{ type: 'text', lines: ['Brown paper, a ruler, Fevicol. Ten books, corners folded.', 'Chitti draws a moustache on one label.'], ms: 4400 }]);
+      await m.cutscene([{ type: 'text', lines: ['Brown paper, a ruler, a gum bottle. Ten books, corners folded.', 'Chitti draws a moustache on one label.'], ms: 4400 }]);
       toast('That new-book smell.', 2600);
     },
   };
@@ -3305,7 +3310,7 @@
     return startInterlude();
   }
   function startInterlude() {
-    if (SC.cur || F().interlude_done) return Promise.resolve(false);
+    if (SC.cur || F().interlude_done || (N.missions && N.missions.active)) return Promise.resolve(false);
     return runScene('interlude', interludeScene).then((ok) => { if (ok) autosave('interlude'); return ok; });
   }
   N.on('mission:complete', (d) => {
@@ -3353,6 +3358,25 @@
     try { N.npcs.setTalk(d.key, () => N.dialogue.say('immu', IMMU_HANG[i++ % IMMU_HANG.length])); } catch (e) { /* ignore */ }
   });
 
+  /** Story hand-overs that were refused because something else was running (journey audit: a side job or odd job
+   *  still running when Track 10's "4.6 s later" hand-over to Diwali week fired left the story with no scene, no
+   *  Diwali week, no interlude and no next giver until a reload). After 3 s of calm free roam the story picks up
+   *  where resumeStory() would after a load: Diwali week's way in, the interlude, or the finale. */
+  let healT = 0;
+  function healTick(dt, md) {
+    if (md !== 'play' || SC.cur || laters.length || S2.finaleRunning || S2.replaying || (N.missions && N.missions.active) || (N.calendar && N.calendar.jumping)) { healT = 0; return; }
+    healT += dt;
+    if (healT < 3) return;
+    healT = 0;
+    const f = F();
+    if (isDone('agle_baras') && !f.interlude_done) {
+      const DWS = N.dwMissions && N.dwMissions.story;
+      if (DWS && DWS.blocks()) { if (!f.dw_story) DWS.resume(); return; }
+      startInterlude();
+      return;
+    }
+    if (isDone('chand_raat') && (!f.ending_done || !f.epilogue_done || !f.credits_seen) && !f.postgame) startFinale();
+  }
   function update(dt) {
     const md = mode();
     // scheduled steps
@@ -3366,6 +3390,7 @@
     const p = N.player, f = F();
     if (!p) return;
     if (md === 'play') giversTick(dt);
+    healTick(dt, md);
     // 2026: Srikanth's knees (running empties energy in 4 s; THAK GAYA line 8, no penalty)
     if (S2.epilogue && md === 'play') {
       if (p.running) { p.energy = Math.max(0, p.energy - TUNE.epilogueRunDrain * dt); }
@@ -3394,7 +3419,7 @@
     ending: () => runScene('ending', endingScene),
     epilogue: () => runScene('epilogue', epilogueScene),
     finale: () => startFinale(),
-    rewind: () => rewindMenu(null),
+    rewind: (o) => rewindMenu(null, o),
     playSeason, seasons: Object.keys(SEASONS),
     lockDial: (o) => lockDial(SC.cur ? SC.cur.api : { scene: true, wait: () => Promise.resolve(), _sc: { cleanups: [] } }, o),
     cassettesFound, sideBTail, kitesForEnding, smallActivities, patchCredits, replay,

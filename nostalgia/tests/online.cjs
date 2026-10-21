@@ -504,7 +504,9 @@ const gw = async (P, secs) => { const t0 = await P.ev(() => N.time.now); return 
       await C.shot('panel_room_C_phone');
       await C.page.evaluate(() => { const b = document.querySelector('.mn-online .ol-body'); b.scrollTop = b.scrollHeight; });
       await C.shot('panel_room_C_phone_bottom');
-      // disconnect: C closes the page -> gone for A
+      // disconnect: C closes the page (pagehide: a goodbye) -> gone for A at once (a phone that just dies instead waits
+      // out online.TUNE.leaveGraceMs as "reconnecting…": tests/online_net.cjs)
+      await C.page.close();
       await C.context.close();
       const gone = await until(A, () => N.online.room && N.online.room.n === 2 && !N.online._debug.ghosts().some((g) => g.nick === 'Imran') && !Array.from(N.hud.blips.keys()).some((k) => /^ol:p[0-9a-f]{12}$/.test(k) && !N.online._debug.ghosts().some((g) => 'ol:' + g.key === k)), null, 8000);
       check(gone, 'C closed the page: A no longer has Imran (ghost, entity, dot)');

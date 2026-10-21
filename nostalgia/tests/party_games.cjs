@@ -564,7 +564,7 @@ async function three(browser, S, CONF) {
     check(thr.join() === 'Ravi,Imran', 'the seeking friends take the line throws in turn: ' + thr.join(', '));
     await A.gw(1); await A.shot('three_A'); await C.shot('three_C');
     // Imran closes his game: a colony kid takes his place on A and B
-    await C.context.close(); cOpen = false;
+    await C.page.close(); await C.context.close(); cOpen = false; // (closing the page says goodbye: out at once)
     check(await A.until(() => N.playgroundGames.debug.log().some((e) => e.type === 'replaced' && e.old === 'Imran'), null, 30000), 'A: Imran left — a colony kid takes his place');
     const rep = await A.ev(() => N.playgroundGames.debug.log().find((e) => e.type === 'replaced'));
     check(await B.until((nm) => N.playgroundGames.debug.state().parts.some((p) => p.name === nm && !p.remote && p.mirror && !p.hidden), rep && rep.by, 20000), 'B: ' + (rep && rep.by) + ' plays in Imran\'s place');

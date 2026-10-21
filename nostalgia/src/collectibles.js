@@ -254,10 +254,10 @@
       hint: 'Left on a marble table by a man running for a train.', text: "From a soldier at Secunderabad station to his mother in Warangal: 'Train is late. Heart is on time.'" },
     { song: 'oldcity', title: 'Gulzar Houz Ki Shaam', place: 'pathergatti', at: 'pathergatti', look: "Look in the 'old stock' basket", tech: 'shop',
       hint: "In the stone arcade, at the tape stall's 'old stock' basket.", text: "From the bangle sellers of Laad Bazaar, to every *aapa* who bargained: 'You won. Come again.'" },
-    // off: the market's place point is on the Abids carriageway; the Tinkle stack is on the footpath
-    { song: 'kites', title: 'Patang Ki Pech', place: 'abids_book_market', at: 'abids_book_market', off: [16, -30], look: 'Look in the stack of old Tinkles', tech: 'time',
+    // off: the market's place point is on the Abids carriageway; the comics stack is on the footpath
+    { song: 'kites', title: 'Patang Ki Pech', place: 'abids_book_market', at: 'abids_book_market', off: [16, -30], look: 'Look in the stack of old comics', tech: 'time',
       when: () => date().dow === 0 && minutes() >= 7 * 60 && minutes() < 20 * 60, whenText: 'Sundays only, 07:00–20:00',
-      hint: 'In a stack of old Tinkles. Sundays only.', text: "From the Abids Sunday book men, to the boy who reads Tinkle standing up: 'Buy one, at least!'" },
+      hint: 'In a stack of old comics. Sundays only.', text: "From the Abids Sunday book men, to the boy who reads comics standing up: 'Buy one, at least!'" },
     { song: 'numaish', title: 'Numaish Ka Jhoola', place: 'nampally_exhibition', at: 'nampally_exhibition', look: 'Look at the lost-and-found counter', tech: 'time',
       when: () => isDone('lost_and_found') || !!flags().lost_and_found_done, whenText: 'after M2, all year',
       hint: 'At the lost-and-found counter (after M2, all year).', text: "From the Numaish loudspeaker uncle: 'To all the lost children of 2003: you were never lost. You were near the papad.'" },

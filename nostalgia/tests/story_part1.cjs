@@ -48,6 +48,7 @@ async function snap() {
       p: { x: Math.round(N.player.x), y: Math.round(N.player.y), lvl: N.player.level, veh: N.player.vehicle && N.player.vehicle.type },
       clock: N.calendar.osd(), wanted: N.wanted ? N.wanted.level : 0,
       dlg: N.state.mode === 'dialogue' && N.dialogue && N.dialogue.current ? JSON.stringify(N.dialogue.current, (k, v) => (typeof v === 'string' ? v.slice(0, 50) : k === 'portrait' || k === 'el' ? undefined : v)).slice(0, 300) : undefined,
+      shop: !!(N.shops && N.shops.isOpen && N.shops.isOpen()) ? ((N.shops.current && N.shops.current.id) || true) : null,
     };
   });
 }
@@ -88,6 +89,9 @@ async function autopilot(id, o) {
     const key = JSON.stringify([s.mode, s.obj, s.st.step, s.p]);
     if (key === last) same++; else { same = 0; last = key; if (process.env.VERBOSE) console.log('     ·', s.mode, '|', s.obj, '|', s.st.step, '|', JSON.stringify(s.p), s.clock); }
     if (s.rec && s.rec.phase === 'prompt' && s.mode === 'play') { await pressKey('KeyE'); o.recs = (o.recs || 0) + 1; await sleep(250); continue; }
+    // a shop card the autopilot's E opened next to a story step (it pushes the 'dialogue' state, no line on screen):
+    // close it the way a player would (Esc) and count it; on a loaded machine an E lands a frame late more often
+    if (s.shop) { o.shops = (o.shops || 0) + 1; if (process.env.VERBOSE) console.log('     · shop card opened by E: ' + s.shop); await ev(() => N.shops.close()); await sleep(200); continue; }
     if (s.mode === 'dialogue' && same > 6) { await pressKey('KeyE'); same = 0; continue; }
     if (s.mode !== 'play') { await sleep(220); continue; }
     if (o.hook && await o.hook(s)) continue;

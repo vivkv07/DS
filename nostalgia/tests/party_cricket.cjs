@@ -529,6 +529,7 @@ async function three(browser) {
     await C.shot('three_C_before_leaving');
     const ce = await C.errs();
     check(!ce.length, 'Imran: zero errors before leaving' + (ce.length ? ': ' + ce.slice(0, 3).join(' | ') : ''));
+    await C.page.close(); // (closing the page says goodbye: out at once, no grace period)
     await C.context.close();
     R.pages.splice(2, 1);
     check(await A.until(() => { const x = N.cricketMatch.gully.debug(); return x && x.lock.gone.some((g) => g[0] && g[1] >= 0); }, null, 30000), 'the host saw Imran leave: the AI bowls his overs from here');

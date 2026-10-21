@@ -249,6 +249,8 @@
   }
 
   const ANAMS = [], ANAMAX = [];
+  const ITEMMAX = Object.create(null); // longest single uninterruptible item per kind (ms): what a slice can overshoot by
+  function itemT(k, t) { const d = now() - t; if (!(ITEMMAX[k] >= d)) ITEMMAX[k] = d; }
   // The analysis is resumable (phases sliced by the frame budget) so the first 3D switch never
   // freezes the page: pieces per road (+ duplicate alignments dropped) -> junction geometry + cluster
   // merges -> trims -> junction polygons -> footpath clearance -> zebras -> buckets + paths + rails ->
@@ -270,24 +272,34 @@
       while (AN.phase < 8) {
         const ph = AN.phase, ts = now();
         if (ph === 0) { // pieces
-          while (AN.i < AN.roads.length) { const [r, list] = AN.roads[AN.i++]; piecesOfRoad(r, list, G, AN); if (over()) break; }
-          if (AN.i >= AN.roads.length) { NET.dups = dedupePieces(); AN.phase = 1; AN.i = 0; }
+          while (AN.i < AN.roads.length) { const [r, list] = AN.roads[AN.i++], ti = now(); piecesOfRoad(r, list, G, AN); itemT('road', ti); if (over()) break; }
+          if (AN.i >= AN.roads.length) { // duplicate alignments, a group at a time
+            if (!AN.dd) { const ti = now(); AN.dd = { g: dedupeGroups(), k: 0, n: 0 }; itemT('dedupeIndex', ti); }
+            const D = AN.dd;
+            while (D.k < D.g.length) { const ti = now(); D.n += dedupeGroup(D.g[D.k++]); itemT('dedupe', ti); if ((D.k & 3) === 0 && over()) break; }
+            if (D.k >= D.g.length) { NET.dups = D.n; AN.dd = null; AN.phase = 1; AN.i = 0; }
+          }
         } else if (ph === 1) { // junction geometry
-          while (!AN.mg && AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionGeom(J); } catch (e) { N.err('ground.junction', e); J.bad = true; } if (over()) break; }
+          while (!AN.mg && AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++], ti = now(); try { junctionGeom(J); } catch (e) { N.err('ground.junction', e); J.bad = true; } itemT('jgeom', ti); if (over()) break; }
           if (AN.mg || AN.i >= NET.juncs.length) {
             // junction clusters: found in one cheap pass, merged one per step (each runs junctionGeom)
-            if (!AN.mg) { AN.mg = clusterGroups(); AN.mi = 0; NET.merged = 0; }
-            while (AN.mi < AN.mg.length) { if (mergeGroup(AN.mg[AN.mi++])) NET.merged++; if ((AN.mi & 7) === 0 && over()) break; }
-            if (AN.mi >= AN.mg.length) { AN.mg = null; finishPieces(); AN.phase = 2; AN.i = 0; }
+            if (!AN.mg) { const ti = now(); AN.mg = clusterGroups(); AN.mi = 0; AN.fi = 0; NET.merged = 0; itemT('cluster', ti); }
+            while (AN.mi < AN.mg.length) { const ti = now(); if (mergeGroup(AN.mg[AN.mi++])) NET.merged++; itemT('merge', ti); if ((AN.mi & 7) === 0 && over()) break; }
+            if (AN.mi >= AN.mg.length) { // final trims, sliced
+              const ti = now();
+              while (AN.fi < NET.pieces.length) { finishPiece(NET.pieces[AN.fi++]); if ((AN.fi & 255) === 0 && over()) break; }
+              itemT('finish', ti);
+              if (AN.fi >= NET.pieces.length) { AN.mg = null; AN.phase = 2; AN.i = 0; }
+            }
           }
         } else if (ph === 2) { // junction polygons
-          while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++]; try { junctionPoly(J); } catch (e) { N.err('ground.junctionPoly', e); } if (over()) break; }
+          while (AN.i < NET.juncs.length) { const J = NET.juncs[AN.i++], ti = now(); try { junctionPoly(J); } catch (e) { N.err('ground.junctionPoly', e); } itemT('jpoly', ti); if (over()) break; }
           if (AN.i >= NET.juncs.length) { AN.phase = 3; AN.i = 0; AN.cl = null; }
         } else if (ph === 3) { // footpath clearance: no slab / kerb on another carriageway (sliced)
           if (clearStep(AN, over)) { AN.phase = 4; AN.i = 0; }
         } else if (ph === 4) { // zebras (per junction; stripes only on the carriageways in the clearance index)
           const G2 = W.roads, C = AN.cl && AN.cl.C;
-          while (AN.i < NET.juncs.length) { zebraJ(NET.juncs[AN.i++], G2, C); if ((AN.i & 7) === 0 && over()) break; }
+          while (AN.i < NET.juncs.length) { const ti = now(); zebraJ(NET.juncs[AN.i++], G2, C); itemT('zebra', ti); if ((AN.i & 7) === 0 && over()) break; }
           if (AN.i >= NET.juncs.length) { AN.phase = 5; AN.i = 0; AN.cl = null; }
         } else if (ph === 5) { // buckets: pieces, then junctions
           const np = NET.pieces.length, nt = np + NET.juncs.length;
@@ -460,7 +472,8 @@
    *  mehdipatnam_rd + asif_nagar_rd at Masab Tank). The narrower carriageway lies inside the wider
    *  one; it is not drawn and is no junction arm (its kerbs, footpaths and lane paint would otherwise
    *  stand on the wider road's asphalt and its corners would fold between the two) */
-  function dedupePieces() {
+  /** pieces linking the same two junctions (only groups of 2+ can hide a duplicate alignment) */
+  function dedupeGroups() {
     const byPair = new Map();
     for (const P of NET.pieces) {
       const a = P.ends[0].j, b = P.ends[1].j;
@@ -468,19 +481,22 @@
       const k = a.id < b.id ? a.id * 1e6 + b.id : b.id * 1e6 + a.id;
       let l = byPair.get(k); if (!l) byPair.set(k, (l = [])); l.push(P);
     }
+    const out = [];
+    for (const l of byPair.values()) if (l.length >= 2) out.push(l);
+    return out;
+  }
+  /** one group: the narrower pieces whose carriageway lies inside a wider one's become internal -> count */
+  function dedupeGroup(l) {
     let n = 0;
-    for (const l of byPair.values()) {
-      if (l.length < 2) continue;
-      l.sort((p, q) => q.hw - p.hw);
-      for (let i = 1; i < l.length; i++) {
-        const Q = l[i];
-        for (let k = 0; k < i; k++) {
-          const P = l[k];
-          if (P.internal || !covers(P, Q)) continue;
-          Q.internal = true; Q.covered = P; n++;
-          for (const e of Q.ends) e.j.arms = e.j.arms.filter((a) => a.piece !== Q);
-          break;
-        }
+    l.sort((p, q) => q.hw - p.hw);
+    for (let i = 1; i < l.length; i++) {
+      const Q = l[i];
+      for (let k = 0; k < i; k++) {
+        const P = l[k];
+        if (P.internal || !covers(P, Q)) continue;
+        Q.internal = true; Q.covered = P; n++;
+        for (const e of Q.ends) e.j.arms = e.j.arms.filter((a) => a.piece !== Q);
+        break;
       }
     }
     return n;
@@ -576,7 +592,11 @@
    *  <= 200 u across) or keep the old squeezed geometry. */
   function clusterGroups() {
     const par = new Map();
-    const find = (J) => { while (par.has(J) && par.get(J) !== J) J = par.get(J); return J; };
+    const find = (J) => { // (path compression: long merge chains made this tens of ms)
+      let r = J; while (par.has(r) && par.get(r) !== r) r = par.get(r);
+      while (J !== r) { const nx = par.get(J); par.set(J, r); J = nx; }
+      return r;
+    };
     const inner = [];
     for (const P of NET.pieces) {
       const a = P.ends[0].j, b = P.ends[1].j;
@@ -616,15 +636,13 @@
     }
   }
 
-  function finishPieces() {
-    for (const P of NET.pieces) {
-      const eA = P.ends[0], eB = P.ends[1];
-      let uA = eA.j ? eA.need : 0, uB = eB.j ? eB.need : 0;
-      const room = P.L - 2;
-      if (uA + uB > room) { const f = Math.max(0, room) / (uA + uB || 1); uA *= f; uB *= f; P.squeezed = true; }
-      eA.trim = uA; eB.trim = uB;
-      eA.fs = [uA, uA]; eB.fs = [uB, uB];
-    }
+  function finishPiece(P) {
+    const eA = P.ends[0], eB = P.ends[1];
+    let uA = eA.j ? eA.need : 0, uB = eB.j ? eB.need : 0;
+    const room = P.L - 2;
+    if (uA + uB > room) { const f = Math.max(0, room) / (uA + uB || 1); uA *= f; uB *= f; P.squeezed = true; }
+    eA.trim = uA; eB.trim = uB;
+    eA.fs = [uA, uA]; eB.fs = [uB, uB];
   }
 
   function cutCorner(a, side) { // arm side (+1: +n) -> world point on the kerb line at the trim
@@ -897,21 +915,31 @@
       }
     }
   }
-  /** footpath strips of piece P: gaps wherever the slab (kerb line .. back line) is on another carriageway */
-  function clearPiece(S, P) {
-    P.gaps = null;
-    if (!(P.fp > 0) || P.internal) return;
-    if (!P.nrm) P.nrm = normalsOf(P.pts);
-    const ws = [P.hw + 0.35, P.hw + P.fp * 0.5, P.hw + P.fp - 0.35];
-    const s0 = P.ends[0].trim, s1 = P.L - P.ends[1].trim; // the drawn ribbon
-    for (const side of [-1, 1]) {
-      const si = side > 0 ? 1 : 0;
-      const a = P.ends[0].fs[si], b = P.L - P.ends[1].fs[si];
-      if (b - a < 0.05) continue;
-      const n = Math.max(1, Math.ceil((b - a) / CL_STEP)), d = (b - a) / n;
-      const hits = new Uint8Array(n + 2), bx = new Float64Array(n + 1), by = new Float64Array(n + 1), cx = new Float64Array(n + 1), cy = new Float64Array(n + 1);
-      const wb = P.hw + P.fp;
-      for (let k = 0; k <= n; k++) {
+  /** footpath strips of piece P: gaps wherever the slab (kerb line .. back line) is on another carriageway, in
+   *  resumable steps (a long piece samples its strips every CL_STEP u on both sides: tens of ms in one
+   *  go on a phone): returns false when over() ran out mid-piece (state in S.cp; the next call carries on) */
+  function clearPieceStep(S, P, over) {
+    let C = S.cp;
+    if (!C || C.P !== P) {
+      P.gaps = null;
+      if (!(P.fp > 0) || P.internal) { S.cp = null; return true; }
+      if (!P.nrm) P.nrm = normalsOf(P.pts);
+      C = S.cp = { P, si: 0, T: null, ws: [P.hw + 0.35, P.hw + P.fp * 0.5, P.hw + P.fp - 0.35], s0: P.ends[0].trim, s1: P.L - P.ends[1].trim, wb: P.hw + P.fp }; // s0..s1: the drawn ribbon
+    }
+    const ws = C.ws, s0 = C.s0, s1 = C.s1, wb = C.wb;
+    while (C.si < 2) {
+      const si = C.si, side = si ? 1 : -1;
+      if (!C.T) {
+        const a = P.ends[0].fs[si], b = P.L - P.ends[1].fs[si];
+        if (b - a < 0.05) { C.si++; continue; }
+        const n = Math.max(1, Math.ceil((b - a) / CL_STEP));
+        C.T = { a, b, n, d: (b - a) / n, k: 0, hits: new Uint8Array(n + 2), bx: new Float64Array(n + 1), by: new Float64Array(n + 1), cx: new Float64Array(n + 1), cy: new Float64Array(n + 1) };
+      }
+      const T = C.T, a = T.a, b = T.b, n = T.n, d = T.d, hits = T.hits, bx = T.bx, by = T.by, cx = T.cx, cy = T.cy;
+      const k0 = T.k;
+      for (; T.k <= n; T.k++) {
+        const k = T.k;
+        if (k > k0 && (k & 31) === 0 && over()) return false; // (resume at sample k)
         const f = frameAt(P, a + d * k), sk = a + d * k;
         cx[k] = f.x; cy[k] = f.y; bx[k] = f.x + f.nx * wb * side; by[k] = f.y + f.ny * wb * side;
         for (const w of ws) {
@@ -925,14 +953,15 @@
           }
         }
       }
+      C.T = null; C.si++;
       // on the inside of a bend tighter than the footpath (radius < hw + fp) the back edge runs backwards
       // against the centre line: the slab folds over itself and the road (gap there)
       for (let k = 0; k < n; k++) if ((bx[k + 1] - bx[k]) * (cx[k + 1] - cx[k]) + (by[k + 1] - by[k]) * (cy[k + 1] - cy[k]) < 0) { hits[k] = 1; hits[k + 1] = 1; }
-      let gaps = null, k0 = -1;
+      let gaps = null, g0 = -1;
       for (let k = 0; k <= n + 1; k++) {
         const hit = k <= n && hits[k] === 1;
-        if (hit && k0 < 0) k0 = k;
-        else if (!hit && k0 >= 0) { (gaps || (gaps = [])).push([Math.max(a, a + d * (k0 - 1)), Math.min(b, a + d * (k + 1))]); k0 = -1; } // (a sample of margin each side)
+        if (hit && g0 < 0) g0 = k;
+        else if (!hit && g0 >= 0) { (gaps || (gaps = [])).push([Math.max(a, a + d * (g0 - 1)), Math.min(b, a + d * (k + 1))]); g0 = -1; } // (a sample of margin each side)
       }
       if (!gaps) continue;
       // no slivers: clear runs shorter than CL_MIN (between gaps or at the strip ends) go too
@@ -947,6 +976,8 @@
       P.gaps[si] = out;
       S.gaps += out.length; for (const g of out) S.gapLen += g[1] - g[0];
     }
+    S.cp = null;
+    return true;
   }
   /** total absolute turning (radians) of piece P's centre line between arc lengths sa and sb */
   function turnIn(P, sa, sb) {
@@ -994,8 +1025,11 @@
     EMIT_LOD = 0;
     try {
       while (S.i < nt) {
-        const k = S.i++, t = now();
-        try { if (k < nj) clearJunction(S, NET.juncs[k]); else clearPiece(S, NET.pieces[k - nj]); } catch (e) { N.err('ground.clear', e); }
+        const k = S.i, t = now();
+        let done = true;
+        try { if (k < nj) clearJunction(S, NET.juncs[k]); else done = clearPieceStep(S, NET.pieces[k - nj], over); } catch (e) { N.err('ground.clear', e); S.cp = null; }
+        if (done) S.i++;
+        itemT(k < nj ? 'clearJ' : 'clearP', t);
         const dt = now() - t; if (dt > S.maxMs) { S.maxMs = dt; S.maxK = k < nj ? 'J' + k : 'P' + (k - nj); }
         if (k < nj) S.msJ = (S.msJ || 0) + dt; else S.msP = (S.msP || 0) + dt;
         if (over()) break;
@@ -2767,6 +2801,7 @@ if (ngShine > 0.01) {
         const geo = job.geo; job.geo = null;
         if (G.road) { ch.group.remove(G.road); G.road.geometry.dispose(); G.road.material.dispose(); G.road = null; }
         if (geo) {
+          if (I.freeOnUpload) I.freeOnUpload(geo); // (static; rebuilt when it changes: no CPU copy kept after upload)
           const rm = new THREE.Mesh(geo, newRoadMat(ch, G));
           rm.name = 'ground-roads'; rm.receiveShadow = true; rm.castShadow = false; rm.matrixAutoUpdate = false; rm.updateMatrix(); rm.renderOrder = 1;
           G.road = rm; ch.group.add(rm);
@@ -2942,6 +2977,7 @@ if (ngShine > 0.01) {
     ch.group.add(tm);
     let rm = null;
     if (geo) {
+      if (I.freeOnUpload) I.freeOnUpload(geo);
       rm = new THREE.Mesh(geo, newRoadMat(ch, T));
       rm.name = 'ground-prov-roads'; rm.receiveShadow = true; rm.matrixAutoUpdate = false; rm.updateMatrix(); rm.renderOrder = 1;
       ch.group.add(rm);
@@ -2991,7 +3027,13 @@ if (ngShine > 0.01) {
   }
   // the global analysis + soil colours run in idle slices while the game is still top-down, so the
   // first switch to 3D starts with them done (they never need THREE)
-  let idleH = 0, lastSlice = 0;
+  let idleH = 0, lastSlice = 0, used3d = null;
+  /** this device has run the 3D view before (view3d.js sets nostalgia.view3d.used), or 3D is being asked for now */
+  function likely3d() {
+    if (!used3d) { try { used3d = window.localStorage.getItem('nostalgia.view3d.used') === '1'; } catch (e) { used3d = false; } }
+    return used3d || !!(N.view && N.view.want && N.view.want !== 'top');
+  }
+  N.on('view3d:ready', () => { used3d = true; });
   const precomputed = () => NET.built && !AN && SOIL.done;
   function idleKick() {
     if (idleH || precomputed()) return;
@@ -3162,10 +3204,13 @@ if (ngShine > 0.01) {
       // top-down: a small slice of every frame (idle callbacks alone are too rare while the 2D game
       // renders), so the analysis is done a few seconds after the world is built
       if (!precomputed() && now() - lastSlice > 12) { // once per frame (sub-steps)
-        const m = N.state && N.state.mode, loading = !!(N.view && N.view.loading);
-        // title screen / 3D library loading: nothing else to do, bigger slices; playing top-down: small
-        precomputeSlice(loading ? 14 : m === 'title' || m === 'boot' ? 10 : 5);
-        lastSlice = now();
+        const m = N.state && N.state.mode, loading = !!(N.view && N.view.loading), title = m === 'title' || m === 'boot';
+        // title screen / 3D library loading: nothing else to do, bigger slices. Frame-time slices only on a device
+        // that has used 3D (or while it is switching); otherwise the analysis waits for idle callbacks, so a
+        // top-down-only player (most phones) never pays frame time (~5-10 ms + overshoots every frame for the first
+        // minutes) nor the ~36 MB of JS heap the analysis keeps, for a 3D view they do not use
+        // (design/audit/performance.md). The first switch to 3D then runs it inside the warm-up.
+        if (loading || likely3d()) { precomputeSlice(loading ? 14 : title ? 10 : 5); lastSlice = now(); }
       }
     },
   });
@@ -3182,6 +3227,9 @@ if (ngShine > 0.01) {
     potholeDip,
     /** tests / cutscenes: force the road wetness 0..1 (null = follow the weather again) */
     setWet(v) { wetForce = v == null ? null : clamp(+v || 0, 0, 1); if (wetForce != null) { wetT = wetForce; if (GU.uWet) GU.uWet.value = wetT; } return wetT; },
+    /** tests / tools: run one precompute slice of up to ms now (the analysis + soil colours, no THREE needed);
+     *  returns true once both are done */
+    precompute(ms) { precomputeSlice(Math.max(1, +ms || 10)); return precomputed(); },
     /** re-analyse the road network and rebuild every chunk's ground */
     rebuild() { NET.built = false; AN = null; POTS.clear(); POTVIS.clear(); if (I) { for (const ch of I.chunks.values()) disposeChunk(ch); I.replan(); } },
     stats() {
@@ -3196,6 +3244,7 @@ if (ngShine > 0.01) {
         overMs: (() => { if (!OVER.length) return { p50: 0, p95: 0, max: 0, n: 0 }; const a = OVER.slice().sort((x, y) => x - y); return { p50: +a[a.length >> 1].toFixed(1), p95: +a[Math.floor(a.length * 0.95)].toFixed(1), max: +a[a.length - 1].toFixed(1), n: a.length }; })(),
         bake: { fill: Math.round(BAKEMS.fill), read: Math.round(BAKEMS.read), n: BAKEMS.n, items: BAKEMS.items },
         stepMax: STEPMAX.map((v) => +(v || 0).toFixed(1)), provMaxMs: +PROV.max.toFixed(1),
+        itemMax: Object.fromEntries(Object.entries(ITEMMAX).map(([k, v]) => [k, +v.toFixed(1)])),
         precomputed: precomputed(), provBuilt: PROV.built, provAvgMs: PROV.built ? +(PROV.ms / PROV.built).toFixed(2) : 0,
         provChunks: I ? Array.from(I.chunks.values()).filter((ch) => ch.ng && ch.ng.prov).length : 0,
         focusReady: (() => { const f = focusXY(), ch = f && chunkAt(f.x, f.y); return !!(ch && ch.ng && ch.ng.ready); })(),

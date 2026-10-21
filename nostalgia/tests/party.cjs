@@ -458,6 +458,7 @@ const standings = (P) => P.ev(() => (window.__res ? window.__res.standings.map((
       await C.shot('race_C');
       const ce = await C.errs();
       check(!ce.length, 'C: zero errors before leaving' + (ce.length ? ': ' + ce.slice(0, 4).join(' | ') : ''));
+      await C.page.close(); // closing the page says goodbye (pagehide): out at once, no grace period
       await C.context.close();
       check(await until(A, () => { const S = N.party._debug.session(); return S && S.left.size === 1; }, null, 8000), 'Imran left mid-race: marked "left" on A');
       await sleep(3000);

@@ -3376,9 +3376,13 @@
   }
   wrapBarks();
   N.on('boot', wrapBarks);
+  // two passes: every bark's size is read first, then every style written (reading offsetWidth after the previous
+  // bark's style writes forced a style + layout pass per bark per frame)
+  const BARKQ = [];
   function updateBarks() {
     if (!BARKS.size) return;
     const p = N.player, vw = window.innerWidth, vh = window.innerHeight;
+    BARKQ.length = 0;
     for (const [el, rec] of BARKS) {
       if (!el.isConnected) { BARKS.delete(el); continue; }
       const t = rec.target;
@@ -3391,14 +3395,20 @@
       if (rec.h != null && !t.look) h = rec.h * VS;
       const d = p ? Math.hypot(v.x - p.x, v.y - p.y) : 0;
       const q = V3.project(v.x, v.y, h);
-      if (q.behind || !q.visible || d > 320) { el.style.visibility = 'hidden'; continue; }
-      const w = el.offsetWidth || 120, hh = el.offsetHeight || 30;
-      const left = clamp(q.x - w / 2, 6, Math.max(6, vw - w - 6)), top = clamp(q.y - 6 - hh, 6, Math.max(6, vh - hh - 6));
+      const hide = q.behind || !q.visible || d > 320;
+      BARKQ.push(el, hide, q.x, q.y, d, hide ? 0 : el.offsetWidth || 120, hide ? 0 : el.offsetHeight || 30);
+    }
+    for (let i = 0; i < BARKQ.length; i += 7) {
+      const el = BARKQ[i];
+      if (BARKQ[i + 1]) { el.style.visibility = 'hidden'; continue; }
+      const qx = BARKQ[i + 2], qy = BARKQ[i + 3], d = BARKQ[i + 4], w = BARKQ[i + 5], hh = BARKQ[i + 6];
+      const left = clamp(qx - w / 2, 6, Math.max(6, vw - w - 6)), top = clamp(qy - 6 - hh, 6, Math.max(6, vh - hh - 6));
       el.style.visibility = '';
       el.style.opacity = d > 250 ? String(clamp(1 - (d - 250) / 70, 0, 1)) : '';
       el.style.transform = 'translate(' + Math.round(left) + 'px,' + Math.round(top) + 'px)';
-      el.style.setProperty('--tail', Math.round(clamp(q.x - left, 10, w - 10)) + 'px');
+      el.style.setProperty('--tail', Math.round(clamp(qx - left, 10, w - 10)) + 'px');
     }
+    BARKQ.length = 0;
   }
 
   /* ================================================================ seasons in 3D (N.seasons.scene) */

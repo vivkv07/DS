@@ -481,7 +481,8 @@
     sign(text, u0, u1, y0, y1, v, bg, fg) {
       if (!text || !H.signSlot) return false;
       const w = u1 - u0, hh = y1 - y0;
-      const slot = H.signSlot(String(text).toUpperCase().slice(0, 38), bg || '#d8402a', fg || '#fff8e8', w / hh);
+      // the board's atlas cell is held while this model exists (scene or cache), released by releaseSigns(obj)
+      const slot = H.signSlot(String(text).toUpperCase().slice(0, 38), bg || '#d8402a', fg || '#fff8e8', w / hh, H.releaseSigns ? (this.signs || (this.signs = [])) : undefined);
       if (!slot) return false;
       slot.page.dirty = true; slot.page.tex.needsUpdate = true;
       this.part('sign:' + slot.page.index, slot.page.mat).c('#ffffff').front(u0, u1, y0, y1, v, [slot.u0, slot.v0, slot.u1, slot.v1]);
@@ -525,6 +526,7 @@
         }
       }
       root.userData.lm3d = { lights: this.lights, ticks: this.ticks, subs };
+      if (this.signs) root.userData.signSlots = this.signs;
       return root;
     }
   }
@@ -544,6 +546,7 @@
     lod.addLevel(obj, 0);
     lod.addLevel(new THREE.Object3D(), dist);
     lod.userData.lm3d = obj.userData.lm3d;
+    if (obj.userData.signSlots && !obj.userData.cacheKey) { lod.userData.signSlots = obj.userData.signSlots; obj.userData.signSlots = null; } // (a cached model keeps its own)
     lod.name = obj.name;
     return lod;
   }
@@ -555,14 +558,18 @@
     let idx = 0; obj.traverse((m) => { if (m.geometry && m.geometry.index) idx += m.geometry.index.count; });
     if (idx < 9000) return; // only the heavier models (>= 3000 triangles) are worth keeping
     obj.traverse((m) => { if (m.geometry) m.geometry.userData.shared = true; });
-    OBJ_CACHE.delete(key); OBJ_CACHE.set(key, obj);
+    OBJ_CACHE.delete(key); OBJ_CACHE.set(key, obj); obj.userData.cacheKey = key;
     while (OBJ_CACHE.size > OBJ_CACHE_MAX) {
       const k0 = OBJ_CACHE.keys().next().value, o = OBJ_CACHE.get(k0);
       OBJ_CACHE.delete(k0);
-      // in the scene: let the core free it normally later; else free its GPU buffers now
+      // in the scene: let the core free it normally later; else free its GPU buffers (+ its sign cells) now
       o.traverse((m) => { if (m.geometry) { m.geometry.userData.shared = false; if (!o.parent) m.geometry.dispose(); } });
+      if (!o.parent) releaseSigns(o);
     }
   }
+  const inObjCache = (obj) => !!(obj && obj.userData.cacheKey && OBJ_CACHE.get(obj.userData.cacheKey) === obj);
+  /** give a model's sign-atlas cells back (when it is gone for good: not in the scene, not in the cache) */
+  function releaseSigns(obj) { const l = obj && obj.userData.signSlots; if (l && H && H.releaseSigns) { H.releaseSigns(l); obj.userData.signSlots = null; } }
   function cacheGet(key) {
     const o = OBJ_CACHE.get(key);
     if (!o || o.parent) return null;
@@ -570,7 +577,7 @@
     return o;
   }
   function freeGpu(obj) { if (obj) obj.traverse((m) => { if (m.geometry && m.geometry.userData.shared) m.geometry.dispose(); }); }
-  function cacheClear() { for (const o of OBJ_CACHE.values()) o.traverse((m) => { if (m.geometry) { m.geometry.userData.shared = false; if (!o.parent) m.geometry.dispose(); } }); OBJ_CACHE.clear(); }
+  function cacheClear() { for (const o of OBJ_CACHE.values()) { o.traverse((m) => { if (m.geometry) { m.geometry.userData.shared = false; if (!o.parent) m.geometry.dispose(); } }); if (!o.parent) releaseSigns(o); } OBJ_CACHE.clear(); }
   function buildOne(T, lm, h) {
     init(T, h);
     const d = defFor(lm);
@@ -638,8 +645,9 @@
     const c = obj && obj.userData && obj.userData.cell;
     if (c && c.owner === lm.id) c.owner = null;
     freeGpu(obj);
+    if (!inObjCache(obj)) releaseSigns(obj);
   }
-  function disposeOne(obj) { freeGpu(obj); }
+  function disposeOne(obj) { freeGpu(obj); if (!inObjCache(obj)) releaseSigns(obj); }
   function lmUpdate(obj, lm, dt, h) {
     const u = obj.userData.lm3d; if (!u) return;
     for (const t of u.ticks) t(dt, h, obj, u);
@@ -3170,7 +3178,7 @@
     let builds = 0;
     for (const it of DEC.items) {
       const d = Math.hypot(it.x - f.x, it.y - f.y), rec = DEC.built.get(it);
-      if (rec && d > near + 260) { h.layer.remove(rec); H.dispose(rec); DEC.built.delete(it); continue; }
+      if (rec && d > near + 260) { h.layer.remove(rec); H.dispose(rec); releaseSigns(rec); DEC.built.delete(it); continue; }
       if (!rec && d < near && builds < 2) {
         builds++;
         const md = new Model(it.x, it.y);
@@ -3186,7 +3194,7 @@
       }
     }
   }
-  function decorClear(h) { for (const obj of DEC.built.values()) { (h || H).layer.remove(obj); H.dispose(obj); } DEC.built.clear(); }
+  function decorClear(h) { for (const obj of DEC.built.values()) { (h || H).layer.remove(obj); H.dispose(obj); releaseSigns(obj); } DEC.built.clear(); }
   N.on('world:built', () => { if (H) decorClear(H); DEC.items = null; });
 
   /* ================================================================ layer: night + clocks */
@@ -3236,6 +3244,7 @@
     d.fn(md, lm, dims(lm));
     const obj = md.finish();
     const ms = performance.now() - t0;
+    releaseSigns(obj);
     let tris = 0, meshes = 0, points = 0;
     obj.traverse((m) => { if (m.isMesh && m.material && m.material.visible !== false) { meshes++; tris += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; } if (m.isPoints) points++; });
     H.dispose(obj);

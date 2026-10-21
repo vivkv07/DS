@@ -117,6 +117,8 @@ nostalgia/
   src/debug.js      test hooks + #debug overlay -> N.debug
   src/main.js       boot + main loop
   tools/build.mjs   inlines everything -> dist/nostalgia.html (full page) + dist/artifact.html (fragment)
+                    + dist/web.html (website: scripts stripped of comments / indentation by a checked tokenizer,
+                    N.BUILD = lazy files' content hashes -> ?v= on the pack / loader / three fallback; --no-strip)
   tests/*.mjs       Playwright scripts (see section 14)
   design/*.md       research, story bible, map plan, systems design
 ```
@@ -186,6 +188,8 @@ N.clock: { minutes (0..1440), day, speed (game-min per real-sec, default 1), fro
 N.flags: plain object for story/progress flags (saved)
 N.places: { [id]: {id, name, x, y, r, district, kind} }  // filled from WORLD_DATA.places
 N.err(where, e): logs once per (where) per 5s; shown in #debug overlay
+N.systems.profile(true | undefined | false): opt-in per-system CPU profiler (start / read / read+stop) ->
+        {steps, draws, systems: [{id, update (ms per step), draw (ms per draw), updateMax, drawMax}]}
 ```
 Update order bands: input 0, clock 5, missions 10, player 20, vehicles 30, traffic 40,
 npcs 45, wanted 50, collectibles 55, camera 60, audio 70, hud 80, debug 99.
@@ -616,7 +620,9 @@ Implementation notes (entities.js, binding):
   while driving). The `interact` system (order 58) picks the best (priority, then
   nearest), shows its label via `N.input.setActionLabel`, and on ACTION consumes the press
   and calls `use(player)`. Systems that read ACTION themselves run earlier and must
-  `N.input.consume('action')`.
+  `N.input.consume('action')`. An offer may set `quiet: true` (vehicles.js: "Get off" above
+  25 u/s): the touch button keeps the label, the desktop prompt hides. `N.interact.runnerUp` is
+  the second-best candidate of the last step (diagnostics: two things competing for one press).
 
 Controls in vehicles: keyboard = tank style (up accelerate, down brake/reverse,
 left/right steer); touch joystick / gamepad stick = point-to-steer (vehicle turns toward
@@ -648,7 +654,12 @@ came from joystick/stick: use point-to-steer), `hold(a, on)`, `press(a, seconds?
 `releaseAll()` (drops every physical key / touch / pad input; done automatically on window
 blur and when the tab hides — synthetic `hold`/`setMove` input is kept); the joystick also
 resets on `lostpointercapture` and on a release anywhere on the page;
-`'input:device'` event; body classes `touch-on`, `dev-touch`, `dev-pad`. Touch layout:
+`'input:device'` event; body classes `touch-on`, `dev-touch`, `dev-pad`. `setActionLabel(text, quiet)`
+(long labels get `.lbl-long` / `.lbl-xlong` on the touch button; the prompt's key cap is `glyph('action')`:
+the player's key, or "A" on a gamepad). Key remapping (Settings > Controls): `bind(action, code)` moves an
+action's primary key (Esc / Tab / F-keys stay fixed; a key belongs to one action), `keyFor(a)`, `keysFor(a)`,
+`keyName(code)`, `resetBindings()`, `bindings()`, `REBINDABLE`; `KEYMAP` is updated in place; persisted in
+localStorage `nostalgia.keys.v1`; event `'input:bind'`. Menus: pad B = back, Y = map zoom out. Touch layout:
 joystick zone = left 52% below the top 64 px; ACTION/RUN/HORN bottom-right; MAP and
 PAUSE pills at the top-right (keep ~120 x 52 px there free on touch). Touch controls only
 show in `play` mode. Gamepad: A action, B horn, X/RB/RT run, Y radio, LB journal, Back
@@ -702,6 +713,12 @@ Implementation notes (hud.js / dialogue.js, binding):
   off the minimap instead of an edge arrow)}`. `N.hud.blips` (Map), `blipPos(b)`, `route()`
   (current route polyline) and `mapImage()` (the styled minimap base image) are there for
   the full map.
+- Blip `size` is clamped to `N.hud.BLIP_MAX` (2.2); colours go through `N.hud.blipColor(col)` (Settings
+  "Colour-blind blips": deutan / protan / tritan palettes, also used by the full map and the route line).
+  `N.hud.fmtMoney(paise)` is the tin's format (₹ 12.50 below ₹1,000, ₹ 9,99,999 above). Speech bubbles
+  (#barks) stack under the HUD and fade (`.under-hud`) where they overlap `N.hud.keepOutRects()`.
+  CSS `--hudz` scales the HUD on big screens (1.25 at >= 1600x860, 1.6 at >= 2300x1250); `--txtz` is
+  Settings "Text size" (body.txt-l / txt-xl).
 - `N.hud.timer(label, seconds, {countdown})` counts down by itself in play mode (missions
   push the value each step with countdown:false); `timer(null)` hides; `timerValue()`.
 - `N.hud.ask(title, [{label, key?, fn}])` -> close(): small interactive card (retry etc.);
@@ -784,7 +801,8 @@ Implementation notes (missions.js, binding):
 Saving happens at STD/PCO booths, on mission pass, and from the pause menu.
 
 Implementation notes (save.js, binding): one JSON blob `{game:'nostalgia', v:1, t, meta:{reason,
-day, clock, date, money, district, missions}, data:{section: json}}`; the previous good save is
+day, clock, date, money, district, missions (Side A tracks done: the "TRACK NN" lines), missionsAll},
+data:{section: json}}` (`info()` recounts `missions` for an older blob from `data.missions.done`); the previous good save is
 kept under `nostalgia.save.v1.bak` and used when the main blob is corrupt. Without localStorage
 saves live in memory for the session (`N.save.available` false). `save({reason, toast:false})`
 -> bool (not in title/boot; emits `save` {ok, reason}); `load()` validates first, then aborts
@@ -1151,6 +1169,14 @@ Story-core implementation notes (binding; full API comment at the top of storyco
   the RADIO action on foot / bikes = next source, hold 0.6 s = off; vehicle radios stay in audio.js.
 - `N.hints.start(missionId, {clue, answer})` when the clue is handed over; `next()` does not charge
   money (the STD booth / auto caller does); `solve()` happens on that mission's `mission:start`.
+  Free roam (journey audit): with nothing else on the HUD objective, storycore writes the story line
+  (`N.hints.roamLine()`): a clue whose `answer` is the next track's giver place (M2) in its `short` form (+ the
+  nudge / Ammamma's answer), else "Next on Side A: <title> (the yellow marker at <where>)" for an available
+  giver; never in missions, story2 scenes, Diwali week or the post-game, and it only clears its own line.
+  The home door (`home_door` interact, west of the `home` giver ring): "Eat (Amma's kitchen)" per meal window,
+  "Sleep till 07:00 ▶▶" 20:00-05:00 (meter cleared, saved with reason `sleep`), post-game "◀◀ REWIND"
+  (`N.story2.rewind({stay: true})` -> season | null, then `N.story2.playSeason`). story2's `healTick` resumes a
+  refused hand-over (Diwali week's way in, the interlude, the finale) after 3 s of calm free roam.
 - `N.player` (entities.js): money starts at 1000; `tummy` (start 80, energy <= tummy), `feed(n, {energy,
   tummy})`, `addStatus/hasStatus/clearStatus/statusLeft` (warm coma knee limp cool gola hair balloon
   goggles sugar), counted `items` + `addItem/itemCount/eat/bestEdible`, `sitting` / `noRun` flags,
@@ -1308,7 +1334,15 @@ glints, season overlays). Loaded in index.html after menus.js. Tests: `node test
   phones (tier 'low', auto-detected from a coarse pointer): pixel ratio ≤ 1.25 (adaptive down to
   0.7 when frames are slow), no shadow map, shorter draw distance, no point lights.
   `N.view3d.stats()` -> {calls, triangles, jsMs, jsAvg, renderMs, workMs, chunks, visChunks,
-  landmarks, actors, geometries, textures, programs, pixelRatio, tier}.
+  landmarks, actors, geometries, textures, programs, pixelRatio, tier, signPages, signsRecycled, signsDropped}.
+  `N.view3d.profile(true | undefined | false)` -> per-phase JS of each 3D frame {frames, ms, max, frameMax, over16}
+  (camera, sky, work, actors + actor:<kind>, lmUpdate, layer:<id>, cull, render). Measured budgets and the audit:
+  `design/audit/performance.md`, `node tests/qa_perf.cjs`. Memory: core chunk geometry (buildings / signs / glows)
+  and the ground's road meshes drop their CPU arrays after the first upload (`quality.keepArrays` keeps them).
+  The ground's road analysis runs in frame-time slices only on a device that has used 3D (localStorage
+  `nostalgia.view3d.used`, set when the engine starts) or while 3D loads; otherwise in idle callbacks only.
+  Shop-sign atlas cells are ref-counted and recycled (`H.signSlot(text, bg, fg, aspect, ownList)` holds a cell in
+  `ownList` until `H.releaseSigns(ownList)`; without a list the board is pinned). Event `view3d:contextrestored`.
 
 ### 3D ground (`src/view3d_ground.js`) — `N.view3d.ground`, `N.view3d.groundHeightAt`
 
@@ -1441,7 +1475,7 @@ brick office lamp (lamp = emissive at night in the vertex colour).
 Debug / tests: `N.view3d.settle(ms)` (finish pending chunk work now), `setQuality({adaptive,
 pixelRatio, drawDist, ...; before the first switch also antialias, shadows, pointLights, tier})`,
 `setCamera({yaw, pitch, snap})`, `snapCamera()`, `project(x, y, h)` -> CSS px, `rebuild(rect?)`,
-`stats()`, `engine` (internals). Parity hooks still owed by other modules: missions expose active
+`stats()`, `signCheck()` (atlas integrity), `ground.precompute(ms)`, `engine` (internals). Parity hooks still owed by other modules: missions expose active
 markers (`N.missions.markers()`), collectibles expose glint positions, seasons expose overlay data;
 missing parity degrades gracefully (never blocks progress).
 

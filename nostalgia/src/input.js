@@ -8,6 +8,9 @@
  * mouse drag or pointer lock on canvas#game3d, the right-half touch look zone (.t-look) and the
  * gamepad right stick -> N.input.look {dx, dy (px since the last takeLook()), stickX, stickY,
  * dragging, locked}; N.input.takeLook() returns and clears the accumulated deltas.
+ * Gameplay / UX audit: setActionLabel(text, quiet) (quiet = no desktop prompt, no glow), long-label classes on
+ * the touch ACTION button, the prompt's key cap follows the device ("A" on a pad) and the player's binding;
+ * key remapping bind / keyFor / keysFor / keyName / resetBindings (Settings > Controls, 'nostalgia.keys.v1').
  */
 (() => {
   'use strict';
@@ -25,6 +28,43 @@
   };
   // Gamepad "standard" mapping (11 = right-stick click cycles the 3D view)
   const PADMAP = { 0: 'action', 1: 'horn', 2: 'run', 3: 'radio', 4: 'journal', 5: 'run', 7: 'run', 8: 'map', 9: 'pause', 11: 'view', 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
+
+  /* ---- key remapping (Settings > Controls). Each action has one primary key the player can move to any
+   * other key; its other default keys (arrows, F / Enter for ACTION, Esc for pause) keep working unless the
+   * player puts another action on them. KEYMAP is changed in place, so modules that read N.input.KEYMAP
+   * follow. Persisted in localStorage 'nostalgia.keys.v1' as {action: code}. */
+  const DEFAULT_KEYMAP = Object.assign({}, KEYMAP);
+  const PRIMARY = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', action: 'KeyE', run: 'ShiftLeft', horn: 'Space', map: 'KeyM', journal: 'KeyJ', pause: 'KeyP', radio: 'KeyQ', view: 'KeyV' };
+  const FIXED_CODES = { Escape: 1, Tab: 1, F5: 1, F11: 1, F12: 1, MetaLeft: 1, MetaRight: 1, ContextMenu: 1 };
+  const BIND_KEY = 'nostalgia.keys.v1';
+  let customKeys = {};
+  try { const o = JSON.parse(window.localStorage.getItem(BIND_KEY) || 'null'); if (o && typeof o === 'object') customKeys = o; } catch (e) { customKeys = {}; }
+  function applyBindings() {
+    for (const k of Object.keys(KEYMAP)) delete KEYMAP[k];
+    Object.assign(KEYMAP, DEFAULT_KEYMAP);
+    for (const a of Object.keys(PRIMARY)) {
+      const code = customKeys[a];
+      if (typeof code !== 'string' || !code || FIXED_CODES[code] || code === PRIMARY[a]) continue;
+      if (KEYMAP[PRIMARY[a]] === a) delete KEYMAP[PRIMARY[a]];
+    }
+    for (const a of Object.keys(PRIMARY)) {
+      const code = customKeys[a];
+      if (typeof code !== 'string' || !code || FIXED_CODES[code]) continue;
+      KEYMAP[code] = a;
+    }
+  }
+  function saveBindings() { try { window.localStorage.setItem(BIND_KEY, JSON.stringify(customKeys)); } catch (e) { /* storage off: this session only */ } }
+  applyBindings();
+  /** Human key name for a KeyboardEvent.code ("KeyE" -> "E", "ShiftLeft" -> "Shift", "ArrowUp" -> "↑"). */
+  function keyName(code) {
+    if (!code) return '—';
+    const S = { Space: 'Space', ShiftLeft: 'Shift', ShiftRight: 'R-Shift', ControlLeft: 'Ctrl', ControlRight: 'R-Ctrl', AltLeft: 'Alt', AltRight: 'AltGr', Enter: 'Enter', NumpadEnter: 'Enter', Escape: 'Esc', Backspace: '⌫', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\', BracketLeft: '[', BracketRight: ']', Minus: '-', Equal: '=', Backquote: '`', CapsLock: 'Caps' };
+    if (S[code]) return S[code];
+    let m = /^Key([A-Z])$/.exec(code); if (m) return m[1];
+    m = /^Digit(\d)$/.exec(code); if (m) return m[1];
+    m = /^Numpad(.+)$/.exec(code); if (m) return 'Num ' + m[1];
+    return code;
+  }
 
   const keyDown = Object.create(null);   // code -> bool
   const touchDown = Object.create(null); // action -> bool
@@ -70,18 +110,72 @@
       synMove = null;
       resetStick();
     },
-    setActionLabel(text) {
+    /**
+     * Context label for ACTION ("Ride Chetak"): the touch button text and the desktop prompt "E — ...".
+     * quiet = a routine offer that needs no attention right now ("Get off" while riding along): the desktop
+     * prompt hides and the touch button keeps its label without the glow.
+     */
+    setActionLabel(text, quiet) {
       text = text || null;
-      if (text === input.actionLabel) return;
+      quiet = !!(text && quiet);
+      if (text === input.actionLabel && quiet === input.actionQuiet) return;
+      const changed = text !== input.actionLabel;
       input.actionLabel = text;
-      if (dom.actLabel) {
+      input.actionQuiet = quiet;
+      if (dom.actLabel && changed) {
         dom.actLabel.textContent = text || 'ACTION';
-        dom.act.classList.toggle('has-ctx', !!text);
+        // long labels ("Start a Chitti Chase") shrink to fit three lines on the round button
+        const n = text ? text.length : 0;
+        dom.act.classList.toggle('lbl-long', n > 11 && n <= 17);
+        dom.act.classList.toggle('lbl-xlong', n > 17);
       }
+      if (dom.act) { dom.act.classList.toggle('has-ctx', !!text && !quiet); dom.act.classList.toggle('ctx-quiet', quiet); }
       if (dom.prompt) {
-        dom.promptText.textContent = text || '';
-        dom.prompt.classList.toggle('show', !!text);
+        if (changed) dom.promptText.textContent = text || '';
+        dom.prompt.classList.toggle('show', !!text && !quiet);
       }
+    },
+    actionQuiet: false,
+    /* ---- remapping (Settings > Controls) */
+    REBINDABLE: Object.keys(PRIMARY),
+    keyName,
+    /** The key that does `action` now (the primary, or the first other key still bound to it). */
+    keyFor(action) {
+      const c = customKeys[action];
+      if (typeof c === 'string' && KEYMAP[c] === action) return c;
+      if (KEYMAP[PRIMARY[action]] === action) return PRIMARY[action];
+      for (const code in KEYMAP) if (KEYMAP[code] === action) return code;
+      return null;
+    },
+    /** Every key bound to `action`, primary first. */
+    keysFor(action) {
+      const out = [], p = input.keyFor(action);
+      if (p) out.push(p);
+      for (const code in KEYMAP) if (KEYMAP[code] === action && code !== p) out.push(code);
+      return out;
+    },
+    /** Move `action`'s primary key to `code` (KeyboardEvent.code). Returns false for keys that stay fixed (Esc, Tab, F-keys). */
+    bind(action, code) {
+      if (!PRIMARY[action] || typeof code !== 'string' || !/^[A-Za-z0-9]+$/.test(code) || FIXED_CODES[code] || /^F\d+$/.test(code)) return false;
+      // a key belongs to one action: whoever had it as their primary loses it (falls back to their other keys)
+      for (const a of Object.keys(customKeys)) if (customKeys[a] === code && a !== action) delete customKeys[a];
+      const owner = KEYMAP[code];
+      if (owner && owner !== action && PRIMARY[owner] === code) customKeys[owner] = '';
+      customKeys[action] = code;
+      applyBindings();
+      saveBindings();
+      refreshGlyph();
+      N.emit('input:bind', { action, code });
+      return true;
+    },
+    /** Back to the default keys. */
+    resetBindings() { customKeys = {}; applyBindings(); saveBindings(); refreshGlyph(); N.emit('input:bind', { action: '*', code: null }); },
+    /** The custom part ({action: code}) as stored. */
+    bindings: () => Object.assign({}, customKeys),
+    /** The glyph players see for an action on the current device: 'E' / 'A' (gamepad). */
+    glyph(action) {
+      if (input.device === 'gamepad') { const P = { action: 'A', horn: 'B', run: 'X', radio: 'Y', journal: 'LB', map: 'Back', pause: 'Start', view: 'R3' }; return P[action] || ''; }
+      return keyName(input.keyFor(action));
     },
     // Relabel a touch button, e.g. setLabel('run', 'BRAKE') in vehicles. null restores default.
     setLabel(action, text) {
@@ -148,7 +242,14 @@
     document.body.classList.toggle('dev-touch', d === 'touch');
     document.body.classList.toggle('dev-pad', d === 'gamepad');
     if (d === 'touch') input.showTouch(true);
+    refreshGlyph();
     N.emit('input:device', d);
+  }
+  // the desktop prompt's key cap follows the device and the player's key for ACTION ("E", "A" on a pad)
+  function refreshGlyph() {
+    if (!dom.promptKey) return;
+    const g = input.glyph('action') || 'E';
+    if (dom.promptKey.textContent !== g) dom.promptKey.textContent = g;
   }
 
   /* ------------------------------------------------------------- keyboard */
@@ -375,7 +476,8 @@
     let prompt = document.getElementById('prompt');
     if (!prompt) { prompt = el('div', '', document.getElementById('ui') || document.body); prompt.id = 'prompt'; }
     prompt.innerHTML = '<kbd>E</kbd><span></span>';
-    dom.prompt = prompt; dom.promptText = prompt.querySelector('span');
+    dom.prompt = prompt; dom.promptText = prompt.querySelector('span'); dom.promptKey = prompt.querySelector('kbd');
+    refreshGlyph();
     input.setActionLabel(input.actionLabel);
   }
 

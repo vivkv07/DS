@@ -311,6 +311,7 @@
   let offers = [];
   const I = (N.interact = {
     current: null,
+    runnerUp: null,
     add(id, spec) { spec.id = id; reg.set(id, spec); return spec; },
     remove(id) { reg.delete(id); },
     get(id) { return reg.get(id) || null; },
@@ -320,12 +321,15 @@
   });
   function resolveInteract() {
     const p = N.player;
-    let best = null, bs = -Infinity;
+    let best = null, bs = -Infinity, second = null, ss = -Infinity;
     const active = p && N.state.mode === 'play' && !p.controlsLocked && p.mode !== 'busy';
+    // the runner-up is kept too (I.runnerUp): two things competing for one ACTION press is a UX smell
+    // tests and the debug overlay can see (tests/ux_audit.cjs samples it across the city)
+    const consider = (s, sc) => { if (sc > bs) { second = best; ss = bs; bs = sc; best = s; } else if (sc > ss) { second = s; ss = sc; } };
     if (active) {
       for (const s of offers) {
         const sc = (s.priority || 0) * 1000 - (s.dist || 0);
-        if (sc > bs) { bs = sc; best = s; }
+        consider(s, sc);
       }
       if (!p.vehicle) {
         for (const s of reg.values()) {
@@ -338,15 +342,16 @@
           // enabled() last: the in-range test is cheap, and some enabled() checks (shop hours, the story
           // calendar) allocate; calling them for every registered interactable each step was ~10 MB/s
           if (s.enabled && !s.enabled(p)) continue;
-          const sc = (s.priority || 0) * 1000 - d;
-          if (sc > bs) { bs = sc; best = s; }
+          consider(s, (s.priority || 0) * 1000 - d);
         }
       }
     }
     offers = [];
     I.current = best;
+    I.runnerUp = second;
     const label = best ? (typeof best.label === 'function' ? best.label(p) : best.label) : null;
-    N.input.setActionLabel(label || null);
+    // quiet offers (a routine "Get off" while riding along) keep the touch label but drop the desktop prompt
+    N.input.setActionLabel(label || null, !!(best && best.quiet));
     if (best && N.input.pressed('action')) {
       N.input.consume('action');
       try { best.use && best.use(p); } catch (e) { N.err('interact.use', e); }
@@ -362,7 +367,7 @@
     pedalDrain: 2.0, pedalRecover: 5, legsGoneMul: 0.65,
     tummyDrain: { idle: 0.10, run: 0.25, pedal: 0.15, ride: 0.05, sit: 0.06 },
     summerMul: 1.25, hungry: 25, veryHungry: 10, growlEvery: 20,
-    fallSpeedCycle: 75, fallSpeedMotor: 90, fallEnergy: 15, fallThrow: 14, fallDown: 1.0, kneeGm: 120,
+    fallSpeedCycle: 75, fallSpeedMotor: 90, fallEnergy: 15, fallThrow: 14, fallDown: 1.0, kneeGm: 120, fallRelaxedMul: 1.35,
     difficulty: { relaxed: 0.7, normal: 1, hard: 1.2 },
     starveFallbackS: 4,
   };
@@ -522,7 +527,11 @@
     const other = d.a === v ? d.b : d.a;
     const hard = d.wall || (other && other.kind === 'vehicle') || (other && other.kind === 'animal' && /cow|buffalo/.test(String(other.type || other.species || other.sub || '')));
     if (!hard) return;
-    const lim = T.pedal ? TUNE.fallSpeedCycle : TUNE.fallSpeedMotor;
+    // Aaram Se (relaxed difficulty): traffic bumps never throw him off and walls only near top speed
+    // (gameplay audit G17: 3-4 falls a minute of full-throttle riding in old-city traffic on Normal)
+    const relaxed = pref('difficulty', 'normal') === 'relaxed';
+    if (relaxed && !d.wall) return;
+    const lim = (T.pedal ? TUNE.fallSpeedCycle : TUNE.fallSpeedMotor) * (relaxed ? TUNE.fallRelaxedMul : 1);
     if ((+d.speed || 0) >= lim) p.fall(v, { speed: d.speed });
   });
 
@@ -668,8 +677,11 @@
       N.emit('footstep', { x: this.x, y: this.y, surf: N.world.surfaceAt(this.x, this.y), run: running, who: this });
     }
     if (sp < 4) this.anim.phase *= 0.8;
-    // idle timer drives the "you are here" marker
+    // idle timer drives the "you are here" marker; so does a crowd (bazaars, bus stands: Chinnu is hard to
+    // find among 40 people at 2x scale; gameplay audit G24) - polled twice a second, the zone test isn't free
     this.idleT = sp < 3 && canControl ? (this.idleT || 0) + dt : 0;
+    this.crowdT = (this.crowdT || 0) - dt;
+    if (this.crowdT <= 0) { this.crowdT = 0.5; let c = false; try { c = !!(N.traffic && N.traffic.inCrowd && N.traffic.inCrowd(this.x, this.y)); } catch (e) { c = false; } this.inCrowd = c; }
   };
 
   player.draw = function () {
@@ -690,10 +702,11 @@
     }
     R.queue('actors', this.y, () => D.sprite(self.x, self.y, self.angle, 8, (ctx) => drawPerson(ctx, self.look, self.anim)));
     // after a few idle seconds a small bobbing chevron marks the player (busy screens, phones)
-    const a = Math.min(1, Math.max(0, ((this.idleT || 0) - 2.5) / 0.6));
+    const a = Math.max(Math.min(1, Math.max(0, ((this.idleT || 0) - 2.5) / 0.6)), this.inCrowd ? 0.75 : 0);
     if (a > 0 && N.state.mode === 'play') {
+      const still = document.body && document.body.classList.contains('reduced-motion');
       R.queue('sky', 0, (ctx) => {
-        const k = R.k(14), bob = Math.sin(N.time.real * 5) * 1.5;
+        const k = R.k(14), bob = still ? 0 : Math.sin(N.time.real * 5) * 1.5;
         const X = R.sx(self.x, k), Y = R.sy(self.y, k) - 9 - bob;
         ctx.globalAlpha = a * 0.95;
         ctx.fillStyle = '#1a1214';

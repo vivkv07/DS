@@ -184,7 +184,8 @@ async function testCalendar(page) {
     await new Promise((r) => setTimeout(r, 700));
     const m1 = N.clock.minutes;
     N.state.pop();
-    await new Promise((r) => setTimeout(r, 700));
+    // (play: wait for the frames, not a fixed 0.7 s: a loaded machine runs fewer of them)
+    await new Promise((r) => { const w0 = performance.now(); const f = () => (N.clock.minutes - m1 > 0.3 || performance.now() - w0 > 8000 ? r() : setTimeout(f, 30)); f(); });
     return { paused: m1 - m0, play: N.clock.minutes - m1 };
   });
   check(fr.paused === 0 && fr.play > 0.3, 'the clock is frozen outside play (paused) and runs in play', fr);
@@ -267,7 +268,11 @@ async function testWalkman(page) {
   await page.keyboard.press('KeyQ'); await sleep(500);
   s = await page.evaluate(() => ({ p: N.walkman.playing, radio: N.audio.radio.on, st: N.audio.radio.station }));
   check(s.p && s.p.kind === 'radio' && s.p.id === 'radio:0' && (!a.ready || (s.radio && s.st === 0)), 'next source after the songs: Deccan Vani 101.2 (radio band)', s);
-  await page.keyboard.down('KeyQ'); await sleep(850); await page.keyboard.up('KeyQ'); await sleep(200);
+  // hold Q (real key) until the hold fires: 0.6 s of game time, more wall time on a loaded machine (a fixed 850 ms
+  // could end as a tap and switch the station instead)
+  await page.keyboard.down('KeyQ');
+  await page.waitForFunction(() => !N.walkman.playing, null, { timeout: 6000, polling: 30 }).catch(() => {});
+  await page.keyboard.up('KeyQ'); await sleep(200);
   s = await page.evaluate(() => ({ p: N.walkman.playing, radio: N.audio.radio.on, walk: document.querySelector('.mm-walk').classList.contains('show') }));
   check(!s.p && !s.radio && !s.walk, 'holding Q for 0.6 s turns the walkman off', s);
   // touch-style cassette icon (pointer on the OSD button)
@@ -306,10 +311,12 @@ async function testPlayer(page) {
   check(a.money === 1000 && a.tummy === 80 && a.energy <= 80 && a.notch === '80%', 'new game: ₹10.00 (1000 paise), tummy 80, energy capped at tummy, notch at 80%', a);
   // drains: standing 0.10/s, running 0.25/s
   const d = await page.evaluate(async () => {
+    // rates per second of game time (the drains run on the frame dt; a loaded machine runs fewer frames per wall second)
+    const gw = (sec) => new Promise((r) => { const g0 = N.time.now, w0 = performance.now(); const f = () => (N.time.now - g0 >= sec || performance.now() - w0 > 20000 ? r(N.time.now - g0) : setTimeout(f, 20)); f(); });
     const p = N.player; p.tummy = 60; p.energy = 60;
-    let t0 = p.tummy; await new Promise((r) => setTimeout(r, 2000)); const idle = (t0 - p.tummy) / 2;
+    let t0 = p.tummy; let el = await gw(2); const idle = (t0 - p.tummy) / el;
     N.input.hold('run', true); N.input.setMove(1, 0);
-    t0 = p.tummy; await new Promise((r) => setTimeout(r, 2000)); const run = (t0 - p.tummy) / 2;
+    t0 = p.tummy; el = await gw(2); const run = (t0 - p.tummy) / el;
     N.input.hold('run', false); N.input.setMove(null);
     return { idle, run, energy: p.energy };
   });
@@ -444,7 +451,8 @@ async function testHud(browser) {
     const held = await page.evaluate(() => ({ held: document.querySelector('.hud-toasts').classList.contains('held'), dist: document.querySelector('.hud-district').classList.contains('show'), note: document.querySelector('.b-note').textContent }));
     await shot(page, 'hud_banner');
     check(o.over.length === 0 && held.held && !held.dist && /spelt wrong/.test(held.note), V.name + ': MISSION PASSED card (J-card line + scribble) holds toasts and the district card', Object.assign(held, o));
-    await sleep(3200);
+    // (the banner's 3 s and the card's queue run on frames: wait for it, not a fixed 3.2 s, on a loaded machine)
+    await page.waitForFunction(() => document.querySelector('.hud-district').classList.contains('show') && document.querySelector('.hud-district .d-name').textContent === 'Basheerbagh', null, { timeout: 20000, polling: 100 }).catch(() => {});
     const after = await page.evaluate(() => ({ dist: document.querySelector('.hud-district').classList.contains('show'), name: document.querySelector('.hud-district .d-name').textContent }));
     check(after.dist && after.name === 'Basheerbagh', V.name + ': the district card shows after the banner', after);
     // sound captions (a setting, off by default: switch it on)
@@ -459,9 +467,13 @@ async function testHud(browser) {
     await page.evaluate(() => { N.walkman.stop(); N.hud.timer(null); const g = N.places.giver_himayatnagar; N.player.teleport(g.x, g.y); });
     // the card is built the first time the giver's prompt opens: wait for it (game-driven, not a fixed sleep)
     await page.waitForFunction(() => !!document.querySelector('.hud-jcard.show .jc-title'), null, { timeout: 10000 }).catch(() => {});
+    // measure with game time standing still: on a loaded machine the measuring outlasted the card's 1.0 s dwell
+    // (the mission started and the card closed before it was checked)
+    await page.evaluate(() => { N.time.scale = 0; });
     o = await hudOverlaps(page);
     const jc = await page.evaluate(() => ({ show: !!document.querySelector('.hud-jcard.show'), title: (document.querySelector('.hud-jcard .jc-title') || {}).textContent, mission: N.missions.active && N.missions.active.id }));
     await shot(page, 'hud_jcard');
+    await page.evaluate(() => { N.time.scale = 1; });
     check(jc.show && o.over.length === 0, V.name + ': J-card prompt card fits without overlaps', Object.assign(jc, o));
     await page.waitForFunction(() => N.missions.active, null, { timeout: 3000 }).catch(() => {});
     await page.evaluate(() => N.missions.abort());
@@ -488,7 +500,10 @@ async function testMissions(page) {
   await page.keyboard.up('KeyA');
   await sleep(150);
   let s = await page.evaluate(() => ({ card: !!document.querySelector('.hud-jcard.show'), head: (document.querySelector('.jc-head') || {}).textContent, title: (document.querySelector('.jc-title') || {}).textContent, sub: (document.querySelector('.jc-sub') || {}).textContent, label: N.input.actionLabel, active: !!N.missions.active, prompt: N.missions.prompt }));
+  // (game time stands still for the screenshot: on a loaded machine a slow screenshot used to outlast the 1.0 s dwell)
+  await page.evaluate(() => { N.time.scale = 0; });
   await shot(page, 'jcard_prompt');
+  await page.evaluate(() => { N.time.scale = 1; });
   check(s.card && s.title === 'CHAI BEFORE SUNSET' && /TUE 14 JAN 2003/.test(s.sub) && s.label === '▶ PLAY' && s.prompt === '__sc_chai', 'walking into the giver shows the J-card (title, date, "▶ PLAY")', s);
   check(!s.active, 'walking in does not start the mission by itself', s);
   await page.evaluate((g) => N.player.teleport(g.x + 60, g.y), g);
@@ -508,10 +523,11 @@ async function testMissions(page) {
   await page.evaluate(() => N.missions.abort());
   // dwell 1.0 s starts it too
   await page.evaluate((g) => { N.player.teleport(g.x + 60, g.y); }, g);
-  await page.waitForFunction(() => !N.missions.active, null, { timeout: 3000 }).catch(() => {});
-  await sleep(700); // the giver re-arms once the player has stepped out
+  await page.waitForFunction(() => !N.missions.active, null, { timeout: 15000 }).catch(() => {});
+  // the giver re-arms once the player has stepped out: 0.7 s of game time (waits on the game clock, not the wall)
+  await page.evaluate(() => new Promise((r) => { const t0 = N.time.now, w0 = performance.now(); const f = () => (N.time.now - t0 >= 0.7 || performance.now() - w0 > 15000 ? r() : setTimeout(f, 30)); f(); }));
   await page.evaluate((g) => N.player.teleport(g.x, g.y), g);
-  await page.waitForFunction(() => N.missions.active, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => N.missions.active, null, { timeout: 20000 }).catch(() => {});
   s = await page.evaluate(() => ({ active: N.missions.active && N.missions.active.id }));
   check(s.active === '__sc_chai', 'standing in the marker for 1.0 s starts it', s);
   await page.evaluate(() => N.missions.abort());
@@ -521,10 +537,12 @@ async function testMissions(page) {
   const dj = await page.evaluate(async () => {
     N.missions.register({ id: '__sc_dated', title: 'QA Dated', track: 3, date: [2003, 2, 8, 5, 15], end: [2003, 2, 8, 10, 30], jcard: 'TRACK 03 · QA · TEST', scribble: 'qa scribble —I', rec: false,
       script: async (m) => { window.__dj = { label: N.calendar.label(), clock: N.clock.label() }; await m.wait(0.2); } });
+    // waits on the game, not the wall clock (a loaded machine runs the 1.5 s VHS jump in more real time)
+    const until = (fn, cap) => new Promise((r) => { const w0 = performance.now(); const f = () => (fn() || performance.now() - w0 > cap ? r() : setTimeout(f, 20)); f(); });
     N.missions.start('__sc_dated');
-    await new Promise((r) => setTimeout(r, 700));
+    await until(() => N.calendar.jumping && N.render.fx.vhs > 0.3, 10000);
     const mid = { jumping: N.calendar.jumping, vhs: N.render.fx.vhs };
-    await new Promise((r) => setTimeout(r, 1500));
+    await until(() => N.missions.isDone('__sc_dated') && document.querySelector('.hud-banner .b-sub') && document.querySelector('.hud-banner .b-sub').textContent, 30000);
     return { mid, inScript: window.__dj, done: N.missions.isDone('__sc_dated'), after: N.calendar.label() + ' ' + N.clock.label(), banner: document.querySelector('.hud-banner .b-sub').textContent, note: document.querySelector('.hud-banner .b-note') && document.querySelector('.hud-banner .b-note').textContent };
   });
   check(dj.mid.jumping && dj.mid.vhs > 0.3 && dj.inScript && dj.inScript.label === 'SAT 08 FEB 2003' && dj.inScript.clock === '05:15', 'a dated main mission jumps to its date (▶▶) before the script runs', dj);
@@ -534,11 +552,12 @@ async function testMissions(page) {
     N.missions.register({ id: 'bo_kaata', script: async (m) => { await m.wait(0.1); } });
     const def = N.missions.defs.bo_kaata;
     const o = { date: def.date && def.date.join('-'), title: def.title, track: def.track };
+    const until = (fn, cap) => new Promise((r) => { const w0 = performance.now(); const f = () => (fn() || performance.now() - w0 > cap ? r() : setTimeout(f, 20)); f(); });
     N.missions.start('bo_kaata');
-    await new Promise((r) => setTimeout(r, 2100));
+    await until(() => N.tape.recState && N.tape.recState.phase === 'prompt', 30000);
     o.recPrompt = N.tape.recState && N.tape.recState.phase;
     N.input.press('action');
-    await new Promise((r) => setTimeout(r, 2600));
+    await until(() => N.missions.isDone('bo_kaata') && N.save.has() && /18:2/.test(N.clock.label()), 30000);
     o.done = N.missions.isDone('bo_kaata'); o.counter = N.tape.counter; o.tin = N.tape.tin.has('kite_corner'); o.date = o.date + ' / ' + N.calendar.label() + ' ' + N.clock.label();
     o.saved = N.save.has();
     return o;
@@ -556,14 +575,17 @@ async function testMissions(page) {
     fakeMG.start = (id, p) => id === '__qa_game' ? Promise.resolve({ id, win: false, stars: 0 }) : origStart.call(MG, id, p);
     N.missions.register({ id: '__sc_help', title: 'QA Help', kind: 'side', script: async (m) => { m.checkpoint('start'); const r = await m.minigame('__qa_game', {}); if (!r.win) m.fail('Lost!'); window.__assisted = !!r.assisted; } });
     const labels = [];
+    const until = (fn, cap) => new Promise((r) => { const w0 = performance.now(); const f = () => (fn() || performance.now() - w0 > cap ? r() : setTimeout(f, 20)); f(); });
+    const askBtns = () => Array.from(document.querySelectorAll('.hud-ask.show button, .hud-ask button')).filter((b) => b.offsetParent);
     for (let i = 0; i < 3; i++) {
       if (i === 0) N.missions.start('__sc_help'); else N.missions.retry();
-      await new Promise((r) => setTimeout(r, 1900));
-      labels.push(Array.from(document.querySelectorAll('.hud-ask button')).map((b) => b.textContent.trim()).join(' / '));
+      await until(() => !N.missions.active, 15000);
+      await until(() => askBtns().length > 0, 20000);
+      labels.push(askBtns().map((b) => b.textContent.trim()).join(' / '));
     }
-    const btn = Array.from(document.querySelectorAll('.hud-ask button')).find((b) => /Let Immu/.test(b.textContent));
+    const btn = askBtns().find((b) => /Let Immu/.test(b.textContent));
     if (btn) btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 600));
+    await until(() => N.missions.isDone('__sc_help'), 20000);
     const out = { activeBefore, labels, assisted: window.__assisted, done: N.missions.isDone('__sc_help'), q: N.hud.toastQueue().join('|'), mode: N.state.mode, errs: N.errors.map((e) => e.where + ': ' + e.msg.slice(0, 160)) };
     if (MG) { MG.start = origStart; MG.has = origHas; }
     return out;
@@ -574,10 +596,12 @@ async function testMissions(page) {
   // timer help: 2 timer fails -> +25%
   const th = await page.evaluate(async () => {
     N.missions.register({ id: '__sc_timer', title: 'QA Timer', kind: 'job', script: async (m) => { m.timer(1, 'QA'); await m.wait(30); } });
-    N.missions.start('__sc_timer'); await new Promise((r) => setTimeout(r, 1600));
-    N.missions.retry(); await new Promise((r) => setTimeout(r, 1600));
+    const until = (fn, cap) => new Promise((r) => { const w0 = performance.now(); const f = () => (fn() || performance.now() - w0 > cap ? r() : setTimeout(f, 20)); f(); });
+    const failed = () => !N.missions.active && N.missions.lastFailed && N.missions.lastFailed.id === '__sc_timer';
+    N.missions.start('__sc_timer'); await until(failed, 20000);
+    N.missions.retry(); await until(() => N.missions.active, 10000); await until(failed, 20000);
     const streak = N.missions.streaks.timer.__sc_timer;
-    N.missions.retry(); await new Promise((r) => setTimeout(r, 120));
+    N.missions.retry(); await until(() => N.missions.active && N.hud.timerValue() != null, 10000);
     const t = N.hud.timerValue();
     const q = N.hud.toastQueue().join('|');
     N.missions.abort();
@@ -665,7 +689,9 @@ async function testSave(browser) {
   check(hn.auto.tier === 2 && hn.auto.target && hn.auto.cost === 500, "Yadagiri's auto: a drop point near the answer (₹5)", hn.auto);
   check(hn.c1.deflect && hn.c2.deflect && !hn.c3.deflect && hn.c3.place === 'mozamjahi_market', 'Ask the city: the third local answers', [hn.c1, hn.c2, hn.c3]);
   check(hn.aunty.tier === 3 && hn.aunty.meter === 1 && hn.blip, 'aunty network blips the answer (+1 meter later)', hn.aunty);
-  check(/Stuck\? Ammamma knows/.test(hn.obj || '') && hn.circles === 1 && hn.nudge === 4 && /PS: it's Mozamjahi/.test(hn.ps || ''), 'timed nudges: objective tip, search circle, Immu\'s PS', hn);
+  // (Ammamma was asked above: the free-roam story line keeps her answer on the riddle line, systems §6.5 "the objective
+  // line is upgraded to the hint"; the bare 180 s tip is checked in tests/journey.cjs, phase roam)
+  check((/Stuck\? Ammamma knows/.test(hn.obj || '') || /^Every capsule needs a box\. — Ammamma: Mozamjahi Market\.$/.test(hn.obj || '')) && hn.circles === 1 && hn.nudge === 4 && /PS: it's Mozamjahi/.test(hn.ps || ''), 'timed nudges: objective tip (or Ammamma\'s answer once asked), search circle, Immu\'s PS', hn);
   await shot(page, 'hints_circle');
   const errs = await errorsOf(page, errors);
   check(errs.length === 0, 'save test: no console errors', errs);

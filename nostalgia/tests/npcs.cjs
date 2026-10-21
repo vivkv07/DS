@@ -317,6 +317,8 @@ async function desktop(browser) {
       N.hints.register('__test_clue', { clue: 'Find the clock tower that talks with half its faces.', answer: 'mozamjahi_market', name: 'Mozamjahi Market', ammamma: 'A tower that talks? Clocks talk, *kanna*. Mozamjahi.' });
       N.hints.start('__test_clue', { clue: 'Find the clock tower that talks with half its faces.', answer: 'mozamjahi_market', name: 'Mozamjahi Market' });
       const out = {};
+      // (the talk check above left Immu standing on the player: his "Talk to Immu" would win the ACTION label)
+      N.npcs.despawn('immu');
       N.npcs.spawn('aunty_2', 'player', { idle: 'stand' });
       await __gw(0.3);
       out.label = N.input.actionLabel;
@@ -418,13 +420,22 @@ async function desktop(browser) {
       window.__drive = null;
       N.addSystem({
         id: '__drive', order: 1, runIn: ['play'],
-        update() {
+        update(dt) {
           const d = window.__drive; if (!d) return;
           const p = N.player, v = p.vehicle || p;
           const wp = d.pts[d.i];
           if (!wp) { N.input.setMove(null); d.done = true; return; }
           const dx = wp.x - v.x, dy = wp.y - v.y, L = Math.hypot(dx, dy);
           if (L < (p.vehicle ? 20 : 8)) { d.i++; return; }
+          // a player steps round people standing in the way (a café's customers at the door): when the straight-line
+          // driver has not moved for 1.2 s of game time, sidestep for 0.5 s, alternating sides (journey audit: the
+          // follow checks failed on the driver blocked by two customers at Café Gulistan, not on Immu)
+          d.chk = d.chk || { x: v.x, y: v.y, t: 0, side: 0, step: 0 };
+          const C = d.chk;
+          if (C.step > 0) { C.step -= dt || 0.016; const s = C.side ? 1 : -1; N.input.setMove((-dy / L) * s, (dx / L) * s, true); return; }
+          C.t += dt || 0.016;
+          if (Math.hypot(v.x - C.x, v.y - C.y) > 6) { C.x = v.x; C.y = v.y; C.t = 0; }
+          else if (C.t > 1.2) { C.t = 0; C.step = 0.5; C.side ^= 1; return; }
           let m = p.vehicle && d.i === d.pts.length - 1 && L < 60 ? 0.5 : 1;
           if (p.vehicle) {
             // a rider: take the next point once this one is behind (closer to the next than it is), ease off for turns

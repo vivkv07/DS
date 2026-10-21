@@ -4,7 +4,8 @@
  *                                                     and nothing is loaded (the guest / offline game as before)
  *   N.ONLINE_CONFIG = {provider: 'supabase', url, key, ...}  -> online play on (web pages only; file:// stays off)
  * Fields: url (project URL), key (the PUBLIC publishable key: safe to ship; the database only lets it call the
- *   save_* / journey_* / profile_* functions), sdk (script URLs tried in order; the vendored copy is the fallback),
+ *   save_* / journey_* / profile_* functions), sdk (scripts tried in order: a URL, or {src, integrity} for Subresource
+ *   Integrity; the vendored copy deployed next to the page first, jsDelivr pinned by sha384 after it),
  *   realtimeKey (optional: a legacy anon JWT for Realtime if the project's Realtime ever rejects the
  *   publishable key), maxPlayers (room cap: 3, the owner's choice: a small group of friends), stateHz (position
  *   updates per second, 8).
@@ -19,10 +20,12 @@
     provider: 'supabase',
     url: 'https://gralunajtfapqkpwulyg.supabase.co',
     key: 'sb_publishable_VyeXDrbTZtdEpZ3ZGnZvEQ_bKuUUTSM',
+    // the copy deployed next to the page first (same origin: no third party, works where a CDN is blocked or slow),
+    // then jsDelivr, pinned by its sha384 (SRI: a changed file is refused)
     sdk: [
-      'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js',
       'vendor/supabase/supabase.js',
       '../vendor/supabase/supabase.js',
+      { src: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js', integrity: 'sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK' },
     ],
     // public legacy anon key, used only for Realtime rooms (safest choice until rooms are confirmed on the publishable key)
     realtimeKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyYWx1bmFqdGZhcHFrcHd1bHlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0Mjc5MTksImV4cCI6MjEwODAwMzkxOX0.TyTS2Ip0_YmCzSeU4dcXrqvm19x3PP_91Jy367HpHvU',

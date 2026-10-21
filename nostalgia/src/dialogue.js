@@ -457,6 +457,10 @@
   /* ============================================================ glossary */
   // Bible §10.1 + §10.2 + systems §17, as 'keys (/-separated)|tag|meaning'.
   const GLOSS_SRC = [
+    // journey audit: *highlighted* words in story / Diwali / NPC / job lines that had no meaning to show
+    'dhadak|Hi|Thud! (a hard bump)', 'wapas jao|Hi|Go back', 'happy deepavali|IE|The Diwali greeting (Deepavali: “a row of lamps”)',
+    'nostalgia|IE|Bunty-anna’s word of the day: “very old style”', 'kirrr-kshhh|IE|The dial-up modem’s song while it connects',
+    'mee abbayi|Te|Your son', 'entha|Te|How much? (“rank entha?”: what rank?)', 'shabash|Hi|Well done!',
     'aa gaye?|Dk|You’ve come? / Here already?', 'aadaab|Dk|A respectful greeting (with a hand raised)',
     'aaj nakad, kal udhaar|Hi|“Cash today, credit tomorrow” (shop sign)', 'aao, mian|Dk|Come, sir',
     'aap bhi|Hi|You too (respectful)', 'aapa|Dk|Elder sister; polite for a woman',
@@ -543,7 +547,7 @@
     'pehli baar sach|Hi|“The truth, for the first time” (Ma’am’s last red ink)', 'qawwali|Dk|Sufi devotional singing at a dargah', 'sach likho|Hi|Write the truth',
     'sitaphal|Hi|Custard apple (an ice-cream flavour)', '2-in-1 / j-card|IE|A radio-cassette player / the paper insert in a cassette case',
     'eid / eid ul-fitr / ramzan|Dk|The festival that ends the fasting month / the fasting month (Ramadan)', 'garam samose|Hi|Hot samosas',
-    'hallu chalao|Dk|Drive slowly', 'hajmola / mango bite / tinkle|IE|A tangy digestive candy / a 50-paise mango toffee / the children’s comic',
+    'hallu chalao|Dk|Drive slowly', 'churan goli / mango bite / tinkle|IE|A tangy digestive candy / a 50-paise mango toffee / the children’s comic',
     'imli-bun|Dk|Tamarind grove (Imlibun)', 'jeeta kya|Hi|Did (India) win?', 'luna / chetak / rx100 / ambassador|IE|A pedal-start moped / the family scooter / the cool cousin’s motorbike / the classic car',
     'std booth / std / isd / pco|IE|A public telephone cabin with a metered call counter', 'x roads|IE|Crossroads',
     // §10.2 names that mean something
@@ -1005,6 +1009,16 @@
     if (!Rn || !Rn.canvas || !Rn.W) return;
     const rect = Rn.canvas.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight;
+    // (gameplay audit X4 / G27) bubbles keep out of the HUD (objective strip, OSD, money, minimap, action prompt:
+    // N.hud.keepOutRects(), refreshed every 350 ms) and two bubbles that would overlap stack instead
+    const now = performance.now();
+    if (!placeBarks.rects || now - placeBarks.t > 350) {
+      placeBarks.t = now;
+      try { placeBarks.rects = N.hud && typeof N.hud.keepOutRects === 'function' ? N.hud.keepOutRects() : []; } catch (e) { placeBarks.rects = []; }
+    }
+    const hudR = placeBarks.rects || [];
+    const placed = [];
+    const hits = (x0, y0, x1, y1, r) => x0 < r[2] && r[0] < x1 && y0 < r[3] && r[1] < y1;
     for (const b of barks) {
       const t = b.target;
       if (!t || !b.el) continue;
@@ -1017,7 +1031,21 @@
       let Y = rect.top + (q.y / Rn.H) * rect.height - 8;
       const w = b.el.offsetWidth || 120, h = b.el.offsetHeight || 30;
       const left = U.clamp(X - w / 2, 6, Math.max(6, vw - w - 6));
-      const topY = U.clamp(Y - h, 6, Math.max(6, vh - h - 6));
+      let topY = U.clamp(Y - h, 6, Math.max(6, vh - h - 6));
+      // the HUD: a bubble under a strip in the top third goes just below it, one in the bottom part just above it
+      for (let pass = 0; pass < 2; pass++) {
+        for (const r of hudR) {
+          if (!hits(left, topY, left + w, topY + h, r)) continue;
+          topY = r[1] < vh * 0.34 ? r[3] + 4 : r[1] - h - 4;
+        }
+        // other bubbles placed this frame: stack above (below when there is no room above)
+        for (const o of placed) {
+          if (!hits(left, topY, left + w, topY + h, [o.l - 2, o.t - 2, o.r + 2, o.b + 2])) continue;
+          topY = o.t - h - 4 >= 6 ? o.t - h - 4 : o.b + 4;
+        }
+      }
+      topY = U.clamp(topY, 6, Math.max(6, vh - h - 6));
+      placed.push({ l: left, t: topY, r: left + w, b: topY + h });
       b.el.style.visibility = '';
       b.el.style.transform = 'translate(' + Math.round(left) + 'px,' + Math.round(topY) + 'px)';
       b.el.style.setProperty('--tail', Math.round(U.clamp(X - left, 10, w - 10)) + 'px');

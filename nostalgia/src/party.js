@@ -79,7 +79,13 @@
   function sfx(name, o) { try { if (N.audio && N.audio.sfx) N.audio.sfx(name, Object.assign({ ui: true }, o || {})); } catch (e) { /* audio never breaks the party */ } }
   function toast(t, ms) { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2600, { key: 'party' }); } catch (e) { /* ignore */ } }
   function toastQ(t, ms) { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2600); } catch (e) { /* ignore */ } }
-  const TUNE = { lobbyMs: 20000, invEvery: 2000, goLead: 4500, countMs: 3000, goShow: 900, resultsMs: 24000, resultsDelay: 1200, timeLimit: 900, pingN: 6, pingMax: 24, pingGood: 250, pingGap: 260, sendPerSec: 12, promptPriority: -1, innerPriority: 1, innerR: 24 };
+  const TUNE = { lobbyMs: 20000, invEvery: 2000, goLead: 4500, countMs: 3000, goShow: 900, resultsMs: 24000, resultsDelay: 1200, timeLimit: 900, pingN: 6, pingMax: 24, pingGood: 250, pingGap: 260, sendPerSec: 12, promptPriority: -1, innerPriority: 1, innerR: 24,
+    // a friend who drops out of the room's presence (a network blip) or goes away (hidden tab, phone asleep: online.js)
+    // keeps his place this long before he counts as left (and loses the host role); a goodbye (Leave / closing the page /
+    // quitting the game) counts at once
+    leaveGraceMs: 12000 };
+  // messages that must not be lost while my channel reconnects: queued by online.js and sent on the rejoin
+  const RELIABLE = new Set(['acc', 'skip', 'go', 'cancel', 'res', 'fin', 'bye', 'host']);
 
   /* ================================================================ AI friends */
   const FRIENDS = [
@@ -173,7 +179,7 @@
   function inRoom() { return !!(N.online && N.online.room && typeof N.online.channelSend === 'function'); }
   function roomPlayers() { try { return inRoom() && N.online.players ? N.online.players() : []; } catch (e) { return []; } }
   function others() { return roomPlayers().filter((p) => !p.me); }
-  function rawSend(type, data) { if (!inRoom()) return false; try { return N.online.channelSend(type, data); } catch (e) { N.err('party.send', e); return false; } }
+  function rawSend(type, data) { if (!inRoom()) return false; try { return N.online.channelSend(type, data, { queue: RELIABLE.has(type) }); } catch (e) { N.err('party.send', e); return false; } }
   function wireNet() {
     if (NET.off || !N.online || typeof N.online.onMessage !== 'function') return;
     NET.off = N.online.onMessage(onNet);
@@ -236,16 +242,21 @@
       seed: o.seed || 0, startAt: 0, phase: o.phase || 'lobby', players: [], acc: new Map(), skip: new Set(), exp: o.exp || 0,
       results: new Map(), left: new Set(), handle: null, ctx: null, subs: new Map(), leaveFns: [], fin: null, reported: false, lastInv: 0,
       marks: new Map(), ai: null, created: Date.now(), objective: null, timerOn: false, endedHandle: false, unlocked: false, finAt: 0, finSent: false,
+      // absent: uid -> since (ms) while out of presence / away; hostGone: may not host any more (left, or away too long);
+      // quit: said goodbye (no "is back!"); merged: players folded in from a lobby that started at the same moment
+      absent: new Map(), hostGone: new Set(), quit: new Set(), merged: new Set(), sumLine: null,
     };
     return S;
   }
   const isHost = (S) => S.host === (S.mode === 'solo' ? 'me' : myUid());
   function currentHost(S) {
-    // the host, or (if it left) the next player in the list who is still here
-    const here = new Set(roomPlayers().map((p) => p.key));
-    for (const p of S.players) if (!p.isAI && !S.left.has(p.uid) && (S.mode === 'solo' || here.has(p.uid))) return p.uid;
+    // the host, or (if it left / was away longer than TUNE.leaveGraceMs) the next player in the list. Every page applies
+    // the same rule to the same list; whoever takes over says so ('host'), and a host back from a long gap steps down
+    // himself (online:rejoined / online:visible), so there is never a second host.
+    for (const p of S.players) if (!p.isAI && !S.left.has(p.uid) && !S.hostGone.has(p.uid)) return p.uid;
     return S.host;
   }
+  const nickOf = (S, uid) => { const p = S && S.players.find((q) => q.uid === uid); return p ? p.nick : 'A friend'; };
 
   /** challenge(id, opts): invite the room; alone / offline -> solo */
   function challenge(id, opts) {
@@ -260,6 +271,8 @@
       if (!s.solo) { toast('Needs friends in an online room.'); return { ok: false, why: 'needs_room' }; }
       return Object.assign(solo(id, o), { mode: 'solo' });
     }
+    // a friend's challenge to the same game is already waiting for me: that is the one to join
+    if (ST.invite && ST.invite.id === id && acceptInvite()) return { ok: true, mode: 'party', sid: ST.sess.sid, joined: true };
     closeInvite();
     wireNet();
     const S = makeSession({ sid: newSid(), id, mode: 'party', host: myUid(), hostNick: myNick(), opts: o, exp: sharedNow() + TUNE.lobbyMs });
@@ -303,8 +316,7 @@
   // host: everyone has answered / the lobby timed out
   function hostTick(S) {
     if (S.mode !== 'party' || S.phase !== 'lobby' || !isHost(S)) return;
-    const here = others();
-    for (const k of Array.from(S.acc.keys())) if (k !== myUid() && !here.some((p) => p.key === k)) S.acc.delete(k);
+    const here = others().filter((p) => !p.away);
     const answered = here.every((p) => S.acc.has(p.key) || S.skip.has(p.key));
     const n = S.acc.size;
     if (Date.now() - S.lastInv > TUNE.invEvery) sendInvite(S);
@@ -423,6 +435,7 @@
   }
   function finalize(S, summary) {
     if (S.phase === 'done' || S.finSent) return;
+    if (S.sumLine) summary = Object.assign({ line: S.sumLine }, summary || {});
     const standings = rank(S, summary).map((r) => ({ uid: r.uid, nick: r.nick, rank: r.rank, timeMs: fin(r.timeMs) ? Math.round(r.timeMs) : null, score: fin(r.score) ? r.score : null, note: r.note || null, dnf: !!(r.dnf || !r.reported), left: !!r.left, caught: r.caught == null ? null : !!r.caught, isAI: !!r.isAI }));
     const sum = summary && typeof summary === 'object' ? sanitizeOpts(Object.assign({}, summary, { standings: undefined })) : {};
     S.finSent = true;
@@ -431,6 +444,7 @@
   }
   function applyFin(S, standings, summary) {
     if (S.phase === 'done') return;
+    if (S.sumLine && !(summary && summary.line)) summary = Object.assign({}, summary || {}, { line: S.sumLine });
     S.phase = 'done';
     S.fin = standings;
     ST.lastFin = { id: S.id, sid: S.sid, mode: S.mode, name: S.spec.name, standings, summary };
@@ -476,16 +490,36 @@
     switch (m.type) {
       case 'inv': return onInvite(from, m.nick, d);
       case 'acc': if (S && S.sid === d.sid && isHost(S) && S.phase === 'lobby' && !S.acc.has(from)) { S.acc.set(from, { nick: cleanNick(d.nick || m.nick), look: lookOf(d.look), t: Date.now() }); S.skip.delete(from); sendInvite(S); renderLobby(); toastQ(cleanNick(m.nick) + ' accepted!', 1600); } return;
-      case 'skip': if (S && S.sid === d.sid && isHost(S) && S.phase === 'lobby') { S.skip.add(from); S.acc.delete(from); renderLobby(); } return;
+      case 'skip': if (S && S.sid === d.sid && isHost(S) && S.phase === 'lobby' && !(d.why === 'busy' && S.merged.has(from))) { S.skip.add(from); S.acc.delete(from); renderLobby(); } return;
+      case 'host': // a player took over as host: the ones he counts out may not host any more (the old host too)
+        if (S && S.sid === d.sid && S.mode === 'party' && S.phase !== 'lobby' && S.players.some((p) => p.uid === from) && Array.isArray(d.gone)) {
+          for (const u of d.gone.filter(validUid).slice(0, 10)) if (u !== from && S.players.some((p) => p.uid === u)) S.hostGone.add(u);
+        }
+        return;
       case 'ping': if (S && S.sid === d.sid && S.mode === 'party' && S.host === myUid() && d.to === myUid() && isFinite(d.c)) rawSend('pong', { sid: S.sid, to: from, c: +d.c, h: Date.now() }); return;
       case 'pong': if ((S && S.sid === d.sid) || (ST.invite && ST.invite.sid === d.sid)) onPong(d); return;
       case 'go': return onGo(from, d);
-      case 'cancel':
-        if (ST.invite && ST.invite.sid === d.sid && from === ST.invite.host) { ST.invite = null; closeInvite(); toastQ('The challenge was called off.', 2000); }
-        if (S && S.sid === d.sid && S.phase === 'lobby' && from === S.host) { teardown(S, 'cancel'); toast('The challenge was called off.'); }
+      case 'cancel': {
+        // why 'merge': two friends challenged at the same moment and this lobby folded into the older one (d.into)
+        const merge = d.why === 'merge' && validSid(d.into) && !ST.done.has(d.into);
+        if (merge && S && S.sid === d.into && isHost(S) && S.phase === 'lobby') {
+          // mine is the one that stays: wait for the players who were in the other lobby (their "busy" skip is void)
+          for (const u of [from].concat(Array.isArray(d.acc) ? d.acc.filter(validUid).slice(0, 10) : [])) { S.merged.add(u); S.skip.delete(u); }
+          renderLobby();
+          return;
+        }
+        if (ST.invite && ST.invite.sid === d.sid && from === ST.invite.host) { ST.invite = null; closeInvite(); if (!merge) toastQ('The challenge was called off.', 2000); }
+        if (S && S.sid === d.sid && S.phase === 'lobby' && from === S.host) {
+          const sameGame = S.id === d.id;
+          teardown(S, 'cancel');
+          if (merge) { ST.skipped.delete(d.into); if (sameGame) ST.autoAcc = d.into; toastQ(sameGame ? 'Two challenges at once: joining the other one…' : 'Two challenges at once: the other one goes first.', 2400); }
+          else toast('The challenge was called off.');
+        }
+        if (merge && !S) { ST.skipped.delete(d.into); }
         return;
+      }
       case 'res': if (S && S.sid === d.sid && validUid(d.uid) && d.uid === from) { report(S, from, d.r); renderStrip(S); checkDone(S); } return;
-      case 'bye': if (S && S.sid === d.sid) markLeft(S, from, true); return;
+      case 'bye': if (S && S.sid === d.sid && S.players.some((p) => p.uid === from && !p.isAI)) dropOut(S, from, 'quit'); return;
       case 'fin': if (S && S.sid === d.sid && Array.isArray(d.standings) && from === currentHost(S)) applyFin(S, cleanStandings(S, d.standings), sanitizeOpts(d.summary)); return;
       case 'a': {
         if (!S || S.sid !== d.sid || S.phase === 'lobby' || typeof d.t !== 'string' || !/^[a-z][a-z0-9_]{0,15}$/.test(d.t)) return;
@@ -512,6 +546,14 @@
       if (S.phase === 'lobby' && !isHost(S)) { S.acc = new Map((Array.isArray(d.acc) ? d.acc : []).filter(validUid).map((k, i) => [k, { t: i }])); S.exp = +d.exp || S.exp; renderLobby(); }
       return;
     }
+    // two friends challenged at the same moment (both tapped Start / the arrival card): the older lobby stays (its expiry
+    // on its host's clock, then the host key: every page decides the same), the other host folds his lobby into it
+    if (S && S.mode === 'party' && S.phase === 'lobby' && isHost(S) && from !== myUid()) {
+      const theirExp = +d.exp || 0;
+      if (theirExp < S.exp || (theirExp === S.exp && String(d.host) < String(S.host))) { mergeInto(S, from, nick, d); return; }
+      rawSend('skip', { sid: d.sid, why: 'busy' }); // mine stays: theirs folds in when my invite reaches them
+      return;
+    }
     if (S) { rawSend('skip', { sid: d.sid, why: 'busy' }); ST.skipped.add(d.sid); return; }
     const why = busyWhy();
     if (why) { rawSend('skip', { sid: d.sid, why: 'busy' }); ST.skipped.add(d.sid); toastQ(cleanNick(nick) + ' challenged you to ' + s.name + ', but: ' + why, 3000); return; }
@@ -526,6 +568,21 @@
     renderInvite();
     sfx('bell');
     N.emit('party:invite', { id: d.id, sid: d.sid, from: inv.nick });
+    // my own lobby for the same game folded into this one a moment ago: straight in
+    if (ST.autoAcc === d.sid) { ST.autoAcc = null; acceptInvite(); }
+  }
+  /** my lobby yields to an older one started at the same moment: call mine off (telling my guests where to go) and
+   *  join theirs if it is the same game (else their invite card shows) */
+  function mergeInto(S, from, nick, d) {
+    const guests = Array.from(S.acc.keys()).filter((k) => k !== myUid());
+    const same = d.id === S.id;
+    rawSend('cancel', { sid: S.sid, why: 'merge', into: d.sid, id: d.id, acc: guests });
+    teardown(S, 'cancel');
+    ST.skipped.delete(d.sid);
+    if (same) ST.autoAcc = d.sid;
+    onInvite(from, nick, d);
+    toastQ(cleanNick(d.nick || nick) + (same ? ' started it at the same moment: you are in!' : ' challenged everybody at the same moment. Accept or skip.'), 2800);
+    N.emit('party:merge', { into: d.sid, same });
   }
   function acceptInvite() {
     const inv = ST.invite;
@@ -569,26 +626,74 @@
     S.players = list.map((p) => ({ uid: p.uid, nick: p.uid === me ? myNick() : cleanNick(p.nick), isMe: p.uid === me, isAI: false, look: p.uid === me ? ((N.player && N.player.look) || myLook()) : lookOf(p.look) }));
     begin(S);
   }
-  function markLeft(S, uid, quit) {
+  // how: 'quit' (stopped playing) | 'room' (left the room) | 'lost' (gone longer than TUNE.leaveGraceMs)
+  function markLeft(S, uid, how) {
     if (!S || S.left.has(uid) || !S.players.some((p) => p.uid === uid)) return;
     S.left.add(uid);
     const p = S.players.find((q) => q.uid === uid);
-    if (S.phase !== 'done' && S.phase !== 'lobby') toastQ((p ? p.nick : 'A player') + (quit ? ' stopped playing.' : ' left the room.'), 2200);
+    if (S.phase !== 'done' && S.phase !== 'lobby') toastQ((p ? p.nick : 'A player') + (how === 'quit' ? ' stopped playing.' : how === 'lost' ? ' got disconnected.' : ' left the room.'), 2200);
     for (const fn of S.leaveFns.slice()) { try { fn(uid); } catch (e) { N.err('party.onLeave', e); } }
     renderStrip(S);
   }
-  N.on('online:players', () => {
-    const S = ST.sess;
-    if (ST.invite && !roomPlayers().some((p) => p.key === ST.invite.host)) { closeInvite(); ST.invite = null; }
-    if (!S || S.mode !== 'party') return;
-    const here = new Set(roomPlayers().map((p) => p.key));
-    if (S.phase === 'lobby') {
-      if (!here.has(S.host)) { teardown(S, 'cancel'); toast('The host left. Challenge called off.'); return; }
-      if (isHost(S)) { for (const k of Array.from(S.acc.keys())) if (!here.has(k)) S.acc.delete(k); renderLobby(); }
-      return;
+  /** a player is out of this game: left (no place) and never the host again; if that makes me the host, I say so */
+  function dropOut(S, uid, how) {
+    const was = currentHost(S);
+    if (how !== 'lost') S.quit.add(uid);
+    S.hostGone.add(uid);
+    if (how !== 'lost') S.absent.delete(uid); // (a 'lost' one stays absent: if he comes back he is in the game again)
+    markLeft(S, uid, how);
+    const now = currentHost(S);
+    if (now !== was && now === myUid() && S.phase !== 'done') { rawSend('host', { sid: S.sid, gone: Array.from(S.hostGone).slice(0, 10) }); toastQ(nickOf(S, was) + ' is gone: your phone runs the game now.', 2600); }
+  }
+  // who is really here: in the room's presence and not away (online.js: hidden tab, asleep, reconnecting)
+  function hereSet() { return new Set(roomPlayers().filter((p) => p.me || !p.away).map((p) => p.key)); }
+  /** the leave grace (TUNE.leaveGraceMs): a friend out of presence / away is "absent"; back in time = nothing happened
+   *  (even "left" is taken back before the results); gone longer = left, and no longer the host */
+  function presenceTick(S, now) {
+    if (!S || S.mode !== 'party' || S.phase === 'done') return;
+    const here = hereSet(), me = myUid();
+    const uids = S.phase === 'lobby' ? [S.host].concat(Array.from(S.acc.keys())) : S.players.filter((p) => !p.isAI).map((p) => p.uid);
+    for (const uid of uids) {
+      if (uid === me) continue;
+      if (here.has(uid)) {
+        if (S.absent.delete(uid) && S.left.has(uid) && !S.quit.has(uid) && S.phase !== 'lobby') { S.left.delete(uid); toastQ(nickOf(S, uid) + ' is back!', 2000); renderStrip(S); }
+        continue;
+      }
+      if (!S.absent.has(uid)) { S.absent.set(uid, now); continue; }
+      if (now - S.absent.get(uid) < TUNE.leaveGraceMs) continue;
+      if (S.phase === 'lobby') {
+        if (uid === S.host) { teardown(S, 'cancel'); toast('The host left. Challenge called off.'); return; }
+        if (isHost(S) && S.acc.delete(uid)) renderLobby();
+        S.absent.delete(uid);
+        continue;
+      }
+      if (!S.left.has(uid)) dropOut(S, uid, 'lost');
     }
-    for (const p of S.players) if (!p.isAI && !here.has(p.uid)) markLeft(S, p.uid, false);
+  }
+  N.on('online:players', () => presenceTick(ST.sess, Date.now()));
+  // a friend said goodbye to the room (Leave, the page closed): out at once
+  N.on('online:bye', (d) => {
+    const k = d && d.key;
+    if (!k) return;
+    if (ST.invite && ST.invite.host === k) { closeInvite(); ST.invite = null; }
+    const S = ST.sess;
+    if (!S || S.mode !== 'party' || S.phase === 'done') return;
+    if (S.phase === 'lobby') { if (k === S.host) { teardown(S, 'cancel'); toast('The host left. Challenge called off.'); } else if (isHost(S) && S.acc.delete(k)) renderLobby(); return; }
+    if (S.players.some((p) => p.uid === k && !p.isAI)) dropOut(S, k, 'room');
   });
+  // I was cut off (or hidden) longer than the grace period: the others have counted me out as host, so I step down too
+  function selfGap(d) {
+    const S = ST.sess, gap = d && d.gapMs;
+    if (!S || S.mode !== 'party' || S.phase === 'done' || !(gap > TUNE.leaveGraceMs)) return;
+    const me = myUid();
+    if (S.phase === 'lobby') { if (isHost(S)) cancelSession(S, 'You were away, so the challenge was called off.', false); return; }
+    if (S.hostGone.has(me)) return;
+    const was = currentHost(S);
+    S.hostGone.add(me);
+    if (was === me) toastQ('You were away for a while: ' + nickOf(S, currentHost(S)) + '\'s phone runs the game now.', 3000);
+  }
+  N.on('online:rejoined', selfGap);
+  N.on('online:visible', selfGap);
   N.on('online:room', (d) => {
     if (d && d.code) return;
     if (ST.invite) { closeInvite(); ST.invite = null; }
@@ -606,6 +711,8 @@
       get mode() { return S.mode; }, id: S.id, sid: S.sid, spec: S.spec, seed: S.seed, opts: S.opts,
       players: S.players, me, slot: Math.max(0, S.players.indexOf(me)),
       get isHost() { return currentHost(S) === me.uid; },
+      /** the uid running the game now (the host, or who took over after it left) */
+      get host() { return currentHost(S); },
       startAt: S.startAt,
       now: () => (S.mode === 'solo' ? gameNow() : sharedNow()),
       elapsed: () => (S.mode === 'solo' ? gameNow() : sharedNow()) - S.startAt,
@@ -627,6 +734,9 @@
       },
       report(result) { const ok = report(S, me.uid, result); if (ok) { renderStrip(S); checkDone(S); } return ok; },
       results: () => resultsOf(S).filter((r) => S.results.has(r.uid)),
+      /** summary({line}): a line for the results card ("Colony XI beat Ashok Nagar XI by 12 runs"); any page may set it
+       *  (they all run the same game); the host's goes out with the results, a guest's own is the fallback */
+      summary(o) { if (!o || typeof o.line !== 'string' || !o.line.trim()) return false; S.sumLine = o.line.trim().slice(0, 80); return true; },
       end(summary) {
         if (S.phase === 'done') return;
         if (S.mode === 'solo' || currentHost(S) === me.uid) { finalize(S, summary); return; }
@@ -1317,7 +1427,8 @@
       wireNet();
       barTick();
       const S = ST.sess;
-      if (S) {
+      if (S && S.mode === 'party' && Date.now() - (ST.presT || 0) > 250) { ST.presT = Date.now(); presenceTick(S, ST.presT); }
+      if (S && ST.sess === S) {
         if (S.phase === 'lobby') hostTick(S);
         else if (S.phase === 'countdown' || S.phase === 'running') {
           countTick(S);

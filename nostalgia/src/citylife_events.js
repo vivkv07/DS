@@ -3316,13 +3316,35 @@
   /* ================================================================ the director */
   const KINDS = { junction: KJ, colony_am: KAM, colony_pm: KPM, oldcity: KOLD, cinema: KCIN, baraat: KBAR };
   let ready = false, dirT = 0;
-  function buildSites() {
-    SITES.length = 0; BYID.clear(); GEOS.length = 0; WZ = null; BUSY = null;
-    if (!N.world || !N.world.built || !RD()) return false;
-    const steps = [buildJunctions, buildColonies, buildOld, buildCinemas, buildBaraats];
-    for (const f of steps) { try { f(); } catch (e) { N.err('citylife.build.' + f.name, e); } }
+  // The sites are static per world (junction arms, colonies, Old City lanes, cinemas, baraat routes) but building them
+  // all took one 100-250 ms update on a desktop (~1 s on a 4x-throttled phone) on the first play frame after START
+  // (design/audit/performance.md). They are now built a step at a time in idle callbacks while the title screen is
+  // up; whatever is left still completes synchronously on first use (ensure / the sites getter), as before.
+  let buildStep = 0;
+  const BUILD_STEPS = [buildJunctions, buildColonies, buildOld, buildCinemas, buildBaraats];
+  function buildSites(oneStep) {
+    if (buildStep === 0) {
+      SITES.length = 0; BYID.clear(); GEOS.length = 0; WZ = null; BUSY = null;
+      if (!N.world || !N.world.built || !RD()) return false;
+    }
+    while (buildStep < BUILD_STEPS.length) {
+      const f = BUILD_STEPS[buildStep++];
+      try { f(); } catch (e) { N.err('citylife.build.' + f.name, e); }
+      if (oneStep && buildStep < BUILD_STEPS.length) return false;
+    }
+    buildStep = 0;
     ready = true;
     return true;
+  }
+  function idleBuild() {
+    const ric = window.requestIdleCallback;
+    if (!ric) return;
+    const tick = (dl) => {
+      if (ready || !N.world || !N.world.built) return;
+      if (dl.didTimeout || dl.timeRemaining() > 6) { try { buildSites(true); } catch (e) { N.err('citylife.idleBuild', e); return; } }
+      if (!ready) ric(tick, { timeout: 1500 });
+    };
+    ric(tick, { timeout: 1500 });
   }
   function actR() {
     if (is3D()) { const q = N.view3d.quality || {}; return Math.min(TUNE.act3D, (q.actorDist || 620) * 0.9); }
@@ -3431,7 +3453,8 @@
   function update(dt) {
     const t0 = now();
     if (!API.enabled) { if (ACTIVE.length) for (const sc of ACTIVE.slice()) release(sc); return; }
-    if (!ready) { if (N.world && N.world.built) buildSites(); if (!ready) return; registerAudio(); }
+    if (!ready) { if (N.world && N.world.built) buildSites(); if (!ready) return; }
+    if (!audioReg) registerAudio(); // (also when the sites were built in idle time before play)
     dirT -= dt;
     if (dirT <= 0) { dirT = TUNE.dirEvery; try { direct(); } catch (e) { N.err('citylife.direct', e); } sweepOrphans(); }
     for (let i = 0; i < ACTIVE.length; i++) {
@@ -3475,7 +3498,8 @@
     for (const s of SITES) { s.force = null; s.cool = 0; }
     dirT = 0;
   }
-  N.on('world:built', () => { resetAll(); ready = false; });
+  N.on('world:built', () => { resetAll(); ready = false; buildStep = 0; });
+  N.on('boot', idleBuild);
   N.on('game:new', () => { resetAll(); dirT = 0; });
   N.on('player:teleport', () => {
     dirT = 0;
@@ -3552,7 +3576,7 @@
     },
     setOptions(o) { for (const k of ['sounds', 'barks', 'particles']) if (o && o[k] != null) TUNE[k] = !!o[k]; return { sounds: TUNE.sounds, barks: TUNE.barks, particles: TUNE.particles }; },
     reset: resetAll,
-    rebuild() { resetAll(); ready = false; return buildSites(); },
+    rebuild() { resetAll(); ready = false; buildStep = 0; return buildSites(); },
     _debug: { ACTIVE, SITES, PERSONS, VEHS, BEASTS, P, G3, CX, GEOS, REJ, colonyGeo: (id, x, y) => { const g = colonyGeo(id, x, y); if (g) GEOS.pop(); return g; } },
   });
   if (N.citylife && typeof N.citylife === 'object' && !N.citylife.events) { try { N.citylife.events = API; } catch (e) { /* frozen */ } }

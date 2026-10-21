@@ -20,7 +20,8 @@
  *
  * Backend: Supabase (N.ONLINE_CONFIG in src/online_config.js). Nothing loads until the player opens Online
  * (or has used it before on this device: then the SDK loads quietly after boot to mirror the saves).
- *   - SDK: @supabase/supabase-js 2.118.0 UMD from jsDelivr, then vendor/supabase/supabase.js (../ for dist/).
+ *   - SDK: @supabase/supabase-js 2.118.0 UMD: vendor/supabase/supabase.js next to the page (../ for dist/), then jsDelivr
+ *     pinned by its sha384 (Subresource Integrity).
  *   - Identity: a random player code WORD-WORD-WORD-NNNN-XXXXX (256 words, 4 digits, 5 Crockford base-32
  *     chars: ~62 bits) kept in localStorage 'nostalgia.online.v1'. "Use my code" moves it to another phone.
  *     No accounts, no email, nothing personal: the database keys rows by sha256(code). The code is shaped so
@@ -197,11 +198,12 @@
   }
 
   /* ================================================================ SDK loader */
-  function loadScript(src, ms) {
+  function loadScript(src, ms, integrity) {
     return new Promise((resolve, reject) => {
       const s = document.createElement('script');
       let done = false;
       const t = setTimeout(() => { if (!done) { done = true; s.remove(); reject(new Error('timeout ' + src)); } }, ms || 15000);
+      if (integrity) s.integrity = integrity; // SRI: the browser refuses a file whose hash differs (and onerror fires)
       s.src = src; s.async = true; s.crossOrigin = /^https?:/.test(src) ? 'anonymous' : null;
       s.onload = () => { if (!done) { done = true; clearTimeout(t); resolve(); } };
       s.onerror = () => { if (!done) { done = true; clearTimeout(t); s.remove(); reject(new Error('failed ' + src)); } };
@@ -212,8 +214,13 @@
     if (window.supabase && window.supabase.createClient) return window.supabase;
     const list = (cfg() && Array.isArray(cfg().sdk) && cfg().sdk.length) ? cfg().sdk : ['vendor/supabase/supabase.js'];
     let last = null;
-    for (const src of list) {
-      try { await loadScript(src); if (window.supabase && window.supabase.createClient) return window.supabase; } catch (e) { last = e; }
+    for (const it of list) {
+      const src = typeof it === 'string' ? it : it && typeof it.src === 'string' ? it.src : null;
+      if (!src) continue;
+      try {
+        await loadScript(src, 15000, typeof it === 'object' && typeof it.integrity === 'string' ? it.integrity : null);
+        if (window.supabase && window.supabase.createClient) { S.sdkFrom = src; return window.supabase; }
+      } catch (e) { last = e; }
     }
     throw last || new Error('supabase sdk missing');
   }
@@ -447,7 +454,21 @@
 
   /* ================================================================ rooms */
   const myKey = (() => { const b = randBytes(6); let s = ''; for (const x of b) s += x.toString(16).padStart(2, '0'); return 'p' + s; })();
-  const R = { ch: null, code: null, joined: 0, players: [], pin: null, pinClear: 0, myPin: null, lastSent: null, sendT: 0, keepT: 0, fullT: 0, sent: 0, recv: 0, chatT: 0, leaving: false };
+  // gone: players whose presence dropped without a goodbye (a network blip): kept for TUNE.leaveGraceMs as "reconnecting";
+  // byeT: when a player said goodbye ('by': Leave / the page closed); downT: when my own channel went down (0 = up)
+  const R = { ch: null, code: null, joined: 0, players: [], pin: null, pinClear: 0, myPin: null, lastSent: null, sendT: 0, keepT: 0, fullT: 0, sent: 0, recv: 0, chatT: 0, leaving: false,
+    gone: new Map(), byeT: new Map(), downT: 0, hiddenT: 0, q: [], skipped: 0 };
+  /** my room channel is joined and the socket is up: only then do sends go out (supabase-js would otherwise quietly
+   *  fall back to one HTTP request per message while it reconnects) */
+  function live() {
+    const ch = R.ch;
+    if (!ch) return false;
+    try {
+      if (ch.state !== 'joined') return false;
+      const rt = S.client && S.client.realtime;
+      return !rt || typeof rt.isConnected !== 'function' || rt.isConnected();
+    } catch (e) { return false; }
+  }
   function myLook() {
     const l = (N.player && N.player.look) || {};
     return sanitizeLook(l);
@@ -480,16 +501,24 @@
     ch.on('broadcast', { event: 'st' }, (m) => { if (R.ch === ch) onState(m && m.payload); });
     ch.on('broadcast', { event: 'em' }, (m) => { if (R.ch === ch) onEmote(m && m.payload); });
     ch.on('broadcast', { event: 'pt' }, (m) => { if (R.ch === ch) onPartyMsg(m && m.payload); }); // [party hook]
+    ch.on('broadcast', { event: 'by' }, (m) => { if (R.ch === ch) onBye(m && m.payload); });
     const subscribed = new Promise((res, rej) => {
       let done = false;
       ch.subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
           if (!done) { done = true; res(); }
-          // a rejoin after a dropped socket (phone asleep, tab in the background) starts with no presence: announce again
-          if (R.ch === ch) { if (S.status !== 'room') setStatus('room'); trackMe().catch(() => {}); }
+          // a rejoin after a dropped socket (phone asleep, tab in the background) starts with no presence: announce again,
+          // send a full state at once, then what the party bus queued meanwhile
+          if (R.ch === ch) {
+            const gap = R.downT ? Date.now() - R.downT : 0;
+            R.downT = 0; R.lastSent = null; R.sendT = 0;
+            if (S.status !== 'room') setStatus('room');
+            trackMe().catch(() => {}).then(() => flushQueue());
+            if (gap) N.emit('online:rejoined', { gapMs: gap });
+          }
         }
-        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') { if (!done) { done = true; rej(err || new Error(status)); } else if (R.ch === ch) setStatus('reconnecting'); }
-        else if (status === 'CLOSED' && R.ch === ch && !R.leaving) setStatus('reconnecting');
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') { if (!done) { done = true; rej(err || new Error(status)); } else if (R.ch === ch) { if (!R.downT) R.downT = Date.now(); setStatus('reconnecting'); } }
+        else if (status === 'CLOSED' && R.ch === ch && !R.leaving) { if (!R.downT) R.downT = Date.now(); setStatus('reconnecting'); }
       });
     });
     return { ch, subscribed, firstSync };
@@ -511,6 +540,7 @@
     // joining an empty room is allowed: the friend may still be connecting, and presence can arrive late
     if (others.length >= MAX()) { await closeChannel(ch); return { ok: false, why: 'full', n: others.length }; }
     R.ch = ch; R.code = code; R.joined = Date.now(); R.myPin = null; R.pinClear = 0; R.pin = null; R.lastSent = null; R.sendT = 0; R.keepT = 0; R.leaving = false;
+    R.gone = new Map(); R.byeT = new Map(); R.downT = 0; R.q = [];
     await trackMe();
     setStatus('room');
     N.emit('online:room', { code });
@@ -548,7 +578,7 @@
       if (r.ok) {
         const friends = R.players.some((p) => !p.me);
         afterEnter(friends ? 'join' : 'wait');
-        if (gameStarted()) toast(friends ? 'Joined room ' + code + '.' : 'You are in room ' + code + '. Waiting for friends to join…', 3000);
+        if (gameStarted()) toast(friends ? 'Joined room ' + code + '.' : 'Nobody is in room ' + code + ' yet. Check the code with your friend, or wait here.', 4200);
         return r;
       }
       if (r.why === 'full') return { ok: false, why: 'Room ' + code + ' is full (' + MAX() + '/' + MAX() + '). Ask a friend to start a new room.' };
@@ -559,8 +589,9 @@
   async function leaveRoom(why) {
     const ch = R.ch;
     if (!ch) return { ok: true };
+    sayBye();
     R.leaving = true;
-    R.ch = null; R.code = null; R.players = []; R.pin = null; R.myPin = null;
+    R.ch = null; R.code = null; R.players = []; R.pin = null; R.myPin = null; R.gone = new Map(); R.q = [];
     FLOW.place = null; FLOW.offer = null; FLOW.auto = null; HS.inside = new Set(); HS.nearHtml = '';
     hideArrive();
     clearGhosts();
@@ -582,19 +613,28 @@
     const prevKeys = new Set(R.players.map((p) => p.key));
     R.players = list;
     const keys = new Set();
+    const now = Date.now();
     for (const p of list) {
       if (p.me) continue;
       keys.add(p.key);
+      const back = R.gone.has(p.key);
+      R.gone.delete(p.key);
       const g = ghostFor(p.key);
-      g.nick = p.nick; g.look = p.look; g.ent.look = p.look;
+      g.nick = p.nick; g.look = p.look; g.ent.look = p.look; g.j = p.j; g.drop = 0;
       setTagName(g.tag, p.nick);
       if (!prevKeys.has(p.key)) {
-        // someone new: send my full state at once (not at the next 2 s keepalive) so they can find me straight away
+        // someone new (or back after a blip): send my full state at once (not at the next keepalive) so they find me
         R.keepT = 0; R.fullT = 0; R.lastSent = null;
-        if (prevKeys.size) toast(p.nick + ' joined the room!', 2400);
+        if (prevKeys.size && !back) toast(p.nick + ' joined the room!', 2400);
       }
     }
-    for (const [k, g] of GH) if (!keys.has(k)) { const n = g.nick; removeGhost(k); toast(n + ' left the room.', 2000); }
+    // gone from presence: said goodbye (Leave, the page closed) -> gone now; otherwise a blip (a phone between cell
+    // towers, a socket that dropped): "reconnecting…" on the nameplate for TUNE.leaveGraceMs before "got disconnected"
+    for (const [k, g] of GH) {
+      if (keys.has(k)) continue;
+      if ((R.byeT.get(k) || 0) > now - 10000) { R.gone.delete(k); const n = g.nick; removeGhost(k); toast(n + ' left the room.', 2000); }
+      else if (!R.gone.has(k)) { R.gone.set(k, { t: now, nick: g.nick, j: g.j || 0 }); g.drop = now; }
+    }
     // the meet pin: the newest pin in the room that no "clear" has overtaken
     const clearT = Math.max(0, ...list.map((p) => p.pc || 0));
     let pin = null;
@@ -638,6 +678,10 @@
     }
     if (s.n != null) o.n = validNick(s.n);
     if (s.l != null) o.l = sanitizeLook(s.l);
+    // dead-reckoning fields (older pages leave them out): the sender's clock (ms) and its velocity (u/s); away: its tab is hidden
+    if (isFinite(s.ts) && +s.ts >= 0) o.ts = +s.ts;
+    if (isFinite(s.vx) && isFinite(s.vy)) { o.vx = clamp(+s.vx, -450, 450); o.vy = clamp(+s.vy, -450, 450); }
+    if (s.aw) o.aw = 1;
     return o;
   }
 
@@ -673,19 +717,47 @@
   function onState(raw) {
     const s = sanitizeState(raw);
     if (!s || s.k === myKey) return;
-    if (!R.players.some((p) => p.key === s.k)) return; // only players present in the room
+    if (!R.players.some((p) => p.key === s.k) && !R.gone.has(s.k)) return; // only players in the room (or reconnecting)
     R.recv++;
     const g = ghostFor(s.k);
     if (s.n) { g.nick = s.n; setTagName(g.tag, s.n); }
     if (s.l) { g.look = s.l; g.ent.look = s.l; }
     const t = nowMs();
+    g.aw = !!s.aw;
+    // the sender's clock on mine: the smallest (receive - send) seen is the quickest trip; every sample is placed on my
+    // clock by it, so network jitter does not move it (it relaxes slowly in case the route gets slower for good)
+    let lt = t;
+    if (s.ts != null) {
+      const d = t - s.ts;
+      if (g.off == null || d < g.off || d - g.off > 5000) g.off = d;
+      else g.off += Math.min(d - g.off, Math.max(0, t - (g.offT || t)) * TUNE.offRelax);
+      g.offT = t;
+      lt = Math.min(t, s.ts + g.off);
+    }
     const last = g.buf[g.buf.length - 1];
-    if (last && (Math.hypot(s.x - last.x, s.y - last.y) > 320 || s.m !== last.m || s.vt !== last.vt)) g.buf.length = 0; // teleport / mode change: snap
-    if (last && t - last.rt < 15) g.buf.pop();
-    s.rt = t;
+    let before = last ? poseAt(g, t) : null;
+    if (last && (Math.hypot(s.x - last.x, s.y - last.y) > 320 || s.m !== last.m || s.vt !== last.vt)) { g.buf.length = 0; g.corr = null; before = null; } // teleport / mode change: snap
+    // an older page sends no velocity: from the last two samples
+    if (s.vx == null) { if (last && g.buf.length) { const dt = Math.max(0.03, (lt - last.lt) / 1000); s.vx = clamp((s.x - last.x) / dt, -450, 450); s.vy = clamp((s.y - last.y) / dt, -450, 450); } else { s.vx = 0; s.vy = 0; } }
+    while (g.buf.length && g.buf[g.buf.length - 1].lt >= lt) g.buf.pop(); // the same instant / out of order
+    s.lt = lt; s.rt = t;
     g.buf.push(s);
-    if (g.buf.length > 12) g.buf.shift();
+    if (g.buf.length > 16) g.buf.shift();
     g.lastRx = t;
+    // no pop when a fresh sample corrects the guess: the difference is eased away over TUNE.blendMs
+    if (before) {
+      const after = poseAt(g, t);
+      if (after) {
+        const cx = (g.corr ? g.corr.x : 0) + before.x - after.x, cy = (g.corr ? g.corr.y : 0) + before.y - after.y;
+        g.corr = Math.hypot(cx, cy) < 60 ? { x: cx, y: cy } : null;
+      }
+    }
+  }
+  /** a player said goodbye (Leave, or the page closed): their presence drop is a real leave, not a blip */
+  function onBye(raw) {
+    if (!raw || typeof raw !== 'object' || typeof raw.k !== 'string' || raw.k === myKey || raw.k.length > 20) return;
+    R.byeT.set(raw.k, Date.now());
+    N.emit('online:bye', { key: raw.k });
   }
   function onEmote(raw) {
     if (!raw || typeof raw !== 'object' || typeof raw.k !== 'string' || raw.k === myKey) return;
@@ -704,26 +776,24 @@
     try { if (N.dialogue && N.dialogue.bark) N.dialogue.bark(target, text, { secs: ph.emote ? 2.4 : 3.2, name: false, color: '#5fd0ff', blip: true, h: 15 }); } catch (e) { N.err('online.bubble', e); }
   }
   const lerpA = (a, b, t) => a + U.angleDiff(a, b) * t;
+  // where a ghost is at time t: TUNE.interpMs behind on the samples' own timeline, interpolated; past the newest sample
+  // dead reckoning on its velocity (the sender sends again before that guess drifts more than TUNE.drErr)
   function poseAt(g, t) {
     const B = g.buf;
     if (!B.length) return null;
-    const rt = t - 120;
-    if (B.length === 1 || rt <= B[0].rt) return Object.assign({}, B[0]);
+    const rt = t - TUNE.interpMs;
+    if (rt <= B[0].lt) return Object.assign({}, B[0]);
     for (let i = B.length - 2; i >= 0; i--) {
       const a = B[i], b = B[i + 1];
-      if (rt >= a.rt && rt <= b.rt) {
-        const f = (rt - a.rt) / Math.max(1, b.rt - a.rt);
+      if (rt >= a.lt && rt <= b.lt) {
+        const f = (rt - a.lt) / Math.max(1, b.lt - a.lt);
         return Object.assign({}, b, { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, a: lerpA(a.a, b.a, f), sp: a.sp + (b.sp - a.sp) * f });
       }
     }
-    // past the newest sample: a short extrapolation while it was moving
-    const b = B[B.length - 1], a = B[B.length - 2];
-    const ex = Math.min(250, rt - b.rt) / 1000;
-    if (Math.abs(b.sp) < 1 || ex <= 0) return Object.assign({}, b);
-    const dt = Math.max(0.03, (b.rt - a.rt) / 1000);
-    const vx = (b.x - a.x) / dt, vy = (b.y - a.y) / dt;
-    if (Math.hypot(vx, vy) > 450) return Object.assign({}, b);
-    return Object.assign({}, b, { x: b.x + vx * ex, y: b.y + vy * ex });
+    const b = B[B.length - 1];
+    const ex = Math.min(TUNE.extrapMs, rt - b.lt) / 1000;
+    if (ex <= 0 || g.aw || g.drop || Math.hypot(b.vx || 0, b.vy || 0) < 1) return Object.assign({}, b);
+    return Object.assign({}, b, { x: b.x + b.vx * ex, y: b.y + b.vy * ex });
   }
   const TRACE = { on: false, out: [] }; // tests: per-frame ghost positions
   function updateGhosts(dt) {
@@ -733,7 +803,15 @@
     for (const g of GH.values()) {
       const e = g.ent;
       const p = poseAt(g, t);
+      // away: the tab is hidden (it said so), the presence dropped (reconnecting), or nothing for TUNE.staleMs (asleep)
+      g.away = !!(g.aw || g.drop || (g.lastRx && t - g.lastRx > TUNE.staleMs));
       if (!p) { e.hidden = true; continue; }
+      const rdt = Math.min(0.25, Math.max(0, (t - (g.updT || t)) / 1000)); g.updT = t;
+      if (g.corr) {
+        const k = Math.exp((-rdt * 1000) / TUNE.blendMs);
+        g.corr.x *= k; g.corr.y *= k;
+        if (Math.hypot(g.corr.x, g.corr.y) < 0.05) g.corr = null; else { p.x += g.corr.x; p.y += g.corr.y; }
+      }
       const ox = e.x, oy = e.y;
       e.hidden = false;
       e.x = p.x; e.y = p.y; e.angle = p.a; e.facing = p.a;
@@ -793,12 +871,19 @@
   // screen, so Ravi is blue for everyone): a coloured triangle over the head with the name above it, my own
   // triangle too, and an arrow at the screen edge (name + distance) for friends who are off screen or behind.
   const PCOL = ['#ffd23f', '#3fa9ff', '#ff5a5f', '#5ce05a', '#c46bff', '#ff9f1c', '#2ee6d6', '#ff6fc8', '#f2f2f2', '#b6f03c'];
-  function slotOf(key) { const i = R.players.findIndex((p) => p.key === key); return i < 0 ? 0 : i % PCOL.length; }
+  // (a friend who is reconnecting keeps his place in the order, so nobody's colour changes during a blip)
+  function slotOf(key) {
+    const L = R.players.map((p) => ({ key: p.key, j: p.j }));
+    for (const [k, o] of R.gone) L.push({ key: k, j: o.j || 0 });
+    if (L.length > 1) L.sort((a, b) => (a.j - b.j) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    const i = L.findIndex((p) => p.key === key);
+    return i < 0 ? 0 : i % PCOL.length;
+  }
   function colorOf(key) { return PCOL[slotOf(key)]; }
   function makeTag(nick) {
     const el = document.createElement('div');
     el.className = 'ol-tag'; el.style.visibility = 'hidden';
-    el.innerHTML = '<span class="ol-nm"></span><span class="ol-dist"></span><i class="ol-tri"></i>';
+    el.innerHTML = '<span class="ol-nm"></span><span class="ol-st"></span><span class="ol-dist"></span><i class="ol-tri"></i>';
     setTagName(el, nick);
     return el;
   }
@@ -844,6 +929,9 @@
       const e = g.ent, el = g.tag;
       if (!el) continue;
       el.style.setProperty('--pc', colorOf(g.key));
+      // away (tab hidden / asleep) or reconnecting (presence dropped): a dimmed nameplate that says so
+      const st = g.drop ? 'reconnecting…' : g.away ? 'away' : '';
+      if (el.dataset.st !== st) { el.dataset.st = st; el.classList.toggle('ol-away', !!st); const se = el.querySelector('.ol-st'); if (se) se.textContent = st; }
       if (e.hidden || e.x < -9000) { hideTag(el); continue; }
       const q = screenOf(e, rect, Rn, V3, false);
       const far = V3 && V3.active && Math.hypot(e.x - P0.x, e.y - P0.y) > 320;
@@ -894,13 +982,41 @@
     if (!isFinite(e.x) || !isFinite(e.y)) return null;
     const sp = v ? (v.speed || 0) : Math.hypot(p.vx || 0, p.vy || 0);
     const a = v ? v.angle : (isFinite(p.facing) ? p.facing : p.angle);
-    const s = { k: myKey, x: Math.round(e.x * 10) / 10, y: Math.round(e.y * 10) / 10, a: Math.round((a || 0) * 100) / 100, m: v ? 'v' : 'f', sp: Math.round(sp), an: !v && p.running && sp > 50 ? 'r' : sp > 3 ? 'w' : 'i' };
+    let vx = v ? v.vx : p.vx, vy = v ? v.vy : p.vy;
+    if (!isFinite(vx) || !isFinite(vy)) { vx = v ? Math.cos(v.angle || 0) * (v.speed || 0) : 0; vy = v ? Math.sin(v.angle || 0) * (v.speed || 0) : 0; }
+    const s = { k: myKey, x: Math.round(e.x * 10) / 10, y: Math.round(e.y * 10) / 10, a: Math.round((a || 0) * 100) / 100, m: v ? 'v' : 'f', sp: Math.round(sp), an: !v && p.running && sp > 50 ? 'r' : sp > 3 ? 'w' : 'i', vx: Math.round(vx), vy: Math.round(vy) };
     if (v) { s.vt = v.type; if (v.color) s.vc = v.color; }
     return s;
   }
-  function changed(a, b) {
-    if (!a || !b) return true;
-    return a.m !== b.m || a.vt !== b.vt || a.an !== b.an || Math.abs(a.x - b.x) > 0.6 || Math.abs(a.y - b.y) > 0.6 || Math.abs(U.angleDiff(a.a, b.a)) > 0.03 || Math.abs(a.sp - b.sp) > 4;
+  /** how far the nearest friend's ghost is (0 when one has not arrived yet, Infinity when nobody is in the city) */
+  function nearestFriendU() {
+    const me = N.player && (N.player.vehicle || N.player);
+    if (!me) return 0;
+    let d = Infinity;
+    for (const g of GH.values()) {
+      if (g.drop) continue;
+      if (!g.buf.length || g.ent.hidden || !(g.ent.x > -9000)) return 0;
+      d = Math.min(d, Math.hypot(g.ent.x - me.x, g.ent.y - me.y));
+    }
+    return d;
+  }
+  // DEAD RECKONING (Realtime bills and rate-limits every message: each one counts once sent + once per friend who
+  // gets it): a friend's page carries my ghost on along my last velocity, so I only send when that guess is off by
+  // more than TUNE.drErr (a turn, a stop, a burst of speed), my heading turns, the way I move changes (on foot / a
+  // vehicle / running), or now and then (TUNE.drRefreshMs moving, TUNE.keepMs standing). Never faster than stateHz;
+  // looser when every friend is far off screen (TUNE.farU); nothing while I am alone in the room.
+  function needSend(s, L, t, hidden) {
+    if (s.m !== L.m || s.vt !== L.vt || s.an !== L.an || !!s.aw !== !!L.aw) return true;
+    const age = t - L.lt;
+    if (hidden) return age > TUNE.keepMs;
+    const far = nearestFriendU() > TUNE.farU;
+    const ex = Math.min(age, TUNE.extrapMs) / 1000;
+    const err = Math.hypot(s.x - (L.x + L.vx * ex), s.y - (L.y + L.vy * ex));
+    // (a fast rider may drift a little more: 2.2 u at a walk, ~3 u at full pedal, which is 25 ms of his travel)
+    if (err > (far ? TUNE.drErrFar : Math.max(TUNE.drErr, Math.hypot(s.vx, s.vy) * 0.025))) return true;
+    if (Math.abs(U.angleDiff(s.a, L.a)) > (far ? 0.8 : TUNE.drAng)) return true;
+    if (Math.hypot(s.vx, s.vy) > 3 && age > (far ? 2 * TUNE.drRefreshMs : TUNE.drRefreshMs)) return true;
+    return age > TUNE.keepMs;
   }
   function stateHz() {
     const base = clamp(+(cfg() && cfg().stateHz) || 8, 1, 10);
@@ -913,6 +1029,8 @@
     const mode = N.state.mode;
     if (mode === 'title' || mode === 'boot' || !N.world || !N.world.built) return;
     const t = nowMs();
+    // reconnecting: nothing (supabase-js would send each one as an HTTP request); a full state goes out on the rejoin
+    if (!live()) { if (!R.downT) R.downT = Date.now(); R.skipped++; return; }
     // self-heal: every 10 s make sure the server still lists us (a silent reconnect can drop our presence)
     if (t - (R.selfT || 0) > 10000) {
       R.selfT = t;
@@ -920,15 +1038,32 @@
       try { const st = ch.presenceState ? ch.presenceState() : {}; here = !!(st[myKey] && st[myKey].length); } catch (e) { /* ignore */ }
       if (!here) trackMe().catch(() => {});
     }
+    // alone in the room: nobody to tell (presence shows me; a friend who joins gets a full state at once)
+    if (!R.players.some((p) => !p.me)) { R.lastSent = null; return; }
     if (t - R.sendT < 1000 / stateHz()) return;
     const s = localState();
     if (!s) return;
-    const keep = t - R.keepT > 2000;
-    if (!keep && !changed(s, R.lastSent)) return;
-    if (t - R.fullT > 3000 || !R.lastSent) { s.n = P.nick || defaultNick(); s.l = myLook(); R.fullT = t; }
-    R.sendT = t; R.keepT = t; R.lastSent = s; R.sent++;
+    const hidden = typeof document !== 'undefined' && !!document.hidden;
+    if (hidden) s.aw = 1;
+    const L = R.lastSent;
+    if (L && !needSend(s, L, t, hidden)) return;
+    if (t - R.fullT > 10000 || !L) { s.n = P.nick || defaultNick(); s.l = myLook(); R.fullT = t; }
+    s.ts = Math.round(t);
+    R.sendT = t; R.keepT = t; R.lastSent = Object.assign({}, s, { lt: t }); R.sent++;
     try { ch.send({ type: 'broadcast', event: 'st', payload: s }); } catch (e) { N.err('online.send', e); }
   }
+  /** tab hidden / page into the back-forward cache: tell the room at once (the game loop stops with it) */
+  function sendAway() {
+    if (!live() || !R.players.some((p) => !p.me)) return;
+    const s = localState();
+    if (!s) return;
+    const t = nowMs();
+    s.aw = 1; s.vx = 0; s.vy = 0; s.ts = Math.round(t);
+    R.sendT = t; R.keepT = t; R.lastSent = Object.assign({}, s, { lt: t }); R.sent++;
+    try { R.ch.send({ type: 'broadcast', event: 'st', payload: s }); } catch (e) { N.err('online.away', e); }
+  }
+  /** Leave / the page closing: a goodbye, so friends drop my ghost at once instead of waiting out a blip */
+  function sayBye() { if (live()) { try { R.ch.send({ type: 'broadcast', event: 'by', payload: { k: myKey } }); } catch (e) { /* closing anyway */ } } }
 
   /* ---------------------------------------------------------------- meet pin + quick-chat */
   function clearPinMarks() {
@@ -973,6 +1108,7 @@
     if (!ph || !R.ch) return false;
     const t = nowMs();
     if (t - R.chatT < 1000) return false;
+    if (!live()) { toast('Reconnecting… try again in a moment.', 1800); return false; }
     R.chatT = t;
     try { R.ch.send({ type: 'broadcast', event: 'em', payload: { k: myKey, id } }); } catch (e) { N.err('online.say', e); return false; }
     if (N.player) bubble(N.player, ph, P.nick);
@@ -981,7 +1117,13 @@
   }
 
   /* ================================================================ room flow: straight into the world, next to friends */
-  const TUNE = { flowMs: 1400 }; // the panel shows the room code this long before the game takes over
+  // flowMs: the panel shows the room code this long before the game takes over. The network side (ARCHITECTURE §23
+  // "Ghosts" / "Dead reckoning"): interpMs behind on the samples' timeline, extrapMs of dead reckoning at most, a
+  // correction eased away over blendMs, offRelax (ms per ms) for the clock offset to relax; a ghost with nothing for
+  // staleMs is "away"; a presence drop without a goodbye waits leaveGraceMs ("reconnecting…"); the sender's thresholds
+  // drErr / drErrFar (u), drAng (rad), drRefreshMs, keepMs; farU: every friend farther than this = off screen.
+  const TUNE = { flowMs: 1400, interpMs: 150, extrapMs: 1500, blendMs: 150, offRelax: 0.01, staleMs: 7000, leaveGraceMs: 15000,
+    drErr: 2.2, drErrFar: 10, drAng: 0.2, drRefreshMs: 1000, keepMs: 3000, farU: 450, queueMs: 8000 };
   const GO_MIN_U = 100;          // the 👫 button shows when the friend it goes to is farther than this (~160 m)
   const HERE_U = 60;             // a joiner already this close to the friend (~100 m) stays where they are
   const FLOW = { auto: null, place: null, offer: null, starting: false, started: 0, how: null };
@@ -1035,7 +1177,7 @@
     for (const p of R.players) {
       if (p.me) continue;
       const g = GH.get(p.key);
-      if (!g || !g.buf.length || g.ent.hidden || !(g.ent.x > -9000)) continue;
+      if (!g || !g.buf.length || g.ent.hidden || !(g.ent.x > -9000) || g.away) continue;
       return { key: p.key, nick: p.nick, x: g.ent.x, y: g.ent.y };
     }
     return null;
@@ -1140,7 +1282,7 @@
     for (const p of R.players) {
       if (p.me) continue;
       const g = GH.get(p.key);
-      if (g && g.buf.length && !g.ent.hidden && g.ent.x > -9000) pts.push({ key: p.key, me: false, x: g.ent.x, y: g.ent.y });
+      if (g && g.buf.length && !g.ent.hidden && g.ent.x > -9000 && !g.away) pts.push({ key: p.key, me: false, x: g.ent.x, y: g.ent.y });
     }
     return pts;
   }
@@ -1194,8 +1336,15 @@
   const PT = { subs: new Set(), out: [], rx: new Map(), sent: 0, recv: 0, dropped: 0 };
   const PT_TYPE = /^[a-z][a-z0-9_]{0,15}$/;
   function ptSize(d) { try { return d === undefined ? 0 : JSON.stringify(d).length; } catch (e) { return Infinity; } }
-  function channelSend(type, data) {
+  // While my channel is reconnecting nothing goes out; channelSend(type, data, {queue: true}) keeps a message (the
+  // party's invites, answers, GO, results ...) for up to TUNE.queueMs and sends it, in order, on the rejoin.
+  function channelSend(type, data, o) {
     if (!R.ch || !PT_TYPE.test(String(type || '')) || ptSize(data) > 2048) return false;
+    if (!live()) {
+      if (o && o.queue && R.q.length < 40) { R.q.push({ type, data, t: Date.now() }); return true; }
+      PT.dropped++;
+      return false;
+    }
     const t = nowMs();
     while (PT.out.length && t - PT.out[0] > 1000) PT.out.shift();
     if (PT.out.length >= 25) { PT.dropped++; return false; }
@@ -1203,9 +1352,14 @@
     try { R.ch.send({ type: 'broadcast', event: 'pt', payload: { k: myKey, t: type, d: data === undefined ? null : data } }); } catch (e) { N.err('online.channelSend', e); return false; }
     return true;
   }
+  function flushQueue() {
+    const q = R.q; R.q = [];
+    const t = Date.now();
+    for (const m of q) if (t - m.t <= TUNE.queueMs) channelSend(m.type, m.data, { queue: true });
+  }
   function onPartyMsg(raw) {
     if (!raw || typeof raw !== 'object' || typeof raw.k !== 'string' || raw.k === myKey || !PT_TYPE.test(String(raw.t || ''))) return;
-    const p = R.players.find((q) => q.key === raw.k);
+    const p = R.players.find((q) => q.key === raw.k) || (R.gone.has(raw.k) ? { key: raw.k, nick: R.gone.get(raw.k).nick } : null);
     if (!p || ptSize(raw.d) > 2048) return;
     const t = nowMs();
     let w = PT.rx.get(raw.k);
@@ -1217,7 +1371,8 @@
   }
   function onMessage(fn) { if (typeof fn !== 'function') return () => {}; PT.subs.add(fn); return () => PT.subs.delete(fn); }
   function partyPlayers() {
-    return R.ch ? R.players.map((p) => { const g = GH.get(p.key); const o = { key: p.key, nick: p.me ? (P.nick || p.nick) : p.nick, look: p.look, me: p.me, j: p.j }; if (g && !g.ent.hidden) { o.x = g.ent.x; o.y = g.ent.y; } return o; }) : [];
+    // away: hidden tab / asleep (src/party.js gives such a player, like one who dropped out of presence, a grace period)
+    return R.ch ? R.players.map((p) => { const g = GH.get(p.key); const o = { key: p.key, nick: p.me ? (P.nick || p.nick) : p.nick, look: p.look, me: p.me, j: p.j, away: !!(g && g.away) }; if (g && !g.ent.hidden) { o.x = g.ent.x; o.y = g.ent.y; } return o; }) : [];
   }
   /** party leaderboards: the race_* database functions (supabase/migrations/*_party.sql), keyed by the player code */
   async function partyRpc(fn, args) {
@@ -1565,7 +1720,7 @@
     const code = r.code || R.code;
     if (a === 'create') return 'Room ' + code + ' is open! Tell your friends the code.' + (m === 'title' ? ' Taking you into the city…' : m === 'paused' ? ' Back to the city…' : '');
     const friends = R.players.some((p) => !p.me);
-    return 'You joined room ' + code + '!' + (friends ? (m === 'title' ? ' Taking you to your friends…' : m === 'paused' ? ' Off to your friends…' : '') : ' Waiting for friends…');
+    return friends ? 'You joined room ' + code + '!' + (m === 'title' ? ' Taking you to your friends…' : m === 'paused' ? ' Off to your friends…' : '') : 'Nobody is in room ' + code + ' yet. Check the code with your friend, or wait here.';
   }
   async function act(a, b) {
     try {
@@ -1641,7 +1796,22 @@
   N.on('save', (d) => { if (d && d.ok) schedulePush(); });
   for (const ev of ['mission:pass', 'place:visited', 'tape:rec', 'item:give']) N.on(ev, () => scheduleJourney());
   N.on('game:quit', () => { /* the room stays open across the title: friends keep seeing your last spot */ });
-  window.addEventListener('pagehide', () => { if (R.ch) { try { R.ch.unsubscribe(); } catch (e) { /* ignore */ } } });
+  // the page closes: a goodbye, then out of the channel. Into the back-forward cache (persisted: it may come back, and
+  // supabase-js reconnects on pageshow) or a hidden tab: only "away"; the room stays.
+  window.addEventListener('pagehide', (ev) => {
+    if (!R.ch) return;
+    if (ev && ev.persisted) { sendAway(); return; }
+    sayBye();
+    try { R.ch.unsubscribe(); } catch (e) { /* ignore */ }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!R.ch) return;
+    if (document.hidden) { R.hiddenT = Date.now(); sendAway(); return; }
+    const gap = R.hiddenT ? Date.now() - R.hiddenT : 0;
+    R.hiddenT = 0; R.lastSent = null; R.sendT = 0; // back: a full state at once
+    if (!R.downT && R.ch.state !== 'joined') R.downT = Date.now() - gap;
+    if (gap) N.emit('online:visible', { gapMs: gap });
+  });
 
   N.addSystem({
     id: 'online', order: 86, runIn: ['*'],
@@ -1652,7 +1822,23 @@
       if (availability() === 'ok' && P.code) setTimeout(() => { ensureClient().then(() => cloudPull()).catch(() => {}); }, 2500);
     },
     update(dt) {
-      if (R.ch) sendState();
+      if (R.ch) {
+        if (!R.downT && R.ch.state !== 'joined') R.downT = Date.now();
+        sendState();
+        if (R.gone.size) {
+          const now = Date.now();
+          for (const [k, o] of Array.from(R.gone)) {
+            if (now - o.t < TUNE.leaveGraceMs) continue;
+            R.gone.delete(k);
+            // (a friend in my party game: party.js has already said so, at its own shorter grace)
+            let inGame = false;
+            try { const A = N.party && N.party.active; inGame = !!(A && A.mode === 'party' && A.players.some((p) => p.uid === k)); } catch (e) { /* ignore */ }
+            if (GH.has(k)) { removeGhost(k); if (!inGame) toast(o.nick + ' got disconnected.', 2600); }
+            N.emit('online:players', { n: R.players.length });
+            renderPanel(); renderHud();
+          }
+        }
+      }
       updateGhosts(dt);
       hudVisibility();
       if (FLOW.auto && nowMs() >= FLOW.auto.at) { const A = FLOW.auto; FLOW.auto = null; runAuto(A); }
@@ -1698,9 +1884,13 @@
     },
     _debug: {
       get key() { return myKey; },
-      ghosts: () => Array.from(GH.values()).map((g) => ({ key: g.key, nick: g.nick, x: g.ent.x, y: g.ent.y, a: g.ent.angle, mode: g.ent.view3d, type: g.ent.type || null, hidden: !!g.ent.hidden, inEntities: N.entities.all.indexOf(g.ent) >= 0, buf: g.buf.length, blip: !!(N.hud && N.hud.blips && N.hud.blips.has(g.blip)) })),
-      stats: () => ({ sent: R.sent, recv: R.recv, hz: stateHz(), players: R.players.length }),
+      ghosts: () => Array.from(GH.values()).map((g) => ({ key: g.key, nick: g.nick, x: g.ent.x, y: g.ent.y, a: g.ent.angle, mode: g.ent.view3d, type: g.ent.type || null, hidden: !!g.ent.hidden, inEntities: N.entities.all.indexOf(g.ent) >= 0, buf: g.buf.length, blip: !!(N.hud && N.hud.blips && N.hud.blips.has(g.blip)), away: !!g.away, reconnecting: !!g.drop })),
+      stats: () => ({ sent: R.sent, recv: R.recv, hz: stateHz(), players: R.players.length, skipped: R.skipped, queued: R.q.length, gone: R.gone.size, live: live(), party: { sent: PT.sent, recv: PT.recv, dropped: PT.dropped } }),
+      /** tests: the points the group's "nearby" / arrival / 👫 use (away friends left out) */
+      group: () => groupPoints().map((q) => ({ key: q.key, me: q.me })),
       sanitizeState, sanitizeLook, profile: () => JSON.parse(JSON.stringify(P)),
+      /** tests: load the SDK the way Online does; -> {ok, from} (which entry of ONLINE_CONFIG.sdk it came from) */
+      sdk: () => loadSdk().then(() => ({ ok: true, from: S.sdkFrom || 'already' }), (e) => ({ ok: false, why: String(e && e.message) })),
       /** tests: forget what this phone knows about the cloud (so only the server's guard is left) */
       forgetCloud() { P.cloud = {}; saveProfile(); },
       /** tests: forget the arrival card's rate limits (one a minute, 5 min per activity) and hide it */

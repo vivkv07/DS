@@ -102,12 +102,15 @@
   /** pages built into dist/ find the repo files one level up: try those first (no 404 noise) */
   const order = (urls) => (/\/dist\//.test(location.pathname) ? urls.slice().sort((a, b) => (b.indexOf('../') === 0) - (a.indexOf('../') === 0)) : urls);
   const hasPack = () => !!(N.ASSETS3D && N.ASSETS3D.glb && N.ASSETS3D.manifest);
+  /** website build (dist/web.html): relative URLs carry the file's content hash (N.BUILD, tools/build.mjs) so a
+   *  redeploy never pairs the new page with a stale cached pack / loader (http(s) only: file:// ignores queries) */
+  const ver = (u, k) => { const B = N.BUILD; return B && B[k] && !/^https?:/.test(u) && /^https?:$/.test(location.protocol) ? u + '?v=' + B[k] : u; };
   async function loadLoader() {
     if (hasLoader()) { S.loaderFrom = S.loaderFrom || 'present'; return true; }
     if (runInline('gltfloader-src', hasLoader)) { S.loaderFrom = 'inline'; return true; }
     for (const u of order(LOADER_URLS)) {
       if (/^https?:/.test(u) && location.protocol === 'file:' && N.models3d.noCdn) continue;
-      if (await loadScript(u, hasLoader, /^https?:/.test(u) ? 12000 : 8000)) { S.loaderFrom = u; return true; }
+      if (await loadScript(ver(u, 'loader'), hasLoader, /^https?:/.test(u) ? 12000 : 60000)) { S.loaderFrom = u; return true; }
     }
     return false;
   }
@@ -115,7 +118,9 @@
     if (hasPack()) { S.packFrom = S.packFrom || 'present'; return true; }
     if (runInline('assets3d-pack', hasPack)) { S.packFrom = 'inline'; return true; }
     for (const u of order(N.models3d.packUrls || PACK_URLS)) {
-      if (await loadScript(u, hasPack, 20000)) { S.packFrom = u; return true; }
+      // (the pack is ~3 MB gzipped: 17+ s on Slow 4G, a minute on 3G. A 20 s timeout gave up mid-download, tried the
+      // next URL (a 404 on the site) and left the session without Blender models; a missing file still fails at once)
+      if (await loadScript(ver(u, 'pack'), hasPack, 180000)) { S.packFrom = u; return true; }
     }
     return false;
   }
@@ -391,6 +396,9 @@
     const H = N.view3d && N.view3d.H;
     const r = H && H.renderer;
     if (!r) return null;
+    // (never while the WebGL context is lost: the PMREM pass would compile programs on a dead context -> TypeError;
+    // the metal gets its map when the context is back, see 'view3d:contextrestored' below)
+    try { if (r.getContext().isContextLost()) return null; } catch (e) { return null; }
     const c = document.createElement('canvas'); c.width = 128; c.height = 64;
     const g = c.getContext('2d');
     const gr = g.createLinearGradient(0, 0, 0, 64);
@@ -405,6 +413,14 @@
     pm.dispose(); t.dispose();
     return S.env;
   }
+  // a restored WebGL context lost the PMREM render target's pixels: render it again for every metallic material
+  N.on('view3d:contextrestored', () => {
+    try {
+      if (S.env) { S.env.dispose(); S.env = null; }
+      if (!OPT.env) return;
+      for (const md of S.models.values()) if (md && md.metal) for (const m of md.metal) { m.envMap = envMap(); m.needsUpdate = true; }
+    } catch (e) { N.err('models3d.envRestore', e); }
+  });
 
   /* ================================================================ cloning (SkeletonUtils.clone logic, r149) */
   function parallel(a, b, cb) { cb(a, b); for (let i = 0; i < a.children.length; i++) parallel(a.children[i], b.children[i], cb); }

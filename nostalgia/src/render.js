@@ -108,11 +108,13 @@
       if (e && isFinite(e.x) && isFinite(e.y)) {
         const vx = isFinite(e.vx) ? e.vx : 0, vy = isFinite(e.vy) ? e.vy : 0;
         const speed = Math.hypot(vx, vy);
-        // look-ahead in velocity direction, smoothed slowly so it doesn't swing
+        // look-ahead in velocity direction, smoothed slowly so it doesn't swing.
+        // Reduced motion ("gentler camera", Settings): half the lead, slower swings, a narrower speed zoom.
+        const calm = reducedMotion();
         let lx = vx * 0.5, ly = vy * 0.5;
-        const lm = Math.hypot(lx, ly), maxL = 110;
+        const lm = Math.hypot(lx, ly), maxL = calm ? 60 : 110;
         if (lm > maxL) { lx *= maxL / lm; ly *= maxL / lm; }
-        const la = 1 - Math.exp(-dt * 2.2);
+        const la = 1 - Math.exp(-dt * (calm ? 1.1 : 2.2));
         camState.lookX += (lx - camState.lookX) * la;
         camState.lookY += (ly - camState.lookY) * la;
         const tx = e.x + camState.lookX, ty = e.y + camState.lookY;
@@ -120,8 +122,8 @@
         const f = 1 - Math.exp(-dt * 9);
         cam.x += (tx - cam.x) * f; cam.y += (ty - cam.y) * f;
         // zoom out with speed: 1.0 on foot -> ~0.78 at top car speed
-        const zt = U.lerp(1, 0.78, U.smooth((speed - 60) / (170 - 60))) * R.baseZoom;
-        cam.zoom += (zt - cam.zoom) * (1 - Math.exp(-dt * 1.6));
+        const zt = U.lerp(1, calm ? 0.9 : 0.78, U.smooth((speed - 60) / (170 - 60))) * R.baseZoom;
+        cam.zoom += (zt - cam.zoom) * (1 - Math.exp(-dt * (calm ? 0.8 : 1.6)));
       }
     }
     if (shakeT > 0) {
@@ -131,8 +133,11 @@
     } else { shakeX = shakeY = 0; }
   }
   R.snapCamera = function () { camState.inited = false; camState.lookX = camState.lookY = 0; updateCamera(0.016); };
+  // reduced motion means no shake at all (the Settings row promises "No shake")
+  function reducedMotion() { return !!(document.body && document.body.classList.contains('reduced-motion')); }
+  R.reducedMotion = reducedMotion;
   R.shake = function (amount, time) {
-    if (document.body.classList.contains('reduced-motion')) amount *= 0.3;
+    if (reducedMotion()) return;
     shakeAmt = Math.max(shakeAmt * Math.max(0, shakeT / shakeDur), amount || 3);
     shakeDur = shakeT = Math.max(0.05, time || 0.3);
   };

@@ -583,6 +583,9 @@ async function phone(browser, name, viewport) {
     N.hud.timer('CHAI RUN', 42);
     N.hud.toast('Tip: the minimap line shows the way.', 8000);
     N.wanted.set(2);
+    // the meter shows two slippers but nobody chases: on a loaded machine an uncle used to catch Chinnu before
+    // the layout check (PAKDA GAYA -> scolding dialogue hides the touch controls and holds the toast)
+    N.wanted.freeze(true, 'script');
     N.hud.blip('t', 'irani_cafe_3', { route: true, icon: 'star', color: '#ff5fb0' });
   });
   await sleep(1200);

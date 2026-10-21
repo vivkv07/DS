@@ -118,7 +118,7 @@
     shadows: true, shadowSize: 2048, shadowRange: 190,
     drawDist: 1500, nearDist: 600, actorDist: 620, lmDist: 1650,
     groundHi: 2, groundLo: 0.5, pointLights: 4, budgetMs: 3.5, antialias: true,
-    adaptive: true, baked: false, aniso: 8,
+    adaptive: true, baked: false, aniso: 8, keepArrays: false,
   };
   function detectTier() {
     let coarse = false;
@@ -169,7 +169,10 @@
     if (loadPromise) return loadPromise;
     loadPromise = (async () => {
       for (const u of view.urls) {
-        if (await loadScript(u, /^https?:/.test(u) ? 9000 : 6000)) return window.THREE;
+        // the vendored fallback carries its content hash on the website (N.BUILD, tools/build.mjs): cache-busting
+        const B = N.BUILD, url = B && B.three && !/^https?:/.test(u) && /^https?:$/.test(location.protocol) ? u + '?v=' + B.three : u;
+        // (CDN: move on to the local copy after 9 s; the local copy may take a while on a slow link: 60 s, not 6)
+        if (await loadScript(url, /^https?:/.test(u) ? 9000 : 60000)) return window.THREE;
       }
       return null;
     })();
@@ -242,7 +245,7 @@
     if (m === 'top') {
       try { if (N.input && N.input.exitPointerLock) N.input.exitPointerLock(); } catch (e) { /* ignore */ }
       try { const R = N.render; R.snapCamera(); R.warmChunks(N.player.x, N.player.y, 420); } catch (e) { N.err('view3d.toTop', e); }
-      if (E.fxEl) E.fxEl.style.opacity = '0';
+      if (E.fxEl) { E.fxEl.style.opacity = '0'; FXS.on = '0'; }
     }
     N.emit('view:change', { mode: m, prev });
   }
@@ -864,29 +867,72 @@
   }
 
   /* ---------------------------------------------------- sign atlas (shop boards) */
-  const SIGN = { pages: [], map: new Map(), CW: 512, CHt: 64, cols: 4, rows: 16, max: 6 }; // phones: halved (initEngine)
+  // Pages fill as the player travels; when all SIGN.max pages are full a cell that no live chunk shows any more
+  // (refs 0: its chunk was disposed / rebuilt without signs) is repainted for the new board, so shop signs never run
+  // out on a long trip (before: after ~5 market areas every new board was dropped for the rest of the session).
+  // Boards are ref-counted: chunks hold theirs from addSigns to clearChunkGeom, view3d_landmarks while a model exists
+  // (scene or its LRU) via H.signSlot(.., own) / H.releaseSigns; a caller that passes no list pins its board.
+  const SIGN = { pages: [], map: new Map(), CW: 512, CHt: 64, cols: 4, rows: 16, max: 6, recycled: 0, dropped: 0 }; // phones: halved (initEngine)
+  // (document.fonts.check costs ~1 ms a call: it ran for every board, ~90 ms of a chunk-heavy 3D switch; the answer
+  // is kept once Yatra One is in, and asked again at most once a second until then)
+  const SIGN_YATRA = "'Yatra One', 'Baloo 2', sans-serif";
+  let signFontV = null, signFontT = -1e9;
   function signFont() {
-    try { if (document.fonts && document.fonts.check && document.fonts.check("40px 'Yatra One'")) return "'Yatra One', 'Baloo 2', sans-serif"; } catch (e) { /* ignore */ }
-    return "'Baloo 2', system-ui, sans-serif";
+    if (signFontV === SIGN_YATRA) return signFontV;
+    const t = now();
+    if (signFontV && t - signFontT < 1000) return signFontV;
+    signFontT = t;
+    signFontV = "'Baloo 2', system-ui, sans-serif";
+    try { if (document.fonts && document.fonts.check && document.fonts.check("40px 'Yatra One'")) signFontV = SIGN_YATRA; } catch (e) { /* ignore */ }
+    return signFontV;
   }
-  /** -> {page, u0, v0, u1, v1} for a board of aspect `asp` (w/h) */
-  function signSlot(text, bg, fg, asp) {
+  /** a cell nothing shows any more (refs <= 0); null if every cell is in use. A chunk draws one sign mesh per page it
+   *  uses, so the pages the caller already holds come first, then the page with the most free cells (boards of one
+   *  chunk stay on few pages: no extra draw calls from recycling) */
+  function freeSignCell(own) {
+    const per = SIGN.cols * SIGN.rows;
+    if (own && own.length) {
+      const seen = new Set();
+      for (const s of own) {
+        const p = s.page; if (seen.has(p)) continue; seen.add(p);
+        for (let c = 0; c < per; c++) { const sl = p.slots[c]; if (sl && sl.refs <= 0) return sl; }
+      }
+    }
+    let best = null, bestN = 0;
+    for (const p of SIGN.pages) {
+      let n = 0, first = null;
+      for (let c = 0; c < per; c++) { const sl = p.slots[c]; if (sl && sl.refs <= 0) { n++; if (!first) first = sl; } }
+      if (n > bestN) { bestN = n; best = first; }
+    }
+    return best;
+  }
+  /** -> {page, u0, v0, u1, v1} for a board of aspect `asp` (w/h); own: the caller's list of held slots (ref-counted,
+   *  released with releaseSigns) — without it the board is pinned */
+  function signSlot(text, bg, fg, asp, own) {
     const cls = asp < 3.8 ? 3 : asp < 6.2 ? 5 : 8;
     const key = text + '|' + bg + '|' + fg + '|' + cls;
     let s = SIGN.map.get(key);
-    if (s) return s;
-    let page = SIGN.pages[SIGN.pages.length - 1];
+    if (s) { if (own) { s.refs++; own.push(s); } else s.refs = Infinity; return s; }
+    let page = SIGN.pages[SIGN.pages.length - 1], i = -1;
     if (!page || page.n >= SIGN.cols * SIGN.rows) {
-      if (SIGN.pages.length >= SIGN.max) return null;
-      const c = document.createElement('canvas'); c.width = SIGN.CW * SIGN.cols; c.height = SIGN.CHt * SIGN.rows;
-      const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = Math.min(Q.aniso, E.maxAniso || 1);
-      const m = new THREE.MeshLambertMaterial({ map: t, emissive: '#ffffff', emissiveMap: t, emissiveIntensity: 0 });
-      m.userData.shared = true;
-      page = { canvas: c, g: c.getContext('2d'), tex: t, mat: m, n: 0, dirty: true, index: SIGN.pages.length };
-      SIGN.pages.push(page);
+      if (SIGN.pages.length >= SIGN.max) {
+        const old = freeSignCell(own);
+        if (!old) { SIGN.dropped++; return null; }
+        SIGN.map.delete(old.key); SIGN.recycled++;
+        page = old.page; i = old.cell;
+      } else {
+        const c = document.createElement('canvas'); c.width = SIGN.CW * SIGN.cols; c.height = SIGN.CHt * SIGN.rows;
+        const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = Math.min(Q.aniso, E.maxAniso || 1);
+        const m = new THREE.MeshLambertMaterial({ map: t, emissive: '#ffffff', emissiveMap: t, emissiveIntensity: 0 });
+        m.userData.shared = true;
+        page = { canvas: c, g: c.getContext('2d'), tex: t, mat: m, n: 0, dirty: true, index: SIGN.pages.length, slots: [] };
+        SIGN.pages.push(page);
+      }
     }
-    const i = page.n++, cx = (i % SIGN.cols) * SIGN.CW, cy = Math.floor(i / SIGN.cols) * SIGN.CHt;
+    if (i < 0) i = page.n++;
+    const cx = (i % SIGN.cols) * SIGN.CW, cy = Math.floor(i / SIGN.cols) * SIGN.CHt;
     const w = SIGN.CHt * cls, x = cx + (SIGN.CW - w) / 2, g = page.g;
+    g.clearRect(cx, cy, SIGN.CW, SIGN.CHt); // (a recycled cell)
     const bw = Math.max(2, SIGN.CHt / 20);
     g.fillStyle = '#2a1a10'; g.fillRect(x, cy, w, SIGN.CHt);
     g.fillStyle = bg; g.fillRect(x + bw, cy + bw, w - bw * 2, SIGN.CHt - bw * 2);
@@ -901,10 +947,13 @@
     g.fillStyle = fg; g.fillText(text, x + w / 2, cy + SIGN.CHt / 2 + 2 * k);
     page.dirty = true;
     const W = page.canvas.width, Ht = page.canvas.height;
-    s = { page, u0: x / W, u1: (x + w) / W, v0: 1 - (cy + SIGN.CHt) / Ht, v1: 1 - cy / Ht };
+    s = { page, cell: i, key, refs: own ? 1 : Infinity, u0: x / W, u1: (x + w) / W, v0: 1 - (cy + SIGN.CHt) / Ht, v1: 1 - cy / Ht };
+    page.slots[i] = s;
+    if (own) own.push(s);
     SIGN.map.set(key, s);
     return s;
   }
+  function releaseSigns(list) { if (list) for (const s of list) s.refs--; }
   function flushSignPages() { for (const p of SIGN.pages) if (p.dirty) { p.dirty = false; p.tex.needsUpdate = true; } }
 
   /* ================================================================ height grid (camera collision) */
@@ -1057,6 +1106,21 @@
     chunks.set(ch.key, ch);
     return ch;
   }
+  // Chunk geometry the core (and the ground provider) builds is static and rebuilt from the world data whenever it
+  // changes (LOD, rebuild, context restore), so its CPU-side arrays are dropped once three has uploaded them: three
+  // keeps every attribute array in JS memory otherwise (desktop at Abids: 118 -> 98 MB of ArrayBuffers right after
+  // settling, more as unseen chunks get drawn; design/audit/performance.md). Bounds are computed first (frustum
+  // culling needs them; a chunk never drawn keeps its arrays until it is); the camera never ray-casts
+  // chunk meshes (landmarks only). Q.keepArrays = true keeps them (debugging / A-B measurements).
+  function dropArray() { this.array = null; }
+  function freeOnUpload(g) {
+    if (!g || Q.keepArrays || (g.userData && g.userData.shared)) return g;
+    if (!g.boundingSphere) g.computeBoundingSphere();
+    if (!g.boundingBox) g.computeBoundingBox();
+    for (const k in g.attributes) { const a = g.attributes[k]; if (a && a.isBufferAttribute && a.usage === THREE.StaticDrawUsage) a.onUpload(dropArray); }
+    if (g.index && g.index.usage === THREE.StaticDrawUsage) g.index.onUpload(dropArray);
+    return g;
+  }
   function disposeObj(o) {
     o.traverse((m) => {
       if (m.geometry && !(m.geometry.userData && m.geometry.userData.shared)) m.geometry.dispose();
@@ -1072,6 +1136,7 @@
   function clearChunkGeom(ch) {
     for (const o of ch.objs) { ch.group.remove(o); disposeObj(o); }
     ch.objs.length = 0; ch.lights.length = 0;
+    releaseSigns(ch.signSlots); ch.signSlots = null; // its boards' atlas cells may be recycled now
   }
   function disposeChunk(ch) {
     clearChunkGeom(ch);
@@ -1433,7 +1498,7 @@
       const L = Math.hypot(s[2] - s[0], s[3] - s[1]); if (L < 5) continue;
       const ux = (s[2] - s[0]) / L, uz = (s[3] - s[1]) / L, nx = -uz, nz = ux, off = 0.35;
       const w = Math.min(L - 1.2, 40), h = Math.min(5.2, Math.max(3.2, w / 5)), m = (L - w) / 2;
-      const slot = signSlot(b.sign.text, b.sign.bg || '#d8402a', b.sign.fg || '#fff8e8', w / h);
+      const slot = signSlot(b.sign.text, b.sign.bg || '#d8402a', b.sign.fg || '#fff8e8', w / h, J.slots || (J.slots = []));
       if (!slot) continue;
       let gb = byPage.get(slot.page);
       if (!gb) { gb = new GB({ facade: true }); byPage.set(slot.page, gb); }
@@ -1640,7 +1705,11 @@
     }
     // swap in
     clearChunkGeom(ch);
-    for (const o of out) { o.matrixAutoUpdate = false; o.updateMatrix(); ch.group.add(o); ch.objs.push(o); }
+    ch.signSlots = J.slots || null; // (held since addSigns; released when this geometry goes)
+    for (const o of out) {
+      o.matrixAutoUpdate = false; o.updateMatrix(); ch.group.add(o); ch.objs.push(o);
+      if (o.name === 'buildings' || o.name === 'signs' || o.name === 'glows') freeOnUpload(o.geometry); // (core-built only: other modules' structure objects keep theirs)
+    }
     ch.lights = J.lamps;
     let top = 40;
     for (const o of out) if (o.geometry && o.geometry.boundingBox) top = Math.max(top, o.geometry.boundingBox.max.y);
@@ -1879,7 +1948,8 @@
       }
       rec.seen = fr;
       if (!rec.obj) continue;
-      try { if (spec.update) spec.update(rec.obj, e, dt, H); } catch (er) { N.err('view3d.actor.update:' + (e.kind || '?'), er); }
+      if (PROF.on) { const ta = now(); try { if (spec.update) spec.update(rec.obj, e, dt, H); } catch (er) { N.err('view3d.actor.update:' + (e.kind || '?'), er); } const k = 'actor:' + (e === p ? 'player' : e.kind || '?'); PROF.cur[k] = (PROF.cur[k] || 0) + now() - ta; }
+      else try { if (spec.update) spec.update(rec.obj, e, dt, H); } catch (er) { N.err('view3d.actor.update:' + (e.kind || '?'), er); }
       let vis = true;
       if (fps && !spec.fps && (e === p || (p && e === p.vehicle))) vis = false;
       if (e === p && view.mode === 'tps' && CAM.distCur < 6) vis = false;
@@ -2427,14 +2497,30 @@
     R.night = U.clamp((0.6 - N.clock.light()) / 0.52, 0, 1);
   }
 
+  // ---- opt-in per-phase profiler (tests/qa_perf.cjs, #debug): N.view3d.profile(true) starts, profile() reads
+  // {frames, ms: {phase: avg ms per frame}, max: {phase: worst frame}, frameMax, over (frames whose JS > 16 ms)};
+  // phases: camera sky work (streaming) actors (+ 'actor:<kind>') lmUpdate layer:<id> cull render (renderer.render)
+  const PROF = { on: false, frames: 0, sum: Object.create(null), max: Object.create(null), cur: Object.create(null), frameMax: 0, over: 0, t: 0 };
+  function pm(k) { const t = now(), d = t - PROF.t; PROF.t = t; PROF.cur[k] = (PROF.cur[k] || 0) + d; }
+  function profEnd(total) {
+    const P = PROF; P.frames++;
+    for (const k in P.cur) { const v = P.cur[k]; P.sum[k] = (P.sum[k] || 0) + v; if (!(P.max[k] >= v)) P.max[k] = v; P.cur[k] = 0; }
+    if (total > P.frameMax) P.frameMax = total;
+    if (total > 16) P.over++;
+  }
   let fpsAcc = 0, fpsN = 0, lowFrames = 0, highFrames = 0;
   function render(dt) {
     if (!E.ready || E.lost) return;
+    // the 'webglcontextlost' event arrives a task after the loss: a frame in between must not draw (three compiles
+    // new programs and reads null info logs from a lost context -> TypeError; found by tests/qa_perf.cjs ctxloss)
+    if ((E.gl || (E.gl = E.renderer.getContext())).isContextLost()) return;
     const t0 = now();
-    const R = N.render;
+    const R = N.render, P = PROF.on;
+    if (P) PROF.t = t0;
     UNI.uTime.value = (N.time.real || t0 / 1000) % 10000;
     // lights pushed by systems' draw() this frame (markers etc.) -> point light candidates
     updateCamera(dt);
+    if (P) pm('camera');
     const f = focus();
     const fe = focusEntity();
     const fz = elevation(fe === (N.player && N.player.vehicle) ? N.player : fe);
@@ -2443,19 +2529,24 @@
     updatePointLights(f.x, f.y);
     R.lights.length = 0; actorLights.length = 0;
     if (R.fx.flash > 0.01) R.fx.flash = Math.max(0, R.fx.flash - dt * 3);
+    if (P) pm('sky');
     // world streaming within the frame budget
     const budget = E.urgent > 0 ? 18 : Q.budgetMs;
     if (E.urgent > 0) E.urgent--;
     updateWork(f.x, f.y, budget);
+    if (P) pm('work');
     // actors + landmark animators + layers
     syncActors(dt, f.x, f.y);
+    if (P) pm('actors');
     for (const rec of lmUpdaters) { try { rec.reg.opts.update(rec.obj, rec.lm, dt, H); } catch (e) { N.err('view3d.lm.update', e); } }
-    for (const L of layerList) { if (!L.inited) initLayer(L); try { if (L.spec.update) L.spec.update(dt, H); } catch (e) { N.err('view3d.layer:' + L.id, e); } }
+    if (P) pm('lmUpdate');
+    for (const L of layerList) { if (!L.inited) initLayer(L); try { if (L.spec.update) L.spec.update(dt, H); } catch (e) { N.err('view3d.layer:' + L.id, e); } if (P) pm(L.pk || (L.pk = 'layer:' + L.id)); }
     // sky dome follows the camera
     E.sky.position.copy(E.camera.position); E.sky.scale.setScalar(Q.drawDist * 1.25);
     E.sky.updateMatrixWorld();
     updateFx();
     cullChunks(f.x, f.y);
+    if (P) pm('cull');
     const covered = N.minigames && N.minigames.covering;
     const tR = now();
     if (!covered) {
@@ -2466,6 +2557,7 @@
     const t1 = now();
     E.jsMs = t1 - t0; E.renderMs = t1 - tR;
     E.jsAvg += (E.jsMs - E.jsAvg) * 0.05;
+    if (P) { pm('render'); profEnd(E.jsMs); }
     // adaptive pixel ratio (a slow GPU shows up as long frames)
     if (Q.adaptive && dt > 0) {
       fpsAcc += dt; fpsN++;
@@ -2505,14 +2597,19 @@
   }
 
   /* ---------------------------------------------------- screen fx (fade / flash / VHS) */
+  // (inline styles are written only when they change: five style writes every 3D frame dirtied style for the whole
+  // overlay, which the HUD / bark rect reads then paid for as a forced style + layout pass)
+  const FXS = { fade: null, bg: null, flash: null, vhs: null, on: null };
   function updateFx() {
     const el = E.fxEl; if (!el) return;
     const fx = N.render.fx;
     const fade = U.clamp(fx.fade || 0, 0, 1), flash = U.clamp(fx.flash || 0, 0, 1), vhs = U.clamp(fx.vhs || 0, 0, 1);
-    E.fxFade.style.opacity = fade.toFixed(3); E.fxFade.style.background = fx.fadeColor || '#000';
-    E.fxFlash.style.opacity = flash.toFixed(3);
-    E.fxVhs.style.opacity = (vhs * 0.9).toFixed(3);
-    el.style.opacity = fade + flash + vhs > 0.004 ? '1' : '0';
+    const sFade = fade.toFixed(3), sBg = fx.fadeColor || '#000', sFlash = flash.toFixed(3), sVhs = (vhs * 0.9).toFixed(3), sOn = fade + flash + vhs > 0.004 ? '1' : '0';
+    if (FXS.fade !== sFade) { FXS.fade = sFade; E.fxFade.style.opacity = sFade; }
+    if (FXS.bg !== sBg) { FXS.bg = sBg; E.fxFade.style.background = sBg; }
+    if (FXS.flash !== sFlash) { FXS.flash = sFlash; E.fxFlash.style.opacity = sFlash; }
+    if (FXS.vhs !== sVhs) { FXS.vhs = sVhs; E.fxVhs.style.opacity = sVhs; }
+    if (FXS.on !== sOn) { FXS.on = sOn; el.style.opacity = sOn; }
     const filt = vhs > 0.02 ? 'saturate(' + (1 - vhs * 0.35).toFixed(2) + ') contrast(' + (1 + vhs * 0.12).toFixed(2) + ')' : '';
     if (E.canvas.style.filter !== filt) E.canvas.style.filter = filt;
   }
@@ -2587,9 +2684,11 @@
       for (const id of Array.from(lmRecs.keys())) disposeLandmark(id);
       clearActors();
       if (view.want !== 'top') { E.warming = true; E.warmT = now(); view.loading = true; }
+      N.emit('view3d:contextrestored', {}); // (render-target content is gone: models3d re-renders its env map)
     }, false);
     E.ready = true;
     api.ready = true;
+    lsSet('nostalgia.view3d.used', '1'); // (view3d_ground: this device uses 3D, keep its road analysis warm in top-down)
     if (GP && GP.attach) { try { GP.attach(groundInternals()); } catch (e) { N.err('view3d.ground.attach', e); GP = null; } } // [ground hook]
     for (const L of layerList) initLayer(L);
     N.emit('view3d:ready', api);
@@ -2599,7 +2698,7 @@
   function groundInternals() {
     return {
       THREE, E, Q, UNI, MAT, TEX, H, SUN, VS, CH, chunks, ckey, sunBake,
-      buildAux, dropPainted, rgb8, col, GB, mergeGeometries,
+      buildAux, dropPainted, rgb8, col, GB, mergeGeometries, freeOnUpload,
       replan() { lastPlan.t = 0; },
     };
   }
@@ -2658,6 +2757,7 @@
       for (const k of ['pixelRatio', 'drawDist', 'nearDist', 'actorDist', 'adaptive', 'budgetMs', 'maxPixelRatio', 'minPixelRatio']) if (o[k] != null) Q[k] = o[k];
       // engine-creation options (only before the first 3D switch)
       if (!E.ready) for (const k of ['antialias', 'shadows', 'shadowSize', 'pointLights', 'groundHi', 'groundLo', 'baked', 'aniso']) if (o[k] != null) Q[k] = o[k];
+      if (o.keepArrays != null) Q.keepArrays = !!o.keepArrays; // (applies to geometry built from now on)
       if (E.ready) { E.camera.far = Q.drawDist * 1.5; E.camera.updateProjectionMatrix(); resize(); lastPlan.t = 0; }
       return Q;
     },
@@ -2681,6 +2781,21 @@
       }
       return false;
     },
+    /** opt-in per-phase JS profiler of render(): profile(true) starts (resets), profile() reads, profile(false) reads
+     *  and stops -> {frames, ms: {phase: avg ms / frame}, max: {phase: worst ms}, frameMax, over16} (actor:<kind>
+     *  rows are a breakdown of 'actors'; 'render' = renderer.render, i.e. three.js culling + GL command recording) */
+    profile(on) {
+      const P = PROF;
+      const snap = () => {
+        const ms = {}, max = {};
+        for (const k in P.sum) { ms[k] = +(P.sum[k] / Math.max(1, P.frames)).toFixed(3); max[k] = +P.max[k].toFixed(2); }
+        return { frames: P.frames, ms, max, frameMax: +P.frameMax.toFixed(2), over16: P.over };
+      };
+      if (on === true) { P.on = true; P.frames = 0; P.frameMax = 0; P.over = 0; P.sum = Object.create(null); P.max = Object.create(null); P.cur = Object.create(null); return true; }
+      const out = P.frames || P.on ? snap() : null;
+      if (on === false) P.on = false;
+      return out;
+    },
     /** per-frame actor light request (headlights, lanterns): {x, y, h, color, intensity, r} */
     light(L) { if (L && isFinite(L.x) && isFinite(L.y)) actorLights.push(L); },
     stats() {
@@ -2692,8 +2807,18 @@
         calls: E.calls, triangles: E.tris, jsMs: +E.jsMs.toFixed(2), jsAvg: +E.jsAvg.toFixed(2), renderMs: +(E.renderMs || 0).toFixed(2), workMs: +workMs.toFixed(2),
         chunks: chunks.size, readyChunks, groundTextures: tex, landmarks: lmRecs.size, actors: ACT.recs.size,
         geometries: info ? info.memory.geometries : 0, textures: info ? info.memory.textures : 0, programs: info && info.programs ? info.programs.length : 0,
-        signPages: SIGN.pages.length, drawDist: Q.drawDist, shadows: Q.shadows, visChunks: E.visChunks || 0,
+        signPages: SIGN.pages.length, signsRecycled: SIGN.recycled, signsDropped: SIGN.dropped, signsPinned: SIGN.pages.reduce((a, p) => a + p.slots.filter((x) => x && x.refs === Infinity).length, 0), drawDist: Q.drawDist, shadows: Q.shadows, visChunks: E.visChunks || 0,
       };
+    },
+    /** tests: sign-atlas integrity -> {held (boards shown by live chunks / landmarks), stale (shown but their cell was
+     *  repainted for another board: would read wrong), negative (over-released cells), pages, recycled, dropped} */
+    signCheck() {
+      let held = 0, stale = 0, negative = 0;
+      const chk = (l) => { if (l) for (const s of l) { held++; if (s.page.slots[s.cell] !== s) stale++; } };
+      for (const ch of chunks.values()) chk(ch.signSlots);
+      for (const rec of lmRecs.values()) if (rec.obj) rec.obj.traverse((o) => chk(o.userData.signSlots));
+      for (const p of SIGN.pages) for (const s of p.slots) if (s && s.refs < 0) negative++;
+      return { held, stale, negative, pages: SIGN.pages.length, recycled: SIGN.recycled, dropped: SIGN.dropped };
     },
     /** debug: direct camera control {yaw, pitch} (radians) */
     setCamera(o) { if (o) { if (isFinite(o.yaw)) view.yaw = o.yaw; if (isFinite(o.pitch)) view.pitch = o.pitch; CAM.lastLook = (N.time.real || 0); CAM.snap = !!o.snap; } },
@@ -2721,6 +2846,8 @@
     builder(opts) { return new GB(opts); },
     merge: mergeGeometries,
     mat, color: (hex) => col(hex), tex, signSlot,
+    /** release sign-atlas cells taken with signSlot(.., own) (their boards are no longer shown anywhere) */
+    releaseSigns,
     facadeMaterial: () => MAT.facade, vcMaterial: () => MAT.vc,
     /** soft round contact shadow (use when H.quality.shadows is false) */
     blobShadow(w, d) { const m = new THREE.Mesh(H.geo.plane, MAT.blob); m.scale.set(w || 8, 1, d || w || 8); m.position.y = 0.08; m.renderOrder = 1; m.userData.noShadow = true; m.castShadow = false; return m; },

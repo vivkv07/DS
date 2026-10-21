@@ -162,7 +162,7 @@
   const IMRAN_LOOK = { kind: 'man', skin: '#c68b5e', hair: '#1a1412', shirt: '#24345a', pants: '#3a3a4a', cap: 'cricket', capColor: '#8a8a90', specs: true, beard: '#2a201a', prop: 'packet' };
   const IMRAN_PORTRAIT = { age: 'adult', hairStyle: 'short', skin: '#c68b5e', specs: 'taped', cap: 'cricket', capColor: '#8a8a90', beard: 'stubble', shirt: '#e8e0d0', jacket: '#24345a', jacketKind: 'windcheater' };
   C('immu', {
-    name: 'Immu', full: 'Immu (Mohammed Imran), 11', color: '#2a8c82', voice: 1.3, speed: 50, vehicle: 'cycle', vehicleColor: '#b82a2a', vehicleLabel: 'Hero Ranger',
+    name: 'Immu', full: 'Immu (Mohammed Imran), 11', color: '#2a8c82', voice: 1.3, speed: 50, vehicle: 'cycle', vehicleColor: '#b82a2a', vehicleLabel: 'IMMU',
     look: { kind: 'kid', skin: '#c68b5e', hair: '#1a1412', shirt: '#2f8a5a', stripes: '#1f6a42', pants: '#2c3550', specs: true, prop: 'notebook' },
     portrait: { age: 'kid', hairStyle: 'side', specs: 'taped', skin: '#c68b5e', shirt: '#2f8a5a', stripes: '#1f6a42', checks: true, pens: 1 },
     name2026: 'Imran', look2026: IMRAN_LOOK, portrait2026: IMRAN_PORTRAIT,

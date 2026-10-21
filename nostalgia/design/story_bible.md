@@ -1387,7 +1387,7 @@ Red ink: "*Bus udti nahi. Sach likho.*"
    Fail line: `ramulu: Atta on the road? The crows will be very happy. Come, I'll grind again.`
 3. `"Buy Ammamma's BP tablets at the medical shop."` — `medical_shop_1`.
    ```
-   chemist: Doctor's *chitti*? ...Ammamma's tablets, one month's strip. Change two rupees. Or Hajmola?
+   chemist: Doctor's *chitti*? ...Ammamma's tablets, one month's strip. Change two rupees. Or a churan goli?
    chinnu:  Change, uncle. Ammamma counts.
    ```
 4. `"Take Ammamma to the Sai Baba temple in Dilsukhnagar."` — Yadagiri's auto (passenger). At
@@ -2135,7 +2135,7 @@ found: Imran says "You found all four? Agent, you are promoted."
 | C07 | `cassette_7` | `day` Cycle Pe Sawaari | `recording_centre_1` | "On the counter: 'Free sample. Take one.'" | "From Raju of the chai bandi, Himayatnagar, to everyone who drinks on credit: 'Please. Pay.'" |
 | C08 | `cassette_8` | `night` Chandni Chhat | `blue_sea_cafe` | "Left on a marble table by a man running for a train." | "From a soldier at Secunderabad station to his mother in Warangal: 'Train is late. Heart is on time.'" |
 | C09 | `cassette_9` | `oldcity` Gulzar Houz Ki Shaam | `pathergatti` | "In the stone arcade, at the tape stall's 'old stock' basket." | "From the bangle sellers of Laad Bazaar, to every *aapa* who bargained: 'You won. Come again.'" |
-| C10 | `cassette_10` | `kites` Patang Ki Pech | `abids_book_market` (Sundays only) | "In a stack of old Tinkles. Sundays only." | "From the Abids Sunday book men, to the boy who reads Tinkle standing up: 'Buy one, at least!'" |
+| C10 | `cassette_10` | `kites` Patang Ki Pech | `abids_book_market` (Sundays only) | "In a stack of old comics. Sundays only." | "From the Abids Sunday book men, to the boy who reads comics standing up: 'Buy one, at least!'" |
 | C11 | `cassette_11` | `numaish` Numaish Ka Jhoola | `nampally_exhibition` | "At the lost-and-found counter (after M2, all year)." | "From the Numaish loudspeaker uncle: 'To all the lost children of 2003: you were never lost. You were near the papad.'" |
 | C12 | `cassette_12` | `title` Yaadon Ki Gully | `gymkhana_ground_secunderabad` | "On the old pavilion step." | "From an old ground-man to the girls who bowl at dawn: 'Keep coming.'" |
 | C13 | `cassette_13` | Agent tape 1 | `home_terrace` | "Inside the water-tank lid. Immu's handwriting: AGENT." | "Agent Immu's Secret Fact No. 1: Chinnu sleeps with his mouth open. Over." |
@@ -2277,7 +2277,7 @@ nanna:       Hold my place. I'm only going to discuss the score.
 uncle:       Score? It's Sunday morning. There's no match.
 nanna:       There is always a score.
 meat_man:    Don't come inside, *baba*. Stand outside. I'll bring it.
-chemist:     Vicks for Ammamma? And no, the Hajmola is not for Ammamma.
+chemist:     Balm for Ammamma? And no, the churan goli is not for Ammamma.
 bakery_lady: Honey cake just out. Look at that jam! We're from Bangalore, you're from Hyderabad. Friends, but the cake isn't free.
 ```
 
@@ -3028,7 +3028,7 @@ Hyderabadi Urdu · **(Hi)** Hindi-Urdu shared · **(Pa)** Punjabi · **(IE)** In
 | Eid (ul-Fitr) / Ramzan | Dk | The festival that ends the fasting month / the fasting month (Ramadan) |
 | garam samose | Hi | Hot samosas |
 | hallu chalao | Dk | Drive slowly |
-| Hajmola / Mango Bite / Tinkle | IE | A tangy digestive candy / a 50-paise mango toffee / the children's comic (era brands, mentioned only) |
+| Churan goli / Mango Bite / Tinkle | IE | A tangy digestive candy / a 50-paise mango toffee / the children's comic (era brands, mentioned only) |
 | imli-bun | Dk | Tamarind grove (Imlibun) |
 | jeeta kya? | Hi | Did (India) win? |
 | Luna / Chetak / RX100 / Ambassador | IE | A pedal-start moped / the family scooter / the cool cousin's motorbike / the classic car |

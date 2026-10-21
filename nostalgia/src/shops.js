@@ -1184,6 +1184,8 @@
   }
   const ICON_CH = { time: '▶▶' }; // the other chip icons are drawn in CSS (no emoji fonts needed)
 
+  // the purse reads like the HUD's money tin (₹ 9,99,999 above ₹1,000; hud.js owns the format)
+  function purseText() { const m = N.player.money | 0; try { return N.hud && N.hud.fmtMoney ? N.hud.fmtMoney(m) : U.fmtMoney(m); } catch (e) { return U.fmtMoney(m); } }
   function render() {
     if (!UI.open) return;
     const D = UI.dom, def = UI.def, c = UI.ctx, st = statusOf(def), v = UI.view;
@@ -1191,7 +1193,7 @@
     D.name.innerHTML = emph(def.name.replace(/\s*\((on hire|finale|home)\)\s*$/i, ''));
     D.kind.innerHTML = def.virtual || def.K.virtual ? esc(def.K.title) + ' · <span class="ok">at the kerb</span>'
       : esc(def.K.title) + ' · ' + (st.open ? '<span class="ok">' + (st.allDay ? 'open all day' : 'open till ' + fmtHM(st.closes)) + '</span>' : '<span class="no">' + emph(st.text) + '</span>');
-    D.purse.textContent = U.fmtMoney(N.player.money | 0);
+    D.purse.textContent = purseText();
     D.who.textContent = UI.who ? UI.who + ':' : '';
     D.line.innerHTML = UI.line ? '“' + emph(UI.line) + '”' : '';
     D.say.hidden = !UI.line;
@@ -2089,7 +2091,15 @@
   function destinations() {
     const p = N.player, out = [];
     const tg = missionTarget(); if (tg) out.push(tg);
-    try { const wp = N.menus && N.menus.waypointPos; if (wp) out.push({ id: '_wp', name: 'Your map waypoint', x: wp.x, y: wp.y, top: true }); } catch (e) { /* ignore */ }
+    try {
+      const wp = N.menus && N.menus.waypointPos;
+      if (wp) {
+        // name it after the place it sits on ("Charminar · your waypoint"), so the kid knows where the auto goes
+        let near = null, nd = 160;
+        for (const id in N.places) { const q = N.places[id]; if (!q.name || NOT_DEST.has(q.kind)) continue; const d = Math.hypot(q.x - wp.x, q.y - wp.y); if (d < nd) { nd = d; near = q; } }
+        out.push({ id: '_wp', name: near ? near.name.replace(/\s*\(.*\)\s*$/, '') + ' · your waypoint' : 'Your map waypoint', x: wp.x, y: wp.y, top: true });
+      }
+    } catch (e) { /* ignore */ }
     const vis = (N.flags && N.flags.visited) || {};
     const cand = [];
     const add = (id) => {
@@ -2631,7 +2641,7 @@
     if (I.pressed('pause') || I.pressed('horn')) { I.consume('pause'); I.consume('horn'); back(false); return; }
     // keep the purse current (money can change under the card: refunds, repayments)
     UI.purseT = (UI.purseT || 0) - dt;
-    if (UI.purseT <= 0) { UI.purseT = 0.4; if (UI.dom.purse) UI.dom.purse.textContent = U.fmtMoney(N.player.money | 0); }
+    if (UI.purseT <= 0) { UI.purseT = 0.4; if (UI.dom.purse) UI.dom.purse.textContent = purseText(); }
   }
   function holdTick(dt) {
     const H = S.hold; if (!H) return;

@@ -234,8 +234,15 @@ body.touch-on[data-mode='play'] #touch { display: block; }
   color: var(--auto-black);
   font-size: 15px;
 }
-.t-action:not(.has-ctx) { opacity: 0.6; font-size: 13px; }
+.t-action:not(.has-ctx):not(.ctx-quiet) { opacity: 0.6; font-size: 13px; }
 .t-action.has-ctx { box-shadow: 0 4px 0 rgba(0, 0, 0, 0.45), 0 0 0 4px rgba(242, 194, 48, 0.35); }
+/* long context labels ("Start a Chitti Chase", "Ride auto (fare)") shrink to three lines instead of "Start a Chitti…" */
+.t-action.lbl-long { font-size: 13px; line-height: 1; }
+.t-action.lbl-xlong { font-size: 11.5px; line-height: 0.98; }
+.t-action.lbl-long .t-txt, .t-action.lbl-xlong .t-txt { -webkit-line-clamp: 3; padding: 2px 5px; overflow-wrap: anywhere; }
+body.tbtn-s .t-action.lbl-xlong { font-size: 10.5px; }
+body.tbtn-l .t-action.lbl-long { font-size: 15px; }
+body.tbtn-l .t-action.lbl-xlong { font-size: 13px; }
 .t-run {
   right: calc(22px + var(--t-action) + 14px + var(--safe-r));
   bottom: calc(22px + var(--safe-b));
@@ -514,13 +521,13 @@ body.touch-on .hud-stats { top: calc(56px + var(--safe-t)); right: calc(10px + v
 .hud-energy.tired { color: #ff8a7a; }
 .hud-energy.tired .e-bar b { background: linear-gradient(to bottom, #ff8a7a, var(--danger)); animation: osd-blink 0.5s steps(2, start) infinite; }
 
-.hud-chappal { display: flex; gap: 3px; padding: 2px 2px 0; }
+.hud-chappal { display: flex; gap: 3px; padding: 3px 5px 1px; background: rgba(18, 13, 22, 0.5); border-radius: 9px; box-shadow: inset 0 0 0 1px rgba(239, 233, 220, 0.12); } /* a dark slot so the empty meter reads on a bright street */
 .hud-chappal .slipper { display: block; width: 17px; height: 32px; transform: rotate(-9deg); transition: transform 0.2s; }
 .hud-chappal .slipper:nth-child(even) { transform: rotate(9deg) translateY(2px); }
 .hud-chappal svg { width: 100%; height: 100%; display: block; overflow: visible; }
-.hud-chappal .sole { fill: rgba(18, 13, 22, 0.35); stroke: rgba(239, 233, 220, 0.42); stroke-width: 1.6; }
-.hud-chappal .strap { fill: none; stroke: rgba(239, 233, 220, 0.3); stroke-width: 2.6; stroke-linecap: round; }
-.hud-chappal .post { fill: rgba(239, 233, 220, 0.3); }
+.hud-chappal .sole { fill: rgba(18, 13, 22, 0.45); stroke: rgba(239, 233, 220, 0.6); stroke-width: 1.6; }
+.hud-chappal .strap { fill: none; stroke: rgba(239, 233, 220, 0.42); stroke-width: 2.6; stroke-linecap: round; }
+.hud-chappal .post { fill: rgba(239, 233, 220, 0.42); }
 .hud-chappal .on .sole { fill: #f6f1e4; stroke: var(--auto-black); }
 .hud-chappal .on .strap { stroke: #2a62c8; }
 .hud-chappal .on .post { fill: #1e4a9a; }
@@ -732,6 +739,35 @@ body.touch-on .hud-stats { top: calc(56px + var(--safe-t)); right: calc(10px + v
 body.touch-on .sign-btn.small kbd { display: none; }
 body:has(.hud-ask.show) #prompt { display: none; } /* the ask card already shows its key */
 
+/* ---- speech bubbles never cover the HUD: #barks stacks under the read-outs, and a bubble that overlaps
+   one fades right down (hud.js dodgeBarks adds .under-hud each frame) */
+#ui > #barks { z-index: 0; }
+#barks .bark.under-hud { opacity: 0.22; }
+#barks .bark.under-hud.out { opacity: 0; }
+
+/* ---- HUD scale + Text size. --hudz grows the HUD on big screens (it was the same 156 px minimap and 22 px
+   money tin on a 1080p / 1440p monitor as on a laptop); --txtz is Settings > Text size (menus.js sets body.txt-l /
+   body.txt-xl). Boxes that CSS lays out scale with zoom; things JS places in px (speech bubbles, sound captions)
+   only grow their font so they stay on their speaker. */
+:root { --hudz: 1; }
+@media (min-width: 1600px) and (min-height: 860px) { :root { --hudz: 1.25; } }
+@media (min-width: 2300px) and (min-height: 1250px) { :root { --hudz: 1.6; } }
+body { --txtz: 1; }
+body.txt-l { --txtz: 1.15; }
+body.txt-xl { --txtz: 1.3; }
+.hud-osd, .hud-stats, .hud-minimap, .hud-qitem, .hud-district, .hud-banner { zoom: var(--hudz); }
+.hud-obj, .hud-toast, .hud-timer, .hud-ask, .hud-jcard, #prompt, .dlg-box { zoom: calc(var(--hudz) * var(--txtz)); }
+#barks .bark { font-size: calc(14px * var(--hudz) * var(--txtz)); max-width: calc(210px * var(--hudz) * var(--txtz)); }
+.hud-caps .hud-cap { font-size: calc(19px * var(--hudz) * var(--txtz)); }
+.hud-caps .hud-cap.kind-tape { font-size: calc(22px * var(--hudz) * var(--txtz)); }
+@media (max-width: 600px) {
+  #barks .bark { font-size: calc(13px * var(--txtz)); max-width: calc(168px * var(--txtz)); }
+}
+@media (max-width: 600px) and (orientation: portrait) {
+  .hud-caps .hud-cap { font-size: calc(16px * var(--txtz)); }
+  .hud-caps .hud-cap.kind-tape { font-size: calc(17px * var(--txtz)); }
+}
+
 /* ---- narrower desktops: the top column drops below the OSD row */
 @media (max-width: 980px) {
   .hud-top { top: calc(100px + var(--safe-t)); }
@@ -791,7 +827,9 @@ body.touch-on .hud-minimap {
   .hud-money { min-width: 92px; }
   .hud-energy .e-bar { width: 80px; height: 9px; }
   .hud-chappal .slipper { width: 13px; height: 24px; }
-  .hud-top { top: calc(8px + var(--safe-t)); padding: 0 250px; gap: 4px; }
+  /* the OSD (left, ~232 px) and the stats + MAP / PAUSE (right, ~150 px) are not the same width: an
+     asymmetric gutter gives the objective ~100 px more line on a 667 px phone (5 lines -> 3) */
+  .hud-top { top: calc(8px + var(--safe-t)); padding: 0 calc(158px + var(--safe-r)) 0 calc(244px + var(--safe-l)); gap: 4px; }
   .hud-obj { max-width: 100%; min-width: 0; font-size: 14px; padding: 4px 10px 3px; }
   .hud-timer .t-label { font-size: 17px; }
   .hud-timer .t-val { font-size: 28px; }
@@ -2206,6 +2244,15 @@ body.touch-on .mn-keys { display: none; }
 .st-tog.is-on .on { display: inline; }
 .st-tog.is-on .off { display: none; }
 .st-info { font-weight: 400; font-size: 14px; color: #4a3a30; }
+/* Settings > Controls: the reference card and key rebinding rows (keyboard rows hide on touch-only devices) */
+.st-help { display: block; font-size: 14px; line-height: 1.45; }
+.st-help b { display: inline-block; min-width: 76px; color: var(--irani-teal); }
+.st-key { min-width: 64px; min-height: 40px; padding: 2px 8px; background: #fffaf0; border: 2px solid var(--auto-black); border-radius: 6px; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3); cursor: pointer; }
+.st-key kbd { font-family: var(--font-osd); font-size: 20px; color: var(--auto-black); background: none; border: 0; padding: 0; }
+.st-row.capturing .st-key { background: var(--auto-yellow); animation: osd-blink 0.9s steps(2, start) infinite; }
+.st-row.capturing .st-key kbd { font-size: 16px; }
+body.reduced-motion .st-row.capturing .st-key { animation: none; }
+body.dev-touch .st-t-key, body.dev-touch .st-t-reset { display: none; }
 .st-row.armed .st-erase { background: var(--mn-red); color: #fff; }
 .st-foot { margin: 0; padding: 6px 16px 10px; font-family: var(--font-osd); font-size: 17px; color: #6a5646; border-top: 2px dashed rgba(26, 18, 20, 0.15); }
 body.touch-on .st-foot { display: none; }
@@ -3478,6 +3525,11 @@ body.touch-on .ol-chat .ol-say { min-height: 36px; padding: 2px 6px 0; font-size
 .ol-tag.ol-edge .ol-dist { display: block; font-family: var(--font-osd); font-size: 13px; line-height: 1; color: #fff; background: rgba(10, 14, 22, 0.75); padding: 1px 4px; border-radius: 2px; order: 3; }
 .ol-tag.ol-edge .ol-tri { order: -1; animation: none; border-left: 0; border-right: 0; border-top: 0; width: 0; height: 0; border-top: 9px solid transparent; border-bottom: 9px solid transparent; border-left: 14px solid var(--pc); margin-bottom: 1px; }
 @media (max-width: 480px) { .ol-tag .ol-nm { font-size: 15px; } .ol-tag.ol-edge .ol-nm { font-size: 13px; } }
+/* a friend whose tab is hidden / phone asleep ("away") or whose connection dropped ("reconnecting…"): dimmed + a label */
+.ol-tag .ol-st { display: none; font-family: var(--font-osd); font-size: 12px; line-height: 1; color: #fff; background: rgba(10, 14, 22, 0.8); padding: 1px 4px; border-radius: 2px; }
+.ol-tag.ol-away { opacity: 0.62; }
+.ol-tag.ol-away .ol-st { display: block; }
+.ol-tag.ol-away .ol-tri { animation: none; }
 @media (max-width: 480px) { .ol-code b { font-size: 21px; } .ol-roomcode b { font-size: 26px; } .ol-body { padding: 0 12px 12px; } }
 /* the panel: the first-timer's view (steps, name, two big choices) and the room view */
 .ol-hero { padding: 2px 0 10px; }

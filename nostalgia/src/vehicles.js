@@ -62,6 +62,8 @@
     // seats / lifts / fares only while the vehicle is slower than walking; a bus up to 60 u/s (footboard);
     // "no" offers within 10 u at priority -2 (below side activities), one refusal per 1.5 s
     seatMaxSpeed: 35, busMaxBoard: 60, noR: 10, noPriority: -2, noCD: 1.5, lockStuck: 8,
+    // the "Get off / Get out" prompt goes quiet (no desktop prompt, no glow) above this speed (u/s)
+    exitQuietSpeed: 25,
   };
   // bike surface factors (cls 'bike'); everything else uses world.js SPEED.drive. A type's `rough`
   // ({surf: factor}) overrides them (the Hercules' fat tyres, the Scooty's small wheels).
@@ -2503,12 +2505,15 @@
       // riding along: "Get off" (asks the driver to stop first when moving); none while a story locks the seat
       if (!p.controlsLocked && !pv.lockPassenger) {
         exitSpec.label = Math.abs(pv.speed) > 20 && !pv.stopReq ? 'Ask to stop' : 'Get off';
-        exitSpec.use = useExit;
+        exitSpec.use = useExit; exitSpec.quiet = false;
         N.interact.offer(exitSpec);
       }
     } else if (pv && !pv.locked && !p.controlsLocked) {
       exitSpec.label = pv.T.cls === 'bike' ? 'Get off' : pv.T.cls === 'boat' ? 'Get out' : 'Get out';
       exitSpec.use = useExit;
+      // riding along: "E Get off" in the middle of the screen the whole ride is clutter; it shows once
+      // the vehicle slows to a walk (ACTION still gets off at any speed)
+      exitSpec.quiet = Math.abs(pv.speed) > TUNE.exitQuietSpeed;
       N.interact.offer(exitSpec);
     }
     if (pv && pv.driver === p) kidAtWheelTick(pv, dt);

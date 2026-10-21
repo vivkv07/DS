@@ -8,7 +8,13 @@
  *   - Realtime (Phoenix channels, vsn 1.0.0 JSON) over a hand-written WebSocket server (RFC 6455, no deps):
  *     phx_join / phx_leave / heartbeat, presence track / untrack with presence_state + presence_diff,
  *     broadcast relay with {self: false}. Socket close = presence leave (a dropped player disappears).
- * No dependencies. start({key}) -> Promise<{url, port, close(), db, rooms, addFakes(topic, n), calls}>
+ *   - The REST broadcast endpoint (POST /realtime/v1/api/broadcast): supabase-js silently falls back to it when
+ *     send() is called on a channel that is not joined (a reconnect); counted so tests can prove the game never does.
+ *   - Network faults per client (by presence key): net(key, {lag: {base, rand}}) delays its frames in order (jitter),
+ *     net(key, {frozen: true}) swallows them both ways (a sleeping phone), drop(key) cuts its sockets (no close frame).
+ *   - events(): Realtime events as Supabase bills them (each broadcast = 1 sent + 1 per receiver; presence; REST).
+ * No dependencies. start({key}) -> Promise<{url, port, close(), db, rooms, addFakes(topic, n), calls, events(),
+ *   resetEvents(), net(key, fault), drop(key), members(topic)}>
  */
 'use strict';
 const http = require('http');
@@ -117,9 +123,29 @@ function start(opts) {
     for (const m of members(topic).values()) if (m.meta) out[m.key] = { metas: [Object.assign({ phx_ref: m.pref }, m.meta)] };
     return out;
   }
-  function sendTo(sock, msg) { if (sock && !sock.dead) sock.sendText(JSON.stringify(msg)); }
+  // network faults per client (tests/online_net.cjs): by presence key -> {lag: {base, rand} ms, frozen}
+  //   lag: every frame to that client is delayed base + rand * random() ms, in order (one TCP stream: jitter shows up
+  //   as late, bunched frames, never reordered); frozen: frames to and from it vanish (a phone asleep with its socket
+  //   still open on the server side)
+  const NETF = new Map();
+  const EV = { sent: 0, delivered: 0, presence: 0, rest: 0, byEvent: {} }; // Realtime "events" as Supabase counts them
+  const faultOf = (sock) => (sock && sock.key ? NETF.get(sock.key) : null);
+  function writeNow(sock, s) { if (sock && !sock.dead) sock.sendText(s); }
+  function sendTo(sock, msg) {
+    if (!sock || sock.dead) return;
+    const f = faultOf(sock);
+    if (f && f.frozen) return;
+    const s = JSON.stringify(msg);
+    if (f && f.lag) {
+      const now = Date.now(), at = Math.max(sock.nextAt || 0, now + (f.lag.base || 0) + Math.random() * (f.lag.rand || 0));
+      sock.nextAt = at;
+      setTimeout(() => writeNow(sock, s), at - now);
+      return;
+    }
+    writeNow(sock, s);
+  }
   function diff(topic, joins, leaves) {
-    for (const m of members(topic).values()) sendTo(m.sock, { topic, event: 'presence_diff', payload: { joins, leaves }, ref: null });
+    for (const m of members(topic).values()) { EV.presence++; sendTo(m.sock, { topic, event: 'presence_diff', payload: { joins, leaves }, ref: null }); }
   }
   function leave(topic, id) {
     const M = members(topic), m = M.get(id);
@@ -133,6 +159,7 @@ function start(opts) {
     let msg;
     try { msg = JSON.parse(raw); } catch (e) { return; }
     const { topic, event, payload, ref: r } = msg;
+    if (sock.key) { const f = NETF.get(sock.key); if (f && f.frozen) return; }
     const reply = (status, response) => sendTo(sock, { topic, event: 'phx_reply', payload: { status, response: response || {} }, ref: r, join_ref: msg.join_ref });
     if (topic === 'phoenix' && event === 'heartbeat') return reply('ok');
     const id = sock.id + '|' + topic;
@@ -141,6 +168,7 @@ function start(opts) {
       const key = (conf.presence && conf.presence.key) || ('anon' + sock.id);
       // presence only on channels joined with presence.enabled === true (what current supabase-js sends)
       const pres = !!(conf.presence && conf.presence.enabled === true);
+      if (conf.presence && conf.presence.key) sock.key = key;
       members(topic).set(id, { sock, key, meta: null, pref: null, pres, self: !!(conf.broadcast && conf.broadcast.self) });
       sock.topics.add(topic);
       reply('ok', { postgres_changes: [] });
@@ -152,6 +180,7 @@ function start(opts) {
     if (event === 'access_token') return;
     if (!m) return reply('error', { reason: 'unmatched topic' });
     if (event === 'presence' && payload) {
+      EV.presence++;
       if (!m.pres) return reply('ok'); // silently ignored
       if (payload.event === 'track') {
         const old = m.meta ? { [m.key]: { metas: [Object.assign({ phx_ref: m.pref }, m.meta)] } } : {};
@@ -165,7 +194,8 @@ function start(opts) {
       return reply('ok');
     }
     if (event === 'broadcast' && payload) {
-      for (const [oid, o] of members(topic)) if (oid !== id || o.self) sendTo(o.sock, { topic, event: 'broadcast', payload, ref: null });
+      EV.sent++; EV.byEvent[payload.event] = (EV.byEvent[payload.event] || 0) + 1;
+      for (const [oid, o] of members(topic)) if (oid !== id || o.self) { EV.delivered++; sendTo(o.sock, { topic, event: 'broadcast', payload, ref: null }); }
       calls.push({ t: Date.now(), kind: 'broadcast', topic, event: payload.event });
       return reply('ok');
     }
@@ -226,6 +256,22 @@ function start(opts) {
   const server = http.createServer((req, res) => {
     if (req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return; }
     const u = new URL(req.url, 'http://x');
+    if (/^\/realtime\/v1\/api\/broadcast/.test(u.pathname) && req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 1e6) req.destroy(); });
+      req.on('end', () => {
+        let msgs = [];
+        try { const o = JSON.parse(body || '{}'); msgs = Array.isArray(o.messages) ? o.messages : [o]; } catch (e) { msgs = []; }
+        for (const mm of msgs) {
+          EV.rest++;
+          const topic = 'realtime:' + String(mm.topic || '');
+          calls.push({ t: Date.now(), kind: 'rest_broadcast', topic, event: mm.event });
+          for (const o of members(topic).values()) sendTo(o.sock, { topic, event: 'broadcast', payload: { type: 'broadcast', event: mm.event, payload: mm.payload }, ref: null });
+        }
+        res.writeHead(202, Object.assign({ 'Content-Type': 'application/json' }, cors)); res.end('{}');
+      });
+      return;
+    }
     const m = u.pathname.match(/^\/rest\/v1\/rpc\/([a-z_]+)$/);
     if (m && req.method === 'POST') {
       let body = '';
@@ -255,6 +301,15 @@ function start(opts) {
       const port = server.address().port;
       resolve({
         url: 'http://127.0.0.1:' + port, port, db, rooms, calls, key: KEY,
+        /** Realtime events as Supabase bills them: sent + delivered broadcasts, presence messages, REST fallbacks */
+        events: () => JSON.parse(JSON.stringify(EV)),
+        resetEvents() { EV.sent = 0; EV.delivered = 0; EV.presence = 0; EV.rest = 0; EV.byEvent = {}; },
+        /** network faults for the client whose presence key is `key`: {lag: {base, rand}} | {frozen: true} | null */
+        net(key, f) { if (f) NETF.set(key, f); else NETF.delete(key); },
+        /** the network drops: close every socket of the client with presence key `key` (no close frame) */
+        drop(key) { let n = 0; for (const s of allSocks) if (s.key === key && !s.dead) { s.kill(); n++; } return n; },
+        /** presence keys in a room right now */
+        members: (topic) => Array.from(members(topic).values()).filter((m) => m.meta).map((m) => m.key),
         /** n fake members tracked in `topic` (for the room-cap test) */
         addFakes(topic, n) {
           const fakes = [];

@@ -2238,7 +2238,17 @@
     B.ca[o] = rgb[0]; B.ca[o + 1] = rgb[1]; B.ca[o + 2] = rgb[2];
     B.sa[i * 2] = size; B.sa[i * 2 + 1] = a;
   }
-  function ptCommit(B) { const g = B.p.geometry, a = g.attributes; g.setDrawRange(0, B.n); a.position.needsUpdate = true; a.aCol.needsUpdate = true; a.aSA.needsUpdate = true; }
+  // upload only the points written this frame (updateRange), and nothing while the buffer stays empty (most of
+  // the year: these Float32Arrays are 22k floats each, ~230 KB a frame re-sent for nothing before)
+  function ptCommit(B) {
+    const g = B.p.geometry, a = g.attributes, n = B.n;
+    g.setDrawRange(0, n);
+    if (!n) { B.p.visible = false; return; }
+    B.p.visible = true;
+    rangeUp(a.position, n); rangeUp(a.aCol, n); rangeUp(a.aSA, n);
+  }
+  /** mark the first n items of a buffer attribute for upload (count 0 would upload the whole array in WebGL2) */
+  function rangeUp(attr, n) { attr.updateRange.offset = 0; attr.updateRange.count = n * attr.itemSize; attr.needsUpdate = true; }
   const GLOW_VS = [
     'attribute vec3 aCol; attribute vec3 aGP; uniform float uT; uniform float uScale; uniform float uI; uniform float uLamp; uniform float uFogK; varying vec3 vC;',
     'float hh(float a, float b) { return fract(sin(a * 12.9898 + b * 78.233) * 43758.5453); }',
@@ -2575,8 +2585,10 @@
       const hi = Math.min(LIT.dmax, LB.n - 1);
       for (let i = LIT.dmin; i <= hi; i++) if (LB.dirty[i]) { writeBitMatrix(i, VS); LB.dirty[i] = 0; }
       const im = L.instanceMatrix, ic = L.instanceColor;
-      im.updateRange.offset = LIT.dmin * 16; im.updateRange.count = Math.max(0, hi - LIT.dmin + 1) * 16; im.needsUpdate = true;
-      ic.updateRange.offset = LIT.dmin * 3; ic.updateRange.count = Math.max(0, hi - LIT.dmin + 1) * 3; ic.needsUpdate = true;
+      if (hi >= LIT.dmin) { // (an empty range must not be sent: count 0 uploads the whole array in WebGL2)
+        im.updateRange.offset = LIT.dmin * 16; im.updateRange.count = (hi - LIT.dmin + 1) * 16; im.needsUpdate = true;
+        ic.updateRange.offset = LIT.dmin * 3; ic.updateRange.count = (hi - LIT.dmin + 1) * 3; ic.needsUpdate = true;
+      }
       LIT.dmin = 1e9; LIT.dmax = -1;
     }
     L.count = LB.n;
@@ -2604,8 +2616,9 @@
       else if (e.kind === 'ladi') { const ca = Math.cos(e.a), sa = Math.sin(e.a); for (let j = e.pops; j < e.n && cy < 78; j += 4) { const u = (j / e.n) * e.len; put(CY, cy++, e.x0 + ca * u, 0.25, e.y0 + sa * u, 0.35, 0.5, 0.35, '#c81e1e'); } }
     }
     for (const g of GROUPS) { const b = g.bucket; if (!b || cy >= 78) continue; put(CY, cy++, b.x, 1.6, b.y, 1.3, 3.2, 1.3, '#4a7aa8'); }
-    CN.count = cn; CY.count = cy; CN.instanceMatrix.needsUpdate = true; CY.instanceMatrix.needsUpdate = true;
-    if (CN.instanceColor) CN.instanceColor.needsUpdate = true; if (CY.instanceColor) CY.instanceColor.needsUpdate = true;
+    CN.count = cn; CY.count = cy;
+    if (cn) { rangeUp(CN.instanceMatrix, cn); if (CN.instanceColor) rangeUp(CN.instanceColor, cn); }
+    if (cy) { rangeUp(CY.instanceMatrix, cy); if (CY.instanceColor) rangeUp(CY.instanceColor, cy); }
     // smoke haze: the fog closes in and turns smoky (thicker after 21:00); bursts tint the sky
     const fog = H.scene && H.scene.fog;
     if (fog) {
