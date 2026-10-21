@@ -45,14 +45,14 @@ const FPS = TL.fps || 30, DT = 1 / FPS;
 // countdown is ~10 frames, so every pre-roll skips it); preV = portrait pre-roll where the portrait layout plays
 // out differently (kite: the sky is taller, so the pech happen sooner). Picked from SURVEY logs (event frames):
 const GAMES = {
-  // landscape cuts at f417 / f503 (game won at f570): window 400-544 = two "BO KAATA!" cuts with the pech gauge;
-  // portrait cuts at f151 / f225 (won f259): window 108-252
-  // kite's draw feeds its simulation, so its pre-roll must really draw (fast: false), else the bot plays out differently
-  // portrait: the editor's window 135..278 puts the first cut on the same clip frame as landscape (f16); the second
-  // lands on f90 (landscape f102), the third (the win) on f124; the result card only comes at f312
-  // phone scale (540x960, real fonts): seed 16 cuts at f124 / f227 (no third cut before f360): window 108..251 =
-  // cuts at clip f16 / f119. (paramsAt: per-viewport params; the kite fight depends on the layout and the fonts)
-  kite: { params: { difficulty: 0.4, seed: 11 }, paramsAt: { '540x960': { seed: 16 } }, pre: 400, preV: { '1080x1920': 134, '540x960': 107 }, fast: false, anchor: { ev: 'CUT \\d+', clip: 16 } },
+  // kite: only the FIRST cut is pinned (clip f16, the score's kite SFX); `anchor` keeps it there (+-2 spare frames).
+  // The fight depends on the layout and the fonts. kite's draw feeds its simulation, so its pre-roll must really
+  // draw (fast: false), else the bot plays out differently.
+  //   landscape 1920x1080 (real fonts, seed 11): cuts f287 / f425, won f484 (card f538): window 271..414 = BO KAATA!
+  //     at clip f16, then the next pech building up (its cut lands just after the window)
+  //   phone 540x960 (real fonts, seed 16): cuts f124 / f227, no third before f360: window 108..251 = cuts f16 / f119
+  //   tablet 1080x1920 (fallback fonts, seed 11): cuts f151 / f225, won f259 (card f312): window 135..278
+  kite: { params: { difficulty: 0.4, seed: 11 }, paramsAt: { '540x960': { seed: 16 } }, pre: 270, preV: { '1080x1920': 134, '540x960': 107 }, fast: false, anchor: { ev: 'CUT \\d+', clip: 16 } },
   // ball 2 (the bot plays a CUT): end of the bowler's run-up, delivery ~f224, the ball bounces in, PERFECT cut
   // ~f250 (bat flash + sparks), the ball streaks right over the low wall: "SIX! Plot mein!" + confetti and
   // RUNS 6 -> 12 at f258, the ball still flying into the plot
