@@ -450,11 +450,14 @@
       a_brickgame: { y: 0.1, w: 0.265 }, // in the console margin (it starts at 7 %): left of the LCD, above the D-pad
       a_antenna: { x: 0.685, y: 0.1, w: 0.28 }, // the right panel's bare wall (the dial and antenna head are top-left)
     },
-    port: {
-      _: { x: 0.06, y: 0.12, w: 0.8 },
-      a_panipuri: { y: 0.565, w: 0.36 }, // the vendor fills the top: the counter's lower-left, left of the puri's path
-      a_cricket: { y: 0.235, w: 0.42 }, // under the IRANI CAFE sign and the "SIX!" banner (x 29-71 %, y 16-21 % from f44)
-      a_marbles: { y: 0.09 }, // above the "PHIR SE MAARO!" banner (x 20-81 %, y 17.9-21 % from f54); left of Pappu's striker
+    port: { // re-checked against the phone-scale captures (540x960 CSS at 4x: bigger UI, buttons below the action)
+      _: { x: 0.06, y: 0.12, w: 0.8 }, // kite, bargain: under the top bar (+ kite's cut meter, bargain's KOTI sign)
+      a_cricket: { y: 0.25, w: 0.42 }, // below the "SIX! Plot mein!" banner (y 15.5-21.5 %) and shop signs (to 24 %), left of the bowler
+      a_marbles: { y: 0.065 }, // above the "PHIR SE MAARO!" banner (from y 17 %), left of Pappu's striker; JACKPOT is lower (24 %)
+      a_panipuri: { x: 0.66, y: 0.15, w: 0.31, maxLines: 2 }, // over the menu board: the vendor fills x 30-64 %, the plate/puri/eater are low
+      a_brickgame: { y: 0.055, w: 0.88, maxLines: 1, size: 56 }, // the LCD fills y 13.5-62 % and touch buttons the rest: the console's top edge + bezel label
+      a_antenna: { x: 0.055, y: 0.185, w: 0.295, maxLines: 2 }, // sky under the signal dial (to 17.5 %), left of the antenna (x 38 %+), above the clothes (30 %)
+      a_clap: { w: 0.46, maxLines: 2 }, // left of the Golconda pavilion (x 54-68 %, y 12-17 %)
       a_lingocha: { y: 0.09 }, // 3D, centre-cropped: no minigame bar, kids' heads start ~17 %
       a_maram: { y: 0.09 },
     },
