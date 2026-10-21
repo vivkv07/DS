@@ -447,16 +447,18 @@
       _: { x: 0.06, y: 0.12, w: 0.42 },
       a_cricket: { w: 0.31 }, // left of the IRANI CAFE sign and the "SIX!" banner
       a_panipuri: { w: 0.245 }, // left of the vendor's arm, above the counter
-      a_brickgame: { y: 0.1, w: 0.265 }, // in the console margin (it starts at 7 %): left of the LCD, above the D-pad
+      // left panel above the START/SOUND touch buttons (from y 20.3 %), left of the LCD (x 33.4 %+); the kicker sits in
+      // the band between the top bar (to ~4 %) and the console's top edge (~8 %)
+      a_brickgame: { y: 0.046, w: 0.24, maxLines: 2, size: 43 },
       a_antenna: { x: 0.685, y: 0.1, w: 0.28 }, // the right panel's bare wall (the dial and antenna head are top-left)
     },
     port: { // re-checked against the phone-scale captures (540x960 CSS at 4x: bigger UI, buttons below the action)
       _: { x: 0.06, y: 0.12, w: 0.8 }, // kite, bargain: under the top bar (+ kite's cut meter, bargain's KOTI sign)
       a_cricket: { y: 0.25, w: 0.42 }, // below the "SIX! Plot mein!" banner (y 15.5-21.5 %) and shop signs (to 24 %), left of the bowler
       a_marbles: { y: 0.065 }, // above the "PHIR SE MAARO!" banner (from y 17 %), left of Pappu's striker; JACKPOT is lower (24 %)
-      a_panipuri: { x: 0.66, y: 0.15, w: 0.31, maxLines: 2 }, // over the menu board: the vendor fills x 30-64 %, the plate/puri/eater are low
-      a_brickgame: { y: 0.055, w: 0.88, maxLines: 1, size: 56 }, // the LCD fills y 13.5-62 % and touch buttons the rest: the console's top edge + bezel label
-      a_antenna: { x: 0.055, y: 0.185, w: 0.295, maxLines: 2 }, // sky under the signal dial (to 17.5 %), left of the antenna (x 38 %+), above the clothes (30 %)
+      a_panipuri: { x: 0.66, y: 0.158, w: 0.31, maxLines: 2 }, // over the menu board, under the GOKUL CHAT sign (to 15 %): the vendor fills x 30-64 %, the plate/puri/eater are low
+      a_brickgame: { y: 0.055, w: 0.88, maxLines: 1, size: 56, box: 1 }, // the LCD fills y 13.5-62 % and touch buttons the rest: on the console's top edge, an opaque box over the bezel's own BRICK GAME print
+      a_antenna: { x: 0.055, y: 0.195, w: 0.295, maxLines: 2 }, // sky under the signal dial + its ANTENNA label (to 18.8 %), left of the mast's guy wire, above the clothesline (30.7 %)
       a_clap: { w: 0.46, maxLines: 2 }, // left of the Golconda pavilion (x 54-68 %, y 12-17 %)
       a_lingocha: { y: 0.09 }, // 3D, centre-cropped: no minigame bar, kids' heads start ~17 %
       a_maram: { y: 0.09 },
@@ -491,7 +493,8 @@
     const size = lay.size, padX = size * 0.3, bh = size * 1.2, gap = Math.round(size * 0.08);
     const kh = opt.first ? (port ? 58 : 52) : (port ? 48 : 42), kgap = port ? 12 : 10;
     const x0 = P.x * VW, top = P.y * VH, capTop = top + kh + kgap;
-    return { port, k, VW, VH, x0, top, kh, capTop, lines: lay.lines, widths: lay.lines.map((l) => meas(l, size)), size, padX, bh, gap,
+    const fill = P.box != null ? 'rgba(12,14,20,' + P.box + ')' : BOXFILL; // per-segment box opacity
+    return { port, k, VW, VH, x0, top, kh, capTop, fill, lines: lay.lines, widths: lay.lines.map((l) => meas(l, size)), size, padX, bh, gap,
       capW: lay.w + 2 * padX, bottom: capTop + lay.lines.length * (bh + gap) - gap };
   }
   function capBoxed(ctx, seg, t, W, H, B, opt) {
@@ -514,7 +517,7 @@
     // kicker plate wipes in; the act name follows inside it
     const pw = kW * ku, ky = L.top + L.kh / 2;
     ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 3;
-    ctx.fillStyle = opt.first ? AMBER : BOXFILL; ctx.fillRect(x0, L.top, pw, L.kh); ctx.restore();
+    ctx.fillStyle = opt.first ? AMBER : L.fill; ctx.fillRect(x0, L.top, pw, L.kh); ctx.restore();
     if (kBar) { ctx.fillStyle = AMBER; ctx.fillRect(x0, L.top, Math.min(kBar, pw), L.kh); }
     ctx.save(); ctx.beginPath(); ctx.rect(x0, L.top, pw, L.kh); ctx.clip();
     const tu = ease.out(clamp((t - kStart - 0.08) / 0.25, 0, 1)); ctx.globalAlpha *= tu;
@@ -526,7 +529,7 @@
       if (lu <= 0) return;
       const ly = L.capTop + i * (L.bh + L.gap), bw = (L.widths[i] + 2 * L.padX) * lu;
       ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 4;
-      ctx.fillStyle = BOXFILL; ctx.fillRect(x0, ly, bw, L.bh); ctx.restore();
+      ctx.fillStyle = L.fill; ctx.fillRect(x0, ly, bw, L.bh); ctx.restore();
       ctx.save(); ctx.beginPath(); ctx.rect(x0, ly, bw, L.bh); ctx.clip();
       text(ctx, ln, x0 + L.padX - 24 * (1 - lu), ly + L.bh * 0.5 + L.size * 0.01, L.size, { weight: 900, align: 'left', track: L.size * 0.02, color: '#ffffff' });
       ctx.restore();
