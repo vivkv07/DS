@@ -75,6 +75,8 @@ function dirFp(dir) { // fingerprint for clip reuse: file count + newest mtime
 const VX = {
   g_auto_tankbund: [[0, 0], [48, 0], [71, 0.25]], // the auto drifts right of centre at the end
   a_maram: [[0, -0.2], [20, -0.2], [30, -0.55]],   // Chinnu + the thrower, then follow Chinnu's dodge to the left ring
+  g_boat: [[0, -0.5], [20, -0.55], [32, -0.3], [52, 0.55], [64, 0.7]], // Chinnu rowing, then pan across the lake to the Buddha
+  f_bonalu: [[0, 0.15], [71, 0.25]],               // Chinnu with the Pothuraju striding at the head of the bonam procession
 };
 
 function vxExpr(v, nf) { // VX value -> crop centre expression of the frame number n
