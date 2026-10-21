@@ -3815,7 +3815,7 @@
       const r = L.rx.get(uid);
       if (!r) return false;
       if (r.u[0] !== L.ep) return r.u[0] > L.ep;
-      return r.u[1] >= L.k + (r.own ? L.buf : 0); // a few steps behind a running owner: smooth, whatever the message timing
+      return r.u[1] >= L.k + (r.own && !L.gone.has(uid) ? L.buf : 0); // a few steps behind a running owner: smooth, whatever the message timing
     }
     function lag(uid) { const r = L.rx.get(uid); return !r ? 0 : r.u[0] > L.ep ? 999 : r.u[1] - L.k; }
     function applyFrom(uid) {
@@ -3893,6 +3893,8 @@
         L.cur = own;
         if (own !== me) {
           if (!canFollow(own)) {
+            // they left and we have played every step they sent: the AI takes their part from here
+            if (L.gone.has(own) && !L.isGone(own)) { L.gone.set(own, [L.ep, L.k]); continue; }
             // a friend who is waiting on us too (their own step is not theirs): after 5 s, step on rather than both wait
             const r = L.rx.get(own);
             if (!(L.waitT > 5 && r && !r.own && performance.now() - r.t < 2500)) { blocked = own; break; }
@@ -4763,8 +4765,9 @@
   }
   GP.hud = function (g) {
     const S = g.S, P = S.pm, inn = gpInn(S), r = gpRole(S);
+    if (P.stage === 'final') return [{ k: '', v: 'FINAL SCORES' }];
     const it = [{ k: 'YOU', v: r === 'watch' ? 'WATCH' : r.toUpperCase(), good: r !== 'watch' }];
-    if (inn && P.stage !== 'intro' && P.stage !== 'final') it.push({ k: P.players[inn.bat].nick.slice(0, 8).toUpperCase(), v: inn.runs + '(' + inn.balls + ')' }, { k: 'BALLS', v: String(Math.max(0, P.B - inn.balls)), warn: P.B - inn.balls <= 2 });
+    if (inn && P.stage !== 'intro') it.push({ k: P.players[inn.bat].nick.slice(0, 8).toUpperCase(), v: inn.runs + '(' + inn.balls + ')' }, { k: 'BALLS', v: String(Math.max(0, P.B - inn.balls)), warn: P.B - inn.balls <= 2 });
     return it;
   };
   GP.cleanup = function (g) {

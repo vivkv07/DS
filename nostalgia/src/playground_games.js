@@ -14,6 +14,17 @@
  *               is allowed, and a catch puts the thrower out). Whoever holds it throws at the others; a
  *               hit on the full = out; no head shots (a foul, kid-friendly, comic "thwack", nobody gets
  *               hurt); RUN dodges. Last one standing wins.
+ * WITH FRIENDS (N.party, src/party.js, ARCHITECTURE §24): registered as 'lingocha' and 'maram_pitti' (1-3 players,
+ * kind 'score', solo too). Friends from the online room take the places AI kids hold (lingocha: they captain opposite
+ * teams, slot 0 + 2 home, slot 1 away; maram pitti: all in one ring) and colony kids fill the rest. The challenger's
+ * page HOSTS the one real game; every friend's page shows it (snapshots ~9/s + the moments: pops, barks, sounds,
+ * banners) and plays its own Chinnu, sending what he does (pick / stack a stone, grab / throw, the line throw, a catch
+ * try) as commands; a live ball reaching a friend is judged on HIS page (lag-compensated: his position history against
+ * the throw's path) and reported. Everybody meets at the ground on the 3-2-1; a friend who leaves is replaced by a
+ * colony kid; the host leaving ends it. Results go to the party card (lingocha: the winning side first; maram pitti:
+ * places), a tin token on the first win. Alone, no prompt of their own (the "Join ..." offers stay the solo games); in a
+ * room the "... with friends" prompt stands on each ground's Join offer. Solo through N.party: Immu and Ayesha join
+ * Chinnu's team / the ring. Details: the NET section below.
  * Ambient: in the afternoon (school days 16:00-18:30) and on holidays / Sundays (08:00-18:30), when no
  * mission runs, the kids at the nearest ground play gully cricket (places_art.js draws it), lingocha or
  * maram pitti (simulated here with the same rules, all AI, light), with Hyderabadi barks.
@@ -78,7 +89,8 @@
  *     the same character already standing at the ground is hidden while its double plays (restored after).
  *   - HUD: a compact panel (.pg-hud) inside #hud .hud-top, DOM pops (.pg-pops) over the 2D / 3D view,
  *     N.hud.banner / toast; N.audio.sfx; N.dialogue.bark; events minigame:start / end / event.
- * TEST: node tests/playground_games.cjs
+ * TEST: node tests/playground_games.cjs (ONLY=party: solo through N.party) · node tests/party_games.cjs (friends in a
+ *   room, two / three pages against tests/online_mock.cjs)
  */
 (() => {
   'use strict';
@@ -2488,7 +2500,8 @@
     } catch (e) { N.err('pg.stats', e); }
     if (!r.aborted && !r.quit && r.reason !== 'window' && r.reason !== 'chappal') {
       const t = r.win ? (S.id === 'lingocha' ? 'Match won!' : 'Champion of the ground!') : (S.id === 'lingocha' ? 'Match lost' : 'Out of the game');
-      const sub = S.id === 'lingocha' ? S.teamName[0] + ' ' + r.roundsWon + ' – ' + r.roundsLost + ' ' + S.teamName[1] + (r.paid ? ' · +' + U.fmtMoney(r.paid) : '') : (r.win ? 'Hits ' + r.hits + (r.catches ? ' · catches ' + r.catches : '') + (r.paid ? ' · +' + U.fmtMoney(r.paid) : '') : 'Placed ' + r.rank + ' of ' + r.kids);
+      const my = S.me && S.L ? S.me.team : 0;
+      const sub = S.id === 'lingocha' ? S.teamName[my] + ' ' + r.roundsWon + ' – ' + r.roundsLost + ' ' + S.teamName[1 - my] + (r.paid ? ' · +' + U.fmtMoney(r.paid) : '') : (r.win ? 'Hits ' + r.hits + (r.catches ? ' · catches ' + r.catches : '') + (r.paid ? ' · +' + U.fmtMoney(r.paid) : '') : 'Placed ' + r.rank + ' of ' + r.kids);
       banner(t, sub, 2600, r.win ? 'pass' : 'fail');
       if (r.win) sfx('finger_whistle', { ui: true, vol: 0.7 });
     }
@@ -3054,6 +3067,7 @@
     if (charging) { const v = Math.round(A.p * 100); if (HUDS.last.pv !== v) { HUDS.last.pv = v; k.bar.style.width = v + '%'; k.power.dataset.zone = A.p > 0.86 ? 'hard' : A.p < 0.25 ? 'soft' : 'good'; } }
     if (HUDS.t > 0) return;
     HUDS.t = 0.1;
+    hudAvoid();
     const h = S.G.hud(S);
     setTxt('title', k.title, S.params.title || h.title);
     setTxt('score', k.score, h.score);
@@ -3067,6 +3081,21 @@
     S.ui.prompt = pr;
   }
   function fmtSecs(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+  /** in an online room the room badge / quick chat stand at the right edge (online.js): on a phone they would sit on top
+   *  of this panel's prompt, so the panel stops short of them while they are beside it */
+  function hudAvoid() {
+    const r = HUDS.root;
+    if (!r) return;
+    let mw = '';
+    try {
+      const ol = document.querySelector('.ol-hud');
+      if (ol && !ol.hidden && ol.offsetParent !== null) {
+        const a = r.getBoundingClientRect(), b = ol.getBoundingClientRect();
+        if (b.width > 0 && b.height > 0 && b.top < a.bottom + 4 && b.bottom > a.top - 4 && b.left > a.left + 160) mw = Math.max(170, Math.floor(b.left - a.left - 8)) + 'px';
+      }
+    } catch (e) { mw = ''; }
+    if (HUDS.last.mw !== mw) { HUDS.last.mw = mw; r.style.maxWidth = mw; }
+  }
   function popsDraw() {
     const list = shownSessions();
     let any = false;
@@ -3930,7 +3959,7 @@
         n.hits++;
         NET.cmd(S, { k: 'hm', q: b.seq, x: Math.round(bx * 10), y: Math.round(by * 10), z: +bz.toFixed(2), c: caught ? 1 : 0 });
         if (b.state === 'air') b.live = false;
-        log(S, 'hit_report', { caught, seq: b.seq, late: Math.round(tn - tc) });
+        log(S, 'hit_report', { caught, seq: b.seq, late: Math.round(tn - tc), atT: +atT.toFixed(2), catchT: +(+me.catchT).toFixed(2) });
         return;
       }
       k.checked = tn;

@@ -29,7 +29,10 @@
  *     (committed) stretch beats the throw, an early hop is re-aimed at; an AI seeker brushing a hitter is not SAFE,
  *     Chinnu running into one is; holding the ball, the aim assist passes over a SAFE seeker; maram pitti: Chinnu's hit
  *     from right next to a kid is a TOO CLOSE foul (label / orange reticle warn him first)
- * Fails on any console error / page error / N.err.   ONLY=desktop|fixes|fair|ambient|3d|portrait|landscape
+ *   party (N.party, src/party.js): lingocha + maram pitti registered (1-3 players), no prompt of their own when alone,
+ *     solo through the party with the AI friends (Immu, Ayesha in the team / ring), the results card, the tin token
+ *     (with friends in an online room: tests/party_games.cjs)
+ * Fails on any console error / page error / N.err.   ONLY=desktop|fixes|fair|ambient|3d|portrait|landscape|party
  *   node nostalgia/tests/playground_games.cjs
  */
 'use strict';
@@ -817,6 +820,54 @@ async function phone(browser, name, viewport) {
   await context.close();
 }
 
+
+/* ======================================================================= N.party (solo with the AI friends) */
+async function partySolo(browser) {
+  cur = 'party';
+  console.log('\n== N.party: lingocha + maram pitti registered; solo through the party with the AI friends');
+  const { context, page, errors } = await openPage(browser, { viewport: { width: 1280, height: 720 } });
+  await page.evaluate(() => { window.__res = null; N.on('party:results', (r) => { window.__res = r; }); N.party._debug.resetStats(); });
+  const reg = await page.evaluate(() => ['lingocha', 'maram_pitti'].map((id) => { const s = N.party && N.party.get(id); return s ? { id, name: s.name, icon: s.icon, min: s.players.min, max: s.players.max, solo: s.solo, where: s.where, spots: s.spots ? s.spots.length : 0, token: s.token && s.token.id } : null; }));
+  check(reg.every((r) => r && r.min === 1 && r.max === 3 && r.solo), 'N.party has lingocha + maram pitti (1-3 players, solo too): ' + reg.map((r) => r && (r.icon + ' ' + r.name)).join(', '), reg);
+  check(reg.every((r) => r && !r.where && !r.spots), 'alone (no online room) they add no prompt of their own at the grounds: "Join ..." stays the solo game', reg);
+  const av = await page.evaluate(() => N.party.available().filter((a) => a.id === 'lingocha' || a.id === 'maram_pitti').map((a) => a.id + ':' + a.here));
+  check(av.length === 2, 'the party picker lists them (' + av.join(', ') + ')');
+  const desc = await page.evaluate(() => N.party.get('lingocha').describe({ place: 'playground_1' }));
+  check(/Seven stones/.test(desc) && /colony kids/i.test(desc), 'describe(): "' + desc.slice(0, 70) + '…"');
+  // lingocha: Immu and Ayesha in Chinnu's team, the match through the party, the results card, the tin token
+  const f = await page.evaluate(() => { const F = N.playgroundGames.fieldFor('playground_1'); N.debug.teleport(F.line.x, F.line.y + 12); return F.key; });
+  await gwait(page, 0.5);
+  check((await page.evaluate(() => N.party.solo('lingocha', {}))).ok, 'N.party.solo("lingocha")');
+  check(await waitPhase(page, 'aim', 120000), 'GO (after the 3-2-1): Chinnu at the chalk line');
+  const s1 = await st(page);
+  const home = s1.parts.filter((q) => q.team === 0).map((q) => q.name + (q.ai ? '*' : ''));
+  check(s1.party === 'solo' && home.indexOf('Immu*') >= 0 && home.indexOf('Ayesha*') >= 0 && s1.place === f, 'the AI friends play in Chinnu\'s team: ' + home.join(', ') + ' v ' + s1.lingocha.teams[1]);
+  await page.evaluate(() => N.playgroundGames.debug.finishRound('home'));
+  await waitFor(page, () => { const s = N.playgroundGames.debug.state(); return s && s.lingocha.round === 2 && s.phase !== 'roundEnd'; }, null, 60000);
+  await page.evaluate(() => N.playgroundGames.debug.finishRound('home'));
+  check(await waitFor(page, () => !!window.__res, null, 60000), 'the match is over: the party results card');
+  const r1 = await page.evaluate(() => window.__res.standings.map((r) => r.nick + ':' + r.rank + ':' + r.note));
+  check(r1.length === 3 && r1.every((x) => /won 2–0/.test(x)), 'results: ' + r1.join(' | '));
+  check(await page.evaluate(() => N.tape.tin.has('pg_lingocha_friends')), 'first win with the gang: the "Lingocha stone" tin token');
+  await gwait(page, 1.4);
+  await shot(page, 'party_results');
+  await page.evaluate(() => { N.party.closeCards(); window.__res = null; });
+  // maram pitti: the friends in the ring, places on the card
+  await page.evaluate(() => { const F = N.playgroundGames.fieldFor('playground_2'); N.debug.teleport(F.centre.x, F.centre.y + 20); });
+  await gwait(page, 1);
+  check((await page.evaluate(() => N.party.solo('maram_pitti', {}))).ok, 'N.party.solo("maram_pitti")');
+  check(await waitPhase(page, 'play', 120000), 'the toss, the bounce: play');
+  await page.evaluate(() => { const D = N.playgroundGames.debug, S = D.session(); for (const P of S.parts) if (!P.isPlayer && P.name !== 'Ayesha') D.out(P.name); });
+  await gwait(page, 0.4);
+  await page.evaluate(() => N.playgroundGames.debug.out('Ayesha'));
+  check(await waitFor(page, () => !!window.__res, null, 60000), 'last one standing: the results card');
+  const r2 = await page.evaluate(() => window.__res.standings.map((r) => r.nick + ':' + r.rank + ':' + r.note));
+  check(/:1:last one standing/.test(r2[0]) && r2.some((x) => /^Ayesha:2:out 2nd/.test(x)), 'places: ' + r2.join(' | '));
+  await page.evaluate(() => N.party.closeCards());
+  await noErrors(page, errors);
+  await context.close();
+}
+
 (async () => {
   const t0 = Date.now();
   const browser = await chromium.launch();
@@ -827,6 +878,7 @@ async function phone(browser, name, viewport) {
     if (want('ambient')) await ambient(browser);
     if (want('portrait')) await phone(browser, 'portrait', { width: 390, height: 844 });
     if (want('landscape')) await phone(browser, 'landscape', { width: 844, height: 390 });
+    if (want('party')) await partySolo(browser);
   } catch (e) { fail('exception: ' + (e.stack || e.message)); }
   finally { await browser.close(); }
   if (want('3d')) { try { await three(); } catch (e) { fail('3d exception: ' + (e.stack || e.message)); } }

@@ -2034,3 +2034,25 @@ small in-page autopilot only chooses keys), the start prompt / card, map pins wi
 phones: challenge -> invite (Y key / click) -> lobby -> GO agreement on the shared clock -> race with real keys on two
 phones while the third leaves -> identical results, leaderboard rows, the Online panel list and the 🏁 picker; party
 Chitti Chase and pin race (a third phone skips with N). Screenshots `tests/out/party_*.png`.
+**Playground + terrace games with friends** (`src/playground_games.js` NET section; the kite / marbles sections of
+`src/minigames.js`; test `node tests/party_games.cjs`, `ONLY=solo,goli,kite,lingocha,maram,three`). All 1-3 players,
+solo too (the AI friends fill places), first win = a tin token. Registered `where` / `spots` only while friends are in
+the room (the "… with friends" prompt then stands on the game's own offer: the Join lingocha / maram pitti offers, "Play
+goli", the terrace kite spot); alone they add no prompt (the plain offers stay the solo games) and list as "anywhere".
+- `lingocha`, `maram_pitti` (in-world): the challenger's page HOSTS the one real game (rules, AI kids, ball, stones);
+  friends are participants (`P.remote`) that follow their online ghosts. Host -> all: `pi` the roster (repeated till
+  each guest acks `pa`), `ps` a snapshot ~9/s (kids, ball incl. a live throw's origin / age / live range, stones,
+  phase, score, the wind-up fuse) with the moments since the last one (pops, barks, world sounds, banners / toasts /
+  walk-to-your-spot for one friend), `pe` the end with each friend's result. Guest -> host `pc` commands (pick / stack,
+  grab / throw, the line throw, a catch try, a hit report, leaving). A live ball reaching a guest is judged on HIS page
+  against his own position history (lag-compensated; a last-moment dodge counts) and reported. Lingocha: friends
+  captain opposite teams (slots 0 + 2 v 1; the side with fewer friends plays a little above difficulty); maram pitti:
+  one ring, an out friend watches till the last is standing / every friend is out / time. A leaver -> a colony kid
+  takes his place; the host leaving ends it. Lingocha ranks the winning side first (`rank`), maram pitti by `place`.
+- `goli` (marbles overlay): turn by turn in the party order on the same seeded board; the shooter's page sends the flick
+  (`gf`) and, when the goli stop, the result (`gr`: positions, scores, again / next / sudden death / over) that every
+  page snaps to (physics on a fixed 1/120 s step); the host skips a turn nobody takes (`gs`). Most goli wins.
+- `patang_pech` (kite overlay): one shared 150 u sky (the terraces side by side, the same rooftops from the seed; a
+  phone's camera follows its own kite, friends off screen get an edge arrow); each page flies its own kite and sends
+  `ks` ~8/s; the host referees pechs (`kp` start / end with the tug in its own `ks`), a snap is the owner's (`kx`), the
+  host ends it early when one patang-holder is left (`ke`). Wind and gusts come from the shared clock. Most cuts wins.

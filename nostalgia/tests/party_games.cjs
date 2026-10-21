@@ -143,7 +143,9 @@ async function solo(browser, S) {
     const f = await Z.ev(() => { const F = N.playgroundGames.fieldFor('playground_1'); const I = N.interact.get('pg:lingocha:' + F.key); N.player.teleport(I.x, I.y + 2); return { x: I.x, y: I.y }; });
     await Z.gw(0.6);
     const lab = await Z.ev(() => { const c = N.interact.current; return c ? (typeof c.label === 'function' ? c.label(N.player) : c.label) : null; });
-    check(/Join/.test(lab || '') && /lingocha/.test(lab || ''), 'alone at the colony ground the prompt is still "' + lab + '" (solo game as before)');
+    const mine = await Z.ev(() => { const F = N.playgroundGames.fieldFor('playground_1'), I = N.interact.get('pg:lingocha:' + F.key); return { join: !!(I && I.enabled(N.player)), label: I && (typeof I.label === 'function' ? I.label(N.player) : I.label), party: ['lingocha', 'maram_pitti', 'goli', 'patang_pech'].map((id) => { const s = N.party.get(id); return id + ':' + (s.where || '-') + ':' + (s.spots ? s.spots.length : 0); }) }; });
+    check(mine.join && mine.party.every((x) => /:-:0$/.test(x)), 'alone, the plain "' + mine.label + '" offer stays (no "... with friends" prompt of these four on top: ' + mine.party.join(' ') + ')', mine);
+    if (!/Join/.test(lab || '')) info('NOTE: the prompt there now reads "' + lab + '" — another activity\'s party prompt (not one of these four)');
     void f;
     // lingocha solo through the party: Immu and Ayesha in Chinnu's team
     await Z.ev(() => { window.__res = null; N.party.stats.firsts = {}; });
@@ -463,6 +465,116 @@ async function lingocha(browser, S, CONF) {
   } finally { await A.context.close(); await B.context.close(); }
 }
 
+
+/* ================================================================ MARAM PITTI (three pages, C skips) */
+async function maram(browser, S, CONF) {
+  cur = 'maram';
+  console.log('\n== maram pitti: A hosts, B on a phone, C skips the invite');
+  const A = await openPage(browser, 'A', { viewport: { width: 1000, height: 620 } }, S.url + '#debug', CONF);
+  const B = await openPage(browser, 'B', { viewport: { width: 390, height: 844 }, touch: true, dpr: 2 }, S.url + '#debug', CONF);
+  const C = await openPage(browser, 'C', { viewport: { width: 760, height: 480 } }, S.url + '#debug', CONF);
+  try {
+    for (const [P, dx] of [[A, 0], [B, 16], [C, -16]]) await newGame(P, 16, 40, await P.ev((d) => { const F = N.playgroundGames.fieldFor('playground_2'); return { x: F.centre.x + d, y: F.centre.y + 18 }; }, dx));
+    const code = await roomOf([A, B, C], ['Ravi', 'Pooja', 'Imran']);
+    check(!!code, 'room ' + code + ' with three');
+    const started = await challengeAll(A, [B, C], 'maram_pitti', { place: 'playground_2' }, [C]);
+    check(started, 'B accepted (Y), C skipped (N): the game starts with two');
+    check(await C.until(() => !N.party.active, null, 5000) && !(await C.ev(() => !!N.playgroundGames.current)), 'C is not in it (no game on C)');
+    const ok2 = await A.until(() => { const s = N.playgroundGames.debug.state(); return s && s.id === 'marampitti' && s.phase === 'play'; }, null, 90000) && await B.until(() => { const s = N.playgroundGames.debug.state(); return s && s.phase === 'play'; }, null, 30000);
+    check(ok2, 'the toss, the bounce: play on both pages');
+    await A.ev(() => { const D = N.playgroundGames.debug; D.assist.freezeAI = true; D.assist.noDodge = true; });
+    const ring = await Promise.all([A, B].map((P) => P.ev(() => N.playgroundGames.debug.state().parts.map((p) => p.nick || p.name).join(','))));
+    check(ring[0] === ring[1] && /Ravi/.test(ring[0]) && /Pooja/.test(ring[0]), 'one ring on both pages: ' + ring[0]);
+    const dodge = await B.ev(() => { const t = document.querySelector('.t-btn.t-run .t-txt') || document.querySelector('.t-btn.t-run'); return t ? t.textContent : null; });
+    check(/DODGE/i.test(dodge || ''), 'B (phone): the RUN button reads "' + dodge + '"');
+    await A.shot('maram_A'); await B.shot('maram_B_phone');
+    // a wind-up at Pooja (the AI kids hold still): on her phone the red fuse points at her and ACTION reads CATCH!;
+    // she taps it, the throw comes straight at her: caught on her page, the thrower is out
+    await B.ev(() => { N.player.vx = N.player.vy = 0; });
+    const K1 = await A.ev(() => {
+      const D = N.playgroundGames.debug, S = D.session(), P = S.parts.find((q) => q.remote);
+      for (const q of S.parts) q.hold = false;
+      const K = S.parts.find((q) => !q.isPlayer && !q.remote && !q.out);
+      K.e.x = P.e.x + 26; K.e.y = P.e.y; D.give(K.name); K.windT0 = 30; K.windT = 20; K.tgt = P; K.aimLock = null; S.tele = { from: K, to: P };
+      let k = 0;
+      for (const q of S.parts) if (q !== K && !q.isPlayer && !q.remote) { q.e.x = P.e.x - 40 - (k % 3) * 8; q.e.y = P.e.y - 30 + Math.floor(k / 3) * 10; k++; }
+      return K.name;
+    });
+    const fuseSeen = await B.until(() => { const s = N.playgroundGames.debug.state(); return s && s.tele && s.tele.atMe; }, null, 10000);
+    check(fuseSeen, 'B sees ' + K1 + '\'s red fuse aimed at her');
+    await B.until(() => /CATCH/.test((document.querySelector('.t-btn.t-action .t-txt') || {}).textContent || ''), null, 8000);
+    const lab = await B.ev(() => document.querySelector('.t-btn.t-action .t-txt').textContent);
+    await B.page.tap('.t-btn.t-action');
+    const tried = await B.until(() => N.playgroundGames.debug.log().some((e) => e.type === 'catch_try'), null, 8000);
+    check(tried, 'B tapped "' + lab + '": hands up');
+    await A.ev((k) => N.playgroundGames.debug.throwAt('Pooja', k, true), K1);
+    await B.shot('maram_catch_B_phone');
+    const caught = await A.until(() => N.playgroundGames.debug.log().some((e) => (e.type === 'catch' || e.type === 'out') && (e.name === 'Pooja' || e.thrower)), null, 15000);
+    const how = await A.ev(() => N.playgroundGames.debug.log().filter((e) => /catch|out|remote_hit/.test(e.type)).slice(-4));
+    const bLog = await B.ev(() => N.playgroundGames.debug.log().filter((e) => /catch_try|hit_report/.test(e.type)));
+    check(caught && how.some((e) => e.type === 'catch' && e.name === 'Pooja') && how.some((e) => e.type === 'out' && e.name === K1), 'the ball reached her hands on her page: CAUGHT — ' + K1 + ' is out (host log: ' + how.map((e) => e.type + ':' + (e.name || '')).join(', ') + ')', { how, bLog });
+    await A.ev(() => { N.playgroundGames.debug.assist.freezeAI = true; });
+    await B.until(() => N.playgroundGames.debug.state().ball.holderIsMe || N.playgroundGames.debug.state().parts.find((p) => p.me).out, null, 8000);
+    // ... and a hit: a straight throw at her, judged on her page
+    await A.gw(0.4);
+    const K2 = await A.ev(() => {
+      const D = N.playgroundGames.debug, S = D.session(), P = S.parts.find((q) => q.remote);
+      if (S.ball.holder) S.ball.holder.hold = false; S.ball.holder = null; S.ball.state = 'rest';
+      const K = S.parts.find((q) => !q.isPlayer && !q.remote && !q.out);
+      K.e.x = P.e.x - 26; K.e.y = P.e.y;
+      D.throwAt(P.name, K.name, true);
+      return K.name;
+    });
+    check(await A.until(() => N.playgroundGames.debug.log().some((e) => e.type === 'out' && e.name === 'Pooja'), null, 10000), 'a straight throw from ' + K2 + ': Pooja is OUT (her page judged it)');
+    check(await B.until(() => N.playgroundGames.debug.state().parts.find((p) => p.me).out, null, 10000), 'B: out — she sits at the side and watches (the game goes on)');
+    check(await B.ev(() => !!N.playgroundGames.current), '... B\'s game is still on');
+    await B.gw(0.8); await B.shot('maram_out_B_phone');
+    // the rest of the ring goes out: Ravi is the last one standing
+    await A.ev(() => { const D = N.playgroundGames.debug, S = D.session(); for (const P of S.parts) if (!P.isPlayer && !P.remote && !P.out) D.out(P.name); D.assist.freezeAI = false; D.assist.noDodge = false; });
+    const fin = await A.until(() => !!window.__res, null, 60000) && await B.until(() => !!window.__res, null, 60000);
+    check(fin, 'last one standing: party results on both pages');
+    const sa = await standings(A), sb = await standings(B);
+    check(sa && sb && JSON.stringify(sa) === JSON.stringify(sb) && sa[0].nick === 'Ravi' && /last one standing/.test(sa[0].note || '') && /out/.test(sa[1].note || ''), 'the same places on both pages: ' + fmtSt(sa), { sa, sb });
+    await B.gw(1.4); await B.shot('maram_results_B_phone');
+    await errorsOf([A, B, C], 'maram ');
+  } finally { await A.context.close(); await B.context.close(); await C.context.close(); }
+}
+
+/* ================================================================ THREE (lingocha, three pages, C leaves) */
+async function three(browser, S, CONF) {
+  cur = 'three';
+  console.log('\n== three friends: lingocha 2 v 1 (Ravi + Imran v Pooja), Imran leaves mid-match');
+  const A = await openPage(browser, 'A', { viewport: { width: 760, height: 480 } }, S.url + '#debug', CONF);
+  const B = await openPage(browser, 'B', { viewport: { width: 760, height: 480 } }, S.url + '#debug', CONF);
+  const C = await openPage(browser, 'C', { viewport: { width: 760, height: 480 } }, S.url + '#debug', CONF);
+  let cOpen = true;
+  try {
+    for (const [P, dx] of [[A, 0], [B, 14], [C, -14]]) await newGame(P, 16, 40, await P.ev((d) => { const F = N.playgroundGames.fieldFor('playground_1'); return { x: F.line.x + d, y: F.line.y + 10 }; }, dx));
+    const code = await roomOf([A, B, C], ['Ravi', 'Pooja', 'Imran']);
+    check(!!code, 'room ' + code);
+    check(await challengeAll(A, [B, C], 'lingocha', { place: 'playground_1' }), 'all three accepted');
+    const up = await A.until(() => { const s = N.playgroundGames.debug.state(); return s && s.net && s.net.host && s.net.acks === 2; }, null, 60000);
+    check(up, 'the host\'s game is up; both friends have its roster (acks 2/2)');
+    const st = await Promise.all([A, B, C].map((P) => P.ev(() => { const s = N.playgroundGames.debug.state(); return s && { teams: s.lingocha.teams, sides: s.parts.filter((p) => p.nick).map((p) => p.nick + ':' + p.team).join(','), n: s.parts.length }; })));
+    check(st.every((x) => x && x.sides === st[0].sides) && /Ravi:0/.test(st[0].sides) && /Pooja:1/.test(st[0].sides) && /Imran:0/.test(st[0].sides), 'sides on all three pages: ' + st[0].sides + ' (' + st[0].teams.join(' v ') + ')', st);
+    const thr = await A.ev(() => N.playgroundGames.debug.session().L.throwers.map((P) => P.nick || P.name));
+    check(thr.join() === 'Ravi,Imran', 'the seeking friends take the line throws in turn: ' + thr.join(', '));
+    await A.gw(1); await A.shot('three_A'); await C.shot('three_C');
+    // Imran closes his game: a colony kid takes his place on A and B
+    await C.context.close(); cOpen = false;
+    check(await A.until(() => N.playgroundGames.debug.log().some((e) => e.type === 'replaced' && e.old === 'Imran'), null, 30000), 'A: Imran left — a colony kid takes his place');
+    const rep = await A.ev(() => N.playgroundGames.debug.log().find((e) => e.type === 'replaced'));
+    check(await B.until((nm) => N.playgroundGames.debug.state().parts.some((p) => p.name === nm && !p.remote && p.mirror && !p.hidden), rep && rep.by, 20000), 'B: ' + (rep && rep.by) + ' plays in Imran\'s place');
+    await A.ev(() => { const D = N.playgroundGames.debug; D.finishRound('home'); });
+    await A.until(() => { const s = N.playgroundGames.debug.state(); return s && s.lingocha.round === 2 && s.phase !== 'roundEnd'; }, null, 60000);
+    await A.ev(() => N.playgroundGames.debug.finishRound('home'));
+    check(await A.until(() => !!window.__res, null, 60000) && await B.until(() => !!window.__res, null, 60000), 'results on A and B');
+    const sa = await standings(A);
+    check(sa && sa.length === 3 && sa[0].nick === 'Ravi' && sa.find((r) => r.nick === 'Imran').left, 'standings: ' + fmtSt(sa), sa);
+    await errorsOf([A, B], 'three ');
+  } finally { await A.context.close(); await B.context.close(); if (cOpen) await C.context.close(); }
+}
+
 /* ================================================================ main */
 (async () => {
   const t0 = Date.now();
@@ -475,6 +587,8 @@ async function lingocha(browser, S, CONF) {
     if (only('goli')) await goli(browser, S, CONF);
     if (only('kite')) await kite(browser, S, CONF);
     if (only('lingocha')) await lingocha(browser, S, CONF);
+    if (only('maram')) await maram(browser, S, CONF);
+    if (only('three')) await three(browser, S, CONF);
   } catch (e) { fail('crashed: ' + (e.stack || e.message)); }
   await browser.close();
   try { S.srv.close(); } catch (e) { /* ignore */ }

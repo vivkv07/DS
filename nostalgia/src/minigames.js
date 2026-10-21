@@ -1794,7 +1794,7 @@
         const on = (t, f) => { try { S.kp.offs.push(ctx.on(t, (d, from) => { if (g.S !== S || !d || typeof d !== 'object') return; try { f(d, from); } catch (e) { N.err('kite.party.' + t, e); } })); } catch (e) { N.err('kite.party.on', e); } };
         on('ks', (d, from) => kpState(g, S, d, from));
         on('kp', (d, from) => { if (from && from.uid === kpHostUid(S)) kpPechMsg(g, S, d); });
-        on('kx', (d, from) => { const k = kpPeer(S, from && from.uid); if (k && ctx.isHost) kpHostSnap(g, S, k); });
+        on('kx', (d, from) => { const k = kpPeer(S, from && from.uid); if (!k) return; if (d.quit) { k.left = true; k.state = 'gone'; } if (ctx.isHost) kpHostSnap(g, S, k); });
         on('ke', (d, from) => { if (from && from.uid === kpHostUid(S)) S.kp.endMsg = d; });
       }
       try { if (typeof ctx.onLeave === 'function') ctx.onLeave((uid) => { const k = kpPeer(S, uid); if (k && g.S === S) { k.left = true; k.state = 'gone'; } }); } catch (e) { /* ignore */ }
@@ -2116,6 +2116,8 @@
     function kpCleanup(g, S) {
       const K = S.kp;
       if (!K) return;
+      // came down early (Quit): the friends' skies lose this kite
+      if (K.multi && !K.ended) { try { K.ctx.send('kx', { quit: 1 }); } catch (e) { /* ignore */ } }
       if (!K.reported) kpReport(g, S, true);
       for (const f of K.offs) { try { if (typeof f === 'function') f(); } catch (e) { /* ignore */ } }
       K.offs.length = 0;
@@ -6524,6 +6526,7 @@
         on('gf', (d, from) => mpFlickIn(g, S, d, from));
         on('gr', (d, from) => { if ((d.n | 0) === S.pp.n && from && from.uid === mpAuthority(S)) S.pp.res = d; });
         on('gs', (d, from) => { if ((d.n | 0) === S.pp.n && from && from.uid === mpHostUid(S) && S.stage === 'remote') mpAfter(g, S, mpClean(d), true); });
+        on('gq', (d, from) => { const q = S.pl.find((x) => from && x.uid === from.uid); if (q) q.left = true; });
       }
       try { if (typeof ctx.onLeave === 'function') ctx.onLeave((uid) => { const q = S.pl.find((x) => x.uid === uid); if (q && g.S === S) q.left = true; }); } catch (e) { /* ignore */ }
     }
@@ -6700,6 +6703,8 @@
     function mpCleanup(g, S) {
       const pp = S.pp;
       if (!pp) return;
+      // left the ring early (Quit): the friends skip this player's turns from now on
+      if (!pp.done && pp.ctx.mode === 'party') { try { pp.ctx.send('gq', { q: 1 }); } catch (e) { /* ignore */ } }
       if (!pp.reported) mpReport(g, S, true);
       for (const f of pp.offs) { try { if (typeof f === 'function') f(); } catch (e) { /* ignore */ } }
       pp.offs.length = 0;

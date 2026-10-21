@@ -115,10 +115,8 @@ async function solo(browser) {
   const near = await P.ev(() => { const p = N.places.playground_home; return N.party.available(p.x, p.y + 27).filter((a) => /cricket|lb_/.test(a.id)).map((a) => ({ id: a.id, here: a.here, at: a.atName, d: Math.round(a.d) })); });
   check(near.some((a) => a.id === 'gully_cricket' && a.here) && near.some((a) => a.id === 'lb_match' && !a.here), 'available() at the colony ground: gully cricket here, the LB match listed further away (' + JSON.stringify(near) + ')');
   // the ground's own "Join gully cricket" stays at its centre; our prompt is on a spot beside it
-  await P.ev(() => { const p = N.places.playground_home; N.player.teleport(p.x, p.y); });
-  await P.gw(0.4);
-  const centre = await P.ev(() => { const c = N.interact.current; return c ? (typeof c.label === 'function' ? c.label(N.player) : c.label) : null; });
-  check(/Join gully cricket|goli/i.test(centre || ''), 'the ground centre still offers the solo game: "' + centre + '"');
+  const side = await P.ev(() => { const si = N.minigames.SIDE.findIndex((s) => s.id === 'cricket'); const it = N.interact.get('mg:cricket:' + si + ':playground_home'); const s = N.party.get('gully_cricket').spots[0]; return it && { label: it.label, d: Math.round(Math.hypot(it.x - s.x, it.y - s.y)) }; });
+  check(side && /Join gully cricket/.test(side.label) && side.d > 20, 'the ground\'s own solo "' + (side && side.label) + '" stays at its centre, ' + (side && side.d) + ' u from our spot');
   const spot = await P.ev(() => { const s = N.party.get('gully_cricket').spots[0]; N.player.teleport(s.x, s.y); return s; });
   await P.gw(0.5);
   const lab = await P.ev(() => { const c = N.interact.current; return c ? (typeof c.label === 'function' ? c.label(N.player) : c.label) : null; });
@@ -484,7 +482,9 @@ async function three(browser) {
     check(sw && sw.swings >= 1, 'Ravi swung with a real key on his page (' + JSON.stringify(sw && sw.lastSw) + ')');
     await C.gw(0.3);
     await Promise.all([A.shot('three_A_shot'), C.shot('three_C_watch_shot')]);
-    check(await C.until(() => { const x = N.cricketMatch.gully.debug(); return x && x.inns[0].log.length >= 1; }, null, 30000), 'the ball reached the book on Imran\'s page too');
+    let booked = true;
+    for (const P of R.pages) booked = (await P.until(() => { const x = N.cricketMatch.gully.debug(); return x && x.inns[0].log.length >= 1; }, null, 30000)) && booked;
+    check(booked, 'the ball reached the book on all three pages');
     const logs = await Promise.all(R.pages.map((P) => P.gd()));
     check(sameAll(logs.map((d) => d.inns[0].log.slice(0, 1))), 'the same result on the three pages: ' + logs[0].inns[0].log[0]);
     for (const P of R.pages) await P.ev(() => { N.minigames.game.auto = 'win'; });
