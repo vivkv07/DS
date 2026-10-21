@@ -159,6 +159,11 @@
   // N.addSystem({id, order, runIn:['play',...] | ['*'], init(), update(dt), reset(), draw()})
   // main.js drives N.systems.init/update/draw. Every call is wrapped in try/catch + N.err.
   const systems = [];
+  let prof = null; // N.systems.profile(): {t0, steps, draws, s: {id: [updateMs, updateMax, drawMs, drawMax]}}
+  function profAdd(id, k, ms) {
+    const r = prof.s[id] || (prof.s[id] = [0, 0, 0, 0]);
+    r[k * 2] += ms; if (ms > r[k * 2 + 1]) r[k * 2 + 1] = ms;
+  }
   N.addSystem = function (sys) {
     if (!sys || !sys.id) throw new Error('addSystem: id required');
     if (sys.order == null) sys.order = 50;
@@ -183,19 +188,40 @@
       }
     },
     update(dt) {
-      const mode = N.state.mode;
+      const mode = N.state.mode, P = prof;
+      if (P) P.steps++;
       for (const s of systems) {
         if (!s.update) continue;
         if (s.runIn[0] !== '*' && s.runIn.indexOf(mode) < 0) continue;
+        if (P) { const t = performance.now(); try { s.update(dt); } catch (e) { N.err('update:' + s.id, e); } profAdd(s.id, 0, performance.now() - t); continue; }
         try { s.update(dt); } catch (e) { N.err('update:' + s.id, e); }
       }
     },
     // enqueue-phase: systems with draw() put their work on render layers
     draw() {
+      const P = prof;
+      if (P) P.draws++;
       for (const s of systems) {
         if (!s.draw) continue;
+        if (P) { const t = performance.now(); try { s.draw(); } catch (e) { N.err('draw:' + s.id, e); } profAdd(s.id, 1, performance.now() - t); continue; }
         try { s.draw(); } catch (e) { N.err('draw:' + s.id, e); }
       }
+    },
+    /** Opt-in per-system CPU profiler (tests / perf audit, tests/qa_perf.cjs). profile(true) starts (resets) it,
+     *  profile() reads it: {steps, draws, ms, systems: [{id, update (ms per step), draw (ms per draw call),
+     *  updateMax, drawMax}] sorted by cost}, profile(false) reads and stops. Off = one null check per call. */
+    profile(on) {
+      if (on === true) { prof = { t0: performance.now(), steps: 0, draws: 0, s: Object.create(null) }; return true; }
+      const P = prof;
+      if (on === false) prof = null;
+      if (!P) return null;
+      const rows = [];
+      for (const id in P.s) {
+        const r = P.s[id];
+        rows.push({ id, update: P.steps ? +(r[0] / P.steps).toFixed(4) : 0, draw: P.draws ? +(r[2] / P.draws).toFixed(4) : 0, updateMax: +r[1].toFixed(2), drawMax: +r[3].toFixed(2) });
+      }
+      rows.sort((a, b) => (b.update + b.draw) - (a.update + a.draw));
+      return { steps: P.steps, draws: P.draws, ms: Math.round(performance.now() - P.t0), systems: rows };
     },
     reset() {
       for (const s of systems.slice()) {
@@ -337,12 +363,15 @@
   };
 
   // Global error capture (also surfaced via N.debug.errors)
+  // (capped like N.err: a handler that throws every frame must not grow the log for the whole session)
   window.addEventListener('error', (ev) => {
     N.errors.push({ where: 'window', msg: String((ev.error && ev.error.stack) || ev.message).slice(0, 600), t: Math.round(performance.now()) });
+    if (N.errors.length > 50) N.errors.shift();
   });
   window.addEventListener('unhandledrejection', (ev) => {
     const r = ev.reason;
     if (r && r.name === 'MissionAbort') return; // expected control flow for missions
     N.errors.push({ where: 'promise', msg: String((r && (r.stack || r.message)) || r).slice(0, 600), t: Math.round(performance.now()) });
+    if (N.errors.length > 50) N.errors.shift();
   });
 })();
