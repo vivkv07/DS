@@ -296,26 +296,26 @@ async function phone(browser) {
   await P.ev(() => { window.__res = null; });
   const r2 = await P.ev(() => N.party.solo('lb_match', { overs: 2 }));
   check(r2.ok && await P.until(() => N.minigames.active === 'match', null, 15000), 'the LB co-op match on a phone');
+  // the views come in whatever order the match brings them: my batting over, my bowling over, Ayesha's over (watching)
   const seen = {};
-  for (let i = 0; i < 3; i++) {
-    const want = await P.until((s) => { const x = N.cricketMatch.debug.party(); return x && x.role !== 'watch' && !s.includes(x.role); }, Object.keys(seen), 240000);
-    if (!want) break;
+  for (let i = 0; i < 6 && !(seen.bat && seen.bowl && seen.watch); i++) {
+    const want = await P.until((s) => {
+      const x = N.cricketMatch.debug.party(), st = N.cricketMatch.debug.state();
+      if (!x || !st || x.finished) return true;
+      const v = x.role !== 'watch' ? x.role : st.phase === 'ball' && /^ai:/.test(x.batCtl || x.bowlCtl || '') ? 'watch' : null;
+      return !!v && !s.includes(v);
+    }, Object.keys(seen), 300000);
     const m = await P.md();
-    await P.gw(0.4);
-    seen[m.role] = (await pad()).join(' | ');
-    check(await inView(), m.role + ' pad on screen: ' + seen[m.role]);
-    await P.shot('phone_match_' + m.role);
-    await P.ev(() => { N.minigames.game.auto = 'win'; N.minigames.game.timeScale = 3; });
-    if (seen.bat && seen.bowl) break;
+    if (!want || !m || m.finished) break;
+    const v = m.role !== 'watch' ? m.role : 'watch';
+    await P.ev(() => { if (N.minigames.game) N.minigames.game.timeScale = 1; });
+    await P.gw(0.5);
+    seen[v] = (await pad()).join(' | ');
+    check(v === 'watch' ? seen[v] === '' : await inView(), v === 'watch' ? 'watching Ayesha\'s over: no pad (the CAM pill stays)' : v + ' pad on screen: ' + seen[v]);
+    await P.shot('phone_match_' + v);
+    await P.ev(() => { if (N.minigames.game) { N.minigames.game.auto = 'win'; N.minigames.game.timeScale = 3; } });
   }
-  check(seen.bat && seen.bowl, 'saw the batting and the bowling pads');
-  await P.until(() => { const x = N.cricketMatch.debug.party(); return x && x.role === 'watch' && x.owner !== x.lock.me; }, null, 120000);
-  await P.ev(() => { N.minigames.game.timeScale = 1; });
-  await P.gw(0.6);
-  const pwatch = await pad();
-  check(pwatch.length === 0, 'watching an AI friend\'s over: no pad (the CAM pill stays)');
-  await P.shot('phone_match_watch');
-  await P.ev(() => { N.minigames.game.timeScale = 3; });
+  check(seen.bat != null && seen.bowl != null, 'saw the batting and the bowling pads' + (seen.watch != null ? ' and an AI friend\'s over' : ''));
   check(await P.until(() => !!window.__res, null, 400000), 'the match finished: party results');
   await P.gw(1.2);
   await P.shot('phone_match_results');

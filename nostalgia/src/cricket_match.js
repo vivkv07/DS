@@ -20,6 +20,23 @@
  *   N.cricketMatch.TUNE {tv, tvGully}                            TV camera framing (height, distance, focal)
  *   N.cricketMatch.dressing {on, draw()}                         match-day dressing of the 2D world (below)
  *
+ * CRICKET WITH FRIENDS (src/party.js, ARCHITECTURE §24; registered here when N.party exists):
+ *   'gully_cricket'  the gully game (minigames.js 'cricket', whose def this file wraps when params.party is a party
+ *                    ctx): each friend bats an innings (6 balls, 2 outs), bowls one (◀ ▶ line, ▲ ▼ length, Q pace, Space
+ *                    with the needle in the green) and fields one (Space = CATCH! as the ring closes); one-tip-one-hand,
+ *                    a catch and Aunty's house are OUT; most runs wins. Alone it is "anywhere" (the 🏁 picker; the
+ *                    ground's own "Join gully cricket" stays); with friends in the room a small prompt stands west of
+ *                    every colony ground / playground, clear of the ground's other offers.
+ *   'lb_match'       this match, co-op: the friends as Colony XI v an AI XI; each friend bats their own over (till
+ *                    out) and bowls their own overs; params.pmode 'coop'. 'lb_match_vs': rival XIs, 2 overs (pmode 'vs').
+ *   Solo: the AI friends (party ctx.ai) take the other roles. Online (1-3 friends): every page runs the same fixed-step
+ *   simulation (lockstep(): 1/60 s steps; each step owned by the friend whose input matters there, the host between
+ *   balls; inputs travel as ctx.send items tagged with their step; each ball its own seeded episode; the ball's owner
+ *   decides its result, 'ev', and the others take it). Results -> ctx.report (score = runs, + 10 a wicket and 5 a
+ *   catch in the match); the party results card ranks them; the first win puts a tin token in the tin.
+ *   Test hooks: N.cricketMatch.debug.party(), N.cricketMatch.gully.debug() / .force('edge'), CM.lockstep, CM.registerParty.
+ *   Tests: tests/party_cricket.cjs.
+ *
  * params (all optional; the minigame framework adds difficulty/assist/seed/autoplay/timeScale/intro/
  *   noRetry/noQuit/skipHowto/title/reward)
  *   overs (3 per side) · wickets (5 = all out) · home ('Chinnu XI' | team id | {name, short, kit, players})
@@ -4508,7 +4525,7 @@
     let d = b.len === 'short' ? 'pull' : b.len === 'yorker' ? 'drive' : b.xc < -0.15 ? 'pull' : b.xc > 0.22 ? 'cut' : 'drive';
     if (r.next() < 0.24) d = ['pull', 'drive', 'cut'][(r.next() * 3) | 0];
     let e = gauss(r) * (0.055 + (1 - sk) * 0.1) - 0.01;
-    if (S.pm.force === 'edge') { S.pm.force = null; e = (b.winG + b.winE) / 2; d = 'drive'; } // test hook: a skier for the fielder
+    if (S.pm.force === 'edge') { S.pm.force = null; S.pm.skier = true; e = (b.winG + b.winE) / 2; d = 'drive'; } // test hook: a skier for the fielder
     return { at: b.tArrive + e, d, done: false };
   }
   function gpFlight(S) {
@@ -4543,6 +4560,13 @@
     const mis = (d === 'cut' && b.xc < -0.15) || (d === 'pull' && b.xc > 0.22) || (b.len === 'short' && d === 'drive') || (b.len === 'yorker' && d !== 'drive');
     if (mis) q = q === 'perfect' ? 'good' : 'edge';
     S.pm.E.launch(S.g, S, b, d, q, e);
+    if (S.pm.skier && b.hit) {
+      // test hook (CM.gully.force('edge'), this page only): the edge loops gently up towards the first fielder
+      S.pm.skier = false;
+      const f = S.fielders[0], dx = f.x - b.x, dz = f.z - b.z, dist = Math.hypot(dx, dz), el = 0.95, G0 = S.pm.E.G;
+      const v = Math.sqrt((dist * G0) / Math.sin(2 * el)) * 0.97;
+      b.vx = (dx / dist) * v * Math.cos(el); b.vz = (dz / dist) * v * Math.cos(el); b.vy = v * Math.sin(el);
+    }
   }
   // where (and when) the first catch chance comes: the same engine run ahead on a copy (no rng drawn before it)
   function gpPredict(S) {
@@ -4848,7 +4872,7 @@
       }
     }
     if (P.speed && P.speed.t < 1.6 && (P.stage === 'flight' || P.stage === 'hit')) T(P.speed.text, W / 2, A.y + 64 * k, { font: 'osd', size: 16 * k, color: '#fff', outline: 3 });
-    if (role === 'field' && (P.stage === 'aim' || P.stage === 'runup' || P.stage === 'flight')) T('You field: CATCH! when the ring closes', W / 2, A.y + A.h - 40 * k, { font: 'osd', size: 16 * k, color: '#b9ffb0', outline: 3, maxW: W - 20 });
+    if (role === 'field' && (P.stage === 'aim' || P.stage === 'runup' || P.stage === 'flight')) T('You field: CATCH! when the ring closes', W / 2, A.y + A.h - 74 * k, { font: 'osd', size: 16 * k, color: '#b9ffb0', outline: 3, maxW: W - 20 });
     // banners: get ready / who bats / innings over / the final table
     const banner = (title, sub, col) => {
       const w = Math.min(W - 24, 460 * k), h = (sub ? 78 : 54) * k, x = (W - w) / 2, y = A.y + A.h * 0.34;
@@ -4923,17 +4947,39 @@
   // of the ground's other offers (playground_games.js: lingocha 24 u south, maram pitti 24 u north; goli 22 u east).
   // The LB Stadium match at the west gate (beside the exhibition match's spot).
   function gullySpots() {
-    const out = [], seen = new Set(), PL = N.places || {};
+    const out = [], seen = new Set(), PL = N.places || {}, W = N.world, I = N.interact;
     const ids = Object.keys(PL).filter((id) => /^playground_(?!kit)|^victory_playground$/.test(id));
     ids.sort((a, b) => (a === 'playground_home' ? -1 : b === 'playground_home' ? 1 : a < b ? -1 : 1));
+    // the ground's other offers: playground_games.js "Join lingocha / maram pitti" and the minigames' side games
+    const offers = [];
+    try {
+      const F = N.playgroundGames && N.playgroundGames.fields ? N.playgroundGames.fields() : [];
+      for (const f of F) for (const gid of ['lingocha', 'marampitti']) { const it = I && I.get && I.get('pg:' + gid + ':' + f.key); if (it) offers.push({ x: it.x, y: it.y, r: it.r || 18 }); }
+      const SIDE = (N.minigames && N.minigames.SIDE) || [];
+      SIDE.forEach((sd, si) => { for (const id of ids) { const it = I && I.get && I.get('mg:' + sd.id + ':' + si + ':' + id); if (it) offers.push({ x: it.x, y: it.y, r: it.r || 16 }); } });
+    } catch (e) { /* ignore */ }
+    const walk = (x, y) => { try { return !W || !W.built || !W.isWalkable || (W.isWalkable(x, y) && W.surfaceAt(x, y) !== N.SURF.WATER); } catch (e) { return true; } };
+    const gap = (x, y) => { let g = 1e9; for (const o of offers) g = Math.min(g, Math.hypot(o.x - x, o.y - y) - o.r - 8); return g; };
     for (const id of ids) {
       const p = PL[id];
       if (!p || !isFinite(p.x) || !isFinite(p.y)) continue;
       const key = Math.round(p.x) + ',' + Math.round(p.y);
       if (seen.has(key)) continue;
       seen.add(key);
-      const side = clamp((p.r || 20) * 0.6, 14, 26); // the minigames' side games' radius at the centre (minigames.js SIDE)
-      out.push({ x: p.x - side - 16, y: p.y, r: 8, name: p.name || 'the ground' });
+      // west of the centre first; else round the compass, a little further out, for the first walkable spot clear of them
+      const side = clamp((p.r || 20) * 0.6, 14, 26), R0 = side + 16;
+      let best = null;
+      for (const R of [R0, R0 + 8, R0 + 16]) {
+        for (const a of [Math.PI, Math.PI * 0.75, Math.PI * 1.25, Math.PI * 0.5, Math.PI * 1.5, Math.PI * 0.25, Math.PI * 1.75, 0]) {
+          const x = p.x + Math.cos(a) * R, y = p.y + Math.sin(a) * R, gp = gap(x, y);
+          if (!walk(x, y)) continue;
+          if (gp >= 8) { best = { x, y }; break; }
+          if (!best || gp > best.g) best = { x, y, g: gp };
+        }
+        if (best && best.g == null) break;
+      }
+      if (!best) best = { x: p.x - R0, y: p.y };
+      out.push({ x: Math.round(best.x), y: Math.round(best.y), r: 8, name: p.name || 'the ground' });
     }
     return out;
   }
@@ -4993,7 +5039,7 @@
       return openParty('match', { party: ctx, pmode: 'vs', seed: ctx.seed, skipHowto: true, noRetry: true, difficulty: o.difficulty != null ? o.difficulty : 0.4, title: 'LB Stadium · friends vs friends', autoplay: o.autoplay }, ctx);
     },
   };
-  let partyRef = null, partyN = 0, partyT = 0, partyKey = '';
+  let partyRef = null, partyN = 0, partyT = 0, partyKey = '', partyAt = 0;
   function friendsHere() { try { return !!(N.online && N.online.room && (N.online.room.n | 0) > 1); } catch (e) { return false; } }
   function registerParty(force) {
     const P0 = N.party;
@@ -5004,7 +5050,7 @@
     try {
       const lb = N.places.lb_stadium;
       P0.register('gully_cricket', key === 'f' ? Object.assign({}, GULLY_SPEC, { spots: gullySpots() }) : Object.assign({}, GULLY_SPEC, { where: null, r: undefined }));
-      partyKey = key;
+      partyKey = key; partyAt = performance.now();
       P0.register('lb_match', Object.assign({}, MATCH_SPEC, { spots: [{ x: lb.x, y: lb.y - 36, r: 22, name: 'LB Stadium (west gate)' }] }));
       P0.register('lb_match_vs', Object.assign({}, VS_SPEC, { spots: [{ x: lb.x, y: lb.y + 36, r: 22, name: 'LB Stadium (west gate)' }] }));
       partyRef = P0;
@@ -5021,7 +5067,7 @@
     update(dt) {
       // party.js may load after this file (or be replaced): keep checking for a while, then now and then
       partyT -= dt;
-      if (partyT <= 0) { partyT = partyN++ < 60 ? 1 : 10; registerParty(false); gpInstall(); }
+      if (partyT <= 0) { partyT = partyN++ < 60 ? 1 : 10; registerParty(partyKey === 'f' && performance.now() - partyAt > 15000); gpInstall(); } // in a room: the ground offers may have moved
     },
   });
 
