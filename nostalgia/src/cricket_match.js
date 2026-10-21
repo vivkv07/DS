@@ -4317,7 +4317,8 @@
       const r = pmRole(S);
       const s = r === 'bat' ? 'YOU BAT' : r === 'bowl' ? 'YOU BOWL' : S.phase === 'ball' ? 'WATCHING · ' + pmWatchLine(S).split(' · ')[0].toUpperCase() : 'NEXT OVER…';
       ctx.font = font('osd', u * 0.9);
-      const w = Math.min(fr.w * 0.6, ctx.measureText(s).width + u * 1.6), h = u * 1.6, x = fr.x + fr.w - w - u * 0.5, y = fr.y + fr.h - h * 2 - u * (S.tickerIn ? 3.0 : 0.9);
+      // on the camera pill's row, just left of it (the delivery-type chips sit at the left of that row)
+      const w = Math.min(fr.w * 0.5, ctx.measureText(s).width + u * 1.6), h = u * 1.6, x = fr.x + fr.w - u * 4.4 - w - u * 0.9, y = fr.y + fr.h - h - u * (S.tickerIn ? 2.6 : 0.5);
       ctx.fillStyle = r === 'bat' ? 'rgba(242,194,48,0.92)' : r === 'bowl' ? 'rgba(127,216,255,0.92)' : 'rgba(10,12,30,0.65)'; rr(ctx, x, y, w, h, h / 2); ctx.fill();
       txt(ctx, s, x + w / 2, y + h / 2 + 1, { font: 'osd', size: u * 0.9, color: r === 'watch' ? '#eaf2ff' : '#14246a', maxW: w - u * 0.6 });
     }

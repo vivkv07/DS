@@ -208,6 +208,7 @@ async function solo(browser) {
   const tok = await P.ev(() => ({ won: window.__res.standings[0].uid === 'me', tin: N.tape && N.tape.tin && N.tape.tin.has('party_gully_cricket') }));
   check(!tok.won || tok.tin, tok.won ? 'won it: the "Taped tennis ball" tin token' : 'did not win this time (no token): fine');
   await closeCards(P);
+  await P.until(() => !N.minigames.isOpen() && !N.party.active, null, 60000);
 
   console.log('  -- the LB Stadium match, co-op with Ayesha (autopilot)');
   await P.ev(() => { const p = N.places.lb_stadium; N.player.teleport(p.x, p.y - 36); window.__res = null; });
@@ -292,7 +293,8 @@ async function phone(browser) {
   await P.gw(1.4);
   await P.shot('phone_results');
   await closeCards(P);
-  // the LB match: batting / bowling / watching pads
+  // the LB match: batting / bowling / watching pads (once the gully overlay has closed itself)
+  await P.until(() => !N.minigames.isOpen() && !N.party.active, null, 60000);
   await P.ev(() => { window.__res = null; });
   const r2 = await P.ev(() => N.party.solo('lb_match', { overs: 2 }));
   check(r2.ok && await P.until(() => N.minigames.active === 'match', null, 15000), 'the LB co-op match on a phone');
