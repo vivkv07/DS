@@ -3665,7 +3665,7 @@
     cmd(S, c) {
       const n = S.net, ctx = S.party, me = S.me, b = S.ball, L = S.L;
       if (!n || !ctx || !me) return;
-      c.q = ++n.cq;
+      c.cn = ++n.cq;
       try { ctx.send('pc', c); } catch (e) { N.err('pg.party.cmd', e); }
       const hold = TUNE.party.hold;
       // ... and shown here at once

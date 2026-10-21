@@ -436,7 +436,9 @@ async function lingocha(browser, S, CONF) {
     await A.ev(() => { N.playgroundGames.debug.assist.freezeAI = false; });
     await B.gw(1.2);
     await B.shot('lingocha_out_B');
-    // a 3D look on B (third person, the host's game mirrored)
+    // round 2 to Pooja's side; round 3 waits for Ravi at the line (nothing moves till he throws): a 3D look on B meanwhile
+    await A.ev(() => N.playgroundGames.debug.finishRound('away'));
+    check(await A.until(() => { const s = N.playgroundGames.debug.state(); return s && s.lingocha.round === 3 && s.phase === 'aim'; }, null, 60000), 'round 3: Ravi\'s side seeks again (1-1)');
     await B.ev(() => { N.view.set('tps'); });
     if (await B.until(() => N.view3d && N.view3d.active, null, 180000)) {
       await B.ev(() => { N.view3d.setQuality({ pixelRatio: 0.4, adaptive: false }); });
@@ -449,8 +451,6 @@ async function lingocha(browser, S, CONF) {
       await B.until(() => !N.view3d.active, null, 60000);
     } else fail('B: no 3D view');
     // the match: Ravi's team takes round 3 (2-1)
-    await A.ev(() => N.playgroundGames.debug.finishRound('away'));
-    await A.until(() => { const s = N.playgroundGames.debug.state(); return s && s.lingocha.round === 3 && s.phase !== 'roundEnd'; }, null, 60000);
     await A.ev(() => N.playgroundGames.debug.finishRound('home'));
     const fin = await A.until(() => !!window.__res, null, 60000) && await B.until(() => !!window.__res, null, 60000);
     check(fin, 'the match is over: party results on both pages');

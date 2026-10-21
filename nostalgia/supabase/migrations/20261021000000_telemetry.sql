@@ -550,10 +550,11 @@ with r as (select s.dimension as src, sum(s.value) as errors, count(distinct s.d
              from nostalgia.daily_stats s
             where s.metric = 'errors' and s.day >= (now() at time zone 'Asia/Kolkata')::date - 30
             group by s.dimension),
-m as (select distinct on (e.props->>'src') e.props->>'src' as src, e.props->>'msg' as sample_message, count(distinct e.install) over (partition by e.props->>'src') as players_7d
+m as (select e.props->>'src' as src, count(distinct e.install) as players_7d,
+             (array_agg(e.props->>'msg' order by e.ts desc))[1] as sample_message
         from nostalgia.events e
        where e.name = 'error' and e.ts > now() - interval '7 days'
-       order by e.props->>'src', e.ts desc)
+       group by e.props->>'src')
 select r.src, r.errors, r.days, r.last_day, m.players_7d, m.sample_message
   from r left join m on m.src = r.src
  order by r.errors desc;

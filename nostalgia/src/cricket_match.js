@@ -2264,7 +2264,7 @@
     const g = S.g, i1 = S.innings[0], i2 = S.innings[1];
     const target = i1.runs + 1;
     let winner = null, margin = '', tie = false;
-    if (i2.runs >= target) { winner = i2.bat; const w = i2.maxWkts - i2.wkts; margin = 'by ' + w + ' wicket' + (w === 1 ? '' : 's') + (rules.ballsLeft(i2) ? ' (' + rules.ballsLeft(i2) + ' balls left)' : ''); }
+    if (i2.runs >= target) { winner = i2.bat; const w = S.pm ? pmInHand(S, i2) : i2.maxWkts - i2.wkts; margin = 'by ' + w + ' wicket' + (w === 1 ? '' : 's') + (rules.ballsLeft(i2) ? ' (' + rules.ballsLeft(i2) + ' balls left)' : ''); }
     else if (i2.runs === target - 1) { tie = true; margin = 'Scores level'; }
     else { winner = i1.bat; const r = target - 1 - i2.runs; margin = 'by ' + r + ' run' + (r === 1 ? '' : 's'); }
     const win = winner === S.home;
@@ -3337,7 +3337,7 @@
   function uiSync(g) {
     const S = g.S;
     const ui = uiFor(S);
-    const key = ui + ':' + S.camMode;
+    const key = ui + ':' + S.camMode + (S.pm && ui === 'watch' ? ':' + pmWatchLine(S) : '');
     if (key !== S.uiKey) {
       S.ui = ui; S.uiKey = key;
       try { g.buildPad(); if (g.touch) { g.releaseAll(); g.resize(); } } catch (e) { N.err('cricket.pad', e); }
@@ -4141,6 +4141,10 @@
     }
     return true;
   }
+  function pmInHand(S, inn) {
+    const P = S.pm, mine = P.slots.filter((s) => s.team === inn.bat && s.idx >= 0);
+    return mine.length ? mine.filter((s) => !inn.cards[s.idx].out).length : Math.max(0, P.aiW - inn.wkts);
+  }
   function pmStats(S, s) {
     const P = S.pm, team = s.team;
     const bi = S.innings.find((i) => i && i.bat === team), wi = S.innings.find((i) => i && i.bowl === team);
@@ -4294,7 +4298,7 @@
       const r = pmRole(S);
       const s = r === 'bat' ? 'YOU BAT' : r === 'bowl' ? 'YOU BOWL' : S.phase === 'ball' ? 'WATCHING · ' + pmWatchLine(S).split(' · ')[0].toUpperCase() : 'NEXT OVER…';
       ctx.font = font('osd', u * 0.9);
-      const w = Math.min(fr.w * 0.6, ctx.measureText(s).width + u * 1.6), h = u * 1.6, x = fr.x + u * 0.5, y = fr.y + fr.h - h - u * (S.tickerIn ? 2.6 : 0.5);
+      const w = Math.min(fr.w * 0.6, ctx.measureText(s).width + u * 1.6), h = u * 1.6, x = fr.x + fr.w - w - u * 0.5, y = fr.y + fr.h - h * 2 - u * (S.tickerIn ? 3.0 : 0.9);
       ctx.fillStyle = r === 'bat' ? 'rgba(242,194,48,0.92)' : r === 'bowl' ? 'rgba(127,216,255,0.92)' : 'rgba(10,12,30,0.65)'; rr(ctx, x, y, w, h, h / 2); ctx.fill();
       txt(ctx, s, x + w / 2, y + h / 2 + 1, { font: 'osd', size: u * 0.9, color: r === 'watch' ? '#eaf2ff' : '#14246a', maxW: w - u * 0.6 });
     }
@@ -4677,7 +4681,7 @@
   };
   GP.idle = function (g, dt) { const S = g.S; if (S && S.pm) S.pm.vis += dt; };
   function gpPad(g, S) {
-    const r = gpRole(S), key = r + (r === 'bowl' ? ':' + S.pm.aim.p : '');
+    const r = gpRole(S), key = r + (r === 'bowl' ? ':' + S.pm.aim.p : r === 'watch' ? ':' + gpWatchLine(S) : '');
     if (key === S.pm.padKey) return;
     S.pm.padKey = key;
     try { g.buildPad(); if (g.touch) { g.releaseAll(); g.resize(); } } catch (e) { N.err('cricket.gully.pad', e); }
@@ -4852,8 +4856,8 @@
     if (!P.started) banner('GULLY CRICKET · WITH FRIENDS', P.wait > 0 ? 'Starting in ' + Math.ceil(P.wait) + '…' : 'GO!');
     else if (P.stage === 'intro') banner('GULLY CRICKET · WITH FRIENDS', P.B + ' balls each · ' + P.W + ' outs · one-tip-one-hand · Aunty\'s house = OUT');
     else if (P.banner && (P.stage === 'break' || (P.banner.intro && P.banner.t < 2.6))) banner(P.banner.title, P.banner.sub, P.stage === 'break' ? '#7a3db8' : '#2a8c82');
-    if (P.stage === 'final' && P.final) {
-      const rows = P.final, w = Math.min(W - 24, 420 * k), lh = 30 * k, h = 70 * k + rows.length * lh, x = (W - w) / 2, y = A.y + Math.max(10, (A.h - h) * 0.4);
+    if (P.stage === 'final') {
+      const rows = P.final || gpStandings(S), w = Math.min(W - 24, 420 * k), lh = 30 * k, h = 70 * k + rows.length * lh, x = (W - w) / 2, y = A.y + Math.max(10, (A.h - h) * 0.4);
       H.sign(ctx, x, y, w, h, { fill: '#1d4f91', bolts: true });
       const top = rows[0];
       T(top && top.played ? (top.uid === L.me ? 'YOU WIN!' : top.nick.toUpperCase() + ' WINS!') : 'FINAL SCORES', W / 2, y + 30 * k, { font: 'display', size: 30 * k, color: '#ffd84a', outline: 4, maxW: w - 20 });
