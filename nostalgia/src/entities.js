@@ -65,26 +65,54 @@
       if (i >= 0) list.splice(i, 1);
       N.emit('entity:remove', e);
     },
-    /** Entities within r of (x,y) (centre distance minus their radius), optional predicate. */
+    /** Entities within r of (x,y) (centre distance minus their radius), optional predicate. `into`: an array to
+     *  append to (hot paths pass a scratch array they own and empty: no allocation per call, audit PERF-16). */
     query(x, y, r, pred, into) {
       const out = into || [];
       const i0 = Math.floor((x - r - 40) / HC), i1 = Math.floor((x + r + 40) / HC);
       const j0 = Math.floor((y - r - 40) / HC), j1 = Math.floor((y + r + 40) / HC);
       for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
         const b = hash.get(hkey(i, j)); if (!b) continue;
-        for (const e of b) {
+        for (let k = 0; k < b.length; k++) {
+          const e = b[k];
           if (!e.alive) continue;
-          const rr = r + (e.r || 0);
-          if ((e.x - x) * (e.x - x) + (e.y - y) * (e.y - y) <= rr * rr && (!pred || pred(e))) out.push(e);
+          // each field read once: e.x on dozens of entity shapes is a megamorphic load that boxes a new number
+          const dx = e.x - x, dy = e.y - y, rr = r + (e.r || 0);
+          if (dx * dx + dy * dy <= rr * rr && (!pred || pred(e))) out.push(e);
         }
       }
       return out;
     },
+    /** Like query, but writes the hits to buf[0..n) and returns n; buf.length is never touched (an array emptied with
+     *  `length = 0` drops its backing store, so every push would allocate again). Entries past n are stale.
+     *  `kind` (optional): only entities of that kind, tested before their position is read (cheap in a crowd). */
+    queryN(x, y, r, pred, buf, kind) {
+      let n = 0;
+      const i0 = Math.floor((x - r - 40) / HC), i1 = Math.floor((x + r + 40) / HC);
+      const j0 = Math.floor((y - r - 40) / HC), j1 = Math.floor((y + r + 40) / HC);
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const b = hash.get(hkey(i, j)); if (!b) continue;
+        for (let k = 0; k < b.length; k++) {
+          const e = b[k];
+          if (!e.alive || (kind && e.kind !== kind)) continue;
+          const dx = e.x - x, dy = e.y - y, rr = r + (e.r || 0);
+          if (dx * dx + dy * dy <= rr * rr && (!pred || pred(e))) buf[n++] = e;
+        }
+      }
+      return n;
+    },
     nearest(x, y, r, pred) {
       let best = null, bd = Infinity;
-      for (const e of E.query(x, y, r, pred)) {
-        const d = (e.x - x) * (e.x - x) + (e.y - y) * (e.y - y);
-        if (d < bd) { bd = d; best = e; }
+      const i0 = Math.floor((x - r - 40) / HC), i1 = Math.floor((x + r + 40) / HC);
+      const j0 = Math.floor((y - r - 40) / HC), j1 = Math.floor((y + r + 40) / HC);
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const b = hash.get(hkey(i, j)); if (!b) continue;
+        for (let k = 0; k < b.length; k++) {
+          const e = b[k];
+          if (!e.alive) continue;
+          const dx = e.x - x, dy = e.y - y, d = dx * dx + dy * dy, rr = r + (e.r || 0);
+          if (d <= rr * rr && d < bd && (!pred || pred(e))) { bd = d; best = e; }
+        }
       }
       return best;
     },
@@ -116,11 +144,12 @@
 
   // Move an actor that is being shoved, without pushing it into (or through) a wall.
   // Vehicles are moved by vehicles.js; everything else collides like a walker.
+  const PUSH_C = {}, PUSH_R = {}; // scratch results (pushTo calls nothing that could re-enter it)
   function pushTo(e, x, y) {
     if (e.kind === 'vehicle' || e.noWorld || !N.world.built) { e.x = x; e.y = y; return; }
-    const c = N.world.collide(x, y, e.r || 4, e.moveMode || 'walk');
+    const c = N.world.collide(x, y, e.r || 4, e.moveMode || 'walk', PUSH_C);
     if (c.bad) return;
-    if (c.hit && N.world.raycast(e.x, e.y, c.x, c.y, e.moveMode || 'walk').hit) return; // would cross a wall: stay
+    if (c.hit && N.world.raycast(e.x, e.y, c.x, c.y, e.moveMode || 'walk', PUSH_R).hit) return; // would cross a wall: stay
     e.x = c.x; e.y = c.y;
   }
   E.pushTo = pushTo;
@@ -129,23 +158,30 @@
   let nearBuf = [], nearBusy = false;
   function resolveOverlaps() {
     for (const b of hash.values()) {
-      for (const a of b) {
+      for (let k = 0; k < b.length; k++) {
+        const a = b[k];
         if (!a.solid || !a.alive || a.noCollide) continue;
         // a scratch result array (a fresh one if an onBump handler re-entered this loop)
         const own = !nearBusy, buf = own ? nearBuf : [];
-        buf.length = 0;
-        const near = E.query(a.x, a.y, (a.r || 4) + 2, null, buf);
+        const n = E.queryN(a.x, a.y, (a.r || 4) + 2, null, buf);
         if (own) nearBusy = true;
-        try { resolvePairs(a, near); } finally { if (own) nearBusy = false; }
+        try { resolvePairs(a, buf, n); } finally { if (own) nearBusy = false; }
       }
     }
   }
-  function resolvePairs(a, near) {
-    for (const o of near) {
+  // the onBump info: one reused object unless the bump is also emitted (listeners may keep it); onBump handlers read
+  // it during the call only (ARCHITECTURE §8)
+  const bumpInfo = { a: null, b: null, nx: 0, ny: 0, speed: 0 };
+  function resolvePairs(a, near, n) {
+    let ax = a.x, ay = a.y; // read once (megamorphic loads box numbers); re-read after a push moves a
+    const ar = a.r || 4;
+    for (let k = 0; k < n; k++) {
+      const o = near[k];
       if (o === a || o.id < a.id || !o.solid || o.noCollide) continue;
       if (a.ignore === o || o.ignore === a) continue;
-      const dx = o.x - a.x, dy = o.y - a.y;
-      const rr = (a.r || 4) + (o.r || 4);
+      const ox = o.x, oy = o.y;
+      const dx = ox - ax, dy = oy - ay;
+      const rr = ar + (o.r || 4);
       const d2 = dx * dx + dy * dy;
       if (d2 >= rr * rr) continue;
       const d = Math.sqrt(d2) || 0.01;
@@ -153,13 +189,19 @@
       const pen = rr - d;
       const ma = a.fixed ? 1e9 : a.mass || 1, mo = o.fixed ? 1e9 : o.mass || 1;
       const ta = mo / (ma + mo), to = ma / (ma + mo);
-      if (!a.fixed) pushTo(a, a.x - nx * pen * ta, a.y - ny * pen * ta);
-      if (!o.fixed) pushTo(o, o.x + nx * pen * to, o.y + ny * pen * to);
+      if (!a.fixed) { pushTo(a, ax - nx * pen * ta, ay - ny * pen * ta); ax = a.x; ay = a.y; }
+      if (!o.fixed) pushTo(o, ox + nx * pen * to, oy + ny * pen * to);
       const rel = ((a.vx || 0) - (o.vx || 0)) * nx + ((a.vy || 0) - (o.vy || 0)) * ny; // closing speed
-      const info = { a, b: o, nx, ny, speed: Math.max(0, rel) };
+      const speed = rel > 0 ? rel : 0;
+      if (!a.onBump && !o.onBump && speed <= 30) continue;
+      let info = bumpInfo;
+      if (speed > 30) info = { a, b: o, nx, ny, speed };
+      else { info.a = a; info.b = o; info.nx = nx; info.ny = ny; info.speed = speed; }
       if (a.onBump) { try { a.onBump(o, info); } catch (err) { N.err('onBump', err); } }
       if (o.onBump) { try { o.onBump(a, info); } catch (err) { N.err('onBump', err); } }
-      if (info.speed > 30) N.emit('bump', info);
+      ax = a.x; ay = a.y;
+      if (info === bumpInfo) { info.a = info.b = null; }
+      else if (info.speed > 30) N.emit('bump', info);
     }
   }
 

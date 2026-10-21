@@ -1020,11 +1020,14 @@
     }
     SOL.cells = Int32Array.from(cells); SOL.old = Uint8Array.from(old); SOL.n = cells.length;
     // anyone standing in a stall now is pushed out by the next collide (W.collide's escape search)
+    // the 3D third-person camera keeps out of them too, below the canopy / signboard tops (audit PERF-17)
+    try { if (N.view3d && N.view3d.camSolids) N.view3d.camSolids('numaish', SOL.cells, 12); } catch (e) { N.err('festivals3d.camSolids', e); }
   }
   function clearNumaish(restore) {
     const W = N.world, grid = W && W.grid;
     if (SOL.cells && restore && grid) for (let i = 0; i < SOL.cells.length; i++) if (grid[SOL.cells[i]] === N.SURF.SOLID) grid[SOL.cells[i]] = SOL.old[i];
     SOL.cells = null; SOL.old = null; SOL.n = 0;
+    try { if (N.view3d && N.view3d.camSolids) N.view3d.camSolids('numaish', null); } catch (e) { N.err('festivals3d.camSolids', e); }
   }
   function syncNumaishSolids() {
     try {

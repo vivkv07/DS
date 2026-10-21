@@ -658,17 +658,20 @@
   }
 
   /** Nearest thing ahead of v inside its corridor: {e, gap, sp, ly, er, static}. */
+  // (audit PERF-16) one scratch array for the neighbour query (sense calls nothing that re-enters it) and the result
+  // object built once at the end, not on every better candidate
+  const SENSE_NEAR = [];
   function sense(v, dirx, diry) {
     const T2 = v.T, sp = Math.max(0, v.speed || 0);
     if (dirx == null) { dirx = Math.cos(v.angle); diry = Math.sin(v.angle); }
     const look = 24 + sp * 0.9 + T2.w / 2;
     const cx = v.x + dirx * look * 0.5, cy = v.y + diry * look * 0.5;
-    const near = N.entities.query(cx, cy, look * 0.5 + 12);
+    const near = SENSE_NEAR, nn = N.entities.queryN(cx, cy, look * 0.5 + 12, null, near);
     const hw = T2.d / 2 + 1;
     const tr = v.tr;
     const onRoad = roadSurf(N.world.surfaceAt(v.x, v.y));
-    let best = null, bg = Infinity;
-    for (let i = 0; i < near.length; i++) {
+    let best = null, bg = Infinity, bsp = 0, bly = 0, ber = 0, belen = 0, blx = 0;
+    for (let i = 0; i < nn; i++) {
       const e = near[i];
       if (e === v || !e.alive || e.hidden || e === v.driver) continue;
       let er, elen, esp;
@@ -702,9 +705,9 @@
       const ly = -dx * diry + dy * dirx;
       if (Math.abs(ly) > thr) continue;
       const gap = lx - T2.w / 2 - elen;
-      if (gap < bg) { bg = gap; best = { e, gap, sp: esp, ly, er, elen, lx }; }
+      if (gap < bg) { bg = gap; best = e; bsp = esp; bly = ly; ber = er; belen = elen; blx = lx; }
     }
-    return best;
+    return best ? { e: best, gap: bg, sp: bsp, ly: bly, er: ber, elen: belen, lx: blx } : null;
   }
   const roadSurf = (s) => s === N.SURF.ROAD || s === N.SURF.BRIDGE;
   function onPodium(e) {
@@ -755,6 +758,9 @@
 
   function trafficCtl(v, dt) {
     const tr = v.tr, ctl = v.ctl, T2 = v.T;
+    // the controller never moves the vehicle: its position read once (v.x on the many vehicle shapes is a
+    // megamorphic load that boxes a new number each time: audit PERF-16)
+    const vX = v.x, vY = v.y;
     if (!tr || !tr.wp) { ctl.throttle = 0; ctl.brake = true; return; }
     tr.t += dt;
     if (tr.hornCD > 0) tr.hornCD -= dt;
@@ -762,7 +768,7 @@
     if (tr.yieldT > 0) tr.yieldT -= dt;
     // respect zones nearby (checked twice a second): no horn, crawl past
     tr.quietT = (tr.quietT || 0) - dt;
-    if (tr.quietT <= 0) { tr.quietT = 0.5; tr.quiet = T2.mode !== 'boat' && quietAt(v.x, v.y); }
+    if (tr.quietT <= 0) { tr.quietT = 0.5; tr.quiet = T2.mode !== 'boat' && quietAt(vX, vY); }
     // boats wander the lake
     if (T2.mode === 'boat') { boatCtl(v, dt); return; }
     // keep enough route ahead
@@ -773,15 +779,15 @@
     while (tr.i < W.length) {
       const a = W[tr.i - 1], b = W[tr.i];
       const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1;
-      const t = ((v.x - a.x) * dx + (v.y - a.y) * dy) / L2;
-      const db = Math.hypot(b.x - v.x, b.y - v.y);
+      const t = ((vX - a.x) * dx + (vY - a.y) * dy) / L2;
+      const db = Math.hypot(b.x - vX, b.y - vY);
       if ((t >= 1 || db < 3) && !(b.f & F_STOP && tr.stopT == null && db > 2.5)) { passWaypoint(v, tr, b); tr.i++; continue; }
       if (b.f & F_STOP && tr.stopT != null) break;
       break;
     }
     if (tr.i >= W.length) { // ran out (dead end): stop, then despawn when nobody sees
       ctl.throttle = 0; ctl.brake = true; tr.deadT = (tr.deadT || 0) + dt;
-      if (tr.deadT > 3 && !N.render.inView(v.x, v.y, 60)) despawnVehicle(v);
+      if (tr.deadT > 3 && !N.render.inView(vX, vY, 60)) despawnVehicle(v);
       return;
     }
     if (tr.i > 14) { W.splice(0, tr.i - 1); tr.i = 1; }
@@ -790,11 +796,11 @@
     const look = 9 + asp * 0.32 + T2.w * 0.3;
     let j = tr.i, a = W[j - 1], b = W[j];
     let dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
-    let t = clamp(((v.x - a.x) * dx + (v.y - a.y) * dy) / (L * L), 0, 1);
+    let t = clamp(((vX - a.x) * dx + (vY - a.y) * dy) / (L * L), 0, 1);
     let px = a.x + dx * t, py = a.y + dy * t;
     let rem = look, tx = b.x, ty = b.y, segUx = dx / L, segUy = dy / L;
     // off-route? (pushed by a crash) -> rebuild from the nearest node
-    const offD = Math.hypot(v.x - px, v.y - py);
+    const offD = Math.hypot(vX - px, vY - py);
     if (offD > 46) { reroute(v); return; }
     for (;;) {
       const sl = Math.hypot(b.x - px, b.y - py);
@@ -816,7 +822,7 @@
     let want = tr.cruise * (tr.yieldT > 0 ? 0.55 : 1);
     if (tr.quiet) want = Math.min(want, TUNE.respectCruise);
     const dec = T2.brake * 0.42;
-    let acc = Math.hypot(W[tr.i].x - v.x, W[tr.i].y - v.y);
+    let acc = Math.hypot(W[tr.i].x - vX, W[tr.i].y - vY);
     let stopping = false;
     for (let k = tr.i; k < Math.min(W.length, tr.i + 7); k++) {
       if (k > tr.i) acc += Math.hypot(W[k].x - W[k - 1].x, W[k].y - W[k - 1].y);
@@ -859,11 +865,11 @@
       if (tr.pullT <= 0 && asp < 3) { tr.pullT = null; tr.stopT = TUNE.pulloverSecs; tr.stopAt = null; dropPassenger(v); }
     }
     // ---- following / obstacles
-    const dl = Math.hypot(tx - v.x, ty - v.y) || 1;
+    const dl = Math.hypot(tx - vX, ty - vY) || 1;
     // off-screen (kinematic) vehicles look ahead 4x less often
     let ob;
     if (v.kin && tr.senseT > 0) { tr.senseT -= dt; ob = tr.ob; if (ob && !ob.e.alive) ob = null; }
-    else { ob = sense(v, (tx - v.x) / dl, (ty - v.y) / dl); tr.senseT = v.kin ? 0.06 : 0; }
+    else { ob = sense(v, (tx - vX) / dl, (ty - vY) / dl); tr.senseT = v.kin ? 0.06 : 0; }
     tr.ob = ob;
     let blocked = false;
     if (ob) {
@@ -881,18 +887,18 @@
       want = Math.min(want, Math.max(TUNE.swerveSpeed, ob && ob.e === tr.swerve.e ? 0 : TUNE.swerveSpeed));
       tr.swerve.t -= dt;
       const se = tr.swerve.e;
-      const passed = !se.alive || ((se.x - v.x) * Math.cos(v.angle) + (se.y - v.y) * Math.sin(v.angle) < -(T2.w / 2 + (se.r || 6) + 4));
+      const passed = !se.alive || ((se.x - vX) * Math.cos(v.angle) + (se.y - vY) * Math.sin(v.angle) < -(T2.w / 2 + (se.r || 6) + 4));
       if (passed || tr.swerve.t <= 0) tr.swerve = null;
     }
     if (blocked) {
       tr.blockT += dt;
-      if (tr.blockT > 10 && !N.render.inView(v.x, v.y, 60)) { despawnVehicle(v); return; }
+      if (tr.blockT > 10 && !N.render.inView(vX, vY, 60)) { despawnVehicle(v); return; }
       if (!tr.swerve && tr.blockT > 4 && ob.e.kind === 'vehicle' && ob.e.tr && ob.e.tr.blockT > 3) trySwerve(v, tr, ob, segUx, segUy);
       if (tr.blockT > TUNE.hornAfter && (ob.e === N.player || ob.e.kind !== 'vehicle' || !ob.e.tr || ob.e.tr.blockT < 0.5)) honk(v, 'blocked');
     } else tr.blockT = Math.max(0, tr.blockT - dt * 2);
     void stopping;
     // ---- steering + pedals
-    const diff = U.angleDiff(v.angle, Math.atan2(ty - v.y, tx - v.x));
+    const diff = U.angleDiff(v.angle, Math.atan2(ty - vY, tx - vX));
     if (tr.rev > 0) {
       tr.rev -= dt; ctl.brake = false; ctl.handbrake = false; ctl.throttle = -0.6; ctl.steer = clamp(-diff * 2, -1, 1);
       return;
@@ -910,11 +916,11 @@
     tr.chk -= dt;
     if (tr.chk <= 0) {
       tr.chk = 1.2;
-      const moved = Math.hypot(v.x - tr.cx, v.y - tr.cy); tr.cx = v.x; tr.cy = v.y;
+      const moved = Math.hypot(vX - tr.cx, vY - tr.cy); tr.cx = vX; tr.cy = vY;
       if (moved < 2.5 && want > 15) {
         tr.stuck++;
         tr.rev = 0.8;
-        if (tr.stuck >= 3) { if (!N.render.inView(v.x, v.y, 60)) despawnVehicle(v); else { tr.stuck = 0; reroute(v); } }
+        if (tr.stuck >= 3) { if (!N.render.inView(vX, vY, 60)) despawnVehicle(v); else { tr.stuck = 0; reroute(v); } }
       } else tr.stuck = 0;
     }
   }
@@ -1125,6 +1131,9 @@
       cruise: 60, persona, fast: !!fast, hornCD: rr(0, 2), blockT: 0, waitT: 0, cleared: -1,
       inBox: -1, chk: 1.2, cx: v.x, cy: v.y, stuck: 0, rev: 0, yieldT: 0, ghost: 0, deadEnd: false, style, fare: rnd() < 0.5,
       idol: activeEvents(v.x, v.y).some((ev) => ev.idolLorries) && v.T.cls === 'heavy',
+      // set later by trafficCtl: declared here so every traffic vehicle's tr has one shape (monomorphic field access,
+      // numbers stored in place instead of a new boxed number per write: audit PERF-16)
+      quietT: 0, quiet: false, senseT: 0, ob: null, ghostOf: null, deadT: 0, cruiseBase: 60,
     };
     v.tr.cruise = cruiseFor(v, e);
     startRoute(v, A, B, d0);

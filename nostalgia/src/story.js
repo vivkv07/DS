@@ -2643,7 +2643,9 @@
     for (const rg of S.rings) {
       if (ring3d.has(rg)) continue;
       const id = 'st:ring3d:' + (++seq);
-      r.markers.set(id, { target: rg.target, r: rg.r || 16, color: rg.color || '#ff5fb0', label: '' });
+      // h: the ring's roof height (data units): view3d_actors' markerBase puts the marker there directly instead of
+      // inferring the roof from the target (performance audit PERF-34, round 2)
+      r.markers.set(id, { target: rg.target, r: rg.r || 16, h: rg.h, color: rg.color || '#ff5fb0', label: '' });
       ring3d.set(rg, { run: r, id });
     }
   }

@@ -36,7 +36,8 @@
  *   N.npcs.despawn(idOrActor), get(key) -> actor | null, all() -> [actors], list {key: actor}
  *   await N.npcs.walkTo(key, target, {run, speed, r, timeout, face}) -> true (arrived) | false
  *     Long walks follow the road graph, short ones a grid A* path, smoothed and re-planned when
- *     blocked; off-screen it hops forward if truly stuck. Called during a mission, the promise
+ *     blocked (around seated / standing people too: resting bodies are soft obstacles in the re-plan);
+ *     off-screen it hops forward if truly stuck. Called during a mission, the promise
  *     REJECTS with a MissionAbort when that mission ends (so a script never runs on).
  *   N.npcs.stop(key)  cancels walkTo / driveTo (they resolve false)
  *   N.npcs.follow(key, leader | null, {dist, side: 'left'|'right'|'behind', ride: true | type})
@@ -608,6 +609,34 @@
     const px = (-dy / L) * 2.4, py = (dx / L) * 2.4;
     return !Wd.raycast(ax, ay, bx, by, 'walk').hit && !Wd.raycast(ax + px, ay + py, bx + px, by + py, 'walk').hit && !Wd.raycast(ax - px, ay - py, bx - px, by - py, 'walk').hit;
   }
+  /* (audit round 2, X7) resting bodies: seated / standing solid actors the walk grid does not know (an Irani cafe's
+   * bench row across the footpath, a crowd at a door). A stuck walker re-plans with them as soft obstacles: grid cells
+   * inside one cost extra (passable when there is no other way), and the smoothing / look-ahead keep its legs clear. */
+  function restingBodies(a, R) {
+    const out = [];
+    let list = null;
+    try { list = N.entities.query(a.x, a.y, R); } catch (e) { return out; }
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (e === a || !e.solid || e.noCollide || e.hidden || e.kind === 'vehicle' || e.vehicle || e.ignore === a || a.ignore === e) continue;
+      if (Math.hypot(e.vx || 0, e.vy || 0) > 6) continue; // walking: gone by the time we get there
+      out.push({ x: e.x, y: e.y, r: (e.r || 3) + (a.r || 3.4) - 0.4 });
+    }
+    return out;
+  }
+  /** the segment keeps clear of every body (a body the start is already inside only blocks moving towards it) */
+  function bodiesClear(ax, ay, bx, by, B) {
+    if (!B || !B.length) return true;
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1;
+    for (let i = 0; i < B.length; i++) {
+      const b = B[i], ox = b.x - ax, oy = b.y - ay;
+      if (ox * ox + oy * oy < b.r * b.r) { if (ox * dx + oy * dy > 0) return false; continue; }
+      let t = (ox * dx + oy * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const ex = dx * t - ox, ey = dy * t - oy;
+      if (ex * ex + ey * ey < b.r * b.r) return false;
+    }
+    return true;
+  }
   function freeSpot(x, y, maxR) {
     const Wd = N.world;
     if (!Wd || !Wd.built) return { x, y };
@@ -640,7 +669,8 @@
     }
     return top;
   }
-  /** Grid A* over walkable ground (8 u cells, 3 u clearance). -> [{x, y}] smoothed | null */
+  /** Grid A* over walkable ground (8 u cells, 3 u clearance). -> [{x, y}] smoothed | null
+   *  opts {margin, max, partial, bodies: [{x, y, r}] soft obstacles (restingBodies)} */
   function gridPath(x0, y0, x1, y1, opts) {
     opts = opts || {};
     const margin = opts.margin || 220;
@@ -652,6 +682,19 @@
     const state = new Uint8Array(n); // 0 unknown, 1 free, 2 blocked
     const isFree = (i) => { let s = state[i]; if (!s) { const cx = (gx0 + (i % w) + 0.5) * PG, cy = (gy0 + Math.floor(i / w) + 0.5) * PG; s = state[i] = cellFree(cx, cy) ? 1 : 2; } return s === 1; };
     const toIdx = (x, y) => { const i = Math.floor(x / PG) - gx0, j = Math.floor(y / PG) - gy0; return i < 0 || j < 0 || i >= w || j >= h ? -1 : j * w + i; };
+    const B = opts.bodies && opts.bodies.length ? opts.bodies : null;
+    const softS = B ? new Uint8Array(n) : null; // 0 unknown, 1 clear, 2 inside a body
+    const softPen = (i) => {
+      if (!B) return 0;
+      let s2 = softS[i];
+      if (!s2) {
+        const cx = (gx0 + (i % w) + 0.5) * PG, cy = (gy0 + Math.floor(i / w) + 0.5) * PG;
+        s2 = 1;
+        for (let k = 0; k < B.length; k++) { const b = B[k], ex = cx - b.x, ey = cy - b.y; if (ex * ex + ey * ey < b.r * b.r) { s2 = 2; break; } }
+        softS[i] = s2;
+      }
+      return s2 === 2 ? 10 : 0;
+    };
     const nearFree = (idx) => {
       if (idx < 0) return -1;
       if (isFree(idx)) return idx;
@@ -691,7 +734,7 @@
         const ni = j * w + i;
         if (closed[ni] || !isFree(ni)) continue;
         if (di && dj && (!isFree(cj * w + i) || !isFree(j * w + ci))) continue; // no corner cutting
-        const nc = cc + (di && dj ? D2 : 1);
+        const nc = cc + (di && dj ? D2 : 1) + softPen(ni);
         if (nc < cost[ni]) { cost[ni] = nc; parent[ni] = cur; heapPush(heap, nc + hfn(ni), ni); }
       }
     }
@@ -703,18 +746,18 @@
     const pts = cells.map((c) => ({ x: (gx0 + (c % w) + 0.5) * PG, y: (gy0 + Math.floor(c / w) + 0.5) * PG }));
     pts[0] = { x: x0, y: y0 };
     if (found) pts.push({ x: x1, y: y1 });
-    const out = smoothPath(pts);
+    const out = smoothPath(pts, B);
     out.shift(); // drop the start point
     out.partial = !found;
     return out;
   }
-  function smoothPath(pts) {
+  function smoothPath(pts, B) {
     if (pts.length <= 2) return pts.slice();
     const out = [pts[0]];
     let i = 0;
     while (i < pts.length - 1) {
       let j = Math.min(pts.length - 1, i + 48);
-      while (j > i + 1 && !lineClear(pts[i].x, pts[i].y, pts[j].x, pts[j].y)) j--;
+      while (j > i + 1 && !(lineClear(pts[i].x, pts[i].y, pts[j].x, pts[j].y) && bodiesClear(pts[i].x, pts[i].y, pts[j].x, pts[j].y, B))) j--;
       out.push(pts[j]); i = j;
     }
     return out;
@@ -996,7 +1039,8 @@
     w.ahead -= dt;
     if (w.ahead <= 0) {
       w.ahead = 0.3;
-      for (let j = Math.min(w.path.length - 1, w.i + 4); j > w.i; j--) if (lineClear(a.x, a.y, w.path[j].x, w.path[j].y)) { w.i = j; break; }
+      const B = w.bodies && w.t < w.bodiesT ? w.bodies : null;
+      for (let j = Math.min(w.path.length - 1, w.i + 4); j > w.i; j--) if (lineClear(a.x, a.y, w.path[j].x, w.path[j].y) && bodiesClear(a.x, a.y, w.path[j].x, w.path[j].y, B)) { w.i = j; break; }
     }
     let wp = w.path[w.i];
     if (w.side && w.side.t > 0) { w.side.t -= dt; wp = w.side; }
@@ -1020,10 +1064,40 @@
     a.stats.unsticks++;
     const wp = w.path && w.path[Math.min(w.i, w.path.length - 1)] || { x: w.gx, y: w.gy };
     const visible = N.render && N.render.inView && (N.render.inView(a.x, a.y, 40) || N.render.inView(wp.x, wp.y, 40));
-    if (w.stuck === 1) { const p = gridPath(a.x, a.y, wp.x, wp.y, { partial: true }); if (p && p.length) { w.path.splice(w.i, 1, ...p, wp); } a.stats.replans++; return; }
+    if (w.stuck === 1) {
+      if (bodyDetour(a, w)) return;
+      const p = gridPath(a.x, a.y, wp.x, wp.y, { partial: true }); if (p && p.length) { w.path.splice(w.i, 1, ...p, wp); } a.stats.replans++; return;
+    }
     if (w.stuck === 2) { const ang = Math.atan2(wp.y - a.y, wp.x - a.x) + (Math.random() < 0.5 ? 1.6 : -1.6); w.side = { x: a.x + Math.cos(ang) * 14, y: a.y + Math.sin(ang) * 14, t: 0.7 }; return; }
-    if (w.stuck === 3) { w.path = planPath(a.x, a.y, w.gx, w.gy); w.i = 0; a.stats.replans++; if (!visible) hopTo(a, wp); return; }
+    if (w.stuck === 3) { if (!bodyDetour(a, w)) { w.path = planPath(a.x, a.y, w.gx, w.gy); w.i = 0; a.stats.replans++; } if (!visible) hopTo(a, wp); return; }
     if (!visible || w.stuck >= 6) { hopTo(a, wp); w.stuck = 2; }
+  }
+  /** (audit round 2, X7) blocked by people (a bench row across the footpath, a crowd at a door): re-plan around them
+   *  (restingBodies as soft obstacles) to the first point of the route past them (or the goal); a walker wedged
+   *  against one first steps to the free spot nearby that best opens the way. -> true when a detour was set */
+  function bodyDetour(a, w) {
+    const B = restingBodies(a, 90);
+    if (!B.length || !w.path || !w.path.length) return false;
+    let j = Math.min(w.i, w.path.length - 1);
+    const inB = (q) => B.some((b) => Math.hypot(q.x - b.x, q.y - b.y) < b.r);
+    while (j < w.path.length - 1 && (Math.hypot(w.path[j].x - a.x, w.path[j].y - a.y) < 24 || inB(w.path[j]))) j++;
+    const tg = w.path[j] || { x: w.gx, y: w.gy };
+    const p = gridPath(a.x, a.y, tg.x, tg.y, { partial: true, bodies: B, margin: 120 });
+    if (!p || !p.length) return false;
+    if (p.partial) p.push(tg);
+    if (!bodiesClear(a.x, a.y, p[0].x, p[0].y, B)) {
+      let best = null, bs = Infinity;
+      for (let k = 0; k < 16; k++) for (const r of [8, 13]) {
+        const an = (k / 16) * TAU, x = a.x + Math.cos(an) * r, y = a.y + Math.sin(an) * r, q = { x, y };
+        if (!cellFree(x, y) || inB(q) || !lineClear(a.x, a.y, x, y) || !bodiesClear(a.x, a.y, x, y, B)) continue;
+        const sc = Math.hypot(p[0].x - x, p[0].y - y) + (bodiesClear(x, y, p[0].x, p[0].y, B) ? 0 : 40);
+        if (sc < bs) { bs = sc; best = q; }
+      }
+      if (best) p.unshift(best);
+    }
+    w.path.splice(w.i, j - w.i + 1, ...p);
+    w.bodies = B; w.bodiesT = w.t + 20; a.stats.replans++;
+    return true;
   }
   function hopTo(a, p) {
     const f = freeSpot(p.x, p.y, 60);

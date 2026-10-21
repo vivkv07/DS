@@ -269,6 +269,46 @@ function checkPotholes(N, label) {
   return dry.length;
 }
 
+// (audit round 2, PERF-08) the boot build runs in slices (N.world.buildAsync) and pothole generation in small steps:
+// same world as one synchronous build, no long uninterruptible step
+async function nodePartAsync() {
+  console.log('\n== node: sliced build (buildAsync) + sliced pothole generation, the map in src/worlddata.js');
+  const env = makeEnv(), N = env.N, W = () => N.world;
+  env.load('src/world.js'); env.load('src/world_extras.js');
+  const sigW = () => {
+    const w = W(); let h = 2166136261; const mix = (v) => { h ^= (v | 0); h = Math.imul(h, 16777619) >>> 0; };
+    for (let i = 0; i < w.grid.length; i += 3) mix(w.grid[i]);
+    for (const s of w.structures) { mix(s.x0 * 16); mix(s.y0 * 16); mix(s.x1 * 16); mix((s.h || 0) * 16); }
+    for (const t of w.trees) { mix(t.x * 16); mix(t.y * 16); }
+    for (const n of w.roads.nodes) { mix(n.x * 16); mix(n.deg); }
+    return h.toString(16) + '/' + w.structures.length + '/' + w.trees.length + '/' + w.lamps.length + '/' + w.roads.edges.length;
+  };
+  W().build();
+  const syncSig = sigW();
+  W().potholes.ensure();
+  const potSig = W().potholes.list.map((p) => p.road + ':' + p.seg + ':' + p.x.toFixed(2) + ',' + p.y.toFixed(2)).join('|');
+  const t0 = Date.now();
+  let progress = 0; N.on('world:progress', (d) => { progress = Math.max(progress, d.done || 0); });
+  await W().buildAsync(10);
+  const A = W().buildAsyncInfo;
+  if (sigW() !== syncSig) fail('buildAsync made a different world than build(): ' + sigW() + ' vs ' + syncSig);
+  else ok('buildAsync = build(): the same world (' + syncSig + ') in ' + A.slices + ' slices of ~10 ms, ' + (Date.now() - t0) + ' ms');
+  const os = require('os'), busy = os.loadavg()[0] > os.cpus().length * 0.8; // (wall-clock budgets: not on a loaded host)
+  if (busy) info('buildAsync: ' + A.slices + ' slices, longest step ' + A.maxStep + ' ms (' + A.maxStepAt + ') — not judged: machine load ' + os.loadavg()[0].toFixed(1));
+  else if (!(A.slices >= 10 && A.maxStep < 150)) fail('buildAsync: ' + A.slices + ' slices, longest uninterruptible step ' + A.maxStep + ' ms at ' + A.maxStepAt + ' (budget 150 ms in node)');
+  else ok('buildAsync: longest uninterruptible step ' + A.maxStep + ' ms (' + A.maxStepAt + '), longest slice ' + A.maxSlice + ' ms; boot progress reported up to ' + Math.round(progress * 100) + '%');
+  if (!W().built) fail('buildAsync resolved before N.world.built');
+  // the potholes, a few ms per frame as the game's 'potholes' system runs them
+  const sys = N.systems.get('potholes'), PH = W().potholes;
+  let k = 0; while (!PH.ready && k++ < 20000) sys.update(1 / 60);
+  const sig2 = PH.list.map((p) => p.road + ':' + p.seg + ':' + p.x.toFixed(2) + ',' + p.y.toFixed(2)).join('|');
+  if (!PH.ready || sig2 !== potSig) fail('sliced pothole generation differs from ensure() (' + PH.list.length + ' potholes, ready ' + PH.ready + ')');
+  else ok('sliced pothole generation = ensure(): ' + PH.list.length + ' potholes over ' + PH.stats.frames + ' steps');
+  if (busy) info('pothole generation: longest step ' + PH.stats.sliceMax + ' ms (' + PH.stats.sliceMaxAt + ') — not judged: machine load ' + os.loadavg()[0].toFixed(1));
+  else if (!(PH.stats.sliceMax < 40)) fail('pothole generation: a ' + PH.stats.sliceMax + ' ms step at ' + PH.stats.sliceMaxAt + ' (3 ms slices; budget 40 ms in node)');
+  else ok('pothole generation: longest step ' + PH.stats.sliceMax + ' ms (' + PH.stats.sliceMaxAt + '; 3 ms slices)');
+}
+
 const V1_FILE = 'design/geo/worlddata_v1.js'; // the hand-made 8000 x 6000 map, kept by the Map v2 builder
 function nodePart(dataFile) {
   console.log('\n== node: ' + (dataFile || process.env.DATA || 'the map in src/worlddata.js'));
@@ -472,13 +512,13 @@ async function browserPart() {
   const ci = process.argv.indexOf('--child');
   if (ci >= 0) { // one node world per process
     const part = process.argv[ci + 1];
-    try { if (part === 'big') nodePartBig(); else if (part === 'v1') nodePart(V1_FILE); else nodePart(); } catch (e) { fail('crashed: ' + (e.stack || e)); }
+    try { if (part === 'big') nodePartBig(); else if (part === 'v1') nodePart(V1_FILE); else if (part === 'async') await nodePartAsync(); else nodePart(); } catch (e) { fail('crashed: ' + (e.stack || e)); }
     process.exit(failures.length ? 1 : 0);
   }
   try {
     if (ONLY !== 'browser') {
       const { spawnSync } = require('child_process');
-      const parts = ['map'];
+      const parts = ['map', 'async'];
       if (!process.env.DATA && fs.existsSync(path.join(ROOT, V1_FILE))) parts.push('v1');
       if (process.env.BIG === '1') parts.push('big');
       for (const part of parts) {

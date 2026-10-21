@@ -1,7 +1,8 @@
 /* NOSTALGIA — main.js
  * Boot (fonts with a 1.5 s timeout, world build, systems init), title -> play, the
  * requestAnimationFrame loop with a semi-fixed update step (equal sub-steps of at most
- * 1/60 s, frame dt clamped to 0.1 s) and the per-frame draw order (ARCHITECTURE §6),
+ * 1/60 s, at most 2 (low tier) / 3 sub-steps of real time per frame, the rest of a slow frame dropped) and the
+ * per-frame draw order (ARCHITECTURE §6),
  * pause (and a silent save when allowed) on visibility change / pagehide, and N.game (newGame / continueGame / quitToTitle / snapshot).
  */
 (() => {
@@ -12,7 +13,7 @@
   const TIME_MODES = { play: 1, dialogue: 1, cutscene: 1, minigame: 1, gameover: 1 }; // modes where game time advances
   const PAUSABLE = { play: 1, dialogue: 1 }; // N.game.pause() works here (cutscenes/minigames run their own)
 
-  const perf = { fps: 60, frameMs: 0, updateMs: 0, drawMs: 0, frames: 0, _acc: 0, _n: 0, _work: 0, _upd: 0, _drw: 0, hist: [] };
+  const perf = { fps: 60, frameMs: 0, updateMs: 0, drawMs: 0, steps: 1, slow: 0, frames: 0, _acc: 0, _n: 0, _work: 0, _upd: 0, _drw: 0, _steps: 0, _drop: 0, hist: [] };
   N.perf = perf;
 
   /* ------------------------------------------------------------- game */
@@ -111,6 +112,36 @@
     ms.flush = performance.now() - t;
   }
 
+  // Sub-step cap (audit PERF-07): a slow frame used to buy up to 6 sub-steps (0.1 s / (1/60)), which made the next
+  // frame slower still (5-6 steps per frame on a 4x-throttled phone). At most MAX_SUB steps of real time are now
+  // simulated per frame — 2 on the low tier (phones: view3d's tier, else a coarse pointer), 3 elsewhere — and the
+  // rest of a long frame is dropped (game time runs slower than the wall clock below 30 / 20 fps instead of
+  // spiralling). N.time.scale still multiplies the simulated time (slow motion, test fast-forward). The step size
+  // stays <= 1/60 s, so physics / collision behave as before. N.time.maxSub (tests) overrides the cap.
+  let lowTier = null, tierAt = -1e9;
+  function maxSub(now) {
+    if (N.time.maxSub > 0) return N.time.maxSub;
+    if (now - tierAt > 2000) { // cheap, but no need to ask matchMedia every frame
+      tierAt = now;
+      const q = N.view3d && N.view3d.quality;
+      if (q && q.tier) lowTier = q.tier === 'low';
+      else { try { lowTier = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); } catch (e) { lowTier = false; } }
+    }
+    return lowTier ? 2 : 3;
+  }
+
+  // Layout read phase (audit PERF-15): systems that measure the DOM (speech-bubble sizes, the canvas rect, the HUD
+  // keep-out rects) do it in read(), here, before this frame's updates and draws write anything, while the layout
+  // the browser computed for the last frame is still valid. A getBoundingClientRect / offsetWidth after a style
+  // write forces a synchronous style + layout pass (one per bubble per frame before this).
+  function readLayout() {
+    const L = N.systems.list;
+    for (let i = 0; i < L.length; i++) {
+      const s = L[i];
+      if (s.read) { try { s.read(); } catch (e) { N.err('read:' + s.id, e); } }
+    }
+  }
+
   function frame(t) {
     requestAnimationFrame(frame);
     let dt = last ? (t - last) / 1000 : 1 / 60;
@@ -118,16 +149,24 @@
     if (!(dt > 0)) dt = 0;
     if (dt > 0.1) dt = 0.1;
     const t0 = performance.now();
+    readLayout();
+    // the frame's simulated span (real seconds, before N.time.scale): the camera, render effects and N.time.real
+    // use it too, so a capped frame looks like a frame of a slower game (no camera lurch against the world)
+    let sim = dt;
     if (dt > 0) {
-      const scaled = dt * (N.time.scale == null ? 1 : N.time.scale);
+      const cap = maxSub(t0) * MAX_STEP;
+      if (dt > cap + 1e-4) sim = cap;
+      if (sim < dt && TIME_MODES[N.state.mode]) perf._drop += dt - sim;
+      const scaled = sim * (N.time.scale == null ? 1 : N.time.scale);
       const n = Math.max(1, Math.ceil(scaled / MAX_STEP - 1e-3));
       const h = scaled / n;
       for (let i = 0; i < n; i++) step(h);
+      perf._steps += n;
     }
     const t1 = performance.now();
-    render(dt);
+    render(sim);
     const t2 = performance.now();
-    N.time.real += dt;
+    N.time.real += sim;
     // perf stats (1 s window)
     perf.frames++;
     perf._acc += dt; perf._n++; perf._work += t2 - t0; perf._upd += t1 - t0; perf._drw += t2 - t1;
@@ -136,12 +175,15 @@
       perf.frameMs = +(perf._work / perf._n).toFixed(2);
       perf.updateMs = +(perf._upd / perf._n).toFixed(2);
       perf.drawMs = +(perf._drw / perf._n).toFixed(2);
+      perf.steps = +(perf._steps / perf._n).toFixed(2); // sub-steps per frame (capped: see maxSub)
+      perf.slow = +(perf._drop / perf._acc).toFixed(3); // share of wall time not simulated (0 = full speed)
       perf.hist.push(perf.frameMs); if (perf.hist.length > 30) perf.hist.shift();
-      perf._acc = perf._n = perf._work = perf._upd = perf._drw = 0;
+      perf._acc = perf._n = perf._work = perf._upd = perf._drw = perf._steps = perf._drop = 0;
     }
   }
 
   /* ------------------------------------------------------------- boot */
+  const nextTask = () => new Promise((r) => setTimeout(r, 0));
   function waitFonts(timeout) {
     return new Promise((resolve) => {
       let done = false;
@@ -165,9 +207,20 @@
       if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) document.body.classList.add('reduced-motion');
     } catch (e) { /* ignore */ }
     N.render.init();
-    await waitFonts(1500);
-    try { N.world.build(); } catch (e) { N.err('world.build', e); }
+    // (audit round 2, PERF-08) the world is built in ~40 ms slices while the fonts load (it needs no fonts): the
+    // main thread is never blocked for the whole 0.5-3.7 s build, and the splash counts up
+    const fonts = waitFonts(1500);
+    const osd = document.querySelector('#boot .boot-osd');
+    const onProg = (d) => { if (osd && d && d.done > 0) osd.textContent = '\u25B6 LOADING\u2026 ' + Math.round(d.done * 100) + '%'; };
+    N.on('world:progress', onProg);
+    try {
+      if (N.world.buildAsync) await N.world.buildAsync(40, fonts); else { await fonts; N.world.build(); }
+    } catch (e) { N.err('world.build', e); }
+    N.off('world:progress', onProg);
+    await fonts;
+    await nextTask(); // the build's last slice ran the 'world:built' listeners: let the browser breathe
     N.systems.init();
+    await nextTask();
     N.player.reset();
     N.render.cam.x = N.player.x; N.render.cam.y = N.player.y;
     N.render.snapCamera();

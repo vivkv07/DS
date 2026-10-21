@@ -58,6 +58,11 @@ async function open(browser, V) {
     const d = document.getElementById('debug'); if (d) d.style.display = 'none';
     // the side activities (src/diwali_missions.js) are someone else's test: keep their givers out of the way
     if (N.missions && N.missions.defs && N.missions.done) for (const id in N.missions.defs) N.missions.done.add(id);
+    // ...as a consistent finished game (audit round 2): with every track done but no interlude / ending flags,
+    // story2's healTick (journey audit J02) resumes the story after 3 s of free roam and starts the interlude and
+    // the finale scenes, which freeze the Chappal Meter (story2:scene), move Chinnu and cover the Diwali streets
+    // this test looks at (the 11 failures of the first audit: elder heat 0, no houses / families / stalls in view)
+    for (const k of ['interlude_done', 'ending_done', 'epilogue_done', 'credits_seen', 'postgame']) N.flags[k] = true;
     N.flags.dw_terrace = true;
     window.__dw = { ev: [] };
     for (const e of ['diwali:light', 'diwali:stopped', 'diwali:dog', 'diwali:comfort', 'diwali:box']) N.on(e, (d) => window.__dw.ev.push(e));

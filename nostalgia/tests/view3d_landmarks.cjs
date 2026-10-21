@@ -194,7 +194,12 @@ async function main() {
       // view3d_landmarks.js skips them on purpose: overrides()) are not view3d_landmarks' to build. Lazy models come and
       // go (LRU), so they are collected along the walk
       const byModels = () => { if (N.models3d && N.models3d.ready && N.models3d.stats) for (const k of N.models3d.stats().registered) if (k[0] === '#') m3dIds.add(k.slice(1)); return m3dIds; };
-      const m3dSeen = (o) => { if (/^m3d-lm:/.test(o.name || '')) m3dIds.add(o.name.split(':').pop()); };
+      // (audit round 2) models3d also batches the members of one model in a cell into one object 'm3d-batch:<model>:<cell>'
+      // (userData.batch.members): the members whose builders return nothing of their own are drawn by it
+      const m3dSeen = (o) => {
+        if (/^m3d-lm:/.test(o.name || '')) m3dIds.add(o.name.split(':').pop());
+        const bt = o.userData && o.userData.batch; if (bt && bt.members) for (const m of bt.members) m3dIds.add(m.id);
+      };
       const dd = N.view3d.quality.drawDist;
       N.view3d.setQuality({ drawDist: 320 });
       for (const [x, y] of stops) {

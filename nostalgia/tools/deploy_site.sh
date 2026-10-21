@@ -42,9 +42,8 @@ else
 fi
 find "$SITE" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
 
-# dist/web.html plus the files it loads by relative path when 3D (or Online) starts (the core model pack, the lazy
-# per-landmark GLBs in lazy3d/ next to index.html, GLTF loader, and the vendored three.js fallback;
-# three.js itself comes from jsDelivr first).
+# dist/web.html plus the files it loads by relative path: the fonts at once, and when 3D (or Online) starts the core
+# model pack, the lazy per-landmark GLBs in lazy3d/ next to index.html, GLTF loader and the vendored three.js.
 mkdir -p "$SITE/src" "$SITE/vendor/three"
 cp "$HERE/dist/web.html" "$SITE/index.html"
 cp "$HERE/src/assets3d_pack.js" "$SITE/src/"
@@ -59,6 +58,13 @@ cp "$HERE/vendor/three/three.min.js" "$HERE/vendor/three/GLTFLoader.classic.js" 
 # online play (src/online.js): the vendored supabase-js fallback (jsDelivr is tried first)
 mkdir -p "$SITE/vendor/supabase"
 cp "$HERE/vendor/supabase/supabase.js" "$HERE/vendor/supabase/LICENSE" "$SITE/vendor/supabase/"
+# the self-hosted fonts (tools/vendor_fonts.mjs): the page's inlined fonts.css loads vendor/fonts/*.woff2 (OFL texts with them)
+if ls "$HERE"/vendor/fonts/*.woff2 >/dev/null 2>&1; then
+  mkdir -p "$SITE/vendor/fonts"
+  cp "$HERE"/vendor/fonts/*.woff2 "$HERE"/vendor/fonts/OFL-*.txt "$HERE/vendor/fonts/README.md" "$SITE/vendor/fonts/"
+else
+  echo "warning: vendor/fonts missing (run tools/vendor_fonts.mjs): the page will use fallback fonts" >&2
+fi
 touch "$SITE/.nojekyll"
 printf '{"build":"%s","source":"%s"}\n' "$STAMP" "$SRC_REV" > "$SITE/build.json"
 
@@ -86,7 +92,8 @@ This is a play-testing build: pocket money is unlimited for now.
 - 3D engine: three.js r149 (MIT, see vendor/three/LICENSE).
 - Online play: supabase-js 2.118.0 (MIT, see vendor/supabase/LICENSE).
 - 3D models made in Blender for this game.
-- Fonts from Google Fonts (SIL Open Font License).
+- Fonts: Baloo 2, Yatra One, VT323, Noto Sans Telugu and Kalam (SIL Open Font License 1.1), self-hosted subsets in
+  vendor/fonts/ (licence texts there).
 
 All characters, shops, films and songs in the game are fictional. Real landmarks appear as
 public places only.

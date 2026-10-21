@@ -997,8 +997,10 @@ async function pSA1() {
     check((await ev(() => N.flags.pandal_nights)) === night, 'SA1 night ' + night + ' done');
     // the night ends after the 21:30 curfew: the committee's boy walks home without Mummy at the gate
     await sleep(1500);
-    const g = await ev(() => ({ grace: N.flags.no_curfew || null, lvl: N.wanted ? N.wanted.level | 0 : 0, clock: N.clock.label() }));
-    check(g.lvl === 0 && g.grace === 'pandal', 'SA1 night ' + night + ': after pandal duty (' + g.clock + ') no curfew chase on the way home', g);
+    // (gameplay audit X8, round 2) the 'Tag!' hook teleports Chinnu to the raiders, so a night can end with him by the
+    // home door; story.js pandalGraceTick then ends the grace "at home" (< 45 u), as designed: no grace is needed there
+    const g = await ev(() => { const h = N.places.home, p = N.player; return { grace: N.flags.no_curfew || null, lvl: N.wanted ? N.wanted.level | 0 : 0, clock: N.clock.label(), home: h && p ? Math.round(Math.hypot(p.x - h.x, p.y - h.y)) : null }; });
+    check(g.lvl === 0 && (g.grace === 'pandal' || (g.grace === null && g.home != null && g.home < 45)), 'SA1 night ' + night + ': after pandal duty (' + g.clock + ') no curfew chase on the way home', g);
   }
   check(await ev(() => !!N.flags.tiger_helps_lorry), 'SA1: four nights done: Tiger\'s gang will push the lorry in M10');
 }

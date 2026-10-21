@@ -635,18 +635,30 @@
     } catch (e) { N.err('hud.keepOut', e); }
     keepOut.rects = out;
   }
+  // (audit PERF-15) the keep-out rects are read in the HUD's read() (main.js runs it at the start of the frame,
+  // before anything writes the DOM: a read after the bubbles moved forced a layout); dodgeBarks only writes and
+  // takes each bubble's box from dialogue.js (el._box, set where it placed it), measured sizes otherwise.
+  function readKeepOut() {
+    const host = dom.barks || (dom.barks = document.getElementById('barks'));
+    if (!host || !host.firstElementChild) return;
+    const now = performance.now(), f = (N.perf && N.perf.frames) || 0;
+    if (now - keepOut.t > 350 && f - (keepOut.f || 0) >= 8) { keepOut.t = now; keepOut.f = f; collectKeepOut(); } // not every frame on a slow device
+  }
   function dodgeBarks() {
     const host = dom.barks || (dom.barks = document.getElementById('barks'));
     if (!host || !host.firstElementChild) return;
-    const now = performance.now();
-    if (now - keepOut.t > 350) { keepOut.t = now; collectKeepOut(); }
     const R = keepOut.rects;
     for (let el = host.firstElementChild; el; el = el.nextElementSibling) {
-      const m = TRANSLATE.exec(el.style.transform || '');
       let hit = false;
-      if (m && el.style.visibility !== 'hidden') {
-        const x0 = +m[1], y0 = +m[2], x1 = x0 + el.offsetWidth, y1 = y0 + el.offsetHeight;
-        for (let i = 0; i < R.length && !hit; i++) { const q = R[i]; hit = x0 < q[2] && q[0] < x1 && y0 < q[3] && q[1] < y1; }
+      if (el.style.visibility !== 'hidden') {
+        let x0, y0, x1, y1;
+        const bx = el._box;
+        if (bx) { x0 = bx.l; y0 = bx.t; x1 = bx.r; y1 = bx.b; }
+        else {
+          const m = TRANSLATE.exec(el.style.transform || '');
+          if (m) { x0 = +m[1]; y0 = +m[2]; x1 = x0 + (el._bw || 120); y1 = y0 + (el._bh || 30); }
+        }
+        if (x0 != null) for (let i = 0; i < R.length && !hit; i++) { const q = R[i]; hit = x0 < q[2] && q[0] < x1 && y0 < q[3] && q[1] < y1; }
       }
       if (el.classList.contains('under-hud') !== hit) el.classList.toggle('under-hud', hit);
     }
@@ -843,6 +855,8 @@
     fmtMoney: fmtTin,
     /** Screen rects [x0, y0, x1, y1] of the HUD read-outs speech bubbles must not cover (refreshed ~3x a second). */
     keepOutRects: () => { collectKeepOut(); keepOut.t = performance.now(); return keepOut.rects.slice(); },
+    /** The same rects as last read (no layout read; refreshed by the HUD's read phase ~3x a second). Don't mutate. */
+    keepOutCached: () => keepOut.rects,
   });
 
   N.on('render:resize', () => { if (dom.mmCanvas) requestAnimationFrame(sizeMinimap); });
@@ -860,6 +874,11 @@
       const m = N.state.mode;
       if (m === 'boot' || m === 'title') return;
       update(dt);
+    },
+    read() { // layout reads, before anything writes the DOM this frame (main.js)
+      const m = N.state.mode;
+      if (m === 'boot' || m === 'title' || state.hidden) return;
+      readKeepOut();
     },
     draw() {
       const m = N.state.mode;

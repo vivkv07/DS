@@ -530,14 +530,27 @@
   }
 
   // vehicle-vehicle: circle sets, push apart by mass, impulse exchange
+  // (scratch result arrays filled by N.entities.queryN: no array per vehicle / person per step, audit PERF-16; a
+  // 'bump' listener that re-enters a pass gets a fresh one)
+  const NEAR_V = [], NEAR_P = [];
+  let nearVBusy = false, nearPBusy = false;
   function collideVehicles() {
-    const E = N.entities;
-    for (let i = 0; i < list.length; i++) {
-      const a = list[i];
-      if (!a.alive || a.asleep) continue;
-      const Ta = a.T;
-      const near = E.query(a.x, a.y, Ta.w / 2 + 34, isVehicle);
-      for (const b of near) {
+    const E = N.entities, own = !nearVBusy, near = own ? NEAR_V : [];
+    nearVBusy = true;
+    try {
+      for (let i = 0; i < list.length; i++) {
+        const a = list[i];
+        if (!a.alive || a.asleep) continue;
+        const n = E.queryN(a.x, a.y, a.T.w / 2 + 34, null, near, 'vehicle');
+        if (n > 1) collideVehicle(a, near, n);
+      }
+    } finally { if (own) nearVBusy = false; }
+  }
+  function collideVehicle(a, near, n) {
+    const Ta = a.T;
+    {
+      for (let k = 0; k < n; k++) {
+        const b = near[k];
         if (b === a || !b.alive) continue;
         if (!b.asleep && b.id < a.id) continue;
         if (b.T.mode !== Ta.mode) continue;
@@ -550,12 +563,12 @@
   function pairCollide(a, b) {
     const Ta = a.T, Tb = b.T;
     const ca = Math.cos(a.angle), sa = Math.sin(a.angle), cb = Math.cos(b.angle), sb = Math.sin(b.angle);
-    const rr = Ta.cr + Tb.cr;
+    const rr = Ta.cr + Tb.cr, ax0 = a.x, ay0 = a.y, bx0 = b.x, by0 = b.y; // positions read once (boxed loads)
     let best = 0, bnx = 0, bny = 0, bpx = 0, bpy = 0, boa = 0, bob = 0;
     for (let i = 0; i < Ta.co.length; i++) {
-      const ax = a.x + ca * Ta.co[i], ay = a.y + sa * Ta.co[i];
+      const ax = ax0 + ca * Ta.co[i], ay = ay0 + sa * Ta.co[i];
       for (let j = 0; j < Tb.co.length; j++) {
-        const bx = b.x + cb * Tb.co[j], by = b.y + sb * Tb.co[j];
+        const bx = bx0 + cb * Tb.co[j], by = by0 + sb * Tb.co[j];
         const dx = bx - ax, dy = by - ay, d2 = dx * dx + dy * dy;
         if (d2 >= rr * rr) continue;
         const d = Math.sqrt(d2) || 0.01, pen = rr - d;
@@ -586,15 +599,25 @@
 
   // vehicles vs people/animals: oriented-box test, vehicles are (much) heavier
   function collidePeople() {
-    const E = N.entities, all = E.all, p = N.player;
-    for (let i = 0; i < all.length; i++) {
-      const q = all[i];
-      if (!q.alive || q.kind === 'vehicle' || q.kind === 'prop' || q.kind === 'pickup' || !q.solid || q.noCollide || q.hidden || q.vehicle) continue;
-      const near = E.query(q.x, q.y, (q.r || 4) + 34, isVehicle);
-      for (const v of near) {
+    const E = N.entities, all = E.all, own = !nearPBusy, near = own ? NEAR_P : [];
+    nearPBusy = true;
+    try {
+      for (let i = 0; i < all.length; i++) {
+        const q = all[i];
+        if (!q.alive || q.kind === 'vehicle' || q.kind === 'prop' || q.kind === 'pickup' || !q.solid || q.noCollide || q.hidden || q.vehicle) continue;
+        const n = E.queryN(q.x, q.y, (q.r || 4) + 34, null, near, 'vehicle'); // = isVehicle
+        if (n) collidePerson(q, near, n);
+      }
+    } finally { if (own) nearPBusy = false; }
+  }
+  function collidePerson(q, near, n) {
+    const E = N.entities, p = N.player;
+    {
+      for (let k = 0; k < n; k++) {
+        const v = near[k];
         if (v.driver === q) continue;
         const T = v.T, c = Math.cos(v.angle), s = Math.sin(v.angle);
-        const dx = q.x - v.x, dy = q.y - v.y;
+        const qx = q.x, qy = q.y, dx = qx - v.x, dy = qy - v.y;
         const lx = dx * c + dy * s, ly = -dx * s + dy * c;
         const hx = T.w / 2, hy = T.d / 2 * (T.cls === 'bike' ? 0.7 : 1), qr = q.r || 4;
         if (Math.abs(lx) > hx + qr || Math.abs(ly) > hy + qr) continue;
@@ -610,8 +633,8 @@
         }
         const nx = nlx * c - nly * s, ny = nlx * s + nly * c;
         const ratio = T.cls === 'bike' && !v.driver ? 0.6 : 1; // people can shove parked cycles
-        const want = pen * ratio, qx0 = q.x, qy0 = q.y;
-        E.pushTo(q, q.x + nx * want, q.y + ny * want);
+        const want = pen * ratio, qx0 = qx, qy0 = qy;
+        E.pushTo(q, qx + nx * want, qy + ny * want);
         const deficit = want - ((q.x - qx0) * nx + (q.y - qy0) * ny);
         if (deficit > 0.05) { // pinned against a wall: the vehicle stops instead of squashing through
           shove(v, -nx * deficit, -ny * deficit);

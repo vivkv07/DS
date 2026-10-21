@@ -218,6 +218,9 @@ async function desktop(browser) {
   const jsx = perf.js - perf.work;
   if (load < cores * 0.8) check(jsx <= 9, 'JS per frame (excluding streaming) ' + jsx.toFixed(1) + ' ms (SwiftShader GL; ~6 ms budget on hardware)');
   else ok('JS per frame (excluding streaming) ' + jsx.toFixed(1) + ' ms — not judged: machine load ' + load.toFixed(1) + ' on ' + cores + ' cores');
+  // models3d batches the landmarks that share a model (Laad Bazaar's bangle shops: 24 primitives each, audit PERF-30)
+  const bt = await page.evaluate(() => (N.models3d && N.models3d.stats && N.models3d.ready ? N.models3d.stats().batches : null));
+  if (bt) check(bt.built >= 1 && bt.cells.some((c) => /^bangle_shop:/.test(c)), 'shared landmark models drawn as instanced batches (' + bt.cells.join(', ') + ')');
 
   // ---- a long trip across the city keeps GPU memory bounded (far chunks are freed / downgraded)
   await setLowRes(page, true);
@@ -249,6 +252,66 @@ async function desktop(browser) {
   await frames(page, 2);
   const m1 = await meas();
   check(m1[0] <= m0[0] + 8 && m1[1] <= m0[1] + 4, '12 view toggles: no GPU resource growth (static geometries ' + m0[0] + ' -> ' + m1[0] + ', textures ' + m0[1] + ' -> ' + m1[1] + ')');
+
+  // ---- the third-person camera keeps out of buses, cars and festival stalls (audit PERF-17): parked art buses at
+  // Koti bus stand (solid cells the static camera grid does not know), traffic beside Chinnu, Numaish's stalls.
+  // (after the long trip and the toggle-leak checks: Koti and the Numaish festival layer fill caches their budgets
+  // do not expect)
+  const camIn = await page.evaluate(async () => {
+    const fr = (n) => new Promise((r) => { let k = 0; const f = () => (++k >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+    const W = N.world, C = N.CELL, HT = { heavy: 17, car: 9, auto: 11 }, out = { samples: 0, inside: [], spots: [] };
+    const near = (x, y, r) => { const f = W.findFree(x, y, 'walk', 5); return f && Math.hypot(f.x - x, f.y - y) < r ? f : null; };
+    // bad: the camera in a vehicle box; in a SOLID cell the camera height grid does not know (unless the camera is
+    // pinned at Chinnu's head, < 2.5 u: a wall right behind him, nothing to pull in to); in a stall (footprint + 0.5 u:
+    // the near plane would cut its panels); or a stall (footprint - 0.5 u) between the camera and his head
+    const inside = () => {
+      const cam = N.view3d.engine.camera.position, cx = cam.x, cy = cam.z, ch = cam.y, p = N.player;
+      for (const v of N.entities.query(cx, cy, 60, (e) => e.kind === 'vehicle' && e.T && HT[e.T.cls] && e !== N.player.vehicle)) {
+        const c = Math.cos(v.angle), s = Math.sin(v.angle), dx = cx - v.x, dy = cy - v.y;
+        if (Math.abs(dx * c + dy * s) < v.T.w / 2 && Math.abs(-dx * s + dy * c) < v.T.d / 2 && ch < HT[v.T.cls]) return v.type;
+      }
+      const dist = Math.hypot(cx - p.x, cy - p.y);
+      if (W.surfaceAt(cx, cy) === N.SURF.SOLID && N.view3d.H.heightAt(cx, cy) === 0 && ch < 11 && dist >= 2.5) return 'solid @' + dist.toFixed(1) + ' u';
+      const R = N.festivals3d && N.festivals3d.numaishSolids && N.festivals3d.numaishSolids().on ? N.festivals3d.numaishSolids().rects : [];
+      const inR = (x, y, h, m) => R.some((r) => x > r[0] - m && x < r[0] + r[2] + m && y > r[1] - m && y < r[1] + r[3] + m && h < 11.5);
+      if (inR(cx, cy, ch, 0.5)) return 'stall';
+      const ph = (N.view3d.elevation ? N.view3d.elevation(p) : 0) + 6;
+      for (let k = 1; k < 20; k++) { const t = k / 20; if (inR(cx + (p.x - cx) * t, cy + (p.y - cy) * t, ch + (ph - ch) * t, -0.5)) return 'stall between camera and Chinnu'; }
+      return null;
+    };
+    const sweep = async (label) => {
+      N.view3d.settle(15000);
+      for (let k = 0; k < 8; k++) {
+        N.view3d.setCamera({ yaw: k * Math.PI / 4, pitch: 0.28, snap: true });
+        await fr(3);
+        out.samples++;
+        const w = inside(); if (w) out.inside.push(label + ' yaw ' + k + ': ' + w);
+      }
+    };
+    N.time.scale = 0;
+    // Koti: beside the parked buses' solid cells
+    N.calendar.set(2003, 1, 14, 18, 10); N.debug.setTime(18, 10); N.debug.teleport('koti'); N.view3d.settle(20000);
+    let p = N.player, n = 0;
+    for (let j = Math.floor((p.y - 400) / C); j < (p.y + 400) / C && n < 2; j += 2) for (let i = Math.floor((p.x - 400) / C); i < (p.x + 400) / C && n < 2; i += 2) {
+      if (W.grid[j * W.GW + i] !== N.SURF.SOLID || N.view3d.H.heightAt((i + 0.5) * C, (j + 0.5) * C) > 0) continue;
+      const f = near((i + 0.5) * C + 10, (j + 0.5) * C, 8) || near((i + 0.5) * C, (j + 0.5) * C + 10, 8);
+      if (f && !out.spots.some((q) => Math.hypot(q[0] - f.x, q[1] - f.y) < 80)) { out.spots.push([Math.round(f.x), Math.round(f.y), 'bus']); N.player.teleport(f.x, f.y); await sweep('by a parked bus'); n++; }
+    }
+    // Numaish (20 Jan, evening): in front of the stalls
+    N.calendar.set(2003, 1, 20, 19, 30); N.debug.setTime(19, 30); N.debug.teleport('giant_wheel'); N.view3d.settle(20000);
+    p = N.player;
+    const R = (N.festivals3d && N.festivals3d.numaishSolids().rects) || [];
+    R.sort((a, b) => Math.hypot(a[0] - p.x, a[1] - p.y) - Math.hypot(b[0] - p.x, b[1] - p.y));
+    let m = 0;
+    for (const [x, y, w, d] of R.slice(0, 30)) {
+      if (m >= 3) break;
+      for (const [ox, oy] of [[0, d / 2 + 5], [0, -d / 2 - 5], [w / 2 + 5, 0], [-w / 2 - 5, 0]]) { const f = near(x + w / 2 + ox, y + d / 2 + oy, 4); if (f) { out.spots.push([Math.round(f.x), Math.round(f.y), 'stall']); N.player.teleport(f.x, f.y); await sweep('by a stall'); m++; break; } }
+    }
+    N.calendar.set(2003, 1, 14, 19, 30); N.debug.setTime(19, 30); N.debug.teleport('laad_bazaar'); // (as the sections below expect)
+    N.time.scale = 1;
+    return out;
+  });
+  check(camIn.samples >= 24 && camIn.inside.length === 0, 'third-person camera never inside a parked bus, a vehicle or a Numaish stall, nor behind a stall (' + camIn.samples + ' camera spots round ' + camIn.spots.length + ' places)', camIn.inside.slice(0, 6).join('; '));
 
   // ---- WebGL context loss -> top-down -> restored -> 3D
   await page.evaluate(() => { const gl = N.view3d.engine.renderer.getContext(); window.__lc = gl.getExtension('WEBGL_lose_context'); window.__lc.loseContext(); });

@@ -1729,7 +1729,10 @@
       J.glows.forEach((a, k) => { pos[k * 3] = a[0]; pos[k * 3 + 1] = a[1]; pos[k * 3 + 2] = a[2]; cc[k * 3] = a[3] * a[6]; cc[k * 3 + 1] = a[4] * a[6]; cc[k * 3 + 2] = a[5] * a[6]; });
       g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(cc, 3));
       g.computeBoundingSphere();
-      const pts = new THREE.Points(g, MAT.glow); pts.name = 'glows'; pts.renderOrder = 2; pts.frustumCulled = false;
+      // culled like any mesh (round 2, PERF-30: chunks kept visible off-screen for their shadows drew their glows too);
+      // the sphere grows by a sprite's reach so a glow at the screen edge does not pop
+      g.boundingSphere.radius += 40;
+      const pts = new THREE.Points(g, MAT.glow); pts.name = 'glows'; pts.renderOrder = 2;
       out.push(pts);
     }
     // swap in
@@ -2268,15 +2271,85 @@
   }
   function wrapA(a) { return U.wrapAngle ? U.wrapAngle(a) : Math.atan2(Math.sin(a), Math.cos(a)); }
   function approachAngle(a, b, k) { return a + wrapA(b - a) * k; }
+  // (audit PERF-17) the camera also keeps out of vehicles (cars, autos, buses, lorries: oriented boxes at the heights
+  // view3d_actors draws them) and out of SOLID cells of N.world.grid that the static height grid does not know:
+  // festival stalls (festivals3d registers their cells and canopy height with N.view3d.camSolids), the parked art
+  // buses of places_art, and anything else stamped solid at run time (default height CAM_DYN_H).
+  // Registered solids (camSolids) also keep the camera CAM_SOL_M u away: festivals3d stamps a stall's cells from its
+  // footprint shrunk 0.5 u, and the drawn stall (side panels, awning, counter) reaches up to ~2.5 u past them.
+  const CAM_VH = { heavy: 17.5, car: 9.5, auto: 11.5 }, CAM_DYN_H = 17.5, CAM_SOL_M = 3;
+  const CAMSOL = new Map(); // key -> {cells, h}
+  let camSolH = null;       // merged: grid cell -> height
+  function camSolids(key, cells, h) {
+    if (cells && cells.length) CAMSOL.set(key, { cells, h: h > 0 ? h : CAM_DYN_H }); else CAMSOL.delete(key);
+    camSolH = null;
+  }
+  function dynSolidH(k) {
+    if (!camSolH) { camSolH = new Map(); for (const r of CAMSOL.values()) for (let i = 0; i < r.cells.length; i++) camSolH.set(r.cells[i], r.h); }
+    const h = camSolH.get(k);
+    return h == null ? CAM_DYN_H : h;
+  }
+  /** a registered solid within CAM_SOL_M of (x, z) (four probes), below its height */
+  function camSolNear(x, y, z, GW, GH, C) {
+    if (!CAMSOL.size) return false;
+    if (!camSolH) dynSolidH(-1);
+    for (let q = 1; q <= 4; q++) {
+      const i = Math.floor((x + (q === 1 ? CAM_SOL_M : q === 2 ? -CAM_SOL_M : 0)) / C), j = Math.floor((z + (q === 3 ? CAM_SOL_M : q === 4 ? -CAM_SOL_M : 0)) / C);
+      if (i < 0 || j < 0 || i >= GW || j >= GH) continue;
+      const h = camSolH.get(j * GW + i);
+      if (h != null && y < h + 1.2) return true;
+    }
+    return false;
+  }
+  const CAMV = [], CAMV_N = [];
+  let camVN = 0;
+  function camVehicles(tx, tz, r) {
+    const p = N.player, own = p && p.vehicle, fol = N.render.follow;
+    const n = N.entities.queryN ? N.entities.queryN(tx, tz, r, null, CAMV_N, 'vehicle') : 0;
+    camVN = 0;
+    for (let i = 0; i < n; i++) {
+      const v = CAMV_N[i], T = v.T, hh = T && CAM_VH[T.cls];
+      if (!hh || v === own || v === fol || v.hidden || v.alive === false || T.mode === 'boat') continue;
+      const o = camVN * 7, c = Math.cos(v.angle || 0), sn = Math.sin(v.angle || 0), hl = T.w / 2 + 1, hw = T.d / 2 + 1;
+      const ddx = tx - v.x, ddz = tz - v.y, u = ddx * c + ddz * sn, w = -ddx * sn + ddz * c;
+      if (u < hl && u > -hl && w < hw && w > -hw) continue; // the camera's target is in it (a passenger): not an obstacle
+      CAMV[o] = v.x; CAMV[o + 1] = v.y; CAMV[o + 2] = c; CAMV[o + 3] = sn;
+      CAMV[o + 4] = hl; CAMV[o + 5] = hw; CAMV[o + 6] = elevation(v) + hh + 1.2;
+      camVN++;
+    }
+  }
+  function camBlocked(x, y, z, G, GW, GH, C, marg) {
+    const hg = heightAt(x, z);
+    if (y < hg + 1.2) return true;
+    if (hg === 0 && G) {
+      const i = Math.floor(x / C), j = Math.floor(z / C);
+      if (i >= 0 && j >= 0 && i < GW && j < GH) { const k = j * GW + i; if (G[k] === SOLID_SURF && y < dynSolidH(k) + 1.2) return true; }
+      if (marg && camSolNear(x, y, z, GW, GH, C)) return true;
+    }
+    for (let q = 0, o = 0; q < camVN; q++, o += 7) {
+      if (y >= CAMV[o + 6]) continue;
+      const ddx = x - CAMV[o], ddz = z - CAMV[o + 1];
+      const u = ddx * CAMV[o + 2] + ddz * CAMV[o + 3], w = -ddx * CAMV[o + 3] + ddz * CAMV[o + 2];
+      if (u < CAMV[o + 4] && u > -CAMV[o + 4] && w < CAMV[o + 5] && w > -CAMV[o + 5]) return true;
+    }
+    return false;
+  }
+  let SOLID_SURF = 8;
   function camCollide(tx, ty, tz, px, py, pz) {
     // march from the target to the wanted camera spot over the height grid; return the free distance
     const dx = px - tx, dy = py - ty, dz = pz - tz, L = Math.hypot(dx, dy, dz);
     if (L < 0.5) return L;
     const steps = Math.ceil(L / 1.5);
     let free = L;
+    const W = N.world, G = W && W.built ? W.grid : null, C = N.CELL || 4;
+    if (N.SURF) SOLID_SURF = N.SURF.SOLID;
+    camVehicles(tx, tz, L + 40);
+    // (a target already inside a run-time solid, e.g. a stall the player was pushed into: only the static grid)
+    const dyn = !(G && heightAt(tx, tz) === 0 && W.surfaceAt(tx, tz) === SOLID_SURF);
     for (let k = 1; k <= steps; k++) {
       const t = k / steps, x = tx + dx * t, y = ty + dy * t, z = tz + dz * t;
-      if (y < heightAt(x, z) + 1.2) { free = Math.max(0, L * t - 2.2); break; }
+      // (the margin round registered solids only away from the target: Chinnu may stand right at a stall's counter)
+      if (camBlocked(x, y, z, dyn ? G : null, G ? W.GW : 0, G ? W.GH : 0, C, Math.abs(x - tx) + Math.abs(z - tz) > CAM_SOL_M + 2)) { free = Math.max(0, L * t - 2.2); break; }
     }
     // landmark models (arbitrary shapes, arches you can walk under): a short ray test
     if (!CAM.ray) { CAM.ray = new THREE.Raycaster(); CAM.rayO = new THREE.Vector3(); CAM.rayD = new THREE.Vector3(); CAM.near = []; CAM.nearT = 0; }
@@ -2462,9 +2535,14 @@
   /* ================================================================ projection shims + frame */
   const nearRect = { x0: 0, y0: 0, x1: 0, y1: 0 };
   let canvasRect = null, rect2D = null, rectFrame = -1;
+  // The canvases only move on a resize (which resets rectFrame) and by render.js's sub-pixel shift of the 2D canvas (< 1
+  // px): read at most every 500 ms, from the view3d system's read() at the start of a frame (audit PERF-15: the first
+  // projection of a frame used to read them after the HUD / barks wrote styles, a forced style + layout per frame)
+  let rectT = -1e9, rectF = -1e9;
   function rects() {
-    if (rectFrame === E.frames) return;
-    rectFrame = E.frames;
+    const t = performance.now(), f = (N.perf && N.perf.frames) || 0;
+    if (rectFrame >= 0 && (t - rectT < 500 || f - rectF < 15)) return;
+    rectFrame = 1; rectT = t; rectF = f;
     canvasRect = E.canvas.getBoundingClientRect();
     rect2D = N.render.canvas ? N.render.canvas.getBoundingClientRect() : canvasRect;
   }
@@ -2777,6 +2855,13 @@
     },
     project, elevation, heightAt,
     focus,
+    /** the registry key the core builds landmark lm with ('#<id>' | lm.draw | null): batching builders (models3d) use it
+     *  to batch only the landmarks that really come to them */
+    landmarkKeyFor(lm) { return !lm ? null : LMB.has('#' + lm.id) ? '#' + lm.id : LMB.has(lm.draw) ? lm.draw : null; },
+    /** camSolids(key, cells | null, h): grid cells (N.world.grid indices) that the third-person camera keeps out of,
+     *  below height h (3D units) — festival stalls etc. stamped SOLID at run time; null removes the key. Other SOLID
+     *  cells the static camera grid lacks count as CAM_DYN_H (17.5) high. */
+    camSolids,
     /** [ground hook] install the ground provider (src/view3d_ground.js). p.attach(internals) runs once the
      *  engine is ready; p: {enabled, attach(I), need(ch, d, pass), step(ch, d, deadline), pending(ch, d),
      *  dispose(ch), heightAt(x, y, e)}. While p.enabled it owns every chunk's ground (no painter texture). */
@@ -2902,6 +2987,7 @@
   /* ================================================================ system + boot */
   N.addSystem({
     id: 'view3d', order: 61, runIn: ['*'],
+    read() { if (E.ready && api.active && E.canvas) rects(); }, // layout reads before this frame's DOM writes (main.js)
     update(dt) {
       const I = N.input;
       if (I && I.pressed && I.pressed('view') && (N.state.mode === 'play')) { I.consume('view'); view.cycle(); }
@@ -2912,6 +2998,8 @@
   N.on('game:new', () => { CAM.snap = true; E.urgent = 20; lastPlan.t = 0; });
   N.on('game:continue', () => { CAM.snap = true; E.urgent = 20; lastPlan.t = 0; });
   N.on('player:enterVehicle', () => { CAM.prevVeh = null; });
+  N.on('view:change', () => { rectFrame = -1; }); // a canvas just shown / hidden: re-read its rect (rects())
+  N.on('render:resize', () => { rectFrame = -1; });
   N.on('settings:change', (d) => { if (d && d.key === 'view' && MODES.indexOf(d.value) >= 0 && d.value !== view.want) view.set(d.value); });
   N.on('world:built', () => { if (E.ready) { buildHeightGrid(); prepRails(); api.rebuild(); } });
   N.on('boot', () => {

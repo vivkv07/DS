@@ -89,8 +89,8 @@
  * Save. Saving from the pause menu is refused during missions, minigames, cutscenes,
  * conversations, chases (Chappal Meter >= 3) and when N.flags.no_save is set.
  *
- * Deviation note: the J-card handwriting uses the Google font "Kalam" (injected at load with
- * system fallbacks), because index.html is owned by the engine.
+ * Deviation note: the J-card handwriting uses the font "Kalam" (OFL): self-hosted with the others in vendor/fonts/
+ * (index.html); only a page without it injects the Google Fonts stylesheet at load (system fallbacks in CSS).
  */
 (() => {
   'use strict';
@@ -150,10 +150,12 @@
     }).join(' ');
   }
 
-  // Handwriting font for the J-card (Google Fonts only; fallbacks in CSS).
+  // Handwriting font for the J-card (fallbacks in CSS). The page's self-hosted fonts (vendor/fonts/fonts.css,
+  // performance audit round 2) already declare Kalam: then no request to Google at all.
   (function loadHandFont() {
     try {
       if (document.querySelector('link[data-mn-font]')) return;
+      if (document.fonts && typeof document.fonts.forEach === 'function') { let has = false; document.fonts.forEach((f) => { if (/Kalam/.test(f.family)) has = true; }); if (has) return; }
       const l = document.createElement('link');
       l.rel = 'stylesheet';
       l.href = 'https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&display=swap';

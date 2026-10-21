@@ -224,11 +224,15 @@
   }
 
   /* ========================================================== collision */
-  /** Push a circle (x,y,r) out of blocked cells. mode: 'walk'|'drive'|'boat'|'ghost'. */
-  W.collide = function (x, y, r, mode) {
+  /** Push a circle (x,y,r) out of blocked cells. mode: 'walk'|'drive'|'boat'|'ghost'. `out` (optional): an object
+   *  to fill and return instead of a new one (hot paths; audit PERF-16) — it gets x, y, hit, nx, ny, bad. */
+  W.collide = function (x, y, r, mode, out) {
     const blk = BLOCK[mode] || BLOCK.walk;
     let hit = false, nx = 0, ny = 0;
-    if (!isFinite(x) || !isFinite(y)) return { x, y, hit: true, nx: 0, ny: 0, bad: true };
+    if (!isFinite(x) || !isFinite(y)) {
+      if (out) { out.x = x; out.y = y; out.hit = true; out.nx = 0; out.ny = 0; out.bad = true; return out; }
+      return { x, y, hit: true, nx: 0, ny: 0, bad: true };
+    }
     for (let it = 0; it < 5; it++) {
       let best = 0, bx = 0, by = 0, inside = false;
       const i0 = Math.floor((x - r) / CELL), i1 = Math.floor((x + r) / CELL);
@@ -259,6 +263,7 @@
       x += bx * (best + 0.01); y += by * (best + 0.01);
       nx = bx; ny = by; hit = true;
     }
+    if (out) { out.x = x; out.y = y; out.hit = hit; out.nx = nx; out.ny = ny; out.bad = false; return out; }
     return { x, y, hit, nx, ny };
   };
 
@@ -283,17 +288,20 @@
     return null;
   };
 
-  /** Ray march; returns {hit, x, y, t (0..1), surf}. */
-  W.raycast = function (x0, y0, x1, y1, mode) {
+  /** Ray march; returns {hit, x, y, t (0..1), surf} (`out`: an object to fill instead of a new one). */
+  W.raycast = function (x0, y0, x1, y1, mode, out) {
     const blk = BLOCK[mode] || BLOCK.walk;
     const L = Math.hypot(x1 - x0, y1 - y0);
     const steps = Math.max(1, Math.ceil(L / (CELL * 0.5)));
+    let hit = false, x = x1, y = y1, t = 1, sf = -1;
     for (let s = 1; s <= steps; s++) {
-      const t = s / steps, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t;
-      const sf = surfAt(x, y);
-      if (blk[sf]) return { hit: true, x, y, t, surf: sf };
+      t = s / steps; x = x0 + (x1 - x0) * t; y = y0 + (y1 - y0) * t;
+      sf = surfAt(x, y);
+      if (blk[sf]) { hit = true; break; }
     }
-    return { hit: false, x: x1, y: y1, t: 1, surf: surfAt(x1, y1) };
+    if (!hit) { x = x1; y = y1; t = 1; sf = surfAt(x1, y1); }
+    if (out) { out.hit = hit; out.x = x; out.y = y; out.t = t; out.surf = sf; return out; }
+    return { hit, x, y, t, surf: sf };
   };
 
   /* ========================================================== districts */
@@ -483,7 +491,9 @@
     return { t, u, x: a[0] + r1x * t, y: a[1] + r1y * t };
   }
 
-  function buildRoadGraph(roads) {
+  // (audit round 2, PERF-08) the road graph is built as a generator so the boot build can yield between its passes
+  function buildRoadGraph(roads) { const it = buildRoadGraphGen(roads); let r; while (!(r = it.next()).done); return r.value; }
+  function* buildRoadGraphGen(roads) {
     const gp = (W.graphPhases = {}), gt0 = performance.now();
     let gt = gt0;
     const gmark = (k) => { const t = performance.now(); gp[k] = Math.round((t - gt) * 10) / 10; gt = t; };
@@ -532,13 +542,14 @@
     let I0 = 0, J0 = 0, NI = 1, NJ = 1, cellStart = null, cellSeg = null;
     let tmpCell = new Int32Array(NSEG * 4), tmpSeg = new Int32Array(NSEG * 4);
     const cellOf = (i, j) => (i < I0 || j < J0 || i >= I0 + NI || j >= J0 + NJ ? -1 : (j - J0) * NI + (i - I0));
-    const indexSegs = () => {
+    const indexSegs = function* () { // a generator: the boot build yields inside it (yield* indexSegs())
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       for (const A of RR) for (const p of A.pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
       I0 = Math.floor(x0 / HC); J0 = Math.floor(y0 / HC); NI = Math.floor(x1 / HC) - I0 + 1; NJ = Math.floor(y1 / HC) - J0 + 1;
       const near2 = (HC * 0.7072 + 1) * (HC * 0.7072 + 1);
       let n = 0;
       for (let ai = 0; ai < RR.length; ai++) {
+        if ((ai & 255) === 255) yield;
         const P = RR[ai].pts;
         for (let s = 0; s < P.length - 1; s++) {
           const a = P[s], b = P[s + 1], dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
@@ -563,8 +574,9 @@
       cellSeg = new Int32Array(n);
       for (let k = 0; k < n; k++) cellSeg[fillAt[tmpCell[k]]++] = tmpSeg[k];
     };
-    indexSegs();
+    yield* indexSegs();
     gmark('index');
+    yield;
     // T-junctions: endpoints lying on another road snap onto it (the nearest such segment)
     // snap tolerance per road in a typed array: the road data objects come in a dozen shapes, so `B.r.w`
     // in the inner loop is a megamorphic load
@@ -579,6 +591,7 @@
       for (let s2 = 0, o = segBase[k] * 4; s2 < P.length - 1; s2++, o += 4) { segXY[o] = P[s2][0]; segXY[o + 1] = P[s2][1]; segXY[o + 2] = P[s2 + 1][0]; segXY[o + 3] = P[s2 + 1][1]; }
     }
     for (let ai = 0; ai < RR.length; ai++) {
+      if ((ai & 255) === 255) yield;
       const A = RR[ai];
       for (let e2 = 0; e2 < 2; e2++) {
         const end = e2 ? A.pts.length - 1 : 0;
@@ -613,11 +626,13 @@
       }
     }
     gmark('tjunctions');
+    yield;
     // proper crossings, once per segment pair (the hash again: snapping moved some endpoints)
-    indexSegs();
+    yield* indexSegs();
     const seen = new Int32Array(NSEG);
     let stampS = 0;
     for (let ai = 0; ai < RR.length; ai++) {
+      if ((ai & 255) === 255) yield;
       const A = RR[ai], P = A.pts;
       for (let s = 0; s < P.length - 1; s++) {
         const a0 = P[s], a1 = P[s + 1];
@@ -643,6 +658,7 @@
       }
     }
     gmark('crossings');
+    yield;
     {
       // every split lies on a road segment, so inside the points' bounding box
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -653,7 +669,9 @@
       }
       nHead = new Int32Array(NGW * NGH).fill(-1); nTail = new Int32Array(NGW * NGH);
     }
+    let nA = 0;
     for (const A of RR) {
+      if ((++nA & 255) === 0) yield;
       // stable insertion sort (same order as Array#sort): the splits are the road's own points, already
       // in order, plus a few junctions appended, so this is ~linear and allocates nothing
       const sp = A.splits;
@@ -684,6 +702,7 @@
       }
     }
     gmark('nodes');
+    yield;
     const api = makeRoadsAPI(nodes, edges, roads);
     gmark('api');
     return api;
@@ -1386,11 +1405,57 @@
   }
 
   /* ======================================================= world build */
-  W.build = function () {
+  // The build is a generator (audit round 2, PERF-08): W.build() runs it to the end at once (node tests, rebuilds);
+  // W.buildAsync(sliceMs) runs it in slices of ~sliceMs with a task boundary between slices (boot: the splash stays
+  // live and the main thread is never blocked for the 0.5-3.7 s the whole build takes). Same steps, same order, same
+  // world either way. Yields sit between the phases and inside the long loops (blocks, trees, road fills).
+  W.build = function () { const it = buildGen(); let r; while (!(r = it.next()).done); return W; };
+  W.buildAsync = function (sliceMs, waitFor) {
+    // waitFor (optional promise): awaited before the 'world:built' step (boot: the web fonts, as before the build was
+    // sliced the fonts were always in before any world:built listener ran)
+    const ms = sliceMs > 0 ? sliceMs : 40;
+    W.built = false;
+    const it = buildGen(), info = (W.buildAsyncInfo = { slices: 0, maxSlice: 0, maxStep: 0, maxStepAt: '', t0: performance.now(), ms: 0 });
+    // a task boundary between slices (MessageChannel: no 4 ms setTimeout clamp), closed when done
+    const ch = typeof MessageChannel === 'function' ? new MessageChannel() : null;
+    let pend = null;
+    if (ch) ch.port1.onmessage = () => { const f = pend; pend = null; if (f) f(); };
+    const next = (f) => { if (ch) { pend = f; ch.port2.postMessage(0); } else setTimeout(f, 0); };
+    const done = () => { if (ch) { ch.port1.onmessage = null; ch.port1.close(); ch.port2.close(); } };
+    return new Promise((resolve, reject) => {
+      const run = () => {
+        const s0 = performance.now(), end = s0 + ms;
+        try {
+          for (let t1 = s0; ;) {
+            const st = it.next(), fin = st.done, t2 = performance.now();
+            if (t2 - t1 > info.maxStep) { info.maxStep = Math.round((t2 - t1) * 10) / 10; info.maxStepAt = buildAt; }
+            t1 = t2;
+            if (fin) { info.slices++; info.maxSlice = Math.max(info.maxSlice, Math.round(t2 - s0)); info.ms = Math.round(t2 - info.t0); done(); resolve(W); return; }
+            if (st.value === 'built') { // a slice of its own, after waitFor
+              info.slices++; info.maxSlice = Math.max(info.maxSlice, Math.round(t2 - s0));
+              const go = () => next(run);
+              if (waitFor && typeof waitFor.then === 'function') { const w = waitFor; waitFor = null; w.then(go, go); } else go();
+              return;
+            }
+            if (t2 >= end) break;
+          }
+        } catch (e) { done(); reject(e); return; }
+        info.slices++; info.maxSlice = Math.max(info.maxSlice, Math.round(performance.now() - s0));
+        if (N.emit) N.emit('world:progress', { slices: info.slices, done: W.buildProgress || 0 });
+        next(run);
+      };
+      next(run);
+    });
+  };
+  let buildAt = ''; // the phase the build is in (W.buildAsyncInfo.maxStepAt)
+  // rough share of the build done when each phase starts (from measured phase times): the boot splash shows it
+  const BUILD_DONE = { 1: 0.15, 2: 0.17, 3: 0.18, 4: 0.24, 5: 0.25, 6: 0.25, 7: 0.26, 8: 0.6, 9: 0.62, 10: 0.65, 11: 0.66, 12: 0.88, 13: 0.89, 14: 0.96, 15: 0.97, 16: 0.98, end: 1 };
+  function* buildGen() {
     const t0 = performance.now();
     const phases = (W.buildPhases = {});
     let tp = t0, lastP = 'setup';
-    const mark = (name) => { const t = performance.now(); phases[lastP] = Math.round((t - tp) * 10) / 10; tp = t; lastP = name; };
+    buildAt = lastP; W.buildProgress = 0;
+    const mark = (name) => { const t = performance.now(); phases[lastP] = Math.round((t - tp) * 10) / 10; tp = t; lastP = buildAt = name; W.buildProgress = BUILD_DONE[name] || W.buildProgress; };
     const D = N.WORLD_DATA || {};
     W.data = D;
     sizeGrids(D);
@@ -1401,12 +1466,15 @@
     W.structures = []; W.trees = []; W.lamps = []; W.rocks = []; W.lots = [];
     buckets = []; decals = [];
     for (let i = 0; i < BW * BH; i++) { buckets.push([]); decals.push([]); }
+    yield;
 
     grid = W.grid && W.grid.length === GW * GH ? W.grid.fill(S.GROUND) : new Uint8Array(GW * GH).fill(S.GROUND);
     W.grid = grid;
     for (let i = 0; i < GW; i++) { grid[i] = S.VOID; grid[(GH - 1) * GW + i] = S.VOID; }
     for (let j = 0; j < GH; j++) { grid[j * GW] = S.VOID; grid[j * GW + GW - 1] = S.VOID; }
+    yield;
     buildDistricts(D.districts, D.districtGrid);
+    yield;
     N.loadPlaces(D.places);
 
     // bounding boxes for roads (painter + nearest road)
@@ -1422,32 +1490,41 @@
       return [x0 - m, y0 - m, x1 + m, y1 + m];
     };
     for (const p of D.parks) p._bb = polyBB(p.poly, 4);
+    yield;
     buildSegGrid(D.roads);
     for (const w of D.water) w._bb = polyBB(w.poly, (w.bank || 0) + 30);
 
     mark('1');
+    yield;
     // 1. parks
     const parkSurf = { grass: S.GRASS, garden: S.GRASS, ground: S.GROUND, plaza: S.PLAZA, rock: S.GROUND };
-    for (const p of D.parks) fillPoly(p.poly, always(p.surface === 'sand' ? S.SAND : parkSurf[p.kind] == null ? S.GRASS : parkSurf[p.kind]));
+    for (const p of D.parks) { fillPoly(p.poly, always(p.surface === 'sand' ? S.SAND : parkSurf[p.kind] == null ? S.GRASS : parkSurf[p.kind])); yield; }
     mark('2');
+    yield;
     // 2. water + sandy banks
     for (const w of D.water) {
       if (w.bank) fillThickLine(w.poly, w.bank * 2, always(S.SAND), true);
       fillPoly(w.poly, always(S.WATER));
+      yield;
     }
     mark('3');
+    yield;
     // 3. footpaths, then roads (bridges over water)
+    let nY = 0;
     for (const r of D.roads) {
       const fp = FOOT[r.kind] || 0;
       if (fp > 0) fillThickLine(r.pts, r.w + fp * 2, (o) => (r.kind !== 'bund' && (o === S.WATER || o === S.BRIDGE) ? -1 : S.FOOTPATH));
+      if ((++nY & 63) === 0) yield;
     }
     for (const r of D.roads) {
       if (r.kind === 'path') fillThickLine(r.pts, r.w, (o) => (o === S.WATER ? -1 : S.FOOTPATH));
       else if (r.kind === 'bridge') fillThickLine(r.pts, r.w + 4, always(S.BRIDGE));
       else if (r.kind === 'bund') fillThickLine(r.pts, r.w, always(S.ROAD));
       else fillThickLine(r.pts, r.w, (o) => (o === S.WATER || o === S.BRIDGE ? S.BRIDGE : S.ROAD));
+      if ((++nY & 63) === 0) yield;
     }
     mark('4');
+    yield;
     // 4. landmarks: plaza + solid footprint
     for (const lm of D.landmarks) {
       if (lm.plaza) fillCircle(lm.x, lm.y, lm.plaza, always(S.PLAZA));
@@ -1458,6 +1535,7 @@
       lm.x0 = lm.x - lm.w / 2; lm.y0 = lm.y - lm.d / 2; lm.x1 = lm.x + lm.w / 2; lm.y1 = lm.y + lm.d / 2;
     }
     mark('5');
+    yield;
     // 5. keep-clear zones: spawns + places so generation never buries them
     keepClear = []; keepGrid = new Map();
     for (const p of D.places) addKeepClear({ x: p.x, y: p.y, r: Math.min(60, Math.max(14, (p.r || 20) * 0.6)) });
@@ -1465,6 +1543,7 @@
     if (D.spawns.home) addKeepClear({ x: D.spawns.home[0], y: D.spawns.home[1], r: 18 });
 
     mark('6');
+    yield;
     // 6. hand-placed buildings
     const out = { bldgs: [], trees: [], walls: [], rocks: [], cranes: [] };
     const hrng = U.rng(4242);
@@ -1484,11 +1563,13 @@
     // 6b. colony houses under the roof zones (walkable terraces, ARCHITECTURE §7)
     buildRoofHouses(D, out, hrng);
     mark('7');
+    yield;
     // 7. procedural blocks
     for (const blk of D.blocks) {
       const before = out.bldgs.length;
       genBlock(blk, out);
       for (let i = before; i < out.bldgs.length; i++) { const b = out.bldgs[i]; solidRect(b.x, b.y, b.w, b.d); }
+      yield;
     }
     for (const wl of out.walls) {
       // posh compound walls (solid) with a gate opening on the road side
@@ -1502,6 +1583,7 @@
       if (b.yard && b.yard.lawn) fillRect(b.yard.x + 4, b.yard.y + 4, b.yard.w - 8, b.yard.h - 8, (o) => (o === S.GROUND ? S.GRASS : -1));
     }
     mark('8');
+    yield;
     // 8. rocks (data + generated)
     const allRocks = D.rocks.concat(out.rocks.map((r) => ({ x: r.x, y: r.y, r: r.r, h: r.h || r.r * (1 + U.hash2(r.x, r.y) * 0.6) })));
     const OK_ROCK = new Uint8Array(16); OK_ROCK[S.GROUND] = 1; OK_ROCK[S.GRASS] = 1;
@@ -1521,6 +1603,7 @@
     }
 
     mark('9');
+    yield;
     // 9. structures: buildings, walls, cranes
     for (const b of out.bldgs) {
       addStructure(b);
@@ -1533,6 +1616,7 @@
     for (const c of out.cranes) addStructure({ t: 'crane', x: c.x, y: c.y, h: c.h, a: c.a, len: c.len, x0: c.x - c.len, y0: c.y - c.len, x1: c.x + c.len, y1: c.y + c.len, cx: c.x, cy: c.y });
 
     mark('10');
+    yield;
     // 10. bridge parapets (3D rails)
     for (const r of D.roads) {
       if (r.kind !== 'bridge') continue;
@@ -1553,9 +1637,10 @@
 
     mark('11');
     // 11. road graph
-    W.roads = buildRoadGraph(D.roads);
+    W.roads = yield* buildRoadGraphGen(D.roads);
 
     mark('12');
+    yield;
     // 12. lamps along arterials / bund / bridges (median), streets (side tube lights)
     const junctions = W.roads.nodes.filter((n) => n.deg >= 3);
     indexJunctions(junctions);
@@ -1588,6 +1673,7 @@
     }
 
     mark('13');
+    yield;
     // 13. trees: data, generated (lots, parks, avenues)
     // spacing hashes (32u cells) for trees and lamps
     const tHash = new Map(), lHash = new Map();
@@ -1607,11 +1693,14 @@
     };
     for (const t of D.trees) { const tt = makeTree(t.x, t.y, t.kind || 'neem', t.r); W.trees.push(tt); addStructure(tt); hput(tHash, tt); }
     const trng = U.rng(777);
+    nY = 0;
     for (const t of out.trees) {
       const kinds = KIND_BY_STYLE[t.style] || KIND_BY_STYLE.colony;
       placeTree(t.x, t.y, trng.pick(kinds), t.small ? 6 + trng.next() * 4 : null);
+      if ((++nY & 255) === 0) yield;
     }
     for (const p of D.parks) {
+      yield;
       if (p.kind === 'plaza') continue;
       const [x0, y0, x1, y1] = p._bb;
       const area = (x1 - x0) * (y1 - y0);
@@ -1630,6 +1719,7 @@
     }
     // avenue trees along streets/arterials on the footpath edge
     for (const r of D.roads) {
+      if ((++nY & 63) === 0) yield;
       if (r.kind !== 'street' && r.kind !== 'arterial' && r.kind !== 'bund') continue;
       if (r.trees !== undefined) continue; // the map plants (or forbids) this road's avenue itself
       const off = r.w / 2 + (FOOT[r.kind] || 0) - 3;
@@ -1656,6 +1746,7 @@
     }
 
     mark('14');
+    yield;
     // 14. landmarks as structures (drawn by N.landmarks)
     for (const lm of D.landmarks) addStructure({ t: 'landmark', lm, x0: lm.x - lm.w / 2 - 10, y0: lm.y - lm.d / 2 - 10, x1: lm.x + lm.w / 2 + 10, y1: lm.y + lm.d / 2 + 10, cx: lm.x, cy: lm.y });
 
@@ -1665,20 +1756,23 @@
     try { buildPodiums(D); } catch (e) { N.err('world.podiums', e); }
     try { setupRoofRuntime(); } catch (e) { N.err('world.roofsRuntime', e); }
     mark('15');
+    yield;
     // 16. potholes and tar patches (A2), after every surface is final
     try { buildPotholes(D); } catch (e) { N.err('world.potholes', e); }
     mark('16');
+    yield;
     soil = null;
     for (const k in PIX) PIX[k] = null;
     mapCache.clear();
     prepPainter();
     N.render.setGroundPainter(paintGround);
+    yield 'built'; // the 'world:built' listeners (shops, decorations, collectibles...) get a slice of their own
     W.built = true;
     mark('end');
     W.buildMs = Math.round(performance.now() - t0);
     N.emit('world:built', W);
     return W;
-  };
+  }
 
   // Junction nodes bucketed on a 128 u grid (lamps, avenue trees and potholes keep clear of them)
   const JG = 128;
@@ -3547,7 +3641,7 @@
   // the 'potholes' system runs ~3 ms of it per frame (title screen first), then indexes the potholes
   // and repaints the ground chunks. potholes.ensure() finishes it at once (tests, tools).
   let gen = null, rainDone = false;
-  const job = { stage: 'idle', ri: 0, t: 0, frames: 0 };
+  const job = { stage: 'idle', ri: 0, t: 0, frames: 0, ixIt: null, ix: null, ixN: 0 };
   function buildPotholes(D) {
     potList.length = 0; potPatches.length = 0; rainDone = false;
     potStart = null; potItems = null; // potholeAt -> null until the first set is indexed
@@ -3557,18 +3651,24 @@
     const stats = { dry: 0, rain: 0, patches: 0, rejected: { junction: 0, bridge: 0, rail: 0, surface: 0, overlap: 0 }, byKind: {}, byStyle: {}, byDistrict: {}, roadLen: {}, ms: 0, frames: 0 };
     PH.stats = stats; PH.ready = false;
     gen = { D, stats, built: false };
-    job.stage = 'dry'; job.ri = 0; job.t = 0; job.frames = 0;
+    job.stage = 'dry'; job.ri = 0; job.t = 0; job.frames = 0; job.ixIt = null; job.ix = null;
     rainState = readRain();
     PH.cols = BW; PH.rows = BH; PH.rain = rainState;
   }
   /** Run pothole generation for up to `ms` (Infinity = finish). Returns true when nothing is left. */
   function stepGen(ms) {
     if (job.stage === 'idle' || !gen) return true;
-    const t0 = performance.now(), deadline = t0 + ms;
+    const t0 = performance.now(), deadline = t0 + ms, stage0 = gen.built ? job.stage : 'setup';
     let changed = false;
-    if (!gen.built) { // first slice: the helpers (junction mask, bridge / rail index) only
-      Object.assign(gen, makeGen(gen.D, gen.stats), { built: true });
-      if (ms !== Infinity) { job.t += performance.now() - t0; job.frames++; return false; }
+    if (!gen.built) { // first slices: the helpers (junction mask, bridge / rail index) only, resumable (round 2)
+      if (!gen.mk) gen.mk = makeGenSteps(gen.D, gen.stats);
+      let r;
+      while (!(r = gen.mk.next()).done) {
+        if (ms !== Infinity && performance.now() > deadline) { const d = performance.now() - t0; job.t += d; job.frames++; noteSlice(d, 'setup'); return false; }
+      }
+      gen.mk = null;
+      Object.assign(gen, r.value, { built: true });
+      if (ms !== Infinity) { const d = performance.now() - t0; job.t += d; job.frames++; noteSlice(d, 'setup'); return false; }
     }
     while (job.stage !== 'idle') {
       if (performance.now() > deadline) break;
@@ -3577,19 +3677,34 @@
         if (job.ri >= 0) break;
         if (job.stage === 'rain') { rainDone = true; job.stage = 'index'; } else { job.stage = 'patches'; }
         job.ri = 0;
+        if (ms !== Infinity && job.stage === 'index') break;
       } else if (job.stage === 'patches') {
         job.ri = genPatches(job.ri, deadline);
         if (job.ri >= 0) break;
         gen.stats.patches = potPatches.length;
         job.ri = 0; job.stage = rainState >= 1 && !rainDone ? 'rain' : 'index';
+        if (ms !== Infinity) break; // (round 2) the index gets a slice of its own: it cannot stop half-way
       } else if (job.stage === 'index') {
-        indexPotholes(); applyWet(); changed = true;
+        if (ms === Infinity) { indexPotholes(); applyWet(); changed = true; job.stage = rainState >= 1 && !rainDone ? 'rain' : 'idle'; }
+        else { // built over a few slices, then published in a slice of its own
+          if (!job.ixIt) { job.ixIt = buildPotIndex(); job.ixN = potList.length; }
+          let r, out = false;
+          while (!(r = job.ixIt.next()).done) if (performance.now() > deadline) { out = true; break; }
+          if (out) break;
+          job.ix = r.value; job.ixIt = null; job.stage = 'publish'; break;
+        }
+      } else if (job.stage === 'publish') {
+        // (a list that changed since the index was built, e.g. a reset, is indexed again in full)
+        if (job.ix && job.ixN === potList.length) publishPotIndex(job.ix); else indexPotholes();
+        job.ix = null; applyWet(); changed = true;
         job.stage = rainState >= 1 && !rainDone ? 'rain' : 'idle';
       }
     }
-    job.t += performance.now() - t0; job.frames++;
+    const dtj = performance.now() - t0;
+    job.t += dtj; job.frames++;
     const st = gen.stats;
     st.ms = Math.round(job.t * 10) / 10; st.frames = job.frames;
+    noteSlice(dtj, stage0);
     if (changed) {
       potVersion++;
       const first = !PH.ready;
@@ -3606,8 +3721,11 @@
     if (N.view3d && N.view3d.active) R.invalidateChunks();
     else { R.shadowEpoch++; needs3D = true; }
   }
-  function makeGen(D, stats) {
+  // the longest single generation slice (stats.sliceMax ms, at stage stats.sliceMaxAt): audit numbers
+  function noteSlice(d, at) { const st = gen && gen.stats; if (st && d > (st.sliceMax || 0)) { st.sliceMax = Math.round(d * 10) / 10; st.sliceMaxAt = at; } }
+  function* makeGenSteps(D, stats) {
     const avoid = avoidIndex(D);
+    yield;
     const placed = new Map(); // 32 u buckets of placed potholes (overlap test)
     const near = (x, y, r) => {
       for (let j = Math.floor((y - r - 6) / 32); j <= Math.floor((y + r + 6) / 32); j++) for (let i = Math.floor((x - r - 6) / 32); i <= Math.floor((x + r + 6) / 32); i++) {
@@ -3636,7 +3754,9 @@
     const edges = W.roads.edges;
     const JM = 16, jmW = Math.ceil(N.WORLD_W / JM), jmH = Math.ceil(N.WORLD_H / JM), jmask = new Uint8Array(jmW * jmH);
     const RMAX = POT.SIZE[1] / 2 + 2;
+    let nJ = 0;
     for (const n of W.junctions || []) {
+      if ((++nJ & 511) === 0) yield;
       let zebra = false;
       for (const id of n.inc) { const k = edges[id].kind; if (k !== 'lane' && k !== 'path' && k !== 'bridge') { zebra = true; break; } }
       n._potPad = zebra ? POT.JUNCTION_PAD : POT.LANE_JUNCTION_PAD;
@@ -3786,20 +3906,34 @@
     return true;
   }
   // lookup grid (CSR: every pothole in each 32 u cell its hit ellipse touches) and the 256 u chunk lists
-  function indexPotholes() {
-    const counts = new Uint32Array(PGW * PGH + 1);
-    const cells = (p, fn) => {
-      const R = Math.max(p.rx, p.ry) + 0.5;
+  function indexPotholes() { const it = buildPotIndex(); let r; while (!(r = it.next()).done); publishPotIndex(r.value); }
+  // (round 2) the index in two parts, so the time-sliced generation can run them in two slices: build the cell
+  // lists (nothing published), then publish them with the chunk lists in one go (potholeAt and the painters
+  // always see the same set). Same result as before.
+  function* buildPotIndex() {
+    const NC = PGW * PGH, counts = new Uint32Array(NC + 1), n = potList.length;
+    const box = new Int32Array(n * 4); // i0 i1 j0 j1 per pothole
+    for (let k = 0; k < n; k++) {
+      const p = potList[k], R = Math.max(p.rx, p.ry) + 0.5, o = k * 4;
       const i0 = Math.max(0, Math.floor((p.x - R) / PG)), i1 = Math.min(PGW - 1, Math.floor((p.x + R) / PG));
       const j0 = Math.max(0, Math.floor((p.y - R) / PG)), j1 = Math.min(PGH - 1, Math.floor((p.y + R) / PG));
-      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) fn(j * PGW + i);
-    };
-    for (const p of potList) cells(p, (c) => { counts[c + 1]++; });
-    for (let c = 0; c < PGW * PGH; c++) counts[c + 1] += counts[c];
-    const items = new Uint32Array(counts[PGW * PGH]);
-    const fill = new Uint32Array(PGW * PGH);
-    for (const p of potList) cells(p, (c) => { items[counts[c] + fill[c]++] = p.id; });
-    potStart = counts; potItems = items;
+      box[o] = i0; box[o + 1] = i1; box[o + 2] = j0; box[o + 3] = j1;
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) counts[j * PGW + i + 1]++;
+      if ((k & 4095) === 4095) yield;
+    }
+    yield;
+    for (let c = 0; c < NC; c++) counts[c + 1] += counts[c];
+    yield;
+    const items = new Uint32Array(counts[NC]);
+    const fill = new Uint32Array(NC);
+    for (let k = 0; k < n; k++) {
+      const o = k * 4, id = potList[k].id;
+      for (let j = box[o + 2]; j <= box[o + 3]; j++) for (let i = box[o]; i <= box[o + 1]; i++) { const c = j * PGW + i; items[counts[c] + fill[c]++] = id; }
+    }
+    return { counts, items };
+  }
+  function publishPotIndex(ix) {
+    potStart = ix.counts; potItems = ix.items;
     const bucket = (arr, o, R) => {
       const i0 = Math.max(0, Math.floor((o.x - R) / BK)), i1 = Math.min(BW - 1, Math.floor((o.x + R) / BK));
       const j0 = Math.max(0, Math.floor((o.y - R) / BK)), j1 = Math.min(BH - 1, Math.floor((o.y + R) / BK));

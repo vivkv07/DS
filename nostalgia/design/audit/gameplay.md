@@ -132,12 +132,19 @@ Still open (other lanes, not edited here):
   vehicles off the footpath the short walk still uses 606 u for 329 u with 6 unsticks, all in the café
   crowd (the walk test's 1.6× budget fails). Suggest letting `npcs.planPath` treat seated or standing crowd
   actors as soft obstacles, or keeping the cafe crowd's spawn ring clear of the door approach.
+  **Fixed (performance audit round 2, `npcs.js`):** the jam was citylife's Irani-café bench row (seats out from
+  the café's north-west corner, across the walkway) on the route's corner waypoint; the walker pushed into a seated
+  reader and hopped after 5 s. A stuck walker now re-plans with resting bodies (seated / standing solid actors) as
+  soft obstacles and, wedged, first steps to the free spot that opens the way: 4 probe runs 452–491 u walked,
+  1 unstick, 0 hops (before: 603–613 u, 6 unsticks, 1 hop). `design/audit/performance.md` §6.6.
 - **X8 — story_full SA1 grace check** (`tests/story_full.cjs` `pSA1` ~L998–1001, journey lane): the "Tag!" hook
   teleports Chinnu to the nearest raider, so a night can end with him 17 u from the home door; `story.js`
   `pandalGraceTick` then ends the pandal grace "at home" (< 45 u), as designed, and the check reads
   `{"grace":null,"lvl":0}` as a failure (seen on night 2 at 08:14 before this pass and on night 4 in this
   pass). Suggest accepting `grace === null` when he is within 45 u of home, or reading the flag right after
   MISSION PASSED.
+  **Fixed (performance audit round 2): the test was wrong** — the game ends the grace at home by design; `pSA1`
+  now accepts no grace within 45 u of home (curfew level still 0).
 - **Note — pigeons**: `birds.js` (atmosphere lane) takes over the pigeon flocks, so `traffic.cjs`'s horn-scatter
   check now prints "no pigeon flock place found" and skips; the horn → pigeons path is birds.js's to test.
 

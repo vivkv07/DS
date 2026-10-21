@@ -601,6 +601,12 @@ function build() {
   for (const m of web.matchAll(/['"`]((?:\.\.\/)?(?:vendor|src|lazy3d|assets3d|dist)\/[A-Za-z0-9_./-]+\.(?:js|glb|json|woff2|css|png|webp))['"`]/g)) rel.add(m[1]);
   const relMissing = Array.from(rel).filter((u) => !u.startsWith('../') && !u.startsWith('dist/') && !fs.existsSync(path.join(SITE, u)));
   check(relMissing.length === 0, 'every relative file URL in the page exists in dist/site (' + rel.size + ' named)', relMissing.join(', '));
+  // the self-hosted fonts (audit round 2, PERF-18): every url() of the inlined @font-face rules is in the site, and the
+  // page links no Google Fonts stylesheet (it was render-blocking, a third origin; menus.js keeps a Kalam fallback URL
+  // in its code for a page that does not declare Kalam)
+  const fontUrls = new Set(Array.from(web.matchAll(/url\(\s*['"]?((?:\.\.\/)?vendor\/fonts\/[A-Za-z0-9_.-]+\.woff2)['"]?\s*\)/g), (m) => m[1]));
+  const fontMissing = Array.from(fontUrls).filter((u) => !fs.existsSync(path.join(SITE, u)));
+  check(fontUrls.size > 0 && fontMissing.length === 0 && !/<link[^>]+fonts\.(googleapis|gstatic)\.com/.test(web), 'self-hosted fonts: the page\'s ' + fontUrls.size + ' @font-face files are in dist/site, no Google Fonts <link>', fontMissing.join(', '));
   const gz = (buf) => zlib.gzipSync(buf, { level: 9 }).length;
   const sz = (f) => { const b = fs.readFileSync(path.join(SITE, f)); return { raw: b.length, gzip: gz(b) }; };
   const sizes = { 'index.html': sz('index.html'), 'src/assets3d_pack.js': sz('src/assets3d_pack.js'), 'vendor/three/three.min.js': sz('vendor/three/three.min.js'), 'vendor/three/GLTFLoader.classic.js': sz('vendor/three/GLTFLoader.classic.js') };

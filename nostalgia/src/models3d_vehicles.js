@@ -531,13 +531,40 @@
     if (!p || p.look !== look) p = m[slot] = { look, seed: (v.seed | 0) + slot.length * 31, role: d && d.role };
     return p;
   }
-  /** model id for a person, or null (lazy models start parsing and count as not ready) */
-  function modelFor(person) {
+  /** the character made to ride vehicle model vid (meta.role 'rider', meta.riderOf lists it) for this person's kind */
+  function riderModelFor(person, vid) {
+    const P = N.ASSETS3D && N.ASSETS3D.manifest, kind = person && person.look && person.look.kind;
+    if (!P || !vid || !kind) return null;
+    const want = MALE[kind] ? 'man' : kind;
+    for (const id in P) {
+      const m = P[id], meta = (m && m.meta) || {};
+      if (m && m.family === 'character' && meta.role === 'rider' && (meta.riderOf || []).indexOf(vid) >= 0 && ((meta.people || []).indexOf(want) >= 0 || (meta.kinds || []).indexOf(want) >= 0)) return id;
+    }
+    return null;
+  }
+  /** (audit round 2) a kid on a Hero roadster type he rides kainchi (meta.kainchi: an adult's cycle, saddle not let down)
+   *  is seen on the Blender cycle only with an authored clip for it (ride_cycle at this type's saddle drop, or
+   *  ride_kainchi); otherwise view3d_actors' procedural kainchi pose draws the ride (as models3d.js's own rule did:
+   *  "kainchi-style kids stay procedural") instead of the kid IK-seated on an adult saddle */
+  function kainchiMiss(meta, type, person, id) {
+    const kid = person === N.player || (person && person.look && person.look.kind === 'kid');
+    if (!kid || !meta || !meta.pedal || (meta.kainchi || []).indexOf(type) < 0) return false;
+    const man = manOf(id) || {}, lib = typeof (man.meta || {}).clips === 'string' ? manOf(man.meta.clips) : man;
+    const clips = (lib && lib.clips) || {}, drop = ((meta.saddleDrop || {})[type]) || 0;
+    const fits = (c) => !!c && Math.abs((c.saddleDrop || 0) - drop) < 1e-3;
+    return !fits(clips.ride_cycle) && !fits(clips.ride_kainchi);
+  }
+  /** model id for a person (on vehicle model vid), or null (lazy models start parsing and count as not ready) */
+  function modelFor(person, vid) {
     if (!person || !person.look) return null;
     const A = M3(), PP = A && A.people;
     let id = null;
-    if (PP && PP.ready) { const ch = PP.choose(person); id = ch ? ch.id : null; }
-    else {
+    if (PP && PP.ready) {
+      const ch = PP.choose(person); id = ch ? ch.id : null;
+      // (audit round 2) the people runtime picks walking archetypes (meta.kinds): a traffic cyclist it has none for
+      // rides as the rider model made for this vehicle (the shipped adult_man: riderOf hero_cycle), as models3d did
+      if (!id && person !== N.player) id = riderModelFor(person, vid);
+    } else {
       // no people runtime: the old male rider / the player's model
       const S = S3();
       if (S) for (const [cid, md] of S.models) {
@@ -675,7 +702,7 @@
     // (re)create riders whose person / model changed
     const keep = [];
     for (const w of want) {
-      const id = modelFor(w.person);
+      const id = modelFor(w.person, ST.types.get(e.type));
       if (!id) continue;
       let r = P.riders.find((x) => x.slot === w.slot && x.person === w.person && x.id === id);
       if (!r) {
@@ -766,7 +793,10 @@
     if (!OPT.riders) return e.driver || e.pillion || e.passenger ? null : 'm3d:veh:' + mid;
     const occ = occupants(e, md.meta);
     if (!occ) return null;
-    for (const o of occ) if (!modelFor(o.person)) return null;
+    for (const o of occ) {
+      const id = modelFor(o.person, mid);
+      if (!id || (o.slot === 'driver' && kainchiMiss(md.meta, e.type, o.person, id))) return null;
+    }
     return 'm3d:veh:' + mid;
   }
   function route() {
@@ -808,7 +838,9 @@
         if (!ST.installed || !ST.types.has(v.type)) return undefined;
         const md = mdOf(ST.types.get(v.type));
         const slot = d === v.driver ? 'driver' : d === v.pillion ? 'pillion' : 'passenger';
-        return md ? modelFor(personOf(v, d, slot)) : null;
+        if (!md) return null;
+        const per = personOf(v, d, slot), id = modelFor(per, ST.types.get(v.type));
+        return id && slot === 'driver' && kainchiMiss(md.meta, v.type, per, id) ? null : id;
       };
     }
     ST.installed = true;

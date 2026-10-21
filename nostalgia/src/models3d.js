@@ -55,7 +55,7 @@
   const lsGet = (k) => { try { return window.localStorage.getItem(k); } catch (e) { return null; } };
 
   /* ================================================================ options + state */
-  const OPT = { enabled: true, player: true, vehicles: true, riders: true, landmarks: true, kidPeds: false, env: true, nightGlow: true };
+  const OPT = { enabled: true, player: true, vehicles: true, riders: true, landmarks: true, kidPeds: false, env: true, nightGlow: true, batch: true };
   const LOADER_URLS = ['vendor/three/GLTFLoader.classic.js', '../vendor/three/GLTFLoader.classic.js', 'https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/GLTFLoader.js'];
   const PACK_URLS = ['src/assets3d_pack.js', '../src/assets3d_pack.js'];
   // lazy GLB folders, relative to the page (dist/web.html + the site: lazy3d/ next to it; the dev page: dist/lazy3d/)
@@ -838,6 +838,99 @@
     if (!P || !P.has(lm)) return null;   // null: the core's generic footprint model
     try { return P.build(T, lm, H); } catch (e) { N.err('models3d.procedural:' + lm.id, e); return null; }
   }
+  /* ---------------------------------------------------------------- batched landmarks (audit round 2, PERF-30) */
+  // A model that several landmarks share (Laad Bazaar's bangle shops, the Char Kaman arches, Tank Bund statues, colony
+  // temples / churches) used to be one clone per landmark, each drawing every primitive of the model (a bangle shop
+  // has 24, one per material): Laad Bazaar's four shops were 95 + 96 of dense Old City's draw calls (main + shadow).
+  // The members of one 768 u cell are now drawn as one InstancedMesh per source mesh (same geometry and materials,
+  // one draw call each), built by whichever member the core asks for first; the others return false (nothing of
+  // their own) and the owner's dispose frees the cell — view3d_landmarks' pattern for its batched shops. Static
+  // variants (hash / idx rules) pick each member's var_ nodes; dynamic variants, skinned, lazy and hero models are
+  // never batched. OPT.batch = false: one clone each (A/B).
+  const BCELL = 768;
+  const BATCH = new Map(); // cell key -> {key, id, members, owner, obj}
+  const BST = { built: 0, members: 0 };
+  function batchable(md) {
+    const meta = md.meta || {};
+    if (!OPT.batch || md.skinned || meta.landmark || !md.scene || (md.man && md.man.family && md.man.family !== 'landmark')) return false;
+    return !(meta.variants && (DYNAMIC_RULES[meta.variants.rule] || !VARIANT_RULES[meta.variants.rule]));
+  }
+  function batchCell(id, md, lm) {
+    const key = landmarkKey(md), V3 = N.view3d;
+    const ci = Math.floor(lm.x / BCELL), cj = Math.floor(lm.y / BCELL), ck = id + ':' + ci + ',' + cj;
+    let c = BATCH.get(ck);
+    if (!c) {
+      const members = [];
+      for (const m of (N.world && N.world.data && N.world.data.landmarks) || []) {
+        if (m.draw !== key || Math.floor(m.x / BCELL) !== ci || Math.floor(m.y / BCELL) !== cj) continue;
+        if (V3.landmarkKeyFor && V3.landmarkKeyFor(m) !== key) continue; // drawn by a model of its own ('#<id>')
+        members.push(m);
+      }
+      c = { key: ck, id, members, owner: null, obj: null };
+      BATCH.set(ck, c);
+    }
+    return c;
+  }
+  // the model's meshes with their matrix in the model's frame and the top-level var_ node they sit under (if any)
+  function batchParts(md) {
+    if (md.batchParts) return md.batchParts;
+    const root = md.scene, inv = new THREE.Matrix4().copy(root.matrixWorld).invert(), out = [];
+    root.updateMatrixWorld(true);
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      let v = null, hidden = false;
+      for (let p = o; p && p !== root; p = p.parent) { if (p.visible === false) hidden = true; if (/^var_/.test(p.name)) v = p.name; }
+      if (hidden) return;
+      out.push({ mesh: o, rel: new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld), v });
+    });
+    md.batchParts = out;
+    return out;
+  }
+  function buildBatched(id, md, lm) {
+    const c = batchCell(id, md, lm);
+    if (c.members.length < 2 || c.members.indexOf(lm) < 0) return null; // alone in its cell: one clone as before
+    if (c.owner) return false;                                          // drawn by the cell's batch
+    const parts = batchParts(md), meta = md.meta || {}, fp = meta.footprint;
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const m of c.members) { x0 = Math.min(x0, m.x); z0 = Math.min(z0, m.y); x1 = Math.max(x1, m.x); z1 = Math.max(z1, m.y); }
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    const q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), M = new THREE.Matrix4();
+    const V = meta.variants, rule = V && VARIANT_RULES[V.rule];
+    // each member placed as buildLandmark places a single clone (rotation, footprint fit, fitHeight)
+    const mem = c.members.map((m) => {
+      sc.set(1, 1, 1);
+      if (meta.fit === 'footprint' && fp && m.w && m.d) { const ns = !m.face || m.face === 'n' || m.face === 's' || isFinite(m.faceAngle); sc.set((ns ? m.w : m.d) / fp[0], 1, (ns ? m.d : m.w) / fp[1]); }
+      if (meta.fitHeight && meta.dataH && m.h) sc.y = m.h / meta.dataH;
+      q.setFromAxisAngle(up, rotFor(m)); p.set(m.x - cx, 0, m.y - cz);
+      return { mat: new THREE.Matrix4().compose(p, q, sc), v: rule ? 'var_' + rule(m, V.names || []) : null };
+    });
+    const g = new THREE.Group(); g.name = 'm3d-batch:' + id + ':' + c.key;
+    for (const part of parts) {
+      const use = part.v ? mem.filter((m) => m.v === part.v) : mem;
+      if (!use.length) continue;
+      const im = new THREE.InstancedMesh(part.mesh.geometry, part.mesh.material, use.length);
+      for (let k = 0; k < use.length; k++) { M.multiplyMatrices(use[k].mat, part.rel); im.setMatrixAt(k, M); }
+      im.instanceMatrix.needsUpdate = true;
+      im.name = part.mesh.name;
+      if (part.mesh.userData.noRay) { im.raycast = NOOP_RAY; im.userData.noRay = true; }
+      if (part.mesh.userData.noShadow) im.userData.noShadow = true;
+      if (part.mesh.userData.collision) im.userData.collision = true;
+      g.add(im);
+    }
+    g.position.set(cx, 0, cz);
+    g.userData.worldSpace = true; g.userData.m3d = id; g.userData.batch = c;
+    c.owner = lm.id; c.obj = g;
+    BST.built++; BST.members += c.members.length;
+    S.instances += c.members.length;
+    return g;
+  }
+  /** the core disposes a landmark object: a batch owner frees its cell (the next member asked rebuilds it) */
+  function batchDispose(obj, lm) {
+    const c = obj && obj.userData && obj.userData.batch;
+    if (c && c.owner === lm.id && c.obj === obj) { c.owner = null; c.obj = null; }
+  }
+  N.on('world:built', () => { BATCH.clear(); });
+
   function buildLandmark(id) {
     return (T, lm, H) => {
       const md = S.models.get(id), lazy = isLazy(id), meta = (md || manifest(id) || {}).meta || {};
@@ -846,6 +939,9 @@
         if (!lazy) return fallbackLandmark(md, lm);
         want(id);   // within build range: fetch the GLB; the procedural model stands in meanwhile
         return proceduralLandmark(T, lm, H);
+      }
+      if (!lazy && batchable(md)) {
+        try { const bo = buildBatched(id, md, lm); if (bo !== null) return bo; } catch (e) { N.err('models3d.batch:' + id, e); }
       }
       try {
         const g = new THREE.Group(); g.name = 'm3d-lm:' + id + ':' + lm.id;
@@ -941,6 +1037,7 @@
       // lazy: the procedural stand-in may be animated (update) and owns view3d_landmarks' cache (dispose)
       if (dyn || lazy) opts.update = updateLandmark(id);
       if (lazy) opts.dispose = disposeLazy(id);
+      else opts.dispose = batchDispose; // (batched cells: the owner frees its cell)
       V3.registerLandmark(key, buildLandmark(id), opts);
       S.landmarkKeys.set(key, id);
       if (lazy) LZ.keys.add(key);
@@ -1059,6 +1156,7 @@
         state: S.state, error: S.error, loaderFrom: S.loaderFrom, packFrom: S.packFrom,
         pack: hasPack() ? Object.keys(N.ASSETS3D.glb) : [], parsed: Array.from(S.models.keys()), failed: Object.fromEntries(S.failed),
         loadMs: +S.loadMs.toFixed(1), parseMs: +S.parseMs.toFixed(1), instances: S.instances,
+        batches: { cells: Array.from(BATCH.values()).filter((c) => c.obj).map((c) => c.key + ' x' + c.members.length), built: BST.built, members: BST.members, on: OPT.batch },
         registered: Array.from(S.registered).concat(Array.from(S.landmarkKeys.keys())), routedPlayer: S.routedPlayer, routedVehicles: S.routedVehicles, useProto,
         lazy: {
           index: Object.keys(IDX() || {}).filter(isLazy).length, keys: Array.from(LZ.keys), base: LZ.base, fetched: LZ.fetched.slice(),

@@ -14,6 +14,8 @@
  *                                           its ids must equal ship.core) — add --repack-core to rebuild it from
  *                                           assets3d/ too; size report, budgets enforced; nothing is written when
  *                                           a budget fails
+ *   node tools/pack_assets3d.cjs --repack hero_cycle   ship mode, rebuilding only these core ids from assets3d/ (the rest
+ *                                           of the frozen pack is kept byte for byte)
  *   node tools/pack_assets3d.cjs --check    exit 1 if src/assets3d_index.js is stale or the pack's ids differ
  *                                           from ship.core (with --repack-core: also if the pack is stale)
  *   node tools/pack_assets3d.cjs --lazy-only  ship mode, but only (re)write dist/lazy3d/ (tools/build.mjs)
@@ -51,6 +53,10 @@ const SHIP_FILE = path.join(SRC, 'ship.json');
 const args = process.argv.slice(2);
 const LAZY_ONLY = args.includes('--lazy-only');
 const REPACK_CORE = args.includes('--repack-core');
+// --repack <id,id>: take only these core ids from assets3d/ again, every other core entry stays as it is in the pack
+// (audit round 2: hero_cycle's pack entry predated its riders / pedal / wheels manifest, so models3d_vehicles could not
+// seat anyone on a Hero; a full --repack-core needs every core GLB, and adult_man.glb is not in every checkout)
+const REPACK_IDS = args.includes('--repack') ? String(args[args.indexOf('--repack') + 1] || '').split(',').map((x) => x.trim()).filter(Boolean) : null;
 const CHECK = args.includes('--check');
 const ALLOW_OVER = args.includes('--allow-over');
 const QUANT = !args.includes('--no-quantize');
@@ -346,6 +352,18 @@ function main() {
       process.exit(1);
     }
     coreMans = cur.manifest;
+    if (REPACK_IDS && REPACK_IDS.length) {
+      const bad = REPACK_IDS.filter((id) => !coreIds.includes(id));
+      if (bad.length) { console.error('pack: --repack ids not in ship.json core: ' + bad.join(', ')); process.exit(1); }
+      const fresh = new Map(collect(REPACK_IDS).map((it) => [it.id, it]));
+      core = coreIds.slice().sort().map((id) => fresh.get(id) || (() => {
+        const glb = Buffer.from(cur.glb[id], 'base64');
+        return { id, glb, raw: { length: cur.manifest[id].rawBytes || glb.length }, man: cur.manifest[id], json: readGlbJson(glb) };
+      })());
+      pack = build(core);
+      coreMans = {}; for (const it of core) coreMans[it.id] = it.man;
+      console.log('pack: repacking ' + REPACK_IDS.join(', ') + ' from assets3d/ (the other ' + (coreIds.length - REPACK_IDS.length) + ' core entries as they are)');
+    }
   }
   const index = buildIndex(coreMans, lazy);
   if (CHECK) {

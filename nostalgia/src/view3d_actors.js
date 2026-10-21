@@ -3402,11 +3402,15 @@
   wrapBarks();
   N.on('boot', wrapBarks);
   // two passes: every bark's size is read first, then every style written (reading offsetWidth after the previous
-  // bark's style writes forced a style + layout pass per bark per frame)
+  // bark's style writes forced a style + layout pass per bark per frame). The sizes are the ones dialogue.js measured
+  // in its read phase at the start of the frame (el._bw / el._bh, audit PERF-15): this runs after the HUD and the 2D
+  // bark pass wrote styles, so any layout read here would be a forced one. A bubble not measured yet stays hidden.
   const BARKQ = [];
+  const BVP = { w: window.innerWidth, h: window.innerHeight };
+  window.addEventListener('resize', () => { BVP.w = window.innerWidth; BVP.h = window.innerHeight; });
   function updateBarks() {
     if (!BARKS.size) return;
-    const p = N.player, vw = window.innerWidth, vh = window.innerHeight;
+    const p = N.player, vw = BVP.w, vh = BVP.h;
     BARKQ.length = 0;
     for (const [el, rec] of BARKS) {
       if (!el.isConnected) { BARKS.delete(el); continue; }
@@ -3420,8 +3424,8 @@
       if (rec.h != null && !t.look) h = rec.h * VS;
       const d = p ? Math.hypot(v.x - p.x, v.y - p.y) : 0;
       const q = V3.project(v.x, v.y, h);
-      const hide = q.behind || !q.visible || d > 320;
-      BARKQ.push(el, hide, q.x, q.y, d, hide ? 0 : el.offsetWidth || 120, hide ? 0 : el.offsetHeight || 30);
+      const hide = q.behind || !q.visible || d > 320 || !el._bw;
+      BARKQ.push(el, hide, q.x, q.y, d, hide ? 0 : el._bw, hide ? 0 : el._bh || 30);
     }
     for (let i = 0; i < BARKQ.length; i += 7) {
       const el = BARKQ[i];

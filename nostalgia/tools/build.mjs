@@ -3,7 +3,7 @@
  * Inlines style.css and every <script src> of index.html (in order) into:
  *   dist/nostalgia.html — a complete standalone page
  *   dist/artifact.html  — the same content without the <!doctype>/<html>/<head>/<body>
- *                         wrapper: <title>, font links, <style>, body markup, scripts.
+ *                         wrapper: <title>, <style> (incl. the self-hosted vendor/fonts/fonts.css), body markup, scripts.
  *   dist/web.html       — the complete page for the website (GitHub Pages, tools/deploy_site.sh):
  *                         like nostalgia.html but loading the 3D files lazily, like the artifact.
  * Blender models (ARCHITECTURE §21): src/assets3d_pack.js and vendor/three/GLTFLoader.classic.js are
@@ -48,10 +48,19 @@ const safeCss = (src) => src.replace(/<\/(style)/gi, '<\\/$1');
 const html = read('index.html');
 const missing = [];
 
-const inlineAll = (fragment) => fragment
+// A stylesheet in a folder (vendor/fonts/fonts.css: the self-hosted fonts) names its files relative to itself: once
+// inlined they are relative to the page, so its url()s get the folder prepended (and `up` for a page one folder down:
+// dist/nostalgia.html, opened from dist/, finds them in ../vendor/fonts/; the site and the artifact publish them at
+// vendor/fonts/ next to the page).
+const rebaseCss = (css, href, up) => {
+  const dir = href.includes('/') ? href.slice(0, href.lastIndexOf('/') + 1) : '';
+  if (!dir && !up) return css;
+  return css.replace(/url\((['"]?)(?![a-z]+:|\/|#)([^'")]+)\1\)/gi, (m, q, u) => 'url(' + q + (up || '') + dir + u + q + ')');
+};
+const inlineAll = (fragment, up) => fragment
   .replace(/<link\s+rel="stylesheet"\s+href="(?!https?:)([^"]+)"\s*\/?>/g, (m, href) => {
     if (!existsSync(join(ROOT, href))) { missing.push(href); return m; }
-    return '<style>\n' + safeCss(read(href)) + '\n</style>';
+    return '<style>\n' + safeCss(rebaseCss(read(href), href, up)) + '\n</style>';
   })
   .replace(/<script\s+src="(?!https?:)([^"]+)"\s*><\/script>/g, (m, src) => {
     if (!existsSync(join(ROOT, src))) { missing.push(src); return m; }
@@ -150,10 +159,10 @@ function stripSafe(src, name) {
 }
 const hashOf = (f) => (existsSync(join(ROOT, f)) ? createHash('sha1').update(readFileSync(join(ROOT, f))).digest('hex').slice(0, 10) : null);
 
-let full = inlineAll(html);
+let full = inlineAll(html, '../'); // dist/nostalgia.html: page-relative files are one folder up (../vendor/fonts/)
 // the website page: stripped scripts + the lazy files' content hashes (cache-busting on redeploy)
 const BUILD = { pack: hashOf('src/assets3d_pack.js'), loader: hashOf('vendor/three/GLTFLoader.classic.js'), three: hashOf('vendor/three/three.min.js'), supabase: hashOf('vendor/supabase/supabase.js') };
-const web = full
+const web = inlineAll(html)
   .replace(/(<script>\/\* ([^*\n]+) \*\/\n)([\s\S]*?)(\n<\/script>)/g, (m, open, name, body, close) => open + safeJs(stripSafe(body, name)) + close)
   .replace(/<script>\/\* /, () => '<script>window.N = window.N || {}; window.N.BUILD = ' + JSON.stringify(BUILD) + ';</script>\n<script>/* ');
 // lazily-run blocks for the single-file page (models3d.js executes their text when 3D starts)
@@ -196,6 +205,10 @@ writeFileSync(join(DIST, 'web.html'), web);
 // supporting files the artifact loads lazily (published next to the page at the same paths)
 const artifactFiles = {};
 for (const f of ['src/assets3d_pack.js', 'vendor/three/GLTFLoader.classic.js', 'vendor/three/three.min.js', 'vendor/supabase/supabase.js']) if (existsSync(join(ROOT, f))) artifactFiles[f] = 'nostalgia/' + f;
+// the self-hosted fonts (vendor/fonts, tools/vendor_fonts.mjs): the inlined fonts.css names them at vendor/fonts/
+const FONTS = join(ROOT, 'vendor', 'fonts');
+const fontFiles = existsSync(FONTS) ? readdirSync(FONTS).filter((f) => f.endsWith('.woff2')).sort() : [];
+for (const f of fontFiles) artifactFiles['vendor/fonts/' + f] = 'nostalgia/vendor/fonts/' + f;
 const LAZY3D = join(DIST, 'lazy3d');
 const lazyGlbs = existsSync(LAZY3D) ? readdirSync(LAZY3D).filter((f) => f.endsWith('.glb')).sort() : [];
 for (const f of lazyGlbs) artifactFiles['lazy3d/' + f] = 'nostalgia/dist/lazy3d/' + f;
@@ -207,4 +220,4 @@ console.log('  dist/nostalgia.html  ' + kb(full));
 console.log('  dist/artifact.html   ' + kb(fragment));
 console.log('  dist/web.html        ' + kb(web) + ' (' + (NO_STRIP ? 'scripts not stripped (--no-strip)' : stripped.n + ' scripts stripped, ' + Math.round(100 - stripped.after / Math.max(1, stripped.before) * 100) + ' % less JS') + (stripped.kept.length ? '; kept as is: ' + stripped.kept.join(', ') : '') + '; N.BUILD ' + JSON.stringify(BUILD) + ')');
 if (lazyBlocks.length) console.log('  lazy inline blocks: ' + LAZY.filter(([, f]) => existsSync(join(ROOT, f))).map(([id, f]) => id + ' (' + kb(read(f)) + ')').join(', '));
-console.log('  artifact supporting files (dist/artifact.files.json): ' + Object.keys(artifactFiles).filter((f) => !/^lazy3d\//.test(f)).join(', ') + (lazyGlbs.length ? ' + ' + lazyGlbs.length + ' lazy3d/*.glb' : ''));
+console.log('  artifact supporting files (dist/artifact.files.json): ' + Object.keys(artifactFiles).filter((f) => !/^(lazy3d|vendor\/fonts)\//.test(f)).join(', ') + (lazyGlbs.length ? ' + ' + lazyGlbs.length + ' lazy3d/*.glb' : '') + (fontFiles.length ? ' + ' + fontFiles.length + ' vendor/fonts/*.woff2' : ''));

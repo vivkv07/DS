@@ -348,7 +348,10 @@ async function gait(browser) {
     // stop: blend to a relaxed stance with both feet down
     N.input.hold('run', false); N.input.hold('up', false);
     await T3.slowmo(0.04);
-    T3.capBegin({ key: 't', step: 0.05, max: 10, dy: 30 }); // the game's tps camera
+    // 10 cells over 0.8 s of game time: he slows to a halt (~0.2 s) and the gait weight decays (rate 5/s) to < 0.1
+    // (the window was 0.5 s, enough only when slowmo's settle frames had already run ~0.4 s of game time: main.js now
+    // simulates at most 3 steps a frame, audit round 2)
+    T3.capBegin({ key: 't', step: 0.08, max: 10, dy: 30 }); // the game's tps camera
     for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
     const s = T3.capEnd();
     const last = s.frames[s.frames.length - 1];
@@ -371,7 +374,7 @@ async function gait(browser) {
   }
   check(pl.run.st.air > 0 && pl.walk.st.hover === 0, 'player: walking stays grounded, running shows flight frames');
   saveStrip('player_stop', pl.stop.strip);
-  check(pl.stop.gw < 0.1 && pl.stop.feet.every((h) => Math.abs(h) < 0.12), 'player stops into a stance with both feet on the ground (' + pl.stop.feet.join(', ') + ' u)');
+  check(pl.stop.gw < 0.1 && pl.stop.feet.every((h) => Math.abs(h) < 0.12), 'player stops into a stance with both feet on the ground (' + pl.stop.feet.join(', ') + ' u, gait weight ' + pl.stop.gw.toFixed(2) + ')');
   check(pl.idle.breathe > 0.02 && pl.idle.headYaw > 0.05 && pl.idle.drift < 0.01, 'idle: breathing (' + pl.idle.breathe + ') and looking around (head yaw range ' + pl.idle.headYaw + ' rad) while standing still');
 
   // ---- getting on, pedalling, getting off
@@ -389,7 +392,10 @@ async function gait(browser) {
     N.vehicles.enter(p, v);
     for (let i = 0; i < 400 && T3.cap.cells < T3.cap.max && (i < 40 || T3.cap.frames.length); i++) await T3.raf(2);
     const on = T3.capEnd();
-    out.on = { strip: on.strip, hips: on.frames.filter((q) => q.J).map((q) => +q.J[0].toFixed(2)) };
+    // the more bent hip: on a cycle the feet are on the pedals, so one hip is straighter than a seated pose (the left
+    // one ended at 0.43-0.67 rad here) and the other more bent (audit round 2: J[0] alone never passed)
+    const onF = on.frames.filter((q) => q.J);
+    out.on = { strip: on.strip, hips: onF.map((q) => +Math.max(q.J[0], q.J[1]).toFixed(2)), seated: onF.length ? !!onF[onF.length - 1].seated : null, span: on.frames.length ? +(on.frames[on.frames.length - 1].t - on.frames[0].t).toFixed(2) : 0 };
     // pedalling
     N.time.scale = 1; N.input.hold('up', true); await T3.raf(16);
     await T3.slowmo(0.025);
@@ -417,7 +423,7 @@ async function gait(browser) {
   else {
     saveStrip('mount', ride.on.strip); saveStrip('pedal', ride.pedal.strip); saveStrip('dismount', ride.off.strip);
     const h = ride.on.hips, mid = h.filter((x) => x > 0.35 && x < 1.0).length;
-    check(h.length > 4 && h[0] < 0.5 && h[h.length - 1] > 0.9 && mid >= 2, 'getting on: the hips bend from standing to seated over several frames (' + h.slice(0, 14).join(' ') + ')');
+    check(h.length > 4 && h[0] < 0.5 && h[h.length - 1] > 0.9 && mid >= 2 && ride.on.seated, 'getting on: the hips bend from standing to seated over several frames (seated ' + ride.on.seated + '; ' + (h.length > 14 ? h.slice(0, 7).join(' ') + ' … ' + h.slice(-7).join(' ') : h.join(' ')) + '; ' + h.length + ' frames over ' + ride.on.span + ' s)');
     check(ride.pedal.knee > 0.4 && ride.pedal.crank > 1, 'pedalling: knees cycle with the crank (knee range ' + ride.pedal.knee + ' rad, crank ' + ride.pedal.crank + ' rad over ' + ride.pedal.n + ' frames)');
     const o = ride.off.hips, mo = o.filter((x) => x > 0.35 && x < 1.0).length;
     check(o.length > 4 && o[0] > 0.8 && o[o.length - 1] < 0.4 && mo >= 2 && Math.abs(ride.off.lastLow) < 0.12, 'getting off: from seated to standing over several frames, feet back on the ground (' + o.slice(0, 14).join(' ') + '; sole ' + ride.off.lastLow + ')');
@@ -717,14 +723,20 @@ async function desktop(browser) {
     const p = N.player, gx = p.x + 40, gy = p.y - 30;
     N.missions.register({ id: 'TEST_3D_MARKER', title: '3D marker test', kind: 'side', autosave: false, giver: { x: -9999, y: -9999 }, script: async (m) => { m.marker({ x: gx, y: gy }, { r: 18 }); await m.wait(9999); } });
     N.missions.start('TEST_3D_MARKER');
+    // a roof goal the way story.js rings3d registers it: an explicit h (data units) = the marker stands at h * VS
+    const hx = p.x - 50, hy = p.y + 20;
+    N.missions.active.markers.set('test:roof', { target: { x: hx, y: hy }, r: 14, h: 22, color: '#ff5fb0', label: '' });
     for (let i = 0; i < 4; i++) await fr();
     N.view3d.setCamera({ yaw: Math.atan2(gy - p.y, gx - p.x), pitch: 0.18, snap: true });
     await fr(); await fr();
     const st = N.view3dActors.stats();
-    const g = N.view3dActors.debug.MK.groups.filter((q) => q.visible).map((q) => [Math.round(q.position.x), Math.round(q.position.z)]);
-    return { markers: st.markers, groups: g, goal: [Math.round(gx), Math.round(gy)] };
+    const vis = N.view3dActors.debug.MK.groups.filter((q) => q.visible);
+    const g = vis.map((q) => [Math.round(q.position.x), Math.round(q.position.z)]);
+    const roof = vis.find((q) => Math.abs(q.position.x - hx) < 3 && Math.abs(q.position.z - hy) < 3);
+    return { markers: st.markers, groups: g, goal: [Math.round(gx), Math.round(gy)], roofY: roof ? +roof.position.y.toFixed(1) : null, want: 22 * N.view3d.VS };
   });
   check(mk.markers >= 1 && mk.groups.some((q) => Math.abs(q[0] - mk.goal[0]) < 3 && Math.abs(q[1] - mk.goal[1]) < 3), 'mission goal marker drawn as a cylinder of light at the objective', JSON.stringify(mk));
+  check(mk.roofY != null && Math.abs(mk.roofY - mk.want) < 1.5, 'a goal marker with an explicit roof height (story.js rings3d passes h) stands on that roof (y ' + mk.roofY + ', want ' + mk.want + ')');
   await shot(page, 'mission_marker');
   await page.evaluate(() => { N.missions.abort(); });
   await frames(page, 3);
@@ -737,11 +749,14 @@ async function desktop(browser) {
     const fr = () => new Promise((r) => requestAnimationFrame(() => r()));
     const out = {};
     N.debug.teleport('charminar_plaza'); N.debug.setTime(10, 0); N.view3d.settle(10000);
-    for (let i = 0; i < 4; i++) await fr();
     // (src/birds.js took the pigeon flocks over from traffic.js / landmarks.js and draws them in its own 3D layer:
-    // view3d_actors' legacy pigeon pass then has none; count both)
-    const BS = N.birds && N.birds.enabled !== false && N.birds.stats ? N.birds.stats() : null;
-    out.birds = N.view3dActors.stats().birds + (BS ? (BS.instances3d || 0) + (BS.points3d || 0) : 0);
+    // view3d_actors' legacy pigeon pass then has none; count both). The flocks land ~0.2-0.3 s of game time after the
+    // teleport: wait on game time (up to 2 s), not a frame count (a slow frame simulates at most 3 steps, audit round 2)
+    const birds3d = () => { const B = N.birds && N.birds.enabled !== false && N.birds.stats ? N.birds.stats() : null; return { BS: B, n: N.view3dActors.stats().birds + (B ? (B.instances3d || 0) + (B.points3d || 0) : 0) }; };
+    const tb = N.time.now;
+    for (let i = 0; i < 4 || (i < 200 && N.time.now - tb < 2 && !birds3d().n); i++) await fr();
+    const BS = birds3d().BS;
+    out.birds = birds3d().n;
     out.pigeons = BS && BS.bySpecies && BS.bySpecies.pigeon ? BS.bySpecies.pigeon.n : null;
     // a bark over a pedestrian's head: re-anchored to the 3D head
     const p = N.player;

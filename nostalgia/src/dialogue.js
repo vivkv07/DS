@@ -968,6 +968,7 @@
       else tx.appendChild(document.createTextNode(seg.t));
     }
     el.appendChild(tx);
+    el.style.visibility = 'hidden'; // until readBarks() has measured it (next frame): see placeBarks
     if (barkHost) barkHost.appendChild(el);
     b.el = el;
     barks.push(b);
@@ -1000,36 +1001,69 @@
       if (b.t >= b.life || (b.target && b.target.alive === false)) closeBark(b);
     }
   }
+  // (audit PERF-15) Layout reads happen once per frame in readBarks() — the dialogue system's read(), which main.js
+  // calls before this frame's updates / draws write to the DOM — and placeBarks() only writes. Reading offsetWidth /
+  // getBoundingClientRect after the previous bubble's style writes forced a style + layout pass per bubble per frame
+  // (2.7-6.6 ms a frame in busy 3D scenes). A bubble made during the frame has no size yet: it is created hidden and
+  // placed on the next frame. The HUD keep-out rects come from N.hud's own read() (refreshed ~3x a second).
+  // Nothing is read on most frames: a running CSS animation leaves style dirty when the frame starts, so even this
+  // early read costs a style pass. The canvas rect and the sizes are re-read once a second, after a resize or a
+  // settings change (text size), and a new bubble is measured once.
+  const BL = { rect: null, t: -1e9, f: -1e9, dirty: true, sx: 0, sy: 0, vw: 0, vh: 0 };
+  const frameNo = () => (N.perf && N.perf.frames) || 0; // a slow device (1 frame a second) must not re-read every frame
+  N.on('render:resize', () => { BL.dirty = true; });
+  N.on('settings:change', () => { BL.dirty = true; });
+  function readBarks() {
+    if (!barkHost || !barks.length || barkHost.classList.contains('hide')) return;
+    const now = performance.now(), refresh = BL.dirty || !BL.rect || (now - BL.t > 1000 && frameNo() - BL.f >= 30);
+    let any = refresh;
+    if (!any) for (let i = 0; i < barks.length; i++) if (barks[i].el && !barks[i].pw) { any = true; break; }
+    if (!any) return;
+    const Rn = N.render;
+    if (refresh) {
+      if (Rn && Rn.canvas) {
+        BL.rect = Rn.canvas.getBoundingClientRect();
+        BL.sx = (Rn.subpx && Rn.subpx.x) || 0; BL.sy = (Rn.subpx && Rn.subpx.y) || 0; // the sub-pixel shift moves it later
+      }
+      BL.vw = window.innerWidth; BL.vh = window.innerHeight;
+      BL.t = now; BL.f = frameNo(); BL.dirty = false;
+    }
+    for (let i = 0; i < barks.length; i++) {
+      const b = barks[i], el = b.el;
+      if (!el || (b.pw && !refresh)) continue;
+      const w = el.offsetWidth, h = el.offsetHeight; // 0 while #barks is display: none (re-measured when it shows)
+      b.pw = w; b.ph = h; el._bw = w; el._bh = h;     // view3d_actors re-places the same elements in 3D
+    }
+  }
   function placeBarks() {
     if (!barkHost) return;
     const live = LIVE[N.state.mode] && N.state.mode !== 'minigame';
     barkHost.classList.toggle('hide', !live);
     if (!barks.length || !live) return;
     const Rn = N.render;
-    if (!Rn || !Rn.canvas || !Rn.W) return;
-    const rect = Rn.canvas.getBoundingClientRect();
-    const vw = window.innerWidth, vh = window.innerHeight;
+    if (!Rn || !Rn.canvas || !Rn.W || !BL.rect) return;
+    const rect = BL.rect, dpr = Rn.dpr || 1;
+    const offX = (((Rn.subpx && Rn.subpx.x) || 0) - BL.sx) / dpr, offY = (((Rn.subpx && Rn.subpx.y) || 0) - BL.sy) / dpr;
+    const vw = BL.vw || window.innerWidth, vh = BL.vh || window.innerHeight;
     // (gameplay audit X4 / G27) bubbles keep out of the HUD (objective strip, OSD, money, minimap, action prompt:
-    // N.hud.keepOutRects(), refreshed every 350 ms) and two bubbles that would overlap stack instead
-    const now = performance.now();
-    if (!placeBarks.rects || now - placeBarks.t > 350) {
-      placeBarks.t = now;
-      try { placeBarks.rects = N.hud && typeof N.hud.keepOutRects === 'function' ? N.hud.keepOutRects() : []; } catch (e) { placeBarks.rects = []; }
-    }
-    const hudR = placeBarks.rects || [];
+    // N.hud keep-out rects, read in the HUD's read phase every 350 ms) and two bubbles that would overlap stack instead
+    let hudR = null;
+    try { hudR = N.hud && typeof N.hud.keepOutCached === 'function' ? N.hud.keepOutCached() : null; } catch (e) { hudR = null; }
+    hudR = hudR || [];
     const placed = [];
     const hits = (x0, y0, x1, y1, r) => x0 < r[2] && r[0] < x1 && y0 < r[3] && r[1] < y1;
     for (const b of barks) {
       const t = b.target;
       if (!t || !b.el) continue;
+      if (!b.pw) { b.el.style.visibility = 'hidden'; b.el._box = null; continue; } // not measured yet: next frame
       const v = t.vehicle && t.vehicle.alive ? t.vehicle : t;
       let roofH = t.roofH || 0;
       if (t.level && N.world && N.world.roofs && N.world.roofs.heightAt) { try { roofH = N.world.roofs.heightAt(t.x, t.y) || roofH; } catch (e) { /* ignore */ } }
-      if (!Rn.inView(v.x, v.y, 30)) { b.el.style.visibility = 'hidden'; continue; }
+      if (!Rn.inView(v.x, v.y, 30)) { b.el.style.visibility = 'hidden'; b.el._box = null; continue; }
       const q = Rn.proj(v.x, v.y, b.h + roofH);
-      let X = rect.left + (q.x / Rn.W) * rect.width;
-      let Y = rect.top + (q.y / Rn.H) * rect.height - 8;
-      const w = b.el.offsetWidth || 120, h = b.el.offsetHeight || 30;
+      let X = rect.left + offX + (q.x / Rn.W) * rect.width;
+      let Y = rect.top + offY + (q.y / Rn.H) * rect.height - 8;
+      const w = b.pw, h = b.ph || 30;
       const left = U.clamp(X - w / 2, 6, Math.max(6, vw - w - 6));
       let topY = U.clamp(Y - h, 6, Math.max(6, vh - h - 6));
       // the HUD: a bubble under a strip in the top third goes just below it, one in the bottom part just above it
@@ -1046,6 +1080,7 @@
       }
       topY = U.clamp(topY, 6, Math.max(6, vh - h - 6));
       placed.push({ l: left, t: topY, r: left + w, b: topY + h });
+      b.el._box = placed[placed.length - 1]; // hud.js dodgeBarks reads this instead of measuring
       b.el.style.visibility = '';
       b.el.style.transform = 'translate(' + Math.round(left) + 'px,' + Math.round(topY) + 'px)';
       b.el.style.setProperty('--tail', Math.round(U.clamp(X - left, 10, w - 10)) + 'px');
@@ -1161,6 +1196,7 @@
     id: 'dialogue', order: 12, runIn: ['*'],
     init: build,
     update(dt) { if (cur && LIVE[N.state.mode]) update(dt); updateBarks(dt); },
+    read() { readBarks(); }, // layout reads, before anything writes the DOM this frame (main.js)
     draw() { placeBarks(); },
   });
 })();
