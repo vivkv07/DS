@@ -36,7 +36,7 @@
     fest_ganesh: { view: 'cam', at: 'tank_bund', time: [15, 30], veh: null, spd: 0, procession: true, rows: 4, swRate: 0.2, seasons: { ganesh_immersion: true, ganesh: true } },
     fest_ramzan: { view: 'tps', at: 'charminar', off: [-215, 45], time: [21, 30], veh: null, crowd: { ped: 100, dens: 2 }, extras: 26, spd: 22, warm: 45, toward: 'charminar', clear: 2, chase: { back: 11, h: 6, lead: 12, th: 9, fov: 66, lag: 0.2 }, seasons: { ramzan: true } },
     fest_bonalu: { view: 'tps', at: 'lal_darwaza_temple', time: [10, 40], veh: null, spd: 0, seasons: { bonalu: true }, bonalu: { temple: 'lal_darwaza_temple', ahead: 17, side: 13, h: 5, lat: 4.5, look: -1.5 } },
-    fest_numaish: { view: 'tps', at: [8200, 5864], time: [20, 15], veh: null, crowd: { ped: 100, dens: 2 }, tint: { lm: 'numaish_stalls', from: [232, 224, 208], to: [150, 116, 78] }, spd: 26, warm: 20, line: { a: 0, r0: 82, r1: -100 }, clear: 2, mill: { x0: 8272, x1: 8140, step: -12, ys: [5855, 5873], r: 3.5, ahead: [[8132, 5866, 7], [8118, 5860, 7], [8150, 5864, 4]] }, chase: { back: 12, h: 11, lead: 22, th: 7.5, fov: 64, lag: 0.2, side: 1.5, lookSide: -7 }, seasons: { numaish: true } },
+    fest_numaish: { view: 'tps', at: [8200, 5864], time: [20, 15], veh: null, crowd: { ped: 100, dens: 2 }, tint: { lm: 'numaish_stalls', from: [232, 224, 208], to: [150, 116, 78], em: [200, 70] }, spd: 26, warm: 20, line: { a: 0, r0: 82, r1: -100 }, clear: 2, mill: { x0: 8272, x1: 8140, step: -12, ys: [5855, 5873], r: 3.5, ahead: [[8132, 5866, 7], [8118, 5860, 7], [8150, 5864, 4]] }, chase: { back: 12, h: 11, lead: 22, th: 7.5, fov: 64, lag: 0.2, side: 1.5, lookSide: -7 }, seasons: { numaish: true } },
     fest_christmas: { view: 'top', at: 'secunderabad_clock_tower', time: [21, 0], veh: null, spd: 45, dir: 1.0, seasons: { christmas: true } },
     // in-world playground games (N.playgroundGames): a real match with Chinnu and the AI kids, scripted inside the window
     lingocha: { view: 'tps', at: 'playground_home', time: [12, 40], veh: null, spd: 0, pg: { game: 'lingocha', place: 'playground_home', seed: 3, cam: { side: 26, h1: 15, crane: 45, f0: 21, s0: 8, h0: 10.5, lk0: 0.75 }, params: { seekFirst: true, team: 4, difficulty: 0.5 } } },
@@ -237,6 +237,10 @@
           }
         }
         ca.needsUpdate = true; g.userData.__tinted = true;
+        // t.em [from, to]: the kit's night emission byte (facade.y) remapped, e.g. the Numaish stalls' lit back walls
+        // (fx(1, 200): warm x 0.78 x 2 at night burns out to flat white) down to a warm amber glow
+        const fa = g.attributes.facade;
+        if (t.em && fa) { for (let i = 0; i < fa.count; i++) if (fa.getY(i) === t.em[0]) { fa.setY(i, t.em[1]); n++; } fa.needsUpdate = true; }
       });
     });
     return n;
