@@ -50,6 +50,7 @@
  *     openPanel(id, opts) · closePanel(id) · isPanelShown(id) · topPanelId() · overlayRoot() ·
  *     refreshTitle() · refreshPause(). The title gets an ONLINE track and the pause deck an Online key
  *     while N.online exists (labels from N.online.titleLine() / pauseLine(); act -> N.online.open({from})).
+ *     Likewise a CHEAT CODE track and a Cheats key while N.cheats.enabled (src/cheats.js; act -> N.cheats.open({from})).
  *   N.menus.openMap({x, y, zoom}) / closeMap() · openJournal(tabId) / closeJournal()
  *   N.menus.openSettings() · openSaveLoad() · openPause()
  *   N.menus.addSettingsRow({id, label, type: 'seg'|'toggle'|'slider', opts: [[v, text]...], get(), set(v),
@@ -601,6 +602,7 @@
         '<li class="trk-load"><button type="button" class="jc-trk" data-nav data-act="load"><i>⏏</i><b>OTHER TAPE</b><em class="load-sub"></em></button></li>' +
         '<li class="trk-view" hidden><button type="button" class="jc-trk" data-nav data-act="view"><i>◫</i><b>VIEW</b><em class="view-sub"></em></button></li>' +
         '<li class="trk-online" hidden><button type="button" class="jc-trk" data-nav data-act="online"><i>⇄</i><b>ONLINE</b><em class="online-sub">play with friends</em></button></li>' +
+        '<li class="trk-cheat" hidden><button type="button" class="jc-trk" data-nav data-act="cheats"><i>✱</i><b>CHEAT CODE</b><em>jump to any stage</em></button></li>' + // [cheats hook]
         '<li><button type="button" class="jc-trk" data-nav data-act="settings"><i>≡</i><b>SETTINGS</b><em>sound · text · touch</em></button></li>' +
         '<li><button type="button" class="jc-trk" data-nav data-act="credits"><i>♪</i><b>CREDITS</b><em>who made this tape</em></button></li>' +
         '</ol>' +
@@ -616,6 +618,7 @@
         confirm: e.querySelector('.jc-confirm'), tracks: e.querySelector('.jc-tracks'), cas: e.querySelector('.cas'), jc: e.querySelector('.jc'),
         view: e.querySelector('.trk-view'), viewSub: e.querySelector('.view-sub'),
         online: e.querySelector('.trk-online'), onlineSub: e.querySelector('.online-sub'),
+        cheat: e.querySelector('.trk-cheat'), // [cheats hook]
       };
       e.addEventListener('click', (ev) => {
         const b = ev.target.closest('button[data-act]');
@@ -647,6 +650,7 @@
       const OL = N.online;
       this.dom.online.hidden = !OL;
       if (OL) { try { this.dom.onlineSub.textContent = OL.titleLine ? OL.titleLine() : 'play with friends'; } catch (e) { N.err('menus.onlineLine', e); } }
+      this.dom.cheat.hidden = !(N.cheats && N.cheats.enabled); // [cheats hook] src/cheats.js
       this.dom.tracks.classList.toggle('many', Array.from(this.dom.tracks.children).filter((li) => !li.hidden).length >= 5);
       // a save from a newer build is never overwritten (save.js): say so before they play
       const newer = N.save && N.save.tooNew;
@@ -688,6 +692,7 @@
     }
     else if (act === 'credits') { unlockAudio(); sfx('ui_select'); M.credits({ fromTitle: true }); }
     else if (act === 'online') { unlockAudio(); sfx('ui_select'); try { if (N.online) N.online.open({ from: 'title' }); } catch (e) { N.err('menus.online', e); } }
+    else if (act === 'cheats') { unlockAudio(); sfx('ui_select'); try { if (N.cheats) N.cheats.open({ from: 'title' }); } catch (e) { N.err('menus.cheats', e); } } // [cheats hook]
   }
   let starting = false;
   function beginNewGame() {
@@ -907,6 +912,7 @@
         '<button type="button" class="dk-key" data-nav data-act="load"><i>⏏</i><b>Load</b></button>' +
         '<button type="button" class="dk-key k-online" data-nav data-act="online" hidden><i>⇄</i><b>Online</b><small class="why ol-why"></small></button>' +
         '<button type="button" class="dk-key k-qm" data-nav data-act="quitmission"><i>■</i><b>Quit mission</b></button>' +
+        '<button type="button" class="dk-key k-cheat" data-nav data-act="cheats" hidden><i>✱</i><b>Cheats</b></button>' + // [cheats hook]
         '<button type="button" class="dk-key k-quit" data-nav data-act="quit"><i>⏏</i><b>Quit to title</b></button>' +
         '</div>' +
         '<div class="dk-confirm" hidden><p class="dk-cq"></p><div class="dk-cbtns">' +
@@ -921,6 +927,7 @@
         date: q('.dk-date'), time: q('.dk-time'), ctr: q('.dk-ctr'), where: q('.dk-where'), obj: q('.dk-obj'),
         save: q('.k-save'), why: q('.k-save .why'), qm: q('.k-qm'), keys: q('.dk-keys'), confirm: q('.dk-confirm'), cq: q('.dk-cq'),
         saveQuit: q('[data-act=savequit]'), online: q('.k-online'), onlineWhy: q('.k-online .why'),
+        cheat: q('.k-cheat'), // [cheats hook]
       };
       e.addEventListener('click', (ev) => {
         const b = ev.target.closest('button[data-act]');
@@ -949,6 +956,7 @@
       D.qm.hidden = !(N.missions && N.missions.active);
       D.saveQuit.hidden = !c.ok;
       D.online.hidden = !N.online;
+      D.cheat.hidden = !(N.cheats && N.cheats.enabled); // [cheats hook] src/cheats.js
       if (N.online) { try { D.onlineWhy.textContent = N.online.pauseLine ? N.online.pauseLine() : ''; } catch (e) { N.err('menus.onlineWhy', e); } }
     },
     showConfirm(on) {
@@ -972,6 +980,7 @@
     else if (act === 'settings') { sfx('ui_select'); openPanel('settings', { from: 'pause' }); }
     else if (act === 'load') { sfx('ui_select'); openPanel('slots', { from: 'pause' }); }
     else if (act === 'online') { sfx('ui_select'); try { if (N.online) N.online.open({ from: 'pause' }); } catch (e) { N.err('menus.online', e); } }
+    else if (act === 'cheats') { sfx('ui_select'); try { if (N.cheats) N.cheats.open({ from: 'pause' }); } catch (e) { N.err('menus.cheats', e); } } // [cheats hook]
     else if (act === 'save') {
       const c = canSave();
       if (!c.ok) { sfx('ui_back'); btn.classList.remove('nope'); void btn.offsetWidth; btn.classList.add('nope'); return; }

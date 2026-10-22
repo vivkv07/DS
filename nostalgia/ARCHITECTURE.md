@@ -144,6 +144,13 @@ nostalgia/
   supabase/migrations/*_online.sql  the database side of §23 (tables, SECURITY DEFINER functions, grants)
   supabase/migrations/*_party.sql   §24 race leaderboards (race_routes, race_times, race_put / race_top)
   src/debug.js      test hooks + #debug overlay -> N.debug
+  src/cheats.js     (after testing.js) typed cheat codes for play-testing: C in free roam, the pause deck's Cheats key,
+                    the title's CHEAT CODE track. Stage codes (PROLOGUE, SANKRANTI..GANESH = M1-M10, DIWALI, INTERLUDE, RAMZAN,
+                    LASTBELL, CHANDRAAT, EID, EPILOGUE, REWIND, CHRISTMAS; also M1..M12 / mission ids) start a fresh game at
+                    that stage with every earlier main mission done; every side activity and odd job has a code too; time and
+                    helper codes (NIGHT, NEXT, PASS, AUTOWIN...) keep the game. The player's own save is put aside before the
+                    first jump (localStorage 'nostalgia.cheats.mygame'; MYGAME restores it); a cheat game has N.flags.cheat
+                    -> N.cheats (DEFAULT_ENABLED: off for release; tests/cheats.cjs)
   src/main.js       boot + main loop
   tools/build.mjs   inlines everything -> dist/nostalgia.html (full page) + dist/artifact.html (fragment); an inlined
                     stylesheet's url()s are rebased (vendor/fonts/ for web.html + the artifact, ../vendor/fonts/ for
@@ -885,6 +892,8 @@ chunkBuilds, buildMs, ms}` (`ms` = last frame per phase, see §6), `freezeClock(
 returns the final `{x, y}` (null if unknown); `state()` also has `clock, day, district,
 surface, wanted` and `player.energy/money/vehicle`. Overlay keys (with #debug): backquote
 toggles it, Alt+1..4 = 07:00 / 12:00 / 17:30 / 21:00, Alt+G = god mode.
+`N.debug.jump(missionId)` and `N.debug.cheat(code)` (src/cheats.js) set the story up for any mission / stage and start it
+(the console form of the cheat codes; they work with `N.cheats.enabled` off too).
 
 ## 14. Testing
 
