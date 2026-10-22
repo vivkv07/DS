@@ -37,7 +37,7 @@ const LATER = /\b(PYTHON|ANDROID|IPHONE|CLOUD|DEVOPS|SELENIUM|HADOOP|SALESFORCE|
 
 async function boot(page) {
   // a second boot must reload: goto() to the same URL (only a #hash) is a same-document jump that reloads nothing
-  if (page.url() === URL) await page.reload(); else await page.goto(URL);
+  if (page.url() === URL) await page.reload({ waitUntil: 'domcontentloaded', timeout: 180000 }); else await page.goto(URL, { timeout: 180000 });
   await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 180000 });
 }
 const dressInfo = () => {
