@@ -33255,6 +33255,85 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   }
   E.pushTo = pushTo;
 
+  /* ============================================= steering: people look where they walk */
+  // E.steer(e, vx, vy, dt, o) -> the velocity e should walk at instead of its wish (vx, vy). It sidesteps the people,
+  // animals and vehicles it would meet within STEER.horizon s (time to collision of its wish against their current
+  // velocity), keeps left when two meet head-on (as Hyderabad walks and drives: each steps to its own left), slows
+  // behind a slower walker in its way and keeps a little personal space; a vehicle counts as its length (a capsule),
+  // not a circle. Worked out every ~STEER.every s per walker and kept as a turn + a speed factor applied to the wish
+  // each frame, so a crowd costs one neighbour query per walker per 0.1 s (on screen only). Fades out within the last steps to a goal
+  // (o.arrive: the distance left) so people still reach their seats, stalls and queues. o: {arrive, ignore (an actor
+  // not to avoid), soft (0..1, default 1)}. Returns E.steerOut {x, y} (scratch: read it at once).
+  const STEER = { horizon: 1.6, every: 0.1, margin: 1.5, look: 26, k: 1.7, turnMax: 1.15 };
+  E.STEER = STEER;
+  const SOUT = { x: 0, y: 0 }, SNEAR = [];
+  E.steerOut = SOUT;
+  function steer(e, vx, vy, dt, o) {
+    SOUT.x = vx; SOUT.y = vy;
+    const s = Math.hypot(vx, vy);
+    const st = e._st || (e._st = { t: 0, turn: 0, mul: 1 });
+    if (s < 2 || !N.world.built) { st.turn *= 0.5; st.mul = 1; return SOUT; }
+    // off screen nobody sees a shoulder brushed: skip the work there
+    // (and well away from the player: the view rect lags a teleport by a frame)
+    const P = N.player;
+    if (N.render && N.render.inView && !N.render.inView(e.x, e.y, 60) && !(P && Math.abs(e.x - P.x) < 320 && Math.abs(e.y - P.y) < 320)) { st.turn = 0; st.mul = 1; st.t = 0; return SOUT; }
+    st.t -= dt;
+    if (st.t <= 0) { st.t = STEER.every * (0.8 + ((e.id * 37) % 10) / 25); steerCompute(e, vx, vy, s, st, o); }
+    let f = o && o.soft != null ? o.soft : 1;
+    if (o && o.arrive != null) f *= U.clamp((o.arrive - 2) / 6, 0, 1);
+    if (f <= 0) return SOUT;
+    const turn = st.turn * f, mul = 1 + (st.mul - 1) * f, c = Math.cos(turn), sn = Math.sin(turn);
+    SOUT.x = (vx * c - vy * sn) * mul; SOUT.y = (vx * sn + vy * c) * mul;
+    return SOUT;
+  }
+  function steerCompute(e, vx, vy, s, st, o) {
+    const ux = vx / s, uy = vy / s, lx = uy, ly = -ux; // my left (y grows down the map)
+    const look = STEER.look + s * 0.6, er = e.r || 3.4, H = STEER.horizon;
+    const n = E.queryN(e.x + ux * look * 0.45, e.y + uy * look * 0.45, look * 0.6 + 8, null, SNEAR);
+    const ign = o && o.ignore, lvl = e.level || null, roof = !!e.roofH;
+    let fx = 0, fy = 0, cap = Infinity;
+    for (let i = 0; i < n; i++) {
+      const q = SNEAR[i];
+      if (q === e || !q.alive || q.hidden || q === ign || q.vehicle || q === e.vehicle || q.kind === 'prop' || q.kind === 'pickup') continue;
+      if ((q.level || null) !== lvl || !!q.roofH !== roof) continue;
+      let qx = q.x, qy = q.y, qr = q.r || 4;
+      if (q.kind === 'vehicle') {
+        if (!q.T) continue;
+        const c = Math.cos(q.angle), sn = Math.sin(q.angle), hl = Math.max(0, q.T.w / 2 - q.T.d / 2);
+        const t = U.clamp((e.x - q.x) * c + (e.y - q.y) * sn, -hl, hl);
+        qx = q.x + c * t; qy = q.y + sn * t; qr = q.T.d / 2;
+      }
+      const px = qx - e.x, py = qy - e.y, d2 = px * px + py * py, R = er + qr + STEER.margin;
+      const qvx = q.vx || 0, qvy = q.vy || 0;
+      // personal space: already this close -> ease away
+      if (d2 < R * R) { const d = Math.sqrt(d2) || 0.01, w = (R - d) / R; fx -= (px / d) * w * 1.1; fy -= (py / d) * w * 1.1; }
+      const along = px * ux + py * uy, side = px * lx + py * ly;
+      // walking behind someone slower in my way: match their pace (a stopped one: slow down to go round)
+      const qa = qvx * ux + qvy * uy;
+      if (along > 0 && Math.abs(side) < R && qa > -4) cap = Math.min(cap, Math.max(qa, 0) + Math.max(0, along - R) * 1.8 + 6);
+      // time to collision of my wish against its motion
+      const rvx = vx - qvx, rvy = vy - qvy, a = rvx * rvx + rvy * rvy;
+      if (a < 1) continue;
+      const b = px * rvx + py * rvy;
+      if (b <= 0) continue;
+      const disc = b * b - a * (d2 - R * R);
+      if (disc <= 0) continue;
+      const ttc = (b - Math.sqrt(disc)) / a;
+      if (ttc <= 0 || ttc > H) continue;
+      // where it will be then, sideways of my line: step the other way; nearly head-on -> my left
+      const cx = px - rvx * ttc, cy = py - rvy * ttc, lat = cx * lx + cy * ly;
+      const go = lat > R * 0.3 ? -1 : 1;
+      const w = Math.pow(1 - ttc / H, 1.6) * STEER.k * (q.kind === 'vehicle' ? 1.6 : 1);
+      fx += lx * go * w; fy += ly * go * w;
+    }
+    const tx = ux + fx, ty = uy + fy;
+    const turn = U.clamp(Math.atan2(ux * ty - uy * tx, ux * tx + uy * ty), -STEER.turnMax, STEER.turnMax);
+    let mul = cap < s ? U.clamp(cap / s, 0.12, 1) : 1;
+    mul *= 1 - 0.3 * Math.min(1, Math.abs(turn)); // a sidestep is slower than walking on
+    st.turn += (turn - st.turn) * 0.65; st.mul += (mul - st.mul) * 0.65;
+  }
+  E.steer = steer;
+
   // Push overlapping solid actors apart (mass-weighted) and report bumps.
   let nearBuf = [], nearBusy = false;
   function resolveOverlaps() {
@@ -38008,7 +38087,14 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       if (ob.gap < 1.2) want = 0;
       blocked = want < 4 && tr.cruise > 10;
       // two vehicles nose to nose inside the same junction, or tangled after a bump: the lower id goes
-      if (blocked && ob.e.tr && tr.blockT > 1.2 && v.id < ob.e.id && ((ob.e.tr.inBox >= 0 && ob.e.tr.inBox === tr.inBox) || ob.gap < -1.5)) { tr.ghost = 1.5; tr.ghostOf = ob.e; }
+      if (blocked && ob.e.tr && tr.blockT > 1.2 && v.id < ob.e.id && ((ob.e.tr.inBox >= 0 && ob.e.tr.inBox === tr.inBox) || ob.gap < -1.5)) {
+        // in view it first backs off a little and lets the other through (no driving through each other where the
+        // player can see); still tangled after that, or off screen: the ghost pass as before
+        let room = false;
+        if (!tr.backed && N.render.inView(vX, vY, 40)) { const bk = sense(v, -Math.cos(v.angle), -Math.sin(v.angle)); room = !bk || bk.gap > 9; }
+        if (room) { tr.backed = true; tr.rev = 0.9; tr.blockT = 0.3; }
+        else { tr.ghost = 1.5; tr.ghostOf = ob.e; }
+      }
       // round a lying cow / parked vehicle / standing person
       if (blocked && !tr.swerve && tr.blockT > TUNE.swerveAfter && isStatic(ob.e)) trySwerve(v, tr, ob, segUx, segUy);
     }
@@ -38024,7 +38110,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       if (tr.blockT > 10 && !N.render.inView(vX, vY, 60)) { despawnVehicle(v); return; }
       if (!tr.swerve && tr.blockT > 4 && ob.e.kind === 'vehicle' && ob.e.tr && ob.e.tr.blockT > 3) trySwerve(v, tr, ob, segUx, segUy);
       if (tr.blockT > TUNE.hornAfter && (ob.e === N.player || ob.e.kind !== 'vehicle' || !ob.e.tr || ob.e.tr.blockT < 0.5)) honk(v, 'blocked');
-    } else tr.blockT = Math.max(0, tr.blockT - dt * 2);
+    } else { tr.blockT = Math.max(0, tr.blockT - dt * 2); if (tr.blockT === 0) tr.backed = false; }
     void stopping;
     // ---- steering + pedals
     const diff = U.angleDiff(v.angle, Math.atan2(ty - vY, tx - vX));
@@ -38443,6 +38529,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
         if (p.waitV < 1.5) { vx *= 0.05; vy *= 0.05; }
         else { const s2 = Math.hypot(vx, vy) || 1, side = (p.id & 1) ? 1 : -1; const nx = -vy / s2 * side, ny = vx / s2 * side; vx = nx * speed * 0.8 + vx * 0.2; vy = ny * speed * 0.8 + vy * 0.2; }
       } else p.waitV = 0;
+      // and the people, animals and vehicles round him (entities.js E.steer: sidestep, keep left, slow behind)
+      if (N.entities.steer) { const S = N.entities.steer(p, vx, vy, dt, { arrive: d }); vx = S.x; vy = S.y; }
     }
     const a = 1 - Math.exp(-dt * 8);
     p.vx += (vx - p.vx) * a; p.vy += (vy - p.vy) * a;
@@ -40859,6 +40947,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     const dx = tx - a.x, dy = ty - a.y, d = Math.hypot(dx, dy);
     let vx = 0, vy = 0;
     if (d > (arriveR || 1.5)) { const s = Math.min(speed, d / Math.max(dt, 1e-3) * 0.9); vx = (dx / d) * s; vy = (dy / d) * s; }
+    // look where they walk (entities.js E.steer), gently: their routes are planned through tight spots
+    if ((vx || vy) && !a.roofH && !a.noWorld && N.entities.steer) { const S = N.entities.steer(a, vx, vy, dt, { arrive: d, soft: 0.6, ignore: a.followSt ? a.followSt.leader : null }); vx = S.x; vy = S.y; }
     const k = 1 - Math.exp(-dt * 10);
     a.vx += (vx - a.vx) * k; a.vy += (vy - a.vy) * k;
     return d;
@@ -62741,7 +62831,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     p.sc = sc; p.role = role; p.x = x; p.y = y; p.angle = a || 0; p.facing = p.angle; p.vx = 0; p.vy = 0;
     const L = (o && o.look) ? { look: o.look, spd: 36 } : lookFor(role, sc ? sc.style : 'colony', o && o.over);
     p.look0 = L.look; p.look = L.look; p.lookAlt = null; p.spd = (o && o.spd) || L.spd || rr(TUNE.walk[0], TUNE.walk[1]);
-    p.st = (o && o.st) || 'walk'; p.then = null; p.t = 0; p.tx = x; p.ty = y; p.fa = p.angle; p.seat = null; p.slot = null;
+    p.st = (o && o.st) || 'walk'; p.then = null; p.t = 0; p.tx = x; p.ty = y; p.fa = p.angle; p.seat = null; p.slot = null; p.held = false; p.holdBack = false;
     p.idle = null; p.bench = false; p.z = 0; p.dk = 0; p.hold = null; p.tool = null; p.hx = x; p.hy = y; p.hh = 5; p.cape = false; p.foam = 0;
     p.job = (o && o.job) || null; p.k = 0; p.ph = null; p.timer = 0; p.n = 0; p.cyc = null; p.raise = 0; p.flip = 0;
     p.barkCD = rr(2, 8); p.knockT = 0; p.getupT = 0; p.down = false; p.bumpT = 0; p.lookAt = null; p.lookT = 0; p.lookTarget = null;
@@ -62786,6 +62876,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       if (e < TUNE.aside && e > 0.1 && (vx * ex + vy * ey) > 0) { const s = (vx * ey - vy * ex) > 0 ? 1 : -1; vx += (-ey / e) * speed * 0.8 * s; vy += (ex / e) * speed * 0.8 * s; }
     }
     if (p.detT > 0) { p.detT -= dt; vx = vx * 0.3 + p.detX * speed * 0.8; vy = vy * 0.3 + p.detY * speed * 0.8; }
+    // look where they walk: sidestep people, animals and vehicles, keep left, slow behind (entities.js E.steer)
+    else if (!noCollide && p.solid && N.entities.steer) { const S = N.entities.steer(p, vx, vy, dt, { arrive: d }); vx = S.x; vy = S.y; }
     const a = 1 - Math.exp(-dt * 8);
     p.vx += (vx - p.vx) * a; p.vy += (vy - p.vy) * a;
     let sp;
@@ -62815,7 +62907,12 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   }
   function holdAt(p, x, y, face, dt) {
     const d = Math.hypot(x - p.x, y - p.y);
-    if (d > 1.5) walkTo(p, x, y, p.spd * 0.6, dt, 0.8); else stand(p, face, dt);
+    // hysteresis: nudged by a neighbour (two spots of a group closer than two bodies) he stays put, he walks back
+    // only once properly out of place; a group settles shoulder to shoulder instead of shoving and stepping back
+    if (!p.holdBack && d > 4.5) p.holdBack = true;
+    else if (p.holdBack && d < 1.2) p.holdBack = false;
+    if (p.holdBack || (d > 1.5 && !(p.vx * p.vx + p.vy * p.vy < 4 && d < 4.5 && p.held))) walkTo(p, x, y, p.spd * 0.6, dt, 0.8); else stand(p, face, dt);
+    p.held = d < 1.5 || (p.held && !p.holdBack);
     return d;
   }
   function freeOf(list) { for (const s of list) if (!s.by) return s; return null; }
@@ -65872,6 +65969,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     let vx = 0, vy = 0;
     if (d > (arrive || 1)) { const s = Math.min(speed, d * 4); vx = (dx / d) * s; vy = (dy / d) * s; }
     if (p.detT > 0) { p.detT -= dt; vx = vx * 0.3 + p.detX * speed * 0.8; vy = vy * 0.3 + p.detY * speed * 0.8; }
+    // look where they walk: sidestep people, animals and vehicles, keep left, slow behind (entities.js E.steer)
+    else if (p.solid && N.entities.steer) { const S = N.entities.steer(p, vx, vy, dt, { arrive: d }); vx = S.x; vy = S.y; }
     const a = 1 - Math.exp(-dt * 8);
     p.vx += (vx - p.vx) * a; p.vy += (vy - p.vy) * a;
     const sp = integrate(p, dt);
@@ -108126,6 +108225,8 @@ if (ngShine > 0.01) {
 .dwm-total{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 0;font:22px/1.1 var(--font-osd,'VT323',monospace)}
 .dwm-total.over{color:#b02020}.dwm-total em{font-style:normal;font-size:16px;color:#6a5a48}
 .dwm-say{margin:8px 0 0;min-height:1.3em;font-size:14px;color:#3a2a1a}
+.dwm-x{position:absolute;top:6px;right:8px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(122,47,53,.12);color:#7a2f35;font-size:18px;line-height:34px;cursor:pointer;padding:0}
+.dwm-x:hover,.dwm-x:focus-visible{background:rgba(122,47,53,.25)}
 .dwm-hint{margin:8px 0 0;font-family:var(--font-osd,'VT323',monospace);font-size:17px;color:#7a2f35;text-align:right}
 .dwm-aim{display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:center}
 .dwm-aim canvas{width:240px;height:240px;image-rendering:pixelated;border-radius:4px;box-shadow:0 0 0 2px #7a5a2a;background:#2a2420}
@@ -108167,7 +108268,7 @@ if (ngShine > 0.01) {
     const root = document.getElementById('overlay') || document.body;
     const el = document.createElement('div');
     el.className = 'dwm-panel' + (o.cls ? ' ' + o.cls : '');
-    el.innerHTML = '<div class="dwm-card" role="dialog" aria-label="' + esc(o.label || 'card') + '">' + html + '</div>';
+    el.innerHTML = '<div class="dwm-card" role="dialog" aria-label="' + esc(o.label || 'card') + '">' + (o.cancel ? '<button type="button" class="dwm-x" aria-label="' + esc(o.cancel) + '">✕</button>' : '') + html + '</div>';
     root.appendChild(el);
     requestAnimationFrame(() => el.classList.add('show'));
     const p = N.player, wasLocked = p ? !!p.controlsLocked : false;
@@ -108177,7 +108278,7 @@ if (ngShine > 0.01) {
     const done = new Promise((r) => { resolve = r; });
     const KM = (N.input && N.input.KEYMAP) || {};
     const P = {
-      el, done, keys: o.keys || null, opened: nowT(), closed: false,
+      el, done, keys: o.keys || null, cancel: !!o.cancel, opened: nowT(), closed: false,
       close(v) {
         if (P.closed) return; P.closed = true;
         if (ST.panel === P) ST.panel = null;
@@ -108202,6 +108303,7 @@ if (ngShine > 0.01) {
       if (P.keys) P.keys(k);
     }
     window.addEventListener('keydown', onDown, true);
+    if (o.cancel) el.querySelector('.dwm-x').addEventListener('click', () => { sfx('ui_back'); P.close(null); });
     ST.panel = P;
     return P;
   }
@@ -108211,7 +108313,10 @@ if (ngShine > 0.01) {
     if (!I) return;
     if (ST.eatAction) { if (I.pressed('action')) I.consume('action'); ST.eatAction = false; }
     const P = ST.panel;
-    if (!P || P.closed || mode() !== 'play' || I.device === 'keyboard') return;
+    if (!P || P.closed || mode() !== 'play') return;
+    // a card with a way out closes on Esc / Start / B (as the shops do) before the pause menu reads them (order 12 < 85)
+    if (P.cancel && (I.pressed('pause') || I.pressed('horn'))) { I.consume('pause'); I.consume('horn'); sfx('ui_back'); P.close(null); return; }
+    if (I.device === 'keyboard') return;
     for (const k of ['up', 'down', 'left', 'right', 'action']) if (I.pressed(k)) { I.consume(k); if (P.keys) P.keys(k); }
   }
 
@@ -108473,7 +108578,7 @@ if (ngShine > 0.01) {
       '<ul class="dwm-rows">' + ITEMS.map((it, i) => '<li data-i="' + i + '" class="' + (it.bomb ? 'bomb' : '') + '"><span class="sw" style="background:' + it.col + '"></span><span><b>' + esc(it.name) + '</b><em>' + esc(it.sub) + '</em></span><span class="pr">' + rs(it.price) + '</span><span class="q"><button type="button" data-d="-1" aria-label="less">−</button><i>0</i><button type="button" data-d="1" aria-label="more">+</button></span></li>').join('') +
       '<li class="act" data-act="haggle"><span>Haggle (once)</span><span>H</span></li><li class="act" data-act="pay"><span class="pay">Pay</span><span>E</span></li></ul>' +
       '<div class="dwm-list"></div><div class="dwm-total"><span class="t"></span><em></em></div><p class="dwm-say"></p>' +
-      '<p class="dwm-hint">↑↓ choose · ←→ how many · H haggle · E pay</p>';
+      '<p class="dwm-hint">↑↓ choose · ←→ how many · H haggle · E pay · Esc leave</p>';
     let P = null;
     const render = () => {
       const el = P.el;
@@ -108519,7 +108624,7 @@ if (ngShine > 0.01) {
       P.close({ items, total: total(), sum: sum(), haggled, bombs: bombs() });
     };
     P = panel(html, {
-      label: 'Pataakha stall', cls: 'dwm-stall',
+      label: 'Pataakha stall', cls: 'dwm-stall', cancel: 'Leave the stall',
       keys: (k) => {
         if (k === 'up') { sel = (sel + rows - 1) % rows; sfx('ui_click'); }
         else if (k === 'down') { sel = (sel + 1) % rows; sfx('ui_click'); }
@@ -108637,8 +108742,17 @@ if (ngShine > 0.01) {
     face('pataakha_man', 'player');
     await m.say('pataakha_man', '*Aao, aao!* Rocket, anaar, chakri, phuljhadi! Diwali rate, best rate!');
     m.objective('Buy Amma\'s list within ₹100. Nanna\'s rule: no bombs, more phuljhadis.');
-    const buy = await stallCard(m);
-    if (!buy) m.fail('Not now? The stall waits. Phir se.');
+    let buy = await stallCard(m);
+    while (!buy) {
+      // left the stall (✕ / Esc / B): nothing bought, nothing lost; the pataakha-wala is still there
+      lockShops(m, false);
+      toast('Amma\'s list is still in your pocket. The pataakha-wala waits.', 2600);
+      await act(m, S, 'Buy crackers', { r: 26, objective: 'Back to the pataakha stall when you are ready (ACTION).' });
+      lockShops(m, true);
+      face('pataakha_man', 'player');
+      m.objective('Buy Amma\'s list within ₹100. Nanna\'s rule: no bombs, more phuljhadis.');
+      buy = await stallCard(m);
+    }
     if (buy.bombs) {
       await m.talk([
         { s: 'pataakha_man', t: 'Bombs also? For you? ...Your Nanna knows?' },
