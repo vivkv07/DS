@@ -584,6 +584,8 @@
     let vx = 0, vy = 0;
     if (d > (arrive || 1)) { const s = Math.min(speed, d * 4); vx = (dx / d) * s; vy = (dy / d) * s; }
     if (p.detT > 0) { p.detT -= dt; vx = vx * 0.3 + p.detX * speed * 0.8; vy = vy * 0.3 + p.detY * speed * 0.8; }
+    // look where they walk: sidestep people, animals and vehicles, keep left, slow behind (entities.js E.steer)
+    else if (p.solid && N.entities.steer) { const S = N.entities.steer(p, vx, vy, dt, { arrive: d }); vx = S.x; vy = S.y; }
     const a = 1 - Math.exp(-dt * 8);
     p.vx += (vx - p.vx) * a; p.vy += (vy - p.vy) * a;
     const sp = integrate(p, dt);

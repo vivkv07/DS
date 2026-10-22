@@ -941,6 +941,8 @@
     const dx = tx - a.x, dy = ty - a.y, d = Math.hypot(dx, dy);
     let vx = 0, vy = 0;
     if (d > (arriveR || 1.5)) { const s = Math.min(speed, d / Math.max(dt, 1e-3) * 0.9); vx = (dx / d) * s; vy = (dy / d) * s; }
+    // look where they walk (entities.js E.steer), gently: their routes are planned through tight spots
+    if ((vx || vy) && !a.roofH && !a.noWorld && N.entities.steer) { const S = N.entities.steer(a, vx, vy, dt, { arrive: d, soft: 0.6, ignore: a.followSt ? a.followSt.leader : null }); vx = S.x; vy = S.y; }
     const k = 1 - Math.exp(-dt * 10);
     a.vx += (vx - a.vx) * k; a.vy += (vy - a.vy) * k;
     return d;

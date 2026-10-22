@@ -396,7 +396,7 @@
     p.sc = sc; p.role = role; p.x = x; p.y = y; p.angle = a || 0; p.facing = p.angle; p.vx = 0; p.vy = 0;
     const L = (o && o.look) ? { look: o.look, spd: 36 } : lookFor(role, sc ? sc.style : 'colony', o && o.over);
     p.look0 = L.look; p.look = L.look; p.lookAlt = null; p.spd = (o && o.spd) || L.spd || rr(TUNE.walk[0], TUNE.walk[1]);
-    p.st = (o && o.st) || 'walk'; p.then = null; p.t = 0; p.tx = x; p.ty = y; p.fa = p.angle; p.seat = null; p.slot = null;
+    p.st = (o && o.st) || 'walk'; p.then = null; p.t = 0; p.tx = x; p.ty = y; p.fa = p.angle; p.seat = null; p.slot = null; p.held = false; p.holdBack = false;
     p.idle = null; p.bench = false; p.z = 0; p.dk = 0; p.hold = null; p.tool = null; p.hx = x; p.hy = y; p.hh = 5; p.cape = false; p.foam = 0;
     p.job = (o && o.job) || null; p.k = 0; p.ph = null; p.timer = 0; p.n = 0; p.cyc = null; p.raise = 0; p.flip = 0;
     p.barkCD = rr(2, 8); p.knockT = 0; p.getupT = 0; p.down = false; p.bumpT = 0; p.lookAt = null; p.lookT = 0; p.lookTarget = null;
@@ -441,6 +441,8 @@
       if (e < TUNE.aside && e > 0.1 && (vx * ex + vy * ey) > 0) { const s = (vx * ey - vy * ex) > 0 ? 1 : -1; vx += (-ey / e) * speed * 0.8 * s; vy += (ex / e) * speed * 0.8 * s; }
     }
     if (p.detT > 0) { p.detT -= dt; vx = vx * 0.3 + p.detX * speed * 0.8; vy = vy * 0.3 + p.detY * speed * 0.8; }
+    // look where they walk: sidestep people, animals and vehicles, keep left, slow behind (entities.js E.steer)
+    else if (!noCollide && p.solid && N.entities.steer) { const S = N.entities.steer(p, vx, vy, dt, { arrive: d }); vx = S.x; vy = S.y; }
     const a = 1 - Math.exp(-dt * 8);
     p.vx += (vx - p.vx) * a; p.vy += (vy - p.vy) * a;
     let sp;
@@ -470,7 +472,12 @@
   }
   function holdAt(p, x, y, face, dt) {
     const d = Math.hypot(x - p.x, y - p.y);
-    if (d > 1.5) walkTo(p, x, y, p.spd * 0.6, dt, 0.8); else stand(p, face, dt);
+    // hysteresis: nudged by a neighbour (two spots of a group closer than two bodies) he stays put, he walks back
+    // only once properly out of place; a group settles shoulder to shoulder instead of shoving and stepping back
+    if (!p.holdBack && d > 4.5) p.holdBack = true;
+    else if (p.holdBack && d < 1.2) p.holdBack = false;
+    if (p.holdBack || (d > 1.5 && !(p.vx * p.vx + p.vy * p.vy < 4 && d < 4.5 && p.held))) walkTo(p, x, y, p.spd * 0.6, dt, 0.8); else stand(p, face, dt);
+    p.held = d < 1.5 || (p.held && !p.holdBack);
     return d;
   }
   function freeOf(list) { for (const s of list) if (!s.by) return s; return null; }

@@ -154,6 +154,85 @@
   }
   E.pushTo = pushTo;
 
+  /* ============================================= steering: people look where they walk */
+  // E.steer(e, vx, vy, dt, o) -> the velocity e should walk at instead of its wish (vx, vy). It sidesteps the people,
+  // animals and vehicles it would meet within STEER.horizon s (time to collision of its wish against their current
+  // velocity), keeps left when two meet head-on (as Hyderabad walks and drives: each steps to its own left), slows
+  // behind a slower walker in its way and keeps a little personal space; a vehicle counts as its length (a capsule),
+  // not a circle. Worked out every ~STEER.every s per walker and kept as a turn + a speed factor applied to the wish
+  // each frame, so a crowd costs one neighbour query per walker per 0.1 s (on screen only). Fades out within the last steps to a goal
+  // (o.arrive: the distance left) so people still reach their seats, stalls and queues. o: {arrive, ignore (an actor
+  // not to avoid), soft (0..1, default 1)}. Returns E.steerOut {x, y} (scratch: read it at once).
+  const STEER = { horizon: 1.6, every: 0.1, margin: 1.5, look: 26, k: 1.7, turnMax: 1.15 };
+  E.STEER = STEER;
+  const SOUT = { x: 0, y: 0 }, SNEAR = [];
+  E.steerOut = SOUT;
+  function steer(e, vx, vy, dt, o) {
+    SOUT.x = vx; SOUT.y = vy;
+    const s = Math.hypot(vx, vy);
+    const st = e._st || (e._st = { t: 0, turn: 0, mul: 1 });
+    if (s < 2 || !N.world.built) { st.turn *= 0.5; st.mul = 1; return SOUT; }
+    // off screen nobody sees a shoulder brushed: skip the work there
+    // (and well away from the player: the view rect lags a teleport by a frame)
+    const P = N.player;
+    if (N.render && N.render.inView && !N.render.inView(e.x, e.y, 60) && !(P && Math.abs(e.x - P.x) < 320 && Math.abs(e.y - P.y) < 320)) { st.turn = 0; st.mul = 1; st.t = 0; return SOUT; }
+    st.t -= dt;
+    if (st.t <= 0) { st.t = STEER.every * (0.8 + ((e.id * 37) % 10) / 25); steerCompute(e, vx, vy, s, st, o); }
+    let f = o && o.soft != null ? o.soft : 1;
+    if (o && o.arrive != null) f *= U.clamp((o.arrive - 2) / 6, 0, 1);
+    if (f <= 0) return SOUT;
+    const turn = st.turn * f, mul = 1 + (st.mul - 1) * f, c = Math.cos(turn), sn = Math.sin(turn);
+    SOUT.x = (vx * c - vy * sn) * mul; SOUT.y = (vx * sn + vy * c) * mul;
+    return SOUT;
+  }
+  function steerCompute(e, vx, vy, s, st, o) {
+    const ux = vx / s, uy = vy / s, lx = uy, ly = -ux; // my left (y grows down the map)
+    const look = STEER.look + s * 0.6, er = e.r || 3.4, H = STEER.horizon;
+    const n = E.queryN(e.x + ux * look * 0.45, e.y + uy * look * 0.45, look * 0.6 + 8, null, SNEAR);
+    const ign = o && o.ignore, lvl = e.level || null, roof = !!e.roofH;
+    let fx = 0, fy = 0, cap = Infinity;
+    for (let i = 0; i < n; i++) {
+      const q = SNEAR[i];
+      if (q === e || !q.alive || q.hidden || q === ign || q.vehicle || q === e.vehicle || q.kind === 'prop' || q.kind === 'pickup') continue;
+      if ((q.level || null) !== lvl || !!q.roofH !== roof) continue;
+      let qx = q.x, qy = q.y, qr = q.r || 4;
+      if (q.kind === 'vehicle') {
+        if (!q.T) continue;
+        const c = Math.cos(q.angle), sn = Math.sin(q.angle), hl = Math.max(0, q.T.w / 2 - q.T.d / 2);
+        const t = U.clamp((e.x - q.x) * c + (e.y - q.y) * sn, -hl, hl);
+        qx = q.x + c * t; qy = q.y + sn * t; qr = q.T.d / 2;
+      }
+      const px = qx - e.x, py = qy - e.y, d2 = px * px + py * py, R = er + qr + STEER.margin;
+      const qvx = q.vx || 0, qvy = q.vy || 0;
+      // personal space: already this close -> ease away
+      if (d2 < R * R) { const d = Math.sqrt(d2) || 0.01, w = (R - d) / R; fx -= (px / d) * w * 1.1; fy -= (py / d) * w * 1.1; }
+      const along = px * ux + py * uy, side = px * lx + py * ly;
+      // walking behind someone slower in my way: match their pace (a stopped one: slow down to go round)
+      const qa = qvx * ux + qvy * uy;
+      if (along > 0 && Math.abs(side) < R && qa > -4) cap = Math.min(cap, Math.max(qa, 0) + Math.max(0, along - R) * 1.8 + 6);
+      // time to collision of my wish against its motion
+      const rvx = vx - qvx, rvy = vy - qvy, a = rvx * rvx + rvy * rvy;
+      if (a < 1) continue;
+      const b = px * rvx + py * rvy;
+      if (b <= 0) continue;
+      const disc = b * b - a * (d2 - R * R);
+      if (disc <= 0) continue;
+      const ttc = (b - Math.sqrt(disc)) / a;
+      if (ttc <= 0 || ttc > H) continue;
+      // where it will be then, sideways of my line: step the other way; nearly head-on -> my left
+      const cx = px - rvx * ttc, cy = py - rvy * ttc, lat = cx * lx + cy * ly;
+      const go = lat > R * 0.3 ? -1 : 1;
+      const w = Math.pow(1 - ttc / H, 1.6) * STEER.k * (q.kind === 'vehicle' ? 1.6 : 1);
+      fx += lx * go * w; fy += ly * go * w;
+    }
+    const tx = ux + fx, ty = uy + fy;
+    const turn = U.clamp(Math.atan2(ux * ty - uy * tx, ux * tx + uy * ty), -STEER.turnMax, STEER.turnMax);
+    let mul = cap < s ? U.clamp(cap / s, 0.12, 1) : 1;
+    mul *= 1 - 0.3 * Math.min(1, Math.abs(turn)); // a sidestep is slower than walking on
+    st.turn += (turn - st.turn) * 0.65; st.mul += (mul - st.mul) * 0.65;
+  }
+  E.steer = steer;
+
   // Push overlapping solid actors apart (mass-weighted) and report bumps.
   let nearBuf = [], nearBusy = false;
   function resolveOverlaps() {
