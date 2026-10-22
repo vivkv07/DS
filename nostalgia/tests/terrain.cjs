@@ -117,7 +117,8 @@ async function main() {
     const run = async (at, angle, sp, secs, throttle) => {
       clearTraffic(at[0], at[1]);
       v.x = at[0]; v.y = at[1]; v.angle = angle; v.vx = Math.cos(angle) * sp; v.vy = Math.sin(angle) * sp; v.speed = sp; v.av = 0;
-      const e0 = N.player.energy = 90; let t = 0, maxSp = sp;
+      // (a full tummy first: energy is capped at the tummy, and that cap would count as drain)
+      N.player.tummy = 100; const e0 = N.player.energy = 90; let t = 0, maxSp = sp;
       const x0 = v.x, y0 = v.y;
       while (t < secs) { N.input.setMove(throttle ? Math.cos(angle) : null, throttle ? Math.sin(angle) : null, true); if (throttle) N.input.hold('run', false); await window.__gw(0.1); t += 0.1; maxSp = Math.max(maxSp, v.speed); }
       N.input.setMove(null);
