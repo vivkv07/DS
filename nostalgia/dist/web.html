@@ -49521,7 +49521,7 @@ vp: {},
 run: '',
 badges: new Set(),
 };
-const T = { revealed: new Map(), sparkles: [], vp: null, click: null, near: null, nearT: 0, beacon: false, beaconT: 0, homeT: 0, respectT: 0, faceT: 0, printT: 0, chipT: 0, offerFrame: null, vpCheckT: 0, lastActive: '', homeBusy: false };
+const T = { revealed: new Map(), sparkles: [], vp: null, click: null, near: null, nearT: 0, beacon: false, beaconT: 0, homeT: 0, respectT: 0, faceT: 0, printT: 0, chipT: 0, offerFrame: null, vpCheckT: 0, lastActive: '', homeBusy: false, vpHold: 0 };
 const unlCache = { frame: -1, v: {} };
 function unlockedFast(k) {
 const f = (N.time && N.time.frame) | 0;
@@ -49842,7 +49842,7 @@ try { V.res(V.n); } catch (e) { }
 function autoViewpoints(dt) {
 const p = N.player; if (!p || p.vehicle || missionActive() || T.vp || T.click) { T.dwell = null; return; }
 try { if (N.hud && N.hud.jcardOpen) { T.dwell = null; return; } } catch (e) { }
-if (N.missions && N.missions.askOpen) { T.dwell = null; return; }
+if ((N.missions && N.missions.askOpen) || now() < (T.vpHold || 0)) { T.dwell = null; return; }
 let here = null;
 for (const id in VIEWPOINTS) {
 const v = VIEWPOINTS[id];
@@ -50556,6 +50556,7 @@ found.ids = () => Array.from(S.found.keys());
 N.on('world:built', () => { resolved = false; resolveAll(); if (N.systems && N.systems.started) registerLooks(); });
 N.on('game:new', () => { newRun(); });
 N.on('mission:start', () => { releaseBeacon(); if (T.vp) endViewpoint(); });
+N.on('mission:fail', () => { T.vpHold = now() + 4; });
 N.on('mission:complete', () => { checkPrints(true); });
 N.on('journal:tab', (d) => { if (d && d.id) S.badges.delete(d.id); });
 N.on('calendar:change', () => { if (resolved) variants(); });
