@@ -677,6 +677,26 @@
       ' if (ob > 0.25 + 0.75 * smoothstep(0.55, 1.0, od / orr)) discard; } } }',
     uniforms: (sh) => { sh.uniforms.uOccA = UNI.uOccA; sh.uniforms.uOccB = UNI.uOccB; sh.uniforms.uOccR = UNI.uOccR; },
   };
+  // street lamps beyond the few real point lights: every lit material that opts in (facades, ground, roads, people,
+  // vehicles: LAMP_GLSL.apply(shader) in its onBeforeCompile) is lit by the LAMPS_N lamps nearest the focus that
+  // have no point light of their own: a soft pool round each (view-space positions + radius in uLampP, colour x
+  // intensity in uLampC, set every frame by updatePointLights; w = 0 ends the list)
+  const LAMPS_N = 16;
+  const LAMP_GLSL = {
+    decl: 'uniform vec4 uLampP[' + LAMPS_N + '];\nuniform vec4 uLampC[' + LAMPS_N + '];',
+    frag: [
+      '#include <lights_fragment_end>',
+      '{ vec3 lpos = -vViewPosition; vec3 lnn = normalize(normal);',
+      '  for (int i = 0; i < ' + LAMPS_N + '; i++) { vec4 L = uLampP[i]; if (L.w <= 0.0) break;',
+      '    vec3 dv = L.xyz - lpos; float d = length(dv); float a = clamp(1.0 - d / L.w, 0.0, 1.0); a *= a;',
+      '    float ndl = max(dot(lnn, dv / max(d, 0.001)), 0.0) * 0.7 + 0.3;',
+      '    reflectedLight.directDiffuse += uLampC[i].rgb * (uLampC[i].a * a * ndl) * diffuseColor.rgb; } }',
+    ].join('\n'),
+    apply(sh) {
+      sh.uniforms.uLampP = UNI.uLampP; sh.uniforms.uLampC = UNI.uLampC;
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + LAMP_GLSL.decl).replace('#include <lights_fragment_end>', LAMP_GLSL.frag);
+    },
+  };
   function nearFade(shader, uni) {
     // fades the whole object by its origin's (trunk base's) horizontal distance to the camera, not per pixel,
     // so a tall trunk beside the chase camera disappears cleanly instead of leaving a dotted strip
@@ -692,6 +712,7 @@
 
   function facadeCompile(shader) {
     shader.uniforms.uNight = UNI.uNight; shader.uniforms.uSkyTint = UNI.uHor;
+    LAMP_GLSL.apply(shader);
     shader.uniforms.uFlood = { value: (this && this.userData && this.userData.flood) || 0 };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec4 facade;\nvarying vec4 vFac;')
@@ -730,6 +751,7 @@
   }
   function groundCompile(shader) {
     const ud = this.userData;
+    LAMP_GLSL.apply(shader);
     shader.uniforms.auxMap = ud.auxU;
     shader.uniforms.uNight = UNI.uNight; shader.uniforms.uTime = UNI.uTime; shader.uniforms.uSunDir = UNI.uSunDir;
     shader.uniforms.uSunCol = UNI.uSunCol; shader.uniforms.uZen = UNI.uZen; shader.uniforms.uHor = UNI.uHor;
@@ -792,6 +814,8 @@
     UNI.uZen = { value: new THREE.Color('#3a74c4') }; UNI.uHor = { value: new THREE.Color('#d2dfe8') };
     UNI.uMoonDir = { value: new THREE.Vector3(-0.3, 0.8, -0.4).normalize() };
     UNI.uSunVis = { value: 1 };
+    UNI.uLampP = { value: Array.from({ length: LAMPS_N }, () => new THREE.Vector4()) };
+    UNI.uLampC = { value: Array.from({ length: LAMPS_N }, () => new THREE.Vector4()) };
 
     TEX.facade = canvasTex(2048, 256, paintFacadeAtlas, { premult: true });
     TEX.facade.wrapS = TEX.facade.wrapT = THREE.ClampToEdgeWrapping;
@@ -2080,8 +2104,8 @@
   /* ================================================================ sky, sun, fog, lights */
   // time-of-day keys: minute, zenith, horizon, sun colour, sun intensity, hemi sky, hemi ground, hemi intensity
   const TOD = [
-    [0, '#070c1e', '#30294a', '#7088c0', 0.2, '#33406e', '#2a1e14', 0.5],
-    [290, '#08101f', '#2c2848', '#7088c0', 0.2, '#33406e', '#2a1e14', 0.5],
+    [0, '#070c1e', '#30294a', '#8aa0d8', 0.3, '#44558c', '#36291f', 0.64],
+    [290, '#08101f', '#2c2848', '#8aa0d8', 0.3, '#44558c', '#36291f', 0.64],
     [345, '#29396e', '#d58a8e', '#ff9a70', 0.55, '#5a5a8a', '#3a2a22', 0.6],
     [400, '#4a76c0', '#f2c6a2', '#ffc896', 1.7, '#8aa2c8', '#6a5038', 0.78],
     [480, '#3d78c8', '#d8e2ea', '#fff0dc', 2.5, '#a6bede', '#7a6448', 0.85],
@@ -2090,9 +2114,9 @@
     [1020, '#4f72b4', '#f4c890', '#ffc078', 2.3, '#a8b0c8', '#8a6440', 0.8],
     [1080, '#495c9c', '#fa9c60', '#ff9a52', 1.8, '#8c8cb0', '#7a5030', 0.72],
     [1120, '#33407a', '#de7650', '#ff7a40', 0.9, '#6a6a98', '#4a3426', 0.62],
-    [1160, '#1c2350', '#7a4a6a', '#8a7ab0', 0.4, '#3e4270', '#20180f', 0.55],
-    [1220, '#090f24', '#3a3050', '#7088c0', 0.2, '#33406e', '#2a1e14', 0.5],
-    [1440, '#070c1e', '#30294a', '#7088c0', 0.2, '#33406e', '#2a1e14', 0.5],
+    [1160, '#1c2350', '#7a4a6a', '#8a7ab0', 0.4, '#454a7a', '#2c2218', 0.6],
+    [1220, '#090f24', '#3a3050', '#8aa0d8', 0.3, '#44558c', '#36291f', 0.64],
+    [1440, '#070c1e', '#30294a', '#8aa0d8', 0.3, '#44558c', '#36291f', 0.64],
   ];
   const SUN = { gx: 0.6, gy: 0.2, elev: 0.5, day: 1, night: 0, dir: null, lightDir: null, moon: false };
   const SKYC = {};
@@ -2204,7 +2228,7 @@
     // fog: horizon colour, slightly towards the zenith
     E.scene.fog.color.set(T.hor).lerp(UNI.uZen.value, 0.12);
     E.scene.fog.far = Q.drawDist; E.scene.fog.near = Q.drawDist * (night > 0.5 ? 0.18 : 0.3);
-    E.renderer.toneMappingExposure = 1.0 + night * 0.25;
+    E.renderer.toneMappingExposure = E.expo || 1;
     // sun light
     const sun = E.sun;
     sun.color.set(T.sun); sun.intensity = T.sunI * (SUN.moon ? 0.9 : 1);
@@ -2227,8 +2251,12 @@
   // a few real point lights near the focus at night (lamps, R.lights, actor lights)
   const lightCands = [];
   const actorLights = [];
+  // the player at night: a soft cool fill round him (no shadow, no visible source) so he never melts into the dark,
+  // brighter where there is no lamp near (the eye adapting), and the exposure rising in dark lanes
+  const NIGHT = { fill: 0.42, fillDark: 0.72, fillR: 46, fillH: 12, expo: [0.06, 0.32], litFull: 0.7, expoK: 1.4, lit: 0 };
+  let _lv = null, _col = null; // (three is loaded lazily: made on first use)
   function updatePointLights(fx, fy) {
-    const P = E.points; if (!P || !P.length) return;
+    const P = E.points || [];
     const night = SUN.night;
     lightCands.length = 0;
     if (night > 0.05) {
@@ -2243,7 +2271,20 @@
       for (const L of RL) { if (!isFinite(L.x)) continue; const d = Math.hypot(L.x - fx, L.y - fy); if (d < 260) lightCands.push([d * 0.8, L.x, L.h != null ? L.h : ((RFh ? (N.world.roofs.heightAt(L.x, L.y) || 0) * VS : 0) + 8), L.y, L.color || '#ffb050', L.intensity == null ? 1 : L.intensity, (L.r || 40) * 1.4]); }
       for (const L of actorLights) { const d = Math.hypot(L.x - fx, L.y - fy); if (d < 300) lightCands.push([d * 0.7, L.x, L.h || 6, L.y, L.color || '#fff2d0', L.intensity == null ? 1 : L.intensity, L.r || 60]); }
       lightCands.sort((a, b) => a[0] - b[0]);
+      // how lit is the player's spot (lamps within their reach of him): 0 = a dark lane, 1+ = under a street light
+      const pl = N.player;
+      let lit = 0;
+      if (pl && isFinite(pl.x)) for (const c of lightCands) { const d = Math.hypot(c[1] - pl.x, c[3] - pl.y), r = c[6] * 1.1; if (d < r) lit += c[5] * (1 - d / r); }
+      NIGHT.lit += (lit - NIGHT.lit) * 0.08;
+      if (pl && isFinite(pl.x) && !(R_camOverride())) {
+        const dark = 1 - U.clamp(NIGHT.lit / NIGHT.litFull, 0, 1);
+        lightCands.unshift([0, pl.x, elevation(pl) + NIGHT.fillH, pl.y, '#c8d2ff', NIGHT.fill + (NIGHT.fillDark - NIGHT.fill) * dark, NIGHT.fillR]);
+      }
     }
+    // exposure: the eye opens up in the dark, less so under the lamps (smoothed: a second or so to adapt)
+    const dark = 1 - U.clamp(NIGHT.lit / NIGHT.litFull, 0, 1);
+    const want = 1 + night * (NIGHT.expo[0] + (NIGHT.expo[1] - NIGHT.expo[0]) * dark);
+    E.expo = E.expo == null ? want : E.expo + (want - E.expo) * Math.min(1, (E.frameDt || 0.016) / NIGHT.expoK);
     for (let i = 0; i < P.length; i++) {
       const c = lightCands[i], p = P[i];
       if (!c) { p.intensity = 0; continue; }
@@ -2251,7 +2292,23 @@
       p.color.set(c[4]);
       p.distance = c[6]; p.intensity = 1.6 * c[5] * night;
     }
+    // the next LAMPS_N lamps: the lamp-pool uniforms (view space)
+    const LP = UNI.uLampP && UNI.uLampP.value, LC = UNI.uLampC && UNI.uLampC.value;
+    if (!LP) return;
+    if (!_lv) { _lv = new THREE.Vector3(); _col = new THREE.Color(); }
+    E.camera.updateMatrixWorld();
+    const vm = E.camera.matrixWorldInverse;
+    let n = 0;
+    for (let i = P.length; i < lightCands.length && n < LAMPS_N; i++) {
+      const c = lightCands[i];
+      _lv.set(c[1], c[2], c[3]).applyMatrix4(vm);
+      LP[n].set(_lv.x, _lv.y, _lv.z, c[6] * 1.05);
+      _col.set(c[4]); LC[n].set(_col.r, _col.g, _col.b, 1.25 * c[5] * night);
+      n++;
+    }
+    for (; n < LAMPS_N; n++) LP[n].w = 0;
   }
+  const R_camOverride = () => !!(N.render && N.render.camOverride);
 
   /* ================================================================ cameras */
   const CAM = {
@@ -2628,6 +2685,7 @@
     const t0 = now();
     const R = N.render, P = PROF.on;
     if (P) PROF.t = t0;
+    E.frameDt = dt || 0.016;
     UNI.uTime.value = (N.time.real || t0 / 1000) % 10000;
     // lights pushed by systems' draw() this frame (markers etc.) -> point light candidates
     updateCamera(dt);
@@ -2821,6 +2879,8 @@
 
   /* ================================================================ API */
   const api = (N.view3d = {
+    /** night lighting: how lit the player's spot is, the exposure the eye has adapted to, the lamp pools in use */
+    get nightState() { const LP = UNI.uLampP ? UNI.uLampP.value : []; return { lit: +NIGHT.lit.toFixed(3), expo: +(E.expo || 1).toFixed(3), pools: LP.filter((v) => v.w > 0).length, TUNE: NIGHT }; },
     ready: false,
     THREE: null,
     H, VS, CHUNK: CH, FLOOR_H,
@@ -2960,6 +3020,8 @@
     get mode() { return view.mode; },
     get quality() { return Q; },
     get uniforms() { return UNI; },
+    /** night lighting for a lit material's onBeforeCompile: H.lamps.apply(shader) (the lamp pools round the focus) */
+    lamps: LAMP_GLSL,
     get materials() { return MAT; },
     /** world (x, y, h) -> THREE.Vector3 */
     pos(x, y, h) { return new THREE.Vector3(x, h || 0, y); },

@@ -641,6 +641,7 @@
     ].join('\n') + '\n';
   }
   function personCompile(shader) {
+    if (H.lamps) H.lamps.apply(shader); // lit by the street lamps round him at night
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\n' + personVertexHeader(false))
       .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvec3 pPos = vec3(position);\npAnim(pPos, objectNormal);')
@@ -1333,6 +1334,7 @@
   const DARK = '#1c1a1c', BLACK = '#121214', SEAT = '#1e1a1a', CHROMEC = '#c9cdd2', GLASSC = '#24303a', CREAM = '#efe6cf', RUBBER = '#2a2828';
   function vehicleCompile(shader) {
     shader.uniforms.uNight = H.uniforms.uNight; shader.uniforms.uHor = H.uniforms.uHor;
+    if (H.lamps) H.lamps.apply(shader);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 aSP;\nattribute vec3 aPiv;\nattribute vec4 iVA;\nattribute vec4 iVB;\nuniform float uNight;\nuniform vec3 uHor;\nvarying vec3 vEm;\n' + GLSL_UNPACK + GLSL_ROT)
       .replace('#include <beginnormal_vertex>', [

@@ -2289,6 +2289,7 @@ vec3 ngWaterCol(vec3 lit, vec3 P, vec3 nrm, float t, float deep){
   const VERT_COMMON = 'varying vec3 vWP;\nuniform vec3 uCamPos;\n';
   function commonUniforms(shader, ud) {
     const U = I.UNI;
+    const LG = (I && I.H && I.H.lamps) || V.lamps; if (LG) LG.apply(shader); // the street lamps' pools on the road / ground at night
     shader.uniforms.uNight = U.uNight; shader.uniforms.uTime = U.uTime; shader.uniforms.uSunDir = U.uSunDir;
     shader.uniforms.uSunCol = U.uSunCol; shader.uniforms.uZen = U.uZen; shader.uniforms.uHor = U.uHor;
     shader.uniforms.uWet = GU.uWet; shader.uniforms.uRain = GU.uRain; shader.uniforms.uCamPos = GU.uCamPos; shader.uniforms.uGain = GU.uGain;
