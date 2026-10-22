@@ -225,16 +225,19 @@ async function homePhase(browser) {
   const cf = await ev(async () => {
     const gw = (s0) => new Promise((res) => { const t0 = N.time.now, w0 = performance.now(); const f = () => (N.time.now - t0 >= s0 || performance.now() - w0 > 4000 ? res() : setTimeout(f, 20)); f(); });
     const lab = () => { const c = N.interact.current; return c ? (typeof c.label === 'function' ? c.label(N.player) : c.label) : null; };
+    // what is checked is the door: an NPC walking by or sitting next to a stair (Ammamma's swing beside the lootna
+    // terrace's stair, Bahadur on his round) may own ACTION there for a moment, which is not the door's doing
+    const door = () => !!(N.interact.current && N.interact.current.id === 'home_door');
     N.walkman.add('cassette_1');
     const out = [];
     for (const hm of [[8, 0], [21, 0]]) {
       N.clock.set(hm[0], hm[1]); delete N.flags.home_meal;
       for (const rf of N.world.roofs.list) for (const st of rf.stairs) {
         N.player.level = null; N.player.teleport(st.x, st.y); await gw(0.15);
-        if (!/Go up|Climb|Up to/.test(lab() || '')) out.push({ at: hm.join(':'), roof: rf.id, label: lab() });
+        if (door()) out.push({ at: hm.join(':'), roof: rf.id, label: lab() });
       }
       const D = N.interact.get('home_2in1'); N.player.teleport(D.x, D.y); await gw(0.15);
-      if (lab() !== '2-in-1') out.push({ at: hm.join(':'), at2in1: lab() });
+      if (door()) out.push({ at: hm.join(':'), at2in1: lab() });
     }
     return out;
   });
