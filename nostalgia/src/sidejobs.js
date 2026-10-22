@@ -151,6 +151,7 @@
     if (sp > 60) cargoHit(TUNE.cargoCrash, 'crash'); else if (sp > 40) cargoHit(TUNE.cargoBump, 'bump');
   });
   N.on('vehicle:pothole', (d) => { if (J.cargo && d && d.vehicle === (N.player && N.player.vehicle) && d.speed > 40) cargoHit(TUNE.cargoBump, 'pothole'); });
+  N.on('vehicle:breaker', (d) => { if (J.cargo && d && d.lead && d.vehicle === (N.player && N.player.vehicle) && d.severity > 0.35) cargoHit(d.severity > 1 ? TUNE.cargoCrash : TUNE.cargoBump, 'breaker'); });
   N.on('player:fall', () => { if (J.cargo) cargoHit(TUNE.cargoCrash, 'fall'); });
   let driftWas = false;
   function cargoTick() {

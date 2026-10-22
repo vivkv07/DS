@@ -136,6 +136,21 @@ nostalgia/
                     Nagar Road coffee bars, jewellers, boutiques, pubs, parlours (invented boards, glass fronts,
                     canopies, neon); one terrSelf `t:'custom'` structure each (2D draw + build3d); system 'hills'
                     (order 43.8: 2D night lights, the parked cars) -> N.hills (tests/hills.cjs)
+  src/breakers.js   (after hills.js) speed breakers, 2003: on 'world:built', on the road graph (deterministic): a
+                    pair either side of each school / college / hospital gate, one at each temple, mosque, church,
+                    dargah and market, the home colony's own hump, self-made humps along colony lanes and streets
+                    by district style; rumble strips on arterials; each strip on plain ROAD, clear of junction
+                    mouths, sharp bends, bridges and rails. Looks: painted (black-yellow / black-white, worn by the
+                    tyres), plain tar (some with a kerb gap two-wheelers ride through), rumble. 2D painted into
+                    the ground chunks (wraps setGroundPainter); 3D one terrSelf `t:'custom'` structure each (the
+                    hump's profile on the terrain). System 'breakers' (order 30.5, after the vehicles move): each
+                    wheel's height lifts / pitches the body (v.hump, v.humpPitch: vehicles.js 2D,
+                    view3d_actors.js + models3d_vehicles.js 3D, view3d.js the first-person seat); over the
+                    vehicle's comfortable speed: speed lost,
+                    the body launched and landed (v.jolt), shake, DHADAK, a two-wheeler's fall flat out (not on
+                    relaxed). traffic.js speed planning eases off before one (limitAhead). Event
+                    'vehicle:breaker' (story.js / story2.js / sidejobs.js cargo meters) -> N.breakers
+                    (tests/breakers.cjs)
   src/assets3d_index.js GENERATED (tools/pack_assets3d.cjs, from assets3d/ship.json): N.ASSETS3D_INDEX =
                     every shipped model (core pack ids + lazy per-GLB ids, ~18 KB); loaded at boot (§21)
   src/models3d.js   Blender model runtime (§21): lazily loads GLTFLoader + the pack when 3D starts,

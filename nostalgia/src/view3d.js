@@ -2546,13 +2546,15 @@
           if (!reducedMotion() && ws > 4) { CAM.bobPh += dt * 9; eyeH += Math.sin(CAM.bobPh) * Math.min(0.22, ws * 0.006); }
         }
         if (cls === 'bike' && !reducedMotion()) eyeH += Math.sin(tnow * 9) * Math.min(0.15, spd * 0.001);
+        // over a speed breaker (breakers.js): the seat rises with the body (in the air too) and the view nods with it
+        if (veh.hump) eyeH += veh.hump;
       } else {
         CAM.fpsOff = 0;
         // head bob while walking / running (off with reduced motion)
         if (!reducedMotion() && spd > 4) { CAM.bobPh += dt * (spd > 60 ? 13 : 9); CAM.bob = Math.sin(CAM.bobPh) * Math.min(0.28, spd * 0.004); } else CAM.bob *= Math.exp(-dt * 8);
         eyeH += CAM.bob;
       }
-      const cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
+      const pv = view.pitch - (veh && veh.humpPitch ? veh.humpPitch : 0), cp = Math.cos(pv), sp = Math.sin(pv);
       cam.position.set(eyeX, eyeH, eyeY);
       CAM.look.set(eyeX + Math.cos(yaw) * cp * 10, eyeH - sp * 10, eyeY + Math.sin(yaw) * cp * 10);
       cam.lookAt(CAM.look);

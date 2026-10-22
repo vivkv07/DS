@@ -857,11 +857,12 @@
       else if (sp > TUNE.cargoBumpSpeed) hurt(TUNE.cargoBump, 'Bump!');
     };
     const onPot = (d) => { if (d && mine(d.vehicle) && (d.speed == null || d.speed > TUNE.cargoBumpSpeed)) hurt(TUNE.cargoBump, '*Dhadak!* Pothole.'); };
+    const onHump = (d) => { if (d && d.lead && mine(d.vehicle) && d.severity > 0.35) hurt(d.severity > 1 ? TUNE.cargoCrash : TUNE.cargoBump, '*Dhadak!* Speed breaker.'); };
     const onFall = () => hurt(TUNE.cargoCrash, 'Fell! The bag rolled.');
-    N.on('bump', onBump); N.on('vehicle:pothole', onPot); N.on('player:fall', onFall);
+    N.on('bump', onBump); N.on('vehicle:pothole', onPot); N.on('vehicle:breaker', onHump); N.on('player:fall', onFall);
     meterShow(label, 100);
     C.hurt = hurt;
-    C.stop = () => { if (C.stopped) return; C.stopped = true; N.off('bump', onBump); N.off('vehicle:pothole', onPot); N.off('player:fall', onFall); meterHide(); };
+    C.stop = () => { if (C.stopped) return; C.stopped = true; N.off('bump', onBump); N.off('vehicle:pothole', onPot); N.off('vehicle:breaker', onHump); N.off('player:fall', onFall); meterHide(); };
     onEnd(api, C.stop);
     return C;
   }
