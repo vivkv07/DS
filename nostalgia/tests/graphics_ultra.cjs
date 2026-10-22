@@ -32,7 +32,8 @@ const check = (cond, m, detail) => (cond ? ok(m) : fail(m + (detail !== undefine
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function boot(page) {
-  await page.goto(URL);
+  // a second boot must reload: goto() to the same URL (only a #hash) is a same-document jump that reloads nothing
+  if (page.url() === URL) await page.reload(); else await page.goto(URL);
   await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 180000 });
 }
 // mean of the frame's pixels and the mean absolute difference of two frames (PNG buffers), via the page's canvas
@@ -55,6 +56,7 @@ async function main() {
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
+  page.on('dialog', (d) => d.accept().catch(() => {})); // (leave-page prompts on a reload)
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '/* stubbed */' }));
   await page.route(CDN, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_JS }));
 
