@@ -702,8 +702,10 @@
       this.mode = 'drive'; this.x = v0.x; this.y = v0.y; this.vx = v0.vx || 0; this.vy = v0.vy || 0;
       if (pedal) {
         const thr = Math.max(0, +v0.throttle || +(v0.ctl && v0.ctl.throttle) || 0);
-        if (thr > 0.05 && !this.god) { this.energy -= dt * TUNE.pedalDrain * thr; drainKey = 'pedal'; }
-        else this.energy += dt * TUNE.pedalRecover;
+        // (uphill the pedals get heavy; freewheeling downhill rests the legs: terrain.js)
+        const gr = N.terrain && N.terrain.ready ? (v0.grade || 0) : 0, upK = N.terrain ? N.terrain.TUNE.pedalUp : 0;
+        if (thr > 0.05 && !this.god) { this.energy -= dt * TUNE.pedalDrain * thr * (1 + upK * Math.max(0, gr)); drainKey = 'pedal'; }
+        else this.energy += dt * TUNE.pedalRecover * (gr < -0.04 ? 1.5 : 1);
         if (this.energy <= 0) { this.energy = 0; if (!this.legsGone) { this.legsGone = true; if (N.hud) N.hud.toast('Legs gone! *Saans phool gayi!*', 2000); } }
         if (this.legsGone && this.energy >= TUNE.exhaustedUntil) this.legsGone = false;
       } else { this.energy += dt * TUNE.recoverRide; this.legsGone = false; drainKey = 'ride'; }
@@ -753,8 +755,12 @@
     const wantRun = canControl && inp.down('run') && mag > 0.15 && !noRun;
     if (this.exhausted && this.energy > TUNE.exhaustedUntil) this.exhausted = false;
     const running = wantRun && !this.exhausted && this.energy > 0;
+    // the ground's rise and fall along where he is going (terrain.js): slower and tiring uphill, quicker down
+    const TRN = N.terrain && N.terrain.ready ? N.terrain : null;
+    const slopeMul = TRN && mag > 0.05 ? TRN.walkMul(this.x, this.y, mx, my) : 1;
+    const upG = TRN && mag > 0.05 ? Math.max(0, TRN.gradeAt(this.x, this.y, Math.atan2(my, mx))) : 0;
     if (running && !this.god) {
-      this.energy -= dt * TUNE.runDrain * (S.sugar ? 0.7 : 1); this.restT = 0;
+      this.energy -= dt * TUNE.runDrain * (S.sugar ? 0.7 : 1) * (1 + (TRN ? TRN.TUNE.runDrainUp : 0) * upG); this.restT = 0;
       if (this.energy <= 0) { this.energy = 0; this.exhausted = true; if (N.hud) N.hud.toast('*Saans phool gayi!*', 1800); N.emit('player:exhausted', this); }
     } else {
       this.restT += dt;
@@ -769,7 +775,7 @@
     if (very) mul *= 0.9;
     if (S.coma) mul *= 0.9;
     if (running) { if (S.knee) mul *= 0.9; if (hungry) mul *= 0.9; }
-    const top = (running ? RUN : WALK) * N.world.surfaceSpeed(surf, 'walk') * mul;
+    const top = (running ? RUN : WALK) * N.world.surfaceSpeed(surf, 'walk') * mul * slopeMul;
     const tvx = mx * top * mag, tvy = my * top * mag;
     const a = 1 - Math.exp(-dt * (mag > 0.05 ? 11 : 16));
     this.vx += (tvx - this.vx) * a; this.vy += (tvy - this.vy) * a;

@@ -1273,6 +1273,9 @@
     return FRUST;
   }
   /** is a sphere at world (x, h, y) with radius r worth drawing? (frustum, or close to the player for shadows) */
+  // [terrain] the ground under (x, y) (terrain.js through view3d.js): things placed at a height above the ground
+  // (vehicles, props, parked dressing) stand on it; H.elev(e) already includes it for entities
+  const TH = (x, y) => (H.terrainAt ? H.terrainAt(x, y) : 0);
   function visible(x, h, y, r) {
     if (DBG.cam) return true;
     const f = frustum();
@@ -2442,7 +2445,7 @@
     return v._bus[k];
   }
   function busLife(v, md, sx, steer) {
-    const d = camDist(v.x, 8, v.y);
+    const d = camDist(v.x, 8 + TH(v.x, v.y), v.y);
     if (d > 300 || v.fallen) return;
     const seed = (v.seed | 0) & 0xffff, t = H.time, pl = N.player;
     const low = H.quality.tier === 'low';
@@ -2498,9 +2501,15 @@
     const j = v.jolt || 0;
     if (j > 0) { const ph = (1 - j) * Math.PI * 3.2, big = md.bike ? 1 : 0.7; yOff += -Math.sin(ph) * j * 0.8 * big; pitch += Math.sin(ph * 1.3) * j * 0.05 * big; roll += Math.sin(ph * 1.7) * j * 0.04 * (v.joltSide || 1); }
     if (md.boat) { const ph = t + ((v.seed | 0) % 100); yOff = 0.15 + Math.sin(ph * 1.3) * 0.22; roll = Math.sin(ph * 0.9) * 0.035; pitch = Math.sin(ph * 1.1 + 1) * 0.02 - clamp((v.speed || 0) / 600, -0.02, 0.06); }
-    FR.set(v.x, yOff, v.y, -(v.angle || 0), roll, pitch);
+    const th = TH(v.x, v.y);
+    if (N.terrain && N.terrain.ready && !md.boat) {
+      const sl = N.terrain.slopeAt(v.x, v.y), ca = Math.cos(v.angle || 0), sa = Math.sin(v.angle || 0);
+      pitch += Math.atan(sl.gx * ca + sl.gy * sa); // nose up the hill
+      roll -= Math.atan(-sl.gx * sa + sl.gy * ca) * (md.bike ? 0.35 : 1); // the high side up (a rider keeps his bike nearly upright)
+    }
+    FR.set(v.x, yOff + th, v.y, -(v.angle || 0), roll, pitch);
     vehicleFx(v, T, md);
-    if (!visible(v.x, md.H * 0.5, v.y, md.L * 0.55 * sx + 3)) {
+    if (!visible(v.x, md.H * 0.5 + th, v.y, md.L * 0.55 * sx + 3)) {
       if (DBG.track === v) DBG.rec = { kind: 'vehicle', model: md.key, spin: -((v.wheelPhase || 0) * 2) / (md.rearR || 2), culled: true, frame: ST.frame };
       return;
     }
@@ -2559,7 +2568,7 @@
     // riders: driver, pillion, passengers
     const near = mine;
     // closed cars: seen through the translucent glass when the camera is close enough to tell
-    const seeIn = !md.show && !!md.glassIndex && !cockpit && md.seats.length > 0 && camDist(v.x, 6, v.y) < 170;
+    const seeIn = !md.show && !!md.glassIndex && !cockpit && md.seats.length > 0 && camDist(v.x, 6 + th, v.y) < 170;
     if (md.show || fps || seeIn) {
       const seats = md.seats;
       if (v.driver && seats[0] && !v.fallen && !cockpit) {
@@ -2618,7 +2627,7 @@
       if (beacon) { FR.apply(0, md.H + 0.6, 0, P3); glow(P3[0], P3[1], P3[2], beacon === 2 ? 0.2 : 1.0, beacon === 2 ? 0.4 : 0.15, beacon === 2 ? 1.0 : 0.08, 7); }
     }
     // painted lettering
-    if (OPT.decals && DEC.pool && md.decals.length && !cockpit && camDist(v.x, 5, v.y) < 260) {
+    if (OPT.decals && DEC.pool && md.decals.length && !cockpit && camDist(v.x, 5 + th, v.y) < 260) {
       for (const d of md.decals) {
         const di = DEC.pool.add(); if (di < 0) break;
         const fy = FACE_YAW[d.face] || 0;
@@ -2628,7 +2637,7 @@
         ST.decals++;
       }
     }
-    if (BLOBS && !md.boat) blob(v.x, v.y, md.L * sx * 1.05, md.W * sz * 1.15, v.angle || 0, 0);
+    if (BLOBS && !md.boat) blob(v.x, v.y, md.L * sx * 1.05, md.W * sz * 1.15, v.angle || 0, th);
     DBG.riderNext = false;
   }
 
@@ -3022,8 +3031,9 @@
       for (let k = 0; k < e.cars.length; k++) {
         const c = e.cars[k]; if (!c || !isFinite(c.x)) continue;
         const md = model(k === 0 ? 'train_engine' : 'train_coach');
-        FR.set(c.x, 0, c.y, -(c.a || 0), 0, 0);
-        if (!visible(c.x, 4, c.y, 10)) continue;
+        const tc = TH(c.x, c.y);
+        FR.set(c.x, tc, c.y, -(c.a || 0), 0, 0);
+        if (!visible(c.x, 4 + tc, c.y, 10)) continue;
         const P = vpool(md), i = P.add(); if (i < 0) continue;
         FR.write(P.M, i * 16, 0, 0, 0, 0, 0, 0, 1, 1, 1);
         const A = P.A.iVA.array, B = P.A.iVB.array, q = i * 4;
@@ -3504,7 +3514,7 @@
       if (el > 0) { poseRest(J); armsTo(J, -0.05, 1.3, 8.4, -0.35, 1.5, 9.0, 0.35); }
       else if (q.carry) { const wk = q.carry === 'bonam' ? 0.85 : 1; gaitParams(6, false, wk, GP); gaitPose(J, t * GP.f + i * 0.37, GP, wk); if (q.carry === 'bonam') armsTo(J, 0.02, 0.25, 9.2, -0.62, 0.25, 9.2, 0.62); else if (q.carry === 'dappu') { J[4] = 0.9; J[6] = 1.2; J[5] = 0.8 + Math.sin(t * 10 + i) * 0.3; J[7] = 1.4; } }
       else { poseRest(J); J[4] += Math.sin(t * 1.3 + i) * 0.05; J[5] += Math.sin(t * 1.1 + i * 2) * 0.05; }
-      FR.set(q.x, el, q.y, -(q.a || 0), 0, 0);
+      FR.set(q.x, el + TH(q.x, q.y), q.y, -(q.a || 0), 0, 0);
       submitPerson(look, 1000 + i, FR, 0, 0, 0, J, {});
     }
     // props
@@ -3515,8 +3525,9 @@
         case 'lorry': case 'tractor': case 'giant': {
           const s = pr.kind === 'tractor' ? 0.75 : pr.kind === 'giant' ? 1.2 : 1;
           const md = model('lorry_open');
-          FR.set(pr.x, 0, pr.y, yaw, 0, 0);
-          if (!visible(pr.x, 8, pr.y, 30 * s)) break;
+          const tp = TH(pr.x, pr.y);
+          FR.set(pr.x, tp, pr.y, yaw, 0, 0);
+          if (!visible(pr.x, 8 + tp, pr.y, 30 * s)) break;
           const P = vpool(md), vi = P.add();
           if (vi >= 0) { FR.write(P.M, vi * 16, 0, 0, 0, 0, 0, 0, s, s, s); const A = P.A.iVA.array, B = P.A.iVB.array, q2 = vi * 4; A[q2] = pack(['#e8742a', '#2a5cb8', '#c8202a', '#3a8a3a', '#f2c230'][i % 5]); A[q2 + 1] = pack('#e8c060'); A[q2 + 2] = night > 0.1 ? 1 : 0; A[q2 + 3] = 0; B[q2] = 0; B[q2 + 1] = 0; B[q2 + 2] = 0; B[q2 + 3] = 0; }
           for (const w of md.wheels) { const W = WHEELS.solid, wi = W.add(); if (wi >= 0) FR.write(W.M, wi * 16, w.x * s, w.r * s, w.z * s, 0, 0, 0, w.r * s, w.r * s, w.w * s); }
@@ -3529,7 +3540,7 @@
           const lake = Math.atan2(pr.oy || 0, pr.ox || 1);
           const cy = -(lake - Math.PI / 2);
           const md = model('crane');
-          FR.set(pr.x, 0, pr.y, cy, 0, 0);
+          FR.set(pr.x, TH(pr.x, pr.y), pr.y, cy, 0, 0);
           const P = vpool(md), vi = P.add();
           if (vi >= 0) { FR.write(P.M, vi * 16, 0, 0, 0, 0, 0, 0, 1, 1, 1); const A = P.A.iVA.array, B = P.A.iVB.array, q2 = vi * 4; A[q2] = pack('#e0b020'); A[q2 + 1] = pack('#c8901a'); A[q2 + 2] = 0; A[q2 + 3] = 0; B[q2] = slew; B[q2 + 1] = 0; B[q2 + 2] = 0; B[q2 + 3] = 0; }
           for (const w of md.wheels) { const W = WHEELS.solid, wi = W.add(); if (wi >= 0) FR.write(W.M, wi * 16, w.x, w.r, w.z, 0, 0, 0, w.r, w.r, w.w); }
@@ -3599,8 +3610,9 @@
     const p = N.player; if (!p || !D.lm || Math.hypot(D.lm.x - p.x, D.lm.y - p.y) > 700) return;
     for (const v of D.parked || []) {
       const md = model(DRESS_MODEL[v.kind] || 'chetak');
-      FR.set(v.x, 0, v.y, -(v.a || 0), -(md.standLean || 0), 0);
-      if (!visible(v.x, 3, v.y, 10)) continue;
+      const tv = TH(v.x, v.y);
+      FR.set(v.x, tv, v.y, -(v.a || 0), -(md.standLean || 0), 0);
+      if (!visible(v.x, 3 + tv, v.y, 10)) continue;
       const P = vpool(md), i = P.add(); if (i < 0) continue;
       FR.write(P.M, i * 16, 0, 0, 0, 0, 0, 0, 1, 1, 1);
       const A = P.A.iVA.array, B = P.A.iVB.array, q = i * 4; A[q] = pack(v.col); A[q + 1] = pack(shadeHex(v.col, 0.7)); A[q + 2] = 0; A[q + 3] = 0; B[q] = 0; B[q + 1] = 0; B[q + 2] = 0; B[q + 3] = 0;
@@ -3610,7 +3622,7 @@
     for (let k = 0; k < (D.peds || []).length; k++) {
       const q = D.peds[k]; if (!q.look) continue;
       poseRest(J); J[4] += Math.sin(t * 1.2 + (q.ph || 0)) * 0.08; J[5] = 0.2 + Math.sin(t * 2 + k) * 0.1;
-      FR.set(q.x, 0, q.y, -(q.a || 0), 0, 0);
+      FR.set(q.x, TH(q.x, q.y), q.y, -(q.a || 0), 0, 0);
       submitPerson(q.look, 2000 + k, FR, 0, 0, 0, J, {});
     }
   }
@@ -3686,7 +3698,7 @@
   /** per vehicle, every frame (also off screen, so marks and smoke stay continuous) */
   function vehicleFx(v, T, md) {
     if (!FXS.pt || OPT.fx === false || !T) return;
-    if (camDist(v.x, 3, v.y) > 320) { v._sk3 = null; return; }
+    if (camDist(v.x, 3 + TH(v.x, v.y), v.y) > 320) { v._sk3 = null; return; }
     const tnow = nowS();
     // skid marks along vehicles.js's own rear-wheel track points
     if (v.skidding && (v.skL || v.skR) && T.mode !== 'boat') {

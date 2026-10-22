@@ -393,7 +393,17 @@
     } else {
       vf = approach(vf, 0, (T.drag + (v.driver ? 0 : 90)) * dt);
     }
-    if (vf > top + 1) vf = approach(vf, top, (accel + (vf - top) * 2.5) * dt);
+    // the ground's rise and fall (terrain.js): gravity along the heading. Downhill a cycle runs away (up to downTop
+    // past its top speed), uphill it is work; nothing while held on the brake at a stop (parked: the drag holds it)
+    let topD = top;
+    const TR = N.terrain;
+    if (TR && TR.ready && T.mode !== 'boat') {
+      const ga = TR.accelAlong(v.x, v.y, v.angle, T.pedal ? 'pedal' : T.cls);
+      if (ga && !(ctl.brake && Math.abs(vf) < 6)) vf += ga * dt;
+      if (ga > 0) topD = top * (1 + Math.min(TR.TUNE.downTop, ga / 60));
+      v.grade = -ga / (TR.TUNE.g || 1);
+    }
+    if (vf > topD + 1) vf = approach(vf, topD, (accel + (vf - topD) * 2.5) * dt);
     if (hb) vf = approach(vf, 0, T.brake * 0.4 * dt);
     // steering: rate depends on speed (bikes can turn slowly when nearly stopped)
     const sp = Math.abs(vf), sn = sp / T.maxSpeed;

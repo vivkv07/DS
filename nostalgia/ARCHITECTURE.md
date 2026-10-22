@@ -53,6 +53,14 @@ nostalgia/
   src/audio.js      WebAudio SFX, music sequencer, radio -> N.audio
   src/render.js     canvas, pixel scaling, camera, projection, layer queue, chunk cache, draw helpers -> N.render, N.draw
   src/worlddata.js  pure data: the map (districts, roads, water, parks, blocks, landmarks, places) -> N.WORLD_DATA
+  src/terrain_data.js GENERATED (tools/geo/build_terrain.cjs, from SRTM terrarium tiles): N.TERRAIN_DATA, real
+                    ground heights every 75 u (lakes flat, the Musi and nalas as channels, bridges levelled)
+  src/terrain.js    (after worlddata.js) the ground's rise and fall: heightAt / slopeAt / gradeAt (3D units above
+                    Hussain Sagar's level), accelAlong (gravity along a heading, per vehicle class) and walkMul
+                    (on foot) for vehicles.js / entities.js, the 2D hillshade baked into the ground chunks;
+                    view3d.js / view3d_ground.js / view3d_actors.js / wires.js put the 3D city on it (H.terrainAt,
+                    H.terrainBase; chunk structures via sitOnTerrain unless `terrSelf`) -> N.terrain
+                    (tests/terrain.cjs)
   src/world.js      builds collision/surface grid, spatial index, road graph; draws ground + generic buildings -> N.world
   src/world_extras.js (map maker) railways + level crossings: wraps setGroundPainter / renderMap -> N.worldExtras
   src/landmarks.js  custom pseudo-3D drawing for named landmarks -> N.landmarks

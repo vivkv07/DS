@@ -1039,19 +1039,26 @@
   }
 
   /** height of an entity's feet in 3D (roof zones) */
+  // [terrain hook] the ground's real rise and fall (terrain.js): the city sits on it. Chunk structures take the
+  // terrain under their footprint (the low side: a house on a slope is cut into it), long walls / rails follow it
+  // vertex by vertex, landmarks the low corner of theirs, entities the point under them; the ground provider's
+  // terrain mesh and roads bend with it (view3d_ground.js), vehicles pitch with it (view3d_actors.js)
+  function terrH(x, y) { const T = N.terrain; return T && T.ready ? T.heightAt(x, y) : 0; }
+  function terrBase(x0, y0, x1, y1) { return Math.min(terrH(x0, y0), terrH(x1, y0), terrH(x0, y1), terrH(x1, y1), terrH((x0 + x1) / 2, (y0 + y1) / 2)); }
   function elevation(e) {
     if (!e) return 0;
+    const t = terrH(e.x, e.y);
     if (e.level) {
       const RF = N.world && N.world.roofs;
-      if (RF && RF.heightAt) { const h = RF.heightAt(e.x, e.y); if (h) return h * VS; }
+      if (RF && RF.heightAt) { const h = RF.heightAt(e.x, e.y); if (h) return h * VS + t; }
       const r = RF && RF.get && RF.get(e.level);
-      if (r) return r.h * VS;
+      if (r) return r.h * VS + t;
     }
-    if (isFinite(e.z) && e.z > 0) return e.z;
-    // [ground hook] raised footpaths / medians and pothole dips under the entity (view3d_ground.js)
+    if (isFinite(e.z) && e.z > 0) return e.z + t;
+    // [ground hook] raised footpaths / medians and pothole dips under the entity (view3d_ground.js; the terrain in it)
     const gp = gpOn();
     if (gp && gp.heightAt) return gp.heightAt(e.x, e.y, e);
-    return 0;
+    return t;
   }
 
   /* ================================================================ ground painting (render.js painter) */
@@ -1149,6 +1156,8 @@
       geom: null, detail: -1, objs: [], lights: [], dist: 0, job: null, gjob: null, wantDetail: 0, wantRes: 0, dirty: false,
     };
     ch.group.name = 'chunk' + ci + '_' + cj;
+    ch.tmin = Infinity; ch.tmax = -Infinity; // [terrain] the ground's range over the chunk (culling)
+    for (let a = 0; a <= 4; a++) for (let b = 0; b <= 4; b++) { const h = terrH(ch.x0 + CH * a / 4, ch.y0 + CH * b / 4); ch.tmin = Math.min(ch.tmin, h); ch.tmax = Math.max(ch.tmax, h); }
     ch.group.position.set(ch.x0, 0, ch.y0);
     ch.group.matrixAutoUpdate = false; ch.group.updateMatrix();
     E.city.add(ch.group);
@@ -1556,7 +1565,7 @@
       if (!slot) continue;
       let gb = byPage.get(slot.page);
       if (!gb) { gb = new GB({ facade: true }); byPage.set(slot.page, gb); }
-      const y0 = FLOOR_H * 0.7, y1 = y0 + h;
+      const y0 = FLOOR_H * 0.7 + (b._toff || 0), y1 = y0 + h;
       const ax = s[0] + ux * m + nx * off, az = s[1] + uz * m + nz * off, bx = s[0] + ux * (m + w) + nx * off, bz = s[1] + uz * (m + w) + nz * off;
       gb.color('#ffffff');
       gb.quad(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y1, az, [slot.u0, slot.v0, slot.u1, slot.v1]);
@@ -1696,10 +1705,29 @@
     ch.gjob = J;
     return J;
   }
+  const TLISTS = ['trunks', 'blobs', 'crowns', 'rocks', 'glows', 'lamps'];
+  const PER_VERTEX = { wall: 1, rail: 1, compound: 1 };
+  /** the structure just built (gb vertices from n0, list entries from lens, objects from o0) onto the terrain */
+  function sitOnTerrain(J, s, n0, lens, o0) {
+    const T = N.terrain; if (!T || !T.ready) return;
+    const P = J.gb.P, n1 = J.gb.n, ox = J.ox, oz = J.oz;
+    if (PER_VERTEX[s.t]) {
+      for (let k = n0; k < n1; k++) P[k * 3 + 1] += terrH(ox + P[k * 3], oz + P[k * 3 + 2]);
+      for (let q = 0; q < TLISTS.length; q++) { const A = J[TLISTS[q]], lamps = TLISTS[q] === 'lamps'; for (let k = lens[q]; k < A.length; k++) A[k][1] += terrH(A[k][0] + (lamps ? 0 : ox), A[k][2] + (lamps ? 0 : oz)); }
+      s._toff = terrH(s.cx != null ? s.cx : s.x, s.cy != null ? s.cy : s.y);
+    } else {
+      const off = s.x != null && s.w != null && s.d != null ? terrBase(s.x, s.y, s.x + s.w, s.y + s.d) : terrH(s.cx != null ? s.cx : s.x, s.cy != null ? s.cy : s.y);
+      for (let k = n0; k < n1; k++) P[k * 3 + 1] += off;
+      for (let q = 0; q < TLISTS.length; q++) { const A = J[TLISTS[q]]; for (let k = lens[q]; k < A.length; k++) A[k][1] += off; }
+      s._toff = off;
+    }
+    for (let k = o0; k < J.out.length; k++) J.out[k].position.y += s._toff;
+  }
   function stepGeom(J, deadline) {
     const L = J.list;
     while (J.i < L.length) {
       const s = L[J.i++];
+      const n0 = J.gb.n, o0 = J.out.length, lens = TLISTS.map((k) => J[k].length);
       try {
         const custom = STRUCT.get(s.t);
         if (custom) { const o = custom(THREE, s, H, J.gb, J); if (o && o.isObject3D) { o.position.x -= J.ox; o.position.z -= J.oz; J.out.push(o); } }
@@ -1716,6 +1744,7 @@
           default: break;
         }
       } catch (e) { N.err('view3d.struct:' + s.t, e); }
+      try { sitOnTerrain(J, s, n0, lens, o0); } catch (e) { N.err('view3d.terrain', e); }
       if ((J.i & 15) === 0 && now() > deadline) return false;
     }
     return true;
@@ -1894,6 +1923,7 @@
     if (obj === false) { lmRecs.set(lm.id, { lm, obj: null, reg }); return; }
     if (!obj || !obj.isObject3D) obj = fallbackLandmark(lm);
     if (!obj.userData.worldSpace) obj.position.set(lm.x + obj.position.x, obj.position.y, lm.y + obj.position.z);
+    obj.position.y += terrBase(lm.x - (lm.w || 20) / 2, lm.y - (lm.d || 20) / 2, lm.x + (lm.w || 20) / 2, lm.y + (lm.d || 20) / 2); // [terrain]
     const shadow = Q.shadows && !(reg && reg.opts && reg.opts.castShadow === false);
     obj.traverse((m) => { if (m.isMesh) { m.castShadow = shadow && m.userData.noShadow !== true; m.receiveShadow = Q.shadows; } });
     obj.name = obj.name || 'lm:' + lm.id;
@@ -2268,8 +2298,8 @@
       // (2D lights carry no height: one standing on a roof / terrace — a mission marker's night glow on the home
       // terrace, journey audit J16 — is lifted to the roof instead of lighting the street under it)
       const RFh = N.world && N.world.roofs && N.world.roofs.heightAt;
-      for (const L of RL) { if (!isFinite(L.x)) continue; const d = Math.hypot(L.x - fx, L.y - fy); if (d < 260) lightCands.push([d * 0.8, L.x, L.h != null ? L.h : ((RFh ? (N.world.roofs.heightAt(L.x, L.y) || 0) * VS : 0) + 8), L.y, L.color || '#ffb050', L.intensity == null ? 1 : L.intensity, (L.r || 40) * 1.4]); }
-      for (const L of actorLights) { const d = Math.hypot(L.x - fx, L.y - fy); if (d < 300) lightCands.push([d * 0.7, L.x, L.h || 6, L.y, L.color || '#fff2d0', L.intensity == null ? 1 : L.intensity, L.r || 60]); }
+      for (const L of RL) { if (!isFinite(L.x)) continue; const d = Math.hypot(L.x - fx, L.y - fy); if (d < 260) lightCands.push([d * 0.8, L.x, terrH(L.x, L.y) + (L.h != null ? L.h : ((RFh ? (N.world.roofs.heightAt(L.x, L.y) || 0) * VS : 0) + 8)), L.y, L.color || '#ffb050', L.intensity == null ? 1 : L.intensity, (L.r || 40) * 1.4]); }
+      for (const L of actorLights) { const d = Math.hypot(L.x - fx, L.y - fy); if (d < 300) lightCands.push([d * 0.7, L.x, (L.abs ? 0 : terrH(L.x, L.y)) + (L.h || 6), L.y, L.color || '#fff2d0', L.intensity == null ? 1 : L.intensity, L.r || 60]); }
       lightCands.sort((a, b) => a[0] - b[0]);
       // how lit is the player's spot (lamps within their reach of him): 0 = a dark lane, 1+ = under a street light
       const pl = N.player;
@@ -2377,8 +2407,8 @@
     }
   }
   function camBlocked(x, y, z, G, GW, GH, C, marg) {
-    const hg = heightAt(x, z);
-    if (y < hg + 1.2) return true;
+    const hg = heightAt(x, z), tg = terrH(x, z);
+    if (y < hg + tg + 1.2) return true;
     if (hg === 0 && G) {
       const i = Math.floor(x / C), j = Math.floor(z / C);
       if (i >= 0 && j >= 0 && i < GW && j < GH) { const k = j * GW + i; if (G[k] === SOLID_SURF && y < dynSolidH(k) + 1.2) return true; }
@@ -2464,8 +2494,9 @@
       CAM.orbit += dt * (mode === 'title' ? 0.05 : 0.02);
       const z = Math.max(0.3, R.cam.zoom || 1), dist = (mode === 'title' ? 300 : 170) / z, hgt = (mode === 'title' ? 150 : 95) / z;
       const ang = (R.camOverride ? view.yaw : 0) + CAM.orbit;
-      CAM.tgt.set(R.cam.x, 12, R.cam.y);
-      CAM.pos.set(R.cam.x - Math.cos(ang) * dist, hgt, R.cam.y - Math.sin(ang) * dist);
+      const tc = terrH(R.cam.x, R.cam.y);
+      CAM.tgt.set(R.cam.x, 12 + tc, R.cam.y);
+      CAM.pos.set(R.cam.x - Math.cos(ang) * dist, hgt + Math.max(tc, terrH(R.cam.x - Math.cos(ang) * dist, R.cam.y - Math.sin(ang) * dist)), R.cam.y - Math.sin(ang) * dist);
       const k = CAM.snap ? 1 : 1 - Math.exp(-dt * 2.5);
       if (!CAM.cpos) { CAM.cpos = CAM.pos.clone(); CAM.ctgt = CAM.tgt.clone(); }
       CAM.cpos.lerp(CAM.pos, k); CAM.ctgt.lerp(CAM.tgt, k);
@@ -2544,7 +2575,7 @@
     if (CAM.snap || free < CAM.distCur) CAM.distCur = free; else CAM.distCur += (free - CAM.distCur) * (1 - Math.exp(-dt * 2.2));
     const d = CAM.distCur;
     let px = CAM.tgt.x - Math.cos(view.yaw) * cp * d, py = CAM.tgt.y + sp * d, pz = CAM.tgt.z - Math.sin(view.yaw) * cp * d;
-    py = Math.max(py, el + 1.6);
+    py = Math.max(py, el + 1.6, terrH(px, pz) + 2.5);
     // screen shake from render.js (R.shake): reuse its offset
     if (R.camX != null && isFinite(R.camX)) { const sx2 = R.camX - R.cam.x, sy2 = R.camY - R.cam.y; if (Math.abs(sx2) > 0.8 || Math.abs(sy2) > 0.8) { px += sx2 * 0.35; py += sy2 * 0.2; } }
     cam.position.set(px, py, pz);
@@ -2621,7 +2652,7 @@
     const oProj = R.proj;
     R.proj = function (x, y, h) {
       if (!api.active) return oProj.apply(this, arguments);
-      const q = project(x, y, (h || 0) * 1.15);
+      const q = project(x, y, terrH(x, y) + (h || 0) * 1.15); // (2D heights are above the ground: the terrain under it)
       const r = rect2D || canvasRect;
       const sx = ((q.behind ? -9999 : q.x) - r.left) / r.width * R.W, sy = ((q.behind ? -9999 : q.y) - r.top) / r.height * R.H;
       return { x: sx, y: sy, k: 1 };
@@ -2651,7 +2682,9 @@
     if (!_ray.r) { _ray.r = new THREE.Raycaster(); _ray.v = new THREE.Vector2(); _ray.p = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); _ray.o = new THREE.Vector3(); }
     _ray.v.set((cx - canvasRect.left) / canvasRect.width * 2 - 1, -((cy - canvasRect.top) / canvasRect.height * 2 - 1));
     _ray.r.setFromCamera(_ray.v, E.camera);
-    const hit = _ray.r.ray.intersectPlane(_ray.p, _ray.o);
+    _ray.p.constant = -terrH(N.render.cam.x, N.render.cam.y);
+    let hit = _ray.r.ray.intersectPlane(_ray.p, _ray.o);
+    for (let k = 0; k < 2 && hit; k++) { _ray.p.constant = -terrH(hit.x, hit.z); hit = _ray.r.ray.intersectPlane(_ray.p, _ray.o); }
     return hit ? { x: hit.x, y: hit.z } : { x: N.render.cam.x, y: N.render.cam.y };
   }
 
@@ -2756,7 +2789,7 @@
     const sr = Q.shadows ? Q.shadowRange + 40 : -1;
     let vis = 0;
     for (const ch of chunks.values()) {
-      CULL.b.min.set(ch.x0 - 30, -2, ch.y0 - 30); CULL.b.max.set(ch.x0 + CH + 30, ch.top || 80, ch.y0 + CH + 30);
+      CULL.b.min.set(ch.x0 - 30, (ch.tmin || 0) - 4, ch.y0 - 30); CULL.b.max.set(ch.x0 + CH + 30, Math.max(ch.top || 80, (ch.tmax || 0) + 80), ch.y0 + CH + 30);
       let v = CULL.f.intersectsBox(CULL.b);
       if (!v && sr > 0 && rectDist(ch.x0, ch.y0, ch.x0 + CH, ch.y0 + CH, fx, fy) < sr) v = true;
       ch.group.visible = v;
@@ -3028,7 +3061,7 @@
     /** place an object at world (x, y) facing world angle a */
     place(obj, x, y, h, a) { obj.position.set(x, h || 0, y); if (a != null) obj.rotation.y = -a; return obj; },
     yaw(a) { return -(a || 0); },
-    elev: elevation, heightAt,
+    elev: elevation, heightAt, terrainAt: terrH, terrainBase: terrBase,
     builder(opts) { return new GB(opts); },
     merge: mergeGeometries,
     mat, color: (hex) => col(hex), tex, signSlot,
