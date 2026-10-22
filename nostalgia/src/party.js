@@ -1315,9 +1315,11 @@
       D.inv.addEventListener('click', (ev) => { const b = ev.target.closest('button[data-a]'); if (!b) return; if (b.dataset.a === 'acc') acceptInvite(); else declineInvite(); });
     }
     const s = inv.spec;
-    D.inv.innerHTML = '<div class="pt-inv-t"><span class="pt-inv-i">' + esc(s.icon) + '</span><b>' + esc(inv.nick) + '</b> challenges you to <b>' + esc(s.name) + '</b></div>' +
+    // (the host repeats the invite every 2 s: rebuild only when it changed, so a finger already on Accept is not lost)
+    const html = '<div class="pt-inv-t"><span class="pt-inv-i">' + esc(s.icon) + '</span><b>' + esc(inv.nick) + '</b> challenges you to <b>' + esc(s.name) + '</b></div>' +
       '<p class="pt-inv-l">' + esc(describe(s, inv.opts)) + '</p>' +
       '<div class="pt-card-b"><button type="button" class="sign-btn small" data-a="acc"><kbd>Y</kbd> Accept</button><button type="button" class="sign-btn small alt" data-a="skip"><kbd>N</kbd> Skip</button></div><div class="pt-bar"><b></b></div>';
+    if (D.inv.__html !== html) { D.inv.innerHTML = html; D.inv.__html = html; }
     D.inv.classList.add('show');
   }
   function closeInvite() { if (D.inv) { D.inv.remove(); D.inv = null; } }
@@ -1332,8 +1334,9 @@
     }
     const host = isHost(S);
     const names = roomPlayers().map((p) => { const a = S.acc.has(p.key), sk = S.skip.has(p.key); return '<li class="' + (a ? 'ok' : sk ? 'no' : '') + '">' + (a ? '✓ ' : sk ? '✕ ' : '… ') + esc(p.me ? 'You' : p.nick) + '</li>'; }).join('');
-    D.lob.innerHTML = '<div class="pt-card-t">' + esc(S.spec.icon + ' ' + S.spec.name) + '</div><p class="pt-card-l">' + (host ? 'Waiting for friends to accept…' : 'Accepted! Waiting for ' + esc(S.hostNick) + ' to start…') + '</p><ul class="pt-who">' + names + '</ul>' +
+    const html = '<div class="pt-card-t">' + esc(S.spec.icon + ' ' + S.spec.name) + '</div><p class="pt-card-l">' + (host ? 'Waiting for friends to accept…' : 'Accepted! Waiting for ' + esc(S.hostNick) + ' to start…') + '</p><ul class="pt-who">' + names + '</ul>' +
       '<div class="pt-card-b">' + (host ? '<button type="button" class="sign-btn small" data-a="go"' + (S.acc.size >= 2 ? '' : ' disabled') + '><kbd>G</kbd> Start now</button>' : '') + '<button type="button" class="sign-btn small alt" data-a="x"><kbd>X</kbd> ' + (host ? 'Call off' : 'Leave') + '</button></div><div class="pt-bar"><b></b></div>';
+    if (D.lob.__html !== html) { D.lob.innerHTML = html; D.lob.__html = html; } // (only on a change: taps are not lost)
   }
   function closeLobby() { if (D.lob) { D.lob.remove(); D.lob = null; } }
   function barTick() {

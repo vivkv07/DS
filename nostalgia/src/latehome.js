@@ -1790,7 +1790,7 @@
     const dk = S.kids.find((k) => k.role === 'daddy');
     if (dk && dk.isMe) {
       toast(text, 1800);
-      try { N.hud.blip('lh:hint', { x, y }, { color: '#ff4a3a', icon: 'ring', pulse: true, size: 4 }); S.hintT = 3; } catch (e) { /* ignore */ }
+      try { N.hud.blip('lh:hint', { x, y }, { color: '#ff4a3a', icon: 'ring', pulse: true, size: 2 }); S.hintT = 3; } catch (e) { /* ignore */ }
     } else if (!dk) {
       const h = S.seekers.find((sk) => sk.role === 'hunter');
       if (h && !h.track) { h.inv = { x, y, t: 6, kind: 'hint' }; }

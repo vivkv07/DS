@@ -846,7 +846,7 @@
         const col = colorOf(g.key);
         if (N.hud && N.hud.blip && N.hud.blips && (!N.hud.blips.has(g.blip) || g.blipCol !== col)) {
           if (g.blipCol && N.hud.unblip) N.hud.unblip(g.blip);
-          N.hud.blip(g.blip, e, { color: col, icon: 'dot', label: g.nick, size: 5 }); g.blipCol = col;
+          N.hud.blip(g.blip, e, { color: col, icon: 'dot', label: g.nick, size: 2 }); g.blipCol = col;
         }
       } catch (er) { N.err('online.blip', er); }
     }
@@ -903,13 +903,51 @@
     const q = Rn.proj(e.x, e.y, hh);
     return { x: rect.left + (q.x / Rn.W) * rect.width, y: rect.top + (q.y / Rn.H) * rect.height, behind: false };
   }
+  // Layout reads for the nameplates happen in the system's read() phase (main.js calls it before anything writes the
+  // DOM this frame, ARCHITECTURE §2 "Layout read phase"): the canvas rect, the edge tags' sizes and, ~3x a second, the
+  // rects an edge arrow must stay out of (N.hud.keepOutCached(): OSD, money, minimap ...; the room HUD column: badge,
+  // 👫, Nearby, 💬; the touch buttons).
+  const LAY = { rect: null, sizes: new Map(), keep: [], keepT: 0 };
+  function readLayout() {
+    const Rn = N.render;
+    if (!R.ch || !tagHost || !Rn || !Rn.canvas) { LAY.rect = null; return; }
+    LAY.rect = Rn.canvas.getBoundingClientRect();
+    for (const g of GH.values()) if (g.tag && g.tag.classList.contains('ol-edge')) LAY.sizes.set(g.key, [g.tag.offsetWidth, g.tag.offsetHeight]);
+    const t = nowMs();
+    if (t - LAY.keepT < 330) return;
+    LAY.keepT = t;
+    const out = [];
+    try { const k = N.hud && N.hud.keepOutCached ? N.hud.keepOutCached() : null; if (Array.isArray(k)) for (const r of k) out.push(r); } catch (e) { /* ignore */ }
+    const add = (el) => { if (!el || el.hidden) return; const r = el.getBoundingClientRect(); if (r.width > 2 && r.height > 2) out.push([r.left - 4, r.top - 4, r.right + 4, r.bottom + 4]); };
+    try {
+      if (hudEl && !hudEl.hidden) for (const c of hudEl.children) add(c);
+      document.querySelectorAll('#touch .t-btn').forEach(add);
+    } catch (e) { N.err('online.readLayout', e); }
+    LAY.keep = out;
+  }
+  // an edge arrow's box [cx, cy] ± [bw, bh] slid along its screen edge (between lo and hi) out of the keep-out rects
+  function clearOfHud(X, Y, bw, bh, vertical, lo, hi) {
+    const K = LAY.keep;
+    if (!K.length) return [X, Y];
+    const hit = (x, y) => K.some((r) => x + bw > r[0] && x - bw < r[2] && y + bh > r[1] && y - bh < r[3]);
+    if (!hit(X, Y)) return [X, Y];
+    for (let d = 8; d <= 480; d += 8) {
+      for (const s of [d, -d]) {
+        const v = (vertical ? Y : X) + s;
+        if (v < lo || v > hi) continue;
+        const x = vertical ? X : v, y = vertical ? v : Y;
+        if (!hit(x, y)) return [x, y];
+      }
+    }
+    return [X, Y];
+  }
   function placeTags() {
     if (!tagHost) { if (!R.ch) return; tagHost = document.createElement('div'); tagHost.id = 'ol-tags'; (document.getElementById('ui') || document.body).appendChild(tagHost); }
     const Rn = N.render, mode = N.state.mode;
     const live = !!R.ch && (mode === 'play' || mode === 'dialogue' || mode === 'minigame' || mode === 'cutscene');
     tagHost.classList.toggle('hide', !live);
     if (!live || !Rn || !Rn.canvas || !Rn.W) return;
-    const rect = Rn.canvas.getBoundingClientRect();
+    const rect = LAY.rect || Rn.canvas.getBoundingClientRect();
     const V3 = N.view3d;
     const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
     const P0 = N.player;
@@ -954,12 +992,15 @@
       if (!isFinite(dx) || !isFinite(dy) || (dx === 0 && dy === 0)) { hideTag(el); continue; }
       // keep the whole arrow + name + distance box on screen, and clear of the clock / money strip at the top
       el.classList.add('ol-edge');
-      const bw = (el.offsetWidth || 80) / 2 + 6, bh = (el.offsetHeight || 56) / 2 + 6, topBand = 64;
+      const sz = LAY.sizes.get(g.key) || [80, 56];
+      const bw = (sz[0] || 80) / 2 + 6, bh = (sz[1] || 56) / 2 + 6, topBand = 64;
       const x0 = rect.left + Math.max(M, bw), x1 = rect.right - Math.max(M, bw);
       const y0 = rect.top + Math.max(M, bh) + topBand, y1 = rect.bottom - Math.max(M, bh);
       const ecx = (x0 + x1) / 2, ecy = (y0 + y1) / 2;
-      const t = Math.min((x1 - x0) / 2 / Math.max(1e-6, Math.abs(dx)), (y1 - y0) / 2 / Math.max(1e-6, Math.abs(dy)));
-      const X = ecx + dx * t, Y = ecy + dy * t;
+      const tx = (x1 - x0) / 2 / Math.max(1e-6, Math.abs(dx)), ty = (y1 - y0) / 2 / Math.max(1e-6, Math.abs(dy));
+      const t = Math.min(tx, ty);
+      // on the left / right edge it slides up or down, on the top / bottom edge sideways, clear of the HUD (audit X2)
+      const [X, Y] = clearOfHud(ecx + dx * t, ecy + dy * t, bw - 6, bh - 6, tx <= ty, tx <= ty ? y0 : x0, tx <= ty ? y1 : x1);
       const meters = Math.hypot(e.x - P0.x, e.y - P0.y) * 1.6;
       const dEl = el.querySelector('.ol-dist');
       const dTxt = meters >= 1000 ? (meters / 1000).toFixed(1) + ' km' : Math.round(meters / 10) * 10 + ' m';
@@ -1848,6 +1889,7 @@
         if (e && Math.hypot(e.x - R.pin.x, e.y - R.pin.y) < 48) { try { N.hud.unblip('ol:pin'); } catch (er) { /* ignore */ } R.pinWp = null; }
       }
     },
+    read() { readLayout(); }, // layout reads before this frame's DOM writes (main.js)
     draw() { placeTags(); },
   });
 

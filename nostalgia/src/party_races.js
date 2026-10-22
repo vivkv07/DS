@@ -227,7 +227,7 @@
       const a = ctx.ai.spawn(p.uid, q.x, q.y, { angle: q.a, vehicle: C.foot ? null : true });
       if (!a) { ctx.ai.report(p.uid, { dnf: true, note: 'stayed home' }); continue; }
       st.prog.set(p.uid, { s: C.s0, cp: 0 });
-      try { N.hud.blip('pt:ai:' + p.uid, a, { color: color(i), icon: 'dot', label: p.nick, size: 3 }); st.aiBlips.push('pt:ai:' + p.uid); } catch (e) { /* ignore */ }
+      try { N.hud.blip('pt:ai:' + p.uid, a, { color: color(i), icon: 'dot', label: p.nick, size: 1.4 }); st.aiBlips.push('pt:ai:' + p.uid); } catch (e) { /* ignore */ }
       const f = ctx.ai.friend(p.uid);
       setTimeout(() => { if (f && ctx.phase !== 'done') ctx.ai.bark(p.uid, f.hi[Math.floor(ctx.ai.rng.next() * f.hi.length)], 2.4); }, 600 + i * 450);
       const onDone = () => { if (!ctx.results().find((r) => r.uid === p.uid && r.timeMs != null)) { ctx.ai.report(p.uid, { timeMs: ctx.elapsed(), progress: 1 }); const won = !ctx.results().some((r) => r.uid !== p.uid && r.timeMs != null && r.timeMs < ctx.elapsed()); if (f) ctx.ai.bark(p.uid, won ? f.win[0] : f.lose[Math.floor(ctx.ai.rng.next() * f.lose.length)], 2.6); } };
@@ -539,7 +539,7 @@
       const i = ctx.players.indexOf(p), q = slotOf(i);
       const a = ctx.ai.spawn(p.uid, q.x, q.y, { angle: q.a });
       if (!a) { ctx.ai.report(p.uid, { dnf: true }); continue; }
-      try { N.hud.blip('pt:ai:' + p.uid, a, { color: color(i), icon: 'dot', label: p.nick, size: 3 }); st.aiBlips.push('pt:ai:' + p.uid); } catch (e) { /* ignore */ }
+      try { N.hud.blip('pt:ai:' + p.uid, a, { color: color(i), icon: 'dot', label: p.nick, size: 1.4 }); st.aiBlips.push('pt:ai:' + p.uid); } catch (e) { /* ignore */ }
       const sk = ctx.ai.skill(p.uid), rng = ctx.ai.rng, f = ctx.ai.friend(p.uid);
       // careful ones walk it back (no spill), a hurried one jogs (the same 3% a second the player loses jogging)
       const hurry = rng.next() < 0.35 + 0.2 * (1 - sk);
@@ -753,7 +753,7 @@
       const i = ctx.players.indexOf(p), q = ctx.grid(s0.x, s0.y, a0, i);
       const a = ctx.ai.spawn(p.uid, q.x, q.y, { angle: a0, vehicle: true });
       if (!a) { ctx.ai.report(p.uid, { dnf: true }); continue; }
-      try { N.hud.blip('pt:ai:' + p.uid, a, { color: color(i), icon: 'dot', label: p.nick, size: 3 }); st.aiBlips.push('pt:ai:' + p.uid); } catch (e) { /* ignore */ }
+      try { N.hud.blip('pt:ai:' + p.uid, a, { color: color(i), icon: 'dot', label: p.nick, size: 1.4 }); st.aiBlips.push('pt:ai:' + p.uid); } catch (e) { /* ignore */ }
       const sk = ctx.ai.skill(p.uid), rng = ctx.ai.rng;
       ai.set(p.uid, { k: 0, think: (ctx.startAt - ctx.now()) / 1000 + 3 + (1 - sk) * 10 + rng.next() * 4, riding: false, sk, rng, f: ctx.ai.friend(p.uid) });
     }
