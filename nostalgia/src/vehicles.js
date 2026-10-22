@@ -1428,6 +1428,8 @@
   let PX = 0, PY = 0;
   function begin(v) {
     fc = Math.cos(v.angle); fs = Math.sin(v.angle); fx0 = v.x; fy0 = v.y; fz = v.z || 0;
+    // over a speed breaker (breakers.js): v.hump is the body's lift in 3D units; the 2D heights are about twice those
+    if (v.hump) fz += v.hump * 1.6;
     // A2 pothole jolt: the body drops, bounces and wiggles (decays with v.jolt)
     const j = v.jolt;
     if (j > 0) {

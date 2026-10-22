@@ -662,6 +662,7 @@
         }
         const j = e.jolt || 0;
         if (j > 0) { const ph = (1 - j) * Math.PI * 3.2, big = bike ? 1 : 0.7; y += -Math.sin(ph) * j * 0.8 * big; pitch += Math.sin(ph * 1.3) * j * 0.05 * big; roll += Math.sin(ph * 1.7) * j * 0.04 * (e.joltSide || 1); }
+        if (e.hump) { y += e.hump; pitch += e.humpPitch || 0; } // over a speed breaker (breakers.js)
         obj.position.set(e.x, H.elev(e) + y, e.y);
         obj.rotation.set(roll, -(e.angle || 0), pitch);
         const steer = (e.steerVis || 0) + (bike ? (e.wobble || 0) * 0.45 : 0);

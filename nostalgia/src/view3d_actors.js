@@ -2673,6 +2673,8 @@
     if (kainchi) v._kainchi = true; else if (v._kainchi && v.driver) v._kainchi = false;
     const j = v.jolt || 0;
     if (j > 0) { const ph = (1 - j) * Math.PI * 3.2, big = md.bike ? 1 : 0.7; yOff += -Math.sin(ph) * j * 0.8 * big; pitch += Math.sin(ph * 1.3) * j * 0.05 * big; roll += Math.sin(ph * 1.7) * j * 0.04 * (v.joltSide || 1); }
+    // over a speed breaker (breakers.js): the wheels' mean height on the hump (or the body in the air), nose up first
+    if (v.hump) { yOff += v.hump; pitch += v.humpPitch || 0; }
     if (md.boat) { const ph = t + ((v.seed | 0) % 100); yOff = 0.15 + Math.sin(ph * 1.3) * 0.22; roll = Math.sin(ph * 0.9) * 0.035; pitch = Math.sin(ph * 1.1 + 1) * 0.02 - clamp((v.speed || 0) / 600, -0.02, 0.06); }
     const th = TH(v.x, v.y);
     if (N.terrain && N.terrain.ready && !md.boat) {

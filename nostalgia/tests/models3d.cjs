@@ -479,7 +479,9 @@ async function fallback(browser) {
   }
   {
     // a pack whose kid_chinnu GLB is corrupt: the kid is skipped, the cycle still loads, no errors
-    const src = fs.readFileSync(path.join(ROOT, 'src/assets3d_pack.js'), 'utf8').replace(/('kid_chinnu': ')Z2xURgIAAAA/, '$1AAAAAAAAAAAA');
+    // (the GLB header: "glTF", version 2, then the file length, whose low byte shows in the 11th base64 character)
+    const src = fs.readFileSync(path.join(ROOT, 'src/assets3d_pack.js'), 'utf8').replace(/('kid_chinnu': ')Z2xURgIAAA[A-Za-z0-9+/]/, '$1AAAAAAAAAAAA');
+    check(src.indexOf("'kid_chinnu': 'AAAAAAAAAAAA") >= 0, 'the test pack has kid_chinnu corrupted');
     const { context, page, errors } = await openPage(browser, { routes: [[/assets3d_pack\.js/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: src })]] });
     await to3D(page, 'tps');
     let st = await waitModels(page);

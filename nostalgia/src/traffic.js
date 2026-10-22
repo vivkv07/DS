@@ -772,7 +772,7 @@
   }
 
   function trafficCtl(v, dt) {
-    const tr = v.tr, ctl = v.ctl, T2 = v.T;
+    const tr = v.tr, ctl = v.ctl, T2 = v.T, BRK = N.breakers && N.breakers.count ? N.breakers : null;
     // the controller never moves the vehicle: its position read once (v.x on the many vehicle shapes is a
     // megamorphic load that boxes a new number each time: audit PERF-16)
     const vX = v.x, vY = v.y;
@@ -871,6 +871,8 @@
       tr.stopT -= dt; want = 0;
       if (tr.stopT <= 0) { tr.stopT = null; tr.stopDone = tr.stopAt; tr.stopAt = null; tr.pull = 0; }
     }
+    // a speed breaker ahead (breakers.js): ease off to this driver's idea of gently, on again after it
+    if (BRK && !v.kin) { const bl = BRK.limitAhead(v); if (bl) { const vb = Math.sqrt(bl.sp * bl.sp + 2 * dec * bl.d); if (vb < want) want = vb; } }
     // occasional auto pull-over (a passenger gets out, systems §3.4)
     if (v.type === 'auto' && !tr.pursuit && tr.stopT == null && asp > 20 && tr.e && tr.e.kind !== 'arterial') {
       if (rnd() < (TUNE.autoPullover / 60) * dt * 2) { tr.pull = 4; tr.pullT = 1.2; }

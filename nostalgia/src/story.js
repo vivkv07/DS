@@ -818,9 +818,11 @@
       if (sp > 60) hit(15); else if (sp > 40) hit(8);
     };
     const onHole = (d) => { if (c.on && d && d.vehicle === N.player.vehicle && (d.speed || 0) > 40) hit(8); };
+    // a speed breaker taken fast (breakers.js): the leading wheel's hit, like a pothole
+    const onHump = (d) => { if (c.on && d && d.lead && d.vehicle === N.player.vehicle && d.severity > 0.35) hit(d.severity > 1 ? 15 : 8); };
     const onFall = () => { if (c.on) hit(15); };
-    N.on('bump', onBump); N.on('vehicle:pothole', onHole); N.on('player:fall', onFall);
-    onEnd(() => { N.off('bump', onBump); N.off('vehicle:pothole', onHole); N.off('player:fall', onFall); c.on = false; });
+    N.on('bump', onBump); N.on('vehicle:pothole', onHole); N.on('vehicle:breaker', onHump); N.on('player:fall', onFall);
+    onEnd(() => { N.off('bump', onBump); N.off('vehicle:pothole', onHole); N.off('vehicle:breaker', onHump); N.off('player:fall', onFall); c.on = false; });
     S.step = { kind: 'cargo', skip: () => { c.skip = true; } };
     return c;
   }
