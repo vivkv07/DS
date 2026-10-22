@@ -3676,3 +3676,40 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   font-family: var(--font-display); font-size: 18px; color: var(--auto-black); background: var(--auto-yellow); border: 3px solid var(--auto-black); border-radius: 4px; box-shadow: 4px 4px 0 var(--apsrtc-red); pointer-events: none; }
 @media (max-width: 480px) { .pt-card-t { font-size: 21px; } .pt-count { font-size: 76px; } .pt-count.go { font-size: 86px; } .pt-card-b .sign-btn { font-size: 17px; } }
 /* === end party === */
+
+/* === cheats (src/cheats.js): the cheat-code card over the pause deck / title === */
+#overlay .mn-cheats { z-index: 8; align-items: center; justify-content: center; padding: calc(10px + var(--safe-t)) calc(10px + var(--safe-r)) calc(10px + var(--safe-b)) calc(10px + var(--safe-l)); background: radial-gradient(ellipse at 50% 45%, rgba(10, 8, 20, 0.5), rgba(10, 8, 20, 0.82)); }
+.ch-card { width: min(660px, calc(100% - 8px)); }
+.ch-card .mn-card-head h2 { font-size: 28px; }
+.ch-body { padding: 0 18px 16px; min-height: 0; overflow-y: auto; touch-action: pan-y; }
+.ch-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 2px 0 6px; }
+.ch-field { display: flex; flex-direction: column; flex: 1 1 220px; min-width: 0; font-size: 14px; color: #4a3a30; }
+.ch-field input {
+  min-height: 48px; padding: 6px 10px; font-family: var(--font-osd); font-size: 28px; letter-spacing: 2px; text-transform: uppercase; color: var(--auto-black);
+  background: #fffaf0; border: 3px solid var(--auto-black); border-radius: 4px; box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.12);
+}
+.ch-field input::placeholder { color: #a8998a; letter-spacing: 1px; text-transform: none; font-size: 22px; }
+.ch-field input:focus { outline: 3px solid var(--auto-yellow); outline-offset: 1px; }
+.ch-msg { margin: 4px 0 6px; padding: 6px 10px; font-weight: 600; background: #fff3c4; border-left: 5px solid var(--auto-yellow); }
+.ch-msg.ok { background: #dff2d6; border-left-color: var(--ok); }
+.ch-msg.bad { background: #f8ddd6; border-left-color: var(--danger); }
+.ch-msg[hidden], .ch-sec[hidden], .ch-code[hidden] { display: none; }
+.ch-note { margin: 2px 0 6px; font-size: 13px; color: #6a5646; }
+.ch-sec { padding: 6px 0 8px; border-top: 2px dashed rgba(26, 18, 20, 0.18); }
+.ch-sec h3 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 21px; color: var(--irani-teal); }
+.ch-sub { margin: 0 0 6px; font-size: 13px; color: #6a5646; }
+.ch-list.rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.ch-list.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ch-code {
+  display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 3px 8px; text-align: left;
+  color: var(--auto-black); background: var(--whitewash); border: 2px solid var(--auto-black); border-radius: 4px; box-shadow: 2px 2px 0 rgba(26, 18, 20, 0.35);
+}
+.ch-code b { flex: none; min-width: 92px; font-family: var(--font-osd); font-weight: 400; font-size: 21px; letter-spacing: 1px; color: var(--mn-red); }
+.ch-code span { display: flex; flex-direction: column; min-width: 0; font-size: 13px; line-height: 1.2; }
+.ch-code em { font-style: normal; font-family: var(--font-osd); font-size: 15px; color: #6a5646; }
+.ch-list.chips .ch-code b { min-width: 0; }
+.ch-list.chips .ch-code span { max-width: 160px; }
+.ch-code:hover, .ch-code:focus, .ch-code:focus-visible { background: var(--auto-yellow); }
+.ch-code.hit { background: var(--auto-yellow); box-shadow: 3px 3px 0 var(--apsrtc-red); }
+@media (max-width: 560px) { .ch-list.rows { grid-template-columns: 1fr; } .ch-body { padding: 0 12px 12px; } .ch-field input { font-size: 24px; } }
+/* === end cheats === */

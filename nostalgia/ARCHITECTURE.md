@@ -87,6 +87,13 @@ nostalgia/
                     footpaths, medians, shader markings + zebras), terrain shaders, potholes
                     -> N.view3d.ground, N.view3d.groundHeightAt
   src/view3d_landmarks.js / src/view3d_actors.js  3D landmark models / people, vehicles, animals (§20)
+  src/view3d_post.js (after view3d_actors.js) the Graphics setting (Auto / Low / High / Ultra, Screen section,
+                    localStorage 'nostalgia.graphics') and the Ultra tier: the scene drawn off screen exactly as
+                    High shows it (+ depth), then ambient occlusion, aerial haze warmed towards the sun, bloom,
+                    sun shafts, a film grade, FXAA + sharpening + grain; a richer sky (the core sky's cloud block
+                    swapped for shaded clouds); 4096 shadow map, 8 point lights, render scale up to 2x. Auto picks
+                    Ultra on discrete / Apple-silicon desktop GPUs (WebGL2), steps an auto Ultra down to High below
+                    30 fps; High <-> Ultra live, to / from Low after a reload -> N.graphics (tests/graphics_ultra.cjs)
   src/diwali.js     (after festivals3d.js) Deepavali week 2003 in both views: seasons `pataakha` 20-26 Oct /
                     `diwali` 22-26 Oct, decorated colonies, pataakha stalls, fireworks + families, red cracker
                     paper blown by vehicle wakes and N.wind, haze, scared animals, the cracker box + lighting
@@ -137,6 +144,16 @@ nostalgia/
   supabase/migrations/*_online.sql  the database side of §23 (tables, SECURITY DEFINER functions, grants)
   supabase/migrations/*_party.sql   §24 race leaderboards (race_routes, race_times, race_put / race_top)
   src/debug.js      test hooks + #debug overlay -> N.debug
+  src/marker.js     (after testing.js) the pointer over Chinnu: a yellow triangle over his head or over what he rides, top-down
+                    (on 'fx', above the night) and 3D (a camera-facing sprite over everything, none in first person); Settings >
+                    Screen "Pointer over you" Always (default) / In crowds / Off ('nostalgia.marker.v1') -> N.marker (tests/movement.cjs)
+  src/cheats.js     (after testing.js) typed cheat codes for play-testing: C in free roam, the pause deck's Cheats key,
+                    the title's CHEAT CODE track. Stage codes (PROLOGUE, SANKRANTI..GANESH = M1-M10, DIWALI, INTERLUDE, RAMZAN,
+                    LASTBELL, CHANDRAAT, EID, EPILOGUE, REWIND, CHRISTMAS; also M1..M12 / mission ids) start a fresh game at
+                    that stage with every earlier main mission done; every side activity and odd job has a code too; time and
+                    helper codes (NIGHT, NEXT, PASS, AUTOWIN...) keep the game. The player's own save is put aside before the
+                    first jump (localStorage 'nostalgia.cheats.mygame'; MYGAME restores it); a cheat game has N.flags.cheat
+                    -> N.cheats (DEFAULT_ENABLED: off for release; tests/cheats.cjs)
   src/main.js       boot + main loop
   tools/build.mjs   inlines everything -> dist/nostalgia.html (full page) + dist/artifact.html (fragment); an inlined
                     stylesheet's url()s are rebased (vendor/fonts/ for web.html + the artifact, ../vendor/fonts/ for
@@ -181,8 +198,13 @@ wrapper). A new src file must be added to index.html (and this list) or it won't
   across, a cycle 15x5u, a Chetak 17x7u, an auto-rickshaw 22x13u, an Ambassador 30x14u,
   a city bus 62x18u. A 2-lane road is ~32u wide, an arterial ~56-70u. One storey ≈ 10u
   of height. Charminar footprint ≈ 60x60u.
-- Speeds (u/s): walk 45, run 80, cycle 115, Luna 120, Chetak 150, auto 135, car 165,
+- Speeds (u/s): walk 32 (was 45 until 2026-10-22: "natural motion"; run only on RUN), run 80, cycle 115, Luna 120, Chetak 150, auto 135, car 165,
   RX100 180, bus 115, boat 60. Traffic drives on the **left**.
+  Walking paces elsewhere (escorted walkers, the lorry, story NPCs' default walk, traffic / city-life / street-food
+  walkers, Ghar Pahunchna Hai!'s kids, patrols and clocks, the walking legs of the party races) were tuned against the
+  old 45 and scale by `N.player.paceK()` = `TUNE.walk / TUNE.paceRef` (32 / 45); running speeds are unchanged.
+  The player eases in and out (`TUNE.accel`: go 7, run 4.2, stop 11, turn 10 per s) and turns slower on the move
+  (`TUNE.turnRate`); 3D legs cycle at most `N.models3d.people.GAIT.cadence` times a second (walk 2.1, run 2.8).
 - Collision/surface grid: cell size `N.CELL = 4` u → `N.world.GW x GH` cells (`Uint8Array`, sized at
   build: 2000 x 1500 for v1, 3750 x 2813 = 10.5 M cells for v2).
 
@@ -878,6 +900,8 @@ chunkBuilds, buildMs, ms}` (`ms` = last frame per phase, see §6), `freezeClock(
 returns the final `{x, y}` (null if unknown); `state()` also has `clock, day, district,
 surface, wanted` and `player.energy/money/vehicle`. Overlay keys (with #debug): backquote
 toggles it, Alt+1..4 = 07:00 / 12:00 / 17:30 / 21:00, Alt+G = god mode.
+`N.debug.jump(missionId)` and `N.debug.cheat(code)` (src/cheats.js) set the story up for any mission / stage and start it
+(the console form of the cheat codes; they work with `N.cheats.enabled` off too).
 
 ## 14. Testing
 
@@ -1506,6 +1530,12 @@ N.view3d.registerStructure(t, build(THREE, s, H, gb, job) -> Object3D | void)
     `build3d(THREE, s, H, gb, job)` is built by it, every other one draws nothing in 3D (as
     before). Give your custom structures a build3d rather than registering 'custom' again
     (src/hoardings.js does; it registers the same dispatcher only when ameerpet.js is absent).
+Post hook (src/view3d_post.js): N.emit('view3d:init', {Q, THREE}) fires right before the engine is created
+    (last call for engine-creation quality: shadowSize, pointLights, aniso); when E.post is set,
+    render() calls E.post.render(renderer, scene, camera) instead of renderer.render(scene, camera).
+    (three r149 tone-maps in every material whatever the target and writes linear colour into a
+    target unless it is an XR one: the Ultra scene target is flagged isXRRenderTarget with an sRGB
+    texture encoding so it holds the screen frame; keep that in mind before upgrading three.)
 N.view3d.registerLayer(id, {init(THREE, H), update(dt, H), dispose(H), order})
     Per-frame 3D overlays in world space (mission markers from N.missions.markers(), collectible
     glints, season overlays, kites, birds). Add objects to H.layer (a Group in the scene).

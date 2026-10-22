@@ -36,7 +36,8 @@ const BANNED = /\b(NIIT|APTECH|SSI|INFOSYS|WIPRO|TCS|SATHYA|NARESH|DURGA|PEERS|I
 const LATER = /\b(PYTHON|ANDROID|IPHONE|CLOUD|DEVOPS|SELENIUM|HADOOP|SALESFORCE|AWS|AZURE|ANGULAR|REACT|SPRING BOOT|DATA SCIENCE|BLOCKCHAIN|AI|MACHINE LEARNING|DOCKER|KUBERNETES)\b/;
 
 async function boot(page) {
-  await page.goto(URL);
+  // a second boot must reload: goto() to the same URL (only a #hash) is a same-document jump that reloads nothing
+  if (page.url() === URL) await page.reload({ waitUntil: 'domcontentloaded', timeout: 180000 }); else await page.goto(URL, { timeout: 180000 });
   await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 180000 });
 }
 const dressInfo = () => {
@@ -61,6 +62,7 @@ async function main() {
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
+  page.on('dialog', (d) => d.accept().catch(() => {})); // (leave-page prompts on a reload)
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '/* stubbed */' }));
   await page.route(CDN, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_JS }));
 

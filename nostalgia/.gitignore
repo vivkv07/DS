@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 assets3d/logs/
 video/
+tools/geo/.cache/

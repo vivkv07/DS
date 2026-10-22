@@ -41,6 +41,8 @@
   const N = window.N;
   if (!N || !N.party) return;
   const U = N.util;
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const hyp = Math.hypot;
   const LS = 'nostalgia.races.v1';
@@ -490,8 +492,8 @@
         aiSpeed: (uid) => 64 + 16 * ctx.ai.skill(uid),
         aiWalk: (uid) => {
           const out = [];
-          for (let s = d.s0 + 30; s < P.total; s += 40) { const q = P.at(s); out.push({ x: q.x, y: q.y, speed: s > d.sFoot - 8 ? 43 + 2 * ctx.ai.skill(uid) : null, r: 5 }); }
-          out.push({ x: P.pts[P.pts.length - 1].x, y: P.pts[P.pts.length - 1].y, speed: 44, r: 4 });
+          for (let s = d.s0 + 30; s < P.total; s += 40) { const q = P.at(s); out.push({ x: q.x, y: q.y, speed: s > d.sFoot - 8 ? (43 + 2 * ctx.ai.skill(uid)) * pace() : null, r: 5 }); }
+          out.push({ x: P.pts[P.pts.length - 1].x, y: P.pts[P.pts.length - 1].y, speed: 44 * pace(), r: 4 }); // walking the steps, like him
           return out;
         },
       });
@@ -543,7 +545,7 @@
       const sk = ctx.ai.skill(p.uid), rng = ctx.ai.rng, f = ctx.ai.friend(p.uid);
       // careful ones walk it back (no spill), a hurried one jogs (the same 3% a second the player loses jogging)
       const hurry = rng.next() < 0.35 + 0.2 * (1 - sk);
-      const runV = 62 + 16 * sk, carryV = hurry ? 49 + 2 * rng.next() : 43 + 2 * sk;
+      const runV = 62 + 16 * sk, carryV = (hurry ? 49 + 2 * rng.next() : 43 + 2 * sk) * pace();
       const there = [], back = [];
       for (let s = 40; s < P.total - 10; s += 45) { const r = P.at(s); there.push({ x: r.x, y: r.y, speed: runV, r: 6 }); }
       const pour = 1200 + rng.next() * 1300;
@@ -554,7 +556,7 @@
       ctx.ai.walk(p.uid, there.concat(back), { run: true, onDone: () => {
         const pr = st.prog.get(p.uid) || {};
         const tc = (ctx.elapsed() - (pr.t || 0)) / 1000;
-        let chai = 100 - (carryV > 47 ? 3 * tc : 0) - (rng.next() < 0.2 ? 16 : 0);
+        let chai = 100 - (carryV > 47 * pace() ? 3 * tc : 0) - (rng.next() < 0.2 ? 16 : 0);
         chai = Math.round(clamp(chai, CHAI_MIN + 10, 100));
         st.prog.set(p.uid, { phase: 'done' });
         ctx.ai.report(p.uid, { timeMs: ctx.elapsed(), score: chai, note: chai + '% chai' + (chai < 100 ? ' (+' + ((100 - chai) * CHAI_PENALTY / 1000).toFixed(1) + ' s)' : '') });

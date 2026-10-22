@@ -57,6 +57,8 @@
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const rnd = Math.random;
   const rr = (a, b) => a + rnd() * (b - a);
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const pick = (a) => a[(rnd() * a.length) | 0];
   function wpick(obj) {
     let tot = 0;
@@ -458,7 +460,7 @@
         if (rnd() < 0.15) L.oiled = true;
       }
     }
-    return { look: L, lang, spd: spd * rr(0.88, 1.1) };
+    return { look: L, lang, spd: spd * rr(0.88, 1.1) * pace() };
   }
   /** Role by district style and time (systems §11.2 shares). */
   function pickRole(style, did) {
@@ -879,7 +881,14 @@
       if (ob.gap < 1.2) want = 0;
       blocked = want < 4 && tr.cruise > 10;
       // two vehicles nose to nose inside the same junction, or tangled after a bump: the lower id goes
-      if (blocked && ob.e.tr && tr.blockT > 1.2 && v.id < ob.e.id && ((ob.e.tr.inBox >= 0 && ob.e.tr.inBox === tr.inBox) || ob.gap < -1.5)) { tr.ghost = 1.5; tr.ghostOf = ob.e; }
+      if (blocked && ob.e.tr && tr.blockT > 1.2 && v.id < ob.e.id && ((ob.e.tr.inBox >= 0 && ob.e.tr.inBox === tr.inBox) || ob.gap < -1.5)) {
+        // in view it first backs off a little and lets the other through (no driving through each other where the
+        // player can see); still tangled after that, or off screen: the ghost pass as before
+        let room = false;
+        if (!tr.backed && N.render.inView(vX, vY, 40)) { const bk = sense(v, -Math.cos(v.angle), -Math.sin(v.angle)); room = !bk || bk.gap > 9; }
+        if (room) { tr.backed = true; tr.rev = 0.9; tr.blockT = 0.3; }
+        else { tr.ghost = 1.5; tr.ghostOf = ob.e; }
+      }
       // round a lying cow / parked vehicle / standing person
       if (blocked && !tr.swerve && tr.blockT > TUNE.swerveAfter && isStatic(ob.e)) trySwerve(v, tr, ob, segUx, segUy);
     }
@@ -895,7 +904,7 @@
       if (tr.blockT > 10 && !N.render.inView(vX, vY, 60)) { despawnVehicle(v); return; }
       if (!tr.swerve && tr.blockT > 4 && ob.e.kind === 'vehicle' && ob.e.tr && ob.e.tr.blockT > 3) trySwerve(v, tr, ob, segUx, segUy);
       if (tr.blockT > TUNE.hornAfter && (ob.e === N.player || ob.e.kind !== 'vehicle' || !ob.e.tr || ob.e.tr.blockT < 0.5)) honk(v, 'blocked');
-    } else tr.blockT = Math.max(0, tr.blockT - dt * 2);
+    } else { tr.blockT = Math.max(0, tr.blockT - dt * 2); if (tr.blockT === 0) tr.backed = false; }
     void stopping;
     // ---- steering + pedals
     const diff = U.angleDiff(v.angle, Math.atan2(ty - vY, tx - vX));
@@ -1314,6 +1323,8 @@
         if (p.waitV < 1.5) { vx *= 0.05; vy *= 0.05; }
         else { const s2 = Math.hypot(vx, vy) || 1, side = (p.id & 1) ? 1 : -1; const nx = -vy / s2 * side, ny = vx / s2 * side; vx = nx * speed * 0.8 + vx * 0.2; vy = ny * speed * 0.8 + vy * 0.2; }
       } else p.waitV = 0;
+      // and the people, animals and vehicles round him (entities.js E.steer: sidestep, keep left, slow behind)
+      if (N.entities.steer) { const S = N.entities.steer(p, vx, vy, dt, { arrive: d }); vx = S.x; vy = S.y; }
     }
     const a = 1 - Math.exp(-dt * 8);
     p.vx += (vx - p.vx) * a; p.vy += (vy - p.vy) * a;

@@ -125,6 +125,19 @@
     score: { base: 1000, perSec: 6, perSpot: 120, perItem: 150, floor: 100 },
   };
 
+  // [pace] the sneaking was tuned for the player's old 45 u/s walk (entities.js paceK(): walk now / 45, running is
+  // unchanged): the AI kids and the patrols on foot walk at the same share of it, and the clocks give the walk that
+  // much more time, so a lane takes the same share of the clock it always did
+  (function pace() {
+    const k = N.player && N.player.paceK ? N.player.paceK() : 1;
+    if (!(k > 0) || k === 1) return;
+    const R = TUNE.role;
+    TUNE.kidWalk = Math.round(TUNE.kidWalk * k);
+    R.walker.walk = Math.round(R.walker.walk * k); R.watchman.walk = Math.round(R.watchman.walk * k); R.hunter.walk = Math.round(R.hunter.walk * k);
+    R.daddy.speed = Math.round(R.daddy.speed * k);
+    TUNE.timeLimit = Math.round(TUNE.timeLimit / k); TUNE.warnAt = Math.round(TUNE.warnAt / k); TUNE.daddy.time = Math.round(TUNE.daddy.time / k);
+  })();
+
   /* ================================================================ lines (bible tone: comic, kind) */
   const LINES = {
     notice: {

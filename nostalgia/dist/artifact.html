@@ -3703,6 +3703,43 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
 @media (max-width: 480px) { .pt-card-t { font-size: 21px; } .pt-count { font-size: 76px; } .pt-count.go { font-size: 86px; } .pt-card-b .sign-btn { font-size: 17px; } }
 /* === end party === */
 
+/* === cheats (src/cheats.js): the cheat-code card over the pause deck / title === */
+#overlay .mn-cheats { z-index: 8; align-items: center; justify-content: center; padding: calc(10px + var(--safe-t)) calc(10px + var(--safe-r)) calc(10px + var(--safe-b)) calc(10px + var(--safe-l)); background: radial-gradient(ellipse at 50% 45%, rgba(10, 8, 20, 0.5), rgba(10, 8, 20, 0.82)); }
+.ch-card { width: min(660px, calc(100% - 8px)); }
+.ch-card .mn-card-head h2 { font-size: 28px; }
+.ch-body { padding: 0 18px 16px; min-height: 0; overflow-y: auto; touch-action: pan-y; }
+.ch-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 2px 0 6px; }
+.ch-field { display: flex; flex-direction: column; flex: 1 1 220px; min-width: 0; font-size: 14px; color: #4a3a30; }
+.ch-field input {
+  min-height: 48px; padding: 6px 10px; font-family: var(--font-osd); font-size: 28px; letter-spacing: 2px; text-transform: uppercase; color: var(--auto-black);
+  background: #fffaf0; border: 3px solid var(--auto-black); border-radius: 4px; box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.12);
+}
+.ch-field input::placeholder { color: #a8998a; letter-spacing: 1px; text-transform: none; font-size: 22px; }
+.ch-field input:focus { outline: 3px solid var(--auto-yellow); outline-offset: 1px; }
+.ch-msg { margin: 4px 0 6px; padding: 6px 10px; font-weight: 600; background: #fff3c4; border-left: 5px solid var(--auto-yellow); }
+.ch-msg.ok { background: #dff2d6; border-left-color: var(--ok); }
+.ch-msg.bad { background: #f8ddd6; border-left-color: var(--danger); }
+.ch-msg[hidden], .ch-sec[hidden], .ch-code[hidden] { display: none; }
+.ch-note { margin: 2px 0 6px; font-size: 13px; color: #6a5646; }
+.ch-sec { padding: 6px 0 8px; border-top: 2px dashed rgba(26, 18, 20, 0.18); }
+.ch-sec h3 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 21px; color: var(--irani-teal); }
+.ch-sub { margin: 0 0 6px; font-size: 13px; color: #6a5646; }
+.ch-list.rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.ch-list.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ch-code {
+  display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 3px 8px; text-align: left;
+  color: var(--auto-black); background: var(--whitewash); border: 2px solid var(--auto-black); border-radius: 4px; box-shadow: 2px 2px 0 rgba(26, 18, 20, 0.35);
+}
+.ch-code b { flex: none; min-width: 92px; font-family: var(--font-osd); font-weight: 400; font-size: 21px; letter-spacing: 1px; color: var(--mn-red); }
+.ch-code span { display: flex; flex-direction: column; min-width: 0; font-size: 13px; line-height: 1.2; }
+.ch-code em { font-style: normal; font-family: var(--font-osd); font-size: 15px; color: #6a5646; }
+.ch-list.chips .ch-code b { min-width: 0; }
+.ch-list.chips .ch-code span { max-width: 160px; }
+.ch-code:hover, .ch-code:focus, .ch-code:focus-visible { background: var(--auto-yellow); }
+.ch-code.hit { background: var(--auto-yellow); box-shadow: 3px 3px 0 var(--apsrtc-red); }
+@media (max-width: 560px) { .ch-list.rows { grid-template-columns: 1fr; } .ch-body { padding: 0 12px 12px; } .ch-field input { font-size: 24px; } }
+/* === end cheats === */
+
 </style>
 <canvas id="game" aria-label="Nostalgia — top-down view of 1990s Hyderabad"></canvas>
 <div id="ui"></div>
@@ -33206,6 +33243,85 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   }
   E.pushTo = pushTo;
 
+  /* ============================================= steering: people look where they walk */
+  // E.steer(e, vx, vy, dt, o) -> the velocity e should walk at instead of its wish (vx, vy). It sidesteps the people,
+  // animals and vehicles it would meet within STEER.horizon s (time to collision of its wish against their current
+  // velocity), keeps left when two meet head-on (as Hyderabad walks and drives: each steps to its own left), slows
+  // behind a slower walker in its way and keeps a little personal space; a vehicle counts as its length (a capsule),
+  // not a circle. Worked out every ~STEER.every s per walker and kept as a turn + a speed factor applied to the wish
+  // each frame, so a crowd costs one neighbour query per walker per 0.1 s (on screen only). Fades out within the last steps to a goal
+  // (o.arrive: the distance left) so people still reach their seats, stalls and queues. o: {arrive, ignore (an actor
+  // not to avoid), soft (0..1, default 1)}. Returns E.steerOut {x, y} (scratch: read it at once).
+  const STEER = { horizon: 1.6, every: 0.1, margin: 1.5, look: 26, k: 1.7, turnMax: 1.15 };
+  E.STEER = STEER;
+  const SOUT = { x: 0, y: 0 }, SNEAR = [];
+  E.steerOut = SOUT;
+  function steer(e, vx, vy, dt, o) {
+    SOUT.x = vx; SOUT.y = vy;
+    const s = Math.hypot(vx, vy);
+    const st = e._st || (e._st = { t: 0, turn: 0, mul: 1 });
+    if (s < 2 || !N.world.built) { st.turn *= 0.5; st.mul = 1; return SOUT; }
+    // off screen nobody sees a shoulder brushed: skip the work there
+    // (and well away from the player: the view rect lags a teleport by a frame)
+    const P = N.player;
+    if (N.render && N.render.inView && !N.render.inView(e.x, e.y, 60) && !(P && Math.abs(e.x - P.x) < 320 && Math.abs(e.y - P.y) < 320)) { st.turn = 0; st.mul = 1; st.t = 0; return SOUT; }
+    st.t -= dt;
+    if (st.t <= 0) { st.t = STEER.every * (0.8 + ((e.id * 37) % 10) / 25); steerCompute(e, vx, vy, s, st, o); }
+    let f = o && o.soft != null ? o.soft : 1;
+    if (o && o.arrive != null) f *= U.clamp((o.arrive - 2) / 6, 0, 1);
+    if (f <= 0) return SOUT;
+    const turn = st.turn * f, mul = 1 + (st.mul - 1) * f, c = Math.cos(turn), sn = Math.sin(turn);
+    SOUT.x = (vx * c - vy * sn) * mul; SOUT.y = (vx * sn + vy * c) * mul;
+    return SOUT;
+  }
+  function steerCompute(e, vx, vy, s, st, o) {
+    const ux = vx / s, uy = vy / s, lx = uy, ly = -ux; // my left (y grows down the map)
+    const look = STEER.look + s * 0.6, er = e.r || 3.4, H = STEER.horizon;
+    const n = E.queryN(e.x + ux * look * 0.45, e.y + uy * look * 0.45, look * 0.6 + 8, null, SNEAR);
+    const ign = o && o.ignore, lvl = e.level || null, roof = !!e.roofH;
+    let fx = 0, fy = 0, cap = Infinity;
+    for (let i = 0; i < n; i++) {
+      const q = SNEAR[i];
+      if (q === e || !q.alive || q.hidden || q === ign || q.vehicle || q === e.vehicle || q.kind === 'prop' || q.kind === 'pickup') continue;
+      if ((q.level || null) !== lvl || !!q.roofH !== roof) continue;
+      let qx = q.x, qy = q.y, qr = q.r || 4;
+      if (q.kind === 'vehicle') {
+        if (!q.T) continue;
+        const c = Math.cos(q.angle), sn = Math.sin(q.angle), hl = Math.max(0, q.T.w / 2 - q.T.d / 2);
+        const t = U.clamp((e.x - q.x) * c + (e.y - q.y) * sn, -hl, hl);
+        qx = q.x + c * t; qy = q.y + sn * t; qr = q.T.d / 2;
+      }
+      const px = qx - e.x, py = qy - e.y, d2 = px * px + py * py, R = er + qr + STEER.margin;
+      const qvx = q.vx || 0, qvy = q.vy || 0;
+      // personal space: already this close -> ease away
+      if (d2 < R * R) { const d = Math.sqrt(d2) || 0.01, w = (R - d) / R; fx -= (px / d) * w * 1.1; fy -= (py / d) * w * 1.1; }
+      const along = px * ux + py * uy, side = px * lx + py * ly;
+      // walking behind someone slower in my way: match their pace (a stopped one: slow down to go round)
+      const qa = qvx * ux + qvy * uy;
+      if (along > 0 && Math.abs(side) < R && qa > -4) cap = Math.min(cap, Math.max(qa, 0) + Math.max(0, along - R) * 1.8 + 6);
+      // time to collision of my wish against its motion
+      const rvx = vx - qvx, rvy = vy - qvy, a = rvx * rvx + rvy * rvy;
+      if (a < 1) continue;
+      const b = px * rvx + py * rvy;
+      if (b <= 0) continue;
+      const disc = b * b - a * (d2 - R * R);
+      if (disc <= 0) continue;
+      const ttc = (b - Math.sqrt(disc)) / a;
+      if (ttc <= 0 || ttc > H) continue;
+      // where it will be then, sideways of my line: step the other way; nearly head-on -> my left
+      const cx = px - rvx * ttc, cy = py - rvy * ttc, lat = cx * lx + cy * ly;
+      const go = lat > R * 0.3 ? -1 : 1;
+      const w = Math.pow(1 - ttc / H, 1.6) * STEER.k * (q.kind === 'vehicle' ? 1.6 : 1);
+      fx += lx * go * w; fy += ly * go * w;
+    }
+    const tx = ux + fx, ty = uy + fy;
+    const turn = U.clamp(Math.atan2(ux * ty - uy * tx, ux * tx + uy * ty), -STEER.turnMax, STEER.turnMax);
+    let mul = cap < s ? U.clamp(cap / s, 0.12, 1) : 1;
+    mul *= 1 - 0.3 * Math.min(1, Math.abs(turn)); // a sidestep is slower than walking on
+    st.turn += (turn - st.turn) * 0.65; st.mul += (mul - st.mul) * 0.65;
+  }
+  E.steer = steer;
+
   // Push overlapping solid actors apart (mass-weighted) and report bumps.
   let nearBuf = [], nearBusy = false;
   function resolveOverlaps() {
@@ -33270,7 +33386,9 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
 
   /**
    * Draw a person top-down, centred at origin facing +x, ~8 units across the shoulders.
-   * look: {kind, skin, hair, shirt, pants, cap?, accent?, bag?}; anim: {phase, speed 0..1, run}
+   * look: {kind, skin, hair, shirt, pants, cap?, accent?, bag?}; anim: {phase, speed 0..1, run, runK? 0..1 (eased run)}
+ * The gait: legs step from the hips; above them the shoulders turn against the hips, the body shifts its weight
+ * onto the planted foot and leans into a run (the head furthest), and running arms bend and pump harder.
    */
   function drawPerson(ctx, look, anim) {
     look = look || {};
@@ -33280,9 +33398,14 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     const shirt = look.shirt || '#e8e0d0', pants = look.pants || '#3a3a4a';
     // People are drawn ~1.35x their collision size so they read at the internal resolution.
     const sc = PEOPLE_SCALE * (kind === 'kid' || kind === 'student' ? 0.84 : kind === 'uncle' ? 1.08 : 1);
-    const ph = anim.phase || 0, mv = U.clamp(anim.speed == null ? 0 : anim.speed, 0, 1);
-    const stride = (anim.run ? 3.3 : 2.3) * mv;
+    const ph = anim.phase || 0, mv0 = U.clamp(anim.speed == null ? 0 : anim.speed, 0, 1);
+    // step length grows slower than speed (a slow walker takes shorter AND fewer steps): the crowds that stroll at
+    // half a walk still visibly step
+    const mv = Math.sqrt(mv0);
+    const rk = anim.runK != null ? U.clamp(anim.runK, 0, 1) : anim.run ? 1 : 0;
+    const stride = (2.3 + 1.0 * rk) * mv;
     const sw = Math.sin(ph) * stride;
+    const twist = -Math.sin(ph) * (0.1 + 0.08 * rk) * mv, sway = -Math.cos(ph) * 0.3 * mv, lean = (0.25 + 0.9 * rk) * mv;
     if (sc !== 1) ctx.scale(sc, sc);
     const longLegs = !(kind === 'saree' || kind === 'aunty' || kind === 'burqa' || kind === 'uncle' || kind === 'lungi');
 
@@ -33310,10 +33433,14 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       }
     }
 
-    // arms (swing opposite to legs)
+    // the upper body rides the hips: weight shift, lean, shoulders turned against the stride
+    ctx.save();
+    ctx.translate(lean * 0.5, sway);
+    if (twist) ctx.rotate(twist);
+    // arms (swing opposite to legs; a run bends them in and pumps them)
     const armCol = kind === 'uncle' ? skin : kind === 'burqa' ? '#141216' : kind === 'saree' || kind === 'aunty' ? skin : shirt;
     for (const s of [-1, 1]) {
-      const ax = -s * sw * 0.8, ay = s * 3.4;
+      const ax = -s * sw * (0.8 + 0.3 * rk), ay = s * (3.4 - 0.45 * rk);
       ctx.fillStyle = armCol; ell(ctx, ax * 0.7, ay, 1.6, 0.95); ctx.fill(); outline(ctx);
       ctx.fillStyle = kind === 'burqa' ? '#141216' : skin; ell(ctx, ax + 1.1 * Math.sign(ax || 1) * 0.6, ay, 0.75, 0.75); ctx.fill();
     }
@@ -33351,8 +33478,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       if (kind === 'student') { ctx.fillStyle = look.tie || '#b22b2b'; ctx.fillRect(1.6, -0.35, 0.9, 0.7); }
     }
 
-    // head
-    const hx = 0.35;
+    // head (furthest into a lean)
+    const hx = 0.35 + lean * 0.45;
     if (kind === 'burqa') {
       ctx.fillStyle = '#141216'; ell(ctx, hx, 0, 2.2, 2.2); ctx.fill(); outline(ctx);
       ctx.fillStyle = '#2a262c'; ell(ctx, hx + 1.2, 0, 0.7, 1.1); ctx.fill();
@@ -33379,6 +33506,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
         ctx.fillRect(hx + 1.0, -1.1, 1.6, 2.2);
       }
     }
+    ctx.restore();
   }
 
   function randomLook(rng, kind) {
@@ -33456,7 +33584,12 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   // Numbers: systems_design §2 (N.player.TUNE). Energy is stamina; tummy (§2.2) is how fed Chinnu is,
   // and energy can never go above it. Statuses (§2.3), falls off bikes (§2.6), counted items (§2.7).
   const TUNE = {
-    walk: 45, run: 80, startMoney: 1000, startTummy: 80,
+    // walk: 45 -> 32 (owner request 2026-10-22: "too fast, it should walk in natural motion and run only when we make it
+    // run"): about 2.6 steps a second for the 8 u wide kid seen from above. Running stays 80 and only on RUN (held).
+    // paceRef = the walk the city's escorts, crowds and paced games were tuned against: they scale with paceK().
+    walk: 32, run: 80, paceRef: 45, startMoney: 1000, startTummy: 80,
+    // natural motion (1/s): a step or two to get going, a shorter one to stop, a longer push up to a run; turning
+    accel: { go: 7, run: 4.2, stop: 11, turn: 10 }, turnRate: { stand: 16, walk: 12, run: 9 },
     runDrain: 8.5, restDelay: 0.6, recoverWalk: 7, recoverStand: 14, recoverSit: 25, recoverRide: 10, exhaustedUntil: 30,
     pedalDrain: 2.0, pedalRecover: 5, legsGoneMul: 0.65,
     tummyDrain: { idle: 0.10, run: 0.25, pedal: 0.15, ride: 0.05, sit: 0.06 },
@@ -33491,6 +33624,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     stepAcc: 0, restT: 0, growlT: 0,
   });
   player.TUNE = TUNE;
+  /** how fast walking is now against the walk the city was first paced for (escorts, crowds, AI friends): 32/45 */
+  player.paceK = () => TUNE.walk / TUNE.paceRef;
   player.STATUS = STATUS;
   player.EDIBLES = EDIBLES;
 
@@ -33744,12 +33879,14 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     if (running) { if (S.knee) mul *= 0.9; if (hungry) mul *= 0.9; }
     const top = (running ? RUN : WALK) * N.world.surfaceSpeed(surf, 'walk') * mul;
     const tvx = mx * top * mag, tvy = my * top * mag;
-    const a = 1 - Math.exp(-dt * (mag > 0.05 ? 11 : 16));
+    const cur = Math.hypot(this.vx, this.vy), tgt = top * mag, AC = TUNE.accel;
+    const a = 1 - Math.exp(-dt * (mag <= 0.05 ? AC.stop : tgt > cur + 2 ? (running ? AC.run : AC.go) : AC.turn));
     this.vx += (tvx - this.vx) * a; this.vy += (tvy - this.vy) * a;
     // smooth turning towards the movement / stick direction
     if (mag > 0.1) {
       const ta = Math.atan2(my, mx);
-      this.angle += U.angleDiff(this.angle, ta) * Math.min(1, dt * 16);
+      const tr = TUNE.turnRate, spNow = Math.hypot(this.vx, this.vy);
+      this.angle += U.angleDiff(this.angle, ta) * Math.min(1, dt * (spNow < 6 ? tr.stand : running ? tr.run : tr.walk));
       this.facing = this.angle;
     }
     // move + slide along walls
@@ -33765,8 +33902,10 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     const sp = Math.hypot(this.vx, this.vy);
     this.anim.speed = Math.min(1, sp / WALK);
     this.anim.run = running;
+    // runK eases walk -> run (lean, arm bend, stride) over ~0.3 s instead of switching in one frame
+    this.anim.runK = (this.anim.runK || 0) + ((running ? 1 : 0) - (this.anim.runK || 0)) * Math.min(1, dt * 6);
     const prev = this.anim.phase;
-    this.anim.phase += sp * dt * (running ? 0.2 : 0.26);
+    this.anim.phase += sp * dt * (0.26 - 0.06 * this.anim.runK);
     if (sp > 8 && Math.floor(prev / Math.PI) !== Math.floor(this.anim.phase / Math.PI)) {
       N.emit('footstep', { x: this.x, y: this.y, surf: N.world.surfaceAt(this.x, this.y), run: running, who: this });
     }
@@ -33795,20 +33934,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       return;
     }
     R.queue('actors', this.y, () => D.sprite(self.x, self.y, self.angle, 8, (ctx) => drawPerson(ctx, self.look, self.anim)));
-    // after a few idle seconds a small bobbing chevron marks the player (busy screens, phones)
-    const a = Math.max(Math.min(1, Math.max(0, ((this.idleT || 0) - 2.5) / 0.6)), this.inCrowd ? 0.75 : 0);
-    if (a > 0 && N.state.mode === 'play') {
-      const still = document.body && document.body.classList.contains('reduced-motion');
-      R.queue('sky', 0, (ctx) => {
-        const k = R.k(14), bob = still ? 0 : Math.sin(N.time.real * 5) * 1.5;
-        const X = R.sx(self.x, k), Y = R.sy(self.y, k) - 9 - bob;
-        ctx.globalAlpha = a * 0.95;
-        ctx.fillStyle = '#1a1214';
-        ctx.beginPath(); ctx.moveTo(X - 4.5, Y - 4.5); ctx.lineTo(X + 4.5, Y - 4.5); ctx.lineTo(X, Y + 1.5); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = '#f2c230';
-        ctx.beginPath(); ctx.moveTo(X - 3, Y - 3.6); ctx.lineTo(X + 3, Y - 3.6); ctx.lineTo(X, Y); ctx.closePath(); ctx.fill();
-      });
-    }
+    // the pointer over Chinnu (always / in crowds / off): src/marker.js (idleT and inCrowd above feed its 'crowds' mode)
   };
 
   player.serialize = function () {
@@ -37137,6 +37263,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const rnd = Math.random;
   const rr = (a, b) => a + rnd() * (b - a);
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const pick = (a) => a[(rnd() * a.length) | 0];
   function wpick(obj) {
     let tot = 0;
@@ -37538,7 +37666,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
         if (rnd() < 0.15) L.oiled = true;
       }
     }
-    return { look: L, lang, spd: spd * rr(0.88, 1.1) };
+    return { look: L, lang, spd: spd * rr(0.88, 1.1) * pace() };
   }
   /** Role by district style and time (systems §11.2 shares). */
   function pickRole(style, did) {
@@ -37959,7 +38087,14 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       if (ob.gap < 1.2) want = 0;
       blocked = want < 4 && tr.cruise > 10;
       // two vehicles nose to nose inside the same junction, or tangled after a bump: the lower id goes
-      if (blocked && ob.e.tr && tr.blockT > 1.2 && v.id < ob.e.id && ((ob.e.tr.inBox >= 0 && ob.e.tr.inBox === tr.inBox) || ob.gap < -1.5)) { tr.ghost = 1.5; tr.ghostOf = ob.e; }
+      if (blocked && ob.e.tr && tr.blockT > 1.2 && v.id < ob.e.id && ((ob.e.tr.inBox >= 0 && ob.e.tr.inBox === tr.inBox) || ob.gap < -1.5)) {
+        // in view it first backs off a little and lets the other through (no driving through each other where the
+        // player can see); still tangled after that, or off screen: the ghost pass as before
+        let room = false;
+        if (!tr.backed && N.render.inView(vX, vY, 40)) { const bk = sense(v, -Math.cos(v.angle), -Math.sin(v.angle)); room = !bk || bk.gap > 9; }
+        if (room) { tr.backed = true; tr.rev = 0.9; tr.blockT = 0.3; }
+        else { tr.ghost = 1.5; tr.ghostOf = ob.e; }
+      }
       // round a lying cow / parked vehicle / standing person
       if (blocked && !tr.swerve && tr.blockT > TUNE.swerveAfter && isStatic(ob.e)) trySwerve(v, tr, ob, segUx, segUy);
     }
@@ -37975,7 +38110,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       if (tr.blockT > 10 && !N.render.inView(vX, vY, 60)) { despawnVehicle(v); return; }
       if (!tr.swerve && tr.blockT > 4 && ob.e.kind === 'vehicle' && ob.e.tr && ob.e.tr.blockT > 3) trySwerve(v, tr, ob, segUx, segUy);
       if (tr.blockT > TUNE.hornAfter && (ob.e === N.player || ob.e.kind !== 'vehicle' || !ob.e.tr || ob.e.tr.blockT < 0.5)) honk(v, 'blocked');
-    } else tr.blockT = Math.max(0, tr.blockT - dt * 2);
+    } else { tr.blockT = Math.max(0, tr.blockT - dt * 2); if (tr.blockT === 0) tr.backed = false; }
     void stopping;
     // ---- steering + pedals
     const diff = U.angleDiff(v.angle, Math.atan2(ty - vY, tx - vX));
@@ -38394,6 +38529,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
         if (p.waitV < 1.5) { vx *= 0.05; vy *= 0.05; }
         else { const s2 = Math.hypot(vx, vy) || 1, side = (p.id & 1) ? 1 : -1; const nx = -vy / s2 * side, ny = vx / s2 * side; vx = nx * speed * 0.8 + vx * 0.2; vy = ny * speed * 0.8 + vy * 0.2; }
       } else p.waitV = 0;
+      // and the people, animals and vehicles round him (entities.js E.steer: sidestep, keep left, slow behind)
+      if (N.entities.steer) { const S = N.entities.steer(p, vx, vy, dt, { arrive: d }); vx = S.x; vy = S.y; }
     }
     const a = 1 - Math.exp(-dt * 8);
     p.vx += (vx - p.vx) * a; p.vy += (vy - p.vy) * a;
@@ -40729,7 +40866,9 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   /* ================================================================ the actor */
   const registry = new Map();      // key -> NPC
   let lastSpeaker = null;
-  const WALK = 45;
+  const WALK = 45; // the cast's walk as first tuned; speedOf() scales it (and def.speed) by pace()
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
 
   class NPC extends N.Actor {
     constructor(key, id, x, y, opts) {
@@ -40801,15 +40940,18 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   /* ---------------------------------------------------------------- movement */
   function speedOf(a, run) {
     const def = DEFS[a.npcId] || {};
-    let sp = run ? Math.max(78, (def.speed || WALK) * 1.75) : def.speed || WALK;
+    const base = (def.speed || WALK) * pace();
+    let sp = run ? Math.max(78, base * 1.75) : base;
     if (a.walk && a.walk.speed) sp = a.walk.speed;
-    try { if (N.respect && N.respect.at && N.respect.at(a.x, a.y)) sp = Math.min(sp, def.speed || WALK); } catch (e) { /* stub */ }
+    try { if (N.respect && N.respect.at && N.respect.at(a.x, a.y)) sp = Math.min(sp, base); } catch (e) { /* stub */ }
     return sp;
   }
   function moveToward(a, tx, ty, speed, dt, arriveR) {
     const dx = tx - a.x, dy = ty - a.y, d = Math.hypot(dx, dy);
     let vx = 0, vy = 0;
     if (d > (arriveR || 1.5)) { const s = Math.min(speed, d / Math.max(dt, 1e-3) * 0.9); vx = (dx / d) * s; vy = (dy / d) * s; }
+    // look where they walk (entities.js E.steer), gently: their routes are planned through tight spots
+    if ((vx || vy) && !a.roofH && !a.noWorld && N.entities.steer) { const S = N.entities.steer(a, vx, vy, dt, { arrive: d, soft: 0.6, ignore: a.followSt ? a.followSt.leader : null }); vx = S.x; vy = S.y; }
     const k = 1 - Math.exp(-dt * 10);
     a.vx += (vx - a.vx) * k; a.vy += (vy - a.vy) * k;
     return d;
@@ -40854,7 +40996,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   }
   function animate(a, dt) {
     const sp = Math.hypot(a.vx, a.vy);
-    if (sp > 3) { turnTo(a, Math.atan2(a.vy, a.vx), dt, 12); a.anim.speed = Math.min(1, sp / WALK); a.anim.run = sp > 62; a.anim.phase += sp * dt * (a.anim.run ? 0.2 : 0.26); }
+    if (sp > 3) { turnTo(a, Math.atan2(a.vy, a.vx), dt, 12); a.anim.speed = Math.min(1, sp / (WALK * pace())); a.anim.run = sp > 62; a.anim.phase += sp * dt * (a.anim.run ? 0.2 : 0.26); }
     else if (a.idle === 'work' && !a.walk && !a.followSt && !a.talking) { a.anim.speed = 0.18; a.anim.run = false; a.anim.phase += dt * 5; }
     else { a.anim.speed = 0; a.anim.run = false; a.anim.phase *= 0.85; }
   }
@@ -51336,7 +51478,9 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     const pl = N.player;
     if (isFF(api)) { const q = pts[pts.length - 1], f = free(q.x, q.y, o.drive ? 'drive' : 'walk'); const v = a0.vehicle || a0; v.x = f.x; v.y = f.y; return true; }
     const r = o.r || TUNE.escortR;
-    const speed = (o.speed || TUNE.walkSpeed) * TUNE.escortSpeed;
+    // [pace] escorts were paced for a 45 u/s walk (he cannot run here): they keep the same share of today's walk
+    const pace = N.player && N.player.paceK ? N.player.paceK() : 1;
+    const speed = (o.speed || TUNE.walkSpeed) * TUNE.escortSpeed * pace;
     pl.noRun = o.noRun !== false;
     onEnd(api, () => { pl.noRun = false; dbgTarget(null); });
     dbgTarget(() => pos());
@@ -59636,6 +59780,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
   const rnd = Math.random;
   const rr = (a, b) => a + rnd() * (b - a);
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const pick = (a) => a[(rnd() * a.length) | 0];
   const now = () => performance.now();
   const hash = (s) => ((U.strHash ? U.strHash(String(s)) : 7) >>> 0) / 4294967296;
@@ -60335,7 +60481,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     p.id = 0; p.alive = true; p.hidden = false;
     p.sc = sc; p.role = role; p.x = x; p.y = y; p.angle = angle || 0; p.vx = 0; p.vy = 0;
     if (!look) { const L = lookFor(role, sc.style); look = L.look; spd = L.spd; }
-    p.look0 = look; p.look = look; p.lookH = null; p.spd = spd || rr(TUNE.walk[0], TUNE.walk[1]);
+    p.look0 = look; p.look = look; p.lookH = null; p.spd = (spd || rr(TUNE.walk[0], TUNE.walk[1])) * pace();
     p.st = 'arrive'; p.t = 0; p.slot = null; p.tgt = null; p.hold = null; p.served = false; p.ordered = false;
     p.eatT = 0; p.biteT = rr(1, 3); p.bite = 0; p.puris = 0; p.chatT = 0; p.chatA = null; p.lookTarget = null; p.lookT = 0; p.lookAt = null;
     p.barkCD = rr(2, 8); p.knockT = 0; p.getupT = 0; p.down = false; p.bumpT = 0; p.umb = null; p.shelter = null; p.prev = null;
@@ -62372,6 +62518,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
   const rnd = Math.random;
   const rr = (a, b) => a + rnd() * (b - a);
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const pick = (a) => a[(rnd() * a.length) | 0];
   const now = () => performance.now();
   const hash = (s) => (((U.strHash ? U.strHash(String(s)) : strHash(String(s))) >>> 0) / 4294967296);
@@ -62691,8 +62839,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     p.id = 0; p.alive = true; p.hidden = false; p.solid = !(o && o.ghost); p.mass = (o && o.mass) || 1; p.fixed = !!(o && o.fixed);
     p.sc = sc; p.role = role; p.x = x; p.y = y; p.angle = a || 0; p.facing = p.angle; p.vx = 0; p.vy = 0;
     const L = (o && o.look) ? { look: o.look, spd: 36 } : lookFor(role, sc ? sc.style : 'colony', o && o.over);
-    p.look0 = L.look; p.look = L.look; p.lookAlt = null; p.spd = (o && o.spd) || L.spd || rr(TUNE.walk[0], TUNE.walk[1]);
-    p.st = (o && o.st) || 'walk'; p.then = null; p.t = 0; p.tx = x; p.ty = y; p.fa = p.angle; p.seat = null; p.slot = null;
+    p.look0 = L.look; p.look = L.look; p.lookAlt = null; p.spd = (o && o.spd) || (L.spd || rr(TUNE.walk[0], TUNE.walk[1])) * pace();
+    p.st = (o && o.st) || 'walk'; p.then = null; p.t = 0; p.tx = x; p.ty = y; p.fa = p.angle; p.seat = null; p.slot = null; p.held = false; p.holdBack = false;
     p.idle = null; p.bench = false; p.z = 0; p.dk = 0; p.hold = null; p.tool = null; p.hx = x; p.hy = y; p.hh = 5; p.cape = false; p.foam = 0;
     p.job = (o && o.job) || null; p.k = 0; p.ph = null; p.timer = 0; p.n = 0; p.cyc = null; p.raise = 0; p.flip = 0;
     p.barkCD = rr(2, 8); p.knockT = 0; p.getupT = 0; p.down = false; p.bumpT = 0; p.lookAt = null; p.lookT = 0; p.lookTarget = null;
@@ -62737,6 +62885,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       if (e < TUNE.aside && e > 0.1 && (vx * ex + vy * ey) > 0) { const s = (vx * ey - vy * ex) > 0 ? 1 : -1; vx += (-ey / e) * speed * 0.8 * s; vy += (ex / e) * speed * 0.8 * s; }
     }
     if (p.detT > 0) { p.detT -= dt; vx = vx * 0.3 + p.detX * speed * 0.8; vy = vy * 0.3 + p.detY * speed * 0.8; }
+    // look where they walk: sidestep people, animals and vehicles, keep left, slow behind (entities.js E.steer)
+    else if (!noCollide && p.solid && N.entities.steer) { const S = N.entities.steer(p, vx, vy, dt, { arrive: d }); vx = S.x; vy = S.y; }
     const a = 1 - Math.exp(-dt * 8);
     p.vx += (vx - p.vx) * a; p.vy += (vy - p.vy) * a;
     let sp;
@@ -62766,7 +62916,12 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   }
   function holdAt(p, x, y, face, dt) {
     const d = Math.hypot(x - p.x, y - p.y);
-    if (d > 1.5) walkTo(p, x, y, p.spd * 0.6, dt, 0.8); else stand(p, face, dt);
+    // hysteresis: nudged by a neighbour (two spots of a group closer than two bodies) he stays put, he walks back
+    // only once properly out of place; a group settles shoulder to shoulder instead of shoving and stepping back
+    if (!p.holdBack && d > 4.5) p.holdBack = true;
+    else if (p.holdBack && d < 1.2) p.holdBack = false;
+    if (p.holdBack || (d > 1.5 && !(p.vx * p.vx + p.vy * p.vy < 4 && d < 4.5 && p.held))) walkTo(p, x, y, p.spd * 0.6, dt, 0.8); else stand(p, face, dt);
+    p.held = d < 1.5 || (p.held && !p.holdBack);
     return d;
   }
   function freeOf(list) { for (const s of list) if (!s.by) return s; return null; }
@@ -65323,6 +65478,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
   const rnd = Math.random;
   const rr = (a, b) => a + rnd() * (b - a);
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const pick = (a) => a[(rnd() * a.length) | 0];
   const now = () => performance.now();
   const angDiff = (a, b) => { let d = b - a; while (d > PI) d -= TAU; while (d < -PI) d += TAU; return d; };
@@ -65773,7 +65930,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     p.sc = sc; p.role = role; p.x = x; p.y = y; p.vx = 0; p.vy = 0;
     p.angle = o.angle != null ? o.angle : rnd() * TAU; p.facing = p.angle;
     p.look = o.look || lookFor(role, sc ? sc.style : 'colony');
-    p.spd = o.spd || rr(30, 42);
+    p.spd = o.spd || rr(30, 42) * pace();
     p.beh = o.beh || 'stand'; p.then = o.then || null; p.tx = x; p.ty = y; p.face = o.face != null ? o.face : null;
     p.path = null; p.pi = 0; p.t = 0; p.item = o.item || null; p.itemCol = o.itemCol || null; p.idle = null; p.bench = false;
     p.constable = false; p.pod = null; p.ofx = 0; p.ofy = 0; p.barkCD = rr(2, 9); p.stuckT = 0; p.tag = o.tag || null;
@@ -65823,6 +65980,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     let vx = 0, vy = 0;
     if (d > (arrive || 1)) { const s = Math.min(speed, d * 4); vx = (dx / d) * s; vy = (dy / d) * s; }
     if (p.detT > 0) { p.detT -= dt; vx = vx * 0.3 + p.detX * speed * 0.8; vy = vy * 0.3 + p.detY * speed * 0.8; }
+    // look where they walk: sidestep people, animals and vehicles, keep left, slow behind (entities.js E.steer)
+    else if (p.solid && N.entities.steer) { const S = N.entities.steer(p, vx, vy, dt, { arrive: d }); vx = S.x; vy = S.y; }
     const a = 1 - Math.exp(-dt * 8);
     p.vx += (vx - p.vx) * a; p.vy += (vy - p.vy) * a;
     const sp = integrate(p, dt);
@@ -85465,6 +85624,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
  *     openPanel(id, opts) · closePanel(id) · isPanelShown(id) · topPanelId() · overlayRoot() ·
  *     refreshTitle() · refreshPause(). The title gets an ONLINE track and the pause deck an Online key
  *     while N.online exists (labels from N.online.titleLine() / pauseLine(); act -> N.online.open({from})).
+ *     Likewise a CHEAT CODE track and a Cheats key while N.cheats.enabled (src/cheats.js; act -> N.cheats.open({from})).
  *   N.menus.openMap({x, y, zoom}) / closeMap() · openJournal(tabId) / closeJournal()
  *   N.menus.openSettings() · openSaveLoad() · openPause()
  *   N.menus.addSettingsRow({id, label, type: 'seg'|'toggle'|'slider', opts: [[v, text]...], get(), set(v),
@@ -86016,6 +86176,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
         '<li class="trk-load"><button type="button" class="jc-trk" data-nav data-act="load"><i>⏏</i><b>OTHER TAPE</b><em class="load-sub"></em></button></li>' +
         '<li class="trk-view" hidden><button type="button" class="jc-trk" data-nav data-act="view"><i>◫</i><b>VIEW</b><em class="view-sub"></em></button></li>' +
         '<li class="trk-online" hidden><button type="button" class="jc-trk" data-nav data-act="online"><i>⇄</i><b>ONLINE</b><em class="online-sub">play with friends</em></button></li>' +
+        '<li class="trk-cheat" hidden><button type="button" class="jc-trk" data-nav data-act="cheats"><i>✱</i><b>CHEAT CODE</b><em>jump to any stage</em></button></li>' + // [cheats hook]
         '<li><button type="button" class="jc-trk" data-nav data-act="settings"><i>≡</i><b>SETTINGS</b><em>sound · text · touch</em></button></li>' +
         '<li><button type="button" class="jc-trk" data-nav data-act="credits"><i>♪</i><b>CREDITS</b><em>who made this tape</em></button></li>' +
         '</ol>' +
@@ -86031,6 +86192,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
         confirm: e.querySelector('.jc-confirm'), tracks: e.querySelector('.jc-tracks'), cas: e.querySelector('.cas'), jc: e.querySelector('.jc'),
         view: e.querySelector('.trk-view'), viewSub: e.querySelector('.view-sub'),
         online: e.querySelector('.trk-online'), onlineSub: e.querySelector('.online-sub'),
+        cheat: e.querySelector('.trk-cheat'), // [cheats hook]
       };
       e.addEventListener('click', (ev) => {
         const b = ev.target.closest('button[data-act]');
@@ -86062,6 +86224,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       const OL = N.online;
       this.dom.online.hidden = !OL;
       if (OL) { try { this.dom.onlineSub.textContent = OL.titleLine ? OL.titleLine() : 'play with friends'; } catch (e) { N.err('menus.onlineLine', e); } }
+      this.dom.cheat.hidden = !(N.cheats && N.cheats.enabled); // [cheats hook] src/cheats.js
       this.dom.tracks.classList.toggle('many', Array.from(this.dom.tracks.children).filter((li) => !li.hidden).length >= 5);
       // a save from a newer build is never overwritten (save.js): say so before they play
       const newer = N.save && N.save.tooNew;
@@ -86103,6 +86266,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     }
     else if (act === 'credits') { unlockAudio(); sfx('ui_select'); M.credits({ fromTitle: true }); }
     else if (act === 'online') { unlockAudio(); sfx('ui_select'); try { if (N.online) N.online.open({ from: 'title' }); } catch (e) { N.err('menus.online', e); } }
+    else if (act === 'cheats') { unlockAudio(); sfx('ui_select'); try { if (N.cheats) N.cheats.open({ from: 'title' }); } catch (e) { N.err('menus.cheats', e); } } // [cheats hook]
   }
   let starting = false;
   function beginNewGame() {
@@ -86322,6 +86486,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
         '<button type="button" class="dk-key" data-nav data-act="load"><i>⏏</i><b>Load</b></button>' +
         '<button type="button" class="dk-key k-online" data-nav data-act="online" hidden><i>⇄</i><b>Online</b><small class="why ol-why"></small></button>' +
         '<button type="button" class="dk-key k-qm" data-nav data-act="quitmission"><i>■</i><b>Quit mission</b></button>' +
+        '<button type="button" class="dk-key k-cheat" data-nav data-act="cheats" hidden><i>✱</i><b>Cheats</b></button>' + // [cheats hook]
         '<button type="button" class="dk-key k-quit" data-nav data-act="quit"><i>⏏</i><b>Quit to title</b></button>' +
         '</div>' +
         '<div class="dk-confirm" hidden><p class="dk-cq"></p><div class="dk-cbtns">' +
@@ -86336,6 +86501,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
         date: q('.dk-date'), time: q('.dk-time'), ctr: q('.dk-ctr'), where: q('.dk-where'), obj: q('.dk-obj'),
         save: q('.k-save'), why: q('.k-save .why'), qm: q('.k-qm'), keys: q('.dk-keys'), confirm: q('.dk-confirm'), cq: q('.dk-cq'),
         saveQuit: q('[data-act=savequit]'), online: q('.k-online'), onlineWhy: q('.k-online .why'),
+        cheat: q('.k-cheat'), // [cheats hook]
       };
       e.addEventListener('click', (ev) => {
         const b = ev.target.closest('button[data-act]');
@@ -86364,6 +86530,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       D.qm.hidden = !(N.missions && N.missions.active);
       D.saveQuit.hidden = !c.ok;
       D.online.hidden = !N.online;
+      D.cheat.hidden = !(N.cheats && N.cheats.enabled); // [cheats hook] src/cheats.js
       if (N.online) { try { D.onlineWhy.textContent = N.online.pauseLine ? N.online.pauseLine() : ''; } catch (e) { N.err('menus.onlineWhy', e); } }
     },
     showConfirm(on) {
@@ -86387,6 +86554,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     else if (act === 'settings') { sfx('ui_select'); openPanel('settings', { from: 'pause' }); }
     else if (act === 'load') { sfx('ui_select'); openPanel('slots', { from: 'pause' }); }
     else if (act === 'online') { sfx('ui_select'); try { if (N.online) N.online.open({ from: 'pause' }); } catch (e) { N.err('menus.online', e); } }
+    else if (act === 'cheats') { sfx('ui_select'); try { if (N.cheats) N.cheats.open({ from: 'pause' }); } catch (e) { N.err('menus.cheats', e); } } // [cheats hook]
     else if (act === 'save') {
       const c = canSave();
       if (!c.ok) { sfx('ui_back'); btn.classList.remove('nope'); void btn.offsetWidth; btn.classList.add('nope'); return; }
@@ -88769,6 +88937,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       if (!hasWebGL()) throw new Error('WebGL is not available on this device');
       T = await loadThree();
       if (!T) throw new Error('could not load the 3D library');
+      N.emit('view3d:init', { Q, THREE: T }); // [post hook] last call for engine-creation quality (src/view3d_post.js)
       initEngine(T);
       view.available = true;
       E.warming = true; E.warmT = now();
@@ -91242,7 +91411,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     const covered = N.minigames && N.minigames.covering;
     const tR = now();
     if (!covered) {
-      try { E.renderer.render(E.scene, E.camera); } catch (e) { onRenderError(e); return; }
+      // [post hook] E.post (src/view3d_post.js, the Ultra tier) renders the scene through its post-processing
+      try { if (E.post) E.post.render(E.renderer, E.scene, E.camera); else E.renderer.render(E.scene, E.camera); } catch (e) { onRenderError(e); return; }
     }
     const info = E.renderer.info;
     E.calls = info.render.calls; E.tris = info.render.triangles;
@@ -102239,6 +102409,563 @@ if (ngShine > 0.01) {
 })();
 
 </script>
+<script>/* src/view3d_post.js */
+/* NOSTALGIA — view3d_post.js  (N.graphics: the Graphics setting — Auto / Low / High / Ultra — and the Ultra tier's
+ * post-processing of the 3D views)
+ *
+ * Tiers: Low and High are the core's (src/view3d.js applyTier). Ultra is High plus, for strong desktop GPUs:
+ *   - the scene rendered off screen exactly as High shows it (+ depth), then, on that frame:
+ *   - ambient occlusion: soft contact shadow under vehicles, round feet, poles and kerbs, in corners and under eaves
+ *     (half resolution, 12 samples from the depth buffer, depth-aware blur), faded out with distance;
+ *   - aerial perspective: a haze over distance, thinner with height, warmed towards the sun;
+ *   - bloom: lit windows, lamps, floodlit hoardings, headlights, the low sun (a 5-level mip chain);
+ *   - sun shafts through gaps when the sun is up and in view;
+ *   - a film grade: more colour, an S-curve that keeps black and white, cool shade, warm light, a soft vignette;
+ *     FXAA, light sharpening and a fine film grain on the way to the screen;
+ *   - a richer sky: the core sky with two shaded cloud layers (sunlit edges, darker undersides, high streaks);
+ *   - sharper, wider sun shadows (4096 map over 240 u), 8 night point lights, render scale up to 2x
+ *     (the core's adaptive pixel ratio still steps it down on a slow GPU).
+ * Auto picks Ultra on a desktop with a discrete / Apple-silicon GPU and WebGL2, Low where the core would (phones),
+ * else High. An auto-picked Ultra that still runs under 30 fps at the lowest render scale steps down to High
+ * (remembered); a chosen Ultra stays. High <-> Ultra switches live; to or from Low applies after a reload.
+ *
+ * Hooks (src/view3d.js): N.emit('view3d:init', {Q}) right before the engine is created (engine-creation quality:
+ * shadow map size, point lights, anisotropy), and E.post: when set, render() calls E.post.render(renderer, scene,
+ * camera) instead of renderer.render(scene, camera). Settings row 'graphics' (section Screen) via
+ * N.menus.addSettingsRow. Stored in localStorage 'nostalgia.graphics'.
+ *
+ * API  N.graphics = {setting, tier, set(v: 'auto'|'low'|'high'|'ultra'), autoTier(), gpu(), classify(rendererString)
+ *   -> 'strong'|'weak'|'unknown', stats() -> {setting, tier, pending, autoUltra, post, ao, bloom, half, sky,
+ *   size: [w, h], fps, calls, gpu}, TUNE (live: the look's numbers)}
+ */
+(() => {
+  'use strict';
+  const N = window.N;
+  if (!N || !N.view3d) return;
+  const V = N.view3d, U = N.util;
+  const KEY = 'nostalgia.graphics', KEY_DOWN = 'nostalgia.graphics.autoDown';
+  const VALID = ['auto', 'low', 'high', 'ultra'];
+  const LABEL = { auto: 'Auto', low: 'Low', high: 'High', ultra: 'Ultra' };
+  const ls = {
+    get(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { if (v == null) window.localStorage.removeItem(k); else window.localStorage.setItem(k, v); } catch (e) { /* storage off */ } },
+  };
+  const toast = (t, ms) => { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 3200, { key: 'graphics' }); } catch (e) { /* ignore */ } };
+  const reducedMotion = () => document.body.classList.contains('reduced-motion');
+
+  // the look: AO in 3D units (a floor is 22.5 u, a person ~13 u), bloom thresholds on linear HDR scene colour
+  const TUNE = {
+    aoRadius: 12, aoIntensity: 3.2, aoPower: 1.4, aoFade: [280, 560], aoDay: 0.8, aoNight: 0.4,
+    // on display values ([day, night]); the up-chain adds each smaller level with less weight (glow without a veil)
+    bloomThr: [0.95, 0.62], bloomKnee: [0.05, 0.15], bloom: [0.08, 0.42], bloomRadius: 1, bloomW: [1, 0.9, 0.75, 0.6, 0.45],
+    // aerial perspective: haze over distance, thinner with height, warmed towards the sun; sun shafts through gaps
+    haze: [0.3, 0.16], hazeDist: 1100, hazeHeight: 260, sunGlow: 0.6, shafts: 0.3,
+    // the grade (display space): an S-curve that keeps black and white, cool shade, warm light, vignette, grain, sharpen
+    sat: 1.16, curve: 0.18, shadowTint: [-0.006, 0, 0.016], highTint: [0.016, 0.005, -0.008], vignette: 0.3, grain: 0.028, sharpen: 0.35,
+    slowFps: 30,
+  };
+  const startTier = V.quality.tier; // the core's own pick for this device ('low' on phones)
+  let setting = ls.get(KEY);
+  if (VALID.indexOf(setting) < 0) setting = 'auto';
+  let pending = null;   // a tier waiting for a reload (to / from Low after the engine started)
+  let autoUltra = false; // Ultra came from Auto (may step down)
+
+  /* ================================================================ the device */
+  let GPU = null;
+  function gpu() {
+    if (GPU) return GPU;
+    GPU = { renderer: '', webgl2: false };
+    try {
+      const c = document.createElement('canvas');
+      const gl = c.getContext('webgl2') || c.getContext('webgl');
+      if (gl) {
+        GPU.webgl2 = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        GPU.renderer = String((ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)) || '');
+        const lose = gl.getExtension('WEBGL_lose_context');
+        if (lose) lose.loseContext();
+      }
+    } catch (e) { /* no WebGL */ }
+    return GPU;
+  }
+  // discrete NVIDIA / AMD / Intel Arc, Apple silicon; never software, mobile or integrated (High is the safe pick)
+  const WEAK = /swiftshader|llvmpipe|softpipe|software|basic render|mali|adreno|powervr|videocore|tegra|apple a\d/i;
+  const STRONG = /nvidia|geforce|rtx|gtx|quadro|radeon\s*(rx|pro|vii|r9)|\brx\s?[4-9]\d{2,3}|apple m\d|apple gpu|arc\(tm\)\s*a\d|intel.*\barc\b/i;
+  const classify = (s) => (WEAK.test(s) ? 'weak' : STRONG.test(s) ? 'strong' : 'unknown');
+  function autoTier() {
+    if (startTier === 'low') return 'low';
+    if (ls.get(KEY_DOWN) === '1') return 'high';
+    let coarse = false;
+    try { coarse = window.matchMedia('(pointer: coarse)').matches; } catch (e) { /* ignore */ }
+    const g = gpu(), cores = navigator.hardwareConcurrency || 4;
+    if (coarse || !g.webgl2 || cores < 6 || Math.min(window.innerWidth, window.innerHeight) < 600) return 'high';
+    if (classify(g.renderer) !== 'strong') return 'high';
+    return 'ultra';
+  }
+
+  /* ================================================================ tier values */
+  const dpr = () => window.devicePixelRatio || 1;
+  function ultraQ() {
+    const max = Math.min(2, Math.max(dpr(), 1.5));
+    return { maxPixelRatio: max, pixelRatio: Math.min(max, 1.5), minPixelRatio: 1, shadows: true, shadowSize: 4096, shadowRange: 240, pointLights: 8, aniso: 16, drawDist: 1700, lmDist: 1850, budgetMs: 4 };
+  }
+  function highQ() {
+    const max = Math.min(dpr(), 1.5);
+    return { maxPixelRatio: max, pixelRatio: max, minPixelRatio: 0.75, shadowSize: 2048, shadowRange: 190, pointLights: 4, drawDist: 1500, lmDist: 1650, budgetMs: 3.5 };
+  }
+  /** before the engine exists: the core's tier values, Ultra's on top */
+  function preTier(t) {
+    const Q = V.quality;
+    Q.tier = '?'; V.setQuality({ tier: t === 'low' ? 'low' : 'high' });
+    if (t === 'ultra') Object.assign(Q, ultraQ());
+    Q.tier = t;
+  }
+  /** High <-> Ultra on a running engine: shadow map, point lights, render scale, the post pipeline */
+  function liveTier(t) {
+    const Q = V.quality, E = V.engine, T = V.THREE;
+    Object.assign(Q, t === 'ultra' ? ultraQ() : highQ());
+    Q.tier = t;
+    const sun = E.sun;
+    if (sun && sun.castShadow) {
+      sun.shadow.mapSize.set(Q.shadowSize, Q.shadowSize);
+      if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+      const c = sun.shadow.camera, r = Q.shadowRange;
+      c.left = -r; c.right = r; c.top = r; c.bottom = -r; c.updateProjectionMatrix();
+    }
+    const P = E.points;
+    if (P && T) {
+      while (P.length < Q.pointLights) { const p = new T.PointLight('#ffab40', 0, 70, 1.6); p.userData.cand = null; E.scene.add(p); P.push(p); }
+      while (P.length > Q.pointLights) { const p = P.pop(); E.scene.remove(p); if (p.dispose) p.dispose(); }
+    }
+    V.setQuality({}); // camera far, resize, re-plan the streaming
+    if (t === 'ultra') enablePost(); else disablePost();
+  }
+  function set(v) {
+    if (VALID.indexOf(v) < 0) return setting;
+    setting = v; ls.set(KEY, v);
+    if (v === 'ultra') ls.set(KEY_DOWN, null);
+    const want = v === 'auto' ? autoTier() : v;
+    autoUltra = v === 'auto' && want === 'ultra';
+    const E = V.engine;
+    if (!E || !E.ready) { preTier(want); pending = null; return setting; }
+    const cur = V.quality.tier;
+    if (want === cur) { pending = null; return setting; }
+    if ((want === 'low') !== (cur === 'low')) {
+      pending = want;
+      toast('Graphics: ' + LABEL[want] + ' from the next time the game starts.');
+      return setting;
+    }
+    pending = null;
+    liveTier(want);
+    toast('Graphics: ' + LABEL[want] + (want === 'ultra' ? ' — soft shadows, glowing lights, film colour' : ''), 2400);
+    return setting;
+  }
+
+  // a chosen tier applies now, before anything is built; Auto decides when 3D starts (the GPU probe costs a context)
+  if (setting !== 'auto') preTier(setting);
+  N.on('view3d:init', () => {
+    if (setting !== 'auto') return;
+    const t = autoTier();
+    autoUltra = t === 'ultra';
+    if (t === 'ultra') preTier('ultra');
+  });
+  N.on('view3d:ready', () => { if (V.quality.tier === 'ultra') enablePost(); });
+  N.on('view3d:contextrestored', () => { freeTargets(); });
+
+  /* ================================================================ the post pipeline */
+  const VS = 'varying vec2 vUv;\nvoid main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+  const FS_AO = [
+    'uniform sampler2D tDepth; uniform mat4 uProj; uniform mat4 uInvProj; uniform vec2 uTexel;',
+    'uniform float uRadius; uniform float uIntensity; uniform float uPow; uniform vec2 uFade;',
+    'varying vec2 vUv;',
+    'vec3 vpos(vec2 uv){ float d = texture2D(tDepth, uv).x; vec4 c = uInvProj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); return c.xyz / c.w; }',
+    'float ign(vec2 p){ return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }',
+    'void main(){',
+    '  float d = texture2D(tDepth, vUv).x;',
+    '  if (d >= 0.99999) { gl_FragColor = vec4(1.0); return; }',
+    '  vec3 p = vpos(vUv);',
+    '  vec2 o = uTexel * 2.0;',
+    // the normal from the flatter neighbour on each axis (no halo across depth edges)
+    '  vec3 pr = vpos(vUv + vec2(o.x, 0.0)), pl = vpos(vUv - vec2(o.x, 0.0)), pu = vpos(vUv + vec2(0.0, o.y)), pd = vpos(vUv - vec2(0.0, o.y));',
+    '  vec3 dx = abs(pr.z - p.z) < abs(p.z - pl.z) ? pr - p : p - pl;',
+    '  vec3 dy = abs(pu.z - p.z) < abs(p.z - pd.z) ? pu - p : p - pd;',
+    '  vec3 n = normalize(cross(dx, dy));',
+    '  if (dot(n, p) > 0.0) n = -n;',
+    '  float z = -p.z;',
+    '  vec2 rs = vec2(uProj[0][0], uProj[1][1]) * 0.5 * uRadius / z;',
+    '  float m = max(rs.x, rs.y); if (m > 0.12) rs *= 0.12 / m;',
+    '  float a0 = ign(gl_FragCoord.xy) * 6.2831853, R2 = uRadius * uRadius, occ = 0.0;',
+    '  for (int i = 0; i < 12; i++) {',
+    '    float t = (float(i) + 0.5) / 12.0;',
+    '    float a = a0 + float(i) * 2.3999632;',
+    '    vec3 v = vpos(vUv + vec2(cos(a), sin(a)) * t * rs) - p;',
+    '    float vv = dot(v, v);',
+    '    occ += max(dot(v, n) * inversesqrt(vv + 1e-4) - 0.12, 0.0) * clamp(1.0 - vv / R2, 0.0, 1.0);',
+    '  }',
+    '  float ao = pow(clamp(1.0 - occ / 12.0 * uIntensity, 0.0, 1.0), uPow);',
+    '  gl_FragColor = vec4(mix(ao, 1.0, smoothstep(uFade.x, uFade.y, z)), 0.0, 0.0, 1.0);',
+    '}',
+  ].join('\n');
+  const FS_BLUR = [
+    'uniform sampler2D tAO; uniform sampler2D tDepth; uniform vec2 uDir; uniform vec2 uNF;',
+    'varying vec2 vUv;',
+    'float lz(float d){ float z = d * 2.0 - 1.0; return 2.0 * uNF.x * uNF.y / (uNF.y + uNF.x - z * (uNF.y - uNF.x)); }',
+    'void main(){',
+    '  float zc = lz(texture2D(tDepth, vUv).x), s = 0.0, w = 0.0;',
+    '  for (int i = -3; i <= 3; i++) {',
+    '    vec2 uv = vUv + uDir * float(i);',
+    '    float z = lz(texture2D(tDepth, uv).x);',
+    '    float k = exp(-float(i * i) / 8.0) * max(0.0, 1.0 - abs(z - zc) / (zc * 0.04 + 0.5));',
+    '    s += texture2D(tAO, uv).r * k; w += k;',
+    '  }',
+    '  gl_FragColor = vec4(s / max(w, 1e-4), 0.0, 0.0, 1.0);',
+    '}',
+  ].join('\n');
+  const LUM = 'float lum(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }\n';
+  const FS_PRE = [
+    'uniform sampler2D tSrc; uniform vec2 uTexel; uniform float uThr; uniform float uKnee;',
+    'varying vec2 vUv;', LUM,
+    'vec3 tap(vec2 uv, out float w){ vec3 c = min(texture2D(tSrc, uv).rgb, vec3(48.0)); w = 1.0 / (1.0 + lum(c)); return c * w; }',
+    'void main(){',
+    // a Karis-weighted 4-tap average (no fireflies from single bright pixels), then a soft-knee threshold
+    '  float wa, wb, wc, wd;',
+    '  vec3 c = tap(vUv + uTexel * vec2(-1.0, -1.0), wa) + tap(vUv + uTexel * vec2(1.0, -1.0), wb) + tap(vUv + uTexel * vec2(-1.0, 1.0), wc) + tap(vUv + uTexel * vec2(1.0, 1.0), wd);',
+    '  c /= (wa + wb + wc + wd);',
+    '  float br = max(c.r, max(c.g, c.b));',
+    '  float soft = clamp(br - uThr + uKnee, 0.0, 2.0 * uKnee); soft = soft * soft / (4.0 * uKnee + 1e-4);',
+    '  gl_FragColor = vec4(c * max(soft, br - uThr) / max(br, 1e-4), 1.0);',
+    '}',
+  ].join('\n');
+  const FS_DOWN = [ // 13 taps (the Call of Duty: Advanced Warfare downsample)
+    'uniform sampler2D tSrc; uniform vec2 uTexel;',
+    'varying vec2 vUv;',
+    'vec3 t(float x, float y){ return texture2D(tSrc, vUv + uTexel * vec2(x, y)).rgb; }',
+    'void main(){',
+    '  vec3 c = t(0.0, 0.0) * 0.125;',
+    '  c += (t(-2.0, 2.0) + t(2.0, 2.0) + t(-2.0, -2.0) + t(2.0, -2.0)) * 0.03125;',
+    '  c += (t(0.0, 2.0) + t(-2.0, 0.0) + t(2.0, 0.0) + t(0.0, -2.0)) * 0.0625;',
+    '  c += (t(-1.0, 1.0) + t(1.0, 1.0) + t(-1.0, -1.0) + t(1.0, -1.0)) * 0.125;',
+    '  gl_FragColor = vec4(c, 1.0);',
+    '}',
+  ].join('\n');
+  const FS_UP = [ // 3x3 tent, added onto the next level up
+    'uniform sampler2D tSrc; uniform vec2 uTexel; uniform float uR; uniform float uW;',
+    'varying vec2 vUv;',
+    'vec3 t(float x, float y){ return texture2D(tSrc, vUv + uTexel * uR * vec2(x, y)).rgb; }',
+    'void main(){',
+    '  vec3 c = t(0.0, 0.0) * 4.0 + (t(-1.0, 0.0) + t(1.0, 0.0) + t(0.0, -1.0) + t(0.0, 1.0)) * 2.0 + t(-1.0, -1.0) + t(1.0, -1.0) + t(-1.0, 1.0) + t(1.0, 1.0);',
+    '  gl_FragColor = vec4(c / 16.0 * uW, 1.0);',
+    '}',
+  ].join('\n');
+  const FS_SMASK = [ // the sky round the sun (depth = far plane), the source of the shafts
+    'uniform sampler2D tScene; uniform sampler2D tDepth; uniform vec2 uSun; uniform float uAspect;',
+    'varying vec2 vUv;',
+    'void main(){',
+    '  float sky = step(0.99999, texture2D(tDepth, vUv).x);',
+    '  float m = sky * smoothstep(0.35, 0.0, length((vUv - uSun) * vec2(uAspect, 1.0)));',
+    '  gl_FragColor = vec4(min(texture2D(tScene, vUv).rgb, vec3(6.0)) * m, 1.0);',
+    '}',
+  ].join('\n');
+  const FS_RAD = [ // radial blur towards the sun (two passes: long, then short)
+    'uniform sampler2D tSrc; uniform vec2 uSun; uniform float uLen;',
+    'varying vec2 vUv;',
+    'void main(){',
+    '  vec2 d = (uSun - vUv) * uLen / 24.0, uv = vUv; vec3 s = vec3(0.0); float w = 1.0, tw = 0.0;',
+    '  for (int i = 0; i < 24; i++) { s += texture2D(tSrc, uv).rgb * w; tw += w; w *= 0.95; uv += d; }',
+    '  gl_FragColor = vec4(s / tw, 1.0);',
+    '}',
+  ].join('\n');
+  const FS_COMP = [ // works on the display frame (what High shows): AO, haze, bloom, shafts, then the grade
+    'uniform sampler2D tScene; uniform sampler2D tAO; uniform sampler2D tBloom; uniform sampler2D tDepth; uniform sampler2D tShafts;',
+    'uniform float uAO; uniform float uBloom; uniform float uShafts; uniform float uSat; uniform float uCurve; uniform float uVig;',
+    'uniform vec3 uShadowTint; uniform vec3 uHighTint;',
+    'uniform mat4 uInvProj; uniform mat3 uCamRot; uniform float uCamY; uniform float uHasDepth;',
+    'uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uFogCol; uniform float uHaze; uniform float uHazeDist; uniform float uHazeH; uniform float uSunGlow;',
+    'varying vec2 vUv;', LUM,
+    'void main(){',
+    '  vec3 c = texture2D(tScene, vUv).rgb;',
+    '  c *= mix(1.0, texture2D(tAO, vUv).r, uAO);',
+    '  if (uHasDepth > 0.5) {',
+    '    float d = texture2D(tDepth, vUv).x;',
+    '    if (d < 0.99999) {',
+    '      vec4 vp = uInvProj * vec4(vUv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); vec3 p = vp.xyz / vp.w;',
+    '      float dist = length(p); vec3 dir = uCamRot * (p / dist);',
+    '      float amt = uHaze * (1.0 - exp(-dist / uHazeDist)) * exp(-max(uCamY + dir.y * dist, 0.0) / uHazeH);',
+    '      vec3 hc = mix(uFogCol, uSunCol, pow(max(dot(dir, uSunDir), 0.0), 6.0) * uSunGlow);',
+    '      c = mix(c, hc, clamp(amt, 0.0, 1.0));',
+    '    }',
+    '  }',
+    '  c += texture2D(tBloom, vUv).rgb * uBloom + texture2D(tShafts, vUv).rgb * uShafts;',
+    // a soft shoulder over 0.9 (additive glows and bloom go past white)
+    '  c = mix(c, 0.9 + 0.1 * (1.0 - exp(-(c - 0.9) * 10.0)), step(0.9, c));',
+    '  c = max(mix(vec3(lum(c)), c, uSat), 0.0);',
+    '  c = clamp(c + uCurve * (c - 0.5) * 4.0 * c * (1.0 - c), 0.0, 1.0);',
+    '  float l = lum(c);',
+    '  c += uShadowTint * (1.0 - l) * (1.0 - l) + uHighTint * l * l;',
+    '  vec2 q = vUv - 0.5; c *= 1.0 - uVig * smoothstep(0.1, 0.55, dot(q, q));',
+    '  c = clamp(c, 0.0, 1.0);',
+    '  gl_FragColor = vec4(c, dot(c, vec3(0.299, 0.587, 0.114)));',
+    '}',
+  ].join('\n');
+  const FS_FINAL = [ // FXAA (the classic PC console variant, luma from the composite's alpha) + film grain
+    'uniform sampler2D tSrc; uniform vec2 uTexel; uniform float uGrain; uniform float uTime; uniform float uSharp;',
+    'varying vec2 vUv;',
+    'void main(){',
+    '  vec4 M = texture2D(tSrc, vUv);',
+    '  float nw = texture2D(tSrc, vUv + vec2(-1.0, -1.0) * uTexel).a, ne = texture2D(tSrc, vUv + vec2(1.0, -1.0) * uTexel).a;',
+    '  float sw = texture2D(tSrc, vUv + vec2(-1.0, 1.0) * uTexel).a, se = texture2D(tSrc, vUv + vec2(1.0, 1.0) * uTexel).a, m = M.a;',
+    '  float lo = min(m, min(min(nw, ne), min(sw, se))), hi = max(m, max(max(nw, ne), max(sw, se)));',
+    '  vec3 c = M.rgb;',
+    '  if (hi - lo > max(0.0312, hi * 0.125)) {',
+    '    vec2 dir = vec2(-((nw + ne) - (sw + se)), (nw + sw) - (ne + se));',
+    '    float red = max((nw + ne + sw + se) * 0.03125, 1.0 / 128.0);',
+    '    dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + red), vec2(-8.0), vec2(8.0)) * uTexel;',
+    '    vec3 a = 0.5 * (texture2D(tSrc, vUv + dir * (1.0 / 3.0 - 0.5)).rgb + texture2D(tSrc, vUv + dir * (2.0 / 3.0 - 0.5)).rgb);',
+    '    vec3 b = a * 0.5 + 0.25 * (texture2D(tSrc, vUv - dir * 0.5).rgb + texture2D(tSrc, vUv + dir * 0.5).rgb);',
+    '    float lb = dot(b, vec3(0.299, 0.587, 0.114));',
+    '    c = (lb < lo || lb > hi) ? a : b;',
+    '  } else c += (m - (nw + ne + sw + se) * 0.25) * uSharp;', // texture detail: a light unsharp mask
+    '  float g = fract(sin(dot(gl_FragCoord.xy + uTime * 61.7, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;',
+    '  c += g * uGrain * (1.0 - 0.6 * dot(c, vec3(0.299, 0.587, 0.114)));',
+    '  gl_FragColor = vec4(c, 1.0);',
+    '}',
+  ].join('\n');
+
+  /* ---------------------------------------------------- the Ultra sky */
+  // The core sky (src/view3d.js SKY_FS) with its cloud block swapped for two shaded layers: puffy clouds lit on the side
+  // towards the sun and darker beneath, a silver lining round the sun, thin high streaks. Patched by text between the
+  // core's cloud block and its gl_FragColor: if that block changes shape, the core sky simply stays.
+  const SKY_FN = 'float fbm6(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 6; i++) { s += vn(p) * a; p = p * 2.03 + 17.3; a *= 0.5; } return s; }\n';
+  const SKY_CLOUDS = [
+    '  if (h > 0.01) {',
+    '    vec2 cp = d.xz / (h + 0.12) * 0.9 + vec2(uTime * 0.006, uTime * 0.0025);',
+    '    float base = fbm6(cp * 1.4);',
+    '    float c = smoothstep(0.5, 0.8, base) * smoothstep(0.01, 0.2, h);',
+    '    vec2 toS = normalize(uSunDir.xz + vec2(1e-4)) * 0.07;',
+    '    float lit = clamp(0.55 + (base - fbm6((cp + toS) * 1.4)) * 5.0, 0.0, 1.0);',
+    '    vec3 cL = mix(uHor * 1.12, vec3(1.0), 0.3) + uSunCol * 0.22 * uSunVis;',
+    '    vec3 cD = mix(uHor * 0.72, uZen, 0.25);',
+    '    vec3 cc = mix(cD, cL, lit) + uSunCol * pow(sd, 6.0) * 0.5 * uSunVis * (1.0 - smoothstep(0.6, 0.95, base));',
+    '    cc = mix(cc, vec3(0.05, 0.06, 0.1), uNight * 0.85);',
+    '    col = mix(col, cc, c * 0.85);',
+    '    vec2 hp = d.xz / (h + 0.05) * 0.3 + vec2(uTime * 0.004, 0.0);',
+    '    float ci = smoothstep(0.55, 0.85, fbm(vec2(hp.x * 0.5, hp.y * 3.0) * 2.0)) * smoothstep(0.06, 0.5, h) * (1.0 - uNight);',
+    '    col = mix(col, cL, ci * 0.22);',
+    '  }',
+  ].join('\n');
+  const SKY = { orig: null, ultra: null };
+  function skyUltra(on) {
+    const E = V.engine, m = E && E.skyMat;
+    if (!m) return;
+    if (SKY.orig == null) {
+      const o = (SKY.orig = m.fragmentShader);
+      const a = o.indexOf('  if (h > 0.015) {'), b = o.indexOf('  gl_FragColor = vec4(col, 1.0);'), f = o.indexOf('void main(){');
+      SKY.ultra = f > 0 && a > f && b > a ? o.slice(0, f) + SKY_FN + o.slice(f, a) + SKY_CLOUDS + '\n' + o.slice(b) : null;
+    }
+    const want = on && SKY.ultra ? SKY.ultra : SKY.orig;
+    if (m.fragmentShader !== want) { m.fragmentShader = want; m.needsUpdate = true; }
+  }
+
+  const PP = { on: false, built: false, rt: null, w: 0, h: 0, half: false, ao: false, M: null, quad: null, qs: null, qc: null,
+    lastT: 0, acc: 0, n: 0, fps: 0, slow: 0, calls: 0, sz: null };
+  function buildPost(T, r) {
+    if (PP.built) return;
+    const mat = (fs, uniforms, extra) => {
+      const m = new T.ShaderMaterial(Object.assign({ vertexShader: VS, fragmentShader: fs, uniforms, depthTest: false, depthWrite: false, toneMapped: false }, extra || {}));
+      return m;
+    };
+    const v2 = () => ({ value: new T.Vector2() });
+    PP.M = {
+      ao: mat(FS_AO, { tDepth: { value: null }, uProj: { value: new T.Matrix4() }, uInvProj: { value: new T.Matrix4() }, uTexel: v2(), uRadius: { value: TUNE.aoRadius }, uIntensity: { value: TUNE.aoIntensity }, uPow: { value: TUNE.aoPower }, uFade: { value: new T.Vector2(TUNE.aoFade[0], TUNE.aoFade[1]) } }),
+      blur: mat(FS_BLUR, { tAO: { value: null }, tDepth: { value: null }, uDir: v2(), uNF: v2() }),
+      pre: mat(FS_PRE, { tSrc: { value: null }, uTexel: v2(), uThr: { value: 1 }, uKnee: { value: 0.5 } }),
+      down: mat(FS_DOWN, { tSrc: { value: null }, uTexel: v2() }),
+      up: mat(FS_UP, { tSrc: { value: null }, uTexel: v2(), uR: { value: TUNE.bloomRadius }, uW: { value: 1 } }, { transparent: true, blending: T.AdditiveBlending }),
+      smask: mat(FS_SMASK, { tScene: { value: null }, tDepth: { value: null }, uSun: v2(), uAspect: { value: 1 } }),
+      rad: mat(FS_RAD, { tSrc: { value: null }, uSun: v2(), uLen: { value: 1 } }),
+      comp: mat(FS_COMP, { tScene: { value: null }, tAO: { value: null }, tBloom: { value: null }, tDepth: { value: null }, tShafts: { value: null },
+        uAO: { value: 0.8 }, uBloom: { value: 0.1 }, uShafts: { value: 0 }, uSat: { value: TUNE.sat }, uCurve: { value: TUNE.curve }, uVig: { value: TUNE.vignette },
+        uShadowTint: { value: new T.Vector3().fromArray(TUNE.shadowTint) }, uHighTint: { value: new T.Vector3().fromArray(TUNE.highTint) },
+        uInvProj: { value: new T.Matrix4() }, uCamRot: { value: new T.Matrix3() }, uCamY: { value: 0 }, uHasDepth: { value: 0 },
+        uSunDir: { value: new T.Vector3(0, 1, 0) }, uSunCol: { value: new T.Color() }, uFogCol: { value: new T.Color() }, uHaze: { value: 0 }, uHazeDist: { value: TUNE.hazeDist }, uHazeH: { value: TUNE.hazeHeight }, uSunGlow: { value: TUNE.sunGlow } }),
+      final: mat(FS_FINAL, { tSrc: { value: null }, uTexel: v2(), uGrain: { value: TUNE.grain }, uTime: { value: 0 }, uSharp: { value: TUNE.sharpen } }),
+    };
+    PP.quad = new T.Mesh(new T.PlaneGeometry(2, 2), PP.M.final);
+    PP.quad.frustumCulled = false;
+    PP.qs = new T.Scene(); PP.qs.add(PP.quad);
+    PP.qc = new T.Camera();
+    PP.v3 = new T.Vector3();
+    PP.sz = new T.Vector2();
+    const caps = r.capabilities, ex = r.extensions;
+    PP.half = caps.isWebGL2 ? !!ex.get('EXT_color_buffer_float') : !!(ex.has('OES_texture_half_float') && ex.has('EXT_color_buffer_half_float'));
+    PP.ao = caps.isWebGL2 || ex.has('WEBGL_depth_texture');
+    PP.built = true;
+  }
+  function freeTargets() {
+    const R = PP.rt; PP.rt = null; PP.w = PP.h = 0;
+    if (!R) return;
+    for (const k of ['scene', 'ao', 'ao2', 'ldr', 'sh1', 'sh2']) if (R[k]) { if (R[k].depthTexture) R[k].depthTexture.dispose(); R[k].dispose(); }
+    for (const t of R.mips) t.dispose();
+  }
+  function allocTargets(T, w, h) {
+    freeTargets();
+    const hdr = PP.half ? T.HalfFloatType : T.UnsignedByteType;
+    const mk = (W, H, o) => {
+      const t = new T.WebGLRenderTarget(Math.max(1, W | 0), Math.max(1, H | 0), Object.assign({ minFilter: T.LinearFilter, magFilter: T.LinearFilter, format: T.RGBAFormat, type: hdr, depthBuffer: false, stencilBuffer: false }, o || {}));
+      t.texture.generateMipmaps = false;
+      return t;
+    };
+    const R = { mips: [] };
+    if (PP.ao) { const dt = new T.DepthTexture(w, h); dt.type = T.UnsignedIntType; R.scene = mk(w, h, { depthBuffer: true, depthTexture: dt }); } else R.scene = mk(w, h, { depthBuffer: true });
+    // three r149 renders into a target in linear colour, except an XR one, which gets its texture's encoding: flagged
+    // so, the materials write exactly what they write on the screen (tone-mapped, sRGB, fog and all) and the post
+    // starts from the High frame. (The flag only picks that output encoding here; the storage stays plain RGBA16F/8.)
+    R.scene.isXRRenderTarget = true;
+    R.scene.texture.encoding = T.sRGBEncoding;
+    R.scene.texture.internalFormat = PP.half ? 'RGBA16F' : 'RGBA8';
+    R.ldr = mk(w, h, { type: T.UnsignedByteType });
+    if (PP.ao) {
+      R.ao = mk(w / 2, h / 2, { type: T.UnsignedByteType }); R.ao2 = mk(w / 2, h / 2, { type: T.UnsignedByteType });
+      R.sh1 = mk(w / 4, h / 4); R.sh2 = mk(w / 4, h / 4);
+    }
+    let mw = w / 2, mh = h / 2;
+    for (let i = 0; i < 5; i++) { R.mips.push(mk(mw, mh)); mw = Math.max(1, mw / 2); mh = Math.max(1, mh / 2); }
+    PP.rt = R; PP.w = w; PP.h = h;
+  }
+  function pass(r, m, target) { PP.quad.material = m; r.setRenderTarget(target); r.render(PP.qs, PP.qc); }
+  function postRender(r, scene, cam) {
+    const T = V.THREE, M = PP.M;
+    r.getDrawingBufferSize(PP.sz);
+    const w = PP.sz.x | 0, h = PP.sz.y | 0;
+    if (!PP.rt || w !== PP.w || h !== PP.h) allocTargets(T, w, h);
+    const R = PP.rt, info = r.info, autoReset = info.autoReset, autoClear = r.autoClear;
+    info.autoReset = false; info.reset();
+    try {
+      // 1. the scene, as the screen would get it (the display frame of High) + depth
+      r.setRenderTarget(R.scene);
+      r.render(scene, cam);
+      r.autoClear = false;
+      const night = (V.H && V.H.night) || 0;
+      // 2. ambient occlusion, half resolution, blurred across and down
+      if (PP.ao) {
+        const A = M.ao.uniforms;
+        A.tDepth.value = R.scene.depthTexture; A.uProj.value.copy(cam.projectionMatrix); A.uInvProj.value.copy(cam.projectionMatrixInverse); A.uTexel.value.set(1 / w, 1 / h);
+        pass(r, M.ao, R.ao);
+        const B = M.blur.uniforms;
+        B.tDepth.value = R.scene.depthTexture; B.uNF.value.set(cam.near, cam.far);
+        B.tAO.value = R.ao.texture; B.uDir.value.set(1 / R.ao.width, 0); pass(r, M.blur, R.ao2);
+        B.tAO.value = R.ao2.texture; B.uDir.value.set(0, 1 / R.ao.height); pass(r, M.blur, R.ao);
+      }
+      // 3. bloom: threshold into half size, down the chain, back up adding each level
+      const P = M.pre.uniforms;
+      P.tSrc.value = R.scene.texture; P.uTexel.value.set(1 / w, 1 / h);
+      P.uThr.value = U.lerp(TUNE.bloomThr[0], TUNE.bloomThr[1], night); P.uKnee.value = U.lerp(TUNE.bloomKnee[0], TUNE.bloomKnee[1], night);
+      pass(r, M.pre, R.mips[0]);
+      for (let i = 1; i < R.mips.length; i++) { const s = R.mips[i - 1]; M.down.uniforms.tSrc.value = s.texture; M.down.uniforms.uTexel.value.set(1 / s.width, 1 / s.height); pass(r, M.down, R.mips[i]); }
+      for (let i = R.mips.length - 1; i > 0; i--) { const s = R.mips[i], u = M.up.uniforms; u.tSrc.value = s.texture; u.uTexel.value.set(1 / s.width, 1 / s.height); u.uW.value = TUNE.bloomW[i]; pass(r, M.up, R.mips[i - 1]); }
+      // 4. sun shafts: the sky round the sun (when it is up and on screen), blurred towards it
+      const E = V.engine, SK = E.skyMat && E.skyMat.uniforms, C = M.comp.uniforms;
+      let shafts = 0;
+      if (PP.ao && SK) {
+        const sv = SK.uSunVis.value * (1 - night);
+        const sp = PP.v3.copy(SK.uSunDir.value).multiplyScalar(1000).add(cam.position).project(cam);
+        const sx = sp.x * 0.5 + 0.5, sy = sp.y * 0.5 + 0.5;
+        const on = sp.z < 1 ? U.clamp(1 - Math.max(Math.abs(sx - 0.5), Math.abs(sy - 0.5)) * 1.25 + 0.15, 0, 1) : 0; // fades out past the edges
+        shafts = TUNE.shafts * sv * on;
+        if (shafts > 0.01) {
+          const S = M.smask.uniforms, Rd = M.rad.uniforms;
+          S.tScene.value = R.scene.texture; S.tDepth.value = R.scene.depthTexture; S.uSun.value.set(sx, sy); S.uAspect.value = w / h;
+          pass(r, M.smask, R.sh1);
+          Rd.uSun.value.set(sx, sy);
+          Rd.tSrc.value = R.sh1.texture; Rd.uLen.value = 1; pass(r, M.rad, R.sh2);
+          Rd.tSrc.value = R.sh2.texture; Rd.uLen.value = 0.3; pass(r, M.rad, R.sh1);
+        } else shafts = 0;
+      }
+      // 5. composite: AO, haze, bloom, shafts, tone mapping, the grade
+      C.tScene.value = R.scene.texture; C.tAO.value = PP.ao ? R.ao.texture : null; C.tBloom.value = R.mips[0].texture;
+      C.tDepth.value = PP.ao ? R.scene.depthTexture : null; C.tShafts.value = shafts > 0 ? R.sh1.texture : null; C.uShafts.value = shafts;
+      C.uAO.value = PP.ao ? U.lerp(TUNE.aoDay, TUNE.aoNight, night) : 0; C.uBloom.value = U.lerp(TUNE.bloom[0], TUNE.bloom[1], night);
+      C.uHasDepth.value = PP.ao ? 1 : 0; C.uInvProj.value.copy(cam.projectionMatrixInverse); C.uCamRot.value.setFromMatrix4(cam.matrixWorld); C.uCamY.value = cam.position.y;
+      C.uHaze.value = U.lerp(TUNE.haze[0], TUNE.haze[1], night);
+      C.uSat.value = TUNE.sat; C.uCurve.value = TUNE.curve; C.uVig.value = TUNE.vignette; C.uSunGlow.value = TUNE.sunGlow;
+      C.uShadowTint.value.fromArray(TUNE.shadowTint); C.uHighTint.value.fromArray(TUNE.highTint);
+      M.ao.uniforms.uRadius.value = TUNE.aoRadius; M.ao.uniforms.uIntensity.value = TUNE.aoIntensity; M.ao.uniforms.uPow.value = TUNE.aoPower;
+      if (E.scene.fog) C.uFogCol.value.copy(E.scene.fog.color);
+      if (SK) { C.uSunDir.value.copy(SK.uSunDir.value); C.uSunCol.value.copy(SK.uSunCol.value).multiplyScalar(0.8 * SK.uSunVis.value).convertLinearToSRGB(); }
+      pass(r, M.comp, R.ldr);
+      // 6. FXAA, sharpening and grain to the screen
+      const F = M.final.uniforms;
+      F.tSrc.value = R.ldr.texture; F.uTexel.value.set(1 / w, 1 / h); F.uGrain.value = TUNE.grain; F.uSharp.value = TUNE.sharpen; F.uTime.value = reducedMotion() ? 0 : ((N.time && N.time.real) || 0) % 100;
+      pass(r, M.final, null);
+      PP.calls = info.render.calls;
+    } finally {
+      r.setRenderTarget(null);
+      r.autoClear = autoClear; info.autoReset = autoReset;
+    }
+    watchFps();
+  }
+  // an Ultra that Auto picked steps down to High on a GPU that cannot hold 30 fps at the lowest render scale
+  function watchFps() {
+    const t = performance.now();
+    if (PP.lastT) { const d = t - PP.lastT; if (d < 400) { PP.acc += d; PP.n++; } }
+    PP.lastT = t;
+    if (PP.acc < 3000) return;
+    PP.fps = PP.n * 1000 / PP.acc; PP.acc = 0; PP.n = 0;
+    const Q = V.quality;
+    if (autoUltra && PP.fps < TUNE.slowFps && Q.pixelRatio <= Q.minPixelRatio + 0.01) {
+      if (++PP.slow >= 3) { ls.set(KEY_DOWN, '1'); autoUltra = false; liveTier('high'); toast('Graphics: High, for smoother play on this device (Settings → Graphics).'); }
+    } else PP.slow = 0;
+  }
+  const POST = {
+    render(r, scene, cam) {
+      try { postRender(r, scene, cam); } catch (e) {
+        N.err('view3d_post.render', e);
+        disablePost();
+        r.setRenderTarget(null); r.render(scene, cam);
+      }
+    },
+  };
+  function enablePost() {
+    const E = V.engine;
+    if (!E || !E.ready || !V.THREE) return;
+    try { buildPost(V.THREE, E.renderer); E.post = POST; PP.on = true; skyUltra(true); } catch (e) { N.err('view3d_post.enable', e); disablePost(); }
+  }
+  function disablePost() {
+    const E = V.engine;
+    if (E && E.post === POST) E.post = null;
+    PP.on = false; PP.lastT = 0; PP.acc = PP.n = PP.slow = 0;
+    freeTargets();
+    skyUltra(false);
+  }
+
+  /* ================================================================ API + the settings row */
+  function stats() {
+    return { setting, tier: V.quality.tier, pending, autoUltra, post: PP.on, ao: PP.on && PP.ao, bloom: PP.on, half: PP.half, sky: !!(PP.on && SKY.ultra && V.engine.skyMat && V.engine.skyMat.fragmentShader === SKY.ultra), size: [PP.w, PP.h], fps: +PP.fps.toFixed(1), calls: PP.calls, gpu: GPU ? GPU.renderer : null };
+  }
+  const G = (N.graphics = {
+    get setting() { return setting; },
+    get tier() { return V.quality.tier; },
+    set, autoTier, gpu, classify, stats, TUNE,
+    _pp: () => PP, // (tests: the pipeline's targets)
+  });
+  N.addSystem({
+    id: 'graphics', order: 8, runIn: ['*'],
+    init() {
+      try {
+        if (N.menus && N.menus.addSettingsRow) {
+          N.menus.addSettingsRow({
+            id: 'graphics', label: 'Graphics (3D)', type: 'seg', section: 'Screen',
+            opts: [['auto', 'Auto'], ['low', 'Low'], ['high', 'High'], ['ultra', 'Ultra']],
+            help: 'Ultra: soft shadows in corners, glowing lights at night and film-like colour, for strong PCs. Auto picks for this device. To or from Low applies the next time the game starts.',
+            get: () => setting, set: (v) => { G.set(v); },
+          });
+        }
+      } catch (e) { N.err('graphics.settings', e); }
+    },
+  });
+})();
+
+</script> <!-- [post hook] the Graphics setting (Auto / Low / High / Ultra) and the Ultra tier's post-processing -->
 <script>/* src/festivals3d.js */
 /* NOSTALGIA — festivals3d.js (3D festival decor) — ARCHITECTURE §20 + seasons.js
  *
@@ -107509,6 +108236,8 @@ if (ngShine > 0.01) {
 .dwm-total{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 0;font:22px/1.1 var(--font-osd,'VT323',monospace)}
 .dwm-total.over{color:#b02020}.dwm-total em{font-style:normal;font-size:16px;color:#6a5a48}
 .dwm-say{margin:8px 0 0;min-height:1.3em;font-size:14px;color:#3a2a1a}
+.dwm-x{position:absolute;top:6px;right:8px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(122,47,53,.12);color:#7a2f35;font-size:18px;line-height:34px;cursor:pointer;padding:0}
+.dwm-x:hover,.dwm-x:focus-visible{background:rgba(122,47,53,.25)}
 .dwm-hint{margin:8px 0 0;font-family:var(--font-osd,'VT323',monospace);font-size:17px;color:#7a2f35;text-align:right}
 .dwm-aim{display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:center}
 .dwm-aim canvas{width:240px;height:240px;image-rendering:pixelated;border-radius:4px;box-shadow:0 0 0 2px #7a5a2a;background:#2a2420}
@@ -107550,7 +108279,7 @@ if (ngShine > 0.01) {
     const root = document.getElementById('overlay') || document.body;
     const el = document.createElement('div');
     el.className = 'dwm-panel' + (o.cls ? ' ' + o.cls : '');
-    el.innerHTML = '<div class="dwm-card" role="dialog" aria-label="' + esc(o.label || 'card') + '">' + html + '</div>';
+    el.innerHTML = '<div class="dwm-card" role="dialog" aria-label="' + esc(o.label || 'card') + '">' + (o.cancel ? '<button type="button" class="dwm-x" aria-label="' + esc(o.cancel) + '">✕</button>' : '') + html + '</div>';
     root.appendChild(el);
     requestAnimationFrame(() => el.classList.add('show'));
     const p = N.player, wasLocked = p ? !!p.controlsLocked : false;
@@ -107560,7 +108289,7 @@ if (ngShine > 0.01) {
     const done = new Promise((r) => { resolve = r; });
     const KM = (N.input && N.input.KEYMAP) || {};
     const P = {
-      el, done, keys: o.keys || null, opened: nowT(), closed: false,
+      el, done, keys: o.keys || null, cancel: !!o.cancel, opened: nowT(), closed: false,
       close(v) {
         if (P.closed) return; P.closed = true;
         if (ST.panel === P) ST.panel = null;
@@ -107585,6 +108314,7 @@ if (ngShine > 0.01) {
       if (P.keys) P.keys(k);
     }
     window.addEventListener('keydown', onDown, true);
+    if (o.cancel) el.querySelector('.dwm-x').addEventListener('click', () => { sfx('ui_back'); P.close(null); });
     ST.panel = P;
     return P;
   }
@@ -107594,7 +108324,10 @@ if (ngShine > 0.01) {
     if (!I) return;
     if (ST.eatAction) { if (I.pressed('action')) I.consume('action'); ST.eatAction = false; }
     const P = ST.panel;
-    if (!P || P.closed || mode() !== 'play' || I.device === 'keyboard') return;
+    if (!P || P.closed || mode() !== 'play') return;
+    // a card with a way out closes on Esc / Start / B (as the shops do) before the pause menu reads them (order 12 < 85)
+    if (P.cancel && (I.pressed('pause') || I.pressed('horn'))) { I.consume('pause'); I.consume('horn'); sfx('ui_back'); P.close(null); return; }
+    if (I.device === 'keyboard') return;
     for (const k of ['up', 'down', 'left', 'right', 'action']) if (I.pressed(k)) { I.consume(k); if (P.keys) P.keys(k); }
   }
 
@@ -107856,7 +108589,7 @@ if (ngShine > 0.01) {
       '<ul class="dwm-rows">' + ITEMS.map((it, i) => '<li data-i="' + i + '" class="' + (it.bomb ? 'bomb' : '') + '"><span class="sw" style="background:' + it.col + '"></span><span><b>' + esc(it.name) + '</b><em>' + esc(it.sub) + '</em></span><span class="pr">' + rs(it.price) + '</span><span class="q"><button type="button" data-d="-1" aria-label="less">−</button><i>0</i><button type="button" data-d="1" aria-label="more">+</button></span></li>').join('') +
       '<li class="act" data-act="haggle"><span>Haggle (once)</span><span>H</span></li><li class="act" data-act="pay"><span class="pay">Pay</span><span>E</span></li></ul>' +
       '<div class="dwm-list"></div><div class="dwm-total"><span class="t"></span><em></em></div><p class="dwm-say"></p>' +
-      '<p class="dwm-hint">↑↓ choose · ←→ how many · H haggle · E pay</p>';
+      '<p class="dwm-hint">↑↓ choose · ←→ how many · H haggle · E pay · Esc leave</p>';
     let P = null;
     const render = () => {
       const el = P.el;
@@ -107902,7 +108635,7 @@ if (ngShine > 0.01) {
       P.close({ items, total: total(), sum: sum(), haggled, bombs: bombs() });
     };
     P = panel(html, {
-      label: 'Pataakha stall', cls: 'dwm-stall',
+      label: 'Pataakha stall', cls: 'dwm-stall', cancel: 'Leave the stall',
       keys: (k) => {
         if (k === 'up') { sel = (sel + rows - 1) % rows; sfx('ui_click'); }
         else if (k === 'down') { sel = (sel + 1) % rows; sfx('ui_click'); }
@@ -108020,8 +108753,17 @@ if (ngShine > 0.01) {
     face('pataakha_man', 'player');
     await m.say('pataakha_man', '*Aao, aao!* Rocket, anaar, chakri, phuljhadi! Diwali rate, best rate!');
     m.objective('Buy Amma\'s list within ₹100. Nanna\'s rule: no bombs, more phuljhadis.');
-    const buy = await stallCard(m);
-    if (!buy) m.fail('Not now? The stall waits. Phir se.');
+    let buy = await stallCard(m);
+    while (!buy) {
+      // left the stall (✕ / Esc / B): nothing bought, nothing lost; the pataakha-wala is still there
+      lockShops(m, false);
+      toast('Amma\'s list is still in your pocket. The pataakha-wala waits.', 2600);
+      await act(m, S, 'Buy crackers', { r: 26, objective: 'Back to the pataakha stall when you are ready (ACTION).' });
+      lockShops(m, true);
+      face('pataakha_man', 'player');
+      m.objective('Buy Amma\'s list within ₹100. Nanna\'s rule: no bombs, more phuljhadis.');
+      buy = await stallCard(m);
+    }
     if (buy.bombs) {
       await m.talk([
         { s: 'pataakha_man', t: 'Bombs also? For you? ...Your Nanna knows?' },
@@ -111520,8 +112262,9 @@ if (ngShine > 0.01) {
  *    per person), `_role` (traffic ped role) and `_cart` to the look the rules see.
  *  - Clips: locomotion (stroll / walk / run / sprint; women use the *_f variants when the library has
  *    them; cart pushers push_cart) blended by speed between their nominal speeds, the common phase
- *    driven by the distance actually travelled (phase += dist / sum(w * stride)): planted feet at any
- *    speed. Standing: idle with idle_look now and then. States on top (cross-faded): fall (held) /
+ *    driven by the distance actually travelled (phase += dist / sum(w * stride)): planted feet up to a
+ *    natural cadence (GAIT.cadence, leg cycles per second), a slightly gliding stride above it; the walking clips'
+ *    nominal speeds follow the player's walk (N.player.paceK()). Standing: idle with idle_look now and then. States on top (cross-faded): fall (held) /
  *    getup, sit (bench) / sit_step (stool, kerb), talk, direct (traffic constables), and any clip a
  *    script asks for (e.clip3d = 'clap' | {name, loop} or people.play(e, name)). Head turns towards
  *    what the person looks at (and the camera for the player); an archetype's posture (old men stoop)
@@ -111554,6 +112297,13 @@ if (ngShine > 0.01) {
 
   /* ================================================================ options + state */
   const OPT = { enabled: true, player: true, npcs: true, peds: true, max: 26, maxNew: 2, dist: 230, hyst: 40, shadows: true, posture: true, headLook: true };
+  // Gait (owner request 2026-10-22, "make the movements natural"). The city is compressed for travel: a 7 u kid walks
+  // 32 u/s, so feet planted at every speed meant ~3-5 leg cycles a second (a sped-up film). Two fixes, no new clips:
+  //  - the walking clips' nominal speeds follow the walk (entities.js paceK(): 45 -> 32), so a walker shows the walk
+  //    clip, not a stroll / walk mix; running clips keep theirs (running did not change)
+  //  - cadence caps (leg cycles per second, by clip): above them the stride stretches (the feet glide a little) rather
+  //    than the legs spinning faster. Nearer the camera that glide shows less than frantic legs did.
+  const GAIT = { paceClips: ['stroll', 'walk', 'push_cart'], cadence: { stroll: 1.5, walk: 2.1, run: 2.8, sprint: 3.2, push_cart: 1.3 }, cadenceDefault: 2.4 };
   const S = {
     ready: false, idx: null, specs: new Set(), persons: new Set(), choice: new WeakMap(), parsing: new Set(),
     routed: 0, created: 0, disposed: 0, frameNew: 0, lastRoute: 0, ms: 0, msAvg: 0, mats: 0,
@@ -111798,7 +112548,12 @@ if (ngShine > 0.01) {
         if (c.style === 'f') { if (c.base) fem.set(c.base, name); continue; }
         base.push(name);
       }
-      const L = (names) => names.map((n) => ({ name: n, stride: CM[n].stride, nominal: CM[n].nominal || 40, w: 0, a: null })).sort((p, q) => p.nominal - q.nominal);
+      const pk = N.player && N.player.paceK ? N.player.paceK() : 1;
+      const gaitOf = (n) => String(n).replace(/_f$/, '');
+      const L = (names) => names.map((n) => {
+        const g = gaitOf(n), nominal = (CM[n].nominal || 40) * (GAIT.paceClips.indexOf(g) >= 0 ? pk : 1);
+        return { name: n, stride: CM[n].stride, nominal, cap: GAIT.cadence[g] || GAIT.cadenceDefault, w: 0, a: null };
+      }).sort((p, q) => p.nominal - q.nominal);
       this.sets = { walk: L(base.map((n) => (female && fem.has(n) ? fem.get(n) : n))) };
       if (md.clips.has('push_cart')) this.sets.cart = L(['push_cart']);
       this.set = 'walk'; this.phase = Math.random(); this.locoW = 0; this.v = 0;
@@ -111871,6 +112626,8 @@ if (ngShine > 0.01) {
       for (const l of set) S_ += l.w * l.stride;
       return S_;
     }
+    /** leg cycles per second the current blend may reach (GAIT.cadence, weighted like the strides) */
+    cadenceCap(set) { let c = 0, w = 0; for (const l of set) { c += l.w * l.cap; w += l.w; } return w > 0 ? c / w : GAIT.cadenceDefault; }
     /** dt: sim seconds; dist: distance travelled this frame; v: speed (u/s) */
     update(dt, dist, v, o) {
       o = o || {};
@@ -111885,7 +112642,7 @@ if (ngShine > 0.01) {
       this.locoW += clamp((moving ? 1 : 0) - this.locoW, -dt / FADE, dt / FADE);
       const stride = this.blend(set, Math.max(v, V_IDLE));
       if (dist == null) dist = v * dt;
-      if (moving && stride > 0) this.phase = (this.phase + dist / stride) % 1;
+      if (moving && stride > 0) this.phase = (this.phase + Math.min(dist / stride, this.cadenceCap(set) * dt)) % 1;
       // the state overlay
       let ov = 0;
       if (this.over) {
@@ -112122,7 +112879,7 @@ if (ngShine > 0.01) {
 
   /* ================================================================ API */
   const api = {
-    options: OPT, OPT,
+    options: OPT, OPT, GAIT,
     get ready() { return S.ready; },
     models: () => (S.idx ? S.idx.all.slice() : []),
     choose: (e) => choose(e),
@@ -125328,6 +126085,8 @@ void main() {
   const N = window.N;
   if (!N || !N.party) return;
   const U = N.util;
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const hyp = Math.hypot;
   const LS = 'nostalgia.races.v1';
@@ -125777,8 +126536,8 @@ void main() {
         aiSpeed: (uid) => 64 + 16 * ctx.ai.skill(uid),
         aiWalk: (uid) => {
           const out = [];
-          for (let s = d.s0 + 30; s < P.total; s += 40) { const q = P.at(s); out.push({ x: q.x, y: q.y, speed: s > d.sFoot - 8 ? 43 + 2 * ctx.ai.skill(uid) : null, r: 5 }); }
-          out.push({ x: P.pts[P.pts.length - 1].x, y: P.pts[P.pts.length - 1].y, speed: 44, r: 4 });
+          for (let s = d.s0 + 30; s < P.total; s += 40) { const q = P.at(s); out.push({ x: q.x, y: q.y, speed: s > d.sFoot - 8 ? (43 + 2 * ctx.ai.skill(uid)) * pace() : null, r: 5 }); }
+          out.push({ x: P.pts[P.pts.length - 1].x, y: P.pts[P.pts.length - 1].y, speed: 44 * pace(), r: 4 }); // walking the steps, like him
           return out;
         },
       });
@@ -125830,7 +126589,7 @@ void main() {
       const sk = ctx.ai.skill(p.uid), rng = ctx.ai.rng, f = ctx.ai.friend(p.uid);
       // careful ones walk it back (no spill), a hurried one jogs (the same 3% a second the player loses jogging)
       const hurry = rng.next() < 0.35 + 0.2 * (1 - sk);
-      const runV = 62 + 16 * sk, carryV = hurry ? 49 + 2 * rng.next() : 43 + 2 * sk;
+      const runV = 62 + 16 * sk, carryV = (hurry ? 49 + 2 * rng.next() : 43 + 2 * sk) * pace();
       const there = [], back = [];
       for (let s = 40; s < P.total - 10; s += 45) { const r = P.at(s); there.push({ x: r.x, y: r.y, speed: runV, r: 6 }); }
       const pour = 1200 + rng.next() * 1300;
@@ -125841,7 +126600,7 @@ void main() {
       ctx.ai.walk(p.uid, there.concat(back), { run: true, onDone: () => {
         const pr = st.prog.get(p.uid) || {};
         const tc = (ctx.elapsed() - (pr.t || 0)) / 1000;
-        let chai = 100 - (carryV > 47 ? 3 * tc : 0) - (rng.next() < 0.2 ? 16 : 0);
+        let chai = 100 - (carryV > 47 * pace() ? 3 * tc : 0) - (rng.next() < 0.2 ? 16 : 0);
         chai = Math.round(clamp(chai, CHAI_MIN + 10, 100));
         st.prog.set(p.uid, { phase: 'done' });
         ctx.ai.report(p.uid, { timeMs: ctx.elapsed(), score: chai, note: chai + '% chai' + (chai < 100 ? ' (+' + ((100 - chai) * CHAI_PENALTY / 1000).toFixed(1) + ' s)' : '') });
@@ -130198,6 +130957,19 @@ void main() {
     score: { base: 1000, perSec: 6, perSpot: 120, perItem: 150, floor: 100 },
   };
 
+  // [pace] the sneaking was tuned for the player's old 45 u/s walk (entities.js paceK(): walk now / 45, running is
+  // unchanged): the AI kids and the patrols on foot walk at the same share of it, and the clocks give the walk that
+  // much more time, so a lane takes the same share of the clock it always did
+  (function pace() {
+    const k = N.player && N.player.paceK ? N.player.paceK() : 1;
+    if (!(k > 0) || k === 1) return;
+    const R = TUNE.role;
+    TUNE.kidWalk = Math.round(TUNE.kidWalk * k);
+    R.walker.walk = Math.round(R.walker.walk * k); R.watchman.walk = Math.round(R.watchman.walk * k); R.hunter.walk = Math.round(R.hunter.walk * k);
+    R.daddy.speed = Math.round(R.daddy.speed * k);
+    TUNE.timeLimit = Math.round(TUNE.timeLimit / k); TUNE.warnAt = Math.round(TUNE.warnAt / k); TUNE.daddy.time = Math.round(TUNE.daddy.time / k);
+  })();
+
   /* ================================================================ lines (bible tone: comic, kind) */
   const LINES = {
     notice: {
@@ -133587,6 +134359,747 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
 })();
 
 </script>
+<script>/* src/marker.js */
+/* NOSTALGIA — marker.js: the pointer over Chinnu (owner request 2026-10-22: "add a triangle or pointer to the character
+ * so it is easy to identify in the crowd").
+ *
+ * A yellow triangle with a dark rim, point down, floating over his head (or over the cycle / auto / bus he is on), bobbing
+ * gently (still with reduced motion). Drawn in the top-down view on the 'fx' layer (above roofs, kites, crowds and the
+ * night's darkness, so it keeps its colour at dawn and at night) and in
+ * the 3D views as a camera-facing sprite that keeps its size on screen and is never hidden behind a wall or a crowd (none
+ * in first person: you are him).
+ *
+ * Setting (Settings > Screen > "Pointer over you"), localStorage 'nostalgia.marker.v1':
+ *   always   (default) always there while you play
+ *   crowds   the old behaviour: after 2.5 s standing still, or in a crowd (entities.js idleT / inCrowd)
+ *   off
+ * Shown only in 'play' (not in cutscenes, dialogue, menus or minigames) and never while he is hidden.
+ *
+ * API  N.marker = {mode ('always' | 'crowds' | 'off'), setMode(m), alpha() -> 0..1 now, state() -> {mode, alpha, x, y, h, sprite3d}}
+ * Hooks in files this module does not own (marked "[marker hook]"): index.html (script tag), entities.js (the old idle
+ * chevron moved here).
+ */
+(() => {
+  'use strict';
+  const N = window.N;
+  if (!N) return;
+  const LS_KEY = 'nostalgia.marker.v1';
+  const MODES = ['always', 'crowds', 'off'];
+  const lsGet = () => { try { return window.localStorage.getItem(LS_KEY); } catch (e) { return null; } };
+  const lsSet = (v) => { try { window.localStorage.setItem(LS_KEY, v); } catch (e) { /* storage off: this session only */ } };
+  const stored = lsGet();
+  const reduced = () => !!(document.body && document.body.classList.contains('reduced-motion'));
+  const is3D = () => !!(N.view3d && N.view3d.active);
+  const firstPerson = () => !!(N.view && N.view.mode === 'fps');
+
+  const M = (N.marker = {
+    mode: MODES.indexOf(stored) >= 0 ? stored : 'always',
+    setMode(m) { if (MODES.indexOf(m) < 0) return M.mode; M.mode = m; lsSet(m); return m; },
+    alpha,
+    state() { const a = anchor(); return { mode: M.mode, alpha: +alpha().toFixed(2), x: a ? Math.round(a.x) : null, y: a ? Math.round(a.y) : null, h: a ? a.h : null, sprite3d: !!(L3.sprite && L3.sprite.visible) }; },
+  });
+
+  /** where the pointer sits: over his head on foot, over the roof of what he rides; h = height above the ground (u) */
+  function anchor() {
+    const p = N.player;
+    if (!p || p.hidden) return null;
+    const v = p.vehicle;
+    if (v) return { x: v.x, y: v.y, h: ((v.T && v.T.h) || 11) + 9, v };
+    return { x: p.x, y: p.y, h: 15 + (p.roofH || 0), v: null };
+  }
+  function alpha() {
+    if (M.mode === 'off' || !N.state || N.state.mode !== 'play') return 0;
+    const p = N.player;
+    if (!p || p.hidden) return 0;
+    if (M.mode === 'always') return 0.95;
+    // 'crowds': the old idle chevron (2.5 s still, fading in over 0.6 s) or a crowd round him
+    return Math.max(Math.min(1, Math.max(0, ((p.idleT || 0) - 2.5) / 0.6)), p.inCrowd ? 0.75 : 0) * 0.95;
+  }
+  const bob = () => (reduced() ? 0 : Math.sin(((N.time && N.time.real) || 0) * 4.2) * 1.4);
+
+  /* ================================================================ top-down */
+  function draw2D() {
+    if (is3D()) return;
+    const a = alpha();
+    const A = a > 0 ? anchor() : null;
+    if (!A) return;
+    const R = N.render;
+    if (!R || !R.inView || !R.inView(A.x, A.y, 40)) return;
+    // on 'fx', after the light layer: the same bright yellow at dawn, at night and under the colour grade
+    R.queue('fx', 1, (ctx) => {
+      // seen from straight above, height barely moves a thing up the screen: lift the point clear of his head
+      const k = R.k(A.h), X = R.sx(A.x, k), Y = R.sy(A.y, k) - (A.v ? 9 : 11) - bob();
+      // a dark rim, then the yellow point (Chinnu's auto-yellow), one pixel of shine on the top edge
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#1a1214';
+      ctx.beginPath(); ctx.moveTo(X - 6.5, Y - 7.5); ctx.lineTo(X + 6.5, Y - 7.5); ctx.lineTo(X, Y + 2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#f2c230';
+      ctx.beginPath(); ctx.moveTo(X - 4.6, Y - 6.3); ctx.lineTo(X + 4.6, Y - 6.3); ctx.lineTo(X, Y - 0.2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,248,214,0.85)'; ctx.fillRect(Math.round(X - 3.5), Math.round(Y - 6.3), 7, 1);
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  /* ================================================================ 3D */
+  const L3 = { sprite: null, mat: null, tex: null };
+  function init3D(THREE, H) {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = '#1a1214';
+    g.beginPath(); g.moveTo(6, 8); g.lineTo(58, 8); g.lineTo(32, 58); g.closePath(); g.fill();
+    g.fillStyle = '#f2c230';
+    g.beginPath(); g.moveTo(15, 14); g.lineTo(49, 14); g.lineTo(32, 46); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(255,248,214,0.9)'; g.fillRect(17, 14, 30, 3);
+    L3.tex = new THREE.CanvasTexture(c);
+    if ('colorSpace' in L3.tex && THREE.SRGBColorSpace) L3.tex.colorSpace = THREE.SRGBColorSpace;
+    // constant size on screen, drawn over everything (a wall or a crowd never hides him), no fog
+    L3.mat = new THREE.SpriteMaterial({ map: L3.tex, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: false, fog: false });
+    L3.sprite = new THREE.Sprite(L3.mat);
+    L3.sprite.name = 'player-marker';
+    L3.sprite.renderOrder = 999;
+    L3.sprite.center.set(0.5, 0);
+    L3.sprite.scale.set(0.075, 0.075, 1); // ~3.5 % of the screen's height, whatever the distance
+    L3.sprite.visible = false;
+    L3.sprite.frustumCulled = false;
+    H.layer.add(L3.sprite);
+  }
+  function update3D(H) {
+    const S = L3.sprite;
+    if (!S) return;
+    const a = firstPerson() ? 0 : alpha();
+    const A = a > 0 ? anchor() : null;
+    S.visible = !!A;
+    if (!A) return;
+    let ground = 0;
+    try { ground = H && H.elev ? H.elev(A.v || N.player) || 0 : 0; } catch (e) { ground = 0; }
+    // just over his head (the kid model is 7.4 u tall) or over the roof of what he rides
+    const h3 = A.v ? ((A.v.T && A.v.T.h) || 11) + 4 : 10 + (N.player.roofH || 0);
+    S.position.set(A.x, ground + h3 + bob() * 0.3, A.y);
+    L3.mat.opacity = a;
+  }
+  function dispose3D(H) {
+    if (L3.sprite && H && H.layer) H.layer.remove(L3.sprite);
+    if (L3.mat) L3.mat.dispose();
+    if (L3.tex) L3.tex.dispose();
+    L3.sprite = L3.mat = L3.tex = null;
+  }
+  let reg3d = false;
+  function register3D() {
+    const V = N.view3d;
+    if (reg3d || !V || typeof V.registerLayer !== 'function') return;
+    reg3d = true;
+    V.registerLayer('marker3d', {
+      order: 90,
+      init(THREE, H) { try { init3D(THREE, H); } catch (e) { N.err('marker.init3d', e); } },
+      update(dt, H) { try { update3D(H); } catch (e) { N.err('marker.update3d', e); } },
+      dispose(H) { try { dispose3D(H); } catch (e) { N.err('marker.dispose3d', e); } },
+    });
+  }
+
+  /* ================================================================ settings row + system */
+  function addRow() {
+    if (!N.menus || typeof N.menus.addSettingsRow !== 'function') return;
+    N.menus.addSettingsRow({
+      id: 'marker', label: 'Pointer over you', type: 'seg', section: 'Screen',
+      opts: [['always', 'Always'], ['crowds', 'In crowds'], ['off', 'Off']],
+      help: 'A yellow triangle over {nick} (and over what he rides), so you find him in a busy bazaar.',
+      get: () => M.mode, set: (v) => M.setMode(v),
+    });
+  }
+  N.addSystem({
+    id: 'marker', order: 81, runIn: ['play'],
+    init() { addRow(); register3D(); },
+    draw() { try { draw2D(); } catch (e) { N.err('marker.draw', e); } },
+  });
+  N.on('boot', () => { addRow(); register3D(); });
+})();
+
+</script> <!-- [marker hook] the pointer over Chinnu (2D + 3D; Settings > Screen) -->
+<script>/* src/cheats.js */
+/* NOSTALGIA — cheats.js: typed cheat codes for play-testing (owner request, 2026-10-22: "type a code and go to
+ * Diwali time or Ramzan time ... for every stage"). Builds on the console snippet in the "Missions, Story & Test
+ * Cheat Codes" doc (nostalgiaJump), which ran every mission headless with zero errors.
+ *
+ * WHERE TO TYPE (N.cheats.enabled; default ON for this testing build, set DEFAULT_ENABLED to false for release)
+ *   - in free roam: C (desktop; ignored when the player has bound C to an action in Settings > Controls)
+ *   - the pause deck's "Cheats" key and the title screen's CHEAT CODE track (touch, pad, keyboard)
+ *   The card has one text field (Enter applies) and the code book below it; typing filters the book, a tap on a
+ *   row applies that code. Spaces, dashes, underscores and case never matter: "chand raat" = CHANDRAAT.
+ *
+ * CODES
+ *   Stage codes jump to a stage of the story: a fresh game in memory where every earlier main mission is done (tape
+ *   counter, tin tokens, lock digits, unlocks and story flags filled in), the calendar on that stage's date, and the
+ *   stage started. PROLOGUE, SANKRANTI (M1) .. GANESH (M10), DIWALI (Diwali week, Mon 20 Oct), INTERLUDE (Sat 1 Nov),
+ *   RAMZAN (free roam on a Ramzan night at Charminar, Sat 15 Nov 20:30), LASTBELL (M11), CHANDRAAT (M12),
+ *   EID (the ending, from Eid morning), EPILOGUE (2026), REWIND (post-game season menu), CHRISTMAS (SA8).
+ *   Each stage also answers to its mission name, M1..M12 / TRACK1..TRACK12 and a few nicknames (STAGES[].alias).
+ *   Activity codes: every side activity and odd job by its id (SIXBALLS, MITHAIRUN, JOBPAPERROUND...) plus short
+ *   nicknames (MITHAI, DIYAS, ROCKET, TIGER, PANDAL...): the game is set to the main mission it waits for, a valid
+ *   date / time, then it starts. The Diwali-week ones play inside the story's Diwali week.
+ *   Other codes keep the game: MORNING / NOON / EVENING / NIGHT (clock), NEXT (the next stage: the one after the
+ *   running one, else the first one not played), PASS (pass the running mission), SKIPTALK, AUTOWIN (story
+ *   minigames play and win by themselves), GODMODE, NOCHAPPAL, MYGAME.
+ *
+ * SAVES  A stage or activity code replaces the game in memory, and the next autosave writes it over Side A. Before the
+ *   first jump the player's own save (the main slot, when it is not itself from a cheat) is copied to localStorage
+ *   'nostalgia.cheats.mygame'; MYGAME puts it back and continues it. A cheat game carries N.flags.cheat (its code).
+ *
+ * API  N.cheats = {enabled, STAGES, apply(code) -> {ok, msg, kind}, lookup(code) -> entry | null, jump(id),
+ *        stage(code), open({from}), close(), list() -> code book rows, hasMyGame(), restore()}
+ *      N.debug.jump(id) / N.debug.cheat(code) (console, any build). Events: 'cheat' {code, kind, id}.
+ *      Telemetry (when on): 'cheat' {code}, so testers' sessions can be told apart.
+ * Hooks in files this module does not own (marked "[cheats hook]"): index.html (script tag), menus.js (the pause
+ *   deck key, the title track), style.css (the card).
+ */
+(() => {
+  'use strict';
+  const N = window.N;
+  if (!N) return;
+
+  const DEFAULT_ENABLED = true;           // release builds: set to false (N.debug.cheat keeps working)
+  const BACKUP_KEY = 'nostalgia.cheats.mygame';
+  const lsGet = (k) => { try { return window.localStorage.getItem(k); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { window.localStorage.setItem(k, v); return true; } catch (e) { return false; } };
+  const lsDel = (k) => { try { window.localStorage.removeItem(k); } catch (e) { /* ignore */ } };
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const norm = (s) => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const F = () => N.flags || (N.flags = {});
+  const isDone = (id) => { try { return !!(N.missions && N.missions.isDone(id)); } catch (e) { return false; } };
+  const mode = () => (N.state && N.state.mode) || 'boot';
+  const inGame = () => { const m = mode(); return m !== 'boot' && m !== 'title'; };
+  function toast(t, ms) { try { if (N.hud && N.hud.toast) N.hud.toast(t, ms || 2600); } catch (e) { N.err('cheats.toast', e); } }
+
+  /* ================================================================ the story's order (the doc's snippet) */
+  const MAIN_IDS = ['bo_kaata', 'lost_and_found', 'first_day_first_show', 'last_man_batting', 'right_right', 'ammammas_thursday',
+    'the_clap', 'drums_for_amma', 'opening_day', 'agle_baras', 'last_bell', 'chand_raat'];
+  const MAIN = () => { try { const S = N.calendar && N.calendar.STORY; if (S && S.length) return S.map((s) => s.id); } catch (e) { /* ignore */ } return MAIN_IDS; };
+  const DIWALI_IDS = ['pataakha_bazaar', 'mithai_run', 'deepon_ki_raat', 'rocket_bunty', 'tiger_ko_bachao'];
+  // side activities: the main mission each one waits for (odd jobs open after M1)
+  const NEEDS = {
+    sunday_mutton: 'lost_and_found', bunty_races: 'first_day_first_show', current_poyindi: 'last_man_batting',
+    six_balls: 'right_right', twelve_oclock: 'right_right', lb_exhibition: 'right_right', new_class_old_books: 'ammammas_thursday',
+    pandal_duty: 'ammammas_thursday', bunty_races_r2: 'the_clap', bunty_races_r3: 'the_clap', bunty_races_r4: 'the_clap',
+    pataakha_bazaar: 'agle_baras', mithai_run: 'agle_baras', deepon_ki_raat: 'agle_baras', rocket_bunty: 'agle_baras', tiger_ko_bachao: 'agle_baras',
+    christmas_stars: 'chand_raat', lb_final: 'right_right',
+  };
+  // a valid date and time for each side activity (main missions jump to their own date)
+  const WHEN = {
+    sunday_mutton: [2003, 2, 2, 7, 15], bunty_races: [2003, 2, 15, 16, 30], bunty_races_r2: [2003, 2, 15, 16, 45],
+    bunty_races_r3: [2003, 2, 15, 16, 30], bunty_races_r4: [2003, 2, 15, 16, 30], current_poyindi: [2003, 3, 24, 19, 5],
+    six_balls: [2003, 4, 28, 6, 10], twelve_oclock: [2003, 4, 10, 11, 30], lb_exhibition: [2003, 4, 28, 10, 0], lb_final: [2003, 4, 28, 10, 0],
+    new_class_old_books: [2003, 6, 9, 10, 0], pandal_duty: [2003, 9, 1, 21, 5], pataakha_bazaar: [2003, 10, 21, 10, 0],
+    mithai_run: [2003, 10, 25, 15, 5], deepon_ki_raat: [2003, 10, 25, 18, 35], rocket_bunty: [2003, 10, 25, 19, 5],
+    tiger_ko_bachao: [2003, 10, 25, 19, 5], christmas_stars: [2003, 12, 21, 10, 0],
+  };
+  const RAMZAN_NIGHT = [2003, 11, 15, 20, 30]; // a Saturday of Ramzan 2003 (27 Oct - 25 Nov), the night bazaar is on
+
+  /* ================================================================ stages (the code book's first section) */
+  // id: a main / side mission; stage: a story beat that is not a mission. chain: false = left out of NEXT.
+  const STAGES = [
+    { code: 'PROLOGUE', stage: 'prologue', title: 'Prologue · Side B, 2026', when: 'WED 14 JAN 2026', alias: ['INTRO', 'CASSETTE'] },
+    { code: 'SANKRANTI', id: 'bo_kaata', alias: ['KITES', 'PATANG'] },
+    { code: 'NUMAISH', id: 'lost_and_found', alias: ['EXHIBITION'] },
+    { code: 'FIRSTSHOW', id: 'first_day_first_show', alias: ['FDFS', 'SANDHYA'] },
+    { code: 'WORLDCUP', id: 'last_man_batting', alias: ['HOWZAAT', 'CRICKET'] },
+    { code: 'UGADI', id: 'right_right', alias: ['BUS'] },
+    { code: 'SUMMER', id: 'ammammas_thursday', alias: ['AMMAMMA', 'GIRNI'] },
+    { code: 'GOLCONDA', id: 'the_clap', alias: ['CLAP', 'MIDPOINT'] },
+    { code: 'BONALU', id: 'drums_for_amma', alias: ['DRUMS'] },
+    { code: 'PRASADS', id: 'opening_day', alias: ['IMAX'] },
+    { code: 'GANESH', id: 'agle_baras', alias: ['GANPATI', 'NIMAJJANAM', 'IMMERSION'] },
+    { code: 'DIWALI', stage: 'diwali', title: 'Diwali week', when: 'MON 20 OCT 2003', alias: ['DEEPAVALI', 'DIWALIWEEK', 'DEEWALI'] },
+    { code: 'INTERLUDE', stage: 'interlude', title: 'Interlude · Side A ■ Paused', when: 'SAT 01 NOV 2003', alias: ['PAUSED', 'TICKETS'] },
+    { code: 'RAMZAN', stage: 'ramzan', title: 'Ramzan nights · free roam at Charminar', when: 'SAT 15 NOV 2003 · 20:30', chain: false, alias: ['RAMADAN', 'RAMZAAN', 'HALEEM', 'ROZA'] },
+    { code: 'LASTBELL', id: 'last_bell', alias: ['NAUBATPAHAD', 'SCHOOL'] },
+    { code: 'CHANDRAAT', id: 'chand_raat', alias: ['FINALE', 'CHARMINAR'] },
+    { code: 'EID', stage: 'ending', title: 'The ending · Eid, then the night flight', when: 'WED 26 NOV 2003', alias: ['ENDING', 'EIDMUBARAK'] },
+    { code: 'EPILOGUE', stage: 'epilogue', title: 'Epilogue · Side B', when: 'SAT 17 JAN 2026', alias: ['SIDEB'] },
+    { code: 'REWIND', stage: 'rewind', title: 'Post-game · ◀◀ play any season of 2003', when: 'after the credits', chain: false, alias: ['POSTGAME', 'SEASONS'] },
+    { code: 'CHRISTMAS', id: 'christmas_stars', alias: ['XMAS', 'STARS'] },
+  ];
+  STAGES.forEach((s) => {
+    if (s.chain == null) s.chain = true;
+    const k = s.id ? MAIN_IDS.indexOf(s.id) : -1;
+    if (k >= 0) s.alias = s.alias.concat(['M' + (k + 1), 'TRACK' + (k + 1), 'TRACK' + String(k + 1).padStart(2, '0')]);
+  });
+  // short names for side activities and odd jobs (their full ids work too)
+  const NICK = {
+    MUTTON: 'sunday_mutton', RACES: 'bunty_races', RACE1: 'bunty_races', RACE2: 'bunty_races_r2', RACE3: 'bunty_races_r3', RACE4: 'bunty_races_r4',
+    POWERCUT: 'current_poyindi', LBMATCH: 'lb_exhibition', GONG: 'twelve_oclock', BOOKS: 'new_class_old_books', PANDAL: 'pandal_duty',
+    PATAAKHA: 'pataakha_bazaar', CRACKERS: 'pataakha_bazaar', MITHAI: 'mithai_run', SWEETS: 'mithai_run', DIYAS: 'deepon_ki_raat',
+    DEEPON: 'deepon_ki_raat', ROCKET: 'rocket_bunty', TIGER: 'tiger_ko_bachao',
+  };
+  const TOOLS = [
+    { code: 'MORNING', title: 'Clock to 07:00', run: () => clock(7, 0) },
+    { code: 'NOON', title: 'Clock to 12:00', run: () => clock(12, 0) },
+    { code: 'EVENING', title: 'Clock to 17:30', run: () => clock(17, 30) },
+    { code: 'NIGHT', title: 'Clock to 21:00', run: () => clock(21, 0) },
+    { code: 'NEXT', title: 'The next stage of the story', run: () => next() },
+    { code: 'PASS', title: 'Pass the running mission', run: () => pass() },
+    { code: 'SKIPTALK', title: 'Dialogue skips itself (on / off)', run: () => skipTalk() },
+    { code: 'AUTOWIN', title: 'Story minigames win themselves (on / off)', run: () => autoWin() },
+    { code: 'GODMODE', title: 'No energy drain, no falls (on / off)', alias: ['GOD'], run: () => god() },
+    { code: 'NOCHAPPAL', title: 'Chappal Meter to 0', alias: ['CLEAR'], run: () => noChappal() },
+    { code: 'MYGAME', title: 'Back to your own saved game', alias: ['RESTORE', 'MYSAVE'], run: () => restore() },
+  ];
+
+  /* ================================================================ lookup */
+  function missionDefs() { return (N.missions && N.missions.defs) || {}; }
+  function jobDefs() { return (N.sidejobs && N.sidejobs.defs) || {}; }
+  let index = null;
+  function buildIndex() {
+    const ix = Object.create(null);
+    const put = (code, e) => { const k = norm(code); if (k && !ix[k]) ix[k] = e; };
+    for (const s of STAGES) { put(s.code, { kind: 'stage', s }); }
+    for (const t of TOOLS) { put(t.code, { kind: 'tool', t }); for (const a of t.alias || []) put(a, { kind: 'tool', t }); }
+    for (const s of STAGES) { if (s.id) put(s.id, { kind: 'stage', s }); for (const a of s.alias) put(a, { kind: 'stage', s }); }
+    for (const k of Object.keys(NICK)) put(k, { kind: 'act', id: NICK[k] });
+    for (const id of Object.keys(missionDefs())) put(id, { kind: 'act', id });
+    for (const id of Object.keys(jobDefs())) { put(id, { kind: 'act', id }); put(id.replace(/^job_/, ''), { kind: 'act', id }); }
+    return ix;
+  }
+  function lookup(code) {
+    if (!index || index._n !== Object.keys(missionDefs()).length + Object.keys(jobDefs()).length) {
+      index = buildIndex();
+      index._n = Object.keys(missionDefs()).length + Object.keys(jobDefs()).length;
+    }
+    const k = norm(code);
+    return k ? index[k] || null : null;
+  }
+
+  /* ================================================================ your own game, kept aside */
+  let memBackup = null;
+  function cheatSave(blob) { return !!(blob && blob.data && blob.data.flags && blob.data.flags.cheat); }
+  function backupOnce() {
+    try {
+      const S = N.save;
+      if (!S || !S.slotBlob) return;
+      const blob = S.slotBlob('main');
+      if (!blob || cheatSave(blob)) return;
+      const raw = S.slotRaw('main');
+      memBackup = raw;
+      lsSet(BACKUP_KEY, raw);
+    } catch (e) { N.err('cheats.backup', e); }
+  }
+  function hasMyGame() { return !!(lsGet(BACKUP_KEY) || memBackup); }
+  function restore() {
+    const raw = lsGet(BACKUP_KEY) || memBackup;
+    if (!raw) return { ok: false, msg: 'No game of yours is put aside (it is kept when a stage code first replaces it).' };
+    let blob = null;
+    try { blob = JSON.parse(raw); } catch (e) { blob = null; }
+    if (!blob || !N.save || !N.save.importBlob) return { ok: false, msg: 'Your game could not be read back.' };
+    blob.t = Date.now(); // newer than the cheat game's autosaves, so the slot guard lets it back in
+    const r = N.save.importBlob('main', blob);
+    if (!r.ok) return { ok: false, msg: 'Could not put your game back (' + r.why + ').' };
+    lsDel(BACKUP_KEY); memBackup = null;
+    closeUi();
+    try { N.game.continueGame(); } catch (e) { N.err('cheats.restore', e); }
+    setTimeout(() => toast('Your own game is back: ' + (N.clock ? N.clock.dateLabel() : ''), 3200), 400);
+    return { ok: true, msg: 'Your game is back.', kind: 'restore' };
+  }
+
+  /* ================================================================ the jump */
+  function unlockBus(hub) { try { if (N.shops && N.shops.unlockBus) N.shops.unlockBus(hub); } catch (e) { N.err('cheats.bus', e); } }
+  /** A fresh game in memory with `done` played. o: {code, diwali: 'week' | 'done', interlude, post} */
+  function freshGame(done, o) {
+    backupOnce();
+    closeUi();
+    N.game.newGame({ skipIntro: true });
+    N.missions.deserialize({ done });
+    const main = MAIN(), has = (id) => done.indexOf(id) >= 0;
+    for (const id of done) if (main.indexOf(id) >= 0 && N.tape && N.tape.rec) N.tape.rec(id, { silent: true });
+    const f = F(), p = N.player;
+    f.prologue_seen = true;
+    f.year = 2003;
+    if (p && p.inventory) { p.inventory.add('walkman'); if (has('bo_kaata')) p.inventory.add('camera'); }
+    if (has('lost_and_found')) Object.assign(f, { lock_2: 4, riddle_2: true });
+    if (has('first_day_first_show')) Object.assign(f, { meter_live: true, sa6_unlocked: true });
+    if (has('last_man_batting')) Object.assign(f, { lock_1: 1, riddle_1: true });
+    if (has('right_right')) { unlockBus(); f.bus_unlocked = true; }
+    if (has('ammammas_thursday')) f.clue5_solved = true;
+    if (has('the_clap')) { unlockBus('mehdipatnam'); unlockBus('golconda'); Object.assign(f, { bus_golconda: true, bus_mehdipatnam: true }); }
+    if (has('opening_day')) f.prasads_open = true;
+    if (has('agle_baras')) Object.assign(f, { lock_4: 1, riddle_4: true, clue_tunnel: true, boats_open: true });
+    if (o.diwali) f.dw_story = o.diwali;
+    if (o.interlude) {
+      Object.assign(f, { interlude_done: true, ayesha_moving: true });
+      if (!has('last_bell') && N.tape && N.tape.pause) { try { N.tape.setCounter(Math.max(812, N.tape.counter | 0)); N.tape.pause(true); } catch (e) { N.err('cheats.tape', e); } }
+    }
+    if (has('last_bell')) Object.assign(f, { lock_3: 0, riddle_3: true });
+    if (has('chand_raat')) Object.assign(f, { tin_locked: true, frame_24: true });
+    if (o.ending) f.ending_done = true;
+    if (o.post) Object.assign(f, { ending_done: true, epilogue_done: true, credits_seen: true, postgame: true });
+    f.cheat = String(o.code || 'jump').toLowerCase();
+    if (N.wanted && N.wanted.set) { try { N.wanted.set(0); } catch (e) { /* ignore */ } }
+  }
+  /** the main missions before `id` (or before the one it waits for, for a side activity), plus its side prerequisites */
+  function doneFor(id) {
+    const main = MAIN();
+    let upto = main.indexOf(id);
+    if (upto < 0) {
+      const need = NEEDS[id] || lastMainRequire(id) || (/^job_/.test(id) ? 'bo_kaata' : null);
+      upto = need ? main.indexOf(need) + 1 : 0;
+    }
+    const done = main.slice(0, Math.max(0, upto));
+    for (const r of sideRequires(id)) if (done.indexOf(r) < 0) done.push(r);
+    return done;
+  }
+  function lastMainRequire(id) {
+    const d = missionDefs()[id], main = MAIN();
+    let best = null;
+    for (const r of (d && d.requires) || []) if (main.indexOf(r) > main.indexOf(best)) best = r;
+    return best;
+  }
+  /** side activities that must be played first (lb_exhibition after six_balls, race 2 after race 1 ...) */
+  function sideRequires(id, seen) {
+    seen = seen || new Set();
+    const out = [];
+    const d = missionDefs()[id], main = MAIN();
+    for (const r of (d && d.requires) || []) {
+      if (main.indexOf(r) >= 0 || seen.has(r)) continue;
+      seen.add(r);
+      for (const q of sideRequires(r, seen)) if (out.indexOf(q) < 0) out.push(q);
+      if (out.indexOf(r) < 0) out.push(r);
+    }
+    if (/^bunty_races_r(\d)$/.test(id)) for (let n = 2; n < +id.slice(-1); n++) if (out.indexOf('bunty_races_r' + n) < 0) out.push('bunty_races_r' + n);
+    if (/^bunty_races_r\d$/.test(id) && out.indexOf('bunty_races') < 0) out.unshift('bunty_races');
+    if (id === 'lb_exhibition' && out.indexOf('six_balls') < 0) out.push('six_balls');
+    return out;
+  }
+  function placeFree(x, y) {
+    try { if (!N.world.isWalkable(x, y)) { const f = N.world.findFree(x, y, 'walk', 40); if (f) return f; } } catch (e) { /* ignore */ }
+    return { x, y };
+  }
+  /** stand by a mission's giver (not on a roof: the scripts climb there themselves) */
+  function toGiver(def) {
+    try {
+      const g = def && def.giver;
+      if (!g || !N.missions.giverPos) return;
+      const pl = g.place && N.places[g.place];
+      if (pl && (pl.level || pl.roof || pl.kind === 'terrace')) return;
+      const at = N.missions.giverPos(def);
+      if (!at || !isFinite(at.x) || at.level) return;
+      const q = placeFree(at.x, at.y + 6);
+      N.player.teleport(q.x, q.y);
+      if (N.render && N.render.snapCamera) N.render.snapCamera();
+    } catch (e) { N.err('cheats.giver', e); }
+  }
+  /** Play mission / side activity / odd job `id` from a fresh game set up for it. */
+  function jump(id, code) {
+    const defs = missionDefs(), job = jobDefs()[id];
+    if (!defs[id] && !job) return { ok: false, msg: 'No mission called ' + id + '.' };
+    const main = MAIN();
+    const done = doneFor(id);
+    const k = main.indexOf(id), has = (m) => done.indexOf(m) >= 0;
+    const dw = DIWALI_IDS.indexOf(id) >= 0;
+    // past Track 10 the Diwali week and the interlude have been played, unless the activity is one of the week's own
+    const o = { code: code || id };
+    if (dw) o.diwali = 'week';
+    else if (has('agle_baras')) { o.diwali = 'done'; o.interlude = true; }
+    if (has('chand_raat') && k < 0) o.post = true;
+    freshGame(done, o);
+    if (id === 'current_poyindi') F().force_power_cut = true;
+    if (WHEN[id]) { try { N.calendar.set.apply(N.calendar, WHEN[id]); } catch (e) { N.err('cheats.when', e); } }
+    else if (job && job.window && N.clock) { const r = /^(\d{1,2}):(\d{2})$/.exec(String(job.window.from || '')); if (r) N.clock.set(+r[1], +r[2]); }
+    if (dw) { try { if (N.dwMissions && N.dwMissions.story) N.dwMissions.story.resume(); } catch (e) { N.err('cheats.diwali', e); } }
+    if (/^job_/.test(id) && N.sidejobs && N.sidejobs.start) {
+      toGiver(defs[id] || job);
+      const ok = N.sidejobs.start(id, { force: true });
+      return { ok: ok !== false, msg: (job.title || id) + ' (odd job)', kind: 'act' };
+    }
+    toGiver(defs[id]);
+    const ok = N.missions.start(id);
+    return { ok: ok !== false, msg: (defs[id].title || id) + (k >= 0 ? ' · Track ' + String(k + 1).padStart(2, '0') : ''), kind: 'act' };
+  }
+  function stageLine(s) {
+    if (s.title) return { title: s.title, when: s.when };
+    const C = N.calendar, se = C && C.storyEntry ? C.storyEntry(s.id) : null, d = missionDefs()[s.id];
+    let when = '';
+    try { const dt = (d && d.date) || (se && se.date) || WHEN[s.id]; if (dt && C) when = C.dateOf(C.dayOf(dt[0], dt[1], dt[2])).label; } catch (e) { when = ''; }
+    const title = se ? 'Track ' + String(se.track).padStart(2, '0') + ' · ' + se.title : (d && d.title) || s.id;
+    return { title, when };
+  }
+  /** The story beats that are not missions */
+  function runStage(s) {
+    const code = s.code, main = MAIN(), S2 = N.story2;
+    if (s.id) return jump(s.id, code);
+    if (s.stage === 'prologue') {
+      backupOnce();
+      closeUi();
+      N.game.newGame({ skipIntro: true });
+      F().cheat = 'prologue';
+      try { if (N.story && N.story.prologue) N.story.prologue(); } catch (e) { N.err('cheats.prologue', e); }
+      return { ok: true, msg: s.title, kind: 'stage' };
+    }
+    if (s.stage === 'diwali') {
+      freshGame(main.slice(0, main.indexOf('agle_baras') + 1), { code });
+      try { if (N.dwMissions && N.dwMissions.story) N.dwMissions.story.begin(); } catch (e) { N.err('cheats.diwali', e); }
+      return { ok: true, msg: 'Diwali week, 2003', kind: 'stage' };
+    }
+    if (s.stage === 'interlude') {
+      freshGame(main.slice(0, main.indexOf('agle_baras') + 1), { code, diwali: 'done' });
+      try { if (S2 && S2.interlude) S2.interlude(); } catch (e) { N.err('cheats.interlude', e); }
+      return { ok: true, msg: s.title, kind: 'stage' };
+    }
+    if (s.stage === 'ramzan') {
+      freshGame(main.slice(0, main.indexOf('agle_baras') + 1), { code, diwali: 'done', interlude: true });
+      const c = (N.places && (N.places.charminar_plaza || N.places.charminar)) || null;
+      if (c) { const q = placeFree(c.x, c.y + 40); N.player.teleport(q.x, q.y); }
+      else if (N.debug && N.debug.teleport) N.debug.teleport('charminar');
+      if (N.render && N.render.snapCamera) N.render.snapCamera();
+      try { N.calendar.jumpTo(RAMZAN_NIGHT, { fx: 'ff' }); } catch (e) { N.err('cheats.ramzan', e); }
+      setTimeout(() => toast('Ramzan, 2003. Green lights on the Charminar, haleem bhattis in the lanes. Home by 23:30.', 4200), 1800);
+      return { ok: true, msg: 'Ramzan nights, 2003', kind: 'stage' };
+    }
+    if (s.stage === 'ending' || s.stage === 'epilogue') {
+      freshGame(main.slice(), { code, diwali: 'done', interlude: true, ending: s.stage === 'epilogue' });
+      try { if (S2 && S2.finale) S2.finale(); } catch (e) { N.err('cheats.finale', e); }
+      return { ok: true, msg: s.title, kind: 'stage' };
+    }
+    if (s.stage === 'rewind') {
+      freshGame(main.slice(), { code, diwali: 'done', interlude: true, post: true });
+      try {
+        if (S2 && S2.rewind) Promise.resolve(S2.rewind({ stay: true })).then((k) => { if (k && S2.playSeason) S2.playSeason(k); }, (e) => N.err('cheats.rewind', e));
+      } catch (e) { N.err('cheats.rewind', e); }
+      return { ok: true, msg: s.title, kind: 'stage' };
+    }
+    return { ok: false, msg: 'Unknown stage.' };
+  }
+
+  /* ================================================================ the codes that keep the game */
+  function needGame() { return inGame() ? null : { ok: false, msg: 'Start a game first (or type a stage code like DIWALI).' }; }
+  function clock(h, m) {
+    const ng = needGame(); if (ng) return ng;
+    N.clock.set(h, m);
+    return { ok: true, msg: 'Clock: ' + N.clock.label(), kind: 'tool' };
+  }
+  function stageProgress() {
+    const f = F(), A = N.missions && N.missions.active, scene = N.story2 && N.story2.scene;
+    const chain = STAGES.filter((s) => s.chain);
+    let cur = -1;
+    if (A) cur = chain.findIndex((s) => s.id === A.id);
+    if (cur < 0 && scene) cur = chain.findIndex((s) => s.stage === scene || (s.stage === 'diwali' && /^diwali/.test(scene)));
+    if (cur < 0 && f.dw_story === 'week' && !f.interlude_done) cur = chain.findIndex((s) => s.stage === 'diwali');
+    const doneStage = (s) => {
+      if (s.id) return isDone(s.id);
+      if (s.stage === 'prologue') return !!f.prologue_seen;
+      if (s.stage === 'diwali') return f.dw_story === 'done' || !!f.interlude_done || isDone('last_bell');
+      if (s.stage === 'interlude') return !!f.interlude_done || isDone('last_bell');
+      if (s.stage === 'ending') return !!f.ending_done || !!f.postgame;
+      if (s.stage === 'epilogue') return !!f.epilogue_done || !!f.postgame;
+      return true;
+    };
+    return { chain, cur, first: chain.findIndex((s) => !doneStage(s)) };
+  }
+  function next() {
+    const ng = needGame(); if (ng) return ng;
+    const P = stageProgress();
+    const s = P.cur >= 0 ? P.chain[P.cur + 1] : P.chain[P.first];
+    if (!s) return { ok: false, msg: 'Nothing after this on the tape. Try REWIND or CHRISTMAS.' };
+    const r = runStage(s);
+    if (r.ok) r.msg = '▶▶ ' + s.code + ' · ' + r.msg;
+    return r;
+  }
+  function pass() {
+    const ng = needGame(); if (ng) return ng;
+    if (!N.missions || !N.missions.active) return { ok: false, msg: 'No mission is running (NEXT jumps to the next stage).' };
+    const id = N.missions.active.id;
+    closeUi();
+    N.missions.complete();
+    return { ok: true, msg: 'Passed: ' + ((missionDefs()[id] || {}).title || id), kind: 'tool' };
+  }
+  function skipTalk() {
+    const on = !(N.dialogue && N.dialogue.skip);
+    if (N.debug && N.debug.skipDialogue) N.debug.skipDialogue(on);
+    return { ok: true, msg: 'Dialogue skip ' + (on ? 'ON' : 'OFF'), kind: 'tool' };
+  }
+  let autoWinOn = false;
+  function autoWin() {
+    autoWinOn = !autoWinOn;
+    try { if (N.story && N.story.debug) N.story.debug.mg = autoWinOn ? 'win' : null; } catch (e) { /* ignore */ }
+    try { if (N.story2 && N.story2.TUNE) N.story2.TUNE.mg = autoWinOn ? { autoplay: 'win', skipHowto: true } : null; } catch (e) { /* ignore */ }
+    return { ok: true, msg: 'Story minigames win by themselves: ' + (autoWinOn ? 'ON' : 'OFF'), kind: 'tool' };
+  }
+  function god() {
+    const ng = needGame(); if (ng) return ng;
+    const on = N.debug.god(!N.player.god);
+    return { ok: true, msg: 'God mode ' + (on ? 'ON' : 'OFF'), kind: 'tool' };
+  }
+  function noChappal() {
+    const ng = needGame(); if (ng) return ng;
+    if (N.debug.setWanted) N.debug.setWanted(0);
+    return { ok: true, msg: 'Chappal Meter cleared', kind: 'tool' };
+  }
+
+  /* ================================================================ apply */
+  function apply(code) {
+    const e = lookup(code);
+    if (!e) return { ok: false, msg: norm(code) ? '"' + String(code).trim() + '" is not a code. The code book is below.' : 'Type a code.' };
+    if (mode() === 'boot' || !N.world || !N.world.built) return { ok: false, msg: 'Still loading the city.' };
+    let r;
+    try {
+      if (e.kind === 'tool') r = e.t.run();
+      else if (e.kind === 'stage') r = runStage(e.s);
+      else r = jump(e.id, e.id);
+    } catch (err) {
+      N.err('cheats.apply', err);
+      r = { ok: false, msg: 'That code broke something: ' + ((err && err.message) || err) };
+    }
+    r = r || { ok: false, msg: '' };
+    if (r.ok) {
+      const name = e.kind === 'tool' ? e.t.code : e.kind === 'stage' ? e.s.code : norm(e.id);
+      r.code = name;
+      N.emit('cheat', { code: name, kind: e.kind, id: e.id || (e.s && e.s.id) || null });
+      try { if (N.telemetry && N.telemetry.track) N.telemetry.track('cheat', { code: name.toLowerCase().slice(0, 40) }); } catch (er) { /* ignore */ }
+      if (r.kind === 'tool') toast('✱ ' + r.msg, 2200);
+      else if (r.kind !== 'restore') setTimeout(() => toast('✱ CHEAT · ' + name + ' · ' + r.msg, 3000), 250);
+    }
+    return r;
+  }
+
+  /* ================================================================ the card */
+  let panel = null;
+  const ui = { from: null, msg: '', kind: '' };
+  function list() {
+    const rows = [];
+    for (const s of STAGES) { if (s.id && !missionDefs()[s.id]) continue; const L = stageLine(s); rows.push({ sec: 'stage', code: s.code, title: L.title, when: L.when, alias: s.alias.concat(s.id ? [s.id] : []) }); }
+    const nickOf = {}; for (const k of Object.keys(NICK)) if (!nickOf[NICK[k]]) nickOf[NICK[k]] = k;
+    const sides = Object.keys(missionDefs()).filter((id) => {
+      const d = missionDefs()[id];
+      return d && (d.kind === 'side') && !/^job_/.test(id) && id !== 'diwali_week' && STAGES.every((s) => s.id !== id);
+    });
+    for (const id of sides) rows.push({ sec: 'side', code: nickOf[id] || norm(id), title: missionDefs()[id].title || id, when: WHEN[id] ? whenLabel(WHEN[id]) : '', alias: [norm(id), id] });
+    for (const id of Object.keys(jobDefs())) rows.push({ sec: 'job', code: norm(id.replace(/^job_/, '')), title: jobDefs()[id].title || id, when: '', alias: [norm(id), id] });
+    for (const t of TOOLS) rows.push({ sec: 'tool', code: t.code, title: t.title, when: '', alias: t.alias || [] });
+    return rows;
+  }
+  function whenLabel(w) { try { return N.calendar.dateOf(N.calendar.dayOf(w[0], w[1], w[2])).label + ' · ' + String(w[3]).padStart(2, '0') + ':' + String(w[4]).padStart(2, '0'); } catch (e) { return ''; } }
+  const SECS = [['stage', 'Story stages', 'A fresh game at that stage: every main mission before it counts as done.'],
+    ['side', 'Side activities', 'Set up for the activity (the main mission it waits for is done), then it starts.'],
+    ['job', 'Odd jobs', 'Starts the job now, whatever the hour.'],
+    ['tool', 'Time and helpers', 'These keep your game.']];
+  function render() {
+    if (!panel || !panel.el) return;
+    const D = panel.dom, rows = list();
+    D.msg.textContent = ui.msg || '';
+    D.msg.className = 'ch-msg' + (ui.kind ? ' ' + ui.kind : '');
+    D.msg.hidden = !ui.msg;
+    let h = '';
+    for (const [sec, head, sub] of SECS) {
+      const rs = rows.filter((r) => r.sec === sec);
+      if (!rs.length) continue;
+      h += '<section class="ch-sec" data-sec="' + sec + '"><h3>' + esc(head) + '</h3><p class="ch-sub">' + esc(sub) + '</p><div class="ch-list ' + (sec === 'stage' ? 'rows' : 'chips') + '">';
+      for (const r of rs) {
+        // codes, aliases and the title's words: typing matches the start of any of them
+        const keys = [r.code].concat(r.alias, String(r.title).split(/[\s·:,!.]+/)).map(norm).filter(Boolean).join(' ');
+        h += '<button type="button" class="ch-code" data-nav data-code="' + esc(r.code) + '" data-keys="' + esc(keys) + '"><b>' + esc(r.code) + '</b><span>' + esc(r.title) + (r.when ? '<em>' + esc(r.when) + '</em>' : '') + '</span></button>';
+      }
+      h += '</div></section>';
+    }
+    D.book.innerHTML = h;
+    D.note.textContent = hasMyGame() ? 'Your own game is put aside: type MYGAME to get it back.' : 'Stage codes replace the game in play; your own save is put aside first (MYGAME brings it back).';
+    filter();
+  }
+  function filter() {
+    if (!panel || !panel.el) return;
+    const q = norm(panel.dom.input.value);
+    const exact = q ? lookup(q) : null;
+    panel.el.querySelectorAll('.ch-code').forEach((b) => {
+      const show = !q || (' ' + b.dataset.keys).indexOf(' ' + q) >= 0;
+      b.hidden = !show;
+      b.classList.toggle('hit', !!exact && norm(b.dataset.code) === q);
+    });
+    panel.el.querySelectorAll('.ch-sec').forEach((s) => { s.hidden = !s.querySelector('.ch-code:not([hidden])'); });
+  }
+  function submit(code) {
+    const c = code != null ? code : panel && panel.dom.input.value;
+    const r = apply(c);
+    if (!panel || !panel.el) return r;
+    ui.msg = r.msg || ''; ui.kind = r.ok ? 'ok' : 'bad';
+    if (r.ok && isOpen()) {
+      // a tool keeps the game: back to it (from the title it stays here)
+      if (inGame()) closeUi(true);
+      else render();
+    } else if (!r.ok) {
+      render();
+      try { if (N.audio && N.audio.sfx) N.audio.sfx('ui_back', { ui: true }); } catch (e) { /* ignore */ }
+      try { panel.dom.input.focus({ preventScroll: true }); panel.dom.input.select(); } catch (e) { /* ignore */ }
+    }
+    return r;
+  }
+  function definePanel() {
+    if (panel || !N.menus || !N.menus.definePanel) return panel;
+    panel = N.menus.definePanel('cheats', {
+      build() {
+        const e = (this.el = document.createElement('div'));
+        e.className = 'screen mn-screen mn-cheats';
+        e.setAttribute('role', 'dialog');
+        e.setAttribute('aria-label', 'Cheat codes');
+        e.innerHTML = '<div class="mn-card ch-card"><div class="mn-card-head"><h2>✱ Cheat codes</h2><button type="button" class="mn-x" data-act="back" aria-label="Close">✕</button></div>' +
+          '<div class="ch-body scroll">' +
+          '<form class="ch-form" autocomplete="off"><label class="ch-field"><span>Type a code</span><input type="text" data-nav data-def maxlength="32" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" placeholder="DIWALI · RAMZAN · M7 …"></label>' +
+          '<button type="submit" class="mn-btn" data-nav>▶ Enter</button></form>' +
+          '<p class="ch-msg" role="status" hidden></p><p class="ch-note"></p><div class="ch-book"></div></div></div>';
+        N.menus.overlayRoot().appendChild(e);
+        this.dom = { input: e.querySelector('input'), msg: e.querySelector('.ch-msg'), note: e.querySelector('.ch-note'), book: e.querySelector('.ch-book') };
+        e.querySelector('form').addEventListener('submit', (ev) => { ev.preventDefault(); submit(); });
+        e.querySelector('[data-act=back]').addEventListener('click', () => this.back());
+        this.dom.input.addEventListener('input', () => { if (ui.msg && ui.kind === 'bad') { ui.msg = ''; panel.dom.msg.hidden = true; } filter(); });
+        e.addEventListener('click', (ev) => {
+          const b = ev.target.closest('.ch-code');
+          if (!b) return;
+          this.dom.input.value = b.dataset.code;
+          submit(b.dataset.code);
+        });
+      },
+      onOpen(o) { ui.from = (o && o.from) || null; ui.msg = ''; ui.kind = ''; this.dom.input.value = ''; render(); },
+      back() { closeUi(); },
+      onKey(k, e, typing) {
+        if (k === 'ok' && typing) { submit(); return true; }
+        return false;
+      },
+    });
+    return panel;
+  }
+  function isOpen() { return !!(N.menus && N.menus.isPanelShown && N.menus.isPanelShown('cheats')); }
+  /** opts.from: 'pause' (back to the deck) | 'key' (back to the game) | 'title' */
+  function open(opts) {
+    if (!N.menus || !definePanel()) return false;
+    N.menus.openPanel('cheats', opts || {});
+    return true;
+  }
+  /** close the card; resume = also leave the pause deck (a code that keeps the game, or the C key's card) */
+  function closeUi(resume) {
+    if (!isOpen()) return;
+    const from = ui.from;
+    N.menus.closePanel('cheats');
+    if ((resume || from === 'key') && mode() === 'paused' && N.menus.resume) N.menus.resume();
+  }
+
+  /* ================================================================ the C key in free roam */
+  window.addEventListener('keydown', (e) => {
+    if (!C.enabled || e.code !== 'KeyC' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (mode() !== 'play' || (N.menus && N.menus.isOpen && N.menus.isOpen())) return;
+    if (N.input && N.input.KEYMAP && N.input.KEYMAP.KeyC) return; // the player put an action on C
+    e.preventDefault(); // the "c" must not land in the card's field
+    if (!N.game || !N.game.pause || !N.game.pause()) return;
+    open({ from: 'key' });
+  });
+
+  const C = (N.cheats = {
+    enabled: DEFAULT_ENABLED,
+    STAGES, TOOLS, NEEDS, WHEN,
+    apply, lookup, jump: (id) => jump(id, id), stage: (code) => { const e = lookup(code); return e && e.kind === 'stage' ? runStage(e.s) : { ok: false, msg: 'Not a stage code.' }; },
+    open, close: () => closeUi(), list, hasMyGame, restore,
+    get isOpen() { return isOpen(); },
+  });
+  if (N.debug) { N.debug.jump = (id) => C.jump(id); N.debug.cheat = (code) => C.apply(code); }
+})();
+
+</script> <!-- [cheats hook] typed cheat codes: jump to any stage / festival of the story (C, pause deck, title) -->
 <script>/* src/main.js */
 /* NOSTALGIA — main.js
  * Boot (fonts with a 1.5 s timeout, world build, systems init), title -> play, the

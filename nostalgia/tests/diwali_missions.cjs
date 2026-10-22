@@ -230,6 +230,22 @@ async function pBazaar() {
   await walkTo(S.x, S.y, 12, { stop: () => !!(N.dialogue.isOpen && N.dialogue.isOpen()) || !!N.dwMissions.debug.state().panel, talk: false });
   await shot('stall');
   await playUntil(() => !!N.dwMissions.debug.state().panel, 15000, 'the stall card');
+  // the way out (a card nobody could leave but by paying the list exactly): Esc closes it without the pause menu, the
+  // mission waits, ACTION at the stall opens it again (an empty basket), and the ✕ button closes it too
+  await press('ArrowRight', 2);
+  await press('Escape');
+  await playUntil(() => !N.dwMissions.debug.state().panel, 5000, 'the card closes on Esc');
+  const lv = await ev(() => ({ panel: N.dwMissions.debug.state().panel, mode: N.state.mode, act: N.missions.active && N.missions.active.id, locked: !!N.player.controlsLocked, step: N.dwMissions.debug.state().step }));
+  check(!lv.panel && lv.mode === 'play' && lv.act === 'pataakha_bazaar' && !lv.locked && lv.step === 'act', 'Esc leaves the stall card: no pause menu, the mission waits, he can move', lv);
+  await press('KeyE');
+  await playUntil(() => !!N.dwMissions.debug.state().panel, 8000, 'the stall card again (ACTION at the stall)');
+  const rc = await ev(() => N.dwMissions.debug.state().card);
+  check(rc && rc.q.phuljhadi === 0 && rc.total === 0, 'ACTION at the stall opens the card again, an empty basket', rc);
+  await page.click('.dwm-x');
+  await playUntil(() => !N.dwMissions.debug.state().panel, 5000, 'the card closes on ✕');
+  check(await ev(() => !N.dwMissions.debug.state().panel && N.missions.active && N.missions.active.id === 'pataakha_bazaar'), 'the ✕ button closes it too, the mission waits');
+  await press('KeyE');
+  await playUntil(() => !!N.dwMissions.debug.state().panel, 8000, 'the stall card, third time');
   // attempt 1: Amma's list + a string of bijli (rows: 0 phuljhadi 1 chakri 2 anaar 3 rocket 4 snake 5 bijli 6 dhamaka 7 haggle 8 pay)
   await press('ArrowRight', 3); await press('ArrowDown'); await press('ArrowRight', 2); await press('ArrowDown'); await press('ArrowRight', 2);
   await press('ArrowDown'); await press('ArrowRight'); await press('ArrowDown', 2); await press('ArrowRight');

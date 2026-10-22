@@ -37,7 +37,8 @@ const BANNED = /\b(COCA|COKE|PEPSI|THUMS|LIMCA|SPRITE|FANTA|MIRINDA|MAAZA|FROOTI
 const LATER = /\b(SMARTPHONE|3G|4G|WHATSAPP|FACEBOOK|TOUCHSCREEN|LED|LCD|PLASMA|WWW|DTH|ONLINE|APP)\b/;
 
 async function boot(page) {
-  await page.goto(URL);
+  // a second boot must reload: goto() to the same URL (only a #hash) is a same-document jump that reloads nothing
+  if (page.url() === URL) await page.reload({ waitUntil: 'domcontentloaded', timeout: 180000 }); else await page.goto(URL, { timeout: 180000 });
   await page.waitForFunction(() => window.N && document.body.classList.contains('booted') && N.state.mode === 'title', null, { timeout: 180000 });
 }
 const info = () => {
@@ -66,6 +67,7 @@ async function main() {
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
+  page.on('dialog', (d) => d.accept().catch(() => {})); // (leave-page prompts on a reload)
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '/* stubbed */' }));
   await page.route(CDN, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_JS }));
 
