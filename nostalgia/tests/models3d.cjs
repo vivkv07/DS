@@ -211,7 +211,7 @@ async function main3d(browser) {
     return { parkedKey, parkedObj, riding, after, vid: v && v.id };
   });
   check(r2.parkedKey === 'm3d:veh:hero_cycle' && r2.parkedObj, 'a parked Hero cycle renders with the Blender hero_cycle model');
-  check(r2.riding.inVeh && !r2.riding.player && !r2.riding.vehicle, 'riding: player and cycle fall back to the procedural renderer (rider IK) — ' + JSON.stringify(r2.riding));
+  check(r2.riding.inVeh && !r2.riding.player && (!r2.riding.vehicle || r2.riding.vehicle === 'm3d:veh:hero_cycle'), 'riding: the player is drawn on the cycle (the procedural rider IK, or the Blender cycle with him on it when his model has a ride clip) — ' + JSON.stringify(r2.riding));
   check(!r2.after.inVeh && /^m3d:(char|ppl):kid_chinnu$/.test(r2.after.player || '') && r2.after.vehicle === 'm3d:veh:hero_cycle', 'off the cycle again: both back on the Blender models — ' + JSON.stringify(r2.after));
 
   // ---- clips by speed + phase from distance (a standalone character, not in the scene)
@@ -227,7 +227,7 @@ async function main3d(browser) {
     return { out, ph, stride: man.walk.stride, clips: Object.keys(man) };
   });
   const sumW = (w) => Object.values(w).reduce((s, x) => s + x, 0);
-  check(cl.out[0].clip === 'idle' && cl.out[14].clip === 'stroll' && cl.out[45].clip === 'walk' && cl.out[80].clip === 'run' && cl.out[110].clip === 'run', 'clip by speed: 0 idle, 14 stroll, 45 walk, 80 run (' + [0, 8, 14, 30, 45, 62, 80, 110].map((v) => v + ':' + cl.out[v].clip).join(' ') + ')');
+  check(cl.out[0].clip === 'idle' && cl.out[14].clip === 'stroll' && cl.out[45].clip === 'walk' && cl.out[80].clip === 'run' && cl.out[110].clip === (cl.clips.indexOf('sprint') >= 0 ? 'sprint' : 'run'), 'clip by speed: 0 idle, 14 stroll, 45 walk, 80 run (' + [0, 8, 14, 30, 45, 62, 80, 110].map((v) => v + ':' + cl.out[v].clip).join(' ') + ')');
   check(cl.out[30].w.stroll > 0.2 && cl.out[30].w.walk > 0.2 && cl.out[62].w.walk > 0.2 && cl.out[62].w.run > 0.2, 'between nominal speeds the locomotion clips blend (30: ' + JSON.stringify(cl.out[30].w) + ', 62: ' + JSON.stringify(cl.out[62].w) + ')');
   check([0, 14, 30, 45, 62, 80].every((v) => Math.abs(sumW(cl.out[v].w) - 1) < 0.02), 'clip weights always sum to 1 (no bind-pose bleed)');
   const expPh = (45 / cl.stride) % 1;
@@ -482,7 +482,9 @@ async function fallback(browser) {
     const src = fs.readFileSync(path.join(ROOT, 'src/assets3d_pack.js'), 'utf8').replace(/('kid_chinnu': ')Z2xURgIAAAA/, '$1AAAAAAAAAAAA');
     const { context, page, errors } = await openPage(browser, { routes: [[/assets3d_pack\.js/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: src })]] });
     await to3D(page, 'tps');
-    const st = await waitModels(page);
+    let st = await waitModels(page);
+    // (a character parsed on first use fails when the player first asks for it: a moment after ready)
+    for (let i = 0; i < 40 && !(st.failed && st.failed.kid_chinnu); i++) { await new Promise((r) => setTimeout(r, 500)); st = await page.evaluate(() => N.models3d.stats()); }
     const key = await page.evaluate(() => N.player.view3d || null);
     check(st.state === 'ready' && st.failed.kid_chinnu && st.parsed.indexOf('hero_cycle') >= 0 && !key, 'corrupt kid_chinnu: skipped (' + st.failed.kid_chinnu + '), hero_cycle still loads, the player stays procedural');
     await checkErrors(page, errors);
