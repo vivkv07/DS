@@ -53,7 +53,7 @@
 
   /* ================================================================ routes */
   const ROUTES = [
-    { id: 'tank_bund', name: 'Tank Bund sprint', from: 'Ambedkar statue', to: 'Sailing Club', where: 'tank_bund', pts: [[8917, 4126], [9892, 2837]], every: 420, min: 8000 },
+    { id: 'tank_bund', name: 'Tank Bund sprint', from: 'Ambedkar statue', to: 'Sailing Club', where: 'tank_bund', pts: [[8917, 4126], [9892, 2837]], every: 420, min: 11000 },
     { id: 'koti_charminar', name: 'Koti to Charminar', from: 'Koti', to: 'Charminar', where: 'koti', pts: [[9825, 6145], [9020, 8340]], every: 450, min: 16000 },
     { id: 'necklace_loop', name: 'Necklace Road loop', from: 'Necklace Road', to: 'back round the lake', where: 'necklace_road', pts: [[8082, 3676], [9884, 2754], [8917, 4126], [8082, 3676]], every: 520, min: 30000 },
     { id: 'rtc_narayanguda', name: 'RTC X Roads to Narayanguda', from: 'RTC X Roads', to: 'Narayanguda', where: 'rtc_x_roads', pts: [[10860, 4438], [10380, 5363]], every: 380, min: 7000 },

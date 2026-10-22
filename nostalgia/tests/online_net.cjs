@@ -15,8 +15,10 @@
  *   blip    a party race: the guest's and then the host's socket blips (no "left", no second host); the host really
  *           leaves: the next player takes over after the grace period and the results still come
  *   summary ctx.summary({line}): a team line on the results card on every phone
+ *   ui      a landscape phone: a far friend's edge arrow stays clear of the HUD / room badge / 💬 / touch buttons in
+ *           every direction; the party standings strip stands beside the minimap (gameplay audit X1, X2)
  *
- *   node nostalgia/tests/online_net.cjs        ONLY=rate,jitter,drop,away,double,blip,summary   SHOTS=0
+ *   node nostalgia/tests/online_net.cjs        ONLY=rate,jitter,drop,away,ui,double,summary,blip   SHOTS=0
  * Screenshots: tests/out/net_*.png   Numbers: tests/out/online_net.json
  */
 'use strict';
@@ -261,6 +263,45 @@ const sentSt = (P) => P.ev(() => N.online._debug.stats().sent);
       await A.context.close(); await B.context.close();
     }
 
+    /* ============================================================ ui: a landscape phone (audit X1, X2) */
+    if (only('ui')) {
+      console.log('\n== ui: edge arrows and the party strip on a landscape phone');
+      const A = await newPhone(browser, 'A', CONF, { url: S.url });
+      const B = await newPhone(browser, 'B', CONF, { url: S.url, viewport: { width: 844, height: 390 }, touch: true });
+      phones.push(A, B);
+      await play(A, TB[0], TB[1]); await play(B, TB[0] + 30, TB[1]);
+      const r = await room([A, B], ['Ravi', 'Pooja']);
+      check(r.ok, 'room ' + r.code);
+      const overlaps = () => B.ev(() => {
+        const keep = N.hud.keepOutRects().concat(Array.from(document.querySelectorAll('.ol-hud > *, #touch .t-btn')).map((e) => { const q = e.getBoundingClientRect(); return [q.left, q.top, q.right, q.bottom]; }).filter((q) => q[2] - q[0] > 2 && q[3] - q[1] > 2));
+        const t = Array.from(document.querySelectorAll('#ol-tags .ol-tag.ol-edge')).find((q) => q.style.visibility !== 'hidden');
+        if (!t) return null;
+        const b = t.getBoundingClientRect();
+        return { box: [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)], hits: keep.filter((k) => b.right > k[0] + 3 && b.left < k[2] - 3 && b.bottom > k[1] + 3 && b.top < k[3] - 3).length };
+      });
+      // A far away in the four directions: the arrow on B's screen never sits under the HUD / buttons
+      const res = [];
+      for (const [dx, dy] of [[0, -700], [900, 0], [0, 700], [-900, 0], [700, -500], [700, 500]]) {
+        await A.ev(([x, y]) => N.player.teleport(x, y), [TB[0] + 30 + dx, TB[1] + dy]);
+        await until(B, () => !!Array.from(document.querySelectorAll('#ol-tags .ol-tag.ol-edge')).find((q) => q.style.visibility !== 'hidden'), null, 8000);
+        await gw(B, 0.6);
+        res.push(await overlaps());
+      }
+      info('edge arrow boxes: ' + JSON.stringify(res));
+      check(res.every((q) => q && q.hits === 0), 'the edge arrow stays clear of the HUD, the room badge / 💬 and the touch buttons in every direction');
+      await B.shot('ui_edge_landscape');
+      // the live standings strip (a solo race) beside the minimap, not on it
+      await B.ev(() => N.party.solo('race_tank_bund'));
+      await until(B, () => !!document.querySelector('.pt-strip.show'), null, 15000);
+      await gw(B, 1);
+      const sm = await B.ev(() => { const a = document.querySelector('.pt-strip').getBoundingClientRect(), m = document.querySelector('.hud-minimap').getBoundingClientRect(); return { strip: [a.left, a.top, a.right, a.bottom].map(Math.round), map: [m.left, m.top, m.right, m.bottom].map(Math.round), hit: a.right > m.left && a.left < m.right && a.bottom > m.top && a.top < m.bottom }; });
+      check(!sm.hit, 'the party strip stands beside the minimap on a landscape phone: ' + JSON.stringify(sm));
+      await B.shot('ui_strip_landscape');
+      await B.ev(() => N.party.cancel());
+      for (const P of [A, B]) { const e = await P.errs(); check(!e.length, P.name + ': zero errors' + (e.length ? ': ' + e.slice(0, 3).join(' | ') : '')); }
+      await A.context.close(); await B.context.close();
+    }
+
     /* ============================================================ double: both tap Start at once */
     if (only('double') || only('blip') || only('summary')) {
       console.log('\n== party: three phones');
@@ -367,7 +408,7 @@ const sentSt = (P) => P.ev(() => N.online._debug.stats().sent);
   } catch (e) {
     fail('crashed: ' + (e.stack || e.message));
   } finally {
-    fs.writeFileSync(path.join(OUT, 'online_net' + TAG + '.json'), JSON.stringify(NUM, null, 1));
+    if (Object.keys(NUM).length) fs.writeFileSync(path.join(OUT, 'online_net' + TAG + '.json'), JSON.stringify(NUM, null, 1));
     await browser.close().catch(() => {});
     await M.close();
     S.srv.close();

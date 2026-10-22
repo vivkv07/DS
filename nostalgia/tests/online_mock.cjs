@@ -29,7 +29,7 @@ function start(opts) {
   const KEY = opts.key || 'test-publishable-key';
   const db = { saves: new Map(), journeys: new Map(), profiles: new Map(), rate: new Map(), races: new Map() };
   // party races (supabase/migrations/20261020000000_party.sql): the routes and their min_ms
-  const RACE_ROUTES = { tank_bund: 8000, koti_charminar: 16000, necklace_loop: 30000, rtc_narayanguda: 7000, golconda_tombs: 9000, birla_steps: 5000, chai_run: 8000 };
+  const RACE_ROUTES = { tank_bund: 11000, koti_charminar: 16000, necklace_loop: 30000, rtc_narayanguda: 7000, golconda_tombs: 9000, birla_steps: 5000, chai_run: 8000 };
   const raceBoard = (route, k) => [...db.races.entries()].filter(([id]) => id.endsWith(':' + route)).map(([id, r]) => ({ key: id.slice(0, id.length - route.length - 1), ms: r.best, t: r.t }))
     .sort((a, b) => a.ms - b.ms || a.t - b.t).slice(0, 10).map((r) => ({ nick: (db.profiles.get(r.key) || {}).nick || 'Player', ms: r.ms, me: r.key === k }));
   const raceRank = (route, ms) => 1 + [...db.races.entries()].filter(([id, r]) => id.endsWith(':' + route) && r.best < ms).length;

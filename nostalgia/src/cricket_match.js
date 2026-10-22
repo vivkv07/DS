@@ -4182,6 +4182,8 @@
     const rows = P.slots.map((s) => pmStats(S, s));
     P.final = rows;
     const mine = rows.find((r) => r.uid === P.L.me);
+    // the team line on the shared results card ("Colony XI won by 12 runs"; party.js ctx.summary)
+    try { const R = S.result; if (R && ctx.summary) ctx.summary({ line: R.tie ? 'Match tied: ' + R.margin : (R.winner && R.winner.name ? R.winner.name + ' won ' + R.margin : '') }); } catch (e) { N.err('cricket.party.summary', e); }
     try { if (mine && !P.L.isGone(P.L.me)) ctx.report(mine.res); } catch (e) { N.err('cricket.party.report', e); }
     try { if (ctx.ai && ctx.ai.report && (ctx.mode !== 'party' || ctx.isHost)) for (const r of rows) if (/^ai:/.test(r.uid)) ctx.ai.report(r.uid, r.res); } catch (e) { N.err('cricket.party.aiReport', e); }
     P.closeAt = S.clock + 4.2;

@@ -1,0 +1,34 @@
+{
+ "aloneHz": 7.13,
+ "straight": {
+  "hz": 7.15,
+  "events": 15.4
+ },
+ "zig": {
+  "hz": 7.3,
+  "events": 14.3
+ },
+ "stand": {
+  "hz": 1.02,
+  "events": 3.5
+ },
+ "cyc": {
+  "hz": 6.24,
+  "events": 11.4
+ },
+ "jitter": {
+  "frames": 177,
+  "latencyMs": 320,
+  "rms": 6.58,
+  "stallPct": 0,
+  "maxV": 1583,
+  "back": 4
+ },
+ "drop": {
+  "backMs": 2700,
+  "rest": 11
+ },
+ "blip": {
+  "hostLeftToResultsMs": 94
+ }
+}

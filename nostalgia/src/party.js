@@ -32,7 +32,8 @@
  *   ctx (one per session, the same shape in solo and party):
  *     mode 'solo'|'party', id, sid, spec, seed (int, the same for everyone), opts, players [{uid, nick, isMe, isAI, look, npc?}]
  *       (the same order on every page: host first, then in accept order; AI uids are 'ai:<friend>'), me, slot (my index),
- *     isHost (live: changes if the host leaves), startAt (GO on the shared clock), now() (the shared clock, ms: the host's
+ *     isHost (live: changes if the host leaves), host (the uid running it now), summary({line}) (a results-card line,
+ *     e.g. "Colony XI won by 12 runs"), startAt (GO on the shared clock), now() (the shared clock, ms: the host's
  *       Date.now() measured through ping / pong in party mode; game time in solo, so the pause menu pauses it),
  *     elapsed() = now() - startAt (negative during the countdown), rng (N.util.rng(seed)),
  *     send(type, data) -> bool (broadcast to the session, rate-limited; solo: no-op), on(type, fn(data, from)) -> off(),
@@ -56,10 +57,12 @@
  *   everywhere (set up the start), controls frozen until startAt -> 3-2-1-GO on now() -> everyone plays locally with
  *   the same seed -> ctx.report() -> 'res' -> the host ranks them when all present players have reported (or end(),
  *   or timeLimit) -> 'fin' with the standings -> the results card on every page (places, times, scores), the bragging
- *   toast, a tin token for my first win of each kind. A player who leaves (presence) or quits is marked left; if the
- *   host leaves, the next player in the list becomes the host. SOLO: the same with the AI friends and no network.
+ *   toast, a tin token for my first win of each kind. A player out of presence or "away" (online.js) keeps his place
+ *   for TUNE.leaveGraceMs (a network blip changes nothing); longer, or a goodbye / quit, = left and never the host again;
+ *   the next player in the list becomes the host and says so ('host'). Two lobbies started at the same moment fold
+ *   into the older one ('cancel' why 'merge'). SOLO: the same with the AI friends and no network.
  * Messages: 'pt' broadcasts through N.online.channelSend / onMessage ([party hook] in online.js) with
- *   type inv | acc | skip | go | cancel | ping | pong | res | fin | bye | a (activity: {sid, t, d}); every field is
+ *   type inv | acc | skip | go | cancel | ping | pong | res | fin | bye | host | a (activity: {sid, t, d}); every field is
  *   validated here (the channel is public). Kid-friendly: no betting, no free text, friendly banter only.
  * UI: DOM cards (.pt-*; style.css "=== party ==="; the tappable ones on #ui-top, over the touch controls' joystick / look
  *   zones, the countdown and standings strip in #ui), checkpoint rings on the 2D ground layer and the 3D layer

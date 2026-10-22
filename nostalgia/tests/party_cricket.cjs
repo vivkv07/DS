@@ -468,6 +468,9 @@ async function two(browser) {
     check(await A.until(() => !!window.__res, null, 60000) && await B.until(() => !!window.__res, null, 60000), 'party results on both pages');
     const ms = [await results(A), await results(B)];
     check(ms[0] && ms[0].length === 2 && sameAll(ms.map((s) => s.map((r) => [r.nick, r.rank, r.score]))), 'the same results: ' + fmtSt(ms[0]) + ' · ' + ms[0].map((r) => r.note).join(' / '));
+    // the team result on the shared results card (party.js ctx.summary, set by the match: design/audit/online.md O-11)
+    const lines = [await A.ev(() => window.__res && window.__res.summary && window.__res.summary.line), await B.ev(() => window.__res && window.__res.summary && window.__res.summary.line)];
+    check(lines[0] && lines[0] === lines[1] && /won|tied/.test(lines[0]), 'the team line on both results cards: "' + lines[0] + '"');
 
     // ---- friends vs friends (2 overs)
     console.log('  -- friends vs friends at LB Stadium');

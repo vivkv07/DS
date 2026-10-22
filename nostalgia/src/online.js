@@ -35,15 +35,19 @@
  *     presence: {key: <random id per page load>}}. Presence meta {n: nick, l: look, j: joined ms, pin, pc}
  *     gives the player list, the 3-player cap (checked before tracking; the latest joiners leave if a race
  *     overfills it) and the meet pin (it lives in the dropper's meta, so late joiners see it). Broadcast 'st'
- *     carries {x, y, a, m: 'f'|'v', vt, vc, sp, an: 'i'|'w'|'r', n?, l?} at up to stateHz (8; fewer per player
- *     in a big room), only on change plus a 2 s keepalive (and at once, full, when someone joins, so a joiner
- *     finds their friends quickly); 'em' carries a quick-chat id. A room ends when its
- *     last player leaves (no tables). Every incoming field is validated and clamped here (channels are public).
+ *     carries {x, y, a, m: 'f'|'v', vt, vc, sp, an: 'i'|'w'|'r', vx, vy, ts, aw?, n?, l?} by DEAD RECKONING (only
+ *     when the friends' guess along my last velocity would be off, at most stateHz 8, nothing while alone in the
+ *     room: Supabase bills and rate-limits every message, design/audit/online.md O-01), and at once, full, when
+ *     someone joins; 'em' carries a quick-chat id, 'by' a goodbye. Nothing is sent while the channel is not joined
+ *     (supabase-js would fall back to HTTP per message); a dropped friend stays "reconnecting…" for
+ *     TUNE.leaveGraceMs, a hidden / silent one shows "away". A room ends when its last player leaves (no tables).
+ *     Every incoming field is validated and clamped here (channels are public).
  *   - Ghosts: one entity per remote player, kind 'ghost' (solid false, noCollide, selfUpdate), so traffic,
  *     vehicles, wanted, missions and saves ignore it. 2D: traffic.js blitPerson / the vehicle type's own
  *     draw(); 3D: e.view3d = 'ped' | 'vehicle' reuses view3d_actors.js. Nameplates (DOM), minimap dots
  *     (N.hud.blip), quick-chat bubbles (N.dialogue.bark, re-anchored to 3D heads by view3d_actors.js).
- *     Motion: 120 ms interpolation delay + up to 250 ms extrapolation, snap on teleports.
+ *     Motion: samples on my clock by the sender's ts (jitter-free), 150 ms interpolation delay, up to 1.5 s of dead
+ *     reckoning, corrections eased away (no pops), snap on teleports.
  *
  * API  N.online = {
  *   available -> 'ok' | 'soon' (no config) | 'web' (file:// page)   ready (SDK loaded)   status   lastError
@@ -632,7 +636,7 @@
     // towers, a socket that dropped): "reconnecting…" on the nameplate for TUNE.leaveGraceMs before "got disconnected"
     for (const [k, g] of GH) {
       if (keys.has(k)) continue;
-      if ((R.byeT.get(k) || 0) > now - 10000) { R.gone.delete(k); const n = g.nick; removeGhost(k); toast(n + ' left the room.', 2000); }
+      if ((R.byeT.get(k) || 0) > now - 10000) { R.gone.delete(k); const n = g.nick; removeGhost(k); toast(n + ' left the room.', 2000); N.emit('online:bye', { key: k }); }
       else if (!R.gone.has(k)) { R.gone.set(k, { t: now, nick: g.nick, j: g.j || 0 }); g.drop = now; }
     }
     // the meet pin: the newest pin in the room that no "clear" has overtaken
@@ -756,8 +760,12 @@
   /** a player said goodbye (Leave, or the page closed): their presence drop is a real leave, not a blip */
   function onBye(raw) {
     if (!raw || typeof raw !== 'object' || typeof raw.k !== 'string' || raw.k === myKey || raw.k.length > 20) return;
+    // only remembered: it counts when that player's presence actually drops (a goodbye from anybody else, or with
+    // nobody leaving, changes nothing: the channel is public and the sender key is not proof of anything)
     R.byeT.set(raw.k, Date.now());
-    N.emit('online:bye', { key: raw.k });
+    // (the presence drop got here first: he is "reconnecting" -> gone now)
+    const o = R.gone.get(raw.k);
+    if (o) { R.gone.delete(raw.k); if (GH.has(raw.k)) { removeGhost(raw.k); toast(o.nick + ' left the room.', 2000); } N.emit('online:bye', { key: raw.k }); N.emit('online:players', { n: R.players.length }); renderPanel(); renderHud(); }
   }
   function onEmote(raw) {
     if (!raw || typeof raw !== 'object' || typeof raw.k !== 'string' || raw.k === myKey) return;
@@ -925,18 +933,24 @@
     } catch (e) { N.err('online.readLayout', e); }
     LAY.keep = out;
   }
-  // an edge arrow's box [cx, cy] ± [bw, bh] slid along its screen edge (between lo and hi) out of the keep-out rects
-  function clearOfHud(X, Y, bw, bh, vertical, lo, hi) {
+  // an edge arrow's box [cx, cy] ± [bw, bh] slid along its screen edge (between lo and hi) out of the keep-out rects;
+  // where that whole edge is taken (a landscape phone's right side: MAP, money, the room column, HORN, RUN ...) it
+  // also steps in from the edge, towards the middle of the screen (mid: the screen centre on that axis)
+  function clearOfHud(X, Y, bw, bh, vertical, lo, hi, mid) {
     const K = LAY.keep;
     if (!K.length) return [X, Y];
     const hit = (x, y) => K.some((r) => x + bw > r[0] && x - bw < r[2] && y + bh > r[1] && y - bh < r[3]);
     if (!hit(X, Y)) return [X, Y];
-    for (let d = 8; d <= 480; d += 8) {
-      for (const s of [d, -d]) {
-        const v = (vertical ? Y : X) + s;
-        if (v < lo || v > hi) continue;
-        const x = vertical ? X : v, y = vertical ? v : Y;
-        if (!hit(x, y)) return [x, y];
+    const sgn = vertical ? (X > mid ? -1 : 1) : (Y > mid ? -1 : 1);
+    for (let inward = 0; inward <= 320; inward += 16) {
+      const x0 = vertical ? X + sgn * inward : X, y0 = vertical ? Y : Y + sgn * inward;
+      for (let d = 0; d <= 480; d += 8) {
+        for (const s of d ? [d, -d] : [0]) {
+          const v = (vertical ? y0 : x0) + s;
+          if (v < lo || v > hi) continue;
+          const x = vertical ? x0 : v, y = vertical ? v : y0;
+          if (!hit(x, y)) return [x, y];
+        }
       }
     }
     return [X, Y];
@@ -1000,7 +1014,7 @@
       const tx = (x1 - x0) / 2 / Math.max(1e-6, Math.abs(dx)), ty = (y1 - y0) / 2 / Math.max(1e-6, Math.abs(dy));
       const t = Math.min(tx, ty);
       // on the left / right edge it slides up or down, on the top / bottom edge sideways, clear of the HUD (audit X2)
-      const [X, Y] = clearOfHud(ecx + dx * t, ecy + dy * t, bw - 6, bh - 6, tx <= ty, tx <= ty ? y0 : x0, tx <= ty ? y1 : x1);
+      const [X, Y] = clearOfHud(ecx + dx * t, ecy + dy * t, bw - 6, bh - 6, tx <= ty, tx <= ty ? y0 : x0, tx <= ty ? y1 : x1, tx <= ty ? ecx : ecy);
       const meters = Math.hypot(e.x - P0.x, e.y - P0.y) * 1.6;
       const dEl = el.querySelector('.ol-dist');
       const dTxt = meters >= 1000 ? (meters / 1000).toFixed(1) + ' km' : Math.round(meters / 10) * 10 + ' m';

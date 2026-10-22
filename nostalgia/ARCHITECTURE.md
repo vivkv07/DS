@@ -1924,8 +1924,9 @@ playing it for real (2026-10-20): "you go into online game and it should automat
   `null` -> the title track / pause key / panel / Journey page say "Online play is coming soon" and nothing
   loads. A `file:` page says "needs the web version". `window.NOSTALGIA_ONLINE_CONFIG` (set before load)
   overrides it (tests). `N.online.available` = `'ok' | 'soon' | 'web'`.
-- **Lazy SDK**: `@supabase/supabase-js@2.45.4` UMD from jsDelivr, then `vendor/supabase/supabase.js`
-  (`../vendor/...` for dist/). Created with auth persistence off (no Supabase Auth yet).
+- **Lazy SDK**: `@supabase/supabase-js@2.118.0` UMD: `vendor/supabase/supabase.js` next to the page (`../vendor/...`
+  for dist/), then jsDelivr pinned by `integrity` (SRI sha384; `sdk` entries are a URL or `{src, integrity}`).
+  Created with auth persistence off (no Supabase Auth yet).
 - **Identity = player code** `WORD-WORD-WORD-NNNN-XXXXX` (256 words, 4 digits, 5 Crockford base-32
   characters: ~62 bits) made with `crypto.getRandomValues` on the first "Go online", kept in
   localStorage `nostalgia.online.v1` with the nickname. "Use my code" moves the journey to another phone
@@ -1957,17 +1958,28 @@ playing it for real (2026-10-20): "you go into online game and it should automat
   the room, the latest joiners (presence meta `j`, then key) leave with "Room is full". One create / join
   runs at a time (a second tap or call gets the same promise). Presence meta
   `{n: nick, l: look, j: joined ms, pin, pc: pin-clear ms}`; broadcast `st` `{k, x, y, a, m: 'f'|'v',
-  vt, vc, sp, an: 'i'|'w'|'r', n?, l?}` on change (+ 2 s keepalive, nick / look every 3 s; a full one at once
-  when somebody joins, so the joiner finds everyone straight away) at
-  `stateHz` (8; `3*stateHz/(players-1)` in rooms of 5+, min 3) and `em` `{k, id}` (a preset phrase id).
+  vt, vc, sp, an: 'i'|'w'|'r', vx, vy, ts (sender ms), aw? (tab hidden), n?, l?}` by **dead reckoning** (audit
+  design/audit/online.md O-01: Supabase bills / rate-limits every event, 1 sent + 1 per receiver): only when the
+  receivers' guess along the last velocity is off by > `TUNE.drErr` (2.2 u), the heading turns > 0.2 rad, the
+  way of moving changes, or every 1 s moving / 3 s standing; looser when every friend is > 450 u away; nothing
+  while alone in the room; never faster than `stateHz` (8; `3*stateHz/(players-1)` in rooms of 5+, min 3); a full
+  one at once when somebody joins; `em` `{k, id}` (a preset phrase id); `by` `{k}` (goodbye: Leave / page closed).
+  Nothing is sent while the channel is not joined (supabase-js would fall back to one HTTP request per message);
+  the party bus queues its must-arrive messages ≤ 8 s and sends them on the rejoin (`channelSend(t, d, {queue})`).
   Everything received is validated (numbers clamped to the map, vehicle types must exist, looks
   whitelisted to colours / kinds, nick re-filtered, phrases by id only, 0.9 s per-sender chat limit).
-  A page closing drops its presence (socket close) and its ghost goes away. Story, missions, the Chappal
-  Meter, traffic and saves stay single-player.
+  A page closing says goodbye and drops its presence: its ghost goes at once. A presence drop without a goodbye
+  (a blip) keeps the ghost `TUNE.leaveGraceMs` (15 s) as "reconnecting…" before "got disconnected"; a hidden tab
+  (`aw`) or 7 s of silence (asleep) shows "away" (dimmed nameplate; left out of the group sums / 👫). Events
+  `online:bye {key}` (a goodbye followed by the presence drop), `online:rejoined {gapMs}`, `online:visible {gapMs}`.
+  The back-forward cache (`pagehide` persisted) only sends "away". Story, missions, the Chappal Meter, traffic and
+  saves stay single-player.
 - **Ghosts**: one entity per remote player, `kind 'ghost'`, `solid false, noCollide, selfUpdate,
   noWorld` (traffic `sense`, vehicle pushes, wanted and missions ignore it), re-added after
-  `N.systems.reset()`. Smoothing: 120 ms interpolation delay, ≤ 250 ms extrapolation while moving, snap
-  on teleports (> 320 u) and mode changes. 2D: `N.traffic.blitPerson` on foot, the vehicle type's own
+  `N.systems.reset()`. Smoothing: samples placed on my clock by the sender's `ts` + the quickest trip seen (so
+  jitter does not move them), 150 ms interpolation delay, ≤ 1.5 s dead reckoning on `vx, vy`, a correction eased
+  away over 150 ms (no pops), snap on teleports (> 320 u) and mode changes. Nameplate layout reads happen in the
+  system's `read()`; edge arrows slide out of `N.hud.keepOutCached()`, the room HUD and the touch buttons. 2D: `N.traffic.blitPerson` on foot, the vehicle type's own
   `draw(ctx, v)` with a rider look when riding; 3D: `e.view3d = 'ped' | 'vehicle'` (view3d_actors.js
   person / vehicle renderers). DOM nameplates (`#ol-tags`; `N.view3d.project` in 3D), minimap dots
   (`N.hud.blip('ol:<key>')`), quick-chat bubbles via `N.dialogue.bark` ("Ravi: Chai?", the nameplate
@@ -2022,9 +2034,9 @@ playing it for real (2026-10-20): "you go into online game and it should automat
   joinRoom(code), leaveRoom(), goToFriends(), startGame(), nearby(max), flow, dropPin(placeId | null), clearPin(),
   say(id), PHRASES, MEET_PLACES, MAX (3), TUNE {flowMs}, titleLine(), pauseLine(), _debug}`; `[party hook]` (§24):
   `channelSend, onMessage, players(), partyRpc, myKey`.
-- **Limits / notes**: Supabase Realtime counts every delivered message; 3 players moving at once is ~50
-  messages/s, well inside the Free plan (the per-player rate would drop in rooms of 5+ if `maxPlayers` were raised;
-  standing players send only a keepalive). Rooms are public channels: the code is the invite (3,600
+- **Limits / notes**: Supabase Realtime counts every event (1 sent + 1 per receiver); the Free plan allows 100
+  events/s per project (over it, every socket is dropped) and 2 M a month. With dead reckoning a room of 3 roaming
+  is ~21 events/s (before: ~65); numbers and the 100-player estimate in design/audit/online.md. Rooms are public channels: the code is the invite (3,600
   codes; anyone who guesses one sees nicknames and positions, never codes or saves).
 - **Tests**: `node tests/online.cjs` (`ONLY=basic|flow|room|dist|cloud`). The test machine cannot reach
   supabase.co, so the game talks to `tests/online_mock.cjs`, a local server speaking the same PostgREST
@@ -2090,8 +2102,13 @@ controls frozen) -> big 3-2-1-GO on `now()` -> everyone plays locally with the s
 the host ranks when every present player has reported (or `end()`, or `timeLimit`) -> `fin` {standings} -> results card
 on every phone (medals / places, times, scores, notes, "Again!" (G) / Close (X)), a bragging toast ("🏆 Pooja won …"),
 and for my first win of each kind a tin token (`N.tape.addToken`). Default ranking per kind: race = time (then
-progress), score = score, hide = not caught, then score / time held; DNF / left get no place. A player whose presence
-drops (or who quits: `bye`) is marked left; if the host leaves, the next player in the list becomes the host. A guest
+progress), score = score, hide = not caught, then score / time held; DNF / left get no place. A player out of the
+room's presence or "away" (online.js) is only absent for `TUNE.leaveGraceMs` (12 s): back in time, nothing happened
+(even "left" is taken back before the results); longer, or a goodbye / quit (`bye`), = left, and never the host
+again (`hostGone`); the next player in the list becomes the host and says so (`host` {sid, gone}); a host back from a
+longer gap / hidden tab steps down by itself. Two lobbies started at the same moment fold into the older one (its
+`exp`, then the host key): the other host sends `cancel` {why: 'merge', into, id, acc} and joins it, his guests
+follow. `ctx.host` (who runs the game now), `ctx.summary({line})` (a results-card line, e.g. a team result). A guest
 who leaves the room stops locally. Shared clock: guests ping the host from the invite on (6+ round trips, until one
 returns within 250 ms) and keep the minimum-RTT offset (good to RTT/2). Solo: the same with the AI friends, no network.
 **Transport** (`[party hook]` in online.js): broadcast `pt` {k, t, d} on the room channel; `N.online.channelSend(type,

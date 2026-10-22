@@ -3,7 +3,13 @@
 *2026-10-19. Code: `src/online.js`, `src/online_config.js`, `supabase/migrations/20261019000000_online.sql`.
 Contract: ARCHITECTURE.md §23. Tests: `node nostalgia/tests/online.cjs`.*
 
-## What you need to do: nothing
+## What you need to do: one SQL paste (2026-10-22)
+
+Run `supabase/migrations/20261021120000_online_guard.sql` once in the project's SQL editor (safe to re-run; it
+changes no player data). It stops a script from filling the database with made-up player codes (a global budget
+of 60 new codes a minute, no new codes past 400 MB) and raises the Tank Bund sprint's fastest believable time to
+11 s. The audit could not apply it from here: the Supabase tool waits for a confirmation on `CREATE FUNCTION`
+(design/audit/online.md O-12). Everything else below still needs nothing from you.
 
 Online play is switched on and pointed at the Supabase project **gralunajtfapqkpwulyg**
 (`https://gralunajtfapqkpwulyg.supabase.co`, region ap-south-1). The database side is already
@@ -13,7 +19,9 @@ applied to that project. Deploy the site as usual:
 nostalgia/tools/deploy_site.sh
 ```
 
-It now also copies `vendor/supabase/` (the fallback copy of the Supabase library) next to the page.
+It also copies `vendor/supabase/` (the Supabase library) next to the page. Since 2026-10-22 the game loads that
+copy first (same site: nothing from a third party, works where a CDN is blocked) and only then jsDelivr, pinned by
+its hash (Subresource Integrity), so a changed CDN file is refused.
 
 There are no dashboard steps: no sign-in providers, no redirect URLs, no keys to paste. Players do not
 make accounts.
@@ -89,10 +97,13 @@ Without online (or before Go online) times are kept on the phone and sent later.
 
 ## Limits to know
 
-- **Realtime quota**: Supabase counts every message delivered. A full room of 3 kids all moving is about
-  50 messages a second (8 position updates a second each, nothing while a player stands still), well inside
-  the Free plan. Raising `maxPlayers` again (the code supports up to 10) multiplies that; past ~5 players the
-  game sends fewer updates per player.
+- **Realtime quota**: Supabase counts every message once sent and once per friend who receives it, and the Free
+  plan allows **100 a second for the whole project** (above that Realtime drops everybody's connection for a
+  moment) and 2 million a month. Since 2026-10-22 a player only sends his position when his friends' guess of it
+  would be off (a turn, a stop): walking straight ~2 a second instead of 8, nothing while alone in a room. A room
+  of 3 kids roaming is about 21 a second (it was ~65), so the Free plan carries 4-5 busy rooms at once and about
+  80 player-hours a month; a party game adds more (gully cricket ~70 a second for its room). For many more
+  players see design/audit/online.md "Realtime quota and cost". Raising `maxPlayers` multiplies all of this.
 - **Database**: a save is a few KB (2 KB at the start of the game), two per player. The Free plan's 500 MB holds many thousands of players.
 - The single-file offline copy (`dist/nostalgia.html`, opened from disk) has online off and says
   "Online play needs the web version".
