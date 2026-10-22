@@ -860,7 +860,9 @@
   /* ================================================================ the actor */
   const registry = new Map();      // key -> NPC
   let lastSpeaker = null;
-  const WALK = 45;
+  const WALK = 45; // the cast's walk as first tuned; speedOf() scales it (and def.speed) by pace()
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
 
   class NPC extends N.Actor {
     constructor(key, id, x, y, opts) {
@@ -932,9 +934,10 @@
   /* ---------------------------------------------------------------- movement */
   function speedOf(a, run) {
     const def = DEFS[a.npcId] || {};
-    let sp = run ? Math.max(78, (def.speed || WALK) * 1.75) : def.speed || WALK;
+    const base = (def.speed || WALK) * pace();
+    let sp = run ? Math.max(78, base * 1.75) : base;
     if (a.walk && a.walk.speed) sp = a.walk.speed;
-    try { if (N.respect && N.respect.at && N.respect.at(a.x, a.y)) sp = Math.min(sp, def.speed || WALK); } catch (e) { /* stub */ }
+    try { if (N.respect && N.respect.at && N.respect.at(a.x, a.y)) sp = Math.min(sp, base); } catch (e) { /* stub */ }
     return sp;
   }
   function moveToward(a, tx, ty, speed, dt, arriveR) {
@@ -987,7 +990,7 @@
   }
   function animate(a, dt) {
     const sp = Math.hypot(a.vx, a.vy);
-    if (sp > 3) { turnTo(a, Math.atan2(a.vy, a.vx), dt, 12); a.anim.speed = Math.min(1, sp / WALK); a.anim.run = sp > 62; a.anim.phase += sp * dt * (a.anim.run ? 0.2 : 0.26); }
+    if (sp > 3) { turnTo(a, Math.atan2(a.vy, a.vx), dt, 12); a.anim.speed = Math.min(1, sp / (WALK * pace())); a.anim.run = sp > 62; a.anim.phase += sp * dt * (a.anim.run ? 0.2 : 0.26); }
     else if (a.idle === 'work' && !a.walk && !a.followSt && !a.talking) { a.anim.speed = 0.18; a.anim.run = false; a.anim.phase += dt * 5; }
     else { a.anim.speed = 0; a.anim.run = false; a.anim.phase *= 0.85; }
   }

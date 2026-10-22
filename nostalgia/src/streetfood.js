@@ -87,6 +87,8 @@
   const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
   const rnd = Math.random;
   const rr = (a, b) => a + rnd() * (b - a);
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const pick = (a) => a[(rnd() * a.length) | 0];
   const now = () => performance.now();
   const hash = (s) => ((U.strHash ? U.strHash(String(s)) : 7) >>> 0) / 4294967296;
@@ -786,7 +788,7 @@
     p.id = 0; p.alive = true; p.hidden = false;
     p.sc = sc; p.role = role; p.x = x; p.y = y; p.angle = angle || 0; p.vx = 0; p.vy = 0;
     if (!look) { const L = lookFor(role, sc.style); look = L.look; spd = L.spd; }
-    p.look0 = look; p.look = look; p.lookH = null; p.spd = spd || rr(TUNE.walk[0], TUNE.walk[1]);
+    p.look0 = look; p.look = look; p.lookH = null; p.spd = (spd || rr(TUNE.walk[0], TUNE.walk[1])) * pace();
     p.st = 'arrive'; p.t = 0; p.slot = null; p.tgt = null; p.hold = null; p.served = false; p.ordered = false;
     p.eatT = 0; p.biteT = rr(1, 3); p.bite = 0; p.puris = 0; p.chatT = 0; p.chatA = null; p.lookTarget = null; p.lookT = 0; p.lookAt = null;
     p.barkCD = rr(2, 8); p.knockT = 0; p.getupT = 0; p.down = false; p.bumpT = 0; p.umb = null; p.shelter = null; p.prev = null;

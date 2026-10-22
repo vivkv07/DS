@@ -16,8 +16,9 @@
  *    per person), `_role` (traffic ped role) and `_cart` to the look the rules see.
  *  - Clips: locomotion (stroll / walk / run / sprint; women use the *_f variants when the library has
  *    them; cart pushers push_cart) blended by speed between their nominal speeds, the common phase
- *    driven by the distance actually travelled (phase += dist / sum(w * stride)): planted feet at any
- *    speed. Standing: idle with idle_look now and then. States on top (cross-faded): fall (held) /
+ *    driven by the distance actually travelled (phase += dist / sum(w * stride)): planted feet up to a
+ *    natural cadence (GAIT.cadence, leg cycles per second), a slightly gliding stride above it; the walking clips'
+ *    nominal speeds follow the player's walk (N.player.paceK()). Standing: idle with idle_look now and then. States on top (cross-faded): fall (held) /
  *    getup, sit (bench) / sit_step (stool, kerb), talk, direct (traffic constables), and any clip a
  *    script asks for (e.clip3d = 'clap' | {name, loop} or people.play(e, name)). Head turns towards
  *    what the person looks at (and the camera for the player); an archetype's posture (old men stoop)
@@ -50,6 +51,13 @@
 
   /* ================================================================ options + state */
   const OPT = { enabled: true, player: true, npcs: true, peds: true, max: 26, maxNew: 2, dist: 230, hyst: 40, shadows: true, posture: true, headLook: true };
+  // Gait (owner request 2026-10-22, "make the movements natural"). The city is compressed for travel: a 7 u kid walks
+  // 32 u/s, so feet planted at every speed meant ~3-5 leg cycles a second (a sped-up film). Two fixes, no new clips:
+  //  - the walking clips' nominal speeds follow the walk (entities.js paceK(): 45 -> 32), so a walker shows the walk
+  //    clip, not a stroll / walk mix; running clips keep theirs (running did not change)
+  //  - cadence caps (leg cycles per second, by clip): above them the stride stretches (the feet glide a little) rather
+  //    than the legs spinning faster. Nearer the camera that glide shows less than frantic legs did.
+  const GAIT = { paceClips: ['stroll', 'walk', 'push_cart'], cadence: { stroll: 1.5, walk: 2.1, run: 2.8, sprint: 3.2, push_cart: 1.3 }, cadenceDefault: 2.4 };
   const S = {
     ready: false, idx: null, specs: new Set(), persons: new Set(), choice: new WeakMap(), parsing: new Set(),
     routed: 0, created: 0, disposed: 0, frameNew: 0, lastRoute: 0, ms: 0, msAvg: 0, mats: 0,
@@ -302,7 +310,12 @@
         if (c.style === 'f') { if (c.base) fem.set(c.base, name); continue; }
         base.push(name);
       }
-      const L = (names) => names.map((n) => ({ name: n, stride: CM[n].stride, nominal: CM[n].nominal || 40, w: 0, a: null })).sort((p, q) => p.nominal - q.nominal);
+      const pk = N.player && N.player.paceK ? N.player.paceK() : 1;
+      const gaitOf = (n) => String(n).replace(/_f$/, '');
+      const L = (names) => names.map((n) => {
+        const g = gaitOf(n), nominal = (CM[n].nominal || 40) * (GAIT.paceClips.indexOf(g) >= 0 ? pk : 1);
+        return { name: n, stride: CM[n].stride, nominal, cap: GAIT.cadence[g] || GAIT.cadenceDefault, w: 0, a: null };
+      }).sort((p, q) => p.nominal - q.nominal);
       this.sets = { walk: L(base.map((n) => (female && fem.has(n) ? fem.get(n) : n))) };
       if (md.clips.has('push_cart')) this.sets.cart = L(['push_cart']);
       this.set = 'walk'; this.phase = Math.random(); this.locoW = 0; this.v = 0;
@@ -375,6 +388,8 @@
       for (const l of set) S_ += l.w * l.stride;
       return S_;
     }
+    /** leg cycles per second the current blend may reach (GAIT.cadence, weighted like the strides) */
+    cadenceCap(set) { let c = 0, w = 0; for (const l of set) { c += l.w * l.cap; w += l.w; } return w > 0 ? c / w : GAIT.cadenceDefault; }
     /** dt: sim seconds; dist: distance travelled this frame; v: speed (u/s) */
     update(dt, dist, v, o) {
       o = o || {};
@@ -389,7 +404,7 @@
       this.locoW += clamp((moving ? 1 : 0) - this.locoW, -dt / FADE, dt / FADE);
       const stride = this.blend(set, Math.max(v, V_IDLE));
       if (dist == null) dist = v * dt;
-      if (moving && stride > 0) this.phase = (this.phase + dist / stride) % 1;
+      if (moving && stride > 0) this.phase = (this.phase + Math.min(dist / stride, this.cadenceCap(set) * dt)) % 1;
       // the state overlay
       let ov = 0;
       if (this.over) {
@@ -627,7 +642,7 @@
 
   /* ================================================================ API */
   const api = {
-    options: OPT, OPT,
+    options: OPT, OPT, GAIT,
     get ready() { return S.ready; },
     models: () => (S.idx ? S.idx.all.slice() : []),
     choose: (e) => choose(e),

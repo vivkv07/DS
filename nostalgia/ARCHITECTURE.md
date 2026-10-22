@@ -164,6 +164,9 @@ nostalgia/
   supabase/migrations/*_online.sql  the database side of §23 (tables, SECURITY DEFINER functions, grants)
   supabase/migrations/*_party.sql   §24 race leaderboards (race_routes, race_times, race_put / race_top)
   src/debug.js      test hooks + #debug overlay -> N.debug
+  src/marker.js     (after testing.js) the pointer over Chinnu: a yellow triangle over his head or over what he rides, top-down
+                    (on 'fx', above the night) and 3D (a camera-facing sprite over everything, none in first person); Settings >
+                    Screen "Pointer over you" Always (default) / In crowds / Off ('nostalgia.marker.v1') -> N.marker (tests/movement.cjs)
   src/cheats.js     (after testing.js) typed cheat codes for play-testing: C in free roam, the pause deck's Cheats key,
                     the title's CHEAT CODE track. Stage codes (PROLOGUE, SANKRANTI..GANESH = M1-M10, DIWALI, INTERLUDE, RAMZAN,
                     LASTBELL, CHANDRAAT, EID, EPILOGUE, REWIND, CHRISTMAS; also M1..M12 / mission ids) start a fresh game at
@@ -215,8 +218,13 @@ wrapper). A new src file must be added to index.html (and this list) or it won't
   across, a cycle 15x5u, a Chetak 17x7u, an auto-rickshaw 22x13u, an Ambassador 30x14u,
   a city bus 62x18u. A 2-lane road is ~32u wide, an arterial ~56-70u. One storey ≈ 10u
   of height. Charminar footprint ≈ 60x60u.
-- Speeds (u/s): walk 45, run 80, cycle 115, Luna 120, Chetak 150, auto 135, car 165,
+- Speeds (u/s): walk 32 (was 45 until 2026-10-22: "natural motion"; run only on RUN), run 80, cycle 115, Luna 120, Chetak 150, auto 135, car 165,
   RX100 180, bus 115, boat 60. Traffic drives on the **left**.
+  Walking paces elsewhere (escorted walkers, the lorry, story NPCs' default walk, traffic / city-life / street-food
+  walkers, Ghar Pahunchna Hai!'s kids, patrols and clocks, the walking legs of the party races) were tuned against the
+  old 45 and scale by `N.player.paceK()` = `TUNE.walk / TUNE.paceRef` (32 / 45); running speeds are unchanged.
+  The player eases in and out (`TUNE.accel`: go 7, run 4.2, stop 11, turn 10 per s) and turns slower on the move
+  (`TUNE.turnRate`); 3D legs cycle at most `N.models3d.people.GAIT.cadence` times a second (walk 2.1, run 2.8).
 - Collision/surface grid: cell size `N.CELL = 4` u → `N.world.GW x GH` cells (`Uint8Array`, sized at
   build: 2000 x 1500 for v1, 3750 x 2813 = 10.5 M cells for v2).
 

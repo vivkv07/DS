@@ -57,6 +57,8 @@
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const rnd = Math.random;
   const rr = (a, b) => a + rnd() * (b - a);
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const pick = (a) => a[(rnd() * a.length) | 0];
   function wpick(obj) {
     let tot = 0;
@@ -468,7 +470,7 @@
       }
     }
     if (N.people && N.people.dress) N.people.dress(L, role, { next: rnd }); // the 2003 details (entities.js)
-    return { look: L, lang, spd: spd * rr(0.88, 1.1) };
+    return { look: L, lang, spd: spd * rr(0.88, 1.1) * pace() };
   }
   /** Role by district style and time (systems §11.2 shares). */
   function pickRole(style, did) {

@@ -33255,6 +33255,85 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   }
   E.pushTo = pushTo;
 
+  /* ============================================= steering: people look where they walk */
+  // E.steer(e, vx, vy, dt, o) -> the velocity e should walk at instead of its wish (vx, vy). It sidesteps the people,
+  // animals and vehicles it would meet within STEER.horizon s (time to collision of its wish against their current
+  // velocity), keeps left when two meet head-on (as Hyderabad walks and drives: each steps to its own left), slows
+  // behind a slower walker in its way and keeps a little personal space; a vehicle counts as its length (a capsule),
+  // not a circle. Worked out every ~STEER.every s per walker and kept as a turn + a speed factor applied to the wish
+  // each frame, so a crowd costs one neighbour query per walker per 0.1 s (on screen only). Fades out within the last steps to a goal
+  // (o.arrive: the distance left) so people still reach their seats, stalls and queues. o: {arrive, ignore (an actor
+  // not to avoid), soft (0..1, default 1)}. Returns E.steerOut {x, y} (scratch: read it at once).
+  const STEER = { horizon: 1.6, every: 0.1, margin: 1.5, look: 26, k: 1.7, turnMax: 1.15 };
+  E.STEER = STEER;
+  const SOUT = { x: 0, y: 0 }, SNEAR = [];
+  E.steerOut = SOUT;
+  function steer(e, vx, vy, dt, o) {
+    SOUT.x = vx; SOUT.y = vy;
+    const s = Math.hypot(vx, vy);
+    const st = e._st || (e._st = { t: 0, turn: 0, mul: 1 });
+    if (s < 2 || !N.world.built) { st.turn *= 0.5; st.mul = 1; return SOUT; }
+    // off screen nobody sees a shoulder brushed: skip the work there
+    // (and well away from the player: the view rect lags a teleport by a frame)
+    const P = N.player;
+    if (N.render && N.render.inView && !N.render.inView(e.x, e.y, 60) && !(P && Math.abs(e.x - P.x) < 320 && Math.abs(e.y - P.y) < 320)) { st.turn = 0; st.mul = 1; st.t = 0; return SOUT; }
+    st.t -= dt;
+    if (st.t <= 0) { st.t = STEER.every * (0.8 + ((e.id * 37) % 10) / 25); steerCompute(e, vx, vy, s, st, o); }
+    let f = o && o.soft != null ? o.soft : 1;
+    if (o && o.arrive != null) f *= U.clamp((o.arrive - 2) / 6, 0, 1);
+    if (f <= 0) return SOUT;
+    const turn = st.turn * f, mul = 1 + (st.mul - 1) * f, c = Math.cos(turn), sn = Math.sin(turn);
+    SOUT.x = (vx * c - vy * sn) * mul; SOUT.y = (vx * sn + vy * c) * mul;
+    return SOUT;
+  }
+  function steerCompute(e, vx, vy, s, st, o) {
+    const ux = vx / s, uy = vy / s, lx = uy, ly = -ux; // my left (y grows down the map)
+    const look = STEER.look + s * 0.6, er = e.r || 3.4, H = STEER.horizon;
+    const n = E.queryN(e.x + ux * look * 0.45, e.y + uy * look * 0.45, look * 0.6 + 8, null, SNEAR);
+    const ign = o && o.ignore, lvl = e.level || null, roof = !!e.roofH;
+    let fx = 0, fy = 0, cap = Infinity;
+    for (let i = 0; i < n; i++) {
+      const q = SNEAR[i];
+      if (q === e || !q.alive || q.hidden || q === ign || q.vehicle || q === e.vehicle || q.kind === 'prop' || q.kind === 'pickup') continue;
+      if ((q.level || null) !== lvl || !!q.roofH !== roof) continue;
+      let qx = q.x, qy = q.y, qr = q.r || 4;
+      if (q.kind === 'vehicle') {
+        if (!q.T) continue;
+        const c = Math.cos(q.angle), sn = Math.sin(q.angle), hl = Math.max(0, q.T.w / 2 - q.T.d / 2);
+        const t = U.clamp((e.x - q.x) * c + (e.y - q.y) * sn, -hl, hl);
+        qx = q.x + c * t; qy = q.y + sn * t; qr = q.T.d / 2;
+      }
+      const px = qx - e.x, py = qy - e.y, d2 = px * px + py * py, R = er + qr + STEER.margin;
+      const qvx = q.vx || 0, qvy = q.vy || 0;
+      // personal space: already this close -> ease away
+      if (d2 < R * R) { const d = Math.sqrt(d2) || 0.01, w = (R - d) / R; fx -= (px / d) * w * 1.1; fy -= (py / d) * w * 1.1; }
+      const along = px * ux + py * uy, side = px * lx + py * ly;
+      // walking behind someone slower in my way: match their pace (a stopped one: slow down to go round)
+      const qa = qvx * ux + qvy * uy;
+      if (along > 0 && Math.abs(side) < R && qa > -4) cap = Math.min(cap, Math.max(qa, 0) + Math.max(0, along - R) * 1.8 + 6);
+      // time to collision of my wish against its motion
+      const rvx = vx - qvx, rvy = vy - qvy, a = rvx * rvx + rvy * rvy;
+      if (a < 1) continue;
+      const b = px * rvx + py * rvy;
+      if (b <= 0) continue;
+      const disc = b * b - a * (d2 - R * R);
+      if (disc <= 0) continue;
+      const ttc = (b - Math.sqrt(disc)) / a;
+      if (ttc <= 0 || ttc > H) continue;
+      // where it will be then, sideways of my line: step the other way; nearly head-on -> my left
+      const cx = px - rvx * ttc, cy = py - rvy * ttc, lat = cx * lx + cy * ly;
+      const go = lat > R * 0.3 ? -1 : 1;
+      const w = Math.pow(1 - ttc / H, 1.6) * STEER.k * (q.kind === 'vehicle' ? 1.6 : 1);
+      fx += lx * go * w; fy += ly * go * w;
+    }
+    const tx = ux + fx, ty = uy + fy;
+    const turn = U.clamp(Math.atan2(ux * ty - uy * tx, ux * tx + uy * ty), -STEER.turnMax, STEER.turnMax);
+    let mul = cap < s ? U.clamp(cap / s, 0.12, 1) : 1;
+    mul *= 1 - 0.3 * Math.min(1, Math.abs(turn)); // a sidestep is slower than walking on
+    st.turn += (turn - st.turn) * 0.65; st.mul += (mul - st.mul) * 0.65;
+  }
+  E.steer = steer;
+
   // Push overlapping solid actors apart (mass-weighted) and report bumps.
   let nearBuf = [], nearBusy = false;
   function resolveOverlaps() {
@@ -33319,7 +33398,9 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
 
   /**
    * Draw a person top-down, centred at origin facing +x, ~8 units across the shoulders.
-   * look: {kind, skin, hair, shirt, pants, cap?, accent?, bag?}; anim: {phase, speed 0..1, run}
+   * look: {kind, skin, hair, shirt, pants, cap?, accent?, bag?}; anim: {phase, speed 0..1, run, runK? 0..1 (eased run)}
+ * The gait: legs step from the hips; above them the shoulders turn against the hips, the body shifts its weight
+ * onto the planted foot and leans into a run (the head furthest), and running arms bend and pump harder.
    */
   function drawPerson(ctx, look, anim) {
     look = look || {};
@@ -33329,9 +33410,14 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     const shirt = look.shirt || '#e8e0d0', pants = look.pants || '#3a3a4a';
     // People are drawn ~1.35x their collision size so they read at the internal resolution.
     const sc = PEOPLE_SCALE * (kind === 'kid' || kind === 'student' ? 0.84 : kind === 'uncle' ? 1.08 : 1);
-    const ph = anim.phase || 0, mv = U.clamp(anim.speed == null ? 0 : anim.speed, 0, 1);
-    const stride = (anim.run ? 3.3 : 2.3) * mv;
+    const ph = anim.phase || 0, mv0 = U.clamp(anim.speed == null ? 0 : anim.speed, 0, 1);
+    // step length grows slower than speed (a slow walker takes shorter AND fewer steps): the crowds that stroll at
+    // half a walk still visibly step
+    const mv = Math.sqrt(mv0);
+    const rk = anim.runK != null ? U.clamp(anim.runK, 0, 1) : anim.run ? 1 : 0;
+    const stride = (2.3 + 1.0 * rk) * mv;
     const sw = Math.sin(ph) * stride;
+    const twist = -Math.sin(ph) * (0.1 + 0.08 * rk) * mv, sway = -Math.cos(ph) * 0.3 * mv, lean = (0.25 + 0.9 * rk) * mv;
     if (sc !== 1) ctx.scale(sc, sc);
     const longLegs = !(kind === 'saree' || kind === 'aunty' || kind === 'burqa' || kind === 'uncle' || kind === 'lungi');
 
@@ -33359,10 +33445,14 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       }
     }
 
-    // arms (swing opposite to legs)
+    // the upper body rides the hips: weight shift, lean, shoulders turned against the stride
+    ctx.save();
+    ctx.translate(lean * 0.5, sway);
+    if (twist) ctx.rotate(twist);
+    // arms (swing opposite to legs; a run bends them in and pumps them)
     const armCol = kind === 'uncle' ? skin : kind === 'burqa' ? '#141216' : kind === 'saree' || kind === 'aunty' ? skin : shirt;
     for (const s of [-1, 1]) {
-      const ax = -s * sw * 0.8, ay = s * 3.4;
+      const ax = -s * sw * (0.8 + 0.3 * rk), ay = s * (3.4 - 0.45 * rk);
       ctx.fillStyle = armCol; ell(ctx, ax * 0.7, ay, 1.6, 0.95); ctx.fill(); outline(ctx);
       ctx.fillStyle = kind === 'burqa' ? '#141216' : skin; ell(ctx, ax + 1.1 * Math.sign(ax || 1) * 0.6, ay, 0.75, 0.75); ctx.fill();
     }
@@ -33400,8 +33490,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       if (kind === 'student') { ctx.fillStyle = look.tie || '#b22b2b'; ctx.fillRect(1.6, -0.35, 0.9, 0.7); }
     }
 
-    // head
-    const hx = 0.35;
+    // head (furthest into a lean)
+    const hx = 0.35 + lean * 0.45;
     if (kind === 'burqa') {
       ctx.fillStyle = '#141216'; ell(ctx, hx, 0, 2.2, 2.2); ctx.fill(); outline(ctx);
       ctx.fillStyle = '#2a262c'; ell(ctx, hx + 1.2, 0, 0.7, 1.1); ctx.fill();
@@ -33428,6 +33518,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
         ctx.fillRect(hx + 1.0, -1.1, 1.6, 2.2);
       }
     }
+    ctx.restore();
   }
 
   function randomLook(rng, kind) {
@@ -33505,7 +33596,12 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   // Numbers: systems_design §2 (N.player.TUNE). Energy is stamina; tummy (§2.2) is how fed Chinnu is,
   // and energy can never go above it. Statuses (§2.3), falls off bikes (§2.6), counted items (§2.7).
   const TUNE = {
-    walk: 45, run: 80, startMoney: 1000, startTummy: 80,
+    // walk: 45 -> 32 (owner request 2026-10-22: "too fast, it should walk in natural motion and run only when we make it
+    // run"): about 2.6 steps a second for the 8 u wide kid seen from above. Running stays 80 and only on RUN (held).
+    // paceRef = the walk the city's escorts, crowds and paced games were tuned against: they scale with paceK().
+    walk: 32, run: 80, paceRef: 45, startMoney: 1000, startTummy: 80,
+    // natural motion (1/s): a step or two to get going, a shorter one to stop, a longer push up to a run; turning
+    accel: { go: 7, run: 4.2, stop: 11, turn: 10 }, turnRate: { stand: 16, walk: 12, run: 9 },
     runDrain: 8.5, restDelay: 0.6, recoverWalk: 7, recoverStand: 14, recoverSit: 25, recoverRide: 10, exhaustedUntil: 30,
     pedalDrain: 2.0, pedalRecover: 5, legsGoneMul: 0.65,
     tummyDrain: { idle: 0.10, run: 0.25, pedal: 0.15, ride: 0.05, sit: 0.06 },
@@ -33540,6 +33636,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     stepAcc: 0, restT: 0, growlT: 0,
   });
   player.TUNE = TUNE;
+  /** how fast walking is now against the walk the city was first paced for (escorts, crowds, AI friends): 32/45 */
+  player.paceK = () => TUNE.walk / TUNE.paceRef;
   player.STATUS = STATUS;
   player.EDIBLES = EDIBLES;
 
@@ -33793,12 +33891,14 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     if (running) { if (S.knee) mul *= 0.9; if (hungry) mul *= 0.9; }
     const top = (running ? RUN : WALK) * N.world.surfaceSpeed(surf, 'walk') * mul;
     const tvx = mx * top * mag, tvy = my * top * mag;
-    const a = 1 - Math.exp(-dt * (mag > 0.05 ? 11 : 16));
+    const cur = Math.hypot(this.vx, this.vy), tgt = top * mag, AC = TUNE.accel;
+    const a = 1 - Math.exp(-dt * (mag <= 0.05 ? AC.stop : tgt > cur + 2 ? (running ? AC.run : AC.go) : AC.turn));
     this.vx += (tvx - this.vx) * a; this.vy += (tvy - this.vy) * a;
     // smooth turning towards the movement / stick direction
     if (mag > 0.1) {
       const ta = Math.atan2(my, mx);
-      this.angle += U.angleDiff(this.angle, ta) * Math.min(1, dt * 16);
+      const tr = TUNE.turnRate, spNow = Math.hypot(this.vx, this.vy);
+      this.angle += U.angleDiff(this.angle, ta) * Math.min(1, dt * (spNow < 6 ? tr.stand : running ? tr.run : tr.walk));
       this.facing = this.angle;
     }
     // move + slide along walls
@@ -33814,8 +33914,10 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     const sp = Math.hypot(this.vx, this.vy);
     this.anim.speed = Math.min(1, sp / WALK);
     this.anim.run = running;
+    // runK eases walk -> run (lean, arm bend, stride) over ~0.3 s instead of switching in one frame
+    this.anim.runK = (this.anim.runK || 0) + ((running ? 1 : 0) - (this.anim.runK || 0)) * Math.min(1, dt * 6);
     const prev = this.anim.phase;
-    this.anim.phase += sp * dt * (running ? 0.2 : 0.26);
+    this.anim.phase += sp * dt * (0.26 - 0.06 * this.anim.runK);
     if (sp > 8 && Math.floor(prev / Math.PI) !== Math.floor(this.anim.phase / Math.PI)) {
       N.emit('footstep', { x: this.x, y: this.y, surf: N.world.surfaceAt(this.x, this.y), run: running, who: this });
     }
@@ -33844,20 +33946,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       return;
     }
     R.queue('actors', this.y, () => D.sprite(self.x, self.y, self.angle, 8, (ctx) => drawPerson(ctx, self.look, self.anim)));
-    // after a few idle seconds a small bobbing chevron marks the player (busy screens, phones)
-    const a = Math.max(Math.min(1, Math.max(0, ((this.idleT || 0) - 2.5) / 0.6)), this.inCrowd ? 0.75 : 0);
-    if (a > 0 && N.state.mode === 'play') {
-      const still = document.body && document.body.classList.contains('reduced-motion');
-      R.queue('sky', 0, (ctx) => {
-        const k = R.k(14), bob = still ? 0 : Math.sin(N.time.real * 5) * 1.5;
-        const X = R.sx(self.x, k), Y = R.sy(self.y, k) - 9 - bob;
-        ctx.globalAlpha = a * 0.95;
-        ctx.fillStyle = '#1a1214';
-        ctx.beginPath(); ctx.moveTo(X - 4.5, Y - 4.5); ctx.lineTo(X + 4.5, Y - 4.5); ctx.lineTo(X, Y + 1.5); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = '#f2c230';
-        ctx.beginPath(); ctx.moveTo(X - 3, Y - 3.6); ctx.lineTo(X + 3, Y - 3.6); ctx.lineTo(X, Y); ctx.closePath(); ctx.fill();
-      });
-    }
+    // the pointer over Chinnu (always / in crowds / off): src/marker.js (idleT and inCrowd above feed its 'crowds' mode)
   };
 
   player.serialize = function () {
@@ -37186,6 +37275,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const rnd = Math.random;
   const rr = (a, b) => a + rnd() * (b - a);
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const pick = (a) => a[(rnd() * a.length) | 0];
   function wpick(obj) {
     let tot = 0;
@@ -37587,7 +37678,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
         if (rnd() < 0.15) L.oiled = true;
       }
     }
-    return { look: L, lang, spd: spd * rr(0.88, 1.1) };
+    return { look: L, lang, spd: spd * rr(0.88, 1.1) * pace() };
   }
   /** Role by district style and time (systems §11.2 shares). */
   function pickRole(style, did) {
@@ -38008,7 +38099,14 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       if (ob.gap < 1.2) want = 0;
       blocked = want < 4 && tr.cruise > 10;
       // two vehicles nose to nose inside the same junction, or tangled after a bump: the lower id goes
-      if (blocked && ob.e.tr && tr.blockT > 1.2 && v.id < ob.e.id && ((ob.e.tr.inBox >= 0 && ob.e.tr.inBox === tr.inBox) || ob.gap < -1.5)) { tr.ghost = 1.5; tr.ghostOf = ob.e; }
+      if (blocked && ob.e.tr && tr.blockT > 1.2 && v.id < ob.e.id && ((ob.e.tr.inBox >= 0 && ob.e.tr.inBox === tr.inBox) || ob.gap < -1.5)) {
+        // in view it first backs off a little and lets the other through (no driving through each other where the
+        // player can see); still tangled after that, or off screen: the ghost pass as before
+        let room = false;
+        if (!tr.backed && N.render.inView(vX, vY, 40)) { const bk = sense(v, -Math.cos(v.angle), -Math.sin(v.angle)); room = !bk || bk.gap > 9; }
+        if (room) { tr.backed = true; tr.rev = 0.9; tr.blockT = 0.3; }
+        else { tr.ghost = 1.5; tr.ghostOf = ob.e; }
+      }
       // round a lying cow / parked vehicle / standing person
       if (blocked && !tr.swerve && tr.blockT > TUNE.swerveAfter && isStatic(ob.e)) trySwerve(v, tr, ob, segUx, segUy);
     }
@@ -38024,7 +38122,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       if (tr.blockT > 10 && !N.render.inView(vX, vY, 60)) { despawnVehicle(v); return; }
       if (!tr.swerve && tr.blockT > 4 && ob.e.kind === 'vehicle' && ob.e.tr && ob.e.tr.blockT > 3) trySwerve(v, tr, ob, segUx, segUy);
       if (tr.blockT > TUNE.hornAfter && (ob.e === N.player || ob.e.kind !== 'vehicle' || !ob.e.tr || ob.e.tr.blockT < 0.5)) honk(v, 'blocked');
-    } else tr.blockT = Math.max(0, tr.blockT - dt * 2);
+    } else { tr.blockT = Math.max(0, tr.blockT - dt * 2); if (tr.blockT === 0) tr.backed = false; }
     void stopping;
     // ---- steering + pedals
     const diff = U.angleDiff(v.angle, Math.atan2(ty - vY, tx - vX));
@@ -38443,6 +38541,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
         if (p.waitV < 1.5) { vx *= 0.05; vy *= 0.05; }
         else { const s2 = Math.hypot(vx, vy) || 1, side = (p.id & 1) ? 1 : -1; const nx = -vy / s2 * side, ny = vx / s2 * side; vx = nx * speed * 0.8 + vx * 0.2; vy = ny * speed * 0.8 + vy * 0.2; }
       } else p.waitV = 0;
+      // and the people, animals and vehicles round him (entities.js E.steer: sidestep, keep left, slow behind)
+      if (N.entities.steer) { const S = N.entities.steer(p, vx, vy, dt, { arrive: d }); vx = S.x; vy = S.y; }
     }
     const a = 1 - Math.exp(-dt * 8);
     p.vx += (vx - p.vx) * a; p.vy += (vy - p.vy) * a;
@@ -40778,7 +40878,9 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   /* ================================================================ the actor */
   const registry = new Map();      // key -> NPC
   let lastSpeaker = null;
-  const WALK = 45;
+  const WALK = 45; // the cast's walk as first tuned; speedOf() scales it (and def.speed) by pace()
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
 
   class NPC extends N.Actor {
     constructor(key, id, x, y, opts) {
@@ -40850,15 +40952,18 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   /* ---------------------------------------------------------------- movement */
   function speedOf(a, run) {
     const def = DEFS[a.npcId] || {};
-    let sp = run ? Math.max(78, (def.speed || WALK) * 1.75) : def.speed || WALK;
+    const base = (def.speed || WALK) * pace();
+    let sp = run ? Math.max(78, base * 1.75) : base;
     if (a.walk && a.walk.speed) sp = a.walk.speed;
-    try { if (N.respect && N.respect.at && N.respect.at(a.x, a.y)) sp = Math.min(sp, def.speed || WALK); } catch (e) { /* stub */ }
+    try { if (N.respect && N.respect.at && N.respect.at(a.x, a.y)) sp = Math.min(sp, base); } catch (e) { /* stub */ }
     return sp;
   }
   function moveToward(a, tx, ty, speed, dt, arriveR) {
     const dx = tx - a.x, dy = ty - a.y, d = Math.hypot(dx, dy);
     let vx = 0, vy = 0;
     if (d > (arriveR || 1.5)) { const s = Math.min(speed, d / Math.max(dt, 1e-3) * 0.9); vx = (dx / d) * s; vy = (dy / d) * s; }
+    // look where they walk (entities.js E.steer), gently: their routes are planned through tight spots
+    if ((vx || vy) && !a.roofH && !a.noWorld && N.entities.steer) { const S = N.entities.steer(a, vx, vy, dt, { arrive: d, soft: 0.6, ignore: a.followSt ? a.followSt.leader : null }); vx = S.x; vy = S.y; }
     const k = 1 - Math.exp(-dt * 10);
     a.vx += (vx - a.vx) * k; a.vy += (vy - a.vy) * k;
     return d;
@@ -40903,7 +41008,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   }
   function animate(a, dt) {
     const sp = Math.hypot(a.vx, a.vy);
-    if (sp > 3) { turnTo(a, Math.atan2(a.vy, a.vx), dt, 12); a.anim.speed = Math.min(1, sp / WALK); a.anim.run = sp > 62; a.anim.phase += sp * dt * (a.anim.run ? 0.2 : 0.26); }
+    if (sp > 3) { turnTo(a, Math.atan2(a.vy, a.vx), dt, 12); a.anim.speed = Math.min(1, sp / (WALK * pace())); a.anim.run = sp > 62; a.anim.phase += sp * dt * (a.anim.run ? 0.2 : 0.26); }
     else if (a.idle === 'work' && !a.walk && !a.followSt && !a.talking) { a.anim.speed = 0.18; a.anim.run = false; a.anim.phase += dt * 5; }
     else { a.anim.speed = 0; a.anim.run = false; a.anim.phase *= 0.85; }
   }
@@ -51385,7 +51490,9 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     const pl = N.player;
     if (isFF(api)) { const q = pts[pts.length - 1], f = free(q.x, q.y, o.drive ? 'drive' : 'walk'); const v = a0.vehicle || a0; v.x = f.x; v.y = f.y; return true; }
     const r = o.r || TUNE.escortR;
-    const speed = (o.speed || TUNE.walkSpeed) * TUNE.escortSpeed;
+    // [pace] escorts were paced for a 45 u/s walk (he cannot run here): they keep the same share of today's walk
+    const pace = N.player && N.player.paceK ? N.player.paceK() : 1;
+    const speed = (o.speed || TUNE.walkSpeed) * TUNE.escortSpeed * pace;
     pl.noRun = o.noRun !== false;
     onEnd(api, () => { pl.noRun = false; dbgTarget(null); });
     dbgTarget(() => pos());
@@ -59685,6 +59792,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
   const rnd = Math.random;
   const rr = (a, b) => a + rnd() * (b - a);
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const pick = (a) => a[(rnd() * a.length) | 0];
   const now = () => performance.now();
   const hash = (s) => ((U.strHash ? U.strHash(String(s)) : 7) >>> 0) / 4294967296;
@@ -60384,7 +60493,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     p.id = 0; p.alive = true; p.hidden = false;
     p.sc = sc; p.role = role; p.x = x; p.y = y; p.angle = angle || 0; p.vx = 0; p.vy = 0;
     if (!look) { const L = lookFor(role, sc.style); look = L.look; spd = L.spd; }
-    p.look0 = look; p.look = look; p.lookH = null; p.spd = spd || rr(TUNE.walk[0], TUNE.walk[1]);
+    p.look0 = look; p.look = look; p.lookH = null; p.spd = (spd || rr(TUNE.walk[0], TUNE.walk[1])) * pace();
     p.st = 'arrive'; p.t = 0; p.slot = null; p.tgt = null; p.hold = null; p.served = false; p.ordered = false;
     p.eatT = 0; p.biteT = rr(1, 3); p.bite = 0; p.puris = 0; p.chatT = 0; p.chatA = null; p.lookTarget = null; p.lookT = 0; p.lookAt = null;
     p.barkCD = rr(2, 8); p.knockT = 0; p.getupT = 0; p.down = false; p.bumpT = 0; p.umb = null; p.shelter = null; p.prev = null;
@@ -62421,6 +62530,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
   const rnd = Math.random;
   const rr = (a, b) => a + rnd() * (b - a);
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const pick = (a) => a[(rnd() * a.length) | 0];
   const now = () => performance.now();
   const hash = (s) => (((U.strHash ? U.strHash(String(s)) : strHash(String(s))) >>> 0) / 4294967296);
@@ -62740,8 +62851,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     p.id = 0; p.alive = true; p.hidden = false; p.solid = !(o && o.ghost); p.mass = (o && o.mass) || 1; p.fixed = !!(o && o.fixed);
     p.sc = sc; p.role = role; p.x = x; p.y = y; p.angle = a || 0; p.facing = p.angle; p.vx = 0; p.vy = 0;
     const L = (o && o.look) ? { look: o.look, spd: 36 } : lookFor(role, sc ? sc.style : 'colony', o && o.over);
-    p.look0 = L.look; p.look = L.look; p.lookAlt = null; p.spd = (o && o.spd) || L.spd || rr(TUNE.walk[0], TUNE.walk[1]);
-    p.st = (o && o.st) || 'walk'; p.then = null; p.t = 0; p.tx = x; p.ty = y; p.fa = p.angle; p.seat = null; p.slot = null;
+    p.look0 = L.look; p.look = L.look; p.lookAlt = null; p.spd = (o && o.spd) || (L.spd || rr(TUNE.walk[0], TUNE.walk[1])) * pace();
+    p.st = (o && o.st) || 'walk'; p.then = null; p.t = 0; p.tx = x; p.ty = y; p.fa = p.angle; p.seat = null; p.slot = null; p.held = false; p.holdBack = false;
     p.idle = null; p.bench = false; p.z = 0; p.dk = 0; p.hold = null; p.tool = null; p.hx = x; p.hy = y; p.hh = 5; p.cape = false; p.foam = 0;
     p.job = (o && o.job) || null; p.k = 0; p.ph = null; p.timer = 0; p.n = 0; p.cyc = null; p.raise = 0; p.flip = 0;
     p.barkCD = rr(2, 8); p.knockT = 0; p.getupT = 0; p.down = false; p.bumpT = 0; p.lookAt = null; p.lookT = 0; p.lookTarget = null;
@@ -62786,6 +62897,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
       if (e < TUNE.aside && e > 0.1 && (vx * ex + vy * ey) > 0) { const s = (vx * ey - vy * ex) > 0 ? 1 : -1; vx += (-ey / e) * speed * 0.8 * s; vy += (ex / e) * speed * 0.8 * s; }
     }
     if (p.detT > 0) { p.detT -= dt; vx = vx * 0.3 + p.detX * speed * 0.8; vy = vy * 0.3 + p.detY * speed * 0.8; }
+    // look where they walk: sidestep people, animals and vehicles, keep left, slow behind (entities.js E.steer)
+    else if (!noCollide && p.solid && N.entities.steer) { const S = N.entities.steer(p, vx, vy, dt, { arrive: d }); vx = S.x; vy = S.y; }
     const a = 1 - Math.exp(-dt * 8);
     p.vx += (vx - p.vx) * a; p.vy += (vy - p.vy) * a;
     let sp;
@@ -62815,7 +62928,12 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   }
   function holdAt(p, x, y, face, dt) {
     const d = Math.hypot(x - p.x, y - p.y);
-    if (d > 1.5) walkTo(p, x, y, p.spd * 0.6, dt, 0.8); else stand(p, face, dt);
+    // hysteresis: nudged by a neighbour (two spots of a group closer than two bodies) he stays put, he walks back
+    // only once properly out of place; a group settles shoulder to shoulder instead of shoving and stepping back
+    if (!p.holdBack && d > 4.5) p.holdBack = true;
+    else if (p.holdBack && d < 1.2) p.holdBack = false;
+    if (p.holdBack || (d > 1.5 && !(p.vx * p.vx + p.vy * p.vy < 4 && d < 4.5 && p.held))) walkTo(p, x, y, p.spd * 0.6, dt, 0.8); else stand(p, face, dt);
+    p.held = d < 1.5 || (p.held && !p.holdBack);
     return d;
   }
   function freeOf(list) { for (const s of list) if (!s.by) return s; return null; }
@@ -65372,6 +65490,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
   const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
   const rnd = Math.random;
   const rr = (a, b) => a + rnd() * (b - a);
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const pick = (a) => a[(rnd() * a.length) | 0];
   const now = () => performance.now();
   const angDiff = (a, b) => { let d = b - a; while (d > PI) d -= TAU; while (d < -PI) d += TAU; return d; };
@@ -65822,7 +65942,7 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     p.sc = sc; p.role = role; p.x = x; p.y = y; p.vx = 0; p.vy = 0;
     p.angle = o.angle != null ? o.angle : rnd() * TAU; p.facing = p.angle;
     p.look = o.look || lookFor(role, sc ? sc.style : 'colony');
-    p.spd = o.spd || rr(30, 42);
+    p.spd = o.spd || rr(30, 42) * pace();
     p.beh = o.beh || 'stand'; p.then = o.then || null; p.tx = x; p.ty = y; p.face = o.face != null ? o.face : null;
     p.path = null; p.pi = 0; p.t = 0; p.item = o.item || null; p.itemCol = o.itemCol || null; p.idle = null; p.bench = false;
     p.constable = false; p.pod = null; p.ofx = 0; p.ofy = 0; p.barkCD = rr(2, 9); p.stuckT = 0; p.tag = o.tag || null;
@@ -65872,6 +65992,8 @@ body.touch-on .pt-strip { top: auto; bottom: calc(150px + var(--safe-b)); left: 
     let vx = 0, vy = 0;
     if (d > (arrive || 1)) { const s = Math.min(speed, d * 4); vx = (dx / d) * s; vy = (dy / d) * s; }
     if (p.detT > 0) { p.detT -= dt; vx = vx * 0.3 + p.detX * speed * 0.8; vy = vy * 0.3 + p.detY * speed * 0.8; }
+    // look where they walk: sidestep people, animals and vehicles, keep left, slow behind (entities.js E.steer)
+    else if (p.solid && N.entities.steer) { const S = N.entities.steer(p, vx, vy, dt, { arrive: d }); vx = S.x; vy = S.y; }
     const a = 1 - Math.exp(-dt * 8);
     p.vx += (vx - p.vx) * a; p.vy += (vy - p.vy) * a;
     const sp = integrate(p, dt);
@@ -108126,6 +108248,8 @@ if (ngShine > 0.01) {
 .dwm-total{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 0;font:22px/1.1 var(--font-osd,'VT323',monospace)}
 .dwm-total.over{color:#b02020}.dwm-total em{font-style:normal;font-size:16px;color:#6a5a48}
 .dwm-say{margin:8px 0 0;min-height:1.3em;font-size:14px;color:#3a2a1a}
+.dwm-x{position:absolute;top:6px;right:8px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(122,47,53,.12);color:#7a2f35;font-size:18px;line-height:34px;cursor:pointer;padding:0}
+.dwm-x:hover,.dwm-x:focus-visible{background:rgba(122,47,53,.25)}
 .dwm-hint{margin:8px 0 0;font-family:var(--font-osd,'VT323',monospace);font-size:17px;color:#7a2f35;text-align:right}
 .dwm-aim{display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:center}
 .dwm-aim canvas{width:240px;height:240px;image-rendering:pixelated;border-radius:4px;box-shadow:0 0 0 2px #7a5a2a;background:#2a2420}
@@ -108167,7 +108291,7 @@ if (ngShine > 0.01) {
     const root = document.getElementById('overlay') || document.body;
     const el = document.createElement('div');
     el.className = 'dwm-panel' + (o.cls ? ' ' + o.cls : '');
-    el.innerHTML = '<div class="dwm-card" role="dialog" aria-label="' + esc(o.label || 'card') + '">' + html + '</div>';
+    el.innerHTML = '<div class="dwm-card" role="dialog" aria-label="' + esc(o.label || 'card') + '">' + (o.cancel ? '<button type="button" class="dwm-x" aria-label="' + esc(o.cancel) + '">✕</button>' : '') + html + '</div>';
     root.appendChild(el);
     requestAnimationFrame(() => el.classList.add('show'));
     const p = N.player, wasLocked = p ? !!p.controlsLocked : false;
@@ -108177,7 +108301,7 @@ if (ngShine > 0.01) {
     const done = new Promise((r) => { resolve = r; });
     const KM = (N.input && N.input.KEYMAP) || {};
     const P = {
-      el, done, keys: o.keys || null, opened: nowT(), closed: false,
+      el, done, keys: o.keys || null, cancel: !!o.cancel, opened: nowT(), closed: false,
       close(v) {
         if (P.closed) return; P.closed = true;
         if (ST.panel === P) ST.panel = null;
@@ -108202,6 +108326,7 @@ if (ngShine > 0.01) {
       if (P.keys) P.keys(k);
     }
     window.addEventListener('keydown', onDown, true);
+    if (o.cancel) el.querySelector('.dwm-x').addEventListener('click', () => { sfx('ui_back'); P.close(null); });
     ST.panel = P;
     return P;
   }
@@ -108211,7 +108336,10 @@ if (ngShine > 0.01) {
     if (!I) return;
     if (ST.eatAction) { if (I.pressed('action')) I.consume('action'); ST.eatAction = false; }
     const P = ST.panel;
-    if (!P || P.closed || mode() !== 'play' || I.device === 'keyboard') return;
+    if (!P || P.closed || mode() !== 'play') return;
+    // a card with a way out closes on Esc / Start / B (as the shops do) before the pause menu reads them (order 12 < 85)
+    if (P.cancel && (I.pressed('pause') || I.pressed('horn'))) { I.consume('pause'); I.consume('horn'); sfx('ui_back'); P.close(null); return; }
+    if (I.device === 'keyboard') return;
     for (const k of ['up', 'down', 'left', 'right', 'action']) if (I.pressed(k)) { I.consume(k); if (P.keys) P.keys(k); }
   }
 
@@ -108473,7 +108601,7 @@ if (ngShine > 0.01) {
       '<ul class="dwm-rows">' + ITEMS.map((it, i) => '<li data-i="' + i + '" class="' + (it.bomb ? 'bomb' : '') + '"><span class="sw" style="background:' + it.col + '"></span><span><b>' + esc(it.name) + '</b><em>' + esc(it.sub) + '</em></span><span class="pr">' + rs(it.price) + '</span><span class="q"><button type="button" data-d="-1" aria-label="less">−</button><i>0</i><button type="button" data-d="1" aria-label="more">+</button></span></li>').join('') +
       '<li class="act" data-act="haggle"><span>Haggle (once)</span><span>H</span></li><li class="act" data-act="pay"><span class="pay">Pay</span><span>E</span></li></ul>' +
       '<div class="dwm-list"></div><div class="dwm-total"><span class="t"></span><em></em></div><p class="dwm-say"></p>' +
-      '<p class="dwm-hint">↑↓ choose · ←→ how many · H haggle · E pay</p>';
+      '<p class="dwm-hint">↑↓ choose · ←→ how many · H haggle · E pay · Esc leave</p>';
     let P = null;
     const render = () => {
       const el = P.el;
@@ -108519,7 +108647,7 @@ if (ngShine > 0.01) {
       P.close({ items, total: total(), sum: sum(), haggled, bombs: bombs() });
     };
     P = panel(html, {
-      label: 'Pataakha stall', cls: 'dwm-stall',
+      label: 'Pataakha stall', cls: 'dwm-stall', cancel: 'Leave the stall',
       keys: (k) => {
         if (k === 'up') { sel = (sel + rows - 1) % rows; sfx('ui_click'); }
         else if (k === 'down') { sel = (sel + 1) % rows; sfx('ui_click'); }
@@ -108637,8 +108765,17 @@ if (ngShine > 0.01) {
     face('pataakha_man', 'player');
     await m.say('pataakha_man', '*Aao, aao!* Rocket, anaar, chakri, phuljhadi! Diwali rate, best rate!');
     m.objective('Buy Amma\'s list within ₹100. Nanna\'s rule: no bombs, more phuljhadis.');
-    const buy = await stallCard(m);
-    if (!buy) m.fail('Not now? The stall waits. Phir se.');
+    let buy = await stallCard(m);
+    while (!buy) {
+      // left the stall (✕ / Esc / B): nothing bought, nothing lost; the pataakha-wala is still there
+      lockShops(m, false);
+      toast('Amma\'s list is still in your pocket. The pataakha-wala waits.', 2600);
+      await act(m, S, 'Buy crackers', { r: 26, objective: 'Back to the pataakha stall when you are ready (ACTION).' });
+      lockShops(m, true);
+      face('pataakha_man', 'player');
+      m.objective('Buy Amma\'s list within ₹100. Nanna\'s rule: no bombs, more phuljhadis.');
+      buy = await stallCard(m);
+    }
     if (buy.bombs) {
       await m.talk([
         { s: 'pataakha_man', t: 'Bombs also? For you? ...Your Nanna knows?' },
@@ -112137,8 +112274,9 @@ if (ngShine > 0.01) {
  *    per person), `_role` (traffic ped role) and `_cart` to the look the rules see.
  *  - Clips: locomotion (stroll / walk / run / sprint; women use the *_f variants when the library has
  *    them; cart pushers push_cart) blended by speed between their nominal speeds, the common phase
- *    driven by the distance actually travelled (phase += dist / sum(w * stride)): planted feet at any
- *    speed. Standing: idle with idle_look now and then. States on top (cross-faded): fall (held) /
+ *    driven by the distance actually travelled (phase += dist / sum(w * stride)): planted feet up to a
+ *    natural cadence (GAIT.cadence, leg cycles per second), a slightly gliding stride above it; the walking clips'
+ *    nominal speeds follow the player's walk (N.player.paceK()). Standing: idle with idle_look now and then. States on top (cross-faded): fall (held) /
  *    getup, sit (bench) / sit_step (stool, kerb), talk, direct (traffic constables), and any clip a
  *    script asks for (e.clip3d = 'clap' | {name, loop} or people.play(e, name)). Head turns towards
  *    what the person looks at (and the camera for the player); an archetype's posture (old men stoop)
@@ -112171,6 +112309,13 @@ if (ngShine > 0.01) {
 
   /* ================================================================ options + state */
   const OPT = { enabled: true, player: true, npcs: true, peds: true, max: 26, maxNew: 2, dist: 230, hyst: 40, shadows: true, posture: true, headLook: true };
+  // Gait (owner request 2026-10-22, "make the movements natural"). The city is compressed for travel: a 7 u kid walks
+  // 32 u/s, so feet planted at every speed meant ~3-5 leg cycles a second (a sped-up film). Two fixes, no new clips:
+  //  - the walking clips' nominal speeds follow the walk (entities.js paceK(): 45 -> 32), so a walker shows the walk
+  //    clip, not a stroll / walk mix; running clips keep theirs (running did not change)
+  //  - cadence caps (leg cycles per second, by clip): above them the stride stretches (the feet glide a little) rather
+  //    than the legs spinning faster. Nearer the camera that glide shows less than frantic legs did.
+  const GAIT = { paceClips: ['stroll', 'walk', 'push_cart'], cadence: { stroll: 1.5, walk: 2.1, run: 2.8, sprint: 3.2, push_cart: 1.3 }, cadenceDefault: 2.4 };
   const S = {
     ready: false, idx: null, specs: new Set(), persons: new Set(), choice: new WeakMap(), parsing: new Set(),
     routed: 0, created: 0, disposed: 0, frameNew: 0, lastRoute: 0, ms: 0, msAvg: 0, mats: 0,
@@ -112415,7 +112560,12 @@ if (ngShine > 0.01) {
         if (c.style === 'f') { if (c.base) fem.set(c.base, name); continue; }
         base.push(name);
       }
-      const L = (names) => names.map((n) => ({ name: n, stride: CM[n].stride, nominal: CM[n].nominal || 40, w: 0, a: null })).sort((p, q) => p.nominal - q.nominal);
+      const pk = N.player && N.player.paceK ? N.player.paceK() : 1;
+      const gaitOf = (n) => String(n).replace(/_f$/, '');
+      const L = (names) => names.map((n) => {
+        const g = gaitOf(n), nominal = (CM[n].nominal || 40) * (GAIT.paceClips.indexOf(g) >= 0 ? pk : 1);
+        return { name: n, stride: CM[n].stride, nominal, cap: GAIT.cadence[g] || GAIT.cadenceDefault, w: 0, a: null };
+      }).sort((p, q) => p.nominal - q.nominal);
       this.sets = { walk: L(base.map((n) => (female && fem.has(n) ? fem.get(n) : n))) };
       if (md.clips.has('push_cart')) this.sets.cart = L(['push_cart']);
       this.set = 'walk'; this.phase = Math.random(); this.locoW = 0; this.v = 0;
@@ -112488,6 +112638,8 @@ if (ngShine > 0.01) {
       for (const l of set) S_ += l.w * l.stride;
       return S_;
     }
+    /** leg cycles per second the current blend may reach (GAIT.cadence, weighted like the strides) */
+    cadenceCap(set) { let c = 0, w = 0; for (const l of set) { c += l.w * l.cap; w += l.w; } return w > 0 ? c / w : GAIT.cadenceDefault; }
     /** dt: sim seconds; dist: distance travelled this frame; v: speed (u/s) */
     update(dt, dist, v, o) {
       o = o || {};
@@ -112502,7 +112654,7 @@ if (ngShine > 0.01) {
       this.locoW += clamp((moving ? 1 : 0) - this.locoW, -dt / FADE, dt / FADE);
       const stride = this.blend(set, Math.max(v, V_IDLE));
       if (dist == null) dist = v * dt;
-      if (moving && stride > 0) this.phase = (this.phase + dist / stride) % 1;
+      if (moving && stride > 0) this.phase = (this.phase + Math.min(dist / stride, this.cadenceCap(set) * dt)) % 1;
       // the state overlay
       let ov = 0;
       if (this.over) {
@@ -112739,7 +112891,7 @@ if (ngShine > 0.01) {
 
   /* ================================================================ API */
   const api = {
-    options: OPT, OPT,
+    options: OPT, OPT, GAIT,
     get ready() { return S.ready; },
     models: () => (S.idx ? S.idx.all.slice() : []),
     choose: (e) => choose(e),
@@ -125945,6 +126097,8 @@ void main() {
   const N = window.N;
   if (!N || !N.party) return;
   const U = N.util;
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const hyp = Math.hypot;
   const LS = 'nostalgia.races.v1';
@@ -126394,8 +126548,8 @@ void main() {
         aiSpeed: (uid) => 64 + 16 * ctx.ai.skill(uid),
         aiWalk: (uid) => {
           const out = [];
-          for (let s = d.s0 + 30; s < P.total; s += 40) { const q = P.at(s); out.push({ x: q.x, y: q.y, speed: s > d.sFoot - 8 ? 43 + 2 * ctx.ai.skill(uid) : null, r: 5 }); }
-          out.push({ x: P.pts[P.pts.length - 1].x, y: P.pts[P.pts.length - 1].y, speed: 44, r: 4 });
+          for (let s = d.s0 + 30; s < P.total; s += 40) { const q = P.at(s); out.push({ x: q.x, y: q.y, speed: s > d.sFoot - 8 ? (43 + 2 * ctx.ai.skill(uid)) * pace() : null, r: 5 }); }
+          out.push({ x: P.pts[P.pts.length - 1].x, y: P.pts[P.pts.length - 1].y, speed: 44 * pace(), r: 4 }); // walking the steps, like him
           return out;
         },
       });
@@ -126447,7 +126601,7 @@ void main() {
       const sk = ctx.ai.skill(p.uid), rng = ctx.ai.rng, f = ctx.ai.friend(p.uid);
       // careful ones walk it back (no spill), a hurried one jogs (the same 3% a second the player loses jogging)
       const hurry = rng.next() < 0.35 + 0.2 * (1 - sk);
-      const runV = 62 + 16 * sk, carryV = hurry ? 49 + 2 * rng.next() : 43 + 2 * sk;
+      const runV = 62 + 16 * sk, carryV = (hurry ? 49 + 2 * rng.next() : 43 + 2 * sk) * pace();
       const there = [], back = [];
       for (let s = 40; s < P.total - 10; s += 45) { const r = P.at(s); there.push({ x: r.x, y: r.y, speed: runV, r: 6 }); }
       const pour = 1200 + rng.next() * 1300;
@@ -126458,7 +126612,7 @@ void main() {
       ctx.ai.walk(p.uid, there.concat(back), { run: true, onDone: () => {
         const pr = st.prog.get(p.uid) || {};
         const tc = (ctx.elapsed() - (pr.t || 0)) / 1000;
-        let chai = 100 - (carryV > 47 ? 3 * tc : 0) - (rng.next() < 0.2 ? 16 : 0);
+        let chai = 100 - (carryV > 47 * pace() ? 3 * tc : 0) - (rng.next() < 0.2 ? 16 : 0);
         chai = Math.round(clamp(chai, CHAI_MIN + 10, 100));
         st.prog.set(p.uid, { phase: 'done' });
         ctx.ai.report(p.uid, { timeMs: ctx.elapsed(), score: chai, note: chai + '% chai' + (chai < 100 ? ' (+' + ((100 - chai) * CHAI_PENALTY / 1000).toFixed(1) + ' s)' : '') });
@@ -130815,6 +130969,19 @@ void main() {
     score: { base: 1000, perSec: 6, perSpot: 120, perItem: 150, floor: 100 },
   };
 
+  // [pace] the sneaking was tuned for the player's old 45 u/s walk (entities.js paceK(): walk now / 45, running is
+  // unchanged): the AI kids and the patrols on foot walk at the same share of it, and the clocks give the walk that
+  // much more time, so a lane takes the same share of the clock it always did
+  (function pace() {
+    const k = N.player && N.player.paceK ? N.player.paceK() : 1;
+    if (!(k > 0) || k === 1) return;
+    const R = TUNE.role;
+    TUNE.kidWalk = Math.round(TUNE.kidWalk * k);
+    R.walker.walk = Math.round(R.walker.walk * k); R.watchman.walk = Math.round(R.watchman.walk * k); R.hunter.walk = Math.round(R.hunter.walk * k);
+    R.daddy.speed = Math.round(R.daddy.speed * k);
+    TUNE.timeLimit = Math.round(TUNE.timeLimit / k); TUNE.warnAt = Math.round(TUNE.warnAt / k); TUNE.daddy.time = Math.round(TUNE.daddy.time / k);
+  })();
+
   /* ================================================================ lines (bible tone: comic, kind) */
   const LINES = {
     notice: {
@@ -134204,6 +134371,163 @@ body.reduced-motion .lh-ban.show { animation: none; opacity: 1; }
 })();
 
 </script>
+<script>/* src/marker.js */
+/* NOSTALGIA — marker.js: the pointer over Chinnu (owner request 2026-10-22: "add a triangle or pointer to the character
+ * so it is easy to identify in the crowd").
+ *
+ * A yellow triangle with a dark rim, point down, floating over his head (or over the cycle / auto / bus he is on), bobbing
+ * gently (still with reduced motion). Drawn in the top-down view on the 'fx' layer (above roofs, kites, crowds and the
+ * night's darkness, so it keeps its colour at dawn and at night) and in
+ * the 3D views as a camera-facing sprite that keeps its size on screen and is never hidden behind a wall or a crowd (none
+ * in first person: you are him).
+ *
+ * Setting (Settings > Screen > "Pointer over you"), localStorage 'nostalgia.marker.v1':
+ *   always   (default) always there while you play
+ *   crowds   the old behaviour: after 2.5 s standing still, or in a crowd (entities.js idleT / inCrowd)
+ *   off
+ * Shown only in 'play' (not in cutscenes, dialogue, menus or minigames) and never while he is hidden.
+ *
+ * API  N.marker = {mode ('always' | 'crowds' | 'off'), setMode(m), alpha() -> 0..1 now, state() -> {mode, alpha, x, y, h, sprite3d}}
+ * Hooks in files this module does not own (marked "[marker hook]"): index.html (script tag), entities.js (the old idle
+ * chevron moved here).
+ */
+(() => {
+  'use strict';
+  const N = window.N;
+  if (!N) return;
+  const LS_KEY = 'nostalgia.marker.v1';
+  const MODES = ['always', 'crowds', 'off'];
+  const lsGet = () => { try { return window.localStorage.getItem(LS_KEY); } catch (e) { return null; } };
+  const lsSet = (v) => { try { window.localStorage.setItem(LS_KEY, v); } catch (e) { /* storage off: this session only */ } };
+  const stored = lsGet();
+  const reduced = () => !!(document.body && document.body.classList.contains('reduced-motion'));
+  const is3D = () => !!(N.view3d && N.view3d.active);
+  const firstPerson = () => !!(N.view && N.view.mode === 'fps');
+
+  const M = (N.marker = {
+    mode: MODES.indexOf(stored) >= 0 ? stored : 'always',
+    setMode(m) { if (MODES.indexOf(m) < 0) return M.mode; M.mode = m; lsSet(m); return m; },
+    alpha,
+    state() { const a = anchor(); return { mode: M.mode, alpha: +alpha().toFixed(2), x: a ? Math.round(a.x) : null, y: a ? Math.round(a.y) : null, h: a ? a.h : null, sprite3d: !!(L3.sprite && L3.sprite.visible) }; },
+  });
+
+  /** where the pointer sits: over his head on foot, over the roof of what he rides; h = height above the ground (u) */
+  function anchor() {
+    const p = N.player;
+    if (!p || p.hidden) return null;
+    const v = p.vehicle;
+    if (v) return { x: v.x, y: v.y, h: ((v.T && v.T.h) || 11) + 9, v };
+    return { x: p.x, y: p.y, h: 15 + (p.roofH || 0), v: null };
+  }
+  function alpha() {
+    if (M.mode === 'off' || !N.state || N.state.mode !== 'play') return 0;
+    const p = N.player;
+    if (!p || p.hidden) return 0;
+    if (M.mode === 'always') return 0.95;
+    // 'crowds': the old idle chevron (2.5 s still, fading in over 0.6 s) or a crowd round him
+    return Math.max(Math.min(1, Math.max(0, ((p.idleT || 0) - 2.5) / 0.6)), p.inCrowd ? 0.75 : 0) * 0.95;
+  }
+  const bob = () => (reduced() ? 0 : Math.sin(((N.time && N.time.real) || 0) * 4.2) * 1.4);
+
+  /* ================================================================ top-down */
+  function draw2D() {
+    if (is3D()) return;
+    const a = alpha();
+    const A = a > 0 ? anchor() : null;
+    if (!A) return;
+    const R = N.render;
+    if (!R || !R.inView || !R.inView(A.x, A.y, 40)) return;
+    // on 'fx', after the light layer: the same bright yellow at dawn, at night and under the colour grade
+    R.queue('fx', 1, (ctx) => {
+      // seen from straight above, height barely moves a thing up the screen: lift the point clear of his head
+      const k = R.k(A.h), X = R.sx(A.x, k), Y = R.sy(A.y, k) - (A.v ? 9 : 11) - bob();
+      // a dark rim, then the yellow point (Chinnu's auto-yellow), one pixel of shine on the top edge
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#1a1214';
+      ctx.beginPath(); ctx.moveTo(X - 6.5, Y - 7.5); ctx.lineTo(X + 6.5, Y - 7.5); ctx.lineTo(X, Y + 2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#f2c230';
+      ctx.beginPath(); ctx.moveTo(X - 4.6, Y - 6.3); ctx.lineTo(X + 4.6, Y - 6.3); ctx.lineTo(X, Y - 0.2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,248,214,0.85)'; ctx.fillRect(Math.round(X - 3.5), Math.round(Y - 6.3), 7, 1);
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  /* ================================================================ 3D */
+  const L3 = { sprite: null, mat: null, tex: null };
+  function init3D(THREE, H) {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = '#1a1214';
+    g.beginPath(); g.moveTo(6, 8); g.lineTo(58, 8); g.lineTo(32, 58); g.closePath(); g.fill();
+    g.fillStyle = '#f2c230';
+    g.beginPath(); g.moveTo(15, 14); g.lineTo(49, 14); g.lineTo(32, 46); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(255,248,214,0.9)'; g.fillRect(17, 14, 30, 3);
+    L3.tex = new THREE.CanvasTexture(c);
+    if ('colorSpace' in L3.tex && THREE.SRGBColorSpace) L3.tex.colorSpace = THREE.SRGBColorSpace;
+    // constant size on screen, drawn over everything (a wall or a crowd never hides him), no fog
+    L3.mat = new THREE.SpriteMaterial({ map: L3.tex, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: false, fog: false });
+    L3.sprite = new THREE.Sprite(L3.mat);
+    L3.sprite.name = 'player-marker';
+    L3.sprite.renderOrder = 999;
+    L3.sprite.center.set(0.5, 0);
+    L3.sprite.scale.set(0.075, 0.075, 1); // ~3.5 % of the screen's height, whatever the distance
+    L3.sprite.visible = false;
+    L3.sprite.frustumCulled = false;
+    H.layer.add(L3.sprite);
+  }
+  function update3D(H) {
+    const S = L3.sprite;
+    if (!S) return;
+    const a = firstPerson() ? 0 : alpha();
+    const A = a > 0 ? anchor() : null;
+    S.visible = !!A;
+    if (!A) return;
+    let ground = 0;
+    try { ground = H && H.elev ? H.elev(A.v || N.player) || 0 : 0; } catch (e) { ground = 0; }
+    // just over his head (the kid model is 7.4 u tall) or over the roof of what he rides
+    const h3 = A.v ? ((A.v.T && A.v.T.h) || 11) + 4 : 10 + (N.player.roofH || 0);
+    S.position.set(A.x, ground + h3 + bob() * 0.3, A.y);
+    L3.mat.opacity = a;
+  }
+  function dispose3D(H) {
+    if (L3.sprite && H && H.layer) H.layer.remove(L3.sprite);
+    if (L3.mat) L3.mat.dispose();
+    if (L3.tex) L3.tex.dispose();
+    L3.sprite = L3.mat = L3.tex = null;
+  }
+  let reg3d = false;
+  function register3D() {
+    const V = N.view3d;
+    if (reg3d || !V || typeof V.registerLayer !== 'function') return;
+    reg3d = true;
+    V.registerLayer('marker3d', {
+      order: 90,
+      init(THREE, H) { try { init3D(THREE, H); } catch (e) { N.err('marker.init3d', e); } },
+      update(dt, H) { try { update3D(H); } catch (e) { N.err('marker.update3d', e); } },
+      dispose(H) { try { dispose3D(H); } catch (e) { N.err('marker.dispose3d', e); } },
+    });
+  }
+
+  /* ================================================================ settings row + system */
+  function addRow() {
+    if (!N.menus || typeof N.menus.addSettingsRow !== 'function') return;
+    N.menus.addSettingsRow({
+      id: 'marker', label: 'Pointer over you', type: 'seg', section: 'Screen',
+      opts: [['always', 'Always'], ['crowds', 'In crowds'], ['off', 'Off']],
+      help: 'A yellow triangle over {nick} (and over what he rides), so you find him in a busy bazaar.',
+      get: () => M.mode, set: (v) => M.setMode(v),
+    });
+  }
+  N.addSystem({
+    id: 'marker', order: 81, runIn: ['play'],
+    init() { addRow(); register3D(); },
+    draw() { try { draw2D(); } catch (e) { N.err('marker.draw', e); } },
+  });
+  N.on('boot', () => { addRow(); register3D(); });
+})();
+
+</script> <!-- [marker hook] the pointer over Chinnu (2D + 3D; Settings > Screen) -->
 <script>/* src/cheats.js */
 /* NOSTALGIA — cheats.js: typed cheat codes for play-testing (owner request, 2026-10-22: "type a code and go to
  * Diwali time or Ramzan time ... for every stage"). Builds on the console snippet in the "Missions, Story & Test

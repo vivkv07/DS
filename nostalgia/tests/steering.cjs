@@ -5,7 +5,7 @@
  *  2. a fast walker behind a slow one in the same line: no shove (it slows or goes round)
  *  3. a person standing in the way: walked round, never touched
  *  4. a parked car across the way: walked round its length (an oriented box, not a circle)
- *  5. the city: at busy junctions the moving people touching someone stay well under the old rate
+ *  5. the city: at six busy junctions the moving people touching someone stay well under the old rate
  *  6. zero console errors, page errors and N.err
  *
  *   node nostalgia/tests/steering.cjs
@@ -43,12 +43,18 @@ const STAGE = () => {
   // an open patch near the player, clear of the city's own people and vehicles for the test
   const P = N.player, R = N.render;
   window.__W = W;
+  // every map cell (N.CELL) of the area the walkers use, starts and sidesteps included: a 10 u grid over +-60 x +-30
+  // missed lamp posts, tree trunks and building corners, and a walker that started in one was pushed out against it
+  // and stayed pinned there (the flaky "barely moved" failures)
+  const clear = (x, y) => {
+    const c = N.CELL || 4;
+    for (let gx = -84; gx <= 84; gx += c) for (let gy = -40; gy <= 40; gy += c) if (!N.world.isWalkable(x + gx, y + gy)) return false;
+    return true;
+  };
   window.__open = () => {
     for (let r = 140; r < 300; r += 40) for (let k = 0; k < 12; k++) { // clear of the player (he is a body too), still on screen
       const a = k / 12 * Math.PI * 2, x = P.x + Math.cos(a) * r, y = P.y + Math.sin(a) * r;
-      let okk = true;
-      for (let gx = -60; gx <= 60 && okk; gx += 10) for (let gy = -30; gy <= 30 && okk; gy += 10) if (!N.world.isWalkable(x + gx, y + gy)) okk = false;
-      if (okk && E.query(x, y, 90, (e) => e.kind !== 'prop').length === 0) return { x, y };
+      if (clear(x, y) && E.query(x, y, 110, (e) => e.kind !== 'prop' || e.solid).length === 0) return { x, y };
     }
     return null;
   };
@@ -66,6 +72,9 @@ async function main() {
   await page.mouse.click(2, 2);
   await page.evaluate(() => { N.debug.newGame({ skipIntro: true }); N.debug.freezeClock(true); N.debug.god(true); if (N.dialogue) N.dialogue.skip = true; N.debug.setTime(3, 0); });
   await page.evaluate(STAGE);
+  // the staged encounters (1-4) are about the test walkers only: ambient traffic off (and cleared) so a passing
+  // auto or pedestrian never takes the open patch away; the city (5) turns it back on
+  await page.evaluate(() => { if (N.traffic) { N.traffic.enabled = false; N.traffic.clear(); } });
   // a quiet place at 3 am: an open patch, the player parked off to the side
   const spot = await page.evaluate(() => {
     for (const id of ['parade_ground', 'necklace_road', 'lb_stadium', 'tank_bund', 'public_gardens']) {
@@ -80,7 +89,12 @@ async function main() {
   await sleep(600);
 
   const run = (stage) => page.evaluate(async (stage) => {
-    const E = N.entities, W = window.__W, o = window.__open() || { x: N.player.x, y: N.player.y - 180 };
+    // an open patch, checked: the old fallback (a fixed spot 180 u from the player, never checked) put the walkers
+    // against a wall whenever passing traffic took every patch, and the stage failed the same way every time
+    const E = N.entities, W = window.__W;
+    let o = window.__open();
+    for (let k = 0; !o && k < 30; k++) { await new Promise((r) => setTimeout(r, 100)); o = window.__open(); }
+    if (!o) return { noPatch: true, minPair: null, minCar: null, out: [] };
     const ws = stage.walkers.map((w) => new W(Object.assign({ x: o.x + w.x, y: o.y + w.y, gx: o.x + w.gx, gy: o.y + w.gy, spd: w.spd || 36, still: !!w.still })));
     for (const w of ws) E.add(w);
     let car = null;
@@ -107,28 +121,33 @@ async function main() {
   console.log('\n== 1. head-on');
   const h = await run({ ms: 4500, walkers: [{ x: -60, y: 0, gx: 60, gy: 0 }, { x: 60, y: 0, gx: -60, gy: 0 }] });
   // each passes on its own left: walking east (+x) the left is -y (up the map); walking west the left is +y
-  const midY = (w) => { const p = w.path.reduce((b, q) => (Math.abs(q[0]) < Math.abs(b[0]) ? q : b), w.path[0]); return p[1]; };
+  const midY = (w) => { if (!w || !w.path.length) return NaN; const p = w.path.reduce((b, q) => (Math.abs(q[0]) < Math.abs(b[0]) ? q : b), w.path[0]); return p[1]; };
   const ya = midY(h.out[0]), yb = midY(h.out[1]);
+  check(!h.noPatch, 'head-on: an open patch was found for it');
   check(h.minPair > 0, `two walkers meet head-on without touching (closest gap ${h.minPair} u)`, h);
   check(ya < 0 && yb > 0, `each passes on its own left (east-bound at y ${ya}, west-bound at y ${yb})`, { ya, yb });
   check(h.out.every((w) => w.end < 8), 'both reach their goals', h.out.map((w) => w.end));
 
   console.log('\n== 2. a fast walker behind a slow one');
   const f = await run({ ms: 4000, walkers: [{ x: -50, y: 0, gx: 70, gy: 0, spd: 14 }, { x: -75, y: 0, gx: 70, gy: 0, spd: 44 }] });
+  check(!f.noPatch, 'following: an open patch was found for it');
   check(f.minPair > -0.5, `the fast one slows or goes round, no shove (closest gap ${f.minPair} u)`, f.minPair);
 
   console.log('\n== 3. someone standing in the way');
   const s = await run({ ms: 4000, walkers: [{ x: 0, y: 0, gx: 0, gy: 0, still: true }, { x: -60, y: 0.5, gx: 60, gy: 0.5 }] });
+  check(!s.noPatch, 'standing person: an open patch was found for it');
   check(s.minPair > 0 && s.out[1].end < 8, `walked round the standing person (closest gap ${s.minPair} u) and on to the goal`, s);
 
   console.log('\n== 4. a parked car across the way');
   const c = await run({ ms: 5000, car: { x: 0, y: 0, a: Math.PI / 2 }, walkers: [{ x: -60, y: 2, gx: 60, gy: 2 }] });
+  check(!c.noPatch, 'parked car: an open patch was found for it');
   check(c.minCar != null && c.minCar > -0.5 && c.out[0].end < 10, `walked round the car's length (closest ${c.minCar} u from its body) and on`, c);
 
   console.log('\n== 5. the city');
-  await page.evaluate(() => N.debug.setTime(10, 30));
+  await page.evaluate(() => { if (N.traffic) N.traffic.enabled = true; N.debug.setTime(10, 30); });
   let touch = 0, ppl = 0;
-  for (const place of ['abids', 'rtc_x_roads', 'charminar']) {
+  // six busy centres: three gave a noisy average (5 to 12.4 over eleven runs against the limit of 12)
+  for (const place of ['abids', 'rtc_x_roads', 'charminar', 'koti', 'ameerpet', 'paradise']) {
     await page.evaluate((pl) => { const q = N.places[pl]; N.player.teleport(q.x, q.y); if (N.render.snapCamera) N.render.snapCamera(); }, place);
     await sleep(4000);
     for (let i = 0; i < 16; i++) {

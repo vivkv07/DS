@@ -303,7 +303,9 @@
 
   /**
    * Draw a person top-down, centred at origin facing +x, ~8 units across the shoulders.
-   * look: {kind, skin, hair, shirt, pants, cap?, accent?, bag?}; anim: {phase, speed 0..1, run}
+   * look: {kind, skin, hair, shirt, pants, cap?, accent?, bag?}; anim: {phase, speed 0..1, run, runK? 0..1 (eased run)}
+ * The gait: legs step from the hips; above them the shoulders turn against the hips, the body shifts its weight
+ * onto the planted foot and leans into a run (the head furthest), and running arms bend and pump harder.
    */
   function drawPerson(ctx, look, anim) {
     look = look || {};
@@ -313,9 +315,14 @@
     const shirt = look.shirt || '#e8e0d0', pants = look.pants || '#3a3a4a';
     // People are drawn ~1.35x their collision size so they read at the internal resolution.
     const sc = PEOPLE_SCALE * (kind === 'kid' || kind === 'student' ? 0.84 : kind === 'uncle' ? 1.08 : 1);
-    const ph = anim.phase || 0, mv = U.clamp(anim.speed == null ? 0 : anim.speed, 0, 1);
-    const stride = (anim.run ? 3.3 : 2.3) * mv;
+    const ph = anim.phase || 0, mv0 = U.clamp(anim.speed == null ? 0 : anim.speed, 0, 1);
+    // step length grows slower than speed (a slow walker takes shorter AND fewer steps): the crowds that stroll at
+    // half a walk still visibly step
+    const mv = Math.sqrt(mv0);
+    const rk = anim.runK != null ? U.clamp(anim.runK, 0, 1) : anim.run ? 1 : 0;
+    const stride = (2.3 + 1.0 * rk) * mv;
     const sw = Math.sin(ph) * stride;
+    const twist = -Math.sin(ph) * (0.1 + 0.08 * rk) * mv, sway = -Math.cos(ph) * 0.3 * mv, lean = (0.25 + 0.9 * rk) * mv;
     if (sc !== 1) ctx.scale(sc, sc);
     const longLegs = !(kind === 'saree' || kind === 'aunty' || kind === 'burqa' || kind === 'uncle' || kind === 'lungi' || look.dhoti);
 
@@ -348,10 +355,14 @@
 
     // a kurta's skirt flares round the hips, below the shoulders
     if (look.kurta) { ctx.fillStyle = shirt; ell(ctx, -0.45 + sw * 0.1, 0, 2.95, 3.2); ctx.fill(); outline(ctx); }
-    // arms (swing opposite to legs)
+    // the upper body rides the hips: weight shift, lean, shoulders turned against the stride
+    ctx.save();
+    ctx.translate(lean * 0.5, sway);
+    if (twist) ctx.rotate(twist);
+    // arms (swing opposite to legs; a run bends them in and pumps them)
     const armCol = kind === 'uncle' ? (look.sweater || skin) : kind === 'burqa' ? '#141216' : kind === 'saree' || kind === 'aunty' ? (look.sweater || skin) : (look.sweater || shirt);
     for (const s of [-1, 1]) {
-      const ax = -s * sw * 0.8, ay = s * 3.4;
+      const ax = -s * sw * (0.8 + 0.3 * rk), ay = s * (3.4 - 0.45 * rk);
       ctx.fillStyle = armCol; ell(ctx, ax * 0.7, ay, 1.6, 0.95); ctx.fill(); outline(ctx);
       ctx.fillStyle = kind === 'burqa' ? '#141216' : skin; ell(ctx, ax + 1.1 * Math.sign(ax || 1) * 0.6, ay, 0.75, 0.75); ctx.fill();
     }
@@ -404,8 +415,8 @@
       if (kind === 'student') { ctx.fillStyle = look.tie || '#b22b2b'; ctx.fillRect(1.6, -0.35, 0.9, 0.7); }
     }
 
-    // head
-    const hx = 0.35;
+    // head (furthest into a lean)
+    const hx = 0.35 + lean * 0.45;
     if (kind === 'burqa') {
       ctx.fillStyle = '#141216'; ell(ctx, hx, 0, 2.2, 2.2); ctx.fill(); outline(ctx);
       ctx.fillStyle = '#2a262c'; ell(ctx, hx + 1.2, 0, 0.7, 1.1); ctx.fill();
@@ -439,6 +450,7 @@
         ctx.fillStyle = U.shade(look.hatColor || '#7a1f2b', 0.75); ell(ctx, hx - 0.4, 0, 0.6, 0.6); ctx.fill();
       }
     }
+    ctx.restore();
   }
 
   /** winter in the game's calendar (Dec-Feb), and its cold mornings and evenings */
@@ -559,7 +571,12 @@
   // Numbers: systems_design §2 (N.player.TUNE). Energy is stamina; tummy (§2.2) is how fed Chinnu is,
   // and energy can never go above it. Statuses (§2.3), falls off bikes (§2.6), counted items (§2.7).
   const TUNE = {
-    walk: 45, run: 80, startMoney: 1000, startTummy: 80,
+    // walk: 45 -> 32 (owner request 2026-10-22: "too fast, it should walk in natural motion and run only when we make it
+    // run"): about 2.6 steps a second for the 8 u wide kid seen from above. Running stays 80 and only on RUN (held).
+    // paceRef = the walk the city's escorts, crowds and paced games were tuned against: they scale with paceK().
+    walk: 32, run: 80, paceRef: 45, startMoney: 1000, startTummy: 80,
+    // natural motion (1/s): a step or two to get going, a shorter one to stop, a longer push up to a run; turning
+    accel: { go: 7, run: 4.2, stop: 11, turn: 10 }, turnRate: { stand: 16, walk: 12, run: 9 },
     runDrain: 8.5, restDelay: 0.6, recoverWalk: 7, recoverStand: 14, recoverSit: 25, recoverRide: 10, exhaustedUntil: 30,
     pedalDrain: 2.0, pedalRecover: 5, legsGoneMul: 0.65,
     tummyDrain: { idle: 0.10, run: 0.25, pedal: 0.15, ride: 0.05, sit: 0.06 },
@@ -594,6 +611,8 @@
     stepAcc: 0, restT: 0, growlT: 0,
   });
   player.TUNE = TUNE;
+  /** how fast walking is now against the walk the city was first paced for (escorts, crowds, AI friends): 32/45 */
+  player.paceK = () => TUNE.walk / TUNE.paceRef;
   player.STATUS = STATUS;
   player.EDIBLES = EDIBLES;
 
@@ -853,12 +872,14 @@
     if (running) { if (S.knee) mul *= 0.9; if (hungry) mul *= 0.9; }
     const top = (running ? RUN : WALK) * N.world.surfaceSpeed(surf, 'walk') * mul * slopeMul;
     const tvx = mx * top * mag, tvy = my * top * mag;
-    const a = 1 - Math.exp(-dt * (mag > 0.05 ? 11 : 16));
+    const cur = Math.hypot(this.vx, this.vy), tgt = top * mag, AC = TUNE.accel;
+    const a = 1 - Math.exp(-dt * (mag <= 0.05 ? AC.stop : tgt > cur + 2 ? (running ? AC.run : AC.go) : AC.turn));
     this.vx += (tvx - this.vx) * a; this.vy += (tvy - this.vy) * a;
     // smooth turning towards the movement / stick direction
     if (mag > 0.1) {
       const ta = Math.atan2(my, mx);
-      this.angle += U.angleDiff(this.angle, ta) * Math.min(1, dt * 16);
+      const tr = TUNE.turnRate, spNow = Math.hypot(this.vx, this.vy);
+      this.angle += U.angleDiff(this.angle, ta) * Math.min(1, dt * (spNow < 6 ? tr.stand : running ? tr.run : tr.walk));
       this.facing = this.angle;
     }
     // move + slide along walls
@@ -874,8 +895,10 @@
     const sp = Math.hypot(this.vx, this.vy);
     this.anim.speed = Math.min(1, sp / WALK);
     this.anim.run = running;
+    // runK eases walk -> run (lean, arm bend, stride) over ~0.3 s instead of switching in one frame
+    this.anim.runK = (this.anim.runK || 0) + ((running ? 1 : 0) - (this.anim.runK || 0)) * Math.min(1, dt * 6);
     const prev = this.anim.phase;
-    this.anim.phase += sp * dt * (running ? 0.2 : 0.26);
+    this.anim.phase += sp * dt * (0.26 - 0.06 * this.anim.runK);
     if (sp > 8 && Math.floor(prev / Math.PI) !== Math.floor(this.anim.phase / Math.PI)) {
       N.emit('footstep', { x: this.x, y: this.y, surf: N.world.surfaceAt(this.x, this.y), run: running, who: this });
     }
@@ -904,20 +927,7 @@
       return;
     }
     R.queue('actors', this.y, () => D.sprite(self.x, self.y, self.angle, 8, (ctx) => drawPerson(ctx, self.look, self.anim)));
-    // after a few idle seconds a small bobbing chevron marks the player (busy screens, phones)
-    const a = Math.max(Math.min(1, Math.max(0, ((this.idleT || 0) - 2.5) / 0.6)), this.inCrowd ? 0.75 : 0);
-    if (a > 0 && N.state.mode === 'play') {
-      const still = document.body && document.body.classList.contains('reduced-motion');
-      R.queue('sky', 0, (ctx) => {
-        const k = R.k(14), bob = still ? 0 : Math.sin(N.time.real * 5) * 1.5;
-        const X = R.sx(self.x, k), Y = R.sy(self.y, k) - 9 - bob;
-        ctx.globalAlpha = a * 0.95;
-        ctx.fillStyle = '#1a1214';
-        ctx.beginPath(); ctx.moveTo(X - 4.5, Y - 4.5); ctx.lineTo(X + 4.5, Y - 4.5); ctx.lineTo(X, Y + 1.5); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = '#f2c230';
-        ctx.beginPath(); ctx.moveTo(X - 3, Y - 3.6); ctx.lineTo(X + 3, Y - 3.6); ctx.lineTo(X, Y); ctx.closePath(); ctx.fill();
-      });
-    }
+    // the pointer over Chinnu (always / in crowds / off): src/marker.js (idleT and inCrowd above feed its 'crowds' mode)
   };
 
   player.serialize = function () {
