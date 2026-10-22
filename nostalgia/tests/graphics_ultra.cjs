@@ -3,8 +3,8 @@
  *  1. the setting: a Graphics row (Auto / Low / High / Ultra) under Screen; Auto keeps a software GPU on High; the
  *     GPU classifier knows discrete / Apple-silicon (strong), mobile / software (weak) and integrated (unknown)
  *  2. High -> Ultra live: post pipeline on (AO, bloom, sky), 4096 shadow map, 8 point lights, a lit frame
- *  3. Ultra with every effect at zero draws the High frame (the post starts from what High shows: tone mapping,
- *     sRGB, fog and the raw glow shaders all match)
+ *  3. with every effect at zero the pipeline draws what a direct render draws (it starts from the High frame:
+ *     tone mapping, sRGB, fog and the raw glow shaders all match; the world paused between the two shots)
  *  4. Ultra -> High live restores the core state (no post, core sky, 2048 shadow map, 4 point lights); to Low with
  *     the engine running waits for a reload
  *  5. a stored 'ultra' applies at boot, before the engine exists (engine-creation values)
@@ -105,22 +105,20 @@ async function main() {
   check(ultra.shadow === 4096 && ultra.points === 8, 'Ultra: 4096 shadow map, 8 point lights', ultra);
   check(fu.mean > 25 && ultra.st.calls > 20 && ultra.calls >= ultra.st.calls, `Ultra frame drawn (mean ${fu.mean.toFixed(1)}, ${ultra.st.calls} draw calls with the passes)`, { fu, ultra });
 
-  console.log('\n== 3. Ultra with the effects at zero = High');
+  console.log('\n== 3. the pipeline starts from the High frame');
   await page.evaluate(() => {
     const T = N.graphics.TUNE; window.__T = JSON.parse(JSON.stringify(T));
     Object.assign(T, { aoDay: 0, aoNight: 0, bloom: [0, 0], haze: [0, 0], shafts: 0, sat: 1, curve: 0, shadowTint: [0, 0, 0], highTint: [0, 0, 0], vignette: 0, grain: 0, sharpen: 0 });
+    window.__mode = N.state.mode; N.state.mode = 'paused'; // (traffic and people hold still; 3D keeps drawing)
   });
-  // (the Ultra sky differs from the core one by design: compare below the horizon only)
-  const clip = { x: 0, y: 300, width: 960, height: 240 };
-  await page.evaluate(() => { N.graphics.set('high'); N.view3d.setQuality({ adaptive: false, pixelRatio: 1 }); });
-  await settle();
-  const hiClip = await page.screenshot({ clip, timeout: 240000 });
-  await page.evaluate(() => { N.graphics.set('ultra'); N.view3d.setQuality({ adaptive: false, pixelRatio: 1 }); });
-  await settle();
-  const neClip = await page.screenshot({ clip, timeout: 240000 });
-  const fn = await frameStats(page, neClip, hiClip);
-  check(fn.diff < 4, `neutral Ultra matches High below the horizon (mean abs diff ${fn.diff.toFixed(2)} / 255; moving traffic aside)`, fn);
-  await page.evaluate(() => { Object.assign(N.graphics.TUNE, window.__T); });
+  await sleep(3000);
+  const viaPost = await page.screenshot({ timeout: 240000 });
+  await page.evaluate(() => { window.__post = N.view3d.engine.post; N.view3d.engine.post = null; });
+  await sleep(3000);
+  const direct = await page.screenshot({ timeout: 240000 });
+  await page.evaluate(() => { N.view3d.engine.post = window.__post; N.state.mode = window.__mode; Object.assign(N.graphics.TUNE, window.__T); });
+  const fn = await frameStats(page, viaPost, direct);
+  check(fn.diff < 1.5, `neutral pipeline = direct render (mean abs diff ${fn.diff.toFixed(2)} / 255)`, fn);
 
   console.log('\n== 4. Ultra -> High, and Low');
   await page.evaluate(() => { N.graphics.set('high'); });
@@ -131,7 +129,8 @@ async function main() {
   check(low.a.pending === 'low' && low.a.tier === 'high' && low.b.pending === null, 'Low with the engine running waits for a reload (pending), Auto clears it', low);
 
   console.log('\n== 5. a stored Ultra applies at boot');
-  await page.evaluate(() => { localStorage.setItem('nostalgia.graphics', 'ultra'); });
+  // (top-down saved, so the title does not start 3D: this checks the values before the engine exists)
+  await page.evaluate(() => { localStorage.setItem('nostalgia.graphics', 'ultra'); localStorage.setItem('nostalgia.view.v1', 'top'); });
   await boot(page);
   const st5 = await page.evaluate(() => { const Q = N.view3d.quality; return { setting: N.graphics.setting, tier: Q.tier, shadowSize: Q.shadowSize, pointLights: Q.pointLights, ready: N.view3d.ready }; });
   check(st5.setting === 'ultra' && st5.tier === 'ultra' && st5.shadowSize === 4096 && st5.pointLights === 8 && !st5.ready, 'stored Ultra: engine-creation values set before 3D starts', st5);
