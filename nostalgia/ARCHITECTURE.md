@@ -87,6 +87,13 @@ nostalgia/
                     footpaths, medians, shader markings + zebras), terrain shaders, potholes
                     -> N.view3d.ground, N.view3d.groundHeightAt
   src/view3d_landmarks.js / src/view3d_actors.js  3D landmark models / people, vehicles, animals (§20)
+  src/view3d_post.js (after view3d_actors.js) the Graphics setting (Auto / Low / High / Ultra, Screen section,
+                    localStorage 'nostalgia.graphics') and the Ultra tier: the scene drawn off screen exactly as
+                    High shows it (+ depth), then ambient occlusion, aerial haze warmed towards the sun, bloom,
+                    sun shafts, a film grade, FXAA + sharpening + grain; a richer sky (the core sky's cloud block
+                    swapped for shaded clouds); 4096 shadow map, 8 point lights, render scale up to 2x. Auto picks
+                    Ultra on discrete / Apple-silicon desktop GPUs (WebGL2), steps an auto Ultra down to High below
+                    30 fps; High <-> Ultra live, to / from Low after a reload -> N.graphics (tests/graphics_ultra.cjs)
   src/diwali.js     (after festivals3d.js) Deepavali week 2003 in both views: seasons `pataakha` 20-26 Oct /
                     `diwali` 22-26 Oct, decorated colonies, pataakha stalls, fireworks + families, red cracker
                     paper blown by vehicle wakes and N.wind, haze, scared animals, the cracker box + lighting
@@ -1506,6 +1513,12 @@ N.view3d.registerStructure(t, build(THREE, s, H, gb, job) -> Object3D | void)
     `build3d(THREE, s, H, gb, job)` is built by it, every other one draws nothing in 3D (as
     before). Give your custom structures a build3d rather than registering 'custom' again
     (src/hoardings.js does; it registers the same dispatcher only when ameerpet.js is absent).
+Post hook (src/view3d_post.js): N.emit('view3d:init', {Q, THREE}) fires right before the engine is created
+    (last call for engine-creation quality: shadowSize, pointLights, aniso); when E.post is set,
+    render() calls E.post.render(renderer, scene, camera) instead of renderer.render(scene, camera).
+    (three r149 tone-maps in every material whatever the target and writes linear colour into a
+    target unless it is an XR one: the Ultra scene target is flagged isXRRenderTarget with an sRGB
+    texture encoding so it holds the screen frame; keep that in mind before upgrading three.)
 N.view3d.registerLayer(id, {init(THREE, H), update(dt, H), dispose(H), order})
     Per-frame 3D overlays in world space (mission markers from N.missions.markers(), collectible
     glints, season overlays, kites, birds). Add objects to H.layer (a Group in the scene).

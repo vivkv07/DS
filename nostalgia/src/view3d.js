@@ -191,6 +191,7 @@
       if (!hasWebGL()) throw new Error('WebGL is not available on this device');
       T = await loadThree();
       if (!T) throw new Error('could not load the 3D library');
+      N.emit('view3d:init', { Q, THREE: T }); // [post hook] last call for engine-creation quality (src/view3d_post.js)
       initEngine(T);
       view.available = true;
       E.warming = true; E.warmT = now();
@@ -2664,7 +2665,8 @@
     const covered = N.minigames && N.minigames.covering;
     const tR = now();
     if (!covered) {
-      try { E.renderer.render(E.scene, E.camera); } catch (e) { onRenderError(e); return; }
+      // [post hook] E.post (src/view3d_post.js, the Ultra tier) renders the scene through its post-processing
+      try { if (E.post) E.post.render(E.renderer, E.scene, E.camera); else E.renderer.render(E.scene, E.camera); } catch (e) { onRenderError(e); return; }
     }
     const info = E.renderer.info;
     E.calls = info.render.calls; E.tris = info.render.triangles;
