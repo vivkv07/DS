@@ -1709,7 +1709,7 @@
   const PER_VERTEX = { wall: 1, rail: 1, compound: 1 };
   /** the structure just built (gb vertices from n0, list entries from lens, objects from o0) onto the terrain */
   function sitOnTerrain(J, s, n0, lens, o0) {
-    const T = N.terrain; if (!T || !T.ready) return;
+    const T = N.terrain; if (!T || !T.ready || s.terrSelf) return; // (terrSelf: it placed its own parts)
     const P = J.gb.P, n1 = J.gb.n, ox = J.ox, oz = J.oz;
     if (PER_VERTEX[s.t]) {
       for (let k = n0; k < n1; k++) P[k * 3 + 1] += terrH(ox + P[k * 3], oz + P[k * 3 + 2]);

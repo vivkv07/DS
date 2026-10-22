@@ -129,6 +129,13 @@ nostalgia/
                     (canvas, 2D cells; one shared 3D texture, one mesh per chunk); system 'hoardings'
                     (order 43.6: 2D shadows + night floodlights), 3D layer 'hoardings3d' (floodlit at night)
                     -> N.hoardings (tests/hoardings.cjs)
+  src/hills.js      (after hoardings.js) Banjara Hills and Jubilee Hills, 2003: on 'world:built' the districts'
+                    houses become rich bungalows (portico, gold rails, granite gate pillars with globe lamps, an
+                    open black-and-gold gate, bougainvillea, palms, garden lamps, a car in the drive while the
+                    player is near: lux_sedan / suv / Ambassador) and the houses on Road No. 1-12 / 36 / Film
+                    Nagar Road coffee bars, jewellers, boutiques, pubs, parlours (invented boards, glass fronts,
+                    canopies, neon); one terrSelf `t:'custom'` structure each (2D draw + build3d); system 'hills'
+                    (order 43.8: 2D night lights, the parked cars) -> N.hills (tests/hills.cjs)
   src/assets3d_index.js GENERATED (tools/pack_assets3d.cjs, from assets3d/ship.json): N.ASSETS3D_INDEX =
                     every shipped model (core pack ids + lazy per-GLB ids, ~18 KB); loaded at boot (§21)
   src/models3d.js   Blender model runtime (§21): lazily loads GLTFLoader + the pack when 3D starts,

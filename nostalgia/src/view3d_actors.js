@@ -1837,6 +1837,23 @@
     grille: { y0: 3.3, y1: 4.0, hw: 2.4 }, lampR: 0.75, lampZ: 4.1, lampY: 3.7, tailY: 3.9, doors: [-1.2], hoodY: 5.1,
     seatX: -1.6, seatY: 4.3, archTop: 4.7, dash: { x: 5.2, y: 6.0 },
   }));
+  // Banjara / Jubilee drives (hills.js): a "foreign car" (long, low, curvy, chrome) and an SUV (tall, boxy)
+  defModel('luxsedan', (b) => mkCar(b, {
+    L: 34, W: 13.5, bev: 0.8, curvy: true,
+    prof: [[-17.0, 2.2], [-17.2, 4.3], [-16.2, 5.3], [-12.6, 5.65], [6.4, 5.55], [12.6, 5.05], [16.6, 4.35], [17.1, 3.0], [16.6, 1.9], [-15.8, 1.6]],
+    gh: { x0: -11.6, x1: 6.2, rx0: -8.2, rx1: 1.6, y0: 5.6, y1: 9.1, w0: 6.2, w1: 5.2, bp: 0.46 },
+    wheels: [{ x: -11.0, r: 2.3, w: 1.6, inset: 1.4 }, { x: 10.8, r: 2.3, w: 1.6, inset: 1.4, front: true }],
+    grille: { y0: 3.0, y1: 4.4, hw: 2.4 }, chromeBump: true, lampR: 0.75, lampZ: 4.7, lampY: 3.9, tailY: 4.0, doors: [-3.2, 4.6], ornament: true, hoodY: 5.4,
+    seatX: -2.2, seatY: 4.6, archTop: 5.0, dash: { x: 5.2, y: 6.2 },
+  }));
+  defModel('suv', (b) => mkCar(b, {
+    L: 30, W: 14.5, bev: 0.6,
+    prof: [[-15.0, 2.6], [-15.1, 6.8], [-14.6, 7.2], [8.4, 7.2], [13.4, 6.6], [15.0, 5.6], [15.1, 3.0], [14.4, 2.2], [-14.4, 2.2]],
+    gh: { x0: -14.0, x1: 8.4, rx0: -13.8, rx1: 5.4, y0: 7.2, y1: 11.4, w0: 6.8, w1: 6.4, bp: 0.42 },
+    wheels: [{ x: -9.6, r: 2.8, w: 1.9, inset: 1.5 }, { x: 9.6, r: 2.8, w: 1.9, inset: 1.5, front: true }],
+    grille: { y0: 3.4, y1: 5.6, hw: 3.4 }, lampR: 0.9, lampZ: 5.0, lampY: 5.0, tailY: 5.4, doors: [-4.8, 3.2], hoodY: 6.8,
+    seatX: -2.6, seatY: 6.0, archTop: 6.4, dash: { x: 7.2, y: 8.0 },
+  }));
   defModel('padmini', (b) => mkCar(b, {
     L: 26, W: 12, bev: 0.85,
     prof: [[-13.0, 2.0], [-13.15, 4.4], [-12.4, 5.25], [-8.4, 5.5], [5.3, 5.5], [10.6, 5.12], [12.8, 4.45], [13.15, 2.8], [12.7, 1.8], [-12.4, 1.65]],
@@ -2382,7 +2399,7 @@
     cycle: 'cycle', bsa_cycle: 'cycle', ladiescycle: 'ladies', hero_cycle: 'hero', old_cycle: 'hero', chinnu_cycle: 'hero_low', hercules_cycle: 'hercules', hercules_gears: 'hercules',
     kid_cycle: 'kid', scooty: 'scooty', akka_scooty: 'scooty', luna: 'luna', pochaiah_luna: 'luna_police', chetak: 'chetak', family_chetak: 'chetak', pasha_lambretta: 'lambretta',
     rx100: 'rx100', bunty_rx100: 'rx100', auto: 'auto', yadagiri_auto: 'auto', ambassador: 'ambassador', govt_ambassador: 'ambassador_govt', taxi_ambassador: 'ambassador_taxi',
-    maruti800: 'maruti', padmini: 'padmini', bus: 'bus', decker_bus: 'bus_decker', safari_bus: 'bus_safari', lorry: 'lorry', peacock_lorry: 'lorry_open', boat: 'boat', rickshaw: 'rickshaw',
+    maruti800: 'maruti', padmini: 'padmini', lux_sedan: 'luxsedan', suv: 'suv', bus: 'bus', decker_bus: 'bus_decker', safari_bus: 'bus_safari', lorry: 'lorry', peacock_lorry: 'lorry_open', boat: 'boat', rickshaw: 'rickshaw',
   };
   const LOOK_MODEL = { hero: 'hero', cycle: 'cycle', hercules: 'hercules', kid: 'kid', scooty: 'scooty', luna: 'luna', chetak: 'chetak', rx100: 'rx100', ladies: 'ladies' };
   const CLS_MODEL = { bike: 'cycle', car: 'ambassador', auto: 'auto', heavy: 'lorry', boat: 'boat' };
