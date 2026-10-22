@@ -586,12 +586,12 @@
     SHORTS: 61, FACE: 62, HAIR_FRINGE: 63, SLIM: 64,
   };
   // pattern / logic bits in iFlags.w (bit index)
-  const BIT_STRIPES = 15, BIT_BORDER = 16, BIT_CHECKS = 17, BIT_KID = 18, BIT_FPS = 19, BIT_ARMS = 20, BIT_NOBODY = 21; // first person: ARMS = only the arms drawn, NOBODY = no torso / neck (the eye sits behind them)
+  const BIT_STRIPES = 15, BIT_BORDER = 16, BIT_CHECKS = 17, BIT_KID = 18, BIT_FPS = 19, BIT_ARMS = 20, BIT_NOBODY = 21, BIT_TCHECKS = 22; // first person: ARMS = only the arms drawn, NOBODY = no torso / neck (the eye sits behind them)
 
   function personVertexHeader(depth) {
     return [
       'attribute vec3 aSP;', 'attribute vec4 iJ0;', 'attribute vec4 iJ1;', 'attribute vec4 iJ2;', 'attribute vec4 iJ3;', 'attribute vec4 iFlags;',
-      depth ? '' : 'attribute vec4 iColA;\nattribute vec4 iColB;\nvarying vec3 vPat;\nvarying vec3 vAcc;\nvarying vec3 vLP;\nvarying float vSlot;',
+      depth ? '' : 'attribute vec4 iColA;\nattribute vec4 iColB;\nvarying vec4 vPat;\nvarying vec3 vAcc;\nvarying vec3 vLP;\nvarying float vSlot;',
       GLSL_UNPACK, GLSL_ROT,
       'float pFeat(float f){ if (f < 0.5) return 1.0; float i = f - 1.0; float w = floor(i / 20.0 + 0.0001); float b = i - w * 20.0;',
       '  float m = w < 0.5 ? iFlags.x : (w < 1.5 ? iFlags.y : (w < 2.5 ? iFlags.z : iFlags.w)); return aBit(m, b); }',
@@ -652,14 +652,16 @@
         '  if (sl > 0.5) { float c = sl < 1.5 ? iColA.x : (sl < 2.5 ? iColA.y : (sl < 3.5 ? iColA.z : (sl < 4.5 ? iColA.w : (sl < 5.5 ? iColB.x : (sl < 6.5 ? iColB.y : (sl < 7.5 ? iColB.z : iColB.w))))));',
         '    vColor = aUnpack(c) * vColor; }',
         '  vAcc = aUnpack(iColB.x);',
-        '  vPat = vec3(aBit(iFlags.w, ' + BIT_STRIPES + '.0), aBit(iFlags.w, ' + BIT_BORDER + '.0), aBit(iFlags.w, ' + BIT_CHECKS + '.0));',
+        '  vPat = vec4(aBit(iFlags.w, ' + BIT_STRIPES + '.0), aBit(iFlags.w, ' + BIT_BORDER + '.0), aBit(iFlags.w, ' + BIT_CHECKS + '.0), aBit(iFlags.w, ' + BIT_TCHECKS + '.0));',
         '  vLP = position; }',
       ].join('\n'));
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vPat;\nvarying vec3 vAcc;\nvarying vec3 vLP;\nvarying float vSlot;')
+      .replace('#include <common>', '#include <common>\nvarying vec4 vPat;\nvarying vec3 vAcc;\nvarying vec3 vLP;\nvarying float vSlot;')
       .replace('#include <color_fragment>', [
         '#include <color_fragment>',
         'if (vSlot > 2.5 && vSlot < 3.5 && vPat.x > 0.5) { float st = step(0.55, fract(vLP.y * 1.75)); diffuseColor.rgb = mix(diffuseColor.rgb, vAcc, st * 0.9); }',
+        // a checked shirt: lines of the accent colour both ways
+        'if (vSlot > 2.5 && vSlot < 3.5 && vPat.w > 0.5) { float g = max(step(fract((vLP.x + vLP.z) * 1.6), 0.16), step(fract(vLP.y * 1.6), 0.16)); diffuseColor.rgb = mix(diffuseColor.rgb, vAcc, g * 0.7); }',
         'if (vSlot > 3.5 && vSlot < 4.5) {',
         '  if (vPat.y > 0.5 && (vLP.y < 0.92 || (vLP.y > 4.95 && vLP.y < 5.12))) diffuseColor.rgb = vAcc;',
         '  if (vPat.z > 0.5) { float g = max(step(fract((vLP.x + vLP.z) * 1.25), 0.12), step(fract(vLP.y * 1.25), 0.12)); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.85), g * 0.45); }',
@@ -914,11 +916,16 @@
         on(F.LEG_PANTS);
         if (r > 0.42) on(F.MOUSTACHE);
     }
+    if (L.dhoti && !wrap) { wrap = true; bottom = L.lungi || '#f4f2ea'; bits.delete(F.LEG_PANTS); } // the old man's white dhoti
     if (wrap) on(F.WRAP);
     if (!wrap && !bits.has(F.LEG_PANTS) && !bits.has(F.LEG_BARE)) on(F.LEG_PANTS);
     if (bits.has(F.TUNIC) && !bits.has(F.LEG_PANTS)) on(F.LEG_PANTS);
     // uniform cues
     if (L.cap === 'police' || L.pants === '#a89060' && L.cap === 'police') { on(F.CAP_POLICE); on(F.BELT); on(F.SHOES); }
+    // the 2003 wardrobe (entities.js dress): full sleeves, a sweater over it all, a man's kurta, a checked shirt
+    if (L.sleeves === 'long' && sleeves === 'short') sleeves = 'long';
+    if (L.sweater && kind !== 'burqa') { top = L.sweater; sleeves = 'long'; }
+    if (L.kurta && !wrap) on(F.TUNIC);
     // sleeves
     if (L.body) { top = L.body; sleeves = 'none'; }
     if (sleeves === 'short') { on(F.SLEEVES); on(F.SLEEVE_SHORT); } else if (sleeves === 'long') { on(F.SLEEVES); on(F.SLEEVE_LONG); } else on(F.NO_SLEEVE);
@@ -935,6 +942,7 @@
       case 'pith': on(F.CAP_PITH); capOn = true; hat = L.hatColor || '#e8dcc0'; break;
       case 'backcap': on(F.CAP_BACK); capOn = true; hat = L.hatColor || '#c03030'; break;
       case 'hood': on(F.HOOD); capOn = true; hat = L.hatColor || '#f2c230'; hairStyle = 'none'; break;
+      case 'monkey': on(F.HOOD); capOn = true; hat = L.hatColor || '#7a1f2b'; hairStyle = 'none'; break; // the winter monkey cap
       default: break;
     }
     if (bits.has(F.CAP_POLICE)) capOn = true;
@@ -954,6 +962,7 @@
     if (L.puff && !capOn) on(F.PUFF);
     if (L.cowlick && !capOn) on(F.COWLICK);
     if (capOn) { bits.delete(F.HAIR_FRINGE); bits.delete(F.PUFF); }
+    if (L.gajra && (bits.has(F.PLAIT_ONE) || bits.has(F.PLAITS_TWO) || bits.has(F.BUN))) on(F.JASMINE);
     // face + body extras
     if (L.specs) on(F.SPECS);
     if (L.beard) { on(F.BEARD); extra = L.beard; if (L.longBeard) on(F.LONGBEARD); bits.delete(F.MOUSTACHE); }
@@ -968,7 +977,9 @@
     if (L.walkman) { on(F.WALKMAN); }
     if (L.camera) on(F.CAMERA);
     if (L.neem) on(F.P_NEEM);
-    if (lungi) patt.checks = true;
+    if (lungi && !L.dhoti) patt.checks = true;
+    if (L.dhoti) { patt.border = true; accent = L.border || '#c9a227'; } // the white dhoti's border
+    if (L.checks && !L.sweater && !patt.stripes && !L.tie) { patt.tchecks = true; accent = L.checks; }
     if (kind === 'student' || kind === 'police' || kind === 'man' && (L.lanyardDot || L.shoes)) on(F.SHOES);
     // props
     const prop = L.prop;
@@ -983,6 +994,7 @@
     if (patt.stripes) f[3] += Math.pow(2, BIT_STRIPES);
     if (patt.border) f[3] += Math.pow(2, BIT_BORDER);
     if (patt.checks) f[3] += Math.pow(2, BIT_CHECKS);
+    if (patt.tchecks) f[3] += Math.pow(2, BIT_TCHECKS);
     if (kid) f[3] += Math.pow(2, BIT_KID);
     const size = (L.size || 1) * (kid ? 0.78 : kind === 'uncle' ? 1.02 : 1);
     // seated / riding: a wrap (lungi, saree, burqa) drapes over the legs instead of hanging as a cone

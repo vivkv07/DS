@@ -103,6 +103,7 @@
   /** -> {cols: [vec4 per region: ratio rgb, hide], hidden: [names]} for the manifest tint spec */
   function resolve(tint, look, defLook, ctx) {
     const names = tint.names || ['none'], fields = tint.fields || {}, show = tint.show || {}, base = tint.regions || {};
+    if (look && look.sweater) look = Object.assign({}, look, { shirt: look.sweater }); // a winter sweater over the shirt (entities.js dress)
     const L = Object.assign({}, look || {}, ctx || {});
     const out = [], hidden = [];
     for (let i = 0; i < 24; i++) {
@@ -165,12 +166,19 @@
 
   /* ================================================================ archetype index (from the manifests) */
   const ROLE_MODEL = { vendor: 'vendor', old: 'old_man_dhoti', elder: 'man_kurta_skullcap', police: 'police_khaki', youth: 'student', college: 'student' };
+  /** a character's manifest: the pack's, or the index's for a lazy one (fetched on first use by models3d.js) */
+  function manOf(id) {
+    const P = N.ASSETS3D && N.ASSETS3D.manifest, X = N.ASSETS3D_INDEX && N.ASSETS3D_INDEX.manifest;
+    return (P && P[id]) || (X && X[id] && X[id].lazy && X[id].family === 'character' ? X[id] : null);
+  }
   function buildIndex() {
     const P = N.ASSETS3D && N.ASSETS3D.manifest;
     if (!P) return null;
     const I = { all: [], byNpc: new Map(), byKind: new Map(), player: null, props: new Map(), clipsOf: new Map() };
-    for (const id in P) {
-      const m = P[id];
+    const X = (N.ASSETS3D_INDEX && N.ASSETS3D_INDEX.manifest) || {};
+    const ids = Object.keys(P).concat(Object.keys(X).filter((id) => !P[id] && manOf(id)));
+    for (const id of ids) {
+      const m = manOf(id);
       if (!m || m.family !== 'character') continue;
       const meta = m.meta || {};
       if (meta.role === 'clips') { I.clipsOf.set(meta.rig || id, m); continue; }
@@ -229,9 +237,9 @@
     return true;
   }
   function clipOf(id, name) {
-    const m = N.ASSETS3D && N.ASSETS3D.manifest[id];
+    const m = manOf(id);
     if (!m) return null;
-    const lib = typeof (m.meta || {}).clips === 'string' ? N.ASSETS3D.manifest[m.meta.clips] : m;
+    const lib = typeof (m.meta || {}).clips === 'string' ? manOf(m.meta.clips) : m;
     return (lib && lib.clips && lib.clips[name]) || null;
   }
   /** parse a lazy model on first use; true when it is ready */
@@ -572,9 +580,10 @@
     cands.sort((a, b) => (b.isP - a.isP) || (a.d2 - b.d2));
     let n = 0, fresh = 0;
     const R = OPT.dist, RH = OPT.dist + OPT.hyst;
+    const Q = N.view3d && N.view3d.quality, MAX = Q && Q.tier === 'low' ? Math.min(OPT.max, 10) : OPT.max; // (the Low tier: fewer sculpted people, the rest procedural)
     for (let i = 0; i < cands.length; i++) {
       const c = cands[i], on = c.e.view3d === c.key;
-      const ok = c.isP || (on ? (i < OPT.max + 6 && c.d2 < RH * RH) : (i < OPT.max && c.d2 < R * R && fresh < OPT.maxNew));
+      const ok = c.isP || (on ? (i < MAX + 6 && c.d2 < RH * RH) : (i < MAX && c.d2 < R * R && fresh < OPT.maxNew));
       if (ok) { if (!on) { c.e.view3d = c.key; fresh++; } n++; } else unroute(c.e);
     }
     S.routed = n; S.frameNew = fresh;

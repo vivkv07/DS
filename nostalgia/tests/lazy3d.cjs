@@ -23,6 +23,10 @@ const { spawn, execFileSync } = require('child_process');
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 
 const ROOT = path.resolve(__dirname, '..');
+// what ships (assets3d/ship.json): the lazy models (landmarks and, since the people shipped, characters) and all
+const SHIP = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets3d', 'ship.json'), 'utf8'));
+const famOf = (id) => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'assets3d', id + '.json'), 'utf8')).family || ''; } catch (e) { return ''; } };
+const N_LAZY = SHIP.lazy.length, N_ALL = SHIP.core.length + N_LAZY, N_LM = SHIP.lazy.filter((id) => /landmark/.test(famOf(id))).length;
 const OUT = path.join(__dirname, 'out');
 const SITE = path.join(ROOT, 'dist', 'site');
 const CDN = 'https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js';
@@ -170,18 +174,18 @@ async function testSite(browser) {
     execFileSync('bash', [path.join(ROOT, 'tools', 'deploy_site.sh'), '--dry-run'], { stdio: 'pipe' });
     ok('assembled dist/site (tools/deploy_site.sh --dry-run)');
   }
-  check(fs.existsSync(path.join(SITE, 'lazy3d')) && fs.readdirSync(path.join(SITE, 'lazy3d')).filter((f) => f.endsWith('.glb')).length === 30, 'dist/site/lazy3d holds the 30 lazy GLBs next to index.html');
+  check(fs.existsSync(path.join(SITE, 'lazy3d')) && fs.readdirSync(path.join(SITE, 'lazy3d')).filter((f) => f.endsWith('.glb')).length === N_LAZY, 'dist/site/lazy3d holds the ' + N_LAZY + ' lazy GLBs next to index.html');
   const srv = await serveSite();
   const { context, page, errors, requests } = await openPage(browser, srv.base + '#debug');
   try {
     const idx = await page.evaluate(() => ({ index: !!N.ASSETS3D_INDEX, n: Object.keys(N.ASSETS3D_INDEX.manifest).length, pack: !!N.ASSETS3D, from: N.ASSETS3D_INDEX.from }));
-    check(idx.index && idx.n === 87 && !idx.pack && !idx.from, 'the index is inline and loaded at boot (87 models), the pack is not (top-down)', JSON.stringify(idx));
+    check(idx.index && idx.n === N_ALL && !idx.pack && !idx.from, 'the index is inline and loaded at boot (' + N_ALL + ' models), the pack is not (top-down)', JSON.stringify(idx));
     await page.waitForTimeout(500);
     check(requests.length === 0, 'no lazy GLB is fetched in top-down', JSON.stringify(requests));
     const start = await page.evaluate(() => ({ x: N.player.x, y: N.player.y }));
     await to3D(page);
     const st = await page.evaluate(() => N.models3d.stats());
-    check(st.state === 'ready' && st.lazy.index === 30 && st.lazy.keys.length >= 28 && st.lazy.possible, 'models3d ready from the core pack; the 30 lazy models registered their landmark keys from the index', JSON.stringify({ state: st.state, err: st.error, lazy: st.lazy }));
+    check(st.state === 'ready' && st.lazy.index === N_LAZY && st.lazy.keys.length >= N_LM - 2 && st.lazy.possible, 'models3d ready from the core pack; the ' + N_LAZY + ' lazy models in the index, the ' + N_LM + ' landmarks registered their keys', JSON.stringify({ state: st.state, err: st.error, lazy: st.lazy }));
     const lazyOf = await page.evaluate(LAZY_OF);
     await page.evaluate((m) => { window.__lazyOf = m; }, lazyOf);
     const visited = [start];
@@ -207,19 +211,23 @@ async function testSite(browser) {
     }
     const after = await page.evaluate(() => N.models3d.stats());
     const allow = new Set(await page.evaluate(allowedLazy, { pts: visited, lmDist: LM_DIST }));
-    const fetchedIds = requests.map((r) => (r.url.match(/lazy3d\/([a-z0-9_]+)\.glb/) || [])[1]);
+    const allIds = requests.map((r) => (r.url.match(/lazy3d\/([a-z0-9_]+)\.glb/) || [])[1]);
+    // the people (lazy character models + their rigs' clip libraries) come with whoever walks by: counted apart
+    const chars = new Set(await page.evaluate(() => Object.keys(N.ASSETS3D_INDEX.manifest).filter((id) => { const m = N.ASSETS3D_INDEX.manifest[id]; return m.lazy && m.family === 'character'; })));
+    const fetchedIds = allIds.filter((id) => !chars.has(id)), charIds = allIds.filter((id) => chars.has(id));
     const extra = fetchedIds.filter((id) => !allow.has(id));
-    const dup = fetchedIds.filter((id, i) => fetchedIds.indexOf(id) !== i);
+    const dup = allIds.filter((id, i) => allIds.indexOf(id) !== i);
     const bad = requests.filter((r) => r.status !== 200);
     const need = new Set([].concat(...SPOTS.map((s) => Object.values(s.lms))));
-    console.log('  fetched (' + fetchedIds.length + '): ' + fetchedIds.join(' '));
+    console.log('  fetched (' + fetchedIds.length + '): ' + fetchedIds.join(' ') + (charIds.length ? '  + people: ' + charIds.join(' ') : ''));
     console.log('  allowed by range (' + allow.size + '): ' + Array.from(allow).sort().join(' '));
     check(bad.length === 0, 'every lazy GLB request answered 200 (no 404 fallbacks tried)', JSON.stringify(bad));
     check(requests.every((r) => r.url.indexOf(srv.base + 'lazy3d/') === 0), 'lazy GLBs come from /DS/lazy3d/ next to index.html', requests.slice(0, 2).map((r) => r.url).join(' '));
     check(extra.length === 0, 'only lazy GLBs of landmarks within build range of the visited spots were fetched', 'extra: ' + extra.join(', '));
     check(dup.length === 0, 'each lazy GLB was fetched once', dup.join(', '));
+    check(!charIds.some((id) => !/^clips_/.test(id)) || charIds.some((id) => /^clips_/.test(id)), 'the people models came with their clip library (' + (charIds.join(', ') || 'none near') + ')');
     check(Array.from(need).every((id) => fetchedIds.includes(id)), 'every lazy model the spots need was fetched');
-    check(fetchedIds.length < 30 && !fetchedIds.includes('hitec_office') && !fetchedIds.includes('lal_darwaza_temple'), 'far lazy models (HITEC office, Lal Darwaza) were not fetched (' + fetchedIds.length + ' of 30)');
+    check(fetchedIds.length < N_LM && !fetchedIds.includes('hitec_office') && !fetchedIds.includes('lal_darwaza_temple'), 'far lazy models (HITEC office, Lal Darwaza) were not fetched (' + fetchedIds.length + ' of ' + N_LM + ' landmarks)');
     check(after.lazy.swaps >= need.size && Object.keys(after.failed).length === 0, 'procedural stand-ins were swapped for the models (' + after.lazy.swaps + ' swaps), nothing failed', JSON.stringify(after.failed));
     const nerr = await page.evaluate(() => (N.debug.state().errors || []));
     const all = errors.concat(nerr.map((e) => 'N.err: ' + e));
@@ -239,7 +247,7 @@ async function testFile(browser) {
   try {
     await to3D(page);
     const st = await page.evaluate(() => N.models3d.stats());
-    check(st.state === 'ready' && st.packFrom === 'inline' && st.lazy.index === 30 && !st.lazy.possible && st.lazy.keys.length === 0, 'core pack from the inline block; lazy models known from the index but not fetchable from file:// (no keys registered)', JSON.stringify({ state: st.state, packFrom: st.packFrom, lazy: st.lazy }));
+    check(st.state === 'ready' && st.packFrom === 'inline' && st.lazy.index === N_LAZY && !st.lazy.possible && st.lazy.keys.length === 0, 'core pack from the inline block; lazy models known from the index but not fetchable from file:// (no keys registered)', JSON.stringify({ state: st.state, packFrom: st.packFrom, lazy: st.lazy }));
     await placeAt(page, 'sandhya_theatre');
     const built = await waitBuilt(page, () => {
       const names = new Set(N.view3d.engine.lmGroup.children.map((c) => c.name));

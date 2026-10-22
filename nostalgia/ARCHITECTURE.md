@@ -691,7 +691,11 @@ Implementation notes (entities.js, binding):
 - `N.people.draw(ctx, look, {phase, speed 0..1, run})` draws ~1.35x the collision size
   (`N.people.SCALE`) so people read at the internal resolution. Extra look fields: `stripes,
   saree, border, blouse, lungi, dupatta, girl, bag, tie, cap: 'police'|'topi'|'cricket',
-  capColor`. `N.people.randomLook(rng, kind?)`.
+  capColor`. `N.people.randomLook(rng, kind?)`. The 2003 wardrobe, `N.people.dress(look, role, rng)` (called by
+  randomLook and traffic.js makeLook; the named cast keep their own looks): `moustache, checks (line colour),
+  sleeves: 'long', kurta, safari, dhoti (+ lungi white, border), gajra, sweater (colour), hat: 'monkey'`
+  (sweaters and monkey caps on winter mornings / evenings); drawn in 2D (drawPerson) and 3D (view3d_actors
+  lookSpec; the checked shirt is pattern bit 22). tests/people2003.cjs.
 - `N.player` extras: `look`, `anim`, `exhausted`, `god`, `teleport(x, y)` (clamped into the
   map; a blocked spot falls back to the nearest free cell, else the spawn), `reset()`,
   `serialize()/deserialize()` (junk fields keep the current values; never NaN). Walk 45 / run 80 with acceleration, smooth turning, wall

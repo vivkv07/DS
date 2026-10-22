@@ -322,10 +322,12 @@
 
   /* ================================================================ looks */
   const P_SKIN = ['#8d5a3b', '#a0683f', '#b97a4f', '#c68b5e', '#7a4a30', '#d29a6a', '#9a6040'];
-  const SHIRT_PALE = ['#e8e0d0', '#dfe8f2', '#c8d8e8', '#efe6d0', '#d8e0c8', '#e8d8c8', '#f4f2ea', '#bcd0e0'];
-  const SHIRT_LOUD = ['#d8402a', '#2a5cb8', '#3a8a3a', '#f2c230', '#7a3a8a', '#2a8c82', '#c86a2a', '#e88aa8', '#8a2a2a', '#3a3a8a'];
-  const SAREE = ['#d8402a', '#2a8c82', '#f2c230', '#c03a8a', '#3a8a3a', '#f08a24', '#7a3a8a', '#e85a7a', '#2a5cb8', '#8a2a3a', '#3a6a3a', '#c8a020'];
+  // 2003: terry-cot pastels for the uncles; the maroon, bottle green, mustard, navy and rust of the young
+  const SHIRT_PALE = ['#e8e0d0', '#dfe8f2', '#c8d8e8', '#efe6d0', '#d8e0c8', '#e8d8c8', '#f4f2ea', '#bcd0e0', '#e8e2f0', '#d8e8e0'];
+  const SHIRT_LOUD = ['#c8402a', '#2a5cb8', '#3a7a4a', '#d8b040', '#6a3a7a', '#2a7c78', '#b8642a', '#d88aa0', '#7a1f2b', '#22305a', '#1f4a3a', '#a0482a', '#8ab4d8'];
+  const SAREE = ['#d8402a', '#2a8c82', '#f2c230', '#c03a8a', '#3a8a3a', '#f08a24', '#7a3a8a', '#e85a7a', '#2a5cb8', '#8a2a3a', '#3a6a3a', '#c8a020', '#8a1f3a', '#1f6a4a', '#e8742a', '#5a2a6a'];
   const PANTS = ['#3a3a4a', '#5a4a3a', '#2a3a5a', '#7a6a5a', '#4a4a4a', '#6a6a70'];
+  const JEANS = ['#3a5070', '#2a3a5a', '#46607e', '#2e3e56'];
   const LUNGI = ['#2a5cb8', '#3a8a3a', '#7a3a3a', '#efe9dc', '#5a3a8a', '#2a6a7a'];
   const UNIFORM = [['#f2f0ea', '#2a3a6a', '#2a3a6a'], ['#f2f0ea', '#7a6a4a', '#7a2a2a'], ['#f2f0ea', '#3a5a3a', '#3a5a3a'], ['#e8f0f8', '#2a4a8a', '#b22b2b'], ['#f4f2e8', '#5a2a3a', '#5a2a3a']];
   const RIBBON = ['#d8202a', '#2a5cb8', '#f2f0ea', '#3a8a3a'];
@@ -388,7 +390,7 @@
         break;
       }
       case 'youth': { // printed shirt, bell-ish jeans, side parting / puff
-        L.kind = 'man'; L.shirt = pick(SHIRT_LOUD); L.pants = pick(['#3a4a6a', '#2a3a5a', '#4a4a5a', '#6a5a4a']);
+        L.kind = 'man'; L.shirt = pick(SHIRT_LOUD); L.pants = rnd() < 0.6 ? pick(JEANS) : pick(['#4a4a5a', '#6a5a4a', '#c8b89a']);
         if (rnd() < 0.35) L.puff = true; else L.oiled = rnd() < 0.5;
         if (rnd() < 0.2) L.specs = '#2a2a36';
         if (rnd() < 0.15) { L.hat = 'backcap'; L.hatColor = pick(['#c03030', '#2a5cb8', '#f2f0ea']); }
@@ -396,7 +398,7 @@
         break;
       }
       case 'college': { // Osmania: jeans, kurtas, files to the chest
-        if (rnd() < 0.45) { L.kind = 'woman'; L.shirt = pick(SAREE); L.pants = pick(['#efe9dc', '#2a3a5a']); L.dupatta = pick(SAREE); }
+        if (rnd() < 0.45) { L.kind = 'woman'; L.shirt = pick(SAREE); L.pants = rnd() < 0.3 ? pick(JEANS) : pick(['#efe9dc', '#2a3a5a']); if (rnd() < 0.75) L.dupatta = pick(SAREE); } // (a kurti over jeans: the 2003 college look)
         else { L.kind = 'man'; L.shirt = pick(SHIRT_LOUD.concat(SHIRT_PALE)); L.pants = pick(['#3a4a6a', '#2a3a5a']); if (rnd() < 0.3) L.puff = true; }
         L.prop = 'notebook'; if (rnd() < 0.2) L.specs = true;
         spd = TUNE.pedSpd.student; lang = 'any';
@@ -446,6 +448,13 @@
         spd = TUNE.pedSpd.vendor + 8;
         break;
       }
+      case 'teen': { // a teenage girl in a half-saree (langa voni): the long skirt, a contrasting voni, a plait with jasmine
+        L.kind = 'saree'; L.girl = true; L.size = 0.9; L.saree = pick(SAREE); L.border = pick(['#f2c230', '#e8c060', '#efe9dc']);
+        L.blouse = pick(SAREE.filter((c) => c !== L.saree)); L.gajra = rnd() < 0.7;
+        if (rnd() < 0.4) L.prop = pick(['notebook', 'clothbag']);
+        spd = TUNE.pedSpd.woman; lang = 'te';
+        break;
+      }
       case 'police': {
         L.kind = 'man'; L.shirt = '#f4f2ea'; L.pants = '#a89060'; L.cap = 'police'; if (rnd() < 0.5) L.belly = true;
         spd = TUNE.pedSpd.police; lang = 'any';
@@ -458,6 +467,7 @@
         if (rnd() < 0.15) L.oiled = true;
       }
     }
+    if (N.people && N.people.dress) N.people.dress(L, role, { next: rnd }); // the 2003 details (entities.js)
     return { look: L, lang, spd: spd * rr(0.88, 1.1) };
   }
   /** Role by district style and time (systems §11.2 shares). */
@@ -476,7 +486,8 @@
       case 'osmania': w = { college: 40, man: 10, youth: 10, aunty: 6, uncle: 6, lungi: 4 }; break;
       default: w = { student: schoolT ? 18 : 3, kid: 14, uncle: 12, lungi: 6, aunty: 20, man: 10, youth: 8, old: 6, woman: 4 }; // colony
     }
-    if (night()) { w.kid = (w.kid || 0) * 0.2; w.student = 0; w.aunty = (w.aunty || 0) * 0.5; w.youth = (w.youth || 0) * 1.5; }
+    if (style === 'oldcity' || style === 'market' || style === 'rocky' || style === 'colony' || !style) w.teen = (w.teen || 0) + (style === 'market' ? 5 : 4);
+    if (night()) { w.kid = (w.kid || 0) * 0.2; w.student = 0; w.teen = (w.teen || 0) * 0.2; w.aunty = (w.aunty || 0) * 0.5; w.youth = (w.youth || 0) * 1.5; }
     if (did === 'ameerpet') w.college = (w.college || 0) + 25;
     return wpick(w) || 'man';
   }
