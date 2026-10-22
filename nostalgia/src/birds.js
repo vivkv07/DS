@@ -180,6 +180,14 @@
   }
 
   /* ---------------------------------------------------------------- spots */
+  // [terrain] the ground under a point (terrain.js; 0 without it) and a structure's base as view3d.js lifts it onto the
+  // terrain (the low corner of a footprint {x, y, w, d}, else the ground at its centre): perches' h3 stand on it
+  const terr = (x, y) => { const T = N.terrain; return T && T.ready ? T.heightAt(x, y) : 0; };
+  function structBase(s) {
+    const H = N.view3d && N.view3d.H;
+    if (s.x != null && s.w != null && s.d != null && H && H.terrainBase) return H.terrainBase(s.x, s.y, s.x + s.w, s.y + s.d);
+    return terr(s.cx != null ? s.cx : s.x, s.cy != null ? s.cy : s.y);
+  }
   // spot: {k, x, y, a (edge / wire angle), span (along a), r (wander radius), h (2D), h3 (3D)}
   function groundSpot(x, y, r) { return { k: 'G', x, y, a: 0, span: 0, r: r || 10, h: 0, h3: 0 }; }
   function roofSpots(cx, cy, R, max, out, rng) {
@@ -196,7 +204,7 @@
     for (let i = 0; i < list.length && out.length < max; i++) {
       const s = list[i][1], ins = 0.5;
       const pH = s.parapet ? (s.parapet === 2 ? 4.2 : 3) : 0;
-      const h3 = s.h * VSv + pH;
+      const h3 = s.h * VSv + pH + structBase(s);
       // the edge facing the site (pigeons like the street side), plus one more
       const ex = cx - (s.x + s.w / 2), ey = cy - (s.y + s.d / 2);
       const edges = [];
@@ -220,7 +228,7 @@
     const th = h * (s.kind === 'banyan' ? 0.42 : 0.48);
     return th + r * 1.05 * 0.55 + Math.max(2.4, r * 0.6 * 1.35) * 0.62;
   }
-  function treeSpot(s) { return { k: 'T', x: s.x, y: s.y, a: 0, span: 0, r: Math.max(1.5, (s.r || 8) * 0.4), h: (s.h || 20) + 1, h3: treeH3(s), tree: s }; }
+  function treeSpot(s) { return { k: 'T', x: s.x, y: s.y, a: 0, span: 0, r: Math.max(1.5, (s.r || 8) * 0.4), h: (s.h || 20) + 1, h3: treeH3(s) + structBase(s), tree: s }; }
   function treesNear(cx, cy, R, kinds, max, rng) {
     const w = W(), list = [];
     if (!w || !w.queryStructures) return list;
@@ -245,7 +253,9 @@
     for (let i = 0; i < n; i++) {
       const p = ok[Math.floor((i + 0.5) * ok.length / n)];
       // a perch point is good for +-1.5 u along the wire (the sag barely changes the height there)
-      out.push({ k: 'W', x: p.x, y: p.y, a: p.ang || 0, span: 3, r: 0, h: p.h, h3: p.h3 != null ? p.h3 : p.h * VSv });
+      // (wires.js draws a span over the line between its two ends' ground: the same here)
+      const sp = p.span, tw = sp && isFinite(sp.ax) && isFinite(p.t) ? terr(sp.ax, sp.ay) + (terr(sp.bx, sp.by) - terr(sp.ax, sp.ay)) * p.t : terr(p.x, p.y);
+      out.push({ k: 'W', x: p.x, y: p.y, a: p.ang || 0, span: 3, r: 0, h: p.h, h3: p.h3 != null ? p.h3 : p.h * VSv + tw });
     }
     return out;
   }
@@ -1589,15 +1599,17 @@
         const sp = b.spot;
         if (b.st === REST && sp) y = sp.k === 'G' || sp.k === 'S' ? ground3(b.x, b.y) : sp.h3;
         else {
-          y = b.h * VSv;
+          // [terrain] the 2D altitude is above the ground under the bird (the roofs it clears too)
+          const tg = terr(b.x, b.y);
+          y = b.h * VSv + tg;
           const t = b.tgt;
           if (b.st === TOSPOT && t) {
             const d = Math.hypot(b.rx - b.x, b.ry - b.y);
             const bl = clamp(1 - (d - 2) / 40, 0, 1);
             const tgtY = t.k === 'G' || t.k === 'S' ? ground3(b.rx, b.ry) : t.h3;
-            y += (tgtY - t.h * VSv) * bl;
-            if (d > 26 && V3 && V3.heightAt) y = Math.max(y, V3.heightAt(b.x, b.y) + 2);
-          } else if (V3 && V3.heightAt) y = Math.max(y, V3.heightAt(b.x, b.y) + 2);
+            y += (tgtY - t.h * VSv - tg) * bl;
+            if (d > 26 && V3 && V3.heightAt) y = Math.max(y, V3.heightAt(b.x, b.y) + tg + 2);
+          } else if (V3 && V3.heightAt) y = Math.max(y, V3.heightAt(b.x, b.y) + tg + 2);
         }
         const dx = b.x - cx, dz = b.y - cz, d = Math.sqrt(dx * dx + dz * dz);
         if (d > farD) continue;

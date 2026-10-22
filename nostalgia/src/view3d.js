@@ -1045,14 +1045,23 @@
   // terrain mesh and roads bend with it (view3d_ground.js), vehicles pitch with it (view3d_actors.js)
   function terrH(x, y) { const T = N.terrain; return T && T.ready ? T.heightAt(x, y) : 0; }
   function terrBase(x0, y0, x1, y1) { return Math.min(terrH(x0, y0), terrH(x1, y0), terrH(x0, y1), terrH(x1, y1), terrH((x0 + x1) / 2, (y0 + y1) / 2)); }
+  /** a roof zone (world.js roofs) stands where the building under it does: a landmark's lift, a building's base */
+  function roofBase(r) {
+    if (!r) return 0;
+    if (r._tb != null) return r._tb;
+    const lm = r.lm, b = r.bldg;
+    const v = lm ? terrBase(lm.x - (lm.w || 20) / 2, lm.y - (lm.d || 20) / 2, lm.x + (lm.w || 20) / 2, lm.y + (lm.d || 20) / 2)
+      : b && b.w != null ? terrBase(b.x, b.y, b.x + b.w, b.y + b.d) : terrBase(r.x, r.y, r.x + r.w, r.y + r.d);
+    if (N.terrain && N.terrain.ready) r._tb = v;
+    return v;
+  }
   function elevation(e) {
     if (!e) return 0;
     const t = terrH(e.x, e.y);
     if (e.level) {
-      const RF = N.world && N.world.roofs;
-      if (RF && RF.heightAt) { const h = RF.heightAt(e.x, e.y); if (h) return h * VS + t; }
-      const r = RF && RF.get && RF.get(e.level);
-      if (r) return r.h * VS + t;
+      const RF = N.world && N.world.roofs, r = RF && RF.get && RF.get(e.level), tb = r ? roofBase(r) : t;
+      if (RF && RF.heightAt) { const h = RF.heightAt(e.x, e.y); if (h) return h * VS + tb; }
+      if (r) return r.h * VS + tb;
     }
     if (isFinite(e.z) && e.z > 0) return e.z + t;
     // [ground hook] raised footpaths / medians and pothole dips under the entity (view3d_ground.js; the terrain in it)
@@ -1680,6 +1689,10 @@
   }
   function addRailway(J, segs) {
     const gb = J.gb; gb.plain();
+    const n0 = gb.n;
+    try { railTracks(J, gb, segs); } finally { for (let k = n0; k < gb.n; k++) gb.P[k * 3 + 1] += terrH(J.ox + gb.P[k * 3], J.oz + gb.P[k * 3 + 2]); } // [terrain] the rails on the ground, vertex by vertex
+  }
+  function railTracks(J, gb, segs) {
     for (const sg of segs) {
       const ax = sg[0] - J.ox, az = sg[1] - J.oz, bx = sg[2] - J.ox, bz = sg[3] - J.oz, L = Math.hypot(bx - ax, bz - az) || 1;
       const nx = -(bz - az) / L, nz = (bx - ax) / L;
@@ -1716,7 +1729,7 @@
       for (let q = 0; q < TLISTS.length; q++) { const A = J[TLISTS[q]], lamps = TLISTS[q] === 'lamps'; for (let k = lens[q]; k < A.length; k++) A[k][1] += terrH(A[k][0] + (lamps ? 0 : ox), A[k][2] + (lamps ? 0 : oz)); }
       s._toff = terrH(s.cx != null ? s.cx : s.x, s.cy != null ? s.cy : s.y);
     } else {
-      const off = s.x != null && s.w != null && s.d != null ? terrBase(s.x, s.y, s.x + s.w, s.y + s.d) : terrH(s.cx != null ? s.cx : s.x, s.cy != null ? s.cy : s.y);
+      const off = s.t === 'roofzone' ? roofBase(s.roof) : s.x != null && s.w != null && s.d != null ? terrBase(s.x, s.y, s.x + s.w, s.y + s.d) : terrH(s.cx != null ? s.cx : s.x, s.cy != null ? s.cy : s.y);
       for (let k = n0; k < n1; k++) P[k * 3 + 1] += off;
       for (let q = 0; q < TLISTS.length; q++) { const A = J[TLISTS[q]]; for (let k = lens[q]; k < A.length; k++) A[k][1] += off; }
       s._toff = off;
@@ -2382,10 +2395,11 @@
     if (!CAMSOL.size) return false;
     if (!camSolH) dynSolidH(-1);
     for (let q = 1; q <= 4; q++) {
-      const i = Math.floor((x + (q === 1 ? CAM_SOL_M : q === 2 ? -CAM_SOL_M : 0)) / C), j = Math.floor((z + (q === 3 ? CAM_SOL_M : q === 4 ? -CAM_SOL_M : 0)) / C);
+      const px = x + (q === 1 ? CAM_SOL_M : q === 2 ? -CAM_SOL_M : 0), pz = z + (q === 3 ? CAM_SOL_M : q === 4 ? -CAM_SOL_M : 0);
+      const i = Math.floor(px / C), j = Math.floor(pz / C);
       if (i < 0 || j < 0 || i >= GW || j >= GH) continue;
       const h = camSolH.get(j * GW + i);
-      if (h != null && y < h + 1.2) return true;
+      if (h != null && y < h + terrH(px, pz) + 1.2) return true; // (a stall's height is above the ground under it)
     }
     return false;
   }
@@ -2411,7 +2425,7 @@
     if (y < hg + tg + 1.2) return true;
     if (hg === 0 && G) {
       const i = Math.floor(x / C), j = Math.floor(z / C);
-      if (i >= 0 && j >= 0 && i < GW && j < GH) { const k = j * GW + i; if (G[k] === SOLID_SURF && y < dynSolidH(k) + 1.2) return true; }
+      if (i >= 0 && j >= 0 && i < GW && j < GH) { const k = j * GW + i; if (G[k] === SOLID_SURF && y < dynSolidH(k) + tg + 1.2) return true; }
       if (marg && camSolNear(x, y, z, GW, GH, C)) return true;
     }
     for (let q = 0, o = 0; q < camVN; q++, o += 7) {
@@ -3071,7 +3085,7 @@
     /** place an object at world (x, y) facing world angle a */
     place(obj, x, y, h, a) { obj.position.set(x, h || 0, y); if (a != null) obj.rotation.y = -a; return obj; },
     yaw(a) { return -(a || 0); },
-    elev: elevation, heightAt, terrainAt: terrH, terrainBase: terrBase,
+    elev: elevation, heightAt, terrainAt: terrH, terrainBase: terrBase, roofBase,
     builder(opts) { return new GB(opts); },
     merge: mergeGeometries,
     mat, color: (hex) => col(hex), tex, signSlot,

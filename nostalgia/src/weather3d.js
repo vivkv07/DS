@@ -47,6 +47,9 @@
   let THREE = null, H = null, E = null;
   let enabled = true;
   const low = () => !!(H && H.quality && H.quality.tier === 'low');
+  // [terrain] the ground under a point / a footprint's low side (terrain.js via view3d.js; 0 while not ready)
+  const TZ = (x, y) => (H && H.terrainAt ? H.terrainAt(x, y) : 0);
+  const TB = (x0, y0, x1, y1) => (H && H.terrainBase ? H.terrainBase(x0, y0, x1, y1) : 0);
   let WXN = 8;
 
   /* ------------------------------------------------------------ wetness: follow N.weather */
@@ -196,11 +199,11 @@ float wxRing(vec2 p, float sc, float t, float fw) {
         if (!s.front || !s.sign || !isFinite(s.w)) return;
         const f = s.front, mx = f === 'E' ? s.x + s.w + 3 : f === 'W' ? s.x - 3 : s.x + s.w / 2, my = f === 'S' ? s.y + s.d + 3 : f === 'N' ? s.y - 3 : s.y + s.d / 2;
         const c = new THREE.Color(s.sign.bg || '#d8402a');
-        SH.push({ x: mx, y: my, h: 8, c: [0.45 + c.r * 0.9, 0.32 + c.g * 0.8, 0.16 + c.b * 0.8] });
+        SH.push({ x: mx, y: my, h: 8 + (isFinite(s.d) ? TB(s.x, s.y, s.x + s.w, s.y + s.d) : TZ(mx, my)), c: [0.45 + c.r * 0.9, 0.32 + c.g * 0.8, 0.16 + c.b * 0.8] });
         return;
       }
       if (s.t !== 'lamp') return;
-      const h = (s.h || 24) * VS * 0.85;
+      const h = (s.h || 24) * VS * 0.85 + TZ(s.x, s.y); // (the lamp stands on the terrain under its post: view3d.js sitOnTerrain)
       const arms = s.arms && s.arms.length ? s.arms : null;
       if (!arms) { L.push({ x: s.x, y: s.y, h: h - 1, tube: !!s.tube }); return; }
       for (const a of arms) {
@@ -214,13 +217,13 @@ float wxRing(vec2 p, float sc, float t, float fw) {
     for (const lm of LAMPS.tb) {
       if (Math.abs(lm.x - cx) > R || Math.abs(lm.y - cy) > R) continue;
       const rot = isFinite(lm.faceAngle) ? Math.PI / 2 - lm.faceAngle : ({ s: 0, n: Math.PI, e: Math.PI / 2, w: -Math.PI / 2 }[lm.face] || 0);
-      const c = Math.cos(rot), sn = Math.sin(rot);
-      for (const u of [-12, 12]) L.push({ x: lm.x + u * c + 2 * sn, y: lm.y - u * sn + 2 * c, h: 18.5, globe: true });
+      const c = Math.cos(rot), sn = Math.sin(rot), tb = TB(lm.x - (lm.w || 20) / 2, lm.y - (lm.d || 20) / 2, lm.x + (lm.w || 20) / 2, lm.y + (lm.d || 20) / 2); // (the landmark's terrain lift)
+      for (const u of [-12, 12]) L.push({ x: lm.x + u * c + 2 * sn, y: lm.y - u * sn + 2 * c, h: 18.5 + tb, globe: true });
     }
     // sodium / tube lamps on the electric poles (src/wires.js)
     const WR = N.wires;
     if (WR && WR.poles && WR.enabled !== false) {
-      try { WR.poles(cx - R, cy - R, cx + R, cy + R, (p) => { if (p.lamp) L.push({ x: p.lamp.x, y: p.lamp.y, h: (p.lamp.h || 20) * VS - 0.6, tube: !!p.lamp.tube }); }); } catch (e) { /* wires optional */ }
+      try { WR.poles(cx - R, cy - R, cx + R, cy + R, (p) => { if (p.lamp) L.push({ x: p.lamp.x, y: p.lamp.y, h: (p.lamp.h || 20) * VS - 0.6 + TZ(p.x, p.y), tube: !!p.lamp.tube }); }); } catch (e) { /* wires optional */ }
     }
   }
   const PICK = []; // [{d, x, h, y, r, g, b, reach}]
@@ -244,7 +247,7 @@ float wxRing(vec2 p, float sc, float t, float fw) {
     };
     for (const l of LAMPS.list) consider(l.x, l.y, l.h, l.globe ? COL.globe : l.tube ? COL.tube : COL.sodium, l.tube ? 0.7 : l.globe ? 1.3 : 1.15, l.globe ? 160 : 95, 1);
     for (const l of LAMPS.shops) consider(l.x, l.y, l.h, l.c, 0.75, 70, 1.6);
-    for (const L of REQ) consider(L.x, L.y, L.h || 8, colArr(L.color), 1.1 * (L.intensity == null ? 1 : L.intensity), clamp((L.r || 60) * 1.2, 50, 140), 0.9);
+    for (const L of REQ) consider(L.x, L.y, (L.abs ? 0 : TZ(L.x, L.y)) + (L.h || 8), colArr(L.color), 1.1 * (L.intensity == null ? 1 : L.intensity), clamp((L.r || 60) * 1.2, 50, 140), 0.9);
     // vehicle head / tail lamps (the lamps the actors light: T.lights and someone at the controls)
     let vs = null;
     try { vs = N.entities.query(cx, cy, 260, (e) => e.kind === 'vehicle'); } catch (e) { vs = null; }
@@ -255,9 +258,9 @@ float wxRing(vec2 p, float sc, float t, float fw) {
       const tcx = cx - v.x, tcy = cy - v.y, tl = Math.hypot(tcx, tcy) || 1;
       const face = (c * tcx + s * tcy) / tl; // +1: the front faces the camera
       const bike = T.cls === 'bike';
-      consider(v.x + c * hl, v.y + s * hl, bike ? 5 : 3.9, COL.head, 1.5 * (0.3 + 0.7 * clamp(face, 0, 1)), 110, 0.8);
+      consider(v.x + c * hl, v.y + s * hl, (bike ? 5 : 3.9) + TZ(v.x + c * hl, v.y + s * hl), COL.head, 1.5 * (0.3 + 0.7 * clamp(face, 0, 1)), 110, 0.8);
       const ctl = v.ctl || {}, brake = (ctl.throttle < -0.1 || ctl.brake || ctl.handbrake) ? 1.8 : 1;
-      if (!bike || T.id !== 'cycle') consider(v.x - c * hl, v.y - s * hl, 3.6, COL.tail, 0.9 * brake * (0.3 + 0.7 * clamp(-face, 0, 1)), 90, 0.75);
+      if (!bike || T.id !== 'cycle') consider(v.x - c * hl, v.y - s * hl, 3.6 + TZ(v.x - c * hl, v.y - s * hl), COL.tail, 0.9 * brake * (0.3 + 0.7 * clamp(-face, 0, 1)), 90, 0.75);
     }
     // nearest first
     const n = pickN;
@@ -453,7 +456,7 @@ void main() {
     const A = SPL.S.array, n = SPL.n, act = Math.ceil(n * clamp(rain, 0, 1)), r = SPL.rng;
     const fl = Math.hypot(fwd.x, fwd.z) || 1, ux = fwd.x / fl, uz = fwd.z / fl;
     // the camera's ground point ahead (TPS looks down at the player; FPS looks along the street)
-    const ahead = clamp(cam.y * 1.4, 8, 30);
+    const ahead = clamp((cam.y - TZ(cam.x, cam.z)) * 1.4, 8, 30);
     const ox = cam.x + ux * ahead, oz = cam.z + uz * ahead;
     const W = N.world, gh = V.groundHeightAt, hh = H.heightAt;
     let spawned = 0;
@@ -466,7 +469,8 @@ void main() {
       spawned++;
       if (W && W.isWater && W.isWater(x, z)) { A[o + 1] = -1000; A[o + 3] = t - SPL.life * 0.5; continue; }
       let h = 0;
-      try { h = Math.max(gh ? gh(x, z) : 0, hh ? hh(x, z) : 0); } catch (e) { h = 0; }
+      // (groundHeightAt includes the terrain; the roof grid H.heightAt stands on it)
+      try { const tz = TZ(x, z); h = Math.max(gh ? gh(x, z) : tz, tz + (hh ? hh(x, z) : 0)); } catch (e) { h = 0; }
       A[o] = x; A[o + 1] = h + 0.05; A[o + 2] = z; A[o + 3] = t - r.next() * 0.08;
     }
     SPL.S.needsUpdate = true;
@@ -652,8 +656,12 @@ void main() {
       const T = v.T || N.vehicles.TYPES[v.type];
       const sx = T && T.w ? T.w / 22 : 1, sz = T && T.d ? clamp(T.d / 13, 0.7, 1.4) : 1;
       let el = 0; try { el = H.elev(v); } catch (e) { el = 0; }
-      COVER.p.set(v.x, el + 9.5, v.y);
-      COVER.q.setFromAxisAngle(COVER.up, -(v.angle || 0));
+      // [terrain] the auto pitches / rolls with the slope (view3d_actors.js): the curtains hang from its tilted canopy
+      let pitch = 0, roll = 0;
+      const TR = N.terrain;
+      if (TR && TR.ready && TR.slopeAt) { const sl = TR.slopeAt(v.x, v.y), ca = Math.cos(v.angle || 0), sa = Math.sin(v.angle || 0); pitch = Math.atan(sl.gx * ca + sl.gy * sa); roll = -Math.atan(-sl.gx * sa + sl.gy * ca); }
+      COVER.q.setFromEuler(COVER.e.set(roll, -(v.angle || 0), pitch, 'YXZ'));
+      COVER.p.set(0, 9.5, 0).applyQuaternion(COVER.q); COVER.p.x += v.x; COVER.p.y += el; COVER.p.z += v.y;
       COVER.s.set(sx, Math.max(0.05, v._wx3Cov), sz);
       COVER.m4.compose(COVER.p, COVER.q, COVER.s);
       M.setMatrixAt(n++, COVER.m4);
@@ -825,7 +833,7 @@ void main() {
           const dd = clamp(d, 220, (H.quality.drawDist || 1500) * 0.88);
           const bx = cam.x + dx / d * dd, bz = cam.z + dz / d * dd;
           const bh = clamp(dd * 0.55, 260, 760);
-          BOLT.spr.position.set(bx, bh * 0.5 - 4, bz);
+          BOLT.spr.position.set(bx, bh * 0.5 - 4 + TZ(bx, bz), bz); // its foot on the terrain at the strike
           BOLT.spr.scale.set(bh * 0.32, bh, 1);
           BOLT.placed = true;
         }

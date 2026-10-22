@@ -85,6 +85,21 @@
   const is3D = () => !!(N.view3d && N.view3d.active);
   const MGH = () => N.minigames && N.minigames.helpers;
   const VS = () => (N.view3d && N.view3d.VS) || 1.5;
+  // [terrain] the ground under a point, a footprint's low (or high) side (terrain.js, as view3d.js samples it; 0 while not
+  // ready). The 3D props stand rigid on it; a rider's e.z is over the ground under him (view3d.js elevation adds that)
+  const TZ = (x, y) => { const T = N.terrain; return T && T.ready ? T.heightAt(x, y) : 0; };
+  const TB = (x0, y0, x1, y1, hi) => (hi ? Math.max : Math.min)(TZ(x0, y0), TZ(x1, y0), TZ(x0, y1), TZ(x1, y1), TZ((x0 + x1) / 2, (y0 + y1) / 2));
+  const lmBase = (lm) => TB(lm.x - (lm.w || 20) / 2, lm.y - (lm.d || 20) / 2, lm.x + (lm.w || 20) / 2, lm.y + (lm.d || 20) / 2); // (view3d.js lifts a landmark so)
+  // the rides' rigid bases: the Columbus frame on its low side; the dashing-car floor and the cups platform on their high
+  // side (a plinth under them), so a rider sitting on them (e.z >= 0 over his own ground) is never below it
+  const RB = {
+    columbus: (C) => TB(C.x - 10, C.y - 8, C.x + 10, C.y + 9.5),
+    bumper: (B) => TB(B.x - 1, B.y - 1, B.x + B.w + 1, B.y + B.d + 1, true),
+    cups: (C) => TB(C.x - C.r - 0.8, C.y - C.r - 0.8, C.x + C.r + 0.8, C.y + C.r + 0.8, true),
+    carousel: (C) => TB(C.x - C.r, C.y - C.r, C.x + C.r, C.y + C.r), // (festivals3d.js lifts the carousel so)
+  };
+  /** 3D: what a rider's e.z gains on a ride standing on `base` (0 in 2D) */
+  const rideDz = (e, base) => (is3D() ? base - TZ(e.x, e.y) : 0);
 
   /* ================================================================ tuning */
   const TUNE = {
@@ -1204,10 +1219,10 @@
       g.updateWorldMatrix(true, false);
       _v3.v.set(Math.cos(a) * R + side * 0.95, Math.sin(a) * R - 6.6, side * 0.4);
       g.localToWorld(_v3.v);
-      out.x = _v3.v.x; out.y = _v3.v.z; out.z = _v3.v.y; return out;
+      out.x = _v3.v.x; out.y = _v3.v.z; out.z = _v3.v.y - TZ(out.x, out.y); return out; // [terrain] (e.z: over the ground under the seat)
     }
     const ang = a + WH.a;
-    out.x = W.x + Math.cos(ang) * R + side * 0.95; out.y = W.y; out.z = 52 + Math.sin(ang) * R - 6.6;
+    out.x = W.x + Math.cos(ang) * R + side * 0.95; out.y = W.y; out.z = 52 + Math.sin(ang) * R - 6.6 + lmBase(W.lm) - TZ(out.x, out.y);
     return out;
   }
   function wheelTick(dt) {
@@ -1364,14 +1379,14 @@
     } else if (id === 'columbus') {
       const ang = columbusAngle(run, 1.15);
       AMB.colRide = ang;
-      const C = S.columbus;
+      const C = S.columbus, tc = RB.columbus(C);
       all.forEach((e, i) => {
         const st = R.seats[i % R.seats.length];
         columbusSeat(C, ang, st[0], st[1], _o);
         e.x2 = _o.x; e.y2 = _o.y; e.h2 = _o.h; e.angle = st[0] < 0 ? 0 : PI;
         // 3D: the boat model hangs RS3 below a pivot HP3 high and turns rigidly (rotation.z = ang)
         const sy = -COL3.rs + 0.4;
-        e.x = C.x + st[0] * Math.cos(ang) - sy * Math.sin(ang); e.y = C.y + st[1]; e.z = Math.max(0.05, COL3.hp + st[0] * Math.sin(ang) + sy * Math.cos(ang) - 2.2);
+        e.x = C.x + st[0] * Math.cos(ang) - sy * Math.sin(ang); e.y = C.y + st[1]; e.z = Math.max(0.05, COL3.hp + st[0] * Math.sin(ang) + sy * Math.cos(ang) - 2.2 + rideDz(e, tc));
         e.sk = N.render.distKey(C.x, C.y) + 0.5;
       });
       // screams at the top of each big swing, the stomach drop at the bottom
@@ -1381,22 +1396,22 @@
       R.lastSign = sgn;
       if (run >= TUNE.rides.columbus) R.over = true;
     } else if (id === 'carousel') {
-      const st = N.seasons.layout.numaishState(), C = S.carousel;
+      const st = N.seasons.layout.numaishState(), C = S.carousel, tc = RB.carousel(C);
       all.forEach((e, i) => {
         const k = (i * 3) % 8, a = st.car + (k / 8) * TAU;
         e.x2 = C.x + Math.cos(a) * C.r * 0.75; e.y2 = C.y + Math.sin(a) * C.r * 0.75; e.h2 = 5.5; e.angle = a + PI / 2;
-        e.x = C.x + Math.cos(a) * (C.r - 1.6); e.y = C.y + Math.sin(a) * (C.r - 1.6); e.z = Math.max(0.05, 3.2 + (k % 2) * 1.1 + 0.55 - 2.2);
+        e.x = C.x + Math.cos(a) * (C.r - 1.6); e.y = C.y + Math.sin(a) * (C.r - 1.6); e.z = Math.max(0.05, 3.2 + (k % 2) * 1.1 + 0.55 - 2.2 + rideDz(e, tc));
         e.sk = N.render.distKey(C.x, C.y) + 0.5;
       });
       if (run >= TUNE.rides.carousel) R.over = true;
     } else if (id === 'cups') {
-      const C = S.cups;
+      const C = S.cups, tc = RB.cups(C);
       all.forEach((e, i) => {
         const j = i < R.riders.length ? Math.floor(i / 3) : 2 + ((i - R.riders.length) % 4), s = i % 3;
         cupCenter(j, _o);
         const a = AMB.cupsS[j] + (s / 3) * TAU;
         e.x2 = _o.x + Math.cos(a) * CUP_SEAT; e.y2 = _o.y + Math.sin(a) * CUP_SEAT; e.h2 = 3; e.angle = a + PI;
-        e.x = e.x2; e.y = e.y2; e.z = 0.01;
+        e.x = e.x2; e.y = e.y2; e.z = Math.max(0.01, 0.01 + rideDz(e, tc));
         e.sk = N.render.distKey(C.x, C.y) + 0.5;
       });
       if (run >= TUNE.rides.cups) R.over = true;
@@ -1419,7 +1434,7 @@
       all.forEach((e, i) => {
         const a = -PI / 2 + (i - (all.length - 1) / 2) * 0.17, r2 = M.r + 2, r3 = Math.min(M.lm.w, M.lm.d) / 2 - 1 + 1.6;
         e.x2 = M.x + Math.cos(a) * r2; e.y2 = M.y + Math.sin(a) * r2; e.h2 = M.H + 1.8; e.angle = a + PI;
-        e.x = M.x + Math.cos(a) * r3; e.y = M.y + Math.sin(a) * r3; e.z = 31; e.facing = a + PI;
+        e.x = M.x + Math.cos(a) * r3; e.y = M.y + Math.sin(a) * r3; e.z = 31 + rideDz(e, lmBase(M.lm)); e.facing = a + PI;
         e.sk = N.render.distKey(M.x, M.y) + 0.5;
       });
       if (Math.floor(run / 6) !== Math.floor((run - dt) / 6) && run > 1) sfxAt('ff_bike', M.x, M.y);
@@ -1684,11 +1699,11 @@
     const cars = R.cars; if (!cars) return;
     for (const car of cars) { carControl(car, dt, R, cars); carPhysics(car, dt); car.flash = Math.max(0, car.flash - dt); car.spark = Math.max(0, car.spark - dt); }
     bumperCollide(R, cars, dt);
-    const S = spots(), B = S.bumper;
+    const S = spots(), B = S.bumper, tb = RB.bumper(B);
     for (const car of cars) {
       const e = car.rider; if (!e) continue;
       e.x2 = car.x - Math.cos(car.a) * 0.6; e.y2 = car.y - Math.sin(car.a) * 0.6; e.h2 = 2.2; e.angle = car.a;
-      e.x = e.x2; e.y = e.y2; e.z = 0.01; e.sk = N.render.distKey(B.x + B.w / 2, B.y + B.d / 2) + 0.6;
+      e.x = e.x2; e.y = e.y2; e.z = Math.max(0.01, 0.01 + rideDz(e, tb)); e.sk = N.render.distKey(B.x + B.w / 2, B.y + B.d / 2) + 0.6;
     }
     // party: my car's state ~10 times a second
     R.sendT -= dt;
@@ -2398,14 +2413,16 @@
   const M3 = {};
   const UNI3 = { uN: { value: 0 }, uScale: { value: 300 }, uGlowI: { value: 0 } };
   const ST3 = { builds: 0, disposed: 0, buildMs: 0, site: false, calls: 0 };
-  // merged triangles, flat normals, linear vertex colours, a per-vertex glow amount (lit at night), optional uv
+  // merged triangles, flat normals, linear vertex colours, a per-vertex glow amount (lit at night), optional uv; oy lifts
+  // what is added (the terrain under the piece being built)
   class GB {
-    constructor() { this.p = []; this.n = []; this.c = []; this.g = []; this.uv = []; this.hasUV = false; this.cr = 1; this.cg = 1; this.cb = 1; this.gl = 0; }
+    constructor() { this.p = []; this.n = []; this.c = []; this.g = []; this.uv = []; this.hasUV = false; this.cr = 1; this.cg = 1; this.cb = 1; this.gl = 0; this.oy = 0; }
     col(hex, glow) { const c = H3.color(hex); this.cr = c.r; this.cg = c.g; this.cb = c.b; this.gl = glow || 0; return this; }
     tri(a, b, c, ua, ub, uc) {
       const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
       let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
-      this.p.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+      const oy = this.oy;
+      this.p.push(a[0], a[1] + oy, a[2], b[0], b[1] + oy, b[2], c[0], c[1] + oy, c[2]);
       this.n.push(nx, ny, nz, nx, ny, nz, nx, ny, nz);
       for (let i = 0; i < 3; i++) { this.c.push(this.cr, this.cg, this.cb); this.g.push(this.gl); }
       if (ua) { this.hasUV = true; this.uv.push(ua[0], ua[1], ub[0], ub[1], uc[0], uc[1]); } else this.uv.push(0, 0, 0, 0, 0, 0);
@@ -2521,12 +2538,13 @@
     // ---- the three game stalls (fronts face north: -z)
     S.stalls.forEach((st, i) => {
       const x0 = st.x, x1 = st.x + st.w, z0 = st.y, z1 = st.y + st.d, H = 13;
+      const tb = TB(x0, z0, x1, z1); b.oy = tb; sb.oy = tb; // [terrain] each stall rigid on its low side
       b.col('#efe4d0', 0.15).box(x0, 0, z1 - 1, x1, H, z1);
       b.col(st.col2, 0.2).box(x0, 0, z0, x0 + 0.6, H, z1).box(x1 - 0.6, 0, z0, x1, H, z1);
       b.col('#8a5a30', 0.05).box(x0 + 0.6, 0, z0, x1 - 0.6, 3.8, z0 + 1.4).col('#b8864a', 0.1).box(x0 + 0.4, 3.8, z0 - 0.2, x1 - 0.4, 4.1, z0 + 1.6);
       // the striped canopy sloping to the front
       for (let k = 0; k < 8; k++) { const xa = x0 - 0.6 + (k / 8) * (st.w + 1.2), xb = x0 - 0.6 + ((k + 1) / 8) * (st.w + 1.2); b.col(k % 2 ? '#f8f2e4' : st.col, 0.35).quad([xa, H + 2, z1], [xb, H + 2, z1], [xb, H - 0.5, z0 - 2], [xa, H - 0.5, z0 - 2]); }
-      for (let k = 0; k <= 8; k++) { const x = x0 - 0.6 + (k / 8) * (st.w + 1.2); b.col(BULBS[k % 5], 2.2).blob(x, H - 0.9, z0 - 2, 0.3, 0.3, 0.3, 4); glows.push([x, H - 0.9, z0 - 2, BULBS[k % 5], 2.6]); }
+      for (let k = 0; k <= 8; k++) { const x = x0 - 0.6 + (k / 8) * (st.w + 1.2); b.col(BULBS[k % 5], 2.2).blob(x, H - 0.9, z0 - 2, 0.3, 0.3, 0.3, 4); glows.push([x, H - 0.9 + tb, z0 - 2, BULBS[k % 5], 2.6]); }
       signQuad(sb, i, (x0 + x1) / 2, H + 1.6, z0 - 2.1, st.w - 2, 2.6, 0, -1);
       if (st.id === 'rings') {
         b.col('#2f6a3a', 0.1).box(x0 + 1.5, 0, z0 + 2.2, x1 - 1.5, 3.4, z1 - 1.8);
@@ -2545,13 +2563,14 @@
       const P = (u, v) => [c.x + u * ca - v * sa, c.y + u * sa + v * ca];
       const q = [P(-2.5, -4.5), P(2.5, -4.5), P(2.5, 4.5), P(-2.5, 4.5)];
       const xs = q.map((p) => p[0]), zs = q.map((p) => p[1]);
+      const tc = TB(Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)); b.oy = tc; sb.oy = tc;
       b.col(c.col, 0.2).box(Math.min(...xs), 2.4, Math.min(...zs), Math.max(...xs), 5.6, Math.max(...zs));
       b.col('#e8dcc0', 0.2).box(Math.min(...xs) - 0.2, 5.6, Math.min(...zs) - 0.2, Math.max(...xs) + 0.2, 5.9, Math.max(...zs) + 0.2);
       for (const w of [P(2.6, -3), P(2.6, 3), P(-2.6, -3), P(-2.6, 3)]) b.col('#2a2a2a', 0).cyl(w[0], 0, w[1], 1.2, 1.2, 0.5, 8, true);
       if (c.id === 'snacks') {
         const d = P(0, 1.8); b.col('#cfe6f2', 0.4).cyl(d[0], 5.9, d[1], 1.6, 1.8, 2.6, 10).col('#ff9ad0', 0.5).blob(d[0], 8.6, d[1], 1.3, 0.9, 1.3, 6);
         const k = P(0, -2); b.col('#9a6a30', 0.1).cyl(k[0], 5.9, k[1], 1.5, 1.2, 1.2, 8, true).col('#c8a060', 0.1).blob(k[0], 7.1, k[1], 1.2, 0.5, 1.2, 6);
-        const pl = P(0, 0); b.col('#7a6a5a', 0).cyl(pl[0], 5.9, pl[1], 0.15, 0.15, 6, 4).col('#fff4c0', 2.6).blob(pl[0], 12.2, pl[1], 0.6, 0.8, 0.6, 5); glows.push([pl[0], 12.2, pl[1], '#fff4c0', 7]);
+        const pl = P(0, 0); b.col('#7a6a5a', 0).cyl(pl[0], 5.9, pl[1], 0.15, 0.15, 6, 4).col('#fff4c0', 2.6).blob(pl[0], 12.2, pl[1], 0.6, 0.8, 0.6, 5); glows.push([pl[0], 12.2 + tc, pl[1], '#fff4c0', 7]);
       } else {
         const pl = P(0, 0); b.col('#8a6a3a', 0).cyl(pl[0], 5.9, pl[1], 0.2, 0.2, 12, 4);
         for (let k = 0; k < 8; k++) { const a = k * 0.8, r = 2 + (k % 2); b.col(['#e83a5a', '#2a8cd8', '#f2c230', '#3ac06a', '#9a5ae0', '#ff8a2a'][k % 6], 0.4).blob(pl[0] + Math.cos(a) * r, 19 + (k % 3), pl[1] + Math.sin(a) * r, 1.1, 1.35, 1.1, 6).col('#f4f4f4', 0).rod(pl[0], 17.9, pl[1], pl[0] + Math.cos(a) * r, 18 + (k % 3), pl[1] + Math.sin(a) * r, 0.04); }
@@ -2560,17 +2579,20 @@
       signQuad(sb, 6 + i, c.x, 7.4, c.y, 7.5, 1.9, -sa, ca);
     });
     // ---- the Columbus frame (the boat itself turns)
-    const C = S.columbus, hp3 = 30;
+    const C = S.columbus, hp3 = 30, tcol = RB.columbus(C);
+    b.oy = tcol; sb.oy = tcol;
     for (const sz of [-6.5, 6.5]) {
       b.col('#7a8088', 0.05).rod(C.x - 10, 0, C.y + sz * 1.2, C.x, hp3, C.y + sz * 0.8, 0.45).rod(C.x + 10, 0, C.y + sz * 1.2, C.x, hp3, C.y + sz * 0.8, 0.45);
       b.col('#c8302a', 0.3).cyl(C.x, hp3 - 1, C.y + sz * 0.8, 1.1, 1.1, 2, 8, true);
     }
     b.col('#a8b0b8', 0.1).rod(C.x, hp3, C.y - 6, C.x, hp3, C.y + 6, 0.5);
     b.col('#8a6a4a', 0.05).box(C.x - 8, 0, C.y + 5, C.x + 8, 1.6, C.y + 9); // the loading deck
-    for (let k = 0; k <= 10; k++) glows.push([C.x - 10 + k * 2, 0.4 + (k % 2) * 0.2, C.y + 9.2, BULBS[k % 5], 2.4]);
+    for (let k = 0; k <= 10; k++) glows.push([C.x - 10 + k * 2, 0.4 + (k % 2) * 0.2 + tcol, C.y + 9.2, BULBS[k % 5], 2.4]);
     signQuad(sb, 4, C.x, 5, C.y + 9.3, 9, 2.2, 0, 1);
     // ---- dashing cars: floor, fence, posts, the roof frame + net
-    const B = S.bumper, RH = 19.5;
+    const B = S.bumper, RH = 19.5, tB = (site.tBump = RB.bumper(B)), lB = TB(B.x - 1, B.y - 1, B.x + B.w + 1, B.y + B.d + 1);
+    b.oy = tB; sb.oy = tB;
+    if (tB - lB > 0.05) b.col('#3a4048', 0.05).box(B.x - 1, lB - tB, B.y - 1, B.x + B.w + 1, 0, B.y + B.d + 1); // the plinth down to the low side
     b.col('#3a4048', 0.05).box(B.x, 0, B.y, B.x + B.w, 0.25, B.y + B.d);
     for (const [x0, z0, x1, z1] of [[B.x - 1, B.y - 1, B.x + B.w + 1, B.y], [B.x - 1, B.y + B.d, B.x + B.w + 1, B.y + B.d + 1], [B.x - 1, B.y, B.x, B.y + B.d], [B.x + B.w, B.y, B.x + B.w + 1, B.y + B.d]]) b.col('#f2c230', 0.2).box(x0, 0, z0, x1, 2.4, z1).col('#1a1a1a', 0).box(x0, 1, z0 - 0.05, x1, 1.6, z1 + 0.05);
     const posts = [[B.x, B.y], [B.x + B.w, B.y], [B.x, B.y + B.d], [B.x + B.w, B.y + B.d], [B.x + B.w / 2, B.y], [B.x + B.w / 2, B.y + B.d]];
@@ -2578,19 +2600,22 @@
     b.col('#c8302a', 0.25).rod(B.x, RH, B.y, B.x + B.w, RH, B.y, 0.4).rod(B.x, RH, B.y + B.d, B.x + B.w, RH, B.y + B.d, 0.4).rod(B.x, RH, B.y, B.x, RH, B.y + B.d, 0.4).rod(B.x + B.w, RH, B.y, B.x + B.w, RH, B.y + B.d, 0.4);
     for (let x = B.x + 4; x < B.x + B.w; x += 4) b.col('#8a9098', 0.1).rod(x, RH - 0.2, B.y, x, RH - 0.2, B.y + B.d, 0.08);
     for (let z = B.y + 4; z < B.y + B.d; z += 4) b.col('#8a9098', 0.1).rod(B.x, RH - 0.2, z, B.x + B.w, RH - 0.2, z, 0.08);
-    for (let k = 0; k <= 12; k++) { const x = B.x + (k / 12) * B.w; glows.push([x, RH + 0.6, B.y, BULBS[k % 5], 3]); glows.push([x, RH + 0.6, B.y + B.d, BULBS[(k + 2) % 5], 3]); b.col(BULBS[k % 5], 2.2).blob(x, RH + 0.6, B.y, 0.35, 0.35, 0.35, 4).blob(x, RH + 0.6, B.y + B.d, 0.35, 0.35, 0.35, 4); }
+    for (let k = 0; k <= 12; k++) { const x = B.x + (k / 12) * B.w; glows.push([x, RH + 0.6 + tB, B.y, BULBS[k % 5], 3]); glows.push([x, RH + 0.6 + tB, B.y + B.d, BULBS[(k + 2) % 5], 3]); b.col(BULBS[k % 5], 2.2).blob(x, RH + 0.6, B.y, 0.35, 0.35, 0.35, 4).blob(x, RH + 0.6, B.y + B.d, 0.35, 0.35, 0.35, 4); }
     signQuad(sb, 3, B.x + B.w / 2, RH + 3, B.y - 0.2, 16, 3.2, 0, -1);
     // ---- the cup-and-saucer base (the platform turns)
-    const Cu = S.cups;
+    const Cu = S.cups, tCu = RB.cups(Cu), lCu = TB(Cu.x - Cu.r - 0.8, Cu.y - Cu.r - 0.8, Cu.x + Cu.r + 0.8, Cu.y + Cu.r + 0.8);
+    b.oy = tCu; sb.oy = tCu;
+    if (tCu - lCu > 0.05) b.col('#5a4a6a', 0.05).cyl(Cu.x, lCu - tCu, Cu.y, Cu.r + 0.8, Cu.r + 0.8, tCu - lCu, 18); // the plinth
     b.col('#5a4a6a', 0.05).cyl(Cu.x, 0, Cu.y, Cu.r + 0.8, Cu.r + 0.8, 0.6, 18, true);
-    for (let k = 0; k < 16; k++) { const a = (k / 16) * TAU; glows.push([Cu.x + Math.cos(a) * (Cu.r + 0.9), 0.9, Cu.y + Math.sin(a) * (Cu.r + 0.9), BULBS[k % 5], 2.4]); }
+    for (let k = 0; k < 16; k++) { const a = (k / 16) * TAU; glows.push([Cu.x + Math.cos(a) * (Cu.r + 0.9), 0.9 + tCu, Cu.y + Math.sin(a) * (Cu.r + 0.9), BULBS[k % 5], 2.4]); }
     signQuad(sb, 5, Cu.x, 3, Cu.y - Cu.r - 1.6, 8, 2, 0, -1);
+    b.oy = 0; sb.oy = 0;
     const mesh = b.mesh(M3.solid); if (mesh) site.grp.add(mesh);
     const sm = sb.mesh(M3.sign); if (sm) { sm.castShadow = false; site.grp.add(sm); }
     site.glow = glowPoints(glows); if (site.glow) site.grp.add(site.glow);
     // ---- the Columbus boat: a pirate ship hanging from the pivot (rotation.z = the swing angle)
     {
-      const g = new THREE.Group(); g.position.set(C.x, hp3, C.y);
+      const g = new THREE.Group(); g.position.set(C.x, hp3 + tcol, C.y);
       const k = new GB(), RS = 18, L = 13, Wd = 3.6, sg = [];
       const y0 = -RS - 2.6, y1 = -RS + 0.8;
       // hull: a box with pointed ends, a gold stripe, a dragon head
@@ -2610,7 +2635,7 @@
     }
     // ---- the cups: a turning platform with six spinning cups
     {
-      const g = new THREE.Group(); g.position.set(Cu.x, 0, Cu.y);
+      const g = new THREE.Group(); g.position.set(Cu.x, tCu, Cu.y);
       const base = new GB(); base.col('#c8a0d8', 0.15).cyl(0, 0.6, 0, Cu.r, Cu.r, 0.3, 18, true).col('#f2c230', 0.3).cyl(0, 0.9, 0, 1.6, 1.2, 3.6, 8, true).col('#e8402a', 0.4).blob(0, 4.8, 0, 1.4, 0.8, 1.4, 6);
       g.add(base.mesh(M3.solid));
       for (let j = 0; j < 6; j++) {
@@ -2639,6 +2664,7 @@
     // ---- the maut ka kuan riders (two bikes and a little car on the wall) while the show runs
     const M = S.maut;
     if (M) {
+      site.tMaut = lmBase(M.lm);
       for (let i = 0; i < 3; i++) {
         const g = new THREE.Group(), k = new GB();
         if (i === 2) { k.col('#2a6ad8', 0.3).box(-2.6, 0, -1.4, 2.6, 2, 1.4).col('#bfe0ff', 0.5).box(-0.6, 2, -1.1, 1.4, 3, 1.1); k.kid(-0.8, 1.4, 0, AMBLOOK(30), 0.7); }
@@ -2706,7 +2732,7 @@
     let n = 0;
     for (const b of BUB) {
       if (b.age < 0 || n >= TUNE.bubbleCap) continue;
-      pos[n * 3] = b.x; pos[n * 3 + 1] = b.h * vs; pos[n * 3 + 2] = b.y;
+      pos[n * 3] = b.x; pos[n * 3 + 1] = b.h * vs + TZ(b.x, b.y); pos[n * 3 + 2] = b.y;
       sz[n] = b.r * 2.4; ph[n] = b.ph + b.age * 0.3; al[n] = Math.min(1, b.age * 4, (b.life - b.age) * 2);
       n++;
     }
@@ -2764,7 +2790,7 @@
         const c = cars[i];
         g.visible = !!c;
         if (!c) return;
-        g.position.set(c.x, 0, c.y); g.rotation.y = -c.a;
+        g.position.set(c.x, SITE3.tBump || 0, c.y); g.rotation.y = -c.a;
         if (g.userData.driver) g.userData.driver.visible = !c.rider;
       });
       const M = S.maut, showMaut = !!M && open && N.player && Math.hypot(N.player.x - M.x, N.player.y - M.y) < 420;
@@ -2772,7 +2798,7 @@
         g.visible = showMaut;
         if (!showMaut) return;
         const a = AMB.mautA[i], r = Math.min(M.lm.w, M.lm.d) / 2 - 2.6, hh = 6 + Math.sin(a * 0.5 + i) * 4 + i * 2.5;
-        g.position.set(M.x + Math.cos(a) * r, hh, M.y + Math.sin(a) * r);
+        g.position.set(M.x + Math.cos(a) * r, hh + (SITE3.tMaut || 0), M.y + Math.sin(a) * r);
         g.rotation.set(0, 0, 0); g.rotation.y = -(a + PI / 2); g.rotateX(-1.2);
       });
       // night lights near the player

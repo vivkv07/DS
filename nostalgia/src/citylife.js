@@ -2388,7 +2388,7 @@
     let n = 0, m = 0;
     for (let i = 0; i < P.n; i++) {
       pState(i);
-      const k = P.kind[i], x = P.x[i], y = P.y[i], h = P.h[i] * VS;
+      const k = P.kind[i], x = P.x[i], y = P.y[i], h = P.h[i] * VS + (H.terrainAt ? H.terrainAt(x, y) : 0); // [terrain] over the ground under it
       if (k === 2) { if (m >= 64) continue; kp[m * 3] = x; kp[m * 3 + 1] = h; kp[m * 3 + 2] = y; kc[m * 3] = 1; kc[m * 3 + 1] = PS.t < 0.5 ? 0.75 : 0.45; kc[m * 3 + 2] = 0.2; ks[m * 2] = 0.9; ks[m * 2 + 1] = PS.a; m++; continue; }
       if (n >= PMAX) break;
       const c = PC3[k];
@@ -2516,8 +2516,22 @@
       case 'roadwork': road3d(b, sc, H, grp, o); break;
       default: break;
     }
+    // [terrain] onto the ground's rise and fall (terrain.js via view3d.js): a stall / cabin / bench / trade set is one
+    // rigid piece on the low side of what it covers (o.base, on the group: on a slope it is cut into the ground); the
+    // road works' long kerb strip (pit, barricade line, mounds) follows the road vertex by vertex, its loose pieces
+    // (drum, lamps, board) the ground under each
+    const road = sc.spot.kind === 'roadwork' && !!H.terrainAt && !!(N.terrain && N.terrain.ready);
+    if (road) for (const c of grp.children) c.position.y += H.terrainAt(c.position.x, c.position.z);
     const mesh = b.mesh();
+    if (mesh && road) { const g = mesh.geometry, pa = g.attributes.position.array; for (let k = 0; k < pa.length; k += 3) pa[k + 1] += H.terrainAt(pa[k], pa[k + 2]); g.computeBoundingSphere(); g.computeBoundingBox(); }
     if (mesh) { mesh.castShadow = true; mesh.receiveShadow = true; grp.add(mesh); }
+    o.base = 0;
+    if (!road && H.terrainBase) {
+      const bb = mesh && mesh.geometry.boundingBox, sp = sc.spot;
+      let x0 = bb ? bb.min.x : sp.x, z0 = bb ? bb.min.z : sp.y, x1 = bb ? bb.max.x : sp.x, z1 = bb ? bb.max.z : sp.y;
+      for (const m of [o.dyn.model, o.dyn.treeModel]) if (m) { x0 = Math.min(x0, m.position.x); z0 = Math.min(z0, m.position.z); x1 = Math.max(x1, m.position.x); z1 = Math.max(z1, m.position.z); }
+      grp.position.y = o.base = H.terrainBase(x0, z0, x1, z1);
+    }
     return o;
   }
   function trade3d(b, sc, H, grp, o) {
@@ -2653,8 +2667,9 @@
     if (D.wheel) { if (D.wheelA != null) { D.wheel.rotation.set(0, -D.wheelA, t * 8); } else D.wheel.rotation.x = t * (sc.st.grind ? 18 : 3); }
     if (D.cart && sc.st.worker && sc.st.worker.alive) {
       const w = sc.st.worker, c = Math.cos(w.angle), s = Math.sin(w.angle), cx = w.x + c * 5.4, cy = w.y + s * 5.4;
-      D.cart.position.set(cx, 0, cy); D.cart.rotation.y = -w.angle;
-      for (const wh of D.wheels || []) { const sd = wh.userData.side; wh.position.set(cx - s * 2.8 * sd, 2.2, cy + c * 2.8 * sd); wh.rotation.set(0, -w.angle, 0); }
+      const gy = (H.terrainAt ? H.terrainAt(cx, cy) : 0) - (o.base || 0); // [terrain] on the ground it rolls over (the group sits on o.base)
+      D.cart.position.set(cx, gy, cy); D.cart.rotation.y = -w.angle;
+      for (const wh of D.wheels || []) { const sd = wh.userData.side; wh.position.set(cx - s * 2.8 * sd, 2.2 + gy, cy + c * 2.8 * sd); wh.rotation.set(0, -w.angle, 0); }
     }
     void dt;
   }
@@ -2678,7 +2693,7 @@
     for (const p of PEOPLE) {
       if (!p.alive || p.hidden || p.down) continue;
       if (pl && Math.hypot(p.x - pl.x, p.y - pl.y) > 260) continue;
-      const a = p.angle, c = Math.cos(a), s = Math.sin(a), el = p.z > 0 ? p.z : 0;
+      const a = p.angle, c = Math.cos(a), s = Math.sin(a), el = H.elev ? H.elev(p) : (p.z > 0 ? p.z : 0); // [terrain] where view3d_actors stands him (the ground included)
       const sit = p.idle === 'sit';
       const chest = el + (sit ? 6.0 : 7.0) * (p.look && p.look.kind === 'kid' ? 0.8 : 1);
       if (p.hold === 'paper') { const m = take3('paper'); if (m) { const f = p.flip > 0 ? Math.abs(Math.cos(p.flip * PI)) : 1; m.position.set(p.x + c * 2.0, chest, p.y + s * 2.0); m.rotation.set(-0.35, -a + PI / 2, 0, 'YXZ'); m.scale.set(f, 1, 1); } }
@@ -2686,7 +2701,7 @@
       else if ((p.hold === 'pan' || p.hold === 'bricks') && p.look.prop !== 'pot') { const m = take3('pan'); if (m) m.position.set(p.x, el + 10.4, p.y); }
       if (p.cape) { const m = take3('cape'); if (m) { m.position.set(p.x + c * 0.3, el + 7.6, p.y + s * 0.3); m.rotation.set(0, 0, 0); } }
       if (p.foam > 0.05) for (const sd of [-1, 1]) { const m = take3('foam'); if (m) { m.position.set(p.x + c * 0.9 - s * 0.7 * sd, el + 8.1, p.y + s * 0.9 + c * 0.7 * sd); m.scale.setScalar(p.foam); } }
-      if (p.tool) { const m = take3('tool'); if (m) { m.position.set(p.hx, p.hh * VS, p.hy); m.rotation.set(0, -a + (p.tool === 'scissors' ? Math.sin(simT() * 22) * 0.4 : 0), 0); m.material = toolMat(H, p.tool); m.scale.set(p.tool === 'shovel' || p.tool === 'pick' ? 2.2 : p.tool === 'iron' ? 1.2 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1); } }
+      if (p.tool) { const m = take3('tool'); if (m) { m.position.set(p.hx, el + p.hh * VS, p.hy); m.rotation.set(0, -a + (p.tool === 'scissors' ? Math.sin(simT() * 22) * 0.4 : 0), 0); m.material = toolMat(H, p.tool); m.scale.set(p.tool === 'shovel' || p.tool === 'pick' ? 2.2 : p.tool === 'iron' ? 1.2 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1, p.tool === 'iron' ? 4 : p.tool === 'mirror' ? 6 : 1); } }
     }
     for (const k in PL) { const arr = PL[k]; for (let i = PI3[k]; i < arr.length; i++) arr[i].visible = false; }
   }

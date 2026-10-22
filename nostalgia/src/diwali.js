@@ -752,7 +752,7 @@
   const LNC = LCOL.length;
   function pickCol(u) { let t = u * 100; for (let i = 0; i < LWT.length; i++) { t -= LWT[i]; if (t <= 0) return i; } return 0; }
   const LB = { n: 0, cap: 1800 };
-  const LBF = ['x', 'y', 'h', 'vx', 'vy', 'vh', 'ang', 'spin', 'flip', 'flipV', 'size', 'thr', 'gh', 'age'];
+  const LBF = ['x', 'y', 'h', 'vx', 'vy', 'vh', 'ang', 'spin', 'flip', 'flipV', 'size', 'thr', 'gh', 'gt', 'age']; // (gh / gt: 3D ground / terrain under it, cached)
   for (const k of LBF) LB[k] = new Float32Array(LB.cap);
   LB.col = new Uint8Array(LB.cap); LB.st = new Uint8Array(LB.cap); LB.seq = new Uint8Array(LB.cap); LB.dirty = new Uint8Array(LB.cap);
   LB.cell = new Int32Array(LB.cap);
@@ -2374,17 +2374,22 @@
     let n = 0, bulbIdx = 0;
     for (const d of list) {
       const P = d.P, ux = d.ux, uy = d.uy, nx = d.nx, ny = d.ny;
+      // [terrain] what hangs on the house (gate posts, toran, kandil, parapet) stands on the house's base as view3d.js
+      // lifts it: the low corner of the bldg footprint / of the home landmark's
+      const hs = d.s, hl = d.lm;
+      const tb = hs ? H.terrainBase(hs.x, hs.y, hs.x + hs.w, hs.y + hs.d) : hl ? H.terrainBase(hl.x - (hl.w || 20) / 2, hl.y - (hl.d || 20) / 2, hl.x + (hl.w || 20) / 2, hl.y + (hl.d || 20) / 2) : H.terrainAt(d.cx, d.cy);
       if (d.rangoli) { // a textured quad on the ground
         const r = d.rangoli, h0 = gh(r.x, r.y) + 0.06, s = r.r * 1.05, ca = Math.cos(r.a) * s, sa = Math.sin(r.a) * s, u0 = (r.v % 4) * 0.25, v1 = 1 - Math.floor(r.v / 4) * 0.5, v0 = v1 - 0.5;
         const c = [[-ca + sa, -sa - ca], [ca + sa, sa - ca], [ca - sa, sa + ca], [-ca - sa, -sa + ca]];
         const uv = [[u0, v0], [u0 + 0.25, v0], [u0 + 0.25, v1], [u0, v1]];
-        for (const k of [0, 2, 1, 0, 3, 2]) { rq.p.push(r.x + c[k][0], h0, r.y + c[k][1]); rq.uv.push(uv[k][0], uv[k][1]); }
+        const sl = slope(r.x, r.y); // [terrain] tilted with the slope (not half under it)
+        for (const k of [0, 2, 1, 0, 3, 2]) { rq.p.push(r.x + c[k][0], h0 + sl[0] * c[k][0] + sl[1] * c[k][1], r.y + c[k][1]); rq.uv.push(uv[k][0], uv[k][1]); }
       }
       const cup = (x, z, y, lit) => { b.col('#9a4a24', 0.05).cyl(x, y, z, 0.42, 0.62, 0.32, 6, true); b.col('#e8b060', 0.1).cyl(x, y + 0.32, z, 0.5, 0.5, 0.05, 6, true); if (lit) gp.add(x, y + 0.75, z, '#ffb040', 1.5, 0, bulbIdx++); };
       for (const q of d.diyas) cup(q[0], q[1], gh(q[0], q[1]), lamps);
-      for (const q of d.gateDiyas) cup(q[0], q[1], d.gateH3, lamps);
+      for (const q of d.gateDiyas) cup(q[0], q[1], d.gateH3 + tb, lamps);
       if (d.toran) { // marigold scallops + mango leaves over the door
-        const T0 = d.toran, y0 = T0.h * VS, nn = 16;
+        const T0 = d.toran, y0 = T0.h * VS + tb, nn = 16;
         for (let i = 0; i <= nn; i++) {
           const t = i / nn, x = T0.a[0] + (T0.b[0] - T0.a[0]) * t + nx * 0.25, z = T0.a[1] + (T0.b[1] - T0.a[1]) * t + ny * 0.25, y = y0 - Math.abs(Math.sin(t * PI * 3)) * 1.1;
           b.col(i % 2 ? '#ffb020' : '#ff7a10', 0.25).bead(x, y, z, 0.42);
@@ -2392,7 +2397,7 @@
         }
       }
       if (d.kandil) { // a paper sky lantern: hexagonal bicone, coloured bands, paper tails; lit from inside at night
-        const K = d.kandil, cy = K.h * VS, top = K.hTop * VS, x = K.x, z = K.y, piv = top, sw = 0.035;
+        const K = d.kandil, cy = K.h * VS + tb, top = K.hTop * VS + tb, x = K.x, z = K.y, piv = top, sw = 0.035;
         b.sway(sw, K.ph, piv);
         b.col('#3a3030', 0).quad([x - 0.05, top, z], [x + 0.05, top, z], [x + 0.05, cy + 2.2, z], [x - 0.05, cy + 2.2, z]);
         if (K.style === 'star') {
@@ -2412,7 +2417,7 @@
         gp.add(x, cy, z, K.col[0], 6.5, 6, bulbIdx++);
       }
       if (d.fairy) { // bulbs along the parapet edge: beads by day, chasing / blinking glows at night
-        const Fy = d.fairy, Pp = Fy.pts, nc = Fy.cols.length, top = d.home ? (d.h * VS + 3.2) : (d.s ? d.s.h * VS + (d.s.parapet === 2 ? 4.2 : d.s.parapet ? 3 : 0) + 0.25 : d.h * VS + 3);
+        const Fy = d.fairy, Pp = Fy.pts, nc = Fy.cols.length, top = tb + (d.home ? (d.h * VS + 3.2) : (d.s ? d.s.h * VS + (d.s.parapet === 2 ? 4.2 : d.s.parapet ? 3 : 0) + 0.25 : d.h * VS + 3));
         const pat = { chase: 1, blink: 2, twinkle: 3, alt: 4, steady: 5 }[Fy.pat] || 5;
         for (let i = 0, j = 0; i < Pp.length; i += 2, j++) {
           const col = Fy.cols[j % nc], y = top - 0.35 - 0.25 * Math.abs(Math.sin(j * 1.3));
@@ -2421,7 +2426,7 @@
         }
       }
       if (d.parapet && (!d.home || homeParapetLit()) && lamps) {
-        const Pp = d.parapet.pts, top = d.home ? (d.h * VS + 3.2) : (d.s ? d.s.h * VS + (d.s.parapet === 2 ? 4.2 : d.s.parapet ? 3 : 0) : d.h * VS);
+        const Pp = d.parapet.pts, top = tb + (d.home ? (d.h * VS + 3.2) : (d.s ? d.s.h * VS + (d.s.parapet === 2 ? 4.2 : d.s.parapet ? 3 : 0) : d.h * VS));
         for (let i = 0; i < Pp.length; i += 2) cup(Pp[i] - nx * 0.05, Pp[i + 1] - ny * 0.05, top, true);
       }
       void T;
@@ -2440,14 +2445,15 @@
   }
   // ---- pataakha stalls round the player
   function* buildStalls3D(site) {
-    const VS = VS3(), T = G3.THREE;
+    const VS = VS3(), T = G3.THREE, H = G3.H;
     const b = new GB3(), gp = new GP3(), lq = { p: [], uv: [] };
     let n = 0;
     for (const st of stallList()) {
       if (Math.hypot(st.x - site.x, st.y - site.y) > site.r) continue;
       const ca = Math.cos(st.a), sa = Math.sin(st.a), fx = st.fx, fy = st.fy;
-      const P = (u, w, y) => [st.x + (ca * u + fx * w) * SS, y, st.y + (sa * u + fy * w) * SS];
-      const box = (u0, w0, u1, w1, y0, y1) => { const A = P(u0, w0, 0), B = P(u1, w0, 0), C = P(u1, w1, 0), D = P(u0, w1, 0), s = (q, y) => [q[0], y, q[2]]; b.quad(s(A, y0), s(B, y0), s(B, y1), s(A, y1)); b.quad(s(B, y0), s(C, y0), s(C, y1), s(B, y1)); b.quad(s(C, y0), s(D, y0), s(D, y1), s(C, y1)); b.quad(s(D, y0), s(A, y0), s(A, y1), s(D, y1)); b.quad(s(A, y1), s(B, y1), s(C, y1), s(D, y1)); };
+      const tb = H.terrainBase(st.x - 7 * SS, st.y - 7 * SS, st.x + 7 * SS, st.y + 7 * SS); // [terrain] one base for the stall (rigid)
+      const P = (u, w, y) => [st.x + (ca * u + fx * w) * SS, y + tb, st.y + (sa * u + fy * w) * SS];
+      const box = (u0, w0, u1, w1, y0, y1) => { const A = P(u0, w0, 0), B = P(u1, w0, 0), C = P(u1, w1, 0), D = P(u0, w1, 0), s = (q, y) => [q[0], y + tb, q[2]]; b.quad(s(A, y0), s(B, y0), s(B, y1), s(A, y1)); b.quad(s(B, y0), s(C, y0), s(C, y1), s(B, y1)); b.quad(s(C, y0), s(D, y0), s(D, y1), s(C, y1)); b.quad(s(D, y0), s(A, y0), s(A, y1), s(D, y1)); b.quad(s(A, y1), s(B, y1), s(C, y1), s(D, y1)); };
       const th = 3.2 * VS;
       b.col('#7a5232', 0); box(-6.2, -0.8, 6.2, 3.2, th - 0.4, th);                          // the table top
       b.col('#c8302a', 0.05); box(-6.2, 3.1, 6.2, 3.25, 0.4, th - 0.4);                       // a red cloth skirt in front
@@ -2502,7 +2508,8 @@
   const _m = new Float32Array(16);
   function writeBitMatrix(i, VS) {
     let gh = LB.gh[i];
-    if (gh !== gh) { try { gh = N.view3d.groundHeightAt ? N.view3d.groundHeightAt(LB.x[i], LB.y[i]) || 0 : 0; } catch (e) { gh = 0; } LB.gh[i] = gh; }
+    if (gh !== gh) { try { gh = N.view3d.groundHeightAt ? N.view3d.groundHeightAt(LB.x[i], LB.y[i]) || 0 : 0; } catch (e) { gh = 0; } LB.gh[i] = gh; LB.gt[i] = G3.H.terrainAt(LB.x[i], LB.y[i]); }
+    else if (LB.st[i]) gh += G3.H.terrainAt(LB.x[i], LB.y[i]) - LB.gt[i]; // [terrain] a moving bit follows the rise and fall under it
     const th = -LB.ang[i], c = Math.cos(th), s = Math.sin(th), f = LB.flip[i], cf = Math.cos(f), sf = Math.sin(f);
     const sz = LB.size[i] * 0.78, sx = sz, szz = sz * 0.62;
     const a = G3.lit.instanceMatrix.array, o = i * 16;
@@ -2513,10 +2520,13 @@
     const cc = G3.H.color(LCOL[LB.col[i]]), ca = G3.lit.instanceColor.array;
     ca[i * 3] = cc.r; ca[i * 3 + 1] = cc.g; ca[i * 3 + 2] = cc.b;
   }
+  // [terrain] the ground's gradient [rise per u east, per u south] at (x, y) ([0, 0] without terrain): ground decals tilt with it
+  const _sl = [0, 0];
+  function slope(x, y) { const T = N.terrain; if (T && T.ready && T.slopeAt) { const g = T.slopeAt(x, y); _sl[0] = g.gx; _sl[1] = g.gy; } else _sl[0] = _sl[1] = 0; return _sl; }
   function decalMatrix(mesh, k, x, h, y, a, s, sy) {
-    const c = Math.cos(-a) * s, sn = Math.sin(-a) * s, arr = mesh.instanceMatrix.array, o = k * 16;
-    arr[o] = c; arr[o + 1] = 0; arr[o + 2] = -sn; arr[o + 3] = 0; arr[o + 4] = 0; arr[o + 5] = sy || 1; arr[o + 6] = 0; arr[o + 7] = 0;
-    arr[o + 8] = sn; arr[o + 9] = 0; arr[o + 10] = c; arr[o + 11] = 0; arr[o + 12] = x; arr[o + 13] = h; arr[o + 14] = y; arr[o + 15] = 1;
+    const c = Math.cos(-a) * s, sn = Math.sin(-a) * s, arr = mesh.instanceMatrix.array, o = k * 16, g = slope(x, y);
+    arr[o] = c; arr[o + 1] = g[0] * c - g[1] * sn; arr[o + 2] = -sn; arr[o + 3] = 0; arr[o + 4] = 0; arr[o + 5] = sy || 1; arr[o + 6] = 0; arr[o + 7] = 0;
+    arr[o + 8] = sn; arr[o + 9] = g[0] * sn + g[1] * c; arr[o + 10] = c; arr[o + 11] = 0; arr[o + 12] = x; arr[o + 13] = h; arr[o + 14] = y; arr[o + 15] = 1;
   }
   const PINK = hexRGB('#ff6a9a');
   const RGB = COLS_RGB, SMOKE_D = hexRGB('#bdb4ae'), SMOKE_N = hexRGB('#4a4248'), WHITE = [1, 0.97, 0.88], ORANGE = [1, 0.66, 0.3];
@@ -2525,6 +2535,7 @@
     if (!G3.ready) return;
     const t0 = now();
     const VS = VS3(), p = N.player;
+    const tA = H.terrainAt; // [terrain] the ground under a point: sparks, rockets, smoke, crackers stand / fly over it
     const night = H.night || 0, hz = haze();
     G3.uni.uT.value = (N.time && (N.time.real || N.time.now)) || 0;
     G3.uni.uI.value = night < 0.1 ? 0 : Math.min(1, night * 1.25);
@@ -2546,36 +2557,37 @@
     for (let i = 0; i < SP.n; i++) {
       const u = SP.t[i] / SP.life[i], kd = SP.kind[i]; let a = 1 - u * u;
       if (kd === 1 && rnd() < 0.35) a *= 0.15;
-      const sz = (kd === 4 ? 0.42 : kd === 2 ? 1.8 : 4.4) * SP.size[i], c = RGB[SP.col[i]], x = SP.x[i], y = SP.y[i], h = SP.h[i] * VS;
+      const sz = (kd === 4 ? 0.42 : kd === 2 ? 1.8 : 4.4) * SP.size[i], c = RGB[SP.col[i]], x = SP.x[i], y = SP.y[i], h = SP.h[i] * VS + tA(x, y);
       ptAdd(S, x, h, y, sz, a, c);
       if (kd !== 4 && kd !== 2) { ptAdd(S, x - SP.vx[i] * 0.045, h - SP.vh[i] * 0.045 * VS, y - SP.vy[i] * 0.045, sz * 0.8, a * 0.5, c); ptAdd(S, x - SP.vx[i] * 0.09, h - SP.vh[i] * 0.09 * VS, y - SP.vy[i] * 0.09, sz * 0.6, a * 0.25, c); }
     }
-    for (const r of ROCKETS) { ptAdd(S, r.x, r.h * VS, r.y, 2.4, 1, WHITE); }
+    for (const r of ROCKETS) { ptAdd(S, r.x, r.h * VS + tA(r.x, r.y), r.y, 2.4, 1, WHITE); }
     ptCommit(S);
     const G = G3.glo; G.n = 0;
     let fr = 0, fg = 0, fb = 0, best = null, bk = 0;
     for (const f of FLASH) {
       const a = flashK(f); if (a <= 0.01) continue;
       const c = hexRGB(f.col);
-      ptAdd(G, f.x, f.h * VS, f.y, f.life > 1 ? f.r : f.r * (f.h > 20 ? 0.5 : 0.35), Math.min(1, a * (f.life > 1 ? 0.6 : 0.5)), c);
+      ptAdd(G, f.x, f.h * VS + tA(f.x, f.y), f.y, f.life > 1 ? f.r : f.r * (f.h > 20 ? 0.5 : 0.35), Math.min(1, a * (f.life > 1 ? 0.6 : 0.5)), c);
       if (f.h > 20) { const d = p ? Math.hypot(f.x - p.x, f.y - p.y) : 500, w = a * Math.max(0, 1 - d / 1400); fr += c[0] * w; fg += c[1] * w; fb += c[2] * w; if (w > bk) { bk = w; best = f; } }
       else if (p && Math.hypot(f.x - p.x, f.y - p.y) < 160 && H.light) H.light({ x: f.x, y: f.y, h: 3, color: f.col, intensity: 1.6 * a, r: f.r * 0.8 });
     }
     if (best && H.light) H.light({ x: best.x, y: best.y, h: best.h * VS, color: best.col, intensity: 2.2 * bk, r: 420 });
-    for (const r of ROCKETS) ptAdd(G, r.x, r.h * VS, r.y, 5, 0.55, ORANGE);
-    for (const a of HEARTS) ptAdd(G, a.x, (6 + (2.2 - a.dwHeartT) * 1.2) * VS, a.y, 3.5, Math.min(1, a.dwHeartT), PINK);
+    for (const r of ROCKETS) ptAdd(G, r.x, r.h * VS + tA(r.x, r.y), r.y, 5, 0.55, ORANGE);
+    for (const a of HEARTS) ptAdd(G, a.x, (6 + (2.2 - a.dwHeartT) * 1.2) * VS + H.elev(a), a.y, 3.5, Math.min(1, a.dwHeartT), PINK);
     for (const e of EMIT) {
       if (p && Math.hypot(e.x - p.x, e.y - p.y) > 500) continue;
-      if (e.kind === 'anaar' && e.t > 0.3) { ptAdd(G, e.x, 3 * VS, e.y, 14, 0.5, ORANGE); if (H.light && p && Math.hypot(e.x - p.x, e.y - p.y) < 220) H.light({ x: e.x, y: e.y, h: 4, color: '#ffc070', intensity: 1.4, r: 60 }); }
-      else if (e.kind === 'sparkler') { ptAdd(G, e.x, e.h * VS, e.y, 4, 0.7, WHITE); if (H.light && p && Math.hypot(e.x - p.x, e.y - p.y) < 120) H.light({ x: e.x, y: e.y, h: e.h * VS, color: '#ffe8b0', intensity: 0.9, r: 30 }); }
-      else if (e.kind === 'chakri') ptAdd(G, e.x, 0.6, e.y, 6, 0.6, ORANGE);
+      const te = tA(e.x, e.y);
+      if (e.kind === 'anaar' && e.t > 0.3) { ptAdd(G, e.x, 3 * VS + te, e.y, 14, 0.5, ORANGE); if (H.light && p && Math.hypot(e.x - p.x, e.y - p.y) < 220) H.light({ x: e.x, y: e.y, h: 4, color: '#ffc070', intensity: 1.4, r: 60 }); }
+      else if (e.kind === 'sparkler') { ptAdd(G, e.x, e.h * VS + te, e.y, 4, 0.7, WHITE); if (H.light && p && Math.hypot(e.x - p.x, e.y - p.y) < 120) H.light({ x: e.x, y: e.y, h: e.h * VS, color: '#ffe8b0', intensity: 0.9, r: 30 }); }
+      else if (e.kind === 'chakri') ptAdd(G, e.x, 0.6 + te, e.y, 6, 0.6, ORANGE);
     }
     ptCommit(G);
     // smoke: grey by day, dark against the night, warmed by the bursts
     const K = G3.smk; K.n = 0;
     const flashW = Math.min(1, fr + fg + fb);
     for (let c = 0; c < 3; c++) _rgb[c] = lerp(SMOKE_D[c], SMOKE_N[c], night) + [fr, fg, fb][c] * 0.35;
-    for (let i = 0; i < SM.n; i++) { const u = SM.t[i] / SM.life[i]; ptAdd(K, SM.x[i], SM.h[i] * VS, SM.y[i], SM.size[i] * 2.2, SM.a[i] * 0.85 * (u < 0.15 ? u / 0.15 : 1 - (u - 0.15) / 0.85), _rgb); }
+    for (let i = 0; i < SM.n; i++) { const u = SM.t[i] / SM.life[i]; ptAdd(K, SM.x[i], SM.h[i] * VS + tA(SM.x[i], SM.y[i]), SM.y[i], SM.size[i] * 2.2, SM.a[i] * 0.85 * (u < 0.15 ? u / 0.15 : 1 - (u - 0.15) / 0.85), _rgb); }
     ptCommit(K);
     void flashW;
     // the paper: only the bits that moved (or were added / swapped) are rewritten
@@ -2609,13 +2621,14 @@
     const put = (mesh, k, x, h, y, sx, sy, sz, col) => { G3.H.color(col); const arr = mesh.instanceMatrix.array, o = k * 16; arr.fill(0, o, o + 16); arr[o] = sx; arr[o + 5] = sy; arr[o + 10] = sz; arr[o + 12] = x; arr[o + 13] = h; arr[o + 14] = y; arr[o + 15] = 1; mesh.setColorAt(k, G3.H.color(col)); };
     for (const e of EMIT) {
       if (p && Math.hypot(e.x - p.x, e.y - p.y) > 400) continue;
-      if (e.kind === 'anaar' && cn < 60) put(CN, cn++, e.x, 1.1, e.y, 0.95, 2.2, 0.95, '#b8481e');
-      else if (e.kind === 'chakri' && cy < 78) put(CY, cy++, e.x, 0.25, e.y, 1.4, 0.3, 1.4, (e.t * 4 | 0) % 2 ? '#2a8a3a' : '#d8302a');
-      else if (e.kind === 'bomb' && cy < 78) put(CY, cy++, e.x, 0.55, e.y, 0.6, 1.1, 0.6, '#c82020');
-      else if (e.kind === 'bottle' && cy < 78) put(CY, cy++, e.x, 1.6, e.y, 0.7, 3.2, 0.7, '#2a7a4a');
-      else if (e.kind === 'ladi') { const ca = Math.cos(e.a), sa = Math.sin(e.a); for (let j = e.pops; j < e.n && cy < 78; j += 4) { const u = (j / e.n) * e.len; put(CY, cy++, e.x0 + ca * u, 0.25, e.y0 + sa * u, 0.35, 0.5, 0.35, '#c81e1e'); } }
+      const te = e.kind === 'ladi' ? 0 : tA(e.x, e.y);
+      if (e.kind === 'anaar' && cn < 60) put(CN, cn++, e.x, 1.1 + te, e.y, 0.95, 2.2, 0.95, '#b8481e');
+      else if (e.kind === 'chakri' && cy < 78) put(CY, cy++, e.x, 0.25 + te, e.y, 1.4, 0.3, 1.4, (e.t * 4 | 0) % 2 ? '#2a8a3a' : '#d8302a');
+      else if (e.kind === 'bomb' && cy < 78) put(CY, cy++, e.x, 0.55 + te, e.y, 0.6, 1.1, 0.6, '#c82020');
+      else if (e.kind === 'bottle' && cy < 78) put(CY, cy++, e.x, 1.6 + te, e.y, 0.7, 3.2, 0.7, '#2a7a4a');
+      else if (e.kind === 'ladi') { const ca = Math.cos(e.a), sa = Math.sin(e.a); for (let j = e.pops; j < e.n && cy < 78; j += 4) { const u = (j / e.n) * e.len, lx = e.x0 + ca * u, ly = e.y0 + sa * u; put(CY, cy++, lx, 0.25 + tA(lx, ly), ly, 0.35, 0.5, 0.35, '#c81e1e'); } }
     }
-    for (const g of GROUPS) { const b = g.bucket; if (!b || cy >= 78) continue; put(CY, cy++, b.x, 1.6, b.y, 1.3, 3.2, 1.3, '#4a7aa8'); }
+    for (const g of GROUPS) { const b = g.bucket; if (!b || cy >= 78) continue; put(CY, cy++, b.x, 1.6 + tA(b.x, b.y), b.y, 1.3, 3.2, 1.3, '#4a7aa8'); }
     CN.count = cn; CY.count = cy;
     if (cn) { rangeUp(CN.instanceMatrix, cn); if (CN.instanceColor) rangeUp(CN.instanceColor, cn); }
     if (cy) { rangeUp(CY.instanceMatrix, cy); if (CY.instanceColor) rangeUp(CY.instanceColor, cy); }

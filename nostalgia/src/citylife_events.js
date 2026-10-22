@@ -2936,6 +2936,10 @@
 
   /* ================================================================ 3D (view3d.js loads after this file: registered lazily) */
   const G3 = { ready: false, THREE: null, H: null, grp: null, im: {}, pts: null, glo: null, scenes: new Map(), decals: new Map(), ms: 0, M4: null, Q: null, V: null, S: null, E: null, UP: null };
+  // [terrain] the ground's rise and fall under a world point (terrain.js via view3d.js; 0 when it is off); tzOf(q) keeps
+  // it on a prop that never moves (chairs, pots, candles, doorstep papers, rangoli) so it is looked up once
+  const TZ = (x, y) => (G3.H && G3.H.terrainAt ? G3.H.terrainAt(x, y) : 0);
+  const tzOf = (q) => (q.tz != null ? q.tz : (q.tz = TZ(q.x, q.y)));
   const IMSPEC = { box: 300, cyl: 260, ball: 200, cone: 48, emis: 120, ebal: 140 };
   function imMake(THREE, key, n) {
     let geo;
@@ -3028,7 +3032,14 @@
     const o = { grp, signs: null };
     const b = H.builder();
     let any = false;
+    // [terrain] each piece (podium, cut-out, counter, stall, gate) is rigid on the low side of its footprint (TB): mark()
+    // before it, lift(mark, off) after it raises its builder vertices and the group children added since by off; off
+    // null: the ground under each (the tanker follows the road like the traffic pitches on it)
+    const TB = (x, y, r) => (H.terrainBase ? H.terrainBase(x - r, y - r, x + r, y + r) : 0), LIFT = [];
+    const mark = () => [b.n, grp.children.length];
+    const lift = (m, off) => { LIFT.push(m[0], b.n, off); for (let k = m[1]; k < grp.children.length; k++) { const c = grp.children[k]; c.position.y += off == null ? TZ(c.position.x, c.position.z) : off; } };
     if (sc.kind === 'junction' && st.podium) {
+      const m0 = mark();
       b.color('#e8e4dc').cyl(s.x, 0, s.y, 3.2, 3.2, 1.5, 14).color('#c8302a').cyl(s.x, 1.5, s.y, 2.3, 2.3, 0.08, 14);
       b.color('#5a5a5a').cyl(s.x - 3.6, 0, s.y - 3.6, 0.22, 0.22, 15 * VS / 1.5 * 1.1, 6);
       any = true;
@@ -3036,9 +3047,10 @@
       um.position.set(s.x - 3.6, 16.5 * 1.1, s.y - 3.6); um.userData.own = true; grp.add(um);
       const ub = new THREE.Mesh(new THREE.ConeGeometry(4.85, 1.82, 8, 1, true, 0, PI / 4), new THREE.MeshLambertMaterial({ color: '#c8302a', side: THREE.DoubleSide }));
       ub.position.copy(um.position); ub.userData.own = true; grp.add(ub);
+      lift(m0, TB(s.x, s.y, 4));
     }
     if (sc.kind === 'cinema') {
-      const C = st.cut, a = Math.atan2(s.uy, s.ux);
+      const C = st.cut, a = Math.atan2(s.uy, s.ux), m0 = mark();
       if (!useModel(H, 'prop_cutout', grp, C.x, C.y, a)) {
         for (const u of [-9, 9]) b.color('#7a6a4a').cyl(C.x + s.ux * u + s.nx * 1.5, 0, C.y + s.uy * u + s.ny * 1.5, 0.35, 0.35, 52, 6);
         b.color('#8a7a5a').obox(C.x, C.y, 20, 4.8, 0, 3, a);
@@ -3046,7 +3058,8 @@
         pl.position.set(C.x - s.nx * 0.2, 3 + 18, C.y - s.ny * 0.2); pl.rotation.y = -a; grp.add(pl);
         any = true;
       }
-      const W = st.counter;
+      lift(m0, TB(C.x, C.y, 10));
+      const W = st.counter, m1 = mark();
       b.color('#c8b898').obox(W.x + s.nx * 2, W.y + s.ny * 2, 14, 3.2, 0, 16.5, a);
       b.color('#2a2a2a').obox(W.x + s.nx * 0.3, W.y + s.ny * 0.3, 3.2, 0.8, 6.5, 11, a);
       any = true;
@@ -3056,12 +3069,13 @@
       // face the road: the plane's normal is +z in local space; turn it towards -n
       const fa = Math.atan2(-s.ny, -s.nx);
       sT.rotation.y = -fa + PI / 2; sH.rotation.y = -fa + PI / 2;
+      lift(m1, TB(W.x + s.nx * 2, W.y + s.ny * 2, 7));
       pl3Fix(grp, s);
       o.signs = { sT, sH };
     }
     if (sc.kind === 'oldcity') {
       for (const S of st.stalls) {
-        const a = S.a, ca = Math.cos(a), sa = Math.sin(a);
+        const a = S.a, ca = Math.cos(a), sa = Math.sin(a), m0 = mark();
         if (S.type === 'bangles') {
           if (!useModel(H, 'bangle_stall', grp, S.x, S.y, a)) {
             b.color('#7a5a3a').obox(S.x, S.y, 8, 4.8, 0, 4.4, a);
@@ -3077,23 +3091,26 @@
           for (let i = 0; i < 8; i++) { const u = (i % 4 - 1.5) * 1.3, v = (i < 4 ? -0.6 : 0.6); b.color(['#e8b030', '#c83a5a', '#30a050', '#f4f2ea'][i % 4]).cyl(S.x + ca * u - sa * v, 4.35, S.y + sa * u + ca * v, 0.32, 0.25, 1.0, 6); }
           any = true;
         }
+        lift(m0, TB(S.x, S.y, S.type === 'bangles' ? 5 : 3.5));
       }
     }
     if (sc.kind === 'baraat') {
       const G = s.gate, ca = Math.cos(G.a), sa = Math.sin(G.a), hw = 9, gh = 22 * 1.25;
       const lx = G.x - ca * hw, ly = G.y - sa * hw, rx = G.x + ca * hw, ry = G.y + sa * hw;
+      const m0 = mark(), gb = H.terrainBase ? H.terrainBase(Math.min(lx, rx), Math.min(ly, ry), Math.max(lx, rx), Math.max(ly, ry)) : 0;
       b.color('#e8c8a0').cyl(lx, 0, ly, 1.1, 1.1, gh, 8).cyl(rx, 0, ry, 1.1, 1.1, gh, 8);
       b.color('#f2c230').obox(G.x, G.y, hw * 2 + 3, 1.4, gh - 0.4, gh + 1.2, G.a);
       for (let i = 0; i < 9; i++) { const f = i / 8; b.color(i % 2 ? '#f08a1a' : '#f2c230').sphere(lerp(lx, rx, f), gh - 4 - Math.sin(f * PI) * 3.5, lerp(ly, ry, f), 0.8, 0.8, 0.8, 6, 4); }
       any = true;
       const sg = texPlane(H, 'cle:sign:' + s.sign, paintSign(s.sign, '#8a1a2a', '#fff2c0'), 18, 4);
       sg.position.set(G.x - G.nx * 0.8, gh - 2.2, G.y - G.ny * 0.8); sg.rotation.y = -Math.atan2(-G.ny, -G.nx) + PI / 2; grp.add(sg);
-      o.bulbs = [];
-      for (let i = 0; i <= 14; i++) { const f = i / 14; o.bulbs.push([lerp(lx, rx, f), gh + 1.6 + Math.sin(f * PI) * 2.4, lerp(ly, ry, f)]); }
-      for (let i = 0; i <= 10; i++) { const f = i / 10; o.bulbs.push([lx, f * gh, ly], [rx, f * gh, ry]); }
+      lift(m0, gb);
+      o.bulbs = []; // world points (the gate's base in them)
+      for (let i = 0; i <= 14; i++) { const f = i / 14; o.bulbs.push([lerp(lx, rx, f), gb + gh + 1.6 + Math.sin(f * PI) * 2.4, lerp(ly, ry, f)]); }
+      for (let i = 0; i <= 10; i++) { const f = i / 10; o.bulbs.push([lx, gb + f * gh, ly], [rx, gb + f * gh, ry]); }
     }
     if (sc.kind === 'colony_am' && st.tanker) {
-      const T = st.tanker, a = T.a, ca = Math.cos(a), sa = Math.sin(a);
+      const T = st.tanker, a = T.a, ca = Math.cos(a), sa = Math.sin(a), m0 = mark();
       if (!useModel(H, 'water_tanker', grp, T.x, T.y, a)) {
         b.color('#2a4a8a').obox(T.x + ca * 15, T.y + sa * 15, 10, 13, 1.5, 14, a).color('#cfe0f0').obox(T.x + ca * 20.2, T.y + sa * 20.2, 0.4, 11, 8, 13, a);
         const tk = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, 24, 14), new THREE.MeshLambertMaterial({ color: '#3a6ab8' }));
@@ -3102,8 +3119,17 @@
         for (const u of [12, -6, -12]) for (const sd of [-1, 1]) b.color('#141414').cyl(T.x + ca * u - sa * sd * 5.6, 0, T.y + sa * u + ca * sd * 5.6, 2.4, 2.4, 1.6, 10);
         any = true;
       }
+      lift(m0, null);
     }
-    if (any) { const m = b.mesh(); if (m) { m.userData.own = true; grp.add(m); } }
+    if (any) {
+      const m = b.mesh();
+      if (m) {
+        const g = m.geometry, pa = g.attributes.position.array;
+        for (let i = 0; i < LIFT.length; i += 3) for (let k = LIFT[i]; k < LIFT[i + 1]; k++) pa[k * 3 + 1] += LIFT[i + 2] == null ? TZ(pa[k * 3], pa[k * 3 + 2]) : LIFT[i + 2];
+        if (LIFT.length) { g.computeBoundingSphere(); g.computeBoundingBox(); }
+        m.userData.own = true; grp.add(m);
+      }
+    }
     return o;
   }
   function pl3Fix() { /* signs are placed facing the road in build3d */ }
@@ -3114,66 +3140,66 @@
     for (const p of sc.persons) {
       if (!p.alive || !p.item) continue;
       const a = p.angle, ca = Math.cos(a), sa = Math.sin(a), kid = p.look && (p.look.kind === 'kid' || p.look.kind === 'student'), z = kid ? 0.78 : 1;
-      const px = p.x, py = p.y;
+      const px = p.x, py = p.y, el = H.elev ? H.elev(p) : 0; // [terrain] his feet where view3d_actors stands him (the ground included)
       switch (p.item) {
         case 'tube': {
-          icyl(p.x, 8 * z, p.y, 0.14, 6.5, '#7a7a7a');
-          for (let oi = 0; oi < 2; oi++) { const off = TUBE3[oi]; I('emis', p.x + ca * off, 14.6 * z, p.y + sa * off, a + PI / 2, 7, 0.35, 0.35, night > 0.3 ? '#f4fbff' : '#d8e4ec'); }
-          if (night > 0.2) ptAdd(GL, p.x, 14.6 * z, p.y, 4.5, 0.22 * night, '#cfe8ff');
+          icyl(p.x, el + 8 * z, p.y, 0.14, 6.5, '#7a7a7a');
+          for (let oi = 0; oi < 2; oi++) { const off = TUBE3[oi]; I('emis', p.x + ca * off, el + 14.6 * z, p.y + sa * off, a + PI / 2, 7, 0.35, 0.35, night > 0.3 ? '#f4fbff' : '#d8e4ec'); }
+          if (night > 0.2) ptAdd(GL, p.x, el + 14.6 * z, p.y, 4.5, 0.22 * night, '#cfe8ff');
           break;
         }
-        case 'trumpet': I('cone', (px + ca * (3.4) - sa * (0.6)), 6.8, (py + sa * (3.4) + ca * (0.6)), a, 0.8, 3.2, 0.8, '#e8c040', 0, -PI / 2); break;
-        case 'fan': { const s = Math.sin(t * 11 + p.seed) * 0.6; I('cyl', (px + ca * (1.8) - sa * (2.2)), 7 * z, (py + sa * (1.8) + ca * (2.2)), a + s, 1.4, 0.12, 1.4, '#d8b060', PI / 2, 0); break; }
-        case 'candle': icyl((px + ca * (2) - sa * (1.4)), 6 * z, (py + sa * (2) + ca * (1.4)), 0.22, 1.1, '#f4f2ea'); ptAdd(GL, (px + ca * (2) - sa * (1.4)), 7.4 * z, (py + sa * (2) + ca * (1.4)), 2.2, 0.9, '#ffc860'); break;
-        case 'vessel': icyl((px + ca * (1.6) - sa * (2.2)), 4.4 * z, (py + sa * (1.6) + ca * (2.2)), 1.1, 1.6, '#a8acb4'); break;
-        case 'paper': ibox((px + ca * (2.4) - sa * (0)), 6.2 * z, (py + sa * (2.4) + ca * (0)), a + PI / 2, 4.2, 0.2, 2.8, '#e8e2d2'); break;
-        case 'pot': iball((px + ca * (0.4) - sa * (2.6)), 4.6 * z, (py + sa * (0.4) + ca * (2.6)), 1.5, p.itemCol || '#d8302a'); break;
+        case 'trumpet': I('cone', (px + ca * (3.4) - sa * (0.6)), el + 6.8, (py + sa * (3.4) + ca * (0.6)), a, 0.8, 3.2, 0.8, '#e8c040', 0, -PI / 2); break;
+        case 'fan': { const s = Math.sin(t * 11 + p.seed) * 0.6; I('cyl', (px + ca * (1.8) - sa * (2.2)), el + 7 * z, (py + sa * (1.8) + ca * (2.2)), a + s, 1.4, 0.12, 1.4, '#d8b060', PI / 2, 0); break; }
+        case 'candle': icyl((px + ca * (2) - sa * (1.4)), el + 6 * z, (py + sa * (2) + ca * (1.4)), 0.22, 1.1, '#f4f2ea'); ptAdd(GL, (px + ca * (2) - sa * (1.4)), el + 7.4 * z, (py + sa * (2) + ca * (1.4)), 2.2, 0.9, '#ffc860'); break;
+        case 'vessel': icyl((px + ca * (1.6) - sa * (2.2)), el + 4.4 * z, (py + sa * (1.6) + ca * (2.2)), 1.1, 1.6, '#a8acb4'); break;
+        case 'paper': ibox((px + ca * (2.4) - sa * (0)), el + 6.2 * z, (py + sa * (2.4) + ca * (0)), a + PI / 2, 4.2, 0.2, 2.8, '#e8e2d2'); break;
+        case 'pot': iball((px + ca * (0.4) - sa * (2.6)), el + 4.6 * z, (py + sa * (0.4) + ca * (2.6)), 1.5, p.itemCol || '#d8302a'); break;
         case 'pothead': break; // the look's 'pot' prop sits on the head in 3D
-        case 'ticket': ibox((px + ca * (0.6) - sa * (1.2)), 11.5 * z, (py + sa * (0.6) + ca * (1.2)), a, 1.6, 1, 0.1, '#f4e8a0'); break;
-        case 'bangles': for (let i = 0; i < 4; i++) I('cyl', (px + ca * (1.6) - sa * (2.4)), 5.4 + i * 0.25, (py + sa * (1.6) + ca * (2.4)), 0, 0.55, 0.18, 0.55, BANGLE_COLS[(i + p.seed) % BANGLE_COLS.length]); break;
-        case 'sparkler': ptAdd(GL, (px + ca * (2.6) - sa * (1.6)), 6.6, (py + sa * (2.6) + ca * (1.6)), 3, 1, '#fff2b0'); break;
+        case 'ticket': ibox((px + ca * (0.6) - sa * (1.2)), el + 11.5 * z, (py + sa * (0.6) + ca * (1.2)), a, 1.6, 1, 0.1, '#f4e8a0'); break;
+        case 'bangles': for (let i = 0; i < 4; i++) I('cyl', (px + ca * (1.6) - sa * (2.4)), el + 5.4 + i * 0.25, (py + sa * (1.6) + ca * (2.4)), 0, 0.55, 0.18, 0.55, BANGLE_COLS[(i + p.seed) % BANGLE_COLS.length]); break;
+        case 'sparkler': ptAdd(GL, (px + ca * (2.6) - sa * (1.6)), el + 6.6, (py + sa * (2.6) + ca * (1.6)), 3, 1, '#fff2b0'); break;
         default: break;
       }
       if (p.cart) {
-        const x = p.x + ca * 7.5, y = p.y + sa * 7.5;
-        if (p.cart.kind === 'gen') { ibox(x, 0.8, y, a, 7, 4.8, 4, '#4a5a6a'); }
+        const x = p.x + ca * 7.5, y = p.y + sa * 7.5, g = TZ(x, y); // the cart on the ground it rolls over
+        if (p.cart.kind === 'gen') { ibox(x, g + 0.8, y, a, 7, 4.8, 4, '#4a5a6a'); }
         else {
-          ibox(x, 3.4, y, a, 10, 5.6, 0.8, '#7a5a3a');
-          for (let si = 0; si < 2; si++) { const sd = SIDES[si]; I('cyl', x - sa * sd * 3, 1.3, y + ca * sd * 3, a + PI / 2, 1.3, 0.5, 1.3, '#3a3030', PI / 2, 0); }
-          if (p.cart.kind === 'sacks') for (let i = 0; i < 3; i++) I('ball', x + ca * (i - 1) * 2.8, 5.4, y + sa * (i - 1) * 2.8, a, 1.6, 1.2, 2.3, i % 2 ? '#d8c8a0' : p.cart.col);
-          else if (p.cart.kind === 'bananas') for (let i = 0; i < 5; i++) I('ball', x + ca * (i - 2) * 1.8, 4.8, y + sa * (i - 2) * 1.8, a + 0.4, 0.9, 0.8, 2, '#e8d040');
-          else if (p.cart.kind === 'cloth') for (let i = 0; i < 3; i++) ibox(x + ca * (i - 1) * 2.8, 4.2, y + sa * (i - 1) * 2.8, a, 2.6, 4.6, 2 + (i % 2) * 0.6, CLOTH[i]);
-          else for (let i = 0; i < 4; i++) iball(x + ca * (i - 1.5) * 2.4, 5.2, y + sa * (i - 1.5) * 2.4, 1.3, '#b8643a');
+          ibox(x, g + 3.4, y, a, 10, 5.6, 0.8, '#7a5a3a');
+          for (let si = 0; si < 2; si++) { const sd = SIDES[si]; I('cyl', x - sa * sd * 3, g + 1.3, y + ca * sd * 3, a + PI / 2, 1.3, 0.5, 1.3, '#3a3030', PI / 2, 0); }
+          if (p.cart.kind === 'sacks') for (let i = 0; i < 3; i++) I('ball', x + ca * (i - 1) * 2.8, g + 5.4, y + sa * (i - 1) * 2.8, a, 1.6, 1.2, 2.3, i % 2 ? '#d8c8a0' : p.cart.col);
+          else if (p.cart.kind === 'bananas') for (let i = 0; i < 5; i++) I('ball', x + ca * (i - 2) * 1.8, g + 4.8, y + sa * (i - 2) * 1.8, a + 0.4, 0.9, 0.8, 2, '#e8d040');
+          else if (p.cart.kind === 'cloth') for (let i = 0; i < 3; i++) ibox(x + ca * (i - 1) * 2.8, g + 4.2, y + sa * (i - 1) * 2.8, a, 2.6, 4.6, 2 + (i % 2) * 0.6, CLOTH[i]);
+          else for (let i = 0; i < 4; i++) iball(x + ca * (i - 1.5) * 2.4, g + 5.2, y + sa * (i - 1.5) * 2.4, 1.3, '#b8643a');
         }
       }
       if (p.chair) {
         const c = p.chair, cca = Math.cos(c.a), csa = Math.sin(c.a);
-        ibox(c.x - cca * 2.4, 2.6, c.y - csa * 2.4, c.a, 0.5, 4.4, 4.4, c.col);
+        ibox(c.x - cca * 2.4, tzOf(c) + 2.6, c.y - csa * 2.4, c.a, 0.5, 4.4, 4.4, c.col);
       }
     }
-    for (const p of sc.persons) if (p.alive && p.chair && !p.item) { const c = p.chair, cca = Math.cos(c.a), csa = Math.sin(c.a); ibox(c.x - cca * 2.4, 2.6, c.y - csa * 2.4, c.a, 0.5, 4.4, 4.4, c.col); }
+    for (const p of sc.persons) if (p.alive && p.chair && !p.item) { const c = p.chair, cca = Math.cos(c.a), csa = Math.sin(c.a); ibox(c.x - cca * 2.4, tzOf(c) + 2.6, c.y - csa * 2.4, c.a, 0.5, 4.4, 4.4, c.col); }
     switch (sc.kind) {
       case 'colony_am': {
         const T = st.tanker;
-        if (T) for (const q of T.pots) icyl(q.x, 0, q.y, 1.3, 2.4, q.col);
-        for (const Th of st.throws) { const f = Th.t / Th.dur; ibox(lerp(Th.x0, Th.x1, f), 6 + Math.sin(f * PI) * 6 - f * 5, lerp(Th.y0, Th.y1, f), t * 9, 2.6, 1.6, 0.6, '#ece6d6'); }
+        if (T) for (const q of T.pots) icyl(q.x, tzOf(q), q.y, 1.3, 2.4, q.col);
+        for (const Th of st.throws) { const f = Th.t / Th.dur, x = lerp(Th.x0, Th.x1, f), y = lerp(Th.y0, Th.y1, f); ibox(x, TZ(x, y) + 6 + Math.sin(f * PI) * 6 - f * 5, y, t * 9, 2.6, 1.6, 0.6, '#ece6d6'); }
         for (const v of sc.vehs) {
           if (!v.alive || !v.cle) continue;
-          const c = v.cle, a = v.angle, ca = Math.cos(a), sa = Math.sin(a);
-          if (c.cans) for (let si = 0; si < 2; si++) { const s2 = SIDES[si]; icyl(v.x - ca * 5.2 - sa * s2 * 2.3, 3, v.y - sa * 5.2 + ca * s2 * 2.3, 1.3, 4.4, '#b8bcc4'); }
-          if (c.papers) ibox(v.x - ca * 4.6, 4.4, v.y - sa * 4.6, a, 3.6, 2.6, 1.6, '#d8d0b8');
-          if (c.kids) for (let i = 0; i < Math.min(7, c.kids); i++) { const u = -3.5 + (i % 4) * 2, s2 = i < 4 ? 1 : -1; iball(v.x + ca * u - sa * s2 * 5.2, 9.2, v.y + sa * u + ca * s2 * 5.2, 1.15, '#1a1412'); ibox(v.x + ca * u - sa * s2 * 6.6, 5.2, v.y + sa * u + ca * s2 * 6.6, a, 1.6, 0.9, 2.2, KIDBAG[i % 4]); }
+          const c = v.cle, a = v.angle, ca = Math.cos(a), sa = Math.sin(a), tv = TZ(v.x, v.y); // the ground view3d_actors puts the vehicle on
+          if (c.cans) for (let si = 0; si < 2; si++) { const s2 = SIDES[si]; icyl(v.x - ca * 5.2 - sa * s2 * 2.3, tv + 3, v.y - sa * 5.2 + ca * s2 * 2.3, 1.3, 4.4, '#b8bcc4'); }
+          if (c.papers) ibox(v.x - ca * 4.6, tv + 4.4, v.y - sa * 4.6, a, 3.6, 2.6, 1.6, '#d8d0b8');
+          if (c.kids) for (let i = 0; i < Math.min(7, c.kids); i++) { const u = -3.5 + (i % 4) * 2, s2 = i < 4 ? 1 : -1; iball(v.x + ca * u - sa * s2 * 5.2, tv + 9.2, v.y + sa * u + ca * s2 * 5.2, 1.15, '#1a1412'); ibox(v.x + ca * u - sa * s2 * 6.6, tv + 5.2, v.y + sa * u + ca * s2 * 6.6, a, 1.6, 0.9, 2.2, KIDBAG[i % 4]); }
         }
         break;
       }
       case 'colony_pm': {
         const C = st.cricket;
         if (C) {
-          const down = C.down > 0;
-          for (let i = -1; i <= 1; i++) { const x = C.wx - C.uy * i * 0.7, y = C.wy + C.ux * i * 0.7; if (down) I('cyl', x + C.ux * 1.2, 0.3, y + C.uy * 1.2, Math.atan2(C.uy, C.ux) + i * 0.3, 0.22, 4.6, 0.22, '#d8c8a0', 0, PI / 2); else icyl(x, 0, y, 0.22, 5.8, '#d8c8a0'); }
-          const B = C.ball; if (B.live || B.held) iball(B.x, B.h + 0.5, B.y, 0.7, '#d8e040');
+          const down = C.down > 0, tw = C.tz != null ? C.tz : (C.tz = TZ(C.wx, C.wy)); // the wicket's ground (it stays put)
+          for (let i = -1; i <= 1; i++) { const x = C.wx - C.uy * i * 0.7, y = C.wy + C.ux * i * 0.7; if (down) I('cyl', x + C.ux * 1.2, tw + 0.3, y + C.uy * 1.2, Math.atan2(C.uy, C.ux) + i * 0.3, 0.22, 4.6, 0.22, '#d8c8a0', 0, PI / 2); else icyl(x, tw, y, 0.22, 5.8, '#d8c8a0'); }
+          const B = C.ball; if (B.live || B.held) iball(B.x, TZ(B.x, B.y) + B.h + 0.5, B.y, 0.7, '#d8e040');
         }
-        if (st.power) for (const c of st.candles) { icyl(c.x, c.h, c.y, 0.25, 1.3, '#f4f2ea'); ptAdd(GL, c.x, c.h + 1.9, c.y, 2.4 + Math.sin(t * 9 + c.ph) * 0.2, 0.95, '#ffc060'); ptAdd(GL, c.x, c.h + 1.9, c.y, 12, 0.18 * (0.4 + night), '#ff9a40'); }
+        if (st.power) for (const c of st.candles) { const h = tzOf(c) + c.h; icyl(c.x, h, c.y, 0.25, 1.3, '#f4f2ea'); ptAdd(GL, c.x, h + 1.9, c.y, 2.4 + Math.sin(t * 9 + c.ph) * 0.2, 0.95, '#ffc060'); ptAdd(GL, c.x, h + 1.9, c.y, 12, 0.18 * (0.4 + night), '#ff9a40'); }
         break;
       }
       case 'baraat': {
@@ -3185,13 +3211,13 @@
     }
     if (sc.kind === 'junction' && sc.level > 0.1) { // a low brown haze over the box
       const s = sc.site, J = st.J;
-      for (let i = 0; i < 6; i++) { const a = i * 1.05 + t * 0.02, r = (J.jr + 20) * (0.3 + (i % 3) * 0.3); ptAdd(PN, s.x + Math.cos(a) * r, 5 + (i % 2) * 4, s.y + Math.sin(a) * r, 70, 0.07 * sc.level, '#b09670'); }
+      for (let i = 0; i < 6; i++) { const a = i * 1.05 + t * 0.02, r = (J.jr + 20) * (0.3 + (i % 3) * 0.3), x = s.x + Math.cos(a) * r, y = s.y + Math.sin(a) * r; ptAdd(PN, x, TZ(x, y) + 5 + (i % 2) * 4, y, 70, 0.07 * sc.level, '#b09670'); }
     }
   }
   function particles3d() {
     const PN = G3.pts, GL = G3.glo;
     for (let i = 0; i < P.n; i++) {
-      const kd = P.k[i], f = P.t[i] / P.life[i], h = P.h[i] * 1.2;
+      const kd = P.k[i], f = P.t[i] / P.life[i], h = P.h[i] * 1.2 + TZ(P.x[i], P.y[i]); // [terrain] over the ground under it
       if (kd === PK.SPARK) { ptAdd(GL, P.x[i], h, P.y[i], 1.1, 1 - f, PCOL[P.c[i]]); continue; }
       const s = kd === PK.DUST || kd === PK.EXH ? P.s[i] * (1 + f * 1.6) * 2.2 : P.s[i] * 1.6;
       const a = kd === PK.DUST ? 0.3 * (1 - f) * Math.min(1, f * 6) : kd === PK.EXH ? 0.4 * (1 - f) * Math.min(1, f * 6) : kd === PK.WATER ? 0.7 : 1 - f * f;
@@ -3213,14 +3239,15 @@
           const tex = new THREE.CanvasTexture(img); tex.encoding = THREE.sRGBEncoding;
           const mat = new THREE.MeshLambertMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
           const m = new THREE.Mesh(new THREE.PlaneGeometry(M.r * 2, M.r * 2), mat);
-          m.rotation.set(-PI / 2, 0, -M.a, 'YXZ'); m.position.set(M.x, 0.12, M.y); m.userData.own = true; m.renderOrder = 2; m.userData.noShadow = true;
+          m.rotation.set(-PI / 2, 0, -M.a, 'YXZ'); m.position.set(M.x, tzOf(M) + 0.12, M.y); m.userData.own = true; m.renderOrder = 2; m.userData.noShadow = true;
+          const TR = N.terrain; if (TR && TR.ready && TR.slopeAt) { const sl = TR.slopeAt(M.x, M.y); m.quaternion.premultiply(G3.Q.setFromUnitVectors(G3.UP, G3.V.set(-sl.gx, 1, -sl.gy).normalize())); } // [terrain] lying along the slope
           tex.userData = {}; m.userData.tex = tex;
           D.grp.add(m); D.planes.push({ M, m });
         }
         G3.grp.add(D.grp); G3.decals.set(g, D);
       }
       for (const q of D.planes) { const pr = q.M.prog; q.m.visible = pr > 0.01; q.m.scale.setScalar(0.15 + 0.85 * clamp(pr, 0, 1)); }
-      for (const q of g.papers) ibox(q.x, 0.1, q.y, q.a, 3.2, 2, 0.3, '#ece6d6');
+      for (const q of g.papers) ibox(q.x, tzOf(q) + 0.1, q.y, q.a, 3.2, 2, 0.3, '#ece6d6');
     }
   }
   function disposeObj(o) {

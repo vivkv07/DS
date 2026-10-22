@@ -850,6 +850,11 @@
   const BCELL = 768;
   const BATCH = new Map(); // cell key -> {key, id, members, owner, obj}
   const BST = { built: 0, members: 0 };
+  /** [terrain] a landmark's base as the core lifts a landmark object (view3d.js: H.terrainBase over its footprint) */
+  function lmBase(m) {
+    const H = N.view3d && N.view3d.H, w = (m.w || 20) / 2, d = (m.d || 20) / 2;
+    return H && H.terrainBase ? H.terrainBase(m.x - w, m.y - d, m.x + w, m.y + d) : 0;
+  }
   function batchable(md) {
     const meta = md.meta || {};
     if (!OPT.batch || md.skinned || meta.landmark || !md.scene || (md.man && md.man.family && md.man.family !== 'landmark')) return false;
@@ -896,12 +901,14 @@
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     const q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), M = new THREE.Matrix4();
     const V = meta.variants, rule = V && VARIANT_RULES[V.rule];
+    // [terrain] the core lifts the group by the asking member's base: each member stands on its own (relative to that)
+    const ob = lmBase(lm);
     // each member placed as buildLandmark places a single clone (rotation, footprint fit, fitHeight)
     const mem = c.members.map((m) => {
       sc.set(1, 1, 1);
       if (meta.fit === 'footprint' && fp && m.w && m.d) { const ns = !m.face || m.face === 'n' || m.face === 's' || isFinite(m.faceAngle); sc.set((ns ? m.w : m.d) / fp[0], 1, (ns ? m.d : m.w) / fp[1]); }
       if (meta.fitHeight && meta.dataH && m.h) sc.y = m.h / meta.dataH;
-      q.setFromAxisAngle(up, rotFor(m)); p.set(m.x - cx, 0, m.y - cz);
+      q.setFromAxisAngle(up, rotFor(m)); p.set(m.x - cx, lmBase(m) - ob, m.y - cz);
       return { mat: new THREE.Matrix4().compose(p, q, sc), v: rule ? 'var_' + rule(m, V.names || []) : null };
     });
     const g = new THREE.Group(); g.name = 'm3d-batch:' + id + ':' + c.key;

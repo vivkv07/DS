@@ -2801,8 +2801,9 @@
     }
     if (BLOBS && !md.boat) blob(v.x, v.y, md.L * sx * 1.05, md.W * sz * 1.15, v.angle || 0, th);
     DBG.riderNext = false;
-    if (DECK_P === v) { DECK_P = null; personEntity(pl, 0, { el: DDL().floor + yOff, v: N.decker.speed() }); }
-    if (DECK_W.length) { for (const e of DECK_W) personEntity(e, 0, { el: DDL().floor + yOff, v: e.speed3 }); DECK_W.length = 0; }
+    // (each on the ground under his own spot: on a slope the pitched deck rises with it, near enough)
+    if (DECK_P === v) { DECK_P = null; personEntity(pl, 0, { el: DDL().floor + yOff + TH(pl.x, pl.y), v: N.decker.speed() }); }
+    if (DECK_W.length) { for (const e of DECK_W) personEntity(e, 0, { el: DDL().floor + yOff + TH(e.x, e.y), v: e.speed3 }); DECK_W.length = 0; }
   }
 
   /* ================================================================ ANIMALS + PIGEONS */
@@ -3663,7 +3664,7 @@
     // kites + strings to the kids on the roofs
     for (let i = 0; i < sc.kites.length; i++) {
       const k = sc.kites[i];
-      const kh = k.h * VS, ah = (k.ah != null ? k.ah - 9 : 0) * VS + 6.5;
+      const kh = k.h * VS + TH(k.x, k.y), ah = (k.ah != null ? k.ah - 9 : 0) * VS + 6.5 + TH(k.ax, k.ay); // (above the ground under each end)
       const yaw = -Math.atan2(k.ay - k.y, k.ax - k.x);
       submitProp('kite', k.x, kh, k.y, yaw, pack(k.color || KCOLS[i % KCOLS.length]), pack(KCOLS[(i + 3) % KCOLS.length]), 1.25, Math.sin(t * 2.1 + i) * 0.25);
       line(k.ax, ah, k.ay, k.x, kh, k.y, Math.hypot(k.x - k.ax, k.y - k.ay) * 0.06, 0.9, 0.88, 0.8, 7);
@@ -3718,15 +3719,15 @@
           break;
         }
         case 'stall': {
-          const md = submitProp('stall', pr.x, 0, pr.y, yaw, pack(pr.color || '#2a8c82'));
-          if (md && night > 0.1) { FR2.set(pr.x, 0, pr.y, yaw, 0, 0).apply(0, 7.6, 0, P3); glow(P3[0], P3[1], P3[2], night, 0.85 * night, 0.6 * night, 6); }
+          const tp = TH(pr.x, pr.y), md = submitProp('stall', pr.x, tp, pr.y, yaw, pack(pr.color || '#2a8c82'));
+          if (md && night > 0.1) { FR2.set(pr.x, tp, pr.y, yaw, 0, 0).apply(0, 7.6, 0, P3); glow(P3[0], P3[1], P3[2], night, 0.85 * night, 0.6 * night, 6); }
           break;
         }
-        case 'haleem_bhatti': submitProp('bhatti', pr.x, 0, pr.y, 0, 0); if (night > 0.1) glow(pr.x + 3.2, 1.4, pr.y, night, 0.45 * night, 0.15 * night, 5); break;
-        case 'chalivendram': submitProp('shed', pr.x, 0, pr.y, yaw, 0); break;
-        case 'crib': submitProp('crib', pr.x, 0, pr.y, 0, pack('#f2e8a0')); if (night > 0.1) glow(pr.x, 9.4, pr.y, night, night, 0.8 * night, 5); break;
+        case 'haleem_bhatti': { const tp = TH(pr.x, pr.y); submitProp('bhatti', pr.x, tp, pr.y, 0, 0); if (night > 0.1) glow(pr.x + 3.2, tp + 1.4, pr.y, night, 0.45 * night, 0.15 * night, 5); break; }
+        case 'chalivendram': submitProp('shed', pr.x, TH(pr.x, pr.y), pr.y, yaw, 0); break;
+        case 'crib': { const tp = TH(pr.x, pr.y); submitProp('crib', pr.x, tp, pr.y, 0, pack('#f2e8a0')); if (night > 0.1) glow(pr.x, tp + 9.4, pr.y, night, night, 0.8 * night, 5); break; }
         case 'bulbs': {
-          const h0 = (pr.h || 14) * VS, h1 = (pr.h1 || 14) * VS, n = clamp(Math.round(Math.hypot(pr.x1 - pr.x, pr.y1 - pr.y) / 5), 3, 24);
+          const h0 = (pr.h || 14) * VS + TH(pr.x, pr.y), h1 = (pr.h1 || 14) * VS + TH(pr.x1, pr.y1), n = clamp(Math.round(Math.hypot(pr.x1 - pr.x, pr.y1 - pr.y) / 5), 3, 24);
           const cols = pr.colors || ['#40ff80', '#ffffff'];
           line(pr.x, h0, pr.y, pr.x1, h1, pr.y1, 2.5, 0.12, 0.12, 0.12, 8);
           for (let k = 1; k < n; k++) {
@@ -3756,7 +3757,7 @@
           const st = d && (d.style || ''), id = d && (d.id || '');
           if (!(st === 'cantonment' || /secunderabad|bolarum|trimulgherry|marredpally|cantonment|begumpet/.test(id))) return;
           if (U.hash2(s.x * 0.37, s.y * 0.53) > 0.3) return;
-          XMAS.cache.push([s.x + s.w / 2, s.h * VS - 3.5, s.y + s.d + 0.8, ['#e8402a', '#f2c230', '#f4f0e8', '#2a8ad8'][(s.x * 7 + s.y) % 4 | 0]]);
+          XMAS.cache.push([s.x + s.w / 2, s.h * VS - 3.5 + (H.terrainBase ? H.terrainBase(s.x, s.y, s.x + s.w, s.y + s.d) : 0), s.y + s.d + 0.8, ['#e8402a', '#f2c230', '#f4f0e8', '#2a8ad8'][(s.x * 7 + s.y) % 4 | 0]]);
         });
       } catch (e) { /* no stars */ }
     }

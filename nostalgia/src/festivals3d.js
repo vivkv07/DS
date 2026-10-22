@@ -51,6 +51,11 @@
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   const S = () => N.seasons;
   const on = (n) => { const s = S(); return !!(s && s.is && s.is(n)); };
+  // [terrain] the ground under a point / a footprint's low side (terrain.js via view3d.js; 0 while not ready). The
+  // sites are built in world coordinates: each rigid piece (stall, booth, crib, tree, gate, pole) is lifted by the
+  // ground under it (a builder's oy while it is built), strings run between their ends' ground, ground pools follow it
+  const TZ = (x, y) => (H && H.terrainAt ? H.terrainAt(x, y) : 0);
+  const TB = (x0, y0, x1, y1) => (H && H.terrainBase ? H.terrainBase(x0, y0, x1, y1) : 0);
 
   /* ================================================================ geometry builder */
   // merged triangles with flat normals, linear vertex colours, a per-vertex glow amount (night emission)
@@ -258,9 +263,12 @@
       if (fx.pools.length) {
         const P = [], C = [], UV = [];
         for (const [x, z, r, hex, k] of fx.pools) {
-          const c = H.color(hex);
-          const q = [[x - r, z - r, 0, 0], [x + r, z - r, 1, 0], [x + r, z + r, 1, 1], [x - r, z - r, 0, 0], [x + r, z + r, 1, 1], [x - r, z + r, 0, 1]];
-          for (const v of q) { P.push(v[0], 0.35, v[1]); C.push(c.r * k, c.g * k, c.b * k); UV.push(v[2], v[3]); }
+          const c = H.color(hex), n = Math.max(1, Math.ceil(r / 12)); // (cells of <= 24 u, each corner on the terrain)
+          for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+            const u0 = i / n, u1 = (i + 1) / n, v0 = j / n, v1 = (j + 1) / n;
+            const q = [[u0, v0], [u1, v0], [u1, v1], [u0, v0], [u1, v1], [u0, v1]];
+            for (const [u, v] of q) { const px = x - r + 2 * r * u, pz = z - r + 2 * r * v; P.push(px, 0.35 + TZ(px + (ox || 0), pz + (oz || 0)), pz); C.push(c.r * k, c.g * k, c.b * k); UV.push(u, v); }
+          }
         }
         const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(UV, 2)); g.computeBoundingSphere();
         const pm = new THREE.Mesh(g, M.pool); pm.renderOrder = 2; grp.add(pm); site.pools = pm;
@@ -318,6 +326,7 @@
     const P = (u, y, w) => [cx + tx * u + nx * w, y, cz + tz * u + nz * w]; // u along, w towards the front
     const H0 = food ? 8.4 : 9.4, HF = food ? 7.4 : 8.2;
     const wall = food ? '#efe6d2' : '#e8dcc4';
+    const tb = TB(s.x, s.y, s.x + s.w, s.y + s.d); b.oy = tb; sb.oy = tb; // [terrain] (back to 0 at the end)
     // back + side walls (cloth over a frame) and the floor
     b.col(wall, 0.18).quad(P(-hl, 0, -hd), P(hl, 0, -hd), P(hl, H0, -hd), P(-hl, H0, -hd));
     b.col(U.shade(s.col, 1.25), 0.15);
@@ -380,12 +389,13 @@
     }
     // the tube light under the canopy, the lit interior, a bulb row along the canopy edge
     b.col('#f4fbff', 2.6).box(...flatBox(P, -hl + 1, HF - 0.6, hd + 0.6, hl - 1, HF - 0.35, hd + 0.8));
-    fx.glow(P(0, 0, 0)[0] + nx * (hd + 0.8), HF - 0.5, P(0, 0, 0)[2] + nz * (hd + 0.8), '#e8f4ff', 7, 0.55);
-    for (let i = 0; i <= 4; i++) { const q = P(-hl + i * s.len / 4, 0, hd + 1.85); const c = ['#ffe070', '#ff7050', '#80ff90', '#80c0ff', '#ffe070'][i]; b.col(c, 2.4).bead(q[0], HF - 0.5, q[2], 0.3); fx.glow(q[0], HF - 0.5, q[2], c, 2.6); }
+    fx.glow(P(0, 0, 0)[0] + nx * (hd + 0.8), HF - 0.5 + tb, P(0, 0, 0)[2] + nz * (hd + 0.8), '#e8f4ff', 7, 0.55);
+    for (let i = 0; i <= 4; i++) { const q = P(-hl + i * s.len / 4, 0, hd + 1.85); const c = ['#ffe070', '#ff7050', '#80ff90', '#80c0ff', '#ffe070'][i]; b.col(c, 2.4).bead(q[0], HF - 0.5, q[2], 0.3); fx.glow(q[0], HF - 0.5 + tb, q[2], c, 2.6); }
     // signboard over the canopy
     const sp = P(0, 0, -hd - 0.1);
     b.col('#5a4a3a', 0).box(sp[0] - 0.1 - Math.abs(tx) * hl * 0.9, H0 + 0.5, sp[2] - 0.1 - Math.abs(tz) * hl * 0.9, sp[0] + 0.1 + Math.abs(tx) * hl * 0.9, H0 + 0.7, sp[2] + 0.1 + Math.abs(tz) * hl * 0.9, true);
     sign(sb, s.name, sp[0] + nx * 0.15, H0 + 1.75, sp[2] + nz * 0.15, Math.min(s.len - 0.6, 9.5), 2.1, nx, nz);
+    b.oy = 0; sb.oy = 0;
   }
   function flatBox(P, u0, y0, w0, u1, y1, w1) { const a = P(u0, y0, w0), b = P(u1, y1, w1); return [Math.min(a[0], b[0]), y0, Math.min(a[2], b[2]), Math.max(a[0], b[0]), y1, Math.max(a[2], b[2])]; }
 
@@ -403,45 +413,54 @@
     ST.prof.stalls = +(now() - t0).toFixed(1);
     // the food court: tables, plastic chairs, poles with the strings, the glow
     for (const t of L.tables) {
+      misc.oy = TZ(t.x, t.y);
       misc.col('#e8e4dc', 0.15).cyl(t.x, 2.6, t.y, 2.3, 2.3, 0.25, 10, true);
       misc.col('#9a9aa0', 0).cyl(t.x, 0, t.y, 0.18, 0.18, 2.6, 4);
       for (let k = 0; k < 4; k++) { const a = k * TAU / 4 + 0.4, x = t.x + Math.cos(a) * 3.4, z = t.y + Math.sin(a) * 3.4; misc.col(t.col, 0.12).box(x - 0.8, 1.5, z - 0.8, x + 0.8, 1.8, z + 0.8, true); misc.col(t.col, 0.12).box(x + Math.cos(a) * 0.7 - 0.8 * Math.abs(Math.sin(a)) - 0.1, 1.8, z + Math.sin(a) * 0.7 - 0.8 * Math.abs(Math.cos(a)) - 0.1, x + Math.cos(a) * 0.7 + 0.8 * Math.abs(Math.sin(a)) + 0.1, 3.4, z + Math.sin(a) * 0.7 + 0.8 * Math.abs(Math.cos(a)) + 0.1, true); for (const e of [[-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6], [0.6, 0.6]]) misc.col(U.shade(t.col, 0.8), 0).box(x + e[0] - 0.08, 0, z + e[1] - 0.08, x + e[0] + 0.08, 1.5, z + e[1] + 0.08, true); }
       // a few steel plates and glasses
       for (let k = 0; k < 3; k++) { const a = k * 2.1; misc.col('#d8dce0', 0.2).cyl(t.x + Math.cos(a) * 1.2, 2.85, t.y + Math.sin(a) * 1.2, 0.55, 0.55, 0.08, 8, true); }
     }
-    for (const q of L.poles || []) misc.col('#7a6a5a', 0).cyl(q[0], 0, q[1], 0.22, 0.22, q[2] * 1.4 + 0.6, 5);
+    misc.oy = 0;
+    for (const q of L.poles || []) misc.col('#7a6a5a', 0).cyl(q[0], TZ(q[0], q[1]), q[1], 0.22, 0.22, q[2] * 1.4 + 0.6, 5);
     yield;
     // bulb strings (heights x1.4 into 3D: the 2D overlay works in data units)
     const cols = ['#ff5040', '#ffe040', '#50ff80', '#50a0ff', '#ff60e0'], warm = ['#ffe070', '#ff9a40', '#fff4d0'];
-    for (const st of L.strings) fx.string(bulbs, st.x0, st.h0 * 1.4, st.y0, st.x1, st.h1 * 1.4, st.y1, Math.max(3, Math.round(st.n * 1.15)), st.sag * 1.3, st.radial || st.lane ? cols : warm, st.radial ? 2 : 1, st.radial ? 3.4 : 3);
+    for (const st of L.strings) fx.string(bulbs, st.x0, st.h0 * 1.4 + TZ(st.x0, st.y0), st.y0, st.x1, st.h1 * 1.4 + TZ(st.x1, st.y1), st.y1, Math.max(3, Math.round(st.n * 1.15)), st.sag * 1.3, st.radial || st.lane ? cols : warm, st.radial ? 2 : 1, st.radial ? 3.4 : 3);
     // the loudspeaker mast: lattice pole, platform, four horns, a flag
     const Mt = L.mast, mh = Mt.h * 1.4;
+    misc.oy = TZ(Mt.x, Mt.y);
     misc.col('#6a6e74', 0).cyl(Mt.x, 0, Mt.y, 0.7, 0.45, mh, 6).col('#8a8e94', 0).cyl(Mt.x, mh - 3, Mt.y, 1.8, 1.8, 0.4, 8, true);
     for (let k = 0; k < 4; k++) { const a = k * TAU / 4 + 0.6, hx = Math.cos(a), hz = Math.sin(a); misc.col('#b8bcc0', 0.1).rod(Mt.x + hx * 0.6, mh - 1.2, Mt.y + hz * 0.6, Mt.x + hx * 2.6, mh - 0.8, Mt.y + hz * 2.6, 0.35).cyl(Mt.x + hx * 2.8, mh - 1.6, Mt.y + hz * 2.8, 0.3, 1.0, 1.4, 6); }
     misc.col('#e8402a', 0.2).quad([Mt.x, mh + 3.6, Mt.y], [Mt.x + 3.4, mh + 3.0, Mt.y], [Mt.x + 3.4, mh + 1.4, Mt.y], [Mt.x, mh + 1.8, Mt.y]).col('#6a6e74', 0).cyl(Mt.x, mh, Mt.y, 0.12, 0.12, 4, 4);
+    misc.oy = 0;
     yield;
     // the enquiry booth (lost and found: the loudspeaker voice), a ticket counter feel
-    const B = L.booth;
+    const B = L.booth, tB = TB(B.x, B.y, B.x + B.w, B.y + B.d);
+    misc.oy = tB;
     misc.col('#efe6d2', 0.15).box(B.x, 0, B.y, B.x + B.w, 8.5, B.y + B.d).col('#2a5cb8', 0.1).box(B.x - 0.6, 8.5, B.y - 0.6, B.x + B.w + 0.6, 9.3, B.y + B.d + 0.6);
     misc.col('#fff4c0', 1.6).quad([B.x - 0.05, 3.2, B.y + 1.2], [B.x - 0.05, 3.2, B.y + B.d - 1.2], [B.x - 0.05, 6.6, B.y + B.d - 1.2], [B.x - 0.05, 6.6, B.y + 1.2]);
-    sign(sb, 'ENQUIRY', B.x - 0.1, 10.6, B.y + B.d / 2, B.d + 0.6, 1.9, -1, 0);
+    sign(sb, 'ENQUIRY', B.x - 0.1, 10.6 + tB, B.y + B.d / 2, B.d + 0.6, 1.9, -1, 0);
     misc.col('#b8bcc0', 0.1).cyl(B.x + B.w / 2, 9.3, B.y + B.d / 2, 0.2, 0.2, 3.4, 4).cyl(B.x + B.w / 2 - 0.8, 12, B.y + B.d / 2, 0.3, 1.1, 1.4, 6);
-    fx.glow(B.x - 0.4, 5, B.y + B.d / 2, '#fff0c0', 8, 0.7);
-    // the toy train loop: ballast, sleepers, two rails, a little station board
+    fx.glow(B.x - 0.4, 5 + tB, B.y + B.d / 2, '#fff0c0', 8, 0.7);
+    misc.oy = 0;
+    // the toy train loop: ballast, sleepers, two rails, a little station board (the track follows the ground)
     const T = L.train;
     for (let i = 0; i < 64; i++) {
       const a0 = (i / 64) * TAU, a1 = ((i + 1) / 64) * TAU;
       const p = (a, o) => [T.cx + (T.rx + o) * Math.cos(a), T.cy + (T.ry + o) * Math.sin(a)];
       const q0 = p(a0, -1.6), q1 = p(a1, -1.6), q2 = p(a1, 1.6), q3 = p(a0, 1.6);
-      misc.col('#8a7a6a', 0).quad([q0[0], 0.1, q0[1]], [q1[0], 0.1, q1[1]], [q2[0], 0.1, q2[1]], [q3[0], 0.1, q3[1]]);
-      for (const o of [-0.7, 0.7]) { const r0 = p(a0, o), r1 = p(a1, o); misc.col('#c8ccd2', 0.05).rod(r0[0], 0.35, r0[1], r1[0], 0.35, r1[1], 0.1); }
-      if (i % 2 === 0) { const s0 = p(a0, -1.2), s1 = p(a0, 1.2); misc.col('#5a4030', 0).rod(s0[0], 0.18, s0[1], s1[0], 0.18, s1[1], 0.18); }
+      const g0 = p(a0, 0), g1 = p(a1, 0), h0 = TZ(g0[0], g0[1]), h1 = TZ(g1[0], g1[1]);
+      misc.col('#8a7a6a', 0).quad([q0[0], 0.1 + h0, q0[1]], [q1[0], 0.1 + h1, q1[1]], [q2[0], 0.1 + h1, q2[1]], [q3[0], 0.1 + h0, q3[1]]);
+      for (const o of [-0.7, 0.7]) { const r0 = p(a0, o), r1 = p(a1, o); misc.col('#c8ccd2', 0.05).rod(r0[0], 0.35 + h0, r0[1], r1[0], 0.35 + h1, r1[1], 0.1); }
+      if (i % 2 === 0) { const s0 = p(a0, -1.2), s1 = p(a0, 1.2); misc.col('#5a4030', 0).rod(s0[0], 0.18 + h0, s0[1], s1[0], 0.18 + h0, s1[1], 0.18); }
     }
-    sign(sb, 'TOY TRAIN', T.cx, 7.2, T.cy, 7, 1.8, 0, 1);
-    misc.col('#7a6a5a', 0).cyl(T.cx - 3, 0, T.cy, 0.15, 0.15, 6.2, 4).cyl(T.cx + 3, 0, T.cy, 0.15, 0.15, 6.2, 4);
+    const tT = TZ(T.cx, T.cy);
+    sign(sb, 'TOY TRAIN', T.cx, 7.2 + tT, T.cy, 7, 1.8, 0, 1);
+    misc.col('#7a6a5a', 0).cyl(T.cx - 3, tT, T.cy, 0.15, 0.15, 6.2, 4).cyl(T.cx + 3, tT, T.cy, 0.15, 0.15, 6.2, 4);
     yield;
     // searchlight drums
-    for (const q of L.search) { misc.col('#3a3e44', 0).box(q[0] - 1.4, 0, q[1] - 1.4, q[0] + 1.4, 1.6, q[1] + 1.4).col('#5a5e64', 0.1).cyl(q[0], 1.6, q[1], 1.1, 1.3, 1.8, 10, true); fx.glow(q[0], 3.2, q[1], '#fffbe0', 9, 0.9); }
+    for (const q of L.search) { misc.oy = TZ(q[0], q[1]); misc.col('#3a3e44', 0).box(q[0] - 1.4, 0, q[1] - 1.4, q[0] + 1.4, 1.6, q[1] + 1.4).col('#5a5e64', 0.1).cyl(q[0], 1.6, q[1], 1.1, 1.3, 1.8, 10, true); fx.glow(q[0], 3.2 + misc.oy, q[1], '#fffbe0', 9, 0.9); }
+    misc.oy = 0;
     // ground glow under the strings and in front of the rows
     for (const pl of L.pools) fx.pool(pl.x, pl.y, pl.r, pl.col, pl.i * 0.55);
     // assemble
@@ -457,7 +476,7 @@
     site.car = buildCarousel(L.carousel); site.grp.add(site.car);
     yield;
     site.cars = buildTrain(T); for (const c of site.cars) site.grp.add(c);
-    site.beams = L.search.map((q, i) => { const m = buildBeam(); m.position.set(q[0], 3.2, q[1]); m.userData.i = i; site.grp.add(m); return m; });
+    site.beams = L.search.map((q, i) => { const m = buildBeam(); m.position.set(q[0], 3.2 + TZ(q[0], q[1]), q[1]); m.userData.i = i; site.grp.add(m); return m; });
     site.update = updateNumaish;
     ST.prof.all = +(now() - t0).toFixed(1);
     return true;
@@ -488,7 +507,7 @@
     const g = new THREE.Group(); g.name = 'fest3d:carousel';
     const m = b.mesh(); m.castShadow = !!(H.quality && H.quality.shadows); g.add(m);
     const pts = new THREE.Points(glowGeo(fx), M.glow); pts.renderOrder = 9; g.add(pts);
-    g.position.set(C.x, 0, C.y);
+    g.position.set(C.x, TB(C.x - C.r, C.y - C.r, C.x + C.r, C.y + C.r), C.y); // [terrain] rigid, on its low side
     return g;
   }
   function glowGeo(fx) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(fx.gp, 3)); g.setAttribute('gCol', new THREE.Float32BufferAttribute(fx.gc, 3)); g.setAttribute('gSize', new THREE.Float32BufferAttribute(fx.gs, 1)); g.computeBoundingSphere(); return g; }
@@ -533,7 +552,7 @@
     site.car.rotation.y = -st.car;
     for (let i = 0; i < site.cars.length; i++) {
       S().layout.trainAt(T, st.train - i * T.gap, _tp);
-      site.cars[i].position.set(_tp.x, 0, _tp.y); site.cars[i].rotation.y = -_tp.a;
+      site.cars[i].position.set(_tp.x, TZ(_tp.x, _tp.y), _tp.y); site.cars[i].rotation.y = -_tp.a;
     }
     const lit = st.open && night > 0.3;
     for (const b of site.beams) {
@@ -558,9 +577,9 @@
   const FRA = { s: 0, n: PI, e: PI / 2, w: -PI / 2 };
   function buildCrib(b, fx, c) {
     // local frame: +z towards the street (open front), x across
-    const ang = Math.atan2(c.ox, c.oy);
-    b.frame(c.crib.x, c.crib.y, ang);
-    const FX0 = (x, y, z) => [b.X(x, z), y, b.Z(x, z)];
+    const ang = Math.atan2(c.ox, c.oy), tc = TB(c.crib.x - 5, c.crib.y - 5, c.crib.x + 5, c.crib.y + 5); // [terrain]
+    b.frame(c.crib.x, c.crib.y, ang, tc);
+    const FX0 = (x, y, z) => [b.X(x, z), y + tc, b.Z(x, z)];
     b.col('#d8bc70', 0.1).box(-5, 0, -3.4, 5, 0.45, 3.4);
     b.col('#a8844a', 0.15).box(-5, 0, -3.7, 5, 4.6, -3.3);
     for (let x = -4.6; x < 4.7; x += 0.9) b.col(x % 1.8 > 0.8 ? '#8a6a3a' : '#b8945a', 0.15).box(x - 0.08, 0.4, -3.3, x + 0.08, 4.6, -3.2);
@@ -590,6 +609,7 @@
     b.frame(0, 0, 0);
   }
   function buildTree(b, fx, x, z) {
+    const t = TB(x - 5, z - 5, x + 5, z + 5); b.oy = t; // [terrain] (back to 0 at the end)
     b.col('#6a4a2a', 0).cyl(x, 0, z, 0.55, 0.45, 2.6, 6);
     b.col('#8a3a2a', 0.1).cyl(x, 0, z, 1.4, 1.2, 1.2, 8, true);
     const tiers = [[5.0, 2.2, 5.4], [4.0, 5.2, 4.8], [3.0, 8.0, 4.2], [2.0, 10.6, 3.6]];
@@ -604,9 +624,10 @@
     for (let i = 0; i < 34; i++) { // a spiral of little bulbs
       const t = i / 34, y = 2.6 + t * 10.5, r = 4.6 * (1 - t) + 0.4, a = t * TAU * 3.5;
       const c = OC[i % 4]; b.col(c, 2.4).bead(x + Math.cos(a) * r, y, z + Math.sin(a) * r, 0.2);
-      if (i % 2 === 0) fx.glow(x + Math.cos(a) * r, y, z + Math.sin(a) * r, c, 2.4);
+      if (i % 2 === 0) fx.glow(x + Math.cos(a) * r, y + t, z + Math.sin(a) * r, c, 2.4);
     }
-    b.col('#ffe060', 2.6).star(x, 15.4, z, 1.1, 0.3, 0); fx.glow(x, 15.4, z, '#ffe880', 8);
+    b.col('#ffe060', 2.6).star(x, 15.4, z, 1.1, 0.3, 0); fx.glow(x, 15.4 + t, z, '#ffe880', 8);
+    b.oy = 0;
   }
   function landmarkObj(lm) {
     const E = V3.engine; if (!E || !E.lmGroup) return null;
@@ -618,14 +639,14 @@
   function modelTop(obj, lm) { // the highest point of the shown church model (the steeple / cross), world coordinates
     if (!obj) return null;
     obj.updateMatrixWorld(true);
-    let best = -1, bx = lm.x, bz = lm.y;
+    let best = -Infinity, bx = lm.x, bz = lm.y;
     const v = new THREE.Vector3();
     obj.traverse((m) => {
       if (!m.isMesh || !m.geometry || !m.geometry.attributes.position || m.visible === false) return;
       const pa = m.geometry.attributes.position, step = Math.max(1, Math.floor(pa.count / 4000));
       for (let i = 0; i < pa.count; i += step) { v.fromBufferAttribute(pa, i).applyMatrix4(m.matrixWorld); if (v.y > best) { best = v.y; bx = v.x; bz = v.z; } }
     });
-    if (best < 0) return null;
+    if (best === -Infinity) return null;
     _v.x = bx; _v.y = best; _v.z = bz;
     return { x: bx, y: best, z: bz };
   }
@@ -635,17 +656,18 @@
     const gx = ch.gate.x, gz = ch.gate.y, ox = ch.ox, oz = ch.oy, tx = ch.tx, tz = ch.ty;
     // the gate arch: two posts, a bulb arch, the banner and a big star on top
     const pw = 7.5, arch = new GB(); arch.occ = true;
+    const ta = TB(gx - Math.abs(tx) * pw, gz - Math.abs(tz) * pw, gx + Math.abs(tx) * pw, gz + Math.abs(tz) * pw); arch.oy = ta; // [terrain] the arch, rigid
     for (const s of [-1, 1]) arch.col('#f4f0e6', 0.2).box(gx + tx * s * pw - 0.5, 0, gz + tz * s * pw - 0.5, gx + tx * s * pw + 0.5, 12.5, gz + tz * s * pw + 0.5);
     for (let i = 0; i <= 16; i++) {
-      const t = i / 16, u = (t - 0.5) * 2 * pw, h = 12.5 + Math.sin(t * PI) * 3.2, x = gx + tx * u, z = gz + tz * u;
+      const t = i / 16, u = (t - 0.5) * 2 * pw, h = ta + 12.5 + Math.sin(t * PI) * 3.2, x = gx + tx * u, z = gz + tz * u;
       const c = cols[i % 4]; bulbs.col(c, 2.4).bead(x + ox * 0.5, h, z + oz * 0.5, 0.32); fx.glow(x + ox * 0.6, h, z + oz * 0.6, c, 3);
-      if (i) fx.wires.push(gx + tx * ((i - 1) / 16 - 0.5) * 2 * pw, 12.5 + Math.sin(((i - 1) / 16) * PI) * 3.2, gz + tz * ((i - 1) / 16 - 0.5) * 2 * pw, x, h, z);
+      if (i) fx.wires.push(gx + tx * ((i - 1) / 16 - 0.5) * 2 * pw, ta + 12.5 + Math.sin(((i - 1) / 16) * PI) * 3.2, gz + tz * ((i - 1) / 16 - 0.5) * 2 * pw, x, h, z);
     }
     arch.col('#a8141a', 0.2).box(gx - Math.abs(tx) * pw + ox * 0.2 - Math.abs(ox) * 0.15, 10.0, gz - Math.abs(tz) * pw + oz * 0.2 - Math.abs(oz) * 0.15, gx + Math.abs(tx) * pw + ox * 0.2 + Math.abs(ox) * 0.15, 12.1, gz + Math.abs(tz) * pw + oz * 0.2 + Math.abs(oz) * 0.15);
-    sign(sb, 'HAPPY CHRISTMAS', gx + ox * 0.45, 11.05, gz + oz * 0.45, pw * 2 - 1.4, 1.95, ox, oz);
-    sign(sb, 'HAPPY CHRISTMAS', gx - ox * 0.05, 11.05, gz - oz * 0.05, pw * 2 - 1.4, 1.95, -ox, -oz);
-    b.col('#ffe060', 2.6).star(gx + ox * 0.5, 18.4, gz + oz * 0.5, 2.1, 0.5, Math.atan2(oz, ox));
-    fx.glow(gx + ox * 0.9, 18.4, gz + oz * 0.9, '#ffe880', 14);
+    sign(sb, 'HAPPY CHRISTMAS', gx + ox * 0.45, 11.05 + ta, gz + oz * 0.45, pw * 2 - 1.4, 1.95, ox, oz);
+    sign(sb, 'HAPPY CHRISTMAS', gx - ox * 0.05, 11.05 + ta, gz - oz * 0.05, pw * 2 - 1.4, 1.95, -ox, -oz);
+    b.col('#ffe060', 2.6).star(gx + ox * 0.5, 18.4 + ta, gz + oz * 0.5, 2.1, 0.5, Math.atan2(oz, ox));
+    fx.glow(gx + ox * 0.9, 18.4 + ta, gz + oz * 0.9, '#ffe880', 14);
     // bulbs along the compound front (on the wall top, both sides of the gate)
     const z = (S().layout && N.WORLD_DATA.respect || []).find((q) => q.place === lm.id || q.id === lm.id);
     if (z && z.rects && z.rects[0]) {
@@ -654,7 +676,7 @@
       const half = Math.abs(tx) > 0.5 ? r[2] / 2 : r[3] / 2, cU = Math.abs(tx) > 0.5 ? (r[0] + r[2] / 2 - gx) * tx : (r[1] + r[3] / 2 - gz) * tz;
       for (const [u0, u1] of [[cU - half, -pw - 1], [pw + 1, cU + half]]) {
         if (u1 - u0 < 4) continue;
-        fx.string(bulbs, gx + tx * u0, 5.2, gz + tz * u0, gx + tx * u1, 5.2, gz + tz * u1, Math.round((u1 - u0) / 2.4), 0.6, cols, 2, 2.6);
+        fx.string(bulbs, gx + tx * u0, 5.2 + TZ(gx + tx * u0, gz + tz * u0), gz + tz * u0, gx + tx * u1, 5.2 + TZ(gx + tx * u1, gz + tz * u1), gz + tz * u1, Math.round((u1 - u0) / 2.4), 0.6, cols, 2, 2.6);
       }
     }
     // serial-light strings from the steeple down to the lawn in front (filled in once the model is up)
@@ -668,9 +690,9 @@
     // floodlights on the lawn aimed at the facade
     const fl = [];
     for (const s of [-1, 1]) {
-      const x = gx - ox * 4 + tx * s * 4, zz = gz - oz * 4 + tz * s * 4;
-      b.col('#3a3e44', 0).box(x - 0.6, 0, zz - 0.6, x + 0.6, 0.9, zz + 0.6).col('#fff8e0', 2).box(x - 0.45, 0.9, zz - 0.45, x + 0.45, 1.1, zz + 0.45);
-      fx.glow(x, 1.2, zz, '#fff4d0', 6, 0.8); fl.push([x, zz]);
+      const x = gx - ox * 4 + tx * s * 4, zz = gz - oz * 4 + tz * s * 4, tf = TZ(x, zz);
+      b.col('#3a3e44', 0).box(x - 0.6, tf, zz - 0.6, x + 0.6, 0.9 + tf, zz + 0.6).col('#fff8e0', 2).box(x - 0.45, 0.9 + tf, zz - 0.45, x + 0.45, 1.1 + tf, zz + 0.45);
+      fx.glow(x, 1.2 + tf, zz, '#fff4d0', 6, 0.8); fl.push([x, zz]);
     }
     fx.pool(gx - ox * 10, gz - oz * 10, 26, '#ffe8c0', 0.5);
     fx.pool(ch.crib.x, ch.crib.y, 14, '#ffd890', 0.6);
@@ -685,7 +707,7 @@
   function buildTent(site) {
     const ch = site.ch, lm = ch.lm, obj = landmarkObj(lm);
     const top = obj ? modelTop(obj, lm) : null;
-    const T = top || { x: lm.x, y: (lm.h || 40) * 1.5, z: lm.y };
+    const T = top || { x: lm.x, y: (lm.h || 40) * 1.5 + TB(lm.x - (lm.w || 20) / 2, lm.y - (lm.d || 20) / 2, lm.x + (lm.w || 20) / 2, lm.y + (lm.d || 20) / 2), z: lm.y };
     const fx = new FX(), b = new GB(), cols = ['#ffe070', '#ff4848', '#50ff80', '#50a8ff', '#ffffff'];
     // anchors on the lawn: a fan in front of the church (never across the nave behind)
     const ox = ch.ox, oz = ch.oy, tx = ch.tx, tz = ch.ty, hw = (Math.abs(tx) > 0.5 ? lm.w : lm.d) / 2;
@@ -693,7 +715,7 @@
     const anchors = [];
     for (const u of [-1, -0.55, -0.2, 0.2, 0.55, 1]) anchors.push([fx0 + tx * u * (hw + 6) + ox * (Math.abs(u) > 0.9 ? -6 : 5 + (1 - Math.abs(u)) * 2), fz0 + tz * u * (hw + 6) + oz * (Math.abs(u) > 0.9 ? -6 : 5 + (1 - Math.abs(u)) * 2)]);
     const th = T.y - 3.5;
-    anchors.forEach((a, i) => fx.string(b, T.x + ox * 0.6, th, T.z + oz * 0.6, a[0], 3.2, a[1], Math.round(Math.hypot(a[0] - T.x, a[1] - T.z, th) / 3.0), 1.2, [cols[i % 5], cols[(i + 2) % 5]], 2, 3.2));
+    anchors.forEach((a, i) => { const t = TZ(a[0], a[1]); fx.string(b, T.x + ox * 0.6, th, T.z + oz * 0.6, a[0], 3.2 + t, a[1], Math.round(Math.hypot(a[0] - T.x, a[1] - T.z, th - t) / 3.0), 1.2, [cols[i % 5], cols[(i + 2) % 5]], 2, 3.2); });
     // a big star hung from the tower top over the front
     b.col('#fff0a0', 2.6).star(T.x + ox * 2.4, th - 8, T.z + oz * 2.4, 2.6, 0.6, Math.atan2(oz, ox));
     fx.glow(T.x + ox * 3, th - 8, T.z + oz * 3, '#fff0b0', 16);
@@ -736,7 +758,7 @@
       L.xmasStarAt(s, tmp);
       const ang = tmp.f === 'W' ? PI : tmp.f === 'E' ? 0 : tmp.f === 'N' ? -PI / 2 : PI / 2;
       const fxv = Math.cos(ang), fzv = Math.sin(ang);
-      const h = Math.min(s.h * 1.5 - 4, 19), x = tmp.x + fxv * 0.8, z = tmp.y + fzv * 0.8;
+      const h = Math.min(s.h * 1.5 - 4, 19) + TB(s.x, s.y, s.x + s.w, s.y + s.d), x = tmp.x + fxv * 0.8, z = tmp.y + fzv * 0.8;
       b.col('#3a3a3a', 0).rod(x, h + 2.9, z, x, h + 4.4, z, 0.04);
       b.col(tmp.col, 1.5).star(x, h, z, 2.2, 0.75, ang);
       b.col(U.shade(tmp.col, 0.9), 1.1);
@@ -758,15 +780,16 @@
     for (const f of pr.festoons) {
       const nx = -Math.sin(f.a), nz = Math.cos(f.a), w = 19;
       const ax = f.x - nx * w, az = f.y - nz * w, bx = f.x + nx * w, bz = f.y + nz * w, hh = 17;
-      for (const [x, z] of [[ax, az], [bx, bz]]) { b.col('#a8844a', 0).cyl(x, 0, z, 0.32, 0.26, hh + 1, 5); b.col('#f2c230', 0.2).cyl(x, 0, z, 0.36, 0.36, 2.2, 6); b.col('#c8202a', 0.2).cyl(x, 2.2, z, 0.36, 0.36, 0.5, 6); }
+      const t0 = TZ(ax, az), t1 = TZ(bx, bz), tl = (t) => t0 + (t1 - t0) * t; // [terrain] along the span
+      for (const [x, z] of [[ax, az], [bx, bz]]) { const t = TZ(x, z); b.col('#a8844a', 0).cyl(x, t, z, 0.32, 0.26, hh + 1, 5); b.col('#f2c230', 0.2).cyl(x, t, z, 0.36, 0.36, 2.2, 6); b.col('#c8202a', 0.2).cyl(x, t + 2.2, z, 0.36, 0.36, 0.5, 6); }
       // the neem-leaf toran with marigold balls, and a paper bunting a little lower
       for (let i = 0; i <= 22; i++) {
-        const t = i / 22, x = ax + (bx - ax) * t, z = az + (bz - az) * t, h = hh - Math.sin(t * PI) * 2.6;
-        if (i) fx.wires.push(ax + (bx - ax) * (t - 1 / 22), hh - Math.sin((t - 1 / 22) * PI) * 2.6, az + (bz - az) * (t - 1 / 22), x, h, z);
+        const t = i / 22, x = ax + (bx - ax) * t, z = az + (bz - az) * t, h = tl(t) + hh - Math.sin(t * PI) * 2.6;
+        if (i) fx.wires.push(ax + (bx - ax) * (t - 1 / 22), tl(t - 1 / 22) + hh - Math.sin((t - 1 / 22) * PI) * 2.6, az + (bz - az) * (t - 1 / 22), x, h, z);
         b.col(NEEM[i % 3], 0.15).quad([x - nx * 0.6, h, z - nz * 0.6], [x + nx * 0.6, h, z + nz * 0.6], [x + nx * 0.2 + Math.cos(f.a) * 0.2, h - 1.9, z + nz * 0.2 + Math.sin(f.a) * 0.2], [x - nx * 0.2, h - 1.9, z - nz * 0.2]);
         if (i % 2 === 0) b.col(MARI[i % 3], 0.3).bead(x, h - 0.4, z, 0.45);
         if (i % 3 === 0) { bulbs.col('#ffd040', 2.2).bead(x, h + 0.2, z, 0.24); fx.glow(x, h + 0.2, z, '#ffc040', 2.6); }
-        const hb = hh - 4 - Math.sin(t * PI) * 2.0;
+        const hb = tl(t) + hh - 4 - Math.sin(t * PI) * 2.0;
         if (i < 22) b.col(FLAG[i % FLAG.length], 0.25).tri([x, hb, z], [x + (bx - ax) / 22, hb, z + (bz - az) / 22], [x + (bx - ax) / 44, hb - 1.5, z + (bz - az) / 44]);
       }
     }
@@ -774,6 +797,7 @@
     // the temple gate: a decorated arch (turmeric pillars with kumkum bands, neem and marigold garlands)
     const g = pr.path[pr.path.length - 1], g2 = pr.path[Math.max(0, pr.path.length - 2)];
     const a = Math.atan2(g[1] - g2[1], g[0] - g2[0]), nx = -Math.sin(a), nz = Math.cos(a), w = 9, gx = g[0] - Math.cos(a) * 6, gz = g[1] - Math.sin(a) * 6;
+    const tgt = TB(gx - Math.abs(nx) * w, gz - Math.abs(nz) * w, gx + Math.abs(nx) * w, gz + Math.abs(nz) * w); b.oy = tgt; bulbs.oy = tgt; // [terrain]
     for (const s of [-1, 1]) {
       const x = gx + nx * s * w, z = gz + nz * s * w;
       b.col('#f2c230', 0.25).box(x - 0.7, 0, z - 0.7, x + 0.7, 15, z + 0.7);
@@ -785,16 +809,19 @@
       const t = i / 18, x = gx + nx * (t - 0.5) * 2 * w, z = gz + nz * (t - 0.5) * 2 * w, L2 = 1.5 + (i % 3) * 0.9;
       for (let k = 0; k < 4; k++) b.col(MARI[(i + k) % 3], 0.3).bead(x, 14.6 - k * L2 / 3, z, 0.36);
       if (i % 2) b.col(NEEM[i % 3], 0.2).blob(x, 14.2, z, 0.55, 0.8, 0.55, 5);
-      bulbs.col(i % 2 ? '#ffd040' : '#ff6040', 2.2).bead(x, 16.7, z, 0.26); if (i % 2 === 0) fx.glow(x, 16.7, z, '#ffc040', 3);
+      bulbs.col(i % 2 ? '#ffd040' : '#ff6040', 2.2).bead(x, 16.7, z, 0.26); if (i % 2 === 0) fx.glow(x, 16.7 + tgt, z, '#ffc040', 3);
     }
+    bulbs.oy = 0;
     // offered bonam pots in a row beside the gate (brass, turmeric, kumkum, neem, a lamp on each)
     for (let k = 0; k < 7; k++) {
       const u = w + 3 + k * 2.2, x = gx + nx * u + Math.cos(a) * 2, z = gz + nz * u + Math.sin(a) * 2;
+      b.oy = TZ(x, z);
       b.col('#c89a2a', 0.2).blob(x, 1.2, z, 0.95, 1.0, 0.95, 7).col('#f2c230', 0.25).cyl(x, 2.0, z, 0.55, 0.7, 0.7, 7, true);
       b.col('#c8202a', 0.3).cyl(x, 0.9, z, 0.98, 0.98, 0.25, 8);
       for (let j = 0; j < 4; j++) { const aa = j * TAU / 4 + k; b.col(NEEM[j % 3], 0.15).quad([x, 2.8, z], [x + Math.cos(aa) * 0.3, 2.8, z + Math.sin(aa) * 0.3], [x + Math.cos(aa) * 1.2, 3.8, z + Math.sin(aa) * 1.2], [x + Math.cos(aa + 0.4) * 0.9, 4.0, z + Math.sin(aa + 0.4) * 0.9]); }
-      b.col('#ffe080', 2.4).bead(x, 3.1, z, 0.22); fx.glow(x, 3.2, z, '#ffb040', 3.2);
+      b.col('#ffe080', 2.4).bead(x, 3.1, z, 0.22); fx.glow(x, 3.2 + b.oy, z, '#ffb040', 3.2);
     }
+    b.oy = 0;
     parts.push(b, bulbs);
     yield;
     finishSite(site, parts, fx, 0, 0);
@@ -831,14 +858,14 @@
     if (site.thot.visible && pr.members.length) {
       L.along(pr.path, (pr.members[pr.members.length - 1].d + 12) % (pr.L - 6), _ap);
       site.thot.position.set(_ap.x, 0, _ap.y); site.thot.rotation.y = -_ap.a + Math.sin(H.time * 0.8) * 0.05;
-      site.thot.position.y = Math.abs(Math.sin(H.time * 2.4)) * 0.25;
+      site.thot.position.y = TZ(_ap.x, _ap.y) + Math.abs(Math.sin(H.time * 2.4)) * 0.25;
     }
     const pos = site.lamps.pts.geometry.attributes.position, arr = pos.array; let n = 0;
     for (const m of pr.members) {
       if (m.kind !== 'bonam' || m.d < 0 || n >= site.lamps.cap) continue;
       L.along(pr.path, m.d, _ap);
       const x = _ap.x - Math.sin(_ap.a) * m.side, y = _ap.y + Math.cos(_ap.a) * m.side;
-      arr[n * 3] = x; arr[n * 3 + 1] = 13.2; arr[n * 3 + 2] = y; n++;
+      arr[n * 3] = x; arr[n * 3 + 1] = 13.2 + TZ(x, y); arr[n * 3 + 2] = y; n++;
     }
     pos.needsUpdate = true; site.lamps.pts.geometry.setDrawRange(0, n);
     void dt; void night;
@@ -847,8 +874,9 @@
   /* ================================================================ RAMZAN (crescent cut-outs) */
   // a pole with a lit crescent-and-star cut-out (faces along tx, tz)
   function crescent(b, fx, x, z, a, h, R0) {
-    const tx = -Math.sin(a || 0), tz = Math.cos(a || 0);
-    b.col('#5a5a62', 0).cyl(x, 0, z, 0.3, 0.24, h - 1.5, 5);
+    const tx = -Math.sin(a || 0), tz = Math.cos(a || 0), t = TZ(x, z);
+    b.col('#5a5a62', 0).cyl(x, t, z, 0.3, 0.24, h - 1.5, 5);
+    h += t; // [terrain] (the rest from the pole's ground)
     for (let k = 0; k < 16; k++) { // the crescent (a ring band thinning at the horns), facing both ways along (tx, tz)
       const a0 = -PI * 0.78 + (k / 16) * PI * 1.56, a1 = -PI * 0.78 + ((k + 1) / 16) * PI * 1.56;
       const o = (an, r, cx) => [x + tx * (Math.cos(an + PI) * r + cx), h + Math.sin(an + PI) * r, z + tz * (Math.cos(an + PI) * r + cx)];
@@ -893,7 +921,7 @@
     for (const st of (ram && ram.strings) || []) {
       if (!st.own) continue;
       const n = Math.max(4, Math.round(Math.hypot(st.x1 - st.x0, st.y1 - st.y0) / 2.6));
-      fx.string(bulbs, st.x0, st.h0 * 1.5, st.y0, st.x1, st.h1 * 1.5, st.y1, n, 2.2, RAM_COLS, 2, 3);
+      fx.string(bulbs, st.x0, st.h0 * 1.5 + TZ(st.x0, st.y0), st.y0, st.x1, st.h1 * 1.5 + TZ(st.x1, st.y1), st.y1, n, 2.2, RAM_COLS, 2, 3);
     }
     yield;
     // ---- round the Charminar circle (what the camera sees from the plaza and the circle road, whichever way
@@ -909,33 +937,33 @@
       for (let i = 0; i < 24; i++) {
         const a = (i / 24) * TAU + 0.13;
         let p = null;
-        for (const r of RO) { const x = ch.x + Math.cos(a) * r, y = ch.y + Math.sin(a) * r; if (free(x, y)) { p = { x, y, a, i }; break; } }
+        for (const r of RO) { const x = ch.x + Math.cos(a) * r, y = ch.y + Math.sin(a) * r; if (free(x, y)) { p = { x, y, a, i, t: TZ(x, y) }; break; } }
         poles.push(p);
         if (!p) continue;
-        b.col('#4a4a52', 0).cyl(p.x, 0, p.y, 0.32, 0.24, 20.5, 5).col('#c8a040', 0.3).cyl(p.x, 20.5, p.y, 0.4, 0.1, 0.8, 5);
+        b.col('#4a4a52', 0).cyl(p.x, p.t, p.y, 0.32, 0.24, 20.5, 5).col('#c8a040', 0.3).cyl(p.x, 20.5 + p.t, p.y, 0.4, 0.1, 0.8, 5);
         if (i % 4 === 1) crescent(b, fx, p.x, p.y, a + PI / 2, 24.5, 2.8);
       }
       const inner = [];
       for (let i = 0; i < 24; i++) {
         const p = poles[i], q = poles[(i + 1) % 24];
-        if (p && q) fx.string(bulbs, p.x, 19.6, p.y, q.x, 19.6, q.y, Math.max(6, Math.round(Math.hypot(q.x - p.x, q.y - p.y) / 2.4)), 2.0, RAM_COLS, 2, 3);
+        if (p && q) fx.string(bulbs, p.x, 19.6 + p.t, p.y, q.x, 19.6 + q.t, q.y, Math.max(6, Math.round(Math.hypot(q.x - p.x, q.y - p.y) / 2.4)), 2.0, RAM_COLS, 2, 3);
         if (!p || i % 2) continue;
         let ip = null;
-        for (const r of RI) { const x = ch.x + Math.cos(p.a) * r, y = ch.y + Math.sin(p.a) * r; if (free(x, y)) { ip = { x, y }; break; } }
+        for (const r of RI) { const x = ch.x + Math.cos(p.a) * r, y = ch.y + Math.sin(p.a) * r; if (free(x, y)) { ip = { x, y, t: TZ(x, y) }; break; } }
         if (!ip) continue;
         inner[i / 2] = ip;
-        b.col('#4a4a52', 0).cyl(ip.x, 0, ip.y, 0.3, 0.22, 19.5, 5);
-        b.col('#fff4d8', 2.2).bead(ip.x, 19.9, ip.y, 0.5); fx.glow(ip.x, 19.9, ip.y, '#fff0c8', 6, 0.8);
-        fx.string(bulbs, p.x, 19.6, p.y, ip.x, 19.2, ip.y, Math.max(8, Math.round(Math.hypot(ip.x - p.x, ip.y - p.y) / 2.2)), 2.8, ['#ffffff', '#60ff90', '#ffe080'], 2, 3);
+        b.col('#4a4a52', 0).cyl(ip.x, ip.t, ip.y, 0.3, 0.22, 19.5, 5);
+        b.col('#fff4d8', 2.2).bead(ip.x, 19.9 + ip.t, ip.y, 0.5); fx.glow(ip.x, 19.9 + ip.t, ip.y, '#fff0c8', 6, 0.8);
+        fx.string(bulbs, p.x, 19.6 + p.t, p.y, ip.x, 19.2 + ip.t, ip.y, Math.max(8, Math.round(Math.hypot(ip.x - p.x, ip.y - p.y) / 2.2)), 2.8, ['#ffffff', '#60ff90', '#ffe080'], 2, 3);
         const mx = (p.x + ip.x) / 2, my = (p.y + ip.y) / 2;
-        fanoos(b, fx, mx, 19.4 - 2.8, my, RAM_LANT[(i / 2) % 3]);
+        fanoos(b, fx, mx, 19.4 - 2.8 + (p.t + ip.t) / 2, my, RAM_LANT[(i / 2) % 3]); // (the string's middle)
       }
       // festoons along the plaza edge too, lamp pole to lamp pole (the inner side of the circle road)
       for (let i = 0; i < 12; i++) {
         const p = inner[i], q = inner[(i + 1) % 12];
         if (!p || !q) continue;
-        fx.string(bulbs, p.x, 19.2, p.y, q.x, 19.2, q.y, Math.max(8, Math.round(Math.hypot(q.x - p.x, q.y - p.y) / 2.4)), 2.6, ['#ffe080', '#60ff90', '#ffffff'], 2, 3);
-        if (i % 2 === 0) fanoos(b, fx, (p.x + q.x) / 2, 19.2 - 2.6, (p.y + q.y) / 2, RAM_LANT[(i / 2) % 3]);
+        fx.string(bulbs, p.x, 19.2 + p.t, p.y, q.x, 19.2 + q.t, q.y, Math.max(8, Math.round(Math.hypot(q.x - p.x, q.y - p.y) / 2.4)), 2.6, ['#ffe080', '#60ff90', '#ffffff'], 2, 3);
+        if (i % 2 === 0) fanoos(b, fx, (p.x + q.x) / 2, 19.2 - 2.6 + (p.t + q.t) / 2, (p.y + q.y) / 2, RAM_LANT[(i / 2) % 3]);
       }
       fx.pool(ch.x, ch.y, 120, '#d8ffe0', 0.18);
     }
@@ -951,9 +979,9 @@
       for (let d = d0; d <= dmax; d += 18, k++) {
         roadAt(R, d, tmp);
         const nx = -Math.sin(tmp.a) * (R.w / 2 + 1.5), ny = Math.cos(tmp.a) * (R.w / 2 + 1.5);
-        const n = Math.max(6, Math.round(Math.hypot(nx, ny) * 2 / 2.4));
-        fx.string(bulbs, tmp.x - nx, 18.6, tmp.y - ny, tmp.x + nx, 18.6, tmp.y + ny, n, 2.4, k % 2 ? RAM_COLS : ['#ffe080', '#ff8a60', '#ffffff', '#60ff90'], 2, 3);
-        if (k % 2 === 0) fanoos(b, fx, tmp.x, 18.6 - 2.4, tmp.y, RAM_LANT[k % 3]);
+        const n = Math.max(6, Math.round(Math.hypot(nx, ny) * 2 / 2.4)), ta = TZ(tmp.x - nx, tmp.y - ny), tb = TZ(tmp.x + nx, tmp.y + ny);
+        fx.string(bulbs, tmp.x - nx, 18.6 + ta, tmp.y - ny, tmp.x + nx, 18.6 + tb, tmp.y + ny, n, 2.4, k % 2 ? RAM_COLS : ['#ffe080', '#ff8a60', '#ffffff', '#60ff90'], 2, 3);
+        if (k % 2 === 0) fanoos(b, fx, tmp.x, 18.6 - 2.4 + (ta + tb) / 2, tmp.y, RAM_LANT[k % 3]);
       }
     }
     yield;
@@ -962,11 +990,11 @@
     for (const st of (ram && ram.stalls) || []) {
       const ca = Math.cos(st.a), sa = Math.sin(st.a);
       const P = (lx, lz) => [st.x + lx * ca - lz * sa, st.y + lx * sa + lz * ca]; // the stall's local x = its front
-      const t0 = P(3.4, -2.6), t1 = P(3.4, 2.6);
-      dress.col('#f4fbff', 2.6).rod(t0[0], 8.7, t0[1], t1[0], 8.7, t1[1], 0.18);
-      const g = P(3.6, 0); fx.glow(g[0], 8.6, g[1], '#e8f4ff', 7, 0.6);
-      for (let i = 0; i <= 6; i++) { const q = P(4.05, -3.0 + i), c = ['#ffe070', '#60ff90', '#ffffff', '#ff7050'][i % 4]; dress.col(c, 2.4).bead(q[0], 9.0, q[1], 0.26); if (i % 2 === 0) fx.glow(q[0], 9.0, q[1], c, 2.6); }
-      const l = P(4.2, -3.2); fanoos(dress, fx, l[0], 9.2, l[1], st.lit ? '#ffd27a' : '#9affc0');
+      const t0 = P(3.4, -2.6), t1 = P(3.4, 2.6), ts = TZ(st.x, st.y); // [terrain] the stall's ground
+      dress.col('#f4fbff', 2.6).rod(t0[0], 8.7 + ts, t0[1], t1[0], 8.7 + ts, t1[1], 0.18);
+      const g = P(3.6, 0); fx.glow(g[0], 8.6 + ts, g[1], '#e8f4ff', 7, 0.6);
+      for (let i = 0; i <= 6; i++) { const q = P(4.05, -3.0 + i), c = ['#ffe070', '#60ff90', '#ffffff', '#ff7050'][i % 4]; dress.col(c, 2.4).bead(q[0], 9.0 + ts, q[1], 0.26); if (i % 2 === 0) fx.glow(q[0], 9.0 + ts, q[1], c, 2.6); }
+      const l = P(4.2, -3.2); fanoos(dress, fx, l[0], 9.2 + ts, l[1], st.lit ? '#ffd27a' : '#9affc0');
       const pl = P(6, 0); fx.pool(pl[0], pl[1], 13, '#ffd890', 1.0); fx.pool(st.x, st.y, 7, '#fff0d0', 0.6);
       site.lights.push([g[0], g[1]]);
     }
