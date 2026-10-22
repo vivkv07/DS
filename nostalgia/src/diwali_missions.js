@@ -340,6 +340,8 @@
 .dwm-total{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 0;font:22px/1.1 var(--font-osd,'VT323',monospace)}
 .dwm-total.over{color:#b02020}.dwm-total em{font-style:normal;font-size:16px;color:#6a5a48}
 .dwm-say{margin:8px 0 0;min-height:1.3em;font-size:14px;color:#3a2a1a}
+.dwm-x{position:absolute;top:6px;right:8px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(122,47,53,.12);color:#7a2f35;font-size:18px;line-height:34px;cursor:pointer;padding:0}
+.dwm-x:hover,.dwm-x:focus-visible{background:rgba(122,47,53,.25)}
 .dwm-hint{margin:8px 0 0;font-family:var(--font-osd,'VT323',monospace);font-size:17px;color:#7a2f35;text-align:right}
 .dwm-aim{display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:center}
 .dwm-aim canvas{width:240px;height:240px;image-rendering:pixelated;border-radius:4px;box-shadow:0 0 0 2px #7a5a2a;background:#2a2420}
@@ -381,7 +383,7 @@
     const root = document.getElementById('overlay') || document.body;
     const el = document.createElement('div');
     el.className = 'dwm-panel' + (o.cls ? ' ' + o.cls : '');
-    el.innerHTML = '<div class="dwm-card" role="dialog" aria-label="' + esc(o.label || 'card') + '">' + html + '</div>';
+    el.innerHTML = '<div class="dwm-card" role="dialog" aria-label="' + esc(o.label || 'card') + '">' + (o.cancel ? '<button type="button" class="dwm-x" aria-label="' + esc(o.cancel) + '">✕</button>' : '') + html + '</div>';
     root.appendChild(el);
     requestAnimationFrame(() => el.classList.add('show'));
     const p = N.player, wasLocked = p ? !!p.controlsLocked : false;
@@ -391,7 +393,7 @@
     const done = new Promise((r) => { resolve = r; });
     const KM = (N.input && N.input.KEYMAP) || {};
     const P = {
-      el, done, keys: o.keys || null, opened: nowT(), closed: false,
+      el, done, keys: o.keys || null, cancel: !!o.cancel, opened: nowT(), closed: false,
       close(v) {
         if (P.closed) return; P.closed = true;
         if (ST.panel === P) ST.panel = null;
@@ -416,6 +418,7 @@
       if (P.keys) P.keys(k);
     }
     window.addEventListener('keydown', onDown, true);
+    if (o.cancel) el.querySelector('.dwm-x').addEventListener('click', () => { sfx('ui_back'); P.close(null); });
     ST.panel = P;
     return P;
   }
@@ -425,7 +428,10 @@
     if (!I) return;
     if (ST.eatAction) { if (I.pressed('action')) I.consume('action'); ST.eatAction = false; }
     const P = ST.panel;
-    if (!P || P.closed || mode() !== 'play' || I.device === 'keyboard') return;
+    if (!P || P.closed || mode() !== 'play') return;
+    // a card with a way out closes on Esc / Start / B (as the shops do) before the pause menu reads them (order 12 < 85)
+    if (P.cancel && (I.pressed('pause') || I.pressed('horn'))) { I.consume('pause'); I.consume('horn'); sfx('ui_back'); P.close(null); return; }
+    if (I.device === 'keyboard') return;
     for (const k of ['up', 'down', 'left', 'right', 'action']) if (I.pressed(k)) { I.consume(k); if (P.keys) P.keys(k); }
   }
 
@@ -687,7 +693,7 @@
       '<ul class="dwm-rows">' + ITEMS.map((it, i) => '<li data-i="' + i + '" class="' + (it.bomb ? 'bomb' : '') + '"><span class="sw" style="background:' + it.col + '"></span><span><b>' + esc(it.name) + '</b><em>' + esc(it.sub) + '</em></span><span class="pr">' + rs(it.price) + '</span><span class="q"><button type="button" data-d="-1" aria-label="less">−</button><i>0</i><button type="button" data-d="1" aria-label="more">+</button></span></li>').join('') +
       '<li class="act" data-act="haggle"><span>Haggle (once)</span><span>H</span></li><li class="act" data-act="pay"><span class="pay">Pay</span><span>E</span></li></ul>' +
       '<div class="dwm-list"></div><div class="dwm-total"><span class="t"></span><em></em></div><p class="dwm-say"></p>' +
-      '<p class="dwm-hint">↑↓ choose · ←→ how many · H haggle · E pay</p>';
+      '<p class="dwm-hint">↑↓ choose · ←→ how many · H haggle · E pay · Esc leave</p>';
     let P = null;
     const render = () => {
       const el = P.el;
@@ -733,7 +739,7 @@
       P.close({ items, total: total(), sum: sum(), haggled, bombs: bombs() });
     };
     P = panel(html, {
-      label: 'Pataakha stall', cls: 'dwm-stall',
+      label: 'Pataakha stall', cls: 'dwm-stall', cancel: 'Leave the stall',
       keys: (k) => {
         if (k === 'up') { sel = (sel + rows - 1) % rows; sfx('ui_click'); }
         else if (k === 'down') { sel = (sel + 1) % rows; sfx('ui_click'); }
@@ -851,8 +857,17 @@
     face('pataakha_man', 'player');
     await m.say('pataakha_man', '*Aao, aao!* Rocket, anaar, chakri, phuljhadi! Diwali rate, best rate!');
     m.objective('Buy Amma\'s list within ₹100. Nanna\'s rule: no bombs, more phuljhadis.');
-    const buy = await stallCard(m);
-    if (!buy) m.fail('Not now? The stall waits. Phir se.');
+    let buy = await stallCard(m);
+    while (!buy) {
+      // left the stall (✕ / Esc / B): nothing bought, nothing lost; the pataakha-wala is still there
+      lockShops(m, false);
+      toast('Amma\'s list is still in your pocket. The pataakha-wala waits.', 2600);
+      await act(m, S, 'Buy crackers', { r: 26, objective: 'Back to the pataakha stall when you are ready (ACTION).' });
+      lockShops(m, true);
+      face('pataakha_man', 'player');
+      m.objective('Buy Amma\'s list within ₹100. Nanna\'s rule: no bombs, more phuljhadis.');
+      buy = await stallCard(m);
+    }
     if (buy.bombs) {
       await m.talk([
         { s: 'pataakha_man', t: 'Bombs also? For you? ...Your Nanna knows?' },
