@@ -4153,6 +4153,9 @@
   N.placesArt = {
     version: 1, fx, defs: DEFS, S, PROPS: Object.keys(PROPS).concat(PROP_CARTS, Object.keys(DEFS).filter((k) => PROP_CARTS.indexOf(k) < 0)),
     drawProp, queueProp,
+    /** the hand-painted film board for a (fictional) title as a cached canvas (w x d world units, 4 px a unit;
+     *  the dark band at the bottom is left for the title): src/hoardings.js paints its film posters with it */
+    filmBoard: (title, w, d) => filmBoard(title, w, d), FILMS,
     switches() { return sw(); },
     prepareAll() { initAll(); },
     perf() { return { ms: +PERF.last.toFixed(3), calls: PERF.lastCalls, initMs: +initMs.toFixed(1), initParts: initParts && initParts.map((v) => +v.toFixed(1)), sprites: pImg.size }; },
