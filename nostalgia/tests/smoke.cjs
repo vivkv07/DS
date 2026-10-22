@@ -84,10 +84,12 @@ async function run(browser, V) {
   // ---- move with real input
   if (!V.touch) {
     const press = async (keys, ms) => { for (const k of keys) await page.keyboard.down(k); await sleep(ms); for (const k of keys.slice().reverse()) await page.keyboard.up(k); };
-    await press(['KeyD'], 900);
-    await press(['KeyS'], 700);
+    // (walking keys held 1.4x longer since the walk went 45 -> 32 u/s, so the 60 u odometer check keeps its margin;
+    // the run is unchanged)
+    await press(['KeyD'], 1260);
+    await press(['KeyS'], 980);
     await press(['ShiftLeft', 'KeyA'], 900);
-    await press(['ArrowUp'], 700);
+    await press(['ArrowUp'], 980);
   } else {
     const touchUI = await page.evaluate(() => ({ shown: getComputedStyle(document.getElementById('touch')).display !== 'none', action: !!document.querySelector('#touch .t-action') }));
     if (!touchUI.shown || !touchUI.action) fail(V.name, 'touch controls not visible: ' + JSON.stringify(touchUI)); else ok('touch controls visible');
@@ -99,10 +101,12 @@ async function run(browser, V) {
       await sleep(ms);
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     };
-    await drag(60, 0, 900);
-    await drag(0, 60, 700);
-    await drag(-60, 0, 700);
-    await drag(0, -60, 700);
+    // (walking is 32 u/s since the natural-walk change, was 45: the drags are held 1.6x longer so the 60 u odometer
+    // check below keeps the margin it had)
+    await drag(60, 0, 1440);
+    await drag(0, 60, 1120);
+    await drag(-60, 0, 1120);
+    await drag(0, -60, 1120);
     // (the ACTION button tap is exercised below against a test interactable: a bare tap here
     // would start whatever real content sits near the spawn, e.g. the antenna minigame)
   }

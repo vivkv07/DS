@@ -76,6 +76,8 @@
   const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
   const rnd = Math.random;
   const rr = (a, b) => a + rnd() * (b - a);
+  // [pace] walking speeds here were tuned for the player's old 45 u/s walk; entities.js paceK() = walk now / 45
+  const pace = () => (N.player && N.player.paceK ? N.player.paceK() : 1);
   const pick = (a) => a[(rnd() * a.length) | 0];
   const now = () => performance.now();
   const hash = (s) => (((U.strHash ? U.strHash(String(s)) : strHash(String(s))) >>> 0) / 4294967296);
@@ -395,7 +397,7 @@
     p.id = 0; p.alive = true; p.hidden = false; p.solid = !(o && o.ghost); p.mass = (o && o.mass) || 1; p.fixed = !!(o && o.fixed);
     p.sc = sc; p.role = role; p.x = x; p.y = y; p.angle = a || 0; p.facing = p.angle; p.vx = 0; p.vy = 0;
     const L = (o && o.look) ? { look: o.look, spd: 36 } : lookFor(role, sc ? sc.style : 'colony', o && o.over);
-    p.look0 = L.look; p.look = L.look; p.lookAlt = null; p.spd = (o && o.spd) || L.spd || rr(TUNE.walk[0], TUNE.walk[1]);
+    p.look0 = L.look; p.look = L.look; p.lookAlt = null; p.spd = (o && o.spd) || (L.spd || rr(TUNE.walk[0], TUNE.walk[1])) * pace();
     p.st = (o && o.st) || 'walk'; p.then = null; p.t = 0; p.tx = x; p.ty = y; p.fa = p.angle; p.seat = null; p.slot = null; p.held = false; p.holdBack = false;
     p.idle = null; p.bench = false; p.z = 0; p.dk = 0; p.hold = null; p.tool = null; p.hx = x; p.hy = y; p.hh = 5; p.cape = false; p.foam = 0;
     p.job = (o && o.job) || null; p.k = 0; p.ph = null; p.timer = 0; p.n = 0; p.cyc = null; p.raise = 0; p.flip = 0;

@@ -37,7 +37,7 @@ make.
 |---|---|---|
 | Distance | world unit **u** | 1 internal pixel at zoom 1. A person is 8 u, a cycle 15 x 5 u, a bus 62 x 18 u |
 | Map distance | **map-km ≈ 430 u** | Core-city squeeze from `map_plan.md` §1. Used for fares and race lengths |
-| Speed | u/s | Walk 45, run 80, cycle 115 (ARCHITECTURE §4) |
+| Speed | u/s | Walk 32 (45 until 2026-10-22: natural walking; paced systems scale by N.player.paceK()), run 80 (only on RUN), cycle 115 (ARCHITECTURE §4) |
 | Game time | **gm** = game minute, **gh** = game hour | Clock speed 1, so 1 gm = 1 real second and 1 gh = 60 real s. A whole day takes 24 real minutes |
 | Real time | **s** | Used for timers, cooldowns and animation |
 | Money | **paise** (integer) | ₹1 = 100. The HUD shows `N.util.fmtMoney`. Prices below read "₹4 (400)" |

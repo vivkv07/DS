@@ -774,7 +774,9 @@
     const pl = N.player;
     if (isFF(api)) { const q = pts[pts.length - 1], f = free(q.x, q.y, o.drive ? 'drive' : 'walk'); const v = a0.vehicle || a0; v.x = f.x; v.y = f.y; return true; }
     const r = o.r || TUNE.escortR;
-    const speed = (o.speed || TUNE.walkSpeed) * TUNE.escortSpeed;
+    // [pace] escorts were paced for a 45 u/s walk (he cannot run here): they keep the same share of today's walk
+    const pace = N.player && N.player.paceK ? N.player.paceK() : 1;
+    const speed = (o.speed || TUNE.walkSpeed) * TUNE.escortSpeed * pace;
     pl.noRun = o.noRun !== false;
     onEnd(api, () => { pl.noRun = false; dbgTarget(null); });
     dbgTarget(() => pos());
